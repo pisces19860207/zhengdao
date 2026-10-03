@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
     private var session: TerminalSession? = null
-    private var statusText: TextView? = null
+    private var toolbarTitle: TextView? = null
     private var ctrlButton: TextView? = null
     private var shiftButton: TextView? = null
     private var lastCols = 0
@@ -56,7 +56,7 @@ class MainActivity : ComponentActivity() {
         RootfsInstaller.cleanupPartial(applicationContext)
         setContentView(R.layout.activity_main)
 
-        statusText = findViewById(R.id.status_bar)
+        toolbarTitle = findViewById(R.id.toolbar_title)
         val web = findViewById<WebView>(R.id.terminal_web)
         configureWebView(web)
         webView = web
@@ -164,11 +164,7 @@ class MainActivity : ComponentActivity() {
         val plan = ProotLauncher.buildLaunchPlan(this)
         lastCols = cols
         lastRows = rows
-        statusText?.text = if (plan.isFallback) "证道 · 系统 shell（环境未安装）" else "证道 · Debian 13.7"
-        statusText?.setTextColor(
-            if (plan.isFallback) ContextCompat.getColor(this, R.color.term_key_idle)
-            else ContextCompat.getColor(this, R.color.term_key_active)
-        )
+        toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
         session = try {
             TerminalSession(
                 cmd = plan.cmd,
