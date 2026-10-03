@@ -2,4 +2,18 @@
 <resources>
 
     <style name="Theme.Zhengdao" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 终端快捷键条按键的公共外观 -->
+    <style name="TermKey">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">38dp</item>
+        <item name="android:minWidth">46dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:layout_marginEnd">6dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:background">@drawable/key_button_bg</item>
+        <item name="android:textColor">#FFEEEEEE</item>
+        <item name="android:textSize">12sp</item>
+    </style>
 </resources>
