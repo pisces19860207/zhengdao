@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
 
         toolbarTitle = findViewById(R.id.toolbar_title)
+        // 圆角悬浮窗口：子内容按窗口卡片轮廓裁剪（API 21+ 标准 outline 裁剪）
+        findViewById<android.view.View>(R.id.window_card).clipToOutline = true
         val web = findViewById<WebView>(R.id.terminal_web)
         configureWebView(web)
         webView = web
