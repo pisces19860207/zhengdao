@@ -89,7 +89,8 @@ Java_com_example_zhengdao_terminal_Pty_nativeCreate(
     pid_t pid = forkpty(&master, NULL, NULL, &ws);
     if (pid < 0) {
         int e = errno;
-        for (jsize i = 0; i <= argc; i++) free(argv[i]);
+        /* argv[0] 与 cmd 是同一块内存：从 1 开始释放，cmd 单独释放一次 */
+        for (jsize i = 1; i <= argc; i++) free(argv[i]);
         free(argv);
         for (jsize i = 0; i < envc; i++) free(envp[i]);
         free(envp);
@@ -107,8 +108,8 @@ Java_com_example_zhengdao_terminal_Pty_nativeCreate(
         _exit(127);
     }
 
-    /* 父进程：释放全部副本 */
-    for (jsize i = 0; i <= argc; i++) free(argv[i]);
+    /* 父进程：释放全部副本（argv[0] 与 cmd 同一块内存，只 free 一次） */
+    for (jsize i = 1; i <= argc; i++) free(argv[i]);
     free(argv);
     for (jsize i = 0; i < envc; i++) free(envp[i]);
     free(envp);
