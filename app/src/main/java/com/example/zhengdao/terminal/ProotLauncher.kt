@@ -35,7 +35,9 @@ object ProotLauncher {
     fun buildLaunchPlan(context: Context): LaunchPlan {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
-        val prootBin = File(files, "proot/proot")
+        // proot 随 APK 内置（jniLibs：libproot.so 打包进原生库目录，天然可执行），
+        // 升级随 APK 发版；Debian 环境仍按需下载（设计文档 §6）
+        val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
         val installMarker = File(rootfsDir, ".zhengdao-rootfs-ok")
 
         val rootfsReady = prootBin.isFile && prootBin.canExecute() && installMarker.isFile

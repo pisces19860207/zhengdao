@@ -117,7 +117,7 @@ cp loader/loader.elf ./loader.elf
 
 echo "[6/6] 链接 proot 并校验 ..."
 "$CLANG" $TGT -o proot $OBJS loader-wrapped.o \
-  -L"$W/talloc-2.4.2/build" -ltalloc -Wl,-z,noexecstack
+  -L"$W/talloc-2.4.2/build" -ltalloc -Wl,-z,noexecstack -Wl,-z,max-page-size=16384
 "$STRIP" proot
 "$READELF" -h proot | grep -E "Class:|Machine:"
 mkdir -p "$OUT_DIR"
