@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+  可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/terminal_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- 全屏终端：加载 assets/terminal/index.html（xterm.js 官方发行包） -->
+    <WebView
+        android:id="@+id/terminal_web"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</FrameLayout>

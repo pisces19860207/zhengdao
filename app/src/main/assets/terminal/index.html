@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<!--
+  独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+  使用的 xterm.js / @xterm/addon-fit 为官方发行包（MIT 许可证），
+  接入方式依据其官方文档（https://xtermjs.org）。
+-->
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" href="xterm.min.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #0c0c0c; overflow: hidden; }
+    #term { width: 100%; height: 100%; }
+  </style>
+  <script src="xterm.min.js"></script>
+  <script src="addon-fit.min.js"></script>
+</head>
+<body>
+<div id="term"></div>
+<script>
+  // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+  const term = new Terminal({
+    fontFamily: 'Menlo, Consolas, "Droid Sans Mono", "Noto Sans Mono CJK SC", monospace',
+    fontSize: 13,
+    scrollback: 2000,
+    cursorBlink: true,
+    theme: {
+      background: '#0c0c0c',
+      foreground: '#e6e6e6',
+      cursor: '#e6e6e6',
+      selectionBackground: '#3a4a5a',
+    },
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('term'));
+  fit.fit();
+
+  // UTF-8 文本 → base64（分块拼接，避免大字符串栈溢出）
+  function utf8ToB64(s) {
+    const bytes = new TextEncoder().encode(s);
+    let bin = '';
+    const CH = 0x8000;
+    for (let i = 0; i < bytes.length; i += CH) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CH, bytes.length)));
+    }
+    return btoa(bin);
+  }
+
+  // 键盘输入（含 IME 组合结束后的文本）→ Kotlin
+  term.onData(function (d) {
+    if (d) AndroidBridge.input(utf8ToB64(d));
+  });
+  // 尺寸变化（初始 fit / 旋转 / 缩放）→ Kotlin
+  term.onResize(function () {
+    AndroidBridge.resize(term.cols, term.rows);
+  });
+
+  // Kotlin → JS：base64 编码的原始输出字节（xterm.js 内部按 UTF-8 解码）
+  window.termWrite = function (b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    term.write(bytes);
+  };
+  // Kotlin 通知重新适配尺寸（目前由窗口 resize 事件自己触发，预留接口）
+  window.termFit = function () {
+    try { fit.fit(); } catch (e) { }
+  };
+  window.addEventListener('resize', window.termFit);
+
+  // 就绪：把初始行列数交给 Kotlin 侧启动会话
+  AndroidBridge.ready(term.cols, term.rows);
+</script>
+</body>
+</html>

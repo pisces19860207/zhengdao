@@ -1,0 +1,99 @@
+# 证道（Zhengdao）CI 构建流水线
+# 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类项目的 CI 配置。
+# 参考资料：GitHub Actions 官方文档（workflow syntax / runner images / upload-artifact）。
+#
+# 触发：推送到 main 分支，或在 Actions 页面手动触发（workflow_dispatch）。
+# 产物（构建完成后在本页 Artifacts 区下载）：
+#   - zhengdao-debug.apk                应用调试包（可直接安装）
+#   - debian-13.7-base-arm64.tar.zst    RootFS 包 + .sha256（M1.1 真机测试用）
+#   - proot-arm64                       自编译 proot（上游源码 + NDK）
+#
+# 说明：
+#   - RootFS 步骤在 x86_64 runner 上经 qemu-user-static 交叉构建 arm64，
+#     受模拟开销影响约需 30–90 分钟；该步失败不阻塞 APK 产物上传（continue-on-error）。
+#   - local.properties 是本机文件，CI 上无效且有害，构建前删除。
+
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 释放磁盘空间（NDK + Gradle 缓存 + RootFS 合计约 10GB）
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af > /dev/null 2>&1 || true
+          df -h /
+
+      - name: 安装 JDK 21（Gradle 启动器用；守护进程按项目配置经 foojay 自动供给 JDK 25）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安装 RootFS 构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap qemu-user-static zstd
+
+      - name: 安装 NDK r27.2（与 app/build.gradle.kts 的 ndkVersion 一致）
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
+          ls "$ANDROID_HOME/ndk"
+
+      - name: 清理本机配置并授权 gradlew
+        run: |
+          rm -f local.properties
+          chmod +x gradlew
+
+      - name: 缓存 Gradle（依赖 + wrapper + 自动供给的 JDK）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/jdks
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: 编译 Debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
+        id: rootfs
+        continue-on-error: true
+        timeout-minutes: 240
+        run: sudo bash rootfs/build-rootfs.sh "$GITHUB_WORKSPACE/rootfs-out"
+
+      - name: 构建 proot（上游源码 + NDK 交叉编译，约 2 分钟）
+        run: bash rootfs/build-proot.sh "$GITHUB_WORKSPACE/rootfs-out"
+
+      - name: 收集产物
+        run: |
+          mkdir -p artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/zhengdao-debug.apk
+          if [ -d rootfs-out ]; then cp -r rootfs-out/. artifacts/; fi
+          ls -la artifacts/
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhengdao-build-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 14
+          if-no-files-found: error
