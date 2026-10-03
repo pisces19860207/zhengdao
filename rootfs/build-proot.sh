@@ -19,7 +19,20 @@
 # =====================================================================
 set -euo pipefail
 
-NDK_BIN="${NDK_BIN:?请设置 NDK_BIN=<NDK>/toolchains/llvm/prebuilt/<host>/bin}"
+# NDK 工具链路径：优先用 NDK_BIN 环境变量；未设置时从 ANDROID_HOME 自动探测
+# （CI 上由工作流提前用 sdkmanager 装好指定版本的 NDK）
+if [ -z "${NDK_BIN:-}" ]; then
+  AH="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  [ -n "$AH" ] || { echo "[错误] 未设置 NDK_BIN，且找不到 ANDROID_HOME，无法定位 NDK"; exit 1; }
+  NDK_DIR="$(ls -d "$AH"/ndk/27.2.12479018 2>/dev/null | head -n1 || true)"
+  [ -n "$NDK_DIR" ] || { echo "[错误] $AH/ndk 下未找到 27.2.12479018，请先安装该版本 NDK"; exit 1; }
+  HOST_TAG="linux-x86_64"
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) HOST_TAG="windows-x86_64" ;;
+    Darwin*) HOST_TAG="darwin-x86_64" ;;
+  esac
+  NDK_BIN="$NDK_DIR/toolchains/llvm/prebuilt/$HOST_TAG/bin"
+fi
 OUT_DIR="${1:-$(pwd)/out}"
 TGT="--target=aarch64-linux-android29"
 CLANG="$NDK_BIN/clang.exe"
