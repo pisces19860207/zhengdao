@@ -85,6 +85,8 @@ class MainActivity : ComponentActivity() {
             R.id.key_esc to "\u001b",
             R.id.key_up to "\u001b[A",
             R.id.key_down to "\u001b[B",
+            R.id.key_left to "\u001b[D",
+            R.id.key_right to "\u001b[C",
             R.id.key_pgup to "\u001b[5~",
             R.id.key_pgdn to "\u001b[6~",
             R.id.key_pipe to "|",
