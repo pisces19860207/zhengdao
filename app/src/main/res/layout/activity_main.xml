@@ -7,7 +7,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black"
+    android:background="@android:color/white"
     android:padding="6dp">
 
     <LinearLayout
@@ -106,10 +106,18 @@
                     android:id="@+id/key_up"
                     style="@style/TermKey"
                     android:text="↑" />
-                <TextView
-                    android:id="@+id/key_down"
-                    style="@style/TermKey"
-                    android:text="↓" />
+            <TextView
+                android:id="@+id/key_down"
+                style="@style/TermKey"
+                android:text="↓" />
+            <TextView
+                android:id="@+id/key_left"
+                style="@style/TermKey"
+                android:text="←" />
+            <TextView
+                android:id="@+id/key_right"
+                style="@style/TermKey"
+                android:text="→" />
                 <TextView
                     android:id="@+id/key_pgup"
                     style="@style/TermKey"
