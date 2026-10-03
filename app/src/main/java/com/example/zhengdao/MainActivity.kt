@@ -246,19 +246,36 @@ class MainActivity : ComponentActivity() {
                 if (expectedSha.isNullOrBlank()) {
                     postToWeb("[警告] 未获取到 .sha256 边车文件，本次下载跳过完整性校验\r\n".toByteArray(Charsets.UTF_8))
                 }
-                RootfsDownloader.download(
-                    urls = listOf(url),
-                    dest = archive,
-                    expectedSha256 = expectedSha,
-                ) { done, total ->
-                    if (total > 0) {
-                        val percent = (done * 100 / total).coerceIn(0, 100)
-                        val mbDone = done / (1024 * 1024)
-                        val mbTotal = total / (1024 * 1024)
-                        postToWeb("下载中: ${percent}% (${mbDone}/${mbTotal} MB)\r\n".toByteArray(Charsets.UTF_8))
+
+                // 重试不浪费：已有完整包且 SHA256 通过 → 跳过下载直接解压
+                var needDownload = true
+                if (archive.isFile && !expectedSha.isNullOrBlank()) {
+                    try {
+                        RootfsDownloader.verifySha256(archive, expectedSha)
+                        needDownload = false
+                        postToWeb("检测到已下载的完整安装包，跳过下载\r\n".toByteArray(Charsets.UTF_8))
+                    } catch (t: Throwable) {
+                        postToWeb("已有安装包校验未通过，重新下载\r\n".toByteArray(Charsets.UTF_8))
                     }
                 }
-                postToWeb("下载完成，开始校验并解压（解压约需几分钟，请勿离开）\r\n".toByteArray(Charsets.UTF_8))
+                if (needDownload) {
+                    archive.delete()
+                    RootfsDownloader.download(
+                        urls = listOf(url),
+                        dest = archive,
+                        expectedSha256 = expectedSha,
+                    ) { done, total ->
+                        if (total > 0) {
+                            val percent = (done * 100 / total).coerceIn(0, 100)
+                            val mbDone = done / (1024 * 1024)
+                            val mbTotal = total / (1024 * 1024)
+                            postToWeb("下载中: ${percent}% (${mbDone}/${mbTotal} MB)\r\n".toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                } else {
+                    postToWeb("检测到已下载的完整安装包，跳过下载\r\n".toByteArray(Charsets.UTF_8))
+                }
+                postToWeb("开始校验并解压（解压约需几分钟，请勿离开）\r\n".toByteArray(Charsets.UTF_8))
 
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 var lastReported = ""
