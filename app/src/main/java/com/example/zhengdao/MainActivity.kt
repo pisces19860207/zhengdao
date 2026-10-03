@@ -11,8 +11,10 @@ import android.util.Base64
 import android.view.WindowManager
 import android.webkit.WebView
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.core.content.ContextCompat
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.terminal.ProotLauncher
@@ -22,22 +24,27 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 全屏终端 Activity（XML 布局：activity_main.xml 内一个全屏 WebView）。
+ * 全屏终端 Activity（状态条 + 终端 + 快捷键条，见 activity_main.xml）。
  *
  * 数据流：
- *   键盘 → xterm.js(onData) → TerminalBridge → TerminalSession.write → 伪终端 → 子进程
+ *   键盘/快捷键条 → TerminalSession.write → 伪终端 → 子进程
  *   子进程输出 → 读取线程 → postToWeb → xterm.js(term.write)
  *
  * 会话目标由 ProotLauncher 决定：已安装 Debian 13.7 环境则经 proot 启动 bash；
- * 未安装则回退系统 shell，并弹出「安装运行环境」入口（下载 → 校验 → 解压 → 自动切换）。
+ * 未安装则回退系统 shell，并弹出「安装运行环境」入口（默认地址已预填）。
  */
 class MainActivity : ComponentActivity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
     private var session: TerminalSession? = null
+    private var statusText: TextView? = null
+    private var ctrlButton: TextView? = null
+    private var shiftButton: TextView? = null
     private var lastCols = 0
     private var lastRows = 0
+    private var stickyCtrl = false
+    private var stickyShift = false
     private val installPromptShown = AtomicBoolean(false)
     private val installing = AtomicBoolean(false)
 
@@ -49,9 +56,11 @@ class MainActivity : ComponentActivity() {
         RootfsInstaller.cleanupPartial(applicationContext)
         setContentView(R.layout.activity_main)
 
+        statusText = findViewById(R.id.status_bar)
         val web = findViewById<WebView>(R.id.terminal_web)
         configureWebView(web)
         webView = web
+        wireKeyBar()
         web.loadUrl("file:///android_asset/terminal/index.html")
     }
 
@@ -66,6 +75,56 @@ class MainActivity : ComponentActivity() {
         web.addJavascriptInterface(makeBridge(), "AndroidBridge")
     }
 
+    /** 快捷键条：固定序列直发；CTRL/SHIFT 为粘滞键，修饰下一次输入（设计文档 §7）。 */
+    private fun wireKeyBar() {
+        ctrlButton = findViewById(R.id.key_ctrl)
+        shiftButton = findViewById(R.id.key_shift)
+        val sequences = mapOf(
+            R.id.key_esc to "\u001b",
+            R.id.key_up to "\u001b[A",
+            R.id.key_down to "\u001b[B",
+            R.id.key_pgup to "\u001b[5~",
+            R.id.key_pgdn to "\u001b[6~",
+            R.id.key_pipe to "|",
+            R.id.key_minus to "-",
+            R.id.key_slash to "/",
+        )
+        for ((id, seq) in sequences) {
+            findViewById<TextView>(id)?.setOnClickListener { sendKey(seq) }
+        }
+        findViewById<TextView>(R.id.key_tab)?.setOnClickListener {
+            // SHIFT+TAB = Backtab（\u001b[Z），Claude Code 的模式切换依赖它
+            sendKey(if (stickyShift) "\u001b[Z" else "\t")
+            if (stickyShift) clearSticky(ctrl = false, shift = true)
+        }
+        ctrlButton?.setOnClickListener {
+            stickyCtrl = !stickyCtrl
+            refreshStickyUi()
+        }
+        shiftButton?.setOnClickListener {
+            stickyShift = !stickyShift
+            refreshStickyUi()
+        }
+    }
+
+    /** 发送固定按键序列（粘滞 SHIFT 仅对 TAB 有特殊语义）。 */
+    private fun sendKey(raw: String) {
+        session?.write(raw)
+    }
+
+    private fun clearSticky(ctrl: Boolean, shift: Boolean) {
+        if (ctrl) stickyCtrl = false
+        if (shift) stickyShift = false
+        refreshStickyUi()
+    }
+
+    private fun refreshStickyUi() {
+        val active = ContextCompat.getColor(this, R.color.term_key_active)
+        val idle = ContextCompat.getColor(this, R.color.term_key_idle)
+        ctrlButton?.setTextColor(if (stickyCtrl) active else idle)
+        shiftButton?.setTextColor(if (stickyShift) active else idle)
+    }
+
     private fun makeBridge(): TerminalBridge = TerminalBridge(
         onReady = { cols, rows ->
             mainHandler.post { ensureSession(cols, rows) }
@@ -73,8 +132,16 @@ class MainActivity : ComponentActivity() {
         onInput = { b64 ->
             mainHandler.post {
                 try {
-                    val bytes = Base64.decode(b64, Base64.NO_WRAP)
-                    session?.write(String(bytes, Charsets.UTF_8))
+                    var text = String(Base64.decode(b64, Base64.NO_WRAP), Charsets.UTF_8)
+                    // 粘滞 CTRL：作用于下一个单字符输入（Ctrl+字母 = 0x01–0x1a 控制码）
+                    if (stickyCtrl && text.length == 1) {
+                        val lower = Character.toLowerCase(text[0])
+                        if (lower.code in 97..122) {
+                            text = (lower.code - 96).toChar().toString()
+                            clearSticky(ctrl = true, shift = false)
+                        }
+                    }
+                    session?.write(text)
                 } catch (t: Throwable) {
                     postToWeb("[输入处理失败: ${t.message}]\r\n".toByteArray(Charsets.UTF_8))
                 }
@@ -97,6 +164,11 @@ class MainActivity : ComponentActivity() {
         val plan = ProotLauncher.buildLaunchPlan(this)
         lastCols = cols
         lastRows = rows
+        statusText?.text = if (plan.isFallback) "证道 · 系统 shell（环境未安装）" else "证道 · Debian 13.7"
+        statusText?.setTextColor(
+            if (plan.isFallback) ContextCompat.getColor(this, R.color.term_key_idle)
+            else ContextCompat.getColor(this, R.color.term_key_active)
+        )
         session = try {
             TerminalSession(
                 cmd = plan.cmd,
@@ -121,7 +193,7 @@ class MainActivity : ComponentActivity() {
         if (plan.isFallback) promptInstallOnce()
     }
 
-    /** 回退会话首次出现时，提供一次「安装运行环境」入口；用户可跳过。 */
+    /** 回退会话首次出现时，提供一次「安装运行环境」入口；地址已预填，可跳过。 */
     private fun promptInstallOnce() {
         if (!installPromptShown.compareAndSet(false, true)) return
         mainHandler.post {

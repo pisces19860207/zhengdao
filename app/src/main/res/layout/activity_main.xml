@@ -1,17 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
-  可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+  布局：顶部状态条 + 全屏终端 WebView + 底部快捷键条（设计文档 §7）。
 -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/terminal_container"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="@android:color/black">
 
-    <!-- 全屏终端：加载 assets/terminal/index.html（xterm.js 官方发行包） -->
+    <TextView
+        android:id="@+id/status_bar"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:background="#FF161616"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:text="证 道"
+        android:textColor="#FFEEEEEE"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
     <WebView
         android:id="@+id/terminal_web"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-</FrameLayout>
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <HorizontalScrollView
+        android:id="@+id/key_bar"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="#FF161616"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
+
+            <TextView
+                android:id="@+id/key_ctrl"
+                style="@style/TermKey"
+                android:text="CTRL" />
+            <TextView
+                android:id="@+id/key_shift"
+                style="@style/TermKey"
+                android:text="SHIFT" />
+            <TextView
+                android:id="@+id/key_esc"
+                style="@style/TermKey"
+                android:text="ESC" />
+            <TextView
+                android:id="@+id/key_tab"
+                style="@style/TermKey"
+                android:text="TAB" />
+            <TextView
+                android:id="@+id/key_up"
+                style="@style/TermKey"
+                android:text="↑" />
+            <TextView
+                android:id="@+id/key_down"
+                style="@style/TermKey"
+                android:text="↓" />
+            <TextView
+                android:id="@+id/key_pgup"
+                style="@style/TermKey"
+                android:text="PGUP" />
+            <TextView
+                android:id="@+id/key_pgdn"
+                style="@style/TermKey"
+                android:text="PGDN" />
+            <TextView
+                android:id="@+id/key_pipe"
+                style="@style/TermKey"
+                android:text="|" />
+            <TextView
+                android:id="@+id/key_minus"
+                style="@style/TermKey"
+                android:text="-" />
+            <TextView
+                android:id="@+id/key_slash"
+                style="@style/TermKey"
+                android:text="/" />
+        </LinearLayout>
+    </HorizontalScrollView>
+</LinearLayout>
