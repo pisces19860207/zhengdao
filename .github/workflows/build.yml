@@ -82,6 +82,11 @@ jobs:
         timeout-minutes: 240
         run: sudo bash rootfs/build-rootfs.sh "$GITHUB_WORKSPACE/rootfs-out"
 
+      - name: 修正产物目录属主（rootfs 以 root 运行，目录归 root；proot 以普通用户写入）
+        run: |
+          if [ -d rootfs-out ]; then sudo chown -R "$(id -u):$(id -g)" rootfs-out; fi
+          ls -la rootfs-out 2>/dev/null || true
+
       - name: 构建 proot（上游源码 + NDK 交叉编译，约 2 分钟）
         run: bash rootfs/build-proot.sh "$GITHUB_WORKSPACE/rootfs-out"
 
