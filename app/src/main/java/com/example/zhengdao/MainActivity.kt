@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
         web.settings.allowFileAccess = true
         // 屏蔽系统字体缩放，保证终端等宽网格稳定
         web.settings.textZoom = 100
-        web.setBackgroundColor(android.graphics.Color.BLACK)
+        web.setBackgroundColor(android.graphics.Color.WHITE)
         web.addJavascriptInterface(makeBridge(), "AndroidBridge")
     }
 
@@ -193,29 +193,41 @@ class MainActivity : ComponentActivity() {
         if (plan.isFallback) promptInstallOnce()
     }
 
-    /** 回退会话首次出现时，提供一次「安装运行环境」入口；地址已预填，可跳过。 */
+    /** 回退会话首次出现时，提供「安装运行环境」一键入口；地址内置，用户无需知道 URL。 */
     private fun promptInstallOnce() {
         if (!installPromptShown.compareAndSet(false, true)) return
         mainHandler.post {
-            val input = EditText(this)
-            input.setSingleLine(true)
-            input.setText(ProotLauncher.DEFAULT_ROOTFS_URL) // 默认地址已预填，点「安装」即可
-            input.hint = "RootFS 压缩包直链（默认已填最新构建）"
             AlertDialog.Builder(this)
                 .setTitle("安装运行环境（Debian 13.7）")
-                .setMessage("下载约 326MB，解压后占约 1.5–2GB。地址已自动填好，直接点「安装」即可；断点续传，中断可重试。")
-                .setView(input)
-                .setPositiveButton("安装") { _, _ ->
-                    val url = input.text.toString().trim()
-                    if (url.isEmpty()) {
-                        postToWeb("[证道] 未输入下载地址，稍后重进 App 可再次安装\r\n".toByteArray(Charsets.UTF_8))
-                    } else {
-                        startInstall(url)
-                    }
+                .setMessage("首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。")
+                .setPositiveButton("开始下载") { _, _ ->
+                    startInstall(ProotLauncher.DEFAULT_ROOTFS_URL)
                 }
+                .setNeutralButton("自定义地址") { _, _ -> showCustomUrlDialog() }
                 .setNegativeButton("稍后", null)
                 .show()
         }
+    }
+
+    /** 高级入口：自定义下载地址（局域网直传 / 备用镜像）。普通用户不会用到。 */
+    private fun showCustomUrlDialog() {
+        val input = EditText(this)
+        input.setSingleLine(true)
+        input.hint = "RootFS 压缩包直链（高级选项）"
+        AlertDialog.Builder(this)
+            .setTitle("自定义下载地址")
+            .setMessage("一般用户无需填写。用于局域网直传或备用镜像，例如 http://192.168.2.3:8000/debian-13.7-base-arm64.tar.zst")
+            .setView(input)
+            .setPositiveButton("安装") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isEmpty()) {
+                    postToWeb("[证道] 未输入下载地址\r\n".toByteArray(Charsets.UTF_8))
+                } else {
+                    startInstall(url)
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 下载 → SHA256 校验 → 解压（原子）→ 杀掉回退会话 → 以 Debian bash 重开会话。 */

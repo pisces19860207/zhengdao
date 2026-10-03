@@ -87,6 +87,16 @@
                 android:paddingEnd="6dp">
 
                 <TextView
+                    android:id="@+id/key_left"
+                    style="@style/TermKey"
+                    android:text="←" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <TextView
                     android:id="@+id/key_ctrl"
                     style="@style/TermKey"
                     android:text="CTRL" />
@@ -106,18 +116,10 @@
                     android:id="@+id/key_up"
                     style="@style/TermKey"
                     android:text="↑" />
-            <TextView
-                android:id="@+id/key_down"
-                style="@style/TermKey"
-                android:text="↓" />
-            <TextView
-                android:id="@+id/key_left"
-                style="@style/TermKey"
-                android:text="←" />
-            <TextView
-                android:id="@+id/key_right"
-                style="@style/TermKey"
-                android:text="→" />
+                <TextView
+                    android:id="@+id/key_down"
+                    style="@style/TermKey"
+                    android:text="↓" />
                 <TextView
                     android:id="@+id/key_pgup"
                     style="@style/TermKey"
@@ -138,6 +140,16 @@
                     android:id="@+id/key_slash"
                     style="@style/TermKey"
                     android:text="/" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/key_right"
+                    style="@style/TermKey"
+                    android:text="→" />
             </LinearLayout>
         </HorizontalScrollView>
     </LinearLayout>

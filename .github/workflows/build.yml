@@ -109,11 +109,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest --cleanup-tag -y --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || true
-          gh release create latest artifacts/* --repo "$GITHUB_REPOSITORY" \
-            --title "证道 · 最新构建" --latest \
-            --notes "main 分支每次构建成功后自动更新的最新产物。
-
-          - zhengdao-debug.apk：直接安装（允许未知来源后点开）
-          - debian-13.7-base-arm64.tar.zst：在 App 的安装对话框里粘贴它的直链使用
-          - proot-arm64：构建留档"
+          gh release view latest --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
+            gh release create latest --repo "$GITHUB_REPOSITORY" \
+              --title "证道 · 最新构建" --latest \
+              --notes "main 分支每次构建成功后自动更新的最新产物。App 内的下载地址已内置。"
+          gh release upload latest artifacts/* --repo "$GITHUB_REPOSITORY" --clobber
