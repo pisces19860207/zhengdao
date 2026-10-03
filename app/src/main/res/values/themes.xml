@@ -13,7 +13,7 @@
         <item name="android:paddingStart">10dp</item>
         <item name="android:paddingEnd">10dp</item>
         <item name="android:background">@drawable/key_button_bg</item>
-        <item name="android:textColor">#FFEEEEEE</item>
+        <item name="android:textColor">#FF222222</item>
         <item name="android:textSize">12sp</item>
     </style>
 </resources>

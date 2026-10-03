@@ -22,7 +22,7 @@
             android:layout_width="match_parent"
             android:layout_height="42dp"
             android:orientation="horizontal"
-            android:background="#FF1D1D1D"
+            android:background="#FFFFFFFF"
             android:gravity="center_vertical"
             android:paddingStart="14dp"
             android:paddingEnd="14dp">
@@ -54,7 +54,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="证道"
-                android:textColor="#FFE8E8E8"
+                android:textColor="#FF1A1A1A"
                 android:textSize="13sp"
                 android:textStyle="bold"
                 android:singleLine="true" />
@@ -63,7 +63,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#FF2E2E2E" />
+            android:background="#FFE0E0E0" />
 
         <WebView
             android:id="@+id/terminal_web"
@@ -75,7 +75,7 @@
             android:id="@+id/key_bar"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:background="#FF1D1D1D"
+            android:background="#FFFFFFFF"
             android:scrollbars="none">
 
             <LinearLayout
