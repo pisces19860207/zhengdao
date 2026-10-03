@@ -8,6 +8,6 @@
     <color name="black">#FF000000</color>
     <color name="ic_launcher_background">#FFFFFFFF</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="term_key_active">#FF4AF626</color>
-    <color name="term_key_idle">#FFEEEEEE</color>
+    <color name="term_key_active">#FF18A018</color>
+    <color name="term_key_idle">#FF222222</color>
 </resources>
