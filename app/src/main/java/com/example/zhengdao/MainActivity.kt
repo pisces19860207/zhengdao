@@ -127,10 +127,11 @@ class MainActivity : ComponentActivity() {
         mainHandler.post {
             val input = EditText(this)
             input.setSingleLine(true)
-            input.hint = "粘贴 debian-13.7-base-arm64.tar.zst 的直链"
+            input.setText(ProotLauncher.DEFAULT_ROOTFS_URL) // 默认地址已预填，点「安装」即可
+            input.hint = "RootFS 压缩包直链（默认已填最新构建）"
             AlertDialog.Builder(this)
                 .setTitle("安装运行环境（Debian 13.7）")
-                .setMessage("下载约 150MB，解压后占约 1.5–2GB。输入 RootFS 压缩包的直链后点「安装」，完成后自动切换到 bash。也可以点「稍后」，之后重进 App 会再次询问。")
+                .setMessage("下载约 326MB，解压后占约 1.5–2GB。地址已自动填好，直接点「安装」即可；断点续传，中断可重试。")
                 .setView(input)
                 .setPositiveButton("安装") { _, _ ->
                     val url = input.text.toString().trim()

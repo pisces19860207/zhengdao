@@ -13,6 +13,13 @@ import java.io.IOException
 object ProotLauncher {
 
     /**
+     * 默认 RootFS 下载地址：latest 发布永远指向最新一次构建的产物，
+     * 因此这条地址长期有效。M3 起改为由 ed25519 验签的 manifest 动态下发。
+     */
+    const val DEFAULT_ROOTFS_URL =
+        "https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-base-arm64.tar.zst"
+
+    /**
      * 一次启动的完整计划。
      * @param cmd  宿主侧可直接 execve 的程序路径（proot 模式下 = proot 二进制；回退模式 = /system/bin/sh）
      * @param args 命令行参数（proot 模式下末尾附带 guest 内要执行的命令 /bin/bash -l）
