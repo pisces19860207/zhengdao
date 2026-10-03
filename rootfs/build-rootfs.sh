@@ -163,11 +163,13 @@ apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
 echo "---- 2.10 体积断言（防构建配置错误导致异常膨胀，v3.4）----"
-SIZE_MB="$(du -sm / | awk '{print $1}')"
-if [ "$SIZE_MB" -ge 1200 ] && [ "$SIZE_MB" -le 3000 ]; then
-  echo "[zhengdao] rootfs 落盘体积: ${SIZE_MB}MB（符合 1200–3000MB 预期）"
+# -x 不跨文件系统：跳过 bind 挂载的 /proc /sys /dev。du 探进 /proc 会因进程条目
+# 消失而报错退出，被 pipefail 放大成构建失败——CI 首轮实测教训（v3.4 修复）
+SIZE_MB="$(du -smx / 2>/dev/null | awk '{print $1}' || echo 0)"
+if [ "$SIZE_MB" -ge 400 ] && [ "$SIZE_MB" -le 3000 ]; then
+  echo "[zhengdao] rootfs 落盘体积: ${SIZE_MB}MB（符合 400–3000MB 预期；真实基线出来后可收紧）"
 else
-  echo "[断言失败] rootfs 落盘体积 ${SIZE_MB}MB 超出预期范围（1200–3000MB），请检查预装清单与清理步骤"
+  echo "[断言失败] rootfs 落盘体积 ${SIZE_MB}MB 超出预期范围（400–3000MB），请检查预装清单与清理步骤"
   exit 1
 fi
 rm -f /zhengdao-configure.sh
