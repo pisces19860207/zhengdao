@@ -100,7 +100,7 @@ echo "---- 2.2 基础依赖（git / tmux / libatomic1 / busybox 等）----"
 apt-get update
 apt-get install -y --no-install-recommends \
   git curl wget ca-certificates gnupg \
-  tmux procps busybox ripgrep libatomic1 ffmpeg \
+  tmux procps busybox ripgrep libatomic1 ffmpeg sqlite3 \
   locales bash-completion less xz-utils zstd sudo
 
 echo "---- 2.3 locale：确认 C.UTF-8 可用 ----"
