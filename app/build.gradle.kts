@@ -73,6 +73,7 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.26.2")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
 
+    implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
