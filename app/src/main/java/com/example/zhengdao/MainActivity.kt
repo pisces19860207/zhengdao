@@ -4,6 +4,7 @@ package com.example.zhengdao
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -228,24 +229,77 @@ class MainActivity : ComponentActivity() {
                 .setPositiveButton("开始下载") { _, _ ->
                     startInstall(ProotLauncher.DEFAULT_ROOTFS_URL)
                 }
-                .setNeutralButton("授权存储") { _, _ ->
+                .setNeutralButton("从文件选择") { _, _ ->
+                    // SAF 文件选择：全安卓版本可用、零权限（安卓 16 上 /sdcard 原始路径
+                    // 对 target 28 应用不可达，实测 2026-10-04；SAF 是唯一通用本地通道）
                     try {
-                        startActivity(
+                        startActivityForResult(
                             android.content.Intent(
-                                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                android.net.Uri.parse("package:$packageName")
-                            )
+                                android.content.Intent.ACTION_OPEN_DOCUMENT
+                            ).apply {
+                                addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                                type = "*/*"
+                            }, 2001
                         )
                     } catch (_: Throwable) {
-                        try {
-                            startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                        } catch (_: Throwable) {
-                        }
                     }
                 }
                 .setNegativeButton("稍后", null)
                 .show()
         }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 2001 && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            // 持久化读取授权（本会话与重启后均可再读该文件）
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Throwable) {
+            }
+            installFromSafUri(uri)
+        }
+    }
+
+    /** SAF 选中归档：拷入 cache → 尽力校验 → 解压 → 切 bash。 */
+    private fun installFromSafUri(uri: android.net.Uri) {
+        if (!installing.compareAndSet(false, true)) return
+        val appContext = applicationContext
+        Thread {
+            try {
+                postToWeb("[证道] 从本地文件安装: $uri\r\n".toByteArray(Charsets.UTF_8))
+                val archive = File(appContext.cacheDir, "debian-13.7-base-arm64.tar.zst")
+                archive.delete()
+                contentResolver.openInputStream(uri)?.use { input ->
+                    archive.outputStream().use { input.copyTo(it) }
+                } ?: throw IllegalStateException("无法读取所选文件")
+                RunLog.log("SAF 归档已拷入: ${archive.length()} bytes")
+                postToWeb("本地包读取完成（${archive.length() / (1024 * 1024)} MB），开始解压\r\n".toByteArray(Charsets.UTF_8))
+                RootfsInstaller.ensureFreeSpace(appContext, archive.length())
+                var lastReported = ""
+                RootfsInstaller.install(appContext, archive) { path ->
+                    if (path.contains("/bin/") || path.hashCode() % 300 == 0) {
+                        if (path != lastReported) {
+                            lastReported = path
+                            postToWeb("正在解压: $path\r\n".toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                }
+                archive.delete()
+                postToWeb("[证道] 安装完成！正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
+                session?.kill()
+                session = null
+                mainHandler.post { ensureSession(lastCols, lastRows) }
+            } catch (t: Throwable) {
+                postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试\r\n".toByteArray(Charsets.UTF_8))
+            } finally {
+                installing.set(false)
+            }
+        }.start()
     }
 
     /** 从本地归档安装：拷入 cache → 尽力校验（本地/网络边车）→ 解压 → 切 bash。 */

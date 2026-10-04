@@ -35,9 +35,16 @@ object ProotLauncher {
         val isFallback: Boolean = false,
     )
 
-    /** 已授予「所有文件访问」= 手机存储可直通。 */
+    /**
+     * 手机存储可直通判定。⚠️ targetSdk 28 走 WRITE_EXTERNAL_STORAGE 运行时权限
+     * （Android 11+ 对 target≤29 的 App 自动保持 legacy 存储视图，授权即可写共享
+     * 存储）；「所有文件访问」开关只对 target≥30 的 App 存在，本 App 永远拿不到，
+     * 不能用作判定（2026-10-04 修复：此前用 isExternalStorageManager 恒 false）。
+     */
     fun storageGranted(context: Context): Boolean =
-        android.os.Environment.isExternalStorageManager()
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     /** 流式计算文件 SHA-256（版本固定校验用）。 */
     private fun sha256Of(file: File): String {
@@ -149,8 +156,6 @@ object ProotLauncher {
             "-b", "/proc",           // 绑定进程信息
             "-b", "/sys",            // 绑定系统信息
             "-b", "${homeDir.absolutePath}:/root", // 用户 home（与系统层分离）
-            "/bin/bash",             // guest 内要执行的命令（proot 会把它翻译到 rootfs 内）
-            "-l",                    // login shell：读取 /etc/profile（UV_LINK_MODE 在那里全局生效）
         )
         // 手机存储直通（用户要求）：共享存储绑进 guest 的相同路径 + /sdcard 视图；
         // 默认工作区 Download/证道（guest 内 /root/工作区 直达）。未授权时静默跳过。
@@ -168,6 +173,21 @@ object ProotLauncher {
             } catch (_: Throwable) {
             }
         }
+        // 工作区（全版本兼容）：App 外部目录无需任何权限且真实路径可 bind；
+        // 安卓 16 实测 /sdcard 原始路径对 target 28 应用不可达，/sdcard bind 仅对
+        // legacy 视图设备生效（上面的 storageGranted 分支），两者并存互不影响。
+        val wsHost = File(context.getExternalFilesDir(null), "workspace").apply { mkdirs() }
+        args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
+        RunLog.log("工作区: ${wsHost.absolutePath} -> /workspace")
+
+        // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
+        // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）
+        args.addAll(
+            arrayOf(
+                "/bin/bash",             // guest 内要执行的命令（proot 会把它翻译到 rootfs 内）
+                "-l",                    // login shell：读取 /etc/profile（UV_LINK_MODE 在那里全局生效）
+            )
+        )
 
         return LaunchPlan(
             cmd = prootBin.absolutePath,
