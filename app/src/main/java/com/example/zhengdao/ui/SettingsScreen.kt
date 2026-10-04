@@ -359,13 +359,13 @@ fun SettingsScreen() {
         // ── 运行内存上限（用户第四批）：ulimit -v 防单个任务膨胀拖垮整机 ──
         SectionCard("运行内存上限") {
             Text(
-                text = "限制 guest 内每个进程的虚拟内存，防止单个 Agent 或编译任务无限膨胀。实测 3GB 下 Node 正常运行；若某工具报内存不足，可在此放宽或关闭。",
+                text = "限制 guest 内每个进程的虚拟内存。⚠️ 默认关闭：虚拟地址空间≠物理内存，真实负载下可能误伤 Agent（内存治理由 M2 软监控负责）。仅在某任务失控膨胀、拖垮整机时才建议临时开启。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
             var memLimit by remember {
-                mutableStateOf(Settings.prefs(ctx).getString("guest_mem_limit_mb", "3072") ?: "3072")
+                mutableStateOf(Settings.prefs(ctx).getString("guest_mem_limit_mb", "0") ?: "0")
             }
             Row {
                 FilterChip2("关闭", memLimit == "0") {
