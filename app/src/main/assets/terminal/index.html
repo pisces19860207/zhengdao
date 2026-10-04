@@ -26,6 +26,7 @@
   </style>
   <script src="xterm.min.js"></script>
   <script src="addon-fit.min.js"></script>
+  <script src="addon-canvas.min.js"></script>
 </head>
 <body>
 <div id="term-wrap"><div id="term"></div></div>
@@ -33,11 +34,9 @@
   // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
   const term = new Terminal({
     fontFamily: 'Menlo, Consolas, "Droid Sans Mono", "Noto Sans Mono CJK SC", monospace',
-    fontSize: 12,
+    fontSize: 13,
     cursorStyle: 'bar',
     cursorWidth: 2,
-    fontSize: 12,
-    fontSize: 13,
     scrollback: 2000,
     cursorBlink: true,
     theme: {
@@ -49,6 +48,8 @@
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
+  // canvas 渲染：手机浏览器 DOM 渲染重绘慢，canvas 让 TUI 和回显明显更跟手
+  try { term.loadAddon(new CanvasAddon.CanvasAddon()); } catch (e) { /* 加载失败退回 DOM 渲染 */ }
   term.open(document.getElementById('term'));
   fit.fit();
 
