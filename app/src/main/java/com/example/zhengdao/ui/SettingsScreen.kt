@@ -356,6 +356,38 @@ fun SettingsScreen() {
             }
         }
 
+        // ── 运行内存上限（用户第四批）：ulimit -v 防单个任务膨胀拖垮整机 ──
+        SectionCard("运行内存上限") {
+            Text(
+                text = "限制 guest 内每个进程的虚拟内存，防止单个 Agent 或编译任务无限膨胀。实测 3GB 下 Node 正常运行；若某工具报内存不足，可在此放宽或关闭。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            var memLimit by remember {
+                mutableStateOf(Settings.prefs(ctx).getString("guest_mem_limit_mb", "3072") ?: "3072")
+            }
+            Row {
+                FilterChip2("关闭", memLimit == "0") {
+                    memLimit = "0"
+                    Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "0").apply()
+                    Toast.makeText(ctx, "已关闭，下次启动会话生效", Toast.LENGTH_SHORT).show()
+                }
+                Spacer(Modifier.width(6.dp))
+                FilterChip2("3GB", memLimit == "3072") {
+                    memLimit = "3072"
+                    Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "3072").apply()
+                    Toast.makeText(ctx, "已设为 3GB，下次启动会话生效", Toast.LENGTH_SHORT).show()
+                }
+                Spacer(Modifier.width(6.dp))
+                FilterChip2("4GB", memLimit == "4096") {
+                    memLimit = "4096"
+                    Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "4096").apply()
+                    Toast.makeText(ctx, "已设为 4GB，下次启动会话生效", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
         // ── Root 增强模式 ──
         SectionCard("Root 增强模式") {
             val hasSu = remember {
@@ -373,7 +405,7 @@ fun SettingsScreen() {
             }
         }
 
-        // ── 国产 ROM 保活指南（第五批前置入口）──
+        // ── 国产 ROM 保活指南（第五批）──
         SectionCard("国产 ROM 保活指南") {
             Text(
                 text = "① 开发者选项 → 关闭「子进程限制」\n" +
@@ -382,6 +414,23 @@ fun SettingsScreen() {
                     "④ 电池优化 → 设置为「不允许」",
                 style = MaterialTheme.typography.bodySmall,
             )
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = {
+                // 电池优化白名单（用户第四批）：直接拉起系统"忽略电池优化"请求对话框；
+                // 厂商定制系统不支持该入口时退回通用设置列表，仍不支持则静默。
+                try {
+                    ctx.startActivity(
+                        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                            .apply { data = android.net.Uri.parse("package:${ctx.packageName}") }
+                    )
+                } catch (_: Throwable) {
+                    try {
+                        ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (_: Throwable) {
+                        Toast.makeText(ctx, "请到系统设置的电池优化中手动设置", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }) { Text("一键跳转：把证道设为「不优化」") }
         }
 
         // ── 新手指南（第三批）──

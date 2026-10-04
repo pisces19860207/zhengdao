@@ -33,6 +33,22 @@ object RootfsDownloader {
     /** 下载内容与校验值不符（多为发布资产在下载途中被更新）——残件作废、重取校验值、从头再来 */
     class ShaMismatch(message: String) : IOException(message)
 
+    /** 共享 HTTP 客户端：连接池常驻，退后台时由 releaseIdleResources() 清空。 */
+    private val sharedClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /**
+     * 内存看护（onTrimMemory 退后台时调用）：清掉空闲 TCP 连接与缓冲。
+     * WebView/Chromium 的内存由系统回调自动管理，不在此处理。
+     */
+    fun releaseIdleResources() {
+        try { sharedClient.connectionPool.evictAll() } catch (_: Throwable) {}
+    }
+
     /**
      * 依次尝试所有 URL，把文件下载到 dest（先写 dest.part，完成后改名）。
      * @param expectedSha256 期望的校验值；传 null 表示跳过校验（仅开发期允许）
@@ -44,10 +60,6 @@ object RootfsDownloader {
         onProgress: (doneBytes: Long, totalBytes: Long) -> Unit,
     ) {
         if (urls.isEmpty()) throw DownloadFailed("没有可用的下载地址")
-        val client = OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .build()
 
         // 每轮尝试前重取校验值：发布资产可能被更新（移动靶），过期校验值只会白忙
         var expectedSha = shaUrl?.let { fetchText(it) }
@@ -59,7 +71,7 @@ object RootfsDownloader {
             repeat(MAX_ATTEMPTS_PER_URL) { attempt ->
                 try {
                     Log.i(TAG, "下载尝试：$url（第 ${attempt + 1} 次）")
-                    downloadOne(client, url, dest, onProgress)
+                    downloadOne(sharedClient, url, dest, onProgress)
                     if (expectedSha.isNullOrBlank()) {
                         Log.w(TAG, "未提供 SHA256，跳过完整性校验")
                     } else {
@@ -85,11 +97,7 @@ object RootfsDownloader {
 
     /** 抓取小文本文件（如 .sha256 边车文件）；任何失败都返回 null，由调用方决定降级策略。 */
     fun fetchText(url: String): String? = try {
-        val client = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
-        client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+        sharedClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
             if (!resp.isSuccessful) null
             else resp.body?.string()?.trim()?.takeIf { it.isNotEmpty() }
         }
