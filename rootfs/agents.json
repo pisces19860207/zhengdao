@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "agents": [
     {
       "id": "claude-code",
@@ -21,7 +21,7 @@
       "name": "OpenCode",
       "desc": "开源编程 Agent（多模型，官方 npm 含 linux-arm64 预编译二进制）",
       "launchCmd": "opencode",
-      "installCmd": "npm install -g opencode-ai",
+      "installCmd": "npm install -g --allow-scripts=opencode-ai opencode-ai",
       "npmPackage": "opencode-ai"
     },
     {
