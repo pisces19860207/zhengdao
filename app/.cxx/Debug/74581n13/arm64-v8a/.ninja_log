@@ -1,9 +1,0 @@
-# ninja log v5
-2	2587	8127186404911734	CMakeFiles/zhengdao_pty.dir/pty.c.o	8c505bf68d3eee5d
-2596	3208	8127186410897395	C:/Users/guoli/AndroidStudioProjects/zhengdao/app/build/intermediates/cxx/Debug/74581n13/obj/arm64-v8a/libzhengdao_pty.so	bcab06465689adf5
-48	2503	8127436924055544	CMakeFiles/zhengdao_pty.dir/pty.c.o	8c505bf68d3eee5d
-2505	3070	8127436928409304	C:/Users/guoli/AndroidStudioProjects/zhengdao/app/build/intermediates/cxx/Debug/74581n13/obj/arm64-v8a/libzhengdao_pty.so	bcab06465689adf5
-5	1724	8127818869085262	CMakeFiles/zhengdao_pty.dir/pty.c.o	8c505bf68d3eee5d
-1726	2020	8127818872083394	C:/Users/guoli/AndroidStudioProjects/zhengdao/app/build/intermediates/cxx/Debug/74581n13/obj/arm64-v8a/libzhengdao_pty.so	bcab06465689adf5
-3	185	8127843045077836	CMakeFiles/zhengdao_pty.dir/pty.c.o	8c505bf68d3eee5d
-186	420	8127843047464526	C:/Users/guoli/AndroidStudioProjects/zhengdao/app/build/intermediates/cxx/Debug/74581n13/obj/arm64-v8a/libzhengdao_pty.so	bcab06465689adf5

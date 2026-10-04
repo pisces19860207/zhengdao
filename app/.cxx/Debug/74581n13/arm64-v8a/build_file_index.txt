@@ -1,1 +1,0 @@
-C:\Users\guoli\AndroidStudioProjects\zhengdao\app\src\main\cpp\CMakeLists.txt
