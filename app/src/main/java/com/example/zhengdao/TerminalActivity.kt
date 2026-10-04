@@ -269,14 +269,17 @@ class TerminalActivity : ComponentActivity() {
         }
     }
 
-    /** SAF 选中归档：拷入 cache → 尽力校验 → 解压 → 切 bash。 */
+    /** SAF 选中归档：拷入公共缓存 → 尽力校验 → 解压 → 切 bash。压缩包保留（重装免下载）。 */
     private fun installFromSafUri(uri: android.net.Uri) {
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
             try {
                 postToWeb("[证道] 从本地文件安装: $uri\r\n".toByteArray(Charsets.UTF_8))
-                val archive = File(appContext.cacheDir, "debian-13.7-base-arm64.tar.zst")
+                val archive = File(
+                    com.example.zhengdao.rootfs.RootfsCache.dir(appContext),
+                    "debian-13.7-base-arm64.tar.zst"
+                )
                 archive.delete()
                 contentResolver.openInputStream(uri)?.use { input ->
                     archive.outputStream().use { input.copyTo(it) }
@@ -293,8 +296,9 @@ class TerminalActivity : ComponentActivity() {
                         }
                     }
                 }
-                archive.delete()
-                postToWeb("[证道] 安装完成！正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
+                com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
+                postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
+                postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
                 session?.kill()
                 session = null
                 mainHandler.post { ensureSession(lastCols, lastRows) }
@@ -306,17 +310,22 @@ class TerminalActivity : ComponentActivity() {
         }.start()
     }
 
-    /** 从本地归档安装：拷入 cache → 尽力校验（本地/网络边车）→ 解压 → 切 bash。 */
+    /** 从本地归档安装：归档已在缓存目录则直接用，否则拷入 → 校验 → 解压 → 切 bash。压缩包保留。 */
     private fun startInstallFromFile(local: File) {
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
             try {
                 postToWeb("[证道] 使用本地安装包: ${local.path}\r\n".toByteArray(Charsets.UTF_8))
-                val archive = File(appContext.cacheDir, local.name)
-                if (!archive.isFile || archive.length() != local.length()) {
-                    postToWeb("复制本地安装包（约 1 分钟）…\r\n".toByteArray(Charsets.UTF_8))
-                    local.copyTo(archive, overwrite = true)
+                val cacheCopy = File(
+                    com.example.zhengdao.rootfs.RootfsCache.dir(appContext), local.name
+                )
+                val archive = if (local.canonicalPath == cacheCopy.canonicalPath) local else run {
+                    if (!cacheCopy.isFile || cacheCopy.length() != local.length()) {
+                        postToWeb("复制本地安装包到缓存（约 1 分钟）…\r\n".toByteArray(Charsets.UTF_8))
+                        local.copyTo(cacheCopy, overwrite = true)
+                    }
+                    cacheCopy
                 }
                 // 完整性校验：优先同目录 .sha256 边车；无则跳过并明示（本地文件由用户放置）
                 val sidecar = File(local.parentFile, local.name + ".sha256")
@@ -341,8 +350,9 @@ class TerminalActivity : ComponentActivity() {
                         }
                     }
                 }
-                archive.delete()
-                postToWeb("[证道] 安装完成！正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
+                com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
+                postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
+                postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
                 session?.kill()
                 session = null
                 mainHandler.post { ensureSession(lastCols, lastRows) }
@@ -375,15 +385,15 @@ class TerminalActivity : ComponentActivity() {
             .show()
     }
 
-    /** 下载 → SHA256 校验 → 解压（原子）→ 杀掉回退会话 → 以 Debian bash 重开会话。 */
+    /** 下载 → SHA256 校验 → 解压（原子）→ 杀掉回退会话 → 以 Debian bash 重开会话。压缩包落公共缓存并保留。 */
     private fun startInstall(url: String) {
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
             try {
                 postToWeb("[证道] 开始下载运行环境\r\n来自: $url\r\n".toByteArray(Charsets.UTF_8))
-                val archive = File(appContext.cacheDir, "debian-13.7-base-arm64.tar.zst")
-                archive.delete()
+                // 公共缓存（Download/zhengdao/cache）：重装 App 不丢，装完保留
+                val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(appContext, url)
 
                 // 完整性校验值：优先抓取同目录 .sha256 边车文件；抓不到则明示跳过
                 // （正式发布后由 ed25519 验签的 manifest 提供校验值，见设计文档 §6 安全闸）
@@ -392,7 +402,7 @@ class TerminalActivity : ComponentActivity() {
                     postToWeb("[警告] 未获取到 .sha256 边车文件，本次下载跳过完整性校验\r\n".toByteArray(Charsets.UTF_8))
                 }
 
-                // 重试不浪费：已有完整包且 SHA256 通过 → 跳过下载直接解压
+                // 重试不浪费：已有完整包且 SHA256 通过 → 跳过下载直接解压（环境缓存复用）
                 var needDownload = true
                 if (archive.isFile && !expectedSha.isNullOrBlank()) {
                     try {
@@ -433,9 +443,10 @@ class TerminalActivity : ComponentActivity() {
                         }
                     }
                 }
-                archive.delete()
+                com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
 
-                postToWeb("[证道] 安装完成！正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
+                postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
+                postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
                 session?.kill()
                 session = null
                 mainHandler.post { ensureSession(lastCols, lastRows) }
