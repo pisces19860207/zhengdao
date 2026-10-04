@@ -30,6 +30,9 @@ object RootfsDownloader {
 
     class DownloadFailed(message: String) : IOException(message)
 
+    /** 下载内容与校验值不符（多为发布资产在下载途中被更新）——残件作废、重取校验值、从头再来 */
+    class ShaMismatch(message: String) : IOException(message)
+
     /**
      * 依次尝试所有 URL，把文件下载到 dest（先写 dest.part，完成后改名）。
      * @param expectedSha256 期望的校验值；传 null 表示跳过校验（仅开发期允许）
@@ -37,7 +40,7 @@ object RootfsDownloader {
     fun download(
         urls: List<String>,
         dest: File,
-        expectedSha256: String?,
+        shaUrl: String?,
         onProgress: (doneBytes: Long, totalBytes: Long) -> Unit,
     ) {
         if (urls.isEmpty()) throw DownloadFailed("没有可用的下载地址")
@@ -46,18 +49,29 @@ object RootfsDownloader {
             .readTimeout(60, TimeUnit.SECONDS)
             .build()
 
+        // 每轮尝试前重取校验值：发布资产可能被更新（移动靶），过期校验值只会白忙
+        var expectedSha = shaUrl?.let { fetchText(it) }
+        if (shaUrl != null && expectedSha.isNullOrBlank()) {
+            Log.w(TAG, "未获取到 SHA256 校验值，跳过完整性校验（仅限开发期）")
+        }
         var lastError: Exception? = null
         for (url in urls) {
             repeat(MAX_ATTEMPTS_PER_URL) { attempt ->
                 try {
                     Log.i(TAG, "下载尝试：$url（第 ${attempt + 1} 次）")
                     downloadOne(client, url, dest, onProgress)
-                    if (expectedSha256.isNullOrBlank()) {
-                        Log.w(TAG, "未提供 SHA256，跳过完整性校验（仅限开发期）")
+                    if (expectedSha.isNullOrBlank()) {
+                        Log.w(TAG, "未提供 SHA256，跳过完整性校验")
                     } else {
-                        verifySha256(dest, expectedSha256)
+                        verifySha256(dest, expectedSha)
                     }
                     return
+                } catch (e: ShaMismatch) {
+                    // 资产在下载途中被更新：残件作废、重取最新校验值、从头再来
+                    Log.w(TAG, "SHA256 不匹配，删除残件并重取校验值重试", e)
+                    dest.delete()
+                    expectedSha = shaUrl?.let { fetchText(it) }
+                    lastError = e
                 } catch (e: Exception) {
                     Log.w(TAG, "下载失败：$url", e)
                     lastError = e
@@ -155,7 +169,7 @@ object RootfsDownloader {
         }
         val actual = md.digest().joinToString("") { "%02x".format(it) }
         if (!actual.equals(expected, ignoreCase = true)) {
-            throw IOException("SHA256 校验失败：actual=$actual expected=$expected")
+            throw ShaMismatch("SHA256 校验失败：actual=$actual expected=$expected")
         }
     }
 }
