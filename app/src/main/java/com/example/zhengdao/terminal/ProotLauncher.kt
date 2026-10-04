@@ -234,11 +234,14 @@ object ProotLauncher {
         // 宿主侧检查 rootfs 是否带 tmux：旧包没有时降级裸 bash，guest 内不会报 command not found。
         val hasTmux = File(rootfsDir, "usr/bin/tmux").isFile
         if (hasTmux) {
+            // kill-server 兜底：会话被 SIGKILL 终止时 proot 来不及跑 --kill-on-exit，
+            // tmux server 可能残留为接不住客户端的僵尸（实测 2026-10-04 code=1）。
+            // 真进程死亡时全组覆灭（ps 实测无孤儿），此行不影响任何存活场景。
             args.addAll(
                 arrayOf(
                     "/bin/bash",
                     "-lc",
-                    "${memPrefix}exec tmux new-session -A -s zhengdao",
+                    "${memPrefix}tmux kill-server 2>/dev/null; exec tmux new-session -A -s zhengdao",
                 )
             )
         } else {
