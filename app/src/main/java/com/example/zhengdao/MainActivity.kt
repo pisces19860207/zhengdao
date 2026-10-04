@@ -67,10 +67,15 @@ class MainActivity : ComponentActivity() {
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
 
+        // 记住上次页面（用户反馈：上滑切走再回来不该回首页）。
+        // 欢迎页只在首次安装展示；之后冷启动直达上次位置。
+        val prefs = getSharedPreferences("zhengdao-ui", MODE_PRIVATE)
+        val lastRoute = prefs.getString("last_route", null)
+
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ZhengdaoApp(startInTerminal = openTerminal)
+                    ZhengdaoApp(startInTerminal = openTerminal, lastRoute = lastRoute)
                 }
             }
         }
@@ -132,10 +137,18 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ZhengdaoApp(startInTerminal: Boolean = false) {
+fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
     val installed = AppState.rootfsInstalled(context)
+    val routePrefs = context.getSharedPreferences("zhengdao-ui", android.content.Context.MODE_PRIVATE)
+
+    // 路由决策优先级：通知栏直达终端 > 上次页面（欢迎页只在首次安装出现）
+    val startRoute = when {
+        startInTerminal -> "home"
+        lastRoute != null -> lastRoute
+        else -> "welcome"
+    }
 
     // 通知栏直达终端：落到主页后立即拉起终端（会话由 SessionManager attach 恢复）
     if (startInTerminal) {
@@ -144,7 +157,14 @@ fun ZhengdaoApp(startInTerminal: Boolean = false) {
         }
     }
 
-    NavHost(navController = nav, startDestination = if (startInTerminal) "home" else "welcome") {
+    // 记录当前页面（供冷启动恢复；terminal 是独立 Activity，见下）
+    androidx.compose.runtime.LaunchedEffect(nav) {
+        nav.currentBackStackEntryFlow.collect { entry ->
+            routePrefs.edit().putString("last_route", entry.destination.route).apply()
+        }
+    }
+
+    NavHost(navController = nav, startDestination = startRoute) {
         composable("welcome") {
             WelcomeScreen(
                 environmentInstalled = installed,

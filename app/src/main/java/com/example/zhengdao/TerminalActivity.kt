@@ -492,7 +492,7 @@ class TerminalActivity : ComponentActivity() {
 
     // ── 输出合并（性能）：读取线程每块直接 evaluateJavascript 会把主线程排队淹没
     //（TUI 全屏重绘尤其凶），打字回显排在长队后面 = 迟钝。这里把 ~16ms 窗口内到达
-    // 的块攒成一次调用，JS 桥开销从「每块一次」降到「每帧一次」。
+    // 的块攒成一次调用，JS 桥开销从「每块一次」降到「每帧一次」（8ms 窗口≈120fps 跟手）。
     private val pendingOut = java.io.ByteArrayOutputStream()
     private val outLock = Any()
     private val outFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -514,7 +514,7 @@ class TerminalActivity : ComponentActivity() {
                     val b64 = Base64.encodeToString(chunk, Base64.NO_WRAP)
                     wvNow.evaluateJavascript("window.termWrite('$b64')", null)
                 }
-            }, 16)
+            }, 8)
         }
     }
 
