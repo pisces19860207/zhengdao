@@ -39,6 +39,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 class TerminalActivity : ComponentActivity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    // 输入批处理：每个键一次跨语言调用在高频输入时排队。首个键立即 flush（零延迟），
+    // 后续 50ms 内到达的输入并进同一次 write。
+    private val pendingIn = StringBuilder()
+    private val inLock = Any()
+    private val inFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     private var webView: WebView? = null
     private var toolbarTitle: TextView? = null
     private var ctrlButton: TextView? = null
@@ -127,6 +132,18 @@ class TerminalActivity : ComponentActivity() {
         )
         for ((id, seq) in sequences) {
             findViewById<TextView>(id)?.setOnClickListener { sendKey(seq) }
+        }
+        // 粘贴：读系统剪贴板直写会话（移动端选择复制不便，粘贴是高频需求）
+        findViewById<TextView>(R.id.key_paste)?.setOnClickListener {
+            val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                as android.content.ClipboardManager
+            val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+            if (text.isNotEmpty()) {
+                writeInput(text)
+                Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
+            }
         }
         findViewById<TextView>(R.id.key_tab)?.setOnClickListener {
             // SHIFT+TAB = Backtab（\u001b[Z），Claude Code 的模式切换依赖它
@@ -496,6 +513,27 @@ class TerminalActivity : ComponentActivity() {
     private val pendingOut = java.io.ByteArrayOutputStream()
     private val outLock = Any()
     private val outFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** 键盘/粘贴输入统一入口：合并后写入会话。 */
+    private fun writeInput(text: String) {
+        synchronized(inLock) { pendingIn.append(text) }
+        if (inFlushQueued.compareAndSet(false, true)) {
+            mainHandler.post {
+                inFlushQueued.set(false)
+                val batch = synchronized(inLock) {
+                    val t = pendingIn.toString()
+                    pendingIn.setLength(0)
+                    t
+                }
+                if (batch.isNotEmpty()) {
+                    runCatching { SessionManager.write(batch) }
+                        .onFailure {
+                            postToWeb("[输入处理失败: ${it.message}]\r\n".toByteArray(Charsets.UTF_8))
+                        }
+                }
+            }
+        }
+    }
 
     /** 把输出字节推给 xterm.js（base64 编码；evaluateJavascript 必须在主线程）。 */
     private fun postToWeb(bytes: ByteArray) {
