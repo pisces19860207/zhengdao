@@ -79,24 +79,6 @@ object AgentManifest {
         }
     }
 
-    /** npm registry 最新版本号（失败/超时返回 null；结果进程内缓存）。 */
-    private val npmLatestCache = mutableMapOf<String, String>()
-
-    fun fetchNpmLatest(pkg: String, onDone: (String?) -> Unit) {
-        npmLatestCache[pkg]?.let { onDone(it); return }
-        Thread {
-            val version = try {
-                // registry.npmjs.org 国内可达；取 /latest 的 "version" 字段
-                RootfsDownloader.fetchText("https://registry.npmjs.org/$pkg/latest")
-                    ?.let { Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
-            } catch (_: Throwable) {
-                null
-            }
-            if (version != null) npmLatestCache[pkg] = version
-            onDone(version)
-        }.start()
-    }
-
     /** 已安装 Agent 的版本探测：读 rootfs 内 npm 全局包的 package.json（host 侧直接可见）。 */
     fun installedVersion(ctx: Context, npmPackage: String): String? = try {
         val pkgJson = java.io.File(ctx.filesDir, "rootfs/usr/lib/node_modules/$npmPackage/package.json")

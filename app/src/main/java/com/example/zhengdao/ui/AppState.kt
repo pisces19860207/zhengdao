@@ -124,7 +124,8 @@ object AppState {
                 installed = rootfsInstalled && firstExisting(
                     ctx, listOf(
                         "home/.local/bin/opencode", "rootfs/usr/local/bin/opencode",
-                        "rootfs/usr/lib/node_modules/opencode-ai",
+                        "rootfs/usr/bin/opencode",
+                        "rootfs/usr/lib/node_modules/opencode-ai/package.json",
                     )
                 ),
             ),
