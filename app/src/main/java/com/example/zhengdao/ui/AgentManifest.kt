@@ -34,13 +34,15 @@ object AgentManifest {
      */
     private val PUBLIC_KEY_B64 = "LW7JtVXGiZGrFBFl8x1wlyPBtBez7tNNWzz4AhSI54Q="
 
-    /** manifest 条目（骨架 §2 字段子集：升级=重跑安装命令，helper 流程 M3 后期再扩）。 */
+    /** manifest 条目。npmPackage 非空时：已装版本从 rootfs 的 node_modules package.json
+     *  探测，最新版从 npm registry 查询 → 卡片可显示「可更新」。 */
     data class Entry(
         val id: String,
         val name: String,
         val desc: String,
         val launchCmd: String,
         val installCmd: String,
+        val npmPackage: String? = null,
     )
 
     /** Ed25519 验签（纯函数，先验签后解析的"验签"半边；JVM 可测）。 */
@@ -56,12 +58,11 @@ object AgentManifest {
 
     /** 解析 manifest 文本（纯函数；只在验签通过后调用）。 */
     fun parse(text: String): List<Entry> {
-        fun str(id: String, key: String): String =
-            Regex("\"$id\"[^{]*?\"$key\"\\s*:\\s*\"([^\"]*)\"").let { r ->
-                // 逐 agent 块解析：以 "id" 为锚找块内字段
-                val block = Regex("\"id\"\\s*:\\s*\"$id\"[^}]*}").find(text)?.value ?: return@let ""
-                Regex("\"$key\"\\s*:\\s*\"([^\"]*)\"").find(block)?.groupValues?.get(1) ?: ""
-            }
+        fun str(id: String, key: String): String {
+            // 逐 agent 块解析：以 "id" 为锚找块内字段
+            val block = Regex("\"id\"\\s*:\\s*\"$id\"[^}]*}").find(text)?.value ?: return ""
+            return Regex("\"$key\"\\s*:\\s*\"([^\"]*)\"").find(block)?.groupValues?.get(1) ?: ""
+        }
         val ids = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").findAll(text).map { it.groupValues[1] }.toList()
         return ids.mapNotNull { id ->
             val name = str(id, "name")
@@ -73,8 +74,37 @@ object AgentManifest {
                 desc = str(id, "desc"),
                 launchCmd = str(id, "launchCmd").ifBlank { id },
                 installCmd = install,
+                npmPackage = str(id, "npmPackage").ifBlank { null },
             )
         }
+    }
+
+    /** npm registry 最新版本号（失败/超时返回 null；结果进程内缓存）。 */
+    private val npmLatestCache = mutableMapOf<String, String>()
+
+    fun fetchNpmLatest(pkg: String, onDone: (String?) -> Unit) {
+        npmLatestCache[pkg]?.let { onDone(it); return }
+        Thread {
+            val version = try {
+                // registry.npmjs.org 国内可达；取 /latest 的 "version" 字段
+                RootfsDownloader.fetchText("https://registry.npmjs.org/$pkg/latest")
+                    ?.let { Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
+            } catch (_: Throwable) {
+                null
+            }
+            if (version != null) npmLatestCache[pkg] = version
+            onDone(version)
+        }.start()
+    }
+
+    /** 已安装 Agent 的版本探测：读 rootfs 内 npm 全局包的 package.json（host 侧直接可见）。 */
+    fun installedVersion(ctx: Context, npmPackage: String): String? = try {
+        val pkgJson = java.io.File(ctx.filesDir, "rootfs/usr/lib/node_modules/$npmPackage/package.json")
+        if (pkgJson.isFile) {
+            Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(pkgJson.readText())?.groupValues?.get(1)
+        } else null
+    } catch (_: Throwable) {
+        null
     }
 
     /** 最近一次验签通过的条目（无缓存返回 null = 调用方用出厂版）。 */
@@ -171,7 +201,6 @@ object AgentManifest {
             },
         )
     }
-
     private fun sha256Hex(bytes: ByteArray): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { "%02x".format(it) }
