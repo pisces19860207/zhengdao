@@ -123,6 +123,17 @@ object ProotLauncher {
         // DNS 兜底（设计文档 §4：proot 内没有 systemd-resolved，缺 resolv.conf 就是
         // "下载得动、上不了网"的第一大故障；App 每次启动前确保存在）
         ensureDnsFiles(File(rootfsDir, "etc/resolv.conf"), File(rootfsDir, "etc/hosts"))
+        // npm 国内镜像（login shell 经 /etc/profile.d 自动生效）：官方 registry 从国内
+        // 拉 Agent 及其二进制要 2-4 分钟，npmmirror 通常几十秒。写失败不阻断。
+        runCatching {
+            val profileDir = File(rootfsDir, "etc/profile.d")
+            if (profileDir.isDirectory || profileDir.mkdirs()) {
+                val f = File(profileDir, "zz-npm-registry.sh")
+                if (!f.isFile || !f.readText().contains("npmmirror")) {
+                    f.writeText("export NPM_CONFIG_REGISTRY=https://registry.npmmirror.com\n")
+                }
+            }
+        }
 
         // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
         // 这样「修复环境」重解压系统层时不碰用户数据
@@ -295,8 +306,7 @@ object ProotLauncher {
 
     /** 确保 guest 内 DNS 配置存在；多路 DNS：国内源在前（快且稳），国际源兜底
      *  （走 VPN 时由其接管）。内容缺失即写入；失败不阻断启动。 */
-    private fun ensureDnsFiles(resolv: File, hosts: File) {
-        try {
+    private fun ensureDnsFiles(resolv: File, hosts: File) {        try {
             // 旧版 resolv 只有国际源：升级后补齐国内源（探测标记 223.5.5.5）
             val stale = resolv.isFile && !resolv.readText().contains("223.5.5.5")
             if (!resolv.isFile || resolv.length() == 0L || stale) {
