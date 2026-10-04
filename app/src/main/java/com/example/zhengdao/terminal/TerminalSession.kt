@@ -62,8 +62,12 @@ class TerminalSession(
 
     /** 写入用户键盘输入（UTF-8 文本）。 */
     fun write(data: String) {
-        val bytes = data.toByteArray(Charsets.UTF_8)
-        if (bytes.isNotEmpty() && Pty.nativeWrite(fd, bytes, bytes.size) < 0) {
+        write(data.toByteArray(Charsets.UTF_8))
+    }
+
+    /** 写入原始字节（控制字符序列，如 tmux 前缀键）。 */
+    fun write(data: ByteArray) {
+        if (data.isNotEmpty() && Pty.nativeWrite(fd, data, data.size) < 0) {
             throw IOException("写入伪终端失败")
         }
     }

@@ -34,6 +34,8 @@ object ProotLauncher {
         val env: Array<String>,
         val banner: String,
         val isFallback: Boolean = false,
+        /** 会话是否由 tmux 保持（决定绿点分屏按钮是否可用） */
+        val usesTmux: Boolean = false,
     )
 
     /**
@@ -256,6 +258,7 @@ object ProotLauncher {
             args = args.toTypedArray(),
             env = env.toTypedArray(),
             banner = banner,
+            usesTmux = hasTmux,
         )
     }
 
