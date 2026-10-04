@@ -134,6 +134,19 @@ object ProotLauncher {
                 }
             }
         }
+        // git 克隆加速（用户实测：v2vpn 下 github 克隆仍极慢，Hermes 安装卡在克隆）：
+        // /root/.gitconfig 把 github.com 替换为可用的加速镜像（2026-10-05 实测 gh-proxy.com
+        // 200/1.5s）。镜像失效时删除 /root/.gitconfig 即恢复直连。
+        runCatching {
+            val gitconfig = File(homeDir, ".gitconfig")
+            if (!gitconfig.isFile) {
+                gitconfig.writeText(
+                    "[url \"https://gh-proxy.com/https://github.com/\"]\n" +
+                        "\tinsteadOf = https://github.com/\n"
+                )
+                RunLog.log("git 镜像已配置（gh-proxy.com）")
+            }
+        }
 
         // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
         // 这样「修复环境」重解压系统层时不碰用户数据
