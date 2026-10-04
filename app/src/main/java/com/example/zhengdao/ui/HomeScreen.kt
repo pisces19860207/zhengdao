@@ -66,7 +66,7 @@ fun HomeScreen(
     // M3：一键安装轮询——有「安装中」的 Agent 时每 5 秒重查（文件出现 → [启动]）
     androidx.compose.runtime.LaunchedEffect(agents) {
         if (agents.any { AgentRepository.stateOf(context, it) == AgentRepository.State.Installing }) {
-            kotlinx.coroutines.delay(5000)
+            kotlinx.coroutines.delay(3000)
             agents = AppState.agents(context)
         }
     }
@@ -204,7 +204,12 @@ fun HomeScreen(
                                 enabled = false,
                             ) { Text("安装中") }
                             agent.installCmd != null && envReady -> OutlinedButton(
-                                onClick = { onOpenTerminal(agent.installCmd, agent.id) },
+                                onClick = {
+                                    // 一键到底：装完直接启动 Agent，不逼用户回主页再点一次
+                                    val launch = agent.launchCmd.substringBefore(' ')
+                                    val auto = "${agent.installCmd} && echo \"[证道] 安装完成，正在启动 $launch（首次启动需初始化，请稍候）…\" && $launch"
+                                    onOpenTerminal(auto, agent.id)
+                                },
                                 modifier = Modifier.width(84.dp),
                             ) { Text("安装") }
                             agent.installCmd == null -> OutlinedButton(
