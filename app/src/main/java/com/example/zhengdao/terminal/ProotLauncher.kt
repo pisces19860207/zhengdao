@@ -152,6 +152,19 @@ object ProotLauncher {
                 RunLog.log("git 镜像已配置（gh-proxy.com）")
             }
         }
+        // OpenCode 调优（性能）：snapshot 会在每次工具调用时跑 git 子进程，
+        // proot 下子进程开销被放大数倍 → 输入/响应明显卡顿。默认关闭；
+        // 需要 undo 功能的用户可手动改回 true（牺牲性能）。
+        runCatching {
+            val cfgDir = File(homeDir, ".config/opencode")
+            if (cfgDir.isDirectory || cfgDir.mkdirs()) {
+                val f = File(cfgDir, "opencode.json")
+                if (!f.isFile) {
+                    f.writeText("{\n  \"snapshot\": false\n}\n")
+                    RunLog.log("OpenCode 配置已预置（snapshot=false）")
+                }
+            }
+        }
 
         val env = mutableListOf(
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",

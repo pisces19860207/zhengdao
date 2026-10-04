@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "agents": [
     {
       "id": "claude-code",
@@ -14,7 +14,7 @@
       "name": "Hermes Agent",
       "desc": "多技能 AI 助手（Nous Research）",
       "launchCmd": "hermes",
-      "installCmd": "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+      "installCmd": "export UV_LINK_MODE=copy; curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
     },
     {
       "id": "opencode",

@@ -484,6 +484,17 @@ fun SettingsScreen() {
                     }
                 }
             }) { Text("一键跳转：把证道设为「不优化」") }
+            TextButton(onClick = {
+                // 应用详情页（启动管理/自启动设置的入口）：荣耀等国产 ROM 的保活开关都在这层
+                runCatching {
+                    ctx.startActivity(
+                        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .apply { data = android.net.Uri.parse("package:${ctx.packageName}") }
+                    )
+                }.onFailure {
+                    Toast.makeText(ctx, "请到系统设置 → 应用管理中找到证道", Toast.LENGTH_LONG).show()
+                }
+            }) { Text("打开应用详情（启动管理入口）") }
         }
 
         // ── 新手指南（第三批）──
