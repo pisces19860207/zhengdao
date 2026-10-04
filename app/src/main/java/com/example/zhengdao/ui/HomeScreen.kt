@@ -210,7 +210,7 @@ fun HomeScreen(
         }
         item {
             Text(
-                text = "安装与启动均在「终端」内进行，会话由 tmux 兜底（M2 接入）。",
+                text = "安装与启动均在「终端」内进行；会话由 tmux 保持，断线重进不丢现场。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(6.dp),
