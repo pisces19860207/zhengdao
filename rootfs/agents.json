@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "desc": "Anthropic 官方 AI 编程助手",
+      "launchCmd": "claude",
+      "installCmd": "curl -fsSL https://claude.ai/install.sh | bash"
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes Agent",
+      "desc": "多技能 AI 助手（Nous Research）",
+      "launchCmd": "hermes",
+      "installCmd": "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "desc": "开源编程 Agent（多模型，官方 npm 含 linux-arm64 预编译二进制）",
+      "launchCmd": "opencode",
+      "installCmd": "npm install -g opencode-ai"
+    },
+    {
+      "id": "antigravity",
+      "name": "AGY CLI（Antigravity）",
+      "desc": "Google 新一代 Agent CLI（Gemini/Claude 模型，官方含 linux-arm64 构建；Gemini CLI 已向它合并）",
+      "launchCmd": "agy",
+      "installCmd": "curl -fsSL https://antigravity.google/cli/install.sh | bash"
+    }
+  ]
+}
