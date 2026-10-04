@@ -53,6 +53,32 @@ object AppState {
                 ),
             ),
             AgentInfo(
+                id = "opencode",
+                name = "OpenCode",
+                desc = "开源编程 Agent（多模型，官方 npm 含 linux-arm64 预编译二进制）",
+                launchCmd = "opencode",
+                installCmd = "npm install -g opencode-ai",
+                installed = rootfsInstalled && firstExisting(
+                    ctx, listOf(
+                        "home/.local/bin/opencode", "rootfs/usr/local/bin/opencode",
+                        "rootfs/usr/lib/node_modules/opencode-ai",
+                    )
+                ),
+            ),
+            AgentInfo(
+                id = "gemini-cli",
+                name = "Gemini CLI",
+                desc = "Google 官方 CLI（免费层级可用，Node 20+ 已预装）",
+                launchCmd = "gemini",
+                installCmd = "npm install -g @google/gemini-cli",
+                installed = rootfsInstalled && firstExisting(
+                    ctx, listOf(
+                        "home/.local/bin/gemini", "rootfs/usr/local/bin/gemini",
+                        "rootfs/usr/lib/node_modules/@google/gemini-cli",
+                    )
+                ),
+            ),
+            AgentInfo(
                 id = "zcode",
                 name = "Zcode",
                 desc = "安装命令整理中，将经 manifest 免发版下发",

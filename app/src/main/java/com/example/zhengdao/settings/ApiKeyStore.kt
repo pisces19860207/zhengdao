@@ -23,12 +23,14 @@ object ApiKeyStore {
     private const val KEY_ALIAS = "zhengdao-apikey-aes"
     private const val GCM_TAG_BITS = 128
 
-    /** 服务商 ID → 注入的环境变量名。 */
+    /** 服务商 ID → 注入的环境变量名（均为各工具官方认读的变量名）。 */
     val PROVIDERS: Map<String, String> = mapOf(
         "anthropic" to "ANTHROPIC_API_KEY",
         "deepseek" to "DEEPSEEK_API_KEY",
         "openai" to "OPENAI_API_KEY",
         "zhipu" to "ZHIPU_API_KEY",
+        "gemini" to "GEMINI_API_KEY",
+        "openrouter" to "OPENROUTER_API_KEY",
     )
 
     private fun prefs(ctx: Context): SharedPreferences =
