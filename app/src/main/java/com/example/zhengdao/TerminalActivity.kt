@@ -490,12 +490,31 @@ class TerminalActivity : ComponentActivity() {
         }.start()
     }
 
+    // ── 输出合并（性能）：读取线程每块直接 evaluateJavascript 会把主线程排队淹没
+    //（TUI 全屏重绘尤其凶），打字回显排在长队后面 = 迟钝。这里把 ~16ms 窗口内到达
+    // 的块攒成一次调用，JS 桥开销从「每块一次」降到「每帧一次」。
+    private val pendingOut = java.io.ByteArrayOutputStream()
+    private val outLock = Any()
+    private val outFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /** 把输出字节推给 xterm.js（base64 编码；evaluateJavascript 必须在主线程）。 */
     private fun postToWeb(bytes: ByteArray) {
-        val wv = webView ?: return
-        val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-        mainHandler.post {
-            wv.evaluateJavascript("window.termWrite('$b64')", null)
+        if (webView == null) return
+        synchronized(outLock) { pendingOut.write(bytes) }
+        if (outFlushQueued.compareAndSet(false, true)) {
+            mainHandler.postDelayed({
+                outFlushQueued.set(false)
+                val wvNow = webView ?: return@postDelayed
+                val chunk = synchronized(outLock) {
+                    val arr = pendingOut.toByteArray()
+                    pendingOut.reset()
+                    arr
+                }
+                if (chunk.isNotEmpty()) {
+                    val b64 = Base64.encodeToString(chunk, Base64.NO_WRAP)
+                    wvNow.evaluateJavascript("window.termWrite('$b64')", null)
+                }
+            }, 16)
         }
     }
 
