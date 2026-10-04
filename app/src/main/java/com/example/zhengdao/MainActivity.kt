@@ -263,7 +263,7 @@ class MainActivity : ComponentActivity() {
                     RootfsDownloader.download(
                         urls = listOf(url),
                         dest = archive,
-                        expectedSha256 = expectedSha,
+                        shaUrl = "$url.sha256",
                     ) { done, total ->
                         if (total > 0) {
                             val percent = (done * 100 / total).coerceIn(0, 100)
