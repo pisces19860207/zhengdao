@@ -258,7 +258,10 @@ object ProotLauncher {
 
         // apt 分层策略（用户第四批）：系统层不支持 apt upgrade；语言级依赖走 pip / npm。
         // 横幅告知 + 设置页同步提示，替代对用户行为的假设。
-        val aptHint = "[提示] 不要执行 apt upgrade（可能损坏环境）；系统级 apt 装软件可能失败，优先用 pip / npm\r\n"
+        // 终端网络（用户指定）：DNS 多路已就位；走代理的用户最常见故障是分应用代理
+        // 没勾选证道——横幅提示一次，省一轮排障。
+        val aptHint = "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\r\n" +
+            "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\r\n"
         val banner = if (hasTmux) {
             "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n" +
                 "[证道] tmux 会话保持已启用（会话名 zhengdao）：Agent 断线重进不丢现场\r\n" + aptHint
@@ -290,12 +293,20 @@ object ProotLauncher {
         isFallback = true,
     )
 
-    /** 确保 guest 内 DNS 配置存在（内容缺失即写入公共 DNS；失败不阻断启动）。 */
+    /** 确保 guest 内 DNS 配置存在；多路 DNS：国内源在前（快且稳），国际源兜底
+     *  （走 VPN 时由其接管）。内容缺失即写入；失败不阻断启动。 */
     private fun ensureDnsFiles(resolv: File, hosts: File) {
         try {
-            if (!resolv.isFile || resolv.length() == 0L) {
+            // 旧版 resolv 只有国际源：升级后补齐国内源（探测标记 223.5.5.5）
+            val stale = resolv.isFile && !resolv.readText().contains("223.5.5.5")
+            if (!resolv.isFile || resolv.length() == 0L || stale) {
                 resolv.parentFile?.mkdirs()
-                resolv.writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
+                resolv.writeText(
+                    "nameserver 223.5.5.5\n" +      // 阿里 DNS（国内）
+                        "nameserver 119.29.29.29\n" + // 腾讯 DNSPod（国内）
+                        "nameserver 1.1.1.1\n" +      // Cloudflare（国际/走代理）
+                        "nameserver 8.8.8.8\n"        // Google（国际/走代理）
+                )
             }
             if (!hosts.isFile || hosts.length() == 0L) {
                 hosts.parentFile?.mkdirs()

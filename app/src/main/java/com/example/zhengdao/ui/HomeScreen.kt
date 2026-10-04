@@ -62,6 +62,18 @@ fun HomeScreen(
             summary = AppState.summaryLine(context)
         }
     }
+
+    // 已装 Agent 的 npm 最新版（「可更新」标记的数据源；进程内缓存，失败静默）
+    var npmLatest by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    androidx.compose.runtime.LaunchedEffect(agents) {
+        agents.filter { it.installed && !it.npmPackage.isNullOrBlank() && npmLatest[it.npmPackage] == null }
+            .forEach { agent ->
+                val pkg = agent.npmPackage!!
+                AgentManifest.fetchNpmLatest(pkg) { v ->
+                    if (v != null) npmLatest = npmLatest + (pkg to v)
+                }
+            }
+    }
     // 设置页/终端返回后刷新（API Key / 工作区 / 修复环境可能已变更）
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
@@ -174,6 +186,9 @@ fun HomeScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
+                    val updateAvailable = agent.installed &&
+                        agent.installedVersion != null &&
+                        agent.npmPackage?.let { npmLatest[it] }?.let { it != agent.installedVersion } == true
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = agent.name,
@@ -183,6 +198,10 @@ fun HomeScreen(
                         )
                         val envReady = AppState.rootfsInstalled(context)
                         when {
+                            agent.installed && updateAvailable -> Button(
+                                onClick = { onOpenTerminal(agent.installCmd) },
+                                modifier = Modifier.width(84.dp),
+                            ) { Text("更新") }
                             agent.installed -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd) },
                                 modifier = Modifier.width(84.dp),
@@ -210,6 +229,22 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // 版本行：已装版本 + 可更新提示（npm 包可探测时才有）
+                    if (agent.installed && (agent.installedVersion != null || updateAvailable)) {
+                        Text(
+                            text = buildString {
+                                append("已装版本：${agent.installedVersion ?: "未知"}")
+                                val latest = agent.npmPackage?.let { npmLatest[it] }
+                                if (latest != null && latest != agent.installedVersion) {
+                                    append(" · 最新 $latest")
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (updateAvailable) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (updateAvailable) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }

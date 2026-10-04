@@ -63,6 +63,8 @@ fun SettingsScreen() {
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var pendingUpdateUrl by remember { mutableStateOf<String?>(null) }
     var pendingUpdateSha by remember { mutableStateOf<String?>(null) }
+    var prevLogText by remember { mutableStateOf<String?>(null) }
+    var showPrevLog by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
@@ -406,6 +408,31 @@ fun SettingsScreen() {
             }
         }
 
+        // ── 运行日志（第三批调整：存 cache，无错自动删，有错保留一代）──
+        LaunchedEffect(Unit) {
+            prevLogText = withContext(Dispatchers.IO) {
+                if (com.example.zhengdao.rootfs.RunLog.lastRunHadErrors(ctx))
+                    com.example.zhengdao.rootfs.RunLog.prevFile()?.readText()
+                else null
+            }
+        }
+        if (prevLogText != null) {
+            SectionCard("上次运行日志（有错误，已保留）") {
+                Text(
+                    "上次运行检测到错误，日志已保留在 cache/runlog/，可直接复制反馈。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(onClick = { showPrevLog = true }) { Text("查看上次日志") }
+                TextButton(onClick = {
+                    com.example.zhengdao.rootfs.RunLog.prevFile()?.delete()
+                    prevLogText = null
+                    Toast.makeText(ctx, "已删除", Toast.LENGTH_SHORT).show()
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+
         // ── Root 增强模式 ──
         SectionCard("Root 增强模式") {
             val hasSu = remember {
@@ -525,6 +552,29 @@ fun SettingsScreen() {
             dismissButton = {
                 TextButton(onClick = { repairConfirm = false }) { Text("取消") }
             },
+        )
+    }
+
+    // ── 上次运行日志查看弹窗 ──
+    if (showPrevLog && prevLogText != null) {
+        AlertDialog(
+            onDismissRequest = { showPrevLog = false },
+            title = { Text("上次运行日志") },
+            text = {
+                Text(
+                    prevLogText!!.takeLast(6000),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-prevlog", prevLogText))
+                    Toast.makeText(ctx, "已复制全部日志", Toast.LENGTH_SHORT).show()
+                }) { Text("复制全部") }
+            },
+            dismissButton = { TextButton(onClick = { showPrevLog = false }) { Text("关闭") } },
         )
     }
 

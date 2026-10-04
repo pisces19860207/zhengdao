@@ -1,12 +1,13 @@
 {
-  "version": 1,
+  "version": 2,
   "agents": [
     {
       "id": "claude-code",
       "name": "Claude Code",
       "desc": "Anthropic 官方 AI 编程助手",
       "launchCmd": "claude",
-      "installCmd": "curl -fsSL https://claude.ai/install.sh | bash"
+      "installCmd": "curl -fsSL https://claude.ai/install.sh | bash",
+      "npmPackage": "@anthropic-ai/claude-code"
     },
     {
       "id": "hermes",
@@ -20,7 +21,8 @@
       "name": "OpenCode",
       "desc": "开源编程 Agent（多模型，官方 npm 含 linux-arm64 预编译二进制）",
       "launchCmd": "opencode",
-      "installCmd": "npm install -g opencode-ai"
+      "installCmd": "npm install -g opencode-ai",
+      "npmPackage": "opencode-ai"
     },
     {
       "id": "antigravity",

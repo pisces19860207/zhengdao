@@ -20,6 +20,8 @@ object AppState {
         val launchCmd: String,
         val installCmd: String?,          // null = 安装命令待定（按钮禁用）
         val installed: Boolean,
+        val npmPackage: String? = null,   // 非空时可探测已装版本 + 查 npm 最新版
+        val installedVersion: String? = null, // node_modules package.json 探测；null = 版本未知
     )
 
     fun rootfsInstalled(ctx: Context): Boolean =
@@ -38,7 +40,7 @@ object AppState {
     fun agents(ctx: Context): List<AgentInfo> {
         val rootfsInstalled = rootfsInstalled(ctx)
         val factory = factoryAgents(ctx, rootfsInstalled)
-        val manifest = AgentManifest.cached(ctx) ?: return factory
+        val manifest = AgentManifest.cached(ctx)
 
         val detectFor: (String, String) -> Boolean = { _, launchCmd ->
             val cmd = launchCmd.substringBefore(' ').trim()
@@ -49,27 +51,46 @@ object AppState {
             )
         }
         val byId = factory.associateBy { it.id }.toMutableMap()
-        manifest.forEach { m ->
+        // npm 包名解析：manifest 声明优先，其次内置映射（npm 安装路径的版本可探测）
+        val npmFor: (String) -> String? = { id ->
+            manifest?.firstOrNull { it.id == id }?.npmPackage
+                ?: mapOf(
+                    "claude-code" to "@anthropic-ai/claude-code",
+                    "opencode" to "opencode-ai",
+                )[id]
+        }
+        // manifest 卡片合并：按 id 覆盖内置（安装命令免发版更新），未知 id 追加
+        manifest?.forEach { m ->
             val known = byId[m.id]
+            val pkg = npmFor(m.id)
             byId[m.id] = if (known != null) {
-                // 覆盖可下发字段，保留专用安装探测结果
                 known.copy(
                     name = m.name.ifBlank { known.name },
                     desc = m.desc.ifBlank { known.desc },
                     launchCmd = m.launchCmd.ifBlank { known.launchCmd },
                     installCmd = m.installCmd.ifBlank { known.installCmd },
+                    npmPackage = pkg ?: known.npmPackage,
+                    installedVersion = pkg?.let { AgentManifest.installedVersion(ctx, it) },
                 )
             } else {
                 AgentInfo(
                     id = m.id, name = m.name, desc = m.desc,
                     launchCmd = m.launchCmd, installCmd = m.installCmd,
                     installed = detectFor(m.id, m.launchCmd),
+                    npmPackage = pkg,
+                    installedVersion = pkg?.let { AgentManifest.installedVersion(ctx, it) },
                 )
             }
         }
-        // 展示顺序：保持出厂顺序优先，manifest 新增的排后面
-        val order = factory.map { it.id } + manifest.map { it.id }.filter { it !in factory.map { f -> f.id } }
-        return order.mapNotNull { byId[it] }
+        // 展示顺序：出厂顺序优先，manifest 新增排后面；全部补版本探测
+        val order = factory.map { it.id } + (manifest?.map { it.id } ?: emptyList())
+            .filter { it !in factory.map { f -> f.id } }
+        return order.mapNotNull { byId[it] }.map { a ->
+            if (a.installedVersion == null && a.npmPackage == null) {
+                val pkg = npmFor(a.id)
+                a.copy(npmPackage = pkg, installedVersion = pkg?.let { AgentManifest.installedVersion(ctx, it) })
+            } else a
+        }
     }
 
     /** 出厂版（APK 内置，等于 agents.json 的首发快照）。 */
