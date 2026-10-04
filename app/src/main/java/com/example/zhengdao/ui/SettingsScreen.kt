@@ -278,6 +278,24 @@ fun SettingsScreen() {
                     }.start()
                 },
             ) { Text(if (checking) "检查中…" else "检查环境更新") }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Agent 清单：${AgentManifest.cachedVersionText(ctx)}（安装命令可免发版更新，进主页时自动刷新）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = {
+                Toast.makeText(ctx, "正在刷新 Agent 清单…", Toast.LENGTH_SHORT).show()
+                AgentManifest.refresh(ctx, force = true) { applied ->
+                    android.os.Handler(ctx.mainLooper).post {
+                        Toast.makeText(
+                            ctx,
+                            if (applied) "Agent 清单已更新" else "刷新失败（沿用现有清单）",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }) { Text("立即刷新 Agent 清单") }
         }
 
         // ── 安装包缓存（第三批）──

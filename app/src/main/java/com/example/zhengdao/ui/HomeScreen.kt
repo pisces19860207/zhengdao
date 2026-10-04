@@ -56,6 +56,11 @@ fun HomeScreen(
         sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             SystemInfoProvider.collect(context)
         }
+        // M3：Agent 清单免发版更新（6h TTL，静默失败；拉到新清单后刷新卡片）
+        AgentManifest.refresh(context, force = false) {
+            agents = AppState.agents(context)
+            summary = AppState.summaryLine(context)
+        }
     }
     // 设置页/终端返回后刷新（API Key / 工作区 / 修复环境可能已变更）
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current

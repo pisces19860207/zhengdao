@@ -28,10 +28,52 @@ object AppState {
     private fun firstExisting(ctx: Context, relative: List<String>): Boolean =
         relative.any { File(ctx.filesDir, it).isFile }
 
-    /** Agent 卡片列表（安装状态按真实文件探测：home 绑定 = /root，rootfs 内路径在 host 侧可见）。 */
+    /**
+     * Agent 卡片列表（M3 起由验签 manifest 驱动，骨架 §2）：
+     * - 内置清单 = 出厂版兜底（APK 同源发布，manifest 双通道全挂时仍可用）；
+     * - manifest 已缓存条目按 id 覆盖内置（安装命令免发版更新），未知 id 追加为新卡片；
+     * - 安装探测：已知 id 走专用路径；manifest 新增 id 通用探测（~/.local/bin 与
+     *   /usr/local/bin 下的启动命令名）。
+     */
     fun agents(ctx: Context): List<AgentInfo> {
         val rootfsInstalled = rootfsInstalled(ctx)
-        return listOf(
+        val factory = factoryAgents(ctx, rootfsInstalled)
+        val manifest = AgentManifest.cached(ctx) ?: return factory
+
+        val detectFor: (String, String) -> Boolean = { _, launchCmd ->
+            val cmd = launchCmd.substringBefore(' ').trim()
+            rootfsInstalled && cmd.isNotBlank() && firstExisting(
+                ctx, listOf(
+                    "home/.local/bin/$cmd", "rootfs/usr/local/bin/$cmd", "rootfs/usr/bin/$cmd",
+                )
+            )
+        }
+        val byId = factory.associateBy { it.id }.toMutableMap()
+        manifest.forEach { m ->
+            val known = byId[m.id]
+            byId[m.id] = if (known != null) {
+                // 覆盖可下发字段，保留专用安装探测结果
+                known.copy(
+                    name = m.name.ifBlank { known.name },
+                    desc = m.desc.ifBlank { known.desc },
+                    launchCmd = m.launchCmd.ifBlank { known.launchCmd },
+                    installCmd = m.installCmd.ifBlank { known.installCmd },
+                )
+            } else {
+                AgentInfo(
+                    id = m.id, name = m.name, desc = m.desc,
+                    launchCmd = m.launchCmd, installCmd = m.installCmd,
+                    installed = detectFor(m.id, m.launchCmd),
+                )
+            }
+        }
+        // 展示顺序：保持出厂顺序优先，manifest 新增的排后面
+        val order = factory.map { it.id } + manifest.map { it.id }.filter { it !in factory.map { f -> f.id } }
+        return order.mapNotNull { byId[it] }
+    }
+
+    /** 出厂版（APK 内置，等于 agents.json 的首发快照）。 */
+    private fun factoryAgents(ctx: Context, rootfsInstalled: Boolean): List<AgentInfo> = listOf(
             AgentInfo(
                 id = "claude-code",
                 name = "Claude Code",
@@ -79,7 +121,6 @@ object AppState {
                 ),
             ),
         )
-    }
 
     /** 状态卡折叠态的一行摘要。 */
     fun summaryLine(ctx: Context): String {
