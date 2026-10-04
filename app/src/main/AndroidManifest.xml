@@ -17,6 +17,9 @@
          该权限在 Play 商店受政策限制，本项目为 GitHub 旁加载分发，不受影响 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- M2 前台服务：targetSdk 28 起即需声明（API 34+ 才另需 foregroundServiceType） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
@@ -45,6 +48,11 @@
             android:theme="@style/Theme.Zhengdao"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
+        <!-- M2 保活锚点：targetSdk 28 无需 foregroundServiceType -->
+        <service
+            android:name=".terminal.SessionService"
+            android:exported="false" />
     </application>
 
 </manifest>

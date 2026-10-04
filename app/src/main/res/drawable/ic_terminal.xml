@@ -1,0 +1,19 @@
+<!-- 独立开发声明：本文件为本项目从零编写（通知栏小图标：终端提示符造型）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 终端窗口外框 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,3h18c0.55,0 1,0.45 1,1v16c0,0.55 -0.45,1 -1,1L3,21c-0.55,0 -1,-0.45 -1,-1L2,4c0,-0.55 0.45,-1 1,-1zM4,5v14h16L20,5L4,5z" />
+    <!-- 提示符 > -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,8.5l3,2.5l-3,2.5l1,1.5l4.5,-3.5L8,7z" />
+    <!-- 光标 _ -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.5,15.5h5v1.5h-5z" />
+</vector>
