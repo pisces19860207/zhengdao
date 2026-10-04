@@ -51,10 +51,10 @@ class MainActivity : ComponentActivity() {
 
         // 系统版本兜底门槛（用户第四批）：minSdk=35 已拦住安装，这里双保险
         // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
-        if (android.os.Build.VERSION.SDK_INT < 35) {
+        if (android.os.Build.VERSION.SDK_INT < 36) {
             android.app.AlertDialog.Builder(this)
                 .setTitle("系统版本过低")
-                .setMessage("证道需要安卓 15 或更高版本（当前安卓 ${android.os.Build.VERSION.RELEASE}）。")
+                .setMessage("证道需要安卓 16 或更高版本（当前安卓 ${android.os.Build.VERSION.RELEASE}）。")
                 .setCancelable(false)
                 .setPositiveButton("确定") { _, _ -> finish() }
                 .show()

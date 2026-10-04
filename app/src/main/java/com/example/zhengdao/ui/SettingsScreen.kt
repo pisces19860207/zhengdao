@@ -423,14 +423,22 @@ fun SettingsScreen() {
             }
         }
 
-        // ── 国产 ROM 保活指南（第五批）──
-        SectionCard("国产 ROM 保活指南") {
+        // ── 荣耀 / MagicOS 保活指南（Magic 5 Pro 实测）──
+        SectionCard("荣耀 / MagicOS 保活指南") {
             Text(
-                text = "① 开发者选项 → 关闭「子进程限制」\n" +
-                    "② 应用启动管理 → 允许「自启动 / 关联启动 / 后台活动」\n" +
-                    "③ 多任务界面 → 锁定证道\n" +
-                    "④ 电池优化 → 设置为「不允许」",
+                text = "① 应用启动管理：设置 → 应用和服务 → 应用启动管理 → 证道 → 关闭「自动管理」，" +
+                    "手动开启「允许自启动 / 关联启动 / 后台活动」\n" +
+                    "② 电池优化：设置 → 电池 → 更多电池设置 → 证道 → 设为「不允许优化」\n" +
+                    "③ 多任务锁定：多任务界面找到证道卡片，下滑出现小锁图标，点击锁定\n" +
+                    "④ 进程意外退出时：开发者选项 → 确认「不要保留活动」未勾选",
                 style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "荣耀对前台服务较为尊重：保持「会话运行中」通知可见 + 多任务上锁，" +
+                    "即可长期后台存活；即便被清理，tmux 会话恢复机制会在重进时自动回到现场。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
             TextButton(onClick = {

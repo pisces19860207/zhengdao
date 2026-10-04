@@ -95,11 +95,20 @@ object RootfsDownloader {
         throw DownloadFailed("全部下载通道失败：${lastError?.message ?: "未知错误"}")
     }
 
-    /** 抓取小文本文件（如 .sha256 边车文件）；任何失败都返回 null，由调用方决定降级策略。 */
-    fun fetchText(url: String): String? = try {
+    /**
+     * 抓取小文本文件；任何失败都返回 null，由调用方决定降级策略。
+     * @param trimEnds 默认去除首尾空白（.sha256 边车等）；验签类调用必须传 false——
+     *   签名覆盖文件全部字节，裁掉末尾换行即验签恒败（实测 2026-10-04，恰好差 1 字节）
+     */
+    fun fetchText(url: String, trimEnds: Boolean = true): String? = try {
         sharedClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
             if (!resp.isSuccessful) null
-            else resp.body?.string()?.trim()?.takeIf { it.isNotEmpty() }
+            // ⚠️ 不用 body.string()：对无 charset 的 text/* 响应它按 ISO-8859-1 解码
+            //（RFC 7231 老规则），代理剥掉 charset 头时中文 UTF-8 会被静默破坏
+            //（实测 2026-10-04 manifest 验签恒败的根因之一）。统一显式 UTF-8。
+            else resp.body?.bytes()?.toString(Charsets.UTF_8)?.let { text ->
+                if (trimEnds) text.trim() else text
+            }?.takeIf { it.isNotEmpty() }
         }
     } catch (t: Throwable) {
         Log.w(TAG, "抓取文本失败：$url", t)

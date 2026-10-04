@@ -18,11 +18,11 @@ android {
         // 旧规则选择，同类免 root Linux 环境产品均采用同一策略。
         // 🚫 未经架构前提重新评估，任何人不得上调此值。
         targetSdk = 28
-        // 最低安装门槛：安卓 15（API 35，用户第四批指定）。低于此版本安装器直接拒绝，
-        // MainActivity 另有运行时兜底提示（双保险，应对旁加载极端场景）。
-        minSdk = 35
-        versionCode = 9
-        versionName = "0.7.0"
+        // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro（MagicOS 11 /
+        // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
+        minSdk = 36
+        versionCode = 10
+        versionName = "0.8.0"
 
         ndk {
             // 自研 JNI 库只编真机 arm64 与模拟器 x86_64（设计文档 §4 的 ABI 策略）
