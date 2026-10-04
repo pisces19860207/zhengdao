@@ -1,20 +1,5 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-
-# 证道补充：构建产物不入库（CI 会重新生成）
-rootfs/out/
-.kotlin/
-n8.png
+*.png
+u.xml
+postinstall.mjs
+binls.txt
+debug-body.*
