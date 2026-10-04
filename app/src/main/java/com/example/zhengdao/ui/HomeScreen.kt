@@ -130,6 +130,37 @@ fun HomeScreen(
                 }
             }
         }
+        // ── 环境未装引导横幅（第三批）：环境没装时 Agent 装不了，先给一条一键安装路径 ──
+        if (!AppState.rootfsInstalled(context)) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "运行环境尚未安装",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "安装 Agent 前需要先装好 Debian 环境（约 3 分钟，只需一次）。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = { onOpenTerminal(null) }) {
+                            Text("安装运行环境")
+                        }
+                    }
+                }
+            }
+        }
         // ── Agent 卡片 ──
         items(agents, key = { it.id }) { agent ->
             Card(
@@ -145,20 +176,27 @@ fun HomeScreen(
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
                         )
+                        val envReady = AppState.rootfsInstalled(context)
                         when {
                             agent.installed -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd) },
                                 modifier = Modifier.width(84.dp),
                             ) { Text("启动") }
-                            agent.installCmd != null -> OutlinedButton(
+                            agent.installCmd != null && envReady -> OutlinedButton(
                                 onClick = { onOpenTerminal(agent.installCmd) },
                                 modifier = Modifier.width(84.dp),
                             ) { Text("安装") }
-                            else -> OutlinedButton(
+                            agent.installCmd == null -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
                                 modifier = Modifier.width(84.dp),
                             ) { Text("即将支持") }
+                            // 环境未装：Agent 无法安装，按钮禁用（上方横幅已给一键安装路径）
+                            else -> OutlinedButton(
+                                onClick = { },
+                                enabled = false,
+                                modifier = Modifier.width(84.dp),
+                            ) { Text("先装环境") }
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
