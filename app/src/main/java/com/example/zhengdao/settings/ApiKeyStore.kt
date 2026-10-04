@@ -24,13 +24,20 @@ object ApiKeyStore {
     private const val GCM_TAG_BITS = 128
 
     /** 服务商 ID → 注入的环境变量名（均为各工具官方认读的变量名）。 */
-    val PROVIDERS: Map<String, String> = mapOf(
-        "anthropic" to "ANTHROPIC_API_KEY",
+    val PROVIDERS: Map<String, String> = linkedMapOf(
         "deepseek" to "DEEPSEEK_API_KEY",
-        "openai" to "OPENAI_API_KEY",
         "zhipu" to "ZHIPU_API_KEY",
+        "anthropic" to "ANTHROPIC_API_KEY",
+        "openai" to "OPENAI_API_KEY",
         "gemini" to "GEMINI_API_KEY",
         "openrouter" to "OPENROUTER_API_KEY",
+    )
+
+    /** 设置页分组展示（顺序即展示顺序）：国内 / 国外 / 免费额度。注入时按 PROVIDERS 全量遍历，与分组无关。 */
+    val GROUPS: List<Pair<String, List<String>>> = listOf(
+        "国内" to listOf("deepseek", "zhipu"),
+        "国外" to listOf("anthropic", "openai"),
+        "免费额度" to listOf("gemini", "openrouter"),
     )
 
     private fun prefs(ctx: Context): SharedPreferences =
