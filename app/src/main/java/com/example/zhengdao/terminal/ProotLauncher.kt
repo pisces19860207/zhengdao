@@ -218,18 +218,41 @@ object ProotLauncher {
 
         // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
         // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）
-        args.addAll(
-            arrayOf(
-                "/bin/bash",             // guest 内要执行的命令（proot 会把它翻译到 rootfs 内）
-                "-l",                    // login shell：读取 /etc/profile（UV_LINK_MODE 在那里全局生效）
+        // 会话保持（用户第三批）：tmux new-session -A = 有名为 zhengdao 的会话则 attach，
+        // 没有则新建——终端断线重进不丢现场；Agent 经 autocmd 注入的命令同样落在会话内。
+        // 外层 bash -l 先读 /etc/profile（UV_LINK_MODE 全局生效），再 exec 进 tmux。
+        // 宿主侧检查 rootfs 是否带 tmux：旧包没有时降级裸 bash，guest 内不会报 command not found。
+        val hasTmux = File(rootfsDir, "usr/bin/tmux").isFile
+        if (hasTmux) {
+            args.addAll(
+                arrayOf(
+                    "/bin/bash",
+                    "-lc",
+                    "exec tmux new-session -A -s zhengdao",
+                )
             )
-        )
+        } else {
+            RunLog.log("rootfs 未带 tmux，降级为裸 bash 会话")
+            args.addAll(
+                arrayOf(
+                    "/bin/bash",
+                    "-l",
+                )
+            )
+        }
+
+        val banner = if (hasTmux) {
+            "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n" +
+                "[证道] tmux 会话保持已启用（会话名 zhengdao）：Agent 断线重进不丢现场\r\n"
+        } else {
+            "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n"
+        }
 
         return LaunchPlan(
             cmd = prootBin.absolutePath,
             args = args.toTypedArray(),
             env = env.toTypedArray(),
-            banner = "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n",
+            banner = banner,
         )
     }
 

@@ -37,6 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.rootfs.RootfsDownloader
+import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.settings.ApiKeyStore
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
@@ -59,6 +61,8 @@ fun SettingsScreen() {
     var info by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
     var repairConfirm by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
+    var pendingUpdateUrl by remember { mutableStateOf<String?>(null) }
+    var pendingUpdateSha by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
@@ -214,7 +218,7 @@ fun SettingsScreen() {
             }
         }
 
-        // ── 检查环境更新 ──
+        // ── 检查环境更新（第三批：manifest 对比 + 应用内下载安装，不自动检查）──
         SectionCard("环境更新") {
             Text(
                 text = "系统环境通过此按钮更新。不要在终端内执行 apt upgrade，可能导致环境损坏；语言级依赖优先用 pip / npm 管理。",
@@ -227,24 +231,46 @@ fun SettingsScreen() {
                 onClick = {
                     checking = true
                     Thread {
+                        // 待下载目标（发现新版本时由检查逻辑填入，弹窗确认后用）
+                        var pendingUrl: String? = null
+                        var pendingSha: String? = null
                         val result = try {
-                            val c = URL("https://api.github.com/repos/pisces19860207/zhengdao/releases/latest")
-                                .openConnection() as HttpURLConnection
-                            c.connectTimeout = 15000; c.readTimeout = 15000
-                            c.setRequestProperty("Accept", "application/vnd.github+json")
-                            val body = c.inputStream.bufferedReader().readText()
-                            val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-                            val asset = Regex("\"name\"\\s*:\\s*\"(debian-[^\"]+\\.tar\\.zst)\"").find(body)?.groupValues?.get(1)
-                            if (tag != null && asset != null) {
-                                val installed = Settings.prefs(ctx).getString("installed_asset", "") ?: ""
-                                if (asset != installed) "发现新版本 $tag（$asset），是否下载？安装后请在终端验证。"
-                                else "已是最新版本（$tag）"
-                            } else "仓库结构变化，无法解析版本"
+                            // 优先拉 manifest（版本号 + 直链 + SHA256 一条龙）
+                            val manifestText = com.example.zhengdao.rootfs.RootfsDownloader
+                                .fetchText(com.example.zhengdao.rootfs.RootfsCache.MANIFEST_URL)
+                            if (manifestText != null) {
+                                val ver = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
+                                val url = Regex("\"url\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
+                                val sha = Regex("\"sha256\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
+                                val installed = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
+                                when {
+                                    ver == null || url == null ->
+                                        "manifest 格式异常，无法解析版本"
+                                    installed != null && ver == installed ->
+                                        "已是最新版本（$installed）"
+                                    else -> {
+                                        pendingUrl = url; pendingSha = sha
+                                        "发现新版本 $ver（当前 $installed），是否下载安装？安装包将缓存到 Download/zhengdao/cache，旧包自动保留。"
+                                    }
+                                }
+                            } else {
+                                // manifest 不可达：降级走 Releases API（仅提示 + 跳转）
+                                val c = URL("https://api.github.com/repos/pisces19860207/zhengdao/releases/latest")
+                                    .openConnection() as HttpURLConnection
+                                c.connectTimeout = 15000; c.readTimeout = 15000
+                                c.setRequestProperty("Accept", "application/vnd.github+json")
+                                val body = c.inputStream.bufferedReader().readText()
+                                val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+                                if (tag != null) "仓库最新发布：$tag（应用内直装通道未就绪，可点「去下载」手动获取安装包）"
+                                else "仓库结构变化，无法解析版本"
+                            }
                         } catch (t: Throwable) {
                             "检查失败（网络不可达）：${t.message}"
                         }
                         android.os.Handler(ctx.mainLooper).post {
                             updateMsg = result; checking = false
+                            pendingUpdateUrl = pendingUrl
+                            pendingUpdateSha = pendingSha
                             if (!result.startsWith("发现新版本")) {
                                 Toast.makeText(ctx, result, Toast.LENGTH_LONG).show()
                             }
@@ -252,6 +278,82 @@ fun SettingsScreen() {
                     }.start()
                 },
             ) { Text(if (checking) "检查中…" else "检查环境更新") }
+        }
+
+        // ── 安装包缓存（第三批）──
+        SectionCard("安装包缓存") {
+            var cacheText by remember { mutableStateOf("统计中…") }
+            var rollbacks by remember { mutableStateOf<List<File>>(emptyList()) }
+            var rollbackConfirm by remember { mutableStateOf<File?>(null) }
+            fun reloadCache() {
+                Thread {
+                    val archives = com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx)
+                    val dir = com.example.zhengdao.rootfs.RootfsCache.dir(ctx)
+                    val current = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
+                    val lines = buildString {
+                        appendLine("目录：${dir.path}")
+                        appendLine("已缓存 ${archives.size} 个安装包（当前环境：${current ?: "未安装"}）")
+                        archives.forEach {
+                            appendLine("· ${it.name}（${it.length() / (1024 * 1024)} MB）")
+                        }
+                    }
+                    val rb = com.example.zhengdao.rootfs.RootfsCache.rollbackCandidates(ctx)
+                    android.os.Handler(ctx.mainLooper).post { cacheText = lines; rollbacks = rb }
+                }.start()
+            }
+            LaunchedEffect(Unit) { reloadCache() }
+            Text(cacheText, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(onClick = {
+                Thread {
+                    val n = com.example.zhengdao.rootfs.RootfsCache.cleanupNonCurrent(ctx)
+                    android.os.Handler(ctx.mainLooper).post {
+                        Toast.makeText(ctx, "已清理 $n 个旧版本文件", Toast.LENGTH_SHORT).show()
+                        reloadCache()
+                    }
+                }.start()
+            }) { Text("清理旧版本缓存（保留当前版本）") }
+            if (rollbacks.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "可回退的历史版本（安装包保留最近 2 个）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                rollbacks.forEach { f ->
+                    TextButton(onClick = { rollbackConfirm = f }) {
+                        Text("回退到 ${com.example.zhengdao.rootfs.RootfsCache.versionOf(f.name) ?: f.name}")
+                    }
+                }
+            }
+            if (rollbackConfirm != null) {
+                val target = rollbackConfirm!!
+                AlertDialog(
+                    onDismissRequest = { rollbackConfirm = null },
+                    title = { Text("回退环境版本") },
+                    text = { Text("将用 ${target.name} 重装系统层（约几分钟）。登录态、API Key 与工作区都会保留。") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            rollbackConfirm = null
+                            Thread {
+                                try {
+                                    RootfsInstaller.ensureFreeSpace(ctx, target.length())
+                                    RootfsInstaller.install(ctx, target) { }
+                                    com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
+                                    android.os.Handler(ctx.mainLooper).post {
+                                        Toast.makeText(ctx, "回退完成，重进终端生效", Toast.LENGTH_LONG).show()
+                                    }
+                                } catch (t: Throwable) {
+                                    android.os.Handler(ctx.mainLooper).post {
+                                        Toast.makeText(ctx, "回退失败：${t.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }.start()
+                        }) { Text("回退") }
+                    },
+                    dismissButton = { TextButton(onClick = { rollbackConfirm = null }) { Text("取消") } },
+                )
+            }
         }
 
         // ── Root 增强模式 ──
@@ -351,7 +453,7 @@ fun SettingsScreen() {
         )
     }
 
-    // ── 发现新版本弹窗（updateMsg 驱动）──
+    // ── 发现新版本弹窗（updateMsg 驱动）：确认后在应用内下载到公共缓存并安装 ──
     updateMsg?.takeIf { it.startsWith("发现新版本") }?.let { msg ->
         AlertDialog(
             onDismissRequest = { updateMsg = null },
@@ -359,12 +461,53 @@ fun SettingsScreen() {
             text = { Text(msg) },
             confirmButton = {
                 TextButton(onClick = {
+                    val url = pendingUpdateUrl
                     updateMsg = null
-                    ctx.startActivity(
-                        Intent(Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/releases"))
-                    )
-                }) { Text("去下载") }
+                    if (url == null) {
+                        ctx.startActivity(
+                            Intent(Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/releases"))
+                        )
+                        return@TextButton
+                    }
+                    val expectedSha = pendingUpdateSha
+                    Thread {
+                        try {
+                            android.os.Handler(ctx.mainLooper).post {
+                                Toast.makeText(ctx, "开始下载新版本环境…", Toast.LENGTH_SHORT).show()
+                            }
+                            val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(ctx, url)
+                            RootfsDownloader.download(
+                                urls = listOf(url),
+                                dest = archive,
+                                shaUrl = "$url.sha256",
+                            ) { done, total ->
+                                if (total > 0 && done * 100 / total % 20 == 0L) {
+                                    android.os.Handler(ctx.mainLooper).post {
+                                        Toast.makeText(
+                                            ctx,
+                                            "下载中 ${done * 100 / total}%",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            }
+                            if (!expectedSha.isNullOrBlank()) {
+                                RootfsDownloader.verifySha256(archive, expectedSha)
+                            }
+                            RootfsInstaller.ensureFreeSpace(ctx, archive.length())
+                            RootfsInstaller.install(ctx, archive) { }
+                            com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
+                            android.os.Handler(ctx.mainLooper).post {
+                                Toast.makeText(ctx, "环境更新完成，重进终端生效", Toast.LENGTH_LONG).show()
+                            }
+                        } catch (t: Throwable) {
+                            android.os.Handler(ctx.mainLooper).post {
+                                Toast.makeText(ctx, "更新失败：${t.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }.start()
+                }) { Text("下载并安装") }
             },
             dismissButton = { TextButton(onClick = { updateMsg = null }) { Text("取消") } },
         )
