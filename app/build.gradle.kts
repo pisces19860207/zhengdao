@@ -47,6 +47,14 @@ android {
         compose = true
     }
 
+    // 原生库落盘为真实文件：jniLibs 里的 proot 需要被复制+chmod+execve，
+    // zstd-jni 的加载兜底也需要在 nativeLibraryDir 找到 libzstd-jni-*.so
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     // 锁定 NDK 版本（与已安装版本一致，保证本机与 CI 构建可复现）
     ndkVersion = "27.2.12479018"
 

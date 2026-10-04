@@ -34,13 +34,22 @@ class TerminalSession(
 
     private val readThread = Thread({
         val buf = ByteArray(8192)
+        var chunks = 0
         try {
+            Log.i(TAG, "session start pid=$pid fd=$fd")
             while (true) {
                 val n = Pty.nativeRead(fd, buf)
                 if (n <= 0) break /* 0 = 对端关闭；-1 = 错误 */
+                chunks++
+                if (chunks <= 5 || chunks % 50 == 0) {
+                    Log.i(TAG, "输出块 #$chunks (${n}B): " +
+                        buf.copyOf(n).toString(Charsets.UTF_8).take(160))
+                }
                 onData(buf.copyOf(n)) /* 复制切片，回调方持有的数据与本缓冲无关 */
             }
-            onExit(0)
+            val code = Pty.nativeWait(pid)
+            Log.i(TAG, "会话退出 真实code=$code")
+            onExit(code.coerceAtLeast(0))
         } catch (t: Throwable) {
             Log.w(TAG, "读取线程结束", t)
             onExit(-1)
