@@ -282,6 +282,24 @@ fun SettingsScreen() {
             )
         }
 
+        // ── 新手指南（第三批）──
+        SectionCard("新手指南") {
+            GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
+            GuideLine("2", "在本页「API Key 管理」按 国内 / 国外 / 免费额度 填好密钥，启动会话时自动注入。")
+            GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / opencode / agy）。")
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "常见问题",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            FaqLine("环境打不开 / 下载失败？", "用上方「修复环境」重新解压系统层，登录态与密钥都会保留。")
+            FaqLine("Agent 想更新？", "在终端里重跑一遍安装命令即可；系统层更新用「检查环境更新」。")
+            FaqLine("我的文件在哪？", "见下方「工作区路径」：手机端在 Download/证道 或应用目录 files/workspace，guest 内是 /workspace。")
+        }
+
         // ── 关于 ──
         SectionCard("关于") {
             InfoRow("版本", "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})")
@@ -389,5 +407,41 @@ fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
     OutlinedButton(onClick = onClick) {
         Text(label, color = if (selected) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** 新手指南：三步上手的单行（蓝色序号 + 说明）。 */
+@Composable
+private fun GuideLine(number: String, text: String) {
+    Row(modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 3.dp)) {
+        Text(
+            text = "$number.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(20.dp),
+        )
+        Text(text = text, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** 常见问题单条：加粗问题 + 答案。 */
+@Composable
+private fun FaqLine(question: String, answer: String) {
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 3.dp)) {
+        Text(
+            text = question,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = answer,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
