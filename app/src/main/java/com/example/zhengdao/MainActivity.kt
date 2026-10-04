@@ -118,6 +118,14 @@ class MainActivity : ComponentActivity() {
         }
         return false
     }
+
+    /** 内存看护（用户指定）：退后台时释放空闲连接等非必要资源，降低被系统清理的概率。 */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            com.example.zhengdao.rootfs.RootfsDownloader.releaseIdleResources()
+        }
+    }
 }
 
 @Composable

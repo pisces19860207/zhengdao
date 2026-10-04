@@ -504,4 +504,12 @@ class TerminalActivity : ComponentActivity() {
         webView = null
         super.onDestroy()
     }
+
+    /** 内存看护（用户指定）：退后台释放空闲 HTTP 连接；WebView/Chromium 由系统自动管理。 */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            com.example.zhengdao.rootfs.RootfsDownloader.releaseIdleResources()
+        }
+    }
 }

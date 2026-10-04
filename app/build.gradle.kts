@@ -38,6 +38,14 @@ android {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
             }
+            // R8 字节码优化 + 资源收缩（用户第四批后追加）：显著减小体积与内存占用。
+            // JNI / JS 桥的 keep 规则见 proguard-rules.pro。
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // 个人分发渠道：release 也用 debug 签名，保证产物可直接安装
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

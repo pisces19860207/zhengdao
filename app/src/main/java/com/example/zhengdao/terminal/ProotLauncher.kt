@@ -220,6 +220,12 @@ object ProotLauncher {
 
         // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
         // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）
+        // 运行内存上限（用户第四批）：ulimit -v 限制 guest 进程虚拟地址空间，防单个
+        // Agent / 编译任务无限膨胀拖垮整机。实测 3GB 下 Node v26 正常启动（2026-10-04）。
+        // 0 = 关闭。默认 3GB；设置页「运行内存上限」可改。
+        val memLimitMb = com.example.zhengdao.ui.Settings.prefs(context)
+            .getString("guest_mem_limit_mb", "3072")?.toIntOrNull() ?: 3072
+        val memPrefix = if (memLimitMb > 0) "ulimit -v ${memLimitMb * 1024}; " else ""
         // 会话保持（用户第三批）：tmux new-session -A = 有名为 zhengdao 的会话则 attach，
         // 没有则新建——终端断线重进不丢现场；Agent 经 autocmd 注入的命令同样落在会话内。
         // 外层 bash -l 先读 /etc/profile（UV_LINK_MODE 全局生效），再 exec 进 tmux。
@@ -230,7 +236,7 @@ object ProotLauncher {
                 arrayOf(
                     "/bin/bash",
                     "-lc",
-                    "exec tmux new-session -A -s zhengdao",
+                    "${memPrefix}exec tmux new-session -A -s zhengdao",
                 )
             )
         } else {
@@ -238,10 +244,12 @@ object ProotLauncher {
             args.addAll(
                 arrayOf(
                     "/bin/bash",
-                    "-l",
+                    "-lc",
+                    "${memPrefix}exec /bin/bash -l",
                 )
             )
         }
+        if (memLimitMb > 0) RunLog.log("guest 内存上限: ${memLimitMb}MB (ulimit -v)")
 
         // apt 分层策略（用户第四批）：系统层不支持 apt upgrade；语言级依赖走 pip / npm。
         // 横幅告知 + 设置页同步提示，替代对用户行为的假设。

@@ -13,6 +13,10 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!-- 电池优化白名单（保活指南一键跳转用）：仅在用户确认后生效；
+         该权限在 Play 商店受政策限制，本项目为 GitHub 旁加载分发，不受影响 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
