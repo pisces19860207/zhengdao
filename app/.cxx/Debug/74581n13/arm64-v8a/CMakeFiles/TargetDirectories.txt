@@ -1,0 +1,3 @@
+C:/Users/guoli/AndroidStudioProjects/zhengdao/app/.cxx/Debug/74581n13/arm64-v8a/CMakeFiles/zhengdao_pty.dir
+C:/Users/guoli/AndroidStudioProjects/zhengdao/app/.cxx/Debug/74581n13/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/guoli/AndroidStudioProjects/zhengdao/app/.cxx/Debug/74581n13/arm64-v8a/CMakeFiles/rebuild_cache.dir
