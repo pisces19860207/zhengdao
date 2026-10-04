@@ -241,11 +241,14 @@ object ProotLauncher {
             )
         }
 
+        // apt 分层策略（用户第四批）：系统层不支持 apt upgrade；语言级依赖走 pip / npm。
+        // 横幅告知 + 设置页同步提示，替代对用户行为的假设。
+        val aptHint = "[提示] 不要执行 apt upgrade（可能损坏环境）；系统级 apt 装软件可能失败，优先用 pip / npm\r\n"
         val banner = if (hasTmux) {
             "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n" +
-                "[证道] tmux 会话保持已启用（会话名 zhengdao）：Agent 断线重进不丢现场\r\n"
+                "[证道] tmux 会话保持已启用（会话名 zhengdao）：Agent 断线重进不丢现场\r\n" + aptHint
         } else {
-            "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n"
+            "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n" + aptHint
         }
 
         return LaunchPlan(

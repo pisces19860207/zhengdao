@@ -13,6 +13,11 @@
 开发中（M1 阶段：最小闭环）。CI 产物（APK / RootFS / proot）见
 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)。
 
+## 系统要求
+
+- **Android 15（API 35）或更高版本**；推荐 arm64 架构设备。
+- 约 2.5GB 可用存储空间（安装 Debian 13.7 环境后）。
+
 ## 隐私
 
 本应用不上传用户数据；网络访问仅用于下载资源与检查更新。
