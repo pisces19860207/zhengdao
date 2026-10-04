@@ -160,10 +160,11 @@ fun ZhengdaoApp(startInTerminal: Boolean = false) {
         }
         composable("home") {
             HomeTabs(
-                onOpenTerminal = { autocmd ->
+                onOpenTerminal = { autocmd, agentId ->
                     context.startActivity(
                         Intent(context, TerminalActivity::class.java).apply {
                             putExtra("autocmd", autocmd)
+                            putExtra("agent_id", agentId)
                         }
                     )
                 },
@@ -191,7 +192,7 @@ fun ZhengdaoApp(startInTerminal: Boolean = false) {
 /** 首页骨架：Agent Tab（卡片列表）/ 终端 Tab（进入全屏终端）。 */
 @Composable
 fun HomeTabs(
-    onOpenTerminal: (autocmd: String?) -> Unit,
+    onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
     var tab by remember { mutableIntStateOf(0) }
@@ -229,7 +230,7 @@ fun HomeTabs(
 
 /** 终端 Tab 首屏：一个明确的进入按钮（单会话制，终端是全屏独立页面）。 */
 @Composable
-private fun TerminalTabPlaceholder(onOpenTerminal: (autocmd: String?) -> Unit) {
+private fun TerminalTabPlaceholder(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -245,7 +246,7 @@ private fun TerminalTabPlaceholder(onOpenTerminal: (autocmd: String?) -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { onOpenTerminal(null) }) {
+        Button(onClick = { onOpenTerminal(null, null) }) {
             Text("进入终端")
         }
     }

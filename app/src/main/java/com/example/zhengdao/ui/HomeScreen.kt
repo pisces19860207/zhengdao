@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun HomeScreen(
-    onOpenTerminal: (autocmd: String?) -> Unit,
+    onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -63,17 +63,14 @@ fun HomeScreen(
         }
     }
 
-    // 已装 Agent 的 npm 最新版（「可更新」标记的数据源；进程内缓存，失败静默）
-    var npmLatest by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // M3：一键安装轮询——有「安装中」的 Agent 时每 5 秒重查（文件出现 → [启动]）
     androidx.compose.runtime.LaunchedEffect(agents) {
-        agents.filter { it.installed && !it.npmPackage.isNullOrBlank() && npmLatest[it.npmPackage] == null }
-            .forEach { agent ->
-                val pkg = agent.npmPackage!!
-                AgentManifest.fetchNpmLatest(pkg) { v ->
-                    if (v != null) npmLatest = npmLatest + (pkg to v)
-                }
-            }
+        if (agents.any { AgentRepository.stateOf(context, it) == AgentRepository.State.Installing }) {
+            kotlinx.coroutines.delay(5000)
+            agents = AppState.agents(context)
+        }
     }
+
     // 设置页/终端返回后刷新（API Key / 工作区 / 修复环境可能已变更）
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
@@ -171,7 +168,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = { onOpenTerminal(null) }) {
+                        Button(onClick = { onOpenTerminal(null, null) }) {
                             Text("安装运行环境")
                         }
                     }
@@ -186,9 +183,8 @@ fun HomeScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    val updateAvailable = agent.installed &&
-                        agent.installedVersion != null &&
-                        agent.npmPackage?.let { npmLatest[it] }?.let { it != agent.installedVersion } == true
+                    val installing = AgentRepository.stateOf(context, agent) == AgentRepository.State.Installing
+                    val failedInstall = AgentRepository.stateOf(context, agent) == AgentRepository.State.Failed
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = agent.name,
@@ -198,16 +194,17 @@ fun HomeScreen(
                         )
                         val envReady = AppState.rootfsInstalled(context)
                         when {
-                            agent.installed && updateAvailable -> Button(
-                                onClick = { onOpenTerminal(agent.installCmd) },
-                                modifier = Modifier.width(84.dp),
-                            ) { Text("更新") }
                             agent.installed -> Button(
-                                onClick = { onOpenTerminal(agent.launchCmd) },
+                                onClick = { onOpenTerminal(agent.launchCmd, agent.id) },
                                 modifier = Modifier.width(84.dp),
                             ) { Text("启动") }
+                            installing -> OutlinedButton(
+                                onClick = { onOpenTerminal(null, agent.id) },
+                                modifier = Modifier.width(84.dp),
+                                enabled = false,
+                            ) { Text("安装中") }
                             agent.installCmd != null && envReady -> OutlinedButton(
-                                onClick = { onOpenTerminal(agent.installCmd) },
+                                onClick = { onOpenTerminal(agent.installCmd, agent.id) },
                                 modifier = Modifier.width(84.dp),
                             ) { Text("安装") }
                             agent.installCmd == null -> OutlinedButton(
@@ -230,19 +227,24 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     // 版本行：已装版本 + 可更新提示（npm 包可探测时才有）
-                    if (agent.installed && (agent.installedVersion != null || updateAvailable)) {
+                    if (failedInstall) {
                         Text(
-                            text = buildString {
-                                append("已装版本：${agent.installedVersion ?: "未知"}")
-                                val latest = agent.npmPackage?.let { npmLatest[it] }
-                                if (latest != null && latest != agent.installedVersion) {
-                                    append(" · 最新 $latest")
-                                }
-                            },
+                            text = "上次安装未完成，可点「安装」重试；输出在「终端」可查",
                             style = MaterialTheme.typography.bodySmall,
-                            fontWeight = if (updateAvailable) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (updateAvailable) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (installing) {
+                        Text(
+                            text = "正在安装，输出实时显示在「终端」…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else if (agent.installed && agent.installedVersion != null) {
+                        // 只显示已装版本（本地 package.json 探测）；要不要更新由用户自己决定
+                        Text(
+                            text = "已装版本：${agent.installedVersion}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
