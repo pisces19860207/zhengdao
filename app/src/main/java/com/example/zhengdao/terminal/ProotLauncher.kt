@@ -42,10 +42,31 @@ object ProotLauncher {
     fun buildLaunchPlan(context: Context): LaunchPlan {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
-        // proot 随 APK 内置（jniLibs：libproot.so 打包进原生库目录，天然可执行），
-        // 升级随 APK 发版；Debian 环境仍按需下载（设计文档 §6）
-        val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
+
+        // proot 随 APK 内置（jniLibs: libproot.so）。注意：原生库目录里的 .so 没有
+        // 执行位（系统按 dlopen 用途安装它们，不给 x 位），不能直接 execve——
+        // 复制到可写目录并补 0700 权限；APK 升级（长度变化）时自动重新复制。
+        val embedded = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
+        val prootBin = File(files, "proot/proot")
+        if (embedded.isFile) {
+            prootBin.parentFile?.mkdirs()
+            if (!prootBin.isFile || prootBin.length() != embedded.length()) {
+                embedded.copyTo(prootBin, overwrite = true)
+            }
+            try {
+                android.system.Os.chmod(prootBin.absolutePath, 448) // 0700
+            } catch (_: Throwable) {
+            }
+        }
         val installMarker = File(rootfsDir, ".zhengdao-rootfs-ok")
+
+        // 诊断日志：启动决策的每一项检查结果（临时，M1.2 验收后可移除）
+        android.util.Log.i(
+            "ZhengdaoLaunch",
+            "buildLaunchPlan: embedded=${embedded.isFile} prootBin=${prootBin.isFile} " +
+                "canExecute=${prootBin.canExecute()} marker=${installMarker.isFile} " +
+                "rootfs=${rootfsDir.exists()} nativeLibDir=${context.applicationInfo.nativeLibraryDir}"
+        )
 
         val rootfsReady = prootBin.isFile && prootBin.canExecute() && installMarker.isFile
         if (!rootfsReady) {
@@ -83,6 +104,9 @@ object ProotLauncher {
             "LANG=C.UTF-8",
             // proot 自身需要：临时目录必须指向 App 可写路径（部分机型 /tmp 不可写）
             "PROOT_TMP_DIR=${prootTmp.absolutePath}",
+            // ⚠️ 不要设 PROOT_NO_SECCOMP=1：这台 Honor/安卓16 实测证明，
+            // 关闭 seccomp 加速后（纯 PTRACE_SYSCALL 模式）guest 会静默退出 255；
+            // 默认的 seccomp 加速模式反而是本机唯一稳定的工作模式（2026-10-04 实测矩阵）。
             // 防硬链接报错双保险（实测坑 #4）：proot --link2symlink 之外，uv 也强制 copy 模式
             "UV_LINK_MODE=copy",
             // 明确告知 uv 系统解释器位置（Debian 13.7 自带 Python 3.13，不做版本管理）

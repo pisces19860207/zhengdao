@@ -27,6 +27,9 @@ object Pty {
     /** 阻塞读（由读取线程循环调用）。0 = 对端关闭，-1 = 错误。 */
     external fun nativeRead(fd: Int, buf: ByteArray): Int
 
+    /** 等待子进程结束并取真实退出码。 */
+    external fun nativeWait(pid: Int): Int
+
     /** 修改终端尺寸并向子进程转发 SIGWINCH。 */
     external fun nativeResize(fd: Int, pid: Int, cols: Int, rows: Int)
 

@@ -105,6 +105,18 @@ Java_com_example_zhengdao_terminal_Pty_nativeCreate(
         /* 子进程：execve 成功不返回；失败统一 _exit(127)。
            此处只使用 fork 前准备好的内存，不做任何分配。 */
         execve(cmd, argv, envp);
+        /* 调试（M1.2）：execve 失败原因回显到终端（fd 2 = pty slave）*/
+        {
+            char msg[160];
+            int e = errno;
+            int n = snprintf(msg, sizeof(msg),
+                             "\r\n[dbg] execve failed: %s (errno=%d) cmd=%s\r\n",
+                             strerror(e), e, cmd);
+            if (n > 0) {
+                ssize_t w = write(2, msg, (size_t) n);
+                (void) w;
+            }
+        }
         _exit(127);
     }
 
@@ -173,6 +185,24 @@ Java_com_example_zhengdao_terminal_Pty_nativeResize(
     ws.ws_row = (unsigned short) (rows > 0 ? rows : 24);
     ioctl(fd, TIOCSWINSZ, &ws);
     if (pid > 0) kill(pid, SIGWINCH);
+}
+
+/*
+ * 等待子进程结束并取真实退出码（读取线程在 EOF 后调用）。
+ * 返回值 = 退出码；被信号杀死时返回 128+信号号；waitpid 失败返回 -1。
+ */
+JNIEXPORT jint JNICALL
+Java_com_example_zhengdao_terminal_Pty_nativeWait(
+        JNIEnv *env, jobject thiz, jint pid) {
+    if (pid <= 0) return -1;
+    int status = 0;
+    pid_t r;
+    do {
+        r = waitpid((pid_t) pid, &status, 0);
+    } while (r < 0 && errno == EINTR);
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    return -1;
 }
 
 JNIEXPORT void JNICALL
