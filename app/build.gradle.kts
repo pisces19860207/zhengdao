@@ -45,6 +45,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // 原生库落盘为真实文件：jniLibs 里的 proot 需要被复制+chmod+execve，

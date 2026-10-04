@@ -23,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,15 +42,32 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun HomeScreen(
     onOpenTerminal: (autocmd: String?) -> Unit,
+    onOpenSettings: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var summary by remember { mutableStateOf(AppState.summaryLine(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
+    var sysInfo by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
     // 每次回到本页（从终端返回）刷新安装状态
     LaunchedEffect(Unit) {
         agents = AppState.agents(context)
         summary = AppState.summaryLine(context)
+        sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            SystemInfoProvider.collect(context)
+        }
+    }
+    // 设置页/终端返回后刷新（API Key / 工作区 / 修复环境可能已变更）
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                agents = AppState.agents(context)
+                summary = AppState.summaryLine(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
     LazyColumn(
@@ -58,6 +76,18 @@ fun HomeScreen(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // ── 顶栏：标题 + 设置入口 ──
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "证道",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onOpenSettings) { Text("⚙ 设置") }
+            }
+        }
         // ── 系统状态卡（默认收起）──
         item {
             Card(
@@ -77,15 +107,24 @@ fun HomeScreen(
                     )
                     AnimatedVisibility(visible = statusExpanded) {
                         Column(modifier = Modifier.padding(top = 8.dp)) {
-                            StatusRow("设备型号", android.os.Build.MODEL)
-                            StatusRow("制造商", android.os.Build.MANUFACTURER)
-                            StatusRow("系统版本", "Android ${android.os.Build.VERSION.RELEASE}（API ${android.os.Build.VERSION.SDK_INT}）")
-                            StatusRow("CPU 架构", android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "未知")
-                            StatusRow("内核版本", System.getProperty("os.version") ?: "未知")
-                            StatusRow(
-                                "运行环境",
-                                if (AppState.rootfsInstalled(context)) "Debian 13.7（trixie）已安装" else "未安装"
-                            )
+                            sysInfo?.let { info ->
+                                Text(
+                                    text = info.asText(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                TextButton(onClick = {
+                                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                        as android.content.ClipboardManager
+                                    cm.setPrimaryClip(
+                                        android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText())
+                                    )
+                                    android.widget.Toast.makeText(
+                                        context, "已复制全部系统信息", android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }) { Text("一键复制全部信息") }
+                            } ?: Text("加载中…", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
