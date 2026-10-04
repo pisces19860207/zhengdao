@@ -7,6 +7,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.io.IOException
 
@@ -47,32 +48,33 @@ object ProotLauncher {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
 
-        // proot 随 APK 内置（jniLibs: libproot.so）。注意：原生库目录里的 .so 没有
-        // 执行位（系统按 dlopen 用途安装它们，不给 x 位），不能直接 execve——
-        // 复制到可写目录并补 0700 权限；APK 升级（长度变化）时自动重新复制。
-        val embedded = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
-        val prootBin = File(files, "proot/proot")
-        if (embedded.isFile) {
-            prootBin.parentFile?.mkdirs()
-            if (!prootBin.isFile || prootBin.length() != embedded.length()) {
-                embedded.copyTo(prootBin, overwrite = true)
-            }
-            try {
-                android.system.Os.chmod(prootBin.absolutePath, 448) // 0700
-            } catch (_: Throwable) {
+        // 2026-10-04 实测定论：自编译上游 proot 缺少 Android 适配（App 域内加载
+        // guest 时静默退出 255，见设计文档 §4），本机实测只有带 Android 补丁的
+        // Termux proot fork（GPL）能在 App 域内正常工作。基线切换为该 fork 的
+        // 官方发行二进制（聚合分发，GPL 合规；PROVENANCE.md 有登记），随 APK
+        // assets 内置，启动时释放到 files/termux-proot/ 并补执行位。
+        // files/ 下的可执行文件 App 域可直接 execve（jnilLibs 方案留档不再使用）。
+        val tpDir = File(files, "termux-proot").apply { mkdirs() }
+        val prootBin = File(tpDir, "proot")
+        val loaderBin = File(tpDir, "loader")
+        val embedded = File(context.applicationInfo.nativeLibraryDir, "libproot.so") // 旧自编译版，留档
+        for (pair in listOf("tproot" to "proot", "tloader" to "loader")) {
+            val dst = File(tpDir, pair.second)
+            if (!dst.isFile) {
+                context.assets.open("runtime/${pair.first}").use { input ->
+                    dst.outputStream().use { input.copyTo(it) }
+                }
+                try { android.system.Os.chmod(dst.absolutePath, 493) } catch (_: Throwable) {} // 0755
             }
         }
-        val installMarker = File(rootfsDir, ".zhengdao-rootfs-ok")
-
-        // 诊断日志：启动决策的每一项检查结果（临时，M1.2 验收后可移除）
-        android.util.Log.i(
-            "ZhengdaoLaunch",
-            "buildLaunchPlan: embedded=${embedded.isFile} prootBin=${prootBin.isFile} " +
-                "canExecute=${prootBin.canExecute()} marker=${installMarker.isFile} " +
-                "rootfs=${rootfsDir.exists()} nativeLibDir=${context.applicationInfo.nativeLibraryDir}"
+        RunLog.log(
+            "启动决策: proot=" + prootBin.isFile + " loader=" + loaderBin.isFile +
+                " marker=" + File(rootfsDir, ".zhengdao-rootfs-ok").isFile
         )
 
-        val rootfsReady = prootBin.isFile && prootBin.canExecute() && installMarker.isFile
+        val installMarker = File(rootfsDir, ".zhengdao-rootfs-ok")
+        val rootfsReady = prootBin.isFile && prootBin.canExecute() && loaderBin.isFile && installMarker.isFile
+
         if (!rootfsReady) {
             return fallbackPlan(files, context.cacheDir)
         }
@@ -86,8 +88,27 @@ object ProotLauncher {
         val homeDir = File(files, "home").apply { mkdirs() }
         val prootTmp = File(files, "proot-tmp").apply { mkdirs() }
 
+        val env = mutableListOf(
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "HOME=/root",
+            "TERM=xterm-256color",
+            "LANG=C.UTF-8",
+            // proot 自身需要：临时目录必须指向 App 可写路径（部分机型 /tmp 不可写）
+            "PROOT_TMP_DIR=${prootTmp.absolutePath}",
+            // ⚠️ 不要设 PROOT_NO_SECCOMP=1：这台 Honor/安卓16 实测证明，
+            // 关闭 seccomp 加速后（纯 PTRACE_SYSCALL 模式）guest 会静默退出 255；
+            // 默认的 seccomp 加速模式反而是本机唯一稳定的工作模式（2026-10-04 实测矩阵）。
+            // 防硬链接报错双保险（实测坑 #4）：proot --link2symlink 之外，uv 也强制 copy 模式
+            "UV_LINK_MODE=copy",
+            // 明确告知 uv 系统解释器位置（Debian 13.7 自带 Python 3.13，不做版本管理）
+            "UV_PYTHON=/usr/bin/python3",
+            // Termux proot 的依赖库与外部 loader 定位（其 fork 的 loader 为独立文件）
+            "LD_LIBRARY_PATH=${files.absolutePath}",
+            "PROOT_LOADER=${File(files, "termux-proot/loader").absolutePath}",
+        )
+
         val args = mutableListOf(
-            prootBin.absolutePath,   // 宿主侧 execve 的目标：proot 本体（自编译，静态链接）
+            prootBin.absolutePath,   // 宿主侧 execve 的目标：Termux fork 的 proot（files/ 下可执行）
             "--kill-on-exit",        // proot 退出时清掉 guest 内的全部进程，防孤儿
             "--link2symlink",        // 硬链接失败自动降级为符号链接（实测坑 #4：SELinux 拒绝非 root 硬链接）
             "-r", rootfsDir.absolutePath,          // guest 根目录
@@ -116,22 +137,6 @@ object ProotLauncher {
             } catch (_: Throwable) {
             }
         }
-
-        val env = mutableListOf(
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-            "HOME=/root",
-            "TERM=xterm-256color",
-            "LANG=C.UTF-8",
-            // proot 自身需要：临时目录必须指向 App 可写路径（部分机型 /tmp 不可写）
-            "PROOT_TMP_DIR=${prootTmp.absolutePath}",
-            // ⚠️ 不要设 PROOT_NO_SECCOMP=1：这台 Honor/安卓16 实测证明，
-            // 关闭 seccomp 加速后（纯 PTRACE_SYSCALL 模式）guest 会静默退出 255；
-            // 默认的 seccomp 加速模式反而是本机唯一稳定的工作模式（2026-10-04 实测矩阵）。
-            // 防硬链接报错双保险（实测坑 #4）：proot --link2symlink 之外，uv 也强制 copy 模式
-            "UV_LINK_MODE=copy",
-            // 明确告知 uv 系统解释器位置（Debian 13.7 自带 Python 3.13，不做版本管理）
-            "UV_PYTHON=/usr/bin/python3",
-        )
 
         return LaunchPlan(
             cmd = prootBin.absolutePath,

@@ -17,6 +17,7 @@ import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
+import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.TerminalBridge
 import com.example.zhengdao.terminal.TerminalSession
@@ -54,6 +55,9 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // 清理上次中断的解压残局（解压原子性，设计文档 §6）
         RootfsInstaller.cleanupPartial(applicationContext)
+        RunLog.init(applicationContext)
+        // 诊断脚本已用毕：删除设备侧残留，恢复正常启动路径
+        File(filesDir, "debug-proot.sh").delete()
         setContentView(R.layout.activity_main)
 
         toolbarTitle = findViewById(R.id.toolbar_title)
