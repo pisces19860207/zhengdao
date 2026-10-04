@@ -39,6 +39,20 @@ object ProotLauncher {
     fun storageGranted(context: Context): Boolean =
         android.os.Environment.isExternalStorageManager()
 
+    /** 流式计算文件 SHA-256（版本固定校验用）。 */
+    private fun sha256Of(file: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
     /**
      * 组装启动计划：
      *  - 已安装 Debian 13.7 环境（rootfs 目录存在且带完成标记）→ 经 proot 启动 guest bash；
@@ -58,14 +72,31 @@ object ProotLauncher {
         val prootBin = File(tpDir, "proot")
         val loaderBin = File(tpDir, "loader")
         val embedded = File(context.applicationInfo.nativeLibraryDir, "libproot.so") // 旧自编译版，留档
-        for (pair in listOf("tproot" to "proot", "tloader" to "loader")) {
-            val dst = File(tpDir, pair.second)
-            if (!dst.isFile) {
-                context.assets.open("runtime/${pair.first}").use { input ->
-                    dst.outputStream().use { input.copyTo(it) }
-                }
-                try { android.system.Os.chmod(dst.absolutePath, 493) } catch (_: Throwable) {} // 0755
+        // 版本固定清单（asset 名 → 释放文件名 → SHA256；来源与版本见 PROVENANCE.md /
+        // THIRD-PARTY-LICENSES.md，Termux proot 5.1.107.96 aarch64 官方构建产物）。
+        // 兜底路径：已释放且 SHA256 校验通过 → 跳过（修环境/重装不重复释放）；
+        // 缺失或损坏 → 从 assets 重新释放并补权限。
+        val pinned = listOf(
+            Triple("tproot", "proot", "1545b85b312505db6eb6908ff8b2ded0a77a3bd689c50ae85aa7c1d8445dd717"),
+            Triple("tloader", "loader", "cbdef0e652c2b78af25d867e1719fdebbb0915e25aae2dd35b3b5c1835f6b551"),
+            Triple("libtalloc.so", "libtalloc.so.2", "742b438c4d09e276985a61d44164c9de207b6d8cc268f3018cb3001961bcb309"),
+            Triple("libandroid-shmem.so", "libandroid-shmem.so", "84475798e07c8174dbbfaec70a827fdb02f19ffa69a589380c13e7507fd0e731"),
+        )
+        for ((asset, target, expectedSha) in pinned) {
+            val dst = File(tpDir, target)
+            if (dst.isFile && sha256Of(dst).equals(expectedSha, ignoreCase = true)) continue // 已就位
+            context.assets.open("runtime/$asset").use { input ->
+                dst.outputStream().use { input.copyTo(it) }
             }
+            val actual = sha256Of(dst)
+            if (!actual.equals(expectedSha, ignoreCase = true)) {
+                RunLog.log("严重: $target SHA256 不匹配（actual=$actual），已删除损坏副本")
+                dst.delete()
+                continue
+            }
+            val mode = if (target == "proot" || target == "loader") 493 else 420 // 0755 / 0644
+            try { android.system.Os.chmod(dst.absolutePath, mode) } catch (_: Throwable) {}
+            RunLog.log("已释放: $target（SHA256 校验通过）")
         }
         RunLog.log(
             "启动决策: proot=" + prootBin.isFile + " loader=" + loaderBin.isFile +
