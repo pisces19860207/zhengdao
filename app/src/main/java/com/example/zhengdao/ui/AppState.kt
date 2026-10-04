@@ -66,25 +66,17 @@ object AppState {
                 ),
             ),
             AgentInfo(
-                id = "gemini-cli",
-                name = "Gemini CLI",
-                desc = "Google 官方 CLI（免费层级可用，Node 20+ 已预装）",
-                launchCmd = "gemini",
-                installCmd = "npm install -g @google/gemini-cli",
+                id = "antigravity",
+                name = "AGY CLI（Antigravity）",
+                desc = "Google 新一代 Agent CLI（Gemini/Claude 模型，官方含 linux-arm64 构建；Gemini CLI 已向它合并）",
+                launchCmd = "agy",
+                installCmd = "curl -fsSL https://antigravity.google/cli/install.sh | bash",
                 installed = rootfsInstalled && firstExisting(
                     ctx, listOf(
-                        "home/.local/bin/gemini", "rootfs/usr/local/bin/gemini",
-                        "rootfs/usr/lib/node_modules/@google/gemini-cli",
+                        "home/.local/bin/agy", "rootfs/usr/local/bin/agy",
+                        "rootfs/usr/local/lib/agy",
                     )
                 ),
-            ),
-            AgentInfo(
-                id = "zcode",
-                name = "Zcode",
-                desc = "安装命令整理中，将经 manifest 免发版下发",
-                launchCmd = "zcode",
-                installCmd = null,
-                installed = false,
             ),
         )
     }
