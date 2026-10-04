@@ -5,6 +5,14 @@
     <!-- 网络权限：切片 3 的 RootFS 下载需要；本切片自身不联网 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 手机存储直通：把共享存储绑进 Debian 环境（工作区在 Download/证道）-->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"

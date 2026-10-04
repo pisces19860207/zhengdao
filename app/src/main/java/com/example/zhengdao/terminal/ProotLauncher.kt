@@ -34,6 +34,10 @@ object ProotLauncher {
         val isFallback: Boolean = false,
     )
 
+    /** 已授予「所有文件访问」= 手机存储可直通。 */
+    fun storageGranted(context: Context): Boolean =
+        android.os.Environment.isExternalStorageManager()
+
     /**
      * 组装启动计划：
      *  - 已安装 Debian 13.7 环境（rootfs 目录存在且带完成标记）→ 经 proot 启动 guest bash；
@@ -96,6 +100,22 @@ object ProotLauncher {
             "/bin/bash",             // guest 内要执行的命令（proot 会把它翻译到 rootfs 内）
             "-l",                    // login shell：读取 /etc/profile（UV_LINK_MODE 在那里全局生效）
         )
+        // 手机存储直通（用户要求）：共享存储绑进 guest 的相同路径 + /sdcard 视图；
+        // 默认工作区 Download/证道（guest 内 /root/工作区 直达）。未授权时静默跳过。
+        if (storageGranted(context)) {
+            val shared = "/storage/emulated/0"
+            args.addAll(arrayOf("-b", "$shared:$shared", "-b", "/sdcard:/sdcard"))
+            try {
+                val ws = File("$shared/Download/证道")
+                ws.mkdirs()
+                val link = File(context.filesDir, "home/工作区")
+                link.parentFile?.mkdirs()
+                if (!link.exists()) {
+                    android.system.Os.symlink("/sdcard/Download/证道", link.absolutePath)
+                }
+            } catch (_: Throwable) {
+            }
+        }
 
         val env = mutableListOf(
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
