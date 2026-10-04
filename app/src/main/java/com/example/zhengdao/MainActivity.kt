@@ -56,8 +56,6 @@ class MainActivity : ComponentActivity() {
         // 清理上次中断的解压残局（解压原子性，设计文档 §6）
         RootfsInstaller.cleanupPartial(applicationContext)
         RunLog.init(applicationContext)
-        // 诊断脚本已用毕：删除设备侧残留，恢复正常启动路径
-        File(filesDir, "debug-proot.sh").delete()
         setContentView(R.layout.activity_main)
 
         toolbarTitle = findViewById(R.id.toolbar_title)
@@ -197,20 +195,105 @@ class MainActivity : ComponentActivity() {
         if (plan.isFallback) promptInstallOnce()
     }
 
-    /** 回退会话首次出现时，提供「安装运行环境」一键入口；地址内置，用户无需知道 URL。 */
+    /**
+     * 本地归档自动安装（用户需求：Download/证道 里的安装包持久存在时，
+     * 重装 App 后直接本地安装，不再弹下载）。
+     * 返回本地归档路径；存储权限未授权或文件不存在时返回 null。
+     */
+    private fun findLocalArchive(): File? {
+        if (!ProotLauncher.storageGranted(this)) return null
+        val f = File("/storage/emulated/0/Download/证道/debian-13.7-base-arm64.tar.zst")
+        return if (f.isFile && f.length() > 100_000_000L) f else null
+    }
+
+    /** 回退会话首次出现时：本地有归档 → 直接自动安装（零交互）；否则给下载入口。 */
     private fun promptInstallOnce() {
+        val local = findLocalArchive()
+        if (local != null) {
+            RunLog.log("检测到本地归档，自动安装: ${local.path}")
+            postToWeb("[证道] 检测到本地安装包，直接安装（无需下载）\r\n".toByteArray(Charsets.UTF_8))
+            startInstallFromFile(local)
+            return
+        }
         if (!installPromptShown.compareAndSet(false, true)) return
         mainHandler.post {
+            val msg = if (!ProotLauncher.storageGranted(this)) {
+                "首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议先点「授权存储」——授权后把安装包放进 Download/证道 文件夹，以后重装 App 无需重新下载。"
+            } else {
+                "首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。\n提示：也可以手动把安装包放到 Download/证道 文件夹，重启 App 即可免下载安装。"
+            }
             AlertDialog.Builder(this)
                 .setTitle("安装运行环境（Debian 13.7）")
-                .setMessage("首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。")
+                .setMessage(msg)
                 .setPositiveButton("开始下载") { _, _ ->
                     startInstall(ProotLauncher.DEFAULT_ROOTFS_URL)
                 }
-                .setNeutralButton("自定义地址") { _, _ -> showCustomUrlDialog() }
+                .setNeutralButton("授权存储") { _, _ ->
+                    try {
+                        startActivity(
+                            android.content.Intent(
+                                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                android.net.Uri.parse("package:$packageName")
+                            )
+                        )
+                    } catch (_: Throwable) {
+                        try {
+                            startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                        } catch (_: Throwable) {
+                        }
+                    }
+                }
                 .setNegativeButton("稍后", null)
                 .show()
         }
+    }
+
+    /** 从本地归档安装：拷入 cache → 尽力校验（本地/网络边车）→ 解压 → 切 bash。 */
+    private fun startInstallFromFile(local: File) {
+        if (!installing.compareAndSet(false, true)) return
+        val appContext = applicationContext
+        Thread {
+            try {
+                postToWeb("[证道] 使用本地安装包: ${local.path}\r\n".toByteArray(Charsets.UTF_8))
+                val archive = File(appContext.cacheDir, local.name)
+                if (!archive.isFile || archive.length() != local.length()) {
+                    postToWeb("复制本地安装包（约 1 分钟）…\r\n".toByteArray(Charsets.UTF_8))
+                    local.copyTo(archive, overwrite = true)
+                }
+                // 完整性校验：优先同目录 .sha256 边车；无则跳过并明示（本地文件由用户放置）
+                val sidecar = File(local.parentFile, local.name + ".sha256")
+                val expectedSha = when {
+                    sidecar.isFile -> sidecar.readText().trim()
+                    else -> RootfsDownloader.fetchText(ProotLauncher.DEFAULT_ROOTFS_URL + ".sha256")
+                }
+                if (expectedSha.isNullOrBlank()) {
+                    postToWeb("[提示] 未找到校验文件，跳过完整性校验\r\n".toByteArray(Charsets.UTF_8))
+                } else {
+                    RootfsDownloader.verifySha256(archive, expectedSha)
+                    postToWeb("SHA256 校验通过\r\n".toByteArray(Charsets.UTF_8))
+                }
+                postToWeb("开始解压（解压约需几分钟，请勿离开）\r\n".toByteArray(Charsets.UTF_8))
+                RootfsInstaller.ensureFreeSpace(appContext, archive.length())
+                var lastReported = ""
+                RootfsInstaller.install(appContext, archive) { path ->
+                    if (path.contains("/bin/") || path.hashCode() % 300 == 0) {
+                        if (path != lastReported) {
+                            lastReported = path
+                            postToWeb("正在解压: $path\r\n".toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                }
+                archive.delete()
+                postToWeb("[证道] 安装完成！正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
+                session?.kill()
+                session = null
+                mainHandler.post { ensureSession(lastCols, lastRows) }
+            } catch (t: Throwable) {
+                postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试\r\n".toByteArray(Charsets.UTF_8))
+            } finally {
+                installing.set(false)
+            }
+        }.start()
     }
 
     /** 高级入口：自定义下载地址（局域网直传 / 备用镜像）。普通用户不会用到。 */

@@ -85,7 +85,7 @@ object ProotLauncher {
         for ((asset, target, expectedSha) in pinned) {
             val dst = File(tpDir, target)
             if (dst.isFile && sha256Of(dst).equals(expectedSha, ignoreCase = true)) continue // 已就位
-            context.assets.open("runtime/$asset").use { input ->
+            context.assets.open("proot/$asset").use { input ->
                 dst.outputStream().use { input.copyTo(it) }
             }
             val actual = sha256Of(dst)
@@ -134,7 +134,7 @@ object ProotLauncher {
             // 明确告知 uv 系统解释器位置（Debian 13.7 自带 Python 3.13，不做版本管理）
             "UV_PYTHON=/usr/bin/python3",
             // Termux proot 的依赖库与外部 loader 定位（其 fork 的 loader 为独立文件）
-            "LD_LIBRARY_PATH=${files.absolutePath}",
+            "LD_LIBRARY_PATH=${tpDir.absolutePath}", // libtalloc.so.2 / libandroid-shmem.so 在此目录
             "PROOT_LOADER=${File(files, "termux-proot/loader").absolutePath}",
         )
 
