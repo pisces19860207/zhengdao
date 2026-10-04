@@ -20,8 +20,8 @@ android {
         targetSdk = 28
         // 最低安装门槛：安卓 10（API 29）。覆盖目标用户群全部主流设备。
         minSdk = 29
-        versionCode = 7
-        versionName = "0.5.0"
+        versionCode = 8
+        versionName = "0.6.0"
 
         ndk {
             // 自研 JNI 库只编真机 arm64 与模拟器 x86_64（设计文档 §4 的 ABI 策略）
