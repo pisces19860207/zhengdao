@@ -7,7 +7,9 @@ import java.io.IOException
 
 /**
  * 一个终端会话 = 一个伪终端 + 一个子进程 + 一个读取线程。
- * 数据流：键盘 → [write] → 伪终端 → 子进程；子进程输出 → 读取线程 → [onData]。
+ * 数据流：键盘 → [write] → 伪终端 → 子进程；子进程输出 → 读取线程 → [sink]。
+ * M2 起会话由 SessionManager 持有（UI 死 ≠ 会话死）：[sink] 可插拔——
+ * 视图不在前台时置 null（输出丢弃，tmux 服务端保状态，重连时靠 resize 重绘恢复画面）。
  */
 class TerminalSession(
     cmd: String,
@@ -15,8 +17,6 @@ class TerminalSession(
     env: Array<String>,
     initialCols: Int,
     initialRows: Int,
-    private val onData: (ByteArray) -> Unit,
-    private val onExit: (Int) -> Unit,
 ) {
     companion object {
         private const val TAG = "TerminalSession"
@@ -24,6 +24,14 @@ class TerminalSession(
 
     val fd: Int
     val pid: Int
+
+    /** 当前挂接的视图输出口；null = 无视图（后台），输出直接丢弃 */
+    @Volatile
+    var sink: ((ByteArray) -> Unit)? = null
+
+    /** 会话进程退出回调（进程级，SessionManager 设置；可能从读取线程调用） */
+    @Volatile
+    var onExit: ((Int) -> Unit)? = null
 
     init {
         val packed = Pty.nativeCreate(cmd, args, env, initialCols, initialRows)
@@ -45,14 +53,14 @@ class TerminalSession(
                     Log.i(TAG, "输出块 #$chunks (${n}B): " +
                         buf.copyOf(n).toString(Charsets.UTF_8).take(160))
                 }
-                onData(buf.copyOf(n)) /* 复制切片，回调方持有的数据与本缓冲无关 */
+                sink?.invoke(buf.copyOf(n)) /* 复制切片，回调方持有的数据与本缓冲无关 */
             }
             val code = Pty.nativeWait(pid)
             Log.i(TAG, "会话退出 真实code=$code")
-            onExit(code.coerceAtLeast(0))
+            onExit?.invoke(code.coerceAtLeast(0))
         } catch (t: Throwable) {
             Log.w(TAG, "读取线程结束", t)
-            onExit(-1)
+            onExit?.invoke(-1)
         }
     }, "pty-reader")
 

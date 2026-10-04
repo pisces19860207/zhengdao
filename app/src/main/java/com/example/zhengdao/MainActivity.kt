@@ -64,10 +64,13 @@ class MainActivity : ComponentActivity() {
         // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户
         checkAppUpdateInBackground()
 
+        // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
+        val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
+
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ZhengdaoApp()
+                    ZhengdaoApp(startInTerminal = openTerminal)
                 }
             }
         }
@@ -129,11 +132,19 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ZhengdaoApp() {
+fun ZhengdaoApp(startInTerminal: Boolean = false) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
     val installed = AppState.rootfsInstalled(context)
-    NavHost(navController = nav, startDestination = "welcome") {
+
+    // 通知栏直达终端：落到主页后立即拉起终端（会话由 SessionManager attach 恢复）
+    if (startInTerminal) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            context.startActivity(Intent(context, TerminalActivity::class.java))
+        }
+    }
+
+    NavHost(navController = nav, startDestination = if (startInTerminal) "home" else "welcome") {
         composable("welcome") {
             WelcomeScreen(
                 environmentInstalled = installed,

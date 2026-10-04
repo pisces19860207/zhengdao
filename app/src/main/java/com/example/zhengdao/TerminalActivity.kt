@@ -20,6 +20,7 @@ import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.ProotLauncher
+import com.example.zhengdao.terminal.SessionManager
 import com.example.zhengdao.terminal.TerminalBridge
 import com.example.zhengdao.terminal.TerminalSession
 import java.io.File
@@ -39,7 +40,6 @@ class TerminalActivity : ComponentActivity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
-    private var session: TerminalSession? = null
     private var toolbarTitle: TextView? = null
     private var ctrlButton: TextView? = null
     private var shiftButton: TextView? = null
@@ -73,13 +73,13 @@ class TerminalActivity : ComponentActivity() {
                 Toast.makeText(this, "当前会话未启用 tmux，无法分屏", Toast.LENGTH_SHORT).show()
             } else {
                 try {
-                    session?.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b + 命令提示符
+                    SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b + 命令提示符
                     mainHandler.postDelayed({
                         try {
-                            session?.write("split-window -v".toByteArray(Charsets.UTF_8))
+                            SessionManager.write("split-window -v".toByteArray(Charsets.UTF_8))
                             mainHandler.postDelayed({
                                 try {
-                                    session?.write(byteArrayOf(0x0D))
+                                    SessionManager.write(byteArrayOf(0x0D))
                                 } catch (_: Throwable) { }
                             }, 150)
                         } catch (_: Throwable) { }
@@ -145,7 +145,7 @@ class TerminalActivity : ComponentActivity() {
 
     /** 发送固定按键序列（粘滞 SHIFT 仅对 TAB 有特殊语义）。 */
     private fun sendKey(raw: String) {
-        session?.write(raw)
+        SessionManager.write(raw)
     }
 
     private fun clearSticky(ctrl: Boolean, shift: Boolean) {
@@ -177,57 +177,62 @@ class TerminalActivity : ComponentActivity() {
                             clearSticky(ctrl = true, shift = false)
                         }
                     }
-                    session?.write(text)
+                    SessionManager.write(text)
                 } catch (t: Throwable) {
                     postToWeb("[输入处理失败: ${t.message}]\r\n".toByteArray(Charsets.UTF_8))
                 }
             }
         },
         onResize = { cols, rows ->
-            mainHandler.post { session?.resize(cols, rows) }
+            mainHandler.post { SessionManager.resize(cols, rows) }
         },
     )
 
-    /** 首次就绪时启动会话；之后 resize 只调整尺寸。 */
+    /** 首次就绪时启动会话（会话归 SessionManager 持有，M2）；重进视图则挂回并强制 tmux 重绘。 */
     private fun ensureSession(cols: Int, rows: Int) {
-        val existing = session
-        if (existing != null) {
-            existing.resize(cols, rows)
-            return
-        }
         if (cols <= 0 || rows <= 0) return
-
-        val plan = ProotLauncher.buildLaunchPlan(this)
         lastCols = cols
         lastRows = rows
-        toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
+
+        // 会话已存活（UI 关闭过 / 通知栏跳回）：只做 attach + tmux 重绘，绝不重启
+        if (SessionManager.isAlive()) {
+            usesTmux = SessionManager.usesTmux
+            attachSink()
+            if (usesTmux) {
+                // 先缩后放：pty 尺寸变化触发 tmux 客户端 SIGWINCH，全量重绘当前画面
+                SessionManager.resize(cols - 1, rows)
+                mainHandler.postDelayed({ SessionManager.resize(cols, rows) }, 150)
+            } else {
+                SessionManager.resize(cols, rows)
+            }
+            toolbarTitle?.text = "证道 — Debian 13.7 · bash"
+            val mins = if (SessionManager.startedAtMs > 0)
+                (System.currentTimeMillis() - SessionManager.startedAtMs) / 60000 else 0
+            postToWeb("[证道] 已恢复会话（后台运行 $mins 分钟）\r\n".toByteArray(Charsets.UTF_8))
+            return
+        }
+
+        val plan = SessionManager.start(this, cols, rows)
         usesTmux = plan.usesTmux
-        session = try {
-            TerminalSession(
-                cmd = plan.cmd,
-                args = plan.args,
-                env = plan.env,
-                initialCols = cols,
-                initialRows = rows,
-                onData = { bytes -> postToWeb(bytes) },
-                onExit = { code ->
-                    mainHandler.post {
-                        postToWeb("[会话已结束 code=$code]\r\n".toByteArray(Charsets.UTF_8))
-                        session = null
-                    }
-                },
-            )
-        } catch (t: Throwable) {
-            Toast.makeText(this, "无法启动终端会话: ${t.message}", Toast.LENGTH_LONG).show()
-            postToWeb("[错误] 无法启动会话: ${t.message}\r\n".toByteArray(Charsets.UTF_8))
-            null
+        SessionManager.usesTmux = plan.usesTmux
+        toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
+        attachSink()
+        SessionManager.onSessionDied = { code ->
+            mainHandler.post {
+                postToWeb("[会话已结束 code=$code]\r\n".toByteArray(Charsets.UTF_8))
+            }
         }
         postToWeb(plan.banner.toByteArray(Charsets.UTF_8))
         intent.getStringExtra("autocmd")?.takeIf { it.isNotBlank() }?.let { cmd ->
             postToWeb("[证道] 执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
-            mainHandler.post { session?.write(cmd + "\n") }
+            mainHandler.post { SessionManager.write(cmd + "\n") }
         }
         if (plan.isFallback) promptInstallOnce()
+    }
+
+    /** 把本视图接到 SessionManager 的会话输出口（detach 后重挂靠 tmux 重绘恢复画面）。 */
+    private fun attachSink() {
+        SessionManager.attach { bytes -> postToWeb(bytes) }
     }
 
     /**
@@ -329,8 +334,7 @@ class TerminalActivity : ComponentActivity() {
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
                 postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
-                session?.kill()
-                session = null
+                SessionManager.kill(this@TerminalActivity)
                 mainHandler.post { ensureSession(lastCols, lastRows) }
             } catch (t: Throwable) {
                 postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试\r\n".toByteArray(Charsets.UTF_8))
@@ -383,8 +387,7 @@ class TerminalActivity : ComponentActivity() {
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
                 postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
-                session?.kill()
-                session = null
+                SessionManager.kill(this@TerminalActivity)
                 mainHandler.post { ensureSession(lastCols, lastRows) }
             } catch (t: Throwable) {
                 postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试\r\n".toByteArray(Charsets.UTF_8))
@@ -477,8 +480,7 @@ class TerminalActivity : ComponentActivity() {
 
                 postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
                 postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
-                session?.kill()
-                session = null
+                SessionManager.kill(this@TerminalActivity)
                 mainHandler.post { ensureSession(lastCols, lastRows) }
             } catch (t: Throwable) {
                 postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试安装\r\n".toByteArray(Charsets.UTF_8))
@@ -498,8 +500,7 @@ class TerminalActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        session?.kill()
-        session = null
+        SessionManager.detach()
         webView?.destroy()
         webView = null
         super.onDestroy()
