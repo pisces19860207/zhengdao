@@ -38,6 +38,9 @@ import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.SettingsScreen
 import com.example.zhengdao.ui.WelcomeScreen
 
+/** App 自更新检查端点（GitHub Releases 最新发布）。 */
+private const val APP_RELEASES_API = "https://api.github.com/repos/pisces19860207/zhengdao/releases/latest"
+
 /**
  * 应用入口：Compose Navigation 承载 欢迎页 → 首页（Agent/终端 双 Tab）。
  * 终端本体是独立 Activity（TerminalActivity，零改动复用），从首页 Tab 启动。
@@ -45,6 +48,22 @@ import com.example.zhengdao.ui.WelcomeScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 系统版本兜底门槛（用户第四批）：minSdk=35 已拦住安装，这里双保险
+        // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
+        if (android.os.Build.VERSION.SDK_INT < 35) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("系统版本过低")
+                .setMessage("证道需要安卓 15 或更高版本（当前安卓 ${android.os.Build.VERSION.RELEASE}）。")
+                .setCancelable(false)
+                .setPositiveButton("确定") { _, _ -> finish() }
+                .show()
+            return
+        }
+
+        // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户
+        checkAppUpdateInBackground()
+
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -52,6 +71,52 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** 后台检查 GitHub 最新发布，比当前 versionName 新则弹非阻断提示（去下载 = 打开浏览器）。 */
+    private fun checkAppUpdateInBackground() {
+        Thread {
+            try {
+                val c = java.net.URL(APP_RELEASES_API).openConnection() as java.net.HttpURLConnection
+                c.connectTimeout = 15000
+                c.readTimeout = 15000
+                c.setRequestProperty("Accept", "application/vnd.github+json")
+                val body = c.inputStream.bufferedReader().readText()
+                val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+                    ?: return@Thread
+                if (!isNewerVersion(tag, BuildConfig.VERSION_NAME)) return@Thread
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("发现新版本")
+                        .setMessage("最新版 ${tag.removePrefix("v")}（当前 ${BuildConfig.VERSION_NAME}），可到 GitHub Releases 下载。")
+                        .setPositiveButton("去下载") { _, _ ->
+                            startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/releases")
+                                )
+                            )
+                        }
+                        .setNegativeButton("忽略", null)
+                        .show()
+                }
+            } catch (_: Throwable) {
+                // 静默：更新检查失败绝不打扰用户
+            }
+        }.start()
+    }
+
+    /** 语义化版本比较：remote 严格大于 local 才算有更新（v 前缀与缺失段容错）。 */
+    private fun isNewerVersion(remote: String, local: String): Boolean {
+        val r = remote.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
+        val l = local.split('.').map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(r.size, l.size)) {
+            val a = r.getOrElse(i) { 0 }
+            val b = l.getOrElse(i) { 0 }
+            if (a != b) return a > b
+        }
+        return false
     }
 }
 
