@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -19,6 +21,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +36,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
+import com.example.zhengdao.ui.SettingsScreen
 import com.example.zhengdao.ui.WelcomeScreen
 
 /**
@@ -80,7 +84,23 @@ fun ZhengdaoApp() {
                         }
                     )
                 },
+                onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
             )
+        }
+        composable("settings") {
+            // 设置页（含返回）：复用 Material3 顶栏由页面内实现，此处提供返回按钮容器
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = { nav.popBackStack() }) { Text("← 返回") }
+                    Text("设置", style = MaterialTheme.typography.titleMedium)
+                }
+                SettingsScreen()
+            }
         }
     }
 }
@@ -89,6 +109,7 @@ fun ZhengdaoApp() {
 @Composable
 fun HomeTabs(
     onOpenTerminal: (autocmd: String?) -> Unit,
+    onOpenSettings: () -> Unit = {},
 ) {
     var tab by remember { mutableIntStateOf(0) }
     Scaffold(
@@ -116,7 +137,7 @@ fun HomeTabs(
             color = MaterialTheme.colorScheme.background,
         ) {
             when (tab) {
-                0 -> HomeScreen(onOpenTerminal = onOpenTerminal)
+                0 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
                 else -> TerminalTabPlaceholder(onOpenTerminal = onOpenTerminal)
             }
         }

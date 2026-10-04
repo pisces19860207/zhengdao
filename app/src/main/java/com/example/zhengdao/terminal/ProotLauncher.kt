@@ -8,6 +8,7 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.settings.ApiKeyStore
 import java.io.File
 import java.io.IOException
 
@@ -145,6 +146,20 @@ object ProotLauncher {
             "PROOT_LOADER=${File(files, "termux-proot/loader").absolutePath}",
         )
 
+        // API Key 注入（第二批）：设置页保存的密钥解密后以环境变量形式透传给 guest，
+        // Claude Code / Hermes 等Agent 直接读取。只注入非空密钥；日志仅记服务商名，不记密钥值。
+        runCatching {
+            var injected = 0
+            ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
+                val key = ApiKeyStore.get(context, id)
+                if (!key.isNullOrBlank()) {
+                    env.add("$envName=$key")
+                    injected++
+                }
+            }
+            if (injected > 0) RunLog.log("API Key 注入: $injected 个服务商")
+        } // 解密失败不阻断启动（密钥坏了不该连累终端）
+
         val args = mutableListOf(
             prootBin.absolutePath,   // 宿主侧 execve 的目标：Termux fork 的 proot（files/ 下可执行）
             "--kill-on-exit",        // proot 退出时清掉 guest 内的全部进程，防孤儿
@@ -159,7 +174,10 @@ object ProotLauncher {
         )
         // 手机存储直通（用户要求）：共享存储绑进 guest 的相同路径 + /sdcard 视图；
         // 默认工作区 Download/证道（guest 内 /root/工作区 直达）。未授权时静默跳过。
-        if (storageGranted(context)) {
+        // 「仅私有」模式（设置页工作区三选）不绑共享存储，guest 完全看不到手机文件。
+        val wsMode = com.example.zhengdao.ui.Settings.prefs(context)
+            .getString("workspace_mode", "default") ?: "default"
+        if (storageGranted(context) && wsMode != "private") {
             val shared = "/storage/emulated/0"
             args.addAll(arrayOf("-b", "$shared:$shared", "-b", "/sdcard:/sdcard"))
             try {
@@ -176,9 +194,27 @@ object ProotLauncher {
         // 工作区（全版本兼容）：App 外部目录无需任何权限且真实路径可 bind；
         // 安卓 16 实测 /sdcard 原始路径对 target 28 应用不可达，/sdcard bind 仅对
         // legacy 视图设备生效（上面的 storageGranted 分支），两者并存互不影响。
-        val wsHost = File(context.getExternalFilesDir(null), "workspace").apply { mkdirs() }
+        // 三档模式：默认 → 私有工作区（+共享存储直通）；自定义 → 用户路径（不可达时回退私有）；
+        // 仅私有 → 只绑私有目录。
+        val wsHost = when (wsMode) {
+            "custom" -> {
+                val custom = com.example.zhengdao.ui.Settings.prefs(context)
+                    .getString("workspace_custom", "") ?: ""
+                val f = if (custom.isNotBlank()) File(custom) else null
+                if (f != null && f.isDirectory) {
+                    RunLog.log("工作区(自定义): ${f.absolutePath} -> /workspace")
+                    f
+                } else {
+                    RunLog.log("工作区(自定义): 路径不可达「$custom」，回退私有工作区")
+                    File(context.getExternalFilesDir(null), "workspace")
+                }
+            }
+            else -> File(context.getExternalFilesDir(null), "workspace")
+        }.apply { mkdirs() }
+        if (wsMode != "custom") {
+            RunLog.log("工作区(${wsMode}): ${wsHost.absolutePath} -> /workspace")
+        }
         args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
-        RunLog.log("工作区: ${wsHost.absolutePath} -> /workspace")
 
         // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
         // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）
