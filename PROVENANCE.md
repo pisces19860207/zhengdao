@@ -23,8 +23,18 @@
 | 组件 | 许可证 | 使用方式 |
 |---|---|---|
 | xterm.js | MIT | 官方发行包，按官方文档接入 |
-| proot | 上游 GPL | 官方源码自行编译，作为独立可执行文件分发（聚合分发，不链接） |
+| proot（**Termux fork 发行版**，2026-10-04 基线切换） | GPL-2.0-or-later | 官方发行二进制，assets 内置、运行时释放为**独立可执行文件**调用（聚合分发，不链接不混源；源码指引见 THIRD-PARTY-LICENSES.md） |
+| libtalloc / libandroid-shmem | LGPL / 宽松许可 | 同上，作为 proot 的运行时依赖随包分发 |
 | OkHttp / Compose 等 | Apache-2.0 | Maven 依赖，按官方文档使用 |
+
+### GPL 合规红线（2026-10-04 项目所有者确认）
+
+- **允许**：使用 Termux 的编译产物（二进制）；在文档中注明"参考了 Termux 的
+  Android 适配思路"；阅读其公开资料学习机制与参数。
+- **绝对禁止**：把 Termux（或任何 GPL 项目）的 C/C++/汇编代码复制进本项目的
+  Kotlin 或 C 源码——GPL 传染将迫使整个 App 开源。
+- 分发 GPL 二进制的义务：随附来源与源码指引（见 THIRD-PARTY-LICENSES.md），
+  不隐匿其许可与出处。
 
 ## 代码文件头
 
