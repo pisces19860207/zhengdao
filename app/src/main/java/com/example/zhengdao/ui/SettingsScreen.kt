@@ -109,25 +109,43 @@ fun SettingsScreen() {
             OutlinedButton(onClick = { repairConfirm = true }) { Text("修复环境（30 秒）") }
         }
 
-        // ── API Key 管理 ──
+        // ── API Key 管理（按 国内 / 国外 / 免费额度 分组展示）──
         SectionCard("API Key 管理") {
-            ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
-                var value by remember(id) {
-                    mutableStateOf(ApiKeyStore.get(ctx, id) ?: "")
-                }
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it },
-                    label = { Text(id) },
-                    supportingText = { Text(if (value.isBlank()) "启动时注入环境变量 $envName" else "已注入 $envName") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+            ApiKeyStore.GROUPS.forEach { (groupLabel, ids) ->
+                Text(
+                    groupLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(onClick = {
-                    ApiKeyStore.save(ctx, id, value.trim())
-                    Toast.makeText(ctx, "$id 密钥已保存（Keystore 加密）", Toast.LENGTH_SHORT).show()
-                }) { Text("保存 $id") }
-                HorizontalDivider()
+                Spacer(Modifier.height(4.dp))
+                ids.forEach { id ->
+                    val envName = ApiKeyStore.PROVIDERS[id] ?: return@forEach
+                    var value by remember(id) {
+                        mutableStateOf(ApiKeyStore.get(ctx, id) ?: "")
+                    }
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        label = { Text(id) },
+                        supportingText = {
+                            Text(
+                                when {
+                                    value.isBlank() && id == "zhipu" -> "注入 ZHIPU_API_KEY（国内站 bigmodel.cn）"
+                                    value.isBlank() -> "启动时注入环境变量 $envName"
+                                    else -> "已注入 $envName"
+                                }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    TextButton(onClick = {
+                        ApiKeyStore.save(ctx, id, value.trim())
+                        Toast.makeText(ctx, "$id 密钥已保存（Keystore 加密）", Toast.LENGTH_SHORT).show()
+                    }) { Text("保存 $id") }
+                    HorizontalDivider()
+                }
             }
             var clearKeysConfirm by remember { mutableStateOf(false) }
             TextButton(onClick = { clearKeysConfirm = true }) {
