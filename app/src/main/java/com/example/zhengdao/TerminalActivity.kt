@@ -49,6 +49,8 @@ class TerminalActivity : ComponentActivity() {
     private var stickyShift = false
     private val installPromptShown = AtomicBoolean(false)
     private val installing = AtomicBoolean(false)
+    /** 当前会话是否由 tmux 保持（绿点分屏按钮的前置条件） */
+    private var usesTmux = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,6 +64,31 @@ class TerminalActivity : ComponentActivity() {
         toolbarTitle = findViewById(R.id.toolbar_title)
         // 红点 = 关闭终端返回主界面（Mac 工具栏隐喻：用户点红点就该退出去）
         findViewById<android.view.View>(R.id.btn_close).setOnClickListener { finish() }
+        // 绿点 = tmux 上下分屏（用户指定）。走 tmux 前缀键通道（C-b : 命令行），
+        // 即使前台是 Agent 的 TUI 也不会把命令打进它的输入框。默认单会话，分屏按需。
+        // ⚠️ 必须分段发送：tmux 的命令提示符是异步打开的，一次性灌入的字节会
+        // 穿透到前台应用（实测：整串发送时命令漏进了 bash 报 command not found）。
+        findViewById<android.view.View>(R.id.btn_split).setOnClickListener {
+            if (!usesTmux) {
+                Toast.makeText(this, "当前会话未启用 tmux，无法分屏", Toast.LENGTH_SHORT).show()
+            } else {
+                try {
+                    session?.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b + 命令提示符
+                    mainHandler.postDelayed({
+                        try {
+                            session?.write("split-window -v".toByteArray(Charsets.UTF_8))
+                            mainHandler.postDelayed({
+                                try {
+                                    session?.write(byteArrayOf(0x0D))
+                                } catch (_: Throwable) { }
+                            }, 150)
+                        } catch (_: Throwable) { }
+                    }, 150)
+                } catch (t: Throwable) {
+                    Toast.makeText(this, "分屏失败：${t.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
         // 圆角悬浮窗口：子内容按窗口卡片轮廓裁剪（API 21+ 标准 outline 裁剪）
         findViewById<android.view.View>(R.id.window_card).clipToOutline = true
         val web = findViewById<WebView>(R.id.terminal_web)
@@ -174,6 +201,7 @@ class TerminalActivity : ComponentActivity() {
         lastCols = cols
         lastRows = rows
         toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
+        usesTmux = plan.usesTmux
         session = try {
             TerminalSession(
                 cmd = plan.cmd,
