@@ -3,6 +3,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
+val appVersionName = "0.8.0"
+
 android {
     namespace = "com.example.zhengdao"
     compileSdk {
@@ -22,7 +25,7 @@ android {
         // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
         minSdk = 36
         versionCode = 10
-        versionName = "0.8.0"
+        versionName = appVersionName
 
         ndk {
             // 自研 JNI 库只编真机 arm64 与模拟器 x86_64（设计文档 §4 的 ABI 策略）
@@ -30,6 +33,10 @@ android {
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    base {
+        archivesName.set("zhengdao-$appVersionName")
     }
 
     buildTypes {
