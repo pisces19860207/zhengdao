@@ -94,22 +94,15 @@ object AgentInstaller {
                 append("for d in /root/.hermes/tools/uv-*; do " +
                     "if [ -f \"${'$'}d/uv\" ] && [ ! -f \"${'$'}d/uv.real\" ]; then " +
                     "mv \"${'$'}d/uv\" \"${'$'}d/uv.real\"; fi; done 2>/dev/null; ")
-                // 无条件重写 wrapper（自愈：历史坏版本/未来逻辑更新都直接覆盖）
+                // 无条件重写 wrapper（自愈：历史坏版本/未来逻辑更新都直接覆盖）。
+                // 常量与启动时巡检共用（ProotLauncher），hermes update 拉新版本 uv 后
+                // 下一次启动也会被接管
                 append("mkdir -p /root/.hermes/tools/uv-0.12.3-linux-arm64; " +
-                    "echo $HERMES_UV_WRAPPER_B64 | base64 -d > /root/.hermes/tools/uv-0.12.3-linux-arm64/uv; " +
+                    "echo ${com.example.zhengdao.terminal.ProotLauncher.HERMES_UV_WRAPPER_B64} | base64 -d > /root/.hermes/tools/uv-0.12.3-linux-arm64/uv; " +
                     "chmod +x /root/.hermes/tools/uv-*/uv 2>/dev/null; ")
             }
             append(installCmd)
             append(" && echo \"[证道] 安装完成，正在启动 $launch（首次启动需初始化，请稍候）…\" && $launch")
         }
     }
-
-    /**
-     * hermes 专属 uv 包装器（base64 免转义注入）。逻辑：
-     * uv.real 缺失 → 从 GitHub pinned 地址下载 uv 0.12.3 arm64（失败换 hermes 官方
-     * 镜像），SHA256 校验后落位；exec 真身前强制 UV_LINK_MODE=copy + TMPDIR 兜底。
-     * 真身获取失败退回系统 uv（rootfs 自带）。URL/SHA256 与 hermes install.sh 同源。
-     */
-    private const val HERMES_UV_WRAPPER_B64 =
-        "IyEvYmluL2Jhc2gKIyB6aGVuZ2RhbyBpbmplY3Rpb24gbGF5ZXI6IGhlcm1lcyBwbSBzdHJpcHMgVVZfKiBlbnYgdmFycyBhbmQgaWdub3JlcyB1diBjb25maWcKIyBmaWxlcyAoVVZfTk9fQ09ORklHPTEpIC0tIHdyYXBwaW5nIGl0cyBvd24gcGlubmVkIHV2IGJpbmFyeSBpcyB0aGUgb25seQojIHJlbGlhYmxlIGluamVjdGlvbiBwb2ludC4gVGhlIHJlYWwgYmluYXJ5IGxpdmVzIG5leHQgdG8gdGhpcyBhcyB1di5yZWFsLgpEPSIkKGNkICIkKGRpcm5hbWUgIiQwIikiICYmIHB3ZCkiClI9IiREL3V2LnJlYWwiCmlmIFsgISAteCAiJFIiIF07IHRoZW4KICBUPSIkKG1rdGVtcCAtZCAyPi9kZXYvbnVsbCB8fCBlY2hvIC90bXAvLnpkdXYuJCQpIgogIG1rZGlyIC1wICIkVCIKICBmb3IgVSBpbiBcCiAgICBodHRwczovL2dpdGh1Yi5jb20vYXN0cmFsLXNoL3V2L3JlbGVhc2VzL2Rvd25sb2FkLzAuMTIuMy91di1hYXJjaDY0LXVua25vd24tbGludXgtZ251LnRhci5neiBcCiAgICBodHRwczovL2hlcm1lcy1hc3NldHMubm91c3Jlc2VhcmNoLmNvbS91cHN0cmVhbS9zaGEyNTYvYmI2NmNiNTJlN2IxODIzYWVkMTE4MzYzMGQ4ZDhlNWM5NTg4NDBkNTg0YTRjNTVlYzEwYTRjZmMxNjhkY2NhMiA7IGRvCiAgICBjdXJsIC1Mc1NmICIkVSIgLW8gIiRUL3V2LnRneiIgJiYgYnJlYWsKICBkb25lCiAgaWYgWyAtZiAiJFQvdXYudGd6IiBdICYmIFsgIiQoc2hhMjU2c3VtICIkVC91di50Z3oiIDI+L2Rldi9udWxsIHwgY3V0IC1kJyAnIC1mMSkiID0gImJiNjZjYjUyZTdiMTgyM2FlZDExODM2MzBkOGQ4ZTVjOTU4ODQwZDU4NGE0YzU1ZWMxMGE0Y2ZjMTY4ZGNjYTIiIF07IHRoZW4KICAgIHRhciAteHpmICIkVC91di50Z3oiIC1DICIkVCIgMj4vZGV2L251bGwKICAgIEY9IiQoZmluZCAiJFQiIC1uYW1lIHV2IC10eXBlIGYgMj4vZGV2L251bGwgfCBoZWFkIC1uMSkiCiAgICBbIC1uICIkRiIgXSAmJiBtdiAiJEYiICIkUiIgJiYgY2htb2QgMDc1NSAiJFIiCiAgZmkKICBybSAtcmYgIiRUIgpmaQppZiBbICEgLXggIiRSIiBdOyB0aGVuCiAgZWNobyAiW3poZW5nZGFvXSB1diB3cmFwcGVyOiBwaW5uZWQgdXYgdW5hdmFpbGFibGUsIGZhbGxpbmcgYmFjayB0byBzeXN0ZW0gdXYiID4mMgogIFsgLXggL3Vzci9sb2NhbC9iaW4vdXYgXSAmJiBleGVjIC91c3IvbG9jYWwvYmluL3V2ICIkQCIKICBleGl0IDEyNwpmaQpleHBvcnQgVVZfTElOS19NT0RFPWNvcHkKZXhwb3J0IFRNUERJUj0iJHtUTVBESVI6LS9yb290L3RtcH0iCmV4ZWMgIiRSIiAiJEAiCg=="
 }

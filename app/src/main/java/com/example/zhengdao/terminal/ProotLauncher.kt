@@ -143,6 +143,42 @@ object ProotLauncher {
                 }
             }
         } // 写不进去不阻断启动；下面 TZ 环境变量兜底
+
+        // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
+        // 这样「修复环境」重解压系统层时不碰用户数据
+        val homeDir = File(files, "home").apply { mkdirs() }
+        val prootTmp = File(files, "proot-tmp").apply { mkdirs() }
+
+        // hermes 命令立即可用（用户反馈：装完敲 hermes 没反应）：安装器把命令发布在
+        // /root/.local/bin（home 层），但**早已存在的 shell 的 PATH 是启动时的快照**，
+        // 拿不到后装的目录。/usr/local/bin 天然在所有 shell 的 PATH 里且属系统层——
+        // 软链过去，新旧 shell 全覆盖。未装 hermes 时跳过，不留悬空链接。
+        runCatching {
+            if (File(homeDir, ".local/bin/hermes").isFile) {
+                val link = File(rootfsDir, "usr/local/bin/hermes")
+                if (!link.exists()) {
+                    android.system.Os.symlink("/root/.local/bin/hermes", link.absolutePath)
+                }
+            }
+        }
+
+        // hermes uv 包装器接管（update 韧性）：hermes update 若拉到新的 pinned uv
+        // 版本会新开 tools/uv-<ver> 目录、放下真实二进制——裸奔一次就硬链接失败。
+        // 每次启动统一巡检：ELF 真身挪为 uv.real、原路径放包装器（幂等，见常量注释）。
+        runCatching {
+            val tools = File(homeDir, ".hermes/tools")
+            val dirs = tools.listFiles { f -> f.isDirectory && f.name.startsWith("uv-") }
+                ?: return@runCatching
+            for (d in dirs) {
+                val uv = File(d, "uv")
+                val real = File(d, "uv.real")
+                if (isElf(uv) && !real.isFile) uv.renameTo(real)
+                if (!uv.isFile || isElf(uv)) {
+                    uv.writeBytes(android.util.Base64.decode(HERMES_UV_WRAPPER_B64, android.util.Base64.DEFAULT))
+                    android.system.Os.chmod(uv.absolutePath, 493)
+                }
+            }
+        }
         // 细光标（用户反馈块太粗）：每个 login shell 启动时发 DECSCUSR 6（bar 闪烁）。
         // tmux 可能随后覆盖，profile 方式让每个 shell（含分屏新 pane）重新声明。
         runCatching {
@@ -184,9 +220,8 @@ object ProotLauncher {
             }
         }
         // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
-        // 这样「修复环境」重解压系统层时不碰用户数据
-        val homeDir = File(files, "home").apply { mkdirs() }
-        val prootTmp = File(files, "proot-tmp").apply { mkdirs() }
+        // 这样「修复环境」重解压系统层时不碰用户数据（homeDir/prootTmp 已在前面的
+        // hermes 巡检块之前定义）
 
         // git 克隆加速（用户实测：v2vpn 下 github 克隆仍极慢，Hermes 安装卡在克隆）：
         // /root/.gitconfig 把 github.com 替换为可用的加速镜像（2026-10-05 实测 gh-proxy.com
@@ -398,6 +433,25 @@ object ProotLauncher {
             env = env.toTypedArray(),
             usesTmux = hasTmux,
         )
+    }
+
+    /** hermes 专属 uv 包装器（base64 免转义注入；AgentInstaller 安装时与本次启动
+     * 巡检共用）。逻辑：uv.real 缺失 → 从 GitHub pinned 地址下载 uv 0.12.3 arm64
+     * （失败换 hermes 官方镜像），SHA256 校验后落位；exec 真身前强制
+     * UV_LINK_MODE=copy + TMPDIR 兜底。真身获取失败退回系统 uv。
+     * URL/SHA256 与 hermes install.sh 同源。源文件见 build/hermes-uv-wrapper.sh。 */
+    const val HERMES_UV_WRAPPER_B64 =
+        "IyEvYmluL2Jhc2gKIyB6aGVuZ2RhbyBpbmplY3Rpb24gbGF5ZXI6IGhlcm1lcyBwbSBzdHJpcHMgVVZfKiBlbnYgdmFycyBhbmQgaWdub3JlcyB1diBjb25maWcKIyBmaWxlcyAoVVZfTk9fQ09ORklHPTEpIC0tIHdyYXBwaW5nIGl0cyBvd24gcGlubmVkIHV2IGJpbmFyeSBpcyB0aGUgb25seQojIHJlbGlhYmxlIGluamVjdGlvbiBwb2ludC4gVGhlIHJlYWwgYmluYXJ5IGxpdmVzIG5leHQgdG8gdGhpcyBhcyB1di5yZWFsLgpEPSIkKGNkICIkKGRpcm5hbWUgIiQwIikiICYmIHB3ZCkiClI9IiREL3V2LnJlYWwiCmlmIFsgISAteCAiJFIiIF07IHRoZW4KICBUPSIkKG1rdGVtcCAtZCAyPi9kZXYvbnVsbCB8fCBlY2hvIC90bXAvLnpkdXYuJCQpIgogIG1rZGlyIC1wICIkVCIKICBmb3IgVSBpbiBcCiAgICBodHRwczovL2dpdGh1Yi5jb20vYXN0cmFsLXNoL3V2L3JlbGVhc2VzL2Rvd25sb2FkLzAuMTIuMy91di1hYXJjaDY0LXVua25vd24tbGludXgtZ251LnRhci5neiBcCiAgICBodHRwczovL2hlcm1lcy1hc3NldHMubm91c3Jlc2VhcmNoLmNvbS91cHN0cmVhbS9zaGEyNTYvYmI2NmNiNTJlN2IxODIzYWVkMTE4MzYzMGQ4ZDhlNWM5NTg4NDBkNTg0YTRjNTVlYzEwYTRjZmMxNjhkY2NhMiA7IGRvCiAgICBjdXJsIC1Mc1NmICIkVSIgLW8gIiRUL3V2LnRneiIgJiYgYnJlYWsKICBkb25lCiAgaWYgWyAtZiAiJFQvdXYudGd6IiBdICYmIFsgIiQoc2hhMjU2c3VtICIkVC91di50Z3oiIDI+L2Rldi9udWxsIHwgY3V0IC1kJyAnIC1mMSkiID0gImJiNjZjYjUyZTdiMTgyM2FlZDExODM2MzBkOGQ4ZTVjOTU4ODQwZDU4NGE0YzU1ZWMxMGE0Y2ZjMTY4ZGNjYTIiIF07IHRoZW4KICAgIHRhciAteHpmICIkVC91di50Z3oiIC1DICIkVCIgMj4vZGV2L251bGwKICAgIEY9IiQoZmluZCAiJFQiIC1uYW1lIHV2IC10eXBlIGYgMj4vZGV2L251bGwgfCBoZWFkIC1uMSkiCiAgICBbIC1uICIkRiIgXSAmJiBtdiAiJEYiICIkUiIgJiYgY2htb2QgMDc1NSAiJFIiCiAgZmkKICBybSAtcmYgIiRUIgpmaQppZiBbICEgLXggIiRSIiBdOyB0aGVuCiAgZWNobyAiW3poZW5nZGFvXSB1diB3cmFwcGVyOiBwaW5uZWQgdXYgdW5hdmFpbGFibGUsIGZhbGxpbmcgYmFjayB0byBzeXN0ZW0gdXYiID4mMgogIFsgLXggL3Vzci9sb2NhbC9iaW4vdXYgXSAmJiBleGVjIC91c3IvbG9jYWwvYmluL3V2ICIkQCIKICBleGl0IDEyNwpmaQpleHBvcnQgVVZfTElOS19NT0RFPWNvcHkKZXhwb3J0IFRNUERJUj0iJHtUTVBESVI6LS9yb290L3RtcH0iCmV4ZWMgIiRSIiAiJEAiCg=="
+
+    /** ELF 魔数判定（\x7FELF）：区分真实 uv 二进制与我们的 shell 包装器。 */
+    private fun isElf(f: File): Boolean {
+        if (!f.isFile) return false
+        val head = ByteArray(4)
+        runCatching {
+            java.io.RandomAccessFile(f, "r").use { it.readFully(head) }
+        }.onFailure { return false }
+        return head[0] == 0x7F.toByte() && head[1] == 'E'.code.toByte() &&
+            head[2] == 'L'.code.toByte() && head[3] == 'F'.code.toByte()
     }
 
     /** 回退计划：系统自带 shell。功能完整可用，但不是 Debian 环境。 */
