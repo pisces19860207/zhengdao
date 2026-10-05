@@ -70,8 +70,13 @@
 
 ## 当前状态
 
-开发中（M1–M3 已完成：最小闭环 + 保活层 + 一键安装）。CI 产物（APK / RootFS / proot）见
-[Actions 页面](https://github.com/pisces19860207/zhengdao/actions)。
+**v0.9.1 已发布**（正式 Release，可直接下载安装）：环境一键安装、前台服务保活 + tmux 会话保持、
+原生终端（Termux 引擎）、Agent 一键安装与启动。**OpenCode 与 Hermes Agent 完整支持**
+（一键安装 → 启动 → TUI 全链路真机验收，`hermes update` 可用）；Claude Code / AGY CLI
+走各自官方安装脚本。
+
+CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)，
+正式版见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)。
 
 ## 文档结构说明
 
@@ -94,14 +99,32 @@
 
 本项目的全部代码由 **Zcode**（智谱 AI 的编程助手）在 **GLM-5.3-Flash** 模型驱动下完成。
 
-从 PRoot 在 Android 上的加载难题、SELinux 拦截、255 错误，到 Termux fork 基线的切换、RootFS 构建管线、UI 落地——整个"证道"从一行命令到一个完整 App，Zcode 是全程的开发主力。
+从 PRoot 在 Android 上的加载难题、SELinux 拦截、255 错误，到 Termux fork 基线的切换、
+RootFS 构建管线、UI 落地，再到困了项目好几天的 Hermes uv 硬链接死局（最终靠包装
+hermes 自带的 pinned uv 二进制破局）——整个"证道"从一行命令到一个完整 App，
+Zcode 是全程的开发主力。
 
 我负责提需求和踩坑，它负责把坑填上。
 
-特别感谢 GLM-5.3-Flash 提供的免费额度，让这个项目能在 5 亿 token 的对话里，从一个想法变成 GitHub 上一个真实可跑的仓库。
+**WorkBuddy**（我的另一位 AI 工程师）负责方案推演与交叉验证：uv 硬链接的三方案分析、
+M2 / M3 骨架设计、以及一遍遍"先验证、再下结论"的提醒。双 AI 协作，一个出方案、
+一个落代码、互相把关，这套模式撑起了整个项目。
+
+特别感谢 GLM-5.3-Flash 提供的免费额度，让这个项目能在 5 亿 token 的对话里，
+从一个想法变成 GitHub 上一个真实可跑的仓库。
+
+同样感谢这些站在肩膀上的开源项目：
+
+- [Termux](https://github.com/termux/termux-packages) —— proot 的 Android 适配发行版，以及 terminal-emulator / terminal-view 终端引擎
+- [proot-me/proot](https://github.com/proot-me/proot) —— 免 root 跑起整套 Linux 环境的基石
+- [astral-sh/uv](https://github.com/astral-sh/uv) —— 快得飞起的 Python 包管理器
+- [Nous Research](https://github.com/NousResearch) —— Hermes Agent 及其开放的官方安装脚本
+- [OpenCode](https://github.com/sst/opencode) —— 开源编程 Agent
+- [Debian](https://www.debian.org/) —— 13.7 作为 guest 环境的底座
 
 ## 许可
 
-本项目第一方代码以 **GPL-3.0** 发布（因源码级聚合了 GPL 组件：Termux terminal-emulator /
-terminal-view v0.119.0-beta.3）。内置 proot 组件基于上游 GPL 项目（proot-me/proot）编译，
-作为独立可执行文件聚合分发。
+本项目第一方代码以 **GPL-3.0** 发布（作者选择的许可证）。集成的 Termux
+terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此前误标为 GPL，
+勘误详见 PROVENANCE.md）；内置 proot 组件基于上游 GPL 项目（proot-me/proot）编译，
+作为独立可执行文件聚合分发，来源与许可义务见 [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)。
