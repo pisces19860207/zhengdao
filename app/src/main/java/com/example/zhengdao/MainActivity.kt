@@ -64,6 +64,23 @@ class MainActivity : ComponentActivity() {
         // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户
         checkAppUpdateInBackground()
 
+        // 存储运行时权限（第 0 步修复，2026-10-06）：此前全 App 没有任何请求代码，
+        // WRITE 靠用户手点设置授予、READ 因 manifest maxSdkVersion=32 帽子从未可授，
+        // Android 16 上共享存储读写全被 FUSE 拒——hermes"只能写不能读"的根因。
+        // 冷启动缺哪个补哪个；拒绝不打断使用（bind 会静默跳过，终端照常）。
+        runCatching {
+            val needed = arrayOf(
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            ).filter {
+                androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+            if (needed.isNotEmpty()) {
+                androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
+            }
+        }
+
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
 
