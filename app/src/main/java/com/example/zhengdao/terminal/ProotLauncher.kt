@@ -127,6 +127,24 @@ object ProotLauncher {
         // DNS 兜底（设计文档 §4：proot 内没有 systemd-resolved，缺 resolv.conf 就是
         // "下载得动、上不了网"的第一大故障；App 每次启动前确保存在）
         ensureDnsFiles(File(rootfsDir, "etc/resolv.conf"), File(rootfsDir, "etc/hosts"))
+        // 时区同步（用户反馈：tmux 状态栏时钟比手机慢 8 小时）：rootfs 镜像构建时
+        // /etc/localtime 指向 Etc/UTC（实测 2026-10-05），guest 内 date/tmux 全按 UTC
+        // 显示。zoneinfo 目录实测存在（由 ffmpeg 等传递依赖带入，构建清单未显式装
+        // tzdata），故启动前把 /etc/localtime 改指 Asia/Shanghai 并补 /etc/timezone；
+        // 已是目标值时跳过（幂等，不刷日志）。
+        runCatching {
+            val localtime = File(rootfsDir, "etc/localtime")
+            val wanted = "/usr/share/zoneinfo/Asia/Shanghai"
+            if (File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai").isFile) {
+                val cur = runCatching { android.system.Os.readlink(localtime.absolutePath) }.getOrNull()
+                if (cur != wanted) {
+                    localtime.delete()
+                    android.system.Os.symlink(wanted, localtime.absolutePath)
+                    File(rootfsDir, "etc/timezone").writeText("Asia/Shanghai\n")
+                    RunLog.log("时区已校准: Asia/Shanghai（原 ${cur ?: "非链接"}）")
+                }
+            }
+        } // 写不进去不阻断启动；下面 TZ 环境变量兜底
         // 细光标（用户反馈块太粗）：每个 login shell 启动时发 DECSCUSR 6（bar 闪烁）。
         // tmux 可能随后覆盖，profile 方式让每个 shell（含分屏新 pane）重新声明。
         runCatching {
@@ -194,11 +212,16 @@ object ProotLauncher {
             }
         }
 
+        // TZ（双保险的第二层）：tmux server / date / Node 等都读它。带 zoneinfo 的
+        // 环境用地理名；万一哪个 rootfs 变体没装 zoneinfo，glibc 解析不了地理名，
+        // 就退到 POSIX 自包含写法 CST-8（= UTC+8，POSIX 偏移符号西正东负，零依赖）
+        val tzName = if (File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai").isFile) "Asia/Shanghai" else "CST-8"
         val env = mutableListOf(
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "HOME=/root",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
+            "TZ=$tzName",
             // proot 自身需要：临时目录必须指向 App 可写路径（部分机型 /tmp 不可写）
             "PROOT_TMP_DIR=${prootTmp.absolutePath}",
             // ⚠️ 不要设 PROOT_NO_SECCOMP=1：这台 Honor/安卓16 实测证明，
