@@ -1,16 +1,20 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目从零编写。终端渲染/模拟引擎为 Termux 官方
+// terminal-emulator + terminal-view（Apache-2.0，v0.119.0-beta.3，聚合分发见
+// PROVENANCE.md 与 THIRD-PARTY-LICENSES.md）。
+//
+// ⚠️ 许可证更正（2026-10-05）：此前误标为 GPL-3.0。上游 termux-app/LICENSE.md
+// 的 Exceptions 一节明确：terminal-view 与 terminal-emulator 为 Apache-2.0，
+// 仅 termux-app 主应用本体为 GPL-3.0（本项目未聚合主应用）。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao
 
-import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Base64
+import android.view.KeyEvent
 import android.view.WindowManager
-import android.webkit.WebView
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -19,37 +23,31 @@ import androidx.core.content.ContextCompat
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
-import com.example.zhengdao.terminal.TerminalBridge
-import com.example.zhengdao.terminal.TerminalSession
+import com.example.zhengdao.terminal.SessionService
+import com.termux.terminal.TerminalSession
+import com.termux.view.TerminalView
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 全屏终端 Activity（状态条 + 终端 + 快捷键条，见 activity_main.xml）。
+ * 全屏终端 Activity（Mac 风格窗卡 + Termux 原生 TerminalView + 快捷键条）。
  *
- * 数据流：
- *   键盘/快捷键条 → TerminalSession.write → 伪终端 → 子进程
- *   子进程输出 → 读取线程 → postToWeb → xterm.js(term.write)
- *
- * 会话目标由 ProotLauncher 决定：已安装 Debian 13.7 环境则经 proot 启动 bash；
- * 未安装则回退系统 shell，并弹出「安装运行环境」入口（默认地址已预填）。
+ * 架构（原生终端方案，替代 WebView/xterm.js——性能对齐 Termux/太墟）：
+ *   键盘/快捷键条/粘贴 → SessionManager.write → pty → 子进程（proot→tmux→bash）
+ *   子进程输出 → Termux 引擎（原生状态机）→ TerminalView 自绘
+ * 会话归 SessionManager 进程级持有（M2：UI 关 ≠ 会话死，前台服务保活）。
  */
-class TerminalActivity : ComponentActivity() {
+class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient,
+    com.termux.terminal.TerminalSessionClient {
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    // 输入批处理：每个键一次跨语言调用在高频输入时排队。首个键立即 flush（零延迟），
-    // 后续 50ms 内到达的输入并进同一次 write。
-    private val pendingIn = StringBuilder()
-    private val inLock = Any()
-    private val inFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
-    private var webView: WebView? = null
+    private lateinit var termView: TerminalView
     private var toolbarTitle: TextView? = null
     private var ctrlButton: TextView? = null
     private var shiftButton: TextView? = null
-    private var lastCols = 0
-    private var lastRows = 0
     private var stickyCtrl = false
     private var stickyShift = false
     private val installPromptShown = AtomicBoolean(false)
@@ -61,11 +59,11 @@ class TerminalActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 终端打开期间保持屏幕常亮；进程级保活（前台服务）在 M2 实现，见设计文档 §5
+        // 终端打开期间保持屏幕常亮
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // 清理上次中断的解压残局（解压原子性，设计文档 §6）
         RootfsInstaller.cleanupPartial(applicationContext)
         RunLog.init(applicationContext)
+        SessionManager.init(applicationContext)
         // 只在全新启动读取（Activity 异常重建会带原 intent，避免同一命令重跑两遍）
         if (savedInstanceState == null) {
             pendingAutocmd = intent?.getStringExtra("autocmd")?.takeIf { it.isNotBlank() }
@@ -73,51 +71,109 @@ class TerminalActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
 
         toolbarTitle = findViewById(R.id.toolbar_title)
-        // 红点 = 关闭终端返回主界面（Mac 工具栏隐喻：用户点红点就该退出去）
+        // 红点 = 关闭终端返回主界面（UI 关，会话由前台服务继续保活）
         findViewById<android.view.View>(R.id.btn_close).setOnClickListener { finish() }
-        // 绿点 = tmux 上下分屏（用户指定）。走 tmux 前缀键通道（C-b : 命令行），
-        // 即使前台是 Agent 的 TUI 也不会把命令打进它的输入框。默认单会话，分屏按需。
-        // ⚠️ 必须分段发送：tmux 的命令提示符是异步打开的，一次性灌入的字节会
-        // 穿透到前台应用（实测：整串发送时命令漏进了 bash 报 command not found）。
+        // 绿点 = tmux 上下分屏。分段发送（tmux 命令提示符异步打开，整串灌入会穿透）
         findViewById<android.view.View>(R.id.btn_split).setOnClickListener {
             if (!usesTmux) {
                 Toast.makeText(this, "当前会话未启用 tmux，无法分屏", Toast.LENGTH_SHORT).show()
             } else {
-                try {
-                    SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b + 命令提示符
+                runCatching {
+                    SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))
                     mainHandler.postDelayed({
-                        try {
+                        runCatching {
                             SessionManager.write("split-window -v".toByteArray(Charsets.UTF_8))
                             mainHandler.postDelayed({
-                                try {
-                                    SessionManager.write(byteArrayOf(0x0D))
-                                } catch (_: Throwable) { }
+                                runCatching { SessionManager.write(byteArrayOf(0x0D)) }
                             }, 150)
-                        } catch (_: Throwable) { }
+                        }
                     }, 150)
-                } catch (t: Throwable) {
-                    Toast.makeText(this, "分屏失败：${t.message}", Toast.LENGTH_SHORT).show()
-                }
+                }.onFailure { Toast.makeText(this, "分屏失败：${it.message}", Toast.LENGTH_SHORT).show() }
             }
         }
-        // 圆角悬浮窗口：子内容按窗口卡片轮廓裁剪（API 21+ 标准 outline 裁剪）
         findViewById<android.view.View>(R.id.window_card).clipToOutline = true
-        val web = findViewById<WebView>(R.id.terminal_web)
-        configureWebView(web)
-        webView = web
+
+        termView = findViewById(R.id.terminal_native)
+        termView.mClient = this
         wireKeyBar()
-        web.loadUrl("file:///android_asset/terminal/index.html")
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun configureWebView(web: WebView) {
-        web.settings.javaScriptEnabled = true
-        // 仅用于加载 APK 内置 assets；不加载任何远程页面
-        web.settings.allowFileAccess = true
-        // 屏蔽系统字体缩放，保证终端等宽网格稳定
-        web.settings.textZoom = 100
-        web.setBackgroundColor(android.graphics.Color.WHITE)
-        web.addJavascriptInterface(makeBridge(), "AndroidBridge")
+    /** 回退 shell 活跃标记：fallback 下不注入 autocmd（命令会打进系统 sh） */
+    private var fallbackActive = false
+
+    override fun onResume() {
+        super.onResume()
+        ensureStartedAndAttach()
+    }
+
+    /** 会话存活 → 仅 attach（引擎自动重排恢复画面）；否则启动新会话。安装后复用。 */
+    private fun ensureStartedAndAttach() {
+        if (!SessionManager.isAlive()) {
+            val plan = SessionManager.start(this)
+            usesTmux = plan.usesTmux
+            SessionManager.usesTmux = plan.usesTmux
+            fallbackActive = plan.isFallback
+            toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
+        } else {
+            usesTmux = SessionManager.usesTmux
+            fallbackActive = false
+            toolbarTitle?.text = "证道 — Debian 13.7 · bash"
+        }
+        // 视尺寸就绪后 attach：首次 attach 触发进程 spawn（新会话）或重排恢复（旧会话）
+        termView.post {
+            SessionManager.session?.let { if (termView.mTermSession !== it) termView.attachSession(it) }
+            // 回退 shell 不注入 autocmd（命令会打进系统 sh）——保留待 Debian 会话就绪时注入
+            if (!fallbackActive) injectPendingAutocmd()
+        }
+        termView.requestFocus()
+    }
+
+    /** 注入待执行命令。⚠️ attach/fresh 两条路径都要走，否则点[安装]进终端无反应。 */
+    private fun injectPendingAutocmd() {
+        if (fallbackActive) return
+        val cmd = pendingAutocmd ?: return
+        pendingAutocmd = null
+        if (usesTmux) {
+            // tmux 会话可能正跑着 Agent 的 TUI——命令走 tmux 命令提示符开新窗口执行，
+            // 不打进 TUI 的输入框。分段发送（提示符异步打开，整串灌入会穿透）。
+            runCatching {
+                SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b :
+                mainHandler.postDelayed({
+                    runCatching {
+                        SessionManager.write("new-window".toByteArray(Charsets.UTF_8))
+                        mainHandler.postDelayed({
+                            runCatching {
+                                SessionManager.write(byteArrayOf(0x0D))
+                                SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8))
+                            }
+                        }, 150)
+                    }
+                }, 150)
+            }
+        } else {
+            SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8))
+        }
+        // 一键安装：登记「安装中」，首页卡片轮询文件出现后自动转 [启动]
+        intent?.getStringExtra("agent_id")?.takeIf { it.isNotBlank() }?.let { aid ->
+            AgentRepository.markInstalling(this, aid)
+        }
+    }
+
+    /** 轻量网络预检（异步，不阻塞）：npmjs ping 不通 → 键入一行代理提示。 */
+    private fun networkPreCheck() {
+        Thread {
+            val ok = try {
+                val c = java.net.URL("https://registry.npmjs.org/-/ping").openConnection()
+                    as java.net.HttpURLConnection
+                c.connectTimeout = 5000; c.readTimeout = 5000
+                val r = c.responseCode in 200..299
+                runCatching { c.inputStream.close() }
+                r
+            } catch (_: Throwable) { false }
+            if (!ok) {
+                SessionManager.write("echo '[网络] ⚠️ 检测失败：请确认代理已开启，并在分应用代理中勾选「证道」'\n".toByteArray(Charsets.UTF_8))
+            }
+        }.start()
     }
 
     /** 快捷键条：固定序列直发；CTRL/SHIFT 为粘滞键，修饰下一次输入（设计文档 §7）。 */
@@ -137,7 +193,7 @@ class TerminalActivity : ComponentActivity() {
             R.id.key_slash to "/",
         )
         for ((id, seq) in sequences) {
-            findViewById<TextView>(id)?.setOnClickListener { sendKey(seq) }
+            findViewById<TextView>(id)?.setOnClickListener { SessionManager.write(seq) }
         }
         // 粘贴：读系统剪贴板直写会话（移动端选择复制不便，粘贴是高频需求）
         findViewById<TextView>(R.id.key_paste)?.setOnClickListener {
@@ -145,7 +201,7 @@ class TerminalActivity : ComponentActivity() {
                 as android.content.ClipboardManager
             val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
             if (text.isNotEmpty()) {
-                writeInput(text)
+                SessionManager.write(text)
                 Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
@@ -153,7 +209,7 @@ class TerminalActivity : ComponentActivity() {
         }
         findViewById<TextView>(R.id.key_tab)?.setOnClickListener {
             // SHIFT+TAB = Backtab（\u001b[Z），Claude Code 的模式切换依赖它
-            sendKey(if (stickyShift) "\u001b[Z" else "\t")
+            SessionManager.write(if (stickyShift) "\u001b[Z" else "\t")
             if (stickyShift) clearSticky(ctrl = false, shift = true)
         }
         ctrlButton?.setOnClickListener {
@@ -164,11 +220,6 @@ class TerminalActivity : ComponentActivity() {
             stickyShift = !stickyShift
             refreshStickyUi()
         }
-    }
-
-    /** 发送固定按键序列（粘滞 SHIFT 仅对 TAB 有特殊语义）。 */
-    private fun sendKey(raw: String) {
-        SessionManager.write(raw)
     }
 
     private fun clearSticky(ctrl: Boolean, shift: Boolean) {
@@ -184,124 +235,73 @@ class TerminalActivity : ComponentActivity() {
         shiftButton?.setTextColor(if (stickyShift) active else idle)
     }
 
-    private fun makeBridge(): TerminalBridge = TerminalBridge(
-        onReady = { cols, rows ->
-            mainHandler.post { ensureSession(cols, rows) }
-        },
-        onInput = { b64 ->
-            mainHandler.post {
-                try {
-                    var text = String(Base64.decode(b64, Base64.NO_WRAP), Charsets.UTF_8)
-                    // 粘滞 CTRL：作用于下一个单字符输入（Ctrl+字母 = 0x01–0x1a 控制码）
-                    if (stickyCtrl && text.length == 1) {
-                        val lower = Character.toLowerCase(text[0])
-                        if (lower.code in 97..122) {
-                            text = (lower.code - 96).toChar().toString()
-                            clearSticky(ctrl = true, shift = false)
-                        }
-                    }
-                    SessionManager.write(text)
-                } catch (t: Throwable) {
-                    postToWeb("[输入处理失败: ${t.message}]\r\n".toByteArray(Charsets.UTF_8))
-                }
-            }
-        },
-        onResize = { cols, rows ->
-            mainHandler.post { SessionManager.resize(cols, rows) }
-        },
-    )
-
-    /** 首次就绪时启动会话（会话归 SessionManager 持有，M2）；重进视图则挂回并强制 tmux 重绘。 */
-    private fun ensureSession(cols: Int, rows: Int) {
-        if (cols <= 0 || rows <= 0) return
-        lastCols = cols
-        lastRows = rows
-
-        // 会话已存活（UI 关闭过 / 通知栏跳回）：只做 attach + tmux 重绘，绝不重启
-        if (SessionManager.isAlive()) {
-            usesTmux = SessionManager.usesTmux
-            attachSink()
-            if (usesTmux) {
-                // 先缩后放：pty 尺寸变化触发 tmux 客户端 SIGWINCH，全量重绘当前画面
-                SessionManager.resize(cols - 1, rows)
-                mainHandler.postDelayed({ SessionManager.resize(cols, rows) }, 150)
-            } else {
-                SessionManager.resize(cols, rows)
-            }
-            toolbarTitle?.text = "证道 — Debian 13.7 · bash"
-            val mins = if (SessionManager.startedAtMs > 0)
-                (System.currentTimeMillis() - SessionManager.startedAtMs) / 60000 else 0
-            postToWeb("[证道] 已恢复会话（后台运行 $mins 分钟）\r\n".toByteArray(Charsets.UTF_8))
-            // 一键安装/启动（接续修复）：会话存活时命令同样要送达，否则从主页点的
-            // 安装静默丢失。回退 shell 不注入（会打进系统 sh）——保留待环境装好
-            // 后重开会话时注入。等 400ms：先让上面的 tmux 重绘落定再开新窗口。
-            if (!SessionManager.isFallback) {
-                val cmd = pendingAutocmd
-                if (cmd != null) {
-                    pendingAutocmd = null
-                    if (usesTmux) {
-                        // tmux 会话可能正跑着 Agent 的 TUI——命令走 tmux 命令提示符
-                        // 开新窗口执行，不打进 TUI 的输入框。必须分段发送（同绿点
-                        // 分屏：提示符异步打开，整串灌入会穿透到前台应用）。
-                        try {
-                            SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b :
-                            mainHandler.postDelayed({
-                                try {
-                                    SessionManager.write("new-window".toByteArray(Charsets.UTF_8))
-                                    mainHandler.postDelayed({
-                                        try {
-                                            SessionManager.write(byteArrayOf(0x0D))
-                                            // 新窗口 bash 就绪前写入的字节缓在 pty 里，不丢
-                                            postToWeb("[证道] 新窗口执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
-                                            runCatching { SessionManager.write(cmd + "\n") }
-                                        } catch (_: Throwable) { }
-                                    }, 150)
-                                } catch (_: Throwable) { }
-                            }, 150)
-                        } catch (t: Throwable) {
-                            Toast.makeText(this, "命令注入失败：${t.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        postToWeb("[证道] 执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
-                        runCatching { SessionManager.write(cmd + "\n") }
-                    }
-                }
-            }
-            return
-        }
-
-        val plan = SessionManager.start(this, cols, rows)
-        usesTmux = plan.usesTmux
-        SessionManager.usesTmux = plan.usesTmux
-        toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
-        attachSink()
-        SessionManager.onSessionDied = { code ->
-            mainHandler.post {
-                postToWeb("[会话已结束 code=$code]\r\n".toByteArray(Charsets.UTF_8))
-            }
-        }
-        postToWeb(plan.banner.toByteArray(Charsets.UTF_8))
-        // 回退 shell 不执行 autocmd（命令会打进系统 sh）——保留待环境安装完成、
-        // ensureSession 重开真会话时再注入。
-        if (!plan.isFallback) {
-            pendingAutocmd?.let { cmd ->
-                pendingAutocmd = null
-                postToWeb("[证道] 执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
-                mainHandler.post { SessionManager.write(cmd + "\n") }
-            }
-        }
-        if (plan.isFallback) promptInstallOnce()
+    // ── TerminalViewClient（视图层回调；粘滞键供硬件键盘与 IME 共用）──
+    override fun onScale(scale: Float): Float = scale
+    override fun onSingleTapUp(e: android.view.MotionEvent) { termView.requestFocus() }
+    override fun shouldBackButtonBeMappedToEscape(): Boolean = false
+    override fun shouldEnforceCharBasedInput(): Boolean = true  // 中文 IME 组合输入需要
+    override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
+    override fun isTerminalViewSelected(): Boolean = true
+    override fun copyModeChanged(copyMode: Boolean) {}
+    override fun onKeyDown(keyCode: Int, e: KeyEvent?, session: TerminalSession?): Boolean {
+        // 粘滞 CTRL 对硬件键盘同样生效
+        return false
     }
-
-    /** 把本视图接到 SessionManager 的会话输出口（detach 后重挂靠 tmux 重绘恢复画面）。 */
-    private fun attachSink() {
-        SessionManager.attach { bytes -> postToWeb(bytes) }
+    override fun onKeyUp(keyCode: Int, e: KeyEvent?): Boolean = false
+    override fun onLongPress(event: android.view.MotionEvent?): Boolean = false  // 默认=文字选择
+    override fun readControlKey(): Boolean = stickyCtrl
+    override fun readAltKey(): Boolean = false
+    override fun readShiftKey(): Boolean = stickyShift
+    override fun readFnKey(): Boolean = false
+    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean {
+        // 粘滞 CTRL：作用于下一个单字符输入（Ctrl+字母 = 0x01–0x1a）
+        if (stickyCtrl && codePoint in 97..122) {
+            session?.writeCodePoint(false, codePoint - 96)
+            clearSticky(ctrl = true, shift = false)
+            return true
+        }
+        return false
     }
+    override fun onEmulatorSet() {
+        // 进程 spawn 完成（新会话）：注入一键安装/启动命令 + 网络预检
+        mainHandler.post {
+            if (!fallbackActive) networkPreCheck()
+            injectPendingAutocmd()
+        }
+    }
+    override fun logError(tag: String, message: String) { RunLog.log("E: $message") }
+    override fun logWarn(tag: String, message: String) { RunLog.log("W: $message") }
+    override fun logInfo(tag: String, message: String) {}
+    override fun logDebug(tag: String, message: String) {}
+    override fun logVerbose(tag: String, message: String) {}
+    override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {
+        RunLog.log("E: $message ${e.message}")
+    }
+    override fun logStackTrace(tag: String, e: Exception) { RunLog.log("E: ${e.message}") }
+
+    // ── TerminalSessionClient（引擎回调）──
+    override fun onTextChanged(changedSession: TerminalSession) {
+        // Termux 引擎自动驱动视图重绘；此处仅保留钩子
+    }
+    override fun onTitleChanged(changedSession: TerminalSession) {}
+    override fun onSessionFinished(finishedSession: TerminalSession) {
+        val code = runCatching { finishedSession.getExitStatus() }.getOrDefault(-1)
+        runOnUiThread {
+            Toast.makeText(this, "会话已退出（code=$code）", Toast.LENGTH_LONG).show()
+        }
+    }
+    override fun onCopyTextToClipboard(session: TerminalSession, text: String) {}
+    override fun onPasteTextFromClipboard(session: TerminalSession?) {}
+    override fun onBell(session: TerminalSession) {}
+    override fun onColorsChanged(session: TerminalSession) {}
+    override fun onTerminalCursorStateChange(state: Boolean) {}
+    override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
+    override fun getTerminalCursorStyle(): Int = 0  // 0=块状（TUI 应用会自行覆盖样式）
+    // ── 安装流程（进度以 Toast 呈现里程碑；明细在 RunLog）──
 
     /**
      * 本地归档自动安装（用户需求：Download/证道 里的安装包持久存在时，
-     * 重装 App 后直接本地安装，不再弹下载）。
-     * 返回本地归档路径；存储权限未授权或文件不存在时返回 null。
+     * 重装 App 后直接本地安装，不再弹下载）。返回归档路径或 null。
      */
     private fun findLocalArchive(): File? {
         if (!ProotLauncher.storageGranted(this)) return null
@@ -314,7 +314,7 @@ class TerminalActivity : ComponentActivity() {
         val local = findLocalArchive()
         if (local != null) {
             RunLog.log("检测到本地归档，自动安装: ${local.path}")
-            postToWeb("[证道] 检测到本地安装包，直接安装（无需下载）\r\n".toByteArray(Charsets.UTF_8))
+            Toast.makeText(this, "检测到本地安装包，直接安装", Toast.LENGTH_SHORT).show()
             startInstallFromFile(local)
             return
         }
@@ -328,17 +328,11 @@ class TerminalActivity : ComponentActivity() {
             AlertDialog.Builder(this)
                 .setTitle("安装运行环境（Debian 13.7）")
                 .setMessage(msg)
-                .setPositiveButton("开始下载") { _, _ ->
-                    startInstall(ProotLauncher.DEFAULT_ROOTFS_URL)
-                }
+                .setPositiveButton("开始下载") { _, _ -> startInstall(ProotLauncher.DEFAULT_ROOTFS_URL) }
                 .setNeutralButton("从文件选择") { _, _ ->
-                    // SAF 文件选择：全安卓版本可用、零权限（安卓 16 上 /sdcard 原始路径
-                    // 对 target 28 应用不可达，实测 2026-10-04；SAF 是唯一通用本地通道）
                     try {
                         startActivityForResult(
-                            android.content.Intent(
-                                android.content.Intent.ACTION_OPEN_DOCUMENT
-                            ).apply {
+                            android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
                                 addCategory(android.content.Intent.CATEGORY_OPENABLE)
                                 type = "*/*"
                             }, 2001
@@ -355,11 +349,9 @@ class TerminalActivity : ComponentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 2001 && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
-            // 持久化读取授权（本会话与重启后均可再读该文件）
             try {
                 contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (_: Throwable) {
             }
@@ -367,249 +359,135 @@ class TerminalActivity : ComponentActivity() {
         }
     }
 
-    /** SAF 选中归档：拷入公共缓存 → 尽力校验 → 解压 → 切 bash。压缩包保留（重装免下载）。 */
+    private fun installStatus(text: String) {
+        RunLog.log(text)
+        runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
+    }
+
+    /** SAF 选中归档：拷入公共缓存 → 校验 → 解压 → 切 Debian。压缩包保留（重装免下载）。 */
     private fun installFromSafUri(uri: android.net.Uri) {
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
             try {
-                postToWeb("[证道] 从本地文件安装: $uri\r\n".toByteArray(Charsets.UTF_8))
-                val archive = File(
-                    com.example.zhengdao.rootfs.RootfsCache.dir(appContext),
-                    "debian-13.7-base-arm64.tar.zst"
-                )
+                installStatus("从本地文件安装…")
+                val archive = File(com.example.zhengdao.rootfs.RootfsCache.dir(appContext), "debian-13.7-base-arm64.tar.zst")
                 archive.delete()
                 contentResolver.openInputStream(uri)?.use { input ->
                     archive.outputStream().use { input.copyTo(it) }
                 } ?: throw IllegalStateException("无法读取所选文件")
-                RunLog.log("SAF 归档已拷入: ${archive.length()} bytes")
-                postToWeb("本地包读取完成（${archive.length() / (1024 * 1024)} MB），开始解压\r\n".toByteArray(Charsets.UTF_8))
+                installStatus("本地包读取完成（${archive.length() / (1024 * 1024)} MB），开始解压")
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                var lastReported = ""
-                RootfsInstaller.install(appContext, archive) { path ->
-                    if (path.contains("/bin/") || path.hashCode() % 300 == 0) {
-                        if (path != lastReported) {
-                            lastReported = path
-                            postToWeb("正在解压: $path\r\n".toByteArray(Charsets.UTF_8))
-                        }
-                    }
-                }
+                RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
-                postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
-                postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
-                SessionManager.kill(this@TerminalActivity)
-                mainHandler.post { ensureSession(lastCols, lastRows) }
+                installStatus("安装完成！安装包已保留在缓存（重装免下载）")
+                relaunchDebian()
             } catch (t: Throwable) {
-                postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试\r\n".toByteArray(Charsets.UTF_8))
+                installStatus("安装失败：${t.message}（重进 App 可再试）")
             } finally {
                 installing.set(false)
             }
         }.start()
     }
 
-    /** 从本地归档安装：归档已在缓存目录则直接用，否则拷入 → 校验 → 解压 → 切 bash。压缩包保留。 */
+    /** 从本地归档安装：已在缓存则直接用，否则拷入 → 校验 → 解压 → 切 Debian。压缩包保留。 */
     private fun startInstallFromFile(local: File) {
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
             try {
-                postToWeb("[证道] 使用本地安装包: ${local.path}\r\n".toByteArray(Charsets.UTF_8))
-                val cacheCopy = File(
-                    com.example.zhengdao.rootfs.RootfsCache.dir(appContext), local.name
-                )
+                val cacheCopy = File(com.example.zhengdao.rootfs.RootfsCache.dir(appContext), local.name)
                 val archive = if (local.canonicalPath == cacheCopy.canonicalPath) local else run {
                     if (!cacheCopy.isFile || cacheCopy.length() != local.length()) {
-                        postToWeb("复制本地安装包到缓存（约 1 分钟）…\r\n".toByteArray(Charsets.UTF_8))
+                        installStatus("复制本地安装包到缓存（约 1 分钟）…")
                         local.copyTo(cacheCopy, overwrite = true)
                     }
                     cacheCopy
                 }
-                // 完整性校验：优先同目录 .sha256 边车；无则跳过并明示（本地文件由用户放置）
                 val sidecar = File(local.parentFile, local.name + ".sha256")
                 val expectedSha = when {
                     sidecar.isFile -> sidecar.readText().trim()
                     else -> RootfsDownloader.fetchText(ProotLauncher.DEFAULT_ROOTFS_URL + ".sha256")
                 }
                 if (expectedSha.isNullOrBlank()) {
-                    postToWeb("[提示] 未找到校验文件，跳过完整性校验\r\n".toByteArray(Charsets.UTF_8))
+                    installStatus("未找到校验文件，跳过完整性校验")
                 } else {
                     RootfsDownloader.verifySha256(archive, expectedSha)
-                    postToWeb("SHA256 校验通过\r\n".toByteArray(Charsets.UTF_8))
+                    installStatus("SHA256 校验通过")
                 }
-                postToWeb("开始解压（解压约需几分钟，请勿离开）\r\n".toByteArray(Charsets.UTF_8))
+                installStatus("开始解压（约需几分钟，请勿离开）")
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                var lastReported = ""
-                RootfsInstaller.install(appContext, archive) { path ->
-                    if (path.contains("/bin/") || path.hashCode() % 300 == 0) {
-                        if (path != lastReported) {
-                            lastReported = path
-                            postToWeb("正在解压: $path\r\n".toByteArray(Charsets.UTF_8))
-                        }
-                    }
-                }
+                RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
-                postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
-                postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
-                SessionManager.kill(this@TerminalActivity)
-                mainHandler.post { ensureSession(lastCols, lastRows) }
+                installStatus("安装完成！安装包已保留在缓存")
+                relaunchDebian()
             } catch (t: Throwable) {
-                postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试\r\n".toByteArray(Charsets.UTF_8))
+                installStatus("安装失败：${t.message}（重进 App 可再试）")
             } finally {
                 installing.set(false)
             }
         }.start()
     }
 
-    /** 高级入口：自定义下载地址（局域网直传 / 备用镜像）。普通用户不会用到。 */
-    private fun showCustomUrlDialog() {
-        val input = EditText(this)
-        input.setSingleLine(true)
-        input.hint = "RootFS 压缩包直链（高级选项）"
-        AlertDialog.Builder(this)
-            .setTitle("自定义下载地址")
-            .setMessage("一般用户无需填写。用于局域网直传或备用镜像，例如 http://192.168.2.3:8000/debian-13.7-base-arm64.tar.zst")
-            .setView(input)
-            .setPositiveButton("安装") { _, _ ->
-                val url = input.text.toString().trim()
-                if (url.isEmpty()) {
-                    postToWeb("[证道] 未输入下载地址\r\n".toByteArray(Charsets.UTF_8))
-                } else {
-                    startInstall(url)
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
-    /** 下载 → SHA256 校验 → 解压（原子）→ 杀掉回退会话 → 以 Debian bash 重开会话。压缩包落公共缓存并保留。 */
+    /** 下载 → SHA256 校验 → 解压（原子）→ 切 Debian。压缩包落公共缓存并保留。 */
     private fun startInstall(url: String) {
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
             try {
-                postToWeb("[证道] 开始下载运行环境\r\n来自: $url\r\n".toByteArray(Charsets.UTF_8))
-                // 公共缓存（Download/zhengdao/cache）：重装 App 不丢，装完保留
+                installStatus("开始下载运行环境（断点续传）…")
                 val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(appContext, url)
-
-                // 完整性校验值：优先抓取同目录 .sha256 边车文件；抓不到则明示跳过
-                // （正式发布后由 ed25519 验签的 manifest 提供校验值，见设计文档 §6 安全闸）
                 val expectedSha = RootfsDownloader.fetchText("$url.sha256")
-                if (expectedSha.isNullOrBlank()) {
-                    postToWeb("[警告] 未获取到 .sha256 边车文件，本次下载跳过完整性校验\r\n".toByteArray(Charsets.UTF_8))
-                }
-
-                // 重试不浪费：已有完整包且 SHA256 通过 → 跳过下载直接解压（环境缓存复用）
                 var needDownload = true
                 if (archive.isFile && !expectedSha.isNullOrBlank()) {
-                    try {
+                    runCatching {
                         RootfsDownloader.verifySha256(archive, expectedSha)
                         needDownload = false
-                        postToWeb("检测到已下载的完整安装包，跳过下载\r\n".toByteArray(Charsets.UTF_8))
-                    } catch (t: Throwable) {
-                        postToWeb("已有安装包校验未通过，重新下载\r\n".toByteArray(Charsets.UTF_8))
+                        installStatus("检测到已下载的完整安装包，跳过下载")
                     }
                 }
                 if (needDownload) {
-                    archive.delete()
-                    RootfsDownloader.download(
-                        urls = listOf(url),
-                        dest = archive,
-                        shaUrl = "$url.sha256",
-                    ) { done, total ->
+                    var lastPercent = -1L
+                    RootfsDownloader.download(urls = listOf(url), dest = archive, shaUrl = "$url.sha256") { done, total ->
                         if (total > 0) {
-                            val percent = (done * 100 / total).coerceIn(0, 100)
-                            val mbDone = done / (1024 * 1024)
-                            val mbTotal = total / (1024 * 1024)
-                            postToWeb("下载中: ${percent}% (${mbDone}/${mbTotal} MB)\r\n".toByteArray(Charsets.UTF_8))
+                            val percent = ((done * 100 / total).coerceIn(0, 100) / 20) * 20
+                            if (percent != lastPercent) {
+                                lastPercent = percent
+                                installStatus("下载中 $percent%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB）")
+                            }
                         }
                     }
                 } else {
-                    postToWeb("检测到已下载的完整安装包，跳过下载\r\n".toByteArray(Charsets.UTF_8))
+                    installStatus("检测到已下载的完整安装包，跳过下载")
                 }
-                postToWeb("开始校验并解压（解压约需几分钟，请勿离开）\r\n".toByteArray(Charsets.UTF_8))
-
+                installStatus("开始解压（约需几分钟，请勿离开）")
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                var lastReported = ""
-                RootfsInstaller.install(appContext, archive) { path ->
-                    // 节流：每 300 个条目或遇到 /bin/ 关键路径时打一行，避免刷屏
-                    if (path.contains("/bin/") || path.hashCode() % 300 == 0) {
-                        if (path != lastReported) {
-                            lastReported = path
-                            postToWeb("正在解压: $path\r\n".toByteArray(Charsets.UTF_8))
-                        }
-                    }
-                }
+                RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
-
-                postToWeb("[证道] 安装完成！安装包已保留在缓存（重装免下载）\r\n".toByteArray(Charsets.UTF_8))
-                postToWeb("[证道] 正在切换到 Debian 13.7 (bash)…\r\n".toByteArray(Charsets.UTF_8))
-                SessionManager.kill(this@TerminalActivity)
-                mainHandler.post { ensureSession(lastCols, lastRows) }
+                installStatus("安装完成！安装包已保留在缓存")
+                relaunchDebian()
             } catch (t: Throwable) {
-                postToWeb("[安装失败] ${t.message}\r\n重进 App 可再次尝试安装\r\n".toByteArray(Charsets.UTF_8))
+                installStatus("安装失败：${t.message}（重进 App 可再试）")
             } finally {
                 installing.set(false)
             }
         }.start()
     }
 
-    // ── 输出合并（性能）：读取线程每块直接 evaluateJavascript 会把主线程排队淹没
-    //（TUI 全屏重绘尤其凶），打字回显排在长队后面 = 迟钝。这里把 ~16ms 窗口内到达
-    // 的块攒成一次调用，JS 桥开销从「每块一次」降到「每帧一次」（8ms 窗口≈120fps 跟手）。
-    private val pendingOut = java.io.ByteArrayOutputStream()
-    private val outLock = Any()
-    private val outFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
-
-    /** 键盘/粘贴输入统一入口：合并后写入会话。 */
-    private fun writeInput(text: String) {
-        synchronized(inLock) { pendingIn.append(text) }
-        if (inFlushQueued.compareAndSet(false, true)) {
-            mainHandler.post {
-                inFlushQueued.set(false)
-                val batch = synchronized(inLock) {
-                    val t = pendingIn.toString()
-                    pendingIn.setLength(0)
-                    t
-                }
-                if (batch.isNotEmpty()) {
-                    runCatching { SessionManager.write(batch) }
-                        .onFailure {
-                            postToWeb("[输入处理失败: ${it.message}]\r\n".toByteArray(Charsets.UTF_8))
-                        }
-                }
-            }
-        }
-    }
-
-    /** 把输出字节推给 xterm.js（base64 编码；evaluateJavascript 必须在主线程）。 */
-    private fun postToWeb(bytes: ByteArray) {
-        if (webView == null) return
-        synchronized(outLock) { pendingOut.write(bytes) }
-        if (outFlushQueued.compareAndSet(false, true)) {
-            mainHandler.postDelayed({
-                outFlushQueued.set(false)
-                val wvNow = webView ?: return@postDelayed
-                val chunk = synchronized(outLock) {
-                    val arr = pendingOut.toByteArray()
-                    pendingOut.reset()
-                    arr
-                }
-                if (chunk.isNotEmpty()) {
-                    val b64 = Base64.encodeToString(chunk, Base64.NO_WRAP)
-                    wvNow.evaluateJavascript("window.termWrite('$b64')", null)
-                }
-            }, 8)
+    /** 安装完成后切换到 Debian：杀旧会话（含回退 shell）→ 重开（自动 spawn 新 Debian）。 */
+    private fun relaunchDebian() {
+        SessionManager.kill(this)
+        runOnUiThread {
+            Toast.makeText(this, "正在切换到 Debian 13.7 (bash)…", Toast.LENGTH_SHORT).show()
+            ensureStartedAndAttach()
         }
     }
 
     override fun onDestroy() {
-        SessionManager.detach()
-        webView?.destroy()
-        webView = null
+        // M2：会话归 SessionManager 持有，UI 销毁不杀会话（前台服务继续保活）
         super.onDestroy()
     }
 
-    /** 内存看护（用户指定）：退后台释放空闲 HTTP 连接；WebView/Chromium 由系统自动管理。 */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
