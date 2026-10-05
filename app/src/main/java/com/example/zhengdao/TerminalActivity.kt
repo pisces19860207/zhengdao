@@ -56,6 +56,8 @@ class TerminalActivity : ComponentActivity() {
     private val installing = AtomicBoolean(false)
     /** 当前会话是否由 tmux 保持（绿点分屏按钮的前置条件） */
     private var usesTmux = false
+    /** 待执行的自动命令（一键安装/启动）；attach 与 fresh 两条路径都要注入 */
+    private var pendingAutocmd: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +66,10 @@ class TerminalActivity : ComponentActivity() {
         // 清理上次中断的解压残局（解压原子性，设计文档 §6）
         RootfsInstaller.cleanupPartial(applicationContext)
         RunLog.init(applicationContext)
+        // 只在全新启动读取（Activity 异常重建会带原 intent，避免同一命令重跑两遍）
+        if (savedInstanceState == null) {
+            pendingAutocmd = intent?.getStringExtra("autocmd")?.takeIf { it.isNotBlank() }
+        }
         setContentView(R.layout.activity_main)
 
         toolbarTitle = findViewById(R.id.toolbar_title)
@@ -226,6 +232,41 @@ class TerminalActivity : ComponentActivity() {
             val mins = if (SessionManager.startedAtMs > 0)
                 (System.currentTimeMillis() - SessionManager.startedAtMs) / 60000 else 0
             postToWeb("[证道] 已恢复会话（后台运行 $mins 分钟）\r\n".toByteArray(Charsets.UTF_8))
+            // 一键安装/启动（接续修复）：会话存活时命令同样要送达，否则从主页点的
+            // 安装静默丢失。回退 shell 不注入（会打进系统 sh）——保留待环境装好
+            // 后重开会话时注入。等 400ms：先让上面的 tmux 重绘落定再开新窗口。
+            if (!SessionManager.isFallback) {
+                val cmd = pendingAutocmd
+                if (cmd != null) {
+                    pendingAutocmd = null
+                    if (usesTmux) {
+                        // tmux 会话可能正跑着 Agent 的 TUI——命令走 tmux 命令提示符
+                        // 开新窗口执行，不打进 TUI 的输入框。必须分段发送（同绿点
+                        // 分屏：提示符异步打开，整串灌入会穿透到前台应用）。
+                        try {
+                            SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b :
+                            mainHandler.postDelayed({
+                                try {
+                                    SessionManager.write("new-window".toByteArray(Charsets.UTF_8))
+                                    mainHandler.postDelayed({
+                                        try {
+                                            SessionManager.write(byteArrayOf(0x0D))
+                                            // 新窗口 bash 就绪前写入的字节缓在 pty 里，不丢
+                                            postToWeb("[证道] 新窗口执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
+                                            runCatching { SessionManager.write(cmd + "\n") }
+                                        } catch (_: Throwable) { }
+                                    }, 150)
+                                } catch (_: Throwable) { }
+                            }, 150)
+                        } catch (t: Throwable) {
+                            Toast.makeText(this, "命令注入失败：${t.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        postToWeb("[证道] 执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
+                        runCatching { SessionManager.write(cmd + "\n") }
+                    }
+                }
+            }
             return
         }
 
@@ -240,9 +281,14 @@ class TerminalActivity : ComponentActivity() {
             }
         }
         postToWeb(plan.banner.toByteArray(Charsets.UTF_8))
-        intent.getStringExtra("autocmd")?.takeIf { it.isNotBlank() }?.let { cmd ->
-            postToWeb("[证道] 执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
-            mainHandler.post { SessionManager.write(cmd + "\n") }
+        // 回退 shell 不执行 autocmd（命令会打进系统 sh）——保留待环境安装完成、
+        // ensureSession 重开真会话时再注入。
+        if (!plan.isFallback) {
+            pendingAutocmd?.let { cmd ->
+                pendingAutocmd = null
+                postToWeb("[证道] 执行: $cmd\r\n".toByteArray(Charsets.UTF_8))
+                mainHandler.post { SessionManager.write(cmd + "\n") }
+            }
         }
         if (plan.isFallback) promptInstallOnce()
     }

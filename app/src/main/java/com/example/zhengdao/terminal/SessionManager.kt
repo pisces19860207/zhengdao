@@ -32,6 +32,10 @@ object SessionManager {
     @Volatile
     var usesTmux: Boolean = false
 
+    /** 当前会话是否为回退系统 shell（无 Debian 环境）。attach 路径据此拦下 autocmd 注入 */
+    @Volatile
+    var isFallback: Boolean = false
+
     /** 会话死亡回调（前台 UI 订阅以刷新视图；可能从读取线程触发，已切主线程） */
     var onSessionDied: ((Int) -> Unit)? = null
 
@@ -52,6 +56,7 @@ object SessionManager {
                 if (session === s) {
                     session = null
                     startedAtMs = 0L
+                    isFallback = false
                     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                         .edit().remove("started_at").apply()
                     SessionService.stop(context)
@@ -62,6 +67,7 @@ object SessionManager {
         }
         session = s
         startedAtMs = System.currentTimeMillis()
+        isFallback = plan.isFallback
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong("started_at", startedAtMs).apply()
         SessionService.start(context)
@@ -99,6 +105,7 @@ object SessionManager {
         val s = session ?: return
         session = null
         startedAtMs = 0L
+        isFallback = false
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().remove("started_at").apply()
         s.kill()
