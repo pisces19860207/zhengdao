@@ -10,7 +10,13 @@ captures
 app/build/
 build/
 rootfs/out/
+# 全局忽略 PNG（防止截图、临时图、生成产物入库）
 *.png
+# ⚠️ res/ 下的图片是应用资源本身，必须进版本库。
+# 此处豁免曾在 19dae99 修复过 *.png 误伤 ic_launcher_foreground 的问题，勿删。
+!app/src/main/res/**/*.png
+!app/src/main/res/**/*.webp
+!app/src/main/res/**/*.xml
 u.xml
 postinstall.mjs
 binls.txt
