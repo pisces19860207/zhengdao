@@ -103,6 +103,22 @@ fun SettingsScreen() {
         }
     }
 
+    // ── 权限（存储 + 网络自检）──
+    fun storageGrantedNow(): Boolean =
+        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_EXTERNAL_STORAGE) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED &&
+        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    var storageOk by remember { mutableStateOf(storageGrantedNow()) }
+    var permHint by remember { mutableStateOf<String?>(null) }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        storageOk = storageGrantedNow()
+        permHint = if (storageOk) "已授权" else "系统未放行——点「去系统设置」手动开启（部分系统会把弹窗静默掉）"
+    }
+    var netChecking by remember { mutableStateOf(false) }
+    var netMsg by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(Unit) {
         info = withContext(Dispatchers.IO) { SystemInfoProvider.collect(ctx) }
         val sizes = withContext(Dispatchers.IO) {
@@ -129,6 +145,95 @@ fun SettingsScreen() {
             InfoRow("rootfs（系统层）", "$rootfsMb MB")
             InfoRow("home（登录态与配置）", "$homeMb MB")
             InfoRow("cache（下载缓存）", "$cacheMb MB")
+        }
+
+        // ── 权限（存储读写 + 网络自检）──
+        // 存储：/sdcard 共享存储读写全靠 READ/WRITE 运行时授权（E-005 修正后的事实）
+        // 网络：INTERNET 为安装时权限系统自动授，无可引导项；用户真正会卡的是
+        //      代理 App 分应用没勾选证道——给一键自检代替空喊"网络权限"
+        SectionCard("权限") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("存储读写（共享存储 /sdcard）", style = MaterialTheme.typography.bodySmall)
+                if (storageOk) {
+                    Text("✅ 已授权", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
+                } else {
+                    TextButton(onClick = {
+                        permLauncher.launch(
+                            arrayOf(
+                                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                            )
+                        )
+                    }) { Text("授权") }
+                }
+            }
+            Text(
+                text = "Agent 读写手机文件（/sdcard）依赖此权限；缺失时终端里读写手机文件会全部失败。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!storageOk) {
+                Spacer(Modifier.height(4.dp))
+                permHint?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(4.dp))
+                }
+                TextButton(onClick = {
+                    runCatching {
+                        ctx.startActivity(
+                            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                        )
+                    }.onFailure { Toast.makeText(ctx, "打开失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                }) { Text("去系统设置") }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("网络访问", style = MaterialTheme.typography.bodySmall)
+                Text("✅ 自动授予", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
+            }
+            Text(
+                text = "INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(enabled = !netChecking, onClick = {
+                    netChecking = true
+                    netMsg = "检测中…"
+                    Thread {
+                        val msg = try {
+                            val t0 = System.currentTimeMillis()
+                            val conn = URL("https://registry.npmmirror.com/-/ping").openConnection() as HttpURLConnection
+                            conn.connectTimeout = 5000; conn.readTimeout = 5000
+                            val ok = conn.responseCode in 200..299
+                            runCatching { conn.inputStream.close() }
+                            val ms = System.currentTimeMillis() - t0
+                            if (ok) "✅ 网络可用（${ms}ms）" else "❌ 不通（HTTP ${conn.responseCode}）"
+                        } catch (t: Throwable) {
+                            "❌ 不通：${t.message}——检查网络，或在代理 App 分应用代理里勾选证道"
+                        }
+                        netMsg = msg
+                        netChecking = false
+                    }.start()
+                }) { Text(if (netChecking) "检测中…" else "网络自检") }
+            }
+            netMsg?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
 
         // ── 终端外观（字号 + 配色；下次进入终端时应用）──
