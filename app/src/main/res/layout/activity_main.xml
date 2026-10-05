@@ -73,11 +73,31 @@
             android:layout_height="1dp"
             android:background="#FFE0E0E0" />
 
-        <WebView
-            android:id="@+id/terminal_web"
+        <!-- 状态横幅：v3.9 起终端为原生 TerminalView，App 无法再像 xterm.js 那样
+             往终端里注入显示文本（写入 pty 会变成 shell 输入）。安装/下载/解压等
+             进度提示统一改由本横幅承载，关键节点另出 Toast，全部同步进 RunLog。 -->
+        <TextView
+            android:id="@+id/status_banner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFF4CE"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:textColor="#FF5C4300"
+            android:textSize="12sp"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
+        <com.termux.view.TerminalView
+            android:id="@+id/terminal_native"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
 
         <HorizontalScrollView
             android:id="@+id/key_bar"

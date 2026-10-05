@@ -88,5 +88,6 @@
 
 ## 许可
 
-第一方代码许可待定；内置 proot 组件基于上游 GPL 项目（proot-me/proot）编译，
+本项目第一方代码以 **GPL-3.0** 发布（因源码级聚合了 GPL 组件：Termux terminal-emulator /
+terminal-view v0.119.0-beta.3）。内置 proot 组件基于上游 GPL 项目（proot-me/proot）编译，
 作为独立可执行文件聚合分发。

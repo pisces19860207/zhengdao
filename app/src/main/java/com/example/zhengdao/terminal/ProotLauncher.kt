@@ -3,7 +3,8 @@
 //
 // 本文件只做一件事：按 proot 官方文档记载的通用参数，组装启动命令与环境变量。
 // 所有参数均为 proot 上游（proot-me/proot）文档公开的选项，语义见行内注释；
-// 进程创建与 IO 由 Pty.kt / pty.c（POSIX forkpty + execve 标准接口）完成。
+// 进程创建与 IO 由 Termux 官方 terminal-emulator 的 native 半边（libtermux.so）完成
+// （v3.9：自研 Pty.kt / pty.c 已随终端渲染层切换而退役删除，历史实现保留在 git 中）。
 package com.example.zhengdao.terminal
 
 import android.content.Context

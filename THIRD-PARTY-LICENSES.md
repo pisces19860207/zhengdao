@@ -50,3 +50,11 @@
 2. 若未来需要修改上述 GPL 组件的行为，必须 fork 其源码单独修改并公开，
    保持其独立分发，而不是把补丁合入本项目源码。
 3. 本文件与 PROVENANCE.md 共同构成项目的原创性合规基线，改动需经项目所有者确认。
+
+## Termux terminal-emulator / terminal-view / libtermux JNI
+
+- 来源：https://github.com/termux/termux-app （v0.119.0-beta.3，模块 terminal-emulator 与 terminal-view）
+- 许可证：GPL-3.0（源码级聚合，随本仓库分发，版权头保留）
+- 用途：终端模拟引擎（VT-100/xterm 状态机）与原生终端视图（替代 WebView/xterm.js 架构）
+- 修改：包内 R 引用改为宿主应用 R；textselection 把手资源并入宿主 res；其余未改动
+
