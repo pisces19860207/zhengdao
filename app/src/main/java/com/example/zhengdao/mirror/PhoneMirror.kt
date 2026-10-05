@@ -19,10 +19,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * 手机文件夹镜像（Plan B，2026-10-06）。
  *
- * 背景（诊断定论，见 commit d414dca）：目标设备（安卓16 / MagicOS 11）实测
- * targetSdk 28 的传统存储视图已失效——requestLegacyExternalStorage、sdcard_rw 组、
- * READ/WRITE 运行时授权全部就位后 FUSE 层依旧全拒，/sdcard 直连此路不通。
- * SAF 是内容提供器通道，不受存储模型演变影响，是 target 28 唯一稳定的共享存储通路。
+ * ⚠️ 定位更正（同日勘误 E-005，见 docs/ERRATA.md）：此前"/sdcard 直连不可用、
+ * SAF 是唯一通路"的结论源自 run-as 探针的方法论假象——run-as 的 SELinux 域
+ * （runas_app）被 FUSE 拒，不代表 App 真身（untrusted_app）。真身自 READ 帽子
+ * 摘除（d414dca）后 /sdcard 读写全通，本引擎**降级为备用方案**：个别 ROM 传统
+ * 视图异常时的兜底，平时无需配置。
  *
  * 语义（用户定稿）：
  * - **复制语义，不是挂载**：所选 SAF 文件夹 ↔ filesDir/phone-mirror（guest 内 /mnt/phone）；

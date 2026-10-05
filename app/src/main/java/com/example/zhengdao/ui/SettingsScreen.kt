@@ -308,14 +308,14 @@ fun SettingsScreen() {
         }
 
         // ── 手机文件夹同步（Plan B，2026-10-06）──
-        // 背景：/sdcard 直连在本机安卓16已不可用（诊断见 commit d414dca），
-        // SAF 是 target 28 唯一稳定的共享存储通路；镜像落点 guest /mnt/phone
-        SectionCard("手机文件夹同步") {
+        // 定位（E-005 勘误后）：备用方案。/sdcard 直连自 READ 帽子摘除（d414dca）
+        // 后读写全通，正常设备无需配置本项；个别 ROM 传统视图异常时的兜底
+        SectionCard("手机文件夹同步（备用）") {
             Text(
                 text = if (mirrorSelected) {
                     "已选定手机文件夹，镜像到 guest 的 /mnt/phone（Agent 在里面读写）"
                 } else {
-                    "未选择。选定后 Agent 可在 /mnt/phone 里读写你手机上的文件。"
+                    "未选择。一般设备无需配置（/sdcard 直连可用）；仅当个别 ROM 无法读写 /sdcard 时，用本项做 SAF 镜像兜底。"
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
