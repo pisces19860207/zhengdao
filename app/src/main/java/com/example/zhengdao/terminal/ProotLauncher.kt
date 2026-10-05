@@ -357,10 +357,11 @@ object ProotLauncher {
         }
         args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
 
-        // 手机文件夹镜像（Plan B，2026-10-06）：/sdcard 直连在本机安卓16已不可用
-        //（诊断见 commit d414dca：传统存储视图失效，FUSE 全拒），改为 SAF 镜像同步
-        // 的落点（PhoneMirror 引擎负责与用户所选文件夹互拷）。未选文件夹时是空
-        // 目录，无害。
+        // 手机文件夹镜像（Plan B，2026-10-06）：SAF 镜像同步的落点。
+        // ⚠️ 定位更正（同日勘误 E-005）：此前"/sdcard 直连不可用"的结论是 run-as
+        // 探针的方法论假象（runas_app SELinux 域被 FUSE 拒，不代表 App 真身）——
+        // 真身自 READ 帽子摘除（d414dca）后 /sdcard 读写全通，本镜像降级为
+        // **备用方案**（个别 ROM 传统视图异常时的兜底），平时无需配置。
         val phoneMirror = File(files, "phone-mirror").apply { mkdirs() }
         args.addAll(arrayOf("-b", "${phoneMirror.absolutePath}:/mnt/phone"))
         RunLog.log("镜像绑定: /mnt/phone <- ${phoneMirror.absolutePath}")
