@@ -27,13 +27,11 @@ object ProotLauncher {
      * @param cmd  宿主侧可直接 execve 的程序路径（proot 模式下 = proot 二进制；回退模式 = /system/bin/sh）
      * @param args 命令行参数（proot 模式下末尾附带 guest 内要执行的命令 /bin/bash -l）
      * @param env  传给子进程的环境变量（proot 会透传给 guest，guest 内进程全部可见）
-     * @param banner 启动后打印在终端里的说明横幅
      */
     data class LaunchPlan(
         val cmd: String,
         val args: Array<String>,
         val env: Array<String>,
-        val banner: String,
         val isFallback: Boolean = false,
         /** 会话是否由 tmux 保持（决定绿点分屏按钮是否可用） */
         val usesTmux: Boolean = false,
@@ -348,20 +346,38 @@ object ProotLauncher {
         // 横幅告知 + 设置页同步提示，替代对用户行为的假设。
         // 终端网络（用户指定）：DNS 多路已就位；走代理的用户最常见故障是分应用代理
         // 没勾选证道——横幅提示一次，省一轮排障。
-        val aptHint = "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\r\n" +
-            "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\r\n"
-        val banner = if (hasTmux) {
-            "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n" +
-                "[证道] tmux 会话保持已启用（会话名 zhengdao）：Agent 断线重进不丢现场\r\n" + aptHint
-        } else {
-            "[证道] Debian 13.7 环境已启动（Python 3.13 / Node.js 26 / uv 就绪）\r\n" + aptHint
-        }
+        // 启动横幅（用户定稿：只留最必要的两条提示）。文件投递 + profile.d 消费：
+        // 每次 fresh 启动把提示文本写入 guest 的 /tmp，pane 内首个 bash 经 profile.d
+        // `cat` 后删除。⚠️ 刻意不向 pty 键入命令——键入的命令会被 readline 回显，
+        // 两行提示前面拖着三四行命令本体（真机实测，观感差）；文件方案纯输出、
+        // 天然无输入竞争。外层 bash -lc 也读 profile.d，但 TMUX 变量未置 →
+        // 不打印不消费（外层输出会被 tmux 全屏重绘吞掉，标记还被误耗）。
+        // pending 文件每次启动重写（上轮残留只会显示一次本轮内容，不会叠印）。
+        runCatching {
+            val bannerDir = File(rootfsDir, "etc/profile.d")
+            if (bannerDir.isDirectory || bannerDir.mkdirs()) {
+                val f = File(bannerDir, "zz-banner.sh")
+                if (!f.isFile || !f.readText().contains("zhengdao-banner-pending")) {
+                    f.writeText(
+                        "# 证道启动横幅：pane 内首个 shell 打印即删（TMUX 变量区分外层 shell）\n" +
+                            "if [ -n \"${'$'}{TMUX:-}\" ] && [ -f /tmp/.zhengdao-banner-pending ]; then\n" +
+                            "  cat /tmp/.zhengdao-banner-pending\n" +
+                            "  rm -f /tmp/.zhengdao-banner-pending\n" +
+                            "fi\n"
+                    )
+                }
+            }
+            File(rootfsDir, "tmp").mkdirs()
+            File(rootfsDir, "tmp/.zhengdao-banner-pending").writeText(
+                "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\n" +
+                    "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\n"
+            )
+        } // 写不进去不阻断启动（横幅只是提示）
 
         return LaunchPlan(
             cmd = prootBin.absolutePath,
             args = args.toTypedArray(),
             env = env.toTypedArray(),
-            banner = banner,
             usesTmux = hasTmux,
         )
     }
@@ -377,10 +393,8 @@ object ProotLauncher {
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
         ),
-        banner = "[证道] 运行环境尚未安装，当前为系统自带 shell；安装 Debian 13.7 环境后将自动切换为 bash\r\n",
         isFallback = true,
     )
-
     /** 确保 guest 内 DNS 配置存在；多路 DNS：国内源在前（快且稳），国际源兜底
      *  （走 VPN 时由其接管）。内容缺失即写入；失败不阻断启动。 */
     private fun ensureDnsFiles(resolv: File, hosts: File) {        try {
