@@ -101,7 +101,8 @@ apt-get update
 apt-get install -y --no-install-recommends \
   git curl wget ca-certificates gnupg \
   tmux procps busybox ripgrep libatomic1 ffmpeg sqlite3 \
-  locales bash-completion less xz-utils zstd sudo
+  locales bash-completion less xz-utils zstd sudo \
+  tzdata
 
 echo "---- 2.3 locale：确认 C.UTF-8 可用 ----"
 locale -a 2>/dev/null | grep -qi '^C\.utf8' || {
@@ -130,7 +131,11 @@ printf 'export UV_LINK_MODE=copy\n' > /etc/profile.d/zhengdao-uv.sh
 chmod 0644 /etc/profile.d/zhengdao-uv.sh
 grep -q 'UV_LINK_MODE' /etc/environment || printf 'UV_LINK_MODE=copy\n' >> /etc/environment
 
-echo "---- 2.7 DNS 与 hosts 兜底 ----"
+echo "---- 2.7 时区、DNS 与 hosts 兜底 ----"
+# 时区 = 北京时间（用户反馈：tmux 状态栏时钟慢 8 小时 = 镜像默认 UTC）。
+# App 端 ProotLauncher 也有同样的启动时校准（老镜像用户升级 App 即生效，无需重装环境）
+ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+echo Asia/Shanghai > /etc/timezone
 [ -s /etc/resolv.conf ] || printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
 [ -s /etc/hosts ] || printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' > /etc/hosts
 
@@ -157,6 +162,7 @@ command -v tmux    >/dev/null 2>&1 || { echo "[断言失败] tmux 未安装"; ex
 command -v git     >/dev/null 2>&1 || { echo "[断言失败] git 未安装"; exit 1; }
 command -v busybox >/dev/null 2>&1 || { echo "[断言失败] busybox 未安装"; exit 1; }
 command -v ffmpeg  >/dev/null 2>&1 || { echo "[断言失败] ffmpeg 未安装"; exit 1; }
+[ "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Shanghai" ] || { echo "[断言失败] /etc/localtime 未指向 Asia/Shanghai"; exit 1; }
 
 echo "---- 2.9 清理（控制落盘体积）----"
 apt-get clean
