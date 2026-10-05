@@ -47,6 +47,10 @@ object SessionManager {
     var onSessionDied: ((Int) -> Unit)? = null
     /** 视图刷新回调（TerminalActivity 设置：termView.onScreenUpdated()） */
     var onViewUpdate: (() -> Unit)? = null
+    /** 复制转发（文字选择菜单 ACTION_COPY → 宿主实现写剪贴板） */
+    var onCopyText: ((String) -> Unit)? = null
+    /** 粘贴请求转发（ACTION_PASTE → 宿主实现读剪贴板写入会话） */
+    var onPasteRequest: (() -> Unit)? = null
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -128,8 +132,12 @@ object SessionManager {
             val code = runCatching { finishedSession.getExitStatus() }.getOrDefault(-1)
             onFinished(code)
         }
-        override fun onCopyTextToClipboard(session: TerminalSession, text: String) {}
-        override fun onPasteTextFromClipboard(session: TerminalSession?) {}
+        override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
+            onCopyText?.invoke(text)
+        }
+        override fun onPasteTextFromClipboard(session: TerminalSession?) {
+            onPasteRequest?.invoke()
+        }
         override fun onBell(session: TerminalSession) {}
         override fun onColorsChanged(session: TerminalSession) {}
         override fun onTerminalCursorStateChange(state: Boolean) {}

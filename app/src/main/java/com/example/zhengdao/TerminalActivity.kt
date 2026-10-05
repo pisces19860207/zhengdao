@@ -96,6 +96,23 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
         termView = findViewById(R.id.terminal_native)
         termView.mClient = this
+        // 文字选择菜单的复制/粘贴落地（SessionManager 转发到本 Activity 实现）
+        SessionManager.onCopyText = { text ->
+            val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-term", text))
+            runOnUiThread { Toast.makeText(this, "已复制 ${text.length} 个字符", Toast.LENGTH_SHORT).show() }
+        }
+        SessionManager.onPasteRequest = {
+            runOnUiThread {
+                val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+                if (text.isNotEmpty()) SessionManager.write(text)
+            }
+        }
+        // 「更多」菜单：showContextMenu() 需要注册上下文菜单才有效
+        registerForContextMenu(termView)
         // ⚠️ 两个必须（均 2026-10-05 真机实测得出）：
         // 1) 必须先建渲染器再 attachSession——TerminalView 的 mRenderer 只在
         //    setTextSize()/setTypeface() 中创建（构造函数不建），而 updateSize()
