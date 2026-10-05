@@ -71,6 +71,18 @@
 开发中（M1–M3 已完成：最小闭环 + 保活层 + 一键安装）。CI 产物（APK / RootFS / proot）见
 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)。
 
+## 文档结构说明
+
+本项目的文档分三层，各司其职。**动手改代码前先看对应层级**，避免照着过时的描述做：
+
+| 层级 | 位置 | 作用 |
+|---|---|---|
+| **① 总设计** | [`docs/milestones/安卓AgentApp-设计方案-v3.md`](docs/milestones/安卓AgentApp-设计方案-v3.md) | 整体架构、技术选型与架构级红线（如 targetSdk 28 钉死、单会话模型、proot 分发方式）。所有分期规范的依据。 |
+| **② 分期规范** | [`docs/milestones/`](docs/milestones/)（M1.1 ~ M5） | 每个里程碑的**工程约束与验收标准**。原则：**实现以代码为准，约束与红线以本文档为准**。 |
+| **③ 合规底线** | [`PROVENANCE.md`](PROVENANCE.md) | 第三方组件的来源、许可证与不可踩的红线（例如 proot 只能 exec、绝不能 `loadLibrary`）。 |
+
+> 一句话记忆：**总设计定方向，分期规范定标准，PROVENANCE 定底线。**
+
 ## 独立开发声明
 
 本项目全部第一方代码为从零独立编写，未参考任何第三方同类应用的代码。
