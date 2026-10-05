@@ -205,10 +205,10 @@ fun HomeScreen(
                             ) { Text("安装中") }
                             agent.installCmd != null && envReady -> OutlinedButton(
                                 onClick = {
-                                    // 一键到底：装完直接启动 Agent，不逼用户回主页再点一次
-                                    val launch = agent.launchCmd.substringBefore(' ')
-                                    val auto = "${agent.installCmd} && echo \"[证道] 安装完成，正在启动 $launch（首次启动需初始化，请稍候）…\" && $launch"
-                                    onOpenTerminal(auto, agent.id)
+                                    // 一键到底（M3 骨架 §3）：脚本本地化 + 清锁，装完自动启动
+                                    AgentInstaller.prepareInstall(context, agent) { cmd ->
+                                        onOpenTerminal(cmd, agent.id)
+                                    }
                                 },
                                 modifier = Modifier.width(84.dp),
                             ) { Text("安装") }
