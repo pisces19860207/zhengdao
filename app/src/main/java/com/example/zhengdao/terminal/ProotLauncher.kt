@@ -127,6 +127,17 @@ object ProotLauncher {
         // DNS 兜底（设计文档 §4：proot 内没有 systemd-resolved，缺 resolv.conf 就是
         // "下载得动、上不了网"的第一大故障；App 每次启动前确保存在）
         ensureDnsFiles(File(rootfsDir, "etc/resolv.conf"), File(rootfsDir, "etc/hosts"))
+        // 细光标（用户反馈块太粗）：每个 login shell 启动时发 DECSCUSR 6（bar 闪烁）。
+        // tmux 可能随后覆盖，profile 方式让每个 shell（含分屏新 pane）重新声明。
+        runCatching {
+            val profileDir2 = File(rootfsDir, "etc/profile.d")
+            if (profileDir2.isDirectory || profileDir2.mkdirs()) {
+                val f = File(profileDir2, "zz-cursor-bar.sh")
+                if (!f.isFile) {
+                    f.writeText("printf '\\u001B[6 q'\n")
+                }
+            }
+        }
         // npm 国内镜像（login shell 经 /etc/profile.d 自动生效）：官方 registry 从国内
         // 拉 Agent 及其二进制要 2-4 分钟，npmmirror 通常几十秒。写失败不阻断。
         runCatching {
