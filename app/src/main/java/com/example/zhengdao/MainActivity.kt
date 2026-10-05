@@ -81,6 +81,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // 手机文件夹镜像自动同步（Plan B）：已配置所选文件夹则冷启动静默同步一次；
+        // 失败只记 RunLog，不弹任何东西打扰用户
+        Thread {
+            runCatching { com.example.zhengdao.mirror.PhoneMirror.syncIfConfigured(this@MainActivity) }
+        }.start()
+
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
 

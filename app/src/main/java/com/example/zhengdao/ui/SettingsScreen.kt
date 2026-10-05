@@ -4,6 +4,8 @@ package com.example.zhengdao.ui
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.mirror.PhoneMirror
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.settings.ApiKeyStore
@@ -83,6 +86,21 @@ fun SettingsScreen() {
     }
     var wsCustom by remember {
         mutableStateOf(Settings.prefs(ctx).getString("workspace_custom", "") ?: "")
+    }
+
+    // ── 手机文件夹镜像（Plan B）──
+    var mirrorSyncing by remember { mutableStateOf(false) }
+    var mirrorMsg by remember { mutableStateOf<String?>(null) }
+    var mirrorSummary by remember { mutableStateOf(PhoneMirror.lastSummary(ctx)) }
+    var mirrorSelected by remember { mutableStateOf(PhoneMirror.treeUri(ctx) != null) }
+    val mirrorPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val uri = r.data?.data
+        if (uri != null) {
+            PhoneMirror.saveTreeUri(ctx, uri)
+            mirrorSelected = true
+            mirrorSummary = null
+            Toast.makeText(ctx, "已选定手机文件夹，点「立即同步」开始", Toast.LENGTH_SHORT).show()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -286,16 +304,69 @@ fun SettingsScreen() {
                         .putString("workspace_custom", wsCustom).apply()
                     Toast.makeText(ctx, "已保存，下次启动会话生效", Toast.LENGTH_SHORT).show()
                 }) { Text("保存工作区设置") }
-                TextButton(onClick = {
-                    try {
-                        ctx.startActivity(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-                            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                        })
-                    } catch (t: Throwable) {
-                        Toast.makeText(ctx, "无法打开文件选择器: ${t.message}", Toast.LENGTH_SHORT).show()
-                    }
-                }) { Text("打开工作区") }
             }
+        }
+
+        // ── 手机文件夹同步（Plan B，2026-10-06）──
+        // 背景：/sdcard 直连在本机安卓16已不可用（诊断见 commit d414dca），
+        // SAF 是 target 28 唯一稳定的共享存储通路；镜像落点 guest /mnt/phone
+        SectionCard("手机文件夹同步") {
+            Text(
+                text = if (mirrorSelected) {
+                    "已选定手机文件夹，镜像到 guest 的 /mnt/phone（Agent 在里面读写）"
+                } else {
+                    "未选择。选定后 Agent 可在 /mnt/phone 里读写你手机上的文件。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            mirrorSummary?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "上次同步：$it",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Row {
+                TextButton(onClick = {
+                    mirrorPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                        addFlags(
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                    })
+                }) { Text(if (mirrorSelected) "更换文件夹" else "选择文件夹") }
+                TextButton(
+                    enabled = mirrorSelected && !mirrorSyncing,
+                    onClick = {
+                        mirrorSyncing = true
+                        mirrorMsg = "同步中…"
+                        Thread {
+                            val r = PhoneMirror.sync(ctx) { p -> mirrorMsg = p }
+                            mirrorMsg = r?.message ?: "同步进行中（上一次未结束）"
+                            mirrorSummary = PhoneMirror.lastSummary(ctx)
+                            mirrorSyncing = false
+                        }.start()
+                    },
+                ) { Text(if (mirrorSyncing) "同步中…" else "立即同步") }
+            }
+            mirrorMsg?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "说明：同步是复制语义，不是挂载，大文件会占双份空间；" +
+                    "只同步新增与修改，不删除；最多 2 层、1000 个文件。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // ── 检查环境更新（第三批：manifest 对比 + 应用内下载安装，不自动检查）──

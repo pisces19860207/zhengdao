@@ -357,6 +357,14 @@ object ProotLauncher {
         }
         args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
 
+        // 手机文件夹镜像（Plan B，2026-10-06）：/sdcard 直连在本机安卓16已不可用
+        //（诊断见 commit d414dca：传统存储视图失效，FUSE 全拒），改为 SAF 镜像同步
+        // 的落点（PhoneMirror 引擎负责与用户所选文件夹互拷）。未选文件夹时是空
+        // 目录，无害。
+        val phoneMirror = File(files, "phone-mirror").apply { mkdirs() }
+        args.addAll(arrayOf("-b", "${phoneMirror.absolutePath}:/mnt/phone"))
+        RunLog.log("镜像绑定: /mnt/phone <- ${phoneMirror.absolutePath}")
+
         // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
         // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）
         // 运行内存上限（用户第四批）：ulimit -v 限制 guest 进程虚拟地址空间，防单个
