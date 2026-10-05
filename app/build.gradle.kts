@@ -97,6 +97,9 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.26.2")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
 
+    // SAF 目录遍历（手机文件夹镜像，Plan B）：标准 AndroidX 小件
+    implementation("androidx.documentfile:documentfile:1.0.1")
+
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
