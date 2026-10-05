@@ -34,9 +34,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.settings.ApiKeyStore
@@ -102,6 +111,75 @@ fun SettingsScreen() {
             InfoRow("rootfs（系统层）", "$rootfsMb MB")
             InfoRow("home（登录态与配置）", "$homeMb MB")
             InfoRow("cache（下载缓存）", "$cacheMb MB")
+        }
+
+        // ── 终端外观（字号 + 配色；下次进入终端时应用）──
+        SectionCard("终端外观") {
+            var sizeDp by remember { mutableStateOf(TerminalPrefs.sizeDp(ctx)) }
+            var schemeId by remember { mutableStateOf(TerminalPrefs.scheme(ctx).id) }
+
+            Text(
+                text = "下次进入终端时生效。字号越小，同屏能显示的内容越多。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+
+            Text("字号", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TerminalPrefs.SIZE_OPTIONS.forEach { dp ->
+                    val selected = dp == sizeDp
+                    Button(
+                        onClick = { sizeDp = dp; TerminalPrefs.saveSize(ctx, dp) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                    ) { Text("$dp", style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Text("配色", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                TerminalPrefs.Scheme.values().forEach { sc ->
+                    val selected = sc.id == schemeId
+                    OutlinedButton(
+                        onClick = { schemeId = sc.id; TerminalPrefs.saveScheme(ctx, sc) },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // 色块预览：用方案自身的底色 + 前景色显示 "Aa"
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp, 22.dp)
+                                    .background(Color(sc.bg), RoundedCornerShape(4.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("Aa", style = MaterialTheme.typography.labelSmall, color = Color(sc.fg))
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = sc.label + if (selected) "  ✓" else "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // ── 修复环境 ──

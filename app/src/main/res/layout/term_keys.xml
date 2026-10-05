@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+
+  快捷键条 · 窄屏 / 竖屏（< 600dp）：**两行固定布局**
+    第一行：ESC / TAB / CTRL / SHIFT / ^C（红色中断键，最右）
+    第二行：↑ / ↓ / ← / → / PGUP / PGDN / HOME / END / | / - / / / 粘贴
+
+  所有按键用 weight 等宽均分（@style/TermKeyFlex），因此一屏内全部可见，
+  **不需要横向滚动**——原先单行 + 横向滚动时，常用键要滑动才够得到。
+  宽屏（≥600dp）由 res/layout-w600dp/term_keys.xml 覆盖为单行。
+
+  注：两行会压缩终端可视高度，但**不改变回滚缓冲策略**（M2 骨架
+  「资源释放边界清单」中「TerminalView 屏幕外滚动缓冲」一行保持不变）。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/key_bar"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#FFFFFFFF"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+
+    <!-- 第一行：修饰键 + 中断 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp">
+
+        <TextView
+            android:id="@+id/key_esc"
+            style="@style/TermKeyFlex"
+            android:text="ESC" />
+
+        <TextView
+            android:id="@+id/key_tab"
+            style="@style/TermKeyFlex"
+            android:text="TAB" />
+
+        <TextView
+            android:id="@+id/key_ctrl"
+            style="@style/TermKeyFlex"
+            android:text="CTRL" />
+
+        <TextView
+            android:id="@+id/key_shift"
+            style="@style/TermKeyFlex"
+            android:text="SHIFT" />
+
+        <TextView
+            android:id="@+id/key_interrupt"
+            style="@style/TermKeyDangerFlex"
+            android:text="^C" />
+    </LinearLayout>
+
+    <!-- 第二行：导航 + 符号 + 粘贴 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="4dp"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp">
+
+        <TextView
+            android:id="@+id/key_up"
+            style="@style/TermKeyFlex"
+            android:text="↑" />
+
+        <TextView
+            android:id="@+id/key_down"
+            style="@style/TermKeyFlex"
+            android:text="↓" />
+
+        <TextView
+            android:id="@+id/key_left"
+            style="@style/TermKeyFlex"
+            android:text="←" />
+
+        <TextView
+            android:id="@+id/key_right"
+            style="@style/TermKeyFlex"
+            android:text="→" />
+
+        <TextView
+            android:id="@+id/key_pgup"
+            style="@style/TermKeyFlex"
+            android:layout_weight="1.35"
+            android:text="PGUP" />
+
+        <TextView
+            android:id="@+id/key_pgdn"
+            style="@style/TermKeyFlex"
+            android:layout_weight="1.35"
+            android:text="PGDN" />
+
+        <TextView
+            android:id="@+id/key_home"
+            style="@style/TermKeyFlex"
+            android:layout_weight="1.35"
+            android:text="HOME" />
+
+        <TextView
+            android:id="@+id/key_end"
+            style="@style/TermKeyFlex"
+            android:layout_weight="1.15"
+            android:text="END" />
+
+        <TextView
+            android:id="@+id/key_pipe"
+            style="@style/TermKeyFlex"
+            android:text="|" />
+
+        <TextView
+            android:id="@+id/key_minus"
+            style="@style/TermKeyFlex"
+            android:text="-" />
+
+        <TextView
+            android:id="@+id/key_slash"
+            style="@style/TermKeyFlex"
+            android:text="/" />
+
+        <!-- 退格（⌫）：终端里极常用，放第二行最右（拇指够得到、也符合"编辑类键靠右"）。
+             退格走 DEL(0x7F)，与桌面终端一致；readline / bash 默认即绑定在 0x7F。 -->
+        <TextView
+            android:id="@+id/key_backspace"
+            style="@style/TermKeyFlex"
+            android:text="⌫" />
+    </LinearLayout>
+</LinearLayout>

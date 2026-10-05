@@ -16,4 +16,43 @@
         <item name="android:textColor">#FF222222</item>
         <item name="android:textSize">12sp</item>
     </style>
+
+    <!--
+      快捷键条自适应按键：宽度按 weight 均分，而非固定 wrap_content。
+      目的：竖屏一行放不下全部按键（原先靠横向滚动），改为等宽均分后
+      窄屏两行、宽屏一行，所有键一屏可见，不需要横向滑动去找键。
+    -->
+    <style name="TermKeyFlex">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:layout_marginEnd">3dp</item>
+        <item name="android:paddingStart">2dp</item>
+        <item name="android:paddingEnd">2dp</item>
+        <item name="android:background">@drawable/key_button_bg</item>
+        <item name="android:textColor">#FF222222</item>
+        <item name="android:maxLines">1</item>
+        <!-- 宽窄自适应字号：按键等宽均分后，"PGUP/HOME/END" 这类长标签在窄屏
+             会被截断成 "PG"/"HO"（2026-10-05 真机实测）。改为按可用宽度自动
+             缩放（8–11sp），保证标签完整可读；短标签（↑/ESC）仍取上限 11sp。 -->
+        <item name="android:autoSizeTextType">uniform</item>
+        <item name="android:autoSizeMinTextSize">8sp</item>
+        <item name="android:autoSizeMaxTextSize">11sp</item>
+    </style>
+
+    <!-- 「^C 中断」：红底白字加粗，与普通键明显区分（中断=终止运行中的程序） -->
+    <style name="TermKeyDangerFlex">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">2dp</item>
+        <item name="android:paddingEnd">2dp</item>
+        <item name="android:background">@drawable/key_button_danger_bg</item>
+        <item name="android:textColor">#FFFFFFFF</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+    </style>
 </resources>

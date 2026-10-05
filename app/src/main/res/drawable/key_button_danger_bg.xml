@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+     「^C 中断」键的底色：红色，取"中断/终止"这一通用语义，配色为本项目自定。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFD93025" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+</selector>

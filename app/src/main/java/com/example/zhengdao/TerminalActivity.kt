@@ -26,6 +26,7 @@ import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
+import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.terminal.SessionService
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
@@ -95,11 +96,27 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
         termView = findViewById(R.id.terminal_native)
         termView.mClient = this
+        // ⚠️ 两个必须（均 2026-10-05 真机实测得出）：
+        // 1) 必须先建渲染器再 attachSession——TerminalView 的 mRenderer 只在
+        //    setTextSize()/setTypeface() 中创建（构造函数不建），而 updateSize()
+        //    会读 mRenderer.mFontWidth。漏掉 → attachSession→updateSize 空指针崩溃
+        //    （FATAL NPE at TerminalView.updateSize:988）。
+        // 2) 字号必须换算成 px 再传——TerminalView.setTextSize 的形参虽标注
+        //    "density-independent"，但内部直接 mTextPaint.setTextSize(textSize) 当
+        //    **px** 用。传 14 会得到 14px 的极小字，进而算出 158 列 × 87 行的荒谬
+        //    网格（实测 view=1270x1489、density=3.5、emu=158x87）。× density 后恢复正常。
+        // 字号与配色改为可配置（设置页「终端外观」），默认 12dp + 经典黑底白字。
+        // 内部同时完成两件事：写调色板与视图背景、按 dp→px 换算设置字号
+        // ⚠️ 仍然必须先于 attachSession 调用——mRenderer 只在 setTextSize 里创建，
+        //    漏掉会在 attachSession→updateSize 处空指针崩溃。
+        TerminalPrefs.applyTo(termView, this)
         wireKeyBar()
     }
 
     /** 回退 shell 活跃标记：fallback 下不注入 autocmd（命令会打进系统 sh） */
     private var fallbackActive = false
+
+    // 字号与配色已移到 TerminalPrefs（设置页可配），此处不再硬编码。
 
     override fun onResume() {
         super.onResume()
@@ -108,6 +125,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /** 会话存活 → 仅 attach（引擎自动重排恢复画面）；否则启动新会话。安装后复用。 */
     private fun ensureStartedAndAttach() {
+        // ⚠️ 必须挂上"引擎输出 → 视图重绘"回调：
+        // 会话由 SessionManager 持有，引擎回调（onTextChanged）打到 SessionManager 的
+        // client 上；视图层不接这根线，pty 照常输出但画面永不刷新（2026-10-05 实测白屏根因）。
+        SessionManager.onViewUpdate = { scheduleScreenUpdate() }
         if (!SessionManager.isAlive()) {
             val plan = SessionManager.start(this)
             usesTmux = plan.usesTmux
@@ -122,10 +143,28 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 视尺寸就绪后 attach：首次 attach 触发进程 spawn（新会话）或重排恢复（旧会话）
         termView.post {
             SessionManager.session?.let { if (termView.mTermSession !== it) termView.attachSession(it) }
+            // 兜底：attach 时若视图尚未完成测量，updateSize 会因宽高为 0 早退，且此后
+            // 没有尺寸变化事件来重试——下一帧补一次，确保 emulator 初始化、进程 spawn。
+            termView.post { termView.updateSize() }
             // 回退 shell 不注入 autocmd（命令会打进系统 sh）——保留待 Debian 会话就绪时注入
             if (!fallbackActive) injectPendingAutocmd()
         }
         termView.requestFocus()
+    }
+
+    /**
+     * 合并重绘（每帧最多一次）：引擎的 onTextChanged 可能来自 pty 读取线程，
+     * 且高频输出时每块都 post 会积压主线程队列。合并到单次 onScreenUpdated。
+     */
+    private val screenUpdateQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun scheduleScreenUpdate() {
+        if (screenUpdateQueued.compareAndSet(false, true)) {
+            mainHandler.post {
+                screenUpdateQueued.set(false)
+                termView.onScreenUpdated()
+            }
+        }
     }
 
     /** 注入待执行命令。⚠️ attach/fresh 两条路径都要走，否则点[安装]进终端无反应。 */
@@ -191,25 +230,51 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             R.id.key_pipe to "|",
             R.id.key_minus to "-",
             R.id.key_slash to "/",
+            // HOME / END：编辑长命令时跳到行首 / 行尾（bash readline 认这两组序列）
+            R.id.key_home to "\u001b[H",
+            R.id.key_end to "\u001b[F",
         )
         for ((id, seq) in sequences) {
-            findViewById<TextView>(id)?.setOnClickListener { SessionManager.write(seq) }
+            findViewById<TextView>(id)?.setOnClickListener { sendKey(seq) }
         }
-        // 粘贴：读系统剪贴板直写会话（移动端选择复制不便，粘贴是高频需求）
-        findViewById<TextView>(R.id.key_paste)?.setOnClickListener {
-            val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                as android.content.ClipboardManager
-            val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
-            if (text.isNotEmpty()) {
-                SessionManager.write(text)
-                Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
+        // 复制：把当前屏幕可见内容送剪贴板。
+        // 想要复制「选定区域」请用**长按终端**唤起选择手柄 + 系统工具栏的复制
+        // （走 onCopyTextToClipboard）。此按钮是"整屏快拷"的兜底，方便把报错整屏带走。
+        findViewById<TextView>(R.id.btn_copy_top)?.setOnClickListener {
+            val text = runCatching {
+                val em = SessionManager.session?.emulator ?: return@runCatching null
+                val top = termView.getTopRow()
+                em.screen.getSelectedText(0, top, em.mColumns, top + em.mRows)?.toString()
+            }.getOrNull()?.trimEnd()
+            if (text.isNullOrEmpty()) {
+                Toast.makeText(this, "没有可复制的内容", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
+                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text))
+                Toast.makeText(this, "已复制屏幕内容（${text.length} 字）", Toast.LENGTH_SHORT).show()
             }
+        }
+        // ^C 中断：独立按钮。点一下直接发 Ctrl+C（0x03 = ETX），
+        // 不必先点亮粘滞 CTRL——中断是高频应急操作，两步走来不及。
+        findViewById<TextView>(R.id.key_interrupt)?.setOnClickListener {
+            runCatching { SessionManager.write(byteArrayOf(0x03)) }
+                .onFailure {
+                    Toast.makeText(this, "发送中断失败：${it.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+        // 粘贴：顶部工具栏入口（快捷键条末位让给更常用的退格）
+        findViewById<TextView>(R.id.btn_paste_top)?.setOnClickListener { doPaste() }
+        // 退格（⌫）：发 DEL(0x7F)。readline / bash 默认把 backward-delete-char
+        // 绑在 0x7F，与桌面终端一致（不是 0x08 BS）。
+        findViewById<TextView>(R.id.key_backspace)?.setOnClickListener {
+            runCatching { SessionManager.write(byteArrayOf(0x7F)) }
+                .onFailure {
+                    Toast.makeText(this, "发送退格失败：${it.message}", Toast.LENGTH_SHORT).show()
+                }
         }
         findViewById<TextView>(R.id.key_tab)?.setOnClickListener {
             // SHIFT+TAB = Backtab（\u001b[Z），Claude Code 的模式切换依赖它
-            SessionManager.write(if (stickyShift) "\u001b[Z" else "\t")
+            sendKey(if (stickyShift) "\u001b[Z" else "\t")
             if (stickyShift) clearSticky(ctrl = false, shift = true)
         }
         ctrlButton?.setOnClickListener {
@@ -220,6 +285,39 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             stickyShift = !stickyShift
             refreshStickyUi()
         }
+    }
+
+    /**
+     * 快捷键条统一发送口：优先走 TerminalView 的原生输入接口。
+     * - 单字符（如 | - / TAB）→ `inputCodePoint()`：粘滞 CTRL/SHIFT 由视图层自动
+     *   应用（TerminalView 内部读 readControlKey/readShiftKey），修饰键真正生效。
+     * - 转义序列（方向键 / PGUP / PGDN / ESC / Backtab）→ 直接写 pty：视图层没有
+     *   承载多字节序列的输入接口，这也是 Termux 官方 ExtraKeysView 的处理方式。
+     */
+    private fun sendKey(seq: String) {
+        runCatching {
+            if (seq.length == 1) {
+                termView.inputCodePoint(
+                    com.termux.view.TerminalView.KEY_EVENT_SOURCE_SOFT_KEYBOARD,
+                    seq[0].code, false, false
+                )
+            } else {
+                SessionManager.write(seq)
+            }
+        }.onFailure { Toast.makeText(this, "发送失败：${it.message}", Toast.LENGTH_SHORT).show() }
+    }
+
+    /** 粘贴：读系统剪贴板直写会话（顶部工具栏按钮与快捷键条按钮共用）。 */
+    private fun doPaste() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+        if (text.isEmpty()) {
+            Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { SessionManager.write(text) }
+            .onFailure { Toast.makeText(this, "粘贴失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
     }
 
     private fun clearSticky(ctrl: Boolean, shift: Boolean) {
@@ -236,8 +334,38 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
 
     // ── TerminalViewClient（视图层回调；粘滞键供硬件键盘与 IME 共用）──
-    override fun onScale(scale: Float): Float = scale
-    override fun onSingleTapUp(e: android.view.MotionEvent) { termView.requestFocus() }
+    /**
+     * 双指缩放 → 调整字号（原先直接 return scale，等于手势空转）。
+     * 与设置页「终端外观」共用同一份偏好（TerminalPrefs），缩放即快捷改字号，
+     * 在设置页里也能看到档位跟着变了。
+     *
+     * 按 Termux 的惯例：累计缩放因子超过 ±10% 才触发一次档位切换，切完把因子
+     * 重置为 1.0，避免一次捏合连跳好几档。
+     */
+    override fun onScale(scale: Float): Float {
+        if (scale < 0.9f || scale > 1.1f) {
+            val options = TerminalPrefs.SIZE_OPTIONS
+            val cur = TerminalPrefs.sizeDp(this)
+            val idx = options.indexOf(cur).let { if (it < 0) options.indexOf(TerminalPrefs.DEFAULT_SIZE_DP) else it }
+            val next = (if (scale > 1f) idx + 1 else idx - 1).coerceIn(0, options.size - 1)
+            if (next != idx) {
+                val newDp = options[next]
+                TerminalPrefs.saveSize(this, newDp)
+                // 字号单位换算见 TerminalPrefs 注释：必须 × density（TerminalView 按 px 处理）
+                termView.setTextSize((newDp * resources.displayMetrics.density).toInt())
+                Toast.makeText(this, "字号 $newDp", Toast.LENGTH_SHORT).show()
+            }
+            return 1.0f   // 重置累计因子
+        }
+        return scale
+    }
+    override fun onSingleTapUp(e: android.view.MotionEvent) {
+        // 点击终端即弹软键盘（TerminalView 不是 EditText，不会自动弹）
+        termView.requestFocus()
+        val imm = getSystemService(INPUT_METHOD_SERVICE)
+            as android.view.inputmethod.InputMethodManager
+        imm.showSoftInput(termView, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+    }
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
     override fun shouldEnforceCharBasedInput(): Boolean = true  // 中文 IME 组合输入需要
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
@@ -263,6 +391,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         return false
     }
     override fun onEmulatorSet() {
+        // 光标持续闪烁（用户要求）：必须先设频率再启动状态，且只能在 emulator 就绪后调用。
+        // 第二个参数 startOnlyIfCursorEnabled 传 false = 无条件开始闪烁（默认光标即启用）。
+        // 600ms 一次，接近常见终端手感（可选范围 100–2000ms）。
+        runCatching {
+            termView.setTerminalCursorBlinkerRate(600)
+            termView.setTerminalCursorBlinkerState(true, false)
+        }.onFailure { RunLog.log("光标闪烁启动失败: ${it.message}") }
+
         // 进程 spawn 完成（新会话）：注入一键安装/启动命令 + 网络预检
         mainHandler.post {
             if (!fallbackActive) networkPreCheck()
@@ -290,13 +426,35 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             Toast.makeText(this, "会话已退出（code=$code）", Toast.LENGTH_LONG).show()
         }
     }
-    override fun onCopyTextToClipboard(session: TerminalSession, text: String) {}
-    override fun onPasteTextFromClipboard(session: TerminalSession?) {}
+    /**
+     * 系统文本选择工具栏点「复制」时走到这里（路径：
+     * TextSelectionCursorController → session.onCopyTextToClipboard → 本回调）。
+     * ⚠️ 此前是空实现，等于复制按钮点了没反应——必须把内容真正写进剪贴板。
+     */
+    override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
+        if (text.isEmpty()) return
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text))
+        Toast.makeText(this, "已复制 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
+    }
+
+    /** 系统文本选择工具栏点「粘贴」时走到这里：读剪贴板并写回终端。 */
+    override fun onPasteTextFromClipboard(session: TerminalSession?) {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+        if (text.isNotEmpty()) runCatching { SessionManager.write(text) }
+    }
     override fun onBell(session: TerminalSession) {}
     override fun onColorsChanged(session: TerminalSession) {}
     override fun onTerminalCursorStateChange(state: Boolean) {}
     override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
-    override fun getTerminalCursorStyle(): Int = 0  // 0=块状（TUI 应用会自行覆盖样式）
+    /**
+     * 光标样式：**细竖线（BAR）**——用户要求"光标细一点"。
+     * 可选值：BLOCK(0 块状) / UNDERLINE(1 下划线) / BAR(2 竖线)。
+     * 注：TUI 应用（Claude Code / Hermes 等）运行时会用自己的转义序列覆盖此样式，属正常。
+     */
+    override fun getTerminalCursorStyle(): Int =
+        com.termux.terminal.TerminalEmulator.TERMINAL_CURSOR_STYLE_BAR
     // ── 安装流程（进度以 Toast 呈现里程碑；明细在 RunLog）──
 
     /**
@@ -483,8 +641,31 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }
     }
 
+    /**
+     * 宽窄切换（竖屏 ↔ 横屏 / 折叠屏展开）：重载快捷键条布局。
+     *
+     * 资源限定符 res/layout[-w600dp]/term_keys.xml 只在**布局加载那一刻**参与匹配；
+     * 而本 Activity 声明了 configChanges（旋转不重建，以免终端会话状态丢失），
+     * 因此旋转不会自动重新选布局——必须手动 reinflate，
+     * 否则横屏会一直沿用竖屏的两行版（2026-10-05 真机实测）。
+     */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        reloadKeyBar()
+    }
+
+    /** 清空容器、按当前宽度重新加载快捷键条（两行 ↔ 单行），随后重新绑定事件。 */
+    private fun reloadKeyBar() {
+        val container = findViewById<android.widget.FrameLayout>(R.id.key_bar_container) ?: return
+        container.removeAllViews()
+        layoutInflater.inflate(R.layout.term_keys, container, true)
+        wireKeyBar()
+    }
+
     override fun onDestroy() {
-        // M2：会话归 SessionManager 持有，UI 销毁不杀会话（前台服务继续保活）
+        // M2：会话归 SessionManager 持有，UI 销毁不杀会话（前台服务继续保活）。
+        // 但必须断开视图重绘回调，否则会持有已销毁的 View（内存泄漏 + 空刷）。
+        SessionManager.onViewUpdate = null
         super.onDestroy()
     }
 
