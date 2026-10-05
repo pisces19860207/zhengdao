@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -152,27 +153,41 @@ fun SettingsScreen() {
         // 网络：INTERNET 为安装时权限系统自动授，无可引导项；用户真正会卡的是
         //      代理 App 分应用没勾选证道——给一键自检代替空喊"网络权限"
         SectionCard("权限") {
+            // 两行常驻可点（用户提议）：已授权时点击 = 跳系统 App 详情页（查看/撤销/
+            // MagicOS 联网管控都在那里）；未授权时行内另给授权按钮
+            val openAppDetails = {
+                runCatching {
+                    ctx.startActivity(
+                        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                    )
+                }.onFailure { Toast.makeText(ctx, "打开失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                Unit
+            }
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = openAppDetails),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("存储读写（共享存储 /sdcard）", style = MaterialTheme.typography.bodySmall)
-                if (storageOk) {
-                    Text("✅ 已授权", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
-                } else {
-                    TextButton(onClick = {
-                        permLauncher.launch(
-                            arrayOf(
-                                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (storageOk) {
+                        Text("✅ 已授权", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
+                    } else {
+                        TextButton(onClick = {
+                            permLauncher.launch(
+                                arrayOf(
+                                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                )
                             )
-                        )
-                    }) { Text("授权") }
+                        }) { Text("授权") }
+                    }
+                    Text(" ›", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Text(
-                text = "Agent 读写手机文件（/sdcard）依赖此权限；缺失时终端里读写手机文件会全部失败。",
+                text = "Agent 读写手机文件（/sdcard）依赖此权限；缺失时终端里读写手机文件会全部失败。点击本行可到系统设置查看或调整。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -182,14 +197,7 @@ fun SettingsScreen() {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.height(4.dp))
                 }
-                TextButton(onClick = {
-                    runCatching {
-                        ctx.startActivity(
-                            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                .setData(android.net.Uri.parse("package:${ctx.packageName}"))
-                        )
-                    }.onFailure { Toast.makeText(ctx, "打开失败: ${it.message}", Toast.LENGTH_SHORT).show() }
-                }) { Text("去系统设置") }
+                TextButton(onClick = openAppDetails) { Text("去系统设置") }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -197,15 +205,18 @@ fun SettingsScreen() {
             Spacer(Modifier.height(8.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = openAppDetails),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("网络访问", style = MaterialTheme.typography.bodySmall)
-                Text("✅ 自动授予", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("✅ 自动授予", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
+                    Text(" ›", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Text(
-                text = "INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道。",
+                text = "INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道；点击本行可到系统设置查看联网管控。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
