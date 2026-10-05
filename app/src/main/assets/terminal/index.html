@@ -37,7 +37,7 @@
     fontSize: 13,
     cursorStyle: 'bar',
     cursorWidth: 2,
-    scrollback: 2000,
+    scrollback: 1000,
     cursorBlink: true,
     theme: {
       background: '#0c0c0c',
@@ -49,7 +49,7 @@
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   // canvas 渲染：手机浏览器 DOM 渲染重绘慢，canvas 让 TUI 和回显明显更跟手
-  try { term.loadAddon(new CanvasAddon.CanvasAddon()); } catch (e) { /* 加载失败退回 DOM 渲染 */ }
+  try { term.loadAddon(new CanvasAddon.CanvasAddon()); } catch (e) { console.log('zhengdao-term: canvas 渲染器加载失败，回退 DOM: ' + e); }
   term.open(document.getElementById('term'));
   fit.fit();
 

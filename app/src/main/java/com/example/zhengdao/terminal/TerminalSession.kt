@@ -41,7 +41,7 @@ class TerminalSession(
     }
 
     private val readThread = Thread({
-        val buf = ByteArray(8192)
+        val buf = ByteArray(64 * 1024)
         var chunks = 0
         try {
             Log.i(TAG, "session start pid=$pid fd=$fd")
@@ -49,7 +49,7 @@ class TerminalSession(
                 val n = Pty.nativeRead(fd, buf)
                 if (n <= 0) break /* 0 = 对端关闭；-1 = 错误 */
                 chunks++
-                if (chunks <= 5 || chunks % 50 == 0) {
+                if (chunks <= 5 || chunks % 500 == 0) {
                     Log.i(TAG, "输出块 #$chunks (${n}B): " +
                         buf.copyOf(n).toString(Charsets.UTF_8).take(160))
                 }
