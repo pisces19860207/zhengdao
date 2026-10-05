@@ -165,6 +165,24 @@ object ProotLauncher {
                 }
             }
         }
+        // uv 系统级配置（belt；主防护是 AgentInstaller 的 hermes uv 二进制包装器）：
+        // hermes 的 install.sh 全局 UV_NO_CONFIG=1 且 pm 剥 UV_* 环境变量、重定向
+        // XDG_CONFIG_HOME——用户级 uv.toml 全失效。/etc/uv/uv.toml 是 uv 官方配置
+        // 发现层级里的系统级路径（未实测·推断，验证法：guest 内 uv --help 查
+        // "System configuration"或直接看本次安装结果）；UV_NO_CONFIG 未传到 pm 的
+        // uv 子进程时它会被读到 → copy 模式兜底。
+        runCatching {
+            val uvCfgDir = File(rootfsDir, "etc/uv")
+            if (uvCfgDir.isDirectory || uvCfgDir.mkdirs()) {
+                val f = File(uvCfgDir, "uv.toml")
+                if (!f.isFile || !f.readText().contains("link-mode")) {
+                    f.writeText(
+                        "# 证道预置：Android/proot 无硬链接可用（SELinux 拒绝 + bind 边界）\n" +
+                            "link-mode = \"copy\"\n"
+                    )
+                }
+            }
+        }
         // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
         // 这样「修复环境」重解压系统层时不碰用户数据
         val homeDir = File(files, "home").apply { mkdirs() }

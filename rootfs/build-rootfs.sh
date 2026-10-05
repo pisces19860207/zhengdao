@@ -131,6 +131,13 @@ printf 'export UV_LINK_MODE=copy\n' > /etc/profile.d/zhengdao-uv.sh
 chmod 0644 /etc/profile.d/zhengdao-uv.sh
 grep -q 'UV_LINK_MODE' /etc/environment || printf 'UV_LINK_MODE=copy\n' >> /etc/environment
 
+# uv 系统级配置：Android/proot 无硬链接（SELinux 拒绝 + bind 边界）。用户级
+# uv.toml 会被 hermes 的 XDG 重定向绕过，/etc/uv/uv.toml 是系统级发现路径
+#（App 端 ProotLauncher 对已装环境做同样的启动时补写）
+mkdir -p /etc/uv
+printf '# zhengdao: proot has no working hardlinks\nlink-mode = "copy"\n' > /etc/uv/uv.toml
+chmod 0644 /etc/uv/uv.toml
+
 echo "---- 2.7 时区、DNS 与 hosts 兜底 ----"
 # 时区 = 北京时间（用户反馈：tmux 状态栏时钟慢 8 小时 = 镜像默认 UTC）。
 # App 端 ProotLauncher 也有同样的启动时校准（老镜像用户升级 App 即生效，无需重装环境）
