@@ -82,7 +82,10 @@ object ProotLauncher {
         val tpDir = File(files, "termux-proot").apply { mkdirs() }
         val prootBin = File(tpDir, "proot")
         val loaderBin = File(tpDir, "loader")
-        val embedded = File(context.applicationInfo.nativeLibraryDir, "libproot.so") // 旧自编译版，留档
+        // （2026-10-05）旧自编译 proot 的 jniLibs 方案（libproot.so 入 nativeLibraryDir）
+        // 已随基线切换废弃并删除：本机实测它在 App 域内加载 guest 静默退出 255，
+        // 现只走 assets/proot 的 Termux 官方发行二进制（files/termux-proot/proot）。
+        // 该 .so 同时是 GPL 传染隐患（形似库、易被误 loadLibrary），故彻底移除。
         // 版本固定清单（asset 名 → 释放文件名 → SHA256；来源与版本见 PROVENANCE.md /
         // THIRD-PARTY-LICENSES.md，Termux proot 5.1.107.96 aarch64 官方构建产物）。
         // 兜底路径：已释放且 SHA256 校验通过 → 跳过（修环境/重装不重复释放）；
@@ -164,6 +167,19 @@ object ProotLauncher {
                     f.writeText("{\n  \"snapshot\": false\n}\n")
                     RunLog.log("OpenCode 配置已预置（snapshot=false）")
                 }
+            }
+        }
+
+        // tmux 预置（2026-10-05 补）：开启鼠标支持，使**触摸滑动能滚动历史**。
+        // 背景见 TerminalView.onScroll 的定制注释：tmux 采用全屏重绘，不产生本地回滚
+        // 缓冲（实测 histRows=0），必须把触摸滑动转成滚轮事件、且 tmux 端开启 mouse，
+        // 才能滚动 pane 自己的历史。已有配置时按需追加，不覆盖用户自有设置。
+        runCatching {
+            val f = File(homeDir, ".tmux.conf")
+            val cur = if (f.isFile) f.readText() else ""
+            if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
+                f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + "set -g mouse on\n")
+                RunLog.log("tmux 配置已补：set -g mouse on（触摸滑动可滚动历史）")
             }
         }
 

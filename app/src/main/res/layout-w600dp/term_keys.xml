@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+
+  快捷键条 · 宽屏 / 横屏 / 平板（≥ 600dp）：**单行布局**
+  按键顺序沿用窄屏两行的合并顺序（修饰键在前、导航与符号在后），
+  同样用 weight 等宽均分，一屏可见、无横向滚动。
+
+  此文件通过资源限定符 -w600dp 覆盖 res/layout/term_keys.xml（两行版）。
+  ⚠️ 两个文件必须保持**相同的按键 id 集合**，否则某一边会点不动。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/key_bar"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="#FFFFFFFF"
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/key_esc"
+        style="@style/TermKeyFlex"
+        android:text="ESC" />
+
+    <TextView
+        android:id="@+id/key_tab"
+        style="@style/TermKeyFlex"
+        android:text="TAB" />
+
+    <TextView
+        android:id="@+id/key_ctrl"
+        style="@style/TermKeyFlex"
+        android:text="CTRL" />
+
+    <TextView
+        android:id="@+id/key_shift"
+        style="@style/TermKeyFlex"
+        android:text="SHIFT" />
+
+    <TextView
+        android:id="@+id/key_interrupt"
+        style="@style/TermKeyDangerFlex"
+        android:text="^C" />
+
+    <TextView
+        android:id="@+id/key_up"
+        style="@style/TermKeyFlex"
+        android:text="↑" />
+
+    <TextView
+        android:id="@+id/key_down"
+        style="@style/TermKeyFlex"
+        android:text="↓" />
+
+    <TextView
+        android:id="@+id/key_left"
+        style="@style/TermKeyFlex"
+        android:text="←" />
+
+    <TextView
+        android:id="@+id/key_right"
+        style="@style/TermKeyFlex"
+        android:text="→" />
+
+    <TextView
+        android:id="@+id/key_pgup"
+        style="@style/TermKeyFlex"
+            android:layout_weight="1.35"
+        android:text="PGUP" />
+
+    <TextView
+        android:id="@+id/key_pgdn"
+        style="@style/TermKeyFlex"
+            android:layout_weight="1.35"
+        android:text="PGDN" />
+
+    <TextView
+        android:id="@+id/key_home"
+        style="@style/TermKeyFlex"
+            android:layout_weight="1.35"
+        android:text="HOME" />
+
+    <TextView
+        android:id="@+id/key_end"
+        style="@style/TermKeyFlex"
+            android:layout_weight="1.15"
+        android:text="END" />
+
+    <TextView
+        android:id="@+id/key_pipe"
+        style="@style/TermKeyFlex"
+        android:text="|" />
+
+    <TextView
+        android:id="@+id/key_minus"
+        style="@style/TermKeyFlex"
+        android:text="-" />
+
+    <TextView
+        android:id="@+id/key_slash"
+        style="@style/TermKeyFlex"
+        android:text="/" />
+
+    <!-- 退格（⌫）：与窄屏两行版保持同一 id 与位置语义（最右） -->
+    <TextView
+        android:id="@+id/key_backspace"
+        style="@style/TermKeyFlex"
+        android:text="⌫" />
+</LinearLayout>

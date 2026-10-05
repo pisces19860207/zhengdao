@@ -169,7 +169,36 @@ public final class TerminalView extends View {
             @Override
             public boolean onScroll(MotionEvent e, float distanceX, float distanceY) {
                 if (mEmulator == null) return true;
-                if (mEmulator.isMouseTrackingActive() && e.isFromSource(InputDevice.SOURCE_MOUSE)) {
+
+                // ── 证道定制（2026-10-05 真机实测）：让触摸滑动在全屏应用下也能滚动历史 ──
+                // 现象：终端里单指上滑没有反应。
+                // 根因：tmux / 全屏 TUI 采用"定位光标 + 重绘整屏"的方式输出，不产生行滚动，
+                //      所以本地回滚缓冲恒为空（实测 getActiveTranscriptRows() == 0），
+                //      下面 doScroll() 那套本地滚动永远滚不动。
+                //      而原代码只在"事件来自鼠标源"时才转发滚轮，手机上触摸永远不是鼠标源，
+                //      于是滑动被彻底丢弃。
+                // 修法：应用若启用了鼠标跟踪（tmux 需 `set -g mouse on`，已由 ProotLauncher
+                //      预置到 ~/.tmux.conf），就把触摸滑动按行高换算成滚轮事件转发给应用，
+                //      由应用滚动它自己的历史缓冲。
+                if (mEmulator.isMouseTrackingActive()) {
+                    distanceY += mScrollRemainder;
+                    int wheelRows = (int) (distanceY / mRenderer.mFontLineSpacing);
+                    mScrollRemainder = distanceY - wheelRows * mRenderer.mFontLineSpacing;
+                    if (wheelRows != 0) {
+                        // 手指上滑（wheelRows > 0）= 想看更新的内容 = 滚轮向下
+                        int button = wheelRows > 0
+                                ? TerminalEmulator.MOUSE_WHEELDOWN_BUTTON
+                                : TerminalEmulator.MOUSE_WHEELUP_BUTTON;
+                        for (int i = 0; i < Math.abs(wheelRows); i++) {
+                            sendMouseEventCode(e, button, true);
+                            sendMouseEventCode(e, button, false);
+                        }
+                    }
+                    scrolledWithFinger = true;
+                    return true;
+                }
+
+                if (e.isFromSource(InputDevice.SOURCE_MOUSE)) {
                     // If moving with mouse pointer while pressing button, report that instead of scroll.
                     // This means that we never report moving with button press-events for touch input,
                     // since we cannot just start sending these events without a starting press event,
@@ -318,7 +347,22 @@ public final class TerminalView extends View {
                 // not set and it logs a warning:
                 // W/InputAttributes: Unexpected input class: inputType=0x00080090 imeOptions=0x02000000
                 // https://cs.android.com/android/platform/superproject/+/android-11.0.0_r40:packages/inputmethods/LatinIME/java/src/com/android/inputmethod/latin/InputAttributes.java;l=79
-                outAttrs.inputType = InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+                //
+                // ── 证道定制（2026-10-05）──────────────────────────────────────────
+                // 原值 `TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | TYPE_TEXT_FLAG_NO_SUGGESTIONS`
+                // 属于**密码类输入**，在荣耀/华为/小米等国产 ROM 上会被系统判定为敏感输入，
+                // 从而**强制接管为「安全键盘」**（无联想、无剪贴板、手感差），用户明确要求避免。
+                // 改为普通文本类型：既非密码类（不触发安全键盘），又保留关联想与多行。
+                //   - TYPE_CLASS_TEXT                输入法按普通文本处理（中文输入法正常）
+                //   - TYPE_TEXT_FLAG_NO_SUGGESTIONS  关闭候选/联想（终端不需要）
+                //   - TYPE_TEXT_FLAG_MULTI_LINE      回车当作换行，而不是"完成/发送"
+                // 注：Termux 选 VISIBLE_PASSWORD 是为了规避三星键盘在 TYPE_NULL 下不重置
+                // 内部状态的问题（termux-app#686）；本机为荣耀，该规避不适用，而安全键盘
+                // 是实测正在发生的真问题，故以本机体验为准。
+                outAttrs.inputType = InputType.TYPE_CLASS_TEXT
+                        | InputType.TYPE_TEXT_VARIATION_NORMAL
+                        | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                        | InputType.TYPE_TEXT_FLAG_MULTI_LINE;
             } else {
                 // Using InputType.NULL is the most correct input type and avoids issues with other hacks.
                 //
@@ -336,7 +380,10 @@ public final class TerminalView extends View {
 
         // Note that IME_ACTION_NONE cannot be used as that makes it impossible to input newlines using the on-screen
         // keyboard on Android TV (see https://github.com/termux/termux-app/issues/221).
-        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
+        // 证道定制：同时声明"不用于个性化学习"，进一步降低输入法把终端输入当敏感内容的概率
+        //（部分 ROM 会依据编辑器属性决定是否启用安全键盘/隐私模式）。
+        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
+                | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
 
         return new BaseInputConnection(this, true) {
 
