@@ -51,6 +51,7 @@
 | **Termux `terminal-view`**（v3.9 新增） | **Apache-2.0** | 同上（`app/src/main/java/com/termux/view/`）；其 native 半边由 `app/src/main/cpp/termux/` 编译为 `libtermux.so` |
 | proot（**Termux fork 发行版**，2026-10-04 基线切换） | GPL-2.0-or-later | 官方发行二进制，assets 内置、运行时释放为**独立可执行文件**调用（聚合分发，不链接不混源） |
 | libtalloc / libandroid-shmem | LGPL / 宽松许可 | 同上，作为 proot 的运行时依赖随包分发 |
+| **hermes pinned uv 0.12.3**（astral-sh/uv，运行时下载） | MIT OR Apache-2.0 | **不随包分发**。hermes 只认它自装的 pinned uv（剥离一切环境变量与配置），证道的包装器（`ProotLauncher.HERMES_UV_WRAPPER_B64`，源文件 `build/hermes-uv-wrapper.sh`）按 hermes install.sh 同源 URL 下载该工件并做 SHA256 校验（`bb66cb52…68dcca2`）后 exec；包装器同时强制 `UV_LINK_MODE=copy`（Android/proot 无可用硬链接） |
 | OkHttp / Compose 等 | Apache-2.0 | Maven 依赖，按官方文档使用 |
 
 > ⚠️ **许可证勘误（2026-10-05）**：`terminal-emulator` / `terminal-view` 曾被误标为

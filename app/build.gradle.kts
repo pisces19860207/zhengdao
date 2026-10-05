@@ -4,7 +4,7 @@ plugins {
 }
 
 // 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
-val appVersionName = "0.9.0"
+val appVersionName = "0.9.1"
 
 android {
     namespace = "com.example.zhengdao"
@@ -24,7 +24,7 @@ android {
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro（MagicOS 11 /
         // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
         minSdk = 36
-        versionCode = 11
+        versionCode = 12
         versionName = appVersionName
 
         ndk {

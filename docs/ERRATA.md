@@ -83,3 +83,24 @@ targetSdk 28 下 App 的 `files/` 目录**允许 exec**——这正是 targetSdk
 2. `ProotLauncher`：预置 `~/.tmux.conf` 写 `set -g mouse on`（tmux 不开 mouse 收不到滚轮）。
 
 **验收**：上滑后内容由 `76-100` 变为 `18-43`，tmux 状态栏出现 `[58/78]` 位置指示。
+
+---
+
+## E-004 · 2026-10-05 · hermes uv 包装器生成出字面 `$\@`（安装自检失败，已修）
+
+**现象**：真机安装 hermes 报 `✗ pinned uv staged but does not run on this host`；
+`bash -x` 跟踪显示包装器末行是 `exec "$R" "$\@"`——真 uv 收到字面量参数
+`$\@`，报 `unrecognized subcommand` 退出非零。
+
+**根因**：包装器脚本文本当时嵌在 **bash 双引号包裹的 python 内联代码**里生成：
+bash 把 `\"`→`"`、`\$`→`$` 都正确转换了，但 `\@` 不是 bash 的合法转义，
+**反斜杠原样保留**，`"$@"` 就成了 `"$\@"`。且首验时只 `head -8` 对比开头，
+没查到尾部损坏。
+
+**修法**：
+1. 脚本内容先写成本地文件（`build/hermes-uv-wrapper.sh`），再从**文件字节**做
+   base64 编码嵌入 Kotlin——彻底绕开 shell 转义层；
+2. 注入逻辑改为每次**无条件重写**包装器（自愈：历史坏版本与新逻辑都被覆盖）。
+
+**教训**：跨多层字符串转义（bash → python → shell 脚本）时每一层都要验证；
+凡走 base64 投递的内容，必须解码后与原文**全文比对**，不能抽查开头。
