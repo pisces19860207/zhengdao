@@ -39,11 +39,15 @@
                 android:focusable="true" />
 
             <View
+                android:id="@+id/btn_yellow"
                 android:layout_width="11dp"
                 android:layout_height="11dp"
                 android:layout_marginEnd="7dp"
                 android:background="@drawable/traffic_dot"
-                android:backgroundTint="#FFFFBC2E" />
+                android:backgroundTint="#FFFFBC2E"
+                android:contentDescription="关闭分屏"
+                android:clickable="true"
+                android:focusable="true" />
 
             <View
                 android:id="@+id/btn_split"

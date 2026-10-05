@@ -75,21 +75,21 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 红点 = 关闭终端返回主界面（UI 关，会话由前台服务继续保活）
         findViewById<android.view.View>(R.id.btn_close).setOnClickListener { finish() }
         // 绿点 = tmux 上下分屏。分段发送（tmux 命令提示符异步打开，整串灌入会穿透）
+        // 绿点 = tmux 上下分屏（最多 2 块，用户定）。pane 数以 tmux 服务端为准
+        //（run-shell 查询，客户端计数会在会话重启后失同步）
         findViewById<android.view.View>(R.id.btn_split).setOnClickListener {
             if (!usesTmux) {
                 Toast.makeText(this, "当前会话未启用 tmux，无法分屏", Toast.LENGTH_SHORT).show()
             } else {
-                runCatching {
-                    SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))
-                    mainHandler.postDelayed({
-                        runCatching {
-                            SessionManager.write("split-window -v".toByteArray(Charsets.UTF_8))
-                            mainHandler.postDelayed({
-                                runCatching { SessionManager.write(byteArrayOf(0x0D)) }
-                            }, 150)
-                        }
-                    }, 150)
-                }.onFailure { Toast.makeText(this, "分屏失败：${it.message}", Toast.LENGTH_SHORT).show() }
+                sendTmuxCommand("run-shell \"if [ ${'$'}(tmux list-panes | wc -l) -lt 2 ]; then tmux split-window -v; fi\"")
+            }
+        }
+        // 黄点 = 关闭当前分屏（单 pane 时服务端拒绝，不会误关整个会话）
+        findViewById<android.view.View>(R.id.btn_yellow).setOnClickListener {
+            if (!usesTmux) {
+                Toast.makeText(this, "当前会话未启用 tmux", Toast.LENGTH_SHORT).show()
+            } else {
+                sendTmuxCommand("run-shell \"if [ ${'$'}(tmux list-panes | wc -l) -gt 1 ]; then tmux kill-pane; fi\"")
             }
         }
         findViewById<android.view.View>(R.id.window_card).clipToOutline = true
@@ -195,6 +195,21 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 一键安装：登记「安装中」，首页卡片轮询文件出现后自动转 [启动]
         intent?.getStringExtra("agent_id")?.takeIf { it.isNotBlank() }?.let { aid ->
             AgentRepository.markInstalling(this, aid)
+        }
+    }
+
+    /** tmux 命令提示符分段发送（C-b : → 命令 → 回车；提示符异步打开，整串灌入会穿透）。 */
+    private fun sendTmuxCommand(command: String) {
+        runCatching {
+            SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))
+            mainHandler.postDelayed({
+                runCatching {
+                    SessionManager.write(command.toByteArray(Charsets.UTF_8))
+                    mainHandler.postDelayed({
+                        runCatching { SessionManager.write(byteArrayOf(0x0D)) }
+                    }, 150)
+                }
+            }, 150)
         }
     }
 
