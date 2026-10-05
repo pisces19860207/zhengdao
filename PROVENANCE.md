@@ -59,10 +59,12 @@
 > 误标会导致闭源决策误判——GPL 会要求开源第一方代码，Apache-2.0 不会。
 > 相关注释已在 `TerminalActivity.kt`、`SessionManager.kt`、`CMakeLists.txt` 中同步更正。
 
-> 🛑 **v3.9 红线（同 proot，一视同仁）**：`libtermux.so` 是**真正的 JNI 动态库**，
-> 可 `System.loadLibrary("termux")`；而 `libproot.so` 只是借用 .so 命名打包的
-> **独立可执行文件**，只能 `exec`，**绝不能 `dlopen`/`loadLibrary`**——
+> 🛑 **v3.9 红线**：`libtermux.so` 是**真正的 JNI 动态库**，用 `System.loadLibrary("termux")`；
+> 而 proot 是**独立可执行文件**，**只能 `exec`，绝不能 `dlopen` / `loadLibrary`**——
 > 后者会被认定为衍生作品，导致整个 App 被 GPL 传染。
+> 注：本条红线**与文件名、存放目录无关**。历史方案曾把 proot 改名为 `libproot.so`
+> 打进 jniLibs（只为借用原生库打包机制），该方案已废弃；但即便沿用那个名字，
+> proot 依然只能 exec，不因叫 `.so` 就能当库加载。
 
 ### 版本固定（可复现构建基线，2026-10-04 固化）
 
@@ -89,3 +91,24 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 ```
+
+## 实现方红线清单（发给 Zcode / 任何实现方之前，请先读这一节）
+
+1. **proot 只用 exec 启动**（与文件名、存放目录无关，见上方 v3.9 红线），代码里**不得出现**
+   `System.loadLibrary("proot")` 或任何形式的 dlopen。
+2. 自研的 JNI / 终端桥接代码**不得参考或复制 `termux-app` 的 GPL 源码**——只能依据
+   POSIX 标准接口独立实现。
+3. **不得移除**任何第三方组件中的版权声明、LICENSE 或 NOTICE 文件。
+4. Apache-2.0 组件需在分发物中**保留其 LICENSE 文本**（或其链接）与 NOTICE 内容；
+   若做了修改须明确标注。
+5. **R8 混淆不影响上述义务**——混淆的是第一方代码，第三方许可证声明必须照常保留；
+   `-keep` 规则不得被误用于"清理"这些资源。
+6. proot 的**构建 commit 必须记录**（用于履行源码要约的可复现性）。
+7. 新增任何第三方依赖时，**同步更新本文件**。
+
+---
+
+## 免责说明
+
+本文件基于项目当前技术选型编写，用于工程合规自证，**不构成法律意见**。
+若未来涉及商业化分发、境外分发或引入新的 copyleft 组件，建议由专业法务复核。
