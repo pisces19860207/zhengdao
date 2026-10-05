@@ -4,7 +4,7 @@ plugins {
 }
 
 // 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
-val appVersionName = "0.8.0"
+val appVersionName = "0.9.0"
 
 android {
     namespace = "com.example.zhengdao"
@@ -24,7 +24,7 @@ android {
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro（MagicOS 11 /
         // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
         minSdk = 36
-        versionCode = 10
+        versionCode = 11
         versionName = appVersionName
 
         ndk {
@@ -54,6 +54,13 @@ android {
             // 个人分发渠道：release 也用 debug 签名，保证产物可直接安装
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+
+    // lint 检查：ExpiredTargetSdkVersion 是 Google Play 上架要求（targetSdk≥33），
+    // 但本项目 targetSdk=28 是架构生死线（proot 需要从可写目录 exec），不可上调。
+    // 本项目不走 Google Play，走 GitHub Releases 直发，故禁用该检查。
+    lint {
+        disable += "ExpiredTargetSdkVersion"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

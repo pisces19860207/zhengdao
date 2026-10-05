@@ -18,6 +18,7 @@ name: build
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]   # 推 v 开头 tag 时也触发，用于自动创建正式 Release
   workflow_dispatch:
 
 concurrency:
@@ -106,6 +107,8 @@ jobs:
           if-no-files-found: error
 
       - name: 发布到 Releases（最终用户从这里下载，和太墟一样的姿势）
+        # 仅 main 分支更新滚动版 latest；推 tag 时不更新（正式版由 release job 创建）
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -114,3 +117,38 @@ jobs:
               --title "证道 · 最新构建" --latest \
               --notes "main 分支每次构建成功后自动更新的最新产物。App 内的下载地址已内置。"
           gh release upload latest artifacts/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  # ── 正式 Release（推 v* tag 时自动创建）────────────────────────────
+  # 推 tag 触发 build job 编译，完成后本 job 下载 APK，以 app-release.apk 命名
+  # 发布到 GitHub Releases（中文标题 + release-notes.md 正文）。与滚动版 latest 并存。
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码（读取 release-notes.md）
+        uses: actions/checkout@v4
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: zhengdao-build-${{ github.run_number }}
+          path: artifacts
+
+      - name: 重命名为 app-release.apk
+        run: |
+          ls -la artifacts/
+          cp artifacts/zhengdao-*-debug.apk artifacts/app-release.apk 2>/dev/null || \
+          cp artifacts/zhengdao-*.apk artifacts/app-release.apk
+          ls -la artifacts/app-release.apk
+
+      - name: 创建正式 Release 并上传 APK
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "证道 ${{ github.ref_name }} — 正式版"
+          body_path: .github/release-notes.md
+          files: artifacts/app-release.apk
+          draft: false
+          prerelease: false
