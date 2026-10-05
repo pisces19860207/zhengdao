@@ -481,8 +481,6 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     // 用户点名的能力：选中文字 → 转浏览器搜索。Termux 的 ACTION_MORE 在弹菜单前会把
     // 选中文字存进 TerminalView.getStoredSelectedText()（选择模式已停，文字仍可用）。
     private val menuWebSearch = 101
-    private val menuCopySel = 102
-    private val menuPaste = 103
     private val menuReset = 104
 
     override fun onCreateContextMenu(
@@ -493,9 +491,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         super.onCreateContextMenu(menu, v, menuInfo)
         val sel = runCatching { termView.storedSelectedText }.getOrNull()?.toString()?.trim()
         menu.setHeaderTitle("终端操作")
+        // 复制/粘贴不再入列：顶部工具栏 + 选择工具条已有两条通路（用户定）
         menu.add(0, menuWebSearch, 0, "浏览器搜索选中文字").isEnabled = !sel.isNullOrEmpty()
-        menu.add(0, menuCopySel, 0, "复制选中文字").isEnabled = !sel.isNullOrEmpty()
-        menu.add(0, menuPaste, 0, "粘贴")
         menu.add(0, menuReset, 0, "重置终端")
     }
 
@@ -516,17 +513,6 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     }
                 }
                 termView.unsetStoredSelectedText()
-                return true
-            }
-            menuCopySel -> {
-                if (!sel.isNullOrEmpty()) {
-                    onCopyTextToClipboard(SessionManager.session ?: return true, sel)
-                }
-                termView.unsetStoredSelectedText()
-                return true
-            }
-            menuPaste -> {
-                doPaste()
                 return true
             }
             menuReset -> {
