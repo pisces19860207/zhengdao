@@ -160,6 +160,8 @@ fun TaijiScreen(
                             messages = state.messages,
                             todos = state.todos,
                             isStreaming = state.isStreaming,
+                            // 会话 id 进 key：切会话后重新定位到该会话底部（不沿用上一个会话的滚动位置）
+                            sessionId = state.sessionId,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
