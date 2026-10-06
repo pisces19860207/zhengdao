@@ -117,9 +117,15 @@ class SseClient(private val http: OkHttpClient) {
                         }
                     }
                 }
-                // 正常结束流（服务器关闭）——视为一次断开
+                // 正常结束流（服务器关闭）——视为一次断开。
+                // ⚠️ 必须留痕：这条路径此前**没有任何日志**，与 CancellationException
+                //    一起构成两条"静默死亡"路径，导致断连原因完全无法定位。
+                ocLog("SSE 流结束（第 ${attempt + 1} 次），将退避重连")
                 emit(Event.Disconnected(null))
             } catch (e: CancellationException) {
+                // ⚠️ 不记日志就等于无痕迹死亡：协程被取消时看不出原因。
+                //    必须区分"外部主动取消"（正常关闭，不该算故障）与"超时取消"（真故障）。
+                ocLog("SSE 协程被取消：${e.message ?: "无消息"}")
                 throw e
             } catch (e: Exception) {
                 emit(Event.Disconnected(e))
