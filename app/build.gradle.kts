@@ -48,7 +48,10 @@ android {
         release {
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                // ⚠️ packageScope（跨包重命名收拢）已在 v1.0 移除：mikepenz 0.38.1（v1.1
+                //    引入）的 AAR 内含自家 r8 重映射类（如 kotlin.sequences 扩展 kh1），
+                //    packageScope 对 kotlin.** 的重命名会与它撞名——真机 release 启动即
+                //    IllegalAccessError（debug 未混淆看不出）。保留普通 R8 优化与混淆。
             }
             // R8 字节码优化 + 资源收缩（用户第四批后追加）：显著减小体积与内存占用。
             // JNI / JS 桥的 keep 规则见 proguard-rules.pro。
