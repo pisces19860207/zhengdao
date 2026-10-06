@@ -851,7 +851,7 @@ fun SettingsScreen() {
             Spacer(Modifier.height(4.dp))
             FaqLine("环境打不开 / 下载失败？", "用上方「修复环境」重新解压系统层，登录态与密钥都会保留。")
             FaqLine("Agent 想更新？", "在终端里重跑一遍安装命令即可；系统层更新用「检查环境更新」。")
-            FaqLine("我的文件在哪？", "见下方「工作区路径」：手机端在 Download/证道 或应用目录 files/workspace，guest 内是 /workspace。")
+            FaqLine("我的文件在哪？", "见下方「工作区」：Agent 产出都在工作区文件夹（默认手机 Download/证道），guest 内是 /workspace。")
         }
 
         // ── 关于 ──
