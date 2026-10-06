@@ -100,6 +100,9 @@ dependencies {
     // SAF 目录遍历（手机文件夹镜像，Plan B）：标准 AndroidX 小件
     implementation("androidx.documentfile:documentfile:1.0.1")
 
+    // xz 解压（太极 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
+    implementation("org.tukaani:xz:1.9")
+
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

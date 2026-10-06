@@ -262,6 +262,8 @@ object ProotLauncher {
                 } else org.json.JSONObject()
                 var changed = !f.isFile
                 if (!obj.has("snapshot")) { obj.put("snapshot", false); changed = true }
+                // autoupdate=false（用户定稿：默认不打扰，更新走设置页手动检查）
+                if (!obj.has("autoupdate")) { obj.put("autoupdate", false); changed = true }
                 val plugins = obj.optJSONArray("plugin") ?: org.json.JSONArray().also {
                     obj.put("plugin", it); changed = true
                 }

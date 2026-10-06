@@ -175,8 +175,8 @@ fun HomeScreen(
                 }
             }
         }
-        // ── Agent 卡片 ──
-        items(agents, key = { it.id }) { agent ->
+        // ── Agent 卡片（OpenCode 已内置为太极，不在丹房展示——用户定稿）──
+        items(agents.filter { it.id != "opencode" }, key = { it.id }) { agent ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
