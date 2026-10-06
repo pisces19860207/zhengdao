@@ -170,6 +170,17 @@ object OcManager {
             env["XDG_CONFIG_HOME"] = xdgDir(ctx, "config").absolutePath
             env["XDG_STATE_HOME"] = xdgDir(ctx, "state").absolutePath
             env["PATH"] = "/system/bin"
+            // 🔧 输出预算修复（2026-10-06，用户定稿）：
+            //    opencode 把每次补全硬性封顶在 **32000 输出 token（含思考）**，与模型自身上限无关。
+            //    推理模型会把这 32k 全花在 thinking 上 → 补全以 reason=length 结束、**不产出正文**，
+            //    即「回复只有思考过程、没有最终文本」的根因。
+            //    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX 是唯一覆盖项（opencode 会再按模型上限夹一次，故安全）。
+            //    变量名已对官方文档核实：https://opencode.ai/docs/cli → Experimental。
+            env["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] = "64000"
+            // 以下两项**未在官方文档中查到**（用户提供，疑为社区命名/上游新增）。
+            // 设置为未知 env 无副作用（进程忽略），故一并设置以完整覆盖用户方案；若无效属预期。
+            env["OPENCODE_EXPERIMENTAL_LENGTH_NUDGE"] = "true"
+            env["OPENCODE_EXPERIMENTAL_LENGTH_NUDGE_MAX"] = "3"
             // API Key 注入（与终端同一套密钥库；OpenCode 识别 OPENAI_API_KEY 等）
             runCatching {
                 ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
