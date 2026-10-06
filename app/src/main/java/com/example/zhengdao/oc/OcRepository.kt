@@ -71,9 +71,10 @@ class OcRepository(
 
     private suspend fun createSession(): String? = withContext(Dispatchers.IO) {
         runCatching {
+            // ⚠️ 响应带 {"data": …} 信封，id 在 data.id；取顶层 id 永远是空串
             val req = "{}".toPostRequest(http.url("/api/session"))
             http.client.newCall(req).execute().use { resp ->
-                parseBody(resp) { JSONObject(it).optString("id") }
+                parseBody(resp) { JSONObject(it).unwrapData().optString("id") }
             }
         }.onFailure { ocLog("创建会话失败：${it.message}") }.getOrNull()
     }?.takeIf { it.isNotEmpty() }
@@ -115,9 +116,34 @@ class OcRepository(
             http.client.newCall(req).execute().use { resp ->
                 val text = resp.body?.string() ?: return@runCatching null
                 if (!resp.isSuccessful) throw OcHttpException(resp.code, "GET $url HTTP ${resp.code}")
-                JSONArray(text)
+                unwrapArray(text)
             }
         }.onFailure { ocLog("GET $url 失败：${it.message}") }.getOrNull()
+    }
+
+    /**
+     * 剥掉 OpenCode 的 **`{"data": …}` 响应信封**。
+     *
+     * 实测（真机 2.0.22，带 auth）：
+     * - `POST /api/session` → `{"data":{"id":"ses_…"}}`
+     * - `GET  /api/session` → `{"data":[…]}`
+     * - `GET  /api/session/{id}/message` → `{"data":[…],"cursor":{…}}`
+     *
+     * ⚠️ 不剥的后果是**静默失败**：`optString("id")` 取顶层 id 恒为空串 →
+     *   `takeIf { isNotEmpty() }` → null → UI 报「无法创建会话」，而 runCatching
+     *   **没有异常可捕**、`onFailure` 不触发 → RunLog 一行都没有（本次最难定位处）。
+     *
+     * 少数端点（如 `/api/config`）返回**裸数组、无信封**，故退化用「有 data 取 data，否则原文」。
+     */
+    private fun JSONObject.unwrapData(): JSONObject = optJSONObject("data") ?: this
+
+    /** 解析「可能是信封数组」的响应体：裸数组直接用，对象则取其 `data` 数组。 */
+    private fun unwrapArray(text: String): JSONArray {
+        val t = text.trimStart()
+        if (t.startsWith("[")) return JSONArray(text)
+        val o = JSONObject(text)
+        return o.optJSONArray("data")
+            ?: throw org.json.JSONException("响应既非数组也无 data 数组：${text.take(100)}")
     }
 
     private fun connectSse(scope: CoroutineScope, sessionId: String) {
