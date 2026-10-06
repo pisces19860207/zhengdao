@@ -241,6 +241,18 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
         }
     }
 
+    // 跳终端（带可选自动命令）：洞天入口与设置页「在终端中清理缓存」共用同一实现，
+    // 两处必须同一行为——此前 settings 路由没传参，onOpenTerminal 落到默认 no-op，
+    // 「在终端中清理缓存」点了零反应（连 Toast 都没有）。
+    val openTerminal: (String?, String?) -> Unit = { autocmd, agentId ->
+        context.startActivity(
+            Intent(context, TerminalActivity::class.java).apply {
+                putExtra("autocmd", autocmd)
+                putExtra("agent_id", agentId)
+            }
+        )
+    }
+
     NavHost(navController = nav, startDestination = startRoute) {
         composable("welcome") {
             WelcomeScreen(
@@ -257,14 +269,7 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
         }
         composable("home") {
             HomeTabs(
-                onOpenTerminal = { autocmd, agentId ->
-                    context.startActivity(
-                        Intent(context, TerminalActivity::class.java).apply {
-                            putExtra("autocmd", autocmd)
-                            putExtra("agent_id", agentId)
-                        }
-                    )
-                },
+                onOpenTerminal = openTerminal,
                 onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
             )
         }
@@ -281,7 +286,7 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
                     TextButton(onClick = { nav.popBackStack() }) { Text("← 返回") }
                     Text("设置", style = MaterialTheme.typography.titleMedium)
                 }
-                SettingsScreen()
+                SettingsScreen(onOpenTerminal = openTerminal)
             }
         }
     }
