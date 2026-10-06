@@ -3,6 +3,7 @@
 package com.example.zhengdao
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,16 +25,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.zhengdao.oc.TaijiPrefs
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.SettingsScreen
@@ -278,6 +283,20 @@ fun HomeTabs(
     onOpenSettings: () -> Unit = {},
 ) {
     var tab by remember { mutableIntStateOf(2) }
+
+    // 太极 Tab 走哪套 UI：默认 Compose 原生 UI（直连 serve），出问题可一键回退 WebView 版。
+    // 这里用**监听**而不是只读取一次——本页常驻不重建，设置页切换后要即时生效，不必重启 App。
+    val ctx = LocalContext.current
+    val taijiPrefs = remember { TaijiPrefs.prefs(ctx) }
+    var useNativeUi by remember { mutableStateOf(TaijiPrefs.useNativeUi(ctx)) }
+    DisposableEffect(taijiPrefs) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == TaijiPrefs.key()) useNativeUi = TaijiPrefs.useNativeUi(ctx)
+        }
+        taijiPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { taijiPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -312,8 +331,11 @@ fun HomeTabs(
             color = MaterialTheme.colorScheme.background,
         ) {
             when (tab) {
-                // 太极：Tab 内嵌 TerminalView 跑宿主 bionic opencode TUI
-                0 -> com.example.zhengdao.ui.TaijiScreen()
+                // 太极：默认 Compose 原生 UI（直连 opencode serve 的 HTTP + SSE）；
+                // 开关关掉则回退旧 WebView + LocalProxy 版（阶段 0 鉴权未过时的退路）。
+                0 ->
+                    if (useNativeUi) com.example.zhengdao.ui.taiji.TaijiScreen()
+                    else com.example.zhengdao.ui.TaijiScreen()
                 // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
                 2 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
                 // 洞天：点击即进终端（onClick 已处理），停留时显示空态

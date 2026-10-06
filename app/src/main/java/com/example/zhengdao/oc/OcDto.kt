@@ -1,0 +1,134 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+//
+// 依据的公开接口：OpenCode 官方 serve 模式的会话与消息数据结构（由其 OpenAPI
+// 描述生成 / schema v5），字段命名以**实际打包版本**为准。
+package com.example.zhengdao.oc
+
+/**
+ * OpenCode 会话与消息的数据模型。
+ *
+ * ## ⚠️ 字段名的确定方法（不要照抄官方主站文档）
+ *
+ * 太极 Tab 跑的是 **社区 bionic 版**（`Hope2333/opencode-termux`，v2.0.x），
+ * 由 binary surgery 移植而来（Bun 官方不支持 Android 交叉编译）。API 层理论上
+ * 与上游一致，但**官方文档横跨 v1/v2/v3 三代，字段名会变**（如 v2 命名空间下
+ * 事件叫 `EventSessionCreated`，v1 是 `session.created`）。
+ *
+ * **动作**：以实际打包版本（[OcManager.VERSION]）对应的 `openapi.json` 逐字段核对，
+ * 并逐个探测端点存在性。参见 docs/milestones/证道-bionic版查证补充.md。
+ *
+ * 当前字段名取自社区版README 与上游 v2 API 的**交集**，属"待实测确认"状态。
+ * 若实测不符，改这里即可（数据层与 UI 层已解耦）。
+ */
+
+// ── 会话 ──────────────────────────────────────────────────────────────
+
+data class OcSession(
+    val id: String,
+    val title: String? = null,
+    val timeCreated: Long? = null,
+    val timeUpdated: Long? = null,
+)
+
+// ── 消息 ──────────────────────────────────────────────────────────────
+
+/**
+ * 一条消息。[parts] 承载多段内容（文本 / 推理 / 工具调用 / 文件…）。
+ *
+ * 实际 API 的 Message 是 `{ info, parts }` 二元结构；本模型把它拍平成
+ * "消息 + 它自己的 part 列表"，因为 SSE 增量是**按 partId 定位**的（见 SseClient）。
+ */
+data class OcMessage(
+    val id: String,
+    val role: Role,
+    val parts: List<OcPart> = emptyList(),
+    val timeCreated: Long? = null,
+) {
+    enum class Role { USER, ASSISTANT, SYSTEM }
+}
+
+// ── Part（消息的一段内容）─────────────────────────────────────────────
+
+/**
+ * ⚠️ part 类型在社区版上取到[PartKind.UNKNOWN] 是**预期行为**，不是 bug。
+ * 上游持续新增 part 类型，未知类型必须保留原文而不是丢弃（详见设计文档 §3.2）。
+ */
+sealed interface OcPart {
+    val id: String
+
+    data class Text(
+        override val id: String,
+        val text: String = "",
+        /** true = 仍在流式输出中 */
+        val streaming: Boolean = false,
+    ) : OcPart
+
+    data class Reasoning(
+        override val id: String,
+        val text: String = "",
+    ) : OcPart
+
+    data class Tool(
+        override val id: String,
+        val toolName: String = "",
+        val state: ToolState = ToolState.Unknown,
+        val input: String? = null,      // 摘要文本（可能是 JSON）
+        val output: String? = null,
+    ) : OcPart
+
+    data class File(
+        override val id: String,
+        val filename: String = "",
+        val mime: String? = null,
+    ) : OcPart
+
+    data class Unknown(
+        override val id: String,
+        val type: String = "",
+        val raw: String = "",
+    ) : OcPart
+}
+
+enum class PartKind { TEXT, REASONING, TOOL, FILE, UNKNOWN }
+
+/** 工具调用的三态 —— 与设计文档 §5.2 的 ToolCallCard 视觉对应。 */
+enum class ToolState { Running, Success, Error, Unknown }
+
+// ── 待办（Agent 自跟踪的任务清单）────────────────────────────────────
+
+data class OcTodo(
+    val id: String,
+    val content: String,
+    val status: TodoStatus = TodoStatus.Pending,
+) {
+    enum class TodoStatus { Pending, Running, Completed, Cancelled }
+}
+
+// ── 权限请求（Agent 要改文件/执行命令时等待用户批准）─────────────────
+
+/**
+ * ⚠️ 该端点是否在社区版暴露**必须实测**（阶段 0-4）。若缺失，Agent 一要改文件
+ * 就会卡住等批准 —— 设计文档把 [com.example.zhengdao.ui.taiji.PermissionSheet]
+ * 列为里程碑门禁，正是为此。
+ */
+data class OcPermission(
+    val permissionId: String,
+    val sessionId: String,
+    /** 工具名，如 "edit" / "bash" */
+    val title: String = "",
+    /** 具体目标：文件路径或命令。**必须显示，否则用户只能盲批。** */
+    val detail: String? = null,
+    val type: String? = null,
+)
+
+// ── 服务端健康与版本 ──────────────────────────────────────────────────
+
+data class OcHealth(
+    val version: String = "",
+)
+
+/** HTTP API 的错误体（OpenCode 的 global error handler 返回 `{name, data}`）。 */
+data class OcApiError(
+    val name: String = "",
+    val data: String? = null,
+)
