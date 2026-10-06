@@ -23,6 +23,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
+        android:name="com.example.zhengdao.ZhengdaoApp"
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true"
