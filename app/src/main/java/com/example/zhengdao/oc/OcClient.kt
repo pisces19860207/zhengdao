@@ -33,7 +33,9 @@ import java.util.concurrent.TimeUnit
  *
  * ## ⚠️ 两个客户端的分工（不要合并）
  * - [client]：普通 API 请求，有限超时（[NORMAL_TIMEOUT_SEC]）
- * - [sseClient]：SSE 长连接，readTimeout 必须为 0（否则长流被中途掐断）
+ * - [sseClient]：SSE 长连接。**常规应为 readTimeout=0（无限等待，避免长流被中途掐断）**；
+ *   当前为诊断实验临时设为 60s（> 服务端 15s 心跳），用于排除"读超时配置异常"这一变量。
+ *   ⚠️ **callTimeout 始终未设置（默认 0 = 不限时长）**——它限制整个长连接生命周期，对 SSE 致命，绝不触碰。
  * 若共用一个 client，普通 API 会因 readTimeout=0 而永久等待。
  */
 class OcClient(
@@ -52,12 +54,17 @@ class OcClient(
         .build()
 
     /**
-     * SSE 专用：readTimeout=0（长连接不设读超时）。
+     * SSE 专用。
+     * ⚠️ 诊断实验（次要验证）：常规应为 readTimeout=0（无限等待，教科书写法）。
+     *   现临时设为 60s（> 服务端 15s 心跳），只为排除"读超时配置异常"这一变量。
+     *   注意：本 symptom 是"连上即断、读到 0 行"，属立即断开，读超时本不应触发——
+     *   此改动大概率只是排除法的一步，真正根因更可能在请求头/路径/服务端侧。
+     * callTimeout 未设置（默认 0 = 不限时长），对 SSE 正确，绝不改。
      * 鉴权同样在此注入（不是复用 [client]，避免流式响应占用普通连接池条目过久）。
      */
     val sseClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)   // 诊断期临时值；常规应改回 0
         .retryOnConnectionFailure(false)   // 重连由 SseClient 的退避策略负责
         .addInterceptor(AuthInterceptor(passwordProvider))
         .build()
