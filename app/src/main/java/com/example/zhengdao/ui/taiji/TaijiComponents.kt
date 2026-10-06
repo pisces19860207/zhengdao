@@ -70,6 +70,14 @@ import com.example.zhengdao.oc.OcTodo
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.oc.ToolState
+// Markdown 渲染（v1.1 第四阶段）：仅最终回答使用
+import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
+import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.rememberMarkdownState
 import kotlinx.coroutines.launch
 
 // ── 顶部栏 ────────────────────────────────────────────────────────────
@@ -251,14 +259,50 @@ fun MessageBubble(msg: OcMessage) {
     }
 }
 
-/** 最终回答正文：主角。大字号、高对比、无折叠。 */
+/**
+ * 最终回答正文：主角。大字号、高对比、无折叠。
+ *
+ * ## v1.1 第四阶段：升级为 Markdown 渲染
+ *
+ * 由纯 [Text] 升级为 Markdown（标题 / 列表 / 表格 / 引用 / 链接 / 代码块）。三个关键约束：
+ *
+ * 1. **显式 `Modifier.fillMaxWidth()`** —— 库默认 modifier 是 `fillMaxSize()`，直接用在
+ *    消息流里会撑破布局（报告 R3）。
+ * 2. **`retainState = true`** —— 流式追加时不重置内部状态、不闪 loading（报告 R1）。
+ * 3. **`markdownColor` / `markdownTypography` 显式对齐第二阶段视觉**（`onSurface` + `bodyLarge`），
+ *    避免库默认字号/颜色造成视觉回归（报告 R2）。
+ *
+ * 代码块走 code 模块：独立背景 + 等宽 + 横向滚动 + 语法高亮 + 顶部语言标签与**复制按钮**
+ * （`showHeader = true`，计划第 12 条里复制按钮优先级最高）。
+ *
+ * 渲染范围（报告 §5.3）：**仅最终回答** Markdown 化。[ReasoningBlock] 与 [ToolCallCard]
+ * 保持纯文本 —— 它们是日志性质，Markdown 化只增噪音与解析开销。
+ *
+ * 注：流式重解析是上游 **长期** 限制（mikepenz Issue #315，作者明确拒绝增量解析），
+ * 非临时问题；节流为长期策略，详见报告 §6 R1。
+ */
 @Composable
 private fun FinalAnswerText(text: String) {
     if (text.isEmpty()) return
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurface,
+    val markdownState = rememberMarkdownState(text, retainState = true)
+    Markdown(
+        markdownState = markdownState,
+        modifier = Modifier.fillMaxWidth(),
+        colors = markdownColor(text = MaterialTheme.colorScheme.onSurface),
+        typography = markdownTypography(
+            text = MaterialTheme.typography.bodyLarge,
+            code = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        ),
+        // 代码块：独立背景 + 等宽 + 横向滚动 + 语法高亮 + 顶部语言标签与复制按钮（showHeader = true）。
+        // 注：markdownComponents 的 slot 是普通参数（非 receiver），故用 it 取 content/node/typography。
+        components = markdownComponents(
+            codeFence = {
+                MarkdownHighlightedCodeFence(it.content, it.node, it.typography.code, showHeader = true)
+            },
+            codeBlock = {
+                MarkdownHighlightedCodeBlock(it.content, it.node, it.typography.code, showHeader = true)
+            },
+        ),
     )
 }
 
