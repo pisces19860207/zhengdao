@@ -82,12 +82,7 @@ fun SettingsScreen() {
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
     var cacheMb by remember { mutableStateOf(0L) }
-    var wsMode by remember {
-        mutableStateOf(Settings.prefs(ctx).getString("workspace_mode", "default") ?: "default")
-    }
-    var wsCustom by remember {
-        mutableStateOf(Settings.prefs(ctx).getString("workspace_custom", "") ?: "")
-    }
+    var wsPickerOpen by remember { mutableStateOf(false) }
 
     // ── 手机文件夹镜像（Plan B）──
     var mirrorSyncing by remember { mutableStateOf(false) }
@@ -290,7 +285,7 @@ fun SettingsScreen() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("所有文件访问（可选增强）", style = MaterialTheme.typography.bodySmall)
+                Text("所有文件访问（推荐开启·主路径）", style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         if (manageOk) "✅ 已开启" else "未开启",
@@ -301,7 +296,7 @@ fun SettingsScreen() {
                 }
             }
             Text(
-                text = "基础 /sdcard 读写无需此项即可用。开启后可访问更多应用目录；不开启或系统无此开关都不影响基本使用（另有 SAF 镜像兜底）。",
+                text = "推荐开启：Agent 可访问更广的存储范围（主路径）。基础 /sdcard 读写不开启此项亦可用；不开启或系统无此开关都不影响基本使用。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -446,41 +441,60 @@ fun SettingsScreen() {
             }
         }
 
-        // ── 工作区路径 ──
-        SectionCard("工作区路径") {
+        // ── 工作区（0.6 显性化：产出边界让用户看得见）──
+        SectionCard("工作区") {
+            val wsHost = com.example.zhengdao.terminal.Workspace.hostDir(ctx)
+            val wsShared = com.example.zhengdao.terminal.Workspace.isShared(ctx)
             Text(
-                text = "guest 内路径：/workspace\n" + when (wsMode) {
-                    "default" -> "手机侧：应用外部目录 files/workspace（当前设备实测可用的推荐方案）"
-                    "custom" -> "手机侧：${wsCustom.ifBlank { "（未填写）" }}（仅 legacy 存储设备可挂载）"
-                    else -> "仅使用 guest 私有 /root，不挂载任何共享目录"
+                "终端与 Agent 的产出位置（guest 内路径固定为 /workspace）",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = wsHost.absolutePath,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (wsShared) {
+                    "手机文件管理器直接可见、可自由删除；卸载证道后此文件夹仍会保留——产出不丢。"
+                } else {
+                    "应用专属目录：卸载证道时随之删除（在意痕迹时用）。"
                 },
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
             Row {
-                FilterChip2("默认", wsMode == "default") { wsMode = "default" }
-                Spacer(Modifier.width(6.dp))
-                FilterChip2("自定义", wsMode == "custom") { wsMode = "custom" }
-                Spacer(Modifier.width(6.dp))
-                FilterChip2("仅私有", wsMode == "private") { wsMode = "private" }
-            }
-            if (wsMode == "custom") {
-                OutlinedTextField(
-                    value = wsCustom,
-                    onValueChange = { wsCustom = it },
-                    label = { Text("自定义绝对路径（如 /storage/emulated/0/Download/zhengdao）") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-            }
-            Row(modifier = Modifier.padding(top = 6.dp)) {
+                TextButton(onClick = { wsPickerOpen = true }) { Text("选择文件夹") }
                 TextButton(onClick = {
-                    Settings.prefs(ctx).edit()
-                        .putString("workspace_mode", wsMode)
-                        .putString("workspace_custom", wsCustom).apply()
-                    Toast.makeText(ctx, "已保存，下次启动会话生效", Toast.LENGTH_SHORT).show()
-                }) { Text("保存工作区设置") }
+                    com.example.zhengdao.terminal.Workspace.setDefault(ctx)
+                    Toast.makeText(ctx, "已恢复默认（Download/证道），下次启动会话生效", Toast.LENGTH_SHORT).show()
+                }) { Text("恢复默认") }
+                TextButton(onClick = {
+                    com.example.zhengdao.terminal.Workspace.setPrivate(ctx)
+                    Toast.makeText(ctx, "已切换仅私有，下次启动会话生效", Toast.LENGTH_SHORT).show()
+                }) { Text("仅私有") }
             }
+            Text(
+                text = "边界约定：Agent 可读写整个 /sdcard 用于查找资料，但产出约定只进工作区——此约定已写入 Agent 人设，终端与太极共用。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (wsPickerOpen) {
+            WorkspaceFolderPicker(
+                onDismiss = { wsPickerOpen = false },
+                onPick = { path ->
+                    wsPickerOpen = false
+                    if (com.example.zhengdao.terminal.Workspace.setCustom(ctx, path)) {
+                        Toast.makeText(ctx, "工作区已设为 $path，下次启动会话生效", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(ctx, "该位置不可用，请选择内部存储中的文件夹", Toast.LENGTH_SHORT).show()
+                    }
+                },
+            )
         }
 
         // ── 手机文件夹同步（Plan B，2026-10-06）──
@@ -1048,4 +1062,66 @@ private fun FaqLine(question: String, answer: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/**
+ * 工作区文件夹浏览器（0.6）：直读共享存储（/storage/emulated/0），逐级进出，
+ * 「选定此文件夹」即用。不用 SAF（MagicOS 禁选根目录），无任何手输框（用户定）。
+ */
+@Composable
+fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val sharedRoot = "/storage/emulated/0"
+    var current by remember { mutableStateOf(sharedRoot) }
+    val entries = remember(current) {
+        runCatching {
+            File(current).listFiles { f -> f.isDirectory }
+                ?.sortedBy { it.name.lowercase() }
+                ?.map { it.name }
+                ?: emptyList()
+        }.getOrDefault(emptyList())
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择工作区文件夹", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column {
+                Text(
+                    text = current.removePrefix(sharedRoot).ifBlank { "/（内部存储根目录）" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                if (current != sharedRoot) {
+                    TextButton(onClick = { current = File(current).parent ?: sharedRoot }) { Text("← 上一级") }
+                }
+                Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
+                    if (entries.isEmpty()) {
+                        Text("（无子文件夹）", style = MaterialTheme.typography.bodySmall)
+                    }
+                    entries.forEach { name ->
+                        Text(
+                            text = "📁 $name",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { current = File(current, name).absolutePath }
+                                .padding(vertical = 8.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Agent 产出会写入所选文件夹（手机文件管理器可见）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onPick(current) }) { Text("选定此文件夹") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
 }
