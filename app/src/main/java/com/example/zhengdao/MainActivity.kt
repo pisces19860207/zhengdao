@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -20,9 +21,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,6 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
@@ -316,28 +325,51 @@ fun HomeTabs(
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = tab == 0,
-                    // 太极 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
-                    //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
-                    onClick = { tab = 0 },
-                    icon = { TaijiIcon(tab == 0) },
-                    label = { Text("太极") },
+            // 底栏走 iOS 语言：与页面同为白底、靠一条 0.5dp 发丝线分隔。
+            // 刻意不用 M3 默认的 tonalElevation 阴影——浅色主题下那会压出一条灰带，
+            // 与全局"白卡片 + 发丝描边"的语言冲突（同一处理见丹房卡片）。
+            Column {
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
                 )
-                NavigationBarItem(
-                    selected = tab == 1,
-                    // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
-                    onClick = { onOpenTerminal(null, null) },
-                    icon = { CaveIcon(tab == 1) },
-                    label = { Text("洞天") },
-                )
-                NavigationBarItem(
-                    selected = tab == 2,
-                    onClick = { tab = 2 },
-                    icon = { DingIcon(tab == 2) },
-                    label = { Text("丹房") },
-                )
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                ) {
+                    // 选中＝systemBlue 图标/文字 + 淡蓝胶囊；未选中＝次要文字色
+                    val tabColors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    NavigationBarItem(
+                        selected = tab == 0,
+                        // 太极 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
+                        //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
+                        onClick = { tab = 0 },
+                        icon = { TaijiIcon(tab == 0) },
+                        label = { Text("太极") },
+                        colors = tabColors,
+                    )
+                    NavigationBarItem(
+                        selected = tab == 1,
+                        // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
+                        onClick = { onOpenTerminal(null, null) },
+                        icon = { CaveIcon(tab == 1) },
+                        label = { Text("洞天") },
+                        colors = tabColors,
+                    )
+                    NavigationBarItem(
+                        selected = tab == 2,
+                        onClick = { tab = 2 },
+                        icon = { DingIcon(tab == 2) },
+                        label = { Text("丹房") },
+                        colors = tabColors,
+                    )
+                }
             }
         },
     ) { padding ->
@@ -370,73 +402,144 @@ fun HomeTabs(
     }
 }
 
-// ── 底部 Tab 自绘图标（Compose Path，零第三方素材，用户定稿）──
+// ── 底部 Tab 自绘图标：道家体系三件套（Compose Path，零第三方素材）──
+//
+// 为什么重绘（2026-10-07，真机截图驱动）：
+//   旧太极图标在真机上是一片"叶子/旗子"，不是阴阳鱼。根因在几何：
+//   两段 arcTo 画完 S 之后用 close() 收尾，close() 是**从底点直线拉回顶点**，
+//   填出的是一个由 S 与直径围成的月牙——正确做法是沿**外圆左半**绕回顶点。
+//   顺手把三个图标收敛成一套统一的设计语言（下面这些常量就是"一套"的契约）。
+//
+// 统一设计语言（三个必须像同一个人画的）：
+//   · 画布 26dp，光学框 20dp（四边各留 ~3dp 呼吸，Tab 图标不做满框）
+//   · 描边 1.9f + 圆头 + 圆角连接（StrokeCap.Round / StrokeJoin.Round）
+//   · 圆形母题贯穿：太极＝整圆、洞天＝半圆月洞门、丹房＝圆腹鼎
+//   · 只在"点睛"处用实心（太极双鱼眼、炉中之丹），其余一律描边——26dp 下不糊
 
-/** 太极：外圆 + S 分割 + 双鱼眼。 */
+/** 图标画布边长（dp）。 */
+private const val TAB_ICON_DP = 26
+
+/** 统一描边宽度（px）。26dp @560dpi ≈ 91px，1.9f 约等于 2dp，不粗不细。 */
+private const val TAB_STROKE = 1.9f
+
+/** 统一取色：选中＝主色（systemBlue），未选中＝次要文字色。 */
+@Composable
+private fun tabIconColor(selected: Boolean) =
+    if (selected) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.onSurfaceVariant
+
+/** 统一描边样式（圆头圆角）——三个图标共用，保证线感一致。 */
+private fun tabStroke() = Stroke(
+    width = TAB_STROKE,
+    cap = StrokeCap.Round,
+    join = StrokeJoin.Round,
+)
+
+/**
+ * 太极：外圆 + 阴阳鱼 S 分界 + 双鱼眼。
+ *
+ * S 分界 = 上半圆向右鼓（半径 r/2，圆心在 (cx, cy-r/2)）+ 下半圆向左鼓
+ * （半径 r/2，圆心在 (cx, cy+r/2)）首尾相接；两只鱼眼就落在两个半圆的圆心上，
+ * 这是太极图的标准作图法。
+ */
 @Composable
 fun TaijiIcon(selected: Boolean) {
-    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(26.dp)) {
-        val r = size.minDimension / 2f
+    val color = tabIconColor(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp)) {
+        val stroke = tabStroke()
+        val r = (size.minDimension - TAB_STROKE) / 2f
         val cx = size.width / 2f
-        val cy = r
-        drawCircle(color = color, radius = r - 1f, center = androidx.compose.ui.geometry.Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
-        val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(cx, cy - (r - 1f))
-            arcTo(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset(cx, cy - (r - 1f) / 2), androidx.compose.ui.geometry.Size(r - 1f, r - 1f)), -90f, 180f, false)
-            arcTo(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset(cx - (r - 1f), cy + (r - 1f) / 2), androidx.compose.ui.geometry.Size(r - 1f, r - 1f)), -90f, 180f, false)
-            close()
+        val cy = size.height / 2f
+
+        // 外圆
+        drawCircle(color = color, radius = r, center = Offset(cx, cy), style = stroke)
+
+        // 阴阳鱼 S 分界（⚠️ 不要 close()：那会直线拉回形成月牙，即旧版的畸形根因）
+        val s = Path().apply {
+            moveTo(cx, cy - r)
+            arcTo(Rect(cx - r / 2f, cy - r, cx + r / 2f, cy), -90f, 180f, false)   // 上半圆，向右鼓
+            arcTo(Rect(cx - r / 2f, cy, cx + r / 2f, cy + r), -90f, -180f, false)  // 下半圆，向左鼓
         }
-        drawPath(path, color)
-        drawCircle(color = color, radius = (r - 1f) / 8f, center = androidx.compose.ui.geometry.Offset(cx, cy - (r - 1f) / 2))
-        drawCircle(color = color, radius = (r - 1f) / 8f, center = androidx.compose.ui.geometry.Offset(cx, cy + (r - 1f) / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f))
+        drawPath(s, color, style = stroke)
+
+        // 双鱼眼（实心点，落在两个半圆圆心）
+        drawCircle(color = color, radius = r * 0.15f, center = Offset(cx, cy - r / 2f))
+        drawCircle(color = color, radius = r * 0.15f, center = Offset(cx, cy + r / 2f))
     }
 }
 
-/** 洞天：拱门（外拱 + 内门洞）。 */
+/**
+ * 洞天：月洞门（外拱 + 内门洞 + 地平线）——道家「洞天福地」的门阙意象。
+ *
+ * 加一条地平线是有意为之：只有拱就会读成"山洞/隧道"，有了门前地面才成"门"，
+ * 也与另外两个图标一样在底部有一条稳定的横向基线。
+ */
 @Composable
 fun CaveIcon(selected: Boolean) {
-    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(26.dp)) {
+    val color = tabIconColor(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp)) {
+        val stroke = tabStroke()
         val w = size.width
         val h = size.height
-        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
-        val outer = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.18f, h * 0.88f)
-            lineTo(w * 0.18f, h * 0.45f)
-            cubicTo(w * 0.18f, h * 0.12f, w * 0.82f, h * 0.12f, w * 0.82f, h * 0.45f)
-            lineTo(w * 0.82f, h * 0.88f)
+        val baseY = h * 0.86f
+
+        // 地平线（门前的台阶 / 地面）
+        drawLine(color, Offset(w * 0.10f, baseY), Offset(w * 0.90f, baseY), stroke.width, StrokeCap.Round)
+
+        // 门框（外拱）：直壁 → 半圆顶 → 直壁
+        val outer = Path().apply {
+            moveTo(w * 0.22f, baseY)
+            lineTo(w * 0.22f, h * 0.44f)
+            arcTo(Rect(w * 0.22f, h * 0.16f, w * 0.78f, h * 0.72f), 180f, 180f, false)
+            lineTo(w * 0.78f, baseY)
         }
         drawPath(outer, color, style = stroke)
-        val inner = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.36f, h * 0.88f)
-            lineTo(w * 0.36f, h * 0.55f)
-            cubicTo(w * 0.36f, h * 0.34f, w * 0.64f, h * 0.34f, w * 0.64f, h * 0.55f)
-            lineTo(w * 0.64f, h * 0.88f)
+
+        // 门洞（内拱）：与外拱同心同法，只缩放
+        val inner = Path().apply {
+            moveTo(w * 0.40f, baseY)
+            lineTo(w * 0.40f, h * 0.50f)
+            arcTo(Rect(w * 0.40f, h * 0.40f, w * 0.60f, h * 0.60f), 180f, 180f, false)
+            lineTo(w * 0.60f, baseY)
         }
         drawPath(inner, color, style = stroke)
     }
 }
 
-/** 丹房：鼎（口沿双耳 + 腹 + 双足）。 */
+/**
+ * 丹房：圆腹鼎（口沿 + 双耳 + 圆腹 + 双足）+ 炉中之丹。
+ *
+ * 旧版腹部是梯形、耳是外撇的斜线，整体读成"提篮"。改为圆腹（两段三次贝塞尔）
+ * + 竖直双耳 + 外撇双足，腹心点一颗实心"丹"——落在名字上（丹房＝炼丹之所）。
+ */
 @Composable
 fun DingIcon(selected: Boolean) {
-    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(26.dp)) {
+    val color = tabIconColor(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp)) {
+        val stroke = tabStroke()
         val w = size.width
         val h = size.height
-        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
-        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.2f, h * 0.32f), androidx.compose.ui.geometry.Offset(w * 0.8f, h * 0.32f), stroke.width)
-        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.28f, h * 0.32f), androidx.compose.ui.geometry.Offset(w * 0.24f, h * 0.16f), stroke.width)
-        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.72f, h * 0.32f), androidx.compose.ui.geometry.Offset(w * 0.76f, h * 0.16f), stroke.width)
-        val belly = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.2f, h * 0.32f)
-            lineTo(w * 0.28f, h * 0.72f)
-            lineTo(w * 0.72f, h * 0.72f)
-            lineTo(w * 0.8f, h * 0.32f)
+        val rimY = h * 0.30f
+
+        // 口沿
+        drawLine(color, Offset(w * 0.07f, rimY), Offset(w * 0.93f, rimY), stroke.width, StrokeCap.Round)
+        // 双耳（竖直短柱——比外撇斜线更像鼎耳）
+        drawLine(color, Offset(w * 0.22f, rimY), Offset(w * 0.22f, h * 0.14f), stroke.width, StrokeCap.Round)
+        drawLine(color, Offset(w * 0.78f, rimY), Offset(w * 0.78f, h * 0.14f), stroke.width, StrokeCap.Round)
+
+        // 圆腹
+        val belly = Path().apply {
+            moveTo(w * 0.07f, rimY)
+            cubicTo(w * 0.09f, h * 0.60f, w * 0.26f, h * 0.76f, w * 0.50f, h * 0.76f)
+            cubicTo(w * 0.74f, h * 0.76f, w * 0.91f, h * 0.60f, w * 0.93f, rimY)
         }
         drawPath(belly, color, style = stroke)
-        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.35f, h * 0.72f), androidx.compose.ui.geometry.Offset(w * 0.32f, h * 0.88f), stroke.width)
-        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.65f, h * 0.72f), androidx.compose.ui.geometry.Offset(w * 0.68f, h * 0.88f), stroke.width)
+
+        // 双足
+        drawLine(color, Offset(w * 0.32f, h * 0.72f), Offset(w * 0.29f, h * 0.90f), stroke.width, StrokeCap.Round)
+        drawLine(color, Offset(w * 0.68f, h * 0.72f), Offset(w * 0.71f, h * 0.90f), stroke.width, StrokeCap.Round)
+
+        // 炉中之丹（点睛）
+        drawCircle(color = color, radius = w * 0.055f, center = Offset(w * 0.50f, h * 0.50f))
     }
 }
