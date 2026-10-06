@@ -81,8 +81,36 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 手机文件夹镜像自动同步（Plan B）：已配置所选文件夹则冷启动静默同步一次；
-        // 失败只记 RunLog，不弹任何东西打扰用户
+        // 存储主路径引导（E-005 修订 / P1，2026-10-06）：MANAGE_EXTERNAL_STORAGE 升为
+        // 正式主路径。首启且未授权时主动引导用户到「所有文件访问」设置页（带包名），
+        // 失败回退通用设置页；非阻塞，可稍后，设置页仍保留入口。
+        runCatching {
+            val sp = getSharedPreferences("zhengdao-ui", MODE_PRIVATE)
+            if (!sp.getBoolean("manage_prompted", false) && !android.os.Environment.isExternalStorageManager()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("开启完整存储访问")
+                    .setMessage("证道需要访问手机存储，以便 Agent 在你的文件中查找与产出。将打开系统设置，请开启「所有文件访问」；也可稍后在设置中开启。")
+                    .setCancelable(false)
+                    .setPositiveButton("去开启") { _, _ ->
+                        try {
+                            startActivity(
+                                Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                                    .setData(android.net.Uri.parse("package:$packageName"))
+                            )
+                        } catch (_: Exception) {
+                            try {
+                                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                            } catch (_: Exception) { /* 个别 ROM 无此入口，忽略 */ }
+                        }
+                    }
+                    .setNegativeButton("稍后") { _, _ -> }
+                    .show()
+                sp.edit().putBoolean("manage_prompted", true).apply()
+            }
+        }
+
+        // 手机文件夹镜像自动同步（Plan B / SAF 备用）：E-005 修订后待真机验证通过即删除
+        // （P1.5）。当前保留作为个别 ROM 兜底；已配置所选文件夹则冷启动静默同步一次。
         Thread {
             runCatching { com.example.zhengdao.mirror.PhoneMirror.syncIfConfigured(this@MainActivity) }
         }.start()
