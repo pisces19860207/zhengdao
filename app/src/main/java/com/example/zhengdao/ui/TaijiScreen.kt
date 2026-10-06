@@ -232,7 +232,7 @@ fun TaijiScreen() {
 
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        text = "对话数据与终端 TUI 相互隔离；API 密钥自动注入。",
+                        text = "对话数据与终端 TUI 相互隔离。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

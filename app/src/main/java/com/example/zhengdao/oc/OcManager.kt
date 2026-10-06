@@ -6,7 +6,6 @@ package com.example.zhengdao.oc
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
-import com.example.zhengdao.settings.ApiKeyStore
 import com.example.zhengdao.terminal.Workspace
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -82,7 +81,7 @@ object OcManager {
 
     /**
      * 拉起 serve（宿主进程，不经 PRoot）。已在运行返回 null；失败返回错误消息。
-     * 工作目录 = 用户工作区（Workspace.hostDir）；环境注入 API Key（与终端一致）。
+     * 工作目录 = 用户工作区（Workspace.hostDir）。
      */
     fun startServe(ctx: Context): String? {
         // serve 可能是孤儿（上一轮 App 被杀、子进程存活监听 14000——App 重启后
@@ -106,12 +105,6 @@ object OcManager {
             env["XDG_CONFIG_HOME"] = xdgDir(ctx, "config").absolutePath
             env["XDG_STATE_HOME"] = xdgDir(ctx, "state").absolutePath
             env["PATH"] = "/system/bin"
-            // API Key 注入（与终端同一套密钥库；OpenCode 识别 OPENAI_API_KEY 等）
-            runCatching {
-                ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
-                    ApiKeyStore.get(ctx, id)?.let { env[envName] = it }
-                }
-            }
             val log = File(ctx.filesDir, "oc/serve.log")
             pb.redirectErrorStream(true)
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log))
