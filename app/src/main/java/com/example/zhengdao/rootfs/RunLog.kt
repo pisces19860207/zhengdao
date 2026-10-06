@@ -61,7 +61,15 @@ object RunLog {
     }
 
     fun log(line: String) {
-        val ctx = appContext ?: return
+        val ctx = appContext
+        if (ctx == null) {
+            // ⚠️ 绝不静默丢弃：拿不到 context 时至少进 logcat。
+            //    「失败可见」的前提是日志存在——丢进黑洞**比不记日志更糟**，
+            //    因为它会让人误判成"这段分支没执行 / 异常没触发"，
+            //    本次就因此把 SSE 断连归因错了两轮。
+            android.util.Log.w("zhengdao/RunLog", "[未落盘] $line")
+            return
+        }
         try {
             val f = File(dir(ctx), NAME)
             if (f.length() > MAX_BYTES) {
@@ -71,7 +79,9 @@ object RunLog {
             }
             val ts = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date())
             f.appendText("[$ts] $line\n")
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            // 落盘失败同样不能静默——否则又是一个黑洞
+            android.util.Log.w("zhengdao/RunLog", "[落盘失败] $line | ${e.message}")
         }
     }
 
