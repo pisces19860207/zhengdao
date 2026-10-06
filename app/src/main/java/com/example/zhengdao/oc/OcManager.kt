@@ -99,7 +99,9 @@ object OcManager {
      * server listening on http://127.0.0.1:14000     ← pw2 绑上了
      * server password <pw3>                          ← 最后一场没绑上端口，无 listening
      * ```
-     * 注意顺序是 **password 在前、listening 在后**。
+     * ⚠️ **两种顺序都实测出现过**，解析必须同时兼容：
+     *   - 调试期多场启动：`password` 在前、`listening` 在后
+     *   - 干净生产路径单场启动：`listening` 在前、`password` 在后（2026-10-06 实机确认）
      *
      * 原实现 `lastOrNull { contains("server password") }` 在"最后一次启动没绑上端口"
      * （端口已被孤儿进程占用 / 启动失败）时，必然取到那场失败进程的密码 →
@@ -112,14 +114,20 @@ object OcManager {
     private fun parseServePassword(ctx: Context) {
         servePassword = runCatching {
             var pending: String? = null   // 已打密码、尚未见到 listening
+            var awaitingPw = false        // 已见 listening、尚未见到密码（顺序相反的情形）
             var lastGood: String? = null  // 最后一个确认监听成功的密码
             File(ctx.filesDir, "oc/serve.log").useLines { lines ->
                 for (line in lines) {
                     when {
-                        line.contains("server password") ->
-                            pending = line.substringAfter("server password").trim()
-                        line.contains("server listening") ->
+                        line.contains("server password") -> {
+                            val pw = line.substringAfter("server password").trim()
+                            if (awaitingPw) { lastGood = pw; awaitingPw = false }
+                            else pending = pw
+                        }
+                        line.contains("server listening") -> {
                             if (pending != null) { lastGood = pending; pending = null }
+                            else awaitingPw = true
+                        }
                     }
                 }
             }

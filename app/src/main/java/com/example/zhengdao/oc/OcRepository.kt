@@ -71,7 +71,7 @@ class OcRepository(
 
     private suspend fun createSession(): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val req = "{}".toPostRequest(http.url("/session"))
+            val req = "{}".toPostRequest(http.url("/api/session"))
             http.client.newCall(req).execute().use { resp ->
                 parseBody(resp) { JSONObject(it).optString("id") }
             }
@@ -80,7 +80,7 @@ class OcRepository(
 
     /** 全量拉取并**重建**列表（不是合并）——重连补齐必须走这里。 */
     private suspend fun loadAll(sessionId: String) {
-        val arr = fetchJsonArray(http.url("/session/$sessionId/message")) ?: return
+        val arr = fetchJsonArray(http.url("/api/session/$sessionId/message")) ?: return
         val parsed = (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             // 兼容两种形态：裸 info 对象，或 OpenCode v2 的 {info, parts} 包装
@@ -123,8 +123,8 @@ class OcRepository(
     private fun connectSse(scope: CoroutineScope, sessionId: String) {
         sseJob?.cancel()
         sseJob = scope.launch {
-            val req = http.sseRequest("/event")
-            sse.connect("/event", req) { raw ->
+            val req = http.sseRequest("/api/event")
+            sse.connect("/api/event", req) { raw ->
                 runCatching { JSONObject(raw).optString("sessionID").takeIf { it.isNotEmpty() } }.getOrNull()
             }.collect { ev -> handle(ev, scope) }
         }
@@ -263,12 +263,9 @@ class OcRepository(
     suspend fun prompt(text: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val id = _state.value.sessionId ?: error("未打开会话")
-            val body = JSONObject().apply {
-                put("parts", JSONArray().apply { put(JSONObject().apply {
-                    put("type", "text"); put("text", text)
-                }) })
-            }
-            val req = body.toString().toPostRequest(http.url("/session/$id/prompt_async"))
+            // 真实载荷是 {text, files[], agents[], skills[]}，不是 {parts:[...]}
+            val body = JSONObject().apply { put("text", text) }
+            val req = body.toString().toPostRequest(http.url("/api/session/$id/prompt"))
             http.client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) throw OcHttpException(resp.code, "发送失败 HTTP ${resp.code}")
             }
@@ -279,7 +276,8 @@ class OcRepository(
     suspend fun abort(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val id = _state.value.sessionId ?: return@runCatching
-            val req = EMPTY_BODY.toPostRequestVoid(http.url("/session/$id/abort"))
+            // 真实端点是 interrupt（不存在 /abort），且无请求体
+            val req = EMPTY_BODY.toPostRequestVoid(http.url("/api/session/$id/interrupt"))
             http.client.newCall(req).execute().use { }
             _state.update { it.copy(isStreaming = false) }
         }.onFailure { ocLog("中止失败：${it.message}") }
@@ -291,11 +289,16 @@ class OcRepository(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val id = _state.value.sessionId ?: error("未打开会话")
-            val body = JSONObject().apply {
-                put("response", if (allow) "allow" else "deny")
-                if (remember) put("remember", true)
+            // 三态（实测确认）：once=一次性 / always=永久写入 saved / reject=拒绝
+            val decision = when {
+                !allow -> "reject"
+                remember -> "always"
+                else -> "once"
             }
-            val req = body.toString().toPostRequest(http.url("/session/$id/permissions/$permissionId"))
+            val body = JSONObject().apply { put("decision", decision) }
+            val req = body.toString().toPostRequest(
+                http.url("/api/session/$id/permission/$permissionId/reply")
+            )
             http.client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) throw OcHttpException(resp.code, "授权失败 HTTP ${resp.code}")
             }
@@ -360,25 +363,39 @@ internal fun parseBody(resp: Response, pick: (String) -> String?): String? {
 internal fun parseMessage(info: JSONObject?): OcMessage? {
     info ?: return null
     val id = info.optString("id").takeIf { it.isNotEmpty() } ?: return null
-    val role = when (info.optString("role")) {
+    // ⚠️ 真实消息用 **type** 区分（user / assistant / system / idle…），**没有 role 字段**。
+    //    原实现读 role 会把所有消息都判成 SYSTEM。
+    val role = when (info.optString("type")) {
         "user" -> OcMessage.Role.USER
         "assistant" -> OcMessage.Role.ASSISTANT
         else -> OcMessage.Role.SYSTEM
     }
-    val parts = info.optJSONArray("parts")?.let { arr ->
-        (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::parsePart) }
-    } ?: emptyList()
-    return OcMessage(id, role, parts, info.optLong("timeCreated"))
+    val time = info.optJSONObject("time")?.optLong("created")
+    // Assistant 的多段内容在 **content[]**（不是 parts[]）
+    val arr = info.optJSONArray("content") ?: info.optJSONArray("parts")
+    val parts = if (arr != null) {
+        (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.let { parsePart(it, fallbackId = "$id:$i") }
+        }
+    } else {
+        // User（及纯文本消息）：正文直接在 text 字段
+        info.optString("text").takeIf { it.isNotEmpty() }
+            ?.let { listOf(OcPart.Text("$id:0", it)) } ?: emptyList()
+    }
+    return OcMessage(id, role, parts, time)
 }
 
-internal fun parsePart(obj: JSONObject?): OcPart? {
+internal fun parsePart(obj: JSONObject?, fallbackId: String? = null): OcPart? {
     obj ?: return null
-    val id = obj.optString("id").takeIf { it.isNotEmpty() } ?: return null
+    // ⚠️ 只有 tool 段自带 id；text / reasoning 段**没有 id 字段**。
+    //    原实现「无 id 直接丢弃」会把助手正文整段丢光——必须回退到 <消息id>:<序号>。
+    val id = obj.optString("id").takeIf { it.isNotEmpty() } ?: fallbackId ?: return null
     return when (obj.optString("type")) {
         "text" -> OcPart.Text(id, obj.optString("text"))
         "reasoning" -> OcPart.Reasoning(id, obj.optString("text"))
+        // 工具名在 **name** 字段（不是 tool）
         "tool" -> OcPart.Tool(
-            id, obj.optString("tool"),
+            id, obj.optString("name"),
             parseToolState(obj.optJSONObject("state")),
             obj.optJSONObject("input")?.toString(),
             obj.optJSONObject("output")?.optString("title"),
