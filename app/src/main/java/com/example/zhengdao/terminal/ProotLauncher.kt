@@ -239,13 +239,53 @@ object ProotLauncher {
         // OpenCode 调优（性能）：snapshot 会在每次工具调用时跑 git 子进程，
         // proot 下子进程开销被放大数倍 → 输入/响应明显卡顿。默认关闭；
         // 需要 undo 功能的用户可手动改回 true（牺牲性能）。
+        // OpenCode 预置（字段级合并，0.5 步）：
+        // - snapshot=false：性能（每次工具调用省 git 子进程，proot 下被放大数倍）
+        // - plugin opencode-mem：跨会话记忆（用户痛点"重开就忘"；免 Key 走免费模型，
+        //   用户确认可用；同名包有两个，认准 npm 的 tickernelz/opencode-mem）
+        // - AGENTS.md：人设 + 文件地图（治"忘了自己在手机里/找不到文件"）。
+        // 已有配置/文件时按字段合并或跳过，绝不覆盖用户自有内容。
         runCatching {
             val cfgDir = File(homeDir, ".config/opencode")
             if (cfgDir.isDirectory || cfgDir.mkdirs()) {
                 val f = File(cfgDir, "opencode.json")
-                if (!f.isFile) {
-                    f.writeText("{\n  \"snapshot\": false\n}\n")
-                    RunLog.log("OpenCode 配置已预置（snapshot=false）")
+                val obj = if (f.isFile) runCatching {
+                    org.json.JSONObject(f.readText())
+                }.getOrElse {
+                    RunLog.log("OpenCode 配置解析失败，按空配置重建（原内容已损坏）")
+                    org.json.JSONObject()
+                } else org.json.JSONObject()
+                var changed = !f.isFile
+                if (!obj.has("snapshot")) { obj.put("snapshot", false); changed = true }
+                val plugins = obj.optJSONArray("plugin") ?: org.json.JSONArray().also {
+                    obj.put("plugin", it); changed = true
+                }
+                if (plugins.toString().contains("opencode-mem").not()) {
+                    plugins.put("opencode-mem"); changed = true
+                }
+                if (changed) {
+                    f.writeText(obj.toString(2))
+                    RunLog.log("OpenCode 配置已合并（snapshot=false + opencode-mem 插件）")
+                }
+                // 人设：opencode 原生读取 ~/.config/opencode/AGENTS.md 作为全局规则
+                val agents = File(cfgDir, "AGENTS.md")
+                if (!agents.isFile) {
+                    agents.writeText(
+                        "# 证道运行环境说明（每次对话开始前必读）\n\n" +
+                            "## 你的身份\n" +
+                            "你运行在用户的安卓手机上——一个由证道 App 通过 proot 运行的 Debian 13.7 环境。\n" +
+                            "禁止声称「我不在手机上」「我没有文件系统」；你就在手机里，文件就在下面这些路径。\n\n" +
+                            "## 文件地图\n" +
+                            "- /workspace —— 证道工作区，项目文件放这里\n" +
+                            "- /sdcard/Download/证道 —— 手机共享存储文件夹：用户把文件放这里，你在里面创建的文件会出现在手机「文件管理器」的 Download/证道 中\n" +
+                            "- /mnt/phone —— 手机文件夹镜像（备用；仅当用户在证道设置里配置过「手机文件夹同步」才有内容）\n" +
+                            "- /root —— 你的 home；各 Agent 配置在此（~/.config/opencode、~/.hermes 等）\n\n" +
+                            "## 能力边界\n" +
+                            "- 无 root，不要尝试需要 root 的操作\n" +
+                            "- 禁止执行 apt upgrade（会损坏环境）；装依赖用 pip / npm\n" +
+                            "- 找不到用户文件时：先 ls /sdcard/Download/证道 和 /workspace，把已搜索的路径列出来再下结论，不要直接放弃\n"
+                    )
+                    RunLog.log("OpenCode 人设已预置（AGENTS.md）")
                 }
             }
         }
