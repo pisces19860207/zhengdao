@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
@@ -283,15 +284,21 @@ fun HomeTabs(
                 NavigationBarItem(
                     selected = tab == 0,
                     onClick = { tab = 0 },
-                    icon = { Text("AI") },
-                    label = { Text("Agent") },
+                    icon = { TaijiIcon(tab == 0) },
+                    label = { Text("太极") },
                 )
                 NavigationBarItem(
                     selected = tab == 1,
                     // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
                     onClick = { onOpenTerminal(null, null) },
-                    icon = { Text(">_") },
-                    label = { Text("终端") },
+                    icon = { CaveIcon(tab == 1) },
+                    label = { Text("洞天") },
+                )
+                NavigationBarItem(
+                    selected = tab == 2,
+                    onClick = { tab = 2 },
+                    icon = { DingIcon(tab == 2) },
+                    label = { Text("丹房") },
                 )
             }
         },
@@ -302,12 +309,82 @@ fun HomeTabs(
                 .padding(padding),
             color = MaterialTheme.colorScheme.background,
         ) {
-            if (tab == 0) {
-                HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
-            } else {
-                // 点 Tab 即进终端；回退到本页时落在 Agent Tab
-                androidx.compose.runtime.LaunchedEffect(Unit) { onOpenTerminal(null, null) }
+            when (tab) {
+                0 -> com.example.zhengdao.ui.TaijiScreen()
+                // 洞天：点击即进终端；回到本页时落在太极
+                else -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
             }
         }
+    }
+}
+
+// ── 底部 Tab 自绘图标（Compose Path，零第三方素材，用户定稿）──
+
+/** 太极：外圆 + S 分割 + 双鱼眼。 */
+@Composable
+fun TaijiIcon(selected: Boolean) {
+    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(26.dp)) {
+        val r = size.minDimension / 2f
+        val cx = size.width / 2f
+        val cy = r
+        drawCircle(color = color, radius = r - 1f, center = androidx.compose.ui.geometry.Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(cx, cy - (r - 1f))
+            arcTo(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset(cx, cy - (r - 1f) / 2), androidx.compose.ui.geometry.Size(r - 1f, r - 1f)), -90f, 180f, false)
+            arcTo(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset(cx - (r - 1f), cy + (r - 1f) / 2), androidx.compose.ui.geometry.Size(r - 1f, r - 1f)), -90f, 180f, false)
+            close()
+        }
+        drawPath(path, color)
+        drawCircle(color = color, radius = (r - 1f) / 8f, center = androidx.compose.ui.geometry.Offset(cx, cy - (r - 1f) / 2))
+        drawCircle(color = color, radius = (r - 1f) / 8f, center = androidx.compose.ui.geometry.Offset(cx, cy + (r - 1f) / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f))
+    }
+}
+
+/** 洞天：拱门（外拱 + 内门洞）。 */
+@Composable
+fun CaveIcon(selected: Boolean) {
+    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(26.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
+        val outer = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.18f, h * 0.88f)
+            lineTo(w * 0.18f, h * 0.45f)
+            cubicTo(w * 0.18f, h * 0.12f, w * 0.82f, h * 0.12f, w * 0.82f, h * 0.45f)
+            lineTo(w * 0.82f, h * 0.88f)
+        }
+        drawPath(outer, color, style = stroke)
+        val inner = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.36f, h * 0.88f)
+            lineTo(w * 0.36f, h * 0.55f)
+            cubicTo(w * 0.36f, h * 0.34f, w * 0.64f, h * 0.34f, w * 0.64f, h * 0.55f)
+            lineTo(w * 0.64f, h * 0.88f)
+        }
+        drawPath(inner, color, style = stroke)
+    }
+}
+
+/** 丹房：鼎（口沿双耳 + 腹 + 双足）。 */
+@Composable
+fun DingIcon(selected: Boolean) {
+    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(26.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
+        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.2f, h * 0.32f), androidx.compose.ui.geometry.Offset(w * 0.8f, h * 0.32f), stroke.width)
+        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.28f, h * 0.32f), androidx.compose.ui.geometry.Offset(w * 0.24f, h * 0.16f), stroke.width)
+        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.72f, h * 0.32f), androidx.compose.ui.geometry.Offset(w * 0.76f, h * 0.16f), stroke.width)
+        val belly = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.2f, h * 0.32f)
+            lineTo(w * 0.28f, h * 0.72f)
+            lineTo(w * 0.72f, h * 0.72f)
+            lineTo(w * 0.8f, h * 0.32f)
+        }
+        drawPath(belly, color, style = stroke)
+        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.35f, h * 0.72f), androidx.compose.ui.geometry.Offset(w * 0.32f, h * 0.88f), stroke.width)
+        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.65f, h * 0.72f), androidx.compose.ui.geometry.Offset(w * 0.68f, h * 0.88f), stroke.width)
     }
 }

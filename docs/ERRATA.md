@@ -173,3 +173,31 @@ SAF 镜像同步降级为**备用方案**（个别 ROM 兜底），代码保留�
 
 **修订纪律**：后续任何人改存储相关代码，仍以本 ERRATA 的"技术事实"为准；
 产品决策（MANAGE 主路径 / 删 SAF）可随用户新指令再调整，但不得改写上方技术事实与方法论。
+
+---
+
+## E-006 · 2026-10-06 · 太极接 OpenCode Web 的三个坑（batch 3 实装实录）
+
+**1. WebView fetch/XHR 的 401 不触发 onReceivedHttpAuthRequest**
+OpenCode v2 serve 的 API 强制 HTTP Basic（静态资源 200、/api/* 401 +
+WWW-Authenticate: Basic）。WebView 对 fetch/XHR 的 401 不回调认证接口
+（只有主 frame 导航会）——SPA 卡死在 logo。**解法：App 内本地透传代理**
+（LocalProxy：127.0.0.1:14001 → 14000，TCP 字节级注入 Authorization，
+SSE/chunked/POST body 全兼容）。
+
+**2. 代理单连接语义**：第一版只注入每个连接的第一个请求，浏览器 keep-alive
+复用连接的后续请求裸奔 401 → 主帧导航报 ERR_HTTP_RESPONSE_CODE_FAILURE。
+**解法：单请求单连接语义**——每请求注入 + 请求/响应头强制 Connection: close
+（loopback 握手成本可忽略；SSE 长流不受影响，EventSource 关闭才断）。
+
+**3. 孤儿 serve 与代理线程生命周期**：App 被 force-stop 后 serve 子进程存活
+（监听 14000），重启 App 后 startServe 探到"已在运行"直接返回——但代理线程
+已随旧进程死亡，没人重启 → 界面卡死。**解法**：startServe 入口幂等重启代理；
+stopServe 扫 /proc 按 cmdline 同 uid kill 孤儿；servePassword 从 serve.log
+解析（密码行在 listening 之后打印，需要重试读取）。
+
+**附带发现**：HttpURLConnection 对本地代理端口 14001 的存活探测恒失败
+（curl 同端口 200）——判活改用原始 socket HEAD。
+
+**验证**：太极 Tab 一键 → serve 拉起 → OpenCode Web 全界面渲染（会话列表/
+对话/主题切换）→ 真机截图通过。
