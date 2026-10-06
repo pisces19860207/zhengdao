@@ -76,6 +76,18 @@ data class TaijiState(
     /** 当前重连次数（第 N 次），供 UI 显示"第 N 次重试"。 */
     val reconnectAttempt: Int = 0,
 
+    // ── 模型池（v1.0 任务一）──
+
+    /** 可选模型目录（GET /api/model；进会话/打开选择器时拉取，可能为空——models.dev 不可达时目录为空）。 */
+    val models: List<OcModel> = emptyList(),
+
+    /** 当前生效模型显示名：session.step.started 事件的 model 字段（服务端实际在用的），
+     *  或本地 override 刚设置时的值；null = 服务端默认。 */
+    val currentModel: String? = null,
+
+    /** 本地模型覆盖（providerID+id）。仅影响当前会话；持久化在调用方（TaijiScreen 的 prefs）。 */
+    val modelOverride: OcModel? = null,
+
     /** 是否已完成过一次全量加载。false 时显示 loading 而非空列表。 */
     val loadedOnce: Boolean = false,
 )
