@@ -42,7 +42,12 @@ object AgentInstaller {
             return
         }
         Thread {
-            val dir = File(ctx.getExternalFilesDir(null), "workspace/.zhengdao/scripts")
+            // 脚本落点跟随工作区（0.6）：宿主侧 = Workspace.hostDir/.zhengdao/scripts
+            //（guest 侧路径 /workspace/.zhengdao/scripts 不变，安装命令零改动）
+            val dir = File(
+                com.example.zhengdao.terminal.Workspace.hostDir(ctx),
+                ".zhengdao/scripts"
+            )
             var ok = runCatching { dir.mkdirs() }.isSuccess
             val script = File(dir, "${agent.id}-install.sh")
             // 重试免下载：脚本已在且非空直接复用（用户指定）

@@ -149,6 +149,11 @@ object ProotLauncher {
         val homeDir = File(files, "home").apply { mkdirs() }
         val prootTmp = File(files, "proot-tmp").apply { mkdirs() }
 
+        // 工作区解析（0.6 显性化）：唯一真相源 Workspace；bind/软链/人设/脚本落点共用。
+        // 在所有预置块之前解析——AGENTS.md 人设的文件地图需要当前映射。
+        val wsHost = Workspace.hostDir(context)
+        val wsShared = Workspace.isShared(context)
+
         // hermes 命令立即可用（用户反馈：装完敲 hermes 没反应）：安装器把命令发布在
         // /root/.local/bin（home 层），但**早已存在的 shell 的 PATH 是启动时的快照**，
         // 拿不到后装的目录。/usr/local/bin 天然在所有 shell 的 PATH 里且属系统层——
@@ -267,25 +272,33 @@ object ProotLauncher {
                     f.writeText(obj.toString(2))
                     RunLog.log("OpenCode 配置已合并（snapshot=false + opencode-mem 插件）")
                 }
-                // 人设：opencode 原生读取 ~/.config/opencode/AGENTS.md 作为全局规则
+                // 人设：opencode 原生读取 ~/.config/opencode/AGENTS.md 作为全局规则。
+                // 文件地图随工作区设置动态更新（0.6）：映射变化才重写，平时不动用户文件。
                 val agents = File(cfgDir, "AGENTS.md")
-                if (!agents.isFile) {
-                    agents.writeText(
-                        "# 证道运行环境说明（每次对话开始前必读）\n\n" +
-                            "## 你的身份\n" +
-                            "你运行在用户的安卓手机上——一个由证道 App 通过 proot 运行的 Debian 13.7 环境。\n" +
-                            "禁止声称「我不在手机上」「我没有文件系统」；你就在手机里，文件就在下面这些路径。\n\n" +
-                            "## 文件地图\n" +
-                            "- /workspace —— 证道工作区，项目文件放这里\n" +
-                            "- /sdcard/Download/证道 —— 手机共享存储文件夹：用户把文件放这里，你在里面创建的文件会出现在手机「文件管理器」的 Download/证道 中\n" +
-                            "- /mnt/phone —— 手机文件夹镜像（备用；仅当用户在证道设置里配置过「手机文件夹同步」才有内容）\n" +
-                            "- /root —— 你的 home；各 Agent 配置在此（~/.config/opencode、~/.hermes 等）\n\n" +
-                            "## 能力边界\n" +
-                            "- 无 root，不要尝试需要 root 的操作\n" +
-                            "- 禁止执行 apt upgrade（会损坏环境）；装依赖用 pip / npm\n" +
-                            "- 找不到用户文件时：先 ls /sdcard/Download/证道 和 /workspace，把已搜索的路径列出来再下结论，不要直接放弃\n"
+                val wsPath = wsHost.absolutePath
+                val wsNote = if (wsShared) "手机文件管理器直接可见、可自由删除；卸载证道后该文件夹仍会保留（产出不丢）" else "应用专属目录，随应用卸载自动删除"
+                val persona = (
+                    "# 证道运行环境说明（每次对话开始前必读）\n\n" +
+                        "## 你的身份\n" +
+                        "你运行在用户的安卓手机上——一个由证道 App 通过 proot 运行的 Debian 13.7 环境。\n" +
+                        "禁止声称「我不在手机上」「我没有文件系统」；你就在手机里，文件就在下面这些路径。\n\n" +
+                        "## 文件地图\n" +
+                        "- /workspace —— **产出与边界区**：Agent 的产出都放这里（手机侧：$wsPath；$wsNote）。用户在这里找产出、在这里自由删除\n" +
+                        "- /sdcard —— 共享存储整体可读可写，用于查找资料；**产出约定只进 /workspace**，不要把共享存储其他位置当草稿区乱写\n" +
+                        "- /mnt/phone —— 手机文件夹镜像（备用；仅当用户在证道设置里配置过「手机文件夹同步」才有内容）\n" +
+                        "- /root —— 你的 home；各 Agent 配置在此（~/.config/opencode、~/.hermes 等）\n\n" +
+                        "## 能力边界\n" +
+                        "- 无 root，不要尝试需要 root 的操作\n" +
+                        "- 禁止执行 apt upgrade（会损坏环境）；装依赖用 pip / npm\n" +
+                        "- 找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃\n"
                     )
-                    RunLog.log("OpenCode 人设已预置（AGENTS.md）")
+                val lastPersonaWs = com.example.zhengdao.ui.Settings.prefs(context)
+                    .getString("agents_md_ws", null)
+                if (!agents.isFile || lastPersonaWs != wsPath) {
+                    agents.writeText(persona)
+                    com.example.zhengdao.ui.Settings.prefs(context)
+                        .edit().putString("agents_md_ws", wsPath).apply()
+                    RunLog.log("AGENTS.md 已更新（工作区映射: $wsPath）")
                 }
             }
         }
@@ -353,48 +366,28 @@ object ProotLauncher {
             "-b", "/sys",            // 绑定系统信息
             "-b", "${homeDir.absolutePath}:/root", // 用户 home（与系统层分离）
         )
-        // 手机存储直通（用户要求）：共享存储绑进 guest 的相同路径 + /sdcard 视图；
-        // 默认工作区 Download/证道（guest 内 /root/工作区 直达）。未授权时静默跳过。
-        // 「仅私有」模式（设置页工作区三选）不绑共享存储，guest 完全看不到手机文件。
-        val wsMode = com.example.zhengdao.ui.Settings.prefs(context)
-            .getString("workspace_mode", "default") ?: "default"
-        if (storageGranted(context) && wsMode != "private") {
+        // 手机存储直通：共享存储绑进 guest 的相同路径 + /sdcard 视图。
+        // 工作区解析已在预置块前完成（wsHost/wsShared，统一走 Workspace）
+        if (storageGranted(context) && wsShared) {
             val shared = "/storage/emulated/0"
             args.addAll(arrayOf("-b", "$shared:$shared", "-b", "/sdcard:/sdcard"))
+            // 工作区软链跟随当前工作区（guest 内 /root/工作区 直达；变更时重建）
             try {
-                val ws = File("$shared/Download/证道")
-                ws.mkdirs()
                 val link = File(context.filesDir, "home/工作区")
                 link.parentFile?.mkdirs()
-                if (!link.exists()) {
-                    android.system.Os.symlink("/sdcard/Download/证道", link.absolutePath)
+                val target = "/sdcard" + wsHost.absolutePath.removePrefix("/storage/emulated/0")
+                val cur = runCatching { android.system.Os.readlink(link.absolutePath) }.getOrNull()
+                if (cur != target) {
+                    link.delete()
+                    android.system.Os.symlink(target, link.absolutePath)
                 }
             } catch (_: Throwable) {
             }
         }
-        // 工作区（全版本兼容）：App 外部目录无需任何权限且真实路径可 bind；
-        // 安卓 16 实测 /sdcard 原始路径对 target 28 应用不可达，/sdcard bind 仅对
-        // legacy 视图设备生效（上面的 storageGranted 分支），两者并存互不影响。
-        // 三档模式：默认 → 私有工作区（+共享存储直通）；自定义 → 用户路径（不可达时回退私有）；
-        // 仅私有 → 只绑私有目录。
-        val wsHost = when (wsMode) {
-            "custom" -> {
-                val custom = com.example.zhengdao.ui.Settings.prefs(context)
-                    .getString("workspace_custom", "") ?: ""
-                val f = if (custom.isNotBlank()) File(custom) else null
-                if (f != null && f.isDirectory) {
-                    RunLog.log("工作区(自定义): ${f.absolutePath} -> /workspace")
-                    f
-                } else {
-                    RunLog.log("工作区(自定义): 路径不可达「$custom」，回退私有工作区")
-                    File(context.getExternalFilesDir(null), "workspace")
-                }
-            }
-            else -> File(context.getExternalFilesDir(null), "workspace")
-        }.apply { mkdirs() }
-        if (wsMode != "custom") {
-            RunLog.log("工作区(${wsMode}): ${wsHost.absolutePath} -> /workspace")
-        }
+        RunLog.log(
+            "工作区: /workspace <- ${wsHost.absolutePath}" +
+                if (wsShared) "（共享存储，卸载保留）" else "（仅私有，随卸载删除）"
+        )
         args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
 
         // 手机文件夹镜像（Plan B，2026-10-06）：SAF 镜像同步的落点。
