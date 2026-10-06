@@ -51,7 +51,6 @@ import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.oc.TaijiPrefs
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
@@ -74,7 +73,10 @@ object Settings {
 
 /** 设置页（第二批）：存储占用 / 修复环境 / 工作区 / 检查更新 / Root / 关于。 */
 @Composable
-fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> }) {
+fun SettingsScreen(
+    onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> },
+    onOpenPlugins: () -> Unit = {},
+) {
     val ctx = LocalContext.current
     // 这里原先有一份 SystemInfoProvider.collect() 的结果缓存，但全页从未读过它——
     // 设置页只展示存储占用。留着会每次进页白跑一次采集（v1.1 起采集还包含 node
@@ -89,6 +91,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
     var cacheMb by remember { mutableStateOf(0L) }
+    var pluginCount by remember { mutableStateOf(0) }
     var wsPickerOpen by remember { mutableStateOf(false) }
 
     // ── 权限（存储 + 网络自检）──
@@ -154,6 +157,11 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
             )
         }
         rootfsMb = sizes.first; homeMb = sizes.second; cacheMb = sizes.third
+        // 已启用插件数（入口行上显示，让用户不用点进去也知道有没有装）
+        // 只数太极实例——插件归 OpenCode 管，终端那份自装的不在本 App 的管理范围。
+        pluginCount = withContext(Dispatchers.IO) {
+            PluginManager.readSpecs(PluginManager.taijiConfig(ctx)).size
+        }
     }
 
     Column(
@@ -203,12 +211,17 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
             )
             Spacer(Modifier.height(2.dp))
 
-            // 一档：官方 CLI，需要会话活着（命令要在 guest 里跑）
+            // 一档：官方 CLI（命令在 guest 里跑，输出可见、可中断）。
+            // ⚠️ **不再拿 SessionManager.isAlive() 卡门**：旧实现会话没起时只弹一句
+            //    Toast，用户看到的就是"点了不跳转"（2026-10-07 用户当面指出）。
+            //    拉起会话这件事本就该由终端自己做——TerminalActivity 的
+            //    ensureStartedAndAttach() 会起会话并注入 autocmd。这里只挡真正
+            //    跑不了的情况：环境未安装（此时终端是回退 shell，命令无处可去）。
             TextButton(onClick = {
-                if (com.example.zhengdao.terminal.SessionManager.isAlive()) {
-                    onOpenTerminal(com.example.zhengdao.terminal.CacheCleaner.guestCommand(), null)
+                if (!AppState.rootfsInstalled(ctx)) {
+                    Toast.makeText(ctx, "运行环境尚未安装，无法在终端中清理", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(ctx, "请先启动终端（会话未运行）", Toast.LENGTH_SHORT).show()
+                    onOpenTerminal(com.example.zhengdao.terminal.CacheCleaner.guestCommand(), null)
                 }
             }) { Text("在终端中清理包缓存") }
 
@@ -247,6 +260,23 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                     },
                 )
             }
+        }
+
+        // ── 插件（2026-10-07 新增）：把 OpenCode 插件从配置文件里显性化 ──
+        // 背景：此前插件被硬编码写进 opencode.json，用户既看不见也关不掉；
+        // 装了个"记忆插件"占 2.6GB 却从未产出记忆，直到全量排查才发现。
+        // 现在给一个正规入口：可见、可开关、可清缓存。
+        SectionCard("插件") {
+            SettingRow(
+                label = "插件管理",
+                value = if (pluginCount > 0) "$pluginCount 个已启用" else "未启用",
+                onClick = onOpenPlugins,
+            )
+            Text(
+                text = "扩展太极里 OpenCode 的能力（如跨会话记忆）。可查看已启用的插件、一键开关、清理下载缓存。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // ── 权限（存储读写 + 网络自检）──
@@ -755,30 +785,8 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         }
 
         // ── Root 增强模式 ──
-        // ── 太极 Tab 走哪套 UI ──
-        // 默认 Compose 原生界面（直连 opencode serve 的 HTTP + SSE，不走 WebView/LocalProxy）。
-        // ⚠️ 保留回退开关的原因：阶段 0 的真机鉴权（Basic auth 打 /global/health）尚未验证，
-        //    万一新界面连不上，用户能自己退回旧版而不必等发版——失败必须可恢复。
-        SectionCard("太极 Tab 界面") {
-            var nativeUi by remember { mutableStateOf(TaijiPrefs.useNativeUi(ctx)) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = if (nativeUi) "Compose 原生界面（直连 serve）" else "WebView 旧版（经本地代理）",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        text = "原生界面响应更快、中文输入更可靠；若打不开或一直空白，可退回旧版",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = nativeUi, onCheckedChange = {
-                    nativeUi = it
-                    TaijiPrefs.setNativeUi(ctx, it)
-                })
-            }
-        }
+        // （旧「太极 Tab 界面」回退开关已删——v1.1.1 阶段 3：原生 UI 过真机验收后，
+        //   WebView + LocalProxy 旧路径整体移除，开关失去意义。）
 
         SectionCard("Root 增强模式") {
             val hasSu = remember {
@@ -847,7 +855,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
             GuideLine("2", "进各 Agent 内完成各自的登录 / 授权（凭据由 Agent 自己保管），会话内直接可用。")
-            GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / opencode / agy）。")
+            GuideLine("3", "进底部「洞天」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在洞天里另外装的 opencode 是另一份，两者互不干扰。")
             Spacer(Modifier.height(8.dp))
             Text(
                 "常见问题",
@@ -1020,7 +1028,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
  * 分组反而没有层级。标题移到卡外后，视线先落到组标签、再落到这一组的内容。
  */
 @Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
+internal fun SectionCard(title: String, content: @Composable () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = title,
@@ -1043,7 +1051,7 @@ private fun SectionCard(title: String, content: @Composable () -> Unit) {
 
 /** 名称—数值行：数值右对齐成一列，扫一眼就能比大小（旧版固定 150dp 标签宽 + 左对齐，读着像表格）。 */
 @Composable
-private fun InfoRow(label: String, value: String) {
+internal fun InfoRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1069,7 +1077,7 @@ private fun InfoRow(label: String, value: String) {
  * 旧版三行权限各有各的写法（行尾有的挂按钮、有的挂 ✅ emoji、有的挂 ›），一页凑出三套交互视觉。
  */
 @Composable
-private fun SettingRow(
+internal fun SettingRow(
     label: String,
     value: String,
     valueColor: Color = Color.Unspecified,

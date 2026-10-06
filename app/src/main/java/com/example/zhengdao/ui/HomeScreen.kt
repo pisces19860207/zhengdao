@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -161,6 +162,10 @@ fun HomeScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // ⚠️ 必须先 clip 再 clickable：Card 是 16dp 圆角，但涟漪默认按矩形绘制，
+                    //    按下去会在圆角外糊出一块方形的印子（2026-10-07 用户当面指出）。
+                    //    clip 在外层 → 内层 clickable 画的涟漪被裁成圆角。
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable { statusExpanded = !statusExpanded },
                 shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -389,6 +394,8 @@ fun HomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(34.dp)
+                                        // 同上：圆形热区配方形涟漪很难看，裁成圆
+                                        .clip(CircleShape)
                                         .clickable { menuOpenFor = agent.id },
                                     contentAlignment = Alignment.Center,
                                 ) {

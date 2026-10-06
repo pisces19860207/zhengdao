@@ -4,7 +4,9 @@ plugins {
 }
 
 // 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
-val appVersionName = "1.0.0"
+// v1.1.1（2026-10-07）：v1.1 的收尾版——洞天体验打磨 + 清债。
+// 版本序列：v1.0.0(12) → v1.1 → v1.1.1(13) → v1.2(14，稳定性+性能+生态，v1.1.1 发布后才启动)
+val appVersionName = "1.1.1"
 
 android {
     namespace = "com.example.zhengdao"
@@ -24,7 +26,7 @@ android {
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro（MagicOS 11 /
         // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
         minSdk = 36
-        versionCode = 12
+        versionCode = 13
         versionName = appVersionName
 
         ndk {
@@ -125,6 +127,10 @@ dependencies {
     implementation(libs.mikepenz.markdown.m3)
     implementation(libs.mikepenz.markdown.code)
     testImplementation(libs.junit)
+    // 单元测试里的 org.json 真实实现（PluginManager 读写 opencode.json 用的就是它）：
+    // Android 的 android.jar 只是 mockable stub，方法调用一律抛 "not mocked"，
+    // 只有补上真实实现，配置读写的单测才有意义。仅作用于 test classpath，不进 APK。
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

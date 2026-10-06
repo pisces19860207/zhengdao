@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -180,6 +181,9 @@ private fun ModelChip(text: String, onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
             .widthIn(max = 176.dp)
+            // ⚠️ 必须先 clip 再 clickable：胶囊是 50% 圆角，涟漪默认按矩形绘制，
+            //    不裁会在两个圆头外糊出方角（与首页「环境就绪」卡同一个坑，v1.1.1 阶段 1.3 补齐）。
+            .clip(RoundedCornerShape(50))
             .clickable(onClick = onClick),
     ) {
         Text(
@@ -367,7 +371,8 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.secondaryContainer,
         shadowElevation = 4.dp,
-        modifier = Modifier.clickable(onClick = onClick),
+        // 同上：胶囊浮标，涟漪要跟着圆形走
+        modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick),
     ) {
         Text(
             "⬇ 回到最新",
@@ -593,7 +598,13 @@ fun ToolCallCard(part: OcPart.Tool) {
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+        // 形状显式写出来，好让 clip 用同一个值（Card 默认是 12dp 圆角，
+        // 不 clip 的话展开/收起的涟漪会在四角露出方块）
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { expanded = !expanded },
     ) {
         Column(Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1007,6 +1018,8 @@ fun HistoryDrawer(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
+                // 同上：12dp 圆角的「新会话」按钮，涟漪跟着圆角走
+                .clip(RoundedCornerShape(12.dp))
                 .clickable(onClick = onNew),
         ) {
             Text(
