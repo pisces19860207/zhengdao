@@ -309,3 +309,34 @@ readTimeout / callTimeout、PC 代理工具、设备 VPN（`http_proxy=null`，�
 `SseClient` 的事件解析（`PartUpdated` / `MessageUpdated` / …）仍完整保留，届时无需重写。
 
 **验证**：`assembleDebug` 通过；真机跑一轮确认消息经 REST 轮询正常显示。
+
+---
+
+## E-009 · 2026-10-06 · 「回复只有思考过程、没有正文」根因 = opencode 输出 token 硬封顶 32K（已修）
+
+**现象**：太极 Tab 收到回复时**只有「思考过程」（reasoning）卡片、没有最终正文**；推理越长越必现。
+
+**根因（第三方行为，非本项目 bug）**
+opencode 对**每一次补全**硬性封顶 **32000 输出 token（含思考/reasoning）**，与模型自身上限无关。
+推理模型会把这 32K 预算**全部花在 thinking 上** → 补全以 `reason: length` 结束、**不产出任何正文**。
+社区文档原文印证：*"opencode caps every completion at 32 000 output tokens — thinking included…
+the completion ends with reason: length and no text"*。
+
+**修复**：在 serve 冷启动时注入环境变量（`OcManager.startServe` 的 `env`）。
+```text
+OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=64000   # 官方文档确认的变量名（opencode 会再按模型上限夹一次，安全）
+OPENCODE_EXPERIMENTAL_LENGTH_NUDGE=true        # 未见于官方文档；设未知 env 无副作用，一并设置覆盖用户方案
+OPENCODE_EXPERIMENTAL_LENGTH_NUDGE_MAX=3
+```
+⚠️ 环境变量**只在 serve 冷启动时生效**：已在运行的 serve 不会重读，必须让它重启
+（App `force-stop` 会连带杀掉 serve 子进程；重启 App 即冷启动）。
+
+**验证（真机 2.0.22）**
+- 注入确认：`/proc/<servePid>/environ` 含上述三项。
+- 功能确认：同一条「Write a 400 word essay」提示，修复前只产 `reasoning`；
+  **修复后产出 `reasoning(3117) + text(2739)`**，UI 正常显示正文。
+- 变量名核实：`OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` 见官方 `https://opencode.ai/docs/cli`
+  （Experimental 段，"Max output tokens for LLM responses"）；`LENGTH_NUDGE*` 未在官方文档中找到。
+
+**附带发现（待处理）**：UI 把最终正文渲染在了「思考过程」标题之下（疑似 part 标签/分组问题）——
+正文确实出现了，但标签可能不准确。
