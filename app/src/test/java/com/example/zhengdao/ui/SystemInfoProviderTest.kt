@@ -66,4 +66,20 @@ class SystemInfoProviderTest {
         assertNull(SystemInfoProvider.scanNodeVersion(temp(ByteArray(0)), "26"))
         assertNull(SystemInfoProvider.scanNodeVersion(File("/no/such/file"), "26"))
     }
+
+    // ── 内嵌 uv 版本（取自 hermes 工具目录名）──
+
+    @Test
+    fun `从 hermes 工具目录名读出 uv 版本`() {
+        assertEquals("0.12.3", SystemInfoProvider.uvVersionFromDirName("uv-0.12.3-linux-arm64"))
+        assertEquals("0.8.15", SystemInfoProvider.uvVersionFromDirName("uv-0.8.15-linux-arm64"))
+    }
+
+    @Test
+    fun `不是 uv 的目录与无版本段的目录都不认`() {
+        assertNull(SystemInfoProvider.uvVersionFromDirName("python-3.14.7-linux-arm64"))
+        assertNull(SystemInfoProvider.uvVersionFromDirName("node-26.7.0-linux-arm64"))
+        assertNull(SystemInfoProvider.uvVersionFromDirName("uv-linux-arm64"))
+        assertNull(SystemInfoProvider.uvVersionFromDirName("uvx-0.12.3-linux-arm64"))
+    }
 }

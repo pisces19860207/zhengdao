@@ -147,18 +147,52 @@ object EnvHealth {
         )
     }
 
+    /**
+     * 网络连通性。
+     *
+     * 只说"系统标记为已验证"是不够的：VPN / 企业网 / 部分运营商网络上这个标记经常
+     * 是 false，而网络其实完全可用；反过来，拿不到能力（权限缺失、无活跃网络）时
+     * 也不能直接判失败。所以系统标记只作为快路径，不确定时用一次**真实 TCP 探测**
+     * 给出结论——体检要的是真实情况，不是"猜"。
+     */
     private fun networkCheck(ctx: Context): Check {
-        val ok = runCatching {
+        val cap = runCatching {
             val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val cap = cm.getNetworkCapabilities(cm.activeNetwork)
-            cap?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-        }.getOrDefault(false)
-        return Check(
-            id = "network", label = "网络连通性", ok = ok,
-            detail = if (ok) "宿主网络已通过系统验证"
-            else "宿主网络未验证通过（guest 侧网络问题见「设置 → 常见问题」与故障排查手册）",
+            cm.getNetworkCapabilities(cm.activeNetwork)
+        }.getOrNull()
+        val validated = cap?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        val hasInternet = cap?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        val (ok, detail) = networkVerdict(
+            validated = validated,
+            reachable = validated || tcpReachable(),
+            hasInternet = hasInternet,
         )
+        return Check(id = "network", label = "网络连通性", ok = ok, detail = detail)
     }
+
+    /** 网络体检结论（纯函数，便于单测锁死文案与判定）。 */
+    internal fun networkVerdict(
+        validated: Boolean,
+        reachable: Boolean,
+        hasInternet: Boolean,
+    ): Pair<Boolean, String> = when {
+        validated -> true to "宿主网络可用（系统已验证）"
+        reachable -> true to "宿主网络可用（实测已连通）"
+        hasInternet -> false to "已连上网络但外网不通（代理或受限网络？）"
+        else -> false to "宿主网络不可用，Agent 安装与更新会失败"
+    }
+
+    /**
+     * 真实连通性探测：TCP 连一下国内公共 DNS 的 53 端口，超时 1.2 秒。
+     * 体检要求"秒级完成"，所以只连一个目标、超时给短；连得上即说明出网路径通。
+     * IO 线程调用（inspect 整体在 Dispatchers.IO）。
+     */
+    private fun tcpReachable(): Boolean = runCatching {
+        java.net.Socket().use { s ->
+            s.connect(java.net.InetSocketAddress("223.5.5.5", 53), 1200)
+            true
+        }
+    }.getOrDefault(false)
 
     private fun storageCheck(ctx: Context): Check {
         // 主路径 = MANAGE_EXTERNAL_STORAGE（E-005 修订）。基础 /sdcard 读写不依赖它，
