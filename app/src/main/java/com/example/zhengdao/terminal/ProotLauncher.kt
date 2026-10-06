@@ -67,7 +67,7 @@ object ProotLauncher {
      *  - 已安装 Debian 13.7 环境（rootfs 目录存在且带完成标记）→ 经 proot 启动 guest bash；
      *  - 未安装 → 回退到系统自带 shell，App 端行为完全一致，用户无感降级。
      */
-    fun buildLaunchPlan(context: Context): LaunchPlan {
+    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
 
@@ -274,9 +274,9 @@ object ProotLauncher {
                     f.writeText(obj.toString(2))
                     RunLog.log("OpenCode 配置已合并（snapshot=false + opencode-mem 插件）")
                 }
-                // 人设：opencode 原生读取 ~/.config/opencode/AGENTS.md 作为全局规则。
+                // 人设：opencode 原生读取 <XDG_CONFIG_HOME>/opencode/AGENTS.md 作为全局规则。
                 // 文件地图随工作区设置动态更新（0.6）：映射变化才重写，平时不动用户文件。
-                val agents = File(cfgDir, "AGENTS.md")
+                // 双份：终端默认实例（~/.config/opencode）+ 太极实例（/root/.zhengdao/taiji/config）。
                 val wsPath = wsHost.absolutePath
                 val wsNote = if (wsShared) "手机文件管理器直接可见、可自由删除；卸载证道后该文件夹仍会保留（产出不丢）" else "应用专属目录，随应用卸载自动删除"
                 val persona = (
@@ -294,14 +294,64 @@ object ProotLauncher {
                         "- 禁止执行 apt upgrade（会损坏环境）；装依赖用 pip / npm\n" +
                         "- 找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃\n"
                     )
-                val lastPersonaWs = com.example.zhengdao.ui.Settings.prefs(context)
-                    .getString("agents_md_ws", null)
+                val prefsUi = com.example.zhengdao.ui.Settings.prefs(context)
+                // 终端默认实例
+                val agents = File(cfgDir, "AGENTS.md")
+                val lastPersonaWs = prefsUi.getString("agents_md_ws", null)
                 if (!agents.isFile || lastPersonaWs != wsPath) {
                     agents.writeText(persona)
-                    com.example.zhengdao.ui.Settings.prefs(context)
-                        .edit().putString("agents_md_ws", wsPath).apply()
+                    prefsUi.edit().putString("agents_md_ws", wsPath).apply()
                     RunLog.log("AGENTS.md 已更新（工作区映射: $wsPath）")
                 }
+                // 太极实例（XDG 隔离，见 taiji 脚本）
+                val taijiCfg = File(homeDir, ".zhengdao/taiji/config/opencode")
+                if (taijiCfg.isDirectory || taijiCfg.mkdirs()) {
+                    val agentsTaiji = File(taijiCfg, "AGENTS.md")
+                    val lastPersonaWsT = prefsUi.getString("agents_md_ws_taiji", null)
+                    if (!agentsTaiji.isFile || lastPersonaWsT != wsPath) {
+                        agentsTaiji.writeText(persona)
+                        prefsUi.edit().putString("agents_md_ws_taiji", wsPath).apply()
+                        RunLog.log("太极实例 AGENTS.md 已更新（工作区映射: $wsPath）")
+                    }
+                    // taiji 实例的 opencode.json：同样关 snapshot/autoupdate + 记忆插件
+                    val fT = File(taijiCfg, "opencode.json")
+                    val objT = if (fT.isFile) runCatching {
+                        org.json.JSONObject(fT.readText())
+                    }.getOrElse { org.json.JSONObject() } else org.json.JSONObject()
+                    var changedT = !fT.isFile
+                    if (!objT.has("snapshot")) { objT.put("snapshot", false); changedT = true }
+                    if (!objT.has("autoupdate")) { objT.put("autoupdate", false); changedT = true }
+                    val pluginsT = objT.optJSONArray("plugin") ?: org.json.JSONArray().also {
+                        objT.put("plugin", it); changedT = true
+                    }
+                    if (pluginsT.toString().contains("opencode-mem").not()) {
+                        pluginsT.put("opencode-mem"); changedT = true
+                    }
+                    if (changedT) {
+                        fT.writeText(objT.toString(2))
+                        RunLog.log("太极实例 opencode.json 已预置（记忆插件同款）")
+                    }
+                }
+            }
+        }
+
+        // taiji 启动脚本（太极 Tab 用，用户定稿）：XDG 四目录隔离 → 与洞天/终端的
+        // opencode（默认 XDG）物理隔离；同一个 /usr/local/bin/opencode 二进制。
+        // 放 /usr/local/bin（PATH 内），太极 Tab 的 autocmd 就一个词：taiji。
+        runCatching {
+            val taiji = File(rootfsDir, "usr/local/bin/taiji")
+            val script = "#!/bin/sh\n" +
+                "# 证道太极：OpenCode 独立实例（XDG 隔离，与终端默认实例互不干扰）\n" +
+                "export XDG_CONFIG_HOME=/root/.zhengdao/taiji/config\n" +
+                "export XDG_DATA_HOME=/root/.zhengdao/taiji/data\n" +
+                "export XDG_CACHE_HOME=/root/.zhengdao/taiji/cache\n" +
+                "export XDG_STATE_HOME=/root/.zhengdao/taiji/state\n" +
+                "mkdir -p /root/.zhengdao/taiji/config /root/.zhengdao/taiji/data /root/.zhengdao/taiji/cache /root/.zhengdao/taiji/state\n" +
+                "exec /usr/local/bin/opencode\n"
+            if (!taiji.isFile || !taiji.readText().contains("XDG_CONFIG_HOME=/root/.zhengdao/taiji")) {
+                taiji.writeText(script)
+                runCatching { android.system.Os.chmod(taiji.absolutePath, 493) }
+                RunLog.log("taiji 启动脚本已预置（XDG 隔离的 OpenCode 实例）")
             }
         }
 
@@ -417,16 +467,28 @@ object ProotLauncher {
         // 宿主侧检查 rootfs 是否带 tmux：旧包没有时降级裸 bash，guest 内不会报 command not found。
         val hasTmux = File(rootfsDir, "usr/bin/tmux").isFile
         if (hasTmux) {
-            // kill-server 兜底：会话被 SIGKILL 终止时 proot 来不及跑 --kill-on-exit，
-            // tmux server 可能残留为接不住客户端的僵尸（实测 2026-10-04 code=1）。
-            // 真进程死亡时全组覆灭（ps 实测无孤儿），此行不影响任何存活场景。
-            args.addAll(
-                arrayOf(
-                    "/bin/bash",
-                    "-lc",
-                    "${memPrefix}tmux kill-server 2>/dev/null; exec tmux new-session -A -s zhengdao",
+            if (tmuxSession == "zhengdao") {
+                // 主会话：kill-server 兜底（孤儿 tmux server 会让 attach 失败）。
+                // ⚠️ 仅主会话可 kill——taiji 等副会话与 zhengdao 共存于同一 server，
+                // kill 会连带杀掉太极的会话。
+                args.addAll(
+                    arrayOf(
+                        "/bin/bash",
+                        "-lc",
+                        "${memPrefix}tmux kill-server 2>/dev/null; exec tmux new-session -A -s zhengdao",
+                    )
                 )
-            )
+            } else {
+                // 副会话（taiji 等）：不 kill、直接 attach-or-create；pane 主程序按会话名分发
+                val paneCmd = if (tmuxSession == "taiji") "/usr/local/bin/taiji" else "/bin/bash -l"
+                args.addAll(
+                    arrayOf(
+                        "/bin/bash",
+                        "-lc",
+                        "${memPrefix}exec tmux new-session -A -s $tmuxSession $paneCmd",
+                    )
+                )
+            }
         } else {
             RunLog.log("rootfs 未带 tmux，降级为裸 bash 会话")
             args.addAll(

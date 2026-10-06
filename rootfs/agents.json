@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "agents": [
     {
       "id": "claude-code",
@@ -7,14 +7,16 @@
       "desc": "Anthropic 官方 AI 编程助手",
       "launchCmd": "claude",
       "installCmd": "curl -fsSL https://claude.ai/install.sh | bash",
-      "npmPackage": "@anthropic-ai/claude-code"
+      "npmPackage": "@anthropic-ai/claude-code",
+      "uninstall": "rm -rf /root/.claude/local /root/.local/bin/claude 2>/dev/null && echo '[卸载] Claude Code 已删除（配置 ~/.claude 保留）'"
     },
     {
       "id": "hermes",
       "name": "Hermes Agent",
       "desc": "多技能 AI 助手（Nous Research）",
       "launchCmd": "hermes",
-      "installCmd": "export UV_LINK_MODE=copy; curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+      "installCmd": "export UV_LINK_MODE=copy; curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
+      "uninstall": "rm -rf /root/.hermes/hermes-agent /root/.local/bin/hermes /root/.local/bin/hermes-acp /root/.local/bin/hermes-agent && echo '[卸载] Hermes 程序已删除（用户数据 ~/.hermes 保留）'"
     },
     {
       "id": "opencode",
@@ -22,14 +24,16 @@
       "desc": "开源编程 Agent（多模型，官方 npm 含 linux-arm64 预编译二进制）",
       "launchCmd": "opencode",
       "installCmd": "npm install -g --allow-scripts=opencode-ai opencode-ai",
-      "npmPackage": "opencode-ai"
+      "npmPackage": "opencode-ai",
+      "uninstall": "npm uninstall -g opencode-ai 2>/dev/null && echo '[卸载] OpenCode 已卸载'"
     },
     {
       "id": "antigravity",
       "name": "AGY CLI（Antigravity）",
       "desc": "Google 新一代 Agent CLI（Gemini/Claude 模型，官方含 linux-arm64 构建；Gemini CLI 已向它合并）",
       "launchCmd": "agy",
-      "installCmd": "curl -fsSL https://antigravity.google/cli/install.sh | bash"
+      "installCmd": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+      "uninstall": "rm -rf /root/.antigravity /root/.local/bin/agy 2>/dev/null && echo '[卸载] AGY CLI 已删除'"
     }
   ]
 }

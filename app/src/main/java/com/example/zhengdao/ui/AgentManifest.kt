@@ -43,6 +43,7 @@ object AgentManifest {
         val launchCmd: String,
         val installCmd: String,
         val npmPackage: String? = null,
+        val uninstallCmd: String? = null, // P3：卸载命令（缺省 = 无卸载能力）
     )
 
     /** Ed25519 验签（纯函数，先验签后解析的"验签"半边；JVM 可测）。 */
@@ -75,6 +76,7 @@ object AgentManifest {
                 launchCmd = str(id, "launchCmd").ifBlank { id },
                 installCmd = install,
                 npmPackage = str(id, "npmPackage").ifBlank { null },
+                uninstallCmd = str(id, "uninstall").ifBlank { null },
             )
         }
     }

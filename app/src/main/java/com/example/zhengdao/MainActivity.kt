@@ -277,12 +277,14 @@ fun HomeTabs(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(2) }
     Scaffold(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
                     selected = tab == 0,
+                    // 太极 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
+                    //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
                     onClick = { tab = 0 },
                     icon = { TaijiIcon(tab == 0) },
                     label = { Text("太极") },
@@ -310,9 +312,12 @@ fun HomeTabs(
             color = MaterialTheme.colorScheme.background,
         ) {
             when (tab) {
+                // 太极：Tab 内嵌 TerminalView 跑宿主 bionic opencode TUI
                 0 -> com.example.zhengdao.ui.TaijiScreen()
-                // 洞天：点击即进终端；回到本页时落在太极
-                else -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
+                // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
+                2 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
+                // 洞天：点击即进终端（onClick 已处理），停留时显示空态
+                else -> {}
             }
         }
     }
