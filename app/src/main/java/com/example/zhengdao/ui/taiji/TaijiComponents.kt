@@ -678,14 +678,20 @@ private fun SessionRow(summary: OcSessionSummary, current: Boolean, onClick: () 
 private fun sessionTitle(s: OcSessionSummary): String =
     s.title?.takeIf { it.isNotBlank() } ?: "会话 ${s.id.takeLast(6)}"
 
-/** 按天分组：今天 / 昨天 / 更早。保持输入顺序（服务端已按时间倒序）。时间缺失归「更早」。 */
-private fun groupSessionsByDay(list: List<OcSessionSummary>): List<Pair<String, List<OcSessionSummary>>> {
+/**
+ * 按天分组：今天 / 昨天 / 更早。保持输入顺序（服务端已按时间倒序）。时间缺失归「更早」。
+ *
+ * `internal` 而非 `private`：供 JVM 单元测试（TaijiSessionGroupingTest）直接验证分组
+ * —— 这是 v1.1 第一阶段唯一可脱离真机自动验证的核心逻辑。同模块可见，不扩大外部 API。
+ */
+internal fun groupSessionsByDay(list: List<OcSessionSummary>): List<Pair<String, List<OcSessionSummary>>> {
     val out = LinkedHashMap<String, MutableList<OcSessionSummary>>()
     list.forEach { out.getOrPut(dayLabel(it.updatedAt)) { mutableListOf() }.add(it) }
     return out.map { it.key to it.value }
 }
 
-private fun dayLabel(ts: Long?): String {
+/** 「今天 / 昨天 / 更早」判据。`internal` 供单测（见 [groupSessionsByDay]）。 */
+internal fun dayLabel(ts: Long?): String {
     ts ?: return "更早"
     val startOfToday = java.util.Calendar.getInstance().apply {
         set(java.util.Calendar.HOUR_OF_DAY, 0)
