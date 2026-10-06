@@ -512,14 +512,18 @@ object ProotLauncher {
         isFallback = true,
     )
     /** 确保 guest 内 DNS 配置存在；多路 DNS：国内源在前（快且稳），国际源兜底
-     *  （走 VPN 时由其接管）。内容缺失即写入；失败不阻断启动。 */
+     *  （走 VPN 时由其接管）。内容缺失/过期即写入；失败不阻断启动。
+     *  options 行（2026-10-06，用户路上移动网络 DNS 超时反馈）：单查询 1 秒超时、
+     *  重试 3 次、多服务器轮换——移动网络丢包时快速换源，替代默认的 5 秒死等。 */
     private fun ensureDnsFiles(resolv: File, hosts: File) {        try {
-            // 旧版 resolv 只有国际源：升级后补齐国内源（探测标记 223.5.5.5）
-            val stale = resolv.isFile && !resolv.readText().contains("223.5.5.5")
+            // 旧版 resolv 只有国际源或无 options：升级后补齐国内源 + 重试参数
+            val stale = resolv.isFile && (!resolv.readText().contains("223.5.5.5") ||
+                !resolv.readText().contains("options timeout"))
             if (!resolv.isFile || resolv.length() == 0L || stale) {
                 resolv.parentFile?.mkdirs()
                 resolv.writeText(
-                    "nameserver 223.5.5.5\n" +      // 阿里 DNS（国内）
+                    "options timeout:1 attempts:3 rotate\n" +
+                        "nameserver 223.5.5.5\n" +      // 阿里 DNS（国内）
                         "nameserver 119.29.29.29\n" + // 腾讯 DNSPod（国内）
                         "nameserver 1.1.1.1\n" +      // Cloudflare（国际/走代理）
                         "nameserver 8.8.8.8\n"        // Google（国际/走代理）
