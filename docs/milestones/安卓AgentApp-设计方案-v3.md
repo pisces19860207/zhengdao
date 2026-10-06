@@ -22,6 +22,8 @@
 >
 > 🖥️ **v3.9（2026-10-05 终端渲染层切换，用户定案）**：终端渲染层从 **xterm.js/WebView 切换为 Termux `TerminalView`**（`termux/termux-app` 的 `terminal-view` 模块，**Apache-2.0**，无 GPL 传染）——动因：WebView + xterm.js 渲染大输出卡顿，是终端卡顿的根源。**只换渲染层**：自研 `Pty.kt`（JNI PTY 桥）保留，仅把输出从"推给 WebView"改为"喂给 `TerminalEmulator`"。连锁同步：① 组件热更新**取消 `xterm-bundle`**（TerminalView 是 APK 内原生代码，渲染修复/新特性只能随 APK 发版，不再热更新）；② §7 输入方案改为 TerminalView 原生 EditText 的 `inputType` 设置；③ R8 注意事项、§9 Checklist、§10 v2 路线、M1 里程碑表述同步更新。相关章节：§3、§6、§7、§9、§10、§11、M1.1、M5。
 
+> 🔄 **v3.10（2026-10-06 存储结论反转，重大勘误 E-005）**：第 0 步「sdcard 读缺陷」诊断结论**反转**——`/sdcard` 在 App 真身（`untrusted_app` 域）下**列目录、读、写全部可用**。原「传统存储视图已死、SAF 是唯一通路」结论错误。根因（方法论）：整套「全拒」证据来自 `run-as` 探针，其 SELinux 域是 `runas_app` 而非 App 真身的 `untrusted_app`——FUSE 拒的是调试域，不是 App，探针测的是「假身份」。真实机制：① **写** /sdcard 一直可用（WRITE 运行时授权就位，此前 Download/证道 为空只因 hermes 写的是 /workspace）；② **读** 10-05 确实失败，根因是 manifest `READ_EXTERNAL_STORAGE` 带 `maxSdkVersion=32` 帽子（Android 13+ 永远无法持有 READ）——`d414dca` 摘帽 + READ 运行时授权即真修复；③ **MANAGE_EXTERNAL_STORAGE 与本问题无关**（appop=default 状态下真身读写全通）。**SAF 镜像同步降级为备用方案**（个别 ROM 存储策略异常时兜底），设置页改名「手机文件夹同步（备用）」。受影响文档同步更正，详见 `docs/ERRATA.md` E-005。
+>
 > 分发渠道：GitHub 直发 APK · 目标用户：非技术普通用户 · 核心原则：即开即用、按需下载、全程零命令
 
 ---
@@ -77,7 +79,7 @@
 
 完成后进入主界面 = Agent 列表，每个卡片两个状态：**「安装」→「启动」**。点启动直接进终端界面。
 
-**本地归档自动安装（v0.6.0 已实现，2026-10-04）**：启动时若环境未安装，**先查 `Download/证道/` 下的本地安装包**（`debian-13.7-base-arm64.tar.zst`，需「所有文件访问」授权，App 内一键跳转授权页）——找到即自动安装（拷入 → SHA256 边车校验 → 解压 → 切 bash），**零交互零下载**；找不到才弹下载对话框（对话框含「授权存储」引导按钮）。该目录为共享存储，**卸载重装 App 也不会丢失**，一次下载终身使用。
+**本地归档自动安装（v0.6.0 已实现，2026-10-04）**：启动时若环境未安装，**先查 `Download/证道/` 下的本地安装包**（`debian-13.7-base-arm64.tar.zst`，需存储读权限，App 内一键跳转授权页）——找到即自动安装（拷入 → SHA256 边车校验 → 解压 → 切 bash），**零交互零下载**；找不到才弹下载对话框（对话框含「授权存储」引导按钮）。该目录为共享存储，**卸载重装 App 也不会丢失**，一次下载终身使用。**（v3.10 更正：/sdcard 读写仅需 READ/WRITE 运行时授权，无需「所有文件访问」MANAGE 权限——E-005 已确认 MANAGE 与本问题无关。）**
 
 ## 3. 工程模块划分（Kotlin + Jetpack Compose）
 
