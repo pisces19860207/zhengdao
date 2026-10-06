@@ -22,6 +22,8 @@ object TerminalPrefs {
     private const val PREFS = "zhengdao-ui"
     const val KEY_SIZE_DP = "terminal_text_size_dp"
     const val KEY_SCHEME = "terminal_color_scheme"
+    /** 顶部三个圆点（关 / 分屏 / 收回）的功能说明是否已在首次进入时弹过（v1.1.1 阶段 2.2） */
+    private const val KEY_DOTS_HINT_SHOWN = "terminal_dots_hint_shown"
 
     /** 默认字号（dp）。12dp 在 3.5 密度屏上约 50 列 × 29 行，接近桌面终端的信息密度。 */
     const val DEFAULT_SIZE_DP = 12
@@ -68,6 +70,15 @@ object TerminalPrefs {
 
     fun saveScheme(ctx: Context, scheme: Scheme) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_SCHEME, scheme.id).apply()
+    }
+
+    /** 三点说明是否已看过（只看一次，之后靠长按圆点复查）。 */
+    fun dotsHintShown(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_DOTS_HINT_SHOWN, false)
+
+    fun markDotsHintShown(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_DOTS_HINT_SHOWN, true).apply()
     }
 
     /** 把「字号 + 配色」一次性应用到终端视图。进终端时调用，设置页改完下次进终端生效。 */

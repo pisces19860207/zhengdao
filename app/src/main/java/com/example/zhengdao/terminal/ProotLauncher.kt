@@ -47,9 +47,14 @@ object ProotLauncher {
             context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
+    /** 「推荐插件已预置过」的标记键：只预置一次，之后由用户在插件页说了算。 */
+    private const val KEY_PLUGIN_PRESET = "plugin_preset_memory_v1"
+
     /**
      * 幂等移除 `plugin` 数组里历史遗留的第三方记忆插件（opencode-mem）。
-     * 其它插件一律保留；数组清空后连 `plugin` 键一起删，避免留下空数组。
+     * 其它插件一律保留（**含 `[spec, opts]` 数组形态，原样放回，不做字符串化**——
+     * 旧实现用 `optString` 取值，遇到数组形态会被字符串化，等于悄悄改坏用户配置）；
+     * 数组清空后连 `plugin` 键一起删，避免留下空数组。
      * @return 是否发生了改动（调用方据此决定要不要写盘）
      */
     private fun stripLegacyMemPlugin(obj: org.json.JSONObject): Boolean {
@@ -57,15 +62,34 @@ object ProotLauncher {
         val remain = org.json.JSONArray()
         var removed = false
         for (i in 0 until arr.length()) {
-            val name = arr.optString(i, "")
+            val item = arr.opt(i)
+            val name = com.example.zhengdao.ui.PluginManager.specOf(item) ?: ""
             if (isLegacyMemPlugin(name)) {
                 removed = true
                 continue
             }
-            remain.put(name)
+            remain.put(item)
         }
         if (!removed) return false
         if (remain.length() == 0) obj.remove("plugin") else obj.put("plugin", remain)
+        return true
+    }
+
+    /**
+     * 幂等确保某插件在 `plugin` 数组里——"同包不同版本段"视为已存在
+     * （`pkg` 与 `pkg@latest` 是同一个包）。判定与写入都只认数组项的第 0 项，
+     * 兼容 `"pkg"` 与 `["pkg", { 选项 }]` 两种写法。
+     * @return 是否新增了条目
+     */
+    private fun ensurePluginEnabled(obj: org.json.JSONObject, spec: String): Boolean {
+        val arr = obj.optJSONArray("plugin")
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val s = com.example.zhengdao.ui.PluginManager.specOf(arr.opt(i))
+                if (s != null && com.example.zhengdao.ui.PluginManager.samePackage(s, spec)) return false
+            }
+        }
+        (arr ?: org.json.JSONArray().also { obj.put("plugin", it) }).put(spec)
         return true
     }
 
@@ -253,6 +277,14 @@ object ProotLauncher {
                 if (!obj.has("autoupdate")) { obj.put("autoupdate", false); changed = true }
                 // 遗留清理：移除历史预置的记忆插件（幂等，详见上方注释）
                 if (stripLegacyMemPlugin(obj)) changed = true
+                // 推荐插件预置：**仅首次安装做一次**。轻量记忆插件（零依赖、零向量、不跑本地
+                // 模型——真机验证过可正常安装与加载，缓存仅 150KB 量级）。必须只做一次，否则
+                // 用户在插件页把它关掉后下次启动又会被加回来，就回到了"用户关不掉"的老问题。
+                val prefsUi = com.example.zhengdao.ui.Settings.prefs(context)
+                val presetOnce = !prefsUi.getBoolean(KEY_PLUGIN_PRESET, false)
+                // ⚠️ 终端这份配置**不预置插件**（用户 2026-10-07 裁决 ①）：插件归太极的
+                //    OpenCode 管，终端里自装的 opencode 由用户自己说了算。App 只在这里
+                //    做"关快照 / 关自动更新 / 清掉历史遗留插件"这类无害维护。
                 if (changed) {
                     f.writeText(obj.toString(2))
                     RunLog.log("OpenCode 配置已合并（snapshot=false / autoupdate=false；遗留记忆插件已清理）")
@@ -276,7 +308,6 @@ object ProotLauncher {
                         "- 禁止执行 apt upgrade（会损坏环境）；装依赖用 pip / npm\n" +
                         "- 找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃\n"
                     )
-                val prefsUi = com.example.zhengdao.ui.Settings.prefs(context)
                 // 终端默认实例
                 val agents = File(cfgDir, "AGENTS.md")
                 val lastPersonaWs = prefsUi.getString("agents_md_ws", null)
@@ -304,11 +335,19 @@ object ProotLauncher {
                     if (!objT.has("snapshot")) { objT.put("snapshot", false); changedT = true }
                     if (!objT.has("autoupdate")) { objT.put("autoupdate", false); changedT = true }
                     if (stripLegacyMemPlugin(objT)) changedT = true
+                    if (presetOnce) {
+                        com.example.zhengdao.ui.PluginManager.DEFAULT_ON.forEach {
+                            if (ensurePluginEnabled(objT, it)) changedT = true
+                        }
+                    }
                     if (changedT) {
                         fT.writeText(objT.toString(2))
                         RunLog.log("太极实例 opencode.json 已更新（遗留记忆插件已清理）")
                     }
                 }
+                // 预置流程结束（无论两个实例是否都已存在）：此后不再自动干预插件配置，
+                // 插件页的开关是唯一权威。
+                if (presetOnce) prefsUi.edit().putBoolean(KEY_PLUGIN_PRESET, true).apply()
             }
         }
 
@@ -481,9 +520,19 @@ object ProotLauncher {
                 }
             }
             File(rootfsDir, "tmp").mkdirs()
+            // 「两个 opencode」说明（v1.1.1 阶段 2.4，用户裁决：终端里的 npm 版**保留不卸载**，
+            // 但要把关系说清）。**仅在真机上确实存在自装版时才追加**——没装过的人不该被
+            // 一条与他无关的说明打扰。探测走宿主侧文件（rootfs 目录），不碰 guest 进程。
+            val selfInstalledOc = File(rootfsDir, "usr/bin/opencode").exists() ||
+                File(rootfsDir, "usr/lib/node_modules/opencode-ai").exists()
+            val ocLine = if (selfInstalledOc) {
+                "[提示] 终端里的 opencode 是你自己装的 npm 版；「太极」Tab 里那份是 App 内置的开箱即用版，" +
+                    "两者配置互相隔离、互不影响 —— 常用哪个就用哪个，不必卸载任何一个\n"
+            } else ""
             File(rootfsDir, "tmp/.zhengdao-banner-pending").writeText(
                 "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\n" +
-                    "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\n"
+                    "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\n" +
+                    ocLine
             )
         } // 写不进去不阻断启动（横幅只是提示）
 

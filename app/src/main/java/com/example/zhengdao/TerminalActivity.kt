@@ -55,6 +55,17 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private val installing = AtomicBoolean(false)
     /** 当前会话是否由 tmux 保持（绿点分屏按钮的前置条件） */
     private var usesTmux = false
+
+    /**
+     * 当前 tmux 窗格数（**客户端计数**，只在本次进程内可信）。
+     *
+     * - 新起会话 = 1（tmux new-session 只开一块）；
+     * - attach 到旧会话 = **-1（未知）**：pane 数只有服务端知道，而查询要经
+     *   `C-b :` 命令提示符（竞态，见分屏按钮注释），不为一次显示去冒这个险。
+     * - 未知时的取舍：按"可以分，但分完按 2 记"处理——最坏情况是偶发分出 3 块，
+     *   用户点黄点就能收回；好过为一条计数去发一条可能拼坏的命令。
+     */
+    private var paneCount = -1
     /** 待执行的自动命令（一键安装/启动）；attach 与 fresh 两条路径都要注入 */
     private var pendingAutocmd: String? = null
 
@@ -74,22 +85,47 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         toolbarTitle = findViewById(R.id.toolbar_title)
         // 红点 = 关闭终端返回主界面（UI 关，会话由前台服务继续保活）
         findViewById<android.view.View>(R.id.btn_close).setOnClickListener { finish() }
-        // 绿点 = tmux 上下分屏。分段发送（tmux 命令提示符异步打开，整串灌入会穿透）
-        // 绿点 = tmux 上下分屏（最多 2 块，用户定）。pane 数以 tmux 服务端为准
-        //（run-shell 查询，客户端计数会在会话重启后失同步）
+        // 绿点 = tmux 上下分屏（最多 2 块，用户定）。
+        // ⚠️ 改走**即时键绑定** `C-b "`：原先走 `C-b :` 命令提示符 + run-shell 条件判断，
+        //    而提示符是异步打开的、固定延迟必然存在竞态（本文件 injectPendingAutocmd
+        //    早已因同一竞态从 `C-b :` 改成了 `C-b c`，分屏却还留在老路上）。
+        //    pane 数守卫改为客户端计数（见 [paneCount] 注释）——宁可计数保守，
+        //    也不要一条会命中竞态的命令。
         findViewById<android.view.View>(R.id.btn_split).setOnClickListener {
-            if (!usesTmux) {
-                Toast.makeText(this, "当前会话未启用 tmux，无法分屏", Toast.LENGTH_SHORT).show()
-            } else {
-                sendTmuxCommand("run-shell \"if [ ${'$'}(tmux list-panes | wc -l) -lt 2 ]; then tmux split-window -v; fi\"")
+            when {
+                !usesTmux -> noTmuxHint()
+                paneCount >= 2 -> Toast.makeText(
+                    this, "已经是上下两块了（手机屏幕小，最多两块）", Toast.LENGTH_SHORT
+                ).show()
+                else -> {
+                    runCatching { SessionManager.write(byteArrayOf(0x02, '"'.code.toByte())) }
+                    paneCount = if (paneCount > 0) paneCount + 1 else 2
+                    Toast.makeText(this, "已分成上下两块", Toast.LENGTH_SHORT).show()
+                }
             }
         }
-        // 黄点 = 关闭当前分屏（单 pane 时服务端拒绝，不会误关整个会话）
+        // 黄点 = 关闭当前分屏。`C-b x` 是 kill-pane 的即时键绑定（默认带一次确认，补发 y）。
         findViewById<android.view.View>(R.id.btn_yellow).setOnClickListener {
-            if (!usesTmux) {
-                Toast.makeText(this, "当前会话未启用 tmux", Toast.LENGTH_SHORT).show()
-            } else {
-                sendTmuxCommand("run-shell \"if [ ${'$'}(tmux list-panes | wc -l) -gt 1 ]; then tmux kill-pane; fi\"")
+            when {
+                !usesTmux -> noTmuxHint()
+                paneCount == 1 -> Toast.makeText(this, "只剩一块，不用关", Toast.LENGTH_SHORT).show()
+                else -> {
+                    runCatching {
+                        SessionManager.write(byteArrayOf(0x02, 'x'.code.toByte()))
+                        mainHandler.postDelayed({
+                            runCatching { SessionManager.write("y".toByteArray(Charsets.UTF_8)) }
+                        }, 250)
+                    }
+                    paneCount = if (paneCount > 1) paneCount - 1 else 1
+                }
+            }
+        }
+        // 三个点各加一条长按 = 重看说明（首次进入已自动弹过一次，之后在这里复查）。
+        // 点击是高频动作，说明不能占点击位；长按不影响正常点击。
+        for (id in intArrayOf(R.id.btn_close, R.id.btn_split, R.id.btn_yellow)) {
+            findViewById<android.view.View>(id)?.setOnLongClickListener {
+                showTrafficLightsHelp()
+                true
             }
         }
         findViewById<android.view.View>(R.id.window_card).clipToOutline = true
@@ -135,9 +171,58 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     // 字号与配色已移到 TerminalPrefs（设置页可配），此处不再硬编码。
 
+    /** 三点说明是否已在本 Activity 生命周期内弹过（防旋转/多次 resume 重复弹） */
+    private var dotsHintShownThisRun = false
+
+    /**
+     * 未启用 tmux 时的统一提示（v1.1.1 阶段 2.2）。
+     *
+     * 旧文案只说"当前会话未启用 tmux"——不懂终端的人看完仍然不知道为什么、
+     * 也不知道该怎么办。这里补一句人话：tmux 是什么、什么时候会有。
+     */
+    private fun noTmuxHint() {
+        Toast.makeText(
+            this,
+            "分屏要靠 tmux（一个「关掉页面也不停」的会话管家）；当前会话没启用——" +
+                "环境装好后下次启动自动启用。长按圆点可看三个点的说明",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    /**
+     * 顶部三个圆点的功能说明（v1.1.1 阶段 2.2）。
+     *
+     * - 首次进终端自动弹一次（看完写进偏好，不再打扰）；
+     * - 之后长按任意一个圆点可复查（点击仍是高频动作，说明不能占点击位）。
+     */
+    private fun showTrafficLightsHelp() {
+        val msg = "● 红点：关掉这个页面（命令还在后台跑，回来接着用）\n" +
+            "● 绿点：上下分成两块（上面敲命令，下面看输出）\n" +
+            "● 黄点：收回一块，合回一屏\n" +
+            "\n" +
+            "分屏靠 tmux：一个「关掉页面也不停」的会话管家。\n" +
+            "环境装好后它自动启用；环境还没装时只有红点能用。\n" +
+            "最多两块——手机屏幕就这么宽。\n" +
+            "\n" +
+            "想再看一次说明：长按任意一个圆点。"
+        runCatching {
+            AlertDialog.Builder(this)
+                .setTitle("顶部三个圆点")
+                .setMessage(msg)
+                .setPositiveButton("知道了", null)
+                .show()
+        }
+        TerminalPrefs.markDotsHintShown(this)
+        dotsHintShownThisRun = true
+    }
+
     override fun onResume() {
         super.onResume()
         ensureStartedAndAttach()
+        // 首次进入弹一次三点说明（等终端画面先出来，别挡在黑屏上）
+        if (!dotsHintShownThisRun && !TerminalPrefs.dotsHintShown(this)) {
+            mainHandler.post { showTrafficLightsHelp() }
+        }
     }
 
     /** 会话存活 → 仅 attach（引擎自动重排恢复画面）；否则启动新会话。安装后复用。 */
@@ -212,20 +297,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }
     }
 
-    /** tmux 命令提示符分段发送（C-b : → 命令 → 回车；提示符异步打开，整串灌入会穿透）。 */
-    private fun sendTmuxCommand(command: String) {
-        runCatching {
-            SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))
-            mainHandler.postDelayed({
-                runCatching {
-                    SessionManager.write(command.toByteArray(Charsets.UTF_8))
-                    mainHandler.postDelayed({
-                        runCatching { SessionManager.write(byteArrayOf(0x0D)) }
-                    }, 150)
-                }
-            }, 150)
-        }
-    }
+    // ⚠️ 已删除 `sendTmuxCommand()`（v1.1.1 阶段 2.1）：它走 `C-b :` 命令提示符 +
+    // 固定 150ms 延迟，而提示符是异步打开的——本文件早先已因同一竞态把
+    // injectPendingAutocmd 改成 `C-b c`，分屏却还留在老路上。删掉它，免得以后被重新用上。
 
     /** 轻量网络预检（异步，不阻塞）：npmjs ping 不通 → 键入一行代理提示。 */
     private fun networkPreCheck() {
@@ -478,6 +552,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     // 用户点名的能力：选中文字 → 转浏览器搜索。Termux 的 ACTION_MORE 在弹菜单前会把
     // 选中文字存进 TerminalView.getStoredSelectedText()（选择模式已停，文字仍可用）。
     private val menuWebSearch = 101
+    private val menuClear = 102
+    private val menuReloadFont = 103
     private val menuReset = 104
 
     override fun onCreateContextMenu(
@@ -490,6 +566,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         menu.setHeaderTitle("终端操作")
         // 复制/粘贴不再入列：顶部工具栏 + 选择工具条已有两条通路（用户定）
         menu.add(0, menuWebSearch, 0, "浏览器搜索选中文字").isEnabled = !sel.isNullOrEmpty()
+        // 清屏 / 重载字号（v1.1.1 阶段 2.3）：清屏走 Ctrl-L（不往 stdin 写命令，
+        // 免得在 TUI 里变成输入）；字号重载用于旋转或缩放后网格没跟上的兜底。
+        menu.add(0, menuClear, 0, "清屏")
+        menu.add(0, menuReloadFont, 0, "重载字号（当前 ${TerminalPrefs.sizeDp(this)}）")
         menu.add(0, menuReset, 0, "重置终端")
     }
 
@@ -510,6 +590,28 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     }
                 }
                 termView.unsetStoredSelectedText()
+                return true
+            }
+            menuClear -> {
+                // Ctrl-L（0x0C）= clear-screen：bash / zsh / 多数 TUI 都认，
+                // 且不往 stdin 灌命令（Tab 补全状态或跑着 TUI 时不会被当输入）。
+                runCatching { SessionManager.write(byteArrayOf(0x0C)) }
+                    .onSuccess { Toast.makeText(this, "已清屏", Toast.LENGTH_SHORT).show() }
+                    .onFailure {
+                        Toast.makeText(this, "清屏失败：${it.message}", Toast.LENGTH_SHORT).show()
+                    }
+                return true
+            }
+            menuReloadFont -> {
+                // 字号/配色整体重刷 + 重算行列：旋转、缩放或改过设置后网格没跟上时用。
+                runCatching {
+                    TerminalPrefs.applyTo(termView, this)
+                    termView.updateSize()
+                    termView.onScreenUpdated()
+                }.onFailure {
+                    Toast.makeText(this, "重载字号失败：${it.message}", Toast.LENGTH_SHORT).show()
+                }
+                Toast.makeText(this, "字号 ${TerminalPrefs.sizeDp(this)} 已重载", Toast.LENGTH_SHORT).show()
                 return true
             }
             menuReset -> {
