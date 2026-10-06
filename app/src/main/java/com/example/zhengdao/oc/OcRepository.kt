@@ -148,7 +148,12 @@ class OcRepository(
 
     private fun connectSse(scope: CoroutineScope, sessionId: String) {
         sseJob?.cancel()
-        sseJob = scope.launch {
+        // 🔴 必须显式指定 Dispatchers.IO。
+        //    调用方是 UI 的 rememberCoroutineScope（= Main）。SSE 是**阻塞长连接**：
+        //    在 Main 线程 execute() 会被框架直接拒绝（NetworkOnMainThreadException），
+        //    请求根本发不出去 → 服务端零记录 → 每次重连都失败 → 无限「正在重连」。
+        //    这正是本轮「第 10 次重连、服务端零请求」的成因。
+        sseJob = scope.launch(Dispatchers.IO) {
             val req = http.sseRequest("/api/event")
             sse.connect("/api/event", req) { raw ->
                 runCatching { JSONObject(raw).optString("sessionID").takeIf { it.isNotEmpty() } }.getOrNull()
@@ -173,6 +178,13 @@ class OcRepository(
 
             is SseClient.Event.Disconnected -> {
                 attempt++
+                // ⚠️ 这条分支此前也没有日志——断连原因只能靠猜。
+                //    cause 为 null 表示"流正常结束/被关闭"，非 null 才是真异常。
+                ocLog(
+                    "SSE 断开（第 $attempt 次）：" +
+                        (ev.cause?.let { "${it.javaClass.simpleName}: ${it.message}" }
+                            ?: "无异常（服务端关闭流或连接被拒）")
+                )
                 _state.update {
                     it.copy(
                         connection = ConnectionState.Reconnecting,
