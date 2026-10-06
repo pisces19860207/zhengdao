@@ -39,6 +39,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.zhengdao.oc.TaijiPrefs
+import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.SettingsScreen
@@ -54,6 +55,12 @@ private const val APP_RELEASES_API = "https://api.github.com/repos/pisces1986020
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // ⚠️ RunLog 此前**只在 TerminalActivity 里 init**：WebView 时代用户必然进终端页，
+        //    所以日志一直有；Compose 原生 UI 流程**根本不进终端** → appContext == null
+        //    → RunLog.log() 开头的 `appContext ?: return` 把所有日志**静默丢掉**。
+        //    后果：跨多轮分支构建 RunLog 零输出，SSE 断连原因完全无法定位。
+        //    「失败可见」的前提是日志能落盘，故必须在 App 入口无条件初始化。
+        RunLog.init(applicationContext)
 
         // 系统版本兜底门槛（用户第四批）：minSdk=35 已拦住安装，这里双保险
         // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
