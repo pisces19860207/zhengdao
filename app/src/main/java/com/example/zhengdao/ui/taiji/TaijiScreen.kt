@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import com.example.zhengdao.oc.OcClient
 import com.example.zhengdao.oc.OcManager
+import com.example.zhengdao.oc.OcModel
 import com.example.zhengdao.oc.ConnectionState
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart
@@ -99,6 +100,30 @@ fun TaijiScreen(
             ?: ""
     }
 
+    // ── 模型池（v1.0 任务一）──
+    var showModelSheet by remember { mutableStateOf(false) }
+    var modelsLoading by remember { mutableStateOf(false) }
+    // 覆盖持久化：重启 App 后重放（复用最近会话时再次 POST，仅影响当前会话）。
+    // 用项目统一的 SharedPreferences——DataStore 未在项目引入，为单个键值新增依赖不值。
+    val modelPrefs = remember { ctx.getSharedPreferences("zhengdao-taiji", android.content.Context.MODE_PRIVATE) }
+    var modelOverride by remember {
+        mutableStateOf(
+            modelPrefs.getString("model_provider_id", null)?.let { pid ->
+                modelPrefs.getString("model_id", null)?.let { mid ->
+                    OcModel(id = mid, providerID = pid, name = "", free = false)
+                }
+            }
+        )
+    }
+
+    fun persistOverride(m: OcModel?) {
+        modelPrefs.edit()
+            .putString("model_provider_id", m?.providerID)
+            .putString("model_id", m?.id)
+            .apply()
+        modelOverride = m
+    }
+
     // 首次进入：确保 serve 在跑，再打开会话（复用上次的会话 id）
     LaunchedEffect(Unit) {
         if (!OcManager.installed(ctx)) return@LaunchedEffect      // 未装：显示引导
@@ -113,6 +138,10 @@ fun TaijiScreen(
         }
         repo.open(scope, savedSession)
         savedSession = repo.state.value.sessionId ?: savedSession
+        // 重启后重放模型覆盖：复用的会话重新 POST 一次（幂等，仅影响当前会话）
+        modelOverride?.let { m ->
+            repo.state.value.sessionId?.let { repo.setSessionModel(m) }
+        }
     }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -146,6 +175,20 @@ fun TaijiScreen(
                             repo.startNewSession(scope)?.let { savedSession = it }
                         }
                     },
+                    currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
+                        ?: state.currentModel ?: "默认",
+                    onModelClick = {
+                        scope.launch {
+                            modelsLoading = true
+                            repo.fetchModels(
+                                com.example.zhengdao.terminal.Workspace.hostDir(ctx).absolutePath
+                            )
+                            modelsLoading = false
+                            showModelSheet = true
+
+
+                        }
+                    },
                     onStop = { scope.launch { repo.close(); onExit() } },
                 )
                 ConnectionBanner(state, onDismiss = repo::dismissError)
@@ -176,6 +219,35 @@ fun TaijiScreen(
                     onAbort = { scope.launch { repo.abort() } },
                 )
             }
+        }
+
+        // 模型池选择器（v1.0 任务一）
+        if (showModelSheet) {
+            ModelSheet(
+                models = state.models,
+                override = modelOverride,
+                currentModel = state.currentModel,
+                isLoading = modelsLoading,
+                onSelectDefault = {
+                    persistOverride(null)
+                    showModelSheet = false
+                },
+                onSelect = { m ->
+                    persistOverride(m)
+                    showModelSheet = false
+                    scope.launch { repo.setSessionModel(m) }
+                },
+                onReload = {
+                    scope.launch {
+                        modelsLoading = true
+                        repo.fetchModels(
+                            com.example.zhengdao.terminal.Workspace.hostDir(ctx).absolutePath
+                        )
+                        modelsLoading = false
+                    }
+                },
+                onDismiss = { showModelSheet = false },
+            )
         }
 
         // ★ 权限批准：不可省。Agent 改文件时会发 permission.asked，不响应就卡死。

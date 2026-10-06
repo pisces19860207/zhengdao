@@ -105,6 +105,8 @@ fun SessionBar(
     attempt: Int,
     onHistory: () -> Unit = {},
     onNew: () -> Unit = {},
+    currentModelText: String? = null,
+    onModelClick: () -> Unit = {},
     onStop: () -> Unit,
 ) {
     Row(
@@ -125,6 +127,14 @@ fun SessionBar(
         }
         IconButton(onClick = onNew) {
             Text("＋", style = MaterialTheme.typography.titleMedium)
+        }
+        // 模型池入口（v1.0 任务一）：常驻顶栏，显示当前生效模型（默认/provider/model）
+        TextButton(onClick = onModelClick) {
+            Text(
+                currentModelText ?: "默认",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
         }
         IconButton(onClick = onStop) { Text("◼", style = MaterialTheme.typography.bodyMedium) }
     }
