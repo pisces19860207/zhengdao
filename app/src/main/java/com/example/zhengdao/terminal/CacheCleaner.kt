@@ -7,32 +7,69 @@ import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
 /**
- * 缓存清理（P4，2026-10-06）：三档白名单**写死**（用户定稿：禁止从配置读）。
+ * 缓存清理（P4，2026-10-06；**二档 2026-10-07 落地**）。
+ *
+ * 三档白名单**写死**（用户定稿：禁止从配置读）。
  *
  * | 档位 | 清理项 | 风险 |
  * |---|---|---|
- * | 一档（本类唯一暴露的清理） | npm / uv / apt 缓存、Agent 升级残留 | 极低 |
- * | 二档 | rootfs/tmp 的 V8 JIT 缓存 | 低（下次启动慢几秒）——未纳入 |
- * | 三档（永不清） | .hermes/tools / rootfs 系统层 / home 用户数据 | 删了功能坏 |
+ * | 一档（guest 命令） | npm / uv / apt 缓存、Agent 升级残留 | 极低 |
+ * | 二档（宿主侧） | `rootfs/tmp` 里有明确指纹的残留：`.<16hex>-<8digits>.so`、`mat-debug-*.log` | 低（下次启动慢几秒） |
+ * | 三档（永不清） | `.hermes/tools` / `rootfs` 系统层 / home 用户数据 | 删了功能坏 |
+ *
+ * 二档为什么走宿主侧而不是 guest 命令：rootfs 就是宿主上的普通目录——guest 的 `/tmp`
+ * 即 `files/rootfs/tmp`（ProotLauncher 写启动横幅用的就是这条映射，见
+ * `File(rootfsDir, "tmp/.zhengdao-banner-pending")`）。宿主侧删除**不需要终端会话活着**
+ * （guest 命令路线要求会话在跑，会话没起就只能干看着）、模式串能精确判定、还能进单测；
+ * guest 命令里因此只留一档的官方 CLI 调用。
  *
  * 自动清理：会话启动后台检测 >500MB 才清；检测到安装进程跳过；静默通知。
- * 只用官方命令（npm cache clean --force / uv cache prune / apt clean），
- * 通过 guest 内执行（ProotLauncher 的终端会话），App 侧只负责探测与提示。
+ *
+ * 路径探测的**两个真机修正**见 [probePaths] 的注释。
  */
 object CacheCleaner {
 
     private const val AUTO_THRESHOLD_MB = 500L
 
-    /** 各缓存目录的宿主侧大小（MB）。rootfs 内路径经 files/rootfs 直接探测。 */
+    /** 二档的年龄门槛：比这更新的临时文件不动（可能正被运行中的进程持有）。 */
+    internal const val TEMP_MIN_AGE_MS = 24L * 60 * 60 * 1000
+
+    /**
+     * 每个「缓存项」由哪几个目录构成（**多候选求和**，不再只认一个路径）。
+     *
+     * 这里修的是两个真机（PGT-AN10 / Android 16）实测出来的路径错误：
+     * - **uv**：hermes 把 uv 缓存从 `~/.cache/uv` 重定位到了 `~/.hermes/cache/uv`。
+     *   旧实现只探测前者，真机实测 **1 MB**（真身 **254 MB**）——面板等于没测到这一项。
+     * - **apt**：真正占地的是 `var/lib/apt/lists`（索引缓存，实测 **88 MB**）；
+     *   `var/cache/apt/archives` 在 apt clean 之后基本是空的（实测 **1 MB**）。
+     *
+     * 两地都列出来、存在即计入，上游再换路径也不用改代码。旧实现只测到 91 MB，
+     * 离 500 MB 的自动清理阈值差得远，那条通知等于永远不响。
+     */
+    internal fun probePaths(filesDir: File, cacheDir: File): List<Pair<String, List<File>>> = listOf(
+        "npm 缓存" to listOf(File(filesDir, "home/.npm/_cacache")),
+        "uv 缓存" to listOf(
+            File(filesDir, "home/.cache/uv"),
+            File(filesDir, "home/.hermes/cache/uv"),
+        ),
+        "apt 缓存" to listOf(
+            File(filesDir, "rootfs/var/cache/apt/archives"),
+            File(filesDir, "rootfs/var/lib/apt/lists"),
+        ),
+        // ⚠️ 键名被卸载对话框读取（HomeScreen「安装包缓存」），改名要同步改调用点
+        "安装包缓存" to listOf(File(cacheDir, "rootfs-cache")),
+    )
+
+    /** 各缓存项的大小（MB）。 */
     fun measure(ctx: Context): Map<String, Long> {
-        val home = File(ctx.filesDir, "home")
-        val rootfs = File(ctx.filesDir, "rootfs")
-        return mapOf(
-            "npm" to dirSize(File(home, ".npm/_cacache")),
-            "uv" to dirSize(File(home, ".cache/uv")),
-            "apt" to dirSize(File(rootfs, "var/cache/apt/archives")),
-            "安装包缓存" to dirSize(File(ctx.cacheDir, "rootfs-cache")),
-        )
+        val out = LinkedHashMap<String, Long>()
+        probePaths(ctx.filesDir, ctx.cacheDir).forEach { (name, dirs) ->
+            out[name] = dirs.sumOf { dirSizeMb(it) }
+        }
+        // 二档报的是"真正会被删掉的量"，**不是**整个 /tmp 目录——tmux socket、
+        // V8 编译缓存、锁文件、opencode 子目录都在里面，那些不归清理管，算进去就是虚报。
+        out["临时文件"] = bytesToMb(staleTempBytes(ctx.filesDir, System.currentTimeMillis()))
+        return out
     }
 
     fun totalMb(ctx: Context): Long = measure(ctx).values.sum()
@@ -53,6 +90,7 @@ object CacheCleaner {
     /**
      * 生成一档清理命令（在 guest 终端里执行的串；官方命令优先）。
      * 由 TerminalActivity 以 autocmd 注入执行——输出可见、可中断。
+     * 二档不在这里：它走 [cleanTempFiles] 的宿主侧删除（原因见类注释）。
      */
     fun guestCommand(): String = listOf(
         "echo '[清理] npm 缓存…'", "npm cache clean --force 2>/dev/null",
@@ -62,16 +100,108 @@ object CacheCleaner {
         "echo '[清理] 完成（三档白名单：tools/rootfs/home 用户数据永不清）'",
     ).joinToString("; ")
 
-    /** 目录大小（MB）；不存在返回 0。 */
-    private fun dirSize(dir: File): Long = try {
-        if (dir.isDirectory) {
-            var total = 0L
-            dir.walkTopDown().forEach { f -> if (f.isFile) total += f.length() }
-            total / 1048576
-        } else 0
-    } catch (_: Throwable) {
-        0
+    // ── 二档：rootfs/tmp 的残留 ─────────────────────────────────────────────
+
+    /**
+     * 二档可清文件的**文件名判定**（纯函数，单独锁进单测）。
+     *
+     * 只认两类有明确指纹的残留，**绝不按通配删整个 /tmp**：
+     * - `.<16 位小写十六进制>-<8 位数字>.so`：占大头的一类。真机实测 `files/rootfs/tmp`
+     *   277 MB 里有 271 MB 是它——32 个文件，同族之间**逐字节相同**（18 份 4.7 MB +
+     *   14 份 13.3 MB，md5 各自一致），ELF arm64 stripped。产生方在 guest 运行时，
+     *   无法从本仓库溯源，所以只按"名字指纹 + 年龄"这两条保守依据判定。
+     * - `mat-debug-<pid>.log`：0 字节空日志。
+     *
+     * 反例（**必须保留**，单测里逐条锁住）：`tmux-0`（tmux socket 目录，删了 session 断）、
+     * `.ses`（会话标记）、`node-compile-cache`（V8 官方编译缓存目录）、各类 `*.lock`、
+     * `opencode` 子目录、`.zhengdao-banner-pending`（启动横幅）。
+     */
+    internal fun isStaleTempName(name: String): Boolean {
+        if (name.startsWith("mat-debug-") && name.endsWith(".log")) return true
+        if (!name.startsWith(".") || !name.endsWith(".so")) return false
+        val core = name.substring(1, name.length - 3)
+        if (core.length != 25 || core[16] != '-') return false
+        val hex = core.substring(0, 16)
+        val index = core.substring(17)
+        return hex.all { it in '0'..'9' || it in 'a'..'f' } && index.all { it in '0'..'9' }
     }
+
+    /** [tmp] 下命中的残留文件（**纯文件系统函数**，不依赖 Android Context，可直接单测）。 */
+    internal fun staleTempFilesIn(
+        tmp: File,
+        now: Long,
+        minAgeMs: Long = TEMP_MIN_AGE_MS,
+    ): List<File> {
+        val list = tmp.listFiles() ?: return emptyList()
+        return list.filter {
+            it.isFile && isStaleTempName(it.name) && now - it.lastModified() >= minAgeMs
+        }
+    }
+
+    internal fun staleTempFiles(filesDir: File, now: Long): List<File> =
+        staleTempFilesIn(File(filesDir, "rootfs/tmp"), now)
+
+    internal fun staleTempBytes(filesDir: File, now: Long): Long =
+        staleTempFiles(filesDir, now).sumOf { it.length() }
+
+    /**
+     * 执行二档清理：删掉命中的残留文件，返回**实际**释放的字节数。
+     * 静默失败（删不掉算 0），绝不抛异常。不碰未命中模式的文件。
+     */
+    fun cleanTempFiles(ctx: Context, now: Long = System.currentTimeMillis()): Long {
+        val tmp = File(ctx.filesDir, "rootfs/tmp")
+        var freed = 0L
+        var count = 0
+        staleTempFilesIn(tmp, now).forEach { f ->
+            val n = f.length()
+            if (f.delete()) {
+                freed += n
+                count++
+            }
+        }
+        if (count > 0) RunLog.log("缓存清理(二档): 删除 $count 个残留文件，释放 ${bytesToMb(freed)}MB")
+        return freed
+    }
+
+    // ── 工具 ────────────────────────────────────────────────────────────────
+
+    internal fun bytesToMb(bytes: Long): Long = bytes / 1048576
+
+    /**
+     * 递归求「真实文件长度之和」（**不跟进符号链接**）。
+     *
+     * 这里修的是一个真机才暴露出来的虚报：`walkTopDown()` 会跟进"指向目录的软链"，
+     * 而 uv 的缓存目录里 `archive-v0/<hash>` 全是指向 `wheels-v6` 那类目录的软链——
+     * 同一份数据被数两遍。实测（PGT-AN10）：`home/.hermes/cache/uv` 的真实长度和是
+     * **232.8 MB**，面板却报 **476 MB**（≈233×2）。旧实现只测 `home/.cache/uv`（1 MB），
+     * 这个问题一直藏着看不见；这次把 uv 指向了真身，它才浮出来。
+     *
+     * 软链一律跳过（含指向文件的软链），因此结果是"实际占多少"的下界而不是上界——
+     * 对一个展示给用户看的占用数字来说，宁可少报也不虚报。
+     */
+    internal fun fileLengths(dir: File): Long {
+        val entries = try {
+            dir.listFiles()
+        } catch (_: Throwable) {
+            null
+        } ?: return 0L
+        var total = 0L
+        for (f in entries) {
+            // 软链判定读失败时按"是软链"处理（跳过）：宁可少报也不虚报。
+            // 用 nio 的判定——java.io.File 没有 isSymbolicLink（minSdk 36，nio.file 可用）。
+            if (runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(true)) continue
+            total += try {
+                if (f.isDirectory) fileLengths(f) else f.length()
+            } catch (_: Throwable) {
+                0L
+            }
+        }
+        return total
+    }
+
+    /** 目录大小（MB）；不存在返回 0。 */
+    private fun dirSizeMb(dir: File): Long =
+        if (dir.isDirectory) bytesToMb(fileLengths(dir)) else 0L
 
     /** 自动清理触发（SessionService 定时器调用）：超阈值 → 发通知提示（不静默执行删除，用户点通知进设置手动清——v1 稳妥版）。 */
     fun maybeNotify(ctx: Context, notify: (String, String) -> Unit) {

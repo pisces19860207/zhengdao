@@ -175,28 +175,78 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
             InfoRow("cache（下载缓存）", "$cacheMb MB")
         }
 
-        // ── 缓存清理（P4：三档白名单，只清一档；详情见 CacheCleaner）──
+        // ── 缓存清理（三档白名单：一档走 guest 官方命令，二档走宿主侧；详见 CacheCleaner）──
         SectionCard("缓存清理") {
-            val sizes = remember { CacheCleaner.measure(ctx) }
-            Text(
-                text = sizes.entries.joinToString("\n") { "${it.key}：${it.value} MB" },
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            var cacheSizes by remember(storageTick) { mutableStateOf<Map<String, Long>>(emptyMap()) }
+            // 量目录要遍历整棵文件树（npm 缓存动辄几万个小文件），不能放主线程——旧实现
+            // 直接在组合期 remember { measure() } 里走，滚动设置页会卡。同时跟着 storageTick
+            // 走：去 guest 里装完东西再回来，数字要跟着变，而不是停在进页那一刻。
+            LaunchedEffect(storageTick) {
+                cacheSizes = withContext(Dispatchers.IO) { CacheCleaner.measure(ctx) }
+            }
+            if (cacheSizes.isEmpty()) {
+                Text(
+                    text = "统计中…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                cacheSizes.forEach { (name, mb) -> InfoRow(name, "$mb MB") }
+            }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "只清理包管理器缓存（一档，极低风险）；OpenCode/Hermes 工具链、" +
-                    "rootfs 系统层、用户数据永不清。清理命令在终端里执行，可查看输出。",
+                text = "一档（极低风险）：npm / uv / apt 包缓存，清理命令在终端里执行、输出可见。" +
+                    "二档（低风险）：临时目录里带固定命名指纹、且 24 小时内没动过的残留文件，" +
+                    "不需要终端会话。OpenCode/Hermes 工具链、rootfs 系统层、用户数据永不清。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
+
+            // 一档：官方 CLI，需要会话活着（命令要在 guest 里跑）
             TextButton(onClick = {
                 if (com.example.zhengdao.terminal.SessionManager.isAlive()) {
                     onOpenTerminal(com.example.zhengdao.terminal.CacheCleaner.guestCommand(), null)
                 } else {
                     Toast.makeText(ctx, "请先启动终端（会话未运行）", Toast.LENGTH_SHORT).show()
                 }
-            }) { Text("在终端中清理缓存") }
+            }) { Text("在终端中清理包缓存") }
+
+            // 二档：宿主侧直接删（rootfs 就是宿主上的普通目录），因此**不需要会话**
+            val tempMb = cacheSizes["临时文件"] ?: 0L
+            var tempConfirm by remember { mutableStateOf(false) }
+            TextButton(enabled = tempMb > 0, onClick = { tempConfirm = true }) {
+                Text(if (tempMb > 0) "清理临时文件（$tempMb MB）" else "无临时文件可清")
+            }
+            if (tempConfirm) {
+                AlertDialog(
+                    onDismissRequest = { tempConfirm = false },
+                    title = { Text("清理临时文件？") },
+                    text = {
+                        Text(
+                            "将删除临时目录里约 $tempMb MB 的残留文件（固定命名指纹、且 24 " +
+                                "小时内没动过）。\n\n不会删除 tmux 会话、编译缓存、锁文件，" +
+                                "也不碰任何用户数据。"
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            tempConfirm = false
+                            val freed = CacheCleaner.cleanTempFiles(ctx)
+                            Toast.makeText(
+                                ctx,
+                                if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                else "没有可清理的临时文件",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            storageTick++ // 触发重新统计，数字立刻回落到真实值
+                        }) { Text("清理") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { tempConfirm = false }) { Text("取消") }
+                    },
+                )
+            }
         }
 
         // ── 权限（存储读写 + 网络自检）──
