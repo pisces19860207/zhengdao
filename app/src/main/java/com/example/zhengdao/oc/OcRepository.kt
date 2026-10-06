@@ -49,6 +49,12 @@ class OcRepository(
     /** REST 轮询任务 —— **主数据源**。见 ERRATA E-008：SSE 只是信号通道。 */
     private var pollJob: Job? = null
 
+    /**
+     * 已响应的权限 requestID。
+     * 权限**绝不能**"批准了又被下一轮轮询复活" —— 回执后把 id 记下，轮询直接跳过。
+     */
+    private val answeredPermissions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     // ── 生命周期 ──────────────────────────────────────────────────────
 
     /**
@@ -161,6 +167,8 @@ class OcRepository(
             while (isActive) {
                 val changed = try {
                     val c = pollOnce(sessionId)
+                    // 权限兜底：即使消息轮询成功也要查一次（SSE 可能已因空闲断开）
+                    pollPermissions()
                     errStreak = 0
                     c
                 } catch (e: CancellationException) {
@@ -230,6 +238,42 @@ class OcRepository(
             val text = resp.body?.string() ?: throw java.io.IOException("空响应 $url")
             if (!resp.isSuccessful) throw OcHttpException(resp.code, "GET $url HTTP ${resp.code}")
             unwrapArray(text)
+        }
+    }
+
+    // ── 权限兜底轮询 ───────────────────────────────────────────────────
+    // SSE 的 permission.asked 是主通道，但 SSE 空闲会断（ERRATA E-008）——
+    // 权限请求**绝不能漏**（漏了 Agent 卡死，或用户被静默授予高危权限），故额外轮询兜底。
+
+    /**
+     * 拉一次待处理权限并同步到 UI。
+     *
+     * `GET /api/permission/request` → `{"location":{…},"data":[Permission.Request]}`
+     * 取第一条未响应的挂到 [TaijiState.pendingPermission]（UI 弹抽屉）；无则清空。
+     */
+    private suspend fun pollPermissions() {
+        val pending = runCatching { fetchPermissionRequests() }.getOrNull() ?: return
+        val first = pending.firstOrNull { it.permissionId !in answeredPermissions }
+        val current = _state.value.pendingPermission
+        if (first == null) {
+            if (current != null) _state.update { it.copy(pendingPermission = null) }
+        } else if (current?.permissionId != first.permissionId) {
+            _state.update { it.copy(pendingPermission = first) }
+        }
+    }
+
+    private suspend fun fetchPermissionRequests(): List<OcPermission> = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(http.url("/api/permission/request")).get().build()
+        http.client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string() ?: throw java.io.IOException("空响应 permission/request")
+            if (!resp.isSuccessful) {
+                throw OcHttpException(resp.code, "GET permission/request HTTP ${resp.code}")
+            }
+            // 该端点带 location 信封：{"location":{…},"data":[…]}
+            val arr = JSONObject(text).optJSONArray("data") ?: unwrapArray(text)
+            (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { parsePermission(it.toString()) }
+            }
         }
     }
 
@@ -456,6 +500,8 @@ class OcRepository(
             http.client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) throw OcHttpException(resp.code, "授权失败 HTTP ${resp.code}")
             }
+            // 记下已响应，避免下一轮权限轮询把它"复活"（权限抽屉刚点完又弹回来）
+            answeredPermissions.add(permissionId)
             _state.update { it.copy(pendingPermission = null) }
         }.onFailure { ocLog("授权提交失败：${it.message}") }
     }
@@ -612,16 +658,38 @@ internal fun toolContentToText(arr: JSONArray?): String? {
     return sb.toString().takeIf { it.isNotEmpty() }
 }
 
+/**
+ * 解析权限请求（v2 真实载荷，见 openapi `Permission.Request`）。
+ *
+ * `{ id(^per), sessionID(^ses), action, resources:[], save:[], metadata, source, message }`
+ *
+ * ⚠️ 旧实现读 `permissionID` / `title` / `description` —— 本版**都没有**，
+ * 结果是解析出空标题、空目标的抽屉（"请求授权但什么都不显示"）。
+ * 事件可能带 `{type, properties:{…}}` 外壳，故 properties 与自身都尝试。
+ */
 internal fun parsePermission(raw: String): OcPermission? = runCatching {
     val o = JSONObject(raw)
-    val props = o.optJSONObject("properties") ?: o
+    // 三种外衣都要认（实测）：
+    //   SSE 事件信封 `{id(evt_),created,type,location,data:{Permission.Request}}` → 取 **data**；
+    //   `/api/permission/request` 的 data[] 元素 = 裸的 Permission.Request → 取自身；
+    //   旧版 `{type, properties:{…}}` → 取 properties。
+    // ⚠️ 不剥 data 会取到**事件 id（evt_…）**当 requestID → 回执必然 HTTP 400（已踩）。
+    val p = o.optJSONObject("data") ?: o.optJSONObject("properties") ?: o
+    val id = p.optString("id").takeIf { it.isNotEmpty() }
+        ?: p.optString("permissionID").takeIf { it.isNotEmpty() }
+        ?: return null
+    val resources = p.optJSONArray("resources")?.let { arr ->
+        (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotEmpty() } }
+    } ?: emptyList()
     OcPermission(
-        permissionId = props.optString("permissionID").takeIf { it.isNotEmpty() } ?: return null,
-        sessionId = props.optString("sessionID"),
-        title = props.optString("title").takeIf { it.isNotEmpty() } ?: "工具请求授权",
-        detail = (props.optJSONObject("metadata")?.optString("command")
-            ?: props.optString("description") ?: props.optString("path")),
-        type = props.optString("type"),
+        permissionId = id,
+        sessionId = p.optString("sessionID"),
+        title = p.optString("action").takeIf { it.isNotEmpty() } ?: "工具请求授权",
+        detail = resources.takeIf { it.isNotEmpty() }?.joinToString("\n")
+            ?: p.optJSONObject("metadata")?.optString("command")?.takeIf { it.isNotEmpty() }
+            ?: p.optString("message").takeIf { it.isNotEmpty() },
+        type = p.optString("action").takeIf { it.isNotEmpty() },
+        resources = resources,
     )
 }.getOrNull()
 

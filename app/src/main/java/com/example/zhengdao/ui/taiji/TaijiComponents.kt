@@ -192,7 +192,7 @@ fun MessageBubble(msg: OcMessage) {
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.widthIn(max = 560.dp),
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 msg.parts.forEach { PartRow(it) }
             }
         }
@@ -207,10 +207,9 @@ fun PartRow(part: OcPart) {
         is OcPart.Text -> if (part.text.isNotEmpty()) {
             Text(part.text, style = MaterialTheme.typography.bodyMedium)
         }
-        is OcPart.Reasoning -> CollapsibleBlock("思考过程") {
-            Text(part.text, style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        // ⚠️ 严格按 **part.type** 分派（不靠"是否含 thinking 标签"猜）：
+        //    `reasoning` 只进独立的样式化折叠块；`text` 走上一个分支的正文 Text。
+        is OcPart.Reasoning -> ReasoningBlock(part.text)
         is OcPart.Tool -> {
             // 🔍 诊断（用户第 1 步）：dump 工具卡**实际收到**的字段，确认 name / 入参 / 结果是否都在。
             //    用 LaunchedEffect(part) 保证「每个 part 只打一次」，避免轮询重组时刷屏。
@@ -305,7 +304,65 @@ fun ToolCallCard(part: OcPart.Tool) {
     }
 }
 
-// ── 可折叠块（推理/未知内容共用）─────────────────────────────────────
+// ── 思考过程（reasoning）独立样式化块 ─────────────────────────────────
+
+/**
+ * reasoning 的**独立样式化块**（借鉴 PR #29028 思路）：
+ * 头部独立成行（含首行摘要 + 展开指示），展开后的原文作为**块内正文**渲染在头部之下。
+ * 目的是把「思考过程」与紧随其后的**最终正文**明确分开
+ * —— 修「正文看起来属于思考过程」的标签错位（原先所有 part 挤在同一个无间距 Column 里）。
+ */
+@Composable
+private fun ReasoningBlock(text: String) {
+    var expanded by remember { mutableStateOf(false) }
+    // 头部摘要：取首个非空行
+    val summary = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "💭 思考过程",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (!expanded && summary.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            Text(
+                if (expanded) "收起 ▲" else "展开 ▼",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ── 可折叠块（未知内容用）─────────────────────────────────────────────
 
 @Composable
 private fun CollapsibleBlock(title: String, content: @Composable () -> Unit) {
@@ -432,9 +489,17 @@ fun PermissionSheet(
         Column(Modifier.fillMaxWidth().padding(20.dp)) {
             Text("工具请求授权", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(12.dp))
-            Text(permission.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            // 工具名（action）：bash / edit / write …
+            Text("工具：${permission.title}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            // 具体目标（resources[]）：命令 / 文件路径 —— 用户判断的唯一依据，必须显示
             permission.detail?.let {
                 Spacer(Modifier.height(8.dp))
+                Text(
+                    "目标",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp),

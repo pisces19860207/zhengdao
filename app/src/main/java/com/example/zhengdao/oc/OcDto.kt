@@ -107,18 +107,25 @@ data class OcTodo(
 // ── 权限请求（Agent 要改文件/执行命令时等待用户批准）─────────────────
 
 /**
- * ⚠️ 该端点是否在社区版暴露**必须实测**（阶段 0-4）。若缺失，Agent 一要改文件
- * 就会卡住等批准 —— 设计文档把 [com.example.zhengdao.ui.taiji.PermissionSheet]
- * 列为里程碑门禁，正是为此。
+ * 权限请求。
+ *
+ * ⚠️ 字段以实测 openapi 的 `Permission.Request` 为准：
+ * `{ id(^per), sessionID(^ses), action, resources:[], save:[], metadata, source, message }`
+ * —— **没有** 旧版的 `permissionID` / `title` / `description`。
+ *
+ * 不显示 [detail]/[resources] 用户就只能盲批，故**必须展示**。
  */
 data class OcPermission(
+    /** requestID（回执端点 `/permission/{requestID}/reply` 用） */
     val permissionId: String,
     val sessionId: String,
-    /** 工具名，如 "edit" / "bash" */
+    /** 工具名（action），如 "bash" / "edit" / "write" */
     val title: String = "",
     /** 具体目标：文件路径或命令。**必须显示，否则用户只能盲批。** */
     val detail: String? = null,
     val type: String? = null,
+    /** resources 原文列表（UI 可逐条展示） */
+    val resources: List<String> = emptyList(),
 )
 
 // ── 服务端健康与版本 ──────────────────────────────────────────────────

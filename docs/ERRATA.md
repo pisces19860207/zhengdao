@@ -340,3 +340,52 @@ OPENCODE_EXPERIMENTAL_LENGTH_NUDGE_MAX=3
 
 **附带发现（待处理）**：UI 把最终正文渲染在了「思考过程」标题之下（疑似 part 标签/分组问题）——
 正文确实出现了，但标签可能不准确。
+
+---
+
+## E-010 · 2026-10-06 · 权限确认接通（V2 语法 / 环境变量不生效）+「思考过程」标签错位（已修）
+
+### 1. 权限「静默放行」的根因与接通（安全项）
+
+**现象**：Agent 执行 shell / 改文件**从不弹确认** —— 等于默认授予最高权限。
+
+**根因（两层）**
+1. 服务端 OpenCode 默认多数权限为 `allow`（只有 `doom_loop` / `external_directory` 默认 `ask`）。
+2. 客户端从未正确接到 `permission.asked`：`parsePermission` 按旧名读
+   `permissionID` / `title` / `description`，而真实载荷是
+   `{ id(^per), sessionID(^ses), action, resources[], save[], source }` —— 全读空。
+
+**服务端策略怎么设（关键坑）**
+- ❌ 环境变量 `OPENCODE_PERMISSION`（官方 CLI 文档列出的名字）**本版 bionic 2.0.22 不生效**：
+  设了之后 shell 工具仍被静默放行（真机实测）。
+- ✅ **必须写配置文件** `XDG_CONFIG_HOME/opencode/opencode.json` 才生效。
+- ⚠️ **V2 换了字段与 action 名**（官方 V2 权限文档）：顶层是 `permissions`（v1 是 `permission`），
+  跑 shell 命令的 action 是 **`shell`**（v1 是 `bash`），文件修改是 `edit`（覆盖 write / patch）。
+  **写成 v1 的 `bash` 不会匹配 → 依旧放行。**
+- 规则 = `[{action, resource, effect}]`，effect ∈ allow|deny|ask，resource 支持 `*` / `?` 通配。
+- 落点：`OcManager.ensurePermissionPolicy()`（每次冷启动无条件重写）。
+
+**SSE 事件带信封（这条导致回执 400）**
+`permission.asked` 的 data 是 `{ id(evt_), created, type, location, data:{ …Permission.Request } }`
+—— **真正的请求在 `data` 里**。不剥这层会把**事件 id `evt_…`** 当作 requestID →
+回执必然 HTTP 400。`parsePermission` 现按 `data → properties → 自身` 三级兜底。
+
+**回执**：`POST /api/session/{sid}/permission/{rid}/reply`，body `{"decision":"once"|"always"|"reject"}`
+- `once` → 204，请求消失且**不**写 saved
+- `always` → 写入 `/api/permission/saved`（`psv_…`）
+- `reject` → 拒绝
+
+**兜底**：SSE 空闲会断（见 E-008），故额外轮询 `GET /api/permission/request`（权限绝不能漏）。
+
+**验证（真机）**：抽屉显示「工具：shell / 目标：hostname」；点「允许」(once) →
+`/api/permission/request` 变空、`saved` 无新增；此前选 always → `saved` 出现
+`{"action":"shell","resource":"date *"}`。
+
+### 2. 正文与「思考过程」标签错位（渲染，修 E-009 附带发现）
+
+**现象**：最终正文看起来被渲染在「思考过程」标题之下。
+**归因**：**dispatch 本身没错**（严格按 `part.type`：`reasoning`→Reasoning、`text`→Text）；
+错在 `MessageBubble` 把所有 part 塞进**同一个无间距 Column** —— 折叠的「思考过程」标题与正文紧贴，
+视觉上连成一体，像是正文属于思考过程。
+**修法**：reasoning 抽成独立的 `ReasoningBlock`（💭 头部 + 首行摘要 + 展开/收起），
+并给 `MessageBubble` 的 Column 加 `Arrangement.spacedBy(8.dp)`。
