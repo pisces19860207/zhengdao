@@ -54,7 +54,6 @@ import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.mirror.PhoneMirror
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
-import com.example.zhengdao.settings.ApiKeyStore
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import kotlinx.coroutines.Dispatchers
@@ -69,7 +68,7 @@ object Settings {
         ctx.getSharedPreferences("zhengdao-settings", android.content.Context.MODE_PRIVATE)
 }
 
-/** 设置页（第二批）：存储占用 / 修复环境 / API Key / 工作区 / 检查更新 / Root / 关于。 */
+/** 设置页（第二批）：存储占用 / 修复环境 / 工作区 / 检查更新 / Root / 关于。 */
 @Composable
 fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> }) {
     val ctx = LocalContext.current
@@ -400,71 +399,12 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         // ── 修复环境 ──
         SectionCard("修复环境") {
             Text(
-                text = "重新解压系统层，保留登录态、API Key 与工作区。",
+                text = "重新解压系统层，保留登录态与工作区。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
             OutlinedButton(onClick = { repairConfirm = true }) { Text("修复环境（30 秒）") }
-        }
-
-        // ── API Key 管理（按 国内 / 国外 / 免费额度 分组展示）──
-        SectionCard("API Key 管理") {
-            ApiKeyStore.GROUPS.forEach { (groupLabel, ids) ->
-                Text(
-                    groupLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                ids.forEach { id ->
-                    val envName = ApiKeyStore.PROVIDERS[id] ?: return@forEach
-                    var value by remember(id) {
-                        mutableStateOf(ApiKeyStore.get(ctx, id) ?: "")
-                    }
-                    OutlinedTextField(
-                        value = value,
-                        onValueChange = { value = it },
-                        label = { Text(id) },
-                        supportingText = {
-                            Text(
-                                when {
-                                    value.isBlank() && id == "zhipu" -> "注入 ZHIPU_API_KEY（国内站 bigmodel.cn）"
-                                    value.isBlank() -> "启动时注入环境变量 $envName"
-                                    else -> "已注入 $envName"
-                                }
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    TextButton(onClick = {
-                        ApiKeyStore.save(ctx, id, value.trim())
-                        Toast.makeText(ctx, "$id 密钥已保存（Keystore 加密）", Toast.LENGTH_SHORT).show()
-                    }) { Text("保存 $id") }
-                    HorizontalDivider()
-                }
-            }
-            var clearKeysConfirm by remember { mutableStateOf(false) }
-            TextButton(onClick = { clearKeysConfirm = true }) {
-                Text("清除全部密钥", color = MaterialTheme.colorScheme.error)
-            }
-            if (clearKeysConfirm) {
-                AlertDialog(
-                    onDismissRequest = { clearKeysConfirm = false },
-                    title = { Text("清除全部密钥") },
-                    text = { Text("将删除所有已保存的 API Key（不可恢复），确定？") },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            ApiKeyStore.clearAll(ctx)
-                            clearKeysConfirm = false
-                            Toast.makeText(ctx, "已清除全部密钥", Toast.LENGTH_SHORT).show()
-                        }) { Text("清除") }
-                    },
-                    dismissButton = { TextButton(onClick = { clearKeysConfirm = false }) { Text("取消") } },
-                )
-            }
         }
 
         // ── 工作区（0.6 显性化：产出边界让用户看得见）──
@@ -753,7 +693,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                 AlertDialog(
                     onDismissRequest = { rollbackConfirm = null },
                     title = { Text("回退环境版本") },
-                    text = { Text("将用 ${target.name} 重装系统层（约几分钟）。登录态、API Key 与工作区都会保留。") },
+                    text = { Text("将用 ${target.name} 重装系统层（约几分钟）。登录态与工作区都会保留。") },
                     confirmButton = {
                         TextButton(onClick = {
                             rollbackConfirm = null
@@ -902,7 +842,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         // ── 新手指南（第三批）──
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
-            GuideLine("2", "在本页「API Key 管理」按 国内 / 国外 / 免费额度 填好密钥，启动会话时自动注入。")
+            GuideLine("2", "进各 Agent 内完成各自的登录 / 授权（凭据由 Agent 自己保管），会话内直接可用。")
             GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / opencode / agy）。")
             Spacer(Modifier.height(8.dp))
             Text(
@@ -912,7 +852,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
-            FaqLine("环境打不开 / 下载失败？", "用上方「修复环境」重新解压系统层，登录态与密钥都会保留。")
+            FaqLine("环境打不开 / 下载失败？", "用上方「修复环境」重新解压系统层，登录态会保留。")
             FaqLine("Agent 想更新？", "在终端里重跑一遍安装命令即可；系统层更新用「检查环境更新」。")
             FaqLine("我的文件在哪？", "见下方「工作区」：Agent 产出都在工作区文件夹（默认手机 Download/证道），guest 内是 /workspace。")
         }
@@ -934,7 +874,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         AlertDialog(
             onDismissRequest = { repairConfirm = false },
             title = { Text("修复环境") },
-            text = { Text("将重新解压 Debian 系统层（约 30 秒 + Agent 重装时间）。登录态、API Key 与工作区保留。需要本地已有安装包（cache 或 Download/证道）。确定？") },
+            text = { Text("将重新解压 Debian 系统层（约 30 秒 + Agent 重装时间）。登录态与工作区保留。需要本地已有安装包（cache 或 Download/证道）。确定？") },
             confirmButton = {
                 TextButton(onClick = {
                     repairConfirm = false

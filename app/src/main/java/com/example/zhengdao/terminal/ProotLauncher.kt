@@ -9,7 +9,6 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.settings.ApiKeyStore
 import java.io.File
 import java.io.IOException
 
@@ -354,20 +353,6 @@ object ProotLauncher {
             "LD_LIBRARY_PATH=${tpDir.absolutePath}", // libtalloc.so.2 / libandroid-shmem.so 在此目录
             "PROOT_LOADER=${File(files, "termux-proot/loader").absolutePath}",
         )
-
-        // API Key 注入（第二批）：设置页保存的密钥解密后以环境变量形式透传给 guest，
-        // Claude Code / Hermes 等Agent 直接读取。只注入非空密钥；日志仅记服务商名，不记密钥值。
-        runCatching {
-            var injected = 0
-            ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
-                val key = ApiKeyStore.get(context, id)
-                if (!key.isNullOrBlank()) {
-                    env.add("$envName=$key")
-                    injected++
-                }
-            }
-            if (injected > 0) RunLog.log("API Key 注入: $injected 个服务商")
-        } // 解密失败不阻断启动（密钥坏了不该连累终端）
 
         val args = mutableListOf(
             prootBin.absolutePath,   // 宿主侧 execve 的目标：Termux fork 的 proot（files/ 下可执行）

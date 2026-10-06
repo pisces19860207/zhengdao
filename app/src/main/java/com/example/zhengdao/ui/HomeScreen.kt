@@ -86,7 +86,7 @@ fun HomeScreen(
         }
     }
 
-    // 设置页/终端返回后刷新（API Key / 工作区 / 修复环境可能已变更）
+    // 设置页/终端返回后刷新（工作区 / 修复环境可能已变更）
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -364,7 +364,7 @@ fun HomeScreen(
             text = {
                 Text(
                     if (wipe == null) {
-                        "删除程序本体；用户数据（配置、会话、API Key）保留，可随时重装。"
+                        "删除程序本体；用户数据（配置、会话）保留，可随时重装。"
                     } else {
                         "「卸载」删除程序本体，用户数据（${wipe.joinToString("、")}）保留，可随时重装；\n" +
                             "「彻底清除」连同用户数据一起删除，不可恢复。"
