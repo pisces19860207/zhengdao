@@ -50,6 +50,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -537,7 +543,9 @@ fun TodoPanel(todos: List<OcTodo>) {
  * 布局错乱、部分禁粘贴），终端与输入直接不可用。继承 v3 §7 红线。
  * 密码/密钥类输入应另做"普通文本框 + App 内自绘遮蔽"。
  *
- * @param isStreaming 流式输出中：发送键变为「中止」，不让用户干等。
+ * @param isStreaming 流式输出中：发送键变为「■ 停止」，不让用户干等。
+ *   生成中/可发送由 [TaijiState.isStreaming] 驱动（`prompt` 置真、SSE `session.idle` 置假，
+ *   另有轮询「内容稳定即视为结束」兜底，防事件漏接）。
  */
 @Composable
 fun ComposerBar(
@@ -559,7 +567,17 @@ fun ComposerBar(
                 TextField(
                     value = input,
                     onValueChange = onInputChange,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).onPreviewKeyEvent { e ->
+                        // Enter 提交 / Shift+Enter 换行（v1.1 第三阶段；硬件键盘为主）。
+                        // 仅在有可发送内容时拦截，其余情况放行给默认换行，避免误发/吞键。
+                        if (e.type == KeyEventType.KeyDown && e.key == Key.Enter &&
+                            !e.isShiftPressed && !isStreaming && enabled && input.isNotBlank()
+                        ) {
+                            onSend(); true
+                        } else {
+                            false
+                        }
+                    },
                     placeholder = { Text("描述你的任务…") },
                     maxLines = 6,
                     // 🔺 普通文本类型——绝不 TYPE_TEXT_VARIATION_PASSWORD
@@ -574,7 +592,7 @@ fun ComposerBar(
                 )
                 Spacer(Modifier.width(8.dp))
                 if (isStreaming) {
-                    OutlinedButton(onClick = onAbort) { Text("中止") }
+                    OutlinedButton(onClick = onAbort) { Text("■ 停止") }
                 } else {
                     Button(onClick = onSend, enabled = enabled && input.isNotBlank()) { Text("发送") }
                 }

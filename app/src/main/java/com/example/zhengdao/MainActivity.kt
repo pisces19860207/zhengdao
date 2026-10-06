@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -55,6 +57,13 @@ private const val APP_RELEASES_API = "https://api.github.com/repos/pisces1986020
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 边到边渲染（v1.1 第三阶段「输入框与手机体验」）：
+        // 必须与 ComposerBar 的 Modifier.imePadding() 配套，键盘弹出时输入框才不被顶掉
+        // ——非 edge-to-edge 时系统自行 resize window，Compose 读不到 IME inset，imePadding 形同虚设。
+        // 系统栏遮挡由各页面自行补偿：home 走 Scaffold（已处理）；settings 加 statusBarsPadding；
+        // welcome 内容居中且有内边距，天然安全。
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         // ⚠️ RunLog 此前**只在 TerminalActivity 里 init**：WebView 时代用户必然进终端页，
         //    所以日志一直有；Compose 原生 UI 流程**根本不进终端** → appContext == null
         //    → RunLog.log() 开头的 `appContext ?: return` 把所有日志**静默丢掉**。
@@ -260,8 +269,9 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
             )
         }
         composable("settings") {
-            // 设置页（含返回）：复用 Material3 顶栏由页面内实现，此处提供返回按钮容器
-            Column {
+            // 设置页（含返回）：复用 Material3 顶栏由页面内实现，此处提供返回按钮容器。
+            // edge-to-edge 下必须自行避让系统栏，否则返回栏会被状态栏压住、末项被导航栏遮挡。
+            Column(Modifier.statusBarsPadding().navigationBarsPadding()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
