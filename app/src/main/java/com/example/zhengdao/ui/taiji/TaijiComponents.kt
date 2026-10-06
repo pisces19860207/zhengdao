@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart
 import com.example.zhengdao.oc.OcPermission
+import com.example.zhengdao.oc.OcSessionSummary
 import com.example.zhengdao.oc.ConnectionState
 import com.example.zhengdao.oc.OcRepository
 import com.example.zhengdao.oc.OcTodo
@@ -70,21 +73,37 @@ import kotlinx.coroutines.launch
  *
  * [connection]非[ConnectionState.Connected] 时显示状态——**失败必须可见**，
  * 不静默（与项目"M2 内存治理不假装成功"同一原则）。
+ *
+ * v1.1 第一阶段新增左侧「☰ 历史」与右侧「＋ 新会话」入口（会话完整化）。
+ * 两个回调都给默认空实现，避免影响既有调用点。
  */
 @Composable
 fun SessionBar(
     title: String,
     connection: ConnectionState,
     attempt: Int,
+    onHistory: () -> Unit = {},
+    onNew: () -> Unit = {},
     onStop: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title.ifEmpty { "新会话" }, style = MaterialTheme.typography.titleMedium)
+        IconButton(onClick = onHistory) {
+            Text("☰", style = MaterialTheme.typography.titleMedium)
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+            Text(
+                title.ifEmpty { "新会话" },
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             ConnectionLabel(connection, attempt)
+        }
+        IconButton(onClick = onNew) {
+            Text("＋", style = MaterialTheme.typography.titleMedium)
         }
         IconButton(onClick = onStop) { Text("◼", style = MaterialTheme.typography.bodyMedium) }
     }
@@ -536,3 +555,150 @@ fun PermissionSheet(
         }
     }
 }
+
+// ── 历史会话抽屉（v1.1 第一阶段「会话完整化」）─────────────────────────
+
+/**
+ * 历史会话列表抽屉。
+ *
+ * 按 **今天 / 昨天 / 更早** 分组；每条显示标题 + 时间 + 消息条数。
+ * 点击任一条即恢复该会话（[onPick]），当前会话高亮。
+ *
+ * [loading] 为 true 时显示进度（首次拉取元数据）——**不让用户对着空白发呆**；
+ * 拉取失败不阻塞：调用方传空列表 + 由 [HistorySheet] 给出"还没有会话"文案。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HistorySheet(
+    sessions: List<OcSessionSummary>,
+    loading: Boolean,
+    currentId: String?,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("历史会话", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            }
+            Spacer(Modifier.height(8.dp))
+
+            when {
+                sessions.isEmpty() && loading -> Text(
+                    "正在加载…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                sessions.isEmpty() -> Text(
+                    "还没有历史会话。点右上角「＋」开始第一段对话。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                else -> LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                    groupSessionsByDay(sessions).forEach { (label, items) ->
+                        item(key = "header-$label") { DayHeader(label) }
+                        items(items, key = { it.id }) { s ->
+                            SessionRow(
+                                summary = s,
+                                current = s.id == currentId,
+                                onClick = { onPick(s.id) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayHeader(label: String) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun SessionRow(summary: OcSessionSummary, current: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (current) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    sessionTitle(summary),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    buildString {
+                        summary.updatedAt?.let { append(formatClock(it)) }
+                        summary.messageCount?.let {
+                            if (isNotEmpty()) append(" · ")
+                            append("$it 条消息")
+                        }
+                    }.ifEmpty { summary.id.take(12) },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (current) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "当前",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 会话标题：服务端 `title` 优先；为空回退「会话 + id 尾缀」。
+ * **不调模型生成标题**（计划 P1-4 明确）。
+ */
+private fun sessionTitle(s: OcSessionSummary): String =
+    s.title?.takeIf { it.isNotBlank() } ?: "会话 ${s.id.takeLast(6)}"
+
+/** 按天分组：今天 / 昨天 / 更早。保持输入顺序（服务端已按时间倒序）。时间缺失归「更早」。 */
+private fun groupSessionsByDay(list: List<OcSessionSummary>): List<Pair<String, List<OcSessionSummary>>> {
+    val out = LinkedHashMap<String, MutableList<OcSessionSummary>>()
+    list.forEach { out.getOrPut(dayLabel(it.updatedAt)) { mutableListOf() }.add(it) }
+    return out.map { it.key to it.value }
+}
+
+private fun dayLabel(ts: Long?): String {
+    ts ?: return "更早"
+    val startOfToday = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    return when {
+        ts >= startOfToday -> "今天"
+        ts >= startOfToday - 86_400_000L -> "昨天"
+        else -> "更早"
+    }
+}
+
+private fun formatClock(ts: Long): String =
+    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))

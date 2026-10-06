@@ -7,6 +7,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -510,6 +513,85 @@ class OcRepository(
 
     fun dismissError() = _state.update { it.copy(lastError = null) }
 
+    // ── 会话管理（v1.1 第一阶段「会话完整化」）──────────────────────────
+    // 🔒 架构冻结红线（《v1.1 计划》"不许动 OcClient / OcRepository 接口"）：
+    //    以下全部是**新增**方法，未触碰任何既有方法的签名或语义——既有单会话
+    //    路径（open 自动复用最近会话 / 新建）保持原样，Agent B 不受影响。
+    //    之前只有"单会话模型"，用户无法主动新建 / 查看历史 / 切换，本组补齐。
+
+    /**
+     * 拉取会话历史列表（含消息条数）。
+     *
+     * 端点 `GET /api/session`（响应 `{"data":[…]}`，按时间**倒序**）。
+     * 条数由 `GET /api/session/{id}/message` **并发**补取——单个失败只让该条
+     * [OcSessionSummary.messageCount] 为 null，**不拖垮整个列表**（失败不阻断）。
+     */
+    suspend fun listSessions(): List<OcSessionSummary> = withContext(Dispatchers.IO) {
+        val raw = runCatching { fetchSessions() }
+            .onFailure { ocLog("拉取会话列表失败：${it.message}") }
+            .getOrDefault(emptyList())
+        if (raw.isEmpty()) return@withContext emptyList()
+        coroutineScope {
+            raw.map { s ->
+                async { s.toSummary(runCatching { countMessages(s.id) }.getOrNull()) }
+            }.awaitAll()
+        }
+    }
+
+    /** `GET /api/session` → 会话元数据列表。 */
+    private suspend fun fetchSessions(): List<OcSession> {
+        val arr = fetchJsonArrayOrThrow(http.url("/api/session"))
+        return (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.let(::parseSession)
+        }
+    }
+
+    /** 单个会话的消息条数（历史列表展示用）。 */
+    private suspend fun countMessages(sessionId: String): Int =
+        fetchJsonArrayOrThrow(http.url("/api/session/$sessionId/message")).length()
+
+    private fun OcSession.toSummary(messageCount: Int?): OcSessionSummary =
+        OcSessionSummary(id, title, timeUpdated ?: timeCreated, messageCount)
+
+    /**
+     * 新建会话并切入。
+     *
+     * @return 新会话 id；失败返回 null，并把 [TaijiState.phase] 置为失败态
+     *   （项目原则「失败必须可见」，绝不静默）。
+     */
+    suspend fun startNewSession(scope: CoroutineScope): String? {
+        val id = createSession()
+        if (id == null) {
+            _state.update { it.copy(phase = TaijiPhase.Failed("无法创建新会话", retryable = true)) }
+            return null
+        }
+        ocLog("新建会话 id=$id")
+        switchSession(scope, id)
+        return id
+    }
+
+    /**
+     * 切换到指定会话（历史列表点击「恢复」）。
+     *
+     * 先清空消息并置 Loading —— 否则旧会话内容会在新会话加载完成前"闪现"，
+     * 用户会以为切错了。之后复用 [open]（全量拉取 + 轮询 + SSE）。
+     */
+    suspend fun switchSession(scope: CoroutineScope, sessionId: String) {
+        _state.update {
+            it.copy(
+                messages = emptyList(),
+                parts = emptyMap(),
+                loadedOnce = false,
+                input = "",
+                isStreaming = false,
+                pendingPermission = null,
+                phase = TaijiPhase.Loading,
+                sessionId = sessionId,
+            )
+        }
+        open(scope, sessionId)
+    }
+
     // ── 状态模型 ──────────────────────────────────────────────────────
 
 }
@@ -564,6 +646,22 @@ internal fun parseBody(resp: Response, pick: (String) -> String?): String? {
     val text = resp.body?.string() ?: return null
     if (!resp.isSuccessful) throw OcHttpException(resp.code, "HTTP ${resp.code}: ${text.take(120)}")
     return pick(text)
+}
+
+/**
+ * 解析会话元数据（`GET /api/session` 的元素）。
+ *
+ * 时间字段与消息同构：`{time:{created, updated}}`（毫秒）。缺失时回退 null，
+ * 由 UI 用「更早」分组兜底——**不臆造时间**（沿用 E-005 "不装作知道"的纪律）。
+ */
+internal fun parseSession(o: JSONObject): OcSession {
+    val time = o.optJSONObject("time")
+    return OcSession(
+        id = o.optString("id"),
+        title = o.optString("title").takeIf { it.isNotEmpty() },
+        timeCreated = time?.optLong("created")?.takeIf { it > 0 },
+        timeUpdated = time?.optLong("updated")?.takeIf { it > 0 },
+    )
 }
 
 internal fun parseMessage(info: JSONObject?): OcMessage? {
