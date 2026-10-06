@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -48,6 +49,8 @@ fun HomeScreen(
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var summary by remember { mutableStateOf(AppState.summaryLine(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
+    // 卸载二次确认（P3）：非 null 时弹出确认弹窗
+    var uninstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
     var sysInfo by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
     // 每次回到本页（从终端返回）刷新安装状态
     LaunchedEffect(Unit) {
@@ -252,6 +255,12 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    // 卸载入口（P3）：仅已装且有卸载命令的 Agent 显示；确认弹窗在 LazyColumn 之后
+                    if (agent.installed && agent.uninstallCmd != null) {
+                        TextButton(onClick = { uninstallTarget = agent }) {
+                            Text("卸载", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
         }
@@ -264,7 +273,51 @@ fun HomeScreen(
             )
         }
     }
+
+    // 卸载二次确认（P3）：「卸载」删程序、留用户数据；「彻底清除」连用户数据一起删
+    // （仅限已知名单内的 Agent——未知 manifest 条目的数据布局不猜测，不提供该选项）
+    uninstallTarget?.let { target ->
+        val cmd = target.uninstallCmd ?: return@let
+        val wipe = wipeTargets[target.id]
+        AlertDialog(
+            onDismissRequest = { uninstallTarget = null },
+            title = { Text("卸载 ${target.name}") },
+            text = {
+                Text(
+                    if (wipe == null) {
+                        "删除程序本体；用户数据（配置、会话、API Key）保留，可随时重装。"
+                    } else {
+                        "「卸载」删除程序本体，用户数据（${wipe.joinToString("、")}）保留，可随时重装；\n" +
+                            "「彻底清除」连同用户数据一起删除，不可恢复。"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    uninstallTarget = null
+                    onOpenTerminal(cmd, target.id)
+                }) { Text("卸载", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                if (wipe == null) {
+                    TextButton(onClick = { uninstallTarget = null }) { Text("取消") }
+                } else {
+                    TextButton(onClick = {
+                        uninstallTarget = null
+                        onOpenTerminal(cmd + " && rm -rf " + wipe.joinToString(" "), target.id)
+                    }) { Text("彻底清除", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { uninstallTarget = null }) { Text("取消") }
+                }
+            },
+        )
+    }
 }
+
+/** 「彻底清除」时随程序一起删除的用户数据目录（guest 内路径；shell 展开 ~）。 */
+private val wipeTargets: Map<String, List<String>> = mapOf(
+    "claude-code" to listOf("~/.claude"),
+    "hermes" to listOf("~/.hermes"),
+)
 
 @Composable
 private fun StatusRow(label: String, value: String) {
