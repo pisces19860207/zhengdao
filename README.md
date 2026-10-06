@@ -79,10 +79,14 @@
 
 ## 当前状态
 
-**v0.9.1 已发布**（正式 Release，可直接下载安装）：环境一键安装、前台服务保活 + tmux 会话保持、
-原生终端（Termux 引擎）、Agent 一键安装与启动。**OpenCode 与 Hermes Agent 完整支持**
-（一键安装 → 启动 → TUI 全链路真机验收，`hermes update` 可用）；Claude Code / AGY CLI
-走各自官方安装脚本。
+**v1.0.0 已发布**（首个正式版，可直接下载安装）：
+
+- **太极 Tab**：OpenCode 原生 Compose 客户端——Markdown 渲染、思考折叠、工具卡、
+  会话历史/新建/恢复、模型池选择器（免费模型标注、会话级切换、重启保持）
+- **洞天（终端）**：Debian 13.7 真实环境（PRoot），tmux 会话保持、断线重进不丢现场
+- **丹房**：Agent 一键安装/启动/卸载（二次确认、真实 du 尺寸、用户数据保留）、环境体检自愈
+- **OpenCode 与 Hermes Agent 完整支持**（真机全链路验收）；Claude Code / AGY CLI 走各自官方脚本
+- 存储策略定稿：MANAGE 主路径 + /sdcard 直连；通知 4 渠道；缓存清理白名单
 
 CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)，
 正式版见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)。

@@ -4,7 +4,7 @@ plugins {
 }
 
 // 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
-val appVersionName = "0.9.1"
+val appVersionName = "1.0.0"
 
 android {
     namespace = "com.example.zhengdao"
