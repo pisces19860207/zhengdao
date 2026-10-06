@@ -18,9 +18,9 @@ import java.util.concurrent.TimeUnit
 /**
  * OpenCode HTTP 客户端 —— 太极 Tab（Compose 原生 UI）的唯一网络出入口。
  *
- * ## 为什么是 OkHttp 直连，而不是沿用 LocalProxy
+ * ## 为什么是 OkHttp 直连，而不是沿用 LocalProxy（已删，v1.1.1 阶段 3）
  *
- * 旧路径（WebView 版）自建了一层字节级 HTTP 转发（[LocalProxy]），为绕开
+ * 旧路径（WebView 版）自建了一层字节级 HTTP 转发（LocalProxy），为绕开
  * "WebView 的 fetch/XHR 收到 401 不触发 onReceivedHttpAuthRequest"（真机实测）。
  * 该层的代价（2026-10-06 代码审计结论，见 docs/milestones/证道-WebView卡慢根因诊断.md）：
  *   1. readHeaderBlock 逐字节 read + 每字节 O(N²) 拷贝

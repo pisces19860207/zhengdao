@@ -83,7 +83,7 @@ object OcManager {
     @Volatile
     private var serveProcess: Process? = null
 
-    /** serve 的 HTTP Basic 密码（启动后从日志解析；WebView 鉴权用）。 */
+    /** serve 的 HTTP Basic 密码（启动后从日志解析；OcClient 直连鉴权用）。 */
     @Volatile
     var servePassword: String? = null
         private set
@@ -145,15 +145,13 @@ object OcManager {
      */
     fun startServe(ctx: Context): String? {
         // serve 可能是孤儿（上一轮 App 被杀、子进程存活监听 14000——App 重启后
-        // Web 会话不丢反而是特性）。无论 serve 是本轮拉起还是孤儿，代理必须就绪：
-        // 代理线程随旧 App 进程死亡，这里幂等重启。
+        // Web 会话不丢反而是特性）。
         if (serveRunning()) {
             // ⚠️ 竞态/孤儿修复：serve 已在运行（典型：重装/重启后上一进程的孤儿仍在监听）
             //   也必须**解析密码并写入 OcManager.servePassword** —— 否则原生路径的
             //   passwordProvider（{ OcManager.servePassword }）恒为 null，请求无
-            //   Authorization → 全程 401。原实现只把密码喂给 LocalProxy，漏写了 servePassword。
+            //   Authorization → 全程 401。
             parseServePassword(ctx)
-            com.example.zhengdao.oc.LocalProxy.start(PORT) { servePassword }
             return null
         }
         val bin = binaryFile(ctx)
@@ -203,20 +201,15 @@ object OcManager {
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log))
             serveProcess = pb.start()
             // 等待 HTTP 就绪（最多 15 秒）+ 密码行落盘（密码在 listening 之后打印，
-            // 过早返回会漏读 → WebView 401 卡死）
+            // 过早返回会漏读 → API 全程 401）
             repeat(30) {
                 if (serveRunning()) {
                     repeat(10) {
                         parseServePassword(ctx)
-                        if (servePassword != null) {
-                            // 本地透传代理（fetch/XHR 的 401 不触发 WebView 认证回调，
-                            // 真机实测——用 TCP 层注入 Authorization 绕开）
-                            com.example.zhengdao.oc.LocalProxy.start(PORT) { servePassword }
-                            return null
-                        }
+                        if (servePassword != null) return null
                         Thread.sleep(500)
                     }
-                    RunLog.log("太极: serve 就绪但密码未解析到（WebView 将无法通过 API 鉴权）")
+                    RunLog.log("太极: serve 就绪但密码未解析到（UI 将无法通过 API 鉴权）")
                     return null
                 }
                 Thread.sleep(500)
@@ -276,7 +269,6 @@ object OcManager {
                 }
             }
         }
-        LocalProxy.stop()
     }
 
     @Suppress("unused")

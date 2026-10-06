@@ -3,7 +3,6 @@
 package com.example.zhengdao
 
 import android.content.Intent
-import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,7 +32,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,17 +46,16 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.zhengdao.oc.TaijiPrefs
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
+import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.SettingsScreen
 import com.example.zhengdao.ui.WelcomeScreen
 
@@ -318,7 +315,40 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
-                SettingsScreen(onOpenTerminal = openTerminal)
+                SettingsScreen(
+                    onOpenTerminal = openTerminal,
+                    onOpenPlugins = { nav.navigate("plugins") { launchSingleTop = true } },
+                )
+            }
+        }
+        composable("plugins") {
+            // 三级页：顶栏与设置页同款（返回 + 居中标题），内容由 PluginsScreen 负责
+            Column(Modifier.statusBarsPadding().navigationBarsPadding()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                ) {
+                    TextButton(
+                        onClick = { nav.popBackStack() },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 4.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            BackChevron(tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(4.dp))
+                            Text("返回", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Text(
+                        text = "插件",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+                PluginsScreen()
             }
         }
     }
@@ -331,19 +361,6 @@ fun HomeTabs(
     onOpenSettings: () -> Unit = {},
 ) {
     var tab by remember { mutableIntStateOf(2) }
-
-    // 太极 Tab 走哪套 UI：默认 Compose 原生 UI（直连 serve），出问题可一键回退 WebView 版。
-    // 这里用**监听**而不是只读取一次——本页常驻不重建，设置页切换后要即时生效，不必重启 App。
-    val ctx = LocalContext.current
-    val taijiPrefs = remember { TaijiPrefs.prefs(ctx) }
-    var useNativeUi by remember { mutableStateOf(TaijiPrefs.useNativeUi(ctx)) }
-    DisposableEffect(taijiPrefs) {
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == TaijiPrefs.key()) useNativeUi = TaijiPrefs.useNativeUi(ctx)
-        }
-        taijiPrefs.registerOnSharedPreferenceChangeListener(listener)
-        onDispose { taijiPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
-    }
 
     Scaffold(
         bottomBar = {
@@ -410,11 +427,11 @@ fun HomeTabs(
             color = MaterialTheme.colorScheme.background,
         ) {
             when (tab) {
-                // 太极：默认 Compose 原生 UI（直连 opencode serve 的 HTTP + SSE）；
-                // 开关关掉则回退旧 WebView + LocalProxy 版（阶段 0 鉴权未过时的退路）。
-                0 ->
-                    if (useNativeUi) com.example.zhengdao.ui.taiji.TaijiScreen()
-                    else com.example.zhengdao.ui.TaijiScreen()
+                // 太极：Compose 原生 UI（直连 opencode serve 的 HTTP + SSE）。
+                // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
+                //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
+                //    真坏了就修，不藏一条会腐烂的备用路。
+                0 -> com.example.zhengdao.ui.taiji.TaijiScreen()
                 // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
                 2 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
                 // 洞天：点击即进终端（onClick 已处理），停留时显示空态
