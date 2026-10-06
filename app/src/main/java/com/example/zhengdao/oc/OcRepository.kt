@@ -189,6 +189,9 @@ class OcRepository(
     }
 
     private fun handle(ev: SseClient.Event, scope: CoroutineScope) {
+        // 🔍 诊断：事件入口打点。用来确认事件是否真的到达归约层、
+        //    以及「流结束」之前到底收到过哪些事件（含是否收到 server.connected）。
+        ocLog("SSE 事件到达：${ev.javaClass.simpleName}")
         when (ev) {
             is SseClient.Event.Connected -> _state.update {
                 it.copy(connection = ConnectionState.Connected, lastError = null)

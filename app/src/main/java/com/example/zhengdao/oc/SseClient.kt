@@ -82,12 +82,24 @@ class SseClient(private val http: OkHttpClient) {
         var everConnected = false
 
         while (currentCoroutineContext().isActive) {
+            var lines = 0
+            var bytes = 0
             try {
                 http.newCall(request).execute().use { resp ->
                     if (!resp.isSuccessful) {
                         throw IOException("SSE HTTP ${resp.code}")
                     }
                     val body = resp.body ?: throw IOException("SSE 响应无 body")
+                    // 🔍 诊断：打印响应头与 Content-Length，用于区分「服务端给了空流」
+                    //    和「读到了数据但被中途关闭」。服务端三路鉴别已洗清，
+                    //    问题在客户端侧，这里要把客户端实际看到的响应形态打出来。
+                    ocLog(
+                        "SSE 连接建立 HTTP ${resp.code} | " +
+                            "encoding=${resp.header("Content-Encoding")} " +
+                            "len=${resp.header("Content-Length")} " +
+                            "transfer=${resp.header("Transfer-Encoding")} " +
+                            "conn=${resp.header("Connection")}"
+                    )
                     emit(Event.Reconnected(if (everConnected) sessionIdOf("") else null))
                     everConnected = true
                     attempt = 0                       // 连上就重置退避
@@ -98,6 +110,8 @@ class SseClient(private val http: OkHttpClient) {
 
                     while (!source.exhausted()) {
                         val line = source.readUtf8Line() ?: break
+                        lines++
+                        bytes += line.length
                         when {
                             // 空行 = 一个事件结束（SSE 以空行分隔）
                             line.isEmpty() -> {
@@ -120,7 +134,9 @@ class SseClient(private val http: OkHttpClient) {
                 // 正常结束流（服务器关闭）——视为一次断开。
                 // ⚠️ 必须留痕：这条路径此前**没有任何日志**，与 CancellationException
                 //    一起构成两条"静默死亡"路径，导致断连原因完全无法定位。
-                ocLog("SSE 流结束（第 ${attempt + 1} 次），将退避重连")
+                // 🔍 关键判据：读到 0 行 = 服务端给的是空流（或客户端根本没读到）；
+                //    读到若干行才退出 = 服务端中途关流。两者修法完全不同。
+                ocLog("SSE 流结束（第 ${attempt + 1} 次）：读到 $lines 行 / $bytes 字节")
                 emit(Event.Disconnected(null))
             } catch (e: CancellationException) {
                 // ⚠️ 不记日志就等于无痕迹死亡：协程被取消时看不出原因。
