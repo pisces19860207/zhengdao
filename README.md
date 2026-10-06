@@ -33,7 +33,7 @@
 | 阶段 | 是否需要网络 | 说明 |
 |---|---|---|
 | **首次安装环境** | **必需** | 下载约 300MB 的 Debian RootFS 压缩包 |
-| **安装 Agent** | **必需** | 从官方源下载 Claude Code / Hermes / OpenCode 等安装包 |
+| **安装 Agent** | **必需** | 从官方源下载 Claude Code / Hermes 等安装包（OpenCode 由太极 Tab 内置下载） |
 | **日常使用 Agent** | **必需** | Agent 调用的是云端 API（GLM / DeepSeek / Claude 等），无网则 Agent 无法工作 |
 | **纯终端使用** | **可选** | 环境安装完成后，离线也能使用 bash、git、python、npm 等本地工具 |
 
