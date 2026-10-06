@@ -162,3 +162,37 @@ createSession 先挡住了）。**建议统一剥信封**：`JSONObject(text).op
 **SSE 断连现状**：两时点截图均「已断开，正在重连（第 1 次）」（attempt 不再
 爬升，与上版行为不同）。在 RunLog 修好之前无法从客户端取证；服务端日志亦盲
 （追记二）。
+
+---
+
+## 追记四（2026-10-06 晚 · 五轮）：SSE 断连的排除证明完成——问题锁定在 OkHttp 客户端侧
+
+**鉴别实验矩阵**（同一台 serve、同一密码、同一端点、同一头）：
+
+| 路径 | 结果 |
+|---|---|
+| PC curl（经 adb forward） | 200 + server.connected + heartbeat，**保活 8s+**（被 max-time 掐断） |
+| PC curl + `Accept-Encoding: gzip` | **完全相同**，保活 8s+——gzip 嫌疑排除（服务端对 SSE 不做 gzip） |
+| **guest 内 curl（设备本机直连 14000）** | 收流 5s 被 `-m` 掐断（`DONE-TIMEOUT`）——**设备本地 SSE 保活** |
+| App OkHttp（readTimeout=0 的 sseClient） | 200 后 **~1 秒 EOF**，每秒重连，无异常 |
+
+**已排除**：服务端关流（三路径反证）、gzip、SSE 解析器（`: heartbeat` 注释行正确忽略）、
+读超时（=0）、鉴权（200 已收到）、端点、密码（配对正确）。
+
+**剩余两个客户端嫌疑（归分支侧，按优先级）**：
+
+1. **流内 emit + 收集端取消的reentrancy**：`connect()` 在 `execute().use{}` **内部**
+   `emit(Reconnected)`；`OcRepository` 的 collect → `handle(ev, scope)` → 若 handle 对
+   `Reconnected`/首事件触发了任何会重启 `connectSse`（`sseJob?.cancel()`）或取消
+   协程的动作 → `CancellationException` 被 `SseClient.kt:122` 静默吞 → 连接关闭 →
+   UI 计数重连——**与实测"每秒一循环、零异常日志"完全吻合**。验证法：在
+   `handle()` 入口/出口与 catch(CancellationException) 各加一行日志，跑一轮即见分晓。
+2. OkHttp 4.12.0 在 Android 16 上对 chunked 长流的某些行为——若 1 排除后再查
+   （可临时换 `okhttp-sse` 官方 artifact 做对照）。
+
+**附带**：`/proc/net/tcp` 可见 14000 上 LISTEN + ESTABLISHED + TIME_WAIT 并存——
+TCP 层连接确实建立（OkHttp 池化连接 keep-alive），EOF 发生在读侧。
+
+**RunLog 根治（3f65654）验证通过**：Application 级 init + 非静默 fallback 生效，
+本轮全部 ocLog（复用/断开/全量加载）均已可见——观测性先于被诊断对象的原则
+已经兑现，本节全部结论依赖它。
