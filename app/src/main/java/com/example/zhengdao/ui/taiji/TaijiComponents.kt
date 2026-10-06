@@ -6,27 +6,31 @@ package com.example.zhengdao.ui.taiji
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -90,13 +94,19 @@ import kotlinx.coroutines.launch
 // ── 顶部栏 ────────────────────────────────────────────────────────────
 
 /**
- * 会话状态栏。
+ * 会话状态栏（**固定不滚**：由 TaijiScreen 放在滚动区之外，见那里的 Column/weight 结构）。
  *
  * [connection]非[ConnectionState.Connected] 时显示状态——**失败必须可见**，
  * 不静默（与项目"M2 内存治理不假装成功"同一原则）。
  *
- * v1.1 第一阶段新增左侧「☰ 历史」与右侧「＋ 新会话」入口（会话完整化）。
- * 两个回调都给默认空实现，避免影响既有调用点。
+ * 顶栏四件事：历史入口（☰）/ 会话标题 + 连接状态 · 模型池入口 / 新会话（＋）/ 退出（◼）。
+ *
+ * ## 2026-10-07 布局修复（真机实测的缺陷）
+ * v1.0 合并后模型入口曾与标题并排直排主行，模型名实测长达
+ * `opencode/longcat-2.5-preview-free`（31 字符）→ 把 `weight(1f)` 的标题列挤到 **0 宽**：
+ * 标题整段不可见、「已连接」被折成竖排（`已/连/接`），顶栏实际只剩一个模型名。
+ * 现在：**标题独占主行剩余空间**，模型退到副行做成**限宽胶囊**，
+ * 长名字最多牺牲自己尾部，标题永远完整。
  */
 @Composable
 fun SessionBar(
@@ -110,35 +120,83 @@ fun SessionBar(
     onStop: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()          // edge-to-edge：顶栏不得被手机状态栏（时间/电量）压住
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onHistory) {
             Text("☰", style = MaterialTheme.typography.titleMedium)
         }
-        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+        Column(
+            modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
             Text(
                 title.ifEmpty { "新会话" },
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            ConnectionLabel(connection, attempt)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ConnectionLabel(connection, attempt)
+                if (!currentModelText.isNullOrBlank()) {
+                    // 副行里连接状态与模型之间加分隔点；Idle 时 ConnectionLabel 不渲染，避免孤立圆点
+                    if (connection != ConnectionState.Idle) {
+                        Text(
+                            "·",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                    ModelChip(currentModelText, onModelClick)
+                }
+            }
         }
         IconButton(onClick = onNew) {
             Text("＋", style = MaterialTheme.typography.titleMedium)
         }
-        // 模型池入口（v1.0 任务一）：常驻顶栏，显示当前生效模型（默认/provider/model）
-        TextButton(onClick = onModelClick) {
-            Text(
-                currentModelText ?: "默认",
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-            )
-        }
         IconButton(onClick = onStop) { Text("◼", style = MaterialTheme.typography.bodyMedium) }
     }
 }
+
+/**
+ * 模型池入口（v1.0 任务一）：**紧凑胶囊**。
+ *
+ * 宽度硬上限 176dp —— 这是顶栏不被撑爆的关键（见 [SessionBar] 注释）。模型名过长时
+ * 省略号收尾，只牺牲自己；点它打开模型池抽屉（[ModelSheet]）。
+ */
+@Composable
+private fun ModelChip(text: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .widthIn(max = 176.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Text(
+            shortModelName(text),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}
+
+/**
+ * 「provider/model」→ 只留 model 段，供顶栏胶囊显示。
+ *
+ * 手机顶栏宽度有限，`provider` 前缀信息量低于模型名本身（且多为 `opencode`），故剥离。
+ * 无「/」或 model 段为空则原样返回。
+ * `internal` 供 JVM 单测直接验证（与 [groupSessionsByDay] 同惯例）。
+ */
+internal fun shortModelName(raw: String): String =
+    raw.substringAfterLast('/').takeIf { it.isNotBlank() } ?: raw
 
 @Composable
 private fun ConnectionLabel(connection: ConnectionState, attempt: Int) {
@@ -840,66 +898,167 @@ fun PermissionSheet(
     }
 }
 
-// ── 历史会话抽屉（v1.1 第一阶段「会话完整化」）─────────────────────────
+// ── 历史会话**左侧抽屉**（v1.1 第一阶段「会话完整化」+ 长按删除）─────────
 
 /**
- * 历史会话列表抽屉。
+ * 历史会话抽屉内容 —— 宿主是 [androidx.compose.material3.ModalNavigationDrawer]
+ * 的 `ModalDrawerSheet`（**左侧栏**）。
  *
- * 按 **今天 / 昨天 / 更早** 分组；每条显示标题 + 时间 + 消息条数。
- * 点击任一条即恢复该会话（[onPick]），当前会话高亮。
+ * ## 为什么是左侧栏而不是底部弹窗（2026-10-07 改）
+ * 会话列表是**常驻导航**，与聊天主区平级；底部弹窗会遮住输入框与最新一条消息，
+ * 也不符合国内用户「会话列表在左边」的肌肉记忆（微信 / Telegram / 各类 IM 皆然）。
  *
- * [loading] 为 true 时显示进度（首次拉取元数据）——**不让用户对着空白发呆**；
- * 拉取失败不阻塞：调用方传空列表 + 由 [HistorySheet] 给出"还没有会话"文案。
+ * ## 分组与交互
+ * - 按 **今天 / 昨天 / 更早** 分组（[groupSessionsByDay]）；每条显示标题 + 时间 + 条数。
+ * - 点击任一条 → 恢复该会话（[onPick]），当前会话高亮。
+ * - **长按任一条 → 删除**（二次确认，见 [DeleteSessionDialog]）。
+ * - 顶部「＋ 新会话」[onNew]、「⟳」[onRefresh]（每次打开抽屉都会重拉，见 TaijiScreen）。
+ *
+ * @param onDelete 真正执行删除，返回 true 表示服务端已确认；**列表刷新由调用方负责**
+ *   （会话数据所有权在 TaijiScreen，本组件不持有）。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistorySheet(
+fun HistoryDrawer(
     sessions: List<OcSessionSummary>,
     loading: Boolean,
     currentId: String?,
     onPick: (String) -> Unit,
-    onDismiss: () -> Unit,
+    onNew: () -> Unit,
+    onRefresh: () -> Unit,
+    onDelete: suspend (OcSessionSummary) -> Boolean,
+    modifier: Modifier = Modifier,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp),
+    var pendingDelete by remember { mutableStateOf<OcSessionSummary?>(null) }
+
+    Column(modifier.fillMaxSize()) {
+        // 头部：edge-to-edge 下抽屉顶到屏幕最上沿，必须自己避开状态栏
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("历史会话", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            Text("会话", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            IconButton(onClick = onRefresh) {
+                Text("⟳", style = MaterialTheme.typography.titleMedium)
             }
-            Spacer(Modifier.height(8.dp))
+        }
 
-            when {
-                sessions.isEmpty() && loading -> Text(
-                    "正在加载…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        // 新建会话：抽屉里最高频的动作，置顶且醒目
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .clickable(onClick = onNew),
+        ) {
+            Text(
+                "＋  新会话",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+        }
 
-                sessions.isEmpty() -> Text(
-                    "还没有历史会话。点右上角「＋」开始第一段对话。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider()
 
-                else -> LazyColumn(Modifier.heightIn(max = 460.dp)) {
-                    groupSessionsByDay(sessions).forEach { (label, items) ->
-                        item(key = "header-$label") { DayHeader(label) }
-                        items(items, key = { it.id }) { s ->
-                            SessionRow(
-                                summary = s,
-                                current = s.id == currentId,
-                                onClick = { onPick(s.id) },
-                            )
-                        }
+        when {
+            // 首次拉取元数据 —— 不让用户对着空白发呆
+            sessions.isEmpty() && loading -> Box(
+                Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+
+            sessions.isEmpty() -> Text(
+                "还没有历史会话。\n点上方「＋ 新会话」开始第一段对话。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
+            )
+
+            else -> LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .navigationBarsPadding(),          // 避开底部导航条
+                contentPadding = PaddingValues(vertical = 6.dp),
+            ) {
+                groupSessionsByDay(sessions).forEach { (label, items) ->
+                    item(key = "header-$label") { DayHeader(label) }
+                    items(items, key = { it.id }) { s ->
+                        SessionRow(
+                            summary = s,
+                            current = s.id == currentId,
+                            onClick = { onPick(s.id) },
+                            onLongClick = { pendingDelete = s },
+                        )
                     }
                 }
             }
         }
     }
+
+    pendingDelete?.let { target ->
+        DeleteSessionDialog(
+            summary = target,
+            onConfirm = { onDelete(target) },
+            onDismiss = { pendingDelete = null },
+        )
+    }
+}
+
+/**
+ * 删除确认（长按触发）。
+ *
+ * **不可撤销**（服务端连消息一起删），所以必须二次确认；删除失败时在弹窗内直接给出
+ * 原因并保持打开——不静默失败、不假装成功（项目原则）。
+ */
+@Composable
+private fun DeleteSessionDialog(
+    summary: OcSessionSummary,
+    onConfirm: suspend () -> Boolean,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },   // 删除中不许点外面关掉
+        title = { Text("删除会话") },
+        text = {
+            Column {
+                Text("「${sessionTitle(summary)}」将在服务端被永久删除，无法恢复。")
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        val ok = onConfirm()
+                        busy = false
+                        if (ok) onDismiss() else error = "删除失败：服务端未确认（网络异常或该会话已不存在）"
+                    }
+                },
+            ) { Text(if (busy) "删除中…" else "删除") }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") }
+        },
+    )
 }
 
 @Composable
@@ -912,12 +1071,27 @@ private fun DayHeader(label: String) {
     )
 }
 
+/**
+ * 单条会话。**点击恢复 / 长按删除**（[onLongClick]）。
+ *
+ * 用 `combinedClickable` 而非两个独立手势检测：点击与长按互斥、由同一手势管道判定，
+ * 不会出现"长按也触发了点击"的竞态。
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SessionRow(summary: OcSessionSummary, current: Boolean, onClick: () -> Unit) {
+private fun SessionRow(
+    summary: OcSessionSummary,
+    current: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+) {
     Surface(
         color = if (current) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Row(
             Modifier.padding(horizontal = 12.dp, vertical = 10.dp),

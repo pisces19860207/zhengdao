@@ -662,6 +662,34 @@ class OcRepository(
         open(scope, sessionId)
     }
 
+    /**
+     * 删除会话（`DELETE /api/session/{id}`）。
+     *
+     * ⚠️ **不可撤销**：服务端连消息一起删。二次确认由 UI 负责（历史抽屉长按 → 确认弹窗），
+     * 本方法只发请求并**如实返回结果**——绝不静默失败、绝不假装成功（项目原则）。
+     *
+     * 刻意**不碰** [TaijiState.sessionId]：删掉别的会话不该把当前会话切走；
+     * 若删的正是当前会话，由调用方决定后续（UI 选择另起新会话）。
+     *
+     * @return true = 服务端已确认删除；false = 网络异常或服务端拒绝（原因已写日志）。
+     */
+    suspend fun deleteSession(sessionId: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            // 带空 body（Content-Length: 0）：部分服务端对无 body 的 DELETE 会直接 400。
+            val req = Request.Builder()
+                .url(http.url("/api/session/$sessionId"))
+                .delete(EMPTY_BODY)
+                .build()
+            http.client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    throw OcHttpException(resp.code, "DELETE /api/session/$sessionId HTTP ${resp.code}")
+                }
+            }
+            ocLog("已删除会话 id=$sessionId")
+            true
+        }.onFailure { ocLog("删除会话失败（id=$sessionId）：${it.message}") }.getOrDefault(false)
+    }
+
     // ── 状态模型 ──────────────────────────────────────────────────────
 
 }

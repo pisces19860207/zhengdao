@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -343,7 +344,15 @@ fun HomeTabs(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                // Scaffold **不消费** window insets —— 见 material3 Scaffold.kt 的 KDoc：
+                //   "The lambda receives a PaddingValues that should be applied to the content root
+                //    via Modifier.padding and Modifier.consumeWindowInsets"。
+                // 只 padding 不 consume 的后果：内部任何 statusBarsPadding() / navigationBarsPadding()
+                // 都会把状态栏 / 导航条再垫一次（顶层内容整体下移、底部多出一条空档）。
+                // 太极 Tab 的固定顶栏与输入框正是这种情况，故在此声明「系统栏内边距已由本层应用」。
+                // ⚠️ IME inset 不在 contentWindowInsets 内，imePadding() 不受影响，键盘避让照常。
+                .consumeWindowInsets(padding),
             color = MaterialTheme.colorScheme.background,
         ) {
             when (tab) {
