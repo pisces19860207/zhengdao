@@ -142,9 +142,28 @@ object SystemInfoProvider {
         // 环境包里的 info 只写了大版本（构建期常量）；真机上能从 node 二进制的
         // process.version 常量读到精确补丁号，读不到才退回大版本。
         node = runtime.node ?: envField(ctx, "node_major")?.let { "v$it" } ?: "未安装",
-        uv = if (runtime.uvInstalled) "已安装" else "未安装",
+        // uv 有两个：rootfs 里的系统级二进制（上游 ELF，版本只能扫二进制，暂不取），
+        // 以及 hermes 装在工作区的内嵌版——后者的版本号就在目录名里
+        // （home/.hermes/tools/uv-0.12.3-linux-arm64），取它比笼统报"已安装"具体。
+        uv = embeddedUvVersion(ctx)?.let { "$it（hermes 内嵌）" }
+            ?: if (runtime.uvInstalled) "已安装" else "未安装",
         )
     }
+
+    /**
+     * hermes 把自带工具装在 `home/.hermes/tools/<name>-<ver>-<arch>/`，版本号在目录名里。
+     * 注意这是**工作区里内嵌的那个 uv**，不是 rootfs 里的系统级 uv。
+     */
+    private fun embeddedUvVersion(ctx: Context): String? = try {
+        File(ctx.filesDir, "home/.hermes/tools")
+            .listFiles { f -> f.isDirectory && f.name.startsWith("uv-") }
+            ?.mapNotNull { uvVersionFromDirName(it.name) }
+            ?.maxOrNull()
+    } catch (_: Throwable) { null }
+
+    /** uv-0.12.3-linux-arm64 → 0.12.3；无版本段（如 uv-linux-arm64）返回 null。 */
+    internal fun uvVersionFromDirName(name: String): String? =
+        Regex("""^uv-([0-9][0-9.]*)-""").find(name)?.groupValues?.get(1)
 
     /** SELinux 模式；本机读不到返回 null（展示时整行省略，而不是渲染成一个像故障的"未知"）。 */
     private fun readSelinux(): String? = try {

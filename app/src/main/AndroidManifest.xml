@@ -4,6 +4,11 @@
 
     <!-- 网络权限：切片 3 的 RootFS 下载需要；本切片自身不联网 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 网络状态：环境体检的「网络连通性」要读 activeNetwork 的能力。
+         缺这条时 getNetworkCapabilities() 抛 SecurityException，被 runCatching 吞掉后
+         该项**恒为 ✗**——与网络好坏无关（2026-10-07 真机复现：WiFi 已 VALIDATED，
+         体检仍报"宿主网络未验证通过"）。normal 权限，声明即授予。 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- 手机存储直通：把共享存储绑进 Debian 环境（工作区在 Download/证道）。
          ⚠️ READ 的 maxSdkVersion 帽子（原 32）已摘——2026-10-06 实测：Android 16 上

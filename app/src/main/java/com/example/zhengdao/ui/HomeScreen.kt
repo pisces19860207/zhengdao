@@ -112,6 +112,9 @@ fun HomeScreen(
                 agents = AppState.agents(context)
                 // 系统信息同步重采：内存/存储占用、已装 Agent 列表都是会变的
                 sysTick++
+                // 展开态下体检也要重跑：去系统设置授权、去终端装 Agent 回来，
+                // 存储权限/网络等项的状态已经变了，留着旧结论同样不真实。
+                if (statusExpanded) healthEpoch++
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
