@@ -3,13 +3,16 @@
 // 依据的公开接口：OpenCode 官方 serve 模式 REST 端点 + SSE 事件流。
 package com.example.zhengdao.oc
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -42,7 +45,9 @@ class OcRepository(
     val state: StateFlow<TaijiState> = _state.asStateFlow()
 
     private var sseJob: Job? = null
-    private var attempt = 0
+
+    /** REST 轮询任务 —— **主数据源**。见 ERRATA E-008：SSE 只是信号通道。 */
+    private var pollJob: Job? = null
 
     // ── 生命周期 ──────────────────────────────────────────────────────
 
@@ -72,7 +77,10 @@ class OcRepository(
         runCatching { loadAll(id) }
             .onFailure { ocLog("初始全量加载失败，交由 SSE 补齐：${it.message}") }
 
-        // ② SSE 增量
+        // ② REST 轮询（**主数据源**）——绕开 /api/event「连上即关」的服务端缺陷（ERRATA E-008）
+        startPolling(scope, id)
+
+        // ③ SSE 信号通道（仅表示「就绪」，不承载数据）
         connectSse(scope, id)
     }
 
@@ -106,26 +114,123 @@ class OcRepository(
         }.onFailure { ocLog("取最近会话失败（将新建）：${it.message}") }.getOrNull()
     }
 
-    /** 全量拉取并**重建**列表（不是合并）——重连补齐必须走这里。 */
+    /** 全量拉取并**重建**列表（不是合并）——首载 / 重连补齐走这里。 */
     private suspend fun loadAll(sessionId: String) {
         val arr = fetchJsonArray(http.url("/api/session/$sessionId/message")) ?: return
-        val parsed = (0 until arr.length()).mapNotNull { i ->
-            val o = arr.optJSONObject(i) ?: return@mapNotNull null
-            // 兼容两种形态：裸 info 对象，或 OpenCode v2 的 {info, parts} 包装
-            val msg = parseMessage(o.optJSONObject("info") ?: o) ?: return@mapNotNull null
-            val outer = o.optJSONArray("parts")?.let { p ->
-                (0 until p.length()).mapNotNull { j -> p.optJSONObject(j)?.let(::parsePart) }
-            }
-            if (outer.isNullOrEmpty()) msg else msg.copy(parts = outer)
-        }
+        val parsed = parseMessages(arr)
         _state.update {
             it.copy(
-                messages = parsed.distinctBy { m -> m.id },
+                messages = parsed,
                 parts = parsed.flatMap { m -> m.parts }.associateBy { p -> p.id },
                 loadedOnce = true,
             )
         }
         ocLog("全量加载 ${parsed.size} 条消息")
+    }
+
+    /**
+     * 把 `GET /api/session/{id}/message` 的数组解析成消息列表。
+     *
+     * 兼容两种形态：裸 info 对象，或 OpenCode v2 的 `{info, parts}` 包装；
+     * 按 id 去重（首载/轮询都复用，保证归约口径一致）。
+     */
+    private fun parseMessages(arr: JSONArray): List<OcMessage> =
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val msg = parseMessage(o.optJSONObject("info") ?: o) ?: return@mapNotNull null
+            val outer = o.optJSONArray("parts")?.let { p ->
+                (0 until p.length()).mapNotNull { j -> p.optJSONObject(j)?.let(::parsePart) }
+            }
+            if (outer.isNullOrEmpty()) msg else msg.copy(parts = outer)
+        }.distinctBy { m -> m.id }
+
+    // ── REST 轮询（主数据源）─────────────────────────────────────────────
+    // OpenCode /api/event 存在服务端缺陷（Issue #38458，见 ERRATA E-008）：连上即关、
+    // 只给第一波数据然后静默。故消息数据改由本组轮询获取，SSE 仅当「就绪」信号。
+
+    /**
+     * 启动自适应 REST 轮询，直到 [pollJob] 被取消。
+     *
+     * 节奏：有变化 → 1s 快轮询；无变化 → 3s / 5s 逐步放慢；失败 → 指数退避并如实报 UI。
+     */
+    private fun startPolling(scope: CoroutineScope, sessionId: String) {
+        pollJob?.cancel()
+        pollJob = scope.launch {
+            var idleStreak = 0
+            var errStreak = 0
+            while (isActive) {
+                val changed = try {
+                    val c = pollOnce(sessionId)
+                    errStreak = 0
+                    c
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // 失败必须可见：退避并告知 UI「正在重连」
+                    errStreak = minOf(errStreak + 1, POLL_ERR_BACKOFF_MS.lastIndex)
+                    _state.update {
+                        it.copy(
+                            connection = ConnectionState.Reconnecting,
+                            lastError = e.message ?: "轮询失败，正在重试",
+                            reconnectAttempt = errStreak,
+                        )
+                    }
+                    delay(POLL_ERR_BACKOFF_MS[errStreak])
+                    continue
+                }
+                val waitMs = if (changed) {
+                    idleStreak = 0
+                    POLL_FAST_MS
+                } else {
+                    idleStreak = minOf(idleStreak + 1, 2)
+                    if (idleStreak == 1) POLL_SLOW_MS else POLL_IDLE_MS
+                }
+                delay(waitMs)
+            }
+        }
+    }
+
+    /**
+     * 轮询一次消息列表并归约（**全量重建**，天然幂等）。
+     * 返回相对上次是否有变化，供自适应节奏使用。
+     *
+     * @throws Exception 网络/HTTP 失败时抛出，交由 [startPolling] 做退避。
+     */
+    private suspend fun pollOnce(sessionId: String): Boolean = withContext(Dispatchers.IO) {
+        val arr = fetchJsonArrayOrThrow(http.url("/api/session/$sessionId/message"))
+        val parsed = parseMessages(arr)
+        val changed = parsed != _state.value.messages
+        _state.update {
+            if (changed) {
+                it.copy(
+                    messages = parsed,
+                    parts = parsed.flatMap { m -> m.parts }.associateBy { p -> p.id },
+                    loadedOnce = true,
+                    connection = ConnectionState.Connected,
+                    lastError = null,
+                    reconnectAttempt = 0,
+                )
+            } else {
+                // 内容稳定 → 视为本轮生成已结束，清掉"流式中"指示（SSE 不可用，改由轮询推断）
+                it.copy(
+                    loadedOnce = true,
+                    connection = ConnectionState.Connected,
+                    lastError = null,
+                    isStreaming = false,
+                )
+            }
+        }
+        changed
+    }
+
+    /** 同 [fetchJsonArray]，但**失败时抛异常**（供轮询做退避判断）。 */
+    private suspend fun fetchJsonArrayOrThrow(url: String): JSONArray = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url).get().build()
+        http.client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string() ?: throw java.io.IOException("空响应 $url")
+            if (!resp.isSuccessful) throw OcHttpException(resp.code, "GET $url HTTP ${resp.code}")
+            unwrapArray(text)
+        }
     }
 
     /**
@@ -184,45 +289,26 @@ class OcRepository(
             val req = http.sseRequest("/api/event")
             sse.connect("/api/event", req) { raw ->
                 runCatching { JSONObject(raw).optString("sessionID").takeIf { it.isNotEmpty() } }.getOrNull()
-            }.collect { ev -> handle(ev, scope) }
+            }.collect { ev -> handle(ev) }
         }
     }
 
-    private fun handle(ev: SseClient.Event, scope: CoroutineScope) {
-        // 🔍 诊断：事件入口打点。用来确认事件是否真的到达归约层、
-        //    以及「流结束」之前到底收到过哪些事件（含是否收到 server.connected）。
-        ocLog("SSE 事件到达：${ev.javaClass.simpleName}")
+    private fun handle(ev: SseClient.Event) {
         when (ev) {
-            is SseClient.Event.Connected -> _state.update {
-                it.copy(connection = ConnectionState.Connected, lastError = null)
-            }
-
+            // ── SSE 仅作「信号通道」────────────────────────────────────────
+            // 连上（HTTP 200）即表示就绪；**数据以 REST 轮询为准**（ERRATA E-008）。
+            is SseClient.Event.Connected,
             is SseClient.Event.Reconnected -> {
-                attempt = 0
-                _state.update {
-                    it.copy(connection = ConnectionState.Connected, isStreaming = false)
+                if (_state.value.connection != ConnectionState.Connected) {
+                    _state.update {
+                        it.copy(connection = ConnectionState.Connected, lastError = null)
+                    }
                 }
-                // 🔺 关键：重连后必须全量补齐——断线期间的消息**只存在于**全量结果里
-                scope.launch { runCatching { loadAll(_state.value.sessionId.orEmpty()) } }
             }
 
-            is SseClient.Event.Disconnected -> {
-                attempt++
-                // ⚠️ 这条分支此前也没有日志——断连原因只能靠猜。
-                //    cause 为 null 表示"流正常结束/被关闭"，非 null 才是真异常。
-                ocLog(
-                    "SSE 断开（第 $attempt 次）：" +
-                        (ev.cause?.let { "${it.javaClass.simpleName}: ${it.message}" }
-                            ?: "无异常（服务端关闭流或连接被拒）")
-                )
-                _state.update {
-                    it.copy(
-                        connection = ConnectionState.Reconnecting,
-                        lastError = ev.cause?.message ?: "连接已断开，正在重连",
-                        reconnectAttempt = attempt,
-                    )
-                }
-            }
+            // 已知服务端缺陷：/api/event 每次 flush 后即关流。**绝不改连接状态**
+            //（否则 UI 会在 Connected/Reconnecting 之间每秒闪烁）；健康由 REST 轮询驱动。
+            is SseClient.Event.Disconnected -> Unit
 
             is SseClient.Event.PartUpdated -> reducePartUpdated(ev)
             is SseClient.Event.MessageUpdated -> reduceMessageUpdated(ev.raw)
@@ -253,14 +339,12 @@ class OcRepository(
             is SseClient.Event.Unknown ->
                 // 🔺 未知事件不丢弃、不崩UI——仅记录。上游新增类型属正常演进。
                 ocLog("未知 SSE 事件 type=${ev.type}，已忽略但保留原文")
-
-            else -> Unit
         }
     }
 
     fun close() {
-        sseJob?.cancel()
-        sseJob = null
+        sseJob?.cancel(); sseJob = null
+        pollJob?.cancel(); pollJob = null
     }
 
     // ── 归约：delta 与全量严格互斥 ─────────────────────────────────────
@@ -385,6 +469,12 @@ class OcRepository(
 // ── JSON 解析辅助（手写，避免为此引入序列化依赖）─────────────────────
 
 private val jsonMediaType = "application/json".toMediaType()
+
+// ── REST 轮询节奏（毫秒）───────────────────────────────────────────────
+private const val POLL_FAST_MS = 1_000L      // 有变化：快轮询
+private const val POLL_SLOW_MS = 3_000L      // 无变化：放慢
+private const val POLL_IDLE_MS = 5_000L      // 持续无变化：最慢档
+private val POLL_ERR_BACKOFF_MS = longArrayOf(1_000, 2_000, 4_000, 8_000, 15_000)
 
 private fun String.toJsonBody(): RequestBody = toRequestBody(jsonMediaType)
 
