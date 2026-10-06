@@ -201,3 +201,70 @@ stopServe 扫 /proc 按 cmdline 同 uid kill 孤儿；servePassword 从 serve.lo
 
 **验证**：太极 Tab 一键 → serve 拉起 → OpenCode Web 全界面渲染（会话列表/
 对话/主题切换）→ 真机截图通过。
+
+---
+
+## E-007 · 2026-10-06 · Kotlin 块注释里不能写 `/*`；serve 判活与密码解析的两处更正
+
+### 1. 🔴 Kotlin 注释里的 `/*` 会开启嵌套注释（极隐蔽，报错完全跑偏）
+
+**现象**
+在 `OcManager.kt` 的 KDoc 里写 `` 必须打 `/api/*` 并校验 content-type ``，
+一次编译报 **18 个错**：
+
+```
+e: OcManager.kt:48:29  Unresolved reference 'Settings2'
+e: OcManager.kt:54:80  Syntax error: Missing '}'
+e: OcManager.kt:336:1  Syntax error: Unclosed comment
+e: ui/TaijiScreen.kt:82:67  Unresolved reference 'serveRunning'
+e: ui/TaijiScreen.kt:202:57 Unresolved reference 'startServe'
+…（共 18 条）
+```
+
+**根因**
+Kotlin **支持嵌套块注释**。注释里的 `/*` 会开启新的一层，后面的 `*/`
+只关闭嵌套层，**外层注释始终不闭合** → 编译器把后面整段代码当成注释吞掉，
+于是报出一批看似毫不相干的 `Unresolved reference` / `Missing '}'`。
+
+**真正有用的信号只有一条**：`Unclosed comment`（且行号在文件靠后位置）。
+前面那些 `Unresolved reference` 全是噪声——**不要从第一条错误开始修**。
+
+**规避**
+注释里写路径一律避免 `/*` 字面序列：
+
+| ❌ 不要写 | ✅ 写成 |
+|---|---|
+| `` `/api/*` `` | `` `/api/…` `` 或 "`/api` 前缀下的端点" |
+| `路径通配 /*` | `路径通配 /…` |
+
+**通用排查法**：出现大批 `Unresolved reference` 且行号集中在某个文件里，
+先 `grep -n '/\*' 该文件` 看注释里有没有多余的 `/*`，再看 `Unclosed comment` 的行号。
+
+### 2. 更正 E-006：「密码行在 listening 之后打印」——实测相反
+
+E-006 第 3 点写"servePassword 从 serve.log 解析（**密码行在 listening 之后**
+打印，需要重试读取）"。真机 `files/oc/serve.log` 实录是**密码行在前**：
+
+```
+server password <pw1>
+server listening on http://127.0.0.1:14000
+server password <pw2>
+server listening on http://127.0.0.1:14000
+server password <pw3>          ← 最后一场没绑上端口，无 listening
+```
+
+这个顺序直接决定了解析算法：原实现 `lastOrNull { contains("server password") }`
+在"最后一场没绑上端口"时必然取到那场失败进程的密码 → 打 `/api/…` 全部 401
+（PoC #3 已复现）。**正确做法是取"password 行后有 listening 行"的最后一个**。
+
+### 3. 更正 E-006：判活不能打根路径
+
+E-006 提到"HttpURLConnection 对本地代理端口 14001 的存活探测恒失败"，
+但**打 14000 根路径同样不可用**——这版 serve 把无前缀路径全部喂给 Web UI 的
+SPA catch-all，`/` 、`/global/health`、`/session` 一律返回 `200 text/html`。
+判活必须打 `/api/…` 并校验 `content-type: application/json`
+（401 也算存活：证明 serve 在监听且鉴权生效）。
+
+**验证**：三项均在真机（Magic 5 Pro / 2.0.22）实测，修复已落在
+`feat/taiji-compose-ui` 分支（`OcManager.serveRunning` / `parseServePassword`），
+`assembleDebug` 通过。
