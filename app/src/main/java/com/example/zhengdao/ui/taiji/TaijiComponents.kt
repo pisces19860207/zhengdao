@@ -211,7 +211,18 @@ fun PartRow(part: OcPart) {
             Text(part.text, style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        is OcPart.Tool -> ToolCallCard(part)
+        is OcPart.Tool -> {
+            // 🔍 诊断（用户第 1 步）：dump 工具卡**实际收到**的字段，确认 name / 入参 / 结果是否都在。
+            //    用 LaunchedEffect(part) 保证「每个 part 只打一次」，避免轮询重组时刷屏。
+            LaunchedEffect(part) {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "工具卡: name='${part.toolName}' state=${part.state} " +
+                        "inputLen=${part.input?.length ?: -1} outputLen=${part.output?.length ?: -1} " +
+                        "input=${part.input?.take(120)}"
+                )
+            }
+            ToolCallCard(part)
+        }
         is OcPart.File -> Text("📎 ${part.filename}", style = MaterialTheme.typography.bodySmall)
         // ⚠️ 未知 part 保留原文而非静默丢弃（见 OcDto 注释）
         is OcPart.Unknown -> CollapsibleBlock("未知内容（${part.type}）") {
@@ -260,6 +271,18 @@ fun ToolCallCard(part: OcPart.Tool) {
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = tint,
+                )
+            }
+            // 折叠态也显示一行入参摘要（命令 / 路径），让"用了哪个工具、干了啥"一眼可见
+            part.input?.takeIf { it.isNotBlank() }?.let { inp ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    inp.lineSequence().first().take(140),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (expanded) {
