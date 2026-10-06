@@ -17,6 +17,12 @@ class AppUpdater(
     private val downloader: ResumableDownloader,  // M1.1 骨架：断点续传 + SHA256
 ) {
     // 启动时调用 GET /repos/<org>/<repo>/releases/latest，比对 versionCode
+    //
+    // ⚠️ 2026-10-06 审核补：GitHub API 未认证限流 60 次/小时/IP。冷启动就查会快速耗尽，
+    //   导致 403 后用户完全收不到更新。缓解：
+    //   ① 本地记录上次检查时间，≥6 小时才再查（DataStore，与降噪同源）
+    //   ② 带 ETag / If-None-Match，304 也算成功
+    //   ③ 403/限流时静默跳过 + 记录日志，不打扰用户、不清空当前版本
     suspend fun checkForUpdate(): UpdateInfo? {
         // 解析 release 的 tag_name 与 assets；找出 arm64 APK 资产
         // versionCode > 当前 BuildConfig.VERSION_CODE -> 返回 UpdateInfo
@@ -52,24 +58,48 @@ class AgentHelperUpdater(
     private val activeDir: File,                // 当前生效版本
 ) {
     suspend fun update() {
-        val manifest = manifestClient.fetch().getOrNull() ?: run {
-            // 验签失败 -> 整份拒绝应用，回退出厂版（安全闸）
-            rollbackToGoldenImage(); return
+        // ⚠️ 2026-10-06 审核修正：原骨架写成
+        //     val manifest = manifestClient.fetch().getOrNull() ?: run { rollbackToGoldenImage(); return }
+        //   缺陷在于 `Result` 为 null 有**两种**语义，代码却执行同一个动作：
+        //   ① 验签失败（安全事件）→ 应回退
+        //   ② 网络不可达（普通故障）→ **不应回退**
+        //   结果：用户飞行模式打开 App，正在使用的热更新 agent-helper 被静默降级到出厂版。
+        //   同理下载中断也触发回退（弱网即降级），属过度反应。
+        //   正确做法：拆成两条路径，只在**真实验签失败**时回退。
+        when (val outcome = manifestClient.fetchOutcome()) {
+            // 网络故障（非安全事件）：保留当前版本不动，只记日志 + 走 §6 连接失败智能引导
+            is FetchOutcome.Unreachable -> { logAndShowNetworkHint(outcome.cause); return }
+
+            // 安全事件：整份拒绝应用，回退出厂版（Golden Image 是出厂可用兜底，此处回退是合理的）
+            FetchOutcome.SignatureInvalid -> { rollbackToGoldenImage(); return }
+
+            is FetchOutcome.Ok -> Unit
         }
+        val manifest = manifestClient.lastVerifiedManifest() ?: return
+
         val comp = manifest.components["agent-helper"] ?: return   // manifest 没带就不动
 
         // 版本护栏：新组件不支持当前 APK -> 跳过，继续用当前版本
         if (comp.minAppVersion > BuildConfig.VERSION_CODE) return
 
-        // 已是最新 -> 不动
-        if (readLocalVersion() == comp.version) return
+        // 版本比较：本地 > manifest 时**也跳过**（防 manifest 回滚导致降级）。
+        // 旧骨架只判了相等，manifest 侧版本倒退时会错误降级。
+        val local = readLocalVersion()
+        if (local != null && compareVersion(local, comp.version) >= 0) return
 
-        // 下载 + 校验；失败或校验不过 -> 回退出厂版
-        downloadAndVerify(comp)?.let { apply(it) } ?: rollbackToGoldenImage()
+        // 下载 + 校验：**只有校验不过（安全事件）才回退**；下载失败（网络）保留当前版本
+        when (val r = downloadAndVerify(comp)) {
+            is DownloadResult.Ok -> apply(r.file)
+            DownloadResult.VerifyFailed -> rollbackToGoldenImage()
+            is DownloadResult.Unreachable -> { logAndShowNetworkHint(r.cause) }  // 不动 activeDir
+        }
     }
 
     private fun rollbackToGoldenImage() {
-        // 删除 activeDir 里的下载物，恢复 APK bundledDir 出厂版本
+        // ⚠️ bundledDir 是 APK 内的 assets，**只读、不可直接执行**（与 M1.1 proot "释放到 files/"
+        //   是同一问题，M1.1 写了、本类漏了）。实现应为：
+        //   1. 从 assets 的出厂产物释放到 files/agent-helper/（首次启动时做一次，之后跳过）
+        //   2. 删除 activeDir 里的下载物，把 files/agent-helper/ 复位为生效版本
         // 保证 agent 命令永远可用；终端渲染为原生 TerminalView，随 APK 发版，不在此回退范围
     }
 }
@@ -126,13 +156,20 @@ class AgentHelperUpdater(
 #                 chmod 600 ~/.zhengdao/private.key
 set -euo pipefail
 KEY="${HOME}/.zhengdao/private.key"
+PUB="${HOME}/.zhengdao/public.key"
 MANIFEST="${1:?用法: ./sign-manifest.sh manifest.json}"
+
+# 公钥导出（2026-10-06 审核补）：**旧版脚本缺这一步**，导致下面的自检找不到public.key，
+# 在 set -euo pipefail 下直接中断——首次执行必然失败。此文件仅本地核对用，不外传；
+# 真正固化进 APK 的是另一份从私钥导出的公钥。
+[ -f "$PUB" ] || openssl pkey -in "$KEY" -pubout -out "$PUB"
+chmod 600 "$PUB"
 
 # ed25519 签名（openssl 原生支持，-rawin 表示直接签原始字节而非先做 digest）
 openssl pkeyutl -sign -rawin -inkey "$KEY" -in "$MANIFEST" -out "${MANIFEST}.sig"
 
 # 自检：用公钥验一遍，确保签出来的东西 APK 侧能验过
-openssl pkeyutl -verify -rawin -pubin -inkey "$HOME/.zhengdao/public.key" \
+openssl pkeyutl -verify -rawin -pubin -inkey "$PUB" \
   -in "$MANIFEST" -sigfile "${MANIFEST}.sig"
 
 echo "已生成 ${MANIFEST}.sig —— 把 manifest.json 与 .sig 一并上传 Release"

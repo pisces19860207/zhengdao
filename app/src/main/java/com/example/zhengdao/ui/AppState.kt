@@ -22,6 +22,7 @@ object AppState {
         val installed: Boolean,
         val npmPackage: String? = null,   // 非空时可探测已装版本 + 查 npm 最新版
         val installedVersion: String? = null, // node_modules package.json 探测；null = 版本未知
+        val uninstallCmd: String? = null, // P3：卸载命令（guest 内执行）
     )
 
     fun rootfsInstalled(ctx: Context): Boolean =
@@ -69,6 +70,7 @@ object AppState {
                     desc = m.desc.ifBlank { known.desc },
                     launchCmd = m.launchCmd.ifBlank { known.launchCmd },
                     installCmd = m.installCmd.ifBlank { known.installCmd },
+                    uninstallCmd = m.uninstallCmd ?: known.uninstallCmd,
                     npmPackage = pkg ?: known.npmPackage,
                     installedVersion = pkg?.let { AgentManifest.installedVersion(ctx, it) },
                 )
@@ -79,6 +81,7 @@ object AppState {
                     installed = detectFor(m.id, m.launchCmd),
                     npmPackage = pkg,
                     installedVersion = pkg?.let { AgentManifest.installedVersion(ctx, it) },
+                    uninstallCmd = m.uninstallCmd,
                 )
             }
         }

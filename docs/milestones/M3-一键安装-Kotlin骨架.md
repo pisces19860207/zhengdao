@@ -22,6 +22,12 @@ class ManifestClient(
         // 2. 取先到且验签通过的一份（通道本身不可信，签名才是信任根）
         // 3. 验签失败 -> 丢弃该通道结果，等另一通道；双通道都失败 -> 回退出厂版
         // 4. 校验通过 -> 解析为 Manifest（见 v3 §6 schema v5）
+        //
+        // ⚠️ 2026-10-06 审核补：「先到者胜」隐含假设两通道内容一致。若 CDN 已更新而
+        //   GitHub 仍是旧版，先到的可能是**旧版**。两条修法（择一或都做）：
+        //   a) 解析后比较 manifest.version，**取版本更高者**（简单，推荐）；
+        //   b) 显式指定权威通道（如 GitHub 为准），CDN 仅作灾备。
+        //   配套：manifest 应带 version 单调递增字段（现有 schema 已有 version:5 字段可用）。
     }
 
     fun verifySignature(body: ByteArray, sig: ByteArray): Boolean {
@@ -58,9 +64,25 @@ data class InstalledInfo(
     val hasUpdate: Boolean = false, // installedVersion != latestVersion 时置 true -> 卡片显示「可更新」
 )
 
-class AgentRepository(private val manifestClient: ManifestClient) {
+class AgentRepository(
+    private val manifestClient: ManifestClient,
+    private val cache: ManifestCache,      // 缓存最后一次**验签通过**的 manifest + 其签名
+) {
     // DataStore 持久化：每个 agent 的 InstalledInfo（state + 版本号 + 安装路径，agent-helper 登记）
-    suspend fun listAgents(): List<AgentInfo> = manifestClient.fetch().getOrNull()?.agents ?: emptyList()
+
+    /**
+     * ⚠️ 2026-10-06 审核修正：原实现 `manifestClient.fetch().getOrNull()?.agents ?: emptyList()`
+     * 在**离线时返回空列表** → 用户已装的Agent 卡片整体消失，被误认为"全被卸载"。
+     * 改为：网络失败时回落到本地缓存（仅缓存**验签通过**的内容），并在 UI 标注「离线数据」。
+     */
+    suspend fun listAgents(): List<AgentInfo> {
+        val fresh = manifestClient.fetchOutcome()      // 见 FetchOutcome（Ok / SignatureInvalid / Unreachable）
+        return when (fresh) {
+            is FetchOutcome.Ok -> { cache.save(fresh.manifest, fresh.signature); fresh.manifest.agents }
+            FetchOutcome.SignatureInvalid -> emptyList()   // 安全事件：不用缓存（缓存可能来自旧版本），静默失败 + 引导
+            is FetchOutcome.Unreachable -> cache.load()?.agents.orEmpty()   // 网络故障：用缓存，不清空 UI
+        }
+    }
 
     suspend fun stateOf(agentId: String): InstalledInfo { /* 读本地状态文件 */ }
 
@@ -131,11 +153,16 @@ class EnvironmentRepair(
     private val systemDir: File,                 // rootfs 系统层
     private val homeDir: File,                   // /root 独立目录（§8，不动）
 ) {
-    // 用户点「修复环境」：
-    // 1. 停止所有 tmux 会话（kill-session，不动 homeDir）
-    // 2. 重解压 pristineBase 到 systemDir（原子性：tmp + 标记 + rename）
-    // 3. 询问「是否顺带重装已选的 Agent」（默认是）-> 按 manifest 重跑 install
-    // 4. 全程 30 秒 + 重装时间，不重下 RootFS、不丢登录态
+    // 用户点「修复环境」（⚠️ 顺序不可调换，2026-10-06 审核补）：
+    // 1. 停止所有 tmux 会话（kill-session，不动 homeDir 本身）
+    // 2. **先 umount homeDir** —— /root 是 bind mount 进 rootfs 的，挂着时重解压会遇
+    //    "目录非空" 导致 rename 失败，甚至误伤 home 数据。这一步旧版文档漏了。
+    // 3. 重解压 pristineBase 到 systemDir（原子性：tmp + 标记 + rename）
+    // 4. **重新 bind mount homeDir 回 rootfs**（否则 Agent 看不到自己的配置与登录态）
+    // 5. 询问「是否顺带重装已选的 Agent」（默认是）-> 按 manifest 重跑 install
+    //
+    // 耗时口径：1.5–2GB 重解压在真机是**分钟级**。旧版文档写"全程 30 秒"与实际不符
+    // （v3 §8 同），已统一改为「约 2–3 分钟 + Agent 重装时间」，UI 勿承诺 30 秒。
     suspend fun repair(reinstallAgents: Boolean = true): Result<Unit>
 }
 ```

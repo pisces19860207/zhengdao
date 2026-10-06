@@ -27,7 +27,8 @@ import java.io.File
 class SessionService : Service() {
 
     companion object {
-        private const val CHANNEL_ID = "zhengdao_session"
+        // P6 渠道注册表在 NotificationChannels；此 ID 是历史发布值（换 ID 会重置用户通知设置）
+        private const val CHANNEL_ID = NotificationChannels.SESSION
         private const val NOTIF_ID = 42
         const val ACTION_TOGGLE_KEEPALIVE = "zhengdao.toggle_keepalive"
         const val ACTION_STOP_SESSION = "zhengdao.stop_session"
@@ -107,10 +108,8 @@ class SessionService : Service() {
     }
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID, "会话状态", NotificationManager.IMPORTANCE_LOW
-        ).apply { description = "显示后台会话状态；关闭会导致会话无法保活" }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        // P6：4 渠道集中注册（本服务用 SESSION 渠道；其余渠道供安装/Agent/更新使用）
+        NotificationChannels.ensureAll(this)
     }
 
     /** 读 /proc/<pid>/status 的 VmRSS（软监控，骨架 §6；读不到返回 0，静默）。 */

@@ -24,6 +24,8 @@
 
 > 🔄 **v3.10（2026-10-06 存储结论反转，重大勘误 E-005）**：第 0 步「sdcard 读缺陷」诊断结论**反转**——`/sdcard` 在 App 真身（`untrusted_app` 域）下**列目录、读、写全部可用**。原「传统存储视图已死、SAF 是唯一通路」结论错误。根因（方法论）：整套「全拒」证据来自 `run-as` 探针，其 SELinux 域是 `runas_app` 而非 App 真身的 `untrusted_app`——FUSE 拒的是调试域，不是 App，探针测的是「假身份」。真实机制：① **写** /sdcard 一直可用（WRITE 运行时授权就位，此前 Download/证道 为空只因 hermes 写的是 /workspace）；② **读** 10-05 确实失败，根因是 manifest `READ_EXTERNAL_STORAGE` 带 `maxSdkVersion=32` 帽子（Android 13+ 永远无法持有 READ）——`d414dca` 摘帽 + READ 运行时授权即真修复；③ **MANAGE_EXTERNAL_STORAGE 与本问题无关**（appop=default 状态下真身读写全通）。**SAF 镜像同步降级为备用方案**（个别 ROM 存储策略异常时兜底），设置页改名「手机文件夹同步（备用）」。受影响文档同步更正，详见 `docs/ERRATA.md` E-005。
 >
+>🔺 **v3.11（2026-10-06 太极 Tab 落地后回写，代码已分叉）**：P2/P3 由 `3f27844` 落地，实现与原设计有三处实质分叉，以代码为准：① **WebView + localhost 方案废弃**——`targetSdk 28` 落在「API 28 起默认禁止明文 HTTP」的行为变更线上，WebView 访问 `http://localhost` 被系统拦截，改为**Tab 内嵌 TerminalView 直连 guest `taiji` 会话的 TUI 方案**；② **数据隔离靠 `/usr/local/bin/taiji` wrapper 脚本**（export XDG 四目录 → `exec opencode`），不是靠 tmux 命令行前置 `VAR=val`（`tmux new-session` 不接受该语法，且 server 环境继承自首个创建它的进程）；③ **太极 Tab 拥有独立会话 `taiji`**，构成 v3.6「单会话」的例外——该约束的对象是洞天+丹房，不含太极。另回写 §2 步骤数（5 步）与 §3 目录树（删除已砍的 adbrepair）。相关章节：§2、§3、§5、§7、§9、§11、执行路线图 §2 P3。
+
 > 分发渠道：GitHub 直发 APK · 目标用户：非技术普通用户 · 核心原则：即开即用、按需下载、全程零命令
 
 ---
@@ -92,16 +94,18 @@ app/
 │   ├── rootfs/          # RootFS 解压、快照、一键重置（重解压 pristine base）
 │   └── manifest/        # 服务器 Agent 清单 JSON 拉取与解析（新增 Agent 免发版）
 ├── feature/
-│   ├── onboarding/      # 首次引导 4 步
-│   │   └── adbrepair/   # 无线调试配对向导（内嵌 ADB 客户端）
-│   ├── agents/          # Agent 卡片列表、一键安装/启动、重新安装
-│   ├── terminal/        # 自由终端：proot bash 会话 + 手机专用快捷键条 + 自定义 Agent 登记
+│   ├── onboarding/      # 首次引导（①欢迎 ②API Key ③下载环境 ⑤选择 Agent；④防杀已砍）
+│   ├── agents/          # Agent 卡片列表、一键安装/启动、重新安装（丹房）
+│   ├── terminal/        # 自由终端（洞天）：proot bash 会话 + 快捷键条 + 自定义 Agent 登记
+│   ├── taiji/           # 太极 Tab：TerminalView 直连 guest `taiji` 会话（独立 XDG 四目录）
 │   ├── session/         # tmux 会话管理：启动、重连 attach、被杀恢复
 │   └── settings/        # 设置：存储占用、修复环境、检查更新、关于
 ├── service/
-│   └── SessionService   # 前台服务：常驻通知（会话状态）+ PARTIAL_WAKE_LOCK（仅会话活跃时持有）
+│   └── SessionService# 前台服务：常驻通知（会话状态）+ PARTIAL_WAKE_LOCK（仅会话活跃时持有）
 └── update/
     └── AppUpdater       # GitHub Releases 自更新（检查→下载→引导安装）
+
+> 📌 `feature/onboarding/adbrepair/`（无线调试配对向导）已于v1.0 砍掉（见 M4 头部），目录树已移除；替代方案见 §5 第 3 层。
 ```
 
 技术选型：Kotlin + Compose（Material 3）、OkHttp、DataStore、Hilt。
@@ -130,7 +134,7 @@ app/
 | 项 | 要求 |
 |---|---|
 | NDK | **r28+**（16KB 对齐场景建议；r27 也能加 linker flag，但 r28 起官方对 16KB 页支持才完善。编译 `libtermux.so` 等终端侧原生库时按 r28+ 走） |
-| ABI | **用户只发 arm64 单包 APK**（直装场景 .aab 不可用；Gradle `splits.abi` 产出的是 APK 而非 .aab，或直接单 ABI 构建）；x86_64 仅 CI 模拟器自用不对外分发；砍掉 armeabi-v7a——32 位存量可忽略，新版 Debian 的 armhf 支持都在萎缩 |
+| ABI | **只发 arm64 单包 APK**（2026-10-06 用户定案：**定位是手机 / 平板，不做 x86_64 模拟器支持**）。直装场景 .aab 不可用（只能经 Play 分发）；Gradle `splits.abi` 产出的是 APK 而非 .aab，或直接单 ABI 构建。**砍掉 armeabi-v7a**——32 位存量可忽略，新版 Debian 的 armhf 支持都在萎缩。单架构的三项收益：APK 少一份 `libzstd-jni`（约 690KB）、16KB 对齐只需验一套、将来若引 Rust 只需交叉编译一个目标 |
 | 链接 | 静态链接，`-O2`，编译后 `strip` |
 | 16KB 对齐 | 链接参数加 `-Wl,-z,max-page-size=16384`（Android 15 设备必需；所有自编译 ELF 统一加，**含 proot 可执行文件本体**，不止 .so）。**第三方原生库同样受此约束（v3.9 补）**：终端渲染层引入的 **`libtermux.so`** 若取自 JitPack 等预编译版本，**必须先验证其是否已 16KB 对齐**（`readelf -l libtermux.so \| grep -A1 LOAD` 看 p_align ≥ 16384，或过 `check_elf_alignment.sh`），未对齐在 16KB 页设备上加载直接失败；自行编译则按 NDK r28+ 加上述参数。**别只对齐 proot 而漏掉 `libtermux.so`** |
 | seccomp | 保留官方 seccomp 加速模式（大幅降低 ptrace 开销）；初始化失败自动降级 `PROOT_NO_SECCOMP=1`。**已知风险模式（v3.1 证实）**：上游 proot-me 在 Android 的 seccomp 过滤下，guest 进程以 signal 31（SYS_SECCOMP）退出（proot-me issue #327）；社区另有"Android 15 更严 seccomp 影响 proot"的个案报告（dev.to/XDA 排障实录，最终绕开 proot 改用 patchelf + LD_PRELOAD）。对策：**proot 构建必须包含 Android syscall 适配补丁**（Termux 自维护的 proot fork 已验证此路线——学其补丁思路，不抄其代码），并在 M1.0 于安卓 15 真机裁决（§11）。注：**bunproot（v3.2 改判）**：项目真实存在——GitHub `jjtseng93/bunproot`，"A port of PRoot to Bun"（用户态 chroot / mount --bind / binfmt_misc for Android，JavaScript 实现、2 star、2026-09 仍活跃）；**列为备选技术侦察对象，不作为依赖项**（个人项目成熟度远低于 Termux proot fork，主路线不变）。v3.1 曾误判"经查不存在"，原因与教训见文首 v3.2 变更记录。**机制澄清（v3.4）**：`PROOT_NO_SECCOMP=1` 关闭的是 **proot 自己安装的 seccomp 过滤器**——guest 收到 SIGSYS/"Bad system call" 这类"过滤类"故障由它解决；若根因是**设备内核策略直接拦截 guest 系统调用**（社区所称 Android 15 收紧的另一种形态），该开关无效，唯一出路是 M1.0 真机裁决，必要时转 patchelf + LD_PRELOAD 的 Plan B（§11）。两类故障必须分开诊断。**🚨 `PROOT_NO_SECCOMP=1` 禁令（本机实测，与社区常识相反）**：**本机实测该变量致命——设了反而跑不起来**。特别注意：网上绝大多数 proot 教程/项目遇到 seccomp 报错时的**默认解法恰恰就是设这个变量**。**本项目禁止设置**，Zcode 若查到社区建议请**以本条为准**，**严禁参考其他项目把它加回来**（这是本机 App 域 ptrace 限制下的特例，不是通用结论）。 |
@@ -146,7 +150,11 @@ app/
 
 ## 5. 后台防杀：普通用户可完成的三层方案
 
-**防杀矩阵（设计哲学：防杀提升存活概率，tmux 恢复提供确定性兜底，两道都不可少）**
+**防杀矩阵（设计哲学：防杀提升存活概率，tmux 恢复提供"免重装 Agent"的确定性兜底，两道都不可少）**
+
+> 🔺 **兜底能力的真实边界（2026-10-06 审核补）**：proot 与 tmux server 都是 App 派生的子进程、**共享同一 UID**。Android 的 LMK / 用户清理 / 厂商深度清理是**按 UID 杀整棵进程树**的，不是杀单进程。因此一旦进程树被整体清除，**tmux server 已死，现场不可能恢复**——`SessionRecovery` 只能重建环境（重新拉起 proot + tmux），用户正在跑的任务、日志、临时文件一律丢失。
+> **保住现场的���一手段是让整棵进程树不被杀**（前台服务 + 通知可见 + 电池白名单 + ROM 后台锁），tmux 是第二层的便利机制。UI 与文档不得对外宣称"被杀后恢复现场"，文案用「已重建运行环境」。
+> 这也从侧面说明M4（Phantom 修复）被砍的代价：被砍的那一层恰是少数能降低"整树被杀"概率的手段，接受它是v1.0 的自觉取舍。
 
 | 系统的杀法 | 防御手段 | 结果 |
 |---|---|---|
@@ -155,7 +163,7 @@ app/
 | CPU 休眠导致任务挂起 | PARTIAL_WAKE_LOCK | 防得住 |
 | 用户一键清理后台 | 多任务界面加锁（多数 ROM 尊重） | 大部分防住 |
 | Phantom 子进程超限（安卓 12+） | 无线 ADB / Root 一键修复 | 修复后防住 |
-| 内存枯竭强杀 / 用户强行停止 / 厂商深度清理 | 无解，任何 App 都防不住 | **tmux 兜底恢复现场** |
+| 内存枯竭强杀 / 用户强行停止 / 厂商深度清理 | 无解，任何 App 都防不住 | **进程树被整体清除，现场必丢**；用户重进只能重建环境（保住了"已装 Agent 不必重装"这一层便利，tmux 现场本身保不住） |
 | 关机 / 重启 | 无解，tmux 同样丢失 | 预期管理：长任务在 UI 明示"重启会终止会话" |
 
 **内存治理层（主动降低被"清道夫"盯上的概率，App 层 + 构建期）**：`onTrimMemory` 切后台释放图片/数据库等可重建资源（§3）+ R8 减少体积与内存占用 + guest RSS 软监控（M2 §6，超阈值通知警告并提供"释放内存"，**不做 `ulimit -v` 硬限**——虚拟地址空间限制会误杀 Node/V8 类 Agent，详见 M2 §6 设计说明）。
@@ -195,9 +203,9 @@ app/
 - **明确不追"最新"滚动发行版**（Arch / Fedora 最新版）：AI Agent 需要的是"足够新 + 足够稳"，不是最新。滚动版厂商 CI 不测试、库版本跳变（如 OpenSSL 大版本）会打断预编译二进制、环境随更新频繁变化导致"昨天好用今天坏了"，且支持周期短。甜点区 = 新一代 stable，本项目的答案就是 Debian 13.7；
 - **Alpine 评估后不采用（v3.8 定案）**：Alpine 虽极轻量（~5MB），但用 `musl libc` 而非 glibc，与主流 AI Agent（Hermes/Claude Code 等）的预编译二进制不兼容，Python 生态大量 wheels 缺 musl 构建，会重现"缺依赖/装不上"的坑——与本项目"减少踩坑"初心相悖。**Debian 13.7 仍是唯一发行版。**
 - **运行时参考：钉死 Termux `v0.119.0-beta.3` 的 proot 体验（v3.8 定案）**：用户长期实测 Termux `v0.119.0-beta.3` 中运行 Hermes Agent 稳定、问题少，因此**本项目的 proot 运行时以复现该版本的稳定体验为目标**——proot 采用与 Termux 0.119.0-beta.3 相同的 fork 与参数面（§4），保证运行 Agent 的行为与用户在 Termux 中一致。**Hermes Agent 本身保持官方安装方式**（install/upgrade 用官方 `curl | bash`，不注入版本环境变量），因为 Hermes 官方安装脚本自带版本管理，无需也不应干预。将来如需调整运行时 = 评估新版 Termux 的 proot 改进 + 真机回归，三步走。
-- 每个 Release 挂两类资产：`debian-13.7-base-arm64.tar.zst`（下载约 100–150MB，解压 + 工具链装齐后落盘约 1.5–2GB）+ `manifest.json`（含 SHA256、大小、双通道 URL、**ed25519 签名**，见"安全闸"）。x86_64 变体仅 CI 模拟器自用，由同一脚本参数产出，不对外分发；
+- 每个 Release 挂两类资产：`debian-13.7-base-arm64.tar.zst`（下载约 100–150MB，解压 + 工具链装齐后落盘约 1.5–2GB）+ `manifest.json`（含 SHA256、大小、双通道 URL、**ed25519 签名**，见"安全闸"）。**不再产出 x86_64 变体**（2026-10-06 定案，单arm64 架构）；
 - **解压原子性**：解到 tmp 目录 → 写完成标记 → 原子 rename；启动时检测上次残局自动清理（解压 1.5–2GB 是分钟级操作，中途被杀会留几百 MB 半成品）；进度 UI 单设"解压中"阶段，避免用户以为卡死；
-- RootFS 预装清单（构建期一次到位，源自三环境实测避坑清单，附录 A）：git、curl、ca-certificates、gnupg、**python3（Debian 自带 3.13，直接使用）**、**nodejs（NodeSource 官方源，Node.js 26）**、ripgrep、**libatomic1**、ffmpeg、**tmux**（§5 兜底机制的地基，漏装 = 保活归零，审计 P0）、**procps**（ps/top 排障）、**busybox**、**sqlite3**（命令行 + Python 内置 sqlite3 模块双端可用）、**uv（最新版，仅作 pip 安装器）**、确认 `C.UTF-8` locale 开箱可用（Debian 自带）；构建脚本同时修复容器通病：`mkdir -p /var/log/apt /var/log/dpkg`；`UV_LINK_MODE=copy` 写入 `/etc/profile.d/` 与 `/etc/environment` **全局生效**（解决"子进程丢环境变量"的实测坑，而非让用户自己 export）；
+- RootFS 预装清单（构建期一次到位，源自三环境实测避坑清单，附录 A）：git、curl、ca-certificates、gnupg、**python3（Debian 自带 3.13，直接使用）**、**nodejs（NodeSource 官方源，Node.js 26）**、ripgrep、**libatomic1**、ffmpeg ⚠️（体积数十 MB，**保留理由待复核**——在 Agent 装包里实测用到再保留）、**tmux**（§5 兜底机制的地基，漏装 = 保活归零，审计 P0）、**procps**（ps/top 排障）、**busybox**、**sqlite3**（命令行 + Python 内置 sqlite3 模块双端可用）、**uv（最新版，仅作 pip 安装器）**、确认 `C.UTF-8` locale 开箱可用（Debian 自带）；构建脚本同时修复容器通病：`mkdir -p /var/log/apt /var/log/dpkg`；`UV_LINK_MODE=copy` 写入 `/etc/profile.d/` 与 `/etc/environment` **全局生效**（解决"子进程丢环境变量"的实测坑，而非让用户自己 export）；
 - **双通道按文件大小分道（审计 P0 修正）**：大文件（rootfs，>50MB）走 GitHub Releases 直链 + **Cloudflare R2/自定义域名**回源——jsDelivr 的 `/gh/` 通道不代理 Releases 资产且单文件 50MB 上限、GitHub git 单文件 100MB 硬限，此路对 rootfs 三重堵死；小文件（manifest.json、agent-helper，均远小于 50MB）可复用 jsDelivr。**manifest 本体同样双通道托管**。启动时各发一个 Range 探测请求，谁快用谁；下载中失败自动切换；
 - 环境更新：v1 直接全量重下（150MB 成本可接受，增量补丁在手机端应用还吃内存）；bsdiff 增量包推迟到 v1.x。
 
@@ -281,7 +289,18 @@ APK 本体更新太慢，以下组件全部做成**版本化热更新组件**，
 
 **入口**：主界面底部第二个标签「终端」（与「Agent」并列），文案只写"终端"，不吓退普通用户；首次进入显示一行提示："这里是 Linux 命令行，适合按照官方教程手动安装。不确定怎么用？回到 Agent 页用一键安装。"
 
-**单会话制（v3.6 定案：不多开、不切换）**：自由终端全局**只有一个会话**（tmux 会话 `free`），无论从哪个入口进入都是 attach 到这同一个会话——**不做多标签页、不做多终端并行、不做会话切换器**。理由：每个终端会话都是一棵独立的 proot 进程树 + 一份 tmux 开销，手机上挂两个以上纯属浪费内存、徒增卡顿与被杀概率；手机屏幕也没有在多个 Agent 会话间切换的真实需求（桌面/平板场景以后再说）。Agent 安装与启动复用这同一个会话：点"启动"某个 Agent = 终端界面 attach 到 `free` 会话并运行该 Agent，界面始终只有一个。真正需要并行的场景由 tmux 自带的 window/pane 分屏满足（高级用户自己在会话里 `Ctrl+B` 分屏即可，不占用额外界面）。
+**单会话制（v3.6 定案：不多开、不切换）**：自由终端全局**只有一个会话**（tmux 会话，代码中名为 `zhengdao`；v3.6 文字稿曾写作 `free`，**以代码为准**），无论从哪个入口进入都是 attach 到这同一个会话——**不做多标签页、不做多终端并行、不做会话切换器**。理由：每个终端会话都是一棵独立的 proot 进程树 + 一份 tmux 开销，手机上挂两个以上纯属浪费内存、徒增卡顿与被杀概率；手机屏幕也没有在多个 Agent 会话间切换的真实需求（桌面/平板场景以后再说）。Agent 安装与启动复用这同一个会话：点"启动"某个 Agent = 终端界面 attach 到该会话并运行该 Agent，界面始终只有一个。真正需要并行的场景由 tmux 自带的 window/pane 分屏满足（高级用户自己在会话里 `Ctrl+B` 分屏即可，不占用额外界面）。
+
+> 🔺 **v3.11 例外：太极 Tab 的独立会话（2026-10-06，代码已落地 `3f27844`）**
+> 「单会话」约束的对象是**用户的自由终端与 Agent 会话**（洞天 + 丹房），**不适用于太极 Tab**。
+> -太极 Tab 拥有 guest 内独立的 `taiji` 会话与独立的 pty 视图，与洞天会话**物理隔离、并存于同一 tmux server**。
+> -隔离手段是 **XDG 四目录**：`/usr/local/bin/taiji` wrapper 脚本 export `XDG_{CONFIG,DATA,CACHE,STATE}_HOME=/root/.zhengdao/taiji/*` 后 `exec /usr/local/bin/opencode`；洞天**不注入任何 `XDG_*`**，走默认 `/root/.config`、`/root/.local/share`。
+> -**pane 主程序必须是 `taiji` wrapper，不能直接写 `opencode`**——直接调二进制会绕过 wrapper、四个变量全不注入，两边共用默认目录即"打架"。
+> -**只有 `zhengdao` 会话允许 `tmux kill-server`**；太极 kill 会连带杀掉太极会话。
+> - 宿主侧另有bionic 版 OpenCode（`files/oc/usr`，不经 PRoot），XDG 落在 `filesDir/taiji/*`，与 guest 的 `/root/.zhengdao/taiji/*` 是**两套不同路径**，排障时先确认查的是哪一套。
+> - 详细实现与验收口径见 `证道-执行路线图.md` §2 P3。
+>
+> 📌 **WebView + localhost 方案已废弃**：因 `targetSdk 28` 落在「API 28 起默认禁止明文 HTTP」的行为变更线上，WebView 访问 `http://localhost` 会被系统拦截。太极 Tab 最终采用**Tab 内嵌 TerminalView 直连 `taiji` 会话**的TUI 方案。
 
 **为手机和非程序员做的六件事**：
 1. **快捷键条**：软键盘上方常驻一行——`ESC` `CTRL` `SHIFT` `TAB` `↑` `↓` `PGUP` `PGDN` `/` `-` `|`（手机输入法打不出这些键，没有这条终端等于不可用）。`CTRL`/`SHIFT` 为**粘滞键**：先点修饰键（高亮）再点字母/Tab，再点一次取消——`SHIFT+TAB` 是 Claude Code 模式切换的高频操作、`PGUP/PGDN` 服务长输出翻屏，缺了体验残废；粘滞交互是真机重点调校项（修饰键实现最容易做错）。
@@ -330,7 +349,8 @@ APK 本体更新太慢，以下组件全部做成**版本化热更新组件**，
 ## 9. 发布 Checklist
 
 - [ ] 所有 .so 16KB 对齐（`check_elf_alignment.sh` 过一遍）
-- [ ] 出包形态：arm64 单 APK ≤ 20MB（Gradle `splits.abi` 出 APK；**不用 .aab**——只能经 Play 分发，与直发自相矛盾；x86_64 仅 CI 模拟器自用）
+- [ ] 出包形态：**arm64 单 APK** ≤ 20MB（Gradle `splits.abi` 出 APK；**不用 .aab**——只能经 Play 分发，与直发自相矛盾；**单架构，无 x86_64 变体**，2026-10-06 定案）
+- [ ] **APK 内无 x86_64 原生库**：`unzip -l app-release.apk | grep "\.so$"` 只应出现 `lib/arm64-v8a/` 一组（`libzstd-jni` + JNI 桥），出现 `lib/x86_64/` 即为回归
 - [ ] **targetSdk 28 钉死**（架构前提，见文首警告框）+ `REQUEST_INSTALL_PACKAGES` 声明；确认无 FGS 类型声明需求
 - [ ] TerminalView 中文 IME 组合输入真机验证（主流中文输入法在终端内输入/删改正常）
 - [ ] API Key 管理：Android Keystore 加密存储 + 会话环境变量注入验证
@@ -354,6 +374,8 @@ APK 本体更新太慢，以下组件全部做成**版本化热更新组件**，
 - [ ] CI 版本断言生效：人为制造 Node/Python 版本漂移，构建必须失败
 - [ ] 真机回归：安卓 10 / 12 / 14 / 15 各一台，重点测后台 30 分钟存活、被杀后 attach 恢复、Phantom 开关在 12/14/15 上的有效性
 - [ ] R8 开启后完整回归：混淆产物在真机跑通全部验收项；JNI 桥/反射路径未被误删（必要时 `-keep`）
+- [ ] **XDG 数据隔离（太极 vs 洞天）**：太极 pane 主程序为 `/usr/local/bin/taiji` wrapper（不可直接 `opencode`）；太极进程 `XDG_DATA_HOME=/root/.zhengdao/taiji/data`、洞天进程为默认 `/root/.local/share`。以 `tr '\0' '\n' < /proc/<pid>/environ | grep XDG_` 实测为准（洞天是"默认路径"而非"变量为空"）。两Tab 能同时跑 opencode、会话与数据互不串
+- [ ] proot 分发四文件（`proot`/`loader`/`libtalloc.so`/`libandroid-shmem.so`）16KB 对齐逐个 `readelf -l` 确认 LOAD段 align ≥ 16384——后两个是运行时加载的 `.so`，且位于 `assets/` 下，APK Analyzer / `zipalign` 均查不到
 - [ ] `onTrimMemory` 验证：切后台内存回落、FGS/会话不受影响（只释放可重建资源）
 - [ ] 内存治理验证：guest RSS 超阈值有通知警告，「释放内存」后 RSS 下降且 agent 会话不中断
 
@@ -378,11 +400,12 @@ APK 本体更新太慢，以下组件全部做成**版本化热更新组件**，
 | **M3 一键安装** | manifest（含 ed25519 验签）+ Agent 卡片 + 快照重置 | 验签演练过 Checklist |
 | ~~**M4 防杀向导**~~ **⛔ 已砍掉（2026-10-05 用户拍板，v1.0 不实现）** | ~~无线 ADB 配对向导（工作量最大的一块）+ Root 一键修复~~ | **不开发**。替代 = 设置页 ROM 保活图文指南（电池白名单两步引导 + 自启动/后台锁路径图文，见 M2 §7）+ 终端手动执行命令复制入口。原因：自用场景不需要，无线 ADB 配对的多机型适配成本远超收益。骨架文档留档，头部已加醒目状态标注 |
 | **M5 更新体系** | App 自更新 + 组件热更新 + Debian 13.7 RootFS 构建管线 | 回退机制真机验证 |
-| **v1.x 明确推迟** | chroot 后端、bsdiff 增量、x86_64 分发、云机瘦客户端（§10） | v1 的刀砍在核心闭环上 |
+| **v1.x 明确推迟** | chroot 后端、bsdiff 增量、云机瘦客户端（§10） | v1 的刀砍在核心闭环上。（**x86_64 分发已取消、不再推迟**——2026-10-06 定案永久砍掉，非推迟项） |
 
 *当前进度：**M1 最小闭环已完成并通过真机验收（2026-10-04）**。用户已进入后续里程碑开发，使用 zcode（外部 AI 编码助手）通过 ADB 连接安卓真机进行迭代调试。下一步焦点：M2 保活（FGS + 常驻通知 + WakeLock + tmux 兜底 + 防杀三层）→ M3 一键安装（manifest ed25519 验签 + Agent 卡片 + 快照重置）。*
 
-> 📁 **验收记录位置（v3.9 补）**：M1 的验收记录**内联在上表 M1 行的「门禁/备注」列**（含 2026-10-04 Honor 安卓 16 真机的实测结论：bash 交互存活 / `uname -a` / Python 3.13.5 / Node v26.10.0 / 中文输入法无安全键盘，以及 proot 255 退出与 `PROOT_NO_SECCOMP=1` 致命这两条关键实测结论）。项目当前**尚未建立 `docs/acceptance/` 独立目录**；后续里程碑验收建议统一落到 `docs/acceptance/M<N>-<日期>.md`（真机日志 + 截图），M2 起执行。
+> 📁 **验收记录位置（2026-10-06 已建立）**：M1 的验收记录已从本表迁出，独立归档到 **`docs/acceptance/M1-2026-10-04.md`**（含 2026-10-04 Honor Magic5 Pro / Android 16 真机的 6 项验收结果、proot 255 退出与 `PROOT_NO_SECCOMP=1`致命两条关键实测结论，以及 16KB 对齐待验收清单）。
+> **M2 起新规则**：各里程碑验收**一律新建 `docs/acceptance/M<N>-<YYYY-MM-DD>.md`**（真机日志 + 截图 + 逐项勾叉），**不再内联回本表**——内联在表格单元格里的验收记录无法检索、无法diff、容易在改文档时被误删。
 
 ---
 

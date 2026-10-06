@@ -24,10 +24,18 @@ class SessionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(NOTIFICATION_ID, buildNotification())
-        // 通知渠道必须在首次创建通知前创建（targetSdk 28 + Android 13+ 靠渠道触发权限弹窗）
+        // ⚠️ 顺序要求（2026-10-06 审核修正）：通知渠道必须在首次创建通知**之前**建好，
+        //否则首次 startForeground 的通知无渠道归属、渠道相关的权限弹窗也不触发。
+        // 骨架原写法把 startForeground 放在 createNotificationChannel 之前，与下方注释矛盾，已调换。
         createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification())
         acquireWakeLockIfActive()   // 仅在会话活跃时持有
+    }
+
+    override fun onDestroy() {
+        // ⚠️ 必须释放：WakeLock 不释放会持续耗电并阻止 CPU 休眠（骨架原缺此方法）
+        releaseWakeLock()
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -42,38 +50,58 @@ class SessionService : Service() {
     private fun buildNotification(): Notification {
         // 通知必须「有用」：显示当前会话状态、运行时长、一键回到终端；降低被用户关闭的概率
         // 按钮：回到终端 / 暂停保持运行（切换 WakeLock）/ 停止会话
+        // ⚠️ pid 未就绪（初值 0）时不显示 pid 段，避免渲染成「tmux 会话 #0」
+        val sessionLine =
+            if (tmuxServerPid > 0) "tmux 会话 #$tmuxServerPid · 已运行 xx:xx" else "正在建立会话…"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_terminal)
             .setContentTitle("证道 · 会话运行中")
-            .setContentText("tmux 会话 #${tmuxServerPid} · 已运行 xx:xx")
+            .setContentText(sessionLine)
             .setOngoing(true)
             .setContentIntent(pendingIntentToTerminal())
-            .addAction(0, if (wakeLock.isHeld) "暂停保活" else "保持运行", pauseIntent())
+            // ⚠️ 图标不可传 0：用自有 drawable，否则通知按钮无图标（部分 ROM 直接不显示）
+            .addAction(R.drawable.ic_pause, if (wakeLock.isHeld) "暂停保活" else "保持运行", pauseIntent())
             .build()
     }
 
     private fun stopSession() {
         // 仅「停止会话」显式调用；进程被杀后重进 App 走 attach 恢复
-        Runtime.getRuntime().exec("kill $tmuxServerPid")  // 实际走 sessionManager.kill()
+        // ⚠️ 实现走 sessionManager.killSession()（tmux kill-session -t zhengdao）。
+        //    骨架原写 Runtime.exec("kill $tmuxServerPid") 有两个问题：① kill 的是宿主 pid，
+        //    而目标是 guest 内 proot 里的 tmux server，两者命名空间与权限模型不同；
+        //    ② 会额外拉起一个 system shell 进程。勿照抄。
+        sessionManager.killSession()
         stopSelf()
     }
 }
 ```
 
-## 2. SessionManager（tmux 单会话兜底）
+## 2. SessionManager（tmux 会话兜底）
 
-> v3.6 定案：**单会话模型**。全局只有一个 tmux 会话（`free`），自由终端与 Agent 安装/启动复用同一会话。无多会话、无会话切换器。多会话需求由 tmux window/pane 分屏满足（高级用户自己在会话内 `Ctrl+B` 分屏，不占额外 UI）。
+> v3.6 定案：**单会话模型**。自由终端与 Agent 安装/启动复用同一会话。无多会话、无会话切换器。多会话需求由 tmux window/pane 分屏满足（高级用户自己在会话内 `Ctrl+B` 分屏，不占额外 UI）。
+>
+> 🔺 **v3.11 例外（2026-10-06，代码已落地 `3f27844`）**：
+> - 自由终端会话在代码中名为 **`zhengdao`**（本文档与 v3.6 文字稿曾写作 `free`，**以代码为准**）。
+> - **太极 Tab 拥有独立的 `taiji` 会话**，"单会话"约束的对象是**洞天 + 丹房**，不含太极。两个会话并存于同一 tmux server。
+> - **`SessionManager.ensureSession()` 需支持会话名参数**（默认 `zhengdao`，太极传 `taiji`）——原v3.6 收窄为"无 name 参数"已随太极落地分叉，实现方不要照旧签名。
+> - **只有 `zhengdao` 允许 `tmux kill-server`**（杀 server 会连带杀掉太极会话），太极侧只attach-or-create。
+> - **XDG 隔离由pane 主程序承担**：`taiji` 会话 pane = `/usr/local/bin/taiji` wrapper（export XDG 四目录 → `exec opencode`），`zhengdao` 不注入任何 `XDG_*`。详见执行路线图 §2 P3。
 
 ```kotlin
 class SessionManager(private val prootLauncher: ProotSessionLauncher) {
 
-    // 全局唯一会话，固定名 free（自由终端 + Agent 安装/启动复用）
-    fun ensureSession(): ProotSession {
-        // 1. 查 tmux has-session -t free
-        // 2. 不存在 -> prootLauncher.launch() 里先起 tmux new-session -d -s free
-        // 3. 存在 -> 直接 attach（进程被杀后恢复的关键）
-        // 返回值是 ProotSession（拥有 tmux server 的 proot 常驻实例）
+    /** 主会话（洞天）：固定名 zhengdao。可 kill-server 兜底（孤儿 server 会让attach 失败）。 */
+    fun ensureMainSession(): ProotSession {
+        // tmux kill-server 2>/dev/null; exec tmux new-session -A -s zhengdao
+        // pane = /bin/bash -l（不注入 XDG_*，走 guest 默认 /root/.config、/root/.local/share）
     }
+
+    /** 副会话（太极）：不 kill server，直接 attach-or-create；pane = XDG 隔离 wrapper。 */
+    fun ensureIsolatedSession(name: String, paneCmd: String): ProotSession {
+        // exec tmux new-session -A -s $name $paneCmd
+        // ⚠️ pane 主程序必须是 taiji wrapper，直接写 opencode 会绕过 wrapper、XDG 全不注入
+    }
+}
 
     fun attach(session: ProotSession, terminalView: TerminalView) {
         // PTY 桥接到终端 UI；仅视图层动作，不影响 tmux server 生命周期
@@ -102,23 +130,11 @@ fun createNotificationChannel() {
 }
 ```
 
-## 4. 电池优化白名单（直发渠道可直接弹）
+## 4. 电池优化白名单（两步引导的第 1 步，代码见 §6）
 
-```kotlin
-fun requestIgnoreBatteryOptimizations(activity: Activity) {
-    val pm = activity.getSystemService(POWER_SERVICE) as PowerManager
-    if (!pm.isIgnoringBatteryOptimizations(activity.packageName)) {
-        // GitHub 直发不受 Play 政策限制，可直接使用 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-        activity.startActivity(
-            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = Uri.parse("package:${activity.packageName}")
-            }
-        )
-    }
-}
-```
+> 完整的两步引导（系统白名单 + 国产 ROM 自启动/后台锁图文）见 **§6**。本节只标注入口，勿重复实现。
 
-## 6. 内存治理（主动降耗，降低被「清道夫」盯上的概率）
+## 5. 内存治理（主动降耗，降低被「清道夫」盯上的概率）
 
 > 设计说明：`ulimit -v` 限制的是**虚拟地址空间**而非物理内存。Node/V8 在 64 位下默认保留数 GB 虚拟地址空间，3GB 硬限会让 Claude Code/Hermes 直接崩。正确做法是**软监控 + 主动清理**（对普通用户零感知），而不是硬性地址空间上限。
 
@@ -153,11 +169,18 @@ class MemoryGovernor(
     }
 
     // 主动释放（用户在通知/设置页点「释放内存」时调用）：
-    fun trimGuestMemory() {
+    /** @return true = 确实释放了；false = 当前环境不支持（UI 须如实告知用户） */
+    fun trimGuestMemory(): Boolean {
         // 1. 在 guest 内执行 sync（落盘脏页）
         // 2. 依次 drop page cache / dentries / inodes：
-        //    echo 3 > /proc/sys/vm/drop_caches  （rootfs 内 /proc 是 bind mount 到设备的，
-        //    需 root 或 proot 透传；无权限则跳过，静默失败不影响体验）
+        //    echo 3 > /proc/sys/vm/drop_caches
+        //
+        // ⚠️ 2026-10-06 审核补：proot + SELinux 下这一步**几乎必然失败**
+        //   （guest 的 /proc/sys 由宿主 bind mount，内核参数写入口对非 root 进程只读）。
+        //   实现要求：**不要假装成功**——
+        //   返回 Boolean 给 UI，失败时明确提示「当前 ROM 不支持手动释放内存」，
+        //   而不是弹个"已释放"却什么都没发生。用户点了没反应会直接失去信任。
+        //   可选替代：能 root 时引导用户自行执行，或直接建议重启 guest。
         // 3. 不杀 tmux / proot / agent 进程——只释放缓存页
     }
 }
@@ -169,7 +192,7 @@ class MemoryGovernor(
 - 编译类任务（npm install / tsc）瞬时内存峰值是合理的，硬限会误伤。
 - 如果未来确需硬约束，正确做法是 `systemd-run --property=MemoryMax=`（cgroup v2）——Android 无 systemd，需换 cgroup 方案，作为 v1.x 技术储备，**不默认启用**。
 
-## 7. 电池优化白名单引导（从"一次弹窗"升级为"两步走"）
+## 6. 电池优化白名单引导（从"一次弹窗"升级为"两步走"）
 
 ```kotlin
 // 第 1 步：系统电池白名单（直发渠道可直接弹 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS）
@@ -198,10 +221,15 @@ fun requestIgnoreBatteryOptimizations(activity: Activity) {
 ```kotlin
 class SessionRecovery(private val sessionManager: SessionManager) {
     fun onAppLaunch() {
-        // 1. 检查上次是否有活跃会话标记（DataStore 持久化：proot pid + tmux socket，单会话无需会话名）
-        // 2. 若有 -> sessionManager.ensureSession() 重新 attach
-        //     （tmux server 若还活着则恢复现场；已死则重新拉起，用户感知为「重新连接」）
+        // 1. 检查上次是否有活跃会话标记（DataStore 持久化：proot pid + tmux socket）
+        // 2. 若有 -> sessionManager 重新 attach（zhengdao 主会话 + taiji 太极会话，各自独立恢复）
         // 3. UI 提示「已恢复上次会话」
+        //
+        // ⚠️ 措辞红线（2026-10-06 审核）：**不要对外宣称"恢复现场"**。proot 与 tmux server
+        //    共享 App 同一 UID，Android 的 LMK / 厂商清理按 UID 杀整棵进程树——一旦进程树
+        //    被整体清除，tmux server 已死，现场（任务/日志/临时文件）必然丢失。此时只能
+        //    "重建运行环境"，保住的是"已装 Agent 不必重装"这一层便利。
+        //    UI 文案统一用「已重建运行环境」或「已恢复上次会话」，禁用「现场已恢复」。
     }
 }
 ```

@@ -28,8 +28,13 @@ android {
         versionName = appVersionName
 
         ndk {
-            // 自研 JNI 库只编真机 arm64 与模拟器 x86_64（设计文档 §4 的 ABI 策略）
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            // 只编真机 arm64 单架构（2026-10-06 用户定案，见设计文档 §4）：
+            // 定位是手机 / 平板，不做 x86_64 模拟器支持。
+            // 收益：① APK 体积少一份 libzstd-jni（约 690KB）；② 16KB 对齐只需验一套，不用 ×2；
+            //      ③ 将来若引 Rust（cargo-ndk）只需交叉编译一个目标，工作量减半。
+            // 注意：删的是 APK 的 x86_64 ABI，与 CI 构建机架构（ubuntu-latest）无关——
+            //      .github/workflows/build.yml 里的 x86_64 指的是 qemu 交叉编译 rootfs 的 runner。
+            abiFilters += listOf("arm64-v8a")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

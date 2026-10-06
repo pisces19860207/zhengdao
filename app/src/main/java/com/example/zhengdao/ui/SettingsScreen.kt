@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.mirror.PhoneMirror
 import com.example.zhengdao.rootfs.RootfsDownloader
@@ -69,7 +70,7 @@ object Settings {
 
 /** 设置页（第二批）：存储占用 / 修复环境 / API Key / 工作区 / 检查更新 / Root / 关于。 */
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> }) {
     val ctx = LocalContext.current
     var info by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
     var repairConfirm by remember { mutableStateOf(false) }
@@ -175,6 +176,30 @@ fun SettingsScreen() {
             InfoRow("rootfs（系统层）", "$rootfsMb MB")
             InfoRow("home（登录态与配置）", "$homeMb MB")
             InfoRow("cache（下载缓存）", "$cacheMb MB")
+        }
+
+        // ── 缓存清理（P4：三档白名单，只清一档；详情见 CacheCleaner）──
+        SectionCard("缓存清理") {
+            val sizes = remember { CacheCleaner.measure(ctx) }
+            Text(
+                text = sizes.entries.joinToString("\n") { "${it.key}：${it.value} MB" },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "只清理包管理器缓存（一档，极低风险）；OpenCode/Hermes 工具链、" +
+                    "rootfs 系统层、用户数据永不清。清理命令在终端里执行，可查看输出。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = {
+                if (com.example.zhengdao.terminal.SessionManager.isAlive()) {
+                    onOpenTerminal(com.example.zhengdao.terminal.CacheCleaner.guestCommand(), null)
+                } else {
+                    Toast.makeText(ctx, "请先启动终端（会话未运行）", Toast.LENGTH_SHORT).show()
+                }
+            }) { Text("在终端中清理缓存") }
         }
 
         // ── 权限（存储读写 + 网络自检）──
