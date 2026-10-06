@@ -96,7 +96,10 @@ object CacheCleaner {
         "echo '[清理] npm 缓存…'", "npm cache clean --force 2>/dev/null",
         "echo '[清理] uv 缓存…'", "uv cache prune 2>/dev/null",
         "echo '[清理] apt 缓存…'", "apt-get clean 2>/dev/null; apt-get autoclean 2>/dev/null",
-        "echo '[清理] Agent 升级残留…'", "rm -rf /root/.hermes/tools/*.tmp /root/.opencode-mem/models/*.tmp 2>/dev/null",
+        // ⚠️ 不再清 /root/.opencode-mem/...（v1.1.1 阶段 3.4）：opencode-mem 插件
+        //    2026-10-06 已摘除（LegacyMemPlugin 幂等清理配置），该路径在真机上不存在，
+        //    留着会让人误以为还在清它。
+        "echo '[清理] Agent 升级残留…'", "rm -rf /root/.hermes/tools/*.tmp 2>/dev/null",
         "echo '[清理] 完成（三档白名单：tools/rootfs/home 用户数据永不清）'",
     ).joinToString("; ")
 
