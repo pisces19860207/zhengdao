@@ -67,6 +67,10 @@ class OcClient(
     fun sseRequest(path: String): Request = Request.Builder()
         .url(baseUrl + path)
         .header("Accept", "text/event-stream")
+        // ⚠️ SSE 必须显式禁用压缩。OkHttp 默认自动加 `Accept-Encoding: gzip`，
+        //    服务端一旦对事件流做 gzip，数据会被缓冲而不逐条 flush——
+        //    表现为"连上了但读不到任何事件 / 立刻断"。这是 SSE + OkHttp 的经典坑。
+        .header("Accept-Encoding", "identity")
         .build()
 
     // ── 端点 ────────────────────────────────────────────────────────────
