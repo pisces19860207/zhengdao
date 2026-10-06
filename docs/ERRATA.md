@@ -208,3 +208,191 @@ stopServe 扫 /proc 按 cmdline 同 uid kill 孤儿；servePassword 从 serve.lo
 
 **验证**：太极 Tab 一键 → serve 拉起 → OpenCode Web 全界面渲染（会话列表/
 对话/主题切换）→ 真机截图通过。
+
+---
+
+## E-007 · 2026-10-06 · Kotlin 块注释里不能写 `/*`；serve 判活与密码解析的两处更正
+
+### 1. 🔴 Kotlin 注释里的 `/*` 会开启嵌套注释（极隐蔽，报错完全跑偏）
+
+**现象**
+在 `OcManager.kt` 的 KDoc 里写 `` 必须打 `/api/*` 并校验 content-type ``，
+一次编译报 **18 个错**：
+
+```
+e: OcManager.kt:48:29  Unresolved reference 'Settings2'
+e: OcManager.kt:54:80  Syntax error: Missing '}'
+e: OcManager.kt:336:1  Syntax error: Unclosed comment
+e: ui/TaijiScreen.kt:82:67  Unresolved reference 'serveRunning'
+e: ui/TaijiScreen.kt:202:57 Unresolved reference 'startServe'
+…（共 18 条）
+```
+
+**根因**
+Kotlin **支持嵌套块注释**。注释里的 `/*` 会开启新的一层，后面的 `*/`
+只关闭嵌套层，**外层注释始终不闭合** → 编译器把后面整段代码当成注释吞掉，
+于是报出一批看似毫不相干的 `Unresolved reference` / `Missing '}'`。
+
+**真正有用的信号只有一条**：`Unclosed comment`（且行号在文件靠后位置）。
+前面那些 `Unresolved reference` 全是噪声——**不要从第一条错误开始修**。
+
+**规避**
+注释里写路径一律避免 `/*` 字面序列：
+
+| ❌ 不要写 | ✅ 写成 |
+|---|---|
+| `` `/api/*` `` | `` `/api/…` `` 或 "`/api` 前缀下的端点" |
+| `路径通配 /*` | `路径通配 /…` |
+
+**通用排查法**：出现大批 `Unresolved reference` 且行号集中在某个文件里，
+先 `grep -n '/\*' 该文件` 看注释里有没有多余的 `/*`，再看 `Unclosed comment` 的行号。
+
+### 2. 更正 E-006：「密码行在 listening 之后打印」——实测相反
+
+E-006 第 3 点写"servePassword 从 serve.log 解析（**密码行在 listening 之后**
+打印，需要重试读取）"。真机 `files/oc/serve.log` 实录是**密码行在前**：
+
+```
+server password <pw1>
+server listening on http://127.0.0.1:14000
+server password <pw2>
+server listening on http://127.0.0.1:14000
+server password <pw3>          ← 最后一场没绑上端口，无 listening
+```
+
+这个顺序直接决定了解析算法：原实现 `lastOrNull { contains("server password") }`
+在"最后一场没绑上端口"时必然取到那场失败进程的密码 → 打 `/api/…` 全部 401
+（PoC #3 已复现）。**正确做法是取"password 行后有 listening 行"的最后一个**。
+
+### 3. 更正 E-006：判活不能打根路径
+
+E-006 提到"HttpURLConnection 对本地代理端口 14001 的存活探测恒失败"，
+但**打 14000 根路径同样不可用**——这版 serve 把无前缀路径全部喂给 Web UI 的
+SPA catch-all，`/` 、`/global/health`、`/session` 一律返回 `200 text/html`。
+判活必须打 `/api/…` 并校验 `content-type: application/json`
+（401 也算存活：证明 serve 在监听且鉴权生效）。
+
+**验证**：三项均在真机（Magic 5 Pro / 2.0.22）实测，修复已落在
+`feat/taiji-compose-ui` 分支（`OcManager.serveRunning` / `parseServePassword`），
+`assembleDebug` 通过。
+
+---
+
+## E-008 · 2026-10-06 · OpenCode `/api/event` 连上即关（服务端缺陷 Issue #38458）；数据改走 REST 轮询
+
+**现象（真机 + 双端复现）**
+太极 Tab 的 SSE 长连接表现为「每秒一轮」：`SSE 连接建立 HTTP 200 | transfer=chunked` 之后
+立即 `读到 0 行 / 0 字节` 断开，UI 在「已连接 / 正在重连」之间闪烁，而 REST 端点全部正常。
+
+**定性：服务端缺陷，非本项目客户端 bug**
+OpenCode 的 `/api/event` 在**每次 flush 后约 0.1–1.4 秒关闭连接**（上游 Issue #38458），
+普通单连接客户端只收到第一波数据然后静默。四路取证全部指向服务端：
+
+| 取证 | 结果 |
+|---|---|
+| PC `curl /api/event`（`adb forward`，正确密码） | 200 + `server.connected` + 心跳，但同样很快被 FIN |
+| **设备自身** `/system/bin/curl` `/api/event` | 与 App 同一 loopback 路径，同样出流后即断 |
+| 复刻 OkHttp 全头（UA=`okhttp/4.12.0`、`Connection: Keep-Alive`、`Accept-Encoding: identity`） | 同样表现 ⇒ 与请求头无关 |
+| `ss -tn` 查 App→14000 连接 | 停在 `CLOSE-WAIT` = **服务端主动 FIN** |
+
+**排除项**（均已实测，勿再浪费时间）：`x-opencode-directory` 头、`Accept-Encoding: identity`、
+readTimeout / callTimeout、PC 代理工具、设备 VPN（`http_proxy=null`，无活动 VPN 接口）。
+
+**策略（用户定稿）：REST 轮询为主，SSE 仅作「信号通道」**
+1. **SSE 当信号**：连上（TCP + HTTP 200）即视为「就绪」，`emit(Reconnected)` 一次；
+   不指望它持续推事件。
+2. **REST 轮询为数据源**：`GET /api/session/{id}/message` 全量重建（天然幂等），
+   自适应节奏——有变化 1s、无变化 3–5s、失败指数退避（1–15s）。
+3. **SSE 退避**：因连上即关，**不能「连上就重置退避」**（否则永远 1s 刷屏）；
+   改为「只有真正读到过事件才重置」，指数退避 1→2→4→8→15s 封顶。
+4. **SSE 断开不改连接状态**（避免 UI 每秒闪烁）；连接健康由 REST 轮询驱动。
+
+**代码落点**
+- `oc/SseClient.kt`：信号通道语义 + `defectStreak` 退避 + 静音刷屏日志。
+- `oc/OcRepository.kt`：新增 `startPolling` / `pollOnce` / `fetchJsonArrayOrThrow`；
+  `handle()` 中 `Connected/Reconnected` 只置「就绪」、`Disconnected` 不动状态。
+
+**何时可以回退**：上游修复 Issue #38458（`/api/event` 保持长连接）后，可把数据源切回纯 SSE；
+`SseClient` 的事件解析（`PartUpdated` / `MessageUpdated` / …）仍完整保留，届时无需重写。
+
+**验证**：`assembleDebug` 通过；真机跑一轮确认消息经 REST 轮询正常显示。
+
+---
+
+## E-009 · 2026-10-06 · 「回复只有思考过程、没有正文」根因 = opencode 输出 token 硬封顶 32K（已修）
+
+**现象**：太极 Tab 收到回复时**只有「思考过程」（reasoning）卡片、没有最终正文**；推理越长越必现。
+
+**根因（第三方行为，非本项目 bug）**
+opencode 对**每一次补全**硬性封顶 **32000 输出 token（含思考/reasoning）**，与模型自身上限无关。
+推理模型会把这 32K 预算**全部花在 thinking 上** → 补全以 `reason: length` 结束、**不产出任何正文**。
+社区文档原文印证：*"opencode caps every completion at 32 000 output tokens — thinking included…
+the completion ends with reason: length and no text"*。
+
+**修复**：在 serve 冷启动时注入环境变量（`OcManager.startServe` 的 `env`）。
+```text
+OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=64000   # 官方文档确认的变量名（opencode 会再按模型上限夹一次，安全）
+OPENCODE_EXPERIMENTAL_LENGTH_NUDGE=true        # 未见于官方文档；设未知 env 无副作用，一并设置覆盖用户方案
+OPENCODE_EXPERIMENTAL_LENGTH_NUDGE_MAX=3
+```
+⚠️ 环境变量**只在 serve 冷启动时生效**：已在运行的 serve 不会重读，必须让它重启
+（App `force-stop` 会连带杀掉 serve 子进程；重启 App 即冷启动）。
+
+**验证（真机 2.0.22）**
+- 注入确认：`/proc/<servePid>/environ` 含上述三项。
+- 功能确认：同一条「Write a 400 word essay」提示，修复前只产 `reasoning`；
+  **修复后产出 `reasoning(3117) + text(2739)`**，UI 正常显示正文。
+- 变量名核实：`OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` 见官方 `https://opencode.ai/docs/cli`
+  （Experimental 段，"Max output tokens for LLM responses"）；`LENGTH_NUDGE*` 未在官方文档中找到。
+
+**附带发现（待处理）**：UI 把最终正文渲染在了「思考过程」标题之下（疑似 part 标签/分组问题）——
+正文确实出现了，但标签可能不准确。
+
+---
+
+## E-010 · 2026-10-06 · 权限确认接通（V2 语法 / 环境变量不生效）+「思考过程」标签错位（已修）
+
+### 1. 权限「静默放行」的根因与接通（安全项）
+
+**现象**：Agent 执行 shell / 改文件**从不弹确认** —— 等于默认授予最高权限。
+
+**根因（两层）**
+1. 服务端 OpenCode 默认多数权限为 `allow`（只有 `doom_loop` / `external_directory` 默认 `ask`）。
+2. 客户端从未正确接到 `permission.asked`：`parsePermission` 按旧名读
+   `permissionID` / `title` / `description`，而真实载荷是
+   `{ id(^per), sessionID(^ses), action, resources[], save[], source }` —— 全读空。
+
+**服务端策略怎么设（关键坑）**
+- ❌ 环境变量 `OPENCODE_PERMISSION`（官方 CLI 文档列出的名字）**本版 bionic 2.0.22 不生效**：
+  设了之后 shell 工具仍被静默放行（真机实测）。
+- ✅ **必须写配置文件** `XDG_CONFIG_HOME/opencode/opencode.json` 才生效。
+- ⚠️ **V2 换了字段与 action 名**（官方 V2 权限文档）：顶层是 `permissions`（v1 是 `permission`），
+  跑 shell 命令的 action 是 **`shell`**（v1 是 `bash`），文件修改是 `edit`（覆盖 write / patch）。
+  **写成 v1 的 `bash` 不会匹配 → 依旧放行。**
+- 规则 = `[{action, resource, effect}]`，effect ∈ allow|deny|ask，resource 支持 `*` / `?` 通配。
+- 落点：`OcManager.ensurePermissionPolicy()`（每次冷启动无条件重写）。
+
+**SSE 事件带信封（这条导致回执 400）**
+`permission.asked` 的 data 是 `{ id(evt_), created, type, location, data:{ …Permission.Request } }`
+—— **真正的请求在 `data` 里**。不剥这层会把**事件 id `evt_…`** 当作 requestID →
+回执必然 HTTP 400。`parsePermission` 现按 `data → properties → 自身` 三级兜底。
+
+**回执**：`POST /api/session/{sid}/permission/{rid}/reply`，body `{"decision":"once"|"always"|"reject"}`
+- `once` → 204，请求消失且**不**写 saved
+- `always` → 写入 `/api/permission/saved`（`psv_…`）
+- `reject` → 拒绝
+
+**兜底**：SSE 空闲会断（见 E-008），故额外轮询 `GET /api/permission/request`（权限绝不能漏）。
+
+**验证（真机）**：抽屉显示「工具：shell / 目标：hostname」；点「允许」(once) →
+`/api/permission/request` 变空、`saved` 无新增；此前选 always → `saved` 出现
+`{"action":"shell","resource":"date *"}`。
+
+### 2. 正文与「思考过程」标签错位（渲染，修 E-009 附带发现）
+
+**现象**：最终正文看起来被渲染在「思考过程」标题之下。
+**归因**：**dispatch 本身没错**（严格按 `part.type`：`reasoning`→Reasoning、`text`→Text）；
+错在 `MessageBubble` 把所有 part 塞进**同一个无间距 Column** —— 折叠的「思考过程」标题与正文紧贴，
+视觉上连成一体，像是正文属于思考过程。
+**修法**：reasoning 抽成独立的 `ReasoningBlock`（💭 头部 + 首行摘要 + 展开/收起），
+并给 `MessageBubble` 的 Column 加 `Arrangement.spacedBy(8.dp)`。

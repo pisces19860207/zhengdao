@@ -52,13 +52,29 @@ object OcManager {
     /** 下载缓存（用户共享存储：Download/证道/opencode/，卸载重装不丢）。 */
     fun cacheDir(ctx: Context): File = File(Workspace.hostDir(ctx), "opencode")
 
-    /** serve 是否存活（HTTP ping，进程被杀/换 PID 都能正确判活）。 */
+    /**
+     * serve 是否存活（HTTP ping，进程被杀/换 PID 都能正确判活）。
+     *
+     * ⚠️ **必须打 `/api/…` 并校验 content-type**，不能打无前缀路径。
+     *
+     * 实测（PoC #3，2.0.22）：这版 serve 把无前缀路径全部喂给 Web UI 的 SPA
+     * catch-all，`/` 、`/global/health`、`/session`、`/doc` **统统返回 200 text/html**。
+     * 打它们会把「serve 根本没起来 / 端口上是个空壳」误判成「已运行」——
+     * 这是原实现最危险的一处：判活恒真，后续所有"已在运行就跳过启动"的分支全错。
+     *
+     * 判据：响应 content-type 是 JSON（说明命中的是 API 层而非 SPA 外壳）即视为存活。
+     * 其中 **401 也算存活**——`/api/…` 一律要求 Basic auth，401 恰恰证明 serve
+     * 正在监听且鉴权生效；真正该判 false 的是"连不上"或"返回 HTML"。
+     */
     fun serveRunning(): Boolean = try {
-        val c = URL("http://127.0.0.1:$PORT/").openConnection() as java.net.HttpURLConnection
+        val c = URL("http://127.0.0.1:$PORT/api/session").openConnection() as java.net.HttpURLConnection
         c.connectTimeout = 800; c.readTimeout = 800
-        val ok = c.responseCode in 200..399
-        runCatching { c.inputStream.close() }
-        ok
+        val code = c.responseCode
+        val isApi = c.getHeaderField("content-type")
+            ?.contains("application/json", ignoreCase = true) == true
+        runCatching { c.inputStream?.close() }
+        runCatching { c.errorStream?.close() }
+        isApi && code in 200..499
     } catch (_: Throwable) {
         false
     }
@@ -71,11 +87,54 @@ object OcManager {
     var servePassword: String? = null
         private set
 
+    /**
+     * 取「最后一个**确认监听成功**的那场」的密码，而不是日志最后一行。
+     *
+     * 日志形态（真机 `files/oc/serve.log` 实录）：
+     * ```
+     * server password <pw1>
+     * server listening on http://127.0.0.1:14000     ← pw1 绑上了
+     * server password <pw2>
+     * server listening on http://127.0.0.1:14000     ← pw2 绑上了
+     * server password <pw3>                          ← 最后一场没绑上端口，无 listening
+     * ```
+     * ⚠️ **两种顺序都实测出现过**，解析必须同时兼容：
+     *   - 调试期多场启动：`password` 在前、`listening` 在后
+     *   - 干净生产路径单场启动：`listening` 在前、`password` 在后（2026-10-06 实机确认）
+     *
+     * 原实现 `lastOrNull { contains("server password") }` 在"最后一次启动没绑上端口"
+     * （端口已被孤儿进程占用 / 启动失败）时，必然取到那场失败进程的密码 →
+     * 拿它打 `/api/…` 全部 401。PoC #3 已复现：日志末行 `PduH4…` 无 listening，
+     * 真正在监听的进程用的是更早一场的密码。
+     *
+     * 修复：只认"打了密码且后面跟着 listening"的场次，取最后一个这样的密码。
+     * 拿不到就返回 null（让 UI 明确报"鉴权未就绪"，好过拿错密码到处 401）。
+     */
     private fun parseServePassword(ctx: Context) {
         servePassword = runCatching {
-            File(ctx.filesDir, "oc/serve.log").readText()
-                .lineSequence().lastOrNull { it.contains("server password") }
-                ?.substringAfter("server password ")?.trim()
+            var pending: String? = null   // 已打密码、尚未见到 listening
+            var awaitingPw = false        // 已见 listening、尚未见到密码（顺序相反的情形）
+            var lastGood: String? = null  // 最后一个确认监听成功的密码
+            File(ctx.filesDir, "oc/serve.log").useLines { lines ->
+                for (line in lines) {
+                    when {
+                        line.contains("server password") -> {
+                            val pw = line.substringAfter("server password").trim()
+                            if (awaitingPw) { lastGood = pw; awaitingPw = false }
+                            else pending = pw
+                        }
+                        line.contains("server listening") -> {
+                            if (pending != null) { lastGood = pending; pending = null }
+                            else awaitingPw = true
+                        }
+                    }
+                }
+            }
+            // ⚠️ 竞态修复（本次「进不了 UI」真因）：若**最后看到一个 listening 但它的
+            //   password 尚未落盘**（awaitingPw == true，即新场次正在启动），
+            //   绝不能返回上一场的 lastGood —— 那是**过期密码**，拿它打 /api/* 会全程 401。
+            //   返回 null，逼调用方（startServe 的轮询）继续等待新场次的 password 落盘。
+            if (awaitingPw) null else lastGood
         }.getOrNull()
     }
 
@@ -88,7 +147,12 @@ object OcManager {
         // Web 会话不丢反而是特性）。无论 serve 是本轮拉起还是孤儿，代理必须就绪：
         // 代理线程随旧 App 进程死亡，这里幂等重启。
         if (serveRunning()) {
-            com.example.zhengdao.oc.LocalProxy.start(PORT) { servePassword ?: parseServePasswordFromLog(ctx) }
+            // ⚠️ 竞态/孤儿修复：serve 已在运行（典型：重装/重启后上一进程的孤儿仍在监听）
+            //   也必须**解析密码并写入 OcManager.servePassword** —— 否则原生路径的
+            //   passwordProvider（{ OcManager.servePassword }）恒为 null，请求无
+            //   Authorization → 全程 401。原实现只把密码喂给 LocalProxy，漏写了 servePassword。
+            parseServePassword(ctx)
+            com.example.zhengdao.oc.LocalProxy.start(PORT) { servePassword }
             return null
         }
         val bin = binaryFile(ctx)
@@ -96,6 +160,7 @@ object OcManager {
         return try {
             homeDir(ctx).mkdirs()
             listOf("data", "cache", "config", "state").forEach { xdgDir(ctx, it).mkdirs() }
+            ensurePermissionPolicy(ctx)
             val pb = ProcessBuilder(bin.absolutePath, "serve", "--port=$PORT")
             pb.directory(Workspace.hostDir(ctx)) // 项目 = 用户工作区
             val env = pb.environment()
@@ -105,6 +170,33 @@ object OcManager {
             env["XDG_CONFIG_HOME"] = xdgDir(ctx, "config").absolutePath
             env["XDG_STATE_HOME"] = xdgDir(ctx, "state").absolutePath
             env["PATH"] = "/system/bin"
+            // 🔧 输出预算修复（2026-10-06，用户定稿）：
+            //    opencode 把每次补全硬性封顶在 **32000 输出 token（含思考）**，与模型自身上限无关。
+            //    推理模型会把这 32k 全花在 thinking 上 → 补全以 reason=length 结束、**不产出正文**，
+            //    即「回复只有思考过程、没有最终文本」的根因。
+            //    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX 是唯一覆盖项（opencode 会再按模型上限夹一次，故安全）。
+            //    变量名已对官方文档核实：https://opencode.ai/docs/cli → Experimental。
+            env["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] = "64000"
+            // 以下两项**未在官方文档中查到**（用户提供，疑为社区命名/上游新增）。
+            // 设置为未知 env 无副作用（进程忽略），故一并设置以完整覆盖用户方案；若无效属预期。
+            env["OPENCODE_EXPERIMENTAL_LENGTH_NUDGE"] = "true"
+            env["OPENCODE_EXPERIMENTAL_LENGTH_NUDGE_MAX"] = "3"
+            // 🔐 保守权限策略：**真正的落地机制是 [ensurePermissionPolicy] 写的 opencode.json**
+            //    （实测本版 bionic 2.0.22 的 env 变量不生效）。这里额外设一份 env，
+            //    兼容将来会读它的版本；未知/无效 env 无副作用。
+            //    ⚠️ V2 换了 action 名：跑 shell 命令是 `shell`（非 v1 的 `bash`），文件修改是 `edit`。
+            env["OPENCODE_PERMISSION"] =
+                "[{\"action\":\"shell\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"bash\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"edit\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"write\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"webfetch\",\"resource\":\"*\",\"effect\":\"ask\"}]"
+            // API Key 注入（与终端同一套密钥库；OpenCode 识别 OPENAI_API_KEY 等）
+            runCatching {
+                ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
+                    ApiKeyStore.get(ctx, id)?.let { env[envName] = it }
+                }
+            }
             val log = File(ctx.filesDir, "oc/serve.log")
             pb.redirectErrorStream(true)
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log))
@@ -136,6 +228,38 @@ object OcManager {
         }
     }
 
+    /**
+     * 写入**保守权限策略**到 `XDG_CONFIG_HOME/opencode/opencode.json`。
+     *
+     * ⚠️ 为什么用文件而不是环境变量：实测本版（bionic 2.0.22）`OPENCODE_PERMISSION`
+     * 环境变量**不生效** —— 只设 env 时 shell 工具仍被静默放行。写这个文件才真正生效。
+     *
+     * 语法取自**官方 V2 权限文档**：
+     * - 顶层字段 `permissions`（v1 叫 `permission`）
+     * - 跑 shell 命令的 action 是 **`shell`**（v1 叫 `bash`）；文件修改是 `edit`（覆盖 write/patch）
+     * - 规则 = `[{action, resource, effect}]`，effect ∈ allow|deny|ask，resource 支持 `*`/`?` 通配
+     *
+     * 每次冷启动**无条件重写**（自愈，避免旧配置残留）。
+     */
+    private fun ensurePermissionPolicy(ctx: Context) {
+        runCatching {
+            val dir = File(xdgDir(ctx, "config"), "opencode").apply { mkdirs() }
+            val json = """
+                {
+                  "${'$'}schema": "https://opencode.ai/config.json",
+                  "permissions": [
+                    { "action": "shell",    "resource": "*", "effect": "ask" },
+                    { "action": "bash",     "resource": "*", "effect": "ask" },
+                    { "action": "edit",     "resource": "*", "effect": "ask" },
+                    { "action": "write",    "resource": "*", "effect": "ask" },
+                    { "action": "webfetch", "resource": "*", "effect": "ask" }
+                  ]
+                }
+            """.trimIndent()
+            File(dir, "opencode.json").writeText(json)
+        }.onFailure { RunLog.log("太极: 写权限配置失败 ${it.message}") }
+    }
+
     /** 停止 serve（App 进程死亡时子进程随之消亡，ping 判活可自动恢复）。 */
     fun stopServe() {
         serveProcess?.destroy()
@@ -154,7 +278,11 @@ object OcManager {
         LocalProxy.stop()
     }
 
+    @Suppress("unused")
     private fun parseServePasswordFromLog(ctx: Context): String? = runCatching {
+        // ⚠️ 已废弃、不再调用：这是 `lastOrNull` 的**有 bug 版本**（会取到最后一场
+        //   "打了密码但没绑上端口"的失败进程的密码 → 全程 401）。保留仅为历史溯源，
+        //   统一改用 parseServePassword()（只认"密码+listening"配对的 lastGood）。
         File(ctx.filesDir, "oc/serve.log").readText()
             .lineSequence().lastOrNull { it.contains("server password") }
             ?.substringAfter("server password ")?.trim()
