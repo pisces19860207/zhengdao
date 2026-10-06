@@ -139,19 +139,23 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
     }
 
     // 从系统设置页返回后刷新权限状态（授权/撤销都发生在别的页面）
+    // 存储占用刷新 tick：进页算一次；从终端清理返回（ON_RESUME）时重算，
+    // 否则「在终端中清理缓存」回来后显示的还是旧值
+    var storageTick by remember { mutableStateOf(0) }
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 manageOk = manageGranted()
                 storageOk = storageGrantedNow()
+                storageTick++
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(storageTick) {
         info = withContext(Dispatchers.IO) { SystemInfoProvider.collect(ctx) }
         val sizes = withContext(Dispatchers.IO) {
             Triple(
