@@ -110,12 +110,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 手机文件夹镜像自动同步（Plan B / SAF 备用）：E-005 修订后待真机验证通过即删除
-        // （P1.5）。当前保留作为个别 ROM 兜底；已配置所选文件夹则冷启动静默同步一次。
-        Thread {
-            runCatching { com.example.zhengdao.mirror.PhoneMirror.syncIfConfigured(this@MainActivity) }
-        }.start()
-
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
 
