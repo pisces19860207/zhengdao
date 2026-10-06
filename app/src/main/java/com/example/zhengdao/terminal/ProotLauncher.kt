@@ -47,6 +47,28 @@ object ProotLauncher {
             context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
+    /**
+     * 幂等移除 `plugin` 数组里历史遗留的第三方记忆插件（opencode-mem）。
+     * 其它插件一律保留；数组清空后连 `plugin` 键一起删，避免留下空数组。
+     * @return 是否发生了改动（调用方据此决定要不要写盘）
+     */
+    private fun stripLegacyMemPlugin(obj: org.json.JSONObject): Boolean {
+        val arr = obj.optJSONArray("plugin") ?: return false
+        val remain = org.json.JSONArray()
+        var removed = false
+        for (i in 0 until arr.length()) {
+            val name = arr.optString(i, "")
+            if (isLegacyMemPlugin(name)) {
+                removed = true
+                continue
+            }
+            remain.put(name)
+        }
+        if (!removed) return false
+        if (remain.length() == 0) obj.remove("plugin") else obj.put("plugin", remain)
+        return true
+    }
+
     /** 流式计算文件 SHA-256（版本固定校验用）。 */
     private fun sha256Of(file: File): String {
         val md = java.security.MessageDigest.getInstance("SHA-256")
@@ -208,8 +230,11 @@ object ProotLauncher {
         // 需要 undo 功能的用户可手动改回 true（牺牲性能）。
         // OpenCode 预置（字段级合并，0.5 步）：
         // - snapshot=false：性能（每次工具调用省 git 子进程，proot 下被放大数倍）
-        // - plugin opencode-mem：跨会话记忆（用户痛点"重开就忘"；免 Key 走免费模型，
-        //   用户确认可用；同名包有两个，认准 npm 的 tickernelz/opencode-mem）
+        // - plugin 数组：**只做遗留清理，不再预置任何插件**。2026-10-06 曾在此写入第三方
+        //   记忆插件 opencode-mem（tickernelz/opencode-mem），但实测它要求
+        //   opencodeProvider + opencodeModel 同时配置才启用自动捕获，装上后从未产出过一条
+        //   记忆，却带来 656 MB 本地向量模型 + 1.9 GB 依赖。2026-10-07 用户拍板整个摘除，
+        //   此处负责把历史配置里残留的该项幂等移除（其它插件一律不动）。
         // - AGENTS.md：人设 + 文件地图（治"忘了自己在手机里/找不到文件"）。
         // 已有配置/文件时按字段合并或跳过，绝不覆盖用户自有内容。
         runCatching {
@@ -226,15 +251,11 @@ object ProotLauncher {
                 if (!obj.has("snapshot")) { obj.put("snapshot", false); changed = true }
                 // autoupdate=false（用户定稿：默认不打扰，更新走设置页手动检查）
                 if (!obj.has("autoupdate")) { obj.put("autoupdate", false); changed = true }
-                val plugins = obj.optJSONArray("plugin") ?: org.json.JSONArray().also {
-                    obj.put("plugin", it); changed = true
-                }
-                if (plugins.toString().contains("opencode-mem").not()) {
-                    plugins.put("opencode-mem"); changed = true
-                }
+                // 遗留清理：移除历史预置的记忆插件（幂等，详见上方注释）
+                if (stripLegacyMemPlugin(obj)) changed = true
                 if (changed) {
                     f.writeText(obj.toString(2))
-                    RunLog.log("OpenCode 配置已合并（snapshot=false + opencode-mem 插件）")
+                    RunLog.log("OpenCode 配置已合并（snapshot=false / autoupdate=false；遗留记忆插件已清理）")
                 }
                 // 人设：opencode 原生读取 <XDG_CONFIG_HOME>/opencode/AGENTS.md 作为全局规则。
                 // 文件地图随工作区设置动态更新（0.6）：映射变化才重写，平时不动用户文件。
@@ -274,7 +295,7 @@ object ProotLauncher {
                         prefsUi.edit().putString("agents_md_ws_taiji", wsPath).apply()
                         RunLog.log("太极实例 AGENTS.md 已更新（工作区映射: $wsPath）")
                     }
-                    // taiji 实例的 opencode.json：同样关 snapshot/autoupdate + 记忆插件
+                    // taiji 实例的 opencode.json：同样关 snapshot/autoupdate + 清理遗留插件
                     val fT = File(taijiCfg, "opencode.json")
                     val objT = if (fT.isFile) runCatching {
                         org.json.JSONObject(fT.readText())
@@ -282,15 +303,10 @@ object ProotLauncher {
                     var changedT = !fT.isFile
                     if (!objT.has("snapshot")) { objT.put("snapshot", false); changedT = true }
                     if (!objT.has("autoupdate")) { objT.put("autoupdate", false); changedT = true }
-                    val pluginsT = objT.optJSONArray("plugin") ?: org.json.JSONArray().also {
-                        objT.put("plugin", it); changedT = true
-                    }
-                    if (pluginsT.toString().contains("opencode-mem").not()) {
-                        pluginsT.put("opencode-mem"); changedT = true
-                    }
+                    if (stripLegacyMemPlugin(objT)) changedT = true
                     if (changedT) {
                         fT.writeText(objT.toString(2))
-                        RunLog.log("太极实例 opencode.json 已预置（记忆插件同款）")
+                        RunLog.log("太极实例 opencode.json 已更新（遗留记忆插件已清理）")
                     }
                 }
             }
