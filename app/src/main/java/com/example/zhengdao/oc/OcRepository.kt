@@ -382,15 +382,17 @@ class OcRepository(
                 val isText = type == "text"
                 if (isText) OcPart.Text(id, text) else OcPart.Reasoning(id, text)
             }
-            "tool" -> OcPart.Tool(
-                id = id,
-                toolName = part.optString("tool").takeIf { it.isNotEmpty() } ?: part.optString("name"),
-                state = parseToolState(part.optJSONObject("state")),
-                input = part.optJSONObject("input")?.toString(),
-                output = part.optJSONObject("output")?.let { o ->
-                    o.optString("title").takeIf { it.isNotEmpty() } ?: o.toString()
-                },
-            )
+            // ⚠️ 与 parsePart 同源修正：真实字段在 state.input / state.content[]（顶层没有 input/output）
+            "tool" -> {
+                val st = part.optJSONObject("state")
+                OcPart.Tool(
+                    id = id,
+                    toolName = part.optString("name").takeIf { it.isNotEmpty() } ?: part.optString("tool"),
+                    state = parseToolState(st),
+                    input = toolInputToText(st?.optJSONObject("input")),
+                    output = toolContentToText(st?.optJSONArray("content")),
+                )
+            }
             "file" -> OcPart.File(id, part.optString("filename"), part.optString("mime"))
             else -> OcPart.Unknown(id, type, part.toString())
         }
@@ -551,23 +553,63 @@ internal fun parsePart(obj: JSONObject?, fallbackId: String? = null): OcPart? {
     return when (obj.optString("type")) {
         "text" -> OcPart.Text(id, obj.optString("text"))
         "reasoning" -> OcPart.Reasoning(id, obj.optString("text"))
-        // 工具名在 **name** 字段（不是 tool）
-        "tool" -> OcPart.Tool(
-            id, obj.optString("name"),
-            parseToolState(obj.optJSONObject("state")),
-            obj.optJSONObject("input")?.toString(),
-            obj.optJSONObject("output")?.optString("title"),
-        )
+        // ⚠️ 真实结构（实测 2.0.22）：{ type, id, name, executed, state:{ status, input, content, metadata }, time }
+        //    工具名在顶层 **name**；入参在 **state.input**（对象）；结果在 **state.content[]**（数组）。
+        //    顶层**没有** input/output —— 原实现读顶层 → 两者恒为 null，这正是「工具卡只显示状态图标」的真因。
+        "tool" -> {
+            val st = obj.optJSONObject("state")
+            OcPart.Tool(
+                id = id,
+                toolName = obj.optString("name").takeIf { it.isNotEmpty() } ?: obj.optString("tool"),
+                state = parseToolState(st),
+                input = toolInputToText(st?.optJSONObject("input")),
+                output = toolContentToText(st?.optJSONArray("content")),
+            )
+        }
         "file" -> OcPart.File(id, obj.optString("filename"), obj.optString("mime"))
         else -> OcPart.Unknown(id, obj.optString("type"), obj.toString())
     }
 }
 
 internal fun parseToolState(state: JSONObject?): ToolState = when (state?.optString("status")) {
-    "running", "pending" -> ToolState.Running
-    "completed", "success" -> ToolState.Success
-    "error", "failed" -> ToolState.Error
+    "running", "pending", "in_progress" -> ToolState.Running
+    "completed", "success", "succeeded" -> ToolState.Success
+    "error", "failed", "failure" -> ToolState.Error
     else -> ToolState.Unknown
+}
+
+/**
+ * 工具入参 → 可读文本。
+ *
+ * 优先取 command / path 等**单值字段**（用户要的「命令 / 文件路径」），拿不到再回退整段 JSON。
+ * 实测 shell 的 `state.input` = `{"command":"ls -A1","workdir":"…"}`。
+ */
+internal fun toolInputToText(o: JSONObject?): String? {
+    o ?: return null
+    for (k in listOf("command", "filePath", "path", "pattern", "query", "url")) {
+        val v = o.optString(k)
+        if (v.isNotEmpty()) return v
+    }
+    return o.toString().takeIf { it.isNotEmpty() && it != "{}" }
+}
+
+/**
+ * 工具结果 → 可读文本。
+ *
+ * 实测 `state.content` = `[{"type":"text","text":"33\n"}]`（数组），拼接各段的 text。
+ */
+internal fun toolContentToText(arr: JSONArray?): String? {
+    arr ?: return null
+    val sb = StringBuilder()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        val t = o.optString("text").takeIf { it.isNotEmpty() }
+            ?: o.optString("content").takeIf { it.isNotEmpty() }
+            ?: o.toString()
+        if (sb.isNotEmpty()) sb.append('\n')
+        sb.append(t)
+    }
+    return sb.toString().takeIf { it.isNotEmpty() }
 }
 
 internal fun parsePermission(raw: String): OcPermission? = runCatching {
