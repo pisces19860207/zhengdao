@@ -78,3 +78,40 @@
 - 密码解析实现：`OcManager.kt` `parseServePassword`（`lastOrNull` 语义）
 
 *本记录只含实测与证据链，未改任何代码；修复决策归 Compose 拼接批次。*
+
+---
+
+## 追记（2026-10-06 晚 · 二轮排查）：「无法创建会话」的真根因——`data` 信封
+
+**前置**：调试污染（多场 serve 的密码日志混写）已按裁定清理；clean 路径下 serve 生产
+启动、密码配对（listening 在前/在后均兼容）全部正常——SSE `/api/event` 200 实证。
+
+**真根因**（PC 端经 adb forward 直打实测）：
+
+- `POST /api/session`（Basic auth + `{}`）→ **200**，但响应体是 **`{"data":{...}}`
+  信封**，`id` 在 `data.id`：
+  `{"data":{"id":"ses_…","projectID":…,"location":{"directory":"/storage/emulated/0/Download/男性"}}}`
+- 分支 `createSession` 的解析 `JSONObject(it).optString("id")` 取顶层 `id` → **空串**
+  → `takeIf { isNotEmpty() }` → 静默 null → UI「无法创建会话」。
+  `runCatching` 无异常可捕 → `onFailure` 不触发 → **零日志**（排查时最迷惑的一点）。
+
+**信封是全局形态，不止一处**（均带 auth 实测）：
+
+| 端点 | 真实响应形态 |
+|---|---|
+| `POST /api/session` | `{"data":{…session}}` |
+| `GET /api/session` | `{"data":[…sessions]}`（**信封数组**，不是裸数组） |
+| `GET /api/session/{id}/message` | `{"data":[…],"cursor":{"previous":…,"next":…}}` |
+| `GET /api/config` | 裸数组（**例外**，无信封） |
+
+**影响面**：`fetchJsonArray`（`JSONArray(text)`）对信封数组会直接抛
+JSONException——createSession 修好后，`loadAll` 拉消息必然跟着炸（这次没炸只是因为
+createSession 先挡住了）。**建议统一剥信封**：`JSONObject(text).opt("data") ?: 解析原
+文`，message 端点另取 `cursor`。SSE 事件是否信封化未验，接消息流时核。
+
+**附带验证（好消息）**：`DELETE /api/session/{id}` 带 auth → **204 No Content**——
+「会话历史删除」功能的服务端路径可用。测试中创建并删除了一个空会话；设备上另有一个
+更早的既有会话（`ses_eef00a76…`，非本次产生），未动。
+
+**Android 端密码行顺序**：与正文一致，clean 路径 `listening` 在前、`password` 在后，
+分支 4cc808f 的双向兼容已实测生效（SSE 鉴权成功）。
