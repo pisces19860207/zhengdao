@@ -190,21 +190,18 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         val cmd = pendingAutocmd ?: return
         pendingAutocmd = null
         if (usesTmux) {
-            // tmux 会话可能正跑着 Agent 的 TUI——命令走 tmux 命令提示符开新窗口执行，
-            // 不打进 TUI 的输入框。分段发送（提示符异步打开，整串灌入会穿透）。
+            // tmux 会话可能正跑着 Agent 的 TUI——命令开新窗口执行，不打进 TUI 的输入框。
+            // ⚠️ 不走 C-b : 命令提示符（提示符异步打开 + 固定 150ms 延迟存在竞态：
+            //    提示符未就绪时 "new-window" 与后续命令被拼进同一条 shell 行，
+            //    实测报 new-windowrm: command not found、命令未执行）。
+            //    改用 C-b c 直接开新窗口——键绑定即时生效无提示符，300ms 仅等待窗口切换。
             runCatching {
-                SessionManager.write(byteArrayOf(0x02, ':'.code.toByte()))  // C-b :
+                SessionManager.write(byteArrayOf(0x02, 'c'.code.toByte()))  // C-b c = 新窗口
                 mainHandler.postDelayed({
                     runCatching {
-                        SessionManager.write("new-window".toByteArray(Charsets.UTF_8))
-                        mainHandler.postDelayed({
-                            runCatching {
-                                SessionManager.write(byteArrayOf(0x0D))
-                                SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8))
-                            }
-                        }, 150)
+                        SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8))
                     }
-                }, 150)
+                }, 300)
             }
         } else {
             SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8))

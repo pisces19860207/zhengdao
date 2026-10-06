@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -48,6 +51,10 @@ fun HomeScreen(
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var summary by remember { mutableStateOf(AppState.summaryLine(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
+    // 卸载（P3/v1.0）：menuOpenFor = 当前展开「更多菜单」的卡片 id；
+    // uninstallTarget = 二次确认弹窗的目标 Agent
+    var menuOpenFor by remember { mutableStateOf<String?>(null) }
+    var uninstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
     var sysInfo by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
     // 每次回到本页（从终端返回）刷新安装状态
     LaunchedEffect(Unit) {
@@ -224,6 +231,22 @@ fun HomeScreen(
                                 modifier = Modifier.width(84.dp),
                             ) { Text("先装环境") }
                         }
+                        // 卸载入口（P3/v1.0）：已装且有卸载命令的 Agent 才给「更多菜单」
+                        if (agent.installed && agent.uninstallCmd != null) {
+                            TextButton(onClick = { menuOpenFor = agent.id }) { Text("⋮") }
+                            DropdownMenu(
+                                expanded = menuOpenFor == agent.id,
+                                onDismissRequest = { menuOpenFor = null },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("卸载") },
+                                    onClick = {
+                                        menuOpenFor = null
+                                        uninstallTarget = agent
+                                    },
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -264,6 +287,90 @@ fun HomeScreen(
             )
         }
     }
+
+    // 卸载二次确认（P3/v1.0）：「卸载」删程序、留用户数据；「彻底清除」连用户数据一起删
+    // （仅限已知名单内的 Agent——未知 manifest 条目的数据布局不猜测，不提供该选项）。
+    // 尺寸用真实 du（从 uninstall 命令解析 rm 目标路径映射宿主后统计），不写死数字。
+    uninstallTarget?.let { target ->
+        val cmd = target.uninstallCmd ?: return@let
+        val wipe = wipeTargets[target.id]
+        var sizesText by remember(target.id) { mutableStateOf("尺寸统计中…") }
+        LaunchedEffect(target.id) {
+            sizesText = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val prog = programSizeMb(context, cmd)
+                val cache = runCatching {
+                    com.example.zhengdao.terminal.CacheCleaner.measure(context)["安装包缓存"] ?: 0L
+                }.getOrDefault(0L)
+                val progText = if (prog >= 0) "（约 $prog MB）" else "（以实际占用为准）"
+                "· Agent 程序$progText\n· 安装包缓存（全局，约 $cache MB）"
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { uninstallTarget = null },
+            title = { Text("卸载 ${target.name}？") },
+            text = {
+                Text(
+                    buildString {
+                        append("将删除：\n").append(sizesText).append("\n\n")
+                        append("将保留：\n· 会话历史与记忆\n· API Key 配置（如适用）")
+                        wipe?.let {
+                            append("\n\n「彻底清除」将连同用户数据（").append(it.joinToString("、"))
+                                .append("）一起删除，不可恢复。")
+                        }
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    uninstallTarget = null
+                    // agentId 传 null：卸载不走「一键安装」登记，传 id 会被误标「安装中」
+                    onOpenTerminal(cmd, null)
+                }) { Text("卸载") }
+            },
+            dismissButton = {
+                Row {
+                    if (wipe != null) {
+                        TextButton(onClick = {
+                            uninstallTarget = null
+                            onOpenTerminal(cmd + " && rm -rf " + wipe.joinToString(" "), null)
+                        }) { Text("彻底清除（含用户数据）", color = MaterialTheme.colorScheme.error) }
+                    }
+                    TextButton(onClick = { uninstallTarget = null }) { Text("取消") }
+                }
+            },
+        )
+    }
+}
+
+
+/** 「彻底清除」时随程序一起删除的用户数据目录（guest 内路径；shell 展开 ~）。
+ *  仅限已知名单——未知 manifest 条目的数据布局不猜测。 */
+private val wipeTargets: Map<String, List<String>> = mapOf(
+    "claude-code" to listOf("~/.claude"),
+    "hermes" to listOf("~/.hermes"),
+)
+
+/** 依据 manifest 的 uninstall 命令估算 Agent 程序体积：解析其中 rm -rf 的目标路径，
+ *  映射到宿主真实目录后求 du 和（真实 du，不写死数字）。仅识别 /root/→home 与
+ *  /usr/→rootfs/usr 两类映射；含通配符的路径跳过；解析不出已知路径时返回 -1
+ *  （弹窗改用"以实际占用为准"措辞，不编造）。 */
+private fun programSizeMb(ctx: android.content.Context, uninstallCmd: String): Long {
+    val paths = Regex("rm\\s+-rf\\s+([^&\\n]+)").findAll(uninstallCmd)
+        .flatMap { it.groupValues[1].trim().split(Regex("\\s+")) }
+        .filter { it.startsWith("/") && !it.contains('*') }
+        .distinct()
+        .mapNotNull { p ->
+            when {
+                p == "/root" || p.startsWith("/root/") ->
+                    java.io.File(ctx.filesDir, "home/" + p.removePrefix("/root/"))
+                p == "/usr" || p.startsWith("/usr/") ->
+                    java.io.File(ctx.filesDir, "rootfs" + p)
+                else -> null
+            }
+        }
+        .toList()
+    if (paths.isEmpty()) return -1
+    return paths.sumOf { SystemInfoProvider.dirSizeMb(it) }
 }
 
 @Composable
@@ -280,3 +387,6 @@ private fun StatusRow(label: String, value: String) {
         Text(text = value, style = MaterialTheme.typography.bodySmall)
     }
 }
+
+/** 「彻底清除」时随程序一起删除的用户数据目录（guest 内路径；shell 展开 ~）。
+ *  仅限已知名单——未知 manifest 条目的数据布局不猜测。 */

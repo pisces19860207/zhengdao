@@ -61,7 +61,7 @@ object AgentManifest {
     fun parse(text: String): List<Entry> {
         fun str(id: String, key: String): String {
             // 逐 agent 块解析：以 "id" 为锚找块内字段
-            val block = Regex("\"id\"\\s*:\\s*\"$id\"[^}]*}").find(text)?.value ?: return ""
+            val block = Regex("\"id\"\\s*:\\s*\"$id\"[^\\}]*\\}").find(text)?.value ?: return ""
             return Regex("\"$key\"\\s*:\\s*\"([^\"]*)\"").find(block)?.groupValues?.get(1) ?: ""
         }
         val ids = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").findAll(text).map { it.groupValues[1] }.toList()
@@ -95,7 +95,9 @@ object AgentManifest {
     fun cached(ctx: Context): List<Entry>? = try {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         p.getString(KEY_BODY, null)?.let { parse(it) }
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        // 不再静默：正则兼容性这类问题静默 null 会让 manifest 全链路失效且无迹可查
+        android.util.Log.w("AgentManifest", "清单缓存读取/解析失败，回退出厂版: $t")
         null
     }
 
