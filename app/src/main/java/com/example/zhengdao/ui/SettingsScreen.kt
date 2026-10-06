@@ -50,6 +50,7 @@ import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.oc.TaijiPrefs
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
@@ -698,6 +699,31 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         }
 
         // ── Root 增强模式 ──
+        // ── 太极 Tab 走哪套 UI ──
+        // 默认 Compose 原生界面（直连 opencode serve 的 HTTP + SSE，不走 WebView/LocalProxy）。
+        // ⚠️ 保留回退开关的原因：阶段 0 的真机鉴权（Basic auth 打 /global/health）尚未验证，
+        //    万一新界面连不上，用户能自己退回旧版而不必等发版——失败必须可恢复。
+        SectionCard("太极 Tab 界面") {
+            var nativeUi by remember { mutableStateOf(TaijiPrefs.useNativeUi(ctx)) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = if (nativeUi) "Compose 原生界面（直连 serve）" else "WebView 旧版（经本地代理）",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = "原生界面响应更快、中文输入更可靠；若打不开或一直空白，可退回旧版",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = nativeUi, onCheckedChange = {
+                    nativeUi = it
+                    TaijiPrefs.setNativeUi(ctx, it)
+                })
+            }
+        }
+
         SectionCard("Root 增强模式") {
             val hasSu = remember {
                 listOf("/system/bin/su", "/system/xbin/su", "/sbin/su").any { File(it).exists() }
