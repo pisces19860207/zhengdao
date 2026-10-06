@@ -4,6 +4,8 @@
 package com.example.zhengdao.ui.taiji
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,6 +59,10 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -166,48 +173,155 @@ fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
 // ── 消息列表 ──────────────────────────────────────────────────────────
 
 /**
- * 消息列表。
+ * 消息列表（v1.1 体验修复：**正序显示 + 智能跟随滚动**）。
  *
- * @param onStopScroll 用户上滑查看历史时不抢滚动（见设计文档 §5.2）。
+ * ## 顺序
+ * 老消息在上、新消息在下 —— 与微信一致。数据层顺序就是 API 顺序，这里在**渲染层**
+ * 用 [orderChronologically] 收敛一次，**不动数据层**。
+ *
+ * ## 跟随滚动
+ * 进入会话先定位到最新一条；发消息 / 流式回复中持续贴底跟随。
+ * **用户手动上滑看历史时立刻停手**（关键：不能跟用户抢），并浮出「⬇ 回到最新」；
+ * 点它、或用户自己滑回底部 → 恢复跟随。切换会话则重新定位到该会话底部。
+ *
+ * 判定「用户上滑」只认**用户手势**（nested-scroll 的 `UserInput` 来源），
+ * 程序自身的贴底滚动不参与判定 —— 否则「贴底 → isScrollInProgress → 误判为上滑」
+ * 会自锁成"再也不跟随"。
+ *
+ * @param sessionId 值变化即视为"换了会话"，重新定位到底部。
  */
 @Composable
 fun MessageList(
     messages: List<OcMessage>,
     todos: List<OcTodo>,
     isStreaming: Boolean,
+    sessionId: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+
+    // ① 正序：老在上、新在下（渲染层收敛，数据层不动）
+    val ordered = remember(messages) { orderChronologically(messages) }
+
+    // 列表总项数（todos 面板 + 消息 + 流式指示器）—— "最后一项"的 index 由它决定
+    val totalItems = (if (todos.isNotEmpty()) 1 else 0) + ordered.size + (if (isStreaming) 1 else 0)
+
+    // ② 是否贴底：最后一项可见，且其底部已落在视口内
     val atBottom by remember {
         androidx.compose.runtime.derivedStateOf {
-            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.let {
-                it.index >= listState.layoutInfo.totalItemsCount - 1
-            } ?: true
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            last.index >= info.totalItemsCount - 1 &&
+                last.offset + last.size <= info.viewportEndOffset + 8
         }
     }
-    LaunchedEffect(messages.size) {
-        if (atBottom) listState.animateScrollToItem(messages.lastIndex.coerceAtLeast(0))
-    }
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier.fillMaxWidth(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (todos.isNotEmpty()) { item { TodoPanel(todos) } }
+    // ③ 是否跟随最新。用户主动上滑看历史 → false（不抢用户的滚动）
+    var follow by remember { mutableStateOf(true) }
 
-        items(messages, key = { it.id }) { msg -> MessageBubble(msg) }
-
-        if (isStreaming) {
-            item {
-                Row(
-                    Modifier.fillMaxWidth().padding(8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
+    val nestedScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // 只要滚动来自**用户手势**就先停手 —— 无论方向。
+                // 刻意不判 available.y 的符号：方向约定易错，且"用户想回到底部时被内容
+                // 拽着走"同样是抢。用户停手后若确实在底部，下面的 snapshotFlow 会自动恢复。
+                if (source == NestedScrollSource.UserInput) follow = false
+                return Offset.Zero
             }
         }
     }
+
+    // 用户滚动停下后，若已回到底部 → 恢复跟随（只认稳定态，避免滚动中反复翻转）
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            if (!scrolling && atBottom) follow = true
+        }
+    }
+
+    // ④ 进入 / 切换会话：直接定位到最后一条（瞬时，不从顶部滚下来）
+    LaunchedEffect(sessionId) {
+        if (totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+    }
+
+    // ⑤ 新消息 / 流式内容变化：跟随贴底。
+    //    follow 也进 key —— 点「回到最新」置 true 后能立刻贴底。
+    LaunchedEffect(ordered, isStreaming, totalItems, follow) {
+        if (follow && totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+    }
+
+    Box(modifier.fillMaxWidth()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().nestedScroll(nestedScroll),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (todos.isNotEmpty()) { item { TodoPanel(todos) } }
+
+            items(ordered, key = { it.id }) { msg -> MessageBubble(msg) }
+
+            if (isStreaming) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
+                }
+            }
+        }
+
+        // ⑥ 正在翻历史时浮出「⬇ 回到最新」
+        AnimatedVisibility(
+            visible = !follow,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        ) {
+            JumpToLatestButton(onClick = { follow = true })
+        }
+    }
+}
+
+/**
+ * 「⬇ 回到最新」浮标：翻历史时出现，点一下回到底部并恢复跟随。
+ *
+ * 只负责展示与回调 —— 真正的跟随由 [MessageList] 的 `follow` 驱动
+ * （点击置 true 后，上方的 LaunchedEffect 立即贴底）。
+ */
+@Composable
+private fun JumpToLatestButton(onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shadowElevation = 4.dp,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(
+            "⬇ 回到最新",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+        )
+    }
+}
+
+/**
+ * 渲染层正序保证：老消息在上、新消息在下（与微信一致）。
+ *
+ * 数据层顺序就是 API 返回顺序，本项目对消息端点**未做排序约定**，故在此统一收敛：
+ *
+ * - **全部消息都带 [OcMessage.timeCreated]** → 按时间升序；已经正序时**原样返回**
+ *   （同一实例，避免无谓新建列表触发下游重组）。
+ * - **有任一缺失时间戳** → 原样返回。此时排序会把消息打乱成"看起来随机"，比不排更糟。
+ *
+ * 纯展示层行为，[com.example.zhengdao.oc.OcRepository] 不受影响。
+ * `internal` 供 JVM 单测（`TaijiMessageOrderTest`）验证。
+ */
+internal fun orderChronologically(messages: List<OcMessage>): List<OcMessage> {
+    if (messages.size < 2) return messages
+    val stamps = messages.map { it.timeCreated ?: return messages }
+    if (stamps.zipWithNext().all { (a, b) -> a <= b }) return messages   // 已正序，零改动
+    return messages.sortedBy { it.timeCreated ?: Long.MAX_VALUE }
 }
 
 // ── 单条消息 ──────────────────────────────────────────────────────────
