@@ -53,13 +53,29 @@ object OcManager {
     /** 下载缓存（用户共享存储：Download/证道/opencode/，卸载重装不丢）。 */
     fun cacheDir(ctx: Context): File = File(Workspace.hostDir(ctx), "opencode")
 
-    /** serve 是否存活（HTTP ping，进程被杀/换 PID 都能正确判活）。 */
+    /**
+     * serve 是否存活（HTTP ping，进程被杀/换 PID 都能正确判活）。
+     *
+     * ⚠️ **必须打 `/api/…` 并校验 content-type**，不能打无前缀路径。
+     *
+     * 实测（PoC #3，2.0.22）：这版 serve 把无前缀路径全部喂给 Web UI 的 SPA
+     * catch-all，`/` 、`/global/health`、`/session`、`/doc` **统统返回 200 text/html**。
+     * 打它们会把「serve 根本没起来 / 端口上是个空壳」误判成「已运行」——
+     * 这是原实现最危险的一处：判活恒真，后续所有"已在运行就跳过启动"的分支全错。
+     *
+     * 判据：响应 content-type 是 JSON（说明命中的是 API 层而非 SPA 外壳）即视为存活。
+     * 其中 **401 也算存活**——`/api/…` 一律要求 Basic auth，401 恰恰证明 serve
+     * 正在监听且鉴权生效；真正该判 false 的是"连不上"或"返回 HTML"。
+     */
     fun serveRunning(): Boolean = try {
-        val c = URL("http://127.0.0.1:$PORT/").openConnection() as java.net.HttpURLConnection
+        val c = URL("http://127.0.0.1:$PORT/api/session").openConnection() as java.net.HttpURLConnection
         c.connectTimeout = 800; c.readTimeout = 800
-        val ok = c.responseCode in 200..399
-        runCatching { c.inputStream.close() }
-        ok
+        val code = c.responseCode
+        val isApi = c.getHeaderField("content-type")
+            ?.contains("application/json", ignoreCase = true) == true
+        runCatching { c.inputStream?.close() }
+        runCatching { c.errorStream?.close() }
+        isApi && code in 200..499
     } catch (_: Throwable) {
         false
     }
@@ -72,11 +88,42 @@ object OcManager {
     var servePassword: String? = null
         private set
 
+    /**
+     * 取「最后一个**确认监听成功**的那场」的密码，而不是日志最后一行。
+     *
+     * 日志形态（真机 `files/oc/serve.log` 实录）：
+     * ```
+     * server password <pw1>
+     * server listening on http://127.0.0.1:14000     ← pw1 绑上了
+     * server password <pw2>
+     * server listening on http://127.0.0.1:14000     ← pw2 绑上了
+     * server password <pw3>                          ← 最后一场没绑上端口，无 listening
+     * ```
+     * 注意顺序是 **password 在前、listening 在后**。
+     *
+     * 原实现 `lastOrNull { contains("server password") }` 在"最后一次启动没绑上端口"
+     * （端口已被孤儿进程占用 / 启动失败）时，必然取到那场失败进程的密码 →
+     * 拿它打 `/api/…` 全部 401。PoC #3 已复现：日志末行 `PduH4…` 无 listening，
+     * 真正在监听的进程用的是更早一场的密码。
+     *
+     * 修复：只认"打了密码且后面跟着 listening"的场次，取最后一个这样的密码。
+     * 拿不到就返回 null（让 UI 明确报"鉴权未就绪"，好过拿错密码到处 401）。
+     */
     private fun parseServePassword(ctx: Context) {
         servePassword = runCatching {
-            File(ctx.filesDir, "oc/serve.log").readText()
-                .lineSequence().lastOrNull { it.contains("server password") }
-                ?.substringAfter("server password ")?.trim()
+            var pending: String? = null   // 已打密码、尚未见到 listening
+            var lastGood: String? = null  // 最后一个确认监听成功的密码
+            File(ctx.filesDir, "oc/serve.log").useLines { lines ->
+                for (line in lines) {
+                    when {
+                        line.contains("server password") ->
+                            pending = line.substringAfter("server password").trim()
+                        line.contains("server listening") ->
+                            if (pending != null) { lastGood = pending; pending = null }
+                    }
+                }
+            }
+            lastGood
         }.getOrNull()
     }
 
