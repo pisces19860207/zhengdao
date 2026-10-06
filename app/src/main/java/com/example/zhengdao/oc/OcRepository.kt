@@ -52,7 +52,14 @@ class OcRepository(
      * @param sessionId 为空时自动新建会话（单会话模型，见设计文档 §3.4）。
      */
     suspend fun open(scope: CoroutineScope, sessionId: String?) {
-        val id = sessionId ?: createSession()?.also { logSession(it) }
+        // 单会话模型下的会话选择优先级：
+        //   ① 转屏/配置变更保留下来的 id（savedSession）
+        //   ② **服务端最近的会话** —— 否则每进一次太极就新建一个空会话
+        //      （实测服务端已累积 7 个），用户在太极 Tab 看到的历史也会每次归零
+        //   ③ 都没有才新建
+        val id = sessionId
+            ?: latestSessionId()?.also { ocLog("复用服务端最近会话 id=$it") }
+            ?: createSession()?.also { logSession(it) }
         if (id == null) {
             _state.update { it.copy(phase = TaijiPhase.Failed("无法创建会话", retryable = true)) }
             return
@@ -78,6 +85,26 @@ class OcRepository(
             }
         }.onFailure { ocLog("创建会话失败：${it.message}") }.getOrNull()
     }?.takeIf { it.isNotEmpty() }
+
+    /**
+     * 取服务端最近的一个会话 id（用于「复用而不是每次新建」）。
+     *
+     * `GET /api/session` 返回 `{"data":[…]}`（**信封数组**），且按时间倒序——
+     * 实测最新创建的排在最前，取第 0 个即可。
+     * 拿不到就返回 null，由调用方降级为新建会话（失败不得阻断进入太极）。
+     */
+    private suspend fun latestSessionId(): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url(http.url("/api/session")).get().build()
+            http.client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string() ?: return@runCatching null
+                if (!resp.isSuccessful) return@runCatching null
+                val arr = unwrapArray(text)
+                if (arr.length() == 0) null
+                else arr.optJSONObject(0)?.optString("id")?.takeIf { it.isNotEmpty() }
+            }
+        }.onFailure { ocLog("取最近会话失败（将新建）：${it.message}") }.getOrNull()
+    }
 
     /** 全量拉取并**重建**列表（不是合并）——重连补齐必须走这里。 */
     private suspend fun loadAll(sessionId: String) {
