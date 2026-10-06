@@ -3,6 +3,7 @@
 package com.example.zhengdao.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -108,8 +109,8 @@ fun HomeScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         // ── 顶栏：标题 + 设置入口 ──
         item {
@@ -129,17 +130,28 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { statusExpanded = !statusExpanded },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = summary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Column(modifier = Modifier.padding(14.dp)) {
+                    // 展开指示符：这张卡点开是"环境体检"，但原先**没有任何视觉提示**说它可以点，
+                    // 用户根本不会去点。给一个方向箭头，把"可展开"这件事说出来。
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (statusExpanded) "▴" else "▾",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     AnimatedVisibility(visible = statusExpanded) {
                         Column(modifier = Modifier.padding(top = 8.dp)) {
                             // 环境体检（P7）：逐项勾叉 + 定向修复；先于系统信息展示
@@ -267,10 +279,13 @@ fun HomeScreen(
         items(agents.filter { it.id != "opencode" }, key = { it.id }) { agent ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
+                // 页面底色是浅灰（systemGroupedBackground）、卡片是纯白，原本只靠色差划界，
+                // 边界偏软。补一条 0.5dp 发丝描边——与底部导航栏的分隔线同一套语言。
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     val installing = AgentRepository.stateOf(context, agent) == AgentRepository.State.Installing
                     val failedInstall = AgentRepository.stateOf(context, agent) == AgentRepository.State.Failed
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -285,10 +300,12 @@ fun HomeScreen(
                             agent.installed -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd, agent.id) },
                                 modifier = Modifier.width(84.dp),
+                                shape = RoundedCornerShape(50),
                             ) { Text("启动") }
                             installing -> OutlinedButton(
                                 onClick = { onOpenTerminal(null, agent.id) },
                                 modifier = Modifier.width(84.dp),
+                                shape = RoundedCornerShape(50),
                                 enabled = false,
                             ) { Text("安装中") }
                             agent.installCmd != null && envReady -> OutlinedButton(
@@ -299,17 +316,20 @@ fun HomeScreen(
                                     }
                                 },
                                 modifier = Modifier.width(84.dp),
+                                shape = RoundedCornerShape(50),
                             ) { Text("安装") }
                             agent.installCmd == null -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
                                 modifier = Modifier.width(84.dp),
+                                shape = RoundedCornerShape(50),
                             ) { Text("即将支持") }
                             // 环境未装：Agent 无法安装，按钮禁用（上方横幅已给一键安装路径）
                             else -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
                                 modifier = Modifier.width(84.dp),
+                                shape = RoundedCornerShape(50),
                             ) { Text("先装环境") }
                         }
                     }
