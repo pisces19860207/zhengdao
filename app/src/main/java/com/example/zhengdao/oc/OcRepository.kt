@@ -380,9 +380,20 @@ class OcRepository(
                 it.copy(isStreaming = false, pendingPermission = null)
             }
 
-            is SseClient.Event.Unknown ->
+            is SseClient.Event.Unknown -> {
+                // 模型池（v1.0）：session.step.started 事件的 model 字段 = 服务端实际在用的模型
+                if (ev.type.startsWith("session.step.started")) {
+                    parseStepModel(ev.raw)?.let { m ->
+                        // 硬证据落日志：切换是否生效以此为准（RunLog 可搜索）
+                        ocLog("session.step.started model=$m")
+                        _state.update { s ->
+                            if (s.modelOverride == null) s.copy(currentModel = m) else s
+                        }
+                    }
+                }
                 // 🔺 未知事件不丢弃、不崩UI——仅记录。上游新增类型属正常演进。
                 ocLog("未知 SSE 事件 type=${ev.type}，已忽略但保留原文")
+            }
         }
     }
 
@@ -457,6 +468,65 @@ class OcRepository(
     // ⚠️ 以下三个写操作都包了 withContext(Dispatchers.IO)：
     //    OkHttp 的 execute() 是阻塞调用，调用方是 UI 的 rememberCoroutineScope（主线程），
     //    不切线程会直接抛 NetworkOnMainThreadException（与 targetSdk 无关，是 Android 框架检查）。
+
+    // ── 模型池（v1.0 任务一）─────────────────────────────────────────
+
+    /**
+     * 拉取可选模型目录（GET /api/model?location[directory]=<工作区>）。
+     * 结果可能为空：模型目录来自 models.dev，设备网络不可达时服务端返回空数组
+     * （实测本机）——调用方必须优雅处理空态，不能当错误。
+     */
+    suspend fun fetchModels(directory: String): List<OcModel> = withContext(Dispatchers.IO) {
+        runCatching {
+            val enc = java.net.URLEncoder.encode(directory, "UTF-8")
+            val req = Request.Builder().url(http.url("/api/model?location[directory]=$enc")).get().build()
+            http.client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string() ?: return@use emptyList()
+                if (!resp.isSuccessful) return@use emptyList()
+                unwrapArray(text).let { arr ->
+                    (0 until arr.length()).mapNotNull { i ->
+                        arr.optJSONObject(i)?.let { OcModel.fromJson(it) }
+                    }
+                }.also { models -> _state.update { it.copy(models = models) } }
+            }
+        }.onFailure { ocLog("拉取模型目录失败：${it.message}") }.getOrDefault(emptyList())
+    }
+
+    /**
+     * 切换当前会话的模型（POST /api/session/{id}/model，body {model:{id,providerID}}）。
+     * 仅影响当前会话，不重写全局配置。
+     */
+    suspend fun setSessionModel(model: OcModel): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val sid = _state.value.sessionId ?: throw IllegalStateException("会话未就绪")
+            val body = JSONObject().put(
+                "model", JSONObject().put("id", model.id).put("providerID", model.providerID)
+            )
+            val req = body.toString().toPostRequest(http.url("/api/session/$sid/model"))
+            http.client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw OcHttpException(resp.code, "切换模型 HTTP ${resp.code}")
+                parseBody(resp) { "" }
+            }
+            _state.update { it.copy(modelOverride = model, currentModel = "${model.providerID}/${model.id}") }
+        }
+    }
+
+    /** session.step.started 事件里的 model 字段 → 显示名。字段路径/形态做防御式解析
+     *  （信封与否、model 为对象或字符串都兼容——以实测为准的教训）。 */
+    private fun parseStepModel(raw: String): String? = runCatching {
+        val o = JSONObject(raw)
+        val data = o.optJSONObject("data") ?: o
+        val m = data.opt("model") ?: data.optJSONObject("properties")?.opt("model") ?: return@runCatching null
+        when (m) {
+            is String -> m
+            is JSONObject -> {
+                val pid = m.optString("providerID")
+                val mid = m.optString("modelID").ifEmpty { m.optString("id") }
+                listOf(pid, mid).filter { it.isNotEmpty() }.joinToString("/").ifEmpty { null }
+            }
+            else -> null
+        }
+    }.getOrNull()
 
     suspend fun prompt(text: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {

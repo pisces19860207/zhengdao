@@ -76,6 +76,8 @@ fun SessionBar(
     title: String,
     connection: ConnectionState,
     attempt: Int,
+    currentModelText: String?,
+    onModelClick: () -> Unit,
     onStop: () -> Unit,
 ) {
     Row(
@@ -85,6 +87,17 @@ fun SessionBar(
         Column(Modifier.weight(1f)) {
             Text(title.ifEmpty { "新会话" }, style = MaterialTheme.typography.titleMedium)
             ConnectionLabel(connection, attempt)
+        }
+        // 模型池入口（v1.0 任务一）：常驻顶栏，显示当前生效模型（默认/provider/model）
+        TextButton(
+            onClick = onModelClick,
+            enabled = onModelClick != {},
+        ) {
+            Text(
+                currentModelText ?: "默认",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
         }
         IconButton(onClick = onStop) { Text("◼", style = MaterialTheme.typography.bodyMedium) }
     }
