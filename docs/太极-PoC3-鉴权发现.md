@@ -139,3 +139,26 @@ createSession 先挡住了）。**建议统一剥信封**：`JSONObject(text).op
   fiber InterruptError（taiji 日志 11:10/11:12 两段 span≈45-50s 的中断模式吻合）。
 - 附带观察：每次进太极都会新建一个会话（服务端已累积 7 个）——单会话模型下
   可能需要"复用最近会话"策略，归产品裁量。
+
+---
+
+## 追记三（2026-10-06 晚 · 四轮）：会话复用验证通过；RunLog 全盲根因找到
+
+**会话复用（3485910）实测通过**：会话列表最新为 20:00:00 的 `ses_eeeea3f6`（本次
+验证 run 之前已存在），20:02 进太极**未新建**、UI 直接复用它——优先级链
+（转屏保留 → 服务端最近 → 新建）按设计工作。
+
+**RunLog 全盲根因**（本轮最重要的发现）：
+- `RunLog.init()` **只在 `TerminalActivity.kt:66` 调用**——WebView 时代用户必然
+  进终端页；Compose 流程不进终端 → `appContext == null` → `RunLog.log` 的
+  `val ctx = appContext ?: return` **静默丢弃所有日志**。
+- 后果：19:00 以来所有分支构建的 RunLog 零输出——「失败可见」原则在太极流
+  整体失效；追记二里"`catch(Exception)` 从未触发"的推断**作废**（是写了看不见，
+  不是没触发），`catch(CancellationException)` 静默问题仍需修但不再是唯一嫌疑。
+- 修复：把 `RunLog.init(applicationContext)` 挪到 `MainActivity.onCreate`（或
+  Application）——**一行**，修好后「SSE 断开（第 N 次）：原因」即可见，断连
+  根因自现。
+
+**SSE 断连现状**：两时点截图均「已断开，正在重连（第 1 次）」（attempt 不再
+爬升，与上版行为不同）。在 RunLog 修好之前无法从客户端取证；服务端日志亦盲
+（追记二）。
