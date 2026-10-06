@@ -49,8 +49,20 @@ fun HomeScreen(
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var summary by remember { mutableStateOf(AppState.summaryLine(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
+    // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复
+    var healthChecks by remember { mutableStateOf<List<EnvHealth.Check>?>(null) }
+    var healthEpoch by remember { mutableStateOf(0) }
     // 卸载二次确认（P3）：非 null 时弹出确认弹窗
     var uninstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
+
+    // 展开状态卡（或修复完成）时跑一遍体检；IO 采集，与 sysInfo 同模式
+    LaunchedEffect(statusExpanded, healthEpoch) {
+        if (statusExpanded) {
+            healthChecks = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                EnvHealth.inspect(context)
+            }
+        }
+    }
     var sysInfo by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
     // 每次回到本页（从终端返回）刷新安装状态
     LaunchedEffect(Unit) {
@@ -124,6 +136,73 @@ fun HomeScreen(
                     )
                     AnimatedVisibility(visible = statusExpanded) {
                         Column(modifier = Modifier.padding(top = 8.dp)) {
+                            // 环境体检（P7）：逐项勾叉 + 定向修复；先于系统信息展示
+                            val checks = healthChecks
+                            Text(
+                                text = if (checks == null) "环境体检中…" else {
+                                    val pass = checks.count { it.ok }
+                                    "环境体检 $pass/${checks.size} 通过"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            if (checks == null) {
+                                Text(
+                                    text = "正在检查环境状态…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                checks.forEach { c ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 2.dp),
+                                    ) {
+                                        Text(
+                                            text = if (c.ok) "✓" else "✗",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (c.ok) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.width(20.dp),
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = c.label,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                            Text(
+                                                text = c.detail,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        // 可修复项：行尾定向修复；RootFS/proot 损坏：引导到设置页重解压
+                                        if (!c.ok) {
+                                            if (c.fixId != null) {
+                                                TextButton(onClick = {
+                                                    val fid = c.fixId
+                                                    Thread {
+                                                        EnvHealth.fix(context, fid)
+                                                        android.os.Handler(context.mainLooper).post {
+                                                            healthEpoch++
+                                                        }
+                                                    }.start()
+                                                }) { Text("修复") }
+                                            } else {
+                                                TextButton(onClick = onOpenSettings) {
+                                                    Text("去处理")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                             sysInfo?.let { info ->
                                 Text(
                                     text = info.asText(),

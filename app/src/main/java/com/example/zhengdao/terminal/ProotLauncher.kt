@@ -123,26 +123,14 @@ object ProotLauncher {
         }
 
         // DNS 兜底（设计文档 §4：proot 内没有 systemd-resolved，缺 resolv.conf 就是
-        // "下载得动、上不了网"的第一大故障；App 每次启动前确保存在）
-        ensureDnsFiles(File(rootfsDir, "etc/resolv.conf"), File(rootfsDir, "etc/hosts"))
+        // "下载得动、上不了网"的第一大故障；App 每次启动前确保存在）。
+        // 实现收口在 EnvSelfHeal（P7：与首页「环境体检→修复」共用同一份）
+        EnvSelfHeal.ensureDnsFiles(File(rootfsDir, "etc/resolv.conf"), File(rootfsDir, "etc/hosts"))
         // 时区同步（用户反馈：tmux 状态栏时钟比手机慢 8 小时）：rootfs 镜像构建时
         // /etc/localtime 指向 Etc/UTC（实测 2026-10-05），guest 内 date/tmux 全按 UTC
-        // 显示。zoneinfo 目录实测存在（由 ffmpeg 等传递依赖带入，构建清单未显式装
-        // tzdata），故启动前把 /etc/localtime 改指 Asia/Shanghai 并补 /etc/timezone；
-        // 已是目标值时跳过（幂等，不刷日志）。
-        runCatching {
-            val localtime = File(rootfsDir, "etc/localtime")
-            val wanted = "/usr/share/zoneinfo/Asia/Shanghai"
-            if (File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai").isFile) {
-                val cur = runCatching { android.system.Os.readlink(localtime.absolutePath) }.getOrNull()
-                if (cur != wanted) {
-                    localtime.delete()
-                    android.system.Os.symlink(wanted, localtime.absolutePath)
-                    File(rootfsDir, "etc/timezone").writeText("Asia/Shanghai\n")
-                    RunLog.log("时区已校准: Asia/Shanghai（原 ${cur ?: "非链接"}）")
-                }
-            }
-        } // 写不进去不阻断启动；下面 TZ 环境变量兜底
+        // 显示。启动前把 /etc/localtime 改指 Asia/Shanghai 并补 /etc/timezone；
+        // 写不进去不阻断启动，下面 TZ 环境变量兜底
+        runCatching { EnvSelfHeal.ensureTimezone(rootfsDir) }
 
         // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
         // 这样「修复环境」重解压系统层时不碰用户数据
@@ -169,21 +157,8 @@ object ProotLauncher {
 
         // hermes uv 包装器接管（update 韧性）：hermes update 若拉到新的 pinned uv
         // 版本会新开 tools/uv-<ver> 目录、放下真实二进制——裸奔一次就硬链接失败。
-        // 每次启动统一巡检：ELF 真身挪为 uv.real、原路径放包装器（幂等，见常量注释）。
-        runCatching {
-            val tools = File(homeDir, ".hermes/tools")
-            val dirs = tools.listFiles { f -> f.isDirectory && f.name.startsWith("uv-") }
-                ?: return@runCatching
-            for (d in dirs) {
-                val uv = File(d, "uv")
-                val real = File(d, "uv.real")
-                if (isElf(uv) && !real.isFile) uv.renameTo(real)
-                if (!uv.isFile || isElf(uv)) {
-                    uv.writeBytes(android.util.Base64.decode(HERMES_UV_WRAPPER_B64, android.util.Base64.DEFAULT))
-                    android.system.Os.chmod(uv.absolutePath, 493)
-                }
-            }
-        }
+        // 每次启动统一巡检：ELF 真身挪为 uv.real、原路径放包装器（实现收口 EnvSelfHeal）
+        runCatching { EnvSelfHeal.ensureHermesUvWrappers(homeDir) }
         // 细光标（用户反馈块太粗）：每个 login shell 启动时发 DECSCUSR 6（bar 闪烁）。
         // tmux 可能随后覆盖，profile 方式让每个 shell（含分屏新 pane）重新声明。
         runCatching {
@@ -206,24 +181,12 @@ object ProotLauncher {
                 }
             }
         }
-        // uv 系统级配置（belt；主防护是 AgentInstaller 的 hermes uv 二进制包装器）：
+        // uv 系统级配置（belt；主防护是 hermes 内嵌 uv 包装器巡检）：
         // hermes 的 install.sh 全局 UV_NO_CONFIG=1 且 pm 剥 UV_* 环境变量、重定向
         // XDG_CONFIG_HOME——用户级 uv.toml 全失效。/etc/uv/uv.toml 是 uv 官方配置
-        // 发现层级里的系统级路径（未实测·推断，验证法：guest 内 uv --help 查
-        // "System configuration"或直接看本次安装结果）；UV_NO_CONFIG 未传到 pm 的
-        // uv 子进程时它会被读到 → copy 模式兜底。
-        runCatching {
-            val uvCfgDir = File(rootfsDir, "etc/uv")
-            if (uvCfgDir.isDirectory || uvCfgDir.mkdirs()) {
-                val f = File(uvCfgDir, "uv.toml")
-                if (!f.isFile || !f.readText().contains("link-mode")) {
-                    f.writeText(
-                        "# 证道预置：Android/proot 无硬链接可用（SELinux 拒绝 + bind 边界）\n" +
-                            "link-mode = \"copy\"\n"
-                    )
-                }
-            }
-        }
+        // 发现层级里的系统级路径；UV_NO_CONFIG 未传到 pm 的 uv 子进程时它会被读到
+        // → copy 模式兜底（实现收口 EnvSelfHeal）
+        runCatching { EnvSelfHeal.ensureUvConfig(rootfsDir) }
         // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
         // 这样「修复环境」重解压系统层时不碰用户数据（homeDir/prootTmp 已在前面的
         // hermes 巡检块之前定义）
@@ -549,17 +512,6 @@ object ProotLauncher {
     const val HERMES_UV_WRAPPER_B64 =
         "IyEvYmluL2Jhc2gKIyB6aGVuZ2RhbyBpbmplY3Rpb24gbGF5ZXI6IGhlcm1lcyBwbSBzdHJpcHMgVVZfKiBlbnYgdmFycyBhbmQgaWdub3JlcyB1diBjb25maWcKIyBmaWxlcyAoVVZfTk9fQ09ORklHPTEpIC0tIHdyYXBwaW5nIGl0cyBvd24gcGlubmVkIHV2IGJpbmFyeSBpcyB0aGUgb25seQojIHJlbGlhYmxlIGluamVjdGlvbiBwb2ludC4gVGhlIHJlYWwgYmluYXJ5IGxpdmVzIG5leHQgdG8gdGhpcyBhcyB1di5yZWFsLgpEPSIkKGNkICIkKGRpcm5hbWUgIiQwIikiICYmIHB3ZCkiClI9IiREL3V2LnJlYWwiCmlmIFsgISAteCAiJFIiIF07IHRoZW4KICBUPSIkKG1rdGVtcCAtZCAyPi9kZXYvbnVsbCB8fCBlY2hvIC90bXAvLnpkdXYuJCQpIgogIG1rZGlyIC1wICIkVCIKICBmb3IgVSBpbiBcCiAgICBodHRwczovL2dpdGh1Yi5jb20vYXN0cmFsLXNoL3V2L3JlbGVhc2VzL2Rvd25sb2FkLzAuMTIuMy91di1hYXJjaDY0LXVua25vd24tbGludXgtZ251LnRhci5neiBcCiAgICBodHRwczovL2hlcm1lcy1hc3NldHMubm91c3Jlc2VhcmNoLmNvbS91cHN0cmVhbS9zaGEyNTYvYmI2NmNiNTJlN2IxODIzYWVkMTE4MzYzMGQ4ZDhlNWM5NTg4NDBkNTg0YTRjNTVlYzEwYTRjZmMxNjhkY2NhMiA7IGRvCiAgICBjdXJsIC1Mc1NmICIkVSIgLW8gIiRUL3V2LnRneiIgJiYgYnJlYWsKICBkb25lCiAgaWYgWyAtZiAiJFQvdXYudGd6IiBdICYmIFsgIiQoc2hhMjU2c3VtICIkVC91di50Z3oiIDI+L2Rldi9udWxsIHwgY3V0IC1kJyAnIC1mMSkiID0gImJiNjZjYjUyZTdiMTgyM2FlZDExODM2MzBkOGQ4ZTVjOTU4ODQwZDU4NGE0YzU1ZWMxMGE0Y2ZjMTY4ZGNjYTIiIF07IHRoZW4KICAgIHRhciAteHpmICIkVC91di50Z3oiIC1DICIkVCIgMj4vZGV2L251bGwKICAgIEY9IiQoZmluZCAiJFQiIC1uYW1lIHV2IC10eXBlIGYgMj4vZGV2L251bGwgfCBoZWFkIC1uMSkiCiAgICBbIC1uICIkRiIgXSAmJiBtdiAiJEYiICIkUiIgJiYgY2htb2QgMDc1NSAiJFIiCiAgZmkKICBybSAtcmYgIiRUIgpmaQppZiBbICEgLXggIiRSIiBdOyB0aGVuCiAgZWNobyAiW3poZW5nZGFvXSB1diB3cmFwcGVyOiBwaW5uZWQgdXYgdW5hdmFpbGFibGUsIGZhbGxpbmcgYmFjayB0byBzeXN0ZW0gdXYiID4mMgogIFsgLXggL3Vzci9sb2NhbC9iaW4vdXYgXSAmJiBleGVjIC91c3IvbG9jYWwvYmluL3V2ICIkQCIKICBleGl0IDEyNwpmaQpleHBvcnQgVVZfTElOS19NT0RFPWNvcHkKZXhwb3J0IFRNUERJUj0iJHtUTVBESVI6LS9yb290L3RtcH0iCmV4ZWMgIiRSIiAiJEAiCg=="
 
-    /** ELF 魔数判定（\x7FELF）：区分真实 uv 二进制与我们的 shell 包装器。 */
-    private fun isElf(f: File): Boolean {
-        if (!f.isFile) return false
-        val head = ByteArray(4)
-        runCatching {
-            java.io.RandomAccessFile(f, "r").use { it.readFully(head) }
-        }.onFailure { return false }
-        return head[0] == 0x7F.toByte() && head[1] == 'E'.code.toByte() &&
-            head[2] == 'L'.code.toByte() && head[3] == 'F'.code.toByte()
-    }
-
     /** 回退计划：系统自带 shell。功能完整可用，但不是 Debian 环境。 */
     private fun fallbackPlan(filesDir: File, cacheDir: File): LaunchPlan = LaunchPlan(
         cmd = "/system/bin/sh",
@@ -573,30 +525,4 @@ object ProotLauncher {
         ),
         isFallback = true,
     )
-    /** 确保 guest 内 DNS 配置存在；多路 DNS：国内源在前（快且稳），国际源兜底
-     *  （走 VPN 时由其接管）。内容缺失/过期即写入；失败不阻断启动。
-     *  options 行（2026-10-06，用户路上移动网络 DNS 超时反馈）：单查询 1 秒超时、
-     *  重试 3 次、多服务器轮换——移动网络丢包时快速换源，替代默认的 5 秒死等。 */
-    private fun ensureDnsFiles(resolv: File, hosts: File) {        try {
-            // 旧版 resolv 只有国际源或无 options：升级后补齐国内源 + 重试参数
-            val stale = resolv.isFile && (!resolv.readText().contains("223.5.5.5") ||
-                !resolv.readText().contains("options timeout"))
-            if (!resolv.isFile || resolv.length() == 0L || stale) {
-                resolv.parentFile?.mkdirs()
-                resolv.writeText(
-                    "options timeout:1 attempts:3 rotate\n" +
-                        "nameserver 223.5.5.5\n" +      // 阿里 DNS（国内）
-                        "nameserver 119.29.29.29\n" + // 腾讯 DNSPod（国内）
-                        "nameserver 1.1.1.1\n" +      // Cloudflare（国际/走代理）
-                        "nameserver 8.8.8.8\n"        // Google（国际/走代理）
-                )
-            }
-            if (!hosts.isFile || hosts.length() == 0L) {
-                hosts.parentFile?.mkdirs()
-                hosts.writeText("127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n")
-            }
-        } catch (_: IOException) {
-            // 写不进去不阻断会话；网络类故障由 DNS 引导验证项（§9 Checklist）兜底
-        }
-    }
 }
