@@ -78,12 +78,18 @@ fun HomeScreen(
         }
     }
     var sysInfo by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
-    // 每次回到本页（从终端返回）刷新安装状态
-    LaunchedEffect(Unit) {
-        agents = AppState.agents(context)
+    // 系统信息采集轮次：进页面采一次，之后每次 ON_RESUME 再采一次。
+    // 原先只在 LaunchedEffect(Unit) 里采一次——用户去终端装完环境/Agent 再回来，
+    // 卡片里的"内存可用 / 已装 Agent / 发行版"全是切走之前的旧快照。
+    var sysTick by remember { mutableStateOf(0) }
+    LaunchedEffect(sysTick) {
         sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             SystemInfoProvider.collect(context)
         }
+    }
+    // 每次回到本页（从终端返回）刷新安装状态
+    LaunchedEffect(Unit) {
+        agents = AppState.agents(context)
         // M3：Agent 清单免发版更新（6h TTL，静默失败；拉到新清单后刷新卡片）
         AgentManifest.refresh(context, force = false) {
             agents = AppState.agents(context)
@@ -104,6 +110,8 @@ fun HomeScreen(
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 agents = AppState.agents(context)
+                // 系统信息同步重采：内存/存储占用、已装 Agent 列表都是会变的
+                sysTick++
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)

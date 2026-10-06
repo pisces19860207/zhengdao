@@ -76,7 +76,9 @@ object Settings {
 @Composable
 fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> }) {
     val ctx = LocalContext.current
-    var info by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
+    // 这里原先有一份 SystemInfoProvider.collect() 的结果缓存，但全页从未读过它——
+    // 设置页只展示存储占用。留着会每次进页白跑一次采集（v1.1 起采集还包含 node
+    // 二进制的版本扫描），故删掉。
     var repairConfirm by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var pendingUpdateUrl by remember { mutableStateOf<String?>(null) }
@@ -144,7 +146,6 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
     }
 
     LaunchedEffect(storageTick) {
-        info = withContext(Dispatchers.IO) { SystemInfoProvider.collect(ctx) }
         val sizes = withContext(Dispatchers.IO) {
             Triple(
                 dirSizeMb(File(ctx.filesDir, "rootfs")),
