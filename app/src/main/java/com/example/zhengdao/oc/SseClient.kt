@@ -84,8 +84,16 @@ class SseClient(private val http: OkHttpClient) {
         while (currentCoroutineContext().isActive) {
             var lines = 0
             var bytes = 0
+            // 🔍 诊断：把响应形态（HTTP code + Content-Type）捕获到 try 作用域外，
+            //    供 catch 块在连接级失败 / 异常断连时也能打印出来——
+            //    用来确认服务端实际返回的 Content-Type 是否为 text/event-stream、
+            //    以及 HTTP 状态码有无异常（401/404/200-html 等）。
+            var respCode = -1
+            var respContentType: String = "未建立连接（连接级失败，无响应对象）"
             try {
                 http.newCall(request).execute().use { resp ->
+                    respCode = resp.code
+                    respContentType = resp.body?.contentType()?.toString() ?: "(有响应但无 body)"
                     if (!resp.isSuccessful) {
                         throw IOException("SSE HTTP ${resp.code}")
                     }
@@ -145,7 +153,13 @@ class SseClient(private val http: OkHttpClient) {
                 throw e
             } catch (e: Exception) {
                 emit(Event.Disconnected(e))
-                ocLog("SSE 连接异常：${e.javaClass.simpleName} ${e.message}")
+                // 🔍 最终诊断（用户要求）：除 e.message 外，同时打出 HTTP code 与
+                //    Content-Type，确认服务端返回形态是否正确（必须是 text/event-stream）。
+                //    respCode=-1 表示连响应都拿不到（连接级失败，如连接被拒 / DNS / 端口未开）。
+                ocLog(
+                    "SSE 连接异常：${e.javaClass.simpleName} ${e.message} | " +
+                        "HTTP=$respCode contentType=$respContentType"
+                )
             }
 
             if (!currentCoroutineContext().isActive) break
