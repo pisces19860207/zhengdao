@@ -198,24 +198,109 @@ fun MessageList(
 
 // ── 单条消息 ──────────────────────────────────────────────────────────
 
+/**
+ * 单条消息。
+ *
+ * ## v1.1 第二阶段：视觉层级（「最终回答是主角」）
+ *
+ * - **用户消息**：右侧彩色气泡（`primaryContainer`），一眼可辨。
+ * - **助手消息**：**不套气泡**，整宽文档流渲染——正文（最终回答）用
+ *   [MaterialTheme.typography.bodyLarge] + `onSurface`（**大字号、高对比、无折叠**）；
+ *   思考过程与工具调用作为**辅助**，分别以折叠块 / 低调卡片呈现。
+ *
+ * 之所以给助手消息去掉气泡：气泡会把长回答压进一个浅色窄容器，主次不分、可读性差；
+ * 整宽文档流才能让"最终回答"真正成为主角（这也是主流对话客户端的做法）。
+ */
 @Composable
 fun MessageBubble(msg: OcMessage) {
-    val isUser = msg.role == OcMessage.Role.USER
-    Row(
+    if (msg.role == OcMessage.Role.USER) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.widthIn(max = 560.dp),
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    msg.parts.forEach { PartRow(it) }
+                }
+            }
+        }
+        return
+    }
+
+    // 助手：整宽文档流。渲染单元已按需把连续 reasoning 合并（见 [groupParts]）。
+    val items = remember(msg.parts) { groupParts(msg.parts) }
+    Column(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Surface(
-            color = if (isUser) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.widthIn(max = 560.dp),
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                msg.parts.forEach { PartRow(it) }
+        items.forEach { item ->
+            when (item) {
+                is RenderItem.TextPart -> FinalAnswerText(item.part.text)
+                is RenderItem.ReasoningGroup -> ReasoningBlock(item.parts)
+                is RenderItem.ToolPart -> ToolCallCard(item.part)
+                is RenderItem.Other -> PartRow(item.part)
             }
         }
     }
+}
+
+/** 最终回答正文：主角。大字号、高对比、无折叠。 */
+@Composable
+private fun FinalAnswerText(text: String) {
+    if (text.isEmpty()) return
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+// ── 渲染分组（v1.1 第二阶段）──────────────────────────────────────────
+
+/** 一条消息内的渲染单元。连续 reasoning 合并为一组，其余按 part 原样透传。 */
+internal sealed interface RenderItem {
+    data class TextPart(val part: OcPart.Text) : RenderItem
+    data class ReasoningGroup(val parts: List<OcPart.Reasoning>) : RenderItem
+    data class ToolPart(val part: OcPart.Tool) : RenderItem
+    data class Other(val part: OcPart) : RenderItem
+}
+
+/**
+ * 把消息的 parts 归并为渲染单元。
+ *
+ * **为什么合并连续 reasoning**：一条助手消息里，Agent 常在多次工具调用之间产生
+ * 多段 reasoning（part 被拆碎）。若每段各画一个折叠块，头部会刷屏、层级被拉平；
+ * 合并成一组后以「💭 思考过程 · N 步」呈现，N = 非空段数（数据直接可得，不猜测）。
+ *
+ * 只合并**相邻**的 reasoning —— 它们被文本/工具分隔时属于不同的思考阶段，不应跨段合并。
+ *
+ * `internal` 而非 `private`：供 JVM 单测（TaijiRenderGroupingTest）验证合并边界。
+ */
+internal fun groupParts(parts: List<OcPart>): List<RenderItem> {
+    val out = mutableListOf<RenderItem>()
+    var buf = mutableListOf<OcPart.Reasoning>()
+    fun flush() {
+        if (buf.isNotEmpty()) {
+            out += RenderItem.ReasoningGroup(buf)
+            buf = mutableListOf()
+        }
+    }
+    parts.forEach { p ->
+        when (p) {
+            is OcPart.Reasoning -> buf += p
+            else -> {
+                flush()
+                out += when (p) {
+                    is OcPart.Text -> RenderItem.TextPart(p)
+                    is OcPart.Tool -> RenderItem.ToolPart(p)
+                    else -> RenderItem.Other(p)
+                }
+            }
+        }
+    }
+    flush()
+    return out
 }
 
 // ── Part渲染分发 ──────────────────────────────────────────────────────
@@ -228,7 +313,7 @@ fun PartRow(part: OcPart) {
         }
         // ⚠️ 严格按 **part.type** 分派（不靠"是否含 thinking 标签"猜）：
         //    `reasoning` 只进独立的样式化折叠块；`text` 走上一个分支的正文 Text。
-        is OcPart.Reasoning -> ReasoningBlock(part.text)
+        is OcPart.Reasoning -> ReasoningBlock(listOf(part))
         is OcPart.Tool -> {
             // 🔍 诊断（用户第 1 步）：dump 工具卡**实际收到**的字段，确认 name / 入参 / 结果是否都在。
             //    用 LaunchedEffect(part) 保证「每个 part 只打一次」，避免轮询重组时刷屏。
@@ -261,11 +346,13 @@ fun PartRow(part: OcPart) {
 @Composable
 fun ToolCallCard(part: OcPart.Tool) {
     var expanded by remember { mutableStateOf(false) }
-    val (icon, tint) = when (part.state) {
-        ToolState.Running -> "⟳" to MaterialTheme.colorScheme.primary
-        ToolState.Success -> "✓" to MaterialTheme.colorScheme.primary
-        ToolState.Error -> "✗" to MaterialTheme.colorScheme.error
-        ToolState.Unknown -> "•" to MaterialTheme.colorScheme.onSurfaceVariant
+    // v1.1 第二阶段：统一为「<状态图标> 🔧 <工具名> · <状态>」。
+    // 状态图标：运行中 ● / 完成 ✓ / 失败 ✗（计划第 8 条）。
+    val (icon, tint, stateText) = when (part.state) {
+        ToolState.Running -> Triple("●", MaterialTheme.colorScheme.primary, "执行中")
+        ToolState.Success -> Triple("✓", MaterialTheme.colorScheme.primary, "已完成")
+        ToolState.Error -> Triple("✗", MaterialTheme.colorScheme.error, "失败")
+        ToolState.Unknown -> Triple("•", MaterialTheme.colorScheme.onSurfaceVariant, "")
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -276,20 +363,19 @@ fun ToolCallCard(part: OcPart.Tool) {
                 Text(icon, color = tint, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    part.toolName.ifEmpty { "工具" },
+                    "🔧 ${part.toolName.ifEmpty { "工具" }}",
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    when (part.state) {
-                        ToolState.Running -> "执行中"
-                        ToolState.Success -> "完成"
-                        ToolState.Error -> "失败"
-                        ToolState.Unknown -> ""
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = tint,
-                )
+                if (stateText.isNotEmpty()) {
+                    Text(
+                        "· $stateText",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = tint,
+                    )
+                }
             }
             // 折叠态也显示一行入参摘要（命令 / 路径），让"用了哪个工具、干了啥"一眼可见
             part.input?.takeIf { it.isNotBlank() }?.let { inp ->
@@ -326,16 +412,28 @@ fun ToolCallCard(part: OcPart.Tool) {
 // ── 思考过程（reasoning）独立样式化块 ─────────────────────────────────
 
 /**
- * reasoning 的**独立样式化块**（借鉴 PR #29028 思路）：
- * 头部独立成行（含首行摘要 + 展开指示），展开后的原文作为**块内正文**渲染在头部之下。
- * 目的是把「思考过程」与紧随其后的**最终正文**明确分开
- * —— 修「正文看起来属于思考过程」的标签错位（原先所有 part 挤在同一个无间距 Column 里）。
+ * 思考过程的**折叠块**（v1.1 第二阶段）。
+ *
+ * 把一条消息内**相邻的多段 reasoning** 合并为一个折叠块：
+ * - 头部：`💭 思考过程 · N 步　展开 ▼`（N = 非空段数；仅 1 段时省去「· N 步」）；
+ * - 默认**折叠**（思考是辅助，不该抢正文的注意力）；
+ * - 展开后以**灰色小字**渲染全部思考原文（辅助层级）。
+ *
+ * 与「最终回答」（大字号、高对比、无折叠）形成明确主次对比——这正是第二阶段要修的
+ * 「正文看起来属于思考过程」的层级错位。
  */
 @Composable
-private fun ReasoningBlock(text: String) {
+private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
     var expanded by remember { mutableStateOf(false) }
+    val text = parts.joinToString("\n\n") { it.text }.trim()
+    if (text.isEmpty()) return
+
+    // 步数 = 非空段数（直接来自数据，不猜测）；<2 段时不显示「· N 步」，避免「· 1 步」的怪读法。
+    val steps = parts.count { it.text.isNotBlank() }
+    val head = if (steps > 1) "💭 思考过程 · $steps 步" else "💭 思考过程"
     // 头部摘要：取首个非空行
     val summary = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth()
@@ -344,9 +442,9 @@ private fun ReasoningBlock(text: String) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "💭 思考过程",
+                head,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (!expanded && summary.isNotEmpty()) {
                 Spacer(Modifier.width(8.dp))
