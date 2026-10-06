@@ -140,3 +140,36 @@ App 实际权限状态无关。用 run-as 当"App 身份"测存储，测出来�
 
 **现状**：/sdcard 直连可用（真身验证：readdir/读/写 ✓，文件管理器可见 ✓）；
 SAF 镜像同步降级为**备用方案**（个别 ROM 兜底），代码保留、设置页标注"备用"。
+
+---
+
+### E-005 修订（2026-10-06 晚）· 存储产品决策反转
+
+**背景**：同日 E-005 定案后，用户在 P1-P8 执行清单中决定调整存储产品策略，
+要求把 `MANAGE_EXTERNAL_STORAGE` 升为正式引导主路径，并在跑通完整链路后删除 SAF 镜像同步。
+
+**新决策（用户 2026-10-06 晚，P1）**：
+1. **`MANAGE_EXTERNAL_STORAGE` 升为主路径**：首启 / 存储检测失败时主动引导用户到
+   `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`（带包名），失败回退
+   `ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION`；未授权不阻塞，降级私有工作区。
+2. **删除 SAF 镜像同步（PhoneMirror 引擎 + FD 代理）**：跑通 MANAGE + `--bind` 完整链路后，
+   SAF 镜像同步与 FD 代理全部作废、代码移除（P1.5）。
+
+**与 E-005 技术结论的关系（务必区分，不得误记）**：
+- E-005 的**方法论教训不变**：`run-as` 探针不能替代 App 真身验证（SELinux 域不同）。
+- E-005 的技术事实"`MANAGE_EXTERNAL_STORAGE` 与基础 `/sdcard` 访问无关（真身读写都通）"
+  **仍然成立**——MANAGE 升主路径是**产品决策**（为获取更广存储访问面、统一授权入口），
+  **不是修复"存储不通"的 bug**。基础 `/sdcard` 通路本就可用，靠的是
+  READ 帽子摘除（`d414dca`）+ READ/WRITE 运行时授权 + `--bind`。
+- **已告知并接受的代价**：对非技术用户弹出"允许访问所有文件"授权页；删除 SAF 后
+  失去个别 ROM 的兜底（E-005 原保留的 ROM 兜底不再存在）。
+
+**代码影响**：
+- `app/src/main/AndroidManifest.xml:15`：`MANAGE_EXTERNAL_STORAGE` 已声明，升为主路径。
+- `app/src/main/java/.../terminal/ProotLauncher.kt:373`：`--bind /sdcard:/sdcard` 已在，主路径不变。
+- `app/src/main/java/.../mirror/PhoneMirror.kt`：删除（SAF 引擎作废，P1.5）。
+- `app/src/main/java/.../ui/SettingsScreen.kt`：SAF 镜像入口删除；MANAGE 入口升为显式引导。
+- `AgentInstaller.kt` / FD 代理：移除（P1.5）。
+
+**修订纪律**：后续任何人改存储相关代码，仍以本 ERRATA 的"技术事实"为准；
+产品决策（MANAGE 主路径 / 删 SAF）可随用户新指令再调整，但不得改写上方技术事实与方法论。
