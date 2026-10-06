@@ -6,6 +6,7 @@ package com.example.zhengdao.oc
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
+import com.example.zhengdao.settings.ApiKeyStore
 import com.example.zhengdao.terminal.Workspace
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
