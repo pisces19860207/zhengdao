@@ -17,6 +17,13 @@ import java.io.IOException
 /**
  * SSE 客户端：建立/维持事件长连接，解析事件，重连退避。
  *
+ * ## ⚠️ 现状：SSE 仅作「信号通道」，数据以 REST 轮询为准（ERRATA E-008）
+ *
+ * OpenCode 的 `/api/event` 存在服务端缺陷（Issue #38458）：每次 flush 后 0.1–1.4s 即关闭
+ * 连接，客户端只收到第一波数据然后静默。本机（2.0.22）实测表现为「HTTP 200 连上、读到
+ * 0 字节即断」。**故本类不再作为数据源**——[OcRepository] 以 REST 轮询取消息；本类只在
+ * 连上时发一次 [Event.Reconnected] 表示「信号通道就绪」。等上游修复后可切回纯 SSE。
+ *
  * ## 为什么自己解析而不用 okhttp-sse 的EventSources
  *
  * okhttp-sse 是独立 artifact（不随 okhttp 主包提供），且其工厂类面向"创建监听器"
@@ -78,8 +85,10 @@ class SseClient(private val http: OkHttpClient) {
         request: Request,
         sessionIdOf: (raw: String) -> String?,
     ): Flow<Event> = flow {
-        var attempt = 0
         var everConnected = false
+        // 连续"连上即关、0 字节"的次数（OpenCode /api/event 已知缺陷，Issue #38458）。
+        // ⚠️ 不能用"连上就重置退避"——那会让每轮都回到 1s，退化成每秒重连刷屏。
+        var defectStreak = 0
 
         while (currentCoroutineContext().isActive) {
             var lines = 0
@@ -98,21 +107,15 @@ class SseClient(private val http: OkHttpClient) {
                         throw IOException("SSE HTTP ${resp.code}")
                     }
                     val body = resp.body ?: throw IOException("SSE 响应无 body")
-                    // 🔍 诊断：打印响应头与 Content-Length，用于区分「服务端给了空流」
-                    //    和「读到了数据但被中途关闭」。服务端三路鉴别已洗清，
-                    //    问题在客户端侧，这里要把客户端实际看到的响应形态打出来。
-                    ocLog(
-                        "SSE 连接建立 HTTP ${resp.code} | " +
-                            "encoding=${resp.header("Content-Encoding")} " +
-                            "len=${resp.header("Content-Length")} " +
-                            "transfer=${resp.header("Transfer-Encoding")} " +
-                            "conn=${resp.header("Connection")}"
-                    )
+                    // 信号通道语义（ERRATA E-008）：连上（TCP + HTTP 200）即视为「就绪」。
+                    // 不指望它持续推事件——该端点连上即关（服务端已知缺陷），数据一律走 REST 轮询。
+                    if (!everConnected) {
+                        ocLog("SSE 信号通道就绪（HTTP ${resp.code}）；数据以 REST 轮询为准")
+                    }
                     emit(Event.Reconnected(if (everConnected) sessionIdOf("") else null))
                     everConnected = true
-                    attempt = 0                       // 连上就重置退避
 
-                    val source = body.source().buffer()
+                    val source = body.source()   // BufferedSource 本身即可 readUtf8Line / exhausted
                     var eventName: String? = null
                     val dataLines = StringBuilder()
 
@@ -139,32 +142,26 @@ class SseClient(private val http: OkHttpClient) {
                         }
                     }
                 }
-                // 正常结束流（服务器关闭）——视为一次断开。
-                // ⚠️ 必须留痕：这条路径此前**没有任何日志**，与 CancellationException
-                //    一起构成两条"静默死亡"路径，导致断连原因完全无法定位。
-                // 🔍 关键判据：读到 0 行 = 服务端给的是空流（或客户端根本没读到）；
-                //    读到若干行才退出 = 服务端中途关流。两者修法完全不同。
-                ocLog("SSE 流结束（第 ${attempt + 1} 次）：读到 $lines 行 / $bytes 字节")
+                // 流结束（服务端关流）。本端点"连上即关"属**已知缺陷**（Issue #38458），
+                // 不再逐轮刷日志；只有"读到过事件"（意外情况）才留痕。
+                if (lines > 0) ocLog("SSE 流结束：读到 $lines 行 / $bytes 字节（非空流，值得关注）")
                 emit(Event.Disconnected(null))
             } catch (e: CancellationException) {
-                // ⚠️ 不记日志就等于无痕迹死亡：协程被取消时看不出原因。
-                //    必须区分"外部主动取消"（正常关闭，不该算故障）与"超时取消"（真故障）。
-                ocLog("SSE 协程被取消：${e.message ?: "无消息"}")
                 throw e
             } catch (e: Exception) {
                 emit(Event.Disconnected(e))
-                // 🔍 最终诊断（用户要求）：除 e.message 外，同时打出 HTTP code 与
-                //    Content-Type，确认服务端返回形态是否正确（必须是 text/event-stream）。
-                //    respCode=-1 表示连响应都拿不到（连接级失败，如连接被拒 / DNS / 端口未开）。
+                // 异常是"值得关注"的少数派，照记；respCode=-1 = 连响应都拿不到（连接级失败）。
                 ocLog(
-                    "SSE 连接异常：${e.javaClass.simpleName} ${e.message} | " +
+                    "SSE 信号通道异常：${e.javaClass.simpleName} ${e.message} | " +
                         "HTTP=$respCode contentType=$respContentType"
                 )
             }
 
             if (!currentCoroutineContext().isActive) break
-            val wait = BACKOFF_MS[minOf(attempt++, BACKOFF_MS.lastIndex)]
-            delay(wait)
+            // ⚠️ 退避：只有"真正读到过事件"才算健康连接并重置；否则（连上即关、0 字节）
+            //    按缺陷累计，指数退避（1s→2s→4s→8s→15s 封顶），不再每秒一轮刷屏。
+            defectStreak = if (lines > 0) 0 else minOf(defectStreak + 1, BACKOFF_MS.lastIndex)
+            delay(BACKOFF_MS[defectStreak])
         }
     }
 

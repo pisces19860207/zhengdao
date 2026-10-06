@@ -268,3 +268,44 @@ SPA catch-all，`/` 、`/global/health`、`/session` 一律返回 `200 text/html
 **验证**：三项均在真机（Magic 5 Pro / 2.0.22）实测，修复已落在
 `feat/taiji-compose-ui` 分支（`OcManager.serveRunning` / `parseServePassword`），
 `assembleDebug` 通过。
+
+---
+
+## E-008 · 2026-10-06 · OpenCode `/api/event` 连上即关（服务端缺陷 Issue #38458）；数据改走 REST 轮询
+
+**现象（真机 + 双端复现）**
+太极 Tab 的 SSE 长连接表现为「每秒一轮」：`SSE 连接建立 HTTP 200 | transfer=chunked` 之后
+立即 `读到 0 行 / 0 字节` 断开，UI 在「已连接 / 正在重连」之间闪烁，而 REST 端点全部正常。
+
+**定性：服务端缺陷，非本项目客户端 bug**
+OpenCode 的 `/api/event` 在**每次 flush 后约 0.1–1.4 秒关闭连接**（上游 Issue #38458），
+普通单连接客户端只收到第一波数据然后静默。四路取证全部指向服务端：
+
+| 取证 | 结果 |
+|---|---|
+| PC `curl /api/event`（`adb forward`，正确密码） | 200 + `server.connected` + 心跳，但同样很快被 FIN |
+| **设备自身** `/system/bin/curl` `/api/event` | 与 App 同一 loopback 路径，同样出流后即断 |
+| 复刻 OkHttp 全头（UA=`okhttp/4.12.0`、`Connection: Keep-Alive`、`Accept-Encoding: identity`） | 同样表现 ⇒ 与请求头无关 |
+| `ss -tn` 查 App→14000 连接 | 停在 `CLOSE-WAIT` = **服务端主动 FIN** |
+
+**排除项**（均已实测，勿再浪费时间）：`x-opencode-directory` 头、`Accept-Encoding: identity`、
+readTimeout / callTimeout、PC 代理工具、设备 VPN（`http_proxy=null`，无活动 VPN 接口）。
+
+**策略（用户定稿）：REST 轮询为主，SSE 仅作「信号通道」**
+1. **SSE 当信号**：连上（TCP + HTTP 200）即视为「就绪」，`emit(Reconnected)` 一次；
+   不指望它持续推事件。
+2. **REST 轮询为数据源**：`GET /api/session/{id}/message` 全量重建（天然幂等），
+   自适应节奏——有变化 1s、无变化 3–5s、失败指数退避（1–15s）。
+3. **SSE 退避**：因连上即关，**不能「连上就重置退避」**（否则永远 1s 刷屏）；
+   改为「只有真正读到过事件才重置」，指数退避 1→2→4→8→15s 封顶。
+4. **SSE 断开不改连接状态**（避免 UI 每秒闪烁）；连接健康由 REST 轮询驱动。
+
+**代码落点**
+- `oc/SseClient.kt`：信号通道语义 + `defectStreak` 退避 + 静音刷屏日志。
+- `oc/OcRepository.kt`：新增 `startPolling` / `pollOnce` / `fetchJsonArrayOrThrow`；
+  `handle()` 中 `Connected/Reconnected` 只置「就绪」、`Disconnected` 不动状态。
+
+**何时可以回退**：上游修复 Issue #38458（`/api/event` 保持长连接）后，可把数据源切回纯 SSE；
+`SseClient` 的事件解析（`PartUpdated` / `MessageUpdated` / …）仍完整保留，届时无需重写。
+
+**验证**：`assembleDebug` 通过；真机跑一轮确认消息经 REST 轮询正常显示。
