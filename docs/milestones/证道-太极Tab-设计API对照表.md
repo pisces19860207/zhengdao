@@ -246,16 +246,44 @@ ToolState.Completed = { status:"completed", input:{}, content:[Tool.Content], me
 ⚠️ 这两处是 **WebView 版与 Compose 版共用**的，修完对现有可用路径同样生效——
 **现有 WebView 版其实一直带这两个 bug**（判活恒真 + 可能取错密码），只是 LocalProxy 掩盖了部分表现。
 
-### PoC #1（权限事件载荷）—— ⬜ 未做
+### PoC #1（权限事件载荷）—— ✅ 已验证，权限链路完全打通
 
-触发一次真实的 `permission.asked`，确认 data 结构与 `Permission.Request` 一致。
-*做法*：让 Agent 执行需批准的操作（工作区外的 `edit` 或敏感 `bash`），同时抓 SSE。
-*备选*：若事件不稳定，退化为进入页面时轮询 `GET /api/permission/request`。
+**触发方法（关键）**：agent `build` 的权限表里 `*` = `allow`，但
+**`external_directory` = `ask`**。所以「让 Agent 写工作区内的文件」不会触发权限，
+必须让它**写工作区外的路径**（本次用 `/data/local/tmp/`）。
 
-### PoC #2（diff 非空）—— ⬜ 未做
+**实测 `permission.asked` 载荷**（与 spec 的 `Permission.Request` 一致，实测无 `metadata`/`message`）：
 
-让 Agent 真改一个文件后取 `/api/session/{id}/diff`，确认 `patch` 可渲染。
-*现状*：端点存在且返回 `[]`（本次会话没改文件，无法验证非空形态）。
+```json
+{"id":"per_110e9be7a0017q5zyOrs0q0w54","sessionID":"ses_…",
+ "action":"external_directory",
+ "resources":["/data/local/tmp/*"],
+ "save":["/data/local/tmp/*"],
+ "source":{"type":"tool","messageID":"msg_…","id":"functions.write:2"}}
+```
+
+| 验证项 | 结果 |
+|---|---|
+| 不响应会怎样 | ✅ 事件流停在 `permission.asked`，**没有任何后续事件** —— 卡死属实 |
+| `GET /api/permission/request` 轮询 | ✅ 同时可见同一条（事件 + 轮询双通道） |
+| `reply {"decision":"once"}` | ✅ 204，请求清空，`/api/permission/saved` **不变**（一次性） |
+| `reply {"decision":"always"}` | ✅ 204，写入 `psv_…`：`{id, projectID, action, resource, time}`（永久，可 DELETE 撤销） |
+
+→ 权限抽屉的数据源、三态语义、"记住这个选择"全部确认。
+
+### PoC #2（diff 非空）—— ✅ 已验证，结论是**不能用**（数据源需换）
+
+- Agent 确实用 `write` 工具创建了文件（`poc_write_test.txt`，9 字节，真机确认存在）
+- 但 `GET /api/session/{id}/diff` → `[]`
+- `GET /api/vcs` → `{"branch":{}}`，`GET /api/vcs/status` → `[]` → **当前工作区不是 git 仓库**
+
+**结论：`/api/session/{id}/diff` 依赖 git 工作区；非 git 目录恒返回空数组。**
+太极的工作区若是普通目录（如 `/workspace`），这个端点拿不到任何数据。
+
+**设计调整**：工具卡片的"文件变更入口"**不要接 diff 端点**，改用已确认可用的
+`session.tool.*` 事件——`tool.called.input.path` + `tool.success.content[]`
+（本次实测 `input:{path,content}`、`content:[{type,text}]` 均取到真实值）。
+若将来强制工作在 git 仓库下，再考虑接 diff 做补丁视图。
 
 ---
 
