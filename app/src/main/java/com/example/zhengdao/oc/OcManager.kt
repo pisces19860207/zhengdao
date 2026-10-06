@@ -161,6 +161,7 @@ object OcManager {
         return try {
             homeDir(ctx).mkdirs()
             listOf("data", "cache", "config", "state").forEach { xdgDir(ctx, it).mkdirs() }
+            ensurePermissionPolicy(ctx)
             val pb = ProcessBuilder(bin.absolutePath, "serve", "--port=$PORT")
             pb.directory(Workspace.hostDir(ctx)) // 项目 = 用户工作区
             val env = pb.environment()
@@ -181,6 +182,16 @@ object OcManager {
             // 设置为未知 env 无副作用（进程忽略），故一并设置以完整覆盖用户方案；若无效属预期。
             env["OPENCODE_EXPERIMENTAL_LENGTH_NUDGE"] = "true"
             env["OPENCODE_EXPERIMENTAL_LENGTH_NUDGE_MAX"] = "3"
+            // 🔐 保守权限策略：**真正的落地机制是 [ensurePermissionPolicy] 写的 opencode.json**
+            //    （实测本版 bionic 2.0.22 的 env 变量不生效）。这里额外设一份 env，
+            //    兼容将来会读它的版本；未知/无效 env 无副作用。
+            //    ⚠️ V2 换了 action 名：跑 shell 命令是 `shell`（非 v1 的 `bash`），文件修改是 `edit`。
+            env["OPENCODE_PERMISSION"] =
+                "[{\"action\":\"shell\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"bash\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"edit\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"write\",\"resource\":\"*\",\"effect\":\"ask\"}," +
+                    "{\"action\":\"webfetch\",\"resource\":\"*\",\"effect\":\"ask\"}]"
             // API Key 注入（与终端同一套密钥库；OpenCode 识别 OPENAI_API_KEY 等）
             runCatching {
                 ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
@@ -216,6 +227,38 @@ object OcManager {
             RunLog.log("太极 serve 启动失败: ${t.message}")
             "启动失败: ${t.message}"
         }
+    }
+
+    /**
+     * 写入**保守权限策略**到 `XDG_CONFIG_HOME/opencode/opencode.json`。
+     *
+     * ⚠️ 为什么用文件而不是环境变量：实测本版（bionic 2.0.22）`OPENCODE_PERMISSION`
+     * 环境变量**不生效** —— 只设 env 时 shell 工具仍被静默放行。写这个文件才真正生效。
+     *
+     * 语法取自**官方 V2 权限文档**：
+     * - 顶层字段 `permissions`（v1 叫 `permission`）
+     * - 跑 shell 命令的 action 是 **`shell`**（v1 叫 `bash`）；文件修改是 `edit`（覆盖 write/patch）
+     * - 规则 = `[{action, resource, effect}]`，effect ∈ allow|deny|ask，resource 支持 `*`/`?` 通配
+     *
+     * 每次冷启动**无条件重写**（自愈，避免旧配置残留）。
+     */
+    private fun ensurePermissionPolicy(ctx: Context) {
+        runCatching {
+            val dir = File(xdgDir(ctx, "config"), "opencode").apply { mkdirs() }
+            val json = """
+                {
+                  "${'$'}schema": "https://opencode.ai/config.json",
+                  "permissions": [
+                    { "action": "shell",    "resource": "*", "effect": "ask" },
+                    { "action": "bash",     "resource": "*", "effect": "ask" },
+                    { "action": "edit",     "resource": "*", "effect": "ask" },
+                    { "action": "write",    "resource": "*", "effect": "ask" },
+                    { "action": "webfetch", "resource": "*", "effect": "ask" }
+                  ]
+                }
+            """.trimIndent()
+            File(dir, "opencode.json").writeText(json)
+        }.onFailure { RunLog.log("太极: 写权限配置失败 ${it.message}") }
     }
 
     /** 停止 serve（App 进程死亡时子进程随之消亡，ping 判活可自动恢复）。 */

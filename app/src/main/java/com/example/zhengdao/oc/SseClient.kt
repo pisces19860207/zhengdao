@@ -174,7 +174,8 @@ class SseClient(private val http: OkHttpClient) {
             "part.updated" -> Event.PartUpdated(data, extractDelta(data))
             "part.removed", "message.part.removed" -> Event.PartRemoved(data)
             "session.idle" -> Event.SessionIdle(data)
-            "permission.asked" -> Event.PermissionAsked(data)
+            // v2 事件名 permission.asked；旧版叫 permission.updated，一并兼容（避免版本差异漏事件）
+            "permission.asked", "permission.updated" -> Event.PermissionAsked(data)
             "todo.updated" -> Event.TodoUpdated(data)
             else -> Event.Unknown(type, data)
         }
