@@ -167,9 +167,12 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     val routePrefs = context.getSharedPreferences("zhengdao-ui", android.content.Context.MODE_PRIVATE)
 
     // 路由决策优先级：通知栏直达终端 > 上次页面（欢迎页只在首次安装出现）
+    // ⚠️ 恢复页不能当 startDestination——起始页底下没有返回栈，popBackStack
+    // 无处可退（用户实测：冷启动直落设置页后返回键和右滑全失效）。改为永远
+    // 落 home，恢复页叠加其上。
     val startRoute = when {
         startInTerminal -> "home"
-        lastRoute != null -> lastRoute
+        lastRoute != null -> "home"
         else -> "welcome"
     }
 
@@ -177,6 +180,13 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     if (startInTerminal) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
             context.startActivity(Intent(context, TerminalActivity::class.java))
+        }
+    }
+
+    // 恢复上次页面：叠在 home 之上（返回键退回首页，不再有死返回）
+    androidx.compose.runtime.LaunchedEffect(lastRoute) {
+        if (!startInTerminal && lastRoute == "settings") {
+            nav.navigate("settings") { launchSingleTop = true }
         }
     }
 
@@ -250,7 +260,8 @@ fun HomeTabs(
                 )
                 NavigationBarItem(
                     selected = tab == 1,
-                    onClick = { tab = 1 },
+                    // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
+                    onClick = { onOpenTerminal(null, null) },
                     icon = { Text(">_") },
                     label = { Text("终端") },
                 )
@@ -263,34 +274,12 @@ fun HomeTabs(
                 .padding(padding),
             color = MaterialTheme.colorScheme.background,
         ) {
-            when (tab) {
-                0 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
-                else -> TerminalTabPlaceholder(onOpenTerminal = onOpenTerminal)
+            if (tab == 0) {
+                HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
+            } else {
+                // 点 Tab 即进终端；回退到本页时落在 Agent Tab
+                androidx.compose.runtime.LaunchedEffect(Unit) { onOpenTerminal(null, null) }
             }
-        }
-    }
-}
-
-/** 终端 Tab 首屏：一个明确的进入按钮（单会话制，终端是全屏独立页面）。 */
-@Composable
-private fun TerminalTabPlaceholder(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(text = "Linux 终端", style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "单会话制：进入即回到上次的 Debian 会话",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { onOpenTerminal(null, null) }) {
-            Text("进入终端")
         }
     }
 }
