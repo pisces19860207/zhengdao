@@ -181,8 +181,8 @@ object OcManager {
             onProgress("检测到已下载的安装包，校验中…")
             val hit = runCatching { RootfsDownloader.verifySha256(dest, PINNED_SHA) }.isSuccess
             if (hit) {
-                onProgress("安装包校验通过，释放中…")
-                return extract(ctx, dest, onProgress)
+            onProgress("安装包校验通过，释放中…")
+            return extract(ctx, dest, onProgress, VERSION)
             }
             dest.delete()
         }
@@ -201,15 +201,45 @@ object OcManager {
             )
             RootfsDownloader.verifySha256(dest, PINNED_SHA)
             onProgress("校验通过，释放中（约需一分钟）…")
-            extract(ctx, dest, onProgress)
+            extract(ctx, dest, onProgress, VERSION)
         } catch (t: Throwable) {
             RunLog.log("太极: OpenCode 下载失败 ${t.message}")
             DownloadResult(false, "下载失败: ${t.message}")
         }
     }
 
+    /** 更新流程（P2.5）：安装 checkUpdate 给出的新版本——URL 与 digest 全部来自
+     * release API 动态数据，不落定版 SHA。digest 缺失直接拒绝（无校验 = 不装）。 */
+    fun downloadAndInstall(ctx: Context, update: UpdateInfo, onProgress: (String) -> Unit): DownloadResult {
+        if (update.sha256 == null) {
+            return DownloadResult(false, "更新包缺少 SHA256（release digest 缺失），已拒绝安装")
+        }
+        val cache = cacheDir(ctx).apply { mkdirs() }
+        val dest = File(cache, "opencode-${update.version}-aarch64.pkg.tar.xz")
+        onProgress("开始下载 OpenCode ${update.version}（约 65MB，断点续传）…")
+        return try {
+            RootfsDownloader.download(
+                urls = listOf(
+                    update.url,
+                    "https://gh-proxy.com/${update.url}",
+                ),
+                dest = dest,
+                shaUrl = null, // digest 无 sidecar；下载后用 API digest 手动校验
+                onProgress = { done, total ->
+                    if (total > 0) onProgress("下载中 ${(done * 100 / total).coerceIn(0, 100)}%（${done / 1048576}/${total / 1048576} MB）")
+                },
+            )
+            RootfsDownloader.verifySha256(dest, update.sha256)
+            onProgress("校验通过，释放中（约需一分钟）…")
+            extract(ctx, dest, onProgress, update.version)
+        } catch (t: Throwable) {
+            RunLog.log("太极: OpenCode ${update.version} 更新失败 ${t.message}")
+            DownloadResult(false, "更新失败: ${t.message}")
+        }
+    }
+
     /** xz + tar 双层解包 → files/oc/usr/...（跳过元数据点文件，bin 补执行位）。 */
-    private fun extract(ctx: Context, pkg: File, onProgress: (String) -> Unit): DownloadResult {
+    private fun extract(ctx: Context, pkg: File, onProgress: (String) -> Unit, version: String): DownloadResult {
         val ocRoot = File(ctx.filesDir, "oc")
         var count = 0
         try {
@@ -239,13 +269,18 @@ object OcManager {
             return DownloadResult(false, "释放失败: ${t.message}")
         }
         if (!installed(ctx)) return DownloadResult(false, "释放后二进制缺失（包不完整？）")
-        Settings2.prefs(ctx).edit().putString(VERSION_KEY, VERSION).apply()
-        RunLog.log("太极: OpenCode $VERSION 释放完成（$count 个文件）")
-        return DownloadResult(true, "OpenCode $VERSION 安装完成")
+        Settings2.prefs(ctx).edit().putString(VERSION_KEY, version).apply()
+        RunLog.log("太极: OpenCode $version 释放完成（$count 个文件）")
+        return DownloadResult(true, "OpenCode $version 安装完成")
     }
 
-    /** 查最新版本（GitHub API）；返回 版本名 to 下载 URL，无更新/失败返回 null。 */
-    fun checkUpdate(): Pair<String, String>? = try {
+    /** 可安装的更新包（P2.5）：版本 + 直链 + release asset 的 digest（"sha256:…"去前缀）。
+     * digest 由 GitHub API 动态取回——更新流程不落定版 SHA，无 digest 拒绝安装。 */
+    data class UpdateInfo(val version: String, val url: String, val sha256: String?)
+
+    /** 查最新版本（GitHub API）；有可更新版本返回 [UpdateInfo]，无更新/失败返回 null。
+     * 与**已装版本**比较（更新过的不再重复报；出厂 VERSION 兜底未装/未知）。 */
+    fun checkUpdate(ctx: Context): UpdateInfo? = try {
         val conn = URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as java.net.HttpURLConnection
         conn.connectTimeout = 10000; conn.readTimeout = 10000
         conn.setRequestProperty("User-Agent", "zhengdao")
@@ -253,18 +288,20 @@ object OcManager {
         conn.inputStream.close()
         val arr = org.json.JSONObject(body).getJSONArray("assets")
         val re = Regex("^opencode-([\\d.]+)-\\d+-aarch64\\.pkg\\.tar\\.xz$")
-        var latest: Pair<List<Int>, String>? = null // (版本段, 下载URL)
+        var latest: Triple<List<Int>, String, String?>? = null // (版本段, 下载URL, digest SHA)
         for (i in 0 until arr.length()) {
             val a = arr.getJSONObject(i)
             val m = re.find(a.optString("name")) ?: continue
             val ver = m.groupValues[1].split('.').map { it.toInt() }
             if (latest == null || verNewer(ver, latest.first)) {
-                latest = Pair(ver, a.optString("browser_download_url"))
+                val digest = a.optString("digest")
+                    .takeIf { it.startsWith("sha256:") }?.substringAfter(':')
+                latest = Triple(ver, a.optString("browser_download_url"), digest)
             }
         }
-        val cur = VERSION.split('.').map { it.toInt() }
+        val cur = (installedVersion(ctx) ?: VERSION).split('.').map { it.toInt() }
         if (latest != null && verNewer(latest.first, cur)) {
-            Pair(latest.first.joinToString("."), latest.second)
+            UpdateInfo(latest.first.joinToString("."), latest.second, latest.third)
         } else null
     } catch (_: Throwable) {
         null
