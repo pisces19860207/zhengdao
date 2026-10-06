@@ -103,9 +103,9 @@ class OcClient(
  *
  * - `Authorization: Basic base64(opencode:<password>)` —— 密码由 [OcManager] 从
  *   serve.log 解析（见 OcManager.servePassword）。
- * - `x-opencode-directory` —— OpenCode 用该 header（或等价 query 参数）确定
- *   "这个请求作用在哪个项目上下文里"。太极 Tab 固定 [OcClient.WORKSPACE_DIR]，
- *   **不做目录选择器**（见设计文档 §3.4）。
+ * - `x-opencode-directory` —— ⚠️ 该头**真实 spec 里并不存在**，是骨架的幻想产物
+ *   （真实目录参数走 query：`directory` / `location[directory]`）。当前**仅对 REST 请求保留**；
+ *   **SSE 请求已去掉它**（诊断实验：疑似该头让 `/api/event` 立刻返空流，见 [intercept] 注释）。
  *
  * 密码解析失败时**不抛异常、不加 header**（返回原请求）：让服务端返回 401，
  * 由 UI 明确报"鉴权未就绪"，好过本地崩溃。
@@ -117,7 +117,16 @@ private class AuthInterceptor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val builder = request.newBuilder()
-            .header("x-opencode-directory", OcClient.WORKSPACE_DIR)
+
+        // 🔬 诊断实验（用户首选，最高优先级）：SSE 请求**不注入** x-opencode-directory。
+        //    依据：该头是骨架幻想产物（spec 无此 header），是 App 与 PC curl 的实质差异之一，
+        //    疑似让 /api/event 立即返回空流 → 表现为"连上即断、读到 0 行、每秒一轮"。
+        //    为隔离变量，**只对 SSE 去掉**，REST 请求保持不变（避免连带破坏目录上下文）。
+        //    判据：若 SSE 因此稳定、REST 又未受影响 → 该头即 SSE 空流的真凶。
+        val isSse = request.header("Accept")?.contains("text/event-stream") == true
+        if (!isSse) {
+            builder.header("x-opencode-directory", OcClient.WORKSPACE_DIR)
+        }
 
         val pw = passwordProvider()
         if (!pw.isNullOrEmpty()) {
