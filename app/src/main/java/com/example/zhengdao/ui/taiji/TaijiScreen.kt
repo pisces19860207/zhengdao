@@ -3,16 +3,22 @@
 // 依据的公开接口：Jetpack Compose 官方 API、OpenCode 官方 serve 模式。
 package com.example.zhengdao.ui.taiji
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,11 +90,26 @@ fun TaijiScreen(
     var savedSession by rememberSaveable { mutableStateOf<String?>(null) }
 
     // ── v1.1 第一阶段：会话完整化 ─────────────────────────────────────
-    // 历史抽屉的开关与内容。刻意留在 UI 层局部状态，不进 Repository
+    // 历史列表内容 + 左侧抽屉的开合。刻意留在 UI 层局部状态，不进 Repository
     // —— 「会话数据」才是 Repository 的职责，「抽屉开没开」是纯 UI 关注点。
-    var showHistory by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
     var sessions by remember { mutableStateOf<List<OcSessionSummary>>(emptyList()) }
     var sessionsLoading by remember { mutableStateOf(false) }
+
+    // 拉取历史会话（打开抽屉 / 手动刷新 / 删除后 共用同一实现）
+    suspend fun refreshSessions() {
+        sessionsLoading = true
+        sessions = repo.listSessions()
+        sessionsLoading = false
+    }
+
+    // 🔺 返回键兜底：抽屉打开时按 BACK 必须**先关抽屉**，不能直接退出 App。
+    //   material3 的 ModalNavigationDrawer 内置了 predictive back，但在本工程
+    //   （targetSdk 28、未声明 android:enableOnBackInvokedCallback）的真机上**不生效**——
+    //   2026-10-07 复测：抽屉开着按一次 BACK 直接回到桌面。这里显式注册，语义与「点遮罩关闭」一致。
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
 
     // 顶部标题：优先历史列表里服务端给的 title，否则回退「首条用户消息前 20 字」
     // （计划 P1-4：**不调模型生成标题**）。两者都取不到则为空 → SessionBar 显示「新会话」。
@@ -155,69 +176,112 @@ fun TaijiScreen(
                     scope.launch { repo.open(scope, sessionId = null) }
                 }
 
-            else -> Column(Modifier.fillMaxSize()) {
-                SessionBar(
-                    title = currentTitle,
-                    connection = state.connection,
-                    attempt = state.reconnectAttempt,
-                    // ☰ 历史：打开抽屉并拉取列表（每次打开都重拉，保证看到最新会话）
-                    onHistory = {
-                        showHistory = true
-                        scope.launch {
-                            sessionsLoading = true
-                            sessions = repo.listSessions()
-                            sessionsLoading = false
-                        }
-                    },
-                    // ＋ 新会话：创建后切入，并同步 savedSession（防转屏/切 Tab 丢会话）
-                    onNew = {
-                        scope.launch {
-                            repo.startNewSession(scope)?.let { savedSession = it }
-                        }
-                    },
-                    currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
-                        ?: state.currentModel ?: "默认",
-                    onModelClick = {
-                        scope.launch {
-                            modelsLoading = true
-                            repo.fetchModels(
-                                com.example.zhengdao.terminal.Workspace.hostDir(ctx).absolutePath
-                            )
-                            modelsLoading = false
-                            showModelSheet = true
-
-
-                        }
-                    },
-                    onStop = { scope.launch { repo.close(); onExit() } },
-                )
-                ConnectionBanner(state, onDismiss = repo::dismissError)
-
-                Box(Modifier.weight(1f)) {
-                    when {
-                        // 尚未完成首载 → 转圈
-                        state.messages.isEmpty() && !state.loadedOnce -> LoadingPane()
-                        // 已就绪但空会话 → 引导文案（P1-1「首次进入显示引导」）
-                        state.messages.isEmpty() -> EmptyConversationHint()
-                        else -> MessageList(
-                            messages = state.messages,
-                            todos = state.todos,
-                            isStreaming = state.isStreaming,
-                            // 会话 id 进 key：切会话后重新定位到该会话底部（不沿用上一个会话的滚动位置）
-                            sessionId = state.sessionId,
-                            modifier = Modifier.fillMaxSize(),
+            // ★ 主界面：**左侧抽屉 + 固定顶栏** 结构。
+            //   ModalNavigationDrawer 自带「左缘滑入 / 点遮罩关闭」；抽屉内容 = 历史会话列表。
+            //   顶栏放在 Column 顶部、消息区用 weight(1f) 独立滚动 —— 顶栏因此天然不跟着滚。
+            else -> ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = {
+                    ModalDrawerSheet(
+                        modifier = Modifier.width(300.dp),
+                        drawerContainerColor = MaterialTheme.colorScheme.surface,
+                    ) {
+                        HistoryDrawer(
+                            sessions = sessions,
+                            loading = sessionsLoading,
+                            currentId = state.sessionId,
+                            // 点击条目：关抽屉 → 保住 id（防转屏/切 Tab 丢会话）→ 切换会话
+                            onPick = { id ->
+                                scope.launch { drawerState.close() }
+                                savedSession = id
+                                scope.launch { repo.switchSession(scope, id) }
+                            },
+                            onNew = {
+                                scope.launch { drawerState.close() }
+                                scope.launch { repo.startNewSession(scope)?.let { savedSession = it } }
+                            },
+                            onRefresh = { scope.launch { refreshSessions() } },
+                            // 长按删除：二次确认在 HistoryDrawer 内部完成，这里只执行 + 同步列表
+                            onDelete = { target ->
+                                val ok = repo.deleteSession(target.id)
+                                if (ok) {
+                                    // ① 乐观移除：立刻从列表拿掉，不会出现"删完还挂在那儿"的观感
+                                    sessions = sessions.filterNot { it.id == target.id }
+                                    // ② 删掉的正是当前会话 → 立刻另起一个新会话，
+                                    //    否则 UI 会停在"一个已不在服务端的会话"上（再发消息必错）
+                                    if (target.id == state.sessionId) {
+                                        savedSession = null
+                                        repo.startNewSession(scope)?.let { savedSession = it }
+                                    }
+                                    // ③ 再回源对齐（含刚建的新会话）。只做 ① 会留下缺口：
+                                    //    "删当前会话 → 另起新会话"时新会话不在列表里、当前徽章消失
+                                    //    （2026-10-07 真机验收发现），故必须回源一次。
+                                    scope.launch { refreshSessions() }
+                                }
+                                ok
+                            },
                         )
                     }
-                }
+                },
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    SessionBar(
+                        title = currentTitle,
+                        connection = state.connection,
+                        attempt = state.reconnectAttempt,
+                        // ☰ 历史：打开左侧抽屉并重拉列表（每次打开都重拉，保证看到最新会话）
+                        onHistory = {
+                            scope.launch { drawerState.open() }
+                            scope.launch { refreshSessions() }
+                        },
+                        // ＋ 新会话：创建后切入，并同步 savedSession（防转屏/切 Tab 丢会话）
+                        onNew = {
+                            scope.launch {
+                                repo.startNewSession(scope)?.let { savedSession = it }
+                            }
+                        },
+                        currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
+                            ?: state.currentModel ?: "默认",
+                        onModelClick = {
+                            scope.launch {
+                                modelsLoading = true
+                                repo.fetchModels(
+                                    com.example.zhengdao.terminal.Workspace.hostDir(ctx).absolutePath
+                                )
+                                modelsLoading = false
+                                showModelSheet = true
+                            }
+                        },
+                        onStop = { scope.launch { repo.close(); onExit() } },
+                    )
+                    ConnectionBanner(state, onDismiss = repo::dismissError)
 
-                ComposerBar(
-                    input = state.input,
-                    isStreaming = state.isStreaming,
-                    enabled = state.sessionId != null,
-                    onInputChange = repo::setInput,
-                    onSend = { scope.launch { repo.prompt(state.input) } },
-                    onAbort = { scope.launch { repo.abort() } },
-                )
+                    Box(Modifier.weight(1f)) {
+                        when {
+                            // 尚未完成首载 → 转圈
+                            state.messages.isEmpty() && !state.loadedOnce -> LoadingPane()
+                            // 已就绪但空会话 → 引导文案（P1-1「首次进入显示引导」）
+                            state.messages.isEmpty() -> EmptyConversationHint()
+                            else -> MessageList(
+                                messages = state.messages,
+                                todos = state.todos,
+                                isStreaming = state.isStreaming,
+                                // 会话 id 进 key：切会话后重新定位到该会话底部（不沿用上一个会话的滚动位置）
+                                sessionId = state.sessionId,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+
+                    ComposerBar(
+                        input = state.input,
+                        isStreaming = state.isStreaming,
+                        enabled = state.sessionId != null,
+                        onInputChange = repo::setInput,
+                        onSend = { scope.launch { repo.prompt(state.input) } },
+                        onAbort = { scope.launch { repo.abort() } },
+                    )
+                }
             }
         }
 
@@ -255,21 +319,6 @@ fun TaijiScreen(
             PermissionSheet(perm) { allow, remember ->
                 scope.launch { repo.respondPermission(perm.permissionId, allow, remember) }
             }
-        }
-
-        // ☰ 历史会话抽屉（v1.1 第一阶段）：点击条目即恢复该会话
-        if (showHistory) {
-            HistorySheet(
-                sessions = sessions,
-                loading = sessionsLoading,
-                currentId = state.sessionId,
-                onPick = { id ->
-                    showHistory = false
-                    savedSession = id               // 保住 id，防转屏/切 Tab 丢会话
-                    scope.launch { repo.switchSession(scope, id) }
-                },
-                onDismiss = { showHistory = false },
-            )
         }
     }
 }
