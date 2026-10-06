@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -61,6 +62,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+
+/** 状态行"就绪／已授权"用的绿：比主题 tertiary(#34C759) 更深，浅底上作正文色才有对比度。 */
+private val ReadyGreen = Color(0xFF2E7D32)
 
 /** 设置偏好（工作区模式 / 已安装环境版本登记）。 */
 object Settings {
@@ -155,10 +159,13 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        // 组间距（20dp）刻意大于组内行距：SectionCard 现在把标题移到卡片外，
+        // 分组才立得住；组间距不够的话卡片外的小标题会读成上一张卡的注脚。
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text("设置", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        // 页面标题不在这里重复——外层顶栏已有「‹ 返回｜设置」（见 MainActivity）。
+        // 旧版这里又写了一遍大字"设置"，和顶栏标题上下叠着，是全页最扎眼的重复。
 
         // ── 存储占用 ──
         SectionCard("存储占用") {
@@ -172,7 +179,7 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
             val sizes = remember { CacheCleaner.measure(ctx) }
             Text(
                 text = sizes.entries.joinToString("\n") { "${it.key}：${it.value} MB" },
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(6.dp))
             Text(
@@ -207,65 +214,61 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                 }.onFailure { Toast.makeText(ctx, "打开失败: ${it.message}", Toast.LENGTH_SHORT).show() }
                 Unit
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = openAppDetails),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("存储读写（共享存储 /sdcard）", style = MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            // 未授权时整行可点＝直接拉起系统授权弹窗；已授权时点击＝去系统设置查看/撤销。
+            SettingRow(
+                label = "存储读写（共享存储 /sdcard）",
+                value = if (storageOk) "已授权" else "未授权",
+                valueColor = if (storageOk) ReadyGreen else MaterialTheme.colorScheme.error,
+                onClick = {
                     if (storageOk) {
-                        Text("✅ 已授权", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
+                        openAppDetails()
                     } else {
-                        TextButton(onClick = {
-                            permLauncher.launch(
-                                arrayOf(
-                                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                                )
+                        permLauncher.launch(
+                            arrayOf(
+                                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
                             )
-                        }) { Text("授权") }
+                        )
                     }
-                    Text(" ›", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+                },
+            )
             Text(
                 text = "Agent 读写手机文件（/sdcard）依赖此权限；缺失时终端里读写手机文件会全部失败。点击本行可到系统设置查看或调整。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (!storageOk) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 permHint?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(4.dp))
-                }
-                TextButton(onClick = openAppDetails) { Text("去系统设置") }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = openAppDetails),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("网络访问", style = MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("✅ 自动授予", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
-                    Text(" ›", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(6.dp))
                 }
             }
+
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(10.dp))
+
+            SettingRow(
+                label = "网络访问",
+                value = "自动授予",
+                valueColor = ReadyGreen,
+                onClick = openAppDetails,
+            )
             Text(
                 text = "INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道；点击本行可到系统设置查看联网管控。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(enabled = !netChecking, onClick = {
+            // 自检也收进同一套行式组件（状态在右、结论在行下方），不再是一个孤立的文字按钮
+            SettingRow(
+                label = "网络自检",
+                value = if (netChecking) "检测中…" else "点击检测",
+                valueColor = if (netChecking) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.primary,
+                onClick = {
+                    if (!netChecking) {
                     netChecking = true
                     netMsg = "检测中…"
                     Thread {
@@ -283,32 +286,24 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                         netMsg = msg
                         netChecking = false
                     }.start()
-                }) { Text(if (netChecking) "检测中…" else "网络自检") }
-            }
+                    }
+                },
+            )
             netMsg?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(10.dp))
 
             // ── 所有文件访问（MANAGE_EXTERNAL_STORAGE，可选增强；用户定稿简化版）──
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = { launchManage() }),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("所有文件访问（推荐开启·主路径）", style = MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (manageOk) "✅ 已开启" else "未开启",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (manageOk) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(" ›", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            SettingRow(
+                label = "所有文件访问（推荐开启·主路径）",
+                value = if (manageOk) "已开启" else "未开启",
+                valueColor = if (manageOk) ReadyGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = { launchManage() },
+            )
             Text(
                 text = "推荐开启：Agent 可访问更广的存储范围（主路径）。基础 /sdcard 读写不开启此项亦可用；不开启或系统无此开关都不影响基本使用。",
                 style = MaterialTheme.typography.bodySmall,
@@ -335,17 +330,12 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 TerminalPrefs.SIZE_OPTIONS.forEach { dp ->
-                    val selected = dp == sizeDp
-                    Button(
-                        onClick = { sizeDp = dp; TerminalPrefs.saveSize(ctx, dp) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                    ) { Text("$dp", style = MaterialTheme.typography.bodySmall) }
+                    // 与「运行内存上限」共用同一个芯片组件：同一页里两个选项组，
+                    // 选中态必须是同一套视觉（淡蓝底 + 主色描边）。
+                    FilterChip2("$dp", dp == sizeDp) {
+                        sizeDp = dp
+                        TerminalPrefs.saveSize(ctx, dp)
+                    }
                 }
             }
 
@@ -358,7 +348,18 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                     OutlinedButton(
                         onClick = { schemeId = sc.id; TerminalPrefs.saveScheme(ctx, sc) },
                         modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        // 选中＝淡蓝底 + 主色描边（与芯片同一套选中语言），不再只靠行尾一个 ✓
+                        border = BorderStroke(
+                            width = if (selected) 1.dp else 0.5.dp,
+                            color = if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant,
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surface,
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -812,13 +813,31 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
         // ── 关于 ──
         SectionCard("关于") {
             InfoRow("版本", "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})")
-            TextButton(onClick = {
-                ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/pisces19860207/zhengdao")))
-            }) { Text("GitHub 仓库") }
-            TextButton(onClick = {
-                ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/issues")))
-            }) { Text("问题反馈（Issues）") }
+            Spacer(Modifier.height(4.dp))
+            // 外链也走同一套行式组件（右侧统一是 ›），不再是一排蓝色文字按钮
+            SettingRow(
+                label = "GitHub 仓库",
+                value = "",
+                onClick = {
+                    ctx.startActivity(
+                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/pisces19860207/zhengdao"))
+                    )
+                },
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            SettingRow(
+                label = "问题反馈（Issues）",
+                value = "",
+                onClick = {
+                    ctx.startActivity(
+                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/issues"))
+                    )
+                },
+            )
         }
+
+        // 页脚留白：最后一张卡不与系统导航栏贴着
+        Spacer(Modifier.height(8.dp))
     }
 
     // ── 修复环境二次确认（Compose 版）──
@@ -944,42 +963,114 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
     }
 }
 
+/**
+ * 分组卡片（iOS 设置语言）：标题在卡片外做小号灰标签，卡片本身是白底 + 0.5dp 发丝描边 + 16dp 圆角。
+ * 旧版把标题塞进卡片里、且是 16sp 半粗——十几张卡读下来每张都是"标题 + 一堆小字"，
+ * 分组反而没有层级。标题移到卡外后，视线先落到组标签、再落到这一组的内容。
+ */
 @Composable
 private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            content()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                content()
+            }
         }
     }
 }
 
+/** 名称—数值行：数值右对齐成一列，扫一眼就能比大小（旧版固定 150dp 标签宽 + 左对齐，读着像表格）。 */
 @Composable
 private fun InfoRow(label: String, value: String) {
-    Row(modifier = Modifier
-        .fillMaxWidth()
-        .padding(vertical = 2.dp)) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(150.dp),
+            modifier = Modifier.weight(1f),
         )
-        Text(text = value, style = MaterialTheme.typography.bodySmall)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
-/** 轻量选择芯片（避免引入额外依赖）。 */
+/**
+ * 设置页统一的可点行：主标签 + 右侧状态文字 + "›"，整行可点、行高一致。
+ * 旧版三行权限各有各的写法（行尾有的挂按钮、有的挂 ✅ emoji、有的挂 ›），一页凑出三套交互视觉。
+ */
+@Composable
+private fun SettingRow(
+    label: String,
+    value: String,
+    valueColor: Color = Color.Unspecified,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (valueColor == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant
+            else valueColor,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "›",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 轻量选择芯片（避免引入额外依赖）：选中＝淡蓝底 + 主色描边。 */
 @Composable
 fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick) {
-        Text(label, color = if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.onSurfaceVariant)
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        border = BorderStroke(
+            width = if (selected) 1.dp else 0.5.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surface,
+            contentColor = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -988,7 +1079,7 @@ fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun GuideLine(number: String, text: String) {
     Row(modifier = Modifier
         .fillMaxWidth()
-        .padding(vertical = 3.dp)) {
+        .padding(vertical = 5.dp)) {
         Text(
             text = "$number.",
             style = MaterialTheme.typography.bodyMedium,
@@ -996,19 +1087,19 @@ private fun GuideLine(number: String, text: String) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.width(20.dp),
         )
-        Text(text = text, style = MaterialTheme.typography.bodySmall)
+        Text(text = text, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
-/** 常见问题单条：加粗问题 + 答案。 */
+/** 常见问题单条：加粗问题 + 答案（问题用与正文同级字号，答案降一档）。 */
 @Composable
 private fun FaqLine(question: String, answer: String) {
     Column(modifier = Modifier
         .fillMaxWidth()
-        .padding(vertical = 3.dp)) {
+        .padding(vertical = 6.dp)) {
         Text(
             text = question,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Text(

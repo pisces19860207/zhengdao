@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.size
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -41,11 +43,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -284,17 +289,34 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
             )
         }
         composable("settings") {
-            // 设置页（含返回）：复用 Material3 顶栏由页面内实现，此处提供返回按钮容器。
+            // 设置页（二级页）：顶栏＝「‹ 返回 + 居中标题」，内容区不再重复写一遍标题
+            //（旧版外层"设置"与页内大字"设置"上下叠着，是最扎眼的重复）。
+            // 层级约定：根页（丹房）用大标题，二级页用导航栏标题——与 iOS 的分层一致。
             // edge-to-edge 下必须自行避让系统栏，否则返回栏会被状态栏压住、末项被导航栏遮挡。
             Column(Modifier.statusBarsPadding().navigationBarsPadding()) {
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .height(48.dp),
                 ) {
-                    TextButton(onClick = { nav.popBackStack() }) { Text("← 返回") }
-                    Text("设置", style = MaterialTheme.typography.titleMedium)
+                    TextButton(
+                        onClick = { nav.popBackStack() },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 4.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            BackChevron(tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(4.dp))
+                            Text("返回", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Text(
+                        text = "设置",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
                 }
                 SettingsScreen(onOpenTerminal = openTerminal)
             }
@@ -541,5 +563,60 @@ fun DingIcon(selected: Boolean) {
 
         // 炉中之丹（点睛）
         drawCircle(color = color, radius = w * 0.055f, center = Offset(w * 0.50f, h * 0.50f))
+    }
+}
+
+/**
+ * 返回箭头（‹）：设置页顶栏用。与底部 Tab 图标同一套笔（圆头圆角 + 1.9f 描边）。
+ * 取代原先的"←"文本箭头——字符箭头在 16sp 下是一根细长斜线，与自绘图标不同路。
+ */
+@Composable
+fun BackChevron(tint: Color, side: Dp = 13.dp) {
+    Canvas(modifier = Modifier.size(side)) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.66f, h * 0.12f)
+            lineTo(w * 0.28f, h * 0.50f)
+            lineTo(w * 0.66f, h * 0.88f)
+        }
+        drawPath(
+            path,
+            tint,
+            style = Stroke(width = TAB_STROKE * 0.95f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
+/**
+ * 设置入口图标（滑杆，sliders/tune）：三条横轨 + 各一个圆点。
+ *
+ * 为什么不是齿轮：17dp 的尺寸下，齿轮只能画成"细圆 + 一圈放射线"，
+ * 真机截图里无论齿长齿短都读成太阳／花（试过两版参数都一样），
+ * 而"设置"两个字就在旁边，不需要一个会被误读的图形去抢戏。
+ * 滑杆是通用的设置符号，横向线条也与底部三个道家图标同一套笔法。
+ */
+@Composable
+fun SettingsIcon(tint: Color, side: Dp = 17.dp) {
+    Canvas(modifier = Modifier.size(side)) {
+        val w = size.width
+        val h = size.height
+        val rail = Stroke(width = TAB_STROKE * 0.85f, cap = StrokeCap.Round)
+        // 三条轨道 + 圆点错位分布，一眼能看出是"可调的"
+        val rails = listOf(
+            h * 0.24f to w * 0.68f,
+            h * 0.50f to w * 0.34f,
+            h * 0.76f to w * 0.58f,
+        )
+        rails.forEach { (y, knobX) ->
+            drawLine(
+                color = tint,
+                start = Offset(w * 0.12f, y),
+                end = Offset(w * 0.88f, y),
+                strokeWidth = rail.width,
+                cap = StrokeCap.Round,
+            )
+            drawCircle(color = tint, radius = w * 0.09f, center = Offset(knobX, y))
+        }
     }
 }
