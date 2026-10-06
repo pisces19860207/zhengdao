@@ -20,7 +20,7 @@
 > **🔒 关于 targetSdk 28（长期说明）**
 > 证道**刻意钉死 targetSdk 28**，这是架构级约束，不是版本落后：
 > - **为什么**：Android 10 起系统禁止 targetSdk ≥ 29 的应用从「自己的可写数据目录」执行文件（W^X）。证道的整套 Linux 环境（rootfs 里成千上万个程序）恰恰放在这个目录里，只有 targetSdk 28 能豁免，proot 才能正常运行。**抬高 targetSdk = 整个 Linux 环境变成无法执行的死文件。** Termux（GitHub/F-Droid 版）、太墟均采用同一策略。
-> - **代价**：Android 16 上，targetSdk 28 应用无法再通过 `/sdcard` 直连读写共享存储（传统存储视图失效，权限授予也无法访问）。证道通过 **SAF 镜像同步**解决——你选一个手机文件夹，证道把它镜像到 Linux 环境内的 `~/mnt/phone/`，Agent 在里面读写你的文件。
+> - **代价**：Android 16 上，targetSdk 28 应用读写 `/sdcard` 共享存储**需要 `READ`/`WRITE` 运行时授权**（且 Android 13+ 须摘掉 manifest 的 `READ` 帽子才能持有 `READ`——详见 `d414dca`）。经 App 真身实测，`/sdcard` 直连**读写均可用**（文件管理器可见）；**SAF 镜像同步仅作个别 ROM 的备用兜底**，非主路径。你若选了手机文件夹，证道把它镜像到 Linux 环境内的 `~/mnt/phone/` 作为兜底。
 > - **长期风险**：若 Android 未来上调最低安装 targetSdk 门槛，或收紧 untrusted_app 域策略，证道需要迁移到 `system_linker_exec` 灰区或云机瘦客户端形态。该风险每季度在真机核对一次，详见 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md)。
 
 ## 网络要求
