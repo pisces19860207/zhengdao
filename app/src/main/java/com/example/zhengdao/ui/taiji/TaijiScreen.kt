@@ -24,12 +24,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import com.example.zhengdao.oc.OcClient
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.oc.ConnectionState
+import com.example.zhengdao.oc.OcMessage
+import com.example.zhengdao.oc.OcPart
 import com.example.zhengdao.oc.OcRepository
+import com.example.zhengdao.oc.OcSessionSummary
 import com.example.zhengdao.oc.SseClient
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
@@ -78,6 +82,23 @@ fun TaijiScreen(
     //    Repository 重建后会自动全量拉取，所以只要 id 保住，内容就能完整恢复。
     var savedSession by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // ── v1.1 第一阶段：会话完整化 ─────────────────────────────────────
+    // 历史抽屉的开关与内容。刻意留在 UI 层局部状态，不进 Repository
+    // —— 「会话数据」才是 Repository 的职责，「抽屉开没开」是纯 UI 关注点。
+    var showHistory by remember { mutableStateOf(false) }
+    var sessions by remember { mutableStateOf<List<OcSessionSummary>>(emptyList()) }
+    var sessionsLoading by remember { mutableStateOf(false) }
+
+    // 顶部标题：优先历史列表里服务端给的 title，否则回退「首条用户消息前 20 字」
+    // （计划 P1-4：**不调模型生成标题**）。两者都取不到则为空 → SessionBar 显示「新会话」。
+    val currentTitle = remember(state.messages, state.sessionId, sessions) {
+        sessions.firstOrNull { it.id == state.sessionId }?.title?.takeIf { it.isNotBlank() }
+            ?: state.messages.firstOrNull { it.role == OcMessage.Role.USER }
+                ?.parts?.filterIsInstance<OcPart.Text>()?.firstOrNull()?.text
+                ?.lineSequence()?.firstOrNull()?.trim()?.take(20)?.takeIf { it.isNotBlank() }
+            ?: ""
+    }
+
     // 首次进入：确保 serve 在跑，再打开会话（复用上次的会话 id）
     LaunchedEffect(Unit) {
         if (!OcManager.installed(ctx)) return@LaunchedEffect      // 未装：显示引导
@@ -107,18 +128,35 @@ fun TaijiScreen(
 
             else -> Column(Modifier.fillMaxSize()) {
                 SessionBar(
-                    title = state.sessionId.orEmpty().take(8),
+                    title = currentTitle,
                     connection = state.connection,
                     attempt = state.reconnectAttempt,
+                    // ☰ 历史：打开抽屉并拉取列表（每次打开都重拉，保证看到最新会话）
+                    onHistory = {
+                        showHistory = true
+                        scope.launch {
+                            sessionsLoading = true
+                            sessions = repo.listSessions()
+                            sessionsLoading = false
+                        }
+                    },
+                    // ＋ 新会话：创建后切入，并同步 savedSession（防转屏/切 Tab 丢会话）
+                    onNew = {
+                        scope.launch {
+                            repo.startNewSession(scope)?.let { savedSession = it }
+                        }
+                    },
                     onStop = { scope.launch { repo.close(); onExit() } },
                 )
                 ConnectionBanner(state, onDismiss = repo::dismissError)
 
                 Box(Modifier.weight(1f)) {
-                    if (state.messages.isEmpty() && !state.loadedOnce) {
-                        LoadingPane()
-                    } else {
-                        MessageList(
+                    when {
+                        // 尚未完成首载 → 转圈
+                        state.messages.isEmpty() && !state.loadedOnce -> LoadingPane()
+                        // 已就绪但空会话 → 引导文案（P1-1「首次进入显示引导」）
+                        state.messages.isEmpty() -> EmptyConversationHint()
+                        else -> MessageList(
                             messages = state.messages,
                             todos = state.todos,
                             isStreaming = state.isStreaming,
@@ -144,6 +182,21 @@ fun TaijiScreen(
                 scope.launch { repo.respondPermission(perm.permissionId, allow, remember) }
             }
         }
+
+        // ☰ 历史会话抽屉（v1.1 第一阶段）：点击条目即恢复该会话
+        if (showHistory) {
+            HistorySheet(
+                sessions = sessions,
+                loading = sessionsLoading,
+                currentId = state.sessionId,
+                onPick = { id ->
+                    showHistory = false
+                    savedSession = id               // 保住 id，防转屏/切 Tab 丢会话
+                    scope.launch { repo.switchSession(scope, id) }
+                },
+                onDismiss = { showHistory = false },
+            )
+        }
     }
 }
 
@@ -155,6 +208,37 @@ private fun LoadingPane() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
             Text("  正在连接 OpenCode…", style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/**
+ * 空会话引导（v1.1 第一阶段 P1-1「首次进入显示引导文案」）。
+ *
+ * 用户第一次进太极、或点「＋ 新会话」后的界面 —— 告诉一个完全不懂终端的人
+ * "从哪开始"。这正是 v1.1「从能用升级为好用」的关键：不能只丢一个空白框。
+ */
+@Composable
+private fun EmptyConversationHint() {
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "☯",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "开始一段新对话",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Text(
+                "在下方输入你的任务，例如「帮我看看下载文件夹里有什么」",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }

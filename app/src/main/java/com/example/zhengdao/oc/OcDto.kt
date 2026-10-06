@@ -30,6 +30,24 @@ data class OcSession(
     val timeUpdated: Long? = null,
 )
 
+/**
+ * 会话摘要 —— **历史列表专用**（v1.1 第一阶段）。
+ *
+ * 在 [OcSession] 元数据之外附带 [messageCount]，供列表项显示"N 条消息"。
+ * 之所以不把它并进 [OcSession]：条数要额外发一次 `GET /session/{id}/message` 才拿得到，
+ * 与纯元数据的拉取成本不同；分开才能「先出列表、条数异步补」。
+ *
+ * [messageCount] 为 `null` 表示**条数未取到**（该会话消息端点失败），UI 显示为省略而非 0
+ * ——0 与"不知道"必须区分，否则用户会以为空会话。
+ */
+data class OcSessionSummary(
+    val id: String,
+    val title: String? = null,
+    /** 最近更新时间（毫秒时间戳），用于分组与显示；null 表示服务端未给。 */
+    val updatedAt: Long? = null,
+    val messageCount: Int? = null,
+)
+
 // ── 消息 ──────────────────────────────────────────────────────────────
 
 /**
