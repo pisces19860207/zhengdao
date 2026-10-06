@@ -170,7 +170,7 @@ app/
 
 注意：常驻通知本身是双刃剑——用户嫌烦关掉通知权限会连带杀死前台服务，所以通知必须"有用"（显示会话状态、运行时长、一键回到终端），降低被关概率。另注意：**通知权限被拒后 FGS 照常运行但常驻通知不可见**，防杀体验打折，引导里需强调允许通知。WakeLock 策略：仅在会话活跃时持有，通知栏提供一键"暂停保持运行"开关释放锁；息屏长任务的耗电/发热代价在 UI 明示（建议插电）。
 
-**第 1 层（自动，无需用户操作）**：前台服务 + 常驻通知 + `PARTIAL_WAKE_LOCK` + tmux 兜底（进程被杀后重进 App 自动 attach 恢复现场）。targetSdk 28 下 FGS 无需声明类型，且天然豁免 Android 15 针对 targetSdk 35+ 的 dataSync 型前台服务"24 小时累计 6 小时"强停限制。
+**第 1 层（自动，无需用户操作）**：前台服务 + 常驻通知 + `PARTIAL_WAKE_LOCK` + tmux 兜底（**仅当进程树还活着**时重进 App 自动 attach；整树被杀则现场必丢，只能重建环境——见 §156 措辞红线）。targetSdk 28 下 FGS 无需声明类型，且天然豁免 Android 15 针对 targetSdk 35+ 的 dataSync 型前台服务"24 小时累计 6 小时"强停限制。
 
 **第 2 层（引导一次）**：电池优化白名单。直发 APK 不受 Play 政策限制，可以直接弹 `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`；再附一页国产 ROM 图文引导（小米/澎湃、华为、OPPO、vivo 的自启动与后台锁设置）。引导分两步走（M2 §7）：
 1. **系统白名单**：一键弹窗把证道设为「不优化」（`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）；

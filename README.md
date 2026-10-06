@@ -79,14 +79,22 @@
 
 ## 当前状态
 
-**v1.0.0 已发布**（首个正式版，可直接下载安装）：
+**v1.1.1**（2026-10-07；v1.1 太极 UI 完整化 + 洞天体验打磨与清债，`versionCode 13`）：
 
 - **太极 Tab**：OpenCode 原生 Compose 客户端——Markdown 渲染、思考折叠、工具卡、
   会话历史/新建/恢复、模型池选择器（免费模型标注、会话级切换、重启保持）
-- **洞天（终端）**：Debian 13.7 真实环境（PRoot），tmux 会话保持、断线重进不丢现场
+- **洞天（终端）**：Debian 13.7 真实环境（PRoot），tmux 会话保持；分屏/关屏一键化，
+  首次进入有三点功能说明，「更多」菜单含清屏 / 重载字号
 - **丹房**：Agent 一键安装/启动/卸载（二次确认、真实 du 尺寸、用户数据保留）、环境体检自愈
+- **插件管理**（设置 → 插件）：管理**太极**内置 OpenCode 的插件（启停 / 缓存清理）
 - **OpenCode 与 Hermes Agent 完整支持**（真机全链路验收）；Claude Code / AGY CLI 走各自官方脚本
 - 存储策略定稿：MANAGE 主路径 + /sdcard 直连；通知 4 渠道；缓存清理白名单
+
+> **⚠️ 关于两个 OpenCode**：「太极」Tab 用的是 App **内置**的宿主版（开箱即用）；
+> 终端（洞天）里如果你自己 `npm install -g opencode-ai`，那是**另一份**，
+> 配置、插件、缓存与太极**互相隔离、互不影响**。插件管理页只作用于太极那份。
+> 终端里保留了自装版也不冲突——常用哪个就用哪个，不必卸载任何一个。
+> 详见《故障排查手册》坑 #3。
 
 CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)，
 正式版见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)。
