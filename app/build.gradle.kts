@@ -102,9 +102,6 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.26.2")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
 
-    // SAF 目录遍历（手机文件夹镜像，Plan B）：标准 AndroidX 小件
-    implementation("androidx.documentfile:documentfile:1.0.1")
-
     // xz 解压（太极 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
     implementation("org.tukaani:xz:1.9")
 

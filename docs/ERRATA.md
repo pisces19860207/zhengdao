@@ -171,6 +171,13 @@ SAF 镜像同步降级为**备用方案**（个别 ROM 兜底），代码保留�
 - `app/src/main/java/.../ui/SettingsScreen.kt`：SAF 镜像入口删除；MANAGE 入口升为显式引导。
 - `AgentInstaller.kt` / FD 代理：移除（P1.5）。
 
+> ✅ **P1.5 执行完毕（2026-10-06 晚）**：删除前 P1 完整验收通过（guest 内
+> `/sdcard/Download` 写读 + 宿主复核三方一致）→ PhoneMirror 引擎、设置页
+> SAF 镜像入口、冷启动自动同步、`/mnt/phone` bind 与人设行、documentfile
+> 依赖、设备 prefs 残留键全部移除 → 删后防回归四项通过（启动/设置页布局/
+> 终端 /sdcard 读写/本地安装包路径零改动）。`TerminalActivity` 的
+> ACTION_OPEN_DOCUMENT（手动选 rootfs 安装包）为独立用途，**保留不在本范围**。
+
 **修订纪律**：后续任何人改存储相关代码，仍以本 ERRATA 的"技术事实"为准；
 产品决策（MANAGE 主路径 / 删 SAF）可随用户新指令再调整，但不得改写上方技术事实与方法论。
 

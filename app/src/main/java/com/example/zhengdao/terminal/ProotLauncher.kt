@@ -249,7 +249,6 @@ object ProotLauncher {
                         "## 文件地图\n" +
                         "- /workspace —— **产出与边界区**：Agent 的产出都放这里（手机侧：$wsPath；$wsNote）。用户在这里找产出、在这里自由删除\n" +
                         "- /sdcard —— 共享存储整体可读可写，用于查找资料；**产出约定只进 /workspace**，不要把共享存储其他位置当草稿区乱写\n" +
-                        "- /mnt/phone —— 手机文件夹镜像（备用；仅当用户在证道设置里配置过「手机文件夹同步」才有内容）\n" +
                         "- /root —— 你的 home；各 Agent 配置在此（~/.config/opencode、~/.hermes 等）\n\n" +
                         "## 能力边界\n" +
                         "- 无 root，不要尝试需要 root 的操作\n" +
@@ -389,15 +388,6 @@ object ProotLauncher {
                 if (wsShared) "（共享存储，卸载保留）" else "（仅私有，随卸载删除）"
         )
         args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
-
-        // 手机文件夹镜像（Plan B，2026-10-06）：SAF 镜像同步的落点。
-        // ⚠️ 定位更正（同日勘误 E-005）：此前"/sdcard 直连不可用"的结论是 run-as
-        // 探针的方法论假象（runas_app SELinux 域被 FUSE 拒，不代表 App 真身）——
-        // 真身自 READ 帽子摘除（d414dca）后 /sdcard 读写全通，本镜像降级为
-        // **备用方案**（个别 ROM 传统视图异常时的兜底），平时无需配置。
-        val phoneMirror = File(files, "phone-mirror").apply { mkdirs() }
-        args.addAll(arrayOf("-b", "${phoneMirror.absolutePath}:/mnt/phone"))
-        RunLog.log("镜像绑定: /mnt/phone <- ${phoneMirror.absolutePath}")
 
         // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
         // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）

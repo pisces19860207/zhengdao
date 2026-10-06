@@ -51,7 +51,6 @@ import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.TerminalPrefs
-import com.example.zhengdao.mirror.PhoneMirror
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
@@ -84,21 +83,6 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
     var homeMb by remember { mutableStateOf(0L) }
     var cacheMb by remember { mutableStateOf(0L) }
     var wsPickerOpen by remember { mutableStateOf(false) }
-
-    // ── 手机文件夹镜像（Plan B）──
-    var mirrorSyncing by remember { mutableStateOf(false) }
-    var mirrorMsg by remember { mutableStateOf<String?>(null) }
-    var mirrorSummary by remember { mutableStateOf(PhoneMirror.lastSummary(ctx)) }
-    var mirrorSelected by remember { mutableStateOf(PhoneMirror.treeUri(ctx) != null) }
-    val mirrorPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        val uri = r.data?.data
-        if (uri != null) {
-            PhoneMirror.saveTreeUri(ctx, uri)
-            mirrorSelected = true
-            mirrorSummary = null
-            Toast.makeText(ctx, "已选定手机文件夹，点「立即同步」开始", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     // ── 权限（存储 + 网络自检）──
     fun storageGrantedNow(): Boolean =
@@ -460,68 +444,6 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                         Toast.makeText(ctx, "该位置不可用，请选择内部存储中的文件夹", Toast.LENGTH_SHORT).show()
                     }
                 },
-            )
-        }
-
-        // ── 手机文件夹同步（Plan B，2026-10-06）──
-        // 定位（E-005 勘误后）：备用方案。/sdcard 直连自 READ 帽子摘除（d414dca）
-        // 后读写全通，正常设备无需配置本项；个别 ROM 传统视图异常时的兜底
-        SectionCard("手机文件夹同步（备用）") {
-            Text(
-                text = if (mirrorSelected) {
-                    "已选定手机文件夹，镜像到 guest 的 /mnt/phone（Agent 在里面读写）"
-                } else {
-                    "未选择。一般设备无需配置（/sdcard 直连可用）；仅当个别 ROM 无法读写 /sdcard 时，用本项做 SAF 镜像兜底。"
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
-            mirrorSummary?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "上次同步：$it",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Row {
-                TextButton(onClick = {
-                    mirrorPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-                        addFlags(
-                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                        )
-                    })
-                }) { Text(if (mirrorSelected) "更换文件夹" else "选择文件夹") }
-                TextButton(
-                    enabled = mirrorSelected && !mirrorSyncing,
-                    onClick = {
-                        mirrorSyncing = true
-                        mirrorMsg = "同步中…"
-                        Thread {
-                            val r = PhoneMirror.sync(ctx) { p -> mirrorMsg = p }
-                            mirrorMsg = r?.message ?: "同步进行中（上一次未结束）"
-                            mirrorSummary = PhoneMirror.lastSummary(ctx)
-                            mirrorSyncing = false
-                        }.start()
-                    },
-                ) { Text(if (mirrorSyncing) "同步中…" else "立即同步") }
-            }
-            mirrorMsg?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "说明：同步是复制语义，不是挂载，大文件会占双份空间；" +
-                    "只同步新增与修改，不删除；最多 2 层、1000 个文件。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
