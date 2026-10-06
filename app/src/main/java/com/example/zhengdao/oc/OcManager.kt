@@ -131,7 +131,11 @@ object OcManager {
                     }
                 }
             }
-            lastGood
+            // ⚠️ 竞态修复（本次「进不了 UI」真因）：若**最后看到一个 listening 但它的
+            //   password 尚未落盘**（awaitingPw == true，即新场次正在启动），
+            //   绝不能返回上一场的 lastGood —— 那是**过期密码**，拿它打 /api/* 会全程 401。
+            //   返回 null，逼调用方（startServe 的轮询）继续等待新场次的 password 落盘。
+            if (awaitingPw) null else lastGood
         }.getOrNull()
     }
 
@@ -144,7 +148,12 @@ object OcManager {
         // Web 会话不丢反而是特性）。无论 serve 是本轮拉起还是孤儿，代理必须就绪：
         // 代理线程随旧 App 进程死亡，这里幂等重启。
         if (serveRunning()) {
-            com.example.zhengdao.oc.LocalProxy.start(PORT) { servePassword ?: parseServePasswordFromLog(ctx) }
+            // ⚠️ 竞态/孤儿修复：serve 已在运行（典型：重装/重启后上一进程的孤儿仍在监听）
+            //   也必须**解析密码并写入 OcManager.servePassword** —— 否则原生路径的
+            //   passwordProvider（{ OcManager.servePassword }）恒为 null，请求无
+            //   Authorization → 全程 401。原实现只把密码喂给 LocalProxy，漏写了 servePassword。
+            parseServePassword(ctx)
+            com.example.zhengdao.oc.LocalProxy.start(PORT) { servePassword }
             return null
         }
         val bin = binaryFile(ctx)
@@ -216,7 +225,11 @@ object OcManager {
         LocalProxy.stop()
     }
 
+    @Suppress("unused")
     private fun parseServePasswordFromLog(ctx: Context): String? = runCatching {
+        // ⚠️ 已废弃、不再调用：这是 `lastOrNull` 的**有 bug 版本**（会取到最后一场
+        //   "打了密码但没绑上端口"的失败进程的密码 → 全程 401）。保留仅为历史溯源，
+        //   统一改用 parseServePassword()（只认"密码+listening"配对的 lastGood）。
         File(ctx.filesDir, "oc/serve.log").readText()
             .lineSequence().lastOrNull { it.contains("server password") }
             ?.substringAfter("server password ")?.trim()

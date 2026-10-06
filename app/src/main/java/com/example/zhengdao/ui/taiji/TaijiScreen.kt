@@ -83,9 +83,12 @@ fun TaijiScreen(
         if (!OcManager.installed(ctx)) return@LaunchedEffect      // 未装：显示引导
         // serveRunning()/startServe() 都是阻塞的（裸 HttpURLConnection + 起进程），必须切 IO
         withContext(Dispatchers.IO) {
-            if (!OcManager.serveRunning()) {
-                OcManager.startServe(ctx)                          // 内部会解析密码
-            }
+            // ⚠️ 竞态修复：**总是**调 startServe(ctx)，不再用 `if (!serveRunning())` 前置拦截。
+            //    startServe 本身幂等：serve 已在运行（典型：重装/重启后上一进程的孤儿仍在
+            //    监听）时，它会解析密码并写入 OcManager.servePassword 后返回。
+            //    原写法在"孤儿 serve 存活"时直接跳过整个分支 → servePassword 恒为 null
+            //    → 请求无 Authorization → 全程 401（本次「进不了 UI」的触发路径）。
+            OcManager.startServe(ctx)   // 幂等：运行中则解析密码，未运行则拉起
         }
         repo.open(scope, savedSession)
         savedSession = repo.state.value.sessionId ?: savedSession
