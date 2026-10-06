@@ -120,6 +120,40 @@ fun SettingsScreen() {
     var netChecking by remember { mutableStateOf(false) }
     var netMsg by remember { mutableStateOf<String?>(null) }
 
+    // ── MANAGE_EXTERNAL_STORAGE（可选增强，用户定稿简化版）──
+    // 检查 isExternalStorageManager；引导两级 Intent 兜底；无机型分叉；
+    // 未授权不阻塞（工作区降级私有目录），仅设置页保留入口。
+    fun manageGranted(): Boolean =
+        runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
+    var manageOk by remember { mutableStateOf(manageGranted()) }
+    fun launchManage() {
+        try {
+            ctx.startActivity(
+                Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+            )
+        } catch (e: Exception) {
+            try {
+                ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            } catch (e2: Exception) {
+                Toast.makeText(ctx, "打开失败: ${e2.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // 从系统设置页返回后刷新权限状态（授权/撤销都发生在别的页面）
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                manageOk = manageGranted()
+                storageOk = storageGrantedNow()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+
     LaunchedEffect(Unit) {
         info = withContext(Dispatchers.IO) { SystemInfoProvider.collect(ctx) }
         val sizes = withContext(Dispatchers.IO) {
@@ -245,6 +279,32 @@ fun SettingsScreen() {
             netMsg?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+
+            // ── 所有文件访问（MANAGE_EXTERNAL_STORAGE，可选增强；用户定稿简化版）──
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = { launchManage() }),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("所有文件访问（可选增强）", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (manageOk) "✅ 已开启" else "未开启",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (manageOk) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(" ›", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text(
+                text = "基础 /sdcard 读写无需此项即可用。开启后可访问更多应用目录；不开启或系统无此开关都不影响基本使用（另有 SAF 镜像兜底）。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // ── 终端外观（字号 + 配色；下次进入终端时应用）──
