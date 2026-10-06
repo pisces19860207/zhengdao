@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.mirror.PhoneMirror
@@ -662,6 +663,43 @@ fun SettingsScreen(onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit 
                     }
                 }
             }) { Text("立即刷新 Agent 清单") }
+            Spacer(Modifier.height(8.dp))
+
+            // ── OpenCode 内置版更新（P2 第 5 条：用户主动点，不打扰启动）──
+            val ocVer = OcManager.installedVersion(ctx)
+            Text(
+                text = "OpenCode 内置版：" + when {
+                    ocVer != null -> ocVer
+                    OcManager.installed(ctx) -> "已安装（版本未知）"
+                    else -> "未安装（进太极 Tab 首次下载）"
+                } + "（出厂 ${OcManager.VERSION}）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            var checkingOc by remember { mutableStateOf(false) }
+            OutlinedButton(
+                enabled = !checkingOc,
+                onClick = {
+                    checkingOc = true
+                    Toast.makeText(ctx, "正在检查 OpenCode 更新…", Toast.LENGTH_SHORT).show()
+                    Thread {
+                        val upd = OcManager.checkUpdate(ctx)
+                        val r = upd?.let { OcManager.downloadAndInstall(ctx, it) { } }
+                        android.os.Handler(ctx.mainLooper).post {
+                            checkingOc = false
+                            Toast.makeText(
+                                ctx,
+                                when {
+                                    upd == null -> "OpenCode 已是最新（${OcManager.installedVersion(ctx) ?: OcManager.VERSION}）或检查失败"
+                                    r?.ok == true -> "OpenCode 已更新到 ${upd.version}，下次启动生效"
+                                    else -> "更新失败：${r?.message ?: "未知错误"}"
+                                },
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }.start()
+                },
+            ) { Text(if (checkingOc) "检查中…" else "检查 OpenCode 更新") }
         }
 
         // ── 安装包缓存（第三批）──

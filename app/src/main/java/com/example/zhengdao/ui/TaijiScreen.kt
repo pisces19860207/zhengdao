@@ -236,18 +236,19 @@ fun TaijiScreen() {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    // 检查更新（用户定稿：默认不打扰，手动触发）
+                    // 检查更新（用户定稿：默认不打扰，手动触发）。
+                    // 注意：必须走 checkUpdate(ctx) 给出的新版 URL+digest 安装——
+                    // 旧实现回调 downloadAndInstall() 定版流程，会"报 2.0.24 装回 2.0.22"。
                     TextButton(onClick = {
                         Thread {
-                            val upd = OcManager.checkUpdate()
+                            val upd = OcManager.checkUpdate(ctx)
                             msg = when {
-                                upd == null -> "检查失败或已是最新（当前 ${OcManager.VERSION}）"
-                                else -> "发现新版本 ${upd.first}，开始后台更新…（完成后下次启动生效）"
+                                upd == null -> "检查失败或已是最新（当前 ${OcManager.installedVersion(ctx) ?: OcManager.VERSION}）"
+                                else -> "发现新版本 ${upd.version}，开始后台更新…（完成后下次启动生效）"
                             }
                             if (upd != null) {
-                                // v1：提示即到，下载复用主流程（覆盖释放）
-                                val r = OcManager.downloadAndInstall(ctx) { p -> progressText = p }
-                                msg = if (r.ok) "已更新到 ${OcManager.VERSION}，下次启动生效" else r.message
+                                val r = OcManager.downloadAndInstall(ctx, upd) { p -> progressText = p }
+                                msg = if (r.ok) "已更新到 ${upd.version}，下次启动生效" else r.message
                             }
                         }.start()
                     }) { Text("检查 OpenCode 更新") }
