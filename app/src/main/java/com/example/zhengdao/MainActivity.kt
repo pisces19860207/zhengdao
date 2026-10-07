@@ -277,6 +277,9 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
                         context.startActivity(Intent(context, TerminalActivity::class.java))
                     }
                 },
+                // 跳过环境安装直进主界面：**太极不依赖 Debian**（宿主 bionic serve，
+                // 从不进 PRoot），新用户可以先体验主打功能，想要终端再回来装。
+                onSkip = { nav.navigate("home") { launchSingleTop = true } },
             )
         }
         composable("home") {

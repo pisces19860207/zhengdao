@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -145,8 +146,17 @@ fun TaijiScreen(
         modelOverride = m
     }
 
+    // ── 太极就地安装的进度（v1.2 新用户排查所得）──
+    // 原实现只有一条 Toast「后台安装中…完成后重进本页」：新用户不知道装到哪、
+    // 也不知道装完没有，且装完必须手动退出再进（serve 没人拉起）。
+    var ocInstalling by remember { mutableStateOf(false) }
+    var ocProgress by remember { mutableStateOf("") }
+    // 装成功后自增 → 让下面的 LaunchedEffect 重跑一次（起 serve + 开会话）。
+    // 只在成功时自增，故不会重复开会话。
+    var serveStartTrigger by remember { mutableStateOf(0) }
+
     // 首次进入：确保 serve 在跑，再打开会话（复用上次的会话 id）
-    LaunchedEffect(Unit) {
+    LaunchedEffect(serveStartTrigger) {
         if (!OcManager.installed(ctx)) return@LaunchedEffect      // 未装：显示引导
         // serveRunning()/startServe() 都是阻塞的（裸 HttpURLConnection + 起进程），必须切 IO
         withContext(Dispatchers.IO) {
@@ -169,12 +179,33 @@ fun TaijiScreen(
         when {
             // 未安装：给就地安装入口（丹房过滤了 OpenCode，v1.1.1 起这里是唯一入口——
             // 原文案"去丹房安装"是死循环回归）。缓存命中时约 1 分钟（含校验+解压）
-            !OcManager.installed(ctx) -> NotInstalledPane(onExit, onInstall = {
-                android.widget.Toast.makeText(
-                    ctx, "后台安装中…缓存命中约 1 分钟，完成后重进本页", android.widget.Toast.LENGTH_LONG
-                ).show()
-                Thread { OcManager.downloadAndInstall(ctx) {} }.start()
-            })
+            !OcManager.installed(ctx) -> NotInstalledPane(
+                onExit = onExit,
+                installing = ocInstalling,
+                progress = ocProgress,
+                onInstall = {
+                    ocInstalling = true
+                    ocProgress = "准备中…"
+                    scope.launch(Dispatchers.IO) {
+                        val r = OcManager.downloadAndInstall(ctx) { msg ->
+                            // 进度回调在后台线程 → 切主线程再改状态
+                            scope.launch(Dispatchers.Main) { ocProgress = msg }
+                        }
+                        withContext(Dispatchers.Main) {
+                            ocInstalling = false
+                            if (r.ok) {
+                                // installed() 此时已为 true ⇒ 本分支自动切到主界面；
+                                // 自增 trigger 让上面的 LaunchedEffect 重跑，自动起 serve + 开会话。
+                                ocProgress = "安装完成，正在启动 OpenCode…"
+                                serveStartTrigger++
+                            } else {
+                                // 失败必须可见（项目原则）：留在引导页并给出原因
+                                ocProgress = "安装失败：${r.message}"
+                            }
+                        }
+                    }
+                },
+            )
 
             // 启动失败：明确原因 + 重试。**不静默失败**（项目原则）
             state.phase is TaijiPhase.Failed ->
@@ -373,17 +404,37 @@ private fun EmptyConversationHint() {
 }
 
 @Composable
-private fun NotInstalledPane(onExit: () -> Unit, onInstall: () -> Unit = {}) {
+private fun NotInstalledPane(
+    onExit: () -> Unit,
+    installing: Boolean = false,
+    progress: String = "",
+    onInstall: () -> Unit = {},
+) {
+    val failed = progress.startsWith("安装失败")
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("尚未安装 OpenCode", style = MaterialTheme.typography.titleMedium)
             Text(
-                "点下方按钮下载安装（约 65MB，已有缓存则约 1 分钟）",
+                if (installing || failed) progress
+                else "点下方按钮下载安装（约 65MB，已有缓存则约 1 分钟）",
                 style = MaterialTheme.typography.bodySmall,
+                color = if (failed) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp),
             )
-            OutlinedButton(onClick = onInstall, modifier = Modifier.padding(top = 16.dp)) {
-                Text("下载并安装")
+            if (installing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(top = 16.dp).size(28.dp),
+                    strokeWidth = 3.dp,
+                )
+            }
+            OutlinedButton(
+                onClick = onInstall,
+                enabled = !installing,
+                modifier = Modifier.padding(top = 16.dp),
+            ) {
+                Text(if (installing) "安装中…" else if (failed) "重试安装" else "下载并安装")
             }
             OutlinedButton(onClick = onExit, modifier = Modifier.padding(top = 8.dp)) {
                 Text("返回")

@@ -18,17 +18,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/** 欢迎页：品牌 + 一句话简介 + 三步上手 + 状态感知的开始按钮。 */
+/**
+ * 欢迎页：品牌 + 一句话简介 + 三步上手 + 状态感知的开始按钮。
+ *
+ * @param onSkip 「先去太极看看」——**太极不依赖 Debian 环境**（宿主 bionic 原生 serve，
+ *   从不进 PRoot，见故障排查手册坑 #0），所以新用户不必等 326MB 装完就能用主打功能。
+ *   环境没装时才给这个入口；装过之后没有意义。
+ */
 @Composable
 fun WelcomeScreen(
     environmentInstalled: Boolean,
     onStart: (installed: Boolean) -> Unit,
+    onSkip: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -60,9 +68,9 @@ fun WelcomeScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            StepRow(1, "点下方按钮安装运行环境（约 3 分钟，只需一次）")
-            StepRow(2, "回到首页，给想用的 Agent 点「安装」")
-            StepRow(3, "在「设置」填好密钥，进「终端」就能用了")
+            StepRow(1, "在「设置」填好模型密钥（用哪个填哪个）")
+            StepRow(2, "进「太极」直接对话——不必等运行环境装完")
+            StepRow(3, "要用命令行或装其他 Agent，再回来装运行环境")
         }
         Spacer(modifier = Modifier.height(32.dp))
         Button(
@@ -74,9 +82,17 @@ fun WelcomeScreen(
                 style = MaterialTheme.typography.titleMedium,
             )
         }
+        // 跳过入口：太极不依赖 Debian，先给核心功能，环境可以以后再装。
+        // 做成次级文字按钮——主路径仍是装环境（洞天与 Agent 离不开它）。
+        if (!environmentInstalled) {
+            TextButton(onClick = onSkip, modifier = Modifier.padding(top = 8.dp)) {
+                Text("先去太极看看（不装环境）")
+            }
+        }
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = if (environmentInstalled) "运行环境就绪" else "首次使用将引导安装运行环境",
+            text = if (environmentInstalled) "运行环境就绪"
+            else "运行环境用于「洞天」终端与 Agent，太极不需要",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -615,12 +615,15 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
 
             // ── OpenCode 内置版更新（P2 第 5 条：用户主动点，不打扰启动）──
+            // v1.2 C1：未装状态下「检查更新」是句废话——还没装，哪来的更新。
+            // 未装就直连 downloadAndInstall，装上才能谈更新。
             val ocVer = OcManager.installedVersion(ctx)
+            val ocInstalled = OcManager.installed(ctx)
             Text(
                 text = "OpenCode 内置版：" + when {
                     ocVer != null -> ocVer
-                    OcManager.installed(ctx) -> "已安装（版本未知）"
-                    else -> "未安装（进太极 Tab 首次下载）"
+                    ocInstalled -> "已安装（版本未知）"
+                    else -> "未安装（点下方按钮安装，约 65MB）"
                 } + "（出厂 ${OcManager.VERSION}）",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -630,25 +633,27 @@ fun SettingsScreen(
                 enabled = !checkingOc,
                 onClick = {
                     checkingOc = true
-                    Toast.makeText(ctx, "正在检查 OpenCode 更新…", Toast.LENGTH_SHORT).show()
+                    val tip = if (ocInstalled) "正在检查 OpenCode 更新…" else "正在下载并安装 OpenCode（约 65MB）…"
+                    Toast.makeText(ctx, tip, Toast.LENGTH_SHORT).show()
                     Thread {
-                        val upd = OcManager.checkUpdate(ctx)
-                        val r = upd?.let { OcManager.downloadAndInstall(ctx, it) { } }
+                        val r: OcManager.DownloadResult =
+                            if (ocInstalled) {
+                                val upd = OcManager.checkUpdate(ctx)
+                                upd?.let { OcManager.downloadAndInstall(ctx, it) { } }
+                                    ?: OcManager.DownloadResult(
+                                        false,
+                                        "OpenCode 已是最新（${ocVer ?: OcManager.VERSION}）",
+                                    )
+                            } else {
+                                OcManager.downloadAndInstall(ctx) { }
+                            }
                         android.os.Handler(ctx.mainLooper).post {
                             checkingOc = false
-                            Toast.makeText(
-                                ctx,
-                                when {
-                                    upd == null -> "OpenCode 已是最新（${OcManager.installedVersion(ctx) ?: OcManager.VERSION}）或检查失败"
-                                    r?.ok == true -> "OpenCode 已更新到 ${upd.version}，下次启动生效"
-                                    else -> "更新失败：${r?.message ?: "未知错误"}"
-                                },
-                                Toast.LENGTH_LONG
-                            ).show()
+                            Toast.makeText(ctx, r.message, Toast.LENGTH_LONG).show()
                         }
                     }.start()
                 },
-            ) { Text(if (checkingOc) "检查中…" else "检查 OpenCode 更新") }
+            ) { Text(if (checkingOc) "处理中…" else if (ocInstalled) "检查 OpenCode 更新" else "安装 OpenCode") }
         }
 
         // ── 安装包缓存（第三批）──
