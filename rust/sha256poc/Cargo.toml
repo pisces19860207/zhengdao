@@ -9,13 +9,11 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 # asm feature：启用 ARMv8 SHA2 硬件指令（aarch64 上与平台 MessageDigest 同吃硬件加速，
 # 计时对比才公平——2026-10-07 首轮计时 27ms vs 5ms 即因漏开此 feature，结论已修正）
-sha2 = { version = "0.10", features = ["asm"] }
+sha2 = "0.10"
 hex = "0.4"
 
 # JNI 薄层仅在 Android 目标编译（PC 上的 cargo test 只跑纯逻辑层）
 [target.'cfg(target_os = "android")'.dependencies]
+sha2 = { version = "0.10", features = ["asm"] }
 jni = { version = "0.21", default-features = false }
 
-[profile.release]
-opt-level = 3
-lto = true

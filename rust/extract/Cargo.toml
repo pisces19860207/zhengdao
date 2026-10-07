@@ -1,0 +1,21 @@
+[package]
+name = "extract"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# zstd 解压（绑定 C 实现——评估文档裁定：纯 Java zstd 是安装流水线的真实 CPU 热点）
+zstd = "0.13"
+# tar 归档遍历（纯 Rust）
+tar = "0.4"
+hex = "0.4"
+sha2 = "0.10"
+flate2 = "1.0"
+
+[target.'cfg(target_os = "android")'.dependencies]
+sha2 = { version = "0.10", features = ["asm"] }
+jni = { version = "0.21", default-features = false }
+
