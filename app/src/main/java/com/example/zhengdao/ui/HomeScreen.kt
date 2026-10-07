@@ -439,11 +439,18 @@ fun HomeScreen(
                                 modifier = Modifier.width(84.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("启动") }
+                            // ⚠️ 这里**不能用 enabled=false**（2026-10-07 真机血案）：
+                            // AgentRepository 的「安装中」标记是 SharedPreferences 里的一个
+                            // 时间戳，只有"文件真的出现"或"撑过 15 分钟 TTL"两条清除出口。
+                            // 安装失败/半途 Ctrl-C/网络断了，标记不会自己消失 ⇒ 卡片连续
+                            // 15 分钟显示禁用的「安装中」。用户点了完全没反应——他没法区分
+                            // "没点到"、"在忙"还是"坏了"，而且连安装进度都看不到。
+                            // 改为可点并跳终端：终端里就是正在跑的安装输出，能看到进度、
+                            // 也能 Ctrl-C 中断再点按钮重来。这比一个死掉的禁用按钮诚实。
                             installing -> OutlinedButton(
                                 onClick = { onOpenTerminal(null, agent.id) },
                                 modifier = Modifier.width(84.dp),
                                 shape = RoundedCornerShape(50),
-                                enabled = false,
                             ) { Text("安装中") }
                             agent.installCmd != null && envReady -> OutlinedButton(
                                 onClick = {
