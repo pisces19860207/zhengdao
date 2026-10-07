@@ -51,6 +51,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- ⚠️ 终端页的实例唯一性由**发起方的 Intent flag** 保证（见 MainActivity.terminalIntent），
+             不用 android:launchMode：
+               · singleTop —— 只在终端页已处于栈顶时才复用，问题是各入口都是从别处发起，
+                 终端通常不在栈顶 ⇒ 挡不住新建实例；
+               · singleTask —— 能强约束到全局唯一，但会把它塞进**独立 task**（真机实测 t4932
+                 里只剩 TerminalActivity），于是清掉其上方的 MainActivity，红点关闭后不再
+                 回主页，等于"退出即杀"，违反会话保活约定。
+             CLEAR_TOP | SINGLE_TOP 组合在**同一个 task 内**达成同一目标：既有实例提到前台
+             并走 onNewIntent，其上方 activity 被清理，下方的 MainActivity 保留 ⇒ 返回栈不变。
+             会话保活不受影响：会话由 SessionManager + 前台服务持有，与 Activity 实例数无关。 -->
         <activity
             android:name=".TerminalActivity"
             android:exported="false"
