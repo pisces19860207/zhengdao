@@ -24,6 +24,7 @@ import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
+import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -68,6 +69,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private var paneCount = -1
     /** 待执行的自动命令（一键安装/启动）；attach 与 fresh 两条路径都要注入 */
     private var pendingAutocmd: String? = null
+
+    /** 见 [Companion.recentLaunches] 的说明（放在 companion 里，Activity 重建不丢）。 */
+    private val launchGuardMs get() = Companion.launchGuardMs
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -292,11 +296,74 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }
     }
 
+    /**
+     * 同名进程有几个（用于"启动幂等"判定）。
+     *
+     * 依据：guest 进程**就是**宿主进程——proot 不做 PID 隔离，实测 `ps -A` 里能直接看到
+     * `u0_a387 ... agy`。所以扫 /proc/<pid>/comm 即可，不必进 guest 里问。
+     * comm 最长 15 字节，常见 agent 名（agy / claude / hermes）都在范围内。
+     */
+    private fun countProcesses(name: String): Int {
+        if (name.isBlank()) return 0
+        val self = android.os.Process.myPid()
+        var n = 0
+        for (d in (File("/proc").listFiles() ?: return 0)) {
+            val pid = d.name.toIntOrNull() ?: continue
+            if (pid == self) continue
+            runCatching {
+                if (File(d, "comm").readText().trim() == name) n++
+            }
+        }
+        return n
+    }
+
+    /** 该 Agent 的官方启动命令（用于区分「启动」与「一键安装」两条注入路径）。 */
+    private fun launchCmdOf(agentId: String?): String? {
+        if (agentId.isNullOrBlank()) return null
+        return runCatching {
+            AppState.agents(this).firstOrNull { it.id == agentId }?.launchCmd?.trim()
+        }.getOrNull()
+    }
+
     /** 注入待执行命令。⚠️ attach/fresh 两条路径都要走，否则点[安装]进终端无反应。 */
     private fun injectPendingAutocmd() {
         if (fallbackActive) return
         val cmd = pendingAutocmd ?: return
         pendingAutocmd = null
+
+        // 启动幂等（用户规则：不能"点一次一个、点两次两个"）：
+        //   原先每次点「启动」都 C-b c 开一个**新窗口**再跑命令 ⇒ 会话里 Agent 实例越点越多。
+        //   这里先查进程：同名 Agent 已在跑就**不再启动**，只把事实告诉用户。
+        //   判定限于「启动」路径（cmd == 该 Agent 的 launchCmd）；一键安装命令附带安装脚本，
+        //   与 launchCmd 不相等，故不受影响——安装本来就可能需要重试。
+        val aid = intent?.getStringExtra("agent_id")?.takeIf { it.isNotBlank() }
+        if (cmd.trim() == launchCmdOf(aid) && aid != null) {
+            val name = cmd.trim().substringBefore(' ')
+            val running = countProcesses(name)
+            val since = recentLaunches[aid]?.let { System.currentTimeMillis() - it }
+            when {
+                running > 0 -> {
+                    Toast.makeText(
+                        this,
+                        "$name 已在运行（$running 个实例），不重复启动；可在终端切换窗口查看",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    android.util.Log.d("Inject", "启动幂等：$name 已在跑 ${running} 个，跳过注入")
+                    return
+                }
+                since != null && since < launchGuardMs -> {
+                    Toast.makeText(
+                        this,
+                        "$name 正在启动中（${since / 1000}s 前发起），请稍候，不重复启动",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    android.util.Log.d("Inject", "启动幂等：$name 启动窗口期内（${since}ms），跳过注入")
+                    return
+                }
+            }
+            recentLaunches[aid] = System.currentTimeMillis()
+        }
+
         if (usesTmux) {
             // tmux 会话可能正跑着 Agent 的 TUI——命令开新窗口执行，不打进 TUI 的输入框。
             // ⚠️ 不走 C-b : 命令提示符（提示符异步打开 + 固定 150ms 延迟存在竞态：
@@ -889,5 +956,21 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             com.example.zhengdao.rootfs.RootfsDownloader.releaseIdleResources()
         }
+    }
+
+    companion object {
+        /**
+         * 「刚发起了启动、进程还没起来」的窗口期记录：agentId -> 发起时刻。
+         *
+         * 为什么需要：启动幂等靠扫进程判定，但大体积 Agent（claude 的二进制 250MB）冷启
+         * 要好几秒——这期间进程名还查不到，用户再点就会又开一个窗口、又起一个实例。
+         * 真机实测：连点三次 claude，前两次都因进程尚未出现而各自注入了一次。
+         * 故补一道时间窗：发起后 20 秒内一律视为"已经在启动"，不再重复注入。
+         * 代价：这 20 秒内若启动真的失败了，重试会被挡一次——但有 Toast 说明原因，可接受。
+         *
+         * 进程级（companion）：点「启动」会新建/复用 Activity，实例字段会在重建时丢。
+         */
+        val recentLaunches = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        const val launchGuardMs = 20_000L
     }
 }
