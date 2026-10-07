@@ -67,6 +67,13 @@ cargo test                                  # PC 层纯逻辑：8/8（sha256 4 +
 cargo build --release -p zhengdao_core --target aarch64-linux-android
 ```
 
+> ⚠️ **`cargo test` 的前置：本机必须有 host C 编译器。** `zhengdao_core` 依赖 `zstd`（→ `zstd-sys`），
+> 其 build script 要调 `cc`。2026-10-07 在一台**没有任何 host C 编译器**的 Windows 上实测报
+> `error occurred in cc-rs: failed to find tool "gcc.exe": program not found`。
+> 这个坑**会被缓存掩盖**：只要 `rust/target/` 里已有编好的 `zstd-sys` 产物，`cargo test` 就直接复用、
+> 照样通过；一旦换工作树或清掉 `target/`，就立刻暴露。`gcc`/`cc`/`clang` 全无时先装一个
+> （MSYS2 的 `mingw-w64-x86_64-gcc`，或 Rust 的 `x86_64-pc-windows-gnu` 工具链）再跑。
+
 再生成入库的 `.so`（**注意 16KB 对齐验收，见 core/README.md**）：
 
 ```powershell
