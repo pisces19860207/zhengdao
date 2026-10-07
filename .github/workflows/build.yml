@@ -125,8 +125,10 @@ jobs:
       - name: 编译 Release APK（最终用户用；R8 + 资源收缩 + lintVital）
         # ⚠️ 这一步是本流水线以前**没有**的，正是它缺席让 CI 发布的「正式版」实为 debug 包
         #    （见 docs/ERRATA.md E-013）。release 变体用 debug 签名
-        #    （app/build.gradle.kts:69 `signingConfig = signingConfigs.getByName("debug")`），
-        #    所以 CI 不需要任何密钥文件即可产出一个可直接安装的正式包。
+        #    （app/build.gradle.kts:77 `signingConfig = signingConfigs.getByName("debug")`），
+        #    但**这不等于 CI 不需要密钥**：CI 每次全新 runner，AGP 找不到 keystore 会随机
+        #    生成一把新 key，产出的包与存量用户签名冲突、盖不上（见 E-014）。所以上面那一步
+        #    「还原 debug 签名密钥」是这一步能用的前提。
         #    这一步失败会让整个 job 变红（这是刻意的）：宁可 CI 红，也不要再悄悄发调试包。
         run: ./gradlew :app:assembleRelease --console=plain
 

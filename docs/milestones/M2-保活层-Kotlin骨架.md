@@ -6,6 +6,14 @@
 > 项目：证道 · 依据：v3 文档 §5 防杀矩阵
 > 核心原则：**SessionService（前台服务）拥有 tmux server 与 proot 常驻实例；终端 UI 只是 attach/detach 的视图——UI 死 ≠ 会话死。**
 
+> ## ⚠️ 阅读须知（2026-10-07 全库核对后补）
+> **本文档是设计骨架（Kotlin 草案），不是代码现状说明书。** 骨架里的类名/函数签名**与仓库实际代码大量不一致**，逐处差异已在对应小节加 ⚠️ 更正块。核对结论速览：
+> - `SessionManager` 实际是 **`object`**（`terminal/SessionManager.kt:30`），只有 `init`/`isAlive`/`start`/`write`/`resize`/`kill`；本文档的 `class SessionManager(...)`、`ensureMainSession()`、`ensureIsolatedSession()`、`attach()`、`detach()`、`killSession()` **在全库 0 命中**。
+> - 本文档 `:83-88`/`:99-103`/`:225` 的 **`taiji` 副会话 / XDG wrapper 例外已随 v1.2 删除**（`terminal/ProotLauncher.kt:531-532`），单会话模型已回归。
+> - `MemoryGovernor`（软上限 3GB / `trimGuestMemory()`）与 `SessionRecovery` **均未实现、全库 0 命中**；实际内存治理是 `terminal/ResMonitor.kt`（`RSS_WARN_MB = 800`）**只告警不释放**。
+> - `:245` 的「安卓 10/12/14/15 真机矩阵」**不可执行**（`minSdk = 36`）。
+> - **红线与工程约束部分（§4 释放边界、§5 为什么不用 ulimit -v、§6 电池白名单、§8 措辞红线、§9 红线）经核对仍然正确，以本文档为准。**
+
 ---
 
 ## 1. SessionService（前台服务）
@@ -60,6 +68,9 @@ class SessionService : Service() {
             .setOngoing(true)
             .setContentIntent(pendingIntentToTerminal())
             // ⚠️ 图标不可传 0：用自有 drawable，否则通知按钮无图标（部分 ROM 直接不显示）
+            // ⚠️⚠️ 更正（2026-10-07）：**这条红线在代码里没有执行**——`res/drawable/` 下**没有 `ic_pause`**，
+            //     真实代码 `terminal/SessionService.kt:161-162` 至今仍是 `.addAction(0, …)`（传 0）。
+            //     要么补一个 `ic_pause` 并改代码，要么承认传 0 可接受并改掉这条注释。
             .addAction(R.drawable.ic_pause, if (wakeLock.isHeld) "暂停保活" else "保持运行", pauseIntent())
             .build()
     }
@@ -67,6 +78,8 @@ class SessionService : Service() {
     private fun stopSession() {
         // 仅「停止会话」显式调用；进程被杀后重进 App 走 attach 恢复
         // ⚠️ 实现走 sessionManager.killSession()（tmux kill-session -t zhengdao）。
+        //    ⚠️ 更正（2026-10-07）：**真实 API 是 `SessionManager.kill(context)`**（`terminal/SessionManager.kt:99`），
+        //    没有 `killSession()` 这个函数；会话名确为 `zhengdao`（`terminal/ProotLauncher.kt:143,518`），非 `free`。
         //    骨架原写 Runtime.exec("kill $tmuxServerPid") 有两个问题：① kill 的是宿主 pid，
         //    而目标是 guest 内 proot 里的 tmux server，两者命名空间与权限模型不同；
         //    ② 会额外拉起一个 system shell 进程。勿照抄。
@@ -80,7 +93,19 @@ class SessionService : Service() {
 
 > v3.6 定案：**单会话模型**。自由终端与 Agent 安装/启动复用同一会话。无多会话、无会话切换器。多会话需求由 tmux window/pane 分屏满足（高级用户自己在会话内 `Ctrl+B` 分屏，不占额外 UI）。
 >
-> 🔺 **v3.11 例外（2026-10-06，代码已落地 `3f27844`）**：
+> 🔺 **v3.11 例外（2026-10-06，代码已落地 `3f27844`）**：~~**已于 v1.2 整体作废，见下。**~~
+>
+> ## ⛔ **本节已作废（2026-10-07 核对）——`taiji` 副会话在 v1.2 被删除**
+> `terminal/ProotLauncher.kt:531-532` 的代码注释明写：「v1.2 删掉了 `taiji` 副会话分支……该 opencode 已随主线一卸载，分支不可达」。
+> 且 `terminal/SessionManager.kt:30` 是 **`object`**，只有 `init`/`isAlive`/`start`/`write`/`resize`/`kill`——**`ensureSession` / `ensureMainSession` 全库 0 命中**。
+> 太极 Tab 现在的形态是 **Compose 原生客户端直连宿主 `opencode serve` 的 `/api`**（不经 guest tmux 会话）。因此：
+> - ~~自由终端会话名 `zhengdao`~~ **（这条仍成立，保留）**；
+> - ~~太极 Tab 拥有独立的 `taiji` 会话~~ → **P3 已删，单会话模型回归**；
+> - ~~`SessionManager.ensureSession()` 需支持会话名参数~~ → **不存在该函数，也不要新增**；
+> - ~~只有 `zhengdao` 允许 `tmux kill-server`~~ → 现在只有 `zhengdao` 一个会话，"例外"无从谈起；
+> - ~~`taiji` pane = `/usr/local/bin/taiji` wrapper（export XDG 四目录 → `exec opencode`）~~ → **`/usr/local/bin/taiji` 全库 0 命中；XDG 隔离改由宿主侧 `oc/OcManager.kt:71-82` 的 `configDir`/`configFile` 做**。
+>
+> 下列五条 bullet 仅作**历史留档**，**实现方不要照此写**：
 > - 自由终端会话在代码中名为 **`zhengdao`**（本文档与 v3.6 文字稿曾写作 `free`，**以代码为准**）。
 > - **太极 Tab 拥有独立的 `taiji` 会话**，"单会话"约束的对象是**洞天 + 丹房**，不含太极。两个会话并存于同一 tmux server。
 > - **`SessionManager.ensureSession()` 需支持会话名参数**（默认 `zhengdao`，太极传 `taiji`）——原v3.6 收窄为"无 name 参数"已随太极落地分叉，实现方不要照旧签名。
@@ -97,6 +122,8 @@ class SessionManager(private val prootLauncher: ProotSessionLauncher) {
     }
 
     /** 副会话（太极）：不 kill server，直接 attach-or-create；pane = XDG 隔离 wrapper。 */
+    // ⛔ 更正（2026-10-07）：**此函数从未实现，且已被 v1.2 取消需求**——全库 0 命中 `ensureIsolatedSession`，
+    //    `taiji` 副会话分支已删（`terminal/ProotLauncher.kt:531-532`）。下面两行仅作历史留档。
     fun ensureIsolatedSession(name: String, paneCmd: String): ProotSession {
         // exec tmux new-session -A -s $name $paneCmd
         // ⚠️ pane 主程序必须是 taiji wrapper，直接写 opencode 会绕过 wrapper、XDG 全不注入
@@ -111,6 +138,11 @@ class SessionManager(private val prootLauncher: ProotSessionLauncher) {
 
     fun killSession() {
         // 仅「修复环境」等显式操作调用；执行 tmux kill-session -t free
+        // ⚠️ 更正（2026-10-07）：函数名实为 `SessionManager.kill(context)`（`terminal/SessionManager.kt:99`）；
+        //    会话名是 `zhengdao`（`terminal/ProotLauncher.kt:143,518`），**不是 `free`**（本文档 `:69` 自己也写的 zhengdao）。
+        //    另注：§2 标题下的 `class SessionManager(private val prootLauncher: ProotSessionLauncher)` 与
+        //    `fun ensureMainSession(): ProotSession`、`fun attach(session, terminalView)`、`fun detach(session)`
+        //    四个签名同样与真实 `object SessionManager` 不符，以上均为骨架草案。
     }
 }
 ```
@@ -157,6 +189,13 @@ fun createNotificationChannel() {
 
 ```kotlin
 // 内存治理：防杀矩阵第 4 层。目标 = 别让「内存枯竭强杀」从最后一行跑到前面来。
+// ⛔ 更正（2026-10-07 全库核对）：**下面这个 `MemoryGovernor` 从未实现——`MemoryGovernor` /
+//    `trimGuestMemory` / `startMonitoring` 的这套签名在全库 0 命中。**
+//    实际落地的是 **`terminal/ResMonitor.kt`**：`RSS_WARN_MB = 800`（依据 2026-10-07 真机基线 375–468MB）
+//    + `terminal/SessionService.kt:23,116` 的 **30 秒软监控**，且**只告警、不释放**。
+//    因此本文档下面「用户在通知/设置页点『释放内存』」对应的验收项（`§验收` 里的「'释放内存'后 RSS 显著下降」）
+//    **当前不可达**——没有"释放"这条路。3GB/5GB 两个阈值同样是设计值，非现网值。
+//    本节保留的全部价值在**设计约束**（为什么不做硬上限、失败要如实返回），那部分仍然正确。
 class MemoryGovernor(
     private val sessionManager: SessionManager,
     private val prootLauncher: ProotSessionLauncher,  // 获取 proot 主进程 pid
@@ -219,6 +258,10 @@ fun requestIgnoreBatteryOptimizations(activity: Activity) {
 ## 8. 被杀的检测与恢复（App 启动时）
 
 ```kotlin
+// ⛔ 更正（2026-10-07）：**`class SessionRecovery` 在全库 0 命中——未实现，纯草案。**
+//    另外本段两处与现状不符：① 「DataStore 持久化」——项目**没有引 DataStore**
+//    （`app/build.gradle.kts` 无 `datastore` 依赖，实际用 SharedPreferences + 文件直读写）；
+//    ② 「zhengdao 主会话 + taiji 太极会话，各自独立恢复」——`taiji` 副会话已随 v1.2 删除，现在是单会话。
 class SessionRecovery(private val sessionManager: SessionManager) {
     fun onAppLaunch() {
         // 1. 检查上次是否有活跃会话标记（DataStore 持久化：proot pid + tmux socket）
@@ -242,7 +285,7 @@ class SessionRecovery(private val sessionManager: SessionManager) {
 - [ ] 关闭通知权限后 FGS 仍存活但通知不可见（降级体验记录）
 - [ ] 内存治理：guest RSS 超阈值出现通知栏警告；「释放内存」后 RSS 显著下降且会话/agent 不中断
 - [ ] 电池白名单两步引导：系统弹窗 + 国产 ROM 图文路径均可达，一键跳转设置页在主流 ROM 可用
-- [ ] 安卓 10 / 12 / 14 / 15 真机矩阵各跑一遍
+- [ ] ~~安卓 10 / 12 / 14 / 15 真机矩阵各跑一遍~~ → **❌ 不可执行（2026-10-07 更正）**：`app/build.gradle.kts` 的 `minSdk = 36`（「最低安装门槛：安卓 16（API 36）……Android 15 及以下未适配未验证」），这些机型**装不上**。应改为「**安卓 16 真机**」或「未来降 minSdk 时的回归矩阵」。同一错误见 `M1.1-开发任务书.md:236`。
 
 ## 红线（v3 实测结论）
 
