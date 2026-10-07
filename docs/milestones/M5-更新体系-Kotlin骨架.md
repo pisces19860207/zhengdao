@@ -1,5 +1,12 @@
 # M5 更新体系 Kotlin 骨架（本里程碑工程约束与验收标准；实现以代码为准，约束与红线以本文档为准）
 
+> # ⛔ 【状态：未实现 · 留档草案】（2026-10-07 全库核对后加）
+>
+> **本文档的 Kotlin 代码整章不存在于仓库中，请勿当成"待续任务书"或代码现状说明书。**
+> 核对证据：`AppUpdater`、`AgentHelperUpdater`、`ManifestClient`、`FetchOutcome`、`rollbackToGoldenImage`、`downloadAndVerify` —— **全部符号在全库 0 命中**（`git grep` 无匹配）。`:197-204` 的八项验收**全未勾选**。
+> **实际现状**：App 内只有 `MainActivity.kt:168-198` 的 `checkAppUpdateInBackground()`——弹窗提示 + `Intent.ACTION_VIEW` 跳转 Releases 页，**没有自动下载、没有自动安装、没有回滚**。
+> **本文档仍有价值的部分**：ed25519 验签思路、Golden Image 回退原则、版本护栏要求——但**实现细节与现状不符处已在各节加 ⚠️ 更正块**，以更正块为准。
+
 > 📌 **存储结论已反转（E-005，2026-10-06）**：App 真身下 `/sdcard` 读写均可用，SAF 镜像同步降级为**备用方案**。本文件不含存储方案约定；存储权威说明见 `docs/ERRATA.md` 与 `已知限制.md`。
 > 📌 **执行总览**：M1-M5 与 P1-P8 的整合路线图见 `证道-执行路线图.md`（本文档为功能骨架，整体顺序与优先级以路线图为准）。
 >
@@ -10,6 +17,8 @@
 ---
 
 ## 1. AppUpdater（APK 自更新）
+
+> ⛔ **本节及以下 §1–§4 的 Kotlin 代码全部未实现**（`AppUpdater` / `AgentHelperUpdater` / `ManifestClient` / `FetchOutcome` / `rollbackToGoldenImage` / `downloadAndVerify` 全库 0 命中）。实际只有 `MainActivity.kt:168-198 checkAppUpdateInBackground()` 弹窗 + 跳转 Releases 页。
 
 ```kotlin
 class AppUpdater(
@@ -125,12 +134,20 @@ class AgentHelperUpdater(
 //   -> 清理 apt 缓存 -> 裁掉 /usr/share/doc 与多余 locale
 //   -> mkdir -p /var/log/apt /var/log/dpkg
 //   -> 写 /etc/profile.d/uv-link-mode.sh：export UV_LINK_MODE=copy
+//      ⚠️ 更正（2026-10-07）：**实际文件名是 `/etc/profile.d/zhengdao-uv.sh`**，且不止这一处——
+//         还写 `/etc/uv/uv.toml`（`link-mode = "copy"`，系统级：用户级 uv.toml 会被 `UV_NO_CONFIG=1`
+//         与 XDG 重定向全废）与 `/etc/environment`；`uv` **不在 apt 清单里**，是从 GitHub release 安装的。
+//         （实现在 `rootfs/build-rootfs.sh` 与 `terminal/EnvSelfHeal.kt:179-193`。）
 //   -> tar.zst 打包（zstd：解压快数倍、发热更小）
 // 版本断言（构建即验收，漂移即失败）：
 //   ldd --version          -> glibc 2.41.x（只读不自升）
 //   python3 --version      -> 3.13.x（系统自带）
 //   node --version         -> v26.x（NodeSource）
 // 产物：debian-13.7-base-arm64.tar.zst + manifest.json（含 SHA256、大小、双通道 URL、ed25519 签名）
+//   ⚠️ 更正（2026-10-07）：**构建实际只产 `.tar.zst` + `.sha256`**，没有 `manifest.json`。
+//      `rootfs/manifest.json` 仅有 6 个字段（`version "13.7"`/`distro`/`url`/`sha256` 等），
+//      **无 `size`、无双通道 URL、无 ed25519 签名**；且其 `sha256` 字段还是空的。
+//      真正带 ed25519 签名的是**热更新清单** `rootfs/agents.json` + `agents.json.sig`。
 ```
 
 ## 5. 安全闸：离线签发 + 公钥固化（v3.4）
@@ -147,7 +164,12 @@ class AgentHelperUpdater(
 //   新公钥随新版 APK 下发，旧私钥作废；用户升级 APK 后完成信任迁移
 ```
 
-**离线签发实操脚本（v3.9 补）** —— `scripts/sign-manifest.sh`，**只在离线机器执行**：
+**离线签发实操脚本（v3.9 补）** —— ~~`scripts/sign-manifest.sh`~~，**只在离线机器执行**：
+
+> ⚠️ **更正（2026-10-07）**：**仓库里没有 `scripts/` 目录，也不存在 `sign-manifest.sh`**。
+> 实际使用的工具是 **`tools/sign-agents-manifest.py`**（签的是 `rootfs/agents.json` → `agents.json.sig`），
+> 私钥在仓库外：`C:/Users/guoli/.zhengdao-keys/agents-manifest.ed25519.key`。
+> 下面这段脚本仅作**签发流程的设计留档**，不要照路径执行。
 
 ```bash
 #!/bin/bash
@@ -191,8 +213,11 @@ echo "已生成 ${MANIFEST}.sig —— 把 manifest.json 与 .sig 一并上传 R
 **软件源策略（构建期定案）**：rootfs `sources.list` 用 **Debian 官方源**，npm 用官方 registry（npmjs.org），pip 用官方 PyPI。**不预置国内镜像源**（镜像滞后破坏可复现性、开代理访问国内源反而绕路）。
 
 **更新失败引导**：`AppUpdater.checkForUpdate()` / `AgentHelperUpdater.update()`（原 `ComponentUpdater`）/ manifest 拉取失败时，**必须接入 v3 §6 连接失败智能引导**（弹图文：确认代理已开 VPN 模式 → 检查分应用代理是否勾选证道 → 手动代理设置），不允许静默失败。
+> ⚠️ **更正（2026-10-07）**：句中的 `AppUpdater` / `AgentHelperUpdater` / `ComponentUpdater` **三个类全库 0 命中**（未实现）；实际"检查更新"只有 `MainActivity.kt:168-198` 的弹窗 + 跳转，**没有本文描述的失败引导**。`manifest` 一词在本项目语境下也需替换为 `rootfs/agents.json`。
 
 ## 验收要点（对应 v3 §9）
+
+> ⛔ **本节八项验收至今（2026-10-07）全部未勾选、也全部不可执行**——它们验收的 `AppUpdater` / 组件热更新通道 / manifest / Golden Image 回退 / `min_app_version` 版本护栏**在仓库中都不存在**（`agent-helper` 命令亦无实现）。本节应整体移入"未实现 · 留档草案"。**真正已在跑的相关能力**只有：rootfs 下载（`RootfsDownloader.kt`，含 `.part` 续传 + SHA256 + `gh-proxy.com` 兜底）与 rootfs 解压（Rust `rust/extract` 优先，commons-compress 兜底）。
 
 - [ ] APK 自更新：release 新版本 -> 启动检测到 -> 下载校验 -> 调起系统安装器安装
 - [ ] 组件热更新：新 agent-helper 静默下载替换，agent 命令仍可用（终端渲染为原生 TerminalView，不设热更新通道，渲染修复随 APK 发版）
@@ -208,4 +233,5 @@ echo "已生成 ${MANIFEST}.sig —— 把 manifest.json 与 .sig 一并上传 R
 - **manifest 先验签后解析**；公钥固化 APK 并加构建期断言（非占位符）
 - 私钥离线签发、不入 CI；**CI 永不签名**
 - 组件版本必须声明 `min_app_version`，防止新组件下发到老 APK 崩溃
-- 大文件（rootfs）只走 GitHub Releases + Cloudflare R2/自定义域名；jsDelivr 仅用于小文件（不代理 Releases 资产、50MB 上限）
+- 大文件（rootfs）只走 GitHub Releases + ~~Cloudflare R2/自定义域名~~；jsDelivr 仅用于小文件（不代理 Releases 资产、50MB 上限）
+  > ⚠️ **更正（2026-10-07）**：**Cloudflare R2 已随"方案一"于 2026-10-07 被用户废弃**（见 `docs/ERRATA.md` E-015），仓库内 R2 调用为 0。实际兜底是 `rootfs/RootfsDownloader.kt` 的 `withMirrorFallback` → `gh-proxy.com`。

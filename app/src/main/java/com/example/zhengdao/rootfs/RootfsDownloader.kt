@@ -61,11 +61,13 @@ object RootfsDownloader {
         else listOf(url)
 
     /**
-     * 对象存储镜像（方案一，见 docs/milestones/证道-方案一执行清单.md）：
-     * 从原始 URL 提取文件名，拼到对象存储桶公开域之后作为**首选源**，原 URL 兜底。
+     * 对象存储镜像变换——**方案一已于 2026-10-07 被用户废弃（见 docs/ERRATA.md E-015）**：
+     * rootfs 主下载源不迁往对象存储，因此**不要接入默认源列表**。
      *
-     * 纯函数、不接入 download 默认列表——桶未建成/未配置时调用方不传即可，
-     * 接入时机与回退演练见执行清单阶段一 3.x。
+     * 保留实现仅供试验与单测（`UrlTransformTest`）：从原始 URL 提取文件名，
+     * 拼到对象存储桶公开域之后作为首选源，原 URL 兜底。纯函数、无副作用。
+     *
+     * 现状：真实生效的兜底是 [withMirrorFallback] → gh-proxy.com。
      *
      * @param objectStoreBase 桶公开域（末尾不带 /，如 https://cdn.example.com/zhengdao）
      */

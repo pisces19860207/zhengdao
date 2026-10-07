@@ -165,8 +165,11 @@ SAF 镜像同步降级为**备用方案**（个别 ROM 兜底），代码保留�
   失去个别 ROM 的兜底（E-005 原保留的 ROM 兜底不再存在）。
 
 **代码影响**：
-- `app/src/main/AndroidManifest.xml:15`：`MANAGE_EXTERNAL_STORAGE` 已声明，升为主路径。
-- `app/src/main/java/.../terminal/ProotLauncher.kt:373`：`--bind /sdcard:/sdcard` 已在，主路径不变。
+- `app/src/main/AndroidManifest.xml:20-21`：`MANAGE_EXTERNAL_STORAGE` 已声明，升为主路径。
+  （原文写 `:15`，行号已漂移。）
+- `app/src/main/java/.../terminal/ProotLauncher.kt:482`：`args.addAll(arrayOf("-b", "$shared:$shared", "-b", "/sdcard:/sdcard"))`
+  已在，主路径不变。（原文写 `:373` 且字面写作 `--bind /sdcard:/sdcard`——
+  该字面全库不存在：proot 参数用的是短选项 `-b`，且 `/sdcard` 是与 `$shared` 一起加的。）
 - `app/src/main/java/.../mirror/PhoneMirror.kt`：删除（SAF 引擎作废，P1.5）。
 - `app/src/main/java/.../ui/SettingsScreen.kt`：SAF 镜像入口删除；MANAGE 入口升为显式引导。
 - `AgentInstaller.kt` / FD 代理：移除（P1.5）。
@@ -528,7 +531,7 @@ PC 层 `cargo test` 8/8（sha256 4 + extract 4）。
 ### 7. 两个"看着像 bug、其实不是"（免得后人白查一遍）
 
 1. **Rust 路径不回调 `onEntry` 进度** —— 不是漏实现。`RootfsInstaller.install()` 的
-   **6 个调用点全部传空 lambda**（`TerminalActivity.kt:723/764/817`、
+   **6 个调用点全部传空 lambda**（`TerminalActivity.kt:809/850/903`、
    `ui/SettingsScreen.kt:714/924/1010`），UI 侧本来就不消费逐条回调（Rust 侧另有限频的
    `CoreNative.onProgress`），所以 Java 路径调了也没人听。
 2. **"0 条目也写 MARKER"** —— 不是 Rust 引入的回归。`RootfsInstaller.kt:128` 无条件写
@@ -546,6 +549,9 @@ PC 层 `cargo test` 8/8（sha256 4 + extract 4）。
 3. **`.so` 入库 + CI 免装 Rust = CI 永远不会重编、也就永远发现不了这类问题**。
    二进制产物的正确性只能靠人写进文档的验收命令守住（已写进 `rust/README.md` 与
    `rust/core/README.md`）。
+   > ⚠️ 行号更正：`rust/core/README.md` **在 main 上不存在**，它只存在于
+   > `feat/v2.0-r1-rust-core-16kb` 分支（R1 收编把 `rust/extract` + `rust/sha256poc`
+   > 合并成 `rust/core` 的产物）。在 main 上应读 `rust/extract/README.md`。
 4. **"开个 feature 就好了"要验证**：sha256 的 asm feature 开了之后反而更慢（27ms → 33ms），
    因为它根本没有改变瓶颈所在。优化前先量出瓶颈在哪一段，别猜。
 
@@ -566,12 +572,16 @@ tag `v1.2.0` 上并排躺着两个资产：
 | `zhengdao-1.2.0-release.apk` | 3,936,733 B | 真的 release 构建（= 本机 `:app:assembleRelease` 的字节数，手工传的） |
 | `app-release.apk` | 38,155,528 B | **debug 构建**（CI 改名传的） |
 
-滚动版 `latest`：`zhengdao-1.2.0-debug.apk` = 38,577,713 B —— 这个名字反倒是诚实的。
+滚动版 `latest`：`zhengdao-1.2.0-debug.apk` = 38,583,773 B —— 这个名字反倒是诚实的。
 
-体积差 **9.7×**。而 App 内没有任何自更新下载器（`ui/SettingsScreen.kt:884/894/979` 只是
+体积差 **9.7×**。而 App 内没有任何自更新下载器（`ui/SettingsScreen.kt:884/894/978` 只是
 `Intent.ACTION_VIEW` 跳 GitHub 页面），用户是**自己挑资产下载**的——他会看到两个都叫 "release"。
 
 ### 2. 根因：三处，逐条对应行号
+
+> ⚠️ **本节所有 `build.yml:` 行号都是修复前（`fc74cd5^`）的旧编号。**
+> 修好之后该文件从 154 行长到 254 行，同样的行号现在指向完全不同的内容。
+> 要按行号查证请用 `git show fc74cd5^:.github/workflows/build.yml`。
 
 - `build.yml:77-78` —— 整条流水线唯一的编译步骤：
   ```yaml
@@ -592,8 +602,9 @@ tag `v1.2.0` 上并排躺着两个资产：
 
 ### 3. 为什么一直没被发现（这才是最值钱的部分）
 
-1. **release buildType 用的就是 debug 签名**（`app/build.gradle.kts:69`
-   `signingConfig = signingConfigs.getByName("debug")`，注释写明是"个人分发渠道"策略）。
+1. **release buildType 用的就是 debug 签名**（`app/build.gradle.kts:77`
+   `signingConfig = signingConfigs.getByName("debug")`，注释写明是"个人分发渠道"策略；
+   benchmark 变体同款在 `:90`。注意 `:69` 不是这行，`fc74cd5^` 时代就写错过一次）。
    所以 debug 包**能正常安装、能正常跑**——功能上看不出任何区别，只有体积和 `debuggable` 不同。
 2. 滚动版文件名带 `-debug`，作者自己一眼看得懂，就不觉得是错。
 3. **没人拿"资产字节数"对过账**。本机 release 产物 3.9MB，CI 资产 38MB，一对比就露馅。
@@ -611,7 +622,10 @@ tag `v1.2.0` 上并排躺着两个资产：
 ### 5. 修法（**已实施**，见本节末「实施记录」）
 
 - build job 增加一行 `./gradlew :app:assembleRelease --console=plain`。
-  release 走 debug 签名，**CI 上不需要任何 secret**，可以直接编。
+  > ⚠️ **原文此处写"release 走 debug 签名，CI 上不需要任何 secret，可以直接编"——这句已被 E-014 推翻。**
+  > E-014 查明：CI 从不还原 `~/.android/debug.keystore`，AGP 会每次随机生成一把新 key。
+  > 所以 `assembleRelease` 一旦进 CI，**必须**先配 repo secret `DEBUG_KEYSTORE_B64`
+  > 把本机那把 keystore 还原回去（见 E-014 §4）；照本行原文去配 CI 会发出装不上的正式版。
 - **产物命名规范化**，重点是把 `app-release.apk` 这个会撒谎的名字去掉：
   - release job 直接传 `zhengdao-<versionName>-release.apk`（AGP 默认产物名就是这样）；
   - 若某处真需要固定名 `app-release.apk`，改成 `zhengdao-release.apk` 之类，
@@ -641,8 +655,11 @@ tag `v1.2.0` 上并排躺着两个资产：
 - 本机可验证的部分：`:app:assembleDebug :app:assembleDebugAndroidTest` 16s 绿；
   `:app:assembleRelease`（含 R8 + lintVital）2m41s 绿，产物 `zhengdao-1.2.0-release.apk` 4,164,289 B。
 - ⚠️ **尚未验证的部分**：workflow 只在推 main 或打 `v*` tag 时才真正执行，
-  本次改动所在的分支不在 `on:` 的触发条件里，所以这段 CI 逻辑**一次都还没在 GitHub 上跑过**。
-  首次真实运行建议用 `workflow_dispatch` 手动触发一次再看结果。
+  本次改动所在的分支不在 `on:` 的触发条件里，所以这段 CI 逻辑当时**一次都还没在 GitHub 上跑过**。
+  > ✅ **后续（2026-10-07 晚，`3788eac` 进 main 后）**：构建腿已在真实 runner 上跑通。
+  > Run 130（`actions/runs/37627650755`）里步骤「还原 debug 签名密钥」「编译 Debug APK」
+  > 「编译 Release APK」**全部 success**。**只有 tag 触发的 release 腿仍未跑过**——
+  > 它依赖 repo secret `DEBUG_KEYSTORE_B64`（见 E-014），配好之前不许打 tag。
 
 ### 6. 教训
 
@@ -722,3 +739,86 @@ E-013 是"发出去的包不好"，本条是"**发出去的包装不上**"：
 3. 与 E-012 / E-013 同属一族：**"本机能跑"和"流水线能跑"是两套环境。**
    凡是"在某台机器上恰好存在"的东西（keystore、page-size 默认值、release 构建步骤），
    到了 CI 就是另一回事。
+
+### 6. 实施记录（2026-10-07）
+
+- `.github/workflows/build.yml:89-120` 新增步骤「还原 debug 签名密钥（让 CI 产物与存量用户同签名，可覆盖安装）」，
+  位置在 Gradle 缓存之后、编译 Debug APK 之前：
+  - `env: KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}`、`EXPECTED_SHA256: 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18`。
+  - 无 secret → `::warning::` + `exit 0`（**不硬失败**，避免 main 日常构建一直红）；
+    有 → `base64 -d` 还原到 `$HOME/.android/debug.keystore`，再用 keytool 提指纹比对，
+    **不符则 `::error::` + `exit 1`**。
+- `:169-195` 「发布到 Releases」步骤加 `KS_READY: ${{ secrets.DEBUG_KEYSTORE_B64 != '' }}`：
+  为 `true` 才 `gh release upload latest apk-release/*`；为 `false` 只打警告并跳过 APK 上传
+  （滚动版宁可不更新 APK，也不发一把随机 key 的包）。
+- `:202-219` release job 第一步新增「把关：没有签名密钥就不许发正式版」——**硬失败**
+  （`::error::` + `exit 1`）。tag 发布会因此被拦住，而不是悄悄发出去。
+- **指纹提取命令（踩过的坑，必须这样写）**：
+  ```bash
+  keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey 2>/dev/null \
+    | grep -m1 'SHA256:' | sed 's/.*SHA256: *//' | tr -d ':' | tr 'a-f' 'A-F'
+  ```
+  ⚠️ **不能用 `awk -F': *' '/SHA256:/{print $2}'`**——冒号后的 hex 会被 `-F` 逐段切开，
+  只能拿到第一段 `44`，比对会永远失败。
+- **本机验证**：用 `D:\Program Files\Android\Android Studio\jbr\bin\keytool.exe` 对同一份 keystore
+  跑上面的命令，得到的 SHA256 与写死的 `EXPECTED_SHA256` **逐字符吻合** ⇒ 同时证明
+  "这把 keystore 就是存量用户那把"与"CI 里的提取命令没写错"。
+- **待用户执行的最后一步**：把 `C:\Users\guoli\.zhengdao-keys\DEBUG_KEYSTORE_B64.txt`
+  （3492 字符、单行、无 BOM）配成 repo secret **`DEBUG_KEYSTORE_B64`**。
+  在此之前 tag 发布会硬失败、滚动版不发 APK。
+- 验收（未完成）：配好 secret 后打一个 tag，确认 CI 产物证书 SHA-256 = `44e2fe86…a3be18`，
+  且能在装着 v1.2.0 的机器上直接覆盖安装（**不卸载、不丢 `filesDir`**）。
+
+---
+
+## E-015 · 2026-10-07 · 「方案一」废弃：rootfs 主下载源不迁往对象存储
+
+**决定**：用户于 2026-10-07 拍板——**方案一（把 rootfs 主下载源从 GitHub Releases 迁到对象存储，
+Cloudflare R2 / 阿里云 OSS）废弃，不再推进。**
+
+> 用户原话（2026-10-07）：「方案一那个已经废弃了。」
+> **本条不代为编纂废弃理由**——用户未给出书面理由，任何人不得在下游文档里替这次决定补编动机。
+> 可核实的客观事实只有一条：截止落档时，rootfs 仍由 GitHub Releases 直链 + `gh-proxy.com` 兜底提供，实测可用。
+
+### 1. 方案一原本要做什么
+
+把"下载 Debian 环境包"从 GitHub Releases 换成对象存储做主源，目标是把装环境从约 4 分钟压到 1 分钟以内。
+方案与清单见 `docs/milestones/证道-rootfs下载优化方案.md`、`docs/milestones/证道-方案一执行清单.md`。
+
+### 2. 为什么必须落档（本条存在的唯一理由）
+
+**这次废弃此前在全库（含本文件）没有任何一处正面记录**，只隐含在两份待归档的文档里。
+不落档的后果是：将来有人翻到那份 21 个待办、一个勾都没有的执行清单，会把它当成"还没开始做的计划"
+重新排期——而真正的原因是**它已经被决定不做了**。
+
+### 3. 落档时必须一并纠正的一处事实错误
+
+执行清单 `:18` / `:61` / `:63` 把"新增 `withObjectStorage(url)`"列为待办。
+**这个函数早在 `4526b8f` 就已实现，而且是两参数版本**：
+
+```kotlin
+// app/src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt:72
+fun withObjectStorage(url: String, objectStoreBase: String): List<String>
+```
+
+单测覆盖在 `app/src/test/java/com/example/zhengdao/rootfs/UrlTransformTest.kt`（23 例）。
+照清单原样执行会让后来人**重复实现一个单参数版本**。
+
+同时确认：该函数在生产代码里**零调用**（`git grep` 只命中定义与单测）；真实生效的兜底是
+`app/src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt:59` 的 `withMirrorFallback` → `gh-proxy.com`。
+
+### 4. 处置（顺序不能反）
+
+1. **先**记本条 ERRATA——决定落档；否则后面两步做完就查不到原因了。
+2. **再**改 `app/src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt:63-71` 的 KDoc：
+   删掉"接入时机与回退演练见执行清单阶段一 3.x"，改为"方案一已于 2026-10-07 废弃；此变换仅供试验与单测，不要接入默认源列表"。
+3. **再**给 `docs/milestones/证道-rootfs下载优化方案.md` 加废弃横幅、`:36` 标题改「方案一（已废弃，仅存档）」。
+4. **最后**整篇归档 `docs/milestones/证道-方案一执行清单.md`——**不留勾选框**。
+   只加横幅而留着 `- [ ]`，等于把它继续摆在待办队列里。
+
+### 5. 教训
+
+1. **"决定不做"和"还没做"在仓库里长得一模一样。** 待办清单只记录"要做的事"，不记录"决定不做的事"；
+   后者一旦不落档，几个月后就会被重新捡起来。
+2. **废弃一个方案时，最先该清理的是它的可执行清单**，不是它的方案描述：方案描述是历史，清单是行动指令。
+3. **列待办前先 `git grep` 一遍函数名。** 本次清单要求"新增"的函数已经存在了近一周。

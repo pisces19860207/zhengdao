@@ -51,10 +51,12 @@
 `lastOrNull` 在"最后一次启动失败"时必然取错。这正对应 PoC #3 预设的
 「停在启动失败、错误码 401 → startServe 没解析到密码」分支。
 
-**修复方向（拼接时定，未实施）**：
+**修复方向（拼接时定，~~未实施~~ → ✅ **已实施**）**：
 - 取密码后用一次 `/api/*` 探测验活，401 则回溯前一场密码；
 - 或启动前检测端口占用并杀孤儿 / 复用孤儿；
 - 或 serve 启动改为「每场独立 log 文件」，密码与监听配对读取。
+
+> ✅ **落点（2026-10-07 核对）**：上述修复已落地，方向是第一条的强化版——`oc/OcManager.kt:185` 改为**「只认打了密码且后面跟着 listening 的场次」**（配套 `:187 pending` 状态、`:188 awaitingPw`、`:205` 的竞态修复）。旧实现 `oc/OcManager.kt:344 parseServePasswordFromLog` 已被标注**「已废弃、不再调用，这是 `lastOrNull` 的有 bug 版本」**。
 
 ## 发现 3：静态外壳公开、API 才鉴权（401 判定要打对位置）
 
@@ -149,7 +151,7 @@ createSession 先挡住了）。**建议统一剥信封**：`JSONObject(text).op
 （转屏保留 → 服务端最近 → 新建）按设计工作。
 
 **RunLog 全盲根因**（本轮最重要的发现）：
-- `RunLog.init()` **只在 `TerminalActivity.kt:66` 调用**——WebView 时代用户必然
+- `RunLog.init()` **只在 `TerminalActivity.kt:66` 调用**（~~现为~~ → **更正（2026-10-07）：实际调用点已变为 `ZhengdaoApp.kt:25`（Application 内）+ `MainActivity.kt:84` + `TerminalActivity.kt:81`**，即本条的修复建议已落地）——WebView 时代用户必然
   进终端页；Compose 流程不进终端 → `appContext == null` → `RunLog.log` 的
   `val ctx = appContext ?: return` **静默丢弃所有日志**。
 - 后果：19:00 以来所有分支构建的 RunLog 零输出——「失败可见」原则在太极流
@@ -165,7 +167,13 @@ createSession 先挡住了）。**建议统一剥信封**：`JSONObject(text).op
 
 ---
 
-## 追记四（2026-10-06 晚 · 五轮）：SSE 断连的排除证明完成——问题锁定在 OkHttp 客户端侧
+## 追记四（2026-10-06 晚 · 五轮）：SSE 断连的排除证明完成——~~问题锁定在 OkHttp 客户端侧~~
+
+> ## ⛔ **本追记的结论已被推翻，勿再按"客户端 bug"排查**
+>
+> `docs/ERRATA.md` **E-008** 已定案：SSE 断连是**服务端缺陷**——`/api/event` **每次 flush 后即关流**（上游 Issue **#38458**）。四路取证含 `ss -tn` 观察到连接停在 **CLOSE-WAIT**（= 服务端主动 FIN，客户端无过错）。
+>
+> **现行处置**：事件数据已改走 **REST 轮询**，SSE 只当**信号通道**。下文那两个"剩余客户端嫌疑"（`SseClient.kt` 静默吞异常、OkHttp chunked 行为）**均非根因**，不要再据此改动客户端。
 
 **鉴别实验矩阵**（同一台 serve、同一密码、同一端点、同一头）：
 
@@ -184,8 +192,8 @@ createSession 先挡住了）。**建议统一剥信封**：`JSONObject(text).op
 1. **流内 emit + 收集端取消的reentrancy**：`connect()` 在 `execute().use{}` **内部**
    `emit(Reconnected)`；`OcRepository` 的 collect → `handle(ev, scope)` → 若 handle 对
    `Reconnected`/首事件触发了任何会重启 `connectSse`（`sseJob?.cancel()`）或取消
-   协程的动作 → `CancellationException` 被 `SseClient.kt:122` 静默吞 → 连接关闭 →
-   UI 计数重连——**与实测"每秒一循环、零异常日志"完全吻合**。验证法：在
+   协程的动作 → `CancellationException` 被 ~~`SseClient.kt:122`~~（**更正：实际在 `oc/SseClient.kt:149`**）静默吞 → 连接关闭 →
+   UI 计数重连——**与实测"每秒一循环、零异常日志"完全吻合**。⚠️ **但此嫌疑已被 E-008 排除**（根因在服务端）。验证法：在
    `handle()` 入口/出口与 catch(CancellationException) 各加一行日志，跑一轮即见分晓。
 2. OkHttp 4.12.0 在 Android 16 上对 chunked 长流的某些行为——若 1 排除后再查
    （可临时换 `okhttp-sse` 官方 artifact 做对照）。

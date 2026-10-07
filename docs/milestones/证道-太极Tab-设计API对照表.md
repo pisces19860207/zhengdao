@@ -16,7 +16,7 @@
 | 3 | SSE 解析优先读 `event:` 行 | 实测**没有 `event:` 行**，事件名在 data 的 `type` 字段 | 事件全部落进 Unknown |
 | 4 | 归约按 `part.id` 定位 delta | 真实 delta 事件**没有 partId**，用 `assistantMessageID + ordinal` | 流式文本无处落地 |
 | 5 | 权限回复 `{"response":"allow"}` | 真实是 `{"decision":"once"\|"always"\|"reject"}` | 授权提交必然失败 |
-| 6 | TodoPanel | **2.0.22 根本没有 todo**（见 §3） | 元素无数据源，须删 |
+| 6 | ~~TodoPanel~~ | ~~**2.0.22 根本没有 todo**（见 §3）~~ → **本条结论作废，见 §3 更正**：`todo.updated` 确实存在且已实现 | ~~元素无数据源，须删~~ → **保留 TodoPanel** |
 
 ---
 
@@ -95,11 +95,33 @@ data: {"id":"evt_...","type":"server.connected","data":{}}
 
 | 能力 | 结论 | 证据 |
 |---|---|---|
-| **todo** | ❌ **不存在，必须删掉 TodoPanel** | ① spec 中 schema 名含 `todo` 的**一个都没有**；② 两次真实会话的事件流中无 todo 事件；③ 二进制中 `todo.updated`/`todo.list`/`session.todo`/`TodoList` **全部 0 命中**；④ `Session.Message.Info` 的 anyOf 里也没有 Todo 类型 |
+| **todo** | ✅ **存在，保留 `TodoPanel`**（⚠️ 本节原结论为"不存在，必须删掉"，**已于 2026-10-07 更正**，详见下方更正块） | `oc/SseClient.kt:179` 解析事件名 `"todo.updated"`；DTO `oc/OcDto.kt:117`；归约 `oc/OcRepository.kt:892`、`oc/TaijiState.kt:69`；渲染 `ui/taiji/TaijiComponents.kt:749 fun TodoPanel`（`:336` 已接线） |
 | **thinking** | ✅ 有独立事件流 | `session.reasoning.started / .delta / .ended`，且消息里持久化在 `content[].type=="reasoning"` |
 | **tool call** | ✅ 有独立事件流 | `session.tool.input.started/ended`、`tool.called`、`tool.progress`、`tool.success` |
 
-> **设计动作**：删 `TodoPanel` 与 `OcTodo`。若将来要"任务清单"，只能用 `session.step.*` 近似，语义不同，不建议。
+> ### ⚠️ 更正（2026-10-07）：todo 的结论是错的，是**过度推断**
+>
+> 原文断言「todo：❌ 不存在，必须删掉 TodoPanel」，并列了四条证据。**四条证据全部不成立**：
+>
+> | 原文证据 | 为什么不成立 |
+> |---|---|
+> | ① spec 中 schema 名含 `todo` 的一个都没有 | spec 是**精简过**的，事件名不等于 schema 名；`todo.updated` 是**事件类型字符串**，不体现在 schema 枚举里 |
+> | ② 两次真实会话的事件流中无 todo 事件 | 那两次会话**本来就没有产生 todo**（没触发 TodoWrite），"没观测到"不等于"不存在" |
+> | ③ 二进制中 `todo.updated`/`todo.list`/`session.todo`/`TodoList` 全部 0 命中 | grep 的目标字符串选错了（真实字面是事件类型常量，且分布在 Kotlin 侧解析代码而不是二进制字符串表）；实际 4 处命中见上表 |
+> | ④ `Session.Message.Info` 的 anyOf 无 Todo 类型 | todo **不走 Message.Info**，走独立事件 `todo.updated`，所以这条从一开始问错了地方 |
+>
+> **反向佐证（同仓自相矛盾）**：`docs/milestones/证道-太极Tab-Compose设计方案.md:240` 写
+> `is TodoUpdated -> s.copy(todos = ev.todos)`——同一批文档里，Compose 方案已经按"有 todo"在写归约了。
+>
+> **处置**：保留并渲染 `TodoPanel`。同族的其余 4 处错误结论（§0 表格第 6 行、§3.1「设计动作」、
+> §四、§五）**已一并更正**——只改一处会让文档自相矛盾。
+>
+> **教训**：**"我没看到"要被当成"我没看到"，不能写成"不存在"。** 本条把两个样本的观测结果
+> 直接升格成了协议事实，还据此排了删除动作（P0）。凡是靠"grep 0 命中 / 样本里没有"得出的否定结论，
+> 落笔前必须再找一条**独立的**肯定性证据去证伪。
+
+> **~~原设计动作~~（已作废）**：~~删 `TodoPanel` 与 `OcTodo`。若将来要"任务清单"，只能用 `session.step.*` 近似，语义不同，不建议。~~
+> **现行设计动作**：保留 `TodoPanel`；`Todo` 数据来自独立事件 `todo.updated`（`oc/SseClient.kt:179` → `oc/TaijiState.kt:69` → `ui/taiji/TaijiComponents.kt:749`）。
 
 ### 3.2 `/api/permission/request` 载荷 & approve/deny 怎么传
 
@@ -201,7 +223,7 @@ ToolState.Completed = { status:"completed", input:{}, content:[Tool.Content], me
 | **顶栏会话列表入口**（新增） | `GET /api/session?directory=<path>`；`POST /api/session`；`GET /api/session/active` | ✅ | PoC：建两个会话，确认列表返回且 `directory` 过滤生效 |
 | **工具卡片的文件变更入口**（新增） | `GET /api/session/{id}/diff` → `[FileDiff.Info{file,patch,additions,deletions,status}]`；另有 `/api/vcs/status`、`/api/vcs/diff` | ⚠️ 本次 diff 返回空数组 | PoC：让 Agent 真的改一个文件，再取 diff，确认有条目且 `patch` 可直接渲染 |
 | **token / 费用显示**（可选新增） | `session.usage.updated` `{cost, tokens}` | ✅ | — |
-| **TodoPanel** | —— | ❌ **不存在，删除** | 无需 PoC：spec 无 schema、事件流无、二进制无字符串，三重否定 |
+| **TodoPanel** | ✅ **存在**（`oc/SseClient.kt:179` / `oc/OcDto.kt:117` / `oc/TaijiState.kt:69` / `ui/taiji/TaijiComponents.kt:749`） | ~~❌ 不存在，删除~~ → **保留并渲染** | 已实现，无需 PoC。⚠️ 原"三重否定"证据不成立，见 §3.1 更正块 |
 | **会话 id 显示** | `POST /api/session` 返回 `id`（`ses_` 前缀） | ✅ | — |
 | **发送附件** | `POST prompt` 的 `files[]`（`{uri,name,description,mention}`） | ⚠️ 未实测 | PoC：阶段 2 再评估，本期不实现 |
 
@@ -215,7 +237,7 @@ ToolState.Completed = { status:"completed", input:{}, content:[Tool.Content], me
 | P0 | SSE 解析以 `data.type` 为准（无 `event:` 行），事件名全表替换 | 否则全落 Unknown |
 | P0 | 归约键从 `part.id` 改为 `assistantMessageID + ordinal` | 否则流式无落地 |
 | P0 | 权限回复改 `{decision:"once"\|"always"\|"reject"}` | 否则授权必失败 |
-| P0 | 删除 `TodoPanel` / `OcTodo` | 无数据源 |
+| ~~P0~~ **已撤销** | ~~删除 `TodoPanel` / `OcTodo`~~ | **撤销理由**：`todo.updated` 确实存在且已实现并接线，**数据源存在**。见 §3.1 更正块。**保留待办面板，不做删除。** |
 | P1 | `x-opencode-directory` header → query `directory`（`/api/session`）或 `location[directory]`（其余） | 否则目录绑定失效 |
 | P1 | 消息解析 `parts` → `content`；工具名 `tool` → `name`；工具结果 `state.content[]` | 字段名全错 |
 | P1 | 模型选择器、会话列表入口、中断按钮、文件变更入口 四个新元素接入 | 用户要求，数据源均已确认 |
