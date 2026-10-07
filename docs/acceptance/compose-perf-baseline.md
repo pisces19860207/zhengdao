@@ -120,7 +120,10 @@ export JAVA_HOME="/d/Program Files/Android/Android Studio/jbr"
 export PATH="/c/Users/guoli/AppData/Local/Android/Sdk/platform-tools:$PATH"
 
 ./gradlew :app:assembleBenchmark :macrobenchmark:assembleBenchmark
-adb install -r app/build/outputs/apk/benchmark/zhengdao-1.2.0-benchmark.apk
+# ⚠️ 更正（2026-10-07）：原写死 ~~zhengdao-1.2.0-benchmark.apk~~（1.2.0 为采集时版本）
+# 当前 versionName=1.3.0（app/build.gradle.kts:21、:42），APK 名由 app/build.gradle.kts:58 的
+# archivesName.set("zhengdao-$appVersionName") 决定，故改用：
+adb install -r app/build/outputs/apk/benchmark/zhengdao-1.3.0-benchmark.apk
 adb install -r macrobenchmark/build/outputs/apk/benchmark/macrobenchmark-benchmark.apk
 
 # ⚠️ 必须先启动一次 App 再跑（§五·坑①），否则冷启动测试直接失败
@@ -141,7 +144,7 @@ adb shell am instrument -w \
 ### 回归判定线（建议）
 
 - P50 恶化 **>30%** 且 P99 恶化 **>50%**，两次复跑都复现 → 判回归，必须修或写明理由；
-- 冷启动中位数变化在 **±25ms**（一个 σ）内 → 视为噪声；
+- 冷启动中位数变化在 **±~~25~~ ⚠️ 更正（2026-10-07）：22ms**（一个 σ）内 → 视为噪声；σ 实测值 21.69ms，见 docs/acceptance/compose-perf-baseline.md:55（本文件 :58 亦已写「σ≈22ms」）
 - 设置页滚动只要 `frame_overrun_millis_p90` 由负转正 → 判回归（它现在是零掉帧）。
 
 ---

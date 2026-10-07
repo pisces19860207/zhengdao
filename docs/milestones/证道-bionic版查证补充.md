@@ -16,7 +16,10 @@
 
 ### 1.1 来源：**社区打包，非官方**
 
-`OcManager.kt:38-39` 确认：
+`~~OcManager.kt:38-39~~` **`oc/OcManager.kt:56-57`** 确认：
+> ⚠️ **行号更正（2026-10-07）**：这两行实际在 `app/src/main/java/com/example/zhengdao/oc/OcManager.kt:56-57`
+> （`:38-39` 是 `SCHEMA` 常量）；引用时请用 `oc/OcManager.kt:56-57`。
+
 ```kotlin
 private const val REPO = "Hope2333/opencode-termux"
 private const val PKG_NAME = "opencode-$VERSION-1-aarch64.pkg.tar.xz"
@@ -74,7 +77,14 @@ TUI 模式启动
 
 ### 2.2 ⚠️ 但还有一个**更靠前的可能**：`.so` 可能根本没被释放
 
-**代码实况**（`OcManager.kt` 释放逻辑，约 218-234 行）：
+**代码实况**（~~`OcManager.kt` 释放逻辑，约 218-234 行~~ → **`oc/OcManager.kt:427-471`**）：
+
+> ⛔ **更正（2026-10-07）：行号与摘录都已过时。**
+> ① 释放逻辑实际在 `app/src/main/java/com/example/zhengdao/oc/OcManager.kt:429-470`
+> （函数头 `private fun extract(...)` 在 `:427`）；
+> ② 该处**已不再是下面这份 2026-10-06 的简化版**——2026-10-07 加上了
+> `.part` 临时文件 + 长度断言 + 原子改名（`:443-467`），用来堵"截断文件冒充已安装"
+> 的事故。**保留下方旧摘录作为历史记录，当前实况见再下一段。**
 
 ```kotlin
 var entry: TarArchiveEntry? = tar.nextTarEntry
@@ -86,6 +96,23 @@ while (entry != null) {
     target.outputStream().use { out -> tar.copyTo(out) }
     entry = tar.nextTarEntry
 }
+```
+
+**当前实况（2026-10-07，`oc/OcManager.kt:441-467`）**：
+
+```kotlin
+val target = File(ocRoot, "usr/$rel")
+target.parentFile?.mkdirs()
+val part = File(target.parentFile, "${target.name}.part")
+part.delete()
+part.outputStream().use { out -> tar.copyTo(out) }
+if (part.length() != entry.size) {                 // 长度断言，不匹配即中止
+    val got = part.length()
+    part.delete()
+    return DownloadResult(false, "释放不完整：$rel（$got/${entry.size} 字节）")
+}
+if (rel.startsWith("bin/")) { /* Os.chmod(part.absolutePath, 493) = 0755 */ }
+if (!part.renameTo(target)) { /* 退化为复制，不静默丢文件 */ }
 ```
 
 而 `installed()` 的判据是：
@@ -132,7 +159,8 @@ echo $LD_LIBRARY_PATH
 | 方案要素 | 是否受影响 | 说明 |
 |---|---|---|
 | 直连 `127.0.0.1:14000` HTTP + SSE | ❌ 不受影响 | serve 不 dlopen TUI 渲染库，API 层是上游 module graph（未改动） |
-| OkHttp + `okhttp-sse` | ❌ 不受影响 | 与bionic 无关 |
+| ⚠️ ~~OkHttp + `okhttp-sse`~~ | ❌ 不受影响 | ⛔ **仅措辞过时（2026-10-07）：依赖表里没有 `okhttp-sse`。** 仓库只有 `com.squareup.okhttp3:okhttp:4.12.0`（`app/build.gradle.kts:149`）；SSE 是**自写解析**——`oc/SseClient.kt:27` 明确写「为什么自己解析而不用 okhttp-sse 的 EventSources」。结论（与 bionic 无关）不变 |
+| ⚠️ 直连 `127.0.0.1:14000` HTTP + SSE（同一行末端的"事件"口径） | ❌ 不受影响 | ⚠️ **补正（2026-10-07）**：SSE 端点应写 `/api/event`（`oc/SseClient.kt:22`）；且 E-008 已判定它**连上即关、不可作数据源**——数据走 REST 轮询（`oc/SseClient.kt:20-25`）。"不受影响"的结论仍成立 |
 | `OcManager.startServe()` 复用 | ❌ 不受影响 | 已验证可跑（用户实测 14000 端口可用） |
 | XDG 独立四目录 | ❌ 不受影响 | 已有 |
 | **权限批准 / todo / diff 等端点** | ⚠️ **须核实** | v2.0.22 是否完整暴露这些端点，取决于上游 API 面 + 包装版是否裁剪。**阶段 0 必须逐个探** |

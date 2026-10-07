@@ -137,7 +137,8 @@ class AgentHelperUpdater(
 //      ⚠️ 更正（2026-10-07）：**实际文件名是 `/etc/profile.d/zhengdao-uv.sh`**，且不止这一处——
 //         还写 `/etc/uv/uv.toml`（`link-mode = "copy"`，系统级：用户级 uv.toml 会被 `UV_NO_CONFIG=1`
 //         与 XDG 重定向全废）与 `/etc/environment`；`uv` **不在 apt 清单里**，是从 GitHub release 安装的。
-//         （实现在 `rootfs/build-rootfs.sh` 与 `terminal/EnvSelfHeal.kt:179-193`。）
+//         （实现在 `rootfs/build-rootfs.sh` 与 `terminal/EnvSelfHeal.kt:182 ensureUvConfig`——写入在
+//         `:186`、`link-mode = "copy"` 在 `:188-191`。⚠️ 行号更正 2026-10-07：原写 `:179-193`。）
 //   -> tar.zst 打包（zstd：解压快数倍、发热更小）
 // 版本断言（构建即验收，漂移即失败）：
 //   ldd --version          -> glibc 2.41.x（只读不自升）

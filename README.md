@@ -13,7 +13,7 @@
 
 - **Android 16（API 36）或更高版本**
 - **arm64-v8a** 架构设备（绝大多数现代安卓手机和平板）
-- 已在 **荣耀 Magic 5 Pro（MagicOS 11 / Android 16）** 上完成实测
+- 已在 **荣耀 Magic 5 Pro（MagicOS 10.0.0.175 / Android 16）** 上完成实测
 
 > **⚠️ 关于其他 Android 版本**
 > 本项目目前**仅在 Android 16 上完成真机实测**，其他版本（Android 15 及以下）**未做适配和验证**，可能存在兼容性问题。

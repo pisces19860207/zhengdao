@@ -527,6 +527,16 @@ PC 层 `cargo test` 8/8（sha256 4 + extract 4）。
   `app-release.apk` 15:42）**都不含** `libextract.so`——`.so` 是 18:25/18:41 才提交的，
   两个资产早约 3 小时构建完；`latest` 滚动版（19:13，HEAD `725ebef` 之后）才带上。
   即**代码层实装 ≠ 已发布的包里有**。
+- **勘误：仓库里从来没有"纯 Java zstd 实现"**。2026-10-07 全库文档核对发现，多份文档
+  （`证道-Rust迁移模块评估.md` 的 §迁移候选、`证道-Rust改造可行性裁定.md` §6 末句、
+  `证道-性能演进路线图.md` §5.6 等，前后共 4 处）把解压描述成"commons-compress 的
+  **纯 Java zstd**"，并据此预测"native zstd 快 3~5 倍"。**这是错的**：
+  `app/build.gradle.kts:154` 引入的 `commons-compress` 走
+  `ZstdCompressorInputStream`，它本身就是 **zstd-jni 的包装**（JNI → C 的 libzstd，
+  `libzstd-jni-1.5.6-4.so` 一直在 `jniLibs` 里）。所以本仓库的 zstd **从来就是 native**，
+  "纯 Java zstd 是 CPU 热点、快 3~5 倍"这个前提不成立——R2 对拍实测
+  **Rust 3611ms vs Java 3668ms**（`rust/extract/README.md`）已经把它证伪。
+  凡是看到"原生 zstd 能提速"的推论，先回这里。**"纯 Java zstd"这个说法应从所有文档中清除。**
 
 ### 7. 两个"看着像 bug、其实不是"（免得后人白查一遍）
 

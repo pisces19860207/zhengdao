@@ -22,22 +22,22 @@
 
 ## 1.5 依赖清单
 
-**新增 2 个**（其余复用现有）：
+~~**新增 2 个**（其余复用现有）：~~ ⚠️ **更正（2026-10-07）：这 2 个依赖一个都没加。**
 
 ```kotlin
-// app/build.gradle.kts
+// app/build.gradle.kts —— ⚠️ 更正（2026-10-07）：下面「新增」两行从未落地；现状只有 okhttp 4.12.0
 dependencies {
     // 已有
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")   // ← 现状：这是唯一的网络依赖（app/build.gradle.kts:149）
     implementation(libs.androidx.compose.material3)          // 已有
     implementation(libs.androidx.lifecycle.runtime.ktx)       // 已有
 
-    // ── 新增 ──
+    // ── 新增（⚠️ 2026-10-07 核对：从未加入 app/build.gradle.kts）──
     // ⚠️ okhttp-sse 是独立 artifact，不在 okhttp 里（2026-10-06 核实 Maven Central）
-    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")   // ⛔ 实际未引入
 
     // DTO 序列化（若不用 kotlinx.serialization 则手写，量不大）
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")   // ⛔ 实际未引入
     // 注意：启用 kotlinx.serialization 需在 kotlin { } 里加 serialization 插件
 }
 ```
@@ -45,6 +45,8 @@ dependencies {
 **不引入**：WebView（阶段 3 删除）、TerminalView（洞天保留，与本Tab 无关）、任何第三方 SSE 库、官方 JS SDK、任何 UI 框架（M3 够用）。
 
 > 📌 **DTO 手写 vs kotlinx.serialization**：OpenCode 的 part 类型较多（Text/Reasoning/Tool/File/Patch/Step…），序列化能省事。但若不想引插件+ 依赖，**手写 `JsonObject` 映射也可行**（量不大，约 200 行）。阶段 0 验证时顺手定即可。
+>
+> ⚠️ **更正（2026-10-07）**：实际选的是**手写**——SSE 由 `oc/SseClient.kt` 自写解析（该文件 `:27` 的注释标题即「为什么自己解析而不用 okhttp-sse 的 EventSources」，`:29-31` 说明 okhttp-sse 是独立 artifact、不新增依赖），DTO 用手写 `org.json` 映射；`okhttp-sse` 与 `kotlinx-serialization` **均未引入**（见上）。
 
 ## 2. 架构分层
 
@@ -108,16 +110,16 @@ class OcClient(
     val base: HttpUrl = baseUrl.toHttpUrl()
 
     // ── 端点（对应 OpenAPI，全部经 OkHttp；字段名以实际打包版本的 spec 为准）──
-    suspend fun health(): Health?                  // GET /global/health
-    suspend fun listSessions(): List<Session>       // GET  /session
-    suspend fun createSession(title: String?): Session  // POST /session
-    suspend fun messages(sessionId: String): List<Message>  // GET /session/{id}/message
-    suspend fun prompt(sessionId: String, text: String)    // POST /session/{id}/prompt_async
-    suspend fun abort(sessionId: String)            // POST /session/{id}/abort
-    suspend fun todos(sessionId: String): List<Todo> // GET /session/{id}/todo
+    suspend fun health(): Health?                  // ⛔ GET /global/health —— 该端点不存在（2026-10-07 核对：无真实调用，catch-all 只回 HTML）
+    suspend fun listSessions(): List<Session>       // GET /api/session
+    suspend fun createSession(title: String?): Session  // POST /api/session
+    suspend fun messages(sessionId: String): List<Message>  // GET /api/session/{id}/message
+    suspend fun prompt(sessionId: String, text: String)    // POST /api/session/{id}/prompt（不是 prompt_async）
+    suspend fun abort(sessionId: String)            // POST /api/session/{id}/interrupt（不是 abort，且无请求体）
+    suspend fun todos(sessionId: String): List<Todo> // ⛔ GET /api/session/{id}/todo —— 未实现（todos 只来自 SSE 事件 todo.updated：oc/SseClient.kt:179 → oc/OcRepository.kt:379）
     suspend fun respondPermission(
         sessionId: String, permissionId: String, allow: Boolean, remember: Boolean,
-    )                                              // POST /session/{id}/permissions/{id}
+    )                                              // POST /api/session/{id}/permission/{permissionId}/reply
 }
 
 /**
@@ -138,12 +140,15 @@ private class AuthInterceptor(
         return chain.proceed(
             chain.request().newBuilder()
                 .header("Authorization", "Basic $creds")
-                .header("x-opencode-directory", WORKSPACE_DIR)   // ★ 见 §3.4
+                .header("x-opencode-directory", WORKSPACE_DIR)   // ⚠️ 更正（2026-10-07）：仅 **REST** 客户端保留兼容；**SSE 客户端不得带**（见 §3.4 更正）
                 .build()
         )
     }
 }
 ```
+
+> ⚠️ **更正（2026-10-07）——本段端点注释**：代码块里的 `// GET /global/health`、`// GET  /session`、`// POST /session`、`// GET /session/{id}/message`、`// POST /session/{id}/prompt_async`、`// POST /session/{id}/abort`、`// GET /session/{id}/todo`、`// POST /session/{id}/permissions/{id}` 是**骨架的设想**，实测端点**一律带 `/api` 前缀**（以 `oc/OcRepository.kt` 为准）：`POST /api/session`（`oc/OcRepository.kt:99`）、`GET /api/session`（`:115`）、`GET /api/session/{id}/message`（`:128`/`:211`）、`POST /api/session/{id}/prompt`（`:539`，**不是 `prompt_async`**）、`POST /api/session/{id}/interrupt`（`:551`，**不是 `abort`**，且无请求体——`:547` 的 `suspend fun abort()` 只是自己起的名字，`:550` 注释已注明）、`POST /api/session/{id}/permission/{permissionId}/reply`（`:571`）、`GET /api/permission/request`（`:269`）、`GET /api/model?location[directory]=`（`:485`）、SSE `GET /api/event`（`:336-337`）。**`/global/health` 不存在**（`oc/OcManager.kt:133` 的注释说明 `/`、`/global/health`、`/session`、`/doc` 是 catch-all、"统统返回 200 text/html"，不是 JSON 健康接口）；`GET /api/session/{id}/todo` **未实现**（todos 只来自 SSE 事件 `todo.updated`：`oc/SseClient.kt:179` → `oc/OcRepository.kt:379`，解析在 `:894`）。
+> ⚠️ **更正（2026-10-07）——`x-opencode-directory` 头**：`oc/OcClient.kt:106` 的注释原文判定「该头**真实 spec 里并不存在**，是骨架的幻想产物」；现状是**只在 REST 请求上注入**（`oc/OcClient.kt:128`；REST/SSE 两个 client 分别在 `:53`/`:69`），SSE 请求**刻意不注入**（`oc/OcClient.kt:121` 的「🔬 诊断实验：SSE 请求不注入 x-opencode-directory」——曾怀疑它让 `/api/event` 立刻返回空流）。真正的 `directory` 参数在 `/api/model` 上是 query `location[directory]`（`oc/OcRepository.kt:485`）。
 
 > ⚠️ **`readTimeout(0)` 是必须的**：SSE 是长连接，设了读超时会被中途掐断。但**这个 0 只应给SSE 连接**，普通请求应给合理超时（建议 30s）。实现上建议**两个 OkHttpClient**（普通 + SSE）而不是共用一个，避免普通请求也永久等待。
 
@@ -255,6 +260,8 @@ companion object {
 
 **理由**（裁定报告 §4.2）：所有会话/文件/权限接口都带 `directory`，它决定"这个会话在哪个项目上下文里"。太极 Tab 是**单会话 + 固定目录**（与证道 v3.6 单会话定调一致）。多会话/多目录留 v2。
 
+> ⚠️ **更正（2026-10-07）**：实际落地的 `WORKSPACE_DIR` 语义与本节不同——**没有**走"所有会话/文件/权限接口都带 `directory` 参数"这条路，而是：① REST 请求统一加 `x-opencode-directory: /workspace` 头（`oc/OcClient.kt:128`，该文件 `:106` 的注释判定此头"真实 spec 里并不存在"）；② **SSE 请求刻意不加**（`oc/OcClient.kt:121`）；③ 真正的 `directory` 只出现在 `GET /api/model?location[directory]=`（`oc/OcRepository.kt:485`）。"单会话 + 固定目录"的结论不变。
+
 
 ## 5. UI 设计
 
@@ -328,10 +335,12 @@ companion object {
 
 | #   | 任务                                            | 通过标准                                                              |
 | --- | --------------------------------------------- | ----------------------------------------------------------------- |
-| 0-1 | OkHttp + AuthInterceptor 直连 `127.0.0.1:14000` | `GET /global/health` 返回 200                                       |
-| 0-2 | 建立 SSE `/event` 连接                            | 收到 `server.connected` 及后续事件                                       |
+| 0-1 | OkHttp + AuthInterceptor 直连 `127.0.0.1:14000` | ~~`GET /global/health` 返回 200~~ ⚠️ 见下 ⁰                                       |
+| 0-2 | 建立 SSE `/event` 连接                            | ~~收到 `server.connected` 及后续事件~~ ⚠️ 见下 ⁰                                       |
 | 0-3 | **对比测量**（把收益变实据）                              | OkHttp 直连 vs 经 LocalProxy 各打 20 请求的总耗时；两者 SSE 首事件到达时间             |
 | 0-4 | 核实 DTO 字段名                                    | 对**实际打包版本**（`OcManager.VERSION = "2.0.22"`）的 `openapi.json` 逐字段核对 |
+
+> ⁰ ⚠️ **更正（2026-10-07）**：`/global/health` **不存在**（`app/src/main` 全库 0 次真实调用；`oc/OcClient.kt:4` 与 `oc/OcManager.kt:133` 只是把它当 catch-all 路径提到，后者明说这些路径"统统返回 200 text/html"，不是 JSON 健康接口）。0-1 的通过标准应改为 **`GET /api/session` 返回 200**（`oc/OcRepository.kt:115`）。0-2 的端点应为 **`GET /api/event`**（`oc/OcRepository.kt:336-337`），且 `docs/ERRATA.md` E-008 已判定它"连上后 0.1–1.4 s 即被服务端关闭"（上游 Issue #38458）——SSE 现在只当信号通道、事件数据走 REST 轮询（`oc/SseClient.kt:20-25`）。
 
 > 🔴 **0-1 不通过则整个方案要重新设计**，不要往下做。
 
@@ -393,14 +402,16 @@ companion object {
 
 | 组件                                | 处置                                           |
 | --------------------------------- | -------------------------------------------- |
-| `TaijiScreen.kt`（WebView 版，329 行） | 阶段 3 删除，由本方案取代                               |
-| `LocalProxy.kt`（164 行）            | 阶段 3 删除（Compose 直连不需要）                       |
+| `TaijiScreen.kt`（WebView 版，329 行） | ~~阶段 3 删除，由本方案取代~~ ✅ 已于 `e9997ec` 删除                               |
+| `LocalProxy.kt`（164 行）            | ~~阶段 3 删除（Compose 直连不需要）~~ ✅ 已于 `e9997ec` 删除                       |
 | `OcManager.kt`                    | **保留并复用**：`serve` 拉起、密码解析、XDG 隔离、进程判活都已实现    |
 | `MainActivity` 的太极 Tab            | 改为承载新的 `TaijiScreen`（Compose，与另两个 Tab 同级）    |
 | TerminalView / `TerminalActivity` | **完全不动**（洞天继续用）——职责分离：太极 = Agent UI，洞天 = 真终端 |
 | `CacheCleaner.kt`（工作树新增）          | 若在清理 SSE 相关资源，注意别与 SSE 连接管理冲突                |
 
 ---
+
+> ⚠️ **更正（2026-10-07）——§9 表格第 1/2 行**：`TaijiScreen.kt`（WebView 版）与 `oc/LocalProxy.kt` 都已随 commit **`e9997ec`** 删除——阶段 3 是**已完成**，不是"待删除"。现存 `app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt` 是**重写后的 Compose 原生客户端**（468 行）：它**不是**被删的那个 WebView 文件，而正是本方案的产物；同批删除的还有 `oc/TaijiPrefs.kt` 与 `MainActivity` 的 `useNativeUi` 回退开关。
 
 ## 10. 一句话总结
 
@@ -409,3 +420,5 @@ companion object {
 ---
 
 *本方案基于代码实况（`TaijiScreen.kt` / `LocalProxy.kt` / `OcManager.kt` / `MainActivity.kt` / `build.gradle.kts`）与 OpenCode 官方 API 文档撰写。DTO 字段名须以实际打包版本的 `openapi.json` 为准——官方文档横跨 v1/v2/v3，字段会变。*
+
+> ⚠️ **更正（2026-10-07）**：上句列出的 `TaijiScreen.kt`（WebView 版）与 `LocalProxy.kt` **均已随 commit `e9997ec` 删除**——撰写时（2026-10-06）的"代码实况"对这两个文件已不适用；`OcManager.kt` / `MainActivity.kt` / `build.gradle.kts` 仍在。另：本方案 §1.5 所列的两个新增依赖（`okhttp-sse`、`kotlinx-serialization-json`）**最终都没有引入**，实现改用手写解析 + 手写 `org.json`（见 §1.5 更正）。

@@ -1,5 +1,16 @@
 # M3 一键安装 Kotlin 骨架（本里程碑工程约束与验收标准；实现以代码为准，约束与红线以本文档为准）
 
+> # ⛔ 【状态：未实现 · 留档草案】（2026-10-07 全库核对后加）
+>
+> **本文档 §1–§5 的 Kotlin 代码整章不存在于仓库中，请勿当成"待续任务书"或代码现状说明书。**
+> 核对证据（`app/src/main` 全文检索 **0 命中**）：`class ManifestClient`、`FetchOutcome`、`InstalledInfo`、`ManifestCache`、`InstallProgress`、`EnvironmentRepair`、`TarZstExtractor`、`listAgents`、`registerCustom`、`fetchOutcome`；`agent-helper`、`agent install`、`agent fix …` 命令同样 0 命中。
+> **实际现状**（名字、文件、形态都不同，但能力已部分落地；细节见各节 ⚠️ 更正块）：
+> - manifest 拉取 + ed25519 验签 + 解析 → **`ui/AgentManifest.kt`（`object`，325 行）**：公钥常量 `:35 PUBLIC_KEY_B64`、`verify` `:50` → `parse` `:61`、三通道 `:164-191`、`TTL_MS` 6h `:28`、缓存读取 `:97`；
+> - 卡片列表数据源 → **`ui/AppState.kt:104 agents(ctx)`**（`:55 data class AgentInfo`、`:107` 读 `AgentManifest.cached(ctx)`）；卡片 UI 在 **`ui/HomeScreen.kt`**；
+> - 安装执行 → **`ui/AgentInstaller.kt`（`object`，`:22`）**：`:68` 优先跑本地化脚本，`:70` 回退原始 `curl|bash`；
+> - 安装状态 → **`ui/AgentRepository.kt`（`object`，44 行）**：只有 `:20 stateOf` / `:35 markInstalling` / `:40 clearInstalling`，**没有** `listAgents()` / 缓存 / `registerCustom()` / `InstalledInfo`。
+> **本文档仍有价值的部分**：§1 的"先验签后解析""双通道"原则、§2 的离线缓存诉求、§4 的状态驱动卡片设计、§5 的快照重置顺序（先 umount home 再重解压）——**实现细节与现状不符处已在各节加 ⚠️ 更正块，以更正块为准。**
+
 > 📌 **存储结论已反转（E-005，2026-10-06）**：App 真身下 `/sdcard` 读写均可用，SAF 镜像同步降级为**备用方案**。本文件不含存储方案约定；存储权威说明见 `docs/ERRATA.md` 与 `已知限制.md`。
 > 📌 **执行总览**：M1-M5 与 P1-P8 的整合路线图见 `证道-执行路线图.md`（本文档为功能骨架，整体顺序与优先级以路线图为准）。
 >
@@ -9,6 +20,13 @@
 ---
 
 ## 1. ManifestClient（拉取 + ed25519 验签 + 解析）
+
+> ⛔ **本节未实现**（`class ManifestClient` 在 `app/src/main` 0 命中）。真实实现是 `ui/AgentManifest.kt`（**`object`，不是 class**）：
+> - 公钥不是构造参数注入，而是文件内常量 **`:35 PUBLIC_KEY_B64`**（`:16` 那句"固化在 APK 里的公钥（构建期断言非占位符）"**不成立**，见文末红线更正）；
+> - **先验签后解析** 这条原则确实落地了：`:50 fun verify(body: ByteArray, sigBase64: String): Boolean` → `:61 fun parse(text: String): List<Entry>`；
+> - "双通道"已扩为**三通道**（`:164-191`）：① GitHub Contents API `:167-173`、② raw.githubusercontent `:174-181`、③ jsDelivr `:182-189`；
+> - 缓存 TTL 6h 在 `:28 TTL_MS = 6 * 60 * 60 * 1000L`，读取在 `:97 fun cached(ctx: Context): List<Entry>?`。
+> ⚠️ 另：本节 `:26-30` 建议的"解析后比较 version、**取版本更高者**"**未实现**（`ui/AgentManifest.kt` 无任何版本比较），现状仍是"先到者胜"。
 
 ```kotlin
 // 安全闸：manifest 被篡改 = 用户环境 RCE。验签不过 -> 整份拒绝应用、回退出厂版。
@@ -38,6 +56,9 @@ class ManifestClient(
 ```
 
 ## 2. AgentRepository（卡片数据 + 安装状态）
+
+> ⛔ **本节未实现**（`class AgentRepository`、`ManifestCache`、`listAgents()`、`registerCustom()`、`InstalledInfo` 在 `app/src/main` **全 0 命中**）。真实实现是 `ui/AgentRepository.kt`（**`object`**，44 行），只有三个成员：`:20 fun stateOf(ctx: Context, agent: AppState.AgentInfo): State`、`:35 markInstalling`、`:40 clearInstalling`（"安装中"标记 15 分钟 TTL）。**没有** `listAgents()`、**没有** manifest 缓存、**没有** `registerCustom()`、**没有** `InstalledInfo` 类。
+> ⚠️ 本节 `:78-85` 的"离线回落缓存 + `FetchOutcome` 三态"目前只是**设计文本**：`FetchOutcome` 在 `app/src/main` 0 命中。离线不清空 UI 的**实际**落地是 `ui/AgentManifest.kt:28 TTL_MS`（6 小时）+ `:97 cached(ctx)`，由 `ui/AppState.kt:107 val manifest = AgentManifest.cached(ctx)` 在建卡片时读取（详见 `docs/milestones/文档审核报告-2026-10-06.md` 销账表 P1-16 行的 2026-10-07 更正）。
 
 ```kotlin
 data class AgentInfo(
@@ -93,6 +114,9 @@ class AgentRepository(
 
 ## 3. AgentInstaller（一键安装执行器）
 
+> ⛔ **本节未实现**（`class AgentInstaller(...)`、`InstallProgress`、`install()` / `upgrade()` / `uninstall()` 全库 0 命中）。真实实现是 `ui/AgentInstaller.kt`（**`object`**，`:22`），只有"跑安装命令"一条路径：`:68` 优先执行 App 内置的本地化脚本 `bash /workspace/.zhengdao/scripts/<id>-install.sh`，否则 `:70` **退回原始 `agent.installCmd`——也就是 `curl -fsSL … | bash`**（注释原文：`// 本地化失败：退回原始 curl|bash`）。
+> ⚠️ 因此本节 `:105-106` 的两条规范**均未实现**：`curl --fail --retry 3 -C -`（分片续传下载到临时文件再执行）与 `uv pip install --system` 在 `app/src/main` **0 命中**。另有 `ui/AgentInstaller.kt:82` 的 `export UV_LINK_MODE=copy`。
+
 ```kotlin
 class AgentInstaller(
     private val sessionManager: SessionManager,   // M2 骨架里的 tmux 会话管理
@@ -126,6 +150,9 @@ sealed class InstallProgress {
 ```
 
 ## 4. AgentCard UI（Compose）
+
+> ⛔ **本节未实现**：`@Composable fun AgentCard(agent: AgentInfo, info: InstalledInfo, onInstall: () -> Unit, onLaunch: () -> Unit)` 在 `app/src/main` **0 命中**，`InstalledInfo` 这个类**也不存在**（`ui/AgentRepository.kt` 的 `stateOf` 返回的是 `State` 枚举，不是 `InstalledInfo`）。
+> **真实卡片 UI** 在 `ui/HomeScreen.kt`（约 `:405-470`）：安装按钮判据是 `agent.installCmd != null`、启动走 `onOpenTerminal(agent.launchCmd, agent.id)`、卸载走 `agent.uninstallCmd`；数据模型是 `ui/AppState.kt:55 data class AgentInfo`（字段 `launchCmd` / `installCmd?` / `uninstallCmd?`），列表由 `ui/AppState.kt:104 agents(ctx)` 构建。
 
 ```kotlin
 @Composable
@@ -180,4 +207,4 @@ class EnvironmentRepair(
 
 - **PROOT_NO_SECCOMP=1 禁止设置**（本机实测反而致命）
 - proot 必须用 Termux fork（GPL，聚合分发登记 PROVENANCE）
-- **manifest 先验签后解析**；公钥固化 APK 并加构建期断言（非占位符）
+- **manifest 先验签后解析**（仍成立：`ui/AgentManifest.kt:50 verify` → `:61 parse`）；公钥固化 APK ~~并加构建期断言（非占位符）~~ ⚠️ 更正（2026-10-07）：**`app/build.gradle.kts` 里没有任何 publicKey 断言**（无 `PUBLIC_KEY_B64` 检查、无占位符校验）。真实做法是**运行时兜底**：`ui/AgentManifest.kt:33` 自注「骨架红线：构建期可断言，这里运行时兜底断言」；公钥常量在 `ui/AgentManifest.kt:35 PUBLIC_KEY_B64`。本行"构建期断言"待办**未做**（是否补，见"需拍板"项）。
