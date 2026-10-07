@@ -396,3 +396,27 @@ OPENCODE_EXPERIMENTAL_LENGTH_NUDGE_MAX=3
 视觉上连成一体，像是正文属于思考过程。
 **修法**：reasoning 抽成独立的 `ReasoningBlock`（💭 头部 + 首行摘要 + 展开/收起），
 并给 `MessageBubble` 的 Column 加 `Arrangement.spacedBy(8.dp)`。
+
+## E-011 · 2026-10-07 · v1.2 E1（打包排除桌面端原生库）已落盘，但提交归属错、信息未提
+
+**事实**：`app/build.gradle.kts` 的 `packaging.resources.excludes += {win/** , darwin/** , freebsd/**}`
+（v1.2 E1）**不在**任何 v1.2 提交里，而是随 `5601bb4`（zcode 的
+「test(bench): 解压基线先行」）一起进了远端 `origin/main`。
+
+**归因**：并行 agent 在同一工作树上提交时，`build.gradle.kts` 被整文件提交——
+E1 的 `packaging` 块与 zcode 的 `androidTestImplementation(commons-compress)` 行
+落在同一次提交里。该提交信息只写了「androidTest 源集补 commons-compress 依赖」，
+**没有提 packaging 排除**。是提交粒度的疏漏，不是代码错：E1 的改动本身正确且已生效。
+
+**为什么不改历史**：`5601bb4` 已推到 `origin/main`，且有并行 agent 在基于它工作，
+改写共享历史代价大于收益 → 记勘误而非 rebase。
+
+**收益口径修正（避免后人照抄错误数字）**：
+- 未压缩体积：这 5 个文件（3 个 `.dll` + 2 个 `.dylib`）合计 **4.58 MB**；
+- **APK 实际只小了 469 KB**（41,271,658 → 40,791,258 字节）——
+  deflate 对这些原生库压缩率很高，未压缩体积不能直接当安装包收益。
+- 结论：E1 值得做（白拿的），但**别拿 4.58MB 当卖点**。
+
+**教训**：多 agent 共树上，`build.gradle.kts` / `AndroidManifest.xml` 这类
+"人人都要碰" 的文件最容易互相卷进对方的提交。提交前用
+`git diff --stat` 逐文件确认，必要时 `git commit -o -- <path>` 精确圈定路径。
