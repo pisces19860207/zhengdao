@@ -47,8 +47,36 @@ object ProotLauncher {
             context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-    /** 「推荐插件已预置过」的标记键：只预置一次，之后由用户在插件页说了算。 */
-    private const val KEY_PLUGIN_PRESET = "plugin_preset_memory_v1"
+    /**
+     * 「推荐插件已预置过」的标记键：只预置一次，之后由用户在插件页说了算。
+     *
+     * ⚠️ v1.2 升到 v2：v1 那一次预置写进的是**死路径**（`home/.zhengdao/taiji/...`，
+     * serve 根本不读），等于没预置过。换键让它在正确的文件里补做一次——
+     * 只此一次，之后用户在插件页关掉就真的关掉了。
+     */
+    private const val KEY_PLUGIN_PRESET = "plugin_preset_memory_v2"
+
+    /** 人设文件（AGENTS.md）上一次写入时对应的工作区路径。沿用旧键名，避免换键触发无谓重写。 */
+    private const val KEY_PERSONA_WS = "agents_md_ws_taiji"
+
+    /**
+     * `watcher.ignore`（官方配置项，glob 数组）：让 OpenCode 的**文件监听**跳过大目录。
+     *
+     * ⚠️ 只在配置里**还没有** `watcher` 字段时才写——用户自己配的 watcher 一律不动。
+     * `opencode/` 是 App 自己落在工作区里的 OpenCode 安装包缓存（实测 68.6 MB，
+     * 见 v1.2 阶段 0 意外发现 ①），Agent 不该监听也不该搜它。
+     */
+    private val WATCHER_IGNORE: org.json.JSONArray
+        get() = org.json.JSONArray(
+            listOf(
+                "node_modules/**",
+                "dist/**",
+                "build/**",
+                ".git/**",
+                "opencode/**",
+                "**/*.log",
+            )
+        )
 
     /**
      * 幂等移除 `plugin` 数组里历史遗留的第三方记忆插件（opencode-mem）。
@@ -187,6 +215,28 @@ object ProotLauncher {
         val wsHost = Workspace.hostDir(context)
         val wsShared = Workspace.isShared(context)
 
+        // .ignore（v1.2 阶段 2.2）：让 Agent 的 grep / 搜索类工具跳过大目录。
+        // ⚠️ 官方 opencode.json **没有** `.ignore` 这个配置项（已核对 opencode.ai/docs/config），
+        //    "让搜索跳过大目录"只能靠**在工作区根放 .ignore 文件**（opencode 的搜索工具
+        //    尊重 .ignore / .gitignore）。因此这里由 App 代放一次。
+        // 幂等：用户自己的 .ignore 一个字都不改（只在本来没有时才生成）。
+        runCatching {
+            val ignore = File(wsHost, ".ignore")
+            if (!ignore.isFile) {
+                ignore.writeText(
+                    "node_modules/\n" +
+                        "dist/\n" +
+                        "build/\n" +
+                        ".git/\n" +
+                        // App 自己的 OpenCode 安装包缓存就落在工作区里（实测 68.6 MB），
+                        // 对 Agent 是纯噪音，必须跳过
+                        "opencode/\n" +
+                        "*.log\n"
+                )
+                RunLog.log("工作区 .ignore 已生成（跳过 opencode/ 等大目录）")
+            }
+        }
+
         // hermes 命令立即可用（用户反馈：装完敲 hermes 没反应）：安装器把命令发布在
         // /root/.local/bin（home 层），但**早已存在的 shell 的 PATH 是启动时的快照**，
         // 拿不到后装的目录。/usr/local/bin 天然在所有 shell 的 PATH 里且属系统层——
@@ -249,49 +299,26 @@ object ProotLauncher {
                 RunLog.log("git 镜像已配置（gh-proxy.com）")
             }
         }
-        // OpenCode 调优（性能）：snapshot 会在每次工具调用时跑 git 子进程，
-        // proot 下子进程开销被放大数倍 → 输入/响应明显卡顿。默认关闭；
-        // 需要 undo 功能的用户可手动改回 true（牺牲性能）。
-        // OpenCode 预置（字段级合并，0.5 步）：
-        // - snapshot=false：性能（每次工具调用省 git 子进程，proot 下被放大数倍）
-        // - plugin 数组：**只做遗留清理，不再预置任何插件**。2026-10-06 曾在此写入第三方
-        //   记忆插件 opencode-mem（tickernelz/opencode-mem），但实测它要求
-        //   opencodeProvider + opencodeModel 同时配置才启用自动捕获，装上后从未产出过一条
-        //   记忆，却带来 656 MB 本地向量模型 + 1.9 GB 依赖。2026-10-07 用户拍板整个摘除，
-        //   此处负责把历史配置里残留的该项幂等移除（其它插件一律不动）。
-        // - AGENTS.md：人设 + 文件地图（治"忘了自己在手机里/找不到文件"）。
-        // 已有配置/文件时按字段合并或跳过，绝不覆盖用户自有内容。
+        // ── 太极实例的 OpenCode 预置：人设 + 性能字段 ────────────────────────────
+        // - AGENTS.md：人设 + 文件地图（治"忘了自己在手机里 / 找不到文件"）。
+        // - snapshot=false：性能（每次工具调用省一个 git 子进程）。
+        // - watcher.ignore：文件监听跳过大目录（官方配置项，glob 数组）。
+        // - plugin 数组：只做"遗留插件清理" + "首次安装预置一次"，之后插件页是唯一权威。
+        //
+        // ⚠️ v1.2 阶段 2.0 路径修复（真机查证）：以前写**两份，而且两份都错**——
+        //   - 终端默认实例 `~/.config/opencode`：终端那份 npm 版 opencode 已随 v1.2
+        //     主线一卸载，写它没有读者；
+        //   - 太极实例 `home/.zhengdao/taiji/config/opencode`：**不是** serve 读的目录
+        //     （serve 的 XDG_CONFIG_HOME = `files/oc/xdg/config`）⇒ 太极的 Agent
+        //     **从来没收到过 AGENTS.md**，插件页的开关也一直改在没人读的文件上。
+        //   现在只写一份，且写对地方：[com.example.zhengdao.oc.OcManager.configDir]。
         runCatching {
-            val cfgDir = File(homeDir, ".config/opencode")
+            val cfgDir = com.example.zhengdao.oc.OcManager.configDir(context)
             if (cfgDir.isDirectory || cfgDir.mkdirs()) {
-                val f = File(cfgDir, "opencode.json")
-                val obj = if (f.isFile) runCatching {
-                    org.json.JSONObject(f.readText())
-                }.getOrElse {
-                    RunLog.log("OpenCode 配置解析失败，按空配置重建（原内容已损坏）")
-                    org.json.JSONObject()
-                } else org.json.JSONObject()
-                var changed = !f.isFile
-                if (!obj.has("snapshot")) { obj.put("snapshot", false); changed = true }
-                // autoupdate=false（用户定稿：默认不打扰，更新走设置页手动检查）
-                if (!obj.has("autoupdate")) { obj.put("autoupdate", false); changed = true }
-                // 遗留清理：移除历史预置的记忆插件（幂等，详见上方注释）
-                if (stripLegacyMemPlugin(obj)) changed = true
-                // 推荐插件预置：**仅首次安装做一次**。轻量记忆插件（零依赖、零向量、不跑本地
-                // 模型——真机验证过可正常安装与加载，缓存仅 150KB 量级）。必须只做一次，否则
-                // 用户在插件页把它关掉后下次启动又会被加回来，就回到了"用户关不掉"的老问题。
                 val prefsUi = com.example.zhengdao.ui.Settings.prefs(context)
                 val presetOnce = !prefsUi.getBoolean(KEY_PLUGIN_PRESET, false)
-                // ⚠️ 终端这份配置**不预置插件**（用户 2026-10-07 裁决 ①）：插件归太极的
-                //    OpenCode 管，终端里自装的 opencode 由用户自己说了算。App 只在这里
-                //    做"关快照 / 关自动更新 / 清掉历史遗留插件"这类无害维护。
-                if (changed) {
-                    f.writeText(obj.toString(2))
-                    RunLog.log("OpenCode 配置已合并（snapshot=false / autoupdate=false；遗留记忆插件已清理）")
-                }
                 // 人设：opencode 原生读取 <XDG_CONFIG_HOME>/opencode/AGENTS.md 作为全局规则。
                 // 文件地图随工作区设置动态更新（0.6）：映射变化才重写，平时不动用户文件。
-                // 双份：终端默认实例（~/.config/opencode）+ 太极实例（/root/.zhengdao/taiji/config）。
                 val wsPath = wsHost.absolutePath
                 val wsNote = if (wsShared) "手机文件管理器直接可见、可自由删除；卸载证道后该文件夹仍会保留（产出不丢）" else "应用专属目录，随应用卸载自动删除"
                 val persona = (
@@ -302,72 +329,44 @@ object ProotLauncher {
                         "## 文件地图\n" +
                         "- /workspace —— **产出与边界区**：Agent 的产出都放这里（手机侧：$wsPath；$wsNote）。用户在这里找产出、在这里自由删除\n" +
                         "- /sdcard —— 共享存储整体可读可写，用于查找资料；**产出约定只进 /workspace**，不要把共享存储其他位置当草稿区乱写\n" +
-                        "- /root —— 你的 home；各 Agent 配置在此（~/.config/opencode、~/.hermes 等）\n\n" +
+                        "- /root —— 你的 home；各 Agent 配置在此（~/.hermes、~/.claude 等）\n\n" +
                         "## 能力边界\n" +
                         "- 无 root，不要尝试需要 root 的操作\n" +
                         "- 禁止执行 apt upgrade（会损坏环境）；装依赖用 pip / npm\n" +
                         "- 找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃\n"
                     )
-                // 终端默认实例
                 val agents = File(cfgDir, "AGENTS.md")
-                val lastPersonaWs = prefsUi.getString("agents_md_ws", null)
+                val lastPersonaWs = prefsUi.getString(KEY_PERSONA_WS, null)
                 if (!agents.isFile || lastPersonaWs != wsPath) {
                     agents.writeText(persona)
-                    prefsUi.edit().putString("agents_md_ws", wsPath).apply()
-                    RunLog.log("AGENTS.md 已更新（工作区映射: $wsPath）")
+                    prefsUi.edit().putString(KEY_PERSONA_WS, wsPath).apply()
+                    RunLog.log("太极 AGENTS.md 已写入（工作区映射: $wsPath）")
                 }
-                // 太极实例（XDG 隔离，见 taiji 脚本）
-                val taijiCfg = File(homeDir, ".zhengdao/taiji/config/opencode")
-                if (taijiCfg.isDirectory || taijiCfg.mkdirs()) {
-                    val agentsTaiji = File(taijiCfg, "AGENTS.md")
-                    val lastPersonaWsT = prefsUi.getString("agents_md_ws_taiji", null)
-                    if (!agentsTaiji.isFile || lastPersonaWsT != wsPath) {
-                        agentsTaiji.writeText(persona)
-                        prefsUi.edit().putString("agents_md_ws_taiji", wsPath).apply()
-                        RunLog.log("太极实例 AGENTS.md 已更新（工作区映射: $wsPath）")
+                // opencode.json：经 OcManager.updateConfig 做**字段级 merge**（只补缺失项，
+                // 绝不覆盖用户 / 插件页已写的内容）
+                com.example.zhengdao.oc.OcManager.updateConfig(context) { obj ->
+                    var changed = false
+                    // snapshot=false：性能（每次工具调用省一个 git 子进程）
+                    if (!obj.has("snapshot")) { obj.put("snapshot", false); changed = true }
+                    // autoupdate=false（用户定稿：默认不打扰，更新走设置页手动检查）
+                    if (!obj.has("autoupdate")) { obj.put("autoupdate", false); changed = true }
+                    // watcher.ignore：文件监听跳过大目录（官方配置项；已有 watcher 时不动）
+                    if (!obj.has("watcher")) {
+                        obj.put("watcher", org.json.JSONObject().put("ignore", WATCHER_IGNORE))
+                        changed = true
                     }
-                    // taiji 实例的 opencode.json：同样关 snapshot/autoupdate + 清理遗留插件
-                    val fT = File(taijiCfg, "opencode.json")
-                    val objT = if (fT.isFile) runCatching {
-                        org.json.JSONObject(fT.readText())
-                    }.getOrElse { org.json.JSONObject() } else org.json.JSONObject()
-                    var changedT = !fT.isFile
-                    if (!objT.has("snapshot")) { objT.put("snapshot", false); changedT = true }
-                    if (!objT.has("autoupdate")) { objT.put("autoupdate", false); changedT = true }
-                    if (stripLegacyMemPlugin(objT)) changedT = true
+                    // 遗留清理：移除历史预置的记忆插件 opencode-mem（幂等，其它插件不动）
+                    if (stripLegacyMemPlugin(obj)) changed = true
+                    // 推荐插件预置：**仅首次安装做一次**（否则用户关掉后下次启动又被加回来）
                     if (presetOnce) {
                         com.example.zhengdao.ui.PluginManager.DEFAULT_ON.forEach {
-                            if (ensurePluginEnabled(objT, it)) changedT = true
+                            if (ensurePluginEnabled(obj, it)) changed = true
                         }
                     }
-                    if (changedT) {
-                        fT.writeText(objT.toString(2))
-                        RunLog.log("太极实例 opencode.json 已更新（遗留记忆插件已清理）")
-                    }
+                    changed
                 }
-                // 预置流程结束（无论两个实例是否都已存在）：此后不再自动干预插件配置，
-                // 插件页的开关是唯一权威。
+                // 预置流程结束：此后不再自动干预插件配置，插件页的开关是唯一权威。
                 if (presetOnce) prefsUi.edit().putBoolean(KEY_PLUGIN_PRESET, true).apply()
-            }
-        }
-
-        // taiji 启动脚本（太极 Tab 用，用户定稿）：XDG 四目录隔离 → 与洞天/终端的
-        // opencode（默认 XDG）物理隔离；同一个 /usr/local/bin/opencode 二进制。
-        // 放 /usr/local/bin（PATH 内），太极 Tab 的 autocmd 就一个词：taiji。
-        runCatching {
-            val taiji = File(rootfsDir, "usr/local/bin/taiji")
-            val script = "#!/bin/sh\n" +
-                "# 证道太极：OpenCode 独立实例（XDG 隔离，与终端默认实例互不干扰）\n" +
-                "export XDG_CONFIG_HOME=/root/.zhengdao/taiji/config\n" +
-                "export XDG_DATA_HOME=/root/.zhengdao/taiji/data\n" +
-                "export XDG_CACHE_HOME=/root/.zhengdao/taiji/cache\n" +
-                "export XDG_STATE_HOME=/root/.zhengdao/taiji/state\n" +
-                "mkdir -p /root/.zhengdao/taiji/config /root/.zhengdao/taiji/data /root/.zhengdao/taiji/cache /root/.zhengdao/taiji/state\n" +
-                "exec /usr/local/bin/opencode\n"
-            if (!taiji.isFile || !taiji.readText().contains("XDG_CONFIG_HOME=/root/.zhengdao/taiji")) {
-                taiji.writeText(script)
-                runCatching { android.system.Os.chmod(taiji.absolutePath, 493) }
-                RunLog.log("taiji 启动脚本已预置（XDG 隔离的 OpenCode 实例）")
             }
         }
 
@@ -406,6 +405,23 @@ object ProotLauncher {
             // Termux proot 的依赖库与外部 loader 定位（其 fork 的 loader 为独立文件）
             "LD_LIBRARY_PATH=${tpDir.absolutePath}", // libtalloc.so.2 / libandroid-shmem.so 在此目录
             "PROOT_LOADER=${File(files, "termux-proot/loader").absolutePath}",
+            // ── 网络优化（v1.2）─────────────────────────────────────────────────
+            // 禁 IPv6（P0）：Bun 在"DNS 返回全局 IPv6 但接口只有链路本地地址"的网络下会
+            //   优先连 IPv6 并**一直挂到超时**（oven-sh/bun#25619）。本 flag 在 Bun 源码
+            //   `src/env_var.zig` 里真实存在（2026-10-07 已核对），不是臆造项。
+            //   ⚠️ 本机实测未复现卡死（curl opencode.ai 1.50s vs -4 的 1.45s），
+            //   这里按用户决定**预防性**开启；与 /etc/hosts 里钉的 IPv4 互为双保险。
+            "BUN_FEATURE_FLAG_DISABLE_IPV6=1",
+            // 遥测屏蔽（P1）：网络不稳时的无退避重试会拖出大量失败 DNS 查询（发热/耗电）。
+            //   前两个是各类 CLI 通用的退出开关（未设时进程忽略，零副作用），
+            //   第三个是 **Claude Code 官方**文档的非必要流量开关。
+            "DISABLE_TELEMETRY=1",
+            "DISABLE_ERROR_REPORTING=1",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+            // 本机环回**不走代理**（P0）：代理 App 若把 HTTP_PROXY 注入环境，
+            //   访问 127.0.0.1 的本地服务会被错误地送去代理、形成回环。
+            "NO_PROXY=localhost,127.0.0.1,::1",
+            "no_proxy=localhost,127.0.0.1,::1",
         )
 
         val args = mutableListOf(
@@ -462,8 +478,8 @@ object ProotLauncher {
         if (hasTmux) {
             if (tmuxSession == "zhengdao") {
                 // 主会话：kill-server 兜底（孤儿 tmux server 会让 attach 失败）。
-                // ⚠️ 仅主会话可 kill——taiji 等副会话与 zhengdao 共存于同一 server，
-                // kill 会连带杀掉太极的会话。
+                // ⚠️ 仅主会话可 kill——其它副会话与 zhengdao 共存于同一 server，
+                // kill 会连带杀掉它们的会话。
                 args.addAll(
                     arrayOf(
                         "/bin/bash",
@@ -472,8 +488,10 @@ object ProotLauncher {
                     )
                 )
             } else {
-                // 副会话（taiji 等）：不 kill、直接 attach-or-create；pane 主程序按会话名分发
-                val paneCmd = if (tmuxSession == "taiji") "/usr/local/bin/taiji" else "/bin/bash -l"
+                // 副会话：不 kill、直接 attach-or-create。
+                // （v1.2 删掉了 `taiji` 副会话分支：它启动的是终端里 npm 版 opencode 的
+                //   /usr/local/bin/taiji 脚本，该 opencode 已随主线一卸载，分支不可达。）
+                val paneCmd = "/bin/bash -l"
                 args.addAll(
                     arrayOf(
                         "/bin/bash",
@@ -520,19 +538,13 @@ object ProotLauncher {
                 }
             }
             File(rootfsDir, "tmp").mkdirs()
-            // 「两个 opencode」说明（v1.1.1 阶段 2.4，用户裁决：终端里的 npm 版**保留不卸载**，
-            // 但要把关系说清）。**仅在真机上确实存在自装版时才追加**——没装过的人不该被
-            // 一条与他无关的说明打扰。探测走宿主侧文件（rootfs 目录），不碰 guest 进程。
-            val selfInstalledOc = File(rootfsDir, "usr/bin/opencode").exists() ||
-                File(rootfsDir, "usr/lib/node_modules/opencode-ai").exists()
-            val ocLine = if (selfInstalledOc) {
-                "[提示] 终端里的 opencode 是你自己装的 npm 版；「太极」Tab 里那份是 App 内置的开箱即用版，" +
-                    "两者配置互相隔离、互不影响 —— 常用哪个就用哪个，不必卸载任何一个\n"
-            } else ""
+            // 横幅文案（v1.2 改写）：原先那条「两个 opencode、不必卸载任何一个」的说明已作废——
+            // 终端里的 npm 版 opencode 随 v1.2 主线一卸载了。现在 App 里只有太极 Tab 那一份
+            // OpenCode，这里改为直接告诉用户它在哪，避免"我终端里的 opencode 怎么没了"。
             File(rootfsDir, "tmp/.zhengdao-banner-pending").writeText(
                 "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\n" +
                     "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\n" +
-                    ocLine
+                    "[提示] OpenCode 在「太极」Tab 里（App 内置版，开箱即用）\n"
             )
         } // 写不进去不阻断启动（横幅只是提示）
 

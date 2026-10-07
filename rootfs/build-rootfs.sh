@@ -143,8 +143,41 @@ echo "---- 2.7 时区、DNS 与 hosts 兜底 ----"
 # App 端 ProotLauncher 也有同样的启动时校准（老镜像用户升级 App 即生效，无需重装环境）
 ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 echo Asia/Shanghai > /etc/timezone
-[ -s /etc/resolv.conf ] || printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
-[ -s /etc/hosts ] || printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' > /etc/hosts
+
+# DNS 锁定（v1.2 网络优化 P0）：proot 内没有 systemd-resolved，guest 里所有解析都直接读
+# /etc/resolv.conf。内容与 App 端 EnvSelfHeal 的运行时自愈保持**同一份**（options + 四路
+# nameserver，国内源在前）——否则镜像里一份、运行时另一份，会互相打架。
+#   options timeout:1 attempts:3 rotate —— 移动网络丢包时 1 秒换源，替代默认 5 秒死等
+[ -s /etc/resolv.conf ] || cat > /etc/resolv.conf <<'RESOLVEOF'
+options timeout:1 attempts:3 rotate
+nameserver 223.5.5.5
+nameserver 119.29.29.29
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+RESOLVEOF
+chmod 0444 /etc/resolv.conf
+# ⚠️ 0444 只是"防误改"的姿态：文件在 App 私有目录里，属主就是 App 自己；
+#    App 端 EnvSelfHeal 写之前会临时放开权限、写完再锁回（见 EnvSelfHeal.ensureDnsFiles），
+#    否则"锁定"会把自己锁死、DNS 再也自愈不了。
+
+# hosts：仅遥测屏蔽（P1）。这四条都是 0.0.0.0，不依赖任何外部 IP，无轮换风险。
+#
+# ⚠️ 这里**曾经**钉过 `172.65.90.21 opencode.ai`（P0，规避 IPv6 黑洞下的长超时），
+#    2026-10-07 **已撤除**，不要再往回加。撤除理由（真机实测）：
+#    1. 收益 ≈ 0：太极 serve 跑在宿主 bionic，不读 rootfs 的 /etc/hosts ⇒ 对主产品完全无效；
+#       终端 opencode 已卸载；guest 内即便有进程也只省首次请求 8–25 ms，连接复用后归零。
+#       端到端由 TLS + 跨境 RTT（~1.7 s）主导，DNS 只占 ~1%。
+#    2. 风险是硬故障：Cloudflare 前置、4 个轮换 IP（172.65.90.20–.23），轮换即连不上，
+#       不可控不可自愈。用零收益换硬故障风险不划算。
+#    详见故障排查手册 坑 #0（先确认作用域）与 坑 #4（该条目的完整始末）。
+cat > /etc/hosts <<'HOSTSEOF'
+127.0.0.1 localhost
+::1 localhost ip6-localhost ip6-loopback
+0.0.0.0 statsig.anthropic.com
+0.0.0.0 statsig.com
+0.0.0.0 telemetry.opencode.ai
+0.0.0.0 telemetry.anthropic.com
+HOSTSEOF
 
 echo "---- 2.8 版本断言（构建即验收，漂移即失败）----"
 GLIBC_VER="$(ldd --version | head -n1 | awk '{print $NF}')"
@@ -196,8 +229,16 @@ echo "[3/4] 卸载虚拟文件系统并规整目录 ..."
 for m in "${MNT_LIST[@]}"; do umount -l "$m" 2>/dev/null || true; done
 MNT_LIST=()
 rm -rf "$ROOTFS_DIR/debootstrap"
+# 打包前重写 resolv.conf（与 2.7 同一份内容 + 0444 锁定，见 2.7 注释）
 rm -f  "$ROOTFS_DIR/etc/resolv.conf"
-printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$ROOTFS_DIR/etc/resolv.conf"
+cat > "$ROOTFS_DIR/etc/resolv.conf" <<'RESOLVEOF'
+options timeout:1 attempts:3 rotate
+nameserver 223.5.5.5
+nameserver 119.29.29.29
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+RESOLVEOF
+chmod 0444 "$ROOTFS_DIR/etc/resolv.conf"
 # home 与系统分离（设计文档 §8）：包内只留空的 /root，用户数据由 App 端独立目录 bind 挂入
 rm -rf "$ROOTFS_DIR/root"
 mkdir -p "$ROOTFS_DIR/root" && chmod 0700 "$ROOTFS_DIR/root"
