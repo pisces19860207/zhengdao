@@ -1323,3 +1323,98 @@ Abort message: 'No pending exception expected: java.lang.NoSuchMethodError: no s
 2. **同一份代码，debug 绿 ≠ release 绿**：这个 bug 在 debug 包上永远复现不了（不混淆）。凡是 native/反射/JNI 参与的路径，验收必须用 `assembleRelease` 的产物在真机走一遍。
 3. **JNI 里"吞掉错误"必须连异常一起吞**：留下 pending exception 比抛异常更致命 —— 它会把下一个无关的 JNI 调用变成 `abort()`。
 4. **CI 全绿只保证"编得出来、签得对名"，不保证"跑得起来"**：这一跑（`47d8066`）18 步全绿，release 包却一装环境就闪退；发布前的真机冒烟不能省。
+
+## E-023 · 2026-10-08 · 终端「左边缘右滑返回」从来没真正生效过（两处静默失效）
+
+### 1. 现象（用户原话）
+
+> 还有就是在终端页屏幕右滑不能返回是为什么啊？
+
+终端页（`TerminalActivity`）从最左边起手向右滑，**什么都不会发生**；而代码里明明有这段逻辑，
+2026-10-07 的注释还写着"真机实测"。
+
+### 2. 证据（真机 `AD3J023824001723`，release 1.3.0）
+
+- 代码：`app/src/main/java/com/example/zhengdao/TerminalActivity.kt` 的 `installEdgeSwipeToClose()`，
+  挂在 `R.id.terminal_native`（TerminalView）与 `R.id.terminal_root`（根 FrameLayout）两处；
+  常量 `EDGE_SWIPE_WIDTH_DP = 32f`、`EDGE_SWIPE_TRIGGER_DP = 56f`；屏 1312×2848、density 3.5
+  ⇒ 识别带 112px、阈值 196px。logcat `D/EdgeSwipe` 证明两个监听器都挂上了。
+- `adb shell dumpsys window`（TerminalActivity 为焦点窗口）：
+
+  ```
+  mSystemGestureExclusion=SkRegion((53,141,112,313)(53,313,133,1291)(0,1291,133,1314)(0,1314,35,1991))
+  ```
+
+  —— **不是 `Rect(0,0,112,height)` 的整矩形，而是残缺碎块**：`view.post { … view.height.coerceAtLeast(1) }`
+  执行时高度常为 0，被截成 1px 高。
+- 注入滑动（`adb shell input swipe`，y=1400 扫到 x=700，200ms）逐点复现：
+
+| 起点 x | 结果 | 归属 |
+|---|---|---|
+| 6px | 回主页 ✓ | 本页识别带（0–112px） |
+| 90px | 回主页 ✓ | 本页识别带 |
+| 130px | 回主页 ✓ | 系统边缘返回（排除区只到 ~133px，之外系统自己接） |
+| 170px | **毫无反应 ✗** | 谁也不管的死区 |
+| 6px 起手、只滑到 156px（dx=150 < 196px 阈值） | **毫无反应 ✗** | 阈值太严 |
+| 6px→306px，700ms（慢速 dx=300） | 回主页 ✓ | 本页识别带 |
+
+⇒ 真人拇指落点常在 40–55dp（140–190px），**正好落在死区里**；而"快速一甩"又常不到 196px。
+两个**独立**缺陷叠加 = "怎么滑都不返回"。
+
+### 3. 根因
+
+1. **排除区在 `view.post` 里按 `view.height` 设置**，那一刻高度常为 0 ⇒ 变成 1px 高的废矩形（静默失效）。
+2. **识别带 32dp 比真人落点窄**，而这 32dp 又被排除区从系统返回手势手里要走了
+   ⇒ 识别带外、系统感应带内的 140–190px 成了"两边都不管"的死区。
+3. **阈值 56dp 且只在 MOVE 判定**：快速一甩（实测 dx=43dp）与 MOVE 丢失的手势完全没有兜底。
+
+### 4. 修法（2026-10-08）
+
+- 手势判定改到 **Activity 层 `dispatchTouchEvent` 里"旁观"**（不消费任何事件），命中才 `finish()`
+  —— 终端自己的点击、长按选词、纵向滚动一律照旧；旧实现用 `OnTouchListener` 吞掉按下，
+  条带内的终端手势会一起被吃掉。
+- 排除区挂在**窗口根 View**（`window.decorView`）上，布局完成后按真实高度设置、尺寸变化时重设。
+- 识别带 32dp → **56dp**；阈值 56dp → **40dp**；纵向容差 40dp 且要求"横向占优"（`dx > dy`）；
+  MOVE 与 **UP 双判定**（快甩兜底）。
+- 命中时打一行 `D/EdgeSwipe`（`MOVE` / `UP 兜底` + dx/dy/startX），以后有争议直接看 logcat。
+
+### 5. 教训
+
+1. **"设置系统手势排除区"没生效是静默的**：`view.post` + `view.height` 是经典坑；验收要看
+   `dumpsys window` 里的 `mSystemGestureExclusion` 是不是整矩形，而不是"代码写了就算做了"。
+2. **手感阈值必须按真人落点回归**：注入 `input swipe` 从 x=6 起手永远成功，掩盖了 140–190px 的死区
+   —— 用注入测手势时，起手点要覆盖真人可能的落点（含 40–60dp 这一段）。
+3. **一次投诉里常常叠着两个以上独立缺陷**（这里是"排除区失效" + "阈值太严"）；只修一个，用户照样说不行。
+
+## E-024 · 2026-10-08 · 「太极发送按钮点了没用」是误判 —— 但失败确实不可见（顺手补上）
+
+### 1. 现象（用户原话）
+
+> 太极对话框的发送按钮点了也没用啊
+
+### 2. 实测结论：**发送是通的**
+
+- 真机（release 1.3.0）：点输入框 → `adb shell input text "hello"` → 点发送键
+  （uiautomator 给的真实 bounds `[1102,1795][1270,1963]`）⇒ 输入框清空、按钮变 ■（`isStreaming=true`）；
+  `uiautomator dump` 里出现用户气泡 `hello`、`🧠 思考过程`、助手回复正文，
+  会话标题也从「新会话」变成 `hello` ⇒ POST 被服务端接受（HTTP 2xx）。
+- 用户"看着没反应"的两个原因：那段对话区**正好被他自己的画中画短剧小窗盖住**（覆盖约 y∈[419,1578]）；
+  以及**第一次点在 (1189,1915) 没命中按钮**（偏了 36px），第二次点在按钮中心才生效。
+
+### 3. 但我们确实做错了：失败不可见
+
+`OcRepository.prompt()` 的失败只走 `ocLog()`，而 `ocLog` 写的是 **App 私有
+`cacheDir/runlog/zhengdao-log.txt`**（`adb` 读不到、logcat 里也没有）—— 真失败时用户看到的
+就是"点了没反应"。`ConnectionBanner` 又只在 `state.connection != Connected` 时出现，
+连上以后发送失败没有任何提示。
+
+### 4. 修法（2026-10-08）
+
+`app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt` 的 `onSend` 改为
+`repo.prompt(text).onFailure { Toast.makeText(ctx, "发送失败：…", LENGTH_LONG).show() }`。
+
+### 5. 教训
+
+1. **"点了没反应"先查"是不是真没反应"**：注入点击 + `uiautomator dump` 比看截图可靠
+   （截图会被画中画小窗、软键盘遮挡误导）。
+2. **关键失败路径不能只写进 App 私有日志**：用户界面必须有出口，否则"没坏"也会被当成"坏了"。
