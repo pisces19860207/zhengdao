@@ -4,9 +4,13 @@ plugins {
 }
 
 // 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
-// v1.1.1（2026-10-07）：v1.1 的收尾版——洞天体验打磨 + 清债。
-// 版本序列：v1.0.0(12) → v1.1 → v1.1.1(13) → v1.2(14，稳定性+性能+生态，v1.1.1 发布后才启动)
-val appVersionName = "1.1.1"
+// v1.2.0（2026-10-07）：**终端环境优化**——不修 UI、不加功能，只动终端里的环境本身。
+//   卸载终端 npm 版 opencode；修复太极配置路径（v1.1.1 曾误指终端 taiji 的 guest 死路径）；
+//   网络四项与 IP 钉住的尝试及撤除；工作区 .ignore；资源监控与体检三态。
+// 版本序列：v1.0.0(12) → v1.1 → v1.1.1(13) → v1.2.0(14)
+// ⚠️ 14 的归属曾有过争议：v1.1.1 裁决④一度把 14/1.2.0 划给 ChatGPT 线，
+//    该线已归档，14 归还本计划（2026-10-07 用户拍板）。
+val appVersionName = "1.2.0"
 
 android {
     namespace = "com.example.zhengdao"
@@ -26,7 +30,7 @@ android {
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro（MagicOS 11 /
         // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
         minSdk = 36
-        versionCode = 13
+        versionCode = 14
         versionName = appVersionName
 
         ndk {
