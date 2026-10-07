@@ -373,7 +373,8 @@ object OcManager {
                     "https://gh-proxy.com/https://github.com/$REPO/releases/download/Push261005/$PKG_NAME",
                 ),
                 dest = dest,
-                shaUrl = null, // digest 无 sidecar；下载后用定版 SHA 手动校验
+                // digest 无 sidecar；下载后用定版 SHA 手动校验（故不传 shaUrls）
+                shaUrls = emptyList(),
                 onProgress = { done, total ->
                     if (total > 0) onProgress("下载中 ${(done * 100 / total).coerceIn(0, 100)}%（${done / 1048576}/${total / 1048576} MB）")
                 },
@@ -403,7 +404,8 @@ object OcManager {
                     "https://gh-proxy.com/${update.url}",
                 ),
                 dest = dest,
-                shaUrl = null, // digest 无 sidecar；下载后用 API digest 手动校验
+                // digest 无 sidecar；下载后用 API digest 手动校验（故不传 shaUrls）
+                shaUrls = emptyList(),
                 onProgress = { done, total ->
                     if (total > 0) onProgress("下载中 ${(done * 100 / total).coerceIn(0, 100)}%（${done / 1048576}/${total / 1048576} MB）")
                 },

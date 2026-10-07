@@ -986,9 +986,10 @@ fun SettingsScreen(
                             }
                             val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(ctx, url)
                             RootfsDownloader.download(
-                                urls = listOf(url),
+                                // 镜像兜底（v1.2 B3）：环境更新走的是同一条 github 直链
+                                urls = RootfsDownloader.withMirrorFallback(url),
                                 dest = archive,
-                                shaUrl = "$url.sha256",
+                                shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
                             ) { done, total ->
                                 if (total > 0 && done * 100 / total % 20 == 0L) {
                                     android.os.Handler(ctx.mainLooper).post {

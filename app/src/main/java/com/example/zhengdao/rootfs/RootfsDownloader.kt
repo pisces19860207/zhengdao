@@ -50,21 +50,38 @@ object RootfsDownloader {
     }
 
     /**
+     * 给 github.com 直链补一条 gh-proxy 镜像兜底（v1.2 B3）。
+     *
+     * 为什么需要：github.com 在部分网络下不可达（实测本机 http=000、gh-proxy.com 200），
+     * 而 rootfs（326MB）此前只有这一个地址——新用户第一步就可能卡死。
+     * 太极的 OpenCode 包早就有 gh-proxy 兜底，两边此前不对称。
+     */
+    fun withMirrorFallback(url: String): List<String> =
+        if (url.startsWith("https://github.com/")) listOf(url, "https://gh-proxy.com/$url")
+        else listOf(url)
+
+    /**
      * 依次尝试所有 URL，把文件下载到 dest（先写 dest.part，完成后改名）。
-     * @param expectedSha256 期望的校验值；传 null 表示跳过校验（仅开发期允许）
+     *
+     * @param shaUrls 校验值边车的**候选源列表**（github 优先、镜像兜底）。
+     *   传空列表 = 调用方明确不校验（OcManager 走这条路：它用 release digest 或定版 SHA 自行校验）。
      */
     fun download(
         urls: List<String>,
         dest: File,
-        shaUrl: String?,
+        shaUrls: List<String> = emptyList(),
         onProgress: (doneBytes: Long, totalBytes: Long) -> Unit,
     ) {
         if (urls.isEmpty()) throw DownloadFailed("没有可用的下载地址")
 
         // 每轮尝试前重取校验值：发布资产可能被更新（移动靶），过期校验值只会白忙
-        var expectedSha = shaUrl?.let { fetchText(it) }
-        if (shaUrl != null && expectedSha.isNullOrBlank()) {
-            Log.w(TAG, "未获取到 SHA256 校验值，跳过完整性校验（仅限开发期）")
+        var expectedSha = fetchFirstSha(shaUrls)
+        // ⚠️ 拿不到校验值**必须报错，不能"跳过校验"**：镜像可用而主源不通时，
+        //    旧逻辑会静默装上未校验的 rootfs（B3 要补的正是这个洞）。
+        if (shaUrls.isNotEmpty() && expectedSha.isNullOrBlank()) {
+            throw DownloadFailed(
+                "无法获取 SHA256 校验值（已尝试 ${shaUrls.size} 个源），拒绝安装未校验的包"
+            )
         }
         var lastError: Exception? = null
         for (url in urls) {
@@ -82,7 +99,7 @@ object RootfsDownloader {
                     // 资产在下载途中被更新：残件作废、重取最新校验值、从头再来
                     Log.w(TAG, "SHA256 不匹配，删除残件并重取校验值重试", e)
                     dest.delete()
-                    expectedSha = shaUrl?.let { fetchText(it) }
+                    expectedSha = fetchFirstSha(shaUrls) ?: expectedSha
                     lastError = e
                 } catch (e: Exception) {
                     Log.w(TAG, "下载失败：$url", e)
@@ -93,6 +110,15 @@ object RootfsDownloader {
         dest.delete()
         File(dest.parentFile, dest.name + PART_SUFFIX).delete()
         throw DownloadFailed("全部下载通道失败：${lastError?.message ?: "未知错误"}")
+    }
+
+    /** 按序尝试各校验值源，返回第一个非空结果；全失败返回 null。 */
+    private fun fetchFirstSha(shaUrls: List<String>): String? {
+        for (u in shaUrls) {
+            val t = fetchText(u)
+            if (!t.isNullOrBlank()) return t
+        }
+        return null
     }
 
     /**
