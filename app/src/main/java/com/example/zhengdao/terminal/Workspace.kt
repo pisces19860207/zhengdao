@@ -29,12 +29,12 @@ object Workspace {
     private const val KEY_MIGRATED = "workspace_migrated_v2"
     private const val SHARED_ROOT = "/storage/emulated/0"
 
-    /** 共享存储可读写判定（READ+WRITE 运行时授权，E-005 修正后的真实通路）。 */
-    fun storageGranted(ctx: Context): Boolean =
-        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_EXTERNAL_STORAGE) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED &&
-        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
+    /**
+     * 共享存储可读写判定——**委托 ProotLauncher 单一实现**（v1.3 E2 消双判：
+     * 此前本处查 READ+WRITE、ProotLauncher 只查 WRITE、设置页第三份又查 READ+WRITE，
+     * 部分授权态下三处结论可能不同）。E-005 修正后的真实通路见 ProotLauncher 注释。
+     */
+    fun storageGranted(ctx: Context): Boolean = ProotLauncher.storageGranted(ctx)
 
     /** 宿主侧工作区目录（bind / 软链 / 脚本落点的唯一来源）。保证目录存在。 */
     fun hostDir(ctx: Context): File {
