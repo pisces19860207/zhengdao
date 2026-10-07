@@ -1,44 +1,36 @@
 ﻿<#
-  install-hooks.ps1 —— 把 tools/hooks/ 下的闸门装进这个仓库的 .git/hooks
+  install-hooks.ps1 —— 【已改为薄壳】真正的实现统一在 tools/zd.py
 
   为什么需要安装这一步：.git/hooks 不进版本库，而这里所有 worktree 共用同一个 .git，
   所以「装一次」就等于给所有 agent 的工作树都上了闸。
 
+  为什么改成薄壳：2026-10-07 用户拍板，工具统一到 Python 单一入口 tools/zd.py。
+  这个 .ps1 只是方便 Windows 上的人/agent 直接双击式调用，**行为以 `python tools\zd.py install-hooks` 为准**
+  （由 zd.py 负责 CRLF→LF、去 BOM、chmod，并在装完后可以立刻用 hooks-status 自证）。
+
   用法：  powershell -ExecutionPolicy Bypass -File tools\install-hooks.ps1
+  退出码：0 = 装好；1 = 出错；2 = 不在 git 仓库/找不到 zd.py
 #>
 [CmdletBinding()]
 param()
 
-$ErrorActionPreference = 'Stop'
-$root = (& git rev-parse --show-toplevel).Trim()
-$common = (& git rev-parse --path-format=absolute --git-common-dir).Trim()
-if (-not $common) { Write-Host "！拿不到 .git 公共目录" -ForegroundColor Red; exit 2 }
+$ErrorActionPreference = 'Continue'
 
-$srcDir = Join-Path $root 'tools\hooks'
-$dstDir = Join-Path $common 'hooks'
-New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
+$root = (& git rev-parse --show-toplevel 2>$null)
+if (-not $root) { Write-Host "！不在 git 仓库里，无法安装 hook" -ForegroundColor Red; exit 2 }
+$root = $root.Trim()
 
-$n = 0
-Get-ChildItem -Path $srcDir -File | ForEach-Object {
-    $dst = Join-Path $dstDir $_.Name
-    Copy-Item -Path $_.FullName -Destination $dst -Force
-    Write-Host ("  装上 {0}  ->  {1}" -f $_.Name, $dst) -ForegroundColor Green
-    $n++
-    if ($_.Name -like 'pre-*' -or $_.Name -like 'post-*') {
-        # Git for Windows 用 MSYS sh 跑 hook，确认它不是 CRLF 结尾（CRLF 会让 #!/bin/sh 解析失败）
-        $bytes = [System.IO.File]::ReadAllBytes($dst)
-        $crlf = $false
-        for ($i = 0; $i -lt [Math]::Min($bytes.Length - 1, 4096); $i++) {
-            if ($bytes[$i] -eq 13 -and $bytes[$i + 1] -eq 10) { $crlf = $true; break }
-        }
-        if ($crlf) {
-            $txt = [System.IO.File]::ReadAllText($dst) -replace "`r`n", "`n"
-            [System.IO.File]::WriteAllText($dst, $txt, (New-Object System.Text.UTF8Encoding($false)))
-            Write-Host "    （已把 CRLF 换成 LF，否则 sh 跑不起来）" -ForegroundColor Yellow
-        }
-    }
+$zd = Join-Path $root 'tools\zd.py'
+if (-not (Test-Path $zd)) {
+    Write-Host "！找不到 tools\zd.py —— 你的分支可能太旧，先 git fetch origin 并同步" -ForegroundColor Red
+    exit 2
 }
 
+& python $zd install-hooks
+$code = $LASTEXITCODE
+if ($code -ne 0) { exit $code }
+
 Write-Host ""
-Write-Host "装好 $n 个 hook，公共 .git = $common" -ForegroundColor Cyan
-Write-Host "所有 worktree 立即生效。紧急绕过：`$env:ZHENGDAO_HOOK_BYPASS='1' 再 commit。" -ForegroundColor Cyan
+Write-Host "自证一遍（库里 vs 已装是否逐字节一致）：" -ForegroundColor Cyan
+& python $zd hooks-status
+exit $LASTEXITCODE
