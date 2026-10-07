@@ -7,7 +7,13 @@
 #   - apk-debug/zhengdao-<版本>-debug.apk      应用调试包（开发者用；未混淆、体积大、可被调试）
 #   - apk-release/zhengdao-<版本>-release.apk  正式包（最终用户用；R8 混淆 + 资源收缩）
 #   - rootfs-files/debian-13.7-base-arm64.tar.zst  RootFS 包 + .sha256（M1.1 真机测试用）
-#   - rootfs-files/proot-arm64                 自编译 proot（上游源码 + NDK）
+#
+# ⚠️ 本流水线**不再构建 proot**。原来那一步从上游 proot-me/proot master 自编译出
+#    rootfs-files/proot-arm64，但那个文件在应用代码里 0 引用——App 真正的 proot 是
+#    app/src/main/assets/proot/ 下的 Termux 官方发行二进制（5.1.107.96，由
+#    terminal/ProotLauncher.kt:164-169 按 SHA256 钉死后释放）。设计与 PROVENANCE
+#    一直要求「用 Termux 官方产物、不要退回自编译上游版」，CI 这一步与它矛盾。
+#    2026-10-07 移除，见 docs/ERRATA.md E-016。
 #
 # ⚠️ debug 包与 release 包**必须分目录**：早先两者同处 artifacts/，导致
 #    `gh release upload latest artifacts/*` 把 debug 包一并推给最终用户，
@@ -138,17 +144,14 @@ jobs:
         timeout-minutes: 240
         run: sudo bash rootfs/build-rootfs.sh "$GITHUB_WORKSPACE/rootfs-out"
 
-      - name: 修正产物目录属主（rootfs 以 root 运行，目录归 root；proot 以普通用户写入）
+      - name: 修正产物目录属主（rootfs 以 root 运行，目录归 root）
         run: |
           if [ -d rootfs-out ]; then sudo chown -R "$(id -u):$(id -g)" rootfs-out; fi
           ls -la rootfs-out 2>/dev/null || true
 
-      - name: 构建 proot（上游源码 + NDK 交叉编译，约 2 分钟）
-        run: bash rootfs/build-proot.sh "$GITHUB_WORKSPACE/rootfs-out"
-
       - name: 收集产物
         # 三个目录各司其职：apk-debug 只给开发者从 Actions 页面下，
-        # apk-release 才进 Releases 页，rootfs-files 是 RootFS + proot。
+        # apk-release 才进 Releases 页，rootfs-files 是 RootFS 包。
         # 混在一个目录里，下面的 gh release upload 就会把 debug 包一起推出去（E-013）。
         run: |
           mkdir -p apk-debug apk-release rootfs-files
