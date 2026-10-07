@@ -3,6 +3,7 @@
 package com.example.zhengdao.ui
 
 import android.content.Context
+import com.example.zhengdao.oc.OcManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -23,21 +24,24 @@ import java.io.File
  * 只读写 opencode 自身的配置文件与缓存目录，**不碰** PRoot 启动 / SSE / REST 任何既有链路。
  *
  * ⚠️ **作用域（用户 2026-10-07 裁决 ①）**：插件是 OpenCode 的能力，本 App 里只有
- * **太极**跑 OpenCode（宿主 bionic 版，XDG 隔离目录）。终端里的 opencode 是用户自装的
- * npm 版（裁决 ②：保留不卸载），**App 不为它管插件**——所以本类只认太极实例，
- * 既不读也不写终端那份 `~/.config/opencode/opencode.json`。
+ * **太极**跑 OpenCode（宿主 bionic 版，XDG 隔离目录）。
+ * （裁决 ② 已于 v1.2 反转：终端里的 npm 版 opencode **已卸载**，不再存在"两份 opencode"。）
+ *
+ * ⚠️ **v1.2 阶段 2.0 路径修复**：本类此前指向 `files/home/.zhengdao/taiji/config/opencode/`
+ * （终端 taiji 脚本的 XDG 目录），与太极 serve 真正读取的 `files/oc/xdg/config/opencode/`
+ * **不是同一个文件** ⇒ 插件页的开关一直写在没人读的地方。现统一取 [OcManager.configFile]，
+ * 与权限策略、性能调优共用同一个 merge 写入口。
  */
 object PluginManager {
 
     // ── 路径 ────────────────────────────────────────────────────────────────
 
-    /** 太极实例（OpenCode，XDG 四目录隔离）的 opencode.json。 */
-    fun taijiConfig(ctx: Context): File =
-        File(ctx.filesDir, "home/.zhengdao/taiji/config/opencode/opencode.json")
+    /** 太极实例（OpenCode，XDG 四目录隔离）的 opencode.json —— 与 serve 读取的是同一个。 */
+    fun taijiConfig(ctx: Context): File = OcManager.configFile(ctx)
 
-    /** 太极实例的插件包缓存（XDG_CACHE_HOME 被隔离到 .zhengdao/taiji/cache）。 */
+    /** 太极实例的插件包缓存（XDG_CACHE_HOME 被隔离到 files/oc/xdg/cache）。 */
     fun taijiPackagesDir(ctx: Context): File =
-        File(ctx.filesDir, "home/.zhengdao/taiji/cache/opencode/packages")
+        File(OcManager.xdgDir(ctx, "cache"), "opencode/packages")
 
     /** 缓存目录（扫描 / 清理的作用对象）。 */
     fun allPackagesDirs(ctx: Context): List<File> =

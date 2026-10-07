@@ -35,6 +35,24 @@ object OcManager {
     const val PORT = 14000
     /** 2.0.22 定版 SHA256（GitHub Releases digest 字段）。检查更新时按新 digest 动态校验。 */
     private const val PINNED_SHA = "9830eb45f64b5caa1b797c6a399eab29a528a4ba3273cc4ad4430700cd877cbf"
+    /** opencode.json 的 schema 声明（官方固定值）。 */
+    private const val SCHEMA = "https://opencode.ai/config.json"
+
+    /**
+     * 保守权限策略：一切敏感动作都 `ask`（问用户），不静默放行。
+     * 语法取自官方 V2 权限文档——跑 shell 的 action 是 **`shell`**（v1 叫 `bash`），
+     * 文件修改是 `edit`（覆盖 write/patch）；规则 = `[{action, resource, effect}]`。
+     * ⚠️ 实测本版（bionic 2.0.22）`OPENCODE_PERMISSION` 环境变量**不生效**，只有写进
+     * opencode.json 才真正生效，所以这是真正的落地机制。
+     */
+    private const val PERMISSIONS_JSON = """[
+        { "action": "shell",    "resource": "*", "effect": "ask" },
+        { "action": "bash",     "resource": "*", "effect": "ask" },
+        { "action": "edit",     "resource": "*", "effect": "ask" },
+        { "action": "write",    "resource": "*", "effect": "ask" },
+        { "action": "webfetch", "resource": "*", "effect": "ask" }
+    ]"""
+
     private const val REPO = "Hope2333/opencode-termux"
     private const val PKG_NAME = "opencode-$VERSION-1-aarch64.pkg.tar.xz"
     private const val VERSION_KEY = "oc_installed_version"
@@ -48,7 +66,60 @@ object OcManager {
         if (installed(ctx)) Settings2.prefs(ctx).getString(VERSION_KEY, null) else null
 
     fun homeDir(ctx: Context): File = File(ctx.filesDir, "oc/home")
-    private fun xdgDir(ctx: Context, kind: String): File = File(ctx.filesDir, "oc/xdg/$kind")
+
+    /** XDG 四目录（data/cache/config/state）宿主路径。对外可见：插件管理要按同一套路径定位缓存。 */
+    fun xdgDir(ctx: Context, kind: String): File = File(ctx.filesDir, "oc/xdg/$kind")
+
+    /** 太极实例的 opencode 配置目录（= serve 的 `XDG_CONFIG_HOME/opencode`）。 */
+    fun configDir(ctx: Context): File = File(xdgDir(ctx, "config"), "opencode")
+
+    /** 太极实例的 opencode.json —— **App 侧唯一真相源**。
+     *
+     * ⚠️ v1.2 阶段 2.0 前的历史坑：`PluginManager` 曾指向 `files/home/.zhengdao/taiji/...`
+     * （那是终端 taiji 脚本的 XDG 目录，随 v1.2 卸载终端 opencode 后已成死路径），
+     * 与 serve 真正读取的本文件**不是一个**，导致插件开关改的配置根本没人读。
+     * 现在两类写入（权限策略 / 插件 / 性能调优）统一走 [updateConfig] 打到这一个文件。 */
+    fun configFile(ctx: Context): File = File(configDir(ctx), "opencode.json")
+
+    /**
+     * 太极 opencode.json 的**唯一写入口**（v1.2 阶段 2.0）：读-改-写。
+     *
+     * 只更新 [mutate] 动过的字段，其余（`plugin` 数组、`snapshot`、`watcher`、
+     * 用户手写项……）**原样保留**。此前 `ensurePermissionPolicy()` 是整文件覆盖写，
+     * 会把它没写过的字段全部抹掉（v1.1.1 只是因为 serve 已运行走了提前返回分支才没炸）。
+     *
+     * @param mutate 就地修改传入的 JSONObject；返回 true 表示确实改了东西（需要落盘）。
+     */
+    fun updateConfig(ctx: Context, mutate: (org.json.JSONObject) -> Boolean) {
+        mergeConfigFile(configFile(ctx), mutate)
+    }
+
+    /**
+     * [updateConfig] 的可测核心：对**指定文件**做读-改-写（不依赖 Context，单测可直接调用）。
+     *
+     * 规则：
+     * - 文件不存在 / 解析失败 → 从空对象起步（`\$schema` 会补上）；
+     * - [mutate] 只应改它负责的那几个字段，**其余字段原样保留**；
+     * - 只有真的改了东西才落盘（幂等，避免每次冷启动都产生一次无谓写盘）。
+     */
+    internal fun mergeConfigFile(file: File, mutate: (org.json.JSONObject) -> Boolean) {
+        runCatching {
+            file.parentFile?.mkdirs()
+            val obj = if (file.isFile) runCatching {
+                org.json.JSONObject(file.readText())
+            }.getOrElse {
+                RunLog.log("太极: opencode.json 解析失败，按空配置重建（原内容已损坏）")
+                org.json.JSONObject()
+            } else org.json.JSONObject()
+            var changed = !file.isFile
+            if (!obj.has("\$schema")) {
+                obj.put("\$schema", SCHEMA)
+                changed = true
+            }
+            if (mutate(obj)) changed = true
+            if (changed) file.writeText(obj.toString(2))
+        }.onFailure { RunLog.log("太极: 写 opencode.json 失败 ${it.message}") }
+    }
 
     /** 下载缓存（用户共享存储：Download/证道/opencode/，卸载重装不丢）。 */
     fun cacheDir(ctx: Context): File = File(Workspace.hostDir(ctx), "opencode")
@@ -169,6 +240,14 @@ object OcManager {
             env["XDG_CONFIG_HOME"] = xdgDir(ctx, "config").absolutePath
             env["XDG_STATE_HOME"] = xdgDir(ctx, "state").absolutePath
             env["PATH"] = "/system/bin"
+            // 本机环回**不走代理**（v1.2 网络优化 P0）：代理 App 若注入 HTTP_PROXY，
+            // 太极 UI 打 127.0.0.1:14000 的请求会被错误地送进代理、形成路由回环
+            // （现象：CPU 飙升 + 发热 + 太极连不上）。大小写两种写法都设，兼容不同读取方。
+            env["NO_PROXY"] = "localhost,127.0.0.1,::1"
+            env["no_proxy"] = "localhost,127.0.0.1,::1"
+            // 禁 IPv6（P0）：太极是 Bun 编译的原生二进制，禁掉 IPv6 避免在 IPv6 黑洞网络下
+            // 先去连不可达地址、挂到长超时才回落 IPv4（Bun 源码 src/env_var.zig 已核对存在）。
+            env["BUN_FEATURE_FLAG_DISABLE_IPV6"] = "1"
             // 🔧 输出预算修复（2026-10-06，用户定稿）：
             //    opencode 把每次补全硬性封顶在 **32000 输出 token（含思考）**，与模型自身上限无关。
             //    推理模型会把这 32k 全花在 thinking 上 → 补全以 reason=length 结束、**不产出正文**，
@@ -223,35 +302,21 @@ object OcManager {
     }
 
     /**
-     * 写入**保守权限策略**到 `XDG_CONFIG_HOME/opencode/opencode.json`。
+     * 写入**保守权限策略**到太极的 opencode.json（经 [updateConfig] 做字段级 merge）。
      *
      * ⚠️ 为什么用文件而不是环境变量：实测本版（bionic 2.0.22）`OPENCODE_PERMISSION`
      * 环境变量**不生效** —— 只设 env 时 shell 工具仍被静默放行。写这个文件才真正生效。
      *
-     * 语法取自**官方 V2 权限文档**：
-     * - 顶层字段 `permissions`（v1 叫 `permission`）
-     * - 跑 shell 命令的 action 是 **`shell`**（v1 叫 `bash`）；文件修改是 `edit`（覆盖 write/patch）
-     * - 规则 = `[{action, resource, effect}]`，effect ∈ allow|deny|ask，resource 支持 `*`/`?` 通配
-     *
-     * 每次冷启动**无条件重写**（自愈，避免旧配置残留）。
+     * ⚠️ v1.2 阶段 2.0 修复：原来是 `File(dir,"opencode.json").writeText(json)` **整文件覆盖写**，
+     * 会把它不认识的字段（`plugin` 数组、以及后续要加的 `snapshot` / `watcher`）**全部抹掉**。
+     * 现改为只覆盖 `permissions` 一个字段，其余原样保留。
      */
     private fun ensurePermissionPolicy(ctx: Context) {
-        runCatching {
-            val dir = File(xdgDir(ctx, "config"), "opencode").apply { mkdirs() }
-            val json = """
-                {
-                  "${'$'}schema": "https://opencode.ai/config.json",
-                  "permissions": [
-                    { "action": "shell",    "resource": "*", "effect": "ask" },
-                    { "action": "bash",     "resource": "*", "effect": "ask" },
-                    { "action": "edit",     "resource": "*", "effect": "ask" },
-                    { "action": "write",    "resource": "*", "effect": "ask" },
-                    { "action": "webfetch", "resource": "*", "effect": "ask" }
-                  ]
-                }
-            """.trimIndent()
-            File(dir, "opencode.json").writeText(json)
-        }.onFailure { RunLog.log("太极: 写权限配置失败 ${it.message}") }
+        updateConfig(ctx) { obj ->
+            // 每次冷启动无条件自愈（用户手改成宽松策略也会被拉回保守策略）
+            obj.put("permissions", org.json.JSONArray(PERMISSIONS_JSON))
+            true
+        }
     }
 
     /** 停止 serve（App 进程死亡时子进程随之消亡，ping 判活可自动恢复）。 */
