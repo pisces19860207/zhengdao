@@ -1255,3 +1255,71 @@ concurrency:
 1. **同一个东西有两处"应该放哪"的定义，早晚会分叉。** 路径常量只能有一个来源；本次把「包放哪」收敛到 `RootfsCache` 一处，安装检查、修复环境、测试全部改成问它。
 2. **缓存目录挪进用户工作区时，清理逻辑的判据必须同时收紧**：从"私有目录按后缀删"变成"用户目录按前缀删"，否则第一个受害者是用户自己的文件。
 3. **失败与"没有"必须分开表达**（见上"假好消息"）：把"查不到"说成"已是最新"，用户就会以为功能不存在。
+
+---
+
+## E-022 · 2026-10-08 · R8 把 JNI 回调改名 —— release 包一装环境就 SIGABRT
+
+### 1. 现象（用户原话）
+
+> 还是不行的，要安装运行环境
+
+用户 00:21 起连续点「安装运行环境」三次，每次都**直接退回主页**，Debian 环境永远装不上；
+`assembleDebug` 的包一切正常，只有 `assembleRelease` 出来的包会崩。
+
+### 2. 证据（`adb logcat -b crash -d -v time`，四次完全相同）
+
+00:21:58 / 00:22:12 / 00:22:29（用户三次）/ 00:25:14（复现）：
+
+```
+F/libc: Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 23916 (Thread-6), pid 23782 (xample.zhengdao)
+Abort message: 'No pending exception expected: java.lang.NoSuchMethodError: no static method
+"Lcom/example/zhengdao/rust/CoreNative;.onProgress(Ljava/lang/String;Ljava/lang/String;)V"
+...
+#04 art::Thread::AssertNoPendingException() const
+#10 pc 0000000000039dec  .../lib/arm64/libzhengdao_core.so (Java_com_example_zhengdao_rust_CoreNative_nativeExtract+1232)
+```
+
+### 3. 根因
+
+- `nativeExtract` 本身没问题（JNI 静态绑定 OK），**是它反向调用的回调没了**：
+  `rust/core/src/jni_bridge.rs` 里 `env.call_static_method(cls, "onProgress", "(Ljava/lang/String;Ljava/lang/String;)V", …)`。
+- `app/proguard-rules.pro` 当时只有：
+  ```
+  -keep class com.example.zhengdao.rust.CoreNative { native <methods>; }
+  ```
+  —— 只保住了 `native <methods>`（Java→native 那一半），**没保被 native 按名字查找的普通方法**。
+  `app/src/main/java/com/example/zhengdao/rust/CoreNative.kt:49-52` 的 `@JvmStatic fun onProgress(entries: String, name: String)`
+  在 Java 侧没有任何调用点，R8 看不见 JNI 的调用点 ⇒ 判定"可安全改名/删除"。
+- `dexdump` 对照（`classes.dex` 里 `Lcom/example/zhengdao/rust/CoreNative;` 的方法名）：
+
+| 构建 | 方法列表 |
+|---|---|
+| 修复前（00:16 release） | `<clinit>`、`nativeExtract`、`nativeSha256Hex`、`a`（= 被改名的 `onProgress`） |
+| 修复后（00:30 release） | `<clinit>`、`nativeExtract`、`nativeSha256Hex`、**`onProgress`**、`a` |
+
+  （`app/build/outputs/mapping/release/mapping.txt` 里也查不到 `CoreNative.onProgress`，只有其它类的同名方法 —— 它被改了名。）
+- 崩溃链：查找失败 → `NoSuchMethodError` 挂在当前线程 → Rust 侧 `let _ = (|| … )()` 吞掉了错误却**没有 `exception_clear()`**
+  → `nativeExtract` 随后继续调 JNI（`new_string`）→ 命中 ART 的 `AssertNoPendingException` → `abort()` → 进程闪退回主页。
+
+### 4. 修法（2026-10-08）
+
+1. `app/proguard-rules.pro` 把被按名查找的成员一并 keep：
+   ```
+   -keep class com.example.zhengdao.rust.CoreNative {
+       native <methods>;
+       public static void onProgress(java.lang.String, java.lang.String);
+   }
+   ```
+2. `rust/core/src/jni_bridge.rs` 的 `report_progress()` 兜底：失败一律 `env.exception_clear()`，
+   并用 `PROGRESS_DISABLED`（`AtomicBool`）闩锁关掉这条旁路回调 —— 进度显示失败不该升级成进程崩溃。
+3. 真机验收（release 包，`AD3J023824001723`）：点「安装运行环境」→ `I/CoreNative: 解压进度: …` 正常打点，
+   `I/RootfsInstaller: Rust 解压完成: 20041 条目 973MB sha=2f1406af1939` → `RootFS 安装完成（Rust 路径）`，
+   pid 不变（没崩）、零下载（直接用 `Download/证道/rootfs/` 里缓存好的包），终端进 `root@localhost:~#`。
+
+### 5. 教训
+
+1. **JNI 是双向的**：`native <methods>` 只保住了 Java→native 那一半；凡是 native 会**按名字查找**的成员（回调、构造函数、字段）都必须显式 keep —— R8 看不见 JNI 的调用点。
+2. **同一份代码，debug 绿 ≠ release 绿**：这个 bug 在 debug 包上永远复现不了（不混淆）。凡是 native/反射/JNI 参与的路径，验收必须用 `assembleRelease` 的产物在真机走一遍。
+3. **JNI 里"吞掉错误"必须连异常一起吞**：留下 pending exception 比抛异常更致命 —— 它会把下一个无关的 JNI 调用变成 `abort()`。
+4. **CI 全绿只保证"编得出来、签得对名"，不保证"跑得起来"**：这一跑（`47d8066`）18 步全绿，release 包却一装环境就闪退；发布前的真机冒烟不能省。

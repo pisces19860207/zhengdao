@@ -71,6 +71,29 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 顺带把 `OcManager.checkUpdate()` 拆出 `checkUpdateDetailed()`，不再把「查不到」说成「已是最新」；
 > 太极抽屉底部新增 OpenCode 版本 + 更新入口（`OcVersionFooter`）。
 > CI 那边也已闭环：run `37647338521` 18 步全绿，`latest` 的 APK 实测签名 `44E2FE86…A3BE18` = 存量 key。
+>
+> **2026-10-08 变更（hotfix，紧接上一批：release 一装环境就 SIGABRT）**：
+> 上一批刚落地，用户就报「还是不行，要安装运行环境」——现场查实**环境一次都没装成**：
+> 每次点「安装运行环境」都走 `TerminalActivity` 兜底 shell → `promptInstallOnce()` 认出本地包 →
+> `startInstallFromFile` 解压途中进程 SIGABRT 死回主页（00:21:58 / 00:22:12 / 00:22:29 用户三次
+> + 复现一次，logcat 四条一模一样的 abort）。根因是 R8：`app/proguard-rules.pro` 只 keep 了
+> `native <methods>`，而被 Rust 侧**按名字**调用的 `CoreNative.onProgress(String, String)`
+> （`CoreNative.kt:49-52`，`@JvmStatic`）没有 JNI 调用点可被 R8 看见 ⇒ 被改名成 `a`
+> （dexdump 对照：旧 `classes.dex` 的 `CoreNative` 方法表里没有 `onProgress`），于是
+> `jni_bridge.rs` 的 `call_static_method(..., "onProgress", ...)` 抛 `NoSuchMethodError`，
+> 异常又没清（pending exception）⇒ 后续 JNI 调用踩 ART `AssertNoPendingException` → abort。
+> **修两处**：① keep 规则补 `public static void onProgress(java.lang.String, java.lang.String)`；
+> ② `rust/core/src/jni_bridge.rs` 的 `report_progress()` 加 `PROGRESS_DISABLED` 熔断 +
+> `exception_clear()`，旁路进度回调失败**绝不允许升级成进程 abort**（重编 `.so` 覆盖
+> `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so`：807,712 B → strip 后 808,704 B，
+> 四个 LOAD 段 `p_align` 仍 `0x4000` = 16KB 对齐没丢）。**实测**（设备 `AD3J023824001723`，release）：
+> 装机后点「安装运行环境」→ `I/CoreNative: 解压进度: …` 一路打点（正是被改名的那个回调）、
+> `I/RootfsInstaller: Rust 解压完成: 20041 条目 973MB sha=2f1406af1939`、`RootFS 安装完成（Rust 路径）`，
+> 进程不重启，主页转「环境就绪 / Debian 13.7 已安装」，终端 `root@localhost:~#`，**全程零下载**
+> （直接用 `Download/证道/rootfs/` 的缓存包）。详见 `docs/ERRATA.md` E-022。另记一条工具事实：
+> **androidTest 只能对 debug 变体跑**——release APK 里 R8 把 `androidx.tracing.Trace` 当无用类删了，
+> `AndroidJUnitRunner` 一起手就 `NoClassDefFoundError: androidx/tracing/Trace`（用 `adb shell am instrument`
+> 对着 release 跑必崩，别浪费时间）。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
