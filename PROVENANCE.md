@@ -71,7 +71,7 @@
 
 来源：Termux 官方仓库 stable/main（packages.termux.dev），aarch64 官方构建产物，
 proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
-四个文件随 APK assets（app/src/main/assets/runtime/）内置，SHA256 如下
+四个文件随 APK assets（`app/src/main/assets/proot/`）内置，SHA256 如下
 （App 启动时按此校验，不匹配即重释放；清单同时硬编码于 ProotLauncher.kt）：
 
 | asset 文件 | 释放为 | SHA256 |

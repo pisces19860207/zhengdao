@@ -54,7 +54,12 @@
 ## Termux terminal-emulator / terminal-view / libtermux JNI
 
 - 来源：https://github.com/termux/termux-app （v0.119.0-beta.3，模块 terminal-emulator 与 terminal-view）
-- 许可证：GPL-3.0（源码级聚合，随本仓库分发，版权头保留）
+- 许可证：**Apache-2.0**（源码级聚合，随本仓库分发，版权头保留）
+  > ⚠️ **2026-10-05 勘误**：此前此处误标为 GPL-3.0。上游 `termux/termux-app` 仓库**整体**是
+  > GPLv3-only，但其 `LICENSE.md` 明确列出例外：**`terminal-view` 与 `terminal-emulator` 两个库
+  > 为 Apache-2.0**（源自 jackpal/Android-Terminal-Emulator）。本项目聚合的正是这两个库，
+  > **并未聚合 GPL 的主应用本体**。GPL 会传染、Apache-2.0 不会——这条直接决定第一方代码能否闭源，
+  > 属不可出错项。完整依据见 `docs/ERRATA.md` **E-001** 与 `PROVENANCE.md`。
 - 用途：终端模拟引擎（VT-100/xterm 状态机）与原生终端视图（替代 WebView/xterm.js 架构）
 - 修改：包内 R 引用改为宿主应用 R；textselection 把手资源并入宿主 res；其余未改动
 
