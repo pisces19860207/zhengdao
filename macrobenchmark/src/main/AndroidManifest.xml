@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Macrobenchmark 测试 APK 的清单。
+  · 不需要 <instrumentation> —— AGP 会按 testInstrumentationRunner 自动生成。
+  · <queries> 是 Android 11+ 的包可见性要求：benchmark 运行期要通过 PackageManager
+    读取被测包的版本 / 安装路径，没声明可见性会拿到 PackageManager.NameNotFoundException。
+    只声明被测包一个，不用 QUERY_ALL_PACKAGES（那是高敏感权限）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.example.zhengdao" />
+    </queries>
+</manifest>

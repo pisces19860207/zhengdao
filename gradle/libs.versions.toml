@@ -9,6 +9,12 @@ activityCompose = "1.8.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
 
+# Macrobenchmark（真机性能基线）。1.5.0 = 2026-09 的稳定版，与 AGP 9.4 / Gradle 9.6 同代。
+# ⚠️ 不要用 1.4.x 之前的版本：1.3 以下不支持 Gradle 9 的依赖元数据。
+benchmarkMacro = "1.5.0"
+# UiAutomator：基准里跨进程点按（底部 Tab、设置入口）靠它，Compose 语义节点同样可见。
+uiautomator = "2.4.0"
+
 # Markdown 渲染（v1.1 第四阶段）。锁 0.38.1 —— 该版本用 Kotlin 2.2.21 编译，
 # 与本项目 2.2.10 同线（metadata 可读）；更新版本用 Kotlin 2.3/2.4，升库=升 Kotlin，
 # 属架构级改动，不得混入 v1.1。依据：docs/milestones/证道-v1.1-第四阶段-Markdown调研报告.md §3。
@@ -29,6 +35,8 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmarkMacro" }
+androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 # Markdown 渲染（纯 Compose，非 WebView/TextView 包装）；m3 = Material3 主题，code = 代码块高亮 + 复制按钮
 mikepenz-markdown = { group = "com.mikepenz", name = "multiplatform-markdown-renderer", version.ref = "markdownRenderer" }
 mikepenz-markdown-m3 = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
@@ -37,4 +45,5 @@ mikepenz-markdown-code = { group = "com.mikepenz", name = "multiplatform-markdow
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+android-test = { id = "com.android.test", version.ref = "agp" }
 
