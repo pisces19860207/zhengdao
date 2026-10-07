@@ -61,6 +61,21 @@ object RootfsDownloader {
         else listOf(url)
 
     /**
+     * 对象存储镜像（方案一，见 docs/milestones/证道-方案一执行清单.md）：
+     * 从原始 URL 提取文件名，拼到对象存储桶公开域之后作为**首选源**，原 URL 兜底。
+     *
+     * 纯函数、不接入 download 默认列表——桶未建成/未配置时调用方不传即可，
+     * 接入时机与回退演练见执行清单阶段一 3.x。
+     *
+     * @param objectStoreBase 桶公开域（末尾不带 /，如 https://cdn.example.com/zhengdao）
+     */
+    fun withObjectStorage(url: String, objectStoreBase: String): List<String> {
+        val base = objectStoreBase.trim().trimEnd('/')
+        if (base.isEmpty()) return listOf(url)
+        return listOf("$base/${url.substringAfterLast('/')}", url)
+    }
+
+    /**
      * 依次尝试所有 URL，把文件下载到 dest（先写 dest.part，完成后改名）。
      *
      * @param shaUrls 校验值边车的**候选源列表**（github 优先、镜像兜底）。
