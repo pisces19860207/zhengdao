@@ -1,0 +1,108 @@
+#!/bin/sh
+# 证道 zhengdao —— pre-commit 闸门
+#
+# 目的：让「不核对就开工」的做法提不上提交。三道闸：
+#   1) 禁止在集成分支 main 上直接提交（一个 worktree = 一个分支 = 一个 agent）
+#   2) 你要提交的文件，origin/main 上你还没同步的提交也改过 —— 说明你在旧版本上改，
+#      提交上去会把别人的改动覆盖回去（这是「功能没了」的主要来源）
+#   3) 你要新增的文件，历史上被删除过 —— 复活检测（被拍板删掉的功能不许悄悄加回来）
+#
+# 详见 docs/FEATURE-LEDGER.md §0
+# 紧急绕过：ZHENGDAO_HOOK_BYPASS=1 git commit ...
+set -u
+
+if [ "${ZHENGDAO_HOOK_BYPASS:-0}" = "1" ]; then
+  echo "⚠️  pre-commit 闸门被 ZHENGDAO_HOOK_BYPASS=1 绕过（请确保你知道自己在干什么）" >&2
+  exit 0
+fi
+
+GIT="git -c core.quotePath=false"
+BASE=origin/main
+fail=0
+
+# ---- 0. 刷新基准（最多每 5 分钟一次；失败不阻塞离线工作）----
+gitdir="$(git rev-parse --git-dir)"
+fetch_head="$gitdir/FETCH_HEAD"
+stale=1
+if [ -f "$fetch_head" ]; then
+  now="$(date +%s)"
+  was="$(date -r "$fetch_head" +%s 2>/dev/null || echo 0)"
+  if [ "$was" != "0" ] && [ $((now - was)) -le 300 ]; then stale=0; fi
+fi
+if [ "$stale" = "1" ]; then
+  git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 fetch --quiet origin main 2>/dev/null \
+    || echo "⚠️  pre-commit: 刷新 $BASE 失败（离线？），下面的判定基于本地上次抓到的基准" >&2
+fi
+
+if ! git rev-parse --verify --quiet "$BASE" >/dev/null 2>&1; then
+  echo "⚠️  pre-commit: 找不到 $BASE，跳过闸门" >&2
+  exit 0
+fi
+
+# ---- 1. 禁止在 main 上直接提交 ----
+cur="$(git symbolic-ref --short -q HEAD || true)"
+if [ "$cur" = "main" ]; then
+  echo "" >&2
+  echo "✗ pre-commit 拦截：不允许在集成分支 main 上直接提交。" >&2
+  echo "  这个工作树是集成用的。在上面直接改，别的 agent 看不到你的进度，" >&2
+  echo "  下一次同步就可能把你没提交的改动冲掉 —— 这正是「功能没了又加回来」的来源。" >&2
+  echo "  正确做法：  git switch -c feat/<功能名>     然后在这个分支上提交。" >&2
+  fail=1
+fi
+
+staged="$($GIT diff --cached --name-only)"
+added="$($GIT diff --cached --name-only --diff-filter=A)"
+
+set -f
+oldIFS=$IFS
+IFS='
+'
+
+# ---- 2. 陈旧基准检测 ----
+stale_hits=""
+for p in $staged; do
+  [ -z "$p" ] && continue
+  hits="$(git log --date=short --pretty=format:'%h %ad %s' "HEAD..$BASE" -- "$p" 2>/dev/null)"
+  if [ -n "$hits" ]; then
+    if [ -z "$stale_hits" ]; then
+      echo "" >&2
+      echo "✗ pre-commit 拦截：你正在改的文件，$BASE 上更新过的提交也改过它们。" >&2
+      echo "  说明你停在旧版本上改，提交会把别人的改动覆盖回去。" >&2
+      echo "  先同步：  git fetch origin && git rebase $BASE" >&2
+    fi
+    stale_hits=1
+    fail=1
+    echo "  ── $p" >&2
+    echo "$hits" | sed 's/^/       /' >&2
+  fi
+done
+
+# ---- 3. 复活检测 ----
+res_hits=""
+for p in $added; do
+  [ -z "$p" ] && continue
+  del="$(git log --all --diff-filter=D --date=short --pretty=format:'%h %ad %s' -- "$p" 2>/dev/null)"
+  if [ -n "$del" ]; then
+    if [ -z "$res_hits" ]; then
+      echo "" >&2
+      echo "✗ pre-commit 拦截：你要新增的文件，历史上被删除过。" >&2
+      echo "  被拍板删掉的功能不许悄悄加回来 —— 先查 docs/FEATURE-LEDGER.md 的 §3，并去问用户。" >&2
+      echo "  确实要加回来：  ZHENGDAO_HOOK_BYPASS=1 git commit ...  并在提交信息里写明为什么复活。" >&2
+    fi
+    res_hits=1
+    fail=1
+    echo "  ── $p" >&2
+    echo "$del" | sed 's/^/       /' >&2
+  fi
+done
+
+IFS=$oldIFS
+set +f
+
+if [ "$fail" != "0" ]; then
+  echo "" >&2
+  echo "  被拦下的提交没有丢，改动还在工作区。处理完再 commit。" >&2
+  echo "  开工前的核对用：tools/agent-preflight.ps1" >&2
+  exit 1
+fi
+exit 0

@@ -6,7 +6,6 @@ package com.example.zhengdao.oc
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
-import com.example.zhengdao.settings.ApiKeyStore
 import com.example.zhengdao.terminal.Workspace
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -273,12 +272,8 @@ object OcManager {
                     "{\"action\":\"edit\",\"resource\":\"*\",\"effect\":\"ask\"}," +
                     "{\"action\":\"write\",\"resource\":\"*\",\"effect\":\"ask\"}," +
                     "{\"action\":\"webfetch\",\"resource\":\"*\",\"effect\":\"ask\"}]"
-            // API Key 注入（与终端同一套密钥库；OpenCode 识别 OPENAI_API_KEY 等）
-            runCatching {
-                ApiKeyStore.PROVIDERS.forEach { (id, envName) ->
-                    ApiKeyStore.get(ctx, id)?.let { env[envName] = it }
-                }
-            }
+            // 说明：这里**故意不注入任何 API Key**。用户已拍板「凭据类信息不落 App」
+            // （见 commit e882050），由用户在自己终端里 export，App 不代管、不持久化。
             val log = File(ctx.filesDir, "oc/serve.log")
             pb.redirectErrorStream(true)
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log))
