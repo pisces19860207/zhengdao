@@ -722,6 +722,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
+                // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
+                com.example.zhengdao.ui.RootfsState.markInstalled()
                 installStatus("安装完成！安装包已保留在缓存（重装免下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
@@ -761,6 +763,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
+                // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
+                com.example.zhengdao.ui.RootfsState.markInstalled()
                 installStatus("安装完成！安装包已保留在缓存")
                 relaunchDebian()
             } catch (t: Throwable) {
@@ -812,6 +816,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
+                // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
+                com.example.zhengdao.ui.RootfsState.markInstalled()
                 installStatus("安装完成！安装包已保留在缓存")
                 relaunchDebian()
             } catch (t: Throwable) {

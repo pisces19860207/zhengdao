@@ -4,7 +4,46 @@ package com.example.zhengdao.ui
 
 import android.content.Context
 import android.os.Build
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import java.io.File
+
+/**
+ * 「运行环境是否已安装」的**可观察**状态（v1.2 修复：状态卡装完不刷新）。
+ *
+ * 背景：`AppState.rootfsInstalled(ctx)` 是一次性读文件的普通函数。原先各页面直接
+ * 在组合里调用它，等于把一次快照当成常量用——Compose 不会为它建立任何失效关系，
+ * 只有"恰好有别的 State 变化引发重组"时才会顺带重算。真机实测（2026-10-07）：
+ * 环境装完回到主页，状态卡依旧显示「环境未安装」，「安装运行环境」按钮照常亮着，
+ * 必须杀进程重进才变「环境就绪」。
+ *
+ * 修法：把判定结果装进 State，由两处驱动刷新——
+ *   1. 页面回到前台（ON_RESUME）调 [refresh]；
+ *   2. 安装器写完成标记后调 [markInstalled]（同进程即时生效，不必等回前台）。
+ *
+ * 不持有 Context（只作参数传入），故可作进程级单例，无泄漏风险。
+ */
+object RootfsState {
+    private val _installed = mutableStateOf(false)
+
+    /** 供 Composable 以 `by` 读取；只读，避免调用方误写。 */
+    val installed: State<Boolean> get() = _installed
+
+    /** 重新读一次磁盘判定（ON_RESUME 用）。 */
+    fun refresh(ctx: Context) {
+        _installed.value = AppState.rootfsInstalled(ctx)
+    }
+
+    /** 安装器写完成标记后调用：立刻置位，不等回前台。 */
+    fun markInstalled() {
+        _installed.value = true
+    }
+
+    /** 环境被卸载/清除后调用（目前由 refresh 兜底，保留给显式卸载路径）。 */
+    fun markRemoved() {
+        _installed.value = false
+    }
+}
 
 /**
  * 轻量应用状态：环境安装状态与 Agent 卡片数据（第一批为静态卡片 + 文件探测，

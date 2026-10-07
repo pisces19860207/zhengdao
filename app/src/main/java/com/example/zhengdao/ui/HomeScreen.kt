@@ -157,7 +157,9 @@ fun HomeScreen(
         ) {
         // ── 系统状态卡（默认收起）──
         item {
-            val envReady = AppState.rootfsInstalled(context)
+            // 可观察状态：环境在终端里装完后回主页要立刻跟上（v1.2 修复，详见 RootfsState 注释）。
+            // 这里不能再写 AppState.rootfsInstalled(context) —— 那是一次性快照，装完不刷新。
+            val envReady by RootfsState.installed
             val installedCount = agents.count { it.installed }
             Card(
                 modifier = Modifier
@@ -342,7 +344,8 @@ fun HomeScreen(
             }
         }
         // ── 环境未装引导横幅（第三批）：环境没装时 Agent 装不了，先给一条一键安装路径 ──
-        if (!AppState.rootfsInstalled(context)) {
+        // 同样走可观察状态：装完环境回来这条横幅（连同「安装运行环境」按钮）必须消失。
+        if (!RootfsState.installed.value) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -429,7 +432,7 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        val envReady = AppState.rootfsInstalled(context)
+                        val envReady = RootfsState.installed.value
                         when {
                             agent.installed -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd, agent.id) },
