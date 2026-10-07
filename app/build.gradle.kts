@@ -91,6 +91,18 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        resources {
+            // zstd-jni 把桌面端各平台的原生库也塞进了 classes.jar，Android 一个都用不上
+            // （真机只加载 lib/arm64-v8a/libzstd-jni.so）。实测这 5 个文件占 4.58MB：
+            //   win/{aarch64,amd64,x86}/libzstd-jni-1.5.6-4.dll
+            //   darwin/{aarch64,x86_64}/libzstd-jni-1.5.6-4.dylib
+            // freebsd/ 与 linux/* 在 Android 变体里本就没有，一并排除以防换版本后回来。
+            excludes += setOf(
+                "win/**",
+                "darwin/**",
+                "freebsd/**",
+            )
+        }
     }
 
     // 锁定 NDK 版本（与已安装版本一致，保证本机与 CI 构建可复现）
@@ -109,6 +121,7 @@ dependencies {
     // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.apache.commons:commons-compress:1.26.2")
+    androidTestImplementation("org.apache.commons:commons-compress:1.26.2")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
 
     // xz 解压（太极 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
