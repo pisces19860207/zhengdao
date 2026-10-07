@@ -15,13 +15,25 @@
 
 ## 1. 工作树地图
 
+**当前（2026-10-08 归置后）：只有 1 个工作树。**
+
 | 目录 | 分支 | 用途 | 负责人 |
 | --- | --- | --- | --- |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao` | `main` | 集成工作树（HEAD = 2026-10-07 23:5x 的集成 merge，已含 `v1.3` 与 `fix/terminal-single-session`） | 共用（只做集成，勿在此改码） |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao-wt-session` | `fix/terminal-single-session` | 终端全局单会话路由 + 四个真机问题修复（HEAD `aa1907e`，**已并入 main**） | WorkBuddy（2026-10-07 23:1x 起） |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao-taiji-ui` | `feat/taiji-compose-ui` | 太极 Compose UI（HEAD `406b885`） | — |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao-v100-build` | — | **不是 git 仓库**，构建产物目录 | — |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao-wt-v13` | `v1.3` | v1.3 发布分支（HEAD `dc4369c`，**已并入 main**） | 本台账所在工作树 |
+| `C:\Users\guoli\AndroidStudioProjects\zhengdao` | `main`（集成时）/ 自己的功能分支 | 唯一的仓库目录；**只在集成时用 `main`**，写代码时切到自己的工作树或分支 | 共用（只做集成，勿在此改码） |
+
+已消失的工作树（2026-10-08 归置，分支都已并入 `main`，删了不丢内容）：
+
+| 曾经的目录 | 分支 | 现状 |
+| --- | --- | --- |
+| `zhengdao-wt-v13` | `v1.3`（`dc4369c`） | 目录已删；分支已删（内容在 `main` 的 `741eb5d`） |
+| `zhengdao-wt-session` | `fix/terminal-single-session`（`aa1907e`） | 目录已删；分支已删（内容在 `main` 的 `741eb5d`） |
+| `zhengdao-taiji-ui` | `feat/taiji-compose-ui`（`406b885`） | 目录已删；分支已删（内容在 `main`） |
+| `zhengdao-v100-build` | — | **本来就不是 git 仓库**（一堆 lint 缓存残渣），已删 |
+
+其余本地分支：`feat/v2.0-r1-rust-core-16kb`（`8484d46`）**未并入 main 但内容已冗余**
+（`af37010` / `fc74cd5` 以另一种方式收了同样的东西），远端也有同名分支 ⇒ 留着不动，别在里面继续干活。
+tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBuddy 终端单会话的 WIP 快照，
+分支 `wip/workbuddy-terminal-2026-10-07-2258` 已删，内容由 `da3d8eb` 取代）。
 
 > **2026-10-07 23:1x 变更**：WorkBuddy 的在途改动原先直接躺在主工作树的 `main` 上
 > （旧台账记为「落后 9 个提交，有在途改动」），违反铁律 #3，已按 `AGENTS.md` 迁出：
@@ -37,6 +49,16 @@
 > **都已并入 `main`**，冲突只有两处：`docs/ERRATA.md`（编号让号 → E-020 排在 E-018/E-019 之后）
 > 与这份台账本身。同一批还改了 `tools/hooks/pre-commit`：**main 上的合并提交放行**
 > （集成本来就该在 main 上做，要拦的是「直接在 main 上改代码再 commit」）。
+>
+> **2026-10-08 00:xx 变更（归置 + 签名修复，也是本台账工具段被改写的一次）**：
+> 用户拍板「把 C 盘上三个 agent 的证道项目归置归置，定好规矩、用法和边界」之后做了三件事 ——
+> ① **删**：`zhengdao-v100-build`（非 git 仓库的空壳）、`zhengdao-share\`（sha256 对不上的残件 zst）、
+> `C:\Users\guoli\zhengdao-backup\rootfs-backup.tar`（1.17 GB）、`.zhengdao-backup\` 里的 WIP patch、
+> Temp 下我方取证残留约 84 MB；三个已并入 main 的工作树与分支一并清掉，只剩 `zhengdao` 一个工作树。
+> ② **定规矩**：新增 `docs/协作规约.md`（三主体身份 / 五条铁律 / 工具用法 / 边界 / 冲突高发文件 / 事故对照表），
+> 根目录 `AGENTS.md` 改写成指向它的短入口。③ **统一工具**：`tools/zd.py`（纯标准库，三 agent 通用）
+> 成为唯一入口，`agent-preflight.ps1` / `install-hooks.ps1` 降级成转发到它的 Windows 薄壳。
+> 同批还修了 CI 签名：见 `docs/ERRATA.md` E-014 §8（钥匙改成显式输入 `ZHENGDAO_KEYSTORE_FILE`）。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
@@ -123,9 +145,9 @@
 
 ## 5. 怎么用（给 agent 的操作步骤）
 
-1. 开工前跑：`powershell -ExecutionPolicy Bypass -File tools\agent-preflight.ps1 -Keywords <功能关键词> -Paths <你要新建的文件>`；退出码 0 才准开工，1 表示有阻塞（落后主线 / 关键词命中 / 复活检测命中），2 表示不在 git 仓库。
-2. 三件套都已入库：`tools/agent-preflight.ps1`、`tools/hooks/pre-commit`、`tools/install-hooks.ps1`（同在 §3 第 1 条那笔提交里；此前的 `origin/main` `tools/` 只有 `make-summary.py` 与 `sign-agents-manifest.py`）。新克隆上钩子**需要手动安装一次**才能生效。
-3. 装闸门：`powershell -ExecutionPolicy Bypass -File tools\install-hooks.ps1`（所有 worktree 共用一个 `.git`，装一次全局生效；脚本会自动把 hook 的 CRLF 换成 LF）。
+1. 开工前跑：`python tools\zd.py preflight -k <功能关键词> -p <你要新建的文件>`；退出码 0 才准开工，1 表示有阻塞（落后主线 / 关键词命中 / 复活检测命中），2 表示不在 git 仓库。环境自检用 `python tools\zd.py doctor`。
+2. 工具已统一到 **`tools/zd.py`**（一个纯标准库的 Python 入口：`preflight` / `doctor` / `install-hooks` / `hooks-status`）。`tools/agent-preflight.ps1` 与 `tools/install-hooks.ps1` 仍在，但**只是转发到它的 Windows 薄壳**（本机 ExecutionPolicy = Restricted，要 `powershell -ExecutionPolicy Bypass -File …`）；`tools/hooks/pre-commit` 是 POSIX sh，别改成 ps1。新克隆上钩子**需要手动安装一次**：`python tools\zd.py install-hooks`。
+3. 装完钩子可以自证：`python tools\zd.py hooks-status`（库里 vs 已装逐字节比对，输出 ✓ 才算好）。
 4. 被 `pre-commit` 拦下：闸门有三道（main 上直接提交 / 陈旧基准 / 复活检测），**改动不会丢、仍在工作区**；按提示 `git fetch origin && git rebase origin/main`，或 `git switch -c feat/<功能名>`。
 5. 确实要复活 §3 的功能：**必须先问用户**；得到同意后用 `ZHENGDAO_HOOK_BYPASS=1 git commit ...` 绕闸，并在提交信息里写明「用户何时同意复活」。
 6. 查不到就换维度再搜：`git log --all -S<关键词>`（内容级）、`git log --all --diff-filter=D -- <路径>`（文件级）、`git log --all --grep=<关键词>`（标题级）。
