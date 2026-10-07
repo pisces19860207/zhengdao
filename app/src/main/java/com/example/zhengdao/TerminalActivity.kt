@@ -225,6 +225,25 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }
     }
 
+    /**
+     * singleTask 复用实例时的新 Intent（2026-10-07 修：任务栈曾叠到 10 个终端页）。
+     *
+     * ⚠️ 必须实现：manifest 改成 singleTask 后，重复请求**不再走 onCreate**，
+     *    只把既有实例带回前台并通过这里投递新 Intent。若此处不接 autocmd，
+     *    第二次点「安装」的画面就是——页面回来了，命令却没跑：用户眼里
+     *    正是"点了没反应"。onCreate 读 intent 那段因此不能删（两条路径互补）。
+     *
+     * 会话保活不受影响：会话由 SessionManager + 前台服务持有，Activity 复用与否无关。
+     */
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)   // 后续 getIntent() 也要拿到新参数（agent_id 登记会读它）
+        pendingAutocmd = intent?.getStringExtra("autocmd")?.takeIf { it.isNotBlank() }
+        // 回退 shell 下 injectPendingAutocmd 会自行跳过并保留 pending，
+        // 等 Debian 会话就绪（onResume → ensureStartedAndAttach）再注入。
+        injectPendingAutocmd()
+    }
+
     /** 会话存活 → 仅 attach（引擎自动重排恢复画面）；否则启动新会话。安装后复用。 */
     private fun ensureStartedAndAttach() {
         // ⚠️ 必须挂上"引擎输出 → 视图重绘"回调：

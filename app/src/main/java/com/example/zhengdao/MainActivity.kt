@@ -219,6 +219,28 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * 进终端的唯一 Intent 构造器（2026-10-07：任务栈曾叠到 10 个终端页）。
+ *
+ * 为什么必须统一在这里加 flag：
+ *   默认 standard 下每次 startActivity 都新建实例。五个入口（丹房安装/启动、洞天 Tab、
+ *   设置页清理缓存、通知栏回到终端、欢迎页装环境）各自 `Intent(ctx, TerminalActivity)`，
+ *   来回几次就叠出一串——而 SessionManager.onViewUpdate 是**全局单例回调**，只指向最后
+ *   建的实例，先前的全部变成死画面（pty 照常输出但永不重绘），且每个新实例还会重复
+ *   attach、重复注入 autocmd。
+ *
+ * CLEAR_TOP | SINGLE_TOP：在**同一 task 内**把既有终端提到前台并走 onNewIntent，
+ * 清理其上方 activity，保留下方的 MainActivity ⇒ 红点关闭仍回主页，返回栈语义不变。
+ * （为何不用 manifest 的 singleTask：实测它会把终端塞进独立 task，清掉 MainActivity，
+ *   关闭后不再回主页——参见 AndroidManifest.xml 里 TerminalActivity 的注释。）
+ */
+private fun terminalIntent(context: android.content.Context, autocmd: String?, agentId: String?): Intent =
+    Intent(context, TerminalActivity::class.java).apply {
+        putExtra("autocmd", autocmd)
+        putExtra("agent_id", agentId)
+        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
+
 @Composable
 fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -253,7 +275,7 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     // 通知栏直达终端：落到主页后立即拉起终端（会话由 SessionManager attach 恢复）
     if (startInTerminal) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            context.startActivity(Intent(context, TerminalActivity::class.java))
+            context.startActivity(terminalIntent(context, null, null))
         }
     }
 
@@ -285,12 +307,7 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
             tag, "进终端: autocmd=${autocmd?.length ?: 0}B agentId=$agentId ctx=$context"
         )
         try {
-            context.startActivity(
-                Intent(context, TerminalActivity::class.java).apply {
-                    putExtra("autocmd", autocmd)
-                    putExtra("agent_id", agentId)
-                }
-            )
+            context.startActivity(terminalIntent(context, autocmd, agentId))
             android.util.Log.d(tag, "startActivity 已发出")
         } catch (t: Throwable) {
             // 异常不可见 = 用户眼里就是"点了没反应"，必须当面说清
@@ -314,7 +331,7 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
                         nav.navigate("home") { launchSingleTop = true }
                     } else {
                         // 未安装：直达终端（安装对话框会在会话就绪后自动弹出）
-                        context.startActivity(Intent(context, TerminalActivity::class.java))
+                        context.startActivity(terminalIntent(context, null, null))
                     }
                 },
                 // 跳过环境安装直进主界面：**太极不依赖 Debian**（宿主 bionic serve，
