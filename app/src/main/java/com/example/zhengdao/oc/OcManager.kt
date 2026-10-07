@@ -479,9 +479,21 @@ object OcManager {
      * digest 由 GitHub API 动态取回——更新流程不落定版 SHA，无 digest 拒绝安装。 */
     data class UpdateInfo(val version: String, val url: String, val sha256: String?)
 
-    /** 查最新版本（GitHub API）；有可更新版本返回 [UpdateInfo]，无更新/失败返回 null。
-     * 与**已装版本**比较（更新过的不再重复报；出厂 VERSION 兜底未装/未知）。 */
-    fun checkUpdate(ctx: Context): UpdateInfo? = try {
+    /**
+     * 检查更新的三种结果（2026-10-08 补）。
+     *
+     * 为什么必须分开：旧实现把「查不到」（网络不通 / API 被墙 / 404）与「确实是最新」都返回
+     * null，UI 一律显示「OpenCode 已是最新」——**把失败说成了好消息**，用户点一下什么都
+     * 不会发生，看起来就像"根本没有更新入口"。现在失败会明说原因。
+     */
+    sealed class UpdateCheck {
+        data class Available(val info: UpdateInfo) : UpdateCheck()
+        object UpToDate : UpdateCheck()
+        data class Failed(val reason: String) : UpdateCheck()
+    }
+
+    /** 查最新版本（GitHub API）并区分三种结果；[checkUpdate] 是只关心"有更新"时的薄封装。 */
+    fun checkUpdateDetailed(ctx: Context): UpdateCheck = try {
         val conn = URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as java.net.HttpURLConnection
         conn.connectTimeout = 10000; conn.readTimeout = 10000
         conn.setRequestProperty("User-Agent", "zhengdao")
@@ -502,11 +514,17 @@ object OcManager {
         }
         val cur = (installedVersion(ctx) ?: VERSION).split('.').map { it.toInt() }
         if (latest != null && verNewer(latest.first, cur)) {
-            UpdateInfo(latest.first.joinToString("."), latest.second, latest.third)
-        } else null
-    } catch (_: Throwable) {
-        null
+            UpdateCheck.Available(UpdateInfo(latest.first.joinToString("."), latest.second, latest.third))
+        } else UpdateCheck.UpToDate
+    } catch (t: Throwable) {
+        UpdateCheck.Failed(t.message ?: t.javaClass.simpleName)
     }
+
+    /** 有可更新版本返回 [UpdateInfo]，无更新/检查失败返回 null。
+     * 与**已装版本**比较（更新过的不再重复报；出厂 VERSION 兜底未装/未知）。
+     * ⚠️ 需要区分"失败"与"已最新"时用 [checkUpdateDetailed]。 */
+    fun checkUpdate(ctx: Context): UpdateInfo? =
+        (checkUpdateDetailed(ctx) as? UpdateCheck.Available)?.info
 
     /** 版本段逐位比较（List<Int> 无运算符比较）。 */
     private fun verNewer(a: List<Int>, b: List<Int>): Boolean {

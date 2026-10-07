@@ -59,6 +59,18 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 根目录 `AGENTS.md` 改写成指向它的短入口。③ **统一工具**：`tools/zd.py`（纯标准库，三 agent 通用）
 > 成为唯一入口，`agent-preflight.ps1` / `install-hooks.ps1` 降级成转发到它的 Windows 薄壳。
 > 同批还修了 CI 签名：见 `docs/ERRATA.md` E-014 §8（钥匙改成显式输入 `ZHENGDAO_KEYSTORE_FILE`）。
+>
+> **2026-10-08 01:xx 变更（rootfs 安装包缓存与 opencode 同处 + 「检测到就自动安装」修好）**：
+> 用户反馈「环境的包应该和 opencode bionic 放在一起、检测到就自动安装、没有才下载」——
+> 查实 App 自己下载的包落 `Download/zhengdao/cache`（拉丁名，`51cd425` 引入），
+> 而自动安装只查 `Download/证道/debian-13.7-base-arm64.tar.zst`（`6e16f16`/v0.6.0 引入），
+> **两个文件夹从引入起就不一致 ⇒ 自己下过的包自己认不出**。修法（`docs/ERRATA.md` E-021）：
+> `RootfsCache` 公共缓存搬到 `Download/证道/rootfs/`（与 `opencode/` 并列）、`migrateLegacy()` 自动搬旧包
+> （含 `.part` 续传残片）、清理判据收紧成「只认 `debian-` 前缀」、新增
+> `RootfsCache.findLocalArchive()` 作为**唯一的"本地有没有包"入口**（`TerminalActivity` 委托它）；
+> 顺带把 `OcManager.checkUpdate()` 拆出 `checkUpdateDetailed()`，不再把「查不到」说成「已是最新」；
+> 太极抽屉底部新增 OpenCode 版本 + 更新入口（`OcVersionFooter`）。
+> CI 那边也已闭环：run `37647338521` 18 步全绿，`latest` 的 APK 实测签名 `44E2FE86…A3BE18` = 存量 key。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 

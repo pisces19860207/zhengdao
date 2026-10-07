@@ -878,13 +878,19 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     // ── 安装流程（进度以 Toast 呈现里程碑；明细在 RunLog）──
 
     /**
-     * 本地归档自动安装（用户需求：Download/证道 里的安装包持久存在时，
-     * 重装 App 后直接本地安装，不再弹下载）。返回归档路径或 null。
+     * 本地已有安装包（用户需求：**检测到就自动安装，没有才下载**）。返回归档路径或 null。
+     *
+     * 2026-10-08 修正：此前只认 `Download/证道/` 根目录里那一个固定文件名，而 App 自己下载的包
+     * 落在 `Download/zhengdao/cache/`（拉丁名）——于是**自己下过的包自己认不出**，重装一次就要
+     * 重下一遍 326MB。现在统一交给 [RootfsCache.findLocalArchive]：根目录固定名、缓存目录
+     * `Download/证道/rootfs/`、从旧目录搬过来的，全都算「已有安装包」。
      */
     private fun findLocalArchive(): File? {
         if (!ProotLauncher.storageGranted(this)) return null
-        val f = File("/storage/emulated/0/Download/证道/debian-13.7-base-arm64.tar.zst")
-        return if (f.isFile && f.length() > 100_000_000L) f else null
+        return com.example.zhengdao.rootfs.RootfsCache.findLocalArchive(
+            this,
+            preferredName = ProotLauncher.DEFAULT_ROOTFS_URL.substringAfterLast('/'),
+        )
     }
 
     /** 回退会话首次出现时：本地有归档 → 直接自动安装（零交互）；否则给下载入口。 */
