@@ -420,3 +420,305 @@ E1 的 `packaging` 块与 zcode 的 `androidTestImplementation(commons-compress)
 **教训**：多 agent 共树上，`build.gradle.kts` / `AndroidManifest.xml` 这类
 "人人都要碰" 的文件最容易互相卷进对方的提交。提交前用
 `git diff --stat` 逐文件确认，必要时 `git commit -o -- <path>` 精确圈定路径。
+
+## E-012 · 2026-10-07 · 16KB 页对齐漏配让 Rust 路径静默失效；R1 收编为 libzhengdao_core.so
+
+**一句话**：Rust 解压链路"代码已实装、APK 里也有 `.so`"，但在 16KB 页设备上**一次都没跑过**——
+NDK r27 默认按 4KB 页对齐，`libextract.so` 会被 loader 直接拒绝加载；而规范 #2 的回退纪律
+让这次失败**不崩溃、不报错、无日志**，只是永远走 Java 路径。
+
+> **状态（2026-10-07）**：本条的**修法尚未进 `main`**。上面的分析对 `main` **依然成立**——
+> `main` 现在仍在打包 4KB 对齐的 `app/src/main/jniLibs/arm64-v8a/libextract.so`（803,856 B），
+> 16KB 页设备上它照样加载不了、照样静默落回 Java 路径。
+> 修复（`rust/core` 收编 + `libzhengdao_core.so` + `.cargo/config.toml` 两个 page-size flag）
+> 落在 `feat/v2.0-r1-rust-core-16kb` 分支的 `008d554`，随 v2.0 R1 合并才生效。
+
+### 1. 现象：一个"跑得挺好"的假象
+
+- 调试包（`zhengdao-1.2.0-debug.apk`，18:57 构建）lib/ 下**有** `libextract.so`，
+  测试机（Honor Magic 5 Pro / Android 16）是 **4KB 页**设备 → 加载正常，R2 对拍 3/3 通过。
+- 于是「Rust 解压已实装」看起来成立。但实际上**没有任何一次验收检查过"这个 .so 能不能被加载"**，
+  它只是"在恰好是 4KB 页的机器上能加载"。
+
+### 2. 根因：门禁存在，但没进构建步骤
+
+- 本项目自己的判据早已写明：`docs/milestones/M1.1-开发任务书.md:36`
+  「每个 LOAD 段的 align 都需 ≥ `0x4000`（16384）」（`cpp/CMakeLists.txt` 就是照此配的）。
+- 但 Rust 侧 `.cargo/config.toml` 的 `[target.aarch64-linux-android]` **只配了 linker**，
+  没有任何 page-size flag → clang 按默认 4KB 对齐。
+- `llvm-readelf -l` 实测（NDK 27.2）：
+  - `libextract.so` 四个 LOAD 段 p_align **全是 `0x1000`** ❌
+  - `libsha256poc.so` 同样**全是 `0x1000`** ❌
+  - `libzstd-jni-1.5.6-4.so` 是 `0x10000` ✅（第三方预编译库自己做了）
+- 为什么以前没暴露：`libtermux.so` / `libzstd-jni.so` 走 CMake 与预编译路径，只有**自研 Rust 库**
+  落在了门禁之外；而唯一的测试机是 4KB 页。
+
+### 3. 修法
+
+`rust/.cargo/config.toml` 补两个 flag（r27 及以下必须**两个都给**，r28+ 才默认对齐）：
+
+```toml
+[target.aarch64-linux-android]
+rustflags = [
+  "-C", "link-arg=-Wl,-z,max-page-size=16384",
+  "-C", "link-arg=-Wl,-z,common-page-size=16384",
+]
+```
+
+只加 `max-page-size` 不给 `common-page-size`，在 r27 下**部分段仍会对齐到 4KB**——
+这正是"改了参数却以为修好了"的陷阱。
+
+### 4. 验收（不能拿"App 没崩"当验收）
+
+正因回退纪律让失败静默，必须独立取证：
+
+```bash
+llvm-readelf -l app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so | grep LOAD
+```
+
+四个 LOAD 段 p_align 全 `0x4000` ✅ 才算过（本次已实测：四条全 `0x4000`）。
+
+release APK 内**全部** `.so` 的 LOAD 段对齐（本次实测，已无遗漏）：
+
+| 库 | p_align |
+|---|---|
+| `libzhengdao_core.so`（自研） | `0x4000,0x4000,0x4000,0x4000` ✅ |
+| `libtermux.so`（自研 CMake） | `0x4000 ×3` ✅ |
+| `libandroidx.graphics.path.so`（第三方） | `0x4000 ×3` ✅ |
+| `libzstd-jni-1.5.6-4.so`（第三方预编译） | `0x10000 ×2` ✅ |
+
+另外补一条运行时检查点：`CoreNativeSha256InstrumentedTest.rust链路可用` /
+`CoreNativeExtractInstrumentedTest.rust链路可用` 的 `isRustAvailable()` 断言——
+在 16KB 页真机上这是唯一能主动报警的地方（readelf 只在构建机上能跑）。
+
+### 5. 顺带：R1 收编（演化，不并存）
+
+按架构文档 §2.3 把 `sha256poc` + `extract` 合并为单一 `rust/core` → `libzhengdao_core.so`：
+
+| | 收编前 | 收编后 |
+|---|---|---|
+| `.so` | `libsha256poc.so` 325,208 B + `libextract.so` 803,856 B = **1,129,064 B** | `libzhengdao_core.so` **807,712 B** |
+| 加载次数 | 2 次 `loadLibrary` | 1 次 |
+| Kotlin 桥 | `Sha256Native` + `ExtractNative` | 单 `CoreNative` |
+| 依赖 | 两份 sha2/zstd 静态链接 | 共享一份 |
+
+**省 321,352 B（-28.5%）**，且共享了同一份 sha2/zstd。
+⚠️ 口径提醒（同 E-011）：这是**未压缩**体积差；**debug APK 实际只小了 36,917 B**
+（38,790,203 → 38,753,286）——两个已 strip 的 `.so` 本来就压得很好，别拿 321KB 当卖点。
+真正的收益是"一次 `loadLibrary` + 一份依赖"，体积只是顺带。
+JNI 符号随之改名：`Java_com_example_zhengdao_rust_CoreNative_nativeSha256Hex` /
+`..._nativeExtract`；proguard keep 同步从 `Sha256Native` 改为 `CoreNative`。
+PC 层 `cargo test` 8/8（sha256 4 + extract 4）。
+
+### 6. Rust 化结论（值不值得，用数字说话）
+
+- **解压不是性能任务**：基线真机解 311MB 归档（20,042 条目 → 969MB）只要 **2.07 秒**；
+  R2 对拍 **Rust 3611ms vs Java 3668ms**——同一量级。它的价值是**架构验证**
+  （"Rust 处理文件树 + native zstd + 进度回调"这套模式能不能跑通），**别拿它当性能卖点**。
+- **JNI 边界搬大块数据永远亏**：sha256 两轮实测（10MB × 10 轮均值）——
+  软件实现 5ms vs 27ms，开了 ARMv8 asm 后 6ms vs 33ms。**开不开 asm 都慢 5 倍**，
+  说明瓶颈不在哈希算法，在"10MB 数组拷进 native + hex 字符串封回 JVM"。
+  结论：划算的形态是**数据常驻 native、边界只跨一次**（解压正是这种），
+  而不是逐个函数跨边界调大块数据。
+- 实装状态留档：tag `v1.2.0` 的两个资产（`zhengdao-1.2.0-release.apk` 15:33、
+  `app-release.apk` 15:42）**都不含** `libextract.so`——`.so` 是 18:25/18:41 才提交的，
+  两个资产早约 3 小时构建完；`latest` 滚动版（19:13，HEAD `725ebef` 之后）才带上。
+  即**代码层实装 ≠ 已发布的包里有**。
+
+### 7. 两个"看着像 bug、其实不是"（免得后人白查一遍）
+
+1. **Rust 路径不回调 `onEntry` 进度** —— 不是漏实现。`RootfsInstaller.install()` 的
+   **6 个调用点全部传空 lambda**（`TerminalActivity.kt:723/764/817`、
+   `ui/SettingsScreen.kt:714/924/1010`），UI 侧本来就不消费逐条回调（Rust 侧另有限频的
+   `CoreNative.onProgress`），所以 Java 路径调了也没人听。
+2. **"0 条目也写 MARKER"** —— 不是 Rust 引入的回归。`RootfsInstaller.kt:128` 无条件写
+   `.zhengdao-rootfs-ok`，且 Java 路径**同样不校验最小条目数**；`extract_pipeline` 也没有
+   条目数下限。两条路径语义一致，属于**继承来的**行为，要改就两条一起改。
+
+### 8. 教训
+
+1. **有回退的链路，失败是静默的**。"功能没崩"永远不能当作"功能可用"——必须有一个
+   独立于主流程的取证点（这里是 `llvm-readelf` + 真机 `isRustAvailable()` 断言）。
+   回退纪律（规范 #2）本身是对的，但它会把"没生效"伪装成"一切正常"。
+2. **门禁要写进"重新生成产物"的步骤里**。16KB 判据 10 月 5 日就写在任务书里了，
+   但 Rust 的 `.cargo/config.toml` 是独立新增的构建入口，没继承这条门禁。
+   凡是"另一条构建链"，都要逐条对照既有门禁重查一遍。
+3. **`.so` 入库 + CI 免装 Rust = CI 永远不会重编、也就永远发现不了这类问题**。
+   二进制产物的正确性只能靠人写进文档的验收命令守住（已写进 `rust/README.md` 与
+   `rust/core/README.md`）。
+4. **"开个 feature 就好了"要验证**：sha256 的 asm feature 开了之后反而更慢（27ms → 33ms），
+   因为它根本没有改变瓶颈所在。优化前先量出瓶颈在哪一段，别猜。
+
+---
+
+## E-013 · 2026-10-07 · CI 发布的「正式版」其实是 debug 包——所有 Release 资产都是 37MB 调试件
+
+**一句话**：`.github/workflows/build.yml` 从来没有跑过 `assembleRelease`。它只编 debug APK，
+推 tag 时把这个 debug APK **改名成 `app-release.apk`** 传到 Releases。于是所有用户
+（含滚动版 `latest`）下载到的都是 debug 构建——体积大 9.7 倍、`debuggable=true`、没过 R8。
+
+### 1. 现象：名字和内容对不上
+
+tag `v1.2.0` 上并排躺着两个资产：
+
+| 资产名 | 大小 | 真身 |
+|---|---|---|
+| `zhengdao-1.2.0-release.apk` | 3,936,733 B | 真的 release 构建（= 本机 `:app:assembleRelease` 的字节数，手工传的） |
+| `app-release.apk` | 38,155,528 B | **debug 构建**（CI 改名传的） |
+
+滚动版 `latest`：`zhengdao-1.2.0-debug.apk` = 38,577,713 B —— 这个名字反倒是诚实的。
+
+体积差 **9.7×**。而 App 内没有任何自更新下载器（`ui/SettingsScreen.kt:884/894/979` 只是
+`Intent.ACTION_VIEW` 跳 GitHub 页面），用户是**自己挑资产下载**的——他会看到两个都叫 "release"。
+
+### 2. 根因：三处，逐条对应行号
+
+- `build.yml:77-78` —— 整条流水线唯一的编译步骤：
+  ```yaml
+  - name: 编译 Debug APK
+    run: ./gradlew :app:assembleDebug --console=plain
+  ```
+  没有 release，一行都没有。
+- `build.yml:97` —— 收集产物时只拷 debug 目录：
+  ```bash
+  cp app/build/outputs/apk/debug/zhengdao-*.apk artifacts/
+  ```
+- `build.yml:140-145` —— release job 把 debug 包**改名**：
+  ```bash
+  cp artifacts/zhengdao-*-debug.apk artifacts/app-release.apk 2>/dev/null || \
+  cp artifacts/zhengdao-*.apk artifacts/app-release.apk
+  ```
+- `build.yml:147-153` —— `softprops/action-gh-release` 把这个文件作为正式版发布。
+
+### 3. 为什么一直没被发现（这才是最值钱的部分）
+
+1. **release buildType 用的就是 debug 签名**（`app/build.gradle.kts:69`
+   `signingConfig = signingConfigs.getByName("debug")`，注释写明是"个人分发渠道"策略）。
+   所以 debug 包**能正常安装、能正常跑**——功能上看不出任何区别，只有体积和 `debuggable` 不同。
+2. 滚动版文件名带 `-debug`，作者自己一眼看得懂，就不觉得是错。
+3. **没人拿"资产字节数"对过账**。本机 release 产物 3.9MB，CI 资产 38MB，一对比就露馅。
+
+### 4. 影响（按严重度排）
+
+1. **可调试**：`android:debuggable="true"`，任何人都能 attach 调试器、读 App 私有数据。
+   对一个"内置 Debian 环境 + Agent + 用户凭据"的 App，这是实打实的暴露面，不只是体积问题。
+2. **无 R8**：没有收缩/优化，体积、启动、内存全面吃亏。
+3. **验收口径失效**：`lintVital` 与 R8 只在 release 变体上跑——**"CI 绿了"从来不等于
+   "release 能构建"**。本次 R1 就是活证：改完之后 `:app:assembleRelease` 跑了 2m41s
+   才第一次被真正验证（顺带说明它**是能构建的**，CI 只是没跑）。
+4. 用户下载量/流量：38MB vs 3.9MB。
+
+### 5. 修法（**已实施**，见本节末「实施记录」）
+
+- build job 增加一行 `./gradlew :app:assembleRelease --console=plain`。
+  release 走 debug 签名，**CI 上不需要任何 secret**，可以直接编。
+- **产物命名规范化**，重点是把 `app-release.apk` 这个会撒谎的名字去掉：
+  - release job 直接传 `zhengdao-<versionName>-release.apk`（AGP 默认产物名就是这样）；
+  - 若某处真需要固定名 `app-release.apk`，改成 `zhengdao-release.apk` 之类，
+    并同步改下游引用——**当前仓库内没有这样的下游**（`ProotLauncher.kt:22` 下的是
+    rootfs `debian-13.7-base-arm64.tar.zst`，不是 APK）。
+- ⚠️ 改的时候注意 `gh release upload latest artifacts/*` 会把**整个目录**推上滚动版：
+  如果同时把 debug 与 release 两个 APK 都塞进同一个目录，滚动版会**同时挂两个包**，
+  反而更乱。所以产物拆成三个目录——`apk-debug/`（只进 Actions 页面，给开发者）、
+  `apk-release/`（唯一进 Releases 页的 APK）、`rootfs-files/`（RootFS + proot，也进 Releases 页）。
+- 验收：推一个 tag 跑完整流程，确认新发布资产的 APK **字节数量级 ≈ 4MB**（不是 38MB），
+  且 `aapt dump badging` 里**没有** `application-debuggable`。
+
+**实施记录（2026-10-07）**
+
+- `.github/workflows/build.yml`：
+  - build job 新增 `编译 Release APK` 步骤（紧跟 debug 之后）。**刻意不加
+    `continue-on-error`**：release 编不出来就让 job 变红——宁可 CI 红，也不要再悄悄发调试包。
+  - `收集产物` 改为 `apk-debug/` `apk-release/` `rootfs-files/` 三个目录，
+    `upload-artifact` 的 `path:` 同时列这三个目录。
+  - 滚动版 `latest` 只上传 `apk-release/*` 与 `rootfs-files/*`。RootFS 步骤是
+    `continue-on-error`，失败时 `rootfs-files/` 会是空的——未展开的 glob 会被 `gh`
+    当成一个不存在的文件名而让这一步失败，所以先用 `compgen -G` 探测，空则只发警告。
+  - release job 下载到 `dist/`，取 `dist/apk-release/zhengdao-*-release.apk`，
+    以**它自己的真实文件名**上传（不再 `cp` 成 `app-release.apk`）；找不到就 `exit 1`。
+- `.github/release-notes.md`：下载指引由 `app-release.apk` 改为
+  `zhengdao-<版本号>-release.apk`，并说明 `-debug` 后缀是什么。
+- 本机可验证的部分：`:app:assembleDebug :app:assembleDebugAndroidTest` 16s 绿；
+  `:app:assembleRelease`（含 R8 + lintVital）2m41s 绿，产物 `zhengdao-1.2.0-release.apk` 4,164,289 B。
+- ⚠️ **尚未验证的部分**：workflow 只在推 main 或打 `v*` tag 时才真正执行，
+  本次改动所在的分支不在 `on:` 的触发条件里，所以这段 CI 逻辑**一次都还没在 GitHub 上跑过**。
+  首次真实运行建议用 `workflow_dispatch` 手动触发一次再看结果。
+
+### 6. 教训
+
+1. **"CI 绿了"只证明 CI 跑的那条命令绿了。** 这条流水线从 workflow 名到产物名都在说
+   "release / 正式版"，实际只跑 debug。**命名撒谎比配置错误更难发现**——配置错误会报错，
+   撒谎的命名不会。
+2. **产物名必须能被当成事实。** 一个真身是 debug 的包叫 `app-release.apk`，比老老实实叫
+   `-debug` 危险得多（后者至少诚实）。
+3. 与 E-012 是**同一类错误**：E-012 是 Rust 的 `.cargo/config.toml` 作为"另一条构建链"
+   没继承 16KB 门禁；E-013 是 CI 作为"另一条构建链"没继承 release 构建。
+   凡是新增的构建入口，都要逐条对照既有门禁重查一遍。
+4. 顺带修正 E-012 §6 的表述：那里说"tag `v1.2.0` 两个资产都不含 `libextract.so`"——
+   其中 `app-release.apk` 之所以不含，除了构建时间早，还因为**它根本就是个 debug 包**。
+
+## E-014 · 2026-10-07 · CI 每次构建都换一把签名密钥——CI 产物互相装不上，也盖不了正式版
+
+**一句话**：`build.yml` 只缓存 `~/.gradle/*`，**既不缓存也不还原 `~/.android/debug.keystore`**。
+GitHub 每次跑在全新 runner 上，AGP 找不到 keystore 就**随机生成一把新的**，于是每个 CI 产物的
+签名证书都不同 → 交叉升级一律 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，只能卸载重装，
+而卸载会把 `filesDir` 一起删掉 = 整个 Debian 环境重下（4 分钟 + 流量）。
+
+### 1. 现象：四把 key，两两都不兼容
+
+取 APK 尾部的 APK Signing Block（v2 方案，block id `0x7109871a`）、解析出签名证书后比对：
+
+| 包 | 构建者 | 证书 SHA-256 |
+|---|---|---|
+| `zhengdao-1.2.0-release.apk`（tag v1.2.0，3,936,733 B） | 本机 | `44e2fe86b1f62a9fdb2e86805fe0a4dae7cad0c3024dbf6af84d0c45b5a3be18` |
+| 本机 `:app:assembleDebug` / `:app:assembleRelease` 产物 | 本机 | `44e2fe86…a3be18`（同一把） |
+| latest `zhengdao-1.1.1-debug.apk`（40,080,028 B） | CI | `a42ddaa55eb22d5313a8d2122dfc7bb1c80cbce7eade18381639c1cdb7e80e84` |
+| latest `zhengdao-1.2.0-debug.apk`（38,583,773 B） | CI | `2c94143a68eb4c5f2ef4d74997edf7a569dab70cca86e3db0aa0348ac9f0d973` |
+
+**四把 key。** 本机两把一致（同一份 `C:\Users\guoli\.android\debug.keystore`，2,618 B，2026-10-03 生成），
+两个 CI 产物**彼此不同**、也**都不同于正式版**。
+
+（复现方法：不需要下整包——对 release 资产发 HTTP Range 只取文件末尾约 700 KB，
+找到 EOCD → 中央目录 → 紧邻其前的 `APK Sig Block 42` → 取 v2 块里的证书 DER。全程 <1 MB。）
+
+### 2. 根因：keystore 落在缓存之外
+
+- `build.yml` 的 cache 只覆盖 `~/.gradle/{caches,wrapper,jdks}`，**没有 `~/.android`**。
+- AGP 的 debug 签名指向 `$HOME/.android/debug.keystore`；**文件不存在时会自动生成**，
+  其中的 RSA 私钥是随机的。
+- 所以"签名一致"这件事**只在本机成立**：本机那份 keystore 生成一次后一直复用，
+  而 CI 每次全新 runner 都会重建。
+
+### 3. 为什么它比 E-013 更严重
+
+E-013 是"发出去的包不好"，本条是"**发出去的包装不上**"：
+
+1. `latest` 上累积的 7 个 debug APK **互相之间无法覆盖安装**——每升一次就得卸载一次。
+2. 从正式版切到 `latest` 的包也不行（key 不同），反过来也一样。
+3. 卸载 = `filesDir` 全删 = `rootfs/`、已装 Agent、`~/.local/bin` 全套重来。
+   对一个"装环境要 4 分钟"的 App，这是最贵的一种失败。
+4. ⚠️ **E-013 的修法会把伤害从 debug 通道扩大到正式通道**：`assembleRelease` 一旦进 CI，
+   发布出去的正式 APK 就是 CI 的随机 key，**老用户从 v1.2.0 升 v1.3 必然签名冲突**。
+   两条修复**必须同时上线**。
+
+### 4. 修法
+
+- 把本机那把 keystore（证书 `44e2fe86…a3be18`，即**所有存量用户已经装上的那把 key**）
+  存成 repo secret `DEBUG_KEYSTORE_B64`，CI 在**编译之前**还原到 `$HOME/.android/debug.keystore`。
+- **不要**走"另建一把 release keystore"的路子：那把 key 与存量用户无关，
+  一样逼所有人卸载重装。必须复用**同一把**。
+- 还原步骤**不能硬失败**（否则 main 的日常构建会一直红），
+  但 **tag 发布那一步必须硬失败**——没有 secret 就不许发正式版，
+  绝不能让随机 key 的包以"正式版"的名义流出去。
+- 验收：取**两次不同 run** 的 CI 产物，确认证书 SHA-256 相同，且等于 `44e2fe86…a3be18`。
+
+### 5. 教训
+
+1. **"构建可复现"不等于"签名可复现"。** 代码、依赖、工具链都能锁版本，
+   而签名密钥是一个**藏在缓存之外的状态文件**。流水线里凡是"东西不在仓库里"的环节，
+   都要单独点一遍。
+2. **缓存策略有反向代价。** 为了"每次干净"而不缓存 `~/.android/`，代价是每次换 key。
+   正解不是把它加进缓存（缓存一被淘汰 key 又变），而是**从 secret 确定性还原**。
+3. 与 E-012 / E-013 同属一族：**"本机能跑"和"流水线能跑"是两套环境。**
+   凡是"在某台机器上恰好存在"的东西（keystore、page-size 默认值、release 构建步骤），
+   到了 CI 就是另一回事。
