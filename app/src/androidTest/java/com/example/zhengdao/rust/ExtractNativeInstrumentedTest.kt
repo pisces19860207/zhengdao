@@ -9,7 +9,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.util.zip.GZIPInputStream
 
 /**
  * 解压流水线真机对拍（v2.0 R2）：同一 311MB 真实 rootfs 归档，
@@ -44,39 +47,58 @@ class ExtractNativeInstrumentedTest {
     }
 
     @Test
-    fun 真实归档_解压与Java安装版对拍() {
+    fun 真实归档_Rust树与Java安装树全量对拍() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val archive = findArchive() ?: return
-        val installed = File(ctx.filesDir, "rootfs")
-        if (!installed.isDirectory) return   // 尚无 Java 安装版可对拍
-
-        val out = File(ctx.cacheDir, "extract_rust_poc").apply { deleteRecursively(); mkdirs() }
-        val shaFile = File("/sdcard/Download/zhengdao/cache/debian-13.7-base-arm64.tar.zst.sha256")
+        val outRust = File(ctx.cacheDir, "extract_rust_poc").apply { deleteRecursively(); mkdirs() }
+        val shaFile = File(archive.parentFile, archive.name + ".sha256")
         val expectedSha = if (shaFile.isFile) shaFile.readText().trim().split(" ").firstOrNull() else null
 
+        // ── Rust 路径：真跑（数据常驻 native，边界只跨一次）──
         val t0 = System.nanoTime()
         val (entries, bytes, rustSha) = ExtractNative.extract(
-            archive.canonicalPath, out.canonicalPath, expectedSha
+            archive.canonicalPath, outRust.canonicalPath, expectedSha
         )
         val ms = (System.nanoTime() - t0) / 1_000_000
-
         log("BENCH_EXTRACT Rust: ${ms}ms / ${archive.length() / 1048576}MB 归档 / $entries 条目 / ${bytes / 1048576}MB 解出")
         if (expectedSha != null) assertEquals(expectedSha.lowercase(), rustSha)
+        assertTrue("条目数异常低: $entries", entries > 10_000)
 
-        // 关键文件对拍：Rust 解出版 vs Java 安装版，逐一存在且大小一致
-        var compared = 0
-        keyFiles(installed).forEach { ref ->
-            val mine = File(out, ref.relativeTo(installed).path)
-            assertTrue("缺失: ${mine.path}", mine.isFile)
-            assertEquals(
-                "大小不一致: ${ref.path}",
-                ref.length(), mine.length()
-            )
-            compared++
+        // ── Java 路径：RootfsInstaller.install 真装（tmpDir→rootfs，含标记文件）──
+        val t1 = System.nanoTime()
+        com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive) { }
+        val msJava = (System.nanoTime() - t1) / 1_000_000
+        log("BENCH_EXTRACT Java: ${msJava}ms（含安装收尾）")
+
+        // ── 两树全量比对（NOFOLLOW：bind symlink 指向整个共享存储，跟进去会数出几万用户文件）──
+        val opts = arrayOf(java.nio.file.LinkOption.NOFOLLOW_LINKS)
+        fun treeOf(root: File): MutableMap<String, Long> {
+            val m = mutableMapOf<String, Long>()
+            java.nio.file.Files.walk(root.toPath()).use { stream ->
+                stream.filter { java.nio.file.Files.isRegularFile(it, *opts) }.forEach { p ->
+                    m[root.toPath().relativize(p).toString().replace(java.io.File.separatorChar, '/')] =
+                        java.nio.file.Files.size(p)
+                }
+            }
+            return m
         }
-        log("BENCH_EXTRACT 对拍通过: $compared 个关键文件大小一致")
+        val rustTree = treeOf(outRust)
+        val javaTree = treeOf(File(ctx.filesDir, "rootfs")).apply { remove(".zhengdao-rootfs-ok") }
 
-        out.deleteRecursively()
+        log("BENCH_EXTRACT 对拍规模: Rust=${rustTree.size} Java=${javaTree.size}")
+        assertEquals("两树普通文件数不一致", javaTree.size, rustTree.size)
+        var mismatches = 0
+        for ((name, size) in javaTree) {
+            val got = rustTree[name]
+            if (got == null || got != size) {
+                if (mismatches < 8) log("BENCH_EXTRACT 不一致: $name Java=$size Rust=$got")
+                mismatches++
+            }
+        }
+        assertEquals("存在路径/大小不一致的文件", 0, mismatches)
+        log("BENCH_EXTRACT 对拍通过: ${javaTree.size} 个普通文件（路径+大小）全量一致")
+
+        outRust.deleteRecursively()
     }
 
     @Test
@@ -87,6 +109,7 @@ class ExtractNativeInstrumentedTest {
         val err = runCatching {
             ExtractNative.extract(archive.canonicalPath, out.canonicalPath, "0".repeat(64))
         }.exceptionOrNull()
+        Log.i("BENCH", "SHA 拒绝用例: err=${err?.javaClass?.name}: ${err?.message?.take(200) ?: "（无异常——调用成功）"}")
         assertTrue("SHA 不匹配必须报错", err is IllegalStateException)
         out.deleteRecursively()
     }

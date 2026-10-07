@@ -14,7 +14,7 @@ const PROGRESS_STEP: u64 = 200;
 /// 永远返回 JSON（Android 的 stderr 不进 logcat，null 协议会让错误无迹可查）：
 /// 成功 {"ok":true,"entries":N,"bytes":N,"sha256":"..."}；失败 {"ok":false,"error":"..."}
 #[no_mangle]
-pub extern "system" fn Java_com_example_zhengdao_rust_ExtractNative_extract(
+pub extern "system" fn Java_com_example_zhengdao_rust_ExtractNative_nativeExtract(
     mut env: JNIEnv,
     _class: JClass,
     archive_path: JString,
