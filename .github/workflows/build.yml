@@ -112,11 +112,18 @@ jobs:
           # ⚠️ AGP 去哪个目录找 debug keystore，取决于 runner 上的 Android 环境变量：
           #    ANDROID_USER_HOME 存在 → 直接用它的值当"Android 用户目录"（不再拼 .android）；
           #    否则 ANDROID_PREFS_ROOT → 拼 .android；再否则 → $HOME/.android。
-          #    E-014 §7 记的正是这个坑：只写 $HOME/.android 时，本步指纹检查全绿、
-          #    可打出来的包却是**另一把随机 key** 签的（实测 44e2fe86… → 18e5268a…）。
-          #    所以：① 写进所有候选目录；② 把相关 env 打进日志，下次一眼看出 AGP 该看哪里。
+          #    E-014 §7/§8 记的正是这个坑：只写 $HOME/.android 时，本步指纹检查全绿、
+          #    可打出来的包却是**另一把随机 key** 签的（实测 44e2fe86… → 18e5268a… → 9409433d…）。
+          #    ⇒ 结论：**不再依赖 AGP 的目录推断**。权威副本写到 workspace 下的固定路径，
+          #      由环境变量 ZHENGDAO_KEYSTORE_FILE 显式告诉 Gradle（app/build.gradle.kts 顶部）；
+          #      下面几个候选目录仍然照写，纯属保险。
           echo "== 与 Android 用户目录有关的 env =="
           env | grep -iE '^(ANDROID|HOME|USERPROFILE)' | sort || true
+          # ① 权威副本：路径由本文件确定，Gradle 侧用它覆盖 AGP 内建 debug 签名配置的 storeFile
+          CANON="$GITHUB_WORKSPACE/.ci-debug.keystore"
+          printf '%s' "$KS_B64" | base64 -d > "$CANON"
+          echo "已写入权威副本: $CANON ($(stat -c%s "$CANON") 字节)"
+          # ② 保险：AGP 可能去找的那几个目录
           dirs="$HOME/.android"
           if [ -n "${ANDROID_USER_HOME:-}" ]; then
             dirs="$dirs $ANDROID_USER_HOME $ANDROID_USER_HOME/.android"
@@ -129,12 +136,12 @@ jobs:
           fi
           for d in $dirs; do
             mkdir -p "$d"
-            printf '%s' "$KS_B64" | base64 -d > "$d/debug.keystore"
+            cp "$CANON" "$d/debug.keystore"
             echo "已写入: $d/debug.keystore ($(stat -c%s "$d/debug.keystore") 字节)"
           done
           # 光有文件不够——secret 里放的可能是**另一把** key（比如谁新生成了一份）。
           # 那种情况下所有 CI 产物照样装不上存量版本，而且照样"一切正常"。所以比指纹。
-          FP="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" \
+          FP="$(keytool -list -v -keystore "$CANON" \
                   -storepass android -alias androiddebugkey 2>/dev/null \
                 | grep -m1 'SHA256:' \
                 | sed 's/.*SHA256: *//' \
@@ -147,17 +154,37 @@ jobs:
           # ⚠️ 到这里为止只证明"**钥匙文件**是对的"。钥匙文件对 ≠ 打出来的包对 ——
           #    真正的关卡在 assembleRelease 之后那一步「校验 release 包的签名」（E-014 §7）。
 
+      - name: 诊断（常驻）：AGP 到底认哪把 keystore
+        # ⚠️ E-014 §8 的根因至今**未定论**：文件放对了、指纹也对，产物却是别的 key 签的。
+        #    这一步把「AGP 自己报出来的 store 路径 + 全盘 debug.keystore」打进日志——
+        #    下次再出问题，一眼定案，不用再猜。失败不影响构建（纯诊断）。
+        continue-on-error: true
+        env:
+          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
+        run: |
+          echo "== AGP 报的签名配置（应指向 .ci-debug.keystore）=="
+          ./gradlew :app:signingReport --console=plain 2>&1 | grep -A3 -iE '^(Variant|Config|Store|Alias)|SHA-?1' || true
+          echo "== 全盘 debug.keystore =="
+          find / -name 'debug.keystore' -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null || true
+
       - name: 编译 Debug APK（开发者用）
+        # ZHENGDAO_KEYSTORE_FILE 见 app/build.gradle.kts 顶部与 docs/ERRATA.md E-014 §8：
+        # 把签名钥匙钉死在权威副本上，不再赌 AGP 的目录推断。
+        env:
+          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
         run: ./gradlew :app:assembleDebug --console=plain
 
       - name: 编译 Release APK（最终用户用；R8 + 资源收缩 + lintVital）
         # ⚠️ 这一步是本流水线以前**没有**的，正是它缺席让 CI 发布的「正式版」实为 debug 包
         #    （见 docs/ERRATA.md E-013）。release 变体用 debug 签名
-        #    （app/build.gradle.kts:77 `signingConfig = signingConfigs.getByName("debug")`），
+        #    （app/build.gradle.kts:82 `signingConfig = signingConfigs.getByName("debug")`），
         #    但**这不等于 CI 不需要密钥**：CI 每次全新 runner，AGP 找不到 keystore 会随机
         #    生成一把新 key，产出的包与存量用户签名冲突、盖不上（见 E-014）。所以上面那一步
-        #    「还原 debug 签名密钥」是这一步能用的前提。
+        #    「还原 debug 签名密钥」是这一步能用的前提；ZHENGDAO_KEYSTORE_FILE 则保证
+        #    Gradle **用的是还原进去的那一份**，而不是 AGP 自己找的（E-014 §8）。
         #    这一步失败会让整个 job 变红（这是刻意的）：宁可 CI 红，也不要再悄悄发调试包。
+        env:
+          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
         run: ./gradlew :app:assembleRelease --console=plain
 
       - name: 校验 release 包的签名真的是存量那把 key（验**产物**，不验替身）
