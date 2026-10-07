@@ -68,6 +68,19 @@ android {
             // 个人分发渠道：release 也用 debug 签名，保证产物可直接安装
             signingConfig = signingConfigs.getByName("debug")
         }
+        // 供 :macrobenchmark 测量的变体：与 release 同配置（R8 + 资源收缩），只改三处 ——
+        // ① 不可调试（Macrobenchmark 拒绝测 debuggable 构建）；
+        // ② 同用 debug 签名：这样 install -r 能直接覆盖用户机上已有的包，**不丢 Debian 环境**；
+        // ③ profileable：AGP **不会**自动注入（已核对合并清单确认），而 Macrobenchmark 的
+        //    FrameTimingMetric 要靠 perfetto 采帧，release 类构建不声明它就会采不到帧数据。
+        // 它不参与任何分发，只为产出"贴近 release 的可测体"。
+        create("benchmark") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+            isProfileable = true
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     // lint 检查：ExpiredTargetSdkVersion 是 Google Play 上架要求（targetSdk≥33），
@@ -128,6 +141,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.apache.commons:commons-compress:1.26.2")
     androidTestImplementation("org.apache.commons:commons-compress:1.26.2")
+    // 多源回退逻辑测试：本地环回假服务器，真实走 OkHttp 栈（零外网依赖）
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
 
     // xz 解压（太极 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
@@ -142,6 +157,15 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+
+    // ⚠️ 仅 benchmark 变体（绝不进 release）：Macrobenchmark 在每轮之间要广播
+    //    DROP_SHADER_CACHE 清掉 GPU shader 缓存，否则第一轮之后的启动数据会被缓存"美化"，
+    //    测出来的是缓存热启动而不是冷启动。该广播的接收器来自本库，缺了它 Macrobenchmark
+    //    会直接抛 IllegalStateException 拒绝开测（真机已复现）。
+    //    只在 benchmark 变体引入 —— release 不背这个依赖，产物零变化。
+    // 用 add("<name>") 而非 Kotlin DSL 访问器：AGP 9 不为脚本里 create() 出来的 buildType
+    // 生成 benchmarkImplementation 访问器（已实测报 Unresolved reference）。
+    add("benchmarkImplementation", "androidx.profileinstaller:profileinstaller:1.4.1")
 
     // Markdown 渲染（v1.1 第四阶段）：纯 Compose 实现，覆盖最终回答的 Markdown 排版 +
     // 代码块独立背景/等宽/横向滚动/复制按钮/语法高亮。锁 0.38.1（Kotlin 同线，见 libs.versions.toml）。

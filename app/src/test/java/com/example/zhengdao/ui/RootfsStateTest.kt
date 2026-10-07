@@ -44,4 +44,41 @@ class RootfsStateTest {
         repeat(3) { RootfsState.markInstalled() }
         assertTrue(RootfsState.installed.value)
     }
+
+    // ── 边界扩展（v1.2 后补）：反向与异常路径 ──────────────────────
+
+    @Test
+    fun `重复清除同样幂等`() {
+        RootfsState.markRemoved()               // 先确保未安装
+        repeat(3) { RootfsState.markRemoved() }
+        assertFalse("多次清除后仍应为未安装", RootfsState.installed.value)
+    }
+
+    @Test
+    fun `安装清除再安装_状态往返不失真`() {
+        // 模拟真实序列：装好 → 用户卸载/清环境 → 再装
+        RootfsState.markInstalled()
+        assertTrue(RootfsState.installed.value)
+
+        RootfsState.markRemoved()
+        assertFalse("清除后应回未安装", RootfsState.installed.value)
+
+        RootfsState.markInstalled()
+        assertTrue("再装后必须回到已安装", RootfsState.installed.value)
+    }
+
+    @Test
+    fun `未安装态下重复清除_状态仍正确（幂等反向）`() {
+        RootfsState.markRemoved()
+        RootfsState.markRemoved()
+        assertFalse(RootfsState.installed.value)
+    }
+
+    @Test
+    fun `置位后立即清除_不留脏状态`() {
+        // 防御性场景：安装失败回滚时 markInstalled 与 markRemoved 紧邻调用
+        RootfsState.markInstalled()
+        RootfsState.markRemoved()
+        assertFalse("回滚后必须为未安装", RootfsState.installed.value)
+    }
 }
