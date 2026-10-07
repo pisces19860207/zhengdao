@@ -26,6 +26,9 @@ class CoreNativeExtractInstrumentedTest {
 
     private fun findArchive(): File? =
         listOf(
+            // 2026-10-08 起 App 的公共缓存挪到 Download/证道/rootfs（与 opencode 包同处），
+            // 原来 Download/zhengdao/cache 里的包由 migration 搬走 —— 三者都列上，谁在就用谁。
+            "/sdcard/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst",
             "/sdcard/Download/zhengdao/cache/debian-13.7-base-arm64.tar.zst",
             "/sdcard/Download/证道/debian-13.7-base-arm64.tar.zst",
         ).map { File(it) }.firstOrNull { it.isFile && it.length() > 100_000_000L }

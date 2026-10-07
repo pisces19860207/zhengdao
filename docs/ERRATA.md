@@ -1200,3 +1200,58 @@ concurrency:
    `group: build-${{ github.ref }}` + `cancel-in-progress: true` 意味着「推一次 = 掐一次」。
    要推文档就等构建跑完；或者先推分支（`v1.3` 不触发 build —— `build.yml:37-39` 只监听 `main` 与 `v*` tag）。
 3. **遇到 `startup_failure`，先去 `annotations_partial` 看报错原文**，不要在 workflow 内容上反复怀疑自己。
+
+---
+
+## E-021 · 2026-10-08 · 「自己下的包，自己认不出」——下载缓存与自动安装检查各认一个文件夹
+
+### 1. 现象（用户原话）
+
+> 环境的包应该是下载到和 opencode bionic 一起的文件里……这样就可以不用重复下载了，之前就做了这个功能的，不知道为什么 zhengdao 文件夹里没有，而且我说的是**检测到的话就自动安装的，没有的话才需要下载**。
+
+实测（设备 `AD3J023824001723` / PGT-AN10）：
+
+| 位置 | 内容 |
+|---|---|
+| `/sdcard/Download/zhengdao/cache/`（**拉丁名**） | 只有一枚 `debian-13.7-base-arm64.tar.zst.part`（**99,352,567 B**，中断的残片） |
+| `/sdcard/Download/证道/`（**中文名**） | `.zhengdao/scripts/*`、`opencode/opencode-2.0.22-1-aarch64.pkg.tar.xz`（68,606,212 B）—— **没有 debian 包** |
+
+⇒ App 下载的包落进 A 目录，自动安装只查 B 目录，**两个文件夹互不相通**：
+点过「开始下载」、包也真下过，重开 App 依然"检测不到"，只能再下 326MB。
+用户要的那个功能**其实一直都在**（`6e16f16`/v0.6.0 就做了），是被这个不一致架空的。
+
+### 2. 根因：两个文件夹从引入那天起就不一致
+
+- `51cd425`（第三批）引入公共缓存：`rootfs/RootfsCache.kt` 的 `publicDir()` = `/storage/emulated/0/Download/zhengdao/cache`（拉丁名）。
+- `6e16f16`（v0.6.0）引入「本地有安装包就免下载直装」：`TerminalActivity.findLocalArchive()` 只认 `/storage/emulated/0/Download/证道/debian-13.7-base-arm64.tar.zst`（**中文名 + 根目录 + 固定文件名 + >100MB**）。
+- 两条路径各自演化，**没有任何一处同时看两个目录**。
+  对照：opencode 那套从一开始就写对了 —— `oc/OcManager.kt:123` 注释「下载缓存（用户共享存储：Download/证道/opencode/，卸载重装不丢）」，重装 App 后是从缓存**重新解包、不重新下载**。用户说的"和 opencode 一起"就是这个意思。
+
+附带缺陷：`RootfsCache.cleanupNonCurrent()` 按「后缀是 `.tar.zst`/`.tar.gz`」删文件。
+把缓存目录**挪进用户共享工作区** `Download/证道` 之后，这个判据会误删用户/Agent 自己放进来的归档
+⇒ 必须先把「哪些是我们的包」收紧到文件名以 `debian-` 开头。
+
+### 3. 修法（2026-10-08，分支 `fix/rootfs-cache-shared-with-opencode`）
+
+1. **缓存目录搬到与 opencode 同处**：公共目录改为 `/storage/emulated/0/Download/证道/rootfs/`（`SHARED_DIR_PATH` + `CACHE_SUBDIR`）。
+2. **旧目录自动搬家**：`migrateLegacy()` 把 `Download/zhengdao/cache` 里的 `debian-*`（**含 `.part` 续传残片**）rename 过来，搬空则删旧目录；只跑一次（`legacyMigrated`），搬了写 `RunLog`。
+3. **认包只认一种名字**：`isOurs(name) = name.startsWith("debian-")`，`isArchiveName()` 在其上再加后缀判据；`listArchives()` / `cleanupNonCurrent()` 一律用它 ⇒ 共享目录里的用户文件不被误删。
+4. **「检测到就自动安装」收敛成一个入口**：新增 `RootfsCache.findLocalArchive(ctx, minBytes, preferredName)`，顺序 =
+   `Download/证道/<文件名>`（兼容老位置）→ `Download/证道/rootfs/<文件名>`（新缓存）→ `listArchives()`（任意版本的完整包）。
+   `TerminalActivity.findLocalArchive()` 改为委托它 ⇒ **自己下过的包、别处放着的包、旧版本回滚包，全都认**。
+5. **文案与测试同步**：`ui/SettingsScreen.kt` 的缓存路径说明、「修复环境」的候选表；两个真机测试（`ExtractBaselineTest:29`、`CoreNativeExtractInstrumentedTest:27`）的候选路径加上新目录 —— 否则搬家后测试会找不到包并**静默跳过**（测试"通过"却什么都没验）。
+
+> 附带修掉一个"假好消息"：`OcManager.checkUpdate()` 把「网络不通/接口报错」与「已是最新」都返回 `null`，设置页于是显示「OpenCode 已是最新」。现已拆出 `checkUpdateDetailed()`（`Available` / `UpToDate` / `Failed(reason)`），设置页与太极抽屉（新增入口）都如实显示失败原因。**「查不到」和「没有」不是一回事。**
+
+### 4. 顺带清掉的一枚已失效残片
+
+`latest` 的 rootfs 资产在签名修复那一跑里重新生成过：**326,580,168 B → 326,613,604 B**
+⇒ 手机上那枚 99,352,567 B 的 `.part` 对应的是**旧资产**，续传必然 SHA 不匹配，只能删。
+已用 `adb push` 把新包（sha256 `2f1406af1939f7f263b8191abdec6743ff99e8a87e47f2235adc3a6a3c3b1146`，与 `.sha256` 边车一致）
+放到 `/sdcard/Download/证道/debian-13.7-base-arm64.tar.zst`（**根目录**：手机上那版 App 只认这里），并删掉旧 `.part`。
+
+### 5. 教训
+
+1. **同一个东西有两处"应该放哪"的定义，早晚会分叉。** 路径常量只能有一个来源；本次把「包放哪」收敛到 `RootfsCache` 一处，安装检查、修复环境、测试全部改成问它。
+2. **缓存目录挪进用户工作区时，清理逻辑的判据必须同时收紧**：从"私有目录按后缀删"变成"用户目录按前缀删"，否则第一个受害者是用户自己的文件。
+3. **失败与"没有"必须分开表达**（见上"假好消息"）：把"查不到"说成"已是最新"，用户就会以为功能不存在。
