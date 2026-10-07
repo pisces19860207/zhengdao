@@ -912,3 +912,58 @@ fun withObjectStorage(url: String, objectStoreBase: String): List<String>
    是同一个洞的两种表现：流水线缺少"发出去的东西是否有人用"这一关。
 3. **红线写在设计文档里 ≠ 被执行。** M1.1 早就写了"不要退回自编译上游版"，
    而 CI 一直在做这件事——文档与实践的差距要靠 `git grep` 定期找，不能靠读文档。
+
+## E-017 · 2026-10-07 · 拍板删掉的功能被「让 CI 转绿」带回来，留下半残状态（已删）+ 三道防复发闸
+
+### 1. 现象：同一个功能删了又加，加回来的是半份
+
+- `e882050`（2026-10-06）`refactor(security): 移除 API Key 管理功能（用户决定：凭据类信息不落 App）`，
+  改了 6 个文件 **+10/−185**：`oc/OcManager.kt`(−9)、`settings/ApiKeyStore.kt`(−93，整份删除)、
+  `terminal/ProotLauncher.kt`(−15)、`ui/HomeScreen.kt`、`ui/SettingsScreen.kt`(−72)、`ui/TaijiScreen.kt`。
+- `fba9185`（2026-10-07）`fix(ci): 补回 merge 漏带的 settings/ApiKeyStore.kt 及其 import（12bc499 红叉根因）`，
+  只改了 2 个文件 **+94**：`ApiKeyStore.kt` 整份加回、`oc/OcManager.kt` 加回 import。
+- 结果 `origin/main` 上是**半残**：存储类在、`oc/OcManager.kt:9` 的 import 在、
+  `:278-279` 的 `ApiKeyStore.PROVIDERS.forEach { … ApiKeyStore.get(ctx, id)?.let { env[envName] = it } }` 是活的调用；
+  而 `ui/SettingsScreen.kt` 里那 −72 行的配置入口**没有恢复** —— 用户在 App 里没有任何地方能填 key，
+  但 App 依然会去读一个永远不会被写入的密钥库。
+
+### 2. 根因：把「CI 红叉」当成了最高优先级
+
+`fba9185` 的判断链是「CI 红了 → 报错说缺文件 → 把文件补回来让 CI 绿」。
+这条链里**没有一步在问「这个文件本来该存在吗」**。而它在 8 小时前刚被用户拍板删除。
+两个 agent 各自都"解决了自己的问题"，合起来把用户的决定吃掉了。
+
+> 这是 E-013（CI 发的"正式版"其实是 debug 包）、E-016（CI 一直构建 App 根本不用的 proot）
+> 的同族缺陷：**流水线的绿，从来没有和"用户要什么"对过账。**
+
+### 3. 处理（2026-10-07）
+
+按用户再次确认「按原决定删掉」执行，等价于 revert `fba9185` 的那两处：
+
+1. 删除 `app/src/main/java/com/example/zhengdao/settings/ApiKeyStore.kt`（93 行，`settings/` 包随之整个消失）。
+2. `oc/OcManager.kt`：删掉 `import com.example.zhengdao.settings.ApiKeyStore`，
+   删掉那段 `runCatching { ApiKeyStore.PROVIDERS.forEach … }`，原位置留一行注释说明"故意不注入任何 API Key"。
+3. `git grep -i "ApiKeyStore\|zhengdao-apikeys\|apikey" -- app/src` **零命中**；
+   `:app:testDebugUnitTest :app:assembleDebug` → **BUILD SUCCESSFUL**。
+
+### 4. 防复发：三道闸（本次同时落地）
+
+光写文档没用——用户的原话是「也不核对就开始了」。所以做成机器拦得住：
+
+| 闸 | 位置 | 拦什么 |
+|---|---|---|
+| 开工前核对 | `tools/agent-preflight.ps1` | 落后 origin/main / 关键词在历史里已实现过 / 要新增的文件被删过；退出码 1 = 有阻塞项 |
+| 提交硬闸 | `tools/hooks/pre-commit`（用 `tools/install-hooks.ps1` 装进共享 `.git`） | ①在 `main` 上直接提交 ②你改的文件在未同步的 `origin/main` 提交里也改过 ③要新增的文件历史上被删过 |
+| 功能台账 | `docs/FEATURE-LEDGER.md` | §2 在用/半残/已移除清单；§3 已被拍板删除的功能（复活前必须问用户）；§4 反复回归事件实锤 |
+
+绕过硬闸的唯一方式：`ZHENGDAO_HOOK_BYPASS=1 git commit ...`，并在提交信息里写理由。
+给 agent 的入口说明写在仓库根 `AGENTS.md`。
+
+### 5. 教训
+
+1. **「让 CI 转绿」不是需求。** 它是手段。当手段和用户的决定冲突时，先问用户，不要先让流水线闭嘴。
+2. **删除也是一种有意的状态，必须被记住。** git 历史里"删过一次"是弱信号，
+   台账 §3 把它升成硬信号，hook 在提交时强制查。
+3. **靠自觉读文档的约定一定会被绕过。** 多个 agent 各自乐观地开工时，
+   只有 pre-commit 这种"你过不去"的东西才有效。
+
