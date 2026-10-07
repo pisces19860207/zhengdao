@@ -70,6 +70,29 @@ object RootfsInstaller {
         val tmpDir = File(files, TMP_NAME)
         tmpDir.deleteRecursively()
         tmpDir.mkdirs()
+
+        // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
+        // 回退纪律（规范 #2）：任何失败 → 落回下方 commons-compress Java 路径
+        if (com.example.zhengdao.rust.ExtractNative.isRustAvailable()) {
+            val rustOk = runCatching {
+                val report = com.example.zhengdao.rust.ExtractNative.extract(
+                    archive.canonicalPath, tmpDir.canonicalPath, null   // SHA 已在调用方校验过
+                )
+                // Rust 侧统计含目录条目；onEntry 节流由调用方负责
+                Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
+            }.isSuccess
+            if (rustOk) {
+                File(tmpDir, MARKER).writeText("distro=debian-13.7\ninstalled-by=zhengdao\n")
+                if (rootfsDir.exists()) rootfsDir.deleteRecursively()
+                if (!tmpDir.renameTo(rootfsDir)) {
+                    tmpDir.copyRecursively(rootfsDir, overwrite = true)
+                    tmpDir.deleteRecursively()
+                }
+                Log.i(TAG, "RootFS 安装完成（Rust 路径）：${rootfsDir.path}")
+                return
+            }
+            Log.w(TAG, "Rust 解压失败，回退 Java 路径")
+        }
         val canonicalRoot = tmpDir.canonicalFile
 
         FileInputStream(archive).use { fin ->
