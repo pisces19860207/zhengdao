@@ -51,10 +51,16 @@ Android 交叉编译：`.cargo/config.toml` 直配 NDK 27.2 链接器 + `[env]` 
 | 层 | 结果 |
 |---|---|
 | PC `cargo test`（windows-gnu host） | 4/4 ✅ |
-| 真机（Honor Magic 5 Pro / Android 16） | 真实 311MB 归档解压 ✅ + 与 Java 安装版关键文件对拍 ✅ + Rust 链路可用 ✅；SHA 拒绝用例待复验（首轮错误不可见已修，协议改 JSON 后待设备重连重跑） |
+| 真机（Honor Magic 5 Pro / Android 16） | **3/3 ✅**——Rust 3611ms vs Java 3668ms（同一 311MB 归档、同口径含收尾）；**16,010 个普通文件路径+大小全量一致**；SHA 不匹配拒绝并带回期望/实际值明细 |
 | 全量 JVM 单测 | 161/161 ✅（Java 路径未受集成影响） |
 
-真机计时（BENCH_EXTRACT）待设备重连后补录。
+真机教训（已固化进协议与测试）：
+1. Android 的 stderr 不进 logcat → JNI 失败必须返回 JSON 错误对象，不能用 null
+2. JNI 符号名 = Kotlin external 函数名（`nativeExtract` 不是 `extract`）——不匹配报
+   UnsatisfiedLinkError，且 instrumented 测试的"空跑通过"（数据被 gradle 重装清掉）会
+   掩盖它；对拍测试必须是**自足式**（不依赖已安装数据）
+3. 树遍历必须 NOFOLLOW——rootfs 里有指向整个共享存储的 bind symlink，跟进去
+   会数出几万个用户文件（首版对拍 55,021 vs 17,650 的假差异即此）
 
 ## 已知边界（有意为之，非缺陷）
 
