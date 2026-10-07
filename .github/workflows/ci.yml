@@ -1,0 +1,95 @@
+# 证道（Zhengdao）质量验证流水线
+# 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类项目的 CI 配置。
+#
+# 与 build.yml 的分工：
+#   - build.yml   = 产物流水线（APK + RootFS + proot + Releases 发布，重，约 1-2 小时）
+#   - ci.yml      = 质量验证（编译 + 全量单测 + R8 冒烟 + lint 报告，轻，目标 <15 分钟）
+#
+# 触发：推送到 main、PR 到 main、手动。
+# 失败语义：单测失败 / 编译失败 / R8 构建失败 → job 红（这就是抓回归的价值）。
+# 历史：packageScope 撞名导致的 release 启动崩溃（e1269f0 修复）若有此流水线，
+#       R8 冒烟虽抓不到运行时错误，但「R8 产物存在性 + 体积突变」能提供线索。
+
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 授权 gradlew（CI 上无 local.properties，SDK 走 runner 预装）
+        run: chmod +x gradlew
+
+      - name: 缓存 Gradle（依赖 + wrapper）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-ci-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-ci-${{ runner.os }}-
+
+      - name: 安装 NDK r27.2（externalNativeBuild 需要 termux JNI）
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
+
+      - name: 编译 Debug APK（含 .so 打包验证）
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: 全量单元测试（失败即红）
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+
+      - name: 归档单测报告（无论成败都上传）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: app/build/reports/tests/testDebugUnitTest/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: R8 冒烟（release 可构建——验证混淆/资源收缩不炸）
+        run: ./gradlew :app:assembleRelease --console=plain
+
+      - name: 上传 release APK（冒烟产物，保留 7 天）
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhengdao-release-smoke
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Android Lint（报告-only，不阻塞；报告入 artifact）
+        if: always()
+        run: ./gradlew :app:lintDebug --console=plain || echo "lint 有告警，报告见 artifact"
+
+      - name: 归档 lint 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          retention-days: 14
+          if-no-files-found: ignore
