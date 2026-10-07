@@ -835,6 +835,52 @@ com.example.zhengdao signatures do not match newer version`。
 `apksigner verify --print-certs` 验刚打出来的那个 APK，指纹 ≠ `44E2FE86…` 就让 run 红 ——
 而且这一步排在「发布到 Releases」之前，红了就发不出去（宁可不发，也不发一个装不上的包）。
 
+### 8. ✅ 2026-10-07 更深一夜：真凶仍**未定论**，但已不必知道它 —— 把签名钥匙改成显式输入
+
+新关卡第一次生效就抓了个正着：run `37645467811`（@`741eb5d`）**第 12 步 failure**：
+
+- 被验产物：`app/build/outputs/apk/release/zhengdao-1.3.0-release.apk`（4,174,862 B）
+- 产物证书 SHA-256 = `9409433d…a1888af` —— **CI 第三次不同的指纹**（`18e5268a…` → `9409433d…`）
+- 报错原文：`::error::打出来的包不是存量那把 key 签的（期望 44E2FE86…BE18，实际 9409433D…88AF）`
+- 步骤 13–17 全部 `skipped` ⇒ 这一跑**没有**再往 `latest` 扔装不上的包，关卡按设计生效。
+
+同一跑第 9 步新加的 env dump 把嫌疑范围收窄到「路径」：
+
+- runner 上**只有** `ANDROID_HOME` / `ANDROID_SDK_ROOT` / `ANDROID_NDK*`；
+  **没有** `ANDROID_USER_HOME`、`ANDROID_PREFS_ROOT`、`ANDROID_SDK_HOME`；`HOME=/home/runner`。
+- `已写入: /home/runner/.android/debug.keystore (2618 字节)`，`keystore 证书 SHA-256 = 44E2FE86…BE18` ✅
+
+⇒ 按 AGP 的取值顺序本该落到 `$HOME/.android/debug.keystore`，**而钥匙文件确实就在那儿、内容也对**，
+产物却仍是别的 key。**所以 AGP 在 runner 上读的不是这个文件**；具体读到哪儿，本机无法复现，
+**仍未定论**（`:app:signingReport` + `find / -name debug.keystore` 已作为常驻诊断进 CI 日志，下次一眼定案）。
+
+**修法：不再赌 AGP 的目录推断，改成显式输入。**
+
+- `app/build.gradle.kts` 顶部读环境变量 `ZHENGDAO_KEYSTORE_FILE`；设了就把 AGP 内建「debug」签名
+  配置的 `storeFile` 覆盖成该路径（debug / release / benchmark 三变体本来就都指这一份，覆盖一处即三处生效；
+  `:82`、`:95` 一行未改）。**本地不设该变量 ⇒ 行为一字不变**。
+- `.github/workflows/build.yml` 第 9 步把 keystore 的**权威副本**写到 `$GITHUB_WORKSPACE/.ci-debug.keystore`
+  （指纹仍逐字比对，不符照样 `exit 1`），第 10/11 步用 `env: ZHENGDAO_KEYSTORE_FILE` 指过来；
+  新增一步常驻诊断 `./gradlew :app:signingReport` + `find / -name 'debug.keystore'`（`continue-on-error`）。
+- `.gitignore` 加 `.ci-debug.keystore`（密钥，绝不许入库）。
+
+**本机实证（可复现）**：用 `keytool -genkeypair` 造一把"诱饵" keystore
+（`%TEMP%\zd-decoy\debug.keystore`，证书 SHA-256 `384db91c…6db28a`），然后
+
+```powershell
+$env:ZHENGDAO_KEYSTORE_FILE = "$env:TEMP\zd-decoy\debug.keystore"
+.\gradlew.bat :app:signingReport :app:assembleRelease --console=plain
+```
+
+- `signingReport` 里 debug / release / benchmark 三个变体的 `Store:` **全部指向诱饵路径**；
+- 产出的 release APK 用 `apksigner verify --print-certs` 读出来正是 `384db91c…`（≠ `44e2fe86…`）
+
+⇒ 环境变量确实**完全接管**了签名。CI 把它指向还原进去的真钥匙，产物就会是 `44E2FE86…`。
+
+**教训（第 5 节的补充）**：当一个「本机好好的」属性在别的机器上不对、而所有「检查替身」的手段
+全绿时，正确做法不是继续加检查，而是**把这个属性改成显式输入** —— 让不确定性没有藏身之处。
+`signingReport` 这类「让工具自己说话」的诊断，也该**常驻**在流水线里，而不是出事后临时加。
+
 ---
 
 ## E-015 · 2026-10-07 · 「方案一」废弃：rootfs 主下载源不迁往对象存储

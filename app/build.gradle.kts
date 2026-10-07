@@ -22,6 +22,16 @@ plugins {
 //    （用户 2026-10-07 拍板用 1.3.0 而非 1.2.1）。
 val appVersionName = "1.3.0"
 
+// ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
+// 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
+//   keytool 读出来的指纹**就是**存量用户那把 key（44e2fe86…a3be18）——可打出来的 release 包
+//   却是**另一把随机 key** 签的（连着两次各不同：18e5268a… / 9409433d…）。
+//   ⇒ runner 上 AGP 解析到的 store 并不是我们写进去的那一份；原因尚未定论
+//     （`:app:signingReport` 已进 CI 日志常驻诊断）。
+// 因此：CI 里设 ZHENGDAO_KEYSTORE_FILE=<keystore 绝对路径>，这里把 AGP 内建「debug」签名配置的
+//   storeFile 直接钉到该路径。本地不设这个变量 ⇒ 行为与从前一字不差（仍用 ~/.android/debug.keystore）。
+val zdKeystorePath: String? = System.getenv("ZHENGDAO_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.example.zhengdao"
     compileSdk {
@@ -61,6 +71,20 @@ android {
 
     base {
         archivesName.set("zhengdao-$appVersionName")
+    }
+
+    // 显式覆盖 AGP 内建「debug」签名配置的 storeFile（见文件顶部 zdKeystorePath 的说明）。
+    // ⚠️ 只覆盖 storeFile，不新建签名配置：debug / release / benchmark 三个变体本来就都指
+    //    这一份（:82、:95），覆盖一处即三处同时生效。
+    if (zdKeystorePath != null) {
+        signingConfigs {
+            getByName("debug") {
+                storeFile = file(zdKeystorePath)
+                System.getenv("ZHENGDAO_KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }?.let { storePassword = it }
+                System.getenv("ZHENGDAO_KEY_ALIAS")?.takeIf { it.isNotBlank() }?.let { keyAlias = it }
+                System.getenv("ZHENGDAO_KEY_PASSWORD")?.takeIf { it.isNotBlank() }?.let { keyPassword = it }
+            }
+        }
     }
 
     buildTypes {
