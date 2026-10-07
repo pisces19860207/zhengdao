@@ -21,4 +21,8 @@ u.xml
 postinstall.mjs
 binls.txt
 debug-body.*
+# 真机调试中间产物（uiautomator dump、临时脚本）——名字统一以 _ 开头，一律不入库。
+# 注：库内已确认不存在 `_*.xml` / `_*.py` 的已跟踪文件，故该规则不会误伤源码。
+_*.xml
+_*.py
 rust/target/

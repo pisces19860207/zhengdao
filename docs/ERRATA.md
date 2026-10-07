@@ -967,3 +967,91 @@ fun withObjectStorage(url: String, objectStoreBase: String): List<String>
 3. **靠自觉读文档的约定一定会被绕过。** 多个 agent 各自乐观地开工时，
    只有 pre-commit 这种"你过不去"的东西才有效。
 
+---
+
+## E-018 · 2026-10-07 · 「杀 App 再开，tmux 会把会话留住」这个前提不成立
+
+**原表述（有误）**
+
+> 期望：切后台 30 分钟回来 → 还是 agy；杀 App 再开 → 还是 agy（**tmux 兜底**）
+
+**更正为**
+
+> tmux 只能兜住「**进程还活着**」这一种情况——切后台、关页面、断线重连都算。
+> **App 进程被杀时 tmux 一起死**：proot 与 tmux server 都是 App 进程的子进程，
+> Android 按进程组 / cgroup 回收，没有任何外部托管者。
+> `tmux new-session -A` 的 "断线重连不丢现场"，前提是**那个 server 还在**。
+
+**真机证据（2026-10-07 · PGT-AN10 / Android 16）**
+
+```
+杀掉前：
+  19157  com.example.zhengdao
+  19954  └─ proot
+  19960  │   └─ tmux            （客户端）
+  19967  └─(ppid=1) tmux        （server，已 reparent 但仍在本 App 的 cgroup 里）
+  19968      └─ -bash           （pane 里的 login shell）
+  19977          └─ bash        （正在跑的 Agent）
+执行 adb shell am force-stop com.example.zhengdao 后：
+  ps -A | grep -E "zhengdao|proot|tmux"  →  0
+```
+
+**因此「回来还是它」是"重放启动命令"，不是 attach**
+
+`TerminalActivity.restoreLastAgentIfAny()`：把当前 Agent 的 id 落盘
+（`zhengdao-session` prefs 的 `current_agent`，进程被杀时它照样留着），
+新会话起来、且本次请求**不带命令**时，重新执行该 Agent 的 `launchCmd`。
+用户侧观感与"接回来"一致，**但不能指望 Agent 的对话上下文还在** ——
+那是进程内的东西，随进程一起没了。
+
+对照：切后台 30 分钟那种情况进程还活着，走的是**真正的 attach**
+（同一个 pty、同一块 tmux 画面），现场原样保留。两种情况必须分开表述，
+否则会写出"tmux 能扛住杀进程"这种经不起 force-stop 一句话检验的结论。
+
+## E-019 · 2026-10-07 · hermes uv 包装器把自己覆盖成了 `uv.real`（无限 self-exec）
+
+**原实现（有误）** —— AgentInstaller 注入的 guest 侧命令：
+
+```sh
+for d in /root/.hermes/tools/uv-*; do
+  if [ -f "$d/uv" ] && [ ! -f "$d/uv.real" ]; then mv "$d/uv" "$d/uv.real"; fi
+done
+```
+
+`mv` 之前**没有检查 `uv` 到底是不是真的 ELF 二进制**。
+上一轮若已经把**包装器脚本**写在了 `uv` 这个路径上，下一轮就会把"包装器自己"
+挪成"真身" `uv.real`；紧接着再写一份新包装器到 `uv` ⇒
+包装器末尾的 `exec "$R"`（R = uv.real）执行到的还是包装器自己 ⇒
+**无限自我 exec**（进程挂死、CPU 打满）。现场症状只是「安装卡住不动」，
+完全看不出是包装器自噬。
+
+**真机证据（2026-10-07）**
+
+```
+sha256(uv)      = 3b5fad6bcc337263e712b0c24b7fd764dd408748da1bab9d5da41fa2edd5b175
+sha256(uv.real) = 3b5fad6bcc337263e712b0c24b7fd764dd408748da1bab9d5da41fa2edd5b175
+两个文件各 1273 字节、内容逐字节相同（都是包装器，不是真身）
+```
+
+**更正为**
+
+1. 包装器的落盘改到**宿主侧**：`EnvSelfHeal.ensureHermesUvWrappers`。
+   proot 用 `-b $D/home:/root` 把 `filesDir/home` 绑成 guest 的 `/root`，
+   两边是同一份存储，宿主写文件 == guest 里写文件。
+   附带修掉一个一直没人提但很扎眼的毛病：那段 1.5KB 的 base64 原先写在
+   注入命令里，bash 会把整行**回显**出来 —— 点一次「安装」先糊满一屏 base64，
+   用户看不到任何进度。（用户 2026-10-07 报的"hermes 安装有问题"里最直观的一条。）
+2. 该函数**只在 `uv` 是 ELF（魔数 `\x7FELF`）时才挪成 `uv.real`**，从根上堵住自噬。
+   安装路径额外传 `ensurePinnedDir = true`：install.sh 的 `ensure_uv` 见路径上
+   已有可执行文件就跳过下载，预置包装器即接管（这一条与旧实现同义，未改行为）。
+3. 现场修复：删掉那个假的 `uv.real`。包装器会按设计自愈 ——
+   `if [ ! -x "$R" ]` 分支从 GitHub（失败换 hermes 官方镜像）拉 pinned
+   uv 0.12.3 并做 SHA256 校验后落位。
+
+**教训**
+
+`mv` / `rm` / `ln` 这类**就地改名**的操作，判据必须是**内容**
+（ELF 魔数、sha256、文件大小量级），不能是**路径存在性**。
+"路径上有东西"只说明有个东西在那儿，不说明**那是它**。
+本项目已经因为同一类错误吃过一次亏（`run-as` 探针代表 App 真身 → E-005），
+这是第二次：**"存在"不等于"是"**。

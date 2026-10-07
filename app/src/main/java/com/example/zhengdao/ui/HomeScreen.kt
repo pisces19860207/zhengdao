@@ -37,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -97,11 +98,32 @@ fun HomeScreen(
         }
     }
 
-    // M3：一键安装轮询——有「安装中」的 Agent 时每 5 秒重查（文件出现 → [启动]）
-    androidx.compose.runtime.LaunchedEffect(agents) {
-        if (agents.any { AgentRepository.stateOf(context, it) == AgentRepository.State.Installing }) {
-            kotlinx.coroutines.delay(3000)
-            agents = AppState.agents(context)
+    // ── 安装状态镜像（对 Compose 可见的那一份）─────────────────────────────
+    // 为什么需要这一层（2026-10-07 真机实测得出，修的是"卡片不刷新"）：
+    //   AgentRepository 的状态存在 SharedPreferences + /proc 里 —— **Compose 看不见**，
+    //   而卡片的按钮形态（安装 / 安装中 / 启动）和失败提示全靠它。
+    //   旧写法是轮询时重新赋值 `agents`，指望它带出重组：**没用**，因为 AgentInfo 是
+    //   data class，前后两次内容相等 ⇒ mutableStateOf 判定"没变" ⇒ 不重组 ⇒
+    //   卡片永远停在旧状态。真机症状：在丹房点「安装」→ 进终端 → 点红点回来，
+    //   卡片仍写着「安装」；**切一下 tab 才变成「安装中」**。那种"要手抖一下才刷新"
+    //   的状态比没有状态更糟——用户没法判断自己到底点到没有。
+    //   故：把 stateOf 的结果灌进一个 snapshot 状态容器，让重组由它驱动。
+    val installStates = androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>()
+    // 刷新节拍：改 stateTick 能让下面那个 effect 立刻重灌一遍镜像（不等 2 秒）。
+    var stateTick by remember { mutableIntStateOf(0) }
+    // ⚠️ 这里必须是**常驻循环**，不能写成"还有 Agent 在装才继续查下一轮"（2026-10-07 二次真机实测）：
+    //    条件式轮询有个致命缺口——**它需要有东西先把它叫醒**。而"点了「安装」"这件事在
+    //    Compose 眼里什么都没发生：没有 state 变化 ⇒ 不重组 ⇒ effect 的 key 不变 ⇒
+    //    effect 不重启 ⇒ 连第一轮都跑不起来，卡片就一直停在「安装」。旧版之所以看起来
+    //    有时能刷新，是因为切 tab 会把整个 HomeScreen 拆掉重建、歪打正着跑了第一轮——
+    //    这正是用户那句"要手抖一下才刷新"的病因。改成常驻循环后，进页面先读一次、
+    //    此后每 2 秒重读一次，直到离开该页（effect 随组合销毁自动取消）。
+    //    开销：一次读 = SharedPreferences（内存缓存）+ 几个 File.exists()，只有"安装中"
+    //    才多扫一次 /proc。半赫兹，且只在丹房 tab 组合，可忽略。
+    androidx.compose.runtime.LaunchedEffect(agents, stateTick) {
+        while (true) {
+            agents.forEach { a -> installStates[a.id] = AgentRepository.stateOf(context, a) }
+            kotlinx.coroutines.delay(2000)
         }
     }
 
@@ -111,6 +133,9 @@ fun HomeScreen(
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 agents = AppState.agents(context)
+                // 立刻重灌一次安装状态镜像：常驻轮询最快也要等 2 秒，而从终端返回时
+                // 用户第一眼就看卡片——"点过安装没有"必须有即时答案（别让他等）。
+                stateTick++
                 // 系统信息同步重采：内存/存储占用、已装 Agent 列表都是会变的
                 sysTick++
                 // 展开态下体检也要重跑：去系统设置授权、去终端装 Agent 回来，
@@ -390,8 +415,12 @@ fun HomeScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    val installing = AgentRepository.stateOf(context, agent) == AgentRepository.State.Installing
-                    val failedInstall = AgentRepository.stateOf(context, agent) == AgentRepository.State.Failed
+                    // 读镜像（第一次组合时镜像还没灌，退回实时查一次）——
+                    // 这一读同时把本卡片挂到 installStates 上，状态一变就重组。
+                    val installState = installStates[agent.id]
+                        ?: AgentRepository.stateOf(context, agent)
+                    val installing = installState == AgentRepository.State.Installing
+                    val failedInstall = installState == AgentRepository.State.Failed
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = agent.name,
@@ -433,7 +462,26 @@ fun HomeScreen(
                             }
                         }
                         val envReady = RootfsState.installed.value
+                        // 一键安装（本地化脚本 + 清锁 + 装完自动启动）：失败重试与首次安装同一条路
+                        val startInstall: () -> Unit = {
+                            AgentInstaller.prepareInstall(context, agent) { cmd ->
+                                onOpenTerminal(cmd, agent.id)
+                            }
+                        }
                         when {
+                            // ⚠️ 失败要排在 installed **前面**（2026-10-07 真机实测）：
+                            //    安装挂在最后一步时，可执行文件往往已经落位了（hermes 实测：
+                            //    转发脚本 22:29 就位，Python 依赖装不上、脚本退出码 1）。
+                            //    那时若按 installed 给「启动」，卡片就自相矛盾——
+                            //    状态行写着"点「安装」可重试"，而按钮把用户往一个坏入口上引。
+                            //    失败时该给的是「重试安装」。但要带上 envReady：
+                            //    环境没了（重装 App / 卸载过）时重试安装也无从谈起，
+                            //    该落到下面的「先装环境」，别给一个点了只会报错的按钮。
+                            failedInstall && envReady -> OutlinedButton(
+                                onClick = startInstall,
+                                modifier = Modifier.width(84.dp),
+                                shape = RoundedCornerShape(50),
+                            ) { Text("重试安装") }
                             agent.installed -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd, agent.id) },
                                 modifier = Modifier.width(84.dp),
@@ -447,18 +495,15 @@ fun HomeScreen(
                             // "没点到"、"在忙"还是"坏了"，而且连安装进度都看不到。
                             // 改为可点并跳终端：终端里就是正在跑的安装输出，能看到进度、
                             // 也能 Ctrl-C 中断再点按钮重来。这比一个死掉的禁用按钮诚实。
+                            // 注：这条走 onOpenTerminal(null, agent.id) —— **不带命令**，
+                            // 会话路由会判成"只是打开终端"，绝不会杀掉正在跑的安装。
                             installing -> OutlinedButton(
                                 onClick = { onOpenTerminal(null, agent.id) },
                                 modifier = Modifier.width(84.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("安装中") }
                             agent.installCmd != null && envReady -> OutlinedButton(
-                                onClick = {
-                                    // 一键到底（M3 骨架 §3）：脚本本地化 + 清锁，装完自动启动
-                                    AgentInstaller.prepareInstall(context, agent) { cmd ->
-                                        onOpenTerminal(cmd, agent.id)
-                                    }
-                                },
+                                onClick = startInstall,
                                 modifier = Modifier.width(84.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("安装") }
@@ -486,8 +531,10 @@ fun HomeScreen(
                     // 状态行：失败 / 安装中用浅底提示条（原先的裸彩字在真机上会被读成
                     // 上一行的溢出，像渲染坏了）；已装版本属常态信息，保持素色小字。
                     if (failedInstall) {
+                        // 文案由 AgentRepository 给：分清「失败（带退出码）」和「被打断」，
+                        // 而不是一句笼统的「未完成」——用户 2026-10-07 要求失败可见且可行动。
                         StatusNote(
-                            text = "上次安装未完成，可点「安装」重试；输出在「终端」可查",
+                            text = AgentRepository.failureReason(context, agent.id),
                             tone = MaterialTheme.colorScheme.error,
                         )
                     } else if (installing) {
