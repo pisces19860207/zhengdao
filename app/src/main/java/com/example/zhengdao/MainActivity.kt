@@ -151,6 +151,10 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("zhengdao-ui", MODE_PRIVATE)
         val lastRoute = prefs.getString("last_route", null)
 
+        // 环境安装状态：进 UI 前先同步读一次，避免首帧按默认 false 闪一下「环境未安装」。
+        // （v1.2 修复：原先各页面直接在组合里调 rootfsInstalled()，装完环境回主页不刷新。）
+        com.example.zhengdao.ui.RootfsState.refresh(this)
+
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -219,8 +223,22 @@ class MainActivity : ComponentActivity() {
 fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
-    val installed = AppState.rootfsInstalled(context)
+    // 可观察状态：环境装/没装会变（终端里装完、设置里卸载），必须跟着变。
+    val installed by com.example.zhengdao.ui.RootfsState.installed
     val routePrefs = context.getSharedPreferences("zhengdao-ui", android.content.Context.MODE_PRIVATE)
+
+    // 回到前台就重读一次：装在终端里完成（RootfsInstaller 写完成标记）后返回主页，
+    // 欢迎页与主页的环境状态必须立刻跟上，不能等杀进程重进。
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                com.example.zhengdao.ui.RootfsState.refresh(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
 
     // 路由决策优先级：通知栏直达终端 > 上次页面（欢迎页只在首次安装出现）
     // ⚠️ 恢复页不能当 startDestination——起始页底下没有返回栈，popBackStack
