@@ -231,6 +231,10 @@ object OcManager {
             homeDir(ctx).mkdirs()
             listOf("data", "cache", "config", "state").forEach { xdgDir(ctx, it).mkdirs() }
             ensurePermissionPolicy(ctx)
+            // 自愈（2026-10-07 事故）：exec 前确保执行位——解压流程已保证，这里兜底
+            // 任何 mode 漂移（如本次事故中未走到 chmod 的 600 文件）。失败不阻断，
+            // 下面 exec 若仍失败会带真因上报。
+            runCatching { android.system.Os.chmod(bin.absolutePath, 493) } // 0755
             val pb = ProcessBuilder(bin.absolutePath, "serve", "--port=$PORT")
             pb.directory(Workspace.hostDir(ctx)) // 项目 = 用户工作区
             val env = pb.environment()
@@ -436,9 +440,30 @@ object OcManager {
                     if (rel.startsWith(".")) { entry = tar.nextTarEntry; continue }
                     val target = File(ocRoot, "usr/$rel")
                     target.parentFile?.mkdirs()
-                    target.outputStream().use { out -> tar.copyTo(out) }
+                    // 完整性（2026-10-07 事故）：先写 .part，与归档记录断言一致后原子改名。
+                    // 中途被杀只留 .part、旧二进制完好——截断文件不可能再冒充「已安装」
+                    // （此前：写到 87% 被杀 → 250MB>100MB 通过 installed() → chmod 从未
+                    //  轮到 → mode 600 → serve exec error=13 EACCES）。
+                    val part = File(target.parentFile, "${target.name}.part")
+                    part.delete()
+                    part.outputStream().use { out -> tar.copyTo(out) }
+                    if (part.length() != entry.size) {
+                        val got = part.length()
+                        part.delete()
+                        RunLog.log("太极: 释放不完整 $rel（$got/${entry.size} 字节）——存储不足或进程被中断")
+                        return DownloadResult(false, "释放不完整：$rel（$got/${entry.size} 字节）")
+                    }
                     if (rel.startsWith("bin/")) {
-                        runCatching { android.system.Os.chmod(target.absolutePath, 493) } // 0755
+                        val chmod = runCatching { android.system.Os.chmod(part.absolutePath, 493) } // 0755
+                        if (chmod.isFailure) {
+                            // 不中断安装（startServe 自愈兜底），但必须留痕
+                            RunLog.log("太极: chmod 0755 失败 $rel: ${chmod.exceptionOrNull()?.message}")
+                        }
+                    }
+                    if (!part.renameTo(target)) {
+                        // 同目录 rename 理论不失败；极端场景退化为复制（不静默丢文件）
+                        part.copyTo(target, overwrite = true)
+                        part.delete()
                     }
                     count++
                     if (count % 5 == 0) onProgress("释放中… $count")
