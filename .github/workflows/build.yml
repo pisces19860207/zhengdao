@@ -109,9 +109,29 @@ jobs:
             echo "::warning::未配置 secret DEBUG_KEYSTORE_B64，本次用 runner 随机生成的 keystore——产物无法覆盖安装既有版本（E-014）"
             exit 0
           fi
-          mkdir -p "$HOME/.android"
-          printf '%s' "$KS_B64" | base64 -d > "$HOME/.android/debug.keystore"
-          ls -l "$HOME/.android/debug.keystore"
+          # ⚠️ AGP 去哪个目录找 debug keystore，取决于 runner 上的 Android 环境变量：
+          #    ANDROID_USER_HOME 存在 → 直接用它的值当"Android 用户目录"（不再拼 .android）；
+          #    否则 ANDROID_PREFS_ROOT → 拼 .android；再否则 → $HOME/.android。
+          #    E-014 §7 记的正是这个坑：只写 $HOME/.android 时，本步指纹检查全绿、
+          #    可打出来的包却是**另一把随机 key** 签的（实测 44e2fe86… → 18e5268a…）。
+          #    所以：① 写进所有候选目录；② 把相关 env 打进日志，下次一眼看出 AGP 该看哪里。
+          echo "== 与 Android 用户目录有关的 env =="
+          env | grep -iE '^(ANDROID|HOME|USERPROFILE)' | sort || true
+          dirs="$HOME/.android"
+          if [ -n "${ANDROID_USER_HOME:-}" ]; then
+            dirs="$dirs $ANDROID_USER_HOME $ANDROID_USER_HOME/.android"
+          fi
+          if [ -n "${ANDROID_PREFS_ROOT:-}" ]; then
+            dirs="$dirs $ANDROID_PREFS_ROOT/.android"
+          fi
+          if [ -n "${ANDROID_SDK_HOME:-}" ]; then
+            dirs="$dirs $ANDROID_SDK_HOME/.android"
+          fi
+          for d in $dirs; do
+            mkdir -p "$d"
+            printf '%s' "$KS_B64" | base64 -d > "$d/debug.keystore"
+            echo "已写入: $d/debug.keystore ($(stat -c%s "$d/debug.keystore") 字节)"
+          done
           # 光有文件不够——secret 里放的可能是**另一把** key（比如谁新生成了一份）。
           # 那种情况下所有 CI 产物照样装不上存量版本，而且照样"一切正常"。所以比指纹。
           FP="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" \
@@ -124,6 +144,8 @@ jobs:
             echo "::error::DEBUG_KEYSTORE_B64 里的不是存量那把 key（期望 $EXPECTED_SHA256）——这样发出去的包老用户装不上，见 docs/ERRATA.md E-014"
             exit 1
           fi
+          # ⚠️ 到这里为止只证明"**钥匙文件**是对的"。钥匙文件对 ≠ 打出来的包对 ——
+          #    真正的关卡在 assembleRelease 之后那一步「校验 release 包的签名」（E-014 §7）。
 
       - name: 编译 Debug APK（开发者用）
         run: ./gradlew :app:assembleDebug --console=plain
@@ -137,6 +159,36 @@ jobs:
         #    「还原 debug 签名密钥」是这一步能用的前提。
         #    这一步失败会让整个 job 变红（这是刻意的）：宁可 CI 红，也不要再悄悄发调试包。
         run: ./gradlew :app:assembleRelease --console=plain
+
+      - name: 校验 release 包的签名真的是存量那把 key（验**产物**，不验替身）
+        # ⚠️ 见 docs/ERRATA.md E-014 §7。上面那步「还原 debug 签名密钥」只证明了**钥匙文件对**；
+        #    2026-10-07 实测就是这个坑——第 9 步全绿、密钥指纹逐字符吻合，打出来的包却是
+        #    `18e5268a…`（另一把 key），发到 latest 之后老用户照样 INSTALL_FAILED_UPDATE_INCOMPATIBLE。
+        #    "签名"是最终属性，只能对着最终产物验。所以这一步直接读 APK 里的证书。
+        #    位置刻意排在「发布到 Releases」之前：指纹不对就让 run 红 —— 宁可不发，
+        #    也不要再往 latest 扔一个装不上的包。
+        env:
+          EXPECTED_SHA256: 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18
+        run: |
+          APK="$(ls app/build/outputs/apk/release/zhengdao-*-release.apk | head -1)"
+          echo "被验的产物: $APK ($(stat -c%s "$APK") 字节)"
+          APKSIGNER="$(command -v apksigner || true)"
+          if [ -z "$APKSIGNER" ]; then
+            APKSIGNER="$(ls -d "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+          fi
+          if [ -z "$APKSIGNER" ] || [ ! -x "$APKSIGNER" ]; then
+            echo "::error::找不到 apksigner，无法校验产物签名（这一步是 E-014 §7 的硬关卡，不能跳过）"
+            exit 1
+          fi
+          echo "apksigner: $APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/apksigner-out.txt
+          FP="$(grep -m1 'SHA-256 digest' /tmp/apksigner-out.txt | awk '{print $NF}' | tr -d ':' | tr 'a-f' 'A-F')"
+          echo "产物证书 SHA-256 = $FP"
+          if [ "$FP" != "$EXPECTED_SHA256" ]; then
+            echo "::error::打出来的包不是存量那把 key 签的（期望 $EXPECTED_SHA256，实际 $FP）——发出去老用户装不上，见 docs/ERRATA.md E-014 §7"
+            exit 1
+          fi
+          echo "✅ 产物签名 = 存量 key（$EXPECTED_SHA256），可以发布。"
 
       - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
         id: rootfs

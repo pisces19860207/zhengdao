@@ -798,6 +798,43 @@ E-013 是"发出去的包不好"，本条是"**发出去的包装不上**"：
 - 验收（未完成）：配好 secret 后打一个 tag，确认 CI 产物证书 SHA-256 = `44e2fe86…a3be18`，
   且能在装着 v1.2.0 的机器上直接覆盖安装（**不卸载、不丢 `filesDir`**）。
 
+### 7. ⚠️ 2026-10-07 深夜补记：**那道关卡验的是替身，不是产物 —— E-014 并没真修好**
+
+secret 配好、run `37641936875`（@`682dceb`）16 步全绿之后，把 `latest` 上刚发布的
+`zhengdao-1.3.0-release.apk`（4,162,930 B，2026-10-07T15:20:04Z）下下来，用
+`apksigner verify --print-certs` 直接读**产物**的证书：
+
+| 对象 | 证书 SHA-256 | 结论 |
+|---|---|---|
+| CI 第 9 步恢复进去的 keystore（日志亲证） | `44e2fe86…a3be18` | ✅ 文件是对的 |
+| **这一跑打出来的那个 APK** | `18e5268a…0eff4f` | ❌ **不是这把** |
+| 本机所有构建产物 + 手机上装着的那个包 | `44e2fe86…a3be18` | ✅ |
+| `C:\Users\guoli\Downloads\zhengdao-debug.apk`（10-04 从 CI 下的） | `aef9e220…` | ❌ 第三把 |
+
+⇒ **CI 依旧每次跑一把新 key**：`latest` 的包与任何存量安装仍然互不兼容，
+实测 `adb install -r` 报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package
+com.example.zhengdao signatures do not match newer version`。
+第 9 步只证明了"钥匙文件放对了地方、文件里的证书是这个指纹"，
+**没有证明"打出来的包是用它签的"**；`:app:validateSigningRelease` 属于同一类替身检查。
+
+已核实 / 已排除（都不是原因）：
+
+- CI 日志里 `:app:packageRelease`（15:09:41）**真跑了**，全程**没有** `FROM-CACHE` /
+  build cache 字样 ⇒ 不是复用旧产物（Gradle build cache 未启用）。
+- `app/build.gradle.kts` **整份文件没有任何 `signingConfigs {}` 块**，全仓 `git grep storeFile` 零命中
+  ⇒ release 走的就是 AGP 默认的 debug keystore（`:82` `signingConfigs.getByName("debug")`）。
+- `$HOME/.android/debug.keystore` 的路径与内容都正确（第 9 步自证）。
+- 剩余怀疑：AGP 在 runner 上解析到的是**另一个候选目录**（`ANDROID_USER_HOME` /
+  `ANDROID_SDK_HOME` / `ANDROID_PREFS_ROOT` 下的 `.android`）。CI 日志里**没有** env dump，
+  当场无法定论 —— 所以修法里必须先补上 dump。
+
+**教训（与第 4 节第 1 条同族，但要再往前一步）**：
+"验钥匙文件"和"验产物"是两件事。**签名这种最终属性，只能对着最终产物验。**
+新关卡改成两步：① 把 keystore 写进所有候选目录，并在日志里 dump
+`env | grep -iE '^(ANDROID|HOME)'` 自证路径；② `assembleRelease` 之后**立刻**用
+`apksigner verify --print-certs` 验刚打出来的那个 APK，指纹 ≠ `44E2FE86…` 就让 run 红 ——
+而且这一步排在「发布到 Releases」之前，红了就发不出去（宁可不发，也不发一个装不上的包）。
+
 ---
 
 ## E-015 · 2026-10-07 · 「方案一」废弃：rootfs 主下载源不迁往对象存储
@@ -966,4 +1003,66 @@ fun withObjectStorage(url: String, objectStoreBase: String): List<String>
    台账 §3 把它升成硬信号，hook 在提交时强制查。
 3. **靠自觉读文档的约定一定会被绕过。** 多个 agent 各自乐观地开工时，
    只有 pre-commit 这种"你过不去"的东西才有效。
+
+---
+
+## E-020 · 2026-10-07 · 配好签名密钥后仍然发不出包：secret 编码与 `cancel-in-progress` 两处坑
+
+> **编号说明**：本条最初写为 E-018；同一时段另一个工作树（`zhengdao-wt-session`）
+> 也往这份 ERRATA 追加了两条并占用了 E-018 / E-019，合并进 main 时本条让号，改成 **E-020**。
+> E-018 是「杀 App 再开，tmux 会把会话留住这个前提不成立」、E-019 是「hermes uv 包装器把自己
+> 覆盖成了 `uv.real`」，**都不是本条**。
+
+### 1. 现象 A：配了 secret，main 的 build 反而**整个 run 都起不来**
+
+`8011702` 推上 main 后，`build` workflow 立刻 `startup_failure`，**0 个 job**（两次 rerun 同样）；
+而 22 分钟前的 `6a59169` 是 success，两次的 `build.yml` blob 完全相同
+（`a9b2690ab0dd3cf8ca75a65b7564176eac252f6a`）⇒ 不是 workflow 内容问题，也不是偶发。
+
+### 2. 现象 A 的根因：secret 里存的是 keystore 的**二进制**，不是它的 **base64 文本**
+
+`build.yml:104` 是 `KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}`，脚本体内对它做 `base64 -d`
+（步骤名见 `:95`「还原 debug 签名密钥」）⇒ **secret 值必须是那段 base64 文本本身**。
+本次配置时误写成 `SealedBox(pk).encrypt(base64.b64decode(value))`，把 2618 字节二进制传了上去。
+二进制不是合法 UTF-8，GitHub 在 workflow **启动阶段**就拒绝整个 run：
+
+> The secret DEBUG_KEYSTORE_B64 referenced by this workflow is not properly UTF-8 encoded and cannot be used by GitHub Actions.
+
+**定位手法（关键，REST API 查不到）**：`startup_failure` 的原因**不在** run / jobs 接口里，
+在网页的一个局部端点上：
+
+```
+https://github.com/pisces19860207/zhengdao/actions/runs/<run_id>/annotations_partial
+```
+
+用 `Invoke-WebRequest -UseBasicParsing` + 自定义 `User-Agent` 抓 HTML、剥掉标签即可读到上面那句话。
+（`web_fetch` 打不开 github.com —— 报 `URL hostname "github.com" resolves to a non-public IP address`。）
+
+修法：加密 **`value.encode("utf-8")`**（`value` = 文件里那段 3492 字符的纯 ASCII base64），
+并在脚本里断言 `value.isascii()` 与 `len(base64.b64decode(value)) == 2618`。
+重配后 rerun，**步骤 9「还原 debug 签名密钥」首次 success**，步骤 10/11（Debug / Release APK）也 success。
+
+### 3. 现象 B：签名修好了，包还是没发出去 —— 被自己的**下一次推送**掐死
+
+`build.yml:42-44`：
+
+```yaml
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+同一 ref 上的新 run 会**立刻取消**正在跑的那个。在它跑到第 12 步
+「构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟）」时推了 `682dceb`，
+旧 run（`37639534259`，attempt 3）被 `cancelled`，第 13–16 步全部 `skipped` ——
+**第 16 步「发布到 Releases」（`build.yml:174`）根本没执行**，所以 `latest` 上仍然是旧包。
+
+### 4. 教训
+
+1. **发布步骤排在整条流水线的最后**（在 RootFS 之后），所以「构建成功」和「包发出去了」是两件事。
+   判断发布是否真的发生，**必须看第 16 步「发布到 Releases」的结论**，不能只看 run 是不是绿的。
+2. **main 上有构建在跑时，不要往 main 推任何东西** —— 哪怕只改文档。
+   `group: build-${{ github.ref }}` + `cancel-in-progress: true` 意味着「推一次 = 掐一次」。
+   要推文档就等构建跑完；或者先推分支（`v1.3` 不触发 build —— `build.yml:37-39` 只监听 `main` 与 `v*` tag）。
+3. **遇到 `startup_failure`，先去 `annotations_partial` 看报错原文**，不要在 workflow 内容上反复怀疑自己。
 
