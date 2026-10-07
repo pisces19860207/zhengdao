@@ -49,7 +49,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.rootfs.RootfsDownloader
@@ -611,54 +610,9 @@ fun SettingsScreen(
             }) { Text("立即刷新 Agent 清单") }
             Spacer(Modifier.height(8.dp))
 
-            // ── OpenCode 内置版更新（P2 第 5 条：用户主动点，不打扰启动）──
-            // v1.2 C1：未装状态下「检查更新」是句废话——还没装，哪来的更新。
-            // 未装就直连 downloadAndInstall，装上才能谈更新。
-            val ocVer = OcManager.installedVersion(ctx)
-            val ocInstalled = OcManager.installed(ctx)
-            Text(
-                text = "OpenCode 内置版：" + when {
-                    ocVer != null -> ocVer
-                    ocInstalled -> "已安装（版本未知）"
-                    else -> "未安装（点下方按钮安装，约 65MB）"
-                } + "（出厂 ${OcManager.VERSION}）",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            var checkingOc by remember { mutableStateOf(false) }
-            OutlinedButton(
-                enabled = !checkingOc,
-                onClick = {
-                    checkingOc = true
-                    val tip = if (ocInstalled) "正在检查 OpenCode 更新…" else "正在下载并安装 OpenCode（约 65MB）…"
-                    Toast.makeText(ctx, tip, Toast.LENGTH_SHORT).show()
-                    Thread {
-                        val r: OcManager.DownloadResult =
-                            if (ocInstalled) {
-                                when (val chk = OcManager.checkUpdateDetailed(ctx)) {
-                                    is OcManager.UpdateCheck.Available ->
-                                        OcManager.downloadAndInstall(ctx, chk.info) { }
-                                    // 2026-10-08：网络不通 / 接口报错时不再冒充「已是最新」
-                                    // （旧写法 checkUpdate 返回 null，UI 一律说"已是最新"，
-                                    //  用户点一下什么都不会发生 —— 看起来就像没有更新入口）
-                                    is OcManager.UpdateCheck.Failed ->
-                                        OcManager.DownloadResult(false, "检查更新失败：${chk.reason}")
-                                    OcManager.UpdateCheck.UpToDate ->
-                                        OcManager.DownloadResult(
-                                            false,
-                                            "OpenCode 已是最新（${ocVer ?: OcManager.VERSION}）",
-                                        )
-                                }
-                            } else {
-                                OcManager.downloadAndInstall(ctx) { }
-                            }
-                        android.os.Handler(ctx.mainLooper).post {
-                            checkingOc = false
-                            Toast.makeText(ctx, r.message, Toast.LENGTH_LONG).show()
-                        }
-                    }.start()
-                },
-            ) { Text(if (checkingOc) "处理中…" else if (ocInstalled) "检查 OpenCode 更新" else "安装 OpenCode") }
+            // ── OpenCode 内置版更新入口已从这里移走（用户 2026-10-08：主打不是 OpenCode）──
+            //   现在只有「太极」抽屉底部那一处（TaijiScreen 的 OcVersionFooter）。
+            //   OpenCode 随 APK 内置、开箱即用；真要重装/升级去太极抽屉。
         }
 
         // ── 安装包缓存（第三批）──

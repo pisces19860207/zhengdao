@@ -1,22 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
-  视觉方向：macOS/Safari 窗口铬（公开设计惯例）——红黄绿圆点工具栏 + 圆角悬浮窗口卡片。
-  结构：黑色桌面 → 圆角窗口卡片（工具栏 + 终端 + 快捷键条）。
+  视觉方向（2026-10-08 起）：手机全屏 + 一圈细白边 —— 黑底终端铺满可用区域，顶部一条扁平工具栏。
+  历史：2026-10-05 起曾是「macOS/Safari 窗口铬」（白桌面 + 圆角悬浮卡片 + 四周 6dp
+  白边 + 红黄绿圆点）。用户 2026-10-08 先反馈「终端的界面没有适配手机」，确认去掉那层
+  桌面窗口外观（圆角卡片、6dp 白边）；同日晚再反馈「还是有个白色边框吧，不然四等边的
+  手机看着好难受」⇒ **保留一圈白边但收细到 4dp**：纯黑铺到屏幕边缘时，屏幕与四等边机身
+  黑成一片、看不出边界，反而更难受；留一圈白边能把屏幕范围交代清楚。
+  红/黄/绿三个圆点保留（它们是功能键，不是装饰：关页 / 收分屏 / 分屏）。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/terminal_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/white"
-    android:padding="6dp">
+    android:padding="4dp">
 
     <LinearLayout
         android:id="@+id/window_card"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="@drawable/window_bg">
+        android:background="#FF000000">
 
         <LinearLayout
             android:id="@+id/toolbar"
