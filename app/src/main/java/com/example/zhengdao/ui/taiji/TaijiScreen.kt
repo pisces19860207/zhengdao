@@ -167,8 +167,14 @@ fun TaijiScreen(
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
-            // 未安装：引导下载（复用既有文案，不重复实现下载流程）
-            !OcManager.installed(ctx) -> NotInstalledPane(onExit)
+            // 未安装：给就地安装入口（丹房过滤了 OpenCode，v1.1.1 起这里是唯一入口——
+            // 原文案"去丹房安装"是死循环回归）。缓存命中时约 1 分钟（含校验+解压）
+            !OcManager.installed(ctx) -> NotInstalledPane(onExit, onInstall = {
+                android.widget.Toast.makeText(
+                    ctx, "后台安装中…缓存命中约 1 分钟，完成后重进本页", android.widget.Toast.LENGTH_LONG
+                ).show()
+                Thread { OcManager.downloadAndInstall(ctx) {} }.start()
+            })
 
             // 启动失败：明确原因 + 重试。**不静默失败**（项目原则）
             state.phase is TaijiPhase.Failed ->
@@ -367,16 +373,19 @@ private fun EmptyConversationHint() {
 }
 
 @Composable
-private fun NotInstalledPane(onExit: () -> Unit) {
+private fun NotInstalledPane(onExit: () -> Unit, onInstall: () -> Unit = {}) {
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("尚未安装 OpenCode", style = MaterialTheme.typography.titleMedium)
             Text(
-                "请在「丹房」下载安装后回到本页",
+                "点下方按钮下载安装（约 65MB，已有缓存则约 1 分钟）",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 8.dp),
             )
-            OutlinedButton(onClick = onExit, modifier = Modifier.padding(top = 16.dp)) {
+            OutlinedButton(onClick = onInstall, modifier = Modifier.padding(top = 16.dp)) {
+                Text("下载并安装")
+            }
+            OutlinedButton(onClick = onExit, modifier = Modifier.padding(top = 8.dp)) {
                 Text("返回")
             }
         }

@@ -237,6 +237,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             SessionManager.usesTmux = plan.usesTmux
             fallbackActive = plan.isFallback
             toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
+            // 环境未装：给安装引导（本地有归档则零交互自动装）。
+            // ⚠️ v1.1 重写 TerminalActivity 时此调用曾丢失——新用户装完 App 卡在
+            // fallback shell、没有任何安装入口（2026-10-07 恢复数据时实测发现）。
+            if (fallbackActive) promptInstallOnce()
         } else {
             usesTmux = SessionManager.usesTmux
             fallbackActive = false
