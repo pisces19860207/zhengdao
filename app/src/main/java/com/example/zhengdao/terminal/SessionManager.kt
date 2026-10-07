@@ -18,7 +18,7 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 
 /**
- * M2/M3 会话持有者（单会话模型）：pty + tmux 客户端归本进程级对象所有，
+ * M2/M3 会话持有者（**全局单会话模型**）：pty + tmux 客户端归本进程级对象所有，
  * 终端 UI（TerminalView）只是挂上来的视图——UI 关闭 ≠ 会话死。
  * 会话引擎 = Termux terminal-emulator（原生状态机，替代 WebView/xterm.js 架构）。
  *
@@ -26,12 +26,43 @@ import com.termux.terminal.TerminalSessionClient
  * 首次 updateSize 时 spawn → onEmulatorSet 回调（视图层注入 autocmd）。
  * 进程级语义：proot/tmux 是本进程子进程，进程被杀全部消亡——前台服务的
  * 职责是「阻止被杀」；重进 App 时进程活着 → attach 恢复，死了 → 全新启动。
+ *
+ * ⚠️ 单会话模型的硬约束（用户 2026-10-07 定稿）：
+ *   全局**只有一条** tmux 会话（[TMUX_SESSION]，名字固定不做参数化），
+ *   分屏用 tmux 的 pane（`C-b %` / `C-b "`），**不开第二个窗口、也不开第二个会话**。
+ *   换 Agent = 把这条会话整条 kill 掉再起一条新的——不存在"并存"。
+ *   因此本对象只需记一个 [currentAgentId]（这条会话里跑的是谁），
+ *   不需要"扫进程判重"那套东西。
  */
 object SessionManager {
 
     private const val PREFS = "zhengdao-session"
+    private const val KEY_CURRENT_AGENT = "current_agent"
     private val mainHandler = Handler(Looper.getMainLooper())
     private var appContext: Context? = null
+
+    /**
+     * 全局唯一的 tmux 会话名。
+     *
+     * 为什么是常量而不是参数：单会话模型下名字必须**处处一致**，否则"换个入口
+     * 就 attach 到另一条会话"，用户会看到自己刚跑的东西凭空消失。
+     * 终端里 `tmux ls` 永远只该有一行 `zhengdao:`。
+     */
+    const val TMUX_SESSION = "zhengdao"
+
+    /**
+     * 当前这条会话里跑的是哪个 Agent（null = 只有裸 bash / 不适用）。
+     *
+     * 为什么需要它：单会话模型下"点同一个 Agent 该 attach 复用、点别的该 kill 重开"
+     * 全靠这一个判断。旧实现用"扫 /proc 数同名进程"来判重——那是"多窗口并存"
+     * 思路的产物，方向反了（用户 2026-10-07 指出）：进程数只说明"有几个实例"，
+     * 而单会话模型根本不允许并存，需要的是"这条会话里是谁"。
+     *
+     * 持久化到 [PREFS]：App 进程被杀后重启，还要知道上次跑的是谁才能把它接回来。
+     */
+    @Volatile
+    var currentAgentId: String? = null
+        private set
 
     var session: TerminalSession? = null
         private set
@@ -54,13 +85,45 @@ object SessionManager {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+        // 进程重启后恢复"上次跑的是谁"——用户验收第 5 条（杀 App 再开，还是原来那个 Agent）
+        // 就靠这一个字段。session 本身恢复不了（proot 是本进程子进程，一起被杀），
+        // 所以能不能"回来还是它"，取决于这里读出的名字。
+        currentAgentId = appContext
+            ?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            ?.getString(KEY_CURRENT_AGENT, null)
+    }
+
+    /**
+     * 登记"这条会话里现在是谁"。
+     *
+     * 传 null = 会话里没有 Agent（裸 bash、用户敲了 exit、宿主要换环境…）。
+     * 写盘是刻意的：App 被杀时不会有任何回调，只能靠这份落盘的记录把 Agent 接回来。
+     */
+    fun setCurrentAgent(agentId: String?) {
+        currentAgentId = agentId
+        val ctx = appContext ?: return
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
+            if (agentId.isNullOrBlank()) remove(KEY_CURRENT_AGENT) else putString(KEY_CURRENT_AGENT, agentId)
+        }.apply()
     }
 
     fun isAlive(): Boolean = session?.isRunning == true
 
+    /**
+     * 会话对象还在（进程已 spawn，或刚创建、即将在首次 updateSize 时 spawn）。
+     *
+     * 比 [isAlive] 宽一格，因为 Termux 引擎的 isRunning 在 spawn 之前是 false：
+     * onNewIntent（复用实例，会立刻走一遍 attach）紧接着 onResume 又走一遍时，
+     * 只认 isAlive 会把刚建好的会话当成"没有会话"，于是 kill 掉重来一次——
+     * 同一句启动命令被注入两遍、正要启动的 Agent 被自己的第二次启动顶掉。
+     */
+    fun hasSession(): Boolean = session != null
+
     fun start(context: Context): ProotLauncher.LaunchPlan {
-        kill(context)
-        val plan = ProotLauncher.buildLaunchPlan(context)
+        // ⚠️ clearAgent=false：start() 的语义是"给**当前** Agent 起一条干净会话"，
+        //    调用方（TerminalActivity 的路由）已经把它登记好了，这里不能抹掉。
+        killInternal(context, clearAgent = false)
+        val plan = ProotLauncher.buildLaunchPlan(context, TMUX_SESSION)
         val s = TerminalSession(
             plan.cmd,                       // 宿主侧 execve 目标（proot / 回退 shell）
             context.filesDir.absolutePath,  // 宿主侧 cwd
@@ -74,7 +137,10 @@ object SessionManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong("started_at", startedAtMs).apply()
         SessionService.start(context)
-        RunLog.log("会话启动（Termux 引擎）isFallback=$isFallback usesTmux=${plan.usesTmux}")
+        RunLog.log(
+            "会话启动（Termux 引擎）tmux=$TMUX_SESSION agent=${currentAgentId ?: "-"} " +
+                "isFallback=$isFallback usesTmux=${plan.usesTmux}"
+        )
         return plan
     }
 
@@ -96,8 +162,23 @@ object SessionManager {
         runCatching { session?.updateSize(cols, rows, 0, 0) }
     }
 
-    fun kill(context: Context) {
-        val s = session ?: return
+    /**
+     * 杀掉当前会话（单会话模型里 = 「killCurrentSession」）。
+     *
+     * 连 Agent 记录一起清掉：调用方的语义都是"这条会话作废了"（换 Agent、重装环境、
+     * 用户主动关）——留着名字只会让下次进终端去接一个早就不存在的东西。
+     */
+    fun kill(context: Context) = killInternal(context, clearAgent = true)
+
+    private fun killInternal(context: Context, clearAgent: Boolean) {
+        if (clearAgent) setCurrentAgent(null)
+        val s = session
+        if (s == null) {
+            // 会话早就没了（比如进程刚重启）——但 Agent 记录该清还是要清，
+            // 否则下一次进终端会去"恢复"一个已经不存在的会话。
+            if (clearAgent) SessionService.stop(context)
+            return
+        }
         session = null
         startedAtMs = 0L
         isFallback = false
@@ -105,7 +186,7 @@ object SessionManager {
             .edit().remove("started_at").apply()
         s.finishIfRunning()
         SessionService.stop(context)
-        RunLog.log("会话已停止")
+        RunLog.log("会话已停止" + if (clearAgent) "（并清空当前 Agent 记录）" else "")
     }
 
     private fun onFinished(code: Int) {
@@ -113,6 +194,11 @@ object SessionManager {
             if (session?.isRunning == false) {
                 session = null
                 startedAtMs = 0L
+                // 会话是「自己结束」的（用户敲了 exit / tmux 会话被拆掉），
+                // 说明那条会话里已经什么都不跑了 —— 清掉记录，下次进终端不该再
+                // 拿一个已经退出的 Agent 去"恢复"。注意：App 进程被杀时本回调
+                // **不会触发**（进程直接消失），所以"杀 App 再开还是它"仍然成立。
+                setCurrentAgent(null)
                 appContext?.let {
                     it.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                         .edit().remove("started_at").apply()

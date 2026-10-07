@@ -201,13 +201,31 @@ object EnvSelfHeal {
 
     /** hermes uv 包装器接管（坑 #1，update 韧性）：hermes update 若拉到新的 pinned
      * uv 版本会新开 tools/uv-<ver> 目录、放下真实二进制——裸奔一次就硬链接失败。
-     * 统一巡检：ELF 真身挪为 uv.real、原路径放包装器（幂等）。返回是否有修补动作。 */
-    fun ensureHermesUvWrappers(homeDir: File): Boolean = try {
+     * 统一巡检：ELF 真身挪为 uv.real、原路径放包装器（幂等）。返回是否有修补动作。
+     *
+     * @param ensurePinnedDir 额外保证 pinned 目录（uv-0.12.3-linux-arm64）里已有可执行的
+     *   包装器。安装路径需要它：hermes 的 install.sh 里 `ensure_uv` **只要看路径上已有
+     *   可执行文件就跳过下载**，预置包装器即接管；而启动巡检只处理"已经存在的 uv-* 目录"，
+     *   不会替安装器把目录先建出来。
+     *
+     *   ⚠️ 为什么必须在**宿主侧**写而不是往终端里 `echo <base64> | base64 -d`
+     *   （2026-10-07 改）：那段 base64 有 1.5KB，bash 会把整行回显出来 —— 真机实测
+     *   点击「安装」后**整整一屏全是 base64 乱码**，用户看不到任何安装进度（这正是他报的
+     *   "hermes 安装有问题"）。宿主侧写文件走的是同一个 bind（filesDir/home ⇄ /root），
+     *   结果完全一样，但终端里只留下可读的输出。
+     */
+    fun ensureHermesUvWrappers(homeDir: File, ensurePinnedDir: Boolean = false): Boolean = try {
         val tools = File(homeDir, ".hermes/tools")
-        val dirs = tools.listFiles { f -> f.isDirectory && f.name.startsWith("uv-") }
-            ?: return false
+        val dirs = (tools.listFiles { f -> f.isDirectory && f.name.startsWith("uv-") }
+            ?: emptyArray()).toMutableList()
+        if (ensurePinnedDir) {
+            val pinned = File(tools, PINNED_HERMES_UV_DIR)
+            if (pinned.mkdirs()) RunLog.log("hermes 预置 uv 目录：${pinned.name}")
+            if (dirs.none { it.name == pinned.name }) dirs.add(pinned)
+        }
         var changed = false
         for (d in dirs) {
+            if (!d.isDirectory) continue
             val uv = File(d, "uv")
             val real = File(d, "uv.real")
             if (isElf(uv) && !real.isFile) uv.renameTo(real)
@@ -227,6 +245,14 @@ object EnvSelfHeal {
         Log.w(TAG, "hermes uv 包装巡检失败: ${t.message}")
         false
     }
+
+    /**
+     * hermes install.sh 里 `ensure_uv` 钉死的 uv 版本目录名。
+     * ⚠️ 与 [ProotLauncher.HERMES_UV_WRAPPER_B64] 的 URL/哈希同批固化：hermes 将来升
+     * pin 版本时这个名字会失效（新目录由 ensure_uv 自己下载），属已知降级——
+     * 见 ProotLauncher 里那段较长的说明。
+     */
+    const val PINNED_HERMES_UV_DIR = "uv-0.12.3-linux-arm64"
 
     /** ELF 魔数判定（\x7FELF）：区分真实 uv 二进制与我们的 shell 包装器。 */
     private fun isElf(f: File): Boolean {

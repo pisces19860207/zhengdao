@@ -77,37 +77,63 @@ object AgentInstaller {
     /** 组合命令：清 git 残锁（坑 #12）→ copy 模式 → 安装 → 自动启动。 */
     private fun buildCommand(ctx: Context, agent: AppState.AgentInfo, installCmd: String): String {
         val launch = agent.launchCmd.substringBefore(' ')
+        // hermes：包装器在**注入命令之前**由宿主侧落盘（不在命令里拼 base64，见下）
+        if (agent.id == "hermes") prepareHermesUvWrapperOnHost(ctx)
         return buildString {
             append("find /root/.hermes /root/.claude /root/.config -name index.lock -delete 2>/dev/null; ")
             append("export UV_LINK_MODE=copy; ")
             // TMPDIR 指向 home（uv 缓存与目标同侧，避免跨挂载点；WorkBuddy 建议）。
             // TMPDIR 不带 UV_ 前缀，hermes pm 的 UV_* 剥离不影响它（未实测·推断）
             append("mkdir -p /root/tmp; export TMPDIR=/root/tmp; ")
-            if (agent.id == "hermes") {
-                // hermes 专属（2026-10-05 官方 install.sh 源码核实）：ensure_uv 注释明写
-                // "never a uv already on PATH"——它把 pinned uv 0.12.3 自装到
-                // ~/.hermes/tools/uv-0.12.3-<target>/uv，系统 PATH 上的 uv（包括此前
-                // 的包装尝试）根本不会被调用；且脚本全局 UV_NO_CONFIG=1 吞掉一切
-                // uv 配置文件、pm 剥离 UV_* 环境变量。唯一可靠的注入点是它自己的
-                // 二进制：真实 uv 挪为 uv.real，原路径放包装器（exec 前补回
-                // UV_LINK_MODE=copy，pm 剥环境变量剥不到二进制内部）。
-                // ensure_uv 见路径已有可执行文件就跳过下载 → 预置包装器即接管；
-                // 包装器首跑自带 pinned 工件下载 + SHA256 校验（URL/哈希与 install.sh
-                // 同源）。hermes 将来升 pin 版本号时：预置路径失效、新版本目录由
-                // ensure_uv 正常下载裸奔一次（该轮安装可能仍报硬链接），重装一轮
-                // 即被下面的 swap 循环接管——已知降级，不做动态解析。
-                append("for d in /root/.hermes/tools/uv-*; do " +
-                    "if [ -f \"${'$'}d/uv\" ] && [ ! -f \"${'$'}d/uv.real\" ]; then " +
-                    "mv \"${'$'}d/uv\" \"${'$'}d/uv.real\"; fi; done 2>/dev/null; ")
-                // 无条件重写 wrapper（自愈：历史坏版本/未来逻辑更新都直接覆盖）。
-                // 常量与启动时巡检共用（ProotLauncher），hermes update 拉新版本 uv 后
-                // 下一次启动也会被接管
-                append("mkdir -p /root/.hermes/tools/uv-0.12.3-linux-arm64; " +
-                    "echo ${com.example.zhengdao.terminal.ProotLauncher.HERMES_UV_WRAPPER_B64} | base64 -d > /root/.hermes/tools/uv-0.12.3-linux-arm64/uv; " +
-                    "chmod +x /root/.hermes/tools/uv-*/uv 2>/dev/null; ")
-            }
+            // ⚠️ hermes 的 uv 包装器（2026-10-05 官方 install.sh 源码核实）：
+            // 它把 pinned uv 0.12.3 自装到 ~/.hermes/tools/uv-0.12.3-<target>/uv，
+            // 且 ensure_uv 注释明写 "never a uv already on PATH"——系统 PATH 上的 uv
+            // （包括此前的包装尝试）根本不会被调用；脚本还全局 UV_NO_CONFIG=1、pm 剥离
+            // UV_* 环境变量。唯一可靠的注入点是它自己的二进制：真实 uv 挪为 uv.real，
+            // 原路径放包装器（exec 前补回 UV_LINK_MODE=copy，pm 剥环境变量剥不到二进制内部）。
+            // ensure_uv 见路径已有可执行文件就跳过下载 → 预置包装器即接管；
+            // 包装器首跑自带 pinned 工件下载 + SHA256 校验（URL/哈希与 install.sh 同源）。
+            // hermes 将来升 pin 版本号时：预置路径失效、新版本目录由 ensure_uv 正常下载
+            // 裸奔一次（该轮安装可能仍报硬链接），重装一轮即被巡检的 swap 循环接管——已知降级。
+            //
+            // 🔧 2026-10-07 改：这一整段（挪真身 + 写包装器 + chmod）从**命令里**搬到
+            //    **宿主侧落盘**（见 prepareHermesUvWrapperOnHost）。原因：包装器是 1.5KB
+            //    的 base64，`echo … | base64 -d` 会被 bash 整行回显——真机实测点「安装」后
+            //    整整一屏全是 base64 乱码，用户完全看不到安装进度。宿主侧写的是同一个文件
+            //    （filesDir/home ⇄ guest /root 是同一个 bind），结果一样，终端里只剩可读输出。
             append(installCmd)
-            append(" && echo \"[证道] 安装完成，正在启动 $launch（首次启动需初始化，请稍候）…\" && $launch")
+            // 安装结局**必须落在文件上**，否则 App 只能靠固定 TTL 猜 —— 而 hermes 官方
+            // 安装器要 clone 1.1GB 仓库再建 Python 环境，真机实测远超 15 分钟：安装还在
+            // 正常跑，卡片已经翻成「上次安装未完成」，用户看到一条假警报（2026-10-07 报）。
+            // 这里把退出码写进 home 层的 ~/.zhengdao/install-<id>.rc
+            //（宿主侧 = filesDir/home/.zhengdao/），成功失败都留痕；
+            // 进程被 Ctrl-C / 关页打断则文件不更新，由 AgentRepository 用「有没有进程」补判。
+            append("; __zd_rc=\$?; mkdir -p /root/.zhengdao; echo \$__zd_rc > /root/.zhengdao/install-${agent.id}.rc; ")
+            append("if [ \$__zd_rc -eq 0 ]; then ")
+            append("echo \"[证道] 安装完成，正在启动 $launch（首次启动需初始化，请稍候）…\"; $launch; ")
+            append("else echo \"[证道] 安装失败（退出码 \$__zd_rc）。原因就在上面几行；修好后回丹房点「安装」重试。\"; fi")
         }
+    }
+
+    /**
+     * hermes 的 uv 包装器：**宿主侧直接落盘**，不走终端。
+     *
+     * 为什么（2026-10-07，真机截图驱动）：包装器本身是 1.5KB 的 base64，原先在命令里
+     * `echo <base64> | base64 -d > …/uv` 写入 —— bash 会把这一整行**回显**出来，
+     * 于是点「安装」的第一屏就是满屏 base64 乱码，用户看不到任何进度，
+     * 正是他报的"hermes 安装有问题"里最直观的那一条。
+     *
+     * 宿主侧写的是同一个文件：proot 用 `-b $D/home:/root` 把 filesDir/home 绑成 guest
+     * 的 /root，两边就是同一份存储（这条 bind 也是 rc 文件、启动脚本能互通的原因）。
+     * 逻辑复用 [EnvSelfHeal.ensureHermesUvWrappers]（每次启动的巡检走的是同一函数），
+     * ensurePinnedDir=true 额外保证 pinned 目录已存在——install.sh 的 ensure_uv
+     * 见路径上有可执行文件就跳过下载，预置包装器即接管。
+     */
+    private fun prepareHermesUvWrapperOnHost(ctx: Context) {
+        val ok = runCatching {
+            com.example.zhengdao.terminal.EnvSelfHeal
+                .ensureHermesUvWrappers(File(ctx.filesDir, "home"), ensurePinnedDir = true)
+        }.getOrDefault(false)
+        com.example.zhengdao.rootfs.RunLog.log("hermes uv 包装器宿主侧预置：ok=$ok")
     }
 }
