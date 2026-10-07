@@ -4,13 +4,21 @@ plugins {
 }
 
 // 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
+// v1.3.0（2026-10-07）：**可靠性清债 + CI 止血**——无新增功能面。
+//   启动链路三修（~/.local/bin 进 PATH / 启动幂等 / 已装误判成未装）；opencode 启动事故
+//   （截断文件冒充已安装）+「进终端唯一入口静默失败」；终端页唯一化；E2 storageGranted
+//   单一判定源；B2 移除终端 npm 版 opencode；CI 补 assembleRelease + 统一签名密钥。
 // v1.2.0（2026-10-07）：**终端环境优化**——不修 UI、不加功能，只动终端里的环境本身。
 //   卸载终端 npm 版 opencode；修复太极配置路径（v1.1.1 曾误指终端 taiji 的 guest 死路径）；
 //   网络四项与 IP 钉住的尝试及撤除；工作区 .ignore；资源监控与体检三态。
-// 版本序列：v1.0.0(12) → v1.1 → v1.1.1(13) → v1.2.0(14)
+// 版本序列：v1.0.0(12) → v1.1 → v1.1.1(13) → v1.2.0(14) → v1.3.0(15)
 // ⚠️ 14 的归属曾有过争议：v1.1.1 裁决④一度把 14/1.2.0 划给 ChatGPT 线，
 //    该线已归档，14 归还本计划（2026-10-07 用户拍板）。
-val appVersionName = "1.2.0"
+// ⚠️ v1.3.0 是**可靠性清债版**：启动链路三修 + OpenCode 启动事故 + 终端页唯一化 +
+//    E2 单一判定源 + B2 移除终端 npm 版 opencode + CI 止血（assembleRelease / 签名统一）。
+//    没有新增功能面，故 versionName 只进 patch 级的语义在这里体现为 1.2.0 → 1.3.0
+//    （用户 2026-10-07 拍板用 1.3.0 而非 1.2.1）。
+val appVersionName = "1.3.0"
 
 android {
     namespace = "com.example.zhengdao"
@@ -30,7 +38,7 @@ android {
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro（MagicOS 11 /
         // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
         minSdk = 36
-        versionCode = 14
+        versionCode = 15
         versionName = appVersionName
 
         ndk {
