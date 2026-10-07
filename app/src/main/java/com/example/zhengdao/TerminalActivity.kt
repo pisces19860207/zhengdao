@@ -106,11 +106,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 左边缘右滑 = 同红点（用户 2026-10-07 指定）。真机实测：终端里既没有任何
         // 手势代码，左边缘的**系统返回手势也不触发**（主页能触发、终端不行）——
         // 于是整页唯一的出口是左上角那个 11dp 的小红点，单手够不到、也别扭。
-        installEdgeSwipeToClose(findViewById(R.id.terminal_native))
-        // 根布局也得接一份：卡片四周有 6dp 外边距（activity_main.xml 的 FrameLayout
-        // padding），从那道缝里起手的滑动**落不到 TerminalView 上** —— 只挂一处的话，
-        // 恰恰是屏幕最左边那条（用户最自然的起手位置）会漏掉。
-        installEdgeSwipeToClose(findViewById(R.id.terminal_root))
+        //
+        // 2026-10-08 用户投诉「终端页右滑不能返回」后按实测重写（见 E-023）：
+        // 旧实现把监听挂在两个子 View 上、排除区设在 `view.post` 的时机，实测
+        // `dumpsys window` 里的 mSystemGestureExclusion 是**残缺碎块**而非整矩形，
+        // 真手指从边缘起手照样被系统抢走；识别带 32dp、阈值 56dp 又与真人落点错开，
+        // 留下 140–190px 的死区。现在改成 Activity 层**旁观**手势 + 排除区挂窗口根 View。
+        installEdgeSwipeToClose()
         // 绿点 = tmux 上下分屏（最多 2 块，用户定）。
         // ⚠️ 改走**即时键绑定** `C-b "`：原先走 `C-b :` 命令提示符 + run-shell 条件判断，
         //    而提示符是异步打开的、固定延迟必然存在竞态（本文件 injectPendingAutocmd
@@ -218,65 +220,80 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     /**
      * 左边缘右滑 = 关闭终端（与红点同义）。
      *
-     * 为什么只在**最左侧 [EDGE_SWIPE_WIDTH_DP] 的窄条**里识别：
-     * TerminalView 的触摸要留给滚动与选字，全屏横向滑动会把这两件事吃掉。
-     * 窄条与正文操作区互不重叠，代价只是那一条 32dp 宽的边缘不能用来拖选。
+     * 只在**最左侧 [EDGE_SWIPE_WIDTH_DP] 的条带**里识别：终端本身的触摸要留给滚动与选字。
      *
-     * 事件归属：落在窄条内的按下被本监听器接管（DOWN 返回 true），
-     * 之后整串 MOVE/UP 都归我们；窄条之外一律返回 false ——
-     * TerminalView 及其它子视图的行为**一行不改**。
+     * 2026-10-08 真机复盘的三个坑（用户报"右滑不能返回"）：
+     * ① 排除区挂在 `view.post` 里，那时高度常常还是 0，被 coerceAtLeast(1) 截成 1px 高
+     *    → `dumpsys window` 里 mSystemGestureExclusion 是**残缺碎块**而非整矩形，
+     *    系统返回手势没被让开，边缘起手照样被系统接管；现在挂在**窗口根 View** 上、
+     *    布局完成后按真实高度设置、尺寸变化时重设。
+     * ② 识别带 32dp(112px) 比真人拇指落点窄：落点在 48dp 上下时，既被排除区挡住系统返回、
+     *    又超出本页识别带 ⇒ "怎么滑都没反应"（实测起手 170px 完全无响应）。放宽到 56dp。
+     * ③ 触发阈值 56dp(196px) 对"快速一甩"太严（实测 dx=43dp 的一甩被无视），且只在 MOVE 判定、
+     *    UP 不兜底。降到 40dp，并在 UP 再判一次。
+     *
+     * 事件归属：**不消费任何事件**。手势判定放在 [dispatchTouchEvent] 里旁观，
+     * 命中才 `finish()` —— 这样终端自己的点击、长按选词、滑动滚动一律照旧
+     * （旧实现用 OnTouchListener 吞掉按下，会把条带内的终端手势一起吃掉）。
      */
-    private fun installEdgeSwipeToClose(view: android.view.View) {
+    private fun installEdgeSwipeToClose() {
+        val root = window.decorView
+        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyEdgeExclusion(root) }
+        root.post { applyEdgeExclusion(root) }
+    }
+
+    /** 把左侧条带从系统返回手势手里要过来（宽 = 识别带，高 = 真实高度）。 */
+    private fun applyEdgeExclusion(view: android.view.View) {
+        runCatching {
+            val h = view.height
+            if (h > 0) {
+                val w = (EDGE_SWIPE_WIDTH_DP * resources.displayMetrics.density).toInt()
+                view.systemGestureExclusionRects = listOf(android.graphics.Rect(0, 0, w, h))
+            }
+        }
+        Unit
+    }
+
+    // 边缘右滑的旁观状态（不参与事件消费，见 [installEdgeSwipeToClose]）
+    private var edgeStartX = 0f
+    private var edgeStartY = 0f
+    private var edgeTracking = false
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         val density = resources.displayMetrics.density
         val edge = EDGE_SWIPE_WIDTH_DP * density
         val trigger = EDGE_SWIPE_TRIGGER_DP * density
-        android.util.Log.d("EdgeSwipe", "挂载到 ${view.javaClass.name} edge=${edge}px trigger=${trigger}px")
-        // 告诉系统：左侧这条窄带的手势归本页，别抢去当系统返回 ——
-        // 不加这一句的实测表现：从 x≈3 起手时 DOWN 收得到（tracking=true），
-        // 但手指一横向移动就被系统的手势识别器接管，**此后再无 MOVE**，
-        // 于是"从最边上滑"完全没反应（x≥21 的 TerminalView 那条却正常）。
-        // 终端本来就是全屏页、系统返回在这里也不生效，圈走这条带没有副作用。
-        view.post {
-            runCatching {
-                view.systemGestureExclusionRects =
-                    listOf(android.graphics.Rect(0, 0, edge.toInt(), view.height.coerceAtLeast(1)))
+        val slop = EDGE_SWIPE_SLOP_DP * density
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                edgeTracking = ev.x <= edge
+                if (edgeTracking) {
+                    edgeStartX = ev.x
+                    edgeStartY = ev.y
+                }
             }
-        }
-        var startX = 0f
-        var startY = 0f
-        var tracking = false
-        view.setOnTouchListener { _, ev ->
-            when (ev.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    tracking = ev.x <= edge
-                    if (tracking) {
-                        startX = ev.x
-                        startY = ev.y
+            android.view.MotionEvent.ACTION_MOVE,
+            android.view.MotionEvent.ACTION_UP -> {
+                if (edgeTracking) {
+                    val dx = ev.x - edgeStartX
+                    val dy = kotlin.math.abs(ev.y - edgeStartY)
+                    // 横向占优 + 走够阈值 + 纵向没跑偏，才算「右滑返回」；
+                    // 纵向占优的滑动一律放过（终端继续滚动）。
+                    if (dx > trigger && dx > dy && dy < slop) {
+                        edgeTracking = false
+                        android.util.Log.d(
+                            "EdgeSwipe",
+                            "命中 ${if (ev.actionMasked == android.view.MotionEvent.ACTION_UP) "UP 兜底" else "MOVE"}" +
+                                " dx=$dx dy=$dy startX=$edgeStartX",
+                        )
+                        finish()
                     }
-                    tracking
                 }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                    if (tracking) {
-                        val dx = ev.x - startX
-                        val dy = kotlin.math.abs(ev.y - startY)
-                        // 横向走够、纵向没跑偏，才算「右滑返回」；
-                        // 纵向占优的滑动一律放过（交还给终端滚动）。
-                        if (dx > trigger && dy < trigger) {
-                            tracking = false
-                            finish()
-                        }
-                    }
-                    tracking
-                }
-                android.view.MotionEvent.ACTION_UP,
-                android.view.MotionEvent.ACTION_CANCEL -> {
-                    val consumed = tracking
-                    tracking = false
-                    consumed
-                }
-                else -> tracking
+                if (ev.actionMasked == android.view.MotionEvent.ACTION_UP) edgeTracking = false
             }
+            android.view.MotionEvent.ACTION_CANCEL -> edgeTracking = false
         }
+        return super.dispatchTouchEvent(ev)
     }
 
     /**
@@ -1116,17 +1133,21 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     companion object {
         /**
-         * 左边缘右滑关闭终端：识别窄条宽度（dp）。
-         * 32dp 与系统返回手势的感应带同量级（通常 20dp 上下），手指凭肌肉记忆就能碰到；
-         * 再宽就会吃掉终端左侧的拖选区域。
+         * 左边缘右滑关闭终端：识别条带宽（dp）。
+         * 32dp 实测不够——真人拇指落点常在 48dp 上下，落在那儿时系统返回手势被排除区挡住、
+         * 又超出本页识别带，"怎么滑都没反应"（2026-10-08 真机复查用户投诉）。56dp 接近
+         * 主流机型"边缘返回"的手感；再宽就会明显侵占终端左侧的拖选区域。
          */
-        const val EDGE_SWIPE_WIDTH_DP = 32f
+        const val EDGE_SWIPE_WIDTH_DP = 56f
 
         /**
-         * 左边缘右滑关闭终端：横向位移阈值（dp），同时作为纵向偏移的上限——
-         * 纵向超过它即判定为「在滚动终端」，不关页面。
+         * 左边缘右滑关闭终端：横向位移阈值（dp）。
+         * 56dp 对"快速一甩"太严（实测 dx=150px≈43dp 的一甩被完全无视），降到 40dp。
          */
-        const val EDGE_SWIPE_TRIGGER_DP = 56f
+        const val EDGE_SWIPE_TRIGGER_DP = 40f
+
+        /** 纵向容差（dp）：手指越抖越容易超，40dp 以内都算"横向占优"。 */
+        const val EDGE_SWIPE_SLOP_DP = 40f
 
         // ⚠️ 已删除（用户 2026-10-07 定稿「全局单会话」模型时一并去掉）：
         //   · `recentLaunches` + `launchGuardMs`（20 秒"启动中"窗口守卫）
