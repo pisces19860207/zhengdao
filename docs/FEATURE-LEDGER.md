@@ -1,7 +1,10 @@
 # 功能台账（FEATURE-LEDGER）
 
-> 取证基准：`origin/main`，截至 `8011702`（2026-10-07），共约 210 条提交（首提交 `34892b5` 2026-10-03）。
+> 取证基准：`origin/main`，截至 `682dceb`（2026-10-07 23:0x），共约 210 条提交（首提交 `34892b5` 2026-10-03）。
 > ✅ 2026-10-07 23:1x 更新：`origin/main` 已推进到 `682dceb`（新增 `682dceb` 一颗「三道闸 + 删 ApiKeyStore」）。
+> ✅ 2026-10-07 23:5x 更新（集成完成）：原先标着「尚未合入 main」的那批改动**已经合入** ——
+> `fix/terminal-single-session` 的 `da3d8eb` / `0d0f492` / `aa1907e` 与 `v1.3` 的
+> `c64185e` / `47d56f9` / `dc4369c` 已通过两个 `--no-ff` 合并进 `main`，本节表格无需再对号分支。
 > 表中每个 hash 都来自 `git log origin/main` 实测，不是推测。已移除的功能集中在 §3，§2 只列在用/半残。
 
 ## 0. 开工前必读
@@ -14,10 +17,26 @@
 
 | 目录 | 分支 | 用途 | 负责人 |
 | --- | --- | --- | --- |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao` | `main` | 集成工作树（HEAD `3788eac`，落后 origin/main 10 个提交，**有在途改动**） | WorkBuddy 在用 |
+| `C:\Users\guoli\AndroidStudioProjects\zhengdao` | `main` | 集成工作树（HEAD = 2026-10-07 23:5x 的集成 merge，已含 `v1.3` 与 `fix/terminal-single-session`） | 共用（只做集成，勿在此改码） |
+| `C:\Users\guoli\AndroidStudioProjects\zhengdao-wt-session` | `fix/terminal-single-session` | 终端全局单会话路由 + 四个真机问题修复（HEAD `aa1907e`，**已并入 main**） | WorkBuddy（2026-10-07 23:1x 起） |
 | `C:\Users\guoli\AndroidStudioProjects\zhengdao-taiji-ui` | `feat/taiji-compose-ui` | 太极 Compose UI（HEAD `406b885`） | — |
 | `C:\Users\guoli\AndroidStudioProjects\zhengdao-v100-build` | — | **不是 git 仓库**，构建产物目录 | — |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao-wt-v13` | `v1.3` | v1.3，当前集成/发布分支（HEAD `682dceb` = origin/main） | 本台账所在工作树 |
+| `C:\Users\guoli\AndroidStudioProjects\zhengdao-wt-v13` | `v1.3` | v1.3 发布分支（HEAD `dc4369c`，**已并入 main**） | 本台账所在工作树 |
+
+> **2026-10-07 23:1x 变更**：WorkBuddy 的在途改动原先直接躺在主工作树的 `main` 上
+> （旧台账记为「落后 9 个提交，有在途改动」），违反铁律 #3，已按 `AGENTS.md` 迁出：
+> 主工作树 `git merge --ff-only origin/main` 到 `682dceb` 并清干净，在途改动挪到
+> 新建的 `zhengdao-wt-session` 工作树 / `fix/terminal-single-session` 分支，
+> 并 rebase 到最新基准后再提交（`da3d8eb`）。
+> 同一批改动另有一个 WIP 快照，由 Zcode 在迁移前落盘保护，见
+> `wip/workbuddy-terminal-2026-10-07-2258`（=`dd70bf3`，基于旧基准 `3788eac`，
+> 内容为 `da3d8eb` 的子集，**已可弃用**）。
+>
+> **2026-10-07 23:5x 变更（集成）**：`v1.3`（`c64185e` 让号 E-020 / `47d56f9` 钩子放行合并提交 /
+> `dc4369c` CI 签名修复）与 `fix/terminal-single-session`（`da3d8eb` / `0d0f492` / `aa1907e`）
+> **都已并入 `main`**，冲突只有两处：`docs/ERRATA.md`（编号让号 → E-020 排在 E-018/E-019 之后）
+> 与这份台账本身。同一批还改了 `tools/hooks/pre-commit`：**main 上的合并提交放行**
+> （集成本来就该在 main 上做，要拦的是「直接在 main 上改代码再 commit」）。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
@@ -54,7 +73,8 @@
 | 应用自更新 | ✅ 在用 | `5b6e453` | `ui/SettingsScreen.kt` |
 | 欢迎页 + 冷启动记忆上次页面 | ✅ 在用 | `6a4ee6c` | `ui/WelcomeScreen.kt`、`ui/AppState.kt` |
 | 丹房卸载功能（Agent 卸载） | ✅ 在用 | `3aed4f2` | `ui/HomeScreen.kt`、`ui/AgentManifest.kt` |
-| 启动幂等（同名进程计数，防重复拉起） | ✅ 在用 | `5feea73` | `terminal/ProotLauncher.kt` |
+| 启动幂等（同名进程计数，防重复拉起） | ⛔ **已被取代** | `5feea73` | 原在 `TerminalActivity.kt`（该笔只动了 `TerminalActivity.kt` + `ui/AppState.kt`，**旧台账此栏写 `terminal/ProotLauncher.kt` 是错的**）。`countProcesses()` 扫 `/proc` 数同名进程 + 20 秒窗口守卫，已由 `da3d8eb` 换掉 ⇒ 见下一行 |
+| 终端会话路由（**全局单会话**：同 Agent attach / 换 Agent kill） | ✅ 在用（本分支，未合 main） | `da3d8eb` | `terminal/SessionRouter.kt`（纯函数决策表 + 11 条单测）、`TerminalActivity.kt`、`terminal/SessionManager.kt` |
 已移除的功能见 §3。
 
 ## 3. 已被拍板删除的功能（谁要加回来必须先问用户）
@@ -72,6 +92,7 @@
 | 终端 npm 版 opencode 条目 | v1.3 B2 改走宿主版 | `9b70e1b` | ❌ 已移除 | 无（清单重签 + 出厂卡片删除） |
 | Zcode / Gemini CLI 清单条目 | 清单调整，改收 AGY CLI | `0b67e54` | ❌ 已移除 | 无 |
 | 废弃 `.so`（`libproot.so` 186KB、x86_64 `libzstd-jni`） | 形似 so 易被误 `loadLibrary` / 无 x86 需求 | `c456437`、`8127a49` | ❌ 已移除 | 无 |
+| 终端「多窗口并存 + 扫进程判重」（`C-b c` 开新窗口 / `countProcesses()` 数同名进程 / 20 秒启动窗口守卫） | 用户 2026-10-07 拍板**方向反了**：要的是「全局单会话 + 换 Agent 直接 kill」，不是「多会话并存 + 靠判重去重」 | `da3d8eb`（删；`5feea73` 是它最后的长相） | ❌ 已移除 | 无。⚠️ **最容易被误复活的一条**：它长得像"启动幂等的修复"，而单会话模型里幂等是靠 `attach` 天然达成的。谁要再加回 `C-b c` 新窗口或 `countProcesses()`，就是复活被否掉的路线 —— 先问用户 |
 
 > 第 1 条的后续（2026-10-07 23:1x）：删除**已执行并已提交**——`settings/ApiKeyStore.kt` 及整个 `settings/` 包移除、
 > `oc/OcManager.kt` 的 import 与注入调用一并删掉（`git grep -i "ApiKeyStore\|apikey" -- app/src` 零命中），

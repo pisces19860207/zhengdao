@@ -456,7 +456,16 @@ fun HomeTabs(
                     NavigationBarItem(
                         selected = tab == 1,
                         // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
-                        onClick = { onOpenTerminal(null, null) },
+                        //
+                        // ⚠️ `tab = 1` 不能省（2026-10-07 用户报「红点返回回的不是主界面，
+                        //    是太极 tab」）：人在太极页（tab=0）点洞天进终端时若不改选中态，
+                        //    终端一整页盖在上面时看不出问题，等红点关掉终端就露馅了——
+                        //    底部高亮还停在太极，用户以为"返回到了 opencode"。
+                        //    洞天是进终端的那个 tab，用过终端就该停在洞天。
+                        onClick = {
+                            tab = 1
+                            onOpenTerminal(null, null)
+                        },
                         icon = { CaveIcon(tab == 1) },
                         label = { Text("洞天") },
                         colors = tabColors,
@@ -494,9 +503,53 @@ fun HomeTabs(
                 0 -> com.example.zhengdao.ui.taiji.TaijiScreen()
                 // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
                 2 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
-                // 洞天：点击即进终端（onClick 已处理），停留时显示空态
+                // 洞天：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
+                // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在洞天会看到一片空白，
+                //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
+                1 -> TerminalTabEmptyState(onOpenTerminal = { onOpenTerminal(null, null) })
                 else -> {}
             }
+        }
+    }
+}
+
+/**
+ * 洞天 Tab 的空态 —— 只是"从终端回来的落点"。
+ *
+ * 为什么需要：终端是**独立的整屏 Activity**（不在 Tab 里内嵌，见 TerminalActivity），
+ * 所以洞天这个 Tab 本身没有内容。红点 / 左边缘右滑关掉终端后落在这里，
+ * 以前是一片全白（`else -> {}`），用户看到空白只会以为 App 坏了。
+ * 空态里把"终端是个独立页面"说明白，并留一个再进去的入口。
+ */
+@Composable
+private fun TerminalTabEmptyState(onOpenTerminal: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = "洞天",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(20.dp))
+        Text(
+            text = "终端是一个独立页面",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "关掉它之后会回到这里。会话还在后台跑着，再进去就是刚才那一屏。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(onClick = onOpenTerminal, shape = androidx.compose.foundation.shape.RoundedCornerShape(50)) {
+            Text("进入终端")
         }
     }
 }
