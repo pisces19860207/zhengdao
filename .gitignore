@@ -21,3 +21,4 @@ u.xml
 postinstall.mjs
 binls.txt
 debug-body.*
+rust/target/
