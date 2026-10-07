@@ -471,6 +471,14 @@ rustflags = [
 只加 `max-page-size` 不给 `common-page-size`，在 r27 下**部分段仍会对齐到 4KB**——
 这正是"改了参数却以为修好了"的陷阱。
 
+> ⚠️ **2026-10-07 补正**：上面这句在本项目**被实测推翻**。
+> `app/src/main/cpp/CMakeLists.txt:18` 只给了 `-Wl,-z,max-page-size=16384`，
+> 而它产出的 `libtermux.so` 三个 LOAD 段 p_align 实测**全 `0x4000`** ⇒
+> 决定 PT_LOAD `p_align` 的是 `max-page-size`，`common-page-size` 只是冗余保险。
+> 两个都给当然更稳（Rust 侧就是这么配的），但**不要把它写成"缺一个就等于没对齐"**——
+> 那会让后来人误判一个其实已经对齐的产物。验收永远以 `llvm-readelf -l` 的实测为准。
+> 另见 E-016 §5。
+
 ### 4. 验收（不能拿"App 没崩"当验收）
 
 正因回退纪律让失败静默，必须独立取证：
@@ -832,3 +840,64 @@ fun withObjectStorage(url: String, objectStoreBase: String): List<String>
    后者一旦不落档，几个月后就会被重新捡起来。
 2. **废弃一个方案时，最先该清理的是它的可执行清单**，不是它的方案描述：方案描述是历史，清单是行动指令。
 3. **列待办前先 `git grep` 一遍函数名。** 本次清单要求"新增"的函数已经存在了近一周。
+
+---
+
+## E-016 · 2026-10-07 · CI 一直在构建并发布一个 App 根本不用的 proot
+
+### 1. 现象
+
+`latest` 滚动版清理掉 debug 包后只剩三个资产：rootfs 包 + `.sha256` + **`proot-arm64`（186,296 B）**。
+其中 `proot-arm64` 来自 `rootfs/build-proot.sh`——它从上游 `proot-me/proot` master 自编译
+（`:133` 链接、`:137` 拷成 `proot-arm64`），由 `.github/workflows/build.yml` 的
+「构建 proot」步骤产出，再随 `rootfs-files/` 一起传上 Releases 页。
+
+而**这个文件在应用代码里 0 引用**：`git grep proot-arm64` 只命中 `rootfs/build-proot.sh:137/139`
+与 `build.yml:10`（产物说明），没有一行 Kotlin 读它。
+
+### 2. 根因：两条路线并存，旧的被取代却没删
+
+- **旧路线（已废弃）**：自编译 proot → 改名 `libproot.so` 放进 `jniLibs/arm64-v8a/` →
+  从 `nativeLibraryDir` exec。`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt:156-159`
+  已注明该方案**废弃删除**，理由是"本机实测它在 App 域内加载 guest 静默退出 255"，
+  且该 `.so` 有 GPL 传染隐患。
+- **现行路线**：`app/src/main/assets/proot/` 下 4 个 **Termux 官方发行二进制**
+  （proot **5.1.107.96**、`loader`、`libtalloc.so`、`libandroid-shmem.so`），
+  由 `ProotLauncher.kt:164-169` 按 SHA256 钉死后释放到 `files/termux-proot/`。
+  设计文档与 `PROVENANCE.md` 都写明「用 Termux 官方产物，不要退回自编译上游版」。
+
+`rootfs/build-proot.sh` 属于旧路线，但 CI 一直在跑它、还把它发到用户可见的下载页。
+换句话说：**这条红线在代码里从未被执行过。**
+
+### 3. 为什么没被发现
+
+- 它不崩、不影响任何功能，只是白占一份资产和约 2 分钟 CI 时间；
+- 名字听起来完全合理——"proot" 就是 App 在用的那个东西，
+  只有把它和 `assets/proot/` 对照，才会发现是两个不同的 proot；
+- 与 E-013 同类：**CI 做的事和 App 实际需要的东西之间，没有任何一步做对账。**
+
+### 4. 修法（2026-10-07 已实施）
+
+1. `.github/workflows/build.yml`：删掉「构建 proot」步骤；头部产物说明同步删掉 `proot-arm64` 行，
+   并写明为何不再构建（指向本条）。
+2. `rootfs/build-proot.sh` 整份删除（140 行）——留档在 git 历史里，要用时 `git show`。
+3. Releases 页 `latest` 里的 `proot-arm64` 资产删除。
+4. 文档同步：`docs/milestones/M1.1-开发任务书.md` 的 ⚠️ 块由「可整条移除」改为「已移除」。
+
+### 5. 顺带纠正两处文档错值
+
+- `rootfs/build-proot.sh:2710` 这个行号是**错的**——该脚本只有 140 行，
+  `-Wl,-z,max-page-size=16384` 在 **`:133`**。
+- 「r27 必须同时给 `max-page-size` 与 `common-page-size`，漏第二个部分段仍会对齐到 4KB」
+  这句话在本项目**被实测推翻**：只给 `max-page-size` 时 `libtermux.so` 三个 LOAD 段
+  p_align 已是 `0x4000`（`app/src/main/cpp/CMakeLists.txt:18` 就只有这一个 flag）。
+  官方对 r27 的建议是两个都给，作为冗余保险没错，但不该被写成"缺一个就是缺口"。
+
+### 6. 教训
+
+1. **"这个文件是干什么的"要问应用代码，不能问文件名。** 两个都叫 proot 的东西可以只有一个真被用；
+   `git grep <产物名>` 是唯一便宜的裁决手段。
+2. **CI 的产物清单必须和 App 的读取点对账。** E-013（发了 debug 包）与本条（发了没人用的产物）
+   是同一个洞的两种表现：流水线缺少"发出去的东西是否有人用"这一关。
+3. **红线写在设计文档里 ≠ 被执行。** M1.1 早就写了"不要退回自编译上游版"，
+   而 CI 一直在做这件事——文档与实践的差距要靠 `git grep` 定期找，不能靠读文档。
