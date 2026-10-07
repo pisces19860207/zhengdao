@@ -68,7 +68,31 @@ object AppState {
         File(ctx.filesDir, "rootfs/.zhengdao-rootfs-ok").isFile
 
     private fun firstExisting(ctx: Context, relative: List<String>): Boolean =
-        relative.any { File(ctx.filesDir, it).isFile }
+        relative.any { existsInHost(ctx, it) }
+
+    /**
+     * 宿主视角下"这条路径是不是一个可执行文件"。
+     *
+     * ⚠️ 为什么要多这一步（2026-10-07 真机实测）：Agent 安装脚本**在 guest 里**创建命令软链，
+     *    目标是 guest 的绝对路径，例如
+     *        /root/.local/bin/claude -> /root/.local/share/claude/versions/2.1.292
+     *    而 guest 的 /root 是 App 端 `files/home` bind 进去的（设计文档 §8）。
+     *    App 在**宿主**侧用 File.isFile() 读这条软链时，目标 `/root/...` 不存在 ⇒ 判定悬空
+     *    ⇒ 明明装好了却显示「安装」而不是「启动」。实测对照：agy 是真实文件（能识别），
+     *    claude 是这种软链（识别不到）。
+     *    修法：读不到时若是软链且目标以 /root/ 开头，映射回 files/home 再判一次。
+     */
+    private fun existsInHost(ctx: Context, relative: String): Boolean {
+        val f = File(ctx.filesDir, relative)
+        if (f.isFile) return true
+        // 软链解析需要 Java 7 NIO（minSdk 36，无门槛）
+        return runCatching {
+            val target = java.nio.file.Files.readSymbolicLink(f.toPath()).toString()
+            if (target.startsWith("/root/")) {
+                File(ctx.filesDir, "home/${target.removePrefix("/root/")}").isFile
+            } else false
+        }.getOrDefault(false)
+    }
 
     /**
      * Agent 卡片列表（M3 起由验签 manifest 驱动，骨架 §2）：
