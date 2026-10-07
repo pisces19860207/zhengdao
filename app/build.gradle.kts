@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -35,8 +37,11 @@ android {
         // 旧规则选择，同类免 root Linux 环境产品均采用同一策略。
         // 🚫 未经架构前提重新评估，任何人不得上调此值。
         targetSdk = 28
-        // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro（MagicOS 11 /
-        // Android 16）；Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
+        // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro
+        // （PGT-AN10 / MagicOS 10.0.0.175 CHNC00E175R208P6 / Android 16）；
+        // Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
+        // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
+        //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
         versionCode = 15
         versionName = appVersionName
@@ -192,4 +197,64 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 构建期公钥断言（M3 红线，2026-10-07 落地）
+//
+// `AgentManifest.PUBLIC_KEY_B64` 是 Agent 清单（manifest）Ed25519 验签的**信任根**：
+// 它固化在 APK 里，验签不过 = 整份清单被拒。原先只有运行时兜底断言（长度 / 非占位符），
+// 而那发生在用户设备上——改错了照样出包，装上去才炸。这里把它挪到构建期钉死。
+//
+// 断言四件事（任一不满足 → 构建立即失败）：
+//   ① 源码里确实存在 PUBLIC_KEY_B64 赋值（防被误删 / 改名）；
+//   ② 值非空、非占位符（xxx / TODO / placeholder / replace…）；
+//   ③ base64 解码后恰好 32 字节（Ed25519 raw 公钥长度）；
+//   ④ 与下面 expectedAgentPubKeyB64 逐字相同（防有人悄悄换钥匙）。
+//
+// ④ 才是核心：只校验格式的话，换一把攻击者可控的公钥照样能通过。
+// 若确为有意轮换公钥：先改本文件的 expectedAgentPubKeyB64，再改 AgentManifest.kt 的值，
+// 并同步 tools/sign-agents-manifest.py 配套的私钥（私钥在仓库外 ~/.zhengdao-keys/）。
+// ─────────────────────────────────────────────────────────────────────────────
+val expectedAgentPubKeyB64 = "LW7JtVXGiZGrFBFl8x1wlyPBtBez7tNNWzz4AhSI54Q="
+
+val assertAgentPublicKey = tasks.register("assertAgentPublicKey") {
+    description = "构建期断言 AgentManifest.PUBLIC_KEY_B64（manifest 验签信任根）"
+    group = "verification"
+    val manifestKt = layout.projectDirectory.file(
+        "src/main/java/com/example/zhengdao/ui/AgentManifest.kt"
+    )
+    val expected = expectedAgentPubKeyB64
+    inputs.file(manifestKt).withPropertyName("agentManifestKt")
+    // 断言极廉价（读一个小文件 + 正则），不做增量跳过——免得「跳过」看起来像「通过」。
+    outputs.upToDateWhen { false }
+    doLast {
+        val src = manifestKt.asFile
+        if (!src.isFile) error("[assertAgentPublicKey] 找不到 $src —— 公钥是验签信任根，不可缺失")
+        val text = src.readText(Charsets.UTF_8)
+        val m = Regex("""PUBLIC_KEY_B64\s*=\s*"([^"]*)"""").find(text)
+            ?: error("[assertAgentPublicKey] AgentManifest.kt 里找不到 PUBLIC_KEY_B64 赋值")
+        val actual = m.groupValues[1]
+        check(actual.isNotBlank()) { "[assertAgentPublicKey] PUBLIC_KEY_B64 为空" }
+        check(!Regex("(?i)xxx|todo|placeholder|replace|changeme|占位").containsMatchIn(actual)) {
+            "[assertAgentPublicKey] PUBLIC_KEY_B64 仍是占位符：$actual"
+        }
+        val raw = Base64.getDecoder().decode(actual)
+        check(raw.size == 32) {
+            "[assertAgentPublicKey] PUBLIC_KEY_B64 解码后应为 32 字节（Ed25519 raw 公钥），实际 ${raw.size}"
+        }
+        check(actual == expected) {
+            "[assertAgentPublicKey] PUBLIC_KEY_B64 与构建期固化值不一致，构建中止。\n" +
+                "  构建期固化: $expected\n" +
+                "  源码实际值: $actual\n" +
+                "  若确为有意轮换：请同步更新 app/build.gradle.kts 的 expectedAgentPubKeyB64、" +
+                "AgentManifest.kt 的公钥、以及 tools/sign-agents-manifest.py 配套的私钥。"
+        }
+        logger.lifecycle("[assertAgentPublicKey] OK：公钥已固化（${actual.take(8)}…，32 字节）")
+    }
+}
+
+// 挂到所有变体的编译前置：assembleDebug / assembleRelease / bundle* 都绕不过去。
+tasks.matching { it.name.matches(Regex("pre[A-Z].*Build")) }.configureEach {
+    dependsOn(assertAgentPublicKey)
 }
