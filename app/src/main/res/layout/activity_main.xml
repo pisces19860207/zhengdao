@@ -5,6 +5,7 @@
   结构：黑色桌面 → 圆角窗口卡片（工具栏 + 终端 + 快捷键条）。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/terminal_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/white"
