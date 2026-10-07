@@ -1,6 +1,7 @@
 # 功能台账（FEATURE-LEDGER）
 
 > 取证基准：`origin/main`，截至 `8011702`（2026-10-07），共约 210 条提交（首提交 `34892b5` 2026-10-03）。
+> ✅ 2026-10-07 23:1x 更新：`origin/main` 已推进到 `682dceb`（新增 `682dceb` 一颗「三道闸 + 删 ApiKeyStore」）。
 > 表中每个 hash 都来自 `git log origin/main` 实测，不是推测。已移除的功能集中在 §3，§2 只列在用/半残。
 
 ## 0. 开工前必读
@@ -13,10 +14,10 @@
 
 | 目录 | 分支 | 用途 | 负责人 |
 | --- | --- | --- | --- |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao` | `main` | 集成工作树（HEAD `3788eac`，落后 origin/main 9 个提交，**有在途改动**） | WorkBuddy 在用 |
+| `C:\Users\guoli\AndroidStudioProjects\zhengdao` | `main` | 集成工作树（HEAD `3788eac`，落后 origin/main 10 个提交，**有在途改动**） | WorkBuddy 在用 |
 | `C:\Users\guoli\AndroidStudioProjects\zhengdao-taiji-ui` | `feat/taiji-compose-ui` | 太极 Compose UI（HEAD `406b885`） | — |
 | `C:\Users\guoli\AndroidStudioProjects\zhengdao-v100-build` | — | **不是 git 仓库**，构建产物目录 | — |
-| `C:\Users\guoli\AndroidStudioProjects\zhengdao-wt-v13` | `v1.3` | v1.3，当前集成/发布分支（HEAD `8011702` = origin/main） | 本台账所在工作树 |
+| `C:\Users\guoli\AndroidStudioProjects\zhengdao-wt-v13` | `v1.3` | v1.3，当前集成/发布分支（HEAD `682dceb` = origin/main） | 本台账所在工作树 |
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 

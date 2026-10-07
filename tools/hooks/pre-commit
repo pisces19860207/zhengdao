@@ -2,7 +2,8 @@
 # 证道 zhengdao —— pre-commit 闸门
 #
 # 目的：让「不核对就开工」的做法提不上提交。三道闸：
-#   1) 禁止在集成分支 main 上直接提交（一个 worktree = 一个分支 = 一个 agent）
+#   1) 禁止在集成分支 main 上直接提交（一个 worktree = 一个分支 = 一个 agent）；
+#      **合并提交（MERGE_HEAD 存在）例外** —— 集成本来就该在 main 上做
 #   2) 你要提交的文件，origin/main 上你还没同步的提交也改过 —— 说明你在旧版本上改，
 #      提交上去会把别人的改动覆盖回去（这是「功能没了」的主要来源）
 #   3) 你要新增的文件，历史上被删除过 —— 复活检测（被拍板删掉的功能不许悄悄加回来）
@@ -39,15 +40,24 @@ if ! git rev-parse --verify --quiet "$BASE" >/dev/null 2>&1; then
   exit 0
 fi
 
-# ---- 1. 禁止在 main 上直接提交 ----
+# ---- 1. 禁止在 main 上直接提交（**合并提交除外**）----
+#   rationale：集成本来就发生在 main 上（把各功能分支 merge 进来就是这棵工作树的职责）。
+#   要拦的是"在 main 上直接动手改文件然后 commit"——那才会让别的 agent 看不到你的进度。
+#   合并提交（存在 MERGE_HEAD）放行，但闸 2 / 闸 3 仍然照查。
 cur="$(git symbolic-ref --short -q HEAD || true)"
 if [ "$cur" = "main" ]; then
-  echo "" >&2
-  echo "✗ pre-commit 拦截：不允许在集成分支 main 上直接提交。" >&2
-  echo "  这个工作树是集成用的。在上面直接改，别的 agent 看不到你的进度，" >&2
-  echo "  下一次同步就可能把你没提交的改动冲掉 —— 这正是「功能没了又加回来」的来源。" >&2
-  echo "  正确做法：  git switch -c feat/<功能名>     然后在这个分支上提交。" >&2
-  fail=1
+  merge_head="$(git rev-parse --path-format=absolute --git-path MERGE_HEAD 2>/dev/null || true)"
+  if [ -n "$merge_head" ] && [ -f "$merge_head" ]; then
+    echo "ℹ️  pre-commit: main 上的**合并提交**，放行（集成正当）——但仍会跑陈旧基准/复活检测。" >&2
+  else
+    echo "" >&2
+    echo "✗ pre-commit 拦截：不允许在集成分支 main 上直接提交。" >&2
+    echo "  这个工作树是集成用的。在上面直接改，别的 agent 看不到你的进度，" >&2
+    echo "  下一次同步就可能把你没提交的改动冲掉 —— 这正是「功能没了又加回来」的来源。" >&2
+    echo "  正确做法：  git switch -c feat/<功能名>     然后在这个分支上提交。" >&2
+    echo "  （把功能分支 merge 进 main 是允许的，不算「直接提交」。）" >&2
+    fail=1
+  fi
 fi
 
 staged="$($GIT diff --cached --name-only)"
