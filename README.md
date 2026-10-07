@@ -23,7 +23,7 @@
 > **🔒 关于 targetSdk 28（长期说明）**
 > 证道**刻意钉死 targetSdk 28**，这是架构级约束，不是版本落后：
 > - **为什么**：Android 10 起系统禁止 targetSdk ≥ 29 的应用从「自己的可写数据目录」执行文件（W^X）。证道的整套 Linux 环境（rootfs 里成千上万个程序）恰恰放在这个目录里，只有 targetSdk 28 能豁免，proot 才能正常运行。**抬高 targetSdk = 整个 Linux 环境变成无法执行的死文件。** Termux（GitHub/F-Droid 版）、太墟均采用同一策略。
-> - **代价**：Android 16 上，targetSdk 28 应用读写 `/sdcard` 共享存储**需要 `READ`/`WRITE` 运行时授权**（且 Android 13+ 须摘掉 manifest 的 `READ` 帽子才能持有 `READ`——详见 `d414dca`）。经 App 真身实测，`/sdcard` 直连**读写均可用**（文件管理器可见）；**SAF 镜像同步仅作个别 ROM 的备用兜底**，非主路径。你若选了手机文件夹，证道把它镜像到 Linux 环境内的 `~/mnt/phone/` 作为兜底。
+> - **代价**：Android 16 上，targetSdk 28 应用读写 `/sdcard` 共享存储**需要 `READ`/`WRITE` 运行时授权**（且 Android 13+ 须摘掉 manifest 的 `READ` 帽子才能持有 `READ`——详见 `d414dca`）。经 App 真身实测，`/sdcard` 直连**读写均可用**（文件管理器可见），这是**唯一主路径**。~~早期设计的「SAF 镜像同步到 Linux 环境内 `~/mnt/phone/`」兜底已整体删除~~（`4bbfd21`，连同 `mirror/PhoneMirror.kt` 与 FD 代理一并移除）；如今仅剩的 SAF 用途是**用户主动挑 rootfs 安装包**（`ACTION_OPEN_DOCUMENT`），与目录同步无关。
 > - **长期风险**：若 Android 未来上调最低安装 targetSdk 门槛，或收紧 untrusted_app 域策略，证道需要迁移到 `system_linker_exec` 灰区或云机瘦客户端形态。该风险每季度在真机核对一次，详见 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md)。
 
 ## 网络要求
@@ -79,7 +79,20 @@
 
 ## 当前状态
 
-**v1.1.1**（2026-10-07；v1.1 太极 UI 完整化 + 洞天体验打磨与清债，`versionCode 13`）：
+**v1.3.0**（2026-10-07；`versionCode 15`）——本体是**可靠性清债 + CI 止血**，没有新增功能面：
+
+- **启动链路三修**：`~/.local/bin` 从未进 PATH（导致 Agent 装完启不来）、
+  点一次开一个 / 点两次开两个的窗口堆积、已装 Agent 被判成「未装」
+- **OpenCode 启动事故修复**：截断文件冒充「已安装」+ 三层加固
+- **终端页唯一化**：任务栈不再叠出一串终端实例
+- **v1.3 E2**：`storageGranted` 双判统一为 `ProotLauncher` 单一判定源
+- **v1.3 B2**：移除终端里的 npm 版 OpenCode 条目（`agents.json` 重签 + 出厂卡片删除），
+  与 v1.2「App 只保留宿主版一份」对齐
+- **测试与基线**：RootFS 第一阶段覆盖 +23 例；新增 Macrobenchmark 模块 + Compose 性能基线（四场景真机实测）
+- **CI 止血**：流水线补上 `assembleRelease`（此前发布的「正式版」实为 debug 包），
+  并统一 CI 签名密钥（此前每次构建都换一把 key，产物互相装不上）。详见 `docs/ERRATA.md` **E-013 / E-014**
+
+功能面（v1.1 起定型，v1.3 未改）：
 
 - **太极 Tab**：OpenCode 原生 Compose 客户端——Markdown 渲染、思考折叠、工具卡、
   会话历史/新建/恢复、模型池选择器（免费模型标注、会话级切换、重启保持）
