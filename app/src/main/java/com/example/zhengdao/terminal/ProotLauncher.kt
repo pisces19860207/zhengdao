@@ -235,6 +235,9 @@ object ProotLauncher {
                 )
                 RunLog.log("工作区 .ignore 已生成（跳过 opencode/ 等大目录）")
             }
+        }.onFailure {
+            // 失败必须可见：静默吞掉会让"搜索没跳过 opencode/"变成查不出来的玄学问题
+            RunLog.log("工作区 .ignore 生成失败: ${it.message}（路径 $wsHost）")
         }
 
         // hermes 命令立即可用（用户反馈：装完敲 hermes 没反应）：安装器把命令发布在
