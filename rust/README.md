@@ -46,3 +46,18 @@ NIST 向量 + 随机数据对拍 MessageDigest + 计时对比。
 ```bash
 ./gradlew connectedDebugAndroidTest --tests "com.example.zhengdao.rust.*"
 ```
+
+## 实测数据（Honor Magic 5 Pro / Android 16 / arm64-v8a，10MB × 10 轮均值）
+
+| 轮次 | 配置 | 平台 MessageDigest | Rust/JNI | 差值 |
+|---|---|---|---|---|
+| 第一轮 | sha2 **软件实现**（漏开 asm） | 5ms | 27ms | +22ms |
+| 第二轮 | sha2 **asm feature**（ARMv8 硬件指令） | 6ms | 33ms | +27ms |
+
+**结论（两轮对照后的修正归因）**：
+
+1. 开不开 asm，Rust/JNI 都慢于平台 5 倍左右——**瓶颈不在哈希算法，在 JNI 边界**
+   （10MB 数组拷贝进 native + hex 字符串封送回 JVM）。
+2. 因此 v2.0 的 Rust 收益模型是：**数据常驻 native，把解析/分块/校验等多步流水线
+   整体下沉一次做完**，而不是单函数跨边界调大块数据——后者永远亏。
+3. 对拍正确性在两轮中均全部一致（Rust 与平台摘要逐字节相同）。
