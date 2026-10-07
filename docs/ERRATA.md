@@ -430,11 +430,19 @@ E1 的 `packaging` 块与 zcode 的 `androidTestImplementation(commons-compress)
 NDK r27 默认按 4KB 页对齐，`libextract.so` 会被 loader 直接拒绝加载；而规范 #2 的回退纪律
 让这次失败**不崩溃、不报错、无日志**，只是永远走 Java 路径。
 
-> **状态（2026-10-07）**：本条的**修法尚未进 `main`**。上面的分析对 `main` **依然成立**——
-> `main` 现在仍在打包 4KB 对齐的 `app/src/main/jniLibs/arm64-v8a/libextract.so`（803,856 B），
-> 16KB 页设备上它照样加载不了、照样静默落回 Java 路径。
-> 修复（`rust/core` 收编 + `libzhengdao_core.so` + `.cargo/config.toml` 两个 page-size flag）
-> 落在 `feat/v2.0-r1-rust-core-16kb` 分支的 `008d554`，随 v2.0 R1 合并才生效。
+> **状态（2026-10-07，本条更新过两次）**
+> - **当时（写这条时）**：本条的**修法尚未进 `main`**。上面的分析对 `main` **依然成立**——
+>   `main` 那时仍在打包 4KB 对齐的 `app/src/main/jniLibs/arm64-v8a/libextract.so`（803,856 B），
+>   16KB 页设备上它照样加载不了、照样静默落回 Java 路径。
+>   修复（`rust/core` 收编 + `libzhengdao_core.so` + `.cargo/config.toml` 两个 page-size flag）
+>   当时落在 `feat/v2.0-r1-rust-core-16kb` 分支的 `008d554`。
+> - **✅ 已收尾（2026-10-07 22:41）**：用户拍板后，该提交已 **cherry-pick 进 `main`（`af37010`）**——
+>   只挑这一颗；分支上另外三颗（`dd75713` 终端页唯一化、`5697943` ERRATA E-013、`8484d46` CI
+>   加 assembleRelease）在 `main` 上都已有等价物，**直接 merge 会引入重复提交并让
+>   `build.yml`/`ERRATA.md` 冲突**，故不采用 merge（见 `文档核对报告-2026-10-07.md` §10）。
+>   现状：`main` 的 `jniLibs/arm64-v8a/` 只剩 `libzhengdao_core.so`（807,712 B，四个 LOAD 段
+>   p_align 实测**全 `0x4000`**）+ `libzstd-jni-1.5.6-4.so`；真机 8/8 通过（extract 3 + sha256 5，
+>   设备 `AD3J023824001723`）。**下面第 1 节描述的 `libextract.so` 现象自本条起属历史记录。**
 
 ### 1. 现象：一个"跑得挺好"的假象
 
@@ -567,9 +575,12 @@ PC 层 `cargo test` 8/8（sha256 4 + extract 4）。
 3. **`.so` 入库 + CI 免装 Rust = CI 永远不会重编、也就永远发现不了这类问题**。
    二进制产物的正确性只能靠人写进文档的验收命令守住（已写进 `rust/README.md` 与
    `rust/core/README.md`）。
-   > ⚠️ 行号更正：`rust/core/README.md` **在 main 上不存在**，它只存在于
+   > ⚠️ 行号更正：写下这句时 `rust/core/README.md` **在 main 上并不存在**，它只存在于
    > `feat/v2.0-r1-rust-core-16kb` 分支（R1 收编把 `rust/extract` + `rust/sha256poc`
-   > 合并成 `rust/core` 的产物）。在 main 上应读 `rust/extract/README.md`。
+   > 合并成 `rust/core` 的产物）；main 上当时该读 `rust/extract/README.md`。
+   > ✅ **2026-10-07 22:41 起已成立**：R1 收编 cherry-pick 进 main（`af37010`）后，
+   > `rust/core/README.md` 已存在于 main，`rust/extract/` 与 `rust/sha256poc/` 已删除，
+   > 上面这句指向不再落空。
 4. **"开个 feature 就好了"要验证**：sha256 的 asm feature 开了之后反而更慢（27ms → 33ms），
    因为它根本没有改变瓶颈所在。优化前先量出瓶颈在哪一段，别猜。
 
