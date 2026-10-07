@@ -779,7 +779,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             try {
                 installStatus("开始下载运行环境（断点续传）…")
                 val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(appContext, url)
-                val expectedSha = RootfsDownloader.fetchText("$url.sha256")
+                // 校验值也走镜像兜底：主源不通时不能因为拿不到 sha 就白白重下 326MB
+                val expectedSha = RootfsDownloader.withMirrorFallback("$url.sha256")
+                    .firstNotNullOfOrNull { RootfsDownloader.fetchText(it) }
                 var needDownload = true
                 if (archive.isFile && !expectedSha.isNullOrBlank()) {
                     runCatching {
@@ -790,7 +792,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 }
                 if (needDownload) {
                     var lastPercent = -1L
-                    RootfsDownloader.download(urls = listOf(url), dest = archive, shaUrl = "$url.sha256") { done, total ->
+                    RootfsDownloader.download(
+                        urls = RootfsDownloader.withMirrorFallback(url),
+                        dest = archive,
+                        shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
+                    ) { done, total ->
                         if (total > 0) {
                             val percent = ((done * 100 / total).coerceIn(0, 100) / 20) * 20
                             if (percent != lastPercent) {
