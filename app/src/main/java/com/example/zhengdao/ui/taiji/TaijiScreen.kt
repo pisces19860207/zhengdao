@@ -328,7 +328,20 @@ fun TaijiScreen(
                         isStreaming = state.isStreaming,
                         enabled = state.sessionId != null,
                         onInputChange = repo::setInput,
-                        onSend = { scope.launch { repo.prompt(state.input) } },
+                        onSend = {
+                            // 失败必须看得见：prompt 的失败原先只写进 App 私有的运行日志文件，
+                            // 用户在界面上只看到"点了一下没反应"（2026-10-08 投诉）。
+                            val text = state.input
+                            scope.launch {
+                                repo.prompt(text).onFailure { e ->
+                                    Toast.makeText(
+                                        ctx,
+                                        "发送失败：${e.message ?: e.javaClass.simpleName}",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            }
+                        },
                         onAbort = { scope.launch { repo.abort() } },
                     )
                 }
@@ -504,12 +517,23 @@ private fun OcVersionFooter() {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        val isInstalled = installed != null
         OutlinedButton(
             enabled = !checking,
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             onClick = {
                 checking = true
                 scope.launch {
+                    // 未安装属异常态（OpenCode 随 APK 内置、开箱即用）：直接装，不谈"更新"。
+                    // 设置页那处入口 2026-10-08 已按用户要求撤掉（主打不是 OpenCode），
+                    // 这里是唯一的更新 / 重装入口。
+                    if (!isInstalled) {
+                        val r = withContext(Dispatchers.IO) { OcManager.downloadAndInstall(ctx) { } }
+                        checking = false
+                        installed = OcManager.installedVersion(ctx)
+                        Toast.makeText(ctx, r.message, Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
                     val chk = withContext(Dispatchers.IO) { OcManager.checkUpdateDetailed(ctx) }
                     checking = false
                     when (chk) {
@@ -527,7 +551,7 @@ private fun OcVersionFooter() {
                     }
                 }
             },
-        ) { Text(if (checking) "检查中…" else "检查 OpenCode 更新") }
+        ) { Text(if (checking) "处理中…" else if (isInstalled) "检查 OpenCode 更新" else "安装 OpenCode") }
     }
 
     // 有新版：弹确认（digest 缺失时明确说明为何不给直装 —— 不静默降级）

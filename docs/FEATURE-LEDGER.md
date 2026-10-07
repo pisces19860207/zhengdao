@@ -95,6 +95,38 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `AndroidJUnitRunner` 一起手就 `NoClassDefFoundError: androidx/tracing/Trace`（用 `adb shell am instrument`
 > 对着 release 跑必崩，别浪费时间）。
 
+> **2026-10-08 变更（用户四条投诉的第一批：终端右滑 / 太极发送 / 设置页 OpenCode 入口）**：
+> 用户原话：「首页也没有定下来，唉，还有就是在终端页屏幕右滑不能返回是为什么啊？太极对话框的发送按钮
+> 点了也没用啊,设置页的opencode bionic版检查更新就不要了，主打的不是opencode。」处置：
+> ① **终端左边缘右滑返回**（`app/src/main/java/com/example/zhengdao/TerminalActivity.kt`）：旧实现两处
+> 静默失效 —— 排除区设在 `view.post` 里、那时 `view.height` 常为 0（`dumpsys window` 实测
+> `mSystemGestureExclusion` 是残缺碎块而非整矩形），识别带 32dp 又比真人拇指落点窄 ⇒ 留下
+> 140–190px「两边都不管」的死区，加上阈值 56dp 且只在 MOVE 判定（快甩无兜底）。重写为
+> **Activity 层 `dispatchTouchEvent` 旁观手势**（不消费任何事件，终端点击/长按选词/纵向滚动照旧）+
+> 排除区挂 `window.decorView`、布局完成后按真实高度设置；识别带 32dp→**56dp**、阈值 56dp→**40dp**、
+> 纵向容差 40dp 且要求横向占优、MOVE 与 **UP 双判定**。详见 `docs/ERRATA.md` E-023。
+> ② **太极发送按钮**：真机实测**发送是通的**（注入点击后 `uiautomator dump` 里出现用户气泡 `hello`、
+> 思考过程、助手回复正文，会话标题由「新会话」变 `hello`）——用户"看着没反应"是因为对话区**被他自己
+> 那个画中画短剧小窗盖住**，且第一次点击偏了 36px；仍补上失败可见性：`ui/taiji/TaijiScreen.kt` 的
+> `onSend` 失败弹 Toast（原先失败只写 App 私有 `cacheDir/runlog/zhengdao-log.txt`，界面与 logcat 都看不见）。
+> 详见 `docs/ERRATA.md` E-024。
+> ③ **设置页撤掉 OpenCode 更新入口**（`app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt`）：
+> OpenCode 不是主打，删掉版本行与「检查 OpenCode 更新／安装 OpenCode」按钮，入口只保留太极抽屉底部那份
+> `OcVersionFooter()`（顺带补上「未安装 → 安装 OpenCode」分支：原实现把"查不到"和"已是最新"都说成最新）。
+> ④ **首页「没定下来」**：用户含义待澄清，本批**未动**首页代码。
+
+> **2026-10-08 变更（用户第二条反馈：终端页面不像手机）**：
+> 用户原话（`m04459`）：「是不是终端的界面没有适配手机啊？」，随后（`m04476`）说明他要的是
+> "右滑返回失灵"的**成因**是否与界面没适配有关，并选定处置=「去掉桌面窗口外观：终端铺满全屏」。
+> 结论：右滑两处缺陷**与外观无关**（详见 E-023：排除区设置时机 + 识别带/阈值按鼠标式滑动定，未按真人
+> 拇指落点回归），但外观确实有一层没必要的桌面隐喻。处置：
+> `app/src/main/res/layout/activity_main.xml` 撤掉 2026-10-05 定下的 macOS/Safari 窗口铬 —— 根布局
+> `android:background="@android:color/white"` + `android:padding="6dp"`（四周一圈白边）改为黑底、无内边距；
+> `@id/window_card` 的 `@drawable/window_bg`（圆角悬浮卡片）改为纯黑 ⇒ 黑底终端铺满整屏，顶部只留一条
+> 扁平工具栏（红/黄/绿三圆点 = 关页 / 收分屏 / 分屏，是功能键不是装饰，保留；`window_bg.xml` 由此变为
+> 无引用资源）。真机实测（`AD3J023824001723`，release 4,179,946 B）：tmux 状态行由半幅变整幅、同屏多出
+> 约 12dp 的可用宽度；左边缘右滑的排除区同时受益（`terminal_root` 不再有 6dp 内边距，x=0 起即终端）。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
