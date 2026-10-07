@@ -108,7 +108,12 @@ fun HomeScreen(
     //   卡片仍写着「安装」；**切一下 tab 才变成「安装中」**。那种"要手抖一下才刷新"
     //   的状态比没有状态更糟——用户没法判断自己到底点到没有。
     //   故：把 stateOf 的结果灌进一个 snapshot 状态容器，让重组由它驱动。
-    val installStates = androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>()
+    //   ⚠️ 必须 `remember`：这一行原先漏了它（WorkBuddy 的 `da3d8eb` 引入，2026-10-07 代码审查
+    //   发现）。漏掉的后果很隐蔽——每次重组都会新建一个空 map，而下面那个常驻轮询 effect 捕获的是
+    //   **创建它时的那一个实例**（effect 不重启就不换），于是轮询默默往旧实例里灌、组合读的是新空
+    //   map，镜像层等于没接上，又退回到 :421 每次重组现算一次的老路。显示结果不会错，只是"卡片
+    //   要手抖一下才刷新"那个老毛病会悄悄回来。加上 `remember` 才真正接上。
+    val installStates = remember { androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>() }
     // 刷新节拍：改 stateTick 能让下面那个 effect 立刻重灌一遍镜像（不等 2 秒）。
     var stateTick by remember { mutableIntStateOf(0) }
     // ⚠️ 这里必须是**常驻循环**，不能写成"还有 Agent 在装才继续查下一轮"（2026-10-07 二次真机实测）：
