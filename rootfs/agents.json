@@ -18,16 +18,7 @@
       "installCmd": "export UV_LINK_MODE=copy; curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
       "uninstall": "rm -rf /root/.hermes/hermes-agent /root/.local/bin/hermes /root/.local/bin/hermes-acp /root/.local/bin/hermes-agent && echo '[卸载] Hermes 程序已删除（用户数据 ~/.hermes 保留）'"
     },
-    {
-      "id": "opencode",
-      "name": "OpenCode",
-      "desc": "开源编程 Agent（多模型，官方 npm 含 linux-arm64 预编译二进制）",
-      "launchCmd": "opencode",
-      "installCmd": "npm install -g --allow-scripts=opencode-ai opencode-ai",
-      "npmPackage": "opencode-ai",
-      "uninstall": "npm uninstall -g opencode-ai 2>/dev/null && echo '[卸载] OpenCode 已卸载'"
-    },
-    {
+        {
       "id": "antigravity",
       "name": "AGY CLI（Antigravity）",
       "desc": "Google 新一代 Agent CLI（Gemini/Claude 模型，官方含 linux-arm64 构建；Gemini CLI 已向它合并）",
