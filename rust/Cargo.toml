@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["sha256poc", "extract"]
+members = ["core"]
 
 [profile.release]
 opt-level = 3

@@ -1,10 +1,18 @@
-# workspace 级 cargo 配置（对 sha256poc / extract 两个成员同时生效）
+# workspace 级 cargo 配置（对 core 成员生效）
 
 # Android 交叉编译：NDK clang 包装器做 linker
 # （NDK 27.2 最高带 API 35 包装器；产出 .so 在 Android 16/API 36 正常加载）
 # 不依赖 cargo-ndk（其 host 侧 windows-sys 在 windows-gnu 工具链下 dlltool 有已知问题）
 [target.aarch64-linux-android]
 linker = "C:/Users/guoli/AppData/Local/Android/Sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android35-clang.cmd"
+# 16KB 页对齐（门禁：`docs/milestones/M1.1-开发任务书.md:36` 要求每个 LOAD 段 p_align ≥ 0x4000）
+# NDK r27 及以下**默认只按 4KB 对齐**，必须显式给这两个 flag（r28+ 才默认 16KB）。
+# 漏掉的后果不是崩溃而是**静默降级**：16KB 页设备上 loadLibrary 失败 →
+# isRustAvailable() = false → 全部回退 Java 路径，Rust 代码一行不跑却看不出任何异常。
+rustflags = [
+    "-C", "link-arg=-Wl,-z,max-page-size=16384",
+    "-C", "link-arg=-Wl,-z,common-page-size=16384",
+]
 
 # host 目标（windows-gnu）：链接器用 rustup 自带的 mingw gcc（认得自身 libgcc/启动对象）；
 # raw-dylib 的 dlltool 用 w64devkit（rustup 自带版缺 as.exe，CreateProcess 直接失败——

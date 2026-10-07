@@ -1,20 +1,46 @@
-// JNI 薄层（仅 Android 目标编译）：架构文档 §2.2 裁定的嵌入形态——
-// Java 传入路径与 SHA256，native 完成整条流水线（数据常驻 native，边界只跨一次），
-// 结果返回 ExtractReport 的 JSON 摘要；错误返回 null + 错误消息入 RustLog。
+// JNI 薄层（仅 Android 目标编译）。收编前是两份独立实现
+// （sha256poc 的 nativeSha256Hex、extract 的 nativeExtract + report_progress），
+// R1 合并进同一个 .so、同一个 Kotlin 类：
+//   符号名前缀 Java_com_example_zhengdao_rust_Sha256Native_* / _ExtractNative_*
+//   → 统一为 Java_com_example_zhengdao_rust_CoreNative_*；
+//   进度回调的查找类同步改为 com/example/zhengdao/rust/CoreNative。
 //
-// 进度上报：entries 每 +200 触发一次 Java 静态回调
-// Sha256Native 不适用——新类 ExtractNative，由 Kotlin 侧对称实现。
-use crate::{extract_pipeline, Progress};
-use jni::objects::{JClass, JObject, JString};
+// 两条约定（R2 已固化，收编后逐字不变）：
+// - **错误不跨 FFI panic**：哈希失败返回 null（Kotlin 回退 MessageDigest）；
+//   解压失败返回 JSON {"ok":false,"error":"..."}——Android 的 stderr 不进 logcat，
+//   用 null 协议会让错误无迹可查。
+// - **数据常驻 native，边界只跨一次**：解压整条流水线在 native 内完成，
+//   Java 只收 JSON 摘要 + 限频进度事件。
+use crate::extract::{extract_pipeline, Progress};
+use jni::objects::{JByteArray, JClass, JString};
 use jni::JNIEnv;
 
+/// 进度回调限频：每 +200 条目通知 Java 一次（避免 JNI 边界成为热点）。
 const PROGRESS_STEP: u64 = 200;
 
-/// Kotlin: ExtractNative.extract(archivePath, targetDir, expectedSha256) -> String
+/// Kotlin: `CoreNative.nativeSha256Hex(ByteArray) -> String?`
+/// 错误时返回 null（调用方回退 MessageDigest），绝不 panic 跨 FFI。
+#[no_mangle]
+pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeSha256Hex(
+    env: JNIEnv,
+    _class: JClass,
+    data: JByteArray,
+) -> jni::sys::jstring {
+    let bytes = match env.convert_byte_array(data) {
+        Ok(b) => b,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    match env.new_string(crate::sha256::sha256_hex(&bytes)) {
+        Ok(s) => s.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Kotlin: `CoreNative.nativeExtract(archivePath, targetDir, expectedSha256) -> String`
 /// 永远返回 JSON（Android 的 stderr 不进 logcat，null 协议会让错误无迹可查）：
 /// 成功 {"ok":true,"entries":N,"bytes":N,"sha256":"..."}；失败 {"ok":false,"error":"..."}
 #[no_mangle]
-pub extern "system" fn Java_com_example_zhengdao_rust_ExtractNative_nativeExtract(
+pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeExtract(
     mut env: JNIEnv,
     _class: JClass,
     archive_path: JString,
@@ -78,9 +104,9 @@ pub extern "system" fn Java_com_example_zhengdao_rust_ExtractNative_nativeExtrac
 }
 
 fn report_progress(env: &mut JNIEnv, entries: u64, name: &str) {
-    // Kotlin 侧静态方法 ExtractNative.onProgress(entries, name)；找不到/失败静默
+    // Kotlin 侧静态方法 CoreNative.onProgress(entries, name)；找不到/失败静默
     let _ = (|| -> jni::errors::Result<()> {
-        let cls = env.find_class("com/example/zhengdao/rust/ExtractNative")?;
+        let cls = env.find_class("com/example/zhengdao/rust/CoreNative")?;
         let jentries = env.new_string(format!("{entries}"))?;
         let jname = env.new_string(name)?;
         use jni::objects::JValue;

@@ -73,9 +73,9 @@ object RootfsInstaller {
 
         // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
         // 回退纪律（规范 #2）：任何失败 → 落回下方 commons-compress Java 路径
-        if (com.example.zhengdao.rust.ExtractNative.isRustAvailable()) {
+        if (com.example.zhengdao.rust.CoreNative.isRustAvailable()) {
             val rustOk = runCatching {
-                val report = com.example.zhengdao.rust.ExtractNative.extract(
+                val report = com.example.zhengdao.rust.CoreNative.extract(
                     archive.canonicalPath, tmpDir.canonicalPath, null   // SHA 已在调用方校验过
                 )
                 // Rust 侧统计含目录条目；onEntry 节流由调用方负责

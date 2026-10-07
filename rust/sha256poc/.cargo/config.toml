@@ -1,5 +1,0 @@
-# Android 交叉编译：直接用 NDK 的 clang 包装器做 linker
-# （NDK 27.2 最高带 API 35 包装器；产出 .so 在 Android 16/API 36 上正常加载）
-# 不依赖 cargo-ndk（其 host 侧 windows-sys 在 windows-gnu 工具链下 dlltool 有已知问题）
-[target.aarch64-linux-android]
-linker = "C:/Users/guoli/AppData/Local/Android/Sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android35-clang.cmd"
