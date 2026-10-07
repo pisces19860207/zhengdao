@@ -3,15 +3,27 @@
 # 参考资料：GitHub Actions 官方文档（workflow syntax / runner images / upload-artifact）。
 #
 # 触发：推送到 main 分支，或在 Actions 页面手动触发（workflow_dispatch）。
-# 产物（构建完成后在本页 Artifacts 区下载）：
-#   - zhengdao-debug.apk                应用调试包（可直接安装）
-#   - debian-13.7-base-arm64.tar.zst    RootFS 包 + .sha256（M1.1 真机测试用）
-#   - proot-arm64                       自编译 proot（上游源码 + NDK）
+# 产物（构建完成后在本页 Artifacts 区下载，按用途分三个目录）：
+#   - apk-debug/zhengdao-<版本>-debug.apk      应用调试包（开发者用；未混淆、体积大、可被调试）
+#   - apk-release/zhengdao-<版本>-release.apk  正式包（最终用户用；R8 混淆 + 资源收缩）
+#   - rootfs-files/debian-13.7-base-arm64.tar.zst  RootFS 包 + .sha256（M1.1 真机测试用）
+#   - rootfs-files/proot-arm64                 自编译 proot（上游源码 + NDK）
+#
+# ⚠️ debug 包与 release 包**必须分目录**：早先两者同处 artifacts/，导致
+#    `gh release upload latest artifacts/*` 把 debug 包一并推给最终用户，
+#    而 tag 触发的 release job 还把 debug 包改名成 app-release.apk 冒充正式版。
+#    见 docs/ERRATA.md E-013。
 #
 # 说明：
 #   - RootFS 步骤在 x86_64 runner 上经 qemu-user-static 交叉构建 arm64，
 #     受模拟开销影响约需 30–90 分钟；该步失败不阻塞 APK 产物上传（continue-on-error）。
 #   - local.properties 是本机文件，CI 上无效且有害，构建前删除。
+#
+# ⚠️ 必须配置 repo secret `DEBUG_KEYSTORE_B64`（= **存量用户已安装的那把** debug keystore 的
+#    base64，证书 SHA-256 = 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18）。
+#    runner 每次都是全新的、~/.android/debug.keystore 不在缓存里，AGP 找不到就随机生成新 key，
+#    那样每个 CI 产物签名都不同、互相装不上，也盖不了存量正式版（见 docs/ERRATA.md E-014）。
+#    未配置时：main 的滚动版**跳过 APK 上传**，tag 的正式发布**硬失败**。
 
 name: build
 
@@ -74,8 +86,49 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: 编译 Debug APK
+      - name: 还原 debug 签名密钥（让 CI 产物与存量用户同签名，可覆盖安装）
+        # ⚠️ 见 docs/ERRATA.md E-014：runner 每次都是全新的，而 ~/.android/debug.keystore
+        #    **不在任何缓存里**，AGP 找不到就随机生成一把新 key → 每个 CI 产物的签名都不同 →
+        #    用户升级时 INSTALL_FAILED_UPDATE_INCOMPATIBLE，只能卸载重装
+        #    （= filesDir 全删 = Debian 环境重下）。
+        #    所以必须从 secret **确定性地**还原"存量用户已经装上的那一把"。
+        #    本步刻意不硬失败：secret 未配置时 main 的日常构建仍要能绿。
+        #    正式版由 release job 把关（没配 secret 就不许发）；滚动版由下面"发布到 Releases"把关。
+        env:
+          KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          # 期望的证书指纹 = 存量用户已安装的那把 key（见 E-014 第 1 节的对照表）
+          EXPECTED_SHA256: 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::warning::未配置 secret DEBUG_KEYSTORE_B64，本次用 runner 随机生成的 keystore——产物无法覆盖安装既有版本（E-014）"
+            exit 0
+          fi
+          mkdir -p "$HOME/.android"
+          printf '%s' "$KS_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          ls -l "$HOME/.android/debug.keystore"
+          # 光有文件不够——secret 里放的可能是**另一把** key（比如谁新生成了一份）。
+          # 那种情况下所有 CI 产物照样装不上存量版本，而且照样"一切正常"。所以比指纹。
+          FP="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" \
+                  -storepass android -alias androiddebugkey 2>/dev/null \
+                | grep -m1 'SHA256:' \
+                | sed 's/.*SHA256: *//' \
+                | tr -d ':' | tr 'a-f' 'A-F')"
+          echo "keystore 证书 SHA-256 = $FP"
+          if [ "$FP" != "$EXPECTED_SHA256" ]; then
+            echo "::error::DEBUG_KEYSTORE_B64 里的不是存量那把 key（期望 $EXPECTED_SHA256）——这样发出去的包老用户装不上，见 docs/ERRATA.md E-014"
+            exit 1
+          fi
+
+      - name: 编译 Debug APK（开发者用）
         run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: 编译 Release APK（最终用户用；R8 + 资源收缩 + lintVital）
+        # ⚠️ 这一步是本流水线以前**没有**的，正是它缺席让 CI 发布的「正式版」实为 debug 包
+        #    （见 docs/ERRATA.md E-013）。release 变体用 debug 签名
+        #    （app/build.gradle.kts:69 `signingConfig = signingConfigs.getByName("debug")`），
+        #    所以 CI 不需要任何密钥文件即可产出一个可直接安装的正式包。
+        #    这一步失败会让整个 job 变红（这是刻意的）：宁可 CI 红，也不要再悄悄发调试包。
+        run: ./gradlew :app:assembleRelease --console=plain
 
       - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
         id: rootfs
@@ -92,35 +145,60 @@ jobs:
         run: bash rootfs/build-proot.sh "$GITHUB_WORKSPACE/rootfs-out"
 
       - name: 收集产物
+        # 三个目录各司其职：apk-debug 只给开发者从 Actions 页面下，
+        # apk-release 才进 Releases 页，rootfs-files 是 RootFS + proot。
+        # 混在一个目录里，下面的 gh release upload 就会把 debug 包一起推出去（E-013）。
         run: |
-          mkdir -p artifacts
-          cp app/build/outputs/apk/debug/zhengdao-*.apk artifacts/
-          if [ -d rootfs-out ]; then cp -r rootfs-out/. artifacts/; fi
-          ls -la artifacts/
+          mkdir -p apk-debug apk-release rootfs-files
+          cp app/build/outputs/apk/debug/zhengdao-*.apk apk-debug/
+          cp app/build/outputs/apk/release/zhengdao-*-release.apk apk-release/
+          if [ -d rootfs-out ]; then cp -r rootfs-out/. rootfs-files/; fi
+          ls -la apk-debug/ apk-release/ rootfs-files/
 
       - name: 上传产物（开发者用，需登录）
         uses: actions/upload-artifact@v4
         with:
           name: zhengdao-build-${{ github.run_number }}
-          path: artifacts/
+          path: |
+            apk-debug/
+            apk-release/
+            rootfs-files/
           retention-days: 14
           if-no-files-found: error
 
       - name: 发布到 Releases（最终用户从这里下载，和太墟一样的姿势）
-        # 仅 main 分支更新滚动版 latest；推 tag 时不更新（正式版由 release job 创建）
+        # 仅 main 分支更新滚动版 latest；推 tag 时不更新（正式版由 release job 创建）。
+        # ⚠️ 只上传 apk-release/ 与 rootfs-files/：debug 包绝不能出现在 Releases 页（E-013）。
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 只判存在性，不把密钥本身带进这一步
+          KS_READY: ${{ secrets.DEBUG_KEYSTORE_B64 != '' }}
         run: |
           gh release view latest --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
             gh release create latest --repo "$GITHUB_REPOSITORY" \
               --title "证道 · 最新构建" --latest \
               --notes "main 分支每次构建成功后自动更新的最新产物。App 内的下载地址已内置。"
-          gh release upload latest artifacts/* --repo "$GITHUB_REPOSITORY" --clobber
+          # 没配签名密钥时不发 APK：一份随机 key 签的包会让老用户被迫卸载重装（E-014），
+          # 宁可滚动版停在旧包上，也不要发一份装不上的。
+          if [ "$KS_READY" = "true" ]; then
+            gh release upload latest apk-release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            echo "::warning::未配置 DEBUG_KEYSTORE_B64，跳过 APK 上传（E-014）——用随机 key 签的包会让老用户无法覆盖安装"
+          fi
+          # RootFS 步骤是 continue-on-error，失败时 rootfs-files/ 会是空的；
+          # 未展开的 glob 会被 gh 当成一个不存在的文件名而报错，所以先探测。
+          if compgen -G "rootfs-files/*" > /dev/null; then
+            gh release upload latest rootfs-files/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            echo "::warning::rootfs-files/ 为空（RootFS 步骤可能失败），本次只更新了 APK"
+          fi
 
   # ── 正式 Release（推 v* tag 时自动创建）────────────────────────────
-  # 推 tag 触发 build job 编译，完成后本 job 下载 APK，以 app-release.apk 命名
-  # 发布到 GitHub Releases（中文标题 + release-notes.md 正文）。与滚动版 latest 并存。
+  # 推 tag 触发 build job 编译 debug + release，完成后本 job 取 **release** 包，
+  # 用它自己的真实文件名（zhengdao-<版本>-release.apk）发布，不再改名。
+  # ⚠️ 早先这里是把 debug 包 cp 成 app-release.apk 冒充正式版——所有 Release 资产
+  #    因此都是 37MB 调试件。见 docs/ERRATA.md E-013。
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -128,6 +206,18 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: 把关：没有签名密钥就不许发正式版
+        # E-014。这是**硬失败**（和 build job 里那步刻意不同）：正式版一旦用随机 key 签出去，
+        # 所有存量用户升级时都会 INSTALL_FAILED_UPDATE_INCOMPATIBLE，只能卸载重装、
+        # Debian 环境全没。宁可这次 tag 发布失败，也不要发一份装不上的"正式版"。
+        env:
+          KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::error::未配置 secret DEBUG_KEYSTORE_B64——CI 会用随机 key 给正式版签名，老用户装不上（docs/ERRATA.md E-014）。先配好 secret 再推 tag。"
+            exit 1
+          fi
+
       - name: 检出代码（读取 release-notes.md）
         uses: actions/checkout@v4
 
@@ -135,20 +225,30 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: zhengdao-build-${{ github.run_number }}
-          path: artifacts
+          path: dist
 
-      - name: 重命名为 app-release.apk
+      - name: 定位 Release APK
+        id: apk
         run: |
-          ls -la artifacts/
-          cp artifacts/zhengdao-*-debug.apk artifacts/app-release.apk 2>/dev/null || \
-          cp artifacts/zhengdao-*.apk artifacts/app-release.apk
-          ls -la artifacts/app-release.apk
+          # 用 nullglob + 数组，别写成 `APK=$(ls ... | head -n1)`：
+          # 通配符没匹配到时 ls 非零退出，在 `set -e` 下会直接在赋值处中断，
+          # 下面的"没找到"提示就永远打不出来（报错信息会变成一句难懂的 ls 失败）。
+          shopt -s nullglob
+          APKS=(dist/apk-release/zhengdao-*-release.apk)
+          if [ ${#APKS[@]} -eq 0 ]; then
+            echo "::error::没找到 release 包——build job 的 assembleRelease 可能没跑或被跳过"
+            ls -laR dist/ || true
+            exit 1
+          fi
+          APK="${APKS[0]}"
+          echo "file=$APK" >> "$GITHUB_OUTPUT"
+          echo "以 $(basename "$APK") 发布"
 
       - name: 创建正式 Release 并上传 APK
         uses: softprops/action-gh-release@v2
         with:
           name: "证道 ${{ github.ref_name }} — 正式版"
           body_path: .github/release-notes.md
-          files: artifacts/app-release.apk
+          files: ${{ steps.apk.outputs.file }}
           draft: false
           prerelease: false

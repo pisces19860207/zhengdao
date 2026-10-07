@@ -15,4 +15,7 @@
 
 ### 下载
 
-在下方 Assets 区域下载 `app-release.apk`。
+在下方 Assets 区域下载 `zhengdao-<版本号>-release.apk`（例如 `zhengdao-1.2.0-release.apk`）。
+
+> 带 `-release` 的是正式包（R8 混淆 + 资源收缩）——请认准这个后缀。
+> 带 `-debug` 的是调试包，体积大一倍且可被调试，仅供开发者使用。
