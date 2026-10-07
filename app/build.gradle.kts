@@ -73,6 +73,12 @@ android {
     // lint 检查：ExpiredTargetSdkVersion 是 Google Play 上架要求（targetSdk≥33），
     // 但本项目 targetSdk=28 是架构生死线（proot 需要从可写目录 exec），不可上调。
     // 本项目不走 Google Play，走 GitHub Releases 直发，故禁用该检查。
+    testOptions {
+        // EnvSelfHeal 等纯逻辑单测会触达 android.util.Log——未 mock 的调用返回默认值
+        // （仅 unit test 生效；真机行为不变）
+        unitTests.isReturnDefaultValues = true
+    }
+
     lint {
         disable += "ExpiredTargetSdkVersion"
     }
