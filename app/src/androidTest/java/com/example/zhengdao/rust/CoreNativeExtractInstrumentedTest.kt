@@ -9,19 +9,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.BufferedInputStream
 import java.io.File
-import java.io.FileInputStream
-import java.util.zip.GZIPInputStream
 
 /**
  * 解压流水线真机对拍（v2.0 R2）：同一 311MB 真实 rootfs 归档，
- * Rust 路径（ExtractNative）解压 → 关键文件与 Java 安装版逐一对拍。
+ * Rust 路径（[CoreNative.extract]）解压 → 关键文件与 Java 安装版逐一对拍。
  *
  * 归档缺失时静默跳过（基线依赖设备上有真包，同 ExtractBaselineTest 语义）。
+ *
+ * v2.0 R1 收编后桥接类是 [CoreNative]（原 ExtractNative 已并入）。
  */
 @RunWith(AndroidJUnit4::class)
-class ExtractNativeInstrumentedTest {
+class CoreNativeExtractInstrumentedTest {
 
     private fun log(s: String) = Log.i("BENCH", s)
 
@@ -31,18 +30,11 @@ class ExtractNativeInstrumentedTest {
             "/sdcard/Download/证道/debian-13.7-base-arm64.tar.zst",
         ).map { File(it) }.firstOrNull { it.isFile && it.length() > 100_000_000L }
 
-    /** Java 安装版 rootfs 里的关键文件（已由先前 Java 路径装好，作为对拍基准）。 */
-    private fun keyFiles(rootfs: File): List<File> = listOf(
-        File(rootfs, "bin/sh"),
-        File(rootfs, "usr/bin/env"),
-        File(rootfs, "etc/hosts"),
-    )
-
     @Test
     fun rust链路可用() {
         assertTrue(
-            "libextract.so 加载失败——检查 jniLibs/arm64-v8a 是否打包",
-            ExtractNative.isRustAvailable()
+            "libzhengdao_core.so 加载失败——检查 jniLibs/arm64-v8a 是否打包，以及 16KB 页对齐",
+            CoreNative.isRustAvailable()
         )
     }
 
@@ -56,7 +48,7 @@ class ExtractNativeInstrumentedTest {
 
         // ── Rust 路径：真跑（数据常驻 native，边界只跨一次）──
         val t0 = System.nanoTime()
-        val (entries, bytes, rustSha) = ExtractNative.extract(
+        val (entries, bytes, rustSha) = CoreNative.extract(
             archive.canonicalPath, outRust.canonicalPath, expectedSha
         )
         val ms = (System.nanoTime() - t0) / 1_000_000
@@ -107,7 +99,7 @@ class ExtractNativeInstrumentedTest {
         val archive = findArchive() ?: return
         val out = File(ctx.cacheDir, "extract_rust_bad").apply { deleteRecursively(); mkdirs() }
         val err = runCatching {
-            ExtractNative.extract(archive.canonicalPath, out.canonicalPath, "0".repeat(64))
+            CoreNative.extract(archive.canonicalPath, out.canonicalPath, "0".repeat(64))
         }.exceptionOrNull()
         Log.i("BENCH", "SHA 拒绝用例: err=${err?.javaClass?.name}: ${err?.message?.take(200) ?: "（无异常——调用成功）"}")
         assertTrue("SHA 不匹配必须报错", err is IllegalStateException)

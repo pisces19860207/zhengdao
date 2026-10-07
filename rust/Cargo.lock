@@ -112,18 +112,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "extract"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "hex",
- "jni",
- "sha2",
- "tar",
- "zstd",
-]
-
-[[package]]
 name = "filetime"
 version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -339,15 +327,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha256poc"
-version = "0.1.0"
-dependencies = [
- "hex",
- "jni",
- "sha2",
-]
-
-[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -527,6 +506,18 @@ checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
  "rustix",
+]
+
+[[package]]
+name = "zhengdao_core"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "hex",
+ "jni",
+ "sha2",
+ "tar",
+ "zstd",
 ]
 
 [[package]]

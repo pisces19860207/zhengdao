@@ -1,28 +1,41 @@
-# extract crate —— Rust 解压流水线（v2.0 R2 原型）
+# zhengdao_core crate —— Rust 核心（v2.0 R1 收编）
 
 > 架构依据：docs/milestones/证道-v2.0架构设计.md §2/§4（嵌入式 .so、数据常驻 native、
 > JNI 边界只跨一次）。价值定位：验证「Rust 处理文件树 + native zstd + 进度回调」这套
 > 模式（基线已证解压仅 2 秒，**不是性能任务**）。
 
+本 crate 由原 `sha256poc` + `extract` 两个 PoC **收编合并**而来（R1：演化，不并存）。
+合并动机是收益模型铁律：JNI 边界只该跨一次、`.so` 只该 load 一次。旧的两个独立
+`.so`（`libsha256poc.so` / `libextract.so`）已删除，只保留单一 `libzhengdao_core.so`。
+
 ## 结构
 
 ```
-rust/extract/
+rust/core/
 ├── Cargo.toml          # workspace 成员；cdylib；asm feature 仅 android 目标
-├── src/lib.rs          # extract_pipeline：SHA 流式校验 → zstd/gzip 解压 → tar 落盘
-├── src/jni_bridge.rs   # JNI 薄层（仅 android）：路径进 → JSON 报告出 + 限频进度回调
-├── src/tests.rs        # PC 端 4 例：zstd 端到端 / gzip 兜底 / SHA 拒绝 / 路径穿越
+├── src/lib.rs          # 模块注册：pub mod sha256; pub mod extract;
+├── src/sha256.rs       # 纯逻辑：sha256_hex / Sha256Stream（唯一一份 sha2 依赖）
+├── src/extract.rs      # extract_pipeline：SHA 流式校验 → zstd/gzip 解压 → tar 落盘
+├── src/jni_bridge.rs   # JNI 薄层（仅 android）：两个符号，入参进 → JSON 报告出 + 限频进度回调
+└── src/tests.rs        # PC 端 4 例：zstd 端到端 / gzip 兜底 / SHA 拒绝 / 路径穿越
 ```
 
-Android 侧：`ExtractNative.kt`（桥接 + 回退判定）→ `RootfsInstaller.install` Rust 快路径
-（失败自动落回 commons-compress Java 路径，规范 #2 回退纪律）。
+Android 侧：`CoreNative.kt`（一次 `System.loadLibrary("zhengdao_core")`，桥接 + 回退判定）
+→ `RootfsInstaller.install` Rust 快路径（失败自动落回 commons-compress Java 路径，规范 #2 回退纪律）。
 
-## JNI 协议（一次跨边界）
+## JNI 符号与协议
 
-- 入参：归档路径、目标目录、期望 SHA256（可 null）
-- 出参：**永远返回 JSON**——成功 `{"ok":true,"entries":N,"bytes":N,"sha256":"..."}`；
+符号名与 Kotlin external 函数名严格一一对应（都在 `com.example.zhengdao.rust.CoreNative`）：
+
+| JNI 符号 | Kotlin |
+|---|---|
+| `Java_com_example_zhengdao_rust_CoreNative_nativeSha256Hex` | `CoreNative.nativeSha256Hex` |
+| `Java_com_example_zhengdao_rust_CoreNative_nativeExtract` | `CoreNative.nativeExtract` |
+
+- extract 入参：归档路径、目标目录、期望 SHA256（可 null）
+- extract 出参：**永远返回 JSON**——成功 `{"ok":true,"entries":N,"bytes":N,"sha256":"..."}`；
   失败 `{"ok":false,"error":"..."}`（Android 的 stderr 不进 logcat，null 协议会让错误无迹可查——真机教训）
-- 进度：每 200 条目回调 `ExtractNative.onProgress(entries, name)`（限频，避免边界风暴）
+- 进度：每 200 条目回调 `CoreNative.onProgress(entries, name)`（限频，避免边界风暴）
 
 ## 语义对齐（与 Kotlin 版 RootfsInstaller 逐条对拍）
 
@@ -46,11 +59,37 @@ Android 侧：`ExtractNative.kt`（桥接 + 回退判定）→ `RootfsInstaller.
 Android 交叉编译：`.cargo/config.toml` 直配 NDK 27.2 链接器 + `[env]` 段给
 `CC_aarch64_linux_android`/`AR_aarch64_linux_android`（zstd-sys/sha2-asm 的 C 编译需要）。
 
+## ⚠️ 16KB 页对齐（R1 补齐，此前是静默失效）
+
+NDK r27 的 clang **默认按 4KB 页做段对齐**，产出的 `.so` 在 16KB 页设备上会被 loader
+直接拒绝加载。证道自己的门禁（`docs/milestones/M1.1-开发任务书.md:36`）要求每个 LOAD 段
+`p_align ≥ 0x4000`。
+
+因为 Kotlin 侧永远有回退（规范 #2），加载失败**不崩溃、不报错**，只是 Rust 路径永远
+不会被执行——这是一个静默降级，所以必须靠 readelf 验收而不是靠"跑起来没崩"。
+
+r27 及以下必须**同时**给两个 flag（r28+ 才默认对齐）：
+
+```toml
+# rust/.cargo/config.toml
+[target.aarch64-linux-android]
+rustflags = [
+  "-C", "link-arg=-Wl,-z,max-page-size=16384",
+  "-C", "link-arg=-Wl,-z,common-page-size=16384",
+]
+```
+
+验收（每个 LOAD 段都必须是 `0x4000`）：
+
+```bash
+llvm-readelf -l app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so | grep LOAD
+```
+
 ## 验证状态
 
 | 层 | 结果 |
 |---|---|
-| PC `cargo test`（windows-gnu host） | 4/4 ✅ |
+| PC `cargo test`（windows-gnu host） | **8/8 ✅**（sha256 4 例 + extract 4 例） |
 | 真机（Honor Magic 5 Pro / Android 16） | **3/3 ✅**——Rust 3611ms vs Java 3668ms（同一 311MB 归档、同口径含收尾）；**16,010 个普通文件路径+大小全量一致**；SHA 不匹配拒绝并带回期望/实际值明细 |
 | 全量 JVM 单测 | 161/161 ✅（Java 路径未受集成影响） |
 
@@ -66,3 +105,5 @@ Android 交叉编译：`.cargo/config.toml` 直配 NDK 27.2 链接器 + `[env]` 
 
 - symlink 目标不校验是否越界（与 Kotlin 版同语义，行为一致）——v2.0 加固候选项
 - 进度回调经 `unsafe_clone` 的 JNIEnv，仅在回调周期内使用（jni crate 约定）
+- `extract_pipeline` 不校验最小条目数——「0 条目也算成功」是从 Kotlin 版继承的语义，
+  不是 Rust 引入的回归（`RootfsInstaller` 两条路径一致）

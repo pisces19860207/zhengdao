@@ -11,13 +11,15 @@ import java.security.MessageDigest
 import kotlin.random.Random
 
 /**
- * 真机对拍：Rust JNI 链路 vs 平台 MessageDigest。
+ * 真机对拍：Rust JNI 链路 vs 平台 MessageDigest（sha256 模块）。
  *
- * 为什么放 androidTest 而非本地单测：libsha256poc.so 是 Android arm64 动态库，
+ * 为什么放 androidTest 而非本地单测：libzhengdao_core.so 是 Android arm64 动态库，
  * PC 上的 JVM 加载不了——JNI 链路只能在真机/模拟器上验证。
+ *
+ * v2.0 R1 收编后桥接类是 [CoreNative]（原 Sha256Native 已并入）。
  */
 @RunWith(AndroidJUnit4::class)
-class Sha256NativeInstrumentedTest {
+class CoreNativeSha256InstrumentedTest {
 
     private fun platformHex(data: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(data)
@@ -26,19 +28,19 @@ class Sha256NativeInstrumentedTest {
     @Test
     fun rust链路可用() {
         assertTrue(
-            "libsha256poc.so 加载失败——检查 jniLibs/arm64-v8a 是否打包",
-            Sha256Native.isRustAvailable()
+            "libzhengdao_core.so 加载失败——检查 jniLibs/arm64-v8a 是否打包，以及 16KB 页对齐",
+            CoreNative.isRustAvailable()
         )
     }
 
     @Test
     fun nist_空串对拍() {
-        assertEquals(platformHex(ByteArray(0)), Sha256Native.sha256Hex(ByteArray(0)))
+        assertEquals(platformHex(ByteArray(0)), CoreNative.sha256Hex(ByteArray(0)))
     }
 
     @Test
     fun nist_abc对拍() {
-        assertEquals(platformHex("abc".toByteArray()), Sha256Native.sha256Hex("abc".toByteArray()))
+        assertEquals(platformHex("abc".toByteArray()), CoreNative.sha256Hex("abc".toByteArray()))
     }
 
     @Test
@@ -47,7 +49,7 @@ class Sha256NativeInstrumentedTest {
         var size = 8L
         repeat(16) {
             val data = ByteArray(size.toInt()).also { rng.nextBytes(it) }
-            assertEquals("size=$size 对拍失败", platformHex(data), Sha256Native.sha256Hex(data))
+            assertEquals("size=$size 对拍失败", platformHex(data), CoreNative.sha256Hex(data))
             size = (size * 2).coerceAtMost(1 shl 20)
         }
     }
@@ -67,7 +69,7 @@ class Sha256NativeInstrumentedTest {
         }
 
         val platform = bench("平台MessageDigest") { platformHex(it) }
-        val rust = bench("Rust/JNI") { Sha256Native.sha256Hex(it) }
+        val rust = bench("Rust/JNI") { CoreNative.sha256Hex(it) }
         android.util.Log.i(
             "BENCH",
             "结论: Rust/JNI ${if (rust <= platform) "不慢于" else "慢于"}平台 ${kotlin.math.abs(rust - platform)}ms"

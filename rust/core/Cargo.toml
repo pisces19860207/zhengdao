@@ -1,0 +1,26 @@
+[package]
+name = "zhengdao_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# rlib：PC 上 cargo test 直接跑纯逻辑层；cdylib：产出 libzhengdao_core.so 供 App loadLibrary。
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# —— sha256 模块（原 rust/sha256poc）——
+sha2 = "0.10"
+hex = "0.4"
+# —— extract 模块（原 rust/extract）——
+# zstd 解压（绑定 C 实现——评估文档裁定：纯 Java zstd 是安装流水线的真实 CPU 热点）
+zstd = "0.13"
+# tar 归档遍历（纯 Rust）
+tar = "0.4"
+flate2 = "1.0"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# asm feature：启用 ARMv8 SHA2 硬件指令（aarch64 上与平台 MessageDigest 同吃硬件加速，
+# 计时对比才公平——2026-10-07 首轮计时 27ms vs 5ms 即因漏开此 feature，结论已修正）
+sha2 = { version = "0.10", features = ["asm"] }
+# JNI 薄层仅在 Android 目标编译（PC 上的 cargo test 只跑纯逻辑层）
+jni = { version = "0.21", default-features = false }

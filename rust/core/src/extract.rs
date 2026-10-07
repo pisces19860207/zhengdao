@@ -257,10 +257,3 @@ fn set_mode(path: &Path, mode: u32) {
 
 #[cfg(not(unix))]
 fn set_mode(_path: &Path, _mode: u32) {}
-
-#[cfg(target_os = "android")]
-mod jni_bridge;
-
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
