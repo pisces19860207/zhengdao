@@ -27,6 +27,9 @@ class ExtractBaselineTest {
     private fun findArchive(): File? {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val candidates = listOf(
+            // 2026-10-08 起 App 的公共缓存挪到 Download/证道/rootfs（与 opencode 包同处），
+            // 原来 Download/zhengdao/cache 里的包由 migration 搬走 —— 三者都列上，谁在就用谁。
+            File("/sdcard/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst"),
             File("/sdcard/Download/zhengdao/cache/debian-13.7-base-arm64.tar.zst"),
             File("/sdcard/Download/证道/debian-13.7-base-arm64.tar.zst"),
         )

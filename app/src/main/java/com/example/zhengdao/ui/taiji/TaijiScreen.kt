@@ -3,13 +3,16 @@
 // 依据的公开接口：Jetpack Compose 官方 API、OpenCode 官方 serve 模式。
 package com.example.zhengdao.ui.taiji
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.LinearProgressIndicator
@@ -19,6 +22,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -223,41 +227,50 @@ fun TaijiScreen(
                         modifier = Modifier.width(300.dp),
                         drawerContainerColor = MaterialTheme.colorScheme.surface,
                     ) {
-                        HistoryDrawer(
-                            sessions = sessions,
-                            loading = sessionsLoading,
-                            currentId = state.sessionId,
-                            // 点击条目：关抽屉 → 保住 id（防转屏/切 Tab 丢会话）→ 切换会话
-                            onPick = { id ->
-                                scope.launch { drawerState.close() }
-                                savedSession = id
-                                scope.launch { repo.switchSession(scope, id) }
-                            },
-                            onNew = {
-                                scope.launch { drawerState.close() }
-                                scope.launch { repo.startNewSession(scope)?.let { savedSession = it } }
-                            },
-                            onRefresh = { scope.launch { refreshSessions() } },
-                            // 长按删除：二次确认在 HistoryDrawer 内部完成，这里只执行 + 同步列表
-                            onDelete = { target ->
-                                val ok = repo.deleteSession(target.id)
-                                if (ok) {
-                                    // ① 乐观移除：立刻从列表拿掉，不会出现"删完还挂在那儿"的观感
-                                    sessions = sessions.filterNot { it.id == target.id }
-                                    // ② 删掉的正是当前会话 → 立刻另起一个新会话，
-                                    //    否则 UI 会停在"一个已不在服务端的会话"上（再发消息必错）
-                                    if (target.id == state.sessionId) {
-                                        savedSession = null
-                                        repo.startNewSession(scope)?.let { savedSession = it }
+                        // 抽屉 = 上（可滚动的）会话列表 + 下（固定）OpenCode 版本条。
+                        // 2026-10-08 用户反馈「opencode bionic 版没有更新入口」：入口原本只在
+                        // 设置 → 环境更新 里，而太极是天天开的页面，所以抽屉底部也放一个。
+                        // HistoryDrawer 内部是 Column(fillMaxSize)，故用 weight(1f) 让它只占
+                        // 上半部，版本条固定在底部。
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            HistoryDrawer(
+                                sessions = sessions,
+                                loading = sessionsLoading,
+                                currentId = state.sessionId,
+                                // 点击条目：关抽屉 → 保住 id（防转屏/切 Tab 丢会话）→ 切换会话
+                                onPick = { id ->
+                                    scope.launch { drawerState.close() }
+                                    savedSession = id
+                                    scope.launch { repo.switchSession(scope, id) }
+                                },
+                                onNew = {
+                                    scope.launch { drawerState.close() }
+                                    scope.launch { repo.startNewSession(scope)?.let { savedSession = it } }
+                                },
+                                onRefresh = { scope.launch { refreshSessions() } },
+                                // 长按删除：二次确认在 HistoryDrawer 内部完成，这里只执行 + 同步列表
+                                onDelete = { target ->
+                                    val ok = repo.deleteSession(target.id)
+                                    if (ok) {
+                                        // ① 乐观移除：立刻从列表拿掉，不会出现"删完还挂在那儿"的观感
+                                        sessions = sessions.filterNot { it.id == target.id }
+                                        // ② 删掉的正是当前会话 → 立刻另起一个新会话，
+                                        //    否则 UI 会停在"一个已不在服务端的会话"上（再发消息必错）
+                                        if (target.id == state.sessionId) {
+                                            savedSession = null
+                                            repo.startNewSession(scope)?.let { savedSession = it }
+                                        }
+                                        // ③ 再回源对齐（含刚建的新会话）。只做 ① 会留下缺口：
+                                        //    "删当前会话 → 另起新会话"时新会话不在列表里、当前徽章消失
+                                        //    （2026-10-07 真机验收发现），故必须回源一次。
+                                        scope.launch { refreshSessions() }
                                     }
-                                    // ③ 再回源对齐（含刚建的新会话）。只做 ① 会留下缺口：
-                                    //    "删当前会话 → 另起新会话"时新会话不在列表里、当前徽章消失
-                                    //    （2026-10-07 真机验收发现），故必须回源一次。
-                                    scope.launch { refreshSessions() }
-                                }
-                                ok
-                            },
-                        )
+                                    ok
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
+                            OcVersionFooter()
+                        }
                     }
                 },
             ) {
@@ -464,5 +477,95 @@ private fun FailedPane(message: String, onRetry: () -> Unit) {
                 Text("重试")
             }
         }
+    }
+}
+
+/**
+ * 抽屉底部：OpenCode 内置版版本 + 检查更新入口（2026-10-08）。
+ *
+ * 为什么放在这里：用户反馈「opencode bionic 版没有更新入口」——入口原本只在
+ * 设置 → 环境更新 里，而太极是天天开的页面。
+ *
+ * 为什么不用 [OcManager.checkUpdate]：旧实现把「网络不通 / 接口报错」和「已是最新」
+ * 都返回 null，UI 只能一律显示"已是最新"（**假好消息**，用户点一下什么都不发生）。
+ * 这里用 [OcManager.checkUpdateDetailed] 把三种结果分开，失败原因如实显示。
+ */
+@Composable
+private fun OcVersionFooter() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<OcManager.UpdateInfo?>(null) }
+    var installed by remember { mutableStateOf(OcManager.installedVersion(ctx)) }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        Text(
+            "OpenCode ${installed ?: "未安装"}（出厂 ${OcManager.VERSION}）",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            enabled = !checking,
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            onClick = {
+                checking = true
+                scope.launch {
+                    val chk = withContext(Dispatchers.IO) { OcManager.checkUpdateDetailed(ctx) }
+                    checking = false
+                    when (chk) {
+                        is OcManager.UpdateCheck.Available -> pending = chk.info
+                        OcManager.UpdateCheck.UpToDate -> Toast.makeText(
+                            ctx,
+                            "OpenCode 已是最新（${installed ?: OcManager.VERSION}）",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        is OcManager.UpdateCheck.Failed -> Toast.makeText(
+                            ctx,
+                            "检查更新失败：${chk.reason}",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            },
+        ) { Text(if (checking) "检查中…" else "检查 OpenCode 更新") }
+    }
+
+    // 有新版：弹确认（digest 缺失时明确说明为何不给直装 —— 不静默降级）
+    pending?.let { info ->
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text("发现 OpenCode ${info.version}") },
+            text = {
+                Text(
+                    if (info.sha256 == null) {
+                        "当前 $installed → ${info.version}。该 release 未提供 SHA256 digest，" +
+                            "为安全起见不提供 App 内直装 —— 可到 GitHub 手动下载。"
+                    } else {
+                        "当前 $installed → ${info.version}。将从 GitHub 下载约 65MB 并校验 digest，" +
+                            "通过后覆盖安装。安装完成后重启 App 生效。"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = info.sha256 != null,
+                    onClick = {
+                        pending = null
+                        checking = true
+                        scope.launch {
+                            val r = withContext(Dispatchers.IO) {
+                                OcManager.downloadAndInstall(ctx, info) { }
+                            }
+                            checking = false
+                            installed = OcManager.installedVersion(ctx)
+                            Toast.makeText(ctx, r.message, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                ) { Text("下载并安装") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pending = null }) { Text("稍后") }
+            },
+        )
     }
 }

@@ -563,7 +563,7 @@ fun SettingsScreen(
                                         "已是最新版本（$installed）"
                                     else -> {
                                         pendingUrl = url; pendingSha = sha
-                                        "发现新版本 $ver（当前 $installed），是否下载安装？安装包将缓存到 Download/zhengdao/cache，旧包自动保留。"
+                                        "发现新版本 $ver（当前 $installed），是否下载安装？安装包将缓存到 Download/证道/rootfs（与 OpenCode 包同一个文件夹），旧包自动保留。"
                                     }
                                 }
                             } else {
@@ -635,12 +635,20 @@ fun SettingsScreen(
                     Thread {
                         val r: OcManager.DownloadResult =
                             if (ocInstalled) {
-                                val upd = OcManager.checkUpdate(ctx)
-                                upd?.let { OcManager.downloadAndInstall(ctx, it) { } }
-                                    ?: OcManager.DownloadResult(
-                                        false,
-                                        "OpenCode 已是最新（${ocVer ?: OcManager.VERSION}）",
-                                    )
+                                when (val chk = OcManager.checkUpdateDetailed(ctx)) {
+                                    is OcManager.UpdateCheck.Available ->
+                                        OcManager.downloadAndInstall(ctx, chk.info) { }
+                                    // 2026-10-08：网络不通 / 接口报错时不再冒充「已是最新」
+                                    // （旧写法 checkUpdate 返回 null，UI 一律说"已是最新"，
+                                    //  用户点一下什么都不会发生 —— 看起来就像没有更新入口）
+                                    is OcManager.UpdateCheck.Failed ->
+                                        OcManager.DownloadResult(false, "检查更新失败：${chk.reason}")
+                                    OcManager.UpdateCheck.UpToDate ->
+                                        OcManager.DownloadResult(
+                                            false,
+                                            "OpenCode 已是最新（${ocVer ?: OcManager.VERSION}）",
+                                        )
+                                }
                             } else {
                                 OcManager.downloadAndInstall(ctx) { }
                             }
@@ -906,14 +914,15 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { repairConfirm = false },
             title = { Text("修复环境") },
-            text = { Text("将重新解压 Debian 系统层（约 30 秒 + Agent 重装时间）。登录态与工作区保留。需要本地已有安装包（cache 或 Download/证道）。确定？") },
+            text = { Text("将重新解压 Debian 系统层（约 30 秒 + Agent 重装时间）。登录态与工作区保留。需要本地已有安装包（Download/证道/rootfs 缓存，或 Download/证道 根目录里的安装包）。确定？") },
             confirmButton = {
                 TextButton(onClick = {
                     repairConfirm = false
-                    val candidates = listOf(
-                        File(ctx.cacheDir, "debian-13.7-base-arm64.tar.zst"),
-                        File("/storage/emulated/0/Download/证道/debian-13.7-base-arm64.tar.zst"),
-                    ).firstOrNull { it.isFile }
+                    val candidates = (
+                        listOf(
+                            File("/storage/emulated/0/Download/证道/debian-13.7-base-arm64.tar.zst"),
+                        ) + com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx)
+                        ).firstOrNull { it.isFile && it.length() > 100_000_000L }
                     if (candidates == null) {
                         Toast.makeText(ctx, "未找到本地安装包：请先在终端重新下载一次", Toast.LENGTH_LONG).show()
                     } else {
