@@ -231,7 +231,8 @@ fun HomeScreen(
                             val checks = healthChecks
                             Text(
                                 text = if (checks == null) "环境体检中…" else {
-                                    val pass = checks.count { it.ok }
+                                    // 告警（warn）不计入"通过"：否则会出现"8/8 通过"却带 ⚠ 的自相矛盾
+                                    val pass = checks.count { it.ok && !it.warn }
                                     "环境体检 $pass/${checks.size} 通过"
                                 },
                                 style = MaterialTheme.typography.titleSmall,
@@ -252,12 +253,21 @@ fun HomeScreen(
                                             .fillMaxWidth()
                                             .padding(vertical = 6.dp),
                                     ) {
+                                        // 三态：✗ 故障（可修/引导）· ⚠ 超阈值（无一键修复）· ✓ 正常
                                         Text(
-                                            text = if (c.ok) "✓" else "✗",
+                                            text = when {
+                                                !c.ok -> "✗"
+                                                c.warn -> "⚠"
+                                                else -> "✓"
+                                            },
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (c.ok) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.error,
+                                            color = when {
+                                                !c.ok -> MaterialTheme.colorScheme.error
+                                                // 黄：Material3 无 amber 语义色，用 tertiary 兜底
+                                                c.warn -> MaterialTheme.colorScheme.tertiary
+                                                else -> MaterialTheme.colorScheme.primary
+                                            },
                                             modifier = Modifier.width(22.dp),
                                         )
                                         Column(modifier = Modifier.weight(1f)) {

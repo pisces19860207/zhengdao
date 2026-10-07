@@ -7,6 +7,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
 import com.example.zhengdao.terminal.EnvSelfHeal
+import com.example.zhengdao.terminal.ResMonitor
 import java.io.File
 
 /**
@@ -20,13 +21,19 @@ import java.io.File
  */
 object EnvHealth {
 
-    /** 一项体检结果。fixId 非空 = 点「修复」可定向自愈；为空 = 引导项。 */
+    /**
+     * 一项体检结果。fixId 非空 = 点「修复」可定向自愈；为空 = 引导项。
+     *
+     * [warn] = 超阈值但**没有一键修复**（当前只有资源占用一项）：渲染为黄色 ⚠，
+     * 与红色 ✗（可修或引导去处理）区分开，以维持「红 = 修得了」这条不变量。
+     */
     data class Check(
         val id: String,
         val label: String,
         val ok: Boolean,
         val detail: String,
         val fixId: String? = null,
+        val warn: Boolean = false,
     )
 
     /** 修复动作标识（与 Check.fixId 对应）。 */
@@ -34,7 +41,7 @@ object EnvHealth {
     const val FIX_TIMEZONE = "timezone"
     const val FIX_UV = "uv"
 
-    /** 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询）。 */
+    /** 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询 + 一次资源采样 ~0.7 s）。 */
     fun inspect(ctx: Context): List<Check> = listOf(
         prootCheck(ctx),
         rootfsCheck(ctx),
@@ -43,6 +50,7 @@ object EnvHealth {
         uvCheck(ctx),
         networkCheck(ctx),
         storageCheck(ctx),
+        resourceCheck(),
     )
 
     /** 定向自愈。返回是否有修补动作；rootfs/proot 类不在一键范围（重解压兜底）。 */
@@ -202,6 +210,22 @@ object EnvHealth {
             id = "storage", label = "存储权限", ok = ok,
             detail = if (ok) "所有文件访问已授权（主路径）"
             else "所有文件访问未授权，工作区主路径不可用；到系统设置开启",
+        )
+    }
+
+    /**
+     * 资源占用（v1.2 阶段 3.2）：太极 serve + PRoot guest 的 RSS 与 CPU。
+     *
+     * 按 UID 聚合本 App 的全部进程（含 PRoot 里的 bash / tmux / node 子进程），
+     * 超阈值走 **warn（黄色 ⚠）**——内存/CPU 没有一键修复，报红会违反
+     * 「红 = 修得了」的不变量。采样与判定都在 [ResMonitor]。
+     */
+    private fun resourceCheck(): Check {
+        val v = runCatching { ResMonitor.sampleWithLog() }
+            .getOrElse { ResMonitor.verdict(null) }
+        return Check(
+            id = "resource", label = "资源占用",
+            ok = v.ok, detail = v.detail, warn = v.warn,
         )
     }
 

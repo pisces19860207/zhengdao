@@ -90,11 +90,13 @@
 - **OpenCode 与 Hermes Agent 完整支持**（真机全链路验收）；Claude Code / AGY CLI 走各自官方脚本
 - 存储策略定稿：MANAGE 主路径 + /sdcard 直连；通知 4 渠道；缓存清理白名单
 
-> **⚠️ 关于两个 OpenCode**：「太极」Tab 用的是 App **内置**的宿主版（开箱即用）；
-> 终端（洞天）里如果你自己 `npm install -g opencode-ai`，那是**另一份**，
-> 配置、插件、缓存与太极**互相隔离、互不影响**。插件管理页只作用于太极那份。
-> 终端里保留了自装版也不冲突——常用哪个就用哪个，不必卸载任何一个。
-> 详见《故障排查手册》坑 #3。
+> **⚠️ 关于 OpenCode 跑在哪（v1.2 起）**：「太极」Tab 用的是 App **内置**的宿主版
+> （开箱即用，跑在**宿主 bionic**、不经 PRoot），配置文件在
+> `files/oc/xdg/config/opencode/`；插件管理页只作用于这一份。
+> **v1.2 起 App 不再在终端里预装/保留另一份 OpenCode**（终端若要自建 CLI 由用户自己在终端里
+> `npm install -g` 决定，App 不为它管配置与插件）。
+> ⚠️ 因为两者不在同一个网络栈，**改 rootfs 里的 `/etc/hosts` / `/etc/resolv.conf`
+> 不会影响太极**，反之亦然。详见《故障排查手册》**坑 #0（置顶）**。
 
 CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)，
 正式版见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)。
