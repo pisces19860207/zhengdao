@@ -96,10 +96,7 @@ fun SettingsScreen(
 
     // ── 权限（存储 + 网络自检）──
     fun storageGrantedNow(): Boolean =
-        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_EXTERNAL_STORAGE) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED &&
-        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
+        com.example.zhengdao.terminal.ProotLauncher.storageGranted(ctx)   // v1.3 E2：单一判定源
 
     var storageOk by remember { mutableStateOf(storageGrantedNow()) }
     var permHint by remember { mutableStateOf<String?>(null) }
