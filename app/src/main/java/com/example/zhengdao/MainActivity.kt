@@ -274,13 +274,35 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     // 跳终端（带可选自动命令）：洞天入口与设置页「在终端中清理缓存」共用同一实现，
     // 两处必须同一行为——此前 settings 路由没传参，onOpenTerminal 落到默认 no-op，
     // 「在终端中清理缓存」点了零反应（连 Toast 都没有）。
+    //
+    // ⚠️ 失败必须可见（项目原则）＋ 可诊断：这条 lambda 是全 App 唯一的进终端入口，
+    //    它一旦 silently 失败，表现就是"点了没反应"，用户无从判断是没点到还是坏了。
+    //    故：入口处打点（autocmd/agentId 的长度而非全文——全文可能是几 KB 的安装命令），
+    //    startActivity 包 try/catch，任何异常都要 Toast 出原因并落 RunLog。
     val openTerminal: (String?, String?) -> Unit = { autocmd, agentId ->
-        context.startActivity(
-            Intent(context, TerminalActivity::class.java).apply {
-                putExtra("autocmd", autocmd)
-                putExtra("agent_id", agentId)
-            }
+        val tag = "OpenTerminal"
+        android.util.Log.d(
+            tag, "进终端: autocmd=${autocmd?.length ?: 0}B agentId=$agentId ctx=$context"
         )
+        try {
+            context.startActivity(
+                Intent(context, TerminalActivity::class.java).apply {
+                    putExtra("autocmd", autocmd)
+                    putExtra("agent_id", agentId)
+                }
+            )
+            android.util.Log.d(tag, "startActivity 已发出")
+        } catch (t: Throwable) {
+            // 异常不可见 = 用户眼里就是"点了没反应"，必须当面说清
+            val reason = t.message ?: t.toString()
+            android.util.Log.e(tag, "进终端失败", t)
+            runCatching {
+                com.example.zhengdao.rootfs.RunLog.log("[错误] 进终端失败: $reason")
+            }
+            android.widget.Toast.makeText(
+                context, "无法打开终端：$reason", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     NavHost(navController = nav, startDestination = startRoute) {
