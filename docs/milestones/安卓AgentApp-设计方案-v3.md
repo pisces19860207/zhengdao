@@ -297,8 +297,14 @@ APK 本体更新太慢，以下组件全部做成**版本化热更新组件**，
 > -隔离手段是 **XDG 四目录**：`/usr/local/bin/taiji` wrapper 脚本 export `XDG_{CONFIG,DATA,CACHE,STATE}_HOME=/root/.zhengdao/taiji/*` 后 `exec /usr/local/bin/opencode`；洞天**不注入任何 `XDG_*`**，走默认 `/root/.config`、`/root/.local/share`。
 > -**pane 主程序必须是 `taiji` wrapper，不能直接写 `opencode`**——直接调二进制会绕过 wrapper、四个变量全不注入，两边共用默认目录即"打架"。
 > -**只有 `zhengdao` 会话允许 `tmux kill-server`**；太极 kill 会连带杀掉太极会话。
-> - 宿主侧另有bionic 版 OpenCode（`files/oc/usr`，不经 PRoot），XDG 落在 `filesDir/taiji/*`，与 guest 的 `/root/.zhengdao/taiji/*` 是**两套不同路径**，排障时先确认查的是哪一套。
-> - 详细实现与验收口径见 `证道-执行路线图.md` §2 P3。
+> - 宿主侧另有bionic 版 OpenCode（`files/oc/usr/bin/opencode`，不经 PRoot），XDG 落在
+>   **`filesDir/oc/xdg/{config,data,cache,state}`**（⚠️ 不是 `filesDir/taiji/*`——本条原文写错，
+>   v1.1.1 据此把太极配置写到了 `files/home/.zhengdao/taiji/...` 死路径上，v1.2 阶段 2.0 才发现）。
+>   它与 guest 的 `/root/.zhengdao/taiji/*` 是**两套完全独立的资产**，排障时先确认查的是哪一套。
+> - ⚠️ **本 v3.11 例外整段已随 v1.2 作废**：太极改用 Compose 原生 UI 直连宿主 `opencode serve`，
+>   不再有 guest 内的 `taiji` 会话，也不再需要 `/usr/local/bin/taiji` wrapper（脚本已删）。
+>   太极**不依赖 Debian/PRoot**。详见 `证道-故障排查手册.md` 坑 #0。
+> - 详细实现与验收口径见 `证道-执行路线图.md` §2 P3（该处 v1.1 老方案描述已加作废标注）。
 >
 > 📌 **WebView + localhost 方案已废弃**：因 `targetSdk 28` 落在「API 28 起默认禁止明文 HTTP」的行为变更线上，WebView 访问 `http://localhost` 会被系统拦截。太极 Tab 最终采用**Tab 内嵌 TerminalView 直连 `taiji` 会话**的TUI 方案。
 
