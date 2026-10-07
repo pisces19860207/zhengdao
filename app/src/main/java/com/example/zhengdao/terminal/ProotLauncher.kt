@@ -240,10 +240,40 @@ object ProotLauncher {
             RunLog.log("工作区 .ignore 生成失败: ${it.message}（路径 $wsHost）")
         }
 
+        // ★ 把 Debian 自带的 /etc/skel 骨架落到 bind 挂载的 home 里（2026-10-07 根因修复）。
+        //
+        // 为什么必须做：Agent 官方安装脚本（agy / claude / hermes）一律把命令发布到
+        // ~/.local/bin。让这个目录进 PATH 的逻辑**Debian 一开始就有**，写在
+        // /etc/skel/.profile 里：
+        //     if [ -d "$HOME/.local/bin" ] ; then PATH="$HOME/.local/bin:$PATH" ; fi
+        // 但 /etc/skel 只在 useradd 建用户时复制到 home —— 本项目把 files/home 直接
+        // bind 挂到 guest 的 /root，root 的 home 从来不是 useradd 建的，home 里也没有
+        // .profile ⇒ 这段逻辑**从未执行过**。后果：装好的 agy/claude 在终端里一律
+        // "command not found"，用户看到的现象就是「点启动，Agent 起不来」。
+        // （hermes 当年"敲 hermes 没反应"是同一个坑，当时只给它单独软链绕过去了；
+        //   见下方保留的 hermes 特例——治根的就是这里。）
+        //
+        // 幂等且非破坏：只在目标文件不存在时写入，绝不覆盖用户自己改过的 dotfile。
+        // 只落 .profile —— PATH 逻辑就在它里面；.bashrc 会顺带改提示符与别名，
+        // 与本项目自己的 banner/光标 profile.d 有交互风险，不引入。
+        // tmux 的每个 pane 都是 login shell（ps 里可见 `-bash`），会读 ~/.profile，
+        // 故新开窗口立刻生效，不必重启 App。
+        runCatching {
+            val name = ".profile"
+            val dst = File(homeDir, name)
+            val src = File(rootfsDir, "etc/skel/$name")
+            if (!dst.isFile && src.isFile) {
+                dst.writeText(src.readText())
+                RunLog.log("已从 /etc/skel 落位 ~/$name（补回 ~/.local/bin 的 PATH 逻辑）")
+            }
+        }.onFailure { RunLog.log("落位 home 骨架失败: ${it.message}") }
+
         // hermes 命令立即可用（用户反馈：装完敲 hermes 没反应）：安装器把命令发布在
         // /root/.local/bin（home 层），但**早已存在的 shell 的 PATH 是启动时的快照**，
         // 拿不到后装的目录。/usr/local/bin 天然在所有 shell 的 PATH 里且属系统层——
         // 软链过去，新旧 shell 全覆盖。未装 hermes 时跳过，不留悬空链接。
+        // （上面的 skel 落位已从根上解决 PATH；这段保留是为"骨架落位前就已存在的旧
+        //   会话"兜底——它们的 PATH 快照里没有 ~/.local/bin，但一定有 /usr/local/bin。）
         runCatching {
             if (File(homeDir, ".local/bin/hermes").isFile) {
                 val link = File(rootfsDir, "usr/local/bin/hermes")
@@ -391,7 +421,13 @@ object ProotLauncher {
         // 就退到 POSIX 自包含写法 CST-8（= UTC+8，POSIX 偏移符号西正东负，零依赖）
         val tzName = if (File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai").isFile) "Asia/Shanghai" else "CST-8"
         val env = mutableListOf(
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            // ⚠️ /root/.local/bin 必须在 PATH 里（2026-10-07 真机血案）：Agent 安装器
+            // （agy 官方脚本、claude 官方脚本、npm 全局装）一律把命令发布到 ~/.local/bin，
+            // 而这里原先只有系统路径 ⇒ 装好的 agy/claude 敲出来是 "command not found"，
+            // 用户看到的现象就是「点启动没反应、Agent 没起来」。实测 files/home/.local/bin
+            // 里躺着 201MB 的 agy 与指向 claude 的软链，但 shell 根本找不到它们。
+            // 放在最前（用户级目录优先于系统层，与常规 Linux 习惯一致）。
+            "PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "HOME=/root",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
