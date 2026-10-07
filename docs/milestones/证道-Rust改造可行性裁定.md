@@ -10,19 +10,23 @@
 
 **当前代码里没有任何一个模块"值得为了性能改写成 Rust"。** 计划中三个候选迁移对象（SHA256 / 下载引擎 / 解压引擎）中，两个已是原生实现、一个是 I/O bound 而非 CPU bound——**真正值得做的是把 v1.0 的诊断做完并修正评估口径，而不是启动 SHA256 PoC**。
 
+> ⚠️ **更正（2026-10-07，只保留性能口径）**：本句的**性能口径仍然成立**——到 2026-10-07 为止，实测仍没有任何模块因「性能」而值得改写成 Rust（Rust 3611ms vs Java 3668ms，`rust/extract/README.md` 明写「基线已证解压仅 2 秒，**不是性能任务**」）。
+> 但后文事实需按实况更正：**SHA256 PoC 事实上已经做了并进了 main**（`dc268ea` / `fab4998`），R2 解压流水线也已实装（`1aec7f4` / `e1e43f6`）。
+> Rust 化的**重新定性与证据见 `docs/ERRATA.md` E-012 §6「Rust 化结论（值不值得，用数字说话）」**——价值是**架构验证**（Rust 处理文件树 + native zstd + 进度回调），不是性能。
+
 ---
 
 ## 1. 仓库原状事实（裁定的地基）
 
 | 事实 | 证据 | 对演进计划的影响 |
 |---|---|---|
-| **零 Rust 代码** | `find . -name "*.rs"` / `Cargo.toml` 均无结果 | 引入 Rust 是**从零建工具链**，成本被计划严重低估（见 §4） |
+| ⚠️ ~~**零 Rust 代码**~~ | ~~`find . -name "*.rs"` / `Cargo.toml` 均无结果~~ | ⚠️ **更正（2026-10-07）：本条已失效。** main 现有 `rust/Cargo.toml`（members = `["sha256poc", "extract"]`）、`rust/sha256poc/src/lib.rs`（97 行）、`rust/extract/src/lib.rs`（245 行）等，且被生产代码调用（见下）。**仍为 0 的只有「进程 / Session / 事件总线」那层 Rust**（`证道-长期技术演进路线图.md` §四） |
 | **已有 C 原生层** | `app/src/main/cpp/`（Termux PTY JNI + CMake 3.22.1）+ `externalNativeBuild` 已配置 | cargo-ndk 可复用现有 CMake 接入点，**不是完全从零** |
 | **SHA256 已是原生实现** | `RootfsDownloader.verifySha256()` 用 `java.security.MessageDigest.getInstance("SHA-256")` | ⚠️ **这是 JDK/ART 的原生实现，不是 Kotlin 循环**。计划误判 |
-| **解压已是 C** | `RootfsInstaller` 用 `commons-compress` + **zstd-jni 1.5.6-4（`libzstd-jni-*.so` 已在 jniLibs）** | ⚠️ **zstd 是 C 实现的 zstd 库**，计划误判 |
+| **解压已是 C** | `RootfsInstaller` 用 `commons-compress` + **zstd-jni 1.5.6-4（`libzstd-jni-*.so` 已在 jniLibs）** | ⚠️ **zstd 是 C 实现的 zstd 库**，计划误判。**2026-10-07 追加更正**：main 上 `RootfsInstaller.kt:76` 已先走 Rust（`com.example.zhengdao.rust.ExtractNative.isRustAvailable()`），`:78` 调 `ExtractNative.extract(...)`；**commons-compress 只是失败后的回退**（`:94`「Rust 解压失败，回退 Java 路径」）。入库 `.so` = `libextract.so` + `libsha256poc.so` + `libzstd-jni-1.5.6-4.so` |
 | **NDK 版本偏低** | `ndkVersion = "27.2.12479018"` | **r27 不是 r28+**——16KB 对齐需手动加两个 linker flag（计划未提） |
 | **`useLegacyPackaging = true`** | `app/build.gradle.kts` | 压缩式so 打包，会**规避** 16KB ZIP 对齐问题（但 ELF 对齐仍要管） |
-| **全量代码 6460 行 Kotlin** | 最大的三个文件是 `SettingsScreen`(1127)、`TerminalActivity`(759)、`ProotLauncher`(602) | 规模适中，**不存在"编译期太长"这类需要 Rust 解决的问题** |
+| ⚠️ ~~**全量代码 6460 行 Kotlin**~~ | ~~最大的三个文件是 `SettingsScreen`(1127)、`TerminalActivity`(759)、`ProotLauncher`(602)~~ | ⚠️ **更正（2026-10-07）：实测 `app/src/main` 44 个 `.kt` 共 11441 行**；最大的文件是 `ui/SettingsScreen.kt` **1188**、`ui/taiji/TaijiComponents.kt` 1169、`TerminalActivity.kt` **926**、`oc/OcRepository.kt` 837、`terminal/ProotLauncher.kt` **588**。规模结论不变（仍然适中） |
 | ~~**ABI 双架构**~~ **已消解** | ~~`abiFilters += listOf("arm64-v8a", "x86_64")`~~ | **2026-10-06 用户定案砍掉 x86_64**（定位手机 / 平板，不做模拟器支持），收敛为 arm64 单架构。Rust 交叉编译只需一个目标，16KB 只需验一套——**这原本是最大的一笔额外成本，现已归零** |
 
 ---
@@ -43,8 +47,8 @@
 
 | 模块 | 计划怎么说 | 实际情况 | 裁定 |
 |---|---|---|---|
-| **SHA256 校验** | 列为"中严重度"，计划"先做 PoC 验证 JNI" | **已是 `MessageDigest` 原生实现**。ARM64 上 Android 的 SHA256 走的是 **ARMv8 crypto 扩展（`sha256` 指令）或 OpenSSL BoringLib 汇编**，不是 Java 循环。1.5GB 文件的 SHA256 在现代 ARM64 上是 **I/O 瓶颈（读盘速度），不是 CPU 瓶颈** | ❌ **PoC 无意义**。重写为 Rust 最多省掉 JNI 调用开销（纳秒级），而瓶颈在磁盘 I/O。**建议从计划中删除**，改为"实测 SHA256 耗时，若确实超阈值再重新评估（但几乎不会超）" |
-| **RootFS 解压（tar.zst）** | 列为"中严重度"，可迁 Rust | **解压本身是 C 的 zstd**，Kotlin 只做 tar 遍历（commons-compress `TarArchiveInputStream`）。zstd 压缩比/速度是 **C 库的实现水平**，Rust 重写 zstd 只能做到"同样水平"（除非换算法，如 zstd → lz4，收益是压缩比下降） | ❌ **维持现状**。真要优化，方向是"**减少解压量**"（更小的 rootfs / 分层按需解压），不是"更快的解压器" |
+| **SHA256 校验** | 列为"中严重度"，计划"先做 PoC 验证 JNI" | **已是 `MessageDigest` 原生实现**。ARM64 上 Android 的 SHA256 走的是 **ARMv8 crypto 扩展（`sha256` 指令）或 OpenSSL BoringLib 汇编**，不是 Java 循环。1.5GB 文件的 SHA256 在现代 ARM64 上是 **I/O 瓶颈（读盘速度），不是 CPU 瓶颈** | ❌ **PoC 无意义**。重写为 Rust 最多省掉 JNI 调用开销（纳秒级），而瓶颈在磁盘 I/O。**建议从计划中删除**，改为"实测 SHA256 耗时，若确实超阈值再重新评估（但几乎不会超）" → ⚠️ **更正（2026-10-07）：该 PoC 事实上已执行且已进 main**（`rust/sha256poc`，`dc268ea` / `fab4998`）。**结论与本裁定一致——JNI 边界搬大块数据永远亏**（10MB：平台 MessageDigest 5~6ms vs Rust 27~33ms，`docs/ERRATA.md` E-012 §6）。它不是性能收益，只是链路 PoC |
+| **RootFS 解压（tar.zst）** | 列为"中严重度"，可迁 Rust | **解压本身是 C 的 zstd**，Kotlin 只做 tar 遍历（commons-compress `TarArchiveInputStream`）。zstd 压缩比/速度是 **C 库的实现水平**，Rust 重写 zstd 只能做到"同样水平"（除非换算法，如 zstd → lz4，收益是压缩比下降） | ❌ **维持现状**。真要优化，方向是"**减少解压量**"（更小的 rootfs / 分层按需解压），不是"更快的解压器" → ⚠️ **更正（2026-10-07）**：main 现已**改为 Rust 优先、commons-compress 回退**（`rootfs/RootfsInstaller.kt:76-95`）；**但"不是更快的解压器"这个判断被实测坐实**——Rust 3611ms vs Java 3668ms（同一 311MB 归档，`rust/extract/README.md:54`），价值是架构验证 |
 | **下载引擎** | 列为"中严重度"，触发条件"速度 < 带宽 50%" | OkHttp 已是**高度优化的异步 HTTP 栈**（连接池、HTTP/2、多路复用）。且 M1.1 已实现 Range 断点续传。**下载速度瓶颈在网络与 CDN，不在解析** | ❌ **维持现状**。真要优化 = 多连接分块并发（Kotlin 层 `Range` 切片即可，**不需要 Rust**） |
 
 ### 2.3 ✅ 真正值得考虑 Rust 的（唯一一个，但要等数据）
@@ -105,6 +109,8 @@
 ## 6. 给决策者的一句话
 
 **这份计划最值得肯定的地方是它说"先诊断后动刀"；最需要修正的地方是诊断前就该知道的常识——SHA256 和 zstd 本来就不在 Kotlin 里跑。** 现在最该做的事是把 v1.0 的 Perfetto 基线跑出来，而不是启动一个技术上注定无收益的 SHA256 PoC。
+
+> ⚠️ **更正（2026-10-07）**：最后半句的"SHA256 PoC"**已经做了**（见 §1 注记与 `docs/ERRATA.md` E-012）。本句的常识判断本身正确——`ZstdCompressorInputStream` 是 **zstd-jni（JNI）的包装**，不是纯 Java（`app/build.gradle.kts:154` 显式依赖 `com.github.luben:zstd-jni:1.5.6-4`）；**「纯 Java zstd」这个说法在本仓库应清除**（它是"解压慢 3~5 倍"误判的源头）。
 
 ---
 

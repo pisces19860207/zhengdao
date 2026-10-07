@@ -9,10 +9,10 @@
 
 | # | Android 16 变更项 | 判定 | 证据 |
 |---|---|---|---|
-| 1 | **方向锁定失效**（≥600dp 屏上 screenOrientation 被忽略） | **N/A** | 全库 0 处 `screenOrientation`/`requestedOrientation`（manifest 与代码均无）；TerminalActivity 靠 configChanges 旋转不重建（AndroidManifest.xml:60） |
-| 2 | **Android/data 直接访问被阻止** | **N/A** | 全库 0 处访问 `Android/data`；工作区走 `/sdcard/Download/证道`（Workspace.kt:30）或私有 getExternalFilesDir |
-| 3 | **16KB 页大小** | **已处理** | cpp/CMakeLists.txt `-Wl,-z,max-page-size=16384` + abiFilters arm64 单架构（build.gradle.kts:39） |
-| 4 | **MANAGE_EXTERNAL_STORAGE 行为** | **已处理（引导链完整；存储判定不依赖它）** | 声明：AndroidManifest.xml:20-21；两级引导 Intent：MainActivity.kt:118-143；授权态检查：EnvHealth.kt:200；**关键代码事实**：实际存储判定走 READ+WRITE 运行时授权而非 MANAGE（ProotLauncher.kt:43——isExternalStorageManager 曾恒 false 被弃用）。代码层面存储正确性不锚定在 MANAGE 上；真机授权态属运行时观察，非代码证据 |
+| 1 | **方向锁定失效**（≥600dp 屏上 screenOrientation 被忽略） | **N/A** | 全库 0 处 `screenOrientation`/`requestedOrientation`（manifest 与代码均无）；TerminalActivity 靠 configChanges 旋转不重建（AndroidManifest.xml:~~60~~ ⚠️ 更正（2026-10-07）：app/src/main/AndroidManifest.xml:70） |
+| 2 | **Android/data 直接访问被阻止** | **N/A** | 全库 0 处访问 `Android/data`；工作区走 `/sdcard/Download/证道`（Workspace.kt:~~30~~ ⚠️ 更正（2026-10-07）：app/src/main/java/com/example/zhengdao/terminal/Workspace.kt:62 defaultDir()；:30 是 SHARED_ROOT="/storage/emulated/0"）或私有 getExternalFilesDir |
+| 3 | **16KB 页大小** | **已处理** | ~~cpp/CMakeLists.txt~~ app/src/main/cpp/CMakeLists.txt:18 `-Wl,-z,max-page-size=16384` + abiFilters arm64 单架构（build.gradle.kts:~~39~~ ⚠️ 更正（2026-10-07）：app/build.gradle.kts:51） |
+| 4 | **MANAGE_EXTERNAL_STORAGE 行为** | **已处理（引导链完整；存储判定不依赖它）** | 声明：AndroidManifest.xml:20-21；两级引导 Intent：MainActivity.kt:118-143；授权态检查：EnvHealth.kt:~~200~~ ⚠️ 更正（2026-10-07）：app/src/main/java/com/example/zhengdao/ui/EnvHealth.kt:208（:200 是 DNS 判活 s.connect(...223.5.5.5:53...)）；**关键代码事实**：实际存储判定走 READ+WRITE 运行时授权而非 MANAGE（ProotLauncher.kt:43——isExternalStorageManager 曾恒 false 被弃用）。代码层面存储正确性不锚定在 MANAGE 上；真机授权态属运行时观察，非代码证据 |
 | 5 | **本机网络访问权限**（新运行时权限） | **N/A（仅回环）** | 全库网络目标仅 127.0.0.1:14000（OcClient.kt:45，太极 REST/SSE）与公共 DNS/下载源，无局域网地址；太极连太极本机 serve 每日实证可用 |
 | 6 | **预测性返回** | **不适用**（另见下方"BACK 行为"独立说明） | targetSdk 28 不触发强制迁移；未声明 enableOnBackInvokedCallback（AndroidManifest.xml application 标签无此属性） |
 
@@ -21,16 +21,16 @@
 - **预测性返回**是"返回手势动画预览"机制：需 targetSdk 33+ 且声明
   `enableOnBackInvokedCallback` 才启用。本 App 两者皆无 → 机制整体不适用，无迁移义务。
 - **抽屉 BACK 关闭**是普通返回拦截：太极抽屉开着按 BACK，期望是"关抽屉"而非"退 App"。
-  Compose material3 在本配置下不自动处理，故 TaijiScreen.kt:110 注册显式
+  Compose material3 在本配置下不自动处理，故 TaijiScreen.kt:~~110~~ ⚠️ 更正（2026-10-07）：app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt:111 注册显式
   `BackHandler(enabled = drawerState.isOpen)`（经典 onBackPressed 世界的标准做法，
   真机复测 2026-10-07：抽屉正确关闭）。这不是预测性返回的"兜底"，是独立的返回拦截实现。
 | 7 | **边到边 opt-out 下线** | **已处理** | v1.1 第三阶段（054b517）：WindowCompat.setDecorFitsSystemWindows(false) + Compose insets（statusBarsPadding/imePadding）；未用 enableEdgeToEdge、未设 statusBarColor，无下线影响面 |
-| 8 | **cleartext HTTP** | **记录为待办** | manifest `usesCleartextTraffic="true"` 全局放开（targetSdk 28 默认禁，故显式开）；实际明文仅 127.0.0.1:14000。可收紧为 network_security_config 仅对 localhost 放行——**今天不做**（安全加固需真机回归，记 v1.1 待办） |
-| 9 | **共享存储进一步收紧**（Android/data 之外） | **已实证** | READ 帽子摘除（d414dca）+ MANAGE 主路径；SAF 镜像已删（4bbfd21），剩余 SAF 仅 ACTION_OPEN_DOCUMENT 选 rootfs 安装包（TerminalActivity.kt:673，用户主动，不受影响） |
+| 8 | **cleartext HTTP** | **记录为待办** | manifest `usesCleartextTraffic="true"` 全局放开（targetSdk 28 默认禁，故显式开）；实际明文仅 127.0.0.1:14000。可收紧为 network_security_config 仅对 localhost 放行——**今天不做**（安全加固需真机回归，~~记 v1.1 待办~~ ⚠️ 更正（2026-10-07）：改记 v1.3+ 未结——v1.1 已发布越过，且 docs/milestones/证道-v1.3-待办.md 未收录此条；现状仍为 app/src/main/AndroidManifest.xml:33 `usesCleartextTraffic="true"`） |
+| 9 | **共享存储进一步收紧**（Android/data 之外） | **已实证** | READ 帽子摘除（d414dca）+ MANAGE 主路径；SAF 镜像已删（4bbfd21），剩余 SAF 仅 ACTION_OPEN_DOCUMENT 选 rootfs 安装包（TerminalActivity.kt:~~673~~ ⚠️ 更正（2026-10-07）：app/src/main/java/com/example/zhengdao/TerminalActivity.kt:763（全库唯一一处），用户主动，不受影响） |
 
 ## 结论
 
-**9 项变更：8 项 N/A / 不适用 / 已处理（每项锚定 file:line 代码证据），1 项（cleartext 收紧）记为 v1.1 可选加固待办。无阻塞性风险。**
+**9 项变更：8 项 N/A / 不适用 / 已处理（每项锚定 file:line 代码证据），1 项（cleartext 收紧）~~记为 v1.1 可选加固待办~~ ⚠️ 更正（2026-10-07）：改记 v1.3+ 未结（v1.1 已发布越过；app/src/main/AndroidManifest.xml:33 仍 `usesCleartextTraffic="true"`；docs/milestones/证道-v1.3-待办.md 未收录此条）。无阻塞性风险。**
 
 结构性边界不变式（再次确认）：
 - targetSdk 28 = proot 从数据目录 exec 的 W^X 豁免，**不可谈判**（已知限制.md §2）

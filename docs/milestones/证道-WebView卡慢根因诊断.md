@@ -1,9 +1,15 @@
 # WebView 版太极 Tab「卡 / 慢 / 进不了对话框」根因诊断
 
+> ## ⚠️ 状态更正（2026-10-07）：本文所诊断的文件已删除，本文转为**历史诊断**
+>
+> - 本文依据的 `app/src/main/java/com/example/zhengdao/oc/LocalProxy.kt` **已随 commit `e9997ec` 删除**，仓库现状已不含该文件。本文所引代码经 `git show e9997ec^:` 复核**属实**，故**下文结论仍然成立**，保留作删除前的历史诊断记录。
+> - 同 commit 一并删除的还有 **WebView 版 `ui/TaijiScreen.kt`**；现存 `app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt` 是**重写后的 Compose 原生客户端**（468 行），与本文所指的 WebView 版**不是同一个文件**，不要据"引用了 TaijiScreen.kt"来判断本文过时。
+> - §6.3「迁移期间不要删 `LocalProxy`」的**过渡期已结束**（见文末 §6.3 更正）。
+
 > **诊断时间**：2026-10-06
 > **现象**（用户反馈）：WebView 版太极 Tab 不好用；改了几次仍然卡、慢、**进不了对话框**。
 > **结论**：✅ **不是 UI 层的问题，是 `LocalProxy` 的三处结构性缺陷**。换 Compose UI 之所以能解决，是因为它**把这层代理整个绕开了**——不是恰好修好了渲染。
-> **依据**：`app/src/main/java/com/example/zhengdao/oc/LocalProxy.kt` 代码实况（逐行核对）
+> **依据**：~~`app/src/main/java/com/example/zhengdao/oc/LocalProxy.kt` 代码实况（逐行核对）~~ ⚠️ 更正（2026-10-07）：该文件**已随 commit `e9997ec` 删除**；本文是其**删除前**的逐行实况，所引代码经 `git show e9997ec^:` 复核属实，结论保留有效。
 
 ---
 
@@ -123,9 +129,11 @@ up.join(3000)
 >
 > **预期**：OkHttp 直连在"高频小请求"场景下应有数量级优势。这个数字会让我们对"换 Compose 到底值多少"有实据，而不是靠感觉。
 
-### 6.3 迁移期间不要删 `LocalProxy`
+### 6.3 ~~迁移期间不要删 `LocalProxy`~~ ⚠️ 更正（2026-10-07）：过渡期已结束，`LocalProxy` 已下线
 
-它还在给现有 WebView 路径供着。**Compose 方案阶段 0 验证通过后**，再按裁定报告的阶段 3 下线。
+~~它还在给现有 WebView 路径供着。**Compose 方案阶段 0 验证通过后**，再按裁定报告的阶段 3 下线。~~
+
+**实况**：`app/src/main/java/com/example/zhengdao/oc/LocalProxy.kt` 与 WebView 版 `ui/TaijiScreen.kt` **已随 commit `e9997ec` 删除**，阶段 3 下线已完成（证据：仓库中已无 `LocalProxy.kt`；现存 `app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt` 为重写后的 Compose 原生客户端）。本节的"必须等到阶段 0 验证通过再删"已不再是有效约束。
 
 ---
 
@@ -138,3 +146,5 @@ Compose 直连之后，WebView 和这个代理一起退休，问题从根上消�
 ---
 
 *本诊断基于 `LocalProxy.kt` 代码逐行核对，未做任何代码修改。所列缺陷均可复核。*
+
+> ⚠️ 更正（2026-10-07）：上句中的 `LocalProxy.kt` 已随 commit `e9997ec` 删除；复核方式改为 `git show e9997ec^:app/src/main/java/com/example/zhengdao/oc/LocalProxy.kt`。本文其余内容不变。

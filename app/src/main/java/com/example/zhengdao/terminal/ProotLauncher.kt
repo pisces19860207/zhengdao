@@ -449,7 +449,9 @@ object ProotLauncher {
             //   优先连 IPv6 并**一直挂到超时**（oven-sh/bun#25619）。本 flag 在 Bun 源码
             //   `src/env_var.zig` 里真实存在（2026-10-07 已核对），不是臆造项。
             //   ⚠️ 本机实测未复现卡死（curl opencode.ai 1.50s vs -4 的 1.45s），
-            //   这里按用户决定**预防性**开启；与 /etc/hosts 里钉的 IPv4 互为双保险。
+            //   这里按用户决定**预防性**开启。
+            //   （2026-10-07 更正：原注释写「与 /etc/hosts 里钉的 IPv4 互为双保险」已不成立——
+            //    opencode.ai 的钉 IP 早前已撤除，见 EnvSelfHeal.HOSTS_UNPINS/"stripObsoletePins"。）
             "BUN_FEATURE_FLAG_DISABLE_IPV6=1",
             // 遥测屏蔽（P1）：网络不稳时的无退避重试会拖出大量失败 DNS 查询（发热/耗电）。
             //   前两个是各类 CLI 通用的退出开关（未设时进程忽略，零副作用），
