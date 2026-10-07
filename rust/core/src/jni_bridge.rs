@@ -14,6 +14,7 @@
 use crate::extract::{extract_pipeline, Progress};
 use jni::objects::{JByteArray, JClass, JString};
 use jni::JNIEnv;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 进度回调限频：每 +200 条目通知 Java 一次（避免 JNI 边界成为热点）。
 const PROGRESS_STEP: u64 = 200;
@@ -103,9 +104,25 @@ pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeExtract(
     }
 }
 
+/// 进度回调可用性闩锁：一旦查找/调用失败就永久关闭。
+///
+/// 回调只是旁路信息（"尽力而为"），反复跨 JNI 查找没有意义；更关键的是失败路径
+/// 必须清掉 pending exception（见 report_progress 的 E-022 注释）。
+static PROGRESS_DISABLED: AtomicBool = AtomicBool::new(false);
+
 fn report_progress(env: &mut JNIEnv, entries: u64, name: &str) {
-    // Kotlin 侧静态方法 CoreNative.onProgress(entries, name)；找不到/失败静默
-    let _ = (|| -> jni::errors::Result<()> {
+    // Kotlin 侧静态方法 CoreNative.onProgress(entries, name)；找不到/失败静默。
+    //
+    // ⚠️ E-022（2026-10-08 真机事故）：JNI 调用留下的 pending exception 必须清掉。
+    // release 包里 R8 把 `CoreNative.onProgress` 改了名，查找失败后异常一直挂在当前线程上，
+    // 下一次 JNI 调用就命中 ART 的 `AssertNoPendingException` → SIGABRT，整个进程闪退
+    // （现象：手机上一装环境就退回主页，用户点了三次都装不上）。修法是两条：
+    //   1) `app/proguard-rules.pro` 显式 keep 这个被 native 按名字查的成员（R8 看不见 JNI 调用点）；
+    //   2) 这里兜底——旁路回调失败一律吞掉并 `exception_clear()`，绝不让它升级成进程崩溃。
+    if PROGRESS_DISABLED.load(Ordering::Relaxed) {
+        return;
+    }
+    let result = (|| -> jni::errors::Result<()> {
         let cls = env.find_class("com/example/zhengdao/rust/CoreNative")?;
         let jentries = env.new_string(format!("{entries}"))?;
         let jname = env.new_string(name)?;
@@ -118,4 +135,8 @@ fn report_progress(env: &mut JNIEnv, entries: u64, name: &str) {
         )?;
         Ok(())
     })();
+    if result.is_err() {
+        PROGRESS_DISABLED.store(true, Ordering::Relaxed);
+        let _ = env.exception_clear();
+    }
 }
