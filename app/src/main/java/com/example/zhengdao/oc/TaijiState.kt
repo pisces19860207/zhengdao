@@ -81,6 +81,16 @@ data class TaijiState(
     /** 可选模型目录（GET /api/model；进会话/打开选择器时拉取，可能为空——models.dev 不可达时目录为空）。 */
     val models: List<OcModel> = emptyList(),
 
+    /**
+     * 最近一次拉取模型目录**失败**的原因（null = 最近一次拉取没失败）。
+     *
+     * 为什么要与 [models] 分开：**空表有两种含义**——「目录真的就是空的」与「这次没拉到」。
+     * 原先 [OcRepository.fetchModels] 失败也返回空表且不写任何 state，两者在界面上完全
+     * 不可区分，用户点刷新只看到「⟳ 刷新 → 拉取中… → ⟳ 刷新」闪一下（2026-10-08 审查 MAJOR）。
+     * 这里只放一句给人看的原因（异常原文另有 RunLog），由 ModelSheet 显示；拉取成功即清空。
+     */
+    val lastModelFetchError: String? = null,
+
     /** 当前生效模型显示名：session.step.started 事件的 model 字段（服务端实际在用的），
      *  或本地 override 刚设置时的值；null = 服务端默认。 */
     val currentModel: String? = null,
