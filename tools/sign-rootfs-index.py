@@ -22,7 +22,13 @@
 #   python tools/sign-rootfs-index.py [索引路径]
 #
 #   # 3) CI 里签（私钥来自 GitHub Secret，不落盘）
-#   ZHENGDAO_INDEX_SIGNING_KEY_PEM="$(cat key.pem)" python tools/sign-rootfs-index.py rootfs-out/rootfs-index.json
+#   ROOTFS_INDEX_SIGNING_KEY_PEM="$(cat key.pem)" python tools/sign-rootfs-index.py rootfs-out/rootfs-index.json
+#
+# ⚠️ Secret 名字只有一个事实来源：`.github/workflows/build.yml` 的
+#   `secrets.ROOTFS_INDEX_SIGNING_KEY_PEM`。本脚本 2026-10-08 首版把名字写成
+#   `ZHENGDAO_INDEX_SIGNING_KEY_PEM`（与 agents.json 那条链的命名习惯串了），
+#   照着脚本提示去建 secret 的话工作流读不到、签名步骤会硬失败 —— 已统一。
+#   （旧名仍被读取以兼容本地既有环境变量，但请以 ROOTFS_ 为准。）
 #
 # 签名口径（与 agents.json.sig 保持一致）：
 #   对索引文件的**原始字节**签名，输出 base64（88 字符，含换行）。App 侧必须
@@ -140,7 +146,7 @@ def _seed_to_pem(seed: bytes) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="签名环境包索引 rootfs-index.json（Ed25519）")
     ap.add_argument("index", nargs="?", help="索引文件路径（默认 rootfs-out/rootfs-index.json）")
-    ap.add_argument("--key", help="私钥 PEM 路径（默认读环境变量 ZHENGDAO_INDEX_SIGNING_KEY_PEM）")
+    ap.add_argument("--key", help="私钥 PEM 路径（默认读环境变量 ROOTFS_INDEX_SIGNING_KEY_PEM）")
     ap.add_argument(
         "--genkey",
         action="store_true",
@@ -166,7 +172,7 @@ def main() -> int:
         print(f"私钥已写入（仓库外，勿提交）：{args.key_out}")
         print(f"公钥 raw(32B) base64：{pub_b64}")
         print("把公钥填进 app/.../rootfs/RootfsIndex.kt 的 INDEX_SIGNING_PUBKEY_B64，")
-        print("并把私钥 PEM 配成 GitHub Secret：ZHENGDAO_INDEX_SIGNING_KEY_PEM")
+        print("并把私钥 PEM 配成 GitHub Secret：ROOTFS_INDEX_SIGNING_KEY_PEM")
         return 0
 
     index_path = args.index or os.path.join(repo, "rootfs-out", "rootfs-index.json")
@@ -175,11 +181,20 @@ def main() -> int:
         return 1
 
     if args.key:
-        with open(args.key, "rb") as f:
-            pem = f.read().decode()
+        # 读不到就给一句人话，不要把 FileNotFoundError 的堆栈甩给用的人
+        try:
+            with open(args.key, "rb") as f:
+                pem = f.read().decode()
+        except OSError as e:
+            print(f"[错误] 读不到私钥文件 {args.key}：{e}", file=sys.stderr)
+            return 1
     else:
         # 优先级：显式 --key > 环境变量（CI 用） > 仓库外默认路径（本地省事）
-        pem = os.environ.get("ZHENGDAO_INDEX_SIGNING_KEY_PEM", "")
+        # 环境变量只认 ROOTFS_INDEX_SIGNING_KEY_PEM（与工作流里的 secret 同名）；
+        # 旧名 ZHENGDAO_INDEX_SIGNING_KEY_PEM 仅作兼容兜底。
+        pem = os.environ.get("ROOTFS_INDEX_SIGNING_KEY_PEM", "")
+        if not pem.strip():
+            pem = os.environ.get("ZHENGDAO_INDEX_SIGNING_KEY_PEM", "")
         if not pem.strip():
             default_key = os.path.expanduser(
                 "~/.zhengdao-keys/rootfs-index-signing.ed25519.key")
@@ -188,9 +203,10 @@ def main() -> int:
                     pem = f.read()
     if not pem.strip():
         print(
-            "[错误] 没有私钥：给 --key <文件>、设环境变量 ZHENGDAO_INDEX_SIGNING_KEY_PEM，\n"
+            "[错误] 没有私钥：给 --key <文件>、设环境变量 ROOTFS_INDEX_SIGNING_KEY_PEM，\n"
             "        或放到 ~/.zhengdao-keys/rootfs-index-signing.ed25519.key（--genkey 会生成）。\n"
-            "        CI 里配 GitHub Secret（见 .github/workflows/build.yml 的「签名环境包索引」那一步）。",
+            "        CI 里配 GitHub Secret：ROOTFS_INDEX_SIGNING_KEY_PEM（见 .github/workflows/build.yml\n"
+            "        的「签名环境包索引」那一步）。",
             file=sys.stderr,
         )
         return 1
