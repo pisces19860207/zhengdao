@@ -293,6 +293,20 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 「判断本次推送要不要重建 RootFS」= 否 ⇒ 释放磁盘空间/装 RootFS 依赖/构建 RootFS/发布 RootFS 包**全部 skipped**，
 > rootfs 资产原封不动（243,428,459 B 仍是 05:09:59Z 那份），只重发了 APK。
 
+> **2026-10-08 续（增量下发落地：环境更新从"每次重下 228 MB"改为"内容指纹 + 文件级差分包"）**：
+> 用户 m06704「把老账都清掉」⇒ 头号老账是"每次环境更新都重下整个包"。方案
+> `docs/milestones/证道-环境包增量下发协议.md`：`env` = 清单正文的内容指纹（sha256[:16]），
+> 索引 `rootfs-index.json` 成为 App 端**唯一事实来源**（版本判断改比 env；旧逻辑拿恒定的
+> 发行版号 `13.7` 比，于是「检查环境更新」**永远显示"已是最新"**——本次一并修掉）；
+> 差分包只装变更文件，`rootfs.tmp` 整树硬链接克隆后解补丁 → 按 `deletes` 删 → 原子替换，
+> **任何失败回退全量**（含基线不符时"动手之前"就抛错）。CI 侧：`rootfs/build-rootfs.sh:288-346`
+> 产清单/补丁/索引（`tools/rootfs-manifest.py`），`build.yml` 新增「取上一版 rootfs 清单」步骤，
+> `release` job 新增「补 RootFS 资产到 tag」（整包 + 清单 + 索引，**不搬补丁**）。
+> 验证四层：bash harness 抽真代码跑三用例 PASS / Python 自测 45 断言 /
+> Kotlin 46 单元 + 真机 2 仪器测试 / 全量 211 单元测试 0 失败。
+> 全过程与教训见 `docs/ERRATA.md` E-033（其中一条通用教训：**删除类瘦身必须在线上压缩级别下测算**
+> ——B2 的 −24.7 MB 是 zstd -3 口径，线上 -19 实测只省 14.6 MB）。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
