@@ -281,8 +281,15 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     }
 
     // 恢复上次页面：叠在 home 之上（返回键退回首页，不再有死返回）
+    //
+    // 2026-10-08 加固：真机上出现过"从设置页返回后整页纯白"（当次 2/2，随后 9 次导航 0 复现），
+    // 纯白时 uiautomator 一个节点都读不到、logcat 也没有异常，日志里没有任何路由痕迹 ⇒ 无法归因。
+    // 这里做两件事：① 只在确实站在起始页时才叠加恢复页，避免在任何中间态下再造一次
+    // "栈里只剩恢复页"的局面（那正是 2026-10-06 c7e59dc7 修过的死返回）；② 记一行路由面包屑，
+    // 万一再复现，日志里至少能看到最后到达/来自哪个页面、栈是不是退空了。
     androidx.compose.runtime.LaunchedEffect(lastRoute) {
-        if (!startInTerminal && lastRoute == "settings") {
+        val cur = nav.currentBackStackEntry?.destination?.route
+        if (!startInTerminal && lastRoute == "settings" && (cur == "home" || cur == "welcome")) {
             nav.navigate("settings") { launchSingleTop = true }
         }
     }
@@ -291,6 +298,13 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     androidx.compose.runtime.LaunchedEffect(nav) {
         nav.currentBackStackEntryFlow.collect { entry ->
             routePrefs.edit().putString("last_route", entry.destination.route).apply()
+            // 路由面包屑（白屏排查用，见上）：一次导航一行，正常使用一天也就几行。
+            runCatching {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "路由 → ${entry.destination.route}" +
+                        "（来自 ${nav.previousBackStackEntry?.destination?.route ?: "无"}）"
+                )
+            }
         }
     }
 
@@ -360,7 +374,23 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
                         .height(48.dp),
                 ) {
                     TextButton(
-                        onClick = { nav.popBackStack() },
+                        // popBackStack 返回 false = 栈里已经没有可退的页面（历史死返回）。
+                        // 此时若什么都不做，NavHost 就没有内容可画 → 整页纯白
+                        //（2026-10-08 真机现象：设置页返回后整窗纯白、零可读节点）。
+                        // 兜底：显式回 home 并清栈重建，保证任何时候都有页面在显示。
+                        onClick = {
+                            if (!nav.popBackStack()) {
+                                runCatching {
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "路由：设置页返回时栈已空，兜底回 home（白屏防御）"
+                                    )
+                                }
+                                nav.navigate("home") {
+                                    popUpTo(nav.graph.id) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .padding(start = 4.dp),
