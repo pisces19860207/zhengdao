@@ -2870,3 +2870,55 @@ libavdevice61 一起带走。**上一轮"绕过 apt 的假依赖"这个判断本
    之后，这个绿灯才是可信的。
 3. **每一轮失败都要把"新事实"写回脚本**：这次失败注解里的 Purg 名单本身成了下一轮的判据
    （黑名单里补上 `mesa-libgallium`）。CI 失败的价值不在"红了"，而在它把依赖图的下一层摊开给你看。
+
+## E-043 · 2026-10-08 · 「终端里复制不出东西」的真因是 tmux 的 `set-clipboard` 默认 `external` —— termux 的 OSC 52 backport 因此在真机上一直是空转
+
+**现场**：2026-10-08 20:35，termux 单点 backport（合并提交 `b3622f5`，含 OSC 52 累积上限从 8192
+抬到 `100*1024+10` 的修复）进入 main、同签名 release APK 装机之后，按"发一条 >8 KiB 的 OSC 52，
+看 `TerminalActivity.kt:809-814` 的 Toast「已复制 N 个字符」"做真机验收：脚本确实跑了（屏上打出
+`OSC52-9000-SENT`），但**一条 Toast 都没有**，随后点终端工具栏「粘贴」也什么都粘不出来。
+
+**排查**（三步，缺任何一步都会误判成"App 的 OSC 52 解析坏了"）：
+
+1. **BEL 终止是死路**：tmux 3.5a 只认 ST（`ESC \`）终止，用 `\x07` 结尾的 OSC 52 会被 tmux 当普通
+   文本透到屏上（截图里能看到裸 base64 `]52;c;U1NT…`）⇒ 序列根本没到 App，这时"没有 Toast"说明不了任何事。
+2. **对照实验切链路**：`tmux set-buffer -w "ZD-CLIP-PROBE-A"` 之后点「粘贴」，剪贴板里粘出了这句话
+   （屏上可见，剪贴板预览条也同步显示）⇒ **tmux→App 与 App→剪贴板这两段都是通的**，坏只坏在
+   pane 内应用 → tmux 这一段。
+3. **tmux 侧真机读数**：`tmux 3.5a`；`set-clipboard external`（默认值）；`#{client_termfeatures}` 里
+   其实**有** `clipboard`；会话内 `$TERM=tmux-256color`；`infocmp` 里**没有 `Ms`**；
+   `~/.tmux.conf` 只有 16 字节（内容 `set -g mouse on`，由 `ProotLauncher` 预置）；`/etc/tmux.conf` 不存在。
+
+**真因**：`set-clipboard external` 的语义是"只接受**外层终端**下发的剪贴板写入，不把 pane 里的 OSC 52
+转发出去"；只有 `on` 才既存进 tmux buffer、又透传给外层终端。改成 `on` 之后三种负载立刻全部打通：
+100 字节 → Toast「已复制 100 个字符」、9000 字节 → 「已复制 9000 个字符」、12345 字节 →
+「已复制 12345 个字符」，剪贴板预览条分别是 `SSSSSSSS…` / `BBBBBBBB…` / `CCCCCCCC…`
+⇒ **100 KiB 上限那条修复本身是好的，它只是从来没有机会被触发。**
+
+**修法**：`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` 里那段"幂等补
+`~/.tmux.conf`"的代码（原本只补 `set -g mouse on`）加第二条：匹配
+`(?m)^\s*set(-option)?\s+-g\s+set-clipboard\b`，缺失就追加 `set -g set-clipboard on`，并
+`RunLog.log("tmux 配置已补：set -g set-clipboard on（终端内 OSC 52 才能写进手机剪贴板）")`；
+有改动才写文件，不覆盖用户自有配置。提交 `87b7c10`（分支 `fix/tmux-set-clipboard`）→
+merge **`28e733d`**，已推 origin/main。
+
+**证据（配置驱动，不手工改运行时选项）**：先 `tmux set-option -g set-clipboard external` 把运行时复原，
+`adb install -r` 新包（`lastUpdateTime=2026-10-08 20:47:14`）、`am force-stop` 冷启 → 点底部「终端」
+→ `ProotLauncher` 重跑：`~/.tmux.conf` 变成 `set -g mouse on` + `set -g set-clipboard on`，日志原文
+`[10-08 20:48:01] tmux 配置已补：set -g set-clipboard on（终端内 OSC 52 才能写进手机剪贴板）`，
+**新起的 tmux server**（`pid=4785`，`created Thu Oct 8 20:48:01 2026`）直接报 `set-clipboard on`；
+同一条 9000 字节脚本在收起软键盘后弹出完整 Toast「**已复制 9000 个字符**」。
+
+**教训**：
+
+1. **backport 正确 ≠ 功能可用**：转义序列类功能要连着"谁有可能吞掉它"一起验。`TerminalEmulator` 的
+   单测只能证明解析器收得下 100 KiB；真机上决定这条序列能否抵达解析器的是 pty 与 tmux 之间的配置。
+2. **终端页的屏幕是唯一真相**：终端是 canvas，a11y 树里没有任何节点 ⇒ 验收一律走"push 脚本 →
+   guest 里 `bash /workspace/x.sh` → 结果写文件再 `adb pull` 当纯文本读"，或者截图；
+   另外 `adb shell input text` 里**不能带 `;`**（设备侧 shell 会把它当命令分隔符，报
+   `/system/bin/sh: %stmux%s: inaccessible or not found`）——这也是一开始命令打不进终端的真因。
+3. **Toast 是这类事件的唯一出口，且只活 2 秒**：`logcat` 里没有 Toast 文本，只能用
+   `dumpsys window windows | grep -c 'u0 Toast'` 轮询、命中即截图；「已复制 N 个字符」这类只在
+   Toast 里出现的信息，不截图就等于没验。
+4. **先做对照实验再归因**：`set-buffer -w` 那一发把"三段链路"切成两段，一步就把嫌疑锁死在 tmux 配置上；
+   否则很容易误判成自家 OSC 52 解析或渲染层的锅。
