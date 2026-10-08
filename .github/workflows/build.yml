@@ -309,10 +309,16 @@ jobs:
           curl -fsSL --retry 3 -o rootfs-base/rootfs-manifest.txt "$BASE_URL/rootfs-manifest.txt" || true
           curl -fsSL --retry 3 -o rootfs-base/rootfs-manifest.txt.sha256 "$BASE_URL/rootfs-manifest.txt.sha256" || true
           if [ -s rootfs-base/rootfs-manifest.txt ] && [ -s rootfs-base/rootfs-manifest.txt.sha256 ]; then
-            if (cd rootfs-base && sha256sum -c rootfs-manifest.txt.sha256); then
+            # 本项目 .sha256 的既有约定是「只有 64 位摘要、不带文件名」（build-rootfs.sh 里
+            # `sha256sum … | awk '{print $1}'`，与线上 debian-*.tar.zst.sha256 一致），
+            # 所以**不能**用 `sha256sum -c`：它要求 `<hash>  <文件名>` 的标准格式，碰到裸摘要会
+            # 报 "no properly formatted checksum lines found" 而永远"校验失败" ⇒ 差分包永不产生。
+            EXPECTED="$(awk 'NR==1{print $1}' rootfs-base/rootfs-manifest.txt.sha256)"
+            ACTUAL="$(sha256sum rootfs-base/rootfs-manifest.txt | awk '{print $1}')"
+            if [ -n "$EXPECTED" ] && [ "$EXPECTED" = "$ACTUAL" ]; then
               echo "✅ 基线清单校验通过：$(wc -l < rootfs-base/rootfs-manifest.txt) 行"
             else
-              echo "::warning::基线清单 SHA256 校验失败，本次不产补丁"
+              echo "::warning::基线清单 SHA256 校验失败（期望 ${EXPECTED:-空}，实得 $ACTUAL），本次不产补丁"
               rm -f rootfs-base/rootfs-manifest.txt
             fi
           else
