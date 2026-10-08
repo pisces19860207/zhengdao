@@ -41,7 +41,33 @@ fun ModelSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 16.dp)) {
-            Text("模型池", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "模型池",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                // 常驻刷新入口（2026-10-08）：此前「重新加载」只写在**空列表**分支里，
+                // 列表有内容时反而没有任何刷新入口——想换一批模型只能关掉抽屉、再点一次
+                // 顶部胶囊（而那条路径本身要先联网拉完才弹，见 TaijiScreen 的注释）。
+                // 列表在拉取中时同一个位置显示状态，避免"按了没反应"。
+                if (isLoading) {
+                    Text(
+                        "拉取中…",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        "⟳ 刷新",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable(onClick = onReload)
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                    )
+                }
+            }
             Text(
                 "当前：" + (override?.let { "${it.providerID}/${it.id}（本会话覆盖）" }
                     ?: currentModel ?: "服务端默认"),
