@@ -262,6 +262,9 @@ public final class TerminalEmulator {
      */
     private int mScrollCounter = 0;
 
+    /** The cached value for this emulator for `TerminalView.mTopRow` as sessions/emulators may be switched. */
+    private int mTopRow;
+
     /** If automatic scrolling of terminal is disabled */
     private boolean mAutoScrollDisabled;
 
@@ -2105,6 +2108,12 @@ public final class TerminalEmulator {
                 }
                 break;
             case 52: // Manipulate Selection Data. Skip the optional first selection parameter(s).
+                // 限制 base64 文本长度 ~100KB，避免 binder TransactionTooLargeException
+                // （Android 对跨进程 String 的 binder 限制 ~100KB UTF-16，见 d8d6b02）
+                if (textParameter.length() > (100 * 1024) + /* `52;Pc;` */ 10) {
+                    Logger.logError(mClient, LOG_TAG, "OSC 52 text too long, dropping (" + textParameter.length() + " chars)");
+                    break;
+                }
                 int startIndex = textParameter.indexOf(";") + 1;
                 try {
                     String clipboardText = new String(Base64.decode(textParameter.substring(startIndex), 0), StandardCharsets.UTF_8);
@@ -2531,6 +2540,14 @@ public final class TerminalEmulator {
 
     public void toggleAutoScrollDisabled() {
         mAutoScrollDisabled = !mAutoScrollDisabled;
+    }
+
+    public int getTopRow() {
+        return mTopRow;
+    }
+
+    public void setTopRow(int topRow) {
+        mTopRow = topRow;
     }
 
 
