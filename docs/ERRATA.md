@@ -2500,3 +2500,65 @@ API = `start(ctx, text, fromLocal)` / `update(ctx, text, percent)` / `finish(ctx
    `grep -rn "Toast" app/src/main/java | grep -v "^.*//"` 比 `grep "安装"` 更容易逮住这类漏点。
 2. **"30 秒"这类文案是估的，真机测出来是 8 秒**：文案要写成"约 30 秒～几分钟"这种区间，
    别把估算值写成承诺。
+
+---
+
+## E-037 · 2026-10-08 · 「运行日志」的善后其实是**把每轮正常运行的记录删掉**——与"日志留着给 Agent 查问题"直接冲突（已改成归档式保留）
+
+**现场**：用户 2026-10-08 原话：
+
+> 「那些日志都是方便给你们这些 agent 看查哪里有问题的，所以要留着」
+
+而当时的实现（`app/src/main/java/com/example/zhengdao/rootfs/RunLog.kt` 旧 `:89-109`
+`cleanupIfClean()`）是**反过来的**：
+
+```kotlin
+val hasError = current.readLines().any { line -> ERROR_MARKERS.any { line.contains(it, true) } }
+if (hasError) { File(d, PREV_NAME).delete(); current.renameTo(File(d, PREV_NAME)) }
+else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接删掉
+```
+
+三处后果（都是"排查时最需要的东西恰好被删掉"）：
+
+1. **正常那轮被删**：一次干净启动/一次成功的环境更新，日志在下次启动时消失——
+   而"正常的时候长什么样"正是判断"哪里开始不对"的对照组；
+2. **只留一代，且会被下一秒覆盖**：`.prev` 只有一份，下一次出错就把它顶掉，
+   于是"第一次出错时的现场"永远留不住；
+3. **启动路径上做整文件 IO**：`init()` 在 `ZhengdaoApp` / `MainActivity` / `TerminalActivity`
+   三处被调用，旧实现每次都要 `readLines()` 整个文件（上限 512 KB）来判错，
+   而这个判断只在设置页才需要。
+
+**修法（新语义：只轮转，不删除）**——`app/src/main/java/com/example/zhengdao/rootfs/RunLog.kt`：
+
+- `archivePrevious(d)` 取代 `cleanupIfClean(d)`：启动时把上一轮的 `zhengdao-log.txt`
+  **整份归档**成 `zhengdao-log.<yyyyMMdd-HHmmss>.txt`（时间戳取上一轮最后写入时间
+  `lastModified()`，不是归档时刻）；空文件仍删（没有信息量却占一个历史位）；
+  `renameTo` 失败时退回复制（跨文件系统/被占用也别丢日志）。
+- 保留策略 `pruneArchivesIn(d, keep = KEEP_ARCHIVES = 20, maxBytes = ARCHIVE_TOTAL_MAX = 20 MB)`：
+  先按份数砍 `drop(keep)`，再按总量在剩下的里**从最旧的**继续删；**最新那一份永不删**
+  （否则单文件超上限时会退化成"一份都不剩"）。
+- 单文件上限 `MAX_BYTES` 512 KB → **2 MB**（`errors.log` 单独 1 MB），超限仍保留后半段。
+- `lastRunHadErrors(ctx)` 改读**最新归档**（老用户只剩 `.prev.txt` 时也认它），
+  并且**只在设置页的 IO 协程里调用**——启动路径不再读整份日志。
+- 设置页（`app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` 运行日志卡片）：
+  文案改成"留最近 20 份 / 最多 20 MB，从最旧的开始轮转；不会因为「这轮没出错」就删"，
+  显示"已有 N 份历史日志"，把原来那个把唯一一代删掉的「删除」按钮换成
+  **「只留最近 3 份」**（用户主动清理，后台不偷偷删）。
+
+**验证**：
+
+- 新增单测 `app/src/test/java/com/example/zhengdao/rootfs/RunLogArchiveTest.kt`（4 例）：
+  归档名判定（**本轮日志 / `errors.log` / 旧 `.prev.txt` / `zhengdao-log..txt` 都不算归档**）、
+  份数超限从最旧的删、总量超限也从最旧删且不碰本轮与 `errors.log`、没有归档时纯空操作。
+- 全量 `.\gradlew.bat :app:testDebugUnitTest :app:installDebug` = `Installed on 1 device.` +
+  `BUILD SUCCESSFUL`；测试报告合计 **30 suites / 232 tests / failures=0 / errors=0 / skipped=0**。
+- 顺带确认：全仓库只有 `RunLog` 会动 `Download/证道/logs/`（`Store.logsDir` 只被它使用），
+  二档缓存清理的白名单在 `rootfs/tmp`，**不会**碰日志。
+
+**教训**：
+
+1. **"自动清理"要先问"这东西的读者是谁"**：日志的读者是**下一轮的排查者**（人或 Agent），
+   不是本轮的用户。按"本轮用户不需要它"来清理，等于把排查材料当垃圾。
+2. **"只留一代错误日志"看着节约，实际删掉的是对照组**：没有错误标记的那些轮次
+   恰恰定义了"正常"，一次性删掉之后就再也说不清"从哪次开始坏的"。
+3. **启动路径不该做能推迟的 IO**：判错只需要在设置页做，而旧实现把它塞进了三处 `init()`。
