@@ -50,32 +50,15 @@ object AgentManifest {
     /**
      * Ed25519 验签（纯函数，先验签后解析的"验签"半边；JVM 可测）。
      *
-     * R2 起计算搬进 Rust 核心（`CoreNative.verifyEd25519`，见 ERRATA E-051），平台实现
-     * （下面的 `Ed25519`）保留做**对拍与回退**：
-     * - Rust 不可用 ⇒ 纯平台实现（行为与 R1 逐字一致）；
-     * - 两边结论不一致 ⇒ 记日志并**拒绝**（安全侧取严；这种不一致本身就是待修的 bug）；
-     * - 一致 ⇒ 以 Rust 结论为准（它才是常驻 native 的那份实现）。
+     * R2 起计算搬进 Rust 核心（`CoreNative.verifyEd25519`，见 ERRATA E-051），平台实现保留做
+     * **对拍与回退**；这段逻辑已抽到 `Ed25519Verify`，**与环境包索引共用同一条入口**
+     * （2026-10-08 收口：此前只有清单走 Rust，索引那条仍直连平台实现）。
      */
     fun verify(body: ByteArray, sigBase64: String): Boolean = try {
         val sig = java.util.Base64.getDecoder().decode(sigBase64)
         val pub = java.util.Base64.getDecoder().decode(PUBLIC_KEY_B64)
         check(pub.size == 32) { "manifest 公钥配置非法（长度 ${pub.size} ≠ 32）" }
-        val platform = Ed25519.verify(pub, sig, body)
-        val rust = CoreNative.verifyEd25519(pub, sig, body)
-        when {
-            rust == null -> {
-                Log.i(TAG, "验签走平台回退（Rust 核心不可用）：$platform")
-                platform
-            }
-            rust != platform -> {
-                Log.w(TAG, "验签结论不一致（Rust=$rust 平台=$platform）——按拒绝处理，见 ERRATA E-051")
-                false
-            }
-            else -> {
-                Log.i(TAG, "验签走 Rust 核心（与平台对拍一致）：$rust")
-                rust
-            }
-        }
+        Ed25519Verify.verify(pub, sig, body, "清单")
     } catch (t: Throwable) {
         Log.w(TAG, "验签异常（视为失败）: ${t.message}")
         false
@@ -232,6 +215,43 @@ object AgentManifest {
 /** RunLog 的轻引用（避免 ui 包反向依赖 rootfs 包名冲突的阅读成本）。 */
 private object RunLogCompat {
     fun log(text: String) = com.example.zhengdao.rootfs.RunLog.log(text)
+}
+
+/**
+ * Ed25519 验签的**统一入口**：Rust 核心优先 + 平台实现对拍（见 ERRATA E-051）。
+ *
+ * 为什么要有这个对象：项目里有**两条** Ed25519 签名链——agents 清单（`AgentManifest`）
+ * 与环境包索引（`rootfs/RootfsIndex.kt`）。E-051 把计算搬进 Rust 时只改了清单那条，
+ * 索引那条仍直连平台实现 ⇒ 同一份信任链上出现了两种验证强度，且 Rust 侧的真实输入
+ * 只覆盖了清单。两条链共用这里，以后新加的签名链不会再漏（缺一条就少一次对拍）。
+ */
+internal object Ed25519Verify {
+    private const val TAG = "Ed25519Verify"
+
+    /**
+     * @param what 人话标签（"清单"/"索引"）——只进日志，真机取证时用来分辨是哪条链。
+     */
+    fun verify(pub: ByteArray, sig: ByteArray, msg: ByteArray, what: String): Boolean = try {
+        val platform = Ed25519.verify(pub, sig, msg)
+        val rust = CoreNative.verifyEd25519(pub, sig, msg)
+        when {
+            rust == null -> {
+                Log.i(TAG, "$what：验签走平台回退（Rust 核心不可用）：$platform")
+                platform
+            }
+            rust != platform -> {
+                Log.w(TAG, "$what：验签结论不一致（Rust=$rust 平台=$platform）——按拒绝处理，见 ERRATA E-051")
+                false
+            }
+            else -> {
+                Log.i(TAG, "$what：验签走 Rust 核心（与平台对拍一致）：$rust")
+                rust
+            }
+        }
+    } catch (t: Throwable) {
+        Log.w(TAG, "$what：验签异常（视为失败）: ${t.message}")
+        false
+    }
 }
 
 /**
