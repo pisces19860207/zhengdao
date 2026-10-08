@@ -134,9 +134,9 @@
 
         <!-- 画布留白（2026-10-08）：这层容器是**留白的承载者**，不是装饰。
              ⚠️ 留白必须加在这一层，**绝不能直接给 TerminalView 设 padding**：
-             TerminalView.updateSize() 用 getWidth()/getHeight() 算行列数（已核源码：
-             `TerminalView.java:1029` 的 updateSize()，宽度取自 1030 行的 getWidth()，
-             **不减 padding**），渲染又固定从视图左上角起手。
+             TerminalView.updateSize() 用 getWidth()/getHeight() 算行列数（已核源码，行号以 main
+             为准：`TerminalView.java:1032` 的 updateSize()，宽度取自 1033 行的 getWidth()、
+             高度取自 1034 行的 getHeight()，**不减 padding**），渲染又固定从视图左上角起手。
              直接给它 padding 会同时造成两件坏事：① 列数按"含留白的宽度"算 ⇒ 最右几列
              被画在留白之外、看不见；② 留白根本不出现（字仍从边缘起手）。
              套一层容器后 TerminalView 自身变窄/变矮，getWidth() 天然等于内框宽度，
