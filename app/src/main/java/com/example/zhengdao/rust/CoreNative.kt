@@ -39,6 +39,18 @@ object CoreNative {
 
     private external fun nativeSha256Hex(data: ByteArray): String?
 
+    /**
+     * 对**文件**做流式 SHA-256（hex 小写）——安装路径校验 192 MB 归档用的就是它。
+     * Rust 不可用或读盘失败 ⇒ **返回 null**，调用方回退平台流式实现（规范 #2 回退纪律）。
+     * 注意这里不用 `sha256Hex(readBytes())`：那会把整包读进内存（192 MB）。
+     */
+    fun sha256File(file: java.io.File): String? {
+        if (!rustAvailable) return null
+        return runCatching { nativeSha256File(file.absolutePath) }.getOrNull()
+    }
+
+    private external fun nativeSha256File(path: String): String?
+
     private fun platformSha256(data: ByteArray): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(data)
             .joinToString("") { "%02x".format(it) }
