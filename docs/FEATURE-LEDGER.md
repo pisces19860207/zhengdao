@@ -459,6 +459,16 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 顺序跟清单走）。**真机复验**：账本里那条 `antigravity / state=installing` 仍在，主页那颗
 > 「恢复全部（1 个）」已消失（截图 `C:\Users\guoli\AppData\Local\Temp\zd-b1.png`）。详见 `docs/ERRATA.md` E-040。
 
+> **2026-10-08 续（"失败自述"第一轮就抓出真因：`sed` 字符类里放了 `)`）**：
+> build **Run 163**（`ee766e7`）的 job 注解里直接带回 Run 162 那个 `exit 2` 的原始 stderr——
+> `[2.8] dpkg-deb -b 重打包 libgbm1 失败：… 'Depends' field, syntax error after reference to package
+> 'libwayland-server0'`。真因：摘依赖那句 `sed -i -E 's/, *mesa-libgallium[^,)]*//g'` 的字符类里带了 `)`，
+> 而版本约束 `(= 25.0.7-2+deb13u1)` 自己就含括号 ⇒ 只吃到右括号之前，把孤零零的 `)` 留在原地。
+> 修法：改成以逗号为界吃掉整条约束的多表达式 sed（空项/尾逗号/`: ,`/空依赖字段逐项收尾），
+> 并在 `dpkg-deb -b` 前加依赖字段自查（命中就把字段原文发注解）。本地用**真实** `libgbm1` 的 control
+> （deb.debian.org 下回来、44,144 B）验过：mesa 摘干净、其余一字未动、`Description` 续行没碰；
+> 6 种排布回归全过。详见 `docs/ERRATA.md` E-041。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -487,7 +497,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
 | 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈 mesa/LLVM） | ✅ 在用 | 本次（E-038；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
-| 构建失败自述（失败点发 `::error::` 注解，匿名可见；ERR trap 报小节+行号+命令+退出码） | ✅ 在用 | 本次（E-039） | `rootfs/build-rootfs.sh`（`annot()` + `trap … ERR` + `STEP`/`STEP_OUTER`） |
+| 构建失败自述（失败点发 `::error::` 注解，匿名可见；ERR trap 报小节+行号+命令+退出码） | ✅ 在用（**第一轮就抓出 Run 162 的真因**，见 E-041） | 本次（E-039） | `rootfs/build-rootfs.sh`（`annot()` + `trap … ERR` + `STEP`/`STEP_OUTER`） |
 | RunLog 运行日志（落 `Download/证道/logs`，按轮归档保留最近 20 份 / 20 MB + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改；归档式保留见 E-037） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
 | 太极渲染 + 模型池选择器 | ✅ 在用 | `b95f82a` | `ui/taiji/TaijiComponents.kt`、`ui/taiji/ModelSheet.kt` |
@@ -549,6 +559,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | Hermes 安装卡死在克隆 | `06572dd` | git 克隆改走国内加速镜像 `gh-proxy.com` |
 | 调试截图误提交 | `c9e0d6f` | 移除误提交的调试截图 |
 | CI 发布通道被架在长步骤后面（下载页停在旧包） | `fa8d467` | 「发布到 Releases」排在 30–90 分钟的 qemu RootFS 之后，而 `concurrency.cancel-in-progress: true` 让任何新推送都能掐死正在跑的 run ⇒ 掐死点落在 RootFS 期间时发布永远走不到；2026-10-08 一整天修复都没进滚动版 `latest`（资产停在 10-07T17:25:57Z）。修法：发布 APK 提到 RootFS 之前 + RootFS 只在 `rootfs/` 变化时重建（ERRATA E-029）。⚠️ E-020 §3 已记过同一现象，当时只加了人工纪律，这次才改结构 |
+| 构建脚本"摘依赖"把 `.deb` 改坏（连续两轮 rootfs 不产出） | 本次（E-041） | §2.8 用 `sed -i -E 's/, *mesa-libgallium[^,)]*//g'` 摘 `libgbm1` 的依赖，字符类里的 `)` 与版本约束 `(= 25.0.7-2+deb13u1)` 冲突 ⇒ 留下孤零零的 `)` ⇒ `dpkg-deb -b` 语法错。Run 162 因此 `exit 2` 且外面只看到"退出码 2"；E-039 的失败自述在 Run 163 把原始 stderr 带回来后当场定位。修法 = 以逗号为界的多表达式 sed + `dpkg-deb -b` 前的依赖字段自查 |
 
 ## 5. 怎么用（给 agent 的操作步骤）
 
