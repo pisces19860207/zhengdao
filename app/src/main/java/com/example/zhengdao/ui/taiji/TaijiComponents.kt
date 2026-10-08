@@ -73,6 +73,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -172,9 +174,11 @@ fun SessionBar(
         // ＋ 新会话：48dp 实心圆钮 + 自绘加号（2026-10-08，原先只有一个小字符，见 KDoc）。
         // 按钮取 M3 的行内最小触摸目标 48dp（原先 40dp，偏小）；加号字形仍是自绘的固定 20dp
         // （见 PlusGlyph），所以按钮放大**不会**把字形一起撑大。
+        // 无障碍：PlusGlyph 是裸 Canvas，默认不带任何语义，读屏只会念"按钮" —— 用
+        // contentDescription 明示它是「新会话」（语法与 [SendGlyph]/[StopGlyph] 的用法一致）。
         FilledTonalIconButton(
             onClick = onNew,
-            modifier = Modifier.size(48.dp),
+            modifier = Modifier.size(48.dp).semantics { contentDescription = "新会话" },
         ) { PlusGlyph() }
     }
 }
