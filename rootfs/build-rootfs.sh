@@ -24,6 +24,9 @@
 #   glibc   = Debian 13.7 自带（2.41），只读不升
 #   Python  = Debian 13.7 自带（3.13），直接使用
 #   Node.js = NodeSource 官方源 26.x（不用 Debian 源旧版）
+#   uv      = 官方 releases 的**最新版**（刻意不钉版本，见 §2.5），但**必须 ≥ 0.12.22**：
+#             该版本起才支持 /etc/uv/uv.toml 系统级配置，而 §2.6 正是靠它下发
+#             `link-mode = "copy"`（proot 无硬链接）。版本由 §2.8 断言把关。
 # =====================================================================
 set -euo pipefail
 
@@ -42,6 +45,9 @@ STEP_OUTER="构建机自检"
 DEBIAN_RELEASE="trixie"
 DEBIAN_VERSION="13.7"
 NODE_MAJOR="26"
+# uv 的**下限**（不是钉版本）：≥0.12.22 才支持 /etc/uv/uv.toml 系统级 config，
+# 见设计文档 §6 附录 A #4。下载走 releases/latest（§2.5），版本由 §2.8 断言把关。
+UV_MIN="0.12.22"
 ARCH="arm64"
 MIRROR="http://deb.debian.org/debian"
 OUT_DIR="${1:-$(pwd)/out}"
@@ -102,7 +108,7 @@ mount --bind /dev  "$ROOTFS_DIR/dev";  MNT_LIST+=("$ROOTFS_DIR/dev")
 
 cat > "$ROOTFS_DIR/zhengdao-configure.sh" <<'CONF'
 #!/bin/bash
-# chroot 内配置脚本（由 build-rootfs.sh 写入并执行；NODE_MAJOR 经 env 传入）
+# chroot 内配置脚本（由 build-rootfs.sh 写入并执行；NODE_MAJOR / UV_MIN 经 env 传入）
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 # 失败自述（与 build-rootfs.sh 顶部同一套，见 docs/ERRATA.md E-039）：
@@ -335,6 +341,23 @@ done
 
 STEP="2.10 清理"
 echo "---- 2.10 清理（控制落盘体积）----"
+# uv 的下限断言（2026-10-08 补，属本节 §2.9）。此前只**取了** UV_VER 并打印、**没有断言**——
+# glibc / python / node 三者都有 case 判断，只有 uv 是"打印了就不管了"。
+# 而这个下限是有承载的：§2.6 写入 /etc/uv/uv.toml（link-mode = copy）全靠 uv ≥0.12.22
+# 才被读取；版本一旦低于它，构建**依然成功**，但那个硬链接修复**静默失效**，
+# 表现是用户装 npm/uv 依赖时报 `failed to hardlink file ... Operation not permitted`
+# （故障排查手册坑 #4）。所以这里按"构建即验收、漂移即失败"补上。
+# UV_MIN 本该由外层经 env 传进来（见本文件末尾的 chroot 行；2026-10-08 修：此前漏传，
+# 而上面是 `set -euo pipefail` ⇒ 每次构建都死在这一行 `UV_MIN: unbound variable`）。
+# 这里再兜一层默认值，让本 heredoc 被单独抽出来跑（本地复现 / 只审这一段）时也能过。
+# ⚠️ 默认值必须与外层 `UV_MIN="0.12.22"` 是同一份，改一处就要改两处。
+UV_MIN="${UV_MIN:-0.12.22}"
+version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
+version_ge "$UV_VER" "$UV_MIN" || {
+  annot "[断言失败] uv=${UV_VER}，期望 ≥ ${UV_MIN}（该版本起支持 /etc/uv/uv.toml 系统级配置）"
+  exit 1
+}
+echo "[zhengdao] uv=${UV_VER} ≥ ${UV_MIN}（§2.6 的 /etc/uv/uv.toml 系统级配置会被读取）"
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
@@ -371,7 +394,9 @@ CONF
 chmod 0755 "$ROOTFS_DIR/zhengdao-configure.sh"
 
 STEP_OUTER="[2.5/4] chroot 内配置（2.1–2.11）"
-chroot "$ROOTFS_DIR" /usr/bin/env NODE_MAJOR="$NODE_MAJOR" /bin/bash /zhengdao-configure.sh
+# UV_MIN 必须传进去：内层 §2.9 的 uv 下限断言引用它，而内层是 set -euo pipefail，
+# 漏传会以 `UV_MIN: unbound variable` 让每次构建都死在那儿（2026-10-08 合并审查时发现并修掉）。
+chroot "$ROOTFS_DIR" /usr/bin/env NODE_MAJOR="$NODE_MAJOR" UV_MIN="$UV_MIN" /bin/bash /zhengdao-configure.sh
 STEP_OUTER="[3/4] 卸载与规整目录"
 
 echo "[3/4] 卸载虚拟文件系统并规整目录 ..."
