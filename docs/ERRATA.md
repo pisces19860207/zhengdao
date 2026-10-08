@@ -2182,3 +2182,60 @@ rm -rf /usr/share/i18n
    资产缺失 ⇒ 警告且不失败 / 标准格式 ⇒ 通过。
    教训：**"校验"本身也会静默失效**——它失败的样子和"确实没有基线"一模一样。
    凡是"不通过就降级"的分支，都要有一条能证明"正常路径真的走得通"的用例。
+
+---
+
+## E-034 · 2026-10-08 · 「网络自检」的绿灯骗人：它只 ping 国内镜像，而下载与更新全在 GitHub 家族（已修）
+
+### 1. 现场（真机取证，PGT-AN10 / Android 16 / 5G + VPN）
+
+增量下发上线后，在真机上点「检查环境更新」，logcat（`-s RootfsDownloader RootfsIndexFetcher …`）拿到完整失败链：
+
+```
+W/RootfsDownloader: 抓取文本失败：https://github.com/pisces19860207/zhengdao/releases/download/latest/rootfs-index.json
+W/RootfsDownloader: 抓取文本失败：https://gh-proxy.com/https://github.com/…/rootfs-index.json
+W/RootfsIndexFetcher: 索引抓取失败（已试全部源），调用方按老路径降级
+W/RootfsDownloader: 抓取文本失败：https://raw.githubusercontent.com/pisces19860207/zhengdao/main/rootfs/manifest.json
+```
+
+「立即刷新 Agent 清单」同样三条通道全灭（`api.github.com` / `raw.githubusercontent.com` / `cdn.jsdelivr.net`），
+保出厂版清单、不崩。**但设置里的「网络自检」是绿色的**：`✅ 网络可用（285ms）`——因为它探的是
+`https://registry.npmmirror.com/-/ping`（国内主机）。
+
+**同一台手机、同一个 URL，shell 里却通**：`adb shell curl` 到 `https://github.com` ⇒ 200 / 1.43s，
+到 gh-proxy ⇒ 200 / 469 B / 1.05s。App 的 uid 不通、shell 通 ⇒ 网络环境差异（最可能是 VPN 的
+**分应用代理没勾选证道**；设置页自己那句提示就写着"若走代理：请在代理 App 的「分应用代理」里勾选证道"）
+⇒ **这不是代码缺陷**，App 的降级行为（落老路径、保住出厂清单）都是对的。
+
+坏的是**诊断本身**：用户看到绿灯，会以为网络没问题，然后被"下载一动不动 / 环境更新失败"绕进去。
+
+### 2. 修法
+
+新增 `app/src/main/java/com/example/zhengdao/ui/NetSelfCheck.kt`：
+
+- `probeCn()`：国内基线（历史行为不变，5 秒超时）。
+- `probeIndex()`：**直接复用 `RootfsIndexFetcher.fetch()`**（含 gh-proxy 镜像回退），
+  于是自检问的就是「检查环境更新」问的那个问题，两处结论不会各说各话；
+  用 `FutureTask` + 25s 预算（daemon 线程），手动触发的自检不能因为一条卡死的连接把界面挂住。
+- `summary(cn, update)`：纯函数，四档文案。关键是**国内通 + 更新源不通**这一档不再只报绿灯：
+
+  > ✅ 网络可用（285ms）· ⚠️ 更新源不可达：下载环境包与「检查环境更新」都会失败。若在代理下，请到代理 App 的「分应用代理」里勾选证道
+
+`SettingsScreen.kt` 的自检 `onClick` 从 20 行内联探测缩成两句探针 + `summary`。
+
+### 3. 验证
+
+- 新增 `app/src/test/java/com/example/zhengdao/ui/NetSelfCheckTest.kt`（5 用例：四档组合各一条，
+  外加"错误描述缺省回落成超时"）⇒ 全过。
+- 全量 JVM 单测：**27 suites / 216 tests / failures=0 / errors=0 / skipped=0**（改前 26 / 211）。
+- 真机复验：等下一次 CI 出包后装同签名 release APK，点「网络自检」应显示上面那句
+  "国内可用、更新源不可达"（这正是本机当下的真实状态）。
+
+### 4. 教训
+
+1. **诊断工具必须探"真正依赖的那条路"**：绿灯比红灯更坏——红灯会让人去查，绿灯让人以为没事。
+   凡是有多源/多主机依赖的 App，"网络可用"这个词必须限定在**它自己用的那几个源**上。
+2. **手动触发的自检要有时间预算**：探针走的是全局共享 OkHttp（connect 20s / read 60s），
+   不加 `FutureTask` 上限，断网时能把"检测中…"挂几分钟。
+3. **同一个 URL 在 shell 通、在 App 里不通，先怀疑代理的"分应用"名单**，别急着改代码——
+   App 与 `adb shell` 是两个 uid，走的联网路径本来就可以不同。
