@@ -92,6 +92,31 @@ object RootfsInstaller {
     }
 
     /**
+     * 「重装同一份包」时该不该把已有的 env 写回（2026-10-08 真机 bug 的修法）。
+     *
+     * 「修复环境」与「回退版本」都是拿**本地缓存里那个包**重解压一次（不联网），此前一路走
+     * `install(ctx, archive) { }`——不传 env ⇒ 标记里的 `env=` 行被抹掉，代价是**下次更新必然全量**：
+     * 真机实测 21:26 检查＝「已是最新版本（13.7，环境 51e1cc0c32f099aa）」，21:27:54 跑「修复环境」，
+     * 21:56 再检查＝「本地已安装 13.7，但**缺少环境指纹记录**」⇒ 用户按着提示"修环境"，
+     * 反而把自己的增量基线修没了（同一份内容，却要再下一次 192 MB）。
+     *
+     * 判定规则与 [envForMarker] 同一哲学（**宁可少写一次，也不能写错基线**）：
+     * 只有当标记里记着"当初那个包的 sha256"[RootfsMarker.Data.archiveSha256]、且它与
+     * **本次要装的那个包的 sha256**（调用方用 [RootfsDownloader.sha256Of] 现算）逐字符相等时，
+     * 才认为"树内容与当前 env 描述的正是同一份东西"，于是 env 原样写回；
+     * 标记没有这一行（老安装）/包 sha 取不到/对不上 ⇒ 返回 null，**照装但不写 env**（下次老实全量）。
+     *
+     * @param rootfsDir 当前已装环境的目录（`<filesDir>/rootfs`），读它的标记文件
+     * @param archiveSha256 本次要装的归档 sha256；null/空白 = 不确定 ⇒ 直接放弃推断
+     */
+    internal fun envForReinstall(rootfsDir: File, archiveSha256: String?): String? {
+        val sha = archiveSha256?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val recorded = RootfsMarker.installedArchiveSha256(rootfsDir) ?: return null
+        if (!recorded.equals(sha, ignoreCase = true)) return null
+        return RootfsMarker.installedEnv(rootfsDir)
+    }
+
+    /**
      * 解压归档并安装。
      *
      * 参数顺序说明（协议正文写的是"env 放最后"）：**env 必须排在 onEntry 之前**。
@@ -103,10 +128,19 @@ object RootfsInstaller {
      *
      * @param env 本次装入内容的 env id（增量协议 §1 的内容指纹）。**不确定就传 null**：
      *   标记里不写 `env=` 行，下次更新检测到"无版本记录"自然走全量——宁可多下一次，不可错走增量。
-     *   全量安装路径请一律用 [envForMarker] 计算它，不要直接把索引的 env 传进来。
+     *   全量安装路径请一律用 [envForMarker] 计算它，不要直接把索引的 env 传进来；
+     *   「重装同一份包」（修复/回退）用 [envForReinstall] 计算它。
+     * @param archiveSha256 本次装入的那个**全量包**的 sha256（写进标记，供下次重装做"同源"判定）；
+     *   增量安装、用户自选文件等说不清来源的路径传 null。
      * @param onEntry 每处理一个条目回调一次其路径（调用方自行节流展示）
      */
-    fun install(context: Context, archive: File, env: String? = null, onEntry: (String) -> Unit) {
+    fun install(
+        context: Context,
+        archive: File,
+        env: String? = null,
+        archiveSha256: String? = null,
+        onEntry: (String) -> Unit,
+    ) {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
         val tmpDir = File(files, TMP_NAME)
@@ -124,7 +158,7 @@ object RootfsInstaller {
                 Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
             }.isSuccess
             if (rustOk) {
-                RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env)
+                RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
                 swapIntoPlace(tmpDir, rootfsDir)
                 Log.i(TAG, "RootFS 安装完成（Rust 路径）：${rootfsDir.path}")
                 return
@@ -135,7 +169,7 @@ object RootfsInstaller {
         extractArchiveJava(archive, tmpDir, onEntry = onEntry)
 
         // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
-        RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env)
+        RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
 
         swapIntoPlace(tmpDir, rootfsDir)
         Log.i(TAG, "RootFS 安装完成：${rootfsDir.path}")
