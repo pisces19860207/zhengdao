@@ -198,11 +198,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         //    "density-independent"，但内部直接 mTextPaint.setTextSize(textSize) 当
         //    **px** 用。传 14 会得到 14px 的极小字，进而算出 158 列 × 87 行的荒谬
         //    网格（实测 view=1270x1489、density=3.5、emu=158x87）。× density 后恢复正常。
-        // 字号与配色改为可配置（设置页「终端外观」），默认 12dp + 经典黑底白字。
-        // 内部同时完成两件事：写调色板与视图背景、按 dp→px 换算设置字号
+        // 字号、配色与画布留白改为可配置（设置页「终端外观」），默认 12dp + 经典黑底白字 + 8dp 留白。
+        // 内部完成三件事：写调色板与视图背景、给画布容器留白与底色、按 dp→px 换算设置字号
         // ⚠️ 仍然必须先于 attachSession 调用——mRenderer 只在 setTextSize 里创建，
         //    漏掉会在 attachSession→updateSize 处空指针崩溃。
-        TerminalPrefs.applyTo(termView, this)
+        // ⚠️ 留白写在 canvas_host（外层容器）上，不写在 termView 上：updateSize() 用
+        //    getWidth() 算列数且不减 padding，直接给视图加留白会算错列数（见布局文件注释）。
+        TerminalPrefs.applyTo(termView, findViewById(R.id.canvas_host), this)
         wireKeyBar()
     }
 
@@ -875,9 +877,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 return true
             }
             menuReloadFont -> {
-                // 字号/配色整体重刷 + 重算行列：旋转、缩放或改过设置后网格没跟上时用。
+                // 字号/配色/留白整体重刷 + 重算行列：旋转、缩放或改过设置后网格没跟上时用。
                 runCatching {
-                    TerminalPrefs.applyTo(termView, this)
+                    // 留白写在容器上（见 applyTo 的注释），容器变了 → 视图尺寸随之变 → updateSize 才准
+                    TerminalPrefs.applyTo(termView, findViewById(R.id.canvas_host), this)
                     termView.updateSize()
                     termView.onScreenUpdated()
                 }.onFailure {

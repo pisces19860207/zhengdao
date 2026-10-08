@@ -486,6 +486,7 @@ fun SettingsScreen(
         SectionCard("终端外观") {
             var sizeDp by remember { mutableStateOf(TerminalPrefs.sizeDp(ctx)) }
             var schemeId by remember { mutableStateOf(TerminalPrefs.scheme(ctx).id) }
+            var insetDp by remember { mutableStateOf(TerminalPrefs.insetDp(ctx)) }
 
             Text(
                 text = "下次进入终端时生效。字号越小，同屏能显示的内容越多。",
@@ -509,6 +510,28 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+            Text("画布留白", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TerminalPrefs.INSET_OPTIONS.forEach { dp ->
+                    FilterChip2(if (dp == 0) "无" else "$dp", dp == insetDp) {
+                        insetDp = dp
+                        TerminalPrefs.saveInset(ctx, dp)
+                    }
+                }
+            }
+            Text(
+                text = "文字与边框之间的距离。留白占的是可用宽度——8dp 在 375dp 宽屏上约损失 4% 列宽，" +
+                    "觉得同屏内容变少就调小或选「无」。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
 
             Spacer(Modifier.height(12.dp))
             Text("配色", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
