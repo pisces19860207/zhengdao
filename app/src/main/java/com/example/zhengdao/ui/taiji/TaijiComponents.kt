@@ -54,6 +54,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -341,6 +342,11 @@ fun MessageList(
     // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
     // 不传时退化到内部新建（保持向后兼容——若日后有调用方未更新）。
     listState: LazyListState = rememberLazyListState(),
+    // K2 配套（2026-10-08 审查）：跟随标记与"已经为哪个会话定位过"也必须由外部注入。
+    // 只用页面内的 remember，切 Tab（本组件退出 Composition）后两者都会重置成"刚进入会话"，
+    // 下面 ④/⑤ 两个 LaunchedEffect 会在重新出现的瞬间把滚动位置拉回底部 ⇒ K2 失效。
+    followState: MutableState<Boolean> = remember { mutableStateOf(true) },
+    positionedSession: MutableState<String?> = remember { mutableStateOf(null) },
 ) {
     // ❌ 原本 `val listState = rememberLazyListState()` 已被 K2 提到入参。
     //    切 Tab 走 Composable 出入 Composition 的路径，state 提到 HomeTabs 顶层才能跨 Tab 保留。
@@ -363,7 +369,8 @@ fun MessageList(
     }
 
     // ③ 是否跟随最新。用户主动上滑看历史 → false（不抢用户的滚动）
-    var follow by remember { mutableStateOf(true) }
+    //    状态由外部注入（K2 配套，见函数签名）：切 Tab 回来不能重置成 true，
+    //    否则 ⑤ 会在重新出现的瞬间贴底，把用户保留的滚动位置吃掉。
 
     val nestedScroll = remember {
         object : NestedScrollConnection {
@@ -371,7 +378,7 @@ fun MessageList(
                 // 只要滚动来自**用户手势**就先停手 —— 无论方向。
                 // 刻意不判 available.y 的符号：方向约定易错，且"用户想回到底部时被内容
                 // 拽着走"同样是抢。用户停手后若确实在底部，下面的 snapshotFlow 会自动恢复。
-                if (source == NestedScrollSource.UserInput) follow = false
+                if (source == NestedScrollSource.UserInput) followState.value = false
                 return Offset.Zero
             }
         }
@@ -380,19 +387,25 @@ fun MessageList(
     // 用户滚动停下后，若已回到底部 → 恢复跟随（只认稳定态，避免滚动中反复翻转）
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
-            if (!scrolling && atBottom) follow = true
+            if (!scrolling && atBottom) followState.value = true
         }
     }
 
-    // ④ 进入 / 切换会话：直接定位到最后一条（瞬时，不从顶部滚下来）
+    // ④ 进入 / 切换会话：直接定位到最后一条（瞬时，不从顶部滚下来）。
+    //    ⚠️ 只在「会话真的换了」时定位：positionedSession 由外部持有（K2 配套），
+    //    切 Tab 回来时 sessionId 没变，就不能再拉一次 —— 否则保留的位置又被踢到底部。
     LaunchedEffect(sessionId) {
-        if (totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+        if (totalItems > 0 && positionedSession.value != sessionId) {
+            positionedSession.value = sessionId
+            followState.value = true // 新看到的会话从「跟随最新」开始
+            listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+        }
     }
 
     // ⑤ 新消息 / 流式内容变化：跟随贴底。
     //    follow 也进 key —— 点「回到最新」置 true 后能立刻贴底。
-    LaunchedEffect(ordered, isStreaming, totalItems, follow) {
-        if (follow && totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+    LaunchedEffect(ordered, isStreaming, totalItems, followState.value) {
+        if (followState.value && totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
     }
 
     Box(modifier.fillMaxWidth()) {
@@ -418,12 +431,12 @@ fun MessageList(
 
         // ⑥ 正在翻历史时浮出「⬇ 回到最新」
         AnimatedVisibility(
-            visible = !follow,
+            visible = !followState.value,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) {
-            JumpToLatestButton(onClick = { follow = true })
+            JumpToLatestButton(onClick = { followState.value = true })
         }
     }
 }
@@ -431,7 +444,7 @@ fun MessageList(
 /**
  * 「⬇ 回到最新」浮标：翻历史时出现，点一下回到底部并恢复跟随。
  *
- * 只负责展示与回调 —— 真正的跟随由 [MessageList] 的 `follow` 驱动
+ * 只负责展示与回调 —— 真正的跟随由 [MessageList] 的 `followState` 驱动
  * （点击置 true 后，上方的 LaunchedEffect 立即贴底）。
  */
 @Composable

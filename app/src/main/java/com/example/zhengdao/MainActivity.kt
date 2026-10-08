@@ -435,10 +435,19 @@ fun HomeTabs(
     // rememberSaveable，顺带覆盖了"配置变更（旋转、深浅色）"也要保留位置。
     //
     // K1 双击滚顶：把这两个 state 通过 onTabDoubleTap lambda 注入底栏，双击触发
-    // animateScrollToItem(0)。注意：仅对**当前 tab 之外**的 tab 触发 —— 当前 tab 双击
-    // 等同于再次选自己，不动列表。
+    // animateScrollToItem(0)。判定用的是"300ms 内再点同一个 Tab"（见
+    // [lastTabClickAt] 与下面 NavigationBarItem 的 onClick），所以**只有点当前 Tab
+    // 才会滚顶**；点别的 Tab 只是切 Tab，不动列表。
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val taijiListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    // K2 配套（2026-10-08 审查）：太极消息列表的「是否跟随最新」与「已经定位过哪个会话」
+    // 也必须跟 listState 同寿命。切 Tab 时 TaijiScreen 退出 Composition，这两个值若留在
+    // 页面内部用 remember，切回来就重新初始化成"刚进入会话"，LaunchedEffect 立刻把保留的
+    // 滚动位置一脚踢回底部 —— 上面辛苦提出来的 listState 等于白提（K2 在太极页失效，丹房正常）。
+    val taijiFollow = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    val taijiPositionedSession =
+        androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     // K1（双击 Tab 滚顶）：在 HomeTabs 顶层记"上一次点同一个 Tab 的时间"。
@@ -562,7 +571,11 @@ fun HomeTabs(
                 // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
                 //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
                 //    真坏了就修，不藏一条会腐烂的备用路。
-                0 -> com.example.zhengdao.ui.taiji.TaijiScreen(listState = taijiListState)
+                0 -> com.example.zhengdao.ui.taiji.TaijiScreen(
+                    listState = taijiListState,
+                    followState = taijiFollow,
+                    positionedSession = taijiPositionedSession,
+                )
                 // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
                 2 -> HomeScreen(
                     onOpenTerminal = onOpenTerminal,
