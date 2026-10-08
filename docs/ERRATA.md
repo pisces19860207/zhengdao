@@ -2922,3 +2922,61 @@ merge **`28e733d`**，已推 origin/main。
    Toast 里出现的信息，不截图就等于没验。
 4. **先做对照实验再归因**：`set-buffer -w` 那一发把"三段链路"切成两段，一步就把嫌疑锁死在 tmux 配置上；
    否则很容易误判成自家 OSC 52 解析或渲染层的锅。
+
+## E-044 · 2026-10-08 · 「修复环境」把环境指纹抹掉：标记文件只记 distro/env，重装时无从证明「本地包 == 当前环境」 ⇒ 补 `archive-sha256` 一行，只有同源才回填 env
+
+**现象（真机时间线，Honor PGT-AN10 / Android 16）**：
+
+- 21:26 设置页「检查环境更新」→ 结果行「**已是最新版本（13.7，环境 51e1cc0c32f099aa）**」。
+- 21:27:54 点「修复环境（30 秒）」→ 8 秒后「修复完成：环境已重置，登录态与工作区保留（本次未联网下载）」。
+- 21:56 再点「检查环境更新」→ 结果行变成「**本地已安装 13.7，但缺少环境指纹记录（env）：本次将用全量包（约 192 MB）重装一次以补上指纹，重装后「检查环境更新」才能正确判断新旧。**」
+
+也就是说：**用户点一次「修复环境」，就把自己的增量基线抹掉了**，下次更新只能全量下 192 MB。这不是文案问题，是标记文件真的少了一行。
+
+**根因**：标记（`<filesDir>/rootfs/.zhengdao-rootfs-ok`）里只记 `distro` / `env` / `installed-at` 三行，而"重装的是同一个包吗"这件事从来没被记下来。于是：
+
+- `ui/SettingsScreen.kt` 的修复环境路径调 `RootfsInstaller.install(ctx, archive) { }`（env 留空、包 sha 留空）；
+- `rootfs/RootfsInstaller.kt` 里两处收尾都写 `RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)` ⇒ `env=` 行被整行跳过；
+- 而"缺少指纹"和"环境真的变了"在标记里长得一模一样 ⇒ 检查更新只能保守地要求全量。
+
+**修法（`48d5569` → merge `d8fb5d6`）**：
+
+1. `rootfs/RootfsMarker.kt`：`Data` 增 `archiveSha256: String?`；标记新增一行 `archive-sha256=<64 位 hex>`（写在 `env=` 之后、`installed-by` 之前），解析时用 `SHA_RE = Regex("^[0-9a-fA-F]{64}$")` 校验形态，**形态不合 = 没记过**（旧标记没有这一行 ⇒ 一律视为"不确定"，行为与修复前完全一致，向后兼容）。新增 `installedArchiveSha256(rootfsDir)`。
+2. `rootfs/RootfsInstaller.kt`：新增 `envForReinstall(rootfsDir, archiveSha256): String?` —— **只有**标记里记的 sha 与"这次真正要装的那个包"的 sha 相等（忽略大小写）时才把原 `env` 原样传回，否则回 `null`（照装，但**绝不凭空造一个 env**）。`install(...)` 换签名带上 `archiveSha256`，Rust 快路径与 Java 路径都写。
+3. `rootfs/RootfsDownloader.kt`：把 `verifySha256` 里的流式哈希抽成 `sha256Of(file): String` 复用（128 KB 缓冲、小写 hex）。
+4. 三条调用点各自带 sha：修复环境 `ui/SettingsScreen.kt:1231`（`repairSha` → `envForReinstall`）、回退版本 `:941`、全量更新 `:1397`；`TerminalActivity.kt:1101`（本地缓存包）/`:1167`（联网下载）带已知 sha；`:1050`（用户用 SAF 自选的文件）**故意不带** —— 说不清来源就不写，宁可下次全量。两条路径都把「同源→保留环境指纹 …」或「无法确认同源→不写（下次全量）」写进 RunLog，真机验收一眼能看。
+5. 单测：`rootfs/RootfsEnvTrustTest.kt` +4（同源写回、大小写/空白容错、对不上/没记 sha/形态不合一律 null、不会凭空造 env、`sha256Of` 跨 128 KB 缓冲边界）、`rootfs/RootfsMarkerTest.kt` +3（往返与行序、空值不写行、形态不合视同没记过）。
+
+**教训**：
+
+1. **"记了没记"和"记的值是空"必须能区分**：标记文件里少一行与写一个空值，后续逻辑必须能分开判 —— 这里的做法是"旧格式没有这一行 ⇒ 视为不确定"，而不是"空 = 未知"，否则老用户的标记会被新逻辑解释成"确定没记过"，凭空多一次全量。
+2. **只在能证明同源时才补写信任信息**：`envForReinstall` 宁可回 `null`（放弃保留）也不猜；猜错一次就是把两个不同环境包的内容混进同一个指纹，比"多下一次 192 MB"贵得多。
+3. **统计用例数要固定口径**：此前记的「32 suites / 81 tests」是抓 `test-results` XML 时抓错节点得到的假数字；按"每个 XML 首两行的 `tests="N" skipped=… failures=… errors=…"`"重数 —— 改前 **264**、改后 **271**（+7 正是本轮新增）。以后一律走这个数法。
+
+## E-045 · 2026-10-08 · 向 Rust 进化的第一刀：安装完整性锚挪进 Rust 核心（撤销一段**从未启用**的死代码、192 MB 包少读一遍），顺带把入库的 `.so` strip 掉 278 KB —— 并记住「16 KB 对齐漏了不是崩溃而是静默降级」
+
+**发现（读代码读出来的，不是线上事故）**：
+
+- `rust/core/src/extract.rs` 的 `extract_pipeline(archive_path, target_dir, expected_sha256: Option<&str>)` **本来就会在解压途中流式算归档 sha 并对账**（失配走 `ExtractError::ShaMismatch`，文案 `SHA256 不匹配: 期望 {expected} 实际 {actual}`）。
+- 但 `rootfs/RootfsInstaller.kt` 一直这样调：`CoreNative.extract(p, tmp, null)`，旁边注释写着「SHA 已在调用方校验过」⇒ 那段 Rust 校验**从来没被启用过**；代价是同一个 192 MB 包被读两遍（Java 先哈希一遍校验，Rust 再解压读一遍）。
+
+**改动（分支 `feat/rust-install-integrity`）**：
+
+1. `RootfsInstaller.kt`：Rust 快路径改成 `CoreNative.extract(archive.canonicalPath, tmpDir.canonicalPath, archiveSha256)` —— 信任锚落在"恰好被解压的那些字节"上，一次读盘。失败分流：`err.message` 命中 `SHA_MISMATCH_MARK = "SHA256 不匹配"` ⇒ `throw InstallFailed("安装包完整性校验失败（Rust 核心）：…")`，**不回退 Java**（Java 路径根本不校验 sha256，回退等于把校验降级成没校验）；其余失败仍 `Log.w("Rust 解压失败，回退 Java 路径")`。
+2. Rust 侧新增文件摘要：`rust/core/src/sha256.rs` 的 `sha256_file_hex(path) -> io::Result<String>`（128 KB `BufReader` 分块喂流式 `Sha256Stream`）、`jni_bridge.rs` 的 `Java_com_example_zhengdao_rust_CoreNative_nativeSha256File`（成功回 hex、失败回 **null**，绝不 panic 跨 FFI）。
+3. `rust/CoreNative.kt`：`sha256File(file): String?`（`rustAvailable` 守卫 + `runCatching`）；`rootfs/RootfsDownloader.kt` 的 `sha256Of` 优先走 Rust，回落平台 `MessageDigest`，并留两行日志「**sha256Of 走 Rust 核心** / **走平台回退**」——这是 release 包里 R8 万一改了 native 方法名时**唯一能分辨的出口**（AGP 默认规则 `-keepclasseswithmembernames class * { native <methods>; }` 理论上是安全的，但 E-022 已经栽过一次"名字被 R8 改掉"）。
+
+**验证（都在本机做完）**：
+
+- host `cargo test -p zhengdao_core --release` ⇒ **10 passed / 0 failed**（含新增的「文件摘要与一次性一致_跨缓冲边界」「空文件摘要等于空串摘要」）。
+- `cargo build --release --target aarch64-linux-android -p zhengdao_core` ⇒ 未 strip **1,099,248 B**。
+- 入库前 `llvm-strip.exe --strip-unneeded` ⇒ **811,592 B**（原入库版 1,095,744 B，**−284,152 B ≈ −278 KB**）。注意这 278 KB **只是仓库/检出的体积，APK 不因此变小**：AGP 打 release 时本来就会替你把 native 库 strip 一遍 —— 实测 main 那个 APK 里 `libzhengdao_core.so` 是 **808,704 B**（对应仓库里 1,095,744 B 的未 strip 原件），本轮 APK 因为多了新增的 Rust 代码反而比 main 大 1,092 B（**4,309,349 vs 4,308,257 B**）。strip 后 sha256 `EC78CADC…13E649`、四个 LOAD 段 `p_align` 全 `0x4000`、`--dyn-syms` 里 `nativeExtract` / `nativeSha256File` / `nativeSha256Hex` 三个 JNI 入口都在。
+
+**教训**：
+
+1. **"参数存在"不等于"路径启用"**：`expected_sha256: Option<&str>` 一直都在，但调用方永远传 `null` ⇒ 一段看起来在跑的校验其实是死的。看到「已在调用方校验过」这类注释，要**顺着看调用方到底校验了什么**（这里：校验了完整性，却没把结论交给唯一能把它和"被解压的字节"绑在一起的执行者）。
+2. **人工入库的 `.so` 必须有固定工序**：构建 → `llvm-strip --strip-unneeded` → 两道校验（16 KB 页对齐 `p_align=0x4000`、JNI 符号仍在 `--dyn-syms`）。理由是 `.cargo/config.toml` 只给 `aarch64-linux-android` 加了 `-Wl,-z,max-page-size=16384`，而**漏掉它不会崩溃，只会静默降级**（16 KB 页设备 `loadLibrary` 失败 → `isRustAvailable()=false` → 全部悄悄退回 Java 路径）。
+3. **仓库里没有任何 workflow 构建这个 `.so`**（`.github/workflows/ci.yml` 只在 ubuntu 上 `cargo test`）⇒ 源码与产物之间没有自动一致性检查，改 Rust 就必须本机重建并入库，别指望 CI 拦。
+4. **本机跑 host `cargo test` 要把 w64devkit 放进 PATH**（`C:\Users\guoli\.cargo\bin;C:\Users\guoli\w64devkit\w64devkit\bin;`），否则 zstd-sys 的 `cc-rs` 报 `failed to find tool "gcc.exe"`、`exit=101`（E-027）。
+5. **别把 `Get-ChildItem -Recurse` / `glob` 指向 `rust/target`**：一万多个构建产物（incremental `.o`、`libzstd.a`、host `.dll`/`.exe`），一次调用就能烧掉约 4 万 token 的上下文。
+6. **"仓库里的文件大" ≠ "APK 大"**：本轮最初估"strip 一下 APK 能省 278 KB"，实际是**零** —— AGP 打 release 时自动 strip native 库（main 的 APK 里那个 `.so` 808,704 B，仓库里却是 1,095,744 B）。所以要判断"瘦身能不能省用户流量"，必须**拆开 APK 看 `lib/` 条目的 uncompressed/compressed 尺寸**，不能看仓库里那份文件的大小。

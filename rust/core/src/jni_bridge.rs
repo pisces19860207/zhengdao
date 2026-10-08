@@ -37,6 +37,35 @@ pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeSha256Hex
     }
 }
 
+/// Kotlin: `CoreNative.nativeSha256File(path) -> String?`
+///
+/// 对大文件（rootfs 归档 192 MB）做流式摘要，常驻内存只有一个 128 KB 缓冲。
+/// 与 `nativeSha256Hex` 同一条契约：**错误返回 null**（Kotlin 回退平台流式实现），
+/// 绝不 panic 跨 FFI——文件不存在、无读权限、被并发删除都只算"这条路走不通"。
+#[no_mangle]
+pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeSha256File(
+    mut env: JNIEnv,
+    _class: JClass,
+    path: JString,
+) -> jni::sys::jstring {
+    let result = (|| -> Result<String, String> {
+        let p: String = env
+            .get_string(&path)
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
+        crate::sha256::sha256_file_hex(std::path::Path::new(&p)).map_err(|e| e.to_string())
+    })();
+
+    match result {
+        Ok(hex) => match env.new_string(hex) {
+            Ok(s) => s.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 /// Kotlin: `CoreNative.nativeExtract(archivePath, targetDir, expectedSha256) -> String`
 /// 永远返回 JSON（Android 的 stderr 不进 logcat，null 协议会让错误无迹可查）：
 /// 成功 {"ok":true,"entries":N,"bytes":N,"sha256":"..."}；失败 {"ok":false,"error":"..."}
