@@ -208,6 +208,12 @@ echo "---- 2.9 清理（控制落盘体积）----"
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
+# 构建残留清理（2026-10-08 瘦身取证，见 docs/milestones/证道-环境包瘦身与压缩方案-2026-10-08.md §4 A）：
+# 下面这些只有**构建期**才用得到，运行时没有任何东西引用它们（合计约 13 MB 落盘 / 3.8 MB 包体积）。
+rm -f  /usr/bin/qemu-aarch64-static   # 只在 debootstrap --foreign 引导期做跨架构 chroot 用
+rm -rf /usr/share/gitweb              # git 自带的 CGI 样例，环境里没有 web 服务
+rm -rf /var/cache/debconf/*           # debconf 缓存，装完即失效（保留目录本身）
+rm -rf /var/log/*                     # 清内容、保留目录（系统与 App 仍需可写日志目录）
 echo "---- 2.10 体积断言（防构建配置错误导致异常膨胀，v3.4）----"
 # -x 不跨文件系统：跳过 bind 挂载的 /proc /sys /dev。du 探进 /proc 会因进程条目
 # 消失而报错退出，被 pipefail 放大成构建失败——CI 首轮实测教训（v3.4 修复）
@@ -248,8 +254,26 @@ printf 'distro=debian-%s\narch=%s\nglibc=2.41\npython=3.13\nnode_major=%s\n' \
 echo "[4/4] 打包 tar.zst 并计算 SHA256 ..."
 mkdir -p "$OUT_DIR"
 ASSET="debian-${DEBIAN_VERSION}-base-arm64.tar.zst"
-tar --zstd -cf "$OUT_DIR/$ASSET" --numeric-owner -C "$ROOTFS_DIR" .
+# 压缩级别：zstd 默认 3 → 19（2026-10-08 实测：同一份内容 326.6MB → 245.7MB，**−24.8%**）。
+# 端侧不需要任何改动：Rust `zstd 0.13` 与 Java `zstd-jni 1.5.6-4` 都能解 -19 的帧（窗口 8MB）。
+# **刻意不开** `--long` / `window_log 27`：只再省 2.4%（约 6MB），却要让端侧分配 128MB 解码窗口，
+# 低端机上就是一次 OOM 风险（见 docs/milestones/证道-环境包瘦身与压缩方案-2026-10-08.md §2）。
+# 注：GNU tar 经管道调用 zstd，`-T#` 多线程对管道输出无效（zstd 只在输出为普通文件时开多线程），
+# 这里就是单线程；对已经要跑 30–90 分钟的 qemu 交叉构建来说，多花几分钟压缩可以接受。
+# ZSTD_CLEVEL 与显式 `-19` 两道都写上（zstd 认环境变量，但显式参数更不容易被误删）。
+ZSTD_CLEVEL=19 tar --use-compress-program="zstd -19" -cf "$OUT_DIR/$ASSET" --numeric-owner -C "$ROOTFS_DIR" .
 sha256sum "$OUT_DIR/$ASSET" | awk '{print $1}' > "$OUT_DIR/$ASSET.sha256"
+
+# 包体积门禁（2026-10-08 新增）：防"某个预装包又把大依赖整棵拖回来"而无人发现。
+# 基线：zstd-19 全量 ≈ 245.7MB（门禁留到 280MB）；若将来执行方案 B1（剔 ffmpeg 闭包）应降到 ≈158MB。
+PKG_MB=$(( $(stat -c%s "$OUT_DIR/$ASSET") / 1000000 ))
+if [ "$PKG_MB" -le 280 ]; then
+  echo "[zhengdao] 包体积: ${PKG_MB}MB（门禁 280MB）"
+else
+  echo "[断言失败] 包体积 ${PKG_MB}MB 超过门禁 280MB —— 检查预装清单是否又拖进大依赖"
+  echo "           历史最大项：ffmpeg 及其 201 个私有依赖（安装体积 397.8MB / 包体积 158MB）"
+  exit 1
+fi
 
 echo "----------------------------------------"
 echo "BUILD_OK: $OUT_DIR/$ASSET"
