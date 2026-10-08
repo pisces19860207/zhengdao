@@ -30,8 +30,10 @@
 | `zhengdao-taiji-ui` | `feat/taiji-compose-ui`（`406b885`） | 目录已删；分支已删（内容在 `main`） |
 | `zhengdao-v100-build` | — | **本来就不是 git 仓库**（一堆 lint 缓存残渣），已删 |
 
-其余本地分支：`feat/v2.0-r1-rust-core-16kb`（`8484d46`）**未并入 main 但内容已冗余**
-（`af37010` / `fc74cd5` 以另一种方式收了同样的东西），远端也有同名分支 ⇒ 留着不动，别在里面继续干活。
+其余分支：`feat/v2.0-r1-rust-core-16kb`（`8484d46`）**⛔ 已被取代** —— 内容由 `af37010` / `fc74cd5`
+以另一种方式收了同样的东西（R1 收编）。**2026-10-08 核实：本地分支与远端分支都没了**
+（`git ls-remote --heads origin` 里没有同名分支），只剩游离提交 `8484d46`（需要时 `git show 8484d46`
+仍可读），**不要在上面继续干活**。
 tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBuddy 终端单会话的 WIP 快照，
 分支 `wip/workbuddy-terminal-2026-10-07-2258` 已删，内容由 `da3d8eb` 取代）。
 
