@@ -930,7 +930,15 @@ fun SettingsScreen(
                                 try {
                                     InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请留在本页或看通知栏）…")
                                     RootfsInstaller.ensureFreeSpace(ctx, target.length())
-                                    RootfsInstaller.install(ctx, target) { }
+                                    // 回退到"与当前环境同源的那个包"（例如刚回退过又点了一次同一个版本）时
+                                    // 保留环境指纹；换成别的版本必然对不上 ⇒ null，照装不写 env。
+                                    // 判定与理由同修复路径：RootfsInstaller.envForReinstall 的 KDoc。
+                                    val rollSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(target)
+                                    val rollEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
+                                        File(ctx.filesDir, "rootfs"),
+                                        rollSha,
+                                    )
+                                    com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, target, rollEnv, rollSha) { }
                                     com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
                                     InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（未联网下载）")
                                     android.os.Handler(ctx.mainLooper).post { storageTick++ }
@@ -1202,7 +1210,25 @@ fun SettingsScreen(
                                 val archive = File(ctx.cacheDir, candidates.name)
                                 if (archive.absolutePath != candidates.absolutePath) candidates.copyTo(archive, true)
                                 InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…")
-                                com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive) { }
+                                // 修复＝拿本地这个包再解压一次。若它与「当初装出当前 env 的那个包」
+                                // 逐字节相同（标记里的 archive-sha256 对得上），内容指纹照样成立 ⇒ 原样写回，
+                                // 否则一次修复就把增量基线抹掉、下次更新被迫全量（2026-10-08 真机 bug，
+                                // 详见 RootfsInstaller.envForReinstall 的 KDoc）。对不上就传 null。
+                                val repairSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(archive)
+                                val repairEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
+                                    File(ctx.filesDir, "rootfs"),
+                                    repairSha,
+                                )
+                                if (repairEnv != null) {
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "修复环境：本地包与当前环境同源（sha=${repairSha.take(12)}），保留环境指纹 $repairEnv",
+                                    )
+                                } else {
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "修复环境：本地包与当前环境无法确认同源（sha=${repairSha.take(12)}），不写环境指纹（下次更新走全量）",
+                                    )
+                                }
+                                com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive, repairEnv, repairSha) { }
                                 InstallFlow.finish(
                                     ctx,
                                     "修复完成：环境已重置，登录态与工作区保留（本次未联网下载）",
@@ -1365,7 +1391,10 @@ fun SettingsScreen(
                                 }
                                 InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请勿离开本页）…")
                                 RootfsInstaller.ensureFreeSpace(ctx, archive.length())
-                                RootfsInstaller.install(ctx, archive, envToWrite) { }
+                                // archiveSha256 一并写进标记：它是下次「修复环境/回退」判断
+                                // "本地这个包是否就是装出当前 env 的那个包"的唯一依据（见
+                                // RootfsInstaller.envForReinstall）。全量更新路径有确定值，一定传。
+                                RootfsInstaller.install(ctx, archive, envToWrite, actualSha) { }
                                 RootfsCache.pruneKeep(ctx)
                             }
                             InstallFlow.finish(ctx, fallbackNote + "环境更新完成，重进终端生效")

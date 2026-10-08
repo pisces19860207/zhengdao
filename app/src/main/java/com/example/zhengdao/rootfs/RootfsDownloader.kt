@@ -221,8 +221,15 @@ object RootfsDownloader {
         }
     }
 
-    /** 流式计算文件 SHA-256 并与期望值比对（不区分大小写）。 */
-    fun verifySha256(file: File, expected: String) {
+    /**
+     * 流式计算文件 SHA-256（小写十六进制，128 KB 缓冲）。
+     *
+     * 为什么需要它（而不是只在下载后顺手记一个）：增量基线（env）要不要在"重装同一份包"时
+     * 写回，判据就是"这次要装的包 sha256 == 标记里那个 sha256"（见
+     * [com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall]）。192 MB 的包在真机上
+     * 约 1 秒读完，调用方负责放到后台线程。
+     */
+    fun sha256Of(file: File): String {
         val md = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
             val buf = ByteArray(128 * 1024)
@@ -232,7 +239,12 @@ object RootfsDownloader {
                 md.update(buf, 0, n)
             }
         }
-        val actual = md.digest().joinToString("") { "%02x".format(it) }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /** 流式计算文件 SHA-256 并与期望值比对（不区分大小写）。 */
+    fun verifySha256(file: File, expected: String) {
+        val actual = sha256Of(file)
         if (!actual.equals(expected, ignoreCase = true)) {
             throw ShaMismatch("SHA256 校验失败：actual=$actual expected=$expected")
         }
