@@ -2789,3 +2789,69 @@ sed -i -E \
 3. **拿真实输入做回归，别拿自己想象的输入**：一开始只用"单行、mesa 在末尾"的样例试，
    结论是"通过"；直到把 deb.debian.org 上那个真包下回来跑，才算真的验证过。
    涉及外部数据格式的改动，**样本要从真实来源取一份**。
+
+---
+
+## E-042 · 2026-10-08 · 剔 GPU 栈的第三层：`apt` 的 purge 解算会顺着 `mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg` 把 ffmpeg 一起带走 —— 改成只切 `libllvm19`（−118 MB）
+
+**现场**：E-041 的 sed 修好之后，build **Run 164**（`57757a2`，runId `37761000072`）的 RootFS 步骤**又**失败
+（整轮仍显示成功，因为 `continue-on-error: true` + 发布步骤的空目录守卫），自述注解这次把 apt 的模拟
+卸载名单原样带了出来（外面匿名可见）：
+
+```
+[2.8] 卸载 mesa 会连带移除关键包，已中止：Purg ffmpeg [7:7.1.5-0+deb13u1]|Purg libavdevice61 [7:7.1.5-0+deb13u1]|
+Purg libgl1 [1.7.0-1+b2]|Purg libglx0 [1.7.0-1+b2]|Purg libglx-mesa0 [25.0.7-2+deb13u1]|
+Purg libgl1-mesa-dri [25.0.7-2+deb13u1]|Purg mesa-libgallium [25.0.7-2+deb13u1]|Purg libllvm19 [1:19.1.7-3+b1]
+```
+
+**真因**：上一轮只摘掉了 `libgbm1 → mesa-libgallium` 这条**支线**，而要点掉 mesa 本体，链路上还有
+别的边。这次 Purg 名单摊开的顺序是
+
+```
+mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg
+```
+
+（`mesa-libgallium ← libglx-mesa0` 这一段由真机反向依赖扫描确认过；`libglx0 ← libgl1 ← ffmpeg`
+这两段是这次 Purg 名单反推的 —— 即 ffmpeg 一侧声明了 `libgl1`，逐级回到 mesa）
+⇒ 一条 `apt-get purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri` 就会把 ffmpeg 与
+libavdevice61 一起带走。**上一轮"绕过 apt 的假依赖"这个判断本身没错，错在只绕了一条边。**
+
+**决策**：不再动 mesa 本体，**只切 `libllvm19`**（落盘 118 MB，构建 Top20 里第二大）。理由：
+
+- 要动 mesa 本体，就得再重打包 **两个**包（`libglx0`、`libgl1`）才能把 ffmpeg 从链上摘下来，
+  而多拿到的只有 `libgallium-25.0.7-2+deb13u1.so` 的 34 MB ⇒ 风险/改动量不划算；
+- `libllvm19` 是这条链上**最干净的一条边**：真机反向依赖扫描显示它的父包**只有** `mesa-libgallium`
+  一个 ⇒ 在 `mesa-libgallium` 的 `Depends` 里摘掉 `libllvm19 (>= 1:19.1.0)`，purge 就只带走它自己；
+- 用户在终端里对 LLVM 同样没有任何入口（E-038 的三条取证：`ldd /usr/bin/ffmpeg` 的 NEEDED 闭包里
+  既没有 `libgallium-*.so` 也没有 `libLLVM.so.19.1`；proot 里没有 `/dev/dri`、没有 X/Wayland display；
+  全仓 `app/` 对 `libgallium|mesa|libgbm|SDL2|vulkan` 零命中）。
+
+**修法**（`rootfs/build-rootfs.sh` §2.8，整段重写）：
+`apt-get download mesa-libgallium` → `dpkg-deb -R` → 多表达式 `sed` 摘掉 `libllvm19` 一条
+（`-e 's/(,[[:space:]]*)?libllvm19[^,]*//g'` + 空项/尾逗号/`: ,`/空依赖字段逐项收尾）→ 自查
+（无残留 + 依赖字段无 `, ,`/尾逗号/空括号）→ `dpkg-deb -b` → `dpkg -i`；然后
+`apt-get -s -y purge libllvm19` 打印 `^(Remv|Purg) ` 名单并断言黑名单（这次把 `mesa-libgallium` 也加了
+进去 —— 它必须活着）→ `apt-get -y purge libllvm19`。**旧的 libgbm1 重打包段整段删除**（它绕的那条边
+现在不再需要）。§2.9 的断言反过来：`libllvm19` 必须没了，`mesa-libgallium` **必须还在**（少它说明
+重打包或卸载跑偏了）。每条外部命令仍各自把 stderr 塞进 `annot`（E-039 的机制，这两轮都靠它定位）。
+
+**证据（本地，改完先验）**：把真包 `mesa-libgallium_25.0.7-2+deb13u1_arm64.deb`（deb.debian.org 下回来，
+8,032,536 B，成员 `debian-binary`/`control.tar.xz`/`data.tar.xz`）的 control 抽出来（903 字符）跑新 sed：
+
+- 原 `Depends` 第 7 行共 19 项，其中 `libllvm19 (>= 1:19.1.0)` **夹在中间**（`libgcc-s1` 与 `libsensors5` 之间）；
+- 改后 18 项：`libllvm19` 整条连同它的括号版本约束干净消失，其余 18 项**逐字未动**；
+- 除依赖字段外整份 control `diff` 为空（`Description` 续行、`Provides: libglapi-mesa` 都原样）；
+- 回归脚本 `C:\Users\guoli\AppData\Local\Temp\zd-watch\mesa-check.sh` = `RESULT=PASS`；
+- `bash -n` 内外层自检（外层 + 抽出的 CONF 内层 266 行）= `OUTER_SYNTAX_OK` / `INNER_SYNTAX_OK`。
+
+**教训**：
+
+1. **"绕过 apt 的假依赖"要绕过"整条链"，不是"一条边"**：依赖图上每一条边都得各自重打包一个包，
+   所以选目标时先看**这条边上游有几个包**（`libllvm19` 只有 1 个父包；mesa 本体至少有 2 个）。
+   边际收益 34 MB、边际成本 2 个包 ⇒ 明确放弃，并把"为什么放弃"写进脚本注释，免得下一轮又有人试。
+2. **断言要写"这个包自己的事实"，别抄隔壁包的**：我给回归脚本写"该留的依赖"清单时，顺手抄了上一轮
+   `libgbm1` 的 `libwayland-server0`，结果它根本不在 `mesa-libgallium` 的 `Depends` 里，脚本报了个
+   假失败（`reasons: lost-libwayland-server0`）。改成逐项点名 + **结构性断言**（"依赖项数必须恰好少 1"）
+   之后，这个绿灯才是可信的。
+3. **每一轮失败都要把"新事实"写回脚本**：这次失败注解里的 Purg 名单本身成了下一轮的判据
+   （黑名单里补上 `mesa-libgallium`）。CI 失败的价值不在"红了"，而在它把依赖图的下一层摊开给你看。
