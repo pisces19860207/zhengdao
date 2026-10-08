@@ -547,6 +547,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 入库 `.so` 瘦身 + 工序固化（strip 掉 `.symtab`/`.strtab`；16 KB 页对齐与 JNI 符号两道校验） | ✅ 在用（仓库文件 1,095,744 → **811,592 B**；但 **APK 不因此变小** —— AGP 打包本就会 strip，见 E-045 教训 6） | 本次（E-045） | `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` |
 | **入库 `.so` 门禁**（CI 校验 16KB 页对齐 + 从 `CoreNative.kt` 现读的 JNI 入口符号，堵住"人工拷贝 + 静默降级"） | ✅ 在用（`ci.yml` + `build.yml` 各一步，见 E-048） | 本次（E-048） | `tools/check-native-so.py`（纯标准库 ELF 解析）、`.github/workflows/ci.yml`、`.github/workflows/build.yml` |
 | **本地已有索引那个整包时直接用本地包**（"补指纹/重装"不再白下 192 MB；本地整包优先于增量补丁） | ✅ 在用（真机：检查给「本地已有该版本的安装包…无需下载」、按钮「用本地包安装」、5 秒重解压完成，见 E-049） | 本次（`feat/local-cache-no-download`） | `rootfs/RootfsCache.kt`（`localCandidateFor` / `pickLocalCandidate`）、`ui/SettingsScreen.kt`（检查线程本地优先分支 + 确认线程本地优先块）、`app/src/test/java/com/example/zhengdao/rootfs/RootfsLocalCandidateTest.kt` |
+| **补丁解压收口进 Rust**（增量与全量共用 `extractArchive` 入口：纯 tar 壳 + `skipNames` 跳过补丁元数据 + sha 对账不回退） | ✅ 在用（host cargo 12 用例、门禁 4 符号、真机 3 用例含"sha 不匹配硬失败"，见 E-050） | 本次（`feat/rust-patch-extract`） | `rust/core/src/extract.rs`（`extract_pipeline_skip` / `ExtractReport.skipped`）、`rust/core/src/jni_bridge.rs`（`nativeExtractSkip`）、`rust/CoreNative.kt`、`rootfs/RootfsInstaller.kt`（`extractArchive`）、`rootfs/RootfsDelta.kt` |
 
 已移除的功能见 §3。
 

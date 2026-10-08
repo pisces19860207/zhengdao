@@ -5,6 +5,7 @@ package com.example.zhengdao.rootfs
 import android.system.Os
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.zhengdao.rust.CoreNative
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.compress.archivers.tar.TarConstants
@@ -12,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -25,6 +27,9 @@ import java.io.FileOutputStream
  * （顺带验证 `RootfsInstaller.openTar` 新支持的纯 tar 格式）。
  * 覆盖：新增文件、覆盖文件、删除文件与目录树、改 mode、换软链目标、
  * 补丁元数据不落地、标记 env 更新、以及基线不匹配时"动手之前就失败且原树不动"。
+ *
+ * E-050 起补丁解压也走 Rust（`RootfsInstaller.extractArchive`）：纯 tar 壳、跳过清单、
+ * 以及"sha 对不上就硬失败、不许退回不校验的 Java 路径"都在这台设备上真跑。
  */
 @RunWith(AndroidJUnit4::class)
 class RootfsDeltaInstrumentedTest {
@@ -136,8 +141,7 @@ class RootfsDeltaInstrumentedTest {
     }
 
     @Test
-    fun 基线不匹配时动手之前就抛错且原树完全不变() {
-        val work = workDir()
+    fun 基线不匹配时动手之前就抛错且原树完全不变() {        val work = workDir()
         val base = File(work, "rootfs").apply { mkdirs() }
         val tmp = File(work, RootfsInstaller.TMP_NAME)
         val patch = File(work, "rootfs-patch-mismatch.tar")
@@ -156,6 +160,35 @@ class RootfsDeltaInstrumentedTest {
         assertEquals("delete me", File(base, "old.txt").readText())
         assertEquals("delete me too", File(base, "dir/sub.txt").readText())
         assertEquals("keep.txt", Os.readlink(File(base, "link").absolutePath))
+        assertEquals(baseEnv, RootfsMarker.installedEnv(base))
+        assertFalse("失败不该留临时目录", tmp.exists())
+    }
+
+    /**
+     * 补丁 sha 对不上时**必须硬失败**（E-050）：解压入口只允许"Rust 校验失败 ⇒ 整体失败"，
+     * 绝不允许悄悄回退到不校验 sha 的 Java 路径再解一遍同一份坏包。
+     */
+    @Test
+    fun 补丁sha不匹配时硬失败不退回Java() {
+        assumeTrue("Rust 核心不可用时这条契约无从谈起", CoreNative.isRustAvailable())
+        val work = workDir()
+        val base = File(work, "rootfs").apply { mkdirs() }
+        val tmp = File(work, RootfsInstaller.TMP_NAME)
+        val patch = File(work, "rootfs-patch-sha.tar")
+        makeBaseTree(base)
+        makePatchTar(patch, baseEnv, newEnv)
+        val info = RootfsDelta.readPatchInfo(patch)!!
+
+        assertThrows(RootfsInstaller.InstallFailed::class.java) {
+            RootfsDelta.applyTo(
+                base, tmp, patch, info, onEntry = {},
+                expectedSha256 = "0".repeat(64),   // 索引说这份补丁是别的 sha
+            )
+        }
+
+        // 原树一项没动、临时目录被清掉（失败不留半成品）
+        assertEquals("old", File(base, "over.txt").readText())
+        assertFalse("新文件不该落地", File(base, "new.txt").exists())
         assertEquals(baseEnv, RootfsMarker.installedEnv(base))
         assertFalse("失败不该留临时目录", tmp.exists())
     }
