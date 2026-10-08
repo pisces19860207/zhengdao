@@ -629,17 +629,33 @@ class OcRepository(
      * 端点 `GET /api/session`（响应 `{"data":[…]}`，按时间**倒序**）。
      * 条数由 `GET /api/session/{id}/message` **并发**补取——单个失败只让该条
      * [OcSessionSummary.messageCount] 为 null，**不拖垮整个列表**（失败不阻断）。
+     *
+     * ⚠️ 本方法**把失败吞成空列表**（历史行为）。需要区分"确实没有会话"与"拉取失败"时
+     * 请用 [listSessionsResult]。
      */
-    suspend fun listSessions(): List<OcSessionSummary> = withContext(Dispatchers.IO) {
+    suspend fun listSessions(): List<OcSessionSummary> =
+        listSessionsResult().getOrDefault(emptyList())
+
+    /**
+     * 同 [listSessions]，但**保留失败信息**：失败返回 [Result.failure]，成功（含"确实没有会话"
+     * 这种合法的空列表）返回 [Result.success]。
+     *
+     * 为什么需要它（2026-10-09，审计 A2）：[listSessions] 会把网络/解析失败吞成空列表，
+     * 调用方无法区分两种情况，于是"刷新失败"在界面上表现为**已有列表被清空且毫无提示**——
+     * 比"没反馈"更糟。UX 需要区分时用本方法。
+     */
+    suspend fun listSessionsResult(): Result<List<OcSessionSummary>> = withContext(Dispatchers.IO) {
         val raw = runCatching { fetchSessions() }
             .onFailure { ocLog("拉取会话列表失败：${it.message}") }
-            .getOrDefault(emptyList())
-        if (raw.isEmpty()) return@withContext emptyList()
-        coroutineScope {
-            raw.map { s ->
-                async { s.toSummary(runCatching { countMessages(s.id) }.getOrNull()) }
-            }.awaitAll()
-        }
+            .getOrElse { return@withContext Result.failure(it) }
+        if (raw.isEmpty()) return@withContext Result.success(emptyList())
+        Result.success(
+            coroutineScope {
+                raw.map { s ->
+                    async { s.toSummary(runCatching { countMessages(s.id) }.getOrNull()) }
+                }.awaitAll()
+            }
+        )
     }
 
     /** `GET /api/session` → 会话元数据列表。 */
