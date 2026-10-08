@@ -3025,3 +3025,28 @@ merge **`28e733d`**，已推 origin/main。
 2. **坐标必须现算**：每次 `uiautomator dump` 取**当前** bounds 的中心再点，不要用上一轮记住的固定坐标 —— 键盘弹出、浮窗移形、列表重排都会让固定坐标失效（K2 验收时曾因固定坐标把 4 条消息连成一个输入框里没发出去）。
 3. **滑动起点避开悬浮窗与 IME 的触摸带**（这台机器上 `x=656` 常落在带里，改 `x=400` 就稳）。
 4. **`uiautomator dump` 看不到第三方浮窗**（它在另一个 window）⇒ "dump 里有这个按钮"**不代表**"点得到"。排查时先 `dumpsys window windows | Select-String -Pattern 'touchableRegion|mAttrs'` 看有没有第三方 window 压在目标上。
+
+## E-048 · 2026-10-08 · 把 E-045 教训 3 的缺口补成门禁：入库 `.so` 的 16KB 对齐与 JNI 入口符号进 CI（`tools/check-native-so.py`）
+
+**缺口**：E-045 里记了两件事 —— ① `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` 是**人工** `cargo build --release --target aarch64-linux-android` + `llvm-strip --strip-unneeded` 后拷进来的，`ci.yml` / `build.yml` 里**没有任何一步**构建或校验它；② 16KB 页对齐漏掉时不是崩溃而是**静默降级**（16KB 页设备 `loadLibrary` 失败 → `CoreNative.isRustAvailable()=false` → 整条解压路径悄悄退回 Java，日志里只有一行"走平台回退"）。两件凑一起＝「Rust 核心到底有没有在跑」在 CI 上零证据，而下一次谁改 Rust 忘了重建/忘了对齐，谁都不会红。
+
+**做法**：新增 `tools/check-native-so.py`（纯标准库，自己解析 ELF 头与段表），`ci.yml` 与 `build.yml` 在"编译 APK"之前各跑一步「入库 .so 门禁（16KB 页对齐 + JNI 入口符号）」：
+
+1. `app/src/main/jniLibs/<abi>/*.so` 的**每个** `PT_LOAD` 段 `p_align >= 0x4000`（16KB 页设备可加载）；
+2. `libzhengdao_core.so` 必须导出 `CoreNative.kt` 里**每个** `external fun` 对应的 JNI 符号 —— 期望符号**现读** `CoreNative.kt` 推导（`Java_com_example_zhengdao_rust_CoreNative_<方法名>`），将来加 native 方法**自动**纳入，不用维护第二份清单；
+3. `.symtab` 是否存在只打一行信息（影响入库体积、**不影响 APK** —— 见 E-045 教训 6 的更正）。
+
+失败按本仓约定抛 `::error title=…`（Actions 日志匿名读不到、注解读得到，见 E-028/E-039）。
+
+**实测**（`python tools/check-native-so.py`，v1.3.0 `0d2320a`）：
+
+- `libzhengdao_core.so` 811,592 B：4 个 `PT_LOAD` 全 `p_align=0x4000`；3 个 JNI 入口（`nativeSha256Hex` / `nativeSha256File` / `nativeExtract`）全在；已 strip（无 `.symtab`）
+- `libzstd-jni-1.5.6-4.so` 600,064 B：2 个 `PT_LOAD` 全 `p_align=0x10000`（第三方，≥16KB 同样合格）
+- 负例：把期望符号前缀临时改成 `…_NOPE` → 退出码 1，三行缺失符号各一条，符合预期
+
+**教训**：
+
+1. **"人工工序 + 静默失败"必然要做成门禁**：凡是"没人自动跑、跑漏了也不红"的工序，都会在某次赶工里漏掉，而漏掉的后果偏偏长得像"一切正常"。
+2. **门禁的期望值要现读源码**（这里读 `CoreNative.kt` 的 `external fun`），别在脚本里再抄一份清单 —— 抄的那份一定会过期。
+3. **Windows 的 GBK 控制台会把门禁脚本自己搞崩**：消息里出现 `⇒` 这类字符时 `print` 抛 `UnicodeEncodeError`，于是"脚本报错而死"和"检查失败而死"混在一起。修法是 `sys.stdout.reconfigure(errors="replace")` + 消息里用 ASCII 箭头。
+

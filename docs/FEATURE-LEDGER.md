@@ -545,6 +545,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 安装完整性锚在 Rust 核心（解压途中流式对账归档 sha，失配即失败；一次读盘） | ✅ 在用（见 E-045） | 本次（`feat/rust-install-integrity`） | `rust/core/src/extract.rs`（`extract_pipeline(…, expected_sha256)` 原本就有、此前从未被启用）、`rootfs/RootfsInstaller.kt`（传 sha；`SHA256 不匹配` 不回退 Java） |
 | Rust 侧 sha256 文件摘要（`sha256Of` 优先走 Rust，平台 `MessageDigest` 作回退） | ✅ 在用（见 E-045） | 本次（`feat/rust-install-integrity`） | `rust/core/src/sha256.rs`（`sha256_file_hex`）、`rust/core/src/jni_bridge.rs`（`nativeSha256File`）、`rust/CoreNative.kt`（`sha256File`）、`rootfs/RootfsDownloader.kt`（`sha256Of` + 「走 Rust 核心 / 走平台回退」日志） |
 | 入库 `.so` 瘦身 + 工序固化（strip 掉 `.symtab`/`.strtab`；16 KB 页对齐与 JNI 符号两道校验） | ✅ 在用（仓库文件 1,095,744 → **811,592 B**；但 **APK 不因此变小** —— AGP 打包本就会 strip，见 E-045 教训 6） | 本次（E-045） | `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` |
+| **入库 `.so` 门禁**（CI 校验 16KB 页对齐 + 从 `CoreNative.kt` 现读的 JNI 入口符号，堵住"人工拷贝 + 静默降级"） | ✅ 在用（`ci.yml` + `build.yml` 各一步，见 E-048） | 本次（E-048） | `tools/check-native-so.py`（纯标准库 ELF 解析）、`.github/workflows/ci.yml`、`.github/workflows/build.yml` |
 
 已移除的功能见 §3。
 
