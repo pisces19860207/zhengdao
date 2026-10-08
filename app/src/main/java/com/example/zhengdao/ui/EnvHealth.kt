@@ -7,6 +7,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
 import com.example.zhengdao.terminal.EnvSelfHeal
+import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.ResMonitor
 import java.io.File
 
@@ -22,7 +23,8 @@ import java.io.File
 object EnvHealth {
 
     /**
-     * 一项体检结果。fixId 非空 = 点「修复」可定向自愈；为空 = 引导项。
+     * 一项体检结果。fixId 非空 = 点「修复」可**宿主侧**定向自愈；terminalCmd 非空 =
+     * 点「修复」要进 guest 里跑（脚本落盘后打开终端，过程可见）；两者都空 = 引导项。
      *
      * [warn] = 超阈值但**没有一键修复**（当前只有资源占用一项）：渲染为黄色 ⚠，
      * 与红色 ✗（可修或引导去处理）区分开，以维持「红 = 修得了」这条不变量。
@@ -34,12 +36,14 @@ object EnvHealth {
         val detail: String,
         val fixId: String? = null,
         val warn: Boolean = false,
+        val terminalCmd: String? = null,
     )
 
     /** 修复动作标识（与 Check.fixId 对应）。 */
     const val FIX_DNS = "dns"
     const val FIX_TIMEZONE = "timezone"
     const val FIX_UV = "uv"
+    const val FIX_HERMES_DEPS = "hermes-deps"
 
     /** 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询 + 一次资源采样 ~0.7 s）。 */
     fun inspect(ctx: Context): List<Check> = listOf(
@@ -48,6 +52,7 @@ object EnvHealth {
         dnsCheck(ctx),
         timezoneCheck(ctx),
         uvCheck(ctx),
+        hermesDepsCheck(ctx),
         networkCheck(ctx),
         storageCheck(ctx),
         resourceCheck(),
@@ -65,6 +70,7 @@ object EnvHealth {
             val b = EnvSelfHeal.ensureHermesUvWrappers(File(ctx.filesDir, "home"))
             a || b
         }
+        FIX_HERMES_DEPS -> HermesEnv.repairOnHost(HermesEnv.hermesHome(ctx))
         else -> false
     }
 
@@ -152,6 +158,25 @@ object EnvHealth {
                 else -> "系统级 link-mode=copy + 内嵌 uv 已包装"
             },
             fixId = if (ok) null else FIX_UV,
+        )
+    }
+
+    /**
+     * Hermes 依赖环境（E-025，2026-10-08 真机事故："搬家包恢复后 hermes 必崩"）。
+     *
+     * 只在装了 Hermes 时才判定。判定与 [HermesEnv.repairOnHost] 的修复范围一一对应：
+     * 记录指向不存在的依赖代、而盘上还有**完整**代 ⇒ 宿主侧一键改写记录（[FIX_HERMES_DEPS]）；
+     * 要重建 Python 环境、或要 `git checkout` 补回源码锁 ⇒ 脚本落盘后进终端跑（[Check.terminalCmd]）。
+     */
+    private fun hermesDepsCheck(ctx: Context): Check {
+        val st = HermesEnv.inspect(ctx)
+        return Check(
+            id = "hermes-deps",
+            label = "Hermes 依赖环境",
+            ok = st.ok,
+            detail = st.detail,
+            fixId = if (!st.ok && st.canRepairOnHost) FIX_HERMES_DEPS else null,
+            terminalCmd = if (!st.ok && !st.canRepairOnHost) HermesEnv.REPAIR_CMD else null,
         )
     }
 

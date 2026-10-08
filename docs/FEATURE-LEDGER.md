@@ -150,6 +150,22 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `get_compatible_custom_providers` 输出完全一致，`hermes doctor` 待办 3 → 1 条），皮肤设为 `moss`。
 > 详见 `docs/ERRATA.md` E-025。
 
+> **2026-10-08 续（App 侧补上"依赖环境记录"这层自愈 —— 用户选了「现在就加」）**：
+> 动机：上面那次是**手工**修好的；搬家包/更新中断的成因不解决，下次恢复还会崩，且用户只会看到
+> "hermes 敲不动"。落地：新增 `app/src/main/java/com/example/zhengdao/terminal/HermesEnv.kt`
+> （宿主侧**只读**判定 `installs/*/facts.json`：记录里的 `environment` 目录要在且含 `pyvenv.cfg`，
+> 记了 `resolved_lock` 则锁也得在 —— 与 `pm/environments.py:297-318` 同条件；宿主 `filesDir/home`
+> 与 guest `/root` 同 bind，所以改 `facts.json` 等于在 guest 里改）+ `app/src/main/res/raw/hermes_env_repair.sh`
+> （guest 侧五步：`git checkout -- uv.lock flake.lock` → 清失效记录 → 删陈旧标记 → `hermes pm repair`
+> → `hermes --version` 复验）。**修得上就当场修，修不上绝不装作能修**：盘上有完整代（`venv/pyvenv.cfg`
+> + `workspace/uv.lock`）时宿主侧把指针改到最新那代（先备份 `facts.json.bak-证道<时间戳>`），一代都没有
+> 则**删掉失效记录**（留着会让 `pm repair` 以 "recorded dependency lock is missing" 拒绝重建）；
+> 要重建 Python 环境 / 要 `git checkout` 时，脚本落 `Workspace.hostDir/.zhengdao/scripts/` 并在终端跑，
+> 过程用户可见。入口：`EnvHealth.inspect` 新增 `hermes-deps` 项（`Check` 加 `terminalCmd` 字段表达
+> "需要进 guest 的修复"）+ 首页状态卡「修复」按钮；设置页新增 `SectionCard("Hermes 依赖环境")`
+> （「一键修正记录」/「在终端里修复」）。没装 Hermes 直接跳过、不报警。单测
+> `app/src/test/java/com/example/zhengdao/terminal/HermesEnvTest.kt` 6 例锁住上述不变量。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
