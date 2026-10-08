@@ -2040,3 +2040,58 @@ sha256 `ae27ddfe…a934f5`（与 `.sha256` 边车一致）；解开后 tar `1,03
    与 CLI 的 `--patch-from` 在同样条件下差三个数量级（3% vs 99.98%）——凡是"某能力不可行"的
    结论，都要用**用户真正会用的那个工具**复现一次；同时，"零变化 → 补丁 ≈ 全量"这种**几乎免费的
    对照实验**仍然是判死一条路线的最快办法（正是它暴露了绑定与 CLI 的差异）。
+
+---
+
+## E-032 · 2026-10-08 · 那 70 MB 语言包，App 从来没读过；设计文档写了"裁掉多余 locale"，构建脚本从没做
+
+### 1. 现场（实测 + 代码取证）
+
+| 项 | 实测值 |
+|---|---|
+| `usr/share/locale/*` 原始字节 | 70.5 MB（另有 `usr/share/i18n` 15.7 MB 的 locale 生成源码） |
+| 只裁 locale 到 4 种语言（zh_CN/zh_TW/en/en_GB） | 包 326,606,222 → 307,814,330 B（−18.8 MB） |
+| **只留 zh_CN + en（本次采用）** | 包 → **301,895,492 B（−24.7 MB，−7.6%）**；tar 1,031.8 → 902.7 MB |
+| 翻译全删（只留 `locale.alias`） | 包 → 301,164,218 B（比"只留中英"只再多省 0.7 MB） |
+
+- 环境实际是按英文/C 跑的：`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt:433`
+  与 `:617` 注入 `LANG=C.UTF-8`。
+- 镜像里也**没有生成 zh_CN 语言**：`rootfs/build-rootfs.sh:107-111`（§2.3）只做
+  `locale -a | grep -qi '^C\.utf8' || locale-gen`——即"只保证 C.UTF-8 存在"。
+  ⇒ 在 `LANG=C.UTF-8` 下 gettext 根本不会去读 `zh_CN/LC_MESSAGES/*.mo`，这 70 MB **从来没被读过**。
+- 文档/实现漂移：`docs/milestones/安卓AgentApp-设计方案-v3.md:225` 与
+  `docs/milestones/M5-更新体系-Kotlin骨架.md:134` 都写着"裁掉 `/usr/share/doc` 与多余 locale"，
+  而构建脚本只做了 `/usr/share/doc`，**locale 那半句一直没落地**（`rm -rf /usr/share/locale/*` 从未出现）。
+
+### 2. 修法（`rootfs/build-rootfs.sh:217-226`，§2.9 清理段）
+
+```bash
+find /usr/share/locale -mindepth 1 -maxdepth 1 \
+  ! -name 'zh_CN' ! -name 'en' ! -name 'locale.alias' -exec rm -rf {} +
+rm -rf /usr/share/i18n
+```
+
+- 保留 `zh_CN`/`en` 的翻译目录 + `locale.alias`（合计不到 1 MB），
+  比"全删"只多 0.7 MB，却保住了"哪天要开中文提示就能开"的可能（缺的只是 locale 生成本身）。
+- `usr/share/i18n` 是 `locale-gen` 的源码（608 个成员、15.7 MB 落盘），删掉后环境里不能再生成新语言。
+
+### 3. 验证要点
+
+- 体积：包体积门禁（280 MB）应通过；线上包应从 243.4 MB 降到 **≈ 217 MB**（重建后按实际字节回填）。
+- 功能：`LANG=C.UTF-8` 下 `ls`/`apt`/`git` 的提示文本本来就是英文 ⇒ 用户侧无可感差异；
+  需确认环境里 `env`、`locale`、`locale -a` 仍正常（`C.UTF-8` 是 glibc 内置，不依赖 `/usr/share/i18n`）。
+
+### 4. 教训
+
+1. **"预生成了 4 种语言"这种话，先查它到底做了什么**：脚本里 `locale-gen` 无参数时生成的是
+   `/etc/locale.gen` 里**没被注释**的那些——本次实测就是"只有 C.UTF-8"，与"按 4 种语言预生成"的
+   直觉完全不同。**别把"包里有 `locales` 包"当成"有这些语言"**。
+2. **文档写了 ≠ 代码做了**：设计文档与 Kotlin 骨架文档都写着"裁掉多余 locale"，
+   实际脚本一行都没做。这类"文档/实现漂移"只能用"文档里每条清理项 → `grep` 脚本"的方式抓。
+3. **删内容前先看"谁在读它"**：决定要不要留 zh_CN，靠的不是"用户是中国人"，
+   而是 `LANG=` 到底等于什么（一个 grep 就能定案）。
+4. **工具坑（差点得出错误结论）**：PowerShell 调原生命令时**空字符串参数会被吞掉**，
+   于是 `purge src dst "" extra keep` 里的 `""` 消失、`keep` 顶到 `extra` 位、
+   locale 保留列表退回默认的 4 种 ⇒ 两个变体量出**完全相同的字节数**。
+   若不核对 `额外前缀 … 命中 N 个成员` 那行输出，就会得出"留几种都一样"的错论。
+   改用不存在的包名（`zz-none`）占位后复测才拿到真数字。
