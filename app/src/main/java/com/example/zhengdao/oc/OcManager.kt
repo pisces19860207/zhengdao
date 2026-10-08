@@ -525,6 +525,10 @@ object OcManager {
         } else UpdateCheck.UpToDate
     } catch (t: Throwable) {
         // 2026-10-08：异常原文 → 人话。reason 字段经 TaijiScreen:551 Toast 弹给用户。
+        // ⚠️ 人话只给 UI，原文必须留在 RunLog —— 与本文件 OcManager:300 同一条约定。
+        //    审查（同日）发现这里把原文整个吞了：检查更新失败时用户只看到"出错了"，
+        //    日志里也搜不到任何线索 ⇒ 不可诊断。原文 + 异常类名一律落 RunLog。
+        RunLog.log("太极: 检查更新失败 ${t.javaClass.simpleName}: ${t.message}")
         UpdateCheck.Failed(HumanizeError.title(t))
     }
 
