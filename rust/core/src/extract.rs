@@ -147,13 +147,14 @@ pub fn extract_pipeline(
                 set_mode(&target, entry.header().mode().unwrap_or(0o755));
             }
             tar::EntryType::Symlink => {
-                let link = entry.link_name().map_err(ExtractError::Io)?.unwrap_or_default();
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(ExtractError::Io)?;
                 }
                 let _ = fs::remove_file(&target);
                 #[cfg(unix)]
                 {
+                    // linkname 按 tar 规范是**相对链接所在目录**的路径，这里原样落盘（与 Kotlin 版对拍一致）
+                    let link = entry.link_name().map_err(ExtractError::Io)?.unwrap_or_default();
                     if std::os::unix::fs::symlink(&link, &target).is_err() {
                         // 个别 symlink 建不出来不致命：空文件占位（与 Kotlin 版语义对齐）
                         fs::write(&target, b"").map_err(ExtractError::Io)?;
@@ -161,6 +162,7 @@ pub fn extract_pipeline(
                 }
                 #[cfg(not(unix))]
                 {
+                    // host 侧（Windows）不做符号链接：空文件占位，语义与 Kotlin 版回退一致
                     fs::write(&target, b"").map_err(ExtractError::Io)?;
                 }
             }
