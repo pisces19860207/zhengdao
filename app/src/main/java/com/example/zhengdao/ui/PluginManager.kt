@@ -314,7 +314,11 @@ object PluginManager {
      */
     fun normalizeSpecInput(raw: String): String? {
         val s = raw.trim()
-        if (s.isEmpty() || s.any { it.isWhitespace() }) return null
+        if (s.isEmpty()) return null
+        // ⚠️ 空白检查必须针对 trim **之后**的 s（而不是 raw）：这样复制粘贴夹带的首尾空白
+        // （KDoc 里点名的 `"my-plugin\n"` 这类）已被裁掉、照常放行，而 s 里剩下的任何空白
+        // 都必然是**内部**空白 —— 那才是"整段说明文字被粘进来"的形态，必须拦掉。
+        if (s.any { it.isWhitespace() }) return null
         if (s.startsWith(".") || s.startsWith("/")) return null
         val name = parseSpec(s).first
         if (name.isEmpty()) return null

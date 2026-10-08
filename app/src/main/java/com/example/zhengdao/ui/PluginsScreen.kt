@@ -82,8 +82,13 @@ fun PluginsScreen() {
         versions = data.third.second
     }
 
-    /** 统一入口：改开关 → 落盘 → 重扫。 */
-    fun toggle(spec: String, on: Boolean) {
+    /**
+     * 统一入口：改开关 → 落盘 → 重扫。
+     *
+     * [onDone] 拿到本次**实际写盘的结果**（n > 0 才是真改了配置）——「添加插件」要靠它判断
+     * 成功后才清空输入框（2026-10-08 修复：此前无条件清空，添加失败时用户刚粘贴的包名就丢了）。
+     */
+    fun toggle(spec: String, on: Boolean, onDone: (Int) -> Unit = {}) {
         if (busy) return
         busy = true
         scope.launch {
@@ -95,6 +100,7 @@ fun PluginsScreen() {
                 !envReady -> "太极的 OpenCode 尚未初始化，先到「太极」启动一次"
                 else -> "状态无变化"
             }
+            onDone(n)
             tick++
         }
     }
@@ -244,8 +250,17 @@ fun PluginsScreen() {
                     if (spec == null) {
                         specError = "这不像一个 npm 包名：应形如 my-plugin 或 @scope/my-plugin，且不含空格"
                     } else {
-                        specInput = ""
-                        toggle(spec, true)
+                        // 只有**真写进配置**（n > 0）才清空输入框：失败时保留原文，用户能直接改错重试，
+                        // 不用重新去 npm 页面复制一遍。失败提示必须带上包名，否则用户只看到一句泛泛的
+                        // 「状态无变化」，不知道说的是哪一个（2026-10-08 修复）。
+                        toggle(spec, true) { n ->
+                            if (n > 0) {
+                                specInput = ""
+                            } else {
+                                specError = if (envReady) "未写入配置：$spec（可能已在插件列表中）"
+                                else "未添加：$spec —— 太极的 OpenCode 尚未初始化，先到「太极」启动一次"
+                            }
+                        }
                     }
                 },
             ) { Text("添加并启用") }
