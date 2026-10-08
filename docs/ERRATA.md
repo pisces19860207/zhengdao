@@ -1418,3 +1418,89 @@ Abort message: 'No pending exception expected: java.lang.NoSuchMethodError: no s
 1. **"点了没反应"先查"是不是真没反应"**：注入点击 + `uiautomator dump` 比看截图可靠
    （截图会被画中画小窗、软键盘遮挡误导）。
 2. **关键失败路径不能只写进 App 私有日志**：用户界面必须有出口，否则"没坏"也会被当成"坏了"。
+
+## E-025 · 2026-10-08 · 搬家包恢复后 hermes 必崩 —— 记录指向没随包搬来的依赖代
+
+### 1. 现象（用户原话）
+
+> 我安装好hermes agent后，让hermes把手机里的搬家文件里的东西搬过来，然后就出问题额了，
+> 再重新打开APP用命令进入hermes后就出现这个难题了。
+
+终端里敲 `hermes` 只得到这几行（逐字）：
+
+```
+hermes: source-update completion failed: [Errno 2] No such file or directory:
+        '/root/.hermes/hermes-agent/uv.lock'; running with the previous dependencies
+        - run `hermes update` to finish it
+hermes: repairing the recorded dependency environment...
+hermes: dependency repair failed: venv: recorded dependency lock is missing;
+        refusing to drop plugins — retry, or run `hermes pm doctor`; run `hermes pm repair`
+hermes: dependency environment is missing or outside this install:
+        /root/.hermes/installs/8a4017c4cabfe15f/environments/3c17878dccdc4a2c89c75675056b0cb5/venv;
+        run `hermes pm repair`
+```
+
+### 2. 根因（两条叠加；不是 App 的锅，但 App 侧确实少一层自愈）
+
+**① 安装状态记录被跨机照搬。** 搬家包 `搬迁说明.txt` 明确写了 `installs/*/environments`（345M）
+**有意不带**，但包里仍带着旧机的 `installs/8a4017c4cabfe15f/facts.json`，而它记录的依赖环境是旧机上的
+`.../environments/3c17878dccdc4a2c89c75675056b0cb5/venv` ⇒ 新机上这个目录不存在。
+
+- `hermes_bootstrap.py:582-620`：`_pm_repair = command_argv(sys.argv[1:])[:2] == ["pm","repair"]`；
+  非 `pm repair` 时先 `prepare_launch()`（就是那句 source-update completion failed），再
+  `recover_if_needed()` + `activate_dependencies()`，抛错即 `hermes: {exc}; run \`hermes pm repair\`` 退出 1。
+- `pm/environments.py:106` `runtime_facts_path(project_root) = install_state_dir(project_root)/"facts.json"`；
+  `:297-318` `_recorded_venv()` 要求 `packages.venv.environment` 位于 `install_state_dir/environments`
+  之下且含 `pyvenv.cfg`，否则 `RuntimeError("dependency environment is missing or outside this install: …")`。
+- `pm/packages.py:397-455` `apply(..., repair=True)`：`repair` 时先读 `prior`，若 prior 记了
+  environment/resolved_lock，就要求 `recorded == previous/"workspace"/"uv.lock"` 且该文件存在，否则
+  `InstallError("recorded dependency lock is missing; refusing to drop plugins")` —— 所以记录指向
+  不存在的代时 **`pm repair` 会拒绝修**，必须先清掉（或改写）那条记录。
+
+**② 一次被中断的自我更新删掉了 `uv.lock`。** 本机 04:31–04:40 那次更新删了受 git 管理的
+`hermes-agent/uv.lock`（+`flake.lock`）却没重建，留下 `.hermes-update-in-progress.lock`(04:40) 与
+`.repair-incomplete` ⇒ 每次启动都先报 source-update completion failed。**残酷处**：非 `pm` 子命令
+全都在 bootstrap 阶段退出，`hermes update`（连 `--help`）也救不了 —— 能用的只有
+`hermes pm doctor` / `hermes pm repair`。
+
+### 3. 修法（已真机实测通过）
+
+```bash
+cd /root/.hermes/hermes-agent && git checkout -- uv.lock flake.lock   # ① 恢复被删的锁
+# ② 清掉 facts.json 里指向不存在代的那条记录（或改写为存在的代），并删陈旧标记
+rm -f ~/.hermes/installs/*/.recovery.lock ~/.hermes/installs/*/.repair-incomplete \
+      ~/.hermes/.hermes-update-in-progress.lock
+hermes pm repair                                                     # ③ 重建并登记依赖环境
+```
+
+实测：`pm repair` 建出 `environments/34aa9d1ad79c46e19c8222a032404c59/`（359M）并写回 facts.json；
+随后 `hermes --version` = `Hermes Agent v0.21.5+9110.g8a33891 · Python 3.14.7 · Up to date`，
+`hermes --help` / `hermes doctor` 全部正常。**身份数据一件没丢**，与 `打包基线.txt` 逐项吻合：
+sessions **65** / messages **7057** / `MEMORY.md` 4482 B / `USER.md` 3180 B（`SKILL.md` 126 个，
+比基线的 79 多，方向是"多"不是"丢"）。顺手删掉孤儿旧代 `98a9a76854de40bc92aaec0d97848d78`（353M）。
+
+### 4. 搬家包侧已补上（2026-10-08）
+
+`/sdcard/Download/Hermes搬家-20261005-113244/`：
+
+- `一键恢复.sh` 追加「依赖环境自愈」段（解包后自动恢复锁 → 清失效记录 → 需要时跑 `pm repair`），
+  原文件备份为 `一键恢复.sh.orig-20261005`；
+- 新增独立脚本 `修复依赖环境.sh`（可随时单独跑，每步都有输出）。
+
+### 5. 教训
+
+1. **"安装状态记录"是不能跨机照搬的状态**：带了 `facts.json` 却没带它指向的环境目录，新机启动即崩。
+   打包要么连环境一起带（345M），要么恢复后立刻重建 —— 两者都不做就是这次的事故。
+2. **恢复脚本每次都会把坏记录写回去**：所以"再跑一次恢复"不是解药，修法必须与恢复脚本绑在一起（见第 4 节）。
+3. **CLI 挂掉时要绕过它去读源码**：这类故障下只有 `pm` 子命令活着，定位全靠直接读
+   `hermes_bootstrap.py` / `pm/*.py`（本文行号都来自真机里那份固定版本源码）。
+4. **在 guest 里驱动命令要防编码坑**：往 `/sdcard` 推脚本**别用** Windows PowerShell 的
+   `Set-Content -Encoding UTF8`（写 BOM ⇒ guest 里报 `/sdcard/x.sh: 1: #!/bin/sh: not found`）；
+   用无 BOM 的 LF 文本写好后 `adb push`，终端里拼命令时空格要单独 `input keyevent 62`
+   （`input text "a b"` 只送出空格前那段）。
+5. **脚本里"要删的东西"必须逐条明确**：本次我写了 `rm -fv "$FACTS" …`，把刚写好的状态记录也删了
+   （幸而 `pm repair` 在没有记录时会退回"从源码 `uv.lock` 重建"，反而修好了）。
+6. **证道侧的缺口（待办）**：`app/src/main/java/com/example/zhengdao/terminal/EnvSelfHeal.kt` 的启动自愈
+   已覆盖 DNS / hosts / 时区 / uv 包装（`ensureHermesUvWrappers`），但**没有**覆盖"依赖环境记录失效"
+   这一层；可加宿主侧纯文件检测（读 `installs/*/facts.json`、判 `pyvenv.cfg` 是否存在）并在首页体检 /
+   设置页给一个「修复依赖环境」入口（注入第 4 节那个脚本）。

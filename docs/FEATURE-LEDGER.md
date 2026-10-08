@@ -126,6 +126,29 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 扁平工具栏（红/黄/绿三圆点 = 关页 / 收分屏 / 分屏，是功能键不是装饰，保留；`window_bg.xml` 由此变为
 > 无引用资源）。真机实测（`AD3J023824001723`，release 4,179,946 B）：tmux 状态行由半幅变整幅、同屏多出
 > 约 12dp 的可用宽度；左边缘右滑的排除区同时受益（`terminal_root` 不再有 6dp 内边距，x=0 起即终端）。
+> **同日再校一次**（用户 `m04534` 原话「还是有个白色边框吧，不然四等边的手机看着好难受」）：纯黑铺到屏幕
+> 边缘后与四等边机身黑成一片，反倒没有"这是一块屏"的边界感 ⇒ `app/src/main/res/layout/activity_main.xml`
+> 根布局改回 `android:background="@android:color/white"` + `android:padding="4dp"`（白边 6dp → **4dp**，
+> 圆角仍然不要）。真机 release 4,179,962 B 实测：左右可见细白线、快捷键条正常。
+
+> **2026-10-08 变更（hermes 依赖环境修复：搬家包恢复后必崩）**：
+> 用户原话（`m04568`）：「我安装好hermes agent后，让hermes把手机里的搬家文件里的东西搬过来，然后就出问题额了，
+> 再重新打开APP用命令进入hermes后就出现这个难题了。」——终端里 `hermes` 只吐三行错
+> （`source-update completion failed: … 'uv.lock'` / `recorded dependency lock is missing; refusing to drop
+> plugins` / `dependency environment is missing or outside this install: …/environments/3c17878dccdc…/venv`）。
+> 根因两条：① 搬家包**有意不带** `installs/*/environments`（345M）却带了旧机的
+> `installs/8a4017c4cabfe15f/facts.json`（记录指向旧机的依赖代）⇒ `pm/environments.py:297-318` `_recorded_venv()`
+> 判定"环境不在本次安装内"；② 04:31–04:40 那次被中断的自我更新删了受 git 管理的 `hermes-agent/uv.lock`
+> （+`flake.lock`）却没重建 ⇒ `prepare_launch()` 每次启动先失败，而**非 `pm` 子命令在 bootstrap 阶段就退出**，
+> `hermes update` 救不了。处置：`git checkout -- uv.lock flake.lock` → 清失效记录与陈旧锁 →
+> `hermes pm repair` 重建并登记新代 `34aa9d1ad79c46e19c8222a032404c59`（359M）⇒ `hermes --version` /
+> `--help` / `doctor` 全部恢复；**身份数据与 `打包基线.txt` 逐项吻合**（sessions 65 / messages 7057 /
+> `MEMORY.md` 4482 B / `USER.md` 3180 B），顺手删孤儿旧代腾出 353M。同时把 `/sdcard/Download/Hermes搬家-20261005-113244/`
+> 里的 `一键恢复.sh` 补上「依赖环境自愈」段（原文件备份 `.orig-20261005`）并新增 `修复依赖环境.sh` ——
+> 否则**每跑一次恢复都会把坏记录写回去**。另把 config.yaml 的 `custom_providers` 两条（`哈基米` 286 模型 /
+> `量界智算` 86 模型）用官方 `config_migrations._migrate_to_12` 同一段代码迁进 `providers:`（迁移前后
+> `get_compatible_custom_providers` 输出完全一致，`hermes doctor` 待办 3 → 1 条），皮肤设为 `moss`。
+> 详见 `docs/ERRATA.md` E-025。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
