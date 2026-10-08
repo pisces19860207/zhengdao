@@ -214,6 +214,16 @@ rm -f  /usr/bin/qemu-aarch64-static   # 只在 debootstrap --foreign 引导期�
 rm -rf /usr/share/gitweb              # git 自带的 CGI 样例，环境里没有 web 服务
 rm -rf /var/cache/debconf/*           # debconf 缓存，装完即失效（保留目录本身）
 rm -rf /var/log/*                     # 清内容、保留目录（系统与 App 仍需可写日志目录）
+# 语言包裁剪（2026-10-08 用户拍板「只留中英文也可以」）：
+# 依据 = App 启动环境时注入的是 LANG=C.UTF-8（app/src/main/java/com/example/zhengdao/terminal/
+# ProotLauncher.kt:433 与 :617），而本脚本 §2.3 也只生成 C.UTF-8 —— 这 70 MB 的翻译目录（.mo）
+# 在 App 里从来没被读过。实测：只留 zh_CN/en ⇒ 包 326.6 → 301.9 MB（−24.7 MB）；
+# 留 4 种语言（zh_CN/zh_TW/en/en_GB）只能省 18.8 MB ⇒ 中英两种正好，多的都是压舱物。
+find /usr/share/locale -mindepth 1 -maxdepth 1 \
+  ! -name 'zh_CN' ! -name 'en' ! -name 'locale.alias' -exec rm -rf {} +
+rm -rf /usr/share/i18n                 # locale 生成源码（charmaps/locales 源，15.7 MB 落盘）；
+                                       # C.UTF-8 是 glibc 内置、已生成的 locale 不受影响，
+                                       # 代价只是环境里不能再 locale-gen 出新语言（App 用不到）
 echo "---- 2.10 体积断言（防构建配置错误导致异常膨胀，v3.4）----"
 # -x 不跨文件系统：跳过 bind 挂载的 /proc /sys /dev。du 探进 /proc 会因进程条目
 # 消失而报错退出，被 pipefail 放大成构建失败——CI 首轮实测教训（v3.4 修复）

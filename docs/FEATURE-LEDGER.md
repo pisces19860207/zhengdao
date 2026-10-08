@@ -282,7 +282,16 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `诊断（仅失败/手动触发时跑）` = skipped ✓。
 > **B1 已拍板不做**：用户 2026-10-08「ffmpeg 是 hermes agent 要用的，不然 hermes 会自己下载的，
 > 更拖慢整个进度，本来 hermes 下载就慢了」⇒ **ffmpeg 保留**（预装清单与 `build-rootfs.sh:204`
-> 断言都保留；方案的 B1 一节改写为"将来若又要删"的施工图）。B2（裁 locale，−18.8 MB）用户未答。
+> 断言都保留；方案的 B1 一节改写为"将来若又要删"的施工图）。
+> **B2 已拍板并实现**：用户 2026-10-08「语言包只留中英文也可以的吗?」⇒ 翻译只留 `zh_CN` + `en`
+> （+ `locale.alias`）并删 `usr/share/i18n`，写入 `rootfs/build-rootfs.sh:217-226`，
+> 实测**包 326.6 → 301.9 MB（−24.7 MB / −7.6%）**；比"留 4 种语言"多省 5.9 MB，
+> 而"翻译全删"只比它多省 0.7 MB（见 ERRATA E-032）。
+> 为什么安全：环境本来就跑 `LANG=C.UTF-8`（`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt:433`
+> 与 `:617`），镜像也只生成 C.UTF-8（`rootfs/build-rootfs.sh:107-111`）⇒ 这 70 MB 翻译从来没被读过。
+> 另记一条已修的排布验证：`build #153 @a4427b4`（docs-only 推送）= success，
+> 「判断本次推送要不要重建 RootFS」= 否 ⇒ 释放磁盘空间/装 RootFS 依赖/构建 RootFS/发布 RootFS 包**全部 skipped**，
+> rootfs 资产原封不动（243,428,459 B 仍是 05:09:59Z 那份），只重发了 APK。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
