@@ -2662,3 +2662,51 @@ Process completed with exit code 2.
    才是人（和 Agent）能直接对上号的定位信息。
 4. **`continue-on-error: true` 的 job 必须配"可见的失败"**：它保证了 `latest` 不会被空目录覆盖（好事），
    但也让失败隐身（坏事）。两者要一起设计：守卫 + 自述。
+
+---
+
+## E-040 · 2026-10-08 · 「装过」不等于「装得回来」：AGY 的恢复入口按用户拍板关掉
+
+**现场**：
+
+- AGY（Antigravity）第一次安装失败（终端原文 `Fatal: Could not connect to the release server to
+  download the manifest. Please check your internet connection or firewall settings.`）；
+  账本 `Download/证道/agents/installed.json` 里因此留下一条 `{"id":"antigravity",…,"state":"installing"}`，
+  主页随之常驻一颗蓝色「**恢复全部（1 个）**」——点下去必然再失败一次。
+- 真机网络探针（2026-10-08 17:19，结果落在 `Download/证道/net-probe.txt`）：环境里
+  `registry.npmmirror.com -> 200`，而 `github.com` / `raw.githubusercontent.com` /
+  `antigravity.google` / `registry.npmjs.org` / `www.google.com` **全部 `000`**；
+  `env` 里只有 `no_proxy=localhost,127.0.0.1,::1`，**没有任何 `http_proxy` / `https_proxy`**。
+  ⇒ 不是"代理没开"这么简单：Google 那条路要终端整体出境（用户的话："除非把终端的 IP、地址
+  什么的都改成国外才行"）。
+- 用户原话：「那就不管AGY了，这玩意儿用的人少。清掉AGY的恢复功能吧，谷歌对地域限制太严了，
+  除非把终端的IP、地址什么的都改成国外才行」；在给出的选项里选了
+  **「只做恢复侧：AGY 不再进恢复候选（丹房保留 AGY 安装卡片）」**。
+
+**改法**：
+
+1. `AgentInfo` 新增 `restorable: Boolean = true`（`app/src/main/java/com/example/zhengdao/ui/AppState.kt`），
+   字段注释里直接留下判据（网络探针的逐项结果）与用户原话；
+2. 出厂清单里的 AGY 条目 `restorable = false`——**安装卡片、探测路径、卸载能力全部保留**，
+   只是不再参与"恢复全部"（境外网络下用户仍可自己点装）；
+3. `AgentLedger.restoreCandidates` 抽出纯函数
+   `pickRestoreCandidates(ledgerIds, agents)`，筛选条件多一条 `it.restorable`
+   （`app/src/main/java/com/example/zhengdao/ui/AgentLedger.kt`）；
+4. 单测补两条（`app/src/test/java/com/example/zhengdao/ui/AgentLedgerTest.kt`）：
+   候选只收「账本里有 + 现在探测不到 + 有安装命令 + `restorable`」，且**顺序跟清单走**。
+
+**教训**：
+
+1. **"装过"≠"装得回来"**：账本记的是历史事实，恢复能力取决于**当下网络能否到达发行方**。
+   把两者混为一谈，主页就会递给用户一个点了必错的按钮。
+2. **失败的尝试不该留下"待恢复"的假象**：`markStarted` 先把 `installing` 写进账本是对的
+   （那轮真在装），但"要不要给恢复入口"的判据里必须带上"这条路现在走不走得通"。
+3. **地域限制是产品约束，不是环境噪音**：凡是"官方安装器只从单一境外域名拉包"的 Agent，
+   都该默认假定在受限网络下不可恢复 —— `restorable` 就是给这类条目准备的开关
+   （将来别的条目遇到同类问题，改一个布尔值即可，不用动恢复逻辑）。
+
+**同轮补做（用户 2026-10-08 拍板）**：恢复横幅文案改了。旧文案写死
+「这些 Agent 的程序已随上次卸载消失」，而账本里更常见的其实是"上次装到一半失败"
+（`state=installing`，本轮 AGY 就是）⇒ 改成
+「这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 …」
+（`app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt`，横幅段的注释里也留了这次改动的由来）。
