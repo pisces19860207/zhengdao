@@ -1469,14 +1469,17 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                         Text("（无子文件夹）", style = MaterialTheme.typography.bodySmall)
                     }
                     entries.forEach { name ->
-                        Text(
-                            text = "📁 $name",
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { current = File(current, name).absolutePath }
                                 .padding(vertical = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            FolderGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(6.dp))
+                            Text(name, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
