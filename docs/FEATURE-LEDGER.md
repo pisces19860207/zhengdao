@@ -225,6 +225,25 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 步骤，四个 rootfs 步骤挂 `if`）；③ 发布拆成「发布 APK」与「发布 RootFS 包」两步。
 > 定盘提交 `fa8d467`；全过程见 `docs/ERRATA.md` E-029。
 
+> **2026-10-08 续（CI 优化：让"发布"前面只剩必须步骤 —— E-030）**：
+> 用户 m05687 问「CI还要不要优化一下呢？」。先把账算清：本仓库是 public（`private=false`），
+> Actions 分钟数免费不限量 ⇒ **省机器时间本身没有意义**，有意义的只有"推送 → 用户能下载"的时延
+> 与"红叉是否可信"。E-029 上线后第一次跑 `build #147 @7d4953a` = success：run 起 `03:30:15Z`、
+> 发布完成 `03:37:50Z`（**7 分 35 秒**），`latest` 的 `zhengdao-1.3.0-release.apk` =
+> **4,190,625 B、`updated_at = 2026-10-08T03:37:50Z`** —— 当天的包终于进了下载页
+> （`debian-13.7-base-arm64.tar.zst` 仍是 10-07 那份，按设计跳过）。但发布的**前面**还站着三个
+> 只服务开发者/排查的步骤：keystore 诊断 **154s**（E-014 的"常驻诊断"）、Debug APK 编译 **54s**、
+> 为 RootFS 腾盘的「释放磁盘空间」 **38s**（合计 ≈ 4.1 分钟，比要发布的那个包自己的编译
+> 119s 还贵）。改动四条：①诊断 → `if: failure() || github.event_name == 'workflow_dispatch'`
+> 且后移到发布之后（真正的把关本就是「校验 release 包的签名」那步对着**产物**验）；
+> ②Debug APK 编译后移到发布之后 + 新增「收集 Debug APK 产物」补进 artifact；③释放磁盘 →
+> `if: steps.rootfs_needed.outputs.rootfs == 'true'`；④`ci.yml` 的 R8 冒烟（120s，含 artifact
+> 上传）→ 只在 `pull_request` / `workflow_dispatch` 跑（main 上 `build.yml` 每次都编 release
+> 且多一道验签）。**刻意不做**：合并 ci/build 去重（会把"快反馈"与"发布"两条职责搅在一起）、
+> 给 RootFS 做缓存复用（qemu 交叉构建的半成品缓存有正确性风险，而 rootfs 极少变）。
+> 预期"推送 → 能下载"从 7 分 35 秒压到 **约 3.5 分钟**；全过程与实测数字见
+> `docs/ERRATA.md` E-030。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
