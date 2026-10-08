@@ -2228,8 +2228,12 @@ W/RootfsDownloader: 抓取文本失败：https://raw.githubusercontent.com/pisce
 - 新增 `app/src/test/java/com/example/zhengdao/ui/NetSelfCheckTest.kt`（5 用例：四档组合各一条，
   外加"错误描述缺省回落成超时"）⇒ 全过。
 - 全量 JVM 单测：**27 suites / 216 tests / failures=0 / errors=0 / skipped=0**（改前 26 / 211）。
-- 真机复验：等下一次 CI 出包后装同签名 release APK，点「网络自检」应显示上面那句
-  "国内可用、更新源不可达"（这正是本机当下的真实状态）。
+- 真机复验（`build #157 @415c858` 的 release APK 4,208,009 B，`adb install -r` 同签名覆盖升级）：
+  点「网络自检」实测显示
+
+  > ✅ 网络可用（291ms）· ⚠️ 更新源不可达：下载环境包与「检查环境更新」都会失败。若在代理下，请到代理 App 的「分应用代理」里勾选证道
+
+  ⇒ 修复在同一台机器、同一网络状态下生效（旧版此刻只会打绿灯）。
 
 ### 4. 教训
 
@@ -2239,3 +2243,89 @@ W/RootfsDownloader: 抓取文本失败：https://raw.githubusercontent.com/pisce
    不加 `FutureTask` 上限，断网时能把"检测中…"挂几分钟。
 3. **同一个 URL 在 shell 通、在 App 里不通，先怀疑代理的"分应用"名单**，别急着改代码——
    App 与 `adb shell` 是两个 uid，走的联网路径本来就可以不同。
+
+---
+
+## E-035 · 2026-10-08 · 「重建一次环境包，内容指纹就会变吗」——拿两个真实构建对拍，只差 6 个文件（共 41 KB），差分包吸得住
+
+### 1. 为什么值得测
+
+文件级增量下发（E-033）判断"要不要更新"靠的是 **env**（清单正文 sha256[:16]，只看
+type/mode/size/内容 sha256，**不含 mtime**）。如果 env 会被构建噪声污染，那么"环境没变"这个
+前提就不成立：维护者只是重建了一次，所有用户都会被提示"有更新"。
+
+疑点在打包命令上：`rootfs/build-rootfs.sh:274`
+
+```sh
+ZSTD_CLEVEL=19 tar --use-compress-program="zstd -19" -cf "$OUT_DIR/$ASSET" \
+    --numeric-owner -C "$ROOTFS_DIR" .
+```
+
+**没有任何 mtime 归一化**（全脚本唯一的 `touch` 在 `:97`：
+`touch /var/log/apt/history.log /var/log/apt/term.log`）。当时点名的可疑文件是
+`./var/cache/ldconfig/aux-cache` 与 `./var/cache/fontconfig/*-le64.cache-9`——缓存类文件
+经常把源文件的 mtime 嵌进内容。
+
+### 2. 怎么测（不需要下载 228 MB）
+
+主机到 `release-assets.githubusercontent.com` 被限速到 **~50 KB/s**（90 秒只下 4.5 MB），
+当前包下不动；于是反过来用**手机缓存里那份旧包**：`adb pull`（36.3 MB/s）得到
+`C:\Users\guoli\AppData\Local\Temp\zd-real\old326.tar.zst`
+= 326,613,604 B / sha256 `2f1406af1939f7f263b8191abdec6743ff99e8a87e47f2235adc3a6a3c3b1146`
+（手机侧 mtime 2026-10-08 00:21 本地 = **10-07 16:21Z**，B2 瘦身后的线上包是 06:49Z/10-08）。
+
+与它对比的是**线上当前清单**（build #155，`env=e6059c6bd3ee309f`，17,991 条目），
+逐成员比内容 sha256。脚本：`C:\Users\guoli\AppData\Local\Temp\zd-real\compare_two_builds.py`
+（`zstd.exe -dc` 管道 → `tarfile` 流模式 `r|` → 每个常规文件算 sha256）。
+
+### 3. 结果
+
+旧包：**16,010 文件 / 2,391 目录 / 1,632 软链**。
+
+| 分类 | 数量 |
+| --- | --- |
+| 两边都有、内容**逐字节相同** | **14,301** |
+| 两边都有、内容**不同** | **6** |
+| 只在旧包里 | 1,703 |
+| 只在当前包里 | **0** |
+
+"只在旧包里"的 1,703 个 = locale 1,077 + i18n 605（B2 有意删的）＋更早的清理
+（`proot`/`qemu-aarch64-static`、`/var/log/*`、`/usr/share/gitweb`、`/var/cache/debconf`）。
+
+**内容不同的只有这 6 个**：
+
+| 路径 | 大小 | 为什么会变 |
+| --- | --- | --- |
+| `./etc/shadow` | 474 B | 第二字段的**日字段 = 构建当天的 UTC 日**：旧包 `20733`（1970-01-01 + 20733 天 = **2026-10-07**，正是该包 10-07 16:21Z 的构建日）。文件长度不变，只有那个数字变 |
+| `./var/cache/ldconfig/aux-cache` | 20,200 B | 缓存里嵌了被索引文件的 mtime |
+| `./var/cache/fontconfig/3830d5c3ddfd5cd38a049b759396e72e-le64.cache-9` | 144 B | 同上（fontconfig 缓存） |
+| `./var/cache/fontconfig/4c599c202bc5c08e2d34565a40eac3b2-le64.cache-9` | 104 B | 同上 |
+| `./var/cache/fontconfig/7ef2298fde41cc6eeb7af42e48b7d293-le64.cache-9` | 160 B | 同上 |
+| `./var/cache/fontconfig/d589a48862398ed80a3d6066f4f56f4c-le64.cache-9` | 21,080 B | 同上 |
+
+合计 **42,162 B ≈ 41 KB**（zstd 后只有几 KB）。
+
+### 4. 结论与处置
+
+1. **树本身是确定性的**：这两个包跨了一次脚本改动（B2 删 locale）、跨 6.5 小时、跨一个
+   UTC 日重建，仍有 **99.96% 的文件逐字节相同** ⇒ 「内容指纹 + 清单 + 差分包」的地基成立。
+2. **env 在任何一次重建后都会变**（ldconfig/fontconfig 缓存必变；跨 UTC 日再多一个
+   `/etc/shadow`）。维护者重建后用户收到一次"有更新"是**正确**的——资产确实变了——
+   代价 = 一个几 KB 的差分包。
+3. **有意不做的硬化**：删 `/var/cache/ldconfig/aux-cache` 与 `/var/cache/fontconfig/*`
+   （首次使用时自动重建），或在打包前把 `/etc/shadow` 的日字段 sed 成常量。收益只是
+   "无改动重建也不提示更新"，而 CI 只在 `rootfs/` 有改动时才重建（`rootfs_needed`），
+   这个场景本来就不存在；改系统状态的风险大于收益。真要做，按 E-033 的四层流程走一遍。
+4. 记账：`docs/milestones/证道-环境包增量下发协议.md` 补「内容指纹的稳定性实测」一节。
+
+### 5. 教训
+
+1. **"内容指纹会不会变"要用两个真实构建对拍，别靠推理**：mtime 到底进不进内容，猜不出来——
+   实测只 6 个文件，而且全是可解释的（缓存 + 构建日期）。
+2. **下不动就换数据源**：这次是主机到 `release-assets` 被限速 50 KB/s，而**同一份包就在手机上**
+   （`adb pull` 36 MB/s）。数据在哪就从哪拿，别死磕一条链路。
+3. **流式 tar 比对有两个坑**：`r|` 模式下 `extractfile` 对链接会抛
+   `StreamError: cannot extract (sym)link as file object`——软链要先 `issym()` 拦掉，硬链要按
+   `linkname` 复用目标已算出的 digest（顺序不定，得先记 pending 再补解）。
+4. **`/etc/shadow` 的日字段就是"构建日期"**：凡是谈"构建可复现"，都得先把这类系统状态文件
+   排除掉再谈。
