@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+     圆点造型引自 macOS/Safari 公开的设计惯例。
+     绿色＝tmux 上下分屏。 -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="9.5dp"
+    android:insetRight="9.5dp"
+    android:insetTop="9.5dp"
+    android:insetBottom="9.5dp">
+    <shape android:shape="oval">
+        <solid android:color="#FF28C840" />
+    </shape>
+</inset>

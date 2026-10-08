@@ -7,9 +7,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,12 +37,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.launch
+import com.example.zhengdao.util.HumanizeError
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -61,6 +69,7 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
+import com.example.zhengdao.ui.theme.IOSReadyGreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -68,7 +77,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** 状态行"就绪／已授权"用的绿：比主题 tertiary(#34C759) 更深，浅底上作正文色才有对比度。 */
-private val ReadyGreen = Color(0xFF2E7D32)
+private val ReadyGreen = IOSReadyGreen
 
 /**
  * 索引里的字节数 → 人读大小。`<= 0` = 索引没给这个字段（老格式/字段缺失），
@@ -93,6 +102,11 @@ fun SettingsScreen(
     // 这里原先有一份 SystemInfoProvider.collect() 的结果缓存，但全页从未读过它——
     // 设置页只展示存储占用。留着会每次进页白跑一次采集（v1.1 起采集还包含 node
     // 二进制的版本扫描），故删掉。
+    // 2026-10-08：把"修复失败 / 回退失败"两个 Toast 升级为 Snackbar——MD3 不推荐用
+    // Toast 喂需要"看完详情"的错误。SnackbarHost 装在顶层 Box 底部，action「查看日志」
+    // 经 openLogFromSnackbar() 现场取一次日志原文再开弹窗（t.message 仍落 RunLog 不丢）。
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var repairConfirm by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var pendingUpdateUrl by remember { mutableStateOf<String?>(null) }
@@ -108,9 +122,48 @@ fun SettingsScreen(
 
     /** 索引给的增量补丁（基线与本机相符时才会被赋上）；非 null = 弹窗确认后先试增量。 */
     var pendingPatch by remember { mutableStateOf<PatchRef?>(null) }
+    /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
     var prevLogText by remember { mutableStateOf<String?>(null) }
     var archiveCount by remember { mutableStateOf(0) }
-    var showPrevLog by remember { mutableStateOf(false) }
+
+    /**
+     * 日志弹窗要显示的原文；null = 不弹。**文本即开关**。
+     *
+     * 为什么不再用 `showPrevLog: Boolean` + `prevLogText` 两个状态：Snackbar 的
+     * 「查看日志」只置了布尔位，而弹窗还要求 `prevLogText != null`；本轮刚失败时
+     * prevLogText 仍是 null（进页时算的是"上一轮有没有错"）⇒ 用户点了**没有任何反应**。
+     * 合成一个状态后，"显示什么"和"弹不弹"不可能再各自漂移。
+     */
+    var logDialogText by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Snackbar 的「查看日志」→ 弹窗：**现场读一次日志**再开。
+     *
+     * 取件顺序 本轮日志(zhengdao-log.txt) → 最新归档 → 旧版 .prev 文件：本轮失败的那行
+     * RunLog.log 已同步写进本轮日志，所以这条路径基本一定有内容。真的一份都没有时给
+     * 明确 Toast（指向日志目录），**绝不静默**。
+     */
+    fun openLogFromSnackbar() {
+        scope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching {
+                    (com.example.zhengdao.rootfs.RunLog.file()
+                        ?: com.example.zhengdao.rootfs.RunLog.latestArchive()
+                        ?: com.example.zhengdao.rootfs.RunLog.prevFile())?.readText()
+                }.getOrNull()
+            }
+            if (text.isNullOrBlank()) {
+                Toast.makeText(
+                    ctx,
+                    "这次的日志还没写出来。日志目录：${com.example.zhengdao.rootfs.RunLog.dirPath(ctx)}（用文件管理器打开）",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } else {
+                logDialogText = text
+            }
+        }
+    }
+
     var checking by remember { mutableStateOf(false) }
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
@@ -154,7 +207,8 @@ fun SettingsScreen(
             try {
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             } catch (e2: Exception) {
-                Toast.makeText(ctx, "打开失败: ${e2.message}", Toast.LENGTH_SHORT).show()
+                // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文已落日志
+                Toast.makeText(ctx, "打开失败：${HumanizeError.title(e2)}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -192,6 +246,7 @@ fun SettingsScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -330,7 +385,10 @@ fun SettingsScreen(
                         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                             .setData(android.net.Uri.parse("package:${ctx.packageName}"))
                     )
-                }.onFailure { Toast.makeText(ctx, "打开失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                }.onFailure {
+                    // 2026-10-08：异常原文 → 人话（[HumanizeError]）
+                    Toast.makeText(ctx, "打开失败：${HumanizeError.title(it)}", Toast.LENGTH_SHORT).show()
+                }
                 Unit
             }
             // 未授权时整行可点＝直接拉起系统授权弹窗；已授权时点击＝去系统设置查看/撤销。
@@ -822,9 +880,23 @@ fun SettingsScreen(
                                     InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（未联网下载）")
                                     android.os.Handler(ctx.mainLooper).post { storageTick++ }
                                 } catch (t: Throwable) {
-                                    InstallFlow.fail(ctx, "回退失败：${t.message}")
-                                    android.os.Handler(ctx.mainLooper).post {
-                                        Toast.makeText(ctx, "回退失败：${t.message}", Toast.LENGTH_LONG).show()
+                                    InstallFlow.fail(ctx, "回退失败：${HumanizeError.title(t)}")
+                                    // 2026-10-08：Toast → Snackbar（带"查看日志"action）。
+                                    // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
+                                    // 用户看的用人话，进 Snackbar 后点 action 由 openLogFromSnackbar()
+                                    // 现场取日志并弹窗（缺日志时给指向目录的 Toast，不静默）。
+                                    // 必须在主线程弹——scope 是 Composable 的 CoroutineScope，
+                                    // 但 rememberCoroutineScope() 默认走 Dispatchers.Main.immediate。
+                                    scope.launch {
+                                        val r = snackbarHostState.showSnackbar(
+                                            message = "回退失败：${HumanizeError.title(t)}",
+                                            actionLabel = "查看日志",
+                                            duration = SnackbarDuration.Indefinite,
+                                        )
+                                        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                            // 现场取日志再弹窗（直接置弹窗状态会因文本仍是 null 而静默无操作）
+                                            openLogFromSnackbar()
+                                        }
                                     }
                                 }
                             }.start()
@@ -902,7 +974,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (prevLogText != null) {
+            prevLogText?.let { prev ->
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "上次运行检测到错误，日志已保留（可直接复制反馈）。",
@@ -910,7 +982,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = { showPrevLog = true }) { Text("查看上次日志") }
+                OutlinedButton(onClick = { logDialogText = prev }) { Text("查看上次日志") }
             }
             if (archiveCount > 3) {
                 TextButton(onClick = {
@@ -992,7 +1064,8 @@ fun SettingsScreen(
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
             GuideLine("2", "进各 Agent 内完成各自的登录 / 授权（凭据由 Agent 自己保管），会话内直接可用。")
-            GuideLine("3", "进底部「洞天」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在洞天里另外装的 opencode 是另一份，两者互不干扰。")
+            // 2026-10-08：「洞天」→「终端」，与底栏 Tab 文案一致（见 MainActivity.kt:470）
+            GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在终端里另外装的 opencode 是另一份，两者互不干扰。")
             Spacer(Modifier.height(8.dp))
             Text(
                 "常见问题",
@@ -1036,6 +1109,14 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
     }
 
+    // 2026-10-08：Snackbar 出口（替换 828/1080 的"回退失败/修复失败" Toast）。
+    // BottomCenter 让它浮在 verticalScroll 内容之上不抢内容。
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
+    }
+
     // ── 修复环境二次确认（Compose 版）──
     if (repairConfirm) {
         AlertDialog(
@@ -1073,9 +1154,18 @@ fun SettingsScreen(
                                 )
                                 android.os.Handler(ctx.mainLooper).post { storageTick++ }
                             } catch (t: Throwable) {
-                                InstallFlow.fail(ctx, "修复失败：${t.message}")
-                                android.os.Handler(ctx.mainLooper).post {
-                                    Toast.makeText(ctx, "修复失败: ${t.message}", Toast.LENGTH_LONG).show()
+                                InstallFlow.fail(ctx, "修复失败：${HumanizeError.title(t)}")
+                                // 2026-10-08：Toast → Snackbar（带"查看日志"action），同"回退失败"分支
+                                scope.launch {
+                                    val r = snackbarHostState.showSnackbar(
+                                        message = "修复失败：${HumanizeError.title(t)}",
+                                        actionLabel = "查看日志",
+                                        duration = SnackbarDuration.Indefinite,
+                                    )
+                                    if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                        // 同上：现场取日志再弹，缺日志时会有指向目录的 Toast
+                                        openLogFromSnackbar()
+                                    }
                                 }
                             }
                         }.start()
@@ -1088,14 +1178,16 @@ fun SettingsScreen(
         )
     }
 
-    // ── 上次运行日志查看弹窗 ──
-    if (showPrevLog && prevLogText != null) {
+    // ── 运行日志查看弹窗 ──
+    // 文本非空才弹（两个入口都只在拿到非空文本时才赋值，见 logDialogText / openLogFromSnackbar）：
+    // 不再用"布尔位 + 文本"两道门叠加——那正是"点了没反应"的来源。
+    logDialogText?.takeIf { it.isNotBlank() }?.let { log ->
         AlertDialog(
-            onDismissRequest = { showPrevLog = false },
-            title = { Text("上次运行日志") },
+            onDismissRequest = { logDialogText = null },
+            title = { Text("运行日志") },
             text = {
                 Text(
-                    prevLogText!!.takeLast(6000),
+                    log.takeLast(6000),
                     style = MaterialTheme.typography.bodySmall,
                 )
             },
@@ -1103,11 +1195,11 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                         as android.content.ClipboardManager
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-prevlog", prevLogText))
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-log", log))
                     Toast.makeText(ctx, "已复制全部日志", Toast.LENGTH_SHORT).show()
                 }) { Text("复制全部") }
             },
-            dismissButton = { TextButton(onClick = { showPrevLog = false }) { Text("关闭") } },
+            dismissButton = { TextButton(onClick = { logDialogText = null }) { Text("关闭") } },
         )
     }
 
@@ -1298,7 +1390,9 @@ internal fun SettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            // 2026-10-08 走查：12dp → 14dp。bodyMedium 行高 24dp + 24dp = 48dp
+            // 刚好不达标（差 4dp），这是设置页几乎所有行的交互热区。
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1338,7 +1432,10 @@ fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
             contentColor = if (selected) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.onSurfaceVariant,
         ),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        // 2026-10-08 走查：4dp → 10dp。M3 OutlinedButton 默认最小高 40dp，
+        // 原来 24dp 行高 + 8dp = 32dp，被默认值兜到 40dp 仍不足 48dp；
+        // 现在内容高 44dp，筛选 chip 这类"次要但要重复点"的控件按得准。
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
     }
@@ -1415,14 +1512,17 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                         Text("（无子文件夹）", style = MaterialTheme.typography.bodySmall)
                     }
                     entries.forEach { name ->
-                        Text(
-                            text = "📁 $name",
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { current = File(current, name).absolutePath }
                                 .padding(vertical = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            FolderGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(6.dp))
+                            Text(name, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))

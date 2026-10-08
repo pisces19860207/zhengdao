@@ -687,9 +687,12 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
             return
         }
+        // 2026-10-08 走查修 bug：原来「成功」的 Toast 是**无条件**执行的，写入失败时
+        // 它会紧跟在失败 Toast 后面把失败提示覆盖掉——用户以为粘进去了，终端里其实
+        // 什么都没发生。改为成功提示只在 onSuccess 里出。
         runCatching { SessionManager.write(text) }
+            .onSuccess { Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(this, "粘贴失败：${it.message}", Toast.LENGTH_SHORT).show() }
-        Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
     }
 
     private fun clearSticky(ctrl: Boolean, shift: Boolean) {
