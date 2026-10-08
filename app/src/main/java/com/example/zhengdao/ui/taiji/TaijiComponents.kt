@@ -1269,7 +1269,7 @@ private fun SessionRow(
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Row(
