@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Agent 账本（[AgentLedger]）单测——只管纯函数 `render` / `parse`。
+ * Agent 账本（[AgentLedger]）单测——`render` / `parse` 两个纯函数，以及「恢复全部」候选的筛选。
  *
  * 这份 JSON 是**重装 App 后"恢复全部"的唯一依据**，而它会躺在公共目录里被：
  * 用户在文件管理器里手改、云盘同步到半截、旧版本 App 写成别的结构。
@@ -85,5 +85,47 @@ class AgentLedgerTest {
         assertTrue(!json.contains("key", ignoreCase = true))
         assertTrue(!json.contains("token", ignoreCase = true))
         assertTrue(!json.contains("secret", ignoreCase = true))
+    }
+
+    private fun agent(
+        id: String,
+        installed: Boolean = false,
+        installCmd: String? = "curl -fsSL https://example.invalid/$id.sh | bash",
+        restorable: Boolean = true,
+    ) = AppState.AgentInfo(
+        id = id,
+        name = id,
+        desc = "",
+        launchCmd = id,
+        installCmd = installCmd,
+        installed = installed,
+        restorable = restorable,
+    )
+
+    @Test
+    fun `恢复候选只收「账本里有、现在探测不到、且有安装命令」的`() {
+        val ledgerIds = setOf("hermes", "antigravity", "no-cmd")
+        val agents = listOf(
+            agent("hermes"),                                  // 账本里有 + 没装 + 有命令 ⇒ 候选
+            agent("antigravity", restorable = false),         // 受限网络，用户拍板不恢复 ⇒ 剔除
+            agent("claude-code"),                             // 账本里没有 ⇒ 剔除
+            agent("installed-one", installed = true),         // 现在装着 ⇒ 剔除
+            agent("no-cmd", installCmd = null),               // 没有安装命令 ⇒ 剔除
+        )
+
+        assertEquals(
+            listOf("hermes"),
+            AgentLedger.pickRestoreCandidates(ledgerIds, agents).map { it.id },
+        )
+    }
+
+    @Test
+    fun `恢复候选按清单顺序而不是账本顺序`() {
+        val agents = listOf(agent("a"), agent("b"), agent("c"))
+        // 账本里是乱序集合，候选顺序必须跟 agents 走（= 用户当初安装的顺序）
+        assertEquals(
+            listOf("a", "b", "c"),
+            AgentLedger.pickRestoreCandidates(setOf("c", "a", "b"), agents).map { it.id },
+        )
     }
 }
