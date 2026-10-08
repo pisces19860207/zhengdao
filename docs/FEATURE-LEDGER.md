@@ -266,8 +266,23 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `docs/milestones/文档审核报告-2026-10-06.md:143` 本来就写着"保留理由待复核"。
 > 全叠加（剔 ffmpeg + 裁 locale + 清构建残留）+ zstd -19 = **106.6 MB（−67.4%）**。
 > **待用户拍板**：是否剔 ffmpeg（功能取舍：环境里就没有 `ffmpeg`/`ffprobe` 命令了，补救可另发 extras 包）。
-> 另否掉一条捷径：**zstd `--patch-from` 差分不可用**（480 MB 基线的字典要 ≥480 MB 窗口，
-> 实测内容完全一致时差分包仍等于全量）⇒ 增量下发要走**文件级**（清单 `sha256\tpath`，实测 zstd-19 后仅 0.44 MB）。
+> 另否掉一条捷径：**zstd `--patch-from` 差分端侧用不了**——官方 CLI v1.5.7 实测算法本身有效
+> （32 MB 基线内容完全一致 → 补丁仅 5,298 B），但**补丁不自包含**：解码必须同时拿到同一份基线原文，
+> 且**解码窗口要开到基线大小**（128 MB 基线的帧，`--memory=64MB` 直接解不动，须 256 MB）⇒
+> 端侧要为 480 MB 基线备原文 + 512 MB 窗口（峰值近 1 GB）⇒ 增量下发要走**文件级**
+> （清单 `sha256\tpath`，实测 zstd-19 后仅 0.44 MB）。
+
+> **2026-10-08 续（阶段 A 已上线：线上环境包 326.6 → 243.4 MB，端侧零改动）**：
+> `rootfs/build-rootfs.sh` 改两处（清构建残留 `qemu-aarch64-static`/`gitweb`/`debconf` 缓存/`var/log/*`；
+> 打包换 `ZSTD_CLEVEL=19 tar --use-compress-program="zstd -19"` + 新增 **280 MB 包体积门禁**），
+> 提交 `b1ebe6a` → main `a7a1d22`。`build #152 @a7a1d22` = success（24 分钟，RootFS 重建占 17.8 分钟），
+> `latest` 的 `debian-13.7-base-arm64.tar.zst` = **243,428,459 B（−83.2 MB / −25.5%）**，
+> 边车 sha256 同步刷新（05:09:50Z）；**App 侧一行未改**（两端解码器本来就支持 -19 帧）。
+> 同一次运行还验证了 E-030 的排布：APK 在推送后 **5 分钟**就发布完，RootFS 排在其后慢慢构建，
+> `诊断（仅失败/手动触发时跑）` = skipped ✓。
+> **B1 已拍板不做**：用户 2026-10-08「ffmpeg 是 hermes agent 要用的，不然 hermes 会自己下载的，
+> 更拖慢整个进度，本来 hermes 下载就慢了」⇒ **ffmpeg 保留**（预装清单与 `build-rootfs.sh:204`
+> 断言都保留；方案的 B1 一节改写为"将来若又要删"的施工图）。B2（裁 locale，−18.8 MB）用户未答。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
