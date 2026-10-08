@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.example.zhengdao.rootfs.RootfsDownloader
+import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
@@ -979,6 +980,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 } ?: throw IllegalStateException("无法读取所选文件")
                 installStatus("本地包读取完成（${archive.length() / (1024 * 1024)} MB），开始解压")
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
+                // 用户自选文件没有任何校验值可比对 ⇒ 按"不确定就传 null"：装完不写 env 行，
+                // 下次检查更新看到"无版本记录"会老实走全量（宁可多下一次，不可错走增量）。
                 RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
@@ -1019,8 +1022,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     installStatus("SHA256 校验通过")
                 }
                 installStatus("开始解压（约需几分钟，请勿离开）")
+                // 首装也顺手记下 env（协议 §5）：本机装的是哪个"内容版本"，下次更新才可能走增量。
+                // 索引取不到就作罢（失败容忍为 null，绝不阻塞/中断安装）。
+                // 信任锚（用户 2026-10-08 规则）：只有索引 sha256 == 本次实际校验通过的 sha256 才写 env。
+                val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
+                val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, expectedSha)
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                RootfsInstaller.install(appContext, archive) { }
+                RootfsInstaller.install(appContext, archive, envToWrite) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()
@@ -1046,6 +1054,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 val expectedSha = RootfsDownloader.withMirrorFallback("$url.sha256")
                     .firstNotNullOfOrNull { RootfsDownloader.fetchText(it) }
                 var needDownload = true
+                // 本次"实际校验通过的 SHA256"（信任锚要用它跟索引对账，见下面的 envForMarker）
+                var actualSha: String? = expectedSha
                 if (archive.isFile && !expectedSha.isNullOrBlank()) {
                     runCatching {
                         RootfsDownloader.verifySha256(archive, expectedSha)
@@ -1055,7 +1065,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 }
                 if (needDownload) {
                     var lastPercent = -1L
-                    RootfsDownloader.download(
+                    actualSha = RootfsDownloader.download(
                         urls = RootfsDownloader.withMirrorFallback(url),
                         dest = archive,
                         shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
@@ -1067,13 +1077,17 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                                 installStatus("下载中 $percent%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB）")
                             }
                         }
-                    }
+                    } ?: expectedSha
                 } else {
                     installStatus("检测到已下载的完整安装包，跳过下载")
                 }
                 installStatus("开始解压（约需几分钟，请勿离开）")
+                // 首装也顺手记下 env（协议 §5）：下次更新才可能走增量。索引取不到就作罢。
+                // 信任锚（用户 2026-10-08 规则）：只有索引 sha256 == 实际校验通过的 sha256 才写 env。
+                val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
+                val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, actualSha)
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                RootfsInstaller.install(appContext, archive) { }
+                RootfsInstaller.install(appContext, archive, envToWrite) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()

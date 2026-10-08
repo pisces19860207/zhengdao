@@ -29,10 +29,16 @@ import java.io.File
  */
 object RootfsCache {
 
-    /** 环境更新 manifest（用户第三批）：手动检查时拉取，包含最新版本号与下载地址。
-     *  M3 起升级为 ed25519 验签 manifest（设计文档 §6），届时仅替换此 URL 与解析逻辑。 */
+    /** 环境更新 manifest（用户第三批）：**降级兜底专用**。
+     *  这是没人维护的死文件（自 CI 改为产出 `rootfs-index.json` 起就不再更新，见 ERRATA E-033），
+     *  新逻辑一律先走 [INDEX_URL]；只有索引取不到时才回退到这里，拿完版本号也只做"提示"，
+     *  不据此下载（老文件里的 url/sha256 可能早已失效）。 */
     const val MANIFEST_URL =
         "https://raw.githubusercontent.com/pisces19860207/zhengdao/main/rootfs/manifest.json"
+
+    /** 环境索引（增量下发协议 §4）：版本/内容指纹/全量包/增量补丁的唯一事实来源。
+     *  字符串只有一份——抓取逻辑在 [RootfsIndexFetcher]，这里复用同一个常量。 */
+    const val INDEX_URL = RootfsIndexFetcher.URL
 
     /** 共享存储根：与 OpenCode 包（`Download/证道/opencode/`）同一个父目录，也是默认工作区。 */
     const val SHARED_DIR_PATH = "/storage/emulated/0/Download/证道"
@@ -46,12 +52,23 @@ object RootfsCache {
     /** 归档文件名前缀：只有这种名字才归本模块管。 */
     private const val ARCHIVE_PREFIX = "debian-"
 
+    /**
+     * 增量补丁文件名前缀（协议 §3：`rootfs-patch-<base>-to-<new>.tar.zst`）。
+     * **刻意不归 [ARCHIVE_PREFIX] 管**：补丁是半成品输入，绝不能被
+     * [listArchives] / [findLocalArchive] / [pruneKeep] / [cleanupNonCurrent] 当成
+     * "可安装的全量包"捡走（否则自动安装会拿几十 MB 的补丁去装环境）。
+     */
+    private const val DELTA_PREFIX = "rootfs-patch-"
+
     /** 搬家只做一次（`publicDir` 会被反复调用）。 */
     @Volatile
     private var legacyMigrated = false
 
+    /** 是否是补丁文件（半成品输入，不是可安装包）。 */
+    private fun isDeltaName(name: String) = name.startsWith(DELTA_PREFIX)
+
     /** 是否本模块的文件（归档、`.part` 残片、边车校验值都是 `debian-` 前缀）。 */
-    private fun isOurs(name: String) = name.startsWith(ARCHIVE_PREFIX)
+    private fun isOurs(name: String) = name.startsWith(ARCHIVE_PREFIX) && !isDeltaName(name)
 
     /** 是否是安装包归档本身。 */
     private fun isArchiveName(name: String) =
@@ -128,7 +145,42 @@ object RootfsCache {
     fun archiveFor(ctx: Context, url: String): File =
         File(dir(ctx), url.substringAfterLast('/'))
 
-    /** 列出缓存中的安装包（`debian-*.tar.zst` / `debian-*.tar.gz`，按修改时间新→旧）。 */
+    /**
+     * 增量补丁的缓存目标（协议 §3 的固定命名，与全量包同目录但前缀不同）。
+     *
+     * 名字直接取自 URL 末段（`rootfs-patch-<base>-to-<new>.tar.zst`），因此**同一个补丁
+     * 重复下载会覆盖同一个文件**，不会越积越多；索引给的 URL 若是镜像地址也照取名字。
+     */
+    fun deltaFor(ctx: Context, url: String): File {
+        val name = url.substringAfterLast('/').substringBefore('?')
+            .takeIf { it.startsWith(DELTA_PREFIX) && it.length > DELTA_PREFIX.length }
+            ?: "rootfs-patch-unknown.tar.zst"
+        return File(dir(ctx), name)
+    }
+
+    /**
+     * 丢弃一个增量补丁（增量成功、或失败回退全量之后调用）。
+     * 只认缓存目录内、`rootfs-patch-` 前缀的文件；连带清掉 `.part` 残片。
+     * 越界/名字不对一律不动（共享目录里宁可少删）。
+     */
+    fun cleanupDelta(ctx: Context, f: File) {
+        try {
+            val cacheDir = dir(ctx).canonicalFile
+            val target = f.canonicalFile
+            val inside = target.path.startsWith(cacheDir.path + File.separator)
+            if (!inside || !target.name.startsWith(DELTA_PREFIX)) {
+                RunLog.log("拒绝清理非补丁缓存文件：${f.path}")
+                return
+            }
+            target.delete()
+            File(target.path + ".part").delete()
+        } catch (t: Throwable) {
+            RunLog.log("清理补丁缓存失败（忽略）：${f.name}（${t.message}）")
+        }
+    }
+
+    /** 列出缓存中的安装包（`debian-*.tar.zst` / `debian-*.tar.gz`，按修改时间新→旧）。
+     *  注意：`rootfs-patch-*` 增量补丁**不在其中**（前缀纪律，见 [DELTA_PREFIX]）。 */
     fun listArchives(ctx: Context): List<File> = try {
         dir(ctx).listFiles { f -> f.isFile && isArchiveName(f.name) }
             ?.sortedByDescending { it.lastModified() } ?: emptyList()
@@ -155,12 +207,14 @@ object RootfsCache {
         preferredName: String? = null,
     ): File? {
         val cands = ArrayList<File>(4)
-        if (preferredName != null) {
+        // preferredName 也得过前缀关：万一调用方传进来一个补丁名（rootfs-patch-*），
+        // 绝不能把几十 MB 的半成品当"本地已安装包"直接装掉。
+        if (preferredName != null && !isDeltaName(preferredName)) {
             cands += File(sharedDir(), preferredName)
             runCatching { cands += File(dir(ctx), preferredName) }
         }
         cands += listArchives(ctx)
-        return cands.firstOrNull { it.isFile && it.length() >= minBytes }
+        return cands.firstOrNull { it.isFile && !isDeltaName(it.name) && it.length() >= minBytes }
     }
 
     /**
@@ -186,10 +240,11 @@ object RootfsCache {
         return deleted
     }
 
-    /** 可回退的目标：版本 ≠ 当前版本的安装包（新→旧）。 */
+    /** 可回退的目标：版本 ≠ 当前版本的安装包（新→旧）。
+     *  `rootfs-patch-*` 补丁不在其中（[listArchives] 已按前缀排除，这里再加一道闸）。 */
     fun rollbackCandidates(ctx: Context): List<File> {
         val current = currentVersion(ctx) ?: return emptyList()
-        return listArchives(ctx).filter { versionOf(it.name) != current }
+        return listArchives(ctx).filter { !isDeltaName(it.name) && versionOf(it.name) != current }
     }
 
     /** 安装成功后调用：保留最新 keep 个安装包（用户指定 2 个），超出删最旧。 */

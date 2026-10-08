@@ -82,13 +82,17 @@ object RootfsDownloader {
      *
      * @param shaUrls 校验值边车的**候选源列表**（github 优先、镜像兜底）。
      *   传空列表 = 调用方明确不校验（OcManager 走这条路：它用 release digest 或定版 SHA 自行校验）。
+     * @return **本次实际校验通过的那个 SHA256**（无校验值时 null）。
+     *   返回值是给"信任锚"用的（用户 2026-10-08 追加规则）：只有它与索引里的 sha256
+     *   一致时，才允许把索引的 env 写进环境标记——见 [RootfsInstaller.envForMarker]。
+     *   已有调用点忽略返回值即可，行为不变。
      */
     fun download(
         urls: List<String>,
         dest: File,
         shaUrls: List<String> = emptyList(),
         onProgress: (doneBytes: Long, totalBytes: Long) -> Unit,
-    ) {
+    ): String? {
         if (urls.isEmpty()) throw DownloadFailed("没有可用的下载地址")
 
         // 每轮尝试前重取校验值：发布资产可能被更新（移动靶），过期校验值只会白忙
@@ -111,7 +115,8 @@ object RootfsDownloader {
                     } else {
                         verifySha256(dest, expectedSha)
                     }
-                    return
+                    // 校验通过（或调用方明确不校验）：把"实际校验通过的 SHA256"交回调用方
+                    return expectedSha?.trim()?.takeIf { it.isNotEmpty() }
                 } catch (e: ShaMismatch) {
                     // 资产在下载途中被更新：残件作废、重取最新校验值、从头再来
                     Log.w(TAG, "SHA256 不匹配，删除残件并重取校验值重试", e)
