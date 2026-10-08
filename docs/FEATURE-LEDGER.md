@@ -437,6 +437,16 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `dpkg --audit` 空 / `apt-get check` 通过 + `node python3 git tmux rg busybox sqlite3 curl zstd uv` 逐个存在。
 > 基线 `du -smx /` = **1021 MB**。详见 `docs/ERRATA.md` E-038。
 
+> **2026-10-08 续（构建的"失败自述"：CI 日志匿名不可见 ⇒ 失败点自己发 `::error::` 注解）**：
+> `efd68a7` 推上去后 build **Run 162** 整轮绿色，但 `latest` 的 `rootfs-index.json` 仍是
+> `size: 228790151` / `builtAt: 2026-10-08T06:49:30Z`（**新包没产出**）。job 页面匿名只给一句
+> `Sign in to view logs`，`/actions/runs/<id>/logs` 匿名下载 **404**，`api.github.com` 在本机被策略拒，
+> 唯一能匿名看到的只有注解——而注解当时只有 `Process completed with exit code 2.`。
+> 修法（`rootfs/build-rootfs.sh`）：`annot()`（`::error::` 单行化 + 截断）× ERR trap（带小节变量
+> `STEP_OUTER`/`STEP` + 行号 + 命令 + 退出码）× §2.8 每条外部命令单独抓 stderr 进注解 ×
+> §2.9/体积门禁 20 处 `[断言失败]` 与外层 5 处 `[错误]` 由 `echo` 改 `annot`（`exit 1` 不触发 ERR trap）
+> × `tar`/`manifest`/`patch`/`index` 四处也各自抓输出。详见 `docs/ERRATA.md` E-039。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -465,6 +475,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
 | 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈 mesa/LLVM） | ✅ 在用 | 本次（E-038；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
+| 构建失败自述（失败点发 `::error::` 注解，匿名可见；ERR trap 报小节+行号+命令+退出码） | ✅ 在用 | 本次（E-039） | `rootfs/build-rootfs.sh`（`annot()` + `trap … ERR` + `STEP`/`STEP_OUTER`） |
 | RunLog 运行日志（落 `Download/证道/logs`，按轮归档保留最近 20 份 / 20 MB + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改；归档式保留见 E-037） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
 | 太极渲染 + 模型池选择器 | ✅ 在用 | `b95f82a` | `ui/taiji/TaijiComponents.kt`、`ui/taiji/ModelSheet.kt` |

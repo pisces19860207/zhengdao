@@ -2619,3 +2619,46 @@ else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接�
    恰好没有任何包声明它。清理工具的依据是**声明**，不是**真实使用**。
 3. **数字要三份对齐再动手**：外部包页说 34.2 MB / 120.4 MB、真机 `dpkg-query` 说 34,238 KB / 120,416 KB、
    `du` 说 34 MB / 118 MB —— 三份一致才敢改构建脚本；体积收益也必须按线上压缩级别（zstd-19）测算。
+
+---
+
+## E-039 · 2026-10-08 · 构建失败时"外面什么都看不到"：Actions 日志对未登录用户不可见，得让脚本自己发 `::error::` 注解
+
+**现场**：`efd68a7`（E-038 那次剔除 GPU 栈）推上去后，build **Run 162** 整轮显示**绿色**，
+但 `latest` 上的 `rootfs-index.json` 还是上一版（`size: 228790151`、`builtAt: 2026-10-08T06:49:30Z`），
+新包根本没产出。翻到 job 页面才看到一条注解：
+
+```
+构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
+Process completed with exit code 2.
+```
+
+**为什么外面看不到日志**：Actions 的 job 页面匿名只渲染一句 `Sign in to view logs`；
+`https://github.com/<owner>/<repo>/actions/runs/<run_id>/logs` 匿名下载直接 **HTTP 404**；
+`web_fetch` 走 `api.github.com` 在本机被策略拒（`non-public IP address`），`gh` CLI 也不在 PATH。
+于是"唯一的匿名可见通道"就是**注解（annotation）**——可它当时只告诉我们"退出码 2"。
+再叠加 `build.yml` 的 rootfs job 是 `continue-on-error: true`、发布步骤有 `compgen -G "rootfs-files/*"` 守卫，
+失败就被完全吞掉了：CI 绿着、`latest` 不动、没人知道死在哪一行。
+
+**修法（`rootfs/build-rootfs.sh` 的"失败自述"）**：
+
+1. `annot()` = `printf '::error::%s\n' "$(printf '%s' "$1" | tr '\n' '|' | cut -c1-1500)"`
+   —— 注解必须单行，所以把内部换行压成 `|`、并截断到 1500 字符。
+2. 外层脚本与 chroot 内 CONF 脚本**各挂一个 `trap ... ERR`**，打印
+   `[当前小节] 第 N 行 \`命令\`，退出码 R`；小节用显式变量跟踪（外层 `STEP_OUTER`、内层 `STEP`），
+   在 `[1/4] [2/4] [2.5/4] [3/4] [4/4] [5/5]` 与 `---- 2.1 … ---- 2.11` 每段前赋值。
+3. §2.8 里每条外部命令（`apt-get download` / `dpkg-deb -R` / `dpkg-deb -b` / `dpkg -i` /
+   `apt-get -y purge`）都单独抓 `2>&1`，失败时把**它自己的 stderr** 塞进注解。
+4. §2.9 与包体积门禁里 20 处 `echo "[断言失败] …"` 改成 `annot "[断言失败] …"`；
+   外层 5 处 `echo "[错误] …"` 同样处理；`tar` / `manifest` / `patch` / `index` 四处也各自抓输出。
+
+**教训**：
+
+1. **"日志看不到"是一个必须正面解决的真问题，不是环境噪音**：失败信息只存在于日志里，
+   就等于这个构建**没有可观测性**。能让匿名用户看到的通道只有注解，所以关键失败点必须自己发注解。
+2. **`exit 1` 不触发 `ERR` trap**。脚本里手写的 `echo "[断言失败] …"; exit 1` 属于**显式退出**，
+   trap 不会补一条注解——这类分支必须自己调 `annot`，否则"加了 trap"会给人错误的安全感。
+3. **注解里必须带"哪一小节"**：只给行号，一旦脚本再改几行就对不上了；`[2.8 剔除 GPU 栈]` 这种标签
+   才是人（和 Agent）能直接对上号的定位信息。
+4. **`continue-on-error: true` 的 job 必须配"可见的失败"**：它保证了 `latest` 不会被空目录覆盖（好事），
+   但也让失败隐身（坏事）。两者要一起设计：守卫 + 自述。
