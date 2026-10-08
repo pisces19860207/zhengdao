@@ -296,6 +296,30 @@ jobs:
           cp app/build/outputs/apk/debug/zhengdao-*.apk apk-debug/
           ls -la apk-debug/
 
+      - name: 取上一版 rootfs 清单（增量下发的基线，取不到就只产全量包）
+        # 增量下发协议见 docs/milestones/证道-环境包增量下发协议.md。
+        # 基线清单是上一次构建发到滚动版 latest 的 rootfs-manifest.txt；连同 .sha256 一起校验，
+        # 校验不过就当作"没有基线"（宁可不产补丁，也不要拿一份坏基线算出脏补丁）。
+        # 这里**不**让整个构建失败：第一次启用时 latest 上本来就没有清单。
+        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
+        continue-on-error: true
+        run: |
+          mkdir -p rootfs-base
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/latest"
+          curl -fsSL --retry 3 -o rootfs-base/rootfs-manifest.txt "$BASE_URL/rootfs-manifest.txt" || true
+          curl -fsSL --retry 3 -o rootfs-base/rootfs-manifest.txt.sha256 "$BASE_URL/rootfs-manifest.txt.sha256" || true
+          if [ -s rootfs-base/rootfs-manifest.txt ] && [ -s rootfs-base/rootfs-manifest.txt.sha256 ]; then
+            if (cd rootfs-base && sha256sum -c rootfs-manifest.txt.sha256); then
+              echo "✅ 基线清单校验通过：$(wc -l < rootfs-base/rootfs-manifest.txt) 行"
+            else
+              echo "::warning::基线清单 SHA256 校验失败，本次不产补丁"
+              rm -f rootfs-base/rootfs-manifest.txt
+            fi
+          else
+            echo "::warning::latest 上没有上一版清单（首次启用/资产缺失），本次不产补丁"
+            rm -f rootfs-base/rootfs-manifest.txt
+          fi
+
       - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
         # 只在 rootfs/ 有改动、或手动触发时跑（判定见上面「判断本次推送要不要重建 RootFS」）。
         # tag 推送不重建：正式 Release 只发 APK，RootFS 包由滚动版 latest 提供。
@@ -303,6 +327,9 @@ jobs:
         id: rootfs
         continue-on-error: true
         timeout-minutes: 240
+        env:
+          # 有基线才产差分包；文件不存在时脚本自己会降级为"不产补丁"（不失败）
+          BASE_MANIFEST: ${{ github.workspace }}/rootfs-base/rootfs-manifest.txt
         run: sudo bash rootfs/build-rootfs.sh "$GITHUB_WORKSPACE/rootfs-out"
 
       - name: 修正产物目录属主（rootfs 以 root 运行，目录归 root）
@@ -417,3 +444,43 @@ jobs:
           files: ${{ steps.apk.outputs.file }}
           draft: false
           prerelease: false
+
+      - name: 补挂该版本的 RootFS 资产（整包 + 清单 + 索引）
+        # 目的：以前**只有滚动版 `latest` 带 rootfs**，正式 tag 的 Release 只有 APK，
+        #      于是"某个历史版本用什么环境"无法追溯、增量下发也无从累积基线
+        #      （方案 §7-3 的欠账）。这里把滚动版当天的 rootfs 资产**搬一份**过来。
+        # 做法：不重跑构建（tag 触发的 build job 按设计跳过 rootfs 构建那一大步，慢且没必要），
+        #      直接 download 滚动版的资产再 upload 到本 tag 的 Release。
+        # 只搬这几样：整包 + 边车、清单 + 边车、索引。
+        #  **故意不搬 `rootfs-patch-*`**：补丁是"从上一版升到当前版"的一次性产物，
+        #  名字里带 base→new 的 env，数量会不断累积；App 走索引里给的补丁 URL，
+        #  而索引始终从滚动版读，所以 tag 上留补丁只增体积、没有用处。
+        # 失败只告警不红：APK 已经发出去了，缺这几样不影响任何用户装 App
+        #（App 读不到索引就照旧读滚动版的 manifest，再不济走全量下载）。
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p rootfs-assets
+          cd rootfs-assets
+          got=0
+          for pat in 'debian-*.tar.zst' 'debian-*.tar.zst.sha256' \
+                     'rootfs-manifest.txt' 'rootfs-manifest.txt.sha256' \
+                     'rootfs-index.json'; do
+            if gh release download latest --repo "$GITHUB_REPOSITORY" \
+                 --pattern "$pat" --clobber 2>/dev/null; then
+              echo "已取：$pat"
+            else
+              echo "滚动版里没有：$pat（跳过）"
+            fi
+          done
+          shopt -s nullglob
+          FILES=(*)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::warning::滚动版里一个 rootfs 资产都没取到，本 tag 只发 APK"
+            exit 0
+          fi
+          ls -l
+          gh release upload "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" --clobber "${FILES[@]}"
+          echo "已给 ${{ github.ref_name }} 补挂 ${#FILES[@]} 个 rootfs 资产"

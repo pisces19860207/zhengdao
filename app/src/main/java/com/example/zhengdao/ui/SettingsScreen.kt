@@ -51,8 +51,14 @@ import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.rootfs.PatchRef
+import com.example.zhengdao.rootfs.RootfsCache
+import com.example.zhengdao.rootfs.RootfsDelta
 import com.example.zhengdao.rootfs.RootfsDownloader
+import com.example.zhengdao.rootfs.RootfsIndex
+import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
+import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +69,13 @@ import java.net.URL
 
 /** 状态行"就绪／已授权"用的绿：比主题 tertiary(#34C759) 更深，浅底上作正文色才有对比度。 */
 private val ReadyGreen = Color(0xFF2E7D32)
+
+/**
+ * 索引里的字节数 → 人读大小。`<= 0` = 索引没给这个字段（老格式/字段缺失），
+ * 显示"大小未知"而不是"约 0 MB"（后者会让用户以为包是空的）。
+ */
+private fun bytesMbText(bytes: Long): String =
+    if (bytes > 0) "约 ${(bytes + 524_288) / 1_048_576} MB" else "大小未知"
 
 /** 设置偏好（工作区模式 / 已安装环境版本登记）。 */
 object Settings {
@@ -84,6 +97,17 @@ fun SettingsScreen(
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var pendingUpdateUrl by remember { mutableStateOf<String?>(null) }
     var pendingUpdateSha by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 检查更新时拿到的**整条索引**（而不是只留 env）：全量装完后要按"信任锚"规则决定写不写
+     * `env=` 行 —— 只有索引 sha256 与实际校验通过的 sha256 一致才写
+     * （见 [RootfsInstaller.envForMarker]，理由：索引可能因 CI 半途失败而陈旧）。
+     * null = 走的不是索引路径（老 manifest 降级）或索引取不到 ⇒ 装完不写 env 行。
+     */
+    var pendingIndex by remember { mutableStateOf<RootfsIndex?>(null) }
+
+    /** 索引给的增量补丁（基线与本机相符时才会被赋上）；非 null = 弹窗确认后先试增量。 */
+    var pendingPatch by remember { mutableStateOf<PatchRef?>(null) }
     var prevLogText by remember { mutableStateOf<String?>(null) }
     var showPrevLog by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
@@ -96,6 +120,13 @@ fun SettingsScreen(
     // ── 权限（存储 + 网络自检）──
     fun storageGrantedNow(): Boolean =
         com.example.zhengdao.terminal.ProotLauncher.storageGranted(ctx)   // v1.3 E2：单一判定源
+
+    /** 后台线程 → 主线程 Toast 的统一出口（子线程不能直接弹 Toast）。 */
+    fun toastOnMain(text: String, long: Boolean = false) {
+        android.os.Handler(ctx.mainLooper).post {
+            Toast.makeText(ctx, text, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+        }
+    }
 
     var storageOk by remember { mutableStateOf(storageGrantedNow()) }
     var permHint by remember { mutableStateOf<String?>(null) }
@@ -592,38 +623,71 @@ fun SettingsScreen(
                 onClick = {
                     checking = true
                     Thread {
-                        // 待下载目标（发现新版本时由检查逻辑填入，弹窗确认后用）
+                        // 待下载目标（发现新环境时由检查逻辑填入，弹窗确认后用）
                         var pendingUrl: String? = null
                         var pendingSha: String? = null
+                        var pendingIdx: RootfsIndex? = null
+                        var pendingPatchRef: PatchRef? = null
                         val result = try {
-                            // 优先拉 manifest（版本号 + 直链 + SHA256 一条龙）
-                            val manifestText = com.example.zhengdao.rootfs.RootfsDownloader
-                                .fetchText(com.example.zhengdao.rootfs.RootfsCache.MANIFEST_URL)
-                            if (manifestText != null) {
-                                val ver = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
-                                val url = Regex("\"url\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
-                                val sha = Regex("\"sha256\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
-                                val installed = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
+                            // ① 增量协议：`rootfs-index.json` 是唯一事实来源，版本按 **env 内容指纹**比对。
+                            //    老逻辑拿恒定的发行版号（13.7）比，于是永远判"已是最新"——本次修掉的正是它。
+                            val idx = RootfsIndexFetcher.fetch()
+                            if (idx != null && !idx.env.isNullOrBlank()) {
+                                val localEnv = RootfsMarker.installedEnv(ctx)
+                                val ver = idx.version.ifBlank { idx.distro.ifBlank { "未知版本" } }
                                 when {
-                                    ver == null || url == null ->
-                                        "manifest 格式异常，无法解析版本"
-                                    installed != null && ver == installed ->
-                                        "已是最新版本（$installed）"
+                                    // 旧安装（标记里没有 env 行）：第一次更新只能全量，装完就记上 env
+                                    localEnv == null -> {
+                                        pendingUrl = idx.url; pendingSha = idx.sha256
+                                        pendingIdx = idx
+                                        "发现新版本 $ver（本地环境未记录版本，本次需全量下载，${bytesMbText(idx.size)}）"
+                                    }
+                                    localEnv.equals(idx.env, ignoreCase = true) ->
+                                        "已是最新版本（$ver，环境 $localEnv）"
                                     else -> {
-                                        pendingUrl = url; pendingSha = sha
-                                        "发现新版本 $ver（当前 $installed），是否下载安装？安装包将缓存到 Download/证道/rootfs（与 OpenCode 包同一个文件夹），旧包自动保留。"
+                                        pendingUrl = idx.url; pendingSha = idx.sha256
+                                        pendingIdx = idx
+                                        val p = idx.patch
+                                        if (p != null && p.from.equals(localEnv, ignoreCase = true)) {
+                                            pendingPatchRef = p
+                                            "发现新版本 $ver，可增量更新（${bytesMbText(p.size)}，无需重下全量包）"
+                                        } else {
+                                            "发现新版本 $ver（当前环境 $localEnv，索引未给对应增量包），需全量下载，${bytesMbText(idx.size)}"
+                                        }
                                     }
                                 }
                             } else {
-                                // manifest 不可达：降级走 Releases API（仅提示 + 跳转）
-                                val c = URL("https://api.github.com/repos/pisces19860207/zhengdao/releases/latest")
-                                    .openConnection() as HttpURLConnection
-                                c.connectTimeout = 15000; c.readTimeout = 15000
-                                c.setRequestProperty("Accept", "application/vnd.github+json")
-                                val body = c.inputStream.bufferedReader().readText()
-                                val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-                                if (tag != null) "仓库最新发布：$tag（应用内直装通道未就绪，可点「去下载」手动获取安装包）"
-                                else "仓库结构变化，无法解析版本"
+                                // ② 索引取不到：保留老 manifest 提示路径（该文件已无人维护，见 ERRATA E-033）
+                                val manifestText = com.example.zhengdao.rootfs.RootfsDownloader
+                                    .fetchText(com.example.zhengdao.rootfs.RootfsCache.MANIFEST_URL)
+                                if (manifestText != null) {
+                                    val ver = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
+                                    val url = Regex("\"url\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
+                                    val sha = Regex("\"sha256\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
+                                    val installed = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
+                                    when {
+                                        ver == null || url == null ->
+                                            "manifest 格式异常，无法解析版本"
+                                        // 刻意不再判定"已是最新"：旧 manifest 的 version 恒为发行版号
+                                        // （13.7），拿它跟本地比得出的"最新"是假的（见 ERRATA E-033）。
+                                        // 拿不到索引时只给"可下载"的事实，不替用户下结论。
+                                        else -> {
+                                            pendingUrl = url; pendingSha = sha
+                                            "拿不到环境索引（已降级读旧 manifest）：本地 $installed、清单 $ver。" +
+                                                "清单版本号恒为发行版号，不能用来判断新旧；如需更新请直接下载安装。"
+                                        }
+                                    }
+                                } else {
+                                    // manifest 不可达：降级走 Releases API（仅提示 + 跳转）
+                                    val c = URL("https://api.github.com/repos/pisces19860207/zhengdao/releases/latest")
+                                        .openConnection() as HttpURLConnection
+                                    c.connectTimeout = 15000; c.readTimeout = 15000
+                                    c.setRequestProperty("Accept", "application/vnd.github+json")
+                                    val body = c.inputStream.bufferedReader().readText()
+                                    val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+                                    if (tag != null) "仓库最新发布：$tag（应用内直装通道未就绪，可点「去下载」手动获取安装包）"
+                                    else "仓库结构变化，无法解析版本"
+                                }
                             }
                         } catch (t: Throwable) {
                             "检查失败（网络不可达）：${t.message}"
@@ -632,6 +696,8 @@ fun SettingsScreen(
                             updateMsg = result; checking = false
                             pendingUpdateUrl = pendingUrl
                             pendingUpdateSha = pendingSha
+                            pendingIndex = pendingIdx
+                            pendingPatch = pendingPatchRef
                             if (!result.startsWith("发现新版本")) {
                                 Toast.makeText(ctx, result, Toast.LENGTH_LONG).show()
                             }
@@ -993,41 +1059,80 @@ fun SettingsScreen(
                         return@TextButton
                     }
                     val expectedSha = pendingUpdateSha
+                    val patchRef = pendingPatch
+                    val index = pendingIndex
                     Thread {
+                        // 增量失败会写这里的原因，随最终 Toast 一起告诉用户（"回退全量"必须可见）
+                        var fallbackNote = ""
                         try {
-                            android.os.Handler(ctx.mainLooper).post {
-                                Toast.makeText(ctx, "开始下载新版本环境…", Toast.LENGTH_SHORT).show()
-                            }
-                            val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(ctx, url)
-                            RootfsDownloader.download(
-                                // 镜像兜底（v1.2 B3）：环境更新走的是同一条 github 直链
-                                urls = RootfsDownloader.withMirrorFallback(url),
-                                dest = archive,
-                                shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
-                            ) { done, total ->
-                                if (total > 0 && done * 100 / total % 20 == 0L) {
-                                    android.os.Handler(ctx.mainLooper).post {
-                                        Toast.makeText(
-                                            ctx,
-                                            "下载中 ${done * 100 / total}%",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                            toastOnMain("开始下载新版本环境…")
+                            val archive = RootfsCache.archiveFor(ctx, url)
+
+                            // ── ① 先试增量（协议 §6）：只有索引给了补丁、且本机基线正是补丁基线时才走 ──
+                            var deltaDone = false
+                            if (patchRef != null && RootfsDelta.canApply(ctx, patchRef)) {
+                                val deltaFile = RootfsCache.deltaFor(ctx, patchRef.url)
+                                try {
+                                    toastOnMain("正在下载增量补丁（${bytesMbText(patchRef.size)}）…")
+                                    RootfsDownloader.download(
+                                        urls = RootfsDownloader.withMirrorFallback(patchRef.url),
+                                        dest = deltaFile,
+                                        shaUrls = RootfsDownloader.withMirrorFallback("${patchRef.url}.sha256"),
+                                    ) { done, total ->
+                                        if (total > 0 && done * 100 / total % 20 == 0L) {
+                                            toastOnMain("增量包下载中 ${done * 100 / total}%")
+                                        }
                                     }
+                                    // 索引给的补丁 sha256 是硬校验（协议 §4）
+                                    RootfsDownloader.verifySha256(deltaFile, patchRef.sha256)
+                                    RootfsInstaller.ensureFreeSpace(ctx, deltaFile.length())
+                                    val info = RootfsDelta.readPatchInfo(deltaFile)
+                                        ?: throw RootfsInstaller.InstallFailed("补丁元数据缺失或不可读")
+                                    RootfsDelta.apply(ctx, deltaFile, info)
+                                    // 增量成功后照旧做一次缓存整理（与全量路径一致）
+                                    RootfsCache.pruneKeep(ctx)
+                                    deltaDone = true
+                                } catch (t: Throwable) {
+                                    // 增量路径的任何失败（含基线不符 BaseMismatch）都回退全量：
+                                    // applyTo 是原子的——此时 rootfs 要么没动，要么已完整换成新环境
+                                    fallbackNote = "增量更新失败（${t.message}），已回退全量下载；"
+                                    com.example.zhengdao.rootfs.RunLog.log("增量更新失败，回退全量：${t.message}")
+                                } finally {
+                                    RootfsCache.cleanupDelta(ctx, deltaFile)
                                 }
                             }
-                            if (!expectedSha.isNullOrBlank()) {
-                                RootfsDownloader.verifySha256(archive, expectedSha)
+
+                            if (!deltaDone) {
+                                // ── ② 全量下载安装（原流程，也是增量失败的唯一兜底）──
+                                val verifiedSha = RootfsDownloader.download(
+                                    // 镜像兜底（v1.2 B3）：环境更新走的是同一条 github 直链
+                                    urls = RootfsDownloader.withMirrorFallback(url),
+                                    dest = archive,
+                                    shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
+                                ) { done, total ->
+                                    if (total > 0 && done * 100 / total % 20 == 0L) {
+                                        toastOnMain("下载中 ${done * 100 / total}%")
+                                    }
+                                }
+                                if (!expectedSha.isNullOrBlank()) {
+                                    RootfsDownloader.verifySha256(archive, expectedSha)
+                                }
+                                // 信任锚（用户 2026-10-08 规则）：只有索引 sha256 == 实际校验通过的 sha256
+                                // 才敢把索引的 env 写进标记；否则照装不写 env ⇒ 下次自然走全量。
+                                val actualSha = verifiedSha ?: expectedSha
+                                val envToWrite = RootfsInstaller.envForMarker(index?.env, index?.sha256, actualSha)
+                                if (index != null && envToWrite == null) {
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "索引 sha256 与实际校验值不一致（或索引字段缺失），本次安装不写 env 标记"
+                                    )
+                                }
+                                RootfsInstaller.ensureFreeSpace(ctx, archive.length())
+                                RootfsInstaller.install(ctx, archive, envToWrite) { }
+                                RootfsCache.pruneKeep(ctx)
                             }
-                            RootfsInstaller.ensureFreeSpace(ctx, archive.length())
-                            RootfsInstaller.install(ctx, archive) { }
-                            com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
-                            android.os.Handler(ctx.mainLooper).post {
-                                Toast.makeText(ctx, "环境更新完成，重进终端生效", Toast.LENGTH_LONG).show()
-                            }
+                            toastOnMain(fallbackNote + "环境更新完成，重进终端生效", long = true)
                         } catch (t: Throwable) {
-                            android.os.Handler(ctx.mainLooper).post {
-                                Toast.makeText(ctx, "更新失败：${t.message}", Toast.LENGTH_LONG).show()
-                            }
+                            toastOnMain("更新失败：${t.message}", long = true)
                         }
                     }.start()
                 }) { Text("下载并安装") }
