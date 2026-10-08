@@ -3,6 +3,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import android.view.View
 import com.termux.terminal.TextStyle
 import com.termux.terminal.TerminalColors
 import com.termux.view.TerminalView
@@ -22,6 +23,8 @@ object TerminalPrefs {
     private const val PREFS = "zhengdao-ui"
     const val KEY_SIZE_DP = "terminal_text_size_dp"
     const val KEY_SCHEME = "terminal_color_scheme"
+    /** 画布留白（dp，2026-10-08 新增）。 */
+    const val KEY_INSET_DP = "terminal_canvas_inset_dp"
     /** 顶部三个圆点（关 / 分屏 / 收回）的功能说明是否已在首次进入时弹过（v1.1.1 阶段 2.2） */
     private const val KEY_DOTS_HINT_SHOWN = "terminal_dots_hint_shown"
 
@@ -29,8 +32,20 @@ object TerminalPrefs {
     const val DEFAULT_SIZE_DP = 12
     private const val DEFAULT_SCHEME = "classic"
 
+    /**
+     * 默认画布留白（dp）。0 表示文字贴边（旧观感）。
+     *
+     * 为什么默认给 8dp 而不是 0：文字顶到屏幕边缘时，长行与边框黏在一起、观感廉价；
+     * 留白让画布看起来是"一块有边界的面板"。代价是可用宽度变小、列数随之减少
+     * （8dp × 2 在 375dp 宽屏上约占 4%），所以留了「无」这一档给不想损失宽度的人。
+     */
+    const val DEFAULT_INSET_DP = 8
+
     /** 字号档位（dp）。越小显示内容越多。 */
     val SIZE_OPTIONS: List<Int> = listOf(10, 11, 12, 14, 16, 18)
+
+    /** 画布留白档位（dp）。0 = 贴边。 */
+    val INSET_OPTIONS: List<Int> = listOf(0, 8, 14)
 
     enum class Scheme(
         val id: String,
@@ -72,6 +87,15 @@ object TerminalPrefs {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_SCHEME, scheme.id).apply()
     }
 
+    fun insetDp(ctx: Context): Int =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_INSET_DP, DEFAULT_INSET_DP)
+            .coerceIn(INSET_OPTIONS.first(), INSET_OPTIONS.last())
+
+    fun saveInset(ctx: Context, dp: Int) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_INSET_DP, dp).apply()
+    }
+
     /** 三点说明是否已看过（只看一次，之后靠长按圆点复查）。 */
     fun dotsHintShown(ctx: Context): Boolean =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_DOTS_HINT_SHOWN, false)
@@ -81,11 +105,25 @@ object TerminalPrefs {
             .edit().putBoolean(KEY_DOTS_HINT_SHOWN, true).apply()
     }
 
-    /** 把「字号 + 配色」一次性应用到终端视图。进终端时调用，设置页改完下次进终端生效。 */
-    fun applyTo(termView: TerminalView, ctx: Context) {
-        applyScheme(termView, scheme(ctx))
+    /**
+     * 把「字号 + 配色 + 画布留白」一次性应用到终端。进终端时调用，设置页改完下次进终端生效。
+     *
+     * @param canvasHost 承载画布的**外层容器**（`R.id.canvas_host`）。留白与底色都写在它身上，
+     *   而不是写在 [termView] 上——`TerminalView.updateSize()` 用 `getWidth()` 算列数、
+     *   **不减 padding**，直接给视图加留白会同时算错列数、又看不见留白
+     *   （详见 `activity_main.xml` 里那段注释）。
+     */
+    fun applyTo(termView: TerminalView, canvasHost: View, ctx: Context) {
+        val scheme = scheme(ctx)
+        applyScheme(termView, scheme)
+        val density = ctx.resources.displayMetrics.density
+        val insetPx = (insetDp(ctx) * density).toInt()
+        // 容器只负责留白与底色：留白区露的就是它，颜色必须与视图一致，
+        // 否则会看到一圈异色边框（换配色时两处一起变，见 [applyScheme]）。
+        canvasHost.setBackgroundColor(scheme.bg)
+        canvasHost.setPadding(insetPx, insetPx, insetPx, insetPx)
         // dp → px（见类注释第 1 点）；setTextSize 内部会自动 updateSize 重算行列
-        termView.setTextSize((sizeDp(ctx) * ctx.resources.displayMetrics.density).toInt())
+        termView.setTextSize((sizeDp(ctx) * density).toInt())
     }
 
     /**

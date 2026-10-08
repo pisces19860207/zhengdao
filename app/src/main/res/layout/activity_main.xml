@@ -132,18 +132,38 @@
             android:ellipsize="end"
             android:visibility="gone" />
 
-        <!-- ⚠️ 背景色必须与 Termux 默认配色（黑底白字）一致，否则白字画在白底上
-             完全看不见——2026-10-05 实测：会话/输入/引擎全部正常，屏幕却一片空白，
-             只有带绿底的状态栏可见。TerminalRenderer.render 只在反色模式下填背景，
-             常规渲染不填，背景必须由视图自身提供。 -->
-        <com.termux.view.TerminalView
-            android:id="@+id/terminal_native"
+        <!-- 画布留白（2026-10-08）：这层容器是**留白的承载者**，不是装饰。
+             ⚠️ 留白必须加在这一层，**绝不能直接给 TerminalView 设 padding**：
+             TerminalView.updateSize() 用 getWidth()/getHeight() 算行列数（已核源码：
+             `TerminalView.java:1029` 的 updateSize()，宽度取自 1030 行的 getWidth()，
+             **不减 padding**），渲染又固定从视图左上角起手。
+             直接给它 padding 会同时造成两件坏事：① 列数按"含留白的宽度"算 ⇒ 最右几列
+             被画在留白之外、看不见；② 留白根本不出现（字仍从边缘起手）。
+             套一层容器后 TerminalView 自身变窄/变矮，getWidth() 天然等于内框宽度，
+             内部所有计算保持不变——**一行 Java 都不用改**，这是本方案低风险的根据。
+             留白档位（0 / 8 / 14dp）与底色由 TerminalPrefs.applyTo() 在进终端时写入。 -->
+        <FrameLayout
+            android:id="@+id/canvas_host"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="#FF000000"
-            android:focusable="true"
-            android:focusableInTouchMode="true" />
+            android:padding="8dp"
+            android:background="#FF000000">
+
+            <!-- ⚠️ 背景色必须与 Termux 配色一致，否则白字画在白底上完全看不见
+                 ——2026-10-05 实测：会话/输入/引擎全部正常，屏幕却一片空白，
+                 只有带绿底的状态栏可见。TerminalRenderer.render 只在反色模式下填背景，
+                 常规渲染不填，背景必须由视图自身提供。
+                 现在**容器与视图两处都要**（留白区由容器露出），换配色时一起变，
+                 见 TerminalPrefs.applyTo()。 -->
+            <com.termux.view.TerminalView
+                android:id="@+id/terminal_native"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#FF000000"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+        </FrameLayout>
 
         <!-- 快捷键条：窄屏（<600dp）两行固定、宽屏（≥600dp）单行，
              由资源限定符 res/layout[-w600dp]/term_keys.xml 自动选择。
