@@ -360,6 +360,9 @@ fun TaijiScreen(
                 override = modelOverride,
                 currentModel = state.currentModel,
                 isLoading = modelsLoading,
+                // 失败原因（来自 OcRepository.fetchModels → TaijiState.lastModelFetchError）：
+                // 必传，不给默认值——漏传就等于把「拉取失败」又变回静默，编译期拦下比运行时才发现强。
+                error = state.lastModelFetchError,
                 onSelectDefault = {
                     persistOverride(null)
                     showModelSheet = false
