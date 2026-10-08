@@ -730,11 +730,14 @@ fun ToolCallCard(part: OcPart.Tool) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (stateText.isNotEmpty()) {
-                    Text(
-                        "· $stateText",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = tint,
-                    )
+                    // 2026-10-09：状态从「紧贴工具名的 · 已完成」改为**淡色胶囊徽标**。
+                    // 原因（用户反馈「调用工具那里有个小蓝色的对勾总是被遮挡」）：
+                    //   原写法把状态文字贴在工具名尾部（labelSmall 12sp、无底色、无间距），
+                    //   工具名一长（MCP 全限定名常见 30+ 字符）两者视觉糊成一团、状态被压得看不清；
+                    //   且 `icon`（●/✓/✗，「计划第 8 条」）此前**只声明、从未渲染**。
+                    // 现在：徽标自带底色 + 内边距 + 与工具名 8dp 间距，任何长度下都清晰可辨。
+                    Spacer(Modifier.width(8.dp))
+                    ToolStatusBadge(icon = icon, text = stateText, tint = tint)
                 }
             }
             // 折叠态也显示一行入参摘要（命令 / 路径），让"用了哪个工具、干了啥"一眼可见
@@ -765,6 +768,35 @@ fun ToolCallCard(part: OcPart.Tool) {
                         fontFamily = FontFamily.Monospace, maxLines = 8, overflow = TextOverflow.Ellipsis)
                 }
             }
+        }
+    }
+}
+
+// ── 工具状态徽标 ─────────────────────────────────────────────────────
+
+/**
+ * 工具状态徽标 —— `[图标] [状态文字]` 包在一枚淡色胶囊里。
+ *
+ * 背景色取状态主色的 12% 叠加（与 `IOSColor` 的 `systemBlue 12%` 同一套语言），
+ * 前景文字用状态主色本身，所以「执行中 ●」是淡蓝底蓝字、「失败 ✗」是淡红底红字，
+ * 颜色编码一眼可辨、又不至于像实心标签那样喧宾夺主（它是辅助信息，工具名才是主角）。
+ *
+ * 为什么要独立成组件：见 [ToolCallCard] 里的说明——状态此前紧贴工具名、无底色，
+ * 工具名一长就糊在一起。
+ */
+@Composable
+private fun ToolStatusBadge(icon: String, text: String, tint: Color) {
+    Surface(
+        color = tint.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(icon, style = MaterialTheme.typography.labelSmall, color = tint)
+            Spacer(Modifier.width(3.dp))
+            Text(text, style = MaterialTheme.typography.labelSmall, color = tint)
         }
     }
 }
