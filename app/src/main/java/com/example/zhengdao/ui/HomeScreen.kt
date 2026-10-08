@@ -57,6 +57,11 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
+    // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
+    // 走外部 state 让"切到太极再切回"时仍记得位置；
+    // 不传时退化到内部新建（保持向后兼容，例如设置页内嵌的 HomeScreen 预览）。
+    listState: androidx.compose.foundation.lazy.LazyListState =
+        androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var agents by remember { mutableStateOf(AppState.agents(context)) }
@@ -188,6 +193,7 @@ fun HomeScreen(
         }
 
         LazyColumn(
+            state = listState, // K2：外部注入的 state
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)

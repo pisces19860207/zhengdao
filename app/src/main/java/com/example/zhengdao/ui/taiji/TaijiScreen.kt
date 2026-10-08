@@ -76,6 +76,11 @@ import kotlinx.coroutines.withContext
 @Composable
 fun TaijiScreen(
     onExit: () -> Unit = {},
+    // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
+    // 不传时退化到内部新建。**注意**：切会话的逻辑（LaunchedEffect(sessionId) 滚到底）
+    // 在 MessageList 内部仍生效——K2 解决的是"切 Tab 不丢位置"，与会话切换无关。
+    listState: androidx.compose.foundation.lazy.LazyListState =
+        androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -324,6 +329,7 @@ fun TaijiScreen(
                                 // 会话 id 进 key：切会话后重新定位到该会话底部（不沿用上一个会话的滚动位置）
                                 sessionId = state.sessionId,
                                 modifier = Modifier.fillMaxSize(),
+                                listState = listState, // K2：外部注入的 state
                             )
                         }
                     }
