@@ -1670,3 +1670,91 @@ gzip 兜底壳…）是解压主路径的安全网，此前**只在人手动跑*
    拿它当 `CC` 会得到"cannot execute 'cc1'"，比"找不到 gcc"更难定位。
 3. **"本机能跑"不等于"有人跑"**：一个测试只要有"环境前置"，就一定会退化成"只在某台机器上手动跑过"。
    把 RS 层单测放进 CI，比在 README 里写"记得先装 gcc"可靠得多。
+
+> 本节贴的 `run: cd rust && cargo test …` 是**改造前**的单行版本；首次真跑红了之后，
+> 这一步已被 E-028 加强为"失败时把日志要点抛成 annotation"（本仓库 Actions 日志未登录读不到）。
+
+## E-028 · 2026-10-08 · Rust 单测接进 CI 的**第一个产出**：测试自己的平台盲区（symlink 的 linkname 写成根相对）+ 7 个字面 NUL 字节
+
+**一句话**：给 `ci.yml` 加「Rust 逻辑层单测」后第一次真跑（`37719284097 ci @20b0082`）就红了，
+但**红的不是产品代码，是测试夹具自己写错了**：`make_archive()` 给 symlink 的 linkname 写成
+`data/hello.txt`（根相对），而 tar 规范里 symlink 的 linkname 是**相对链接所在目录**的路径；
+提取器照磁盘原样落盘（与 Kotlin 版 `RootfsInstaller.kt` 对拍一致 = **正确**），于是 unix 那条
+"读穿内容"的断言读不到文件而 panic。这条断言在 Windows 上被 `#[cfg(unix)]` 整块 cfg 掉 ——
+**它从来没在开发机上跑过**，是 E-027"只在某台机器上手动跑过"的直接后果。
+
+### 1. 现场
+
+- `37719284097 ci @20b0082`：唯一红的是新加的 `Rust 逻辑层单测（PC 层纯逻辑，失败即红）`，
+  其余全绿（编译 Debug APK ✓ / 全量单元测试 ✓ / Android Lint ✓）；后两步「R8 冒烟」
+  「上传 release APK」被 skipped。
+- check-run annotations（匿名可读）只有一行：
+  `.github :: Process completed with exit code 101.` —— 101 是 **cargo 自己的错误码**
+  （编译错误或测试失败都会是它，光看码分不出来）。**Actions 日志匿名读不到**：
+  `GET /repos/{owner}/{repo}/actions/jobs/{id}/logs` = `403 Must have admin rights to Repository.`，
+  网页端 `…/actions/runs/<id>/job/<jobid>` 显示 "Sign in to view logs" ⇒ 这次是**读代码**定位的。
+
+### 2. 根因
+
+- `rust/core/src/tests.rs` 的 `make_archive()`：
+
+  ```rust
+  hdr_link.set_link_name(format!("{base}/hello.txt"))   // base = "data"
+  ```
+
+  写进 tar 的 linkname 是 `data/hello.txt`（**根相对**）。tar 里 symlink 的 linkname 是
+  **相对链接所在目录**的路径 —— 正确写法是 `hello.txt`。
+- `rust/core/src/extract.rs:149-166` 把 linkname **原样落盘**（GNU tar 也照磁盘原样记录；
+  Kotlin 版同语义）⇒ `out/data/link` 实际指向 `out/data/data/hello.txt`（不存在）。
+- 只有 unix 会走到读穿内容那句：`fs::read(out.join("data/link")).unwrap()`
+  → `No such file or directory` → panic → 测试失败 → cargo 退出码 101。
+- Windows host 上 symlink 走 `#[cfg(not(unix))]` 的"空文件占位"分支，**整段 unix 断言被 cfg 掉**
+  ⇒ 一直是绿的。
+
+### 3. 修法
+
+- 夹具按规范写：`hdr_link.set_link_name("hello.txt").unwrap();`
+- unix 断言由"读得到内容"加强成两条：
+  `assert_eq!(fs::read_link(out.join("data/link")).unwrap(), Path::new("hello.txt"))`
+  \+ 读穿内容与 `data/hello.txt` 相等。
+- 补 Windows 侧断言：`#[cfg(not(unix))]` 下
+  `fs::metadata(out.join("data/link")).unwrap().len() == 0`（占位文件必须是 0 字节）。
+- 顺手清 warning：`hdr_hard.set_link_name(...)` 的 `io::Result` 补 `.unwrap()`（原来 `unused Result`）；
+  删掉未用的 `use std::io::Write;` 与 `let src = fs::File::open(&tar_path).unwrap();`；
+  `extract.rs` 里 `let link = …` 挪进 `#[cfg(unix)]` 块内（非 unix 上是未使用变量）。
+- 结果：本机 `cargo test -p zhengdao_core --release` = **8 passed / 0 failed、0 warning**
+  （改动前 6 条 warning），编译 12.98s / 热跑 0.04s。
+- 顺带修掉一个埋了很久的坑：`tests.rs` 里有 **7 个字面 NUL 字节**，让 git 把这个纯文本文件
+  当成二进制（`git diff` 只显示 `Bin 8054 -> 8967 bytes`）；改成 `\0` 转义后它恢复成文本文件，
+  以后能正常出可读 diff。
+
+### 4. 让 CI 的失败看得见（同一轮改造的步骤）
+
+本仓库 Actions 日志未登录读不到，但 **check-run annotations 匿名可读** ⇒ cargo 步骤改成失败时抛 annotation：
+
+```yaml
+      - name: Rust 逻辑层单测（PC 层纯逻辑，失败即红）
+        run: |
+          cd rust
+          set +e
+          cargo test -p zhengdao_core --release 2>&1 | tee /tmp/cargo-test.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E '(^error|^warning: unused|FAILED|panicked|assertion|^ *-->|left:|right:)' /tmp/cargo-test.log \
+              | tail -n 8 | while IFS= read -r line; do
+                  echo "::error title=cargo test 失败::${line}"
+                done
+            echo "::error title=cargo test::退出码 ${code}（完整输出见本步骤日志）"
+          fi
+          exit "$code"
+```
+
+### 5. 教训
+
+1. **`#[cfg(unix)]` 里的断言在 Windows 上等于不存在**："本机全绿"完全不能代表它跑过。
+   平台分支的测试必须跑在**对应平台的 runner** 上 —— 这也是把 Rust 单测放 ubuntu runner 的额外收益。
+2. **夹具要符合格式规范，别让实现迁就夹具**：如果为了"让测试过"去 rebase linkname，
+   就会与 Kotlin 版提取器的语义分叉，把一条**正确**的行为改坏。对拍纪律优先于"测试先绿"。
+3. **cargo 的退出码 101 分不出编译错误与测试失败**：CI 上要么把日志要点抛成 annotation，
+   要么本地按平台复现；只盯着 "exit code 101" 会一直在错误的方向上找。
+4. **一个"从没跑过"的测试，等于没写**：这次红是好事 —— 它证明新加的入口真的在跑。

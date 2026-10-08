@@ -181,6 +181,21 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 更关键的是：这 8 例此前**本机靠手动、CI 里完全没有**（`ci.yml` 只有 `:app:testDebugUnitTest`），
 > 已给 `ci.yml` 加「Rust 逻辑层单测」+ cargo 缓存两步，跑在 ubuntu runner（自带 gcc）。详见 E-027。
 
+> **2026-10-08 续（Rust 单测进 CI 的第一个产出：红的是测试自己 + CI 失败从此可见）**：
+> ① 上一批给 CI 加的「Rust 逻辑层单测」第一次真跑（`37719284097 ci @20b0082`）就红了 ——
+> 红的是**测试夹具**：`rust/core/src/tests.rs` 的 `make_archive()` 把 symlink 的 linkname 写成根相对的
+> `data/hello.txt`，而 tar 规范里它是**相对链接所在目录**；`rust/core/src/extract.rs:149-166` 原样落盘
+> （与 Kotlin 版对拍一致 = 正确）⇒ unix 那条"读穿内容"的断言读不到文件而 panic。这条断言在 Windows 上
+> 被 `#[cfg(unix)]` 整块 cfg 掉，**从来没在开发机上跑过**。夹具改 `set_link_name("hello.txt")`，
+> unix 断言加强为 `read_link == "hello.txt"` + 内容一致，Windows 侧补"占位文件必须 0 字节"断言；
+> 顺带清掉 6 条 warning，并把 `tests.rs` 里 7 个字面 NUL 字节改成 `\0` 转义（该文件此前在 git 眼里是
+> 二进制，diff 只有 `Bin 8054 -> 8967 bytes`）。本机 `cargo test -p zhengdao_core --release`
+> = **8 passed / 0 failed、0 warning**。详见 `docs/ERRATA.md` E-028。
+> ② 同轮把 cargo 步骤改成**失败时抛 annotation**（`set +e` + `tee` + `PIPESTATUS[0]` + `grep` 要点
+> 逐行 `::error title=cargo test 失败::…` + 退出码）：本仓库 Actions 日志未登录读不到
+> （`GET /actions/jobs/{id}/logs` = 403），而 `GET /repos/{owner}/{repo}/check-runs/{id}/annotations`
+> 匿名可读 —— 这次就是靠它看到 `exit code 101` 的原文的。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
