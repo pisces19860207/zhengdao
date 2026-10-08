@@ -66,6 +66,33 @@ pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeSha256Fil
     }
 }
 
+/// Kotlin: `CoreNative.nativeVerifyEd25519(pubKey, sig, msg) -> Boolean`
+///
+/// Ed25519 验签（RFC 8032 §5.1）——信任根那类纯计算，常驻 native。
+/// 契约：**任何异常都返回 false**（参数数量不对、字节数组转换失败都算"验不过"），
+/// 绝不 panic 跨 FFI；调用方还会拿平台实现对拍，见 `CoreNative.verifyEd25519`。
+#[no_mangle]
+pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeVerifyEd25519(
+    env: JNIEnv,
+    _class: JClass,
+    pub_key: JByteArray,
+    sig: JByteArray,
+    msg: JByteArray,
+) -> jni::sys::jboolean {
+    let (Ok(pub_key), Ok(sig), Ok(msg)) = (
+        env.convert_byte_array(pub_key),
+        env.convert_byte_array(sig),
+        env.convert_byte_array(msg),
+    ) else {
+        return jni::sys::JNI_FALSE;
+    };
+    if crate::ed25519::verify(&pub_key, &sig, &msg) {
+        jni::sys::JNI_TRUE
+    } else {
+        jni::sys::JNI_FALSE
+    }
+}
+
 /// Kotlin: `CoreNative.nativeExtract(archivePath, targetDir, expectedSha256) -> String`
 /// 永远返回 JSON（Android 的 stderr 不进 logcat，null 协议会让错误无迹可查）：
 /// 成功 {"ok":true,"entries":N,"bytes":N,"sha256":"...","skipped":N}；失败 {"ok":false,"error":"..."}

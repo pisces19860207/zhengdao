@@ -16,6 +16,7 @@
 //! `ExtractNative` 两个对象已随本次收编删除，回退纪律不变：native 不可用时
 //! 一律走平台实现，调用方无感知）。
 
+pub mod ed25519;
 pub mod extract;
 pub mod sha256;
 
