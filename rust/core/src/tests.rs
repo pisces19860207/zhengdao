@@ -1,7 +1,7 @@
 // PC 侧验证：合成包（zstd+gzip 双壳）端到端解压 + 边界用例。
 // 真机对拍由 androidTest 对同一真实 rootfs 归档跑 Java/Rust 双版本完成。
 
-use crate::extract::{extract_pipeline, ExtractError};
+use crate::extract::{extract_pipeline, extract_pipeline_skip, ExtractError};
 use std::fs;
 use std::path::Path;
 
@@ -200,5 +200,54 @@ fn 路径穿越_拒绝() {
     assert!(extract_pipeline(&zst, &out, None, &mut |_| {}).is_err());
     assert!(!dir.join("evil.txt").exists(), "穿越文件落到了目标目录外");
     assert!(!out.join("evil.txt").exists());
+    fs::remove_dir_all(&dir).ok();
+}
+
+// ── 补丁路径（E-050）：纯 tar 壳 + 跳过成员 ────────────────────────────────
+
+#[test]
+fn 纯tar包_无压缩壳_直接解压() {
+    let dir = std::env::temp_dir().join(format!("zext_plain_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    // make_archive 先写 <name>.tar 再套压缩壳 —— 那个 .tar 就是纯 tar，直接拿来用。
+    // 补丁包（androidTest 用 commons-compress 直写）正是这个形状：没有 zstd/gzip 魔数。
+    let (_arch, _sha) = make_archive(&dir, "test_plain", false);
+    let tar_path = dir.join("test_plain.tar");
+    assert!(tar_path.is_file(), "合成 tar 不在: {}", tar_path.display());
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(&fs::read(&tar_path).unwrap());
+    let tar_sha = hex::encode(h.finalize());
+
+    let out = dir.join("out");
+    let report = extract_pipeline(&tar_path, &out, Some(&tar_sha), &mut |_| {}).unwrap();
+
+    assert_eq!(report.entries, 5, "条目数异常: {}", report.entries);
+    assert_eq!(report.skipped, 0);
+    assert_eq!(report.archive_sha256, tar_sha, "纯 tar 的 SHA 也要前置校验");
+    assert!(out.join("data/hello.txt").is_file());
+    assert!(out.join("data/big.bin").is_file());
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn 跳过成员_不落盘且计入skipped() {
+    let dir = std::env::temp_dir().join(format!("zext_skip_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    // 用 zstd 包（生产形状：压缩壳 + SHA 对账 + 跳过清单一起走）
+    let (arch, sha) = make_archive(&dir, "test_skip", false);
+    let out = dir.join("out");
+    let skip = vec!["data/hello.txt".to_string()];
+
+    let report = extract_pipeline_skip(&arch, &out, Some(&sha), &skip, &mut |_| {}).unwrap();
+
+    assert_eq!(report.skipped, 1, "跳过计数");
+    assert_eq!(report.entries, 4, "被跳过的成员不该计入 entries");
+    assert!(
+        !out.join("data/hello.txt").exists(),
+        "被跳过的成员不该落盘（补丁元数据就是这么处理的）"
+    );
+    assert!(out.join("data/big.bin").is_file(), "其余成员照常落盘");
+    assert_eq!(report.archive_sha256, sha, "跳过成员不影响归档整体 SHA");
     fs::remove_dir_all(&dir).ok();
 }

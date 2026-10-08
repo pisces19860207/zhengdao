@@ -92,7 +92,10 @@ fun WelcomeScreen(
         Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = if (environmentInstalled) "运行环境就绪"
-            else "运行环境用于「洞天」终端与 Agent，太极不需要",
+            // 2026-10-08：原句「运行环境用于「洞天」终端与 Agent，太极不需要」在一句话里
+            // 同时出现「洞天」和「终端」——而底栏只有三个 Tab，用户找不到叫「洞天」的地方。
+            // 底栏已统一叫「终端」，这里也跟着改。
+            else "运行环境用于「终端」和其他 Agent，太极不需要",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

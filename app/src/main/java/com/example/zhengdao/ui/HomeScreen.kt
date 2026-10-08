@@ -57,6 +57,11 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
+    // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
+    // 走外部 state 让"切到太极再切回"时仍记得位置；
+    // 不传时退化到内部新建（保持向后兼容，例如设置页内嵌的 HomeScreen 预览）。
+    listState: androidx.compose.foundation.lazy.LazyListState =
+        androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var agents by remember { mutableStateOf(AppState.agents(context)) }
@@ -188,6 +193,7 @@ fun HomeScreen(
         }
 
         LazyColumn(
+            state = listState, // K2：外部注入的 state
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -441,6 +447,8 @@ fun HomeScreen(
         // 用户原话：「重新装 APP 的话也要像装环境一样的，自己就瞬间装好了」。环境那一半
         // 已经做到了（本地有包就免下载）；这一条补上 Agent 那一半——装了什么是记在
         // Download/证道/agents/installed.json 里的，卸载 App 也带不走。
+        // 文案（2026-10-08 用户拍板，见 ERRATA E-040）：旧文案写死「程序已随上次卸载消失」，
+        // 而账本里更常见的是「上次装到一半失败」（state=installing）——改成两种情形都盖住。
         if (restoreList.isNotEmpty()) {
             item {
                 Card(
@@ -460,7 +468,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "这些 Agent 的程序已随上次卸载消失，但安装脚本与包缓存还在 " +
+                            text = "这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 " +
                                 "Download/证道/agents 与 cache 里 —— 恢复时能走本地的就不联网：" +
                                 restoreList.joinToString("、") { it.name },
                             style = MaterialTheme.typography.bodySmall,
@@ -514,7 +522,10 @@ fun HomeScreen(
                             Box {
                                 Box(
                                     modifier = Modifier
-                                        .size(34.dp)
+                                        // 2026-10-08 走查：34dp → 48dp（Material 3 的最小
+                                        // 触摸目标）。「⋮」是卸载入口，34dp 是全 App 最容易
+                                        // 点空的控件之一；「⋮」字形本身不变，只是热区变大。
+                                        .size(48.dp)
                                         // 同上：圆形热区配方形涟漪很难看，裁成圆
                                         .clip(CircleShape)
                                         .clickable { menuOpenFor = agent.id },

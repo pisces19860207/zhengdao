@@ -39,9 +39,40 @@ object CoreNative {
 
     private external fun nativeSha256Hex(data: ByteArray): String?
 
+    /**
+     * 对**文件**做流式 SHA-256（hex 小写）——安装路径校验 192 MB 归档用的就是它。
+     * Rust 不可用或读盘失败 ⇒ **返回 null**，调用方回退平台流式实现（规范 #2 回退纪律）。
+     * 注意这里不用 `sha256Hex(readBytes())`：那会把整包读进内存（192 MB）。
+     */
+    fun sha256File(file: java.io.File): String? {
+        if (!rustAvailable) return null
+        return runCatching { nativeSha256File(file.absolutePath) }.getOrNull()
+    }
+
+    private external fun nativeSha256File(path: String): String?
+
     private fun platformSha256(data: ByteArray): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(data)
             .joinToString("") { "%02x".format(it) }
+
+    // ────────────────────────── ed25519 模块 ──────────────────────────
+
+    /**
+     * Ed25519 验签（信任根：Agent 清单 / 环境包索引）。
+     *
+     * 返回 `null` = 这条路走不通（Rust 不可用或例外），调用方**必须**回退平台实现
+     * （`AgentManifest` 里的 Kotlin 版 Ed25519），并可选做对拍——见 E-051。
+     */
+    fun verifyEd25519(pubKey: ByteArray, sig: ByteArray, msg: ByteArray): Boolean? {
+        if (!rustAvailable) return null
+        return runCatching { nativeVerifyEd25519(pubKey, sig, msg) }.getOrNull()
+    }
+
+    private external fun nativeVerifyEd25519(
+        pubKey: ByteArray,
+        sig: ByteArray,
+        msg: ByteArray,
+    ): Boolean
 
     // ────────────────────────── extract 模块 ──────────────────────────
 
@@ -53,6 +84,9 @@ object CoreNative {
 
     /**
      * 解压归档到目标目录（数据常驻 native，边界只跨一次）。
+     *
+     * @param skipNames 不落盘的成员名（tar 里的相对路径，`./` 前缀不带）——
+     *   补丁包顶部的元数据 `.zhengdao-patch-info` 用它跳过；空清单走原入口。
      * @return 三元组（条目数 / 字节数 / 归档 SHA256）
      * @throws IllegalStateException native 不可用或流水线失败（含 SHA 不匹配）
      */
@@ -60,11 +94,20 @@ object CoreNative {
         archivePath: String,
         targetDir: String,
         expectedSha256: String?,
+        skipNames: List<String> = emptyList(),
     ): Triple<Long, Long, String> {
         check(rustAvailable) { "Rust 解压链路不可用（libzhengdao_core.so 加载失败）" }
-        val json = nativeExtract(archivePath, targetDir, expectedSha256)
-            ?: throw IllegalStateException("Rust 解压流水线无返回（JNI 层异常）")
-        // 协议（永远返回 JSON）：成功 {"ok":true,entries,bytes,sha256}；失败 {"ok":false,error}
+        val json = if (skipNames.isEmpty()) {
+            nativeExtract(archivePath, targetDir, expectedSha256)
+        } else {
+            // 跳过清单以 \n 连接跨边界（见 jni_bridge.rs 的取舍说明）
+            nativeExtractSkip(archivePath, targetDir, expectedSha256, skipNames.joinToString("\n"))
+        } ?: throw IllegalStateException("Rust 解压流水线无返回（JNI 层异常）")
+        return parseExtractReport(json)
+    }
+
+    /** 解析 JNI 的 JSON 协议：成功 `{"ok":true,entries,bytes,sha256,skipped}`；失败 `{"ok":false,error}`。 */
+    private fun parseExtractReport(json: String): Triple<Long, Long, String> {
         if (Regex("\"ok\":(true|false)").find(json)?.groupValues?.get(1) != "true") {
             val err = Regex("\"error\":\"([^\"]*)\"").find(json)?.groupValues?.get(1) ?: "未知"
             throw IllegalStateException("Rust 解压失败: $err")
@@ -79,5 +122,13 @@ object CoreNative {
         archivePath: String,
         targetDir: String,
         expectedSha256: String?,
+    ): String?
+
+    /** 与 [nativeExtract] 同流水线，额外按 `\n` 连接的 [skipNamesJoined] 跳过成员（E-050）。 */
+    private external fun nativeExtractSkip(
+        archivePath: String,
+        targetDir: String,
+        expectedSha256: String?,
+        skipNamesJoined: String?,
     ): String?
 }

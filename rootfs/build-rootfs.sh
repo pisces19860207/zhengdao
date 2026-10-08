@@ -24,35 +24,53 @@
 #   glibc   = Debian 13.7 自带（2.41），只读不升
 #   Python  = Debian 13.7 自带（3.13），直接使用
 #   Node.js = NodeSource 官方源 26.x（不用 Debian 源旧版）
+#   uv      = 官方 releases 的**最新版**（刻意不钉版本，见 §2.5），但**必须 ≥ 0.12.22**：
+#             该版本起才支持 /etc/uv/uv.toml 系统级配置，而 §2.6 正是靠它下发
+#             `link-mode = "copy"`（proot 无硬链接）。版本由 §2.8 断言把关。
 # =====================================================================
 set -euo pipefail
+
+# ---------------------------------------------------------------------
+# 失败自述（2026-10-08，见 docs/ERRATA.md E-039）：
+#   GitHub 的 Actions 日志对未登录用户是「Sign in to view logs」，构建失败时外面
+#   只看到注解里一句「Process completed with exit code 2」，等于没有信息（Run 162
+#   就卡在这一步：RootFS 构建失败，谁都不知道死在哪一行）。
+#   所以失败点自己发一条 `::error::` 注解 —— **注解是匿名可见的**，把"哪个小节、
+#   哪一行、哪条命令、退出码多少"钉死；§2.8 里每条外部命令还额外附带它自己的 stderr。
+# ---------------------------------------------------------------------
+annot() { printf '::error::%s\n' "$(printf '%s' "$1" | tr '\n' '|' | cut -c1-1500)"; }
+trap 'rc=$?; annot "build-rootfs.sh 失败：[$STEP_OUTER] 第 $LINENO 行 \`$BASH_COMMAND\`，退出码 $rc"' ERR
+STEP_OUTER="构建机自检"
 
 DEBIAN_RELEASE="trixie"
 DEBIAN_VERSION="13.7"
 NODE_MAJOR="26"
+# uv 的**下限**（不是钉版本）：≥0.12.22 才支持 /etc/uv/uv.toml 系统级 config，
+# 见设计文档 §6 附录 A #4。下载走 releases/latest（§2.5），版本由 §2.8 断言把关。
+UV_MIN="0.12.22"
 ARCH="arm64"
 MIRROR="http://deb.debian.org/debian"
 OUT_DIR="${1:-$(pwd)/out}"
 
 # ---------- 构建机自检 ----------
 if [ "$(id -u)" -ne 0 ]; then
-  echo "[错误] 请用 root 运行（debootstrap 与 mount 需要 root 权限）"
+  annot "[错误] 请用 root 运行（debootstrap 与 mount 需要 root 权限）"
   exit 1
 fi
 for tool in debootstrap zstd tar curl sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
-    echo "[错误] 构建机缺少 $tool，请先安装（Debian/Ubuntu: apt install ${tool}）"
+    annot "[错误] 构建机缺少 $tool，请先安装（Debian/Ubuntu: apt install ${tool}）"
     exit 1
   }
 done
 HOST_ARCH="$(uname -m)"
 if [ "$HOST_ARCH" != "aarch64" ] && [ "$HOST_ARCH" != "x86_64" ]; then
-  echo "[错误] 不支持的构建机架构: $HOST_ARCH（需要 arm64 或 x86_64）"
+  annot "[错误] 不支持的构建机架构: $HOST_ARCH（需要 arm64 或 x86_64）"
   exit 1
 fi
 if [ "$HOST_ARCH" = "x86_64" ]; then
   command -v qemu-aarch64-static >/dev/null 2>&1 || {
-    echo "[错误] x86_64 构建机需要 qemu-user-static（apt install qemu-user-static）"
+    annot "[错误] x86_64 构建机需要 qemu-user-static（apt install qemu-user-static）"
     exit 1
   }
 fi
@@ -67,6 +85,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+STEP_OUTER="[1/4] debootstrap"
 echo "[1/4] debootstrap 引导最小 Debian $DEBIAN_VERSION ($ARCH) ..."
 if [ "$HOST_ARCH" = "x86_64" ]; then
   # 交叉构建：第一阶段只解包，第二阶段在 qemu 里于 chroot 内完成
@@ -79,6 +98,7 @@ else
     --include=ca-certificates "$DEBIAN_RELEASE" "$ROOTFS_DIR" "$MIRROR"
 fi
 
+STEP_OUTER="[2/4] 挂载与写入 chroot 脚本"
 echo "[2/4] 挂载虚拟文件系统并写入 chroot 配置脚本 ..."
 # chroot 内联网必需：先落 DNS（App 端每次启动前还会再确保一次，见 ProotLauncher）
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$ROOTFS_DIR/etc/resolv.conf"
@@ -88,14 +108,21 @@ mount --bind /dev  "$ROOTFS_DIR/dev";  MNT_LIST+=("$ROOTFS_DIR/dev")
 
 cat > "$ROOTFS_DIR/zhengdao-configure.sh" <<'CONF'
 #!/bin/bash
-# chroot 内配置脚本（由 build-rootfs.sh 写入并执行；NODE_MAJOR 经 env 传入）
+# chroot 内配置脚本（由 build-rootfs.sh 写入并执行；NODE_MAJOR / UV_MIN 经 env 传入）
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# 失败自述（与 build-rootfs.sh 顶部同一套，见 docs/ERRATA.md E-039）：
+# chroot 脚本的输出在 Actions 页面上匿名不可见，所以失败时自己发 `::error::` 注解，
+# 带上当前小节（STEP）、行号、命令与退出码。
+annot() { printf '::error::%s\n' "$(printf '%s' "$1" | tr '\n' '|' | cut -c1-1500)"; }
+trap 'rc=$?; annot "RootFS 配置脚本失败：[$STEP] 第 $LINENO 行 \`$BASH_COMMAND\`，退出码 $rc"' ERR
+STEP="2.1 容器通病"
 
 echo "---- 2.1 修复容器通病（实测坑 #2）----"
 mkdir -p /var/log/apt /var/log/dpkg
 touch /var/log/apt/history.log /var/log/apt/term.log
 
+STEP="2.2 基础依赖"
 echo "---- 2.2 基础依赖（git / tmux / libatomic1 / busybox 等）----"
 apt-get update
 apt-get install -y --no-install-recommends \
@@ -104,21 +131,24 @@ apt-get install -y --no-install-recommends \
   locales bash-completion less xz-utils zstd sudo \
   tzdata
 
+STEP="2.3 locale"
 echo "---- 2.3 locale：确认 C.UTF-8 可用 ----"
 locale -a 2>/dev/null | grep -qi '^C\.utf8' || {
   sed -i 's/^# *\(C\.UTF-8.*\)/\1/' /etc/locale.gen
   locale-gen
 }
 
+STEP="2.4 Node.js"
 echo "---- 2.4 Node.js ${NODE_MAJOR}：NodeSource 官方源（设计文档 §6，不用 Debian 源旧版）----"
 curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
 apt-get install -y nodejs
 
+STEP="2.5 uv"
 echo "---- 2.5 uv：官方发行包，仅作 pip 安装器（设计文档 §6）----"
 case "$(uname -m)" in
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu"  ;;
-  *) echo "[错误] 未知架构: $(uname -m)"; exit 1 ;;
+  *) annot "[错误] 未知架构: $(uname -m)"; exit 1 ;;
 esac
 curl -fsSL "https://github.com/astral-sh/uv/releases/latest/download/uv-${UV_TARGET}.tar.gz" \
   | tar -xz -C /tmp
@@ -126,6 +156,7 @@ install -m 0755 "/tmp/uv-${UV_TARGET}/uv"  /usr/local/bin/uv
 install -m 0755 "/tmp/uv-${UV_TARGET}/uvx" /usr/local/bin/uvx
 rm -rf "/tmp/uv-${UV_TARGET}"
 
+STEP="2.6 UV_LINK_MODE"
 echo "---- 2.6 防硬链接报错：UV_LINK_MODE=copy 全局生效（实测坑 #4）----"
 printf 'export UV_LINK_MODE=copy\n' > /etc/profile.d/zhengdao-uv.sh
 chmod 0644 /etc/profile.d/zhengdao-uv.sh
@@ -138,6 +169,7 @@ mkdir -p /etc/uv
 printf '# zhengdao: proot has no working hardlinks\nlink-mode = "copy"\n' > /etc/uv/uv.toml
 chmod 0644 /etc/uv/uv.toml
 
+STEP="2.7 时区/DNS/hosts"
 echo "---- 2.7 时区、DNS 与 hosts 兜底 ----"
 # 时区 = 北京时间（用户反馈：tmux 状态栏时钟慢 8 小时 = 镜像默认 UTC）。
 # App 端 ProotLauncher 也有同样的启动时校准（老镜像用户升级 App 即生效，无需重装环境）
@@ -179,47 +211,86 @@ cat > /etc/hosts <<'HOSTSEOF'
 0.0.0.0 telemetry.anthropic.com
 HOSTSEOF
 
-echo "---- 2.8 剔除 GPU 软件渲染栈（用户拍板「终端确实没用就删」2026-10-08）----"
-# 依据（真机只读取证，脚本与原始输出见 docs/ERRATA.md E-038）：
+STEP="2.8 剔除 GPU 栈"
+echo "---- 2.8 剔除 GPU 软件渲染栈：本轮只切 libllvm19（118 MB 落盘）----"
+# 依据（真机只读取证，脚本与原始输出见 docs/ERRATA.md E-038 / E-042）：
 #   1) 真机 `ldd /usr/bin/ffmpeg` 的 NEEDED 闭包里**没有** libgallium / libLLVM：它们只是
-#      apt 声明上的依赖（libgbm1 → mesa-libgallium → libllvm19），不是加载期依赖；
+#      apt 声明上的依赖（mesa-libgallium → libllvm19），不是加载期依赖；
 #   2) proot 里没有 /dev/dri、没有 X/Wayland display ⇒ mesa 的驱动后端没有任何被拉起的入口，
 #      ffplay（SDL2/GBM 输出路径）本来就不可能用；ffmpeg/ffprobe 走纯 CPU 编解码；
 #   3) 全仓 app/ 对 libgallium|mesa|libgbm|SDL2|vulkan 零命中，客户端不碰这三样。
-# 于是卸掉 mesa-libgallium(装 34MB) + libllvm19(装 118MB) + libglx-mesa0 + libgl1-mesa-dri。
-# ⚠️ 但 libgbm1 必须留：ffmpeg/ffprobe 二进制 NEEDED libgbm.so.1（经 libsdl2 的 GBM 路径）。
-#    它声明了 `Depends: mesa-libgallium (= 版本)`，不摘掉这条，apt 就会顺着
-#    ffmpeg → libsdl2 → libgbm1 → mesa-libgallium → libllvm19 把 ffmpeg 整串带走
-#    （真机反向依赖扫描：mesa-libgallium 的父包只有 libgbm1 与 libglx-mesa0）。
-#    真实依赖是运行时 dlopen、不是 NEEDED ⇒ 摘掉声明是安全的。
+#   4) libLLVM.so.19.1 是这套软件渲染栈里最大的一块（118 MB 落盘、构建 Top20 里第二大），
+#      而它在环境里**没有任何可能的读者**（只有 mesa-libgallium 声明依赖它）。
+# ⚠️ 为什么本轮**只切 LLVM、不切 mesa 本体**（这是 Run 164 的自述注解摊开的一条链）：
+#    把 mesa-libgallium + libglx-mesa0 + libgl1-mesa-dri 一起 `apt-get -s purge` 时，模拟器给的
+#    Purg 名单是：
+#      ffmpeg | libavdevice61 | libgl1 | libglx0 | libglx-mesa0 | libgl1-mesa-dri |
+#      mesa-libgallium | libllvm19
+#    主链是 **mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg**（上一轮只摘掉
+#    libgbm1 → mesa-libgallium 这条**支线**，主链还在）⇒ 要动 mesa 本体，就得再重打包
+#    `libglx0` 与 `libgl1` 两个包，而多拿到的只有 ~34 MB，风险与改动量都不划算（E-042）。
+#    所以本轮改成切"最干净的那条边"：libllvm19 的父包**只有** mesa-libgallium 一个
+#    （真机反向依赖扫描），在 mesa-libgallium 的 control 里摘掉 `libllvm19`，purge 就只带走它自己。
 # ⚠️ 也**不跑** `apt-get autoremove`：ffmpeg 链接的 libGL.so.1（libgl1）并没有被任何包
 #    声明成依赖，autoremove 会把它当垃圾清掉、ffmpeg 随即起不来（§2.9 的 ldd 断言就是抓这个）。
-echo "[剔GPU] 重打包 libgbm1：摘掉它对 mesa-libgallium 的声明依赖"
+echo "[剔GPU] 重打包 mesa-libgallium：摘掉它对 libllvm19 的声明依赖"
 GPU_TMPDIR="$(mktemp -d)"
-( cd "$GPU_TMPDIR" && apt-get download libgbm1 >/dev/null 2>&1 ) || true
-GBM_DEB="$(ls "$GPU_TMPDIR"/libgbm1_*.deb 2>/dev/null | head -n1 || true)"
-if [ -z "$GBM_DEB" ]; then
-  echo "[断言失败] 取不到 libgbm1 的 .deb（apt-get download 失败），不敢盲删 mesa"; exit 1
+# 每一条外部命令都单独抓输出：失败时把它的 stderr 直接塞进 `::error::` 注解
+# （注解匿名可见，见文件头；Run 162 就是死在这一段但外面只能看到 exit code 2）。
+if ! MESA_DL_OUT="$( ( cd "$GPU_TMPDIR" && apt-get download mesa-libgallium ) 2>&1 )"; then
+  annot "[2.8] apt-get download mesa-libgallium 失败：$MESA_DL_OUT"; exit 1
 fi
-dpkg-deb -R "$GBM_DEB" "$GPU_TMPDIR/gbm"
-sed -i -E 's/, *mesa-libgallium[^,)]*//g' "$GPU_TMPDIR/gbm/DEBIAN/control"
-if grep -q 'mesa-libgallium' "$GPU_TMPDIR/gbm/DEBIAN/control"; then
-  echo "[断言失败] 重打包后 libgbm1 的 control 里仍残留 mesa-libgallium"; exit 1
+MESA_DEB="$(ls "$GPU_TMPDIR"/mesa-libgallium_*.deb 2>/dev/null | head -n1 || true)"
+if [ -z "$MESA_DEB" ]; then
+  annot "[2.8] 取不到 mesa-libgallium 的 .deb（apt-get download 输出：$MESA_DL_OUT），不敢盲删 libllvm19"; exit 1
 fi
-dpkg-deb -b "$GPU_TMPDIR/gbm" "$GPU_TMPDIR/libgbm1-local.deb" >/dev/null
-dpkg -i "$GPU_TMPDIR/libgbm1-local.deb" >/dev/null
+if ! MESA_RX_OUT="$(dpkg-deb -R "$MESA_DEB" "$GPU_TMPDIR/mesa" 2>&1)"; then
+  annot "[2.8] dpkg-deb -R $MESA_DEB 失败：$MESA_RX_OUT"; exit 1
+fi
+# 摘依赖：把 `libllvm19 (= 版本)` 这一条连同它前面的分隔逗号一起删掉。
+# ⚠️ 2026-10-08 的坑（Run 162 死在 exit 2、Run 163 的自述注解把它原样带回来）：
+#    原写法 `s/, *mesa-libgallium[^,)]*//g` 的字符类里带了 `)`，而版本约束自己就含括号
+#    （`(= 25.0.7-2+deb13u1)`）⇒ 只吃到右括号**之前**，把那个孤零零的 `)` 留在原地，
+#    `dpkg-deb -b` 随即报
+#    `'Depends' field, syntax error after reference to package 'libwayland-server0'`。
+#    现在改成「以逗号为界吃掉整条版本约束」，再逐项收尾：空项、尾逗号、行首逗号。
+sed -i -E \
+  -e 's/(,[[:space:]]*)?libllvm19[^,]*//g' \
+  -e 's/,[[:space:]]*,/,/g' \
+  -e 's/,[[:space:]]*$//' \
+  -e 's/:[[:space:]]*,[[:space:]]*/: /' \
+  -e 's/[[:space:]]+$//' \
+  -e '/^(Depends|Pre-Depends|Recommends|Suggests|Breaks|Conflicts|Provides|Replaces|Enhances):[[:space:]]*$/d' \
+  "$GPU_TMPDIR/mesa/DEBIAN/control"
+if grep -q 'libllvm19' "$GPU_TMPDIR/mesa/DEBIAN/control"; then
+  annot "[2.8] 重打包后 mesa-libgallium 的 control 里仍残留 libllvm19"; exit 1
+fi
+# 自己先看一眼依赖字段的语法（`dpkg-deb -b` 也会拦，但这样报错更直白、也不用等它跑完）：
+if grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/mesa/DEBIAN/control" \
+   | grep -qE ',[[:space:]]*,|,[[:space:]]*$|:[[:space:]]*,|\([[:space:]]*\)'; then
+  annot "[2.8] 摘掉 libllvm19 依赖后 control 的依赖字段语法有问题：$(grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/mesa/DEBIAN/control" | tr '\n' '|')"; exit 1
+fi
+if ! MESA_B_OUT="$(dpkg-deb -b "$GPU_TMPDIR/mesa" "$GPU_TMPDIR/mesa-libgallium-local.deb" 2>&1)"; then
+  annot "[2.8] dpkg-deb -b 重打包 mesa-libgallium 失败：$MESA_B_OUT"; exit 1
+fi
+if ! MESA_I_OUT="$(dpkg -i "$GPU_TMPDIR/mesa-libgallium-local.deb" 2>&1)"; then
+  annot "[2.8] dpkg -i 重打包后的 mesa-libgallium 失败：$MESA_I_OUT"; exit 1
+fi
 rm -rf "$GPU_TMPDIR"
-echo "[剔GPU] 先模拟卸载，确认不会连带删掉关键包"
-if ! GPU_SIM="$(apt-get -s -y purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri 2>&1)"; then
-  echo "[断言失败] apt 模拟卸载直接失败："; echo "$GPU_SIM"; exit 1
+echo "[剔GPU] 先模拟卸载 libllvm19，确认不会连带删掉关键包"
+if ! GPU_SIM="$(apt-get -s -y purge libllvm19 2>&1)"; then
+  annot "[2.8] apt 模拟卸载直接失败：$GPU_SIM"; exit 1
 fi
 echo "$GPU_SIM" | grep -E '^(Remv|Purg) ' | head -n 20 || true
-if echo "$GPU_SIM" | grep -E '^(Remv|Purg) (ffmpeg|ffprobe|libavdevice61|libsdl2-2\.0-0|libgbm1|libplacebo349|libvulkan1|libgl1|libglx0|libglvnd0|nodejs|python3|git|tmux|busybox|ripgrep|coreutils)(:arm64)? '; then
-  echo "[断言失败] 卸载 mesa 会连带移除关键包，已中止（见上面的模拟清单）"; exit 1
+if echo "$GPU_SIM" | grep -E '^(Remv|Purg) (ffmpeg|ffprobe|libavdevice61|libsdl2-2\.0-0|libgbm1|libplacebo349|libvulkan1|libgl1|libglx0|libglvnd0|mesa-libgallium|nodejs|python3|git|tmux|busybox|ripgrep|coreutils)(:arm64)? '; then
+  annot "[2.8] 卸载 libllvm19 会连带移除关键包，已中止：$(echo "$GPU_SIM" | grep -E '^(Remv|Purg) ' | head -n 20)"; exit 1
 fi
-apt-get -y purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri
+if ! GPU_PURGE_OUT="$(apt-get -y purge libllvm19 2>&1)"; then
+  annot "[2.8] apt-get purge libllvm19 真的卸载时失败：$GPU_PURGE_OUT"; exit 1
+fi
 echo "[剔GPU] 剔除后落盘体积: $(du -smx / 2>/dev/null | awk '{print $1}')MB"
 
+STEP="2.9 版本断言"
 echo "---- 2.9 版本断言（构建即验收，漂移即失败）----"
 GLIBC_VER="$(ldd --version | head -n1 | awk '{print $NF}')"
 PY_VER="$(python3 --version | awk '{print $2}')"
@@ -228,42 +299,65 @@ UV_VER="$(uv --version | awk '{print $2}')"
 echo "[zhengdao] glibc=${GLIBC_VER} python=${PY_VER} node=${NODE_VER} uv=${UV_VER}"
 case "$GLIBC_VER" in
   2.4[1-9]|2.[5-9]*) : ;;
-  *) echo "[断言失败] glibc=${GLIBC_VER}，期望 2.41+（Debian 13.7 自带，不手动升级）"; exit 1 ;;
+  *) annot "[断言失败] glibc=${GLIBC_VER}，期望 2.41+（Debian 13.7 自带，不手动升级）"; exit 1 ;;
 esac
 case "$PY_VER" in
   3.13*) : ;;
-  *) echo "[断言失败] python=${PY_VER}，期望 3.13.x（Debian 13.7 自带）"; exit 1 ;;
+  *) annot "[断言失败] python=${PY_VER}，期望 3.13.x（Debian 13.7 自带）"; exit 1 ;;
 esac
 case "$NODE_VER" in
   v${NODE_MAJOR}.*) : ;;
-  *) echo "[断言失败] node=${NODE_VER}，期望 v${NODE_MAJOR}.x（NodeSource 官方源）"; exit 1 ;;
+  *) annot "[断言失败] node=${NODE_VER}，期望 v${NODE_MAJOR}.x（NodeSource 官方源）"; exit 1 ;;
 esac
-dpkg -s libatomic1 >/dev/null 2>&1 || { echo "[断言失败] libatomic1 未安装"; exit 1; }
-command -v tmux    >/dev/null 2>&1 || { echo "[断言失败] tmux 未安装"; exit 1; }
-command -v git     >/dev/null 2>&1 || { echo "[断言失败] git 未安装"; exit 1; }
-command -v busybox >/dev/null 2>&1 || { echo "[断言失败] busybox 未安装"; exit 1; }
-command -v ffmpeg  >/dev/null 2>&1 || { echo "[断言失败] ffmpeg 未安装"; exit 1; }
-[ "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Shanghai" ] || { echo "[断言失败] /etc/localtime 未指向 Asia/Shanghai"; exit 1; }
+dpkg -s libatomic1 >/dev/null 2>&1 || { annot "[断言失败] libatomic1 未安装"; exit 1; }
+command -v tmux    >/dev/null 2>&1 || { annot "[断言失败] tmux 未安装"; exit 1; }
+command -v git     >/dev/null 2>&1 || { annot "[断言失败] git 未安装"; exit 1; }
+command -v busybox >/dev/null 2>&1 || { annot "[断言失败] busybox 未安装"; exit 1; }
+command -v ffmpeg  >/dev/null 2>&1 || { annot "[断言失败] ffmpeg 未安装"; exit 1; }
+[ "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Shanghai" ] || { annot "[断言失败] /etc/localtime 未指向 Asia/Shanghai"; exit 1; }
 
-# ── GPU 软件渲染栈剔除后的断言（E-038）：既要"真删掉了"，也要"没删坏" ──
-if dpkg -s mesa-libgallium >/dev/null 2>&1; then echo "[断言失败] mesa-libgallium 仍在（§2.8 剔除段没生效）"; exit 1; fi
-if dpkg -s libllvm19      >/dev/null 2>&1; then echo "[断言失败] libllvm19 仍在（§2.8 剔除段没生效）"; exit 1; fi
-command -v ffprobe >/dev/null 2>&1 || { echo "[断言失败] ffprobe 未安装"; exit 1; }
+# ── GPU 软件渲染栈剔除后的断言（E-038 / E-042）：既要"真删掉了"，也要"没删坏" ──
+# 本轮只切 LLVM：libllvm19 必须没了，而 mesa-libgallium **必须留着**
+# （动它会顺着 mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 把 ffmpeg 一起带走，见 §2.8 注释）。
+if dpkg -s libllvm19 >/dev/null 2>&1; then annot "[断言失败] libllvm19 仍在（§2.8 剔除段没生效）"; exit 1; fi
+echo "[断言] libllvm19 已剔除（连它的父包 mesa-libgallium 的声明依赖一起摘掉）"
+if ! dpkg -s mesa-libgallium >/dev/null 2>&1; then
+  annot "[断言失败] mesa-libgallium 不该被删掉（本轮只切 LLVM；少它说明重打包/卸载跑偏了）"; exit 1
+fi
+command -v ffprobe >/dev/null 2>&1 || { annot "[断言失败] ffprobe 未安装"; exit 1; }
 for BIN in ffmpeg ffprobe ffplay; do
   # ffplay 本来就跑不起来（无显示），这里只验"动态库都还在"，即剔除没有误伤加载期依赖
   if ldd "/usr/bin/$BIN" 2>/dev/null | grep -q 'not found'; then
-    echo "[断言失败] $BIN 有缺失的动态库："; ldd "/usr/bin/$BIN" | grep 'not found'; exit 1
+    annot "[断言失败] $BIN 有缺失的动态库："; ldd "/usr/bin/$BIN" | grep 'not found'; exit 1
   fi
 done
 ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=64x64:rate=1 -frames:v 1 -f null - \
-  || { echo "[断言失败] ffmpeg 编解码冒烟失败（剔除 GPU 栈后 ffmpeg 不可用）"; exit 1; }
-if dpkg --audit | grep -q .; then echo "[断言失败] dpkg --audit 有输出（依赖图破了）："; dpkg --audit; exit 1; fi
-apt-get check >/dev/null 2>&1 || { echo "[断言失败] apt-get check 失败（dpkg 依赖图破了）"; exit 1; }
+  || { annot "[断言失败] ffmpeg 编解码冒烟失败（剔除 GPU 栈后 ffmpeg 不可用）"; exit 1; }
+if dpkg --audit | grep -q .; then annot "[断言失败] dpkg --audit 有输出（依赖图破了）："; dpkg --audit; exit 1; fi
+apt-get check >/dev/null 2>&1 || { annot "[断言失败] apt-get check 失败（dpkg 依赖图破了）"; exit 1; }
 for TOOL in node python3 git tmux rg busybox sqlite3 curl zstd uv; do
-  command -v "$TOOL" >/dev/null 2>&1 || { echo "[断言失败] $TOOL 未安装"; exit 1; }
+  command -v "$TOOL" >/dev/null 2>&1 || { annot "[断言失败] $TOOL 未安装"; exit 1; }
 done
 
+STEP="2.10 清理"
 echo "---- 2.10 清理（控制落盘体积）----"
+# uv 的下限断言（2026-10-08 补，属本节 §2.9）。此前只**取了** UV_VER 并打印、**没有断言**——
+# glibc / python / node 三者都有 case 判断，只有 uv 是"打印了就不管了"。
+# 而这个下限是有承载的：§2.6 写入 /etc/uv/uv.toml（link-mode = copy）全靠 uv ≥0.12.22
+# 才被读取；版本一旦低于它，构建**依然成功**，但那个硬链接修复**静默失效**，
+# 表现是用户装 npm/uv 依赖时报 `failed to hardlink file ... Operation not permitted`
+# （故障排查手册坑 #4）。所以这里按"构建即验收、漂移即失败"补上。
+# UV_MIN 本该由外层经 env 传进来（见本文件末尾的 chroot 行；2026-10-08 修：此前漏传，
+# 而上面是 `set -euo pipefail` ⇒ 每次构建都死在这一行 `UV_MIN: unbound variable`）。
+# 这里再兜一层默认值，让本 heredoc 被单独抽出来跑（本地复现 / 只审这一段）时也能过。
+# ⚠️ 默认值必须与外层 `UV_MIN="0.12.22"` 是同一份，改一处就要改两处。
+UV_MIN="${UV_MIN:-0.12.22}"
+version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
+version_ge "$UV_VER" "$UV_MIN" || {
+  annot "[断言失败] uv=${UV_VER}，期望 ≥ ${UV_MIN}（该版本起支持 /etc/uv/uv.toml 系统级配置）"
+  exit 1
+}
+echo "[zhengdao] uv=${UV_VER} ≥ ${UV_MIN}（§2.6 的 /etc/uv/uv.toml 系统级配置会被读取）"
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
@@ -283,6 +377,7 @@ find /usr/share/locale -mindepth 1 -maxdepth 1 \
 rm -rf /usr/share/i18n                 # locale 生成源码（charmaps/locales 源，15.7 MB 落盘）；
                                        # C.UTF-8 是 glibc 内置、已生成的 locale 不受影响，
                                        # 代价只是环境里不能再 locale-gen 出新语言（App 用不到）
+STEP="2.11 体积断言"
 echo "---- 2.11 体积断言（防构建配置错误导致异常膨胀，v3.4）----"
 # -x 不跨文件系统：跳过 bind 挂载的 /proc /sys /dev。du 探进 /proc 会因进程条目
 # 消失而报错退出，被 pipefail 放大成构建失败——CI 首轮实测教训（v3.4 修复）
@@ -290,7 +385,7 @@ SIZE_MB="$(du -smx / 2>/dev/null | awk '{print $1}' || echo 0)"
 if [ "$SIZE_MB" -ge 400 ] && [ "$SIZE_MB" -le 3000 ]; then
   echo "[zhengdao] rootfs 落盘体积: ${SIZE_MB}MB（符合 400–3000MB 预期；真实基线出来后可收紧）"
 else
-  echo "[断言失败] rootfs 落盘体积 ${SIZE_MB}MB 超出预期范围（400–3000MB），请检查预装清单与清理步骤"
+  annot "[断言失败] rootfs 落盘体积 ${SIZE_MB}MB 超出预期范围（400–3000MB），请检查预装清单与清理步骤"
   exit 1
 fi
 rm -f /zhengdao-configure.sh
@@ -298,7 +393,11 @@ echo "CONFIGURE_OK"
 CONF
 chmod 0755 "$ROOTFS_DIR/zhengdao-configure.sh"
 
-chroot "$ROOTFS_DIR" /usr/bin/env NODE_MAJOR="$NODE_MAJOR" /bin/bash /zhengdao-configure.sh
+STEP_OUTER="[2.5/4] chroot 内配置（2.1–2.11）"
+# UV_MIN 必须传进去：内层 §2.9 的 uv 下限断言引用它，而内层是 set -euo pipefail，
+# 漏传会以 `UV_MIN: unbound variable` 让每次构建都死在那儿（2026-10-08 合并审查时发现并修掉）。
+chroot "$ROOTFS_DIR" /usr/bin/env NODE_MAJOR="$NODE_MAJOR" UV_MIN="$UV_MIN" /bin/bash /zhengdao-configure.sh
+STEP_OUTER="[3/4] 卸载与规整目录"
 
 echo "[3/4] 卸载虚拟文件系统并规整目录 ..."
 for m in "${MNT_LIST[@]}"; do umount -l "$m" 2>/dev/null || true; done
@@ -320,6 +419,7 @@ mkdir -p "$ROOTFS_DIR/root" && chmod 0700 "$ROOTFS_DIR/root"
 printf 'distro=debian-%s\narch=%s\nglibc=2.41\npython=3.13\nnode_major=%s\n' \
   "$DEBIAN_VERSION" "$ARCH" "$NODE_MAJOR" > "$ROOTFS_DIR/etc/zhengdao-rootfs.info"
 
+STEP_OUTER="[4/4] 打包 tar.zst"
 echo "[4/4] 打包 tar.zst 并计算 SHA256 ..."
 mkdir -p "$OUT_DIR"
 ASSET="debian-${DEBIAN_VERSION}-base-arm64.tar.zst"
@@ -330,7 +430,10 @@ ASSET="debian-${DEBIAN_VERSION}-base-arm64.tar.zst"
 # 注：GNU tar 经管道调用 zstd，`-T#` 多线程对管道输出无效（zstd 只在输出为普通文件时开多线程），
 # 这里就是单线程；对已经要跑 30–90 分钟的 qemu 交叉构建来说，多花几分钟压缩可以接受。
 # ZSTD_CLEVEL 与显式 `-19` 两道都写上（zstd 认环境变量，但显式参数更不容易被误删）。
-ZSTD_CLEVEL=19 tar --use-compress-program="zstd -19" -cf "$OUT_DIR/$ASSET" --numeric-owner -C "$ROOTFS_DIR" .
+if ! TAR_OUT="$(ZSTD_CLEVEL=19 tar --use-compress-program="zstd -19" -cf "$OUT_DIR/$ASSET" --numeric-owner -C "$ROOTFS_DIR" . 2>&1)"; then
+  annot "[4/4] 打包 tar.zst 失败：$(echo "$TAR_OUT" | tail -n 20)"; exit 1
+fi
+if [ -n "$TAR_OUT" ]; then echo "$TAR_OUT"; fi
 sha256sum "$OUT_DIR/$ASSET" | awk '{print $1}' > "$OUT_DIR/$ASSET.sha256"
 
 # 包体积门禁（2026-10-08 新增）：防"某个预装包又把大依赖整棵拖回来"而无人发现。
@@ -339,7 +442,7 @@ PKG_MB=$(( $(stat -c%s "$OUT_DIR/$ASSET") / 1000000 ))
 if [ "$PKG_MB" -le 280 ]; then
   echo "[zhengdao] 包体积: ${PKG_MB}MB（门禁 280MB）"
 else
-  echo "[断言失败] 包体积 ${PKG_MB}MB 超过门禁 280MB —— 检查预装清单是否又拖进大依赖"
+  annot "[断言失败] 包体积 ${PKG_MB}MB 超过门禁 280MB —— 检查预装清单是否又拖进大依赖"
   echo "           历史最大项：ffmpeg 及其 201 个私有依赖（安装体积 397.8MB / 包体积 158MB）"
   exit 1
 fi
@@ -360,12 +463,15 @@ MANIFEST_TOOL="$SCRIPT_DIR/../tools/rootfs-manifest.py"
 BASE_MANIFEST="${BASE_MANIFEST:-}"
 NEW_MANIFEST="$OUT_DIR/rootfs-manifest.txt"
 if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_TOOL" ]; then
+  STEP_OUTER="[5/5] 清单/补丁/索引"
   echo "[5/5] 生成环境清单（增量下发基线）..."
-  python3 "$MANIFEST_TOOL" manifest --root "$ROOTFS_DIR" --out "$NEW_MANIFEST" --distro "debian-$DEBIAN_VERSION"
+  if ! MF_OUT="$(python3 "$MANIFEST_TOOL" manifest --root "$ROOTFS_DIR" --out "$NEW_MANIFEST" --distro "debian-$DEBIAN_VERSION" 2>&1)"; then
+    annot "[5/5] 生成清单失败（manifest）：$MF_OUT"; exit 1
+  fi
   sha256sum "$NEW_MANIFEST" | awk '{print $1}' > "$NEW_MANIFEST.sha256"
   NEW_ENV="$(python3 "$MANIFEST_TOOL" env --manifest "$NEW_MANIFEST" | sed -n 's/^env=//p')"
   if [ -z "$NEW_ENV" ]; then
-    echo "[断言失败] 清单生成了但 env 算不出来（$NEW_MANIFEST）"
+    annot "[断言失败] 清单生成了但 env 算不出来（$NEW_MANIFEST）"
     exit 1
   fi
   PATCH_ASSET=""
@@ -377,8 +483,10 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_TOOL" ]; then
       echo "[5/5] 内容与上一版一致（env=$NEW_ENV），不产补丁"
     else
       PATCH_ASSET="rootfs-patch-${BASE_ENV}-to-${NEW_ENV}.tar.zst"
-      python3 "$MANIFEST_TOOL" patch --root "$ROOTFS_DIR" --base "$BASE_MANIFEST" --new "$NEW_MANIFEST" \
-        --out "$OUT_DIR/$PATCH_ASSET"
+      if ! PT_OUT="$(python3 "$MANIFEST_TOOL" patch --root "$ROOTFS_DIR" --base "$BASE_MANIFEST" --new "$NEW_MANIFEST" \
+        --out "$OUT_DIR/$PATCH_ASSET" 2>&1)"; then
+        annot "[5/5] 生成差分补丁失败（patch）：$PT_OUT"; exit 1
+      fi
       sha256sum "$OUT_DIR/$PATCH_ASSET" | awk '{print $1}' > "$OUT_DIR/$PATCH_ASSET.sha256"
     fi
   else
@@ -390,7 +498,10 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_TOOL" ]; then
     --out "$OUT_DIR/rootfs-index.json")
   if [ -n "$PATCH_ASSET" ]; then INDEX_ARGS+=(--patch "$OUT_DIR/$PATCH_ASSET"); fi
   if [ -n "${BUILT_AT:-}" ]; then INDEX_ARGS+=(--built-at "$BUILT_AT"); fi
-  python3 "$MANIFEST_TOOL" "${INDEX_ARGS[@]}"
+  if ! IX_OUT="$(python3 "$MANIFEST_TOOL" "${INDEX_ARGS[@]}" 2>&1)"; then
+    annot "[5/5] 生成 rootfs-index.json 失败（index）：$IX_OUT"; exit 1
+  fi
+  if [ -n "$IX_OUT" ]; then echo "$IX_OUT"; fi
   echo "ENV     : $NEW_ENV"
   echo "PATCH   : ${PATCH_ASSET:-（本次无补丁）}"
 else
