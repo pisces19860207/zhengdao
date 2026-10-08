@@ -2980,3 +2980,48 @@ merge **`28e733d`**，已推 origin/main。
 4. **本机跑 host `cargo test` 要把 w64devkit 放进 PATH**（`C:\Users\guoli\.cargo\bin;C:\Users\guoli\w64devkit\w64devkit\bin;`），否则 zstd-sys 的 `cc-rs` 报 `failed to find tool "gcc.exe"`、`exit=101`（E-027）。
 5. **别把 `Get-ChildItem -Recurse` / `glob` 指向 `rust/target`**：一万多个构建产物（incremental `.o`、`libzstd.a`、host `.dll`/`.exe`），一次调用就能烧掉约 4 万 token 的上下文。
 6. **"仓库里的文件大" ≠ "APK 大"**：本轮最初估"strip 一下 APK 能省 278 KB"，实际是**零** —— AGP 打 release 时自动 strip native 库（main 的 APK 里那个 `.so` 808,704 B，仓库里却是 1,095,744 B）。所以要判断"瘦身能不能省用户流量"，必须**拆开 APK 看 `lib/` 条目的 uncompressed/compressed 尺寸**，不能看仓库里那份文件的大小。
+
+## E-046 · 2026-10-08 · `feat/v2.0-r1-rust-core-16kb` 的活已经全在 main 里了 —— 别再合并它（合并会回拉 7 个早就修掉的坑）
+
+**结论：该分支 superseded，本地与远端一并删除。内容在 main 里逐字节可查，删了不丢东西。**
+
+**对拍证据（只读核对，未合并）**：分支 head `8484d46`、merge-base `725ebef`，4 提交 / 30 文件 +675/−684。它做的三件事：
+
+1. `008d554` Rust 收编：两个 crate 两个 `.so`（1,129,064 B）→ 单 crate `rust/core` + `libzhengdao_core.so` 807,712 B（4 个 LOAD 段 `p_align` 全 `0x4000`）。
+2. `dd75713` 终端页唯一化（`CLEAR_TOP|SINGLE_TOP`）。
+3. `5697943` + `8484d46` CI 加 `:app:assembleRelease`。
+
+三件事**全部**已被 main 覆盖，而且**每条都能当场复核**（下面都是本轮实跑过的命令）：
+
+- **证据 1（内容逐字节）**：`git diff --stat 008d554 af37010 -- rust app/src/main/jniLibs app/proguard-rules.pro app/src/main/java/com/example/zhengdao/rust app/src/main/cpp` ⇒ **输出为空**，即分支的 Rust 收编结果与 main 的 `af37010` 在这些路径上一字不差（两个提交的提交信息不同、patch-id 也不同，只有对拍才知道是同一件事）。
+- **证据 2（patch-id 相同）**：分支 `dd75713`（终端页唯一化）与 main `b221603` 的 `git patch-id --stable` **同为 `f1c39c8336149320e7c45bce2e034987d59de39e`**。
+- **证据 3（被更严格的门禁取代）**：CI 出正式包（分支 `5697943` + `8484d46`）在 main 侧由 `fc74cd5` + E-014 取代 —— 分支版本自称"不需要任何密钥"，而 E-014 要求 `DEBUG_KEYSTORE_B64` 与 `EXPECTED_SHA256=44E2FE86…`。
+
+**合并面**：`git merge-tree --write-tree main <branch>` → **9 路径 / 20 个冲突块** + 3 处 rename/delete + 3 处 add/add。注意 `merge-tree` 写出的树**本身就带冲突标记**（`<<<<<<< main` / `>>>>>>> feat/v2.0-r1-rust-core-16kb`），所以 `git diff --shortstat main <tree>` 里那一百多行 insertions 只是标记文本 —— 它的含义是「把每个冲突块都取 main 侧之后，结果与 main 一致」。**结论：今天这个分支只能以"全部丢弃"的方式合并；"取分支侧"会踩下面 7 个早就修掉的坑（本轮逐条实测复核，括号里是复核方式）**：
+
+1. `.github/workflows/build.yml:106` 仍是 `run: bash rootfs/build-proot.sh "$GITHUB_WORKSPACE/rootfs-out"`，而 main 已按 E-016 删掉这个脚本（`git grep build-proot.sh <branch>` 命中 build.yml 与脚本本身）。
+2. `rust/core/src/jni_bridge.rs` 无 `PROGRESS_DISABLED`（0 次命中）、无 `exception_clear`（0 次）⇒ 退回 E-022 事故版。
+3. `app/proguard-rules.pro` 只有类级 `-keep class com.example.zhengdao.rust.CoreNative {`，**缺** `public static void onProgress(java.lang.String, java.lang.String);`（main 有）⇒ R8 改名后 Rust 反向回调在 release 上直接 `NoSuchMethodError … onProgress(...)V` / SIGABRT。
+4. `rust/core/src/tests.rs` 含 **7 个字面 NUL 字节**（实测正则计数），是 E-028 之前的版本（`link_name()` 未进 `#[cfg(unix)]`）。
+5. `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` = 807,712 B，而 main 现在是 **811,592 B**（E-045 为 Rust 完整性锚重建并 strip 后的入库版）。
+6. `docs/ERRATA.md` 停在 E-013 时代（分支约 500 行，main 已 2900+ 行）⇒ 整段搬回来会把 E-012/E-013 的旧结论重新带进文档（E-014 已推翻它们）。
+7. `app/src/main/java/com/example/zhengdao/TerminalActivity.kt` 里 `routed` 0 次、`pendingAgentId` 0 次 ⇒ 缺 main 的 `onNewIntent` 闸与 Agent 入口。
+
+**教训**：
+
+1. **里程碑分支合过一次、内容进了 main 之后，要主动标 superseded 并删掉**：留着它最大的风险不是占地方，而是有人（或某个自动化）真的去 merge 它，用"取分支侧解冲突"的方式把 7 个已修问题一次性搬回来。
+2. **判"是否已被覆盖"要用 patch-id / blob sha，不是看提交信息**：这个分支的提交信息与 main 的对应提交不同（各自独立写的），但 `git patch-id` 一模一样 ⇒ 只有对拍才能确认。
+3. **`merge-tree` 的冲突数不代表合并结果的大小**：这里 20 个冲突块，全部取 main 侧后结果是 no-op —— 先看 `git diff --shortstat main <merged-tree>` 再决定要不要花力气解冲突。
+
+## E-047 · 2026-10-08 · 真机上"按钮点不动"先别改代码：第三方悬浮窗与 IME 的**隐形触摸带**会把点击吃掉
+
+**症状**：真机验收时「检查环境更新」按钮在 `y=2223` 与 `y=1254` 两处、`input tap` 与"滑动到位再点"都不响应；`uiautomator dump` 里按钮明明在（bounds 正常、`clickable=true`），点下去毫无反应，RunLog 也没有任何新行。同一台机器上别的按钮点得动。
+
+**根因（实测）**：番茄小说（`com.phoenix.read`）的第三方悬浮窗在该机型上是一块**活的、会移动的** `touchableRegion`。`adb shell am force-stop com.phoenix.read` 之后，**同一个坐标、同一次 `input tap` 立刻生效**（当场弹出「可以重装环境」AlertDialog）。旁证：本机 IME 窗口 `mInputShown=false` 而 `mIsInputViewShown=true`、`touchableRegion=(0,1850 - 1312,2707)` —— 一条**看不见、却在吃点击**的底带；`x=656` 的滑动起点落在这条带里时整页不动。
+
+**教训 / 以后这么干**：
+
+1. **真机"点不动"先怀疑不是 App**：`adb shell am force-stop <悬浮窗包名>` 后拿**同一坐标**重试；立刻生效 ⇒ 与 App 代码无关，别去改 UI 代码（用户投诉的第 4 条「第三方悬浮窗吃掉点按」就是这一类）。
+2. **坐标必须现算**：每次 `uiautomator dump` 取**当前** bounds 的中心再点，不要用上一轮记住的固定坐标 —— 键盘弹出、浮窗移形、列表重排都会让固定坐标失效（K2 验收时曾因固定坐标把 4 条消息连成一个输入框里没发出去）。
+3. **滑动起点避开悬浮窗与 IME 的触摸带**（这台机器上 `x=656` 常落在带里，改 `x=400` 就稳）。
+4. **`uiautomator dump` 看不到第三方浮窗**（它在另一个 window）⇒ "dump 里有这个按钮"**不代表**"点得到"。排查时先 `dumpsys window windows | Select-String -Pattern 'touchableRegion|mAttrs'` 看有没有第三方 window 压在目标上。
