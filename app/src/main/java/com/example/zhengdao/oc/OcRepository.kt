@@ -515,9 +515,15 @@ class OcRepository(
                 // 一句话原因进 state 供 UI 显示。列表保持原样（不动 models）——
                 // 弱网下拉取失败不该把已缓存的可用列表擦掉。
                 ocLog("拉取模型目录失败 ${t.javaClass.simpleName}: ${t.message}")
-                _state.update {
-                    it.copy(lastModelFetchError = t.message?.take(120) ?: t.javaClass.simpleName)
+                // 给用户的措辞（HumanizeError 的口径，见 util/HumanizeError.kt）：
+                // ⚠️ OcHttpException 是 IOException 的子类，直接交给 HumanizeError 会被
+                //    ioTitle 报成"文件读写失败"（用户会去查存储）。所以 HTTP 失败单独说状态码。
+                val shown = when {
+                    t is OcHttpException -> "服务器返回 ${t.code}"
+                    t is java.io.IOException -> com.example.zhengdao.util.HumanizeError.title(t)
+                    else -> t.message?.take(120) ?: t.javaClass.simpleName
                 }
+                _state.update { it.copy(lastModelFetchError = shown) }
                 emptyList()
             },
         )
