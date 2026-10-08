@@ -75,8 +75,24 @@ jobs:
       # 这 8 例（sha256 4 + extract 4）是解压主路径的安全网，此前只在人手动跑过：
       # 本机 cargo test 需要 host C 编译器（Windows 上还得 w64devkit 在 PATH，见 ERRATA E-027），
       # 而 ci/build 两条流水线里从来没有 cargo 步骤 —— 放到 ubuntu runner（自带 gcc）最省事。
+      #
+      # 失败时把要点抛成 annotation：本仓库的 Actions 日志未登录读不到，
+      # 而 `GET /repos/{owner}/{repo}/check-runs/{id}/annotations` 是匿名可读的
+      # （首次把这一步接进 CI 就是靠它才看到平台差异的原文，见 ERRATA E-028）。
       - name: Rust 逻辑层单测（PC 层纯逻辑，失败即红）
-        run: cd rust && cargo test -p zhengdao_core --release
+        run: |
+          cd rust
+          set +e
+          cargo test -p zhengdao_core --release 2>&1 | tee /tmp/cargo-test.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E '(^error|^warning: unused|FAILED|panicked|assertion|^ *-->|left:|right:)' /tmp/cargo-test.log \
+              | tail -n 8 | while IFS= read -r line; do
+                  echo "::error title=cargo test 失败::${line}"
+                done
+            echo "::error title=cargo test::退出码 ${code}（完整输出见本步骤日志）"
+          fi
+          exit "$code"
 
       - name: 归档单测报告（无论成败都上传）
         if: always()
