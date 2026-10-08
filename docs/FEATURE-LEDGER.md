@@ -418,6 +418,25 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `errors.log`/旧 `.prev.txt` 都不算归档、绝不被轮转删掉"）；全量 `:app:testDebugUnitTest` =
 > **30 suites / 232 tests / 0 failures**。详见 `docs/ERRATA.md` E-037。
 
+> **2026-10-08 续（环境包再瘦身：剔掉 152 MB 的 GPU 软件渲染栈 —— mesa + LLVM）**：
+> 用户 m08482 条件性拍板「GPU软件渲染栈要是在终端确实没用或者某些人也用不到的话就删吧」。
+> 先真机只读取证（探针脚本经 `Download/证道/` ↔ guest `/opt/zhengdao/` 这个已有 bind 送进去，
+> 输出写回同一个目录再 `adb` 读回，绕开 `input text` 对引号/`$` 的破坏）：
+> ① 反向依赖扫描 = `mesa-libgallium` 的父包只有 `libgbm1`/`libglx-mesa0`，`libgbm1` 的父包是
+> `libgl1-mesa-dri`/`libsdl2-2.0-0`，`libsdl2` 的父包是 `ffmpeg`/`libavdevice61`，`libllvm19` 的唯一父包是
+> `mesa-libgallium`；② `ldd /usr/bin/ffmpeg`（`ffprobe`/`ffplay` 同）的 NEEDED 闭包里**没有** `libgallium-*.so`、
+> 也没有 `libLLVM.so.19.1` ⇒ mesa/LLVM 对 ffmpeg 只是 apt **声明**上的依赖（运行时 dlopen），不是加载依赖；
+> ③ `dpkg-query` 实测 `libllvm19` **120,416 KB** + `mesa-libgallium` **34,238 KB**（`du` 落盘 118 MB + 34 MB），
+> 而 `libplacebo349`（8.4 MB）/`libvulkan1` 是 ffmpeg 的**真**依赖；④ 环境里没有 `/dev/dri`、没有
+> `/usr/share/vulkan/icd.d`、没有 X/Wayland display ⇒ mesa 的驱动后端没有任何被拉起的入口，`ffplay` 本来就不可能用；
+> `app/` 全仓 grep 这些库名 **0 命中**。修法 = `rootfs/build-rootfs.sh` 新增 **§2.8**：重打包 `libgbm1` 摘掉它对
+> `mesa-libgallium` 的声明依赖（`apt-get download` → `dpkg-deb -R` → `sed` control → `dpkg-deb -b` → `dpkg -i`），
+> 再 `apt-get -s` 模拟卸载、断言关键包不在移除名单里，然后 `apt-get -y purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri`；
+> **刻意不跑 `apt-get autoremove`**（ffmpeg 链接的 `libGL.so.1` 没被任何包声明，会被当垃圾清掉 ⇒ ffmpeg 起不来）；
+> **§2.9** 追加断言：两个包真没了 + `ldd {ffmpeg,ffprobe,ffplay}` 无 `not found` + ffmpeg 转码冒烟 +
+> `dpkg --audit` 空 / `apt-get check` 通过 + `node python3 git tmux rg busybox sqlite3 curl zstd uv` 逐个存在。
+> 基线 `du -smx /` = **1021 MB**。详见 `docs/ERRATA.md` E-038。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -445,6 +464,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 工作区边界（内置文件夹浏览器） | ✅ 在用 | `2b60a44` | `terminal/Workspace.kt` |
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
+| 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈 mesa/LLVM） | ✅ 在用 | 本次（E-038；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
 | RunLog 运行日志（落 `Download/证道/logs`，按轮归档保留最近 20 份 / 20 MB + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改；归档式保留见 E-037） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
 | 太极渲染 + 模型池选择器 | ✅ 在用 | `b95f82a` | `ui/taiji/TaijiComponents.kt`、`ui/taiji/ModelSheet.kt` |

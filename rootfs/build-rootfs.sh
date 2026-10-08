@@ -179,7 +179,48 @@ cat > /etc/hosts <<'HOSTSEOF'
 0.0.0.0 telemetry.anthropic.com
 HOSTSEOF
 
-echo "---- 2.8 版本断言（构建即验收，漂移即失败）----"
+echo "---- 2.8 剔除 GPU 软件渲染栈（用户拍板「终端确实没用就删」2026-10-08）----"
+# 依据（真机只读取证，脚本与原始输出见 docs/ERRATA.md E-038）：
+#   1) 真机 `ldd /usr/bin/ffmpeg` 的 NEEDED 闭包里**没有** libgallium / libLLVM：它们只是
+#      apt 声明上的依赖（libgbm1 → mesa-libgallium → libllvm19），不是加载期依赖；
+#   2) proot 里没有 /dev/dri、没有 X/Wayland display ⇒ mesa 的驱动后端没有任何被拉起的入口，
+#      ffplay（SDL2/GBM 输出路径）本来就不可能用；ffmpeg/ffprobe 走纯 CPU 编解码；
+#   3) 全仓 app/ 对 libgallium|mesa|libgbm|SDL2|vulkan 零命中，客户端不碰这三样。
+# 于是卸掉 mesa-libgallium(装 34MB) + libllvm19(装 118MB) + libglx-mesa0 + libgl1-mesa-dri。
+# ⚠️ 但 libgbm1 必须留：ffmpeg/ffprobe 二进制 NEEDED libgbm.so.1（经 libsdl2 的 GBM 路径）。
+#    它声明了 `Depends: mesa-libgallium (= 版本)`，不摘掉这条，apt 就会顺着
+#    ffmpeg → libsdl2 → libgbm1 → mesa-libgallium → libllvm19 把 ffmpeg 整串带走
+#    （真机反向依赖扫描：mesa-libgallium 的父包只有 libgbm1 与 libglx-mesa0）。
+#    真实依赖是运行时 dlopen、不是 NEEDED ⇒ 摘掉声明是安全的。
+# ⚠️ 也**不跑** `apt-get autoremove`：ffmpeg 链接的 libGL.so.1（libgl1）并没有被任何包
+#    声明成依赖，autoremove 会把它当垃圾清掉、ffmpeg 随即起不来（§2.9 的 ldd 断言就是抓这个）。
+echo "[剔GPU] 重打包 libgbm1：摘掉它对 mesa-libgallium 的声明依赖"
+GPU_TMPDIR="$(mktemp -d)"
+( cd "$GPU_TMPDIR" && apt-get download libgbm1 >/dev/null 2>&1 ) || true
+GBM_DEB="$(ls "$GPU_TMPDIR"/libgbm1_*.deb 2>/dev/null | head -n1 || true)"
+if [ -z "$GBM_DEB" ]; then
+  echo "[断言失败] 取不到 libgbm1 的 .deb（apt-get download 失败），不敢盲删 mesa"; exit 1
+fi
+dpkg-deb -R "$GBM_DEB" "$GPU_TMPDIR/gbm"
+sed -i -E 's/, *mesa-libgallium[^,)]*//g' "$GPU_TMPDIR/gbm/DEBIAN/control"
+if grep -q 'mesa-libgallium' "$GPU_TMPDIR/gbm/DEBIAN/control"; then
+  echo "[断言失败] 重打包后 libgbm1 的 control 里仍残留 mesa-libgallium"; exit 1
+fi
+dpkg-deb -b "$GPU_TMPDIR/gbm" "$GPU_TMPDIR/libgbm1-local.deb" >/dev/null
+dpkg -i "$GPU_TMPDIR/libgbm1-local.deb" >/dev/null
+rm -rf "$GPU_TMPDIR"
+echo "[剔GPU] 先模拟卸载，确认不会连带删掉关键包"
+if ! GPU_SIM="$(apt-get -s -y purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri 2>&1)"; then
+  echo "[断言失败] apt 模拟卸载直接失败："; echo "$GPU_SIM"; exit 1
+fi
+echo "$GPU_SIM" | grep -E '^(Remv|Purg) ' | head -n 20 || true
+if echo "$GPU_SIM" | grep -E '^(Remv|Purg) (ffmpeg|ffprobe|libavdevice61|libsdl2-2\.0-0|libgbm1|libplacebo349|libvulkan1|libgl1|libglx0|libglvnd0|nodejs|python3|git|tmux|busybox|ripgrep|coreutils)(:arm64)? '; then
+  echo "[断言失败] 卸载 mesa 会连带移除关键包，已中止（见上面的模拟清单）"; exit 1
+fi
+apt-get -y purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri
+echo "[剔GPU] 剔除后落盘体积: $(du -smx / 2>/dev/null | awk '{print $1}')MB"
+
+echo "---- 2.9 版本断言（构建即验收，漂移即失败）----"
 GLIBC_VER="$(ldd --version | head -n1 | awk '{print $NF}')"
 PY_VER="$(python3 --version | awk '{print $2}')"
 NODE_VER="$(node --version)"
@@ -204,7 +245,25 @@ command -v busybox >/dev/null 2>&1 || { echo "[断言失败] busybox 未安装";
 command -v ffmpeg  >/dev/null 2>&1 || { echo "[断言失败] ffmpeg 未安装"; exit 1; }
 [ "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Shanghai" ] || { echo "[断言失败] /etc/localtime 未指向 Asia/Shanghai"; exit 1; }
 
-echo "---- 2.9 清理（控制落盘体积）----"
+# ── GPU 软件渲染栈剔除后的断言（E-038）：既要"真删掉了"，也要"没删坏" ──
+if dpkg -s mesa-libgallium >/dev/null 2>&1; then echo "[断言失败] mesa-libgallium 仍在（§2.8 剔除段没生效）"; exit 1; fi
+if dpkg -s libllvm19      >/dev/null 2>&1; then echo "[断言失败] libllvm19 仍在（§2.8 剔除段没生效）"; exit 1; fi
+command -v ffprobe >/dev/null 2>&1 || { echo "[断言失败] ffprobe 未安装"; exit 1; }
+for BIN in ffmpeg ffprobe ffplay; do
+  # ffplay 本来就跑不起来（无显示），这里只验"动态库都还在"，即剔除没有误伤加载期依赖
+  if ldd "/usr/bin/$BIN" 2>/dev/null | grep -q 'not found'; then
+    echo "[断言失败] $BIN 有缺失的动态库："; ldd "/usr/bin/$BIN" | grep 'not found'; exit 1
+  fi
+done
+ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=64x64:rate=1 -frames:v 1 -f null - \
+  || { echo "[断言失败] ffmpeg 编解码冒烟失败（剔除 GPU 栈后 ffmpeg 不可用）"; exit 1; }
+if dpkg --audit | grep -q .; then echo "[断言失败] dpkg --audit 有输出（依赖图破了）："; dpkg --audit; exit 1; fi
+apt-get check >/dev/null 2>&1 || { echo "[断言失败] apt-get check 失败（dpkg 依赖图破了）"; exit 1; }
+for TOOL in node python3 git tmux rg busybox sqlite3 curl zstd uv; do
+  command -v "$TOOL" >/dev/null 2>&1 || { echo "[断言失败] $TOOL 未安装"; exit 1; }
+done
+
+echo "---- 2.10 清理（控制落盘体积）----"
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
@@ -224,7 +283,7 @@ find /usr/share/locale -mindepth 1 -maxdepth 1 \
 rm -rf /usr/share/i18n                 # locale 生成源码（charmaps/locales 源，15.7 MB 落盘）；
                                        # C.UTF-8 是 glibc 内置、已生成的 locale 不受影响，
                                        # 代价只是环境里不能再 locale-gen 出新语言（App 用不到）
-echo "---- 2.10 体积断言（防构建配置错误导致异常膨胀，v3.4）----"
+echo "---- 2.11 体积断言（防构建配置错误导致异常膨胀，v3.4）----"
 # -x 不跨文件系统：跳过 bind 挂载的 /proc /sys /dev。du 探进 /proc 会因进程条目
 # 消失而报错退出，被 pipefail 放大成构建失败——CI 首轮实测教训（v3.4 修复）
 SIZE_MB="$(du -smx / 2>/dev/null | awk '{print $1}' || echo 0)"
