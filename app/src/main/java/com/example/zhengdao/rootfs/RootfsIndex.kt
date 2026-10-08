@@ -5,7 +5,7 @@
 package com.example.zhengdao.rootfs
 
 import android.util.Log
-import com.example.zhengdao.ui.Ed25519
+import com.example.zhengdao.ui.Ed25519Verify
 import java.util.Base64
 
 /**
@@ -133,6 +133,10 @@ object RootfsIndexFetcher {
      * ⚠️ 必须对**原始字节**验：签名覆盖文件全部字节，先 trim 再验恒败
      * （2026-10-04 在 manifest 上实测踩过，恰好差末尾一个换行）。
      *
+     * 计算走 `ui/Ed25519Verify`（Rust 核心优先 + 平台对拍，见 ERRATA E-051）——
+     * 与 agents 清单**同一条入口**：此前索引这条直连平台实现，等于同一信任链上
+     * 有两种验证强度，而 Rust 侧的真实签名输入只覆盖了清单。
+     *
      * @param publicKeyBase64 仅测试会传入别的公钥（错钥方向要能覆盖）；生产走默认值。
      */
     fun verifySignature(
@@ -143,7 +147,7 @@ object RootfsIndexFetcher {
         val sig = Base64.getDecoder().decode(signatureBase64.trim())
         val pub = Base64.getDecoder().decode(publicKeyBase64)
         check(pub.size == 32) { "索引公钥配置非法（长度 ${pub.size} ≠ 32）" }
-        Ed25519.verify(pub, sig, indexBytes)
+        Ed25519Verify.verify(pub, sig, indexBytes, "索引")
     } catch (t: Throwable) {
         Log.w("RootfsIndexFetcher", "索引验签异常（视为失败）: ${t.message}")
         false
