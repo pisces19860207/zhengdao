@@ -441,6 +441,8 @@ fun HomeScreen(
         // 用户原话：「重新装 APP 的话也要像装环境一样的，自己就瞬间装好了」。环境那一半
         // 已经做到了（本地有包就免下载）；这一条补上 Agent 那一半——装了什么是记在
         // Download/证道/agents/installed.json 里的，卸载 App 也带不走。
+        // 文案（2026-10-08 用户拍板，见 ERRATA E-040）：旧文案写死「程序已随上次卸载消失」，
+        // 而账本里更常见的是「上次装到一半失败」（state=installing）——改成两种情形都盖住。
         if (restoreList.isNotEmpty()) {
             item {
                 Card(
@@ -460,7 +462,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "这些 Agent 的程序已随上次卸载消失，但安装脚本与包缓存还在 " +
+                            text = "这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 " +
                                 "Download/证道/agents 与 cache 里 —— 恢复时能走本地的就不联网：" +
                                 restoreList.joinToString("、") { it.name },
                             style = MaterialTheme.typography.bodySmall,

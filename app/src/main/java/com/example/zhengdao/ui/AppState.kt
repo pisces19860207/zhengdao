@@ -62,6 +62,18 @@ object AppState {
         val npmPackage: String? = null,   // 非空时可探测已装版本 + 查 npm 最新版
         val installedVersion: String? = null, // node_modules package.json 探测；null = 版本未知
         val uninstallCmd: String? = null, // P3：卸载命令（guest 内执行）
+        /**
+         * 能不能进「恢复全部」的候选（2026-10-08，用户拍板）。
+         *
+         * `false` = 官方安装器在**受限网络**下必然失败，把它当成"装过、可以一键恢复"只会递给
+         * 用户一个点了必错的按钮。判据不是猜的，是真机网络探针（2026-10-08 17:19）：
+         * 环境里只有 `registry.npmmirror.com -> 200`，`github.com` / `raw.githubusercontent.com` /
+         * `antigravity.google` / `registry.npmjs.org` / `www.google.com` 全 `000`。
+         * 用户原话：「清掉 AGY 的恢复功能吧，谷歌对地域限制太严了，除非把终端的 IP、地址
+         * 什么的都改成国外才行」——所以只为 AGY 关掉恢复，**安装卡片保留**（境外网络下仍可装，
+         * 装好了会被文件探测认出来，账本照样记账）。
+         */
+        val restorable: Boolean = true,
     )
 
     fun rootfsInstalled(ctx: Context): Boolean =
@@ -192,6 +204,9 @@ object AppState {
                         "rootfs/usr/local/lib/agy",
                     )
                 ),
+                // 不参与「恢复全部」：官方安装器要从 antigravity.google 拉 manifest，
+                // 国内网络到不了（见 AgentInfo.restorable 的注释与网络探针记录）。
+                restorable = false,
             ),
         )
 
