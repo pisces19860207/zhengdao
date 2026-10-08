@@ -103,8 +103,8 @@ fun SettingsScreen(
     // 设置页只展示存储占用。留着会每次进页白跑一次采集（v1.1 起采集还包含 node
     // 二进制的版本扫描），故删掉。
     // 2026-10-08：把"修复失败 / 回退失败"两个 Toast 升级为 Snackbar——MD3 不推荐用
-    // Toast 喂需要"看完详情"的错误。SnackbarHost 装在顶层 Box 底部，配合
-    // 复用 showPrevLog 让用户能从 action 直达日志原文（t.message 仍落 RunLog 不丢）。
+    // Toast 喂需要"看完详情"的错误。SnackbarHost 装在顶层 Box 底部，action「查看日志」
+    // 经 openLogFromSnackbar() 现场取一次日志原文再开弹窗（t.message 仍落 RunLog 不丢）。
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var repairConfirm by remember { mutableStateOf(false) }
@@ -122,9 +122,48 @@ fun SettingsScreen(
 
     /** 索引给的增量补丁（基线与本机相符时才会被赋上）；非 null = 弹窗确认后先试增量。 */
     var pendingPatch by remember { mutableStateOf<PatchRef?>(null) }
+    /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
     var prevLogText by remember { mutableStateOf<String?>(null) }
     var archiveCount by remember { mutableStateOf(0) }
-    var showPrevLog by remember { mutableStateOf(false) }
+
+    /**
+     * 日志弹窗要显示的原文；null = 不弹。**文本即开关**。
+     *
+     * 为什么不再用 `showPrevLog: Boolean` + `prevLogText` 两个状态：Snackbar 的
+     * 「查看日志」只置了布尔位，而弹窗还要求 `prevLogText != null`；本轮刚失败时
+     * prevLogText 仍是 null（进页时算的是"上一轮有没有错"）⇒ 用户点了**没有任何反应**。
+     * 合成一个状态后，"显示什么"和"弹不弹"不可能再各自漂移。
+     */
+    var logDialogText by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Snackbar 的「查看日志」→ 弹窗：**现场读一次日志**再开。
+     *
+     * 取件顺序 本轮日志(zhengdao-log.txt) → 最新归档 → 旧版 .prev 文件：本轮失败的那行
+     * RunLog.log 已同步写进本轮日志，所以这条路径基本一定有内容。真的一份都没有时给
+     * 明确 Toast（指向日志目录），**绝不静默**。
+     */
+    fun openLogFromSnackbar() {
+        scope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching {
+                    (com.example.zhengdao.rootfs.RunLog.file()
+                        ?: com.example.zhengdao.rootfs.RunLog.latestArchive()
+                        ?: com.example.zhengdao.rootfs.RunLog.prevFile())?.readText()
+                }.getOrNull()
+            }
+            if (text.isNullOrBlank()) {
+                Toast.makeText(
+                    ctx,
+                    "这次的日志还没写出来。日志目录：${com.example.zhengdao.rootfs.RunLog.dirPath(ctx)}（用文件管理器打开）",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } else {
+                logDialogText = text
+            }
+        }
+    }
+
     var checking by remember { mutableStateOf(false) }
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
@@ -844,7 +883,8 @@ fun SettingsScreen(
                                     InstallFlow.fail(ctx, "回退失败：${HumanizeError.title(t)}")
                                     // 2026-10-08：Toast → Snackbar（带"查看日志"action）。
                                     // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
-                                    // 用户看的用人话，进 Snackbar 后可点 action 跳到 showPrevLog AlertDialog。
+                                    // 用户看的用人话，进 Snackbar 后点 action 由 openLogFromSnackbar()
+                                    // 现场取日志并弹窗（缺日志时给指向目录的 Toast，不静默）。
                                     // 必须在主线程弹——scope 是 Composable 的 CoroutineScope，
                                     // 但 rememberCoroutineScope() 默认走 Dispatchers.Main.immediate。
                                     scope.launch {
@@ -854,8 +894,8 @@ fun SettingsScreen(
                                             duration = SnackbarDuration.Indefinite,
                                         )
                                         if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                                            // 触发复用 showPrevLog AlertDialog（SettingsScreen:1112 的）
-                                            showPrevLog = true
+                                            // 现场取日志再弹窗（直接置弹窗状态会因文本仍是 null 而静默无操作）
+                                            openLogFromSnackbar()
                                         }
                                     }
                                 }
@@ -934,7 +974,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (prevLogText != null) {
+            prevLogText?.let { prev ->
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "上次运行检测到错误，日志已保留（可直接复制反馈）。",
@@ -942,7 +982,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = { showPrevLog = true }) { Text("查看上次日志") }
+                OutlinedButton(onClick = { logDialogText = prev }) { Text("查看上次日志") }
             }
             if (archiveCount > 3) {
                 TextButton(onClick = {
@@ -1115,7 +1155,7 @@ fun SettingsScreen(
                                 android.os.Handler(ctx.mainLooper).post { storageTick++ }
                             } catch (t: Throwable) {
                                 InstallFlow.fail(ctx, "修复失败：${HumanizeError.title(t)}")
-                                // 2026-10-08：Toast → Snackbar（带"查看日志"action），见 :842 注释
+                                // 2026-10-08：Toast → Snackbar（带"查看日志"action），同"回退失败"分支
                                 scope.launch {
                                     val r = snackbarHostState.showSnackbar(
                                         message = "修复失败：${HumanizeError.title(t)}",
@@ -1123,7 +1163,8 @@ fun SettingsScreen(
                                         duration = SnackbarDuration.Indefinite,
                                     )
                                     if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                                        showPrevLog = true
+                                        // 同上：现场取日志再弹，缺日志时会有指向目录的 Toast
+                                        openLogFromSnackbar()
                                     }
                                 }
                             }
@@ -1137,14 +1178,16 @@ fun SettingsScreen(
         )
     }
 
-    // ── 上次运行日志查看弹窗 ──
-    if (showPrevLog && prevLogText != null) {
+    // ── 运行日志查看弹窗 ──
+    // 文本非空才弹（两个入口都只在拿到非空文本时才赋值，见 logDialogText / openLogFromSnackbar）：
+    // 不再用"布尔位 + 文本"两道门叠加——那正是"点了没反应"的来源。
+    logDialogText?.takeIf { it.isNotBlank() }?.let { log ->
         AlertDialog(
-            onDismissRequest = { showPrevLog = false },
-            title = { Text("上次运行日志") },
+            onDismissRequest = { logDialogText = null },
+            title = { Text("运行日志") },
             text = {
                 Text(
-                    prevLogText!!.takeLast(6000),
+                    log.takeLast(6000),
                     style = MaterialTheme.typography.bodySmall,
                 )
             },
@@ -1152,11 +1195,11 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                         as android.content.ClipboardManager
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-prevlog", prevLogText))
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-log", log))
                     Toast.makeText(ctx, "已复制全部日志", Toast.LENGTH_SHORT).show()
                 }) { Text("复制全部") }
             },
-            dismissButton = { TextButton(onClick = { showPrevLog = false }) { Text("关闭") } },
+            dismissButton = { TextButton(onClick = { logDialogText = null }) { Text("关闭") } },
         )
     }
 

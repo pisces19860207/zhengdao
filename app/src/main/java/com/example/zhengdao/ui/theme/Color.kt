@@ -10,7 +10,8 @@ import androidx.compose.ui.graphics.Color
 // 会不达 WCAG AA 的 4.5:1。下面对每一个用作小字的色都给了加深变体，规则是
 // 「大色块/图标用原色，小字用 Text 变体」。
 val IOSBlue = Color(0xFF007AFF)           // systemBlue：主色（按钮/链接/选中态）
-val IOSBlueText = Color(0xFF0A63C9)       // 主蓝的小字变体：#007AFF 白底仅 4.02:1，此值 4.9:1
+// 2026-10-08 删除主蓝的小字变体（原 #0A63C9）：全库 grep 零引用 ⇒ 死常量。当时加它是
+// 给主蓝的小字准备的，实际没有一处小字用主蓝；将来真需要，再按上面的规则补加深值。
 val IOSBg = Color(0xFFF2F2F7)             // systemGroupedBackground：页面底色
 val IOSCard = Color(0xFFFFFFFF)           // secondarySystemGroupedBackground：卡片
 val IOSLabel = Color(0xFF1C1C1E)          // label：主文字

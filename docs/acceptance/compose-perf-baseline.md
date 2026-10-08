@@ -71,7 +71,7 @@ frame_overrun_millis_p95        = +7.02
 frame_overrun_millis_p99        = +49.63
 ```
 
-### 3. terminalSwitch（点「洞天」拉起 TerminalActivity）
+### 3. terminalSwitch（点「终端」拉起 TerminalActivity）
 
 ```
 frame_count_median              = 11      (min 9 / max 27, σ 7.5)
