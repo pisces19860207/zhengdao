@@ -24,12 +24,18 @@
 #   glibc   = Debian 13.7 自带（2.41），只读不升
 #   Python  = Debian 13.7 自带（3.13），直接使用
 #   Node.js = NodeSource 官方源 26.x（不用 Debian 源旧版）
+#   uv      = 官方 releases 的**最新版**（刻意不钉版本，见 §2.5），但**必须 ≥ 0.12.22**：
+#             该版本起才支持 /etc/uv/uv.toml 系统级配置，而 §2.6 正是靠它下发
+#             `link-mode = "copy"`（proot 无硬链接）。版本由 §2.8 断言把关。
 # =====================================================================
 set -euo pipefail
 
 DEBIAN_RELEASE="trixie"
 DEBIAN_VERSION="13.7"
 NODE_MAJOR="26"
+# uv 的**下限**（不是钉版本）：≥0.12.22 才支持 /etc/uv/uv.toml 系统级 config，
+# 见设计文档 §6 附录 A #4。下载走 releases/latest（§2.5），版本由 §2.8 断言把关。
+UV_MIN="0.12.22"
 ARCH="arm64"
 MIRROR="http://deb.debian.org/debian"
 OUT_DIR="${1:-$(pwd)/out}"
@@ -203,6 +209,18 @@ command -v git     >/dev/null 2>&1 || { echo "[断言失败] git 未安装"; exi
 command -v busybox >/dev/null 2>&1 || { echo "[断言失败] busybox 未安装"; exit 1; }
 command -v ffmpeg  >/dev/null 2>&1 || { echo "[断言失败] ffmpeg 未安装"; exit 1; }
 [ "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Shanghai" ] || { echo "[断言失败] /etc/localtime 未指向 Asia/Shanghai"; exit 1; }
+
+# uv 的下限断言（2026-10-08 补）。此前 §2.8 已经**取了** UV_VER 并打印，却**没有断言**——
+# glibc / python / node 三者都有 case 判断，只有 uv 是"打印了就不管了"。
+# 而这个下限是有承载的：§2.6 写入 /etc/uv/uv.toml（link-mode = copy）全靠 uv ≥0.12.22
+# 才被读取；版本一旦低于它，构建**依然成功**，但那个硬链接修复**静默失效**，
+# 表现是用户装 npm/uv 依赖时报 `failed to hardlink file ... Operation not permitted`
+# （故障排查手册坑 #4）。所以这里按"构建即验收、漂移即失败"补上。
+version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
+version_ge "$UV_VER" "$UV_MIN" || {
+  echo "[断言失败] uv=${UV_VER}，期望 ≥ ${UV_MIN}（该版本起支持 /etc/uv/uv.toml 系统级配置）"
+  exit 1
+}
 
 echo "---- 2.9 清理（控制落盘体积）----"
 apt-get clean
