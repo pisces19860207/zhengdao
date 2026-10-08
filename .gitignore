@@ -29,3 +29,6 @@ rust/target/
 # CI 还原出来的签名钥匙权威副本（.github/workflows/build.yml 第 9 步写入，见 ERRATA E-014）。
 # ⚠️ 这是密钥，绝不能入库。
 .ci-debug.keystore
+# Python 字节码缓存：tools/ 下的脚本会在本机被 import 调试，别把 .pyc 带进库里（E-048）。
+__pycache__/
+*.pyc
