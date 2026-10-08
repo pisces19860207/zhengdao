@@ -289,8 +289,14 @@ fun TaijiScreen(
                                 // 顶栏原「◼」的动作：结束本次会话（关 OpenCode 实例）+ 退出太极。
                                 // 它和「停止生成」不是一回事，见 SessionBar KDoc。
                                 onCloseSession = {
-                                    scope.launch { drawerState.close() }
-                                    scope.launch { repo.close(); onExit() }
+                                    // 收抽屉 → 关实例 → 退出，三件事在**同一个协程里顺序执行**：
+                                    // 拆成两个 launch 时它们是并发跑的，抽屉还没收完就可能已经开始退出，
+                                    // 视觉上像"确认弹窗还开着，界面突然没了"（2026-10-08 修复）。
+                                    scope.launch {
+                                        drawerState.close()
+                                        repo.close()
+                                        onExit()
+                                    }
                                 },
                                 modifier = Modifier.weight(1f),
                             )

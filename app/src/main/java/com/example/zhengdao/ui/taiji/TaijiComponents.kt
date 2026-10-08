@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -170,10 +169,12 @@ fun SessionBar(
                 }
             }
         }
-        // ＋ 新会话：40dp 实心圆钮 + 自绘加号（2026-10-08，原先只有一个小字符，见 KDoc）。
+        // ＋ 新会话：48dp 实心圆钮 + 自绘加号（2026-10-08，原先只有一个小字符，见 KDoc）。
+        // 按钮取 M3 的行内最小触摸目标 48dp（原先 40dp，偏小）；加号字形仍是自绘的固定 20dp
+        // （见 PlusGlyph），所以按钮放大**不会**把字形一起撑大。
         FilledTonalIconButton(
             onClick = onNew,
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(48.dp),
         ) { PlusGlyph() }
     }
 }
@@ -1346,9 +1347,14 @@ private fun DrawerActionRow(label: String, value: String, onClick: () -> Unit) {
  *
  * 刻意**不新写一份 UI**：两次实现同一个开关，迟早会出现"这边关掉了、那边还显示已启用"
  * （本项目已经踩过一次同源事故：插件开关曾写在没人读的配置文件上，见 PluginManager 类注释）。
- * 这里只负责外壳（标题 + 完成键 + 高度上限），状态与操作全部来自 PluginsScreen。
+ * 这里只负责外壳（标题 + 完成键 + 高度），状态与操作全部来自 PluginsScreen。
  *
- * 高度上限 560dp 的用意：面板不占满整屏，用户仍能看到下方的输入框与消息区，不至于"迷路"。
+ * **高度不设 dp 上限**（2026-10-08 修复，原为 `heightIn(max = 560.dp)`）：写死的 560dp 在
+ * 矮窗 / 横屏 / 分屏下可能比窗口本身还高 —— 那时面板高度由这个数字而不是由窗口决定，
+ * 顶部的标题、「完成」以及下方的「添加插件」输入框就有被挤出可视区的风险。
+ * 现在只约束宽度，让面板**跟着窗口自适应**：内容矮时按内容高，内容高时由窗口收口，
+ * 溢出的部分交给 [PluginsScreen] 自带的 verticalScroll ⇒ 顶部始终可达、底部能滚到。
+ * 也不改用 `fillMaxHeight(0.92f)`：那会让内容很少时也硬撑满窗口，白留一大片空白。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1356,8 +1362,7 @@ fun PluginsSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 560.dp),
+                .fillMaxWidth(),
         ) {
             Row(
                 modifier = Modifier

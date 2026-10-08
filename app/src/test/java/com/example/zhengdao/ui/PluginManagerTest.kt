@@ -328,7 +328,15 @@ class PluginManagerTest {
 
     @Test
     fun `首尾空白被裁掉——粘贴带换行仍可用`() {
+        // 断言**返回的规范值**（而不是只看非 null）：单侧空白各钉一条，将来谁把 trim 挪走、
+        // 或改成"整体判空白"都会当场红灯（2026-10-08 补强，原文只测了双侧夹空白的形态）。
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput("my-plugin "))
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput(" my-plugin"))
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput("my-plugin\n"))
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput("my-plugin\t"))
         assertEquals("my-plugin", PluginManager.normalizeSpecInput(" \n my-plugin \n "))
+        // scope 形态同理：首尾空白一样裁掉，内部那个 `/` 不受影响
+        assertEquals("@scope/my-plugin", PluginManager.normalizeSpecInput(" @scope/my-plugin\n"))
     }
 
     @Test
