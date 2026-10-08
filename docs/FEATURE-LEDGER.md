@@ -166,6 +166,21 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > （「一键修正记录」/「在终端里修复」）。没装 Hermes 直接跳过、不报警。单测
 > `app/src/test/java/com/example/zhengdao/terminal/HermesEnvTest.kt` 6 例锁住上述不变量。
 
+> **2026-10-08 续（单会话模型的陈旧退出回调 + Rust 单测终于有了自动化入口）**：
+> ① `app/src/main/java/com/example/zhengdao/terminal/SessionManager.kt:192-222` 的退出清理原来只看
+> 「当前会话跑没跑」（`session?.isRunning == false`），不看「结束的是不是当前这条」；换 Agent 走的是
+> "先 finish 旧会话、立刻装新会话"，而新会话**首次 `updateSize`（spawn）之前 `isRunning` 也是 false**
+> （本文件 `:112-119` 自己写明的宽判）⇒ 迟到的旧回调会把刚建好的新会话误清（抹 Agent 记录 + 停前台
+> 服务 + `onSessionDied` 关页）。修法：`onSessionFinished` 传 `finishedSession` 进来，
+> `onFinished` 里加 `if (session !== finished) return@post`。触发靠时序，是**竞态地雷**不是必现，
+> 本次是读代码发现、真机只验"没改出新问题"。详见 `docs/ERRATA.md` E-026。
+> ② `rust/README.md:70-75` 记的"本机没有 host C 编译器"其实是 **PATH 问题**：w64devkit
+> （`C:\Users\guoli\w64devkit\w64devkit\bin\gcc.exe`，GCC 15.2.0）一直装着、只是没进 PATH；
+> 顺带发现 rustup 自带那个 `x86_64-w64-mingw32-gcc.exe` 只是链接驱动（没有 `cc1`，不能当 `CC`）。
+> 挂上 PATH 后 `cargo test -p zhengdao_core --release` = **8 passed / 0 failed**（sha256 4 + extract 4）。
+> 更关键的是：这 8 例此前**本机靠手动、CI 里完全没有**（`ci.yml` 只有 `:app:testDebugUnitTest`），
+> 已给 `ci.yml` 加「Rust 逻辑层单测」+ cargo 缓存两步，跑在 ubuntu runner（自带 gcc）。详见 E-027。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账

@@ -189,9 +189,23 @@ object SessionManager {
         RunLog.log("会话已停止" + if (clearAgent) "（并清空当前 Agent 记录）" else "")
     }
 
-    private fun onFinished(code: Int) {
+    /**
+     * 会话真的结束了才清理；**陈旧的退出回调必须丢掉**。
+     *
+     * ⚠️ 为什么必须比对"是哪一个会话结束了"，而不是看 [session] 字段现在的值：
+     * [killInternal]（换 Agent / 重开终端都走它）会先 finish 掉旧会话、紧接着把**新**
+     * 会话装上（[start]），而旧会话的 onSessionFinished 是引擎读线程**稍后**才回来的，
+     * 本站的 post 又要等当前主线程消息跑完才执行。两条合起来：这条 runnable 真正跑起来
+     * 时，[session] 往往已经是那条**新**会话——而新会话在首次 updateSize（spawn）之前
+     * isRunning 也是 false（见 [hasSession] 的注释）。旧写法 `session?.isRunning == false`
+     * 于是会把"刚要启动的新会话"当成"刚结束的旧会话"清掉：Agent 记录被抹（下次进终端
+     * 接不回来）、前台服务被停（退到后台就可能被杀）、视图收到 [onSessionDied] 并关页。
+     * 加身份比对后，凡是"结束的不是当前这条"一律丢弃，清理只可能发生在当前会话身上。
+     */
+    private fun onFinished(finished: TerminalSession, code: Int) {
         mainHandler.post {
-            if (session?.isRunning == false) {
+            if (session !== finished) return@post
+            if (!finished.isRunning) {
                 session = null
                 startedAtMs = 0L
                 // 会话是「自己结束」的（用户敲了 exit / tmux 会话被拆掉），
@@ -216,7 +230,7 @@ object SessionManager {
         override fun onTitleChanged(changedSession: TerminalSession) {}
         override fun onSessionFinished(finishedSession: TerminalSession) {
             val code = runCatching { finishedSession.getExitStatus() }.getOrDefault(-1)
-            onFinished(code)
+            onFinished(finishedSession, code)
         }
         override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
             onCopyText?.invoke(text)

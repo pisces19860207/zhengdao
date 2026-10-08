@@ -73,6 +73,14 @@ cargo build --release -p zhengdao_core --target aarch64-linux-android
 > 这个坑**会被缓存掩盖**：只要 `rust/target/` 里已有编好的 `zstd-sys` 产物，`cargo test` 就直接复用、
 > 照样通过；一旦换工作树或清掉 `target/`，就立刻暴露。`gcc`/`cc`/`clang` 全无时先装一个
 > （MSYS2 的 `mingw-w64-x86_64-gcc`，或 Rust 的 `x86_64-pc-windows-gnu` 工具链）再跑。
+>
+> ✅ **2026-10-08 更正：这台机器上 w64devkit 一直装着，只是没在 `PATH` 里**（报错文本会误导成
+> "机器上没有编译器"）。所以先找、再装：
+> `$env:PATH = "C:\Users\guoli\w64devkit\w64devkit\bin;$env:PATH"`（该目录里有 `gcc.exe`，
+> GCC 15.2.0；也是 `.cargo/config.toml` 里 `dlltool` 用的那一份），挂上即 `cargo test` **8/8 通过**。
+> ⛔ 别拿 rustup 自带的 `…\bin\self-contained\x86_64-w64-mingw32-gcc.exe` 当 `CC`：它只是链接驱动、
+> 没有 `cc1`，会以 `cannot execute 'cc1'` 失败（更难看懂）。详见 `docs/ERRATA.md` E-027。
+> CI 侧已把这 8 例接进 `.github/workflows/ci.yml`（ubuntu runner 自带 gcc，无需本地这套）。
 
 再生成入库的 `.so`（**注意 16KB 对齐验收，见 core/README.md**）：
 
