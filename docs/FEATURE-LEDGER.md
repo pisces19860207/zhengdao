@@ -326,8 +326,25 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 但绿灯会让用户以为网络没事。修法：新增 `app/src/main/java/com/example/zhengdao/ui/NetSelfCheck.kt`，
 > 自检改为"国内基线 + **复用 `RootfsIndexFetcher.fetch()` 探更新源**"两条探针（25s 预算，daemon 线程），
 > 四档文案明确区分"网络可用但更新源不可达：下载与更新都会失败"；单测 5 例，全量 **27 suites / 216 tests / 0 失败**。
-> **真机现状备注**：本机环境是"真的没装"（设置 → 存储占用 `rootfs（系统层）0 MB`；此前大概率被
-> `connectedAndroidTest` 重装清掉），外置缓存 `/storage/emulated/0/Download/证道/rootfs` 里还留着那份 311 MB 包。
+> **真机现状备注（15:00 → 15:26 发生了变化）**：15:00 装完包时设置显示 `rootfs（系统层）0 MB`、丹房显示
+> 「环境未安装」（此前大概率被 `connectedAndroidTest` 重装清掉），外置缓存
+> `/storage/emulated/0/Download/证道/rootfs` 里留着那份 326,613,604 B 的旧包；15:26 再看已是
+> 「环境就绪 · Debian 13.7 已安装」、`rootfs（系统层）973 MB` ⇒ **App 自己把环境装回来了**
+> （最可能是启动自愈 `EnvSelfHeal` 用外置缓存里的旧包重装；此事未逐行取证），
+> 因此「存储占用显示 0 MB」**不能**当成环境检测的回归。
+> **真机复验（15:26，装上 `build #157` 的 release APK 4,208,009 B）**：点「网络自检」显示
+> `✅ 网络可用（291ms）· ⚠️ 更新源不可达：下载环境包与「检查环境更新」都会失败。若在代理下，请到代理 App 的「分应用代理」里勾选证道`
+> ⇒ 修复在同一台真机上生效（旧版在同一时刻只会打绿灯）。
+>
+> **2026-10-08 续（env 稳定性：拿两个真实构建对拍，只差 6 个文件）**：主机到 `release-assets` 被限速到
+> ~50 KB/s（90 秒 4.5 MB）⇒ 改用**手机缓存里那份旧包**（`adb pull` 36.3 MB/s，326,613,604 B /
+> sha256 `2f1406af…c3b1146`，10-07 16:21Z 构建）与**线上当前清单**（`env=e6059c6bd3ee309f`）逐成员比内容
+> sha256：两边都有 14,307 个文件里 **14,301 个逐字节相同（99.96%）**，"只在当前包里" **0 个**；
+> 内容不同的只有 **6 个 / 42,162 B** = `./etc/shadow`（日字段 = 构建当天的 **UTC 日**）+
+> `./var/cache/ldconfig/aux-cache` + 4 个 `./var/cache/fontconfig/*-le64.cache-9`（缓存嵌 mtime）
+> ⇒ **任何一次重建 env 都会变**，但代价只是一个几 KB 的差分包；"删缓存 / 把 shadow 日字段 sed 成常量"
+> 这类硬化**有意不做**（CI 只在 `rootfs/` 有改动时才重建）。见 `docs/ERRATA.md` E-035、
+> `docs/milestones/证道-环境包增量下发协议.md` §8。
 
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
