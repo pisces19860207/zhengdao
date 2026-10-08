@@ -7,9 +7,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,12 +37,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.launch
+import com.example.zhengdao.util.HumanizeError
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -94,6 +102,11 @@ fun SettingsScreen(
     // 这里原先有一份 SystemInfoProvider.collect() 的结果缓存，但全页从未读过它——
     // 设置页只展示存储占用。留着会每次进页白跑一次采集（v1.1 起采集还包含 node
     // 二进制的版本扫描），故删掉。
+    // 2026-10-08：把"修复失败 / 回退失败"两个 Toast 升级为 Snackbar——MD3 不推荐用
+    // Toast 喂需要"看完详情"的错误。SnackbarHost 装在顶层 Box 底部，配合
+    // 复用 showPrevLog 让用户能从 action 直达日志原文（t.message 仍落 RunLog 不丢）。
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var repairConfirm by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var pendingUpdateUrl by remember { mutableStateOf<String?>(null) }
@@ -155,7 +168,8 @@ fun SettingsScreen(
             try {
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             } catch (e2: Exception) {
-                Toast.makeText(ctx, "打开失败: ${e2.message}", Toast.LENGTH_SHORT).show()
+                // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文已落日志
+                Toast.makeText(ctx, "打开失败：${HumanizeError.title(e2)}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -193,6 +207,7 @@ fun SettingsScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -331,7 +346,10 @@ fun SettingsScreen(
                         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                             .setData(android.net.Uri.parse("package:${ctx.packageName}"))
                     )
-                }.onFailure { Toast.makeText(ctx, "打开失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                }.onFailure {
+                    // 2026-10-08：异常原文 → 人话（[HumanizeError]）
+                    Toast.makeText(ctx, "打开失败：${HumanizeError.title(it)}", Toast.LENGTH_SHORT).show()
+                }
                 Unit
             }
             // 未授权时整行可点＝直接拉起系统授权弹窗；已授权时点击＝去系统设置查看/撤销。
@@ -823,9 +841,22 @@ fun SettingsScreen(
                                     InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（未联网下载）")
                                     android.os.Handler(ctx.mainLooper).post { storageTick++ }
                                 } catch (t: Throwable) {
-                                    InstallFlow.fail(ctx, "回退失败：${t.message}")
-                                    android.os.Handler(ctx.mainLooper).post {
-                                        Toast.makeText(ctx, "回退失败：${t.message}", Toast.LENGTH_LONG).show()
+                                    InstallFlow.fail(ctx, "回退失败：${HumanizeError.title(t)}")
+                                    // 2026-10-08：Toast → Snackbar（带"查看日志"action）。
+                                    // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
+                                    // 用户看的用人话，进 Snackbar 后可点 action 跳到 showPrevLog AlertDialog。
+                                    // 必须在主线程弹——scope 是 Composable 的 CoroutineScope，
+                                    // 但 rememberCoroutineScope() 默认走 Dispatchers.Main.immediate。
+                                    scope.launch {
+                                        val r = snackbarHostState.showSnackbar(
+                                            message = "回退失败：${HumanizeError.title(t)}",
+                                            actionLabel = "查看日志",
+                                            duration = SnackbarDuration.Indefinite,
+                                        )
+                                        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                            // 触发复用 showPrevLog AlertDialog（SettingsScreen:1112 的）
+                                            showPrevLog = true
+                                        }
                                     }
                                 }
                             }.start()
@@ -1038,6 +1069,14 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
     }
 
+    // 2026-10-08：Snackbar 出口（替换 828/1080 的"回退失败/修复失败" Toast）。
+    // BottomCenter 让它浮在 verticalScroll 内容之上不抢内容。
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
+    }
+
     // ── 修复环境二次确认（Compose 版）──
     if (repairConfirm) {
         AlertDialog(
@@ -1075,9 +1114,17 @@ fun SettingsScreen(
                                 )
                                 android.os.Handler(ctx.mainLooper).post { storageTick++ }
                             } catch (t: Throwable) {
-                                InstallFlow.fail(ctx, "修复失败：${t.message}")
-                                android.os.Handler(ctx.mainLooper).post {
-                                    Toast.makeText(ctx, "修复失败: ${t.message}", Toast.LENGTH_LONG).show()
+                                InstallFlow.fail(ctx, "修复失败：${HumanizeError.title(t)}")
+                                // 2026-10-08：Toast → Snackbar（带"查看日志"action），见 :842 注释
+                                scope.launch {
+                                    val r = snackbarHostState.showSnackbar(
+                                        message = "修复失败：${HumanizeError.title(t)}",
+                                        actionLabel = "查看日志",
+                                        duration = SnackbarDuration.Indefinite,
+                                    )
+                                    if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                        showPrevLog = true
+                                    }
                                 }
                             }
                         }.start()
