@@ -7,6 +7,7 @@ import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.util.HumanizeError
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
@@ -296,7 +297,10 @@ object OcManager {
             "启动超时：serve 未在 15 秒内就绪（详见 RunLog）"
         } catch (t: Throwable) {
             RunLog.log("太极 serve 启动失败: ${t.message}")
-            "启动失败: ${t.message}"
+            // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文仍落 RunLog，UI 看到的是
+            // 「网络超时 / 存储空间不足 / 没有写入权限」等。TaijiScreen:539/590 透传此 msg
+            // 给用户；此处换为 HumanizeError.title 即可让用户读懂。
+            "启动失败：${HumanizeError.title(t)}"
         }
     }
 
@@ -383,7 +387,8 @@ object OcManager {
             extract(ctx, dest, onProgress, VERSION)
         } catch (t: Throwable) {
             RunLog.log("太极: OpenCode 下载失败 ${t.message}")
-            DownloadResult(false, "下载失败: ${t.message}")
+            // 2026-10-08：见 [HumanizeError] 设计
+            DownloadResult(false, "下载失败：${HumanizeError.title(t)}")
         }
     }
 
@@ -414,7 +419,8 @@ object OcManager {
             extract(ctx, dest, onProgress, update.version)
         } catch (t: Throwable) {
             RunLog.log("太极: OpenCode ${update.version} 更新失败 ${t.message}")
-            DownloadResult(false, "更新失败: ${t.message}")
+            // 2026-10-08：见 [HumanizeError] 设计
+            DownloadResult(false, "更新失败：${HumanizeError.title(t)}")
         }
     }
 
@@ -467,7 +473,8 @@ object OcManager {
             }
         } catch (t: Throwable) {
             RunLog.log("太极: 释放失败 ${t.message}")
-            return DownloadResult(false, "释放失败: ${t.message}")
+            // 2026-10-08：见 [HumanizeError] 设计
+            return DownloadResult(false, "释放失败：${HumanizeError.title(t)}")
         }
         if (!installed(ctx)) return DownloadResult(false, "释放后二进制缺失（包不完整？）")
         Settings2.prefs(ctx).edit().putString(VERSION_KEY, version).apply()
@@ -517,7 +524,8 @@ object OcManager {
             UpdateCheck.Available(UpdateInfo(latest.first.joinToString("."), latest.second, latest.third))
         } else UpdateCheck.UpToDate
     } catch (t: Throwable) {
-        UpdateCheck.Failed(t.message ?: t.javaClass.simpleName)
+        // 2026-10-08：异常原文 → 人话。reason 字段经 TaijiScreen:551 Toast 弹给用户。
+        UpdateCheck.Failed(HumanizeError.title(t))
     }
 
     /** 有可更新版本返回 [UpdateInfo]，无更新/检查失败返回 null。

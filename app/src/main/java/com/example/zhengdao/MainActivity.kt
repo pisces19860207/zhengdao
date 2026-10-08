@@ -316,8 +316,10 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
             runCatching {
                 com.example.zhengdao.rootfs.RunLog.log("[错误] 进终端失败: $reason")
             }
+            // 2026-10-08：异常原文 → 人话。原文已落 RunLog，用户看的用 [HumanizeError]
+            // 转成「没有权限 / 网络超时 / 文件找不到」之类可读短语
             android.widget.Toast.makeText(
-                context, "无法打开终端：$reason", android.widget.Toast.LENGTH_LONG
+                context, "无法打开终端：${com.example.zhengdao.util.HumanizeError.title(t)}", android.widget.Toast.LENGTH_LONG
             ).show()
         }
     }
