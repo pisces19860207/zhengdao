@@ -1417,7 +1417,9 @@ fun SettingsScreen(
                                     RootfsInstaller.ensureFreeSpace(ctx, deltaFile.length())
                                     val info = RootfsDelta.readPatchInfo(deltaFile)
                                         ?: throw RootfsInstaller.InstallFailed("补丁元数据缺失或不可读")
-                                    RootfsDelta.apply(ctx, deltaFile, info)
+                                    // 索引给的补丁 sha256 双重把关：下载校验一次（协议 §4），
+                                    // 再把同一期望值交给解压流水线（Rust 对"恰好被解压的字节"算一次）
+                                    RootfsDelta.apply(ctx, deltaFile, info, expectedSha256 = patchRef.sha256)
                                     // 增量成功后照旧做一次缓存整理（与全量路径一致）
                                     RootfsCache.pruneKeep(ctx)
                                     deltaDone = true

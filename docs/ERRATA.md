@@ -3077,3 +3077,30 @@ merge **`28e733d`**，已推 origin/main。
 3. **本地整包要排在增量补丁前面**：补丁只是"比全量小"，本地包才是"不用下载"—— 顺序写反就白白花掉几十 MB 流量。
 4. **验收要能"制造"目标状态**：debug 包（同签名、无 applicationIdSuffix）覆盖安装 + `run-as` 删掉标记里的一行 `env=`，就能复现"缺指纹"，比清 App 数据/换机便宜得多。真机点按前记得 `adb shell am force-stop com.phoenix.read`（E-047）。
 
+## E-050 · 2026-10-08 · 补丁解压一直留在 Java 侧：Rust 流水线只认 zstd/gzip，也不能"跳过成员"，于是增量与全量长期分叉
+
+**缺口**：`RootfsInstaller.extractArchiveJava` 支持 zstd / gzip / **纯 tar**（未知魔数按 tar 处理，见 `formatOf`），而 Rust 的 `extract_pipeline`（`rust/core/src/extract.rs`）只认 zstd 与 gzip，第三种魔数直接 `BadArchive("无法识别的压缩格式: …")`；"跳过指定成员"更是只有 Java 侧有（`openTar(skipNames)`）。因此 `rootfs/RootfsDelta.kt` 的 `applyTo` 只能调 `extractArchiveJava(..., skipNames = setOf(PATCH_INFO_NAME))` —— **全量走 Rust、补丁走 Java** 的分叉：同一台设备上，全量安装有"恰好被解压的那些字节"的 sha 对账（E-045）与 native 进度回调，补丁这条什么都没有。
+
+**为什么现在必须收口**：补丁包（增量下发协议 §4）是 **未压缩 tar**（`app/src/androidTest/java/com/example/zhengdao/rootfs/RootfsDeltaInstrumentedTest.kt` 用 commons-compress 直写），且第一个成员固定是元数据 `.zhengdao-patch-info`，不落盘靠的就是 `skipNames`；Rust 不接这两样，增量路径就永远停在 Java 侧。
+
+**修法**（`feat/rust-patch-extract`）：
+
+1. `rust/core/src/extract.rs`：魔数匹配的第三支由"报错"改成 `_ => Box::new(file)`（纯 tar，与 Kotlin `openTar` 对齐）；新增 `pub fn extract_pipeline_skip(archive, target_dir, expected_sha256, skip_names: &[String], on_progress)`，入口循环里 `if skip_names.iter().any(|s| s == &name) { skipped += 1; continue; }`，`ExtractReport` 增加 `pub skipped: u64`；原 `extract_pipeline` 变成传 `&[]` 的薄包装（既有调用点零改动）。
+2. `rust/core/src/jni_bridge.rs`：**新增**符号 `Java_com_example_zhengdao_rust_CoreNative_nativeExtractSkip(archivePath, targetDir, expectedSha256, skipNamesJoined)`，跳过清单以 `\n` 连接（不引 `JObjectArray`，jni crate 的数组 API 版本间签名不稳）；`nativeExtract` 与新入口共用 `extract_impl`，JSON 增加 `"skipped":N`。
+3. `app/src/main/java/com/example/zhengdao/rust/CoreNative.kt`：`extract(..., skipNames: List<String> = emptyList())`，空清单仍走 `nativeExtract`（不多绕一次 JNI）；JSON 解析抽成 `parseExtractReport`。
+4. `app/src/main/java/com/example/zhengdao/rootfs/RootfsInstaller.kt`：新增 `extractArchive(archive, destDir, skipNames, expectedSha256, onEntry): Boolean` —— Rust 优先、**sha 不匹配 ⇒ `InstallFailed` 且不回退**、其它失败回退 `extractArchiveJava`；`install()` 也改走它（日志仍按走没走 Rust 分别给"RootFS 安装完成（Rust 路径）"）；`RootfsDelta.applyTo/apply` 换用它并新增可选 `expectedSha256`；`ui/SettingsScreen.kt` 的增量分支把 `patchRef.sha256` 一起传下去（下载校验一次 + 解压时对同一期望值再对一次账）。
+
+**实测**：
+
+- host：`cargo test -p zhengdao_core --release` = **12 passed / 0 failed**（新增 `纯tar包_无压缩壳_直接解压`、`跳过成员_不落盘且计入skipped`）。
+- `python tools/check-native-so.py`：`libzhengdao_core.so` 816,040 B、4 个 `PT_LOAD` 全 `p_align=0x4000`、`CoreNative.kt` 的 **4** 个 `external fun` 全部命中（含新符号 `nativeExtractSkip`）。
+- JVM：`33 suites / 277 tests / 0 failures / 0 errors / 0 skipped`。
+- 真机（Honor PGT-AN10 / Android 16）：`:app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.zhengdao.rootfs.RootfsDeltaInstrumentedTest` ⇒ `tests="3" failures="0" errors="0" skipped="0"`；新增用例 `补丁sha不匹配时硬失败不退回Java`（故意给 `expectedSha256 = "0"×64`）断言 `InstallFailed` 且原树逐项未动。这条用例同时是"Rust 真的接管了补丁解压"的证据：走 Java 时没人校验 sha，它必然失败；它**没被 `assumeTrue` 跳过**，说明这台设备上 Rust 核心可用。
+
+**教训**：
+
+1. **"参数存在"不等于"路径启用"**（E-045 的教训第二次应验）：`expected_sha256`、`skipNames` 这类能力，只有**入口真的会调**才算有。
+2. **分叉比缺失更危险**：全量与增量各走一套实现时，修一条永远只修一半 —— 收口到同一入口（`extractArchive`）比在两条路上各打补丁便宜。
+3. **门禁只校验"符号存在"，校验不了"签名对不对"**：`tools/check-native-so.py` 是拿 `CoreNative.kt` 里的 `external fun` 名字比对 .so 导出符号，所以**改已有符号的签名**它能放行；本条因此选择**新增**符号（旧 .so + 新 Kotlin 时只有补丁路径 JNI 查找失败 → 回退 Java），把不兼容限制在一条路径里。
+4. **Rust 侧也要能吃"最土"的输入**：生产上补丁就是未压缩 tar，Kotlin 早就支持，Rust 却把它当非法格式 —— 能力对齐要按**调用方实际会传的形状**做，不是按"生产压缩格式"做。
+
