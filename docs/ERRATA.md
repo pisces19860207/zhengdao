@@ -2663,6 +2663,11 @@ Process completed with exit code 2.
 4. **`continue-on-error: true` 的 job 必须配"可见的失败"**：它保证了 `latest` 不会被空目录覆盖（好事），
    但也让失败隐身（坏事）。两者要一起设计：守卫 + 自述。
 
+**补记（同日晚，build Run 163，`ee766e7`）**：这套注解上线**第一轮**就把真因带了回来 ——
+`[2.8] dpkg-deb -b 重打包 libgbm1 失败：… 'Depends' field, syntax error after reference to package
+'libwayland-server0'`。上一轮外面只能看到 `exit code 2`，这一轮"读一行原始 stderr 就能改代码"。
+真因与修法见 **E-041**。
+
 ---
 
 ## E-040 · 2026-10-08 · 「装过」不等于「装得回来」：AGY 的恢复入口按用户拍板关掉
@@ -2710,3 +2715,77 @@ Process completed with exit code 2.
 （`state=installing`，本轮 AGY 就是）⇒ 改成
 「这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 …」
 （`app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt`，横幅段的注释里也留了这次改动的由来）。
+
+---
+
+## E-041 · 2026-10-08 · `sed` 的字符类里放了数据里也会出现的字符（`)`），于是重打包的 `.deb` 少了一个括号：Run 162 那个 `exit 2` 的真因
+
+**现场**：E-039 那套"失败自述"上线后的**第一轮**（build **Run 163**，`ee766e7`）就把真因带回来了。
+匿名可见的 build job 注解里原文是：
+
+```
+[2.8] dpkg-deb -b 重打包 libgbm1 失败：dpkg-deb: error: parsing file '/tmp/tmp.CUna1R4a8h/gbm/DEBIAN/control' near line 7 package 'libgbm1':| 'Depends' field, syntax error after reference to package 'libwayland-server0'
+```
+
+（同一 job 的另一条注解只有 `Process completed with exit code 1.` ⇒ 小节标签 + 原始 stderr 那条才是有效信息。
+整轮仍显示 `success`，因为 rootfs 那步是 `continue-on-error: true`；`latest` 这次也**没更新**。）
+
+**真因**：§2.8 要摘掉 `libgbm1` 对 `mesa-libgallium` 的声明依赖，原来的写法是
+
+```bash
+sed -i -E 's/, *mesa-libgallium[^,)]*//g' "$GPU_TMPDIR/gbm/DEBIAN/control"
+```
+
+字符类 `[^,)]` 里塞了一个 `)`，而依赖项的**版本约束自己就含括号**。真实 control（`https://deb.debian.org/debian/pool/main/m/mesa/libgbm1_25.0.7-2+deb13u1_arm64.deb`，
+44,144 B 的 ar 包，内含 `control.tar.xz` 1,444 B）的第 7 行是：
+
+```
+Depends: libc6 (>= 2.38), libdrm2 (>= 2.4.121), libexpat1 (>= 2.0.1), libwayland-server0 (>= 1.15.0), mesa-libgallium (= 25.0.7-2+deb13u1)
+```
+
+于是 `[^,)]*` 只吃到 `(= 25.0.7-2+deb13u1`（在右括号**之前**停下），把那个孤零零的 `)` 留在原地：
+
+```
+… libwayland-server0 (>= 1.15.0), )
+```
+
+`dpkg-deb -b` 随即报 `'Depends' field, syntax error after reference to package 'libwayland-server0'`。
+Run 162 的 `exit 2` 就是它（当时外面只能看到"退出码 2"，没有注解 ⇒ 定位不了）。
+
+**修法**（`rootfs/build-rootfs.sh` §2.8）：以**逗号**为界吃掉整条版本约束，再逐项收尾空项：
+
+```bash
+sed -i -E \
+  -e 's/(,[[:space:]]*)?mesa-libgallium[^,]*//g' \
+  -e 's/,[[:space:]]*,/,/g' \
+  -e 's/,[[:space:]]*$//' \
+  -e 's/:[[:space:]]*,[[:space:]]*/: /' \
+  -e 's/[[:space:]]+$//' \
+  -e '/^(Depends|Pre-Depends|Recommends|Suggests|Breaks|Conflicts|Provides|Replaces|Enhances):[[:space:]]*$/d' \
+  "$GPU_TMPDIR/gbm/DEBIAN/control"
+```
+
+并在 `dpkg-deb -b` **之前**加一道自查：依赖字段里不许出现 `, ,` / 行尾逗号 / `: ,` / 空括号
+（`grep -nE '^(Depends|Pre-Depends|Recommends):' … | grep -qE ',[[:space:]]*,|,[[:space:]]*$|:[[:space:]]*,|\([[:space:]]*\)'`），
+命中就把字段原文塞进 `annot` 注解再退出 —— 自己报错比等 `dpkg-deb` 报错更直白。
+
+**证据（本地，改完先验，不必等 CI）**：
+
+- 把真实 `.deb` 的 control 抽出来跑一遍新 sed，得到
+  `Depends: libc6 (>= 2.38), libdrm2 (>= 2.4.121), libexpat1 (>= 2.0.1), libwayland-server0 (>= 1.15.0)`；
+  `grep mesa` 无命中、无逗号残留，且 `diff`（去掉 `Depends` 行）显示**整份 control 一字未动**（`Description` 续行也没碰）。
+- 6 种排布回归（mesa 在末尾 / 中间 / 最前 / 唯一一项（整行删）/ 无版本约束 / `Recommends`+`Suggests` 也含 mesa）：
+  全部通过，空掉的依赖字段整行删除、不留 `Depends:` 空字段。
+- `bash -n` 自检：外层 `OUTER_SYNTAX_OK`，抽出 CONF 内层（255 行）`INNER_SYNTAX_OK`。
+
+**教训**：
+
+1. **排除字符必须是分隔符，不能是内容**：当时的 `[^,)]` 是"顺手"想把右括号一起吃掉，可版本约束
+   `(= 1.2.3)` 自己就带括号 —— 排除集里放内容，就会在"内容里恰好也有它"的地方悄悄切错。
+   这类错误 `bash -n` 永远看不出来（语法合法），本地不真跑一遍就只能等 CI 用整轮构建来告诉你。
+2. **"失败自述"上线第一轮就自证了价值**：上一轮（Run 162）外面只有 `exit code 2`，靠猜；
+   这一轮注解把 `dpkg-deb` 的原始 stderr 带了回来，定位从"翻日志（还看不到）"变成"读一行"。
+   可观测性不是锦上添花，它决定一次修复是 5 分钟还是 5 轮 CI。
+3. **拿真实输入做回归，别拿自己想象的输入**：一开始只用"单行、mesa 在末尾"的样例试，
+   结论是"通过"；直到把 deb.debian.org 上那个真包下回来跑，才算真的验证过。
+   涉及外部数据格式的改动，**样本要从真实来源取一份**。
