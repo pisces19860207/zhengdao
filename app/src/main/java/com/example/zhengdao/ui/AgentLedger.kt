@@ -84,11 +84,19 @@ object AgentLedger {
     /**
      * 「恢复全部」的候选：账本里记着装过、而**当前探测不到**的那些（按当前清单顺序）。
      * 顺序跟清单走（而不是跟账本时间走），保证恢复顺序与用户第一次安装的顺序一致。
+     *
+     * 还要求 `restorable`：官方安装器在受限网络下必然失败的 Agent（目前是 AGY）不进候选，
+     * 否则主页会一直挂着一颗点了必错的「恢复全部」按钮（用户 2026-10-08 拍板）。
      */
-    fun restoreCandidates(ctx: Context, agents: List<AppState.AgentInfo>): List<AppState.AgentInfo> {
-        val seen = entries(ctx).map { it.id }.toSet()
-        return agents.filter { it.id in seen && !it.installed && it.installCmd != null }
-    }
+    fun restoreCandidates(ctx: Context, agents: List<AppState.AgentInfo>): List<AppState.AgentInfo> =
+        pickRestoreCandidates(entries(ctx).map { it.id }.toSet(), agents)
+
+    /** 纯函数半边（JVM 可测，见 AgentLedgerTest）。 */
+    internal fun pickRestoreCandidates(
+        ledgerIds: Set<String>,
+        agents: List<AppState.AgentInfo>,
+    ): List<AppState.AgentInfo> =
+        agents.filter { it.id in ledgerIds && !it.installed && it.installCmd != null && it.restorable }
 
     private fun upsert(ctx: Context, e: Entry) {
         runCatching {
