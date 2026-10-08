@@ -21,6 +21,7 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.InputStream
 
 /**
  * RootFS 解压安装器（设计文档 §6/§8）：
@@ -28,13 +29,21 @@ import java.io.IOException
  * - 启动时清理上次中断的残局；
  * - 硬链接一律按“复制内容”落地（实测坑 #4：SELinux 拒绝非 root 应用创建硬链接，
  *   与 UV_LINK_MODE=copy、proot --link2symlink 同一因果）；
- * - 归档格式按魔数自动识别：zstd（主格式）或 gzip（兼容格式）。
+ * - 归档格式按魔数自动识别：zstd（主格式）、gzip（兼容格式），其余按纯 tar（增量补丁）。
+ *
+ * 增量更新（[RootfsDelta]）复用本对象的三块内核：[extractArchiveJava]（解包 + 类型处理）、
+ * [swapIntoPlace]（原子替换）、[openTar]（读补丁元数据），保证两条路径的落盘语义一致。
  */
 object RootfsInstaller {
 
     private const val TAG = "RootfsInstaller"
-    private const val TMP_NAME = "rootfs.tmp"
-    private const val MARKER = ".zhengdao-rootfs-ok"
+
+    /** 临时解包目录名。增量更新（[RootfsDelta]）复用同一个目录名，故对包内可见。 */
+    internal const val TMP_NAME = "rootfs.tmp"
+
+    /** 全量安装后的 distro 标记（老行为原样保留：标记内容里的发行版串一直是它）。 */
+    private const val DEFAULT_DISTRO = "debian-13.7"
+
     private const val REQUIRED_FREE_BYTES = 2_500_000_000L // 落盘约 1.5–2GB + 余量
 
     class InstallFailed(message: String) : IOException(message)
@@ -61,10 +70,43 @@ object RootfsInstaller {
     }
 
     /**
+     * 决定全量安装后要不要把索引的 env 写进标记 —— **信任锚**（用户 2026-10-08 追加的硬规则）。
+     *
+     * 为什么不无条件信索引：索引（rootfs-index.json）由 CI 在流水线里更新，一旦 CI 半途失败
+     * 或上传错序，索引里的 `env`/`sha256` 可能指向"还不是这次下载到的那个包"的版本。
+     * 而标记里的 `env=` 是后续**增量更新的唯一基线**：写错了，下次要么拿一个基线对不上的补丁
+     * （被 [RootfsDelta.canApply] 挡住），要么更糟——基线"看起来"匹配但树内容不是那个版本。
+     *
+     * 规则：**只有"实际校验通过的 sha256" == "索引里的 sha256"时，才认索引的 env**；
+     * 索引取不到 / 边车校验值取不到 / 两者不一致 ⇒ 照常安装，但**不写 `env=` 行**，
+     * 于是下次检查更新看到"本地无版本记录"⇒ 老实全量一次。宁可多下一次，不可错走增量。
+     *
+     * @param indexEnv   索引里的 env id
+     * @param indexSha256 索引里的完整包 sha256（注意：不是补丁的）
+     * @param actualSha256 本次下载**实际校验通过**的 sha256（[RootfsDownloader.download] 的返回值）
+     * @return 要写进标记的 env id；null = 不写 `env=` 行
+     */
+    internal fun envForMarker(indexEnv: String?, indexSha256: String?, actualSha256: String?): String? {
+        if (indexEnv.isNullOrBlank() || indexSha256.isNullOrBlank() || actualSha256.isNullOrBlank()) return null
+        return if (indexSha256.trim().equals(actualSha256.trim(), ignoreCase = true)) indexEnv.trim().lowercase() else null
+    }
+
+    /**
      * 解压归档并安装。
+     *
+     * 参数顺序说明（协议正文写的是"env 放最后"）：**env 必须排在 onEntry 之前**。
+     * Kotlin 的尾随 lambda 语法总是绑定到最后一个参数，所以 env 若在末尾，
+     * 现有的 `install(ctx, archive) { }` 调用点（TerminalActivity、SettingsScreen、
+     * CoreNativeExtractInstrumentedTest 共 4 处）会把 lambda 当成 env，直接编译不过。
+     * 放在 onEntry 之前，所有老调用点一行都不用改，新调用点写成
+     * `install(ctx, archive, envToWrite) { }` 也很顺。
+     *
+     * @param env 本次装入内容的 env id（增量协议 §1 的内容指纹）。**不确定就传 null**：
+     *   标记里不写 `env=` 行，下次更新检测到"无版本记录"自然走全量——宁可多下一次，不可错走增量。
+     *   全量安装路径请一律用 [envForMarker] 计算它，不要直接把索引的 env 传进来。
      * @param onEntry 每处理一个条目回调一次其路径（调用方自行节流展示）
      */
-    fun install(context: Context, archive: File, onEntry: (String) -> Unit) {
+    fun install(context: Context, archive: File, env: String? = null, onEntry: (String) -> Unit) {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
         val tmpDir = File(files, TMP_NAME)
@@ -82,61 +124,103 @@ object RootfsInstaller {
                 Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
             }.isSuccess
             if (rustOk) {
-                File(tmpDir, MARKER).writeText("distro=debian-13.7\ninstalled-by=zhengdao\n")
-                if (rootfsDir.exists()) rootfsDir.deleteRecursively()
-                if (!tmpDir.renameTo(rootfsDir)) {
-                    tmpDir.copyRecursively(rootfsDir, overwrite = true)
-                    tmpDir.deleteRecursively()
-                }
+                RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env)
+                swapIntoPlace(tmpDir, rootfsDir)
                 Log.i(TAG, "RootFS 安装完成（Rust 路径）：${rootfsDir.path}")
                 return
             }
             Log.w(TAG, "Rust 解压失败，回退 Java 路径")
         }
-        val canonicalRoot = tmpDir.canonicalFile
 
-        FileInputStream(archive).use { fin ->
-            BufferedInputStream(fin, 512 * 1024).use { buffered ->
-                val decompressed = when (formatOf(peekMagic(buffered))) {
-                    Format.ZSTD -> ZstdCompressorInputStream(buffered)
-                    Format.GZIP -> GzipCompressorInputStream(buffered, false)
+        extractArchiveJava(archive, tmpDir, onEntry = onEntry)
+
+        // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
+        RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env)
+
+        swapIntoPlace(tmpDir, rootfsDir)
+        Log.i(TAG, "RootFS 安装完成：${rootfsDir.path}")
+    }
+
+    /**
+     * Java 路径解包内核：支持 zstd / gzip / **纯 tar**（未知魔数按 tar 处理，见 [formatOf]）。
+     *
+     * 抽出来是为了让 [RootfsDelta] 复用同一套类型处理（目录/软链/硬链/普通文件 + chmod +
+     * 防穿越），避免增量路径出现第二份"略有不同"的解包逻辑。
+     *
+     * @param skipNames 需要跳过的成员名（调用方给的是**去掉 `./` 前缀**后的名字）
+     */
+    internal fun extractArchiveJava(
+        archive: File,
+        destDir: File,
+        skipNames: Set<String> = emptySet(),
+        onEntry: (String) -> Unit,
+    ) {
+        destDir.mkdirs()
+        val canonicalRoot = destDir.canonicalFile
+        var extracted = 0
+
+        openTar(archive).use { tar ->
+            val pendingHardLinks = mutableListOf<TarArchiveEntry>()
+            var entry: TarArchiveEntry? = tar.nextTarEntry
+            while (entry != null) {
+                val name = entry.name.removePrefix("./")
+                if (name.isNotEmpty() && name != "." && name !in skipNames) {
+                    val target = File(destDir, name)
+                    checkPathInside(canonicalRoot, target)
+                    onEntry("./$name")
+                    extractEntry(entry, name, target, destDir, tar, pendingHardLinks)
+                    extracted++
                 }
-                TarArchiveInputStream(decompressed, "UTF-8").use { tar ->
-                    val pendingHardLinks = mutableListOf<TarArchiveEntry>()
-                    var entry: TarArchiveEntry? = tar.nextTarEntry
-                    while (entry != null) {
-                        val name = entry.name.removePrefix("./")
-                        if (name.isNotEmpty() && name != ".") {
-                            val target = File(tmpDir, name)
-                            checkPathInside(canonicalRoot, target)
-                            onEntry("./$name")
-                            extractEntry(entry, name, target, tmpDir, tar, pendingHardLinks)
-                        }
-                        entry = tar.nextTarEntry
-                    }
-                    // 二阶段：补齐“源文件在归档中后置”的前向硬链接
-                    for (hl in pendingHardLinks) {
-                        val src = File(tmpDir, hl.linkName.removePrefix("./"))
-                        val dst = File(tmpDir, hl.name.removePrefix("./"))
-                        if (src.isFile) src.copyTo(dst, overwrite = true)
-                    }
+                entry = tar.nextTarEntry
+            }
+            // 二阶段：补齐“源文件在归档中后置”的前向硬链接
+            for (hl in pendingHardLinks) {
+                val src = File(destDir, hl.linkName.removePrefix("./"))
+                val dst = File(destDir, hl.name.removePrefix("./"))
+                if (src.isFile) {
+                    dst.delete() // 先断开可能存在的硬链接，别写穿到旧树
+                    src.copyTo(dst, overwrite = true)
                 }
             }
         }
 
-        // 完成标记（ProotLauncher 依据它判定环境可用）
-        File(tmpDir, MARKER).writeText("distro=debian-13.7\ninstalled-by=zhengdao\n")
+        // 空归档兜底：纯 tar 分支不再靠"无法识别的格式"报错，改由"一条都没解出来"把
+        // 垃圾文件挡在这里（否则会装出一个空环境还报成功）。
+        if (extracted == 0) throw InstallFailed("压缩包不含任何条目或格式不受支持")
+    }
 
-        // 原子替换：旧环境整体让位（home 在独立目录，不受影响——设计文档 §8）
+    /**
+     * 打开归档为 tar 流（按魔数自动套 zstd/gzip 解压层，纯 tar 直接用原流）。
+     * 调用方负责 `use { }` 关闭——链路一关到底，不会泄漏 fd。
+     */
+    internal fun openTar(archive: File): TarArchiveInputStream {
+        val buffered = BufferedInputStream(FileInputStream(archive), 512 * 1024)
+        return try {
+            val decompressed: InputStream = when (formatOf(peekMagic(buffered))) {
+                Format.ZSTD -> ZstdCompressorInputStream(buffered)
+                Format.GZIP -> GzipCompressorInputStream(buffered, false)
+                Format.TAR -> buffered
+            }
+            TarArchiveInputStream(decompressed, "UTF-8")
+        } catch (t: Throwable) {
+            runCatching { buffered.close() }
+            throw t
+        }
+    }
+
+    /**
+     * 原子替换：旧环境整体让位（home 在独立目录，不受影响——设计文档 §8）。
+     * 失败退整树复制，绝不留下"两个 rootfs"或"没有 rootfs"的中间态。
+     */
+    internal fun swapIntoPlace(tmpDir: File, rootfsDir: File) {
         if (rootfsDir.exists()) rootfsDir.deleteRecursively()
         if (!tmpDir.renameTo(rootfsDir)) {
             tmpDir.copyRecursively(rootfsDir, overwrite = true)
             tmpDir.deleteRecursively()
         }
-        Log.i(TAG, "RootFS 安装完成：${rootfsDir.path}")
     }
 
-    private enum class Format { ZSTD, GZIP }
+    private enum class Format { ZSTD, GZIP, TAR }
 
     private fun extractEntry(
         entry: TarArchiveEntry,
@@ -167,6 +251,7 @@ object RootfsInstaller {
                 val src = File(tmpDir, entry.linkName.removePrefix("./"))
                 target.parentFile?.mkdirs()
                 if (src.isFile) {
+                    target.delete() // 先断链接再写，避免写穿到旧 rootfs 的同一 inode
                     src.copyTo(target, overwrite = true)
                 } else {
                     pendingHardLinks.add(entry)
@@ -177,18 +262,26 @@ object RootfsInstaller {
             }
             else -> {
                 target.parentFile?.mkdirs()
+                // 先删再写：增量路径里目标可能是与旧树硬链接共享 inode 的文件，
+                // 直接 outputStream() 会改到正在被 proot 使用的旧环境（原子性就没了）。
+                target.delete()
                 target.outputStream().use { tarStream -> tar.copyTo(tarStream) }
                 chmod(target, entry.mode)
             }
         }
     }
 
+    /**
+     * 按魔数识别压缩格式：zstd（0x28 B5 2F FD，主格式）或 gzip（0x1F 8B，兼容格式）；
+     * **其余一律按纯 tar 处理**（增量补丁就是未压缩 tar）。真正的垃圾文件不再靠"认不出格式"
+     * 挡掉，而是由 [extractArchiveJava] 末尾的"一条都没解出来"兜底报错。
+     */
     private fun formatOf(magic: ByteArray): Format = when {
         magic.size >= 4 &&
             magic[0] == 0x28.toByte() && magic[1] == 0xB5.toByte() &&
             magic[2] == 0x2F.toByte() && magic[3] == 0xFD.toByte() -> Format.ZSTD
         magic.size >= 2 && magic[0] == 0x1F.toByte() && magic[1] == 0x8B.toByte() -> Format.GZIP
-        else -> throw InstallFailed("无法识别的压缩格式（既非 zstd 也非 gzip）")
+        else -> Format.TAR
     }
 
     private fun peekMagic(buffered: BufferedInputStream): ByteArray {
