@@ -305,12 +305,15 @@ object ProotLauncher {
         // 设置页那条 "在终端中清理缓存" 同源，不会出现两边清的东西不一样。
         // ⚠️ 每次启动**按内容比对后重写**，而不是"文件在就不管"：脚本正文会随 App 版本更新，
         //    只判存在会让老环境永远停在旧脚本上（上一条 zz-cursor-bar.sh 就是那种写法）。
+        // ⚠️ 执行位也要一起判：内容相同但丢了 +x 的旧环境会被判成"已就绪"，终端里敲 zzclean
+        //    直接 Permission denied（2026-10-08 审查）。判据因此是「内容不同 **或** 不可执行」
+        //    时重写并重设执行位——幂等语义不变（内容与执行位都对时依然一次都不写）。
         runCatching {
             val binDir = File(rootfsDir, "usr/local/bin")
             if (binDir.isDirectory || binDir.mkdirs()) {
                 val zz = File(binDir, "zzclean")
                 val want = CacheCleaner.zzcleanScript()
-                if (!zz.isFile || zz.readText() != want) {
+                if (!zz.isFile || zz.readText() != want || !zz.canExecute()) {
                     zz.writeText(want)
                     zz.setExecutable(true, false)
                     RunLog.log("终端清理命令已就绪：/usr/local/bin/zzclean")
