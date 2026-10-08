@@ -509,7 +509,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 工作区边界（内置文件夹浏览器） | ✅ 在用 | `2b60a44` | `terminal/Workspace.kt` |
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
-| 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈） | ✅ 在用（**GPU 栈只切 `libllvm19`（−118 MB）**，mesa 本体保留：动它要再重打包两个包才保得住 ffmpeg、只多 34 MB —— 见 E-042） | 本次（E-038/E-042；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
+| 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈） | ✅ 在用（**GPU 栈只切 `libllvm19`：落盘 −118 MB、包 −25.9 MiB，实测见 build Run 165**；mesa 本体保留：动它要再重打包两个包才保得住 ffmpeg、只多 34 MB —— 见 E-042） | 本次（E-038/E-042；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
 | 构建失败自述（失败点发 `::error::` 注解，匿名可见；ERR trap 报小节+行号+命令+退出码） | ✅ 在用（**第一轮就抓出 Run 162 的真因**，见 E-041） | 本次（E-039） | `rootfs/build-rootfs.sh`（`annot()` + `trap … ERR` + `STEP`/`STEP_OUTER`） |
 | RunLog 运行日志（落 `Download/证道/logs`，按轮归档保留最近 20 份 / 20 MB + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改；归档式保留见 E-037） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
