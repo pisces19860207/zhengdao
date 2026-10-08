@@ -2329,3 +2329,125 @@ ZSTD_CLEVEL=19 tar --use-compress-program="zstd -19" -cf "$OUT_DIR/$ASSET" \
    `linkname` 复用目标已算出的 digest（顺序不定，得先记 pending 再补解）。
 4. **`/etc/shadow` 的日字段就是"构建日期"**：凡是谈"构建可复现"，都得先把这类系统状态文件
    排除掉再谈。
+
+---
+
+## E-036 · 2026-10-08 · 「自动清理」是文档里的功能（两个函数零调用点）；同一轮查出缓存面板漏报 378 MB、安装提示只有 2 秒 Toast
+
+### 1. 起因（用户原话）
+
+> 「还有运行日志，错误日志，下载的东西都放到 download 证道文件夹里，包括终端里下载的
+> agent 的安装主程序，重新装 APP 的话也要像装环境一样的，自己就瞬间装好了，今天的体验就很爽，
+> 但是那个提示时间有点短，终端里也没有显示，我以为要重新下载呢，还跑到环境检测那里点了很多次下载，
+> 这算是个小误会，后来我在终端等了一下终端就刷新了」
+
+一句"提示太短"往下查，查出**三个互相独立**的问题，全都在同一个流程上叠着。
+
+### 2. 三处勘误
+
+**(1) 安装提示是"2 秒 Toast + 私有日志"的组合，等于没有反馈。**
+
+- `app/src/main/java/com/example/zhengdao/TerminalActivity.kt:919`：检测到本地包时只有一句
+  `Toast.makeText(this, "检测到本地安装包，直接安装", Toast.LENGTH_SHORT).show()`。
+- 同文件 `installStatus(text)`（`:964-967`）= `RunLog.log(text)` + `Toast.LENGTH_SHORT`：
+  **每一条里程碑都只是 2 秒 Toast**（"复制本地安装包到缓存（约 1 分钟）…"`:1008`、
+  "安装完成！安装包已保留在缓存（重装免下载）"`:989`）。
+- 日志写进私有 `cacheDir/runlog/`——用户用文件管理器打不开，等于看不见。
+- 于是那天的事实是：**真的没有重新联网下载**（用的是 `Download/证道/rootfs/` 里那份
+  312 MB 的本地包），但屏幕上没有任何一行字告诉用户这件事。用户只能猜，猜的结果是跑去
+  「检查环境更新」连点了几次下载。
+
+**(2) 缓存面板漏报 378 MB。**
+
+`app/src/main/java/com/example/zhengdao/terminal/CacheCleaner.kt` 的 `probePaths` 里
+"安装包缓存"量的是**私有兜底** `File(cacheDir, "rootfs-cache")`，而真身在公共区：
+
+| 位置 | 真机实测 |
+| --- | --- |
+| `Download/证道/rootfs/debian-13.7-base-arm64.tar.zst` | 326,613,604 B（312 MB） |
+| `Download/证道/opencode/opencode-2.0.22-1-aarch64.pkg.tar.xz` | 68,606,212 B（66 MB） |
+
+真机（PGT-AN10 / Android 16）设置页实测：**npm 0 / uv 0 / apt 0 / 安装包缓存 0 /
+临时文件 0 MB**，而存储占用 973 MB。**面板 0 vs 实际 378 MB**。
+
+**(3) 「自动清理」从未接线。**
+
+- `CacheCleaner.autoCleanNeeded()` 与 `maybeNotify()` —— **全仓库零调用点**
+  （grep `.kt/.xml/.gradle/.md`，只命中定义行 `CacheCleaner.kt:210`）。
+- `app/src/main/java/com/example/zhengdao/terminal/SessionService.kt:57-62` 的 `monitorTick`
+  每 30 秒只调 `updateNotification()`（`:71 handler.postDelayed(monitorTick, 30_000L)`）；
+  全仓库没有 WorkManager / AlarmManager / Timer。
+- 而 `docs/milestones/证道-执行路线图.md:284` 写着「自动清理：启动时 > 500MB 才清，
+  检测安装进程跳过」——**文档漂移**，这条从未生效。用户问"自动缓存清理可以有吗"时，
+  正确答案是"代码里有、但没人调用；文档里已经宣称做了"。
+- 真正自动的只有三处：`RunLog` 启动自清理、`RootfsInstaller.cleanupPartial`
+  （`TerminalActivity.kt:95`）、`RootfsCache.pruneKeep(keep = 2)`（装完保留 2 个包）。
+
+### 3. 处置（同一轮落地）
+
+| 项 | 落点 |
+| --- | --- |
+| 公共区唯一真相源 | `app/src/main/java/com/example/zhengdao/terminal/Store.kt`（`logs/` `cache/` `agents/`；**锚定 `Download/证道`**，不跟随工作区——见下方 §6） |
+| 日志 | `RunLog` → `Download/证道/logs/`（无权限回落私有；`zhengdao-log.txt` + `errors.log` 跨轮错误汇总 + `.prev`；新增 `@Volatile settled` 保证同一进程只善后一次） |
+| 包缓存 | proot 额外 `-b`：`cache/npm`→`/root/.npm`、`cache/uv`→`/root/.hermes/cache/uv` 与 `/root/.cache/uv`、`cache/pip`→`/root/.cache/pip` |
+| Agent 脚本 / 账本 | `agents/scripts/`、`agents/installed.json`（`AgentLedger`）+ 主页「恢复全部（N 个）」 |
+| 安装可见性 | `InstallProgress`（单一状态）+ `InstallNotifier`（`NotificationChannels.INSTALL`）+ `activity_main.xml` 里那个**代码零引用的死控件** `status_banner` + 里程碑写 `rootfs/tmp/.zhengdao-banner-pending` |
+| 自动清理 | 二档（宿主侧临时残留：白名单 + 24h + 有会话跳过）接到 `ZhengdaoApp.onCreate` |
+| 面板计量 | `CacheCleaner.measure` 改量真身（公共区 + 私有候选并存，见下方"为什么不是删掉私有路径"） |
+
+### 4. 三条约束（都是查出来的，不是设计的）
+
+1. **`/sdcard` 是 noexec 挂载** ⇒ 公共区只放**不需要执行权限**的东西（安装脚本、npm/uv/pip
+   缓存）。Agent 的可执行文件（`~/.local/bin`，agy 实测 201 MB）**不能搬**，否则 `Permission denied`。
+2. **hermes 会剥离 `UV_*` 环境变量**（见 E-026 一系的 hermes 环境处理）⇒ 想让 uv 缓存落在
+   公共区，**bind 是唯一可靠注入点**，设 `UV_CACHE_DIR` 会被它清掉。
+3. **凭据不进公共目录**（用户拍板）：`~/.claude`、`~/.hermes` 里的 API key / 登录态留在私有
+   home。公共目录任何有存储权限的 App 都能读，也可能被云备份带走。
+   `AgentLedger` 的 `Entry` 只有 `id/name/at/state` 四个字段，单测锁死"账本里不写凭据类字段"。
+
+### 5. 教训
+
+1. **"文档写了" ≠ "已实现"**：判断一个自动行为存不存在，要 grep **调用点**
+   （`autoCleanNeeded(` 而不是 `自动清理`）。本仓库此前已经栽过一次同类（E-032：设计文档写了
+   "裁掉多余 locale"，构建脚本从没做）——这是第二次，说明"文档描述功能"必须带**代码锚点**。
+2. **面板数字和磁盘实物对不上时，先怀疑"量的位置"**：`measure()` 的算术一直是对的，
+   错的是它量了一个空目录。
+3. **用户说"提示太短"，根因是可见性架构，不是时长**：把 2 秒 Toast 改成 5 秒仍然是错的。
+   要的是"常驻 + 可回看 + 结论落盘"：横幅（看得见）、系统通知（离开页面也在）、
+   日志文件（事后能查）、以及**免下载时明说"不联网下载"**——用户当时的怀疑正是从
+   "不知道有没有在下载"来的。
+4. **终端里想"显示一行"必须走文件通道**：终端是原生 `TerminalView`，不能往里注入文本；
+   `/etc/profile.d/zz-banner.sh` + `rootfs/tmp/.zhengdao-banner-pending` 是既有的、
+   已验证可用的唯一通道（tmux 里每个新 pane 打一次并删文件）。
+5. **搬家的默认策略必须是"不覆盖、搬不动就留着"**：私有 `files/` 与公共 `/sdcard` 可能不是
+   同一文件系统（`renameTo` 会失败），所以 `Store.adoptDir/adoptFile` 逐条目搬、
+   目标同名则跳过、失败退回复制后删源、源目录没搬空就保留。幂等 ⇒ 每次启动无脑调用。
+   这条全部锁进了 `StoreTest`。
+
+### 6. 真机验证后的修正：公共区**不跟随工作区**（同一轮）
+
+上面第一版实现里，`Store.root(ctx)` = `Workspace.hostDir(ctx)`——理由是"下载物放哪"与
+"产出放哪"永远不漂成两处。**真机一验就散架**：
+
+- 用户的工作区早被设成了自定义目录 `Download/男性`（他的小说工程，见
+  `shared_prefs/zhengdao-settings.xml` 的 `workspace_mode=custom` / `workspace_path`），
+  于是日志、缓存、Agent 脚本与账本全落进了 `Download/男性/{logs,cache,agents}`——
+  和他自己写作内容混在一起，而安装包（`rootfs/`、`opencode/`）还在 `Download/证道/`，
+  东西反而**更分散**了。用户原话要的就是「都放到 download 证道 文件夹里」。
+- 更实际的两个后果：换工作区就丢缓存（要重下几百 MB）、丢账本（"装过什么"没了，
+  正好毁掉"重装 App 秒装好"最需要的那份数据）。
+
+修正（用户拍板"固定放 `Download/证道`"）：
+
+| 项 | 改成 |
+| --- | --- |
+| `Store.root` | 恒为 `Store.PUBLIC_ROOT` = `/storage/emulated/0/Download/证道`；没存储权限 / 仅私有模式 → `filesDir/store`（私有兜底，功能不断） |
+| `Store.isPublic` | 判 `root` 是否在 `/storage/emulated/0` 下（不再问 `Workspace.isShared`） |
+| guest 侧公共区 | 新增一条 `-b <Store.root>:/opt/zhengdao`（挂载点在 rootfs 里预建 `opt/zhengdao`）；`Store.GUEST_SCRIPTS_DIR` 从 `/workspace/agents/scripts` 改为 `/opt/zhengdao/agents/scripts`——**不能再挂在工作区下面**，否则脚本路径会随用户的内容目录漂 |
+| 老脚本迁移 | `AgentInstaller` 两处都收：`Workspace.hostDir/.zhengdao/scripts`（老落点）与 `Store.root/.zhengdao/scripts`（第一版的落点） |
+| 面板计量 | `CacheCleaner.measure` 改用新的 `Store.cacheDirPath`（只算路径不建目录）——否则"打开面板看一眼 / App 每次启动"都会在用户存储里凭空建出 `cache/{npm,uv,pip}` 三个空目录 |
+
+教训（补一条）：**"统一到一个根"是个好直觉，但先得问清那个根是不是用户的内容目录**。
+工作区是"Agent 干活的地方"，可以是用户自己的文件夹；App 自己的日志 / 缓存 / 账本是
+**程序数据**，锚在程序自己的目录（`Download/证道`，与安装包同处）才不会被用户的下一个
+选择带偏。用户说"都放到 X 文件夹"时，X 就是答案，别用"更优雅的一致性"去替换它。

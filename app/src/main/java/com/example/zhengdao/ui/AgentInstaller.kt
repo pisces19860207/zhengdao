@@ -6,16 +6,27 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import com.example.zhengdao.rootfs.RootfsDownloader
+import com.example.zhengdao.terminal.Store
+import com.example.zhengdao.terminal.Workspace
 import java.io.File
 
 /**
  * AgentInstaller（M3 骨架 §3 简化版）：安装脚本本地化 + 安装前清障。
  *
- * - **脚本本地化**：安装脚本先由 App 侧下载到工作区 /workspace/.zhengdao/scripts/
- *   （guest 内可直接读），重试时脚本已存在则跳过下载——网络断续不再卡安装；
+ * - **脚本本地化**：安装脚本先由 App 侧下载到 `Download/证道/agents/scripts/`
+ *   （guest 内可直接读，路径 `/opt/zhengdao/agents/scripts/`——公共区被单独 bind 到
+ *   `/opt/zhengdao`，**不再挂在工作区下面**，因为工作区可能是用户自己的内容目录），
+ *   重试时脚本已存在则跳过下载——网络断续不再卡安装。2026-10-08 从 `.zhengdao/scripts`
+ *   搬来（老脚本会被自动迁移，重试免下载的收益不作废）；
  * - **安装前清障**（坑 #12 固化）：git 残锁（进程被杀留 .git/index.lock → 之后全部
  *   exit 128，表现酷似网络失败）安装前自动清除；UV_LINK_MODE=copy 前置 export；
- * - **一键到底**：安装成功自动启动 Agent，不逼用户回主页。
+ * - **一键到底**：安装成功自动启动 Agent，不逼用户回主页；
+ * - **账本**：派发安装时往 `Download/证道/agents/installed.json` 记一笔，重装 App 后
+ *   主页据此给出「恢复全部」（见 [AgentLedger]）。
+ *
+ * ⚠️ 为什么 Agent 的**可执行文件**（`~/.local/bin`，agy 实测 201 MB）不搬公共区：
+ *    `/sdcard` 是 **noexec** 挂载，放过去就再也执行不了（这正是"安装脚本能放、二进制
+ *    不能放"的分界）。公共区只放**不需要执行权限**的东西：脚本、npm/uv/pip 包缓存。
  *
  * npm 类（opencode）不走脚本模式，沿用组合命令（镜像已在 guest 内全局配置）。
  */
@@ -35,43 +46,80 @@ object AgentInstaller {
      * @param onReady 主线程回调，参数为可直接注入终端的 autocmd
      */
     fun prepareInstall(ctx: Context, agent: AppState.AgentInfo, onReady: (String) -> Unit) {
+        Thread {
+            AgentLedger.markStarted(ctx, agent)
+            val cmd = installCommand(ctx, agent)
+            mainHandler.post { onReady(cmd) }
+        }.start()
+    }
+
+    /**
+     * 「恢复全部」（2026-10-08）：把账本里记着、但当前探测不到的 Agent 串成**一条命令**，
+     * 在同一个终端会话里顺序装完（每一步都写自己的 rc 文件，失败不影响后面的）。
+     *
+     * 为什么串成一条而不是逐个派发：终端是全局单会话模型，逐个派发等于反复重建会话，
+     * 用户会在"复制/解压/重建"之间反复跳；一条命令跑完，进度和输出都留在同一屏里。
+     */
+    fun prepareRestoreAll(ctx: Context, agents: List<AppState.AgentInfo>, onReady: (String) -> Unit) {
+        Thread {
+            val list = agents.filter { it.installCmd != null || SCRIPT_URLS.containsKey(it.id) }
+            if (list.isEmpty()) {
+                mainHandler.post { onReady("echo '[证道] 没有需要恢复的 Agent'") }
+                return@Thread
+            }
+            val parts = mutableListOf<String>()
+            list.forEachIndexed { i, a ->
+                AgentLedger.markStarted(ctx, a)
+                parts += "echo \"[证道] 恢复 ${i + 1}/${list.size}：${a.name}（有缓存走缓存，没缓存才下载）…\""
+                parts += installCommand(ctx, a)
+            }
+            parts += "echo \"[证道] 恢复流程结束：${list.joinToString("、") { it.name }}——每个 Agent 的结局见上面各段输出\""
+            val cmd = parts.joinToString("; ")
+            mainHandler.post { onReady(cmd) }
+        }.start()
+    }
+
+    /**
+     * 组装某个 Agent 的安装命令（**可能阻塞**：需要下载安装脚本，故只在后台线程调用）。
+     */
+    private fun installCommand(ctx: Context, agent: AppState.AgentInfo): String {
         val scriptUrl = SCRIPT_URLS[agent.id]
         if (scriptUrl == null) {
             // npm 类：清锁 + 原组合命令（镜像已在 guest 配置）
-            onReady(buildCommand(ctx, agent, agent.installCmd ?: return))
-            return
+            return buildCommand(ctx, agent, agent.installCmd ?: "")
         }
-        Thread {
-            // 脚本落点跟随工作区（0.6）：宿主侧 = Workspace.hostDir/.zhengdao/scripts
-            //（guest 侧路径 /workspace/.zhengdao/scripts 不变，安装命令零改动）
-            val dir = File(
-                com.example.zhengdao.terminal.Workspace.hostDir(ctx),
-                ".zhengdao/scripts"
+        val dir = Store.agentScriptsDir(ctx)
+        // 老落点搬家（一次性、幂等、两处都收）：脚本原先放在**工作区**下的
+        // `.zhengdao/scripts`（工作区可能是用户设的自定义内容目录，所以这里走
+        // Workspace.hostDir 而不是 Store.root），2026-10-08 换到公共区后
+        // 公共区自己也短暂有过一份。搬完源目录空了会被删掉。
+        runCatching { Store.adoptDir(dir, File(Workspace.hostDir(ctx), ".zhengdao/scripts")) }
+        runCatching { Store.adoptDir(dir, File(Store.root(ctx), ".zhengdao/scripts")) }
+        var ok = dir.isDirectory || runCatching { dir.mkdirs() }.getOrDefault(false)
+        val script = File(dir, "${agent.id}-install.sh")
+        // 重试免下载：脚本已在且非空直接复用（用户指定）
+        if (ok && (!script.isFile || script.length() < 64)) {
+            val tmp = File(dir, "${agent.id}-install.sh.part")
+            ok = runCatching {
+                val text = RootfsDownloader.fetchText(scriptUrl, trimEnds = false)
+                    ?: throw IllegalStateException("脚本下载失败")
+                tmp.writeText(text)
+                if (!tmp.renameTo(script)) {
+                    tmp.copyTo(script, overwrite = true)
+                    tmp.delete()
+                }
+            }.isSuccess
+            if (!ok) com.example.zhengdao.rootfs.RunLog.log(
+                "AgentInstaller: ${agent.id} 安装脚本下载失败，退回 curl|bash 通道"
             )
-            var ok = runCatching { dir.mkdirs() }.isSuccess
-            val script = File(dir, "${agent.id}-install.sh")
-            // 重试免下载：脚本已在且非空直接复用（用户指定）
-            if (ok && (!script.isFile || script.length() < 64)) {
-                val tmp = File(dir, "${agent.id}-install.sh.part")
-                ok = runCatching {
-                    val text = RootfsDownloader.fetchText(scriptUrl, trimEnds = false)
-                        ?: throw IllegalStateException("脚本下载失败")
-                    tmp.writeText(text)
-                    if (!tmp.renameTo(script)) {
-                        tmp.copyTo(script, overwrite = true)
-                        tmp.delete()
-                    }
-                }.isSuccess
-            }
-            val effectiveCmd = if (ok && script.isFile) {
-                // guest 内 /workspace 即手机侧工作区，脚本以本地文件执行
-                "bash /workspace/.zhengdao/scripts/${agent.id}-install.sh"
-            } else {
-                agent.installCmd ?: "" // 本地化失败：退回原始 curl|bash
-            }
-            val cmd = buildCommand(ctx, agent, effectiveCmd)
-            mainHandler.post { onReady(cmd) }
-        }.start()
+        }
+        val effectiveCmd = if (ok && script.isFile) {
+            // guest 内 /workspace 即手机侧工作区，脚本以本地文件执行（不再走网络）
+            "bash ${Store.GUEST_SCRIPTS_DIR}/${agent.id}-install.sh"
+        } else {
+            agent.installCmd ?: "" // 本地化失败：退回原始 curl|bash
+        }
+        return buildCommand(ctx, agent, effectiveCmd)
     }
 
     /** 组合命令：清 git 残锁（坑 #12）→ copy 模式 → 安装 → 自动启动。 */
