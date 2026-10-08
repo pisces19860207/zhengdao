@@ -25,13 +25,17 @@
 #     受模拟开销影响约需 30–90 分钟；该步失败不阻塞 APK 产物上传（continue-on-error）。
 #   - local.properties 是本机文件，CI 上无效且有害，构建前删除。
 #
-# ⚠️ 步骤顺序有讲究（2026-10-08 修，见 docs/ERRATA.md E-029）：
-#    编译 Debug/Release APK → 校验产物签名 → 收集 APK → **发布 APK 到 Releases** →
-#    构建 RootFS → 发布 RootFS 包。
+# ⚠️ 步骤顺序有讲究（2026-10-08 修，见 docs/ERRATA.md E-029 / E-030）：
+#    编译 Release APK → 校验产物签名 → 收集 APK → **发布 APK 到 Releases** →
+#    编译 Debug APK → 构建 RootFS → 发布 RootFS 包 →（诊断）。
+#    原则：**凡是用户能下载到的东西，挡在它前面的步骤越少越好**。
 #    「发布」绝不能再排在 30–90 分钟的 RootFS 后面：本工作流有
 #    `cancel-in-progress: true`（同一 ref 只留最新一次），任何人一推送就会把正在跑的
 #    run 掐死，排在长步骤后面的发布步骤因此**永远走不到**——2026-10-08 当天所有修复
-#    都没能进滚动版 latest，下载页一直停在 10-07 的包，根因就在这个顺序。
+#    都没能进滚动版 latest，下载页一直停在 10-07 的包，根因就在这个顺序（E-029）。
+#    同理，Debug APK（开发者用，实测 54 秒）与那份 keystore 诊断（实测 154 秒，
+#    E-014 排查期留下的常驻诊断）都挪到了发布**之后**：它们只影响 Actions 页的
+#    artifact 与排查，不该挡在用户下载前面（E-030）。
 #
 # ⚠️ RootFS 也不再每次推送都重建：只有 `rootfs/` 有改动、或手动触发（workflow_dispatch）、
 #    或拿不到 `github.event.before`（tag 推送/强制推送，保守处理）时才重建；纯 App 代码
@@ -91,7 +95,11 @@ jobs:
           echo "rootfs=$need" >> "$GITHUB_OUTPUT"
           echo "本次是否需要重建 RootFS：$need（$reason）"
 
-      - name: 释放磁盘空间（NDK + Gradle 缓存 + RootFS 合计约 10GB）
+      - name: 释放磁盘空间（仅重建 RootFS 时需要）
+        # 这一步是为 RootFS 那次 ~10GB 的 qemu 构建腾地方；纯 App 代码的推送并不需要它，
+        # 以前每次白等 38 秒（E-030）。app 构建要的空间（NDK ~3GB + Gradle 缓存 + 产物）
+        # 在 runner 上充裕，df -h 的输出可随时核对。
+        if: steps.rootfs_needed.outputs.rootfs == 'true'
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
           sudo docker image prune -af > /dev/null 2>&1 || true
@@ -193,26 +201,6 @@ jobs:
           # ⚠️ 到这里为止只证明"**钥匙文件**是对的"。钥匙文件对 ≠ 打出来的包对 ——
           #    真正的关卡在 assembleRelease 之后那一步「校验 release 包的签名」（E-014 §7）。
 
-      - name: 诊断（常驻）：AGP 到底认哪把 keystore
-        # ⚠️ E-014 §8 的根因至今**未定论**：文件放对了、指纹也对，产物却是别的 key 签的。
-        #    这一步把「AGP 自己报出来的 store 路径 + 全盘 debug.keystore」打进日志——
-        #    下次再出问题，一眼定案，不用再猜。失败不影响构建（纯诊断）。
-        continue-on-error: true
-        env:
-          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
-        run: |
-          echo "== AGP 报的签名配置（应指向 .ci-debug.keystore）=="
-          ./gradlew :app:signingReport --console=plain 2>&1 | grep -A3 -iE '^(Variant|Config|Store|Alias)|SHA-?1' || true
-          echo "== 全盘 debug.keystore =="
-          find / -name 'debug.keystore' -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null || true
-
-      - name: 编译 Debug APK（开发者用）
-        # ZHENGDAO_KEYSTORE_FILE 见 app/build.gradle.kts 顶部与 docs/ERRATA.md E-014 §8：
-        # 把签名钥匙钉死在权威副本上，不再赌 AGP 的目录推断。
-        env:
-          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
-        run: ./gradlew :app:assembleDebug --console=plain
-
       - name: 编译 Release APK（最终用户用；R8 + 资源收缩 + lintVital）
         # ⚠️ 这一步是本流水线以前**没有**的，正是它缺席让 CI 发布的「正式版」实为 debug 包
         #    （见 docs/ERRATA.md E-013）。release 变体用 debug 签名
@@ -256,16 +244,17 @@ jobs:
           fi
           echo "✅ 产物签名 = 存量 key（$EXPECTED_SHA256），可以发布。"
 
-      - name: 收集 APK 产物
+      - name: 收集 APK 产物（此刻只收 release —— 发布路径越短越好）
         # 三个目录各司其职：apk-debug 只给开发者从 Actions 页面下，
         # apk-release 才进 Releases 页，rootfs-files 是 RootFS 包。
         # 混在一个目录里，下面的 gh release upload 就会把 debug 包一起推出去（E-013）。
-        # ⚠️ 这一步必须排在「发布 APK 到 Releases」之前，而发布又必须排在 RootFS 之前（E-029）。
+        # ⚠️ 这一步必须排在「发布 APK 到 Releases」之前，而发布又必须排在 RootFS 与
+        #    Debug APK 之前（E-029/E-030）：此刻 debug 包还没编，先建空目录占位，
+        #    等发布之后那步「收集 Debug APK 产物」再补进去（artifact 上传时才有它）。
         run: |
           mkdir -p apk-debug apk-release rootfs-files
-          cp app/build/outputs/apk/debug/zhengdao-*.apk apk-debug/
           cp app/build/outputs/apk/release/zhengdao-*-release.apk apk-release/
-          ls -la apk-debug/ apk-release/
+          ls -la apk-release/
 
       - name: 发布 APK 到 Releases（最终用户从这里下载，和太墟一样的姿势）
         # ⚠️ E-029：这一步**刻意排在 RootFS 构建之前**。它以前排在 30–90 分钟的 qemu
@@ -292,6 +281,20 @@ jobs:
           else
             echo "::warning::未配置 DEBUG_KEYSTORE_B64，跳过 APK 上传（E-014）——用随机 key 签的包会让老用户无法覆盖安装"
           fi
+
+      - name: 编译 Debug APK（开发者用）
+        # ZHENGDAO_KEYSTORE_FILE 见 app/build.gradle.kts 顶部与 docs/ERRATA.md E-014 §8：
+        # 把签名钥匙钉死在权威副本上，不再赌 AGP 的目录推断。
+        # ⚠️ E-030：刻意排在「发布 APK 到 Releases」**之后**——它只是给开发者从 Actions
+        #    页面下的调试件（实测 54 秒），不该挡在"用户能下载"前面。
+        env:
+          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: 收集 Debug APK 产物（发布之后才补进 artifact）
+        run: |
+          cp app/build/outputs/apk/debug/zhengdao-*.apk apk-debug/
+          ls -la apk-debug/
 
       - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
         # 只在 rootfs/ 有改动、或手动触发时跑（判定见上面「判断本次推送要不要重建 RootFS」）。
@@ -338,6 +341,23 @@ jobs:
           else
             echo "::warning::rootfs-files/ 为空（RootFS 步骤可能失败），本次只更新了 APK"
           fi
+
+      - name: 诊断（仅失败/手动触发时跑）：AGP 到底认哪把 keystore
+        # ⚠️ E-014 §8 的根因至今**未定论**：钥匙文件放对了、指纹也对，产物却是别的 key 签的。
+        #    这一步把「AGP 自己报出来的 store 路径 + 全盘 debug.keystore」打进日志——
+        #    出了事一眼定案，不用再猜；手动触发时也跑一次（保住"常驻诊断"的能力）。
+        # ⚠️ E-030：它是一次完整的 Gradle 调用（实测 154 秒），以前**每次构建**都跑；
+        #    而真正的把关是「校验 release 包的签名」——那一步对着**产物**验（E-014 §7）。
+        #    所以它从"每次"改成"仅失败/手动"，并挪到发布之后，不再挡在用户下载前面。
+        if: failure() || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        env:
+          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
+        run: |
+          echo "== AGP 报的签名配置（应指向 .ci-debug.keystore）=="
+          ./gradlew :app:signingReport --console=plain 2>&1 | grep -A3 -iE '^(Variant|Config|Store|Alias)|SHA-?1' || true
+          echo "== 全盘 debug.keystore =="
+          find / -name 'debug.keystore' -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null || true
 
   # ── 正式 Release（推 v* tag 时自动创建）────────────────────────────
   # 推 tag 触发 build job 编译 debug + release，完成后本 job 取 **release** 包，
