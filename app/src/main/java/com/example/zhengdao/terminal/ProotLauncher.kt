@@ -410,10 +410,24 @@ object ProotLauncher {
         runCatching {
             val f = File(homeDir, ".tmux.conf")
             val cur = if (f.isFile) f.readText() else ""
-            if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
-                f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + "set -g mouse on\n")
-                RunLog.log("tmux 配置已补：set -g mouse on（触摸滑动可滚动历史）")
+            val add = buildString {
+                if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
+                    append("set -g mouse on\n")
+                    RunLog.log("tmux 配置已补：set -g mouse on（触摸滑动可滚动历史）")
+                }
+                // 剪贴板预置（2026-10-08 真机实测补）：三档负载（100 / 9000 / 12345 字符）
+                // 端到端验证「终端内的 OSC 52 → 手机剪贴板」这条链。
+                // tmux 的 set-clipboard 默认是 external —— 实测这种模式下**pane 里应用发出的
+                // OSC 52 不会被转发给外层终端**（App 收不到、剪贴板不变、也没有「已复制」提示）；
+                // 只有在 on 模式下 tmux 才会既存自己的 buffer、又把 OSC 52 透传给 App。
+                // 因此这里必须显式开 on，否则 TerminalEmulator 里那套 OSC 52 处理（含 100 KiB
+                // 上限修复）在 tmux 里等于白做。
+                if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+set-clipboard\\b").containsMatchIn(cur)) {
+                    append("set -g set-clipboard on\n")
+                    RunLog.log("tmux 配置已补：set -g set-clipboard on（终端内 OSC 52 才能写进手机剪贴板）")
+                }
             }
+            if (add.isNotEmpty()) f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + add)
         }
 
         // TZ（双保险的第二层）：tmux server / date / Node 等都读它。带 zoneinfo 的
