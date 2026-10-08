@@ -350,6 +350,33 @@ jobs:
           if [ -d rootfs-out ]; then sudo chown -R "$(id -u):$(id -g)" rootfs-out; fi
           ls -la rootfs-out 2>/dev/null || true
 
+      - name: 签名环境包索引（Ed25519；没有密钥就不许发布）
+        # 为什么这道必须**硬失败**：索引里的 sha256 与被校验的包在同一个 Release 里，
+        # sha256 只防传输损坏、**防不住发布端被篡改** ⇒ 这一层由"私钥签名 + App 内置公钥验签"补上。
+        # 本步一旦跳过，latest 上的 rootfs-index.json 就是**未签名**的，而 App 侧
+        # [RootfsIndexFetcher] 对未签名索引是**拒绝使用**的 ⇒ 用户会突然装不上环境更新。
+        # 与 E-014 的 keystore 关卡同一 philosophy：**宁可构建失败，也不要发一份用户用不了的东西。**
+        # ⚠️ 首次落地后要手动触发一次本工作流（workflow_dispatch）：rootfs 的重建门禁只在
+        #    rootfs/ 有改动或手动触发时才跑（见上面「判断本次推送要不要重建 RootFS」），
+        #    否则 latest 上那份**旧的未签名索引会一直留着**，直到下次重建才被签名。
+        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
+        env:
+          INDEX_KEY_PEM: ${{ secrets.ROOTFS_INDEX_SIGNING_KEY_PEM }}
+        run: |
+          if [ -z "$INDEX_KEY_PEM" ]; then
+            echo "::error::未配置 secret ROOTFS_INDEX_SIGNING_KEY_PEM——索引将以未签名状态发布，而 App 对未签名索引拒绝使用（环境更新会失败）。先配好 secret 再重建 RootFS。"
+            exit 1
+          fi
+          if [ ! -f rootfs-out/rootfs-index.json ]; then
+            echo "::error::rootfs-out/rootfs-index.json 不存在（RootFS 步骤失败，或未产索引）"
+            exit 1
+          fi
+          printf '%s\n' "$INDEX_KEY_PEM" > /tmp/index-sign.pem
+          # 私钥只在这一步存在于 runner 的临时文件里，签完立刻删
+          python3 tools/sign-rootfs-index.py --key /tmp/index-sign.pem rootfs-out/rootfs-index.json
+          rm -f /tmp/index-sign.pem
+          ls -la rootfs-out/rootfs-index.json*
+
       - name: 收集 RootFS 产物
         if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
         run: |

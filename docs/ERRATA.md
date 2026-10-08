@@ -3131,3 +3131,34 @@ merge **`28e733d`**，已推 origin/main。
 3. **验收要能证明"是新路径在跑"**：`verify(...) == true` 区分不了 Rust 与平台实现；`验签走 Rust 核心（与平台对拍一致）：true` 这一行才是凭据（"路径日志 + 断言"两件套，E-045 起固定用法）。
 4. **依赖选型要写理由**：`num-bigint`/`num-traits` 引入的是通用大整数运算、不是密码学库；理由（可逐行对照 Kotlin 实现）与体积代价（+132 KB）都该落进 `Cargo.toml` 注释与 ERRATA，否则下一个人只会看到"多了个依赖"。
 
+---
+
+## E-052 · 2026-10-08 · 索引签名"代码写完了、线上却一个签名都没有"：secret 从未配置、`.sig` 长期 404，而且签名步骤被 `if: refs/heads/main` 钉死
+
+**缺口**：`feat/rootfs-index-signature`（`5594174` + `4f5ee52`）给环境包索引补上了 Ed25519 签名，但**线上 `latest` 的 `rootfs-index.json` 从来没有对应 `.sig`**（GET 404）。这条链一旦合并，`RootfsIndexFetcher.fetch()` 会因为「拿到索引但没有签名」而**拒绝使用**（`RootfsIndex.kt:171-174`：`sig.isNullOrBlank() → sawUnverified = true → continue`）——即**应用内环境更新通道直接死掉**，所以分支一直卡在"不能合"。三个层次的根因：
+
+1. **secret 从未配置**：repo secrets 只有 `DEBUG_KEYSTORE_B64`，`ROOTFS_INDEX_SIGNING_KEY_PEM` 不存在 ⇒ CI 那一步会 `::error::` 硬失败（这正是设计意图：宁可不发，也不发一份用户用不了的东西）。
+2. **签名步骤只在 main 上跑**：`if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'` ⇒ 想在**分支上手动 dispatch 预演一次签名**是不可能的（`github.ref` 会是分支名）⇒ 上线顺序被这个条件绑成"必须先在 main 具备签名能力"，而 main 上恰恰没有那段 workflow（它只活在这个分支里）。
+3. **同一信任链上两种验证强度**：E-051 刚把清单那条链改成「Rust 优先 + 平台对拍 + 不一致拒绝」，而索引那条（`RootfsIndexFetcher.verifySignature`）仍**直连平台实现** `Ed25519.verify(...)` ⇒ Rust 侧的真实签名输入只覆盖了清单，索引这条从来没走过 Rust。
+
+**修法**（本轮，全部落地）：
+
+1. **配 secret**：本机 Windows 凭据管理器里有 GitHub 凭据（`git credential fill` 取到 40 字符 token，**只进环境变量、不打印不落盘**）⇒ `GET /repos/pisces19860207/zhengdao/actions/secrets/public-key` 拿 `key_id` + 仓库公钥，用 PyNaCl 的 `SealedBox`（GitHub 规定的 `crypto_box_seal`）加密 122 字节 PKCS#8 PEM 后 `PUT .../actions/secrets/ROOTFS_INDEX_SIGNING_KEY_PEM`（HTTP 201）；复查 secrets 列表 = `DEBUG_KEYSTORE_B64, ROOTFS_INDEX_SIGNING_KEY_PEM`。
+2. **让"当前线上那份"索引立刻带上签名**（不等 CI 重建、也不靠分支 dispatch——上面根因 2 把它堵死了）：抓线上 `rootfs-index.json` 的**原始字节**，用**项目自己的脚本** `tools/sign-rootfs-index.py --key ~/.zhengdao-keys/rootfs-index-signing.ed25519.key <索引>` 签出 `.sig`（64 字节签名 → 88 字符 base64），再 `POST https://uploads.github.com/repos/{owner}/{repo}/releases/{id}/assets?name=rootfs-index.json.sig` 上传（HTTP 201）。选这条路的理由：签名步骤被条件钉在 main（根因 2），而"重建 RootFS"是 20+ 分钟 + 192 MB，而签一份 469 字节的索引只需要几秒。
+3. **索引验签收口到与清单同一条入口**：抽 `internal object Ed25519Verify`（`ui/AgentManifest.kt`）= Rust 优先 + 平台对拍 + 不一致拒绝 + 一个 `$what` 标签（"清单"/"索引"）；`AgentManifest.verify` 与 `RootfsIndexFetcher.verifySignature` 都改走它，顺带堵掉"Rust 侧真实输入只覆盖清单"这个盲区。
+4. **分支追平 main**：分支合并基是 84 个提交之前，3 个文件双方都改过（`.github/workflows/build.yml`/`RootfsDownloader.kt`/`AgentManifest.kt`）⇒ `git merge main` 在 worktree 里**零冲突**（三处落在不同 hunk：签名步骤、`fetchBytes`、`internal object Ed25519`）。
+
+**实测**：
+
+- **公钥对账（整条链的前提）**：从私钥文件派生 `SigningKey(seed).verify_key` = `o504TEF3eRPtLicRzp7qBF5AJyTam4voaO89tGYgxxk=`，与 APK 里固化的 `RootfsIndexFetcher.INDEX_SIGNING_PUBKEY_B64`（`RootfsIndex.kt:125`）**逐字节相同** ✓。
+- **线上索引**：469 字节、`sha256=50f10326d9e68a4c1fdd03154e317c9d6068a0d6fa2c71a4c5e73f3b073b78ff`；签名 64 字节 → base64 88 字符；PyNaCl 独立验签通过；上传后**从公开地址回读** `.sig`（88 字节文本）再验签通过 ✓（`latest` 资产＝`debian-13.7-base-arm64.tar.zst`、`.sha256`、`rootfs-index.json`、`rootfs-index.json.sig`、`rootfs-manifest.txt`、`.sha256`、`zhengdao-1.3.0-release.apk`）。
+- JVM：`34 suites / 285 tests / 0 failures / 0 errors / 0 skipped`（+1 suite = 新增 `RootfsIndexSignatureTest` 8 例：正品/篡改/错钥/非 base64/短签名/首尾空白/边车地址拼接）。
+- 真机（Honor PGT-AN10 / Android 16）：新增 `RootfsIndexSignatureInstrumentedTest` ⇒ `tests="3" failures="0" errors="0" skipped="0"`：① `线上索引_带签名_能取到且验签解析通过`（`fetch()` 全路径非空 ⇒ 线上确有能验过的签名）；② `线上索引_正文被翻一位_验签必须拒绝`；③ `线上索引_直接过Rust核心_返回true`——直接调 `CoreNative.verifyEd25519` 对线上索引返回 true、对翻一位的正文返回 false ⇒"Rust 在 arm64 上真的验了线上这份签"变成断言。
+
+**教训**：
+
+1. **"功能写完"≠"功能上线"**：这条链的代码、单测、台账全绿了好几天，而线上 `.sig` 一直是 404——**可交付物是"线上那个文件存在且能被验"**，不是"代码合并了"。验收必须包含一次**从公开地址回读**（E-045 起的老规矩，这次差点又漏）。
+2. **`if:` 条件会写死上线顺序**：把签名/发布这类"必须发生"的步骤用 `github.ref == 'refs/heads/main'` 保护，就等于**禁止在合并前预演**；真要分步上线，要么让 main 先具备能力，要么准备一条"手工等价操作"的路（本轮走的是后者）。
+3. **同一信任链不许有两种强度**：验签入口散在两条链上，改了 A 就会漏 B（E-050 的"分叉比缺失更危险"在验签上同样成立）⇒ 抽公共入口 `Ed25519Verify`，把链名当标签进日志。
+4. **日志不是证据，断言才是**：这台设备上 App 的 `Log.i` 会被 HKS 噪声冲掉（`adb logcat -s Ed25519Verify:V` 抓不到行，E-050/E-051 两轮同样现象），所以"Rust 真的在算"要用 `CoreNative.verifyEd25519(...) == true` 直接断言，不要把日志行写进验收步骤。
+
