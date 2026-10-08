@@ -2011,10 +2011,20 @@ sha256 `ae27ddfe…a934f5`（与 `.sha256` 边车一致）；解开后 tar `1,03
 
 - 方案文档（含三阶段 A/B/C、与 App 侧兼容性、以及"往 Rust 方向进化"的排序）：
   `docs/milestones/证道-环境包瘦身与压缩方案-2026-10-08.md`
-- **代码一行未改**：阶段 B1（删 ffmpeg）是功能取舍，等用户拍板；
-  阶段 A（清残留 + `zstd -19`）可直接做，等与 B 一起决定是否一次构建完成。
+- **阶段 A 已上线（2026-10-08）**：`rootfs/build-rootfs.sh` 两处改动（§2.9 清构建残留
+  `qemu-aarch64-static`/`gitweb`/`debconf` 缓存/`var/log/*`；§[4/4] 打包改 `ZSTD_CLEVEL=19
+  tar --use-compress-program="zstd -19"` + 新增 280 MB 包体积门禁），提交 `b1ebe6a` → main `a7a1d22`。
+  **实测结果**：`build #152 @a7a1d22` = success（24 分钟），
+  `latest` 的 `debian-13.7-base-arm64.tar.zst` = **326,606,222 B → 243,428,459 B（−25.5%）**，
+  边车 sha256 同步刷新，端侧零改动（Rust `zstd 0.13` / Java `zstd-jni 1.5.6-4` 本来就能解 -19 帧）。
+- **阶段 B1（删 ffmpeg）已被用户否掉**（2026-10-08 原话要点：「ffmpeg 是 hermes agent 要用的，
+  不然 hermes 会自己下载的，更拖慢整个进度，本来 hermes 下载就慢了」）⇒ 预装清单与
+  `build-rootfs.sh:204` 的断言都**保留**；方案的 B1 一节改写为"如果将来又要删"的施工图。
+  阶段 B2（裁 locale，−18.8 MB）用户未答。
+- **`zstd -19` 的解压侧兼容性不必验证**：帧窗口 8 MB，两端解码器都支持；
+  门禁值 280 MB 留了约 35 MB 余量（基线 243.4 MB）。
 - 工具（临时目录，可复用）：`zd_measure.py`（decompress/budget/files/pkg/closure/purge/compress/xz/decode）、
-  `zd_check.py`（瘦身包完整性门禁：缺失 0 项、漏删 0 项）、`zd_manifest.py`、`zd_delta.py`。
+  `zd_check.py`（瘦身包完整性门禁：缺失 0 项、漏删 0 项）、`zd_manifest.py`（清单体积与内容去重，输出 10,399 行 / zstd-19 后 441,331 B）、`zd_delta.py`（retouch/delta）。
 
 ### 4. 教训
 
