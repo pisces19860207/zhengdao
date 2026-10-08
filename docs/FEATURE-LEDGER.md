@@ -500,7 +500,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | opencode 更新检查 | ✅ 在用 | `c07eec3` | `ui/SettingsScreen.kt`、`oc/OcManager.kt` |
 | 环境体检三态 + 自愈 | ✅ 在用 | `df2b3eb` | `ui/EnvHealth.kt`、`terminal/EnvSelfHeal.kt` |
 | 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
-| 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt` |
+| 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮，另在 guest 里有 `/usr/local/bin/zzclean`（App 启动时按内容+执行位写入）；一档命令含 pip 缓存） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt`、`terminal/ProotLauncher.kt`（写入 `/usr/local/bin/zzclean`） |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
 | Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY 不进恢复候选**，见 §3 与 E-040；候选筛选 `AgentInfo.restorable`） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
 | 安装可见性（常驻横幅 + 系统通知 + 终端横幅 + 设置页状态行；四落点收在 `InstallFlow`） | ✅ 在用 | `c1b56d3` + `ab74725` | `ui/InstallFlow.kt`、`ui/InstallProgress.kt`、`terminal/InstallNotifier.kt`、`TerminalActivity.kt`、`ui/SettingsScreen.kt`、`res/layout/activity_main.xml`（`status_banner`） |
