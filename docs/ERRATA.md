@@ -3104,3 +3104,30 @@ merge **`28e733d`**，已推 origin/main。
 3. **门禁只校验"符号存在"，校验不了"签名对不对"**：`tools/check-native-so.py` 是拿 `CoreNative.kt` 里的 `external fun` 名字比对 .so 导出符号，所以**改已有符号的签名**它能放行；本条因此选择**新增**符号（旧 .so + 新 Kotlin 时只有补丁路径 JNI 查找失败 → 回退 Java），把不兼容限制在一条路径里。
 4. **Rust 侧也要能吃"最土"的输入**：生产上补丁就是未压缩 tar，Kotlin 早就支持，Rust 却把它当非法格式 —— 能力对齐要按**调用方实际会传的形状**做，不是按"生产压缩格式"做。
 
+---
+
+## E-051 · 2026-10-08 · 清单验签的信任根只活在 App 进程里：把 Ed25519 验签搬进 Rust 核心，并让两边**对拍**（不一致＝拒绝）
+
+**缺口**：全仓唯一的签名验证入口是 `app/src/main/java/com/example/zhengdao/ui/AgentManifest.kt` 的 `verify()`，Ed25519 计算完全在 Kotlin 里（私有 `object Ed25519`，为绕开 Android `KeyFactory("Ed25519")` 默认路由到 AndroidKeystore 而从零实现 RFC 8032 §5.1），只在 App 进程可用：终端/Agent、脚本、将来任何"非 App 的校验方"都拿不到同一份信任根；而"向 Rust 方向进化"的判据之一就是**信任根这类纯计算不该被 Android 运行时钉死**。
+
+**修法**（`feat/rust-ed25519`）：
+
+1. `rust/core/src/ed25519.rs`（新）：`pub fn verify(pub_key: &[u8], sig: &[u8], msg: &[u8]) -> bool` —— 长度非法或验不过一律 `false`、绝不 panic 跨 FFI；曲线常量 `P/D/D2/L/SQRT_M1/基点B` 用 `std::sync::OnceLock` 惰性初始化（`D` 用费马小定理求逆，省掉 num-integer）；SHA-512 用 `sha2::Sha512`；`Point{x,y,z,t}` 扩展坐标（`t` 由 `X·Y` 直接算出，省掉 Kotlin 那套 nullable `T`）；`decode_point` 按 §5.1.3（含奇偶修正）、`pt_add` 按 §5.1.4、`verify` 判 `S·B == R + h·A` 且拒 `S ≥ L`。
+2. `rust/core/src/jni_bridge.rs`：**新增** `Java_com_example_zhengdao_rust_CoreNative_nativeVerifyEd25519(pub, sig, msg) -> jboolean`（新增而非改旧符号签名，理由＝E-050 教训 3：门禁只校验符号存在、校验不了签名）。
+3. `app/src/main/java/com/example/zhengdao/rust/CoreNative.kt`：`verifyEd25519(pubKey, sig, msg): Boolean?`（核心不可用/例外 ⇒ `null`，调用方回退）+ `private external fun nativeVerifyEd25519`。
+4. `AgentManifest.verify()` 改成**对拍**形态：平台先算 → Rust 再算 → Rust 为 `null` 记「验签走平台回退（Rust 核心不可用）：$platform」并返回平台结论；两边不一致记 `Log.w` 并**拒绝**；一致则记「验签走 Rust 核心（与平台对拍一致）：$rust」并返回 Rust 结论。`rust/core/Cargo.toml` 加 `num-bigint`/`num-traits`（**通用大整数库、非密码学库**，理由是公式能与 `java.math.BigInteger` 逐行对照）。
+
+**实测**：
+
+- host：`cargo test -p zhengdao_core --release` = **18 passed / 0 failed**，其中 ed25519 6 例：RFC 8032 §7.1 TEST1/2/3 + `真实清单_验签通过与三类篡改拒绝`（读仓库 `rootfs/agents.json` 1379 B 与 `agents.json.sig`，用固化公钥验签通过；篡改正文/错公钥/签名翻位三类拒绝）+ `全零退化输入_朴素判定式通过_已知边界` + `长度非法_一律false不panic`。
+- `python tools/check-native-so.py`：`libzhengdao_core.so` **948,392 B**（未 strip 1,268,448 B；比 E-050 那版 816,040 B 大 132 KB，全是 num-bigint + ed25519 的代价）、4 个 `PT_LOAD` 全 `p_align=0x4000`、`CoreNative.kt` 的 **5** 个 `external fun` 全部命中。
+- JVM：`33 suites / 277 tests / 0 failures / 0 errors / 0 skipped`。
+- 真机（Honor PGT-AN10 / Android 16）：`Ed25519VerifyInstrumentedTest` ⇒ `tests="4" failures="0" errors="0" skipped="0"`（没被 `assumeTrue` 跳过 ⇒ arm64 上这份 .so 真的在算）；`AgentManifestVerifyInstrumentedTest`（真实 `agents.json` + `.sig` 走 App 的验签入口）⇒ `tests="1" failures="0"`，logcat：`I AgentManifest: 验签走 Rust 核心（与平台对拍一致）：true`。
+
+**教训**：
+
+1. **对拍要带"失败侧取严"**：两边不一致时按拒绝处理 —— 不一致本身就是待修的 bug，放行等于把风险留给用户。
+2. **"朴素判定式"的边界要写成用例**：RFC 8032 §5.1.7 允许不做小阶点拒绝，全零公钥/签名（阶 4）在这种实现下**会判通过**（我第一版单测就把它写成"必 false"而挂掉）。本项目公钥固化在 APK、攻击者只能控 R/S ⇒ 不可达；把它写成注释 + 显式用例（`全零退化输入…已知边界`），行为就被锁死，换实现不会静默漂移。
+3. **验收要能证明"是新路径在跑"**：`verify(...) == true` 区分不了 Rust 与平台实现；`验签走 Rust 核心（与平台对拍一致）：true` 这一行才是凭据（"路径日志 + 断言"两件套，E-045 起固定用法）。
+4. **依赖选型要写理由**：`num-bigint`/`num-traits` 引入的是通用大整数运算、不是密码学库；理由（可逐行对照 Kotlin 实现）与体积代价（+132 KB）都该落进 `Cargo.toml` 注释与 ERRATA，否则下一个人只会看到"多了个依赖"。
+

@@ -17,6 +17,11 @@ zstd = "0.13"
 # tar 归档遍历（纯 Rust）
 tar = "0.4"
 flate2 = "1.0"
+# —— ed25519 模块（信任根：manifest / 环境包索引验签）——
+# 通用大整数库（**不是**密码学库）：与 Kotlin 侧 java.math.BigInteger 同构，
+# 让 RFC 8032 的公式能逐行对照移植，避免手写 255 位域运算的静默错误（E-051）
+num-bigint = "0.4"
+num-traits = "0.2"
 
 [target.'cfg(target_os = "android")'.dependencies]
 # asm feature：启用 ARMv8 SHA2 硬件指令（aarch64 上与平台 MessageDigest 同吃硬件加速，
