@@ -3162,3 +3162,43 @@ merge **`28e733d`**，已推 origin/main。
 3. **同一信任链不许有两种强度**：验签入口散在两条链上，改了 A 就会漏 B（E-050 的"分叉比缺失更危险"在验签上同样成立）⇒ 抽公共入口 `Ed25519Verify`，把链名当标签进日志。
 4. **日志不是证据，断言才是**：这台设备上 App 的 `Log.i` 会被 HKS 噪声冲掉（`adb logcat -s Ed25519Verify:V` 抓不到行，E-050/E-051 两轮同样现象），所以"Rust 真的在算"要用 `CoreNative.verifyEd25519(...) == true` 直接断言，不要把日志行写进验收步骤。
 
+
+## E-053 · 2026-10-08 · 终端页「安装失败：SHA256 校验失败」：包是好的、索引是对的，只有那个**没人维护的本地 `.sha256` 边车**是过期的
+
+**缺口**：用户手机上终端页顶部挂着一条红色横幅 `安装失败：SHA256 校验失败：actual=d80639e7dc5c055fb7…`，重进 App 再点「安装运行环境」照样复现。现场取证（`adb`）的结论很反直觉——**192 MB 整包完好且与线上一致**：包体 `sha256sum` = `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02` = 线上 `.sha256` = 索引 `rootfs-index.json` 里的 `sha256`（三者一模一样）。真正对不上的是同目录那个 65 字节的伴生文件 `debian-13.7-base-arm64.tar.zst.sha256`（mtime 比包体晚 1 分半），里面写的是**上一次换包之前**的值 `d12cd1d37e0c4767e6730fd709eb796f5fe996b27e94e40b480bdb96afec9e27`。
+
+原因在 `TerminalActivity.startInstallFromFile`（改动前 :1064-1113）开门第一句就**把"文件自己怎么说"当成了信任源**：
+
+```kotlin
+val sidecar = File(local.parentFile, local.name + ".sha256")
+val expectedSha = when {
+    sidecar.isFile -> sidecar.readText().trim()
+    else -> RootfsDownloader.fetchText(ProotLauncher.DEFAULT_ROOTFS_URL + ".sha256")
+}
+```
+
+于是"包被别人换过、边车还是旧的"这种纯记账问题，被报成了"包坏了/安装失败"，用户看到的建议（"重进 App 可再试"）也永远试不好。三层根因：
+
+1. **边车是没人维护的死文件**：`git grep` + 逐文件确认，**全仓没有任何代码写它**（只有上面两行读）⇒ 它只可能来自历史版本或人手，远端一换包必然变馊（E-033「无人维护的伴生文件」同款，这次它从"脏数据"升级成了"假失败")。
+2. **同一个问题在三处各答一次**：终端页**本地包**＝本地边车；终端页**下载**＝线上 `$url.sha256`；设置页**全量/增量**＝线上 `$url.sha256`。三份"期望值"三种来源 ⇒ 改一处必漏两处（E-050 的「分叉比缺失更危险」）。
+3. **唯一被签名背书的值排在最后**：`rootfs-index.json` 的 `sha256` 是经 Ed25519 验过的（E-052），可信度最高，却完全没参与这条判断。
+
+**修法**（本轮，已落地）：
+
+1. **把"该用哪个 sha256"抽成一个纯函数**：`RootfsCache.pickExpectedSha(localName, localSize, indexUrl, indexSize, indexSha, sidecar, onlineSha): ShaChoice`（`ShaChoice(sha, source, staleSidecar)`），优先级 **索引 > 本地边车 > 线上 `.sha256`**。判定"本地包就是索引那个包"要**同时**满足：文件名 == 索引 `url` 末段（先掐掉 `?query`）**且**（本地大小未知 或 与索引 `size` 相等）；只有这时才允许索引去压边车。**反过来若名字/字节数对不上就不压**——用户留着旧包本来就可能要装旧版本，索引描述的是"最新那个包"，不是"这个文件"。抽成纯函数是为了能在 JVM 上把每种组合都试一遍（含大小写/空白/索引缺失/同名不同大小）。
+2. **终端页本地包走新函数，并让边车自愈**：先取索引（`runCatching { RootfsIndexFetcher.fetch() }.getOrNull()`，索引取不到就自然退回老行为、不阻塞），边车**空白或缺失**时才去抓线上那份（省一次网络往返）；冲突时 `RunLog` 记 `本地 .sha256 伴生文件已过期（sidecar=… 索引=…），按索引校验`，校验通过后**把边车重写为索引值**（写失败只记日志，不影响安装）——修一次，之后不会再踩。
+3. **下载路径同源 + 对账**：`startInstall(url)` 把索引抓取提到下载**之前**（后面 `envForMarker` 复用同一份），期望值同样走 `pickExpectedSha`（此时本地大小未知 ⇒ 按名字认索引），下载完成后**对账**：`expectedSha != actualSha` 就按索引再哈希一次，对不上直接抛（fail-closed），一致则零成本。同一信任链不再有两种强度。
+4. **两侧都加回归**：JVM 11 例（`RootfsSidecarShaTest`）+ 真机 2 例（`RootfsSidecarShaInstrumentedTest`，喂**用户手机上真实躺着的那对文件**）。
+
+**实测**：
+
+- **真机复现现场（决定性）**：`RootfsSidecarShaInstrumentedTest` 用设备上真实的 `debian-13.7-base-arm64.tar.zst`（201632517 B）+ 真实的过期边车（`d12cd1d3…`）+ 线上真索引跑一遍 ⇒ 决策落在 `idx.sha256`（`source="索引"`、`staleSidecar=true`），且 **`RootfsDownloader.sha256Of(真实包) == idx.sha256`**。修复前这条必红（旧逻辑取边车 ⇒ 与实际不符 ⇒ 正是用户看到的那条横幅）。`adb shell am instrument …` = **`OK (2 tests)`**（另一例＝自愈写入：过期值→重写成索引值→不再标记过期）。
+- JVM：`296` 个 testcase、失败/错误 **0**；新 suite `RootfsSidecarShaTest` = `tests="11" failures="0" errors="0"`（含"同名不同字节数不算索引那个包"这类边界）。
+- 取证用的关键数字：包体 `d80639e7…4f02`（= 线上 = 索引）、过期边车 `d12cd1d3…9e27`（mtime 19:56、包体 19:55）、索引 469 B / `sha256=50f10326…`。
+
+**教训**：
+
+1. **只读不写的伴生文件是定时炸弹**：一个没有维护者的"期望值"文件，等价于把验收标准交给历史。要么让它能**自愈**（本轮），要么就**别读它**——"本地的"不等于"权威的"。
+2. **同一个问题答三次＝分叉**：三处各写一份"期望 sha"的取值逻辑，多出来的两份就是等着被漏掉的（E-050 已经吃过一次）。抽成一个纯函数，顺带白拿一整套单测。
+3. **`EACCES` 不是"文件不存在"**：真机跑这条用例第一次 `FAILED`，报 `FileNotFoundException … open failed: EACCES`——因为 `connectedAndroidTest` 会重新安装 APK，而 `/sdcard/Download/证道/` 需要「所有文件访问」。这种事**必须显式区分**：测试里把"读不到"当成"环境没准备好 ⇒ `assumeTrue` 跳过并写出原因"，绝不能让权限问题伪装成"现场不存在"（也不能伪装成"验过了"）。补权限后手动 `am instrument` 才拿到 `OK`。
+4. **真机回归要喂真输入**：单测里那些 sha 是**我自己编的**，只能证明分支逻辑；"索引值是否真的等于用户那个 192 MB 文件的字节"只有拿真文件算一遍才知道——这条断言才是"修好了"的证据。

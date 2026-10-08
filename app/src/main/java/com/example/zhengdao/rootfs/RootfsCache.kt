@@ -172,6 +172,66 @@ object RootfsCache {
     }
 
     /**
+     * [pickExpectedSha] 的结果：**用哪个校验值** + 它的**来源**（进日志/状态行）+ 本地边车是否已过期。
+     *
+     * @param sha 期望的 sha256（null = 一个来源都拿不到 ⇒ 调用方按"没有校验值"处理）
+     * @param source 人类可读的来源（"索引" / "本地 .sha256" / "线上 .sha256" / "无"）
+     * @param staleSidecar 本地 `.sha256` 伴生文件与索引不一致（校验通过后要把它重写成索引值）
+     */
+    internal data class ShaChoice(
+        val sha: String?,
+        val source: String,
+        val staleSidecar: Boolean = false,
+    )
+
+    /**
+     * **该拿哪个 sha256 去校验这个本地包**（纯函数，可单测，不碰 Context）。
+     *
+     * 背景（2026-10-08 真机假失败，见 ERRATA E-053）：用户手机终端页弹出
+     * `安装失败：SHA256 校验失败：actual=d80639e7dc5c…`。原因不是包坏了、也不是网络问题，
+     * 而是这条路径**优先信任 `Download/证道/rootfs/debian-….tar.zst.sha256` 这个本地边车**，
+     * 而那个文件是 19:56 留下的**过期副本**（`d12cd1d3…`）；**全仓没有任何代码会写它**
+     * （只读不写＝没人维护的死文件，E-033 记过同款死文件 manifest），远端一换包它就必然变馊
+     * ⇒ 把"包是对的"误判成"校验失败"，用户看到一条完全无法理解的红字。
+     *
+     * 决策（复核顺序：先问签名过的索引，再问这个文件自己）：
+     *  ① 本地包**长得就是索引那个包**（文件名 == 索引 url 末段 且 字节数 == 索引 size，
+     *     任一项未知则跳过该项比对）⇒ **用索引的 sha256**：索引是唯一被 Ed25519 签名背书的
+     *     来源（E-052），边车只是个没人维护的副本；
+     *  ② 否则（老版本 / 换过名字 / 大小不同）⇒ 回到"按这个文件自己的说法"：
+     *     本地 `.sha256` 边车 → 线上 `$url.sha256`。**刻意不拿索引去卡**：用户留着旧包
+     *     本来就可能要装旧版本，索引描述的是"最新那个包"，不是"这个文件"。
+     *
+     * @param localSize 本地包字节数；`<= 0` = 未知（下载路径在文件还没落盘时就是这样）
+     */
+    internal fun pickExpectedSha(
+        localName: String,
+        localSize: Long,
+        indexUrl: String?,
+        indexSize: Long,
+        indexSha: String?,
+        sidecar: String?,
+        onlineSha: String?,
+    ): ShaChoice {
+        val idxSha = indexSha?.trim()?.takeIf { it.isNotEmpty() }
+        val side = sidecar?.trim()?.takeIf { it.isNotEmpty() }
+        val online = onlineSha?.trim()?.takeIf { it.isNotEmpty() }
+        val indexName = indexUrl?.substringAfterLast('/')?.substringBefore('?')
+        val sameAsIndex = idxSha != null && indexName != null && indexName == localName &&
+            (localSize <= 0L || indexSize <= 0L || localSize == indexSize)
+        if (sameAsIndex) {
+            return ShaChoice(
+                sha = idxSha,
+                source = "索引",
+                staleSidecar = side != null && !side.equals(idxSha, ignoreCase = true),
+            )
+        }
+        if (side != null) return ShaChoice(side, "本地 .sha256")
+        if (online != null) return ShaChoice(online, "线上 .sha256")
+        return ShaChoice(null, "无")
+    }
+
+    /**
      * 增量补丁的缓存目标（协议 §3 的固定命名，与全量包同目录但前缀不同）。
      *
      * 名字直接取自 URL 末段（`rootfs-patch-<base>-to-<new>.tar.zst`），因此**同一个补丁
