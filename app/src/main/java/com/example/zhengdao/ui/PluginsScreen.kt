@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +62,9 @@ fun PluginsScreen() {
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
     var cleanConfirm by remember { mutableStateOf(false) }
+    // 「添加插件」输入框（2026-10-08）：手输 npm 包名，见下方那个 SectionCard
+    var specInput by remember { mutableStateOf("") }
+    var specError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(tick) {
         val data = withContext(Dispatchers.IO) {
@@ -202,6 +208,54 @@ fun PluginsScreen() {
                     )
                 }
             }
+        }
+
+        // ── 手动添加（2026-10-08）──
+        // 用户问「有没有新增插件的入口」——此前只有「推荐」里那一项，想装别的只能去改
+        // opencode.json，等于把用户赶回终端。OpenCode 没有插件市场，插件的标识就是
+        // **npm 包名**，所以这里只做一件事：把包名写进 plugin 数组（启动 Agent 时由 Bun 装）。
+        SectionCard("添加插件（npm 包名）") {
+            OutlinedTextField(
+                value = specInput,
+                onValueChange = { specInput = it; specError = null },
+                singleLine = true,
+                label = { Text("例如 @scope/opencode-plugin-xxx") },
+                modifier = Modifier.fillMaxWidth(),
+                // 与全仓一致：**绝不用密码类型**（国产 ROM 会弹安全键盘，v3 §7 红线）
+                keyboardOptions = KeyboardOptions(
+                    autoCorrectEnabled = false,
+                    capitalization = KeyboardCapitalization.None,
+                ),
+                isError = specError != null,
+            )
+            specError?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                enabled = !busy && envReady,
+                onClick = {
+                    val spec = PluginManager.normalizeSpecInput(specInput)
+                    if (spec == null) {
+                        specError = "这不像一个 npm 包名：应形如 my-plugin 或 @scope/my-plugin，且不含空格"
+                    } else {
+                        specInput = ""
+                        toggle(spec, true)
+                    }
+                },
+            ) { Text("添加并启用") }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "包名从插件的 npm / GitHub 页面复制。添加后由 opencode 内置的 Bun 在下次" +
+                    "启动 Agent 时从 npm 下载（首次需要联网）。插件会执行第三方代码——只添加你信任的包。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // ── 缓存 ──
