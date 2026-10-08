@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -232,7 +233,11 @@ fun TaijiScreen(
                         // 设置 → 环境更新 里，而太极是天天开的页面，所以抽屉底部也放一个。
                         // HistoryDrawer 内部是 Column(fillMaxSize)，故用 weight(1f) 让它只占
                         // 上半部，版本条固定在底部。
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        //
+                        // 2026-10-08 UI 走查：外层 Column 加 navigationBarsPadding——手势导航
+                        // 下底部「检查 OpenCode 更新」按钮会被导航条压住一截，加这个就让按钮浮
+                        // 到导航条之上。M3 ModalDrawerSheet 默认不接管 navigationBars insets。
+                        Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
                             HistoryDrawer(
                                 sessions = sessions,
                                 loading = sessionsLoading,

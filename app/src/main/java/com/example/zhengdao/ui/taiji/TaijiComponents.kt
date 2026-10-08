@@ -245,25 +245,57 @@ private fun ConnectionLabel(connection: ConnectionState, attempt: Int) {
 
 // ── 连接横幅 ──────────────────────────────────────────────────────────
 
-/** 仅在非Connected 时出现的横幅（信息重复但不打扰阅读流）。 */
+/**
+ * 仅在非 [ConnectionState.Connected] 时出现的横幅（信息重复但不打扰阅读流）。
+ *
+ * 2026-10-08 走查：原条件 `!= Connected` 把「首次 [ConnectionState.Connecting]」也算成
+ * "已断开"，横幅飘红 + 文案「连接已断开，正在重连…」——用户根本没断过，这是骗。
+ *
+ * 现在区分两种状态：
+ * - **[ConnectionState.Connecting]**（首次连接中）：中性色 `tertiaryContainer` + 文案
+ *   「正在连接…」，**不给「知道了」**——用户不能忽略还没连上这个事实，否则会以为 UI 卡死。
+ * - **[ConnectionState.Reconnecting]** / **[ConnectionState.Idle]**：红色 `errorContainer`
+ *   + 文案「连接已断开，正在重连…」（或 [TaijiState.lastError]），**给「知道了」**允许用户
+ *   主动消除错误提示。
+ *
+ * [ConnectionState.Connected] 直接返回 → 不渲染。
+ */
 @Composable
 fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
-    AnimatedVisibility(visible = state.connection != ConnectionState.Connected) {
-        Surface(
-            color = MaterialTheme.colorScheme.errorContainer,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
+    val isVisible = state.connection != ConnectionState.Connected
+    AnimatedVisibility(visible = isVisible) {
+        val isConnecting = state.connection == ConnectionState.Connecting
+        val bg = if (isConnecting)
+            MaterialTheme.colorScheme.tertiaryContainer
+        else
+            MaterialTheme.colorScheme.errorContainer
+        val fg = if (isConnecting)
+            MaterialTheme.colorScheme.onTertiaryContainer
+        else
+            MaterialTheme.colorScheme.onErrorContainer
+        val msg = when {
+            isConnecting -> "正在连接…"
+            state.lastError != null -> state.lastError
+            state.connection == ConnectionState.Idle -> "未连接"
+            else -> "连接已断开，正在重连…"
+        }
+        // 「首次连接中」不给「知道了」——否则用户点了之后以为连接已建立，发消息必失败
+        val showDismiss = !isConnecting
+
+        Surface(color = bg, modifier = Modifier.fillMaxWidth()) {
             Row(
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    state.lastError ?: "连接已断开，正在重连…",
+                    msg,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = fg,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onDismiss) { Text("知道了") }
+                if (showDismiss) {
+                    TextButton(onClick = onDismiss) { Text("知道了") }
+                }
             }
         }
     }
@@ -400,7 +432,15 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
             "⬇ 回到最新",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            // 2026-10-08 走查：vertical 10dp → 14dp。原来 10+labelLarge 行高 ≈ 26dp 高，
+            // 未达 Google 无障碍建议 48dp。这条按钮出现时机就是用户**远离消息流尾部**，
+            // 离主题（点哪个回复）很远；点不中会再去手动往上翻，是高频失手点。
+            // 未一步到 48dp：这是浮标，再厚会盖住消息；取 44dp 高（bodyMedium + 14sp）。
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                // 同上：浮标纯文字 Surface，没 contentDescription 读屏只能读出"⬇ 回到最新"
+                // ——能听懂，但没标它是按钮，故加 role 让用户知道可以点。
+                .semantics { contentDescription = "回到最新消息" },
         )
     }
 }
@@ -849,7 +889,10 @@ fun ComposerBar(
                             false
                         }
                     },
-                    placeholder = { Text("描述你的任务…") },
+                    // 2026-10-08 走查：流式输出中 placeholder 仍写「描述你的任务…」会让用户
+                    // 困惑——「我这时还能发吗？」切到「AI 正在回复…」明示状态；发送键已变停止
+                    // (FilledTonalIconButton)，双指示器一致。
+                    placeholder = { Text(if (isStreaming) "AI 正在回复…" else "描述你的任务…") },
                     maxLines = 6,
                     // 圆润：胶囊形。TextField 默认是只有上圆角的 4dp 矩形，与"打开就用"的
                     // 观感不搭；24dp 在单行时是胶囊、多行时仍是柔和的大圆角。
@@ -1066,7 +1109,14 @@ fun HistoryDrawer(
             Text(
                 "＋  新会话",
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                // 2026-10-08 走查：vertical 10dp → 14dp。原来 10dp + bodyMedium ≈ 30dp 高，
+                // 而它是**会话列表抽屉的正面入口**（打开抽屉第一眼就在这里），
+                // 点不中会让用户以为"新会话按钮没出来"——再加垂直 14dp ≈ 44dp 高达标。
+                // 未一步到 48dp：抽屉宽度有限，再厚会使文字与圆角挤得难看。
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    // 同上：纯文字 Surface，读屏需要明示这是按钮 + 它的含义
+                    .semantics { contentDescription = "新建会话" },
             )
         }
 
