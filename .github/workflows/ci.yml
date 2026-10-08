@@ -2,8 +2,10 @@
 # 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类项目的 CI 配置。
 #
 # 与 build.yml 的分工：
-#   - build.yml   = 产物流水线（APK + RootFS + proot + Releases 发布，重，约 1-2 小时）
-#   - ci.yml      = 质量验证（编译 + 全量单测 + R8 冒烟 + lint 报告，轻，目标 <15 分钟）
+#   - build.yml   = 产物流水线（APK + RootFS + Releases 发布，重；发布路径已压到约 3 分钟，
+#                   RootFS 只在 rootfs/ 有改动时才重建 —— 见 ERRATA E-029/E-030）
+#   - ci.yml      = 质量验证（编译 + 全量单测 + Rust 单测 + R8 冒烟 + lint 报告，轻；
+#                   main 上约 3.5 分钟；R8 冒烟在 main 上交给 build.yml，只在 PR/手动时跑）
 #
 # 触发：推送到 main、PR 到 main、手动。
 # 失败语义：单测失败 / 编译失败 / R8 构建失败 → job 红（这就是抓回归的价值）。
@@ -103,10 +105,15 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      # ⚠️ ERRATA E-030：main 分支上这一步与 build.yml 的「编译 Release APK」完全重复
+      #    （那边还多一道"对着产物验签名"的硬关卡），而 build.yml 每次推 main 都会跑
+      #    ⇒ 这里只在 PR 与手动触发时跑，省下 2 分钟；PR 上仍保留"R8 能不能编"的快反馈。
       - name: R8 冒烟（release 可构建——验证混淆/资源收缩不炸）
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: ./gradlew :app:assembleRelease --console=plain
 
       - name: 上传 release APK（冒烟产物，保留 7 天）
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: zhengdao-release-smoke
