@@ -1525,3 +1525,148 @@ sessions **65** / messages **7057** / `MEMORY.md` 4482 B / `USER.md` 3180 B（`S
 - 单测 `app/src/test/java/com/example/zhengdao/terminal/HermesEnvTest.kt` 锁住三件事：
   修得上要修（指针改指完整代、备份在、`facts.json` 不丢）、修不上要如实说（一代都没有 / 缺源码锁 /
   没记录 ⇒ `canRepairOnHost=false`）、坏 `facts.json` 不抛异常也不乱改文件。
+
+## E-026 · 2026-10-08 · 会话退出回调不认"是哪条会话"——换 Agent 时新旧会话互相误杀（已修）
+
+**一句话**：`app/src/main/java/com/example/zhengdao/terminal/SessionManager.kt` 的退出清理只看
+「当前会话跑没跑」，不看「结束的是不是当前这条」；而换 Agent 走的是"先 finish 旧会话、立刻装上
+新会话"，旧会话的 `onSessionFinished` 是引擎读线程**稍后**回来的，于是这条陈旧回调有机会把
+**刚建好、还没 spawn** 的新会话当成"刚结束的旧会话"清掉。
+
+### 1. 现场（代码时序）
+
+- 旧写法（WorkBuddy 单会话改动那版）：
+
+  ```kotlin
+  override fun onSessionFinished(finishedSession: TerminalSession) {
+      val code = runCatching { finishedSession.getExitStatus() }.getOrDefault(-1)
+      onFinished(code)                       // ← 只传退出码，不传"是哪条会话"
+  }
+
+  private fun onFinished(code: Int) {
+      mainHandler.post {
+          if (session?.isRunning == false) { // ← 判的是**字段现在那条**，不是 finishedSession
+              session = null; startedAtMs = 0L
+              setCurrentAgent(null)          // 抹掉 Agent 记录
+              …; SessionService.stop(it)     // 停前台服务
+              onSessionDied?.invoke(code)    // 视图据此关页
+          }
+      }
+  }
+  ```
+
+- 触发路径：`start()` → `killInternal(context, clearAgent = false)` → `s.finishIfRunning()`（旧会话）
+  → 紧接着 `session = TerminalSession(...)`（新会话）。新会话**首次 `updateSize` 之前 `isRunning` 也是 false**
+  ——这一点本文件 `:112-119`（`hasSession` 的注释）自己写明了，是为"onNewIntent 复用实例"专门加的宽判。
+  两个"false"一条时序上撞在一起，就成了误杀。
+- 后果按严重度递增：Agent 记录被抹（下次进终端"接不回来"，用户验收第 5 条直接失效）→
+  前台服务被停（退到后台可能被系统杀，长任务断）→ 视图收到 `onSessionDied` 关页。
+- 触发条件是时序，不是必现：`mainHandler.post` 的 runnable 要等当前主线程消息跑完才执行，
+  而 attach + 布局 + `updateSize`（spawn）常常就在同一条消息里 ⇒ 多数时候新会话已经 spawn、
+  `isRunning == true`，误杀不发生。**它是一颗"竞态地雷"，不是每次必炸**——这也是它没在真机验收里
+  被抓到的原因。
+
+### 2. 修法（`app/src/main/java/com/example/zhengdao/terminal/SessionManager.kt:192-222`）
+
+只做一件事：**清理必须比对会话身份**，陈旧回调一律丢弃。
+
+```kotlin
+override fun onSessionFinished(finishedSession: TerminalSession) { …
+    onFinished(finishedSession, code) }
+
+private fun onFinished(finished: TerminalSession, code: Int) {
+    mainHandler.post {
+        if (session !== finished) return@post   // ← 结束的不是当前这条：丢掉
+        if (!finished.isRunning) { …原有清理… }
+    }
+}
+```
+
+行为差异只在"旧会话的回调迟到"这一种情形：旧写法误清新会话，新写法直接返回（此时
+`killInternal` 早已做完它该做的清理）。手动 kill 的路径两种写法等效——`killInternal` 把
+`session` 置 null，旧写法的 `session?.isRunning == false` 求值为 `null == false` = false，
+本来也不进清理分支。
+
+### 3. 验证
+
+- `.\gradlew.bat :app:testDebugUnitTest :app:assembleRelease` = `BUILD SUCCESSFUL in 1m 25s`，
+  单测 **58 例 0 失败**；产物 `app/build/outputs/apk/release/zhengdao-1.3.0-release.apk`。
+- 真机：`adb install -r` 后进终端，shell 正常、`tmux ls` 仍只有一条 `zhengdao:`（单会话模型的硬约束）。
+- ⚠️ **诚实说明**：这个竞态是**读代码读出来的**，不是真机复现出来的（时序窗口窄、且被
+  "post 要等主线程消息跑完"天然掩护）。上面的真机验证证明的是"没改出新问题"，
+  不等于"复现过并修好了"。要真正复现，得在主线程里人为插一段延迟把 attach 推后一条消息
+  ——那属于构造性测试，本次没做。
+
+### 4. 教训
+
+1. **回调里判"是不是我这条"要用身份（`===`），不要判"字段现在是什么"**：字段随时会被下一条会话
+   改写，而回调天生是异步迟到者。凡 `handler.post` + 共享可变字段的组合，都要先问
+   "这条消息执行时，字段还会是当初那个值吗"。
+2. **"spawn 前 `isRunning == false`"这个宽判是双刃剑**：它救了 `onNewIntent` 那条路
+   （见 `:112-119`），同时给所有"看 `isRunning` 判死"的地方埋了同一个坑。用它的地方都要复查。
+3. **单会话模型的清理动作都很重**（抹记录 + 停服务 + 关页），误杀的代价远大于漏杀 ——
+   宁可漏清（下次进终端再清），不可错杀。
+
+## E-027 · 2026-10-08 · 「`cargo test` 缺 host C 编译器」其实是 PATH 问题；Rust 单测此前**没有任何自动化入口**
+
+**一句话**：`rust/README.md:70-75` 把 `cargo test` 失败记成"本机没有 host C 编译器"，
+但这台机器上 **w64devkit 一直装着**，只是没在 `PATH` 里；把它挂上后 `cargo test` 8/8 全绿。
+同一次核对还发现：**Rust 逻辑层的 8 个单测既不在本机日常流程里，也不在 CI 里**（`ci.yml` 只有
+`:app:testDebugUnitTest`，`build.yml` 里没有任何 `cargo` 步骤）⇒ 已加进 `ci.yml`。
+
+### 1. 现场
+
+- 报错原文（本机重跑，与 README 记载一致）：
+
+  ```
+  cargo:warning=Compiler family detection failed due to error: ToolNotFound:
+    failed to find tool "gcc.exe": program not found
+  error occurred in cc-rs: failed to find tool "gcc.exe": program not found
+  ```
+
+- 但 `rust/.cargo/config.toml` 的 host 段**自己写着** w64devkit 的路径
+  （`[target.x86_64-pc-windows-gnu] rustflags = ["-C","dlltool=C:/Users/guoli/w64devkit/w64devkit/bin/dlltool.exe"]`）
+  ⇒ 顺着这条线索查：`C:\Users\guoli\w64devkit\w64devkit\bin\gcc.exe`（1,772,032 B，GCC **15.2.0**）在盘上。
+- 同一个坑还有第二层：rustup 自带的 `…\toolchains\stable-x86_64-pc-windows-gnu\lib\rustlib\x86_64-pc-windows-gnu\bin\self-contained\x86_64-w64-mingw32-gcc.exe`
+  **能跑、不能编**——它只是个链接驱动，没有 `cc1`：
+
+  ```
+  x86_64-w64-mingw32-gcc.exe: fatal error: cannot execute 'cc1': CreateProcess: No such file or directory
+  ```
+
+  所以"把 rustup 那个 gcc 挂上 PATH"是**错的解法**（会以另一种报错失败，比"找不到 gcc"更难查）。
+
+### 2. 解法
+
+```powershell
+$devkit = 'C:\Users\guoli\w64devkit\w64devkit\bin'
+$env:PATH = "$devkit;$env:PATH"
+$env:CC   = "$devkit\gcc.exe"
+Set-Location rust; cargo test -p zhengdao_core --release
+```
+
+实测：`test result: ok. 8 passed; 0 failed`（sha256 4 例 + extract 4 例），冷编 41.69s、热跑 0.09s，
+**退出码 0**。注意 PowerShell 会把 stderr 上的 `warning: unused …` 当成 `NativeCommandError`
+（exit 1 假失败），判成败要看 `test result:` 那行。
+
+### 3. 补上的自动化（`.github/workflows/ci.yml`）
+
+在「全量单元测试」之后加两步：Rust 逻辑层单测 + cargo 缓存（key 用已入库的 `rust/Cargo.lock`）。
+
+```yaml
+      - name: Rust 逻辑层单测（PC 层纯逻辑；ubuntu runner 自带 gcc，无需本机那套 w64devkit）
+        run: cd rust && cargo test -p zhengdao_core --release
+```
+
+理由：`rust/core/src/tests.rs` 那 8 例（路径穿越拒绝、SHA 不匹配不落盘、zstd 端到端文件树、
+gzip 兜底壳…）是解压主路径的安全网，此前**只在人手动跑**；而 host C 编译器的前置在 Windows 上
+还依赖 w64devkit 在不在 PATH —— 放到 ubuntu runner（自带 gcc）反而最省事。
+
+### 4. 教训
+
+1. **"缺工具"的报错，先找工具，再装工具**：`Get-ChildItem ~ -Recurse -Filter gcc.exe` 之前，
+   别相信"这台机器没有 C 编译器"。本仓库的 `.cargo/config.toml` 里就留着工具位置。
+2. **同名工具可能只是个壳**：rustup 的 `x86_64-w64-mingw32-gcc.exe` 有 `--version` 但没 `cc1`，
+   拿它当 `CC` 会得到"cannot execute 'cc1'"，比"找不到 gcc"更难定位。
+3. **"本机能跑"不等于"有人跑"**：一个测试只要有"环境前置"，就一定会退化成"只在某台机器上手动跑过"。
+   把 RS 层单测放进 CI，比在 README 里写"记得先装 gcc"可靠得多。
