@@ -507,6 +507,8 @@ fun SettingsScreen(
             )
             Spacer(Modifier.height(6.dp))
             OutlinedButton(onClick = { repairConfirm = true }) { Text("修复环境（30 秒）") }
+            Spacer(Modifier.height(4.dp))
+            InstallFlow.StatusLine()
         }
 
         // ── Hermes 依赖环境（E-025）──
@@ -792,6 +794,8 @@ fun SettingsScreen(
                         Text("回退到 ${com.example.zhengdao.rootfs.RootfsCache.versionOf(f.name) ?: f.name}")
                     }
                 }
+                Spacer(Modifier.height(4.dp))
+                InstallFlow.StatusLine()
             }
             if (rollbackConfirm != null) {
                 val target = rollbackConfirm!!
@@ -803,14 +807,21 @@ fun SettingsScreen(
                         TextButton(onClick = {
                             rollbackConfirm = null
                             Thread {
+                                // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）
+                                InstallFlow.start(
+                                    ctx,
+                                    "回退环境：用本地安装包 ${target.name} 重装系统层（不联网下载）",
+                                    fromLocal = true,
+                                )
                                 try {
+                                    InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请留在本页或看通知栏）…")
                                     RootfsInstaller.ensureFreeSpace(ctx, target.length())
                                     RootfsInstaller.install(ctx, target) { }
                                     com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
-                                    android.os.Handler(ctx.mainLooper).post {
-                                        Toast.makeText(ctx, "回退完成，重进终端生效", Toast.LENGTH_LONG).show()
-                                    }
+                                    InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（未联网下载）")
+                                    android.os.Handler(ctx.mainLooper).post { storageTick++ }
                                 } catch (t: Throwable) {
+                                    InstallFlow.fail(ctx, "回退失败：${t.message}")
                                     android.os.Handler(ctx.mainLooper).post {
                                         Toast.makeText(ctx, "回退失败：${t.message}", Toast.LENGTH_LONG).show()
                                     }
@@ -1027,14 +1038,26 @@ fun SettingsScreen(
                         Toast.makeText(ctx, "未找到本地安装包：请先在终端重新下载一次", Toast.LENGTH_LONG).show()
                     } else {
                         Thread {
+                            // 进度走 InstallFlow（横幅状态 + 通知栏常驻 + RunLog）——此前这条路
+                            // 从头到尾只有两条 Toast，用户看到的就是"点了没反应"（E-036 §7）。
+                            InstallFlow.start(
+                                ctx,
+                                "修复环境：用本地安装包（${candidates.length() / (1024 * 1024)} MB）重新解压系统层，不联网下载",
+                                fromLocal = true,
+                            )
                             try {
+                                InstallFlow.update(ctx, "正在准备安装包：${candidates.name}")
                                 val archive = File(ctx.cacheDir, candidates.name)
                                 if (archive.absolutePath != candidates.absolutePath) candidates.copyTo(archive, true)
+                                InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…")
                                 com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive) { }
-                                android.os.Handler(ctx.mainLooper).post {
-                                    Toast.makeText(ctx, "修复完成：环境已重置，登录态保留", Toast.LENGTH_LONG).show()
-                                }
+                                InstallFlow.finish(
+                                    ctx,
+                                    "修复完成：环境已重置，登录态与工作区保留（本次未联网下载）",
+                                )
+                                android.os.Handler(ctx.mainLooper).post { storageTick++ }
                             } catch (t: Throwable) {
+                                InstallFlow.fail(ctx, "修复失败：${t.message}")
                                 android.os.Handler(ctx.mainLooper).post {
                                     Toast.makeText(ctx, "修复失败: ${t.message}", Toast.LENGTH_LONG).show()
                                 }
@@ -1093,10 +1116,13 @@ fun SettingsScreen(
                     val patchRef = pendingPatch
                     val index = pendingIndex
                     Thread {
-                        // 增量失败会写这里的原因，随最终 Toast 一起告诉用户（"回退全量"必须可见）
+                        // 增量失败会写这里的原因，随最终结论一起告诉用户（"回退全量"必须可见）
                         var fallbackNote = ""
                         try {
-                            toastOnMain("开始下载新版本环境…")
+                            // 进度走 InstallFlow：通知栏常驻进度条 + 设置页状态行 + RunLog。
+                            // 此前是每 20% 闪一条 Toast（"下载中 20%"），正是用户说的
+                            // "提示时间有点短……我以为要重新下载呢"（E-036 §7）。
+                            InstallFlow.start(ctx, "检查环境更新：开始下载新版本环境包", fromLocal = false)
                             val archive = RootfsCache.archiveFor(ctx, url)
 
                             // ── ① 先试增量（协议 §6）：只有索引给了补丁、且本机基线正是补丁基线时才走 ──
@@ -1104,14 +1130,19 @@ fun SettingsScreen(
                             if (patchRef != null && RootfsDelta.canApply(ctx, patchRef)) {
                                 val deltaFile = RootfsCache.deltaFor(ctx, patchRef.url)
                                 try {
-                                    toastOnMain("正在下载增量补丁（${bytesMbText(patchRef.size)}）…")
+                                    InstallFlow.update(ctx, "正在下载增量补丁（${bytesMbText(patchRef.size)}）…")
                                     RootfsDownloader.download(
                                         urls = RootfsDownloader.withMirrorFallback(patchRef.url),
                                         dest = deltaFile,
                                         shaUrls = RootfsDownloader.withMirrorFallback("${patchRef.url}.sha256"),
                                     ) { done, total ->
-                                        if (total > 0 && done * 100 / total % 20 == 0L) {
-                                            toastOnMain("增量包下载中 ${done * 100 / total}%")
+                                        if (total > 0 && done * 100 / total % 10 == 0L) {
+                                            val pct = (done * 100 / total).toInt()
+                                            InstallFlow.update(
+                                                ctx,
+                                                "增量补丁下载中 $pct%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB）",
+                                                pct,
+                                            )
                                         }
                                     }
                                     // 索引给的补丁 sha256 是硬校验（协议 §4）
@@ -1123,6 +1154,11 @@ fun SettingsScreen(
                                     // 增量成功后照旧做一次缓存整理（与全量路径一致）
                                     RootfsCache.pruneKeep(ctx)
                                     deltaDone = true
+                                    // 让用户明确知道"这次没有重下 300MB"——他上次的误会正来自这里
+                                    InstallFlow.update(
+                                        ctx,
+                                        "增量补丁已应用（本次只下了 ${bytesMbText(patchRef.size)}，没有重下完整包）",
+                                    )
                                 } catch (t: Throwable) {
                                     // 增量路径的任何失败（含基线不符 BaseMismatch）都回退全量：
                                     // applyTo 是原子的——此时 rootfs 要么没动，要么已完整换成新环境
@@ -1141,8 +1177,13 @@ fun SettingsScreen(
                                     dest = archive,
                                     shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
                                 ) { done, total ->
-                                    if (total > 0 && done * 100 / total % 20 == 0L) {
-                                        toastOnMain("下载中 ${done * 100 / total}%")
+                                    if (total > 0 && done * 100 / total % 10 == 0L) {
+                                        val pct = (done * 100 / total).toInt()
+                                        InstallFlow.update(
+                                            ctx,
+                                            "环境包下载中 $pct%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB，可离开本页）",
+                                            pct,
+                                        )
                                     }
                                 }
                                 if (!expectedSha.isNullOrBlank()) {
@@ -1157,12 +1198,15 @@ fun SettingsScreen(
                                         "索引 sha256 与实际校验值不一致（或索引字段缺失），本次安装不写 env 标记"
                                     )
                                 }
+                                InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请勿离开本页）…")
                                 RootfsInstaller.ensureFreeSpace(ctx, archive.length())
                                 RootfsInstaller.install(ctx, archive, envToWrite) { }
                                 RootfsCache.pruneKeep(ctx)
                             }
-                            toastOnMain(fallbackNote + "环境更新完成，重进终端生效", long = true)
+                            InstallFlow.finish(ctx, fallbackNote + "环境更新完成，重进终端生效")
+                            android.os.Handler(ctx.mainLooper).post { storageTick++ }
                         } catch (t: Throwable) {
+                            InstallFlow.fail(ctx, "更新失败：${t.message}")
                             toastOnMain("更新失败：${t.message}", long = true)
                         }
                     }.start()
