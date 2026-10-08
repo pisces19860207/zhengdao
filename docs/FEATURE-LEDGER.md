@@ -227,6 +227,21 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > **零冲突**（技术障碍为零，卡点纯粹是那个 secret）；② 本机既无 `gh` CLI 也无 `GITHUB_TOKEN`/`GH_TOKEN`，
 > 无法替用户写 secret —— 这一步只能由仓库所有者做。
 
+> **2026-10-08 续（上面那个卡点已解除：secret 配好了、线上 `.sig` 上线了）**：
+> ② 那句结论**是错的**——本机虽无 `gh`/`GITHUB_TOKEN`，但 Windows 凭据管理器里存着 GitHub 凭据
+> （`git credential fill` 能取到 token），因此**可以**用 REST API 替用户配 secret：
+> `GET /repos/pisces19860207/zhengdao/actions/secrets/public-key` → PyNaCl `SealedBox`
+> （GitHub 规定的 `crypto_box_seal`）加密 122 B 的 PKCS#8 私钥 PEM → `PUT …/actions/secrets/
+> ROOTFS_INDEX_SIGNING_KEY_PEM` = **HTTP 201**；派生公钥 `o504TEF3eRPtLicRzp7qBF5AJyTam4voaO89tGYgxxk=`
+> 与代码里固化的 `INDEX_SIGNING_PUBKEY_B64` **逐字节相同**。
+> 线上那份 469 B 的 `rootfs-index.json`（`sha256=50f10326…b78ff`）已用**项目自己的脚本**
+> `tools/sign-rootfs-index.py` 签出 `.sig`（88 字符 base64）并作为资产上传到 `latest`
+> （`POST uploads.github.com/…/releases/402580181/assets?name=rootfs-index.json.sig` = HTTP 201），
+> **从公开地址回读后独立验签通过** ⇒ 上线顺序前置条件已满足。
+> 同轮把分支追平 main（`367b1e2`，零冲突）并把**清单与索引的验签收口到同一入口** `Ed25519Verify`
+> （Rust 优先 + 平台对拍 + 不一致拒绝），补真机 `RootfsIndexSignatureInstrumentedTest`（3 例全过，
+> 含直接调 `CoreNative.verifyEd25519` 验线上索引）。详见 ERRATA E-052。
+
 
 > **2026-10-08 续（CI：发布不再排在 RootFS 后面 —— 下载页停在旧包的结构性修法）**：
 > 用户当天问「那个什么 GPL 没 CI 好吧？」。**LICENSE 本身与 CI 无关**（合并只是加一个文本文件，
@@ -549,6 +564,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | **本地已有索引那个整包时直接用本地包**（"补指纹/重装"不再白下 192 MB；本地整包优先于增量补丁） | ✅ 在用（真机：检查给「本地已有该版本的安装包…无需下载」、按钮「用本地包安装」、5 秒重解压完成，见 E-049） | 本次（`feat/local-cache-no-download`） | `rootfs/RootfsCache.kt`（`localCandidateFor` / `pickLocalCandidate`）、`ui/SettingsScreen.kt`（检查线程本地优先分支 + 确认线程本地优先块）、`app/src/test/java/com/example/zhengdao/rootfs/RootfsLocalCandidateTest.kt` |
 | **补丁解压收口进 Rust**（增量与全量共用 `extractArchive` 入口：纯 tar 壳 + `skipNames` 跳过补丁元数据 + sha 对账不回退） | ✅ 在用（host cargo 12 用例、门禁 4 符号、真机 3 用例含"sha 不匹配硬失败"，见 E-050） | 本次（`feat/rust-patch-extract`） | `rust/core/src/extract.rs`（`extract_pipeline_skip` / `ExtractReport.skipped`）、`rust/core/src/jni_bridge.rs`（`nativeExtractSkip`）、`rust/CoreNative.kt`、`rootfs/RootfsInstaller.kt`（`extractArchive`）、`rootfs/RootfsDelta.kt` |
 | **Ed25519 验签收口进 Rust 核心**（清单/索引签名的信任根不再只活在 App 进程：Rust 优先 + 平台对拍，不一致按拒绝处理） | ✅ 在用（host cargo 18 用例含 RFC 8032 三向量与真实清单；门禁 5 符号；真机 5 用例，logcat 见 `验签走 Rust 核心（与平台对拍一致）`，见 E-051） | 本次（`feat/rust-ed25519`） | `rust/core/src/ed25519.rs`、`rust/core/src/jni_bridge.rs`（`nativeVerifyEd25519`）、`app/src/main/java/com/example/zhengdao/rust/CoreNative.kt`、`app/src/main/java/com/example/zhengdao/ui/AgentManifest.kt` |
+| **环境包索引签名真正上线 + 验签入口统一为 `Ed25519Verify`**（从"代码写完但线上一个 `.sig` 都没有（404）"到"公开地址可回读并验签"；清单/索引共用同一入口，消除两种验证强度的分叉） | ✅ 在用（线上 `rootfs-index.json` 469 B / `sha256=50f10326…b78ff` + `.sig` 回读验签通过；JVM 34 suites / 285 例；真机 `RootfsIndexSignatureInstrumentedTest` 3 例全过含直接调 `CoreNative.verifyEd25519`，见 E-052） | 本次（`feat/rootfs-index-signature`） | `app/src/main/java/com/example/zhengdao/ui/AgentManifest.kt`（`internal object Ed25519Verify`）、`app/src/main/java/com/example/zhengdao/rootfs/RootfsIndex.kt`（`verifySignature` 改走统一入口）、`app/src/test/java/com/example/zhengdao/rootfs/RootfsIndexSignatureTest.kt`、`app/src/androidTest/java/com/example/zhengdao/rootfs/RootfsIndexSignatureInstrumentedTest.kt`、`.github/workflows/build.yml`（签名步骤）、`tools/sign-rootfs-index.py` |
 
 已移除的功能见 §3。
 
