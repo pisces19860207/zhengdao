@@ -21,12 +21,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +98,15 @@ fun TaijiScreen(
     }
     // 用项目已有的 collectAsState，避免为collectAsStateWithLifecycle 引入 lifecycle-runtime-compose
     val state by repo.state.collectAsState()
+
+    // C2（重新发送）：发送失败时弹 Snackbar + "重试" action。
+    // 搜证结论：MD3 / iOS HIG / WhatsApp 实务都要求"永远不要删除用户输入"——
+    // 失败时把 input 留给输入框（prompt 失败时不走 `input=""` 路径，已天然满足），
+    // 再给一个 1-tap 的重发入口。
+    //
+    // Snackbar 优于 Toast 的原因：MD3 明确说"需要操作的错误用 Snackbar"——
+    // "重试"是个有后续动作的入口，不是通知。
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // 🔺 会话 id 必须跨配置变更保存。
     //    转屏 / 切 Tab 回来时 Activity 重建、Repository 也重建；若每次都传 null 就会
@@ -185,8 +199,9 @@ fun TaijiScreen(
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        when {
+    Box(Modifier.fillMaxSize()) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            when {
             // 未安装：给就地安装入口（丹房过滤了 OpenCode，v1.1.1 起这里是唯一入口——
             // 原文案"去丹房安装"是死循环回归）。缓存命中时约 1 分钟（含校验+解压）
             !OcManager.installed(ctx) -> NotInstalledPane(
@@ -340,16 +355,25 @@ fun TaijiScreen(
                         enabled = state.sessionId != null,
                         onInputChange = repo::setInput,
                         onSend = {
-                            // 失败必须看得见：prompt 的失败原先只写进 App 私有的运行日志文件，
-                            // 用户在界面上只看到"点了一下没反应"（2026-10-08 投诉）。
+                            // 失败必须看得见（C2 2026-10-08 升级）：失败时给"重试"入口，
+                            // 让用户 1-tap 重新发同样内容。input 文字由 prompt 失败路径自然
+                            // 保留（成功才清空），用户也可自己改完再发。
                             val text = state.input
                             scope.launch {
                                 repo.prompt(text).onFailure { e ->
-                                    Toast.makeText(
-                                        ctx,
-                                        "发送失败：${e.message ?: e.javaClass.simpleName}",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
+                                    // 人话化：把 Java 异常翻成短句（详见 HumanizeError.title）。
+                                    val title = com.example.zhengdao.util.HumanizeError.title(e)
+                                    val r = snackbarHostState.showSnackbar(
+                                        message = "发送失败：$title",
+                                        actionLabel = "重试",
+                                        withDismissAction = true,
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                    if (r == SnackbarResult.ActionPerformed) {
+                                        // 点"重试"——text 此刻可能已被用户改了（Snackbar 在屏时输入框可用），
+                                        // 改了就用最新，没改就直接用原 text。**不**用最原始的 text 强行发。
+                                        repo.prompt(state.input)
+                                    }
                                 }
                             }
                         },
@@ -394,9 +418,19 @@ fun TaijiScreen(
                 scope.launch { repo.respondPermission(perm.permissionId, allow, remember) }
             }
         }
+
+        // C2：发送失败的 Snackbar 锚点。align BottomCenter 让它浮在输入框 + 底栏之上；
+        // navigationBarsPadding 避免手势导航的横条压住 Snackbar 关闭按钮。
+        // 不加 imePadding —— Snackbar 出现时键盘通常不在屏（用户已经松手了）。
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding(),
+        )
     }
 }
-
+    }
 // ── 占位面板 ──────────────────────────────────────────────────────────
 
 @Composable
