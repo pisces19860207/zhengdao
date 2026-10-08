@@ -245,6 +245,55 @@ class CacheCleanerTest {
         // node-compile-cache 等保留项，不计入）
         assertEquals(271L, CacheCleaner.bytesToMb(4_919_152L * 18 + 13_995_736L * 14))
     }
+
+    // ── zzclean 脚本（2026-10-08：终端内自清理命令）──────────────────────────
+
+    @Test
+    fun `zzclean 脚本包含每一档一档清理命令`() {
+        val s = CacheCleaner.zzcleanScript()
+        CacheCleaner.TIER1_ACTIONS.forEach { (name, cmd) ->
+            assertTrue("脚本缺少「$name」的命令：$cmd", s.contains(cmd))
+        }
+    }
+
+    @Test
+    fun `guestCommand 与 TIER1_ACTIONS 同源，不会两边清的东西不一样`() {
+        val oneLiner = CacheCleaner.guestCommand()
+        CacheCleaner.TIER1_ACTIONS.forEach { (_, cmd) ->
+            assertTrue("guestCommand 缺少命令：$cmd", oneLiner.contains(cmd))
+        }
+    }
+
+    @Test
+    fun `zzclean --status 列的都是 guest 视角路径，且不含宿主专属项`() {
+        val s = CacheCleaner.zzcleanScript()
+        CacheCleaner.GUEST_CACHE_PATHS.forEach { (_, path) ->
+            assertTrue("脚本缺少状态路径：$path", s.contains(path))
+        }
+        // 「安装包缓存」= files/cache/rootfs-cache，只存在于宿主侧；guest 里没有这个路径，
+        // 列进脚本就是假的（用户会以为它在环境里）。
+        assertFalse("脚本不该出现宿主专属的 rootfs-cache", s.contains("rootfs-cache"))
+    }
+
+    @Test
+    fun `zzclean 脚本把三档边界写给用户看，且默认只清一档`() {
+        val s = CacheCleaner.zzcleanScript()
+        assertTrue(s.contains("永远不清"))
+        assertTrue(s.contains("本命令不碰"))
+        // 默认（无参数）走 clean；--status 只读。这是"不许变成静默全清"的约定，锁进单测。
+        assertTrue(s.contains("status()") && s.contains("clean()"))
+        assertTrue(s.contains("--status"))
+    }
+
+    @Test
+    fun `zzclean 脚本里的 shell 变量是字面量，没被 Kotlin 模板吃掉`() {
+        // 这一条防的是我自己踩过的坑：Kotlin 会把 "$(" 与 "${1:-}" 当模板解析。
+        // 脚本里必须真的出现 shell 形态的这两个片段。
+        val s = CacheCleaner.zzcleanScript()
+        assertTrue("状态命令应使用 shell 的命令替换 \$( )", s.contains("${'$'}(du -sh"))
+        assertTrue("参数判断应是 shell 的 \${1:-}", s.contains("\${1:-}"))
+        assertTrue("帮助应打印脚本自身", s.contains("\"${'$'}0\""))
+    }
 }
 
 /** 与 [CacheCleaner.staleTempBytes] 同义，只是作用在给定目录上（便于单测）。 */

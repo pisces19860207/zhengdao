@@ -298,6 +298,28 @@ object ProotLauncher {
                 }
             }
         }
+
+        // 终端内缓存清理命令 zzclean（用户 2026-10-08：「可不可以做一个终端自己清理缓存的方法」）。
+        // 落 `/usr/local/bin`：系统层、天然在所有 shell 的 PATH 里，**新旧 shell 都拿得到**
+        // （与上面 hermes 软链同一个理由）。脚本正文由 CacheCleaner 生成 —— 命令清单与
+        // 设置页那条 "在终端中清理缓存" 同源，不会出现两边清的东西不一样。
+        // ⚠️ 每次启动**按内容比对后重写**，而不是"文件在就不管"：脚本正文会随 App 版本更新，
+        //    只判存在会让老环境永远停在旧脚本上（上一条 zz-cursor-bar.sh 就是那种写法）。
+        // ⚠️ 执行位也要一起判：内容相同但丢了 +x 的旧环境会被判成"已就绪"，终端里敲 zzclean
+        //    直接 Permission denied（2026-10-08 审查）。判据因此是「内容不同 **或** 不可执行」
+        //    时重写并重设执行位——幂等语义不变（内容与执行位都对时依然一次都不写）。
+        runCatching {
+            val binDir = File(rootfsDir, "usr/local/bin")
+            if (binDir.isDirectory || binDir.mkdirs()) {
+                val zz = File(binDir, "zzclean")
+                val want = CacheCleaner.zzcleanScript()
+                if (!zz.isFile || zz.readText() != want || !zz.canExecute()) {
+                    zz.writeText(want)
+                    zz.setExecutable(true, false)
+                    RunLog.log("终端清理命令已就绪：/usr/local/bin/zzclean")
+                }
+            }
+        }.onFailure { RunLog.log("写入 zzclean 失败：${it.message}") }
         // npm 国内镜像（login shell 经 /etc/profile.d 自动生效）：官方 registry 从国内
         // 拉 Agent 及其二进制要 2-4 分钟，npmmirror 通常几十秒。写失败不阻断。
         runCatching {
