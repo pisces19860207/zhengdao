@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
+import com.example.zhengdao.rust.CoreNative
 import com.example.zhengdao.terminal.EnvSelfHeal
 import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.ResMonitor
@@ -55,6 +56,7 @@ object EnvHealth {
         hermesDepsCheck(ctx),
         networkCheck(ctx),
         storageCheck(ctx),
+        nativeCheck(),
         resourceCheck(),
     )
 
@@ -236,6 +238,42 @@ object EnvHealth {
             detail = if (ok) "所有文件访问已授权（主路径）"
             else "所有文件访问未授权，工作区主路径不可用；到系统设置开启",
         )
+    }
+
+    /**
+     * native 核心（`libzhengdao_core.so`）到底有没有加载进来（2026-10-08 补，用户授权）。
+     *
+     * **为什么值得占一格**：Rust 那条链路的失败是**静默**的——[CoreNative] 在类加载时探一次
+     * `System.loadLibrary`，失败即永久标记，之后解压退回 `RootfsInstaller` 的 commons-compress
+     * 纯 Java 路径、SHA256 退回 `MessageDigest`：功能照常，只是更慢。E-012（16KB 页对齐漏配
+     * ⇒ native 静默失效）与 E-022（R8 改掉 JNI 回调名 ⇒ release 装上一解压就 SIGABRT）
+     * 都出在这条链路上，而在补这一格之前，装完包之后**没有任何地方**能看出"现在跑的是 Java 回退"。
+     *
+     * 用户 2026-10-08 的原话是「sha256→Rust 真机验出来收益不大，你觉得有意义就接吧」——
+     * 对：**速度上确实没多少收益**（实测差距 <2%，见 ERRATA 关于解压耗时的记录），
+     * 这一格的价值是"降级可见"，不是"更快"。
+     *
+     * **编码成 ⚠ 而不是 ✗**：native 加载失败用户侧修不了（.so 打包/页对齐的问题，只能换包），
+     * 报红会破坏本文件「红 = 修得了」的不变量；与 [resourceCheck] 同构——异常但无自愈动作。
+     * 本 App 只打 `arm64-v8a`（`app/build.gradle.kts` 的 abiFilters），所以在能装上本包的设备上
+     * 它**本不该**是 false；真是 false 就说明打出来的包有问题。
+     */
+    internal fun nativeCheck(): Check {
+        val available = runCatching { CoreNative.isRustAvailable() }.getOrDefault(false)
+        return Check(
+            id = "native",
+            label = "native 加速层",
+            ok = true,
+            warn = !available,
+            detail = nativeDetail(available),
+        )
+    }
+
+    /** native 体检文案（纯函数：类加载与 .so 在 JVM 单测里都不存在，故判定与文案分家）。 */
+    internal fun nativeDetail(available: Boolean): String = if (available) {
+        "libzhengdao_core.so 已加载：解压与 SHA256 走 native"
+    } else {
+        "未加载：解压与 SHA256 走 Java 回退（功能正常但更慢）；疑似打包或页对齐问题，见 E-012/E-022"
     }
 
     /**
