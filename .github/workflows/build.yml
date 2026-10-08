@@ -201,6 +201,12 @@ jobs:
           # ⚠️ 到这里为止只证明"**钥匙文件**是对的"。钥匙文件对 ≠ 打出来的包对 ——
           #    真正的关卡在 assembleRelease 之后那一步「校验 release 包的签名」（E-014 §7）。
 
+      # E-048：与 ci.yml 同一道门禁，放在这里是因为"入库的 .so 是人工拷进来的"——
+      # 发布路径自己也得挡住"16KB 对齐漏了 / JNI 入口被 strip 掉"这两类静默降级
+      # （它们不会让编译失败，只会让真机悄悄退回 Java 路径）。
+      - name: 入库 .so 门禁（16KB 页对齐 + JNI 入口符号）
+        run: python3 tools/check-native-so.py
+
       - name: 编译 Release APK（最终用户用；R8 + 资源收缩 + lintVital）
         # ⚠️ 这一步是本流水线以前**没有**的，正是它缺席让 CI 发布的「正式版」实为 debug 包
         #    （见 docs/ERRATA.md E-013）。release 变体用 debug 签名
