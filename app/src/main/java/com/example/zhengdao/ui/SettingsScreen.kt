@@ -705,11 +705,21 @@ fun SettingsScreen(
                                 val localEnv = RootfsMarker.installedEnv(ctx)
                                 val ver = idx.version.ifBlank { idx.distro.ifBlank { "未知版本" } }
                                 when {
-                                    // 旧安装（标记里没有 env 行）：第一次更新只能全量，装完就记上 env
+                                    // 旧安装（标记里没有 env 行）：第一次更新只能全量，装完就记上 env。
+                                    // 2026-10-08：本地装的往往**就是同一个版本**（13.7），只是标记缺 env 行，
+                                    // 却被叫成"发现新版本 13.7"——用户会以为真出了新版（真机投诉）。
+                                    // 这里按本地已装版本分两种口径：同版本＝补指纹，不同/未知＝确实有新版。
                                     localEnv == null -> {
                                         pendingUrl = idx.url; pendingSha = idx.sha256
                                         pendingIdx = idx
-                                        "发现新版本 $ver（本地环境未记录版本，本次需全量下载，${bytesMbText(idx.size)}）"
+                                        val localVer = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx).orEmpty()
+                                        if (localVer.isNotBlank() && localVer.equals(ver, ignoreCase = true)) {
+                                            "本地已安装 $ver，但缺少环境指纹记录（env）：" +
+                                                "本次将用全量包（${bytesMbText(idx.size)}）重装一次以补上指纹，" +
+                                                "重装后「检查环境更新」才能正确判断新旧。"
+                                        } else {
+                                            "发现新版本 $ver（本地环境未记录版本，本次需全量下载，${bytesMbText(idx.size)}）"
+                                        }
                                     }
                                     localEnv.equals(idx.env, ignoreCase = true) ->
                                         "已是最新版本（$ver，环境 $localEnv）"
@@ -767,7 +777,11 @@ fun SettingsScreen(
                             pendingUpdateSha = pendingSha
                             pendingIndex = pendingIdx
                             pendingPatch = pendingPatchRef
-                            if (!result.startsWith("发现新版本")) {
+                            // 有可下载目标 → 交给下面的弹窗（用户点「下载并安装」）；
+                            // 没有目标（已是最新 / 只能手动去下载） → 用 Toast 说清楚。
+                            // 判据是 pendingUrl 而不是文案前缀：同版本补指纹的文案不以"发现新版本"开头，
+                            // 按前缀判断会让它既不弹窗也不提示（2026-10-08 修）。
+                            if (pendingUrl == null) {
                                 Toast.makeText(ctx, result, Toast.LENGTH_LONG).show()
                             }
                         }
@@ -776,12 +790,30 @@ fun SettingsScreen(
             ) { Text(if (checking) "检查中…" else "检查环境更新") }
             installState?.let { st ->
                 Spacer(Modifier.height(6.dp))
+                // 2026-10-08 修：此前无论 phase 是什么都硬写"⏳ 正在安装环境…"，且 Done 之后
+                // 就一直挂着（真机现象："⏳ 正在安装环境……安装完成！"，还带着"不能重复检查更新"
+                // 这句对已结束安装毫无意义的话，被用户读成"还在装"）。现在按 phase 给图标与颜色，
+                // "正在安装"只属于 Running；Done/Failed 收尾成一次性状态，可点「知道了」清掉。
+                val (icon, color) = when (st.phase) {
+                    InstallProgress.Phase.Running -> "⏳" to MaterialTheme.colorScheme.primary
+                    InstallProgress.Phase.Done -> "✅" to MaterialTheme.colorScheme.primary
+                    InstallProgress.Phase.Failed -> "⚠️" to MaterialTheme.colorScheme.error
+                }
                 Text(
-                    text = "⏳ 正在安装环境（${if (st.fromLocal) "使用本地缓存包，不联网下载" else "联网下载"}）：" +
-                        "${st.text}\n安装完成前不需要、也不能重复检查更新；进度同时显示在终端页顶部横幅与系统通知里。",
+                    text = when (st.phase) {
+                        InstallProgress.Phase.Running ->
+                            "$icon 正在安装环境（${if (st.fromLocal) "使用本地缓存包，不联网下载" else "联网下载"}）：" +
+                                "${st.text}\n安装完成前不需要、也不能重复检查更新；进度同时显示在终端页顶部横幅与系统通知里。"
+                        InstallProgress.Phase.Done -> "$icon 上一次安装：${st.text}"
+                        InstallProgress.Phase.Failed -> "$icon 上一次安装失败：${st.text}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = color,
                 )
+                if (st.phase != InstallProgress.Phase.Running) {
+                    // 结束后给一个明确的收尾动作：否则这条状态会一直占着按钮下面的位置
+                    TextButton(onClick = { InstallProgress.clear() }) { Text("知道了") }
+                }
             }
             Spacer(Modifier.height(4.dp))
             Text(
@@ -1203,11 +1235,13 @@ fun SettingsScreen(
         )
     }
 
-    // ── 发现新版本弹窗（updateMsg 驱动）：确认后在应用内下载到公共缓存并安装 ──
-    updateMsg?.takeIf { it.startsWith("发现新版本") }?.let { msg ->
+    // ── 环境更新弹窗（pendingUpdateUrl 驱动）：确认后在应用内下载到公共缓存并安装 ──
+    // 触发条件用"是否真有可下载目标"，不再靠文案前缀猜：同版本补指纹的场景文案不以
+    // "发现新版本"开头，按前缀判断会让它既不弹窗也不提示（2026-10-08 修）。
+    updateMsg?.takeIf { pendingUpdateUrl != null }?.let { msg ->
         AlertDialog(
             onDismissRequest = { updateMsg = null },
-            title = { Text("发现环境更新") },
+            title = { Text(if (msg.startsWith("发现新版本")) "发现环境更新" else "可以重装环境") },
             text = { Text(msg) },
             confirmButton = {
                 TextButton(onClick = {
