@@ -993,7 +993,8 @@ fun SettingsScreen(
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
             GuideLine("2", "进各 Agent 内完成各自的登录 / 授权（凭据由 Agent 自己保管），会话内直接可用。")
-            GuideLine("3", "进底部「洞天」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在洞天里另外装的 opencode 是另一份，两者互不干扰。")
+            // 2026-10-08：「洞天」→「终端」，与底栏 Tab 文案一致（见 MainActivity.kt:470）
+            GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在终端里另外装的 opencode 是另一份，两者互不干扰。")
             Spacer(Modifier.height(8.dp))
             Text(
                 "常见问题",
