@@ -109,6 +109,7 @@ fun SettingsScreen(
     /** 索引给的增量补丁（基线与本机相符时才会被赋上）；非 null = 弹窗确认后先试增量。 */
     var pendingPatch by remember { mutableStateOf<PatchRef?>(null) }
     var prevLogText by remember { mutableStateOf<String?>(null) }
+    var archiveCount by remember { mutableStateOf(0) }
     var showPrevLog by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var rootfsMb by remember { mutableStateOf(0L) }
@@ -866,11 +867,15 @@ fun SettingsScreen(
             }
         }
 
-        // ── 运行日志（2026-10-08：搬到 Download/证道/logs/，卸载 App 也不丢）──
+        // ── 运行日志（2026-10-08：搬到 Download/证道/logs/，卸载 App 也不丢；
+        //    用户 m08482：「那些日志都是方便给你们这些 agent 看查哪里有问题的，所以要留着」
+        //    ⇒ RunLog 不再"没出错就删掉上一轮"，改成每轮归档一份，只受份数/体积上限约束）──
         LaunchedEffect(Unit) {
-            prevLogText = withContext(Dispatchers.IO) {
-                if (com.example.zhengdao.rootfs.RunLog.lastRunHadErrors(ctx))
-                    com.example.zhengdao.rootfs.RunLog.prevFile()?.readText()
+            withContext(Dispatchers.IO) {
+                archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
+                prevLogText = if (com.example.zhengdao.rootfs.RunLog.lastRunHadErrors(ctx))
+                    (com.example.zhengdao.rootfs.RunLog.latestArchive()
+                        ?: com.example.zhengdao.rootfs.RunLog.prevFile())?.readText()
                 else null
             }
         }
@@ -883,11 +888,20 @@ fun SettingsScreen(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "zhengdao-log.txt = 本轮运行；errors.log = 历次错误汇总（只记错误行）；" +
-                    "上一轮出过错时会另留 zhengdao-log.prev.txt。用文件管理器可直接打开。",
+                "zhengdao-log.txt = 本轮运行；zhengdao-log.<时间>.txt = 历次运行的存档" +
+                    "（留最近 20 份 / 最多 20 MB，从最旧的开始轮转；不会因为「这轮没出错」就删）；" +
+                    "errors.log = 历次错误汇总（只记错误行）。用文件管理器可直接打开，也可以直接丢给我们查问题。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (archiveCount > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "已有 $archiveCount 份历史日志。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (prevLogText != null) {
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -897,11 +911,13 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(onClick = { showPrevLog = true }) { Text("查看上次日志") }
+            }
+            if (archiveCount > 3) {
                 TextButton(onClick = {
-                    com.example.zhengdao.rootfs.RunLog.prevFile()?.delete()
-                    prevLogText = null
-                    Toast.makeText(ctx, "已删除", Toast.LENGTH_SHORT).show()
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                    val n = com.example.zhengdao.rootfs.RunLog.pruneArchivesKeep(ctx, keep = 3)
+                    archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
+                    Toast.makeText(ctx, "已删掉 $n 份旧日志，保留最近 3 份", Toast.LENGTH_SHORT).show()
+                }) { Text("只留最近 3 份", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
 
