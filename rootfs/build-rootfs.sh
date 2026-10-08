@@ -206,36 +206,42 @@ cat > /etc/hosts <<'HOSTSEOF'
 HOSTSEOF
 
 STEP="2.8 剔除 GPU 栈"
-echo "---- 2.8 剔除 GPU 软件渲染栈（用户拍板「终端确实没用就删」2026-10-08）----"
-# 依据（真机只读取证，脚本与原始输出见 docs/ERRATA.md E-038）：
+echo "---- 2.8 剔除 GPU 软件渲染栈：本轮只切 libllvm19（118 MB 落盘）----"
+# 依据（真机只读取证，脚本与原始输出见 docs/ERRATA.md E-038 / E-042）：
 #   1) 真机 `ldd /usr/bin/ffmpeg` 的 NEEDED 闭包里**没有** libgallium / libLLVM：它们只是
-#      apt 声明上的依赖（libgbm1 → mesa-libgallium → libllvm19），不是加载期依赖；
+#      apt 声明上的依赖（mesa-libgallium → libllvm19），不是加载期依赖；
 #   2) proot 里没有 /dev/dri、没有 X/Wayland display ⇒ mesa 的驱动后端没有任何被拉起的入口，
 #      ffplay（SDL2/GBM 输出路径）本来就不可能用；ffmpeg/ffprobe 走纯 CPU 编解码；
 #   3) 全仓 app/ 对 libgallium|mesa|libgbm|SDL2|vulkan 零命中，客户端不碰这三样。
-# 于是卸掉 mesa-libgallium(装 34MB) + libllvm19(装 118MB) + libglx-mesa0 + libgl1-mesa-dri。
-# ⚠️ 但 libgbm1 必须留：ffmpeg/ffprobe 二进制 NEEDED libgbm.so.1（经 libsdl2 的 GBM 路径）。
-#    它声明了 `Depends: mesa-libgallium (= 版本)`，不摘掉这条，apt 就会顺着
-#    ffmpeg → libsdl2 → libgbm1 → mesa-libgallium → libllvm19 把 ffmpeg 整串带走
-#    （真机反向依赖扫描：mesa-libgallium 的父包只有 libgbm1 与 libglx-mesa0）。
-#    真实依赖是运行时 dlopen、不是 NEEDED ⇒ 摘掉声明是安全的。
+#   4) libLLVM.so.19.1 是这套软件渲染栈里最大的一块（118 MB 落盘、构建 Top20 里第二大），
+#      而它在环境里**没有任何可能的读者**（只有 mesa-libgallium 声明依赖它）。
+# ⚠️ 为什么本轮**只切 LLVM、不切 mesa 本体**（这是 Run 164 的自述注解摊开的一条链）：
+#    把 mesa-libgallium + libglx-mesa0 + libgl1-mesa-dri 一起 `apt-get -s purge` 时，模拟器给的
+#    Purg 名单是：
+#      ffmpeg | libavdevice61 | libgl1 | libglx0 | libglx-mesa0 | libgl1-mesa-dri |
+#      mesa-libgallium | libllvm19
+#    主链是 **mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg**（上一轮只摘掉
+#    libgbm1 → mesa-libgallium 这条**支线**，主链还在）⇒ 要动 mesa 本体，就得再重打包
+#    `libglx0` 与 `libgl1` 两个包，而多拿到的只有 ~34 MB，风险与改动量都不划算（E-042）。
+#    所以本轮改成切"最干净的那条边"：libllvm19 的父包**只有** mesa-libgallium 一个
+#    （真机反向依赖扫描），在 mesa-libgallium 的 control 里摘掉 `libllvm19`，purge 就只带走它自己。
 # ⚠️ 也**不跑** `apt-get autoremove`：ffmpeg 链接的 libGL.so.1（libgl1）并没有被任何包
 #    声明成依赖，autoremove 会把它当垃圾清掉、ffmpeg 随即起不来（§2.9 的 ldd 断言就是抓这个）。
-echo "[剔GPU] 重打包 libgbm1：摘掉它对 mesa-libgallium 的声明依赖"
+echo "[剔GPU] 重打包 mesa-libgallium：摘掉它对 libllvm19 的声明依赖"
 GPU_TMPDIR="$(mktemp -d)"
 # 每一条外部命令都单独抓输出：失败时把它的 stderr 直接塞进 `::error::` 注解
 # （注解匿名可见，见文件头；Run 162 就是死在这一段但外面只能看到 exit code 2）。
-if ! GBM_DL_OUT="$( ( cd "$GPU_TMPDIR" && apt-get download libgbm1 ) 2>&1 )"; then
-  annot "[2.8] apt-get download libgbm1 失败：$GBM_DL_OUT"; exit 1
+if ! MESA_DL_OUT="$( ( cd "$GPU_TMPDIR" && apt-get download mesa-libgallium ) 2>&1 )"; then
+  annot "[2.8] apt-get download mesa-libgallium 失败：$MESA_DL_OUT"; exit 1
 fi
-GBM_DEB="$(ls "$GPU_TMPDIR"/libgbm1_*.deb 2>/dev/null | head -n1 || true)"
-if [ -z "$GBM_DEB" ]; then
-  annot "[2.8] 取不到 libgbm1 的 .deb（apt-get download 输出：$GBM_DL_OUT），不敢盲删 mesa"; exit 1
+MESA_DEB="$(ls "$GPU_TMPDIR"/mesa-libgallium_*.deb 2>/dev/null | head -n1 || true)"
+if [ -z "$MESA_DEB" ]; then
+  annot "[2.8] 取不到 mesa-libgallium 的 .deb（apt-get download 输出：$MESA_DL_OUT），不敢盲删 libllvm19"; exit 1
 fi
-if ! GBM_RX_OUT="$(dpkg-deb -R "$GBM_DEB" "$GPU_TMPDIR/gbm" 2>&1)"; then
-  annot "[2.8] dpkg-deb -R $GBM_DEB 失败：$GBM_RX_OUT"; exit 1
+if ! MESA_RX_OUT="$(dpkg-deb -R "$MESA_DEB" "$GPU_TMPDIR/mesa" 2>&1)"; then
+  annot "[2.8] dpkg-deb -R $MESA_DEB 失败：$MESA_RX_OUT"; exit 1
 fi
-# 摘依赖：把 `mesa-libgallium (= 版本)` 这一条连同它前面的分隔逗号一起删掉。
+# 摘依赖：把 `libllvm19 (= 版本)` 这一条连同它前面的分隔逗号一起删掉。
 # ⚠️ 2026-10-08 的坑（Run 162 死在 exit 2、Run 163 的自述注解把它原样带回来）：
 #    原写法 `s/, *mesa-libgallium[^,)]*//g` 的字符类里带了 `)`，而版本约束自己就含括号
 #    （`(= 25.0.7-2+deb13u1)`）⇒ 只吃到右括号**之前**，把那个孤零零的 `)` 留在原地，
@@ -243,38 +249,38 @@ fi
 #    `'Depends' field, syntax error after reference to package 'libwayland-server0'`。
 #    现在改成「以逗号为界吃掉整条版本约束」，再逐项收尾：空项、尾逗号、行首逗号。
 sed -i -E \
-  -e 's/(,[[:space:]]*)?mesa-libgallium[^,]*//g' \
+  -e 's/(,[[:space:]]*)?libllvm19[^,]*//g' \
   -e 's/,[[:space:]]*,/,/g' \
   -e 's/,[[:space:]]*$//' \
   -e 's/:[[:space:]]*,[[:space:]]*/: /' \
   -e 's/[[:space:]]+$//' \
   -e '/^(Depends|Pre-Depends|Recommends|Suggests|Breaks|Conflicts|Provides|Replaces|Enhances):[[:space:]]*$/d' \
-  "$GPU_TMPDIR/gbm/DEBIAN/control"
-if grep -q 'mesa-libgallium' "$GPU_TMPDIR/gbm/DEBIAN/control"; then
-  annot "[2.8] 重打包后 libgbm1 的 control 里仍残留 mesa-libgallium"; exit 1
+  "$GPU_TMPDIR/mesa/DEBIAN/control"
+if grep -q 'libllvm19' "$GPU_TMPDIR/mesa/DEBIAN/control"; then
+  annot "[2.8] 重打包后 mesa-libgallium 的 control 里仍残留 libllvm19"; exit 1
 fi
 # 自己先看一眼依赖字段的语法（`dpkg-deb -b` 也会拦，但这样报错更直白、也不用等它跑完）：
-if grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/gbm/DEBIAN/control" \
+if grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/mesa/DEBIAN/control" \
    | grep -qE ',[[:space:]]*,|,[[:space:]]*$|:[[:space:]]*,|\([[:space:]]*\)'; then
-  annot "[2.8] 摘掉 mesa 依赖后 control 的依赖字段语法有问题：$(grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/gbm/DEBIAN/control" | tr '\n' '|')"; exit 1
+  annot "[2.8] 摘掉 libllvm19 依赖后 control 的依赖字段语法有问题：$(grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/mesa/DEBIAN/control" | tr '\n' '|')"; exit 1
 fi
-if ! GBM_B_OUT="$(dpkg-deb -b "$GPU_TMPDIR/gbm" "$GPU_TMPDIR/libgbm1-local.deb" 2>&1)"; then
-  annot "[2.8] dpkg-deb -b 重打包 libgbm1 失败：$GBM_B_OUT"; exit 1
+if ! MESA_B_OUT="$(dpkg-deb -b "$GPU_TMPDIR/mesa" "$GPU_TMPDIR/mesa-libgallium-local.deb" 2>&1)"; then
+  annot "[2.8] dpkg-deb -b 重打包 mesa-libgallium 失败：$MESA_B_OUT"; exit 1
 fi
-if ! GBM_I_OUT="$(dpkg -i "$GPU_TMPDIR/libgbm1-local.deb" 2>&1)"; then
-  annot "[2.8] dpkg -i 重打包后的 libgbm1 失败：$GBM_I_OUT"; exit 1
+if ! MESA_I_OUT="$(dpkg -i "$GPU_TMPDIR/mesa-libgallium-local.deb" 2>&1)"; then
+  annot "[2.8] dpkg -i 重打包后的 mesa-libgallium 失败：$MESA_I_OUT"; exit 1
 fi
 rm -rf "$GPU_TMPDIR"
-echo "[剔GPU] 先模拟卸载，确认不会连带删掉关键包"
-if ! GPU_SIM="$(apt-get -s -y purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri 2>&1)"; then
+echo "[剔GPU] 先模拟卸载 libllvm19，确认不会连带删掉关键包"
+if ! GPU_SIM="$(apt-get -s -y purge libllvm19 2>&1)"; then
   annot "[2.8] apt 模拟卸载直接失败：$GPU_SIM"; exit 1
 fi
 echo "$GPU_SIM" | grep -E '^(Remv|Purg) ' | head -n 20 || true
-if echo "$GPU_SIM" | grep -E '^(Remv|Purg) (ffmpeg|ffprobe|libavdevice61|libsdl2-2\.0-0|libgbm1|libplacebo349|libvulkan1|libgl1|libglx0|libglvnd0|nodejs|python3|git|tmux|busybox|ripgrep|coreutils)(:arm64)? '; then
-  annot "[2.8] 卸载 mesa 会连带移除关键包，已中止：$(echo "$GPU_SIM" | grep -E '^(Remv|Purg) ' | head -n 20)"; exit 1
+if echo "$GPU_SIM" | grep -E '^(Remv|Purg) (ffmpeg|ffprobe|libavdevice61|libsdl2-2\.0-0|libgbm1|libplacebo349|libvulkan1|libgl1|libglx0|libglvnd0|mesa-libgallium|nodejs|python3|git|tmux|busybox|ripgrep|coreutils)(:arm64)? '; then
+  annot "[2.8] 卸载 libllvm19 会连带移除关键包，已中止：$(echo "$GPU_SIM" | grep -E '^(Remv|Purg) ' | head -n 20)"; exit 1
 fi
-if ! GPU_PURGE_OUT="$(apt-get -y purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri 2>&1)"; then
-  annot "[2.8] apt-get purge 真的卸载时失败：$GPU_PURGE_OUT"; exit 1
+if ! GPU_PURGE_OUT="$(apt-get -y purge libllvm19 2>&1)"; then
+  annot "[2.8] apt-get purge libllvm19 真的卸载时失败：$GPU_PURGE_OUT"; exit 1
 fi
 echo "[剔GPU] 剔除后落盘体积: $(du -smx / 2>/dev/null | awk '{print $1}')MB"
 
@@ -304,9 +310,14 @@ command -v busybox >/dev/null 2>&1 || { annot "[断言失败] busybox 未安装"
 command -v ffmpeg  >/dev/null 2>&1 || { annot "[断言失败] ffmpeg 未安装"; exit 1; }
 [ "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Shanghai" ] || { annot "[断言失败] /etc/localtime 未指向 Asia/Shanghai"; exit 1; }
 
-# ── GPU 软件渲染栈剔除后的断言（E-038）：既要"真删掉了"，也要"没删坏" ──
-if dpkg -s mesa-libgallium >/dev/null 2>&1; then annot "[断言失败] mesa-libgallium 仍在（§2.8 剔除段没生效）"; exit 1; fi
-if dpkg -s libllvm19      >/dev/null 2>&1; then annot "[断言失败] libllvm19 仍在（§2.8 剔除段没生效）"; exit 1; fi
+# ── GPU 软件渲染栈剔除后的断言（E-038 / E-042）：既要"真删掉了"，也要"没删坏" ──
+# 本轮只切 LLVM：libllvm19 必须没了，而 mesa-libgallium **必须留着**
+# （动它会顺着 mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 把 ffmpeg 一起带走，见 §2.8 注释）。
+if dpkg -s libllvm19 >/dev/null 2>&1; then annot "[断言失败] libllvm19 仍在（§2.8 剔除段没生效）"; exit 1; fi
+echo "[断言] libllvm19 已剔除（连它的父包 mesa-libgallium 的声明依赖一起摘掉）"
+if ! dpkg -s mesa-libgallium >/dev/null 2>&1; then
+  annot "[断言失败] mesa-libgallium 不该被删掉（本轮只切 LLVM；少它说明重打包/卸载跑偏了）"; exit 1
+fi
 command -v ffprobe >/dev/null 2>&1 || { annot "[断言失败] ffprobe 未安装"; exit 1; }
 for BIN in ffmpeg ffprobe ffplay; do
   # ffplay 本来就跑不起来（无显示），这里只验"动态库都还在"，即剔除没有误伤加载期依赖
