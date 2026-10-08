@@ -63,7 +63,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
@@ -72,7 +75,10 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -90,6 +96,9 @@ import com.example.zhengdao.oc.OcTodo
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.oc.ToolState
+import com.example.zhengdao.ui.AttachmentGlyph
+import com.example.zhengdao.ui.ThinkGlyph
+import com.example.zhengdao.ui.ToolGlyph
 // Markdown 渲染（v1.1 第四阶段）：仅最终回答使用
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
@@ -636,7 +645,11 @@ fun PartRow(part: OcPart) {
             }
             ToolCallCard(part)
         }
-        is OcPart.File -> Text("📎 ${part.filename}", style = MaterialTheme.typography.bodySmall)
+        is OcPart.File -> Row(verticalAlignment = Alignment.CenterVertically) {
+            AttachmentGlyph(tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text(part.filename, style = MaterialTheme.typography.bodySmall)
+        }
         // ⚠️ 未知 part 保留原文而非静默丢弃（见 OcDto 注释）
         is OcPart.Unknown -> CollapsibleBlock("未知内容（${part.type}）") {
             Text(part.raw.take(400), style = MaterialTheme.typography.bodySmall,
@@ -676,10 +689,10 @@ fun ToolCallCard(part: OcPart.Tool) {
     ) {
         Column(Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(icon, color = tint, modifier = Modifier.size(16.dp))
+                ToolGlyph(tint = tint)
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "🔧 ${part.toolName.ifEmpty { "工具" }}",
+                    part.toolName.ifEmpty { "工具" },
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -746,7 +759,7 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
 
     // 步数 = 非空段数（直接来自数据，不猜测）；<2 段时不显示「· N 步」，避免「· 1 步」的怪读法。
     val steps = parts.count { it.text.isNotBlank() }
-    val head = if (steps > 1) "💭 思考过程 · $steps 步" else "💭 思考过程"
+    val head = if (steps > 1) "思考过程 · $steps 步" else "思考过程"
     // 头部摘要：取首个非空行
     val summary = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
@@ -759,6 +772,8 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
                 .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ThinkGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(6.dp))
             Text(
                 head,
                 style = MaterialTheme.typography.labelMedium,
