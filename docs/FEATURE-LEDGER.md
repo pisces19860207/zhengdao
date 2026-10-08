@@ -196,6 +196,21 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > （`GET /actions/jobs/{id}/logs` = 403），而 `GET /repos/{owner}/{repo}/check-runs/{id}/annotations`
 > 匿名可读 —— 这次就是靠它看到 `exit code 101` 的原文的。
 
+> **2026-10-08 续（体检第 10 项：让 native 的静默降级可见）**：
+> 用户当天的原话是「sha256→Rust 这个真机验出来不是说收益不大吗？你觉得有意义就接吧」——**对，速度上确实
+> 没收益**（实测与 Java 路径差距 <2%）；这一项要解决的是别的问题：`rust/CoreNative.kt:26-31` 只在类加载
+> 时探一次 `System.loadLibrary("zhengdao_core")`，失败就**永久**标记，之后解压退回 `RootfsInstaller` 的
+> commons-compress 纯 Java 路径、SHA256 退回 `MessageDigest`——功能照常、只是更慢，而 E-012（16KB 页对齐
+> 漏配 ⇒ native 静默失效）与 E-022（R8 改掉 JNI 回调名 ⇒ release 一解压就 SIGABRT）都出在这条链路上。
+> 落地在 `ui/EnvHealth.kt`：`inspect()` 里排在「存储权限」与「资源占用」之间，判定文案抽成纯函数
+> `nativeDetail(available)`；**编码为 ⚠（`ok=true` + `warn=true`）而不是 ✗**——native 加载失败用户侧修不了
+> （.so 打包/页对齐，只能换包），报红会破坏本文件写明的「红 = 修得了」不变量（渲染侧 `!ok -> ✗` 会盖掉 warn）。
+> `app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` +3 例，其中「探不到时必须编成告警」那例
+> 利用 JVM 里必然没有 .so 这一点验**编码**本身。真机验收：装机后展开状态卡 =「环境体检 10/10 通过」，
+> 新项 `✓ native 加速层 · libzhengdao_core.so 已加载：解压与 SHA256 走 native`。
+> 顺带销掉一处文档/实现漂移：`CoreNative.isRustAvailable()` 的 KDoc 一直写着「供测试与体检展示」，
+> 而体检此前从没用过它。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -213,6 +228,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | Agent 卡片版本显示 / 更新标记 | ✅ 在用 | `14b3d5e` | `ui/AgentRepository.kt`、`ui/HomeScreen.kt` |
 | opencode 更新检查 | ✅ 在用 | `c07eec3` | `ui/SettingsScreen.kt`、`oc/OcManager.kt` |
 | 环境体检三态 + 自愈 | ✅ 在用 | `df2b3eb` | `ui/EnvHealth.kt`、`terminal/EnvSelfHeal.kt` |
+| 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
 | 缓存清理（两档） | ✅ 在用 | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt` |
 | 通知 4 渠道 | ✅ 在用 | `8127a49` | `terminal/NotificationChannels.kt` |
 | 资源监控 | ✅ 在用 | `7d0b08c` | `terminal/ResMonitor.kt` |
