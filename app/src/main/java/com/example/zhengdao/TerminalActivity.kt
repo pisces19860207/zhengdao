@@ -26,7 +26,6 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
-import com.example.zhengdao.terminal.InstallNotifier
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -905,7 +904,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
      */
     override fun getTerminalCursorStyle(): Int =
         com.termux.terminal.TerminalEmulator.TERMINAL_CURSOR_STYLE_BAR
-    // ── 安装流程（进度以 Toast 呈现里程碑；明细在 RunLog）──
+    // ── 安装流程（进度走 InstallFlow：顶部横幅 + 通知栏 + RunLog；不放 2 秒 Toast）──
 
     /**
      * 本地已有安装包（用户需求：**检测到就自动安装，没有才下载**）。返回归档路径或 null。
@@ -990,17 +989,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
      * [installFailed]）——成功时横幅已经常驻在屏幕上，再弹一个反而挡终端。
      */
     private fun installStatus(text: String, percent: Int = -1) {
-        RunLog.log(text)
-        com.example.zhengdao.ui.InstallProgress.update(text)
-        InstallNotifier.update(this, text, percent)
+        com.example.zhengdao.ui.InstallFlow.update(this, text, percent)
         showBanner(text)
     }
 
     /** 失败专用：横幅 + 通知 + **长 Toast**（失败必须被看见，不能只留在横幅里）。 */
     private fun installFailed(text: String) {
-        RunLog.log(text)
-        com.example.zhengdao.ui.InstallProgress.finish(text, failed = true)
-        InstallNotifier.finish(this, text, failed = true)
+        com.example.zhengdao.ui.InstallFlow.fail(this, text)
         showBanner(text)
         runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
     }
@@ -1016,28 +1011,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
 
     /**
-     * 把一条结论**送进终端可见区**：写 `files/install-notice.txt`，由
-     * [ProotLauncher] 在写启动横幅时追加进去（终端是原生 TerminalView，App 不能直接
-     * 往里注入文本——写 pty 会被当成输入，见 activity_main.xml 里那段注释）。
-     */
-    private fun writeTerminalNotice(text: String) {
-        try {
-            File(filesDir, "install-notice.txt").writeText(text)
-        } catch (t: Throwable) {
-            RunLog.log("写终端提示失败：${t.message}")
-        }
-    }
-
-    /**
      * 安装成功：横幅常驻结论 + 通知改成可划掉的「已就绪」+ 写一行给终端
-     * （下次开会话时由 ProotLauncher 的启动横幅带出来，见 [writeTerminalNotice]）。
+     * （下次开会话时由 ProotLauncher 的启动横幅带出来；写文件的是
+     * [com.example.zhengdao.ui.InstallFlow.finish]）。
      */
     private fun finishInstall(text: String) {
-        RunLog.log(text)
-        com.example.zhengdao.ui.InstallProgress.finish(text)
-        InstallNotifier.finish(this, text, failed = false)
+        com.example.zhengdao.ui.InstallFlow.finish(this, text)
         showBanner(text)
-        writeTerminalNotice(text)
     }
 
     /** SAF 选中归档：拷入公共缓存 → 校验 → 解压 → 切 Debian。压缩包保留（重装免下载）。 */
@@ -1045,7 +1025,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
-            com.example.zhengdao.ui.InstallProgress.start("从本地文件安装环境", fromLocal = true)
+            com.example.zhengdao.ui.InstallFlow.start(
+                this.applicationContext, "从本地文件安装环境", fromLocal = true
+            )
             try {
                 installStatus("从本地文件安装…")
                 val archive = File(com.example.zhengdao.rootfs.RootfsCache.dir(appContext), "debian-13.7-base-arm64.tar.zst")
@@ -1076,8 +1058,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
-            com.example.zhengdao.ui.InstallProgress.start(
-                "使用本地缓存包安装（不联网下载）", fromLocal = true
+            com.example.zhengdao.ui.InstallFlow.start(
+                appContext, "使用本地缓存包安装（不联网下载）", fromLocal = true
             )
             try {
                 val cacheCopy = File(com.example.zhengdao.rootfs.RootfsCache.dir(appContext), local.name)
@@ -1125,7 +1107,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
-            com.example.zhengdao.ui.InstallProgress.start("联网下载运行环境包", fromLocal = false)
+            com.example.zhengdao.ui.InstallFlow.start(
+                appContext, "联网下载运行环境包", fromLocal = false
+            )
             try {
                 installStatus("开始下载运行环境（断点续传）…")
                 val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(appContext, url)
