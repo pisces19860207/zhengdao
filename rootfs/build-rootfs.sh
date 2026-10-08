@@ -94,9 +94,13 @@ mount --bind /dev  "$ROOTFS_DIR/dev";  MNT_LIST+=("$ROOTFS_DIR/dev")
 
 cat > "$ROOTFS_DIR/zhengdao-configure.sh" <<'CONF'
 #!/bin/bash
-# chroot 内配置脚本（由 build-rootfs.sh 写入并执行；NODE_MAJOR 经 env 传入）
+# chroot 内配置脚本（由 build-rootfs.sh 写入并执行；NODE_MAJOR / UV_MIN 经 env 传入）
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# 失败自述（docs/ERRATA.md E-039）：本仓库的 Actions 日志对匿名观察者不可见，构建失败
+# 时外面只看到一句「Process completed with exit code 1」，等于没有信息。所以失败点自己
+# 发一条 `::error::` 注解（单行化 + 截断）——注解是匿名可读的，能看清是哪个断言挂了。
+annot() { printf '::error::%s\n' "$(printf '%s' "$1" | tr '\n' '|' | cut -c1-1500)"; }
 
 echo "---- 2.1 修复容器通病（实测坑 #2）----"
 mkdir -p /var/log/apt /var/log/dpkg
@@ -216,11 +220,18 @@ command -v ffmpeg  >/dev/null 2>&1 || { echo "[断言失败] ffmpeg 未安装"; 
 # 才被读取；版本一旦低于它，构建**依然成功**，但那个硬链接修复**静默失效**，
 # 表现是用户装 npm/uv 依赖时报 `failed to hardlink file ... Operation not permitted`
 # （故障排查手册坑 #4）。所以这里按"构建即验收、漂移即失败"补上。
+# UV_MIN 本该由外层经 env 传进来（见 build-rootfs.sh 末尾的 chroot 行）。这里再兜一层
+# 默认值：本 heredoc 也常被单独抽出来跑（本地复现、或只审这一段），那时外层变量根本
+# 不存在，而上面是 `set -euo pipefail` —— 直接引用会以 `UV_MIN: unbound variable` 挂掉
+#（2026-10-08 的真因：外层 chroot 行漏传 UV_MIN，构建每次都死在这一行）。
+# ⚠️ 默认值必须与外层 `UV_MIN="0.12.22"` 是同一份，改一处就要改两处。
+UV_MIN="${UV_MIN:-0.12.22}"
 version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
 version_ge "$UV_VER" "$UV_MIN" || {
-  echo "[断言失败] uv=${UV_VER}，期望 ≥ ${UV_MIN}（该版本起支持 /etc/uv/uv.toml 系统级配置）"
+  annot "[断言失败] uv=${UV_VER}，期望 ≥ ${UV_MIN}（该版本起支持 /etc/uv/uv.toml 系统级配置）"
   exit 1
 }
+echo "[zhengdao] uv=${UV_VER} ≥ ${UV_MIN}（§2.6 的 /etc/uv/uv.toml 系统级配置会被读取）"
 
 echo "---- 2.9 清理（控制落盘体积）----"
 apt-get clean
@@ -257,7 +268,7 @@ echo "CONFIGURE_OK"
 CONF
 chmod 0755 "$ROOTFS_DIR/zhengdao-configure.sh"
 
-chroot "$ROOTFS_DIR" /usr/bin/env NODE_MAJOR="$NODE_MAJOR" /bin/bash /zhengdao-configure.sh
+chroot "$ROOTFS_DIR" /usr/bin/env NODE_MAJOR="$NODE_MAJOR" UV_MIN="$UV_MIN" /bin/bash /zhengdao-configure.sh
 
 echo "[3/4] 卸载虚拟文件系统并规整目录 ..."
 for m in "${MNT_LIST[@]}"; do umount -l "$m" 2>/dev/null || true; done
