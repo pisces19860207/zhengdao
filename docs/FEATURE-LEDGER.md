@@ -469,6 +469,19 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > （deb.debian.org 下回来、44,144 B）验过：mesa 摘干净、其余一字未动、`Description` 续行没碰；
 > 6 种排布回归全过。详见 `docs/ERRATA.md` E-041。
 
+> **2026-10-08 续（剔 GPU 栈改成"只切 `libllvm19`"：绕一条边不够，得绕整条链）**：
+> build **Run 164**（`57757a2`）的 RootFS 又失败，注解带回 apt 的模拟卸载名单：
+> `Purg ffmpeg | libavdevice61 | libgl1 | libglx0 | libglx-mesa0 | libgl1-mesa-dri | mesa-libgallium | libllvm19`
+> ⇒ 链路是 `mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg`，上一轮摘掉的 `libgbm1 → mesa-libgallium`
+> 只是支线。**决策：不碰 mesa 本体，只切 `libllvm19`（落盘 −118 MB）** —— 动 mesa 得再重打包
+> `libglx0` + `libgl1` 两个包才能保住 ffmpeg，只多拿 34 MB；而 `libllvm19` 的父包只有 `mesa-libgallium` 一个。
+> 修法：`rootfs/build-rootfs.sh` §2.8 整段重写（`apt-get download mesa-libgallium` → `dpkg-deb -R` →
+> sed 摘 `libllvm19` 一条 → 依赖字段自查 → `dpkg-deb -b` → `dpkg -i` → `apt-get -s -y purge libllvm19`
+> 打印名单 + 黑名单断言（补上 `mesa-libgallium`）→ 真 purge）；§2.9 断言反过来（`libllvm19` 必须没了、
+> `mesa-libgallium` 必须在）。本地用真实 `mesa-libgallium_25.0.7-2+deb13u1_arm64.deb`（8,032,536 B）的
+> control 验过：19 → 18 项、被摘的那条含括号版本约束、其余逐字未动、除 Depends 外整份未变
+> （`C:\Users\guoli\AppData\Local\Temp\zd-watch\mesa-check.sh` = `RESULT=PASS`）。详见 `docs/ERRATA.md` E-042。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -496,7 +509,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 工作区边界（内置文件夹浏览器） | ✅ 在用 | `2b60a44` | `terminal/Workspace.kt` |
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
-| 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈 mesa/LLVM） | ✅ 在用 | 本次（E-038；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
+| 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈） | ✅ 在用（**GPU 栈只切 `libllvm19`（−118 MB）**，mesa 本体保留：动它要再重打包两个包才保得住 ffmpeg、只多 34 MB —— 见 E-042） | 本次（E-038/E-042；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
 | 构建失败自述（失败点发 `::error::` 注解，匿名可见；ERR trap 报小节+行号+命令+退出码） | ✅ 在用（**第一轮就抓出 Run 162 的真因**，见 E-041） | 本次（E-039） | `rootfs/build-rootfs.sh`（`annot()` + `trap … ERR` + `STEP`/`STEP_OUTER`） |
 | RunLog 运行日志（落 `Download/证道/logs`，按轮归档保留最近 20 份 / 20 MB + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改；归档式保留见 E-037） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
