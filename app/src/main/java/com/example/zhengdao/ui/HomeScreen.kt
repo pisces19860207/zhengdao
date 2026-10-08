@@ -316,10 +316,12 @@ fun HomeScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
-                                        // 可修复项：行尾定向修复；RootFS/proot 损坏：引导到设置页重解压
+                                        // 可修复项：行尾定向修复（宿主侧）；需进 guest 的修复：
+                                        // 落盘脚本后开终端跑（过程可见）；RootFS/proot 损坏：引导到设置页重解压
                                         if (!c.ok) {
-                                            if (c.fixId != null) {
-                                                TextButton(onClick = {
+                                            val tcmd = c.terminalCmd
+                                            when {
+                                                c.fixId != null -> TextButton(onClick = {
                                                     val fid = c.fixId
                                                     Thread {
                                                         EnvHealth.fix(context, fid)
@@ -328,8 +330,24 @@ fun HomeScreen(
                                                         }
                                                     }.start()
                                                 }) { Text("修复") }
-                                            } else {
-                                                TextButton(onClick = onOpenSettings) {
+
+                                                tcmd != null -> TextButton(onClick = {
+                                                    // 宿主侧修不了（要重建 Python 环境、或要 git checkout 补
+                                                    // 源码锁）⇒ 脚本落进工作区，进终端跑，输出用户看得见
+                                                    if (com.example.zhengdao.terminal.HermesEnv
+                                                            .writeRepairScript(context)
+                                                    ) {
+                                                        onOpenTerminal(tcmd, null)
+                                                    } else {
+                                                        android.widget.Toast.makeText(
+                                                            context,
+                                                            "修复脚本写入失败，请到设置页重试",
+                                                            android.widget.Toast.LENGTH_SHORT,
+                                                        ).show()
+                                                    }
+                                                }) { Text("修复") }
+
+                                                else -> TextButton(onClick = onOpenSettings) {
                                                     Text("去处理")
                                                 }
                                             }
