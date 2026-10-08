@@ -94,6 +94,14 @@ public final class TerminalEmulator {
     /** Needs to be large enough to contain reasonable OSC 52 pastes. */
     private static final int MAX_OSC_STRING_LENGTH = 8192;
 
+    /**
+     * OSC 52 (manipulate selection data / clipboard) payloads are base64 and routinely far larger than
+     * {@link #MAX_OSC_STRING_LENGTH}. Upstream d8d6b02 raises the limit for OSC 52 to 100 KiB + 10
+     * ("52;Pc;" prefix included): Android caps cross-process strings near 100 KiB UTF-16, so anything
+     * bigger could not be delivered to the clipboard anyway. Every other OSC number keeps the default.
+     */
+    private static final int MAX_OSC52_STRING_LENGTH = (100 * 1024) + 10;
+
     /** DECSET 1 - application cursor keys. */
     private static final int DECSET_BIT_APPLICATION_CURSOR_KEYS = 1;
     private static final int DECSET_BIT_REVERSE_VIDEO = 1 << 1;
@@ -261,6 +269,9 @@ public final class TerminalEmulator {
      * with the scrolling text.
      */
     private int mScrollCounter = 0;
+
+    /** The cached value for this emulator for `TerminalView.mTopRow` as sessions/emulators may be switched. */
+    private int mTopRow;
 
     /** If automatic scrolling of terminal is disabled */
     private boolean mAutoScrollDisabled;
@@ -2105,12 +2116,18 @@ public final class TerminalEmulator {
                 }
                 break;
             case 52: // Manipulate Selection Data. Skip the optional first selection parameter(s).
+                // 限制 base64 文本长度 ~100KB，避免 binder TransactionTooLargeException
+                // （Android 对跨进程 String 的 binder 限制 ~100KB UTF-16，见 d8d6b02）
+                if (textParameter.length() > (100 * 1024) + /* `52;Pc;` */ 10) {
+                    Logger.logError(mClient, LOG_TAG, "OSC 52 text too long, dropping (" + textParameter.length() + " chars)");
+                    break;
+                }
                 int startIndex = textParameter.indexOf(";") + 1;
                 try {
-                    String clipboardText = new String(Base64.decode(textParameter.substring(startIndex), 0), StandardCharsets.UTF_8);
+                    String clipboardText = new String(Base64.decode(textParameter.substring(startIndex), Base64.DEFAULT), StandardCharsets.UTF_8);
                     mSession.onCopyTextToClipboard(clipboardText);
                 } catch (Exception e) {
-                    Logger.logError(mClient, LOG_TAG, "OSC Manipulate selection, invalid string '" + textParameter + "");
+                    Logger.logError(mClient, LOG_TAG, "OSC Manipulate selection, invalid string '" + textParameter + "'");
                 }
                 break;
             case 104:
@@ -2282,8 +2299,28 @@ public final class TerminalEmulator {
         return result;
     }
 
+    /**
+     * Accumulation cap for the OSC/APC argument buffer, decided by the OSC number that is already buffered.
+     * The number is the leading run of decimal digits before the first ';'; once we see "52;" the payload is
+     * a clipboard set and gets {@link #MAX_OSC52_STRING_LENGTH}. Until the number is complete the buffered
+     * prefix is only a couple of characters, so the default limit is harmless.
+     */
+    private int oscArgsMaxLength() {
+        for (int i = 0; i < mOSCOrDeviceControlArgs.length(); i++) {
+            char c = mOSCOrDeviceControlArgs.charAt(i);
+            if (c == ';') {
+                return (i == 2 && mOSCOrDeviceControlArgs.charAt(0) == '5' && mOSCOrDeviceControlArgs.charAt(1) == '2')
+                        ? MAX_OSC52_STRING_LENGTH : MAX_OSC_STRING_LENGTH;
+            }
+            if (c < '0' || c > '9') {
+                break;
+            }
+        }
+        return MAX_OSC_STRING_LENGTH;
+    }
+
     private void collectOSCArgs(int b) {
-        if (mOSCOrDeviceControlArgs.length() < MAX_OSC_STRING_LENGTH) {
+        if (mOSCOrDeviceControlArgs.length() < oscArgsMaxLength()) {
             mOSCOrDeviceControlArgs.appendCodePoint(b);
             continueSequence(mEscapeState);
         } else {
@@ -2531,6 +2568,14 @@ public final class TerminalEmulator {
 
     public void toggleAutoScrollDisabled() {
         mAutoScrollDisabled = !mAutoScrollDisabled;
+    }
+
+    public int getTopRow() {
+        return mTopRow;
+    }
+
+    public void setTopRow(int topRow) {
+        mTopRow = topRow;
     }
 
 
