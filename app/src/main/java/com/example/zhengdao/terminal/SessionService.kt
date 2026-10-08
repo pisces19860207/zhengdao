@@ -23,6 +23,20 @@ import java.io.File
  * 职责：会话存活期间持有前台通知 + WakeLock（可暂停），30 秒一次软监控 guest RSS
  * （骨架 §6：超限只警告不杀——硬上限已否决，见 ProotLauncher 注释）。
  * 通知必须「有用」：运行时长 + 内存读数 + 三个动作，降低被用户关闭的概率。
+ *
+ * 2026-10-08 修复：WakeLock 有 6 小时上限（防漏释放），而 30 秒定时器原先**只刷通知**，
+ * 于是会话跑满 6 小时后锁静默失效。现在定时器每轮补取（[renewWakeLockIfLost]），
+ * 并在通知里显性化「保活已关」。
+ *
+ * ⚠️ **已知的长期问题（本次没动，需要产品决策）**：本服务是"**会话活着就一直持锁**"，
+ * 而"会话活着"不等于"有活在跑"——tmux 常驻 ⇒ 只要进过一次终端，锁就一直被握着。
+ * Google Play 2026-03 起把「屏幕关闭时平均持有非豁免 PARTIAL_WAKE_LOCK ≥ 2 小时、
+ * 且覆盖 >5% 会话」定为**过度持锁**，超阈值会影响商店展示（见
+ * android-developers.googleblog.com/2026/03/battery-technical-quality-enforcement.html）。
+ * 证道不在 Play 上架，这条对"能不能上架"不构成硬约束；但它指出的问题是真的：
+ * **锁应该跟着"有无活动任务"走，而不是跟着"会话是否存在"走**。
+ * 拆分方式（前台服务负责"不被回收"、锁只负责"CPU 别睡"）与取舍已写在
+ * `docs/milestones/证道-故障排查手册.md` 与今日报告里，改动面比本次大，故留作独立议题。
  */
 class SessionService : Service() {
 
@@ -56,6 +70,7 @@ class SessionService : Service() {
 
     private val monitorTick = object : Runnable {
         override fun run() {
+            renewWakeLockIfLost()
             updateNotification()
             handler.postDelayed(this, 30_000L)
         }
@@ -103,6 +118,25 @@ class SessionService : Service() {
         }
     }
 
+    /**
+     * **补取**保活锁——这是上面那个「6 小时上限」的必要配对（缺陷修复，2026-10-08 读码发现）。
+     *
+     * 原实现只在本服务创建、以及通知里的「保活开关」被点时才取锁，而 30 秒定时器**只刷新通知**。
+     * 后果：会话连续跑满 6 小时后锁到期自动释放，**既没有日志也没有任何提示**，
+     * 而 App 与用户都以为还在保活（表现是"看着在跑，其实手机早就允许睡眠了"）。
+     * 这类"静默降级"正是本项目 E-020 一类的错误形态——不崩、不报错，只是悄悄不干活。
+     *
+     * 现在每轮定时器检查一次「该持有却没持有」：是则补取，**并在 RunLog 里留一条**，
+     * 让"曾丢过锁"这件事可查，而不是继续静默。
+     * 锁不 `setReferenceCounted`（见 [wakeLock]），重复补取不会累积。
+     */
+    private fun renewWakeLockIfLost() {
+        if (!keepAlive || !SessionManager.isAlive()) return
+        if (runCatching { wakeLock.isHeld }.getOrDefault(true)) return
+        RunLog.log("保活锁已失效，重新获取（会话仍在运行）")
+        acquireWakeLockIfActive()
+    }
+
     private fun releaseWakeLock() {
         runCatching { if (wakeLock.isHeld) wakeLock.release() }
     }
@@ -135,6 +169,9 @@ class SessionService : Service() {
         val runtime = elapsedText()
         val memText = if (rss > 0) "$rss MB" else "统计中"
         val warn = if (rss > RSS_WARN_MB) " · ⚠️ 内存偏高，建议回到终端清理" else ""
+        // 「保活已关」必须显性：锁没在手上时 CPU 可以睡、长任务可能被拖慢/中断，
+        // 用户只有看到这一句才知道自己点掉过保活（此前这个状态在通知里完全不可见）。
+        val keepText = if (keepAlive) "" else " · 保活已关"
         val contentIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java)
@@ -155,7 +192,7 @@ class SessionService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_terminal)
             .setContentTitle("证道 · 会话运行中")
-            .setContentText("已运行 $runtime · 内存 $memText$warn")
+            .setContentText("已运行 $runtime · 内存 $memText$warn$keepText")
             .setOngoing(true)
             .setContentIntent(contentIntent)
             .addAction(0, "停止会话", stopIntent)
