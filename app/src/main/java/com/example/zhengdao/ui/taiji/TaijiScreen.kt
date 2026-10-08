@@ -86,6 +86,14 @@ fun TaijiScreen(
     // 在 MessageList 内部仍生效——K2 解决的是"切 Tab 不丢位置"，与会话切换无关。
     listState: androidx.compose.foundation.lazy.LazyListState =
         androidx.compose.foundation.lazy.rememberLazyListState(),
+    // K2 配套（2026-10-08 审查）：只提 listState 不够 ——「是否跟随最新」和「已定位过哪个会话」
+    // 同样要跨 Tab 存活，否则切回来时 follow 重新初始化成 true、positionedSession 变 null，
+    // 两个 LaunchedEffect 立刻把保留的滚动位置踢回底部，K2 在太极页等于没做。默认值只服务
+    // "调用方没注入"的旧用法，HomeTabs 里两个都注入（见 MainActivity 的 K2 配套注释）。
+    followState: androidx.compose.runtime.MutableState<Boolean> =
+        androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) },
+    positionedSession: androidx.compose.runtime.MutableState<String?> =
+        androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(null) },
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -345,6 +353,9 @@ fun TaijiScreen(
                                 sessionId = state.sessionId,
                                 modifier = Modifier.fillMaxSize(),
                                 listState = listState, // K2：外部注入的 state
+                                // K2 配套：跟随标记与"已定位会话"也由外部注入（见本函数签名注释）
+                                followState = followState,
+                                positionedSession = positionedSession,
                             )
                         }
                     }
