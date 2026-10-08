@@ -11,7 +11,7 @@
 //   用 null 协议会让错误无迹可查。
 // - **数据常驻 native，边界只跨一次**：解压整条流水线在 native 内完成，
 //   Java 只收 JSON 摘要 + 限频进度事件。
-use crate::extract::{extract_pipeline, Progress};
+use crate::extract::{extract_pipeline_skip, Progress};
 use jni::objects::{JByteArray, JClass, JString};
 use jni::JNIEnv;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -68,7 +68,7 @@ pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeSha256Fil
 
 /// Kotlin: `CoreNative.nativeExtract(archivePath, targetDir, expectedSha256) -> String`
 /// 永远返回 JSON（Android 的 stderr 不进 logcat，null 协议会让错误无迹可查）：
-/// 成功 {"ok":true,"entries":N,"bytes":N,"sha256":"..."}；失败 {"ok":false,"error":"..."}
+/// 成功 {"ok":true,"entries":N,"bytes":N,"sha256":"...","skipped":N}；失败 {"ok":false,"error":"..."}
 #[no_mangle]
 pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeExtract(
     mut env: JNIEnv,
@@ -77,50 +77,108 @@ pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeExtract(
     target_dir: JString,
     expected_sha: JString,
 ) -> jni::sys::jstring {
-    let result = (|| -> Result<String, String> {
-        let archive: String = env
-            .get_string(&archive_path)
-            .map_err(|e| e.to_string())?
-            .to_string_lossy()
-            .to_string();
-        let target: String = env
-            .get_string(&target_dir)
-            .map_err(|e| e.to_string())?
-            .to_string_lossy()
-            .to_string();
-        let sha: Option<String> = if expected_sha.is_null() {
-            None
-        } else {
-            Some(
-                env.get_string(&expected_sha)
-                    .map_err(|e| e.to_string())?
-                    .to_string_lossy()
-                    .to_string(),
-            )
-        };
+    let result = extract_impl(&mut env, &archive_path, &target_dir, &expected_sha, &[]);
+    to_json(&mut env, result)
+}
 
-        let mut last_entries = 0u64;
-        let mut callback_env = unsafe { env.unsafe_clone() };
-        let report = extract_pipeline(
-            std::path::Path::new(&archive),
-            std::path::Path::new(&target),
-            sha.as_deref(),
-            &mut |p: Progress| {
-                // 限频回调：每 PROGRESS_STEP 个条目通知 Java 一次
-                if p.entries >= last_entries + PROGRESS_STEP {
-                    last_entries = p.entries;
-                    report_progress(&mut callback_env, p.entries, &p.current_name);
-                }
-            },
+/// Kotlin: `CoreNative.nativeExtractSkip(archivePath, targetDir, expectedSha256, skipNamesJoined) -> String`
+///
+/// 与 `nativeExtract` 同一流水线，额外跳过 `skipNamesJoined` 里以 `\n` 连接列出的成员
+/// （补丁包顶部的元数据 `.zhengdao-patch-info` 只给 Kotlin 读，不该落进目标树）。
+///
+/// 两个刻意的取舍（见 docs/ERRATA.md E-050）：
+/// - 跳过清单用「`\n` 连接的字符串」而不是 `JObjectArray`：jni crate 的数组 API 版本间签名
+///   不稳，而清单永远只有一两个名字；把跨边界的数据形状压到最小。
+/// - **新增符号而不是改 `nativeExtract` 的签名**：旧 `.so` + 新 Kotlin 时只有补丁这条路径
+///   在 JNI 查找处失败（`RootfsInstaller` 捕获后回退 Java），全量安装入口不受影响。
+#[no_mangle]
+pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeExtractSkip(
+    mut env: JNIEnv,
+    _class: JClass,
+    archive_path: JString,
+    target_dir: JString,
+    expected_sha: JString,
+    skip_names: JString,
+) -> jni::sys::jstring {
+    let skips = read_skip_names(&mut env, &skip_names);
+    let result = match skips {
+        Ok(list) => extract_impl(&mut env, &archive_path, &target_dir, &expected_sha, &list),
+        Err(msg) => Err(msg),
+    };
+    to_json(&mut env, result)
+}
+
+/// 解包 `\n` 连接的跳过清单（null / 空串 = 不跳过任何成员）。
+fn read_skip_names(env: &mut JNIEnv, skip_names: &JString) -> Result<Vec<String>, String> {
+    if skip_names.is_null() {
+        return Ok(Vec::new());
+    }
+    let joined = env
+        .get_string(skip_names)
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .to_string();
+    Ok(joined
+        .split('\n')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect())
+}
+
+/// 解压流水线的共用实现：成功回 JSON 摘要，失败回错误串（由 `to_json` 统一封壳）。
+fn extract_impl(
+    env: &mut JNIEnv,
+    archive_path: &JString,
+    target_dir: &JString,
+    expected_sha: &JString,
+    skip_names: &[String],
+) -> Result<String, String> {
+    let archive: String = env
+        .get_string(archive_path)
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .to_string();
+    let target: String = env
+        .get_string(target_dir)
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .to_string();
+    let sha: Option<String> = if expected_sha.is_null() {
+        None
+    } else {
+        Some(
+            env.get_string(expected_sha)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .to_string(),
         )
-        .map_err(|e| e.to_string())?;
+    };
 
-        Ok(format!(
-            "{{\"ok\":true,\"entries\":{},\"bytes\":{},\"sha256\":\"{}\"}}",
-            report.entries, report.bytes_written, report.archive_sha256
-        ))
-    })();
+    let mut last_entries = 0u64;
+    let mut callback_env = unsafe { env.unsafe_clone() };
+    let report = extract_pipeline_skip(
+        std::path::Path::new(&archive),
+        std::path::Path::new(&target),
+        sha.as_deref(),
+        skip_names,
+        &mut |p: Progress| {
+            // 限频回调：每 PROGRESS_STEP 个条目通知 Java 一次
+            if p.entries >= last_entries + PROGRESS_STEP {
+                last_entries = p.entries;
+                report_progress(&mut callback_env, p.entries, &p.current_name);
+            }
+        },
+    )
+    .map_err(|e| e.to_string())?;
 
+    Ok(format!(
+        "{{\"ok\":true,\"entries\":{},\"bytes\":{},\"sha256\":\"{}\",\"skipped\":{}}}",
+        report.entries, report.bytes_written, report.archive_sha256, report.skipped
+    ))
+}
+
+/// 统一把结果封成 JSON 字符串交给 Kotlin（失败也绝不 panic 跨 FFI）。
+fn to_json(env: &mut JNIEnv, result: Result<String, String>) -> jni::sys::jstring {
     let json = match result {
         Ok(json) => json,
         Err(msg) => {

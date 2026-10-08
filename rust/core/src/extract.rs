@@ -24,6 +24,8 @@ pub struct ExtractReport {
     pub entries: u64,
     pub bytes_written: u64,
     pub archive_sha256: String,
+    /// 按 `skip_names` 主动跳过的成员数（补丁包的元数据成员；见 `extract_pipeline_skip`）
+    pub skipped: u64,
     pub duration_hint_ms: u64, // 由 JNI 层计时填充；纯逻辑层为 0
 }
 
@@ -61,7 +63,7 @@ pub struct Progress {
 
 /// 主流水线：归档路径进（数据常驻 native），解压+校验+落盘，Java 只收报告。
 ///
-/// * `archive`    —— .tar.zst / .tar.gz 归档路径
+/// * `archive`    —— .tar / .tar.zst / .tar.gz 归档路径（按魔数识别：zstd 主、gzip 兜底、其余按纯 tar 处理）
 /// * `target_dir` —— 解压目标目录（须已存在或可创建；原子 rename 由调用方负责）
 /// * `expected_sha256` —— 归档整体 SHA256（hex 小写）；None = 跳过校验
 /// * `on_progress` —— 进度回调（JNI 层转为限频 Java 回调）
@@ -69,6 +71,23 @@ pub fn extract_pipeline(
     archive: &Path,
     target_dir: &Path,
     expected_sha256: Option<&str>,
+    on_progress: &mut dyn FnMut(Progress),
+) -> Result<ExtractReport, ExtractError> {
+    extract_pipeline_skip(archive, target_dir, expected_sha256, &[], on_progress)
+}
+
+/// 与 [`extract_pipeline`] 相同，额外支持**跳过指定成员**（名字用 tar 里的相对路径，
+/// `./` 前缀已去掉，与 `Progress::current_name` 同一口径）。
+///
+/// 为什么需要它：补丁包（`rootfs-patch-*.tar.zst`）的第一个成员是元数据
+/// `.zhengdao-patch-info`，它只给 Kotlin 侧读基线/删除清单，**不能落进目标树**。
+/// 在 Rust 支持"跳过"之前，这条路径只能走 Java 版（`RootfsInstaller.openTar` 的
+/// `skipNames`）—— 于是"全量走 Rust、补丁走 Java"长期分叉（见 E-050）。
+pub fn extract_pipeline_skip(
+    archive: &Path,
+    target_dir: &Path,
+    expected_sha256: Option<&str>,
+    skip_names: &[String],
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<ExtractReport, ExtractError> {
     // 0) 目标目录必须先存在——路径穿越判定的 canonicalize 依赖它，
@@ -105,18 +124,17 @@ pub fn extract_pipeline(
     let mut decompressed: Box<dyn Read> = match magic {
         [0x28, 0xB5, 0x2F, 0xFD, ..] => Box::new(zstd::stream::read::Decoder::new(file)?),
         [0x1F, 0x8B, ..] => Box::new(flate2::read::GzDecoder::new(file)),
-        other => {
-            return Err(ExtractError::BadArchive(format!(
-                "无法识别的压缩格式: {:02X?}",
-                &other[..4.min(other.len())]
-            )))
-        }
+        // 其余一律按**纯 tar** 处理（与 Kotlin 版 `RootfsInstaller.openTar` 对齐）：
+        // 测试/合成补丁包就是未压缩 tar（androidTest 用 commons-compress 直写），
+        // 垃圾输入会由 tar 解析器报错，不必在这里先猜一遍。
+        _ => Box::new(file),
     };
 
     // 3) tar 遍历落盘
     let mut tar = tar::Archive::new(&mut decompressed);
     tar.set_preserve_permissions(true);
     let mut entries = 0u64;
+    let mut skipped = 0u64;
     let mut bytes_written = 0u64;
     let mut pending_hardlinks: Vec<(String, String)> = Vec::new(); // (link_path, target_in_archive)
 
@@ -129,6 +147,12 @@ pub fn extract_pipeline(
             .to_string();
         let name = raw_path.trim_start_matches("./").to_string();
         if name.is_empty() || name == "." {
+            continue;
+        }
+        // 显式跳过（补丁包的元数据成员）：不落盘、不计入 entries。
+        // 归档 sha 是上面那次**独立前置扫描**算出来的，跳过成员不影响它。
+        if skip_names.iter().any(|s| s == &name) {
+            skipped += 1;
             continue;
         }
         check_path_inside(target_dir, Path::new(&name))?;
@@ -214,6 +238,7 @@ pub fn extract_pipeline(
         entries,
         bytes_written,
         archive_sha256: archive_sha,
+        skipped,
         duration_hint_ms: 0,
     })
 }

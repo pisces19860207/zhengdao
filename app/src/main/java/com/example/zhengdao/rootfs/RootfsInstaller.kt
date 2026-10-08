@@ -155,25 +155,51 @@ object RootfsInstaller {
         tmpDir.mkdirs()
 
         // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
-        // 回退纪律（规范 #2）：任何失败 → 落回下方 commons-compress Java 路径；
-        // 唯一例外是**完整性失败**（见下），它必须硬失败，不能换条路把同一份坏包再解一遍。
+        // 回退纪律（规范 #2）：任何失败 → 落回 commons-compress Java 路径；
+        // 唯一例外是**完整性失败**（见 extractArchive），它必须硬失败。
+        // 把"这份包应当是什么 sha256"交给 Rust 对账：信任锚落在**恰好被解压的那些字节**上，
+        // 而不是另一次遍历的结果；没有独立期望值的路径（用户自选文件等）传 null = 只算不校验。
+        val usedRust = extractArchive(archive, tmpDir, expectedSha256 = archiveSha256, onEntry = onEntry)
+
+        // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
+        RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
+
+        swapIntoPlace(tmpDir, rootfsDir)
+        Log.i(
+            TAG,
+            if (usedRust) "RootFS 安装完成（Rust 路径）：${rootfsDir.path}"
+            else "RootFS 安装完成：${rootfsDir.path}",
+        )
+    }
+
+    /**
+     * 解包归档（**Rust 优先，失败回退 Java**）——[install] 与 [RootfsDelta] 共用同一条路径。
+     *
+     * 补丁包也走这里（带 [skipNames]），所以"全量走 Rust、补丁走 Java"的分叉到此为止（E-050）。
+     *
+     * @param skipNames 需要跳过的成员名（去掉 `./` 前缀；补丁元数据 `.zhengdao-patch-info`）
+     * @param expectedSha256 非 null 时由 Rust 对账归档整体 sha；**不匹配不回退 Java**
+     *   —— 回退等于把校验降级成"没校验"（同一份坏包再解一遍），见 [install] 的注释
+     * @return true = 走了 Rust，false = 回退到 Java 路径
+     */
+    internal fun extractArchive(
+        archive: File,
+        destDir: File,
+        skipNames: Set<String> = emptySet(),
+        expectedSha256: String? = null,
+        onEntry: (String) -> Unit = {},
+    ): Boolean {
         if (com.example.zhengdao.rust.CoreNative.isRustAvailable()) {
             val rust = runCatching {
-                // 把"这份包应当是什么 sha256"交给 Rust：它**解压的同时**流式算归档 sha（一次读盘），
-                // 算完与期望值对账 ⇒ 信任锚落在"恰好被解压的那些字节"上，而不是另一次遍历的结果。
-                // 没有独立期望值的路径（用户自选文件等）传 null = 只算不校验（行为同旧版）。
                 val report = com.example.zhengdao.rust.CoreNative.extract(
-                    archive.canonicalPath, tmpDir.canonicalPath, archiveSha256
+                    archive.canonicalPath,
+                    destDir.canonicalPath,
+                    expectedSha256,
+                    skipNames.toList(),
                 )
-                // Rust 侧统计含目录条目；onEntry 节流由调用方负责
                 Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
             }
-            if (rust.isSuccess) {
-                RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
-                swapIntoPlace(tmpDir, rootfsDir)
-                Log.i(TAG, "RootFS 安装完成（Rust 路径）：${rootfsDir.path}")
-                return
-            }
+            if (rust.isSuccess) return true
             val err = rust.exceptionOrNull()
             // 完整性失败**不回退**：盘上这份包不是我们要装的那份（下载后被改动、缓存串了包，
             // 或校验通过到解压之间被换掉）。回退 Java 只会把同一份坏包再解一遍，而 Java 路径
@@ -181,16 +207,12 @@ object RootfsInstaller {
             if (err is IllegalStateException && err.message?.contains(SHA_MISMATCH_MARK) == true) {
                 throw InstallFailed("安装包完整性校验失败（Rust 核心）：${err.message}")
             }
-            Log.w(TAG, "Rust 解压失败，回退 Java 路径", err)
+            // 旧 .so 没有 nativeExtractSkip 符号时也落到这里（JNI 查找失败 → UnsatisfiedLinkError），
+            // 于是"新 Kotlin + 旧 so"只让带跳过的补丁路径回退 Java，全量入口照常。
+            Log.w(TAG, "Rust 解压失败，回退 Java 路径（skip=${skipNames.size}）", err)
         }
-
-        extractArchiveJava(archive, tmpDir, onEntry = onEntry)
-
-        // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
-        RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
-
-        swapIntoPlace(tmpDir, rootfsDir)
-        Log.i(TAG, "RootFS 安装完成：${rootfsDir.path}")
+        extractArchiveJava(archive, destDir, skipNames, onEntry)
+        return false
     }
 
     /**
