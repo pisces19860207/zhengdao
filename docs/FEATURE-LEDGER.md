@@ -211,6 +211,23 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 顺带销掉一处文档/实现漂移：`CoreNative.isRustAvailable()` 的 KDoc 一直写着「供测试与体检展示」，
 > 而体检此前从没用过它。
 
+> **2026-10-08 续（环境包索引 Ed25519 签名：代码做完了但还不能上线 —— 卡在一个 GitHub repo secret）**：
+> 分支 `feat/rootfs-index-signature`（2 提交：`5594174` 索引签名、`4f5ee52` secret 名统一；6 文件 +468/−17）
+> 把环境包索引从"App 无条件相信下载来的 JSON"改成**先验签后解析、fail-closed**：
+> `rootfs/RootfsIndex.kt` 固化 `INDEX_SIGNING_PUBKEY_B64`（32 B raw Ed25519 公钥，**换钥要发版**）、
+> `signatureUrl(indexUrl) = "$indexUrl.sig"`、`verifySignature(indexBytes, signatureBase64, …)` 对**原始字节**
+> 验签；`RootfsIndexFetcher.fetch()` 拿不到签名或验签不过就**拒绝使用该索引**（留痕）。
+> CI 侧新增「签名环境包索引」步骤（`tools/sign-rootfs-index.py` + 私钥经 `ROOTFS_INDEX_SIGNING_KEY_PEM`
+> 注入），**缺 secret 直接 exit 1**。
+> 今天线上 `latest` 的索引**没有** `.sig`（404）⇒ **现在合并 = App 拒绝未签名索引 = 应用内环境更新通道
+> 直接哑掉**，因此暂不合并。分支已推到 `origin/feat/rootfs-index-signature` 保存（本地 worktree 已撤）；
+> 正确上线顺序是「先在 repo secret 配好 `ROOTFS_INDEX_SIGNING_KEY_PEM`（Ed25519 私钥 PEM）→ 手动
+> dispatch build 工作流让**已签名索引 + `.sig`** 上线 → 再合并该分支 → 真机复验应用内更新」。
+> 另记两条事实：① `git merge-tree --write-tree main feat/rootfs-index-signature` = tree `64f655f7…`，
+> **零冲突**（技术障碍为零，卡点纯粹是那个 secret）；② 本机既无 `gh` CLI 也无 `GITHUB_TOKEN`/`GH_TOKEN`，
+> 无法替用户写 secret —— 这一步只能由仓库所有者做。
+
+
 > **2026-10-08 续（CI：发布不再排在 RootFS 后面 —— 下载页停在旧包的结构性修法）**：
 > 用户当天问「那个什么 GPL 没 CI 好吧？」。**LICENSE 本身与 CI 无关**（合并只是加一个文本文件，
 > PR 分支自己那一跑 `ci @427fb98` = success）；真正出问题的是**发布通道**：滚动版 `latest` 的 APK
