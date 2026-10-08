@@ -229,10 +229,20 @@ fun SettingsScreen(
                 cacheSizes.forEach { (name, mb) -> InfoRow(name, "$mb MB") }
             }
             Spacer(Modifier.height(6.dp))
+            // 用户 2026-10-08：「下载的东西都放到 download 证道文件夹里」——那么面板就该把
+            // 这个位置写出来，用户才能自己进去看、自己删（此前只有私有 cache，看不也删不掉）。
+            Text(
+                text = "存放位置：${com.example.zhengdao.terminal.Store.root(ctx).path}" +
+                    "（cache 包缓存 / logs 日志 / agents 脚本与账本；rootfs、opencode 是安装包）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = "一档（极低风险）：npm / uv / apt 包缓存，清理命令在终端里执行、输出可见。" +
                     "二档（低风险）：临时目录里带固定命名指纹、且 24 小时内没动过的残留文件，" +
-                    "不需要终端会话。OpenCode/Hermes 工具链、rootfs 系统层、用户数据永不清。",
+                    "不需要终端会话，且 App 启动时若超过 500MB 会自动清一次。" +
+                    "OpenCode/Hermes 工具链、rootfs 系统层、用户数据永不清。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -612,8 +622,12 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
+            // 用户 2026-10-08：装环境时他不知道"已经在装了"，跑到这里连点「检查环境更新」——
+            // 于是这里既禁用按钮，也把正在进行的安装状态直接摊在按钮下面（状态来自 InstallProgress，
+            // 与终端页横幅 / 系统通知是同一份数据，不会各说各话）。
+            val installState = InstallProgress.state.value
             OutlinedButton(
-                enabled = !checking,
+                enabled = !checking && !InstallProgress.isRunning(),
                 onClick = {
                     checking = true
                     Thread {
@@ -699,6 +713,15 @@ fun SettingsScreen(
                     }.start()
                 },
             ) { Text(if (checking) "检查中…" else "检查环境更新") }
+            installState?.let { st ->
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "⏳ 正在安装环境（${if (st.fromLocal) "使用本地缓存包，不联网下载" else "联网下载"}）：" +
+                        "${st.text}\n安装完成前不需要、也不能重复检查更新；进度同时显示在终端页顶部横幅与系统通知里。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 "Agent 清单：${AgentManifest.cachedVersionText(ctx)}（安装命令可免发版更新，进主页时自动刷新）",
@@ -832,7 +855,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── 运行日志（第三批调整：存 cache，无错自动删，有错保留一代）──
+        // ── 运行日志（2026-10-08：搬到 Download/证道/logs/，卸载 App 也不丢）──
         LaunchedEffect(Unit) {
             prevLogText = withContext(Dispatchers.IO) {
                 if (com.example.zhengdao.rootfs.RunLog.lastRunHadErrors(ctx))
@@ -840,12 +863,26 @@ fun SettingsScreen(
                 else null
             }
         }
-        if (prevLogText != null) {
-            SectionCard("上次运行日志（有错误，已保留）") {
+        SectionCard("运行日志") {
+            // 用户 2026-10-08：日志要和下载物一样"看得见、找得到"——不再藏在私有 cache 里。
+            Text(
+                "位置：${com.example.zhengdao.rootfs.RunLog.dirPath(ctx)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "zhengdao-log.txt = 本轮运行；errors.log = 历次错误汇总（只记错误行）；" +
+                    "上一轮出过错时会另留 zhengdao-log.prev.txt。用文件管理器可直接打开。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (prevLogText != null) {
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "上次运行检测到错误，日志已保留在 cache/runlog/，可直接复制反馈。",
+                    "上次运行检测到错误，日志已保留（可直接复制反馈）。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.error,
                 )
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(onClick = { showPrevLog = true }) { Text("查看上次日志") }

@@ -501,6 +501,35 @@ object ProotLauncher {
         )
         args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
 
+        // ── 公共存放区直通（2026-10-08 用户拍板：日志 / 缓存 / Agent 脚本账本都放
+        // `Download/证道`，**不跟随工作区**）──
+        // 工作区可能是用户自己的内容目录（真机上被设成了 `Download/男性`），
+        // 所以 Agent 安装脚本不能再用 `/workspace/agents/scripts` 这个路径——
+        // 那会指到用户的内容目录里去。改为把 `Store.root` 单独挂一份到 guest 的
+        // `/opt/zhengdao`：路径与工作区无关、两种模式（共享 / 仅私有兜底）都成立，
+        // 脚本、账本、包缓存、日志在 guest 里也都能直接翻。
+        // 挂载点先在 rootfs 里建好（proot 不保证替调用方创建落点）。
+        runCatching { File(rootfsDir, "opt/zhengdao").mkdirs() }
+        args.addAll(arrayOf("-b", "${Store.root(context).absolutePath}:${Store.GUEST_ROOT}"))
+
+        // ── 包缓存搬进公共区（用户 2026-10-08：「下载的东西都放到 download 证道 文件夹里」）──
+        // Agent 重装的大头从来不是安装脚本，而是 npm / uv / pip 的**包缓存**（真机实测：
+        // hermes 的 uv 缓存 254 MB、npm 缓存几十 MB）。把这三处挂到
+        // `Download/证道/cache/<kind>` 之后，重装 App 再装 Agent，依赖直接从本地缓存走。
+        //
+        // 为什么必须走 bind 而不是环境变量：hermes 的 pm 会**剥离 UV_* 环境变量**
+        //（见 AgentInstaller 的注释），uv 缓存位置唯一可靠的注入点就是挂载点；
+        // npm / pip 各自也有写死的默认目录，环境变量只是可选覆盖。
+        // 挂载目标一律落在 bind 进来的 home 之内（`/root/…`），因此目标目录必须先存在。
+        // 没存储权限 / 仅私有模式就整段跳过——仅私有模式下目录随卸载删除，
+        // 搬过去没有任何收益，只会多一层不必要的读写绕路。
+        if (storageGranted(context) && wsShared) {
+            bindSharedCache(context, args, homeDir, "npm", ".npm")
+            bindSharedCache(context, args, homeDir, "uv", ".hermes/cache/uv")
+            bindSharedCache(context, args, homeDir, "uv", ".cache/uv")
+            bindSharedCache(context, args, homeDir, "pip", ".cache/pip")
+        }
+
         // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
         // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）
         // 运行内存上限（用户第四批）：ulimit -v 限制 guest 进程虚拟地址空间，防单个
@@ -582,10 +611,23 @@ object ProotLauncher {
             // 横幅文案（v1.2 改写）：原先那条「两个 opencode、不必卸载任何一个」的说明已作废——
             // 终端里的 npm 版 opencode 随 v1.2 主线一卸载了。现在 App 里只有太极 Tab 那一份
             // OpenCode，这里改为直接告诉用户它在哪，避免"我终端里的 opencode 怎么没了"。
+            //
+            // 2026-10-08 追加：安装结论横幅。App 侧是原生 TerminalView，**不能往里注入文本**
+            //（写入 pty 会被当成用户输入），所以「环境已从本地缓存装好、本次没联网下载」这类
+            // 结论只能借这条现成通道送进终端可见区：TerminalActivity.writeTerminalNotice()
+            // 把结论写进 files/install-notice.txt，这里读出来附在横幅末尾并删除（只显示一次，
+            // 不每次开会话都刷屏）。读失败/没有就跳过，不影响启动。
+            val installNotice = try {
+                val f = File(homeDir.parentFile ?: rootfsDir, "install-notice.txt")
+                if (f.isFile) f.readText().trim().also { f.delete() } else ""
+            } catch (_: Throwable) {
+                ""
+            }
             File(rootfsDir, "tmp/.zhengdao-banner-pending").writeText(
                 "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\n" +
                     "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\n" +
-                    "[提示] OpenCode 在「太极」Tab 里（App 内置版，开箱即用）\n"
+                    "[提示] OpenCode 在「太极」Tab 里（App 内置版，开箱即用）\n" +
+                    if (installNotice.isNotBlank()) "[环境] $installNotice\n" else ""
             )
         } // 写不进去不阻断启动（横幅只是提示）
 
@@ -604,6 +646,37 @@ object ProotLauncher {
      * URL/SHA256 与 hermes install.sh 同源。源文件见 build/hermes-uv-wrapper.sh。 */
     const val HERMES_UV_WRAPPER_B64 =
         "IyEvYmluL2Jhc2gKIyB6aGVuZ2RhbyBpbmplY3Rpb24gbGF5ZXI6IGhlcm1lcyBwbSBzdHJpcHMgVVZfKiBlbnYgdmFycyBhbmQgaWdub3JlcyB1diBjb25maWcKIyBmaWxlcyAoVVZfTk9fQ09ORklHPTEpIC0tIHdyYXBwaW5nIGl0cyBvd24gcGlubmVkIHV2IGJpbmFyeSBpcyB0aGUgb25seQojIHJlbGlhYmxlIGluamVjdGlvbiBwb2ludC4gVGhlIHJlYWwgYmluYXJ5IGxpdmVzIG5leHQgdG8gdGhpcyBhcyB1di5yZWFsLgpEPSIkKGNkICIkKGRpcm5hbWUgIiQwIikiICYmIHB3ZCkiClI9IiREL3V2LnJlYWwiCmlmIFsgISAteCAiJFIiIF07IHRoZW4KICBUPSIkKG1rdGVtcCAtZCAyPi9kZXYvbnVsbCB8fCBlY2hvIC90bXAvLnpkdXYuJCQpIgogIG1rZGlyIC1wICIkVCIKICBmb3IgVSBpbiBcCiAgICBodHRwczovL2dpdGh1Yi5jb20vYXN0cmFsLXNoL3V2L3JlbGVhc2VzL2Rvd25sb2FkLzAuMTIuMy91di1hYXJjaDY0LXVua25vd24tbGludXgtZ251LnRhci5neiBcCiAgICBodHRwczovL2hlcm1lcy1hc3NldHMubm91c3Jlc2VhcmNoLmNvbS91cHN0cmVhbS9zaGEyNTYvYmI2NmNiNTJlN2IxODIzYWVkMTE4MzYzMGQ4ZDhlNWM5NTg4NDBkNTg0YTRjNTVlYzEwYTRjZmMxNjhkY2NhMiA7IGRvCiAgICBjdXJsIC1Mc1NmICIkVSIgLW8gIiRUL3V2LnRneiIgJiYgYnJlYWsKICBkb25lCiAgaWYgWyAtZiAiJFQvdXYudGd6IiBdICYmIFsgIiQoc2hhMjU2c3VtICIkVC91di50Z3oiIDI+L2Rldi9udWxsIHwgY3V0IC1kJyAnIC1mMSkiID0gImJiNjZjYjUyZTdiMTgyM2FlZDExODM2MzBkOGQ4ZTVjOTU4ODQwZDU4NGE0YzU1ZWMxMGE0Y2ZjMTY4ZGNjYTIiIF07IHRoZW4KICAgIHRhciAteHpmICIkVC91di50Z3oiIC1DICIkVCIgMj4vZGV2L251bGwKICAgIEY9IiQoZmluZCAiJFQiIC1uYW1lIHV2IC10eXBlIGYgMj4vZGV2L251bGwgfCBoZWFkIC1uMSkiCiAgICBbIC1uICIkRiIgXSAmJiBtdiAiJEYiICIkUiIgJiYgY2htb2QgMDc1NSAiJFIiCiAgZmkKICBybSAtcmYgIiRUIgpmaQppZiBbICEgLXggIiRSIiBdOyB0aGVuCiAgZWNobyAiW3poZW5nZGFvXSB1diB3cmFwcGVyOiBwaW5uZWQgdXYgdW5hdmFpbGFibGUsIGZhbGxpbmcgYmFjayB0byBzeXN0ZW0gdXYiID4mMgogIFsgLXggL3Vzci9sb2NhbC9iaW4vdXYgXSAmJiBleGVjIC91c3IvbG9jYWwvYmluL3V2ICIkQCIKICBleGl0IDEyNwpmaQpleHBvcnQgVVZfTElOS19NT0RFPWNvcHkKZXhwb3J0IFRNUERJUj0iJHtUTVBESVI6LS9yb290L3RtcH0iCmV4ZWMgIiRSIiAiJEAiCg=="
+
+    /**
+     * 把 guest 的一个包缓存目录挂到公共区 `Download/证道/cache/<kind>`（幂等，可反复调用）。
+     *
+     * 首次调用会把私有 home 里的旧缓存**搬进**公共区（用户不必因为这次改动重下 254 MB），
+     * 之后每次只是挂一遍。目标路径 `/root/<rel>` 落在 `-b homeDir:/root` 这条 bind
+     * **之内**：proot 按顺序解析 bind，落点先由 home 那条变成宿主上的 `homeDir/<rel>`，
+     * 再被本覆盖 ⇒ 所以这个落点目录必须真实存在（proot 不会替你建）。
+     *
+     * 任何一步失败都只是**少挂一个缓存**：捕获后记日志，绝不让终端起不来。
+     */
+    private fun bindSharedCache(
+        context: Context,
+        args: MutableList<String>,
+        homeDir: File,
+        kind: String,
+        rel: String,
+    ) {
+        try {
+            val pub = Store.cacheDir(context, kind)
+            val mount = File(homeDir, rel)
+            val moved = Store.adoptDir(pub, mount) // 幂等：目标已有同名条目就跳过
+            if (!mount.isDirectory) mount.mkdirs()
+            if (moved > 0) {
+                RunLog.log("缓存搬家: ~/$rel → ${pub.absolutePath}（$moved 项，重装 App 后免重下）")
+            }
+            args.addAll(arrayOf("-b", "${pub.absolutePath}:/root/$rel"))
+        } catch (t: Throwable) {
+            RunLog.log("缓存挂载失败($kind → /root/$rel)：${t.message}（该缓存留在私有 home）")
+        }
+    }
 
     /** 回退计划：系统自带 shell。功能完整可用，但不是 Debian 环境。 */
     private fun fallbackPlan(filesDir: File, cacheDir: File): LaunchPlan = LaunchPlan(

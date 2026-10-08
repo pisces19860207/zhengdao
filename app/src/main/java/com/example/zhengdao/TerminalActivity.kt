@@ -26,6 +26,7 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
+import com.example.zhengdao.terminal.InstallNotifier
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -100,6 +101,17 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             readRequestFromIntent(intent)
         }
         setContentView(R.layout.activity_main)
+
+        // 顶部安装进度横幅（2026-10-08）：点一下收起。此前它是**死控件**——布局里存在、
+        // 注释还写着进度都靠它，但代码从未引用（用户"终端里也没有显示"的根因之一）。
+        // 若正在安装 / 刚装完，重进本页也要把结论带回来，不能只活在这一屏的生命周期里。
+        findViewById<android.widget.TextView>(R.id.status_banner)?.apply {
+            setOnClickListener { visibility = android.view.View.GONE }
+            com.example.zhengdao.ui.InstallProgress.state.value?.let { st ->
+                text = st.text
+                visibility = android.view.View.VISIBLE
+            }
+        }
 
         toolbarTitle = findViewById(R.id.toolbar_title)
         // 红点 = 关闭终端返回主界面（UI 关，会话由前台服务继续保活）
@@ -915,8 +927,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private fun promptInstallOnce() {
         val local = findLocalArchive()
         if (local != null) {
+            // 用户原话：「我以为要重新下载呢」。本地包这条路必须**明说不联网**——
+            // 否则"提示只有 2 秒 + 终端里看不到进度"叠加起来，用户只能靠猜。
+            val mb = local.length() / (1024 * 1024)
             RunLog.log("检测到本地归档，自动安装: ${local.path}")
-            Toast.makeText(this, "检测到本地安装包，直接安装", Toast.LENGTH_SHORT).show()
+            installStatus("使用本地缓存包（$mb MB，不联网下载）—— 正在校验并解压…")
             startInstallFromFile(local)
             return
         }
@@ -961,9 +976,68 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }
     }
 
-    private fun installStatus(text: String) {
+    /**
+     * 安装进度（2026-10-08 重做；起因见 `InstallProgress` 注释里的用户原话）。
+     *
+     * 一次写四处，缺一处用户就还是"看不见"：
+     * 1. **终端页常驻横幅** `@+id/status_banner`——它一直在布局里，注释还写着"安装/下载/
+     *    解压等进度提示统一由本横幅承载"，但代码里**从来没有引用过**（死控件）；
+     * 2. `InstallProgress`（Compose 状态，主页与设置页都能读）；
+     * 3. **通知栏常驻进度**（离开终端页也看得见——用户当时就是跑去设置页反复点下载）；
+     * 4. `RunLog`（落 `Download/证道/logs/`，可回看）。
+     *
+     * **不再发 2 秒 Toast**：那正是"提示时间有点短"的根源。失败才补一条长 Toast（见
+     * [installFailed]）——成功时横幅已经常驻在屏幕上，再弹一个反而挡终端。
+     */
+    private fun installStatus(text: String, percent: Int = -1) {
         RunLog.log(text)
-        runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
+        com.example.zhengdao.ui.InstallProgress.update(text)
+        InstallNotifier.update(this, text, percent)
+        showBanner(text)
+    }
+
+    /** 失败专用：横幅 + 通知 + **长 Toast**（失败必须被看见，不能只留在横幅里）。 */
+    private fun installFailed(text: String) {
+        RunLog.log(text)
+        com.example.zhengdao.ui.InstallProgress.finish(text, failed = true)
+        InstallNotifier.finish(this, text, failed = true)
+        showBanner(text)
+        runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
+    }
+
+    /** 写终端页顶部常驻横幅（用户可点它收起）。 */
+    private fun showBanner(text: String) {
+        runOnUiThread {
+            findViewById<android.widget.TextView>(R.id.status_banner)?.apply {
+                this.text = text
+                visibility = android.view.View.VISIBLE
+            }
+        }
+    }
+
+    /**
+     * 把一条结论**送进终端可见区**：写 `files/install-notice.txt`，由
+     * [ProotLauncher] 在写启动横幅时追加进去（终端是原生 TerminalView，App 不能直接
+     * 往里注入文本——写 pty 会被当成输入，见 activity_main.xml 里那段注释）。
+     */
+    private fun writeTerminalNotice(text: String) {
+        try {
+            File(filesDir, "install-notice.txt").writeText(text)
+        } catch (t: Throwable) {
+            RunLog.log("写终端提示失败：${t.message}")
+        }
+    }
+
+    /**
+     * 安装成功：横幅常驻结论 + 通知改成可划掉的「已就绪」+ 写一行给终端
+     * （下次开会话时由 ProotLauncher 的启动横幅带出来，见 [writeTerminalNotice]）。
+     */
+    private fun finishInstall(text: String) {
+        RunLog.log(text)
+        com.example.zhengdao.ui.InstallProgress.finish(text)
+        InstallNotifier.finish(this, text, failed = false)
+        showBanner(text)
+        writeTerminalNotice(text)
     }
 
     /** SAF 选中归档：拷入公共缓存 → 校验 → 解压 → 切 Debian。压缩包保留（重装免下载）。 */
@@ -971,6 +1045,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
+            com.example.zhengdao.ui.InstallProgress.start("从本地文件安装环境", fromLocal = true)
             try {
                 installStatus("从本地文件安装…")
                 val archive = File(com.example.zhengdao.rootfs.RootfsCache.dir(appContext), "debian-13.7-base-arm64.tar.zst")
@@ -986,10 +1061,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()
-                installStatus("安装完成！安装包已保留在缓存（重装免下载）")
+                finishInstall("安装完成！安装包已保留在缓存（重装免下载，本次未联网下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installStatus("安装失败：${t.message}（重进 App 可再试）")
+                installFailed("安装失败：${t.message}（重进 App 可再试）")
             } finally {
                 installing.set(false)
             }
@@ -1001,6 +1076,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
+            com.example.zhengdao.ui.InstallProgress.start(
+                "使用本地缓存包安装（不联网下载）", fromLocal = true
+            )
             try {
                 val cacheCopy = File(com.example.zhengdao.rootfs.RootfsCache.dir(appContext), local.name)
                 val archive = if (local.canonicalPath == cacheCopy.canonicalPath) local else run {
@@ -1032,10 +1110,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()
-                installStatus("安装完成！安装包已保留在缓存")
+                finishInstall("安装完成！安装包已保留在缓存（重装免下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installStatus("安装失败：${t.message}（重进 App 可再试）")
+                installFailed("安装失败：${t.message}（重进 App 可再试）")
             } finally {
                 installing.set(false)
             }
@@ -1047,6 +1125,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (!installing.compareAndSet(false, true)) return
         val appContext = applicationContext
         Thread {
+            com.example.zhengdao.ui.InstallProgress.start("联网下载运行环境包", fromLocal = false)
             try {
                 installStatus("开始下载运行环境（断点续传）…")
                 val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(appContext, url)
@@ -1074,7 +1153,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                             val percent = ((done * 100 / total).coerceIn(0, 100) / 20) * 20
                             if (percent != lastPercent) {
                                 lastPercent = percent
-                                installStatus("下载中 $percent%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB）")
+                                installStatus(
+                                    "下载中 $percent%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB）",
+                                    percent.toInt(),
+                                )
                             }
                         }
                     } ?: expectedSha
@@ -1091,10 +1173,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()
-                installStatus("安装完成！安装包已保留在缓存")
+                finishInstall("安装完成！安装包已保留在缓存（重装免下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installStatus("安装失败：${t.message}（重进 App 可再试）")
+                installFailed("安装失败：${t.message}（重进 App 可再试）")
             } finally {
                 installing.set(false)
             }
