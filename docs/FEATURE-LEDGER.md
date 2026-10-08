@@ -307,6 +307,28 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 全过程与教训见 `docs/ERRATA.md` E-033（其中一条通用教训：**删除类瘦身必须在线上压缩级别下测算**
 > ——B2 的 −24.7 MB 是 zstd -3 口径，线上 -19 实测只省 14.6 MB）。
 
+> **2026-10-08 续（增量下发在真实 Release 上落地，并修掉两处"只有真数据才能发现"的问题）**：
+> `build #155 @18dcb8e` = success（job 1383s）⇒ `latest` 这个 release 上实测出现
+> `rootfs-manifest.txt` **2,118,437 B**、`rootfs-manifest.txt.sha256` **65 B**（裸摘要）、
+> `rootfs-index.json` **469 B**、整包 `debian-13.7-base-arm64.tar.zst` **228,790,151 B**。
+> 用真字节独立复核（`C:\Users\guoli\AppData\Local\Temp\zd-verify-real.py`）：边车摘要 == 清单 sha256 ✓、
+> 由清单正文独立算出的 env `e6059c6bd3ee309f` == 索引 env ✓、索引 size == 线上包字节数 ✓、
+> `patch=null`（首次无基线，符合设计）✓。
+> **修一（静默失效，`cae36c1`）**：CI 里基线的完整性校验原先写成 `sha256sum -c rootfs-manifest.txt.sha256`，
+> 而本项目边车是**裸摘要**（无文件名）⇒ `sha256sum -c` 每次都判格式错 ⇒ 基线被丢 ⇒ **差分包永远不会产生，
+> 日志里只有一句 warning**。改成自己取第一字段比对（兼容标准格式），并用真 shell + 真 curl 对
+> 裸摘要/哈希不符/资产缺失/标准格式四种形态逐一验证（含"线上真清单 + 真裸摘要 ⇒ 保留的正是 2,118,437 B"）。
+> 该修复已随 `build #156` / `ci #45` 上线（无 `rootfs/` 改动 ⇒ rootfs 步骤 skipped，真基线路径等下次重建时走到）。
+> **修二（诊断骗人，见 ERRATA E-034）**：真机上点「检查环境更新」时 App 端把 GitHub 直连 / gh-proxy /
+> `raw.githubusercontent.com` **全部**打不通（「立即刷新 Agent 清单」三条通道同样全灭），而设置里的
+> 「网络自检」因为只 ping `registry.npmmirror.com` 而显示 `✅ 网络可用（285ms）`；
+> 同一台手机 shell 里 curl 到 github.com / gh-proxy 都 200 ⇒ 是设备的代理/分应用名单问题，**不是代码缺陷**，
+> 但绿灯会让用户以为网络没事。修法：新增 `app/src/main/java/com/example/zhengdao/ui/NetSelfCheck.kt`，
+> 自检改为"国内基线 + **复用 `RootfsIndexFetcher.fetch()` 探更新源**"两条探针（25s 预算，daemon 线程），
+> 四档文案明确区分"网络可用但更新源不可达：下载与更新都会失败"；单测 5 例，全量 **27 suites / 216 tests / 0 失败**。
+> **真机现状备注**：本机环境是"真的没装"（设置 → 存储占用 `rootfs（系统层）0 MB`；此前大概率被
+> `connectedAndroidTest` 重装清掉），外置缓存 `/storage/emulated/0/Download/证道/rootfs` 里还留着那份 311 MB 包。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
