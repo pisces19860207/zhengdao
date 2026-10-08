@@ -146,6 +146,32 @@ object RootfsCache {
         File(dir(ctx), url.substringAfterLast('/'))
 
     /**
+     * 缓存里**可能**就是索引那个包的本地文件（2026-10-08 用户拍板：本地已有同 sha 的包就别再下 192 MB）。
+     *
+     * 只做**廉价的定位**（先按 URL 猜文件名，再按字节数筛一遍），**不做 sha 校验**——
+     * 理由：调用点有两处，语义不同：
+     *  - 检查更新（后台线程）只想据此改提示文案与按钮，不该为了 192 MB 的哈希拖慢"检查"；
+     *  - 真正安装前必须逐字节验（[RootfsDownloader.sha256Of] 走 Rust 核心，192 MB 约 1 秒），
+     *    对不上就照旧走下载。
+     * 因此这里返回的只是"候选"，**绝不能**当成"内容正确"的证明。
+     *
+     * @param size 索引给的字节数；对不上直接排除（比哈希便宜四个数量级）
+     */
+    fun localCandidateFor(ctx: Context, url: String, size: Long): File? =
+        pickLocalCandidate(archiveFor(ctx, url), listArchives(ctx), size)
+
+    /**
+     * [localCandidateFor] 的**纯函数内核**（可单测，不碰 Context）：
+     * 先认"按 URL 猜到的那个文件"（名字对上＝最可能），再在缓存列表里按字节数找。
+     * `size <= 0` 或都不符 ⇒ null（宁可让用户下载，也不拿大小对不上的包去重装）。
+     */
+    internal fun pickLocalCandidate(preferred: File, cached: List<File>, size: Long): File? {
+        if (size <= 0L) return null
+        if (preferred.isFile && preferred.length() == size) return preferred
+        return cached.firstOrNull { it.isFile && it.length() == size }
+    }
+
+    /**
      * 增量补丁的缓存目标（协议 §3 的固定命名，与全量包同目录但前缀不同）。
      *
      * 名字直接取自 URL 末段（`rootfs-patch-<base>-to-<new>.tar.zst`），因此**同一个补丁

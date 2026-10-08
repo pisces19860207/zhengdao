@@ -3050,3 +3050,30 @@ merge **`28e733d`**，已推 origin/main。
 2. **门禁的期望值要现读源码**（这里读 `CoreNative.kt` 的 `external fun`），别在脚本里再抄一份清单 —— 抄的那份一定会过期。
 3. **Windows 的 GBK 控制台会把门禁脚本自己搞崩**：消息里出现 `⇒` 这类字符时 `print` 抛 `UnicodeEncodeError`，于是"脚本报错而死"和"检查失败而死"混在一起。修法是 `sys.stdout.reconfigure(errors="replace")` + 消息里用 ASCII 箭头。
 
+## E-049 · 2026-10-08 · "补指纹"白下了 192 MB：本地缓存里躺着的就是索引那个整包，检查更新却照旧走下载
+
+**症状**（真机 Honor `AD3J023824001723`，v1.3.0 `0c43978`）：标记里缺 `env=`（上一轮「修复环境」抹掉的，见 E-044）时，设置页「检查环境更新」给出「本地已安装 13.7，但缺少环境指纹记录（env）：本次将用全量包（约 192 MB）重装一次以补上指纹」，点「下载并安装」后**走的是联网下载**：`22:31:22 检查环境更新：开始下载新版本环境包` → `环境包下载中 N%（M/192 MB，可离开本页）` → `22:42:46 100%（192/192 MB）`，约 11 分钟、20 MB/分钟。而 `/sdcard/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst`（201,632,517 B）**当时就躺在缓存里，内容正是索引那一版**（sha256 与 `rootfs-index.json` 的 `sha256`/`size` 完全一致）。
+
+**根因**：检查线程在 `localEnv == null` 分支里**无条件**把 `pendingUrl = idx.url; pendingSha = idx.sha256` 交给弹窗，而弹窗只认 `pendingUpdateUrl`（`ui/SettingsScreen.kt:1290` 的 `updateMsg?.takeIf { pendingUpdateUrl != null }`）⇒「缺指纹」这种**根本不需要新内容**的场景被当成了"要下载新版本"。真正会翻本地缓存的那条路（`修复环境`，`SettingsScreen.kt:1183-1260`）是另一处实现，**检查 → 安装**这条链上从来没有"先看看本地有没有"这一步。
+
+**修法**（`feat/local-cache-no-download`）：
+
+1. `rootfs/RootfsCache.kt` 新增 `localCandidateFor(ctx, url, size)` 与纯函数内核 `pickLocalCandidate(preferred, cached, size)`：先认"按 URL 猜到的那个文件"（名字对上＝最可能），再翻 `listArchives` 按**字节数**找；`size <= 0` 或都不符 ⇒ `null`（宁可下载，也不拿大小对不上的包去重装）。
+2. `ui/SettingsScreen.kt` 的检查线程在 `localEnv == null` 与 `else`（有新版本）两条分支里**都**先算 `cached`：文案改成「本地已有该版本的安装包（…），将直接用它安装，无需下载」，并把 `pendingLocalArchive` 随 url/sha/index/patch 一起交给弹窗。**本地整包排在增量补丁之前**（0 下载优于几十 MB）。
+3. 弹窗确认线程**最前面**加"本地优先"块：先 `RootfsDownloader.sha256Of(本地包)` 与索引 sha 比对 —— 一致才走本地重解压（`InstallFlow.start(..., fromLocal = true)`），不一致就打一行 RunLog（`本地缓存包 sha（…）与索引不一致（…），改为下载`）退回原来的下载路径。确认按钮文案随之变「用本地包安装」。
+4. **信任锚不变**：大小只用来**挑候选**，能不能写 `env=` 仍然由 `RootfsInstaller.envForMarker(index.env, index.sha256, actualSha)` 决定（`actualSha` 是安装线程当场算出来的那道 sha）—— 大小相同 ≠ 内容相同。
+
+**实测**：
+
+- 单测：`33 suites / 277 tests / 0 failures / 0 errors / 0 skipped`（新增 `app/src/test/java/com/example/zhengdao/rootfs/RootfsLocalCandidateTest.kt` 6 例：名字优先、退回列表、半截包被拒、谁都不符返回 null、非正数大小返回 null、目录不算候选）。
+- 真机（debug 包覆盖安装以便 `run-as` 读标记）：`adb shell run-as com.example.zhengdao sed -i '/^env=/d' files/rootfs/.zhengdao-rootfs-ok` 构造"缺指纹"后点「检查环境更新」⇒ 弹窗「可以重装环境 / 本地已安装 13.7，但缺少环境指纹记录（env）：本地已有该版本的安装包（约 192 MB），将直接用它重装补指纹，无需下载。」+ 按钮「**用本地包安装**」。
+- 确认后的 RunLog：`23:03:44 检查环境更新：本地已有同版本安装包（192 MB），直接重解压，不下载` → `23:03:44 环境更新：用本地安装包（sha=d80639e7dc5c）重解压，本次未联网下载` → `23:03:49 环境更新完成（用本地安装包，本次未联网下载），重进终端生效` —— **5 秒**（对比联网那次的 11 分钟）。
+- 收尾：标记里 `env=368b59b30b10712c` 回填、`archive-sha256=d80639e7…` 保持；再点「检查环境更新」⇒ Toast「已是最新版本（13.7，环境 368b59b30b10712c）」，不再弹窗。
+
+**教训**：
+
+1. **"有新版本"和"要下载"是两件事**：检查线程一旦把 URL 塞进 pending 状态，后面所有分支都会下载。缺指纹、重装、换机这类场景要先问一句"这份内容我是不是已经有了"。
+2. **大小只能用来挑候选，不能当证据**：先按大小把 192 MB 的候选挑出来是为了快，**能不能据此写指纹**仍然要逐字节验 sha（E-044 立的规矩）。
+3. **本地整包要排在增量补丁前面**：补丁只是"比全量小"，本地包才是"不用下载"—— 顺序写反就白白花掉几十 MB 流量。
+4. **验收要能"制造"目标状态**：debug 包（同签名、无 applicationIdSuffix）覆盖安装 + `run-as` 删掉标记里的一行 `env=`，就能复现"缺指纹"，比清 App 数据/换机便宜得多。真机点按前记得 `adb shell am force-stop com.phoenix.read`（E-047）。
+
