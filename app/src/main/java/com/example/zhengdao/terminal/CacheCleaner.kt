@@ -37,11 +37,15 @@ object CacheCleaner {
     /**
      * 每个「缓存项」由哪几个目录构成（**多候选求和**，不再只认一个路径）。
      *
-     * 这里修的是两个真机（PGT-AN10 / Android 16）实测出来的路径错误：
+     * 这里修的是三个真机（PGT-AN10 / Android 16）实测出来的路径错误：
      * - **uv**：hermes 把 uv 缓存从 `~/.cache/uv` 重定位到了 `~/.hermes/cache/uv`。
      *   旧实现只探测前者，真机实测 **1 MB**（真身 **254 MB**）——面板等于没测到这一项。
      * - **apt**：真正占地的是 `var/lib/apt/lists`（索引缓存，实测 **88 MB**）；
      *   `var/cache/apt/archives` 在 apt clean 之后基本是空的（实测 **1 MB**）。
+     * - **安装包缓存**（2026-10-08 修，用户报「面板显示 0，可 Download/证道/rootfs 里明明
+     *   躺着 312 MB」）：旧实现量的是**私有兜底** `cacheDir/rootfs-cache`，而 App 自己下载的
+     *   包早就落在公共区 `Download/证道/rootfs/`。真机实测面板 **0 MB vs 实际 378 MB**
+     *   （环境包 312 MB + opencode 包 66 MB）——正是"账本和实物对不上"。
      *
      * 两地都列出来、存在即计入，上游再换路径也不用改代码。旧实现只测到 91 MB，
      * 离 500 MB 的自动清理阈值差得远，那条通知等于永远不响。
@@ -60,12 +64,36 @@ object CacheCleaner {
         "安装包缓存" to listOf(File(cacheDir, "rootfs-cache")),
     )
 
-    /** 各缓存项的大小（MB）。 */
+    /**
+     * 各缓存项的大小（MB）。
+     *
+     * 2026-10-08 起与 [probePaths] 分工：**这里量的是"真身"**——
+     * - npm / uv / pip 的新家是 `Download/证道/cache/<kind>`（ProotLauncher 把它们 bind
+     *   进 guest 的 `/root/.npm` 等路径），ProotLauncher 的搬家是**搬**不是拷，
+     *   所以公共区与私有 home 不会双算；私有那几项保留，是为了覆盖"仅私有模式"
+     *   与"还没启动过一次终端"的中间态；
+     * - 安装包缓存量的是 [RootfsCache.dir]（公共区 `Download/证道/rootfs`，
+     *   无存储权限时自动回落到私有）+ 内置 opencode 包所在目录（`Download/证道/opencode`）。
+     */
     fun measure(ctx: Context): Map<String, Long> {
         val out = LinkedHashMap<String, Long>()
-        probePaths(ctx.filesDir, ctx.cacheDir).forEach { (name, dirs) ->
-            out[name] = dirs.sumOf { dirSizeMb(it) }
-        }
+        fun sum(vararg dirs: File?): Long = dirs.filterNotNull().sumOf { dirSizeMb(it) }
+        fun pub(kind: String): File? = runCatching { Store.cacheDirPath(ctx, kind) }.getOrNull()
+        out["npm 缓存"] = sum(File(ctx.filesDir, "home/.npm/_cacache"), pub("npm"))
+        out["uv 缓存"] = sum(
+            File(ctx.filesDir, "home/.cache/uv"),
+            File(ctx.filesDir, "home/.hermes/cache/uv"),
+            pub("uv"),
+        )
+        out["pip 缓存"] = sum(File(ctx.filesDir, "home/.cache/pip"), pub("pip"))
+        out["apt 缓存"] = sum(
+            File(ctx.filesDir, "rootfs/var/cache/apt/archives"),
+            File(ctx.filesDir, "rootfs/var/lib/apt/lists"),
+        )
+        out["安装包缓存"] = sum(
+            runCatching { com.example.zhengdao.rootfs.RootfsCache.dir(ctx) }.getOrNull(),
+            runCatching { File(Store.root(ctx), "opencode") }.getOrNull(),
+        )
         // 二档报的是"真正会被删掉的量"，**不是**整个 /tmp 目录——tmux socket、
         // V8 编译缓存、锁文件、opencode 子目录都在里面，那些不归清理管，算进去就是虚报。
         out["临时文件"] = bytesToMb(staleTempBytes(ctx.filesDir, System.currentTimeMillis()))

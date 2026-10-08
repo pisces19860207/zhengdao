@@ -114,6 +114,10 @@ fun HomeScreen(
     //   map，镜像层等于没接上，又退回到 :421 每次重组现算一次的老路。显示结果不会错，只是"卡片
     //   要手抖一下才刷新"那个老毛病会悄悄回来。加上 `remember` 才真正接上。
     val installStates = remember { androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>() }
+    // 「恢复全部」候选（2026-10-08）：账本里记着装过、但当前探测不到的那些 Agent。
+    // 重装 App 会带走 ~/.claude、~/.hermes、~/.local/bin，文件探测必然全落空——
+    // 账本（Download/证道/agents/installed.json）是唯一还记得用户装过什么的地方。
+    var restoreList by remember { mutableStateOf<List<AppState.AgentInfo>>(emptyList()) }
     // 刷新节拍：改 stateTick 能让下面那个 effect 立刻重灌一遍镜像（不等 2 秒）。
     var stateTick by remember { mutableIntStateOf(0) }
     // ⚠️ 这里必须是**常驻循环**，不能写成"还有 Agent 在装才继续查下一轮"（2026-10-07 二次真机实测）：
@@ -128,6 +132,12 @@ fun HomeScreen(
     androidx.compose.runtime.LaunchedEffect(agents, stateTick) {
         while (true) {
             agents.forEach { a -> installStates[a.id] = AgentRepository.stateOf(context, a) }
+            // 账本同步（幂等、内容变了才落盘）：把"文件探测到已装"的收编成 installed，
+            // 顺手算一遍「恢复全部」候选。放在这个 2 秒轮询里，是为了"在终端里手动装好
+            // 再切回来"也能立刻反映到卡片上，而不必等下一次冷启动。
+            runCatching { AgentLedger.syncFrom(context, agents) }
+            restoreList = runCatching { AgentLedger.restoreCandidates(context, agents) }
+                .getOrDefault(emptyList())
             kotlinx.coroutines.delay(2000)
         }
     }
@@ -422,6 +432,52 @@ fun HomeScreen(
                             shape = RoundedCornerShape(50),
                         ) {
                             Text("安装运行环境")
+                        }
+                    }
+                }
+            }
+        }
+        // ── 「恢复全部」横幅（2026-10-08）：重装 App 后，把账本里记着的 Agent 一次装回来 ──
+        // 用户原话：「重新装 APP 的话也要像装环境一样的，自己就瞬间装好了」。环境那一半
+        // 已经做到了（本地有包就免下载）；这一条补上 Agent 那一半——装了什么是记在
+        // Download/证道/agents/installed.json 里的，卸载 App 也带不走。
+        if (restoreList.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "恢复上次装过的 ${restoreList.size} 个 Agent",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "这些 Agent 的程序已随上次卸载消失，但安装脚本与包缓存还在 " +
+                                "Download/证道/agents 与 cache 里 —— 恢复时能走本地的就不联网：" +
+                                restoreList.joinToString("、") { it.name },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                // 串成一条命令在同一个终端会话里顺序跑：每步都写自己的
+                                // rc 文件，前一个失败不影响后一个（见 AgentInstaller）
+                                AgentInstaller.prepareRestoreAll(context, restoreList) { cmd ->
+                                    onOpenTerminal(cmd, null)
+                                }
+                            },
+                            shape = RoundedCornerShape(50),
+                        ) {
+                            Text("恢复全部（${restoreList.size} 个）")
                         }
                     }
                 }
