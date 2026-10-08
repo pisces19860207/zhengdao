@@ -73,6 +73,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,6 +89,7 @@ import com.example.zhengdao.oc.OcTodo
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.oc.ToolState
+import com.example.zhengdao.ui.PluginsScreen
 // Markdown 渲染（v1.1 第四阶段）：仅最终回答使用
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
@@ -105,7 +108,15 @@ import kotlinx.coroutines.launch
  * [connection]非[ConnectionState.Connected] 时显示状态——**失败必须可见**，
  * 不静默（与项目"M2 内存治理不假装成功"同一原则）。
  *
- * 顶栏四件事：历史入口（☰）/ 会话标题 + 连接状态 · 模型池入口 / 新会话（＋）/ 退出（◼）。
+ * 顶栏三件事：历史入口（☰）/ 会话标题 + 连接状态 · 模型池入口 / 新会话（＋）。
+ *
+ * ## 2026-10-08 顶栏瘦身（用户反馈）
+ * ① 「那个＋号太小」——原实现是 `IconButton` 里放一个字符「＋」，字形约 16dp 且无底色，
+ *    在相邻的 ☰ 旁边显得更小、手指也难瞄。现改为 **40dp 实心 tonal 圆钮 + 自绘加号**。
+ * ② 原来的第四个按钮「◼（退出）」已**移入左侧抽屉**（见 [HistoryDrawer]）：它做的事是
+ *    `repo.close() + onExit()`，即**结束本次会话（关掉 OpenCode 实例）并退出太极**，
+ *    与「停止生成」（[ComposerBar] 里随流式状态出现的停止钮）**不是同一件事**。
+ *    两者都以「停止」的形态出现，是误解的源头；现在「停止」只剩输入框旁那一处。
  *
  * ## 2026-10-07 布局修复（真机实测的缺陷）
  * v1.0 合并后模型入口曾与标题并排直排主行，模型名实测长达
@@ -123,7 +134,6 @@ fun SessionBar(
     onNew: () -> Unit = {},
     currentModelText: String? = null,
     onModelClick: () -> Unit = {},
-    onStop: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -161,10 +171,28 @@ fun SessionBar(
                 }
             }
         }
-        IconButton(onClick = onNew) {
-            Text("＋", style = MaterialTheme.typography.titleMedium)
-        }
-        IconButton(onClick = onStop) { Text("◼", style = MaterialTheme.typography.bodyMedium) }
+        // ＋ 新会话：48dp 实心圆钮 + 自绘加号（2026-10-08，原先只有一个小字符，见 KDoc）。
+        // 按钮取 M3 的行内最小触摸目标 48dp（原先 40dp，偏小）；加号字形仍是自绘的固定 20dp
+        // （见 PlusGlyph），所以按钮放大**不会**把字形一起撑大。
+        // 无障碍：PlusGlyph 是裸 Canvas，默认不带任何语义，读屏只会念"按钮" —— 用
+        // contentDescription 明示它是「新会话」（语法与 [SendGlyph]/[StopGlyph] 的用法一致）。
+        FilledTonalIconButton(
+            onClick = onNew,
+            modifier = Modifier.size(48.dp).semantics { contentDescription = "新会话" },
+        ) { PlusGlyph() }
+    }
+}
+
+/** 加号图标：自绘（本工程不使用任何第三方图标素材，画法与 [SendGlyph] / [StopGlyph] 同源）。 */
+@Composable
+private fun PlusGlyph() {
+    val tint = LocalContentColor.current
+    Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        val h = size.height
+        val sw = 2.2f
+        drawLine(tint, Offset(w * 0.50f, h * 0.20f), Offset(w * 0.50f, h * 0.80f), sw, StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.20f, h * 0.50f), Offset(w * 0.80f, h * 0.50f), sw, StrokeCap.Round)
     }
 }
 
@@ -991,9 +1019,16 @@ fun HistoryDrawer(
     onNew: () -> Unit,
     onRefresh: () -> Unit,
     onDelete: suspend (OcSessionSummary) -> Boolean,
+    /** 已启用插件数（抽屉底部入口行的右侧说明）。 */
+    pluginCount: Int = 0,
+    /** 打开插件面板。 */
+    onPlugins: () -> Unit = {},
+    /** 结束本次会话（关 OpenCode 实例 + 退出太极）。顶栏原「◼」的动作，见 [SessionBar] KDoc。 */
+    onCloseSession: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var pendingDelete by remember { mutableStateOf<OcSessionSummary?>(null) }
+    var confirmClose by remember { mutableStateOf(false) }
 
     Column(modifier.fillMaxSize()) {
         // 头部：edge-to-edge 下抽屉顶到屏幕最上沿，必须自己避开状态栏
@@ -1066,6 +1101,47 @@ fun HistoryDrawer(
                 }
             }
         }
+
+        // ── 底部固定区（2026-10-08）：插件入口 + 结束会话 ──
+        // 为什么放这里：
+        //  ① 用户反馈「太极页找不到插件入口」——入口原只在「设置」页，而插件本来就是
+        //     **太极的能力**（PluginManager 只读写太极实例的 opencode.json）。抽屉底部
+        //     本来就摆着 OpenCode 版本条，两者同属"太极的环境"。
+        //  ② 用户反馈「停止键应该和发送键在一起」——顶栏原来的 ◼ 不是"停止生成"，而是
+        //     "结束本次会话（关掉 OpenCode 实例）并退出太极"。语义比"停止"重，外形却像
+        //     一个停止键。移进抽屉并把后果写在确认框里，误会就没有来源了。
+        HorizontalDivider()
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        ) {
+            DrawerActionRow(
+                label = "插件",
+                value = if (pluginCount > 0) "$pluginCount 个已启用" else "未启用",
+                onClick = onPlugins,
+            )
+            DrawerActionRow(
+                label = "结束本次会话",
+                value = "释放内存",
+                onClick = { confirmClose = true },
+            )
+        }
+    }
+
+    if (confirmClose) {
+        AlertDialog(
+            onDismissRequest = { confirmClose = false },
+            title = { Text("结束本次会话？") },
+            text = {
+                Text("会关掉太极里的 OpenCode 实例并释放内存；聊天记录存在服务端，下次进来还在。")
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmClose = false; onCloseSession() }) { Text("结束") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("取消") } },
+        )
     }
 
     pendingDelete?.let { target ->
@@ -1233,3 +1309,79 @@ internal fun dayLabel(ts: Long?): String {
 
 private fun formatClock(ts: Long): String =
     java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
+
+// ── 抽屉底部动作行 ─────────────────────────────────────────────────────
+
+/**
+ * 抽屉底部的动作行（标签 + 右侧说明 + `›`）。
+ *
+ * 形态与设置页的 `SettingRow` 一致，但**刻意不复用**：那一份的竖向内边距（12dp）是按
+ * 设置页的长列表调的，放进 300dp 宽的抽屉会显得过松，且它在 `ui` 包、这里是 `ui.taiji`，
+ * 复用会把抽屉的观感绑在另一个页面的样式上。
+ */
+@Composable
+private fun DrawerActionRow(label: String, value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "›",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+// ── 插件面板 ──────────────────────────────────────────────────────────
+
+/**
+ * 插件面板（2026-10-08）：**从抽屉进来**，内容复用「设置 → 插件」那一份 [PluginsScreen]。
+ *
+ * 刻意**不新写一份 UI**：两次实现同一个开关，迟早会出现"这边关掉了、那边还显示已启用"
+ * （本项目已经踩过一次同源事故：插件开关曾写在没人读的配置文件上，见 PluginManager 类注释）。
+ * 这里只负责外壳（标题 + 完成键 + 高度），状态与操作全部来自 PluginsScreen。
+ *
+ * **高度不设 dp 上限**（2026-10-08 修复，原为 `heightIn(max = 560.dp)`）：写死的 560dp 在
+ * 矮窗 / 横屏 / 分屏下可能比窗口本身还高 —— 那时面板高度由这个数字而不是由窗口决定，
+ * 顶部的标题、「完成」以及下方的「添加插件」输入框就有被挤出可视区的风险。
+ * 现在只约束宽度，让面板**跟着窗口自适应**：内容矮时按内容高，内容高时由窗口收口，
+ * 溢出的部分交给 [PluginsScreen] 自带的 verticalScroll ⇒ 顶部始终可达、底部能滚到。
+ * 也不改用 `fillMaxHeight(0.92f)`：那会让内容很少时也硬撑满窗口，白留一大片空白。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PluginsSheet(onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "插件",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onDismiss) { Text("完成") }
+            }
+            PluginsScreen()
+        }
+    }
+}

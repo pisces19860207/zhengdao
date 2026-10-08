@@ -49,6 +49,7 @@ import com.example.zhengdao.oc.OcSessionSummary
 import com.example.zhengdao.oc.SseClient
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
+import com.example.zhengdao.ui.PluginManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,6 +99,19 @@ fun TaijiScreen(
     // 历史列表内容 + 左侧抽屉的开合。刻意留在 UI 层局部状态，不进 Repository
     // —— 「会话数据」才是 Repository 的职责，「抽屉开没开」是纯 UI 关注点。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+
+    // ── 插件入口（2026-10-08）：从「设置」页搬进太极 ──
+    // 用户反馈「太极页找不到插件入口」——插件是太极的能力（PluginManager 只读写太极实例的
+    // opencode.json），入口却在设置页，用的时候要跨页找。现放进抽屉底部（见 HistoryDrawer），
+    // 面板内容复用设置页那一份 PluginsScreen，避免两份 UI 各自变。
+    var showPlugins by remember { mutableStateOf(false) }
+    var pluginCount by remember { mutableStateOf(0) }
+    // 开抽屉 / 面板开合都重算一次：插件是在面板里改的，回到抽屉必须看到新数字。
+    LaunchedEffect(drawerState.isOpen, showPlugins) {
+        pluginCount = withContext(Dispatchers.IO) {
+            PluginManager.readSpecs(PluginManager.taijiConfig(ctx)).size
+        }
+    }
     var sessions by remember { mutableStateOf<List<OcSessionSummary>>(emptyList()) }
     var sessionsLoading by remember { mutableStateOf(false) }
 
@@ -267,6 +281,23 @@ fun TaijiScreen(
                                     }
                                     ok
                                 },
+                                pluginCount = pluginCount,
+                                onPlugins = {
+                                    scope.launch { drawerState.close() }
+                                    showPlugins = true
+                                },
+                                // 顶栏原「◼」的动作：结束本次会话（关 OpenCode 实例）+ 退出太极。
+                                // 它和「停止生成」不是一回事，见 SessionBar KDoc。
+                                onCloseSession = {
+                                    // 收抽屉 → 关实例 → 退出，三件事在**同一个协程里顺序执行**：
+                                    // 拆成两个 launch 时它们是并发跑的，抽屉还没收完就可能已经开始退出，
+                                    // 视觉上像"确认弹窗还开着，界面突然没了"（2026-10-08 修复）。
+                                    scope.launch {
+                                        drawerState.close()
+                                        repo.close()
+                                        onExit()
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                             )
                             OcVersionFooter()
@@ -302,7 +333,6 @@ fun TaijiScreen(
                                 showModelSheet = true
                             }
                         },
-                        onStop = { scope.launch { repo.close(); onExit() } },
                     )
                     ConnectionBanner(state, onDismiss = repo::dismissError)
 
@@ -376,6 +406,9 @@ fun TaijiScreen(
                 onDismiss = { showModelSheet = false },
             )
         }
+
+        // 插件面板（2026-10-08）：从抽屉进来，内容复用设置页那份 PluginsScreen。
+        if (showPlugins) PluginsSheet(onDismiss = { showPlugins = false })
 
         // ★ 权限批准：不可省。Agent 改文件时会发 permission.asked，不响应就卡死。
         state.pendingPermission?.let { perm ->
