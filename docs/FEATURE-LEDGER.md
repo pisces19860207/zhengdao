@@ -402,6 +402,22 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 详见 `docs/ERRATA.md` E-036 §7。教训两条：**修可见性要按"入口"清点而不是按"流程"清点**（两个入口只修一个=没修）；
 > **"30 秒"这类估算值要写成区间**（真机实测 8 秒）。
 
+> **2026-10-08 续（运行日志改成"只轮转不删除"——用户的日志是给 Agent 查问题用的）**：
+> 用户 m08482：「那些日志都是方便给你们这些 agent 看查哪里有问题的，所以要留着」——
+> 而当时的 `rootfs/RunLog.kt` 旧 `cleanupIfClean()`（原 `:89-109`）是**反的**：
+> `zhengdao-log.txt` 里没有错误标记就 `delete()`（**每轮正常运行的记录被擦掉**），
+> 有错误才 `renameTo(".prev")` 且只留一代（下一次出错就把上一份顶掉）。
+> ⇒ 改成 **归档式保留**：`archivePrevious(d)` 把上一轮整份归档成
+> `zhengdao-log.<yyyyMMdd-HHmmss>.txt`（时间戳取上一轮 `lastModified()`，不是归档时刻；空的仍删；
+> `renameTo` 失败退回复制）；保留策略 `pruneArchivesIn(d, keep = 20 份, maxBytes = 20 MB)`
+> **从最旧的删、最新一份永不删**；单文件上限 512 KB → 2 MB（`errors.log` 1 MB）；
+> `lastRunHadErrors()` 改读最新归档（兼容老 `.prev.txt`）并**只在设置页 IO 协程里调用**
+> ——启动路径不再 `readLines()` 整份日志；设置页文案改成"不会因为「这轮没出错」就删"、
+> 显示"已有 N 份历史日志"、把删唯一一代的「删除」按钮换成 **「只留最近 3 份」**。
+> 单测 `app/src/test/java/com/example/zhengdao/rootfs/RunLogArchiveTest.kt`（4 例，含"本轮日志/
+> `errors.log`/旧 `.prev.txt` 都不算归档、绝不被轮转删掉"）；全量 `:app:testDebugUnitTest` =
+> **30 suites / 232 tests / 0 failures**。详见 `docs/ERRATA.md` E-037。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -429,7 +445,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 工作区边界（内置文件夹浏览器） | ✅ 在用 | `2b60a44` | `terminal/Workspace.kt` |
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
-| RunLog 运行日志（落 `Download/证道/logs`，私有兜底 + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
+| RunLog 运行日志（落 `Download/证道/logs`，按轮归档保留最近 20 份 / 20 MB + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改；归档式保留见 E-037） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
 | 太极渲染 + 模型池选择器 | ✅ 在用 | `b95f82a` | `ui/taiji/TaijiComponents.kt`、`ui/taiji/ModelSheet.kt` |
 | 太极会话完整化（新建 / 历史 / 恢复 / 自动标题） | ✅ 在用 | `f61dd51` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
