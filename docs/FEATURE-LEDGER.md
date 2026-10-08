@@ -211,6 +211,20 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 顺带销掉一处文档/实现漂移：`CoreNative.isRustAvailable()` 的 KDoc 一直写着「供测试与体检展示」，
 > 而体检此前从没用过它。
 
+> **2026-10-08 续（CI：发布不再排在 RootFS 后面 —— 下载页停在旧包的结构性修法）**：
+> 用户当天问「那个什么 GPL 没 CI 好吧？」。**LICENSE 本身与 CI 无关**（合并只是加一个文本文件，
+> PR 分支自己那一跑 `ci @427fb98` = success）；真正出问题的是**发布通道**：滚动版 `latest` 的 APK
+> 一直停在 `2026-10-07T17:25:57Z`（4,179,922 B），2026-10-08 一整天的修复（E-021 缓存目录、
+> E-025/E-026 依赖与会话自愈、体检第 10 项）一个都没进下载页。根因两条叠加：`build.yml` 把
+> 「发布到 Releases」排在 30–90 分钟的 qemu RootFS 构建**之后**，而同一文件
+> `concurrency.cancel-in-progress: true` 让任何新推送都能掐死正在跑的 run ⇒ 掐死点只要落在
+> RootFS 那段时间里，发布 100% 走不到。⚠️ 这不是新坑：E-020 §3 已记过同一现象，当时的收尾是人工
+> 纪律"构建跑着时别推 main"—— 第二天就被"用户自己合了个 LICENSE"打破。修法（改结构本身）：
+> ① 发布 APK **提前到 RootFS 之前**（仍在 E-014 的签名硬关卡之后）；② RootFS 改为只在 `rootfs/`
+> 有改动 / 手动触发 / 拿不到 `github.event.before` 时重建（checkout 改 `fetch-depth: 0` + 新增判定
+> 步骤，四个 rootfs 步骤挂 `if`）；③ 发布拆成「发布 APK」与「发布 RootFS 包」两步。
+> 定盘提交 `fa8d467`；全过程见 `docs/ERRATA.md` E-029。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -294,6 +308,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | opencode 启动失败（截断文件冒充已安装） | `725ebef` | 新增缓存安装真机 instrumented 用例，复现并验收该事故 |
 | Hermes 安装卡死在克隆 | `06572dd` | git 克隆改走国内加速镜像 `gh-proxy.com` |
 | 调试截图误提交 | `c9e0d6f` | 移除误提交的调试截图 |
+| CI 发布通道被架在长步骤后面（下载页停在旧包） | `fa8d467` | 「发布到 Releases」排在 30–90 分钟的 qemu RootFS 之后，而 `concurrency.cancel-in-progress: true` 让任何新推送都能掐死正在跑的 run ⇒ 掐死点落在 RootFS 期间时发布永远走不到；2026-10-08 一整天修复都没进滚动版 `latest`（资产停在 10-07T17:25:57Z）。修法：发布 APK 提到 RootFS 之前 + RootFS 只在 `rootfs/` 变化时重建（ERRATA E-029）。⚠️ E-020 §3 已记过同一现象，当时只加了人工纪律，这次才改结构 |
 
 ## 5. 怎么用（给 agent 的操作步骤）
 
