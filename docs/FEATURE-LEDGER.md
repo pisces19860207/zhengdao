@@ -447,6 +447,18 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > §2.9/体积门禁 20 处 `[断言失败]` 与外层 5 处 `[错误]` 由 `echo` 改 `annot`（`exit 1` 不触发 ERR trap）
 > × `tar`/`manifest`/`patch`/`index` 四处也各自抓输出。详见 `docs/ERRATA.md` E-039。
 
+> **2026-10-08 续（AGY 不再进「恢复全部」：装过 ≠ 装得回来，地域限制是产品约束）**：
+> 用户拍板原话：「那就不管AGY了，这玩意儿用的人少。清掉AGY的恢复功能吧，谷歌对地域限制太严了，
+> 除非把终端的IP、地址什么的都改成国外才行」；在选项里选的是**只做恢复侧**——丹房保留 AGY 安装卡片。
+> 依据是真机网络探针（17:19，`Download/证道/net-probe.txt`）：环境里 `registry.npmmirror.com -> 200`，
+> `github.com` / `raw.githubusercontent.com` / `antigravity.google` / `registry.npmjs.org` / `www.google.com`
+> 全 `000`，`env` 里也没有任何 `http_proxy`/`https_proxy`。修法：`ui/AppState.kt` 的 `AgentInfo` 新增
+> `restorable: Boolean = true`（注释留判据与用户原话），出厂清单里 AGY 条目 `restorable = false`；
+> `ui/AgentLedger.kt` 的 `restoreCandidates` 抽出纯函数 `pickRestoreCandidates(ledgerIds, agents)` 并多一条
+> `it.restorable` 过滤；单测补两条（候选只收「账本里有 + 现在探测不到 + 有安装命令 + restorable」、
+> 顺序跟清单走）。**真机复验**：账本里那条 `antigravity / state=installing` 仍在，主页那颗
+> 「恢复全部（1 个）」已消失（截图 `C:\Users\guoli\AppData\Local\Temp\zd-b1.png`）。详见 `docs/ERRATA.md` E-040。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -467,7 +479,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
 | 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt` |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
-| Agent 账本 + 主页「恢复全部」 | ✅ 在用 | 本次 | `ui/AgentLedger.kt`、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
+| Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY 不进恢复候选**，见 §3 与 E-040；候选筛选 `AgentInfo.restorable`） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
 | 安装可见性（常驻横幅 + 系统通知 + 终端横幅 + 设置页状态行；四落点收在 `InstallFlow`） | ✅ 在用 | `c1b56d3` + `ab74725` | `ui/InstallFlow.kt`、`ui/InstallProgress.kt`、`terminal/InstallNotifier.kt`、`TerminalActivity.kt`、`ui/SettingsScreen.kt`、`res/layout/activity_main.xml`（`status_banner`） |
 | 通知 4 渠道 | ✅ 在用 | `8127a49` | `terminal/NotificationChannels.kt` |
 | 资源监控 | ✅ 在用 | `7d0b08c` | `terminal/ResMonitor.kt` |
@@ -499,6 +511,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | API Key 管理 | 用户拍板「凭据类信息不落 App」；2026-10-07 已再次确认**按原决定删掉**并同日执行完毕（ERRATA E-017） | `e882050`（删）→ `fba9185`（误复活）→ 见 E-017 那笔（再删） | ❌ 已移除 | **有**：`fba9185`「补回 merge 漏带的 settings/ApiKeyStore.kt 及其 import」把 `settings/ApiKeyStore.kt`(93 行) 和 `OcManager.kt` 的 import 加了回来（`e882050` 原为 6 文件 +10/-185，含 `SettingsScreen.kt` -72、`ProotLauncher.kt` -15）；UI 未恢复 ⇒ 曾长期停在「`OcManager.kt` 仍读 ApiKeyStore、但设置页没有入口」的半残态。2026-10-07 已连同 `settings/` 包整份删除 |
 | 旧 WebView + LocalProxy 回退路径 | v1.1.1 阶段 3「去回退」 | `3205d11` | ❌ 已移除 | 无。注意 `3205d11` 只改了调用方（`MainActivity.kt`/`OcClient.kt`/`OcManager.kt`/`CacheCleaner.kt`，+52/-40），文件本体 `oc/LocalProxy.kt`、`oc/TaijiPrefs.kt`、`ui/TaijiScreen.kt` 是 `e9997ec` 才物理删除 |
 | SAF 镜像同步（`mirror/PhoneMirror.kt`） | P1.5 存储策略定稿：MANAGE_EXTERNAL_STORAGE 升主路径 | `4bbfd21` | ❌ 已移除 | 无（`PhoneMirror.kt` 由 `873add0` 以 Plan B 形态引入，再被 `4bbfd21` 删除，-282 行） |
+| AGY（Antigravity）的「恢复全部」入口 | 用户拍板 2026-10-08：「清掉AGY的恢复功能吧，谷歌对地域限制太严了，除非把终端的IP、地址什么的都改成国外才行」；**只关恢复侧，安装卡片保留**（境外用户仍可自己装，装好会被文件探测认出并记账） | 本次（E-040） | ❌ 已从恢复候选剔除（`AgentInfo.restorable = false`）；安装/探测/卸载能力全在 | 无。要恢复必须先有"**环境能直连 antigravity.google**"的证据（真机网络探针 2026-10-08 17:19：只有 `registry.npmmirror.com` 通，其余全 `000`） |
 | 旧 WebView 终端（xterm.js + Pty） | 终端原生化 | `5a0fd2e` | ❌ 已移除 | 无（删 `assets/terminal/{index.html,xterm.min.js,xterm.min.css,addon-*.min.js}`、`cpp/pty.c`、`terminal/{Pty,TerminalBridge,TerminalSession}.kt`） |
 | opencode-mem 记忆插件 | 收窄插件机制 | `d5fc33f` | ❌ 已移除 | 无（只留 `terminal/LegacyMemPlugin.kt` 做幂等清理；插件本体由 `7cc1f59` 加进 `ProotLauncher.kt`） |
 | 自编译 proot | App 从未使用 | `7b0550b` | ❌ 已移除 | 无（删 `rootfs/build-proot.sh` -140 行；ERRATA E-016） |
