@@ -294,4 +294,35 @@ object PluginManager {
     /** 是否已知的历史遗留插件（不推荐、且在概览里显式提示）。 */
     fun isLegacy(spec: String): Boolean =
         com.example.zhengdao.terminal.isLegacyMemPlugin(parseSpec(spec).first)
+
+    /**
+     * 校验用户**手输**的插件标识（2026-10-08，配合「添加插件」入口）。
+     *
+     * 为什么需要：OpenCode 没有插件市场，插件的标识就是 **npm 包名**——用户从插件主页复制
+     * 过来即可。既不能不做校验（空串、带空格、粘贴进整段说明文字都会被原样写进
+     * `opencode.json`，表现为"启用了一个永远不会生效的插件"），也不能做太严的校验
+     * （npm 命名规则比我们能可靠判定的复杂，过严会把合法包名挡在外面）。
+     *
+     * 因此只拦**明确不可能合法**的形态，其余放行：
+     *  - 空（或只有空白）；
+     *  - 含任何空白字符（复制粘贴夹带换行/空格是最常见的一种）；
+     *  - 以 `.` 或 `/` 开头（前者是相对路径写法，后者是 URL 尾巴）；
+     *  - 非 scope 包却含 `/`（`a/b` 不是包名，`@scope/name` 才是）；
+     *  - scope 包没有恰好一个 `/`（`@scope`、`@scope/a/b` 都不合法）。
+     *
+     * @return 规范化后的标识（已 trim）；不合法返回 null。
+     */
+    fun normalizeSpecInput(raw: String): String? {
+        val s = raw.trim()
+        if (s.isEmpty() || s.any { it.isWhitespace() }) return null
+        if (s.startsWith(".") || s.startsWith("/")) return null
+        val name = parseSpec(s).first
+        if (name.isEmpty()) return null
+        val slashes = name.count { it == '/' }
+        return when {
+            name.startsWith("@") && slashes == 1 -> s
+            !name.startsWith("@") && slashes == 0 -> s
+            else -> null
+        }
+    }
 }
