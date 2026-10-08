@@ -211,6 +211,23 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 顺带销掉一处文档/实现漂移：`CoreNative.isRustAvailable()` 的 KDoc 一直写着「供测试与体检展示」，
 > 而体检此前从没用过它。
 
+> **2026-10-08 续（环境包索引 Ed25519 签名：代码做完了但还不能上线 —— 卡在一个 GitHub repo secret）**：
+> 分支 `feat/rootfs-index-signature`（2 提交：`5594174` 索引签名、`4f5ee52` secret 名统一；6 文件 +468/−17）
+> 把环境包索引从"App 无条件相信下载来的 JSON"改成**先验签后解析、fail-closed**：
+> `rootfs/RootfsIndex.kt` 固化 `INDEX_SIGNING_PUBKEY_B64`（32 B raw Ed25519 公钥，**换钥要发版**）、
+> `signatureUrl(indexUrl) = "$indexUrl.sig"`、`verifySignature(indexBytes, signatureBase64, …)` 对**原始字节**
+> 验签；`RootfsIndexFetcher.fetch()` 拿不到签名或验签不过就**拒绝使用该索引**（留痕）。
+> CI 侧新增「签名环境包索引」步骤（`tools/sign-rootfs-index.py` + 私钥经 `ROOTFS_INDEX_SIGNING_KEY_PEM`
+> 注入），**缺 secret 直接 exit 1**。
+> 今天线上 `latest` 的索引**没有** `.sig`（404）⇒ **现在合并 = App 拒绝未签名索引 = 应用内环境更新通道
+> 直接哑掉**，因此暂不合并。分支已推到 `origin/feat/rootfs-index-signature` 保存（本地 worktree 已撤）；
+> 正确上线顺序是「先在 repo secret 配好 `ROOTFS_INDEX_SIGNING_KEY_PEM`（Ed25519 私钥 PEM）→ 手动
+> dispatch build 工作流让**已签名索引 + `.sig`** 上线 → 再合并该分支 → 真机复验应用内更新」。
+> 另记两条事实：① `git merge-tree --write-tree main feat/rootfs-index-signature` = tree `64f655f7…`，
+> **零冲突**（技术障碍为零，卡点纯粹是那个 secret）；② 本机既无 `gh` CLI 也无 `GITHUB_TOKEN`/`GH_TOKEN`，
+> 无法替用户写 secret —— 这一步只能由仓库所有者做。
+
+
 > **2026-10-08 续（CI：发布不再排在 RootFS 后面 —— 下载页停在旧包的结构性修法）**：
 > 用户当天问「那个什么 GPL 没 CI 好吧？」。**LICENSE 本身与 CI 无关**（合并只是加一个文本文件，
 > PR 分支自己那一跑 `ci @427fb98` = success）；真正出问题的是**发布通道**：滚动版 `latest` 的 APK
@@ -437,6 +454,51 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `dpkg --audit` 空 / `apt-get check` 通过 + `node python3 git tmux rg busybox sqlite3 curl zstd uv` 逐个存在。
 > 基线 `du -smx /` = **1021 MB**。详见 `docs/ERRATA.md` E-038。
 
+> **2026-10-08 续（构建的"失败自述"：CI 日志匿名不可见 ⇒ 失败点自己发 `::error::` 注解）**：
+> `efd68a7` 推上去后 build **Run 162** 整轮绿色，但 `latest` 的 `rootfs-index.json` 仍是
+> `size: 228790151` / `builtAt: 2026-10-08T06:49:30Z`（**新包没产出**）。job 页面匿名只给一句
+> `Sign in to view logs`，`/actions/runs/<id>/logs` 匿名下载 **404**，`api.github.com` 在本机被策略拒，
+> 唯一能匿名看到的只有注解——而注解当时只有 `Process completed with exit code 2.`。
+> 修法（`rootfs/build-rootfs.sh`）：`annot()`（`::error::` 单行化 + 截断）× ERR trap（带小节变量
+> `STEP_OUTER`/`STEP` + 行号 + 命令 + 退出码）× §2.8 每条外部命令单独抓 stderr 进注解 ×
+> §2.9/体积门禁 20 处 `[断言失败]` 与外层 5 处 `[错误]` 由 `echo` 改 `annot`（`exit 1` 不触发 ERR trap）
+> × `tar`/`manifest`/`patch`/`index` 四处也各自抓输出。详见 `docs/ERRATA.md` E-039。
+
+> **2026-10-08 续（AGY 不再进「恢复全部」：装过 ≠ 装得回来，地域限制是产品约束）**：
+> 用户拍板原话：「那就不管AGY了，这玩意儿用的人少。清掉AGY的恢复功能吧，谷歌对地域限制太严了，
+> 除非把终端的IP、地址什么的都改成国外才行」；在选项里选的是**只做恢复侧**——丹房保留 AGY 安装卡片。
+> 依据是真机网络探针（17:19，`Download/证道/net-probe.txt`）：环境里 `registry.npmmirror.com -> 200`，
+> `github.com` / `raw.githubusercontent.com` / `antigravity.google` / `registry.npmjs.org` / `www.google.com`
+> 全 `000`，`env` 里也没有任何 `http_proxy`/`https_proxy`。修法：`ui/AppState.kt` 的 `AgentInfo` 新增
+> `restorable: Boolean = true`（注释留判据与用户原话），出厂清单里 AGY 条目 `restorable = false`；
+> `ui/AgentLedger.kt` 的 `restoreCandidates` 抽出纯函数 `pickRestoreCandidates(ledgerIds, agents)` 并多一条
+> `it.restorable` 过滤；单测补两条（候选只收「账本里有 + 现在探测不到 + 有安装命令 + restorable」、
+> 顺序跟清单走）。**真机复验**：账本里那条 `antigravity / state=installing` 仍在，主页那颗
+> 「恢复全部（1 个）」已消失（截图 `C:\Users\guoli\AppData\Local\Temp\zd-b1.png`）。详见 `docs/ERRATA.md` E-040。
+
+> **2026-10-08 续（"失败自述"第一轮就抓出真因：`sed` 字符类里放了 `)`）**：
+> build **Run 163**（`ee766e7`）的 job 注解里直接带回 Run 162 那个 `exit 2` 的原始 stderr——
+> `[2.8] dpkg-deb -b 重打包 libgbm1 失败：… 'Depends' field, syntax error after reference to package
+> 'libwayland-server0'`。真因：摘依赖那句 `sed -i -E 's/, *mesa-libgallium[^,)]*//g'` 的字符类里带了 `)`，
+> 而版本约束 `(= 25.0.7-2+deb13u1)` 自己就含括号 ⇒ 只吃到右括号之前，把孤零零的 `)` 留在原地。
+> 修法：改成以逗号为界吃掉整条约束的多表达式 sed（空项/尾逗号/`: ,`/空依赖字段逐项收尾），
+> 并在 `dpkg-deb -b` 前加依赖字段自查（命中就把字段原文发注解）。本地用**真实** `libgbm1` 的 control
+> （deb.debian.org 下回来、44,144 B）验过：mesa 摘干净、其余一字未动、`Description` 续行没碰；
+> 6 种排布回归全过。详见 `docs/ERRATA.md` E-041。
+
+> **2026-10-08 续（剔 GPU 栈改成"只切 `libllvm19`"：绕一条边不够，得绕整条链）**：
+> build **Run 164**（`57757a2`）的 RootFS 又失败，注解带回 apt 的模拟卸载名单：
+> `Purg ffmpeg | libavdevice61 | libgl1 | libglx0 | libglx-mesa0 | libgl1-mesa-dri | mesa-libgallium | libllvm19`
+> ⇒ 链路是 `mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg`，上一轮摘掉的 `libgbm1 → mesa-libgallium`
+> 只是支线。**决策：不碰 mesa 本体，只切 `libllvm19`（落盘 −118 MB）** —— 动 mesa 得再重打包
+> `libglx0` + `libgl1` 两个包才能保住 ffmpeg，只多拿 34 MB；而 `libllvm19` 的父包只有 `mesa-libgallium` 一个。
+> 修法：`rootfs/build-rootfs.sh` §2.8 整段重写（`apt-get download mesa-libgallium` → `dpkg-deb -R` →
+> sed 摘 `libllvm19` 一条 → 依赖字段自查 → `dpkg-deb -b` → `dpkg -i` → `apt-get -s -y purge libllvm19`
+> 打印名单 + 黑名单断言（补上 `mesa-libgallium`）→ 真 purge）；§2.9 断言反过来（`libllvm19` 必须没了、
+> `mesa-libgallium` 必须在）。本地用真实 `mesa-libgallium_25.0.7-2+deb13u1_arm64.deb`（8,032,536 B）的
+> control 验过：19 → 18 项、被摘的那条含括号版本约束、其余逐字未动、除 Depends 外整份未变
+> （`C:\Users\guoli\AppData\Local\Temp\zd-watch\mesa-check.sh` = `RESULT=PASS`）。详见 `docs/ERRATA.md` E-042。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -455,16 +517,17 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | opencode 更新检查 | ✅ 在用 | `c07eec3` | `ui/SettingsScreen.kt`、`oc/OcManager.kt` |
 | 环境体检三态 + 自愈 | ✅ 在用 | `df2b3eb` | `ui/EnvHealth.kt`、`terminal/EnvSelfHeal.kt` |
 | 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
-| 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt` |
+| 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮，另在 guest 里有 `/usr/local/bin/zzclean`（App 启动时按内容+执行位写入）；一档命令含 pip 缓存） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt`、`terminal/ProotLauncher.kt`（写入 `/usr/local/bin/zzclean`） |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
-| Agent 账本 + 主页「恢复全部」 | ✅ 在用 | 本次 | `ui/AgentLedger.kt`、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
+| Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY 不进恢复候选**，见 §3 与 E-040；候选筛选 `AgentInfo.restorable`） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
 | 安装可见性（常驻横幅 + 系统通知 + 终端横幅 + 设置页状态行；四落点收在 `InstallFlow`） | ✅ 在用 | `c1b56d3` + `ab74725` | `ui/InstallFlow.kt`、`ui/InstallProgress.kt`、`terminal/InstallNotifier.kt`、`TerminalActivity.kt`、`ui/SettingsScreen.kt`、`res/layout/activity_main.xml`（`status_banner`） |
 | 通知 4 渠道 | ✅ 在用 | `8127a49` | `terminal/NotificationChannels.kt` |
 | 资源监控 | ✅ 在用 | `7d0b08c` | `terminal/ResMonitor.kt` |
 | 工作区边界（内置文件夹浏览器） | ✅ 在用 | `2b60a44` | `terminal/Workspace.kt` |
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
-| 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈 mesa/LLVM） | ✅ 在用 | 本次（E-038；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
+| 环境包瘦身（构建期剔除：构建残留 + locale 裁剪 + GPU 软件渲染栈） | ✅ 在用（**GPU 栈只切 `libllvm19`：落盘 −118 MB、包 −25.9 MiB，实测见 build Run 165**；mesa 本体保留：动它要再重打包两个包才保得住 ffmpeg、只多 34 MB —— 见 E-042） | 本次（E-038/E-042；A 阶段见 E-031、locale 见 E-032） | `rootfs/build-rootfs.sh`（清理 §2.10、剔 GPU §2.8、断言 §2.9/§2.11） |
+| 构建失败自述（失败点发 `::error::` 注解，匿名可见；ERR trap 报小节+行号+命令+退出码） | ✅ 在用（**第一轮就抓出 Run 162 的真因**，见 E-041） | 本次（E-039） | `rootfs/build-rootfs.sh`（`annot()` + `trap … ERR` + `STEP`/`STEP_OUTER`） |
 | RunLog 运行日志（落 `Download/证道/logs`，按轮归档保留最近 20 份 / 20 MB + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改；归档式保留见 E-037） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
 | 太极渲染 + 模型池选择器 | ✅ 在用 | `b95f82a` | `ui/taiji/TaijiComponents.kt`、`ui/taiji/ModelSheet.kt` |
@@ -478,7 +541,15 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 欢迎页 + 冷启动记忆上次页面 | ✅ 在用 | `6a4ee6c` | `ui/WelcomeScreen.kt`、`ui/AppState.kt` |
 | 丹房卸载功能（Agent 卸载） | ✅ 在用 | `3aed4f2` | `ui/HomeScreen.kt`、`ui/AgentManifest.kt` |
 | 启动幂等（同名进程计数，防重复拉起） | ⛔ **已被取代** | `5feea73` | 原在 `TerminalActivity.kt`（该笔只动了 `TerminalActivity.kt` + `ui/AppState.kt`，**旧台账此栏写 `terminal/ProotLauncher.kt` 是错的**）。`countProcesses()` 扫 `/proc` 数同名进程 + 20 秒窗口守卫，已由 `da3d8eb` 换掉 ⇒ 见下一行 |
-| 终端会话路由（**全局单会话**：同 Agent attach / 换 Agent kill） | ✅ 在用（**已在 main**：`da3d8eb` 是 main 的祖先；2026-10-08 用户真机复验换 Agent 通过） | `da3d8eb` | `terminal/SessionRouter.kt`（纯函数决策表 + 11 条单测）、`TerminalActivity.kt`、`terminal/SessionManager.kt` |
+| 终端会话路由（**全局单会话**：同 Agent attach / 换 Agent kill） | ✅ 在用（**已在 main**：`da3d8eb` 是 main 的祖先；2026-10-08 用户真机复验换 Agent 通过） | `da3d8eb` | `terminal/SessionRouter.kt`（纯函数决策表 + 11 条单测）、`TerminalActivity.kt`、`terminal/SessionManager.kt` || 环境指纹保留（修复/回退重装时，**只有**本地包 sha 与标记里记的包 sha 同源才回填 `env`） | ✅ 在用（真机证据链见 E-044） | `48d5569`（merge `d8fb5d6`） | `rootfs/RootfsMarker.kt`（新增 `archive-sha256` 行）、`rootfs/RootfsInstaller.kt`（`envForReinstall` + `install(…, archiveSha256)`）、`rootfs/RootfsDownloader.kt`（`sha256Of`）、`ui/SettingsScreen.kt`（修复 `:1231` / 回退 `:941` / 全量 `:1397`）、`TerminalActivity.kt`（`:1101`/`:1167`；`:1050` 故意不带） |
+| 安装完整性锚在 Rust 核心（解压途中流式对账归档 sha，失配即失败；一次读盘） | ✅ 在用（见 E-045） | 本次（`feat/rust-install-integrity`） | `rust/core/src/extract.rs`（`extract_pipeline(…, expected_sha256)` 原本就有、此前从未被启用）、`rootfs/RootfsInstaller.kt`（传 sha；`SHA256 不匹配` 不回退 Java） |
+| Rust 侧 sha256 文件摘要（`sha256Of` 优先走 Rust，平台 `MessageDigest` 作回退） | ✅ 在用（见 E-045） | 本次（`feat/rust-install-integrity`） | `rust/core/src/sha256.rs`（`sha256_file_hex`）、`rust/core/src/jni_bridge.rs`（`nativeSha256File`）、`rust/CoreNative.kt`（`sha256File`）、`rootfs/RootfsDownloader.kt`（`sha256Of` + 「走 Rust 核心 / 走平台回退」日志） |
+| 入库 `.so` 瘦身 + 工序固化（strip 掉 `.symtab`/`.strtab`；16 KB 页对齐与 JNI 符号两道校验） | ✅ 在用（仓库文件 1,095,744 → **811,592 B**；但 **APK 不因此变小** —— AGP 打包本就会 strip，见 E-045 教训 6） | 本次（E-045） | `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` |
+| **入库 `.so` 门禁**（CI 校验 16KB 页对齐 + 从 `CoreNative.kt` 现读的 JNI 入口符号，堵住"人工拷贝 + 静默降级"） | ✅ 在用（`ci.yml` + `build.yml` 各一步，见 E-048） | 本次（E-048） | `tools/check-native-so.py`（纯标准库 ELF 解析）、`.github/workflows/ci.yml`、`.github/workflows/build.yml` |
+| **本地已有索引那个整包时直接用本地包**（"补指纹/重装"不再白下 192 MB；本地整包优先于增量补丁） | ✅ 在用（真机：检查给「本地已有该版本的安装包…无需下载」、按钮「用本地包安装」、5 秒重解压完成，见 E-049） | 本次（`feat/local-cache-no-download`） | `rootfs/RootfsCache.kt`（`localCandidateFor` / `pickLocalCandidate`）、`ui/SettingsScreen.kt`（检查线程本地优先分支 + 确认线程本地优先块）、`app/src/test/java/com/example/zhengdao/rootfs/RootfsLocalCandidateTest.kt` |
+| **补丁解压收口进 Rust**（增量与全量共用 `extractArchive` 入口：纯 tar 壳 + `skipNames` 跳过补丁元数据 + sha 对账不回退） | ✅ 在用（host cargo 12 用例、门禁 4 符号、真机 3 用例含"sha 不匹配硬失败"，见 E-050） | 本次（`feat/rust-patch-extract`） | `rust/core/src/extract.rs`（`extract_pipeline_skip` / `ExtractReport.skipped`）、`rust/core/src/jni_bridge.rs`（`nativeExtractSkip`）、`rust/CoreNative.kt`、`rootfs/RootfsInstaller.kt`（`extractArchive`）、`rootfs/RootfsDelta.kt` |
+| **Ed25519 验签收口进 Rust 核心**（清单/索引签名的信任根不再只活在 App 进程：Rust 优先 + 平台对拍，不一致按拒绝处理） | ✅ 在用（host cargo 18 用例含 RFC 8032 三向量与真实清单；门禁 5 符号；真机 5 用例，logcat 见 `验签走 Rust 核心（与平台对拍一致）`，见 E-051） | 本次（`feat/rust-ed25519`） | `rust/core/src/ed25519.rs`、`rust/core/src/jni_bridge.rs`（`nativeVerifyEd25519`）、`app/src/main/java/com/example/zhengdao/rust/CoreNative.kt`、`app/src/main/java/com/example/zhengdao/ui/AgentManifest.kt` |
+
 已移除的功能见 §3。
 
 ## 3. 已被拍板删除的功能（谁要加回来必须先问用户）
@@ -488,6 +559,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | API Key 管理 | 用户拍板「凭据类信息不落 App」；2026-10-07 已再次确认**按原决定删掉**并同日执行完毕（ERRATA E-017） | `e882050`（删）→ `fba9185`（误复活）→ 见 E-017 那笔（再删） | ❌ 已移除 | **有**：`fba9185`「补回 merge 漏带的 settings/ApiKeyStore.kt 及其 import」把 `settings/ApiKeyStore.kt`(93 行) 和 `OcManager.kt` 的 import 加了回来（`e882050` 原为 6 文件 +10/-185，含 `SettingsScreen.kt` -72、`ProotLauncher.kt` -15）；UI 未恢复 ⇒ 曾长期停在「`OcManager.kt` 仍读 ApiKeyStore、但设置页没有入口」的半残态。2026-10-07 已连同 `settings/` 包整份删除 |
 | 旧 WebView + LocalProxy 回退路径 | v1.1.1 阶段 3「去回退」 | `3205d11` | ❌ 已移除 | 无。注意 `3205d11` 只改了调用方（`MainActivity.kt`/`OcClient.kt`/`OcManager.kt`/`CacheCleaner.kt`，+52/-40），文件本体 `oc/LocalProxy.kt`、`oc/TaijiPrefs.kt`、`ui/TaijiScreen.kt` 是 `e9997ec` 才物理删除 |
 | SAF 镜像同步（`mirror/PhoneMirror.kt`） | P1.5 存储策略定稿：MANAGE_EXTERNAL_STORAGE 升主路径 | `4bbfd21` | ❌ 已移除 | 无（`PhoneMirror.kt` 由 `873add0` 以 Plan B 形态引入，再被 `4bbfd21` 删除，-282 行） |
+| AGY（Antigravity）的「恢复全部」入口 | 用户拍板 2026-10-08：「清掉AGY的恢复功能吧，谷歌对地域限制太严了，除非把终端的IP、地址什么的都改成国外才行」；**只关恢复侧，安装卡片保留**（境外用户仍可自己装，装好会被文件探测认出并记账） | 本次（E-040） | ❌ 已从恢复候选剔除（`AgentInfo.restorable = false`）；安装/探测/卸载能力全在 | 无。要恢复必须先有"**环境能直连 antigravity.google**"的证据（真机网络探针 2026-10-08 17:19：只有 `registry.npmmirror.com` 通，其余全 `000`） |
 | 旧 WebView 终端（xterm.js + Pty） | 终端原生化 | `5a0fd2e` | ❌ 已移除 | 无（删 `assets/terminal/{index.html,xterm.min.js,xterm.min.css,addon-*.min.js}`、`cpp/pty.c`、`terminal/{Pty,TerminalBridge,TerminalSession}.kt`） |
 | opencode-mem 记忆插件 | 收窄插件机制 | `d5fc33f` | ❌ 已移除 | 无（只留 `terminal/LegacyMemPlugin.kt` 做幂等清理；插件本体由 `7cc1f59` 加进 `ProotLauncher.kt`） |
 | 自编译 proot | App 从未使用 | `7b0550b` | ❌ 已移除 | 无（删 `rootfs/build-proot.sh` -140 行；ERRATA E-016） |
@@ -525,6 +597,9 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | Hermes 安装卡死在克隆 | `06572dd` | git 克隆改走国内加速镜像 `gh-proxy.com` |
 | 调试截图误提交 | `c9e0d6f` | 移除误提交的调试截图 |
 | CI 发布通道被架在长步骤后面（下载页停在旧包） | `fa8d467` | 「发布到 Releases」排在 30–90 分钟的 qemu RootFS 之后，而 `concurrency.cancel-in-progress: true` 让任何新推送都能掐死正在跑的 run ⇒ 掐死点落在 RootFS 期间时发布永远走不到；2026-10-08 一整天修复都没进滚动版 `latest`（资产停在 10-07T17:25:57Z）。修法：发布 APK 提到 RootFS 之前 + RootFS 只在 `rootfs/` 变化时重建（ERRATA E-029）。⚠️ E-020 §3 已记过同一现象，当时只加了人工纪律，这次才改结构 |
+| 构建脚本"摘依赖"把 `.deb` 改坏（连续两轮 rootfs 不产出） | 本次（E-041） | §2.8 用 `sed -i -E 's/, *mesa-libgallium[^,)]*//g'` 摘 `libgbm1` 的依赖，字符类里的 `)` 与版本约束 `(= 25.0.7-2+deb13u1)` 冲突 ⇒ 留下孤零零的 `)` ⇒ `dpkg-deb -b` 语法错。Run 162 因此 `exit 2` 且外面只看到"退出码 2"；E-039 的失败自述在 Run 163 把原始 stderr 带回来后当场定位。修法 = 以逗号为界的多表达式 sed + `dpkg-deb -b` 前的依赖字段自查 |
+| 瘦身包真机验收（首次实机安装新环境） | 本次（无代码提交，仅文档） | 2026-10-08 20:00 在 Honor PGT-AN10 / Android 16 上装 `latest` 新包：端侧 `sha256sum` = 索引 `d12cd1d3…` ✓；走「本地包零交互安装」路径，`marker=false` → 自动安装 → `SHA256 校验通过` → **11 秒装完** → `marker=true` 重开会话 ✓；标记写入信任锚 `env=51e1cc0c32f099aa` ✓；复检设「检查环境更新」得「已是最新版本（13.7 / 51e1cc0c32f099aa）」✓；同口径对拍：`libllvm19` 消失、`mesa-libgallium` 保留、13 工具全在、`ldd` 0 缺库、ffmpeg 转码 OK、`dpkg --audit` 空、`du -smx /` **1024 → 815 MB（−209 MB）** ✓。App 内下载实测 ≈1.3 MB/s（192 MB 约 2.5–3 分钟）。真机另发现 4 项 UI 问题（主页白屏可复现 2/2、「⏳ 正在安装环境」状态行不清理、同版本被叫"新版本"、第三方悬浮窗吃掉对话框按钮点按），详见 `docs/milestones/证道-环境包瘦身与压缩方案-2026-10-08.md` §7.1 |
+| 终端内复制不出东西（OSC 52 空转） | 本次（E-043） | termux 单点 backport 把 OSC 52 累积上限抬到 100 KiB，但 tmux 默认 `set-clipboard external` 不把 pane 里的 OSC 52 转发给外层终端 ⇒ 真机上一条 Toast 都没有、点「粘贴」也空。对照实验 `tmux set-buffer -w` 一步把嫌疑锁到 pane→tmux 这一段；改成 `on` 后 100 / 9000 / 12345 字节三档全部弹出「已复制 N 个字符」并真的写进剪贴板。修法：`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` 幂等补 `set -g set-clipboard on`（原本只补 mouse），提交 `87b7c10` → merge `28e733d` |
 
 ## 5. 怎么用（给 agent 的操作步骤）
 

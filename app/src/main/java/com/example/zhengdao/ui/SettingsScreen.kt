@@ -7,9 +7,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,12 +37,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.launch
+import com.example.zhengdao.util.HumanizeError
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -61,6 +69,7 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
+import com.example.zhengdao.ui.theme.IOSReadyGreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -68,7 +77,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** 状态行"就绪／已授权"用的绿：比主题 tertiary(#34C759) 更深，浅底上作正文色才有对比度。 */
-private val ReadyGreen = Color(0xFF2E7D32)
+private val ReadyGreen = IOSReadyGreen
 
 /**
  * 索引里的字节数 → 人读大小。`<= 0` = 索引没给这个字段（老格式/字段缺失），
@@ -93,10 +102,22 @@ fun SettingsScreen(
     // 这里原先有一份 SystemInfoProvider.collect() 的结果缓存，但全页从未读过它——
     // 设置页只展示存储占用。留着会每次进页白跑一次采集（v1.1 起采集还包含 node
     // 二进制的版本扫描），故删掉。
+    // 2026-10-08：把"修复失败 / 回退失败"两个 Toast 升级为 Snackbar——MD3 不推荐用
+    // Toast 喂需要"看完详情"的错误。SnackbarHost 装在顶层 Box 底部，action「查看日志」
+    // 经 openLogFromSnackbar() 现场取一次日志原文再开弹窗（t.message 仍落 RunLog 不丢）。
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var repairConfirm by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var pendingUpdateUrl by remember { mutableStateOf<String?>(null) }
     var pendingUpdateSha by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 缓存里"字节数正好等于索引那个包"的本地文件。非 null ⇒ 弹窗确认后**先**逐字节验它：
+     * sha 与索引一致就直接本地重解压，不再下 192 MB（2026-10-08 真机：一次「补指纹」白下了 192 MB）。
+     * 注意这里只按**大小**定位候选，sha 由安装线程在动手前验（[RootfsCache.localCandidateFor]）。
+     */
+    var pendingLocalArchive by remember { mutableStateOf<File?>(null) }
 
     /**
      * 检查更新时拿到的**整条索引**（而不是只留 env）：全量装完后要按"信任锚"规则决定写不写
@@ -108,9 +129,48 @@ fun SettingsScreen(
 
     /** 索引给的增量补丁（基线与本机相符时才会被赋上）；非 null = 弹窗确认后先试增量。 */
     var pendingPatch by remember { mutableStateOf<PatchRef?>(null) }
+    /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
     var prevLogText by remember { mutableStateOf<String?>(null) }
     var archiveCount by remember { mutableStateOf(0) }
-    var showPrevLog by remember { mutableStateOf(false) }
+
+    /**
+     * 日志弹窗要显示的原文；null = 不弹。**文本即开关**。
+     *
+     * 为什么不再用 `showPrevLog: Boolean` + `prevLogText` 两个状态：Snackbar 的
+     * 「查看日志」只置了布尔位，而弹窗还要求 `prevLogText != null`；本轮刚失败时
+     * prevLogText 仍是 null（进页时算的是"上一轮有没有错"）⇒ 用户点了**没有任何反应**。
+     * 合成一个状态后，"显示什么"和"弹不弹"不可能再各自漂移。
+     */
+    var logDialogText by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Snackbar 的「查看日志」→ 弹窗：**现场读一次日志**再开。
+     *
+     * 取件顺序 本轮日志(zhengdao-log.txt) → 最新归档 → 旧版 .prev 文件：本轮失败的那行
+     * RunLog.log 已同步写进本轮日志，所以这条路径基本一定有内容。真的一份都没有时给
+     * 明确 Toast（指向日志目录），**绝不静默**。
+     */
+    fun openLogFromSnackbar() {
+        scope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching {
+                    (com.example.zhengdao.rootfs.RunLog.file()
+                        ?: com.example.zhengdao.rootfs.RunLog.latestArchive()
+                        ?: com.example.zhengdao.rootfs.RunLog.prevFile())?.readText()
+                }.getOrNull()
+            }
+            if (text.isNullOrBlank()) {
+                Toast.makeText(
+                    ctx,
+                    "这次的日志还没写出来。日志目录：${com.example.zhengdao.rootfs.RunLog.dirPath(ctx)}（用文件管理器打开）",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } else {
+                logDialogText = text
+            }
+        }
+    }
+
     var checking by remember { mutableStateOf(false) }
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
@@ -154,7 +214,8 @@ fun SettingsScreen(
             try {
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             } catch (e2: Exception) {
-                Toast.makeText(ctx, "打开失败: ${e2.message}", Toast.LENGTH_SHORT).show()
+                // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文已落日志
+                Toast.makeText(ctx, "打开失败：${HumanizeError.title(e2)}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -192,6 +253,7 @@ fun SettingsScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -330,7 +392,10 @@ fun SettingsScreen(
                         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                             .setData(android.net.Uri.parse("package:${ctx.packageName}"))
                     )
-                }.onFailure { Toast.makeText(ctx, "打开失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+                }.onFailure {
+                    // 2026-10-08：异常原文 → 人话（[HumanizeError]）
+                    Toast.makeText(ctx, "打开失败：${HumanizeError.title(it)}", Toast.LENGTH_SHORT).show()
+                }
                 Unit
             }
             // 未授权时整行可点＝直接拉起系统授权弹窗；已授权时点击＝去系统设置查看/撤销。
@@ -428,6 +493,7 @@ fun SettingsScreen(
         SectionCard("终端外观") {
             var sizeDp by remember { mutableStateOf(TerminalPrefs.sizeDp(ctx)) }
             var schemeId by remember { mutableStateOf(TerminalPrefs.scheme(ctx).id) }
+            var insetDp by remember { mutableStateOf(TerminalPrefs.insetDp(ctx)) }
 
             Text(
                 text = "下次进入终端时生效。字号越小，同屏能显示的内容越多。",
@@ -451,6 +517,28 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+            Text("画布留白", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TerminalPrefs.INSET_OPTIONS.forEach { dp ->
+                    FilterChip2(if (dp == 0) "无" else "$dp", dp == insetDp) {
+                        insetDp = dp
+                        TerminalPrefs.saveInset(ctx, dp)
+                    }
+                }
+            }
+            Text(
+                text = "文字与边框之间的距离。留白占的是可用宽度——8dp 在 375dp 宽屏上约损失 4% 列宽，" +
+                    "觉得同屏内容变少就调小或选「无」。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
 
             Spacer(Modifier.height(12.dp))
             Text("配色", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -639,6 +727,9 @@ fun SettingsScreen(
                         var pendingSha: String? = null
                         var pendingIdx: RootfsIndex? = null
                         var pendingPatchRef: PatchRef? = null
+                        // 缓存里可能就是索引那个包（只按大小定位，sha 在安装前才验）。
+                        // 2026-10-08 用户拍板：本地已有就别再下 192 MB。
+                        var pendingLocal: File? = null
                         val result = try {
                             // ① 增量协议：`rootfs-index.json` 是唯一事实来源，版本按 **env 内容指纹**比对。
                             //    老逻辑拿恒定的发行版号（13.7）比，于是永远判"已是最新"——本次修掉的正是它。
@@ -647,11 +738,36 @@ fun SettingsScreen(
                                 val localEnv = RootfsMarker.installedEnv(ctx)
                                 val ver = idx.version.ifBlank { idx.distro.ifBlank { "未知版本" } }
                                 when {
-                                    // 旧安装（标记里没有 env 行）：第一次更新只能全量，装完就记上 env
+                                    // 旧安装（标记里没有 env 行）：第一次更新只能全量，装完就记上 env。
+                                    // 2026-10-08：本地装的往往**就是同一个版本**（13.7），只是标记缺 env 行，
+                                    // 却被叫成"发现新版本 13.7"——用户会以为真出了新版（真机投诉）。
+                                    // 这里按本地已装版本分两种口径：同版本＝补指纹，不同/未知＝确实有新版。
                                     localEnv == null -> {
                                         pendingUrl = idx.url; pendingSha = idx.sha256
                                         pendingIdx = idx
-                                        "发现新版本 $ver（本地环境未记录版本，本次需全量下载，${bytesMbText(idx.size)}）"
+                                        val localVer = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx).orEmpty()
+                                        // 2026-10-08：缓存里若已躺着索引那个包（下过一次没装成、或上次重装留下的），
+                                        // 就别再让用户下 192 MB——真机上这一次白下了整包。只按大小定位，
+                                        // sha 在确认后、动手前由安装线程验（对不上照旧下载）。
+                                        val cached = com.example.zhengdao.rootfs.RootfsCache
+                                            .localCandidateFor(ctx, idx.url, idx.size)
+                                        pendingLocal = cached
+                                        val sameVer = localVer.isNotBlank() && localVer.equals(ver, ignoreCase = true)
+                                        when {
+                                            cached != null && sameVer ->
+                                                "本地已安装 $ver，但缺少环境指纹记录（env）：" +
+                                                    "本地已有该版本的安装包（${bytesMbText(cached.length())}），" +
+                                                    "将直接用它重装补指纹，无需下载。"
+                                            cached != null ->
+                                                "本地已有该版本的安装包（${bytesMbText(cached.length())}），" +
+                                                    "将直接用它安装，无需下载。"
+                                            sameVer ->
+                                                "本地已安装 $ver，但缺少环境指纹记录（env）：" +
+                                                    "本次将用全量包（${bytesMbText(idx.size)}）重装一次以补上指纹，" +
+                                                    "重装后「检查环境更新」才能正确判断新旧。"
+                                            else ->
+                                                "发现新版本 $ver（本地环境未记录版本，本次需全量下载，${bytesMbText(idx.size)}）"
+                                        }
                                     }
                                     localEnv.equals(idx.env, ignoreCase = true) ->
                                         "已是最新版本（$ver，环境 $localEnv）"
@@ -659,11 +775,20 @@ fun SettingsScreen(
                                         pendingUrl = idx.url; pendingSha = idx.sha256
                                         pendingIdx = idx
                                         val p = idx.patch
-                                        if (p != null && p.from.equals(localEnv, ignoreCase = true)) {
-                                            pendingPatchRef = p
-                                            "发现新版本 $ver，可增量更新（${bytesMbText(p.size)}，无需重下全量包）"
-                                        } else {
-                                            "发现新版本 $ver（当前环境 $localEnv，索引未给对应增量包），需全量下载，${bytesMbText(idx.size)}"
+                                        // 本地已有索引那个整包时**优先本地**：0 下载优于几十 MB 的补丁。
+                                        val cached = com.example.zhengdao.rootfs.RootfsCache
+                                            .localCandidateFor(ctx, idx.url, idx.size)
+                                        pendingLocal = cached
+                                        when {
+                                            cached != null ->
+                                                "发现新版本 $ver（本地已有该版本的安装包（${bytesMbText(cached.length())}），" +
+                                                    "将直接用它安装，无需下载）"
+                                            p != null && p.from.equals(localEnv, ignoreCase = true) -> {
+                                                pendingPatchRef = p
+                                                "发现新版本 $ver，可增量更新（${bytesMbText(p.size)}，无需重下全量包）"
+                                            }
+                                            else ->
+                                                "发现新版本 $ver（当前环境 $localEnv，索引未给对应增量包），需全量下载，${bytesMbText(idx.size)}"
                                         }
                                     }
                                 }
@@ -709,7 +834,12 @@ fun SettingsScreen(
                             pendingUpdateSha = pendingSha
                             pendingIndex = pendingIdx
                             pendingPatch = pendingPatchRef
-                            if (!result.startsWith("发现新版本")) {
+                            pendingLocalArchive = pendingLocal
+                            // 有可下载目标 → 交给下面的弹窗（用户点「下载并安装」）；
+                            // 没有目标（已是最新 / 只能手动去下载） → 用 Toast 说清楚。
+                            // 判据是 pendingUrl 而不是文案前缀：同版本补指纹的文案不以"发现新版本"开头，
+                            // 按前缀判断会让它既不弹窗也不提示（2026-10-08 修）。
+                            if (pendingUrl == null) {
                                 Toast.makeText(ctx, result, Toast.LENGTH_LONG).show()
                             }
                         }
@@ -718,12 +848,30 @@ fun SettingsScreen(
             ) { Text(if (checking) "检查中…" else "检查环境更新") }
             installState?.let { st ->
                 Spacer(Modifier.height(6.dp))
+                // 2026-10-08 修：此前无论 phase 是什么都硬写"⏳ 正在安装环境…"，且 Done 之后
+                // 就一直挂着（真机现象："⏳ 正在安装环境……安装完成！"，还带着"不能重复检查更新"
+                // 这句对已结束安装毫无意义的话，被用户读成"还在装"）。现在按 phase 给图标与颜色，
+                // "正在安装"只属于 Running；Done/Failed 收尾成一次性状态，可点「知道了」清掉。
+                val (icon, color) = when (st.phase) {
+                    InstallProgress.Phase.Running -> "⏳" to MaterialTheme.colorScheme.primary
+                    InstallProgress.Phase.Done -> "✅" to MaterialTheme.colorScheme.primary
+                    InstallProgress.Phase.Failed -> "⚠️" to MaterialTheme.colorScheme.error
+                }
                 Text(
-                    text = "⏳ 正在安装环境（${if (st.fromLocal) "使用本地缓存包，不联网下载" else "联网下载"}）：" +
-                        "${st.text}\n安装完成前不需要、也不能重复检查更新；进度同时显示在终端页顶部横幅与系统通知里。",
+                    text = when (st.phase) {
+                        InstallProgress.Phase.Running ->
+                            "$icon 正在安装环境（${if (st.fromLocal) "使用本地缓存包，不联网下载" else "联网下载"}）：" +
+                                "${st.text}\n安装完成前不需要、也不能重复检查更新；进度同时显示在终端页顶部横幅与系统通知里。"
+                        InstallProgress.Phase.Done -> "$icon 上一次安装：${st.text}"
+                        InstallProgress.Phase.Failed -> "$icon 上一次安装失败：${st.text}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = color,
                 )
+                if (st.phase != InstallProgress.Phase.Running) {
+                    // 结束后给一个明确的收尾动作：否则这条状态会一直占着按钮下面的位置
+                    TextButton(onClick = { InstallProgress.clear() }) { Text("知道了") }
+                }
             }
             Spacer(Modifier.height(4.dp))
             Text(
@@ -817,14 +965,36 @@ fun SettingsScreen(
                                 try {
                                     InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请留在本页或看通知栏）…")
                                     RootfsInstaller.ensureFreeSpace(ctx, target.length())
-                                    RootfsInstaller.install(ctx, target) { }
+                                    // 回退到"与当前环境同源的那个包"（例如刚回退过又点了一次同一个版本）时
+                                    // 保留环境指纹；换成别的版本必然对不上 ⇒ null，照装不写 env。
+                                    // 判定与理由同修复路径：RootfsInstaller.envForReinstall 的 KDoc。
+                                    val rollSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(target)
+                                    val rollEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
+                                        File(ctx.filesDir, "rootfs"),
+                                        rollSha,
+                                    )
+                                    com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, target, rollEnv, rollSha) { }
                                     com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
                                     InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（未联网下载）")
                                     android.os.Handler(ctx.mainLooper).post { storageTick++ }
                                 } catch (t: Throwable) {
-                                    InstallFlow.fail(ctx, "回退失败：${t.message}")
-                                    android.os.Handler(ctx.mainLooper).post {
-                                        Toast.makeText(ctx, "回退失败：${t.message}", Toast.LENGTH_LONG).show()
+                                    InstallFlow.fail(ctx, "回退失败：${HumanizeError.title(t)}")
+                                    // 2026-10-08：Toast → Snackbar（带"查看日志"action）。
+                                    // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
+                                    // 用户看的用人话，进 Snackbar 后点 action 由 openLogFromSnackbar()
+                                    // 现场取日志并弹窗（缺日志时给指向目录的 Toast，不静默）。
+                                    // 必须在主线程弹——scope 是 Composable 的 CoroutineScope，
+                                    // 但 rememberCoroutineScope() 默认走 Dispatchers.Main.immediate。
+                                    scope.launch {
+                                        val r = snackbarHostState.showSnackbar(
+                                            message = "回退失败：${HumanizeError.title(t)}",
+                                            actionLabel = "查看日志",
+                                            duration = SnackbarDuration.Indefinite,
+                                        )
+                                        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                            // 现场取日志再弹窗（直接置弹窗状态会因文本仍是 null 而静默无操作）
+                                            openLogFromSnackbar()
+                                        }
                                     }
                                 }
                             }.start()
@@ -902,7 +1072,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (prevLogText != null) {
+            prevLogText?.let { prev ->
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "上次运行检测到错误，日志已保留（可直接复制反馈）。",
@@ -910,7 +1080,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = { showPrevLog = true }) { Text("查看上次日志") }
+                OutlinedButton(onClick = { logDialogText = prev }) { Text("查看上次日志") }
             }
             if (archiveCount > 3) {
                 TextButton(onClick = {
@@ -992,7 +1162,8 @@ fun SettingsScreen(
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
             GuideLine("2", "进各 Agent 内完成各自的登录 / 授权（凭据由 Agent 自己保管），会话内直接可用。")
-            GuideLine("3", "进底部「洞天」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在洞天里另外装的 opencode 是另一份，两者互不干扰。")
+            // 2026-10-08：「洞天」→「终端」，与底栏 Tab 文案一致（见 MainActivity.kt:470）
+            GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在终端里另外装的 opencode 是另一份，两者互不干扰。")
             Spacer(Modifier.height(8.dp))
             Text(
                 "常见问题",
@@ -1036,6 +1207,14 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
     }
 
+    // 2026-10-08：Snackbar 出口（替换 828/1080 的"回退失败/修复失败" Toast）。
+    // BottomCenter 让它浮在 verticalScroll 内容之上不抢内容。
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
+    }
+
     // ── 修复环境二次确认（Compose 版）──
     if (repairConfirm) {
         AlertDialog(
@@ -1066,16 +1245,43 @@ fun SettingsScreen(
                                 val archive = File(ctx.cacheDir, candidates.name)
                                 if (archive.absolutePath != candidates.absolutePath) candidates.copyTo(archive, true)
                                 InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…")
-                                com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive) { }
+                                // 修复＝拿本地这个包再解压一次。若它与「当初装出当前 env 的那个包」
+                                // 逐字节相同（标记里的 archive-sha256 对得上），内容指纹照样成立 ⇒ 原样写回，
+                                // 否则一次修复就把增量基线抹掉、下次更新被迫全量（2026-10-08 真机 bug，
+                                // 详见 RootfsInstaller.envForReinstall 的 KDoc）。对不上就传 null。
+                                val repairSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(archive)
+                                val repairEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
+                                    File(ctx.filesDir, "rootfs"),
+                                    repairSha,
+                                )
+                                if (repairEnv != null) {
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "修复环境：本地包与当前环境同源（sha=${repairSha.take(12)}），保留环境指纹 $repairEnv",
+                                    )
+                                } else {
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "修复环境：本地包与当前环境无法确认同源（sha=${repairSha.take(12)}），不写环境指纹（下次更新走全量）",
+                                    )
+                                }
+                                com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive, repairEnv, repairSha) { }
                                 InstallFlow.finish(
                                     ctx,
                                     "修复完成：环境已重置，登录态与工作区保留（本次未联网下载）",
                                 )
                                 android.os.Handler(ctx.mainLooper).post { storageTick++ }
                             } catch (t: Throwable) {
-                                InstallFlow.fail(ctx, "修复失败：${t.message}")
-                                android.os.Handler(ctx.mainLooper).post {
-                                    Toast.makeText(ctx, "修复失败: ${t.message}", Toast.LENGTH_LONG).show()
+                                InstallFlow.fail(ctx, "修复失败：${HumanizeError.title(t)}")
+                                // 2026-10-08：Toast → Snackbar（带"查看日志"action），同"回退失败"分支
+                                scope.launch {
+                                    val r = snackbarHostState.showSnackbar(
+                                        message = "修复失败：${HumanizeError.title(t)}",
+                                        actionLabel = "查看日志",
+                                        duration = SnackbarDuration.Indefinite,
+                                    )
+                                    if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                        // 同上：现场取日志再弹，缺日志时会有指向目录的 Toast
+                                        openLogFromSnackbar()
+                                    }
                                 }
                             }
                         }.start()
@@ -1088,14 +1294,16 @@ fun SettingsScreen(
         )
     }
 
-    // ── 上次运行日志查看弹窗 ──
-    if (showPrevLog && prevLogText != null) {
+    // ── 运行日志查看弹窗 ──
+    // 文本非空才弹（两个入口都只在拿到非空文本时才赋值，见 logDialogText / openLogFromSnackbar）：
+    // 不再用"布尔位 + 文本"两道门叠加——那正是"点了没反应"的来源。
+    logDialogText?.takeIf { it.isNotBlank() }?.let { log ->
         AlertDialog(
-            onDismissRequest = { showPrevLog = false },
-            title = { Text("上次运行日志") },
+            onDismissRequest = { logDialogText = null },
+            title = { Text("运行日志") },
             text = {
                 Text(
-                    prevLogText!!.takeLast(6000),
+                    log.takeLast(6000),
                     style = MaterialTheme.typography.bodySmall,
                 )
             },
@@ -1103,19 +1311,21 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                         as android.content.ClipboardManager
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-prevlog", prevLogText))
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-log", log))
                     Toast.makeText(ctx, "已复制全部日志", Toast.LENGTH_SHORT).show()
                 }) { Text("复制全部") }
             },
-            dismissButton = { TextButton(onClick = { showPrevLog = false }) { Text("关闭") } },
+            dismissButton = { TextButton(onClick = { logDialogText = null }) { Text("关闭") } },
         )
     }
 
-    // ── 发现新版本弹窗（updateMsg 驱动）：确认后在应用内下载到公共缓存并安装 ──
-    updateMsg?.takeIf { it.startsWith("发现新版本") }?.let { msg ->
+    // ── 环境更新弹窗（pendingUpdateUrl 驱动）：确认后在应用内下载到公共缓存并安装 ──
+    // 触发条件用"是否真有可下载目标"，不再靠文案前缀猜：同版本补指纹的场景文案不以
+    // "发现新版本"开头，按前缀判断会让它既不弹窗也不提示（2026-10-08 修）。
+    updateMsg?.takeIf { pendingUpdateUrl != null }?.let { msg ->
         AlertDialog(
             onDismissRequest = { updateMsg = null },
-            title = { Text("发现环境更新") },
+            title = { Text(if (msg.startsWith("发现新版本")) "发现环境更新" else "可以重装环境") },
             text = { Text(msg) },
             confirmButton = {
                 TextButton(onClick = {
@@ -1131,10 +1341,51 @@ fun SettingsScreen(
                     val expectedSha = pendingUpdateSha
                     val patchRef = pendingPatch
                     val index = pendingIndex
+                    val localCandidate = pendingLocalArchive
+                    pendingLocalArchive = null
                     Thread {
                         // 增量失败会写这里的原因，随最终结论一起告诉用户（"回退全量"必须可见）
                         var fallbackNote = ""
                         try {
+                            // ── ⓪ 本地已有与索引逐字节相同的整包 → 直接本地重解压，不下载 ──
+                            // 2026-10-08 用户拍板：一次「补指纹」不该再下 192 MB（真机上白下过一次）。
+                            // 只有 sha 与索引一致才敢把索引的 env 写进标记——信任锚规则与全量路径同一条
+                            // （见 RootfsInstaller.envForMarker）；对不上就照旧走下载。
+                            if (localCandidate != null && localCandidate.isFile) {
+                                val localSha = RootfsDownloader.sha256Of(localCandidate)
+                                if (expectedSha.isNullOrBlank() || localSha.equals(expectedSha, ignoreCase = true)) {
+                                    InstallFlow.start(
+                                        ctx,
+                                        "检查环境更新：本地已有同版本安装包" +
+                                            "（${localCandidate.length() / (1024 * 1024)} MB），直接重解压，不下载",
+                                        fromLocal = true,
+                                    )
+                                    InstallFlow.update(ctx, "正在准备安装包：${localCandidate.name}")
+                                    val archive = File(ctx.cacheDir, localCandidate.name)
+                                    if (archive.absolutePath != localCandidate.absolutePath) {
+                                        localCandidate.copyTo(archive, true)
+                                    }
+                                    val envToWrite = RootfsInstaller.envForMarker(index?.env, index?.sha256, localSha)
+                                    if (index != null && envToWrite == null) {
+                                        com.example.zhengdao.rootfs.RunLog.log(
+                                            "本地包 sha256 与索引不一致（或索引字段缺失），本次安装不写 env 标记"
+                                        )
+                                    }
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "环境更新：用本地安装包（sha=${localSha.take(12)}）重解压，本次未联网下载"
+                                    )
+                                    InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请勿离开本页）…")
+                                    RootfsInstaller.ensureFreeSpace(ctx, archive.length())
+                                    RootfsInstaller.install(ctx, archive, envToWrite, localSha) { }
+                                    RootfsCache.pruneKeep(ctx)
+                                    InstallFlow.finish(ctx, "环境更新完成（用本地安装包，本次未联网下载），重进终端生效")
+                                    android.os.Handler(ctx.mainLooper).post { storageTick++ }
+                                    return@Thread
+                                }
+                                com.example.zhengdao.rootfs.RunLog.log(
+                                    "本地缓存包 sha（${localSha.take(12)}）与索引不一致（${expectedSha?.take(12)}），改为下载"
+                                )
+                            }
                             // 进度走 InstallFlow：通知栏常驻进度条 + 设置页状态行 + RunLog。
                             // 此前是每 20% 闪一条 Toast（"下载中 20%"），正是用户说的
                             // "提示时间有点短……我以为要重新下载呢"（E-036 §7）。
@@ -1166,7 +1417,9 @@ fun SettingsScreen(
                                     RootfsInstaller.ensureFreeSpace(ctx, deltaFile.length())
                                     val info = RootfsDelta.readPatchInfo(deltaFile)
                                         ?: throw RootfsInstaller.InstallFailed("补丁元数据缺失或不可读")
-                                    RootfsDelta.apply(ctx, deltaFile, info)
+                                    // 索引给的补丁 sha256 双重把关：下载校验一次（协议 §4），
+                                    // 再把同一期望值交给解压流水线（Rust 对"恰好被解压的字节"算一次）
+                                    RootfsDelta.apply(ctx, deltaFile, info, expectedSha256 = patchRef.sha256)
                                     // 增量成功后照旧做一次缓存整理（与全量路径一致）
                                     RootfsCache.pruneKeep(ctx)
                                     deltaDone = true
@@ -1216,7 +1469,10 @@ fun SettingsScreen(
                                 }
                                 InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请勿离开本页）…")
                                 RootfsInstaller.ensureFreeSpace(ctx, archive.length())
-                                RootfsInstaller.install(ctx, archive, envToWrite) { }
+                                // archiveSha256 一并写进标记：它是下次「修复环境/回退」判断
+                                // "本地这个包是否就是装出当前 env 的那个包"的唯一依据（见
+                                // RootfsInstaller.envForReinstall）。全量更新路径有确定值，一定传。
+                                RootfsInstaller.install(ctx, archive, envToWrite, actualSha) { }
                                 RootfsCache.pruneKeep(ctx)
                             }
                             InstallFlow.finish(ctx, fallbackNote + "环境更新完成，重进终端生效")
@@ -1226,7 +1482,10 @@ fun SettingsScreen(
                             toastOnMain("更新失败：${t.message}", long = true)
                         }
                     }.start()
-                }) { Text("下载并安装") }
+                }) {
+                    // 本地已有索引那个包时不再说"下载"：按钮文案与实际动作一致（2026-10-08）
+                    Text(if (pendingLocalArchive != null) "用本地包安装" else "下载并安装")
+                }
             },
             dismissButton = { TextButton(onClick = { updateMsg = null }) { Text("取消") } },
         )
@@ -1298,7 +1557,9 @@ internal fun SettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            // 2026-10-08 走查：12dp → 14dp。bodyMedium 行高 24dp + 24dp = 48dp
+            // 刚好不达标（差 4dp），这是设置页几乎所有行的交互热区。
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1338,7 +1599,10 @@ fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
             contentColor = if (selected) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.onSurfaceVariant,
         ),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        // 2026-10-08 走查：4dp → 10dp。M3 OutlinedButton 默认最小高 40dp，
+        // 原来 24dp 行高 + 8dp = 32dp，被默认值兜到 40dp 仍不足 48dp；
+        // 现在内容高 44dp，筛选 chip 这类"次要但要重复点"的控件按得准。
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
     }
@@ -1415,14 +1679,17 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                         Text("（无子文件夹）", style = MaterialTheme.typography.bodySmall)
                     }
                     entries.forEach { name ->
-                        Text(
-                            text = "📁 $name",
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { current = File(current, name).absolutePath }
                                 .padding(vertical = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            FolderGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(6.dp))
+                            Text(name, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))

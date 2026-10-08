@@ -2565,7 +2565,7 @@ else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接�
 
 ---
 
-## E-038 · 2026-10-08 · 环境里 152 MB 的 GPU 软件渲染栈（mesa + LLVM）：终端里没有任何入口用它，但"删掉"要先绕过 apt 的**假依赖**
+## E-038 · 2026-10-08 · 环境里的 GPU 软件渲染栈（mesa + LLVM，152 MB）：终端里没有任何入口用它，但"删掉"要先绕过 apt 的**假依赖** —— 最终只切掉 `libllvm19`（包 −25.9 MiB，见 E-042）
 
 **现场**：用户 2026-10-08 原话：
 
@@ -2603,12 +2603,27 @@ else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接�
 - **刻意不跑 `apt-get autoremove`**：ffmpeg 链接的 `libGL.so.1`（`libgl1`）**没有被任何包声明成依赖**，
   autoremove 会把它当垃圾清掉，ffmpeg 随即起不来——"看起来是垃圾"和"实际是承重墙"之间隔着一层声明。
 
-**断言（同一次构建里验收，§2.9）**：`dpkg -s mesa-libgallium` / `dpkg -s libllvm19` 必须**失败**（真删掉了）；
+**修正（2026-10-08 晚，又踩了两轮 CI 之后；详见 E-041 / E-042）**：上面这版"重打包 `libgbm1` + 一次 purge 四个包"
+**没有成功过一次**。Run 163 暴露出 `sed` 字符类里的 `)` 与版本约束撞车（E-041，纯语法问题）；修好之后
+Run 164 又证明"只绕一条边不够"——`apt` 的 purge 会顺着主链
+`mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg` 把 ffmpeg 一起带走（E-042）。
+**最终做法：不动 mesa 本体，只切 `libllvm19`** —— 重打包 `mesa-libgallium` 摘掉它对 `libllvm19` 的
+**声明**依赖，再 `apt-get -y purge libllvm19`（黑名单断言里补上 `mesa-libgallium`，它必须活着）。
+放弃 mesa 本体的理由：要保住 ffmpeg，得再重打包 `libglx0` 与 `libgl1` 两个包，而多拿到的只有 34 MB，不划算。
+
+**断言（同一次构建里验收，§2.9）**：`dpkg -s libllvm19` 必须**失败**，而 `dpkg -s mesa-libgallium` 必须**成功**
+（本轮只切 LLVM，它还在）；
 `ffprobe` 存在；`ldd /usr/bin/{ffmpeg,ffprobe,ffplay}` 不得出现 `not found`；`ffmpeg -f lavfi -i testsrc=size=64x64:rate=1 -frames:v 1 -f null -`
 转码冒烟必须成功；`dpkg --audit` 无输出且 `apt-get check` 通过（依赖图没破）；
 `node python3 git tmux rg busybox sqlite3 curl zstd uv` 逐个 `command -v`。
 
-**收益**：落盘 −152 MB（基线 1021 MB）；包体积按 E-033 的口径**在 zstd-19 下实测**（本次 CI 构建输出的字节数为准）。
+**收益（实测；build Run 165，`0b47899`，2026-10-08 19:01 完成，RootFS 步骤 success）**：
+`latest` 上的环境包 **228,790,151 B → 201,630,773 B = −27,159,378 B（−25.9 MiB，−11.9%）**；
+新索引 `builtAt=2026-10-08T11:00:36Z`、`env=51e1cc0c32f099aa`、
+`sha256=d12cd1d37e0c4767e6730fd709eb796f5fe996b27e94e40b480bdb96afec9e27`、`size=201630773`。
+落盘少 118 MB（`libLLVM.so.19.1`），但它在 zstd-19 下压缩比很高，所以**线上字节只降 25.9 MiB** ——
+这正是 E-033 那条"删除类方案必须在线上压缩级别下测算"的又一次验证。
+（本行原先写"落盘 −152 MB / 预期 −35～45 MB"，是按"mesa + LLVM 全删"估的；实际只切了 LLVM，原因见 E-042。）
 
 **教训**：
 
@@ -2619,3 +2634,500 @@ else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接�
    恰好没有任何包声明它。清理工具的依据是**声明**，不是**真实使用**。
 3. **数字要三份对齐再动手**：外部包页说 34.2 MB / 120.4 MB、真机 `dpkg-query` 说 34,238 KB / 120,416 KB、
    `du` 说 34 MB / 118 MB —— 三份一致才敢改构建脚本；体积收益也必须按线上压缩级别（zstd-19）测算。
+
+---
+
+## E-039 · 2026-10-08 · 构建失败时"外面什么都看不到"：Actions 日志对未登录用户不可见，得让脚本自己发 `::error::` 注解
+
+**现场**：`efd68a7`（E-038 那次剔除 GPU 栈）推上去后，build **Run 162** 整轮显示**绿色**，
+但 `latest` 上的 `rootfs-index.json` 还是上一版（`size: 228790151`、`builtAt: 2026-10-08T06:49:30Z`），
+新包根本没产出。翻到 job 页面才看到一条注解：
+
+```
+构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
+Process completed with exit code 2.
+```
+
+**为什么外面看不到日志**：Actions 的 job 页面匿名只渲染一句 `Sign in to view logs`；
+`https://github.com/<owner>/<repo>/actions/runs/<run_id>/logs` 匿名下载直接 **HTTP 404**；
+`web_fetch` 走 `api.github.com` 在本机被策略拒（`non-public IP address`），`gh` CLI 也不在 PATH。
+于是"唯一的匿名可见通道"就是**注解（annotation）**——可它当时只告诉我们"退出码 2"。
+再叠加 `build.yml` 的 rootfs job 是 `continue-on-error: true`、发布步骤有 `compgen -G "rootfs-files/*"` 守卫，
+失败就被完全吞掉了：CI 绿着、`latest` 不动、没人知道死在哪一行。
+
+**修法（`rootfs/build-rootfs.sh` 的"失败自述"）**：
+
+1. `annot()` = `printf '::error::%s\n' "$(printf '%s' "$1" | tr '\n' '|' | cut -c1-1500)"`
+   —— 注解必须单行，所以把内部换行压成 `|`、并截断到 1500 字符。
+2. 外层脚本与 chroot 内 CONF 脚本**各挂一个 `trap ... ERR`**，打印
+   `[当前小节] 第 N 行 \`命令\`，退出码 R`；小节用显式变量跟踪（外层 `STEP_OUTER`、内层 `STEP`），
+   在 `[1/4] [2/4] [2.5/4] [3/4] [4/4] [5/5]` 与 `---- 2.1 … ---- 2.11` 每段前赋值。
+3. §2.8 里每条外部命令（`apt-get download` / `dpkg-deb -R` / `dpkg-deb -b` / `dpkg -i` /
+   `apt-get -y purge`）都单独抓 `2>&1`，失败时把**它自己的 stderr** 塞进注解。
+4. §2.9 与包体积门禁里 20 处 `echo "[断言失败] …"` 改成 `annot "[断言失败] …"`；
+   外层 5 处 `echo "[错误] …"` 同样处理；`tar` / `manifest` / `patch` / `index` 四处也各自抓输出。
+
+**教训**：
+
+1. **"日志看不到"是一个必须正面解决的真问题，不是环境噪音**：失败信息只存在于日志里，
+   就等于这个构建**没有可观测性**。能让匿名用户看到的通道只有注解，所以关键失败点必须自己发注解。
+2. **`exit 1` 不触发 `ERR` trap**。脚本里手写的 `echo "[断言失败] …"; exit 1` 属于**显式退出**，
+   trap 不会补一条注解——这类分支必须自己调 `annot`，否则"加了 trap"会给人错误的安全感。
+3. **注解里必须带"哪一小节"**：只给行号，一旦脚本再改几行就对不上了；`[2.8 剔除 GPU 栈]` 这种标签
+   才是人（和 Agent）能直接对上号的定位信息。
+4. **`continue-on-error: true` 的 job 必须配"可见的失败"**：它保证了 `latest` 不会被空目录覆盖（好事），
+   但也让失败隐身（坏事）。两者要一起设计：守卫 + 自述。
+
+**补记（同日晚，build Run 163，`ee766e7`）**：这套注解上线**第一轮**就把真因带了回来 ——
+`[2.8] dpkg-deb -b 重打包 libgbm1 失败：… 'Depends' field, syntax error after reference to package
+'libwayland-server0'`。上一轮外面只能看到 `exit code 2`，这一轮"读一行原始 stderr 就能改代码"。
+真因与修法见 **E-041**。
+
+---
+
+## E-040 · 2026-10-08 · 「装过」不等于「装得回来」：AGY 的恢复入口按用户拍板关掉
+
+**现场**：
+
+- AGY（Antigravity）第一次安装失败（终端原文 `Fatal: Could not connect to the release server to
+  download the manifest. Please check your internet connection or firewall settings.`）；
+  账本 `Download/证道/agents/installed.json` 里因此留下一条 `{"id":"antigravity",…,"state":"installing"}`，
+  主页随之常驻一颗蓝色「**恢复全部（1 个）**」——点下去必然再失败一次。
+- 真机网络探针（2026-10-08 17:19，结果落在 `Download/证道/net-probe.txt`）：环境里
+  `registry.npmmirror.com -> 200`，而 `github.com` / `raw.githubusercontent.com` /
+  `antigravity.google` / `registry.npmjs.org` / `www.google.com` **全部 `000`**；
+  `env` 里只有 `no_proxy=localhost,127.0.0.1,::1`，**没有任何 `http_proxy` / `https_proxy`**。
+  ⇒ 不是"代理没开"这么简单：Google 那条路要终端整体出境（用户的话："除非把终端的 IP、地址
+  什么的都改成国外才行"）。
+- 用户原话：「那就不管AGY了，这玩意儿用的人少。清掉AGY的恢复功能吧，谷歌对地域限制太严了，
+  除非把终端的IP、地址什么的都改成国外才行」；在给出的选项里选了
+  **「只做恢复侧：AGY 不再进恢复候选（丹房保留 AGY 安装卡片）」**。
+
+**改法**：
+
+1. `AgentInfo` 新增 `restorable: Boolean = true`（`app/src/main/java/com/example/zhengdao/ui/AppState.kt`），
+   字段注释里直接留下判据（网络探针的逐项结果）与用户原话；
+2. 出厂清单里的 AGY 条目 `restorable = false`——**安装卡片、探测路径、卸载能力全部保留**，
+   只是不再参与"恢复全部"（境外网络下用户仍可自己点装）；
+3. `AgentLedger.restoreCandidates` 抽出纯函数
+   `pickRestoreCandidates(ledgerIds, agents)`，筛选条件多一条 `it.restorable`
+   （`app/src/main/java/com/example/zhengdao/ui/AgentLedger.kt`）；
+4. 单测补两条（`app/src/test/java/com/example/zhengdao/ui/AgentLedgerTest.kt`）：
+   候选只收「账本里有 + 现在探测不到 + 有安装命令 + `restorable`」，且**顺序跟清单走**。
+
+**教训**：
+
+1. **"装过"≠"装得回来"**：账本记的是历史事实，恢复能力取决于**当下网络能否到达发行方**。
+   把两者混为一谈，主页就会递给用户一个点了必错的按钮。
+2. **失败的尝试不该留下"待恢复"的假象**：`markStarted` 先把 `installing` 写进账本是对的
+   （那轮真在装），但"要不要给恢复入口"的判据里必须带上"这条路现在走不走得通"。
+3. **地域限制是产品约束，不是环境噪音**：凡是"官方安装器只从单一境外域名拉包"的 Agent，
+   都该默认假定在受限网络下不可恢复 —— `restorable` 就是给这类条目准备的开关
+   （将来别的条目遇到同类问题，改一个布尔值即可，不用动恢复逻辑）。
+
+**同轮补做（用户 2026-10-08 拍板）**：恢复横幅文案改了。旧文案写死
+「这些 Agent 的程序已随上次卸载消失」，而账本里更常见的其实是"上次装到一半失败"
+（`state=installing`，本轮 AGY 就是）⇒ 改成
+「这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 …」
+（`app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt`，横幅段的注释里也留了这次改动的由来）。
+
+---
+
+## E-041 · 2026-10-08 · `sed` 的字符类里放了数据里也会出现的字符（`)`），于是重打包的 `.deb` 少了一个括号：Run 162 那个 `exit 2` 的真因
+
+**现场**：E-039 那套"失败自述"上线后的**第一轮**（build **Run 163**，`ee766e7`）就把真因带回来了。
+匿名可见的 build job 注解里原文是：
+
+```
+[2.8] dpkg-deb -b 重打包 libgbm1 失败：dpkg-deb: error: parsing file '/tmp/tmp.CUna1R4a8h/gbm/DEBIAN/control' near line 7 package 'libgbm1':| 'Depends' field, syntax error after reference to package 'libwayland-server0'
+```
+
+（同一 job 的另一条注解只有 `Process completed with exit code 1.` ⇒ 小节标签 + 原始 stderr 那条才是有效信息。
+整轮仍显示 `success`，因为 rootfs 那步是 `continue-on-error: true`；`latest` 这次也**没更新**。）
+
+**真因**：§2.8 要摘掉 `libgbm1` 对 `mesa-libgallium` 的声明依赖，原来的写法是
+
+```bash
+sed -i -E 's/, *mesa-libgallium[^,)]*//g' "$GPU_TMPDIR/gbm/DEBIAN/control"
+```
+
+字符类 `[^,)]` 里塞了一个 `)`，而依赖项的**版本约束自己就含括号**。真实 control（`https://deb.debian.org/debian/pool/main/m/mesa/libgbm1_25.0.7-2+deb13u1_arm64.deb`，
+44,144 B 的 ar 包，内含 `control.tar.xz` 1,444 B）的第 7 行是：
+
+```
+Depends: libc6 (>= 2.38), libdrm2 (>= 2.4.121), libexpat1 (>= 2.0.1), libwayland-server0 (>= 1.15.0), mesa-libgallium (= 25.0.7-2+deb13u1)
+```
+
+于是 `[^,)]*` 只吃到 `(= 25.0.7-2+deb13u1`（在右括号**之前**停下），把那个孤零零的 `)` 留在原地：
+
+```
+… libwayland-server0 (>= 1.15.0), )
+```
+
+`dpkg-deb -b` 随即报 `'Depends' field, syntax error after reference to package 'libwayland-server0'`。
+Run 162 的 `exit 2` 就是它（当时外面只能看到"退出码 2"，没有注解 ⇒ 定位不了）。
+
+**修法**（`rootfs/build-rootfs.sh` §2.8）：以**逗号**为界吃掉整条版本约束，再逐项收尾空项：
+
+```bash
+sed -i -E \
+  -e 's/(,[[:space:]]*)?mesa-libgallium[^,]*//g' \
+  -e 's/,[[:space:]]*,/,/g' \
+  -e 's/,[[:space:]]*$//' \
+  -e 's/:[[:space:]]*,[[:space:]]*/: /' \
+  -e 's/[[:space:]]+$//' \
+  -e '/^(Depends|Pre-Depends|Recommends|Suggests|Breaks|Conflicts|Provides|Replaces|Enhances):[[:space:]]*$/d' \
+  "$GPU_TMPDIR/gbm/DEBIAN/control"
+```
+
+并在 `dpkg-deb -b` **之前**加一道自查：依赖字段里不许出现 `, ,` / 行尾逗号 / `: ,` / 空括号
+（`grep -nE '^(Depends|Pre-Depends|Recommends):' … | grep -qE ',[[:space:]]*,|,[[:space:]]*$|:[[:space:]]*,|\([[:space:]]*\)'`），
+命中就把字段原文塞进 `annot` 注解再退出 —— 自己报错比等 `dpkg-deb` 报错更直白。
+
+**证据（本地，改完先验，不必等 CI）**：
+
+- 把真实 `.deb` 的 control 抽出来跑一遍新 sed，得到
+  `Depends: libc6 (>= 2.38), libdrm2 (>= 2.4.121), libexpat1 (>= 2.0.1), libwayland-server0 (>= 1.15.0)`；
+  `grep mesa` 无命中、无逗号残留，且 `diff`（去掉 `Depends` 行）显示**整份 control 一字未动**（`Description` 续行也没碰）。
+- 6 种排布回归（mesa 在末尾 / 中间 / 最前 / 唯一一项（整行删）/ 无版本约束 / `Recommends`+`Suggests` 也含 mesa）：
+  全部通过，空掉的依赖字段整行删除、不留 `Depends:` 空字段。
+- `bash -n` 自检：外层 `OUTER_SYNTAX_OK`，抽出 CONF 内层（255 行）`INNER_SYNTAX_OK`。
+
+**教训**：
+
+1. **排除字符必须是分隔符，不能是内容**：当时的 `[^,)]` 是"顺手"想把右括号一起吃掉，可版本约束
+   `(= 1.2.3)` 自己就带括号 —— 排除集里放内容，就会在"内容里恰好也有它"的地方悄悄切错。
+   这类错误 `bash -n` 永远看不出来（语法合法），本地不真跑一遍就只能等 CI 用整轮构建来告诉你。
+2. **"失败自述"上线第一轮就自证了价值**：上一轮（Run 162）外面只有 `exit code 2`，靠猜；
+   这一轮注解把 `dpkg-deb` 的原始 stderr 带了回来，定位从"翻日志（还看不到）"变成"读一行"。
+   可观测性不是锦上添花，它决定一次修复是 5 分钟还是 5 轮 CI。
+3. **拿真实输入做回归，别拿自己想象的输入**：一开始只用"单行、mesa 在末尾"的样例试，
+   结论是"通过"；直到把 deb.debian.org 上那个真包下回来跑，才算真的验证过。
+   涉及外部数据格式的改动，**样本要从真实来源取一份**。
+
+---
+
+## E-042 · 2026-10-08 · 剔 GPU 栈的第三层：`apt` 的 purge 解算会顺着 `mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg` 把 ffmpeg 一起带走 —— 改成只切 `libllvm19`（−118 MB）
+
+**现场**：E-041 的 sed 修好之后，build **Run 164**（`57757a2`，runId `37761000072`）的 RootFS 步骤**又**失败
+（整轮仍显示成功，因为 `continue-on-error: true` + 发布步骤的空目录守卫），自述注解这次把 apt 的模拟
+卸载名单原样带了出来（外面匿名可见）：
+
+```
+[2.8] 卸载 mesa 会连带移除关键包，已中止：Purg ffmpeg [7:7.1.5-0+deb13u1]|Purg libavdevice61 [7:7.1.5-0+deb13u1]|
+Purg libgl1 [1.7.0-1+b2]|Purg libglx0 [1.7.0-1+b2]|Purg libglx-mesa0 [25.0.7-2+deb13u1]|
+Purg libgl1-mesa-dri [25.0.7-2+deb13u1]|Purg mesa-libgallium [25.0.7-2+deb13u1]|Purg libllvm19 [1:19.1.7-3+b1]
+```
+
+**真因**：上一轮只摘掉了 `libgbm1 → mesa-libgallium` 这条**支线**，而要点掉 mesa 本体，链路上还有
+别的边。这次 Purg 名单摊开的顺序是
+
+```
+mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg
+```
+
+（`mesa-libgallium ← libglx-mesa0` 这一段由真机反向依赖扫描确认过；`libglx0 ← libgl1 ← ffmpeg`
+这两段是这次 Purg 名单反推的 —— 即 ffmpeg 一侧声明了 `libgl1`，逐级回到 mesa）
+⇒ 一条 `apt-get purge mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri` 就会把 ffmpeg 与
+libavdevice61 一起带走。**上一轮"绕过 apt 的假依赖"这个判断本身没错，错在只绕了一条边。**
+
+**决策**：不再动 mesa 本体，**只切 `libllvm19`**（落盘 118 MB，构建 Top20 里第二大）。理由：
+
+- 要动 mesa 本体，就得再重打包 **两个**包（`libglx0`、`libgl1`）才能把 ffmpeg 从链上摘下来，
+  而多拿到的只有 `libgallium-25.0.7-2+deb13u1.so` 的 34 MB ⇒ 风险/改动量不划算；
+- `libllvm19` 是这条链上**最干净的一条边**：真机反向依赖扫描显示它的父包**只有** `mesa-libgallium`
+  一个 ⇒ 在 `mesa-libgallium` 的 `Depends` 里摘掉 `libllvm19 (>= 1:19.1.0)`，purge 就只带走它自己；
+- 用户在终端里对 LLVM 同样没有任何入口（E-038 的三条取证：`ldd /usr/bin/ffmpeg` 的 NEEDED 闭包里
+  既没有 `libgallium-*.so` 也没有 `libLLVM.so.19.1`；proot 里没有 `/dev/dri`、没有 X/Wayland display；
+  全仓 `app/` 对 `libgallium|mesa|libgbm|SDL2|vulkan` 零命中）。
+
+**修法**（`rootfs/build-rootfs.sh` §2.8，整段重写）：
+`apt-get download mesa-libgallium` → `dpkg-deb -R` → 多表达式 `sed` 摘掉 `libllvm19` 一条
+（`-e 's/(,[[:space:]]*)?libllvm19[^,]*//g'` + 空项/尾逗号/`: ,`/空依赖字段逐项收尾）→ 自查
+（无残留 + 依赖字段无 `, ,`/尾逗号/空括号）→ `dpkg-deb -b` → `dpkg -i`；然后
+`apt-get -s -y purge libllvm19` 打印 `^(Remv|Purg) ` 名单并断言黑名单（这次把 `mesa-libgallium` 也加了
+进去 —— 它必须活着）→ `apt-get -y purge libllvm19`。**旧的 libgbm1 重打包段整段删除**（它绕的那条边
+现在不再需要）。§2.9 的断言反过来：`libllvm19` 必须没了，`mesa-libgallium` **必须还在**（少它说明
+重打包或卸载跑偏了）。每条外部命令仍各自把 stderr 塞进 `annot`（E-039 的机制，这两轮都靠它定位）。
+
+**证据（本地，改完先验）**：把真包 `mesa-libgallium_25.0.7-2+deb13u1_arm64.deb`（deb.debian.org 下回来，
+8,032,536 B，成员 `debian-binary`/`control.tar.xz`/`data.tar.xz`）的 control 抽出来（903 字符）跑新 sed：
+
+- 原 `Depends` 第 7 行共 19 项，其中 `libllvm19 (>= 1:19.1.0)` **夹在中间**（`libgcc-s1` 与 `libsensors5` 之间）；
+- 改后 18 项：`libllvm19` 整条连同它的括号版本约束干净消失，其余 18 项**逐字未动**；
+- 除依赖字段外整份 control `diff` 为空（`Description` 续行、`Provides: libglapi-mesa` 都原样）；
+- 回归脚本 `C:\Users\guoli\AppData\Local\Temp\zd-watch\mesa-check.sh` = `RESULT=PASS`；
+- `bash -n` 内外层自检（外层 + 抽出的 CONF 内层 266 行）= `OUTER_SYNTAX_OK` / `INNER_SYNTAX_OK`。
+
+**教训**：
+
+1. **"绕过 apt 的假依赖"要绕过"整条链"，不是"一条边"**：依赖图上每一条边都得各自重打包一个包，
+   所以选目标时先看**这条边上游有几个包**（`libllvm19` 只有 1 个父包；mesa 本体至少有 2 个）。
+   边际收益 34 MB、边际成本 2 个包 ⇒ 明确放弃，并把"为什么放弃"写进脚本注释，免得下一轮又有人试。
+2. **断言要写"这个包自己的事实"，别抄隔壁包的**：我给回归脚本写"该留的依赖"清单时，顺手抄了上一轮
+   `libgbm1` 的 `libwayland-server0`，结果它根本不在 `mesa-libgallium` 的 `Depends` 里，脚本报了个
+   假失败（`reasons: lost-libwayland-server0`）。改成逐项点名 + **结构性断言**（"依赖项数必须恰好少 1"）
+   之后，这个绿灯才是可信的。
+3. **每一轮失败都要把"新事实"写回脚本**：这次失败注解里的 Purg 名单本身成了下一轮的判据
+   （黑名单里补上 `mesa-libgallium`）。CI 失败的价值不在"红了"，而在它把依赖图的下一层摊开给你看。
+
+## E-043 · 2026-10-08 · 「终端里复制不出东西」的真因是 tmux 的 `set-clipboard` 默认 `external` —— termux 的 OSC 52 backport 因此在真机上一直是空转
+
+**现场**：2026-10-08 20:35，termux 单点 backport（合并提交 `b3622f5`，含 OSC 52 累积上限从 8192
+抬到 `100*1024+10` 的修复）进入 main、同签名 release APK 装机之后，按"发一条 >8 KiB 的 OSC 52，
+看 `TerminalActivity.kt:809-814` 的 Toast「已复制 N 个字符」"做真机验收：脚本确实跑了（屏上打出
+`OSC52-9000-SENT`），但**一条 Toast 都没有**，随后点终端工具栏「粘贴」也什么都粘不出来。
+
+**排查**（三步，缺任何一步都会误判成"App 的 OSC 52 解析坏了"）：
+
+1. **BEL 终止是死路**：tmux 3.5a 只认 ST（`ESC \`）终止，用 `\x07` 结尾的 OSC 52 会被 tmux 当普通
+   文本透到屏上（截图里能看到裸 base64 `]52;c;U1NT…`）⇒ 序列根本没到 App，这时"没有 Toast"说明不了任何事。
+2. **对照实验切链路**：`tmux set-buffer -w "ZD-CLIP-PROBE-A"` 之后点「粘贴」，剪贴板里粘出了这句话
+   （屏上可见，剪贴板预览条也同步显示）⇒ **tmux→App 与 App→剪贴板这两段都是通的**，坏只坏在
+   pane 内应用 → tmux 这一段。
+3. **tmux 侧真机读数**：`tmux 3.5a`；`set-clipboard external`（默认值）；`#{client_termfeatures}` 里
+   其实**有** `clipboard`；会话内 `$TERM=tmux-256color`；`infocmp` 里**没有 `Ms`**；
+   `~/.tmux.conf` 只有 16 字节（内容 `set -g mouse on`，由 `ProotLauncher` 预置）；`/etc/tmux.conf` 不存在。
+
+**真因**：`set-clipboard external` 的语义是"只接受**外层终端**下发的剪贴板写入，不把 pane 里的 OSC 52
+转发出去"；只有 `on` 才既存进 tmux buffer、又透传给外层终端。改成 `on` 之后三种负载立刻全部打通：
+100 字节 → Toast「已复制 100 个字符」、9000 字节 → 「已复制 9000 个字符」、12345 字节 →
+「已复制 12345 个字符」，剪贴板预览条分别是 `SSSSSSSS…` / `BBBBBBBB…` / `CCCCCCCC…`
+⇒ **100 KiB 上限那条修复本身是好的，它只是从来没有机会被触发。**
+
+**修法**：`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` 里那段"幂等补
+`~/.tmux.conf`"的代码（原本只补 `set -g mouse on`）加第二条：匹配
+`(?m)^\s*set(-option)?\s+-g\s+set-clipboard\b`，缺失就追加 `set -g set-clipboard on`，并
+`RunLog.log("tmux 配置已补：set -g set-clipboard on（终端内 OSC 52 才能写进手机剪贴板）")`；
+有改动才写文件，不覆盖用户自有配置。提交 `87b7c10`（分支 `fix/tmux-set-clipboard`）→
+merge **`28e733d`**，已推 origin/main。
+
+**证据（配置驱动，不手工改运行时选项）**：先 `tmux set-option -g set-clipboard external` 把运行时复原，
+`adb install -r` 新包（`lastUpdateTime=2026-10-08 20:47:14`）、`am force-stop` 冷启 → 点底部「终端」
+→ `ProotLauncher` 重跑：`~/.tmux.conf` 变成 `set -g mouse on` + `set -g set-clipboard on`，日志原文
+`[10-08 20:48:01] tmux 配置已补：set -g set-clipboard on（终端内 OSC 52 才能写进手机剪贴板）`，
+**新起的 tmux server**（`pid=4785`，`created Thu Oct 8 20:48:01 2026`）直接报 `set-clipboard on`；
+同一条 9000 字节脚本在收起软键盘后弹出完整 Toast「**已复制 9000 个字符**」。
+
+**教训**：
+
+1. **backport 正确 ≠ 功能可用**：转义序列类功能要连着"谁有可能吞掉它"一起验。`TerminalEmulator` 的
+   单测只能证明解析器收得下 100 KiB；真机上决定这条序列能否抵达解析器的是 pty 与 tmux 之间的配置。
+2. **终端页的屏幕是唯一真相**：终端是 canvas，a11y 树里没有任何节点 ⇒ 验收一律走"push 脚本 →
+   guest 里 `bash /workspace/x.sh` → 结果写文件再 `adb pull` 当纯文本读"，或者截图；
+   另外 `adb shell input text` 里**不能带 `;`**（设备侧 shell 会把它当命令分隔符，报
+   `/system/bin/sh: %stmux%s: inaccessible or not found`）——这也是一开始命令打不进终端的真因。
+3. **Toast 是这类事件的唯一出口，且只活 2 秒**：`logcat` 里没有 Toast 文本，只能用
+   `dumpsys window windows | grep -c 'u0 Toast'` 轮询、命中即截图；「已复制 N 个字符」这类只在
+   Toast 里出现的信息，不截图就等于没验。
+4. **先做对照实验再归因**：`set-buffer -w` 那一发把"三段链路"切成两段，一步就把嫌疑锁死在 tmux 配置上；
+   否则很容易误判成自家 OSC 52 解析或渲染层的锅。
+
+## E-044 · 2026-10-08 · 「修复环境」把环境指纹抹掉：标记文件只记 distro/env，重装时无从证明「本地包 == 当前环境」 ⇒ 补 `archive-sha256` 一行，只有同源才回填 env
+
+**现象（真机时间线，Honor PGT-AN10 / Android 16）**：
+
+- 21:26 设置页「检查环境更新」→ 结果行「**已是最新版本（13.7，环境 51e1cc0c32f099aa）**」。
+- 21:27:54 点「修复环境（30 秒）」→ 8 秒后「修复完成：环境已重置，登录态与工作区保留（本次未联网下载）」。
+- 21:56 再点「检查环境更新」→ 结果行变成「**本地已安装 13.7，但缺少环境指纹记录（env）：本次将用全量包（约 192 MB）重装一次以补上指纹，重装后「检查环境更新」才能正确判断新旧。**」
+
+也就是说：**用户点一次「修复环境」，就把自己的增量基线抹掉了**，下次更新只能全量下 192 MB。这不是文案问题，是标记文件真的少了一行。
+
+**根因**：标记（`<filesDir>/rootfs/.zhengdao-rootfs-ok`）里只记 `distro` / `env` / `installed-at` 三行，而"重装的是同一个包吗"这件事从来没被记下来。于是：
+
+- `ui/SettingsScreen.kt` 的修复环境路径调 `RootfsInstaller.install(ctx, archive) { }`（env 留空、包 sha 留空）；
+- `rootfs/RootfsInstaller.kt` 里两处收尾都写 `RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)` ⇒ `env=` 行被整行跳过；
+- 而"缺少指纹"和"环境真的变了"在标记里长得一模一样 ⇒ 检查更新只能保守地要求全量。
+
+**修法（`48d5569` → merge `d8fb5d6`）**：
+
+1. `rootfs/RootfsMarker.kt`：`Data` 增 `archiveSha256: String?`；标记新增一行 `archive-sha256=<64 位 hex>`（写在 `env=` 之后、`installed-by` 之前），解析时用 `SHA_RE = Regex("^[0-9a-fA-F]{64}$")` 校验形态，**形态不合 = 没记过**（旧标记没有这一行 ⇒ 一律视为"不确定"，行为与修复前完全一致，向后兼容）。新增 `installedArchiveSha256(rootfsDir)`。
+2. `rootfs/RootfsInstaller.kt`：新增 `envForReinstall(rootfsDir, archiveSha256): String?` —— **只有**标记里记的 sha 与"这次真正要装的那个包"的 sha 相等（忽略大小写）时才把原 `env` 原样传回，否则回 `null`（照装，但**绝不凭空造一个 env**）。`install(...)` 换签名带上 `archiveSha256`，Rust 快路径与 Java 路径都写。
+3. `rootfs/RootfsDownloader.kt`：把 `verifySha256` 里的流式哈希抽成 `sha256Of(file): String` 复用（128 KB 缓冲、小写 hex）。
+4. 三条调用点各自带 sha：修复环境 `ui/SettingsScreen.kt:1231`（`repairSha` → `envForReinstall`）、回退版本 `:941`、全量更新 `:1397`；`TerminalActivity.kt:1101`（本地缓存包）/`:1167`（联网下载）带已知 sha；`:1050`（用户用 SAF 自选的文件）**故意不带** —— 说不清来源就不写，宁可下次全量。两条路径都把「同源→保留环境指纹 …」或「无法确认同源→不写（下次全量）」写进 RunLog，真机验收一眼能看。
+5. 单测：`rootfs/RootfsEnvTrustTest.kt` +4（同源写回、大小写/空白容错、对不上/没记 sha/形态不合一律 null、不会凭空造 env、`sha256Of` 跨 128 KB 缓冲边界）、`rootfs/RootfsMarkerTest.kt` +3（往返与行序、空值不写行、形态不合视同没记过）。
+
+**教训**：
+
+1. **"记了没记"和"记的值是空"必须能区分**：标记文件里少一行与写一个空值，后续逻辑必须能分开判 —— 这里的做法是"旧格式没有这一行 ⇒ 视为不确定"，而不是"空 = 未知"，否则老用户的标记会被新逻辑解释成"确定没记过"，凭空多一次全量。
+2. **只在能证明同源时才补写信任信息**：`envForReinstall` 宁可回 `null`（放弃保留）也不猜；猜错一次就是把两个不同环境包的内容混进同一个指纹，比"多下一次 192 MB"贵得多。
+3. **统计用例数要固定口径**：此前记的「32 suites / 81 tests」是抓 `test-results` XML 时抓错节点得到的假数字；按"每个 XML 首两行的 `tests="N" skipped=… failures=… errors=…"`"重数 —— 改前 **264**、改后 **271**（+7 正是本轮新增）。以后一律走这个数法。
+
+## E-045 · 2026-10-08 · 向 Rust 进化的第一刀：安装完整性锚挪进 Rust 核心（撤销一段**从未启用**的死代码、192 MB 包少读一遍），顺带把入库的 `.so` strip 掉 278 KB —— 并记住「16 KB 对齐漏了不是崩溃而是静默降级」
+
+**发现（读代码读出来的，不是线上事故）**：
+
+- `rust/core/src/extract.rs` 的 `extract_pipeline(archive_path, target_dir, expected_sha256: Option<&str>)` **本来就会在解压途中流式算归档 sha 并对账**（失配走 `ExtractError::ShaMismatch`，文案 `SHA256 不匹配: 期望 {expected} 实际 {actual}`）。
+- 但 `rootfs/RootfsInstaller.kt` 一直这样调：`CoreNative.extract(p, tmp, null)`，旁边注释写着「SHA 已在调用方校验过」⇒ 那段 Rust 校验**从来没被启用过**；代价是同一个 192 MB 包被读两遍（Java 先哈希一遍校验，Rust 再解压读一遍）。
+
+**改动（分支 `feat/rust-install-integrity`）**：
+
+1. `RootfsInstaller.kt`：Rust 快路径改成 `CoreNative.extract(archive.canonicalPath, tmpDir.canonicalPath, archiveSha256)` —— 信任锚落在"恰好被解压的那些字节"上，一次读盘。失败分流：`err.message` 命中 `SHA_MISMATCH_MARK = "SHA256 不匹配"` ⇒ `throw InstallFailed("安装包完整性校验失败（Rust 核心）：…")`，**不回退 Java**（Java 路径根本不校验 sha256，回退等于把校验降级成没校验）；其余失败仍 `Log.w("Rust 解压失败，回退 Java 路径")`。
+2. Rust 侧新增文件摘要：`rust/core/src/sha256.rs` 的 `sha256_file_hex(path) -> io::Result<String>`（128 KB `BufReader` 分块喂流式 `Sha256Stream`）、`jni_bridge.rs` 的 `Java_com_example_zhengdao_rust_CoreNative_nativeSha256File`（成功回 hex、失败回 **null**，绝不 panic 跨 FFI）。
+3. `rust/CoreNative.kt`：`sha256File(file): String?`（`rustAvailable` 守卫 + `runCatching`）；`rootfs/RootfsDownloader.kt` 的 `sha256Of` 优先走 Rust，回落平台 `MessageDigest`，并留两行日志「**sha256Of 走 Rust 核心** / **走平台回退**」——这是 release 包里 R8 万一改了 native 方法名时**唯一能分辨的出口**（AGP 默认规则 `-keepclasseswithmembernames class * { native <methods>; }` 理论上是安全的，但 E-022 已经栽过一次"名字被 R8 改掉"）。
+
+**验证（都在本机做完）**：
+
+- host `cargo test -p zhengdao_core --release` ⇒ **10 passed / 0 failed**（含新增的「文件摘要与一次性一致_跨缓冲边界」「空文件摘要等于空串摘要」）。
+- `cargo build --release --target aarch64-linux-android -p zhengdao_core` ⇒ 未 strip **1,099,248 B**。
+- 入库前 `llvm-strip.exe --strip-unneeded` ⇒ **811,592 B**（原入库版 1,095,744 B，**−284,152 B ≈ −278 KB**）。注意这 278 KB **只是仓库/检出的体积，APK 不因此变小**：AGP 打 release 时本来就会替你把 native 库 strip 一遍 —— 实测 main 那个 APK 里 `libzhengdao_core.so` 是 **808,704 B**（对应仓库里 1,095,744 B 的未 strip 原件），本轮 APK 因为多了新增的 Rust 代码反而比 main 大 1,092 B（**4,309,349 vs 4,308,257 B**）。strip 后 sha256 `EC78CADC…13E649`、四个 LOAD 段 `p_align` 全 `0x4000`、`--dyn-syms` 里 `nativeExtract` / `nativeSha256File` / `nativeSha256Hex` 三个 JNI 入口都在。
+
+**教训**：
+
+1. **"参数存在"不等于"路径启用"**：`expected_sha256: Option<&str>` 一直都在，但调用方永远传 `null` ⇒ 一段看起来在跑的校验其实是死的。看到「已在调用方校验过」这类注释，要**顺着看调用方到底校验了什么**（这里：校验了完整性，却没把结论交给唯一能把它和"被解压的字节"绑在一起的执行者）。
+2. **人工入库的 `.so` 必须有固定工序**：构建 → `llvm-strip --strip-unneeded` → 两道校验（16 KB 页对齐 `p_align=0x4000`、JNI 符号仍在 `--dyn-syms`）。理由是 `.cargo/config.toml` 只给 `aarch64-linux-android` 加了 `-Wl,-z,max-page-size=16384`，而**漏掉它不会崩溃，只会静默降级**（16 KB 页设备 `loadLibrary` 失败 → `isRustAvailable()=false` → 全部悄悄退回 Java 路径）。
+3. **仓库里没有任何 workflow 构建这个 `.so`**（`.github/workflows/ci.yml` 只在 ubuntu 上 `cargo test`）⇒ 源码与产物之间没有自动一致性检查，改 Rust 就必须本机重建并入库，别指望 CI 拦。
+4. **本机跑 host `cargo test` 要把 w64devkit 放进 PATH**（`C:\Users\guoli\.cargo\bin;C:\Users\guoli\w64devkit\w64devkit\bin;`），否则 zstd-sys 的 `cc-rs` 报 `failed to find tool "gcc.exe"`、`exit=101`（E-027）。
+5. **别把 `Get-ChildItem -Recurse` / `glob` 指向 `rust/target`**：一万多个构建产物（incremental `.o`、`libzstd.a`、host `.dll`/`.exe`），一次调用就能烧掉约 4 万 token 的上下文。
+6. **"仓库里的文件大" ≠ "APK 大"**：本轮最初估"strip 一下 APK 能省 278 KB"，实际是**零** —— AGP 打 release 时自动 strip native 库（main 的 APK 里那个 `.so` 808,704 B，仓库里却是 1,095,744 B）。所以要判断"瘦身能不能省用户流量"，必须**拆开 APK 看 `lib/` 条目的 uncompressed/compressed 尺寸**，不能看仓库里那份文件的大小。
+
+## E-046 · 2026-10-08 · `feat/v2.0-r1-rust-core-16kb` 的活已经全在 main 里了 —— 别再合并它（合并会回拉 7 个早就修掉的坑）
+
+**结论：该分支 superseded，本地与远端一并删除。内容在 main 里逐字节可查，删了不丢东西。**
+
+**对拍证据（只读核对，未合并）**：分支 head `8484d46`、merge-base `725ebef`，4 提交 / 30 文件 +675/−684。它做的三件事：
+
+1. `008d554` Rust 收编：两个 crate 两个 `.so`（1,129,064 B）→ 单 crate `rust/core` + `libzhengdao_core.so` 807,712 B（4 个 LOAD 段 `p_align` 全 `0x4000`）。
+2. `dd75713` 终端页唯一化（`CLEAR_TOP|SINGLE_TOP`）。
+3. `5697943` + `8484d46` CI 加 `:app:assembleRelease`。
+
+三件事**全部**已被 main 覆盖，而且**每条都能当场复核**（下面都是本轮实跑过的命令）：
+
+- **证据 1（内容逐字节）**：`git diff --stat 008d554 af37010 -- rust app/src/main/jniLibs app/proguard-rules.pro app/src/main/java/com/example/zhengdao/rust app/src/main/cpp` ⇒ **输出为空**，即分支的 Rust 收编结果与 main 的 `af37010` 在这些路径上一字不差（两个提交的提交信息不同、patch-id 也不同，只有对拍才知道是同一件事）。
+- **证据 2（patch-id 相同）**：分支 `dd75713`（终端页唯一化）与 main `b221603` 的 `git patch-id --stable` **同为 `f1c39c8336149320e7c45bce2e034987d59de39e`**。
+- **证据 3（被更严格的门禁取代）**：CI 出正式包（分支 `5697943` + `8484d46`）在 main 侧由 `fc74cd5` + E-014 取代 —— 分支版本自称"不需要任何密钥"，而 E-014 要求 `DEBUG_KEYSTORE_B64` 与 `EXPECTED_SHA256=44E2FE86…`。
+
+**合并面**：`git merge-tree --write-tree main <branch>` → **9 路径 / 20 个冲突块** + 3 处 rename/delete + 3 处 add/add。注意 `merge-tree` 写出的树**本身就带冲突标记**（`<<<<<<< main` / `>>>>>>> feat/v2.0-r1-rust-core-16kb`），所以 `git diff --shortstat main <tree>` 里那一百多行 insertions 只是标记文本 —— 它的含义是「把每个冲突块都取 main 侧之后，结果与 main 一致」。**结论：今天这个分支只能以"全部丢弃"的方式合并；"取分支侧"会踩下面 7 个早就修掉的坑（本轮逐条实测复核，括号里是复核方式）**：
+
+1. `.github/workflows/build.yml:106` 仍是 `run: bash rootfs/build-proot.sh "$GITHUB_WORKSPACE/rootfs-out"`，而 main 已按 E-016 删掉这个脚本（`git grep build-proot.sh <branch>` 命中 build.yml 与脚本本身）。
+2. `rust/core/src/jni_bridge.rs` 无 `PROGRESS_DISABLED`（0 次命中）、无 `exception_clear`（0 次）⇒ 退回 E-022 事故版。
+3. `app/proguard-rules.pro` 只有类级 `-keep class com.example.zhengdao.rust.CoreNative {`，**缺** `public static void onProgress(java.lang.String, java.lang.String);`（main 有）⇒ R8 改名后 Rust 反向回调在 release 上直接 `NoSuchMethodError … onProgress(...)V` / SIGABRT。
+4. `rust/core/src/tests.rs` 含 **7 个字面 NUL 字节**（实测正则计数），是 E-028 之前的版本（`link_name()` 未进 `#[cfg(unix)]`）。
+5. `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` = 807,712 B，而 main 现在是 **811,592 B**（E-045 为 Rust 完整性锚重建并 strip 后的入库版）。
+6. `docs/ERRATA.md` 停在 E-013 时代（分支约 500 行，main 已 2900+ 行）⇒ 整段搬回来会把 E-012/E-013 的旧结论重新带进文档（E-014 已推翻它们）。
+7. `app/src/main/java/com/example/zhengdao/TerminalActivity.kt` 里 `routed` 0 次、`pendingAgentId` 0 次 ⇒ 缺 main 的 `onNewIntent` 闸与 Agent 入口。
+
+**教训**：
+
+1. **里程碑分支合过一次、内容进了 main 之后，要主动标 superseded 并删掉**：留着它最大的风险不是占地方，而是有人（或某个自动化）真的去 merge 它，用"取分支侧解冲突"的方式把 7 个已修问题一次性搬回来。
+2. **判"是否已被覆盖"要用 patch-id / blob sha，不是看提交信息**：这个分支的提交信息与 main 的对应提交不同（各自独立写的），但 `git patch-id` 一模一样 ⇒ 只有对拍才能确认。
+3. **`merge-tree` 的冲突数不代表合并结果的大小**：这里 20 个冲突块，全部取 main 侧后结果是 no-op —— 先看 `git diff --shortstat main <merged-tree>` 再决定要不要花力气解冲突。
+
+## E-047 · 2026-10-08 · 真机上"按钮点不动"先别改代码：第三方悬浮窗与 IME 的**隐形触摸带**会把点击吃掉
+
+**症状**：真机验收时「检查环境更新」按钮在 `y=2223` 与 `y=1254` 两处、`input tap` 与"滑动到位再点"都不响应；`uiautomator dump` 里按钮明明在（bounds 正常、`clickable=true`），点下去毫无反应，RunLog 也没有任何新行。同一台机器上别的按钮点得动。
+
+**根因（实测）**：番茄小说（`com.phoenix.read`）的第三方悬浮窗在该机型上是一块**活的、会移动的** `touchableRegion`。`adb shell am force-stop com.phoenix.read` 之后，**同一个坐标、同一次 `input tap` 立刻生效**（当场弹出「可以重装环境」AlertDialog）。旁证：本机 IME 窗口 `mInputShown=false` 而 `mIsInputViewShown=true`、`touchableRegion=(0,1850 - 1312,2707)` —— 一条**看不见、却在吃点击**的底带；`x=656` 的滑动起点落在这条带里时整页不动。
+
+**教训 / 以后这么干**：
+
+1. **真机"点不动"先怀疑不是 App**：`adb shell am force-stop <悬浮窗包名>` 后拿**同一坐标**重试；立刻生效 ⇒ 与 App 代码无关，别去改 UI 代码（用户投诉的第 4 条「第三方悬浮窗吃掉点按」就是这一类）。
+2. **坐标必须现算**：每次 `uiautomator dump` 取**当前** bounds 的中心再点，不要用上一轮记住的固定坐标 —— 键盘弹出、浮窗移形、列表重排都会让固定坐标失效（K2 验收时曾因固定坐标把 4 条消息连成一个输入框里没发出去）。
+3. **滑动起点避开悬浮窗与 IME 的触摸带**（这台机器上 `x=656` 常落在带里，改 `x=400` 就稳）。
+4. **`uiautomator dump` 看不到第三方浮窗**（它在另一个 window）⇒ "dump 里有这个按钮"**不代表**"点得到"。排查时先 `dumpsys window windows | Select-String -Pattern 'touchableRegion|mAttrs'` 看有没有第三方 window 压在目标上。
+
+## E-048 · 2026-10-08 · 把 E-045 教训 3 的缺口补成门禁：入库 `.so` 的 16KB 对齐与 JNI 入口符号进 CI（`tools/check-native-so.py`）
+
+**缺口**：E-045 里记了两件事 —— ① `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` 是**人工** `cargo build --release --target aarch64-linux-android` + `llvm-strip --strip-unneeded` 后拷进来的，`ci.yml` / `build.yml` 里**没有任何一步**构建或校验它；② 16KB 页对齐漏掉时不是崩溃而是**静默降级**（16KB 页设备 `loadLibrary` 失败 → `CoreNative.isRustAvailable()=false` → 整条解压路径悄悄退回 Java，日志里只有一行"走平台回退"）。两件凑一起＝「Rust 核心到底有没有在跑」在 CI 上零证据，而下一次谁改 Rust 忘了重建/忘了对齐，谁都不会红。
+
+**做法**：新增 `tools/check-native-so.py`（纯标准库，自己解析 ELF 头与段表），`ci.yml` 与 `build.yml` 在"编译 APK"之前各跑一步「入库 .so 门禁（16KB 页对齐 + JNI 入口符号）」：
+
+1. `app/src/main/jniLibs/<abi>/*.so` 的**每个** `PT_LOAD` 段 `p_align >= 0x4000`（16KB 页设备可加载）；
+2. `libzhengdao_core.so` 必须导出 `CoreNative.kt` 里**每个** `external fun` 对应的 JNI 符号 —— 期望符号**现读** `CoreNative.kt` 推导（`Java_com_example_zhengdao_rust_CoreNative_<方法名>`），将来加 native 方法**自动**纳入，不用维护第二份清单；
+3. `.symtab` 是否存在只打一行信息（影响入库体积、**不影响 APK** —— 见 E-045 教训 6 的更正）。
+
+失败按本仓约定抛 `::error title=…`（Actions 日志匿名读不到、注解读得到，见 E-028/E-039）。
+
+**实测**（`python tools/check-native-so.py`，v1.3.0 `0d2320a`）：
+
+- `libzhengdao_core.so` 811,592 B：4 个 `PT_LOAD` 全 `p_align=0x4000`；3 个 JNI 入口（`nativeSha256Hex` / `nativeSha256File` / `nativeExtract`）全在；已 strip（无 `.symtab`）
+- `libzstd-jni-1.5.6-4.so` 600,064 B：2 个 `PT_LOAD` 全 `p_align=0x10000`（第三方，≥16KB 同样合格）
+- 负例：把期望符号前缀临时改成 `…_NOPE` → 退出码 1，三行缺失符号各一条，符合预期
+
+**教训**：
+
+1. **"人工工序 + 静默失败"必然要做成门禁**：凡是"没人自动跑、跑漏了也不红"的工序，都会在某次赶工里漏掉，而漏掉的后果偏偏长得像"一切正常"。
+2. **门禁的期望值要现读源码**（这里读 `CoreNative.kt` 的 `external fun`），别在脚本里再抄一份清单 —— 抄的那份一定会过期。
+3. **Windows 的 GBK 控制台会把门禁脚本自己搞崩**：消息里出现 `⇒` 这类字符时 `print` 抛 `UnicodeEncodeError`，于是"脚本报错而死"和"检查失败而死"混在一起。修法是 `sys.stdout.reconfigure(errors="replace")` + 消息里用 ASCII 箭头。
+
+## E-049 · 2026-10-08 · "补指纹"白下了 192 MB：本地缓存里躺着的就是索引那个整包，检查更新却照旧走下载
+
+**症状**（真机 Honor `AD3J023824001723`，v1.3.0 `0c43978`）：标记里缺 `env=`（上一轮「修复环境」抹掉的，见 E-044）时，设置页「检查环境更新」给出「本地已安装 13.7，但缺少环境指纹记录（env）：本次将用全量包（约 192 MB）重装一次以补上指纹」，点「下载并安装」后**走的是联网下载**：`22:31:22 检查环境更新：开始下载新版本环境包` → `环境包下载中 N%（M/192 MB，可离开本页）` → `22:42:46 100%（192/192 MB）`，约 11 分钟、20 MB/分钟。而 `/sdcard/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst`（201,632,517 B）**当时就躺在缓存里，内容正是索引那一版**（sha256 与 `rootfs-index.json` 的 `sha256`/`size` 完全一致）。
+
+**根因**：检查线程在 `localEnv == null` 分支里**无条件**把 `pendingUrl = idx.url; pendingSha = idx.sha256` 交给弹窗，而弹窗只认 `pendingUpdateUrl`（`ui/SettingsScreen.kt:1290` 的 `updateMsg?.takeIf { pendingUpdateUrl != null }`）⇒「缺指纹」这种**根本不需要新内容**的场景被当成了"要下载新版本"。真正会翻本地缓存的那条路（`修复环境`，`SettingsScreen.kt:1183-1260`）是另一处实现，**检查 → 安装**这条链上从来没有"先看看本地有没有"这一步。
+
+**修法**（`feat/local-cache-no-download`）：
+
+1. `rootfs/RootfsCache.kt` 新增 `localCandidateFor(ctx, url, size)` 与纯函数内核 `pickLocalCandidate(preferred, cached, size)`：先认"按 URL 猜到的那个文件"（名字对上＝最可能），再翻 `listArchives` 按**字节数**找；`size <= 0` 或都不符 ⇒ `null`（宁可下载，也不拿大小对不上的包去重装）。
+2. `ui/SettingsScreen.kt` 的检查线程在 `localEnv == null` 与 `else`（有新版本）两条分支里**都**先算 `cached`：文案改成「本地已有该版本的安装包（…），将直接用它安装，无需下载」，并把 `pendingLocalArchive` 随 url/sha/index/patch 一起交给弹窗。**本地整包排在增量补丁之前**（0 下载优于几十 MB）。
+3. 弹窗确认线程**最前面**加"本地优先"块：先 `RootfsDownloader.sha256Of(本地包)` 与索引 sha 比对 —— 一致才走本地重解压（`InstallFlow.start(..., fromLocal = true)`），不一致就打一行 RunLog（`本地缓存包 sha（…）与索引不一致（…），改为下载`）退回原来的下载路径。确认按钮文案随之变「用本地包安装」。
+4. **信任锚不变**：大小只用来**挑候选**，能不能写 `env=` 仍然由 `RootfsInstaller.envForMarker(index.env, index.sha256, actualSha)` 决定（`actualSha` 是安装线程当场算出来的那道 sha）—— 大小相同 ≠ 内容相同。
+
+**实测**：
+
+- 单测：`33 suites / 277 tests / 0 failures / 0 errors / 0 skipped`（新增 `app/src/test/java/com/example/zhengdao/rootfs/RootfsLocalCandidateTest.kt` 6 例：名字优先、退回列表、半截包被拒、谁都不符返回 null、非正数大小返回 null、目录不算候选）。
+- 真机（debug 包覆盖安装以便 `run-as` 读标记）：`adb shell run-as com.example.zhengdao sed -i '/^env=/d' files/rootfs/.zhengdao-rootfs-ok` 构造"缺指纹"后点「检查环境更新」⇒ 弹窗「可以重装环境 / 本地已安装 13.7，但缺少环境指纹记录（env）：本地已有该版本的安装包（约 192 MB），将直接用它重装补指纹，无需下载。」+ 按钮「**用本地包安装**」。
+- 确认后的 RunLog：`23:03:44 检查环境更新：本地已有同版本安装包（192 MB），直接重解压，不下载` → `23:03:44 环境更新：用本地安装包（sha=d80639e7dc5c）重解压，本次未联网下载` → `23:03:49 环境更新完成（用本地安装包，本次未联网下载），重进终端生效` —— **5 秒**（对比联网那次的 11 分钟）。
+- 收尾：标记里 `env=368b59b30b10712c` 回填、`archive-sha256=d80639e7…` 保持；再点「检查环境更新」⇒ Toast「已是最新版本（13.7，环境 368b59b30b10712c）」，不再弹窗。
+
+**教训**：
+
+1. **"有新版本"和"要下载"是两件事**：检查线程一旦把 URL 塞进 pending 状态，后面所有分支都会下载。缺指纹、重装、换机这类场景要先问一句"这份内容我是不是已经有了"。
+2. **大小只能用来挑候选，不能当证据**：先按大小把 192 MB 的候选挑出来是为了快，**能不能据此写指纹**仍然要逐字节验 sha（E-044 立的规矩）。
+3. **本地整包要排在增量补丁前面**：补丁只是"比全量小"，本地包才是"不用下载"—— 顺序写反就白白花掉几十 MB 流量。
+4. **验收要能"制造"目标状态**：debug 包（同签名、无 applicationIdSuffix）覆盖安装 + `run-as` 删掉标记里的一行 `env=`，就能复现"缺指纹"，比清 App 数据/换机便宜得多。真机点按前记得 `adb shell am force-stop com.phoenix.read`（E-047）。
+
+## E-050 · 2026-10-08 · 补丁解压一直留在 Java 侧：Rust 流水线只认 zstd/gzip，也不能"跳过成员"，于是增量与全量长期分叉
+
+**缺口**：`RootfsInstaller.extractArchiveJava` 支持 zstd / gzip / **纯 tar**（未知魔数按 tar 处理，见 `formatOf`），而 Rust 的 `extract_pipeline`（`rust/core/src/extract.rs`）只认 zstd 与 gzip，第三种魔数直接 `BadArchive("无法识别的压缩格式: …")`；"跳过指定成员"更是只有 Java 侧有（`openTar(skipNames)`）。因此 `rootfs/RootfsDelta.kt` 的 `applyTo` 只能调 `extractArchiveJava(..., skipNames = setOf(PATCH_INFO_NAME))` —— **全量走 Rust、补丁走 Java** 的分叉：同一台设备上，全量安装有"恰好被解压的那些字节"的 sha 对账（E-045）与 native 进度回调，补丁这条什么都没有。
+
+**为什么现在必须收口**：补丁包（增量下发协议 §4）是 **未压缩 tar**（`app/src/androidTest/java/com/example/zhengdao/rootfs/RootfsDeltaInstrumentedTest.kt` 用 commons-compress 直写），且第一个成员固定是元数据 `.zhengdao-patch-info`，不落盘靠的就是 `skipNames`；Rust 不接这两样，增量路径就永远停在 Java 侧。
+
+**修法**（`feat/rust-patch-extract`）：
+
+1. `rust/core/src/extract.rs`：魔数匹配的第三支由"报错"改成 `_ => Box::new(file)`（纯 tar，与 Kotlin `openTar` 对齐）；新增 `pub fn extract_pipeline_skip(archive, target_dir, expected_sha256, skip_names: &[String], on_progress)`，入口循环里 `if skip_names.iter().any(|s| s == &name) { skipped += 1; continue; }`，`ExtractReport` 增加 `pub skipped: u64`；原 `extract_pipeline` 变成传 `&[]` 的薄包装（既有调用点零改动）。
+2. `rust/core/src/jni_bridge.rs`：**新增**符号 `Java_com_example_zhengdao_rust_CoreNative_nativeExtractSkip(archivePath, targetDir, expectedSha256, skipNamesJoined)`，跳过清单以 `\n` 连接（不引 `JObjectArray`，jni crate 的数组 API 版本间签名不稳）；`nativeExtract` 与新入口共用 `extract_impl`，JSON 增加 `"skipped":N`。
+3. `app/src/main/java/com/example/zhengdao/rust/CoreNative.kt`：`extract(..., skipNames: List<String> = emptyList())`，空清单仍走 `nativeExtract`（不多绕一次 JNI）；JSON 解析抽成 `parseExtractReport`。
+4. `app/src/main/java/com/example/zhengdao/rootfs/RootfsInstaller.kt`：新增 `extractArchive(archive, destDir, skipNames, expectedSha256, onEntry): Boolean` —— Rust 优先、**sha 不匹配 ⇒ `InstallFailed` 且不回退**、其它失败回退 `extractArchiveJava`；`install()` 也改走它（日志仍按走没走 Rust 分别给"RootFS 安装完成（Rust 路径）"）；`RootfsDelta.applyTo/apply` 换用它并新增可选 `expectedSha256`；`ui/SettingsScreen.kt` 的增量分支把 `patchRef.sha256` 一起传下去（下载校验一次 + 解压时对同一期望值再对一次账）。
+
+**实测**：
+
+- host：`cargo test -p zhengdao_core --release` = **12 passed / 0 failed**（新增 `纯tar包_无压缩壳_直接解压`、`跳过成员_不落盘且计入skipped`）。
+- `python tools/check-native-so.py`：`libzhengdao_core.so` 816,040 B、4 个 `PT_LOAD` 全 `p_align=0x4000`、`CoreNative.kt` 的 **4** 个 `external fun` 全部命中（含新符号 `nativeExtractSkip`）。
+- JVM：`33 suites / 277 tests / 0 failures / 0 errors / 0 skipped`。
+- 真机（Honor PGT-AN10 / Android 16）：`:app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.zhengdao.rootfs.RootfsDeltaInstrumentedTest` ⇒ `tests="3" failures="0" errors="0" skipped="0"`；新增用例 `补丁sha不匹配时硬失败不退回Java`（故意给 `expectedSha256 = "0"×64`）断言 `InstallFailed` 且原树逐项未动。这条用例同时是"Rust 真的接管了补丁解压"的证据：走 Java 时没人校验 sha，它必然失败；它**没被 `assumeTrue` 跳过**，说明这台设备上 Rust 核心可用。
+
+**教训**：
+
+1. **"参数存在"不等于"路径启用"**（E-045 的教训第二次应验）：`expected_sha256`、`skipNames` 这类能力，只有**入口真的会调**才算有。
+2. **分叉比缺失更危险**：全量与增量各走一套实现时，修一条永远只修一半 —— 收口到同一入口（`extractArchive`）比在两条路上各打补丁便宜。
+3. **门禁只校验"符号存在"，校验不了"签名对不对"**：`tools/check-native-so.py` 是拿 `CoreNative.kt` 里的 `external fun` 名字比对 .so 导出符号，所以**改已有符号的签名**它能放行；本条因此选择**新增**符号（旧 .so + 新 Kotlin 时只有补丁路径 JNI 查找失败 → 回退 Java），把不兼容限制在一条路径里。
+4. **Rust 侧也要能吃"最土"的输入**：生产上补丁就是未压缩 tar，Kotlin 早就支持，Rust 却把它当非法格式 —— 能力对齐要按**调用方实际会传的形状**做，不是按"生产压缩格式"做。
+
+---
+
+## E-051 · 2026-10-08 · 清单验签的信任根只活在 App 进程里：把 Ed25519 验签搬进 Rust 核心，并让两边**对拍**（不一致＝拒绝）
+
+**缺口**：全仓唯一的签名验证入口是 `app/src/main/java/com/example/zhengdao/ui/AgentManifest.kt` 的 `verify()`，Ed25519 计算完全在 Kotlin 里（私有 `object Ed25519`，为绕开 Android `KeyFactory("Ed25519")` 默认路由到 AndroidKeystore 而从零实现 RFC 8032 §5.1），只在 App 进程可用：终端/Agent、脚本、将来任何"非 App 的校验方"都拿不到同一份信任根；而"向 Rust 方向进化"的判据之一就是**信任根这类纯计算不该被 Android 运行时钉死**。
+
+**修法**（`feat/rust-ed25519`）：
+
+1. `rust/core/src/ed25519.rs`（新）：`pub fn verify(pub_key: &[u8], sig: &[u8], msg: &[u8]) -> bool` —— 长度非法或验不过一律 `false`、绝不 panic 跨 FFI；曲线常量 `P/D/D2/L/SQRT_M1/基点B` 用 `std::sync::OnceLock` 惰性初始化（`D` 用费马小定理求逆，省掉 num-integer）；SHA-512 用 `sha2::Sha512`；`Point{x,y,z,t}` 扩展坐标（`t` 由 `X·Y` 直接算出，省掉 Kotlin 那套 nullable `T`）；`decode_point` 按 §5.1.3（含奇偶修正）、`pt_add` 按 §5.1.4、`verify` 判 `S·B == R + h·A` 且拒 `S ≥ L`。
+2. `rust/core/src/jni_bridge.rs`：**新增** `Java_com_example_zhengdao_rust_CoreNative_nativeVerifyEd25519(pub, sig, msg) -> jboolean`（新增而非改旧符号签名，理由＝E-050 教训 3：门禁只校验符号存在、校验不了签名）。
+3. `app/src/main/java/com/example/zhengdao/rust/CoreNative.kt`：`verifyEd25519(pubKey, sig, msg): Boolean?`（核心不可用/例外 ⇒ `null`，调用方回退）+ `private external fun nativeVerifyEd25519`。
+4. `AgentManifest.verify()` 改成**对拍**形态：平台先算 → Rust 再算 → Rust 为 `null` 记「验签走平台回退（Rust 核心不可用）：$platform」并返回平台结论；两边不一致记 `Log.w` 并**拒绝**；一致则记「验签走 Rust 核心（与平台对拍一致）：$rust」并返回 Rust 结论。`rust/core/Cargo.toml` 加 `num-bigint`/`num-traits`（**通用大整数库、非密码学库**，理由是公式能与 `java.math.BigInteger` 逐行对照）。
+
+**实测**：
+
+- host：`cargo test -p zhengdao_core --release` = **18 passed / 0 failed**，其中 ed25519 6 例：RFC 8032 §7.1 TEST1/2/3 + `真实清单_验签通过与三类篡改拒绝`（读仓库 `rootfs/agents.json` 1379 B 与 `agents.json.sig`，用固化公钥验签通过；篡改正文/错公钥/签名翻位三类拒绝）+ `全零退化输入_朴素判定式通过_已知边界` + `长度非法_一律false不panic`。
+- `python tools/check-native-so.py`：`libzhengdao_core.so` **948,392 B**（未 strip 1,268,448 B；比 E-050 那版 816,040 B 大 132 KB，全是 num-bigint + ed25519 的代价）、4 个 `PT_LOAD` 全 `p_align=0x4000`、`CoreNative.kt` 的 **5** 个 `external fun` 全部命中。
+- JVM：`33 suites / 277 tests / 0 failures / 0 errors / 0 skipped`。
+- 真机（Honor PGT-AN10 / Android 16）：`Ed25519VerifyInstrumentedTest` ⇒ `tests="4" failures="0" errors="0" skipped="0"`（没被 `assumeTrue` 跳过 ⇒ arm64 上这份 .so 真的在算）；`AgentManifestVerifyInstrumentedTest`（真实 `agents.json` + `.sig` 走 App 的验签入口）⇒ `tests="1" failures="0"`，logcat：`I AgentManifest: 验签走 Rust 核心（与平台对拍一致）：true`。
+
+**教训**：
+
+1. **对拍要带"失败侧取严"**：两边不一致时按拒绝处理 —— 不一致本身就是待修的 bug，放行等于把风险留给用户。
+2. **"朴素判定式"的边界要写成用例**：RFC 8032 §5.1.7 允许不做小阶点拒绝，全零公钥/签名（阶 4）在这种实现下**会判通过**（我第一版单测就把它写成"必 false"而挂掉）。本项目公钥固化在 APK、攻击者只能控 R/S ⇒ 不可达；把它写成注释 + 显式用例（`全零退化输入…已知边界`），行为就被锁死，换实现不会静默漂移。
+3. **验收要能证明"是新路径在跑"**：`verify(...) == true` 区分不了 Rust 与平台实现；`验签走 Rust 核心（与平台对拍一致）：true` 这一行才是凭据（"路径日志 + 断言"两件套，E-045 起固定用法）。
+4. **依赖选型要写理由**：`num-bigint`/`num-traits` 引入的是通用大整数运算、不是密码学库；理由（可逐行对照 Kotlin 实现）与体积代价（+132 KB）都该落进 `Cargo.toml` 注释与 ERRATA，否则下一个人只会看到"多了个依赖"。
+

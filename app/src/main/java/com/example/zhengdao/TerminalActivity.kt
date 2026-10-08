@@ -198,11 +198,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         //    "density-independent"，但内部直接 mTextPaint.setTextSize(textSize) 当
         //    **px** 用。传 14 会得到 14px 的极小字，进而算出 158 列 × 87 行的荒谬
         //    网格（实测 view=1270x1489、density=3.5、emu=158x87）。× density 后恢复正常。
-        // 字号与配色改为可配置（设置页「终端外观」），默认 12dp + 经典黑底白字。
-        // 内部同时完成两件事：写调色板与视图背景、按 dp→px 换算设置字号
+        // 字号、配色与画布留白改为可配置（设置页「终端外观」），默认 12dp + 经典黑底白字 + 8dp 留白。
+        // 内部完成三件事：写调色板与视图背景、给画布容器留白与底色、按 dp→px 换算设置字号
         // ⚠️ 仍然必须先于 attachSession 调用——mRenderer 只在 setTextSize 里创建，
         //    漏掉会在 attachSession→updateSize 处空指针崩溃。
-        TerminalPrefs.applyTo(termView, this)
+        // ⚠️ 留白写在 canvas_host（外层容器）上，不写在 termView 上：updateSize() 用
+        //    getWidth() 算列数且不减 padding，直接给视图加留白会算错列数（见布局文件注释）。
+        TerminalPrefs.applyTo(termView, findViewById(R.id.canvas_host), this)
         wireKeyBar()
     }
 
@@ -687,9 +689,12 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
             return
         }
+        // 2026-10-08 走查修 bug：原来「成功」的 Toast 是**无条件**执行的，写入失败时
+        // 它会紧跟在失败 Toast 后面把失败提示覆盖掉——用户以为粘进去了，终端里其实
+        // 什么都没发生。改为成功提示只在 onSuccess 里出。
         runCatching { SessionManager.write(text) }
+            .onSuccess { Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(this, "粘贴失败：${it.message}", Toast.LENGTH_SHORT).show() }
-        Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
     }
 
     private fun clearSticky(ctrl: Boolean, shift: Boolean) {
@@ -872,9 +877,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 return true
             }
             menuReloadFont -> {
-                // 字号/配色整体重刷 + 重算行列：旋转、缩放或改过设置后网格没跟上时用。
+                // 字号/配色/留白整体重刷 + 重算行列：旋转、缩放或改过设置后网格没跟上时用。
                 runCatching {
-                    TerminalPrefs.applyTo(termView, this)
+                    // 留白写在容器上（见 applyTo 的注释），容器变了 → 视图尺寸随之变 → updateSize 才准
+                    TerminalPrefs.applyTo(termView, findViewById(R.id.canvas_host), this)
                     termView.updateSize()
                     termView.onScreenUpdated()
                 }.onFailure {
@@ -1039,6 +1045,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 // 用户自选文件没有任何校验值可比对 ⇒ 按"不确定就传 null"：装完不写 env 行，
                 // 下次检查更新看到"无版本记录"会老实走全量（宁可多下一次，不可错走增量）。
+                // 同理也不传 archiveSha256：说不清这个包是谁，就不该给未来的"同源"推断留依据
+                // （见 RootfsInstaller.envForReinstall 的 KDoc）。
                 RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
@@ -1088,7 +1096,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
                 val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, expectedSha)
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                RootfsInstaller.install(appContext, archive, envToWrite) { }
+                // 把"装的是哪个包"一并写进标记：将来「修复环境/回退」重装同一个包时，
+                // 靠它把 env 原样写回（否则一次修复就抹掉增量基线，见 RootfsInstaller.envForReinstall）。
+                RootfsInstaller.install(appContext, archive, envToWrite, expectedSha) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()
@@ -1153,7 +1163,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
                 val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, actualSha)
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                RootfsInstaller.install(appContext, archive, envToWrite) { }
+                // 同"本地包"路径：把实际装进去的那个包的 sha256 写进标记，供将来重装做"同源"推断。
+                RootfsInstaller.install(appContext, archive, envToWrite, actualSha) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()

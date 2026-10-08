@@ -21,6 +21,16 @@ val ZhengdaoLightScheme = lightColorScheme(
     secondaryContainer = IOSFill,
     onSecondaryContainer = IOSLabel,
     tertiary = IOSGreen,
+    // 2026-10-08 走查补齐：lightColorScheme 原本缺 errorContainer / onErrorContainer /
+    // tertiaryContainer / onTertiaryContainer——A4 修 ConnectionBanner 引用前两个，
+    // 缺了会拿到 Color.Unspecified，运行时渲染异常。配色按 iOS 色板延伸
+    // (IOSTintedRed / IOSTintedGreen 与 IOSTintedBlue 同源：12% 透明叠加)。
+    // onTertiaryContainer 用 IOSLabel 主文字黑：在 IOSTintedGreen 上对比度 ~13:1，远超
+    // WCAG AA 的 4.5:1；不另起「深绿」变量避免扩散（该色只在此一处用）。
+    errorContainer = IOSTintedRed,
+    onErrorContainer = IOSErrorText,
+    tertiaryContainer = IOSTintedGreen,
+    onTertiaryContainer = IOSLabel,
     background = IOSBg,
     onBackground = IOSLabel,
     surface = IOSCard,

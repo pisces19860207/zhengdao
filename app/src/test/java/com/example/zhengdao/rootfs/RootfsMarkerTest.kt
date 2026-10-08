@@ -101,4 +101,52 @@ class RootfsMarkerTest {
             dir.deleteRecursively()
         }
     }
+
+    // ── archive-sha256 行（2026-10-08 新增）：重装时判断"这个包是不是当初那个包"的唯一依据 ──
+
+    @Test
+    fun `archive-sha256 往返一致且写在 env 行之后`() {
+        val sha = "c".repeat(64)
+        val text = RootfsMarker.render("debian-13.7", "a1b2c3d4e5f60718", "2026-10-08T14:00:00+08:00", sha)
+        val d = RootfsMarker.parse(text)
+        assertEquals(sha, d.archiveSha256)
+        assertEquals("a1b2c3d4e5f60718", d.env)              // 加字段不影响 env 解析
+        assertEquals("2026-10-08T14:00:00+08:00", d.installedAt)
+        assertTrue("行文顺序：env 之后、installed-by 之前", text.indexOf("env=") < text.indexOf("archive-sha256="))
+        assertTrue(text.indexOf("archive-sha256=") < text.indexOf("installed-by="))
+        assertTrue("仍保留 installed-by", text.contains("installed-by=zhengdao"))
+    }
+
+    @Test
+    fun `archive-sha256 为空时不写该行（旧安装升级上来不会凭空多一行）`() {
+        for (blank in listOf(null, "", "   ")) {
+            val text = RootfsMarker.render("debian-13.7", "a1b2c3d4e5f60718", null, blank)
+            assertFalse("blank=$blank 时不该写 archive-sha256：\n$text", text.contains("archive-sha256"))
+            assertNull(RootfsMarker.parse(text).archiveSha256)
+        }
+    }
+
+    @Test
+    fun `archive-sha256 形态不合就视同没记过`() {
+        val dir = tempDir()
+        try {
+            // 老格式（2026-10-08 之前的标记）——这是"不做同源推断"的关键路径
+            assertEquals(
+                "distro=debian-13.7\nenv=a1b2c3d4e5f60718\ninstalled-by=zhengdao\n",
+                RootfsMarker.render("debian-13.7", "a1b2c3d4e5f60718", null, null),
+            )
+            RootfsMarker.write(dir, "debian-13.7", "a1b2c3d4e5f60718")
+            assertNull(RootfsMarker.installedArchiveSha256(dir))
+            // 脏值：非十六进制 / 位数不对 / 空值，一律当"没记过"，不许凭它做同源推断
+            for (bad in listOf("zzzz", "deadbeef", "c".repeat(63), "c".repeat(65), "#$")) {
+                RootfsMarker.write(dir, "debian-13.7", "a1b2c3d4e5f60718", null, bad)
+                assertNull("bad=$bad 不该被认成 sha", RootfsMarker.installedArchiveSha256(dir))
+            }
+            // 大小写混写要能读出来并统一成小写（与 sha256Of 的返回值直接可比）
+            RootfsMarker.write(dir, "debian-13.7", "a1b2c3d4e5f60718", null, "C".repeat(64))
+            assertEquals("c".repeat(64), RootfsMarker.installedArchiveSha256(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

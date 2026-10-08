@@ -134,17 +134,26 @@ object RootfsDelta {
     /**
      * 公开入口：按真实目录（`<filesDir>/rootfs`、`<filesDir>/rootfs.tmp`）应用补丁。
      * 失败抛异常 ⇒ 调用方回退全量。
+     *
+     * @param expectedSha256 索引给出的补丁包 sha256（非 null 时由 Rust 对账；对不上硬失败）
      */
-    fun apply(context: Context, patchFile: File, info: PatchInfo, onEntry: (String) -> Unit = {}) {
+    fun apply(
+        context: Context,
+        patchFile: File,
+        info: PatchInfo,
+        onEntry: (String) -> Unit = {},
+        expectedSha256: String? = null,
+    ) {
         val rootfsDir = File(context.filesDir, "rootfs")
         val tmpDir = File(context.filesDir, RootfsInstaller.TMP_NAME)
-        applyTo(rootfsDir, tmpDir, patchFile, info, onEntry)
+        applyTo(rootfsDir, tmpDir, patchFile, info, onEntry, expectedSha256)
     }
 
     /**
      * 可单测/可仪器测试的内核：全部参数都是 [File]，不碰 Android Context。
      *
      * @param tmpDir 待替换的临时树目录（存在即先清理——它按约定是"可以随时丢弃"的中间产物）
+     * @param expectedSha256 补丁包应有的 sha256（交给 Rust 对账；null = 只算不校验）
      */
     internal fun applyTo(
         rootfsDir: File,
@@ -152,6 +161,7 @@ object RootfsDelta {
         patchFile: File,
         info: PatchInfo,
         onEntry: (String) -> Unit = {},
+        expectedSha256: String? = null,
     ) {
         // ── 1. 前置校验（协议 §6）：必须在动任何文件之前 ──
         val installed = RootfsMarker.installedEnv(rootfsDir)
@@ -169,11 +179,12 @@ object RootfsDelta {
         try {
             cloneTree(rootfsDir, tmpDir)
 
-            // ── 3. 解补丁（跳过元数据成员） ──
-            RootfsInstaller.extractArchiveJava(
+            // ── 3. 解补丁（跳过元数据成员；Rust 优先，失败回退 Java —— 与全量装同一条路径） ──
+            RootfsInstaller.extractArchive(
                 archive = patchFile,
                 destDir = tmpDir,
                 skipNames = setOf(PATCH_INFO_NAME),
+                expectedSha256 = expectedSha256,
                 onEntry = onEntry,
             )
 

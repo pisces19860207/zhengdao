@@ -8,6 +8,7 @@ package com.example.zhengdao.ui
 import android.content.Context
 import android.util.Log
 import com.example.zhengdao.rootfs.RootfsDownloader
+import com.example.zhengdao.rust.CoreNative
 import java.math.BigInteger
 import java.security.MessageDigest
 
@@ -46,12 +47,35 @@ object AgentManifest {
         val uninstallCmd: String? = null, // P3：卸载命令（缺省 = 无卸载能力）
     )
 
-    /** Ed25519 验签（纯函数，先验签后解析的"验签"半边；JVM 可测）。 */
+    /**
+     * Ed25519 验签（纯函数，先验签后解析的"验签"半边；JVM 可测）。
+     *
+     * R2 起计算搬进 Rust 核心（`CoreNative.verifyEd25519`，见 ERRATA E-051），平台实现
+     * （下面的 `Ed25519`）保留做**对拍与回退**：
+     * - Rust 不可用 ⇒ 纯平台实现（行为与 R1 逐字一致）；
+     * - 两边结论不一致 ⇒ 记日志并**拒绝**（安全侧取严；这种不一致本身就是待修的 bug）；
+     * - 一致 ⇒ 以 Rust 结论为准（它才是常驻 native 的那份实现）。
+     */
     fun verify(body: ByteArray, sigBase64: String): Boolean = try {
         val sig = java.util.Base64.getDecoder().decode(sigBase64)
         val pub = java.util.Base64.getDecoder().decode(PUBLIC_KEY_B64)
         check(pub.size == 32) { "manifest 公钥配置非法（长度 ${pub.size} ≠ 32）" }
-        Ed25519.verify(pub, sig, body)
+        val platform = Ed25519.verify(pub, sig, body)
+        val rust = CoreNative.verifyEd25519(pub, sig, body)
+        when {
+            rust == null -> {
+                Log.i(TAG, "验签走平台回退（Rust 核心不可用）：$platform")
+                platform
+            }
+            rust != platform -> {
+                Log.w(TAG, "验签结论不一致（Rust=$rust 平台=$platform）——按拒绝处理，见 ERRATA E-051")
+                false
+            }
+            else -> {
+                Log.i(TAG, "验签走 Rust 核心（与平台对拍一致）：$rust")
+                rust
+            }
+        }
     } catch (t: Throwable) {
         Log.w(TAG, "验签异常（视为失败）: ${t.message}")
         false

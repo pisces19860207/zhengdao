@@ -476,23 +476,57 @@ class OcRepository(
 
     /**
      * 拉取可选模型目录（GET /api/model?location[directory]=<工作区>）。
-     * 结果可能为空：模型目录来自 models.dev，设备网络不可达时服务端返回空数组
-     * （实测本机）——调用方必须优雅处理空态，不能当错误。
+     *
+     * **成功也可能为空**：模型目录来自 models.dev，设备网络不可达时服务端返回空数组
+     * （实测本机）——空表是合法结果，不是错误，调用方仍必须优雅处理空态。
+     *
+     * 2026-10-08 审查修复（原先失败完全静默）：这条路径原来写成
+     * `runCatching { … }.getOrDefault(emptyList())`——失败也返回空表、不写任何 state，
+     * 只有一行没人会看的日志，于是「这次没拉到」与「目录本就为空」在界面上**不可区分**，
+     * 用户点刷新只看到「⟳ 刷新 → 拉取中… → ⟳ 刷新」闪一下，以为按钮坏了。
+     * 现在失败会：① 把异常原文落 RunLog（「不静默失败」是项目原则）；
+     * ② 把一句话原因写进 [TaijiState.lastModelFetchError]，由 ModelSheet 显式显示。
+     * 返回值仍是 [List]（失败 = 空表），**签名不变**，调用点无需改动。
      */
     suspend fun fetchModels(directory: String): List<OcModel> = withContext(Dispatchers.IO) {
         runCatching {
             val enc = java.net.URLEncoder.encode(directory, "UTF-8")
             val req = Request.Builder().url(http.url("/api/model?location[directory]=$enc")).get().build()
             http.client.newCall(req).execute().use { resp ->
-                val text = resp.body?.string() ?: return@use emptyList()
-                if (!resp.isSuccessful) return@use emptyList()
+                // 非 2xx 原先也走 emptyList()（同样与"目录为空"混为一谈）。改成抛出，
+                // 与 setSessionModel 等同类写操作共用 OcHttpException 口径。
+                if (!resp.isSuccessful) throw OcHttpException(resp.code, "拉取模型目录 HTTP ${resp.code}")
+                val text = resp.body?.string()
+                    ?: throw IllegalStateException("响应体为空")
                 unwrapArray(text).let { arr ->
                     (0 until arr.length()).mapNotNull { i ->
                         arr.optJSONObject(i)?.let { OcModel.fromJson(it) }
                     }
-                }.also { models -> _state.update { it.copy(models = models) } }
+                }
             }
-        }.onFailure { ocLog("拉取模型目录失败：${it.message}") }.getOrDefault(emptyList())
+        }.fold(
+            onSuccess = { models ->
+                // 成功：填列表 + 清掉上一次的失败原因（失败文案不许在成功路径上残留）
+                _state.update { it.copy(models = models, lastModelFetchError = null) }
+                models
+            },
+            onFailure = { t ->
+                // 失败可见：原文落日志（ocLog 自带「太极: 」前缀，见 OcClient.kt:145），
+                // 一句话原因进 state 供 UI 显示。列表保持原样（不动 models）——
+                // 弱网下拉取失败不该把已缓存的可用列表擦掉。
+                ocLog("拉取模型目录失败 ${t.javaClass.simpleName}: ${t.message}")
+                // 给用户的措辞（HumanizeError 的口径，见 util/HumanizeError.kt）：
+                // ⚠️ OcHttpException 是 IOException 的子类，直接交给 HumanizeError 会被
+                //    ioTitle 报成"文件读写失败"（用户会去查存储）。所以 HTTP 失败单独说状态码。
+                val shown = when {
+                    t is OcHttpException -> "服务器返回 ${t.code}"
+                    t is java.io.IOException -> com.example.zhengdao.util.HumanizeError.title(t)
+                    else -> t.message?.take(120) ?: t.javaClass.simpleName
+                }
+                _state.update { it.copy(lastModelFetchError = shown) }
+                emptyList()
+            },
+        )
     }
 
     /**

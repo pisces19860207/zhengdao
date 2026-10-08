@@ -298,6 +298,28 @@ object ProotLauncher {
                 }
             }
         }
+
+        // 终端内缓存清理命令 zzclean（用户 2026-10-08：「可不可以做一个终端自己清理缓存的方法」）。
+        // 落 `/usr/local/bin`：系统层、天然在所有 shell 的 PATH 里，**新旧 shell 都拿得到**
+        // （与上面 hermes 软链同一个理由）。脚本正文由 CacheCleaner 生成 —— 命令清单与
+        // 设置页那条 "在终端中清理缓存" 同源，不会出现两边清的东西不一样。
+        // ⚠️ 每次启动**按内容比对后重写**，而不是"文件在就不管"：脚本正文会随 App 版本更新，
+        //    只判存在会让老环境永远停在旧脚本上（上一条 zz-cursor-bar.sh 就是那种写法）。
+        // ⚠️ 执行位也要一起判：内容相同但丢了 +x 的旧环境会被判成"已就绪"，终端里敲 zzclean
+        //    直接 Permission denied（2026-10-08 审查）。判据因此是「内容不同 **或** 不可执行」
+        //    时重写并重设执行位——幂等语义不变（内容与执行位都对时依然一次都不写）。
+        runCatching {
+            val binDir = File(rootfsDir, "usr/local/bin")
+            if (binDir.isDirectory || binDir.mkdirs()) {
+                val zz = File(binDir, "zzclean")
+                val want = CacheCleaner.zzcleanScript()
+                if (!zz.isFile || zz.readText() != want || !zz.canExecute()) {
+                    zz.writeText(want)
+                    zz.setExecutable(true, false)
+                    RunLog.log("终端清理命令已就绪：/usr/local/bin/zzclean")
+                }
+            }
+        }.onFailure { RunLog.log("写入 zzclean 失败：${it.message}") }
         // npm 国内镜像（login shell 经 /etc/profile.d 自动生效）：官方 registry 从国内
         // 拉 Agent 及其二进制要 2-4 分钟，npmmirror 通常几十秒。写失败不阻断。
         runCatching {
@@ -410,10 +432,24 @@ object ProotLauncher {
         runCatching {
             val f = File(homeDir, ".tmux.conf")
             val cur = if (f.isFile) f.readText() else ""
-            if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
-                f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + "set -g mouse on\n")
-                RunLog.log("tmux 配置已补：set -g mouse on（触摸滑动可滚动历史）")
+            val add = buildString {
+                if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
+                    append("set -g mouse on\n")
+                    RunLog.log("tmux 配置已补：set -g mouse on（触摸滑动可滚动历史）")
+                }
+                // 剪贴板预置（2026-10-08 真机实测补）：三档负载（100 / 9000 / 12345 字符）
+                // 端到端验证「终端内的 OSC 52 → 手机剪贴板」这条链。
+                // tmux 的 set-clipboard 默认是 external —— 实测这种模式下**pane 里应用发出的
+                // OSC 52 不会被转发给外层终端**（App 收不到、剪贴板不变、也没有「已复制」提示）；
+                // 只有在 on 模式下 tmux 才会既存自己的 buffer、又把 OSC 52 透传给 App。
+                // 因此这里必须显式开 on，否则 TerminalEmulator 里那套 OSC 52 处理（含 100 KiB
+                // 上限修复）在 tmux 里等于白做。
+                if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+set-clipboard\\b").containsMatchIn(cur)) {
+                    append("set -g set-clipboard on\n")
+                    RunLog.log("tmux 配置已补：set -g set-clipboard on（终端内 OSC 52 才能写进手机剪贴板）")
+                }
             }
+            if (add.isNotEmpty()) f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + add)
         }
 
         // TZ（双保险的第二层）：tmux server / date / Node 等都读它。带 zoneinfo 的

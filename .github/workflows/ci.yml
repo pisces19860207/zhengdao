@@ -57,6 +57,13 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
 
+      # E-048：入库的 libzhengdao_core.so 是**人工** cargo build + llvm-strip 后拷进来的，
+      # 两条 workflow 都不构建它；而 16KB 对齐漏掉、JNI 入口被 strip 掉都不会编译失败，
+      # 只会在真机上「loadLibrary 失败 → isRustAvailable()=false → 悄悄退回 Java」。
+      # 所以在这里把「对齐 + 入口符号」做成门禁（期望符号现读 CoreNative.kt，自动跟新方法）。
+      - name: 入库 .so 门禁（16KB 页对齐 + JNI 入口符号）
+        run: python3 tools/check-native-so.py
+
       - name: 编译 Debug APK（含 .so 打包验证）
         run: ./gradlew :app:assembleDebug --console=plain
 

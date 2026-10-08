@@ -315,4 +315,55 @@ class PluginManagerTest {
         val pkg = File(root, "some-plugin@latest").apply { mkdirs() } // 无 package.json
         assertNull(PluginManager.versionFrom(pkg, "some-plugin"))
     }
+
+    // ── normalizeSpecInput（2026-10-08，配合「添加插件」入口）─────────────────
+
+    @Test
+    fun `合法包名原样通过`() {
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput("my-plugin"))
+        assertEquals("@scope/my-plugin", PluginManager.normalizeSpecInput("@scope/my-plugin"))
+        assertEquals("pkg@1.2.3", PluginManager.normalizeSpecInput("pkg@1.2.3"))
+        assertEquals("@scope/pkg@latest", PluginManager.normalizeSpecInput("@scope/pkg@latest"))
+    }
+
+    @Test
+    fun `首尾空白被裁掉——粘贴带换行仍可用`() {
+        // 断言**返回的规范值**（而不是只看非 null）：单侧空白各钉一条，将来谁把 trim 挪走、
+        // 或改成"整体判空白"都会当场红灯（2026-10-08 补强，原文只测了双侧夹空白的形态）。
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput("my-plugin "))
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput(" my-plugin"))
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput("my-plugin\n"))
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput("my-plugin\t"))
+        assertEquals("my-plugin", PluginManager.normalizeSpecInput(" \n my-plugin \n "))
+        // scope 形态同理：首尾空白一样裁掉，内部那个 `/` 不受影响
+        assertEquals("@scope/my-plugin", PluginManager.normalizeSpecInput(" @scope/my-plugin\n"))
+    }
+
+    @Test
+    fun `空串与纯空白被拒`() {
+        assertNull(PluginManager.normalizeSpecInput(""))
+        assertNull(PluginManager.normalizeSpecInput("   "))
+    }
+
+    @Test
+    fun `内部空白被拒——粘贴进整段说明文字不能变成插件名`() {
+        assertNull(PluginManager.normalizeSpecInput("my plugin"))
+        assertNull(PluginManager.normalizeSpecInput("my\nplugin"))
+        assertNull(PluginManager.normalizeSpecInput("my\tplugin"))
+        assertNull(PluginManager.normalizeSpecInput("启用这个插件 opencode-plugin-x"))
+    }
+
+    @Test
+    fun `相对路径与 URL 尾巴被拒`() {
+        assertNull(PluginManager.normalizeSpecInput("./local-plugin.js"))
+        assertNull(PluginManager.normalizeSpecInput("/usr/share/plugin.js"))
+    }
+
+    @Test
+    fun `斜杠形态必须与 scope 匹配`() {
+        assertNull(PluginManager.normalizeSpecInput("scope/pkg"))    // 非 scope 却带斜杠
+        assertNull(PluginManager.normalizeSpecInput("@scope"))       // scope 缺 name
+        assertNull(PluginManager.normalizeSpecInput("@scope/a/b"))   // 多一级
+        assertEquals("@scope/pkg", PluginManager.normalizeSpecInput("@scope/pkg"))
+    }
 }

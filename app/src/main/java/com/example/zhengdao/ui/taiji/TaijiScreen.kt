@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,12 +21,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +55,7 @@ import com.example.zhengdao.oc.OcSessionSummary
 import com.example.zhengdao.oc.SseClient
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
+import com.example.zhengdao.ui.PluginManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +82,19 @@ import kotlinx.coroutines.withContext
 @Composable
 fun TaijiScreen(
     onExit: () -> Unit = {},
+    // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
+    // 不传时退化到内部新建。**注意**：切会话的逻辑（LaunchedEffect(sessionId) 滚到底）
+    // 在 MessageList 内部仍生效——K2 解决的是"切 Tab 不丢位置"，与会话切换无关。
+    listState: androidx.compose.foundation.lazy.LazyListState =
+        androidx.compose.foundation.lazy.rememberLazyListState(),
+    // K2 配套（2026-10-08 审查）：只提 listState 不够 ——「是否跟随最新」和「已定位过哪个会话」
+    // 同样要跨 Tab 存活，否则切回来时 follow 重新初始化成 true、positionedSession 变 null，
+    // 两个 LaunchedEffect 立刻把保留的滚动位置踢回底部，K2 在太极页等于没做。默认值只服务
+    // "调用方没注入"的旧用法，HomeTabs 里两个都注入（见 MainActivity 的 K2 配套注释）。
+    followState: androidx.compose.runtime.MutableState<Boolean> =
+        androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) },
+    positionedSession: androidx.compose.runtime.MutableState<String?> =
+        androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(null) },
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -88,6 +108,15 @@ fun TaijiScreen(
     // 用项目已有的 collectAsState，避免为collectAsStateWithLifecycle 引入 lifecycle-runtime-compose
     val state by repo.state.collectAsState()
 
+    // C2（重新发送）：发送失败时弹 Snackbar + "重试" action。
+    // 搜证结论：MD3 / iOS HIG / WhatsApp 实务都要求"永远不要删除用户输入"——
+    // 失败时把 input 留给输入框（prompt 失败时不走 `input=""` 路径，已天然满足），
+    // 再给一个 1-tap 的重发入口。
+    //
+    // Snackbar 优于 Toast 的原因：MD3 明确说"需要操作的错误用 Snackbar"——
+    // "重试"是个有后续动作的入口，不是通知。
+    val snackbarHostState = remember { SnackbarHostState() }
+
     // 🔺 会话 id 必须跨配置变更保存。
     //    转屏 / 切 Tab 回来时 Activity 重建、Repository 也重建；若每次都传 null 就会
     //    **新建一个会话**，历史消息全丢（表现："转一下屏聊天记录没了"）。
@@ -98,6 +127,19 @@ fun TaijiScreen(
     // 历史列表内容 + 左侧抽屉的开合。刻意留在 UI 层局部状态，不进 Repository
     // —— 「会话数据」才是 Repository 的职责，「抽屉开没开」是纯 UI 关注点。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+
+    // ── 插件入口（2026-10-08）：从「设置」页搬进太极 ──
+    // 用户反馈「太极页找不到插件入口」——插件是太极的能力（PluginManager 只读写太极实例的
+    // opencode.json），入口却在设置页，用的时候要跨页找。现放进抽屉底部（见 HistoryDrawer），
+    // 面板内容复用设置页那一份 PluginsScreen，避免两份 UI 各自变。
+    var showPlugins by remember { mutableStateOf(false) }
+    var pluginCount by remember { mutableStateOf(0) }
+    // 开抽屉 / 面板开合都重算一次：插件是在面板里改的，回到抽屉必须看到新数字。
+    LaunchedEffect(drawerState.isOpen, showPlugins) {
+        pluginCount = withContext(Dispatchers.IO) {
+            PluginManager.readSpecs(PluginManager.taijiConfig(ctx)).size
+        }
+    }
     var sessions by remember { mutableStateOf<List<OcSessionSummary>>(emptyList()) }
     var sessionsLoading by remember { mutableStateOf(false) }
 
@@ -179,8 +221,9 @@ fun TaijiScreen(
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        when {
+    Box(Modifier.fillMaxSize()) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            when {
             // 未安装：给就地安装入口（丹房过滤了 OpenCode，v1.1.1 起这里是唯一入口——
             // 原文案"去丹房安装"是死循环回归）。缓存命中时约 1 分钟（含校验+解压）
             !OcManager.installed(ctx) -> NotInstalledPane(
@@ -232,7 +275,11 @@ fun TaijiScreen(
                         // 设置 → 环境更新 里，而太极是天天开的页面，所以抽屉底部也放一个。
                         // HistoryDrawer 内部是 Column(fillMaxSize)，故用 weight(1f) 让它只占
                         // 上半部，版本条固定在底部。
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        //
+                        // 2026-10-08 UI 走查：外层 Column 加 navigationBarsPadding——手势导航
+                        // 下底部「检查 OpenCode 更新」按钮会被导航条压住一截，加这个就让按钮浮
+                        // 到导航条之上。M3 ModalDrawerSheet 默认不接管 navigationBars insets。
+                        Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
                             HistoryDrawer(
                                 sessions = sessions,
                                 loading = sessionsLoading,
@@ -267,6 +314,23 @@ fun TaijiScreen(
                                     }
                                     ok
                                 },
+                                pluginCount = pluginCount,
+                                onPlugins = {
+                                    scope.launch { drawerState.close() }
+                                    showPlugins = true
+                                },
+                                // 顶栏原「◼」的动作：结束本次会话（关 OpenCode 实例）+ 退出太极。
+                                // 它和「停止生成」不是一回事，见 SessionBar KDoc。
+                                onCloseSession = {
+                                    // 收抽屉 → 关实例 → 退出，三件事在**同一个协程里顺序执行**：
+                                    // 拆成两个 launch 时它们是并发跑的，抽屉还没收完就可能已经开始退出，
+                                    // 视觉上像"确认弹窗还开着，界面突然没了"（2026-10-08 修复）。
+                                    scope.launch {
+                                        drawerState.close()
+                                        repo.close()
+                                        onExit()
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                             )
                             OcVersionFooter()
@@ -293,16 +357,20 @@ fun TaijiScreen(
                         currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
                             ?: state.currentModel ?: "默认",
                         onModelClick = {
+                            // 2026-10-08：**先弹抽屉、再拉目录**（原来相反）。
+                            // 原顺序是"拉完才弹"——用户在那一两秒里看到的是"点了没反应"，
+                            // 于是普遍感觉"模型选择要手动刷新"（用户 2026-10-08 原话）。
+                            // 现在抽屉立刻出现、内部显示「正在拉取模型目录…」，拉到就填上；
+                            // 用户在等待期间至少能看到界面已经响应。
+                            showModelSheet = true
+                            modelsLoading = true
                             scope.launch {
-                                modelsLoading = true
                                 repo.fetchModels(
                                     com.example.zhengdao.terminal.Workspace.hostDir(ctx).absolutePath
                                 )
                                 modelsLoading = false
-                                showModelSheet = true
                             }
                         },
-                        onStop = { scope.launch { repo.close(); onExit() } },
                     )
                     ConnectionBanner(state, onDismiss = repo::dismissError)
 
@@ -319,6 +387,10 @@ fun TaijiScreen(
                                 // 会话 id 进 key：切会话后重新定位到该会话底部（不沿用上一个会话的滚动位置）
                                 sessionId = state.sessionId,
                                 modifier = Modifier.fillMaxSize(),
+                                listState = listState, // K2：外部注入的 state
+                                // K2 配套：跟随标记与"已定位会话"也由外部注入（见本函数签名注释）
+                                followState = followState,
+                                positionedSession = positionedSession,
                             )
                         }
                     }
@@ -329,16 +401,25 @@ fun TaijiScreen(
                         enabled = state.sessionId != null,
                         onInputChange = repo::setInput,
                         onSend = {
-                            // 失败必须看得见：prompt 的失败原先只写进 App 私有的运行日志文件，
-                            // 用户在界面上只看到"点了一下没反应"（2026-10-08 投诉）。
+                            // 失败必须看得见（C2 2026-10-08 升级）：失败时给"重试"入口，
+                            // 让用户 1-tap 重新发同样内容。input 文字由 prompt 失败路径自然
+                            // 保留（成功才清空），用户也可自己改完再发。
                             val text = state.input
                             scope.launch {
                                 repo.prompt(text).onFailure { e ->
-                                    Toast.makeText(
-                                        ctx,
-                                        "发送失败：${e.message ?: e.javaClass.simpleName}",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
+                                    // 人话化：把 Java 异常翻成短句（详见 HumanizeError.title）。
+                                    val title = com.example.zhengdao.util.HumanizeError.title(e)
+                                    val r = snackbarHostState.showSnackbar(
+                                        message = "发送失败：$title",
+                                        actionLabel = "重试",
+                                        withDismissAction = true,
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                    if (r == SnackbarResult.ActionPerformed) {
+                                        // 点"重试"——text 此刻可能已被用户改了（Snackbar 在屏时输入框可用），
+                                        // 改了就用最新，没改就直接用原 text。**不**用最原始的 text 强行发。
+                                        repo.prompt(state.input)
+                                    }
                                 }
                             }
                         },
@@ -355,6 +436,9 @@ fun TaijiScreen(
                 override = modelOverride,
                 currentModel = state.currentModel,
                 isLoading = modelsLoading,
+                // 失败原因（来自 OcRepository.fetchModels → TaijiState.lastModelFetchError）：
+                // 必传，不给默认值——漏传就等于把「拉取失败」又变回静默，编译期拦下比运行时才发现强。
+                error = state.lastModelFetchError,
                 onSelectDefault = {
                     persistOverride(null)
                     showModelSheet = false
@@ -377,15 +461,28 @@ fun TaijiScreen(
             )
         }
 
+        // 插件面板（2026-10-08）：从抽屉进来，内容复用设置页那份 PluginsScreen。
+        if (showPlugins) PluginsSheet(onDismiss = { showPlugins = false })
+
         // ★ 权限批准：不可省。Agent 改文件时会发 permission.asked，不响应就卡死。
         state.pendingPermission?.let { perm ->
             PermissionSheet(perm) { allow, remember ->
                 scope.launch { repo.respondPermission(perm.permissionId, allow, remember) }
             }
         }
+
+        // C2：发送失败的 Snackbar 锚点。align BottomCenter 让它浮在输入框 + 底栏之上；
+        // navigationBarsPadding 避免手势导航的横条压住 Snackbar 关闭按钮。
+        // 不加 imePadding —— Snackbar 出现时键盘通常不在屏（用户已经松手了）。
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding(),
+        )
     }
 }
-
+    }
 // ── 占位面板 ──────────────────────────────────────────────────────────
 
 @Composable

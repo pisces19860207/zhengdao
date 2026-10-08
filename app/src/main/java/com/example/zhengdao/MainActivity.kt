@@ -57,6 +57,7 @@ import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.SettingsScreen
+import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.WelcomeScreen
 
 /** App 自更新检查端点（GitHub Releases 最新发布）。 */
@@ -280,8 +281,15 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     }
 
     // 恢复上次页面：叠在 home 之上（返回键退回首页，不再有死返回）
+    //
+    // 2026-10-08 加固：真机上出现过"从设置页返回后整页纯白"（当次 2/2，随后 9 次导航 0 复现），
+    // 纯白时 uiautomator 一个节点都读不到、logcat 也没有异常，日志里没有任何路由痕迹 ⇒ 无法归因。
+    // 这里做两件事：① 只在确实站在起始页时才叠加恢复页，避免在任何中间态下再造一次
+    // "栈里只剩恢复页"的局面（那正是 2026-10-06 c7e59dc7 修过的死返回）；② 记一行路由面包屑，
+    // 万一再复现，日志里至少能看到最后到达/来自哪个页面、栈是不是退空了。
     androidx.compose.runtime.LaunchedEffect(lastRoute) {
-        if (!startInTerminal && lastRoute == "settings") {
+        val cur = nav.currentBackStackEntry?.destination?.route
+        if (!startInTerminal && lastRoute == "settings" && (cur == "home" || cur == "welcome")) {
             nav.navigate("settings") { launchSingleTop = true }
         }
     }
@@ -290,6 +298,13 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     androidx.compose.runtime.LaunchedEffect(nav) {
         nav.currentBackStackEntryFlow.collect { entry ->
             routePrefs.edit().putString("last_route", entry.destination.route).apply()
+            // 路由面包屑（白屏排查用，见上）：一次导航一行，正常使用一天也就几行。
+            runCatching {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "路由 → ${entry.destination.route}" +
+                        "（来自 ${nav.previousBackStackEntry?.destination?.route ?: "无"}）"
+                )
+            }
         }
     }
 
@@ -316,8 +331,10 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
             runCatching {
                 com.example.zhengdao.rootfs.RunLog.log("[错误] 进终端失败: $reason")
             }
+            // 2026-10-08：异常原文 → 人话。原文已落 RunLog，用户看的用 [HumanizeError]
+            // 转成「没有权限 / 网络超时 / 文件找不到」之类可读短语
             android.widget.Toast.makeText(
-                context, "无法打开终端：$reason", android.widget.Toast.LENGTH_LONG
+                context, "无法打开终端：${com.example.zhengdao.util.HumanizeError.title(t)}", android.widget.Toast.LENGTH_LONG
             ).show()
         }
     }
@@ -357,7 +374,23 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
                         .height(48.dp),
                 ) {
                     TextButton(
-                        onClick = { nav.popBackStack() },
+                        // popBackStack 返回 false = 栈里已经没有可退的页面（历史死返回）。
+                        // 此时若什么都不做，NavHost 就没有内容可画 → 整页纯白
+                        //（2026-10-08 真机现象：设置页返回后整窗纯白、零可读节点）。
+                        // 兜底：显式回 home 并清栈重建，保证任何时候都有页面在显示。
+                        onClick = {
+                            if (!nav.popBackStack()) {
+                                runCatching {
+                                    com.example.zhengdao.rootfs.RunLog.log(
+                                        "路由：设置页返回时栈已空，兜底回 home（白屏防御）"
+                                    )
+                                }
+                                nav.navigate("home") {
+                                    popUpTo(nav.graph.id) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .padding(start = 4.dp),
@@ -422,6 +455,67 @@ fun HomeTabs(
 ) {
     var tab by remember { mutableIntStateOf(2) }
 
+    // 切 Tab 保留滚动位置（K2）——把两个 tab 的 LazyListState 提到 HomeTabs 顶层。
+    //
+    // 之前 listState 在各 tab 内部用 rememberLazyListState() 创建：切走 tab 时整个 tab
+    // 的 Composable 退出 Composition，state 跟着 destroy；切回时拿到的是"出厂态"。
+    // 用户实感：丹房翻到第 8 个 Agent，切太极再切回，又被甩到顶。
+    //
+    // 提到外层后 state 跟 HomeTabs 同寿命；rememberLazyListState() 内部用 saver 走
+    // rememberSaveable，顺带覆盖了"配置变更（旋转、深浅色）"也要保留位置。
+    //
+    // K1 双击滚顶：把这两个 state 通过 onTabDoubleTap lambda 注入底栏，双击触发
+    // animateScrollToItem(0)。判定用的是"300ms 内再点同一个 Tab"（见
+    // [lastTabClickAt] 与下面 NavigationBarItem 的 onClick），所以**只有点当前 Tab
+    // 才会滚顶**；点别的 Tab 只是切 Tab，不动列表。
+    val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val taijiListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    // K2 配套（2026-10-08 审查）：太极消息列表的「是否跟随最新」与「已经定位过哪个会话」
+    // 也必须跟 listState 同寿命。切 Tab 时 TaijiScreen 退出 Composition，这两个值若留在
+    // 页面内部用 remember，切回来就重新初始化成"刚进入会话"，LaunchedEffect 立刻把保留的
+    // 滚动位置一脚踢回底部 —— 上面辛苦提出来的 listState 等于白提（K2 在太极页失效，丹房正常）。
+    val taijiFollow = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    val taijiPositionedSession =
+        androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // K1（双击 Tab 滚顶）：在 HomeTabs 顶层记"上一次点同一个 Tab 的时间"。
+    // 300ms 内再次点同一 Tab → 视为双击 → animateScrollToItem(0)。
+    // 终端 Tab 没 listState（点了直接跳 Activity），双击分支对它 no-op。
+    //
+    // 为什么不在 Composable 内做手势检测（detectTapGestures onDoubleTap）：
+    //   NavigationBarItem 已自带 onClick 包了 clickable，叠加 pointerInput 会与 clickable
+    //   抢事件，得自己处理 tap/doubleTap 互斥。这里走"时间窗口判定"逻辑等价（300ms
+    //   是 Material Design 文档里 Tap-Double 区分的推荐值），代码少一半。
+    val lastTabClickAt = androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    val now = { android.os.SystemClock.uptimeMillis() }
+
+    fun animateToTop(target: Int) {
+        when (target) {
+            0 -> scope.launch { taijiListState.animateScrollToItem(0) }
+            2 -> scope.launch { homeListState.animateScrollToItem(0) }
+            // 1 = 终端：点了就跳 TerminalActivity，不存在"滚顶"概念，no-op
+        }
+    }
+
+    fun onTabClicked(target: Int, onTerminalClicked: () -> Unit) {
+        if (tab == target) {
+            val t = now()
+            if (t - lastTabClickAt.longValue < 300L) {
+                animateToTop(target)
+                lastTabClickAt.longValue = 0L
+                return
+            }
+        }
+        lastTabClickAt.longValue = now()
+        when (target) {
+            0 -> { tab = 0 }
+            1 -> { tab = 1; onTerminalClicked() }
+            2 -> { tab = 2 }
+        }
+    }
+
     Scaffold(
         bottomBar = {
             // 底栏走 iOS 语言：与页面同为白底、靠一条 0.5dp 发丝线分隔。
@@ -448,7 +542,8 @@ fun HomeTabs(
                         selected = tab == 0,
                         // 太极 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
                         //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
-                        onClick = { tab = 0 },
+                        // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
+                        onClick = { onTabClicked(0) {} },
                         icon = { TaijiIcon(tab == 0) },
                         label = { Text("太极") },
                         colors = tabColors,
@@ -462,17 +557,23 @@ fun HomeTabs(
                         //    终端一整页盖在上面时看不出问题，等红点关掉终端就露馅了——
                         //    底部高亮还停在太极，用户以为"返回到了 opencode"。
                         //    洞天是进终端的那个 tab，用过终端就该停在洞天。
-                        onClick = {
-                            tab = 1
-                            onOpenTerminal(null, null)
-                        },
+                        // K1：终端 tab 双击不滚顶（点了就跳 Activity，列表根本不存在）。
+                        onClick = { onTabClicked(1) { onOpenTerminal(null, null) } },
                         icon = { CaveIcon(tab == 1) },
-                        label = { Text("洞天") },
+                        // 2026-10-08：文案由「洞天」改为「终端」。
+                        // 理由：这个 Tab 的功能是打开终端，而全项目 30+ 处文案都写「终端」，
+                        // 只有底栏与空态写「洞天」——用户在首次启动那一屏就会同时看到两个词
+                        // （WelcomeScreen 原句："运行环境用于「洞天」终端与 Agent"），
+                        // 却找不到叫「洞天」的地方。「终端」是用户已有的通用认知，无需学。
+                        // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
+                        // 见 :624 的设计说明），此处只改用户可见文案。
+                        label = { Text("终端") },
                         colors = tabColors,
                     )
                     NavigationBarItem(
                         selected = tab == 2,
-                        onClick = { tab = 2 },
+                        // K1：双击 = 滚到丹房 Agent 列表顶。
+                        onClick = { onTabClicked(2) {} },
                         icon = { DingIcon(tab == 2) },
                         label = { Text("丹房") },
                         colors = tabColors,
@@ -500,9 +601,17 @@ fun HomeTabs(
                 // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
                 //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
                 //    真坏了就修，不藏一条会腐烂的备用路。
-                0 -> com.example.zhengdao.ui.taiji.TaijiScreen()
+                0 -> com.example.zhengdao.ui.taiji.TaijiScreen(
+                    listState = taijiListState,
+                    followState = taijiFollow,
+                    positionedSession = taijiPositionedSession,
+                )
                 // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
-                2 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
+                2 -> HomeScreen(
+                    onOpenTerminal = onOpenTerminal,
+                    onOpenSettings = onOpenSettings,
+                    listState = homeListState,
+                )
                 // 洞天：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在洞天会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
@@ -531,7 +640,8 @@ private fun TerminalTabEmptyState(onOpenTerminal: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "洞天",
+            // 与底栏 Tab 文案保持一致：同一个 Tab，同一个名字（见 :470 的改名说明）
+            text = "终端",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )

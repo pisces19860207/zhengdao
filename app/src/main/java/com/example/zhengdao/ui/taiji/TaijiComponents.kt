@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +54,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,17 +64,27 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,6 +99,10 @@ import com.example.zhengdao.oc.OcTodo
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.oc.ToolState
+import com.example.zhengdao.ui.AttachmentGlyph
+import com.example.zhengdao.ui.PluginsScreen
+import com.example.zhengdao.ui.ThinkGlyph
+import com.example.zhengdao.ui.ToolGlyph
 // Markdown 渲染（v1.1 第四阶段）：仅最终回答使用
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
@@ -105,7 +121,15 @@ import kotlinx.coroutines.launch
  * [connection]非[ConnectionState.Connected] 时显示状态——**失败必须可见**，
  * 不静默（与项目"M2 内存治理不假装成功"同一原则）。
  *
- * 顶栏四件事：历史入口（☰）/ 会话标题 + 连接状态 · 模型池入口 / 新会话（＋）/ 退出（◼）。
+ * 顶栏三件事：历史入口（☰）/ 会话标题 + 连接状态 · 模型池入口 / 新会话（＋）。
+ *
+ * ## 2026-10-08 顶栏瘦身（用户反馈）
+ * ① 「那个＋号太小」——原实现是 `IconButton` 里放一个字符「＋」，字形约 16dp 且无底色，
+ *    在相邻的 ☰ 旁边显得更小、手指也难瞄。现改为 **40dp 实心 tonal 圆钮 + 自绘加号**。
+ * ② 原来的第四个按钮「◼（退出）」已**移入左侧抽屉**（见 [HistoryDrawer]）：它做的事是
+ *    `repo.close() + onExit()`，即**结束本次会话（关掉 OpenCode 实例）并退出太极**，
+ *    与「停止生成」（[ComposerBar] 里随流式状态出现的停止钮）**不是同一件事**。
+ *    两者都以「停止」的形态出现，是误解的源头；现在「停止」只剩输入框旁那一处。
  *
  * ## 2026-10-07 布局修复（真机实测的缺陷）
  * v1.0 合并后模型入口曾与标题并排直排主行，模型名实测长达
@@ -123,7 +147,6 @@ fun SessionBar(
     onNew: () -> Unit = {},
     currentModelText: String? = null,
     onModelClick: () -> Unit = {},
-    onStop: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -133,7 +156,13 @@ fun SessionBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onHistory) {
-            Text("☰", style = MaterialTheme.typography.titleMedium)
+            // 2026-10-08：无障碍。图标是用 Unicode 字符「☰」冒充的，读屏会念成
+            // "三条横线"甚至乱码，而不是「会话历史」。contentDescription 覆盖字形播报。
+            Text(
+                "☰",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { contentDescription = "会话历史" },
+            )
         }
         Column(
             modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
@@ -161,10 +190,28 @@ fun SessionBar(
                 }
             }
         }
-        IconButton(onClick = onNew) {
-            Text("＋", style = MaterialTheme.typography.titleMedium)
-        }
-        IconButton(onClick = onStop) { Text("◼", style = MaterialTheme.typography.bodyMedium) }
+        // ＋ 新会话：48dp 实心圆钮 + 自绘加号（2026-10-08，原先只有一个小字符，见 KDoc）。
+        // 按钮取 M3 的行内最小触摸目标 48dp（原先 40dp，偏小）；加号字形仍是自绘的固定 20dp
+        // （见 PlusGlyph），所以按钮放大**不会**把字形一起撑大。
+        // 无障碍：PlusGlyph 是裸 Canvas，默认不带任何语义，读屏只会念"按钮" —— 用
+        // contentDescription 明示它是「新会话」（语法与 [SendGlyph]/[StopGlyph] 的用法一致）。
+        FilledTonalIconButton(
+            onClick = onNew,
+            modifier = Modifier.size(48.dp).semantics { contentDescription = "新会话" },
+        ) { PlusGlyph() }
+    }
+}
+
+/** 加号图标：自绘（本工程不使用任何第三方图标素材，画法与 [SendGlyph] / [StopGlyph] 同源）。 */
+@Composable
+private fun PlusGlyph() {
+    val tint = LocalContentColor.current
+    Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        val h = size.height
+        val sw = 2.2f
+        drawLine(tint, Offset(w * 0.50f, h * 0.20f), Offset(w * 0.50f, h * 0.80f), sw, StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.20f, h * 0.50f), Offset(w * 0.80f, h * 0.50f), sw, StrokeCap.Round)
     }
 }
 
@@ -192,7 +239,11 @@ private fun ModelChip(text: String, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            // 2026-10-08 走查：上下内边距 2dp → 12dp。原来 labelSmall 行高约 16dp，
+            // 加 4dp 只有 **20dp 高**——这是全 App 最小的交互控件，而它是改模型的唯一
+            // 入口，非技术用户会反复点不中、然后以为 App 坏了。现在约 40dp。
+            // 未一步到 48dp：顶栏高度受限，胶囊再厚会把会话标题挤掉。
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
         )
     }
 }
@@ -223,25 +274,57 @@ private fun ConnectionLabel(connection: ConnectionState, attempt: Int) {
 
 // ── 连接横幅 ──────────────────────────────────────────────────────────
 
-/** 仅在非Connected 时出现的横幅（信息重复但不打扰阅读流）。 */
+/**
+ * 仅在非 [ConnectionState.Connected] 时出现的横幅（信息重复但不打扰阅读流）。
+ *
+ * 2026-10-08 走查：原条件 `!= Connected` 把「首次 [ConnectionState.Connecting]」也算成
+ * "已断开"，横幅飘红 + 文案「连接已断开，正在重连…」——用户根本没断过，这是骗。
+ *
+ * 现在区分两种状态：
+ * - **[ConnectionState.Connecting]**（首次连接中）：中性色 `tertiaryContainer` + 文案
+ *   「正在连接…」，**不给「知道了」**——用户不能忽略还没连上这个事实，否则会以为 UI 卡死。
+ * - **[ConnectionState.Reconnecting]** / **[ConnectionState.Idle]**：红色 `errorContainer`
+ *   + 文案「连接已断开，正在重连…」（或 [TaijiState.lastError]），**给「知道了」**允许用户
+ *   主动消除错误提示。
+ *
+ * [ConnectionState.Connected] 直接返回 → 不渲染。
+ */
 @Composable
 fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
-    AnimatedVisibility(visible = state.connection != ConnectionState.Connected) {
-        Surface(
-            color = MaterialTheme.colorScheme.errorContainer,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
+    val isVisible = state.connection != ConnectionState.Connected
+    AnimatedVisibility(visible = isVisible) {
+        val isConnecting = state.connection == ConnectionState.Connecting
+        val bg = if (isConnecting)
+            MaterialTheme.colorScheme.tertiaryContainer
+        else
+            MaterialTheme.colorScheme.errorContainer
+        val fg = if (isConnecting)
+            MaterialTheme.colorScheme.onTertiaryContainer
+        else
+            MaterialTheme.colorScheme.onErrorContainer
+        val msg = when {
+            isConnecting -> "正在连接…"
+            state.lastError != null -> state.lastError
+            state.connection == ConnectionState.Idle -> "未连接"
+            else -> "连接已断开，正在重连…"
+        }
+        // 「首次连接中」不给「知道了」——否则用户点了之后以为连接已建立，发消息必失败
+        val showDismiss = !isConnecting
+
+        Surface(color = bg, modifier = Modifier.fillMaxWidth()) {
             Row(
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    state.lastError ?: "连接已断开，正在重连…",
+                    msg,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = fg,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onDismiss) { Text("知道了") }
+                if (showDismiss) {
+                    TextButton(onClick = onDismiss) { Text("知道了") }
+                }
             }
         }
     }
@@ -274,8 +357,18 @@ fun MessageList(
     isStreaming: Boolean,
     sessionId: String? = null,
     modifier: Modifier = Modifier,
+    // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
+    // 不传时退化到内部新建（保持向后兼容——若日后有调用方未更新）。
+    listState: LazyListState = rememberLazyListState(),
+    // K2 配套（2026-10-08 审查）：跟随标记与"已经为哪个会话定位过"也必须由外部注入。
+    // 只用页面内的 remember，切 Tab（本组件退出 Composition）后两者都会重置成"刚进入会话"，
+    // 下面 ④/⑤ 两个 LaunchedEffect 会在重新出现的瞬间把滚动位置拉回底部 ⇒ K2 失效。
+    followState: MutableState<Boolean> = remember { mutableStateOf(true) },
+    positionedSession: MutableState<String?> = remember { mutableStateOf(null) },
 ) {
-    val listState = rememberLazyListState()
+    // ❌ 原本 `val listState = rememberLazyListState()` 已被 K2 提到入参。
+    //    切 Tab 走 Composable 出入 Composition 的路径，state 提到 HomeTabs 顶层才能跨 Tab 保留。
+    //    切会话（LaunchedEffect(sessionId) 滚到底）的逻辑不动——那是另一条路径。
 
     // ① 正序：老在上、新在下（渲染层收敛，数据层不动）
     val ordered = remember(messages) { orderChronologically(messages) }
@@ -294,7 +387,8 @@ fun MessageList(
     }
 
     // ③ 是否跟随最新。用户主动上滑看历史 → false（不抢用户的滚动）
-    var follow by remember { mutableStateOf(true) }
+    //    状态由外部注入（K2 配套，见函数签名）：切 Tab 回来不能重置成 true，
+    //    否则 ⑤ 会在重新出现的瞬间贴底，把用户保留的滚动位置吃掉。
 
     val nestedScroll = remember {
         object : NestedScrollConnection {
@@ -302,7 +396,7 @@ fun MessageList(
                 // 只要滚动来自**用户手势**就先停手 —— 无论方向。
                 // 刻意不判 available.y 的符号：方向约定易错，且"用户想回到底部时被内容
                 // 拽着走"同样是抢。用户停手后若确实在底部，下面的 snapshotFlow 会自动恢复。
-                if (source == NestedScrollSource.UserInput) follow = false
+                if (source == NestedScrollSource.UserInput) followState.value = false
                 return Offset.Zero
             }
         }
@@ -311,19 +405,25 @@ fun MessageList(
     // 用户滚动停下后，若已回到底部 → 恢复跟随（只认稳定态，避免滚动中反复翻转）
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
-            if (!scrolling && atBottom) follow = true
+            if (!scrolling && atBottom) followState.value = true
         }
     }
 
-    // ④ 进入 / 切换会话：直接定位到最后一条（瞬时，不从顶部滚下来）
+    // ④ 进入 / 切换会话：直接定位到最后一条（瞬时，不从顶部滚下来）。
+    //    ⚠️ 只在「会话真的换了」时定位：positionedSession 由外部持有（K2 配套），
+    //    切 Tab 回来时 sessionId 没变，就不能再拉一次 —— 否则保留的位置又被踢到底部。
     LaunchedEffect(sessionId) {
-        if (totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+        if (totalItems > 0 && positionedSession.value != sessionId) {
+            positionedSession.value = sessionId
+            followState.value = true // 新看到的会话从「跟随最新」开始
+            listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+        }
     }
 
     // ⑤ 新消息 / 流式内容变化：跟随贴底。
     //    follow 也进 key —— 点「回到最新」置 true 后能立刻贴底。
-    LaunchedEffect(ordered, isStreaming, totalItems, follow) {
-        if (follow && totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+    LaunchedEffect(ordered, isStreaming, totalItems, followState.value) {
+        if (followState.value && totalItems > 0) listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
     }
 
     Box(modifier.fillMaxWidth()) {
@@ -349,12 +449,12 @@ fun MessageList(
 
         // ⑥ 正在翻历史时浮出「⬇ 回到最新」
         AnimatedVisibility(
-            visible = !follow,
+            visible = !followState.value,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) {
-            JumpToLatestButton(onClick = { follow = true })
+            JumpToLatestButton(onClick = { followState.value = true })
         }
     }
 }
@@ -362,7 +462,7 @@ fun MessageList(
 /**
  * 「⬇ 回到最新」浮标：翻历史时出现，点一下回到底部并恢复跟随。
  *
- * 只负责展示与回调 —— 真正的跟随由 [MessageList] 的 `follow` 驱动
+ * 只负责展示与回调 —— 真正的跟随由 [MessageList] 的 `followState` 驱动
  * （点击置 true 后，上方的 LaunchedEffect 立即贴底）。
  */
 @Composable
@@ -378,7 +478,15 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
             "⬇ 回到最新",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            // 2026-10-08 走查：vertical 10dp → 14dp。原来 10+labelLarge 行高 ≈ 26dp 高，
+            // 未达 Google 无障碍建议 48dp。这条按钮出现时机就是用户**远离消息流尾部**，
+            // 离主题（点哪个回复）很远；点不中会再去手动往上翻，是高频失手点。
+            // 未一步到 48dp：这是浮标，再厚会盖住消息；取 44dp 高（bodyMedium + 14sp）。
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                // 同上：浮标纯文字 Surface，没 contentDescription 读屏只能读出"⬇ 回到最新"
+                // ——能听懂，但没标它是按钮，故加 role 让用户知道可以点。
+                .semantics { contentDescription = "回到最新消息" },
         )
     }
 }
@@ -568,7 +676,11 @@ fun PartRow(part: OcPart) {
             }
             ToolCallCard(part)
         }
-        is OcPart.File -> Text("📎 ${part.filename}", style = MaterialTheme.typography.bodySmall)
+        is OcPart.File -> Row(verticalAlignment = Alignment.CenterVertically) {
+            AttachmentGlyph(tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text(part.filename, style = MaterialTheme.typography.bodySmall)
+        }
         // ⚠️ 未知 part 保留原文而非静默丢弃（见 OcDto 注释）
         is OcPart.Unknown -> CollapsibleBlock("未知内容（${part.type}）") {
             Text(part.raw.take(400), style = MaterialTheme.typography.bodySmall,
@@ -608,10 +720,10 @@ fun ToolCallCard(part: OcPart.Tool) {
     ) {
         Column(Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(icon, color = tint, modifier = Modifier.size(16.dp))
+                ToolGlyph(tint = tint)
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "🔧 ${part.toolName.ifEmpty { "工具" }}",
+                    part.toolName.ifEmpty { "工具" },
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -678,7 +790,7 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
 
     // 步数 = 非空段数（直接来自数据，不猜测）；<2 段时不显示「· N 步」，避免「· 1 步」的怪读法。
     val steps = parts.count { it.text.isNotBlank() }
-    val head = if (steps > 1) "💭 思考过程 · $steps 步" else "💭 思考过程"
+    val head = if (steps > 1) "思考过程 · $steps 步" else "思考过程"
     // 头部摘要：取首个非空行
     val summary = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
@@ -686,9 +798,13 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
         Row(
             Modifier.fillMaxWidth()
                 .clickable { expanded = !expanded }
-                .padding(vertical = 2.dp),
+                // 2026-10-08 走查：2dp → 12dp。原来整行只有约 20dp 高，
+                // 「展开/收起思考过程」这个折叠头是全 App 点不中排行榜的第二名。
+                .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ThinkGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(6.dp))
             Text(
                 head,
                 style = MaterialTheme.typography.labelMedium,
@@ -737,7 +853,8 @@ private fun CollapsibleBlock(title: String, content: @Composable () -> Unit) {
             title,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 2.dp),
+            // 2026-10-08 走查：2dp → 12dp（同上方折叠头，原高约 20dp）
+            modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 12.dp),
         )
         if (expanded) { HorizontalDivider(); content() }
     }
@@ -824,7 +941,10 @@ fun ComposerBar(
                             false
                         }
                     },
-                    placeholder = { Text("描述你的任务…") },
+                    // 2026-10-08 走查：流式输出中 placeholder 仍写「描述你的任务…」会让用户
+                    // 困惑——「我这时还能发吗？」切到「AI 正在回复…」明示状态；发送键已变停止
+                    // (FilledTonalIconButton)，双指示器一致。
+                    placeholder = { Text(if (isStreaming) "AI 正在回复…" else "描述你的任务…") },
                     maxLines = 6,
                     // 圆润：胶囊形。TextField 默认是只有上圆角的 4dp 矩形，与"打开就用"的
                     // 观感不搭；24dp 在单行时是胶囊、多行时仍是柔和的大圆角。
@@ -867,7 +987,13 @@ fun ComposerBar(
 @Composable
 private fun SendGlyph() {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(20.dp)) {
+    // 2026-10-08：无障碍。Canvas 自绘默认**不带任何语义**，读屏用户听到的是空白按钮。
+    // contentDescription 写在 Canvas 上会与父 IconButton 的语义合并，播报为「发送，按钮」。
+    Canvas(
+        Modifier
+            .size(20.dp)
+            .semantics { contentDescription = "发送" }
+    ) {
         val w = size.width
         val h = size.height
         val sw = 2.2f
@@ -881,7 +1007,12 @@ private fun SendGlyph() {
 @Composable
 private fun StopGlyph() {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(20.dp)) {
+    // 2026-10-08：无障碍，同 SendGlyph（Canvas 无语义）。
+    Canvas(
+        Modifier
+            .size(20.dp)
+            .semantics { contentDescription = "停止生成" }
+    ) {
         val s = size.minDimension
         drawRoundRect(
             color = tint,
@@ -991,9 +1122,16 @@ fun HistoryDrawer(
     onNew: () -> Unit,
     onRefresh: () -> Unit,
     onDelete: suspend (OcSessionSummary) -> Boolean,
+    /** 已启用插件数（抽屉底部入口行的右侧说明）。 */
+    pluginCount: Int = 0,
+    /** 打开插件面板。 */
+    onPlugins: () -> Unit = {},
+    /** 结束本次会话（关 OpenCode 实例 + 退出太极）。顶栏原「◼」的动作，见 [SessionBar] KDoc。 */
+    onCloseSession: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var pendingDelete by remember { mutableStateOf<OcSessionSummary?>(null) }
+    var confirmClose by remember { mutableStateOf(false) }
 
     Column(modifier.fillMaxSize()) {
         // 头部：edge-to-edge 下抽屉顶到屏幕最上沿，必须自己避开状态栏
@@ -1006,7 +1144,12 @@ fun HistoryDrawer(
         ) {
             Text("会话", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             IconButton(onClick = onRefresh) {
-                Text("⟳", style = MaterialTheme.typography.titleMedium)
+                // 2026-10-08：无障碍，同「☰」——「⟳」字形读屏会念成"逆时针箭头"。
+                Text(
+                    "⟳",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { contentDescription = "刷新会话列表" },
+                )
             }
         }
 
@@ -1025,7 +1168,14 @@ fun HistoryDrawer(
             Text(
                 "＋  新会话",
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                // 2026-10-08 走查：vertical 10dp → 14dp。原来 10dp + bodyMedium ≈ 30dp 高，
+                // 而它是**会话列表抽屉的正面入口**（打开抽屉第一眼就在这里），
+                // 点不中会让用户以为"新会话按钮没出来"——再加垂直 14dp ≈ 44dp 高达标。
+                // 未一步到 48dp：抽屉宽度有限，再厚会使文字与圆角挤得难看。
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    // 同上：纯文字 Surface，读屏需要明示这是按钮 + 它的含义
+                    .semantics { contentDescription = "新建会话" },
             )
         }
 
@@ -1066,6 +1216,47 @@ fun HistoryDrawer(
                 }
             }
         }
+
+        // ── 底部固定区（2026-10-08）：插件入口 + 结束会话 ──
+        // 为什么放这里：
+        //  ① 用户反馈「太极页找不到插件入口」——入口原只在「设置」页，而插件本来就是
+        //     **太极的能力**（PluginManager 只读写太极实例的 opencode.json）。抽屉底部
+        //     本来就摆着 OpenCode 版本条，两者同属"太极的环境"。
+        //  ② 用户反馈「停止键应该和发送键在一起」——顶栏原来的 ◼ 不是"停止生成"，而是
+        //     "结束本次会话（关掉 OpenCode 实例）并退出太极"。语义比"停止"重，外形却像
+        //     一个停止键。移进抽屉并把后果写在确认框里，误会就没有来源了。
+        HorizontalDivider()
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        ) {
+            DrawerActionRow(
+                label = "插件",
+                value = if (pluginCount > 0) "$pluginCount 个已启用" else "未启用",
+                onClick = onPlugins,
+            )
+            DrawerActionRow(
+                label = "结束本次会话",
+                value = "释放内存",
+                onClick = { confirmClose = true },
+            )
+        }
+    }
+
+    if (confirmClose) {
+        AlertDialog(
+            onDismissRequest = { confirmClose = false },
+            title = { Text("结束本次会话？") },
+            text = {
+                Text("会关掉太极里的 OpenCode 实例并释放内存；聊天记录存在服务端，下次进来还在。")
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmClose = false; onCloseSession() }) { Text("结束") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("取消") } },
+        )
     }
 
     pendingDelete?.let { target ->
@@ -1157,7 +1348,7 @@ private fun SessionRow(
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Row(
@@ -1233,3 +1424,79 @@ internal fun dayLabel(ts: Long?): String {
 
 private fun formatClock(ts: Long): String =
     java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
+
+// ── 抽屉底部动作行 ─────────────────────────────────────────────────────
+
+/**
+ * 抽屉底部的动作行（标签 + 右侧说明 + `›`）。
+ *
+ * 形态与设置页的 `SettingRow` 一致，但**刻意不复用**：那一份的竖向内边距（12dp）是按
+ * 设置页的长列表调的，放进 300dp 宽的抽屉会显得过松，且它在 `ui` 包、这里是 `ui.taiji`，
+ * 复用会把抽屉的观感绑在另一个页面的样式上。
+ */
+@Composable
+private fun DrawerActionRow(label: String, value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "›",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+// ── 插件面板 ──────────────────────────────────────────────────────────
+
+/**
+ * 插件面板（2026-10-08）：**从抽屉进来**，内容复用「设置 → 插件」那一份 [PluginsScreen]。
+ *
+ * 刻意**不新写一份 UI**：两次实现同一个开关，迟早会出现"这边关掉了、那边还显示已启用"
+ * （本项目已经踩过一次同源事故：插件开关曾写在没人读的配置文件上，见 PluginManager 类注释）。
+ * 这里只负责外壳（标题 + 完成键 + 高度），状态与操作全部来自 PluginsScreen。
+ *
+ * **高度不设 dp 上限**（2026-10-08 修复，原为 `heightIn(max = 560.dp)`）：写死的 560dp 在
+ * 矮窗 / 横屏 / 分屏下可能比窗口本身还高 —— 那时面板高度由这个数字而不是由窗口决定，
+ * 顶部的标题、「完成」以及下方的「添加插件」输入框就有被挤出可视区的风险。
+ * 现在只约束宽度，让面板**跟着窗口自适应**：内容矮时按内容高，内容高时由窗口收口，
+ * 溢出的部分交给 [PluginsScreen] 自带的 verticalScroll ⇒ 顶部始终可达、底部能滚到。
+ * 也不改用 `fillMaxHeight(0.92f)`：那会让内容很少时也硬撑满窗口，白留一大片空白。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PluginsSheet(onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "插件",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onDismiss) { Text("完成") }
+            }
+            PluginsScreen()
+        }
+    }
+}

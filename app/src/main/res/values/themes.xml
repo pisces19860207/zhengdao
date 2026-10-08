@@ -21,11 +21,16 @@
       快捷键条自适应按键：宽度按 weight 均分，而非固定 wrap_content。
       目的：竖屏一行放不下全部按键（原先靠横向滚动），改为等宽均分后
       窄屏两行、宽屏一行，所有键一屏可见，不需要横向滑动去找键。
+
+      2026-10-08 走查：高度 36dp → 48dp。36dp 只有 Google 无障碍建议值（48dp）的
+      3/4，按键高度不足是"终端手感差"的主要来源。注意**没有**给 TermKeyFlex 加
+      minWidth——这些键 layout_width=0dp 由 weight 定宽，加 minWidth 会把 12 键
+      的第二行撑破屏幕。宽度问题的正解是重排键位（见 term_keys.xml 注释）。
     -->
     <style name="TermKeyFlex">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:layout_height">36dp</item>
+        <item name="android:layout_height">48dp</item>
         <item name="android:gravity">center</item>
         <item name="android:layout_marginEnd">3dp</item>
         <item name="android:paddingStart">2dp</item>
@@ -45,7 +50,7 @@
     <style name="TermKeyDangerFlex">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:layout_height">36dp</item>
+        <item name="android:layout_height">48dp</item>
         <item name="android:gravity">center</item>
         <item name="android:paddingStart">2dp</item>
         <item name="android:paddingEnd">2dp</item>
