@@ -467,7 +467,14 @@ fun HomeTabs(
                             onOpenTerminal(null, null)
                         },
                         icon = { CaveIcon(tab == 1) },
-                        label = { Text("洞天") },
+                        // 2026-10-08：文案由「洞天」改为「终端」。
+                        // 理由：这个 Tab 的功能是打开终端，而全项目 30+ 处文案都写「终端」，
+                        // 只有底栏与空态写「洞天」——用户在首次启动那一屏就会同时看到两个词
+                        // （WelcomeScreen 原句："运行环境用于「洞天」终端与 Agent"），
+                        // 却找不到叫「洞天」的地方。「终端」是用户已有的通用认知，无需学。
+                        // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
+                        // 见 :624 的设计说明），此处只改用户可见文案。
+                        label = { Text("终端") },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -531,7 +538,8 @@ private fun TerminalTabEmptyState(onOpenTerminal: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "洞天",
+            // 与底栏 Tab 文案保持一致：同一个 Tab，同一个名字（见 :470 的改名说明）
+            text = "终端",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
