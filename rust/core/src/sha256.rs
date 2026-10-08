@@ -3,9 +3,10 @@
 //
 //! SHA-256 纯逻辑层（原 `rust/sha256poc`，v2.0 R1 收编进 `rust/core`）。
 //!
-//! 只做两件事：一次性摘要 [`sha256_hex`]、大文件流式 [`Sha256Stream`]。
+//! 只做三件事：一次性摘要 [`sha256_hex`]、大文件流式 [`Sha256Stream`]、
+//! 文件流式摘要 [`sha256_file_hex`]（安装路径校验 192 MB 归档用的就是最后这条）。
 //! 本模块**不含任何 JNI 代码**——JNI 薄层统一挂在 `crate::jni_bridge`，
-//! 对应 Kotlin `com.example.zhengdao.rust.CoreNative.nativeSha256Hex`。
+//! 对应 Kotlin `com.example.zhengdao.rust.CoreNative.nativeSha256Hex` / `nativeSha256File`。
 
 use sha2::{Digest, Sha256};
 
@@ -39,6 +40,28 @@ impl Default for Sha256Stream {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 对**文件**做流式摘要（hex 小写）。
+///
+/// rootfs 归档 192 MB 走的就是这条：分块读盘，常驻内存只有一个 128 KB 缓冲，
+/// 既不把整包读进内存，也不再由 Kotlin 侧另写一份 MessageDigest 实现
+/// （对应 Kotlin `CoreNative.sha256File`，失败时它回退平台的流式实现）。
+pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
+    use std::io::Read;
+
+    let file = std::fs::File::open(path)?;
+    let mut reader = std::io::BufReader::with_capacity(128 * 1024, file);
+    let mut stream = Sha256Stream::new();
+    let mut buf = vec![0u8; 128 * 1024];
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        stream.update(&buf[..n]);
+    }
+    Ok(stream.finalize_hex())
 }
 
 #[cfg(test)]
@@ -81,5 +104,30 @@ mod tests {
             stream.update(chunk);
         }
         assert_eq!(one_shot, stream.finalize_hex());
+    }
+
+    /// 文件流式摘要 = 一次性摘要（数据刻意大于 128 KB 缓冲，跨多次 read），
+    /// 且"文件不存在"返回 Err 而不是 panic 或空串（JNI 层据此回 null 让 Kotlin 回退）。
+    #[test]
+    fn 文件摘要与一次性一致_跨缓冲边界() {
+        let data: Vec<u8> = (0..300_000u32).map(|i| (i % 253) as u8).collect();
+        let path = std::env::temp_dir().join(format!("zd-sha256-file-{}.bin", std::process::id()));
+        std::fs::write(&path, &data).unwrap();
+        let got = sha256_file_hex(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(sha256_hex(&data), got);
+
+        let missing = std::env::temp_dir().join("zd-sha256-file-必然不存在-404.bin");
+        assert!(sha256_file_hex(&missing).is_err());
+    }
+
+    /// 空文件：等价于空串摘要（read 第一次就返回 0，不进循环体）。
+    #[test]
+    fn 空文件摘要等于空串摘要() {
+        let path = std::env::temp_dir().join(format!("zd-sha256-empty-{}.bin", std::process::id()));
+        std::fs::write(&path, b"").unwrap();
+        let got = sha256_file_hex(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(sha256_hex(b""), got);
     }
 }
