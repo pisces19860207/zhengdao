@@ -61,6 +61,23 @@ jobs:
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
+      - name: 缓存 cargo（Rust 逻辑层单测用；key 走已入库的 rust/Cargo.lock）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      # 这 8 例（sha256 4 + extract 4）是解压主路径的安全网，此前只在人手动跑过：
+      # 本机 cargo test 需要 host C 编译器（Windows 上还得 w64devkit 在 PATH，见 ERRATA E-027），
+      # 而 ci/build 两条流水线里从来没有 cargo 步骤 —— 放到 ubuntu runner（自带 gcc）最省事。
+      - name: Rust 逻辑层单测（PC 层纯逻辑，失败即红）
+        run: cd rust && cargo test -p zhengdao_core --release
+
       - name: 归档单测报告（无论成败都上传）
         if: always()
         uses: actions/upload-artifact@v4
