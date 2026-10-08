@@ -55,6 +55,25 @@ object CoreNative {
         java.security.MessageDigest.getInstance("SHA-256").digest(data)
             .joinToString("") { "%02x".format(it) }
 
+    // ────────────────────────── ed25519 模块 ──────────────────────────
+
+    /**
+     * Ed25519 验签（信任根：Agent 清单 / 环境包索引）。
+     *
+     * 返回 `null` = 这条路走不通（Rust 不可用或例外），调用方**必须**回退平台实现
+     * （`AgentManifest` 里的 Kotlin 版 Ed25519），并可选做对拍——见 E-051。
+     */
+    fun verifyEd25519(pubKey: ByteArray, sig: ByteArray, msg: ByteArray): Boolean? {
+        if (!rustAvailable) return null
+        return runCatching { nativeVerifyEd25519(pubKey, sig, msg) }.getOrNull()
+    }
+
+    private external fun nativeVerifyEd25519(
+        pubKey: ByteArray,
+        sig: ByteArray,
+        msg: ByteArray,
+    ): Boolean
+
     // ────────────────────────── extract 模块 ──────────────────────────
 
     /** 进度回调（native 限频触发，约每 200 条目一次）。 */
