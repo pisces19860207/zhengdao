@@ -19,7 +19,10 @@ import java.util.concurrent.TimeUnit
  * - 多候选 URL，失败自动切换（GitHub Releases 直链 + CDN 回源）；
  * - Range 断点续传：存在 .part 文件且服务器支持 206 时从断点续传；
  *   服务器不支持 Range（返回 200）则从头重下；
- * - SHA256 全量校验（期望值由 manifest 提供；M3 起由 ed25519 验签的 manifest 下发）。
+ * - SHA256 全量校验（期望值来自**已验签**的环境索引 `rootfs-index.json`；
+ *   2026-10-08 起该索引本身带 Ed25519 签名，见 RootfsIndexFetcher）。
+ *   ⚠️ 本行原写的是"由 ed25519 验签的 manifest 下发"，而当时**环境包这条链一个签名都没有**
+ *   （只有 agents.json 有）——那句话把两条链混成了一条，属于误导性描述，已按事实改写。
  * 全部为阻塞式 IO，调用方自备工作线程。
  */
 object RootfsDownloader {
@@ -144,24 +147,31 @@ object RootfsDownloader {
     }
 
     /**
-     * 抓取小文本文件；任何失败都返回 null，由调用方决定降级策略。
-     * @param trimEnds 默认去除首尾空白（.sha256 边车等）；验签类调用必须传 false——
-     *   签名覆盖文件全部字节，裁掉末尾换行即验签恒败（实测 2026-10-04，恰好差 1 字节）
+     * 抓取小文件为**原始字节**（验签必须走这条：任何一次解码/裁剪都会破坏签名覆盖范围）。
+     * 任何失败都返回 null，由调用方决定降级策略。
      */
-    fun fetchText(url: String, trimEnds: Boolean = true): String? = try {
+    fun fetchBytes(url: String): ByteArray? = try {
         sharedClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (!resp.isSuccessful) null
-            // ⚠️ 不用 body.string()：对无 charset 的 text/* 响应它按 ISO-8859-1 解码
-            //（RFC 7231 老规则），代理剥掉 charset 头时中文 UTF-8 会被静默破坏
-            //（实测 2026-10-04 manifest 验签恒败的根因之一）。统一显式 UTF-8。
-            else resp.body?.bytes()?.toString(Charsets.UTF_8)?.let { text ->
-                if (trimEnds) text.trim() else text
-            }?.takeIf { it.isNotEmpty() }
+            if (!resp.isSuccessful) null else resp.body?.bytes()?.takeIf { it.isNotEmpty() }
         }
     } catch (t: Throwable) {
-        Log.w(TAG, "抓取文本失败：$url", t)
+        Log.w(TAG, "抓取字节失败：$url", t)
         null
     }
+
+    /**
+     * 抓取小文本文件；任何失败都返回 null，由调用方决定降级策略。
+     * @param trimEnds 默认去除首尾空白（.sha256 边车等）；**验签类调用必须传 false**——
+     *   签名覆盖文件全部字节，裁掉末尾换行即验签恒败（实测 2026-10-04，恰好差 1 字节）。
+     *   新的验签路径（环境包索引）直接用 [fetchBytes]，从根上避免"先解码再验"。
+     */
+    fun fetchText(url: String, trimEnds: Boolean = true): String? =
+        // ⚠️ 不用 body.string()：对无 charset 的 text/* 响应它按 ISO-8859-1 解码
+        //（RFC 7231 老规则），代理剥掉 charset 头时中文 UTF-8 会被静默破坏
+        //（实测 2026-10-04 manifest 验签恒败的根因之一）。统一显式 UTF-8。
+        fetchBytes(url)?.toString(Charsets.UTF_8)?.let { text ->
+            if (trimEnds) text.trim() else text
+        }?.takeIf { it.isNotEmpty() }
 
     private fun downloadOne(
         client: OkHttpClient,

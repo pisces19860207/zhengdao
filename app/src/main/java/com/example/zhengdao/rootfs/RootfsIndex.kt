@@ -5,6 +5,8 @@
 package com.example.zhengdao.rootfs
 
 import android.util.Log
+import com.example.zhengdao.ui.Ed25519
+import java.util.Base64
 
 /**
  * 索引里的增量补丁引用（协议 §4 的 `patch` 对象）。
@@ -110,13 +112,84 @@ object RootfsIndexFetcher {
     const val URL =
         "https://github.com/pisces19860207/zhengdao/releases/download/latest/rootfs-index.json"
 
+    /**
+     * 索引签名公钥（32 字节 raw 的 base64），固化在 APK 里。
+     *
+     * 为什么单独一把、而不是复用 `agents.json` 那把：发布主密钥只在本机签名器里、
+     * **绝不进 CI**；而索引是**构建产物**，必须由 CI 在构建时签 ⇒ 给它一把
+     * **只用于签索引**的密钥：公钥进 APK，私钥只以 GitHub Secret 形式存在。
+     * 代价是**换密钥要发一次新 App**（公钥在里面）——这是这条链的固有成本，写在这里免得将来踩。
+     *
+     * 生成与签发：`python tools/sign-rootfs-index.py --genkey`；签发默认作用于 `rootfs-out/rootfs-index.json`。
+     */
+    const val INDEX_SIGNING_PUBKEY_B64 = "o504TEF3eRPtLicRzp7qBF5AJyTam4voaO89tGYgxxk="
+
+    /** 签名边车地址：索引同目录下的同名 `.sig`（与 `agents.json.sig` 同一约定）。 */
+    fun signatureUrl(indexUrl: String): String = "$indexUrl.sig"
+
+    /**
+     * 验签（纯函数，JVM 可测）。
+     *
+     * ⚠️ 必须对**原始字节**验：签名覆盖文件全部字节，先 trim 再验恒败
+     * （2026-10-04 在 manifest 上实测踩过，恰好差末尾一个换行）。
+     *
+     * @param publicKeyBase64 仅测试会传入别的公钥（错钥方向要能覆盖）；生产走默认值。
+     */
+    fun verifySignature(
+        indexBytes: ByteArray,
+        signatureBase64: String,
+        publicKeyBase64: String = INDEX_SIGNING_PUBKEY_B64,
+    ): Boolean = try {
+        val sig = Base64.getDecoder().decode(signatureBase64.trim())
+        val pub = Base64.getDecoder().decode(publicKeyBase64)
+        check(pub.size == 32) { "索引公钥配置非法（长度 ${pub.size} ≠ 32）" }
+        Ed25519.verify(pub, sig, indexBytes)
+    } catch (t: Throwable) {
+        Log.w("RootfsIndexFetcher", "索引验签异常（视为失败）: ${t.message}")
+        false
+    }
+
+    /**
+     * 抓取索引：**先验签、后解析**（顺序不可颠倒）。
+     *
+     * 为什么索引需要签名：索引里的 sha256 与被校验的包在**同一个 Release** 里，
+     * 所以"能改包的人也能顺手改哈希"——sha256 只能防传输损坏，防不住发布端被篡改。
+     * 只有"发布方私钥签名 + App 内置公钥验签"才能让这种情况变成**装不上**而不是照单全收。
+     * 这与 `agents.json` 的处理一致（那边是"验签不过 = 整份拒绝"）。
+     *
+     * ⚠️ 三种失败必须**看得见区分**，不能都表现成"没查到更新"：
+     * ① 拿不到（网络/源不可达）→ 沿用既有降级；
+     * ② 拿到但**没有签名** → 拒绝使用（未验证的 sha256 不能当校验值）；
+     * ③ 有签名但**验不过** → 拒绝使用 + 明确留痕（这是安全事件）。
+     */
     fun fetch(): RootfsIndex? {
+        var sawUnverified = false
         for (u in RootfsDownloader.withMirrorFallback(URL)) {
-            val text = runCatching { RootfsDownloader.fetchText(u) }.getOrNull() ?: continue
-            val parsed = runCatching { RootfsIndexParser.parse(text) }.getOrNull()
+            val bytes = runCatching { RootfsDownloader.fetchBytes(u) }.getOrNull() ?: continue
+            val sig = runCatching { RootfsDownloader.fetchBytes(signatureUrl(u)) }
+                .getOrNull()?.let { String(it, Charsets.UTF_8) }
+            if (sig.isNullOrBlank()) {
+                sawUnverified = true
+                continue
+            }
+            if (!verifySignature(bytes, sig)) {
+                Log.w("RootfsIndexFetcher", "索引验签失败（已试全部源），不使用该索引")
+                RunLog.log(
+                    "环境索引验签失败：发布源被篡改，或签名密钥已轮换。已拒绝使用该索引" +
+                        "（从本地文件安装环境不受影响）",
+                )
+                return null
+            }
+            val parsed = runCatching {
+                RootfsIndexParser.parse(String(bytes, Charsets.UTF_8))
+            }.getOrNull()
             if (parsed != null) return parsed
         }
-        Log.w("RootfsIndexFetcher", "索引抓取失败（已试全部源），调用方按老路径降级")
+        Log.w(
+            "RootfsIndexFetcher",
+            if (sawUnverified) "索引不可信（源上只有未签名版本），调用方按老路径降级"
+            else "索引抓取失败（已试全部源），调用方按老路径降级",
+        )
         return null
     }
 }

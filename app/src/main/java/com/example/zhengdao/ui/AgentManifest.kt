@@ -217,8 +217,11 @@ private object RunLogCompat {
  * 拒收外部公钥字节（2026-10-04 真机实测，连 BCWorkaround 伪装 provider 都拦截），
  * provider 选择在设备间不可控。算法本体很小（约百行），按 RFC 从零实现，
  * 正确性由单元测试对照真实签名的 manifest 强制锁定（篡改/错钥/正品三向覆盖）。
+ *
+ * `internal` 而非 `private`：**同一模块内复用**——环境包索引（`rootfs/RootfsIndex.kt`）
+ * 也用同一份实现验它自己的签名，避免出现第二份曲线代码（两份实现迟早会分叉）。
  */
-private object Ed25519 {
+internal object Ed25519 {
 
     private val P = BigInteger.TWO.pow(255).subtract(BigInteger.valueOf(19))
     private val D = BigInteger.valueOf(-121665).multiply(
