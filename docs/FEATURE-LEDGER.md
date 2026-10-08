@@ -346,6 +346,38 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 这类硬化**有意不做**（CI 只在 `rootfs/` 有改动时才重建）。见 `docs/ERRATA.md` E-035、
 > `docs/milestones/证道-环境包增量下发协议.md` §8。
 
+> **2026-10-08 续（下载物/日志/缓存统一进 `Download/证道`；「自动清理」终于接线；安装提示从 2 秒 Toast 改成常驻可见）**：
+> 用户 m07687：「还有运行日志，错误日志，下载的东西都放到 download 证道文件夹里，包括终端里下载的
+> agent 的安装主程序，重新装 APP 的话也要像装环境一样的，自己就瞬间装好了，今天的体验就很爽，
+> 但是那个提示时间有点短，终端里也没有显示，我以为要重新下载呢，还跑到环境检测那里点了很多次下载，
+> 这算是个小误会，后来我在终端等了一下终端就刷新了」。三类问题（详见 `docs/ERRATA.md` E-036）：
+> ① **安装反馈**：`TerminalActivity.kt:919` 与 `installStatus(:964-967)` 全是 `Toast.LENGTH_SHORT`
+> ⇒ 关键结论只亮 2 秒、日志又只落在用户打不开的私有 `cacheDir/runlog` ⇒ 明明用的是本地 312 MB 包
+> **没联网**，用户却以为在重新下载。修法：新增 `ui/InstallProgress.kt`（单一状态）+`terminal/InstallNotifier.kt`
+> （`NotificationChannels.INSTALL` 渠道 2026-10-06 就注册好、此前无人使用）+ 启用 `activity_main.xml` 里
+> 那个**代码零引用的死控件** `status_banner` + 里程碑写 `rootfs/tmp/.zhengdao-banner-pending`
+> （终端是原生 `TerminalView`，不能注入文本，这是唯一通道）；从本地包装时明说「不联网下载」；
+> 设置页安装期间禁用「检查环境更新」并把状态摊在按钮下。
+> ② **公共存放区**：新增 `terminal/Store.kt` 作为唯一真相源（`logs/` `cache/` `agents/`，
+> **锚定 `Download/证道`**——第一版曾跟随 `Workspace.hostDir`，真机验证发现用户工作区是自定义的
+> `Download/男性`（他的小说工程），日志缓存全倒进了内容目录，遂按用户拍板改成固定放证道，
+> 详见 `docs/ERRATA.md` E-036 §6）——`RunLog` 落 `Download/证道/logs/`（私有兜底 + `errors.log` 跨轮错误汇总 +
+> `@Volatile settled` 防重复善后）；`npm/uv/pip` 缓存经 proot 额外 `-b` 落 `cache/<kind>`
+> （**hermes 会剥离 `UV_*` ⇒ bind 是唯一可靠注入点**；`/sdcard` 是 **noexec** ⇒ 只放不需执行权限的东西，
+> Agent 可执行文件 `~/.local/bin` 不搬）；Agent 安装脚本落 `agents/scripts/`，guest 侧经新增的
+> `-b <Store.root>:/opt/zhengdao` 在 `/opt/zhengdao/agents/scripts/` 取（**不再挂在工作区下**，
+> 否则脚本路径会随用户的内容目录漂）；老脚本从 `Workspace.hostDir/.zhengdao/scripts` 与
+> `Store.root/.zhengdao/scripts` 两处自动迁移；
+> 新增 `ui/AgentLedger.kt`（`agents/installed.json` 账本，字段只有 `id/name/at/state`，**不写凭据**）
+> + 主页「恢复全部（N 个）」。凭据边界按用户拍板：只搬缓存与安装包，`~/.claude`/`~/.hermes` 留私有 home。
+> ③ **自动清理**：查实 `CacheCleaner.autoCleanNeeded/maybeNotify` **全仓库零调用点**
+> （`docs/milestones/证道-执行路线图.md:284` 的"启动时 >500MB 才清"从未生效）⇒ 二档
+> （白名单 + 24h + 有会话跳过）接到 `ZhengdaoApp.onCreate`；一档（npm/uv/apt CLI，会让下次安装重下）
+> 仍只走设置页按钮。同时修 `CacheCleaner.measure()` 的**漏报 378 MB**（旧实现量私有兜底
+> `cacheDir/rootfs-cache`，真身在 `Download/证道/rootfs` 312 MB + `Download/证道/opencode` 66 MB，
+> 真机面板却显示全 0）。单测：新增 `StoreTest`（搬家幂等/不覆盖/源未搬空不删）与
+> `AgentLedgerTest`（坏 JSON 降级成空表、账本不许出现凭据字段）。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -364,13 +396,16 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | opencode 更新检查 | ✅ 在用 | `c07eec3` | `ui/SettingsScreen.kt`、`oc/OcManager.kt` |
 | 环境体检三态 + 自愈 | ✅ 在用 | `df2b3eb` | `ui/EnvHealth.kt`、`terminal/EnvSelfHeal.kt` |
 | 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
-| 缓存清理（两档） | ✅ 在用 | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt` |
+| 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt` |
+| 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
+| Agent 账本 + 主页「恢复全部」 | ✅ 在用 | 本次 | `ui/AgentLedger.kt`、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
+| 安装可见性（常驻横幅 + 系统通知 + 终端横幅） | ✅ 在用 | 本次 | `ui/InstallProgress.kt`、`terminal/InstallNotifier.kt`、`TerminalActivity.kt`、`res/layout/activity_main.xml`（`status_banner`） |
 | 通知 4 渠道 | ✅ 在用 | `8127a49` | `terminal/NotificationChannels.kt` |
 | 资源监控 | ✅ 在用 | `7d0b08c` | `terminal/ResMonitor.kt` |
 | 工作区边界（内置文件夹浏览器） | ✅ 在用 | `2b60a44` | `terminal/Workspace.kt` |
 | 共享存储授权（MANAGE 主路径 + 单一判定） | ✅ 在用 | `cac93b2` | `app/src/main/AndroidManifest.xml`、`terminal/ProotLauncher.kt`（判定已由 `7070261` 收敛到 `ProotLauncher.storageGranted`） |
 | RootFS 下载 / 解压 / 校验（含镜像兜底） | ✅ 在用 | `5cf218e` | `rootfs/RootfsDownloader.kt`、`rootfs/RootfsInstaller.kt`、`rootfs/RootfsCache.kt` |
-| RunLog 运行日志（迁 `cache/runlog`） | ✅ 在用 | `14b3d5e` | `rootfs/RunLog.kt` |
+| RunLog 运行日志（落 `Download/证道/logs`，私有兜底 + 错误汇总 `errors.log`） | ✅ 在用 | `14b3d5e`（落点本次改） | `rootfs/RunLog.kt`、`terminal/Store.kt` |
 | 太极 Tab（Compose 直连 opencode serve） | ✅ 在用 | `bdada72` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
 | 太极渲染 + 模型池选择器 | ✅ 在用 | `b95f82a` | `ui/taiji/TaijiComponents.kt`、`ui/taiji/ModelSheet.kt` |
 | 太极会话完整化（新建 / 历史 / 恢复 / 自动标题） | ✅ 在用 | `f61dd51` | `ui/taiji/TaijiScreen.kt`、`oc/TaijiState.kt` |
