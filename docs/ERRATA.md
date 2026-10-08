@@ -2451,3 +2451,52 @@ ZSTD_CLEVEL=19 tar --use-compress-program="zstd -19" -cf "$OUT_DIR/$ASSET" \
 工作区是"Agent 干活的地方"，可以是用户自己的文件夹；App 自己的日志 / 缓存 / 账本是
 **程序数据**，锚在程序自己的目录（`Download/证道`，与安装包同处）才不会被用户的下一个
 选择带偏。用户说"都放到 X 文件夹"时，X 就是答案，别用"更优雅的一致性"去替换它。
+
+### 7. 同轮补漏：设置页还有三条"只有 Toast"的长流程（真机复验时才翻出来）
+
+修完 §3 之后上真机复验横幅，顺手翻设置页——**同一条安装逻辑有两个入口，只修了终端那一个**。
+`app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` 里三条同样几分钟的路径仍是旧世界：
+
+| 路径 | 原实现 | 症状 |
+| --- | --- | --- |
+| 「修复环境（30 秒）」 | 原 `:1019-1043`：拷包 → `RootfsInstaller.install(ctx, archive) { }` → 一句"修复完成"Toast | 真机实测解压只要 ~8 秒（Rust 快路径），但那 8 秒里屏幕上没有任何动静 |
+| 「回退环境版本」 | 原 `:803-819`，对话框自己写着"约几分钟" | 只有一条结束 Toast |
+| 「检查环境更新 → 下载并安装」 | `:1095-1180`：`if (done * 100 / total % 20 == 0L) toastOnMain("下载中 X%")` | 每 20% 闪一条 2 秒 Toast——**用户"提示时间有点短……我以为要重新下载呢"的原样复现** |
+
+处置：新增 `app/src/main/java/com/example/zhengdao/ui/InstallFlow.kt`（`object InstallFlow`），
+把四个可见性落点（`InstallProgress` 的 Compose 状态 + `InstallNotifier` 的通知栏 + `RunLog` 落
+`Download/证道/logs/` + 成功结论写 `files/install-notice.txt`）收成**一份实现**，
+API = `start(ctx, text, fromLocal)` / `update(ctx, text, percent)` / `finish(ctx, text)` /
+`fail(ctx, text)` / `isRunning()` / `writeTerminalNotice(ctx, text)` + `@Composable StatusLine()`。
+
+- `TerminalActivity` 三处安装改为委托它（原来四个落点是散着调的）；
+- 设置页三条路径各 `InstallFlow.start(...)`，按钮下面摊一行 `StatusLine()`（图标跟阶段走
+  ⏳ / ✅ / ⚠️——第一版 Done 态仍显示 ⏳，真机看过才觉得别扭）；
+- 「检查环境更新」的下载回调从"每 20% 一条 Toast"改成"每 10% 更新通知栏百分比 + 状态行"，
+  增量补丁成功后补一句"本次只下了 X，没有重下完整包"——直接对着用户那次误会写。
+
+一条查出来的硬约束：`RootfsInstaller.install(context, archive, env, onEntry)`（`rootfs/RootfsInstaller.kt:109`）
+的 `onEntry` 是"每条目回调一次、节流由调用方负责"，但 **Rust 快路径下一次都不回调**
+（`:118-133` 的 `CoreNative.extract` 是整包跨一次边界），所以解压阶段只能给**不确定进度**
+（通知栏转圈 + 文案里明说"没有细粒度进度"），不能假装有百分比。
+
+真机全链路（PGT-AN10 / Android 16；用 `Download/证道/rootfs/debian-13.7-base-arm64.tar.zst`
+311 MB 本地包，全程未联网）：
+
+1. 点「修复环境（30 秒）」→ 确认框"将重新解压 Debian 系统层（约 30 秒 + Agent 重装时间）…"；
+2. 卡片里立刻出现 `⏳ 正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…`；
+3. 通知栏出现常驻进度 `证道 · 正在准备运行环境` + 同一行正文 + 不确定进度条；
+4. 8 秒后（`16:41:49` → `16:41:57`）卡片变 `✅ 修复完成：环境已重置，登录态与工作区保留（本次未联网下载）`，
+   通知变成可划掉的 `证道 · 环境已就绪`；
+5. `Download/证道/logs/zhengdao-log.txt` 逐行落地：
+   `修复环境：用本地安装包（311 MB）重新解压系统层，不联网下载` →
+   `正在准备安装包：debian-13.7-base-arm64.tar.zst` → `正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…` →
+   `修复完成：环境已重置，登录态与工作区保留（本次未联网下载）`；
+6. `files/install-notice.txt` 被写入该结论，待下次开会话时由启动横幅消费一次。
+
+教训（补两条）：
+
+1. **修可见性要按"入口"清点，不能按"流程"清点**：终端与设置页是两个入口，只修一个等于没修。
+   `grep -rn "Toast" app/src/main/java | grep -v "^.*//"` 比 `grep "安装"` 更容易逮住这类漏点。
+2. **"30 秒"这类文案是估的，真机测出来是 8 秒**：文案要写成"约 30 秒～几分钟"这种区间，
+   别把估算值写成承诺。

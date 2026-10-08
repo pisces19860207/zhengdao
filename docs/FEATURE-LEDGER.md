@@ -378,6 +378,30 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 真机面板却显示全 0）。单测：新增 `StoreTest`（搬家幂等/不覆盖/源未搬空不删）与
 > `AgentLedgerTest`（坏 JSON 降级成空表、账本不许出现凭据字段）。
 
+> **2026-10-08 续（设置页三条"只有 Toast"的长流程也接上可见性；真机跑通「修复环境」全链路）**：
+> 上真机复验可见性时翻设置页才发现——**同一条安装逻辑有两个入口，上一轮只修了终端那个**。
+> `ui/SettingsScreen.kt` 的「修复环境（30 秒）」（原 `:1019-1043`：拷包 → `RootfsInstaller.install(ctx, archive) { }`
+> → 一句"修复完成"Toast）、「回退环境版本」（原 `:803-819`，对话框自己写着"约几分钟"）、
+> 「检查环境更新 → 下载并安装」（`:1095-1180`：`if (done * 100 / total % 20 == 0L) toastOnMain("下载中 X%")`
+> ——**正是用户"提示时间有点短……我以为要重新下载呢"的原样复现**）三条长流程仍然只有 2 秒 Toast。
+> 修法：新增 `ui/InstallFlow.kt`（`object InstallFlow`），把四个落点——`InstallProgress` 的 Compose 状态、
+> `terminal/InstallNotifier` 的通知栏、`RunLog` 落 `Download/证道/logs/`、成功结论写 `files/install-notice.txt`
+> ——收成**一份实现**，API = `start/update/finish/fail/isRunning/writeTerminalNotice` + `@Composable StatusLine()`；
+> `TerminalActivity` 三处安装改为委托它（删掉散着调的落点与私有 `writeTerminalNotice`），
+> 设置页三条路径各 `InstallFlow.start(...)` 并在按钮下摊一行 `InstallFlow.StatusLine()`（图标跟阶段走 ⏳/✅/⚠️），
+> 「检查环境更新」的下载回调从"每 20% 一条 Toast"改成"每 10% 更新通知栏百分比 + 状态行"，
+> 增量补丁成功后补一句"本次只下了 X，没有重下完整包"。
+> 一条查出来的硬约束：`RootfsInstaller.install(..., onEntry)` 的 `onEntry` 在 **Rust 快路径下一次都不回调**
+> （`rootfs/RootfsInstaller.kt:118-133` 的 `CoreNative.extract` 整包跨一次边界）⇒ 解压阶段只能给**不确定进度**，
+> 不能假装有百分比。
+> **真机全链路（PGT-AN10 / Android 16；311 MB 本地包，全程未联网）**：确认框 → 卡片出现
+> `⏳ 正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…` → 通知栏常驻 `证道 · 正在准备运行环境` +
+> 不确定进度条 → 8 秒后（`16:41:49`→`16:41:57`）卡片变
+> `✅ 修复完成：环境已重置，登录态与工作区保留（本次未联网下载）`、通知变可划掉的 `证道 · 环境已就绪` →
+> `Download/证道/logs/zhengdao-log.txt` 四条逐行落地 → `files/install-notice.txt` 已写入待下次开会话消费。
+> 详见 `docs/ERRATA.md` E-036 §7。教训两条：**修可见性要按"入口"清点而不是按"流程"清点**（两个入口只修一个=没修）；
+> **"30 秒"这类估算值要写成区间**（真机实测 8 秒）。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -399,7 +423,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt` |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
 | Agent 账本 + 主页「恢复全部」 | ✅ 在用 | 本次 | `ui/AgentLedger.kt`、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
-| 安装可见性（常驻横幅 + 系统通知 + 终端横幅） | ✅ 在用 | 本次 | `ui/InstallProgress.kt`、`terminal/InstallNotifier.kt`、`TerminalActivity.kt`、`res/layout/activity_main.xml`（`status_banner`） |
+| 安装可见性（常驻横幅 + 系统通知 + 终端横幅 + 设置页状态行；四落点收在 `InstallFlow`） | ✅ 在用 | `c1b56d3` + `ab74725` | `ui/InstallFlow.kt`、`ui/InstallProgress.kt`、`terminal/InstallNotifier.kt`、`TerminalActivity.kt`、`ui/SettingsScreen.kt`、`res/layout/activity_main.xml`（`status_banner`） |
 | 通知 4 渠道 | ✅ 在用 | `8127a49` | `terminal/NotificationChannels.kt` |
 | 资源监控 | ✅ 在用 | `7d0b08c` | `terminal/ResMonitor.kt` |
 | 工作区边界（内置文件夹浏览器） | ✅ 在用 | `2b60a44` | `terminal/Workspace.kt` |
