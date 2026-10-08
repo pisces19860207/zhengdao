@@ -235,9 +235,28 @@ fi
 if ! GBM_RX_OUT="$(dpkg-deb -R "$GBM_DEB" "$GPU_TMPDIR/gbm" 2>&1)"; then
   annot "[2.8] dpkg-deb -R $GBM_DEB 失败：$GBM_RX_OUT"; exit 1
 fi
-sed -i -E 's/, *mesa-libgallium[^,)]*//g' "$GPU_TMPDIR/gbm/DEBIAN/control"
+# 摘依赖：把 `mesa-libgallium (= 版本)` 这一条连同它前面的分隔逗号一起删掉。
+# ⚠️ 2026-10-08 的坑（Run 162 死在 exit 2、Run 163 的自述注解把它原样带回来）：
+#    原写法 `s/, *mesa-libgallium[^,)]*//g` 的字符类里带了 `)`，而版本约束自己就含括号
+#    （`(= 25.0.7-2+deb13u1)`）⇒ 只吃到右括号**之前**，把那个孤零零的 `)` 留在原地，
+#    `dpkg-deb -b` 随即报
+#    `'Depends' field, syntax error after reference to package 'libwayland-server0'`。
+#    现在改成「以逗号为界吃掉整条版本约束」，再逐项收尾：空项、尾逗号、行首逗号。
+sed -i -E \
+  -e 's/(,[[:space:]]*)?mesa-libgallium[^,]*//g' \
+  -e 's/,[[:space:]]*,/,/g' \
+  -e 's/,[[:space:]]*$//' \
+  -e 's/:[[:space:]]*,[[:space:]]*/: /' \
+  -e 's/[[:space:]]+$//' \
+  -e '/^(Depends|Pre-Depends|Recommends|Suggests|Breaks|Conflicts|Provides|Replaces|Enhances):[[:space:]]*$/d' \
+  "$GPU_TMPDIR/gbm/DEBIAN/control"
 if grep -q 'mesa-libgallium' "$GPU_TMPDIR/gbm/DEBIAN/control"; then
   annot "[2.8] 重打包后 libgbm1 的 control 里仍残留 mesa-libgallium"; exit 1
+fi
+# 自己先看一眼依赖字段的语法（`dpkg-deb -b` 也会拦，但这样报错更直白、也不用等它跑完）：
+if grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/gbm/DEBIAN/control" \
+   | grep -qE ',[[:space:]]*,|,[[:space:]]*$|:[[:space:]]*,|\([[:space:]]*\)'; then
+  annot "[2.8] 摘掉 mesa 依赖后 control 的依赖字段语法有问题：$(grep -nE '^(Depends|Pre-Depends|Recommends):' "$GPU_TMPDIR/gbm/DEBIAN/control" | tr '\n' '|')"; exit 1
 fi
 if ! GBM_B_OUT="$(dpkg-deb -b "$GPU_TMPDIR/gbm" "$GPU_TMPDIR/libgbm1-local.deb" 2>&1)"; then
   annot "[2.8] dpkg-deb -b 重打包 libgbm1 失败：$GBM_B_OUT"; exit 1
