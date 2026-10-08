@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -328,8 +329,13 @@ fun MessageList(
     isStreaming: Boolean,
     sessionId: String? = null,
     modifier: Modifier = Modifier,
+    // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
+    // 不传时退化到内部新建（保持向后兼容——若日后有调用方未更新）。
+    listState: LazyListState = rememberLazyListState(),
 ) {
-    val listState = rememberLazyListState()
+    // ❌ 原本 `val listState = rememberLazyListState()` 已被 K2 提到入参。
+    //    切 Tab 走 Composable 出入 Composition 的路径，state 提到 HomeTabs 顶层才能跨 Tab 保留。
+    //    切会话（LaunchedEffect(sessionId) 滚到底）的逻辑不动——那是另一条路径。
 
     // ① 正序：老在上、新在下（渲染层收敛，数据层不动）
     val ordered = remember(messages) { orderChronologically(messages) }

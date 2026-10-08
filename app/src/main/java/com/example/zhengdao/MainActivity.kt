@@ -57,6 +57,7 @@ import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.SettingsScreen
+import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.WelcomeScreen
 
 /** App 自更新检查端点（GitHub Releases 最新发布）。 */
@@ -424,6 +425,58 @@ fun HomeTabs(
 ) {
     var tab by remember { mutableIntStateOf(2) }
 
+    // 切 Tab 保留滚动位置（K2）——把两个 tab 的 LazyListState 提到 HomeTabs 顶层。
+    //
+    // 之前 listState 在各 tab 内部用 rememberLazyListState() 创建：切走 tab 时整个 tab
+    // 的 Composable 退出 Composition，state 跟着 destroy；切回时拿到的是"出厂态"。
+    // 用户实感：丹房翻到第 8 个 Agent，切太极再切回，又被甩到顶。
+    //
+    // 提到外层后 state 跟 HomeTabs 同寿命；rememberLazyListState() 内部用 saver 走
+    // rememberSaveable，顺带覆盖了"配置变更（旋转、深浅色）"也要保留位置。
+    //
+    // K1 双击滚顶：把这两个 state 通过 onTabDoubleTap lambda 注入底栏，双击触发
+    // animateScrollToItem(0)。注意：仅对**当前 tab 之外**的 tab 触发 —— 当前 tab 双击
+    // 等同于再次选自己，不动列表。
+    val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val taijiListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // K1（双击 Tab 滚顶）：在 HomeTabs 顶层记"上一次点同一个 Tab 的时间"。
+    // 300ms 内再次点同一 Tab → 视为双击 → animateScrollToItem(0)。
+    // 终端 Tab 没 listState（点了直接跳 Activity），双击分支对它 no-op。
+    //
+    // 为什么不在 Composable 内做手势检测（detectTapGestures onDoubleTap）：
+    //   NavigationBarItem 已自带 onClick 包了 clickable，叠加 pointerInput 会与 clickable
+    //   抢事件，得自己处理 tap/doubleTap 互斥。这里走"时间窗口判定"逻辑等价（300ms
+    //   是 Material Design 文档里 Tap-Double 区分的推荐值），代码少一半。
+    val lastTabClickAt = androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    val now = { android.os.SystemClock.uptimeMillis() }
+
+    fun animateToTop(target: Int) {
+        when (target) {
+            0 -> scope.launch { taijiListState.animateScrollToItem(0) }
+            2 -> scope.launch { homeListState.animateScrollToItem(0) }
+            // 1 = 终端：点了就跳 TerminalActivity，不存在"滚顶"概念，no-op
+        }
+    }
+
+    fun onTabClicked(target: Int, onTerminalClicked: () -> Unit) {
+        if (tab == target) {
+            val t = now()
+            if (t - lastTabClickAt.longValue < 300L) {
+                animateToTop(target)
+                lastTabClickAt.longValue = 0L
+                return
+            }
+        }
+        lastTabClickAt.longValue = now()
+        when (target) {
+            0 -> { tab = 0 }
+            1 -> { tab = 1; onTerminalClicked() }
+            2 -> { tab = 2 }
+        }
+    }
+
     Scaffold(
         bottomBar = {
             // 底栏走 iOS 语言：与页面同为白底、靠一条 0.5dp 发丝线分隔。
@@ -450,7 +503,8 @@ fun HomeTabs(
                         selected = tab == 0,
                         // 太极 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
                         //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
-                        onClick = { tab = 0 },
+                        // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
+                        onClick = { onTabClicked(0) {} },
                         icon = { TaijiIcon(tab == 0) },
                         label = { Text("太极") },
                         colors = tabColors,
@@ -464,10 +518,8 @@ fun HomeTabs(
                         //    终端一整页盖在上面时看不出问题，等红点关掉终端就露馅了——
                         //    底部高亮还停在太极，用户以为"返回到了 opencode"。
                         //    洞天是进终端的那个 tab，用过终端就该停在洞天。
-                        onClick = {
-                            tab = 1
-                            onOpenTerminal(null, null)
-                        },
+                        // K1：终端 tab 双击不滚顶（点了就跳 Activity，列表根本不存在）。
+                        onClick = { onTabClicked(1) { onOpenTerminal(null, null) } },
                         icon = { CaveIcon(tab == 1) },
                         // 2026-10-08：文案由「洞天」改为「终端」。
                         // 理由：这个 Tab 的功能是打开终端，而全项目 30+ 处文案都写「终端」，
@@ -481,7 +533,8 @@ fun HomeTabs(
                     )
                     NavigationBarItem(
                         selected = tab == 2,
-                        onClick = { tab = 2 },
+                        // K1：双击 = 滚到丹房 Agent 列表顶。
+                        onClick = { onTabClicked(2) {} },
                         icon = { DingIcon(tab == 2) },
                         label = { Text("丹房") },
                         colors = tabColors,
@@ -509,9 +562,13 @@ fun HomeTabs(
                 // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
                 //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
                 //    真坏了就修，不藏一条会腐烂的备用路。
-                0 -> com.example.zhengdao.ui.taiji.TaijiScreen()
+                0 -> com.example.zhengdao.ui.taiji.TaijiScreen(listState = taijiListState)
                 // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
-                2 -> HomeScreen(onOpenTerminal = onOpenTerminal, onOpenSettings = onOpenSettings)
+                2 -> HomeScreen(
+                    onOpenTerminal = onOpenTerminal,
+                    onOpenSettings = onOpenSettings,
+                    listState = homeListState,
+                )
                 // 洞天：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在洞天会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
