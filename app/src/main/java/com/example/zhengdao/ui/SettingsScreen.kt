@@ -1300,7 +1300,9 @@ internal fun SettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            // 2026-10-08 走查：12dp → 14dp。bodyMedium 行高 24dp + 24dp = 48dp
+            // 刚好不达标（差 4dp），这是设置页几乎所有行的交互热区。
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1340,7 +1342,10 @@ fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
             contentColor = if (selected) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.onSurfaceVariant,
         ),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        // 2026-10-08 走查：4dp → 10dp。M3 OutlinedButton 默认最小高 40dp，
+        // 原来 24dp 行高 + 8dp = 32dp，被默认值兜到 40dp 仍不足 48dp；
+        // 现在内容高 44dp，筛选 chip 这类"次要但要重复点"的控件按得准。
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
     }

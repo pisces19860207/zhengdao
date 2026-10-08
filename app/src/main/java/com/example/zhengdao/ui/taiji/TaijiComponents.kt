@@ -63,6 +63,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
@@ -133,7 +135,13 @@ fun SessionBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onHistory) {
-            Text("☰", style = MaterialTheme.typography.titleMedium)
+            // 2026-10-08：无障碍。图标是用 Unicode 字符「☰」冒充的，读屏会念成
+            // "三条横线"甚至乱码，而不是「会话历史」。contentDescription 覆盖字形播报。
+            Text(
+                "☰",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { contentDescription = "会话历史" },
+            )
         }
         Column(
             modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
@@ -162,9 +170,19 @@ fun SessionBar(
             }
         }
         IconButton(onClick = onNew) {
-            Text("＋", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "＋",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { contentDescription = "新会话" },
+            )
         }
-        IconButton(onClick = onStop) { Text("◼", style = MaterialTheme.typography.bodyMedium) }
+        IconButton(onClick = onStop) {
+            Text(
+                "◼",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.semantics { contentDescription = "停止" },
+            )
+        }
     }
 }
 
@@ -192,7 +210,11 @@ private fun ModelChip(text: String, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            // 2026-10-08 走查：上下内边距 2dp → 12dp。原来 labelSmall 行高约 16dp，
+            // 加 4dp 只有 **20dp 高**——这是全 App 最小的交互控件，而它是改模型的唯一
+            // 入口，非技术用户会反复点不中、然后以为 App 坏了。现在约 40dp。
+            // 未一步到 48dp：顶栏高度受限，胶囊再厚会把会话标题挤掉。
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
         )
     }
 }
@@ -686,7 +708,9 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
         Row(
             Modifier.fillMaxWidth()
                 .clickable { expanded = !expanded }
-                .padding(vertical = 2.dp),
+                // 2026-10-08 走查：2dp → 12dp。原来整行只有约 20dp 高，
+                // 「展开/收起思考过程」这个折叠头是全 App 点不中排行榜的第二名。
+                .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -737,7 +761,8 @@ private fun CollapsibleBlock(title: String, content: @Composable () -> Unit) {
             title,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 2.dp),
+            // 2026-10-08 走查：2dp → 12dp（同上方折叠头，原高约 20dp）
+            modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 12.dp),
         )
         if (expanded) { HorizontalDivider(); content() }
     }
@@ -867,7 +892,13 @@ fun ComposerBar(
 @Composable
 private fun SendGlyph() {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(20.dp)) {
+    // 2026-10-08：无障碍。Canvas 自绘默认**不带任何语义**，读屏用户听到的是空白按钮。
+    // contentDescription 写在 Canvas 上会与父 IconButton 的语义合并，播报为「发送，按钮」。
+    Canvas(
+        Modifier
+            .size(20.dp)
+            .semantics { contentDescription = "发送" }
+    ) {
         val w = size.width
         val h = size.height
         val sw = 2.2f
@@ -881,7 +912,12 @@ private fun SendGlyph() {
 @Composable
 private fun StopGlyph() {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(20.dp)) {
+    // 2026-10-08：无障碍，同 SendGlyph（Canvas 无语义）。
+    Canvas(
+        Modifier
+            .size(20.dp)
+            .semantics { contentDescription = "停止生成" }
+    ) {
         val s = size.minDimension
         drawRoundRect(
             color = tint,
@@ -1006,7 +1042,12 @@ fun HistoryDrawer(
         ) {
             Text("会话", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             IconButton(onClick = onRefresh) {
-                Text("⟳", style = MaterialTheme.typography.titleMedium)
+                // 2026-10-08：无障碍，同「☰」——「⟳」字形读屏会念成"逆时针箭头"。
+                Text(
+                    "⟳",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { contentDescription = "刷新会话列表" },
+                )
             }
         }
 

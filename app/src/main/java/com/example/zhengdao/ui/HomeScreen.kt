@@ -516,7 +516,10 @@ fun HomeScreen(
                             Box {
                                 Box(
                                     modifier = Modifier
-                                        .size(34.dp)
+                                        // 2026-10-08 走查：34dp → 48dp（Material 3 的最小
+                                        // 触摸目标）。「⋮」是卸载入口，34dp 是全 App 最容易
+                                        // 点空的控件之一；「⋮」字形本身不变，只是热区变大。
+                                        .size(48.dp)
                                         // 同上：圆形热区配方形涟漪很难看，裁成圆
                                         .clip(CircleShape)
                                         .clickable { menuOpenFor = agent.id },
