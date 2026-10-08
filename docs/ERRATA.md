@@ -2562,3 +2562,60 @@ else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接�
 2. **"只留一代错误日志"看着节约，实际删掉的是对照组**：没有错误标记的那些轮次
    恰恰定义了"正常"，一次性删掉之后就再也说不清"从哪次开始坏的"。
 3. **启动路径不该做能推迟的 IO**：判错只需要在设置页做，而旧实现把它塞进了三处 `init()`。
+
+---
+
+## E-038 · 2026-10-08 · 环境里 152 MB 的 GPU 软件渲染栈（mesa + LLVM）：终端里没有任何入口用它，但"删掉"要先绕过 apt 的**假依赖**
+
+**现场**：用户 2026-10-08 原话：
+
+> 「GPU软件渲染栈要是在终端确实没用或者某些人也用不到的话就删吧」
+
+**先取证（真机只读探针，不猜）**——脚本由宿主机 `adb push` 进 `Download/证道/`（= guest 内 `/opt/zhengdao/`，
+靠已有的 `-b <Store.root>:/opt/zhengdao` bind 双向可见），在 guest 里只敲一条短命令，输出写回文件再由 adb 读回
+（绕开 `adb shell input text` 对引号/`$` 的破坏）。四组硬数据：
+
+1. **反向依赖扫描**（`awk RS="\n\n"` 扫 `/var/lib/dpkg/status`）：
+   `mesa-libgallium` 的父包只有 `libgbm1` 与 `libglx-mesa0`；`libgbm1` 的父包是 `libgl1-mesa-dri` 与
+   `libsdl2-2.0-0`；`libsdl2-2.0-0` 的父包是 `ffmpeg` 与 `libavdevice61`；`libllvm19` 的唯一父包是
+   `mesa-libgallium`。⇒ 这条链**唯一**的入口是 `ffmpeg` 包（经 SDL2 → GBM → mesa → LLVM）。
+2. **`ldd /usr/bin/ffmpeg`（真机逐条）**：NEEDED 里有 `libdrm.so.2`、`libGL.so.1`、`libSDL2-2.0.so.0`、
+   `libplacebo.so.349`、`libgbm.so.1`、`libwayland-egl.so.1`、`libvulkan.so.1` …，
+   **没有 `libgallium-*.so`、也没有 `libLLVM.so.19.1`**（`ffprobe`/`ffplay` 同样）⇒ mesa 与 LLVM 对 ffmpeg
+   只是 **apt 声明上的依赖**（运行时 dlopen），不是加载期依赖。**这一条是整个改动的支点**。
+3. **已装体积**（`dpkg-query -W -f='${Package}\t${Installed-Size}'`）：`libllvm19` **120,416 KB**、
+   `mesa-libgallium` **34,238 KB**（`du` 落盘：`libLLVM.so.19.1` 118 MB、`libgallium-25.0.7-2+deb13u1.so` 34 MB）；
+   而 `libplacebo349` 8,449 KB 与 `libvulkan1` 611 KB 是 ffmpeg 的**真**依赖（`libplacebo → libvulkan1`），必须留。
+4. **没有入口**：环境里 `/dev/dri` 不存在（`ls` 报 `Permission denied`）、`/usr/share/vulkan/icd.d` 不存在、
+   更没有 X/Wayland display ⇒ mesa 的驱动后端**没有任何被拉起的路径**，`ffplay`（SDL2/GBM 输出）本来就不可能用；
+   `app/` 全仓 grep `libgallium|mesa|libgbm|SDL2|vulkan` **0 命中**，客户端不碰。基线 `du -smx /` = **1021 MB**。
+
+**修法**（`rootfs/build-rootfs.sh` 新增 §2.8，排在版本断言之前、清理之前）：
+
+- 先**重打包 `libgbm1`**、摘掉它对 `mesa-libgallium` 的声明依赖：
+  `apt-get download libgbm1` → `dpkg-deb -R` → `sed` 掉 `DEBIAN/control` 里的 `mesa-libgallium` →
+  `dpkg-deb -b` → `dpkg -i`（并断言重打包后 control 里不再出现 `mesa-libgallium`）。
+  理由：`libgbm1` **必须留**（ffmpeg/ffprobe NEEDED `libgbm.so.1`），不摘这条，apt 就会顺着
+  `ffmpeg → libsdl2 → libgbm1 → mesa-libgallium → libllvm19` 把 ffmpeg 整串带走。
+- 再 `apt-get -s -y purge` **模拟一遍**（`mesa-libgallium libllvm19 libglx-mesa0 libgl1-mesa-dri`），
+  断言模拟输出的 `Remv/Purg` 名单里**不含** `ffmpeg|ffprobe|libavdevice61|libsdl2-2.0-0|libgbm1|libplacebo349|libvulkan1|libgl1|libglx0|libglvnd0|nodejs|python3|git|tmux|busybox|ripgrep|coreutils`，
+  通过了才真卸。
+- **刻意不跑 `apt-get autoremove`**：ffmpeg 链接的 `libGL.so.1`（`libgl1`）**没有被任何包声明成依赖**，
+  autoremove 会把它当垃圾清掉，ffmpeg 随即起不来——"看起来是垃圾"和"实际是承重墙"之间隔着一层声明。
+
+**断言（同一次构建里验收，§2.9）**：`dpkg -s mesa-libgallium` / `dpkg -s libllvm19` 必须**失败**（真删掉了）；
+`ffprobe` 存在；`ldd /usr/bin/{ffmpeg,ffprobe,ffplay}` 不得出现 `not found`；`ffmpeg -f lavfi -i testsrc=size=64x64:rate=1 -frames:v 1 -f null -`
+转码冒烟必须成功；`dpkg --audit` 无输出且 `apt-get check` 通过（依赖图没破）；
+`node python3 git tmux rg busybox sqlite3 curl zstd uv` 逐个 `command -v`。
+
+**收益**：落盘 −152 MB（基线 1021 MB）；包体积按 E-033 的口径**在 zstd-19 下实测**（本次 CI 构建输出的字节数为准）。
+
+**教训**：
+
+1. **"声明依赖"与"加载依赖"是两回事**：`ldd` 说 ffmpeg 不吃 mesa，dpkg 说 ffmpeg 需要 libsdl2、libsdl2 需要
+   libgbm1、libgbm1 需要 mesa —— 两条链各自都对。删东西之前必须把两条都拉出来：只看 apt 会得出"删不掉"
+   （子代理第一版结论），只看 ldd 会得出"直接 rm 就行"（会把 libgbm1 一起删掉、ffmpeg 立刻起不来）。
+2. **不许用 `autoremove` 收尾**：它按"有没有被声明依赖"判断去留，而 ffmpeg 真正 NEEDED 的 `libGL.so.1`
+   恰好没有任何包声明它。清理工具的依据是**声明**，不是**真实使用**。
+3. **数字要三份对齐再动手**：外部包页说 34.2 MB / 120.4 MB、真机 `dpkg-query` 说 34,238 KB / 120,416 KB、
+   `du` 说 34 MB / 118 MB —— 三份一致才敢改构建脚本；体积收益也必须按线上压缩级别（zstd-19）测算。
