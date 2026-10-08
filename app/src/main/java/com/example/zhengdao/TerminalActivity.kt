@@ -1045,6 +1045,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 // 用户自选文件没有任何校验值可比对 ⇒ 按"不确定就传 null"：装完不写 env 行，
                 // 下次检查更新看到"无版本记录"会老实走全量（宁可多下一次，不可错走增量）。
+                // 同理也不传 archiveSha256：说不清这个包是谁，就不该给未来的"同源"推断留依据
+                // （见 RootfsInstaller.envForReinstall 的 KDoc）。
                 RootfsInstaller.install(appContext, archive) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
@@ -1094,7 +1096,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
                 val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, expectedSha)
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                RootfsInstaller.install(appContext, archive, envToWrite) { }
+                // 把"装的是哪个包"一并写进标记：将来「修复环境/回退」重装同一个包时，
+                // 靠它把 env 原样写回（否则一次修复就抹掉增量基线，见 RootfsInstaller.envForReinstall）。
+                RootfsInstaller.install(appContext, archive, envToWrite, expectedSha) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()
@@ -1159,7 +1163,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
                 val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, actualSha)
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
-                RootfsInstaller.install(appContext, archive, envToWrite) { }
+                // 同"本地包"路径：把实际装进去的那个包的 sha256 写进标记，供将来重装做"同源"推断。
+                RootfsInstaller.install(appContext, archive, envToWrite, actualSha) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()
