@@ -293,13 +293,18 @@ fun TaijiScreen(
                         currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
                             ?: state.currentModel ?: "默认",
                         onModelClick = {
+                            // 2026-10-08：**先弹抽屉、再拉目录**（原来相反）。
+                            // 原顺序是"拉完才弹"——用户在那一两秒里看到的是"点了没反应"，
+                            // 于是普遍感觉"模型选择要手动刷新"（用户 2026-10-08 原话）。
+                            // 现在抽屉立刻出现、内部显示「正在拉取模型目录…」，拉到就填上；
+                            // 用户在等待期间至少能看到界面已经响应。
+                            showModelSheet = true
+                            modelsLoading = true
                             scope.launch {
-                                modelsLoading = true
                                 repo.fetchModels(
                                     com.example.zhengdao.terminal.Workspace.hostDir(ctx).absolutePath
                                 )
                                 modelsLoading = false
-                                showModelSheet = true
                             }
                         },
                         onStop = { scope.launch { repo.close(); onExit() } },
