@@ -474,6 +474,55 @@ fun SettingsScreen(
             OutlinedButton(onClick = { repairConfirm = true }) { Text("修复环境（30 秒）") }
         }
 
+        // ── Hermes 依赖环境（E-025）──
+        // 事故（2026-10-08 真机）：恢复搬家包后敲 hermes 只剩三行依赖环境错误，重开 App 也一样。
+        // 判定在宿主侧读文件（HermesEnv.inspect）；能纯文件修的当场修，要重建 Python 环境 /
+        // 要 git checkout 补源码锁的走终端脚本（输出可见，不静默改 Hermes 的东西）。
+        var hermesEnv by remember(storageTick) {
+            mutableStateOf<com.example.zhengdao.terminal.HermesEnv.State?>(null)
+        }
+        LaunchedEffect(storageTick) {
+            hermesEnv = withContext(Dispatchers.IO) {
+                com.example.zhengdao.terminal.HermesEnv.inspect(ctx)
+            }
+        }
+        SectionCard("Hermes 依赖环境") {
+            val st = hermesEnv
+            Text(
+                text = st?.detail ?: "检测中…",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (st != null && !st.ok) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (st != null && !st.ok && st.canRepairOnHost) {
+                    OutlinedButton(onClick = {
+                        Thread {
+                            val home = com.example.zhengdao.terminal.HermesEnv.hermesHome(ctx)
+                            com.example.zhengdao.terminal.HermesEnv.repairOnHost(home)
+                            android.os.Handler(android.os.Looper.getMainLooper())
+                                .post { storageTick++ }
+                        }.start()
+                    }) { Text("一键修正记录") }
+                }
+                TextButton(onClick = {
+                    if (com.example.zhengdao.terminal.HermesEnv.writeRepairScript(ctx)) {
+                        onOpenTerminal(com.example.zhengdao.terminal.HermesEnv.REPAIR_CMD, null)
+                    } else {
+                        Toast.makeText(ctx, "修复脚本写入失败", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("在终端里修复") }
+            }
+            Text(
+                text = "搬家包恢复、或更新被中断，都会让 Hermes 的依赖环境记录指向不存在的目录，" +
+                    "于是敲 hermes 直接报错退出（连 hermes update 也救不了）。终端修复过程可见：" +
+                    "补回源码锁 → 清失效记录 → hermes pm repair。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         // ── 工作区（0.6 显性化：产出边界让用户看得见）──
         SectionCard("工作区") {
             val wsHost = com.example.zhengdao.terminal.Workspace.hostDir(ctx)

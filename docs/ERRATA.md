@@ -1500,7 +1500,28 @@ sessions **65** / messages **7057** / `MEMORY.md` 4482 B / `USER.md` 3180 B（`S
    （`input text "a b"` 只送出空格前那段）。
 5. **脚本里"要删的东西"必须逐条明确**：本次我写了 `rm -fv "$FACTS" …`，把刚写好的状态记录也删了
    （幸而 `pm repair` 在没有记录时会退回"从源码 `uv.lock` 重建"，反而修好了）。
-6. **证道侧的缺口（待办）**：`app/src/main/java/com/example/zhengdao/terminal/EnvSelfHeal.kt` 的启动自愈
+6. **证道侧的缺口（已补，见第 6 节）**：`app/src/main/java/com/example/zhengdao/terminal/EnvSelfHeal.kt` 的启动自愈
    已覆盖 DNS / hosts / 时区 / uv 包装（`ensureHermesUvWrappers`），但**没有**覆盖"依赖环境记录失效"
-   这一层；可加宿主侧纯文件检测（读 `installs/*/facts.json`、判 `pyvenv.cfg` 是否存在）并在首页体检 /
-   设置页给一个「修复依赖环境」入口（注入第 4 节那个脚本）。
+   这一层 —— 事故当天已按下面第 6 节补上（宿主侧纯文件检测 + 首页体检 / 设置页入口）。
+
+### 6. 证道侧已补上（2026-10-08 当日实施）
+
+事故当天就补了这层检查，理由是"修好了这一次，下一次恢复搬家包还会崩"：
+
+- 新增 `app/src/main/java/com/example/zhengdao/terminal/HermesEnv.kt`：宿主侧**只读**判定，
+  读 `installs/*/facts.json` 的 `packages.venv.environment|resolved_lock`，按与
+  `pm/environments.py:297-318` **同条件**判可用（环境目录在且含 `pyvenv.cfg`；记了锁则锁也得在）。
+  宿主 `filesDir/home` 与 guest `/root` 是同一个 bind，所以这里改 `facts.json` 等于在 guest 里改。
+- 修复分两层（**修得上就当场修，修不上绝不装作能修**）：
+  - 记录指向不存在的代、盘上还有**完整**代（`venv/pyvenv.cfg` + `workspace/uv.lock` 都在）⇒
+    宿主侧把指针改到 `maxByOrNull { lastModified() }` 那代，先备份 `facts.json.bak-证道<时间戳>`；
+    一代都没有 ⇒ **删掉这条失效记录**（留着会让 `pm repair` 以 "recorded dependency lock is missing" 拒绝重建）；
+  - 要重建 Python 环境 / 要 `git checkout -- uv.lock flake.lock` ⇒ 脚本落盘
+    `Workspace.hostDir/.zhengdao/scripts/hermes-env-repair.sh`（`res/raw/hermes_env_repair.sh`），
+    在终端里跑 `bash /workspace/.zhengdao/scripts/hermes-env-repair.sh`，过程用户看得见。
+- 入口两处：`EnvHealth.inspect` 新增 `hermes-deps` 项（`Check` 增加 `terminalCmd` 字段表达
+  "需要进 guest 的修复"），首页状态卡点「修复」即可；设置页新增 `SectionCard("Hermes 依赖环境")`
+  （「一键修正记录」/「在终端里修复」+ 状态说明）。没装 Hermes 时直接跳过、不报警。
+- 单测 `app/src/test/java/com/example/zhengdao/terminal/HermesEnvTest.kt` 锁住三件事：
+  修得上要修（指针改指完整代、备份在、`facts.json` 不丢）、修不上要如实说（一代都没有 / 缺源码锁 /
+  没记录 ⇒ `canRepairOnHost=false`）、坏 `facts.json` 不抛异常也不乱改文件。
