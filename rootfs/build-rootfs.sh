@@ -285,9 +285,62 @@ else
   exit 1
 fi
 
+# ---------------------------------------------------------------------
+# [5/5] 增量下发素材：清单 / 差分补丁 / 索引（2026-10-08 新增）
+#   格式契约：docs/milestones/证道-环境包增量下发协议.md
+#   产物：rootfs-manifest.txt(+.sha256)
+#         rootfs-patch-<baseEnv>-to-<newEnv>.tar.zst(+.sha256)  ← 拿得到基线才产
+#         rootfs-index.json                                     ← App 端唯一的版本入口
+#   基线清单由 CI 在构建前下到 ${BASE_MANIFEST}（默认 ../rootfs-base/rootfs-manifest.txt）。
+#   取不到基线 ⇒ 只产全量包 + 清单 + 索引，不产补丁，**不因此失败**（首次构建就是这种）。
+#   缺 python3/工具本身 ⇒ 整段跳过（清单是增值产物，不能让整包构建失败）。
+#   但工具**跑起来之后**出错 ⇒ 直接失败（宁可 CI 红，也不要偷偷发一份对不上的清单）。
+# ---------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST_TOOL="$SCRIPT_DIR/../tools/rootfs-manifest.py"
+BASE_MANIFEST="${BASE_MANIFEST:-}"
+NEW_MANIFEST="$OUT_DIR/rootfs-manifest.txt"
+if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_TOOL" ]; then
+  echo "[5/5] 生成环境清单（增量下发基线）..."
+  python3 "$MANIFEST_TOOL" manifest --root "$ROOTFS_DIR" --out "$NEW_MANIFEST" --distro "debian-$DEBIAN_VERSION"
+  sha256sum "$NEW_MANIFEST" | awk '{print $1}' > "$NEW_MANIFEST.sha256"
+  NEW_ENV="$(python3 "$MANIFEST_TOOL" env --manifest "$NEW_MANIFEST" | sed -n 's/^env=//p')"
+  if [ -z "$NEW_ENV" ]; then
+    echo "[断言失败] 清单生成了但 env 算不出来（$NEW_MANIFEST）"
+    exit 1
+  fi
+  PATCH_ASSET=""
+  if [ -n "$BASE_MANIFEST" ] && [ -f "$BASE_MANIFEST" ]; then
+    BASE_ENV="$(python3 "$MANIFEST_TOOL" env --manifest "$BASE_MANIFEST" | sed -n 's/^env=//p')"
+    if [ -z "$BASE_ENV" ]; then
+      echo "[警告] 上一版清单读不出 env（$BASE_MANIFEST），本次不产补丁"
+    elif [ "$BASE_ENV" = "$NEW_ENV" ]; then
+      echo "[5/5] 内容与上一版一致（env=$NEW_ENV），不产补丁"
+    else
+      PATCH_ASSET="rootfs-patch-${BASE_ENV}-to-${NEW_ENV}.tar.zst"
+      python3 "$MANIFEST_TOOL" patch --root "$ROOTFS_DIR" --base "$BASE_MANIFEST" --new "$NEW_MANIFEST" \
+        --out "$OUT_DIR/$PATCH_ASSET"
+      sha256sum "$OUT_DIR/$PATCH_ASSET" | awk '{print $1}' > "$OUT_DIR/$PATCH_ASSET.sha256"
+    fi
+  else
+    echo "[5/5] 没有上一版清单（BASE_MANIFEST='${BASE_MANIFEST}'），本次不产补丁"
+  fi
+  INDEX_ARGS=(index --new-manifest "$NEW_MANIFEST" --pkg "$OUT_DIR/$ASSET"
+    --repo "${GITHUB_REPOSITORY:-pisces19860207/zhengdao}"
+    --distro "debian-$DEBIAN_VERSION" --version "$DEBIAN_VERSION" --asset "$ASSET"
+    --out "$OUT_DIR/rootfs-index.json")
+  if [ -n "$PATCH_ASSET" ]; then INDEX_ARGS+=(--patch "$OUT_DIR/$PATCH_ASSET"); fi
+  if [ -n "${BUILT_AT:-}" ]; then INDEX_ARGS+=(--built-at "$BUILT_AT"); fi
+  python3 "$MANIFEST_TOOL" "${INDEX_ARGS[@]}"
+  echo "ENV     : $NEW_ENV"
+  echo "PATCH   : ${PATCH_ASSET:-（本次无补丁）}"
+else
+  echo "[5/5] 跳过清单/补丁/索引：缺少 python3 或 $MANIFEST_TOOL"
+fi
+
 echo "----------------------------------------"
 echo "BUILD_OK: $OUT_DIR/$ASSET"
 echo "SHA256  : $(cat "$OUT_DIR/$ASSET.sha256")"
 echo "SIZE    : $(stat -c%s "$OUT_DIR/$ASSET") bytes"
-echo "下一步  : 把产物挂到 GitHub Release + CDN，并把 SHA256/size 写进 manifest.json（§6）"
+echo "资产目录: $OUT_DIR（完整包 + 清单 + 补丁 + rootfs-index.json 全部挂同一个 Release）"
 echo "----------------------------------------"
