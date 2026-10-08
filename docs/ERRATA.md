@@ -2565,7 +2565,7 @@ else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接�
 
 ---
 
-## E-038 · 2026-10-08 · 环境里 152 MB 的 GPU 软件渲染栈（mesa + LLVM）：终端里没有任何入口用它，但"删掉"要先绕过 apt 的**假依赖**
+## E-038 · 2026-10-08 · 环境里的 GPU 软件渲染栈（mesa + LLVM，152 MB）：终端里没有任何入口用它，但"删掉"要先绕过 apt 的**假依赖** —— 最终只切掉 `libllvm19`（包 −25.9 MiB，见 E-042）
 
 **现场**：用户 2026-10-08 原话：
 
@@ -2603,12 +2603,27 @@ else { current.delete() }        // ← 没错误标记 ⇒ 整轮日志直接�
 - **刻意不跑 `apt-get autoremove`**：ffmpeg 链接的 `libGL.so.1`（`libgl1`）**没有被任何包声明成依赖**，
   autoremove 会把它当垃圾清掉，ffmpeg 随即起不来——"看起来是垃圾"和"实际是承重墙"之间隔着一层声明。
 
-**断言（同一次构建里验收，§2.9）**：`dpkg -s mesa-libgallium` / `dpkg -s libllvm19` 必须**失败**（真删掉了）；
+**修正（2026-10-08 晚，又踩了两轮 CI 之后；详见 E-041 / E-042）**：上面这版"重打包 `libgbm1` + 一次 purge 四个包"
+**没有成功过一次**。Run 163 暴露出 `sed` 字符类里的 `)` 与版本约束撞车（E-041，纯语法问题）；修好之后
+Run 164 又证明"只绕一条边不够"——`apt` 的 purge 会顺着主链
+`mesa-libgallium ← libglx-mesa0 ← libglx0 ← libgl1 ← ffmpeg` 把 ffmpeg 一起带走（E-042）。
+**最终做法：不动 mesa 本体，只切 `libllvm19`** —— 重打包 `mesa-libgallium` 摘掉它对 `libllvm19` 的
+**声明**依赖，再 `apt-get -y purge libllvm19`（黑名单断言里补上 `mesa-libgallium`，它必须活着）。
+放弃 mesa 本体的理由：要保住 ffmpeg，得再重打包 `libglx0` 与 `libgl1` 两个包，而多拿到的只有 34 MB，不划算。
+
+**断言（同一次构建里验收，§2.9）**：`dpkg -s libllvm19` 必须**失败**，而 `dpkg -s mesa-libgallium` 必须**成功**
+（本轮只切 LLVM，它还在）；
 `ffprobe` 存在；`ldd /usr/bin/{ffmpeg,ffprobe,ffplay}` 不得出现 `not found`；`ffmpeg -f lavfi -i testsrc=size=64x64:rate=1 -frames:v 1 -f null -`
 转码冒烟必须成功；`dpkg --audit` 无输出且 `apt-get check` 通过（依赖图没破）；
 `node python3 git tmux rg busybox sqlite3 curl zstd uv` 逐个 `command -v`。
 
-**收益**：落盘 −152 MB（基线 1021 MB）；包体积按 E-033 的口径**在 zstd-19 下实测**（本次 CI 构建输出的字节数为准）。
+**收益（实测；build Run 165，`0b47899`，2026-10-08 19:01 完成，RootFS 步骤 success）**：
+`latest` 上的环境包 **228,790,151 B → 201,630,773 B = −27,159,378 B（−25.9 MiB，−11.9%）**；
+新索引 `builtAt=2026-10-08T11:00:36Z`、`env=51e1cc0c32f099aa`、
+`sha256=d12cd1d37e0c4767e6730fd709eb796f5fe996b27e94e40b480bdb96afec9e27`、`size=201630773`。
+落盘少 118 MB（`libLLVM.so.19.1`），但它在 zstd-19 下压缩比很高，所以**线上字节只降 25.9 MiB** ——
+这正是 E-033 那条"删除类方案必须在线上压缩级别下测算"的又一次验证。
+（本行原先写"落盘 −152 MB / 预期 −35～45 MB"，是按"mesa + LLVM 全删"估的；实际只切了 LLVM，原因见 E-042。）
 
 **教训**：
 
