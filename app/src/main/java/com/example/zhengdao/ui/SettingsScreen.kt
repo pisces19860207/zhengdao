@@ -379,19 +379,13 @@ fun SettingsScreen(
                     if (!netChecking) {
                     netChecking = true
                     netMsg = "检测中…"
+                    // 两个探针：国内基线 + 更新源（GitHub 家族，含 gh-proxy 镜像回退）。
+                    // 只探前者会在「国内通、GitHub 家族全灭」的设备上给出骗人的绿灯——
+                    // 用户拿着"✅ 网络可用"却下不动环境包。见 NetSelfCheck 的类注释与 ERRATA E-034。
                     Thread {
-                        val msg = try {
-                            val t0 = System.currentTimeMillis()
-                            val conn = URL("https://registry.npmmirror.com/-/ping").openConnection() as HttpURLConnection
-                            conn.connectTimeout = 5000; conn.readTimeout = 5000
-                            val ok = conn.responseCode in 200..299
-                            runCatching { conn.inputStream.close() }
-                            val ms = System.currentTimeMillis() - t0
-                            if (ok) "✅ 网络可用（${ms}ms）" else "❌ 不通（HTTP ${conn.responseCode}）"
-                        } catch (t: Throwable) {
-                            "❌ 不通：${t.message}——检查网络，或在代理 App 分应用代理里勾选证道"
-                        }
-                        netMsg = msg
+                        val cn = NetSelfCheck.probeCn()
+                        val update = NetSelfCheck.probeIndex()
+                        netMsg = NetSelfCheck.summary(cn, update)
                         netChecking = false
                     }.start()
                     }
