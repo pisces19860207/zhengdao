@@ -13,7 +13,7 @@ import java.io.File
  *
  * | 档位 | 清理项 | 风险 |
  * |---|---|---|
- * | 一档（guest 命令） | npm / uv / apt 缓存、Agent 升级残留 | 极低 |
+ * | 一档（guest 命令） | npm / uv / pip / apt 缓存、Agent 升级残留 | 极低 |
  * | 二档（宿主侧） | `rootfs/tmp` 里有明确指纹的残留：`.<16hex>-<8digits>.so`、`mat-debug-*.log` | 低（下次启动慢几秒） |
  * | 三档（永不清） | `.hermes/tools` / `rootfs` 系统层 / home 用户数据 | 删了功能坏 |
  *
@@ -116,20 +116,119 @@ object CacheCleaner {
     }
 
     /**
+     * 一档清理项：`(显示名, 命令)`。
+     *
+     * ⚠️ **这是唯一的命令清单**：App 注入执行的 [guestCommand] 和终端里那条
+     * `zzclean` 命令（[zzcleanScript]，2026-10-08 新增）都从它生成。
+     * 两处各自维护一份必然会漂移——本项目已经因为"两份实现同一件事"踩过坑
+     * （插件开关曾写在没人读的文件上，见 PluginManager 类注释）。
+     */
+    internal val TIER1_ACTIONS: List<Pair<String, String>> = listOf(
+        "npm 缓存" to "npm cache clean --force 2>/dev/null",
+        "uv 缓存" to "uv cache prune 2>/dev/null",
+        // pip 缓存（2026-10-08 补，跟随 E-036）：设置页面板自 E-036 起**已经量** `~/.cache/pip`，
+        // 而一档命令里没有它 —— 面板上看到一个清不掉的数字，就是"账本和实物对不上"。
+        // `uv cache prune` 只管 uv 自己的缓存、不管 pip 的。没装 pip 时这条是空操作
+        // （错误被吞，`;` 链也不会中断）。**这条的去留由 DSH 定**。
+        "pip 缓存" to "pip cache purge 2>/dev/null",
+        "apt 缓存" to "apt-get clean 2>/dev/null; apt-get autoclean 2>/dev/null",
+        // ⚠️ 不再清 /root/.opencode-mem/...（v1.1.1 阶段 3.4）：opencode-mem 插件
+        //    2026-10-06 已摘除（LegacyMemPlugin 幂等清理配置），该路径在真机上不存在，
+        //    留着会让人误以为还在清它。
+        "Agent 升级残留" to "rm -rf /root/.hermes/tools/*.tmp 2>/dev/null",
+    )
+
+    /**
+     * guest 视角的缓存路径 → 显示名（`zzclean --status` 用）。
+     *
+     * 映射依据 `ProotLauncher` 的启动参数：`-b <files>/home:/root`（宿主 home 即 guest `/root`）、
+     * rootfs 本身就是 guest 的 `/`。**不含「安装包缓存」**：`cacheDir/rootfs-cache` 只存在于
+     * 宿主侧，guest 里没有对应路径，列出来只会是假的。
+     */
+    internal val GUEST_CACHE_PATHS: List<Pair<String, String>> = listOf(
+        "npm" to "/root/.npm/_cacache",
+        "uv（默认路径）" to "/root/.cache/uv",
+        "uv（hermes 重定位）" to "/root/.hermes/cache/uv",
+        "pip" to "/root/.cache/pip",
+        "apt archives" to "/var/cache/apt/archives",
+        "apt lists" to "/var/lib/apt/lists",
+    )
+
+    /**
      * 生成一档清理命令（在 guest 终端里执行的串；官方命令优先）。
      * 由 TerminalActivity 以 autocmd 注入执行——输出可见、可中断。
      * 二档不在这里：它走 [cleanTempFiles] 的宿主侧删除（原因见类注释）。
      */
-    fun guestCommand(): String = listOf(
-        "echo '[清理] npm 缓存…'", "npm cache clean --force 2>/dev/null",
-        "echo '[清理] uv 缓存…'", "uv cache prune 2>/dev/null",
-        "echo '[清理] apt 缓存…'", "apt-get clean 2>/dev/null; apt-get autoclean 2>/dev/null",
-        // ⚠️ 不再清 /root/.opencode-mem/...（v1.1.1 阶段 3.4）：opencode-mem 插件
-        //    2026-10-06 已摘除（LegacyMemPlugin 幂等清理配置），该路径在真机上不存在，
-        //    留着会让人误以为还在清它。
-        "echo '[清理] Agent 升级残留…'", "rm -rf /root/.hermes/tools/*.tmp 2>/dev/null",
-        "echo '[清理] 完成（三档白名单：tools/rootfs/home 用户数据永不清）'",
-    ).joinToString("; ")
+    fun guestCommand(): String = buildList {
+        TIER1_ACTIONS.forEach { (name, cmd) ->
+            add("echo '[清理] $name…'")
+            add(cmd)
+        }
+        add("echo '[清理] 完成（三档白名单：tools/rootfs/home 用户数据永不清）'")
+    }.joinToString("; ")
+
+    /**
+     * 终端内自清理命令 `zzclean` 的**脚本正文**（写入 guest 的 `/usr/local/bin/zzclean`）。
+     *
+     * 为什么要有它（用户 2026-10-08 原话："终端有没有缓存机制，可不可以做一个终端自己清理
+     * 缓存的方法"）：清理能力本来就有，但入口只在**设置页**——人已经在终端里的时候，
+     * 既没有命令可用，也看不到占用，等于要退出终端才能清。
+     *
+     * **边界与三档白名单完全一致**（并写进脚本自身的 `--help`，让用户在终端里就能读到）：
+     *  - 只做一档的官方 CLI 调用；
+     *  - 绝不碰 `.hermes/tools`、`rootfs` 系统层、home 用户数据；
+     *  - **不删 `rootfs/tmp` 的残留**——那是二档，指纹判定在宿主侧（`isStaleTempName`），
+     *    guest 里看不到规则，照猜着删就是"按通配删目录"。
+     */
+    fun zzcleanScript(): String {
+        // ⚠️ 下面所有 shell 的 `$` 都要写成 `${'$'}`：Kotlin 会把它当字符串模板解析，
+        //    而这里要的是**字面量**（脚本里的 `$(du ...)`、`$1`、`$0`）。
+        //    裸写 `$(` 或 `${1:-}` 直接编译不过——这是本函数最容易踩的坑。
+        val status = GUEST_CACHE_PATHS.joinToString("\n") { (name, path) ->
+            // 大小在前、名字在后：printf 的 %-Ns 按**字节**算宽度，中文标签（占 2 格/字）
+            // 放在被补齐的那一列会参差不齐；大小是 ASCII，补起来才真的齐。
+            "  if [ -d \"$path\" ]; then printf '%-8s %s\\n' " +
+                "\"${'$'}(du -sh \"$path\" 2>/dev/null | cut -f1)\" \"$name\"; " +
+                "else printf '%-8s %s\\n' '-' \"$name（不存在）\"; fi"
+        }
+        val clean = TIER1_ACTIONS.joinToString("\n") { (name, cmd) ->
+            "  echo \"[清理] $name…\"\n  $cmd"
+        }
+        return """
+#!/bin/sh
+# zhengdao zzclean —— 终端内缓存清理（由 App 在每次启动会话前写入；手改会在下次启动被覆盖）
+#
+# 用法：
+#   zzclean            清理一档缓存（npm / uv / apt 官方命令 + Agent 升级残留）
+#   zzclean --status   只看占用，不删任何东西
+#
+# 边界（与 App「设置 → 缓存清理」同一套三档白名单）：
+#   一档 = 官方 CLI 缓存，可清；
+#   二档 = rootfs/tmp 里的残留，**本命令不碰**——指纹判定在 App 侧，guest 里看不到规则；
+#   三档 = .hermes/tools、rootfs 系统层、home 用户数据，**永远不清**。
+set -u
+
+status() {
+  echo "=== 证道缓存占用（只读，未删任何文件）==="
+$status
+  echo "（不含「安装包缓存」：它只存在于 App 侧，环境里没有这个路径）"
+}
+
+clean() {
+  echo "=== 开始清理一档缓存 ==="
+$clean
+  echo "[清理] 完成（三档白名单：tools / rootfs 系统层 / home 用户数据 永不清）"
+}
+
+case "${'$'}{1:-}" in
+  -h|--help)   sed -n '2,/^set -u/{/^set -u/d;p}' "${'$'}0" ;;
+  -s|--status) status ;;
+  "")          clean ;;
+  *)           echo "未知参数：${'$'}1（用 zzclean --help 看用法）"; exit 2 ;;
+esac
+""".trimStart()
+    }
+
 
     // ── 二档：rootfs/tmp 的残留 ─────────────────────────────────────────────
 
