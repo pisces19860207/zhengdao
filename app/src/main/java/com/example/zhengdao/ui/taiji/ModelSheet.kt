@@ -72,7 +72,10 @@ fun ModelSheet(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .clickable(onClick = onReload)
-                            .padding(vertical = 8.dp),
+                            // 2026-10-08 走查：8dp → 14dp。这是模型池拉不到时**唯一**的
+                            // 重试入口，原来只有约 36dp 高、四个字宽，弱网下最需要它的
+                            // 时候最难点到。
+                            .padding(vertical = 14.dp),
                     )
                 }
             } else {
@@ -81,7 +84,8 @@ fun ModelSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onSelectDefault)
-                        .padding(vertical = 10.dp),
+                        // 2026-10-08 走查：10dp → 14dp（与上方「重新加载」同一标准）
+                        .padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("默认（清除本会话覆盖）", style = MaterialTheme.typography.bodyMedium)

@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。 -->
+<!-- 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+     2026-10-08 走查补了 state_pressed：原来只有一个 item，按下去与松开**完全同色**，
+     手感上像"没点到"。按压态加深一档（与系统按键同一逻辑）。 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 按下：底色与描边各加深一档 -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFD8D8DD" />
+            <corners android:radius="6dp" />
+            <stroke android:width="1dp" android:color="#FFB4B4BB" />
+        </shape>
+    </item>
+    <!-- 常态 -->
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#FFF2F2F2" />

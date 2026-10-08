@@ -33,35 +33,42 @@
             android:paddingStart="14dp"
             android:paddingEnd="14dp">
 
+            <!-- 三个圆点是**功能键不是装饰**（红＝关闭终端 / 黄＝收分屏 / 绿＝分屏），
+                 长按任意一个有说明。2026-10-08 走查改了两处：
+                 1) 视觉仍是 11dp 的圆点（inset drawable 居中），但**热区 11dp → 30dp**
+                    —— 红点是整页唯一的关闭出口，11dp 拇指够不到；
+                 2) 加 foreground 涟漪 —— 原来按下去与松开**完全同色**，
+                    加上无反馈的纯色圆点会被当成装饰。
+                 取舍：热区占位变多 49dp，标题会被挤窄（已同时给标题加 ellipsize）。 -->
             <View
                 android:id="@+id/btn_close"
-                android:layout_width="11dp"
-                android:layout_height="11dp"
-                android:layout_marginEnd="7dp"
-                android:background="@drawable/traffic_dot"
-                android:backgroundTint="#FFFF5F57"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_marginEnd="3dp"
+                android:background="@drawable/traffic_dot_red"
+                android:foreground="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭终端"
                 android:clickable="true"
                 android:focusable="true" />
 
             <View
                 android:id="@+id/btn_yellow"
-                android:layout_width="11dp"
-                android:layout_height="11dp"
-                android:layout_marginEnd="7dp"
-                android:background="@drawable/traffic_dot"
-                android:backgroundTint="#FFFFBC2E"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_marginEnd="3dp"
+                android:background="@drawable/traffic_dot_yellow"
+                android:foreground="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭分屏"
                 android:clickable="true"
                 android:focusable="true" />
 
             <View
                 android:id="@+id/btn_split"
-                android:layout_width="11dp"
-                android:layout_height="11dp"
-                android:layout_marginEnd="14dp"
-                android:background="@drawable/traffic_dot"
-                android:backgroundTint="#FF28C840"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/traffic_dot_green"
+                android:foreground="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="tmux 上下分屏"
                 android:clickable="true"
                 android:focusable="true" />
@@ -75,19 +82,23 @@
                 android:textColor="#FF1A1A1A"
                 android:textSize="13sp"
                 android:textStyle="bold"
-                android:singleLine="true" />
+                android:singleLine="true"
+                android:ellipsize="end" />
 
             <!-- 复制 / 粘贴：常驻顶部（借鉴同类终端的信息层级——放底部快捷键条
                  需要横向滑动才够得到，而这两个是高频操作）。蓝色文字、可点区域
-                 含内边距，保证手指好按。 -->
+                 含内边距，保证手指好按。2026-10-08 走查把上下内边距 8dp → 12dp，
+                 使高度从约 34dp 达到约 40dp（受 42dp 工具条高度所限，此处无法再高）。 -->
             <TextView
                 android:id="@+id/btn_copy_top"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:minWidth="44dp"
+                android:gravity="center"
                 android:paddingStart="10dp"
-                android:paddingEnd="6dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
                 android:text="复制"
                 android:textColor="#FF2F6FE0"
                 android:textSize="13sp"
@@ -98,10 +109,12 @@
                 android:id="@+id/btn_paste_top"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:paddingStart="6dp"
-                android:paddingEnd="2dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
+                android:minWidth="44dp"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
                 android:text="粘贴"
                 android:textColor="#FF2F6FE0"
                 android:textSize="13sp"
