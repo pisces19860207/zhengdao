@@ -199,7 +199,7 @@ object CacheCleaner {
 # zhengdao zzclean —— 终端内缓存清理（由 App 在每次启动会话前写入；手改会在下次启动被覆盖）
 #
 # 用法：
-#   zzclean            清理一档缓存（npm / uv / apt 官方命令 + Agent 升级残留）
+#   zzclean            清理一档缓存（npm / uv / pip / apt 官方命令 + Agent 升级残留）
 #   zzclean --status   只看占用，不删任何东西
 #
 # 边界（与 App「设置 → 缓存清理」同一套三档白名单）：
