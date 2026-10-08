@@ -25,6 +25,18 @@
 #     受模拟开销影响约需 30–90 分钟；该步失败不阻塞 APK 产物上传（continue-on-error）。
 #   - local.properties 是本机文件，CI 上无效且有害，构建前删除。
 #
+# ⚠️ 步骤顺序有讲究（2026-10-08 修，见 docs/ERRATA.md E-029）：
+#    编译 Debug/Release APK → 校验产物签名 → 收集 APK → **发布 APK 到 Releases** →
+#    构建 RootFS → 发布 RootFS 包。
+#    「发布」绝不能再排在 30–90 分钟的 RootFS 后面：本工作流有
+#    `cancel-in-progress: true`（同一 ref 只留最新一次），任何人一推送就会把正在跑的
+#    run 掐死，排在长步骤后面的发布步骤因此**永远走不到**——2026-10-08 当天所有修复
+#    都没能进滚动版 latest，下载页一直停在 10-07 的包，根因就在这个顺序。
+#
+# ⚠️ RootFS 也不再每次推送都重建：只有 `rootfs/` 有改动、或手动触发（workflow_dispatch）、
+#    或拿不到 `github.event.before`（tag 推送/强制推送，保守处理）时才重建；纯 App 代码
+#    与文档改动会跳过它，省下 30–90 分钟。判定见「判断本次推送要不要重建 RootFS」。
+#
 # ⚠️ 必须配置 repo secret `DEBUG_KEYSTORE_B64`（= **存量用户已安装的那把** debug keystore 的
 #    base64，证书 SHA-256 = 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18）。
 #    runner 每次都是全新的、~/.android/debug.keystore 不在缓存里，AGP 找不到就随机生成新 key，
@@ -51,7 +63,33 @@ jobs:
       contents: write   # 允许 CI 把产物发布到 Releases 页
     steps:
       - name: 检出代码
+        # fetch-depth: 0 —— 下面那步要拿 `github.event.before` 和本次 sha 做 `git diff`
+        # 判断 `rootfs/` 有没有变。默认的浅克隆里没有 before 提交，判定会退化成"每次都重建"。
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 判断本次推送要不要重建 RootFS
+        # 见文件头「步骤顺序有讲究」与 docs/ERRATA.md E-029。
+        # 规则：手动触发 = 重建；rootfs/ 下有改动 = 重建；拿不到 before 提交（tag 推送、
+        # 强制推送、首次推送）= 保守重建；其余（纯 App 代码/文档改动）= 跳过。
+        id: rootfs_needed
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            need=true; reason="手动触发"
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+               || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+              need=true; reason="拿不到 before 提交（tag 推送/强制推送/首次推送），保守重建"
+            elif git diff --name-only "$BEFORE" "${{ github.sha }}" | grep -q '^rootfs/'; then
+              need=true; reason="rootfs/ 下有改动"
+            else
+              need=false; reason="rootfs/ 无改动"
+            fi
+          fi
+          echo "rootfs=$need" >> "$GITHUB_OUTPUT"
+          echo "本次是否需要重建 RootFS：$need（$reason）"
 
       - name: 释放磁盘空间（NDK + Gradle 缓存 + RootFS 合计约 10GB）
         run: |
@@ -66,6 +104,7 @@ jobs:
           java-version: '21'
 
       - name: 安装 RootFS 构建依赖
+        if: steps.rootfs_needed.outputs.rootfs == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y debootstrap qemu-user-static zstd
@@ -99,7 +138,7 @@ jobs:
         #    （= filesDir 全删 = Debian 环境重下）。
         #    所以必须从 secret **确定性地**还原"存量用户已经装上的那一把"。
         #    本步刻意不硬失败：secret 未配置时 main 的日常构建仍要能绿。
-        #    正式版由 release job 把关（没配 secret 就不许发）；滚动版由下面"发布到 Releases"把关。
+        #    正式版由 release job 把关（没配 secret 就不许发）；滚动版由下面"发布 APK 到 Releases"把关。
         env:
           KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
           # 期望的证书指纹 = 存量用户已安装的那把 key（见 E-014 第 1 节的对照表）
@@ -192,7 +231,7 @@ jobs:
         #    2026-10-07 实测就是这个坑——第 9 步全绿、密钥指纹逐字符吻合，打出来的包却是
         #    `18e5268a…`（另一把 key），发到 latest 之后老用户照样 INSTALL_FAILED_UPDATE_INCOMPATIBLE。
         #    "签名"是最终属性，只能对着最终产物验。所以这一步直接读 APK 里的证书。
-        #    位置刻意排在「发布到 Releases」之前：指纹不对就让 run 红 —— 宁可不发，
+        #    位置刻意排在「发布 APK 到 Releases」之前：指纹不对就让 run 红 —— 宁可不发，
         #    也不要再往 latest 扔一个装不上的包。
         env:
           EXPECTED_SHA256: 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18
@@ -217,42 +256,25 @@ jobs:
           fi
           echo "✅ 产物签名 = 存量 key（$EXPECTED_SHA256），可以发布。"
 
-      - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
-        id: rootfs
-        continue-on-error: true
-        timeout-minutes: 240
-        run: sudo bash rootfs/build-rootfs.sh "$GITHUB_WORKSPACE/rootfs-out"
-
-      - name: 修正产物目录属主（rootfs 以 root 运行，目录归 root）
-        run: |
-          if [ -d rootfs-out ]; then sudo chown -R "$(id -u):$(id -g)" rootfs-out; fi
-          ls -la rootfs-out 2>/dev/null || true
-
-      - name: 收集产物
+      - name: 收集 APK 产物
         # 三个目录各司其职：apk-debug 只给开发者从 Actions 页面下，
         # apk-release 才进 Releases 页，rootfs-files 是 RootFS 包。
         # 混在一个目录里，下面的 gh release upload 就会把 debug 包一起推出去（E-013）。
+        # ⚠️ 这一步必须排在「发布 APK 到 Releases」之前，而发布又必须排在 RootFS 之前（E-029）。
         run: |
           mkdir -p apk-debug apk-release rootfs-files
           cp app/build/outputs/apk/debug/zhengdao-*.apk apk-debug/
           cp app/build/outputs/apk/release/zhengdao-*-release.apk apk-release/
-          if [ -d rootfs-out ]; then cp -r rootfs-out/. rootfs-files/; fi
-          ls -la apk-debug/ apk-release/ rootfs-files/
+          ls -la apk-debug/ apk-release/
 
-      - name: 上传产物（开发者用，需登录）
-        uses: actions/upload-artifact@v4
-        with:
-          name: zhengdao-build-${{ github.run_number }}
-          path: |
-            apk-debug/
-            apk-release/
-            rootfs-files/
-          retention-days: 14
-          if-no-files-found: error
-
-      - name: 发布到 Releases（最终用户从这里下载，和太墟一样的姿势）
+      - name: 发布 APK 到 Releases（最终用户从这里下载，和太墟一样的姿势）
+        # ⚠️ E-029：这一步**刻意排在 RootFS 构建之前**。它以前排在 30–90 分钟的 qemu
+        #    构建后面，于是任何一次新推送都会被 concurrency.cancel-in-progress 掐死在
+        #    RootFS 那一步，发布永远走不到（2026-10-08：当天修复全都没进 latest）。
+        #    签名硬关卡（上面「校验 release 包的签名真的是存量那把 key」）已经在它之前跑过，
+        #    所以"先发 APK"是安全的。
         # 仅 main 分支更新滚动版 latest；推 tag 时不更新（正式版由 release job 创建）。
-        # ⚠️ 只上传 apk-release/ 与 rootfs-files/：debug 包绝不能出现在 Releases 页（E-013）。
+        # ⚠️ 只上传 apk-release/：debug 包绝不能出现在 Releases 页（E-013）。
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -270,8 +292,47 @@ jobs:
           else
             echo "::warning::未配置 DEBUG_KEYSTORE_B64，跳过 APK 上传（E-014）——用随机 key 签的包会让老用户无法覆盖安装"
           fi
-          # RootFS 步骤是 continue-on-error，失败时 rootfs-files/ 会是空的；
-          # 未展开的 glob 会被 gh 当成一个不存在的文件名而报错，所以先探测。
+
+      - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
+        # 只在 rootfs/ 有改动、或手动触发时跑（判定见上面「判断本次推送要不要重建 RootFS」）。
+        # tag 推送不重建：正式 Release 只发 APK，RootFS 包由滚动版 latest 提供。
+        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
+        id: rootfs
+        continue-on-error: true
+        timeout-minutes: 240
+        run: sudo bash rootfs/build-rootfs.sh "$GITHUB_WORKSPACE/rootfs-out"
+
+      - name: 修正产物目录属主（rootfs 以 root 运行，目录归 root）
+        if: steps.rootfs.outcome == 'success' || steps.rootfs.outcome == 'failure'
+        run: |
+          if [ -d rootfs-out ]; then sudo chown -R "$(id -u):$(id -g)" rootfs-out; fi
+          ls -la rootfs-out 2>/dev/null || true
+
+      - name: 收集 RootFS 产物
+        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
+        run: |
+          if [ -d rootfs-out ]; then cp -r rootfs-out/. rootfs-files/; fi
+          ls -la rootfs-files/
+
+      - name: 上传产物（开发者用，需登录）
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhengdao-build-${{ github.run_number }}
+          path: |
+            apk-debug/
+            apk-release/
+            rootfs-files/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: 发布 RootFS 包到 Releases
+        # 只在本次真的重建了 RootFS 时执行；跳过时 latest 上那份旧包继续有效。
+        # RootFS 步骤是 continue-on-error，失败时 rootfs-files/ 会是空的；
+        # 未展开的 glob 会被 gh 当成一个不存在的文件名而报错，所以先探测。
+        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           if compgen -G "rootfs-files/*" > /dev/null; then
             gh release upload latest rootfs-files/* --repo "$GITHUB_REPOSITORY" --clobber
           else
