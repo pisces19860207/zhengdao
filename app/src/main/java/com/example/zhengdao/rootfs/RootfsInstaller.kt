@@ -46,6 +46,13 @@ object RootfsInstaller {
 
     private const val REQUIRED_FREE_BYTES = 2_500_000_000L // 落盘约 1.5–2GB + 余量
 
+    /**
+     * Rust 核心完整性失败的文案标记（`rust/core/src/extract.rs` 的 `ExtractError::ShaMismatch`：
+     * `SHA256 不匹配: 期望 … 实际 …`）。命中它 = 盘上这份包不是我们要装的那份，
+     * **不回退 Java 路径**（那里的解压不校验 sha256），而是把失败原样抛给用户。
+     */
+    private const val SHA_MISMATCH_MARK = "SHA256 不匹配"
+
     class InstallFailed(message: String) : IOException(message)
 
     /** 存储预检（设计文档 §2：按落盘体积校验，不足时给出明确差额）。 */
@@ -148,22 +155,33 @@ object RootfsInstaller {
         tmpDir.mkdirs()
 
         // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
-        // 回退纪律（规范 #2）：任何失败 → 落回下方 commons-compress Java 路径
+        // 回退纪律（规范 #2）：任何失败 → 落回下方 commons-compress Java 路径；
+        // 唯一例外是**完整性失败**（见下），它必须硬失败，不能换条路把同一份坏包再解一遍。
         if (com.example.zhengdao.rust.CoreNative.isRustAvailable()) {
-            val rustOk = runCatching {
+            val rust = runCatching {
+                // 把"这份包应当是什么 sha256"交给 Rust：它**解压的同时**流式算归档 sha（一次读盘），
+                // 算完与期望值对账 ⇒ 信任锚落在"恰好被解压的那些字节"上，而不是另一次遍历的结果。
+                // 没有独立期望值的路径（用户自选文件等）传 null = 只算不校验（行为同旧版）。
                 val report = com.example.zhengdao.rust.CoreNative.extract(
-                    archive.canonicalPath, tmpDir.canonicalPath, null   // SHA 已在调用方校验过
+                    archive.canonicalPath, tmpDir.canonicalPath, archiveSha256
                 )
                 // Rust 侧统计含目录条目；onEntry 节流由调用方负责
                 Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
-            }.isSuccess
-            if (rustOk) {
+            }
+            if (rust.isSuccess) {
                 RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
                 swapIntoPlace(tmpDir, rootfsDir)
                 Log.i(TAG, "RootFS 安装完成（Rust 路径）：${rootfsDir.path}")
                 return
             }
-            Log.w(TAG, "Rust 解压失败，回退 Java 路径")
+            val err = rust.exceptionOrNull()
+            // 完整性失败**不回退**：盘上这份包不是我们要装的那份（下载后被改动、缓存串了包，
+            // 或校验通过到解压之间被换掉）。回退 Java 只会把同一份坏包再解一遍，而 Java 路径
+            // 根本不校验 sha256 ⇒ 那就等于把校验悄悄降级成"没校验"。
+            if (err is IllegalStateException && err.message?.contains(SHA_MISMATCH_MARK) == true) {
+                throw InstallFailed("安装包完整性校验失败（Rust 核心）：${err.message}")
+            }
+            Log.w(TAG, "Rust 解压失败，回退 Java 路径", err)
         }
 
         extractArchiveJava(archive, tmpDir, onEntry = onEntry)
