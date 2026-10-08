@@ -25,7 +25,7 @@ import org.junit.runner.RunWith
  * 四个场景，每个跑 [ITERATIONS] 轮取中位数：
  *   1. 冷启动            —— 进程被杀后从零拉起，到首屏内容可见（StartupTimingMetric）
  *   2. 太极页加载        —— 丹房 → 太极 的切页与首屏渲染（FrameTimingMetric）
- *   3. 终端页切换        —— 点「洞天」拉起 TerminalActivity（FrameTimingMetric）
+ *   3. 终端页切换        —— 点「终端」拉起 TerminalActivity（FrameTimingMetric）
  *   4. 设置页滚动        —— 设置页连续三段滑动的帧耗时（FrameTimingMetric）
  *
  * ── 为什么这么写（几个必须知道的坑）─────────────────────────────────
@@ -115,7 +115,7 @@ class ZhengdaoBenchmark {
     }
 
     // ── 3. 终端页切换 ──────────────────────────────────────────────────
-    // 「洞天」直接拉起 TerminalActivity（独立 Activity，无底部导航）。
+    // 「终端」直接拉起 TerminalActivity（独立 Activity，无底部导航）。
     // 完成信号 = 底栏「太极」消失（说明终端已占据前台）。
     @Test
     fun terminalSwitch() = benchmarkRule.measureRepeated(
@@ -128,10 +128,11 @@ class ZhengdaoBenchmark {
             ensureDanfangTab()
         },
     ) {
-        check(device.tapText("洞天")) { "未找到底部「洞天」Tab" }
+        // 底栏文案「终端」，与 MainActivity 底部导航 Tab 一致（2026-10-08 由「洞天」改名）
+        check(device.tapText("终端")) { "未找到底部「终端」Tab" }
         // 终端页没有可点的文字锚点，用「底栏消失」判定切换完成
         check(device.wait(Until.gone(By.text("太极")), SETTLE_MS)) {
-            "点洞天后 ${SETTLE_MS}ms 内未离开主界面（终端页未拉起）"
+            "点终端后 ${SETTLE_MS}ms 内未离开主界面（终端页未拉起）"
         }
     }
 
@@ -218,7 +219,7 @@ private fun MacrobenchmarkScope.launchHome() {
 
 /** 失败时把屏幕上真实可见的锚点列出来——猜不如看（这 App 的复位坑已经踩了三次）。 */
 private fun UiDevice.screenMarkers(): String = listOf(
-    "太极", "证道", "设置", "返回", "存储占用", "洞天", "丹房",
+    "太极", "证道", "设置", "返回", "存储占用", "终端", "丹房",
     "ESC", "CTRL", "描述你的任务…", "尚未安装 OpenCode",
 ).filter { findObject(By.text(it)) != null }.joinToString(",")
 /** 保证停在丹房 Tab（太极页加载 / 设置入口的起点），起点一致才谈得上对比。 */
