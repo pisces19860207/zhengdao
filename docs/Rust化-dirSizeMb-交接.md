@@ -8,6 +8,14 @@
 
 ---
 
+
+> **⏳ 2026-10-09 收工复核（DSH 记，合并前请先读这段）**：`main` 已推进到 `4483beb`（v2.0.8 / vc24），
+> 当天新增的 ERRATA 条目**已占满 `E-072` ~ `E-076`**（E-072 存储读取回归用例 / E-073 清理口径与 mtime / E-074 输入回归页 / E-075 存储明细与可选工具 / E-076 通知权限）
+> ⇒ 本条支线文档里写的 **`E-072` 合并时必须再让一次号**（改成当日 `main` 最大号 +1，目前即 **E-077** 起），
+> 按 §3.2 的规矩：**只改条头编号 + 更新让号说明，正文一字不动**。
+> 其余交接信息不变：分支 `feat/rust-dirsize-and-keep-guard`、提交 `e0894ad`、工作树 `wt-rust-dirsize`、**未 push / 未建 PR**（用户要求）；
+> 本支线代码（Rust / Kotlin / `.so` / CI）与 `main` 当天的改动（`EnvHealth.kt`、`StorageAudit.kt`、`ImeRegressionActivity.kt` 等）无交集，预期仍只有 `docs/ERRATA.md` 与 `docs/FEATURE-LEDGER.md` 两处文档冲突。
+
 ## 1. 交接三要素
 
 | 项 | 值 |
