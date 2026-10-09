@@ -295,21 +295,52 @@ object KnowledgeBaseSummarizerRunner {
     /**
      * 读文件开头一小段当"试读"。
      *
-     * ⚠️ 会**跳过符号链接**（延续 `CacheCleaner` 的教训：跟随软链会让统计/扫描虚报）；
-     * 只读文本类扩展名，`.docx`/`.pdf`/图片一律只给文件名（P3 才做转换）。
+     * ⚠️ **跳过符号链接**（延续 `CacheCleaner` 的教训：跟随软链会让统计/扫描虚报）。
+     *
+     * 三类文件，三种待遇：
+     * - 纯文本（txt/md/json…）⇒ 直接读前 [READ_BYTES_PER_FILE] 字节
+     * - **`.docx`（P3a）** ⇒ 先抽正文（[DocxTextExtractor]，零依赖），再取前一段
+     * - 其余（`.pdf` / 图片 / 旧 `.doc`）⇒ 返回 null，只给模型文件名
+     *   （P3b 未做：PDF 要引第三方库，见 `docs/知识库-P3设计方案.md`）
      */
     private fun readHead(f: File): String? {
         if (!f.isFile) return null
         val ext = f.extension.lowercase()
-        if (ext !in TEXT_EXT) return null
         val isLink = runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
         if (isLink) return null
+
+        if (ext == "docx") return readDocxHead(f)
+
+        if (ext !in TEXT_EXT) return null
         return runCatching {
             f.inputStream().use { ins ->
                 val buf = ByteArray(READ_BYTES_PER_FILE)
                 val n = ins.read(buf)
                 if (n <= 0) null else String(buf, 0, n, Charsets.UTF_8)
             }
+        }.getOrNull()
+    }
+
+    /**
+     * `.docx` 试读（P3a）。
+     *
+     * ⚠️ 与纯文本不同，`.docx` **必须整个文件读进来才能解 zip**（zip 目录在文件末尾，
+     * 不能只读开头）。所以这里先用"文件大小"挡一道（[DocxTextExtractor.MAX_DOCX_BYTES]），
+     * 再整读。抽取本身是 O(n) 扫描，开销与文件大小线性相关
+     * （本机 JVM 上跑过真实结构的 docx，含 3 MB 图片，**9ms**；真机待验）。
+     *
+     * 抽不出来（不是合法 docx / 加过密的 docx）⇒ 返回 null，退回"只给文件名"，**不报错**。
+     */
+    private fun readDocxHead(f: File): String? {
+        if (f.length() > DocxTextExtractor.MAX_DOCX_BYTES) {
+            RunLog.log("资料库摘要：`${f.name}` 太大（${f.length() / 1024 / 1024} MB），跳过正文提取")
+            return null
+        }
+        return runCatching {
+            val text = DocxTextExtractor.extract(f.readBytes())
+            text.takeIf { it.isNotBlank() }?.take(READ_BYTES_PER_FILE)
+        }.onFailure {
+            RunLog.log("资料库摘要：`${f.name}` 正文提取失败（${it.javaClass.simpleName}），退回只给文件名")
         }.getOrNull()
     }
 }
