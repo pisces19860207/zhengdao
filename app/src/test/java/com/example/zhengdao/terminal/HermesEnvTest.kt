@@ -56,6 +56,9 @@ class HermesEnvTest {
         return File(install, "facts.json").apply { writeText(json.toString(2)) }
     }
 
+    /** 宿主 `File` → **guest 视角**路径（`facts.json` 里真机上就是这个形式，ERRATA E-066）。 */
+    private fun guest(f: File): String = HermesEnv.toGuestPath(f, root())
+
     @Test
     fun `没装 Hermes 不算问题`() {
         val st = HermesEnv.inspect(root())
@@ -63,6 +66,35 @@ class HermesEnvTest {
         assertFalse(st.installed)
         assertTrue("没装就不能报警", st.ok)
         assertFalse(st.canRepairOnHost)
+    }
+
+    @Test
+    fun `guest 视角的有效记录不该报红`() {
+        val install = File(root(), "installs/8a4017c4cabfe15f").apply { mkdirs() }
+        val good = generation(install, "bbbe54fbc50346d78ed8bebac60c1d94")
+        facts(install, guest(File(good, "venv")), guest(File(good, "workspace/uv.lock")))
+
+        val st = HermesEnv.inspect(root())
+
+        assertTrue("hermes 自己写的记录就是 guest 视角，不该误报", st.ok)
+        assertFalse("没坏就不用修", st.canRepairOnHost)
+        assertFalse(st.hostViewRecord)
+        assertTrue("记录是人读的，保持原样", st.recordedEnv!!.startsWith("/root/.hermes/"))
+    }
+
+    @Test
+    fun `路径映射往返`() {
+        val host = File(root(), "installs/8a4017c4cabfe15f/environments/gen/venv")
+
+        assertEquals("/root/.hermes/installs/8a4017c4cabfe15f/environments/gen/venv", guest(host))
+        assertEquals(host.path, HermesEnv.toHostFile(guest(host), root()).path)
+        assertTrue(HermesEnv.isGuestViewPath(guest(host)))
+        assertFalse(HermesEnv.isGuestViewPath(host.path))
+        // 不在 home 之下的路径原样透传（别把 /usr、/workspace 这类路径搅坏）
+        assertEquals("/workspace/uv.lock", HermesEnv.toGuestPath(File("/workspace/uv.lock"), root()))
+        // Windows 上 `File("/workspace/uv.lock").path` 会变成 `\workspace\uv.lock`，
+        // 所以这里比 File 对象（同样的归一化），而不是比字符串。
+        assertEquals(File("/workspace/uv.lock"), HermesEnv.toHostFile("/workspace/uv.lock", root()))
     }
 
     @Test
@@ -85,13 +117,34 @@ class HermesEnvTest {
 
         val after = HermesEnv.inspect(root())
         assertTrue("指针改指完整代后应转绿", after.ok)
-        assertEquals(File(good, "venv").absolutePath, after.recordedEnv)
+        assertEquals(guest(File(good, "venv")), after.recordedEnv)
+        assertTrue("写回 guest 视角，proot 里的 hermes 才看得见", after.recordedEnv!!.startsWith("/root/"))
+        assertFalse(after.hostViewRecord)
         assertFalse(after.canRepairOnHost)
         assertTrue(
             "改之前要留备份",
             install.listFiles()!!.any { it.name.startsWith("facts.json.bak-证道") },
         )
         assertTrue("facts.json 本身不能被删", f.isFile)
+    }
+
+    @Test
+    fun `宿主视角的记录算坏记录_理由是 proot 里看不见`() {
+        val install = File(root(), "installs/8a4017c4cabfe15f").apply { mkdirs() }
+        val good = generation(install, "gen-ok")
+        facts(install, File(good, "venv").absolutePath, File(good, "workspace/uv.lock").absolutePath)
+
+        val st = HermesEnv.inspect(root())
+
+        assertFalse("宿主路径在 guest 里不存在，对 hermes 等同环境丢了", st.ok)
+        assertTrue(st.hostViewRecord)
+        assertTrue(st.canRepairOnHost)
+        assertTrue("要给用户说清是哪儿不对", st.detail.contains("宿主路径"))
+
+        assertTrue(HermesEnv.repairOnHost(root()))
+        val after = HermesEnv.inspect(root())
+        assertTrue(after.ok)
+        assertEquals(guest(File(good, "venv")), after.recordedEnv)
     }
 
     @Test
@@ -124,7 +177,7 @@ class HermesEnvTest {
     fun `更新中断留下的标记可一键清理_记录本身不动`() {
         val install = File(root(), "installs/8a4017c4cabfe15f").apply { mkdirs() }
         val good = generation(install, "gen-ok")
-        val f = facts(install, File(good, "venv").absolutePath, File(good, "workspace/uv.lock").absolutePath)
+        val f = facts(install, guest(File(good, "venv")), guest(File(good, "workspace/uv.lock")))
         val original = f.readText()
         File(install, ".recovery.lock").writeText("")
         File(install, ".repair-incomplete").writeText("")
@@ -146,7 +199,7 @@ class HermesEnvTest {
     fun `源码锁缺失要进终端_宿主侧改不了 git`() {
         val install = File(root(), "installs/8a4017c4cabfe15f").apply { mkdirs() }
         val good = generation(install, "gen-ok")
-        facts(install, File(good, "venv").absolutePath, File(good, "workspace/uv.lock").absolutePath)
+        facts(install, guest(File(good, "venv")), guest(File(good, "workspace/uv.lock")))
         File(root(), "hermes-agent").mkdirs() // 有检出目录但没有 uv.lock
 
         val st = HermesEnv.inspect(root())
