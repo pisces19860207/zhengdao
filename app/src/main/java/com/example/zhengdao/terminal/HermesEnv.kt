@@ -36,6 +36,24 @@ import java.util.Locale
  * 判定只有文件读写、不 spawn 进程（与 [EnvHealth] 的其它项同源），所以能进单测、秒级完成。
  * 宿主侧 `filesDir/home` 与 guest 的 `/root` 是同一个 bind（见 [ProotLauncher]），
  * 因此在宿主改 `facts.json` 与在 guest 内改是同一件事——这正是能"一键修正记录"的前提。
+ *
+ * ## 路径有两种视角，写错就等于把环境弄丢（ERRATA E-066）
+ *
+ * `facts.json` 是**给 guest 里的 hermes 读**的，里面的路径必须是**guest 视角**（`/root/.hermes/...`）；
+ * 而 App 在宿主侧看到的是**宿主视角**（`/data/user/0/<包名>/files/home/.hermes/...`）。
+ * 真机上这两条路径**指向同一个文件**，但 proot 里看不见宿主那一条：
+ *
+ * ```
+ * # 在 guest 里
+ * $ ls /data/user/0/com.example.zhengdao/files/home/.hermes/installs/&lt;hash&gt;/environments/
+ * ls: cannot access ...: No such file or directory      # 宿主路径在 guest 里不存在
+ * $ echo $HOME ; pwd
+ * /root ; /root                                          # guest 侧一切都挂在 /root 下
+ * ```
+ *
+ * 所以：**读**记录时要把 guest 路径映射回宿主文件再判断存在，**写**记录时必须写回 guest 视角。
+ * 写错的后果不是"报个错"，而是 App 一边说"记录有效"（宿主侧确实存在），
+ * guest 里的 hermes 一边罢工：`dependency environment is missing or outside this install`。
  */
 object HermesEnv {
 
@@ -47,6 +65,41 @@ object HermesEnv {
 
     /** `filesDir/home` 即 guest 的 `/root`。 */
     fun hermesHome(ctx: Context): File = File(ctx.filesDir, "home/.hermes")
+
+    /** guest 里的家目录（`ProotLauncher` 把 `filesDir/home` 挂到这里）。 */
+    const val GUEST_HOME = "/root"
+
+    /** guest 视角路径（`/root/...`）？—— 只有这种形式 guest 里的 hermes 才看得见。 */
+    internal fun isGuestViewPath(path: String): Boolean =
+        path == GUEST_HOME || path.startsWith("$GUEST_HOME/")
+
+    /** guest 视角路径 → 宿主 `File`（`/root/x` → `<home>/x`；不是 guest 路径就原样当宿主路径）。 */
+    internal fun toHostFile(path: String, root: File): File {
+        val home = root.parentFile ?: return File(path)
+        val norm = path.replace('\\', '/')
+        return when {
+            norm == GUEST_HOME -> home
+            norm.startsWith("$GUEST_HOME/") ->
+                File(home, norm.removePrefix("$GUEST_HOME/").replace('/', File.separatorChar))
+            else -> File(path)
+        }
+    }
+
+    /**
+     * 宿主 `File` → guest 视角路径（在 `home/` 之下才转，其余原样）。
+     * 写 `facts.json` 用这个；路径分隔符统一成 `/`（Windows 上跑单测也要得到 `/root/...`）。
+     */
+    internal fun toGuestPath(f: File, root: File): String {
+        // 不在 home 之下时也要把分隔符归一成 `/`：这份字符串是给 proot 里的 hermes 读的，
+        // 而 Windows 上 `File("/workspace/uv.lock").path` 会变成 `\workspace\uv.lock`。
+        val home = (root.parentFile ?: return f.path.replace(File.separatorChar, '/')).absoluteFile
+        val rel = f.absoluteFile.relativeToOrNull(home)
+            ?: return f.path.replace(File.separatorChar, '/')
+        val seg = rel.path
+        if (seg.isEmpty() || seg == ".") return GUEST_HOME
+        if (seg.startsWith("..")) return f.path.replace(File.separatorChar, '/')
+        return "$GUEST_HOME/${seg.replace(File.separatorChar, '/')}"
+    }
 
     /**
      * 体检结论。
@@ -67,6 +120,8 @@ object HermesEnv {
         val canRepairOnHost: Boolean,
         val sourceLockMissing: Boolean,
         val staleLocks: Int,
+        /** `facts.json` 里记的是宿主视角路径（proot 里看不见）——见对象头的 E-066 说明。 */
+        val hostViewRecord: Boolean = false,
     )
 
     fun inspect(ctx: Context): State = inspect(hermesHome(ctx))
@@ -87,6 +142,7 @@ object HermesEnv {
         var recordedEnv: String? = null
         var anyRecord = false
         var brokenRecord = false
+        var hostViewRecord = false
         installDirs(installs).forEach { dir ->
             val facts = File(dir, "facts.json")
             if (!facts.isFile) return@forEach
@@ -94,7 +150,8 @@ object HermesEnv {
             val env = venv.first ?: return@forEach
             anyRecord = true
             if (recordedEnv == null) recordedEnv = env
-            if (!venvUsable(env, venv.second)) brokenRecord = true
+            if (!isGuestViewPath(env)) hostViewRecord = true
+            if (!venvUsable(env, venv.second, root)) brokenRecord = true
         }
 
         val hostFixable = when {
@@ -111,6 +168,8 @@ object HermesEnv {
 
         val ok = anyRecord && !brokenRecord && !sourceLockMissing && stale == 0
         val detail = when {
+            brokenRecord && hostViewRecord && complete.isNotEmpty() ->
+                "依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）"
             brokenRecord && complete.isNotEmpty() -> "依赖环境记录指向不存在的目录，可一键修正（盘上有可用的代）"
             brokenRecord -> "依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）"
             !anyRecord -> "尚未登记依赖环境（安装可能没跑完），需在终端重建"
@@ -118,7 +177,7 @@ object HermesEnv {
             stale > 0 -> "有 $stale 个更新中断留下的标记文件，可一键清理"
             else -> "依赖环境记录有效"
         }
-        return State(true, ok, detail, recordedEnv, hostFixable, sourceLockMissing, stale)
+        return State(true, ok, detail, recordedEnv, hostFixable, sourceLockMissing, stale, hostViewRecord)
     }
 
     /**
@@ -144,7 +203,7 @@ object HermesEnv {
             if (!facts.isFile) return@forEach
             val venv = readVenv(facts) ?: return@forEach
             val env = venv.first ?: return@forEach
-            if (venvUsable(env, venv.second)) return@forEach
+            if (venvUsable(env, venv.second, root)) return@forEach
 
             runCatching { facts.copyTo(File(dir, "facts.json.bak-证道$ts"), overwrite = true) }
             val target = complete.maxByOrNull { it.lastModified() }
@@ -153,15 +212,17 @@ object HermesEnv {
                     val json = JSONObject(facts.readText())
                     val packages = json.optJSONObject("packages") ?: JSONObject().also { json.put("packages", it) }
                     val venvObj = packages.optJSONObject("venv") ?: JSONObject().also { packages.put("venv", it) }
-                    venvObj.put("environment", File(target, "venv").absolutePath)
+                    // ⚠️ 必须写 **guest 视角**（`/root/...`）：这份文件是给 proot 里的 hermes 读的，
+                    // 写宿主路径会让它以为"环境在安装目录之外"（ERRATA E-066）。
+                    venvObj.put("environment", toGuestPath(File(target, "venv"), root))
                     File(target, "workspace/uv.lock").takeIf { it.isFile }?.let {
-                        venvObj.put("resolved_lock", it.absolutePath)
+                        venvObj.put("resolved_lock", toGuestPath(it, root))
                     }
                     facts.writeText(json.toString(2))
                     true
                 }.getOrDefault(false)
                 if (moved) {
-                    RunLog.log("HermesEnv: 依赖环境记录已改指存在的代 ${target.name}")
+                    RunLog.log("HermesEnv: 依赖环境记录已改指存在的代 ${target.name}（写成 guest 视角路径）")
                     changed = true
                 }
             } else {
@@ -213,11 +274,14 @@ object HermesEnv {
         env to lock
     }.getOrNull()
 
-    /** 记录可用 = 环境目录在且含 `pyvenv.cfg`；记了锁则锁也得在（与 pm/environments.py 同条件）。 */
-    internal fun venvUsable(env: String?, lock: String?): Boolean {
+    /** 记录可用 = **guest 视角**的路径；环境目录在且含 `pyvenv.cfg`；记了锁则锁也得在（与 pm/environments.py 同条件）。 */
+    internal fun venvUsable(env: String?, lock: String?, root: File): Boolean {
         if (env == null) return false
-        if (!File(env, "pyvenv.cfg").isFile) return false
-        return lock == null || File(lock).isFile
+        // 宿主视角的路径（老版本 App 修记录时写坏的）在 proot 里根本不存在，
+        // 对 hermes 来说等于"环境丢了"——必须当成坏记录改回 guest 视角（ERRATA E-066）。
+        if (!isGuestViewPath(env)) return false
+        if (!File(toHostFile(env, root), "pyvenv.cfg").isFile) return false
+        return lock == null || toHostFile(lock, root).isFile
     }
 
     /**

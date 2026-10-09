@@ -3771,3 +3771,74 @@ modifier = Modifier
    凡是**视觉行为**（位置、遮挡、层级），都得在真机上看一眼，别用"写法标准"代替证据。
 
 
+
+## E-066 · 2026-10-09 · hermes 的依赖环境记录是**给 proot 里读的 guest 路径**，App 却按宿主路径判断与写回 —— 一边把好环境报成红叉，一边真把环境写坏
+
+**背景**
+
+用户全新删掉重装了一遍（2026-10-09 傍晚），丹房体检面板里 hermes 明明装好了却有**两个红叉**，
+而且在终端里直接敲 `hermes` 也罢工，三行报错都在说"依赖环境不见了"。
+
+**现象**（真机原文）
+
+- `hermes: automatic dependency repair retry limit reached; run \`hermes pm repair\``
+- `hermes: source-update completion failed: dependency environment is missing or outside this install: /data/user/0/com.example.zhengdao/files/home/.hermes/installs/8a4017c4cabfe15f/environments/bbbe54fbc50346d78ed8bebac60c1d94/venv; running with the previous dependencies — run 'hermes update' to finish it`
+- `hermes: dependency repair failed: venv: recorded dependency lock is missing; refusing to drop plugins — retry, or run 'hermes pm doctor'`
+- 体检面板：`Hermes 依赖环境 — 依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）`（✗）
+
+**定位**
+
+`facts.json` 里的 `environment` / `resolved_lock` 记的是 **guest（proot 里）视角**的路径：
+`/root/.hermes/installs/<hash>/environments/<代>/venv`。
+而 App 侧的 `HermesEnv` 一直拿**宿主视角**去判断同一份记录：
+`/data/user/0/com.example.zhengdao/files/home/.hermes/...`。
+
+guest 里求证：`echo $HOME` = `/root`、`pwd` = `/root`；
+`ls -d /data/user/0/com.example.zhengdao/files/home/.hermes/installs/*/environments/*/` = `No such file or directory`
+—— 宿主的 `/data/user/0/...` 在 proot 里根本看不见；反过来 `/root` 在宿主侧也不存在。
+两个视角哪个写错都会出事：
+
+1. **误报**：记录本来是好的（`/root/...`），App 按宿主路径去找 `pyvenv.cfg` ⇒ 找不到 ⇒ 报 ✗「依赖环境已丢失」；
+2. **写坏（更严重）**：App 的 `repairOnHost` 会把记录**改写成宿主路径**。
+   真机取证：改完之后 `"environment": "\/data\/user\/0\/com.example.zhengdao\/files\/home\/.hermes\/installs\/8a4017c4cabfe15f\/environments\/bbbe54fbc50346d78ed8bebac60c1d94\/venv"` ——
+   App 自己看着"对"了（面板转绿），proot 里的 hermes 却再也找不到环境 ⇒ **假绿**。
+   两份备份（`facts.json.bak-修复` 18:11、`facts.json.bak-证道20261009-191236` 19:12）里都还是 `/root/.hermes/...`，
+   正好是"被 App 改坏之前"的样子。
+
+**修法**（`app/src/main/java/com/example/zhengdao/terminal/HermesEnv.kt`）
+
+| 新增/改动 | 作用 |
+|---|---|
+| `const val GUEST_HOME = "/root"` + `isGuestViewPath(path)` | 判断一条记录是不是 guest 视角（`/root` 或 `/root/...`） |
+| `toHostFile(path, root)` | guest 路径 → 宿主 `File`（`/root/x` → `<home>/x`），分隔符归一 |
+| `toGuestPath(f, root)` | 宿主 `File` → guest 路径（只在 `home/` 之下才转；统一输出 `/`，Windows 上跑单测也得到 `/root/...`） |
+| `venvUsable(env, lock, root)` | **宿主视角的记录直接算坏记录**（先 `if (!isGuestViewPath(env)) return false`），再看 `pyvenv.cfg` / 锁文件在不在 |
+| `inspect` | 多记一个 `hostViewRecord`；detail 新增「依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）」 |
+| `repairOnHost` | 写回时走 `toGuestPath(...)`（**这份文件是给 proot 里的 hermes 读的**），日志也点明"写成 guest 视角路径" |
+
+`app/src/test/java/com/example/zhengdao/terminal/HermesEnvTest.kt` 新增 3 例
+（`guest 视角的有效记录不该报红` / `路径映射往返` / `宿主视角的记录算坏记录_理由是 proot 里看不见`），
+并把另外 3 例的记录改成 guest 形式（否则会被新规则判成坏记录而被重写）。
+
+**验证（2026-10-09，AD3J023824001723）**
+
+- 单测：**44 suites / 386 例 / 0 失败**（较 E-065 的 383 例新增 3 例）。
+- 真机三态：
+  1. **正确的 guest 记录** ⇒ 面板不再说"依赖环境已丢失"（此时唯一的 ✗ 是「有 2 个更新中断留下的标记文件，可一键清理」——那是真的该清理）；
+  2. **把记录改回宿主视角**（`sed -i 's#/root/.hermes#/data/user/0/com.example.zhengdao/files/home/.hermes#g' facts.json`，等价于复现旧版 App 写坏的样子）⇒
+     面板显示新增的 detail「依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）」＋「修复」按钮；
+  3. 点「修复」⇒ `facts.json` 的 `environment` / `resolved_lock` **回到 `/root/.hermes/...`**
+     （JSON 转义形式 `\/root\/...`，落盘前自动备份 `facts.json.bak-证道20261009-192822`），
+     面板变「环境体检 9/10 通过」+「依赖环境记录有效」；
+     终端里 `hermes -z ping` ⇒ `pong — 在。有什么要做的？` ✅（**真能干活**，不是假绿）。
+- 另注：`uv 配置` 那一项要在**进过一次终端**之后才会转 ✓（包装巡检挂在终端启动上：`terminal/ProotLauncher.kt:289`），
+  所以刚装完包直接看体检面板会看到它 ✗ —— 这是既有设计，不是本次的 bug。
+
+**教训**
+
+1. **同一个路径有两种视角（guest / host）时，必须在名字或类型上分开**。这次的坑在于"同一个字符串在两处被当成不同东西"，
+   而且它**既能误报、也能把环境写坏**，写坏之后 App 自己看还是绿的。
+2. 修一个"修复动作"之前先回答：**这份文件最终给谁读**。`facts.json` 是 proot 里的 hermes 读的 ⇒ 只能写 guest 路径。
+3. 平台差异要在单测里跑出来：这轮 6 个失败全是 Windows 的 `\` 与 `/`
+   （`File("/workspace/uv.lock").path` 会变成 `\workspace\uv.lock`）⇒
+   映射函数一律输出 `/`，断言比 `File` 对象而不是比字符串。
