@@ -4,6 +4,7 @@
 package com.example.zhengdao.oc
 
 import android.content.Context
+import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.terminal.Workspace
@@ -359,22 +360,57 @@ object OcManager {
                 if (serveRunning()) {
                     repeat(10) {
                         parseServePassword(ctx)
-                        if (servePassword != null) return null
+                        if (servePassword != null) {
+                            // 起来了就撤下"上次留下的问题"（#4：report / resolve 语义配对）
+                            IssueCenter.resolve("oc-serve-timeout")
+                            IssueCenter.resolve("oc-serve-password")
+                            return null
+                        }
                         Thread.sleep(500)
                     }
-                    RunLog.log("太极: serve 就绪但密码未解析到（UI 将无法通过 API 鉴权）")
+                    // ⚠️ 这条分支以前**只写日志**：serve 在跑、但密码没读到，调用方拿到
+                    //   null（= 成功），而接下来每个 /api/* 请求都 401 —— 用户侧表现为
+                    //   「太极连上了但什么都不工作」，界面上一个字都没有。现在同时报进
+                    //   「最近问题」，并给一条去路（重启 serve 会重新打印并重读密码）。
+                    val msg = "太极: serve 就绪但密码未解析到（UI 将无法通过 API 鉴权）"
+                    RunLog.log(msg)
+                    IssueCenter.report(
+                        id = "oc-serve-password",
+                        title = "太极连上了、但没拿到访问密码",
+                        detail = "serve 在 14000 端口活着，serve.log 里没有可用的 server password 行" +
+                            "（旧场次的密码不能复用）⇒ 之后每个请求都会 401，界面看着像卡住。",
+                        actionLabel = "重启太极",
+                        actionId = IssueCenter.ACTION_RESTART_SERVE,
+                    )
                     return null
                 }
                 Thread.sleep(500)
             }
             serveProcess?.destroy()
+            IssueCenter.report(
+                id = "oc-serve-timeout",
+                title = "太极（OpenCode）启动超时",
+                detail = "15 秒内 serve 没就绪（端口 14000 无响应）。常见原因：上一场 serve 僵着、" +
+                    "端口被占、或内置二进制被杀软拦下。",
+                actionLabel = "重试",
+                actionId = IssueCenter.ACTION_RETRY_SERVE,
+            )
             "启动超时：serve 未在 15 秒内就绪（详见 RunLog）"
         } catch (t: Throwable) {
             RunLog.log("太极 serve 启动失败: ${t.message}")
             // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文仍落 RunLog，UI 看到的是
             // 「网络超时 / 存储空间不足 / 没有写入权限」等。TaijiScreen:539/590 透传此 msg
             // 给用户；此处换为 HumanizeError.title 即可让用户读懂。
-            "启动失败：${HumanizeError.title(t)}"
+            val human = HumanizeError.title(t)
+            // #4：太极页会显示这句，但用户可能正在主页/丹房 —— 同步报一条到「最近问题」。
+            IssueCenter.report(
+                id = "oc-serve-start",
+                title = "太极（OpenCode）启动失败",
+                detail = human,
+                actionLabel = "重试",
+                actionId = IssueCenter.ACTION_RETRY_SERVE,
+            )
+            "启动失败：$human"
         }
     }
 

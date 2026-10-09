@@ -3,6 +3,7 @@
 package com.example.zhengdao.terminal
 
 import android.util.Log
+import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
@@ -82,6 +83,8 @@ object EnvSelfHeal {
      * 单查询 1 秒超时、重试 3 次、多服务器轮换——移动网络丢包时快速换源，
      * 替代默认的 5 秒死等。旧版只有国际源或无重试参数时整体重写。 */
     fun ensureDnsFiles(resolv: File, hosts: File): Boolean = try {
+        // #4：进得来就先把上次那条记录撤下 —— 自愈是幂等的，本次没炸 = 故障不在了
+        IssueCenter.resolve("selfheal-dns")
         var changed = false
         // 旧版 resolv 只有国际源或无 options：升级后补齐国内源 + 重试参数
         val stale = resolv.isFile && (!resolv.readText().contains("223.5.5.5") ||
@@ -110,6 +113,15 @@ object EnvSelfHeal {
     } catch (t: Throwable) {
         // 写不进去不阻断会话；网络类故障由故障排查手册的引导项兜底
         Log.w(TAG, "DNS 修复失败: ${t.message}")
+        // #4：自愈失败以前只落一行 Logcat/RunLog —— 用户侧表现为"奇怪，明明修过还是上不了网"。
+        IssueCenter.report(
+            id = "selfheal-dns",
+            title = "DNS 配置没能写入",
+            detail = "${t.javaClass.simpleName}: ${t.message}；guest 内可能出现下载得动、上不了网。" +
+                "去设置页「修复环境」重解压系统层（约 30 秒）可恢复。",
+            actionLabel = "去修复",
+            actionId = IssueCenter.ACTION_REPAIR_ENV,
+        )
         false
     }
 
@@ -118,6 +130,7 @@ object EnvSelfHeal {
      */
     private fun ensureHosts(hosts: File): Boolean {
         return try {
+            IssueCenter.resolve("selfheal-hosts")
             if (!hosts.isFile || hosts.length() == 0L) {
                 hosts.parentFile?.mkdirs()
                 // 重建时**不写**已撤除的 opencode.ai 钉 IP
@@ -148,6 +161,13 @@ object EnvSelfHeal {
             true
         } catch (t: Throwable) {
             Log.w(TAG, "hosts 修复失败: ${t.message}")
+            IssueCenter.report(
+                id = "selfheal-hosts",
+                title = "/etc/hosts 没能写入",
+                detail = "${t.javaClass.simpleName}: ${t.message}；遥测屏蔽与钉住项可能失效（不影响基本联网）。",
+                actionLabel = "去修复",
+                actionId = IssueCenter.ACTION_REPAIR_ENV,
+            )
             false
         }
     }
@@ -156,6 +176,7 @@ object EnvSelfHeal {
      * /etc/localtime 指向 Etc/UTC，guest 内 date/tmux 全按 UTC 显示。改指
      * Asia/Shanghai 并补 /etc/timezone；已是目标值时跳过（幂等）。 */
     fun ensureTimezone(rootfsDir: File): Boolean = try {
+        IssueCenter.resolve("selfheal-timezone")
         val localtime = File(rootfsDir, "etc/localtime")
         val wanted = "/usr/share/zoneinfo/Asia/Shanghai"
         var changed = false
@@ -172,6 +193,14 @@ object EnvSelfHeal {
         changed
     } catch (t: Throwable) {
         Log.w(TAG, "时区修复失败: ${t.message}")
+        IssueCenter.report(
+            id = "selfheal-timezone",
+            title = "时区没能校准",
+            detail = "${t.javaClass.simpleName}: ${t.message}；guest 里 date/tmux 会按 UTC 显示" +
+                "（慢 8 小时），会话内由 TZ 环境变量兜底。",
+            actionLabel = "去修复",
+            actionId = IssueCenter.ACTION_REPAIR_ENV,
+        )
         false
     }
 
@@ -180,6 +209,7 @@ object EnvSelfHeal {
      * uv.toml 全失效。/etc/uv/uv.toml 是 uv 官方配置发现层级里的系统级路径
      * （未实测·推断，验证法：guest 内 uv --help 查 "System configuration"）。 */
     fun ensureUvConfig(rootfsDir: File): Boolean = try {
+        IssueCenter.resolve("selfheal-uv")
         val uvCfgDir = File(rootfsDir, "etc/uv")
         var changed = false
         if (uvCfgDir.isDirectory || uvCfgDir.mkdirs()) {
@@ -196,6 +226,14 @@ object EnvSelfHeal {
         changed
     } catch (t: Throwable) {
         Log.w(TAG, "uv 配置修复失败: ${t.message}")
+        IssueCenter.report(
+            id = "selfheal-uv",
+            title = "uv 系统级配置没能写入",
+            detail = "${t.javaClass.simpleName}: ${t.message}；hermes 装依赖时可能撞上" +
+                "硬链接不可用（proot 下 SELinux/bind 边界）。",
+            actionLabel = "去修复",
+            actionId = IssueCenter.ACTION_REPAIR_ENV,
+        )
         false
     }
 
@@ -215,6 +253,7 @@ object EnvSelfHeal {
      *   结果完全一样，但终端里只留下可读的输出。
      */
     fun ensureHermesUvWrappers(homeDir: File, ensurePinnedDir: Boolean = false): Boolean = try {
+        IssueCenter.resolve("selfheal-uv-wrapper")
         val tools = File(homeDir, ".hermes/tools")
         val dirs = (tools.listFiles { f -> f.isDirectory && f.name.startsWith("uv-") }
             ?: emptyArray()).toMutableList()
@@ -243,6 +282,14 @@ object EnvSelfHeal {
         changed
     } catch (t: Throwable) {
         Log.w(TAG, "hermes uv 包装巡检失败: ${t.message}")
+        IssueCenter.report(
+            id = "selfheal-uv-wrapper",
+            title = "hermes 内嵌 uv 没能包装",
+            detail = "${t.javaClass.simpleName}: ${t.message}；内嵌 uv 裸奔时硬链接必然失败" +
+                "（hermes 装/更新依赖会报错）。进一次终端会再巡检一次，也可去设置页处理。",
+            actionLabel = "去设置",
+            actionId = IssueCenter.ACTION_OPEN_SETTINGS,
+        )
         false
     }
 
