@@ -26,6 +26,13 @@
 
     <!-- M2 前台服务：targetSdk 28 起即需声明（API 34+ 才另需 foregroundServiceType） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- 唤醒锁（E-054，2026-10-09 补）：SessionService 全程 `PowerManager.newWakeLock(
+         PARTIAL_WAKE_LOCK, "zhengdao:session")` 并 acquire()，但**这条权限一直没声明**
+         ⇒ acquire() 抛 SecurityException → 被 `runCatching { … }` 静默吞掉 → 保活锁
+         从来没真正持有过。唯一痕迹是 RunLog 每 30 秒一条「保活锁已失效，重新获取
+         （会话仍在运行）」——看着在补，其实每轮都失败（"看着在跑，其实手机早就能睡"，
+         正是 E-020 一类的静默降级）。合并清单（debug/release/benchmark）实测均无此权限。 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name="com.example.zhengdao.ZhengdaoApp"

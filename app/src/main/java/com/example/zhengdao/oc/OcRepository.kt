@@ -58,6 +58,14 @@ class OcRepository(
      */
     private val answeredPermissions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
+    /**
+     * 未知 SSE 事件的日志聚合器（E-054）。
+     *
+     * 真机实测：每条连接推十余种 `*.updated`，逐条落盘会把 RunLog 淹没到**看不见真正的
+     * 失败行**。事件照旧保留（不丢数据，只是不逐条记），首次与每 100 次各记一行。
+     */
+    private val unknownSse = UnknownSseLog()
+
     // ── 生命周期 ──────────────────────────────────────────────────────
 
     /**
@@ -384,6 +392,18 @@ class OcRepository(
             }
 
             is SseClient.Event.Unknown -> {
+                // ── ① Agent 运行失败（E-054）：**必须看得见** ──────────────────
+                // 2026-10-09 真机实测：模型失败时服务端回 session.step.failed /
+                // session.execution.failed，而这里原先只把它当"未知事件"记一行日志
+                // —— 界面上既不报错也不给重试，用户以为是自己没发出去。
+                if (RunFailure.isFailure(ev.type)) {
+                    val reason = RunFailure.reasonOf(ev.type, ev.raw)
+                    ocLog("Agent 运行失败（${ev.type}）：$reason")
+                    _state.update {
+                        it.copy(isStreaming = false, runFailure = reason, pendingPermission = null)
+                    }
+                    return
+                }
                 // 模型池（v1.0）：session.step.started 事件的 model 字段 = 服务端实际在用的模型
                 if (ev.type.startsWith("session.step.started")) {
                     parseStepModel(ev.raw)?.let { m ->
@@ -394,8 +414,9 @@ class OcRepository(
                         }
                     }
                 }
-                // 🔺 未知事件不丢弃、不崩UI——仅记录。上游新增类型属正常演进。
-                ocLog("未知 SSE 事件 type=${ev.type}，已忽略但保留原文")
+                // 🔺 未知事件不丢弃、不崩UI——仅记录（同类只在首次与每 100 次记一行，见
+                //    [UnknownSseLog]：逐条落盘会把真正的失败行淹掉，E-054）。
+                unknownSse.next(ev.type)?.let { ocLog(it) }
             }
         }
     }
@@ -574,7 +595,7 @@ class OcRepository(
             http.client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) throw OcHttpException(resp.code, "发送失败 HTTP ${resp.code}")
             }
-            _state.update { it.copy(isStreaming = true, input = "") }
+            _state.update { it.copy(isStreaming = true, input = "", runFailure = null, lastPrompt = text) }
         }.onFailure { ocLog("发送失败：${it.message}") }
     }
 
@@ -616,6 +637,22 @@ class OcRepository(
     fun setInput(text: String) = _state.update { it.copy(input = text) }
 
     fun dismissError() = _state.update { it.copy(lastError = null) }
+
+    /** 关掉「Agent 运行失败」横幅（用户已看过，不必再刷）。 */
+    fun dismissRunFailure() = _state.update { it.copy(runFailure = null) }
+
+    /**
+     * 原样重发最近一次提示词（失败横幅上的「重试」）。
+     *
+     * 为什么用**存下来的** [TaijiState.lastPrompt] 而不是当前输入框：失败横幅出现的时刻，
+     * 输入框是空的（[prompt] 成功才清空、失败保留原设计仍成立，但 SSE 失败发生在
+     * "发送已成功"之后，此时输入框早被清空）。没有可重试内容时如实返回失败，不假装发出。
+     */
+    suspend fun retryLastPrompt(): Result<Unit> {
+        val text = _state.value.lastPrompt
+            ?: return Result.failure(IllegalStateException("没有可重试的内容"))
+        return prompt(text)
+    }
 
     // ── 会话管理（v1.1 第一阶段「会话完整化」）──────────────────────────
     // 🔒 架构冻结红线（《v1.1 计划》"不许动 OcClient / OcRepository 接口"）：
