@@ -37,7 +37,11 @@ plugins {
 //    残锁清面（`index.lock` 之外还清 `*.lock`）、已装 Agent 的 ⋮ 里多一个「重新安装」；
 //    另外「安装中」卡片提前说明可能停在 Agent 自己的配置提问上（按 ESC 跳过，别按 Ctrl+C）。
 //    仍无新功能面，故继续进 patch 级。
-val appVersionName = "2.0.2"
+// ⚠️ 2.0.3（2026-10-09，ERRATA E-061 / E-062 / E-063 / E-064）：第一个**带新功能面**的 2.0.x ——
+//    「资料库」（知识库集成）：把资料丢进 `/sdcard/Download/证道/资料库/原始/`，App 自动生成
+//    `整理/00-目录.md` 并给终端里的 AI 指路（`/root/AGENTS.md`）；P2 借太极的免费模型给长文档补摘要
+//    （`.docx` 也能读，P3a）。只加功能、不动既有链路，故仍进 patch 级。
+val appVersionName = "2.0.3"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -70,7 +74,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 18
+        versionCode = 19
         versionName = appVersionName
 
         ndk {
