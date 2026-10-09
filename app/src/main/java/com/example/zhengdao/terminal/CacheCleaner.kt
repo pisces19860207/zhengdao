@@ -111,13 +111,77 @@ object CacheCleaner {
         com.example.zhengdao.terminal.SessionManager.isAlive()
 
     /**
+     * 到没到阈值：**真正能清掉的量** ≥ [AUTO_THRESHOLD_MB]。返回 Pair(是否到点, 总量 MB)。
+     *
+     * ⚠️ 真机教训（2026-10-09）：第一版这里用的是 [totalMb]（面板口径 `measure()`），而真正被删
+     * 的是 [agentCacheTargets] 那一套目录 —— 两套口径不一致时，真机上会出现"明明堆了 550MB、
+     * 日志里一个字都没有"（`NotDue` 分支不写日志，所以看起来像没跑）。现在两边同一个口径：
+     * **能清的才算数**。
+     *
+     * **"到点"≠"能清"**：能不能清由 [autoVerdict] 判（会话活着、或有 uv/npm/apt 等进程在跑
+     * 就跳过）。两者拆开是为了让"该清但正在装东西"这件事能被**说清楚**（Issue #3 的跳过条件），
+     * 而不是像旧实现那样把 busy 混进"needed"里 —— 那种写法在跳过时界面与日志上一句话都没有。
+     */
+    fun autoCleanDue(ctx: Context): Pair<Boolean, Long> {
+        val total = cleanableMb(ctx)
+        return Pair(total >= AUTO_THRESHOLD_MB, total)
+    }
+
+    /** 真正会被 [autoCleanFirstTier] + [cleanTempFiles] 删掉的量（MB）。 */
+    fun cleanableMb(ctx: Context): Long = bytesToMb(cleanableBytes(ctx))
+
+    private fun cleanableBytes(ctx: Context): Long {
+        val caches = runCatching {
+            agentCacheTargetsFor(ctx).sumOf { fileLengths(it.second) }
+        }.getOrDefault(0L)
+        val pkgs = runCatching { prunableRootfsBytes(ctx) }.getOrDefault(0L)
+        val gens = runCatching { deadGenerationBytes(ctx) }.getOrDefault(0L)
+        val temp = runCatching {
+            staleTempBytes(ctx.filesDir, System.currentTimeMillis())
+        }.getOrDefault(0L)
+        return caches + pkgs + gens + temp
+    }
+
+    /** 安装包里超出"最新 2 个"的那部分（与 [com.example.zhengdao.rootfs.RootfsCache.pruneKeep] 同口径）。 */
+    private fun prunableRootfsBytes(ctx: Context): Long = runCatching {
+        com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx).drop(2).sumOf { it.length() }
+    }.getOrDefault(0L)
+
+    /** hermes 旧依赖代的体量（与 [HermesEnv.prunableGenerations] 同口径）。 */
+    private fun deadGenerationBytes(ctx: Context): Long = runCatching {
+        val home = HermesEnv.hermesHome(ctx)
+        if (!home.isDirectory) 0L else HermesEnv.prunableGenerations(home).sumOf { fileLengths(it) }
+    }.getOrDefault(0L)
+
+    /**
      * 自动清理判定（会话启动时后台调用）：总量超阈值且无活动会话才清。
-     * 返回 Pair(是否需要清, 总量 MB)。
+     * 返回 Pair(是否需要清, 总量 MB)。**保留旧语义**（历史文档与 ERRATA 引用过它）；
+     * 新代码走 [autoCleanDue] + [autoVerdict]。
      */
     fun autoCleanNeeded(ctx: Context): Pair<Boolean, Long> {
-        val total = totalMb(ctx)
-        return Pair(total >= AUTO_THRESHOLD_MB && !busy(ctx), total)
+        val (due, total) = autoCleanDue(ctx)
+        return Pair(due && !busy(ctx), total)
     }
+
+    /** 自动清理的三种结局（纯数据：便于单测，也统一了日志与通知的措辞）。 */
+    internal sealed interface AutoVerdict {
+        /** 没到阈值，什么都不做。 */
+        data object NotDue : AutoVerdict
+
+        /** 到点了但有人在干活，跳过（[reason] 原样进日志）。 */
+        data class Busy(val reason: String) : AutoVerdict
+
+        /** 清。 */
+        data class Clean(val totalMb: Long) : AutoVerdict
+    }
+
+    /** 判定（纯函数）：**忙优先** —— 正在装东西时哪怕堆了 10 GB 也不清。 */
+    internal fun autoVerdict(due: Boolean, totalMb: Long, busyReason: String?): AutoVerdict =
+        when {
+            busyReason != null -> AutoVerdict.Busy(busyReason)
+            !due -> AutoVerdict.NotDue
+            else -> AutoVerdict.Clean(totalMb)
+        }
 
     /**
      * 一档清理项：`(显示名, 命令)`。
@@ -460,12 +524,72 @@ esac
     private fun dirSizeMb(dir: File): Long =
         if (dir.isDirectory) bytesToMb(fileLengths(dir)) else 0L
 
-    /** 自动清理触发（SessionService 定时器调用）：超阈值 → 发通知提示（不静默执行删除，用户点通知进设置手动清——v1 稳妥版）。 */
-    fun maybeNotify(ctx: Context, notify: (String, String) -> Unit) {
-        val (needed, total) = autoCleanNeeded(ctx)
-        if (needed) {
-            notify("缓存占用 ${total}MB", "点此进入设置清理（不会删除任何用户数据）")
-            RunLog.log("缓存自动检测: ${total}MB 超阈值，已通知")
+    /** 自动清理的结果（[skipped] 非空 = 这次没清、原因是它；[freedMb] > 0 = 真清了这么多）。 */
+    data class AutoCleanReport(val skipped: String?, val totalMb: Long, val freedMb: Long)
+
+    /**
+     * 自动清理触发（App 启动时后台调用）：超阈值 → 清**第一档**（可再下载的 Agent 包缓存 +
+     * 旧版安装包，保留当前与上一个）+ 二档临时残留 → 返回释放量，由调用方发**静默通知**。
+     *
+     * 为什么现在真删（2026-10-10 改，先前只发一句"点此进入设置清理"的通知）：Issue #3 的验收
+     * 就是"装一次环境后确认缓存被清"，而这档删的全是**下次会重新下载**的东西（三档永不清的
+     * 东西不在这里，见类注释的档位表）。跳过条件是硬的：会话活着、或 [AgentProcesses] 探到
+     * uv/npm/apt/git/python 等在跑。
+     */
+    fun autoCleanIfDue(ctx: Context): AutoCleanReport {
+        val (due, total) = autoCleanDue(ctx)
+        val reason = if (busy(ctx)) "终端会话在跑" else AgentProcesses.busyReason()
+        return when (val v = autoVerdict(due, total, reason)) {
+            is AutoVerdict.NotDue -> AutoCleanReport(null, total, 0L)
+            is AutoVerdict.Busy -> {
+                RunLog.log("自动清理: 跳过（${v.reason}），当前可清 ${total}MB")
+                AutoCleanReport(v.reason, total, 0L)
+            }
+            is AutoVerdict.Clean -> {
+                val freedMb = bytesToMb(autoCleanFirstTier(ctx) + cleanTempFiles(ctx))
+                RunLog.log("自动清理: 清理前 ${total}MB，释放 ${freedMb}MB（Agent 包缓存 + 旧版安装包 + 临时残留）")
+                AutoCleanReport(null, total, freedMb)
+            }
         }
+    }
+
+    /**
+     * 第一档的**宿主侧可直删**部分：Agent 包缓存 + 旧版安装包。返回释放的字节数。
+     *
+     * 旧版安装包走 [com.example.zhengdao.rootfs.RootfsCache.pruneKeep]（只留最新 2 个）而
+     * **不是** `cleanupNonCurrent`：Issue #3 的验收是"当前 + 上一个保留"——回退功能靠"上一个"
+     * 那个包活着，`cleanupNonCurrent` 会把它一并删掉。一档里那几条官方 CLI（`npm cache clean`
+     * 等）不在这里：它们要在 guest 里跑（[guestCommand]），仍由设置页按钮触发、输出可见。
+     */
+    fun autoCleanFirstTier(ctx: Context): Long {
+        val caches = runCatching { cleanAgentCaches(ctx) }.getOrDefault(0L)
+        val pkgs = runCatching { pruneOldRootfsBytes(ctx) }.getOrDefault(0L)
+        val gens = runCatching { pruneDeadGenerations(ctx) }.getOrDefault(0L)
+        return caches + pkgs + gens
+    }
+
+    /**
+     * hermes 的旧依赖代（Issue #8 A）：真机实测 4 代只用 1 代、约 734M 是死的。
+     *
+     * 这是**自动**路径，所以判据全在 [HermesEnv.prunableGenerations] 里（记录读不出来不删、
+     * 保留集里没有完整代不删）；RunLog 由 [HermesEnv.pruneGenerations] 自己写一行（不在两处重复记）。
+     */
+    private fun pruneDeadGenerations(ctx: Context): Long {
+        val home = runCatching { HermesEnv.hermesHome(ctx) }.getOrNull() ?: return 0L
+        if (!home.isDirectory) return 0L
+        return runCatching {
+            val (_, freed) = HermesEnv.pruneGenerations(home)
+            freed
+        }.getOrDefault(0L)
+    }
+
+    /** 安装包只留最新 2 个，返回释放的字节数（删前后的目录大小之差）。 */
+    private fun pruneOldRootfsBytes(ctx: Context): Long {
+        val dir = runCatching { com.example.zhengdao.rootfs.RootfsCache.dir(ctx) }.getOrNull() ?: return 0L
+        if (!dir.isDirectory) return 0L
+        val before = fileLengths(dir)
+        runCatching { com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx, keep = 2) }
+        val after = fileLengths(dir)
+        return (before - after).coerceAtLeast(0L)
     }
 }

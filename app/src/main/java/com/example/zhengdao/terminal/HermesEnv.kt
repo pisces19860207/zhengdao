@@ -307,4 +307,78 @@ object HermesEnv {
         File(root, ".hermes-update-in-progress.lock").takeIf { it.isFile }?.let { out.add(it) }
         return out
     }
+
+    // ── 旧依赖代清理（Issue #8 A，2026-10-10）────────────────────────────
+
+    private fun canonical(f: File): String =
+        runCatching { f.canonicalPath }.getOrDefault(f.absolutePath)
+
+    /** `installs/<hash>/environments/<代>` 全部代目录（按 install 遍历）。 */
+    private fun generationDirs(installs: File): List<File> =
+        installDirs(installs).flatMap { dir ->
+            File(dir, "environments").listFiles { f: File -> f.isDirectory }?.toList() ?: emptyList()
+        }
+
+    private fun isCompleteGeneration(gen: File): Boolean =
+        File(gen, "venv/pyvenv.cfg").isFile && File(gen, "workspace/uv.lock").isFile
+
+    /**
+     * 可以安全删掉的"旧代"（Issue #8 A）。
+     *
+     * 真机实测（2026-10-09）：`installs/<hash>/environments/<代>` 下堆了 4 代（351M + 358M + 358M + 25M），
+     * 而 `facts.json` 只指向其中一代 ⇒ 约 734M 是死的。App 此前只改指针、从不删旧代。
+     *
+     * 保留策略（保守到"删完 hermes 仍能跑"）：
+     * 1. `facts.json` 指向的那一代**永远保留**；
+     * 2. 每个 install 里按 mtime 最新的 [keepExtra] 代也保留（默认 1 ⇒ 刚换完代还能回退一次）；真机教训（2026-10-09）：三代目录 mtime 常常同秒，
+     *    `sortedByDescending { lastModified() }` 打平时稳定排序取到目录序第一个（恰好是当前代）⇒"额外留一代"白设；
+     *    故同 mtime 时再按名字倒序兜底（确定性，且通常落到最新建的那一代）。
+     * 3. **记录读不出来（facts.json 缺失/坏）时，这个 install 一律不碰**；
+     * 4. **只有在这两拨保留里至少还剩一代"完整代"时才删**（[isCompleteGeneration]：
+     *    `venv/pyvenv.cfg` + `workspace/uv.lock` 都在）——否则宁可一个都不删；
+     * 5. 只删长得像代目录（含 `venv` 或 `workspace`）的目录，`environments` 下的别的东西不碰。
+     */
+    internal fun prunableGenerations(root: File, keepExtra: Int = 1): List<File> {
+        val out = ArrayList<File>()
+        installDirs(File(root, "installs")).forEach { dir ->
+            val env = readVenv(File(dir, "facts.json"))?.first ?: return@forEach
+            val gens = File(dir, "environments").listFiles { f: File -> f.isDirectory }?.toList()
+                ?: return@forEach
+            val keep = HashSet<String>()
+            toHostFile(env, root).parentFile?.let { keep += canonical(it) }
+            gens.sortedWith(compareByDescending<File> { it.lastModified() }.thenByDescending { it.name })
+                .take(keepExtra.coerceAtLeast(0))
+                .forEach { keep += canonical(it) }
+            val survivors = gens.filter { canonical(it) in keep }
+            if (survivors.none { isCompleteGeneration(it) }) return@forEach
+            gens.filter { canonical(it) !in keep }
+                .filter { File(it, "venv").isDirectory || File(it, "workspace").isDirectory }
+                .forEach { out += it }
+        }
+        return out
+    }
+
+    /** 死代总体积（MB）：只读，给界面显示"可省多少"。 */
+    fun deadGenerationsMb(root: File, keepExtra: Int = 1): Long =
+        prunableGenerations(root, keepExtra).sumOf { CacheCleaner.fileLengths(it) } / 1048576
+
+    /**
+     * 删掉死代，返回 `删了几代 to 释放字节`。
+     *
+     * 删除用 [CacheCleaner.deleteTree]（宿主侧递归删、不跟随软链，与 E-067 的 Agent 包缓存同一把刀）。
+     * 调用方删完应当再跑一次 [inspect]（`hermes -z ping` 才算真绿，见 ERRATA E-066 的教训）。
+     */
+    fun pruneGenerations(root: File, keepExtra: Int = 1): Pair<Int, Long> {
+        var n = 0
+        var freed = 0L
+        prunableGenerations(root, keepExtra).forEach { gen ->
+            val before = CacheCleaner.fileLengths(gen)
+            if (CacheCleaner.deleteTree(gen)) {
+                n++
+                freed += before
+            }
+        }
+        if (n > 0) RunLog.log("hermes 旧依赖代清理: 删除 $n 代，释放 ${freed / 1048576}MB")
+        return n to freed
+    }
 }

@@ -352,6 +352,46 @@ class CacheCleanerTest {
         assertTrue("参数判断应是 shell 的 \${1:-}", s.contains("\${1:-}"))
         assertTrue("帮助应打印脚本自身", s.contains("\"${'$'}0\""))
     }
+
+    // ── 自动清理判定（Issue #3，2026-10-10）────────────────────────────────
+
+    /**
+     * 三个结局各一条。重点是**忙优先**：已经堆到 10 GB，只要有人在装东西也不能清
+     * —— 这是"跳过条件"这条需求唯一能被机器验的部分（真机验证另记 ERRATA）。
+     */
+    @Test
+    fun `自动清理判定：没到阈值什么都不做`() {
+        assertEquals(
+            CacheCleaner.AutoVerdict.NotDue,
+            CacheCleaner.autoVerdict(due = false, totalMb = 120, busyReason = null)
+        )
+    }
+
+    @Test
+    fun `自动清理判定：到点就清并带上总量`() {
+        assertEquals(
+            CacheCleaner.AutoVerdict.Clean(2400),
+            CacheCleaner.autoVerdict(due = true, totalMb = 2400, busyReason = null)
+        )
+    }
+
+    @Test
+    fun `自动清理判定：有人在装东西时再大也不清`() {
+        val reason = "有安装/构建在跑：111 uv（uv）"
+        val v = CacheCleaner.autoVerdict(due = true, totalMb = 10_240, busyReason = reason)
+        assertTrue(v is CacheCleaner.AutoVerdict.Busy)
+        assertEquals(reason, (v as CacheCleaner.AutoVerdict.Busy).reason)
+        // 没到阈值 + 有人在跑 ⇒ 仍报"忙"（用户最需要知道的是"为什么这次没清"）
+        assertTrue(CacheCleaner.autoVerdict(due = false, totalMb = 10, busyReason = reason) is CacheCleaner.AutoVerdict.Busy)
+    }
+
+    /** 释放量按 0 兜底：删不动时不能报个负数出去。 */
+    @Test
+    fun `字节换算与零释放`() {
+        assertEquals(0L, CacheCleaner.bytesToMb(0L))
+        assertEquals(1L, CacheCleaner.bytesToMb(1048576L))
+        assertEquals(437L, CacheCleaner.bytesToMb(437L * 1048576L + 512L))
+    }
 }
 
 /** 与 [CacheCleaner.staleTempBytes] 同义，只是作用在给定目录上（便于单测）。 */

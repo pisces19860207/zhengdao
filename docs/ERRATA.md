@@ -4131,3 +4131,53 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 - instrumented test 的权限状态与冷启动路径不同：测试要自己补权限，否则报的是**环境错**、不是代码错
   （本次第一轮 5 例全红，全部是"READ 权限为空"造成的假红）。
 - 体检项只判"授权位"会漏掉第 0 步那种「位对、读不到」的形态：**能验证结果就别只验证意图**。
+
+## E-073 存储清理（#3）与 hermes 旧依赖代清理（#8-A）：三处「代码看着对、真机没反应」
+
+**背景**（Issue #3 / Issue #8 A）：安装/更新后应把「能清的」清掉（>500MB 才动手，有安装/构建在跑就跳过），
+清完给一条静默通知；hermes 的 `installs/<hash>/environments/<代>` 在真机上堆了 4 代（351M + 358M + 358M + 25M），
+而 `facts.json` 只指向其中一代 ⇒ 约 734M 是死的（App 此前只改指针、从不删旧代）。
+
+**修法**
+1. **阈值与删除集合同源**：`CacheCleaner` 新增 `cleanableMb(ctx)` / `private cleanableBytes(ctx)`，
+   `autoCleanDue` 改用它（此前用 `measure(ctx)`）。`cleanableBytes` = Agent 包缓存（`agentCacheTargetsFor`）
+   + 旧 rootfs 包（`RootfsCache.listArchives(ctx).drop(2)`，与 `pruneKeep(keep = 2)` 同口径，保住"当前 + 上一个"）
+   + 死依赖代（`HermesEnv.prunableGenerations(...)`）+ 过期临时文件（`staleTempBytes`）。
+   `autoCleanDue` 不再混入 busy 判断（busy 由纯函数 `autoVerdict(due, totalMb, busyReason)` 判，**忙优先**）。
+2. **旧代保留策略**（`HermesEnv.prunableGenerations(root, keepExtra = 1)`）：`facts.json` 指向的那一代**永远保留**；
+   每个 install 里按 mtime 最新的 `keepExtra` 代也保留；**记录读不出来（缺失/坏）时这个 install 一律不碰**；
+   只有保留集里至少还剩一代**完整代**（`venv/pyvenv.cfg` + `workspace/uv.lock` 都在）才删；只删含
+   `venv` 或 `workspace` 的目录。删除走 `CacheCleaner.deleteTree`（宿主侧递归删、不跟随软链）。
+3. **静默通知**：新增 `CacheNotifier.cleaned(ctx, freedMb, totalMb)`，复用既有的 `NotificationChannels.INSTALL`
+   （IMPORTANCE_LOW ⇒ 不响不弹）而不是新开第五个渠道；只在 `freedMb > 0` 时发。
+4. **手动那一刀**：`ui/SettingsScreen.kt` 的「存储占用」区块按 `genMb > 0` 显示「清理 Agent 旧依赖代（N MB）」，
+   确认弹窗写明"记录只指向其中一代、保留当前代与最新一代"。
+
+**真机证据**（Honor PGT-AN10 / Android 16 / arm64-v8a，debug 包，2026-10-09 22:25:48，
+`/sdcard/Download/证道/logs/zhengdao-log.txt`）
+- `缓存清理(Agent 包缓存): 删除 1 项 Agent 包缓存，释放 550MB`
+- `hermes 旧依赖代清理: 删除 1 代，释放 0MB`
+- `自动清理: 清理前 550MB，释放 550MB（Agent 包缓存 + 旧版安装包 + 临时残留）`
+- 现场：`installs/<hash>/environments` 剩 `genA`（`facts.json` 当前代）+ `genC`（同 mtime 时按名字倒序兜底的那一代），
+  `genB` 已删；`files/home/.hermes/cache` 整个消失；`/sdcard/Download/证道` 完好（`agents cache logs rootfs 资料库` 都在）。
+
+**造数法**（真机复现这类清理时照抄）：`adb push` 脚本到 `/data/local/tmp/`，再
+`adb shell run-as <pkg> sh /data/local/tmp/zd_fake.sh`；脚本里用**绝对** `/data/user/0/<pkg>/...` 路径，
+`touch -t 202311142213.20` 把三代目录 mtime 打成同一秒，`dd` 出 550MB 的 `cache/big.bin`。
+（`adb shell "run-as … sh -c \"…\""` 的嵌套引号会被设备 shell 吃掉 —— 本次 `mkdir` 就那么落到了只读的 `/` 上。）
+
+**三处「看着对、真机不对」**
+1. **阈值口径 ≠ 删除集合**：`autoCleanDue` 原本用 `measure(ctx)`（只算 `home/.hermes/cache/uv` 等），
+   真删的却是 `agentCacheTargets`（含整个 `home/.hermes/cache`）⇒ 造了 550MB 仍判 `AutoVerdict.NotDue`。
+   更坑的是 **NotDue 分支不写日志**，第一轮真机看日志像"这个功能根本没跑"。
+2. **mtime 打平**：三代目录在同一秒里连建 ⇒ `sortedByDescending { it.lastModified() }` 稳定排序取目录序第一个
+   （恰好就是当前代）⇒ "额外留一代"白设、三代只剩一代。改成
+   `compareByDescending<File> { it.lastModified() }.thenByDescending { it.name }`，并补一条"mtime 全相同"的单测。
+3. **日志重复**：`HermesEnv.pruneGenerations` 自己写一行、`CacheCleaner.pruneDeadGenerations` 又写一行 ⇒ 只留前者。
+
+**四条教训**
+- 会「删东西」的功能，**判断阈值的数据源必须与删除集合同源**；两套口径迟早对不上，而且对不上时通常表现为
+  「静默地什么都不做」，比报错难查得多。
+- 每个"没做事"的分支也要留一行日志（`NotDue` / `Busy(<原因>)`），否则真机排查只能靠猜。
+- 批量创建目录的场景里，mtime 排序必须有次级键；只按 mtime 排等于把决定权交给文件系统。
+- 真机造数优先 `adb push` 脚本 + `run-as sh <file>`，不要在 `adb shell` 里套多层引号。
