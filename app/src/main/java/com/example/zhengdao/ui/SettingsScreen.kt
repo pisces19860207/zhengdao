@@ -59,6 +59,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.rootfs.PatchRef
 import com.example.zhengdao.rootfs.RootfsCache
@@ -424,6 +425,62 @@ fun SettingsScreen(
                         TextButton(onClick = { agentConfirm = false }) { Text("取消") }
                     },
                 )
+            }
+
+            // hermes 旧依赖代（Issue #8 A，2026-10-09）：真机实测 `installs/<hash>/environments/`
+            // 下堆了 4 代、`facts.json` 只指向其中一代 ⇒ 约 734M 是死的（每次重建依赖环境都会留一代）。
+            // 这里是**用户手动**那一刀（自动那一刀在 CacheCleaner.autoCleanFirstTier）；判据全在
+            // HermesEnv.prunableGenerations 里，删完当前依赖环境与记忆都不动。
+            var genMb by remember(storageTick) { mutableStateOf(0L) }
+            LaunchedEffect(storageTick) {
+                genMb = withContext(Dispatchers.IO) {
+                    CacheCleaner.bytesToMb(HermesEnv.deadGenerationsMb(HermesEnv.hermesHome(ctx)))
+                }
+            }
+            if (genMb > 0) {
+                var genConfirm by remember { mutableStateOf(false) }
+                TextButton(onClick = { genConfirm = true }) {
+                    Text("清理 Agent 旧依赖代（$genMb MB）")
+                }
+                if (genConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { genConfirm = false },
+                        title = { Text("清理旧依赖代？") },
+                        text = {
+                            Column {
+                                Text("可释放约 $genMb MB。")
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "每次重建依赖环境都会留下一整代（venv + 依赖锁），" +
+                                        "而记录（facts.json）只指向其中一代；这里删的是**没人指**的那些。" +
+                                        "当前用的那一代与最新一代都会留着。"
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "不会删除：当前的依赖环境、记忆、装好的工具链、rootfs 系统层。" +
+                                        "如果哪天需要回退到旧代，hermes 会重新装（要联网）。"
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                genConfirm = false
+                                val (count, freed) = HermesEnv.pruneGenerations(HermesEnv.hermesHome(ctx))
+                                Toast.makeText(
+                                    ctx,
+                                    if (count > 0)
+                                        "已删除 $count 代，释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                    else "没有可清理的旧依赖代",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                storageTick++
+                            }) { Text("清理") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { genConfirm = false }) { Text("取消") }
+                        },
+                    )
+                }
             }
         }
 
