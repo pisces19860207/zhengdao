@@ -1300,6 +1300,97 @@ fun SettingsScreen(
             }) { Text("打开应用详情（启动管理入口）") }
         }
 
+        // ── 保活记录（被杀留档，#5，2026-10-09）──
+        // 用户报障「终端用着用着就没了」时我们手上什么都没有：进程死掉那一刻不留痕迹，
+        // 杀掉它的不是我们（厂商清理 / LMK / 冻结）。这里把三件可查的事实摆出来：
+        // 系统的死亡证明（原因/时间/RSS）、心跳（最后一行=遇难现场）、logcat 片段。
+        // 位置在私有目录（不是人人天天看的日志区），要交给作者分析时点「导出」拷进公共区。
+        var exitLines by remember { mutableStateOf(emptyList<String>()) }
+        var beatLines by remember { mutableStateOf(emptyList<String>()) }
+        var snippetCount by remember { mutableStateOf(0) }
+        var keepAliveTick by remember { mutableStateOf(0) }
+        LaunchedEffect(keepAliveTick) {
+            withContext(Dispatchers.IO) {
+                exitLines = com.example.zhengdao.keepalive.KeepaliveArchive.history(ctx, 3)
+                beatLines = com.example.zhengdao.keepalive.KeepaliveArchive.heartbeatTail(ctx, 5)
+                snippetCount = com.example.zhengdao.keepalive.KeepaliveArchive.snippets(ctx).size
+            }
+        }
+        SectionCard("保活记录（被杀留档）") {
+            Text(
+                "位置：${com.example.zhengdao.keepalive.KeepaliveArchive.dirPath(ctx)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "进程被杀时系统会自己记下原因（内存不足 / 资源占用超限 / 厂商后台清理 / 崩溃 / ANR），" +
+                    "下次启动时收进这里；心跳每 10 分钟一条，**最后一条就是遇难现场**（内存水位、" +
+                    "前台服务在不在、用户当时在哪一页）。导出后连同 logcat 片段一起可交给作者分析。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            if (exitLines.isEmpty()) {
+                Text(
+                    "还没有退出记录——被杀过一次并重开之后就会有。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    "最近退出：",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                exitLines.forEach { line ->
+                    Text(
+                        line,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (beatLines.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "最近心跳：",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                beatLines.forEach { line ->
+                    Text(
+                        line,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "logcat 片段：$snippetCount 份（每次启动与巡检各留一份，最多 5 份）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row {
+                OutlinedButton(onClick = {
+                    val dst = com.example.zhengdao.keepalive.KeepaliveArchive.export(ctx)
+                    Toast.makeText(
+                        ctx,
+                        dst?.let { "已导出到 ${it.absolutePath}" } ?: "导出失败：公共区不可用（先在权限里开启「所有文件访问」）",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }) { Text("导出到 Download/证道/logs") }
+                TextButton(onClick = {
+                    val n = com.example.zhengdao.keepalive.KeepaliveArchive.clear(ctx)
+                    keepAliveTick++
+                    Toast.makeText(ctx, "已清空 $n 份留档", Toast.LENGTH_SHORT).show()
+                }) { Text("清空记录", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+
         // ── 新手指南（第三批）──
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")

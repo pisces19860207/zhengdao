@@ -24,7 +24,31 @@ class ZhengdaoApp : Application() {
         super.onCreate()
         RunLog.init(this)
         logSignature()
+        keepalive()
         autoCleanJunk()
+    }
+
+    /**
+     * 保活留档（#5，2026-10-09）。
+     *
+     * 分两半，**同步 / 异步的界线是有意的**：
+     * - [com.example.zhengdao.keepalive.KeepaliveWatcher.install] 同步跑（注册生命周期回调、
+     *   `onTrimMemory`、未捕获异常处理器、巡检线程）——它不读磁盘也不起进程，必须赶在
+     *   第一个 Activity 之前装好，否则"用户刚进界面就被杀"这一档会漏；
+     * - [com.example.zhengdao.keepalive.KeepaliveArchive.onStartup] 丢后台线程——它要
+     *   `logcat -d`（起一个进程）并读写若干文件，放在 `onCreate` 里会拖着冷启动。
+     *   顺序上它**必须在 RunLog 之后**：归档出来的结论本身也要进日志。
+     */
+    private fun keepalive() {
+        runCatching {
+            com.example.zhengdao.keepalive.KeepaliveWatcher.install(this)
+            Thread {
+                runCatching {
+                    com.example.zhengdao.keepalive.KeepaliveArchive.onStartup(this)
+                    com.example.zhengdao.keepalive.KeepaliveWatcher.heartbeat(this, "进程启动（归档完成）")
+                }
+            }.apply { isDaemon = true; name = "zhengdao-keepalive-archive" }.start()
+        }
     }
 
     /**
