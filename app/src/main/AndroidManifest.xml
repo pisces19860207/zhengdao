@@ -76,6 +76,19 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
 
+        <!-- 输入回归页（Issue #2 / 设计方案 v3 §3）：APK 内置，进 30 秒回归 IME
+             （同一套 vendored TerminalView 的 onCreateInputConnection，但会话跑 /system/bin/cat，
+             所以没装运行环境也能回归）。exported=true 只为让 PC 侧用
+             `adb shell am start -n com.example.zhengdao/.ui.ImeRegressionActivity` 一键起页，
+             页面本身不读任何私有数据（只有一个本地 cat）。 -->
+        <activity
+            android:name=".ui.ImeRegressionActivity"
+            android:exported="true"
+            android:label="输入回归页"
+            android:theme="@style/Theme.Zhengdao"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
         <!-- M2 保活锚点：targetSdk 28 无需 foregroundServiceType -->
         <service
             android:name=".terminal.SessionService"
