@@ -57,6 +57,19 @@ public final class TerminalView extends View {
 
     public TerminalViewClient mClient;
 
+    /**
+     * 证道定制（输入回归页，2026-10-09）：IME 事件观察者。
+     *
+     * <p>只**观察**不改行为——实现里除了回调不碰任何状态；为 {@code null} 时（默认，也是生产
+     * 终端的常态）连一次判断都不产生额外开销。回归页把它挂上，用来记录输入法真实送进来的
+     * composition / commit / delete 事件流，作为「中文组合输入是否丢字/重复上屏」的现场证据。
+     */
+    public interface ImeProbeObserver {
+        void onImeEvent(String kind, String text);
+    }
+
+    public ImeProbeObserver mImeProbeObserver;
+
     private TextSelectionCursorController mTextSelectionCursorController;
 
     private Handler mTerminalCursorBlinkerHandler;
@@ -393,9 +406,17 @@ public final class TerminalView extends View {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
                 super.finishComposingText();
 
+                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("finishComposingText", String.valueOf(getEditable()));
                 sendTextToTerminal(getEditable());
                 getEditable().clear();
                 return true;
+            }
+
+            @Override
+            public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                // 观察点（输入回归页）：组合中的候选字串。仅记录，不改 Termux 行为。
+                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("setComposingText", String.valueOf(text));
+                return super.setComposingText(text, newCursorPosition);
             }
 
             @Override
@@ -405,6 +426,7 @@ public final class TerminalView extends View {
                 }
                 super.commitText(text, newCursorPosition);
 
+                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("commitText", String.valueOf(text));
                 if (mEmulator == null) return true;
 
                 Editable content = getEditable();
@@ -419,6 +441,7 @@ public final class TerminalView extends View {
                     mClient.logInfo(LOG_TAG, "IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
                 }
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
+                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("deleteSurroundingText", leftLength + "," + rightLength);
                 KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
                 for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
                 return super.deleteSurroundingText(leftLength, rightLength);

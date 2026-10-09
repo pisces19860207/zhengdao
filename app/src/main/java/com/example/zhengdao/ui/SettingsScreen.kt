@@ -1290,6 +1290,23 @@ fun SettingsScreen(
             }
         }
 
+        // ── 输入回归页（Issue #2 / 设计方案 v3 §3）──
+        SectionCard("输入回归页") {
+            Text(
+                "终端输入相关的改动（渲染、输入层、快捷键条）之后，进这一页 30 秒回归一次中文输入：" +
+                    "页内是一个跑 cat 的终端，按三个场景的顺序输入，各自点「判定」——判定读的是终端缓冲最后一行，" +
+                    "同时会把输入法真实送进来的 composition/commit 事件留档。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Button(onClick = {
+                ctx.startActivity(
+                    android.content.Intent(ctx, ImeRegressionActivity::class.java),
+                )
+            }) { Text("进入输入回归页") }
+        }
+
         // ── Root 增强模式 ──
         // （旧「太极 Tab 界面」回退开关已删——v1.1.1 阶段 3：原生 UI 过真机验收后，
         //   WebView + LocalProxy 旧路径整体移除，开关失去意义。）

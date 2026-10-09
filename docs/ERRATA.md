@@ -4181,3 +4181,48 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 - 每个"没做事"的分支也要留一行日志（`NotDue` / `Busy(<原因>)`），否则真机排查只能靠猜。
 - 批量创建目录的场景里，mtime 排序必须有次级键；只按 mtime 排等于把决定权交给文件系统。
 - 真机造数优先 `adb push` 脚本 + `run-as sh <file>`，不要在 `adb shell` 里套多层引号。
+
+## E-074 输入回归页（#2）：自检不能霸占主线程、场景之间会串、判定口径要与界面一致
+
+**背景**：Issue #2 要求给「终端改动后 30 秒回归 IME」做一个入口页面，覆盖设计方案 v3 里点名的三个场景
+（① 中文组合输入「你好」；② 词中删字符后重输「你好吗」；③ 快速连续输入「你好世界测试」）。
+页面 `ui/ImeRegressionActivity.kt` 自己起一条 `/system/bin/cat` 探针会话（无提示符 ⇒ 缓冲最后一行就是刚敲的内容），
+终端区上方是三张场景卡，每张卡有「判定」（人眼看最后一行）+ 底部「重开会话 / 复制事件日志 / 自检（模拟输入法上屏）」。
+脚本自检绕过系统输入法，直接按输入法的调用序列驱动 `TerminalView` 的 `InputConnection`
+（`setComposingText` / `commitText` / `deleteSurroundingText` / `finishComposingText`），
+覆盖「composition → sendTextToTerminal → PTY 回显 → 缓冲读取」整条链路；系统输入法自己的组合/候选窗行为靠人手走查那三张卡。
+
+**四个真机坑（每个都表现为「代码看着对、真机不对」）**
+
+1. **`mClient` 必须显式挂上**：`TerminalView.updateSize()` 会调 `mClient.onEmulatorSet()`，而证道 vendored 的
+   `TerminalView` 构造器**不再**从 context 取 client（只认 `setTerminalViewClient(...)`）⇒ 漏调用时真机直接崩：
+   `java.lang.NullPointerException: Attempt to invoke interface method 'void com.termux.view.TerminalViewClient.onEmulatorSet()' on a null object reference`
+   （`TerminalView.updateSize(TerminalView.java:1067)` ← `onSizeChanged(TerminalView.java:1051)` ← `AndroidViewHolder.onLayout`）。
+   顺序也是约束：`setTerminalViewClient` → `TerminalPrefs.applyTo`（否则 `mRenderer` 还没建）→ `attachSession`。
+2. **自检绝不能在主线程里 sleep 轮询等回显**：终端的输出处理要回到主线程才推进，主线程一堵，PTY 回显就永远等不到。
+   第一版自检在主线程 `SystemClock.sleep` 轮询，真机上永远读到空（`会话在跑=true，直接写 PTY 回显=false，缓冲原文=[]`）；
+   决定性证据是：页面上手敲 `zz` 后终端一次性吐出 `hi你好ZDPTY` 两行 + `zz` —— 自检那两下（InputConnection 的「你好」
+   和分诊直接写 PTY 的 ZDPTY）其实早就送到了 PTY，只是被堵着没被处理。
+   修法：拆成 `beginScenario(id)`（主线程只发不等）+ `pollScenario(id, timeoutMs)`（非阻塞看一眼，未到点返回 null），
+   等待放到测试线程（`Thread.sleep(120)` + `runOnMainSync { pollScenario(...) }`）或 Compose 协程里。
+3. **场景之间会互相污染**：`BaseInputConnection.commitText` 送进终端的是 `getEditable()` 的全文（不是形参），
+   上一场景残留在连接里的组合串会被一起重发 ⇒ 缓冲里混出 `你好吗你好`；退格又是**按键异步**进 PTY 的，
+   和随后的重输抢顺序 ⇒ 按「缓冲最后一行」判天然假红（连跑 3 次挂 2 次）。
+4. **「按缓冲增量判」也不行**：试过记录基线长度 + 只看 `substring(baseline)`，结果被终端重排/擦除空格骗到 ——
+   连跑 5 次全挂，报 `退格没生效（擦掉的字还在）：你好你好吗`（屏幕上那一行其实是对的）。已弃用。
+   **最终修法**：每个场景开跑前**重开一屏探针会话**（`restartProbeSession()` = `session?.finishIfRunning()` + `attachSession(newCatSession())`），
+   判定回到「看这一屏的最后一行」（`ImeProbe.verdict` / `lastNonEmptyLine`），与页面手工「判定」同一口径。
+
+**真机验收（Honor PGT-AN10 / Android 16，debug 包）**
+- 仪器自检 `am instrument -w -e class com.example.zhengdao.ui.ImeRegressionSelfCheckTest com.example.zhengdao.test/androidx.test.runner.AndroidJUnitRunner`
+  **连跑 15 次全部 `OK (1 test)`**（Time ≈2.7 s），三场景事件流顺序稳定：
+  `setComposingText|你好` → `commitText|你好` → `finishComposingText|` → … → `commitText|你好吗` → `deleteSurroundingText|1,0` → `commitText|吗` → … → `commitText|你好`/`|世界`/`|测试`。
+- 页面入口：`am start -n com.example.zhengdao/.ui.ImeRegressionActivity` 一键起页；终端区点一下即弹输入法、键入即有回显、点「判定」能读出最后一行。
+- 单测：`52 suites / 460 例 / 1 skipped / 0 失败`（`ImeProbe` 纯逻辑：场景表、判定四态、事件上限与转义、擦除空格口径）。
+
+**四条教训**
+- 自检/回归代码**自己不能霸占主线程**：真机上「等回显」这类等待必须让出主线程，否则等的是永远不会推进的东西。
+- 事件流要能看：探针在回调里同时 `Log.i("ZD-IME-EVENT", "$kind|$text")`，失败时能直接回答「谁在什么时候写了什么」。
+- 脚本判定与界面可见判定**必须同口径**（否则人眼看着对、脚本判错）；口径要选「屏幕最终状态」，不要选「输出增量」。
+- 跑仪器测试别用 `connectedDebugAndroidTest`（跑完会卸载 App、带走整个运行环境，见 E-072），用
+  `adb install -r` + `am instrument -w -e class …`。
