@@ -20,15 +20,27 @@ import java.io.File
  * 勾叉红的就是修复按钮能修绿的，不存在"报红但修不了"的悬空项；
  * RootFS/proot 损坏属重解压兜底，引导到设置页的「修复环境」。
  * 网络连通性是宿主侧探测（guest 侧故障另见故障排查手册，非一键可修）。
+ *
+ * ## 不变量（#4 走查，2026-10-09 修补）
+ *
+ * **每个 ✗ 项都必须有去路**，三选一：
+ * - [Check.fixId] 非空 ⇒ 宿主侧一键自愈；
+ * - [Check.terminalCmd] 非空 ⇒ 脚本落盘后进终端跑（过程可见）；
+ * - [Check.route] 非空 ⇒ 带用户走到**正确的那一页**（修复环境 / 系统授权 / 网络自检）。
+ *
+ * 走查前最后四项（proot / rootfs / network / storage）只有一句笼统的「去处理」，
+ * 统统丢到设置页顶部让用户自己找——等于没指路。现在各带一条 [route]，
+ * 由主页渲染成对应文案并直达（`EnvHealthTest.每个红灯项都有去路` 锁死这条不变量）。
  */
 object EnvHealth {
 
     /**
      * 一项体检结果。fixId 非空 = 点「修复」可**宿主侧**定向自愈；terminalCmd 非空 =
-     * 点「修复」要进 guest 里跑（脚本落盘后打开终端，过程可见）；两者都空 = 引导项。
+     * 点「修复」要进 guest 里跑（脚本落盘后打开终端，过程可见）；route 非空 =
+     * 引导项，点按钮**直达**对应的处理位置（不是笼统地丢到设置页顶部）。
      *
      * [warn] = 超阈值但**没有一键修复**（当前只有资源占用一项）：渲染为黄色 ⚠，
-     * 与红色 ✗（可修或引导去处理）区分开，以维持「红 = 修得了」这条不变量。
+     * 与红色 ✗（可修或引导去处理）区分开，以维持「红 = 修得了/去得对」这条不变量。
      */
     data class Check(
         val id: String,
@@ -38,6 +50,7 @@ object EnvHealth {
         val fixId: String? = null,
         val warn: Boolean = false,
         val terminalCmd: String? = null,
+        val route: String? = null,
     )
 
     /** 修复动作标识（与 Check.fixId 对应）。 */
@@ -45,6 +58,33 @@ object EnvHealth {
     const val FIX_TIMEZONE = "timezone"
     const val FIX_UV = "uv"
     const val FIX_HERMES_DEPS = "hermes-deps"
+
+    /** 引导去路标识（与 Check.route 对应）：不是一键自愈，而是把用户送到正确的位置。 */
+    const val ROUTE_REPAIR_ENV = "repair-env"       // 设置页「修复环境」（重解压系统层）
+    const val ROUTE_STORAGE_GRANT = "storage-grant" // 系统「所有文件访问」授权页
+    const val ROUTE_NET_CHECK = "net-check"         // 设置页「网络自检」（分应用代理等）
+
+    /**
+     * 不变量（#4，2026-10-09）：**每个 ✗ 都必须给出去路**——一键自愈 [Check.fixId]、
+     * 终端命令 [Check.terminalCmd]、或一条 [Check.route]。
+     *
+     * 反例就是 #4 要消灭的形态：体检说你坏了，界面上却只有一个「去处理」，点了到设置页还得
+     * 自己找是哪张卡。新增体检项时，要么给它 fixId / terminalCmd，要么把它登记进
+     * [GUIDED_ROUTES]——`EnvHealthTest` 会盯着这张表。
+     */
+    internal fun hasExit(c: Check): Boolean =
+        c.ok || c.fixId != null || c.terminalCmd != null || c.route != null
+
+    /**
+     * 四个「只能去别处处理」的体检项（没有 [Check.fixId]，也开不了终端命令）各自的去路。
+     * 表里的值被对应 check 直接取用，所以这张表就是这些项的真实行为，不是文档。
+     */
+    internal val GUIDED_ROUTES: Map<String, String> = mapOf(
+        "proot" to ROUTE_REPAIR_ENV,
+        "rootfs" to ROUTE_REPAIR_ENV,
+        "network" to ROUTE_NET_CHECK,
+        "storage" to ROUTE_STORAGE_GRANT,
+    )
 
     /** 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询 + 一次资源采样 ~0.7 s）。 */
     fun inspect(ctx: Context): List<Check> = listOf(
@@ -86,8 +126,11 @@ object EnvHealth {
             id = "proot", label = "proot 就绪", ok = ok,
             detail = when {
                 ok -> "proot + loader 就位"
-                else -> "proot 或 loader 缺失，重装环境可恢复"
+                // 每次启动都会按 SHA256 从内置资源重放（[ProotLauncher]），所以这里还缺
+                // 说明连重放都没成功——去路给「修复环境」，别再让用户自己找。
+                else -> "proot 或 loader 缺失（启动时会自动重放，仍缺就用「修复环境」重解压）"
             },
+            route = if (ok) null else GUIDED_ROUTES["proot"],
         )
     }
 
@@ -105,6 +148,7 @@ object EnvHealth {
                 marker.isFile -> "系统层文件缺失，需「修复环境」重解压（约 30 秒）"
                 else -> "环境未安装或安装未完成"
             },
+            route = if (ok) null else GUIDED_ROUTES["rootfs"],
         )
     }
 
@@ -202,7 +246,12 @@ object EnvHealth {
             reachable = validated || tcpReachable(),
             hasInternet = hasInternet,
         )
-        return Check(id = "network", label = "网络连通性", ok = ok, detail = detail)
+        return Check(
+            id = "network", label = "网络连通性", ok = ok, detail = detail,
+            // 网络本身没法"一键修"（可能是代理 App、可能是运营商），去路是设置页的
+            // 「网络自检」：它会实测访问国内源与索引并给出可复制的结论（[NetSelfCheck]）。
+            route = if (ok) null else GUIDED_ROUTES["network"],
+        )
     }
 
     /** 网络体检结论（纯函数，便于单测锁死文案与判定）。 */
@@ -237,6 +286,9 @@ object EnvHealth {
             id = "storage", label = "存储权限", ok = ok,
             detail = if (ok) "所有文件访问已授权（主路径）"
             else "所有文件访问未授权，工作区主路径不可用；到系统设置开启",
+            // 授权页可由主页直接拉起（HomeScreen 里发 ACTION_MANAGE_APP_ALL_FILES_ACCESS_
+            // PERMISSION 带 package: 的 Intent），不必先绕到设置页再找那一行。
+            route = if (ok) null else GUIDED_ROUTES["storage"],
         )
     }
 

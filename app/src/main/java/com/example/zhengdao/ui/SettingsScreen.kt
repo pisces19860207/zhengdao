@@ -1004,7 +1004,15 @@ fun SettingsScreen(
                 )
                 if (st.phase != InstallProgress.Phase.Running) {
                     // 结束后给一个明确的收尾动作：否则这条状态会一直占着按钮下面的位置
-                    TextButton(onClick = { InstallProgress.clear() }) { Text("知道了") }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // #4（2026-10-09）：失败时此前只有「知道了」——把它清掉就再没有任何重试入口，
+                        // 用户只能自己想起"修复环境"那张卡。这里直接给重试，走的就是同一条修复流程
+                        // （本地安装包重解压，不联网；见下方 repairConfirm 的二次确认）。
+                        if (st.phase == InstallProgress.Phase.Failed) {
+                            TextButton(onClick = { repairConfirm = true }) { Text("重试安装") }
+                        }
+                        TextButton(onClick = { InstallProgress.clear() }) { Text("知道了") }
+                    }
                 }
             }
             Spacer(Modifier.height(4.dp))

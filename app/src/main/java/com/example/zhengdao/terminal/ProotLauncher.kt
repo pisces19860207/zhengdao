@@ -8,6 +8,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.io.IOException
@@ -103,6 +104,16 @@ object ProotLauncher {
             if (!actual.equals(expectedSha, ignoreCase = true)) {
                 RunLog.log("严重: $target SHA256 不匹配（actual=$actual），已删除损坏副本")
                 dst.delete()
+                // #4：这条以前只写日志，而它的后果是「整台设备的命令退回 /system/bin/sh」，
+                // 用户只会觉得"环境怎么不对了"。报一条带去路的（修复环境 = 重解压系统层）。
+                IssueCenter.report(
+                    id = "proot-asset-sha",
+                    title = "内置 proot 释放后校验失败",
+                    detail = "$target 的 SHA256 与内置清单不符（actual=${actual.take(12)}…），" +
+                        "损坏副本已删；proot 起不来 ⇒ 命令退回安卓自带 shell（不再是 Debian）。",
+                    actionLabel = "修复环境",
+                    actionId = IssueCenter.ACTION_REPAIR_ENV,
+                )
                 continue
             }
             val mode = if (target == "proot" || target == "loader") 493 else 420 // 0755 / 0644
@@ -118,8 +129,23 @@ object ProotLauncher {
         val rootfsReady = prootBin.isFile && prootBin.canExecute() && loaderBin.isFile && installMarker.isFile
 
         if (!rootfsReady) {
+            // #4：装了环境却又起不来 proot（文件被删 / 权限漂移）才算"出问题"；
+            // 完全没装环境是正常初始态，主页有自己的安装引导，不该在这里报红。
+            if (installMarker.isFile) {
+                IssueCenter.report(
+                    id = "proot-fallback",
+                    title = "已降级到安卓自带 shell",
+                    detail = "系统层标记在，但 proot=" + prootBin.isFile + "、loader=" + loaderBin.isFile +
+                        " ⇒ 命令还能跑，但不在 Debian 里（没有 python/apt/git 那一套）。",
+                    actionLabel = "修复环境",
+                    actionId = IssueCenter.ACTION_REPAIR_ENV,
+                )
+            }
             return fallbackPlan(files, context.cacheDir)
         }
+        // 正常路径：撤下这两条历史问题（下次真坏了会重新报）
+        IssueCenter.resolve("proot-fallback")
+        IssueCenter.resolve("proot-asset-sha")
 
         // DNS 兜底（设计文档 §4：proot 内没有 systemd-resolved，缺 resolv.conf 就是
         // "下载得动、上不了网"的第一大故障；App 每次启动前确保存在）。

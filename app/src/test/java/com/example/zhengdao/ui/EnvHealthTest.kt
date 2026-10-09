@@ -81,4 +81,50 @@ class EnvHealthTest {
         assertNull("也不该把用户丢进终端", c.terminalCmd)
         assertTrue(c.detail.contains("Java 回退"))
     }
+
+    // ── #4（2026-10-09）：每个 ✗ 都必须给出去路 ──
+    //
+    // 走查里最常见的一类缺口：体检报红，界面却只有一个「去处理」，点了到设置页还要自己找
+    // 是哪张卡。不变量写在这里，是为了让"新增体检项忘了给去路"在 CI 上失败，而不是
+    // 等到用户在真机上撞见（同 nativeCheck 那条"修不了就不能报红"的思路）。
+
+    @Test
+    fun `一键修复 终端命令 去路 三者有一就算给出去路`() {
+        assertTrue(
+            EnvHealth.hasExit(
+                EnvHealth.Check("dns", "DNS 配置", false, "旧版配置", fixId = EnvHealth.FIX_DNS),
+            ),
+        )
+        assertTrue(
+            EnvHealth.hasExit(
+                EnvHealth.Check("hermes-deps", "Hermes 依赖环境", false, "记录坏了", terminalCmd = "bash x.sh"),
+            ),
+        )
+        assertTrue(
+            EnvHealth.hasExit(
+                EnvHealth.Check("proot", "proot 就绪", false, "缺 loader", route = EnvHealth.ROUTE_REPAIR_ENV),
+            ),
+        )
+    }
+
+    @Test
+    fun `报红却什么都不给的项会被判定成没有去路`() {
+        // 刻意断言"这是没有去路"：这条就是 #4 要消灭的形态。
+        assertFalse(EnvHealth.hasExit(EnvHealth.Check("x", "X", false, "坏了")))
+        // 通过、以及"修不了只能告警"的项（ok=true + warn=true）都不需要去路。
+        assertTrue(EnvHealth.hasExit(EnvHealth.Check("native", "native 加速层", true, "Java 回退", warn = true)))
+    }
+
+    @Test
+    fun `四个只能去别处处理的体检项都登记了去路`() {
+        assertEquals(setOf("proot", "rootfs", "network", "storage"), EnvHealth.GUIDED_ROUTES.keys)
+        val allowed = setOf(
+            EnvHealth.ROUTE_REPAIR_ENV,
+            EnvHealth.ROUTE_STORAGE_GRANT,
+            EnvHealth.ROUTE_NET_CHECK,
+        )
+        EnvHealth.GUIDED_ROUTES.forEach { (id, route) ->
+            assertTrue("$id 的去路必须是已知值（实际 $route）", route in allowed)
+        }
+    }
 }
