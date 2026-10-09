@@ -464,6 +464,8 @@ fun HomeScreen(
                                                                 EnvHealth.ROUTE_REPAIR_ENV -> "去修复"
                                                                 EnvHealth.ROUTE_STORAGE_GRANT -> "去授权"
                                                                 EnvHealth.ROUTE_NET_CHECK -> "网络自检"
+                                                                // #8-D：存储明细与一键清理都在设置页「存储占用」那张卡上
+                                                                EnvHealth.ROUTE_STORAGE_DETAIL -> "看明细"
                                                                 else -> "去处理"
                                                             }
                                                         )
