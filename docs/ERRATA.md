@@ -3361,3 +3361,33 @@ Run manually: hermes gateway run
 - RunLog：`AgentInstaller: hermes 安装脚本已打 gateway 补丁（只告警不失败）`、`hermes uv 包装器宿主侧预置：已是最新（本次无需改动）`；
 - 安装跑完后 **hermes TUI 自动起来了**（`NOUS HERMES - AI Agent Framework`、`Hermes Agent v0.21.6+199.g1744a19`、`deepseek-flash · 12 tools`）—— 这一条同时证明脚本这次是 **rc=0** 退出（客户端的启动分支只在 rc=0 时走）；
 - `/usr/local/bin/hermes -> /root/.local/bin/hermes` 软链存在（12:34），`/etc/profile.d/zz-local-bin-path.sh` 内容正确。
+
+## E-059 · 2026-10-09 · 用户不会卸载 App、只会一直点「重试安装」：会坏的缓存恰好都在卸载清不掉的地方（共享存储里的安装脚本、上一轮留下的锁文件）
+
+**现象**：hermes 连续几次「安装失败」时，用户在丹房能做的只有一直点「重试安装」——没有提示，也没有任何自动恢复，同一份坏状态被反复拿来重试。
+
+**先查过、确认不是问题的地方**
+
+- `AgentRepository` 的状态判据是三段式（rc 非 0 → Failed，排在 installed 之前；有轮次且无 rc → 进程在 / 90 s 宽限 → Installing，否则 Failed；无轮次 → 以文件为准），`markInstalling` 先删 rc，`installProcessAlive` 扫 `/proc/*/cmdline` 里是否含 `<id>-install.sh`。⇒ 失败态与「安装中」态都有出口，`HomeScreen` 的「安装中」按钮本身可点（点开终端），**不存在"按钮变成死的"这种死角**。
+- `AgentLedger`（`Download/证道/agents/installed.json`）是原子写（`.part` → rename）+ 坏 JSON 容错（返回空表），**本身健壮**。
+
+**真正的死角（这次修的）**
+
+1. **缓存的安装脚本**：脚本落在**共享存储** `Download/证道/agents/scripts/<id>-install.sh`（`Store.agentScriptsDir`），而 `AgentInstaller` 复用它只判「文件存在且 ≥ 64 B」。于是只要有一次下载拿到的是 HTML 错误页 / 门户登录页 / 半截文件（任何大于 64 B 的垃圾都算"可用"），**这份垃圾会一直被复用：重试多少次都没用，甚至卸载重装 App 都还在**——共享存储是刻意设计成活过卸载的。
+2. **上一轮留下的锁**：`buildCommand` 的清障只有 `-name index.lock -delete` 一种，而 hermes 的 pm/uv 会在 `/root/.hermes`、`/root/.claude`、`/root/.config` 下留 `*.lock`（E-056 撞的 `flock` 就在这一层）。
+
+**修法**
+
+- 新增 `app/src/main/java/com/example/zhengdao/ui/AgentInstallPrep.kt`（纯函数、不碰 Android，可单测）：
+  - `looksUsableScript(text)` 判「这看起来是不是一份安装脚本」——长度 < 512 字符、头部 2048 字符里出现 `<!doctype` / `<html`、或第一个非空行不以 `#` 开头，都判不可用；
+  - `fileLooksUsable(f)` 落盘版；`staleLockCleanup()` 生成清障命令。
+- `AgentInstaller`：① 复用缓存前先自检，不合格就 `delete()` 重下，并记一条中文日志（`<id> 缓存的安装脚本不可用（N 字符，疑似错误页/半截文件），删掉重下`）；② 新下载的内容写盘**前**也自检，不合格就抛异常、退回 `curl | bash`（宁可多下一次，也不把垃圾存起来毒害以后每一次重试）；③ 清障从 `index.lock` 扩到 `/root/.hermes`、`/root/.claude`、`/root/.config` 下的 `*.lock`。
+- 判定刻意**宽松**（宁放行不误杀）：误杀一份正常脚本的代价是丢掉 E-057 的 gateway 补丁，那比多跑一次下载贵得多。
+
+**教训**
+
+1. 「卸载重装能解决」在这套设计里**不成立**：共享存储（`Download/证道`）就是为了活过卸载。所以凡是被它缓存的中间产物，都必须自带"坏了能自愈"的能力——环境包已经有索引校验（E-052/E-053），Agent 脚本这次才补上。
+2. 缓存复用的判据不能只看"文件在不在、够不够大"：网络不好时拿到 HTML 错误页是常态，**要判内容形态**。
+3. 一次失败留下的副作用（锁文件、半截文件）必须在下一次重试时被清掉；否则"重试"只是把同样的失败再演一遍。
+
+**验证**：`app/src/test/java/com/example/zhengdao/ui/AgentInstallPrepTest.kt` 12 例（HTML 错误页 / 门户页 / JSON 错误体 / 过短 / 空 / null 判负；正常脚本、前导空行、shebang 前有注释判正；清障命令覆盖 `*.lock` 且不碰 `/sdcard`、`/workspace`、`/root/.local`）；全量单测 **40 suites / 336 例 / 0 失败**。真机复验待设备回到手边（手机被用户带走）。
