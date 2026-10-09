@@ -218,6 +218,44 @@ class KnowledgeBaseSummarizerTest {
         assertTrue("摘要在提示之前", iSummary < iHint)
     }
 
+    // ── ③′ 清单重渲染时保住摘要（"两次写入互相抹"的防线）───────────────────
+
+    @Test
+    fun `重渲染清单时把已有摘要搬到新清单里`() {
+        val old = "# 资料库目录\n\n共 1 个文件：\n\n- `a.txt` — 1 B\n\n---\n\n" +
+            "## 文件摘要\n\n> 由证道借太极的免费模型生成 · 仅供快速定位，**细节请读原文件**。\n\n" +
+            "- **a.txt** — 讲的是一件事\n\n## 给 AI 的提示（重要）\n\n- 只读\n"
+        val fresh = "# 资料库目录\n\n共 2 个文件：\n\n- `a.txt` — 1 B\n- `b.txt` — 2 B\n\n---\n\n" +
+            "## 给 AI 的提示（重要）\n\n- 只读\n"
+        val out = KnowledgeBaseSummarizer.carryOverSummary(old, fresh)
+        assertTrue("摘要要活下来", out.contains("讲的是一件事"))
+        assertTrue("新清单的新文件也要在", out.contains("- `b.txt` — 2 B"))
+        assertTrue("摘要在提示节之前", out.indexOf("## 文件摘要") < out.indexOf("## 给 AI 的提示（重要）"))
+    }
+
+    @Test
+    fun `原件被删掉之后它的摘要不该继续留着`() {
+        val old = "## 文件摘要\n\n- **a.txt** — 甲的摘要\n- **gone.txt** — 乙的摘要\n\n" +
+            "## 给 AI 的提示（重要）\n\n- 只读\n"
+        val fresh = "共 1 个文件：\n\n- `a.txt` — 1 B\n\n## 给 AI 的提示（重要）\n\n- 只读\n"
+        val out = KnowledgeBaseSummarizer.carryOverSummary(old, fresh)
+        assertTrue("还在的文件保留摘要", out.contains("甲的摘要"))
+        assertFalse("已删文件的摘要必须清掉", out.contains("乙的摘要"))
+    }
+
+    @Test
+    fun `旧清单没有摘要节或一条都不剩时原样返回`() {
+        val fresh = "共 0 个文件：\n\n## 给 AI 的提示（重要）\n\n- 只读\n"
+        assertEquals("没摘要节 ⇒ 原样", fresh, KnowledgeBaseSummarizer.carryOverSummary(fresh, fresh))
+        assertEquals("null ⇒ 原样", fresh, KnowledgeBaseSummarizer.carryOverSummary(null, fresh))
+        val onlyGone = "## 文件摘要\n\n- **gone.txt** — 乙的摘要\n\n## 给 AI 的提示（重要）\n\n"
+        assertEquals(
+            "一行摘要都不剩 ⇒ 不留空壳小节",
+            fresh,
+            KnowledgeBaseSummarizer.carryOverSummary(onlyGone, fresh),
+        )
+    }
+
     // ── ⑤ 权限闸门 ──────────────────────────────────────────────────────────
 
     @Test

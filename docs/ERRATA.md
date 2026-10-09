@@ -3580,3 +3580,73 @@ P3 拆成两半：**P3a = `.docx`**（ZIP + XML，**零第三方依赖**，本�
    否则测的是个假前提。
 3. **本机测得全，不代表闭环**——P3a 这么设计（纯逻辑 + 一行接线）就是为了让"本机可测"最大化，
    把真机只剩一条真正的未知量。
+
+## E-064 · 2026-10-09 · 资料库 P2 真机联调：「180 秒等不到回答」的两个真因 —— **建会话没带模型** + **重渲染把摘要整段抹掉**，外加一句会把三种成因说成一件的超时文案
+
+**背景**
+
+P2（借太极的免费模型给 `原始/` 里的长文档补摘要）交付时只在本机跑过纯逻辑 22 例；调用编排层
+（HTTP / 轮询 / 权限 / 超时）按设计属"本机测不了"，留给真机联调（`docs/知识库-P2交接.md` §5.1）。
+本轮把 A1~A8 全跑完，查出两个真问题和一个体验坑。
+
+**现象（真机 AD3J023824001723，debug 包）**
+
+1. 点「重新整理」⇒ 日志只有 `资料库摘要：开始（3 个文件，借太极的模型）`，**180 秒后**
+   `资料库摘要：等不到回答（180s 上限）`；中间没有任何其他日志（无权限拒绝、无 HTTP 错、无解析失败）。
+2. 用同一条提示词逐个试 7 个免费模型（绕开 App 直连 serve）：**5 个能给出合格正文**
+   （`mimo-v2.6-flash-free` 401 字/25 s、`longcat-2.5-preview-free` 381/15、`space-bunny-free` 463/15、
+   `nemotron-3-ultra-free` 337/35、`muse-spark-1.3-contributor-free` 298/20），另 2 个
+   （`step-5-preview-free`、`nemotron-3.5-lightning-free`）**只反复请求工具、从不给正文**（`finish=tool-calls`）。
+   根因不是"免费模型都不行"：`POST /api/session {}` 的响应里**根本没有 `model` 字段**（`GET /api/session/{id}` 也没有），
+   serve 拿"上一个会话用过的模型"兜底 ⇒ 兜到只转工具的模型，表现就是"等到超时、一条摘要都没有"。
+3. 清单重渲染会把摘要**整段抹掉**：`rebuildIndex()` 用 `indexText(items)` 整份重渲染，模板里没有摘要节
+   ⇒ `原始/` 一有增删改（指纹变）、或清单被删后重建，下一次扫描就把 `## 文件摘要` 清空，要再点一次「重新整理」才回来。
+
+**修法**
+
+| 文件 | 改动 |
+|---|---|
+| `app/src/main/java/com/example/zhengdao/terminal/KnowledgeBaseSummarizerRunner.kt` | `createSession` 改成显式带模型：POST `{"model":{"id":"mimo-v2.6-flash-free","providerID":"opencode"}}`（新增 `MODEL_ID` / `MODEL_PROVIDER`）；`TOTAL_TIMEOUT_MS` 180_000 → **60_000**（太极没有保活，等 180 秒只是干等）；超时文案把两种成因写清 |
+| `app/src/main/java/com/example/zhengdao/terminal/KnowledgeBaseSummarizer.kt` | `PROMPT_HEADER` 追加「⚠️ 不要调用任何工具、不要读取文件、不要执行命令 —— 每个文件的开头已经贴在下面了，只根据这些内容作答」；新增 `carryOverSummary(old, fresh)`：重渲染后把旧清单的 `## 文件摘要` 搬到新清单，只保留 `fresh` 里仍有 `` `name` `` 的行，一行不剩则整节不搬，仍插在 `HINT_HEADING` 之前 |
+| `app/src/main/java/com/example/zhengdao/terminal/KnowledgeBase.kt` | `rebuildIndex()` 渲染后先读回旧清单，`carryOverSummary` 之后才 `atomicWriteChecked` |
+| `app/src/test/java/com/example/zhengdao/terminal/KnowledgeBaseSummarizerTest.kt` | 新增 3 例：`重渲染清单时把已有摘要搬到新清单里`、`原件被删掉之后它的摘要不该继续留着`、`旧清单没有摘要节或一条都不剩时原样返回` |
+
+**踩到的坑（值得记下来）**
+
+1. **探针自己的编码 bug 会伪造出"模型不行"**：PowerShell 5.1 的 `Invoke-WebRequest -Body <string>`
+   按 ANSI 发出 ⇒ 提示词到模型那里是乱码（模型回「你的消息似乎因为编码问题显示为问号」）。
+   要 `[Text.Encoding]::UTF8.GetBytes($json)` 当 body，响应也按 UTF-8 解；辅助函数里用 `Write-Host`
+   输出，只把数值/对象 `return`（`$len = TryOne …` 会把函数打印的字符串一起捕获，导致日志一行都不显示）。
+2. **"没网就跳过"的前置判断做不出来，最后没留这段代码**：只看 `ConnectivityManager` 能力时，
+   **分应用代理会报告一个带 `INTERNET`、甚至 `VALIDATED` 的活跃网络**（飞行模式 + Wi-Fi/data 全关也照样），
+   判不出"没网"；改成真连 `223.5.5.5:53` 又太武断（代理可能只放行特定域名 —— 错杀比多等 60 秒更糟）。
+   实测反例：飞行模式下 `adb shell ping` 不通，但**证道的流量走分应用代理照样通**（摘要 39 秒完成 7 条）
+   ⇒ 用 `ping`（或 shell 侧的网络状态）判断"App 有没有网"是错的。
+3. **`Get-Content` 不加 `-Raw` 会让测试计数失真**：`[xml]$x = Get-Content *.xml` 会因返回行数组而失败/算错
+   （那次得到 `suites=43 tests=226` 是错的，实际 378），必须 `Get-Content -Raw`（或 `[System.IO.File]::ReadAllText`）。
+
+**验证（2026-10-09，AD3J023824001723）**
+
+- 单测:`:app:compileDebugKotlin :app:testDebugUnitTest` = BUILD SUCCESSFUL ⇒ **43 suites / 378 例 / 0 失败**。
+- **A2 ✅** 点「重新整理」⇒ `[16:02:30] 资料库摘要：开始（6 个文件…）` → `[16:02:59] 资料库摘要：完成，写入 6 条`（**29 秒**）。
+- **A3 ✅** `GET /api/permission/request` 全程 `data: []`（模型根本没真调工具），`AUTO_DENY` 保险未被触发过。
+- **A4 / A8 ✅** `## 文件摘要`（在 `## 给 AI 的提示（重要）` **之前**）是逐文件真实摘要；`.docx`（python-docx 现造 37,058 B）
+  那条准确说出合同编号 ZD-2026-101、11/15 交付、30% 预付 + 验收后 30 日付清、逾期每日千分之三上限 10%、
+  三年保密、杭州仲裁 ⇒ **不是"用户自己的提问"⇒ E-062 没有复发**。
+- **A5 ✅** 摘要写完后 `原始/` 6 个文件 sha256 与推入前逐一一致（一个字节没动）。
+- **重渲染搬摘要 ✅** 再加一个文件触发重扫描 ⇒ 索引变 7 个文件、`grep -c '^- \*\*'` = 6（老摘要被搬过来）。
+- **A6 ✅** 真断网（`svc wifi disable` + `svc data disable`；**只开飞行模式不够**）⇒
+  `[16:34:38] 资料库摘要：等不到正文（60s 上限，轮询 40 次） —— 要么现在没网，要么模型只给思考 / 想自己去读文件。保持证道在前台、确认有网，再点一次「重新整理」即可`；
+  索引仍是 7 个文件 + 7 条摘要（摘要失败不拖垮清单）。
+- **A7 ✅** `adb shell run-as com.example.zhengdao kill -9 <serve pid>` ⇒ 点按钮**秒回**
+  `资料库摘要：已跳过（太极没在运行 —— 到太极页开一次即可）`。
+- **清理闭环 ✅** 测试文件全部删掉后进一次终端 ⇒ 索引回到「_（还没有文件…）_」空态、摘要行数 0
+  （"一条都不剩就整节不搬"这条规则的真机确认）。
+
+**教训**
+
+"等不到回答"这种一句话文案，会把**三种完全不同的成因**（没带模型 / 模型只转工具 / 真没网）说成一件事 ——
+日志的价值就在于把成因分开。现在前一种被修掉，后两种写进文案。
+另外，"我加个前置判断就不会干等"这类想法在**分应用代理**面前站不住：判不出来就老实把话说清楚，
+比留一段测不出效果的代码强。
+

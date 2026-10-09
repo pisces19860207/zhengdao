@@ -321,7 +321,12 @@ object KnowledgeBase {
         if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return
 
         val text = indexText(items)
-        if (atomicWriteChecked(idx, text)) {
+        // 重渲染是"整份覆盖"，而模板里没有 `## 文件摘要` 一节 ⇒ 不搬回来的话，
+        // 只要 `原始/` 有增删改（或清单被删后重建），模型跑出来的摘要就被静默抹掉。
+        // 搬之前先读旧清单；搬的时候只保留原件还在的行（见 [KnowledgeBaseSummarizer.carryOverSummary]）。
+        val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull()
+        val carried = KnowledgeBaseSummarizer.carryOverSummary(old, text)
+        if (atomicWriteChecked(idx, carried)) {
             prefs.edit().putString(KEY_SIG, sig).apply()
         }
     }

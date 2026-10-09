@@ -30,16 +30,20 @@ import java.util.concurrent.atomic.AtomicBoolean
  * | **绝不碰 `原始/`** | 落盘点只有 [KnowledgeBase.writeSummaries]（写 `整理/`） |
  * | **绝不静默失败** | 每一个 early-return 都有一行 RunLog，并且**说明为什么跳过** |
  *
- * ## ⚠️ 本文件在真机验证前属于「未验证代码」
+ * ## ✅ 真机验证结论（2026-10-09，设备 AD3J023824001723）
  *
- * `docs/知识库-P2设计方案.md` 第六节列了三处无法在本机验证的点。本文件按"**能测的全在
- * [KnowledgeBaseSummarizer]、测不了的在这里**"切开，但下面这些**仍必须真机走一遍**：
- * 1. 新会话有没有默认模型（没有的话 `prompt` 会失败 —— 届时看日志的 HTTP 码）
- * 2. "答完了"的稳定性收敛在当前模型上需要几轮（[POLL_INTERVAL_MS] / [SETTLE_ROUNDS]）
- * 3. 权限请求的实际形态（[AUTO_DENY] 是否够用，还是需要先批准一次读权限）
+ * | 原来担心的 | 真机实测 |
+ * |---|---|
+ * | 新会话有没有默认模型 | **没有** —— `POST /api/session {}` 的响应与 `GET /api/session/{id}` 里都没有 `model` 字段。serve 会用"上一个会话用过的模型"兜底，兜到不吐正文的模型时表现就是"等到超时、一条摘要都没有"。**已改为建会话时显式带 [MODEL_ID]** |
+ * | "答完了"要几轮 | 肯给正文的模型 15~35 秒一次答完，`SETTLE_ROUNDS = 1` 够用。真正的问题从来不是收敛，而是**有的免费模型死活不吐正文**（7 个里 5 个正常） |
+ * | 权限请求会不会挂死 | 实测 `GET /api/permission/request` 全程 `data: []`（模型根本没真调工具），`AUTO_DENY` 那条保险没被触发过 —— 保留，代价为零 |
+ * | 断网时会不会干等 | 会白等满 60 秒（模型在云端，本机 serve 帮不上）。**试过加"没网就跳过"的前置判断，两种口径都被真机打回，最后没留这段代码**：只看 `ConnectivityManager` 能力时，分应用代理会报告一个带 `INTERNET`、甚至 `VALIDATED` 的活跃网络（飞行模式 + Wi-Fi/data 全关也照样），于是判不出"没网"；改成真连一次 `223.5.5.5:53` 又太武断（代理可能只放行特定域名，连不上 DNS 不代表模型也连不上，错杀比多等 60 秒更糟）。最终做法是把成因写进超时文案（见 [waitForAnswer]）|
  *
- * 三条都过了，再把 [requestSummaries] 接到「重新整理」按钮与启动流程上
- * （自动化时机见 P2 方案第八节：**只做用户主动点击**，不做开机自动跑）。
+ * 另外两条实测事实（写单测时踩过）：真机消息是**扁平对象**
+ * （`{"id":…,"type":"assistant","content":[…],"finish":…}`，**没有 `info` 外层**，数组顺序新→旧）；
+ * `type` 还有 `idle` / `model-switched` / `synthetic` 三种取值。
+ *
+ * 自动化时机见 P2 方案第八节：**只做用户主动点击**，不做开机自动跑。
  */
 object KnowledgeBaseSummarizerRunner {
 
@@ -49,8 +53,30 @@ object KnowledgeBaseSummarizerRunner {
     /** 连续多少轮"文本没变"才认定答完。1 轮即可：比 2 轮省一半等待，误判风险由非空兜底。 */
     private const val SETTLE_ROUNDS = 1
 
-    /** 整个任务的总上限（含排队与生成）。超了就放弃，绝不无限等。 */
-    private const val TOTAL_TIMEOUT_MS = 180_000L
+    /**
+     * 整个任务的总上限（含排队与生成）。超了就放弃，绝不无限等。
+     *
+     * ⚠️ 2026-10-09 真机收紧：180s → 60s。太极**没有保活**（用户切到别的 App 或锁屏，
+     * serve 随时可能被系统收走），等 180 秒的唯一结果是"用户盯着「整理中」三分钟，最后什么都没有"。
+     * 真机实测肯给正文的模型 15~35 秒就答完，60 秒足够且不折磨人。
+     */
+    private const val TOTAL_TIMEOUT_MS = 60_000L
+
+    /**
+     * 摘要用的模型（**显式指定**，不靠 serve 兜底）。
+     *
+     * 为什么必须显式：真机实测 `POST /api/session {}` 建出来的会话**没有 `model` 字段**
+     * （`GET /api/session/{id}` 也没有），此时 serve 用"上一个会话用过的模型"顶上 ——
+     * 那可能是用户在太极里随便试过的任何一个免费模型，其中有的（`step-5-preview-free`、
+     * `nemotron-3.5-lightning-free`）压根不吐正文，表现就是"等到超时、一条摘要都没有"。
+     *
+     * 选它的理由：太极里默认就是它（用户不用额外挑）；真机实测同一条提示词，
+     * 5/7 个免费模型能给正文，它 25 秒给出 401 字结构化摘要，是最快的一档。
+     */
+    private const val MODEL_ID = "mimo-v2.6-flash-free"
+
+    /** 免费模型全在 `opencode` 这一家 provider 下（真机 `GET /api/model` 核实过）。 */
+    private const val MODEL_PROVIDER = "opencode"
 
     /** 单个文件喂给模型的试读字节上限。 */
     private const val READ_BYTES_PER_FILE = 1200
@@ -145,7 +171,7 @@ object KnowledgeBaseSummarizerRunner {
             }
             val answer = waitForAnswer(http, sid)
             if (answer.isNullOrBlank()) {
-                RunLog.log("资料库摘要：等不到回答（${TOTAL_TIMEOUT_MS / 1000}s 上限）")
+                // 具体原因与建议由 waitForAnswer 的最后一行日志给出，这里不重复刷屏
                 return 0
             }
             val known = picked.map { pair: Pair<String, Long> -> pair.first }.toSet()
@@ -212,9 +238,24 @@ object KnowledgeBaseSummarizerRunner {
         }
     }.getOrNull()
 
-    /** `POST /api/session` → `{"data":{"id":"ses_…"}}`（⚠️ 必须剥信封，否则静默拿到空串）。 */
+    /**
+     * `POST /api/session` → `{"data":{"id":"ses_…"}}`（⚠️ 必须剥信封，否则静默拿到空串）。
+     *
+     * ⚠️ **必须带上 [MODEL_ID]**：不带的话 serve 拿"上一个会话用过的模型"兜底，
+     * 用户上次在太极里挑的是什么就用什么 —— 挑到不吐正文的模型时，这里一切正常，
+     * 失败现象出现在 60 秒后的"等不到正文"上，极难排查（真机踩过）。
+     */
     private fun createSession(client: OkHttpClient): String? {
-        val resp = post(client, "/api/session", "{}") ?: return null
+        val body = JSONObject().apply {
+            put(
+                "model",
+                JSONObject().apply {
+                    put("id", MODEL_ID)
+                    put("providerID", MODEL_PROVIDER)
+                },
+            )
+        }.toString()
+        val resp = post(client, "/api/session", body) ?: return null
         val sid = runCatching {
             val o = JSONObject(resp)
             (o.optJSONObject("data") ?: o).optString("id")
@@ -242,7 +283,9 @@ object KnowledgeBaseSummarizerRunner {
         var prev: String? = null
         var stable = 0
         var denyChecked = 0
+        var rounds = 0
         while (System.currentTimeMillis() < deadline) {
+            rounds++
             val last = get(client, "/api/session/$sid/message")
             if (last != null) {
                 val text = KnowledgeBaseSummarizer.assistantTextFromMessages(last)
@@ -258,7 +301,15 @@ object KnowledgeBaseSummarizerRunner {
             }
             Thread.sleep(POLL_INTERVAL_MS)
         }
-        return prev
+        // 超时不是"网断了"，而是这种任务最常见的失败形态：模型一直在思考 / 反复想调工具，
+        // 始终没吐正文。日志要把线索说清楚，否则用户只看到"整理了一会儿什么也没发生"。
+        // 另一条同样常见的成因是**真的没网**（摘要是云端模型算的）—— 两种都在文案里点到。
+        RunLog.log(
+            "资料库摘要：等不到正文（${TOTAL_TIMEOUT_MS / 1000}s 上限，轮询 $rounds 次）" +
+                " —— 要么现在没网，要么模型只给思考 / 想自己去读文件。" +
+                "保持证道在前台、确认有网，再点一次「重新整理」即可"
+        )
+        return null
     }
 
     /**
