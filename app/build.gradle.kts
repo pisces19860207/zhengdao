@@ -64,7 +64,21 @@ plugins {
 //    `Download/证道/opencode` 搬到 `files/oc/pkg`（旧的自动搬家并清掉），太极的预置（人设 +
 //    `opencode.json` 字段）从「终端启动」这条路径搬进太极自己拉 serve 之前，人设升 v3。
 //    终端的共享工作区 / 资料库 / 日志一律不动。旧装机升级即自动搬家，无需用户操作。
-val appVersionName = "2.0.7"
+// ⚠️ 2.0.8（2026-10-09，ERRATA E-072~E-076）：一轮「维护与优化」批次，六件事：
+//    ①#1 存储读取回归——真机读写 `/sdcard` 的仪器冒烟用例 5 例（`StorageReadWriteSmokeTest`）
+//      + JVM 静态防复发守卫（`StoragePermissionGuardTest`，进 CI）；②#2 输入回归页
+//      （`ui/ImeRegressionActivity`：三场景脚本自检 + 页面手工走查，终端改动后 30 秒回归 IME，
+//      E-074）；③#3 存储提示与自动清理——启动检测可清理 >500MB、安装进程在跑就跳过、
+//      完成后静默通知；④#4 全 App 错误提示——「最近问题」清单（`core/IssueCenter.kt`），
+//      30+ 处只写日志的失败变成界面上可重试/可修复/可反馈的卡片（E-070）；⑤#5 后台被杀留档
+//      （`keepalive/KeepaliveArchive.kt` + `KeepaliveWatcher.kt`，被杀前后 logcat 可查，E-071）；
+//      ⑥#8 存储优化——hermes 旧依赖代自动清理（保留当前代 + 最新一代）、可选工具
+//      （chromium/ffmpeg/cua-driver/agent-browser）按需清理、公共区安装包只留「当前 + 上一个」、
+//      体检面板「存储占用」区块 + 明细/一键清理（E-073、E-075）。
+//      ⚠️ 同时修掉一个**静默了整代**的缺陷：安卓 13+ 的 `POST_NOTIFICATIONS` 既没声明也没请求
+//      ⇒ 所有通知（含 #3 的静默清理提示）被系统丢掉；现已在清单声明并在冷启动按需请求（E-076）。
+//      仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.8"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -97,7 +111,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 23
+        versionCode = 24
         versionName = appVersionName
 
         ndk {
