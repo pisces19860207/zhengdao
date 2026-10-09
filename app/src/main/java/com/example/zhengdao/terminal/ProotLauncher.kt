@@ -60,6 +60,18 @@ object ProotLauncher {
     private const val KEY_PERSONA_WS = "agents_md_ws_taiji"
 
     /**
+     * 人设**文案版本**（2026-10-09 新增）。
+     *
+     * 旧逻辑只看"文件在不在 + 工作区变没变"，于是**文案改了老装机永远读不到新文案**。
+     * 这一版（v2）改的是事实错误：太极的 serve 跑在 **Android 宿主**（`PATH=/system/bin`，
+     * 没有 python/git/node，也没有 `/workspace`、`/root`），旧人设却对它说
+     * "你运行在由证道通过 proot 运行的 Debian 13.7 环境"——用户 2026-10-09 报的
+     * 「他什么都不会的样子／在找 Python 3.14.7」就是这个谎造成的。
+     */
+    private const val KEY_PERSONA_VER = "agents_md_ver_taiji"
+    private const val PERSONA_VERSION = 2
+
+    /**
      * `watcher.ignore`（官方配置项，glob 数组）：让 OpenCode 的**文件监听**跳过大目录。
      *
      * ⚠️ 只在配置里**还没有** `watcher` 字段时才写——用户自己配的 watcher 一律不动。
@@ -394,25 +406,34 @@ object ProotLauncher {
                 val wsPath = wsHost.absolutePath
                 val wsNote = if (wsShared) "手机文件管理器直接可见、可自由删除；卸载证道后该文件夹仍会保留（产出不丢）" else "应用专属目录，随应用卸载自动删除"
                 val persona = (
-                    "# 证道运行环境说明（每次对话开始前必读）\n\n" +
+                    "# 证道「太极」运行环境说明（每次对话开始前必读）\n\n" +
                         "## 你的身份\n" +
-                        "你运行在用户的安卓手机上——一个由证道 App 通过 proot 运行的 Debian 13.7 环境。\n" +
-                        "禁止声称「我不在手机上」「我没有文件系统」；你就在手机里，文件就在下面这些路径。\n\n" +
-                        "## 文件地图\n" +
-                        "- /workspace —— **产出与边界区**：Agent 的产出都放这里（手机侧：$wsPath；$wsNote）。用户在这里找产出、在这里自由删除\n" +
-                        "- /sdcard —— 共享存储整体可读可写，用于查找资料；**产出约定只进 /workspace**，不要把共享存储其他位置当草稿区乱写\n" +
-                        "- /root —— 你的 home；各 Agent 配置在此（~/.hermes、~/.claude 等）\n\n" +
-                        "## 能力边界\n" +
-                        "- 无 root，不要尝试需要 root 的操作\n" +
-                        "- 禁止执行 apt upgrade（会损坏环境）；装依赖用 pip / npm\n" +
-                        "- 找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃\n"
+                        "你是证道 App 内置的「太极」（一个 OpenCode 实例），**跑在安卓宿主上，不在 Debian 里**。\n" +
+                        "你的 shell 工具用的是安卓自带的 `/bin/sh`（mksh），`PATH` 只有 `/system/bin`：\n" +
+                        "**没有 python / pip / node / npm / git**，也**看不到** `/workspace`、`/root` ——\n" +
+                        "这两个路径只存在于「终端」Tab 里的 proot Debian 13.7 环境。\n" +
+                        "不要声称自己是 Linux/Debian 服务器；也不要说「我没有文件系统」——手机上的文件你能读写，位置见下。\n\n" +
+                        "## 你能做的\n" +
+                        "- 读写共享存储 `/sdcard`；**产出放进这个目录**：`$wsPath`（$wsNote）\n" +
+                        "- 用 App 给你的工具干活：读文件、写文件、跑 shell、查资料、写代码文件、整理文本\n\n" +
+                        "## 你干不了、也不要硬试的（直接告诉用户去哪）\n" +
+                        "- 需要 Linux 用户态的事：装依赖、跑 `python`/`node`/`git`/`ffmpeg`、`apt`/`pip`/`npm` 安装、\n" +
+                        "  写脚本批量处理文件 ⇒ **请用户切到「终端」Tab**：那是完整的 Debian 环境，工具齐全，\n" +
+                        "  还能安装 hermes / Claude Code 等 Agent 来干这些活\n" +
+                        "- 资料库（知识库）的整理、`.docx`/`.pdf` 提取、大批量文件重命名 ⇒ 同样交给「终端」里的 Agent\n\n" +
+                        "## 纪律\n" +
+                        "- **不要编造命令输出**：没跑过就说没跑过；失败了就把原始报错贴出来，别" +
+                        "「猜一个看起来对的结果」\n" +
+                        "- 找文件先 `ls` 看一眼再下结论，别把「我没找到」直接说成「不存在」\n"
                     )
                 val agents = File(cfgDir, "AGENTS.md")
                 val lastPersonaWs = prefsUi.getString(KEY_PERSONA_WS, null)
-                if (!agents.isFile || lastPersonaWs != wsPath) {
+                val lastPersonaVer = prefsUi.getInt(KEY_PERSONA_VER, 0)
+                if (!agents.isFile || lastPersonaWs != wsPath || lastPersonaVer != PERSONA_VERSION) {
                     agents.writeText(persona)
-                    prefsUi.edit().putString(KEY_PERSONA_WS, wsPath).apply()
-                    RunLog.log("太极 AGENTS.md 已写入（工作区映射: $wsPath）")
+                    prefsUi.edit().putString(KEY_PERSONA_WS, wsPath)
+                        .putInt(KEY_PERSONA_VER, PERSONA_VERSION).apply()
+                    RunLog.log("太极 AGENTS.md 已写入（工作区映射: $wsPath，人设 v$PERSONA_VERSION）")
                 }
                 // opencode.json：经 OcManager.updateConfig 做**字段级 merge**（只补缺失项，
                 // 绝不覆盖用户 / 插件页已写的内容）

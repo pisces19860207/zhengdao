@@ -364,6 +364,67 @@ fun SettingsScreen(
                     },
                 )
             }
+
+            // Agent 包缓存（2026-10-09 用户要求：「多一个清理 agent 的缓存包的按钮」）：
+            // 宿主侧直接删 Agent 的包缓存 —— 不用开一次终端；同时**绝不碰**装好的工具链
+            // （`.hermes/tools`）、依赖环境与记忆（`.hermes/installs`、MEMORY.md 等）。
+            var agentSizes by remember(storageTick) {
+                mutableStateOf<List<Pair<String, Long>>>(emptyList())
+            }
+            LaunchedEffect(storageTick) {
+                agentSizes = withContext(Dispatchers.IO) { CacheCleaner.agentCacheMeasure(ctx) }
+            }
+            val agentMb = agentSizes.sumOf { it.second }
+            var agentConfirm by remember { mutableStateOf(false) }
+            TextButton(onClick = { agentConfirm = true }) {
+                Text(if (agentMb > 0) "清理 Agent 缓存包（$agentMb MB）" else "清理 Agent 缓存包")
+            }
+            if (agentConfirm) {
+                AlertDialog(
+                    onDismissRequest = { agentConfirm = false },
+                    title = { Text("清理 Agent 缓存包？") },
+                    text = {
+                        Column {
+                            Text("将删除下面这些能重新下载 / 重新生成的缓存：")
+                            if (agentSizes.isEmpty()) {
+                                Text("（这次没量到可清理的缓存）")
+                            } else {
+                                agentSizes.forEach { (name, mb) -> Text("· $name —— $mb MB") }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            // 会话是常驻的 ⇒ 不做"拒绝执行"，只把风险讲清楚，让用户自己决定
+                            if (CacheCleaner.busy(ctx)) {
+                                Text(
+                                    "⚠️ 终端会话正在运行：如果此刻正在装依赖，清理可能打断那一次安装" +
+                                        "（已经装好的东西不受影响）。"
+                                )
+                                Spacer(Modifier.height(6.dp))
+                            }
+                            Text(
+                                "不会删除：装好的 Agent 本体与工具链（hermes/tools、Python/Node）、" +
+                                    "依赖环境与记忆、配置文件、rootfs 系统层，以及你自己的文件。" +
+                                    "下次需要时这些缓存会自己重新下载。"
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            agentConfirm = false
+                            val freed = CacheCleaner.cleanAgentCaches(ctx)
+                            Toast.makeText(
+                                ctx,
+                                if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                else "没有可清理的 Agent 缓存",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            storageTick++ // 重新统计，数字立刻回落
+                        }) { Text("清理") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { agentConfirm = false }) { Text("取消") }
+                    },
+                )
+            }
         }
 
         // ── 资料库（2026-10-09 新增）──
