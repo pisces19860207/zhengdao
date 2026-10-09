@@ -3700,4 +3700,74 @@ P2（借太极的免费模型给 `原始/` 里的长文档补摘要）交付时�
 2. 凡是能独立对拍的证据就别用自证：签名这件事只有拿 `apksigner`/`keytool` 的输出与常量对齐，
    才算真的钉死 —— 否则"官方 ✓"可能只是常量抄错后的巧合。
 
+## E-058 · 2026-10-09 · `Modifier.fillMaxSize()` 把 min 约束一起传下去，Snackbar 被撑成整屏后落在宿主左上角 —— 于是弹到**屏幕顶部**
+
+**背景**
+
+这个编号从 2026-10-08 就预留了（当时发现"太极页的 Snackbar 出现在屏幕顶部"，一直没修）。
+用户 2026-10-09 在收尾清单里点名：**修**。全 App 只有两处 `SnackbarHost`：
+`app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt`（复制/发送失败提示）与
+`app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt`（回退失败 / 修复失败提示）。
+
+**现象**
+
+太极页长按自己的消息 → 「复制这条消息」⇒ Snackbar「已复制到剪贴板」+「关闭」出现在**屏幕顶部**，
+压住顶栏（☰ / 会话标题 / 模型 chip）。真机 `uiautomator` bounds（屏幕 1312×2848）：
+`已复制到剪贴板 => [98,232][447,302]`、`关闭 => [1144,225][1228,309]` —— 正常应在 y≈2400（输入框上方）。
+
+**定位过程（两级证据，缺一不可）**
+
+1. 两处写法看起来都"标准"：外层是 `Box(Modifier.fillMaxSize())`，宿主用
+   `Modifier.align(Alignment.BottomCenter).navigationBarsPadding()`。看不出毛病。
+2. 第一轮插桩（`onGloballyPositioned`）打出
+   `根 Box pos=Offset(0.0, 141.0) size=1312 x 2425`、`SnackbarHost pos=Offset(0.0, 141.0) size=1312 x 2425`
+   —— 宿主与父 Box **同尺寸**。但只凭这一条还不能下结论：也可能只是回调报的是父节点。
+3. **对照实验（关键）**：在同一个 Box 里加一根
+   `Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(24.dp).background(Color.Red)` 的红条 ⇒
+   真机上红条**铺满整屏**（`height(24.dp)` 被无视）。这条对照把"回调报错节点"排除了：
+   是**约束**把子节点抬起来了。
+4. 源码级确认（Gradle 缓存里的 sources jar，`composeBom = "2026.02.01"` → foundation-layout 1.10.4）：
+   - `foundation-layout/.../Size.kt` 的 `FillNode.measure`：`fillMaxSize()` 在方向有界时
+     **min 与 max 都取 `constraints.maxWidth/maxHeight`**，再以 `Constraints(minWidth, maxWidth, minHeight, maxHeight)`
+     交给内层 —— 等于把"固定约束"灌下去。
+   - `foundation-layout/.../Box.kt` 的 `BoxMeasurePolicy.measure`：
+     `contentConstraints = constraints.copyMaxDimensions()` —— **只把 max 变成 Infinity，min 原样保留**，
+     子节点于是拿到 `minHeight = 整屏高`。
+   - `Modifier.height(24.dp)`（`SizeNode`）会把目标尺寸 `coerceIn(constraints.min…, constraints.max…)`
+     ⇒ 24dp 被抬成整屏高（红条铺满的由来；普通 `Text` 因为不设尺寸 modifier，反而不受影响 —— 这就是这个坑能潜很久的原因）。
+   - `SnackbarHost` → `FadeInFadeOutWithScale` → `Box(modifier)`（**默认 `contentAlignment = TopStart`**）
+     ⇒ 宿主被撑到整屏后，Snackbar 落在宿主**左上角**，即屏幕顶部。
+   - 顺带钉死一条语义：**`align` 只管摆放**（`placeInBox` 读 `boxChildDataNode?.alignment`），
+     **不管子节点被量成多大**。
+
+**修法**
+
+在宿主上把 min 高度放回 0（`WrapContentNode.measure` 会把 `minWidth/minHeight` 置 0，再按给定对齐自己贴底）：
+
+```kotlin
+modifier = Modifier
+    .align(Alignment.BottomCenter)
+    .wrapContentHeight(Alignment.Bottom)   // ★ 抵消 fillMaxSize 传下来的 min 约束
+    .navigationBarsPadding()
+```
+
+两处都改（`ui/taiji/TaijiScreen.kt`、`ui/SettingsScreen.kt`），并把这段机制写进两处注释（互相指路）。
+临时插桩（`ZDLAYOUT` 日志、`onGloballyPositioned`、红条、随之而来的三个 import）全部删净。
+
+**验证（2026-10-09，AD3J023824001723，debug 2.0.4 + 修复）**
+
+- 修复后同机同手法：长按消息 → 「复制这条消息」⇒ `已复制到剪贴板 => [98,2405][447,2475]`
+  —— **落在底部**、正好在输入框上方（截图留档）；修复前同机同手法是 `[98,232][447,302]`（顶部）。
+- 红条对照与插桩构建已回滚；修复后重新构建、装机复验通过。
+
+**教训**
+
+1. `Modifier.fillMaxSize()` 不只是"把这块填满"：它把**固定约束**传下去，而 `Box` 会把 **min 原样**交给子节点
+   ⇒ 任何**带尺寸 modifier** 的直接子节点都会被抬到整屏。要"取消 min"，常用手段只有 `wrapContent*`
+   （`wrapContentSize/Height/Width`）。看到"明明写了 size/height 却铺满"时，先怀疑 min 约束。
+2. **插桩必须留对照**：`onGloballyPositioned` 报出"宿主与父 Box 同尺寸"，只信它容易得出错结论；
+   加一根设了 `height(24.dp)` 的红条，一眼就能区分"约束病"和"测量/回调错"。
+3. 「看起来完全标准」的 Compose 写法也可能在真机上是坏的 —— 这个 Bug 从 2026-10-08 的 C2 改动一直活到今天。
+   凡是**视觉行为**（位置、遮挡、层级），都得在真机上看一眼，别用"写法标准"代替证据。
+
 
