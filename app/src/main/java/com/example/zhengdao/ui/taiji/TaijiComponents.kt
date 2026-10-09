@@ -103,6 +103,7 @@ import com.example.zhengdao.ui.AttachmentGlyph
 import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.ThinkGlyph
 import com.example.zhengdao.ui.ToolGlyph
+import com.example.zhengdao.ui.TrashGlyph
 // Markdown 渲染（v1.1 第四阶段）：仅最终回答使用
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
@@ -730,11 +731,14 @@ fun ToolCallCard(part: OcPart.Tool) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (stateText.isNotEmpty()) {
-                    Text(
-                        "· $stateText",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = tint,
-                    )
+                    // 2026-10-09：状态从「紧贴工具名的 · 已完成」改为**淡色胶囊徽标**。
+                    // 原因（用户反馈「调用工具那里有个小蓝色的对勾总是被遮挡」）：
+                    //   原写法把状态文字贴在工具名尾部（labelSmall 12sp、无底色、无间距），
+                    //   工具名一长（MCP 全限定名常见 30+ 字符）两者视觉糊成一团、状态被压得看不清；
+                    //   且 `icon`（●/✓/✗，「计划第 8 条」）此前**只声明、从未渲染**。
+                    // 现在：徽标自带底色 + 内边距 + 与工具名 8dp 间距，任何长度下都清晰可辨。
+                    Spacer(Modifier.width(8.dp))
+                    ToolStatusBadge(icon = icon, text = stateText, tint = tint)
                 }
             }
             // 折叠态也显示一行入参摘要（命令 / 路径），让"用了哪个工具、干了啥"一眼可见
@@ -765,6 +769,35 @@ fun ToolCallCard(part: OcPart.Tool) {
                         fontFamily = FontFamily.Monospace, maxLines = 8, overflow = TextOverflow.Ellipsis)
                 }
             }
+        }
+    }
+}
+
+// ── 工具状态徽标 ─────────────────────────────────────────────────────
+
+/**
+ * 工具状态徽标 —— `[图标] [状态文字]` 包在一枚淡色胶囊里。
+ *
+ * 背景色取状态主色的 12% 叠加（与 `IOSColor` 的 `systemBlue 12%` 同一套语言），
+ * 前景文字用状态主色本身，所以「执行中 ●」是淡蓝底蓝字、「失败 ✗」是淡红底红字，
+ * 颜色编码一眼可辨、又不至于像实心标签那样喧宾夺主（它是辅助信息，工具名才是主角）。
+ *
+ * 为什么要独立成组件：见 [ToolCallCard] 里的说明——状态此前紧贴工具名、无底色，
+ * 工具名一长就糊在一起。
+ */
+@Composable
+private fun ToolStatusBadge(icon: String, text: String, tint: Color) {
+    Surface(
+        color = tint.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(icon, style = MaterialTheme.typography.labelSmall, color = tint)
+            Spacer(Modifier.width(3.dp))
+            Text(text, style = MaterialTheme.typography.labelSmall, color = tint)
         }
     }
 }
@@ -1107,7 +1140,7 @@ fun PermissionSheet(
  * ## 分组与交互
  * - 按 **今天 / 昨天 / 更早** 分组（[groupSessionsByDay]）；每条显示标题 + 时间 + 条数。
  * - 点击任一条 → 恢复该会话（[onPick]），当前会话高亮。
- * - **长按任一条 → 删除**（二次确认，见 [DeleteSessionDialog]）。
+ * - **点尾部垃圾桶 / 长按任一条 → 删除**（二次确认，见 [DeleteSessionDialog]）。
  * - 顶部「＋ 新会话」[onNew]、「⟳」[onRefresh]（每次打开抽屉都会重拉，见 TaijiScreen）。
  *
  * @param onDelete 真正执行删除，返回 true 表示服务端已确认；**列表刷新由调用方负责**
@@ -1210,6 +1243,8 @@ fun HistoryDrawer(
                             summary = s,
                             current = s.id == currentId,
                             onClick = { onPick(s.id) },
+                            // 可见路径与长按走同一个二次确认弹窗（DeleteSessionDialog）
+                            onDelete = { pendingDelete = s },
                             onLongClick = { pendingDelete = s },
                         )
                     }
@@ -1330,10 +1365,14 @@ private fun DayHeader(label: String) {
 }
 
 /**
- * 单条会话。**点击恢复 / 长按删除**（[onLongClick]）。
+ * 单条会话。**点击恢复 / 点尾部垃圾桶删除 / 长按删除**。
  *
- * 用 `combinedClickable` 而非两个独立手势检测：点击与长按互斥、由同一手势管道判定，
- * 不会出现"长按也触发了点击"的竞态。
+ * 删除有**两条通道**：尾部常驻的垃圾桶按钮（[onDelete]，可见、可发现）与整行长按
+ * （[onLongClick]，辅助）。2026-10-09 补前者：此前只有长按、界面无提示，新用户不知道
+ * 会话能删（审计 A1「删除功能不可发现」）。
+ *
+ * 点击与长按用 `combinedClickable` 而非两个独立手势检测：两者互斥、由同一手势管道判定，
+ * 不会出现"长按也触发了点击"的竞态。尾部按钮是独立子节点，点击由它自己消费、不会冒泡到整行。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1341,6 +1380,7 @@ private fun SessionRow(
     summary: OcSessionSummary,
     current: Boolean,
     onClick: () -> Unit,
+    onDelete: () -> Unit,
     onLongClick: () -> Unit = {},
 ) {
     Surface(
@@ -1382,6 +1422,21 @@ private fun SessionRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
+            }
+            // A1（2026-10-09）：常驻删除入口。
+            // 此前删除**只**能长按触发，界面没有任何提示 —— 新用户第一反应是"这是个死列表"，
+            // 根本不知道还能删（用户反馈佐证）。这里补一个 trailing 垃圾桶按钮作为**可见路径**，
+            // 长按保留作辅助（双通道）。图标用中性色 onSurfaceVariant，不喧宾夺主。
+            // 40dp 热区：与全仓其它次级图标按钮（如顶栏 ＋）同档；点击由子节点消费，
+            // 不会误触整行的"恢复会话"。
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier
+                    .size(40.dp)
+                    .semantics { contentDescription = "删除会话「${sessionTitle(summary)}」" },
+            ) {
+                TrashGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

@@ -155,3 +155,35 @@ fun FolderGlyph(tint: Color) {
         drawPath(p, tint, style = stroke)
     }
 }
+
+/**
+ * 「删除」—— 垃圾桶（桶盖 + 提手 + 桶身）。
+ *
+ * 2026-10-09 新增（审计 A1）：历史会话行需要一枚**常驻可见**的删除入口。
+ * 此前删除只由长按触发、界面毫无提示，新用户不知道会话能删。图标取中性色调用，
+ * 与项目「不使用任何第三方图标素材、全部 Canvas 自绘」一致。
+ *
+ * 18dp 画布（比消息流内联图标 16dp 略大）：它是抽屉列表里的独立点击目标，
+ * 需要足够辨识度；描边沿用同一常量，保持一套笔法。
+ */
+@Composable
+fun TrashGlyph(tint: Color) {
+    Canvas(Modifier.size(18.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(INLINE_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 提手：桶盖上方的小横
+        drawLine(tint, Offset(w * 0.36f, h * 0.24f), Offset(w * 0.64f, h * 0.24f),
+            strokeWidth = INLINE_STROKE, cap = StrokeCap.Round)
+        // 桶盖：贯穿左右的横线
+        drawLine(tint, Offset(w * 0.18f, h * 0.34f), Offset(w * 0.82f, h * 0.34f),
+            strokeWidth = INLINE_STROKE, cap = StrokeCap.Round)
+        // 桶身：左右两条内收的竖线 + 底部横线（上宽下窄的梯形近似）
+        drawLine(tint, Offset(w * 0.28f, h * 0.34f), Offset(w * 0.33f, h * 0.86f),
+            strokeWidth = INLINE_STROKE, cap = StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.72f, h * 0.34f), Offset(w * 0.67f, h * 0.86f),
+            strokeWidth = INLINE_STROKE, cap = StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.33f, h * 0.86f), Offset(w * 0.67f, h * 0.86f),
+            strokeWidth = INLINE_STROKE, cap = StrokeCap.Round)
+    }
+}
