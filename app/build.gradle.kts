@@ -29,7 +29,10 @@ plugins {
 //    E2 单一判定源 + B2 移除终端 npm 版 opencode + CI 止血（assembleRelease / 签名统一）。
 //    没有新增功能面，故 versionName 只进 patch 级的语义在这里体现为 1.2.0 → 1.3.0
 //    （用户 2026-10-07 拍板用 1.3.0 而非 1.2.1）。
-val appVersionName = "2.0.0"
+// ⚠️ 2.0.1（2026-10-09，ERRATA E-056）：修的是自家 2.0 带出的回归 —— uv 的缓存被挂到
+//    共享存储（FUSE）上，FUSE 既建不了软链也拿不到 flock，于是 hermes 依赖装不上。
+//    只动挂载表与一条日志文案，无新功能面，故进 patch 级。
+val appVersionName = "2.0.1"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -62,7 +65,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 16
+        versionCode = 17
         versionName = appVersionName
 
         ndk {

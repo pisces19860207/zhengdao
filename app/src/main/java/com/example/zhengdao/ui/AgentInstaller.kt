@@ -113,6 +113,29 @@ object AgentInstaller {
                 "AgentInstaller: ${agent.id} 安装脚本下载失败，退回 curl|bash 通道"
             )
         }
+        // E-057：上游脚本的最后一步（gateway 服务）在 proot 里注定失败并把 rc 顶成 1，
+        // 丹房于是永远显示「安装失败（退出码 1）」，而 hermes 本体早就装好了。执行前打一行
+        // 本地补丁，让它只告警（锚点不在就原样放过，绝不乱改别人的脚本）。
+        if (ok && script.isFile && agent.id == "hermes") {
+            val outcome = runCatching { HermesInstallScript.ensurePatched(script) }
+                .getOrElse { e ->
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "AgentInstaller: hermes 安装脚本补丁失败：${e.message ?: e::class.java.simpleName}"
+                    )
+                    null
+                }
+            when (outcome) {
+                HermesInstallScript.Outcome.PATCHED ->
+                    com.example.zhengdao.rootfs.RunLog.log("AgentInstaller: hermes 安装脚本已打 gateway 补丁（只告警不失败）")
+                HermesInstallScript.Outcome.ALREADY -> Unit
+                HermesInstallScript.Outcome.ANCHOR_MISSING ->
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "AgentInstaller: hermes 安装脚本里找不到 gateway 那一句（上游改版？）——未打补丁，" +
+                            "安装若仍以退出码 1 收尾，原因多半是它"
+                    )
+                HermesInstallScript.Outcome.NO_FILE, null -> Unit
+            }
+        }
         val effectiveCmd = if (ok && script.isFile) {
             // guest 内 /workspace 即手机侧工作区，脚本以本地文件执行（不再走网络）
             "bash ${Store.GUEST_SCRIPTS_DIR}/${agent.id}-install.sh"
@@ -157,6 +180,14 @@ object AgentInstaller {
             //（宿主侧 = filesDir/home/.zhengdao/），成功失败都留痕；
             // 进程被 Ctrl-C / 关页打断则文件不更新，由 AgentRepository 用「有没有进程」补判。
             append("; __zd_rc=\$?; mkdir -p /root/.zhengdao; echo \$__zd_rc > /root/.zhengdao/install-${agent.id}.rc; ")
+            // E-057 顺带（真机：装完敲 `hermes` 报 command not found）：hermes 把命令发布在
+            // ~/.local/bin，而**当时那个 shell 的 PATH 是启动时的快照**（Debian 的 /etc/profile
+            // 还会显式重置 PATH，root 分支里没有 ~/.local/bin）。往 /usr/local/bin——系统层、
+            // 天然在所有 shell 的 PATH 里——补一条软链，装完当场可敲，不必重启 App。
+            // （新开 login shell 的兜底见 ProotLauncher 的 profile.d 那一段。）
+            if (agent.id == "hermes") {
+                append("[ -f /root/.local/bin/hermes ] && ln -sf /root/.local/bin/hermes /usr/local/bin/hermes 2>/dev/null; ")
+            }
             append("if [ \$__zd_rc -eq 0 ]; then ")
             append("echo \"[证道] 安装完成，正在启动 $launch（首次启动需初始化，请稍候）…\"; $launch; ")
             append("else echo \"[证道] 安装失败（退出码 \$__zd_rc）。原因就在上面几行；修好后回丹房点「安装」重试。\"; fi")
@@ -178,10 +209,17 @@ object AgentInstaller {
      * 见路径上有可执行文件就跳过下载，预置包装器即接管。
      */
     private fun prepareHermesUvWrapperOnHost(ctx: Context) {
-        val ok = runCatching {
+        // 返回值是「本次有没有改动」（幂等巡检：已最新就是 false），**不是成功与否**。
+        // 2026-10-09（E-056）：原先打成 `ok=false`，昨晚日志里连出三条让人以为预置失败，
+        // 白查了一轮；改成说得清的中文。
+        val outcome = runCatching {
             com.example.zhengdao.terminal.EnvSelfHeal
                 .ensureHermesUvWrappers(File(ctx.filesDir, "home"), ensurePinnedDir = true)
-        }.getOrDefault(false)
-        com.example.zhengdao.rootfs.RunLog.log("hermes uv 包装器宿主侧预置：ok=$ok")
+        }
+        val text = outcome.fold(
+            onSuccess = { changed -> if (changed) "已写入/更新" else "已是最新（本次无需改动）" },
+            onFailure = { e -> "预置失败：${e.message ?: e::class.java.simpleName}" },
+        )
+        com.example.zhengdao.rootfs.RunLog.log("hermes uv 包装器宿主侧预置：$text")
     }
 }

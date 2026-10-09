@@ -331,6 +331,23 @@ object ProotLauncher {
                 }
             }
         }
+        // ~/.local/bin 进 PATH 的兜底（2026-10-09 真机，E-057 顺带）：
+        // Debian 的 /etc/profile 会**显式重置** PATH，root 分支是
+        // `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` —— 真机实测这个 shell
+        // 拿到的正是这一串，`~/.local/bin` 不在里面（上面的 proot 环境变量 + skel 的 ~/.profile
+        // 都被这一次重置盖掉了）。而 `/etc/profile.d/*.sh` 是在**重置之后**才 source 的，
+        // 所以把这条放这里：之后新开的每个 login shell（含 tmux 新窗口/分屏）都能拿到
+        // claude / agy / hermes 装出来的命令。
+        runCatching {
+            val profileDir = File(rootfsDir, "etc/profile.d")
+            if (profileDir.isDirectory || profileDir.mkdirs()) {
+                val f = File(profileDir, "zz-local-bin-path.sh")
+                val want = "export PATH=\"/root/.local/bin:\$PATH\"\n"
+                if (!f.isFile || f.readText() != want) {
+                    f.writeText(want)
+                }
+            }
+        }.onFailure { RunLog.log("写入 ~/.local/bin PATH 兜底失败：${it.message}") }
         // uv 系统级配置（belt；主防护是 hermes 内嵌 uv 包装器巡检）：
         // hermes 的 install.sh 全局 UV_NO_CONFIG=1 且 pm 剥 UV_* 环境变量、重定向
         // XDG_CONFIG_HOME——用户级 uv.toml 全失效。/etc/uv/uv.toml 是 uv 官方配置
@@ -559,11 +576,21 @@ object ProotLauncher {
         // 挂载目标一律落在 bind 进来的 home 之内（`/root/…`），因此目标目录必须先存在。
         // 没存储权限 / 仅私有模式就整段跳过——仅私有模式下目录随卸载删除，
         // 搬过去没有任何收益，只会多一层不必要的读写绕路。
+        // ⚠️ uv 例外（2026-10-09，E-056）：uv 的缓存**绝不能**落在共享存储上。
+        // 共享存储在 guest 里是 FUSE（`/dev/fuse … fuse`, noexec），实测两处硬缺口：
+        //   ① 建不了软链：`ln -s` ⇒ EACCES（uv 要在 `wheels-v6/…/<wheel>` 建软链指向
+        //      `archive-v0/<hash>`，于是 `failed to symlink … Permission denied (13)`）；
+        //   ② 拿不到文件锁：`flock` ⇒ ENOSYS（uv 要锁 `sdists-v9/editable/<hash>/.lock`，
+        //      于是 `failed to lock … Function not implemented (os error 38)`）。
+        // 真机实测（同一最小工程）：默认缓存（= 被挂到 FUSE 的 `/root/.hermes/cache/uv`）
+        // 失败；`--cache-dir` 指到私有 f2fs ⇒ 成功且缓存里确实出现 1 条软链。
+        // hermes 的 pm 还会主动剥掉 `UV_*` 环境变量并显式设 `UV_CACHE_DIR`（见 :556 注释），
+        // 所以「缓存整块留在私有 home（f2fs）」是唯一可行解；代价只是重装 App 后
+        // uv 的轮子缓存要重下，npm / pip 缓存不受影响（它们不建软链、不 flock）。
         if (storageGranted(context) && wsShared) {
-            bindSharedCache(context, args, homeDir, "npm", ".npm")
-            bindSharedCache(context, args, homeDir, "uv", ".hermes/cache/uv")
-            bindSharedCache(context, args, homeDir, "uv", ".cache/uv")
-            bindSharedCache(context, args, homeDir, "pip", ".cache/pip")
+            for ((kind, rel) in sharedCacheBindings()) {
+                bindSharedCache(context, args, homeDir, kind, rel)
+            }
         }
 
         // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
@@ -682,6 +709,20 @@ object ProotLauncher {
      * URL/SHA256 与 hermes install.sh 同源。源文件见 build/hermes-uv-wrapper.sh。 */
     const val HERMES_UV_WRAPPER_B64 =
         "IyEvYmluL2Jhc2gKIyB6aGVuZ2RhbyBpbmplY3Rpb24gbGF5ZXI6IGhlcm1lcyBwbSBzdHJpcHMgVVZfKiBlbnYgdmFycyBhbmQgaWdub3JlcyB1diBjb25maWcKIyBmaWxlcyAoVVZfTk9fQ09ORklHPTEpIC0tIHdyYXBwaW5nIGl0cyBvd24gcGlubmVkIHV2IGJpbmFyeSBpcyB0aGUgb25seQojIHJlbGlhYmxlIGluamVjdGlvbiBwb2ludC4gVGhlIHJlYWwgYmluYXJ5IGxpdmVzIG5leHQgdG8gdGhpcyBhcyB1di5yZWFsLgpEPSIkKGNkICIkKGRpcm5hbWUgIiQwIikiICYmIHB3ZCkiClI9IiREL3V2LnJlYWwiCmlmIFsgISAteCAiJFIiIF07IHRoZW4KICBUPSIkKG1rdGVtcCAtZCAyPi9kZXYvbnVsbCB8fCBlY2hvIC90bXAvLnpkdXYuJCQpIgogIG1rZGlyIC1wICIkVCIKICBmb3IgVSBpbiBcCiAgICBodHRwczovL2dpdGh1Yi5jb20vYXN0cmFsLXNoL3V2L3JlbGVhc2VzL2Rvd25sb2FkLzAuMTIuMy91di1hYXJjaDY0LXVua25vd24tbGludXgtZ251LnRhci5neiBcCiAgICBodHRwczovL2hlcm1lcy1hc3NldHMubm91c3Jlc2VhcmNoLmNvbS91cHN0cmVhbS9zaGEyNTYvYmI2NmNiNTJlN2IxODIzYWVkMTE4MzYzMGQ4ZDhlNWM5NTg4NDBkNTg0YTRjNTVlYzEwYTRjZmMxNjhkY2NhMiA7IGRvCiAgICBjdXJsIC1Mc1NmICIkVSIgLW8gIiRUL3V2LnRneiIgJiYgYnJlYWsKICBkb25lCiAgaWYgWyAtZiAiJFQvdXYudGd6IiBdICYmIFsgIiQoc2hhMjU2c3VtICIkVC91di50Z3oiIDI+L2Rldi9udWxsIHwgY3V0IC1kJyAnIC1mMSkiID0gImJiNjZjYjUyZTdiMTgyM2FlZDExODM2MzBkOGQ4ZTVjOTU4ODQwZDU4NGE0YzU1ZWMxMGE0Y2ZjMTY4ZGNjYTIiIF07IHRoZW4KICAgIHRhciAteHpmICIkVC91di50Z3oiIC1DICIkVCIgMj4vZGV2L251bGwKICAgIEY9IiQoZmluZCAiJFQiIC1uYW1lIHV2IC10eXBlIGYgMj4vZGV2L251bGwgfCBoZWFkIC1uMSkiCiAgICBbIC1uICIkRiIgXSAmJiBtdiAiJEYiICIkUiIgJiYgY2htb2QgMDc1NSAiJFIiCiAgZmkKICBybSAtcmYgIiRUIgpmaQppZiBbICEgLXggIiRSIiBdOyB0aGVuCiAgZWNobyAiW3poZW5nZGFvXSB1diB3cmFwcGVyOiBwaW5uZWQgdXYgdW5hdmFpbGFibGUsIGZhbGxpbmcgYmFjayB0byBzeXN0ZW0gdXYiID4mMgogIFsgLXggL3Vzci9sb2NhbC9iaW4vdXYgXSAmJiBleGVjIC91c3IvbG9jYWwvYmluL3V2ICIkQCIKICBleGl0IDEyNwpmaQpleHBvcnQgVVZfTElOS19NT0RFPWNvcHkKZXhwb3J0IFRNUERJUj0iJHtUTVBESVI6LS9yb290L3RtcH0iCmV4ZWMgIiRSIiAiJEAiCg=="
+
+    /**
+     * **要挂到公共区**的包缓存清单（`kind to /root/<rel>`）。纯函数，可单测。
+     *
+     * ⚠️ uv **刻意不在表里**（2026-10-09，E-056）：uv 缓存必须在私有 f2fs 上 ——
+     * 共享存储在 guest 里是 FUSE，实测既建不了软链（`ln -s` ⇒ EACCES，uv 要在
+     * `wheels-v6/…` 建软链指向 `archive-v0/<hash>`）又拿不到文件锁（`flock` ⇒ ENOSYS，
+     * uv 要锁 `sdists-v9/editable/<hash>/.lock`）。两条都直接让 `uv sync` 退出 1，
+     * hermes 的依赖就装不上。npm / pip 的缓存里没有软链、也不 flock，可以照挂。
+     */
+    internal fun sharedCacheBindings(): List<Pair<String, String>> = listOf(
+        "npm" to ".npm",
+        "pip" to ".cache/pip",
+    )
 
     /**
      * 把 guest 的一个包缓存目录挂到公共区 `Download/证道/cache/<kind>`（幂等，可反复调用）。
