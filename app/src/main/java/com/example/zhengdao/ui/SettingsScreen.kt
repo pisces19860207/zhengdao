@@ -276,6 +276,87 @@ fun SettingsScreen(
             InfoRow("rootfs（系统层）", "$rootfsMb MB")
             InfoRow("home（登录态与配置）", "$homeMb MB")
             InfoRow("cache（下载缓存）", "$cacheMb MB")
+
+            // Issue #8-D：把 A（旧依赖代）/ B（hermes 可选工具）/ C（公共区安装包）的体积摊开，
+            // 数字来源是 StorageAudit（与自动清理、体检面板同一套口径，避免 E-073 那种两套账）。
+            // 不可清的行也列出来并标「保留」：用户最想知道的是"哪些点了真能腾地方"。
+            var audit by remember(storageTick) {
+                mutableStateOf<List<com.example.zhengdao.terminal.StorageAudit.Item>>(emptyList())
+            }
+            LaunchedEffect(storageTick) {
+                audit = withContext(Dispatchers.IO) {
+                    com.example.zhengdao.terminal.StorageAudit.items(ctx)
+                }
+            }
+            if (audit.isNotEmpty()) {
+                var lastGroup = ""
+                audit.forEach { item ->
+                    if (item.group != lastGroup) {
+                        lastGroup = item.group
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = item.group,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    InfoRow(item.label, "${item.mb} MB · ${if (item.removable) "可清" else "保留"}")
+                }
+            }
+
+            // B：可选工具（浏览器 / 媒体 / 桌面自动化）那一组 —— 真机实测 ≈1.0G。
+            // 只删 StorageAudit.OPTIONAL_TOOL_NAMES 命中的目录，python/node/uv/npm 等核心运行时永不动。
+            val optMb = audit.filter {
+                it.removable && it.group == "hermes 工具"
+            }.sumOf { it.mb }
+            var optConfirm by remember { mutableStateOf(false) }
+            if (optMb > 0) {
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = { optConfirm = true }) {
+                    Text("清理可选工具（$optMb MB）")
+                }
+                if (optConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { optConfirm = false },
+                        title = { Text("清理可选工具？") },
+                        text = {
+                            Column {
+                                Text("可释放约 $optMb MB。")
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "删的是 hermes 自带的浏览器 / 媒体 / 桌面自动化工具" +
+                                        "（chromium、ffmpeg、cua-driver、agent-browser）。" +
+                                        "它们只在这类会话里用得上；需要时 hermes 会自己重新下载" +
+                                        "（要联网、要等一会儿）。"
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "不会删除：python / node / uv / npm / ripgrep 这些核心运行时、" +
+                                        "依赖环境、记忆、hermes 本体、rootfs 系统层、任何用户数据。"
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                optConfirm = false
+                                val (count, freed) =
+                                    com.example.zhengdao.terminal.StorageAudit.cleanOptionalTools(ctx)
+                                Toast.makeText(
+                                    ctx,
+                                    if (count > 0)
+                                        "已删除 $count 项，释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                    else "没有可清理的可选工具",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                storageTick++
+                            }) { Text("清理") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { optConfirm = false }) { Text("取消") }
+                        },
+                    )
+                }
+            }
         }
 
         // ── 缓存清理（三档白名单：一档走 guest 官方命令，二档走宿主侧；详见 CacheCleaner）──

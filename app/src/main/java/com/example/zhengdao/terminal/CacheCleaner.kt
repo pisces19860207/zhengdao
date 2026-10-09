@@ -33,7 +33,7 @@ import java.io.File
  */
 object CacheCleaner {
 
-    private const val AUTO_THRESHOLD_MB = 500L
+    internal const val AUTO_THRESHOLD_MB = 500L
 
     /** 二档的年龄门槛：比这更新的临时文件不动（可能正被运行中的进程持有）。 */
     internal const val TEMP_MIN_AGE_MS = 24L * 60 * 60 * 1000

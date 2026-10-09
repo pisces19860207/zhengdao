@@ -7,9 +7,11 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
 import com.example.zhengdao.rust.CoreNative
+import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.EnvSelfHeal
 import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.ResMonitor
+import com.example.zhengdao.terminal.StorageAudit
 import java.io.File
 
 /**
@@ -63,6 +65,7 @@ object EnvHealth {
     const val ROUTE_REPAIR_ENV = "repair-env"       // 设置页「修复环境」（重解压系统层）
     const val ROUTE_STORAGE_GRANT = "storage-grant" // 系统「所有文件访问」授权页
     const val ROUTE_NET_CHECK = "net-check"         // 设置页「网络自检」（分应用代理等）
+    const val ROUTE_STORAGE_DETAIL = "storage-detail" // 设置页「存储占用」（明细 + 一键清理）
 
     /**
      * 不变量（#4，2026-10-09）：**每个 ✗ 都必须给出去路**——一键自愈 [Check.fixId]、
@@ -84,6 +87,7 @@ object EnvHealth {
         "rootfs" to ROUTE_REPAIR_ENV,
         "network" to ROUTE_NET_CHECK,
         "storage" to ROUTE_STORAGE_GRANT,
+        "disk" to ROUTE_STORAGE_DETAIL,
     )
 
     /** 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询 + 一次资源采样 ~0.7 s）。 */
@@ -96,6 +100,7 @@ object EnvHealth {
         hermesDepsCheck(ctx),
         networkCheck(ctx),
         storageCheck(ctx),
+        diskCheck(ctx),
         nativeCheck(),
         resourceCheck(),
     )
@@ -307,6 +312,31 @@ object EnvHealth {
         granted -> false to "所有文件访问已授权，但共享存储读不到（权限帽子或存储视图受限，需复查）"
         else -> false to "所有文件访问未授权，工作区主路径不可用；到系统设置开启"
     }
+
+    /**
+     * 存储占用体检（#8-D）：把「能清多少」摊到体检面板上，去路是设置页「存储占用」那一节。
+     *
+     * 阈值与自动清理同一条（500MB，见 `CacheCleaner.AUTO_THRESHOLD_MB`）：低于它就不打扰用户，
+     * 超过就报 ⚠（**黄色告警而不是红 ✗**——它没坏，只是占地方；而且这里不给一键清理，
+     * 真正动手的按钮在设置页那张卡里，理由与确认弹窗都在那儿）。
+     */
+    private fun diskCheck(ctx: Context): Check {
+        val cleanable = runCatching { StorageAudit.totalCleanableMb(ctx) }.getOrDefault(0L)
+        val (ok, detail) = diskVerdict(cleanable)
+        return Check(
+            id = "disk", label = "存储占用", ok = ok, detail = detail,
+            warn = !ok,
+            route = if (ok) null else GUIDED_ROUTES["disk"],
+        )
+    }
+
+    /** 存储占用结论（纯函数，便于单测锁死阈值与文案）。 */
+    internal fun diskVerdict(cleanableMb: Long): Pair<Boolean, String> =
+        if (cleanableMb >= CacheCleaner.AUTO_THRESHOLD_MB) {
+            false to "可清理 ${cleanableMb}MB（Agent 包缓存 / 旧安装包 / 旧依赖代 / 可选工具）"
+        } else {
+            true to "可清理 ${cleanableMb}MB，未超过 ${CacheCleaner.AUTO_THRESHOLD_MB}MB 阈值"
+        }
 
     /**
      * native 核心（`libzhengdao_core.so`）到底有没有加载进来（2026-10-08 补，用户授权）。
