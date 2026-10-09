@@ -41,7 +41,12 @@ plugins {
 //    「资料库」（知识库集成）：把资料丢进 `/sdcard/Download/证道/资料库/原始/`，App 自动生成
 //    `整理/00-目录.md` 并给终端里的 AI 指路（`/root/AGENTS.md`）；P2 借太极的免费模型给长文档补摘要
 //    （`.docx` 也能读，P3a）。只加功能、不动既有链路，故仍进 patch 级。
-val appVersionName = "2.0.3"
+// ⚠️ 2.0.4（2026-10-09，ERRATA E-065）：用户问「会不会被别人拿去卖」之后的**署名与出处** ——
+//    关于页写清作者（小信多多）/ 版本来源（官方发布 ✓ / ⚠️ 非官方（被重新打包过））/ 许可证 GPL-3.0 /
+//    联系作者；安装包签名自检（官方证书 SHA-256 与运行时装包签名对比，**只提醒不拦功能** ——
+//    GPL 明确允许别人改代码自己签名，拦了会误伤自己编译自己用的用户）；README 写明转载与
+//    二次打包的态度。仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.4"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -74,7 +79,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 19
+        versionCode = 20
         versionName = appVersionName
 
         ndk {
