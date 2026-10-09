@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.zhengdao.core.IssueCenter
 
 /**
  * 首页：顶部可折叠系统状态卡 + Agent 卡片列表；底部 Tab 的「终端」页由
@@ -64,6 +65,61 @@ fun HomeScreen(
         androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // 去路执行（#4 走查，2026-10-09）：把 EnvHealth / IssueCenter 的「标识」翻译成「行为」的
+    // 唯一一处（体检行与「最近问题」卡共用），免得同一句"去处理"在各处各写一遍、各指一个地方。
+    val openStorageGrant: () -> Unit = {
+        runCatching {
+            val i = android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
+            )
+            i.data = android.net.Uri.parse("package:" + context.packageName)
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        }.onFailure {
+            // 个别 ROM 没有这个页面（或被策略拦下）——不能静默失败，给一句人话 + 手动路径
+            android.widget.Toast.makeText(
+                context,
+                "打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+    // 反馈通道：用户看不懂、也修不了的失败，至少有个地方说（带日志的话更好定位）
+    val openFeedback: () -> Unit = {
+        runCatching {
+            val i = android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/issues/new"),
+            )
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        }.onFailure {
+            android.widget.Toast.makeText(context, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    // 太极 serve 的重试 / 重启：动作在后台线程跑，结果回主线程汇报（成功撤下问题，失败留在卡上）
+    val retryServe: (restart: Boolean, issueId: String) -> Unit = { restart, issueId ->
+        Thread {
+            val err = runCatching {
+                if (restart) com.example.zhengdao.oc.OcManager.stopServe()
+                com.example.zhengdao.oc.OcManager.startServe(context)
+            }.getOrElse { "启动异常：" + (it.message ?: it.javaClass.simpleName) }
+            android.os.Handler(context.mainLooper).post {
+                if (err == null) {
+                    IssueCenter.resolve(issueId)
+                } else {
+                    IssueCenter.report(
+                        id = issueId,
+                        title = "太极（OpenCode）仍没起来",
+                        detail = err,
+                        actionLabel = "重试",
+                        actionId = IssueCenter.ACTION_RETRY_SERVE,
+                    )
+                    android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
     // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复
@@ -345,8 +401,25 @@ fun HomeScreen(
                                                     val fid = c.fixId
                                                     Thread {
                                                         EnvHealth.fix(context, fid)
+                                                        // 修复动作"跑过了"不等于"修好了"（例如
+                                                        // link-mode 写成功但 uv 仍裸奔），所以
+                                                        // 复检一次再决定要不要在「最近问题」里留一条。
+                                                        val again = EnvHealth.inspect(context)
+                                                            .firstOrNull { it.id == c.id }
                                                         android.os.Handler(context.mainLooper).post {
                                                             healthEpoch++
+                                                            if (again != null && !again.ok) {
+                                                                IssueCenter.report(
+                                                                    id = "health-fix-${c.id}",
+                                                                    title = "一键修复没生效：${c.label}",
+                                                                    detail = "「修复」已执行，复检仍是：${again.detail}。" +
+                                                                        "可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。",
+                                                                    actionLabel = "反馈",
+                                                                    actionId = IssueCenter.ACTION_FEEDBACK,
+                                                                )
+                                                            } else {
+                                                                IssueCenter.resolve("health-fix-${c.id}")
+                                                            }
                                                         }
                                                     }.start()
                                                 }) { Text("修复") }
@@ -359,16 +432,42 @@ fun HomeScreen(
                                                     ) {
                                                         onOpenTerminal(tcmd, null)
                                                     } else {
+                                                        // 静默失败改正：以前只有一句 Toast，现在同时
+                                                        // 留一条「最近问题」（去路 = 去设置页重试）
+                                                        val msg = "修复脚本写入失败，请到设置页重试"
                                                         android.widget.Toast.makeText(
-                                                            context,
-                                                            "修复脚本写入失败，请到设置页重试",
-                                                            android.widget.Toast.LENGTH_SHORT,
+                                                            context, msg, android.widget.Toast.LENGTH_SHORT
                                                         ).show()
+                                                        IssueCenter.report(
+                                                            id = "hermes-repair-script",
+                                                            title = "Hermes 修复脚本没写进工作区",
+                                                            detail = "脚本落盘失败（工作区不可写？），终端里那条修复命令跑不起来。",
+                                                            actionLabel = "去设置",
+                                                            actionId = IssueCenter.ACTION_OPEN_SETTINGS,
+                                                        )
                                                     }
                                                 }) { Text("修复") }
 
-                                                else -> TextButton(onClick = onOpenSettings) {
-                                                    Text("去处理")
+                                                // 引导项：文案按去路给，不再统统叫「去处理」
+                                                else -> {
+                                                    val route = c.route
+                                                    TextButton(onClick = {
+                                                        when (route) {
+                                                            EnvHealth.ROUTE_STORAGE_GRANT -> openStorageGrant()
+                                                            // 修复环境 / 网络自检都在设置页，且设置页
+                                                            // 是独立全屏 —— 直接过去，用户一眼能看到那一节
+                                                            else -> onOpenSettings()
+                                                        }
+                                                    }) {
+                                                        Text(
+                                                            when (route) {
+                                                                EnvHealth.ROUTE_REPAIR_ENV -> "去修复"
+                                                                EnvHealth.ROUTE_STORAGE_GRANT -> "去授权"
+                                                                EnvHealth.ROUTE_NET_CHECK -> "网络自检"
+                                                                else -> "去处理"
+                                                            }
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -442,6 +541,72 @@ fun HomeScreen(
                             shape = RoundedCornerShape(50),
                         ) {
                             Text("安装运行环境")
+                        }
+                    }
+                }
+            }
+        }
+        // ── 最近问题（#4 走查，2026-10-09）：后台静默失败的统一出口 ──
+        // 以前这些失败只写 RunLog：用户看到的是"点了没反应"，而日志在公共区躺着没人会看。
+        // 非空才渲染；每条尽量带一个能点的去路（重试 / 修复 / 去授权 / 反馈）。
+        val issues by IssueCenter.issues
+        if (issues.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "最近问题（${issues.size}）",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { IssueCenter.clear() }) {
+                                Text("清空", color = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        }
+                        Text(
+                            text = "后台失败的痕迹以前只写日志、界面上看不见；这里列出来，" +
+                                "每条能处理就点按钮。完整原文仍在 Download/证道/logs/zhengdao-log.txt",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        issues.forEach { issue ->
+                            Column(modifier = Modifier.padding(top = 10.dp)) {
+                                Text(
+                                    text = issue.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                                Text(
+                                    text = issue.detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                                val label = issue.actionLabel
+                                val aid = issue.actionId
+                                if (label != null && aid != null) {
+                                    TextButton(onClick = {
+                                        when (aid) {
+                                            IssueCenter.ACTION_RETRY_SERVE -> retryServe(false, issue.id)
+                                            IssueCenter.ACTION_RESTART_SERVE -> retryServe(true, issue.id)
+                                            IssueCenter.ACTION_GRANT_STORAGE -> openStorageGrant()
+                                            IssueCenter.ACTION_FEEDBACK -> openFeedback()
+                                            // 修复环境 / 看日志 / 通用去设置：设置页里都有对应那一节
+                                            else -> onOpenSettings()
+                                        }
+                                    }) { Text(label) }
+                                }
+                            }
                         }
                     }
                 }
