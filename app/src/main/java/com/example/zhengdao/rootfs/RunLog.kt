@@ -213,6 +213,12 @@ object RunLog {
             val d = dir(ctx)
             val ts = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date())
             appendRotated(File(d, NAME), "[$ts] $line\n")
+            // #5（2026-10-09）：**同步镜像一份进 logcat**。
+            // 为什么：进程被杀时文件里最后一行往往是"正常跑着"，而 logcat 环形缓冲里
+            // 还留着死前那几十行。App 没有 READ_LOGS，只能读自己 UID 的日志——但只要
+            // 我们把每一行都镜像进去，"自己那份"就是完整的。下一轮启动时
+            // KeepaliveArchive.onStartup 会把这段抓成 logcat-boot-*.txt 存下来。
+            android.util.Log.i("zhengdao", line)
             // 错误汇总：跨轮次保留，用户在设置页点开就能看到"最近出过什么事"
             if (ERROR_MARKERS.any { line.contains(it, ignoreCase = true) }) {
                 appendRotated(File(d, ERRORS_NAME), "[$ts] $line\n", ERRORS_MAX_BYTES)
