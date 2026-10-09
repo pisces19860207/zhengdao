@@ -127,12 +127,17 @@ object KnowledgeBase {
         return n
     }
 
-    /** 手动触发一次"重新整理"（设置页按钮）。 */
+    /**
+     * 手动触发一次"重新整理"（设置页按钮）。
+     *
+     * ⚠️ 与自动流程的关键区别：这是**用户的显式要求**，所以要 forced = true
+     * —— 否则 [ensureScaffold] 看到"用户已删除"标记会拒绝重建，这个按钮就成了点不动的摆设（E-061）。
+     */
     fun requestRebuild(ctx: Context) {
         if (!isEnabled(ctx)) return
         val t = Thread({
             runCatching {
-                ensureScaffold(ctx)
+                if (ensureScaffold(ctx, forced = true)) dispatch(ctx)
                 rebuildIndex(ctx)
             }.onFailure { RunLog.log("资料库手动整理失败：${it.message}") }
         }, "zd-knowledge-base-rebuild")
@@ -166,9 +171,11 @@ object KnowledgeBase {
 
     /**
      * 确定目录与骨架文件存在。
+     * @param forced true = 用户显式要求（设置页「重新整理」／重新打开开关），
+     *   此时即使他此前删过资料库也要重建（E-061）。
      * @return true = 资料库可用（后续扫描/分发照常）；false = 不该用（仅私有模式 / 用户已删除）
      */
-    fun ensureScaffold(ctx: Context): Boolean {
+    fun ensureScaffold(ctx: Context, forced: Boolean = false): Boolean {
         val prefs = Settings.prefs(ctx)
         val r = root(ctx)
 
@@ -185,7 +192,12 @@ object KnowledgeBase {
         }
 
         // 目录不存在：是我们建过、被用户删了？还是从没建过？
-        if (prefs.getBoolean(KEY_CREATED, false) || prefs.getBoolean(KEY_DELETED, false)) {
+        if (!shouldCreate(
+                everCreated = prefs.getBoolean(KEY_CREATED, false),
+                userDeleted = prefs.getBoolean(KEY_DELETED, false),
+                forced = forced,
+            )
+        ) {
             prefs.edit().putBoolean(KEY_DELETED, true).apply()
             return false
         }
@@ -193,11 +205,21 @@ object KnowledgeBase {
         if (!r.mkdirs()) return false
         val ok = seedFiles(ctx)
         if (ok) {
-            prefs.edit().putBoolean(KEY_CREATED, true).apply()
+            prefs.edit().putBoolean(KEY_CREATED, true).putBoolean(KEY_DELETED, false).apply()
             RunLog.log("资料库已预置：${r.absolutePath}")
         }
         return ok
     }
+
+    /**
+     * 目录不存在时该不该建 —— 纯函数，便于单测（E-061）。
+     *
+     * 规则：从没建过 ⇒ 自动预置；用户删过 ⇒ **尊重用户的删除**、不自动重建；
+     * 用户显式要求（设置页「重新整理」／重新打开开关）⇒ 重建。
+     * 后两条的分界线就是"谁在要求"：自动流程不许复活他删掉的东西，手动按钮是他自己按的。
+     */
+    internal fun shouldCreate(everCreated: Boolean, userDeleted: Boolean, forced: Boolean): Boolean =
+        forced || (!everCreated && !userDeleted)
 
     /** 建子目录 ＋ 写说明文档（幂等：内容未变不重写）。 */
     private fun seedFiles(ctx: Context): Boolean {
@@ -279,10 +301,13 @@ object KnowledgeBase {
         val sig = sb.toString().hashCode().toString()
 
         val prefs = Settings.prefs(ctx)
-        if (prefs.getString(KEY_SIG, null) == sig) return
+        // 指纹没变**且清单文件还在**才跳过：资料库被整个删掉再重建时，指纹可能恰好没变
+        // （比如 `原始/` 本来就是空的），只比指纹会让 `整理/00-目录.md` 永远不再生成（E-061）。
+        val idx = indexFile(ctx)
+        if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return
 
         val text = indexText(items)
-        if (atomicWriteChecked(indexFile(ctx), text)) {
+        if (atomicWriteChecked(idx, text)) {
             prefs.edit().putString(KEY_SIG, sig).apply()
         }
     }

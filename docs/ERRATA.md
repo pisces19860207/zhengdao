@@ -3430,3 +3430,40 @@ How would you like to set up Hermes?
 
 1. 安装脚本的"最后一步"可能是**交互式**的。客户端把 rc 当唯一判据时，必须考虑"脚本在等人"这种状态：它既不是失败，也不是完成——而此时唯一的正确动作是**把用户引到终端**。
 2. 同一句提示里，ESC 与 Ctrl+C 的后果一个是"继续"、一个是"失败并退出"。给用户的提示要挑**代价最小的那个动作**（这里是 ESC）。
+## E-061 · 2026-10-09 · 资料库的「重新整理」按钮点了没反应：反流氓的"尊重用户删除"把唯一的手动恢复入口一起锁死了
+
+**现象**
+
+用户把工作区里的 `资料库/` 文件夹删掉之后，设置页那颗「**重新整理**」按钮**点下去什么都不发生**（只弹一句「正在整理…」），总开关来回拨也没用。想让它回来，只能自己用文件管理器把文件夹重新建出来。
+
+这条 bug 是"设计"长出来的：资料库有一条铁律 —— **尊重用户的删除**（删了就不许自动重建），方向是对的；但判定里没区分"谁在要求"：自动流程不许复活用户删掉的东西，**用户自己按的按钮**却是显式要求。两者共用了同一个判定，于是手动入口也被一起锁死了。
+
+**证据（真机 AD3J023824001723，2.0.2 debug + 知识库 P0/P1）**
+
+- `rm -rf /sdcard/Download/证道/资料库` → 重启 App → 进终端：`ls` 报 `No such file or directory`（**没有被自动重建** —— 铁律本身符合预期）。
+- 此时点设置页「重新整理」（按钮中心 `(820,2381)`，另一次布局下是 `(820,2238)`）⇒ 资料库**没有回来**，状态仍是「未挂载 · 还没放资料」。
+- 手工 `mkdir -p /sdcard/Download/证道/资料库/原始` → 重启 → 进终端：骨架自动补齐（`说明.md` 1131 B / `AGENTS.md` 1260 B / `CLAUDE.md` 11 B / `改版/` / `整理/00-目录.md` 675 B）⇒ 说明**能力**没坏，坏的是"按钮要求重建"这条**入口**。
+- 代码：`app/src/main/java/com/example/zhengdao/terminal/KnowledgeBase.kt` 的 `requestRebuild(ctx)` 只调 `ensureScaffold(ctx)`，而 `ensureScaffold` 在"目录不存在 + `KEY_CREATED`/`KEY_DELETED` 为真"时直接 `return false`；设置页总开关只写 `KEY_ENABLED`，所以拨开关同样无效。
+- 顺带查出**同一类**的第二个坑：`rebuildIndex` 只用"指纹"（工作区路径 ＋ 每个文件的 相对路径/大小/修改时间 的哈希）判断要不要重写 `整理/00-目录.md`。资料库被整个删掉再重建时，指纹**恰好可能没变**（比如 `原始/` 本来就是空的）⇒ 清单文件永远不再生成，而 `/root/AGENTS.md` 还在让 AI「先读 `整理/00-目录.md`」。
+
+**修法**
+
+- `KnowledgeBase.ensureScaffold(ctx, forced: Boolean = false)`：把"该不该建目录"抽成纯函数
+  `internal fun shouldCreate(everCreated: Boolean, userDeleted: Boolean, forced: Boolean) = forced || (!everCreated && !userDeleted)`；
+  成功建目录时顺手把 `KEY_DELETED` 清成 false。
+- `requestRebuild(ctx)` 改调 `ensureScaffold(ctx, forced = true)`，建起来之后补一次 `dispatch(ctx)`（把 `/root/AGENTS.md`、`/root/CLAUDE.md` 的指路重新写一遍，与 `refresh()` 的自动流程对齐）。
+- 设置页总开关"从关到开"也调 `requestRebuild`（同样是用户的显式动作）。
+- `rebuildIndex` 的跳过条件加一条"清单文件还在"：`if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return`。
+- 新增单测 `app/src/test/java/com/example/zhengdao/terminal/KnowledgeBaseTest.kt`（3 例）：从没建过 ⇒ 自动预置；删过 ⇒ 自动流程不重建；forced ⇒ 无论删没删都重建。
+
+**验证**
+
+- 修后真机（同一台设备、debug 包）：`rm -rf 资料库` → 设置页点「重新整理」⇒ 日志 `[14:37:01] 资料库已预置：/storage/emulated/0/Download/证道/资料库`，目录一次到位：`AGENTS.md` 1260 B、`CLAUDE.md` 11 B、`说明.md` 1131 B、`原始/`、`改版/`、`整理/00-目录.md` **675 B**（清单文件也回来了 ✓）。
+- 第二个用例（开关路径）：删掉目录 → 总开关关再开 ⇒ 日志 `[14:35:14] 资料库已预置：…`，目录同样补齐 ✓。
+- 回归：`:app:compileDebugKotlin :app:testDebugUnitTest` = BUILD SUCCESSFUL，**41 suites / 339 例 / 0 失败**（新增 `KnowledgeBaseTest` 3 例）。
+
+**教训**
+
+1. "尊重用户的删除"和"用户按了按钮"是两件事 —— 判定里必须把**谁在要求**带进去（`forced`）。少这一个参数，反流氓的设计就会长出一个"按钮是死的"的副作用。
+2. 缓存/短路判断（这里是指纹比对）除了比"内容变没变"，还要**确认产物还在**。只比指纹的跳过逻辑，在"有人把产物删了"时一定会骗人。
+3. 出问题时先分清是**入口**坏了还是**能力**坏了：手工 `mkdir` 之后一切正常 ⇒ 能力没问题，只是入口被策略挡了 —— 这能把排查范围缩到一半。
