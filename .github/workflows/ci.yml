@@ -70,6 +70,16 @@ jobs:
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
+      # #1（2026-10-09）：仪器测试（androidTest）在本仓库**进不了 CI 的模拟器**——
+      # 本包只打 arm64-v8a（app/build.gradle.kts:103-110，用户 2026-10-06 定案「不做
+      # x86_64 模拟器支持」），GitHub runner 上的 x86_64 模拟器装不上这个包。
+      # 但 androidTest 源码长期「没人编译」的风险是真的：重构一下就会悄悄坏掉，
+      # 等真机上跑才发现。所以这里只保证它**能编译**；存储读写那条真机冒烟用例在
+      # app/src/androidTest/java/com/example/zhengdao/storage/StorageReadWriteSmokeTest.kt，
+      # 跑法写在它的类注释里。
+      - name: 编译仪器测试 APK（androidTest 至少必须能编译）
+        run: ./gradlew :app:assembleDebugAndroidTest --console=plain
+
       - name: 缓存 cargo（Rust 逻辑层单测用；key 走已入库的 rust/Cargo.lock）
         uses: actions/cache@v4
         with:
