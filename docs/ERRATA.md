@@ -3361,3 +3361,72 @@ Run manually: hermes gateway run
 - RunLog：`AgentInstaller: hermes 安装脚本已打 gateway 补丁（只告警不失败）`、`hermes uv 包装器宿主侧预置：已是最新（本次无需改动）`；
 - 安装跑完后 **hermes TUI 自动起来了**（`NOUS HERMES - AI Agent Framework`、`Hermes Agent v0.21.6+199.g1744a19`、`deepseek-flash · 12 tools`）—— 这一条同时证明脚本这次是 **rc=0** 退出（客户端的启动分支只在 rc=0 时走）；
 - `/usr/local/bin/hermes -> /root/.local/bin/hermes` 软链存在（12:34），`/etc/profile.d/zz-local-bin-path.sh` 内容正确。
+
+## E-059 · 2026-10-09 · 用户不会卸载 App、只会一直点「重试安装」：会坏的缓存恰好都在卸载清不掉的地方（共享存储里的安装脚本、上一轮留下的锁文件）
+
+**现象**：hermes 连续几次「安装失败」时，用户在丹房能做的只有一直点「重试安装」——没有提示，也没有任何自动恢复，同一份坏状态被反复拿来重试。
+
+**先查过、确认不是问题的地方**
+
+- `AgentRepository` 的状态判据是三段式（rc 非 0 → Failed，排在 installed 之前；有轮次且无 rc → 进程在 / 90 s 宽限 → Installing，否则 Failed；无轮次 → 以文件为准），`markInstalling` 先删 rc，`installProcessAlive` 扫 `/proc/*/cmdline` 里是否含 `<id>-install.sh`。⇒ 失败态与「安装中」态都有出口，`HomeScreen` 的「安装中」按钮本身可点（点开终端），**不存在"按钮变成死的"这种死角**。
+- `AgentLedger`（`Download/证道/agents/installed.json`）是原子写（`.part` → rename）+ 坏 JSON 容错（返回空表），**本身健壮**。
+
+**真正的死角（这次修的）**
+
+1. **缓存的安装脚本**：脚本落在**共享存储** `Download/证道/agents/scripts/<id>-install.sh`（`Store.agentScriptsDir`），而 `AgentInstaller` 复用它只判「文件存在且 ≥ 64 B」。于是只要有一次下载拿到的是 HTML 错误页 / 门户登录页 / 半截文件（任何大于 64 B 的垃圾都算"可用"），**这份垃圾会一直被复用：重试多少次都没用，甚至卸载重装 App 都还在**——共享存储是刻意设计成活过卸载的。
+2. **上一轮留下的锁**：`buildCommand` 的清障只有 `-name index.lock -delete` 一种，而 hermes 的 pm/uv 会在 `/root/.hermes`、`/root/.claude`、`/root/.config` 下留 `*.lock`（E-056 撞的 `flock` 就在这一层）。
+
+**修法**
+
+- 新增 `app/src/main/java/com/example/zhengdao/ui/AgentInstallPrep.kt`（纯函数、不碰 Android，可单测）：
+  - `looksUsableScript(text)` 判「这看起来是不是一份安装脚本」——长度 < 512 字符、头部 2048 字符里出现 `<!doctype` / `<html`、或第一个非空行不以 `#` 开头，都判不可用；
+  - `fileLooksUsable(f)` 落盘版；`staleLockCleanup()` 生成清障命令。
+- `AgentInstaller`：① 复用缓存前先自检，不合格就 `delete()` 重下，并记一条中文日志（`<id> 缓存的安装脚本不可用（N 字符，疑似错误页/半截文件），删掉重下`）；② 新下载的内容写盘**前**也自检，不合格就抛异常、退回 `curl | bash`（宁可多下一次，也不把垃圾存起来毒害以后每一次重试）；③ 清障从 `index.lock` 扩到 `/root/.hermes`、`/root/.claude`、`/root/.config` 下的 `*.lock`。
+- 判定刻意**宽松**（宁放行不误杀）：误杀一份正常脚本的代价是丢掉 E-057 的 gateway 补丁，那比多跑一次下载贵得多。
+
+**教训**
+
+1. 「卸载重装能解决」在这套设计里**不成立**：共享存储（`Download/证道`）就是为了活过卸载。所以凡是被它缓存的中间产物，都必须自带"坏了能自愈"的能力——环境包已经有索引校验（E-052/E-053），Agent 脚本这次才补上。
+2. 缓存复用的判据不能只看"文件在不在、够不够大"：网络不好时拿到 HTML 错误页是常态，**要判内容形态**。
+3. 一次失败留下的副作用（锁文件、半截文件）必须在下一次重试时被清掉；否则"重试"只是把同样的失败再演一遍。
+
+**验证**：`app/src/test/java/com/example/zhengdao/ui/AgentInstallPrepTest.kt` 12 例（HTML 错误页 / 门户页 / JSON 错误体 / 过短 / 空 / null 判负；正常脚本、前导空行、shebang 前有注释判正；清障命令覆盖 `*.lock` 且不碰 `/sdcard`、`/workspace`、`/root/.local`）；全量单测 **40 suites / 336 例 / 0 失败**。真机复验待设备回到手边（手机被用户带走）。
+
+**同批补的一条路（产品侧）**：已装的 Agent 原先只有「启动」和 ⋮ 里的「卸载」——而用户不会为了修一个坏掉的 Agent 去卸载。现在 ⋮ 里多一个「重新安装」：重跑官方安装脚本（增量，不删配置 / API Key / 会话数据），二次确认弹窗把"不删数据"写清楚。
+为什么不顺手再加一个"彻底重建"：那需要每个 Agent 的构件目录名单（`~/.hermes/installs`、`~/.hermes/cache` 这类），只有已知 Agent 才敢删，而这次没有真机可验（手机被用户带走）——先给一条确定能走的路，更狠的重建按需再加。
+
+## E-060 · 2026-10-09 · 安装的最后一步是 Agent **自己的交互式配置向导**：没人回答就永远停在「安装中」，在那里按 Ctrl+C 还会变成"装好了却报失败"
+
+**现象**
+
+丹房卡片停在「安装中」不动，终端里其实是在**等用户回答一个问题**：
+
+```
+How would you like to set up Hermes?
+  ↑↓ navigate  ENTER/SPACE select  ESC cancel
+→ (●) Quick Setup (Nous Portal) — free OAuth lo…
+  (○) Full setup — configure every provider, to…
+  (○) Blank Slate — everything off except the b…
+```
+
+**证据**（2026-10-09 真机，重装 hermes 时实测）
+
+- 14:06 `install.log` 已写 `✓ Install complete! [main @ 1744a19e0d]`，但脚本进程仍在（`bash /opt/zhengdao/agents/scripts/hermes-install.sh` 及其子进程）、`files/home/.zhengdao/` 里**没有 rc 文件** ⇒ 卡片判据（有轮次、无 rc）把它算成「安装中」，符合预期——**脚本真的还在跑**，它只是在等人。
+- 14:09 在向导上按 **ESC**：终端回显 `Setup cancelled. Remaining sections were not changed.`，随后安装器继续走 `⚠ gateway service not installable here (no systemd inside proot); start it by hand if you need it: hermes gateway run`（E-057 的补丁生效）→ `✓ Hermes Agent install complete. Run: hermes` → App 打的 `[证道] 安装完成，正在启动 hermes（首次启动初始化，请稍候）…`（**只有 rc=0 才走这条分支**）⇒ 安装正常收尾、hermes 自动启动。
+- 配置一字未改：`files/home/.hermes/config.yaml` 126,085 B（12:34）、`files/home/.hermes/.env` 27,740 B（12:23）原样。
+- 向导自己写的提示是 `Press Ctrl+C at any time to exit.` —— 但 **ESC 与 Ctrl+C 语义完全不同**：ESC 是"本节不改、继续安装"，Ctrl+C 是"退出"，脚本会带非 0 码返回 ⇒ 卡片显示「安装失败（退出码 …）」，而这台机器其实已经装好了。这与 E-057 是同一类"装好了却报失败"，只是触发器从上游的 `|| fail` 换成了用户按错键。
+
+**为什么之前没发现**
+
+这条向导**每次安装都会出现**：第一次装的时候用户自己就在终端里回答了（选了 deepseek，所以后来 TUI 里是 `deepseek-flash`），我们只看到"装完就能用"。只有"装完没人碰终端"或"按了 Ctrl+C"这两种情形才暴露。
+
+**修法（这次只做能做的）**
+
+- `app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt` 的「安装中」状态行补一句：
+  「正在安装，输出实时显示在「终端」…（若终端停在配置提问，请在终端里回答或按 ESC 跳过）」。
+- **没有**替用户自动回答，**也没有**给安装命令加 `--skip-setup`：`--skip-setup` 会把向导整段砍掉（连同首次配置 provider 的路径），而"替用户选 provider"是产品不该做的决定。
+
+**教训**
+
+1. 安装脚本的"最后一步"可能是**交互式**的。客户端把 rc 当唯一判据时，必须考虑"脚本在等人"这种状态：它既不是失败，也不是完成——而此时唯一的正确动作是**把用户引到终端**。
+2. 同一句提示里，ESC 与 Ctrl+C 的后果一个是"继续"、一个是"失败并退出"。给用户的提示要挑**代价最小的那个动作**（这里是 ESC）。
