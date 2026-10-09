@@ -4002,3 +4002,59 @@ GitHub 上 v2.0.0~v2.0.5 的 Release 页面正文逐字相同：正文里的版�
 4. **"进程工作目录"可能只是新数据的默认值**：opencode 给每个会话各记一份项目目录，改进程 cwd
    只对**新会话**生效 —— 旧会话的 `pwd` 还在老地方。改这类"默认值"时先问一句"已在库里的数据跟不跟着走"，
    别默认它跟着走；跟不动的部分要写进变更说明，别让用户自己撞见。
+## E-070 · 2026-10-09 · 失败只写进日志 = 用户看不见；体检里 4 个 ✗ 连"去路"都没有（#4 全 App 错误提示走查）
+
+**背景**
+
+E-066/E-067 查的是"界面说了假话"（好环境报红、人设指错路）。这次反着查另一半：
+**真失败了，界面却什么都不说**。走查结果：
+
+1. 30 余处失败只落 `RunLog.log` / `Log.w` —— 用户回主界面就断线索，只能在"看起来没反应"和
+   "再点一次"之间猜。最典型是 `OcManager.startServe` 的"serve 已就绪、但没能解析到密码"：
+   此后每个请求都 401，界面上却一片正常（只留一行日志）。
+2. 体检卡里 4 项（`proot` / `rootfs` / `network` / `storage`）报 ✗ **既没有 `fixId` 也没有 `terminalCmd`**，
+   渲染出来只有一个「去处理」→ 跳设置页；用户到了设置页也不知道该按哪个按钮。
+
+**修法**
+
+1. 新增 `app/src/main/java/com/example/zhengdao/core/IssueCenter.kt`：进程内「最近问题」清单
+   （`State<List<Issue>>`，同 id 覆盖、最新在前、上限 20 条，每条同时落 RunLog `问题[<id>]: …`），
+   提供 `report` / `resolve` / `clear`；动作常量 = 重试/重启太极、去修复、去授权、反馈、去设置。
+2. 主界面在体检卡下新增「最近问题（N）」卡（**只有非空才出现**），每条按 `actionId` 给按钮。
+   修好即撤：`EnvSelfHeal` 五个自愈函数**进 try 就先 `resolve`** —— 自愈是幂等的，本次没炸 = 故障不在了。
+3. 接线：`oc/OcManager.kt`（serve 超时 / 就绪但密码没解析到 / 启动异常）、
+   `terminal/ProotLauncher.kt`（pinned 资产 SHA 不匹配、marker 在但 `rootfsReady=false` 走回落）、
+   `terminal/EnvSelfHeal.kt`（DNS / hosts / 时区 / uv 系统级配置 / 内嵌 uv 包装器）、
+   `ui/InstallFlow.kt`（安装 / 修复 / 回退失败 → `install-failed`，成功即撤下）。
+4. 「报红必须给去路」变成可测的不变量：`EnvHealth.hasExit(c) = c.ok || c.fixId != null ||
+   c.terminalCmd != null || c.route != null`，四个引导项登记进 `EnvHealth.GUIDED_ROUTES`
+   （proot/rootfs → 去修复、network → 网络自检、storage → 去授权）。
+5. 设置页安装/修复结束态：失败时多一个「重试安装」（复用「修复环境」那条二次确认流程）。
+
+**验证**
+
+- 单测：新增 `app/src/test/java/com/example/zhengdao/core/IssueCenterTest.kt`（8 例）与
+  `app/src/test/java/com/example/zhengdao/terminal/EnvSelfHealIssueTest.kt`（3 例：成功撤下 / 失败留痕且有去路 /
+  DNS 与 hosts 两条一起撤），`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` 增 3 例
+  （三种去路各自成立、「报红却什么都不给」判为没有去路、`GUIDED_ROUTES` 键集合与值合法）⇒
+  **47 suites / 415 例 / 0 失败**（基线 401 例）。
+- 真机（Honor PGT-AN10 / Android 16，debug 包 40,113,125 B）双向都验到：
+  1. `run-as com.example.zhengdao chmod 500 files/rootfs/etc/uv` 制造写入失败 → 开终端 ⇒
+     `[10-09 21:23:39] 问题[selfheal-uv]: uv 系统级配置没能写入 — FileNotFoundException:
+     /data/user/0/com.example.zhengdao/files/rootfs/etc/uv/uv.toml: open failed: EACCES (Permission denied)；…`；
+  2. 回主界面 ⇒ 「最近问题（1）」卡与「去修复」按钮真的画出来了；
+  3. `chmod 700` 恢复 + 结束 tmux 会话让下次开终端重跑 `buildLaunchPlan` ⇒
+     `[10-09 21:24:42] uv 系统级配置已重写（/etc/uv/uv.toml link-mode=copy）`，落盘内容 `link-mode = "copy"`；
+  4. 再回主界面 ⇒ 卡片**自己消失**。
+
+**教训**
+
+1. **"记录失败" ≠ "提示失败"**：写进日志只完成了取证；用户要的是"界面上一眼看得出 + 有个按钮能点"。
+   查"提示缺失"要用反证法：把每条失败路径的出口列出来，看它在屏幕上留下了什么。
+2. **report 与 resolve 必须成对**：只报不撤，用户修好之后那条记录还挂着 —— 比不报更糟，
+   他会以为没修好。判据要写进代码（自愈函数进门先 resolve），别靠"记得去撤"。
+3. **"报红必须给去路"要可测**：靠人工走查，下次加体检项照样漏；把它落成 `hasExit` + 一张表，让测试盯着表。
+4. **真机验证先排除环境噪声**：这次一轮空转全因三件噪声 —— 悬浮视频窗（PiP）吃掉右侧点按、
+   终端是独立 Activity（`keyevent 4` 只收键盘）、会话还活着时 app **不会**重跑 `buildLaunchPlan`。
+   现象是"代码没生效"，实际是"根本没触发到那段代码"。验"失败路径"时先确认**失败被制造出来了**
+   （日志里看得见），再谈界面。

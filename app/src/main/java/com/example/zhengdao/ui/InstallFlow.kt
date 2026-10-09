@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.InstallNotifier
 import java.io.File
@@ -50,6 +51,8 @@ object InstallFlow {
         InstallProgress.finish(text)
         InstallNotifier.finish(ctx, text, failed = false)
         writeTerminalNotice(ctx, text)
+        // 装成功了，主界面上那条「环境安装失败」就该消失（#4：问题卡不能留着旧账）
+        IssueCenter.resolve(ISSUE_INSTALL_FAILED)
     }
 
     /** 失败收尾：状态标红、通知标失败（调用方再决定要不要补 Toast）。 */
@@ -57,7 +60,19 @@ object InstallFlow {
         RunLog.log(text)
         InstallProgress.finish(text, failed = true)
         InstallNotifier.finish(ctx, text, failed = true)
+        // #4：安装/修复/回退失败此前只落在设置页那一行与通知里，回到主界面就断了线索。
+        // 主界面问题卡带「去设置重试」入口（重试动作就是设置页「修复环境」那条路）。
+        IssueCenter.report(
+            id = ISSUE_INSTALL_FAILED,
+            title = "环境安装/修复失败",
+            detail = text,
+            actionLabel = "去设置重试",
+            actionId = IssueCenter.ACTION_OPEN_SETTINGS,
+        )
     }
+
+    /** 主界面问题卡里「环境安装/修复失败」那条的 id（成功收尾时清掉）。 */
+    const val ISSUE_INSTALL_FAILED = "install-failed"
 
     fun isRunning(): Boolean = InstallProgress.isRunning()
 
