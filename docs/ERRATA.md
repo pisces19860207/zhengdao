@@ -3209,3 +3209,32 @@ val expectedSha = when {
 2. **同一个问题答三次＝分叉**：三处各写一份"期望 sha"的取值逻辑，多出来的两份就是等着被漏掉的（E-050 已经吃过一次）。抽成一个纯函数，顺带白拿一整套单测。
 3. **`EACCES` 不是"文件不存在"**：真机跑这条用例第一次 `FAILED`，报 `FileNotFoundException … open failed: EACCES`——因为 `connectedAndroidTest` 会重新安装 APK，而 `/sdcard/Download/证道/` 需要「所有文件访问」。这种事**必须显式区分**：测试里把"读不到"当成"环境没准备好 ⇒ `assumeTrue` 跳过并写出原因"，绝不能让权限问题伪装成"现场不存在"（也不能伪装成"验过了"）。补权限后手动 `am instrument` 才拿到 `OK`。
 4. **真机回归要喂真输入**：单测里那些 sha 是**我自己编的**，只能证明分支逻辑；"索引值是否真的等于用户那个 192 MB 文件的字节"只有拿真文件算一遍才知道——这条断言才是"修好了"的证据。
+
+## E-054 · 2026-10-09 · Agent 在真机上「发完消息界面永远空着」：服务端早就回了 `session.step.failed`，App 却把它当「未知 SSE 事件」记一行日志；顺带查出保活锁**从未真正持有过**（`WAKE_LOCK` 权限从来没声明）
+
+**缺口**（两处，同一类病：静默降级）：
+
+1. **运行失败不上屏**。`OcRepository.handle()` 的 `is SseClient.Event.Unknown` 分支只写一行 RunLog。2026-10-09 真机实测（`/sdcard/Download/证道/logs/zhengdao-log.txt`）：服务端明确回了 `session.step.started model=opencode/exo-free` → `session.step.failed` → `session.execution.failed`，App 逐条打成「未知 SSE 事件，已忽略但保留原文」，**界面上一个字都没有** —— 用户看到的只是"我那条消息下面永远空着"（等了 90 秒以上）。而且没法自救：`TaijiState.lastError` 是存在的，但 `ConnectionBanner` 只在 `connection != Connected` 时才渲染，而运行失败恰恰发生在**连接完全正常**的时候。
+2. **保活锁从未持有**。`SessionService` 全程 `PowerManager.newWakeLock(PARTIAL_WAKE_LOCK, "zhengdao:session")` 并 `acquire()`，但 `AndroidManifest.xml` **没有声明 `android.permission.WAKE_LOCK`**（`app/build/intermediates/merged_manifest(s)/…` 实测 debug / release / benchmark 全 `WAKE_LOCK=False`）⇒ 每次 `acquire()` 抛 `SecurityException`，而调用点写的是 `runCatching { wakeLock.acquire(6 * 60 * 60 * 1000L) }` —— **吞掉了**。唯一痕迹是那句每 30 秒一条的「保活锁已失效，重新获取（会话仍在运行）」：看着像在补，其实每一轮都失败（"看着在跑，其实手机早就能睡"）。
+
+**修法**：
+
+1. 新增 `app/src/main/java/com/example/zhengdao/oc/RunFailure.kt`：`isFailure(type)`（`session.step.failed` / `session.execution.failed` / `session.error`）+ `reasonOf(type, raw)`（依次摸 `root` / `data` / `properties` / `data.properties` 下的 `error.message → error.name → error.toString → message → reason → detail`，取不到就老实说"服务端报告 <type>（未给出原因）"，超过 160 字截断）+ `UnknownSseLog`（同类未知事件只在**首次与每 100 次**各记一行）。
+2. `OcRepository`：Unknown 分支**先**判失败 → 落 `runFailure` 并置 `isStreaming = false`；`TaijiState` 加 `runFailure` / `lastPrompt`；发送成功时记下 `lastPrompt`（用于重试）。
+3. 新增 `RunFailureBanner`（`app/src/main/java/com/example/zhengdao/ui/taiji/TaijiComponents.kt`），在 `TaijiScreen` 里紧跟 `ConnectionBanner` 渲染：文案「Agent 运行失败：<原因>」+「重试」（原样重发 `lastPrompt`）+「知道了」。
+4. `AndroidManifest.xml` 补 `WAKE_LOCK`；`acquireWakeLockIfActive()` 改成 `runCatching{…}.onSuccess{首次记「保活锁已获取（PARTIAL_WAKE_LOCK，上限 6 小时）」}.onFailure{记「保活锁获取失败：<类名>: <消息>（保活退化为仅前台服务 + 通知）」}`；`renewWakeLockIfLost()` 只在第 1 次与每 10 次记一条（含累计次数）。
+
+**实测**：
+
+- JVM：**36 suites / 305 tests / 0 failures / 0 errors / 0 skipped**（新增 `RunFailureTest` 9 例全绿：三类失败识别、`error.message`/字符串、两种信封、无原因兜底、非法 JSON、160 字截断、`UnknownSseLog` 首次+第 100 次+summary）。
+- 真机（AD3J023824001723，装 `2.0.0` debug + 本修）：进入终端 ⇒ RunLog `[10-09 10:55:39] 保活锁已获取（PARTIAL_WAKE_LOCK，上限 6 小时）`，且**全场只有这 1 条**含「保活锁」的行（修前：12 分钟刷了 24 条「已失效，重新获取」）；`adb shell dumpsys package … | grep WAKE_LOCK` = `granted=true`。
+- **故障注入**（最省事的办法：把工具授权点「拒绝」）：10:59 发 `say hi` ⇒ 弹「工具请求授权 · 工具：shell · 目标：ls -a」⇒ 点「拒绝」⇒ 11:01:14 界面出现红色横幅 **「Agent 运行失败：Step interrupted」**（带「重试」「知道了」），RunLog 同步一行 `太极: Agent 运行失败（session.step.failed）：Step interrupted`。
+- 点「重试」⇒ 11:01:36 新的 `session.step.started` → 11:01:39 `session.execution.succeeded` ⇒ 界面出 `Hi! 👋`（重试链通）。
+- 未知事件聚合生效：每类只在首条打「（同类后续仅每 100 次汇总）」，不再逐条刷屏；工具徽标同时拿到真机眼见：`execute ✓ 已完成`、`shell ✗ 失败`。
+
+**教训**：
+
+1. **"未识别的协议事件"不等于"无害"**：`Unknown` 兜底是最容易埋雷的一类忽略 —— 上游可能已经明确说了失败（`session.step.failed` 就带着 `Step interrupted`），而 App 把它当噪声。未知事件该"不崩、不丢"，但**必须先按已知语义筛一遍**。
+2. **`runCatching{}` + 权限从不声明 = 一个功能可以"存在很久却从未生效"**：保活锁的代码、注释、30 秒补取全都在，唯独少了 manifest 里那一行。凡是"取资源/申请权限"的调用点，异常必须落盘一句人话，不能吞。
+3. **每 30 秒刷一条日志 ≠ 有可观测性**：那句"已失效，重新获取"看起来像在工作，实际把真正的失败行淹掉了。重复事件要么聚合，要么升级成界面上的可见状态。
+4. **验证要靠能触发失败的输入**：想让 Agent 失败，不必等模型抽风 —— 点工具授权的「拒绝」就是最便宜的故障注入；反过来，"失败路径到底有没有上屏"只有真让它失败一次才知道。

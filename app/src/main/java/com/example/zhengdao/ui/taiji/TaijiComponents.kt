@@ -331,6 +331,43 @@ fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
     }
 }
 
+/**
+ * 「Agent 运行失败」横幅（E-054）。
+ *
+ * 与 [ConnectionBanner] **必须分开**（真机 2026-10-09 实测的坑）：后者只在
+ * `connection != Connected` 时渲染（见其 `isVisible`），而 Agent 运行失败发生在连接
+ * **完全正常**的时刻 —— 把原因塞进 `lastError` 会**一个字都不显示**，这正是本次
+ * 「发消息后界面永远空着」最难归因的地方。
+ *
+ * 内容：人话原因 + 「重试」（原样重发上次提示词，仅当确有可重发内容）+ 「知道了」。
+ */
+@Composable
+fun RunFailureBanner(
+    state: TaijiState,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val reason = state.runFailure ?: return
+    Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Agent 运行失败：$reason",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
+            )
+            // 有可重试内容、且当前没在跑，才给「重试」——否则是个骗人的按钮
+            if (state.lastPrompt != null && !state.isStreaming) {
+                TextButton(onClick = onRetry) { Text("重试") }
+            }
+            TextButton(onClick = onDismiss) { Text("知道了") }
+        }
+    }
+}
+
 // ── 消息列表 ──────────────────────────────────────────────────────────
 
 /**

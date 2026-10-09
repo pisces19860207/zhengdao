@@ -402,6 +402,12 @@ fun TaijiScreen(
                         },
                     )
                     ConnectionBanner(state, onDismiss = repo::dismissError)
+                    // E-054：Agent 运行失败**必须**在连接正常时也看得见（连接横幅做不到这件事）
+                    RunFailureBanner(
+                        state = state,
+                        onRetry = { scope.launch { repo.retryLastPrompt() } },
+                        onDismiss = repo::dismissRunFailure,
+                    )
 
                     Box(Modifier.weight(1f)) {
                         when {
