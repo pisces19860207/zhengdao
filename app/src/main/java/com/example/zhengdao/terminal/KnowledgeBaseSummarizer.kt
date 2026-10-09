@@ -37,6 +37,11 @@ object KnowledgeBaseSummarizer {
     const val PROMPT_HEADER: String =
         "下面是一个资料库的文件清单。请为**每一个**文件写 2~3 句中文摘要，" +
             "说清它讲了什么、能用来干什么。\n" +
+            // ⚠️ 这句是真机实测加的（2026-10-09）：不给这句时免费模型会一头扎进"我自己去读文件"，
+            // 反复申请工具权限、轮询到超时也拿不到一行正文；给了这句它们才直接写摘要。
+            // 另外 serve 报的 location.directory 在真机上是乱码路径，"自己去读"必然读不到。
+            "⚠️ 不要调用任何工具、不要读取文件、不要执行命令 —— 每个文件的开头已经贴在下面了，" +
+            "只根据这些内容作答，看完就直接写摘要。\n" +
             "严格按这个格式逐行输出，不要有开场白、不要有结尾话、不要加序号外的任何内容：\n" +
             "文件名<TAB>摘要\n\n" +
             "清单：\n"
@@ -260,7 +265,7 @@ object KnowledgeBaseSummarizer {
 
         val sb = StringBuilder()
         sb.append(SUMMARY_HEADING).append("\n\n")
-        sb.append("> 由证道借太极的免费模型生成 · 仅供快速定位，**细节请读原文件**。\n\n")
+        sb.append(SUMMARY_NOTE).append("\n\n")
         for ((name, summary) in effective) {
             sb.append("- **").append(name).append("** — ").append(summary).append("\n")
         }
@@ -285,6 +290,55 @@ object KnowledgeBaseSummarizer {
 
         // 连提示节都没有（理论到不了，清单由我们生成）—— 退化为接在末尾
         return indexBody.trimEnd() + "\n\n" + block + "\n"
+    }
+
+    // ── ③′ 清单重渲染时保住已有摘要（"两次写入互相抹"的防线）────────────────
+
+    /** 摘要小节的说明行（[renderInto] 与 [carryOverSummary] 共用，避免两处写成不同的字）。 */
+    internal const val SUMMARY_NOTE: String =
+        "> 由证道借太极的免费模型生成 · 仅供快速定位，**细节请读原文件**。"
+
+    /** 摘要行的形态：`- **文件名** — 摘要`。 */
+    private val SUMMARY_LINE = Regex("""^- \*\*(.+?)\*\* — """)
+
+    /** 从一行摘要里取出文件名；不是摘要行（标题/说明/空行）返回 null。 */
+    internal fun summaryLineName(line: String): String? =
+        SUMMARY_LINE.find(line.trim())?.groupValues?.get(1)
+
+    /**
+     * 把旧清单里的 `## 文件摘要` 一节**搬到**刚重渲染出来的新清单里。
+     *
+     * 为什么必须有这一步：`KnowledgeBase.rebuildIndex` 是**整份重渲染**
+     * （模板 [KnowledgeBase.indexText] 里没有摘要节），所以只要 `原始/` 里有任何增删改
+     * （指纹变了）或者清单被删掉重建，下一次扫描就会把模型辛苦跑出来的摘要**整段抹掉**。
+     * 这不是"原件被毁"（`原始/` 全程只读、哈希可验），而是**同一份派生清单在两次写入之间
+     * 互相抹** —— 用户看到的现象是"摘要莫名其妙没了，得再点一次「重新整理」"。
+     *
+     * 规则（刻意保守）：
+     * - 旧清单里找不到摘要节 ⇒ 新清单**原样**返回
+     * - 只搬**新清单里仍然存在**的文件行：原件已删，它的摘要留着只会误导 agent
+     * - 一行摘要都不剩 ⇒ 整节不搬（不留空壳小节）
+     * - 位置仍然守规矩：插在 `## 给 AI 的提示（重要）` **之前**
+     */
+    fun carryOverSummary(old: String?, fresh: String): String {
+        if (old.isNullOrBlank()) return fresh
+        val start = old.indexOf(SUMMARY_HEADING)
+        if (start < 0) return fresh
+        val hintAt = old.indexOf(HINT_HEADING, start)
+        val block = if (hintAt < 0) old.substring(start) else old.substring(start, hintAt)
+
+        val kept = block.lines().filter { line ->
+            val name = summaryLineName(line) ?: return@filter true   // 标题与说明行照留
+            fresh.contains("`$name`")                                 // 原件还在才留
+        }
+        if (kept.none { summaryLineName(it) != null }) return fresh
+
+        val carried = kept.joinToString("\n").trim() + "\n\n"
+        val at = fresh.indexOf(HINT_HEADING)
+        val insertAt = if (at < 0) fresh.length else at
+        val head = if (at < 0) fresh.trimEnd() + "\n\n" else fresh.substring(0, insertAt).trimEnd() + "\n\n"
+        val tail = if (at < 0) "" else fresh.substring(insertAt)
+        return head + carried + tail
     }
 
     // ── ④ 权限闸门 ──────────────────────────────────────────────────────────
