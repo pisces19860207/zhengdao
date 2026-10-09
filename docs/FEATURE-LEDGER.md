@@ -516,6 +516,23 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > control 验过：19 → 18 项、被摘的那条含括号版本约束、其余逐字未动、除 Depends 外整份未变
 > （`C:\Users\guoli\AppData\Local\Temp\zd-watch\mesa-check.sh` = `RESULT=PASS`）。详见 `docs/ERRATA.md` E-042。
 
+> **2026-10-09 续（清账：并行 agent 的野生支线合掉、五个已并入的远端分支删掉、README 数字对齐实测）**：
+> ① 昨夜并行 agent 会话在本地支线 `fix/ui-tool-status-drawer-2026-10-09` 留下 3 个太极可用性修复
+> （工具状态胶囊徽标 `●/✓/✗`（原只声明从未渲染）、会话行常驻删除按钮（此前只能长按）、刷新会话
+> 失败不再清空列表（原 `listSessions()` 把失败吞成空列表））；它自己没编译（提交信息写明"本机
+> gradle 会污染工作树…由 DSH 在本地合并"）。我在该 worktree 实测 `:app:compileDebugKotlin
+> :app:testDebugUnitTest` = BUILD SUCCESSFUL in 1m48s、**35 suites / 296 tests / 0 失败**后
+> merge `--no-ff` = **`f1c4700`**，worktree 与分支均已清掉。
+> ② 远端分支清理：`chore/add-license-gpl3`、`feat/taiji-compose-ui`、`fix/terminal-single-session`、
+> `v1.3` 都已是 main 祖先 ⇒ 删；`feat/taiji-ui-polish`(`9b7e258`) 看似"未合并"、实为 **main 上
+> `d5f19c1` + 审查修 `eedec54` 的同内容重复提交**（同作者 `pisces19860207`、同时间 10-08 16:12、
+> 同标题；`git diff 9b7e258 d5f19c1 -- app/src` 对那 5 个文件零差异）⇒ 也删。现在 `origin` 只剩 `main`。
+> ③ README 对齐：索引签名条目不再写"待配置 secret"（E-052 已上线 + 验签与平台对拍）；单测数
+> 277 → **296**（2026-10-09 09:24 实测，命令与结果见提交 `4e06555`）。
+> ④ 本机清理：仓库内空目录 `zhengdao\.zd-scratch`（未被跟踪）已删；`%TEMP%` 下 2667 个 `zd-*`
+> 项（≈93 MB）清掉，6 个流程性脚本（配 secret / 签索引 / 校验公钥 / CI 轮询）归档到
+> `C:\Users\guoli\AndroidStudioProjects\.zd-scratch\zd-scripts-2026-10-08\`。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
