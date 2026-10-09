@@ -46,7 +46,13 @@ plugins {
 //    联系作者；安装包签名自检（官方证书 SHA-256 与运行时装包签名对比，**只提醒不拦功能** ——
 //    GPL 明确允许别人改代码自己签名，拦了会误伤自己编译自己用的用户）；README 写明转载与
 //    二次打包的态度。仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.4"
+// ⚠️ 2.0.5（2026-10-09，ERRATA E-058）：太极与设置页的提示条（「已复制到剪贴板」等）从**屏幕顶部**
+//    搬回屏幕底部 —— 根因是宿主节点写在 `Modifier.fillMaxSize()` 里的 Box 中，fillMaxSize 会把固定
+//    最小约束一起传给子节点，SnackbarHost 因此被量成整屏（实测 1312×2425），`align(BottomCenter)`
+//    只管摆放、救不回被撑大的宿主，于是落到了宿主左上角；修法是给宿主加
+//    `wrapContentHeight(Alignment.Bottom)`（太极页与设置页各一处）。另附开放 Issue #6 的存储结论
+//    （hermes 是 git 安装 ⇒ `.git` 不能剥离，改做 cache/installs 清理），不改任何逻辑，故进 patch 级。
+val appVersionName = "2.0.5"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -79,7 +85,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 20
+        versionCode = 21
         versionName = appVersionName
 
         ndk {
