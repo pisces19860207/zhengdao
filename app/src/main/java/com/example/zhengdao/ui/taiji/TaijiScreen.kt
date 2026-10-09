@@ -143,11 +143,40 @@ fun TaijiScreen(
     var sessions by remember { mutableStateOf<List<OcSessionSummary>>(emptyList()) }
     var sessionsLoading by remember { mutableStateOf(false) }
 
-    // 拉取历史会话（打开抽屉 / 手动刷新 / 删除后 共用同一实现）
+    // 拉取历史会话（打开抽屉 / 手动刷新 / 删除后 共用同一实现）。
+    //
+    // 2026-10-09（审计 A2）修两处真问题：
+    //  ① 原写法 `sessions = repo.listSessions()`——repo 会把"拉取失败"吞成**空列表**，
+    //     于是刷新失败时界面上的已有会话被清空，用户看到"会话都没了"，还毫无提示；
+    //  ② 没有 try/finally——一旦抛异常 `sessionsLoading` 永久停在 true（转圈不消失）。
+    // 现在：用 listSessionsResult 区分"确实为空"与"失败"；**失败保留旧列表** +
+    // Snackbar 可见反馈 + 一键重试；finally 保证进度一定收起。
     suspend fun refreshSessions() {
         sessionsLoading = true
-        sessions = repo.listSessions()
-        sessionsLoading = false
+        val res = try {
+            repo.listSessionsResult()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // 协程取消要原样抛出，不能当成"刷新失败"
+        } catch (e: Throwable) {
+            Result.failure(e) // 兜底：任何未预期异常也走失败路径，绝不让 loading 卡住
+        } finally {
+            sessionsLoading = false
+        }
+        res.fold(
+            onSuccess = { sessions = it },
+            onFailure = { e ->
+                // 人话化：与发送失败同款（HumanizeError）。旧列表**不动**——宁可显示陈旧数据，
+                // 也不能让用户以为会话被删光了。
+                val title = com.example.zhengdao.util.HumanizeError.title(e)
+                val r = snackbarHostState.showSnackbar(
+                    message = "刷新会话失败：$title",
+                    actionLabel = "重试",
+                    withDismissAction = true,
+                    duration = SnackbarDuration.Short,
+                )
+                if (r == SnackbarResult.ActionPerformed) refreshSessions()
+            },
+        )
     }
 
     // 🔺 返回键兜底：抽屉打开时按 BACK 必须**先关抽屉**，不能直接退出 App。
