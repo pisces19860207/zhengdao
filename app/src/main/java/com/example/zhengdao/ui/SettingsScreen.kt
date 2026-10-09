@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -1317,9 +1318,14 @@ fun SettingsScreen(
 
     // 2026-10-08：Snackbar 出口（替换 828/1080 的"回退失败/修复失败" Toast）。
     // BottomCenter 让它浮在 verticalScroll 内容之上不抢内容。
+    // ★ E-058（2026-10-09）：wrapContentHeight 不能省 —— 外层 Box 是 fillMaxSize()，
+    // FillNode 会把「min = max = 全屏」的固定约束传下来，Box 又原样保留 min 给子节点，
+    // 宿主于是被撑成整屏、Snackbar 在它内部按 TopStart 落到屏幕顶部。详见 TaijiScreen.kt 同款注释。
     SnackbarHost(
         hostState = snackbarHostState,
-        modifier = Modifier.align(Alignment.BottomCenter),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .wrapContentHeight(Alignment.Bottom),
     )
     }
 
