@@ -431,6 +431,8 @@ fun SettingsScreen(
                     onCheckedChange = { on ->
                         kbEnabled = on
                         com.example.zhengdao.terminal.KnowledgeBase.setEnabled(ctx, on)
+                        // 重新打开开关同样是显式要求：若资料库被删过，顺手把它建回来（E-061）。
+                        if (on) com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
                         storageTick++
                     },
                 )
