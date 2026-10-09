@@ -4226,3 +4226,35 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 - 脚本判定与界面可见判定**必须同口径**（否则人眼看着对、脚本判错）；口径要选「屏幕最终状态」，不要选「输出增量」。
 - 跑仪器测试别用 `connectedDebugAndroidTest`（跑完会卸载 App、带走整个运行环境，见 E-072），用
   `adb install -r` + `am instrument -w -e class …`。
+
+---
+
+## E-075　存储明细与可选工具清理（#8 B/C/D）：路径多拼一层、面板说 0MB、markdown 写进 UI
+
+**背景**：Issue #8（存储优化）的 A 旧依赖代自动清理已在 E-073 收口；本条目覆盖 B（可选工具按需化）、C（公共区安装包保留策略）、D（体检面板「存储」区块）。
+新增 `terminal/StorageAudit.kt`（明细 + 可选工具白名单清理）、`ui/EnvHealth.kt` 的 `diskCheck`/`diskVerdict`/`ROUTE_STORAGE_DETAIL`、`ui/HomeScreen.kt` 的「看明细」按钮、`ui/SettingsScreen.kt` 存储占用卡片的逐项明细与「清理可选工具」按钮。
+
+**修法四条**：
+
+1. **D 体检新项**：`EnvHealth.inspect()` 在「存储权限」之后插入 `diskCheck(ctx)`，阈值与自动清理共用 `CacheCleaner.AUTO_THRESHOLD_MB`（500MB）；超阈值 ⇒ 红项 + `route = ROUTE_STORAGE_DETAIL`，丹房体检行因此多一个「看明细」按钮，点了进设置页。
+2. **B 白名单**：`StorageAudit.OPTIONAL_TOOL_NAMES = [chromium, ffmpeg, cua-driver, agent-browser]`、`CORE_TOOL_NAMES = [python, node, uv, npm, ripgrep, rg, busybox, git, tmux, hermes]`，按**词边界**前缀匹配（`uvicorn-1.0` / `nodejs-tools` / `ffmpegx` 一律归 OTHER 不动）；未归类目录也不动。
+3. **C 保留策略**：`StorageAudit.KEEP_ROOTFS_ARCHIVES = 2` 与 `RootfsCache.pruneKeep(ctx, keep = 2)`、`CacheCleaner.prunableRootfsBytes` 是同一个数（`listArchives` 新→旧，`drop(2)`），有单测锁死，避免再出现 E-073 那种两套账。
+4. **清理只删白名单**：`cleanOptionalToolDirs(tools)` 先取 `tools/` 的 canonicalPath 做前缀校验（软链指向别处就跳过），再 `CacheCleaner.deleteTree`；`fun cleanOptionalTools(ctx)` 包一层写 RunLog。
+
+**两个真机坑（都属于"代码看着对、真机没反应"）**：
+
+- **路径多拼一层**：`HermesEnv.hermesHome(ctx)` 返回的**已经就是** `files/home/.hermes`，第一版却写成 `File(home, ".hermes/tools")` ⇒ 真机找的是 `files/home/.hermes/.hermes/tools`。现场表现是体检面板「存储占用：可清理 0MB，未超过 500MB 阈值」，而 `run-as` 里明明堆着 532MB 的假工具目录。同一个错误还让「hermes 本体」那一项永远列不出来（`File(home, ".hermes/hermes-agent")`）。修法：`toolsDir(hermesHome) = File(hermesHome, "tools")`、本体用 `File(hermesHome, "hermes-agent")`，并在 KDoc 里写明 hermesHome 的语义。
+- **markdown 写进了 UI**：确认弹窗文案里写了 `**需要时 hermes 会自己重新下载**`，Compose `Text` 不解析 markdown ⇒ 用户在弹窗里看到字面的星号。UI 文案一律用纯文本，别用 markdown 记号。
+
+**真机验收（Honor PGT-AN10 / Android 16，debug 包，`adb install -r` 保数据）**：
+
+- **D + B**：`run-as` 种入 `tools/chromium-1208-linux-arm64`（520MB）、`tools/cua-driver-0.3.0-linux-arm64`（10MB）、`tools/weird-tool`（6MB，未归类）、保留 `tools/uv-0.12.3-linux-arm64`（核心）。重启 App 后体检面板出现 `存储占用 ✗ 可清理 530MB（Agent 包缓存 / 旧安装包 / 旧依赖代 / 可选工具）`，右侧「看明细」点得动，日志留下 `路由 → settings（来自 home）`；设置页「存储占用」逐项列出 hermes 工具（含未被列为可清的 `weird-tool`），并有按钮「清理可选工具（530 MB）」；确认后日志 `清理可选工具: 删除 2 项（浏览器/媒体/自动化），释放 530MB（需要时 hermes 会重新下载）`，`run-as` 现场：两个白名单目录消失，**`uv-0.12.3-linux-arm64` 与 `weird-tool` 原样留在原地**。
+- **C**：公共区只有 1 个 rootfs 包（`debian-13.7-base-arm64.tar.zst` 192MB）时无可回收；种入两个旧包（`debian-13.6` / `debian-13.5`，各 5MB，mtime 打成 9 月 / 8 月）再堆 520MB 的 `cache/uv/big.bin`，重启后日志 `缓存清理(Agent 包缓存): 删除 1 项 Agent 包缓存，释放 520MB` + `自动清理: 清理前 525MB，释放 525MB（Agent 包缓存 + 旧版安装包 + 临时残留）` —— 525 = 520 + 5（最老的旧包确实进了同一笔账），现场只剩 `debian-13.7`（当前）+ `debian-13.6`（上一个），192MB 的真包没被误删。
+- **B 的诚实边界**：本机 hermes 未装成（`git clone` 一直失败，见 E-072 前后记录），真机 `tools/` 里只剩 `uv` ⇒「chromium 602M + ffmpeg 329M + cua-driver 81M + agent-browser 10M ≈ 1.0G」用的是 Issue #8 里 2026-10-09 的 `du -sh` 实测数；**清理机制**用等价假目录在真机上验证，「删了之后 hermes 会不会自己重新下载」只能留给上游脚本（用户 2026-10-08 原话就是「ffmpeg 是 hermes agent 要用的，不然 hermes 会自己下载的」）。
+
+**四条教训**：
+
+1. 凡「配置根目录 + 子路径」的拼接，先确认那个根变量的语义（`hermesHome` 是 `…/home/.hermes` 而不是 `…/home`）；写错的表现是**静默的 0**，不是异常。
+2. 面板数字与删除集合必须是同一个谓词（E-073 的延续）：这次的阈值、保留数都抽成同一个常量并用单测断言相等。
+3. UI 文案别写 markdown；Compose `Text` 只显示纯文本。
+4. 白名单匹配要用词边界：`uvicorn-1.0` 不能因为前缀是 `uv` 就被当成核心运行时，`ffmpegx` 也不能因为前缀是 `ffmpeg` 就被删。

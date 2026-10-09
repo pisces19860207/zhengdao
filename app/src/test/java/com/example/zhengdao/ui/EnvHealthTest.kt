@@ -116,16 +116,34 @@ class EnvHealthTest {
     }
 
     @Test
-    fun `四个只能去别处处理的体检项都登记了去路`() {
-        assertEquals(setOf("proot", "rootfs", "network", "storage"), EnvHealth.GUIDED_ROUTES.keys)
+    fun `只能去别处处理的体检项都登记了去路`() {
+        // #8-D 起多了一项：存储占用（去设置页看明细 + 一键清理），所以这里从"四个"变成五个。
+        assertEquals(setOf("proot", "rootfs", "network", "storage", "disk"), EnvHealth.GUIDED_ROUTES.keys)
         val allowed = setOf(
             EnvHealth.ROUTE_REPAIR_ENV,
             EnvHealth.ROUTE_STORAGE_GRANT,
             EnvHealth.ROUTE_NET_CHECK,
+            EnvHealth.ROUTE_STORAGE_DETAIL,
         )
         EnvHealth.GUIDED_ROUTES.forEach { (id, route) ->
             assertTrue("$id 的去路必须是已知值（实际 $route）", route in allowed)
         }
+    }
+
+    // ── #8-D（2026-10-09）：存储占用体检 ──
+    //
+    // 阈值必须与自动清理同一条（CacheCleaner.AUTO_THRESHOLD_MB = 500）：面板说"没事"而启动时
+    // 自动清了一大笔、或面板喊"该清了"而自动清理不动手，都是 E-073 那种两套账的翻版。
+
+    @Test
+    fun `存储占用超过阈值才报要清理`() {
+        val (ok, detail) = EnvHealth.diskVerdict(480)
+        assertTrue("没到 500MB 不该打扰用户", ok)
+        assertTrue(detail.contains("480MB"))
+        val (bad, badDetail) = EnvHealth.diskVerdict(500)
+        assertFalse("到阈值就该报出来", bad)
+        assertTrue("要说清能清多少", badDetail.contains("500MB"))
+        assertTrue("要点明是哪几类", badDetail.contains("旧依赖代"))
     }
 
     // ── #1（2026-10-09）：存储项要把「授权位」和「真的读得到」分开 ──
