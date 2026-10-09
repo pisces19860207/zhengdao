@@ -3271,3 +3271,93 @@ val expectedSha = when {
 2. **复制不是「取文本」而是「取得到的文本」**：真机上存在没有任何正文的消息，`parts.filterIsInstance<OcPart.Text>()` 会给你空串 —— 用户看到的是「我操作了、什么都没发生」，比报错更坏。必须有兜底，且空串时把入口置灰。
 3. **做不到的功能要写在界面上，不要假装它不存在**：客户端没有「删单条消息」的能力，面板就明说「服务端不提供此接口」，用户才不会去猜「是不是我没找到」。
 4. **复制成功要能被证伪**：`copyPlainText` 返回布尔值 + Snackbar 如实报成功/失败；真机验证时不要只看 Snackbar，要**粘贴出来逐字对账**。
+
+## E-056 · 2026-10-09 · hermes 怎么装都装不上：uv 的 wheel 缓存被挂到共享存储上，而 FUSE **建不了软链、也不支持 flock**
+
+**症状**（丹房点「安装」，真机）
+
+```
+✗ venv: uv sync exited 1: × Failed to build `hermes-agent @ file:///root/.hermes/installs/…/workspace`
+  ╰─▶ failed to symlink file from /root/.cache/uv/wheels-v6/pypi/packaging/26.3-py3-none-any
+       to ../../../archive-v0/y4X6mZ0dW6rIPn1w: Permission denied (os error 13)
+```
+
+给 guest 侧的 uv 包装器打了「缓存改到私有目录」的临时补丁后，症状**前移一步**，换成另一种失败：
+
+```
+├─▶ Could not acquire lock for `/root/.hermes/cache/uv/sdists-v9/editable/492ff926f31a8f47` at `…/.lock`
+╰─▶ failed to lock `…/.lock`: Function not implemented (os error 38)
+```
+
+**根因**：v2.0.0 的「运行数据统一落 `Download/证道`」（`c1b56d3`）把 uv 的缓存也一起 bind 到了共享存储：
+
+`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` 的 `bindSharedCache(...)` 把
+`/root/.hermes/cache/uv`、`/root/.cache/uv` 挂到 `/storage/emulated/0/Download/证道/cache/uv`（MediaProvider 的 FUSE 卷）。
+而 uv 会在这个目录里**建软链**（`wheels-v6/pypi/<name>/<ver>-<tag>` → `../../../archive-v0/<hash>`）**并放文件锁**。
+
+真机对照实测（同一台设备、同一个进程）：
+
+| 操作 | `/root`（f2fs） | `/storage/emulated/0/…`（FUSE） |
+| --- | --- | --- |
+| `ln -s` | ok | `Permission denied` |
+| `flock` | ok | `Function not implemented (os error 38)` |
+
+⇒ **共享存储不是「普通目录」**。凡是会建软链 / 上锁的包管理器缓存，一律不能落在那儿。
+
+**修法**（本次提交）
+
+1. `ProotLauncher.kt` 里把硬编码的三条 bind 换成一张**显式清单** `sharedCacheBindings()`：只留 `npm → .npm`、`pip → .cache/pip`（它们的缓存里没有软链），**uv 刻意不在表里**（KDoc 写明上面两条实测证据）。
+2. 新增单测 `SharedCacheBindTest`（3 例）把「uv 绝不在清单里」钉死，避免以后有人「顺手加回来」。
+3. 顺带修一处**误导排查的日志**：`AgentInstaller.prepareHermesUvWrapperOnHost` 的返回值是 `changed`（幂等时 `false`），原来却打成 `hermes uv 包装器宿主侧预置：ok=false` —— 昨晚据此误判了半小时。现在按 `changed` 折成「已写入/更新 / 已是最新 / 预置失败」三种人话。
+
+**为什么不是「只把 archive-v0 留私有、wheels-v6 继续共享」**：软链恰恰建在 `wheels-v6` 一侧（实测那条失败软链就长在 `wheels-v6/pypi/…`），两边分家照样失败。
+
+**为什么不在 guest 侧打包装器补丁**：安装器每次都会**重新解包** pinned uv，把包装器覆盖回 ELF 真身（真机实测：补丁在第二次重试时已被抹掉）。要修只能在 App 侧（或改挂载表）。
+
+**验证**（真机，设备 `AD3J023824001723`）
+
+- 修后 `/root/.hermes/cache/uv`、`/root/.cache/uv`、`/root/.hermes/cache` 全部回到 **f2fs**，`/root/.npm`、`/root/.cache/pip` 仍是 fuse（对照：该共享的照旧共享）；
+- 在 uv 缓存目录里 `ln -s` ⇒ ok、`flock` ⇒ ok；缓存里软链从 **0 条** 变成 **109 条**；
+- 重跑安装 ⇒ `✓ Install complete! [main @ 1744a19e0d]`。
+
+## E-057 · 2026-10-09 · 装到 99% 却报「安装失败（退出码 1）」：proot 里没有 systemd，hermes 的 gateway 服务装不上就直接 `exit 1`
+
+**症状**：`✓ Install complete!` 之后紧跟着
+
+```
+  Service installation not supported on this platform.
+Run manually: hermes gateway run
+✗ gateway installation failed
+[证道] 安装失败（退出码 1）。原因就在上面几行；修好后回丹房点「安装」重试。
+```
+
+⇒ 丹房红条「上次安装失败（退出码 1）」，而且 **`hermes` 不会自动启动**（客户端在 rc≠0 时不进启动分支）。用户会遇到「明明装好了，界面说失败」。
+
+**根因**：上游 `hermes-install.sh`（`:828`）的最后一步是
+
+```sh
+"$INSTALL_DIR/.hermes/bin/hermes" gateway install --if-missing </dev/tty || fail "gateway installation failed"
+```
+
+而 `fail()`（`:98`）就是 `exit 1`。proot 里没有 init/systemd，**这一步在这台设备上永远会失败**。
+
+**修法**
+
+1. 安装脚本下到共享存储后，由 App **就地打一个幂等补丁**（新增 `ui/HermesInstallScript.kt`）：把那句的 `|| fail "gateway installation failed"` 换成
+   `|| log_warn "gateway service not installable here (no systemd inside proot); start it by hand if you need it: hermes gateway run"`。
+   锚点找不到就**原样放过**，绝不瞎改；重复执行无副作用（单测 5 例）。
+2. **没有**去改 App 的退出码判定。理由写在 KDoc 里：App 只能靠「二进制在不在」猜成功，会把以后真正的失败一起吞掉；让脚本在**它自己知道原因**的地方降级才对。
+3. 顺带把 `hermes` 放上 PATH：安装器只把它写在 `/root/.local/bin/hermes`，而终端里的 PATH 是 `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`（实测 `hermes: command not found`）。两处补齐：安装命令尾部 `ln -sf /root/.local/bin/hermes /usr/local/bin/hermes`；`ProotLauncher` 落 `/etc/profile.d/zz-local-bin-path.sh`（`export PATH="/root/.local/bin:$PATH"`，因为 `/etc/profile` 会把 PATH 重置，profile.d 的重置之后才 source）。
+
+**教训**
+
+1. 上游脚本「最后一步 `|| fail`」在容器/沙箱里常常是**环境性**失败；客户端要么让它降级成告警，要么别把它的退出码当唯一判据。
+2. 「命令能在自己的全路径下跑」≠「用户能敲」——PATH 是产品的一部分。
+3. （承接 E-056）**不要指望在 guest 里改安装器的持久行为**：它会重新解包自己的工具链。补丁要打在「每次安装都会重新生成/校验」的那一层。
+
+**验证**（真机）
+
+- 按「重试安装」5 秒内：脚本 **44739 → 44831 B**、`grep -c 'gateway service not installable'` = **1**；
+- RunLog：`AgentInstaller: hermes 安装脚本已打 gateway 补丁（只告警不失败）`、`hermes uv 包装器宿主侧预置：已是最新（本次无需改动）`；
+- 安装跑完后 **hermes TUI 自动起来了**（`NOUS HERMES - AI Agent Framework`、`Hermes Agent v0.21.6+199.g1744a19`、`deepseek-flash · 12 tools`）—— 这一条同时证明脚本这次是 **rc=0** 退出（客户端的启动分支只在 rc=0 时走）；
+- `/usr/local/bin/hermes -> /root/.local/bin/hermes` 软链存在（12:34），`/etc/profile.d/zz-local-bin-path.sh` 内容正确。
