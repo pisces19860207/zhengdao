@@ -32,7 +32,12 @@ plugins {
 // ⚠️ 2.0.1（2026-10-09，ERRATA E-056）：修的是自家 2.0 带出的回归 —— uv 的缓存被挂到
 //    共享存储（FUSE）上，FUSE 既建不了软链也拿不到 flock，于是 hermes 依赖装不上。
 //    只动挂载表与一条日志文案，无新功能面，故进 patch 级。
-val appVersionName = "2.0.1"
+// ⚠️ 2.0.2（2026-10-09，ERRATA E-059 / E-060）：盯着「用户不会卸载 App、只会一直点重试」
+//    这一个场景 —— 缓存的安装脚本自检（HTML 错误页 / 门户页 / 半截文件一律判废重下）、
+//    残锁清面（`index.lock` 之外还清 `*.lock`）、已装 Agent 的 ⋮ 里多一个「重新安装」；
+//    另外「安装中」卡片提前说明可能停在 Agent 自己的配置提问上（按 ESC 跳过，别按 Ctrl+C）。
+//    仍无新功能面，故继续进 patch 级。
+val appVersionName = "2.0.2"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -65,7 +70,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 17
+        versionCode = 18
         versionName = appVersionName
 
         ndk {
