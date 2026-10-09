@@ -11,6 +11,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -403,6 +404,9 @@ fun MessageList(
     // 下面 ④/⑤ 两个 LaunchedEffect 会在重新出现的瞬间把滚动位置拉回底部 ⇒ K2 失效。
     followState: MutableState<Boolean> = remember { mutableStateOf(true) },
     positionedSession: MutableState<String?> = remember { mutableStateOf(null) },
+    // 长按某条消息（2026-10-09 用户需求「对话那里能长按复制」）。
+    // 默认空实现：老调用方（含仪器/单测里的直接调用）不改也能编译；真正的入口在 TaijiScreen。
+    onLongPressMessage: (OcMessage) -> Unit = {},
 ) {
     // ❌ 原本 `val listState = rememberLazyListState()` 已被 K2 提到入参。
     //    切 Tab 走 Composable 出入 Composition 的路径，state 提到 HomeTabs 顶层才能跨 Tab 保留。
@@ -473,7 +477,9 @@ fun MessageList(
         ) {
             if (todos.isNotEmpty()) { item { TodoPanel(todos) } }
 
-            items(ordered, key = { it.id }) { msg -> MessageBubble(msg) }
+            items(ordered, key = { it.id }) { msg ->
+                MessageBubble(msg, onLongPress = { onLongPressMessage(msg) })
+            }
 
             if (isStreaming) {
                 item {
@@ -564,16 +570,29 @@ internal fun orderChronologically(messages: List<OcMessage>): List<OcMessage> {
  * 整宽文档流才能让"最终回答"真正成为主角（这也是主流对话客户端的做法）。
  */
 @Composable
-fun MessageBubble(msg: OcMessage) {
+fun MessageBubble(msg: OcMessage, onLongPress: () -> Unit = {}) {
+    // 长按手势（2026-10-09）：移动端没有文本选择，长按是"我想对这条消息做点什么"的通用手势。
+    // 这里只负责**触发**（回调给 TaijiScreen 弹操作面板），不做任何复制动作本身——
+    // 组件不碰 Context/剪贴板，逻辑全在 [MessageCopy] + TaijiScreen，便于 JVM 单测。
+    //
+    // 刻意不用 `indication = null`：用户气泡本来就有点击语义（将来可加"引用"），
+    // 长按时的涟漪是"手势被识别了"的第一反馈（真机上长按无反馈等于没按）。
     if (msg.role == OcMessage.Role.USER) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.widthIn(max = 560.dp),
+                modifier = Modifier
+                    .widthIn(max = 560.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .combinedClickable(
+                        onLongClick = onLongPress,
+                        onLongClickLabel = "复制这条消息",
+                        onClick = {},
+                    ),
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    msg.parts.forEach { PartRow(it) }
+                    msg.parts.forEach { PartRow(it, onLongPress = onLongPress) }
                 }
             }
         }
@@ -583,15 +602,25 @@ fun MessageBubble(msg: OcMessage) {
     // 助手：整宽文档流。渲染单元已按需把连续 reasoning 合并（见 [groupParts]）。
     val items = remember(msg.parts) { groupParts(msg.parts) }
     Column(
-        Modifier.fillMaxWidth(),
+        // 助手消息是无边框文档流，"整块都可点"的涟漪会很怪 ⇒ 关掉 indication，
+        // 只保留长按识别本身（卡片内部的展开头另有自己的涟漪，见 ToolCallCard/ReasoningBlock）。
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onLongClick = onLongPress,
+                onLongClickLabel = "复制这条消息",
+                onClick = {},
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+            ),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items.forEach { item ->
             when (item) {
                 is RenderItem.TextPart -> FinalAnswerText(item.part.text)
-                is RenderItem.ReasoningGroup -> ReasoningBlock(item.parts)
-                is RenderItem.ToolPart -> ToolCallCard(item.part)
-                is RenderItem.Other -> PartRow(item.part)
+                is RenderItem.ReasoningGroup -> ReasoningBlock(item.parts, onLongPress)
+                is RenderItem.ToolPart -> ToolCallCard(item.part, onLongPress)
+                is RenderItem.Other -> PartRow(item.part, onLongPress = onLongPress)
             }
         }
     }
@@ -694,14 +723,14 @@ internal fun groupParts(parts: List<OcPart>): List<RenderItem> {
 // ── Part渲染分发 ──────────────────────────────────────────────────────
 
 @Composable
-fun PartRow(part: OcPart) {
+fun PartRow(part: OcPart, onLongPress: (() -> Unit)? = null) {
     when (part) {
         is OcPart.Text -> if (part.text.isNotEmpty()) {
             Text(part.text, style = MaterialTheme.typography.bodyMedium)
         }
         // ⚠️ 严格按 **part.type** 分派（不靠"是否含 thinking 标签"猜）：
         //    `reasoning` 只进独立的样式化折叠块；`text` 走上一个分支的正文 Text。
-        is OcPart.Reasoning -> ReasoningBlock(listOf(part))
+        is OcPart.Reasoning -> ReasoningBlock(listOf(part), onLongPress)
         is OcPart.Tool -> {
             // 🔍 诊断（用户第 1 步）：dump 工具卡**实际收到**的字段，确认 name / 入参 / 结果是否都在。
             //    用 LaunchedEffect(part) 保证「每个 part 只打一次」，避免轮询重组时刷屏。
@@ -712,7 +741,7 @@ fun PartRow(part: OcPart) {
                         "input=${part.input?.take(120)}"
                 )
             }
-            ToolCallCard(part)
+            ToolCallCard(part, onLongPress)
         }
         is OcPart.File -> Row(verticalAlignment = Alignment.CenterVertically) {
             AttachmentGlyph(tint = MaterialTheme.colorScheme.primary)
@@ -720,7 +749,7 @@ fun PartRow(part: OcPart) {
             Text(part.filename, style = MaterialTheme.typography.bodySmall)
         }
         // ⚠️ 未知 part 保留原文而非静默丢弃（见 OcDto 注释）
-        is OcPart.Unknown -> CollapsibleBlock("未知内容（${part.type}）") {
+        is OcPart.Unknown -> CollapsibleBlock("未知内容（${part.type}）", onLongPress) {
             Text(part.raw.take(400), style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace)
         }
@@ -736,7 +765,7 @@ fun PartRow(part: OcPart) {
  * [ToolState] 三态视觉区分，让用户一眼看出成功/失败。
  */
 @Composable
-fun ToolCallCard(part: OcPart.Tool) {
+fun ToolCallCard(part: OcPart.Tool, onLongPress: (() -> Unit)? = null) {
     var expanded by remember { mutableStateOf(false) }
     // v1.1 第二阶段：统一为「<状态图标> 🔧 <工具名> · <状态>」。
     // 状态图标：运行中 ● / 完成 ✓ / 失败 ✗（计划第 8 条）。
@@ -754,7 +783,14 @@ fun ToolCallCard(part: OcPart.Tool) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { expanded = !expanded },
+            // 单击＝展开/收起（原行为）；长按＝交给外部弹「复制」面板。
+            // 卡片自带点击手势，长按若不在这里接住，会被孩子的 clickable 吃掉（Compose 手势
+            // 先给子节点），于是"长按工具卡复制"会时灵时不灵——所以每个可点区域都显式接长按。
+            .combinedClickable(
+                onClick = { expanded = !expanded },
+                onLongClick = onLongPress,
+                onLongClickLabel = "复制这条消息",
+            ),
     ) {
         Column(Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -853,7 +889,7 @@ private fun ToolStatusBadge(icon: String, text: String, tint: Color) {
  * 「正文看起来属于思考过程」的层级错位。
  */
 @Composable
-private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
+private fun ReasoningBlock(parts: List<OcPart.Reasoning>, onLongPress: (() -> Unit)? = null) {
     var expanded by remember { mutableStateOf(false) }
     val text = parts.joinToString("\n\n") { it.text }.trim()
     if (text.isEmpty()) return
@@ -867,7 +903,11 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth()
-                .clickable { expanded = !expanded }
+                .combinedClickable(
+                    onClick = { expanded = !expanded },
+                    onLongClick = onLongPress,
+                    onLongClickLabel = "复制这条消息",
+                )
                 // 2026-10-08 走查：2dp → 12dp。原来整行只有约 20dp 高，
                 // 「展开/收起思考过程」这个折叠头是全 App 点不中排行榜的第二名。
                 .padding(vertical = 12.dp),
@@ -916,7 +956,11 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>) {
 // ── 可折叠块（未知内容用）─────────────────────────────────────────────
 
 @Composable
-private fun CollapsibleBlock(title: String, content: @Composable () -> Unit) {
+private fun CollapsibleBlock(
+    title: String,
+    onLongPress: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
     Column {
         Text(
@@ -924,7 +968,13 @@ private fun CollapsibleBlock(title: String, content: @Composable () -> Unit) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
             // 2026-10-08 走查：2dp → 12dp（同上方折叠头，原高约 20dp）
-            modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 12.dp),
+            modifier = Modifier
+                .combinedClickable(
+                    onClick = { expanded = !expanded },
+                    onLongClick = onLongPress,
+                    onLongClickLabel = "复制这条消息",
+                )
+                .padding(vertical = 12.dp),
         )
         if (expanded) { HorizontalDivider(); content() }
     }
@@ -1162,6 +1212,102 @@ fun PermissionSheet(
             )
         }
     }
+}
+
+// ── 消息操作底部抽屉（长按消息触发，2026-10-09）───────────────────────
+
+/**
+ * 长按一条消息后弹出的操作面板。
+ *
+ * ## 为什么是底部抽屉，而不是"长按直接复制 + Toast"
+ *
+ * 移动端长按的肌肉记忆是"弹出可做哪些事的菜单"（微信/Telegram/iMessage 都是这样）。
+ * 直接复制有两个问题：① 用户不知道复制的是哪一份（正文？还是连思考过程一起？）；
+ * ② 想复制**整段对话**时无处可点。抽屉把选择交给用户，代价只是多一次点击。
+ *
+ * ## 关于「删除」
+ *
+ * 用户最初的需求是"长按复制、删除"。查过服务端接口（`OcRepository` 里的端点清单）：
+ * 只有 `DELETE /api/session/{id}`（删**整段会话**，已在左侧抽屉提供），
+ * **没有**删单条消息的端点。于是这里**不做**假的删除按钮（点了没反应或只在本地隐藏，
+ * 下次拉取又回来——那是"看着成功、其实没有"），改为一句话说明删除整段会话在哪。
+ *
+ * 文案与可点性都由 [MessageCopy] 计算，面板自身不碰剪贴板（`onCopy` 回调给页面）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageActionsSheet(
+    message: OcMessage,
+    conversation: List<OcMessage>,
+    onCopy: (label: String, text: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val messageText = remember(message) { MessageCopy.textOf(message) }
+    val conversationText = remember(conversation) { MessageCopy.textOfConversation(conversation) }
+    val preview = messageText.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text("消息操作", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (preview.isEmpty()) "（这条消息没有可复制的文字）"
+                else "${MessageCopy.roleLabel(message)}：$preview",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(6.dp))
+            SheetActionRow("复制这条消息", enabled = messageText.isNotEmpty()) {
+                onCopy("zhengdao-message", messageText)
+            }
+            SheetActionRow(
+                "复制全部对话（${conversation.size} 条）",
+                enabled = conversationText.isNotEmpty(),
+            ) {
+                onCopy("zhengdao-conversation", conversationText)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "服务端不提供「删除单条消息」接口，故这里没有删除；整段会话可在左侧「会话历史」里删除。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * 抽屉里的一行操作。禁用态**依然可见**（而不是消失）——用户需要知道"有这件事、只是现在不行"。
+ *
+ * 高度 14dp×2 + bodyLarge 行高 ≈ 52dp，满足无障碍 48dp 最小触摸目标
+ * （与 2026-10-08 走查里"折叠头太矮"是同一类问题的预防）。
+ */
+@Composable
+private fun SheetActionRow(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        style = MaterialTheme.typography.bodyLarge,
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 4.dp, vertical = 14.dp)
+            .semantics { contentDescription = label },
+    )
 }
 
 // ── 历史会话**左侧抽屉**（v1.1 第一阶段「会话完整化」+ 长按删除）─────────
