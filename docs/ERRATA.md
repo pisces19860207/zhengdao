@@ -3391,3 +3391,6 @@ Run manually: hermes gateway run
 3. 一次失败留下的副作用（锁文件、半截文件）必须在下一次重试时被清掉；否则"重试"只是把同样的失败再演一遍。
 
 **验证**：`app/src/test/java/com/example/zhengdao/ui/AgentInstallPrepTest.kt` 12 例（HTML 错误页 / 门户页 / JSON 错误体 / 过短 / 空 / null 判负；正常脚本、前导空行、shebang 前有注释判正；清障命令覆盖 `*.lock` 且不碰 `/sdcard`、`/workspace`、`/root/.local`）；全量单测 **40 suites / 336 例 / 0 失败**。真机复验待设备回到手边（手机被用户带走）。
+
+**同批补的一条路（产品侧）**：已装的 Agent 原先只有「启动」和 ⋮ 里的「卸载」——而用户不会为了修一个坏掉的 Agent 去卸载。现在 ⋮ 里多一个「重新安装」：重跑官方安装脚本（增量，不删配置 / API Key / 会话数据），二次确认弹窗把"不删数据"写清楚。
+为什么不顺手再加一个"彻底重建"：那需要每个 Agent 的构件目录名单（`~/.hermes/installs`、`~/.hermes/cache` 这类），只有已知 Agent 才敢删，而这次没有真机可验（手机被用户带走）——先给一条确定能走的路，更狠的重建按需再加。
