@@ -240,6 +240,10 @@ fun TaijiScreen(
         if (!OcManager.installed(ctx)) return@LaunchedEffect      // 未装：显示引导
         // serveRunning()/startServe() 都是阻塞的（裸 HttpURLConnection + 起进程），必须切 IO
         withContext(Dispatchers.IO) {
+            // 太极自己的预置（人设 AGENTS.md + opencode.json 性能/插件字段 + 旧缓存搬家）：
+            // 2026-10-09 从 ProotLauncher 搬来（ERRATA E-069）——它**必须由太极这条路径触发**，
+            // 否则"只用太极、从不进终端"的用户拿不到人设；同时在起 serve 前把工作区建好。
+            com.example.zhengdao.oc.TaijiPreset.ensure(ctx)
             // ⚠️ 竞态修复：**总是**调 startServe(ctx)，不再用 `if (!serveRunning())` 前置拦截。
             //    startServe 本身幂等：serve 已在运行（典型：重装/重启后上一进程的孤儿仍在
             //    监听）时，它会解析密码并写入 OcManager.servePassword 后返回。
