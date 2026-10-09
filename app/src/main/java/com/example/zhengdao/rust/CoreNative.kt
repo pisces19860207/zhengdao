@@ -74,6 +74,27 @@ object CoreNative {
         msg: ByteArray,
     ): Boolean
 
+    // ────────────────────────── dirsize 模块 ──────────────────────────
+
+    /**
+     * 递归统计目录下**普通文件**的字节数（跳过符号链接子树、无权限条目静默跳过）。
+     *
+     * 语义与 [com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb] 的 Java 实现逐条对齐
+     * （见 `docs/证道-Rust化余地审计-2026-10-09.md` 候选 A）——那是本方法的**对拍基准**。
+     *
+     * 返回 `null` = 这条路走不通（Rust 不可用 / JNI 字符串转换失败），
+     * 调用方**必须**回退 Java 的 `walkFileTree`（规范 #2 回退纪律）。
+     * ⚠️ 刻意不用 `0L` 当错误码：`0` 是"目录真的空"的合法结果，用它当错误码
+     * 会把"读不了"静默误判成"占用为零"。
+     */
+    fun dirSizeBytes(dir: java.io.File): Long? {
+        if (!rustAvailable) return null
+        val n = runCatching { nativeDirSizeBytes(dir.absolutePath) }.getOrNull() ?: return null
+        return if (n < 0L) null else n
+    }
+
+    private external fun nativeDirSizeBytes(path: String): Long
+
     // ────────────────────────── extract 模块 ──────────────────────────
 
     /** 进度回调（native 限频触发，约每 200 条目一次）。 */

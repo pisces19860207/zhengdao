@@ -119,6 +119,14 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: ./gradlew :app:assembleRelease --console=plain
 
+      # E-072：R8 究竟把哪个类/方法改了名，唯一的地面真值是构建产物 mapping.txt —— 单测和
+      #   .so 门禁都够不到它。这一步把"关键类未被改名 + onProgress 保住"变成会红的断言
+      #   （E-022 就是 onProgress 被改名导致 release 一装环境就 SIGABRT）。
+      # ⚠️ 必须紧跟 assembleRelease（上面那步），不能挂到只跑单测的 job 上——否则找不到产物。
+      - name: R8 产物断言（关键类未被改名 + onProgress 保住）
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        run: python3 tools/check-r8-mapping.py
+
       - name: 上传 release APK（冒烟产物，保留 7 天）
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
