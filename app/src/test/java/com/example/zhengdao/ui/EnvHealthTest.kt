@@ -127,4 +127,32 @@ class EnvHealthTest {
             assertTrue("$id 的去路必须是已知值（实际 $route）", route in allowed)
         }
     }
+
+    // ── #1（2026-10-09）：存储项要把「授权位」和「真的读得到」分开 ──
+    //
+    // 第 0 步那次事故的形态是「授权位看着对、共享存储读不到」：`READ_EXTERNAL_STORAGE`
+    // 带着 `maxSdkVersion=32` 帽子 ⇒ Android 13+ 上 READ 权限为空，而 MANAGE 仍可能是 true。
+    // 只复述权限位的体检项永远发现不了它，所以这里锁死"必须真读一次"。
+
+    @Test
+    fun `存储授权位与真实可读都对才通过`() {
+        val (ok, detail) = EnvHealth.storageVerdict(granted = true, readable = true)
+        assertTrue(ok)
+        assertTrue(detail.contains("可直读"))
+    }
+
+    @Test
+    fun `授权位给了但读不到要点明是权限帽子或视图受限`() {
+        val (ok, detail) = EnvHealth.storageVerdict(granted = true, readable = false)
+        assertFalse(ok)
+        assertTrue("要说清不是没授权", detail.contains("已授权"))
+        assertTrue("要指向真正的原因", detail.contains("帽子") || detail.contains("视图"))
+    }
+
+    @Test
+    fun `没授权时的文案照旧指向系统设置`() {
+        val (ok, detail) = EnvHealth.storageVerdict(granted = false, readable = false)
+        assertFalse(ok)
+        assertTrue(detail.contains("系统设置"))
+    }
 }

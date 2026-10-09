@@ -281,15 +281,31 @@ object EnvHealth {
     private fun storageCheck(ctx: Context): Check {
         // 主路径 = MANAGE_EXTERNAL_STORAGE（E-005 修订）。基础 /sdcard 读写不依赖它，
         // 但 Agent 产出工作区的主路径依赖，故以此为准。
-        val ok = runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
+        val granted = runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
+        // 2026-10-09（#1 回归）：只看授权位是不够的——第 0 步那次事故里「授权位看着对、
+        // 共享存储就是读不到」正是 READ 的 `maxSdkVersion` 帽子造成的。这里补一次**真实读**
+        // （`/storage/emulated/0/Download` 列得出来吗），把授权位和真实能力分开报。
+        val readable = SystemInfoProvider.sharedStorageReadable()
+        val (ok, detail) = storageVerdict(granted, readable)
         return Check(
-            id = "storage", label = "存储权限", ok = ok,
-            detail = if (ok) "所有文件访问已授权（主路径）"
-            else "所有文件访问未授权，工作区主路径不可用；到系统设置开启",
+            id = "storage", label = "存储权限", ok = ok, detail = detail,
             // 授权页可由主页直接拉起（HomeScreen 里发 ACTION_MANAGE_APP_ALL_FILES_ACCESS_
             // PERMISSION 带 package: 的 Intent），不必先绕到设置页再找那一行。
             route = if (ok) null else GUIDED_ROUTES["storage"],
         )
+    }
+
+    /**
+     * 存储体检结论（纯函数，便于单测锁死文案与判定）。
+     *
+     * [readable] 必须是「真的去读了一次」的结果，不是权限位的复述：第 0 步的教训就是
+     * 权限位与真实能力会脱节（`READ_EXTERNAL_STORAGE` 带 `maxSdkVersion` 帽子时，
+     * Android 13+ 上 READ 权限为空，而 MANAGE 仍可能是 true）。
+     */
+    internal fun storageVerdict(granted: Boolean, readable: Boolean): Pair<Boolean, String> = when {
+        granted && readable -> true to "所有文件访问已授权，共享存储可直读"
+        granted -> false to "所有文件访问已授权，但共享存储读不到（权限帽子或存储视图受限，需复查）"
+        else -> false to "所有文件访问未授权，工作区主路径不可用；到系统设置开启"
     }
 
     /**
