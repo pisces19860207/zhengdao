@@ -819,7 +819,8 @@ fun SettingsScreen(
                 }) { Text("仅私有") }
             }
             Text(
-                text = "边界约定：Agent 可读写整个 /sdcard 用于查找资料，但产出约定只进工作区——此约定已写入 Agent 人设，终端与太极共用。",
+                text = "边界约定：Agent 可读写整个 /sdcard 用于查找资料，但产出约定只进工作区——此约定已写入**终端** Agent 的人设。" +
+                    "（太极的产出与数据在 App 私有目录里，与这里无关：它的工作区是内部的 files/oc/workspace，人设单独一份。）",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -3936,3 +3936,69 @@ GitHub 上 v2.0.0~v2.0.5 的 Release 页面正文逐字相同：正文里的版�
    加了"缺 `<tag>.md` 就 `::warning::`"这一行，下次漏写会直接在 CI 日志里喊出来。
 3. **回填也是修复**：机制修好只保证"以后对"，已经发出去的五份正文要靠 API 补齐 ——
    否则用户翻历史版本，看到的还是"证道 v2.0.0"。
+## E-069 · 2026-10-09 · 太极的"家"有一半长在终端的院子里 —— 工作区与终端共用，人设还得靠"开一次终端"才写
+
+**背景（用户原话）**
+
+> 把太极的所有工作区什么的和APP归置到一起，既然他的能力不怎么样，不靠他干活了，能读能写就行……
+> 终端的还是保留，毕竟那才是主打。……彻底把opencode和终端的分开。
+
+**问题（三处，都是"概念上没分开"）**
+
+1. **工作区共用**：`OcManager.startServe` 里 `pb.directory(Workspace.hostDir(ctx))` —— 那正是终端
+   bind 进 guest 的 `/workspace`（默认 `/sdcard/Download/证道`）。太极的 HOME/XDG 早在 App 私有目录
+   （`files/oc/…`），工作区却在公共区：卸载 App 只清走一半，用户看到的是"太极能翻到终端的工作区"。
+2. **预置挂在终端身上**：太极的人设（`<XDG_CONFIG_HOME>/opencode/AGENTS.md`）与 `opencode.json`
+   的性能/插件字段，全写在 `terminal/ProotLauncher` 的**终端启动流程**里（E-067 修的正是这份文案）。
+   后果：**只用太极、从不进终端的用户永远拿不到人设** —— v2.0.6 真机验证时，人设正是因为
+   "手动开了一次终端"才落盘的。
+3. **安装包缓存也在公共区**（`Download/证道/opencode/`，68 MB），当初理由是"卸载重装不丢"；
+   用户裁决：跟工作区一起搬进 App。
+
+**修法**
+
+1. 新增 `OcManager.workspaceDir(ctx)` = `files/oc/workspace`；`startServe` 的 `pb.directory` 改用它，
+   起 serve 前 `mkdirs()`。太极从此只在 App 私有目录里读写。
+2. 新增 `OcManager.migrateLegacyCache(ctx)`：把公共区 `<工作区>/opencode/` 里的文件**搬**（不是删）
+   进 `files/oc/pkg`，同名不覆盖，搬完删旧目录；幂等，失败留日志等下轮。可测核心
+   `migrateLegacyCacheDir(legacy, target)` 不依赖 Context。
+3. 太极预置整体搬到新文件 `app/src/main/java/com/example/zhengdao/oc/TaijiPreset.kt`
+   （人设 + `opencode.json` 字段 + 遗留插件清理 + 首装插件预置），唯一调用点 =
+   `ui/taiji/TaijiScreen` 在 `OcManager.startServe(ctx)` 之前；`ProotLauncher` 里那段 79 行的块
+   与 4 个只服务于它的私有常量/函数一并删除（终端启动这条路径从此不碰太极的任何配置）。
+4. 人设升到 **v3**（版本号一变，老装机下次进太极即重写）：钉死工作区路径、写明"不要满手机到处
+   找别的目录来干活、也不要再进终端的工作区"，同时保留 v2 的事实纠正（不在 Debian 里、
+   没有 python/node/git、Linux 的活去「终端」Tab）。
+5. 缓存清理按钮的目标同步：新增私有 `files/oc/pkg`，并保留公共区旧位置一条兜底清残留。
+6. 设置页「工作区」卡片改口：那份"产出只进工作区"的边界约定**只对终端 Agent** 生效。
+
+**验证**
+
+- 单测：新增 `app/src/test/java/com/example/zhengdao/oc/TaijiPresetTest.kt`（人设文案不许再出现
+  旧谎话与旧工作区路径、插件数组形态原样保留、旧缓存搬家/同名不覆盖/空目录不动作、
+  包缓存目标含私有 pkg 与公共区旧位置）；本轮 45 suites / 401 例、0 失败（基线 390 例）。
+- 真机（Honor PGT-AN10 / Android 16，v2.0.7 debug 包）四步全过：
+  1. 进太极一次 → RunLog `[10-09 20:32:23] 太极 AGENTS.md 已写入（工作区:
+     /data/user/0/com.example.zhengdao/files/oc/workspace，人设 v3）`，`files/oc/xdg/config/opencode/AGENTS.md`
+     1983 B、内容已是 v3（含"跑在安卓手机上、App 自己的进程里"、不再出现 guest 路径）。
+  2. `files/oc/workspace/` 由 `startServe` 建出来 ✓。
+  3. **搬家实测**：在"旧位置"造一个探针文件（该机工作区已被用户改成 `custom` ⇒ 旧位置 =
+     `/storage/emulated/0/Download/男性/opencode/`）→ 重启 App 进太极 → 文件出现在
+     `files/oc/pkg/probe-migrate.bin`，旧目录整个消失 ✓。
+  4. **新会话的 shell 工作目录**：让太极自己跑 `pwd`，原始输出 =
+     `/data/user/0/com.example.zhengdao/files/oc/workspace` ✓。
+- ⚠️ **真机另发现（已记，属 opencode 的既有行为）**：**旧会话保留它自己记录的项目目录** ——
+  那个 v2.0.6 时代建的会话里 `pwd` 仍是 `/storage/emulated/0/Download/证道`，新会话才落在私有工作区。
+  太极为此在答复里如实指出"和说明文档里写的唯一工作目录不一致"（人设的"不猜、贴原始输出"起了作用）。
+  用户若要旧会话也搬家，只能重建会话；本次不做数据改写（避免动 opencode 的会话存储）。
+
+**教训**
+
+1. **"数据独立"要连同"工作目录"一起想**：XDG 目录隔离了、工作目录还指着共享区，等于隔离只做了一半。
+   判断两个组件是否真的分开，看它**读写的每一处路径**，不是看它的配置目录。
+2. **预置必须挂在用它的人身上**："要开 A 才写 B 的配置"是最容易漏的一类耦合 —— 编译器、CI、
+   代码评审都不会报错，只有"从不打开 A 的用户"会中招。
+3. **搬家要顺手删旧居**：不删旧目录，用户在公共区仍看得见太极的痕迹，"彻底分开"就只是宣称。
+4. **"进程工作目录"可能只是新数据的默认值**：opencode 给每个会话各记一份项目目录，改进程 cwd
+   只对**新会话**生效 —— 旧会话的 `pwd` 还在老地方。改这类"默认值"时先问一句"已在库里的数据跟不跟着走"，
+   别默认它跟着走；跟不动的部分要写进变更说明，别让用户自己撞见。

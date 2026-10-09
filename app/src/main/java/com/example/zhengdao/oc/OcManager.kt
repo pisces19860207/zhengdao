@@ -121,8 +121,81 @@ object OcManager {
         }.onFailure { RunLog.log("太极: 写 opencode.json 失败 ${it.message}") }
     }
 
-    /** 下载缓存（用户共享存储：Download/证道/opencode/，卸载重装不丢）。 */
-    fun cacheDir(ctx: Context): File = File(Workspace.hostDir(ctx), "opencode")
+    /**
+     * 太极自己的工作区（**App 私有**：`files/oc/workspace/`，2026-10-09 从公共区迁出）。
+     *
+     * 迁移动机（用户原话）：「把太极的所有工作区什么的和 APP 归置到一起……彻底把
+     * opencode 和终端的分开」。太极的 HOME / XDG 四目录 / 人设 / 工作区现在全在
+     * `files/oc/` 这一棵私有树下，卸载 App 一起清掉；终端的公共区工作区
+     * （`Download/证道`、资料库、logs）完全不受影响。
+     *
+     * serve 的**进程工作目录**（模型眼里的项目根）取这里，不再是 `Workspace.hostDir()`。
+     */
+    fun workspaceDir(ctx: Context): File = File(ctx.filesDir, "oc/workspace")
+
+    /**
+     * 太极的安装包下载缓存（**App 私有**：`files/oc/pkg/`）。
+     *
+     * 历史：v2.0.6 及以前放在公共区 `Download/证道/opencode/`，当初的理由是
+     * 「卸载重装不丢，省一次 68MB 下载」；2026-10-09 用户裁决跟工作区一起搬进 App
+     * （接受代价：卸载重装后重新下）。
+     *
+     * 旧位置的残留由 [migrateLegacyCache] 一次性搬走；万一没搬成（无权限等），
+     * 缓存清理按钮的那条「旧位置」目标也会把它收掉。
+     */
+    fun cacheDir(ctx: Context): File = File(ctx.filesDir, "oc/pkg")
+
+    /**
+     * 一次性搬家（幂等）：把公共区遗留的 `<工作区>/opencode/`（v2.0.6 及以前的安装包缓存）
+     * 整体挪进 App 私有的 [cacheDir]。
+     *
+     * 为什么搬而不是直接删：那里面通常躺着一个 68MB 的 `.pkg.tar.xz`，删了下次安装要重下；
+     * 搬完把旧目录删掉——**太极在公共区不该有任何痕迹**（用户要求）。
+     *
+     * @return 是否真的动了东西（供日志与单测断言）。
+     */
+    fun migrateLegacyCache(ctx: Context): Boolean {
+        val legacy = runCatching { File(Workspace.hostDir(ctx), "opencode") }
+            .getOrNull() ?: return false
+        if (!legacy.isDirectory) return false
+        return runCatching {
+            val moved = migrateLegacyCacheDir(legacy, cacheDir(ctx))
+            legacy.delete()
+            moved
+        }.getOrElse {
+            RunLog.log("太极: 旧安装包缓存搬家失败 ${it.message}（下轮启动重试）")
+            false
+        }
+    }
+
+    /**
+     * [migrateLegacyCache] 的可测核心（不依赖 Context）：把 [legacy] 下的文件挪进 [target]。
+     *
+     * 语义：同名的**不覆盖**（新位置更权威，旧的那份直接丢弃——反正是可再下载的安装包缓存）；
+     * 处理完把 [legacy] 整个删掉（太极不该在公共区留任何痕迹）；一次都没搬成返回 false（调用方可留痕）。
+     */
+    internal fun migrateLegacyCacheDir(legacy: File, target: File): Boolean {
+        val files = legacy.listFiles() ?: return false
+        if (files.isEmpty()) return false
+        target.mkdirs()
+        var moved = false
+        files.forEach { f ->
+            val dst = File(target, f.name)
+            if (dst.exists()) {
+                runCatching { f.delete() }
+                return@forEach
+            }
+            val ok = runCatching {
+                if (f.renameTo(dst)) true else {
+                    f.copyTo(dst, overwrite = false)
+                    f.delete()
+                }
+            }.getOrDefault(false)
+            if (ok) moved = true
+        }
+        runCatching { legacy.delete() }
+        return moved
+    }
 
     /**
      * serve 是否存活（HTTP ping，进程被杀/换 PID 都能正确判活）。
@@ -212,7 +285,7 @@ object OcManager {
 
     /**
      * 拉起 serve（宿主进程，不经 PRoot）。已在运行返回 null；失败返回错误消息。
-     * 工作目录 = 用户工作区（Workspace.hostDir）。
+     * 工作目录 = 太极自己的工作区（[workspaceDir]，App 私有；2026-10-09 与终端分开）。
      */
     fun startServe(ctx: Context): String? {
         // serve 可能是孤儿（上一轮 App 被杀、子进程存活监听 14000——App 重启后
@@ -230,13 +303,14 @@ object OcManager {
         return try {
             homeDir(ctx).mkdirs()
             listOf("data", "cache", "config", "state").forEach { xdgDir(ctx, it).mkdirs() }
+            workspaceDir(ctx).mkdirs()
             ensurePermissionPolicy(ctx)
             // 自愈（2026-10-07 事故）：exec 前确保执行位——解压流程已保证，这里兜底
             // 任何 mode 漂移（如本次事故中未走到 chmod 的 600 文件）。失败不阻断，
             // 下面 exec 若仍失败会带真因上报。
             runCatching { android.system.Os.chmod(bin.absolutePath, 493) } // 0755
             val pb = ProcessBuilder(bin.absolutePath, "serve", "--port=$PORT")
-            pb.directory(Workspace.hostDir(ctx)) // 项目 = 用户工作区
+            pb.directory(workspaceDir(ctx)) // 项目 = 太极自己的私有工作区（2026-10-09 起，不再是终端共享工作区）
             val env = pb.environment()
             env["HOME"] = homeDir(ctx).absolutePath
             env["XDG_DATA_HOME"] = xdgDir(ctx, "data").absolutePath
