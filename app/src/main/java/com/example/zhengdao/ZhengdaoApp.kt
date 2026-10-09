@@ -23,7 +23,28 @@ class ZhengdaoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         RunLog.init(this)
+        logSignature()
         autoCleanJunk()
+    }
+
+    /**
+     * 启动签名自检（2026-10-09，ERRATA E-065）。
+     *
+     * 只落一行日志 —— 用户看得见的那份提示在 `MainActivity`（非官方包启动时弹一次）
+     * 与设置页「关于」（常驻一行来源）。放这里是因为 [RunLog] 刚 init 完，
+     * 日志是任何入口（含终端独立 Activity）都会有的共同出口。
+     */
+    private fun logSignature() {
+        runCatching {
+            when (com.example.zhengdao.util.SigningCheck.check(this)) {
+                com.example.zhengdao.util.SigningCheck.Result.OFFICIAL ->
+                    RunLog.log("启动自检：安装包签名 = 官方 ✓")
+                com.example.zhengdao.util.SigningCheck.Result.UNOFFICIAL ->
+                    RunLog.log("⚠️ 启动自检：安装包签名**不是官方的** —— 这个包被重新签过名（重打包）。如果你不是从作者 GitHub 下载的，建议换回官方包。")
+                com.example.zhengdao.util.SigningCheck.Result.UNKNOWN ->
+                    RunLog.log("启动自检：读不到安装包签名（已跳过）")
+            }
+        }
     }
 
     /**
