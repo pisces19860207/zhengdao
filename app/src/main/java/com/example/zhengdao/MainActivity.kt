@@ -121,6 +121,22 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // 通知权限（2026-10-09，#3 验收时发现）：安卓 13 起「装完清理 >500MB」的静默提示
+        // 必须拿到 POST_NOTIFICATIONS，否则系统直接把通知丢掉（真机 `dumpsys package` 里
+        // `POST_NOTIFICATIONS: granted=false`、`AppSettings importance=NONE`、通知列表为空，
+        // 而代码这边"发了通知"看起来一切正常）。冷启动缺就补一次；拒绝只是没有通知，
+        // 不影响任何功能（清理照跑、日志照写）。
+        runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                val perm = "android.permission.POST_NOTIFICATIONS"
+                if (androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
+                }
+            }
+        }
+
         // 存储主路径引导（E-005 修订 / P1，2026-10-06）：MANAGE_EXTERNAL_STORAGE 升为
         // 正式主路径。首启且未授权时主动引导用户到「所有文件访问」设置页（带包名），
         // 失败回退通用设置页；非阻塞，可稍后，设置页仍保留入口。

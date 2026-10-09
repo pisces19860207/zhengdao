@@ -83,4 +83,28 @@ class StoragePermissionGuardTest {
         assertTrue("冷启动没再请求 WRITE_EXTERNAL_STORAGE", activity.contains("WRITE_EXTERNAL_STORAGE"))
         assertTrue("没有真正发起请求（requestPermissions）", activity.contains("requestPermissions"))
     }
+
+    // ── #3 验收时发现的第二顶「帽子」（2026-10-09） ──
+    //
+    // 「装完自动清理 >500MB 的静默提示」在真机上从来没出现过：清单里**没有声明**
+    // POST_NOTIFICATIONS、冷启动也不请求 ⇒ 安卓 13+ 直接丢掉通知，而代码这边看起来一切正常
+    // （真机 `dumpsys package` = `granted=false`、`AppSettings importance=NONE`、通知列表为空）。
+    // 与 READ 的 maxSdkVersion 帽子是同一类错误：不是逻辑写错，是**清单/授权**这一层缺一块。
+
+    @Test
+    fun `通知权限声明了，并且冷启动会请求`() {
+        assertTrue(
+            "清单里缺 POST_NOTIFICATIONS —— 安卓 13+ 上所有通知（含自动清理的静默提示）都会被丢掉",
+            usesPermission(manifestXml(), "POST_NOTIFICATIONS") != null,
+        )
+        val activity = src("src/main/java/com/example/zhengdao/MainActivity.kt").readText()
+        assertTrue(
+            "冷启动没有再请求 POST_NOTIFICATIONS（安卓 13+ 必须运行时请求）",
+            activity.contains("POST_NOTIFICATIONS"),
+        )
+        assertTrue(
+            "请求 POST_NOTIFICATIONS 要按 SDK_INT >= 33 判版本，低版本上没有这个权限常量对应的运行时权限",
+            Regex("SDK_INT\\s*>=\\s*33").containsMatchIn(activity),
+        )
+    }
 }

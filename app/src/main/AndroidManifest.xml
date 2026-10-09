@@ -24,6 +24,12 @@
          该权限在 Play 商店受政策限制，本项目为 GitHub 旁加载分发，不受影响 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- 通知权限（安卓 13+ 运行时权限，2026-10-09 补）：不声明/不请求时系统会静默丢掉
+         本 App 的通知 —— 真机实测「装完自动清理 >500MB 的静默提示」因此从未出现过
+         （`dumpsys package` 里 granted=false、`AppSettings importance=NONE`、通知列表为空）。
+         冷启动时在 MainActivity 里按需请求（requestCode 101）。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- M2 前台服务：targetSdk 28 起即需声明（API 34+ 才另需 foregroundServiceType） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- 唤醒锁（E-054，2026-10-09 补）：SessionService 全程 `PowerManager.newWakeLock(
