@@ -86,10 +86,10 @@
 - **Rust 核心收口（`zhengdao_core`）**：sha256 校验、rootfs 解压（zstd + tar）、安装完整性摘要全部收敛进**单个** `libzhengdao_core.so`——JNI 边界只跨一次、`.so` 只加载一次；native 不可用时**自动回退**纯 Java 路径（sha256 → `MessageDigest`，解压 → commons-compress），可用性可观测
 - **安装完整性 / 环境指纹**（E-044/E-049）：「修复环境」「回退重装」**不再抹掉**环境指纹；同版本整包已在本地时**直接用本地包补指纹**，不再为一个标记重下 192 MB
 - **环境包瘦身**：构建残留清理 + locale 裁剪 + **剔除 GPU 软件渲染栈**（mesa + LLVM 152 MB，实际只切 `libllvm19` 落盘 −118 MB；mesa 本体保留——硬删会被 apt 依赖链连坐带走 ffmpeg）——终端场景**零功能损失**
-- **环境包索引签名**：Ed25519，App 侧**先验签后解析**；CI 端「没有密钥就不许发布」的硬关卡（待仓库 secret 配置后启用，启用顺序见 `docs/ERRATA.md`）
+- **环境包索引签名**：Ed25519，App 侧**先验签后解析**（签名由 Rust 核心验，与平台实现**对拍**，不一致按拒绝处理）；CI 端「没有密钥就不许发布」的硬关卡**已启用**——secret 已配置、线上 `.sig` 可回读验签（2026-10-08，见 `docs/ERRATA.md` E-052）
 - **入库 `.so` 门禁**（E-048）：CI 自动解析 ELF，校验 16KB 页对齐与 JNI 入口符号（期望值现读 `CoreNative.kt` 源码）——「Rust 核心有没有真的在跑」从此由门禁说了算，不再可能静默回退没人知道
 - **终端与太极可靠性一批**：会话 wakelock 续期（修掉「跑满 6 小时静默失保」）、终端画布留白（边到边不再吃行列数）、模型池刷新失败不再静默 + 失败文案走**人话口径**、`zzclean` 缓存自清理命令落盘（`--status` 只看不删）、真机走查三项（白屏防御 / 安装状态行收尾 / 同版本不再谎报「发现新版本」）
-- **测试**：单测 **277 例全绿**（含本轮的 Rust 补丁路径 2 例 + 增量真机 3 例）；Macrobenchmark + Compose 性能基线持续在用
+- **测试**：单测 **296 例 / 35 个 suite 全绿**（`app\build\test-results\testDebugUnitTest`，2026-10-09 09:24 实测 0 失败 0 错误 0 跳过）；Macrobenchmark + Compose 性能基线持续在用
 
 上一发版 **v1.3.0**（2026-10-07，`versionCode 15`）为「可靠性清债 + CI 止血」版本：启动链路三修、OpenCode 启动事故加固、终端页唯一化、CI 补上 `assembleRelease` 并统一签名密钥（详见 [`release-notes.md`](release-notes.md) 与 `docs/ERRATA.md` E-013/E-014）。
 

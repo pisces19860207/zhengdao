@@ -49,13 +49,16 @@ foundations rather than features:
   reused instead of re-downloading ~192 MB.
 - **Smaller environment package**: build leftovers removed, locales trimmed, and the GPU
   software-rendering stack dropped (`libllvm19`, −118 MB on disk) with zero loss for terminal use.
-- **Index signing**: Ed25519; the app verifies the signature before parsing, and CI refuses to
-  publish without the key (awaiting the repository secret).
+- **Index signing**: Ed25519; the app verifies the signature before parsing (the Rust core verifies
+  it and the result is cross-checked against the platform implementation — a mismatch is a rejection).
+  The CI "no key, no publish" gate is live: the repository secret is configured and the published
+  `.sig` has been fetched back and verified (2026-10-08, see `docs/ERRATA.md` E-052).
 - **`.so` gate in CI** (E-048): ELF parsing enforces 16 KB page alignment and the presence of every
   JNI entry symbol (expected names are read from `CoreNative.kt`, never hard-coded).
 - **Reliability batch**: session wakelock renewal, terminal canvas insets, non-silent model-pool
   refresh with human-readable errors, the `zzclean` cache command, and three real-device UI fixes.
-- **Tests**: 277 unit tests green; Macrobenchmark and Compose performance baselines in use.
+- **Tests**: 296 unit tests across 35 suites green (measured 2026-10-09 09:24: 0 failures, 0 errors,
+  0 skipped); Macrobenchmark and Compose performance baselines in use.
 
 ## Network
 
