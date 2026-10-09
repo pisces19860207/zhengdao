@@ -449,7 +449,7 @@ jobs:
             exit 1
           fi
 
-      - name: 检出代码（读取 release-notes.md）
+      - name: 检出代码（准备 Release 正文）
         uses: actions/checkout@v4
 
       - name: 下载构建产物
@@ -475,11 +475,29 @@ jobs:
           echo "file=$APK" >> "$GITHUB_OUTPUT"
           echo "以 $(basename "$APK") 发布"
 
+      - name: 选 Release 正文（按 tag 找专属正文）
+        # E-068：以前 body_path 钉死在 `.github/release-notes.md` 这一份文件上，
+        #      于是 v2.0.1~v2.0.5 的 Release 正文**全都一模一样**（都写着"证道 v2.0.0"、
+        #      "下载 zhengdao-2.0.0-release.apk"）——发版的人以为改一份就够了。
+        # 现在：优先用 `.github/release-notes/<tag>.md`，没有才退回通用正文。
+        # 退回时只 `::warning::` **不失败**：正文写得不完美不该拦住发版。
+        id: notes
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          if [ -f ".github/release-notes/$TAG.md" ]; then
+            echo "file=.github/release-notes/$TAG.md" >> "$GITHUB_OUTPUT"
+            echo "Release 正文：.github/release-notes/$TAG.md"
+          else
+            echo "file=.github/release-notes.md" >> "$GITHUB_OUTPUT"
+            echo "::warning::没有 .github/release-notes/$TAG.md，退回通用正文 .github/release-notes.md（见 docs/ERRATA.md E-068）"
+          fi
+
       - name: 创建正式 Release 并上传 APK
         uses: softprops/action-gh-release@v2
         with:
           name: "证道 ${{ github.ref_name }} — 正式版"
-          body_path: .github/release-notes.md
+          body_path: ${{ steps.notes.outputs.file }}
           files: ${{ steps.apk.outputs.file }}
           draft: false
           prerelease: false
