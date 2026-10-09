@@ -4058,3 +4058,33 @@ E-066/E-067 查的是"界面说了假话"（好环境报红、人设指错路）
    终端是独立 Activity（`keyevent 4` 只收键盘）、会话还活着时 app **不会**重跑 `buildLaunchPlan`。
    现象是"代码没生效"，实际是"根本没触发到那段代码"。验"失败路径"时先确认**失败被制造出来了**
    （日志里看得见），再谈界面。
+
+## E-071 后台被杀没有任何留档（2026-10-09，#5）
+
+**现象**：进程被系统 / 厂商后台管理杀掉之后，App 里查不到任何痕迹——`RunLog` 只记「本轮」，被杀时进程根本来不及落日志；想分析「到底是谁杀的、按什么规则杀的」，只能靠复现。
+
+**根因与事实**（真机取证）：
+1. 系统其实留了权威的「死亡证明」：`ActivityManager.getHistoricalProcessExitReasons(packageName, 0, 20)`（**公开** API；`getHistoricalProcessExitInfos()` 是 `@SystemApi`，普通应用编译都过不去），返回 `ApplicationExitInfo`：原因码 / 时间 / importance / RSS / PSS / 描述 / `traceInputStream`。
+2. **原因码会骗人**：`am kill`、厂商「后台管理」清进程时，系统给的是 `reason=10（REASON_USER_REQUESTED）`——光看码会把最要紧的那类死法说成「用户自己关的」。真机原文：`reason=10 … 描述=[KILL BACKGROUND] kill background`。判「谁杀的」必须以**描述**兜底。
+3. `/proc/self/statm` 的**第 1 列**是 total program size（**虚拟**地址空间），**第 2 列**才是 resident。第一版取了第 1 列，真机心跳打出 `RSS=16610MB`。
+4. 没有 `READ_LOGS`，`logcat -d` 只读得到本 UID 的日志；想让「死前那几十行」留在缓冲区里，必须先把 `RunLog.log` 的每一行**镜像进 logcat**。
+
+**修法**（三处新文件 + 四处接线）：
+- 新增 `app/src/main/java/com/example/zhengdao/keepalive/KeepaliveArchive.kt`：在私有目录 `files/keepalive/` 里留 `exits.log`（死亡证明逐条归档，靠 `pid=` / `ts=` 解析去重、256KB 轮转）、`heartbeat.log`（512KB 轮转）、`logcat-<boot|crash>-<stamp>.txt`（启动即抓 800 行、只留最近 5 份）、`crash-<stamp>.log`、`trace-<stamp>-<pid>.txt`（崩溃 / ANR 抠系统 trace）；`onStartup()` **先抓片段再归档**，异常退出报 `IssueCenter`（id `last-exit`）、正常退出 `resolve`；`export()` 一键拷进公共区 `Download/证道/logs/keepalive`。
+- 新增 `app/src/main/java/com/example/zhengdao/keepalive/KeepaliveWatcher.kt`：`ActivityLifecycleCallbacks`（界面进出）+ `ComponentCallbacks2`（`onTrimMemory` / `onLowMemory`）+ 未捕获异常处理器（写完 `crash-*.log` 仍交给原处理器，**不吞异常**）+ 每 10 分钟的心跳线程；心跳行含「服务在不在 / 堆与系统内存 / RSS / 线程数 / 当前界面」。
+- 新增单测 `app/src/test/java/com/example/zhengdao/keepalive/KeepaliveArchiveTest.kt`（11 例：原因码说人话、后台被杀要认出来、记录行可解析、去重、轮转、截断、RSS 换算、内存档位、片段保留份数、心跳字段）。
+- 接线：`ZhengdaoApp`（`RunLog.init` → `logSignature` → `keepalive()` → `autoCleanJunk`；`install` 同步、归档放后台线程）、`rootfs/RunLog.log`（镜像进 logcat）、`terminal/SessionService`（`@Volatile running`，服务自己报状态）、设置页新增「保活记录（被杀留档）」卡（最近退出 / 最近心跳 / 片段份数 + 导出 / 清空）。
+
+**验证**（真机 Honor PGT-AN10 / Android 16，debug 包）：
+1. 装更新 ⇒ `上次退出：应用被更新（…）`，且**不**报问题（预期内的死法不该吓人）。
+2. 家键退后台 + `am kill` ⇒ `上次退出：被当后台进程清理（KILL BACKGROUND／厂商后台管理）`，主页「最近问题（1）」卡出现，动作为「去设置看记录」。
+3. `am crash` ⇒ `crash-20261009-213617.log`（4.2KB：时间 / pid / 线程 / 异常 / 服务 / 内存 / 界面 / 堆栈全文），下次启动归档为 `reason=4 原因=崩溃（Java/Kotlin 异常）`。
+4. `am force-stop` 后重启 ⇒ 记录为「用户主动结束」，卡片**自动消失**（报与撤都验到）。
+5. 导出实测 ⇒ 8 个文件落到 `Download/证道/logs/keepalive/`，片段里能查到 `I zhengdao:` 我们自己镜像的行；片段只保留最近 5 份。
+6. 单测 48 suites / 426 例 / 1 skipped / 0 失败。
+
+**教训**：
+1. 系统的「原因码」是给机器看的，描述才是给人看的；判「谁杀的」要以描述兜底，否则最要紧的那类死法会被归进「正常」。
+2. 自报的内存数字必须自证合理：`RSS=16610MB` 一眼就是错，别因为「字段名看起来对」就放过。
+3. 留档要放在用户不必天天看见的地方（私有目录），但必须**一键能交出来**（导出按钮 + 公共区）；只写不交等于没留。
+4. 留档的方向要选对：与其在被杀那一刻抢时间（大概率写不完），不如在**下一次启动**时向系统要「死亡证明」。

@@ -49,6 +49,17 @@ class SessionService : Service() {
         /** RSS 警告阈值（MB）：超过则在通知栏明示（骨架 §6 软监控，不主动杀） */
         private const val RSS_WARN_MB = 3072L
 
+        /**
+         * 前台服务是否在跑（#5 留档，2026-10-09）。
+         *
+         * 为什么不用 `ActivityManager.getRunningServices()`：那个 API 对第三方应用早已"只看得见自己"，
+         * 而且要拼一堆服务名判定；这里服务自己就是权威。心跳/崩溃留档把它记进去，
+         * 「被杀时保活锚点还在不在」这条就变成可查的事实，而不是事后猜。
+         */
+        @Volatile
+        var running: Boolean = false
+            private set
+
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SessionService::class.java))
         }
@@ -82,6 +93,7 @@ class SessionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         createNotificationChannel()
         // targetSdk 28 ≤ 32：Android 13+ 上 POST_NOTIFICATIONS 对旧 target 应用默认授予，
         // 无需运行时请求；用户手动关闭通知时 FGS 仍存活但通知不可见（降级体验，可接受）
@@ -110,6 +122,7 @@ class SessionService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(monitorTick)
         releaseWakeLock()
+        running = false
         RunLog.log("前台服务已停止")
         super.onDestroy()
     }
