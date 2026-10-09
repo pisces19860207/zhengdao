@@ -416,6 +416,13 @@ fun SettingsScreen(
                 TextButton(onClick = { kbHelpOpen = true }) { Text("查看说明") }
                 TextButton(onClick = {
                     com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
+                    // P2：顺手请太极的免费模型给长文档补摘要。
+                    // ⚠️ 只挂在"用户亲手点了按钮"这条路径上 —— 不做开机自动跑
+                    //    （P2 方案第八节：等真机验证通过、确认免费模型不限流再考虑自动化）。
+                    // 全程后台、失败只落日志；太极没开 / 没模型时它会自己安静跳过。
+                    com.example.zhengdao.terminal.KnowledgeBaseSummarizerRunner.requestSummaries(ctx) { n ->
+                        if (n > 0) toastOnMain("整理完成，已为 $n 个文件补上摘要")
+                    }
                     toastOnMain("正在整理…")
                     storageTick++
                 }) { Text("重新整理") }

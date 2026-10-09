@@ -48,6 +48,15 @@ object KnowledgeBase {
     private const val KEY_ENABLED = "kb_enabled_v1"
     /** 补摘要任务是否正在进行（P2 用；此刻由 App 写入，UI 只读） */
     private const val KEY_BUSY = "kb_busy_v1"
+    /** 补摘要任务开始的时间戳（用于识别"上一轮留下的僵尸标记"） */
+    private const val KEY_BUSY_AT = "kb_busy_at_v1"
+
+    /**
+     * 「整理中」标记的存活上限。
+     * 超过它就认为那一轮已经不在了（App 被系统杀掉、或进程重启后残留）——
+     * 否则设置页会永远显示「整理中」，用户会以为卡死了。
+     */
+    private const val BUSY_STALE_MS = 5L * 60L * 1000L
 
     /** 单次扫描文件数上限——防极端情况（用户丢了上万个小文件）拖住设备 */
     private const val MAX_SCAN = 2000
@@ -98,7 +107,8 @@ object KnowledgeBase {
         val path = r.absolutePath
         if (!isEnabled(ctx)) return Status(State.DISABLED, 0, path)
         if (!r.isDirectory) return Status(State.NOT_MOUNTED, 0, path)
-        if (Settings.prefs(ctx).getBoolean(KEY_BUSY, false)) {
+        // ⚠️ 用 isBusy() 而不是裸读 KEY_BUSY：它会自愈"上一轮留下的僵尸标记"（见 BUSY_STALE_MS）
+        if (isBusy(ctx)) {
             return Status(State.BUSY, countRaw(ctx), path)
         }
         val n = countRaw(ctx)
@@ -290,6 +300,10 @@ object KnowledgeBase {
     private fun isSymlink(f: File): Boolean =
         runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
 
+    /** 供 P2 摘要流程使用：列出 `原始/` 里的文件（相对路径 + 大小 + 修改时间）。 */
+    fun listRaw(ctx: Context): List<Pair<String, Long>> =
+        scanRaw(ctx).map { it.rel to it.size }
+
     /** 重建 `整理/00-目录.md`。内容未变则跳过。 */
     fun rebuildIndex(ctx: Context) {
         if (!rawDir(ctx).isDirectory) return
@@ -307,9 +321,70 @@ object KnowledgeBase {
         if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return
 
         val text = indexText(items)
-        if (atomicWriteChecked(idx, text)) {
+        // 重渲染是"整份覆盖"，而模板里没有 `## 文件摘要` 一节 ⇒ 不搬回来的话，
+        // 只要 `原始/` 有增删改（或清单被删后重建），模型跑出来的摘要就被静默抹掉。
+        // 搬之前先读旧清单；搬的时候只保留原件还在的行（见 [KnowledgeBaseSummarizer.carryOverSummary]）。
+        val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull()
+        val carried = KnowledgeBaseSummarizer.carryOverSummary(old, text)
+        if (atomicWriteChecked(idx, carried)) {
             prefs.edit().putString(KEY_SIG, sig).apply()
         }
+    }
+
+    // ── P2：摘要回写 ────────────────────────────────────────────────────────
+
+    /**
+     * 把摘要写进 `整理/00-目录.md` 的 `## 文件摘要` 一节（P2）。
+     *
+     * ⚠️ **只写 `整理/`** —— 绝不碰 `原始/`（铁律一）。这是 P2 唯一的落盘点。
+     *
+     * 三件必须同时成立的事：
+     * 1. 清单文件**已存在**（摘要只是**追加**一节，不能凭空造一份清单出来 —— 否则
+     *    "清单还没生成"这个状态会被摘要悄悄盖过去）
+     * 2. 合并后的正文**非空**（[KnowledgeBaseSummarizer.renderInto] 返回 null 就什么都不写）
+     * 3. 写盘走 [atomicWriteChecked]（留 `.bak`、空内容拒绝）
+     *
+     * ⚠️ 写入后**故意不更新** [KEY_SIG]：摘要不是"原始文件变了"，更新指纹会让下一次
+     * 真该重算清单的改动被跳过。代价只是"有摘要时清单会多渲染一次"，无害。
+     *
+     * @return true = 确实写入了
+     */
+    fun writeSummaries(ctx: Context, summaries: Map<String, String>): Boolean {
+        val idx = indexFile(ctx)
+        if (!idx.isFile) return false
+        val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull() ?: return false
+        val merged = KnowledgeBaseSummarizer.renderInto(old, summaries) ?: return false
+        return atomicWriteChecked(idx, merged)
+    }
+
+    /**
+     * 标记"摘要任务正在跑"（设置页状态显示为「整理中」）。
+     *
+     * 与 [KEY_BUSY] 配套：这是**进程内的即时状态**，App 被杀掉后不会残留 ——
+     * 用一个启动时的时间戳来判断"这个标记是不是上一轮回来的僵尸"（超过
+     * [BUSY_STALE_MS] 就当作已经不在跑，避免状态永远卡在「整理中」）。
+     */
+    fun markBusy(ctx: Context) {
+        Settings.prefs(ctx).edit()
+            .putBoolean(KEY_BUSY, true)
+            .putLong(KEY_BUSY_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun clearBusy(ctx: Context) {
+        Settings.prefs(ctx).edit().putBoolean(KEY_BUSY, false).apply()
+    }
+
+    /** 是否正在整理（含"僵尸标记"自愈：超过 [BUSY_STALE_MS] 视为没在跑）。 */
+    fun isBusy(ctx: Context): Boolean {
+        val p = Settings.prefs(ctx)
+        if (!p.getBoolean(KEY_BUSY, false)) return false
+        val at = p.getLong(KEY_BUSY_AT, 0L)
+        if (at > 0 && System.currentTimeMillis() - at > BUSY_STALE_MS) {
+            clearBusy(ctx)
+            return false
+        }
+        return true
     }
 
     private fun indexText(items: List<Item>): String {
@@ -432,7 +507,8 @@ object KnowledgeBase {
         ## 想让 AI 更快找到
 
         - 文件放进 `原始/` 就行，它自己会看
-        - 放了 word 或 pdf？AI 可能要先转一下格式，第一次会慢一点
+        - `txt`、`md`、**Word 的 `.docx`** 都能直接读懂
+        - 如果是 `pdf` 或很老的 `.doc`，AI 可能要先转一下格式，第一次会慢一点
 
         $MARK
     """.trimIndent()
@@ -463,7 +539,8 @@ object KnowledgeBase {
         - 用户说「帮我改一下这个文件」时：读原件 → 把**完整改版**写进 `改版/<原名>（改）.<扩展名>`
           → 回复里说明"**原件没动，改好的在 `改版/` 里**"。
         - 发现某个文件还没被整理过 → **在回复里告诉用户**即可，由 App 去处理；**你自己不要写索引**。
-        - 遇到 `.docx` / `.pdf` 读不了时，先用工具转成文本，**转出的副本放 `改版/`**。
+        - 格式提示：`.docx` 的正文 App 已经抽过（摘要里能看到开头），需要全文时再自己解；
+          真正的旧版 `.doc` 与 `.pdf` App **不解析** —— 读不了时用工具转成文本，**转出的副本放 `改版/`**。
     """.trimIndent()
 
     /**
