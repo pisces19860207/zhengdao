@@ -96,6 +96,8 @@ object Settings {
 @Composable
 fun SettingsScreen(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> },
+    // ⚠️ 2026-10-09：设置页的「插件」入口已移除（插件归太极管，入口在太极页抽屉底部
+    // 的 HistoryDrawer 里，见 TaijiScreen）。此参数保留只为兼容现有调用方，本页不再使用。
     onOpenPlugins: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
@@ -175,8 +177,11 @@ fun SettingsScreen(
     var rootfsMb by remember { mutableStateOf(0L) }
     var homeMb by remember { mutableStateOf(0L) }
     var cacheMb by remember { mutableStateOf(0L) }
-    var pluginCount by remember { mutableStateOf(0) }
     var wsPickerOpen by remember { mutableStateOf(false) }
+    // 资料库（2026-10-09）：状态由 KnowledgeBase 提供；开关默认开
+    var kbStatus by remember { mutableStateOf<com.example.zhengdao.terminal.KnowledgeBase.Status?>(null) }
+    var kbEnabled by remember { mutableStateOf(com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)) }
+    var kbHelpOpen by remember { mutableStateOf(false) }
 
     // ── 权限（存储 + 网络自检）──
     fun storageGrantedNow(): Boolean =
@@ -246,11 +251,9 @@ fun SettingsScreen(
             )
         }
         rootfsMb = sizes.first; homeMb = sizes.second; cacheMb = sizes.third
-        // 已启用插件数（入口行上显示，让用户不用点进去也知道有没有装）
-        // 只数太极实例——插件归 OpenCode 管，终端那份自装的不在本 App 的管理范围。
-        pluginCount = withContext(Dispatchers.IO) {
-            PluginManager.readSpecs(PluginManager.taijiConfig(ctx)).size
-        }
+        // 资料库状态（读目录 → 必须 IO 线程）
+        kbEnabled = com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)
+        kbStatus = withContext(Dispatchers.IO) { com.example.zhengdao.terminal.KnowledgeBase.status(ctx) }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -362,21 +365,80 @@ fun SettingsScreen(
             }
         }
 
-        // ── 插件（2026-10-07 新增）：把 OpenCode 插件从配置文件里显性化 ──
-        // 背景：此前插件被硬编码写进 opencode.json，用户既看不见也关不掉；
-        // 装了个"记忆插件"占 2.6GB 却从未产出记忆，直到全量排查才发现。
-        // 现在给一个正规入口：可见、可开关、可清缓存。
-        SectionCard("插件") {
-            SettingRow(
-                label = "插件管理",
-                value = if (pluginCount > 0) "$pluginCount 个已启用" else "未启用",
-                onClick = onOpenPlugins,
-            )
+        // ── 资料库（2026-10-09 新增）──
+        // 定位：用户把手里的资料丢进工作区后，**终端里的各类 AI 自动能读到**。
+        // 机械层（预置骨架／扫描／写清单／分发指路）由 App 完成；内容理解交给 AI。
+        // ⚠️ 与「太极」无关：OpenCode 插件入口在太极页抽屉里（TaijiScreen 的 HistoryDrawer）；
+        //    本项服务的是**终端**里的 agent（Claude Code／Hermes／AGY／用户自装的其他 agent）。
+        SectionCard("资料库") {
+            val st = kbStatus
+            val stateText = when (st?.state) {
+                com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED -> "已关闭"
+                com.example.zhengdao.terminal.KnowledgeBase.State.NOT_MOUNTED -> "未挂载 · 还没放资料"
+                com.example.zhengdao.terminal.KnowledgeBase.State.BUSY -> "正在整理中…"
+                com.example.zhengdao.terminal.KnowledgeBase.State.ORGANIZED -> "已挂载 · ${st.files} 个文件（含摘要）"
+                com.example.zhengdao.terminal.KnowledgeBase.State.MOUNTED -> "已挂载 · ${st.files} 个文件"
+                null -> "读取中…"
+            }
+            InfoRow("状态", stateText)
+            if (st != null && st.state != com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED) {
+                Text(
+                    text = st.path,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
-                text = "扩展太极里 OpenCode 的能力（如跨会话记忆）。可查看已启用的插件、一键开关、清理下载缓存。",
+                text = "把你的资料放进这个文件夹，终端里的 AI 就会自动找到它。各种格式都行。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                text = "资料只存在你自己的手机上，不会上传到任何服务器。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row {
+                TextButton(onClick = {
+                    val p = kbStatus?.path
+                        ?: com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
+                    runCatching {
+                        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("资料库路径", p))
+                    }
+                    toastOnMain("路径已复制：$p")
+                }) { Text("复制路径") }
+                TextButton(onClick = { kbHelpOpen = true }) { Text("查看说明") }
+                TextButton(onClick = {
+                    com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
+                    toastOnMain("正在整理…")
+                    storageTick++
+                }) { Text("重新整理") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "让终端 AI 自动读取",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = kbEnabled,
+                    onCheckedChange = { on ->
+                        kbEnabled = on
+                        com.example.zhengdao.terminal.KnowledgeBase.setEnabled(ctx, on)
+                        storageTick++
+                    },
+                )
+            }
+        }
+
+        if (kbHelpOpen) {
+            KnowledgeBaseHelpDialog(ctx) { kbHelpOpen = false }
         }
 
         // ── 权限（存储读写 + 网络自检）──
@@ -1497,6 +1559,42 @@ fun SettingsScreen(
  * 旧版把标题塞进卡片里、且是 16sp 半粗——十几张卡读下来每张都是"标题 + 一堆小字"，
  * 分组反而没有层级。标题移到卡外后，视线先落到组标签、再落到这一组的内容。
  */
+/**
+ * 「资料库 · 查看说明」对话框。
+ *
+ * 直接读资料库里的 `说明.md`（那份文件是写给**用户**看的人话说明，通篇无技术词）。
+ * 文件还没生成时给一句友好提示，而不是报错 —— 它会在用户第一次打开终端后出现。
+ */
+@Composable
+private fun KnowledgeBaseHelpDialog(ctx: android.content.Context, onDismiss: () -> Unit) {
+    var body by remember { mutableStateOf("读取中…") }
+    LaunchedEffect(Unit) {
+        body = withContext(Dispatchers.IO) {
+            runCatching {
+                val f = File(
+                    com.example.zhengdao.terminal.KnowledgeBase.root(ctx),
+                    com.example.zhengdao.terminal.KnowledgeBase.F_README,
+                )
+                if (f.isFile) f.readText(Charsets.UTF_8)
+                else "说明文件还没生成 —— 打开一次终端后，它就会出现在资料库文件夹里。\n\n" +
+                    "位置：" + com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
+            }.getOrDefault("读取失败，请到资料库文件夹里直接打开「说明.md」。")
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } },
+        title = { Text("资料库说明") },
+        text = {
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            )
+        },
+    )
+}
+
 @Composable
 internal fun SectionCard(title: String, content: @Composable () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {

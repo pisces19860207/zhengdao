@@ -44,6 +44,10 @@ object KnowledgeBase {
     private const val KEY_CREATED = "kb_created_v1"
     /** 用户删除标记：置位后不再重建 */
     private const val KEY_DELETED = "kb_deleted_v1"
+    /** 总开关（默认开）。关闭后不预置、不扫描、不分发 */
+    private const val KEY_ENABLED = "kb_enabled_v1"
+    /** 补摘要任务是否正在进行（P2 用；此刻由 App 写入，UI 只读） */
+    private const val KEY_BUSY = "kb_busy_v1"
 
     /** 单次扫描文件数上限——防极端情况（用户丢了上万个小文件）拖住设备 */
     private const val MAX_SCAN = 2000
@@ -65,6 +69,77 @@ object KnowledgeBase {
     /** 资料库是否已就绪（骨架存在） */
     fun isReady(ctx: Context): Boolean = File(root(ctx), F_README).isFile
 
+    /** 总开关（默认开）。 */
+    fun isEnabled(ctx: Context): Boolean = Settings.prefs(ctx).getBoolean(KEY_ENABLED, true)
+
+    fun setEnabled(ctx: Context, on: Boolean) {
+        Settings.prefs(ctx).edit().putBoolean(KEY_ENABLED, on).apply()
+    }
+
+    /**
+     * 供设置页显示的**四态**（"能读"与"整理好"是两件事）：
+     * - `未挂载` —— 开关关 / 目录不存在 / `原始/` 是空的
+     * - `已挂载` —— agent 已能读到（清单＋指路就绪）
+     * - `整理中` —— 太极正在补摘要（P2）
+     * - `已整理` —— 有摘要产出（P2）
+     *
+     * ⚠️ 本方法会读目录，**必须在 IO 线程调用**。
+     */
+    enum class State { DISABLED, NOT_MOUNTED, MOUNTED, BUSY, ORGANIZED }
+
+    data class Status(
+        val state: State,
+        val files: Int,
+        val path: String,
+    )
+
+    fun status(ctx: Context): Status {
+        val r = root(ctx)
+        val path = r.absolutePath
+        if (!isEnabled(ctx)) return Status(State.DISABLED, 0, path)
+        if (!r.isDirectory) return Status(State.NOT_MOUNTED, 0, path)
+        if (Settings.prefs(ctx).getBoolean(KEY_BUSY, false)) {
+            return Status(State.BUSY, countRaw(ctx), path)
+        }
+        val n = countRaw(ctx)
+        if (n == 0) return Status(State.NOT_MOUNTED, 0, path)
+        // 有摘要（清单里带"摘要"小节）视为已整理
+        val organized = runCatching {
+            indexFile(ctx).isFile && indexFile(ctx).readText(Charsets.UTF_8).contains("## 文件摘要")
+        }.getOrDefault(false)
+        return Status(if (organized) State.ORGANIZED else State.MOUNTED, n, path)
+    }
+
+    /** 轻量计数（只数文件，不建对象列表）。 */
+    private fun countRaw(ctx: Context): Int {
+        val base = rawDir(ctx)
+        if (!base.isDirectory) return 0
+        var n = 0
+        val stack = ArrayDeque<File>()
+        stack.addLast(base)
+        while (stack.isNotEmpty() && n < MAX_SCAN) {
+            val dir = stack.removeLast()
+            for (f in dir.listFiles() ?: continue) {
+                if (isSymlink(f)) continue
+                if (f.isDirectory) stack.addLast(f) else if (f.isFile) n++
+            }
+        }
+        return n
+    }
+
+    /** 手动触发一次"重新整理"（设置页按钮）。 */
+    fun requestRebuild(ctx: Context) {
+        if (!isEnabled(ctx)) return
+        val t = Thread({
+            runCatching {
+                ensureScaffold(ctx)
+                rebuildIndex(ctx)
+            }.onFailure { RunLog.log("资料库手动整理失败：${it.message}") }
+        }, "zd-knowledge-base-rebuild")
+        t.isDaemon = true
+        t.start()
+    }
+
     // ── 主入口 ──────────────────────────────────────────────────────────────
 
     /**
@@ -75,6 +150,7 @@ object KnowledgeBase {
      */
     fun refresh(ctx: Context) {
         runCatching {
+            if (!isEnabled(ctx)) return@runCatching
             if (!ensureScaffold(ctx)) return@runCatching
             dispatch(ctx)
             val t = Thread({
