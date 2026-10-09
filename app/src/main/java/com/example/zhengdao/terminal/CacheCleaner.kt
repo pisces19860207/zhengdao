@@ -7,7 +7,7 @@ import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
 /**
- * 缓存清理（P4，2026-10-06；**二档 2026-10-07 落地**）。
+ * 缓存清理（P4，2026-10-06；**二档 2026-10-07 落地**；**「Agent 包缓存」直删 2026-10-09 落地**）。
  *
  * 三档白名单**写死**（用户定稿：禁止从配置读）。
  *
@@ -15,7 +15,11 @@ import java.io.File
  * |---|---|---|
  * | 一档（guest 命令） | npm / uv / pip / apt 缓存、Agent 升级残留 | 极低 |
  * | 二档（宿主侧） | `rootfs/tmp` 里有明确指纹的残留：`.<16hex>-<8digits>.so`、`mat-debug-*.log` | 低（下次启动慢几秒） |
+ * | Agent 包缓存（宿主侧直删） | `cache/{npm,uv,pip}`、`Download/证道/opencode`、`home/.npm`、`home/.cache/{uv,pip}`、`home/.hermes/cache`、`oc/xdg/cache` | 低（下次安装/运行会重下，随时可清） |
  * | 三档（永不清） | `.hermes/tools` / `rootfs` 系统层 / home 用户数据 | 删了功能坏 |
+ *
+ * ⚠️「Agent 包缓存」这档**不是三档**（三档是"永不清"那条白名单）；它和一档的区别只是
+ * 执行位置：一档必须在 guest 里跑官方 CLI，这档在宿主侧直接删普通目录，不用开终端。
  *
  * 二档为什么走宿主侧而不是 guest 命令：rootfs 就是宿主上的普通目录——guest 的 `/tmp`
  * 即 `files/rootfs/tmp`（ProotLauncher 写启动横幅用的就是这条映射，见
@@ -291,6 +295,126 @@ esac
         }
         if (count > 0) RunLog.log("缓存清理(二档): 删除 $count 个残留文件，释放 ${bytesToMb(freed)}MB")
         return freed
+    }
+
+    // ── Agent 的「包缓存」（宿主侧直接删，不用开终端）────────────────────────
+
+    /**
+     * Agent 包缓存清理项（2026-10-09 新增，用户原话：「给那个什么多一个清理 agent 的缓存包的按钮」）。
+     *
+     * 为什么要单独有一条（与一档的分工）：
+     * - **一档**是"在终端里跑官方 CLI"（`npm cache clean --force` / `uv cache prune` / `pip cache
+     *   purge` / `apt-get clean`）——官方口径、输出可见，代价是**必须开一次终端**；
+     * - **二档**只管 `rootfs/tmp` 里带命名指纹的陈旧残留；
+     * - 而 Agent 自己下载的东西（opencode 安装包、npm/uv/pip 的包缓存、hermes 自己的 cache）
+     *   全都躺在**宿主侧看得见的普通目录**里，删它们不涉及 guest 的运行状态，
+     *   所以可以做成一个按钮直接删，不必先开终端。真机上这几项加起来是 GB 级的
+     *   （`~/.hermes` 4.4 GB 里 cache 一项 253 MB，npm/uv/pip 公共缓存另计）。
+     *
+     * **边界仍是那条「永不清」白名单（`tools` / `rootfs` 系统层 / `home` 用户数据），宁可少删**：只删"能重新下载 / 重新生成"的缓存 ——
+     * 绝不碰 `.hermes/tools`（装好的 Python/Node 工具链，删了 hermes 直接废）、
+     * `.hermes/installs`（依赖环境与 `MEMORY.md`/`USER.md` 那类记忆）、`.hermes/hermes-agent`
+     * 本体、`rootfs/` 系统层、`home/` 下的配置。
+     *
+     * 纯函数（不吃 Context），路径全由调用方给出，便于单测锁住"不许指到别处"。
+     */
+    internal fun agentCacheTargets(
+        filesDir: File,
+        publicCacheRoot: File,
+        publicRoot: File,
+    ): List<Pair<String, File>> = listOf(
+        // 公共区（Download/证道/cache/<kind>，ProotLauncher 把它们 bind 进 guest 的 ~/.npm 等）
+        "npm 包缓存" to File(publicCacheRoot, "npm"),
+        "uv 包缓存" to File(publicCacheRoot, "uv"),
+        "pip 包缓存" to File(publicCacheRoot, "pip"),
+        // Download/证道/opencode：内置 OpenCode 的安装包（删了下次安装会重下）
+        "opencode 安装包缓存" to File(publicRoot, "opencode"),
+        // 私有 home：没启动过终端、或只用私有模式时，缓存落在这里
+        "npm 缓存（私有）" to File(filesDir, "home/.npm/_cacache"),
+        "uv 缓存（私有）" to File(filesDir, "home/.cache/uv"),
+        "pip 缓存（私有）" to File(filesDir, "home/.cache/pip"),
+        // hermes 把 uv 缓存重定位到这儿（真机 253 MB 的大头）
+        "hermes 缓存" to File(filesDir, "home/.hermes/cache"),
+        // 太极（App 内置 OpenCode）自己的 XDG cache
+        "太极缓存" to File(filesDir, "oc/xdg/cache"),
+    )
+
+    private fun agentCacheTargetsFor(ctx: Context): List<Pair<String, File>> = runCatching {
+        agentCacheTargets(ctx.filesDir, Store.cacheRoot(ctx), Store.root(ctx))
+    }.getOrDefault(emptyList())
+
+    /** Agent 包缓存各项占用（MB），**只列真的存在的**，供确认弹窗逐条展示"将要删什么"。 */
+    fun agentCacheMeasure(ctx: Context): List<Pair<String, Long>> =
+        agentCacheTargetsFor(ctx).map { (name, dir) -> name to dirSizeMb(dir) }.filter { it.second > 0 }
+
+    /** Agent 包缓存合计（MB）。 */
+    fun agentCacheMb(ctx: Context): Long = agentCacheMeasure(ctx).sumOf { it.second }
+
+    /**
+     * 执行清理：删掉 [agentCacheTargets] 里的目录，返回实际释放的字节数。
+     *
+     * ⚠️ **不因为"终端会话还活着"就拒绝执行**（真机教训，2026-10-09）：会话是常驻的
+     * （tmux + 后台 ptmx），拿 `busy()` 当门就等于这个按钮几乎永远点不动 —— 第一次实现
+     * 正是这样，真机上点了没反应。改成**由 UI 提示风险、用户自己决定**：
+     * 可能被影响的是"此刻正在装依赖"的那次安装（缓存被删会重下），已经装好的东西不受影响。
+     */
+    fun cleanAgentCaches(ctx: Context): Long {
+        val roots = runCatching { listOf(ctx.filesDir, Store.cacheRoot(ctx), Store.root(ctx)) }
+            .getOrDefault(listOf(ctx.filesDir))
+        var freed = 0L
+        var count = 0
+        agentCacheTargetsFor(ctx).forEach { (_, dir) ->
+            // 双保险：目标必须在白名单根之下（配置/映射写错也不至于删到系统路径）
+            val ap = runCatching { dir.canonicalPath }.getOrNull() ?: return@forEach
+            val ok = roots.any { r ->
+                runCatching { ap.startsWith(r.canonicalPath + File.separator) }.getOrDefault(false)
+            }
+            if (!ok) return@forEach
+            val before = fileLengths(dir)
+            if (deleteTree(dir)) {
+                freed += before
+                count++
+            }
+        }
+        if (count > 0) RunLog.log("缓存清理(Agent 包缓存): 删除 $count 项 Agent 包缓存，释放 ${bytesToMb(freed)}MB")
+        return freed
+    }
+
+    /**
+     * 递归删除一棵目录树（返回"是否删掉了东西"）。
+     *
+     * **绝不跟随软链**：`walkFileTree` 不传 `FOLLOW_LINKS` 时软链按普通文件处理，
+     * 删掉的是链接自身——uv 缓存里 `archive-v0/<hash>` 全是指向别处的软链，
+     * 跟着走就可能删到白名单之外的东西。删不掉的部分静默跳过（宁可少报，也不抛异常）。
+     */
+    internal fun deleteTree(root: File): Boolean {
+        if (!root.exists()) return false
+        var any = false
+        try {
+            java.nio.file.Files.walkFileTree(
+                root.toPath(),
+                object : java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+                    override fun visitFile(
+                        file: java.nio.file.Path,
+                        attrs: java.nio.file.attribute.BasicFileAttributes,
+                    ): java.nio.file.FileVisitResult {
+                        if (java.nio.file.Files.deleteIfExists(file)) any = true
+                        return java.nio.file.FileVisitResult.CONTINUE
+                    }
+
+                    override fun postVisitDirectory(
+                        dir: java.nio.file.Path,
+                        exc: java.io.IOException?,
+                    ): java.nio.file.FileVisitResult {
+                        if (java.nio.file.Files.deleteIfExists(dir)) any = true
+                        return java.nio.file.FileVisitResult.CONTINUE
+                    }
+                },
+            )
+        } catch (_: Throwable) {
+            // 删不掉就算没删
+        }
+        return any
     }
 
     // ── 工具 ────────────────────────────────────────────────────────────────

@@ -3842,3 +3842,57 @@ guest 里求证：`echo $HOME` = `/root`、`pwd` = `/root`；
 3. 平台差异要在单测里跑出来：这轮 6 个失败全是 Windows 的 `\` 与 `/`
    （`File("/workspace/uv.lock").path` 会变成 `\workspace\uv.lock`）⇒
    映射函数一律输出 `/`，断言比 `File` 对象而不是比字符串。
+
+## E-067 · 2026-10-09 · 太极的人设把「Android 宿主」写成了「proot 里的 Debian」—— 于是它满世界找 Python，找不到就"什么都不会"
+
+**背景**
+
+用户（`m16959`）全新装完后报：「那个太极没有工具啊？我看他在找 Python 3.14.7……还有就是他不知道他在手机里，
+跟在 termux 或者其他方式安装到手机上是差不多的，什么都不会的样子。」
+
+**定位（真机取证）**
+
+- 太极的 serve 是**宿主进程**（`app/src/main/java/com/example/zhengdao/oc/OcManager.kt:238`：
+  `ProcessBuilder(bin.absolutePath, "serve", "--port=$PORT")`，env 里 `PATH=/system/bin`）。
+- 让太极自己跑一遍环境探测，它的原始输出：`pwd` ⇒ `/storage/emulated/0/Download/证道`、
+  `echo PATH=$PATH` ⇒ 空、`ls /` ⇒ `ls: /: Permission denied`、`command -v python3 git node` ⇒ 什么都没有。
+  ⇒ **它的 shell 就是 Android 的 `/bin/sh`（mksh），以 App 自己的 UID 跑**：没有 python / git / node，
+  也看不到 `/workspace`、`/root`。
+- 而它读到的人设（`terminal/ProotLauncher.kt` 写到 `OcManager.configDir(ctx)/AGENTS.md`）开头是
+  「你运行在用户的安卓手机上——一个由证道 App 通过 proot 运行的 Debian 13.7 环境」，
+  文件地图给的是 `/workspace`、`/sdcard`、`/root`，能力边界写着"装依赖用 pip / npm" ——
+  **对着 Android 宿主说 Debian 的话**，模型当然去 `command -v python3`、去 `/root` 找东西，然后扑空。
+- 顺带查清一件事：太极的工具**不是"没有"**。同一个会话里 `shell` 卡片出现两次、都是「✓ 已完成」
+  （它用 `cd /storage/emulated/0/Download/男性 && …` 做过一次文件整理）。
+  用户看到的是"工具跑出来的世界和人设不符"。
+- 旁证：工作区里的 opencode 二进制（`opencode-2.0.22-1-aarch64.pkg.tar.xz` 解出的 `opencode`）里，
+  候选 shell 表是 `.sh zsh /bin/bash … /system/bin/sh`，并读 `process.env.SHELL`；
+  但这个构建实际把工具交给 `/bin/sh -c …`，也就是 Android 的 `/system/bin/sh`。
+
+**修法**（`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt`）
+
+人设文案改成事实：
+
+- **身份**：证道 App 内置的「太极」，**跑在安卓宿主上，不在 Debian 里**；shell 是 `/bin/sh`（mksh）、
+  `PATH` 只有 `/system/bin`；**没有** python/pip/node/npm/git；**看不到** `/workspace`、`/root`
+  （那两个路径只存在于「终端」Tab 的 proot Debian 里）。
+- **能做的**：读写 `/sdcard`、产出放进工作区、用 App 给的工具干活。
+- **干不了也不要硬试的**：Linux 用户态的事（装依赖、跑 python/node/git、批量脚本）
+  ⇒ **明确请用户切到「终端」Tab**；资料库整理、`.docx`/`.pdf` 提取同样交给终端里的 Agent。
+- **纪律**：不要编造命令输出；先 `ls` 再下结论。
+
+⚠️ 只改文案不够：旧逻辑是"文件不存在 **或** 工作区映射变了"才重写 ⇒ **老装机永远读着旧人设**。
+所以新增 `KEY_PERSONA_VER`（`agents_md_ver_taiji`）+ `PERSONA_VERSION = 2`，版本不匹配也重写一次。
+
+**验证（2026-10-09，AD3J023824001723）**
+
+- 进一次终端触发重写后，`files/oc/xdg/config/opencode/AGENTS.md` 已是新文案，RunLog：
+  `[10-09 19:34:48] 太极 AGENTS.md 已写入（工作区映射: /storage/emulated/0/Download/证道，人设 v2）`。
+- 单测：**44 suites / 390 例 / 0 失败**。
+
+**教训**
+
+1. **人设是提示词的一部分，写错等于给模型喂假事实**。这份 `AGENTS.md` 只有一个读者（太极），
+   文案却是照着 guest 环境写的 —— 写之前先回答"谁读它、它跑在哪"。
+2. **文案类修复必须带版本号**：靠"文件在不在 + 参数变没变"判断的缓存式写入，对老用户等于不生效。
+3. 用户说"没有工具"时先看**工具的实际输出**再下结论：这次真相是"工具在跑，但跑在另一个世界里"。
