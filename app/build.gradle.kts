@@ -52,7 +52,14 @@ plugins {
 //    只管摆放、救不回被撑大的宿主，于是落到了宿主左上角；修法是给宿主加
 //    `wrapContentHeight(Alignment.Bottom)`（太极页与设置页各一处）。另附开放 Issue #6 的存储结论
 //    （hermes 是 git 安装 ⇒ `.git` 不能剥离，改做 cache/installs 清理），不改任何逻辑，故进 patch 级。
-val appVersionName = "2.0.5"
+// ⚠️ 2.0.6（2026-10-09，ERRATA E-066 ~ E-068）：三件事一起进 —— ①「丹房两个红叉」的真因修复
+//    （hermes 的 `facts.json` 记录的依赖环境是 **guest 视角**路径，App 却按宿主视角判读写 ⇒
+//    既误报 ✗、又会把记录改写成 hermes 找不到的路径；E-066）；②缓存清理新增「清理 Agent
+//    缓存包」按钮（真机一次释放 437MB，不碰 `tools`/`installs`/`uv.lock`）+ 太极人设 v2
+//    （不再谎称自己跑在 Debian 里 —— 它的 shell 就是安卓宿主 mksh；E-067）；③Release 正文
+//    机制修正（`body_path` 此前钉死 `release-notes.md`，导致 v2.0.1~v2.0.5 五份正文一模一样；
+//    E-068）。仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.6"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -85,7 +92,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 21
+        versionCode = 22
         versionName = appVersionName
 
         ndk {
