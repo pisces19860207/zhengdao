@@ -644,8 +644,13 @@ fun HomeScreen(
                             tone = MaterialTheme.colorScheme.error,
                         )
                     } else if (installing) {
+                        // E-060：安装的最后一步是 Agent **自己的交互式配置向导**（hermes 实测：
+                        // "How would you like to set up Hermes?"）。没人回答它就永远停在那儿——
+                        // 脚本不返回、rc 文件不写，卡片一直「安装中」；而在那里按 Ctrl+C
+                        // （不是 ESC）会把脚本打断，退出码非 0，又变成"装好了却报失败"。
+                        // 我们没法替用户回答向导，但至少能提前把这件事说出来。
                         StatusNote(
-                            text = "正在安装，输出实时显示在「终端」…",
+                            text = "正在安装，输出实时显示在「终端」…（若终端停在配置提问，请在终端里回答或按 ESC 跳过）",
                             tone = MaterialTheme.colorScheme.primary,
                         )
                     } else if (agent.installed && agent.installedVersion != null) {
