@@ -4088,3 +4088,46 @@ E-066/E-067 查的是"界面说了假话"（好环境报红、人设指错路）
 2. 自报的内存数字必须自证合理：`RSS=16610MB` 一眼就是错，别因为「字段名看起来对」就放过。
 3. 留档要放在用户不必天天看见的地方（私有目录），但必须**一键能交出来**（导出按钮 + 公共区）；只写不交等于没留。
 4. 留档的方向要选对：与其在被杀那一刻抢时间（大概率写不完），不如在**下一次启动**时向系统要「死亡证明」。
+
+## E-072 存储读取回归用例：静态守卫 + 真机冒烟（#1）——以及「跑一次仪器测试会把用户的运行环境清空」
+
+**背景**（Issue #1）：第 0 步那次事故（`READ_EXTERNAL_STORAGE` 带 `maxSdkVersion="32"` 帽子 ⇒
+Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储、hermes 找不到用户文件）修好后，
+需要一条防复发用例，当时的缺口是「修复落地了，但用例零产出，androidTest 也不进 CI」。
+
+**修法四条**
+1. CI 能跑的**静态守卫**：`app/src/test/java/com/example/zhengdao/storage/StoragePermissionGuardTest.kt`
+   （4 例：READ 不许再带 `maxSdkVersion`；WRITE / MANAGE 仍在清单；`requestLegacyExternalStorage="true"`
+   与 `targetSdk = 28` 未变；`MainActivity.kt` 冷启动仍补 READ/WRITE 运行时授权）。跟进
+   `:app:testDebugUnitTest`，每次提交都跑。
+2. **真机冒烟**：`app/src/androidTest/java/com/example/zhengdao/storage/StorageReadWriteSmokeTest.kt`
+   （5 例：列 `/storage/emulated/0` 且能看到 `Download`；`SystemInfoProvider.sharedStorageReadable()`
+   为真；读用户真放进 `Download` 的真实文件两遍比对；在 `Download/证道/logs/` 写 8KB ⇒ sha256 比对 ⇒
+   追加 ⇒ 改名 ⇒ 删除；guest 内 `ls /storage/emulated/0/` 能看到 `Download`）。
+   `@Before` 用 UiAutomation 跑 `pm grant` 补存储权限 —— instrumented test 不走 MainActivity 的
+   冷启动补授权，不补就是"权限位为空 ⇒ 全都读不到"的**假红**。
+   guest 那条刻意把启动计划末尾的交互式命令（`tmux new-session -A …`）换成 `/bin/bash -lc <cmd>`，
+   proot 选项与 `-b` 绑定一个不动：换的是"跑什么"，不是"怎么进去"（往 tmux 的 stdin 写命令只会
+   拿回一串乱码）。
+3. 体检项从"只看授权位"改成"授权位 + 真实读"两条：`app/src/main/java/com/example/zhengdao/ui/EnvHealth.kt`
+   的 `storageCheck` 现在调 `SystemInfoProvider.sharedStorageReadable()`（此前**全库无调用方**），
+   判定走新纯函数 `storageVerdict(granted, readable)`：都对 → 通过；授权位有但读不到 → 红，文案直指
+   「权限帽子或存储视图受限，需复查」；没授权 → 原文案指向系统设置。
+4. `ci.yml` 的 `verify` 增加一步 `./gradlew :app:assembleDebugAndroidTest`：CI 的 x86_64 模拟器装不上
+   只打 `arm64-v8a` 的包（用户 2026-10-06 定案「不做 x86_64 模拟器支持」），所以 CI 只能保证
+   androidTest **能编译**；真机跑法写在用例类注释里。
+
+**真机事故与教训（2026-10-09，重要）**
+第一次跑 `:app:connectedDebugAndroidTest` 结束后，AGP **卸载了 App**；本 App 的 `files/` 里装着整台
+"手机上的 Linux"（rootfs 201MB + hermes 4.4G + 太极 opencode 289MB）⇒ 跑一次测就把用户的运行环境
+清空（真机实测：`/data/user/0/com.example.zhengdao` 直接消失，`pm list packages` 里也没有了）。
+- **预防**：跑测必须带 `-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true`（本次已加进
+  用例类注释的跑法里），或改成 `adb install` + `adb shell am instrument` 直跑，绕开 AGP 的装卸逻辑。
+- **抢救**：公共区 `Download/证道/{rootfs,agents,cache}` 不受卸载影响；重装 APK 后首页会出现
+  「恢复上次装过的 N 个 Agent」（本地脚本 + 包缓存优先），rootfs 直接从公共区缓存重解压，不必重下。
+
+**三条教训**
+- 「测试能跑通」与「测试不会毁用户数据」是两件事：碰用户数据的真机测试，先问它会不会动**安装状态**。
+- instrumented test 的权限状态与冷启动路径不同：测试要自己补权限，否则报的是**环境错**、不是代码错
+  （本次第一轮 5 例全红，全部是"READ 权限为空"造成的假红）。
+- 体检项只判"授权位"会漏掉第 0 步那种「位对、读不到」的形态：**能验证结果就别只验证意图**。
