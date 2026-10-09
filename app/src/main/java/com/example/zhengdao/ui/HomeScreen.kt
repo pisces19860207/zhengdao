@@ -71,6 +71,10 @@ fun HomeScreen(
     var healthEpoch by remember { mutableStateOf(0) }
     // 卸载二次确认（P3）：非 null 时弹出确认弹窗
     var uninstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
+    // 2026-10-09（E-059）：已装的 Agent 也要有一条**不卸载**就能重来的路——用户不会为了修一个
+    // 坏掉的 Agent 去卸载 App，而「卸载」只删程序、保留 ~/.hermes 这类用户数据目录，坏在数据里
+    // 的问题它清不掉。「重新安装」= 重跑官方安装器（增量），不删任何东西。
+    var reinstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
     // 卸载（P3/v1.0）：menuOpenFor = 当前展开「更多菜单」的卡片 id；
     // uninstallTarget = 二次确认弹窗的目标 Agent
     var menuOpenFor by remember { mutableStateOf<String?>(null) }
@@ -508,6 +512,14 @@ fun HomeScreen(
                         ?: AgentRepository.stateOf(context, agent)
                     val installing = installState == AgentRepository.State.Installing
                     val failedInstall = installState == AgentRepository.State.Failed
+                    // 一键安装（本地化脚本 + 清锁 + 装完自动启动）：失败重试、首次安装、
+                    // 「更多」菜单里的「重新安装」共用同一条路。
+                    val envReady = RootfsState.installed.value
+                    val startInstall: () -> Unit = {
+                        AgentInstaller.prepareInstall(context, agent) { cmd ->
+                            onOpenTerminal(cmd, agent.id)
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = agent.name,
@@ -518,7 +530,9 @@ fun HomeScreen(
                         // 卸载入口（P3/v1.0）：已装且有卸载命令的才给「更多」。原先它是描述
                         // 下方另起一行的左对齐 "⋮"，真机上孤零零挂在卡片左下角，像列表装饰；
                         // 挪到主操作旁——它和「启动」同属"对这张卡片的操作"。
-                        if (agent.installed && agent.uninstallCmd != null) {
+                        // 2026-10-09（E-059）：菜单里不止「卸载」——已装的 Agent 也要能「重新安装」，
+                        // 所以有安装命令的也把「更多」显示出来。
+                        if (agent.installed && (agent.uninstallCmd != null || agent.installCmd != null)) {
                             Box {
                                 Box(
                                     modifier = Modifier
@@ -541,6 +555,15 @@ fun HomeScreen(
                                     expanded = menuOpenFor == agent.id,
                                     onDismissRequest = { menuOpenFor = null },
                                 ) {
+                                    if (agent.installCmd != null && envReady) {
+                                        DropdownMenuItem(
+                                            text = { Text("重新安装") },
+                                            onClick = {
+                                                menuOpenFor = null
+                                                reinstallTarget = agent
+                                            },
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         text = { Text("卸载") },
                                         onClick = {
@@ -549,13 +572,6 @@ fun HomeScreen(
                                         },
                                     )
                                 }
-                            }
-                        }
-                        val envReady = RootfsState.installed.value
-                        // 一键安装（本地化脚本 + 清锁 + 装完自动启动）：失败重试与首次安装同一条路
-                        val startInstall: () -> Unit = {
-                            AgentInstaller.prepareInstall(context, agent) { cmd ->
-                                onOpenTerminal(cmd, agent.id)
                             }
                         }
                         when {
@@ -721,6 +737,31 @@ fun HomeScreen(
                     }
                     TextButton(onClick = { uninstallTarget = null }) { Text("取消") }
                 }
+            },
+        )
+    }
+
+    // 重新安装二次确认（E-059）：这里要一句一句说清"不删数据"，否则用户会以为它等于卸载。
+    reinstallTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { reinstallTarget = null },
+            title = { Text("重新安装 ${target.name}？") },
+            text = {
+                Text(
+                    "会重新跑一遍官方安装脚本（增量执行）：不会删除已有的配置、API Key 和会话数据。" +
+                        "安装输出实时显示在「终端」。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    reinstallTarget = null
+                    AgentInstaller.prepareInstall(context, target) { cmd ->
+                        onOpenTerminal(cmd, target.id)
+                    }
+                }) { Text("重新安装") }
+            },
+            dismissButton = {
+                TextButton(onClick = { reinstallTarget = null }) { Text("取消") }
             },
         )
     }
