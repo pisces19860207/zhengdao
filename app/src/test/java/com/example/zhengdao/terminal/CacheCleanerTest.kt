@@ -179,6 +179,64 @@ class CacheCleanerTest {
         }
     }
 
+    // ── Agent 包缓存（宿主侧直删；2026-10-09 用户要的按钮）──────────────────
+
+    @Test
+    fun `包缓存目标只落在私有 files、公共 cache、公共区之下`() {
+        val files = File("/data/data/com.example.zhengdao/files")
+        val pubCache = File("/sdcard/Download/证道/cache")
+        val pubRoot = File("/sdcard/Download/证道")
+        val targets = CacheCleaner.agentCacheTargets(files, pubCache, pubRoot)
+        assertTrue(targets.isNotEmpty())
+        targets.forEach { (name, dir) ->
+            val p = dir.invariantSeparatorsPath
+            assertTrue(
+                "$name 指到了允许范围之外：$p",
+                p.startsWith(files.invariantSeparatorsPath) ||
+                    p.startsWith(pubCache.invariantSeparatorsPath) ||
+                    p.startsWith(pubRoot.invariantSeparatorsPath),
+            )
+        }
+    }
+
+    @Test
+    fun `包缓存绝不包含工具链、依赖环境与记忆`() {
+        val files = File("/data/data/com.example.zhengdao/files")
+        val paths = CacheCleaner
+            .agentCacheTargets(files, File("/sdcard/Download/证道/cache"), File("/sdcard/Download/证道"))
+            .map { it.second.invariantSeparatorsPath }
+        // 这几样删了 hermes 就废了 / 用户的记忆就没了，这条清理必须一个都不碰
+        listOf("/.hermes/tools", "/.hermes/installs", "/.hermes/hermes-agent", "/rootfs", "MEMORY.md")
+            .forEach { bad ->
+                assertFalse("包缓存清理不许包含 $bad", paths.any { it.contains(bad) })
+            }
+    }
+
+    @Test
+    fun `删目录不跟随软链——链接指向的目录必须活下来`() {
+        val base = tmpDir()
+        val cache = File(base, "cache").apply { mkdirs() }
+        val outside = File(base, "outside").apply { mkdirs() }
+        File(outside, "keep.bin").writeBytes(ByteArray(4096))
+        File(cache, "inner.bin").writeBytes(ByteArray(1000))
+        val link = File(cache, "link-to-outside").toPath()
+        val created = runCatching {
+            java.nio.file.Files.createSymbolicLink(link, outside.toPath())
+        }.isSuccess
+        // Windows 非开发者模式下建不了软链：跳过（在 Linux/CI 上会真跑）
+        org.junit.Assume.assumeTrue("本机不支持建软链，跳过", created)
+
+        assertTrue("应当删掉了缓存目录里的东西", CacheCleaner.deleteTree(cache))
+        assertFalse("缓存目录本身应当被删掉", cache.exists())
+        assertTrue("软链指向的目录必须原封不动", File(outside, "keep.bin").isFile)
+        assertEquals(4096L, File(outside, "keep.bin").length())
+    }
+
+    @Test
+    fun `删不存在的目录返回 false 而不是抛异常`() {
+        assertFalse(CacheCleaner.deleteTree(File(tmpDir(), "不存在")))
+    }
+
     // ── 目录求和：必须不跟进符号链接 ────────────────────────────────────────
 
     @Test
