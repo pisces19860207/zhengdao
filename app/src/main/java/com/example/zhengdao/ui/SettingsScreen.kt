@@ -1252,6 +1252,19 @@ fun SettingsScreen(
         SectionCard("关于") {
             InfoRow("版本", "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})")
             Spacer(Modifier.height(4.dp))
+            InfoRow("作者", "小信多多")
+            Spacer(Modifier.height(4.dp))
+            // 安装包来源（E-065）：GPL 允许别人重打包，但用户有权知道手里这个包是谁签的。
+            // 只报告，不拦功能 —— 自己改代码自己签名也是 GPL 明确允许的用法。
+            InfoRow(
+                "版本来源",
+                when (remember { runCatching { com.example.zhengdao.util.SigningCheck.check(ctx) }.getOrNull() }) {
+                    com.example.zhengdao.util.SigningCheck.Result.OFFICIAL -> "官方发布 ✓"
+                    com.example.zhengdao.util.SigningCheck.Result.UNOFFICIAL -> "⚠️ 非官方（被重新打包过）"
+                    else -> "未识别"
+                },
+            )
+            Spacer(Modifier.height(4.dp))
             // 外链也走同一套行式组件（右侧统一是 ›），不再是一排蓝色文字按钮
             SettingRow(
                 label = "GitHub 仓库",
@@ -1269,6 +1282,30 @@ fun SettingsScreen(
                 onClick = {
                     ctx.startActivity(
                         Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/issues"))
+                    )
+                },
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            // 许可证与署名：GPL-3.0 要求分发者保留这两样，写在最显眼的「关于」里最省事
+            SettingRow(
+                label = "许可证",
+                value = "GPL-3.0",
+                onClick = {
+                    ctx.startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/blob/main/LICENSE"),
+                        )
+                    )
+                },
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            SettingRow(
+                label = "联系作者",
+                value = "",
+                onClick = {
+                    ctx.startActivity(
+                        Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:putaopanpan@gmail.com"))
                     )
                 },
             )
