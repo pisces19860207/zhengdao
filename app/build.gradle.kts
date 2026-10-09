@@ -59,7 +59,12 @@ plugins {
 //    （不再谎称自己跑在 Debian 里 —— 它的 shell 就是安卓宿主 mksh；E-067）；③Release 正文
 //    机制修正（`body_path` 此前钉死 `release-notes.md`，导致 v2.0.1~v2.0.5 五份正文一模一样；
 //    E-068）。仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.6"
+// ⚠️ 2.0.7（2026-10-09，ERRATA E-069）：太极与终端**彻底分开**（用户拍板）—— 太极的工作区从
+//    共享的 `Download/证道` 换成 App 私有的 `files/oc/workspace`，安装包缓存从
+//    `Download/证道/opencode` 搬到 `files/oc/pkg`（旧的自动搬家并清掉），太极的预置（人设 +
+//    `opencode.json` 字段）从「终端启动」这条路径搬进太极自己拉 serve 之前，人设升 v3。
+//    终端的共享工作区 / 资料库 / 日志一律不动。旧装机升级即自动搬家，无需用户操作。
+val appVersionName = "2.0.7"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -92,7 +97,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 22
+        versionCode = 23
         versionName = appVersionName
 
         ndk {
