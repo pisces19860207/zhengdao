@@ -97,20 +97,36 @@ object AgentInstaller {
         runCatching { Store.adoptDir(dir, File(Store.root(ctx), ".zhengdao/scripts")) }
         var ok = dir.isDirectory || runCatching { dir.mkdirs() }.getOrDefault(false)
         val script = File(dir, "${agent.id}-install.sh")
+        // E-059：缓存的脚本**看起来不像脚本**就先删掉重下。这份缓存在共享存储里，
+        // 卸载 App 也清不掉——一份坏文件（代理 HTML 拦截页 / 半截正文 / 被改坏）会被
+        // 每一次重试复用，用户在丹房看到的是永远同一个失败，且没有任何自救手段。
+        if (ok && script.isFile && !AgentInstallPrep.fileLooksUsable(script)) {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "AgentInstaller: ${agent.id} 缓存的安装脚本不可用（${script.length()} 字符，" +
+                    "疑似错误页/半截文件），删掉重下"
+            )
+            runCatching { script.delete() }
+        }
         // 重试免下载：脚本已在且非空直接复用（用户指定）
         if (ok && (!script.isFile || script.length() < 64)) {
             val tmp = File(dir, "${agent.id}-install.sh.part")
+            var why: String? = null
             ok = runCatching {
                 val text = RootfsDownloader.fetchText(scriptUrl, trimEnds = false)
                     ?: throw IllegalStateException("脚本下载失败")
+                // 下到了、但内容不像脚本（代理拦截页 / 门户登录页 / 半截正文）：
+                // 宁可判定失败退回 curl|bash，也不要把一份坏文件写进共享存储再复用。
+                if (!AgentInstallPrep.looksUsableScript(text)) {
+                    throw IllegalStateException("下载到的内容不像安装脚本（${text.length} 字符，疑似代理拦截页）")
+                }
                 tmp.writeText(text)
                 if (!tmp.renameTo(script)) {
                     tmp.copyTo(script, overwrite = true)
                     tmp.delete()
                 }
-            }.isSuccess
+            }.onFailure { why = it.message }.isSuccess
             if (!ok) com.example.zhengdao.rootfs.RunLog.log(
-                "AgentInstaller: ${agent.id} 安装脚本下载失败，退回 curl|bash 通道"
+                "AgentInstaller: ${agent.id} 安装脚本下载失败（${why ?: "未知原因"}），退回 curl|bash 通道"
             )
         }
         // E-057：上游脚本的最后一步（gateway 服务）在 proot 里注定失败并把 rc 顶成 1，
@@ -145,13 +161,18 @@ object AgentInstaller {
         return buildCommand(ctx, agent, effectiveCmd)
     }
 
-    /** 组合命令：清 git 残锁（坑 #12）→ copy 模式 → 安装 → 自动启动。 */
+    /**
+     * 组合命令：清上一轮残锁（坑 #12，E-059 扩面）→ copy 模式 → 安装 → 自动启动。
+     *
+     * 清障只在**新一轮的第一条命令**里跑，此刻旧会话已被 kill（路由：kill 旧会话 → 起新的），
+     * 所以不存在"删掉别人正持有的锁"这种并发风险；清的是被打断那轮留下的死锁。
+     */
     private fun buildCommand(ctx: Context, agent: AppState.AgentInfo, installCmd: String): String {
         val launch = agent.launchCmd.substringBefore(' ')
         // hermes：包装器在**注入命令之前**由宿主侧落盘（不在命令里拼 base64，见下）
         if (agent.id == "hermes") prepareHermesUvWrapperOnHost(ctx)
         return buildString {
-            append("find /root/.hermes /root/.claude /root/.config -name index.lock -delete 2>/dev/null; ")
+            append(AgentInstallPrep.staleLockCleanup())
             append("export UV_LINK_MODE=copy; ")
             // TMPDIR 指向 home（uv 缓存与目标同侧，避免跨挂载点；WorkBuddy 建议）。
             // TMPDIR 不带 UV_ 前缀，hermes pm 的 UV_* 剥离不影响它（未实测·推断）
