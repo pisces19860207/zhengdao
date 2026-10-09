@@ -7,8 +7,8 @@
 //! 取代此前 `libsha256poc.so` + `libextract.so` 两个 .so 并存的形态。
 //!
 //! 分层（R2 已固化的纪律，收编后不变）：
-//! - 纯逻辑层：[`sha256`]（原 sha256poc）、[`extract`]（原 extract）——不碰 JNI，
-//!   PC 上 `cargo test` 即可验证；
+//! - 纯逻辑层：[`sha256`]（原 sha256poc）、[`extract`]（原 extract）、[`dirsize`]（R3 新增）
+//!   ——不碰 JNI，PC 上 `cargo test` 即可验证；
 //! - JNI 薄层：[`jni_bridge`]（仅 android 目标编译）——错误一律转成 JSON 或 null，
 //!   **绝不 panic 跨 FFI**。
 //!
@@ -16,6 +16,7 @@
 //! `ExtractNative` 两个对象已随本次收编删除，回退纪律不变：native 不可用时
 //! 一律走平台实现，调用方无感知）。
 
+pub mod dirsize;
 pub mod ed25519;
 pub mod extract;
 pub mod sha256;
