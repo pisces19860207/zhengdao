@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -537,10 +538,19 @@ fun TaijiScreen(
         // C2：发送失败的 Snackbar 锚点。align BottomCenter 让它浮在输入框 + 底栏之上；
         // navigationBarsPadding 避免手势导航的横条压住 Snackbar 关闭按钮。
         // 不加 imePadding —— Snackbar 出现时键盘通常不在屏（用户已经松手了）。
+        //
+        // ★ E-058（2026-10-09）：**wrapContentHeight 不能省**。根 Box 是 fillMaxSize()，
+        // 而 Modifier.fillMaxSize()（FillNode）会往下传「min = max = 全屏」的固定约束；
+        // Box 的 measure policy 把 constraints.copyMaxDimensions() 交给子节点时**保留了 min**，
+        // 于是 SnackbarHost 内部的 Box 被撑成整屏（真机实测 1312x2425），
+        // Snackbar 就在那个 Box 里按默认 TopStart 摆放 —— 结果弹到屏幕顶部（压住顶栏）。
+        // wrapContentHeight(Alignment.Bottom) 把 min 高度放回 0（WrapContentNode），
+        // 宿主恢复成"裹住内容"，再由外层贴底。改这里时请一起看 ui/SettingsScreen.kt 的同款写法。
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .wrapContentHeight(Alignment.Bottom)
                 .navigationBarsPadding(),
         )
     }
