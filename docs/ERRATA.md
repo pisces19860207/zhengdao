@@ -4258,3 +4258,28 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 2. 面板数字与删除集合必须是同一个谓词（E-073 的延续）：这次的阈值、保留数都抽成同一个常量并用单测断言相等。
 3. UI 文案别写 markdown；Compose `Text` 只显示纯文本。
 4. 白名单匹配要用词边界：`uvicorn-1.0` 不能因为前缀是 `uv` 就被当成核心运行时，`ffmpegx` 也不能因为前缀是 `ffmpeg` 就被删。
+---
+
+## E-076　「静默通知」从来没出现过：安卓 13+ 的通知权限既没声明也没请求（#3 验收）
+
+**现象**：#3 的验收里有一条「完成后通知栏静默提示」。代码侧看起来一切正常——自动清理跑完、`CacheNotifier.cleaned(...)` 也调了、日志里 `自动清理: 清理前 520MB，释放 520MB` 一行不少——但**通知栏里永远没有这条通知**，从 v2.0.x 起一直如此，没人发现（因为没人会为一条"清理好了"的静默提示专门去翻通知栏）。
+
+**取证（真机 Honor PGT-AN10 / Android 16，debug 包）**：
+
+1. `adb shell dumpsys package com.example.zhengdao` ⇒ `POST_NOTIFICATIONS: granted=false`；对照 `app/src/main/AndroidManifest.xml`，**清单里根本没有声明这个权限**。
+2. `adb shell dumpsys notification --noredact` ⇒ `AppSettings: com.example.zhengdao (10412) importance=NONE userSet=false`，且 `Notification List:` 是**空的**（清理刚跑完、日志刚写完的同一时刻）。
+3. 同一次实验里把权限用 `pm grant` 补上（等价于用户在弹窗点"允许"）再复现 ⇒ `NotificationRecord(… pkg=com.example.zhengdao id=20261010 … importance=2 … flags=AUTO_CANCEL)` 出现，通知栏截图能看到「证道 · 已自动清理缓存 / 释放 520MB（清理前 520MB）· 下次安装会重新下载」。
+
+**根因**：安卓 13（API 33）起 `POST_NOTIFICATIONS` 是**运行时权限**：清单不声明、冷启动也不请求 ⇒ 系统**静默丢弃**该应用的所有通知（渠道建得再对也没用），应用侧没有任何异常可看。这与 E-004/E-005 的 `READ_EXTERNAL_STORAGE maxSdkVersion="32"` 帽子是同一类错误：**不是逻辑写错，是清单/授权这一层缺一块**。
+
+**修法**：
+
+1. `app/src/main/AndroidManifest.xml` 声明 `<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />`（附注释说明真机取证）。
+2. `app/src/main/java/com/example/zhengdao/MainActivity.kt` 冷启动在存储补授权之后补一段：`SDK_INT >= 33` 且未授权时 `ActivityCompat.requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 101)`；拒绝只是没有通知，清理照跑、日志照写，不打断任何功能。
+3. `app/src/test/java/com/example/zhengdao/storage/StoragePermissionGuardTest.kt` 增一例静态守卫（跟进 `:app:testDebugUnitTest`，CI 也跑）：清单必须声明 `POST_NOTIFICATIONS`、`MainActivity` 必须请求它、必须有 `SDK_INT >= 33` 的版本判断。
+
+**教训**：
+
+1. 凡是"用户该看到但没看到"的东西，验收要看**系统侧的证据**（`dumpsys notification` / `dumpsys package`），不能只看自己代码有没有调用——`CacheNotifier.cleaned` 被调用、RunLog 写了、逻辑全对，用户那头依然是零。
+2. 权限类的失败要按"声明 → 请求 → 授权 → 生效"四段逐段取证；这一次断在第一段（声明）就断了，后面三段都白搭。
+3. 静默通知这类"不打扰"的设计最容易被这种 bug 藏住：它不报错、不崩溃、不影响功能，只在你专门找它的时候才暴露。验收标准写进 Issue 时就该写成"通知栏能看到这条通知"，而不是"实现了通知"。
