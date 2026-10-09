@@ -3238,3 +3238,36 @@ val expectedSha = when {
 2. **`runCatching{}` + 权限从不声明 = 一个功能可以"存在很久却从未生效"**：保活锁的代码、注释、30 秒补取全都在，唯独少了 manifest 里那一行。凡是"取资源/申请权限"的调用点，异常必须落盘一句人话，不能吞。
 3. **每 30 秒刷一条日志 ≠ 有可观测性**：那句"已失效，重新获取"看起来像在工作，实际把真正的失败行淹掉了。重复事件要么聚合，要么升级成界面上的可见状态。
 4. **验证要靠能触发失败的输入**：想让 Agent 失败，不必等模型抽风 —— 点工具授权的「拒绝」就是最便宜的故障注入；反过来，"失败路径到底有没有上屏"只有真让它失败一次才知道。
+
+## E-055 · 2026-10-09 · 对话里的字**既选不中也复制不了**：消息列表是只读渲染、长按零响应；而「删除单条消息」服务端根本没有这个接口 —— 于是只做能做的（复制），并把做不到的写在面板里
+
+**缺口**
+
+- 太极对话（`MessageList` → `MessageBubble` / `PartRow` / `ToolCallCard` / `ReasoningBlock`）全是**只读渲染**：没有任何可选择、可长按、可复制的入口。用户想把 Agent 的回答、报错、命令搬到别处（贴给别人看、粘给别的模型），只能**手动抄**。
+- 真机上还有一类特别难抄的消息：Agent「只调工具、一句话不说」（消息里 `parts` 只有 `Reasoning` + `Tool`，`OcPart.Text` 一个都没有）。界面上一整块工具卡，用户想复制的恰恰是卡里的命令与输出。
+- **「删除」是假需求**：`app/src/main/java/com/example/zhengdao/oc/OcRepository.kt:753-772` 只有 `deleteSession(sessionId)`（`DELETE /api/session/{id}`），**没有**删单条消息的端点。客户端做「删掉这条」只能是本地隐藏，刷新一次就回来 —— 比没有更坏。
+
+**修法**
+
+1. 新增 `app/src/main/java/com/example/zhengdao/ui/taiji/MessageCopy.kt`：`internal object MessageCopy` —— `textOf(msg)` **正文优先**（有 `OcPart.Text` 就只复制正文、多段用空行连接），正文为空才按 parts 顺序兜底拼「（思考过程）」「（工具 <名> · <状态>）」+ 入参/结果、「（附件）」、未知原文；单个工具字段 8000 字截断并写明「…（已截断，原文 N 字）」；`textOfConversation(messages)` 每条加「我：/助手：/系统：」抬头、消息之间 `\n\n———\n\n`。
+2. 新增 `app/src/main/java/com/example/zhengdao/util/Clipboard.kt`：`copyPlainText(context, label, text): Boolean` —— 空串直接 false、取不到 `ClipboardManager` false、`setPrimaryClip` 用 `runCatching` 包住；**返回布尔值**是为了让调用方如实弹「复制失败」，不制造假成功。
+3. `app/src/main/java/com/example/zhengdao/ui/taiji/TaijiComponents.kt`：`MessageBubble` / `PartRow` / `ToolCallCard` / `ReasoningBlock` / `CollapsibleBlock` 全链路接 `combinedClickable(onLongClick = …, onLongClickLabel = "复制这条消息")` —— 这些孩子自己那些「点开折叠」的 `clickable` 会把长按**吃掉**，所以每个可点区域都得自己接长按；助手气泡是整宽文档流，用 `indication = null, interactionSource = remember { MutableInteractionSource() }` 避免整块涟漪。
+4. 新增 `MessageActionsSheet`（`ModalBottomSheet`）：「复制这条消息」/「复制全部对话（N 条）」，**文本为空时置灰禁用**（不是隐藏 —— 用户要看得见「为什么不能复制」）；底部写明「服务端不提供『删除单条消息』接口，故这里没有删除；整段会话可在左侧『会话历史』里删除。」
+5. `app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt`：长按 ⇒ 开面板；复制 ⇒ **先关面板再** `snackbarHostState.showSnackbar("已复制到剪贴板" / "复制失败：系统剪贴板不可用")`（面板不关就会把 Snackbar 挡住）。
+6. 新增 `app/src/test/java/com/example/zhengdao/ui/taiji/MessageCopyTest.kt` 11 例，逐条覆盖上面每条规则（含「完全空的消息复制出空串 ⇒ 面板据此禁用入口」）。
+
+**实测**
+
+- JVM：`:app:compileDebugKotlin :app:testDebugUnitTest` = **BUILD SUCCESSFUL in 38s**；**37 suites / 316 tests / 0 failures / 0 errors / 0 skipped**（新增 `MessageCopyTest` 11 例，time 0.011）。上一轮 36 / 305。
+- 真机（AD3J023824001723，`2.0.0` debug，`adb install -r` 保数据）：
+  - 长按第一条用户气泡 ⇒ 面板 `消息操作` + 预览 `我：run ls -a then tell me one short line` + `复制这条消息` / `复制全部对话（11 条）`；
+  - 点「复制这条消息」⇒ 1 秒内 Snackbar **`已复制到剪贴板`**；
+  - **端到端对账**：点输入框 + `input keyevent 279`（`KEYCODE_PASTE`）⇒ 输入框内容**逐字等于** `run ls -a then tell me one short line`（即系统剪贴板里真的是这段文本，不只是弹了个提示）；
+  - 长按助手那条「只有思考过程 + 工具卡、没有正文」的消息 ⇒ 预览走兜底分支 `助手：（思考过程）…`（正文为空也没复制出空串）。
+
+**教训**
+
+1. **长按要自己接住**：`combinedClickable` 只对它挂的那个节点生效；孩子若自己是 `clickable`（「点开折叠」），事件到不了父节点 —— 想让整条消息可长按，就得把 `onLongClick` 沿组件树一层层传下去。
+2. **复制不是「取文本」而是「取得到的文本」**：真机上存在没有任何正文的消息，`parts.filterIsInstance<OcPart.Text>()` 会给你空串 —— 用户看到的是「我操作了、什么都没发生」，比报错更坏。必须有兜底，且空串时把入口置灰。
+3. **做不到的功能要写在界面上，不要假装它不存在**：客户端没有「删单条消息」的能力，面板就明说「服务端不提供此接口」，用户才不会去猜「是不是我没找到」。
+4. **复制成功要能被证伪**：`copyPlainText` 返回布尔值 + Snackbar 如实报成功/失败；真机验证时不要只看 Snackbar，要**粘贴出来逐字对账**。

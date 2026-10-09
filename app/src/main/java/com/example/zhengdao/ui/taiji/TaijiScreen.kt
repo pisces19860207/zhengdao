@@ -134,6 +134,10 @@ fun TaijiScreen(
     // 面板内容复用设置页那一份 PluginsScreen，避免两份 UI 各自变。
     var showPlugins by remember { mutableStateOf(false) }
     var pluginCount by remember { mutableStateOf(0) }
+    // 长按某条消息 → 操作面板（2026-10-09 用户需求「对话那里长按能复制」）。
+    // 这里只存"哪条消息被长按了"；文本怎么拼（正文优先 / 工具卡兜底）在 MessageCopy 里，
+    // 面板只负责展示与回调 —— UI 状态与文本规则分开，后者可 JVM 单测。
+    var actionMessage by remember { mutableStateOf<OcMessage?>(null) }
     // 开抽屉 / 面板开合都重算一次：插件是在面板里改的，回到抽屉必须看到新数字。
     LaunchedEffect(drawerState.isOpen, showPlugins) {
         pluginCount = withContext(Dispatchers.IO) {
@@ -426,6 +430,8 @@ fun TaijiScreen(
                                 // K2 配套：跟随标记与"已定位会话"也由外部注入（见本函数签名注释）
                                 followState = followState,
                                 positionedSession = positionedSession,
+                                // 长按消息 → 弹操作面板（复制到剪贴板）
+                                onLongPressMessage = { actionMessage = it },
                             )
                         }
                     }
@@ -498,6 +504,28 @@ fun TaijiScreen(
 
         // 插件面板（2026-10-08）：从抽屉进来，内容复用设置页那份 PluginsScreen。
         if (showPlugins) PluginsSheet(onDismiss = { showPlugins = false })
+
+        // 长按消息的操作面板（2026-10-09 用户需求）。面板把文本拼好回传，这里只管
+        // "写剪贴板 + 告诉用户结果"：复制失败也必须有提示，不能弹「已复制」骗人
+        // （copyPlainText 返回 false 时文案明确说失败）。
+        actionMessage?.let { msg ->
+            MessageActionsSheet(
+                message = msg,
+                conversation = state.messages,
+                onCopy = { label, text ->
+                    actionMessage = null // 先关面板，Snackbar 才看得见
+                    val ok = com.example.zhengdao.util.copyPlainText(ctx, label, text)
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = if (ok) "已复制到剪贴板" else "复制失败：系统剪贴板不可用",
+                            withDismissAction = true,
+                            duration = SnackbarDuration.Short,
+                        )
+                    }
+                },
+                onDismiss = { actionMessage = null },
+            )
+        }
 
         // ★ 权限批准：不可省。Agent 改文件时会发 permission.asked，不响应就卡死。
         state.pendingPermission?.let { perm ->
