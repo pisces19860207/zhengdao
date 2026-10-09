@@ -327,8 +327,11 @@ esac
         "npm 包缓存" to File(publicCacheRoot, "npm"),
         "uv 包缓存" to File(publicCacheRoot, "uv"),
         "pip 包缓存" to File(publicCacheRoot, "pip"),
-        // Download/证道/opencode：内置 OpenCode 的安装包（删了下次安装会重下）
-        "opencode 安装包缓存" to File(publicRoot, "opencode"),
+        // 太极的安装包下载缓存：v2.0.7 起落在 App 私有 files/oc/pkg（删了下次安装会重下）
+        "opencode 安装包缓存" to File(filesDir, "oc/pkg"),
+        // 旧位置（公共区 Download/证道/opencode，v2.0.6 及以前）：本该由 TaijiPreset 的
+        // 一次性搬家收掉；万一用户装完后一直没进过太极，点这个按钮也能把公共区清干净。
+        "opencode 安装包缓存（旧位置）" to File(publicRoot, "opencode"),
         // 私有 home：没启动过终端、或只用私有模式时，缓存落在这里
         "npm 缓存（私有）" to File(filesDir, "home/.npm/_cacache"),
         "uv 缓存（私有）" to File(filesDir, "home/.cache/uv"),
