@@ -399,7 +399,7 @@ APK 本体更新太慢，以下组件全部做成**版本化热更新组件**，
 
 - [ ] 所有 .so 16KB 对齐（⚠️ 仓库内**没有** `check_elf_alignment.sh`；用 `llvm-readelf -l <so> \| grep LOAD` 逐个看 `p_align ≥ 0x4000`）
 - [ ] 出包形态：**arm64 单 APK** ≤ 20MB（Gradle `splits.abi` 出 APK；**不用 .aab**——只能经 Play 分发，与直发自相矛盾；**单架构，无 x86_64 变体**，2026-10-06 定案）
-- [ ] **APK 内无 x86_64 原生库**：`unzip -l app/build/outputs/apk/release/zhengdao-1.3.0-release.apk | grep "\.so$"` 只应出现 `lib/arm64-v8a/` 一组（`libzstd-jni` + `libzhengdao_core`），出现 `lib/x86_64/` 即为回归
+- [ ] **APK 内无 x86_64 原生库**：`unzip -l app/build/outputs/apk/release/zhengdao-2.0.0-release.apk | grep "\.so$"` 只应出现 `lib/arm64-v8a/` 一组（`libzstd-jni` + `libzhengdao_core`），出现 `lib/x86_64/` 即为回归
   - ⚠️ 原文写的是 `unzip -l app-release.apk`——**这个文件名自 E-013 修复后已不存在**（CI 不再把 debug 包改名成 `app-release.apk`），实际产物是 `<versionName>-release.apk`。见 `docs/ERRATA.md` E-013。
 - [ ] **targetSdk 28 钉死**（架构前提，见文首警告框）+ `REQUEST_INSTALL_PACKAGES` 声明；确认无 FGS 类型声明需求
 - [ ] TerminalView 中文 IME 组合输入真机验证（主流中文输入法在终端内输入/删改正常）

@@ -121,9 +121,10 @@ export PATH="/c/Users/guoli/AppData/Local/Android/Sdk/platform-tools:$PATH"
 
 ./gradlew :app:assembleBenchmark :macrobenchmark:assembleBenchmark
 # ⚠️ 更正（2026-10-07）：原写死 ~~zhengdao-1.2.0-benchmark.apk~~（1.2.0 为采集时版本）
-# 当前 versionName=1.3.0（app/build.gradle.kts:21、:42），APK 名由 app/build.gradle.kts:58 的
+# 当前 versionName=2.0.0（app/build.gradle.kts:23），APK 名由 app/build.gradle.kts:73 的
 # archivesName.set("zhengdao-$appVersionName") 决定，故改用：
-adb install -r app/build/outputs/apk/benchmark/zhengdao-1.3.0-benchmark.apk
+adb install -r app/build/outputs/apk/benchmark/zhengdao-2.0.0-benchmark.apk
+# （史实：基线采集当时是 zhengdao-1.2.0 / 1.3.0-benchmark.apk，勿按旧名找文件）
 adb install -r macrobenchmark/build/outputs/apk/benchmark/macrobenchmark-benchmark.apk
 
 # ⚠️ 必须先启动一次 App 再跑（§五·坑①），否则冷启动测试直接失败

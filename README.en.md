@@ -36,10 +36,10 @@ Three bottom tabs:
 Settings live behind the gear icon. Agent output goes to a shared workspace (default
 `Download/证道`), visible in any file manager and kept after uninstalling Zhengdao.
 
-## Status (2026-10-08)
+## Status (2026-10-09)
 
-**v2.0 R1** — merged into `main`; the release tag is still pending. This round was about
-foundations rather than features:
+**v2.0.0** (`versionCode 16`, 2026-10-09) — foundations plus a signed trust chain for the
+environment; no new feature surface:
 
 - **Rust core consolidation** (`zhengdao_core`): SHA-256, rootfs extraction (zstd + tar) and
   install-integrity digests now live behind a **single** `libzhengdao_core.so` (one JNI boundary,
@@ -55,6 +55,14 @@ foundations rather than features:
   `.sig` has been fetched back and verified (2026-10-08, see `docs/ERRATA.md` E-052).
 - **`.so` gate in CI** (E-048): ELF parsing enforces 16 KB page alignment and the presence of every
   JNI entry symbol (expected names are read from `CoreNative.kt`, never hard-coded).
+- **Local package checksums defer to the signed index** (E-053): the terminal's "SHA256 mismatch"
+  install failure came from a stale, unmaintained local `.sha256` sidecar; the sidecar is now
+  reconciled against the index and rewritten after a successful check.
+- **Delta updates** (E-050): environment updates download and apply binary patches; patch extraction
+  also runs in the Rust core and can skip named members; a checksum mismatch fails hard and leaves
+  the installed environment untouched.
+- **Taiji tab usability fixes** (2026-10-09): tool-status pill badges (`●/✓/✗`), a permanent delete
+  entry on session rows, and non-silent session-refresh failures that keep the existing list.
 - **Reliability batch**: session wakelock renewal, terminal canvas insets, non-silent model-pool
   refresh with human-readable errors, the `zzclean` cache command, and three real-device UI fixes.
 - **Tests**: 296 unit tests across 35 suites green (measured 2026-10-09 09:24: 0 failures, 0 errors,
