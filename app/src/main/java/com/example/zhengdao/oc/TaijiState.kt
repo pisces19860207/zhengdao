@@ -73,6 +73,22 @@ data class TaijiState(
     /** 最近一次错误，用于顶部横幅。null 表示无。 */
     val lastError: String? = null,
 
+    /**
+     * 最近一次 **Agent 运行失败**的人话原因（`session.step.failed` / `session.execution.failed`）。
+     *
+     * 为什么不复用 [lastError]：那个只在**连接非 Connected** 时才被
+     * `TaijiComponents.ConnectionBanner` 渲染（见其 `isVisible`），而运行失败恰恰发生在
+     * **连接完全正常**的时候 —— 2026-10-09 真机实测：模型失败后界面一片安静，
+     * 用户只看到自己那条消息下面永远空着（等 3 分钟一无所有）。
+     */
+    val runFailure: String? = null,
+
+    /**
+     * 最近一次**真正发出去**的提示词，供失败横幅上的「重试」原样重发。
+     * null = 无可重试内容（还没发过 / 已重试过）。
+     */
+    val lastPrompt: String? = null,
+
     /** 当前重连次数（第 N 次），供 UI 显示"第 N 次重试"。 */
     val reconnectAttempt: Int = 0,
 

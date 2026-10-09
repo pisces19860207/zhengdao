@@ -65,6 +65,10 @@ class SessionService : Service() {
     }
 
     private var keepAlive = true
+    /** E-054：只在**首次**成功持锁时记一行，避免把"补取成功"也刷成噪声。 */
+    private var loggedWakeLockHeld = false
+    /** E-054：丢锁累计次数（首次与每 10 次各记一条，见 [renewWakeLockIfLost]）。 */
+    private var lostWakeLockCount = 0
     private val handler = Handler(Looper.getMainLooper())
     private var lastRssMb = 0L
 
@@ -114,7 +118,23 @@ class SessionService : Service() {
 
     private fun acquireWakeLockIfActive() {
         if (keepAlive && SessionManager.isAlive()) {
+            // E-054（2026-10-09）：这里原先是 `runCatching { acquire() }` ——**吞掉了异常**。
+            // 而 AndroidManifest 里一直没声明 WAKE_LOCK ⇒ 每次 acquire() 都抛
+            // SecurityException、每次都被吞，保活锁**从未真正持有**，且零日志证据
+            //（唯一痕迹是下面那条每 30 秒的"补取"）。现在：失败必须落盘一句原因。
             runCatching { wakeLock.acquire(6 * 60 * 60 * 1000L) } // 上限 6 小时，防漏释放
+                .onSuccess {
+                    if (!loggedWakeLockHeld) {
+                        loggedWakeLockHeld = true
+                        RunLog.log("保活锁已获取（PARTIAL_WAKE_LOCK，上限 6 小时）")
+                    }
+                }
+                .onFailure {
+                    RunLog.log(
+                        "保活锁获取失败：${it.javaClass.simpleName}: ${it.message}" +
+                            "（保活退化为仅前台服务 + 通知）"
+                    )
+                }
         }
     }
 
@@ -129,11 +149,20 @@ class SessionService : Service() {
      * 现在每轮定时器检查一次「该持有却没持有」：是则补取，**并在 RunLog 里留一条**，
      * 让"曾丢过锁"这件事可查，而不是继续静默。
      * 锁不 `setReferenceCounted`（见 [wakeLock]），重复补取不会累积。
+     *
+     * ⚠️ E-054 的教训：真机上这条日志曾**每 30 秒一条、连刷 12 分钟**——因为权限缺失导致
+     * 补取永远失败。同一件事反复刷屏 = 用户只会当噪声看，所以现在**首次与每 10 次各记一条**
+     * （第 10 次 = 5 分钟），中间的重复只累加不落盘。
      */
     private fun renewWakeLockIfLost() {
         if (!keepAlive || !SessionManager.isAlive()) return
         if (runCatching { wakeLock.isHeld }.getOrDefault(true)) return
-        RunLog.log("保活锁已失效，重新获取（会话仍在运行）")
+        lostWakeLockCount++
+        if (lostWakeLockCount == 1 || lostWakeLockCount % 10 == 0) {
+            RunLog.log(
+                "保活锁已失效，重新获取（会话仍在运行；这是第 $lostWakeLockCount 次，中间重复不再逐条记录）"
+            )
+        }
         acquireWakeLockIfActive()
     }
 
