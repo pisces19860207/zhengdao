@@ -96,6 +96,11 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // 签名自检（2026-10-09，ERRATA E-065）：被重新打包、重新签名的包在这里被认出来，
+        // 只**提醒**一次，不禁用任何功能 —— GPL 允许别人改代码自己签名，
+        // 但用户有权知道手里这个包是不是作者发的。常驻显示在设置页「关于」。
+        warnIfUnofficialSignature()
+
         // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户
         checkAppUpdateInBackground()
 
@@ -162,6 +167,27 @@ class MainActivity : ComponentActivity() {
                     ZhengdaoApp(startInTerminal = openTerminal, lastRoute = lastRoute)
                 }
             }
+        }
+    }
+
+    /**
+     * 非官方签名时弹一次提示（2026-10-09，ERRATA E-065）。
+     *
+     * 只在 [com.example.zhengdao.util.SigningCheck.Result.UNOFFICIAL] 时出现 ——
+     * 官方包、以及读不到签名的情况都**安静通过**（宁可漏报，不误报：
+     * 把官方包说成"被改过"会让用户白白怀疑自己下的东西）。
+     */
+    private fun warnIfUnofficialSignature() {
+        val result = runCatching {
+            com.example.zhengdao.util.SigningCheck.check(this)
+        }.getOrNull() ?: return
+        if (result != com.example.zhengdao.util.SigningCheck.Result.UNOFFICIAL) return
+        runCatching {
+            android.widget.Toast.makeText(
+                this,
+                "这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
         }
     }
 

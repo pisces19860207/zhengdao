@@ -3650,3 +3650,54 @@ P2（借太极的免费模型给 `原始/` 里的长文档补摘要）交付时�
 另外，"我加个前置判断就不会干等"这类想法在**分应用代理**面前站不住：判不出来就老实把话说清楚，
 比留一段测不出效果的代码强。
 
+## E-065 · 2026-10-09 · 署名与出处：关于页写上作者/许可证/联系方式，外加**安装包签名自检**（附一次"假装被重打包"的反例验证）
+
+**背景**
+
+用户问「这么个对小白、奶人和懒人友好的 App 会不会被别人拿去卖啊？」——核查后的事实是：
+第一方代码 GPL-3.0**并不禁止**别人重打包甚至转卖（只要保留署名、公开改动、不给下游加限制）。
+技术上挡不住，只能做"便宜、可见、不挡路"的三件减速带（用户 2026-10-09 拍板，排在知识库收线之后）：
+① 关于页写清作者 / 许可证 / 源码地址 / 联系方式；② 安装包签名自检；③ README 写明转载态度。
+署名定为「小信多多」＋ Gmail；知识库已在 **v2.0.3** 出包（main `1de4256`），故本轮做这三件。
+
+**做了什么**
+
+| 位置 | 内容 |
+|---|---|
+| 新 `app/src/main/java/com/example/zhengdao/util/SigningCheck.kt` | `OFFICIAL_SHA256`（官方证书摘要）、`Result{OFFICIAL,UNOFFICIAL,UNKNOWN}`、`check(ctx)`、`signerSha256(ctx)`、纯函数 `hexOf(bytes)` |
+| `app/src/main/java/com/example/zhengdao/ZhengdaoApp.kt` | `onCreate` 里 `logSignature()`：官方/非官方各落一行 RunLog |
+| `app/src/main/java/com/example/zhengdao/MainActivity.kt` | `warnIfUnofficialSignature()`：**只在非官方时**弹一次 Toast |
+| `app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` | 「关于」卡：`作者 小信多多`、`版本来源 官方发布 ✓ / ⚠️ 非官方（被重新打包过）/ 未识别`、`许可证 GPL-3.0`（链 LICENSE）、`联系作者`（mailto） |
+| `README.md` | 新增「转载、二次打包与「证道」这个名字」一节（欢迎什么 / 请不要什么 / App 会说实话 / 密钥不在仓库） |
+| 新 `app/src/test/java/com/example/zhengdao/util/SigningCheckTest.kt` | 5 例，只测 `hexOf`（空数组 / 补零 / 负字节无符号 / 大写无冒号 / 64 字符与常量同形） |
+
+**取舍：为什么只提醒、不拦功能**
+
+1. **GPL 明确允许**别人改代码、自己签名、自己发布。App 没有资格因为"签名不一样"就禁用功能 ——
+   那会把"自己编译自己用"的合法用户一起挡在门外。所以只**报告**：关于页常驻一行 + 启动提示一次 + 日志一行。
+2. **宁可漏报，不可误报**：读不到签名信息按 `UNKNOWN` 处理、安静通过。把官方包说成"被改过"
+   （比如格式写错、常量抄错）会让用户白白怀疑自己下的东西，比漏报更糟。
+3. 常量取自本机 `~/.android/debug.keystore` —— release 与 debug 变体**共用同一把**
+   （`app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`），
+   所以同一个常量对 GitHub Releases 里的正式包也成立；**哪天换了 keystore，这里必须同步改**。
+
+**验证（2026-10-09，AD3J023824001723）**
+
+- **独立对拍（关键）**：`apksigner verify --print-certs` 打出
+  `Signer #1 certificate SHA-256 digest: 44e2fe86b1f62a9fdb2e86805fe0a4dae7cad0c3024dbf6af84d0c45b5a3be18`
+  ⇒ 与 `OFFICIAL_SHA256` 逐字符相同（大写形式）。**不是"App 自己说自己对"**。
+- **官方路径** ✅：装 debug 包 ⇒ 关于页显示「版本来源：官方发布 ✓」，
+  日志 `[16:51:48] 启动自检：安装包签名 = 官方 ✓`。
+- **反例路径** ✅（把常量临时改成 64 个 0 再构建，等价于"被重打包"）：
+  日志 `[16:52:42] ⚠️ 启动自检：安装包签名**不是官方的** —— 这个包被重新签过名（重打包）…`；
+  关于页「⚠️ 非官方（被重新打包过）」；启动 Toast「这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。」
+  （截图留档）；**改回常量重建 ⇒ 又回到「官方发布 ✓」**。
+- 单测：**44 suites / 383 例 / 0 失败**（较 E-064 的 43/378 新增 1 suite、5 例）。
+
+**教训**
+
+1. 「减速带」很容易被顺手做成「拦路」：许可证允许的行为不该被 App 拦下，能做的只是**让冒用变得可见**。
+2. 凡是能独立对拍的证据就别用自证：签名这件事只有拿 `apksigner`/`keytool` 的输出与常量对齐，
+   才算真的钉死 —— 否则"官方 ✓"可能只是常量抄错后的巧合。
+
+
