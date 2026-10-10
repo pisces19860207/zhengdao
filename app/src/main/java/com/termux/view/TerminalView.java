@@ -71,6 +71,9 @@ public final class TerminalView extends View {
 
     /** 光标闪烁（P1-c 从本类搬出的职责类，见 {@link TerminalCursorBlinker}）。 */
     private final TerminalCursorBlinker mCursorBlinker = new TerminalCursorBlinker(this);
+
+    /** 尺寸与布局（P1-c 从本类搬出的职责类，见 {@link TerminalSizeResolver}）。 */
+    private final TerminalSizeResolver mSizeResolver = new TerminalSizeResolver(this);
     private boolean mCursorInvisibleIgnoreOnce;
     public static final int TERMINAL_CURSOR_BLINK_RATE_MIN = 100;
     public static final int TERMINAL_CURSOR_BLINK_RATE_MAX = 2000;
@@ -546,14 +549,11 @@ public final class TerminalView extends View {
      * @param textSize the new font size, in density-independent pixels.
      */
     public void setTextSize(int textSize) {
-        mRenderer = new TerminalRenderer(textSize, mRenderer == null ? Typeface.MONOSPACE : mRenderer.mTypeface);
-        updateSize();
+        mSizeResolver.setTextSize(textSize);
     }
 
     public void setTypeface(Typeface newTypeface) {
-        mRenderer = new TerminalRenderer(mRenderer.mTextSize, newTypeface);
-        updateSize();
-        invalidate();
+        mSizeResolver.setTypeface(newTypeface);
     }
 
     @Override
@@ -1011,42 +1011,17 @@ public final class TerminalView extends View {
      */
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        updateSize();
+        mSizeResolver.onSizeChanged();
     }
 
     /** Check if the terminal size in rows and columns should be updated. */
     public void updateSize() {
-        int viewWidth = getWidth();
-        int viewHeight = getHeight();
-        if (viewWidth == 0 || viewHeight == 0 || mTermSession == null) return;
+        mSizeResolver.updateSize();
+    }
 
-        // Set to 80 and 24 if you want to enable vttest.
-        int newColumns = Math.max(4, (int) (viewWidth / mRenderer.mFontWidth));
-        int newRows = Math.max(4, (viewHeight - mRenderer.mFontLineSpacingAndAscent) / mRenderer.mFontLineSpacing);
-
-        if (mEmulator == null || (newColumns != mEmulator.mColumns || newRows != mEmulator.mRows)) {
-            mTermSession.updateSize(newColumns, newRows, (int) mRenderer.getFontWidth(), mRenderer.getFontLineSpacing());
-            mEmulator = mTermSession.getEmulator();
-            mClient.onEmulatorSet();
-
-            // Update the cursor blinker's emulator on session change
-            mCursorBlinker.setEmulator(mEmulator);
-
-            // Restore cached top row value if session/emulator was switched back from a
-            // different session or after activity restart. The top row value also needs to be
-            // maintained after opening/closing soft keyboard.
-            int topRow = 0;
-            if (mEmulator != null) {
-                int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
-                int cachedTopRow = mEmulator.getTopRow();
-                if (cachedTopRow >= -rowsInHistory) {
-                    topRow = cachedTopRow;
-                }
-            }
-            setTopRow(topRow);
-            scrollTo(0, 0);
-            invalidate();
-        }
+    /** 尺寸/emulator 变化后需要跟随的内部组件（目前是光标闪烁器）。 */
+    void refreshEmulatorDependents() {
+        mCursorBlinker.setEmulator(mEmulator);
     }
 
     @Override
