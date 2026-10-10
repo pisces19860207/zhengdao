@@ -131,15 +131,27 @@ object TerminalPrefs {
      *
      * 失败（asset 缺失/损坏/OOM）时**回退系统等宽**，不抛异常——字体属于外观，
      * 不该让终端起不来。加载结果进程内缓存，重复调用零成本。
+     *
+     * 首次加载会打一条 `Log.i`，记下 `createFromAsset` 的真实耗时（含从 APK 里解压
+     * 17.94 MB 资产的成本）。这条日志是**故意留在代码里的**：将来评估
+     * `androidResources.noCompress` 或做子集化时，它是唯一的对照基线
+     * （见 `docs/acceptance/terminal-font-2026-10-10.md` §六）。
      */
     fun typeface(ctx: Context): Typeface {
         cachedTypeface?.let { return it }
+        val startedAtNanos = System.nanoTime()
         val loaded = try {
             Typeface.createFromAsset(ctx.assets, FONT_ASSET)
         } catch (t: Throwable) {
             Log.w(TAG, "字体 $FONT_ASSET 加载失败，回退系统等宽", t)
             Typeface.MONOSPACE
         }
+        val elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000
+        Log.i(
+            TAG,
+            "字体首次加载：$FONT_ASSET，createFromAsset 耗时 ${elapsedMs}ms" +
+                "（在此线程阻塞；此后走进程内缓存）",
+        )
         cachedTypeface = loaded
         return loaded
     }
