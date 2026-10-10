@@ -4341,3 +4341,96 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 2. 进程内互斥要选**拒绝**语义（`AtomicBoolean`），不是排队语义（`synchronized`/`Mutex` 阻塞）：安装以分钟计，第二处入口应当立刻被拒并说清原因。
 3. busy 标志必须**跨入口共享**：终端页用 Activity 实例字段、设置页用另一套 `InstallProgress`，各看各的，等于没有互斥。
 4. 长流程的"降级"要往"下次启动还能收尾"的方向写（`cleanupPartial` 双向复原），而不是只删自己这次产生的东西。
+
+---
+
+## E-079 · 2026-10-09 · Rust 化第三轮（目录统计 `dirSizeMb` 下沉）：本想加个功能，先被 **xattr → rustix 的 Windows 子进程管道**挡在门外；顺带证明"两条路径必须同源"
+
+> 让号说明（**第四次让号**）：本条初稿写的是 **E-067**。提交前按《协作规约》§7 先 `git fetch origin`
+> 看最大编号，发现 `origin/main` 上 **E-067 已被占**（太极人设那条）、且已推进到 **E-068** ⇒ 让号到 **E-069**。
+> 但随后 `main` 又往前走了 4 个提交（太极/终端分家，v2.0.7），**E-069 也被占**
+> （标题「太极的家有一半长在终端的院子里」）⇒ 让号到 **E-070**。
+> 收尾前再次核对：`main` 已推进到 `cff6c32`，**E-070 / E-071 又都被占**
+> （E-070「失败只写进日志」、E-071「后台被杀没有任何留档」）⇒ 让号到 **E-072**。
+> 合并当天（2026-10-10）最后核对：`main` 已占 **E-072 ~ E-078**（E-072 存储读取回归用例、
+> E-073 ~ E-076 六件维护项、E-077 崩溃入口兜底 #10、E-078 安装重入锁 #11）⇒ **最终让号到 E-079**——
+> 原文一字未改，仅改编号并更新本让号块。
+
+**背景**
+`docs/证道-Rust化余地审计-2026-10-09.md` 的候选 A：`ui/SystemInfoProvider.dirSizeMb`
+每次进设置页/首页都用 Java `Files.walkFileTree` 全量重算 `rootfs`(约 1.6 GB) + `home`(可达数 GB)。
+形态契合收益模型（输入路径、输出一个数，**边界只跨一次**），决定下沉。
+同轮还加了两道 R8 **防回归门禁**（`R8KeepRuleGuardTest` 读 proguard 文本 +
+`tools/check-r8-mapping.py` 读 R8 构建产物，防 E-022 闪退复发；分工见下方第 4 点）。
+
+**踩到的三个坑（都已修）**
+
+1. **交叉编译卡在 `rustix` 的 build script（Windows 子进程管道被拒）**
+   现象：`cargo build --release --target aarch64-linux-android` 在 `rustix v1.1.5` 的
+   build.rs:276 `.spawn().unwrap()` 处 panic，`Os { code: 231 }`（"所有的管道范例都在使用中"）。
+   真因：rustix 的 build.rs 用 `.stdin(Stdio::piped())` 开一个**stdin 管道**喂 rustc 做特性探测，
+   而本机（沙箱内外都一样）**拒绝对子进程开 stdin 管道** —— 实测一个最小 Rust 程序
+   只做 `Command::spawn().stdin(piped())` 就复现；不带管道的 `spawn()` 则正常。
+   排查过程：先误以为"环境隔夜变了"，后用主仓 `zhengdao/rust` 的同一条命令**成功**才发现
+   主仓是**复用了 10-07 的 rustix 缓存**、并未真跑 build.rs —— 冷缓存必炸。
+   **修法（干净、且少一个依赖）**：`rustix` 只从 `tar` 的**默认 feature `xattr`** 进来，
+   而我们只用核心 tar API、从不碰 pax 扩展属性 ⇒ `tar = { version = "0.4", default-features = false }`。
+   `rustix` / `xattr` / `errno` / `linux-raw-sys` / `bitflags` 五个包一起从依赖树消失，交叉编译即通。
+   ⇒ **教训：Windows 宿主上"某个第三方 build script 需要子进程管道"是会真卡的**；
+   先确认依赖到底需不需要那个 feature，能砍就砍。
+
+2. **`dirSizeMb` 两条路径（Rust / Java）对"文件入口"给不同答案**
+   写单测时按直觉断言"给一个**文件**路径应返回 0" —— **实测 Java 版返回的是文件大小**：
+   `Files.walkFileTree(文件)` 会把它自己当成一个 entry 调 `visitFile`，
+   `attrs.isRegularFile()` 成立、大小被计入（实测 3 MiB 文件 → 3145728 字节）。
+   我最初的 Rust 实现按"看起来更合理"的语义写了 `if !is_dir ⇒ 0`，**于是两条路不一致**。
+   修法：Rust 侧改成**与 Java 逐字节一致**（入口是普通文件就返回它的 size），
+   并在两边各留一条**成对**的测试（`dirsize.rs` 的 `普通文件入口返回文件大小与java版一致`
+   ↔ `DirSizeMbTest` 的 `普通文件入口返回文件大小_不是0`）。
+   ⇒ **教训：回退路径的价值全在"两条路给同一个数字"**。写第二个实现时，
+   基准是"第一个实现**实际**怎么写"（跑一遍看），不是"哪个更合理"。
+
+3. **工件必须重建，且重建后要过门禁**
+   `tools/check-native-so.py` 从 `CoreNative.kt` 的 `external fun` **自动推导**期望符号，
+   加了 `nativeDirSizeBytes` 后它立刻报"缺少 JNI 入口符号"⇒ 必须重建 `.so`。
+   按文档工序（`cargo build --release --target aarch64-linux-android` → `llvm-strip --strip-unneeded`
+   → 拷进 `jniLibs` → 过门禁）重建后：4 个 LOAD 段 `p_align=0x4000`、**6 个 JNI 入口齐全**、
+   体积 948,392 → 957,488 B（+9 KB）。
+
+4. **两道 R8 门禁各守一半，"文本断言"补不上"产物事实"**（2026-10-09 九轮核对后定稿）
+   本轮先加了 `R8KeepRuleGuardTest`（读 proguard **文本**），但想清楚它够不到什么之后，
+   又补了 `tools/check-r8-mapping.py`（读 R8 **构建产物**）。三者分工必须讲明白：
+   - `check-native-so.py`：验 **.so 里的符号**（源码侧事实）；
+   - `R8KeepRuleGuardTest`：验 **proguard 文本**（规则在不在、类名自不自洽）；
+   - `check-r8-mapping.py`：验 **R8 到底改成了什么**（唯一地面真值 = `mapping.txt`）。
+   **为什么非要第三种**：E-022 的真相是 `onProgress` 被改名，而前两种门禁都看不见这件事
+   —— `.so` 里没有 `onProgress`（它是 Java 方法）、proguard 文本只说明"我们写了规则"、
+   不说明"R8 照办了"。只有 `mapping.txt` 能回答"它到底改了没"。
+   **差分铁证**（`app/build/outputs/mapping/release/mapping.txt`，真机 release 构建产物）：
+   同一个 `CoreNative` 类里 `INSTANCE->a` / `sha256File->b` / `verifyEd25519->c` 全被改名，
+   **只有 `onProgress -> onProgress` 保住** ⇒ 证明 ① R8 确实在混淆这个类（不是"整体被 keep"）；
+   ② 默认规则 `native <methods>` 管不到非 native 的 `onProgress`；③ 它保住**只可能**是那条
+   显式 keep 的功劳。⇒ 删掉显式规则 ⇒ E-022 立刻复发。这就是 `R8KeepRuleGuardTest` 的意义。
+   ⚠️ **摆位**：`check-r8-mapping.py` 必须紧跟 `assembleRelease`（`ci.yml` 的 R8 冒烟之后、
+   `build.yml` 的编译 Release APK 之后）；挂到只跑单测的 job 上它会永远找不到 `mapping.txt`，
+   变成"永远跳过的假门禁"（本脚本默认 strict 会因此报错，正是为了逼出这种摆错位置）。
+   ⚠️ **`includedescriptorclasses` 在本项目空转**：AGP 默认规则
+   `-keepclasseswithmembernames,includedescriptorclasses class * { native <methods>; }` 里，
+   前者保"有 native 方法的**类名**+native 成员名"，后者只保**描述符里出现的类**；
+   本项目 6 个 `external fun` 的描述符全是 `[B`/`Ljava/lang/String;`/`Z`/`J` ⇒ **无任何项目类**，
+   所以它对本项目不产生任何效果（别把它当成"类名被保"的原因）。
+
+**验证**
+- Rust：`cargo test -p zhengdao_core` **23 passed**（新增 `dirsize` 5 例，含 extract 端到端未回归）。
+  宿主是 Windows ⇒ 两条 `#[cfg(unix)]` 软链用例在 PC 上不跑，**这是已知的覆盖缺口**
+  （Android/aarch64 上会跑）；由 Kotlin 侧同名软链用例在 JVM 上补位（能建软链就断言）。
+- Kotlin：`DirSizeMbTest` 6 例 + `SystemInfoProviderTest` 9 例 + `R8KeepRuleGuardTest` 3 例 全绿。
+  门禁测试**已用"故意删掉 keep 行"验过会红**（`--rerun-tasks` 下 `AssertionError`），
+  不是永远为真的假绿。
+- `.so` 门禁 `check-native-so.py`：通过。
+- `check-r8-mapping.py`：对**真实** `mapping.txt` 跑通过；6 个反例（类被改名 ×3 / 回调被改名 /
+  seeds 缺 native 方法 / 无产物严格模式）**均按预期变红**，`--allow-missing` 按预期跳过。
+- `ci.yml` / `build.yml`：PyYAML 解析通过，新步骤落在两个 job 的 release 构建之后。
+
+**回退纪律（不变）**：Rust 不可用 ⇒ `CoreNative.dirSizeBytes` 返回 `null` ⇒ `dirSizeMb` 走 Java `walkFileTree`。
+⚠️ JNI 用 `-1` 当失败哨兵而**不是** `0`（`0` 是"目录真的空"的合法结果，用它当错误码会静默误判）。

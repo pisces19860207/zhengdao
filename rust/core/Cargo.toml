@@ -14,8 +14,12 @@ hex = "0.4"
 # —— extract 模块（原 rust/extract）——
 # zstd 解压（绑定 C 实现——评估文档裁定：纯 Java zstd 是安装流水线的真实 CPU 热点）
 zstd = "0.13"
-# tar 归档遍历（纯 Rust）
-tar = "0.4"
+# tar 归档遍历（纯 Rust）。
+# ⚠️ 关掉默认 feature（= xattr）：我们只用核心 tar API（Directory/Symlink/Link/Fifo/普通文件），
+# 从不读写 pax 扩展属性，而 xattr → rustix 的 build.rs 会在 Windows 宿主上给子进程开
+# stdin 管道做编译器探测，该管道在本机被系统拒绝（os error 231）⇒ 直接卡死交叉编译。
+# 去掉它既**少一个依赖**又让 .so 能在本机重建。2026-10-09 Rust 化审计发现。
+tar = { version = "0.4", default-features = false }
 flate2 = "1.0"
 # —— ed25519 模块（信任根：manifest / 环境包索引验签）——
 # 通用大整数库（**不是**密码学库）：与 Kotlin 侧 java.math.BigInteger 同构，
