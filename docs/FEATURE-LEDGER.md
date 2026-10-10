@@ -34,6 +34,7 @@
 | 15 | `fix/kb-scan-cap-notice` 落地 + **E-089（让号自 E-082）**：资料库扫描上限 2000 不再静默截断（清单自己写一行「只列了前 2000 个」+ 设置页状态带后缀）、`资料库/说明.md`「各种格式都行」改准 | `c1068c7` + `a728d6e`（让号 + ERRATA E-089）→ 合并 `ece9cb6` | :app:testDebugUnitTest BUILD SUCCESSFUL in 49s（63 个 suite / 559 个用例，0 失败 0 错误 1 跳过）；⚠️ **未做真机验证**：触发这行提示需要 `资料库/原始/` 下 > 2000 个文件（设备上没有这个量级的资料），只有代码复核覆盖 |
 | 16 | **支线与引用清理（处理后：远端只剩 `main`，本地只剩 3 个分支）**：远端删 `feature/terminal-view-refactor-p1`；本地删 25 个已并入 main 的分支（SHA 留档，见备注）；工作树 5 → 3（删 `wt-p1-terminal`、`wt-p0-render`，`wt-ios-skin` / `wt-uiux` 未碰）；删残留目录 `zhengdao-wt-session`（仅 lint 缓存、无 `.git`）与临时工作树 `%TEMP%\zd-kbmerge`；`git worktree prune`、`git remote prune` 后无残留 | 无独立提交（仓库引用层操作） | 被删分支 SHA 留档于 `%TEMP%\zd-deleted-branches.txt`；过时 stash `stash@{0}`（`114d06e7`，2026-10-07「单会话」那批）已 `stash drop` —— 比对其快照与 main：`SessionRouter.kt` / `SessionRouterTest.kt` / `AgentRepository.kt` **完全相同**、新建的两份 docs 在 main 上更长、其余文件 main 只多不少 ⇒ 内容已落地，补丁留档 `%TEMP%\zd-stale-stash-2026-10-07.patch`（1715 行），必要时 `git show 114d06e7` 仍可取出 |
 | 17 | **E-090 修复落地**（opencode bionic 装不上）：前缀提成 `PKG_ENTRY_PREFIX` + `relPathOf()` 由准入判断与剥前缀共用、清旧残留 `oc/usr/data/`、失败分支补日志、4 条单测 | `b77cab4` → 合并 `eb377d0` | 真机 AD3J023824001723：`清理旧版错位释放残留（约 275 MB）` → `OpenCode 2.0.22 释放完成（2 个文件）` → 太极 **● 已连接**（SSE HTTP 200）；单测 63 suite / 563 例 / 0 失败；**未发版**（与另两条一起发 v2.0.11） |
+| 18 | **v2.0.11 发版**（`versionCode 27` + `.github/release-notes/v2.0.11.md` + 注记 tag `v2.0.11`）：①E-090 opencode 装不上（v2.0.9 起 100% 失败）修复；②E-089 资料库扫描上限不再静默截断；③README（中/英）系统要求提到第一屏 | `4578a66` → 合并 `41c4869`（tag `v2.0.11`） | 正式 Release「证道 v2.0.11 — 正式版」（<https://github.com/pisces19860207/zhengdao/releases/tag/v2.0.11>）：`zhengdao-2.0.11-release.apk` 8,198,507 B / `sha256:4ba43322665c3f9108d04eaf6f0704f75c575cfa9743d9035d1d596abd5d041b`；CI：main 上 build（run 38067358636）/ ci（run 38067358657）双绿，tag v2.0.11 的 build（run 38067362809）绿并产出 Release；本地预跑 `tools/check-native-so.py` 与 `tools/check-r8-mapping.py` 双通过、`:app:assembleRelease` BUILD SUCCESSFUL；真机 AD3J023824001723 已用带此修复的包验证（清理 275 MB 残留 → 释放完成 → 太极 ● 已连接） |
 
 > **发版流程（下次照抄）**：改 `app/build.gradle.kts` 的 `appVersionName` / `versionCode` → 新增 `.github/release-notes/vX.Y.Z.md` → 合进 `main`（`build.yml` 会把滚动 release `latest` 刷成新版，确认落在 `latest` 的 apk 尺寸/时间变了）→ `git tag -a vX.Y.Z && git push origin vX.Y.Z` → `build.yml` 的 `release` job（`if: startsWith(github.ref, 'refs/tags/v')`）建正式 Release。注意滚动包**每次构建都会重传、sha256 不可复现**，别把历史 sha256 当"在架值"（E-081）。
 
@@ -53,7 +54,6 @@
 | 8 | **E-080 还差两条没真机验**：① 终端里让 agent 自己解压 `.docx` 的实际体验 ② 「仅私有模式」工作区的骨架文案 | E-080 末尾 |
 | 9 | hermes 没装回（数据事故后没重装；想装就在丹房点「安装」，但它在受限网络下依赖重、且按 E-081 已摘出恢复候选） | 用户侧 |
 | 10 | 4 个**刻意未跟踪**的文件去留：`.zd-scratch/`、`docs/待办-dirSizeMb支线-2026-10-09.md`、`docs/证道-Rust化余地审计-2026-10-09.md`、`…html`（**不要顺手提交**） | 用户侧 |
-| 11 | **未发版**：`main` 上已有**三条**用户可见修复（README 系统要求提到第一屏、资料库扫描上限提示、opencode 装不上），但**都没进任何正式包** —— v2.0.10 是它们之前发的 | 用户侧决定：发 v2.0.11 还是攒到下一批 |
 
 ### C. 已经拍板「不做」，别复活
 
