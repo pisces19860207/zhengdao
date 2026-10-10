@@ -294,7 +294,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     val dy = kotlin.math.abs(ev.y - edgeStartY)
                     // 横向占优 + 走够阈值 + 纵向没跑偏，才算「右滑返回」；
                     // 纵向占优的滑动一律放过（终端继续滚动）。
-                    if (dx > trigger && dx > dy && dy < slop) {
+                    //
+                    // 2026-10-10 UIUX 审计 B7 修：**排除"正在选词"**。
+                    // 长按选中文字后拖动选择手柄，轨迹恰好是"横向 >40dp、纵向 <40dp"——
+                    // 和右滑返回判据完全同形。旧代码不查选词状态 ⇒ 起手点又常在左边缘，
+                    // 于是"想选一段命令"被判成"右滑关闭"，终端连带这一屏直接没了，且无撤销。
+                    // [TerminalView.isSelectingText()] 是上游公开方法（terminal-view:1463）。
+                    val selectingText = ::termView.isInitialized && termView.isSelectingText()
+                    if (!selectingText && dx > trigger && dx > dy && dy < slop) {
                         edgeTracking = false
                         android.util.Log.d(
                             "EdgeSwipe",

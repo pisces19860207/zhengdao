@@ -130,6 +130,11 @@
         <!-- 状态横幅：v3.9 起终端为原生 TerminalView，App 无法再像 xterm.js 那样
              往终端里注入显示文本（写入 pty 会变成 shell 输入）。安装/下载/解压等
              进度提示统一改由本横幅承载，关键节点另出 Toast，全部同步进 RunLog。 -->
+        <!-- 2026-10-10 UIUX 审计 B3 修：`singleLine` ⇒ `maxLines=3`。
+             本横幅承载安装/下载/解压进度，而**最需要被看见的是失败原因**（例如
+             「安装失败：… 校验不通过（重进 App 可再试）」）——单行 + 省略号会把最关键
+             的那半句截掉，用户只能干瞪眼。上限 3 行：进度短句仍是 1 行、不占地方，
+             失败长句能说完，也不至于把终端区挤没。 -->
         <TextView
             android:id="@+id/status_banner"
             android:layout_width="match_parent"
@@ -141,7 +146,7 @@
             android:paddingBottom="6dp"
             android:textColor="#FF5C4300"
             android:textSize="12sp"
-            android:singleLine="true"
+            android:maxLines="3"
             android:ellipsize="end"
             android:visibility="gone" />
 
