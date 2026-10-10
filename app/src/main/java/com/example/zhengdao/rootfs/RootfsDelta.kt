@@ -143,7 +143,7 @@ object RootfsDelta {
         info: PatchInfo,
         onEntry: (String) -> Unit = {},
         expectedSha256: String? = null,
-    ) {
+    ) = RootfsInstaller.withInstallLock("增量更新") {
         val rootfsDir = File(context.filesDir, "rootfs")
         val tmpDir = File(context.filesDir, RootfsInstaller.TMP_NAME)
         applyTo(rootfsDir, tmpDir, patchFile, info, onEntry, expectedSha256)
@@ -151,6 +151,9 @@ object RootfsDelta {
 
     /**
      * 可单测/可仪器测试的内核：全部参数都是 [File]，不碰 Android Context。
+     *
+     * **调用方必须已持有安装锁**（[RootfsInstaller.withInstallLock]；公开入口 [apply] 已经包好了）：
+     * 本函数内部走的是无锁的 [RootfsInstaller.swapLocked]，直接调用它（仪器测试）就等于跳过互斥。
      *
      * @param tmpDir 待替换的临时树目录（存在即先清理——它按约定是"可以随时丢弃"的中间产物）
      * @param expectedSha256 补丁包应有的 sha256（交给 Rust 对账；null = 只算不校验）
@@ -194,8 +197,8 @@ object RootfsDelta {
             // ── 5. 新标记（distro 沿用旧值；旧标记读不到 distro 就不写该行） ──
             RootfsMarker.write(tmpDir, oldDistro, info.new, RootfsMarker.nowIso())
 
-            // ── 6. 原子替换 ──
-            RootfsInstaller.swapIntoPlace(tmpDir, rootfsDir)
+            // ── 6. 原子替换（锁已在手，见 apply；#11 / E-078） ──
+            RootfsInstaller.swapLocked(tmpDir, rootfsDir)
             Log.i(TAG, "增量更新完成：${info.base} → ${info.new}")
         } catch (t: Throwable) {
             // 失败即丢弃半成品：绝不把 tmp 留在可能被误认成环境的状态

@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.core.IssueCenter
+import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.InstallNotifier
 import java.io.File
@@ -74,7 +75,15 @@ object InstallFlow {
     /** 主界面问题卡里「环境安装/修复失败」那条的 id（成功收尾时清掉）。 */
     const val ISSUE_INSTALL_FAILED = "install-failed"
 
-    fun isRunning(): Boolean = InstallProgress.isRunning()
+    /**
+     * 有没有安装/更新任务在跑（#11 / E-078）。
+     *
+     * 两个来源都要看：[InstallProgress] 是"UI 可见的任务状态"（由本对象 start/finish 维护），
+     * [RootfsInstaller.isInstalling] 是**进程级的真锁**——设置页四条长流程只能进 [InstallProgress]，
+     * 而终端页三处安装、增量更新、启动修复走的是别的路径。只看看前者，按钮就会在
+     * "终端页正在装环境"时仍然可点。
+     */
+    fun isRunning(): Boolean = InstallProgress.isRunning() || RootfsInstaller.isInstalling()
 
     /**
      * 写 `files/install-notice.txt`：终端是原生 TerminalView，App 不能往里注入文本，
