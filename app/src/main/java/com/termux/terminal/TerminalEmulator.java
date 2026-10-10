@@ -197,6 +197,20 @@ public final class TerminalEmulator {
     private final StringBuilder mOSCOrDeviceControlArgs = new StringBuilder();
 
     /**
+     * 证道本地补丁（审计 🟡-7，2026-10-10）：OSC 载荷超过 {@link #oscArgsMaxLength()} 后置位。
+     *
+     * <p>上游 v0.119 在超限时直接走 {@link #unknownSequence(int)}（= 结束转义序列），于是余下载荷会被
+     * 当普通正文打印到屏幕上；这里改为「整条作废，但继续吃到真正的终结符（BEL / ST）」，
+     * 并用 {@link #MAX_OSC_DISCARD_LENGTH} 给"丢弃"本身也加一个绝对上限，避免永远等不到终结符时无限吞字节。
+     */
+    private boolean mOscArgsDropped;
+    /** 已丢弃的字节数（仅在 {@link #mOscArgsDropped} 为真时累计）。 */
+    private int mOscArgsDiscarded;
+
+    /** 超限后最多再丢弃这么多字节去找终结符，超过就放弃这条序列（绝对上限）。 */
+    private static final int MAX_OSC_DISCARD_LENGTH = 1024 * 1024;
+
+    /**
      * True if the current escape sequence should continue, false if the current escape sequence should be terminated.
      * Used when parsing a single character.
      */
@@ -1484,6 +1498,8 @@ public final class TerminalEmulator {
                 break;
             case 'P': // Device control string
                 mOSCOrDeviceControlArgs.setLength(0);
+                mOscArgsDropped = false;
+                mOscArgsDiscarded = 0;
                 continueSequence(ESC_P);
                 break;
             case '[':
@@ -1494,6 +1510,8 @@ public final class TerminalEmulator {
                 break;
             case ']': // OSC
                 mOSCOrDeviceControlArgs.setLength(0);
+                mOscArgsDropped = false;
+                mOscArgsDiscarded = 0;
                 continueSequence(ESC_OSC);
                 break;
             case '>': // DECKPNM
@@ -2023,6 +2041,13 @@ public final class TerminalEmulator {
 
     /** An Operating System Controls (OSC) Set Text Parameters. May come here from BEL or ST. */
     private void doOscSetTextParameters(String bellOrStringTerminator) {
+        if (mOscArgsDropped) {
+            // 证道本地补丁（审计 🟡-7）：超限的 OSC 整条作废，不拿截断的前缀去解参数。
+            mOscArgsDropped = false;
+            mOscArgsDiscarded = 0;
+            finishSequence();
+            return;
+        }
         int value = -1;
         String textParameter = "";
         // Extract initial $value from initial "$value;..." string.
@@ -2320,12 +2345,24 @@ public final class TerminalEmulator {
     }
 
     private void collectOSCArgs(int b) {
-        if (mOSCOrDeviceControlArgs.length() < oscArgsMaxLength()) {
+        if (mOscArgsDropped) {
+            // 证道本地补丁（审计 🟡-7）：已超限、整条作废中——继续吃字节等真正的终结符（BEL / ST），
+            // 而不是像上游那样 finishSequence() 把余下载荷当正文打印。丢弃量另有绝对上限兜底。
+            if (++mOscArgsDiscarded > MAX_OSC_DISCARD_LENGTH) {
+                logError("OSC string exceeded " + oscArgsMaxLength() + " chars and then " + MAX_OSC_DISCARD_LENGTH + " discarded chars without a terminator, giving up");
+                mOscArgsDropped = false;
+                mOscArgsDiscarded = 0;
+                finishSequence();
+                return;
+            }
+        } else if (mOSCOrDeviceControlArgs.length() < oscArgsMaxLength()) {
             mOSCOrDeviceControlArgs.appendCodePoint(b);
-            continueSequence(mEscapeState);
         } else {
-            unknownSequence(b);
+            mOscArgsDropped = true;
+            mOscArgsDiscarded = 0;
+            logError("OSC string longer than " + oscArgsMaxLength() + " chars, dropping the sequence");
         }
+        continueSequence(mEscapeState);
     }
 
     private void unimplementedSequence(int b) {
