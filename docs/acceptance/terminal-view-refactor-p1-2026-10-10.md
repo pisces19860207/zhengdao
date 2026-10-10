@@ -171,3 +171,7 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 ## 七、截图留档（`%TEMP%`）
 
 `zd-accept-1..3.png`（benchmark 包首启 + 终端页 + 键条）、`zd-ime-1..4.png`（中文输入三场景与判定）、`zd-tmux-1..6.png`（滚动语义）、`zd-clamp-1/2.png`、`zd-clamp-slow.png`、`zd-clamp-fast20.png`、`zd-clamp-fast60.png`（clamp 对照）、`zd-dir-old.png` / `zd-dir-new.png`（两个方向）、`zd-enter-1/2.png`（两种回车）、`zd-keys-1..4.png`（逐键回显）、`zd-copy.png` / `zd-copy2.png`（复制粘贴 Toast 与剪贴板条）。
+
+---
+
+**后续验收**：终端默认字体换成 JetBrains Maple Mono 的 2:1 对齐基线见 `docs/acceptance/terminal-font-2026-10-10.md`（同目录 `assets/terminal-font-2026-10-10/` 内含已归档截图；该页的「换字体前」对照图正是本次验收当天同一会话的截图）。
