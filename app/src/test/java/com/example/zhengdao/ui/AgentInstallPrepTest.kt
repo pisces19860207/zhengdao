@@ -80,7 +80,49 @@ class AgentInstallPrepTest {
         assertFalse(AgentInstallPrep.looksUsableScript(null))
     }
 
-    // ── ② 残锁清理 ─────────────────────────────────────────────────────────
+    // ── ② 指纹信任（P3-2，2026-10-10）──────────────────────────────────────
+    // 公共区（共享存储）里的安装脚本会被别的 App 改写；只有与宿主侧记下的 sha256
+    // 逐字符相等的那份才允许复用（复用是为了网络断续时不卡安装），其余一律重下。
+
+    private val shaA = "d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02"
+    private val shaB = "d12cd1d37e0c4767e6730fd709eb796f5fe996b27e94e40b480bdb96afec9e27"
+
+    @Test
+    fun `指纹一致才可信`() {
+        assertTrue(AgentInstallPrep.scriptTrusted(shaA, shaA))
+    }
+
+    @Test
+    fun `大小写与首尾空白不影响指纹比对`() {
+        assertTrue(AgentInstallPrep.scriptTrusted("  ${shaA.uppercase()}  ", shaA))
+    }
+
+    @Test
+    fun `指纹不符即不可信（被别的 App 改过）`() {
+        assertFalse(AgentInstallPrep.scriptTrusted(shaA, shaB))
+    }
+
+    @Test
+    fun `没有记录即不可信（重装 App 后、来路不明）`() {
+        assertFalse(AgentInstallPrep.scriptTrusted(null, shaA))
+        assertFalse(AgentInstallPrep.scriptTrusted("", shaA))
+        assertFalse(AgentInstallPrep.scriptTrusted("   ", shaA))
+    }
+
+    @Test
+    fun `算不出指纹即不可信（读不动公共区那份）`() {
+        assertFalse(AgentInstallPrep.scriptTrusted(shaA, null))
+    }
+
+    @Test
+    fun `不是 64 位十六进制的记录不作数`() {
+        // 半截记录 / 别的东西被写进了记录文件：不能当成"匹配上了"
+        assertFalse(AgentInstallPrep.scriptTrusted(shaA.take(32), shaA))
+        assertFalse(AgentInstallPrep.scriptTrusted("not-a-sha", "not-a-sha"))
+        assertFalse(AgentInstallPrep.scriptTrusted("z".repeat(64), "z".repeat(64)))
+    }
+
+    // ── ③ 残锁清理 ─────────────────────────────────────────────────────────
 
     @Test
     fun `清障命令删的是所有 lock 而不只是 index_lock`() {
