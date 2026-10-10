@@ -9,8 +9,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
@@ -46,7 +44,7 @@ import com.termux.view.textselection.TextSelectionCursorController;
 public final class TerminalView extends View {
 
     /** Log terminal view key and IME events. */
-    private static boolean TERMINAL_VIEW_KEY_LOGGING_ENABLED = false;
+    static boolean TERMINAL_VIEW_KEY_LOGGING_ENABLED = false;
 
     /** The currently displayed terminal session, whose emulator is {@link #mEmulator}. */
     public TerminalSession mTermSession;
@@ -72,9 +70,8 @@ public final class TerminalView extends View {
 
     private TextSelectionCursorController mTextSelectionCursorController;
 
-    private Handler mTerminalCursorBlinkerHandler;
-    private TerminalCursorBlinkerRunnable mTerminalCursorBlinkerRunnable;
-    private int mTerminalCursorBlinkerRate;
+    /** 光标闪烁（P1-c 从本类搬出的职责类，见 {@link TerminalCursorBlinker}）。 */
+    private final TerminalCursorBlinker mCursorBlinker = new TerminalCursorBlinker(this);
     private boolean mCursorInvisibleIgnoreOnce;
     public static final int TERMINAL_CURSOR_BLINK_RATE_MIN = 100;
     public static final int TERMINAL_CURSOR_BLINK_RATE_MAX = 2000;
@@ -144,7 +141,7 @@ public final class TerminalView extends View {
     /** The {@link KeyEvent} is generated from a non-physical device, like if 0 value is returned by {@link KeyEvent#getDeviceId()}. */
     public final static int KEY_EVENT_SOURCE_SOFT_KEYBOARD = 0;
 
-    private static final String LOG_TAG = "TerminalView";
+    static final String LOG_TAG = "TerminalView";
 
     public TerminalView(Context context, AttributeSet attributes) { // NO_UCD (unused code)
         super(context, attributes);
@@ -1066,9 +1063,8 @@ public final class TerminalView extends View {
             mEmulator = mTermSession.getEmulator();
             mClient.onEmulatorSet();
 
-            // Update mTerminalCursorBlinkerRunnable inner class mEmulator on session change
-            if (mTerminalCursorBlinkerRunnable != null)
-                mTerminalCursorBlinkerRunnable.setEmulator(mEmulator);
+            // Update the cursor blinker's emulator on session change
+            mCursorBlinker.setEmulator(mEmulator);
 
             // Restore cached top row value if session/emulator was switched back from a
             // different session or after activity restart. The top row value also needs to be
@@ -1282,30 +1278,12 @@ public final class TerminalView extends View {
      * @return Returns {@code true} if setting blinker rate was successfully set, otherwise [@code false}.
      */
     public synchronized boolean setTerminalCursorBlinkerRate(int blinkRate) {
-        boolean result;
-
-        // If cursor blinking rate is not valid
-        if (blinkRate != 0 && (blinkRate < TERMINAL_CURSOR_BLINK_RATE_MIN || blinkRate > TERMINAL_CURSOR_BLINK_RATE_MAX)) {
-            mClient.logError(LOG_TAG, "The cursor blink rate must be in between " + TERMINAL_CURSOR_BLINK_RATE_MIN + "-" + TERMINAL_CURSOR_BLINK_RATE_MAX + ": " + blinkRate);
-            mTerminalCursorBlinkerRate = 0;
-            result = false;
-        } else {
-            mClient.logVerbose(LOG_TAG, "Setting cursor blinker rate to " + blinkRate);
-            mTerminalCursorBlinkerRate = blinkRate;
-            result = true;
-        }
-
-        if (mTerminalCursorBlinkerRate == 0) {
-            mClient.logVerbose(LOG_TAG, "Cursor blinker disabled");
-            stopTerminalCursorBlinker();
-        }
-
-        return result;
+        return mCursorBlinker.setRate(blinkRate);
     }
 
     /**
      * Sets whether cursor blinker should be started or stopped. Cursor blinker will only be
-     * started if {@link #mTerminalCursorBlinkerRate} does not equal 0 and is between
+     * started if the blink rate does not equal 0 and is between
      * {@link #TERMINAL_CURSOR_BLINK_RATE_MIN} and {@link #TERMINAL_CURSOR_BLINK_RATE_MAX}.
      *
      * This should be called when the view holding this activity is resumed or stopped so that
@@ -1332,7 +1310,7 @@ public final class TerminalView extends View {
      *
      * How cursor blinker starting works is by registering a {@link Runnable} with the looper of
      * the main thread of the app which when run, toggles the cursor blinking state and re-registers
-     * itself to be called with the delay set by {@link #mTerminalCursorBlinkerRate}. When cursor
+     * itself to be called with the delay set by the blink rate. When cursor
      * blinking needs to be disabled, we just cancel any callbacks registered. We don't run our own
      * "thread" and let the thread for the main looper do the work for us, whose usage is also
      * required to update the UI, since it also handles other calls to update the UI as well based
@@ -1353,130 +1331,15 @@ public final class TerminalView extends View {
      *                                 starting the cursor blinker.
      */
     public synchronized void setTerminalCursorBlinkerState(boolean start, boolean startOnlyIfCursorEnabled) {
-        // Stop any existing cursor blinker callbacks
-        stopTerminalCursorBlinker();
-
-        if (mEmulator == null) return;
-
-        mEmulator.setCursorBlinkingEnabled(false);
-
-        if (start) {
-            // If cursor blinker is not enabled or is not valid
-            if (mTerminalCursorBlinkerRate < TERMINAL_CURSOR_BLINK_RATE_MIN || mTerminalCursorBlinkerRate > TERMINAL_CURSOR_BLINK_RATE_MAX)
-                return;
-            // If cursor blinder is to be started only if cursor is enabled
-            else if (startOnlyIfCursorEnabled && ! mEmulator.isCursorEnabled()) {
-                if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                    mClient.logVerbose(LOG_TAG, "Ignoring call to start cursor blinker since cursor is not enabled");
-                return;
-            }
-
-            // Start cursor blinker runnable
-            if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mClient.logVerbose(LOG_TAG, "Starting cursor blinker with the blink rate " + mTerminalCursorBlinkerRate);
-            if (mTerminalCursorBlinkerHandler == null)
-                mTerminalCursorBlinkerHandler = new Handler(Looper.getMainLooper());
-            mTerminalCursorBlinkerRunnable = new TerminalCursorBlinkerRunnable(mEmulator, mTerminalCursorBlinkerRate);
-            mEmulator.setCursorBlinkingEnabled(true);
-            mTerminalCursorBlinkerRunnable.run();
-        }
+        mCursorBlinker.setState(start, startOnlyIfCursorEnabled);
     }
 
     /**
      * Cancel the terminal cursor blinker callbacks
      */
     private void stopTerminalCursorBlinker() {
-        if (mTerminalCursorBlinkerHandler != null && mTerminalCursorBlinkerRunnable != null) {
-            if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mClient.logVerbose(LOG_TAG, "Stopping cursor blinker");
-            mTerminalCursorBlinkerHandler.removeCallbacks(mTerminalCursorBlinkerRunnable);
-            // 证道 P1-a（2026-10-10）：断开 Handler -> Runnable -> TerminalView -> Activity 的引用链。
-            mTerminalCursorBlinkerRunnable = null;
-        }
+        mCursorBlinker.stop();
     }
-
-    /**
-     * 证道 P1-a（2026-10-10）：光标闪烁只重绘光标所在的那一格。
-     *
-     * <p>背景：上游的 {@link TerminalCursorBlinkerRunnable} 每 {@code mBlinkRate} 毫秒调用一次
-     * {@code invalidate()}（整屏）。真机实测（docs/证道-P0渲染层测量-2026-10-10.md）整屏重绘一帧的
-     * 记录开销 = 2.3 ms（framestats 的 draw 相位 p50），直接在 {@code onDraw} 里计时则是 2.5–19.8 ms
-     * （41 行 CJK，中位 ≈5 ms）；屏幕静止时每秒仍要白付约 1.7 帧（600 ms 闪烁率），而变化的只有光标那一格。
-     * 见 ERRATA E-086 / 审计 🟡-5。
-     *
-     * <p>无法可靠定位光标时回退整屏 {@code invalidate()}：未启用光标 / 回滚了历史（{@code mTopRow != 0}）/
-     * 行列越界 / 尺寸未就绪。宁可多画一屏，也不能留下残影。
-     */
-    private void invalidateCursorCell() {
-        if (mEmulator == null || mRenderer == null) {
-            invalidate();
-            return;
-        }
-        // 应用主动隐藏了光标（如 tmux 里跑全屏程序）时，这一帧根本不需要重绘。
-        if (!mEmulator.isCursorEnabled()) return;
-        // 回滚历史时光标不在可见区，且此时内容随时可能整体滚动，直接整屏重绘。
-        if (mTopRow != 0) {
-            invalidate();
-            return;
-        }
-        final int screenRow = mEmulator.getCursorRow() - mTopRow;
-        final int cursorCol = mEmulator.getCursorCol();
-        if (screenRow < 0 || screenRow >= mEmulator.mRows || cursorCol < 0 || cursorCol >= mEmulator.mColumns) {
-            invalidate();
-            return;
-        }
-        // 与 TerminalRenderer.render() 同一套度量：heightOffset 从 mFontLineSpacingAndAscent 起，
-        // 每行先 += mFontLineSpacing，再以该 baseline 绘制此行。
-        final int lineSpacing = mRenderer.mFontLineSpacing;
-        final float fontWidth = mRenderer.mFontWidth;
-        final float baseline = mRenderer.mFontLineSpacingAndAscent + (screenRow + 1) * (float) lineSpacing;
-        // 横向取到 (cursorCol .. cursorCol + 2) 两格：覆盖宽字符（CJK）与 BLOCK 反色块；
-        // 纵向一整行上下各留 2 px，避免抗锯齿边缘残留。
-        final int left = (int) Math.floor(cursorCol * fontWidth) - 1;
-        final int right = (int) Math.ceil((cursorCol + 2) * fontWidth) + 1;
-        final int top = (int) Math.floor(baseline - lineSpacing) - 2;
-        final int bottom = (int) Math.ceil(baseline) + 2;
-        invalidate(left, top, right, bottom);
-    }
-
-    private class TerminalCursorBlinkerRunnable implements Runnable {
-
-        private TerminalEmulator mEmulator;
-        private final int mBlinkRate;
-
-        // Initialize with false so that initial blink state is visible after toggling
-        boolean mCursorVisible = false;
-
-        public TerminalCursorBlinkerRunnable(TerminalEmulator emulator, int blinkRate) {
-            mEmulator = emulator;
-            mBlinkRate = blinkRate;
-        }
-
-        public void setEmulator(TerminalEmulator emulator) {
-            mEmulator = emulator;
-        }
-
-        public void run() {
-            try {
-                if (mEmulator != null) {
-                    // Toggle the blink state and then invalidate() the view so
-                    // that onDraw() is called, which then calls TerminalRenderer.render()
-                    // which checks with TerminalEmulator.shouldCursorBeVisible() to decide whether
-                    // to draw the cursor or not
-                    mCursorVisible = !mCursorVisible;
-                    //mClient.logVerbose(LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
-                    mEmulator.setCursorBlinkState(mCursorVisible);
-                    // 证道 P1-a（2026-10-10）：只重绘光标所在的那一格，不再整屏 invalidate()。
-                    invalidateCursorCell();
-                }
-            } finally {
-                // Recall the Runnable after mBlinkRate milliseconds to toggle the blink state
-                mTerminalCursorBlinkerHandler.postDelayed(this, mBlinkRate);
-            }
-        }
-    }
-
-
 
     /**
      * Define functions required for text selection and its handles.
@@ -1585,7 +1448,8 @@ public final class TerminalView extends View {
         super.onDetachedFromWindow();
 
         // 证道 P1-a（2026-10-10）：上游漏了这一句（审计 🟡-5）。不停止的话，主线程 Handler 会一直
-        // 持有 TerminalCursorBlinkerRunnable（非静态内部类）-> TerminalView -> Activity 的引用链，
+        // 持有 BlinkerRunnable（TerminalCursorBlinker 的非静态内部类）-> TerminalCursorBlinker
+        // -> TerminalView -> Activity 的引用链，
         // 每进出一次终端页就留一条 600 ms 的永久空转循环（每次还白做一次整屏合成）。
         stopTerminalCursorBlinker();
 
