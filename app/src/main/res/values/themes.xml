@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Zhengdao" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Zhengdao" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 2026-10-10 改：补状态栏透明 + 浅色图标 + 键盘 resize，
+             之前只有 1 行（parent + NoActionBar），状态栏是默认灰底黑图标，
+             与浅色主题冲突。 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
 
     <!-- 终端快捷键条按键的公共外观 -->
     <style name="TermKey">
