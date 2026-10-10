@@ -4837,3 +4837,12 @@ tmux 历史能否接受）**必须真机看** —— 这正是 DSH 坚持"先让
 **后果**：① 归档里的越界软链不再能落成链接（两条解压路径同语义）；② `resolv.conf` 的只读属性用完即还；③ 同前缀兄弟目录不再被误判成根内；④ 增量更新前按整树体积预检，避免"旧树还在盘上时又复制一份新树"；⑤ 用户自己追加的 `zz-npm-registry.sh` 行不再被抹掉、被注释掉的赋值不再算数；⑥ **入库 `.so` 的更新流程写进文档**（改 `rust/` 必须重编 + 覆盖 + 16 KB 对齐复核）。
 
 **回退**：`git revert <本提交>`。源码与重编后的 `.so` 放在同一个提交里——只回退源码不回退 `.so` 会让二者不一致。
+
+**发布核验（2026-10-10 晚，v2.0.9 正式包）**
+
+- **正式 Release**：`证道 v2.0.9 — 正式版`（tag `v2.0.9` → `00e6a679e62654ff52528eb149923b9d1733be5e`，created `2026-10-10T08:47:58Z`，非 draft/prerelease）。资产 `zhengdao-2.0.9-release.apk` = **4,557,809 B**、sha256 **`d1ce872cd34cf0d018ef44b8b126e4854b4ae9dac1f09de266f423a69cc367fe`**（与 API 给的 `digest` 一致，下载后本地复核也一致）。
+- **入库 `.so` 确实随包发布**：从该 APK 里取 `lib/arm64-v8a/libzhengdao_core.so` = **960,192 B**、sha256 **`d50bbd2b235658923fb934a3be090ac2df37249f2399d69476e742d578a75f79`**，与仓库 `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` **逐字节一致** ⇒ E-083 的 `EmptyArchive` 与 E-085 的 `link_stays_inside` 这一版真的在用户手上的包里（入库前那份 957,488 B 的旧物从没有过它们）。
+- **真机复验该正式包**（Honor PGT-AN10 / AD3J023824001723）：安装后 `versionName=2.0.9` / `versionCode=25` / 非 DEBUGGABLE；`[10-10 16:54:35] 启动自检：安装包签名 = 官方 ✓`、`路由 → home（来自 无）`；丹房「环境就绪 · Debian 13.7 已安装」。
+- **CI**：主线合并提交 `00e6a679…` 上 `build`/`verify` 双 success（`release` skipped，非 tag）；tag 触发的 `build#234` success，正式 Release 由它建出。
+- ⚠️ **顺带记一次自己造成的事故与自愈**（E-072 那条铁律的代价）：我在真机上跑了一次 `.\gradlew.bat :app:connectedDebugAndroidTest`（16:34），它会卸载 App、清空**内部**数据（`files/rootfs`、`files/home`、prefs）。外部数据完好（`Download/证道/{agents,cache,logs,rootfs,资料库}`、用户的 `Download/男性` 都在）。16:36:40 重进终端时 App 自愈：`检测到本地归档，自动安装: …/rootfs/debian-13.7-base-arm64.tar.zst` → `使用本地缓存包（192 MB，不联网下载）` → `SHA256 校验通过（来源：索引）` → 16:36:49 `安装完成！安装包已保留在缓存（重装免下载）`，容器重建（rootfs 768 MB）、`启动决策: proot=true loader=true marker=true`。
+- 该事故的两个残留已修：① 工作区设置回落到默认 `Download/证道`（用户在 prefs 里选的 `Download/男性` 随之丢失）⇒ 用设置页「工作区 → 选择文件夹」改回，`[10-10 16:56:54] 工作区: /workspace <- /storage/emulated/0/Download/男性（共享存储，卸载保留）` 复核通过；② 给本地归档补了官方值的边车 `/storage/emulated/0/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst.sha256`（65 B，`d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02`，与该资产在 Release 里的 digest 相同），这样「清数据后离线从本地包重装」不会再因为缺校验值被 E-082 的 fail-closed 拒掉。
