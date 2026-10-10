@@ -26,6 +26,7 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
+import com.example.zhengdao.terminal.KnowledgeBaseHints
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -645,6 +646,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 .onFailure {
                     Toast.makeText(this, "发送退格失败：${it.message}", Toast.LENGTH_SHORT).show()
                 }
+            // FIX-F：这颗按钮是**直写 pty**的，不经过 onCodePoint ⇒ 行缓冲得单喂一口，
+            // 否则用户用退格改完错字再回车，检索词里还留着删掉的字。
+            KnowledgeBaseHints.onUserBackspace()
         }
         findViewById<TextView>(R.id.key_tab)?.setOnClickListener {
             // SHIFT+TAB = Backtab（\u001b[Z），Claude Code 的模式切换依赖它
@@ -695,6 +699,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         runCatching { SessionManager.write(text) }
             .onSuccess { Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(this, "粘贴失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        // FIX-F：粘贴是"直写 pty"，同样绕过 onCodePoint ⇒ 单喂一口到行缓冲，
+        // 这样「粘一段问题 + 回车」也能被检索。多行/超长粘贴会被它自己丢掉（那不是一次提问）。
+        KnowledgeBaseHints.onUserText(text)
     }
 
     private fun clearSticky(ctrl: Boolean, shift: Boolean) {
@@ -750,6 +757,22 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     override fun copyModeChanged(copyMode: Boolean) {}
     override fun onKeyDown(keyCode: Int, e: KeyEvent?, session: TerminalSession?): Boolean {
         // 粘滞 CTRL 对硬件键盘同样生效
+        // FIX-F（2026-10-10，E-083）：硬件键盘走的是另一条路（TerminalView 里
+        // KeyHandler.getCode() 直接把 "\r" 写进 pty），不经过 onCodePoint ——
+        // 所以回车与退格在这里单独喂给行缓冲／交给注入器处理。
+        // ⚠️ 挂在"用户按键"这条路径上是有意的：App 自己写的启动命令不从这里过，
+        //    所以恢复会话不会被重复注入。
+        if (e != null && !stickyCtrl) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
+                    if (KnowledgeBaseHints.onUserCodePoint(
+                            this, '\r'.code, ctrlDown = false
+                        ) { payload -> writeToSession(session, payload) }
+                    ) return true
+                KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL ->
+                    KnowledgeBaseHints.onUserBackspace()
+            }
+        }
         return false
     }
     override fun onKeyUp(keyCode: Int, e: KeyEvent?): Boolean = false
@@ -765,7 +788,35 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             clearSticky(ctrl = true, shift = false)
             return true
         }
+        // FIX-F（2026-10-10，E-083）：行缓冲 + 回车拦截。
+        // 返回 true ⇒ 这个码点被接管（只可能是回车），由注入器稍后把"资料库线索"连同回车一起送出。
+        // 关着开关时它恒返回 false，本行等于不存在（零行为变化）。
+        if (KnowledgeBaseHints.onUserCodePoint(this, codePoint, ctrlDown) { payload ->
+                writeToSession(session, payload)
+            }
+        ) return true
         return false
+    }
+
+    /**
+     * FIX-F 的 pty 出口：注入器在**后台线程**里回调本方法，这里负责切回主线程再写。
+     *
+     * ⚠️ 优先写"当前这个会话"（用户就是对着它按的回车）；拿不到再退回
+     * [SessionManager.write]（与快捷键条／粘贴同一条通道）。写失败只落日志——
+     * 注入失败绝不能表现成"用户回车没反应"。
+     */
+    private fun writeToSession(session: TerminalSession?, payload: String) {
+        mainHandler.post {
+            runCatching {
+                val s = session ?: SessionManager.session
+                if (s != null) {
+                    val bytes = payload.toByteArray(Charsets.UTF_8)
+                    s.write(bytes, 0, bytes.size)
+                } else {
+                    SessionManager.write(payload)
+                }
+            }.onFailure { RunLog.log("资料库线索：写入终端失败（${it.message}）") }
+        }
     }
     override fun onEmulatorSet() {
         // 光标持续闪烁（用户要求）：必须先设频率再启动状态，且只能在 emulator 就绪后调用。
@@ -799,6 +850,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     override fun onTitleChanged(changedSession: TerminalSession) {}
     override fun onSessionFinished(finishedSession: TerminalSession) {
         val code = runCatching { finishedSession.getExitStatus() }.getOrDefault(-1)
+        // FIX-F：会话没了，行缓冲里那半句也就不该存在（避免下次进来串味）。
+        KnowledgeBaseHints.reset()
         runOnUiThread {
             Toast.makeText(this, "会话已退出（code=$code）", Toast.LENGTH_LONG).show()
         }
@@ -1271,6 +1324,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // M2：会话归 SessionManager 持有，UI 销毁不杀会话（前台服务继续保活）。
         // 但必须断开视图重绘回调，否则会持有已销毁的 View（内存泄漏 + 空刷）。
         SessionManager.onViewUpdate = null
+        // FIX-F：清掉行缓冲（Activity 都没了，那半句提问也不该留着）。
+        KnowledgeBaseHints.reset()
         super.onDestroy()
     }
 

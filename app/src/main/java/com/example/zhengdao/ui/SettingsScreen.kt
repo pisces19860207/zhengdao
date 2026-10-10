@@ -184,6 +184,8 @@ fun SettingsScreen(
     var kbStatus by remember { mutableStateOf<com.example.zhengdao.terminal.KnowledgeBase.Status?>(null) }
     var kbEnabled by remember { mutableStateOf(com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)) }
     var kbHelpOpen by remember { mutableStateOf(false) }
+    // FIX-F（2026-10-10，E-083）：提问时自动附上资料线索 —— **默认关**，要用户自己打开
+    var kbHints by remember { mutableStateOf(com.example.zhengdao.terminal.KnowledgeBaseHints.isEnabled(ctx)) }
 
     // ── 权限（存储 + 网络自检）──
     fun storageGrantedNow(): Boolean =
@@ -255,6 +257,7 @@ fun SettingsScreen(
         rootfsMb = sizes.first; homeMb = sizes.second; cacheMb = sizes.third
         // 资料库状态（读目录 → 必须 IO 线程）
         kbEnabled = com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)
+        kbHints = com.example.zhengdao.terminal.KnowledgeBaseHints.isEnabled(ctx)
         kbStatus = withContext(Dispatchers.IO) { com.example.zhengdao.terminal.KnowledgeBase.status(ctx) }
     }
 
@@ -645,6 +648,29 @@ fun SettingsScreen(
                     },
                 )
             }
+            // ── FIX-F（2026-10-10，E-083）：提问时自动附上资料线索 ──
+            // 默认关：这是往用户屏幕上贴字的功能，先让他自己决定开不开。
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "提问时自动附上资料线索",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = kbHints,
+                    onCheckedChange = { on ->
+                        kbHints = on
+                        com.example.zhengdao.terminal.KnowledgeBaseHints.setEnabled(ctx, on)
+                    },
+                )
+            }
+            Text(
+                text = "打开后：你在终端里问问题时，证道先在本机把相关资料找出来，" +
+                    "把「文件名 ＋ 第几行」附在你这句话后面一起发出去 —— 这样 AI 不用自己翻一遍。" +
+                    "只在找到时才附，找不到就不加；全程不联网，随时可以关。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         if (kbHelpOpen) {
