@@ -39,9 +39,17 @@ public final class TextStyle {
     public final static int COLOR_INDEX_FOREGROUND = 256;
     public final static int COLOR_INDEX_BACKGROUND = 257;
     public final static int COLOR_INDEX_CURSOR = 258;
+    /**
+     * 选区底色（证道新增，2026-10-10）。
+     *
+     * <p>取值为 0 表示「本配色没有指定选区底色」，渲染层遇到 0 会退回历史上的做法——
+     * 把选中格的前景/背景互换（反色）。之所以用 0 而不是一个「默认灰」，
+     * 是因为前面 4 个内置配色一直靠反色画选区，换掉它们的外观不在本次改动范围内。
+     */
+    public final static int COLOR_INDEX_SELECTION = 259;
 
-    /** The 256 standard color entries and the three special (foreground, background and cursor) ones. */
-    public final static int NUM_INDEXED_COLORS = 259;
+    /** The 256 standard color entries and the four special (foreground, background, cursor, selection) ones. */
+    public final static int NUM_INDEXED_COLORS = 260;
 
     /** Normal foreground and background colors and no effects. */
     final static long NORMAL = encode(COLOR_INDEX_FOREGROUND, COLOR_INDEX_BACKGROUND, 0);
