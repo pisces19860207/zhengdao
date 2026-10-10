@@ -23,8 +23,9 @@ import com.termux.terminal.TerminalEmulator;
  * {@code inputCodePoint(int, int, boolean, boolean)} / {@code handleKeyCode(int, int)} /
  * {@code handleKeyCodeAction(int, int)} 的同名同签名入口做一行转发，**公开 API 一字不改**。</p>
  *
- * <p>搬家只做这些改动：直接访问的 View 成员改成 {@code mView.xxx}；{@link TerminalView} 的包内静态
- * （{@code LOG_TAG} / {@code TERMINAL_VIEW_KEY_LOGGING_ENABLED} / {@code KEY_EVENT_SOURCE_*}）加类名限定
+ * <p>搬家只做这些改动：直接访问的 View 成员改成 {@code mView.xxx}；日志 TAG 用本类自己的
+ * {@code LOG_TAG}，键位日志开关读 {@link TerminalView#isKeyLoggingEnabled()}，{@link TerminalView} 的包内静态
+ * （{@code KEY_EVENT_SOURCE_*}）加类名限定
  * （本类不是它的子类）；匿名 {@link BaseInputConnection} 的目标 View 由 {@code this} 改成 {@code mView}
  * （必须是那个被输入法绑定的 View，而不是本桥）；原来写在本类里的 {@code super.onKeyXxx(...)} 改走
  * {@link TerminalView} 的包内转发口 {@code onKeyPreImeSuper()} / {@code onKeyDownSuper()} / {@code onKeyUpSuper()}
@@ -32,6 +33,9 @@ import com.termux.terminal.TerminalEmulator;
  * 注释与搬家前逐字一致。</p>
  */
 final class TerminalImeBridge {
+
+    /** 日志 TAG：与 {@link TerminalView} 搬家前用的同一个字符串，保证日志文案不变。 */
+    private static final String LOG_TAG = "TerminalView";
 
     private final TerminalView mView;
 
@@ -95,7 +99,7 @@ final class TerminalImeBridge {
 
             @Override
             public boolean finishComposingText() {
-                if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED) mView.mClient.logInfo(TerminalView.LOG_TAG, "IME: finishComposingText()");
+                if (TerminalView.isKeyLoggingEnabled()) mView.mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
                 super.finishComposingText();
 
                 if (mView.mImeProbeObserver != null) mView.mImeProbeObserver.onImeEvent("finishComposingText", String.valueOf(getEditable()));
@@ -113,8 +117,8 @@ final class TerminalImeBridge {
 
             @Override
             public boolean commitText(CharSequence text, int newCursorPosition) {
-                if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
-                    mView.mClient.logInfo(TerminalView.LOG_TAG, "IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
+                if (TerminalView.isKeyLoggingEnabled()) {
+                    mView.mClient.logInfo(LOG_TAG, "IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
                 }
                 super.commitText(text, newCursorPosition);
 
@@ -129,8 +133,8 @@ final class TerminalImeBridge {
 
             @Override
             public boolean deleteSurroundingText(int leftLength, int rightLength) {
-                if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
-                    mView.mClient.logInfo(TerminalView.LOG_TAG, "IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
+                if (TerminalView.isKeyLoggingEnabled()) {
+                    mView.mClient.logInfo(LOG_TAG, "IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
                 }
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
                 if (mView.mImeProbeObserver != null) mView.mImeProbeObserver.onImeEvent("deleteSurroundingText", leftLength + "," + rightLength);
@@ -199,8 +203,8 @@ final class TerminalImeBridge {
     }
 
     boolean onKeyPreIme(int keyCode, KeyEvent event) {
-        if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mView.mClient.logInfo(TerminalView.LOG_TAG, "onKeyPreIme(keyCode=" + keyCode + ", event=" + event + ")");
+        if (TerminalView.isKeyLoggingEnabled())
+            mView.mClient.logInfo(LOG_TAG, "onKeyPreIme(keyCode=" + keyCode + ", event=" + event + ")");
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             mView.cancelRequestAutoFill();
             if (mView.isSelectingText()) {
@@ -229,8 +233,8 @@ final class TerminalImeBridge {
      * 保留在公开入口 TerminalView#onKeyDown(int, KeyEvent) 的 javadoc 里，此处不再重复一份。
      */
     boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mView.mClient.logInfo(TerminalView.LOG_TAG, "onKeyDown(keyCode=" + keyCode + ", isSystem()=" + event.isSystem() + ", event=" + event + ")");
+        if (TerminalView.isKeyLoggingEnabled())
+            mView.mClient.logInfo(LOG_TAG, "onKeyDown(keyCode=" + keyCode + ", isSystem()=" + event.isSystem() + ", event=" + event + ")");
         if (mView.mEmulator == null) return true;
         if (mView.isSelectingText()) {
             mView.stopTextSelectionMode();
@@ -261,7 +265,7 @@ final class TerminalImeBridge {
         if (event.isNumLockOn()) keyMod |= KeyHandler.KEYMOD_NUM_LOCK;
         // https://github.com/termux/termux-app/issues/731
         if (!event.isFunctionPressed() && handleKeyCode(keyCode, keyMod)) {
-            if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED) mView.mClient.logInfo(TerminalView.LOG_TAG, "handleKeyCode() took key event");
+            if (TerminalView.isKeyLoggingEnabled()) mView.mClient.logInfo(LOG_TAG, "handleKeyCode() took key event");
             return true;
         }
 
@@ -279,8 +283,8 @@ final class TerminalImeBridge {
         if (mView.mClient.readFnKey()) effectiveMetaState |= KeyEvent.META_FUNCTION_ON;
 
         int result = event.getUnicodeChar(effectiveMetaState);
-        if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mView.mClient.logInfo(TerminalView.LOG_TAG, "KeyEvent#getUnicodeChar(" + effectiveMetaState + ") returned: " + result);
+        if (TerminalView.isKeyLoggingEnabled())
+            mView.mClient.logInfo(LOG_TAG, "KeyEvent#getUnicodeChar(" + effectiveMetaState + ") returned: " + result);
         if (result == 0) {
             return false;
         }
@@ -306,8 +310,8 @@ final class TerminalImeBridge {
     }
 
     void inputCodePoint(int eventSource, int codePoint, boolean controlDownFromEvent, boolean leftAltDownFromEvent) {
-        if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
-            mView.mClient.logInfo(TerminalView.LOG_TAG, "inputCodePoint(eventSource=" + eventSource + ", codePoint=" + codePoint + ", controlDownFromEvent=" + controlDownFromEvent + ", leftAltDownFromEvent="
+        if (TerminalView.isKeyLoggingEnabled()) {
+            mView.mClient.logInfo(LOG_TAG, "inputCodePoint(eventSource=" + eventSource + ", codePoint=" + codePoint + ", controlDownFromEvent=" + controlDownFromEvent + ", leftAltDownFromEvent="
                 + leftAltDownFromEvent + ")");
         }
 
@@ -414,8 +418,8 @@ final class TerminalImeBridge {
      * @return Whether the event was handled.
      */
     boolean onKeyUp(int keyCode, KeyEvent event) {
-        if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mView.mClient.logInfo(TerminalView.LOG_TAG, "onKeyUp(keyCode=" + keyCode + ", event=" + event + ")");
+        if (TerminalView.isKeyLoggingEnabled())
+            mView.mClient.logInfo(LOG_TAG, "onKeyUp(keyCode=" + keyCode + ", event=" + event + ")");
 
         // Do not return for KEYCODE_BACK and send it to the client since user may be trying
         // to exit the activity.
