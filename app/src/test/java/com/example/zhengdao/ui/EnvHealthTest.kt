@@ -173,4 +173,88 @@ class EnvHealthTest {
         assertFalse(ok)
         assertTrue(detail.contains("系统设置"))
     }
+
+    // ── #10（2026-10-09）：体检表与修复动作都不会因为一项而崩 ──
+    //
+    // 审计报告 P0-2 的形态是裸 `listOf(...)` + 三处裸 `readText()`：任何一项抛异常就把**整张
+    // 体检表**带崩（它跑在状态卡展开的回调里 ⇒ 直接闪退）。这里锁三条：① 表本身项的构成固定；
+    // ② 一项炸了只影响那一项、其余照跑；③ 兜底结果也必须过 #4 的"每个 ✗ 都有去路"。
+
+    @Test
+    fun `体检登记表的项与顺序固定`() {
+        assertEquals(
+            listOf(
+                "proot", "rootfs", "dns", "timezone", "uv", "hermes-deps",
+                "network", "storage", "disk", "native", "resource",
+            ),
+            EnvHealth.ITEMS.map { it.id },
+        )
+        assertEquals("id 不能重复", EnvHealth.ITEMS.size, EnvHealth.ITEMS.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun `一项抛异常不影响其余项`() {
+        val boom = IllegalStateException("uv.toml 读不动了")
+        val result = EnvHealth.evaluate(EnvHealth.ITEMS) { item ->
+            if (item.id == "uv") throw boom
+            EnvHealth.Check(item.id, item.label, ok = true, detail = "本项正常")
+        }
+
+        assertEquals("项数不能少", EnvHealth.ITEMS.size, result.size)
+        assertEquals("顺序不能乱", EnvHealth.ITEMS.map { it.id }, result.map { it.id })
+
+        val uv = result.single { it.id == "uv" }
+        assertFalse("炸了的那一项判失败", uv.ok)
+        assertTrue("要写明是哪一项异常", uv.detail.contains("体检异常"))
+        assertTrue("要带上异常原因", uv.detail.contains("uv.toml 读不动了"))
+        assertTrue("兜底也要留一键修复的去路", uv.fixId == EnvHealth.FIX_UV)
+
+        val others = result.filter { it.id != "uv" }
+        assertTrue("其余项照跑", others.all { it.ok && !it.warn })
+    }
+
+    @Test
+    fun `任何项的兜底结果都得过 每个红灯都有去路 这条不变量`() {
+        val t = RuntimeException("boom")
+        EnvHealth.ITEMS.forEach { item ->
+            val c = EnvHealth.fallbackOf(item, t)
+            assertTrue("${item.id} 的兜底必须能过 hasExit", EnvHealth.hasExit(c))
+        }
+    }
+
+    @Test
+    fun `修不了的降级项抛异常时呈黄色告警而不是红灯`() {
+        // native / 资源占用本来就没有修复动作，不能因为"查的时候炸了"就报红——
+        // 那会给出一个点了也没用的「去处理」（同 nativeCheck 那条不变量的思路）。
+        val t = IllegalStateException("采样失败")
+        listOf("native", "resource").forEach { id ->
+            val item = EnvHealth.ITEMS.single { it.id == id }
+            val c = EnvHealth.fallbackOf(item, t)
+            assertTrue("$id 不能报红", c.ok)
+            assertTrue("$id 应是告警态", c.warn)
+            assertNull("告警态不能给一键修复", c.fixId)
+            assertNull("也不该把用户丢进终端", c.terminalCmd)
+            assertNull("更没有去路", c.route)
+            assertTrue(c.detail.contains("体检异常"))
+        }
+    }
+
+    @Test
+    fun `修复动作抛异常被兜住且不会假装改过文件`() {
+        val r = EnvHealth.guardFix { throw IllegalStateException("resolv.conf 只读") }
+        assertFalse("抛异常时不能说动过文件", r.changed)
+        assertEquals("IllegalStateException：resolv.conf 只读", r.error)
+    }
+
+    @Test
+    fun `修复动作正常时原样传递结果且没有错误`() {
+        assertEquals(EnvHealth.FixResult(changed = true), EnvHealth.guardFix { true })
+        assertEquals(EnvHealth.FixResult(changed = false), EnvHealth.guardFix { false })
+    }
+
+    @Test
+    fun `异常摘要带类名与消息 没消息时只留类名`() {
+        assertEquals("IllegalStateException：坏了", EnvHealth.reason(IllegalStateException("坏了")))
+        assertEquals("IllegalStateException", EnvHealth.reason(IllegalStateException()))
+    }
 }

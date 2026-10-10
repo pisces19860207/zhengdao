@@ -33,6 +33,13 @@ import java.io.File
  * 走查前最后四项（proot / rootfs / network / storage）只有一句笼统的「去处理」，
  * 统统丢到设置页顶部让用户自己找——等于没指路。现在各带一条 [route]，
  * 由主页渲染成对应文案并直达（`EnvHealthTest.每个红灯项都有去路` 锁死这条不变量）。
+ *
+ * ## 不变量之二（#10，2026-10-09）：**体检表不会因为某一项而崩**
+ *
+ * 审计报告 P0-2 的成因就是这里的裸 `listOf(...)` 加三处裸 `readText()`：任何一项抛异常，
+ * 整张体检表跟着崩（跑在状态卡展开的回调里 ⇒ 直接闪退）。现在逐项跑在 [ITEMS] 注册表的
+ * `runCatching` 里，抛异常的那一项转成「体检异常 + 原因」（[fallbackOf]），其余照跑；
+ * 修复侧同理（[fixDetailed] 不外抛）。
  */
 object EnvHealth {
 
@@ -90,23 +97,96 @@ object EnvHealth {
         "disk" to ROUTE_STORAGE_DETAIL,
     )
 
-    /** 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询 + 一次资源采样 ~0.7 s）。 */
-    fun inspect(ctx: Context): List<Check> = listOf(
-        prootCheck(ctx),
-        rootfsCheck(ctx),
-        dnsCheck(ctx),
-        timezoneCheck(ctx),
-        uvCheck(ctx),
-        hermesDepsCheck(ctx),
-        networkCheck(ctx),
-        storageCheck(ctx),
-        diskCheck(ctx),
-        nativeCheck(),
-        resourceCheck(),
+    /**
+     * 体检项登记表（#10，2026-10-09）。
+     *
+     * **一项 = 一行**：id / 标签 / 兜底去路 / 怎么查。加这一层是因为审计报告的 P0-2：
+     * [inspect] 原先是裸 `listOf(...)`，任何一项抛异常都会把**整张体检表**带崩
+     * （它跑在状态卡展开的回调里 ⇒ 直接闪退）。现在每项独立兜底（[fallbackOf]），
+     * 一项炸了只让那一项显示「体检异常 + 原因」，其余照跑。
+     *
+     * [fixId] / [terminalCmd] / [route] 只在**抛异常**时被 [fallbackOf] 取用
+     * （正常路径由各 check 自己按判定条件给去路），因此必须与那一项平时的去路一致——
+     * `EnvHealthTest` 盯着这条不变量（[fallbackOf] 的结果必须过 [hasExit]）。
+     * [warnOnly] 项（native / 资源占用）本来就没有修复动作，兜底按黄 ⚠ 呈现。
+     */
+    internal data class Item(
+        val id: String,
+        val label: String,
+        val warnOnly: Boolean = false,
+        val fixId: String? = null,
+        val terminalCmd: String? = null,
+        val route: String? = null,
+        val body: (Context) -> Check,
     )
 
-    /** 定向自愈。返回是否有修补动作；rootfs/proot 类不在一键范围（重解压兜底）。 */
-    fun fix(ctx: Context, fixId: String): Boolean = when (fixId) {
+    internal val ITEMS: List<Item> = listOf(
+        Item("proot", "proot 就绪", route = GUIDED_ROUTES["proot"], body = ::prootCheck),
+        Item("rootfs", "RootFS 完整性", route = GUIDED_ROUTES["rootfs"], body = ::rootfsCheck),
+        Item("dns", "DNS 配置", fixId = FIX_DNS, body = ::dnsCheck),
+        Item("timezone", "时区校准", fixId = FIX_TIMEZONE, body = ::timezoneCheck),
+        Item("uv", "uv 配置", fixId = FIX_UV, body = ::uvCheck),
+        Item(
+            "hermes-deps", "Hermes 依赖环境",
+            terminalCmd = HermesEnv.REPAIR_CMD, body = ::hermesDepsCheck,
+        ),
+        Item("network", "网络连通性", route = GUIDED_ROUTES["network"], body = ::networkCheck),
+        Item("storage", "存储权限", route = GUIDED_ROUTES["storage"], body = ::storageCheck),
+        Item("disk", "存储占用", route = GUIDED_ROUTES["disk"], body = ::diskCheck),
+        Item("native", "native 加速层", warnOnly = true, body = { nativeCheck() }),
+        Item("resource", "资源占用", warnOnly = true, body = { resourceCheck() }),
+    )
+
+    /** 异常摘要（人话 + 类名；用户能截图，我们能在日志里 grep）。 */
+    internal fun reason(t: Throwable): String =
+        t.javaClass.simpleName + (t.message?.let { "：$it" } ?: "")
+
+    /** 某一项体检抛异常时的兜底结果（纯函数，便于单测）：该项判失败 + 原因 + 登记好的去路。 */
+    internal fun fallbackOf(item: Item, t: Throwable): Check =
+        if (item.warnOnly) {
+            Check(item.id, item.label, ok = true, detail = "体检异常：${reason(t)}", warn = true)
+        } else {
+            Check(
+                item.id, item.label, ok = false, detail = "体检异常：${reason(t)}",
+                fixId = item.fixId, terminalCmd = item.terminalCmd, route = item.route,
+            )
+        }
+
+    /**
+     * 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询 + 一次资源采样 ~0.7 s）。
+     *
+     * **本函数不抛异常**（#10）：每一项跑在 `runCatching` 里，抛异常的那一项由 [fallbackOf]
+     * 转成「体检异常 + 原因」，其余项照跑——体检面板不再可能因为某一项而整表崩掉。
+     */
+    fun inspect(ctx: Context): List<Check> = evaluate(ITEMS) { it.body(ctx) }
+
+    /**
+     * [inspect] 的求值壳：逐项 `runCatching`，炸了的那一项换成 [fallbackOf]，其余照跑。
+     *
+     * 抽成纯函数是为了让「一项抛异常不影响其余项」这条不变量能在 JVM 单测里直接验
+     * （[inspect] 需要 Context，单测给不出来）；求值语义与 [inspect] 完全一致。
+     */
+    internal fun evaluate(items: List<Item>, check: (Item) -> Check): List<Check> =
+        items.map { item -> runCatching { check(item) }.getOrElse { fallbackOf(item, it) } }
+
+    /** [fixDetailed] 的结果：`changed` = 真的动过文件（可能仍没修好）；`error` 非空 = 抛异常了。 */
+    data class FixResult(val changed: Boolean, val error: String? = null)
+
+    /** 定向自愈，只要「有没有动过文件」（不关心失败原因时用；同样不会外抛）。 */
+    fun fix(ctx: Context, fixId: String): Boolean = fixDetailed(ctx, fixId).changed
+
+    /**
+     * 定向自愈（#10 起**绝不外抛**）：抛异常时把原因放进 [FixResult.error]，
+     * 由调用方展示（主页会把原因写进「最近问题」卡片）。rootfs/proot 类不在一键范围（重解压兜底）。
+     */
+    fun fixDetailed(ctx: Context, fixId: String): FixResult = guardFix { fixAction(ctx, fixId) }
+
+    /** [fixDetailed] 的兜底壳（纯函数，便于单测：传一个必抛的动作即可验）。 */
+    internal fun guardFix(body: () -> Boolean): FixResult =
+        runCatching { FixResult(body()) }.getOrElse { FixResult(changed = false, error = reason(it)) }
+
+    /** 各修复动作的真实实现；异常由 [fixDetailed] 兜住。 */
+    private fun fixAction(ctx: Context, fixId: String): Boolean = when (fixId) {
         FIX_DNS -> EnvSelfHeal.ensureDnsFiles(
             File(ctx.filesDir, "rootfs/etc/resolv.conf"),
             File(ctx.filesDir, "rootfs/etc/hosts"),
@@ -161,7 +241,9 @@ object EnvHealth {
         val resolv = File(ctx.filesDir, "rootfs/etc/resolv.conf")
         // 判定与 EnvSelfHeal.ensureDnsFiles 的 stale 条件同源：
         // 文件在、含国内源、含重试参数 = 新版配置
-        val text = if (resolv.isFile) resolv.readText() else ""
+        // #10：裸 readText 会把 IO 异常抛到体检表外（整表崩）。读不到按「空内容」判，
+        // 结论仍是「可一键重写」的红项——不是静默放过。
+        val text = if (resolv.isFile) runCatching { resolv.readText() }.getOrDefault("") else ""
         val ok = resolv.isFile && text.contains("223.5.5.5") && text.contains("options timeout")
         return Check(
             id = "dns", label = "DNS 配置", ok = ok,
@@ -199,13 +281,17 @@ object EnvHealth {
         val tools = File(ctx.filesDir, "home/.hermes/tools")
         val naked = tools.listFiles { f -> f.isDirectory && f.name.startsWith("uv-") }
             ?.any { isElf(File(it, "uv")) } ?: false
-        val ok = uvToml.isFile && uvToml.readText().contains("link-mode") && !naked
+        // #10：原先这里 readText 两次（判定一次、文案一次），任一抛异常都带崩整表。
+        // 现在只读一次、且读失败按空内容判（结论 = 缺 link-mode，可一键重写）。
+        val tomlText = if (uvToml.isFile) runCatching { uvToml.readText() }.getOrDefault("") else ""
+        val hasLinkMode = tomlText.contains("link-mode")
+        val ok = uvToml.isFile && hasLinkMode && !naked
         return Check(
             id = "uv", label = "uv 配置", ok = ok,
             detail = when {
                 naked -> "hermes 内嵌 uv 未包装（硬链接会失败），可一键包装"
                 !uvToml.isFile -> "/etc/uv/uv.toml 缺失，可一键写入"
-                !uvToml.readText().contains("link-mode") -> "uv.toml 缺 link-mode，可一键重写"
+                !hasLinkMode -> "uv.toml 缺 link-mode，可一键重写"
                 else -> "系统级 link-mode=copy + 内嵌 uv 已包装"
             },
             fixId = if (ok) null else FIX_UV,

@@ -15,6 +15,7 @@ import android.os.Looper
 import android.os.PowerManager
 import com.example.zhengdao.MainActivity
 import com.example.zhengdao.R
+import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
@@ -60,12 +61,41 @@ class SessionService : Service() {
         var running: Boolean = false
             private set
 
+        /**
+         * 拉起前台服务（保活锚点）。**#10 起不外抛**：`startForegroundService` 会抛
+         * （后台启动限制、服务被禁用/被系统拒），而这时会话已经建好、只差"点火"——
+         * 静默失败的表现就是"进了终端却什么都没发生，日志里也查不到"。失败必须同时
+         * 落日志与「最近问题」。
+         */
         fun start(context: Context) {
-            context.startForegroundService(Intent(context, SessionService::class.java))
+            runCatching { context.startForegroundService(Intent(context, SessionService::class.java)) }
+                .onFailure {
+                    fail(it, "后台保活没起来", "前台服务启动失败（startForegroundService 抛异常）")
+                }
         }
 
+        /** 停前台服务（#10 起不外抛；失败同样留痕）。 */
         fun stop(context: Context) {
-            context.stopService(Intent(context, SessionService::class.java))
+            runCatching { context.stopService(Intent(context, SessionService::class.java)) }
+                .onFailure {
+                    fail(it, "前台服务没停干净", "前台服务停止失败（stopService 抛异常）")
+                }
+        }
+
+        /**
+         * 失败留痕（#10）：日志 + 「最近问题」。
+         * 这两条路以前是全静默的——服务没起来，用户侧只表现为"保活失效"。
+         */
+        private fun fail(t: Throwable, title: String, what: String) {
+            val why = t.javaClass.simpleName + (t.message?.let { "：$it" } ?: "")
+            RunLog.log("$what：$why")
+            IssueCenter.report(
+                id = "session-service",
+                title = title,
+                detail = "$what（$why）。会话本身仍可用，但切到后台更容易被系统回收。",
+                actionLabel = "看日志",
+                actionId = IssueCenter.ACTION_VIEW_LOGS,
+            )
         }
     }
 
