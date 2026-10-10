@@ -4582,3 +4582,88 @@ DEX 体积不变、哈希已变。）
 所以上面那个 sha256 标识的是「05:52:59Z 那次被真机验过的那一份」，不是「当前在架资产」；要核对在架值请直接查 release 资产。
 
 **回退**：`git revert <本提交>`（一个布尔值 + 注释 + 用例，零风险）。
+---
+
+## E-082 · 2026-10-10 · 信任边界收口三条：安装脚本改执行私有副本、解包防路径穿越、缺校验值拒绝安装（#16 的 P3-2/P3-5/P3-6）
+
+**问题（三条，同属 #16 第七批"信任边界"）**：
+
+1. **P3-2 公共区安装脚本被复用执行**。`Download/证道/agents/scripts/<id>-install.sh` 在**共享存储**里，
+   任何拿到「所有文件访问权限」的 App（文件管理器、清理工具、同步类应用）都能改它，而证道会**直接
+   `bash` 它** —— 等于把 shell 里的任意代码执行借给别的 App。E-059 只加了一道"内容像不像脚本"的粗判，
+   而真安装脚本改两行照样像脚本。
+2. **P3-5 解包路径穿越**。`oc/OcManager.kt` 的 `extract()` 只校验条目名前缀
+   `data/data/com.termux/files/usr/` 并跳过 `.` 开头的相对路径，中段仍可放 `usr/a/../../..`
+   逃出目标根，写到容器外的任意位置。
+3. **P3-6 缺校验值就照装（fail-open）**。本地缓存包安装（`startInstallFromFile`）在签名索引、本地
+   `.sha256` 边车、线上 `.sha256` 三处都拿不到值时，只记一行"跳过完整性校验"就继续解包；
+   同一场景下网络下载路径（`RootfsDownloader.download`）早已是 fail-closed。
+
+**取舍**：用户 2026-10-10 选了「只做最要紧的三条」⇒ **P3-3（备份范围没排除大目录）本次不做**。
+
+**改动（8 个源文件 + 4 个测试文件）**：
+
+| 文件 | 改动 |
+|---|---|
+| `terminal/Store.kt` | `GUEST_SCRIPTS_DIR` 的 KDoc 改写为「这是**缓存**，不是执行源（P3-2）」；新增 `GUEST_PRIVATE_SCRIPTS_DIR = "/root/.zhengdao/scripts"`、`hostPrivateScriptsDir(ctx)`（= `filesDir/home/.zhengdao/scripts`；`ProotLauncher` 已把 `filesDir/home` 绑成 guest 的 `/root`）、`scriptRecordFile(ctx, agentId)`（= `filesDir/agents/script-sha/<id>-install.sh.sha256`） |
+| `ui/AgentInstallPrep.kt` | 新增 `SHA_RE`（`^[0-9a-fA-F]{64}$`）与 `scriptTrusted(recorded, actual)`：两边都必须是合法 64 位十六进制且大小写不敏感相等；**没有记录 / 读不动 ⇒ 不可信** |
+| `ui/AgentInstaller.kt` | `installCommand()` 里复用公共区那份之前先算 sha256 与记录比对：不像脚本 / 指纹不符 / 算不出 ⇒ RunLog 留痕 + `delete()` 重下；`writeFingerprint` 放在 hermes gateway 补丁**之后**（记最终字节）；执行前 `copyToPrivateScripts()` 落私有目录（复制后再比一次指纹），命令改成 `bash /root/.zhengdao/scripts/<id>-install.sh`；本地化失败才退回官方 `curl \| bash`。新增 `fingerprintOf/readFingerprint/writeFingerprint/copyToPrivateScripts` 四个私有工具 |
+| `terminal/HermesEnv.kt`、`res/raw/hermes_env_repair.sh` | **同一缺陷类**：环境修复脚本原先写在工作区 `.zhengdao/scripts`（工作区也在共享存储里）⇒ `REPAIR_CMD` 改为 `bash /root/.zhengdao/scripts/hermes-env-repair.sh`，`writeRepairScript()` 改写 `Store.hostPrivateScriptsDir(ctx)`，脚本头注释同步说明 |
+| `oc/OcManager.kt` | 新增 `internal fun resolveExtractTarget(destRoot: File, rel: String): File?`：名字空 / 以 `/` 开头 / 含 `\u0000` / 任一段为空或 `..` ⇒ 拒绝；`destRoot.canonicalFile` 为根，`File(root, rel).canonicalFile` 必须**严格**位于根之下。`extract()` 每个条目都过它，越界条目与软链/硬链条目跳过并计数，循环后一行 RunLog 报跳过数；`substringAfter` 换成 `removePrefix` |
+| `rootfs/RootfsCache.kt` | `pickExpectedSha(...)` 末尾新增 `rememberedSha: String? = null`（默认值保证既有位置参数调用点不受影响），优先级最低：索引 → 本地边车 → 线上 → **上次装过的包**（`ShaChoice(remembered, "上次装过的包")`） |
+| `TerminalActivity.kt` | 两处调用点（本地 `startInstallFromFile`、网络 `startInstall`）传 `RootfsMarker.installedArchiveSha256(filesDir/rootfs)`；原先的 fail-open 分支改成 `throw IllegalStateException("拿不到这个安装包的 SHA256 校验值（签名索引、本地 …、线上都试过），为安全起见停止安装。请联网后重试「联网下载运行环境」；若这个包是官方渠道拿到的，可以在它旁边放一份同名 .sha256 文件再装")` |
+| 测试 | 新增 `app/src/test/java/com/example/zhengdao/oc/OcExtractPathTest.kt`（8 例：普通/深层放行、单点段交给规范化、中段穿越拒绝、绝对路径拒绝、空段与空名字拒绝、含 NUL 拒绝、根不必先存在、顺着链接写出去也被规范化挡下）；`ui/AgentInstallPrepTest.kt` +7（指纹一致/大小写与空白/不符/无记录/算不出/非法记录 均按"不可信"）；`rootfs/RootfsSidecarShaTest.kt` +3（remembered 兜底、不越过线上、空白忽略）并改掉 `nothingAvailableReturnsNull` 的注释（现在调用方是**拒绝安装**）；`terminal/StoreTest.kt` +1（断言私有脚本目录常量） |
+
+**为什么这样做（而不是别的做法）**：
+
+- **执行私有副本，而不是"只校验公共区那份"**：校验与执行之间隔着 TOCTOU 窗口，别的 App 可以在窗口里
+  再改一次文件；私有目录（`filesDir`，同 UID 独占）谁都改不到。官方三个安装脚本都是 `curl | bash`
+  形态、**不依赖自身文件位置**（无 `$0`/`dirname $0` 假设，`HermesInstallScript.ensurePatched` 也只按行
+  改 gateway 段），所以搬到哪里执行都一样。
+- **`/sdcard` 是 noexec**：公共区只能放"不需要执行权限"的东西（脚本、npm/uv/pip 缓存），原先靠
+  `bash <脚本>` 读它执行；现在读的是 0600 的私有副本，公共区那份退化成纯缓存。
+- **保留"复用缓存"这件事**：网络断续时不至于每次都重下（这是 E-059 引入的既有好处），只是复用前提
+  从"存在且 ≥64 B"变成"指纹与宿主侧记录逐字符相等"。
+
+**后果（连带、需知）**：
+
+1. 记录在 App 私有目录 ⇒ **清数据 / 重装 App 之后**那些公共区缓存脚本一律不再被采信，会重新下载；
+   离线且下不动时退回官方 `curl | bash`（有网即恢复）。真机上本机 `Download/证道/rootfs/` 里的
+   基础包**没有 `.sha256` 边车** ⇒ 清数据后离线重装会被 P3-6 的新规则拒（联网走签名索引/线上 sha 仍可）。
+2. P3-5 会让"看起来越界"的条目被跳过：若 serve 报缺文件，第一条线索就是那行
+   `太极: 释放时跳过了 N 个可疑条目（越界路径/链接，P3-5）`。
+3. 这是**缩小信任面**，不是加密：私有目录与 App 同 UID，App 自身被攻破仍无解（不在本次范围）。
+4. `pickExpectedSha` 新增来源只影响"拿不到别的校验值"时的兜底，优先级最低，不会覆盖索引/线上值。
+
+**测试与构建（2026-10-10 本地）**：
+
+- 单测：`$env:JAVA_HOME='D:\Program Files\Android\Android Studio\jbr'` + `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  = BUILD SUCCESSFUL；XML 报告统计 **57 suites / 510 tests / 0 失败 / 0 错误**（基线 56 / 491 / 1 skipped）。
+- CI 等价任务：`:app:assembleDebugAndroidTest :app:assembleRelease` = **BUILD SUCCESSFUL in 3m 50s**（109 tasks，
+  含 R8 冒烟）；`:app:assembleDebug` = BUILD SUCCESSFUL（`zhengdao-2.0.8-debug.apk` 40,596,417 B）。
+
+**真机受控实验（Honor PGT-AN10 / Android 16 / AD3J023824001723，2026-10-10 14:30）**：
+
+做法：拿**丹房 AGY 卡片**当入口（它的按钮在屏幕下半部、没有被当时盖在屏上的悬浮窗挡住），公共区放一份
+自造脚本 `antigravity-install.sh`（2,255 B，满足"像脚本"的粗判：≥512 字符、首个非空行以 `#` 开头），
+宿主侧记录写同样的 sha256；脚本内容只做取证（打印 `$0` 并写 `/root/.zhengdao/p32-proof.txt`）。
+
+| 轮次 | 公共区那份 | 宿主侧记录 | 结果 |
+|---|---|---|---|
+| ① 采信 | 自造脚本，sha256 `f8440f2f…b71dc` | 同值 | 复制到 `files/home/.zhengdao/scripts/`（0600）；终端里执行的命令就是 `bash /root/.zhengdao/scripts/antigravity-install.sh`，脚本自报 `argv0=/root/.zhengdao/scripts/antigravity-install.sh`、`pwd=/root`、`user=root`、`self-sha256=f8440f2f…b71dc`，proof 落在 `/root/.zhengdao/p32-proof.txt` ✓ |
+| ② 篡改 | 追加 35 B（sha256 变 `a061196e…c77c`） | 仍是旧值 | RunLog：`AgentInstaller: antigravity 公共区缓存的安装脚本不予采信——指纹与记录不符（记录=f8440f2f…b71dc，实际=a061196e…c77c），删掉重下`；随后**重新下载**得到官方脚本（7,643 B，首行 `#!/bin/bash`、`# Antigravity CLI - Unix Bootstrapper Script`，sha256 `62966c07…e5042`），记录与私有副本同步更新为该值；**proof 文件时间仍是 14:30 ⇒ 被篡改那份从未被执行** ✓ |
+
+**未取证部分（如实记录）**：P3-5（`extract()` 只在 GitHub 更新路径上跑）没有真机入口；
+P3-6 的拒绝分支在设备上不可达（丹房没有"本地缓存包安装"入口，`TerminalActivity.kt` 那条只在首次会话
+且本地已有归档时自动触发）⇒ 这两条按**单测 + 代码复核**记录，不当作真机验证。
+
+**取证环境备注**（下次真机复验会用到）：① 取证时丹房内容区右半边被**另一个 App 的悬浮窗**
+（`com.phoenix.read` 的短视频，`SYSTEM_ALERT_WINDOW`）盖住，安装按钮（y≈687–1254）点不到 ⇒ 改用屏下
+可点的 AGY 卡片、并用「关闭终端」按钮或 `am start` 回主页。② 本地 debug 包可以**原地覆盖**官方滚动包
+（`adb install -r`，数据与 rootfs 都保留）：`app/build.gradle.kts` 用环境变量 `ZHENGDAO_KEYSTORE_FILE`
+覆盖 AGP 内建 debug 签名配置的 `storeFile`，而 debug/release/benchmark 三个变体都指
+`signingConfigs.getByName("debug")` ⇒ 与 CI 产物同签名（App 自检也报「安装包签名 = 官方 ✓」）。
+
+**回退**：`git revert <本提交>`。三条互相独立，也可分别回退：P3-2 去掉私有副本那几行（`effectiveCmd`
+改回 `bash ${Store.GUEST_SCRIPTS_DIR}/…`）、P3-5 把 `resolveExtractTarget` 换回原来的前缀判断、
+P3-6 把 `pickExpectedSha` 的 `rememberedSha` 参数与那处 fail-open 改回去。
