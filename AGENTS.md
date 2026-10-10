@@ -3,6 +3,7 @@
 > 这个仓库同时有多个 agent 在干活（WorkBuddy / Zcode / DSH 桌面版）。**细则看 [`docs/协作规约.md`](docs/协作规约.md)。**
 > 历史上因为「不核对就开工」，同一个功能被反复实现、删了又加回来（实锤见 `docs/FEATURE-LEDGER.md` §4）。
 > **先花 30 秒核对，能省掉半天重做。**
+> 开工前**先读 [docs/FEATURE-LEDGER.md](docs/FEATURE-LEDGER.md) 的「结账 · 现状总表」** —— 那里写着已经做完并有证据的、待做的、以及明确判定不做的。
 
 ## 三条铁律
 
@@ -53,7 +54,7 @@ python tools\zd.py preflight -k 终端,单会话 `
 | 想知道 | 读 |
 |---|---|
 | 多主体怎么协作、边界在哪、工具怎么用 | `docs/协作规约.md` |
-| 现在有哪些功能、哪些半残、哪些被拍板删过 | `docs/FEATURE-LEDGER.md` |
+| **已经做完 / 待做的结账总表（新会话先读这个）**、现在有哪些功能、哪些半残、哪些被拍板删过 | `docs/FEATURE-LEDGER.md` 的「结账 · 现状总表」+ §2 / §3 |
 | 踩过的坑与更正（E-xxx，按编号查） | `docs/ERRATA.md` |
 | 终端 / rootfs 出问题怎么排查 | `docs/milestones/证道-故障排查手册.md` |
 | 终端为什么只有一个会话（改动重灾区） | `docs/milestones/证道-终端单会话模型.md` |
