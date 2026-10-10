@@ -17,6 +17,10 @@ rootfs/out/
 !app/src/main/res/**/*.png
 !app/src/main/res/**/*.webp
 !app/src/main/res/**/*.xml
+# ⚠️ docs/acceptance/ 下的截图是验收证据本身（要能回溯量测，故用无损 PNG），
+# 由项目所有者于 2026-10-10 确认入库；只豁免这一处，其余截图产物仍一律忽略。
+# 首页证据在 docs/acceptance/terminal-font-2026-10-10.md。
+!docs/acceptance/assets/**/*.png
 u.xml
 postinstall.mjs
 binls.txt
