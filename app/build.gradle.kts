@@ -78,7 +78,16 @@ plugins {
 //      ⚠️ 同时修掉一个**静默了整代**的缺陷：安卓 13+ 的 `POST_NOTIFICATIONS` 既没声明也没请求
 //      ⇒ 所有通知（含 #3 的静默清理提示）被系统丢掉；现已在清单声明并在冷启动按需请求（E-076）。
 //      仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.8"
+// ⚠️ 2.0.9（2026-10-10，ERRATA E-081~E-085）：一天里连着五批收口，全部有真机取证：
+//    ①E-081 Hermes 退出「恢复上次装过的 Agent」候选（它的官方安装器在受限网络下必然失败，
+//      依赖链又重；只关恢复入口，安装卡片照旧）；②E-082 信任边界三条（P3-2 公共区安装脚本
+//      改为**执行私有副本**、P3-5 解包防路径穿越、P3-6 缺校验值拒绝安装）；③E-083 rootfs
+//      审计的两条真 BUG（Rust 解压不认「0 条目」、termux-proot 每次开会话重算 313,648 B
+//      哈希 ⇒ 新增「戳」记忆）；④E-084 FIX-F：提问时把本机找到的「资料库线索」附在这句话
+//      后面一起送进终端（App 自己不再把内容发出去）；⑤E-085 审计工作表第一批五条（软链
+//      linkname 越界、resolv.conf 权限不还原、路径前缀判断、增量空间预检、zz 脚本按内容
+//      比对）。仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.9"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -111,7 +120,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 24
+        versionCode = 25
         versionName = appVersionName
 
         ndk {
