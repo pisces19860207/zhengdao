@@ -575,7 +575,7 @@ fun SettingsScreen(
         //    本项服务的是**终端**里的 agent（Claude Code／Hermes／AGY／用户自装的其他 agent）。
         SectionCard("资料库") {
             val st = kbStatus
-            // E-082：文件数达到扫描上限时**必须提示** —— 否则用户会以为"资料全在这儿了"
+            // E-089（让号自 E-082）：文件数达到扫描上限时**必须提示** —— 否则用户会以为"资料全在这儿了"
             val capNote = { n: Int ->
                 if (n >= com.example.zhengdao.terminal.KnowledgeBase.MAX_SCAN) "（已达扫描上限，可能未列全）" else ""
             }
