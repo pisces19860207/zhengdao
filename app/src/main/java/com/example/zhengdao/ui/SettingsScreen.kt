@@ -575,12 +575,16 @@ fun SettingsScreen(
         //    本项服务的是**终端**里的 agent（Claude Code／Hermes／AGY／用户自装的其他 agent）。
         SectionCard("资料库") {
             val st = kbStatus
+            // E-089（让号自 E-082）：文件数达到扫描上限时**必须提示** —— 否则用户会以为"资料全在这儿了"
+            val capNote = { n: Int ->
+                if (n >= com.example.zhengdao.terminal.KnowledgeBase.MAX_SCAN) "（已达扫描上限，可能未列全）" else ""
+            }
             val stateText = when (st?.state) {
                 com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED -> "已关闭"
                 com.example.zhengdao.terminal.KnowledgeBase.State.NOT_MOUNTED -> "未挂载 · 还没放资料"
                 com.example.zhengdao.terminal.KnowledgeBase.State.BUSY -> "正在整理中…"
-                com.example.zhengdao.terminal.KnowledgeBase.State.ORGANIZED -> "已挂载 · ${st.files} 个文件（含摘要）"
-                com.example.zhengdao.terminal.KnowledgeBase.State.MOUNTED -> "已挂载 · ${st.files} 个文件"
+                com.example.zhengdao.terminal.KnowledgeBase.State.ORGANIZED -> "已挂载 · ${st.files} 个文件（含摘要）" + capNote(st.files)
+                com.example.zhengdao.terminal.KnowledgeBase.State.MOUNTED -> "已挂载 · ${st.files} 个文件" + capNote(st.files)
                 null -> "读取中…"
             }
             InfoRow("状态", stateText)
