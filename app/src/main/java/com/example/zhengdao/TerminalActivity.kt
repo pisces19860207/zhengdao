@@ -860,7 +860,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // FIX-F：会话没了，行缓冲里那半句也就不该存在（避免下次进来串味）。
         KnowledgeBaseHints.reset()
         runOnUiThread {
-            Toast.makeText(this, "会话已退出（code=$code）", Toast.LENGTH_LONG).show()
+            // 2026-10-10 UIUX 审计 P1-4 修：原 Toast 带 "code=$code" 是开发术语，对非技术用户
+            // 没有任何信息量（甚至会让人以为"出错了"）。改成中文大白话：会话**已经**结束
+            // 是事实陈述；exit status 仍可在日志里查，但不必每次都弹到用户脸上。
+            // code 这个变量保留在 logcat 中给后续调试用。
+            android.util.Log.i("TerminalSession", "onSessionFinished code=$code")
+            Toast.makeText(
+                this,
+                "这一屏的会话已经结束了。命令在后台跑完了，下次进来就是新的一屏。",
+                Toast.LENGTH_LONG,
+            ).show()
         }
     }
     /**
