@@ -4310,3 +4310,34 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 **一次误判（记录以免重犯）**：真机上看不到新加的「最近问题」卡，我一度判定为"后台线程写 `mutableStateOf` 不触发重组"，据此给 `core/IssueCenter.kt` 加了 `onMain { … }` 包装（`Handler(mainLooper).post`）并补了 KDoc。用临时埋点（`Log.i("zd-dbg", …)`：`report` 入口记调用线程、写入块内记写入线程、LazyColumn DSL 记 `issues.size`、卡 item 内记"正在组合"）实测**推翻**了这个判断：绕过 `onMain`、直接在 worker 线程写状态，紧跟其后就是 `DSL 运行：issues.size=1` ⇒ 跨线程写状态本来就会触发重组；而日志里那次 `size=1 → size=0` 也不是快照问题，是 `terminal/EnvSelfHeal.kt:212` 的 `IssueCenter.resolve("selfheal-uv")`（`ensureUvConfig` 的第一行，先撤旧失败、失败再 report）。**"卡看不见"的真因是位置**：状态卡展开时体检项一直排到 y≈2530，卡落在折叠线以下，而 `adb shell input swipe` 每下约 1500px，"滑到底"总是直接越过它（到底后视野顶部正好是"恢复上次装过"横幅）。`IssueCenter` 的改动与全部埋点已撤销。
 
 **教训**：Compose 的状态写入线程不是问题（文档与实测都支持任意线程写入）；「元素看不见」要先确认它在屏幕上的**位置**（`uiautomator dump` 抽 `bounds`、或滚动到贴近目标的那一屏），不要用粗粒度滑动"滑到底也没看到"来推断"没渲染"。
+
+## E-078　环境安装/替换的重入锁与原子替换（#11）
+
+**背景**：Issue #11（审计报告第八节「第二批」P0-4）是唯一会**毁掉已装环境**的路径，两处根因：
+
+- **互斥是假的、还是各管各的**：终端页三处安装入口用的是 `TerminalActivity` 的**实例字段** `installing`（`TerminalActivity.kt:56-57`，`compareAndSet(false, true)`），设置页的按钮完全不看它；设置页全仓唯一的 busy 门控在 `ui/SettingsScreen.kt:993`，只护住「检查环境更新」，看的还是 `InstallProgress.isRunning()`。于是"终端页正在装 + 设置页点回退/修复"可以同时跑。
+- **替换顺序会把新旧都弄丢**：旧 `RootfsInstaller.swapIntoPlace`（原 `:289-295`，KDoc 自称"原子替换…绝不留下两个 rootfs"）是**先 `rootfsDir.deleteRecursively()`，再 `tmpDir.renameTo(rootfsDir)`**。两处叠在一起时，后到的那个会把前一个刚就位的环境删掉；删旧环境之后只要改名失败（空间、权限、枚举中途出错），用户手上就**既没有旧环境也没有新环境**。
+
+**修法**：
+
+1. **进程级安装锁**（`rootfs/RootfsInstaller.kt`）：`private val lock = AtomicBoolean(false)` + `private val _installing = mutableStateOf(false)`；对外 `val installing: State<Boolean>`、`fun isInstalling(): Boolean = lock.get()`、`internal fun <T> withInstallLock(what: String, block: () -> T): T` —— CAS 失败即 `throw InstallFailed("已有安装/更新任务在跑，本次「$what」未执行（等它结束后再试）")`，`finally` 里复位状态与锁。用 `AtomicBoolean`（**拒绝**语义）而不是 `synchronized`/`Mutex`（排队语义）：安装以分钟计，第二处入口应当立刻被拒并说明原因，排队只会让用户以为"点了没反应"。
+2. **调用点收口**：`install(...)` 整体包 `withInstallLock("安装环境")`；`RootfsDelta.apply(...)` 包 `withInstallLock("增量更新")`；两者内部改走**无锁**的 `swapLocked(tmpDir, rootfsDir)`；`internal fun swapIntoPlace(tmpDir, rootfsDir) = withInstallLock("替换环境") { swapLocked(...) }` 保留为自带锁的门面（单测/仪器测试直接用它）；`applyTo` 的 KDoc 明确"调用方必须已持有安装锁，内部走无锁的 swapLocked"。
+3. **替换顺序改成「旧环境改名备份 → 新环境就位 → 删备份」**（`swapLocked`，新增 `internal const val OLD_NAME = "rootfs.old"`；与 `rootfs.tmp` 同在 `filesDir`，同一文件系统 ⇒ 改名是原子元数据操作）：tmp 不是目录直接拒；`rootfs` 缺失而 `rootfs.old` 存在 ⇒ 先把备份改名复原（上次替换中断）；`rootfs` 在位 ⇒ 改名到 `rootfs.old`（让位失败就抛"未改动任何内容"）；就位 = `tmpDir.renameTo(rootfsDir)`，失败退 `copyRecursively`；就位失败 ⇒ 删半成品并把 `rootfs.old` 改回 `rootfs`，异常文案按能否回滚分三种（原本没环境 / 已回滚到原环境 / 旧环境留在 `rootfs.old`，重启 App 会自动复原）；成功 ⇒ 删 tmp，备份删不掉**只记 `Log.w`**（不影响使用）。
+4. **中断残局收尾**（`cleanupPartial`，原本只删 `rootfs.tmp`）：`rootfs.old` 存在时——`rootfs` 在位 ⇒ 删备份；`rootfs` 缺失 ⇒ 把备份改名复原。调用点仍是 `TerminalActivity.kt:95`（终端启动巡检），所以"替换中途被杀"的两种残局下次都能收干净。
+5. **UI 共享 busy**：`ui/InstallFlow.kt` 的 `isRunning()` 改为 `InstallProgress.isRunning() || RootfsInstaller.isInstalling()`（KDoc 写清前者只覆盖走 InstallFlow 的路）；设置页 5 处加 `enabled = !InstallFlow.isRunning()` —— `ui/SettingsScreen.kt:869`「修复环境（30 秒）」入口按钮、`:1222`「回退到 X」TextButton、回退/修复/更新三个弹窗的确认按钮，`:993`「检查环境更新」改看 `InstallFlow.isRunning()`；终端页新增 `private fun claimInstallSlot(): Boolean`（锁被占 ⇒ Toast「已有安装/更新任务在跑，等它结束后再试」），三处入口的 `installing.compareAndSet(false, true)` 全部换成它。
+
+**单测**（新增 `app/src/test/java/com/example/zhengdao/rootfs/RootfsInstallerLockTest.kt`，8 例）：重入被拒（外层锁内再进 ⇒ `InstallFailed`，文案含被拒任务名）、块抛异常也释放锁且能再进、`withInstallLock` 把块的返回值原样透出、替换成功后新内容在位且不留 `.tmp`/`.old`、原本没环境也能就位、tmp 不存在 ⇒ 抛错且原环境一个字节不动、上次中断留下的备份先复原再替换、改名优先（不先删旧环境）。⇒ 8 例全绿；全量 `:app:testDebugUnitTest` = 54 个报告 / **481 例，0 失败，1 skipped**（#10 之后是 473 例）。
+
+**真机验收**（Honor PGT-AN10 / Android 16，debug 包 `adb install -r` 覆盖安装保数据；走设置页「修复环境（30 秒）」真实流程，重复 3 次）：
+
+- 整条流程确实走新安装路径：`10:09:00.26 正在解压系统层…` → `10:09:03.48 I/RootfsInstaller: Rust 解压完成: 17992 条目 768MB sha=d80639e7dc5c` → 就位 → `10:09:04.45 RootFS 安装完成（Rust 路径）` → `修复完成：环境已重置，登录态与工作区保留（本次未联网下载）`；全程约 5–8 秒（Rust 路径远快于文案里"约 30 秒～几分钟"）。结束后 `files/rootfs` 是新树、`files/rootfs.tmp` 从未留在磁盘上、`shared_prefs/zhengdao-settings.xml` 的 `workspace_path` 仍是 `/storage/emulated/0/Download/男性`。
+- **进行中门控**（t+2.3s 截图，`adb exec-out screencap -p`）：设置页「修复环境（30 秒）」按钮**变灰**（`enabled=false`），下面挂出状态行「⏳ 正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…」；流程结束后按钮恢复可点。
+- **降级路径真的会触发**（不是纸面防御）：三次都在日志里留下 `W/RootfsInstaller: 旧环境目录删不掉（不影响使用，下次启动会再试）：/data/user/0/com.example.zhengdao/files/rootfs.old`；随后该目录确实消失（终端启动 / 重进 App 时 `cleanupPartial` 抹掉）。原因应是旧 rootfs 里可能仍有会话在写，`deleteRecursively()` 撞上新增条目即返回 false —— 正是这条降级要覆盖的情形。
+- **并发拒绝**没能在真机上直接制造（UI 门控已把入口禁用，且整条流程只要 5–8 秒），由 JVM 单测覆盖（重入 ⇒ `InstallFailed` 文案）；Issue #11 的验收里写明这一条是单测口径。
+
+**教训**：
+
+1. "原子替换"的注释不能代替对**顺序**的检查：`deleteRecursively()` 在前、`renameTo` 在后，中间任何一次失败（或第二个人插进来）都会让用户同时失去新旧两套环境。正确顺序是"旧环境改名备份 → 新环境就位 → 删备份"，每一步失败都留得下能复原的东西。
+2. 进程内互斥要选**拒绝**语义（`AtomicBoolean`），不是排队语义（`synchronized`/`Mutex` 阻塞）：安装以分钟计，第二处入口应当立刻被拒并说清原因。
+3. busy 标志必须**跨入口共享**：终端页用 Activity 实例字段、设置页用另一套 `InstallProgress`，各看各的，等于没有互斥。
+4. 长流程的"降级"要往"下次启动还能收尾"的方向写（`cleanupPartial` 双向复原），而不是只删自己这次产生的东西。

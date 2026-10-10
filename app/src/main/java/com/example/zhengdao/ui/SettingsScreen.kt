@@ -866,7 +866,10 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(onClick = { repairConfirm = true }) { Text("修复环境（30 秒）") }
+            OutlinedButton(
+                onClick = { repairConfirm = true },
+                enabled = !InstallFlow.isRunning(), // #11 / E-078：有安装/更新在跑时不许再排队
+            ) { Text("修复环境（30 秒）") }
             Spacer(Modifier.height(4.dp))
             InstallFlow.StatusLine()
         }
@@ -990,7 +993,10 @@ fun SettingsScreen(
             // 与终端页横幅 / 系统通知是同一份数据，不会各说各话）。
             val installState = InstallProgress.state.value
             OutlinedButton(
-                enabled = !checking && !InstallProgress.isRunning(),
+                // #11 / E-078：busy 的不只是本页这条路——终端页正在装、增量更新正在跑，这里也不该能点。
+                // InstallFlow.isRunning() 把 InstallProgress（本页四条流程）与 RootfsInstaller 的
+                // 进程级真锁合起来看，两者任一在跑都算忙。
+                enabled = !checking && !InstallFlow.isRunning(),
                 onClick = {
                     checking = true
                     Thread {
@@ -1219,7 +1225,10 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 rollbacks.forEach { f ->
-                    TextButton(onClick = { rollbackConfirm = f }) {
+                    TextButton(
+                        onClick = { rollbackConfirm = f },
+                        enabled = !InstallFlow.isRunning(),
+                    ) {
                         Text("回退到 ${com.example.zhengdao.rootfs.RootfsCache.versionOf(f.name) ?: f.name}")
                     }
                 }
@@ -1233,7 +1242,9 @@ fun SettingsScreen(
                     title = { Text("回退环境版本") },
                     text = { Text("将用 ${target.name} 重装系统层（约几分钟）。登录态与工作区都会保留。") },
                     confirmButton = {
-                        TextButton(onClick = {
+                        TextButton(
+                            enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
+                            onClick = {
                             rollbackConfirm = null
                             Thread {
                                 // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）
@@ -1652,7 +1663,9 @@ fun SettingsScreen(
             title = { Text("修复环境") },
             text = { Text("将重新解压 Debian 系统层（约 30 秒 + Agent 重装时间）。登录态与工作区保留。需要本地已有安装包（Download/证道/rootfs 缓存，或 Download/证道 根目录里的安装包）。确定？") },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(
+                    enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
+                    onClick = {
                     repairConfirm = false
                     val candidates = (
                         listOf(
@@ -1758,7 +1771,9 @@ fun SettingsScreen(
             title = { Text(if (msg.startsWith("发现新版本")) "发现环境更新" else "可以重装环境") },
             text = { Text(msg) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(
+                    enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
+                    onClick = {
                     val url = pendingUpdateUrl
                     updateMsg = null
                     if (url == null) {
