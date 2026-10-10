@@ -552,6 +552,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 环境体检三态 + 自愈 | ✅ 在用 | `df2b3eb` | `ui/EnvHealth.kt`、`terminal/EnvSelfHeal.kt` |
 | 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
 | 崩溃入口兜底（体检表逐项 / 前台服务 / 修复线程）+ 失败进「最近问题」 | ✅ 在用（#10 第一批，见 E-077；P0-3 未做真机注入） | 本次 | `ui/EnvHealth.kt`、`ui/HomeScreen.kt`、`terminal/SessionService.kt`、`terminal/SessionManager.kt` |
+| 环境安装/替换的重入锁 + 原子替换（备份 → 就位 → 删备份） | ✅ 在用（#11 第二批，见 E-078；并发拒绝由 JVM 单测覆盖，真机验证了进行中门控与降级复原） | 本次 | `rootfs/RootfsInstaller.kt`、`rootfs/RootfsDelta.kt`、`ui/InstallFlow.kt`、`ui/SettingsScreen.kt`、`TerminalActivity.kt` |
 | 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮，另在 guest 里有 `/usr/local/bin/zzclean`（App 启动时按内容+执行位写入）；一档命令含 pip 缓存） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt`、`terminal/ProotLauncher.kt`（写入 `/usr/local/bin/zzclean`） |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
 | Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY 不进恢复候选**，见 §3 与 E-040；候选筛选 `AgentInfo.restorable`） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
