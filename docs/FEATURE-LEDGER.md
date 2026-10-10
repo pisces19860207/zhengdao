@@ -10,7 +10,7 @@
 ## 结账 · 现状总表（2026-10-10 晚）
 
 > **这一节是给「新开一个会话」用的**：开工前先看这里，别把已经做完的又当成没做，也别把待做的说成做完了。
-> 结账基准：`origin/main` = `ce161be`，版本 **v2.0.9（versionCode 25）**，CI 双绿（`ci.yml` 的 `verify` + `build.yml` 的 `build`；tag 推送时 `build.yml` 的 `release` job 另建正式 Release）。
+> 结账基准：`origin/main` = 本批合并后的 tip（2026-10-10 深夜；精确 SHA 以 `git rev-parse origin/main` 为准；本节 #12–#15 即这批合并），版本 **v2.0.10（versionCode 26）**，CI 双绿（`ci.yml` 的 `verify` + `build.yml` 的 `build`；tag 推送时 `build.yml` 的 `release` job 另建正式 Release）。
 > 这一节比顶部那行 `682dceb`（2026-10-07）的旧基准新得多；逐条细节按编号查 `docs/ERRATA.md`，逐功能台账仍在下面 §2。
 
 ### A. 已经做完，且有证据（2026-10-10 这一轮，从旧到新）
@@ -28,6 +28,10 @@
 | 9 | **E-084** FIX-F：提问时自动附上「资料库线索」（App 先在本机检索，结果跟在用户这句话后面进终端） | `d972e4a` → `0a5380b` | 单测 + 真机；⚠️ 合并时把作者原来的 E-083 让号成 **E-084**（撞号） |
 | 10 | **E-085 / issue #18** rootfs 工作表第一批五条：加固-1 软链 linkname、加固-2 resolv.conf 权限还原、加固-3 路径前缀、加固-4 增量空间预检、优化-2 zz 脚本按内容比对 | `f44a453` + `298a45d` → `00e6a67`；补记 `bedc392` → `ce161be` | 加固-1 真机仪器用例（旧 `.so` 上失败 `escape.link=true`，重编后 `escape.link=false`）；**加固-2/3/4 与优化-2 只有单测 + 代码复核**；单测 60 suites / 542 例 / 0 失败 / 1 skipped，Rust 26 例 |
 | 11 | **v2.0.9 发版**：`versionCode 25` + `.github/release-notes/v2.0.9.md` + tag `v2.0.9` | `298a45d` / tag `v2.0.9` | 正式 Release「证道 v2.0.9 — 正式版」（<https://github.com/pisces19860207/zhengdao/releases/tag/v2.0.9>）：`zhengdao-2.0.9-release.apk` 4,557,809 B、`sha256:d1ce872cd34cf0d018ef44b8b126e4854b4ae9dac1f09de266f423a69cc367fe`；包内 `lib/arm64-v8a/libzhengdao_core.so` 960,192 B / `sha256:d50bbd2b235658923fb934a3be090ac2df37249f2399d69476e742d578a75f79`，与仓库里那份逐字节一致；真机上装的已是正式包（`2.0.9` / vc25 / 非 debuggable，日志 `启动自检：安装包签名 = 官方 ✓`） |
+| 12 | **终端视觉升级三件套一起合进 `main`**：新配色 Catppuccin Mocha（出厂默认）、正文字体子集化（GB2312 6,763 汉字 + NF 图标，17.94 MB → 6.46 MB）、间距舒适档（行高 1.15× / 终端上下留白 4dp / 键条 48dp + 设置页「行距」入口） | `e04097a`（font）→ `e0c23f5`（color）→ `34c86fe`（subset-spacing） | 验收页 `docs/acceptance/terminal-color-2026-10-10.md` + `docs/acceptance/terminal-font-subset-spacing-2026-10-10.md`（各带真机截图资产）：真机 2:1 复核 **0 px**、行距 **64 px**（紧凑档 56 px，与改动前一致）、字体首次加载 **27 ms**（原 72–73 ms）、单测全绿；CI run 240 / 119 双绿 |
+| 13 | **v2.0.10 发版**：`versionCode 26` + `.github/release-notes/v2.0.10.md` + tag `v2.0.10` | `b5bd928` → 合并 `e7b7bf3`（tag `v2.0.10`） | 正式 Release「证道 v2.0.10 — 正式版」（<https://github.com/pisces19860207/zhengdao/releases/tag/v2.0.10>）：`zhengdao-2.0.10-release.apk` **7.82 MB** / `sha256:fbdc0fe70338c7f9ebb15f0b34fe1d9280f12b05429a1df7390503621f5dab53`；CI run 243（tag）成功（run 241 曾打在未含版本号的提交上、已 cancelled，**未发布错包**）；远端三个 `feature/*` 分支已删、本地保留作归档 |
+| 14 | `docs/readme-requirement-upfront` 落地：README / README.en 把「系统要求（Android 16+ / arm64）」提到第一屏（+5 行） | `64a14b2` → 合并 `3783e5d` | docs-only（README.md / README.en.md 各 +2/+3 行）；用户 2026-10-10 说「都做」，**撤销**了原先「先放在那里，等他空了再说」的拍板 |
+| 15 | `fix/kb-scan-cap-notice` 落地 + **E-089（让号自 E-082）**：资料库扫描上限 2000 不再静默截断（清单自己写一行「只列了前 2000 个」+ 设置页状态带后缀）、`资料库/说明.md`「各种格式都行」改准 | `c1068c7` + `a728d6e`（让号 + ERRATA E-089）→ 合并 `ece9cb6` | :app:testDebugUnitTest BUILD SUCCESSFUL in 49s（63 个 suite / 559 个用例，0 失败 0 错误 1 跳过）；⚠️ **未做真机验证**：触发这行提示需要 `资料库/原始/` 下 > 2000 个文件（设备上没有这个量级的资料），只有代码复核覆盖 |
 
 > **发版流程（下次照抄）**：改 `app/build.gradle.kts` 的 `appVersionName` / `versionCode` → 新增 `.github/release-notes/vX.Y.Z.md` → 合进 `main`（`build.yml` 会把滚动 release `latest` 刷成新版，确认落在 `latest` 的 apk 尺寸/时间变了）→ `git tag -a vX.Y.Z && git push origin vX.Y.Z` → `build.yml` 的 `release` job（`if: startsWith(github.ref, 'refs/tags/v')`）建正式 Release。注意滚动包**每次构建都会重传、sha256 不可复现**，别把历史 sha256 当"在架值"（E-081）。
 
@@ -44,10 +48,9 @@
 | 5 | opencode 2.0.22 新增 SSE 事件类型未适配（15 种只落日志，其中 4 种其实有用） | issue #9 |
 | 6 | 第四批：冷启动主线程 IO（P1-3 / P1-4 / P1-5） | issue #13 |
 | 7 | 第八批：错误原文与技术债（P2-6 ~ P2-18 / P4） | issue #17 |
-| 8 | 两条**已完成但还没合**的支线：`docs/readme-requirement-upfront`（`64a14b2`，README / README.en 把「系统要求（Android 16+ / arm64）」提到第一屏，+5 行）与 `fix/kb-scan-cap-notice`（`c1068c7`，资料库扫描上限 2000 不再静默截断 + `说明.md` 文案改准；⚠️ **它自称 E-082，与 main 的 E-082 撞号，合并时要改成 E-086**） | 本地分支（未开 issue，合并前先复核）。**用户 2026-10-10 拍板：今天就先放在那里，等他空了再说 —— 未经他发话，不要合并。** |
-| 9 | **E-080 还差两条没真机验**：① 终端里让 agent 自己解压 `.docx` 的实际体验 ② 「仅私有模式」工作区的骨架文案 | E-080 末尾 |
-| 10 | hermes 没装回（数据事故后没重装；想装就在丹房点「安装」，但它在受限网络下依赖重、且按 E-081 已摘出恢复候选） | 用户侧 |
-| 11 | 4 个**刻意未跟踪**的文件去留：`.zd-scratch/`、`docs/待办-dirSizeMb支线-2026-10-09.md`、`docs/证道-Rust化余地审计-2026-10-09.md`、`…html`（**不要顺手提交**） | 用户侧 |
+| 8 | **E-080 还差两条没真机验**：① 终端里让 agent 自己解压 `.docx` 的实际体验 ② 「仅私有模式」工作区的骨架文案 | E-080 末尾 |
+| 9 | hermes 没装回（数据事故后没重装；想装就在丹房点「安装」，但它在受限网络下依赖重、且按 E-081 已摘出恢复候选） | 用户侧 |
+| 10 | 4 个**刻意未跟踪**的文件去留：`.zd-scratch/`、`docs/待办-dirSizeMb支线-2026-10-09.md`、`docs/证道-Rust化余地审计-2026-10-09.md`、`…html`（**不要顺手提交**） | 用户侧 |
 
 ### C. 已经拍板「不做」，别复活
 
