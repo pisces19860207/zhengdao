@@ -53,6 +53,7 @@
 | libtalloc / libandroid-shmem | LGPL / 宽松许可 | 同上，作为 proot 的运行时依赖随包分发 |
 | **hermes pinned uv 0.12.3**（astral-sh/uv，运行时下载） | MIT OR Apache-2.0 | **不随包分发**。hermes 只认它自装的 pinned uv（剥离一切环境变量与配置），证道的包装器（`ProotLauncher.HERMES_UV_WRAPPER_B64`，源文件 `build/hermes-uv-wrapper.sh`）按 hermes install.sh 同源 URL 下载该工件并做 SHA256 校验（`bb66cb52…68dcca2`）后 exec；包装器同时强制 `UV_LINK_MODE=copy`（Android/proot 无可用硬链接） |
 | OkHttp / Compose 等 | Apache-2.0 | Maven 依赖，按官方文档使用 |
+| **JetBrains Maple Mono**（终端默认字体，2026-10-10 引入） | **SIL OFL 1.1** | 随包分发的字体文件（`app/src/main/assets/fonts/JetBrainsMapleMono-NF-Regular.ttf`），取自 SpaceTimee/Fusion-JetBrainsMapleMono 的 `NF-XX-XX-XX` 变体包；**未修改、未子集化**，OFL 全文随字体同目录分发（`app/src/main/assets/fonts/OFL.txt`） |
 
 > ⚠️ **许可证勘误（2026-10-05）**：`terminal-emulator` / `terminal-view` 曾被误标为
 > GPL-3.0。上游 `termux-app/LICENSE.md` 明确：仓库整体为 GPLv3，**但这两个库属于
@@ -83,6 +84,32 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 
 升级流程：从 Termux 仓库取新版本 → 计算新 SHA256 → 更新 assets 与上表 →
 真机回归（bash 存活 + 四项验收）→ 提交。
+
+### 字体（终端默认正文，2026-10-10 固化）
+
+来源：`SpaceTimee/Fusion-JetBrainsMapleMono` release **1.2304.79**（2025-12-05）的
+`JetBrainsMapleMono-NF-XX-XX-XX.zip`（152.3 MB，zip SHA256
+`3a7ed5e50f6831dc1414a4ad96b1e03c13cbc67ca32bc1bb7e9d90c56b903358`）。
+变体选 `NF-XX-XX-XX`：`NF` 带 Nerd Font 图标字形；**必须 `XX` 而非 `NR`**——上游 README
+写明 `NR`（CN Narrow）「会导致中英文/日英文不再 2:1 宽完美对齐」；保留连字、未 hint。
+
+| asset 文件 | 上游文件名 | SHA256 |
+|---|---|---|
+| `app/src/main/assets/fonts/JetBrainsMapleMono-NF-Regular.ttf` | `JetBrainsMapleMono-Regular.ttf`（zip 内平铺，**文件名不带 NF**，NF 是整包变体；入库改名以显式标注变体，**字节未改动**） | `a4fc642d821671b1a2937b9a52d398b96cf0b1e1da758846ee1ff38a297b22a5` |
+| `app/src/main/assets/fonts/OFL.txt` | `LICENSE.txt`（zip 内，4572 B，SIL OFL 1.1 全文 + 三行版权） | `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533` |
+
+字体版权（`OFL.txt` 首三行）：The JetBrains Mono Project Authors（2020）、The Maple Mono
+Project Authors（2022）、Space Time（2025）。
+
+加载方式：`TerminalPrefs.typeface(ctx)`（`app/src/main/java/com/example/zhengdao/terminal/
+TerminalPrefs.kt`）在 `applyTo()` 里于 `setTextSize()` **之后**调用
+`termView.setTypeface(...)`——顺序不能反：`TerminalSizeResolver.setTypeface()` 会读
+`mRenderer.mTextSize`，而渲染器是 `setTextSize()` 里懒创建的，先设字体直接 NPE。
+载入失败（asset 缺失等）回退 `Typeface.MONOSPACE`。
+
+升级流程：换 release tag → 取同名变体包的 `JetBrainsMapleMono-Regular.ttf` → 计算新
+SHA256 → 更新 assets、上表与 THIRD-PARTY-LICENSES.md § 6 → 真机验 2:1
+（`echo "中文中文 abcd"` 与 `echo "中a文b中c文d"`）→ 提交。
 
 ## 代码文件头
 
