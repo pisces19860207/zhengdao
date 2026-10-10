@@ -87,7 +87,18 @@ plugins {
 //      后面一起送进终端（App 自己不再把内容发出去）；⑤E-085 审计工作表第一批五条（软链
 //      linkname 越界、resolv.conf 权限不还原、路径前缀判断、增量空间预检、zz 脚本按内容
 //      比对）。仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.9"
+// ⚠️ 2.0.10（2026-10-10，终端视觉升级；三个分支一次性合并落地）：
+//    ①配色——新增 Catppuccin Mocha 并设为**出厂默认**（16 个 ANSI 色一次给全，明暗不靠
+//      「亮一档」区分），含选区色；设置页「配色」仍可切回经典黑白 / 琥珀 / 复古绿 / 浅色；
+//    ②字体——正文换成 JetBrains Maple Mono（Nerd Font 版）并**按 GB2312 常用集子集化**
+//      （6,763 汉字 + 终端必备符号 + NF 图标区，工具 `tools/subset-terminal-font.py`）：
+//      字体 17.94 MB → 6.46 MB、APK 13.53 MB → 7.82 MB、首次加载 72–73 ms → 27 ms；
+//      子集化后 2:1 中英对齐逐像素复核**仍是 0 px 偏差**（验收页
+//      docs/acceptance/terminal-font-subset-spacing-2026-10-10.md）；
+//    ③间距——新增「舒适」档：行高 1.15×、画布上下各留 4dp、功能键条 48dp；设置页
+//      「终端外观 → 行距」可选舒适/紧凑（紧凑＝旧版观感，只改行盒高度、不动列宽换算）。
+//      仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.10"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -120,7 +131,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 25
+        versionCode = 26
         versionName = appVersionName
 
         ndk {
