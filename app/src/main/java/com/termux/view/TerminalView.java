@@ -14,7 +14,6 @@ import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.util.AttributeSet;
-import android.view.ActionMode;
 import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
 import android.view.KeyCharacterMap;
@@ -22,8 +21,6 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
-import android.view.ViewTreeObserver;
 import android.view.autofill.AutofillManager;
 import android.view.autofill.AutofillValue;
 import android.view.inputmethod.BaseInputConnection;
@@ -67,7 +64,8 @@ public final class TerminalView extends View {
 
     public ImeProbeObserver mImeProbeObserver;
 
-    private TextSelectionCursorController mTextSelectionCursorController;
+    /** 选区与剪贴板（P1-c 从本类搬出的职责类，见 {@link TerminalSelectionController}）。 */
+    private final TerminalSelectionController mSelectionController = new TerminalSelectionController(this);
 
     /** 光标闪烁（P1-c 从本类搬出的职责类，见 {@link TerminalCursorBlinker}）。 */
     private final TerminalCursorBlinker mCursorBlinker = new TerminalCursorBlinker(this);
@@ -1031,14 +1029,12 @@ public final class TerminalView extends View {
         } else {
             // render the terminal view and highlight any selected text
             int[] sel = mDefaultSelectors;
-            if (mTextSelectionCursorController != null) {
-                mTextSelectionCursorController.getSelectors(sel);
-            }
+            mSelectionController.getSelectors(sel);
 
             mRenderer.render(mEmulator, canvas, mTopRow, sel[0], sel[1], sel[2], sel[3]);
 
             // render the text selection handles
-            renderTextSelection();
+            mSelectionController.renderTextSelection();
         }
     }
 
@@ -1223,99 +1219,47 @@ public final class TerminalView extends View {
 
     /**
      * Define functions required for text selection and its handles.
+     *
+     * 证道 P1-c（2026-10-10）：本体已搬到 {@link TerminalSelectionController}，这里只留同签名转发，
+     * 公开 API 一字不改。
      */
-    TextSelectionCursorController getTextSelectionCursorController() {
-        if (mTextSelectionCursorController == null) {
-            mTextSelectionCursorController = new TextSelectionCursorController(this);
-
-            final ViewTreeObserver observer = getViewTreeObserver();
-            if (observer != null) {
-                observer.addOnTouchModeChangeListener(mTextSelectionCursorController);
-            }
-        }
-
-        return mTextSelectionCursorController;
-    }
-
-    private void showTextSelectionCursors(MotionEvent event) {
-        getTextSelectionCursorController().show(event);
-    }
-
-    private boolean hideTextSelectionCursors() {
-        return getTextSelectionCursorController().hide();
-    }
-
-    private void renderTextSelection() {
-        if (mTextSelectionCursorController != null)
-            mTextSelectionCursorController.render();
-    }
-
     public boolean isSelectingText() {
-        if (mTextSelectionCursorController != null) {
-            return mTextSelectionCursorController.isActive();
-        } else {
-            return false;
-        }
+        return mSelectionController.isSelectingText();
     }
 
     /** Get the currently selected text if selecting. */
     public String getSelectedText() {
-        if (isSelectingText() && mTextSelectionCursorController != null)
-            return mTextSelectionCursorController.getSelectedText();
-        else
-            return null;
+        return mSelectionController.getSelectedText();
     }
 
     /** Get the selected text stored before "MORE" button was pressed on the context menu. */
     @Nullable
     public String getStoredSelectedText() {
-        return mTextSelectionCursorController != null ? mTextSelectionCursorController.getStoredSelectedText() : null;
+        return mSelectionController.getStoredSelectedText();
     }
 
     /** Unset the selected text stored before "MORE" button was pressed on the context menu. */
     public void unsetStoredSelectedText() {
-        if (mTextSelectionCursorController != null) mTextSelectionCursorController.unsetStoredSelectedText();
-    }
-
-    private ActionMode getTextSelectionActionMode() {
-        if (mTextSelectionCursorController != null) {
-            return mTextSelectionCursorController.getActionMode();
-        } else {
-            return null;
-        }
+        mSelectionController.unsetStoredSelectedText();
     }
 
     public void startTextSelectionMode(MotionEvent event) {
-        if (!requestFocus()) {
-            return;
-        }
-
-        showTextSelectionCursors(event);
-        mClient.copyModeChanged(isSelectingText());
-
-        invalidate();
+        mSelectionController.startTextSelectionMode(event);
     }
 
     public void stopTextSelectionMode() {
-        if (hideTextSelectionCursors()) {
-            mClient.copyModeChanged(isSelectingText());
-            invalidate();
-        }
+        mSelectionController.stopTextSelectionMode();
     }
 
     private void decrementYTextSelectionCursors(int decrement) {
-        if (mTextSelectionCursorController != null) {
-            mTextSelectionCursorController.decrementYTextSelectionCursors(decrement);
-        }
+        mSelectionController.decrementYTextSelectionCursors(decrement);
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
 
-        if (mTextSelectionCursorController != null) {
-            getViewTreeObserver().addOnTouchModeChangeListener(mTextSelectionCursorController);
-        }
+        mSelectionController.onViewAttached();
 
         // 证道 P1-a（2026-10-10）：与 onDetachedFromWindow() 里的 stopTerminalCursorBlinker() 配对。
         // 否则"离开终端页再回来"（View 被 detach 又 attach、Activity 没重建）时光标会停在上一次的
@@ -1333,58 +1277,23 @@ public final class TerminalView extends View {
         // 每进出一次终端页就留一条 600 ms 的永久空转循环（每次还白做一次整屏合成）。
         stopTerminalCursorBlinker();
 
-        if (mTextSelectionCursorController != null) {
-            // Might solve the following exception
-            // android.view.WindowLeaked: Activity com.termux.app.TermuxActivity has leaked window android.widget.PopupWindow
-            stopTextSelectionMode();
-
-            getViewTreeObserver().removeOnTouchModeChangeListener(mTextSelectionCursorController);
-            mTextSelectionCursorController.onDetached();
-        }
+        mSelectionController.onViewDetached();
     }
 
 
 
     /**
      * Define functions required for long hold toolbar.
+     *
+     * 证道 P1-c（2026-10-10）：本体已搬到 {@link TerminalSelectionController}，这里只留同签名转发。
      */
-    private final Runnable mShowFloatingToolbar = new Runnable() {
-        @RequiresApi(api = Build.VERSION_CODES.M)
-        @Override
-        public void run() {
-            if (getTextSelectionActionMode() != null) {
-                getTextSelectionActionMode().hide(0);  // hide off.
-            }
-        }
-    };
-
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    private void showFloatingToolbar() {
-        if (getTextSelectionActionMode() != null) {
-            int delay = ViewConfiguration.getDoubleTapTimeout();
-            postDelayed(mShowFloatingToolbar, delay);
-        }
-    }
-
     @RequiresApi(api = Build.VERSION_CODES.M)
     void hideFloatingToolbar() {
-        if (getTextSelectionActionMode() != null) {
-            removeCallbacks(mShowFloatingToolbar);
-            getTextSelectionActionMode().hide(-1);
-        }
+        mSelectionController.hideFloatingToolbar();
     }
 
     public void updateFloatingToolbarVisibility(MotionEvent event) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && getTextSelectionActionMode() != null) {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_MOVE:
-                    hideFloatingToolbar();
-                    break;
-                case MotionEvent.ACTION_UP:  // fall through
-                case MotionEvent.ACTION_CANCEL:
-                    showFloatingToolbar();
-            }
-        }
+        mSelectionController.updateFloatingToolbarVisibility(event);
     }
 
 }
