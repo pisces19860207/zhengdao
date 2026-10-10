@@ -274,8 +274,15 @@ object SystemInfoProvider {
         return bytes / 1048576
     }
 
-    /** [dirSizeMb] 的 Java 回退实现（Rust 不可用或 JNI 失败时走这里）。 */
-    private fun javaDirSizeBytes(dir: File): Long = try {
+    /**
+     * [dirSizeMb] 的 Java 回退实现（Rust 不可用或 JNI 失败时走这里）。
+     *
+     * 可见性是 `internal` 而非 `private`：它是真机对拍测试
+     * `app/src/androidTest/java/com/example/zhengdao/rust/DirSizeParityTest.kt`
+     * 的**基准实现**——`.so` 是 Android arm64 库，PC 上的 JVM 加载不了，
+     * 只有仪器测试能同时跑到两条路（E-079）。
+     */
+    internal fun javaDirSizeBytes(dir: File): Long = try {
         var total = 0L
         java.nio.file.Files.walkFileTree(
             dir.toPath(),

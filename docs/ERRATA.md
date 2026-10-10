@@ -4434,3 +4434,28 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 
 **回退纪律（不变）**：Rust 不可用 ⇒ `CoreNative.dirSizeBytes` 返回 `null` ⇒ `dirSizeMb` 走 Java `walkFileTree`。
 ⚠️ JNI 用 `-1` 当失败哨兵而**不是** `0`（`0` 是"目录真的空"的合法结果，用它当错误码会静默误判）。
+
+### 真机对拍（2026-10-10 补，合并之后）
+
+**动机**：`.so` 是 Android arm64 动态库，PC 上的 JVM 加载不了 ⇒ 上面那条「两条路径必须同源」
+在本机**只有 Java 那一条路能被测**（`DirSizeMbTest` 走的正是回退分支）。也就是说
+「Rust 路算出来的数字对不对」此前**没有任何自动化测试**，只有一次人工看设置页数字的对照。
+
+**新增**：`app/src/androidTest/java/com/example/zhengdao/rust/DirSizeParityTest.kt`（6 例，全绿）——
+合成树字节级对拍、软链不跟随（含"入口本身就是软链 ⇒ 两侧都 0"）、入口是普通文件 ⇒ 文件大小、
+空目录与不存在的路径 ⇒ 两侧都 0、真实 `rootfs` 对拍并计时。为了让它拿得到基准实现，
+`SystemInfoProvider.javaDirSizeBytes` 的可见性由 `private` 改成 `internal`（**只动可见性，逻辑一字未改**）。
+
+**真机实测**（Honor PGT-AN10 / Android 16 / arm64-v8a，debug 包）：
+
+```
+I/DIRSIZE: rootfs 对拍：Rust=805312468(70ms) Java=805312468(177ms)
+```
+
+**字节级完全相同**（805,312,468 B = 设置页那行 768 MB），Rust 路约快 2.5×。
+另一路人工对照（同一个工作树做 Java 对照包 = `00bbe29` 的临时工作树、Rust 包 = 合并后 `6ddddc5`）：
+设置页 `rootfs 768 MB / home 551 MB / cache 192 MB` 在两条路径上一模一样。
+
+**跑法（照抄，别踩 E-072）**：`connectedDebugAndroidTest` 会先卸载 App、清空整个运行环境，
+必须用 `adb install -r <debug.apk>` + `adb install -r <debug-androidTest.apk>` +
+`adb shell am instrument -w -e class com.example.zhengdao.rust.DirSizeParityTest com.example.zhengdao.test/androidx.test.runner.AndroidJUnitRunner`。
