@@ -1,7 +1,7 @@
 // PC 侧验证：合成包（zstd+gzip 双壳）端到端解压 + 边界用例。
 // 真机对拍由 androidTest 对同一真实 rootfs 归档跑 Java/Rust 双版本完成。
 
-use crate::extract::{extract_pipeline, extract_pipeline_skip, ExtractError};
+use crate::extract::{extract_pipeline, extract_pipeline_skip, link_stays_inside, ExtractError};
 use std::fs;
 use std::path::Path;
 
@@ -302,4 +302,46 @@ fn 成员全被跳过_同样报空归档() {
         e => panic!("应为 EmptyArchive，实际 {e:?}"),
     }
     fs::remove_dir_all(&dir).ok();
+}
+
+/// 加固-1（E-085）：软链 linkname 的边界判定 —— 纯词法，与 Kotlin 版
+/// `PathGuard.linkStaysInside` 同判据、同用例（两版必须一起漂）。
+#[test]
+fn 软链目标必须落在解压根内() {
+    let root = Path::new("/tmp/zd-link-guard/rootfs");
+    let link = root.join("usr/lib/aarch64-linux-gnu/libfoo.so");
+
+    // Debian 里绝大多数软链就是这个形状：相对链接所在目录
+    assert!(link_stays_inside(root, &link, Path::new("libfoo.so.1.2.3")));
+    // 用 .. 走回根内其它目录：合法（基础镜像里常见）
+    assert!(link_stays_inside(
+        root,
+        &link,
+        Path::new("../../../lib/libfoo.so.1")
+    ));
+    // 一路 .. 出去：拒（链接所在目录在根下 3 层，6 个 .. 已经翻到 /）
+    assert!(!link_stays_inside(
+        root,
+        &link,
+        Path::new("../../../../../../etc/passwd")
+    ));
+    // 空 linkname 没有合法语义
+    assert!(!link_stays_inside(root, &link, Path::new("")));
+}
+
+/// 绝对形式的 linkname 按 **guest 根**（= 解压根）解释。
+/// 只跑 unix：Windows 上 `Path::is_absolute()` 对 `/lib/x` 返回 false（没有盘符），
+/// 那是宿主差异、不是判据本身；Kotlin 侧同判据用 `startsWith("/")` 判绝对，
+/// 与 Android/unix 的语义一致。
+#[cfg(unix)]
+#[test]
+fn 绝对形式的软链按解压根解释() {
+    let root = Path::new("/tmp/zd-link-guard/rootfs");
+    let link = root.join("lib64/ld-linux-aarch64.so.1");
+    assert!(link_stays_inside(
+        root,
+        &link,
+        Path::new("/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1")
+    ));
+    assert!(!link_stays_inside(root, &link, Path::new("/../../etc/passwd")));
 }

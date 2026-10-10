@@ -273,12 +273,16 @@ object ProotLauncher {
         runCatching { EnvSelfHeal.ensureHermesUvWrappers(homeDir) }
         // 细光标（用户反馈块太粗）：每个 login shell 启动时发 DECSCUSR 6（bar 闪烁）。
         // tmux 可能随后覆盖，profile 方式让每个 shell（含分屏新 pane）重新声明。
+        // 优化-2（E-085）：判据从"文件在就不管"改成**按内容比对后重写** —— 脚本正文会随 App
+        // 版本更新，只判存在会让老环境永远停在旧脚本上（下面 zzclean 那段注释点名的就是这个反例）。
+        // 这个文件是 App 自己放的（`zz-` 前缀、guest 里没有对应用户数据），所以判据取严格相等。
         runCatching {
             val profileDir2 = File(rootfsDir, "etc/profile.d")
             if (profileDir2.isDirectory || profileDir2.mkdirs()) {
                 val f = File(profileDir2, "zz-cursor-bar.sh")
-                if (!f.isFile) {
-                    f.writeText("printf '\\u001B[6 q'\n")
+                val want = "printf '\\u001B[6 q'\n"
+                if (!f.isFile || f.readText() != want) {
+                    f.writeText(want)
                 }
             }
         }
@@ -310,8 +314,14 @@ object ProotLauncher {
             val profileDir = File(rootfsDir, "etc/profile.d")
             if (profileDir.isDirectory || profileDir.mkdirs()) {
                 val f = File(profileDir, "zz-npm-registry.sh")
-                if (!f.isFile || !f.readText().contains("npmmirror")) {
-                    f.writeText("export NPM_CONFIG_REGISTRY=https://registry.npmmirror.com\n")
+                // 优化-2（E-085）：原先只判"文件里出现过 npmmirror 这个子串" —— 被注释掉的
+                // 那一行（`# export NPM_CONFIG_REGISTRY=…npmmirror…`）同样能骗过它，于是镜像
+                // 其实没生效、每次启动还都判成"已就绪"。改成**逐行找一条真正生效的赋值**：
+                // 用户自己往里加的行不动它（不是严格相等，避免抹掉用户的追加）。
+                val want = "export NPM_CONFIG_REGISTRY=https://registry.npmmirror.com"
+                val active = f.isFile && f.readText().lineSequence().any { it.trim() == want }
+                if (!active) {
+                    f.writeText("$want\n")
                 }
             }
         }
