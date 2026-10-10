@@ -19,7 +19,8 @@ import org.junit.Test
  * 规则（见 [RootfsCache.pickExpectedSha]）：① 本地包"长得就是索引那个包"（文件名 == 索引
  * url 末段 且 字节数 == 索引 size）⇒ 用**被签名背书的索引** sha；② 否则按这个文件自己的
  * 说法：本地边车 → 线上 `$url.sha256`（用户留着旧包本来就可能要装旧版本，索引描述的是
- * "最新那个包"，不是"这个文件"）。
+ * "最新那个包"，不是"这个文件"）；③ 三样都没有 ⇒ 本机**上次装成的那个包**的 sha256
+ * （P3-6，2026-10-10：这一档以前是"跳过校验照装"，现在至少要能对上上次那个包）。
  */
 class RootfsSidecarShaTest {
 
@@ -108,13 +109,38 @@ class RootfsSidecarShaTest {
         assertEquals("线上 .sha256", c.source)
     }
 
-    /** 三个来源都没有 ⇒ null（调用方按"没有校验值"处理，照装但留痕）。 */
+    /** 四个来源都没有 ⇒ null（调用方**拒绝安装**，P3-6；修前是"跳过校验照装"）。 */
     @Test
     fun nothingAvailableReturnsNull() {
         val c = RootfsCache.pickExpectedSha(name, size, null, 0, null, null, null)
         assertNull(c.sha)
         assertEquals("无", c.source)
         assertFalse(c.staleSidecar)
+    }
+
+    /** P3-6：索引/边车/线上全拿不到，但本机记得"上次装成的那个包" ⇒ 用它兜底。 */
+    @Test
+    fun rememberedShaIsTheLastResort() {
+        val c = RootfsCache.pickExpectedSha(name, size, null, 0, null, null, null, staleSha)
+        assertEquals(staleSha, c.sha)
+        assertEquals("上次装过的包", c.source)
+        assertFalse(c.staleSidecar)
+    }
+
+    /** P3-6：兜底不得抢前三个来源的位置——线上有说法就听线上那份。 */
+    @Test
+    fun rememberedShaDoesNotOutrankOnline() {
+        val c = RootfsCache.pickExpectedSha(name, size, null, 0, null, null, indexSha, staleSha)
+        assertEquals(indexSha, c.sha)
+        assertEquals("线上 .sha256", c.source)
+    }
+
+    /** P3-6：记忆是空白（老标记 / 读坏）⇒ 当作没有，仍返回 null（调用方拒绝安装）。 */
+    @Test
+    fun blankRememberedShaIsIgnored() {
+        val c = RootfsCache.pickExpectedSha(name, size, null, 0, null, null, null, "  \n")
+        assertNull(c.sha)
+        assertEquals("无", c.source)
     }
 
     /** 索引 url 带查询串时，取末段前要先掐掉 `?…`（镜像地址常见）。 */

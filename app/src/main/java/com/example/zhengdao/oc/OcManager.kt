@@ -534,10 +534,39 @@ object OcManager {
         }
     }
 
+    /**
+     * 归档条目名 → 落盘路径；**越界一律返回 null**（P3-5，2026-10-10）。
+     *
+     * ## 为什么需要它
+     *
+     * 旧实现只有 `File(ocRoot, "usr/$rel")` 一句拼路径：`rel` 里带 `..` 的条目
+     * （`data/data/com.termux/files/usr/a/../../../../shared_prefs/x.xml`）会被原样写下去，
+     * 也就是"用归档里的名字决定写到 App 私有目录之外的哪里"。包虽然有 digest 校验，
+     * 但这道校验防的是"传坏了"，不是"上游被投毒"——路径穿越这条防线得自己修。
+     *
+     * ## 规则
+     *
+     * 绝对路径 / 空段 / 含 `..` 段 / 含 NUL ⇒ 直接拒（不做"规范化后再看"的博弈）；
+     * 通过之后还要 `canonicalFile` 复核：归一化落点必须仍在 [destRoot] 里
+     * （软链、奇形怪状的段都在这一步现形）。与解 RootFS 时那条
+     * `RootfsInstaller.checkPathInside` 同一思路。
+     */
+    internal fun resolveExtractTarget(destRoot: File, rel: String): File? {
+        if (rel.isEmpty() || rel.startsWith("/") || rel.indexOf('\u0000') >= 0) return null
+        val segments = rel.split('/')
+        if (segments.any { it.isEmpty() || it == ".." }) return null
+        val root = runCatching { destRoot.canonicalFile }.getOrNull() ?: return null
+        val canon = runCatching { File(root, rel).canonicalFile }.getOrNull() ?: return null
+        if (canon.path == root.path) return null
+        if (!canon.path.startsWith(root.path + File.separator)) return null
+        return canon
+    }
+
     /** xz + tar 双层解包 → files/oc/usr/...（跳过元数据点文件，bin 补执行位）。 */
     private fun extract(ctx: Context, pkg: File, onProgress: (String) -> Unit, version: String): DownloadResult {
         val ocRoot = File(ctx.filesDir, "oc")
         var count = 0
+        var skipped = 0
         try {
             BufferedInputStream(pkg.inputStream(), 512 * 1024).use { buffered ->
                 val tar = TarArchiveInputStream(XZCompressorInputStream(buffered))
@@ -547,9 +576,23 @@ object OcManager {
                     if (!name.startsWith("data/data/com.termux/files/usr/") || name.endsWith("/")) {
                         entry = tar.nextTarEntry; continue
                     }
-                    val rel = name.substringAfter("files/usr/")
+                    // P3-5（2026-10-10）：条目名不许逃出 oc/usr。
+                    // 精确前缀（而不是 substringAfter 的"找第一个出现位置"）+ canonical 复核。
+                    val rel = name.removePrefix("files/usr/")
                     if (rel.startsWith(".")) { entry = tar.nextTarEntry; continue }
-                    val target = File(ocRoot, "usr/$rel")
+                    if (entry.isSymbolicLink || entry.isLink) {
+                        // 链接条目：名字可能不越界，但它**指向**哪儿就管不着了——后续条目
+                        // 可能顺着链接写出去。证道的 tar 里不需要链接，直接跳过。
+                        skipped++
+                        RunLog.log("太极: 跳过链接条目 $rel（P3-5）")
+                        entry = tar.nextTarEntry; continue
+                    }
+                    val target = resolveExtractTarget(File(ocRoot, "usr"), rel)
+                    if (target == null) {
+                        skipped++
+                        RunLog.log("太极: 跳过越界条目 $name（P3-5）")
+                        entry = tar.nextTarEntry; continue
+                    }
                     target.parentFile?.mkdirs()
                     // 完整性（2026-10-07 事故）：先写 .part，与归档记录断言一致后原子改名。
                     // 中途被杀只留 .part、旧二进制完好——截断文件不可能再冒充「已安装」
@@ -585,6 +628,9 @@ object OcManager {
             RunLog.log("太极: 释放失败 ${t.message}")
             // 2026-10-08：见 [HumanizeError] 设计
             return DownloadResult(false, "释放失败：${HumanizeError.title(t)}")
+        }
+        if (skipped > 0) {
+            RunLog.log("太极: 释放时跳过了 $skipped 个可疑条目（越界路径/链接，P3-5）——若 serve 报缺文件，多半是它")
         }
         if (!installed(ctx)) return DownloadResult(false, "释放后二进制缺失（包不完整？）")
         Settings2.prefs(ctx).edit().putString(VERSION_KEY, version).apply()
