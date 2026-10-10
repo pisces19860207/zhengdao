@@ -7,6 +7,57 @@
 > `c64185e` / `47d56f9` / `dc4369c` 已通过两个 `--no-ff` 合并进 `main`，本节表格无需再对号分支。
 > 表中每个 hash 都来自 `git log origin/main` 实测，不是推测。已移除的功能集中在 §3，§2 只列在用/半残。
 
+## 结账 · 现状总表（2026-10-10 晚）
+
+> **这一节是给「新开一个会话」用的**：开工前先看这里，别把已经做完的又当成没做，也别把待做的说成做完了。
+> 结账基准：`origin/main` = `ce161be`，版本 **v2.0.9（versionCode 25）**，CI（`.github/workflows/ci.yml` 的 `verify` + `build`）双绿。
+> 这一节比顶部那行 `682dceb`（2026-10-07）的旧基准新得多；逐条细节按编号查 `docs/ERRATA.md`，逐功能台账仍在下面 §2。
+
+### A. 已经做完，且有证据（2026-10-10 这一轮，从旧到新）
+
+| # | 做了什么 | 提交 | 证据 / 验证方式 |
+| --- | --- | --- | --- |
+| 1 | **E-080** 资料库摘掉「借太极云端模型做摘要」（FIX-A）+ 两处隐私文案改准（FIX-B） | `414cd32` → 合并 `f5dd2ee` | 真机 BEFORE/AFTER（debug 与 release 各一轮）：清单照常重建、摘要日志 0 条；骨架文案已落进在用工作区 |
+| 2 | 排除「云机瘦客户端」方案（收工条件 §C / 已知限制 §7 / 设计方案风险登记三处加注） | `164b924` → `c5af8b8` | docs-only |
+| 3 | C1（SAF 那扇门）拍板「不成立」；真正要盯的是 Android 17 安装门槛 | `af08a40` → `39f7921` | docs-only |
+| 4 | **E-079** 补六轮计时样本（单次 70ms/177ms 不足以谈倍数，实测稳定 2.7x） | `9565eb9` → `222bf53` | 真机对拍 `DirSizeParityTest` |
+| 5 | 已知限制新增 §9 Android 17 / MagicOS 11（安装门槛定案 24 未上调 + App Memory Limiter 后台终止风险） | `5e29e68` → `6b1781c` | docs-only |
+| 6 | **E-081** Hermes 退出「恢复上次装过的 Agent」候选（候选只剩 Claude Code） | `ef18523` → `800ef17`；补记 `27d7127`→`2730532`、`dcd2f29`→`83c77cd`、`862a5dc`→`b3f5e21` | 单测 7 例 + 真机 BEFORE 有横幅 / AFTER 整体消失（官方滚动包复验）；「滚动包每次 push 重传、构建不可复现」也写进 E-081 |
+| 7 | **E-082 / issue #16** 信任边界三条：安装脚本只执行私有副本（P3-2）、解包防路径穿越（P3-5）、缺校验值拒绝安装（P3-6） | `37bc860` + `76774a1` → `f191051` | 真机两轮受控实验（指纹一致 → 执行 `/root/.zhengdao/scripts/…` 私有副本、`$0` 取证；篡改后 → 日志「不予采信」+ 重下）；**P3-5 / P3-6 只有单测 + 代码复核**（设备上没入口） |
+| 8 | **E-083 / issue #18** rootfs 两条真 BUG：Rust 解压不认「0 条目」、termux-proot 每次开会话重算 313,648 B 哈希 | `df555dd` + `95e6d54` → `91c8020` | Rust 单测 26 例 + 真机三轮（首启实算 4 项 → 再启跳过 → 篡改一份后重放回钉住的 sha）；**BUG-1 设备端不可达，由单测 + 代码复核覆盖** |
+| 9 | **E-084** FIX-F：提问时自动附上「资料库线索」（App 先在本机检索，结果跟在用户这句话后面进终端） | `d972e4a` → `0a5380b` | 单测 + 真机；⚠️ 合并时把作者原来的 E-083 让号成 **E-084**（撞号） |
+| 10 | **E-085 / issue #18** rootfs 工作表第一批五条：加固-1 软链 linkname、加固-2 resolv.conf 权限还原、加固-3 路径前缀、加固-4 增量空间预检、优化-2 zz 脚本按内容比对 | `f44a453` + `298a45d` → `00e6a67`；补记 `bedc392` → `ce161be` | 加固-1 真机仪器用例（旧 `.so` 上失败 `escape.link=true`，重编后 `escape.link=false`）；**加固-2/3/4 与优化-2 只有单测 + 代码复核**；单测 60 suites / 542 例 / 0 失败 / 1 skipped，Rust 26 例 |
+| 11 | **v2.0.9 发版**：`versionCode 25` + `.github/release-notes/v2.0.9.md` + tag `v2.0.9` | `298a45d` / tag `v2.0.9` | 正式 Release「证道 v2.0.9 — 正式版」（<https://github.com/pisces19860207/zhengdao/releases/tag/v2.0.9>）：`zhengdao-2.0.9-release.apk` 4,557,809 B、`sha256:d1ce872cd34cf0d018ef44b8b126e4854b4ae9dac1f09de266f423a69cc367fe`；包内 `lib/arm64-v8a/libzhengdao_core.so` 960,192 B / `sha256:d50bbd2b235658923fb934a3be090ac2df37249f2399d69476e742d578a75f79`，与仓库里那份逐字节一致；真机上装的已是正式包（`2.0.9` / vc25 / 非 debuggable，日志 `启动自检：安装包签名 = 官方 ✓`） |
+
+> ⚠️ **2026-10-10 16:34 的一次事故与自愈**（记在 E-085 里）：跑 `.\gradlew.bat :app:connectedDebugAndroidTest` 会先卸载 App ⇒ **App 内部数据被清**（`files/rootfs`、`files/home`、prefs）；外部数据完好（`Download/证道/*` 与用户的 `Download/男性` 都在）。16:36:40 重进终端时 App 自己用本地缓存包重装了 rootfs（`SHA256 校验通过（来源：索引）`，768 MB，不联网）；工作区设置回落成默认值、已改回 `/storage/emulated/0/Download/男性`；并给本地归档补了 `.sha256` 边车（65 B，`d80639e7…4f02`），免得「清数据后离线重装」被 E-082 的 fail-closed 拒掉。
+
+### B. 待做（都立了账，按建议顺序）
+
+| 顺序 | 事项 | 账在哪 |
+| --- | --- | --- |
+| 1 | **P3-3 备份范围没排除大目录**（`AndroidManifest.xml:45/48/49` + 两个 `res/xml/*rules.xml` 至今是模板、零 `exclude` ⇒ rootfs / home / logs / oc 可能被云备份带走） | **issue #19**（本轮新开登记） |
+| 2 | 第六批：状态寿命与手感硬伤（P2-1 ~ P2-5） | issue #15 |
+| 3 | 第三批：两处长期泄漏（P1-1 / P1-2） | issue #12 |
+| 4 | 第五批：资源不回收（P1-6 / P1-7） | issue #14 |
+| 5 | opencode 2.0.22 新增 SSE 事件类型未适配（15 种只落日志，其中 4 种其实有用） | issue #9 |
+| 6 | 第四批：冷启动主线程 IO（P1-3 / P1-4 / P1-5） | issue #13 |
+| 7 | 第八批：错误原文与技术债（P2-6 ~ P2-18 / P4） | issue #17 |
+| 8 | 两条**已完成但还没合**的支线：`docs/readme-requirement-upfront`（`64a14b2`，README / README.en 把「系统要求（Android 16+ / arm64）」提到第一屏，+5 行）与 `fix/kb-scan-cap-notice`（`c1068c7`，资料库扫描上限 2000 不再静默截断 + `说明.md` 文案改准；⚠️ **它自称 E-082，与 main 的 E-082 撞号，合并时要改成 E-086**） | 本地分支（未开 issue，合并前先复核） |
+| 9 | **E-080 还差两条没真机验**：① 终端里让 agent 自己解压 `.docx` 的实际体验 ② 「仅私有模式」工作区的骨架文案 | E-080 末尾 |
+| 10 | hermes 没装回（数据事故后没重装；想装就在丹房点「安装」，但它在受限网络下依赖重、且按 E-081 已摘出恢复候选） | 用户侧 |
+| 11 | 4 个**刻意未跟踪**的文件去留：`.zd-scratch/`、`docs/待办-dirSizeMb支线-2026-10-09.md`、`docs/证道-Rust化余地审计-2026-10-09.md`、`…html`（**不要顺手提交**） | 用户侧 |
+
+### C. 已经拍板「不做」，别复活
+
+- **优化-1**（`ProotLauncher` 公共区缓存落点每次 `adoptDir`）与 **优化-3**（`.profile` / `zz-cursor-bar.sh` 只判存在）—— E-085 写明理由，判定不做。
+- **P3-3 曾一度是「本次不做」**（E-082，2026-10-10 用户选「只做最要紧的三条」）—— 现已单独立账 **issue #19**，别再说「它已经做过了」。
+- §3 里那些被拍板删除的功能，要复活必须先问用户。
+
+### D. 别人正在干的（不要碰）
+
+- 工作树 `C:\Users\guoli\AndroidStudioProjects\wt-uiux`（分支 `fix/uiux-p0`，`9f1e3ed`）
+- 工作树 `C:\Users\guoli\AndroidStudioProjects\wt-ios-skin`（分支 `feat/ui-ios-skin`，起点 `ce161be`）
+
 ## 0. 开工前必读
 
 1. 先 `git fetch`，再用 `git rev-list --left-right --count origin/main...HEAD` 确认自己落后多少；落后就先 `rebase`，**不要在旧基准上动手**。
