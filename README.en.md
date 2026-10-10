@@ -12,6 +12,9 @@ install and run your own CLI agents.
 It gives an ordinary Android phone a real Debian 13.7 Linux environment (via PRoot) and runs
 official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others.
 
+> ⚠️ **Check this first: requires Android 16 (API 36)+ and an arm64 phone — if it doesn't match,
+> don't download; it won't run.** (See [Requirements](#requirements).)
+
 ## Requirements
 
 - **Android 16 (API 36)** or newer
