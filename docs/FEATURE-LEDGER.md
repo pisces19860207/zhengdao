@@ -53,6 +53,7 @@
 | 9 | hermes 没装回（数据事故后没重装；想装就在丹房点「安装」，但它在受限网络下依赖重、且按 E-081 已摘出恢复候选） | 用户侧 |
 | 10 | 4 个**刻意未跟踪**的文件去留：`.zd-scratch/`、`docs/待办-dirSizeMb支线-2026-10-09.md`、`docs/证道-Rust化余地审计-2026-10-09.md`、`…html`（**不要顺手提交**） | 用户侧 |
 | 11 | **未发版**：`main` 上已有两条用户可见修复（README 系统要求提到第一屏、资料库扫描上限提示），但**都没进任何正式包** —— v2.0.10 是它们之前发的 | 用户侧决定：发 v2.0.11 还是攒到下一批 |
+| 12 | **opencode bionic 装不上（v2.0.9 起 100% 失败）**：根因与一行修法见 ERRATA **E-090**（`OcManager.extract()` 的 `removePrefix("files/usr/")` 应为 `removePrefix("data/data/com.termux/files/usr/")`，否则整条相对路径没被剥掉、文件落到 `files/oc/usr/data/…` 错位）；修完需真机重装验证 + 清 `files/oc/usr/data/` 残留（约 289 MB） | 用户侧：下批修 |
 
 ### C. 已经拍板「不做」，别复活
 
