@@ -58,8 +58,14 @@ object KnowledgeBase {
      */
     private const val BUSY_STALE_MS = 5L * 60L * 1000L
 
-    /** 单次扫描文件数上限——防极端情况（用户丢了上万个小文件）拖住设备 */
-    private const val MAX_SCAN = 2000
+    /**
+     * 单次扫描文件数上限——防极端情况（用户丢了上万个小文件）拖住设备。
+     *
+     * ⚠️ **达到上限时必须显式告知**（清单里写一行、设置页状态带后缀）——
+     * 静默截断会让用户以为"资料全在这儿了"。
+     * 公开给 UI 用（[com.example.zhengdao.ui.SettingsScreen] 判"是否已达上限"）。
+     */
+    const val MAX_SCAN = 2000
 
     /** 我们写入文件的标记行，用于识别"这段是本 App 写的" */
     private const val MARK = "<!-- zhengdao-kb -->"
@@ -272,12 +278,18 @@ object KnowledgeBase {
      * ⚠️ 跳软链是必须的：本项目的缓存统计曾因 `walkTopDown()` 跟随软链而虚报约 2 倍
      *    （见 CacheCleaner 的注释），此处沿用 `Files.isSymbolicLink` 判定。
      */
-    private fun scanRaw(ctx: Context): List<Item> {
+    /** 扫描结果：条目 ＋ **是否因达到 [MAX_SCAN] 而截断**（截断必须告知，不能静默）。 */
+    private class ScanResult(val items: List<Item>, val truncated: Boolean)
+
+    private fun scanRaw(ctx: Context): List<Item> = scanRawFull(ctx).items
+
+    private fun scanRawFull(ctx: Context): ScanResult {
         val base = rawDir(ctx)
-        if (!base.isDirectory) return emptyList()
+        if (!base.isDirectory) return ScanResult(emptyList(), false)
         val out = ArrayList<Item>()
         val stack = ArrayDeque<File>()
         stack.addLast(base)
+        var truncated = false
         while (stack.isNotEmpty() && out.size < MAX_SCAN) {
             val dir = stack.removeLast()
             val children = dir.listFiles() ?: continue
@@ -288,13 +300,17 @@ object KnowledgeBase {
                     f.isFile -> {
                         val rel = f.absolutePath.removePrefix(base.absolutePath).trimStart(File.separatorChar)
                         out.add(Item(rel, f.length(), f.lastModified()))
-                        if (out.size >= MAX_SCAN) break
+                        if (out.size >= MAX_SCAN) {
+                            // 收到上限就停 ⇒ 后面可能还有文件（此时无法确知，故用"可能"措辞）
+                            truncated = true
+                            break
+                        }
                     }
                 }
             }
         }
         out.sortBy { it.rel }
-        return out
+        return ScanResult(out, truncated)
     }
 
     private fun isSymlink(f: File): Boolean =
@@ -307,7 +323,8 @@ object KnowledgeBase {
     /** 重建 `整理/00-目录.md`。内容未变则跳过。 */
     fun rebuildIndex(ctx: Context) {
         if (!rawDir(ctx).isDirectory) return
-        val items = scanRaw(ctx)
+        val scan = scanRawFull(ctx)
+        val items = scan.items
 
         // 指纹 = 工作区路径 ＋ 每个文件的相对路径/大小/修改时间
         val sb = StringBuilder(Workspace.hostDir(ctx).absolutePath)
@@ -320,7 +337,7 @@ object KnowledgeBase {
         val idx = indexFile(ctx)
         if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return
 
-        val text = indexText(items)
+        val text = indexText(items, scan.truncated)
         // 重渲染是"整份覆盖"，而模板里没有 `## 文件摘要` 一节 ⇒ 不搬回来的话，
         // 只要 `原始/` 有增删改（或清单被删后重建），模型跑出来的摘要就被静默抹掉。
         // 搬之前先读旧清单；搬的时候只保留原件还在的行（见 [KnowledgeBaseSummarizer.carryOverSummary]）。
@@ -387,7 +404,7 @@ object KnowledgeBase {
         return true
     }
 
-    private fun indexText(items: List<Item>): String {
+    private fun indexText(items: List<Item>, truncated: Boolean = false): String {
         val sb = StringBuilder()
         val ts = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date())
         sb.append("# 资料库目录\n\n")
@@ -397,6 +414,12 @@ object KnowledgeBase {
             sb.append("_（还没有文件。把资料放进 `原始/`，就会出现在这里。）_\n")
         } else {
             sb.append("共 **").append(items.size).append("** 个文件：\n\n")
+            if (truncated) {
+                // 不静默：清单是给 agent 和用户看的，必须自己说出"这不全"
+                sb.append("> ⚠️ **已达单次扫描上限 ").append(MAX_SCAN)
+                    .append(" 个 —— 这里只列出了前 ").append(MAX_SCAN)
+                    .append(" 个；`原始/` 里可能还有文件**未**列出来。**\n\n")
+            }
             for (it in items) {
                 sb.append("- `").append(it.rel).append("` — ").append(humanSize(it.size)).append("\n")
             }
@@ -486,7 +509,7 @@ object KnowledgeBase {
 
         ## 怎么用
 
-        1. 把你的文件放进 `原始/`（各种格式都行：txt、md、word、pdf……）
+        1. 把你的文件放进 `原始/`（**放进去不限格式**：txt、md、word、pdf……）
         2. 打开终端，直接问 AI —— 它会自己去读
         3. 就这样，不用做别的
 
