@@ -56,6 +56,8 @@ object OcManager {
 
     private const val REPO = "Hope2333/opencode-termux"
     private const val PKG_NAME = "opencode-$VERSION-1-aarch64.pkg.tar.xz"
+    /** `.pkg.tar.xz` 里条目的固定前缀（Termux 打包布局）。剥掉它，剩下的就是 `oc/usr` 下的相对路径。 */
+    private const val PKG_ENTRY_PREFIX = "data/data/com.termux/files/usr/"
     private const val VERSION_KEY = "oc_installed_version"
 
     fun binaryFile(ctx: Context): File = File(ctx.filesDir, "oc/usr/bin/opencode")
@@ -535,6 +537,19 @@ object OcManager {
     }
 
     /**
+     * 归档条目名 → `oc/usr` 下的相对路径；**不是本包布局的条目一律返回 null**（调用方跳过）。
+     *
+     * E-090（2026-10-11）：这里必须与准入判断共用 [PKG_ENTRY_PREFIX]。`removePrefix` 只剥
+     * "字符串开头"的前缀，前缀写错既不抛错也不记日志——只会静默把整条
+     * `data/data/com.termux/files/usr/bin/opencode` 当成相对路径，文件全部错位到
+     * `oc/usr/data/…`（实测：整包约 289MB），最后 `installed()` 判否、安装报失败。
+     */
+    internal fun relPathOf(entryName: String): String? {
+        if (!entryName.startsWith(PKG_ENTRY_PREFIX) || entryName.endsWith("/")) return null
+        return entryName.removePrefix(PKG_ENTRY_PREFIX).ifEmpty { null }
+    }
+
+    /**
      * 归档条目名 → 落盘路径；**越界一律返回 null**（P3-5，2026-10-10）。
      *
      * ## 为什么需要它
@@ -567,18 +582,29 @@ object OcManager {
         val ocRoot = File(ctx.filesDir, "oc")
         var count = 0
         var skipped = 0
+        // E-090（2026-10-11）：本次修复之前，剥错前缀会把整包写进 `oc/usr/data/`。
+        // 只删这一个固定路径（`oc/usr` 由本模块独占），旧安装顺手把这几百 MB 收回来。
+        runCatching {
+            val ghost = File(ocRoot, "usr/data")
+            if (ghost.isDirectory) {
+                val freed = ghost.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+                ghost.deleteRecursively()
+                RunLog.log("太极: 清理旧版错位释放残留（约 ${freed / 1048576} MB，E-090）")
+            }
+        }
         try {
             BufferedInputStream(pkg.inputStream(), 512 * 1024).use { buffered ->
                 val tar = TarArchiveInputStream(XZCompressorInputStream(buffered))
                 var entry: TarArchiveEntry? = tar.nextTarEntry
                 while (entry != null) {
                     val name = entry.name
-                    if (!name.startsWith("data/data/com.termux/files/usr/") || name.endsWith("/")) {
-                        entry = tar.nextTarEntry; continue
-                    }
                     // P3-5（2026-10-10）：条目名不许逃出 oc/usr。
                     // 精确前缀（而不是 substringAfter 的"找第一个出现位置"）+ canonical 复核。
-                    val rel = name.removePrefix("files/usr/")
+                    // E-090（2026-10-11）：剥前缀必须用**准入判断的同一个常量**。E-082 里曾误写成
+                    // `removePrefix("files/usr/")`——条目名以 `data/data/com.termux/` 开头，
+                    // 一个字都没剥掉，整包落到 `oc/usr/data/data/com.termux/…` 错位。
+                    val rel = relPathOf(name)
+                    if (rel == null) { entry = tar.nextTarEntry; continue }
                     if (rel.startsWith(".")) { entry = tar.nextTarEntry; continue }
                     if (entry.isSymbolicLink || entry.isLink) {
                         // 链接条目：名字可能不越界，但它**指向**哪儿就管不着了——后续条目
@@ -632,7 +658,17 @@ object OcManager {
         if (skipped > 0) {
             RunLog.log("太极: 释放时跳过了 $skipped 个可疑条目（越界路径/链接，P3-5）——若 serve 报缺文件，多半是它")
         }
-        if (!installed(ctx)) return DownloadResult(false, "释放后二进制缺失（包不完整？）")
+        if (!installed(ctx)) {
+            // E-090（2026-10-11）：这条失败以前**一行日志都不写**——用户报「装不上」时，
+            // 日志里查不到任何痕迹（本次查证就卡在这里）。失败可见原则要求它留痕。
+            val bin = binaryFile(ctx)
+            RunLog.log(
+                "太极: 释放后二进制缺失——预期 ${bin.absolutePath}（>100MB），实际 " +
+                    (if (bin.isFile) "${bin.length()} 字节" else "不存在") +
+                    "；本轮写入 $count 个文件、跳过 $skipped 个（E-090）",
+            )
+            return DownloadResult(false, "释放后二进制缺失（包不完整？）")
+        }
         Settings2.prefs(ctx).edit().putString(VERSION_KEY, version).apply()
         RunLog.log("太极: OpenCode $version 释放完成（$count 个文件）")
         return DownloadResult(true, "OpenCode $version 安装完成")
