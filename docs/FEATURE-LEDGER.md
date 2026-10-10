@@ -533,6 +533,20 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 项（≈93 MB）清掉，6 个流程性脚本（配 secret / 签索引 / 校验公钥 / CI 轮询）归档到
 > `C:\Users\guoli\AndroidStudioProjects\.zd-scratch\zd-scripts-2026-10-08\`。
 
+> **2026-10-10 续（隐私与恢复候选两处收口）**：
+> ① **资料库不再借太极的云端模型做摘要**（FIX-A）＋ 设置页与 `说明.md` 的隐私文案改准（FIX-B）：
+> 原先两处都写「不会上传到任何服务器」，而「重新整理」会顺手把每个文件的开头（≤1200 字，`.docx` 先抽正文）
+> 发给太极里配的云端免费模型写摘要 —— 文案与行为直接冲突。用户 2026-10-10 拍板摘掉（隐私 + 上游组件会变）。
+> 连带：`.docx` 正文抽取停用、`State.ORGANIZED` 对新安装不再可达（老清单由 `carryOverSummary` 原样保留）。
+> 见 **E-080**。
+> ② **Hermes 退出「恢复全部」候选**（用户 2026-10-10 拍板：「应该只有像 claude、AGY 这些才行，依赖少的那种」）：
+> 它的官方安装脚本只落一个入口、跑起来要 Python/uv **现建 venv**，在本设备上（E-025 搬家包恢复必崩、
+> E-056 uv 缓存在 FUSE 上建不了软链）恢复出来只能是半截环境 ⇒ `AgentInfo.restorable = false`，与 AGY（E-040）
+> 同列；**只关恢复入口**，安装卡片、探测、卸载、账本照旧。改完「恢复全部」的候选**只剩 Claude Code**。
+> 见 **E-081**。
+> ③ 本轮单测：**56 suites / 491 tests / 0 失败 / 0 错误 / 1 skipped**（`AgentLedgerTest` 共 7 例，含新增的
+> 「关掉恢复入口的 Agent 仍然会出现在清单里（安装卡片不受影响）」）。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -555,7 +569,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 环境安装/替换的重入锁 + 原子替换（备份 → 就位 → 删备份） | ✅ 在用（#11 第二批，见 E-078；并发拒绝由 JVM 单测覆盖，真机验证了进行中门控与降级复原） | 本次 | `rootfs/RootfsInstaller.kt`、`rootfs/RootfsDelta.kt`、`ui/InstallFlow.kt`、`ui/SettingsScreen.kt`、`TerminalActivity.kt` |
 | 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮，另在 guest 里有 `/usr/local/bin/zzclean`（App 启动时按内容+执行位写入）；一档命令含 pip 缓存） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt`、`terminal/ProotLauncher.kt`（写入 `/usr/local/bin/zzclean`） |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
-| Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY 不进恢复候选**，见 §3 与 E-040；候选筛选 `AgentInfo.restorable`） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
+| Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY（E-040）、Hermes（E-081）都不进恢复候选** ⇒ 「恢复全部」的候选只剩 Claude Code；判据在 `AgentInfo.restorable`，**只关恢复入口**——安装卡片、探测、卸载、账本都不受影响） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
 | 安装可见性（常驻横幅 + 系统通知 + 终端横幅 + 设置页状态行；四落点收在 `InstallFlow`） | ✅ 在用 | `c1b56d3` + `ab74725` | `ui/InstallFlow.kt`、`ui/InstallProgress.kt`、`terminal/InstallNotifier.kt`、`TerminalActivity.kt`、`ui/SettingsScreen.kt`、`res/layout/activity_main.xml`（`status_banner`） |
 | 通知 4 渠道 | ✅ 在用 | `8127a49` | `terminal/NotificationChannels.kt` |
 | 资源监控 | ✅ 在用 | `7d0b08c` | `terminal/ResMonitor.kt` |
