@@ -1345,6 +1345,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // M2：会话归 SessionManager 持有，UI 销毁不杀会话（前台服务继续保活）。
         // 但必须断开视图重绘回调，否则会持有已销毁的 View（内存泄漏 + 空刷）。
         SessionManager.onViewUpdate = null
+        // 审计 🟡-4：同一批全局回调里原先只清了 onViewUpdate，另两条各自捕获本 Activity
+        // （getSystemService / Toast），不清同样会把已销毁的 Activity 钉在单例上。
+        SessionManager.onCopyText = null
+        SessionManager.onPasteRequest = null
         // FIX-F：清掉行缓冲（Activity 都没了，那半句提问也不该留着）。
         KnowledgeBaseHints.reset()
         super.onDestroy()

@@ -3,24 +3,45 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import android.graphics.Typeface
+import android.util.Log
 import android.view.View
 import com.termux.terminal.TextStyle
 import com.termux.terminal.TerminalColors
 import com.termux.view.TerminalView
 
 /**
- * 终端外观偏好（字号 + 配色），存 SharedPreferences，设置页可调，进终端时应用。
+ * 终端外观偏好（字号 + 配色 + 字体），存 SharedPreferences，设置页可调，进终端时应用。
  *
- * ⚠️ 两个易错点（2026-10-05 实测得出，改这里时务必留意）：
+ * ⚠️ 三个易错点（2026-10-05 / 2026-10-10 实测得出，改这里时务必留意）：
  * 1. **字号单位是 px 不是 dp**——`TerminalView.setTextSize()` 内部直接
  *    `mTextPaint.setTextSize(textSize)`，形参注释写的 dp 是错的。必须 × density。
  * 2. **TerminalView 只提供背景，不提供前景**——`TerminalRenderer.render()` 仅在反色
  *    模式填充背景，常规渲染不画背景。所以背景色必须同时写进「视图 background」和
  *    「调色板 COLOR_INDEX_BACKGROUND」两处，缺一会白底白字或黑底黑字。
+ * 3. **字体必须在 `setTextSize()` 之后设**——`TerminalRenderer` 是在 `setTextSize()`
+ *    里懒创建的（构造函数不建），而 `setTypeface()` 会读 `mRenderer.mTextSize`，
+ *    在渲染器存在之前调用它直接 NPE（见 `TerminalSizeResolver`）。
  */
 object TerminalPrefs {
 
     private const val PREFS = "zhengdao-ui"
+
+    /**
+     * 终端正文字体（assets 相对路径）。
+     *
+     * 为什么用 assets 而不是 `res/font/`：字体 10+ MB，放 `res/font` 会被 AAPT
+     * 处理（压缩/校验，且 res 资源名有限制），assets 按原样打进 APK 更合适。
+     * 为什么选 JetBrains Maple Mono NF：中英文严格 2:1（中文恰好占 2 个字符格），
+     * 且带 Nerd Font 图标区，配 tmux/CLI 工具链不缺字形。
+     * 来源与许可见仓库根目录 `PROVENANCE.md`（OFL 1.1）。
+     */
+    private const val FONT_ASSET = "fonts/JetBrainsMapleMono-NF-Regular.ttf"
+
+    private const val TAG = "TerminalPrefs"
+
+    /** 已加载的字体（进程内缓存：`createFromAsset` 解 20 MB 字体，别每次进终端都做）。 */
+    private var cachedTypeface: Typeface? = null
     const val KEY_SIZE_DP = "terminal_text_size_dp"
     const val KEY_SCHEME = "terminal_color_scheme"
     /** 画布留白（dp，2026-10-08 新增）。 */
@@ -106,7 +127,37 @@ object TerminalPrefs {
     }
 
     /**
-     * 把「字号 + 配色 + 画布留白」一次性应用到终端。进终端时调用，设置页改完下次进终端生效。
+     * 终端正文字体：assets 里的 JetBrains Maple Mono（NF Regular）。
+     *
+     * 失败（asset 缺失/损坏/OOM）时**回退系统等宽**，不抛异常——字体属于外观，
+     * 不该让终端起不来。加载结果进程内缓存，重复调用零成本。
+     *
+     * 首次加载会打一条 `Log.i`，记下 `createFromAsset` 的真实耗时（含从 APK 里解压
+     * 17.94 MB 资产的成本）。这条日志是**故意留在代码里的**：将来评估
+     * `androidResources.noCompress` 或做子集化时，它是唯一的对照基线
+     * （见 `docs/acceptance/terminal-font-2026-10-10.md` §六）。
+     */
+    fun typeface(ctx: Context): Typeface {
+        cachedTypeface?.let { return it }
+        val startedAtNanos = System.nanoTime()
+        val loaded = try {
+            Typeface.createFromAsset(ctx.assets, FONT_ASSET)
+        } catch (t: Throwable) {
+            Log.w(TAG, "字体 $FONT_ASSET 加载失败，回退系统等宽", t)
+            Typeface.MONOSPACE
+        }
+        val elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000
+        Log.i(
+            TAG,
+            "字体首次加载：$FONT_ASSET，createFromAsset 耗时 ${elapsedMs}ms" +
+                "（在此线程阻塞；此后走进程内缓存）",
+        )
+        cachedTypeface = loaded
+        return loaded
+    }
+
+    /**
+     * 把「字号 + 配色 + 画布留白 + 字体」一次性应用到终端。进终端时调用，设置页改完下次进终端生效。
      *
      * @param canvasHost 承载画布的**外层容器**（`R.id.canvas_host`）。留白与底色都写在它身上，
      *   而不是写在 [termView] 上——`TerminalView.updateSize()` 用 `getWidth()` 算列数、
@@ -124,6 +175,9 @@ object TerminalPrefs {
         canvasHost.setPadding(insetPx, insetPx, insetPx, insetPx)
         // dp → px（见类注释第 1 点）；setTextSize 内部会自动 updateSize 重算行列
         termView.setTextSize((sizeDp(ctx) * density).toInt())
+        // 字体必须排在 setTextSize 之后（见类注释第 3 点）：上一步才把 mRenderer 建出来。
+        // setTypeface 会按新字体的度量重建渲染器并 updateSize()，列数因此跟着新字宽重算。
+        termView.setTypeface(typeface(ctx))
     }
 
     /**
