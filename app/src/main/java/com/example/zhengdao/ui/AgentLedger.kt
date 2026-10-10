@@ -85,8 +85,9 @@ object AgentLedger {
      * 「恢复全部」的候选：账本里记着装过、而**当前探测不到**的那些（按当前清单顺序）。
      * 顺序跟清单走（而不是跟账本时间走），保证恢复顺序与用户第一次安装的顺序一致。
      *
-     * 还要求 `restorable`：官方安装器在受限网络下必然失败的 Agent（目前是 AGY）不进候选，
-     * 否则主页会一直挂着一颗点了必错的「恢复全部」按钮（用户 2026-10-08 拍板）。
+     * 还要求 `restorable`：官方安装器在受限网络下必然失败的（AGY，E-040）、或依赖链重得
+     * "恢复出来也是半截环境"的（Hermes，E-081）都不进候选，否则主页会一直挂着一颗点了必错的
+     * 「恢复全部」按钮（用户 2026-10-08 / 2026-10-10 两次拍板）。
      */
     fun restoreCandidates(ctx: Context, agents: List<AppState.AgentInfo>): List<AppState.AgentInfo> =
         pickRestoreCandidates(entries(ctx).map { it.id }.toSet(), agents)

@@ -63,15 +63,24 @@ object AppState {
         val installedVersion: String? = null, // node_modules package.json 探测；null = 版本未知
         val uninstallCmd: String? = null, // P3：卸载命令（guest 内执行）
         /**
-         * 能不能进「恢复全部」的候选（2026-10-08，用户拍板）。
+         * 能不能进「恢复全部」的候选（用户两次拍板：2026-10-08 AGY、2026-10-10 Hermes）。
          *
-         * `false` = 官方安装器在**受限网络**下必然失败，把它当成"装过、可以一键恢复"只会递给
-         * 用户一个点了必错的按钮。判据不是猜的，是真机网络探针（2026-10-08 17:19）：
-         * 环境里只有 `registry.npmmirror.com -> 200`，`github.com` / `raw.githubusercontent.com` /
-         * `antigravity.google` / `registry.npmjs.org` / `www.google.com` 全 `000`。
-         * 用户原话：「清掉 AGY 的恢复功能吧，谷歌对地域限制太严了，除非把终端的 IP、地址
-         * 什么的都改成国外才行」——所以只为 AGY 关掉恢复，**安装卡片保留**（境外网络下仍可装，
-         * 装好了会被文件探测认出来，账本照样记账）。
+         * `false` = **这条路现在走不通**。把走不通的条目当成"装过、可以一键恢复"，只会递给用户
+         * 一个点了必错的按钮。两条判据，任一条成立就关：
+         *
+         * 1. **官方安装器在受限网络下必然失败**（AGY）。判据不是猜的，是真机网络探针
+         *    （2026-10-08 17:19）：环境里只有 `registry.npmmirror.com -> 200`，`github.com` /
+         *    `raw.githubusercontent.com` / `antigravity.google` / `registry.npmjs.org` /
+         *    `www.google.com` 全 `000`。用户原话：「清掉 AGY 的恢复功能吧，谷歌对地域限制太严了，
+         *    除非把终端的 IP、地址什么的都改成国外才行」。
+         * 2. **依赖链重、恢复出来多半是半截环境**（Hermes）。它的安装脚本只落一个入口，真要跑起来
+         *    还得 Python/uv 现建 venv，实测反复死在依赖环境这一环（E-025 搬家包恢复后必崩、
+         *    E-056 uv 的 wheel 缓存挂共享存储建不了软链）。用户原话（2026-10-10）：「恢复上次安装
+         *    的 agent 这个功能可以不加 hermes agent 了，应该只有像 claude、AGY 这些才行，
+         *    依赖少的那种？」
+         *
+         * 两种情形都**只关"恢复入口"**：安装卡片、文件探测、卸载能力全部保留（网络好时用户仍可
+         * 自己点装，装好了会被文件探测认出来，账本照样记账）。见 `docs/ERRATA.md` E-040 / E-081。
          */
         val restorable: Boolean = true,
     )
@@ -191,6 +200,9 @@ object AppState {
                 installed = rootfsInstalled && firstExisting(
                     ctx, listOf("home/.local/bin/hermes", "rootfs/usr/local/bin/hermes")
                 ),
+                // 不参与「恢复全部」：装脚本只落一个入口，跑起来还要 Python/uv 现建 venv，
+                // 恢复出来多半是半截环境（E-025 / E-056；用户 2026-10-10 拍板，见 restorable 注释）。
+                restorable = false,
             ),
             AgentInfo(
                 id = "antigravity",

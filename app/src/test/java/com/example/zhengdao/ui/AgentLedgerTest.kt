@@ -104,18 +104,31 @@ class AgentLedgerTest {
 
     @Test
     fun `恢复候选只收「账本里有、现在探测不到、且有安装命令」的`() {
-        val ledgerIds = setOf("hermes", "antigravity", "no-cmd")
+        val ledgerIds = setOf("claude-code", "hermes", "antigravity", "no-cmd")
         val agents = listOf(
-            agent("hermes"),                                  // 账本里有 + 没装 + 有命令 ⇒ 候选
-            agent("antigravity", restorable = false),         // 受限网络，用户拍板不恢复 ⇒ 剔除
-            agent("claude-code"),                             // 账本里没有 ⇒ 剔除
+            agent("claude-code"),                             // 账本里有 + 没装 + 有命令 + 可恢复 ⇒ 候选
+            agent("hermes", restorable = false),              // 依赖链重（Python/uv/venv）⇒ 剔除，见 E-081
+            agent("antigravity", restorable = false),         // 受限网络，用户拍板不恢复 ⇒ 剔除，见 E-040
+            agent("not-in-ledger"),                          // 账本里没有 ⇒ 剔除
             agent("installed-one", installed = true),         // 现在装着 ⇒ 剔除
             agent("no-cmd", installCmd = null),               // 没有安装命令 ⇒ 剔除
         )
 
         assertEquals(
-            listOf("hermes"),
+            listOf("claude-code"),
             AgentLedger.pickRestoreCandidates(ledgerIds, agents).map { it.id },
+        )
+    }
+
+    @Test
+    fun `关掉恢复入口的 Agent 仍然会出现在清单里（安装卡片不受影响）`() {
+        // restorable 只影响「恢复全部」的候选：清单本身、安装命令、探测结果都不动。
+        val agents = listOf(agent("hermes", restorable = false), agent("claude-code"))
+        assertEquals(listOf("hermes", "claude-code"), agents.map { it.id })
+        assertEquals(2, agents.count { it.installCmd != null })
+        assertEquals(
+            listOf("claude-code"),
+            AgentLedger.pickRestoreCandidates(setOf("hermes", "claude-code"), agents).map { it.id },
         )
     }
 
