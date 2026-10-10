@@ -17,6 +17,11 @@ rootfs/out/
 !app/src/main/res/**/*.png
 !app/src/main/res/**/*.webp
 !app/src/main/res/**/*.xml
+# ⚠️ docs/acceptance/ 下只放行「放大判据图」——那种图要能重新逐像素量测，必须无损。
+# 约定：量测用图文件名一律带 `-zoom-`（例：04-zoom-pipe-alignment.png，<50 KB）。
+# 整屏截图不进库：转成 WebP 归档，或留在 %TEMP%（见 terminal-font-2026-10-10.md §八）。
+# 2026-10-10 项目所有者把原先的整目录豁免收窄成这一条。
+!docs/acceptance/assets/**/*-zoom-*.png
 u.xml
 postinstall.mjs
 binls.txt

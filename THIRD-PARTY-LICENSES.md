@@ -40,6 +40,23 @@
 - 许可证：BSD-3-Clause（双许可中的 BSD 分支）
 - 来源：<https://github.com/facebook/zstd>（经 zstd-jni 官方 AAR 分发）
 
+## 6. JetBrains Maple Mono（终端默认字体）
+
+- 用途：终端默认正文字体（`app/src/main/assets/fonts/JetBrainsMapleMono-NF-Regular.ttf`，
+  运行时由 `TerminalPrefs.typeface()` 经 `Typeface.createFromAsset` 载入）
+- 许可证：**SIL Open Font License 1.1**；OFL 全文随字体同目录分发
+  （`app/src/main/assets/fonts/OFL.txt`，即上游 zip 内的 `LICENSE.txt`）
+- 来源：<https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono> release `1.2304.79`
+  的 `JetBrainsMapleMono-NF-XX-XX-XX.zip`（NF = Nerd Font 图标、XX = 不窄保 2:1、
+  保留连字、未 hint）
+- 改动情况：**未修改、未子集化**，字节与上游一致；入库时仅改名为带 `NF` 的名字
+  （上游 zip 内平铺文件名为 `JetBrainsMapleMono-Regular.ttf`，NF 是整包变体）
+- 版权（`OFL.txt` 首三行）：JetBrains Mono Project Authors（2020）、Maple Mono Project
+  Authors（2022）、Space Time（2025）
+- SHA256：字体 `a4fc642d821671b1a2937b9a52d398b96cf0b1e1da758846ee1ff38a297b22a5`、
+  OFL 文本 `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533`
+  （来源包与完整清单见 PROVENANCE.md「字体」小节）
+
 ---
 
 ## 红线声明（对协作者与 AI 的约束）

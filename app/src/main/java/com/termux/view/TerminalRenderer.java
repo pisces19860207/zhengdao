@@ -70,6 +70,10 @@ public final class TerminalRenderer {
         if (reverseVideo)
             canvas.drawColor(palette[TextStyle.COLOR_INDEX_FOREGROUND], PorterDuff.Mode.SRC);
 
+        // 证道 P1-a 实测结论（2026-10-10，真机 PGT-AN10 / Android 16）：不要试图用 canvas.getClipBounds()
+        // 裁行来省 CPU —— 调用方明明只 invalidate 了光标那一格，硬件加速下 onDraw 收到的 clip 仍是整个
+        // View（实测每帧 rows=41/41 clip=Rect(0, 0 - 1228, 2094)）。View.invalidate(Rect) 只减少光栅化，
+        // 不减少 onDraw 与 display list 录制；要按脏区省下 Java 循环，必须自带保留位图 + 显式脏区。
         float heightOffset = mFontLineSpacingAndAscent;
         for (int row = topRow; row < endRow; row++) {
             heightOffset += mFontLineSpacing;

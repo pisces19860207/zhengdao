@@ -3,41 +3,24 @@ package com.termux.view;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.SystemClock;
-import android.text.Editable;
-import android.text.InputType;
-import android.text.TextUtils;
 import android.util.AttributeSet;
-import android.view.ActionMode;
-import android.view.HapticFeedbackConstants;
-import android.view.InputDevice;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
-import android.view.ViewTreeObserver;
-import android.view.accessibility.AccessibilityManager;
 import android.view.autofill.AutofillManager;
 import android.view.autofill.AutofillValue;
-import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
-import android.widget.Scroller;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
-import com.termux.terminal.KeyHandler;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
 import com.termux.view.textselection.TextSelectionCursorController;
@@ -45,8 +28,18 @@ import com.termux.view.textselection.TextSelectionCursorController;
 /** View displaying and interacting with a {@link TerminalSession}. */
 public final class TerminalView extends View {
 
-    /** Log terminal view key and IME events. */
-    private static boolean TERMINAL_VIEW_KEY_LOGGING_ENABLED = false;
+    /** Log terminal view key and IME events. 只能经 {@link #setIsTerminalViewKeyLoggingEnabled(boolean)} 改。 */
+    private static boolean sKeyLoggingEnabled = false;
+
+    /**
+     * @return 是否正在记录终端按键与 IME 事件。
+     *
+     * <p>P1-c 接口收窄：搬家后的职责类（{@link TerminalImeBridge} / {@link TerminalCursorBlinker}）
+     * 读开关走这个包内访问器，开关本身不再对包内可写。</p>
+     */
+    static boolean isKeyLoggingEnabled() {
+        return sKeyLoggingEnabled;
+    }
 
     /** The currently displayed terminal session, whose emulator is {@link #mEmulator}. */
     public TerminalSession mTermSession;
@@ -70,11 +63,14 @@ public final class TerminalView extends View {
 
     public ImeProbeObserver mImeProbeObserver;
 
-    private TextSelectionCursorController mTextSelectionCursorController;
+    /** 选区与剪贴板（P1-c 从本类搬出的职责类，见 {@link TerminalSelectionController}）。 */
+    private final TerminalSelectionController mSelectionController = new TerminalSelectionController(this);
 
-    private Handler mTerminalCursorBlinkerHandler;
-    private TerminalCursorBlinkerRunnable mTerminalCursorBlinkerRunnable;
-    private int mTerminalCursorBlinkerRate;
+    /** 光标闪烁（P1-c 从本类搬出的职责类，见 {@link TerminalCursorBlinker}）。 */
+    private final TerminalCursorBlinker mCursorBlinker = new TerminalCursorBlinker(this);
+
+    /** 尺寸与布局（P1-c 从本类搬出的职责类，见 {@link TerminalSizeResolver}）。 */
+    private final TerminalSizeResolver mSizeResolver = new TerminalSizeResolver(this);
     private boolean mCursorInvisibleIgnoreOnce;
     public static final int TERMINAL_CURSOR_BLINK_RATE_MIN = 100;
     public static final int TERMINAL_CURSOR_BLINK_RATE_MAX = 2000;
@@ -83,60 +79,25 @@ public final class TerminalView extends View {
     int mTopRow;
     int[] mDefaultSelectors = new int[]{-1,-1,-1,-1};
 
-    float mScaleFactor = 1.f;
-    final GestureAndScaleRecognizer mGestureRecognizer;
-
-    /** Keep track of where mouse touch event started which we report as mouse scroll. */
-    private int mMouseScrollStartX = -1, mMouseScrollStartY = -1;
-    /** Keep track of the time when a touch event leading to sending mouse scroll events started. */
-    private long mMouseStartDownTime = -1;
-
-    final Scroller mScroller;
-
-    /** What was left in from scrolling movement. */
-    float mScrollRemainder;
+    /**
+     * 手势与滚动职责（P1-c 从本类搬出的职责类，见 {@link TerminalGestureController}）。
+     * 字段 {@code mGestureRecognizer} / {@code mScroller} / {@code mScrollRemainder} /
+     * {@code mScaleFactor} / {@code mMouseScrollStartX} / {@code mMouseScrollStartY} /
+     * {@code mMouseStartDownTime} 随职责一并搬进该类。
+     */
+    private final TerminalGestureController mGestureController = new TerminalGestureController(this);
 
     /** If non-zero, this is the last unicode code point received if that was a combining character. */
     int mCombiningAccent;
 
     /**
-     * The current AutoFill type returned for {@link View#getAutofillType()} by {@link #getAutofillType()}.
-     *
-     * The default is {@link #AUTOFILL_TYPE_NONE} so that AutoFill UI, like toolbar above keyboard
-     * is not shown automatically, like on Activity starts/View create. This value should be updated
-     * to required value, like {@link #AUTOFILL_TYPE_TEXT} before calling
-     * {@link AutofillManager#requestAutofill(View)} so that AutoFill UI shows. The updated value
-     * set will automatically be restored to {@link #AUTOFILL_TYPE_NONE} in
-     * {@link #autofill(AutofillValue)} so that AutoFill UI isn't shown anymore by calling
-     * {@link #resetAutoFill()}.
+     * 自动填充 / 无障碍（P1-c 从本类搬出的职责类，见 {@link TerminalA11yDelegate}）。
+     * 字段 {@code mAutoFillType} / {@code mAutoFillImportance} / {@code mAutoFillHints} /
+     * {@code mAccessibilityEnabled} 随职责一并搬进该类。
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private int mAutoFillType = AUTOFILL_TYPE_NONE;
-
-    /**
-     * The current AutoFill type returned for {@link View#getImportantForAutofill()} by
-     * {@link #getImportantForAutofill()}.
-     *
-     * The default is {@link #IMPORTANT_FOR_AUTOFILL_NO} so that view is not considered important
-     * for AutoFill. This value should be updated to required value, like
-     * {@link #IMPORTANT_FOR_AUTOFILL_YES} before calling {@link AutofillManager#requestAutofill(View)}
-     * so that Android and apps consider the view as important for AutoFill to process the request.
-     * The updated value set will automatically be restored to {@link #IMPORTANT_FOR_AUTOFILL_NO} in
-     * {@link #autofill(AutofillValue)} by calling {@link #resetAutoFill()}.
-     */
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private int mAutoFillImportance = IMPORTANT_FOR_AUTOFILL_NO;
-
-    /**
-     * The current AutoFill hints returned for {@link View#getAutofillHints()} ()} by {@link #getAutofillHints()} ()}.
-     *
-     * The default is an empty `string[]`. This value should be updated to required value. The
-     * updated value set will automatically be restored an empty `string[]` in
-     * {@link #autofill(AutofillValue)} by calling {@link #resetAutoFill()}.
-     */
-    private String[] mAutoFillHints = new String[0];
-
-    private final boolean mAccessibilityEnabled;
+    private final TerminalA11yDelegate mA11yDelegate = new TerminalA11yDelegate(this);
+    /** 输入法与硬件键（P1-c 从本类搬出的职责类，见 {@link TerminalImeBridge}）。 */
+    private final TerminalImeBridge mImeBridge = new TerminalImeBridge(this);
 
     /** The {@link KeyEvent} is generated from a virtual keyboard, like manually with the {@link KeyEvent#KeyEvent(int, int)} constructor. */
     public final static int KEY_EVENT_SOURCE_VIRTUAL_KEYBOARD = KeyCharacterMap.VIRTUAL_KEYBOARD; // -1
@@ -144,163 +105,9 @@ public final class TerminalView extends View {
     /** The {@link KeyEvent} is generated from a non-physical device, like if 0 value is returned by {@link KeyEvent#getDeviceId()}. */
     public final static int KEY_EVENT_SOURCE_SOFT_KEYBOARD = 0;
 
-    private static final String LOG_TAG = "TerminalView";
-
     public TerminalView(Context context, AttributeSet attributes) { // NO_UCD (unused code)
         super(context, attributes);
-        mGestureRecognizer = new GestureAndScaleRecognizer(context, new GestureAndScaleRecognizer.Listener() {
-
-            boolean scrolledWithFinger;
-
-            @Override
-            public boolean onUp(MotionEvent event) {
-                mScrollRemainder = 0.0f;
-                if (mEmulator != null && mEmulator.isMouseTrackingActive() && !event.isFromSource(InputDevice.SOURCE_MOUSE) && !isSelectingText() && !scrolledWithFinger) {
-                    // Quick event processing when mouse tracking is active - do not wait for check of double tapping
-                    // for zooming.
-                    sendMouseEventCode(event, TerminalEmulator.MOUSE_LEFT_BUTTON, true);
-                    sendMouseEventCode(event, TerminalEmulator.MOUSE_LEFT_BUTTON, false);
-                    return true;
-                }
-                scrolledWithFinger = false;
-                return false;
-            }
-
-            @Override
-            public boolean onSingleTapUp(MotionEvent event) {
-                if (mEmulator == null) return true;
-
-                if (isSelectingText()) {
-                    stopTextSelectionMode();
-                    return true;
-                }
-                requestFocus();
-                mClient.onSingleTapUp(event);
-                return true;
-            }
-
-            @Override
-            public boolean onScroll(MotionEvent e, float distanceX, float distanceY) {
-                if (mEmulator == null) return true;
-
-                // ── 证道定制（2026-10-05 真机实测）：让触摸滑动在全屏应用下也能滚动历史 ──
-                // 现象：终端里单指上滑没有反应。
-                // 根因：tmux / 全屏 TUI 采用"定位光标 + 重绘整屏"的方式输出，不产生行滚动，
-                //      所以本地回滚缓冲恒为空（实测 getActiveTranscriptRows() == 0），
-                //      下面 doScroll() 那套本地滚动永远滚不动。
-                //      而原代码只在"事件来自鼠标源"时才转发滚轮，手机上触摸永远不是鼠标源，
-                //      于是滑动被彻底丢弃。
-                // 修法：应用若启用了鼠标跟踪（tmux 需 `set -g mouse on`，已由 ProotLauncher
-                //      预置到 ~/.tmux.conf），就把触摸滑动按行高换算成滚轮事件转发给应用，
-                //      由应用滚动它自己的历史缓冲。
-                if (mEmulator.isMouseTrackingActive()) {
-                    distanceY += mScrollRemainder;
-                    int wheelRows = (int) (distanceY / mRenderer.mFontLineSpacing);
-                    mScrollRemainder = distanceY - wheelRows * mRenderer.mFontLineSpacing;
-                    if (wheelRows != 0) {
-                        // 手指上滑（wheelRows > 0）= 想看更新的内容 = 滚轮向下
-                        int button = wheelRows > 0
-                                ? TerminalEmulator.MOUSE_WHEELDOWN_BUTTON
-                                : TerminalEmulator.MOUSE_WHEELUP_BUTTON;
-                        for (int i = 0; i < Math.abs(wheelRows); i++) {
-                            sendMouseEventCode(e, button, true);
-                            sendMouseEventCode(e, button, false);
-                        }
-                    }
-                    scrolledWithFinger = true;
-                    return true;
-                }
-
-                if (e.isFromSource(InputDevice.SOURCE_MOUSE)) {
-                    // If moving with mouse pointer while pressing button, report that instead of scroll.
-                    // This means that we never report moving with button press-events for touch input,
-                    // since we cannot just start sending these events without a starting press event,
-                    // which we do not do for touch input, only mouse in onTouchEvent().
-                    sendMouseEventCode(e, TerminalEmulator.MOUSE_LEFT_BUTTON_MOVED, true);
-                } else {
-                    scrolledWithFinger = true;
-                    distanceY += mScrollRemainder;
-                    int deltaRows = (int) (distanceY / mRenderer.mFontLineSpacing);
-                    mScrollRemainder = distanceY - deltaRows * mRenderer.mFontLineSpacing;
-                    doScroll(e, deltaRows);
-                }
-                return true;
-            }
-
-            @Override
-            public boolean onScale(float focusX, float focusY, float scale) {
-                if (mEmulator == null || isSelectingText()) return true;
-                mScaleFactor *= scale;
-                mScaleFactor = mClient.onScale(mScaleFactor);
-                return true;
-            }
-
-            @Override
-            public boolean onFling(final MotionEvent e2, float velocityX, float velocityY) {
-                if (mEmulator == null) return true;
-                // Do not start scrolling until last fling has been taken care of:
-                if (!mScroller.isFinished()) return true;
-
-                final boolean mouseTrackingAtStartOfFling = mEmulator.isMouseTrackingActive();
-                float SCALE = 0.25f;
-                if (mouseTrackingAtStartOfFling) {
-                    mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows / 2, mEmulator.mRows / 2);
-                } else {
-                    mScroller.fling(0, mTopRow, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.getScreen().getActiveTranscriptRows(), 0);
-                }
-
-                post(new Runnable() {
-                    private int mLastY = 0;
-
-                    @Override
-                    public void run() {
-                        if (mouseTrackingAtStartOfFling != mEmulator.isMouseTrackingActive()) {
-                            mScroller.abortAnimation();
-                            return;
-                        }
-                        if (mScroller.isFinished()) return;
-                        boolean more = mScroller.computeScrollOffset();
-                        int newY = mScroller.getCurrY();
-                        int diff = mouseTrackingAtStartOfFling ? (newY - mLastY) : (newY - mTopRow);
-                        doScroll(e2, diff);
-                        mLastY = newY;
-                        if (more) post(this);
-                    }
-                });
-
-                return true;
-            }
-
-            @Override
-            public boolean onDown(float x, float y) {
-                // Why is true not returned here?
-                // https://developer.android.com/training/gestures/detector.html#detect-a-subset-of-supported-gestures
-                // Although setting this to true still does not solve the following errors when long pressing in terminal view text area
-                // ViewDragHelper: Ignoring pointerId=0 because ACTION_DOWN was not received for this pointer before ACTION_MOVE
-                // Commenting out the call to mGestureDetector.onTouchEvent(event) in GestureAndScaleRecognizer#onTouchEvent() removes
-                // the error logging, so issue is related to GestureDetector
-                return false;
-            }
-
-            @Override
-            public boolean onDoubleTap(MotionEvent event) {
-                // Do not treat is as a single confirmed tap - it may be followed by zoom.
-                return false;
-            }
-
-            @Override
-            public void onLongPress(MotionEvent event) {
-                if (mGestureRecognizer.isInProgress()) return;
-                if (mClient.onLongPress(event)) return;
-                if (!isSelectingText()) {
-                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    startTextSelectionMode(event);
-                }
-            }
-        });
-        mScroller = new Scroller(context);
-        AccessibilityManager am = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
-        mAccessibilityEnabled = am.isEnabled();
+        // 无障碍开关（mAccessibilityEnabled）已随 TerminalA11yDelegate 的构造器读取。
     }
 
 
@@ -319,7 +126,7 @@ public final class TerminalView extends View {
      * @param value The boolean value that defines the state.
      */
     public void setIsTerminalViewKeyLoggingEnabled(boolean value) {
-        TERMINAL_VIEW_KEY_LOGGING_ENABLED = value;
+        sKeyLoggingEnabled = value;
     }
 
 
@@ -346,164 +153,13 @@ public final class TerminalView extends View {
         return true;
     }
 
+    /*
+     * 输入法连接（组合 / 提交 / 删除文本）本体已搬到 {@link TerminalImeBridge}，
+     * 这里只保留同签名转发。
+     */
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-        // Ensure that inputType is only set if TerminalView is selected view with the keyboard and
-        // an alternate view is not selected, like an EditText. This is necessary if an activity is
-        // initially started with the alternate view or if activity is returned to from another app
-        // and the alternate view was the one selected the last time.
-        if (mClient.isTerminalViewSelected()) {
-            if (mClient.shouldEnforceCharBasedInput()) {
-                // Some keyboards seems do not reset the internal state on TYPE_NULL.
-                // Affects mostly Samsung stock keyboards.
-                // https://github.com/termux/termux-app/issues/686
-                // However, this is not a valid value as per AOSP since `InputType.TYPE_CLASS_*` is
-                // not set and it logs a warning:
-                // W/InputAttributes: Unexpected input class: inputType=0x00080090 imeOptions=0x02000000
-                // https://cs.android.com/android/platform/superproject/+/android-11.0.0_r40:packages/inputmethods/LatinIME/java/src/com/android/inputmethod/latin/InputAttributes.java;l=79
-                //
-                // ── 证道定制（2026-10-05）──────────────────────────────────────────
-                // 原值 `TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | TYPE_TEXT_FLAG_NO_SUGGESTIONS`
-                // 属于**密码类输入**，在荣耀/华为/小米等国产 ROM 上会被系统判定为敏感输入，
-                // 从而**强制接管为「安全键盘」**（无联想、无剪贴板、手感差），用户明确要求避免。
-                // 改为普通文本类型：既非密码类（不触发安全键盘），又保留关联想与多行。
-                //   - TYPE_CLASS_TEXT                输入法按普通文本处理（中文输入法正常）
-                //   - TYPE_TEXT_FLAG_NO_SUGGESTIONS  关闭候选/联想（终端不需要）
-                //   - TYPE_TEXT_FLAG_MULTI_LINE      回车当作换行，而不是"完成/发送"
-                // 注：Termux 选 VISIBLE_PASSWORD 是为了规避三星键盘在 TYPE_NULL 下不重置
-                // 内部状态的问题（termux-app#686）；本机为荣耀，该规避不适用，而安全键盘
-                // 是实测正在发生的真问题，故以本机体验为准。
-                outAttrs.inputType = InputType.TYPE_CLASS_TEXT
-                        | InputType.TYPE_TEXT_VARIATION_NORMAL
-                        | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                        | InputType.TYPE_TEXT_FLAG_MULTI_LINE;
-            } else {
-                // Using InputType.NULL is the most correct input type and avoids issues with other hacks.
-                //
-                // Previous keyboard issues:
-                // https://github.com/termux/termux-packages/issues/25
-                // https://github.com/termux/termux-app/issues/87.
-                // https://github.com/termux/termux-app/issues/126.
-                // https://github.com/termux/termux-app/issues/137 (japanese chars and TYPE_NULL).
-                outAttrs.inputType = InputType.TYPE_NULL;
-            }
-        } else {
-            // Corresponds to android:inputType="text"
-            outAttrs.inputType =  InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL;
-        }
-
-        // Note that IME_ACTION_NONE cannot be used as that makes it impossible to input newlines using the on-screen
-        // keyboard on Android TV (see https://github.com/termux/termux-app/issues/221).
-        // 证道定制：同时声明"不用于个性化学习"，进一步降低输入法把终端输入当敏感内容的概率
-        //（部分 ROM 会依据编辑器属性决定是否启用安全键盘/隐私模式）。
-        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
-                | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
-
-        return new BaseInputConnection(this, true) {
-
-            @Override
-            public boolean finishComposingText() {
-                if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
-                super.finishComposingText();
-
-                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("finishComposingText", String.valueOf(getEditable()));
-                sendTextToTerminal(getEditable());
-                getEditable().clear();
-                return true;
-            }
-
-            @Override
-            public boolean setComposingText(CharSequence text, int newCursorPosition) {
-                // 观察点（输入回归页）：组合中的候选字串。仅记录，不改 Termux 行为。
-                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("setComposingText", String.valueOf(text));
-                return super.setComposingText(text, newCursorPosition);
-            }
-
-            @Override
-            public boolean commitText(CharSequence text, int newCursorPosition) {
-                if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
-                    mClient.logInfo(LOG_TAG, "IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
-                }
-                super.commitText(text, newCursorPosition);
-
-                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("commitText", String.valueOf(text));
-                if (mEmulator == null) return true;
-
-                Editable content = getEditable();
-                sendTextToTerminal(content);
-                content.clear();
-                return true;
-            }
-
-            @Override
-            public boolean deleteSurroundingText(int leftLength, int rightLength) {
-                if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
-                    mClient.logInfo(LOG_TAG, "IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
-                }
-                // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
-                if (mImeProbeObserver != null) mImeProbeObserver.onImeEvent("deleteSurroundingText", leftLength + "," + rightLength);
-                KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
-                for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
-                return super.deleteSurroundingText(leftLength, rightLength);
-            }
-
-            void sendTextToTerminal(CharSequence text) {
-                stopTextSelectionMode();
-                final int textLengthInChars = text.length();
-                for (int i = 0; i < textLengthInChars; i++) {
-                    char firstChar = text.charAt(i);
-                    int codePoint;
-                    if (Character.isHighSurrogate(firstChar)) {
-                        if (++i < textLengthInChars) {
-                            codePoint = Character.toCodePoint(firstChar, text.charAt(i));
-                        } else {
-                            // At end of string, with no low surrogate following the high:
-                            codePoint = TerminalEmulator.UNICODE_REPLACEMENT_CHAR;
-                        }
-                    } else {
-                        codePoint = firstChar;
-                    }
-
-                    // Check onKeyDown() for details.
-                    if (mClient.readShiftKey())
-                        codePoint = Character.toUpperCase(codePoint);
-
-                    boolean ctrlHeld = false;
-                    if (codePoint <= 31 && codePoint != 27) {
-                        if (codePoint == '\n') {
-                            // The AOSP keyboard and descendants seems to send \n as text when the enter key is pressed,
-                            // instead of a key event like most other keyboard apps. A terminal expects \r for the enter
-                            // key (although when icrnl is enabled this doesn't make a difference - run 'stty -icrnl' to
-                            // check the behaviour).
-                            codePoint = '\r';
-                        }
-
-                        // E.g. penti keyboard for ctrl input.
-                        ctrlHeld = true;
-                        switch (codePoint) {
-                            case 31:
-                                codePoint = '_';
-                                break;
-                            case 30:
-                                codePoint = '^';
-                                break;
-                            case 29:
-                                codePoint = ']';
-                                break;
-                            case 28:
-                                codePoint = '\\';
-                                break;
-                            default:
-                                codePoint += 96;
-                                break;
-                        }
-                    }
-
-                    inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, codePoint, ctrlHeld, false);
-                }
-            }
-
-        };
+        return mImeBridge.onCreateInputConnection(outAttrs);
     }
 
     @Override
@@ -566,7 +222,7 @@ public final class TerminalView extends View {
         mEmulator.clearScrollCounter();
 
         invalidate();
-        if (mAccessibilityEnabled) setContentDescription(getText());
+        if (mA11yDelegate.isAccessibilityEnabled()) setContentDescription(getText());
     }
 
     /** This must be called by the hosting activity in {@link Activity#onContextMenuClosed(Menu)}
@@ -583,14 +239,11 @@ public final class TerminalView extends View {
      * @param textSize the new font size, in density-independent pixels.
      */
     public void setTextSize(int textSize) {
-        mRenderer = new TerminalRenderer(textSize, mRenderer == null ? Typeface.MONOSPACE : mRenderer.mTypeface);
-        updateSize();
+        mSizeResolver.setTextSize(textSize);
     }
 
     public void setTypeface(Typeface newTypeface) {
-        mRenderer = new TerminalRenderer(mRenderer.mTextSize, newTypeface);
-        updateSize();
-        invalidate();
+        mSizeResolver.setTypeface(newTypeface);
     }
 
     @Override
@@ -623,123 +276,52 @@ public final class TerminalView extends View {
         return new int[] { column, row };
     }
 
-    /** Send a single mouse event code to the terminal. */
-    void sendMouseEventCode(MotionEvent e, int button, boolean pressed) {
-        int[] columnAndRow = getColumnAndRow(e, false);
-        int x = columnAndRow[0] + 1;
-        int y = columnAndRow[1] + 1;
-        if (pressed && (button == TerminalEmulator.MOUSE_WHEELDOWN_BUTTON || button == TerminalEmulator.MOUSE_WHEELUP_BUTTON)) {
-            if (mMouseStartDownTime == e.getDownTime()) {
-                x = mMouseScrollStartX;
-                y = mMouseScrollStartY;
-            } else {
-                mMouseStartDownTime = e.getDownTime();
-                mMouseScrollStartX = x;
-                mMouseScrollStartY = y;
-            }
-        }
-        mEmulator.sendMouseEvent(button, x, y, pressed);
-    }
-
-    /** Perform a scroll, either from dragging the screen or by scrolling a mouse wheel. */
+    /*
+     * 本体已搬到 {@link TerminalGestureController}。
+     * 仍在本类保留一个包内转发口，是因为 {@link TerminalImeBridge} 需要调用它。
+     */
     void doScroll(MotionEvent event, int rowsDown) {
-        boolean up = rowsDown < 0;
-        int amount = Math.abs(rowsDown);
-        for (int i = 0; i < amount; i++) {
-            if (mEmulator.isMouseTrackingActive()) {
-                sendMouseEventCode(event, up ? TerminalEmulator.MOUSE_WHEELUP_BUTTON : TerminalEmulator.MOUSE_WHEELDOWN_BUTTON, true);
-            } else if (mEmulator.isAlternateBufferActive()) {
-                // Send up and down key events for scrolling, which is what some terminals do to make scroll work in
-                // e.g. less, which shifts to the alt screen without mouse handling.
-                handleKeyCode(up ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN, 0);
-            } else {
-                setTopRow(Math.min(0, Math.max(-(mEmulator.getScreen().getActiveTranscriptRows()), mTopRow + (up ? -1 : 1))));
-                if (!awakenScrollBars()) invalidate();
-            }
-        }
+        mGestureController.doScroll(event, rowsDown);
     }
 
-    /** Overriding {@link View#onGenericMotionEvent(MotionEvent)}. */
+    /*
+     * {@link View#awakenScrollBars()} 是 protected，本体搬到 {@link TerminalGestureController}
+     * 之后无法从外部调用，故留一个包内转发口（与按键那三个 super 转发口同理，是本刀另一处
+     * 非搬运新增）。
+     */
+    boolean awakenScrollBarsSuper() {
+        return awakenScrollBars();
+    }
+
+    /*
+     * 本体已搬到 {@link TerminalGestureController}，这里只保留同签名转发。
+     */
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
-        if (mEmulator != null && event.isFromSource(InputDevice.SOURCE_MOUSE) && event.getAction() == MotionEvent.ACTION_SCROLL) {
-            // Handle mouse wheel scrolling.
-            boolean up = event.getAxisValue(MotionEvent.AXIS_VSCROLL) > 0.0f;
-            doScroll(event, up ? -3 : 3);
-            return true;
-        }
-        return false;
+        return mGestureController.onGenericMotionEvent(event);
     }
 
+    /*
+     * 本体已搬到 {@link TerminalGestureController}，这里只保留同签名转发。
+     */
     @SuppressLint("ClickableViewAccessibility")
     @Override
     @TargetApi(23)
     public boolean onTouchEvent(MotionEvent event) {
-        if (mEmulator == null) return true;
-        final int action = event.getAction();
-
-        if (isSelectingText()) {
-            updateFloatingToolbarVisibility(event);
-            mGestureRecognizer.onTouchEvent(event);
-            return true;
-        } else if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
-            if (event.isButtonPressed(MotionEvent.BUTTON_SECONDARY)) {
-                if (action == MotionEvent.ACTION_DOWN) showContextMenu();
-                return true;
-            } else if (event.isButtonPressed(MotionEvent.BUTTON_TERTIARY)) {
-                ClipboardManager clipboardManager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clipData = clipboardManager.getPrimaryClip();
-                if (clipData != null) {
-                    ClipData.Item clipItem = clipData.getItemAt(0);
-                    if (clipItem != null) {
-                        CharSequence text = clipItem.coerceToText(getContext());
-                        if (!TextUtils.isEmpty(text)) mEmulator.paste(text.toString());
-                    }
-                }
-            } else if (mEmulator.isMouseTrackingActive()) { // BUTTON_PRIMARY.
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                    case MotionEvent.ACTION_UP:
-                        sendMouseEventCode(event, TerminalEmulator.MOUSE_LEFT_BUTTON, event.getAction() == MotionEvent.ACTION_DOWN);
-                        break;
-                    case MotionEvent.ACTION_MOVE:
-                        sendMouseEventCode(event, TerminalEmulator.MOUSE_LEFT_BUTTON_MOVED, true);
-                        break;
-                }
-            }
-        }
-
-        mGestureRecognizer.onTouchEvent(event);
-        return true;
+        return mGestureController.onTouchEvent(event);
     }
 
+    /*
+     * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
+     */
     @Override
     public boolean onKeyPreIme(int keyCode, KeyEvent event) {
-        if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mClient.logInfo(LOG_TAG, "onKeyPreIme(keyCode=" + keyCode + ", event=" + event + ")");
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            cancelRequestAutoFill();
-            if (isSelectingText()) {
-                stopTextSelectionMode();
-                return true;
-            } else if (mClient.shouldBackButtonBeMappedToEscape()) {
-                // Intercept back button to treat it as escape:
-                switch (event.getAction()) {
-                    case KeyEvent.ACTION_DOWN:
-                        return onKeyDown(keyCode, event);
-                    case KeyEvent.ACTION_UP:
-                        return onKeyUp(keyCode, event);
-                }
-            }
-        } else if (mClient.shouldUseCtrlSpaceWorkaround() &&
-                   keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed()) {
-            /* ctrl+space does not work on some ROMs without this workaround.
-               However, this breaks it on devices where it works out of the box. */
-            return onKeyDown(keyCode, event);
-        }
-        return super.onKeyPreIme(keyCode, event);
+        return mImeBridge.onKeyPreIme(keyCode, event);
     }
 
+    /*
+     * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
+     */
     /**
      * Key presses in software keyboards will generally NOT trigger this listener, although some
      * may elect to do so in some situations. Do not rely on this to catch software key presses.
@@ -838,183 +420,28 @@ public final class TerminalView extends View {
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mClient.logInfo(LOG_TAG, "onKeyDown(keyCode=" + keyCode + ", isSystem()=" + event.isSystem() + ", event=" + event + ")");
-        if (mEmulator == null) return true;
-        if (isSelectingText()) {
-            stopTextSelectionMode();
-        }
-
-        if (mClient.onKeyDown(keyCode, event, mTermSession)) {
-            invalidate();
-            return true;
-        } else if (event.isSystem() && (!mClient.shouldBackButtonBeMappedToEscape() || keyCode != KeyEvent.KEYCODE_BACK)) {
-            return super.onKeyDown(keyCode, event);
-        } else if (event.getAction() == KeyEvent.ACTION_MULTIPLE && keyCode == KeyEvent.KEYCODE_UNKNOWN) {
-            mTermSession.write(event.getCharacters());
-            return true;
-        } else if (keyCode == KeyEvent.KEYCODE_LANGUAGE_SWITCH) {
-            return super.onKeyDown(keyCode, event);
-        }
-
-        final int metaState = event.getMetaState();
-        final boolean controlDown = event.isCtrlPressed() || mClient.readControlKey();
-        final boolean leftAltDown = (metaState & KeyEvent.META_ALT_LEFT_ON) != 0 || mClient.readAltKey();
-        final boolean shiftDown = event.isShiftPressed() || mClient.readShiftKey();
-        final boolean rightAltDownFromEvent = (metaState & KeyEvent.META_ALT_RIGHT_ON) != 0;
-
-        int keyMod = 0;
-        if (controlDown) keyMod |= KeyHandler.KEYMOD_CTRL;
-        if (event.isAltPressed() || leftAltDown) keyMod |= KeyHandler.KEYMOD_ALT;
-        if (shiftDown) keyMod |= KeyHandler.KEYMOD_SHIFT;
-        if (event.isNumLockOn()) keyMod |= KeyHandler.KEYMOD_NUM_LOCK;
-        // https://github.com/termux/termux-app/issues/731
-        if (!event.isFunctionPressed() && handleKeyCode(keyCode, keyMod)) {
-            if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "handleKeyCode() took key event");
-            return true;
-        }
-
-        // Clear Ctrl since we handle that ourselves:
-        int bitsToClear = KeyEvent.META_CTRL_MASK;
-        if (rightAltDownFromEvent) {
-            // Let right Alt/Alt Gr be used to compose characters.
-        } else {
-            // Use left alt to send to terminal (e.g. Left Alt+B to jump back a word), so remove:
-            bitsToClear |= KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON;
-        }
-        int effectiveMetaState = event.getMetaState() & ~bitsToClear;
-
-        if (shiftDown) effectiveMetaState |= KeyEvent.META_SHIFT_ON | KeyEvent.META_SHIFT_LEFT_ON;
-        if (mClient.readFnKey()) effectiveMetaState |= KeyEvent.META_FUNCTION_ON;
-
-        int result = event.getUnicodeChar(effectiveMetaState);
-        if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mClient.logInfo(LOG_TAG, "KeyEvent#getUnicodeChar(" + effectiveMetaState + ") returned: " + result);
-        if (result == 0) {
-            return false;
-        }
-
-        int oldCombiningAccent = mCombiningAccent;
-        if ((result & KeyCharacterMap.COMBINING_ACCENT) != 0) {
-            // If entered combining accent previously, write it out:
-            if (mCombiningAccent != 0)
-                inputCodePoint(event.getDeviceId(), mCombiningAccent, controlDown, leftAltDown);
-            mCombiningAccent = result & KeyCharacterMap.COMBINING_ACCENT_MASK;
-        } else {
-            if (mCombiningAccent != 0) {
-                int combinedChar = KeyCharacterMap.getDeadChar(mCombiningAccent, result);
-                if (combinedChar > 0) result = combinedChar;
-                mCombiningAccent = 0;
-            }
-            inputCodePoint(event.getDeviceId(), result, controlDown, leftAltDown);
-        }
-
-        if (mCombiningAccent != oldCombiningAccent) invalidate();
-
-        return true;
+        return mImeBridge.onKeyDown(keyCode, event);
     }
 
+    /*
+     * 输入法与硬件键本体已搬到 {@link TerminalImeBridge}，以下三个公开入口只做一行转发（公开 API 不变）。
+     */
     public void inputCodePoint(int eventSource, int codePoint, boolean controlDownFromEvent, boolean leftAltDownFromEvent) {
-        if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
-            mClient.logInfo(LOG_TAG, "inputCodePoint(eventSource=" + eventSource + ", codePoint=" + codePoint + ", controlDownFromEvent=" + controlDownFromEvent + ", leftAltDownFromEvent="
-                + leftAltDownFromEvent + ")");
-        }
-
-        if (mTermSession == null) return;
-
-        // Ensure cursor is shown when a key is pressed down like long hold on (arrow) keys
-        if (mEmulator != null)
-            mEmulator.setCursorBlinkState(true);
-
-        final boolean controlDown = controlDownFromEvent || mClient.readControlKey();
-        final boolean altDown = leftAltDownFromEvent || mClient.readAltKey();
-
-        if (mClient.onCodePoint(codePoint, controlDown, mTermSession)) return;
-
-        if (controlDown) {
-            if (codePoint >= 'a' && codePoint <= 'z') {
-                codePoint = codePoint - 'a' + 1;
-            } else if (codePoint >= 'A' && codePoint <= 'Z') {
-                codePoint = codePoint - 'A' + 1;
-            } else if (codePoint == ' ' || codePoint == '2') {
-                codePoint = 0;
-            } else if (codePoint == '[' || codePoint == '3') {
-                codePoint = 27; // ^[ (Esc)
-            } else if (codePoint == '\\' || codePoint == '4') {
-                codePoint = 28;
-            } else if (codePoint == ']' || codePoint == '5') {
-                codePoint = 29;
-            } else if (codePoint == '^' || codePoint == '6') {
-                codePoint = 30; // control-^
-            } else if (codePoint == '_' || codePoint == '7' || codePoint == '/') {
-                // "Ctrl-/ sends 0x1f which is equivalent of Ctrl-_ since the days of VT102"
-                // - http://apple.stackexchange.com/questions/24261/how-do-i-send-c-that-is-control-slash-to-the-terminal
-                codePoint = 31;
-            } else if (codePoint == '8') {
-                codePoint = 127; // DEL
-            }
-        }
-
-        if (codePoint > -1) {
-            // If not virtual or soft keyboard.
-            if (eventSource > KEY_EVENT_SOURCE_SOFT_KEYBOARD) {
-                // Work around bluetooth keyboards sending funny unicode characters instead
-                // of the more normal ones from ASCII that terminal programs expect - the
-                // desire to input the original characters should be low.
-                switch (codePoint) {
-                    case 0x02DC: // SMALL TILDE.
-                        codePoint = 0x007E; // TILDE (~).
-                        break;
-                    case 0x02CB: // MODIFIER LETTER GRAVE ACCENT.
-                        codePoint = 0x0060; // GRAVE ACCENT (`).
-                        break;
-                    case 0x02C6: // MODIFIER LETTER CIRCUMFLEX ACCENT.
-                        codePoint = 0x005E; // CIRCUMFLEX ACCENT (^).
-                        break;
-                }
-            }
-
-            // If left alt, send escape before the code point to make e.g. Alt+B and Alt+F work in readline:
-            mTermSession.writeCodePoint(altDown, codePoint);
-        }
+        mImeBridge.inputCodePoint(eventSource, codePoint, controlDownFromEvent, leftAltDownFromEvent);
     }
 
     /** Input the specified keyCode if applicable and return if the input was consumed. */
     public boolean handleKeyCode(int keyCode, int keyMod) {
-        // Ensure cursor is shown when a key is pressed down like long hold on (arrow) keys
-        if (mEmulator != null)
-            mEmulator.setCursorBlinkState(true);
-
-        if (handleKeyCodeAction(keyCode, keyMod))
-            return true;
-
-        TerminalEmulator term = mTermSession.getEmulator();
-        String code = KeyHandler.getCode(keyCode, keyMod, term.isCursorKeysApplicationMode(), term.isKeypadApplicationMode());
-        if (code == null) return false;
-        mTermSession.write(code);
-        return true;
+        return mImeBridge.handleKeyCode(keyCode, keyMod);
     }
 
     public boolean handleKeyCodeAction(int keyCode, int keyMod) {
-        boolean shiftDown = (keyMod & KeyHandler.KEYMOD_SHIFT) != 0;
-
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_PAGE_UP:
-            case KeyEvent.KEYCODE_PAGE_DOWN:
-                // shift+page_up and shift+page_down should scroll scrollback history instead of
-                // scrolling command history or changing pages
-                if (shiftDown) {
-                    long time = SystemClock.uptimeMillis();
-                    MotionEvent motionEvent = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, 0, 0, 0);
-                    doScroll(motionEvent, keyCode == KeyEvent.KEYCODE_PAGE_UP ? -mEmulator.mRows : mEmulator.mRows);
-                    motionEvent.recycle();
-                    return true;
-                }
-        }
-
-       return false;
+        return mImeBridge.handleKeyCodeAction(keyCode, keyMod);
     }
 
+    /*
+     * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
+     */
     /**
      * Called when a key is released in the view.
      *
@@ -1024,22 +451,23 @@ public final class TerminalView extends View {
      */
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-        if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-            mClient.logInfo(LOG_TAG, "onKeyUp(keyCode=" + keyCode + ", event=" + event + ")");
+        return mImeBridge.onKeyUp(keyCode, event);
+    }
 
-        // Do not return for KEYCODE_BACK and send it to the client since user may be trying
-        // to exit the activity.
-        if (mEmulator == null && keyCode != KeyEvent.KEYCODE_BACK) return true;
+    // ── 以下三个 super 转发口 ──────────────────────────────────────────────
+    // P1-c 把按键本体搬到 TerminalImeBridge 后，桥不是 View 的子类，无法亲自调用
+    // super.onKeyPreIme()/onKeyDown()/onKeyUp()，故在子类 TerminalView 里留这三个包内转发口，
+    // 由桥回调。除这三行之外，桥与本刀没有引入任何行为变化。
+    boolean onKeyPreImeSuper(int keyCode, KeyEvent event) {
+        return super.onKeyPreIme(keyCode, event);
+    }
 
-        if (mClient.onKeyUp(keyCode, event)) {
-            invalidate();
-            return true;
-        } else if (event.isSystem()) {
-            // Let system key events through.
-            return super.onKeyUp(keyCode, event);
-        }
+    boolean onKeyDownSuper(int keyCode, KeyEvent event) {
+        return super.onKeyDown(keyCode, event);
+    }
 
-        return true;
+    boolean onKeyUpSuper(int keyCode, KeyEvent event) {
+        return super.onKeyUp(keyCode, event);
     }
 
     /**
@@ -1048,43 +476,17 @@ public final class TerminalView extends View {
      */
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        updateSize();
+        mSizeResolver.onSizeChanged();
     }
 
     /** Check if the terminal size in rows and columns should be updated. */
     public void updateSize() {
-        int viewWidth = getWidth();
-        int viewHeight = getHeight();
-        if (viewWidth == 0 || viewHeight == 0 || mTermSession == null) return;
+        mSizeResolver.updateSize();
+    }
 
-        // Set to 80 and 24 if you want to enable vttest.
-        int newColumns = Math.max(4, (int) (viewWidth / mRenderer.mFontWidth));
-        int newRows = Math.max(4, (viewHeight - mRenderer.mFontLineSpacingAndAscent) / mRenderer.mFontLineSpacing);
-
-        if (mEmulator == null || (newColumns != mEmulator.mColumns || newRows != mEmulator.mRows)) {
-            mTermSession.updateSize(newColumns, newRows, (int) mRenderer.getFontWidth(), mRenderer.getFontLineSpacing());
-            mEmulator = mTermSession.getEmulator();
-            mClient.onEmulatorSet();
-
-            // Update mTerminalCursorBlinkerRunnable inner class mEmulator on session change
-            if (mTerminalCursorBlinkerRunnable != null)
-                mTerminalCursorBlinkerRunnable.setEmulator(mEmulator);
-
-            // Restore cached top row value if session/emulator was switched back from a
-            // different session or after activity restart. The top row value also needs to be
-            // maintained after opening/closing soft keyboard.
-            int topRow = 0;
-            if (mEmulator != null) {
-                int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
-                int cachedTopRow = mEmulator.getTopRow();
-                if (cachedTopRow >= -rowsInHistory) {
-                    topRow = cachedTopRow;
-                }
-            }
-            setTopRow(topRow);
-            scrollTo(0, 0);
-            invalidate();
-        }
+    /** 尺寸/emulator 变化后需要跟随的内部组件（目前是光标闪烁器）。 */
+    void refreshEmulatorDependents() {
+        mCursorBlinker.setEmulator(mEmulator);
     }
 
     @Override
@@ -1094,14 +496,12 @@ public final class TerminalView extends View {
         } else {
             // render the terminal view and highlight any selected text
             int[] sel = mDefaultSelectors;
-            if (mTextSelectionCursorController != null) {
-                mTextSelectionCursorController.getSelectors(sel);
-            }
+            mSelectionController.getSelectors(sel);
 
             mRenderer.render(mEmulator, canvas, mTopRow, sel[0], sel[1], sel[2], sel[3]);
 
             // render the text selection handles
-            renderTextSelection();
+            mSelectionController.renderTextSelection();
         }
     }
 
@@ -1155,116 +555,55 @@ public final class TerminalView extends View {
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public void autofill(AutofillValue value) {
-        if (value.isText()) {
-            mTermSession.write(value.getTextValue().toString());
-        }
-
-        resetAutoFill();
+        mA11yDelegate.autofill(value);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getAutofillType() {
-        return mAutoFillType;
+        return mA11yDelegate.getAutofillType();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public String[] getAutofillHints() {
-        return mAutoFillHints;
+        return mA11yDelegate.getAutofillHints();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public AutofillValue getAutofillValue() {
-        return AutofillValue.forText("");
+        return mA11yDelegate.getAutofillValue();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getImportantForAutofill() {
-        return mAutoFillImportance;
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private synchronized void resetAutoFill() {
-        // Restore none type so that AutoFill UI isn't shown anymore.
-        mAutoFillType = AUTOFILL_TYPE_NONE;
-        mAutoFillImportance = IMPORTANT_FOR_AUTOFILL_NO;
-        mAutoFillHints = new String[0];
+        return mA11yDelegate.getImportantForAutofill();
     }
 
     public AutofillManager getAutoFillManagerService() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null;
-
-        try {
-            Context context = getContext();
-            if (context == null) return null;
-            return context.getSystemService(AutofillManager.class);
-        } catch (Exception e) {
-            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to get AutofillManager service", e);
-            return null;
-        }
+        return mA11yDelegate.getAutoFillManagerService();
     }
 
     public boolean isAutoFillEnabled() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
-
-        try {
-            AutofillManager autofillManager = getAutoFillManagerService();
-            return autofillManager != null && autofillManager.isEnabled();
-        } catch (Exception e) {
-            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to check if Autofill is enabled", e);
-            return false;
-        }
+        return mA11yDelegate.isAutoFillEnabled();
     }
 
     public synchronized void requestAutoFillUsername() {
-        requestAutoFill(
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new String[]{View.AUTOFILL_HINT_USERNAME} :
-                null);
+        mA11yDelegate.requestAutoFillUsername();
     }
 
     public synchronized void requestAutoFillPassword() {
-        requestAutoFill(
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new String[]{View.AUTOFILL_HINT_PASSWORD} :
-            null);
+        mA11yDelegate.requestAutoFillPassword();
     }
 
     public synchronized void requestAutoFill(String[] autoFillHints) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        if (autoFillHints == null || autoFillHints.length < 1) return;
-
-        try {
-            AutofillManager autofillManager = getAutoFillManagerService();
-            if (autofillManager != null && autofillManager.isEnabled()) {
-                // Update type that will be returned by `getAutofillType()` so that AutoFill UI is shown.
-                mAutoFillType = AUTOFILL_TYPE_TEXT;
-                // Update importance that will be returned by `getImportantForAutofill()` so that
-                // AutoFill considers the view as important.
-                mAutoFillImportance = IMPORTANT_FOR_AUTOFILL_YES;
-                // Update hints that will be returned by `getAutofillHints()` for which to show AutoFill UI.
-                mAutoFillHints = autoFillHints;
-                autofillManager.requestAutofill(this);
-            }
-        } catch (Exception e) {
-            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to request Autofill", e);
-        }
+        mA11yDelegate.requestAutoFill(autoFillHints);
     }
 
     public synchronized void cancelRequestAutoFill() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        if (mAutoFillType == AUTOFILL_TYPE_NONE) return;
-
-        try {
-            AutofillManager autofillManager = getAutoFillManagerService();
-            if (autofillManager != null && autofillManager.isEnabled()) {
-                resetAutoFill();
-                autofillManager.cancel();
-            }
-        } catch (Exception e) {
-            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to cancel Autofill request", e);
-        }
+        mA11yDelegate.cancelRequestAutoFill();
     }
 
 
@@ -1282,30 +621,12 @@ public final class TerminalView extends View {
      * @return Returns {@code true} if setting blinker rate was successfully set, otherwise [@code false}.
      */
     public synchronized boolean setTerminalCursorBlinkerRate(int blinkRate) {
-        boolean result;
-
-        // If cursor blinking rate is not valid
-        if (blinkRate != 0 && (blinkRate < TERMINAL_CURSOR_BLINK_RATE_MIN || blinkRate > TERMINAL_CURSOR_BLINK_RATE_MAX)) {
-            mClient.logError(LOG_TAG, "The cursor blink rate must be in between " + TERMINAL_CURSOR_BLINK_RATE_MIN + "-" + TERMINAL_CURSOR_BLINK_RATE_MAX + ": " + blinkRate);
-            mTerminalCursorBlinkerRate = 0;
-            result = false;
-        } else {
-            mClient.logVerbose(LOG_TAG, "Setting cursor blinker rate to " + blinkRate);
-            mTerminalCursorBlinkerRate = blinkRate;
-            result = true;
-        }
-
-        if (mTerminalCursorBlinkerRate == 0) {
-            mClient.logVerbose(LOG_TAG, "Cursor blinker disabled");
-            stopTerminalCursorBlinker();
-        }
-
-        return result;
+        return mCursorBlinker.setRate(blinkRate);
     }
 
     /**
      * Sets whether cursor blinker should be started or stopped. Cursor blinker will only be
-     * started if {@link #mTerminalCursorBlinkerRate} does not equal 0 and is between
+     * started if the blink rate does not equal 0 and is between
      * {@link #TERMINAL_CURSOR_BLINK_RATE_MIN} and {@link #TERMINAL_CURSOR_BLINK_RATE_MAX}.
      *
      * This should be called when the view holding this activity is resumed or stopped so that
@@ -1332,7 +653,7 @@ public final class TerminalView extends View {
      *
      * How cursor blinker starting works is by registering a {@link Runnable} with the looper of
      * the main thread of the app which when run, toggles the cursor blinking state and re-registers
-     * itself to be called with the delay set by {@link #mTerminalCursorBlinkerRate}. When cursor
+     * itself to be called with the delay set by the blink rate. When cursor
      * blinking needs to be disabled, we just cancel any callbacks registered. We don't run our own
      * "thread" and let the thread for the main looper do the work for us, whose usage is also
      * required to update the UI, since it also handles other calls to update the UI as well based
@@ -1343,7 +664,7 @@ public final class TerminalView extends View {
      * is moved 2 or more times quickly, like long hold on arrow keys, it would trigger
      * `-> off -> on -> off -> on -> ...`, and the "on" callback at index 2 is automatically
      * cancelled by next "off" callback at index 3 before getting a chance to be run. For this case
-     * we log only if {@link #TERMINAL_VIEW_KEY_LOGGING_ENABLED} is enabled, otherwise would clutter
+     * we log only if {@link #isKeyLoggingEnabled()} is enabled, otherwise would clutter
      * the log. We don't start the blinking with a delay to immediately show cursor in case it was
      * previously not visible.
      *
@@ -1353,237 +674,93 @@ public final class TerminalView extends View {
      *                                 starting the cursor blinker.
      */
     public synchronized void setTerminalCursorBlinkerState(boolean start, boolean startOnlyIfCursorEnabled) {
-        // Stop any existing cursor blinker callbacks
-        stopTerminalCursorBlinker();
-
-        if (mEmulator == null) return;
-
-        mEmulator.setCursorBlinkingEnabled(false);
-
-        if (start) {
-            // If cursor blinker is not enabled or is not valid
-            if (mTerminalCursorBlinkerRate < TERMINAL_CURSOR_BLINK_RATE_MIN || mTerminalCursorBlinkerRate > TERMINAL_CURSOR_BLINK_RATE_MAX)
-                return;
-            // If cursor blinder is to be started only if cursor is enabled
-            else if (startOnlyIfCursorEnabled && ! mEmulator.isCursorEnabled()) {
-                if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                    mClient.logVerbose(LOG_TAG, "Ignoring call to start cursor blinker since cursor is not enabled");
-                return;
-            }
-
-            // Start cursor blinker runnable
-            if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mClient.logVerbose(LOG_TAG, "Starting cursor blinker with the blink rate " + mTerminalCursorBlinkerRate);
-            if (mTerminalCursorBlinkerHandler == null)
-                mTerminalCursorBlinkerHandler = new Handler(Looper.getMainLooper());
-            mTerminalCursorBlinkerRunnable = new TerminalCursorBlinkerRunnable(mEmulator, mTerminalCursorBlinkerRate);
-            mEmulator.setCursorBlinkingEnabled(true);
-            mTerminalCursorBlinkerRunnable.run();
-        }
+        mCursorBlinker.setState(start, startOnlyIfCursorEnabled);
     }
 
     /**
      * Cancel the terminal cursor blinker callbacks
      */
     private void stopTerminalCursorBlinker() {
-        if (mTerminalCursorBlinkerHandler != null && mTerminalCursorBlinkerRunnable != null) {
-            if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mClient.logVerbose(LOG_TAG, "Stopping cursor blinker");
-            mTerminalCursorBlinkerHandler.removeCallbacks(mTerminalCursorBlinkerRunnable);
-        }
+        mCursorBlinker.stop();
     }
-
-    private class TerminalCursorBlinkerRunnable implements Runnable {
-
-        private TerminalEmulator mEmulator;
-        private final int mBlinkRate;
-
-        // Initialize with false so that initial blink state is visible after toggling
-        boolean mCursorVisible = false;
-
-        public TerminalCursorBlinkerRunnable(TerminalEmulator emulator, int blinkRate) {
-            mEmulator = emulator;
-            mBlinkRate = blinkRate;
-        }
-
-        public void setEmulator(TerminalEmulator emulator) {
-            mEmulator = emulator;
-        }
-
-        public void run() {
-            try {
-                if (mEmulator != null) {
-                    // Toggle the blink state and then invalidate() the view so
-                    // that onDraw() is called, which then calls TerminalRenderer.render()
-                    // which checks with TerminalEmulator.shouldCursorBeVisible() to decide whether
-                    // to draw the cursor or not
-                    mCursorVisible = !mCursorVisible;
-                    //mClient.logVerbose(LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
-                    mEmulator.setCursorBlinkState(mCursorVisible);
-                    invalidate();
-                }
-            } finally {
-                // Recall the Runnable after mBlinkRate milliseconds to toggle the blink state
-                mTerminalCursorBlinkerHandler.postDelayed(this, mBlinkRate);
-            }
-        }
-    }
-
-
 
     /**
      * Define functions required for text selection and its handles.
+     *
+     * 证道 P1-c（2026-10-10）：本体已搬到 {@link TerminalSelectionController}，这里只留同签名转发，
+     * 公开 API 一字不改。
      */
-    TextSelectionCursorController getTextSelectionCursorController() {
-        if (mTextSelectionCursorController == null) {
-            mTextSelectionCursorController = new TextSelectionCursorController(this);
-
-            final ViewTreeObserver observer = getViewTreeObserver();
-            if (observer != null) {
-                observer.addOnTouchModeChangeListener(mTextSelectionCursorController);
-            }
-        }
-
-        return mTextSelectionCursorController;
-    }
-
-    private void showTextSelectionCursors(MotionEvent event) {
-        getTextSelectionCursorController().show(event);
-    }
-
-    private boolean hideTextSelectionCursors() {
-        return getTextSelectionCursorController().hide();
-    }
-
-    private void renderTextSelection() {
-        if (mTextSelectionCursorController != null)
-            mTextSelectionCursorController.render();
-    }
-
     public boolean isSelectingText() {
-        if (mTextSelectionCursorController != null) {
-            return mTextSelectionCursorController.isActive();
-        } else {
-            return false;
-        }
+        return mSelectionController.isSelectingText();
     }
 
     /** Get the currently selected text if selecting. */
     public String getSelectedText() {
-        if (isSelectingText() && mTextSelectionCursorController != null)
-            return mTextSelectionCursorController.getSelectedText();
-        else
-            return null;
+        return mSelectionController.getSelectedText();
     }
 
     /** Get the selected text stored before "MORE" button was pressed on the context menu. */
     @Nullable
     public String getStoredSelectedText() {
-        return mTextSelectionCursorController != null ? mTextSelectionCursorController.getStoredSelectedText() : null;
+        return mSelectionController.getStoredSelectedText();
     }
 
     /** Unset the selected text stored before "MORE" button was pressed on the context menu. */
     public void unsetStoredSelectedText() {
-        if (mTextSelectionCursorController != null) mTextSelectionCursorController.unsetStoredSelectedText();
-    }
-
-    private ActionMode getTextSelectionActionMode() {
-        if (mTextSelectionCursorController != null) {
-            return mTextSelectionCursorController.getActionMode();
-        } else {
-            return null;
-        }
+        mSelectionController.unsetStoredSelectedText();
     }
 
     public void startTextSelectionMode(MotionEvent event) {
-        if (!requestFocus()) {
-            return;
-        }
-
-        showTextSelectionCursors(event);
-        mClient.copyModeChanged(isSelectingText());
-
-        invalidate();
+        mSelectionController.startTextSelectionMode(event);
     }
 
     public void stopTextSelectionMode() {
-        if (hideTextSelectionCursors()) {
-            mClient.copyModeChanged(isSelectingText());
-            invalidate();
-        }
+        mSelectionController.stopTextSelectionMode();
     }
 
     private void decrementYTextSelectionCursors(int decrement) {
-        if (mTextSelectionCursorController != null) {
-            mTextSelectionCursorController.decrementYTextSelectionCursors(decrement);
-        }
+        mSelectionController.decrementYTextSelectionCursors(decrement);
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
 
-        if (mTextSelectionCursorController != null) {
-            getViewTreeObserver().addOnTouchModeChangeListener(mTextSelectionCursorController);
-        }
+        mSelectionController.onViewAttached();
+
+        // 证道 P1-a（2026-10-10）：与 onDetachedFromWindow() 里的 stopTerminalCursorBlinker() 配对。
+        // 否则"离开终端页再回来"（View 被 detach 又 attach、Activity 没重建）时光标会停在上一次的
+        // 闪烁状态不动。setTerminalCursorBlinkerState() 内部先 stop 再 start，重复调用是幂等的。
+        if (mEmulator != null) setTerminalCursorBlinkerState(true, false);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
 
-        if (mTextSelectionCursorController != null) {
-            // Might solve the following exception
-            // android.view.WindowLeaked: Activity com.termux.app.TermuxActivity has leaked window android.widget.PopupWindow
-            stopTextSelectionMode();
+        // 证道 P1-a（2026-10-10）：上游漏了这一句（审计 🟡-5）。不停止的话，主线程 Handler 会一直
+        // 持有 BlinkerRunnable（TerminalCursorBlinker 的非静态内部类）-> TerminalCursorBlinker
+        // -> TerminalView -> Activity 的引用链，
+        // 每进出一次终端页就留一条 600 ms 的永久空转循环（每次还白做一次整屏合成）。
+        stopTerminalCursorBlinker();
 
-            getViewTreeObserver().removeOnTouchModeChangeListener(mTextSelectionCursorController);
-            mTextSelectionCursorController.onDetached();
-        }
+        mSelectionController.onViewDetached();
     }
 
 
 
     /**
      * Define functions required for long hold toolbar.
+     *
+     * 证道 P1-c（2026-10-10）：本体已搬到 {@link TerminalSelectionController}，这里只留同签名转发。
      */
-    private final Runnable mShowFloatingToolbar = new Runnable() {
-        @RequiresApi(api = Build.VERSION_CODES.M)
-        @Override
-        public void run() {
-            if (getTextSelectionActionMode() != null) {
-                getTextSelectionActionMode().hide(0);  // hide off.
-            }
-        }
-    };
-
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    private void showFloatingToolbar() {
-        if (getTextSelectionActionMode() != null) {
-            int delay = ViewConfiguration.getDoubleTapTimeout();
-            postDelayed(mShowFloatingToolbar, delay);
-        }
-    }
-
     @RequiresApi(api = Build.VERSION_CODES.M)
     void hideFloatingToolbar() {
-        if (getTextSelectionActionMode() != null) {
-            removeCallbacks(mShowFloatingToolbar);
-            getTextSelectionActionMode().hide(-1);
-        }
+        mSelectionController.hideFloatingToolbar();
     }
 
     public void updateFloatingToolbarVisibility(MotionEvent event) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && getTextSelectionActionMode() != null) {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_MOVE:
-                    hideFloatingToolbar();
-                    break;
-                case MotionEvent.ACTION_UP:  // fall through
-                case MotionEvent.ACTION_CANCEL:
-                    showFloatingToolbar();
-            }
-        }
+        mSelectionController.updateFloatingToolbarVisibility(event);
     }
 
 }
