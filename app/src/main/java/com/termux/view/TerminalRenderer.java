@@ -25,9 +25,9 @@ public final class TerminalRenderer {
 
     /** The width of a single mono spaced character obtained by {@link Paint#measureText(String)} on a single 'X'. */
     final float mFontWidth;
-    /** The {@link Paint#getFontSpacing()}. See http://www.fampennings.nl/maarten/android/08numgrid/font.png */
+    /** The {@link Paint#getFontSpacing()}，可被行高倍率放大。见 http://www.fampennings.nl/maarten/android/08numgrid/font.png */
     final int mFontLineSpacing;
-    /** The {@link Paint#ascent()}. See http://www.fampennings.nl/maarten/android/08numgrid/font.png */
+    /** {@link #mFontAscent}。See http://www.fampennings.nl/maarten/android/08numgrid/font.png */
     private final int mFontAscent;
     /** The {@link #mFontLineSpacing} + {@link #mFontAscent}. */
     final int mFontLineSpacingAndAscent;
@@ -35,6 +35,17 @@ public final class TerminalRenderer {
     private final float[] asciiMeasures = new float[127];
 
     public TerminalRenderer(int textSize, Typeface typeface) {
+        this(textSize, typeface, 1.0f);
+    }
+
+    /**
+     * @param lineHeightMultiplier 行高倍率：只放大**行盒高度**（{@link #mFontLineSpacing}），
+     *   不动字形宽度 {@link #mFontWidth}（因此中英文 2:1 关系不受影响）。倍率 &gt; 1 时多出来的
+     *   leading 落在行盒**底部**（绘制基线仍是 {@code y - mFontLineSpacingAndAscent}，
+     *   字形在行盒顶部对齐），视觉上表现为行与行之间多一条空档——正是「舒适档」想要的效果。
+     *   光标块与选区矩形都按 {@link #mFontLineSpacing} 算，因此会一起变高，与行盒一致。
+     */
+    public TerminalRenderer(int textSize, Typeface typeface, float lineHeightMultiplier) {
         mTextSize = textSize;
         mTypeface = typeface;
 
@@ -42,7 +53,8 @@ public final class TerminalRenderer {
         mTextPaint.setAntiAlias(true);
         mTextPaint.setTextSize(textSize);
 
-        mFontLineSpacing = (int) Math.ceil(mTextPaint.getFontSpacing());
+        final float multiplier = lineHeightMultiplier > 0f ? lineHeightMultiplier : 1.0f;
+        mFontLineSpacing = (int) Math.ceil(mTextPaint.getFontSpacing() * multiplier);
         mFontAscent = (int) Math.ceil(mTextPaint.ascent());
         mFontLineSpacingAndAscent = mFontLineSpacing + mFontAscent;
         mFontWidth = mTextPaint.measureText("X");
