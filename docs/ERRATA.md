@@ -4509,3 +4509,36 @@ I/DIRSIZE: rootfs 对拍：Rust=805312468(70ms) Java=805312468(177ms)
 
 **真正的收尾在别处**：资料库要接的下一步不是"App 自己再读一遍文件"，而是 **FIX-F —— App 在会话发起时做一次本地检索、
 把命中片段随输入送进终端**（让 agent 不必"自觉"去查）。见 `docs/知识库-收工条件.md` 与仓库外体检报告。
+
+---
+
+## E-081 · 2026-10-10 · 把 Hermes 从「恢复上次装过的 Agent」候选里摘掉（恢复全部只剩 Claude Code）
+
+**问题（"装过就能恢复"是句空话）**：主页横幅「恢复上次装过的 N 个 Agent」的候选来自
+`ui/AgentLedger.kt` 的 `pickRestoreCandidates()`（判据＝账本里有 + 现在探测不到 + 有安装命令 + `AgentInfo.restorable`）。
+Hermes 的官方脚本只落一个入口，跑起来还要 Python/uv **现建 venv** —— 这条链在本设备上修不好也装不出：
+E-025（搬家包恢复后 hermes 必崩：`hermes: automatic dependency repair retry limit reached; run `hermes pm repair``）、
+E-056（uv 的 wheel 缓存被挂到共享存储上，而 FUSE 建不了软链、也不支持 flock）。
+⇒ 从横幅点「恢复全部」，等十几分钟只换来一个半截环境（2026-10-09 装机、2026-10-10 复现都在此列）。
+
+**为什么现在摘掉**：用户 2026-10-10 拍板 ——「我觉得恢复上次安装的agent这个功能可以不加hermes agent了，
+应该只有像claude、AGY这些才行，依赖少的那种？」。候选判据从"装过就恢复"改成 **"依赖链轻、能一次性装好"**。
+
+**改动（3 文件）**：
+
+| 文件 | 改动 |
+|---|---|
+| `ui/AppState.kt` | `AgentInfo.restorable` 的 KDoc 重写（两条判据：① 官方安装器在受限网络下必然失败＝AGY；② 依赖链重、恢复出来多半是半截环境＝Hermes；附用户两次原话，并写明**只关恢复入口**）；`factoryAgents()` 里 hermes 条目加 **`restorable = false`**（AGY 早在 E-040 就是 `false`） |
+| `ui/AgentLedger.kt` | `restoreCandidates()` 的 KDoc 改为「AGY（E-040）、Hermes（E-081）都不进候选（用户 2026-10-08 / 2026-10-10 两次拍板）」 |
+| `app/src/test/java/com/example/zhengdao/ui/AgentLedgerTest.kt` | 「恢复候选只收「账本里有、现在探测不到、且有安装命令」的」一例改用真实 id（账本 `claude-code`/`hermes`/`antigravity`/`no-cmd` ⇒ 候选只剩 `claude-code`）；**新增**一例「关掉恢复入口的 Agent 仍然会出现在清单里（安装卡片不受影响）」 |
+
+**后果（连带、需知）**：
+
+1. **只关"恢复入口"这一个点**：主页/丹房的 Hermes **安装卡片照旧**（`installCmd` 未动）、探测与卸载照旧、账本照旧。
+   `restorable` 全仓只被 `pickRestoreCandidates()` 读这一处。
+2. 改完「恢复全部」的候选**只剩 Claude Code**（用户以为 AGY 还在 —— AGY 早在 E-040 就被关掉了，本次一并说明）。
+3. 这与"Hermes 装不装得上"是两件事：真机上 hermes 仍未装回（`files/home/.hermes` 无 `hermes-agent`，丹房卡片可随时重装）。
+
+**未验部分（诚实标注）**：体感验收＝主页横幅是否消失、丹房卡片是否还在，见下方真机段。
+
+**回退**：`git revert <本提交>`（一个布尔值 + 注释 + 用例，零风险）。
