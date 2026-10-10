@@ -1886,7 +1886,14 @@ fun SettingsScreen(
                                     }
                                     // 索引给的补丁 sha256 是硬校验（协议 §4）
                                     RootfsDownloader.verifySha256(deltaFile, patchRef.sha256)
-                                    RootfsInstaller.ensureFreeSpace(ctx, deltaFile.length())
+                                    // 加固-4（E-085）：增量的最坏情况是"硬链接失败 ⇒ 整树复制"，
+                                    // 那一刻旧树与新树同时在盘上 —— 把实测树大小交给预检，
+                                    // 而不是只按补丁大小估（树没超过常量时口径与从前一致）。
+                                    RootfsInstaller.ensureFreeSpaceForDelta(
+                                        ctx,
+                                        deltaFile.length(),
+                                        dirSizeMb(File(ctx.filesDir, "rootfs")) * 1_048_576,
+                                    )
                                     val info = RootfsDelta.readPatchInfo(deltaFile)
                                         ?: throw RootfsInstaller.InstallFailed("补丁元数据缺失或不可读")
                                     // 索引给的补丁 sha256 双重把关：下载校验一次（协议 §4），

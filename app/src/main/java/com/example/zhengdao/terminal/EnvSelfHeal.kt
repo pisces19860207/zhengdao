@@ -96,8 +96,14 @@ object EnvSelfHeal {
             // 从此再也自愈不了（"锁定"把自己锁死）。所以：先临时放开 → 写 → 再锁回。
             val locked = resolv.isFile && !resolv.canWrite()
             if (locked) resolv.setWritable(true)
-            resolv.writeText(RESOLV_CONF)
-            if (locked) resolv.setWritable(false)
+            // 加固-2（E-085）：写失败也要把锁挂回去。原先三行是直排的：writeText 一抛异常
+            // 就直接跳到下面的 catch，resolv.conf 永远停在可写 —— 用户看到的是"锁明明开着，
+            // 文件还是被 guest 里的进程改掉了"，而自愈日志里只有一行看不懂的写失败。
+            try {
+                resolv.writeText(RESOLV_CONF)
+            } finally {
+                if (locked) resolv.setWritable(false)
+            }
             changed = true
             RunLog.log("DNS 配置已重写（resolv.conf 国内源 + 重试参数）")
         }

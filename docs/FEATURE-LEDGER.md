@@ -579,6 +579,24 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 篡改一份后被从 assets 重放回钉住的 sha 且只重算那一项；BUG-1 设备端不可达（要造 sha 合法或没 sha 的 0 条目包），
 > 按「Rust 单测 + 代码复核」如实记录。
 
+> **2026-10-10 续（工作表第一批五条 + 入库 `.so` 的流程纠正 + v2.0.9 发版）**：
+> 按用户指示「把待做的最紧急的先做了，支线清了，发新版」：① 合并 `docs/android17-memory-limiter`（`6b1781c`）
+> 与 `feat/kb-ask-hints`（FIX-F，`0a5380b`；其 ERRATA 节与主线 E-083 撞号 ⇒ **让号为 E-084**，四处代码注释同步改）；
+> ② 做 issue #18 的五条（**加固-1** 软链 linkname 越界 ⇒ 新增 `rootfs/PathGuard.kt` + Rust `link_stays_inside`，
+> 越界链接落成空文件；**加固-2** `resolv.conf` 的 `setWritable(false)` 进 finally；**加固-3** `checkPathInside`
+> 改用规范化前缀判断（`rootfs-evil` 这种同前缀兄弟不再被当根内）；**加固-4** 新增
+> `RootfsInstaller.ensureFreeSpaceForDelta(patchBytes, treeBytes)`，增量更新按整树体积预检；**优化-2** `zz-cursor-bar.sh`
+> 严格比对内容、`zz-npm-registry.sh` 按「逐行找生效赋值」判断）。**不做优化-1**（`Store.adoptDir` 在搬家完成后
+> 第一行就返回，实测无收益）与**优化-3**（`buildLaunchPlan` 526 行纯重构，回归面不成比例），理由写进 issue #18。
+> ③ **戳破一个危险假设**：`app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` 是**人工拷进来的入库产物**，
+> CI 只有「16KB 页对齐 + JNI 入口符号」门禁、**不重编** ⇒ 改 `rust/` 源码必须 `cargo build --target aarch64-linux-android`
+> + `llvm-strip` + 覆盖 + `readelf` 复核对齐（本次已重编，960,192 B）；**E-083 的 Rust 半边（`EmptyArchive`）
+> 此前没进过任何在架包**，行为那段时间由 Kotlin 侧 `report.first <= 0L` 兜住。④ 本轮单测：Kotlin
+> **60 suites / 542 tests / 0 失败 / 0 错误 / 1 skipped**（新增 `PathGuardTest` 6 例）；Rust **26 passed / 0 failed**；
+> 真机仪器用例 `CoreNativeSymlinkGuardInstrumentedTest` 在旧 `.so` 上失败（`escape.link=true`）、换新 `.so` 后
+> `OK (1 test)`（`escape.link=false/len=0`、合法相对链接照旧）；加固-2/3/4 与优化-2 按「单测 + 代码复核」记录。
+> ⑤ 版本 **2.0.9**（versionCode 25）+ `.github/release-notes/v2.0.9.md`。详见 **E-085**。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -601,6 +619,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 环境安装/替换的重入锁 + 原子替换（备份 → 就位 → 删备份） | ✅ 在用（#11 第二批，见 E-078；并发拒绝由 JVM 单测覆盖，真机验证了进行中门控与降级复原） | 本次 | `rootfs/RootfsInstaller.kt`、`rootfs/RootfsDelta.kt`、`ui/InstallFlow.kt`、`ui/SettingsScreen.kt`、`TerminalActivity.kt` |
 | rootfs 解压与版本校验两条 BUG（#18 第一批：BUG-1 Rust 路径不许把「0 条目」当成功 / BUG-2 termux-proot 版本固定校验带「已验证戳」） | ✅ 在用（见 E-083；BUG-2 真机三轮取证：首启实算 4 项 → 再启跳过 4 项 → 篡改一份后重放回钉住的 sha；BUG-1 设备端不可达，由 Rust 单测 + 代码复核覆盖） | 本次 | `rust/core/src/extract.rs`、`rust/core/src/tests.rs`、`rootfs/RootfsInstaller.kt`、`terminal/PinnedAssets.kt`、`terminal/ProotLauncher.kt` |
 | 信任边界收口（#16 第七批：P3-2 安装脚本执行私有副本 / P3-5 解包防路径穿越 / P3-6 缺校验值拒绝安装） | ✅ 在用（见 E-082；P3-3 备份范围未做；P3-2 真机受控实验过，P3-5/P3-6 由单测 + 代码复核覆盖） | `37bc860` | `ui/AgentInstaller.kt`、`ui/AgentInstallPrep.kt`、`terminal/Store.kt`、`terminal/HermesEnv.kt`、`res/raw/hermes_env_repair.sh`、`oc/OcManager.kt`、`rootfs/RootfsCache.kt`、`TerminalActivity.kt` |
+| rootfs 审计工作表第一批五条（#18：加固-1 软链 linkname / 加固-2 resolv.conf 权限还原 / 加固-3 路径前缀判断 / 加固-4 增量空间预检 / 优化-2 zz 脚本按内容比对） | ✅ 在用（见 E-085；加固-1 真机仪器用例过（旧 `.so` 上失败、重编后 `escape.link=false`），其余四条由单测 + 代码复核覆盖；优化-1/优化-3 判定不做并写明理由） | 本次（v2.0.9） | `rootfs/PathGuard.kt`、`rootfs/RootfsInstaller.kt`、`terminal/EnvSelfHeal.kt`、`terminal/ProotLauncher.kt`、`ui/SettingsScreen.kt`、`rust/core/src/extract.rs`、`rust/core/src/tests.rs`、`app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so`、`app/src/test/java/com/example/zhengdao/rootfs/PathGuardTest.kt`、`app/src/androidTest/java/com/example/zhengdao/rust/CoreNativeSymlinkGuardInstrumentedTest.kt` |
 | 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮，另在 guest 里有 `/usr/local/bin/zzclean`（App 启动时按内容+执行位写入）；一档命令含 pip 缓存） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt`、`terminal/ProotLauncher.kt`（写入 `/usr/local/bin/zzclean`） |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
 | Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY（E-040）、Hermes（E-081）都不进恢复候选** ⇒ 「恢复全部」的候选只剩 Claude Code；判据在 `AgentInfo.restorable`，**只关恢复入口**——安装卡片、探测、卸载、账本都不受影响） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
