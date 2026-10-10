@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.IOSBlueText
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -197,7 +198,7 @@ fun PluginsScreen() {
                             Text(
                                 text = "已启用",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = IOSBlueText,
                             )
                         } else {
                             Switch(
@@ -336,7 +337,7 @@ fun PluginsScreen() {
             Text(
                 text = it,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = IOSBlueText,
             )
         }
     }
