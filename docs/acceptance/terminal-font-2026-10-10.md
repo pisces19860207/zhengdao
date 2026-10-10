@@ -18,6 +18,7 @@
 | 你给的两条原命令 `echo "中文中文 abcd"` / `echo "中a文b中c文d"` | 同一脚本内加等宽 ASCII 标尺行（13 / 12 字符）对齐 | ✅ |
 | **许可合规**（OFL 要求许可随字体分发） | `app/src/main/assets/fonts/OFL.txt`（OFL 1.1 全文）＋两份合规文档留痕 | ✅ |
 | APK 体积变化 | 4.5 MB → **13.53 MB**（字体 17.94 MB，assets 内 DEFLATE 后约 9 MB） | 记录 |
+| **字体首次加载耗时** | `TerminalPrefs` 常驻日志 + 冷启动取样（§六） | ✅ **72–73 ms**（约占终端页首帧四成，只付一次；同进程二次进入不重载） |
 
 ---
 
@@ -105,7 +106,7 @@ view.mRenderer = new TerminalRenderer(textSize,
 
 **由同一组数据推出列宽**：两组的 `|` 相差 `552 - 102 = 450 px`，对应 `21 - 3 = 18` 列 ⇒ **列宽 = 25.0 px**，即 **ASCII 步进 25 px、中文步进 50 px**（默认字号下）。左端墨迹差 6 px（50 vs 44）不是网格差，而是 `中` 与 `a` 的字形左边距不同——这正是必须以 `|` 收尾的原因。
 
-![2:1 判据同屏：中文×10 + |、20 ASCII + |、中|、ab|](assets/terminal-font-2026-10-10/03-pipe-anchored-21col.png)
+![2:1 判据同屏：中文×10 + |、20 ASCII + |、中|、ab|](assets/terminal-font-2026-10-10/03-pipe-anchored-21col.webp)
 
 ![右端放大（×5 / ×4 最近邻）：上两行的 | 与下两行的 | 各自逐像素同位](assets/terminal-font-2026-10-10/04-zoom-pipe-alignment.png)
 
@@ -128,15 +129,38 @@ view.mRenderer = new TerminalRenderer(textSize,
 
 ---
 
-## 六、体积与未做项
+## 六、体积与加载耗时实测
+
+### 6.1 体积
 
 | 项 | 值／状态 |
 |---|---|
-| APK 体积 | 4.5 MB → **13.53 MB**（`zhengdao-2.0.9-benchmark.apk`，14,187,591 B） |
-| 子集化（只留常用汉字） | **未做**（会引入构建步骤；本轮先不做） |
+| APK 体积 | 4.5 MB → **13.53 MB**（`zhengdao-2.0.9-benchmark.apk`；加日志前 14,187,591 B，加日志后 14,187,811 B） |
+| 字体在 APK 里 | assets 默认 **DEFLATE 压缩**（17.94 MB 字体约贡献 9 MB 包体） |
+
+### 6.2 加载耗时（2026-10-10 22:01–22:07 实测）
+
+方法：在 `TerminalPrefs.typeface()` 里留了一条**常驻日志**（`Log.i(TAG, "字体首次加载：…createFromAsset 耗时 Nms…")`），`am force-stop` 冷启动 → 首次进终端页 → 立刻 `logcat -d -v threadtime` 取三条时间戳对齐。
+
+| 样本 | `createFromAsset` | `TerminalActivity` 首帧（`Displayed … +N ms`） | 字体占首帧 |
+|---|---|---|---|
+| 1 | **72 ms** | 193 ms | 37% |
+| 2 | **73 ms** | 163 ms | 45% |
+| 3 | **73 ms** | 161 ms | 45% |
+
+- 三次一致（±1 ms）。这段耗时 = 打开 assets 条目 ＋ **从 APK 里 DEFLATE 解压 17.94 MB** ＋ 解析字体表，全部发生在**主线程**（首次进终端页时一次性阻塞），此后走进程内缓存。
+- 同一进程内二次进入终端页：**不重载**（`pidof` 不变；点完立刻取样的最近 150 行里没有新日志）。
+- 判读：**73 ms 不足以成为动作项**——它只付一次，且在终端页首帧（161–193 ms）里约占四成。若将来这段被认为可感知，先评估 `noCompress`（省掉解压，代价是 APK 从 13.53 MB 涨到 ~22 MB），再考虑子集化。
+
+> ⚠️ **观测陷阱（本机特有，三次假阴性都源于此）**：这台设备的系统日志极吵，`logcat` 缓冲区**约 30 秒就把旧行挤掉**。点完终端页必须**立刻**取样；隔一分钟再 grep 会得到「根本没有这条日志」的假象——不是 App 没打日志。同理，用日志做「没重载」的判据时，要限定在最近 150 行这种新鲜窗口里。
+
+### 6.3 未做项（项目所有者 2026-10-10 决定：等配色/间距定完再一起评估）
+
+| 项 | 状态 |
+|---|---|
+| 子集化（只留常用汉字） | **未做**（会引入构建步骤） |
 | 多字重 | **未做**（只取 Regular） |
-| `.ttf` 加进 `androidResources.noCompress` | **未做**（可免每次解压；代价是 APK 里不再压缩，体积会涨） |
-| 字体加载耗时 | **未计时**（懒加载 + 进程内缓存，只在首次 `applyTo()` 付一次；17.94 MB 字体值得后面补一个实测） |
+| `.ttf` 加进 `androidResources.noCompress` | **未做**（可免每次解压；代价是 APK 里不再压缩，13.53 MB → ~22 MB） |
 
 ---
 
@@ -176,19 +200,38 @@ rows = [(y, [x for x in range(X0, X1) if px[x, y] > THR]) for y in range(Y0, Y1)
 # 再把相邻 y 聚成文本行，取每行的 min/max x（本页数据即由此得出）
 ```
 
+### 复测「字体加载耗时」（§6.2）
+
+```powershell
+& $adb install -r 'app\build\outputs\apk\benchmark\zhengdao-2.0.9-benchmark.apk'
+& $adb shell am force-stop com.example.zhengdao; Start-Sleep 3
+& $adb logcat -c
+& $adb shell monkey -p com.example.zhengdao -c android.intent.category.LAUNCHER 1
+Start-Sleep 15
+& $adb shell input tap 656 2768          # 进终端页（那一刻才加载字体）
+Start-Sleep 20
+# ⚠️ 必须立刻取样：这台设备约 30 秒就把旧日志挤掉
+& $adb logcat -d -v threadtime | Select-String 'Start proc .*zhengdao|TerminalPrefs|Displayed com.example.zhengdao/.TerminalActivity'
+```
+
+三条时间戳对上就有三个数：进程启动、`createFromAsset` 耗时（日志正文里）、`Displayed … +N ms`（终端页首帧）。
+`noCompress` 或子集化之后**必须**用同一手法复测，与本页 72–73 ms 对比。
+
 ---
 
 ## 八、截图留档（已归档进仓库）
 
 目录：`docs/acceptance/assets/terminal-font-2026-10-10/`
 
-| 文件 | 大小 | 内容 |
-|---|---|---|
-| `00-before-font.png` | 1,036,416 B | **换字体前**对照（P1 验收当天同一设备、同一 tmux 会话、同一字号） |
-| `01-terminal-after-font.png` | 1,118,869 B | 换字体后终端页（提示符 `root@localhost:~#`，字形已是 JetBrains Mono + Maple Mono CJK） |
-| `02-user-echo-commands.png` | 1,051,693 B | 你给的两条 `echo` 原命令 + 等宽 ASCII 标尺行 |
-| `03-pipe-anchored-21col.png` | 718,043 B | **主判据**：`中文×10 + \|` / `20 ASCII + \|` / `中\|` / `ab\|` 四行同屏 |
-| `04-zoom-pipe-alignment.png` | 10,777 B | 上图的右端放大（×5 / ×4 最近邻）：两对 `\|` 逐像素对齐 |
+| 文件 | 大小 | 格式 | 内容 |
+|---|---|---|---|
+| `00-before-font.webp` | 170,634 B | WebP q90 | **换字体前**对照（P1 验收当天同一设备、同一 tmux 会话、同一字号） |
+| `01-terminal-after-font.webp` | 179,284 B | WebP q90 | 换字体后终端页（提示符 `root@localhost:~#`，字形已是 JetBrains Mono + Maple Mono CJK） |
+| `02-user-echo-commands.webp` | 179,688 B | WebP q90 | 你给的两条 `echo` 原命令 + 等宽 ASCII 标尺行 |
+| `03-pipe-anchored-21col.webp` | 129,628 B | WebP q90 | **主判据**：`中文×10 + \|` / `20 ASCII + \|` / `中\|` / `ab\|` 四行同屏 |
+| `04-zoom-pipe-alignment.png` | 10,777 B | **无损 PNG** | 上图的右端放大（×5 / ×4 最近邻）：两对 `\|` 逐像素对齐 |
+
+**为什么只有 `04` 是无损 PNG（2026-10-10 收窄后的规则）**：整屏截图只用于目视回溯，转 WebP q90 后 5 张合计从 3.75 MB 降到 **670 KB**（实测：无损 WebP 只能降到 ~57%，q90 才降到 ~17%）；唯一需要「将来还能重新逐像素量测」的是 `04` 那张放大图——实测它用 q90 反而会从 10,777 B **涨到 7,958 B 且引入有损噪点**，所以它保留无损 PNG。仓库 `.gitignore` 仍全局忽略 `*.png`，只放行文件名带 `-zoom-` 的这**一个**目录级约定（原是整目录豁免，同批收窄）。
 
 > 图中右侧的浮窗是系统画中画播放器（另一 App），**不是被测内容**；它大约占据 x ≥ 555，测量时已避开。
 
@@ -199,6 +242,7 @@ rows = [(y, [x for x in range(X0, X1) if px[x, y] > THR]) for y in range(Y0, Y1)
 - **换字体 / 换字重 / 做子集化之后，必须重跑本页 §四**：判据是「两对 `|` 的墨迹区间完全相同」，允许误差 ≤ 1 px（抗锯齿级别），**列宽 25.0 px（默认字号）也是基线值**。
 - 子集化尤其危险：若把 CJK 全集裁掉一部分、或让 Latin/CJK 来自不同字体文件，Android 的字体回退（fallback）会按自己的规则挑字形，**很容易静默破坏 2:1**。届时优先看 `04` 那样的放大图，而不是整行右端。
 - 若将来把默认字号改掉，列宽会随字号线性变化（25.0 px × 新字号/旧字号），但**两对 `|` 仍然必须同 x**——这条判据与字号无关。
+- **加载耗时也是基线**：首次 `createFromAsset` ＝ **72–73 ms**（§6.2，含从 APK 解压 17.94 MB）。上 `noCompress`、做子集化、或换字重之后，按 §七 的手法复测；只有显著偏离（例如翻倍）才值得动作——它只付一次，且原本就在终端页首帧里。
 
 ---
 
