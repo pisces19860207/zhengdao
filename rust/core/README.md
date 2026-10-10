@@ -17,7 +17,7 @@ rust/core/
 ├── src/sha256.rs       # 纯逻辑：sha256_hex / Sha256Stream（唯一一份 sha2 依赖）
 ├── src/extract.rs      # extract_pipeline：SHA 流式校验 → zstd/gzip 解压 → tar 落盘
 ├── src/jni_bridge.rs   # JNI 薄层（仅 android）：两个符号，入参进 → JSON 报告出 + 限频进度回调
-└── src/tests.rs        # PC 端 4 例：zstd 端到端 / gzip 兜底 / SHA 拒绝 / 路径穿越
+└── src/tests.rs        # PC 端用例：zstd 端到端 / gzip 兜底 / SHA 拒绝 / 路径穿越 / 空归档 / 软链边界
 ```
 
 Android 侧：`CoreNative.kt`（一次 `System.loadLibrary("zhengdao_core")`，桥接 + 回退判定）
@@ -42,8 +42,11 @@ Android 侧：`CoreNative.kt`（一次 `System.loadLibrary("zhengdao_core")`，�
 - zstd 主壳 + gzip 兜底（魔数识别）
 - 目录/符号链接/普通文件；硬链接复制落地，前向引用二阶段补齐
 - FIFO/设备节点跳过（proot -b /dev 方案不需要）
-- 路径穿越防护（目标上溯最近已存在祖先 canonicalize 后必须在目标目录内；
+- 路径穿越防护（成员名：目标上溯最近已存在祖先 canonicalize 后必须在目标目录内；
   Windows verbatim `\\?\` 前缀剥除后比较）
+- 软链 linkname 边界（加固-1 / E-085）：相对链接按**链接所在目录**、绝对链接按 **guest 根**
+  解释，词法归一后必须仍在解压根内，越界的不建链接、改用空文件占位（与 Kotlin 版
+  `PathGuard.linkStaysInside` 同判据，Rust/Kotlin 两侧用例逐条对拍）
 - 目标目录 pipeline 开头 create_dir_all（穿越判定的 canonicalize 依赖它）
 
 ## 构建链（本机 windows-gnu 工具链的三个坑，全部已解）
@@ -103,7 +106,10 @@ llvm-readelf -l app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so | grep LOAD
 
 ## 已知边界（有意为之，非缺陷）
 
-- symlink 目标不校验是否越界（与 Kotlin 版同语义，行为一致）——v2.0 加固候选项
+- ~~symlink 目标不校验是否越界（与 Kotlin 版同语义，行为一致）——v2.0 加固候选项~~
+  —— **已于 2026-10-10 修（加固-1 / E-085）**：linkname 落盘前先过 `link_stays_inside`，
+  越界的不建链接、改空文件占位；Kotlin 版 `RootfsInstaller` 同一处也接了 `PathGuard`。
+  （这条此前写作"有意为之"，其实只是两边都没做——它是一条写出环境目录的通道。）
 - 进度回调经 `unsafe_clone` 的 JNIEnv，仅在回调周期内使用（jni crate 约定）
 - ~~`extract_pipeline` 不校验最小条目数~~ —— **已于 2026-10-10 修（BUG-1 / E-083）**：
   可落盘 0 条目现在报 `EmptyArchive`，与 Kotlin 版 `extractArchiveJava` 的

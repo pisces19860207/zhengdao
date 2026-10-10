@@ -11,7 +11,7 @@
 //! - 目录 / 符号链接 / 硬链接（前向引用二阶段补齐）/ 普通文件
 //! - FIFO/设备节点跳过（proot -b /dev 方案下不需要）
 //! - **可落盘 0 条目 = 错误**（`EmptyArchive`，与 Kotlin 版 `extracted == 0` 对拍；BUG-1/E-083）
-//! - 路径穿越防护（目标必须落在目标目录内）
+//! - 路径穿越防护（成员名 + 软链 linkname 都必须落在目标目录内；加固-1/加固-3，E-085）
 //! - 完成后写标记文件（由调用方指定内容；Kotlin 侧写 distro 信息）
 
 use sha2::{Digest, Sha256};
@@ -188,9 +188,15 @@ pub fn extract_pipeline_skip(
                 let _ = fs::remove_file(&target);
                 #[cfg(unix)]
                 {
-                    // linkname 按 tar 规范是**相对链接所在目录**的路径，这里原样落盘（与 Kotlin 版对拍一致）
+                    // linkname 按 tar 规范是**相对链接所在目录**的路径（也可能是绝对路径，
+                    // 按 guest 根解释）。落盘前先判它没跑出解压根 —— 加固-1（E-085）：
+                    // 解出来的软链会被同一份包的后续成员或 guest 内程序跟随，越界链接
+                    // 等于一条写出环境目录的通道。与 Kotlin 版 `PathGuard.linkStaysInside` 对拍。
                     let link = entry.link_name().map_err(ExtractError::Io)?.unwrap_or_default();
-                    if std::os::unix::fs::symlink(&link, &target).is_err() {
+                    if !link_stays_inside(target_dir, &target, &link) {
+                        // 越界：不建链接，空文件占位（与"建不出来"同一条退路，环境仍可用）
+                        fs::write(&target, b"").map_err(ExtractError::Io)?;
+                    } else if std::os::unix::fs::symlink(&link, &target).is_err() {
                         // 个别 symlink 建不出来不致命：空文件占位（与 Kotlin 版语义对齐）
                         fs::write(&target, b"").map_err(ExtractError::Io)?;
                     }
@@ -262,6 +268,64 @@ pub fn extract_pipeline_skip(
         skipped,
         duration_hint_ms: 0,
     })
+}
+
+/// 词法归一（**不碰文件系统**）：`.` 丢掉、`..` 弹一层。用于软链目标的边界判定。
+///
+/// 为什么不用 canonicalize：软链目标通常还不存在（同一份包里的后续成员），而 canonicalize
+/// 一个不存在的路径会把它原样返回 ⇒ 判不出 `..` 逃逸。真实存在的软链被后续成员跟随时，
+/// 威胁由 [`check_path_inside`]（canonicalize 版）兜住。
+fn normalize_lexical(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// 软链 linkname 是否落在解压根内（**加固-1**，2026-10-10 / E-085）。
+///
+/// tar 规范里 linkname 有两种合法写法：相对**链接所在目录**（`libfoo.so.1`，Debian 里的绝大多数），
+/// 或绝对路径（`/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1`，基础镜像里也真实存在）。绝对路径按
+/// **guest 根**（= 解压根）解释、相对路径按链接所在目录解释；两者归一后都必须仍在根内 ——
+/// 否则解出来的软链会把后续成员或 guest 内程序引到树外。
+///
+/// 与 Kotlin 版 `PathGuard.linkStaysInside` 逐条对拍（同一条判据、同一组用例）。
+#[cfg_attr(not(unix), allow(dead_code))]
+pub(crate) fn link_stays_inside(root: &Path, link_path: &Path, link: &Path) -> bool {
+    use std::path::Component;
+    if link.as_os_str().is_empty() {
+        return false;
+    }
+    let root_norm = normalize_lexical(root);
+    let base = if link.is_absolute() {
+        root_norm.clone()
+    } else {
+        match link_path.parent() {
+            Some(p) => normalize_lexical(p),
+            None => return false,
+        }
+    };
+    let mut joined = base;
+    for c in link.components() {
+        match c {
+            // 绝对路径的根：按 guest 根解释 ⇒ 直接落在解压根上，不做替换
+            Component::RootDir => {}
+            Component::ParentDir => {
+                joined.pop();
+            }
+            Component::CurDir => {}
+            other => joined.push(other.as_os_str()),
+        }
+    }
+    joined.starts_with(&root_norm)
 }
 
 /// 防路径穿越：目标（上溯到已存在的最近祖先做 canonicalize）必须落在目标目录内。
