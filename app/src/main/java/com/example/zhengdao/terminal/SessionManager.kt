@@ -136,11 +136,13 @@ object SessionManager {
         isFallback = plan.isFallback
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong("started_at", startedAtMs).apply()
-        SessionService.start(context)
+        // #10：日志**排在**前台服务之前——startForegroundService 抛异常时，
+        // 「会话启动」这条必须已经落盘（以前它排在后面，抛了就什么都没有）。
         RunLog.log(
             "会话启动（Termux 引擎）tmux=$TMUX_SESSION agent=${currentAgentId ?: "-"} " +
                 "isFallback=$isFallback usesTmux=${plan.usesTmux}"
         )
+        SessionService.start(context)
         return plan
     }
 

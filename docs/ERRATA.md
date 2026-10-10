@@ -4283,3 +4283,30 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 1. 凡是"用户该看到但没看到"的东西，验收要看**系统侧的证据**（`dumpsys notification` / `dumpsys package`），不能只看自己代码有没有调用——`CacheNotifier.cleaned` 被调用、RunLog 写了、逻辑全对，用户那头依然是零。
 2. 权限类的失败要按"声明 → 请求 → 授权 → 生效"四段逐段取证；这一次断在第一段（声明）就断了，后面三段都白搭。
 3. 静默通知这类"不打扰"的设计最容易被这种 bug 藏住：它不报错、不崩溃、不影响功能，只在你专门找它的时候才暴露。验收标准写进 Issue 时就该写成"通知栏能看到这条通知"，而不是"实现了通知"。
+
+## E-077　体检表 / 前台服务 / 修复线程三处崩溃入口兜底（#10）
+
+**背景**：Issue #10 收的是审计报告（`证道-App缺陷审计报告-2026-10-09.md`）里的 P0-1/P0-2/P0-3 三处"用户点一下就闪退"的入口：
+
+- **P0-2（最严重）**：`ui/HomeScreen.kt` 的 `LaunchedEffect(statusExpanded, healthEpoch)` 里裸调 `EnvHealth.inspect(context)`。体检项里 `dnsCheck` / `uvCheck` 直接 `File.readText()`，任何一次 `FileNotFoundException` / `EACCES` 都会在组合期抛出 ⇒ 展开体检面板即崩。
+- **P0-3**：`terminal/SessionService.start/stop` 裸调 `context.startForegroundService(...)` / `stopService(...)`；Android 12+ 在后台起前台服务会抛 `ForegroundServiceStartNotAllowedException` ⇒ 会话起来前后闪退，且 `SessionManager.start()` 的「会话启动」日志写在 `SessionService.start` **之后**，服务起不来时连一行日志都不留。
+- **P0-1**：`ui/HomeScreen.kt` 的「修复」按钮直接 `Thread { … EnvHealth.fix(context, fid) … }`，线程里任何异常都是未捕获异常 ⇒ FATAL。
+
+**修法四条**：
+
+1. **体检项登记表 + 逐项兜底**（`ui/EnvHealth.kt`）：原来硬编码 `listOf(prootCheck(ctx), rootfsCheck(ctx), …)` 改为 `internal data class Item(id, label, warnOnly, fixId, terminalCmd, route, body: (Context) -> Check)` + `internal val ITEMS: List<Item>`（11 项，**顺序即面板顺序**）；`fun inspect(ctx: Context) = evaluate(ITEMS) { it.body(ctx) }`；`internal fun evaluate(items: List<Item>, check: (Item) -> Check) = items.map { item -> runCatching { check(item) }.getOrElse { t -> fallbackOf(item, t) } }`。单项异常不再带走整屏，而是降级成一条检查结果：普通项 ⇒ 红项（保留该 `fixId`/`terminalCmd`/`route`），`warnOnly` 项（native / resource）⇒ 黄告警；文案统一 `体检异常：<类名>：<消息>`（`internal fun reason(t: Throwable)`）。`evaluate` 抽成独立函数是为了能在 JVM 单测里喂一个会抛异常的 `check`。
+2. **两处读文件加兜底**（同文件）：`dnsCheck` 的 `resolv.readText()`、`uvCheck` 的 `uvToml.readText()`（原来读两次）都改成 `runCatching { … }.getOrDefault("")`，uv 只读一次。
+3. **修复动作兜底 + 失败可见**（同文件 + `ui/HomeScreen.kt`）：新增 `data class FixResult(changed: Boolean, error: String? = null)`、`fun fixDetailed(ctx, fixId): FixResult`、`internal fun guardFix(body: () -> Boolean): FixResult = runCatching { FixResult(body()) }.getOrElse { FixResult(false, reason(it)) }`，`fun fix()` 改为 `fixDetailed(...).changed`（旧签名不变）；设置页/体检面板的「修复」线程体包 `try/catch (t: Throwable)`：`fixDetailed` 返回 `changed = false` 或抛异常 ⇒ `IssueCenter.report(id = "health-fix-<项>", title = "一键修复没生效：…" / "一键修复出错：…", actionId = ACTION_FEEDBACK)`，复检通过则 `IssueCenter.resolve(同 id)`。
+4. **前台服务兜底 + 会话日志前移**：`terminal/SessionService.kt` 的 `start/stop` 包 `runCatching`，失败走新增 `private fun fail(t: Throwable, title: String, what: String)`（`RunLog.log("$what：$why")` + `IssueCenter.report(id = "session-service", …, actionId = ACTION_VIEW_LOGS)`）；`terminal/SessionManager.kt` 把「会话启动（Termux 引擎）tmux=… isFallback=… usesTmux=…」的 `RunLog.log` **前移到 `SessionService.start(context)` 之前**，否则前台服务起不来时日志里连"启动过"都看不到。
+
+**单测**（`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` 追加 7 例）：登记表 11 项 id 与顺序固定且唯一、一项抛异常不影响其余项（喂 `IllegalStateException` 的 uv ⇒ 项数/顺序不变、uv 判失败且 `fixId == FIX_UV`、其余全 ok）、任何项的兜底结果都要过 `hasExit`、`warnOnly` 项抛异常降级为黄告警（`ok=true` / `warn=true`，无 `fixId`/`terminalCmd`/`route`）、`guardFix` 抛异常 ⇒ `FixResult(false, "IllegalStateException：resolv.conf 只读")`、`guardFix` 正常 ⇒ `FixResult(true/false, null)`、`reason` 文案带类名与消息。全量 `:app:testDebugUnitTest` ⇒ 53 个报告 / **473 例，0 失败，1 skipped**（审计时是 466 例）。
+
+**真机验收**（Honor PGT-AN10 / Android 16，debug 包 `adb install -r` 保数据）：
+
+- **P0-2**：`adb shell "run-as com.example.zhengdao chmod 000 files/rootfs/etc/uv/uv.toml"` ⇒ 重启 App、展开体检面板：**不闪退**（旧代码此处会 `FileNotFoundException` 崩在 `LaunchedEffect`），面板照常渲染「环境体检 9/11 通过」，uv 项 ✗「uv.toml 缺 link-mode，可一键重写」+「修复」按钮；`logcat -b crash` 空。恢复 `chmod 644` 后回到「10/11 通过」。
+- **P0-1**：`run-as chmod 500 files/rootfs/etc/uv`（目录去掉写位）后点 uv 的「修复」⇒ 无 FATAL；logcat `W EnvSelfHeal: uv 配置修复失败: /data/user/0/com.example.zhengdao/files/rootfs/etc/uv/uv.toml: open failed: EACCES (Permission denied)`；RunLog 两条：`问题[selfheal-uv]: uv 系统级配置没能写入 — FileNotFoundException: …EACCES…`、`问题[health-fix-uv]: 一键修复没生效：uv 配置 — 「修复」已执行，复检仍是：uv.toml 缺 link-mode，可一键重写。可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。`
+- **P0-3**：正常路径下会话启动日志与前台服务均正常；`ForegroundServiceStartNotAllowedException` 需要特定系统状态，**未做真机注入**（改动只是把异常收进 `runCatching` 并留档，风险为零）。
+
+**一次误判（记录以免重犯）**：真机上看不到新加的「最近问题」卡，我一度判定为"后台线程写 `mutableStateOf` 不触发重组"，据此给 `core/IssueCenter.kt` 加了 `onMain { … }` 包装（`Handler(mainLooper).post`）并补了 KDoc。用临时埋点（`Log.i("zd-dbg", …)`：`report` 入口记调用线程、写入块内记写入线程、LazyColumn DSL 记 `issues.size`、卡 item 内记"正在组合"）实测**推翻**了这个判断：绕过 `onMain`、直接在 worker 线程写状态，紧跟其后就是 `DSL 运行：issues.size=1` ⇒ 跨线程写状态本来就会触发重组；而日志里那次 `size=1 → size=0` 也不是快照问题，是 `terminal/EnvSelfHeal.kt:212` 的 `IssueCenter.resolve("selfheal-uv")`（`ensureUvConfig` 的第一行，先撤旧失败、失败再 report）。**"卡看不见"的真因是位置**：状态卡展开时体检项一直排到 y≈2530，卡落在折叠线以下，而 `adb shell input swipe` 每下约 1500px，"滑到底"总是直接越过它（到底后视野顶部正好是"恢复上次装过"横幅）。`IssueCenter` 的改动与全部埋点已撤销。
+
+**教训**：Compose 的状态写入线程不是问题（文档与实测都支持任意线程写入）；「元素看不见」要先确认它在屏幕上的**位置**（`uiautomator dump` 抽 `bounds`、或滚动到贴近目标的那一屏），不要用粗粒度滑动"滑到底也没看到"来推断"没渲染"。
