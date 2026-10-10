@@ -5051,3 +5051,67 @@ p50 30–42 ms；同一台机器在帧密集时是 janky 0 / p50 5 ms。
 - ⚠️ **未做真机验证**：要触发这行提示需要 `资料库/原始/` 下 **> 2000 个文件**（设备上没有这个量级的资料），
   因此「截断提示真的会出现」目前**只有代码复核覆盖**，本条不宣称真机验过。
 
+## E-090 · 2026-10-11 · opencode bionic 装不上：E-082 把 `substringAfter` 换成 `removePrefix` 时漏掉 `data/data/com.termux/` 前缀（v2.0.9 起 100% 失败；**发现·未修**）
+
+**现象**
+
+真机上装/更新「太极」的 opencode bionic 版，最后一步失败。设置页显示「opencode 安装包缓存 65 MB」⇒
+**下载与 SHA 校验都过了**（包在 `files/oc/pkg/opencode-2.0.22-1-aarch64.pkg.tar.xz`），卡在释放之后。
+
+**根因（代码级单路径可判定）**
+
+E-082（提交 `37bc860`，`git describe --contains 37bc860` = `v2.0.9~4^2~1` ⇒ **v2.0.9 与 v2.0.10 都带此缺陷**）
+在 `app/src/main/java/com/example/zhengdao/oc/OcManager.kt` 的 `extract()` 里做了这处等价性改写：
+
+```diff
+- val rel = name.substringAfter("files/usr/")
++ val rel = name.removePrefix("files/usr/")
+```
+
+但同一循环的准入判断是 `if (!name.startsWith("data/data/com.termux/files/usr/") || name.endsWith("/")) continue`
+—— 归档条目名形如 `data/data/com.termux/files/usr/bin/opencode`（同文件 `resolveExtractTarget` 注释里那条例名
+`data/data/com.termux/files/usr/a/../../../../shared_prefs/x.xml` 就是同一批真实条目）：
+
+- 旧写法 `substringAfter("files/usr/")`：在名字里找**首次出现处** ⇒ `bin/opencode` ✓
+- 新写法 `removePrefix("files/usr/")`：只剥**字符串开头**的前缀 ⇒ 名字以 `data/data/com.termux/` 开头 ⇒ **一个字都没剥掉**，
+  `rel` = 整条 `data/data/com.termux/files/usr/bin/opencode`
+
+于是 `resolveExtractTarget(File(ocRoot, "usr"), rel)` 的落点变成
+`files/oc/usr/data/data/com.termux/files/usr/bin/opencode`：它**仍在** `oc/usr` 之内，
+所以越界检查放行（不会出现「跳过越界条目」的日志），只是**位置全错**；
+`rel.startsWith("bin/")` 也永远为假 ⇒ 连 `chmod 0755` 都不会执行。
+
+**影响**
+
+- `extract()` 末尾 `if (!installed(ctx))`（`installed()` = `files/oc/usr/bin/opencode` 存在且 > 100 MB）必然为假，
+  返回 `DownloadResult(false, "释放后二进制缺失（包不完整？）")` —— **这就是用户看到的「安装失败」**。
+- **这条失败不写日志**：该分支只有 `return`，没有 `RunLog.log`；同一次安装也不会留下
+  `太极: OpenCode … 释放完成（N 个文件）`。（查证时别把「日志里没有」当成「没发生」。）
+- 副作用：整包解压产物（2.0.22 约 289 MB）被写到 `files/oc/usr/data/…` 错误路径下，白占 App 私有空间。
+- 下载缓存不受影响：**修好后重装不需要重新下载 65 MB**（缓存包 SHA 已通过）。
+
+**修法（一行）**
+
+```diff
+- val rel = name.removePrefix("files/usr/")
++ val rel = name.removePrefix("data/data/com.termux/files/usr/")
+```
+
+前缀由上一行 `startsWith` 保证存在，剥完就是 `bin/opencode` 这类相对路径，chmod 与 `.` 跳过逻辑随之恢复。
+建议同批做两件配套事：① 删掉错误路径残留 `files/oc/usr/data/`（约 289 MB）；
+② 给「释放后二进制缺失」这条加一行 `RunLog.log`（失败可见原则：这一类失败目前无痕）。
+
+**状态**：**发现，未修**（用户 2026-10-10 深夜定「今天就结束了」，本条只落档）。
+修完的验收口径：真机点一次安装 ⇒ 日志出现 `太极: OpenCode 2.0.22 释放完成（N 个文件）`、
+`files/oc/usr/bin/opencode` 过 100 MB 阈值、太极 Tab 能拉起 serve（127.0.0.1:14000）。
+
+**证据**
+
+- `git show 37bc860 -- app/src/main/java/com/example/zhengdao/oc/OcManager.kt`（`-`/`+` 两行原文如上）。
+- `git merge-base --is-ancestor 37bc860 v2.0.10` ⇒ exit 0；`git describe --contains 37bc860` ⇒ `v2.0.9~4^2~1`。
+- `OcManager.kt:576`（准入 `startsWith("data/data/com.termux/files/usr/")`）、`:581`（`removePrefix`）、
+  `:590`（`resolveExtractTarget`）、`:610`（`rel.startsWith("bin/")` 才 chmod）、`:63-64`（`installed()` 阈值 100 MB）、
+  `:635`（`释放后二进制缺失（包不完整？）`）。
+- 真机：`/storage/emulated/0/Download/证道/logs/*.log` 里**没有**任何 opencode 安装失败行（与「该分支不写日志」一致）；
+  v2.0.10 正式包已装（`启动自检：安装包签名 = 官方 ✓`），设备非 debuggable ⇒ `run-as` 不可用，未能进 App 私有目录复核落点。
+
