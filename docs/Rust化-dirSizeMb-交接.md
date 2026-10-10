@@ -157,7 +157,7 @@ git -C C:/Users/guoli/AndroidStudioProjects/zhengdao merge --no-ff feat/rust-dir
 
 | 事项 | 状态 |
 |---|---|
-| **真机复验** | ❌ **未做**（本机没连真机）。建议随下一版验：进设置页看目录占用数字是否与旧版一致 |
+| **真机复验** | ✅ **2026-10-10 已补**（合并之后）：`DirSizeParityTest` 真机 6 例全绿，`rootfs` 字节级对拍一致（`Rust=805312468` vs `Java=805312468`，Rust 约快 2.5×），设置页 `768/551/192 MB` 两条路径同数 —— 详见 `docs/ERRATA.md` 的 **E-079「真机对拍」**段 |
 | push / PR | ❌ 未做（用户明确要求"不要推"） |
 | `dirsize.rs` 的两条 `#[cfg(unix)]` 软链用例 | ⚠️ 在 Windows 宿主**不跑**（Android/aarch64 上会跑）；已由 Kotlin 侧同名软链用例在 JVM 上补位 |
 
