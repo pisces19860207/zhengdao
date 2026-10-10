@@ -201,8 +201,13 @@ object RootfsCache {
      *  ② 否则（老版本 / 换过名字 / 大小不同）⇒ 回到"按这个文件自己的说法"：
      *     本地 `.sha256` 边车 → 线上 `$url.sha256`。**刻意不拿索引去卡**：用户留着旧包
      *     本来就可能要装旧版本，索引描述的是"最新那个包"，不是"这个文件"。
+     *  ③ 三样都没有 ⇒ 再看 **本机上次装成的那个包的 sha256**（[rememberedSha]，P3-6，2026-10-10）：
+     *     同一台手机、同一个包名再装一次时，这条记忆足以发现"文件被换过了"，而不是像以前
+     *     那样**直接跳过校验照装**（fail-open）。
      *
      * @param localSize 本地包字节数；`<= 0` = 未知（下载路径在文件还没落盘时就是这样）
+     * @param rememberedSha 上次安装成功时记下的包 sha256（[com.example.zhengdao.rootfs.RootfsMarker.installedArchiveSha256]）；
+     *   优先级最低，只在前三个来源都拿不到时兜底
      */
     internal fun pickExpectedSha(
         localName: String,
@@ -212,6 +217,7 @@ object RootfsCache {
         indexSha: String?,
         sidecar: String?,
         onlineSha: String?,
+        rememberedSha: String? = null,
     ): ShaChoice {
         val idxSha = indexSha?.trim()?.takeIf { it.isNotEmpty() }
         val side = sidecar?.trim()?.takeIf { it.isNotEmpty() }
@@ -228,6 +234,8 @@ object RootfsCache {
         }
         if (side != null) return ShaChoice(side, "本地 .sha256")
         if (online != null) return ShaChoice(online, "线上 .sha256")
+        val remembered = rememberedSha?.trim()?.takeIf { it.isNotEmpty() }
+        if (remembered != null) return ShaChoice(remembered, "上次装过的包")
         return ShaChoice(null, "无")
     }
 

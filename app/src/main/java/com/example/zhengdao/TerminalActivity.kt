@@ -1078,6 +1078,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }.start()
     }
 
+    /**
+     * 「本机上次装成的那个包」的 sha256（P3-6，2026-10-10）。
+     *
+     * 标记文件 `<filesDir>/rootfs/.zhengdao-rootfs-ok` 里记着当初装成时的 `archive-sha256=`；
+     * 它是**同一台手机上的记忆**，用来兜住"签名索引 / 本地边车 / 线上都拿不到校验值"这一档：
+     * 以前这一档是「跳过校验照装」，现在至少要能对上"上次装过的那个包"才放行。
+     */
+    private fun rememberedArchiveSha(ctx: android.content.Context): String? =
+        com.example.zhengdao.rootfs.RootfsMarker.installedArchiveSha256(File(ctx.filesDir, "rootfs"))
+
     /** 从本地归档安装：已在缓存则直接用，否则拷入 → 校验 → 解压 → 切 Debian。压缩包保留。 */
     private fun startInstallFromFile(local: File) {
         if (!claimInstallSlot()) return
@@ -1095,7 +1105,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     }
                     cacheCopy
                 }
-                // 校验值以**索引**为准（索引 > 本地 .sha256 > 线上 .sha256；见 RootfsCache.pickExpectedSha / E-053）：
+                // 校验值以**索引**为准（索引 > 本地 .sha256 > 线上 .sha256 > 上次装过的那个包的 sha256；
+                // 见 RootfsCache.pickExpectedSha / E-053 / P3-6）：
                 // 本地边车是没人维护的遗留文件，远端一换包它必然过期，拿它当真会把"包是对的"误报成
                 // "安装失败：SHA256 校验失败"（2026-10-08 用户真机报的就是这个）。
                 val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
@@ -1115,13 +1126,22 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     indexSha = idx?.sha256,
                     sidecar = sidecarText,
                     onlineSha = onlineSha,
+                    rememberedSha = rememberedArchiveSha(appContext),
                 )
                 val expectedSha = choice.sha
                 if (choice.staleSidecar) {
                     RunLog.log("本地 .sha256 伴生文件已过期（sidecar=$sidecarText 索引=$expectedSha），按索引校验")
                 }
                 if (expectedSha.isNullOrBlank()) {
-                    installStatus("未找到校验文件，跳过完整性校验")
+                    // ── P3-6（2026-10-10）：这里以前是「未找到校验文件，跳过完整性校验」然后照装 ──
+                    // 也就是：一个谁都能替换的本地包，只要拿不到任何校验值就被无条件解压进
+                    // App 私有目录（fail-open）。四个来源现在都试过了（签名索引 / 本地 .sha256 /
+                    // 线上 .sha256 / 本机上次装成的那个包），一个都没有 ⇒ 拒绝安装，并说清怎么办。
+                    throw IllegalStateException(
+                        "拿不到这个安装包的 SHA256 校验值（签名索引、本地 ${sidecar.name}、线上都试过），" +
+                            "为安全起见停止安装。请联网后重试「联网下载运行环境」；" +
+                            "若这个包是官方渠道拿到的，可以在它旁边放一份同名 .sha256 文件再装"
+                    )
                 } else {
                     RootfsDownloader.verifySha256(archive, expectedSha)
                     installStatus("SHA256 校验通过（来源：${choice.source}）")
@@ -1179,6 +1199,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     indexSha = idx?.sha256,
                     sidecar = null,
                     onlineSha = onlineSha,
+                    rememberedSha = rememberedArchiveSha(appContext),
                 ).sha
                 var needDownload = true
                 // 本次"实际校验通过的 SHA256"（信任锚要用它跟索引对账，见下面的 envForMarker）

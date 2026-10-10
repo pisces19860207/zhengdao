@@ -59,6 +59,20 @@ class StoreTest {
         assertEquals("agents", Store.DIR_AGENTS)
     }
 
+    @Test
+    fun `脚本执行副本落在 home 里（P3-2）`() {
+        // P3-2（2026-10-10）：公共区那份只是缓存，执行的是 App 私有目录里的副本。
+        // guest 侧路径必须落在 home 里 —— ProotLauncher 只把 filesDir/home 绑成 /root，
+        // 落在别处 guest 根本看不见（rc 文件走的就是同一条 bind）。
+        assertEquals("/root/.zhengdao/scripts", Store.GUEST_PRIVATE_SCRIPTS_DIR)
+        assertTrue(Store.GUEST_PRIVATE_SCRIPTS_DIR.startsWith("/root/"))
+        assertFalse(
+            "执行副本不许再落回公共区/工作区（共享存储，别的 App 改得到）",
+            Store.GUEST_PRIVATE_SCRIPTS_DIR.contains("zhengdao/agents") ||
+                Store.GUEST_PRIVATE_SCRIPTS_DIR.startsWith("/workspace"),
+        )
+    }
+
     // ── 搬家 ────────────────────────────────────────────────────────────────
 
     @Test

@@ -57,11 +57,19 @@ import java.util.Locale
  */
 object HermesEnv {
 
-    /** guest 侧脚本落点（宿主侧 = `Workspace.hostDir/.zhengdao/scripts/`，与 AgentInstaller 同约定）。 */
+    /**
+     * guest 侧脚本落点（相对 **home**；宿主侧 = `Store.hostPrivateScriptsDir(ctx)`，
+     * 即 `filesDir/home/.zhengdao/scripts/`）。
+     *
+     * ⚠️ 2026-10-10（P3-2）：原先落在**工作区**（`Workspace.hostDir/.zhengdao/scripts`）——
+     * 工作区在共享存储里，别的 App 改得到，而这份脚本是要被 `bash` 执行的。现在与安装脚本
+     * 同规矩：只写 App 私有目录（guest 内 `/root/.zhengdao/scripts/`）。脚本正文来自 APK 内置的
+     * `res/raw/hermes_env_repair.sh`，不经网络、也不落共享存储。
+     */
     const val SCRIPT_REL = ".zhengdao/scripts/hermes-env-repair.sh"
 
     /** 终端里可直接执行的修复命令（进 guest 跑同一份脚本，输出全程可见）。 */
-    const val REPAIR_CMD = "bash /workspace/.zhengdao/scripts/hermes-env-repair.sh"
+    const val REPAIR_CMD = "bash /root/.zhengdao/scripts/hermes-env-repair.sh"
 
     /** `filesDir/home` 即 guest 的 `/root`。 */
     fun hermesHome(ctx: Context): File = File(ctx.filesDir, "home/.hermes")
@@ -244,9 +252,14 @@ object HermesEnv {
         return changed
     }
 
-    /** 把修复脚本写到工作区（guest 内 `/workspace/.zhengdao/scripts/`），返回是否成功。 */
+    /**
+     * 把修复脚本写进 **App 私有目录**（guest 内 `/root/.zhengdao/scripts/`），返回是否成功。
+     *
+     * 2026-10-10（P3-2）：落点从工作区搬到这里——这份脚本要被 `bash` 执行，而工作区
+     * （共享存储）里的文件任何 App 都改得动。正文取自 APK 内置 raw 资源，不联网。
+     */
     fun writeRepairScript(ctx: Context): Boolean = runCatching {
-        val dir = File(Workspace.hostDir(ctx), ".zhengdao/scripts")
+        val dir = Store.hostPrivateScriptsDir(ctx)
         if (!dir.isDirectory && !dir.mkdirs()) return false
         File(dir, "hermes-env-repair.sh").writeText(readRepairScript(ctx))
         true
