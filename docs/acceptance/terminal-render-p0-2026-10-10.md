@@ -207,3 +207,5 @@ Start-Sleep -Milliseconds 2500
 `%TEMP%\zd-p0-a.ps1`（旧解析器，留档）、`zd-p0-b.ps1`（25 列解析器 + 四场景）、`zd-p0-c.ps1`（framestats + 滑动）、`zd-p0-d.ps1`（干净对照）。
 
 **截图留档**（`%TEMP%`）：`zd-p0-en200.png`（英文 40 行）、`zd-p0-cn-2.png` / `zd-p0-flood-zh.png`（中文满屏，确认过确实是 CJK 内容）、`zd-p0-flood-en.png`、`zd-p0-fling.png`、`zd-p0-term-boot.png`、`zd-p0-main.png`。
+
+> **后续**：终端视图重构 **P1**（六刀 + 接口收窄）的真机验收另见 [`terminal-view-refactor-p1-2026-10-10.md`](terminal-view-refactor-p1-2026-10-10.md)（2026-10-10 晚，5 项全过）。
