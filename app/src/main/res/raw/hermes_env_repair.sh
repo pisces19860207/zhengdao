@@ -2,8 +2,12 @@
 # 证道 · Hermes 依赖环境修复（ERRATA E-025）
 #
 # 由 App 在「首页体检 → Hermes 依赖环境 → 修复」或「设置 → Hermes 依赖环境 → 修复依赖环境」
-# 时写入工作区 /workspace/.zhengdao/scripts/hermes-env-repair.sh 并在终端里执行，
+# 时写入 App 私有目录（宿主 filesDir/home/.zhengdao/scripts/，guest 内即
+# /root/.zhengdao/scripts/hermes-env-repair.sh）并在终端里执行，
 # 输出全程可见（App 侧不静默改 Hermes 的东西）。
+#
+# 为什么落私有目录而不是工作区（2026-10-10，P3-2）：工作区在共享存储里，任何拿到
+# 「所有文件访问权限」的 App 都能改这份脚本，而它是被 bash 执行的 —— 改一行就是任意代码执行。
 #
 # 为什么需要它：
 #   Hermes 把"当前依赖环境是哪一代"记在 installs/<hash>/facts.json 里。这个记录一旦指向

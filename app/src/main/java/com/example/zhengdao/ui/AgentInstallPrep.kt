@@ -54,6 +54,36 @@ internal object AgentInstallPrep {
     fun fileLooksUsable(f: File): Boolean =
         runCatching { f.isFile && looksUsableScript(f.readText()) }.getOrDefault(false)
 
+    /** sha256 的十六进制形式（64 位、大小写不敏感）；不满足就当"没有记录"。 */
+    private val SHA_RE = Regex("^[0-9a-fA-F]{64}$")
+
+    /**
+     * 公共区那份脚本**能不能被信任**（P3-2，2026-10-10）。
+     *
+     * ## 为什么需要它
+     *
+     * `Download/证道/agents/scripts/` 在**共享存储**里。原先的复用判据是"文件存在且 ≥ 64 B"，
+     * 于是"别的 App 往那个文件里写什么，证道就往 `bash` 里喂什么"——拿到「所有文件访问权限」
+     * 的任何 App（文件管理器、清理工具、同步类应用）都能借这一行拿到 shell 里的任意代码执行。
+     * 它也绕过 E-059 那道"内容像不像脚本"的粗判：真安装脚本改两行，长得完全像脚本。
+     *
+     * ## 规则
+     *
+     * 只有**宿主侧记下过指纹**（[com.example.zhengdao.terminal.Store.scriptRecordFile]，写在
+     * App 私有目录里、别的 App 摸不到）**且**公共区那份的 sha256 与记录**逐字符相等**时，
+     * 才允许复用它（复用是为了"网络断续时不卡安装"，见 [AgentInstaller]）。
+     * 其余情况一律判**不可信** ⇒ 删掉重下；下载不成则退回官方 `curl | bash`（HTTPS 直取），
+     * 绝不执行来路不明的本地文件。没有记录（重装 App 之后）也算不可信。
+     *
+     * @param recorded 记录文件里的值（null / 空 / 不是 64 位十六进制 ⇒ 视为没有记录）
+     * @param actual 公共区那份现算出来的 sha256（读不动 ⇒ null ⇒ 不可信）
+     */
+    fun scriptTrusted(recorded: String?, actual: String?): Boolean {
+        val r = recorded?.trim()?.takeIf { SHA_RE.matches(it) } ?: return false
+        val a = actual?.trim()?.takeIf { SHA_RE.matches(it) } ?: return false
+        return r.equals(a, ignoreCase = true)
+    }
+
     /**
      * 安装前的清障命令。
      *

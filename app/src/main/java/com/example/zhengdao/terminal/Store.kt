@@ -59,8 +59,40 @@ object Store {
     /** guest 侧的公共区挂载点（ProotLauncher 把 [root] bind 到这里）。 */
     const val GUEST_ROOT = "/opt/zhengdao"
 
-    /** guest 侧看到的 Agent 安装脚本目录（`/opt/zhengdao/agents/scripts`）。 */
+    /**
+     * guest 侧看到的 Agent 安装脚本**缓存**目录（`/opt/zhengdao/agents/scripts`）。
+     *
+     * ⚠️ 这是**缓存**，不是执行源（P3-2，2026-10-10）：它在共享存储里，任何拿到"所有文件
+     * 访问权限"的 App 都能改它。安装脚本一律**复制到私有区再执行**，见
+     * [GUEST_PRIVATE_SCRIPTS_DIR] 与 [com.example.zhengdao.ui.AgentInstaller]。
+     */
     const val GUEST_SCRIPTS_DIR = "$GUEST_ROOT/$DIR_AGENTS/$SUB_SCRIPTS"
+
+    /**
+     * 安装脚本的**执行副本**目录（P3-2，2026-10-10）——guest 侧路径 `~/.zhengdao/scripts`。
+     *
+     * 装 Agent 时由宿主侧把**已核对过指纹**的字节复制到这里（宿主侧 = [hostPrivateScriptsDir]），
+     * 终端里执行的是这一份：App 私有目录别的 App 读不到也写不到，改一行共享存储里的脚本
+     * 不再等于任意代码执行。
+     *
+     * 为什么落在 home 而不是 filesDir 下别处：`ProotLauncher` 用 `-b <files>/home:/root`
+     * 把宿主 home 绑成 guest 的 `/root`，只有这份映射里的路径 guest 才看得见
+     * （rc 文件 `~/.zhengdao/install-<id>.rc` 走的是同一条 bind）。
+     */
+    const val GUEST_PRIVATE_SCRIPTS_DIR = "/root/.zhengdao/$SUB_SCRIPTS"
+
+    /** [GUEST_PRIVATE_SCRIPTS_DIR] 的宿主侧对应目录（App 私有；建不出来时返回未创建的路径）。 */
+    fun hostPrivateScriptsDir(ctx: Context): File =
+        File(ctx.filesDir, "home/.zhengdao/$SUB_SCRIPTS").apply { runCatching { mkdirs() } }
+
+    /**
+     * 脚本**指纹记录**文件（宿主侧、App 私有）：`filesDir/agents/script-sha/<id>-install.sh.sha256`。
+     *
+     * 里面是"宿主侧最后认下的那份安装脚本的 sha256"。公共区那份只有与它逐字符相等时才被
+     * 复用——没有记录（重装 App 之后）就当"来路不明"，宁可重新下载也不执行。
+     */
+    fun scriptRecordFile(ctx: Context, agentId: String): File =
+        File(File(ctx.filesDir, "$DIR_AGENTS/script-sha"), "$agentId-install.sh.sha256")
 
     /** 账本文件名（装过哪些 Agent —— 重装 App 后"一键恢复"的依据）。 */
     const val LEDGER_NAME = "installed.json"

@@ -24,6 +24,14 @@ import java.io.File
  * - **账本**：派发安装时往 `Download/证道/agents/installed.json` 记一笔，重装 App 后
  *   主页据此给出「恢复全部」（见 [AgentLedger]）。
  *
+ * ⚠️ **公共区只当缓存，不当执行源**（P3-2，2026-10-10）：脚本缓存在
+ *   `Download/证道/agents/scripts/` 里，那是**共享存储**——任何拿到「所有文件访问权限」的
+ *   App 都能改它。所以复用前必须与 `filesDir/agents/script-sha/` 里记下的 sha256 逐字符相等
+ *   （见 [AgentInstallPrep.scriptTrusted]），而真正交给 `bash` 的是复制到
+ *   `filesDir/home/.zhengdao/scripts/`（guest 内 `/root/.zhengdao/scripts`）的**私有副本**。
+ *   指纹不符 / 没有记录 / 副本落盘失败 ⇒ 一律退回官方 `curl|bash`（HTTPS 直取），
+ *   绝不执行共享存储里那份来路不明的字节。
+ *
  * ⚠️ 为什么 Agent 的**可执行文件**（`~/.local/bin`，agy 实测 201 MB）不搬公共区：
  *    `/sdcard` 是 **noexec** 挂载，放过去就再也执行不了（这正是"安装脚本能放、二进制
  *    不能放"的分界）。公共区只放**不需要执行权限**的东西：脚本、npm/uv/pip 包缓存。
@@ -97,15 +105,30 @@ object AgentInstaller {
         runCatching { Store.adoptDir(dir, File(Store.root(ctx), ".zhengdao/scripts")) }
         var ok = dir.isDirectory || runCatching { dir.mkdirs() }.getOrDefault(false)
         val script = File(dir, "${agent.id}-install.sh")
-        // E-059：缓存的脚本**看起来不像脚本**就先删掉重下。这份缓存在共享存储里，
-        // 卸载 App 也清不掉——一份坏文件（代理 HTML 拦截页 / 半截正文 / 被改坏）会被
-        // 每一次重试复用，用户在丹房看到的是永远同一个失败，且没有任何自救手段。
-        if (ok && script.isFile && !AgentInstallPrep.fileLooksUsable(script)) {
-            com.example.zhengdao.rootfs.RunLog.log(
-                "AgentInstaller: ${agent.id} 缓存的安装脚本不可用（${script.length()} 字符，" +
-                    "疑似错误页/半截文件），删掉重下"
-            )
-            runCatching { script.delete() }
+        // E-059 + P3-2：这份缓存能不能采信，一次判完。
+        // E-059：**看起来不像脚本**就先删掉重下。这份缓存在共享存储里，卸载 App 也清不掉——
+        // 一份坏文件（代理 HTML 拦截页 / 半截正文 / 被改坏）会被每一次重试复用，用户在丹房
+        // 看到的是永远同一个失败，且没有任何自救手段。
+        // P3-2（2026-10-10）：**看起来像脚本**并不等于可信——真正被改过的脚本长得就是脚本。
+        // 所以还要求 sha256 与宿主侧记下的那份**逐字符相等**（记录在 App 私有目录，别的 App
+        // 改不到；"没有记录"= 重装 App 或这份来自别处，同样不予采信，宁可重下）。
+        val recorded = readFingerprint(ctx, agent.id)
+        if (ok && script.isFile) {
+            val actual = fingerprintOf(script)
+            val why = when {
+                !AgentInstallPrep.fileLooksUsable(script) ->
+                    "不可用（${script.length()} 字符，疑似错误页/半截文件）"
+                !AgentInstallPrep.scriptTrusted(recorded, actual) ->
+                    if (actual == null) "sha256 算不出来（读不动）"
+                    else "指纹与记录不符（记录=${recorded ?: "无"}，实际=$actual）"
+                else -> null
+            }
+            if (why != null) {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "AgentInstaller: ${agent.id} 公共区缓存的安装脚本不予采信——$why，删掉重下"
+                )
+                runCatching { script.delete() }
+            }
         }
         // 重试免下载：脚本已在且非空直接复用（用户指定）
         if (ok && (!script.isFile || script.length() < 64)) {
@@ -152,14 +175,65 @@ object AgentInstaller {
                 HermesInstallScript.Outcome.NO_FILE, null -> Unit
             }
         }
-        val effectiveCmd = if (ok && script.isFile) {
-            // guest 内 /workspace 即手机侧工作区，脚本以本地文件执行（不再走网络）
-            "bash ${Store.GUEST_SCRIPTS_DIR}/${agent.id}-install.sh"
+        // ── P3-2（2026-10-10）：执行的是**私有副本**，不是公共区那份 ────────────────────
+        // 记指纹要在所有改写（hermes 补丁）**做完之后**：记的是最终字节，否则下次复用
+        // 会拿"补丁前"的记录去比"补丁后"的文件，永远对不上。
+        if (ok && script.isFile) writeFingerprint(ctx, agent.id, script)
+        val privateScript = if (ok && script.isFile) copyToPrivateScripts(ctx, agent.id, script) else null
+        val effectiveCmd = if (privateScript != null) {
+            // guest 内 /root/.zhengdao/scripts（= filesDir/home/.zhengdao/scripts，
+            // ProotLauncher 把 home 绑成 /root），以本地文件执行、不走网络
+            "bash ${Store.GUEST_PRIVATE_SCRIPTS_DIR}/${privateScript.name}"
         } else {
-            agent.installCmd ?: "" // 本地化失败：退回原始 curl|bash
+            agent.installCmd ?: "" // 本地化失败：退回原始 curl|bash（HTTPS 直取，不经共享存储）
         }
         return buildCommand(ctx, agent, effectiveCmd)
     }
+
+    // ── P3-2 的四个小工具：指纹算/读/写 + 私有副本落盘 ────────────────────────────────
+
+    /** 文件 sha256（小写）；算不出来（读不动 / 核心不可用）返回 null —— 调用方按"不可信"处理。 */
+    private fun fingerprintOf(f: File): String? =
+        runCatching { RootfsDownloader.sha256Of(f).trim().lowercase() }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+    /** 读"宿主侧认下的那份脚本"的指纹记录；没有/读不动 ⇒ null（= 不可信）。 */
+    private fun readFingerprint(ctx: Context, agentId: String): String? = runCatching {
+        val f = Store.scriptRecordFile(ctx, agentId)
+        if (f.isFile) f.readText().trim().takeIf { it.isNotEmpty() } else null
+    }.getOrNull()
+
+    /** 记下刚认下的这份脚本的指纹（写失败只留痕：下次复用会被判不可信，重新下载即可）。 */
+    private fun writeFingerprint(ctx: Context, agentId: String, script: File) {
+        val sha = fingerprintOf(script) ?: return
+        runCatching {
+            val f = Store.scriptRecordFile(ctx, agentId)
+            f.parentFile?.mkdirs()
+            f.writeText("$sha\n")
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "AgentInstaller: $agentId 脚本指纹记录写失败（${it.message ?: it::class.java.simpleName}）"
+            )
+        }
+    }
+
+    /**
+     * 把**已核对的**脚本复制成私有执行副本，返回副本；复制/复核失败返回 null（调用方退回 curl|bash）。
+     *
+     * 复制完成后再核一次指纹：落地字节必须与源一致（复制途中被杀、存储写满都会留下半截文件）。
+     */
+    private fun copyToPrivateScripts(ctx: Context, agentId: String, source: File): File? = runCatching {
+        val dir = Store.hostPrivateScriptsDir(ctx)
+        if (!dir.isDirectory && !dir.mkdirs()) throw IllegalStateException("私有脚本目录建不出来：$dir")
+        val dst = File(dir, "${agentId}-install.sh")
+        source.copyTo(dst, overwrite = true)
+        if (fingerprintOf(dst) != fingerprintOf(source)) throw IllegalStateException("私有副本与源不一致")
+        dst
+    }.onFailure {
+        com.example.zhengdao.rootfs.RunLog.log(
+            "AgentInstaller: $agentId 私有执行副本落盘失败（${it.message ?: it::class.java.simpleName}），" +
+                "退回官方 curl|bash"
+        )
+    }.getOrNull()
 
     /**
      * 组合命令：清上一轮残锁（坑 #12，E-059 扩面）→ copy 模式 → 安装 → 自动启动。
