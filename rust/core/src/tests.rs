@@ -251,3 +251,55 @@ fn 跳过成员_不落盘且计入skipped() {
     assert_eq!(report.archive_sha256, sha, "跳过成员不影响归档整体 SHA");
     fs::remove_dir_all(&dir).ok();
 }
+
+// ── 空归档兜底（BUG-1）：0 条目 = 错误，不是成功 ──────────────────────────
+
+#[test]
+fn 空tar_报错而不是当成装成功() {
+    let dir = std::env::temp_dir().join(format!("zext_empty_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    // 合法但**一条成员都没有**的 tar：1024 个 0 字节 = 两个结束块（USTAR 的空归档）。
+    // 这正是"能通过 tar 解析、但什么都没解出来"的形状 —— 以前 Rust 路径会 Ok(entries=0)。
+    let tar_path = dir.join("empty.tar");
+    fs::write(&tar_path, vec![0u8; 1024]).unwrap();
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(&fs::read(&tar_path).unwrap());
+    let tar_sha = hex::encode(h.finalize());
+
+    let out = dir.join("out");
+    let err = extract_pipeline(&tar_path, &out, Some(&tar_sha), &mut |_| {}).unwrap_err();
+    match err {
+        ExtractError::EmptyArchive { skipped } => assert_eq!(skipped, 0),
+        e => panic!("应为 EmptyArchive，实际 {e:?}"),
+    }
+    // 消息里必须带 Kotlin 侧认的那句话（EMPTY_ARCHIVE_MARK = "归档不含任何条目"）
+    let msg = ExtractError::EmptyArchive { skipped: 0 }.to_string();
+    assert!(
+        msg.contains("归档不含任何条目"),
+        "Kotlin 靠这句话分流，不能改: {msg}"
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn 成员全被跳过_同样报空归档() {
+    let dir = std::env::temp_dir().join(format!("zext_allskip_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let (arch, sha) = make_archive(&dir, "test_allskip", false);
+    let out = dir.join("out");
+    // make_archive 的 5 个成员全进 skip_names ⇒ 可落盘 0 条
+    let skip: Vec<String> = ["data/", "data/hello.txt", "data/big.bin", "data/link", "data/hardlink"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    let err = extract_pipeline_skip(&arch, &out, Some(&sha), &skip, &mut |_| {}).unwrap_err();
+    match err {
+        ExtractError::EmptyArchive { skipped } => {
+            assert_eq!(skipped, 5, "被跳过的成员数应如实报出")
+        }
+        e => panic!("应为 EmptyArchive，实际 {e:?}"),
+    }
+    fs::remove_dir_all(&dir).ok();
+}

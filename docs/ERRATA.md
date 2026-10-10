@@ -4667,3 +4667,52 @@ P3-6 的拒绝分支在设备上不可达（丹房没有"本地缓存包安装"�
 **回退**：`git revert <本提交>`。三条互相独立，也可分别回退：P3-2 去掉私有副本那几行（`effectiveCmd`
 改回 `bash ${Store.GUEST_SCRIPTS_DIR}/…`）、P3-5 把 `resolveExtractTarget` 换回原来的前缀判断、
 P3-6 把 `pickExpectedSha` 的 `rememberedSha` 参数与那处 fail-open 改回去。
+
+## E-083 · 2026-10-10 · rootfs 审计复核的两条真 BUG：Rust 解压不认「0 条目」、termux-proot 每次开会话重算 313,648 B 哈希（BUG-1 / BUG-2）
+
+**来源**：外部审计报告 `证道-rootfs审计与复核-2026-10-10.md`（workbuddy）。我把报告里每一条带 `文件:行号` 的断言都拉回代码核对了一遍：行数、asset 字节、引用行号绝大多数**属实**（详见 FEATURE-LEDGER 的核对表），其中标 🔴 的 BUG-1、BUG-2 在本条修掉；其余条目按「加固 / 优化」归类，进工作表（GitHub issue）而**不在本次动手**。
+
+**问题 1（BUG-1）：两条解压路径对「0 条目」的判定不一致，Rust 那条会把空包装成装成功。**
+- Java 路径有兜底：`RootfsInstaller.kt` 的 `extractArchive → extractTar` 里 `if (extracted == 0) throw InstallFailed("压缩包不含任何条目或格式不受支持")`。
+- Rust 优先路径只把条目数写进日志，**成功即 `return true`**，从不检查条目数；Rust 侧 `extract_pipeline_skip` 也照样 `Ok(ExtractReport { entries: 0, … })`。
+- 调用链中间没有任何条目数检查：`extractArchive` → `RootfsMarker.write(...)` → `swapLocked(...)` ⇒ 一份「能解析但落盘 0 条」的归档（空 tar；或只含元数据成员、其余全在 `skipNames` 里的增量补丁）会被标记成 `.zhengdao-rootfs-ok` 并换上树，用户拿到一个空 Debian 还被告知装好了。增量路径更隐蔽：补丁包 0 条目时 env 被标成新版、内容其实没动。
+- 触发前提也核实过：`RootfsDownloader.kt` 在 `expectedSha` 为空时只 `Log.w("未提供 SHA256，跳过完整性校验")`，不拦。
+
+**问题 2（BUG-2）：每次开会话都全量重算内置二进制的 SHA-256。**
+- `buildLaunchPlan`（每次 `SessionManager.start` 都跑）对 `pinned` 四项（proot 247,488 B + loader 18,136 B + libtalloc.so.2 33,592 B + libandroid-shmem.so 14,432 B = **313,648 B**）逐个 `sha256Of(dst)` 全量读，且没有任何缓存/记忆。手机上约几毫秒级，是白烧的电与启动延迟，不是漏洞。
+
+**改动表**
+
+| # | 文件 | 改动 |
+|---|---|---|
+| 1 | `rust/core/src/extract.rs` | `ExtractError` 新增 `EmptyArchive { skipped: u64 }`；Display 输出 `归档不含任何条目: 可落盘 0 条（跳过 N 条）`；`extract_pipeline_skip` 在二阶段硬链接补齐之后、`Ok(ExtractReport{…})` 之前加 `if entries == 0 { return Err(ExtractError::EmptyArchive { skipped }); }`（用 `entries` 而不是 `entries + skipped`，与 Java 侧计数器同口径）；模块头「已知边界」补一条 |
+| 2 | `rust/core/src/tests.rs` | 新增两例：`空tar_报错而不是当成装成功`（1,024 个 0 字节的 tar ⇒ `EmptyArchive { skipped: 0 }`，并断言消息含「归档不含任何条目」——Kotlin 靠这句分流）、`成员全被跳过_同样报空归档`（5 个成员全进 `skip_names` ⇒ `EmptyArchive { skipped: 5 }`） |
+| 3 | `rust/core/README.md` | 「已知边界」第 3 条原文自称「『0 条目也算成功』是从 Kotlin 版继承的语义…两条路径一致」——**这句是错的**（Java 会拒、Rust 会 Ok），划掉并注明「已于 2026-10-10 修（BUG-1 / E-083）」，写清后果 |
+| 4 | `app/src/main/java/com/example/zhengdao/rootfs/RootfsInstaller.kt` | 新增 `EMPTY_ARCHIVE_MARK = "归档不含任何条目"`（紧邻 `SHA_MISMATCH_MARK`）；失败分流改为 `err is InstallFailed → throw` → 命中 `EMPTY_ARCHIVE_MARK` 即 `throw InstallFailed(...)` → 原 `SHA_MISMATCH_MARK` 分支 → 其余才 `Log.w` + 回退 Java；Rust 分支内加 `if (report.first <= 0L) throw InstallFailed(...)` 作「新 Kotlin + 旧 .so」的保险；`extractArchive` KDoc 补 `@throws`；回退处补注释说明 `BadArchive` **必须**留在回退里 |
+| 5 | `app/src/main/java/com/example/zhengdao/terminal/PinnedAssets.kt`（新） | `internal object PinnedAssets`：`FILE_NAME = ".pinned-verified"`、`Stamp(size, mtime, sha)`、`parse` / `format` / `needsReverify` / `stampFor`。**不变量写进 KDoc：只有「哈希实测等于 expectedSha」那一刻才写戳，戳不是校验的替代品**；目录是 App 私有 `files/termux-proot/`（别的 App 写不进来） |
+| 6 | `app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` | `buildLaunchPlan` 的 `pinned` 循环接入戳：清掉清单里已消失的旧条目 → 戳一致则跳过（`skippedByStamp++`）→ 文件在但戳缺失/失效则重算，相符即补戳 → 缺失或不符才从 assets 重放、校验、`chmod`（proot/loader 0755、其余 0644）、记戳；结尾若戳有变则整文件重写；新增一行 RunLog 观测点 `termux-proot 版本固定校验: 跳过重算 N 项 / 实算 M 项` |
+| 7 | `app/src/test/java/com/example/zhengdao/terminal/PinnedAssetsTest.kt`（新） | 9 例：parse/format 往返、排序与结尾换行、坏行跳过、空/垃圾文本返回空表、无戳必重算、三者全对才跳过（sha 大小写不敏感）、**APK 升版换了钉住的 sha 必须重算**、size/mtime 变了必须重算、`stampFor` 规整为小写 |
+
+**为什么这样做（以及一处不采纳报告建议）**
+- 报告的 BUG-1 建议「把 `BadArchive` 列进不回退名单」——**不采纳**。Rust 只认 zstd/gzip，未知魔数一律返回 `BadArchive("无法识别的压缩格式")`，而 Java 的 `formatOf` 把未知魔数按**纯 tar** 处理——这正是离线手选包的形状（用户从 Download 里挑的 `debian-*.tar`）。把它排除会直接废掉纯 tar 离线安装。正解是新增专门的 `EmptyArchive`，**只对「0 条目」fail-closed**，其余错误照旧回退（回退不是安全缺口：Java 路径自己就会拒 0 条目）。
+- BUG-2 采用「戳」而不是「只算 proot 一项」或「彻底不算」：① 只算 proot 会让 loader/talloc/shmem 三件失去启动期校验；② 彻底不算等于放弃 E-0xx 以来「内置二进制必须逐次核对」的立场；③ 戳把「核对通过那一刻」固化下来，任何写入都会改 mtime/大小 ⇒ 立刻退回重算，APK 升版换了 sha 也会立刻重算，安全性没有下降（`files/` 是 App 私有目录，本机另一 App 写不进去）。
+- 判定规则集中放在 `PinnedAssets`（纯函数）而不是埋在 `ProotLauncher` 的 I/O 里，就是为了能单测——这也是报告里「优化-2/3」批评我们只看文件存在性的同一条教训。
+
+**单测与编译**
+- Kotlin：`$env:JAVA_HOME='D:\Program Files\Android\Android Studio\jbr'` + `.\gradlew.bat :app:testDebugUnitTest --console=plain` = **BUILD SUCCESSFUL in 20s**；XML 报告统计 **58 suites / 519 tests / 0 失败 / 0 错误 / 1 skipped**（基线 57 / 510 / 1；新增 1 个 suite 9 例）。仅有两条既有弃用告警（`RootfsInstaller.kt` 的 `nextTarEntry`）。
+- Rust：`cargo test -p zhengdao_core --release` = **25 passed; 0 failed**（含新增两例），exit 0。本机需先把 `C:\Users\guoli\w64devkit\w64devkit\bin` 挂到 PATH（见 E-027），否则 `cc-rs` 报 `failed to find tool "gcc.exe"`；CI 里这条跑在 ubuntu（`ci.yml` 的 cargo 步骤）。
+- Android：`:app:assembleDebug` = BUILD SUCCESSFUL，产物 `app/build/outputs/apk/debug/zhengdao-2.0.8-debug.apk` **40,604,137 B**（2026-10-10 16:11）。
+
+**真机取证（Honor PGT-AN10 / Android 16 / AD3J023824001723，装的是带本次改动的 debug 包）**
+
+| 轮次 | 前置 | RunLog（tag `zhengdao`） | 结果 |
+|---|---|---|---|
+| ① 首启（无戳） | `run-as … rm -f files/termux-proot/.pinned-verified` | `16:11:35 termux-proot 版本固定校验: 跳过重算 0 项 / 实算 4 项` | 生成 `files/termux-proot/.pinned-verified`（389 B、`-rw-------`、4 行 `名字\tsize\tmtime\tsha`：proot 247488 `1545b85b…` / loader 18136 `cbdef0e6…` / libtalloc.so.2 33592 `742b438c…` / libandroid-shmem.so 14432 `84475798…`），与 `ProotLauncher` 里钉的清单逐项一致 ✔ |
+| ② 再启动 | 戳在盘上，什么都没动 | `16:12:00 跳过重算 4 项 / 实算 0 项` | 313,648 B 的重算被省掉 ✔（戳不是"新写的"：`ls` 时间戳未变） |
+| ③ 篡改一份 | `echo x >> files/termux-proot/libtalloc.so.2` ⇒ 33,594 B、sha `429ee112…` | `16:12:23 跳过重算 3 项 / 实算 2 项` | 文件被从 assets 重放回 **33,592 B、sha `742b438c…`** ✔，戳里该行 mtime 同步更新；另三项没动。`实算 2 项` = 一次"发现不符"的比对 + 重放后一次校验（`ProotLauncher.kt` 里两个 `reverified++`） |
+
+**未取证部分（如实记录）**：BUG-1 的**设备端触发**本次没做——造一份「sha 合法或压根没 sha 的 0 条目归档」再走一次真装机会把用户环境搅乱，而这条逻辑的入口是纯函数级的（Rust 两例单测 + Kotlin 分流代码复核）。增量路径（`RootfsDelta` 的 skipNames）同理只有代码复核。**BUG-1 的修复因此按「单测 + 代码复核」记录，不当作真机验证。**
+
+**后果**：① 空包/全被跳过的包不再能装成"成功"，用户不会再拿到一个空 Debian 还被报"装好了"；② 正常开会话省掉 313,648 B 的 SHA-256（首启与文件被改写后仍会算）；③ 离线纯 tar 包照旧可装（`BadArchive` 仍在回退里）；④ 戳文件是纯优化：删掉、损坏、或格式升级读不动，都只是退回"每次都算"，不影响正确性；⑤ RunLog 多一行每次会话的校验摘要——用户报「终端开得慢」时可据此判断是不是又退回了全量重算。
+
+**回退**：`git revert <本提交>`。两件事互相独立，也可只退其一：BUG-1 去掉 `EmptyArchive` 分支与 Kotlin 那两处判断；BUG-2 去掉 `ProotLauncher` 里的戳判定（保留重算）与 `PinnedAssets` 即可。
