@@ -105,5 +105,7 @@ llvm-readelf -l app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so | grep LOAD
 
 - symlink 目标不校验是否越界（与 Kotlin 版同语义，行为一致）——v2.0 加固候选项
 - 进度回调经 `unsafe_clone` 的 JNIEnv，仅在回调周期内使用（jni crate 约定）
-- `extract_pipeline` 不校验最小条目数——「0 条目也算成功」是从 Kotlin 版继承的语义，
-  不是 Rust 引入的回归（`RootfsInstaller` 两条路径一致）
+- ~~`extract_pipeline` 不校验最小条目数~~ —— **已于 2026-10-10 修（BUG-1 / E-083）**：
+  可落盘 0 条目现在报 `EmptyArchive`，与 Kotlin 版 `extractArchiveJava` 的
+  `extracted == 0` 兜底真正一致。此前这里写的"两条路径一致"是**错的**——Java 会拒、
+  Rust 会 Ok，而 Ok 会被上层当成装成功（写 `.zhengdao-rootfs-ok` + 换树）。
