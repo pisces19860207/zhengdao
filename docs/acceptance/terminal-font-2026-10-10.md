@@ -247,3 +247,5 @@ Start-Sleep 20
 ---
 
 **相关文档**：`docs/acceptance/terminal-view-refactor-p1-2026-10-10.md`（P1 六刀 + 接口收窄验收）、`docs/acceptance/terminal-render-p0-2026-10-10.md`（P0 渲染层测量）、`PROVENANCE.md`「### 字体」、`THIRD-PARTY-LICENSES.md`「## 6. JetBrains Maple Mono」。
+
+**后续验收**：`docs/acceptance/terminal-color-2026-10-10.md`（Catppuccin Mocha 16 色基线，2026-10-10）。

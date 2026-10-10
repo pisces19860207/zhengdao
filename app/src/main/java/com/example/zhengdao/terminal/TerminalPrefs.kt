@@ -11,6 +11,35 @@ import com.termux.terminal.TerminalColors
 import com.termux.view.TerminalView
 
 /**
+ * Catppuccin Mocha 的 16 个 ANSI 色（0–7 normal，8–15 bright），ARGB。
+ *
+ * ⚠️ 看着像「复制粘贴错了」的地方**不是错**：Bright 的 red/green/yellow/blue/magenta/cyan
+ * 与 Normal **完全同色**，只有 black / white 两档分深浅。Catppuccin 不用「亮一档」区分明暗，
+ * 这是它的设计特点（上游调色板即如此）。
+ *
+ * 色值：Catppuccin 官方 Mocha 调色板，2026-10-10 由用户指定（见
+ * `docs/acceptance/terminal-color-2026-10-10.md`）。
+ */
+private val CATPPUCCIN_MOCHA_ANSI = intArrayOf(
+    0xFF45475A.toInt(), //  0 black           · surface1
+    0xFFF38BA8.toInt(), //  1 red             · red
+    0xFFA6E3A1.toInt(), //  2 green           · green
+    0xFFF9E2AF.toInt(), //  3 yellow          · yellow
+    0xFF89B4FA.toInt(), //  4 blue            · blue
+    0xFFF5C2E7.toInt(), //  5 magenta         · pink
+    0xFF94E2D5.toInt(), //  6 cyan            · teal
+    0xFFBAC2DE.toInt(), //  7 white           · subtext1
+    0xFF585B70.toInt(), //  8 bright black    · surface2
+    0xFFF38BA8.toInt(), //  9 bright red      · 同 normal red
+    0xFFA6E3A1.toInt(), // 10 bright green    · 同 normal green
+    0xFFF9E2AF.toInt(), // 11 bright yellow   · 同 normal yellow
+    0xFF89B4FA.toInt(), // 12 bright blue     · 同 normal blue
+    0xFFF5C2E7.toInt(), // 13 bright magenta  · 同 normal magenta
+    0xFF94E2D5.toInt(), // 14 bright cyan     · 同 normal cyan
+    0xFFA6ADC8.toInt(), // 15 bright white    · subtext0
+)
+
+/**
  * 终端外观偏好（字号 + 配色 + 字体），存 SharedPreferences，设置页可调，进终端时应用。
  *
  * ⚠️ 三个易错点（2026-10-05 / 2026-10-10 实测得出，改这里时务必留意）：
@@ -51,7 +80,9 @@ object TerminalPrefs {
 
     /** 默认字号（dp）。12dp 在 3.5 密度屏上约 50 列 × 29 行，接近桌面终端的信息密度。 */
     const val DEFAULT_SIZE_DP = 12
-    private const val DEFAULT_SCHEME = "classic"
+
+    /** 出厂默认配色（2026-10-10 起是 Catppuccin Mocha）。用户没选过、或存的 id 认不出来时用它。 */
+    private const val DEFAULT_SCHEME = "catppuccin_mocha"
 
     /**
      * 默认画布留白（dp）。0 表示文字贴边（旧观感）。
@@ -77,15 +108,33 @@ object TerminalPrefs {
         val fg: Int,
         /** 光标色（ARGB） */
         val cursor: Int,
+        /**
+         * 选区底色（ARGB）。0 = 本配色不指定，渲染层退回老做法（把选中格前景/背景互换）。
+         * 见 `TextStyle.COLOR_INDEX_SELECTION`。
+         */
+        val selection: Int = 0,
+        /**
+         * 16 个 ANSI 色（0–7 normal、8–15 bright）。null = 用引擎自带调色板
+         * （`TerminalColorScheme` 的出厂 xterm 色），也就是本次改动之前所有配色的行为。
+         */
+        val ansi: IntArray? = null,
     ) {
         CLASSIC("classic", "经典 · 黑底白字", 0xFF000000.toInt(), 0xFFD8D8D8.toInt(), 0xFF9E9E9E.toInt()),
         AMBER("amber", "琥珀 · 黑底橙字", 0xFF14100A.toInt(), 0xFFFFB000.toInt(), 0xFFFFD48A.toInt()),
         GREEN("green", "复古绿 · 黑底绿字", 0xFF001208.toInt(), 0xFF3DF53D.toInt(), 0xFF8CFF8C.toInt()),
         PAPER("paper", "浅色 · 白底黑字", 0xFFF6F6F6.toInt(), 0xFF1A1A1A.toInt(), 0xFF666666.toInt()),
+        CATPPUCCIN_MOCHA(
+            "catppuccin_mocha", "Catppuccin Mocha",
+            0xFF1E1E2E.toInt(), 0xFFCDD6F4.toInt(), 0xFFF5E0DC.toInt(),
+            0xFF585B70.toInt(), CATPPUCCIN_MOCHA_ANSI,
+        ),
         ;
 
         companion object {
-            fun of(id: String?): Scheme = values().firstOrNull { it.id == id } ?: CLASSIC
+            fun of(id: String?): Scheme = values().firstOrNull { it.id == id } ?: default()
+
+            /** 出厂默认配色。跟 [DEFAULT_SCHEME] 必须指向同一项（新装用户走这里）。 */
+            fun default(): Scheme = values().first { it.id == DEFAULT_SCHEME }
         }
     }
 
@@ -182,17 +231,37 @@ object TerminalPrefs {
 
     /**
      * 应用配色：写调色板 + 写视图背景（两处都要，见类注释第 2 点）。
-     * 调色板是全局静态单例，改完后必须让**已存在**的会话 `mColors.reset()` 才会重新拷贝。
+     *
+     * 调色板（`TerminalColors.COLOR_SCHEME.mDefaultColors`）是**全局静态单例**，所以这里每次都
+     * 先整张恢复出厂值再写本配色的值——16 个 ANSI 色只有 Catppuccin 会覆盖，不先归零的话，
+     * 用户从 Catppuccin 切回经典会把 Catppuccin 的 16 色留在经典上。
+     * 写完还必须让**已存在**的会话 `mColors.reset()`，否则老会话仍用旧颜色。
      */
     fun applyScheme(termView: TerminalView, scheme: Scheme) {
-        val palette = TerminalColors.COLOR_SCHEME.mDefaultColors
-        palette[TextStyle.COLOR_INDEX_BACKGROUND] = scheme.bg
-        palette[TextStyle.COLOR_INDEX_FOREGROUND] = scheme.fg
-        palette[TextStyle.COLOR_INDEX_CURSOR] = scheme.cursor
+        writePalette(scheme)
 
         SessionManager.session?.emulator?.mColors?.reset()
 
         termView.setBackgroundColor(scheme.bg)
         termView.invalidate()
+    }
+
+    /**
+     * 把配色的颜色写进（全局）调色板：先整张恢复出厂值，再写 16 个 ANSI 色与本配色的
+     * 背景/前景/光标/选区。
+     *
+     * 与 [applyScheme] 分开是为了能在 JVM 单测里直接断言调色板结果——写调色板是纯数据操作，
+     * 不需要 View/Context（见 `CatppuccinPaletteTest`）。
+     */
+    fun writePalette(scheme: Scheme) {
+        TerminalColors.COLOR_SCHEME.reset()
+        val palette = TerminalColors.COLOR_SCHEME.mDefaultColors
+        // ANSI 0–15：只有本配色显式给了 16 色才覆盖，否则保持出厂 xterm 色。
+        scheme.ansi?.copyInto(palette, 0)
+        palette[TextStyle.COLOR_INDEX_BACKGROUND] = scheme.bg
+        palette[TextStyle.COLOR_INDEX_FOREGROUND] = scheme.fg
+        palette[TextStyle.COLOR_INDEX_CURSOR] = scheme.cursor
+        // 0 = 未指定 ⇒ 渲染层用反色画选区（前面 4 个内置配色的老行为）。
+        palette[TextStyle.COLOR_INDEX_SELECTION] = scheme.selection
     }
 }

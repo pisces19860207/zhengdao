@@ -56,8 +56,9 @@ public final class TerminalColorScheme {
         0xff080808, 0xff121212, 0xff1c1c1c, 0xff262626, 0xff303030, 0xff3a3a3a, 0xff444444, 0xff4e4e4e, 0xff585858, 0xff626262, 0xff6c6c6c, 0xff767676,
         0xff808080, 0xff8a8a8a, 0xff949494, 0xff9e9e9e, 0xffa8a8a8, 0xffb2b2b2, 0xffbcbcbc, 0xffc6c6c6, 0xffd0d0d0, 0xffdadada, 0xffe4e4e4, 0xffeeeeee,
 
-        // COLOR_INDEX_DEFAULT_FOREGROUND, COLOR_INDEX_DEFAULT_BACKGROUND and COLOR_INDEX_DEFAULT_CURSOR:
-        0xffffffff, 0xff000000, 0xffffffff};
+        // COLOR_INDEX_DEFAULT_FOREGROUND, COLOR_INDEX_DEFAULT_BACKGROUND, COLOR_INDEX_DEFAULT_CURSOR
+        // and COLOR_INDEX_SELECTION (0 = 未指定 ⇒ 渲染层用反色画选区):
+        0xffffffff, 0xff000000, 0xffffffff, 0x00000000};
 
     public final int[] mDefaultColors = new int[TextStyle.NUM_INDEXED_COLORS];
 
@@ -65,7 +66,13 @@ public final class TerminalColorScheme {
         reset();
     }
 
-    private void reset() {
+    /**
+     * 把整张调色板恢复成这份配色表的出厂默认（证道 2026-10-10 从 private 改成 public）。
+     *
+     * <p>调用方是应用层的配色应用逻辑：调色板是全局静态单例，换配色时必须先整体归零再写，
+     * 否则上一个配色写过的索引（尤其是 16 个 ANSI 色）会残留到下一个配色上。
+     */
+    public void reset() {
         System.arraycopy(DEFAULT_COLORSCHEME, 0, mDefaultColors, 0, TextStyle.NUM_INDEXED_COLORS);
     }
 

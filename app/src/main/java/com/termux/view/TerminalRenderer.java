@@ -129,7 +129,7 @@ public final class TerminalRenderer {
                         }
                         drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun,
                             lastRunStartIndex, charsSinceLastRun, measuredWidthForRun,
-                            cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor || lastRunInsideSelection);
+                            cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor, lastRunInsideSelection);
                     }
                     measuredWidthForRun = 0.f;
                     lastRunStyle = style;
@@ -157,13 +157,13 @@ public final class TerminalRenderer {
                 invertCursorTextColor = true;
             }
             drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun, lastRunStartIndex, charsSinceLastRun,
-                measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor || lastRunInsideSelection);
+                measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor, lastRunInsideSelection);
         }
     }
 
     private void drawTextRun(Canvas canvas, char[] text, int[] palette, float y, int startColumn, int runWidthColumns,
                              int startCharIndex, int runWidthChars, float mes, int cursor, int cursorStyle,
-                             long textStyle, boolean reverseVideo) {
+                             long textStyle, boolean reverseVideo, boolean insideSelection) {
         int foreColor = TextStyle.decodeForeColor(textStyle);
         final int effect = TextStyle.decodeEffect(textStyle);
         int backColor = TextStyle.decodeBackColor(textStyle);
@@ -189,6 +189,20 @@ public final class TerminalRenderer {
             int tmp = foreColor;
             foreColor = backColor;
             backColor = tmp;
+        }
+
+        // 选区（证道新增，2026-10-10）：配色指定了选区底色就铺它，选中格的前景保持它自己的颜色；
+        // 没指定（0，前面 4 个内置配色就是这种）才退回老做法——把前景/背景互换。
+        // 顺序放在反色之后：选中格同时带显式反色属性时，以选区底色为准。
+        if (insideSelection) {
+            final int selectionColor = palette[TextStyle.COLOR_INDEX_SELECTION];
+            if (selectionColor != 0) {
+                backColor = selectionColor;
+            } else {
+                int tmp = foreColor;
+                foreColor = backColor;
+                backColor = tmp;
+            }
         }
 
         float left = startColumn * mFontWidth;
