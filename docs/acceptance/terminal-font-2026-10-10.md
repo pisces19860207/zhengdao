@@ -105,6 +105,10 @@ view.mRenderer = new TerminalRenderer(textSize,
 
 **由同一组数据推出列宽**：两组的 `|` 相差 `552 - 102 = 450 px`，对应 `21 - 3 = 18` 列 ⇒ **列宽 = 25.0 px**，即 **ASCII 步进 25 px、中文步进 50 px**（默认字号下）。左端墨迹差 6 px（50 vs 44）不是网格差，而是 `中` 与 `a` 的字形左边距不同——这正是必须以 `|` 收尾的原因。
 
+![2:1 判据同屏：中文×10 + |、20 ASCII + |、中|、ab|](assets/terminal-font-2026-10-10/03-pipe-anchored-21col.png)
+
+![右端放大（×5 / ×4 最近邻）：上两行的 | 与下两行的 | 各自逐像素同位](assets/terminal-font-2026-10-10/04-zoom-pipe-alignment.png)
+
 ### 4.3 你给的原命令那一轮
 
 `echo "中文中文 abcd"`（13 列）与 `echo "中a文b中c文d"`（12 列）也实跑了，并在其后各跟一条等宽 ASCII 标尺行（`abcdefghijklm` / `abcdefghijkl`）。该轮用阈值 100、x 上限 548 量，得到整行右端 364 vs 362（即 2 px）——**但那是量法假象，见 §五**；同一屏改用正确量法后，`|` 类判据为 0 px。
