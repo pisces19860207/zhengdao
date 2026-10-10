@@ -136,11 +136,13 @@ fun HomeScreen(
     var menuOpenFor by remember { mutableStateOf<String?>(null) }
 
 
-    // 展开状态卡（或修复完成）时跑一遍体检；IO 采集，与 sysInfo 同模式
+    // 展开状态卡（或修复完成）时跑一遍体检；IO 采集，与 sysInfo 同模式。
+    // #10：inspect 内部已逐项兜底（不抛异常），这里再兜一层——展开状态卡这个动作
+    // 宁可少显示几项，也不能变成闪退。
     LaunchedEffect(statusExpanded, healthEpoch) {
         if (statusExpanded) {
             healthChecks = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                EnvHealth.inspect(context)
+                runCatching { EnvHealth.inspect(context) }.getOrElse { emptyList() }
             }
         }
     }
@@ -400,26 +402,43 @@ fun HomeScreen(
                                                 c.fixId != null -> TextButton(onClick = {
                                                     val fid = c.fixId
                                                     Thread {
-                                                        EnvHealth.fix(context, fid)
-                                                        // 修复动作"跑过了"不等于"修好了"（例如
-                                                        // link-mode 写成功但 uv 仍裸奔），所以
-                                                        // 复检一次再决定要不要在「最近问题」里留一条。
-                                                        val again = EnvHealth.inspect(context)
-                                                            .firstOrNull { it.id == c.id }
-                                                        android.os.Handler(context.mainLooper).post {
-                                                            healthEpoch++
-                                                            if (again != null && !again.ok) {
-                                                                IssueCenter.report(
-                                                                    id = "health-fix-${c.id}",
-                                                                    title = "一键修复没生效：${c.label}",
-                                                                    detail = "「修复」已执行，复检仍是：${again.detail}。" +
-                                                                        "可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。",
-                                                                    actionLabel = "反馈",
-                                                                    actionId = IssueCenter.ACTION_FEEDBACK,
-                                                                )
-                                                            } else {
-                                                                IssueCenter.resolve("health-fix-${c.id}")
+                                                        // #10：线程体绝不外抛（未捕获异常 = 进程级闪退，
+                                                        // 审计报告 P0-1）。异常在这里就地转成一条「最近问题」。
+                                                        try {
+                                                            val res = EnvHealth.fixDetailed(context, fid)
+                                                            // 修复动作"跑过了"不等于"修好了"（例如
+                                                            // link-mode 写成功但 uv 仍裸奔），所以
+                                                            // 复检一次再决定要不要在「最近问题」里留一条。
+                                                            val again = EnvHealth.inspect(context)
+                                                                .firstOrNull { it.id == c.id }
+                                                            android.os.Handler(context.mainLooper).post {
+                                                                healthEpoch++
+                                                                if (again != null && !again.ok) {
+                                                                    IssueCenter.report(
+                                                                        id = "health-fix-${c.id}",
+                                                                        title = "一键修复没生效：${c.label}",
+                                                                        detail = (res.error?.let { "修复时出错：$it；" } ?: "") +
+                                                                            "「修复」已执行，复检仍是：${again.detail}。" +
+                                                                            "可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。",
+                                                                        actionLabel = "反馈",
+                                                                        actionId = IssueCenter.ACTION_FEEDBACK,
+                                                                    )
+                                                                } else {
+                                                                    IssueCenter.resolve("health-fix-${c.id}")
+                                                                }
                                                             }
+                                                        } catch (t: Throwable) {
+                                                            IssueCenter.report(
+                                                                id = "health-fix-${c.id}",
+                                                                title = "一键修复出错：${c.label}",
+                                                                detail = "修复线程抛出 ${t.javaClass.simpleName}" +
+                                                                    (t.message?.let { m -> "：$m" } ?: "") +
+                                                                    "。可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。",
+                                                                actionLabel = "反馈",
+                                                                actionId = IssueCenter.ACTION_FEEDBACK,
+                                                            )
+                                                            android.os.Handler(context.mainLooper)
+                                                                .post { healthEpoch++ }
                                                         }
                                                     }.start()
                                                 }) { Text("修复") }
