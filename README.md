@@ -6,6 +6,8 @@
 
 让普通用户在 Android 手机上拥有一套真实的 Linux 环境（Debian 13.7），并在其中一键运行 Claude Code、Hermes Agent、OpenCode 等官方 CLI Agent。
 
+> ⚠️ **门槛（先看这个）：需要 Android 16（API 36）或更高 ＋ arm64 手机 —— 不符合就别下了，装了也跑不起来。**（详见下方「系统要求」）
+
 > **Agent 支持状态（2026-10-06，荣耀 Magic 5 Pro 真机验收）**：**OpenCode 内置**（太极 Tab 直达对话界面，bionic 宿主版零 PRoot 开销，按需下载约 65MB）；**Hermes Agent 完整支持**（一键安装 → 启动 → TUI，`hermes update` 可用）；Claude Code 与 AGY CLI（Antigravity）在终端自由安装（走各自官方脚本）。
 
 > **界面结构**：底部三 Tab——**太极**（OpenCode 对话）/ **终端** / **丹房**（Agent 管理）；设置从右上角齿轮进入。
