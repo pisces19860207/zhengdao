@@ -547,6 +547,20 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > ③ 本轮单测：**56 suites / 491 tests / 0 失败 / 0 错误 / 1 skipped**（`AgentLedgerTest` 共 7 例，含新增的
 > 「关掉恢复入口的 Agent 仍然会出现在清单里（安装卡片不受影响）」）。
 
+> **2026-10-10 续（#16 三条安全收口：安装脚本私有副本 / 解包防穿越 / 缺校验值拒绝安装）**：
+> ① **P3-2**：公共区 `Download/证道/agents/scripts/` 里的安装脚本不再直接交给 `bash` —— 复用前先比
+> sha256（记录写在 App 私有 `files/agents/script-sha/`），不符 / 没记录 / 算不出都判**不可信**、删掉重下；
+> 真正执行的是复制进 `files/home/.zhengdao/scripts/`（guest 内 `/root/.zhengdao/scripts/`）的**私有副本**，
+> 本地化失败才退回官方 `curl | bash`。`terminal/HermesEnv.kt` 的环境修复脚本同类问题一并改到私有目录。
+> ② **P3-5**：`oc/OcManager.kt` 的 `extract()` 每个条目都过 `resolveExtractTarget()`（规范化落点必须严格
+> 在根之下），越界条目与软链/硬链条目跳过并计数留痕。
+> ③ **P3-6**：本地缓存包安装拿不到任何 sha256 时不再"跳过校验照装"，改为**拒绝安装**并给可读原因；
+> `RootfsCache.pickExpectedSha` 新增最低优先级来源「上次装过的包」（本机当初装的那份也能当基准）。
+> 三条详见 **E-082**（含真机受控实验：指纹与记录不符的公共区脚本**从未被执行**）。**P3-3（备份范围）本次未做。**
+> ④ 本轮单测：**57 suites / 510 tests / 0 失败 / 0 错误**（新增 `oc/OcExtractPathTest` 8 例、
+> `AgentInstallPrepTest` +7、`RootfsSidecarShaTest` +3、`StoreTest` +1）；`:app:assembleDebugAndroidTest`
+> 与 `:app:assembleRelease`（含 R8 冒烟）本地均 BUILD SUCCESSFUL。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -567,6 +581,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
 | 崩溃入口兜底（体检表逐项 / 前台服务 / 修复线程）+ 失败进「最近问题」 | ✅ 在用（#10 第一批，见 E-077；P0-3 未做真机注入） | 本次 | `ui/EnvHealth.kt`、`ui/HomeScreen.kt`、`terminal/SessionService.kt`、`terminal/SessionManager.kt` |
 | 环境安装/替换的重入锁 + 原子替换（备份 → 就位 → 删备份） | ✅ 在用（#11 第二批，见 E-078；并发拒绝由 JVM 单测覆盖，真机验证了进行中门控与降级复原） | 本次 | `rootfs/RootfsInstaller.kt`、`rootfs/RootfsDelta.kt`、`ui/InstallFlow.kt`、`ui/SettingsScreen.kt`、`TerminalActivity.kt` |
+| 信任边界收口（#16 第七批：P3-2 安装脚本执行私有副本 / P3-5 解包防路径穿越 / P3-6 缺校验值拒绝安装） | ✅ 在用（见 E-082；P3-3 备份范围未做；P3-2 真机受控实验过，P3-5/P3-6 由单测 + 代码复核覆盖） | `37bc860` | `ui/AgentInstaller.kt`、`ui/AgentInstallPrep.kt`、`terminal/Store.kt`、`terminal/HermesEnv.kt`、`res/raw/hermes_env_repair.sh`、`oc/OcManager.kt`、`rootfs/RootfsCache.kt`、`TerminalActivity.kt` |
 | 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮，另在 guest 里有 `/usr/local/bin/zzclean`（App 启动时按内容+执行位写入）；一档命令含 pip 缓存） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt`、`terminal/ProotLauncher.kt`（写入 `/usr/local/bin/zzclean`） |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
 | Agent 账本 + 主页「恢复全部」 | ✅ 在用（**AGY（E-040）、Hermes（E-081）都不进恢复候选** ⇒ 「恢复全部」的候选只剩 Claude Code；判据在 `AgentInfo.restorable`，**只关恢复入口**——安装卡片、探测、卸载、账本都不受影响） | 本次 | `ui/AgentLedger.kt`（`pickRestoreCandidates`）、`ui/AgentInstaller.kt`（`prepareRestoreAll`）、`ui/HomeScreen.kt` |
