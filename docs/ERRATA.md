@@ -4539,6 +4539,14 @@ E-056（uv 的 wheel 缓存被挂到共享存储上，而 FUSE 建不了软链�
 2. 改完「恢复全部」的候选**只剩 Claude Code**（用户以为 AGY 还在 —— AGY 早在 E-040 就被关掉了，本次一并说明）。
 3. 这与"Hermes 装不装得上"是两件事：真机上 hermes 仍未装回（`files/home/.hermes` 无 `hermes-agent`，丹房卡片可随时重装）。
 
-**未验部分（诚实标注）**：体感验收＝主页横幅是否消失、丹房卡片是否还在，见下方真机段。
+**真机复验（2026-10-10，Honor PGT-AN10 / Android 16 / AD3J023824001723）**：
+
+| | 包 | 结果 |
+|---|---|---|
+| BEFORE | 官方滚动版 `latest`（`f5dd2ee` 构建的 `zhengdao-2.0.8-release.apk`，4,538,393 B） | 丹房顶部横幅「**恢复上次装过的 1 个 Agent**」＋按钮「恢复全部（1 个）」，正文点名 Hermes Agent |
+| AFTER | 本地 debug（`800ef17`，40,591,713 B，`:app:assembleDebug` BUILD SUCCESSFUL in 6s） | 横幅**整体消失**（候选为空）；三张卡片照旧：Claude Code「安装」、Hermes Agent「重试安装」＋「上次安装失败（退出码 1）…点「安装」可重试」、AGY CLI「安装」 |
+
+复验后手机已装回官方滚动包（sha256 `DC16ABC91C389AD7255FBB581A457B85A3E91889C99CED70B67CFC32F5EB46F9`，与 CI 产物一致）——
+它不含本改动，故横幅照旧出现：**E-081 要等下一次发版才到用户手上**。
 
 **回退**：`git revert <本提交>`（一个布尔值 + 注释 + 用例，零风险）。
