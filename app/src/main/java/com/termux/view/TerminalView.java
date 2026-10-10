@@ -1390,7 +1390,53 @@ public final class TerminalView extends View {
             if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
                 mClient.logVerbose(LOG_TAG, "Stopping cursor blinker");
             mTerminalCursorBlinkerHandler.removeCallbacks(mTerminalCursorBlinkerRunnable);
+            // 证道 P1-a（2026-10-10）：断开 Handler -> Runnable -> TerminalView -> Activity 的引用链。
+            mTerminalCursorBlinkerRunnable = null;
         }
+    }
+
+    /**
+     * 证道 P1-a（2026-10-10）：光标闪烁只重绘光标所在的那一格。
+     *
+     * <p>背景：上游的 {@link TerminalCursorBlinkerRunnable} 每 {@code mBlinkRate} 毫秒调用一次
+     * {@code invalidate()}（整屏）。真机实测（docs/证道-P0渲染层测量-2026-10-10.md）整屏重绘一帧的
+     * 记录开销 = 2.3 ms（framestats 的 draw 相位 p50），直接在 {@code onDraw} 里计时则是 2.5–19.8 ms
+     * （41 行 CJK，中位 ≈5 ms）；屏幕静止时每秒仍要白付约 1.7 帧（600 ms 闪烁率），而变化的只有光标那一格。
+     * 见 ERRATA E-086 / 审计 🟡-5。
+     *
+     * <p>无法可靠定位光标时回退整屏 {@code invalidate()}：未启用光标 / 回滚了历史（{@code mTopRow != 0}）/
+     * 行列越界 / 尺寸未就绪。宁可多画一屏，也不能留下残影。
+     */
+    private void invalidateCursorCell() {
+        if (mEmulator == null || mRenderer == null) {
+            invalidate();
+            return;
+        }
+        // 应用主动隐藏了光标（如 tmux 里跑全屏程序）时，这一帧根本不需要重绘。
+        if (!mEmulator.isCursorEnabled()) return;
+        // 回滚历史时光标不在可见区，且此时内容随时可能整体滚动，直接整屏重绘。
+        if (mTopRow != 0) {
+            invalidate();
+            return;
+        }
+        final int screenRow = mEmulator.getCursorRow() - mTopRow;
+        final int cursorCol = mEmulator.getCursorCol();
+        if (screenRow < 0 || screenRow >= mEmulator.mRows || cursorCol < 0 || cursorCol >= mEmulator.mColumns) {
+            invalidate();
+            return;
+        }
+        // 与 TerminalRenderer.render() 同一套度量：heightOffset 从 mFontLineSpacingAndAscent 起，
+        // 每行先 += mFontLineSpacing，再以该 baseline 绘制此行。
+        final int lineSpacing = mRenderer.mFontLineSpacing;
+        final float fontWidth = mRenderer.mFontWidth;
+        final float baseline = mRenderer.mFontLineSpacingAndAscent + (screenRow + 1) * (float) lineSpacing;
+        // 横向取到 (cursorCol .. cursorCol + 2) 两格：覆盖宽字符（CJK）与 BLOCK 反色块；
+        // 纵向一整行上下各留 2 px，避免抗锯齿边缘残留。
+        final int left = (int) Math.floor(cursorCol * fontWidth) - 1;
+        final int right = (int) Math.ceil((cursorCol + 2) * fontWidth) + 1;
+        final int top = (int) Math.floor(baseline - lineSpacing) - 2;
+        final int bottom = (int) Math.ceil(baseline) + 2;
+        invalidate(left, top, right, bottom);
     }
 
     private class TerminalCursorBlinkerRunnable implements Runnable {
@@ -1420,7 +1466,8 @@ public final class TerminalView extends View {
                     mCursorVisible = !mCursorVisible;
                     //mClient.logVerbose(LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
                     mEmulator.setCursorBlinkState(mCursorVisible);
-                    invalidate();
+                    // 证道 P1-a（2026-10-10）：只重绘光标所在的那一格，不再整屏 invalidate()。
+                    invalidateCursorCell();
                 }
             } finally {
                 // Recall the Runnable after mBlinkRate milliseconds to toggle the blink state
@@ -1526,11 +1573,21 @@ public final class TerminalView extends View {
         if (mTextSelectionCursorController != null) {
             getViewTreeObserver().addOnTouchModeChangeListener(mTextSelectionCursorController);
         }
+
+        // 证道 P1-a（2026-10-10）：与 onDetachedFromWindow() 里的 stopTerminalCursorBlinker() 配对。
+        // 否则"离开终端页再回来"（View 被 detach 又 attach、Activity 没重建）时光标会停在上一次的
+        // 闪烁状态不动。setTerminalCursorBlinkerState() 内部先 stop 再 start，重复调用是幂等的。
+        if (mEmulator != null) setTerminalCursorBlinkerState(true, false);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+
+        // 证道 P1-a（2026-10-10）：上游漏了这一句（审计 🟡-5）。不停止的话，主线程 Handler 会一直
+        // 持有 TerminalCursorBlinkerRunnable（非静态内部类）-> TerminalView -> Activity 的引用链，
+        // 每进出一次终端页就留一条 600 ms 的永久空转循环（每次还白做一次整屏合成）。
+        stopTerminalCursorBlinker();
 
         if (mTextSelectionCursorController != null) {
             // Might solve the following exception
