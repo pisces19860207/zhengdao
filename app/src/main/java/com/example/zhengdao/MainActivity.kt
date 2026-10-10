@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -530,6 +532,15 @@ fun HomeTabs(
     //   NavigationBarItem 已自带 onClick 包了 clickable，叠加 pointerInput 会与 clickable
     //   抢事件，得自己处理 tap/doubleTap 互斥。这里走"时间窗口判定"逻辑等价（300ms
     //   是 Material Design 文档里 Tap-Double 区分的推荐值），代码少一半。
+    // 2026-10-10 改：iOS Tab 标签 = 10sp Medium（iOS HIG 文档值）。
+    // 不走 MaterialTheme.typography.labelSmall：PluginsScreen.kt:133 把它当 13sp
+    // 副标题用，全局改会破坏既有视觉。本次只在 HomeTabs 局部用。
+    val tabLabelStyle = TextStyle(
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 0.12.sp,
+    )
+
     val lastTabClickAt = androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     val now = { android.os.SystemClock.uptimeMillis() }
 
@@ -569,6 +580,7 @@ fun HomeTabs(
                     color = MaterialTheme.colorScheme.outlineVariant,
                 )
                 NavigationBar(
+                    modifier = Modifier.height(56.dp),
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
                 ) {
@@ -576,7 +588,7 @@ fun HomeTabs(
                     val tabColors = NavigationBarItemDefaults.colors(
                         selectedIconColor = MaterialTheme.colorScheme.primary,
                         selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        indicatorColor = Color.Transparent,
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -587,7 +599,7 @@ fun HomeTabs(
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
                         onClick = { onTabClicked(0) {} },
                         icon = { TaijiIcon(tab == 0) },
-                        label = { Text("太极") },
+                        label = { Text("太极", style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -609,7 +621,7 @@ fun HomeTabs(
                         // 却找不到叫「洞天」的地方。「终端」是用户已有的通用认知，无需学。
                         // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
                         // 见 :624 的设计说明），此处只改用户可见文案。
-                        label = { Text("终端") },
+                        label = { Text("终端", style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -617,7 +629,7 @@ fun HomeTabs(
                         // K1：双击 = 滚到丹房 Agent 列表顶。
                         onClick = { onTabClicked(2) {} },
                         icon = { DingIcon(tab == 2) },
-                        label = { Text("丹房") },
+                        label = { Text("丹房", style = tabLabelStyle) },
                         colors = tabColors,
                     )
                 }
