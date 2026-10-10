@@ -13,8 +13,30 @@ final class TerminalSizeResolver {
 
     private final TerminalView mView;
 
+    /**
+     * 行高倍率（1.0 = 字体原生行高）。**由本类持有**：每次重建 {@link TerminalRenderer} 都带上它，
+     * 所以「换字号 / 换字体 / 换行高」三条路径都会得到同一个值，不会互相覆盖掉。
+     *
+     * <p>{@link #updateSize()} 里的像素→行列换算**一个字没改**：行高变大是通过 renderer 的
+     * {@code mFontLineSpacing} 传进去的，除出来的行数自然变少（同样的屏幕高度，行更高 ⇒ 行更少）。</p>
+     */
+    private float mLineHeightMultiplier = 1.0f;
+
     TerminalSizeResolver(TerminalView view) {
         mView = view;
+    }
+
+    /** @see TerminalView#setLineHeightMultiplier(float) */
+    void setLineHeightMultiplier(float multiplier) {
+        final float normalized = multiplier > 0f ? multiplier : 1.0f;
+        if (normalized == mLineHeightMultiplier) return;
+        mLineHeightMultiplier = normalized;
+        final TerminalView view = mView;
+        // 渲染器还没建出来（尚未 setTextSize）时只记值：首次建渲染器时自然会带上。
+        if (view.mRenderer == null) return;
+        view.mRenderer = new TerminalRenderer(view.mRenderer.mTextSize, view.mRenderer.mTypeface, mLineHeightMultiplier);
+        updateSize();
+        view.invalidate();
     }
 
     /** @see TerminalView#onSizeChanged(int, int, int, int) */
@@ -61,14 +83,14 @@ final class TerminalSizeResolver {
     /** @see TerminalView#setTextSize(int) */
     void setTextSize(int textSize) {
         final TerminalView view = mView;
-        view.mRenderer = new TerminalRenderer(textSize, view.mRenderer == null ? Typeface.MONOSPACE : view.mRenderer.mTypeface);
+        view.mRenderer = new TerminalRenderer(textSize, view.mRenderer == null ? Typeface.MONOSPACE : view.mRenderer.mTypeface, mLineHeightMultiplier);
         updateSize();
     }
 
     /** @see TerminalView#setTypeface(Typeface) */
     void setTypeface(Typeface newTypeface) {
         final TerminalView view = mView;
-        view.mRenderer = new TerminalRenderer(view.mRenderer.mTextSize, newTypeface);
+        view.mRenderer = new TerminalRenderer(view.mRenderer.mTextSize, newTypeface, mLineHeightMultiplier);
         updateSize();
         view.invalidate();
     }
