@@ -597,7 +597,7 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "资料只存在你自己的手机上，不会上传到任何服务器。",
+                text = "资料存在你自己的手机上。证道本身不会把它发出去（终端里的 AI 自己联网时另说）。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -616,13 +616,14 @@ fun SettingsScreen(
                 TextButton(onClick = { kbHelpOpen = true }) { Text("查看说明") }
                 TextButton(onClick = {
                     com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
-                    // P2：顺手请太极的免费模型给长文档补摘要。
-                    // ⚠️ 只挂在"用户亲手点了按钮"这条路径上 —— 不做开机自动跑
-                    //    （P2 方案第八节：等真机验证通过、确认免费模型不限流再考虑自动化）。
-                    // 全程后台、失败只落日志；太极没开 / 没模型时它会自己安静跳过。
-                    com.example.zhengdao.terminal.KnowledgeBaseSummarizerRunner.requestSummaries(ctx) { n ->
-                        if (n > 0) toastOnMain("整理完成，已为 $n 个文件补上摘要")
-                    }
+                    // ── FIX-A（2026-10-10，E-080）：此处原先顺带调
+                    //    KnowledgeBaseSummarizerRunner.requestSummaries() —— 由太极的云端免费模型
+                    //    把每个文件开头（≤1200 字，.docx 先抽正文）读走、写进清单的「文件摘要」节。
+                    //    ⚠️ 那一步会把文件内容发到设备之外，与上方「证道本身不会把它发出去」直接矛盾；
+                    //    且用户 2026-10-10 已拍板：不再让太极承担该职责（它一更新就变、非自有组件）。
+                    //    ⇒ 摘除该调用。「重新整理」从此只做纯本地的「重建清单」这一件事。
+                    //    Runner 源码保留不删（将来若做"本地摘要"可在此重新接线）；
+                    //    摘要改由终端里带工具的 agent 自行生成（见 docs/知识库-收工条件.md）。
                     toastOnMain("正在整理…")
                     storageTick++
                 }) { Text("重新整理") }

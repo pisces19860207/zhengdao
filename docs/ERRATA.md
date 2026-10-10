@@ -4472,3 +4472,40 @@ I/DIRSIZE: rootfs 对拍：Rust=805312468(70ms) Java=805312468(177ms)
 **跑法（照抄，别踩 E-072）**：`connectedDebugAndroidTest` 会先卸载 App、清空整个运行环境，
 必须用 `adb install -r <debug.apk>` + `adb install -r <debug-androidTest.apk>` +
 `adb shell am instrument -w -e class com.example.zhengdao.rust.DirSizeParityTest com.example.zhengdao.test/androidx.test.runner.AndroidJUnitRunner`。
+
+---
+
+## E-080 · 2026-10-10 · 资料库摘掉"借太极云端模型做摘要"这一步（FIX-A），并把两处隐私文案改准（FIX-B）
+
+**问题（"说了不做"）**：设置页与 `资料库/说明.md` 都写着「文件**全部存在你自己的手机上**，不会上传到任何服务器」，
+但「重新整理」按钮**顺手**会调 `KnowledgeBaseSummarizerRunner.requestSummaries()`，把**每个文件的开头
+（≤1200 字，`.docx` 先抽正文）**交给**太极里配的云端免费模型**写摘要，再回写进 `整理/00-目录.md` 的
+`## 文件摘要` 节（P2 时期的设计，`KnowledgeBaseSummarizerRunner` 注释自认）。⇒ **文案与行为直接冲突。**
+
+**为什么现在摘掉**：用户 2026-10-10 拍板 —— **资料库不再借太极处理**。两条理由：
+① 那一步会把**文件内容发到设备之外**（用户最在意隐私；验收样例甚至是一份真实合同）；
+② 太极（`opencode` bionic 打包）**不是自有组件，上游一更新就变**。
+
+**改动（2 文件，+15/−13）**：
+
+| 文件 | 改动 |
+|---|---|
+| `ui/SettingsScreen.kt` | **① FIX-A**：「重新整理」按钮里**摘除** `requestSummaries(...)` 调用及其 toast，只保留纯本地的 `requestRebuild`；原位留注释说明**为何摘、何时可重新接线**。**② FIX-B**：隐私文案 → 「资料存在你自己的手机上。**证道本身不会把它发出去**（终端里的 AI 自己联网时另说）。」 |
+| `terminal/KnowledgeBase.kt` | **FIX-B 补漏**：生成的 `说明.md` 里同一句「不会上传到任何服务器」同步改准；并把两处**依赖摘要**的说明改掉：`整理/` 不再叫"目录和摘要"、`.docx` 不再宣称"能直接读懂"（改为"AI 可能需要自己先解一下"）、给 agent 的 `AGENTS.md` 里 `.docx` 格式提示改为"**App 不再预先抽取正文**，需要全文时自己解压"。 |
+
+**后果（连带、需知）**：
+
+1. **App 侧不再产出摘要** ⇒ `State.ORGANIZED`（判据＝清单里有 `## 文件摘要` 节，`KnowledgeBase.kt:118`）**对新安装不再可达**；
+   顺带消掉两条次生毛病：**"只做前 40 个文件"**（`MAX_FILES_PER_RUN=40`）与**"40/100 却显示含摘要"**。
+   （老用户的清单里若已有该节，会由 `carryOverSummary` 原样保留，状态与文案仍自洽 —— 只是**不会再新增**。）
+2. **`.docx` 的正文抽取（P3a）一并停用** —— 它与摘要在同一条流水线上（抽出正文 → 发给模型）。没有摘要，抽取就没有去处。
+   ⇒ `原始/` 里的 `.docx` 改由 agent 自己解压读取。**这条已在 `说明.md` 与 agent 的 `AGENTS.md` 里写明。**
+3. **`KnowledgeBaseSummarizerRunner` / `KnowledgeBaseSummarizer` 源码保留不删**（不接线），将来若做**本地**摘要可原位复用。
+
+**未验部分（诚实标注）**：本改动**未跑编译、未真机验证** —— 提交时共享 `~/.gradle` 上可能另有构建在进行，按既有纪律不并发抢锁。
+改动性质是**删除一处调用 + 纯文案**，编译风险低；**但请合并方在本地过一遍编译**再进 main。
+
+**回退**：`git revert <本提交>`（零风险，纯加法/删调用的反向）。摘要能力本身未被删除，只是不再挂按钮。
+
+**真正的收尾在别处**：资料库要接的下一步不是"App 自己再读一遍文件"，而是 **FIX-F —— App 在会话发起时做一次本地检索、
+把命中片段随输入送进终端**（让 agent 不必"自觉"去查）。见 `docs/知识库-收工条件.md` 与仓库外体检报告。
