@@ -644,6 +644,14 @@ fun HomeTabs(
                 //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
                 //    真坏了就修，不藏一条会腐烂的备用路。
                 0 -> com.example.zhengdao.ui.taiji.TaijiScreen(
+                    // 2026-10-10 UIUX 审计 B1 修：此前**没传 onExit**，它默认是空实现
+                    // ⇒ 两处"点了没反应"：① 没装 OpenCode 时引导页的「返回」按钮；
+                    // ② 抽屉里的「结束本次会话并退出太极」（会话被关掉了，人却还站在太极页，
+                    //    界面上既没了聊天区也没了任何提示，像是卡住）。
+                    // 落点选**丹房**（tab=2）：太极的实例已经关了，留在原地没有意义；
+                    // 丹房是另一个有真实内容的 Tab，用户能继续做事。
+                    // （不改 TaijiScreen 的默认值为妙——那会让"漏传"继续沉默。）
+                    onExit = { tab = 2 },
                     listState = taijiListState,
                     followState = taijiFollow,
                     positionedSession = taijiPositionedSession,

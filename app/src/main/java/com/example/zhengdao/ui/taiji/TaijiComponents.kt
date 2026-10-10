@@ -589,6 +589,11 @@ fun MessageBubble(msg: OcMessage, onLongPress: () -> Unit = {}) {
                         onLongClick = onLongPress,
                         onLongClickLabel = "复制这条消息",
                         onClick = {},
+                        // 2026-10-10 UIUX 审计 B6 修：单击气泡**没有动作**却带涟漪
+                        // ⇒ 用户看到"按下去有反应、结果什么也没发生"，是最典型的手感欺骗。
+                        // 与下方助手气泡一致：关掉 indication，只保留长按识别。
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
                     ),
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1161,9 +1166,15 @@ fun PermissionSheet(
     permission: OcPermission,
     onRespond: (allow: Boolean, remember: Boolean) -> Unit,
 ) {
-    var remember by remember { mutableStateOf(false) }
+    // 2026-10-10 UIUX 审计 B4 修：勾选状态**必须以 permission 为 key**。
+    // 原写法 `remember { mutableStateOf(false) }` 不带 key，而本抽屉常驻组合（permission
+    // 非 null 就挂载）⇒ 连续来第二个授权请求时，「记住这个选择」沿用上一次的勾选值。
+    // 后果偏危险：用户可能本来只想记住"允许 ls"，结果把"允许 rm -rf"也记住了。
+    var remember by remember(permission) { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = { /* 不允许点外面关掉——必须显式选择 */ }) {
-        Column(Modifier.fillMaxWidth().padding(20.dp)) {
+        // 2026-10-10 UIUX 审计 B5b：补 navigationBarsPadding——手势导航下「允许 / 拒绝」
+        // 会被导航条压住一截；这个抽屉还不能被 dismiss，用户只能选一个，被压住就没法选。
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) {
             Text("工具请求授权", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(12.dp))
             // 工具名（action）：bash / edit / write …
@@ -1717,9 +1728,16 @@ private fun DrawerActionRow(label: String, value: String, onClick: () -> Unit) {
 @Composable
 fun PluginsSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
+        // 2026-10-10 UIUX 审计 B5 修：补 `imePadding()` + `navigationBarsPadding()`。
+        // ① 本面板里的 PluginsScreen 含「添加插件」输入框（npm 包名），没有 imePadding 时
+        //    键盘弹出会把输入框整个盖住，用户看不见自己输的是什么——而"输对了没"全靠这一行。
+        // ② 手势导航下底部「完成」会被导航条压住一截。
+        // 两处都与同文件 MessageActionsSheet 对齐（它本来就有），此前三处抽屉不一致。
         Column(
             modifier = Modifier
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding(),
         ) {
             Row(
                 modifier = Modifier

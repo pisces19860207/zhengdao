@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -49,6 +50,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.core.IssueCenter
+
+/**
+ * 卡片右侧操作按钮的**最小**宽度（2026-10-10 UIUX 审计 B2 修）。
+ *
+ * 原来写死 `Modifier.width(84.dp)`：M3 Button 横向内边距是 24dp×2，84dp 只剩 36dp 放字，
+ * 而「重试安装 / 即将支持 / 先装环境」是 4 个汉字（labelLarge 14sp ≈ 56dp）⇒ 装不下就折行。
+ * 真机截图 `build/home-cards.png` 里 Hermes 卡片就是「安装⏎中」两行。
+ *
+ * 改成 `widthIn(min = 108.dp)`：108 − 48 = 60dp 文字区，4 个字（56dp）刚好放得下还有 4dp 余量，
+ * 六个按钮在默认字号下**宽度一致**（都取 108）；系统字号调大时按内容长，仍不折行。
+ * 若将来按钮文案超过 4 个字，改这一个常量即可。
+ */
+private const val BUTTON_MIN_WIDTH_DP = 108
 
 /**
  * 首页：顶部可折叠系统状态卡 + Agent 卡片列表；底部 Tab 的「终端」页由
@@ -771,12 +785,12 @@ fun HomeScreen(
                             //    该落到下面的「先装环境」，别给一个点了只会报错的按钮。
                             failedInstall && envReady -> OutlinedButton(
                                 onClick = startInstall,
-                                modifier = Modifier.width(84.dp),
+                                modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("重试安装") }
                             agent.installed -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd, agent.id) },
-                                modifier = Modifier.width(84.dp),
+                                modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("启动") }
                             // ⚠️ 这里**不能用 enabled=false**（2026-10-07 真机血案）：
@@ -791,25 +805,25 @@ fun HomeScreen(
                             // 会话路由会判成"只是打开终端"，绝不会杀掉正在跑的安装。
                             installing -> OutlinedButton(
                                 onClick = { onOpenTerminal(null, agent.id) },
-                                modifier = Modifier.width(84.dp),
+                                modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("安装中") }
                             agent.installCmd != null && envReady -> OutlinedButton(
                                 onClick = startInstall,
-                                modifier = Modifier.width(84.dp),
+                                modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("安装") }
                             agent.installCmd == null -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
-                                modifier = Modifier.width(84.dp),
+                                modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("即将支持") }
                             // 环境未装：Agent 无法安装，按钮禁用（上方横幅已给一键安装路径）
                             else -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
-                                modifier = Modifier.width(84.dp),
+                                modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text("先装环境") }
                         }
