@@ -176,9 +176,12 @@ fun SettingsScreen(
     }
 
     var checking by remember { mutableStateOf(false) }
-    var rootfsMb by remember { mutableStateOf(0L) }
-    var homeMb by remember { mutableStateOf(0L) }
-    var cacheMb by remember { mutableStateOf(0L) }
+    // 2026-10-10 UIUX 审计 P1-5 修：原 0L 会让用户**先看到三个 0 MB** 再被真实数字覆盖——
+    // 既像"App 没用上空间"也像"统计坏了"。用 -1 表示"还没统计完"，显示处走"统计中…"。
+    // 真正数字写回时（rootfsMb = sizes.first 那行）会自然变回正常数字。
+    var rootfsMb by remember { mutableStateOf(-1L) }
+    var homeMb by remember { mutableStateOf(-1L) }
+    var cacheMb by remember { mutableStateOf(-1L) }
     var wsPickerOpen by remember { mutableStateOf(false) }
     // 资料库（2026-10-09）：状态由 KnowledgeBase 提供；开关默认开
     var kbStatus by remember { mutableStateOf<com.example.zhengdao.terminal.KnowledgeBase.Status?>(null) }
@@ -276,9 +279,11 @@ fun SettingsScreen(
 
         // ── 存储占用 ──
         SectionCard("存储占用") {
-            InfoRow("rootfs（系统层）", "$rootfsMb MB")
-            InfoRow("home（登录态与配置）", "$homeMb MB")
-            InfoRow("cache（下载缓存）", "$cacheMb MB")
+            // 2026-10-10 UIUX 审计 P1-5：未统计完前显示"统计中…"，避免一进设置页
+            // 看到三个 0 MB 误以为 App 占空或统计坏了。
+            InfoRow("rootfs（系统层）", if (rootfsMb < 0) "统计中…" else "$rootfsMb MB")
+            InfoRow("home（登录态与配置）", if (homeMb < 0) "统计中…" else "$homeMb MB")
+            InfoRow("cache（下载缓存）", if (cacheMb < 0) "统计中…" else "$cacheMb MB")
 
             // Issue #8-D：把 A（旧依赖代）/ B（hermes 可选工具）/ C（公共区安装包）的体积摊开，
             // 数字来源是 StorageAudit（与自动清理、体检面板同一套口径，避免 E-073 那种两套账）。

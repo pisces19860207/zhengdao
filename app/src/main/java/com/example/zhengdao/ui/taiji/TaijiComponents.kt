@@ -177,7 +177,14 @@ fun SessionBar(
                 overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ConnectionLabel(connection, attempt)
+                // 2026-10-10 UIUX 审计 P0-1：给 ConnectionLabel 一个 weight(1f, fill = false)，
+                // 让 ModelChip 先量、ConnectionLabel 吃剩余 ⇒ 副行整体宽度稳定，
+                // 重连/连接中文案超长时只会被省略号裁掉，不会把胶囊挤变形成椭圆。
+                ConnectionLabel(
+                    connection,
+                    attempt,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
                 if (!currentModelText.isNullOrBlank()) {
                     // 副行里连接状态与模型之间加分隔点；Idle 时 ConnectionLabel 不渲染，避免孤立圆点
                     if (connection != ConnectionState.Idle) {
@@ -261,7 +268,11 @@ internal fun shortModelName(raw: String): String =
     raw.substringAfterLast('/').takeIf { it.isNotBlank() } ?: raw
 
 @Composable
-private fun ConnectionLabel(connection: ConnectionState, attempt: Int) {
+private fun ConnectionLabel(
+    connection: ConnectionState,
+    attempt: Int,
+    modifier: Modifier = Modifier,
+) {
     val (text, color) = when (connection) {
         ConnectionState.Connected -> "● 已连接" to MaterialTheme.colorScheme.primary
         ConnectionState.Connecting -> "○ 连接中…" to MaterialTheme.colorScheme.onSurfaceVariant
@@ -270,7 +281,19 @@ private fun ConnectionLabel(connection: ConnectionState, attempt: Int) {
         ConnectionState.Idle -> "" to MaterialTheme.colorScheme.onSurface
     }
     if (text.isNotEmpty()) {
-        Text(text, style = MaterialTheme.typography.labelSmall, color = color)
+        // 2026-10-10 UIUX 审计 P0-1 修：顶栏副行最长的字符串是"○ 已断开，正在重连（第 3 次）"
+        // 约 165dp；同伴 ModelChip 有 widthIn(max = 176.dp)。不写 maxLines + 文字不限定权重，
+        // 在 360dp 屏上两者挤在一起：胶囊被压窄成椭圆形或整行撑高成两行，把顶栏的视觉重心
+        // 推变形。给文字加 weight(1f, false) 让胶囊先量、文字吃剩余；自己再 maxLines=1 + 省略号，
+        // 极端情况下顶栏副行不会破形。（TextOverflow 本文件已 import。）
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier,
+        )
     }
 }
 
@@ -1288,7 +1311,9 @@ fun MessageActionsSheet(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "服务端不提供「删除单条消息」接口，故这里没有删除；整段会话可在左侧「会话历史」里删除。",
+                // 2026-10-10 UIUX 审计 P0-2 顺手：把"接口"这个开发术语换成大白话。
+                // "不能单独删其中一条" ⇒ 用户能立刻 get。
+                "不能单独删其中一条；要删就得把整段对话删掉，去左侧「会话历史」里删。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1467,8 +1492,11 @@ fun HistoryDrawer(
                 onClick = onPlugins,
             )
             DrawerActionRow(
-                label = "结束本次会话",
-                value = "释放内存",
+                // 2026-10-10 UIUX 审计 P0-2：原"结束本次会话"与底下"删除会话"字面几乎一样、
+                // 后果完全不同。非技术用户极易看走眼。改名 + 把后果写在右侧副字段里：
+                // 这里**只关 OpenCode 实例、释放内存**，聊天记录在服务端，下次进来还在。
+                label = "关闭太极并退出",
+                value = "记录还在，下次接着聊",
                 onClick = { confirmClose = true },
             )
         }
@@ -1477,12 +1505,13 @@ fun HistoryDrawer(
     if (confirmClose) {
         AlertDialog(
             onDismissRequest = { confirmClose = false },
-            title = { Text("结束本次会话？") },
+            title = { Text("关闭太极并退出？") },
             text = {
-                Text("会关掉太极里的 OpenCode 实例并释放内存；聊天记录存在服务端，下次进来还在。")
+                // 措辞重写：**只关实例、不删记录**。避免"释放内存"这种开发术语。
+                Text("关闭后聊天列表里还能看到这次对话，点进去会重新打开。")
             },
             confirmButton = {
-                TextButton(onClick = { confirmClose = false; onCloseSession() }) { Text("结束") }
+                TextButton(onClick = { confirmClose = false; onCloseSession() }) { Text("关闭") }
             },
             dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("取消") } },
         )
@@ -1515,7 +1544,15 @@ private fun DeleteSessionDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },   // 删除中不许点外面关掉
-        title = { Text("删除会话") },
+        // 2026-10-10 UIUX 审计 P0-2：标题整行标红 + 加"永久"，与上面的"关闭"形成视觉对立。
+        // 颜色取 error（C0392B，5.4:1 满足 AA），不需要等到用户点完确认才知道后果。
+        title = {
+            Text(
+                "永久删除这个会话",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.titleLarge,
+            )
+        },
         text = {
             Column {
                 Text("「${sessionTitle(summary)}」将在服务端被永久删除，无法恢复。")
