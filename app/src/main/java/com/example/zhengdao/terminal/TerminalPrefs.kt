@@ -46,6 +46,8 @@ object TerminalPrefs {
     const val KEY_SCHEME = "terminal_color_scheme"
     /** 画布留白（dp，2026-10-08 新增）。 */
     const val KEY_INSET_DP = "terminal_canvas_inset_dp"
+    /** 间距档位（2026-10-10 新增，见 [Spacing]）。 */
+    const val KEY_SPACING = "terminal_spacing"
     /** 顶部三个圆点（关 / 分屏 / 收回）的功能说明是否已在首次进入时弹过（v1.1.1 阶段 2.2） */
     private const val KEY_DOTS_HINT_SHOWN = "terminal_dots_hint_shown"
 
@@ -67,6 +69,37 @@ object TerminalPrefs {
 
     /** 画布留白档位（dp）。0 = 贴边。 */
     val INSET_OPTIONS: List<Int> = listOf(0, 8, 14)
+
+    /**
+     * 间距档位（2026-10-10 阶段二）。默认 [COMFORTABLE]。
+     *
+     * 三处间距都收在这里，避免散落到 XML（`themes.xml` / `term_keys.xml` 正在被 wt-ios-skin 分支改）：
+     * 1. **行高倍率**——交给 `TerminalView.setLineHeightMultiplier()`（内部 `TerminalSizeResolver`），
+     *    只放大行盒高度，字形宽度不变，所以中英文 2:1 不受影响；同样屏幕高度下行数按比例变少。
+     * 2. **画布上下内边距**——只设上下（左右沿用用户选的「画布留白」，默认 8dp），写在
+     *    外层容器 `canvas_host` 上（不能写在 `TerminalView` 上，见 [applyTo] 注释）。
+     * 3. **快捷键条单键高度**——与 `TermKeyFlex` 现有的 `layout_height=48dp` 一致；收归这里是为了
+     *    以后换档位时不必动 XML（[applyKeyBarHeight] 在代码里落实）。
+     */
+    enum class Spacing(
+        val id: String,
+        val label: String,
+        /** 行高倍率：1.0 = 字体原生行高。 */
+        val lineHeightMultiplier: Float,
+        /** 画布容器上下内边距（dp）；左右内边距由 [insetDp] 决定。 */
+        val paddingVerticalDp: Int,
+        /** 快捷键条单键高度（dp）。 */
+        val keyHeightDp: Int,
+    ) {
+        COMFORTABLE("comfortable", "舒适", 1.15f, 4, 48),
+        COMPACT("compact", "紧凑", 1.0f, 0, 48),
+        ;
+
+        companion object {
+            val DEFAULT = COMFORTABLE
+            fun of(id: String?): Spacing = values().firstOrNull { it.id == id } ?: DEFAULT
+        }
+    }
 
     enum class Scheme(
         val id: String,
@@ -117,6 +150,16 @@ object TerminalPrefs {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_INSET_DP, dp).apply()
     }
 
+    fun spacing(ctx: Context): Spacing =
+        Spacing.of(
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_SPACING, Spacing.DEFAULT.id)
+        )
+
+    fun saveSpacing(ctx: Context, spacing: Spacing) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_SPACING, spacing.id).apply()
+    }
+
     /** 三点说明是否已看过（只看一次，之后靠长按圆点复查）。 */
     fun dotsHintShown(ctx: Context): Boolean =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_DOTS_HINT_SHOWN, false)
@@ -157,7 +200,7 @@ object TerminalPrefs {
     }
 
     /**
-     * 把「字号 + 配色 + 画布留白 + 字体」一次性应用到终端。进终端时调用，设置页改完下次进终端生效。
+     * 把「字号 + 配色 + 间距（行高/留白）+ 字体」一次性应用到终端。进终端时调用，设置页改完下次进终端生效。
      *
      * @param canvasHost 承载画布的**外层容器**（`R.id.canvas_host`）。留白与底色都写在它身上，
      *   而不是写在 [termView] 上——`TerminalView.updateSize()` 用 `getWidth()` 算列数、
@@ -167,17 +210,51 @@ object TerminalPrefs {
     fun applyTo(termView: TerminalView, canvasHost: View, ctx: Context) {
         val scheme = scheme(ctx)
         applyScheme(termView, scheme)
+        val spacing = spacing(ctx)
         val density = ctx.resources.displayMetrics.density
         val insetPx = (insetDp(ctx) * density).toInt()
+        val vInsetPx = (spacing.paddingVerticalDp * density).toInt()
         // 容器只负责留白与底色：留白区露的就是它，颜色必须与视图一致，
         // 否则会看到一圈异色边框（换配色时两处一起变，见 [applyScheme]）。
         canvasHost.setBackgroundColor(scheme.bg)
-        canvasHost.setPadding(insetPx, insetPx, insetPx, insetPx)
+        // 左右 = 用户选的「画布留白」（默认 8dp）；上下 = 间距档位（舒适档 4dp，比左右窄，避免画布显得被压扁）。
+        canvasHost.setPadding(insetPx, vInsetPx, insetPx, vInsetPx)
+        // 行高倍率先设：渲染器还没建时它只记值，随后 setTextSize/setTypeface 建渲染器时都会带上。
+        termView.setLineHeightMultiplier(spacing.lineHeightMultiplier)
         // dp → px（见类注释第 1 点）；setTextSize 内部会自动 updateSize 重算行列
         termView.setTextSize((sizeDp(ctx) * density).toInt())
         // 字体必须排在 setTextSize 之后（见类注释第 3 点）：上一步才把 mRenderer 建出来。
         // setTypeface 会按新字体的度量重建渲染器并 updateSize()，列数因此跟着新字宽重算。
         termView.setTypeface(typeface(ctx))
+    }
+
+    /**
+     * 快捷键条单键高度（间距档位里的 `keyHeightDp`，默认 48dp）。
+     *
+     * 遍历 [keyBar] 下的所有 [android.widget.TextView] 直接改 LayoutParams.height —— 值收归
+     * TerminalPrefs 管，但**不动 `themes.xml` 的 `TermKeyFlex`**（那条样式正在被 wt-ios-skin 分支改，
+     * 两边同时改必冲突）。改高度不会影响按键的 id 与顺序，`wireKeyBar()` 的绑定照旧。
+     *
+     * ⚠️ 只改**单键**高度，不改 `key_bar_container`：窄屏是**两行**键（见 `term_keys.xml` 注释），
+     * 容器实际高度 ≈ 2×48dp + 上下各 4dp padding；把容器压成 48dp 会裁掉第二行。
+     */
+    fun applyKeyBarHeight(keyBar: View, ctx: Context) {
+        val heightPx = (spacing(ctx).keyHeightDp * ctx.resources.displayMetrics.density).toInt()
+        applyKeyHeightRecursive(keyBar, heightPx)
+    }
+
+    private fun applyKeyHeightRecursive(view: View, heightPx: Int) {
+        if (view is android.widget.TextView) {
+            val lp = view.layoutParams ?: return
+            if (lp.height != heightPx) {
+                lp.height = heightPx
+                view.layoutParams = lp
+            }
+            return
+        }
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) applyKeyHeightRecursive(view.getChildAt(i), heightPx)
+        }
     }
 
     /**
