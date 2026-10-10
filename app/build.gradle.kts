@@ -98,7 +98,21 @@ plugins {
 //    ③间距——新增「舒适」档：行高 1.15×、画布上下各留 4dp、功能键条 48dp；设置页
 //      「终端外观 → 行距」可选舒适/紧凑（紧凑＝旧版观感，只改行盒高度、不动列宽换算）。
 //      仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.10"
+// ⚠️ 2.0.11（2026-10-11，ERRATA E-089~E-090）：两条修复 + 一条文档，全部无破坏性改动：
+//    ①E-090 opencode 装不上（**v2.0.9 起 100% 失败**的回归）——E-082 在 `OcManager.extract()` 里
+//      把 `substringAfter("files/usr/")` 改成 `removePrefix("files/usr/")`，而归档条目名以
+//      `data/data/com.termux/` 开头 ⇒ 一个字都没剥掉、整包落到 `files/oc/usr/data/…` 错位，
+//      `installed()` 判否 ⇒ 报「释放后二进制缺失（包不完整？）」。现改为前缀常量
+//      `PKG_ENTRY_PREFIX` + `relPathOf()`（准入判断与剥前缀共用同一前缀），并顺手清掉旧版
+//      错位残留（真机回收 275 MB）、给这条失败补一行日志。真机验收：清理 275 MB 残留 →
+//      `OpenCode 2.0.22 释放完成（2 个文件）` → 太极 ● 已连接（SSE HTTP 200）；
+//      `OcExtractPathTest` 13 例全绿（全套 63 suite / 563 例 / 0 失败）。
+//    ②E-089 资料库扫描不再静默截断：清单自己写一行「只列了前 2000 个」，设置页状态带
+//      「（已达扫描上限，可能未列全）」；`资料库/说明.md`「各种格式都行」改准。
+//      ⚠️ 这条只有代码复核 + 单测，未做真机复现（触发需要 `资料库/原始/` 下 > 2000 个文件）。
+//    ③README / README.en 把系统要求（Android 16+ / arm64）提到第一屏。
+//    仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.11"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -131,7 +145,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 26
+        versionCode = 27
         versionName = appVersionName
 
         ndk {
