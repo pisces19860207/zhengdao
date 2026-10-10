@@ -4714,6 +4714,8 @@ P3-6 把 `pickExpectedSha` 的 `rememberedSha` 参数与那处 fail-open 改回�
 
 **未取证部分（如实记录）**：BUG-1 的**设备端触发**本次没做——造一份「sha 合法或压根没 sha 的 0 条目归档」再走一次真装机会把用户环境搅乱，而这条逻辑的入口是纯函数级的（Rust 两例单测 + Kotlin 分流代码复核）。增量路径（`RootfsDelta` 的 skipNames）同理只有代码复核。**BUG-1 的修复因此按「单测 + 代码复核」记录，不当作真机验证。**
 
+> **补记（2026-10-10 晚，E-085）**：本条 Rust 那半的**二进制**直到 E-085 重编 pp/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 时才进包（入库的 .so 是人工产物，CI 只验对齐/符号、不重编，见 E-085）。在此期间「0 条目」全靠 Kotlin 侧那道 eport.first <= 0L ⇒ throw InstallFailed(...) 兜住 —— 行为正确，只是 Rust 那半没在包里。
+
 **后果**：① 空包/全被跳过的包不再能装成"成功"，用户不会再拿到一个空 Debian 还被报"装好了"；② 正常开会话省掉 313,648 B 的 SHA-256（首启与文件被改写后仍会算）；③ 离线纯 tar 包照旧可装（`BadArchive` 仍在回退里）；④ 戳文件是纯优化：删掉、损坏、或格式升级读不动，都只是退回"每次都算"，不影响正确性；⑤ RunLog 多一行每次会话的校验摘要——用户报「终端开得慢」时可据此判断是不是又退回了全量重算。
 
 **回退**：`git revert <本提交>`。两件事互相独立，也可只退其一：BUG-1 去掉 `EmptyArchive` 分支与 Kotlin 那两处判断；BUG-2 去掉 `ProotLauncher` 里的戳判定（保留重算）与 `PinnedAssets` 即可。
@@ -4786,3 +4788,52 @@ tmux 历史能否接受）**必须真机看** —— 这正是 DSH 坚持"先让
 > ② 本节原先那句「编号跳过了 E-082 —— 那是另一条支线 `fix/kb-scan-cap-notice` 的改动，尚未并入 main」
 > 与 main 的实际状态不符：main 的 **E-082 是信任边界收口三条**（P3-2 安装脚本执行私有副本 /
 > P3-5 解包防路径穿越 / P3-6 缺校验值拒绝安装，2026-10-10），`fix/kb-scan-cap-notice` 那条并未占用 E-082。
+---
+
+## E-085 · 2026-10-10 · rootfs 审计工作表第一批：#18 的五条加固/优化（软链 linkname、resolv.conf 权限还原、路径前缀、增量空间预检、zz 脚本按内容比对）
+
+**来源**：E-083 那份审计报告（`证道-rootfs审计与复核-2026-10-10.md`）里除 BUG-1/BUG-2 之外的条目，按用户 2026-10-10 的指示「BUG 先做了，其他的放进工作表」立成 issue #18；本次做其中五条（加固-1/2/3/4 + 优化-2），另两条（优化-1 / 优化-3）读码后判定不做，理由写进 issue #18 留档。
+
+**五条问题与改动**
+
+| # | 条目 | 问题 | 改动 |
+|---|---|---|---|
+| 1 | 加固-1 软链 linkname 越界 | 解包时只校验**成员名**（`RootfsInstaller.kt` 的 `checkPathInside`），**不看软链的 linkname**：`Os.symlink(entry.linkName, target)`、Rust `extract.rs` 的 Symlink 分支同样原样落盘 ⇒ 归档里一条 `link -> ../../../../etc/passwd` 就能在树里留一个指向树外的链接 | 新增 `app/src/main/java/com/example/zhengdao/rootfs/PathGuard.kt`（`internal object PathGuard`：`isInside` / `linkStaysInside`）；Java 路径软链分支先判 `linkStaysInside(tmpDir, target, entry.linkName)`，越界就**落成空文件**并留 `W/RootfsInstaller` 日志；Rust 侧 `extract.rs` 新增 `normalize_lexical` + `#[cfg_attr(not(unix), allow(dead_code))] pub(crate) fn link_stays_inside`，同一语义（绝对 linkname 按解压根解释，相对 linkname 按链接所在目录解释） |
+| 2 | 加固-2 resolv.conf 权限不还原 | `terminal/EnvSelfHeal.kt` 里 `val locked = resolv.isFile && !resolv.canWrite()` → `if (locked) resolv.setWritable(true)` → `resolv.writeText(RESOLV_CONF)`，**没有 finally** ⇒ 写完（或中途抛异常）后文件永久变成可写 | 包成 `try { … } finally { if (locked) resolv.setWritable(false) }` |
+| 3 | 加固-3 路径前缀判断 | `checkPathInside` 用 `target.path.startsWith(root.path)` ⇒ `/…/rootfs-evil`、`/…/rootfs.tmp2` 这种**同前缀兄弟**也被当成"根内" | 改用 `PathGuard.isInside`（`canonicalFile` + `toPath().normalize().startsWith`，拿不到规范路径退回 `absoluteFile`） |
+| 4 | 加固-4 增量空间预检 | `ui/SettingsScreen.kt` 的增量更新只按**补丁大小**预检（`RootfsInstaller.ensureFreeSpace(ctx, deltaFile.length())`），而 `RootfsDelta.cloneTree` 在硬链大面积失败时会退化成整树复制、旧树又还在盘上 ⇒ 最坏情形要「整树 ×2 + 补丁」 | 新增 `RootfsInstaller.ensureFreeSpaceForDelta(context, patchBytes, treeBytes)`：`extra = (treeBytes - REQUIRED_FREE_BYTES).coerceAtLeast(0L)`；调用点改为 `ensureFreeSpaceForDelta(ctx, deltaFile.length(), dirSizeMb(File(ctx.filesDir, "rootfs")) * 1_048_576)`（`ui/SystemInfoProvider.dirSizeMb` 返回 **MiB**，故乘回字节） |
+| 5 | 优化-2 zz 脚本只判存在 | `terminal/ProotLauncher.kt` 里 `zz-cursor-bar.sh` 只判 `isFile`、`zz-npm-registry.sh` 只判 `readText().contains("npmmirror")` ⇒ 内容被改坏、或被注释掉，也当"已就位" | `zz-cursor-bar.sh` 改为**严格内容比对**（`f.readText() != want` 才重写）；`zz-npm-registry.sh` 改为「逐行找一条真正生效的赋值」（`lineSequence().any { it.trim() == want }`：用户自己追加的行不再被抹掉，被注释掉的那行不再算数） |
+
+**为什么不做优化-1 与优化-3（写进 issue #18 留档）**
+- **优化-1（`Store.adoptDir` 每次启动的两次 syscall）**：读码后判定**无实际收益**——`terminal/Store.kt` 的 `adoptDir(target, legacy)` 在 legacy 目录已消失（搬家完成后）时第一行就 `return 0`，每次启动只是两次 `exists`/`isDirectory` 级调用，不值得为它改接口。
+- **优化-3（`buildLaunchPlan` 526 行拆函数）**：纯重构，回归面覆盖"开会话"这条主路径，与本次收益不成比例；留工作表，等真有函数要被复用那天再做。
+- 审计里对 `.profile`「只判存在、不看内容」的指摘**是误判**：`ProotLauncher.kt` 那段上方注释已写明是**刻意**的——绝不覆盖用户自己改过的 dotfile。`zzclean` 已有更好写法（内容 + 执行位比对），本次只把两个 zz 脚本对齐到它的口径。
+
+**顺带戳破一个危险假设：入库的 `.so` 是人工拷进来的，CI 不重编**
+
+- `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` **在 git 里**（`git ls-files` 可见，入库时 957,488 B；`libzstd-jni-1.5.6-4.so` 同理），CI 只有一道门禁：`.github/workflows/build.yml` 的「入库 .so 门禁（16KB 页对齐 + JNI 入口符号）」（`tools/check-native-so.py`）——**只验，不重编**。
+- ⇒ **改 `rust/` 源码不会自动进 APK**。按 `rust/README.md` 的步骤重编并覆盖：`cargo build --release -p zhengdao_core --target aarch64-linux-android`（Finished in 9.48s）→ `llvm-strip.exe --strip-unneeded` → 拷进 `app/src/main/jniLibs/arm64-v8a/`（960,192 B）→ `llvm-readelf -l` 复核四个 LOAD 段 `Align 0x4000`（16 KB）。
+- **对 E-083 的影响要说清**：E-083 的 Rust 半边（`EmptyArchive`）在本次重编之前**没进过任何在架包**；这段时间里「0 条目」的行为一直由 Kotlin 侧那道 `report.first <= 0L ⇒ throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）")` 兜住——该字符串在 release 包的 `classes.dex` 里搜到过（E-083 的静态取证），所以**当时的行为是对的，只是 Rust 那半的二进制没在包里**。本次重编后，`EmptyArchive` 与 `link_stays_inside` 一起进了 `.so`。
+- 这个坑**只有真机仪器用例会暴露**：第一版 `CoreNativeSymlinkGuardInstrumentedTest` 在旧 `.so` 上直接失败（`escape.link=true`）。
+
+**单测与编译**
+- Kotlin：`$env:JAVA_HOME='D:\Program Files\Android\Android Studio\jbr'` + `.\gradlew.bat :app:testDebugUnitTest --console=plain` = **BUILD SUCCESSFUL**；统计 **60 suites / 542 tests / 0 失败 / 0 错误 / 1 skipped**（E-083 时是 58/519）。新增 `app/src/test/java/com/example/zhengdao/rootfs/PathGuardTest.kt` 6 例：根内文件/子目录/根自身、同前缀兄弟 `rootfs-evil` + `rootfs.tmp2`、`../outside` 与 `etc/../../outside`、相对合法、`../../../lib/libfoo.so.1` 合法、绝对 `/lib/aarch64-linux-gnu/…` 按根解释合法、相对 6 层 `..` 与绝对 `/../../etc/passwd` 与空串拒。
+- Rust：`cargo test -p zhengdao_core --release`（先挂 `C:\Users\guoli\w64devkit\w64devkit\bin`，见 E-027）= **26 passed / 0 failed**（含新增两例 `软链目标必须落在解压根内`、`#[cfg(unix)] 绝对形式的软链按解压根解释`；ubuntu CI 上跑 27 例）。
+- Android：`:app:assembleDebug` = BUILD SUCCESSFUL，`app/build/outputs/apk/debug/zhengdao-2.0.9-debug.apk` **39,418,639 B**（2026-10-10 16:40:58；2.0.9 的 versionCode 25）——与 2.0.8 那版 debug 包的体积差异来自这次重编的 `.so` 与新增代码，不做逐字节解释。入库 `.so` 门禁本地跑过：`python tools/check-native-so.py` ⇒ `[通过] 入库 .so 的 16KB 对齐与 JNI 入口符号均满足`（`libzhengdao_core.so` 4 个 `PT_LOAD` `p_align = 0x4000`、6 个 JNI 入口符号齐全，960,192 B）。
+
+**真机取证（Honor PGT-AN10 / Android 16 / AD3J023824001723）**
+
+| 轮次 | 前置 | 证据 | 结论 |
+|---|---|---|---|
+| ① 旧 `.so` | 装的是本次改动前打出的包（jniLibs 里的 `.so` 仍是 10:34 那份） | `LINK_GUARD[dir0755 dirMode=493] ok entries=5 bytes=5 inside.link=true escape.link=true/len=0 escapeAbs.link=true/len=0` | 越界软链**照样落成链接** ⇒ 证明包里的 `.so` 没带这次改动（也证明这条用例真的在测在架行为） |
+| ② 新 `.so` | 重编 + strip + 覆盖 + 重新打包安装后跑 `CoreNativeSymlinkGuardInstrumentedTest` | `LINK_GUARD[dir0755 dirMode=493] ok entries=5 bytes=5 inside.link=true escape.link=false/len=0 escapeAbs.link=false/len=0`，`OK (1 test)` | 越界软链（相对 `../../../../etc/passwd` 与绝对 `/../../etc/passwd`）都不再落成链接、落成空文件；树内合法相对链接（`../inside_target`）照旧 ✔ |
+| ③ 用例自带的对照组 | 同一组成员、只把目录 mode 从 0755 改成 0644 | `LINK_GUARD[dir0644 dirMode=420] ERR IllegalStateException: Rust 解压失败: IO: Permission denied (os error 13)` | 归档里目录不给执行位时会先 EACCES（`tar.set_mode` 只作用于目录与普通文件）：真实 rootfs 归档的目录都是 0755，线上踩不到，故留作对照组把该失败模式钉住 |
+
+**未取证部分（如实记录）**：加固-2（resolv.conf 权限还原）、加固-3（Java 回退路径的路径判断）、加固-4（增量空间预检）、优化-2（zz 脚本按内容比对）本次**只有单测/代码复核**：加固-3 的改动点在 **Rust 不可用时才走的 Java 回退路径**（设备上 Rust 一直可用），加固-4 的入口是增量更新（设备上无法制造一次真实增量），加固-2 / 优化-2 依赖 rootfs 与一次真实会话启动——而本次仪器测试把 App 内部数据清空了（见下），没有再去重建一套环境来演它们。**这四条按"单测 + 代码复核"记录，不当真机验证。**
+
+- ⚠️ **顺带一条事故（E-072 的老坑又踩了一次）**：`.\gradlew.bat :app:connectedDebugAndroidTest` 会**卸载 App、清空运行环境**。本次误跑一次：`run-as` 报 `run-as: unknown package`、`pm list packages` 里没有 zhengdao，App 内部数据（rootfs / home / prefs）全没。**外部数据完好**：`/sdcard/Download/证道/{agents,cache,logs,rootfs,资料库}` 与 `rootfs/debian-13.7-base-arm64.tar.zst`（201,632,517 B）、`/sdcard/Download/男性/*`（用户工作区）都在，下次打开终端会自动重建容器。仪器测试的正规姿势：`assembleDebugAndroidTest` → `adb install -r` 两个 APK → `adb shell am instrument -w -e class <类名> com.example.zhengdao.test/androidx.test.runner.AndroidJUnitRunner`。
+- ⚠️ **顺手记一条 PowerShell 的坑**：`cd <repo>\rust` 之后再写 `rust\target\…` 这种"仓库根相对"路径会 `Test-Path` 为假，整段 `if` 被静默跳过（本次第一次 strip+拷贝就这么被跳过，直到真机用例失败才发现 `.so` 没换）。**脚本里一律用绝对路径。**
+
+**后果**：① 归档里的越界软链不再能落成链接（两条解压路径同语义）；② `resolv.conf` 的只读属性用完即还；③ 同前缀兄弟目录不再被误判成根内；④ 增量更新前按整树体积预检，避免"旧树还在盘上时又复制一份新树"；⑤ 用户自己追加的 `zz-npm-registry.sh` 行不再被抹掉、被注释掉的赋值不再算数；⑥ **入库 `.so` 的更新流程写进文档**（改 `rust/` 必须重编 + 覆盖 + 16 KB 对齐复核）。
+
+**回退**：`git revert <本提交>`。源码与重编后的 `.so` 放在同一个提交里——只回退源码不回退 `.so` 会让二者不一致。

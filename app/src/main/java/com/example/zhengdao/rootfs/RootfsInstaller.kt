@@ -129,6 +129,22 @@ object RootfsInstaller {
     }
 
     /**
+     * 增量更新的存储预检（**加固-4**，2026-10-10 / E-085）。
+     *
+     * 为什么不只传补丁大小：增量的正常路径是「整树**硬链接**克隆」（几乎不额外占空间），
+     * 但 [RootfsDelta.cloneTree] 在硬链接失败时会退化成**整树复制**（设计文档实测坑 #4：
+     * SELinux 拒非 root 建硬链接）—— 那一刻**旧树与新树同时在盘上**。[REQUIRED_FREE_BYTES]
+     * 这个常量是按"一份树 + 余量"估的，树的实际大小超过它时就不够了；这里按**实测树大小**
+     * 补上差额，树没超过常量时行为与从前**完全一致**（不改变宽松度，只堵住树变大后的缺口）。
+     *
+     * 调用方拿不到可靠树大小时传 0 —— 那就退回旧的常量口径，不因为"量不出来"而拒装。
+     */
+    fun ensureFreeSpaceForDelta(context: Context, patchBytes: Long, treeBytes: Long) {
+        val extra = (treeBytes - REQUIRED_FREE_BYTES).coerceAtLeast(0L)
+        ensureFreeSpace(context, patchBytes + extra)
+    }
+
+    /**
      * 启动时清理上次中断的残局（只动 tmp 与替换备份，不碰现有 rootfs 与 home）。
      *
      * `rootfs.old`（#11 / E-078）是替换过程留下的旧树备份，两种残局要分开处理：
@@ -452,12 +468,21 @@ object RootfsInstaller {
             entry.isSymbolicLink -> {
                 target.parentFile?.mkdirs()
                 target.delete()
-                try {
-                    Os.symlink(entry.linkName, target.absolutePath)
-                } catch (t: Throwable) {
-                    // 个别 symlink 建不出来不致命：退化为空文件占位，proot 环境仍可用
-                    Log.w(TAG, "symlink 失败 $name -> ${entry.linkName}", t)
+                // 加固-1（E-085）：**linkname 也要在树内**。tar 规范允许绝对路径（按 guest 根
+                // 解释）与 `../`（按链接所在目录解释），两者都能把链接指到解压根之外 —— 同一份包
+                // 里的后续成员、或 guest 内的程序一跟随，就是一条写出环境目录的通道。
+                // 越界时不建链接、退化成空文件占位（与"建不出来"同一条退路，环境仍可用）。
+                if (!PathGuard.linkStaysInside(tmpDir, target, entry.linkName)) {
+                    Log.w(TAG, "symlink 目标越界，改为空文件占位: $name -> ${entry.linkName}")
                     target.writeBytes(ByteArray(0))
+                } else {
+                    try {
+                        Os.symlink(entry.linkName, target.absolutePath)
+                    } catch (t: Throwable) {
+                        // 个别 symlink 建不出来不致命：退化为空文件占位，proot 环境仍可用
+                        Log.w(TAG, "symlink 失败 $name -> ${entry.linkName}", t)
+                        target.writeBytes(ByteArray(0))
+                    }
                 }
             }
             entry.isLink -> {
@@ -512,9 +537,16 @@ object RootfsInstaller {
         return magic
     }
 
-    /** 防路径穿越：解压目标必须落在 rootfs 临时目录内部。 */
+    /**
+     * 防路径穿越：解压目标必须落在 rootfs 临时目录内部。
+     *
+     * 加固-3（E-085）：判据从**字符串前缀**改成**路径组件**（[PathGuard.isInside]）。
+     * 原写法 `target.canonicalFile.path.startsWith(root.path)` 会把 `/…/rootfs-evil`
+     * 判成"在 `/…/rootfs` 内"；同仓里本来就是对的写法见 `RootfsCache` 的
+     * `startsWith(cacheDir.path + File.separator)`，现在两处口径统一到了 [PathGuard]。
+     */
     private fun checkPathInside(root: File, target: File) {
-        if (!target.canonicalFile.path.startsWith(root.path)) {
+        if (!PathGuard.isInside(root, target)) {
             throw InstallFailed("压缩包含越界路径: ${target.path}")
         }
     }
