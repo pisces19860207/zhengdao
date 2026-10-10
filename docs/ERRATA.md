@@ -4846,3 +4846,55 @@ tmux 历史能否接受）**必须真机看** —— 这正是 DSH 坚持"先让
 - **CI**：主线合并提交 `00e6a679…` 上 `build`/`verify` 双 success（`release` skipped，非 tag）；tag 触发的 `build#234` success，正式 Release 由它建出。
 - ⚠️ **顺带记一次自己造成的事故与自愈**（E-072 那条铁律的代价）：我在真机上跑了一次 `.\gradlew.bat :app:connectedDebugAndroidTest`（16:34），它会卸载 App、清空**内部**数据（`files/rootfs`、`files/home`、prefs）。外部数据完好（`Download/证道/{agents,cache,logs,rootfs,资料库}`、用户的 `Download/男性` 都在）。16:36:40 重进终端时 App 自愈：`检测到本地归档，自动安装: …/rootfs/debian-13.7-base-arm64.tar.zst` → `使用本地缓存包（192 MB，不联网下载）` → `SHA256 校验通过（来源：索引）` → 16:36:49 `安装完成！安装包已保留在缓存（重装免下载）`，容器重建（rootfs 768 MB）、`启动决策: proot=true loader=true marker=true`。
 - 该事故的两个残留已修：① 工作区设置回落到默认 `Download/证道`（用户在 prefs 里选的 `Download/男性` 随之丢失）⇒ 用设置页「工作区 → 选择文件夹」改回，`[10-10 16:56:54] 工作区: /workspace <- /storage/emulated/0/Download/男性（共享存储，卸载保留）` 复核通过；② 给本地归档补了官方值的边车 `/storage/emulated/0/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst.sha256`（65 B，`d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02`，与该资产在 Release 里的 digest 相同），这样「清数据后离线从本地包重装」不会再因为缺校验值被 E-082 的 fail-closed 拒掉。
+
+---
+
+## E-086 · 2026-10-10 · 终端「渲染慢」是把 gfxinfo 的**帧总时长**当成了 `onDraw()` 耗时（P0 真机实测：`render()` = **2.3 ms**，不是 30–48 ms）
+
+**受影响表述**
+
+1. 2026-10-10 我做 P0 测量时的口头汇报（对话，未进仓库）：
+   > 全屏重绘在 UI 线程上是 **30 ms（ASCII）/ 38 ms（中文）中位、32/48 ms p90**，是 16.67 ms 预算的 **1.8–2.9 倍**；中文比英文 **p50 慢 27%、p90 慢 50%**。
+2. `docs/证道-终端显示交互层重写方案-2026-10-10.md:183`（WorkBuddy，未提交）据此把
+   「Compose 文本测量性能」标成 🟡：`TerminalRenderer.java:111` 只有 ASCII 走缓存、中文每码点每帧一次 `measureText`，需在 Compose 侧加宽度缓存。
+
+**原表述（有误）**
+
+> 终端全屏重绘的 **CPU 渲染耗时** ≈ 30 ms（英文）/ 38 ms（中文），中文明显更贵。
+
+**更正为**
+
+> **`TerminalRenderer.render()` 的 CPU 耗时（`framestats` 的 `draw` 相位）= 2.3 ms p50**
+> （英文 2.26 / 2.27 / 2.37，中文 2.27 / 2.29 / 2.67，三次独立采样各 10 帧），
+> **只占 60 Hz 下 16.67 ms 预算的 14%；中文与英文没有可测差异**（p50 相同到小数点后两位）。
+> 30–48 ms 是 `gfxinfo` 的**帧总时长**（含排队 / 等 vsync / GPU 完成），**不是绘制耗时**；
+> 且那组窗口采在「进程刚 boot 完 Debian、主线程仍在忙」的时段，本身也不干净。
+> 中文每码点 `measureText` 在本机这个屏上**不构成代价**，方案文档那条 🟡 可降级为"顺手做"。
+
+**依据**
+
+- `docs/acceptance/terminal-render-p0-2026-10-10.md`（本次实测全量数据、方法、复跑命令）。
+- 拆相位办法（可复现）：Android 16 的 `dumpsys gfxinfo <pkg> framestats` 是 **25 列** CSV，
+  `draw(render) = (第15列 − 第8列)/1e6`；且**数据段必须连调两次**（第一次只准备，第二次才有行）。
+  用 14 列正则解析 ⇒ 所有相位恒为 `n/a`（这就是当初误用 summary 百分位的原因）。
+- 佐证数字：滑动场景 `draw` p50 = 2.58 / p90 8.38 ms，而**帧总时长** p90 = 27.48 ms、GPU p90 = 16.95 ms
+  ⇒ 掉帧的位置在 GPU/合成侧，**不在 CPU 绘制**。输出洪水时 6 s 只出 100 帧（16.7 fps）但每帧只要 5 ms
+  ⇒ 主线程时间花在 `mEmulator.append()` 解析上（`app/src/main/java/com/termux/terminal/TerminalSession.java:133-148`
+  读线程 → `:337-347` 主线程 `handleMessage()` 里 append），**不是画图**。此最后一条是"代码事实 + 测量推断"，
+  未做 atrace 直接取证。
+
+**教训**
+
+1. **`gfxinfo` 的百分位不是"渲染耗时"。** 要谈"我的代码每帧花多久"，只有 `framestats` 的相位能给；
+   混用会让结论反向（本次差点据此批准一次"为了性能"的重写）。
+2. 报数字前先问一句：**这个数包含谁**（含不等 vsync？含不含排队？含不含 GPU？）。
+3. 采样窗口要等进程静下来；"刚启动/刚 boot"的窗口会把别处的忙算进这一处。
+4. ⚠️ 顺带记一处**同设备口径冲突（未查明）**：`docs/acceptance/compose-perf-baseline.md:30` 记
+   `renderFrameRate 120Hz`，本次同一台机同一位置读到 **60 Hz**（`mActiveModeId=1`、`mActiveRenderFrameRate=60.000004`）
+   —— 比 baseline 数字时先把这一条对齐，否则帧预算会差一倍。
+
+**影响面**
+
+不改任何代码，也不推翻方案文档的**结论**（只换显示/交互层、保留状态层，这条仍然成立）；
+改的是它对**收益**的暗示：换渲染层**不会更快**，收益是结构/可维护性；真要治掉帧，该动的是
+「光标闪烁整屏 `invalidate()` → 局部失效」与「解析离开主线程」这两条。
