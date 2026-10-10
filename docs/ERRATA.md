@@ -5051,7 +5051,7 @@ p50 30–42 ms；同一台机器在帧密集时是 janky 0 / p50 5 ms。
 - ⚠️ **未做真机验证**：要触发这行提示需要 `资料库/原始/` 下 **> 2000 个文件**（设备上没有这个量级的资料），
   因此「截断提示真的会出现」目前**只有代码复核覆盖**，本条不宣称真机验过。
 
-## E-090 · 2026-10-11 · opencode bionic 装不上：E-082 把 `substringAfter` 换成 `removePrefix` 时漏掉 `data/data/com.termux/` 前缀（v2.0.9 起 100% 失败；**发现·未修**）
+## E-090 · 2026-10-11 · opencode bionic 装不上：E-082 把 `substringAfter` 换成 `removePrefix` 时漏掉 `data/data/com.termux/` 前缀（v2.0.9 起 100% 失败；**已修**，提交 `b77cab4` → 合并 `eb377d0`）
 
 **现象**
 
@@ -5101,9 +5101,33 @@ E-082（提交 `37bc860`，`git describe --contains 37bc860` = `v2.0.9~4^2~1` �
 建议同批做两件配套事：① 删掉错误路径残留 `files/oc/usr/data/`（约 289 MB）；
 ② 给「释放后二进制缺失」这条加一行 `RunLog.log`（失败可见原则：这一类失败目前无痕）。
 
-**状态**：**发现，未修**（用户 2026-10-10 深夜定「今天就结束了」，本条只落档）。
-修完的验收口径：真机点一次安装 ⇒ 日志出现 `太极: OpenCode 2.0.22 释放完成（N 个文件）`、
-`files/oc/usr/bin/opencode` 过 100 MB 阈值、太极 Tab 能拉起 serve（127.0.0.1:14000）。
+**修法（已落地，2026-10-11）**
+
+把前缀提成一个常量、由**准入判断与剥前缀共用**，并顺手做掉两条配套：
+
+- 新增 `private const val PKG_ENTRY_PREFIX = "data/data/com.termux/files/usr/"` 与
+  `internal fun relPathOf(entryName: String): String?`（非本包条目 / 目录条目返回 `null`）；
+  `extract()` 改为 `val rel = relPathOf(name); if (rel == null) { entry = tar.nextTarEntry; continue }`。
+- `extract()` 头部（`ocRoot` 就绪后）清理旧版错位残留 `oc/usr/data/`，日志
+  `太极: 清理旧版错位释放残留（约 N MB，E-090）`。
+- 「释放后二进制缺失」分支补一行 `RunLog.log`（预期路径、实际大小、本轮写入/跳过计数）。
+- 单测 `OcExtractPathTest` 补 4 条：真实条目名剥出 `bin/opencode`、剥完不许残留 `data/`、
+  非本包条目与目录条目返回 `null`、剥完的相对路径正好落在根下 `bin/`。
+
+**状态**：**已修**（提交 `b77cab4`；`--no-ff` 合并 `eb377d0`；分支 `fix/e090-opencode-extract-prefix`）。
+**未发版**：v2.0.9 / v2.0.10 正式包仍带此缺陷，随下批（v2.0.11）发布。
+
+**真机验收（AD3J023824001723，2026-10-11 00:07，装上含修复的包后点一次「下载并安装」）**
+
+| 口径 | 实测 |
+| --- | --- |
+| 旧残留清理 | `太极: 清理旧版错位释放残留（约 275 MB，E-090）` —— 这台机器**确实被这个 bug 写坏过**（275 MB 落在 `oc/usr/data/`） |
+| 释放成功 | `太极: OpenCode 2.0.22 释放完成（2 个文件）`（耗时 9 s，走的缓存包，未重下 65 MB） |
+| serve 拉起 | `太极: 会话已就绪 id=ses_…` + `SSE 信号通道就绪（HTTP 200）`；太极 Tab 顶部显示 **● 已连接** |
+| 单测 | `OcExtractPathTest` 13 例 0 失败；全套 63 suite / 563 例 / 0 失败 |
+
+**复现/验收口径（留给下批发版）**：真机点一次安装 ⇒ 日志出现
+`太极: OpenCode 2.0.22 释放完成（N 个文件）`、太极 Tab 能拉起 serve（127.0.0.1:14000）。
 
 **证据**
 
