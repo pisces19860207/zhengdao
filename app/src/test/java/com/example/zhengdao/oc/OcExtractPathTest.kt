@@ -106,4 +106,38 @@ class OcExtractPathTest {
         assertNull("链接指向根外 ⇒ 不许顺着它写", f)
         assertFalse(File(outside, "evil.sh").exists())
     }
+
+    // ── E-090（2026-10-11）：条目名 → 相对路径（剥前缀） ──────────────────────
+    // 现场：E-082 把 `substringAfter("files/usr/")` 换成 `removePrefix("files/usr/")`，
+    // 而条目名以 `data/data/com.termux/` 开头 ⇒ 一个字都没剥掉、整包落到 `oc/usr/data/…`，
+    // 于是 `installed()` 判否，App 内装 opencode 报「释放后二进制缺失（包不完整？）」。
+
+    @Test
+    fun `真实条目名剥出 bin 下的相对路径`() {
+        assertEquals("bin/opencode", OcManager.relPathOf("data/data/com.termux/files/usr/bin/opencode"))
+    }
+
+    @Test
+    fun `剥完不许残留包布局前缀`() {
+        val rel = OcManager.relPathOf("data/data/com.termux/files/usr/lib/libx.so")
+        assertEquals("lib/libx.so", rel)
+        assertFalse("rel 仍带 data/ ⇒ 就是 E-090 那个错位", rel!!.startsWith("data/"))
+    }
+
+    @Test
+    fun `非本包条目与目录条目返回 null`() {
+        assertNull(OcManager.relPathOf("data/data/com.termux/files/home/x"))
+        assertNull(OcManager.relPathOf("usr/bin/opencode"))
+        assertNull(OcManager.relPathOf("files/usr/bin/opencode"))
+        assertNull(OcManager.relPathOf("data/data/com.termux/files/usr/"))
+        assertNull(OcManager.relPathOf(""))
+    }
+
+    @Test
+    fun `剥完的相对路径正好落在根下的 bin 里`() {
+        val rel = OcManager.relPathOf("data/data/com.termux/files/usr/bin/opencode")!!
+        val f = resolve(rel)
+        assertNotNull(f)
+        assertEquals(File(root, "bin/opencode").canonicalPath, f!!.path)
+    }
 }
