@@ -62,6 +62,17 @@ object RootfsInstaller {
      */
     private const val SHA_MISMATCH_MARK = "SHA256 不匹配"
 
+    /**
+     * Rust 核心「这份归档一条都没解出来」的文案标记（`rust/core/src/extract.rs` 的
+     * `ExtractError::EmptyArchive`：`归档不含任何条目: 可落盘 0 条（跳过 N 条）`）。
+     *
+     * BUG-1（2026-10-10 / E-083）：**命中它同样不回退 Java 路径**——包是空的，回退只是再解一遍
+     * 同一份空包；正确做法是和 Java 路径一样把安装判失败（那里有 `extracted == 0` 兜底）。
+     * 不这么做的后果是：0 条目被当成装成功，`RootfsMarker.write` + `swapLocked` 之后
+     * 用户得到一个"装好了"的空环境。
+     */
+    private const val EMPTY_ARCHIVE_MARK = "归档不含任何条目"
+
     class InstallFailed(message: String) : IOException(message)
 
     // ── 进程级安装锁（#11 / E-078）───────────────────────────────────────────
@@ -247,6 +258,8 @@ object RootfsInstaller {
      * @param skipNames 需要跳过的成员名（去掉 `./` 前缀；补丁元数据 `.zhengdao-patch-info`）
      * @param expectedSha256 非 null 时由 Rust 对账归档整体 sha；**不匹配不回退 Java**
      *   —— 回退等于把校验降级成"没校验"（同一份坏包再解一遍），见 [install] 的注释
+     * @throws InstallFailed 可落盘条目为 0（Rust 报 `EmptyArchive`，或旧 .so 回了 0 条目）：
+     *   与 Java 路径的 `extracted == 0` 兜底对齐，**同样不回退**（BUG-1 / E-083）
      * @return true = 走了 Rust，false = 回退到 Java 路径
      */
     internal fun extractArchive(
@@ -264,10 +277,21 @@ object RootfsInstaller {
                     expectedSha256,
                     skipNames.toList(),
                 )
+                // BUG-1（2026-10-10）：Rust 报「可落盘 0 条目」= 这份包没东西可装，绝不回退 Java。
+                // 新 .so 会在 Rust 侧就报 EmptyArchive（下面按 EMPTY_ARCHIVE_MARK 分流）；这条
+                // 计数判断是给「新 Kotlin + 旧 .so」留的保险——旧 .so 会把 0 条目当成功回。
+                if (report.first <= 0L) {
+                    throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）")
+                }
                 Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
             }
             if (rust.isSuccess) return true
             val err = rust.exceptionOrNull()
+            // 0 条目：上面那条计数判断抛的（旧 .so 路径）
+            if (err is InstallFailed) throw err
+            if (err is IllegalStateException && err.message?.contains(EMPTY_ARCHIVE_MARK) == true) {
+                throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）：${err.message}")
+            }
             // 完整性失败**不回退**：盘上这份包不是我们要装的那份（下载后被改动、缓存串了包，
             // 或校验通过到解压之间被换掉）。回退 Java 只会把同一份坏包再解一遍，而 Java 路径
             // 根本不校验 sha256 ⇒ 那就等于把校验悄悄降级成"没校验"。
@@ -276,6 +300,9 @@ object RootfsInstaller {
             }
             // 旧 .so 没有 nativeExtractSkip 符号时也落到这里（JNI 查找失败 → UnsatisfiedLinkError），
             // 于是"新 Kotlin + 旧 so"只让带跳过的补丁路径回退 Java，全量入口照常。
+            // ⚠️ 注意 `BadArchive` 必须留在这条回退里：Rust 只认 zstd/gzip，第三种魔数一律
+            //    `BadArchive("无法识别的压缩格式")`，而 Java 侧 `formatOf` 把未知魔数按**纯 tar**
+            //    处理（离线手选包就是纯 tar）——把它列进"不回退"会直接废掉纯 tar 包。
             Log.w(TAG, "Rust 解压失败，回退 Java 路径（skip=${skipNames.size}）", err)
         }
         extractArchiveJava(archive, destDir, skipNames, onEntry)

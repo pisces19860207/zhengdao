@@ -10,6 +10,7 @@
 //! - 支持 zstd（主）与 gzip（兜底）两种压缩壳的 tar
 //! - 目录 / 符号链接 / 硬链接（前向引用二阶段补齐）/ 普通文件
 //! - FIFO/设备节点跳过（proot -b /dev 方案下不需要）
+//! - **可落盘 0 条目 = 错误**（`EmptyArchive`，与 Kotlin 版 `extracted == 0` 对拍；BUG-1/E-083）
 //! - 路径穿越防护（目标必须落在目标目录内）
 //! - 完成后写标记文件（由调用方指定内容；Kotlin 侧写 distro 信息）
 
@@ -35,6 +36,13 @@ pub enum ExtractError {
     Io(std::io::Error),
     BadArchive(String),
     ShaMismatch { expected: String, actual: String },
+    /// 归档里没有任何**可落盘**的成员（空 tar，或成员全在 `skip_names` 里）。
+    ///
+    /// BUG-1（2026-10-10）：这条以前不存在——0 条目会被当成安装成功（`Ok`），于是上层
+    /// `RootfsMarker.write` + `swapLocked` 把环境标成装好，实际是个空环境还报成功。
+    /// Java 路径一直有这条兜底（`RootfsInstaller.extractArchiveJava` 的 `extracted == 0`），
+    /// 这里补齐"两条路径一致"的对拍。Kotlin 侧靠 `EMPTY_ARCHIVE_MARK` 认这条消息。
+    EmptyArchive { skipped: u64 },
 }
 
 impl From<std::io::Error> for ExtractError {
@@ -48,6 +56,9 @@ impl std::fmt::Display for ExtractError {
         match self {
             ExtractError::Io(e) => write!(f, "IO: {e}"),
             ExtractError::BadArchive(m) => write!(f, "归档异常: {m}"),
+            ExtractError::EmptyArchive { skipped } => {
+                write!(f, "归档不含任何条目: 可落盘 0 条（跳过 {skipped} 条）")
+            }
             ExtractError::ShaMismatch { expected, actual } => {
                 write!(f, "SHA256 不匹配: 期望 {expected} 实际 {actual}")
             }
@@ -232,6 +243,16 @@ pub fn extract_pipeline_skip(
         if src.is_file() {
             fs::copy(&src, &dst).map_err(ExtractError::Io)?;
         }
+    }
+
+    // 5) 空归档兜底（BUG-1，2026-10-10）：与 Kotlin 版 `extractArchiveJava` 的
+    //    「一条都没解出来」对齐（`if (extracted == 0) throw InstallFailed(...)`）。
+    //    为什么必须挡在这里：0 条目原本会被当成安装成功，上层接着写
+    //    `.zhengdao-rootfs-ok` 并换树 —— 用户得到一个"装好了"的空环境。
+    //    为什么用 `entries`（不含 skipped）：Java 侧的计数器同样不计被跳过的成员，
+    //    所以"补丁包只含元数据成员"这种形状两条路径都会拒（语义一致，好对拍）。
+    if entries == 0 {
+        return Err(ExtractError::EmptyArchive { skipped });
     }
 
     Ok(ExtractReport {

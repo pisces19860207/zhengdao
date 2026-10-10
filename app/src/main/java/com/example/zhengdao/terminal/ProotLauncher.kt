@@ -94,12 +94,40 @@ object ProotLauncher {
             Triple("libtalloc.so", "libtalloc.so.2", "742b438c4d09e276985a61d44164c9de207b6d8cc268f3018cb3001961bcb309"),
             Triple("libandroid-shmem.so", "libandroid-shmem.so", "84475798e07c8174dbbfaec70a827fdb02f19ffa69a589380c13e7507fd0e731"),
         )
+        // BUG-2（2026-10-10 / E-083）：核对通过的资产记一条「戳」，下次开会话免重算那 313,648 B
+        // 的 SHA-256。戳落在 App 私有目录（别的 App 写不进来），判定规则与不变量见 PinnedAssets。
+        val stampFile = File(tpDir, PinnedAssets.FILE_NAME)
+        val stamps = PinnedAssets.parse(runCatching { stampFile.readText() }.getOrDefault("")).toMutableMap()
+        var stampsChanged = false
+        val staleNames = stamps.keys - pinned.map { it.second }.toSet()
+        if (staleNames.isNotEmpty()) {
+            staleNames.forEach { stamps.remove(it) } // 清单换过的旧条目：清掉，别留在文件里骗人
+            stampsChanged = true
+        }
+        var reverified = 0
+        var skippedByStamp = 0
         for ((asset, target, expectedSha) in pinned) {
             val dst = File(tpDir, target)
-            if (dst.isFile && sha256Of(dst).equals(expectedSha, ignoreCase = true)) continue // 已就位
+            if (dst.isFile && !PinnedAssets.needsReverify(
+                    dst.length(), dst.lastModified(), expectedSha, stamps[target]
+                )
+            ) {
+                skippedByStamp++ // 戳一致：自那次核对后没被动过
+                continue
+            }
+            if (dst.isFile) {
+                reverified++
+                val actual = sha256Of(dst)
+                if (actual.equals(expectedSha, ignoreCase = true)) {
+                    stamps[target] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
+                    stampsChanged = true
+                    continue // 已就位（戳缺失/失效，重算一遍通过）
+                }
+            }
             context.assets.open("proot/$asset").use { input ->
                 dst.outputStream().use { input.copyTo(it) }
             }
+            reverified++
             val actual = sha256Of(dst)
             if (!actual.equals(expectedSha, ignoreCase = true)) {
                 RunLog.log("严重: $target SHA256 不匹配（actual=$actual），已删除损坏副本")
@@ -118,8 +146,12 @@ object ProotLauncher {
             }
             val mode = if (target == "proot" || target == "loader") 493 else 420 // 0755 / 0644
             try { android.system.Os.chmod(dst.absolutePath, mode) } catch (_: Throwable) {}
+            stamps[target] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
+            stampsChanged = true
             RunLog.log("已释放: $target（SHA256 校验通过）")
         }
+        if (stampsChanged) runCatching { stampFile.writeText(PinnedAssets.format(stamps)) }
+        RunLog.log("termux-proot 版本固定校验: 跳过重算 $skippedByStamp 项 / 实算 $reverified 项")
         RunLog.log(
             "启动决策: proot=" + prootBin.isFile + " loader=" + loaderBin.isFile +
                 " marker=" + File(rootfsDir, ".zhengdao-rootfs-ok").isFile

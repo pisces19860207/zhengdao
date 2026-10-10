@@ -561,6 +561,24 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > `AgentInstallPrepTest` +7、`RootfsSidecarShaTest` +3、`StoreTest` +1）；`:app:assembleDebugAndroidTest`
 > 与 `:app:assembleRelease`（含 R8 冒烟）本地均 BUILD SUCCESSFUL。
 
+> **2026-10-10 续（rootfs 审计复核：两条真 BUG 收口，其余七条进工作表）**：
+> 外部审计报告（`证道-rootfs审计与复核-2026-10-10.md`）逐条核对后：行数、asset 字节与绝大多数引用行号**属实**，
+> 其中两条 🔴 本次修掉——① **BUG-1**：Java 解压路径有「落盘 0 条目就报错」的兜底，Rust 优先路径没有，
+> 空包 / 成员全被 `skipNames` 跳过的增量补丁会被标记成 `.zhengdao-rootfs-ok` 并换上树（用户拿到空 Debian 还被告知装好）
+> ⇒ Rust 侧新增 `ExtractError::EmptyArchive`，Kotlin 侧把「归档不含任何条目」列入**不回退 Java** 的分流；
+> **未采纳**报告「把 `BadArchive` 也列入不回退」的建议（Rust 只认 zstd/gzip，Java 把未知魔数按纯 tar 处理
+> ＝离线手选包的形状，排除它等于废掉纯 tar 离线安装）。② **BUG-2**：`buildLaunchPlan` 每次开会话都全量重算
+> 313,648 B 的 SHA-256 ⇒ 新增 `terminal/PinnedAssets.kt` 的「已验证戳」（`files/termux-proot/.pinned-verified`，
+> **只有哈希实测等于钉住值那一刻才写戳**；大小 / mtime / 钉住的 sha 任一不符即退回重算，APK 升版换 sha 也照样重算），
+> 并留一行每次会话的校验摘要日志（`termux-proot 版本固定校验: 跳过重算 N 项 / 实算 M 项`）。详见 **E-083**。
+> ③ 报告其余条目（加固-1 软链 linkName、加固-2 resolv.conf try/finally、加固-3 前缀匹配、加固-4 增量空间预检、
+> 优化-1/2/3）**不在本次动手**：用户 2026-10-10 指示「BUG 先做了，其他的放进工作表」⇒ 已开 **issue #18** 列清单。
+> ④ 本轮单测：Kotlin **58 suites / 519 tests / 0 失败 / 0 错误 / 1 skipped**（新增 `PinnedAssetsTest` 9 例）；
+> Rust `cargo test -p zhengdao_core --release` = **25 passed / 0 failed**（新增两例）；`:app:assembleDebug`
+> BUILD SUCCESSFUL（debug APK 40,604,137 B）。BUG-2 真机三轮取证：首启「实算 4 项」→ 再启「跳过重算 4 项」→
+> 篡改一份后被从 assets 重放回钉住的 sha 且只重算那一项；BUG-1 设备端不可达（要造 sha 合法或没 sha 的 0 条目包），
+> 按「Rust 单测 + 代码复核」如实记录。
+
 共同 `.git`：`C:\Users\guoli\AndroidStudioProjects\zhengdao\.git`（所有 worktree 共用；hook 装一次全局生效）。
 
 ## 2. 功能台账
@@ -581,6 +599,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 | 环境体检·native 加速层可见（第 10 项，⚠ 不是 ✗） | ✅ 在用 | `d002e3a` | `ui/EnvHealth.kt`、`app/src/test/java/com/example/zhengdao/ui/EnvHealthTest.kt` |
 | 崩溃入口兜底（体检表逐项 / 前台服务 / 修复线程）+ 失败进「最近问题」 | ✅ 在用（#10 第一批，见 E-077；P0-3 未做真机注入） | 本次 | `ui/EnvHealth.kt`、`ui/HomeScreen.kt`、`terminal/SessionService.kt`、`terminal/SessionManager.kt` |
 | 环境安装/替换的重入锁 + 原子替换（备份 → 就位 → 删备份） | ✅ 在用（#11 第二批，见 E-078；并发拒绝由 JVM 单测覆盖，真机验证了进行中门控与降级复原） | 本次 | `rootfs/RootfsInstaller.kt`、`rootfs/RootfsDelta.kt`、`ui/InstallFlow.kt`、`ui/SettingsScreen.kt`、`TerminalActivity.kt` |
+| rootfs 解压与版本校验两条 BUG（#18 第一批：BUG-1 Rust 路径不许把「0 条目」当成功 / BUG-2 termux-proot 版本固定校验带「已验证戳」） | ✅ 在用（见 E-083；BUG-2 真机三轮取证：首启实算 4 项 → 再启跳过 4 项 → 篡改一份后重放回钉住的 sha；BUG-1 设备端不可达，由 Rust 单测 + 代码复核覆盖） | 本次 | `rust/core/src/extract.rs`、`rust/core/src/tests.rs`、`rootfs/RootfsInstaller.kt`、`terminal/PinnedAssets.kt`、`terminal/ProotLauncher.kt` |
 | 信任边界收口（#16 第七批：P3-2 安装脚本执行私有副本 / P3-5 解包防路径穿越 / P3-6 缺校验值拒绝安装） | ✅ 在用（见 E-082；P3-3 备份范围未做；P3-2 真机受控实验过，P3-5/P3-6 由单测 + 代码复核覆盖） | `37bc860` | `ui/AgentInstaller.kt`、`ui/AgentInstallPrep.kt`、`terminal/Store.kt`、`terminal/HermesEnv.kt`、`res/raw/hermes_env_repair.sh`、`oc/OcManager.kt`、`rootfs/RootfsCache.kt`、`TerminalActivity.kt` |
 | 缓存清理（两档） | ✅ 在用（二档已接启动自动清理，见 `ZhengdaoApp.autoCleanJunk`；一档仍只走按钮，另在 guest 里有 `/usr/local/bin/zzclean`（App 启动时按内容+执行位写入）；一档命令含 pip 缓存） | `36a927d` | `terminal/CacheCleaner.kt`、`ui/SettingsScreen.kt`、`terminal/ProotLauncher.kt`（写入 `/usr/local/bin/zzclean`） |
 | 公共存放区（`Download/证道/{logs,cache,agents,rootfs,opencode}`） | ✅ 在用 | 本次 | `terminal/Store.kt`（唯一真相源）、`terminal/ProotLauncher.kt`（bind） |
