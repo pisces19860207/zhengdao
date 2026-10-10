@@ -19,6 +19,9 @@ import com.termux.terminal.TerminalEmulator;
  */
 final class TerminalCursorBlinker {
 
+    /** 日志 TAG：与 {@link TerminalView} 搬家前用的同一个字符串，保证日志文案不变。 */
+    private static final String LOG_TAG = "TerminalView";
+
     private final TerminalView mView;
 
     /** 懒创建（上游同款）：只有真正要闪的时候才建 Handler。 */
@@ -52,17 +55,17 @@ final class TerminalCursorBlinker {
 
         // If cursor blinking rate is not valid
         if (blinkRate != 0 && (blinkRate < TerminalView.TERMINAL_CURSOR_BLINK_RATE_MIN || blinkRate > TerminalView.TERMINAL_CURSOR_BLINK_RATE_MAX)) {
-            mView.mClient.logError(TerminalView.LOG_TAG, "The cursor blink rate must be in between " + TerminalView.TERMINAL_CURSOR_BLINK_RATE_MIN + "-" + TerminalView.TERMINAL_CURSOR_BLINK_RATE_MAX + ": " + blinkRate);
+            mView.mClient.logError(LOG_TAG, "The cursor blink rate must be in between " + TerminalView.TERMINAL_CURSOR_BLINK_RATE_MIN + "-" + TerminalView.TERMINAL_CURSOR_BLINK_RATE_MAX + ": " + blinkRate);
             mRate = 0;
             result = false;
         } else {
-            mView.mClient.logVerbose(TerminalView.LOG_TAG, "Setting cursor blinker rate to " + blinkRate);
+            mView.mClient.logVerbose(LOG_TAG, "Setting cursor blinker rate to " + blinkRate);
             mRate = blinkRate;
             result = true;
         }
 
         if (mRate == 0) {
-            mView.mClient.logVerbose(TerminalView.LOG_TAG, "Cursor blinker disabled");
+            mView.mClient.logVerbose(LOG_TAG, "Cursor blinker disabled");
             stop();
         }
 
@@ -109,7 +112,7 @@ final class TerminalCursorBlinker {
      * is moved 2 or more times quickly, like long hold on arrow keys, it would trigger
      * `-> off -> on -> off -> on -> ...`, and the "on" callback at index 2 is automatically
      * cancelled by next "off" callback at index 3 before getting a chance to be run. For this case
-     * we log only if {@link TerminalView#TERMINAL_VIEW_KEY_LOGGING_ENABLED} is enabled, otherwise would clutter
+     * we log only if {@link TerminalView#isKeyLoggingEnabled()} is enabled, otherwise would clutter
      * the log. We don't start the blinking with a delay to immediately show cursor in case it was
      * previously not visible.
      *
@@ -132,14 +135,14 @@ final class TerminalCursorBlinker {
                 return;
             // If cursor blinder is to be started only if cursor is enabled
             else if (startOnlyIfCursorEnabled && ! mView.mEmulator.isCursorEnabled()) {
-                if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                    mView.mClient.logVerbose(TerminalView.LOG_TAG, "Ignoring call to start cursor blinker since cursor is not enabled");
+                if (TerminalView.isKeyLoggingEnabled())
+                    mView.mClient.logVerbose(LOG_TAG, "Ignoring call to start cursor blinker since cursor is not enabled");
                 return;
             }
 
             // Start cursor blinker runnable
-            if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mView.mClient.logVerbose(TerminalView.LOG_TAG, "Starting cursor blinker with the blink rate " + mRate);
+            if (TerminalView.isKeyLoggingEnabled())
+                mView.mClient.logVerbose(LOG_TAG, "Starting cursor blinker with the blink rate " + mRate);
             if (mHandler == null)
                 mHandler = new Handler(Looper.getMainLooper());
             mRunnable = new BlinkerRunnable(mView.mEmulator, mRate);
@@ -153,8 +156,8 @@ final class TerminalCursorBlinker {
      */
     synchronized void stop() {
         if (mHandler != null && mRunnable != null) {
-            if (TerminalView.TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mView.mClient.logVerbose(TerminalView.LOG_TAG, "Stopping cursor blinker");
+            if (TerminalView.isKeyLoggingEnabled())
+                mView.mClient.logVerbose(LOG_TAG, "Stopping cursor blinker");
             mHandler.removeCallbacks(mRunnable);
             // 证道 P1-a（2026-10-10）：断开 Handler -> Runnable -> TerminalView -> Activity 的引用链。
             mRunnable = null;
@@ -229,7 +232,7 @@ final class TerminalCursorBlinker {
                     // which checks with TerminalEmulator.shouldCursorBeVisible() to decide whether
                     // to draw the cursor or not
                     mCursorVisible = !mCursorVisible;
-                    //mView.mClient.logVerbose(TerminalView.LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
+                    //mView.mClient.logVerbose(LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
                     mEmulator.setCursorBlinkState(mCursorVisible);
                     // 证道 P1-a（2026-10-10）：只重绘光标所在的那一格，不再整屏 invalidate()。
                     invalidateCursorCell();

@@ -28,8 +28,18 @@ import com.termux.view.textselection.TextSelectionCursorController;
 /** View displaying and interacting with a {@link TerminalSession}. */
 public final class TerminalView extends View {
 
-    /** Log terminal view key and IME events. */
-    static boolean TERMINAL_VIEW_KEY_LOGGING_ENABLED = false;
+    /** Log terminal view key and IME events. 只能经 {@link #setIsTerminalViewKeyLoggingEnabled(boolean)} 改。 */
+    private static boolean sKeyLoggingEnabled = false;
+
+    /**
+     * @return 是否正在记录终端按键与 IME 事件。
+     *
+     * <p>P1-c 接口收窄：搬家后的职责类（{@link TerminalImeBridge} / {@link TerminalCursorBlinker}）
+     * 读开关走这个包内访问器，开关本身不再对包内可写。</p>
+     */
+    static boolean isKeyLoggingEnabled() {
+        return sKeyLoggingEnabled;
+    }
 
     /** The currently displayed terminal session, whose emulator is {@link #mEmulator}. */
     public TerminalSession mTermSession;
@@ -95,8 +105,6 @@ public final class TerminalView extends View {
     /** The {@link KeyEvent} is generated from a non-physical device, like if 0 value is returned by {@link KeyEvent#getDeviceId()}. */
     public final static int KEY_EVENT_SOURCE_SOFT_KEYBOARD = 0;
 
-    static final String LOG_TAG = "TerminalView";
-
     public TerminalView(Context context, AttributeSet attributes) { // NO_UCD (unused code)
         super(context, attributes);
         // 无障碍开关（mAccessibilityEnabled）已随 TerminalA11yDelegate 的构造器读取。
@@ -118,7 +126,7 @@ public final class TerminalView extends View {
      * @param value The boolean value that defines the state.
      */
     public void setIsTerminalViewKeyLoggingEnabled(boolean value) {
-        TERMINAL_VIEW_KEY_LOGGING_ENABLED = value;
+        sKeyLoggingEnabled = value;
     }
 
 
@@ -656,7 +664,7 @@ public final class TerminalView extends View {
      * is moved 2 or more times quickly, like long hold on arrow keys, it would trigger
      * `-> off -> on -> off -> on -> ...`, and the "on" callback at index 2 is automatically
      * cancelled by next "off" callback at index 3 before getting a chance to be run. For this case
-     * we log only if {@link #TERMINAL_VIEW_KEY_LOGGING_ENABLED} is enabled, otherwise would clutter
+     * we log only if {@link #isKeyLoggingEnabled()} is enabled, otherwise would clutter
      * the log. We don't start the blinking with a delay to immediately show cursor in case it was
      * previously not visible.
      *

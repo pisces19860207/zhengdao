@@ -28,6 +28,9 @@ import androidx.annotation.RequiresApi;
  */
 final class TerminalA11yDelegate {
 
+    /** 日志 TAG：与 {@link TerminalView} 搬家前用的同一个字符串，保证日志文案不变。 */
+    private static final String LOG_TAG = "TerminalView";
+
     private final TerminalView mView;
 
     /**
@@ -132,7 +135,7 @@ final class TerminalA11yDelegate {
             if (context == null) return null;
             return context.getSystemService(AutofillManager.class);
         } catch (Exception e) {
-            mView.mClient.logStackTraceWithMessage(TerminalView.LOG_TAG, "Failed to get AutofillManager service", e);
+            mView.mClient.logStackTraceWithMessage(LOG_TAG, "Failed to get AutofillManager service", e);
             return null;
         }
     }
@@ -144,7 +147,7 @@ final class TerminalA11yDelegate {
             AutofillManager autofillManager = getAutoFillManagerService();
             return autofillManager != null && autofillManager.isEnabled();
         } catch (Exception e) {
-            mView.mClient.logStackTraceWithMessage(TerminalView.LOG_TAG, "Failed to check if Autofill is enabled", e);
+            mView.mClient.logStackTraceWithMessage(LOG_TAG, "Failed to check if Autofill is enabled", e);
             return false;
         }
     }
@@ -178,7 +181,7 @@ final class TerminalA11yDelegate {
                 autofillManager.requestAutofill(mView);
             }
         } catch (Exception e) {
-            mView.mClient.logStackTraceWithMessage(TerminalView.LOG_TAG, "Failed to request Autofill", e);
+            mView.mClient.logStackTraceWithMessage(LOG_TAG, "Failed to request Autofill", e);
         }
     }
 
@@ -193,7 +196,7 @@ final class TerminalA11yDelegate {
                 autofillManager.cancel();
             }
         } catch (Exception e) {
-            mView.mClient.logStackTraceWithMessage(TerminalView.LOG_TAG, "Failed to cancel Autofill request", e);
+            mView.mClient.logStackTraceWithMessage(LOG_TAG, "Failed to cancel Autofill request", e);
         }
     }
 }
