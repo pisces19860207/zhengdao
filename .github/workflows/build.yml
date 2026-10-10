@@ -220,6 +220,14 @@ jobs:
           ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
         run: ./gradlew :app:assembleRelease --console=plain
 
+      # E-072：R8 究竟把哪个类/方法改了名，唯一的地面真值是构建产物 mapping.txt ——
+      #   单测（R8KeepRuleGuardTest 只读 proguard 文本）与 check-native-so.py（只读 .so 符号）
+      #   都够不到它。这一步把"关键类未被改名 + onProgress 保住"变成会红的断言
+      #   （E-022：onProgress 被 R8 改名 ⇒ release 一装环境就 SIGABRT）。
+      #   必须紧跟 assembleRelease——它才有 mapping.txt；挂在别处就成了永远跳过的假门禁。
+      - name: R8 产物断言（关键类未被改名 + onProgress 保住）
+        run: python3 tools/check-r8-mapping.py
+
       - name: 校验 release 包的签名真的是存量那把 key（验**产物**，不验替身）
         # ⚠️ 见 docs/ERRATA.md E-014 §7。上面那步「还原 debug 签名密钥」只证明了**钥匙文件对**；
         #    2026-10-07 实测就是这个坑——第 9 步全绿、密钥指纹逐字符吻合，打出来的包却是

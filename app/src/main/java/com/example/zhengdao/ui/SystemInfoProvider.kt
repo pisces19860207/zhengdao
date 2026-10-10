@@ -261,8 +261,21 @@ object SystemInfoProvider {
      * 目录占用统计（MB）。rootfs 内有为 proot 存储直通建的符号链接（sdcard/workspace 等），
      * 指向整个共享存储 —— 必须跳过符号链接子树，否则会把用户的照片视频全算进来。
      * 无权限目录（bind 挂载点为 0000 模式）跳过继续，整体失败返回 0。
+     *
+     * **下沉形态（v2.0 R3，见 `docs/证道-Rust化余地审计-2026-10-09.md` 候选 A）**：
+     * 先走 Rust（`CoreNative.dirSizeBytes`，输入路径、输出一个字节数，边界只跨一次），
+     * 拿不到再回退下面这段 Java `walkFileTree`——两条路径语义逐条对齐（跳过软链、
+     * 只累加普通文件、无权限静默跳过），且可用 [com.example.zhengdao.rust.CoreNative.isRustAvailable]
+     * 与同目录结果对拍。**回退纪律**：Rust 不可用 = 功能降级，不中断。
      */
-    fun dirSizeMb(dir: File): Long = try {
+    fun dirSizeMb(dir: File): Long {
+        val bytes = com.example.zhengdao.rust.CoreNative.dirSizeBytes(dir)
+            ?: javaDirSizeBytes(dir)
+        return bytes / 1048576
+    }
+
+    /** [dirSizeMb] 的 Java 回退实现（Rust 不可用或 JNI 失败时走这里）。 */
+    private fun javaDirSizeBytes(dir: File): Long = try {
         var total = 0L
         java.nio.file.Files.walkFileTree(
             dir.toPath(),
@@ -289,7 +302,7 @@ object SystemInfoProvider {
                 ): java.nio.file.FileVisitResult = java.nio.file.FileVisitResult.CONTINUE
             },
         )
-        total / 1048576
+        total
     } catch (_: Throwable) { 0L }
 
     /** 共享存储是否可直读（legacy 视图设备为 true；安卓 16+ target 28 为 false）。 */

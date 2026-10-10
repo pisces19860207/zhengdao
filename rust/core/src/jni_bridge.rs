@@ -93,6 +93,33 @@ pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeVerifyEd2
     }
 }
 
+/// Kotlin: `CoreNative.nativeDirSizeBytes(path) -> Long`
+///
+/// 递归统计目录树里普通文件的字节数总和（跳过符号链接子树、无权限条目静默跳过）。
+///
+/// 契约与 `nativeSha256Hex` 同类但**哨兵值不同**：
+/// - 成功返回 ≥ 0 的字节数；
+/// - **失败返回 `-1`**（JString 转换失败 / 路径传不进来）——
+///   刻意不用 `0`：`0` 是"目录真的空"的合法结果，用它当错误码会让调用方
+///   把"读不了"误判成"占用为零"（这正是本项目最怕的静默错）。
+///   Kotlin 侧见 `-1` 才回退 Java 的 `walkFileTree`。
+///
+/// 纯逻辑层 [`crate::dirsize::dir_size_bytes`] 不做"路径不存在 ⇒ 0"以外的报错，
+/// 所以这个 JNI 入口唯一的失败来源是 JNI 字符串转换本身，绝不 panic 跨 FFI。
+#[no_mangle]
+pub extern "system" fn Java_com_example_zhengdao_rust_CoreNative_nativeDirSizeBytes(
+    mut env: JNIEnv,
+    _class: JClass,
+    path: JString,
+) -> jni::sys::jlong {
+    let p: String = match env.get_string(&path) {
+        Ok(s) => s.to_string_lossy().to_string(),
+        Err(_) => return -1,
+    };
+    // u64 超过 i64::MAX 在现实中不可能（那是 8 EB），直接饱和转换。
+    crate::dirsize::dir_size_bytes(std::path::Path::new(&p)) as i64
+}
+
 /// Kotlin: `CoreNative.nativeExtract(archivePath, targetDir, expectedSha256) -> String`
 /// 永远返回 JSON（Android 的 stderr 不进 logcat，null 协议会让错误无迹可查）：
 /// 成功 {"ok":true,"entries":N,"bytes":N,"sha256":"...","skipped":N}；失败 {"ok":false,"error":"..."}
