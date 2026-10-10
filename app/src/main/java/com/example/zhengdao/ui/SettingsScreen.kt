@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import com.example.zhengdao.util.HumanizeError
+import com.example.zhengdao.ui.theme.iosSwitchColors
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -650,6 +651,7 @@ fun SettingsScreen(
                         if (on) com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
                         storageTick++
                     },
+                    colors = iosSwitchColors(),
                 )
             }
             // ── FIX-F（2026-10-10，E-084）：提问时自动附上资料线索 ──
@@ -1468,7 +1470,7 @@ fun SettingsScreen(
                 )
                 Switch(checked = false, enabled = hasSu, onCheckedChange = {
                     Toast.makeText(ctx, "即将在 v1.x 版本推出（chroot 后端）", Toast.LENGTH_SHORT).show()
-                })
+                }, colors = iosSwitchColors())
             }
         }
 

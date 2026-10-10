@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import com.example.zhengdao.ui.theme.iosSwitchColors
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -136,7 +137,7 @@ fun PluginsScreen() {
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Switch(checked = on, enabled = !busy, onCheckedChange = { toggle(spec, it) })
+            Switch(checked = on, enabled = !busy, onCheckedChange = { toggle(spec, it) }, colors = iosSwitchColors())
         }
     }
 
@@ -203,6 +204,7 @@ fun PluginsScreen() {
                                 checked = false,
                                 enabled = !busy && envReady,
                                 onCheckedChange = { toggle(r.spec, it) },
+                                colors = iosSwitchColors(),
                             )
                         }
                     }
