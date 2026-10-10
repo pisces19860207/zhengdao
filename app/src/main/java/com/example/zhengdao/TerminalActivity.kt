@@ -592,6 +592,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /** 快捷键条：固定序列直发；CTRL/SHIFT 为粘滞键，修饰下一次输入（设计文档 §7）。 */
     private fun wireKeyBar() {
+        // 间距档位里的单键高度（默认 48dp）在这里落实：每个键都是 TextView，值收归 TerminalPrefs。
+        findViewById<android.view.View>(R.id.key_bar)?.let { TerminalPrefs.applyKeyBarHeight(it, this) }
         ctrlButton = findViewById(R.id.key_ctrl)
         shiftButton = findViewById(R.id.key_shift)
         val sequences = mapOf(

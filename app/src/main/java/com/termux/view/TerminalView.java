@@ -246,6 +246,17 @@ public final class TerminalView extends View {
         mSizeResolver.setTypeface(newTypeface);
     }
 
+    /**
+     * 行高倍率（1.0 = 字体原生行高）。
+     *
+     * <p>只放大行盒高度，字形宽度不变 ⇒ 中英文 2:1 关系不动；屏幕高度不变 ⇒ 行数按比例变少。
+     * 调用顺序无所谓：渲染器尚未建立时（首次 {@link #setTextSize(int)} 之前）只记值，
+     * 之后每次重建渲染器都会带上它。</p>
+     */
+    public void setLineHeightMultiplier(float multiplier) {
+        mSizeResolver.setLineHeightMultiplier(multiplier);
+    }
+
     @Override
     public boolean onCheckIsTextEditor() {
         return true;

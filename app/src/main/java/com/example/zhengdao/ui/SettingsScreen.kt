@@ -792,6 +792,7 @@ fun SettingsScreen(
             var sizeDp by remember { mutableStateOf(TerminalPrefs.sizeDp(ctx)) }
             var schemeId by remember { mutableStateOf(TerminalPrefs.scheme(ctx).id) }
             var insetDp by remember { mutableStateOf(TerminalPrefs.insetDp(ctx)) }
+            var spacingId by remember { mutableStateOf(TerminalPrefs.spacing(ctx).id) }
 
             Text(
                 text = "下次进入终端时生效。字号越小，同屏能显示的内容越多。",
@@ -833,6 +834,27 @@ fun SettingsScreen(
             Text(
                 text = "文字与边框之间的距离。留白占的是可用宽度——8dp 在 375dp 宽屏上约损失 4% 列宽，" +
                     "觉得同屏内容变少就调小或选「无」。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Text("行距", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TerminalPrefs.Spacing.values().forEach { sp ->
+                    FilterChip2(sp.label, sp.id == spacingId) {
+                        spacingId = sp.id
+                        TerminalPrefs.saveSpacing(ctx, sp)
+                    }
+                }
+            }
+            Text(
+                text = "舒适＝行高 1.15 倍、终端上下各留 4dp；紧凑＝与旧版一致。只影响行盒高度，不影响列宽（中英 2:1）。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
