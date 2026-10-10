@@ -10,7 +10,7 @@
 ## 结账 · 现状总表（2026-10-10 晚）
 
 > **这一节是给「新开一个会话」用的**：开工前先看这里，别把已经做完的又当成没做，也别把待做的说成做完了。
-> 结账基准：`origin/main` = `ce161be`，版本 **v2.0.9（versionCode 25）**，CI（`.github/workflows/ci.yml` 的 `verify` + `build`）双绿。
+> 结账基准：`origin/main` = `ce161be`，版本 **v2.0.9（versionCode 25）**，CI 双绿（`ci.yml` 的 `verify` + `build.yml` 的 `build`；tag 推送时 `build.yml` 的 `release` job 另建正式 Release）。
 > 这一节比顶部那行 `682dceb`（2026-10-07）的旧基准新得多；逐条细节按编号查 `docs/ERRATA.md`，逐功能台账仍在下面 §2。
 
 ### A. 已经做完，且有证据（2026-10-10 这一轮，从旧到新）
@@ -28,6 +28,8 @@
 | 9 | **E-084** FIX-F：提问时自动附上「资料库线索」（App 先在本机检索，结果跟在用户这句话后面进终端） | `d972e4a` → `0a5380b` | 单测 + 真机；⚠️ 合并时把作者原来的 E-083 让号成 **E-084**（撞号） |
 | 10 | **E-085 / issue #18** rootfs 工作表第一批五条：加固-1 软链 linkname、加固-2 resolv.conf 权限还原、加固-3 路径前缀、加固-4 增量空间预检、优化-2 zz 脚本按内容比对 | `f44a453` + `298a45d` → `00e6a67`；补记 `bedc392` → `ce161be` | 加固-1 真机仪器用例（旧 `.so` 上失败 `escape.link=true`，重编后 `escape.link=false`）；**加固-2/3/4 与优化-2 只有单测 + 代码复核**；单测 60 suites / 542 例 / 0 失败 / 1 skipped，Rust 26 例 |
 | 11 | **v2.0.9 发版**：`versionCode 25` + `.github/release-notes/v2.0.9.md` + tag `v2.0.9` | `298a45d` / tag `v2.0.9` | 正式 Release「证道 v2.0.9 — 正式版」（<https://github.com/pisces19860207/zhengdao/releases/tag/v2.0.9>）：`zhengdao-2.0.9-release.apk` 4,557,809 B、`sha256:d1ce872cd34cf0d018ef44b8b126e4854b4ae9dac1f09de266f423a69cc367fe`；包内 `lib/arm64-v8a/libzhengdao_core.so` 960,192 B / `sha256:d50bbd2b235658923fb934a3be090ac2df37249f2399d69476e742d578a75f79`，与仓库里那份逐字节一致；真机上装的已是正式包（`2.0.9` / vc25 / 非 debuggable，日志 `启动自检：安装包签名 = 官方 ✓`） |
+
+> **发版流程（下次照抄）**：改 `app/build.gradle.kts` 的 `appVersionName` / `versionCode` → 新增 `.github/release-notes/vX.Y.Z.md` → 合进 `main`（`build.yml` 会把滚动 release `latest` 刷成新版，确认落在 `latest` 的 apk 尺寸/时间变了）→ `git tag -a vX.Y.Z && git push origin vX.Y.Z` → `build.yml` 的 `release` job（`if: startsWith(github.ref, 'refs/tags/v')`）建正式 Release。注意滚动包**每次构建都会重传、sha256 不可复现**，别把历史 sha256 当"在架值"（E-081）。
 
 > ⚠️ **2026-10-10 16:34 的一次事故与自愈**（记在 E-085 里）：跑 `.\gradlew.bat :app:connectedDebugAndroidTest` 会先卸载 App ⇒ **App 内部数据被清**（`files/rootfs`、`files/home`、prefs）；外部数据完好（`Download/证道/*` 与用户的 `Download/男性` 都在）。16:36:40 重进终端时 App 自己用本地缓存包重装了 rootfs（`SHA256 校验通过（来源：索引）`，768 MB，不联网）；工作区设置回落成默认值、已改回 `/storage/emulated/0/Download/男性`；并给本地归档补了 `.sha256` 边车（65 B，`d80639e7…4f02`），免得「清数据后离线重装」被 E-082 的 fail-closed 拒掉。
 
