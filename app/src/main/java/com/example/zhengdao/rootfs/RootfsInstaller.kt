@@ -12,6 +12,8 @@ import android.content.Context
 import android.os.StatFs
 import android.system.Os
 import android.util.Log
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarConstants
@@ -22,6 +24,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * RootFS 解压安装器（设计文档 §6/§8）：
@@ -41,6 +44,12 @@ object RootfsInstaller {
     /** 临时解包目录名。增量更新（[RootfsDelta]）复用同一个目录名，故对包内可见。 */
     internal const val TMP_NAME = "rootfs.tmp"
 
+    /**
+     * 旧环境让位目录名（#11 / E-078）：替换时先把 `rootfs` 改名到这里，新树就位成功后再删。
+     * 与 [TMP_NAME] 一样落在 `filesDir` 下（同一文件系统 ⇒ 改名是原子元数据操作）。
+     */
+    internal const val OLD_NAME = "rootfs.old"
+
     /** 全量安装后的 distro 标记（老行为原样保留：标记内容里的发行版串一直是它）。 */
     private const val DEFAULT_DISTRO = "debian-13.7"
 
@@ -55,6 +64,47 @@ object RootfsInstaller {
 
     class InstallFailed(message: String) : IOException(message)
 
+    // ── 进程级安装锁（#11 / E-078）───────────────────────────────────────────
+    //
+    // 为什么锁必须在这里：环境的"替换"是全 App 唯一能毁掉已装环境的操作，而此前各入口
+    // 互不设防——设置页四条长流程各发各的（全仓唯一一处 busy 门控只护「检查环境更新」，
+    // 见 `ui/SettingsScreen.kt:993`），终端页三处用的是**实例字段** `installing`
+    // （`TerminalActivity.kt:56-57`，只活在那个 Activity 里），增量更新与全量安装之间
+    // 更是毫无关系。两个任务叠在一起时「解包 A」与「替换 B」交错 ⇒ 用户看到的是
+    // "装了两次，最后环境是随机的"。
+    //
+    // 语义选择：**拒绝，不排队**。排队意味着第二个任务会在第一个刚换完环境时立刻再换一次，
+    // 用户点两下就得等满两个周期，结果却与只点一次没有区别；直接告诉他"已有任务在跑"
+    // 才是他要的信息。
+    private val lock = AtomicBoolean(false)
+
+    private val _installing = mutableStateOf(false)
+
+    /** Compose 可读的进行中状态（设置页 / 终端页据此禁用按钮）。 */
+    val installing: State<Boolean> get() = _installing
+
+    /** 非 Compose 调用方（后台线程、`ui/InstallFlow`）用。 */
+    fun isInstalling(): Boolean = lock.get()
+
+    /**
+     * 进程级互斥：重入直接抛 [InstallFailed]（文案原样出现在设置页状态行 / 终端横幅里）。
+     *
+     * 用 `AtomicBoolean` 而不是 `synchronized`：安装耗时以分钟计，这把锁只该被"看一眼"
+     * （按钮 enabled、入口预检），绝不能让别人为了看它而阻塞两分钟。
+     */
+    internal fun <T> withInstallLock(what: String, block: () -> T): T {
+        if (!lock.compareAndSet(false, true)) {
+            throw InstallFailed("已有安装/更新任务在跑，本次「$what」未执行（等它结束后再试）")
+        }
+        _installing.value = true
+        try {
+            return block()
+        } finally {
+            _installing.value = false
+            lock.set(false)
+        }
+    }
+
     /** 存储预检（设计文档 §2：按落盘体积校验，不足时给出明确差额）。 */
     fun ensureFreeSpace(context: Context, archiveBytes: Long) {
         val stat = StatFs(context.filesDir.absolutePath)
@@ -67,10 +117,26 @@ object RootfsInstaller {
         }
     }
 
-    /** 启动时清理上次中断的残局（只动 tmp 目录，不碰现有 rootfs 与 home）。 */
+    /**
+     * 启动时清理上次中断的残局（只动 tmp 与替换备份，不碰现有 rootfs 与 home）。
+     *
+     * `rootfs.old`（#11 / E-078）是替换过程留下的旧树备份，两种残局要分开处理：
+     * - `rootfs` 在位 ⇒ 替换其实已经成功，备份只是没来得及删的垃圾，删掉（否则白占 1.5–2GB）；
+     * - `rootfs` 缺失 ⇒ 上次替换死在"让位之后、就位之前"，**此时备份就是用户唯一的环境**，
+     *   必须改名复原，绝不能跟着 tmp 一起删。
+     */
     fun cleanupPartial(context: Context) {
         try {
             File(context.filesDir, TMP_NAME).deleteRecursively()
+            val rootfs = File(context.filesDir, "rootfs")
+            val backup = File(context.filesDir, OLD_NAME)
+            if (backup.exists()) {
+                if (rootfs.exists()) {
+                    backup.deleteRecursively()
+                } else if (backup.renameTo(rootfs)) {
+                    Log.w(TAG, "上次替换中断，已从 $OLD_NAME 复原环境：${rootfs.path}")
+                }
+            }
         } catch (t: Throwable) {
             Log.w(TAG, "清理残局失败（忽略）", t)
         }
@@ -147,7 +213,7 @@ object RootfsInstaller {
         env: String? = null,
         archiveSha256: String? = null,
         onEntry: (String) -> Unit,
-    ) {
+    ) = withInstallLock("安装环境") {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
         val tmpDir = File(files, TMP_NAME)
@@ -164,7 +230,8 @@ object RootfsInstaller {
         // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
         RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
 
-        swapIntoPlace(tmpDir, rootfsDir)
+        // 锁已在手（#11）：走无锁的替换内核，别用自带锁的 [swapIntoPlace] 自锁自己
+        swapLocked(tmpDir, rootfsDir)
         Log.i(
             TAG,
             if (usedRust) "RootFS 安装完成（Rust 路径）：${rootfsDir.path}"
@@ -283,14 +350,60 @@ object RootfsInstaller {
     }
 
     /**
-     * 原子替换：旧环境整体让位（home 在独立目录，不受影响——设计文档 §8）。
-     * 失败退整树复制，绝不留下"两个 rootfs"或"没有 rootfs"的中间态。
+     * 自带锁的原子替换入口（#11 / E-078）：[install] 与 [RootfsDelta] 内部已持锁，走的是
+     * [swapLocked]；这里是给"只换目录"的调用方（含单测）用的门面。
      */
-    internal fun swapIntoPlace(tmpDir: File, rootfsDir: File) {
-        if (rootfsDir.exists()) rootfsDir.deleteRecursively()
-        if (!tmpDir.renameTo(rootfsDir)) {
+    internal fun swapIntoPlace(tmpDir: File, rootfsDir: File) =
+        withInstallLock("替换环境") { swapLocked(tmpDir, rootfsDir) }
+
+    /**
+     * 替换实现（**调用方必须已持有安装锁**，见 [withInstallLock]）。
+     *
+     * 顺序是「旧树改名让位 → 新树改名就位 → 删旧树」，**不再先 `deleteRecursively()`**：
+     * 旧实现在删除之后、改名之前被打断（进程被杀 / 存储掉线 / 用户强退），用户手里那份
+     * 能用的环境就没了——而这是全 App 唯一会把"能用"变成"什么都没有"的一步。
+     * 同目录改名是 O(1) 元数据操作，新旧两棵树同时存在**不多占一个字节**：
+     * 解包阶段本来就是「旧 rootfs + rootfs.tmp」并存，峰值没变。
+     *
+     * 失败语义：让位失败 ⇒ 原样不动直接抛；就位失败 ⇒ 先把可能只拷了一半的新树删掉，
+     * 再把旧树放回去；**放不回也要在文案里给出 `rootfs.old` 的路径**，绝不静默。
+     */
+    internal fun swapLocked(tmpDir: File, rootfsDir: File) {
+        if (!tmpDir.isDirectory) throw InstallFailed("临时环境不存在，已放弃替换：${tmpDir.path}")
+        val parent = rootfsDir.parentFile
+            ?: throw InstallFailed("环境目录没有父目录，已放弃替换：${rootfsDir.path}")
+        val backup = File(parent, OLD_NAME)
+
+        // 上次替换被打断的两桩残局：rootfs 在位 ⇒ 备份是垃圾；rootfs 缺失 ⇒ 备份是用户仅有的环境
+        if (!rootfsDir.exists() && backup.exists()) {
+            if (backup.renameTo(rootfsDir)) {
+                Log.w(TAG, "发现上次替换留下的旧环境，已复原：${rootfsDir.path}")
+            }
+        }
+        if (backup.exists()) backup.deleteRecursively()
+
+        val hadOld = rootfsDir.exists()
+        if (hadOld && !rootfsDir.renameTo(backup)) {
+            throw InstallFailed("旧环境让位失败（未改动任何内容），请重启 App 后重试：${rootfsDir.path}")
+        }
+        val placed = tmpDir.renameTo(rootfsDir) || runCatching {
             tmpDir.copyRecursively(rootfsDir, overwrite = true)
-            tmpDir.deleteRecursively()
+            true
+        }.getOrDefault(false)
+        if (!placed) {
+            rootfsDir.deleteRecursively() // 清掉可能只拷了一半的新树
+            val rolledBack = !hadOld || backup.renameTo(rootfsDir)
+            throw InstallFailed(
+                when {
+                    !hadOld -> "环境替换失败（原本就没有已装环境，未留下中间态）"
+                    rolledBack -> "环境替换失败，已回滚到原环境：${rootfsDir.path}"
+                    else -> "环境替换失败，旧环境已保留在 ${backup.path}（重启 App 会自动复原）"
+                }
+            )
+        }
+        tmpDir.deleteRecursively()
+        if (hadOld && backup.exists() && !backup.deleteRecursively()) {
+            Log.w(TAG, "旧环境目录删不掉（不影响使用，下次启动会再试）：${backup.path}")
         }
     }
 

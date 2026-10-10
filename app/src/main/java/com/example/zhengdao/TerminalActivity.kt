@@ -1026,9 +1026,26 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         showBanner(text)
     }
 
+    /**
+     * 抢"本页正在装"的名额（#11 / E-078）：先问进程级真锁，再抢本 Activity 的实例标志。
+     *
+     * 只抢实例标志不够：设置页四条长流程、增量更新在同一进程里各走各的，而「环境替换」这一步
+     * 进程内只能有一个（[RootfsInstaller.withInstallLock]），否则两边交错 = 刚装好的环境被再换一次。
+     * 在入口就拦下，用户看到的是"已有任务在跑"，而不是等几分钟后收到一句"安装失败"。
+     */
+    private fun claimInstallSlot(): Boolean {
+        if (RootfsInstaller.isInstalling()) {
+            runOnUiThread {
+                Toast.makeText(this, "已有安装/更新任务在跑，等它结束后再试", Toast.LENGTH_LONG).show()
+            }
+            return false
+        }
+        return installing.compareAndSet(false, true)
+    }
+
     /** SAF 选中归档：拷入公共缓存 → 校验 → 解压 → 切 Debian。压缩包保留（重装免下载）。 */
     private fun installFromSafUri(uri: android.net.Uri) {
-        if (!installing.compareAndSet(false, true)) return
+        if (!claimInstallSlot()) return
         val appContext = applicationContext
         Thread {
             com.example.zhengdao.ui.InstallFlow.start(
@@ -1063,7 +1080,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /** 从本地归档安装：已在缓存则直接用，否则拷入 → 校验 → 解压 → 切 Debian。压缩包保留。 */
     private fun startInstallFromFile(local: File) {
-        if (!installing.compareAndSet(false, true)) return
+        if (!claimInstallSlot()) return
         val appContext = applicationContext
         Thread {
             com.example.zhengdao.ui.InstallFlow.start(
@@ -1139,7 +1156,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /** 下载 → SHA256 校验 → 解压（原子）→ 切 Debian。压缩包落公共缓存并保留。 */
     private fun startInstall(url: String) {
-        if (!installing.compareAndSet(false, true)) return
+        if (!claimInstallSlot()) return
         val appContext = applicationContext
         Thread {
             com.example.zhengdao.ui.InstallFlow.start(
