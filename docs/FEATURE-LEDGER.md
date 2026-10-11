@@ -218,7 +218,9 @@
 
 - ~~工作树 `wt-uiux`（分支 `fix/uiux-p0`，`9f1e3ed`）~~ —— **已合并**：§A #21，合入 `main` = `9f1f68f`；工作树与分支**已删除**。
 - ~~工作树 `wt-ios-skin`（分支 `feat/ui-ios-skin`，起点 `ce161be`）~~ —— **已合并**：§A #19，`52c1ea4` → 合并 `159c044`；工作树与分支**已删除**。
-- 引用层实况（2026-10-11 复核）：本地只剩 `main`（= `origin/main` = `6b07046`）、远端只剩 `origin/main`、`git worktree list` 只剩主仓、`git branch --no-merged main` 为空。
+- 引用层实况（2026-10-11 15:2x 复核）：本地只剩 `main`（= **`6b71ef6`**），`origin/main` = **`f557d6c`**（本地**领先 3 个提交**，即另一会话那条线，见下）；`git worktree list` 只剩主仓、`git branch --no-merged main` 为空。（上一条里 `6b07046` 是当天更早的值，已过期。）
+- **本轮清账（2026-10-11 15:2x）**：工作树 `zhengdao-wt-fix-ws-net` 与分支 `fix/workspace-netcheck`（`b7676e3` → merge `c91e394`，§A #27）、`docs/ledger-27`（`e447a2a` → merge `f557d6c`）**已删除**；删前逐条核对过「都已并入 `main`」。
+- ⚠️ **另一会话（同一天的第二条线）：终端 git 提速 + 下载层换源** —— `7923f48`（`fix(terminal)` 镜像表独立 / push 不再被 insteadOf 改道 / 慢源自动切换，ERRATA **E-096**）+ `7d37a8e`（§A #28 立账）+ `6b71ef6`（merge `fix/git-accel`）。**已并进本地 `main`，但当时还没 push**（`main` 领先 `origin/main` 3 个提交）⇒ 谁要动 `main` 的推送，先跟它对齐。相关文件：`app/src/main/java/com/example/zhengdao/rootfs/GithubMirror.kt`（新）、`app/src/main/java/com/example/zhengdao/terminal/GitAccel.kt`（新）、`rootfs/RootfsDownloader.kt`、`oc/OcManager.kt`、`terminal/ProotLauncher.kt`、`app/src/test/java/com/example/zhengdao/rootfs/RootfsDownloaderTest.kt`、`rootfs/UrlTransformTest.kt`、`app/src/test/java/com/example/zhengdao/terminal/GitAccelTest.kt`（新）、`docs/ERRATA.md`（E-096）。以它自己的提交和 §A #28 为准，本行只是**当时快照**。
 
 ## 0. 开工前必读
 
