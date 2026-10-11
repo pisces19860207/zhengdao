@@ -134,7 +134,15 @@
   Release 资产 `debian-13.7-base-arm64.tar.zst`（约 229 MB，zstd；另有增量补丁与
   Ed25519 签名索引）。镜像内包清单与逐文件摘要由 `tools/rootfs-manifest.py` 写入
   `rootfs-manifest.txt`（每行 `type` / `mode(%04o)` / `size` / `digest` / `path`）。
-  ⚠️ **Release 资产本身的摘要（索引里的 sha256）尚未抄进本文件，待补。**
+  **Release 资产摘要（2026-10-11 入册）**：`debian-13.7-base-arm64.tar.zst` = 201,632,517 B /
+  `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02`，
+  `rootfs-manifest.txt` = 2,117,653 B /
+  `82fa3f4e84a7963d399cf5f63a3bb8a41d5af183ee7f5812a6a8e84eeecdf16c`，
+  `rootfs-index.json` = 469 B /
+  `50f10326d9e68a4c1fdd03154e317c9d6068a0d6fa2c71a4c5e73f3b073b78ff`
+  （含两份 `.sha256` 共五项；**v2.0.14 与 v2.0.15 逐字节相同**）。
+  判据 = 从公开地址回读 GitHub REST 的 `assets[].digest`，完整表与真机交叉核对见
+  根 `PROVENANCE.md`「官方发布资产摘要」一节。
 - 许可证：**Debian 是数百个独立软件包的聚合发行版，各包许可互不相同**
   （GPL-2.0/3.0、LGPL、BSD、MIT、Apache-2.0、Artistic 等）。镜像内实测装了 **353 个包**
   （2026-10-11 真机 `grep -c '^Package:' /var/lib/dpkg/status`）
