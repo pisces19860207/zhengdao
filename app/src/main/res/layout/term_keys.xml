@@ -126,11 +126,14 @@
             style="@style/TermKeyFlex"
             android:text="/" />
 
-        <!-- 退格（⌫）：终端里极常用，放第二行最右（拇指够得到、也符合"编辑类键靠右"）。
-             退格走 DEL(0x7F)，与桌面终端一致；readline / bash 默认即绑定在 0x7F。 -->
+        <!-- Delete（前向删除）：发 CSI 3~（xterm 的 Delete），与桌面终端一致。
+             ⚠️ 2026-10-11 用户定：这颗键**不再是退格**——手机输入法自带退格，
+             再放一个功能重复；改成 Delete 才多出"删掉光标所在那个字"的能力。
+             ⚠️ id 仍是 key_backspace：17 个快捷键 id 与顺序是历史契约（宽屏版、
+             测试、交接文档都按它对齐），改名只会制造无谓的破坏。 -->
         <TextView
             android:id="@+id/key_backspace"
             style="@style/TermKeyFlex"
-            android:text="⌫" />
+            android:text="DEL" />
     </LinearLayout>
 </LinearLayout>
