@@ -38,7 +38,7 @@ python tools\zd.py preflight -k 终端,单会话 `
 
 ## 硬闸：提不上去，说明你做错了
 
-`.git/hooks/pre-commit`（源文件 `tools/hooks/pre-commit`，用 `python tools\zd.py install-hooks` 装到共享 `.git`）
+`.git/hooks/pre-commit`（源文件 `tools/hooks/pre-commit`，用 `python tools\zd.py install-hooks` 装到共享 `.git`；**合并提交**走 `pre-merge-commit`，它转交给同一个脚本 —— 见 `docs/ERRATA.md` E-103）
 会在三种情况下**拒绝提交**：
 
 | 拦什么 | 为什么 |

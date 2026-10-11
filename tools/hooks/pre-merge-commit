@@ -1,0 +1,19 @@
+#!/bin/sh
+# 证道 zhengdao —— pre-merge-commit 钩子（转交给 pre-commit）
+#
+# 为什么需要这个文件：git ≥ 2.24 对**合并提交**走的是 `pre-merge-commit` 钩子，
+# 不再调用 `pre-commit` —— 只装 `pre-commit` 的话，`git merge` 自动生成的合并提交
+# **三道闸一条都不跑**（闸 3 复活检测因此对「合并把被删掉的文件带回来」失效）。
+# 见 docs/ERRATA.md E-103。
+#
+# 合并提交进到 pre-commit 之后的行为（由闸门自己判）：
+#   闸 1 放行（合并提交例外）、闸 2 跳过（陈旧基准判据对合并恒真，见 E-102）、
+#   **闸 3（复活检测）照查**。
+#
+# 与 git 官方样例 pre-merge-commit.sample 的区别（只有一处，但必须有）：
+#   官方样例是 `exec "$GIT_DIR/hooks/pre-commit"`，**不带任何标记**；而 git 要到这个钩子跑完
+#   之后才写 MERGE_HEAD / MERGE_MSG（实测：钩子内两者都不存在，只有 GIT_REFLOG_ACTION=merge xxx），
+#   于是 pre-commit 认不出"这是合并提交"，闸 1 会把 `merge` 进 main 当成"在 main 上直接提交"拦下。
+#   所以这里用 ZHENGDAO_IN_MERGE=1 把身份传过去；同时用 "$0" 定位同级目录，比 $GIT_DIR 更不挑调用环境。
+# 紧急绕过：ZHENGDAO_HOOK_BYPASS=1 git merge …（pre-commit 里认这个变量）
+ZHENGDAO_IN_MERGE=1 exec "$(dirname "$0")/pre-commit" "$@"
