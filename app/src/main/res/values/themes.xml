@@ -15,11 +15,15 @@
         <item name="android:alertDialogTheme">@style/Theme.ZhengdaoDialog</item>
     </style>
 
-    <!-- 框架对话框主题：只换背景 drawable（14dp 圆角 + 发丝描边）。
-         不覆盖文字/按钮样式 —— 那些由 Android 12+ 的 Material 对话框默认
-         主题提供，改了反而会在低版本设备上丢 Material 观感。 -->
+    <!-- 框架对话框主题：换背景 drawable（14dp 圆角 + 发丝描边）+ 按钮色统一 iOS 蓝。
+         不覆盖文字/正文字体样式 —— 那些由 Android 12+ 的 Material 对话框默认
+         主题提供，改了反而会在低版本设备上丢 Material 观感。
+         2026-10-11 补（验收页 §4-2）：平台 Material 对话框的按钮文字走
+         `?android:attr/colorAccent`，原先跟着系统默认 accent（偏绿），
+         与 Compose 侧对话框的 iOS 蓝不一致 ⇒ 在对话框主题里单独钉死。 -->
     <style name="Theme.ZhengdaoDialog" parent="android:ThemeOverlay.Material.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dialog_bg_ios</item>
+        <item name="android:colorAccent">#FF007AFF</item>
     </style>
 
     <!-- 终端快捷键条按键的公共外观 -->
