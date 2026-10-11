@@ -5253,3 +5253,90 @@ for (i in 0 until 20) {                 // 最多 3 秒
 **教训**
 
 "上一次流程留下的孤儿资源"最容易漏掉等待：**写"复用已有进程"的分支时，要把"新起一个进程"那条路上的每一处等待都对照一遍** —— 这次漏的就是"等它把凭据写出来"。
+
+---
+
+## E-094 · 2026-10-11 · `Workspace.isShared` 前缀误判 ⇒ 应用外部目录也被当成「共享存储」，「仅私有模式」整条分支不可达（**已修**）
+
+**现象**
+
+设置页「工作区」卡选「仅私有」之后，卡的路径行**确实**换成了应用外部目录，但**文案仍写"共享存储、卸载保留"**；该档位承诺的"随卸载删除、在意痕迹用"从未生效过 —— 包括决定是否把 `/sdcard` 挂进 guest 的那处判断。
+
+**复核**
+
+- `app/src/main/java/com/example/zhengdao/terminal/Workspace.kt` 旧实现：`fun isShared(ctx) = hostDir(ctx).absolutePath.startsWith(SHARED_ROOT)`，而 `SHARED_ROOT = "/storage/emulated/0"`（`:30`）、`privateDir(ctx) = File(ctx.getExternalFilesDir(null), "workspace")`（旧 `:64`）自己就长成 `/storage/emulated/0/Android/data/com.example.zhengdao/files/workspace` ⇒ **恒为 true**；`isPrivate() = !isShared()`（旧 `:60`）⇒ **恒 false**，且全仓 **0 个调用点**。
+- 四处消费点因此全部走错分支：`terminal/ProotLauncher.kt:199-200` / `:470` / `:486-489` / `:525`（决定要不要 bind `/sdcard`、包缓存往哪挂、RunLog 写哪句）、`terminal/KnowledgeBase.kt:200`（"仅私有不预置骨架"不可达）、`terminal/KnowledgeBase.kt:576` 与 `ui/SettingsScreen.kt:986-990`（界面文案写成相反的那一句）。
+- **这不是设计选择**：`Workspace.kt:9-24` 的 KDoc 是用户定稿语义（0.6 提交 `2b60a44`，2026-10-06「工作区边界显性化」），逐字写着「仅私有 = 应用外部目录（随卸载自动删除，给在意痕迹的场景）；无存储权限 → 自动回落仅私有」，`isPrivate` 自己的 KDoc 也写「App 外部目录，随卸载删除」⇒ **实现与自己的文档矛盾**，属实现遗留。
+
+**处置**
+
+- `Workspace.kt:67-76`：判据改成"宿主目录 ≠ App 外部目录"，并抽成可单测的纯函数：
+
+  ```kotlin
+  fun isShared(ctx: Context): Boolean =
+      isSharedPath(hostDir(ctx).absolutePath, privateDir(ctx).absolutePath)
+
+  internal fun isSharedPath(hostPath: String, privatePath: String): Boolean =
+      hostPath.trimEnd('/') != privatePath.trimEnd('/')
+  ```
+
+  `isPrivate()` 保持 `= !isShared()` —— 现在它才第一次可能为真。
+- 新增 `app/src/test/java/com/example/zhengdao/terminal/WorkspacePathTest.kt` **6 例**：仅私有档判非共享（回归正身）、默认档 `/storage/emulated/0/Download/证道` 判共享、自定义档 `/storage/emulated/0/Download/男性` 判共享、无存储权限回落私有判非共享、尾部斜杠不敏感、把 App 外部目录的**子目录**选成自定义档仍判共享（已知边界，非缺陷）。
+- **附带修正**（只因本条修好才第一次成真）：`terminal/KnowledgeBase.kt` 的 `dispatchAgentsText()` 里那张交付给终端 Agent 的「文件地图」，在仅私有档下不再写「/sdcard —— 共享存储整体可读可写」与「先 ls /workspace 和 /sdcard/Download」——改成明说本档**没有**挂载共享存储。改的是**与模式相关的两行**，其余文案一字未动。
+- 顺手核过、**确认无误未动**的一处：`资料库` 就在工作区里（`KnowledgeBase.kt:75 fun root(ctx) = File(Workspace.hostDir(ctx), DIR)`）⇒ guest 内 `/workspace/资料库` 的写法是对的，不是 0.6 前的过期路径。
+
+**验证**
+
+- 单测 / 构建：`gradlew.bat --offline :app:testDebugUnitTest :app:assembleDebug` ⇒ **BUILD SUCCESSFUL in 1m 57s**（含 `WorkspacePathTest` 6 例）。
+- 真机（`AD3J023824001723`，debug 包）：把 `shared_prefs/zhengdao-settings.xml` 的 `workspace_mode` 临时改成 `private`、重启 App ——「工作区」卡变成路径 `/storage/emulated/0/Android/data/com.example.zhengdao/files/workspace` + 文案「应用专属目录：卸载证道时随之删除（在意痕迹时用）。」（资产 `01-workspace-private-mode.webp`）；还原成 `custom` 后卡回到路径 `/storage/emulated/0/Download/男性` + 文案「手机文件管理器直接可见、可自由删除；卸载证道后此文件夹仍会保留——产出不丢。」（`02-workspace-shared-mode.webp`）。**改档是 prefs 手工改、验完已还原，用户的设置没被改掉。**
+- ⚠️ **未验**：仅私有档下 guest 里 `/sdcard` 到底 bind 没 bind —— 本轮没起会话看（改档要**重开会话**才重新 bind，用户的终端会话正在跑、不去打扰），由 `ProotLauncher.kt:470` 的 `if (storageGranted(context) && wsShared)` 代码路径覆盖。
+
+**教训**
+
+"同前缀"最容易骗过 `startsWith`：**判断"这是不是应用私有目录"不能用前缀，要用"它是不是就是那个私有目录本身"**。这条 BUG 的伪装还特别好 —— 路径行显示的目录一直是对的（`hostDir()` 返回对了），只有那句文案错，肉眼验收很容易放过去。
+
+---
+
+## E-095 · 2026-10-11 · 网络预检把 `echo` 打进**正在跑的会话**（会话 spawn 完成后 5–10 秒才触发，那时 agent/vim 正在吃 stdin；**已改走横幅**）
+
+**现象**
+
+网络不通时，终端页会话里会**凭空多出一行**（对 Agent 会话等于凭空发一条消息）：
+
+```
+echo '[网络] ⚠️ 检测失败：请确认代理已开启，并在分应用代理中勾选「证道」'
+```
+
+跑 `hermes` 时它被当成用户输入发出去；跑 `vim` 时被当命令字符吃进缓冲区。本轮盘「还有没有紧急 BUG」时逐行复核代码发现，非用户报告。
+
+**复核**
+
+- `app/src/main/java/com/example/zhengdao/TerminalActivity.kt:584 private fun networkPreCheck()`（旧 `:595`）的失败分支调 `SessionManager.write("echo '…'\n".toByteArray())` —— 而 `SessionManager.write` 的语义是**把字节写进 pty**，与用户敲键盘走的是同一条路（同文件其余 10 处调用点全都在用户动作之后：IME commit、键条、^C、命令直发…）。
+- 触发点 `:838`（`onEmulatorSet()` 内、`mainHandler.post {}`），而 `onEmulatorSet` 是**每次会话 spawn 完成**的回调 ⇒ 预检（连接超时 5s + 读超时 5s）回来时，pane 里早就不是"在提示符上等输入"了。
+- 原始意图可查：2026-10-05 提交 `ca8825c` 的说明逐字是「网络预检改 registry.npmjs.org/-/ping 单点（非 2xx/超时 → **横幅代理提示，不阻塞会话**）」⇒ 注入是后来实现走样。
+
+**处置**
+
+`networkPreCheck()` 的失败分支删掉 `SessionManager.write`，改走 App 侧横幅：
+
+```kotlin
+RunLog.log("网络预检：registry.npmjs.org 不通 —— 终端页横幅提示（不往会话里打字）")
+runOnUiThread {
+    // 正在装东西时别把安装进度横幅刷掉：安装流程自己会报网络失败（E-095 附带守卫）。
+    if (com.example.zhengdao.ui.InstallProgress.state.value == null) {
+        showBanner("网络不通：请确认代理已开启，并在代理 App 的「分应用代理」里勾选「证道」")
+    }
+}
+```
+
+- `showBanner`（`:1078`）本来就是安装流程的横幅出口（用户点一下收起）；那句 `InstallProgress.state.value == null` 守卫是**防止把正在显示的安装进度横幅刷掉**（与该 Activity 初始化横幅时的判断口径一致）。
+- 「给终端里留话」的正道另有其人：`ProotLauncher.kt` 生成的 `/etc/profile.d/zz-banner.sh` 读 `/tmp/.zhengdao-banner-pending`、在**首个 shell** 打印一次；`ProotLauncher.kt:613` 的注释逐字写着「App 侧是原生 TerminalView，**不能往里注入文本**」—— 本条 BUG 正是违反了它。
+
+**边界（未实测的部分）**
+
+- ⚠️ **真机没触发过失败路径**：要复现得把手机网络切断（或让 `registry.npmjs.org` 不可达）再开一次会话 —— 本轮没做（会临时断网 / 打扰正在跑的终端会话）。所以"改后横幅一定会出现"目前只有代码复核 + `showBanner` 在安装流程上的既有真机表现支撑，**不写成"已真机验证"**。
+- 已知取舍：横幅只挂在**会话页**顶部；用户若一直不回该页就看不到它 —— 即便如此，也比往会话里打字好。
+
+**教训**
+
+"我有个提示要告诉用户" ≠ "我往会话里写一行"。终端页有两条提示通道（App 侧横幅 / guest 侧 `profile.d` 横幅），**没有一条是 `SessionManager.write`**：往 pty 写字节永远等于"用户输入"。
