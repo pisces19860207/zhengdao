@@ -141,7 +141,7 @@
   `82fa3f4e84a7963d399cf5f63a3bb8a41d5af183ee7f5812a6a8e84eeecdf16c`，
   `rootfs-index.json` = 469 B /
   `50f10326d9e68a4c1fdd03154e317c9d6068a0d6fa2c71a4c5e73f3b073b78ff`
-  （含两份 `.sha256` 共五项；**v2.0.14 与 v2.0.15 逐字节相同**）。
+  （含两份 `.sha256` 共五项；**v2.0.14 ~ v2.0.17 四版逐字节相同**）。
   判据 = 从公开地址回读 GitHub REST 的 `assets[].digest`，完整表与真机交叉核对见
   根 `PROVENANCE.md`「官方发布资产摘要」一节。
 - 许可证：**Debian 是数百个独立软件包的聚合发行版，各包许可互不相同**
