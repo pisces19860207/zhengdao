@@ -5794,3 +5794,39 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
 > 原因是把源文件直接摊进了 `outDir`，而 AGP 把该目录当作 **assets 的根**，于是正文落在
 > `assets/<文件名>` 而不是 `assets/licenses/<文件名>`。**修法**：任务在 `outDir` 下先建 `licenses/`
 > 子目录再复制。判据仍然是「解包看路径」，不是「任务跑成功了」。
+
+### 补记（2026-10-11 深夜）· 随包正文的**换行**仍随构建机漂移（第三次同源踩坑）
+
+正文进包之后，在**主工作树**上跑集成验证，三件事同时露出来：
+
+- **① 主工作树这六份还是 CRLF。** `git ls-files --eol` 实测：
+  `licenses/Apache-2.0.txt` / `BSD-3-Clause.txt` / `GPL-2.0.txt` / `LGPL-3.0.txt` / 根 `LICENSE` /
+  `app/src/main/assets/fonts/OFL.txt` 全为 `i/lf w/crlf attr/text eol=lf`。
+  原因：`.gitattributes` 的 `eol=lf` **只对新检出、或被实际重写的文件生效** —— 哈希口径那次
+  （`8c73461`）只让*那个工作树*变 LF，主工作树的 blob 没变、git 便没重写工作区文件。
+  ⇒ **判据**：`git ls-files --eol` 看 `w/` 那一列，别假设「改了 .gitattributes 就全仓生效」。
+- **② 于是随包正文一度是 CRLF 版本。** 在主工作树构建出的 APK 里，
+  `assets/licenses/Apache-2.0.txt` = **11,560 B**、`GPL-2.0.txt` = 18,322 B、`LGPL-3.0.txt` = 7,817 B、
+  `BSD-3-Clause.txt` = 1,557 B、`GPL-3.0.txt` = 35,823 B、`assets/fonts/OFL.txt` = 4,666 B ——
+  与 `licenses/README.md` 记的 LF 形态**逐份不符**（这正是「上一笔哈希口径修复」要消除的现象）。
+  即：**「随分发物的正文哈希」随构建机的检出状态变**，同一份 tag 在两台机器上构建会得到不同的正文。
+- **③ 新单测把这件事当场抓住。** `LicenseTextsTest` 断言「README 表 ↔ 实际文件」，在主工作树上红了一条：
+  `licenses/Apache-2.0.txt 的字节数与 README 不符 expected:<11358> but was:<11560>`（suite 67 / tests 605 /
+  failures 1）。**测试比文档先发现问题** —— 这就是把它写成断言的价值。
+
+**处置（分支 `fix/license-assets-lf`）**：
+
+1. **构建期归一** —— `stageLicenseAssets` 不再 `copyTo`，改为读出字节 → `normalizeToLf(...)`
+   （CRLF 与裸 CR → LF）→ 写盘，并打印「CRLF → LF 归一（11560 → 11358 B）」；末尾新增兜底
+   `check`：装配结果里**不许再有 `0x0D` 字节**，否则构建失败。⇒ 随包正文恒为官方原文（LF），
+   与构建机换行设置无关。
+2. **单测改为按「仓库内形态」比对** —— 读文件后先 `replace("\r\n", "\n")` 再核字节数 / 行数 / SHA256
+   （本地老检出是 CRLF 只提示、不再失败），并新增一条断言：`build.gradle.kts` 里必须仍有 `normalizeToLf`。
+3. **主工作树的六份就地重新检出成 LF**（删文件 → `git checkout --`），使 README 里的
+   `sha256sum licenses/*.txt` 在本机也真的对得上。
+
+**教训（第三次同源）**：**换行是「内容」的一部分，而属性只承诺「以后检出的样子」。**
+凡是要对「字节数 / SHA256」负责的文本，**构建期必须自己归一**（而不是指望检出形态），
+并且判据要落在**产物**上（解包 APK 核哈希）。三次踩坑的顺序很说明问题：
+第一次「文档记错了形态」→ 第二次「改了属性却没改已有工作区」→ 第三次「构建时又把 CRLF 装进分发物」——
+每一次都是上一层的修法只覆盖了一半。

@@ -420,7 +420,7 @@ tasks.matching { it.name.matches(Regex("pre[A-Z].*Build")) }.configureEach {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 许可证正文装配（2026-10-11）：仓库根 licenses/*.txt + 根 LICENSE → assets/licenses/
-//   · Apache-2.0.txt / GPL-2.0.txt / LGPL-3.0.txt / BSD-3-Clause.txt / README.md 原样复制
+//   · Apache-2.0.txt / GPL-2.0.txt / LGPL-3.0.txt / BSD-3-Clause.txt / README.md 内容一字不改，换行归一成 LF
 //   · 根 LICENSE 更名为 GPL-3.0.txt（与 licenses/GPL-2.0.txt 区分开）
 // 末尾断言五份 .txt 必须落到实处：漏一份就等于 APK 里缺一份正文，
 // 而这正是 E-104 记的「台账写了、文件里没有」的同款错误 —— 宁可构建失败。
@@ -449,6 +449,17 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outDir: DirectoryProperty
 
+    /**
+     * CRLF（以及裸 CR）→ LF。许可证正文的权威形态是 LF（`licenses/README.md` 记的字节数与 SHA256 都是它），
+     * 构建期统一，免得随包正文的哈希随本机检出状态（`core.autocrlf`）漂移。
+     *
+     * ⚠️ 必须写成**类内**方法：脚本（`.kts`）里声明的顶层函数是**脚本类的成员**，
+     * 任务类一旦调用它，Kotlin 就会把这个类编成「非静态内部类」，Gradle 建任务时直接报
+     * `Class Build_gradle.StageLicenseAssetsTask is a non-static inner class.`（本次实测踩到）。
+     */
+    private fun normalizeToLf(bytes: ByteArray): ByteArray =
+        String(bytes, Charsets.UTF_8).replace("\r\n", "\n").replace('\r', '\n').toByteArray(Charsets.UTF_8)
+
     @TaskAction
     fun stage() {
         val outRoot = outDir.get().asFile
@@ -460,10 +471,30 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
         val out = File(outRoot, "licenses")
         check(out.mkdirs() || out.isDirectory) { "[stageLicenseAssets] 建不出输出目录：$out" }
 
-        licensesDir.get().asFile.listFiles().orEmpty()
-            .filter { it.isFile }
-            .forEach { src -> src.copyTo(File(out, src.name), overwrite = true) }
-        rootLicense.get().asFile.copyTo(File(out, "GPL-3.0.txt"), overwrite = true)
+        // ⚠️ 一律归一成 LF 再落盘。仓库形态（git blob）本就是 LF，但 `core.autocrlf=true` 的**老检出**
+        //    工作区里可能是 CRLF（本机主工作树就是），直接 copy 会把 CRLF 版本装进 APK ⇒
+        //    随包正文的哈希随「在哪台机器上构建」变，`licenses/README.md` 记的 SHA256 就不再是
+        //    「随包那一份」的摘要。归一之后：随包正文恒等于官方原文（LF）、与上表逐字节一致。
+        val copies: List<Pair<File, String>> =
+            licensesDir.get().asFile.listFiles().orEmpty()
+                .filter { it.isFile }
+                .map { it to it.name } +
+                (rootLicense.get().asFile to "GPL-3.0.txt")
+        copies.forEach { (src, name) ->
+            val canonical = normalizeToLf(src.readBytes())
+            File(out, name).writeBytes(canonical)
+            if (canonical.size.toLong() != src.length()) {
+                logger.lifecycle(
+                    "[stageLicenseAssets] $name：CRLF → LF 归一（${src.length()} → ${canonical.size} B）",
+                )
+            }
+        }
+
+        // 兜底：装配结果里不许再留 CR —— 留着就说明归一没生效，随包哈希会与 README 对不上。
+        val withCr = out.listFiles().orEmpty()
+            .filter { it.isFile && it.readBytes().any { b -> b == 0x0D.toByte() } }
+            .map { it.name }
+        check(withCr.isEmpty()) { "[stageLicenseAssets] 正文里仍有 CR（未归一成 LF）：$withCr" }
 
         val txts = out.listFiles { f -> f.isFile && f.name.endsWith(".txt") }
             ?.map { it.name }

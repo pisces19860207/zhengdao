@@ -48,9 +48,19 @@ class LicenseTextsTest {
 
     private data class Record(val bytes: Long, val lines: Int, val sha256: String)
 
-    private fun sha256(f: File): String =
-        MessageDigest.getInstance("SHA-256").digest(f.readBytes())
-            .joinToString("") { "%02x".format(it) }
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    /**
+     * 把文件读成「仓库内形态」：LF 换行。
+     *
+     * 本机 `core.autocrlf=true` 时，**老检出**的工作区文件是 CRLF（`.gitattributes` 的 `eol=lf` 只对
+     * 新检出 / 被重写的文件生效），而 README 记的是仓库形态（LF）。这里核对的是「文档 ↔ 仓库内容」，
+     * 不该因为本地检出陈旧而红 —— 随包那份也由构建期归一成 LF（见 `stageLicenseAssets`）。
+     */
+    private fun canonicalBytes(f: File): ByteArray =
+        String(f.readBytes(), Charsets.UTF_8).replace("\r\n", "\n").replace('\r', '\n')
+            .toByteArray(Charsets.UTF_8)
 
     /** 行数口径与 README 一致：以 `\n` 计行，末行有换行符就不多算一行（文件由 eol=lf 保底）。 */
     private fun lineCount(text: String): Int =
@@ -64,17 +74,31 @@ class LicenseTextsTest {
             6,
             records.size,
         )
+        var stale = 0
         records.forEach { (path, rec) ->
             val f = File(repo, path)
             assertTrue("README 提到的正文不存在：$path", f.isFile)
+            val raw = f.readBytes()
+            val canonical = canonicalBytes(f)
+            if (canonical.size != raw.size) stale++
             assertEquals(
-                "$path 的字节数与 README 不符（在 Windows 上先看 .gitattributes 的 eol=lf 是否生效）",
+                "$path 的字节数与 README 不符（README 记的是仓库内 LF 形态）",
                 rec.bytes,
-                f.length(),
+                canonical.size.toLong(),
             )
-            val text = f.readText(Charsets.UTF_8)
-            assertEquals("$path 的行数与 README 不符", rec.lines, lineCount(text))
-            assertEquals("$path 的 SHA256 与 README 不符", rec.sha256, sha256(f))
+            assertEquals(
+                "$path 的行数与 README 不符",
+                rec.lines,
+                lineCount(String(canonical, Charsets.UTF_8)),
+            )
+            assertEquals("$path 的 SHA256 与 README 不符", rec.sha256, sha256(canonical))
+        }
+        if (stale > 0) {
+            println(
+                "[LicenseTextsTest] 提示：$stale 份正文在本机工作区是 CRLF 形态（陈旧检出）；" +
+                    "删掉重新检出即变 LF（`git ls-files --eol` 看 w/crlf → w/lf）。" +
+                    "见 docs/ERRATA.md E-104 第三条补记。",
+            )
         }
     }
 
@@ -104,6 +128,10 @@ class LicenseTextsTest {
         // 这两句一起断言，改回旧写法或者把挂载删掉都会红。
         assertTrue("build.gradle.kts 里没有 addGeneratedSourceDirectory：assets 生成目录没挂上", g.contains("addGeneratedSourceDirectory"))
         assertTrue("build.gradle.kts 里没有 variant.sources.assets：挂载点被删了", g.contains("variant.sources.assets"))
+        assertTrue(
+            "build.gradle.kts 里没有 normalizeToLf：随包正文会随构建机的换行设置漂移（E-104 第三条补记）",
+            g.contains("normalizeToLf"),
+        )
         listOf("Apache-2.0.txt", "BSD-3-Clause.txt", "GPL-2.0.txt", "GPL-3.0.txt", "LGPL-3.0.txt").forEach {
             assertTrue("装配断言里漏了 $it —— 少一份就等于 APK 里没有它", g.contains(it))
         }
