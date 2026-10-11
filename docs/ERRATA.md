@@ -5340,3 +5340,67 @@ runOnUiThread {
 **教训**
 
 "我有个提示要告诉用户" ≠ "我往会话里写一行"。终端页有两条提示通道（App 侧横幅 / guest 侧 `profile.d` 横幅），**没有一条是 `SessionManager.write`**：往 pty 写字节永远等于"用户输入"。
+
+---
+
+## E-096 · 2026-10-11 · 终端 git 镜像两处不设防：**只判存在**（换镜像只对新环境生效）+ 全局 `insteadOf` **连 `push` 一起改道**到第三方代理
+
+**现象**
+
+`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt`（旧 `:355-367`）在会话启动时给 guest 写 `<homeDir>/.gitconfig`：
+
+```ini
+[url "https://gh-proxy.com/https://github.com/"]
+	insteadOf = https://github.com/
+```
+
+两个问题，写在一起：
+
+1. **只在 `if (!gitconfig.isFile)` 时写** —— 老 rootfs / 老 home 上那份旧内容**永不更新**，所以「换镜像」只对新环境生效（与 E-085 的「按内容比对而非只判存在」同一类毛病，那轮修了 zz 脚本，这里漏了）。
+2. **`insteadOf` 是全局改道**：`git clone` 与 `git push` 走同一条规则 ⇒ 用户对 `github.com` 的 **push（含 credential / token）会被送到第三方镜像**。「加固」本来该挡住它，旧写法恰好相反。
+
+**复核**
+
+- 触发路径：`ProotLauncher` 每次 spawn 会话都跑这段，但判据是文件存在性 ⇒ 从没装过 rootfs 的新设备写一次，之后无论镜像表怎么改都不再落盘。
+- 影响面：guest 里所有走 `https://github.com/` 的 git 操作（用户手动 clone、hermes agent 安装器 `git clone --filter=blob:none https://github.com/NousResearch/hermes-agent.git`）。台账 §4「Hermes 安装卡死在克隆 | `06572dd`」正是这条配置的来历（本条取代它）。
+- 实测（2026-10-11，本机 Windows，`curl --ssl-no-revoke`）：8 MB 真资产（`zhengdao-2.0.11-release.apk`）**直连 65 KB/s（25 s 未下完）**、`gh-proxy.com` 138 KB/s、**`ghfast.top` 625 KB/s（13.1 s 下完）**；但 `https://ghfast.top/https://github.com/NousResearch/hermes-agent.git/info/refs?service=git-upload-pack` 返回 **403 `text/html`（只代理下载、不服务 git 智能 HTTP）**，而 `gh-proxy.com` / `ghproxy.net` 返回 200 + `application/x-git-upload-pack-advertisement` ⇒ **下载最快的那条链不能用来 clone**，两条通道必须分开配。
+
+**处置**
+
+① 新增 `app/src/main/java/com/example/zhengdao/rootfs/GithubMirror.kt`（**全项目唯一镜像表**，文件头注释记着实测数字）：
+
+```kotlin
+val DOWNLOAD_CHAIN = listOf("https://ghfast.top/", "https://gh-proxy.com/")
+val GIT_CHAIN      = listOf("https://gh-proxy.com/", "https://ghproxy.net/")
+fun candidates(url: String, chain: List<String> = DOWNLOAD_CHAIN): List<String>  // 已套娃不再套娃
+```
+
+`RootfsDownloader.withMirrorFallback()` 与 `oc/OcManager.kt` 两处硬编码 `gh-proxy` 一律改走它（镜像换源由此一处生效、四处受益：rootfs / opencode / 更新包 / 直链下载）。
+
+② 新增 `app/src/main/java/com/example/zhengdao/terminal/GitAccel.kt`：
+
+- `.gitconfig` **托管段**（`# >>> zhengdao git accel >>>` … `# <<< zhengdao git accel <<<`）**只放加固键、绝不放 `insteadOf`**：`http.version=HTTP/1.1`、`http.lowSpeedLimit=1000`、`http.lowSpeedTime=30`、`http.postBuffer=524288000`、`protocol.version=2`、`fetch.parallel=4`、`fetch/transfer.fsckObjects=true`、`submodule.fetchJobs=4`。写入按**内容比对**幂等（相同就不动），并顺手清掉历史遗留的镜像段（只认已知镜像前缀，用户自己写的镜像段保留）。
+- **`/usr/local/bin/git` 包装器**（guest PATH 里 `/usr/local/bin` 在 `/usr/bin` 之前，故生效）：只有取数类子命令（`clone|fetch|pull|ls-remote|submodule|archive`）才逐源重试，源顺序 = **直连 → 每个镜像 × `ZZ_GIT_MIRROR_RETRIES`（默认 2）**；镜像用 `GIT_CONFIG_COUNT=1` + `GIT_CONFIG_KEY_0=url.<镜像>https://github.com/.insteadOf` + `GIT_CONFIG_VALUE_0` **进程内注入**（不落盘）；**`push` 等写操作一律 `exec /usr/bin/git "$@"`，永不走镜像**。开关 `ZZ_GIT_DIRECT=1`（只直连）/ `ZZ_NO_GIT_WRAPPER=1`（完全绕过）；日志 `/root/.zz-git-accel.log`；`REAL` 只认绝对路径候选（不做 PATH 搜索，避免自调用死循环）；目标文件已存在且不含本包装器标记时**拒绝覆盖**（只记日志）。
+
+③ `ProotLauncher.kt` 旧块换成 `runCatching { GitAccel.apply(rootfsDir, homeDir) }.onSuccess { … RunLog.log(it) }…`（按内容比对 + 执行位判定，与 zzclean 同范式）。
+
+④ 单测：`app/src/test/java/com/example/zhengdao/rootfs/RootfsDownloaderTest.kt`（重写：主源在前 / 镜像顺序 / 不套娃 / `GIT_CHAIN` 不含 `ghfast.top` / `SpeedGuard` 4 例）、`app/src/test/java/com/example/zhengdao/terminal/GitAccelTest.kt`（新增约 13 例：空配置只有加固键且无生效 `insteadOf` / 幂等 / 清旧镜像段 / 保留用户自己的段 / 包装器标记 / push 不在白名单 / 注入用环境变量而**不落盘** / 不含 `sslVerify=false` / 拒绝覆盖外来 git …）、`UrlTransformTest.kt` 两条断言改为从 `GithubMirror.DOWNLOAD_CHAIN` 推导（否则写死的 gh-proxy 会挂）。`gradlew.bat --offline :app:testDebugUnitTest` **BUILD SUCCESSFUL**，**66 suite / 600 用例 / 0 失败 / 0 错误 / 1 跳过**（改前 64 / 574）。
+
+**包装器取证（本机 Git Bash，非真机）**
+
+`sh.exe` 在 `D:\Program Files\Git\bin\sh.exe`（**此前"本机无 Git Bash"的判断是错的**）。用临时 JUnit 把包装器正文导出成 `zz-git-wrapper.sh`，配一个假 `git` 桩（打印收到的 `GIT_CONFIG_*` 后 `exit 7`）逐项验：
+
+- `sh -n` 语法 0 错；`push origin main` ⇒ **只调用一次、无任何注入**；`fetch --all` ⇒ 3 次（直连 → `gh-proxy.com` 注入 1 条 → `ghproxy.net` 注入 1 条）；
+- `clone` 到**已存在的非空目录** ⇒ 第一次失败即停并提示「不再换源」；`-C /tmp fetch`、`-c http.sslVerify=false pull` ⇒ 子命令识别正确；
+- `ZZ_GIT_DIRECT=1` / `ZZ_NO_GIT_WRAPPER=1` ⇒ 各只直连一次；
+- 真实 git 走包装器：`git ls-remote https://github.com/octocat/Hello-World.git HEAD` ⇒ `7fd1a60b01f91b314f59955a4e4d4e80d8edf11d HEAD`，exit 0；单独注入 `url.https://gh-proxy.com/https://github.com/.insteadOf` 跑真 git 也成功 ⇒ 该注入机制被真 git 接受、且 `gh-proxy.com` 确实服务 git 智能 HTTP。
+
+**边界（未实测的部分）**
+
+- ⚠️ **本轮无真机取证**：用户明确「还有个会话在操作手机，你等下」⇒ 没装 debug 包、没在真机 guest 里计时。包装器的行为结论来自 Git Bash + 真实 git 的网络实测（与 guest 同为 Linux/POSIX sh，但不是同一环境）；`.gitconfig` 托管段与幂等重写只有单测覆盖。
+- 已知取舍：镜像只对**取数**生效，`push` 保持直连 —— 这正是加固点，代价是 push 慢（原来"快"是错觉，靠的是把凭据交给第三方）。
+- 未做（破 v3.7 / M5 §6「一律不预置国内镜像源」红线，等用户拍板）：apt / pip / HuggingFace 预置镜像；`hf-mirror.com` 实测当前网络**不通**（15 s 超时）；Claude Code 官方安装脚本被地域封锁（302 → 网站 HTML），绕道 `npm i -g @anthropic-ai/claude-code` 属改产品行为，本轮未做。
+
+**教训**
+
+「配镜像」必须分开答两个问题：**谁走镜像**（只有取数，写操作免谈）和**什么时候写**（按内容比对，不是按文件存在）。一句全局 `insteadOf` 一把梭，等于把用户的写操作和凭据一起交给第三方代理 —— 快是快了，方向反了。

@@ -500,9 +500,10 @@ object OcManager {
         onProgress("开始下载 OpenCode $VERSION（约 65MB，断点续传）…")
         return try {
             RootfsDownloader.download(
-                urls = listOf(
+                // 2026-10-11：镜像链收口到 GithubMirror（原为手写的 gh-proxy.com 一行）；
+                // 校验锚点仍是代码里的 PINNED_SHA，与走哪个源无关（见 :514）。
+                urls = RootfsDownloader.withMirrorFallback(
                     "https://github.com/$REPO/releases/download/Push261005/$PKG_NAME",
-                    "https://gh-proxy.com/https://github.com/$REPO/releases/download/Push261005/$PKG_NAME",
                 ),
                 dest = dest,
                 // digest 无 sidecar；下载后用定版 SHA 手动校验（故不传 shaUrls）
@@ -532,10 +533,8 @@ object OcManager {
         onProgress("开始下载 OpenCode ${update.version}（约 65MB，断点续传）…")
         return try {
             RootfsDownloader.download(
-                urls = listOf(
-                    update.url,
-                    "https://gh-proxy.com/${update.url}",
-                ),
+                // 2026-10-11：同上，镜像链收口到 GithubMirror；校验锚点 = API digest（:546）。
+                urls = RootfsDownloader.withMirrorFallback(update.url),
                 dest = dest,
                 // digest 无 sidecar；下载后用 API digest 手动校验（故不传 shaUrls）
                 shaUrls = emptyList(),
