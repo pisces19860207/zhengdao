@@ -318,23 +318,27 @@ def cmd_doctor(_argv: list[str]) -> int:
 
     # 3. 钩子
     cdir = common_git_dir(root)
-    src_hook = Path(root) / "tools" / "hooks" / "pre-commit"
+    src_dir = Path(root) / "tools" / "hooks"
     if cdir:
-        dst_hook = Path(cdir) / "hooks" / "pre-commit"
+        dst_dir = Path(cdir) / "hooks"
         rc, hp = git("config", "--get", "core.hooksPath")
         if hp.strip():
             c.warn("core.hooksPath 被设成了别的目录", f"{hp.strip()}（tools/zd.py install-hooks 装的可能没生效）")
-        if not dst_hook.exists():
-            c.fail("pre-commit 钩子未安装", "跑 python tools/zd.py install-hooks")
-        elif src_hook.exists():
-            a = src_hook.read_bytes().replace(b"\r\n", b"\n")
+        srcs = sorted([s for s in src_dir.iterdir() if s.is_file()]) if src_dir.is_dir() else []
+        if not srcs:
+            c.warn("库里没有 tools/hooks/*", "钩子源码缺失")
+        for s in srcs:
+            # pre-commit 三道闸；pre-merge-commit 转交给它（git ≥ 2.24 的合并提交走这个，见 ERRATA E-103）
+            dst_hook = dst_dir / s.name
+            if not dst_hook.exists():
+                c.fail(f"{s.name} 钩子未安装", "跑 python tools/zd.py install-hooks")
+                continue
+            a = s.read_bytes().replace(b"\r\n", b"\n")
             b = dst_hook.read_bytes().replace(b"\r\n", b"\n")
             if a == b:
-                c.ok("pre-commit 钩子", f"已装且与库里一致（{len(b)} 字节，{cdir}/hooks）")
+                c.ok(f"{s.name} 钩子", f"已装且与库里一致（{len(b)} 字节，{cdir}/hooks）")
             else:
-                c.fail("pre-commit 钩子与库里不一致", "跑 python tools/zd.py install-hooks 覆盖")
-        else:
-            c.warn("库里没有 tools/hooks/pre-commit", "钩子源码缺失")
+                c.fail(f"{s.name} 钩子与库里不一致", "跑 python tools/zd.py install-hooks 覆盖")
     else:
         c.fail("找不到共享 .git 目录", "")
 
