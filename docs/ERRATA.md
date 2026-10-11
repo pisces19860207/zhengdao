@@ -5830,3 +5830,56 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
 并且判据要落在**产物**上（解包 APK 核哈希）。三次踩坑的顺序很说明问题：
 第一次「文档记错了形态」→ 第二次「改了属性却没改已有工作区」→ 第三次「构建时又把 CRLF 装进分发物」——
 每一次都是上一层的修法只覆盖了一半。
+
+## E-105 · 2026-10-11 · 「Maven 依赖正文随构件分发」这句没实测过：APK 里压根没有那些正文
+
+- **错在哪**：`licenses/README.md`、`THIRD-PARTY-LICENSES.md`、根 `README.md` 三处都写过
+  「Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**随各自构件分发**
+  （AAR/JAR 内的 `META-INF/LICENSE*`），本项目不另存副本」。这句话**从来没验证过**，而且**部分不成立** ——
+  与 E-104 同型（「已登记 ≠ 已履行」），只是这次错的是「别人的构件会替我们履行」。
+- **实测（2026-10-11，工具 = 解包 APK ＋ 逐个翻 Gradle 缓存里的构件）**：
+  - APK 里**只有** 5 条依赖正文 + 1 条 NOTICE：`META-INF/androidx/{annotation/annotation,
+    collection/collection-ktx, collection/collection, lifecycle/lifecycle-common-java8,
+    lifecycle/lifecycle-common}/LICENSE.txt`（各 10,175 B）与 `okhttp3/internal/publicsuffix/NOTICE`（218 B）。
+  - `commons-compress-1.26.2.jar` 里**明明有** `META-INF/LICENSE.txt`（11,357 B）与
+    `META-INF/NOTICE.txt`（178 B），**APK 里一个都没有** ⇒ **AGP 打包默认剥掉构件顶层的
+    `META-INF/LICENSE*` / `NOTICE*`**；活下来的只有带子目录的（androidx 那 5 条）与嵌套路径的
+    （okhttp 那条）。⇒「随构件分发」不能当通则。
+  - `zstd-jni-1.5.6-4.jar`（81 个条目）**不含任何许可证文本**，而它的 POM 声明 **BSD 2-Clause**、
+    它的二进制 `lib/arm64-v8a/libzstd-jni-1.5.6-4.so`（600,064 B）**确实在 APK 里** ⇒ BSD 的
+    「二进制分发须复现版权声明、条件列表与免责声明」这一条**从来没履行过**。
+  - `okhttp` 内置的 `publicsuffixes.gz`（41,394 B，随 APK 分发）是 **MPL-2.0** 数据。
+- **处置（分支 `docs/dependency-licenses`）**：
+  1. 补 `licenses/BSD-2-Clause.txt`（zstd-jni 上游 `LICENSE` 原文照录，1,360 B / 26 行 /
+     `c6a6a8926f2f1732603e4b75779a5f6ce79238eb79bc36dcc5b7feb509bc6cd9`）—— **这才是真正缺的那份
+     BSD 正文**（E-104 时补的 `BSD-3-Clause.txt` 是 libandroid-shmem 的，两回事）。
+  2. 补 `licenses/NOTICES.txt`（2,198 B / 36 行 / `3ef191d960df2fd2f38120d9fb2da062491348a6fc6cb175d2eb6d9d8eea1ba4`）：
+     照录 `commons-compress` 的 `META-INF/NOTICE.txt`（178 B）与 okhttp 的 `publicsuffix/NOTICE`（218 B）
+     原文，履行 Apache-2.0 第 4(d) 条。
+  3. `licenses/README.md` 口径改写（删掉「随构件分发」那句，换成实测结论 + 覆盖方式），
+     `THIRD-PARTY-LICENSES.md` 新增 **§8**（136 个已解析运行时模块 / 47 个 group 的
+     「依赖 → 声明许可证 → 覆盖方式」表 + 重新生成的方法），根 `README.md` 表加行。
+  4. `stageLicenseAssets` 的 `check` 从五份 `.txt` 扩到**八份**（加 `BSD-2-Clause.txt` /
+     `BSD-3-Clause-zstd.txt` / `NOTICES.txt`），单测 `LicenseTextsTest` 的记录数 6 → 9，
+     应用内「开源许可」页新增三项。
+  5. **同批第三个缺口（是在补前两个时又翻出来的）**：`THIRD-PARTY-LICENSES.md` **§5** 早写着
+     「zstd（zstd-jni 附带的原生库）＝ BSD-3-Clause，随 AAR 构件内的 `META-INF` 分发」——**同样没实测过、
+     同样不成立**。而且它比前两条更隐蔽：**同一个 `.so` 里有两份 BSD 文本**，版权人不同 ——
+     `zstd-jni` 包装代码是 BSD 2-Clause（`Copyright (c) 2015-present, Luben Karavelov`，26 行），
+     编译进去的 **zstd 本体**是 BSD 3-Clause（`Copyright (c) Meta Platforms, Inc. and affiliates`，
+     30 行）。**一份 BSD 文本不能替另一份履行**（BSD 的「复现版权声明 + 条件列表」要求的是**那一份**的
+     版权人与条款）。补 `licenses/BSD-3-Clause-zstd.txt`（`facebook/zstd` v1.5.6 的 `LICENSE` 原文，
+     1,549 B / 30 行 / `7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8`），
+     并把 §5 那句改掉。
+- **两个工具坑（别再踩）**：
+  - `:app:dependencies` 的**嵌套行**前缀是 `|    +--- `，用 `^\s*[+\\]---` 去抓只会得到**顶层那 16 个**
+    模块（真实是 136 个已解析模块 / 235 条含旧版本请求）；而且**行内 `-> 1.5.0` 之后的版本才是最终生效的**。
+  - 构件 POM 在 Gradle 缓存里的路径是
+    `modules-2/files-2.1/<组>/<名>/<版本>/<sha1>/<名>-<版本>.pom` —— 中间那个 `<sha1>` 子目录让
+    `Get-ChildItem -Filter *.pom`（不带 `-Recurse`）**全部找不到**，一律报「POM 缺失」。
+    另：`commons-*` 与 `com.google.guava:listenablefuture` 的**自身 POM 根本没有 `<licenses>` 段**
+    （继承 `commons-parent` / `guava-parent`），判据要落到**构件内 `META-INF/LICENSE.txt`** 或父 POM，
+    不能只看一份 POM 就下结论。
+- **教训**：**「会随构件一起发出去」是别人的打包行为，不是我们的承诺。** 凡是「分发物必须含 X」的义务，
+  判据只能是**解包分发物**看 X 在不在（`$z.Entries | Where-Object FullName -match '(?i)licen|notice'`），
+  并且**逐条核到构件内部**（有的构件有正文、有的没有、有的被剥掉）—— 一句「通常都会带」不能写进台账。

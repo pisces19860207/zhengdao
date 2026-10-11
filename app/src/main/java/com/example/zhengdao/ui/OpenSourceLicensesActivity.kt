@@ -49,7 +49,7 @@ import kotlinx.coroutines.withContext
  *
  * ## 为什么会有这一页
  *
- * 仓库里早有 `licenses/`（四份第三方许可证正文）与 `THIRD-PARTY-LICENSES.md`，但**正文只在仓库里**：
+ * 仓库里早有 `licenses/`（第三方许可证正文与 NOTICE 汇总）与 `THIRD-PARTY-LICENSES.md`，但**正文只在仓库里**：
  * APK 的 `assets/` 只有 `fonts/` 与 `proot/`，设置页「关于」的「许可证」只指向一个 GitHub 网址
  * ⇒ **只拿到 APK、不联网的接收者取不到 Apache-2.0 副本**，Apache-2.0 第 4(a) 条（要给接收者许可证副本）
  * 在**分发物层面**没落实（缺口登记见 `docs/ERRATA.md` E-104）。
@@ -146,6 +146,27 @@ private val ENTRIES = listOf(
         asset = "licenses/BSD-3-Clause.txt",
         covers = "libandroid-shmem（在 proot 进程内动态加载的共享库）",
         obligation = "二进制分发时须复现版权声明、条件列表与免责声明；无源码要约义务。",
+    ),
+    LicenseEntry(
+        title = "BSD 2-Clause（zstd-jni）",
+        asset = "licenses/BSD-2-Clause.txt",
+        covers = "zstd-jni（随包 native 库 lib/arm64-v8a/libzstd-jni-1.5.6-4.so，600,064 B）",
+        obligation = "二进制分发时须复现版权声明、条件列表与免责声明（上游 LICENSE 原样照录）。" +
+            "这份正文此前一直缺：该构件内没有任何许可证文本，见 docs/ERRATA.md E-105。",
+    ),
+    LicenseEntry(
+        title = "BSD 3-Clause（zstd 核心）",
+        asset = "licenses/BSD-3-Clause-zstd.txt",
+        covers = "zstd 本体（facebook/zstd v1.5.6，编译进随包 native 库 libzstd-jni-1.5.6-4.so）",
+        obligation = "与 zstd-jni 的包装代码是**两份不同的 BSD 文本**（版权人不同），必须分开提供；" +
+            "上游构件里同样不带这份正文，见 docs/ERRATA.md E-105。",
+    ),
+    LicenseEntry(
+        title = "第三方 NOTICE 汇总",
+        asset = "licenses/NOTICES.txt",
+        covers = "Apache Commons Compress 的 NOTICE ＋ OkHttp 内置 Public Suffix List 数据的 NOTICE",
+        obligation = "Apache-2.0 第 4(d) 条：随附被分发组件 NOTICE 里可读的归属声明副本。" +
+            "Android 打包默认剥掉构件顶层的 META-INF/NOTICE*，故由本项目另存一份随包。",
     ),
     LicenseEntry(
         title = "SIL OFL 1.1（字体）",

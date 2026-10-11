@@ -15,12 +15,15 @@
 > | libtalloc（§2） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ 仓库根 [`LICENSE`](LICENSE)（GPL-3.0 全文；LGPL-3.0 第 2 条并入 GPL-3.0） |
 > | libandroid-shmem（§3） | BSD-3-Clause | [`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) |
 > | JetBrains Maple Mono（§6） | SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt`（随字体同目录，上游原文件） |
+> | Maven 运行时依赖（§8，136 个已解析模块） | 绝大多数 Apache-2.0；`com.github.luben:zstd-jni`＝**BSD 2-Clause**；`org.tukaani:xz`＝Public Domain | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）、[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)（zstd-jni）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
 >
 > - 每份正文的**来源 URL、取回日期、字节数与 SHA256** 见 [`licenses/README.md`](licenses/README.md)。
 > - 这些正文**随分发物提供**：构建期（`app/build.gradle.kts` 的 `stageLicenseAssets`）把它们拷贝进
 >   APK 的 `assets/licenses/`，应用内入口 = 设置页「关于」→「**开源许可**」（离线可读全文，2026-10-11 晚起）。
-> - Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**随各自构件分发**
->   （AAR/JAR 内的 `META-INF/LICENSE*`），本项目不另行翻印。
+> - Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**不能指望「随构件分发」**：
+>   Android 打包**默认剥掉**构件顶层的 `META-INF/LICENSE*` / `NOTICE*`（2026-10-11 实测：
+>   `commons-compress` 构件里有的 `META-INF/LICENSE.txt` 与 `META-INF/NOTICE.txt`，APK 里一个都没有）。
+>   所以本项目**自己随包给足**：逐组对照表见本文 **§8**，教训见 `docs/ERRATA.md` **E-105**。
 > - 本文件与 `PROVENANCE.md`、`docs/闭源切换清单-2026-10-11.md` 三份文件如有冲突，
 >   **以本文件与 `PROVENANCE.md` 为准**（它们是取证现场）。
 
@@ -93,7 +96,11 @@
 - 用途：RootFS 压缩包解压
 - 许可证：BSD-3-Clause（双许可中的 BSD 分支）
 - 来源：<https://github.com/facebook/zstd>（经 zstd-jni 官方 AAR 分发）
-- 随附正文：随 AAR 构件内的 `META-INF` 分发，本项目不另行翻印（见文首说明）。
+- 随附正文：[`licenses/BSD-3-Clause-zstd.txt`](licenses/BSD-3-Clause-zstd.txt)（zstd 本体的 BSD 3-Clause，
+  `facebook/zstd` v1.5.6 的 `LICENSE` 原文，1,549 B / 30 行 / `70552664…`）。
+  ⚠️ 2026-10-11 更正：此前写的是「随 AAR 构件内的 `META-INF` 分发，本项目不另行翻印」——
+  **构件里根本没有这份正文**（实测见 `docs/ERRATA.md` E-105）；且它与 zstd-jni 包装代码的
+  BSD 2-Clause（[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)）**版权人不同、必须分两份**。
 
 ## 6. JetBrains Maple Mono（终端默认字体）
 
@@ -183,3 +190,47 @@
   - 上游例外依据原文（`termux-app/LICENSE.md`）：「Terminal Emulator for Android code is used
     which is released under Apache 2.0 license. Check `terminal-view` and `terminal-emulator`
     libraries.」
+
+## 8. Maven 运行时依赖（136 个已解析模块 / 47 个 group）→ 声明许可证 → 覆盖方式（2026-10-11 补）
+
+这一节回答「随包的第三方 Maven 代码按什么许可证来的、正文在哪」。**只看运行时依赖**
+（`releaseRuntimeClasspath`）：`testImplementation` / `androidTestImplementation` 的构件不进安装包，
+不随分发物提供，因此没有 4(a)/4(d) 义务。
+
+**怎么重新得到这张表**（离线即可，读本地 Gradle 缓存）：
+
+```powershell
+.\gradlew.bat --offline :app:dependencies --configuration releaseRuntimeClasspath > dep.txt
+# ① 取「已解析版本」：`+--- a:b:1.4.2 -> 1.5.0` 里最终生效的是箭头后面的 1.5.0；
+#    只按行首 `+---` 抓会漏掉 `|    +---` 这种嵌套行（我们踩过：235 条 vs 实际的 136 条）。
+# ② 每个模块的声明许可证 = 它自己 POM 里的 <licenses>；POM 在缓存里的位置是
+#    ~/.gradle/caches/modules-2/files-2.1/<组>/<名>/<版本>/<sha1>/<名>-<版本>.pom
+#    —— 注意中间那个 <sha1> 子目录，Get-ChildItem 必须带 -Recurse（否则整片报「POM 缺失」）。
+```
+
+| 组 | 已解析模块数 | POM 里声明的许可证 | 覆盖方式 |
+|---|---|---|---|
+| `androidx.*`（33 个 group） | 99 | Apache-2.0（写作 `The Apache Software License, Version 2.0`） | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| `com.mikepenz:multiplatform-markdown-renderer*` | 6 | Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| `org.jetbrains.kotlinx:*` | 11 | Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| `org.jetbrains.kotlin:*`（4）＋ `org.jetbrains:{annotations,markdown,markdown-jvm}`（3） | 7 | Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| `com.squareup.okhttp3:okhttp`（1）＋ `com.squareup.okio:{okio,okio-jvm}`（2） | 3 | Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)；其中内置的 Public Suffix List 数据（APK 内 `okhttp3/internal/publicsuffix/publicsuffixes.gz`，41,394 B）为 **MPL-2.0** ⇒ 其 NOTICE 进随包 [`licenses/NOTICES.txt`](licenses/NOTICES.txt) |
+| `dev.snipme:highlights{,-jvm}` | 2 | Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| `org.jspecify:jspecify` | 1 | Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| `org.apache.commons:commons-compress` / `commons-lang3` ＋ `commons-codec` ＋ `commons-io` | 4 | 自身 POM **没有** `<licenses>` 段（继承 `commons-parent`）；**构件内自带** `META-INF/LICENSE.txt`（11,357–11,359 B，Apache-2.0 全文）与 `META-INF/NOTICE.txt`（172–178 B） | Apache-2.0 正文由随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) 覆盖；`commons-compress` 的 NOTICE **原文照录**进随包 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（§4(d)） |
+| `com.google.guava:listenablefuture` | 1 | 自身 POM 没有 `<licenses>` 段；父 POM `com.google.guava:guava-parent:26.0-android` 声明 Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| **`com.github.luben:zstd-jni`** | 1 | **BSD 2-Clause**（包装代码）＋ 它编译进去的 zstd 本体为 **BSD 3-Clause**（<https://opensource.org/licenses/BSD-2-Clause>、（<https://github.com/facebook/zstd>） | **随包 [`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt) 与 [`licenses/BSD-3-Clause-zstd.txt`](licenses/BSD-3-Clause-zstd.txt)（2026-10-11 补；此前一直缺，且两份版权人不同不能互相顶替）** —— 该构件内**不带任何许可证文本**，而 APK 里确实有它的二进制 `lib/arm64-v8a/libzstd-jni-1.5.6-4.so`（600,064 B） |
+| **`org.tukaani:xz`** | 1 | **Public Domain**（POM 原文 `<comments>You can do whatever you want with this package.</comments>`） | 无正文义务，仅登记 |
+
+> **判据**（解包 APK 全量扫，一条命令；期望至少看到 `assets/licenses/` 下七份 `.txt` ＋ README，
+> 以及 `META-INF/androidx/.../LICENSE.txt` × 5 与 `okhttp3/internal/publicsuffix/NOTICE`）：
+> ```powershell
+> Add-Type -AssemblyName System.IO.Compression.FileSystem
+> $z = [IO.Compression.ZipFile]::OpenRead((Get-ChildItem app\build\outputs\apk\debug\*.apk | Select-Object -First 1).FullName)
+> $z.Entries | Where-Object FullName -match '(?i)licen|notice|copying' | ForEach-Object { "{0,8}  {1}" -f $_.Length, $_.FullName }
+> $z.Dispose()
+> ```
+>
+> **为什么必须自己随包**：Android 打包默认剥掉构件顶层的 `META-INF/LICENSE*` / `NOTICE*`；
+> 活下来的只有带子目录的那些（AGP 合并的 `androidx` 5 条）与 okhttp 那个嵌套路径的。
+> 这是 2026-10-11 实测结论，完整取证见 `docs/ERRATA.md` **E-105**。
