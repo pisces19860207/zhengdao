@@ -5,3 +5,8 @@
 tools/hooks/* text eol=lf
 rootfs/agents.json text eol=lf
 rootfs/agents.json.sig binary
+
+# 许可证正文 / 根 LICENSE / 字体 OFL 一律 LF：文档里记的 SHA256 以仓库内形态为准（见 licenses/README.md）
+licenses/*.txt text eol=lf
+LICENSE text eol=lf
+app/src/main/assets/fonts/OFL.txt text eol=lf
