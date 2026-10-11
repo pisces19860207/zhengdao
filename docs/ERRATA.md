@@ -5208,3 +5208,48 @@ E-082（提交 `37bc860`，`git describe --contains 37bc860` = `v2.0.9~4^2~1` �
 
 「可选」是 **upstream 的语义**（lockfile / facts.json 里的 optional），不是我们 App 能靠名字猜的：
 清理白名单必须对着上游的 optional 名单核一遍 —— **看见 ffmpeg 就当成可丢的工具**，代价是弄坏 hermes 的启动自检。
+
+---
+
+## E-093 · 2026-10-11 · 换包后**第一次**进太极偶发 `创建会话失败：HTTP 401`（孤儿 serve 分支解析密码时不等待 `password` 落盘；**已补有界等待**）
+
+**现象**
+
+`adb install -r` 装上 v2.0.12 的 debug 包后，第一次进太极的真机日志：
+
+```
+[10-11 11:30:44] 太极: 创建会话失败：HTTP 401: {"_tag":"UnauthorizedError","message":"Authentication required"}
+```
+
+退出太极再进一次就好了（同一次 App 生命周期内不再复现）。
+
+**复核**
+
+- `app/src/main/java/com/example/zhengdao/oc/OcManager.kt` 的 `startServe(ctx)` 有**两条路**：
+  - **新起一场 serve**（`:376-405`）：`repeat(30)` 等 serve 进程 + `repeat(10)` 等密码落盘，拿不到才报 `IssueCenter` 的 `oc-serve-password` / `oc-serve-timeout`（`:392` / `:407`）。
+  - **孤儿 serve**（`serveRunning(ctx)` 为真 —— 上一次 App 被杀、serve 还活着时走这条）：**只 `parseServePassword(ctx)` 读一次就 return**，没有任何等待。
+- serve 自己的日志顺序恰好是 `server listening on …` **在前**、`server password …` **在后**（真机 `serve.log` 实测 7 组成对写入，14000 端口 LISTEN 正常）。孤儿那条路若正好落在两次写入之间，`parseServePassword()`（`:261`，只认「listening + password 配对」的最后一场）返回 `null` ⇒ 后续 REST/SSE 请求不带 `Authorization` ⇒ 全链路 401，包括「创建会话」。
+- 这条路只在**换包后立刻进太极**这种时序下暴露（旧进程刚被 update 杀掉、serve 还活着），与"偶发一次、再进就好"的现象吻合。
+
+**处置**
+
+`startServe()` 的孤儿分支补一段**有界等待**：
+
+```kotlin
+for (i in 0 until 20) {                 // 最多 3 秒
+    Thread.sleep(150)
+    servePassword = parseServePassword(ctx)
+    if (servePassword != null) break
+}
+```
+
+调用点都在非主线程（`app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt:254` 在 `withContext(Dispatchers.IO)` 内；`app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt:120` 的 `retryServe` 起的是裸 `Thread`），故这里用有界 `Thread.sleep` 是安全的。3 秒后仍拿不到（serve 真死了 / 密码文件没写）就照旧返回 `null`、由 UI 报错并提示重试。
+
+**边界（未实测的部分）**
+
+- ⚠️ **这条竞态是否就是那次 401 的唯一成因，未做穷尽实测**。另一种可能是"取到最后一场 serve 的密码、而它属于已经退出的旧场次"（同样是 `parseServePassword` 的配对逻辑）；本次修复只覆盖"密码还没落盘"这一种。
+- 真机只抓到那一次 401，**改后没有再复现 401**，但也没能主动构造出竞态窗口来证明修好了 —— 以"缺口是实打实的、修复方向与 serve 日志顺序一致"为准，**不写成"已验证修好"**。
+
+**教训**
+
+"上一次流程留下的孤儿资源"最容易漏掉等待：**写"复用已有进程"的分支时，要把"新起一个进程"那条路上的每一处等待都对照一遍** —— 这次漏的就是"等它把凭据写出来"。

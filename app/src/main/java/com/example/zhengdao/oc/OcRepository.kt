@@ -74,6 +74,23 @@ class OcRepository(
      * @param sessionId 为空时自动新建会话（单会话模型，见设计文档 §3.4）。
      */
     suspend fun open(scope: CoroutineScope, sessionId: String?) {
+        // 🔺 连接还活着就什么都不做（2026-10-11 用户报「每次重进太极都会重新连接」）。
+        //    repository 现在挂在 OcRuntime 上（进程级），切 Tab 不再拆连接；但页面每次重进
+        //    仍会调一次 open()，所以这里必须能识别"同会话 + 轮询/SSE 都还在跑"⇒ 直接复用。
+        //    判据是纯函数（shouldReopenConnection），5 种组合都有 JVM 单测。
+        val cur = _state.value
+        val reopen = shouldReopenConnection(
+            requested = sessionId,
+            current = cur.sessionId,
+            pollAlive = pollJob?.isActive == true,
+            sseAlive = sseJob?.isActive == true,
+            isFailed = cur.phase is TaijiPhase.Failed,
+        )
+        if (!reopen) {
+            ocLog("open 复用现有连接：会话 ${cur.sessionId}（切 Tab / 返回不重连）")
+            return
+        }
+
         // 单会话模型下的会话选择优先级：
         //   ① 转屏/配置变更保留下来的 id（savedSession）
         //   ② **服务端最近的会话** —— 否则每进一次太极就新建一个空会话

@@ -45,15 +45,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
-import com.example.zhengdao.oc.OcClient
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.oc.OcModel
 import com.example.zhengdao.oc.ConnectionState
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart
 import com.example.zhengdao.oc.OcRepository
+import com.example.zhengdao.oc.OcRuntime
 import com.example.zhengdao.oc.OcSessionSummary
-import com.example.zhengdao.oc.SseClient
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.ui.PluginManager
@@ -102,10 +101,13 @@ fun TaijiScreen(
 
     // ⚠️ 网络层用 remember 而非 rememberSaveable：连接不应在配置变更（旋转）时重建。
     //    Compose state 是唯一真相；进程被杀后由 open() 从 serve 恢复。
-    val repo = remember {
-        val client = OcClient(passwordProvider = { OcManager.servePassword })
-        OcRepository(client, SseClient(client.sseClient))
-    }
+    //
+    // 2026-10-11（用户报「每次重进太极都会重新连接」）：实例改从 OcRuntime 取。
+    //   原先 `remember { OcRepository(…) }` 只活在**本页面的 Composition** 里，而 HomeTabs
+    //   切 Tab 用的是 `when (tab)`（切走的页面直接退出 Composition）⇒ "切去丹房再切回来"
+    //   会把 repository 与它的轮询/SSE 任务一起拆掉重建。现在连接挂在进程上，切 Tab、
+    //   转屏、退到后台都不再重连；只有「关闭太极并退出」或进程被杀才结束（见 OcRuntime）。
+    val repo = remember { OcRuntime.repository() }
     // 用项目已有的 collectAsState，避免为collectAsStateWithLifecycle 引入 lifecycle-runtime-compose
     val state by repo.state.collectAsState()
 
@@ -251,7 +253,9 @@ fun TaijiScreen(
             //    → 请求无 Authorization → 全程 401（本次「进不了 UI」的触发路径）。
             OcManager.startServe(ctx)   // 幂等：运行中则解析密码，未运行则拉起
         }
-        repo.open(scope, savedSession)
+        // ⚠️ 用 OcRuntime.scope（进程级）而不是页面自己的 scope：轮询 / SSE 必须比
+        //    Composition 活得久，否则切一次 Tab 就把连接拆了（见上面 repo 的注释）。
+        repo.open(OcRuntime.scope, savedSession)
         savedSession = repo.state.value.sessionId ?: savedSession
         // 重启后重放模型覆盖：复用的会话重新 POST 一次（幂等，仅影响当前会话）
         modelOverride?.let { m ->
@@ -295,7 +299,7 @@ fun TaijiScreen(
             // 启动失败：明确原因 + 重试。**不静默失败**（项目原则）
             state.phase is TaijiPhase.Failed ->
                 FailedPane((state.phase as TaijiPhase.Failed).message) {
-                    scope.launch { repo.open(scope, sessionId = null) }
+                    scope.launch { repo.open(OcRuntime.scope, sessionId = null) }
                 }
 
             // ★ 主界面：**左侧抽屉 + 固定顶栏** 结构。
@@ -326,11 +330,11 @@ fun TaijiScreen(
                                 onPick = { id ->
                                     scope.launch { drawerState.close() }
                                     savedSession = id
-                                    scope.launch { repo.switchSession(scope, id) }
+                                    scope.launch { repo.switchSession(OcRuntime.scope, id) }
                                 },
                                 onNew = {
                                     scope.launch { drawerState.close() }
-                                    scope.launch { repo.startNewSession(scope)?.let { savedSession = it } }
+                                    scope.launch { repo.startNewSession(OcRuntime.scope)?.let { savedSession = it } }
                                 },
                                 onRefresh = { scope.launch { refreshSessions() } },
                                 // 长按删除：二次确认在 HistoryDrawer 内部完成，这里只执行 + 同步列表
@@ -343,7 +347,7 @@ fun TaijiScreen(
                                         //    否则 UI 会停在"一个已不在服务端的会话"上（再发消息必错）
                                         if (target.id == state.sessionId) {
                                             savedSession = null
-                                            repo.startNewSession(scope)?.let { savedSession = it }
+                                            repo.startNewSession(OcRuntime.scope)?.let { savedSession = it }
                                         }
                                         // ③ 再回源对齐（含刚建的新会话）。只做 ① 会留下缺口：
                                         //    "删当前会话 → 另起新会话"时新会话不在列表里、当前徽章消失
@@ -366,6 +370,9 @@ fun TaijiScreen(
                                     scope.launch {
                                         drawerState.close()
                                         repo.close()
+                                        // 连单例一起丢掉：否则下次进太极会拿到"关过但还活着"的
+                                        // 实例，open() 的判据会以为连接仍在（见 OcRuntime.shutdown）。
+                                        OcRuntime.shutdown()
                                         onExit()
                                     }
                                 },
@@ -389,7 +396,7 @@ fun TaijiScreen(
                         // ＋ 新会话：创建后切入，并同步 savedSession（防转屏/切 Tab 丢会话）
                         onNew = {
                             scope.launch {
-                                repo.startNewSession(scope)?.let { savedSession = it }
+                                repo.startNewSession(OcRuntime.scope)?.let { savedSession = it }
                             }
                         },
                         currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
