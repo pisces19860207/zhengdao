@@ -5983,3 +5983,24 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
   台账 §B-补-47 仍挂着这一条与复现步骤，**不能把"顺手修掉的那一处"说成"症状已修"**。
 - **教训**：把复制粘贴来的循环抽成**单一实现**，能在**不改行为**的前提下消掉「两套判据会漂移」的风险；
   但判据收敛 ≠ 症状修复 —— 没能在真机复现的症状，只能记「判据已收敛、症状待真机核对」。
+
+## E-110 · 2026-10-11 · 「证道的机器是荣耀（Mali）」写错了：SoC 是骁龙、GPU 是 Adreno 740 —— 于是「Warp Mobile 只在 S24 Ultra 验证过」这条否决不成立（用户当场指出）
+
+- **错在哪**：`docs/archive/证道-Rust终端方案查证复核-2026-10-11.md:131` 把参考项目 Warp Mobile 的 GPU 验证情况判成"不能迁移"，理由逐字是
+  「那是 **Adreno** GPU。证道的机器是**荣耀（Mali）**」；同文件 `:202` 的结论表又拿这一条当「换渲染层为 wgpu/Vulkan ❌ 不建议」的第 ① 条理由。
+  **荣耀是手机品牌，不是 GPU 厂商** —— 同一品牌的机器既有骁龙（Adreno）也有联发科（Mali）。本仓库里早就有本机的真实型号，只是这份 10-11 的复核没去查：
+  - `docs/acceptance/ui-ios-skin-2026-10-11.md:4`：「设备：AD3J023824001723（Android 16 / arm64-v8a / **Adreno 740**）」
+  - `docs/acceptance/compose-perf-baseline.md:28`：「设备 | 荣耀 **Magic 5 Pro**（PGT-AN10，MagicOS / Android 16，SoC **kalama**）」
+  `kalama` = 骁龙 8 Gen 2，其 GPU 正是 **Adreno 740**；Warp Mobile 的主测机 Galaxy S24 Ultra 是骁龙 8 Gen 3 / **Adreno 750** —— **同厂商、相邻一代**，
+  "在这台机器上没验证过"这条不成立。用户 2026-10-11 当场指出：「这台是荣耀 Mali这个错了 是骁龙的740」。
+- **处置（本次改动）**：
+  1. `docs/archive/证道-Rust终端方案查证复核-2026-10-11.md:131` 的原判断**划掉留痕**，就地写明更正与证据出处；`:133` 的「三条独立的否决」改成**两条** —— `AGPL-3.0-only` ⛔ ＋ `targetSdk 31` 的现代行为要求 ⚠️。
+  2. 同文件 `:202`：「换渲染层为 wgpu/Vulkan **❌ 不建议**」**结论不变、理由重写**。撤回"GPU 型号不同、验证不能迁移"；留下的是：
+     ② 收益无实测支撑（`docs/ERRATA.md:4863` E-086 ／ `docs/证道-P0渲染层测量-2026-10-10.md:12`：`TerminalRenderer.render()` 一帧 **2.3 ms**，判据是 **>16 ms** 才谈换引擎；掉帧在 GPU/合成侧、不在绘制侧）；
+     ③ 相比「只换状态层」多出整套 GPU/native 栈（体积 / 驱动面 / 16 KB 对齐面）却换不到症状改善；④ 唯一被验证过的参考实现 Warp Mobile 是 **AGPL-3.0-only**，仍然 ⛔ 吸收不了（`:203`）。
+  3. **`docs/milestones/证道-Rust改造可行性裁定.md` §2.1 不受影响**：那里判「终端渲染层 ❌ 不可动」的理由是"渲染热点在 Android 的文本布局与 Canvas，不在计算"，与 GPU 型号无关，仍然成立。
+- **顺带核实（不是错、不用改）**：全仓 `Mali|Adreno|骁龙|Snapdragon` grep 只有上面那份 archive 文档的两处把 GPU 厂商写错；其余「荣耀」都是**品牌 / 保活指南 / 实测机型**语境
+  （`README.md:11/20/54-56/73`、`docs/milestones/已知限制.md:121`、`docs/acceptance/terminal-render-p0-2026-10-10.md:32`、`app/src/main/java/com/termux/view/TerminalImeBridge.java:67/74`、
+  `app/src/main/java/com/example/zhengdao/ui/SettingsKeepaliveActivity.kt:132`），不涉及 GPU 判断。
+- **教训**：**从品牌推硬件能力是错的** —— GPU 由 **SoC** 决定，安卓厂商普遍同时卖骁龙机与联发科机。判断"某方案在不在本机验证过"之前，先落到 **SoC 代号 / GPU 型号**
+  （本机：`kalama` / Adreno 740），而且仓库里可能早就记着，只是这一轮没读。
