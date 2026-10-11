@@ -53,8 +53,26 @@ object Workspace {
         return privateDir(ctx).apply { runCatching { mkdirs() } }
     }
 
-    /** 当前工作区是否位于共享存储（决定 /sdcard bind、软链与界面文案）。 */
-    fun isShared(ctx: Context): Boolean = hostDir(ctx).absolutePath.startsWith(SHARED_ROOT)
+    /**
+     * 当前工作区是否位于共享存储（决定 /sdcard bind、软链与界面文案）。
+     *
+     * B-补-1 修正（2026-10-11）：判据从「路径以 `/storage/emulated/0` 开头」改成
+     * 「解析出的宿主目录**不是 App 外部目录**」。为什么必须换：`privateDir` =
+     * `getExternalFilesDir(null)/workspace` 本身就长成
+     * `/storage/emulated/0/Android/data/<包名>/files/workspace`，前缀天然为真 ⇒
+     * 「仅私有」恒被判成共享（[isPrivate] 永远 false），于是**仅私有模式下 `/sdcard`
+     * 照旧 bind 进 guest**、三处文案还说成「共享存储，卸载保留」——正好与本文件第 19 行
+     * 「仅私有 = 应用外部目录（随卸载自动删除）」的定稿语义相反（详见 ERRATA E-094）。
+     */
+    fun isShared(ctx: Context): Boolean =
+        isSharedPath(hostDir(ctx).absolutePath, privateDir(ctx).absolutePath)
+
+    /**
+     * 纯判据（可单测，见 `WorkspacePathTest`）：宿主目录只要**不是** App 外部目录，就算共享存储。
+     * 尾部斜杠差异不当作两种目录（`hostDir`/`privateDir` 由同一处解析器构造，理论上不会出现）。
+     */
+    internal fun isSharedPath(hostPath: String, privatePath: String): Boolean =
+        hostPath.trimEnd('/') != privatePath.trimEnd('/')
 
     /** 是否为仅私有模式（App 外部目录，随卸载删除）。 */
     fun isPrivate(ctx: Context): Boolean = !isShared(ctx)
