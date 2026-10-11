@@ -9,6 +9,17 @@
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
+        <!-- 2026-10-11 加：框架 AlertDialog 统一 iOS 风（14dp 圆角）。
+             5 处 `android.app.AlertDialog.Builder` 不受 Compose 侧 shape 参数影响，
+             只认这个属性；MainActivity ×3 + TerminalActivity ×2 一并生效。 -->
+        <item name="android:alertDialogTheme">@style/Theme.ZhengdaoDialog</item>
+    </style>
+
+    <!-- 框架对话框主题：只换背景 drawable（14dp 圆角 + 发丝描边）。
+         不覆盖文字/按钮样式 —— 那些由 Android 12+ 的 Material 对话框默认
+         主题提供，改了反而会在低版本设备上丢 Material 观感。 -->
+    <style name="Theme.ZhengdaoDialog" parent="android:ThemeOverlay.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_bg_ios</item>
     </style>
 
     <!-- 终端快捷键条按键的公共外观 -->
