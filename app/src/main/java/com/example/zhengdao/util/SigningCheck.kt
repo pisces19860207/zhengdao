@@ -13,8 +13,8 @@ import java.security.MessageDigest
  *
  * 第一方代码是 GPL-3.0：**允许**别人复制、修改、重新打包，甚至拿去卖（只要保留署名、公开改动、
  * 不给下游加额外限制）。技术上挡不住重打包，但**用户有权知道自己装的是谁签的包**：
- * 本 App 被重新签名后，签名证书和官方那把（仓库 CI 与本机共用同一把 debug keystore，
- * 见 `app/build.gradle.kts` 顶部 `zdKeystorePath` 的说明）必然不同。
+ * 本 App 被重新签名后，签名证书和官方那两把（正式包的 release 钥匙、历史包的 debug 钥匙，
+ * 见下面两个常量与 `app/build.gradle.kts` 顶部 `zdKeystorePath` 的说明）必然不同。
  *
  * ## 只提醒，不拦功能
  *
@@ -30,14 +30,27 @@ import java.security.MessageDigest
 object SigningCheck {
 
     /**
-     * 官方安装包的签名证书 SHA-256（大写十六进制，无冒号）。
+     * 官方**正式包**的签名证书 SHA-256（大写十六进制，无冒号）。
      *
-     * 取自本机 `~/.android/debug.keystore`（alias `androiddebugkey`）：
-     * `keytool -list -v -keystore ~/.android/debug.keystore -storepass android`。
-     * release 与 debug 变体用的是**同一把** keystore（`signingConfig = signingConfigs.getByName("debug")`），
-     * 所以这个值对 GitHub Releases 里的正式包同样成立。
+     * 取自 `C:\Users\guoli\.zhengdao-keys\zhengdao-release.jks`（alias `zhengdao`，RSA 4096，
+     * 有效期至 2056-10；2026-10-11 启用，见 ERRATA E-099）：
+     * `keytool -list -v -keystore zhengdao-release.jks -storepass <口令>`。
+     * 从这一版起，GitHub Releases 里的正式包与 CI 的 release 变体都用它签。
      */
-    const val OFFICIAL_SHA256 = "44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18"
+    const val OFFICIAL_RELEASE_SHA256 = "B93169F211C6B3D9FDAE36B2C614C23BEF28EAE3582E4D8BCA0657C27AC86EC2"
+
+    /**
+     * 历史官方签名 —— v2.0.12 及更早的 release / debug 包都签自这把 debug keystore
+     * （alias `androiddebugkey`，本机 `~/.android/debug.keystore`）。
+     *
+     * ⚠️ 换了正式钥匙之后**仍留在白名单里**：用户手机上装着的旧包正是它签的，它当然是官方包，
+     * 不该被自己的 App 报成"非官方"；开发者本地 `assembleDebug`（AGP 内建 debug 签名）同理。
+     * 见 ERRATA E-099。
+     */
+    const val OFFICIAL_LEGACY_DEBUG_SHA256 = "44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18"
+
+    /** 全部官方指纹（新 release 钥匙 + 历史 debug 钥匙）。 */
+    val OFFICIAL_SHA256S = setOf(OFFICIAL_RELEASE_SHA256, OFFICIAL_LEGACY_DEBUG_SHA256)
 
     enum class Result {
         /** 签名与官方一致。 */
@@ -52,7 +65,7 @@ object SigningCheck {
 
     fun check(ctx: Context): Result {
         val hex = runCatching { signerSha256(ctx) }.getOrNull() ?: return Result.UNKNOWN
-        return if (hex == OFFICIAL_SHA256) Result.OFFICIAL else Result.UNOFFICIAL
+        return if (hex in OFFICIAL_SHA256S) Result.OFFICIAL else Result.UNOFFICIAL
     }
 
     /** 当前安装包第一个签名证书的 SHA-256（大写十六进制）；取不到返回 null。 */

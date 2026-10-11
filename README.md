@@ -207,7 +207,8 @@ terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此�
   **不含名称/商标授权**，冒用名字与署名是另一码事。
 - **App 会说实话**：每个安装包都带签名，证道的「关于」页会显示「官方发布 ✓ / ⚠️ 非官方（被重新打包过）」，
   非官方包启动时再提示一次（ERRATA E-065）。这不是防谁，只是让用户知道手里这个包是谁签的。
-- **签名密钥不在仓库里**（本机 `~/.android/debug.keystore` ＋ CI Secret）。想自己发布就用自己的密钥，
-  别指望能覆盖安装官方包。
+- **签名密钥不在仓库里**（正式包一把独立的 release keystore、开发包一把 debug keystore，都在本机 ＋ CI Secret）。
+  想自己发布就用自己的密钥，别指望能覆盖安装官方包。
+  ⚠️ 2026-10-11 起正式包换了独立钥匙：**在那之前装过旧包的用户，必须卸载重装一次**（共享存储里的工作区不受影响，App 私有目录里的 Debian 环境要重下）。见 ERRATA E-099。
 
 联系作者：putaopanpan@gmail.com（或直接开 [Issue](https://github.com/pisces19860207/zhengdao/issues)）。
