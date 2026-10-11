@@ -5547,6 +5547,18 @@ v3.9 起 `terminal-emulator` / `terminal-view`（Apache-2.0）以源码形式聚
 
 许可证义务必须落在**文件本身**。只在台账、README 或提交信息里写一句「已按 §4(b) 标注」，是**自我报告**：这句话这次差点被原样写进 `FEATURE-LEDGER.md` §A #34（拟定措辞里那句「所有修改文件已按 Apache-2.0 第 4(b) 条标注修改通知」），复核发现它当时**为假**。判据：写「已标注」之前，先逐文件 `grep` 一遍，别信记忆。
 
+**2026-10-11 晚补记（同一条教训的第二次命中：口径漏算）**
+
+处置落地后复验时发现：先前公告的「第一方文件缺声明 = **11** 个」是**漏算** —— 那次只扫了
+`app/src/main` + `rust` 两处，**漏掉单元测试 `app/src/test`、仪器测试 `app/src/androidTest` 与
+`macrobenchmark`**。全量复核（排除 `com/termux` 聚合层）：第一方 `*.kt` / `*.rs` 共 **175** 个，
+实际缺 **34** 个 —— `app/src/main` 9 个（`oc/OcConnectionPolicy.kt`、`oc/OcRuntime.kt`、
+`terminal/StorageAudit.kt`、`ui/theme/Type.kt`、`ui/HermesInstallScript.kt`、`ui/ImeProbe.kt`、
+`ui/ImeRegressionActivity.kt`、`ui/NetSelfCheck.kt`、`ZhengdaoApp.kt`）、单测 19 个、androidTest 3 个、
+`macrobenchmark` 1 个、`rust/core/src` 2 个（`jni_bridge.rs`、`tests.rs`）。已全部补齐，复验
+**175 / 175**，见 `docs/FEATURE-LEDGER.md` §A #36；核验流程已固化进 `PROVENANCE.md`「义务核验流程（模板）」。
+
+教训与正文同一条，只是换了对象：**「有没有」和「有几个」都必须用同一条命令数一遍再写。**
 ## E-101 · 2026-10-11 · `textselection` 三个上游文件的包名是 `com.termux.view.textselection`，物理路径却在 `com/termux/textselection/`
 
 **背景**
