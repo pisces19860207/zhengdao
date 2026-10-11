@@ -69,7 +69,9 @@ ffmpeg 报了 ⇒ **它在 hermes 里是必需包**（非 optional）；chromium
 
 - 「清理安装脚本缓存」按钮**没点**（会删掉 52 KB 的 `hermes-install.sh`，下次装 hermes 要重新下载）；只验了它出现在设置页、文案与实际删除范围一致（代码审读）。
 - 「hermes 自检」只读 `facts.json`：如果某个包既没注册、目录也不在，这里不会显示（不是事实源）。
-- 系统层那份 `/usr/bin/ffmpeg` 仍然存在且可用（终端里直接敲 `ffmpeg` 走的是它）——hermes 不认它是**设计如此**，不是缺陷。
+- 系统层那份 `/usr/bin/ffmpeg` 文件**确实在**：`files/rootfs/usr/bin/ffmpeg` 395,728 B / `-rwxr-xr-x`（2026-10-10 16:36，rootfs 重装后的时间戳）；rootfs 自带的 glibc 也能起来（`files/rootfs/lib/ld-linux-aarch64.so.1 --version` → `ld.so (Debian GLIBC 2.41-12+deb13u4)`）。
+  ⚠️ **「在终端里跑得起来」未实测**：在 proot 外直接带 loader 跑它，会停在 `libblas.so.3: cannot open shared object file` —— rootfs 里这类库是**绝对符号链接**（指向 `/etc/alternatives/…`），只有进了 proot 的挂载视图才解析得了；这是**取证方法的限制**，不是 ffmpeg 坏了。（顺带发现了正确的库路径：`files/rootfs/usr/lib/aarch64-linux-gnu/pulseaudio/libpulsecommon-17.0.so`。）
+  hermes 不认系统这份是**设计如此**（`activate()` 只把 store 目录插到 PATH 最前），不是缺陷。
 
 ## 6. 复现命令
 
