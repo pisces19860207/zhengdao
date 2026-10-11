@@ -11,7 +11,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * Issue #8-B 的守卫：**只清可选工具（浏览器/桌面自动化），核心运行时与 ffmpeg 一个都不许碰**。
+ * Issue #8-B 的守卫：**`~/.hermes/tools` 里的东西默认一个都不许删**。
  *
  * 这一组测试锁的是"删错东西"这个最贵的错误——`~/.hermes/tools` 里 python / node / uv
  * 删掉就等于把 hermes 弄瘸，而它们和 chromium / ffmpeg 躺在同一个目录里、名字长得很像
@@ -20,6 +20,11 @@ import java.io.File
  * ⚠️ 2026-10-11（ERRATA E-092）：ffmpeg 从"可选"改成"必需"。真机上清掉它之后 hermes 每次
  * 启动都报 `install out of sync (ffmpeg: not installed or outdated)`——`pm/install.py` 的
  * `drift()` 只跳过 `package.optional`，ffmpeg 会进问题列表 ⇒ 它是必需包，清理入口不许碰。
+ *
+ * ⚠️ 2026-10-11 深夜（ERRATA E-115 补记）：**hermes 自己装的扩展一律保留**——先是浏览器工具
+ * （`agent-browser` + `chromium`，E-114 同一条用户消息点名），随后桌面自动化 `cua-driver`
+ * 一并划入 ⇒ `OPTIONAL_TOOL_NAMES` 变空表，`清理可选工具` 这条路成了空操作。
+ * 这组测试因此改成断言「没有任何工具目录可清、清理调用不删任何东西」。
  */
 class StorageAuditTest {
 
@@ -42,7 +47,10 @@ class StorageAuditTest {
         // 有它们 hermes 才能开网页（用户实测过），所以不再是可清项。
         assertEquals(StorageAudit.ToolKind.PINNED, StorageAudit.toolKind("chromium-1208-linux-arm64"))
         assertEquals(StorageAudit.ToolKind.PINNED, StorageAudit.toolKind("agent-browser-0.5.1"))
-        assertEquals(StorageAudit.ToolKind.OPTIONAL, StorageAudit.toolKind("cua-driver-0.3.0-linux-arm64"))
+        // 2026-10-11 深夜：桌面自动化 cua-driver 也从「可选」升为「保留」（同一条理由：
+        // hermes 自己装的扩展，有它 hermes 就多一种能力）⇒ OPTIONAL 表现在是空表。
+        assertEquals(StorageAudit.ToolKind.PINNED, StorageAudit.toolKind("cua-driver-0.3.0-linux-arm64"))
+        assertTrue("可选表现在应当是空的", StorageAudit.OPTIONAL_TOOL_NAMES.isEmpty())
         // E-092：ffmpeg 是 hermes 必需包，永远不许被清理入口扫到。
         assertEquals(StorageAudit.ToolKind.REQUIRED, StorageAudit.toolKind("ffmpeg-7.1.5-linux-arm64"))
         assertEquals(StorageAudit.ToolKind.CORE, StorageAudit.toolKind("python-3.14.7"))
@@ -58,7 +66,7 @@ class StorageAuditTest {
     }
 
     @Test
-    fun `明细只把可选工具标成可清`() {
+    fun `明细里没有一个 hermes 工具是可清的`() {
         val tools = tmp.newFolder("tools")
         dirWith(tools, "cua-driver-0.3.0-linux-arm64", 2)
         dirWith(tools, "chromium-1208-linux-arm64", 3)
@@ -67,19 +75,21 @@ class StorageAuditTest {
 
         val items = StorageAudit.toolItemsIn(tools)
         assertEquals(4, items.size)
-        assertTrue(items.first { it.label == "cua-driver-0.3.0-linux-arm64" }.removable)
-        assertTrue(items.first { it.label == "cua-driver-0.3.0-linux-arm64" }.note.contains("hermes pm install"))
-        // 浏览器工具是「保留」，行内要写明理由（用户 2026-10-11 点名保留）。
+        // 2026-10-11 深夜起：hermes 自己装的扩展一律「保留」，明细里逐行写明理由。
+        assertFalse(items.first { it.label == "cua-driver-0.3.0-linux-arm64" }.removable)
+        assertTrue(items.first { it.label == "cua-driver-0.3.0-linux-arm64" }.note.contains("保留"))
         assertFalse(items.first { it.label == "chromium-1208-linux-arm64" }.removable)
-        assertTrue(items.first { it.label == "chromium-1208-linux-arm64" }.note.contains("浏览器"))
+        assertTrue(items.first { it.label == "chromium-1208-linux-arm64" }.note.contains("保留"))
         assertFalse(items.first { it.label == "python-3.14.7" }.removable)
         assertFalse(items.first { it.label == "something-else" }.removable)
+        // 可清项为 0 ⇒ ui/SettingsStorageActivity 的「清理可选工具」入口不会渲染（它按可清体积 > 0 判）。
+        assertEquals(0, items.count { it.removable })
         // 按体积降序：最大的排在最前，用户一眼看到"哪里最占地方"。
         assertEquals("chromium-1208-linux-arm64", items.first().label)
     }
 
     @Test
-    fun `清理只删可选工具，浏览器工具与 ffmpeg 原样留在原地`() {
+    fun `可选表为空时清理一个工具目录都不删`() {
         val tools = tmp.newFolder("tools")
         val chromium = dirWith(tools, "chromium-1208-linux-arm64", 2)
         val browser = dirWith(tools, "agent-browser-0.5.1", 1)
@@ -91,12 +101,12 @@ class StorageAuditTest {
 
         val (count, freed) = StorageAudit.cleanOptionalToolDirs(tools)
 
-        // 可清项只剩桌面自动化那一个；E-092 的 ffmpeg 与 2026-10-11 的浏览器工具都不在内。
-        assertEquals(1, count)
-        assertEquals(1L * 1024 * 1024, freed)
-        assertFalse("桌面自动化是可选工具，会被删掉", cua.exists())
+        // 2026-10-11 深夜：用户决定 hermes 自己装的扩展一律保留 ⇒ 这条路现在是空操作。
+        assertEquals(0, count)
+        assertEquals(0L, freed)
         assertTrue("浏览器工具是用户点名保留的，不许碰", chromium.isDirectory)
         assertTrue("浏览器工具是用户点名保留的，不许碰", browser.isDirectory)
+        assertTrue("桌面自动化也是用户点名保留的，不许碰", cua.isDirectory)
         assertTrue("ffmpeg 是 hermes 必需包，不许碰", ffmpeg.isDirectory)
         assertTrue("核心运行时不许碰", python.isDirectory)
         assertTrue("核心运行时不许碰", uv.isDirectory)
@@ -123,17 +133,16 @@ class StorageAuditTest {
     }
 
     @Test
-    fun `清理是幂等的，且不存在目录时安静返回零`() {
+    fun `可选表为空时清理是空操作，不存在目录也安静返回零`() {
         val tools = tmp.newFolder("tools")
-        dirWith(tools, "cua-driver-0.3.0-linux-arm64", 1)
+        val cua = dirWith(tools, "cua-driver-0.3.0-linux-arm64", 1)
         val (c1, f1) = StorageAudit.cleanOptionalToolDirs(tools)
-        assertEquals(1, c1)
-        assertTrue(f1 > 0)
-        val (c2, _) = StorageAudit.cleanOptionalToolDirs(tools)
+        assertEquals("可选表为空 ⇒ 一个都不删", 0, c1)
+        assertEquals(0L, f1)
+        assertTrue(cua.isDirectory)
+        val (c2, f2) = StorageAudit.cleanOptionalToolDirs(File(tmp.root, "nope"))
         assertEquals(0, c2)
-        val (c3, f3) = StorageAudit.cleanOptionalToolDirs(File(tmp.root, "nope"))
-        assertEquals(0, c3)
-        assertEquals(0L, f3)
+        assertEquals(0L, f2)
     }
 
     @Test
