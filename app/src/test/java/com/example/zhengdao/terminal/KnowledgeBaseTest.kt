@@ -2,9 +2,11 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.terminal
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * 资料库"该不该建目录"的判定（E-061）。
@@ -54,4 +56,42 @@ class KnowledgeBaseTest {
             KnowledgeBase.shouldCreate(everCreated = false, userDeleted = false, forced = true),
         )
     }
+
+    // ── countRawIn（2026-10-11 拆出来的纯函数：给"别处还有一份带资料的资料库"提示用）──
+
+    @Test
+    fun `计数递归数文件、目录不计`() {
+        val raw = File(tmpDir(), "原始").apply { mkdirs() }
+        File(raw, "a.txt").writeText("a")
+        File(raw, "sub").mkdirs()
+        File(raw, "sub/b.txt").writeText("b")
+        File(raw, "sub/deep").mkdirs()
+        File(raw, "sub/deep/c.txt").writeText("c")
+        assertEquals(3, KnowledgeBase.countRawIn(raw))
+    }
+
+    @Test
+    fun `计数把软链排除在外——否则同一份资料会被数两遍`() {
+        val raw = File(tmpDir(), "原始").apply { mkdirs() }
+        val real = File(raw, "real.txt").apply { writeText("x") }
+        val created = runCatching {
+            java.nio.file.Files.createSymbolicLink(
+                File(raw, "link.txt").toPath(),
+                real.toPath(),
+            )
+        }.isSuccess
+        if (!created) return // Windows 非开发者模式建不了软链，Linux CI 上会跑
+        assertEquals(1, KnowledgeBase.countRawIn(raw))
+    }
+
+    @Test
+    fun `计数：目录不存在时返回 0 而不是抛异常`() {
+        assertEquals(0, KnowledgeBase.countRawIn(File(tmpDir(), "没有这个目录")))
+    }
+
+    private fun tmpDir(): File =
+        File(
+            System.getProperty("java.io.tmpdir"),
+            "zd-kb-test-${System.nanoTime()}",
+        ).apply { mkdirs() }
 }

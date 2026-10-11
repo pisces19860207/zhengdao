@@ -437,9 +437,13 @@ esac
                 runCatching { ap.startsWith(r.canonicalPath + File.separator) }.getOrDefault(false)
             }
             if (!ok) return@forEach
-            val before = fileLengths(dir)
-            if (deleteTree(dir)) {
-                freed += before
+            // 2026-10-11（用户原话：「清理 agent 缓存包的时候有点卡，反应有点慢」，m01163）：
+            // 改成**一边删一边统计**。旧实现先 `fileLengths` 量一遍、再 `deleteTree` 删一遍
+            // —— 两遍完整遍历，而 npm 的 `_cacache`／uv 缓存动辄几万个小文件，十几万次
+            // stat+unlink 全压在调用线程上；设置页那个按钮恰好在主线程里调这里 ⇒ 卡。
+            val st = deleteTreeCounted(dir)
+            if (st.any) {
+                freed += st.bytes
                 count++
             }
         }
@@ -447,16 +451,31 @@ esac
         return freed
     }
 
+    /** 一次删除遍历的收获：删掉的文件数／目录数，以及**真实释放的字节数**。 */
+    internal data class DeleteStat(val files: Int, val dirs: Int, val bytes: Long) {
+        /** 是否真删掉了东西（哪怕只删掉一个空目录）。 */
+        val any: Boolean get() = files > 0 || dirs > 0
+    }
+
     /**
-     * 递归删除一棵目录树（返回"是否删掉了东西"）。
+     * 递归删除一棵目录树，**顺手统计真实释放的字节数**（2026-10-11 新增）。
      *
-     * **绝不跟随软链**：`walkFileTree` 不传 `FOLLOW_LINKS` 时软链按普通文件处理，
-     * 删掉的是链接自身——uv 缓存里 `archive-v0/<hash>` 全是指向别处的软链，
-     * 跟着走就可能删到白名单之外的东西。删不掉的部分静默跳过（宁可少报，也不抛异常）。
+     * 为什么要多这一版：旧调用方是「先 [fileLengths] 量一遍、再 [deleteTree] 删一遍」，
+     * 那是**两遍完整遍历**；npm 的 `_cacache`／uv 缓存动辄几万个小文件，真机点一次
+     * 「清理 Agent 缓存包」要跑十几万次 stat + unlink —— 而设置页那几个清理按钮正是
+     * **主线程**直调（用户 2026-10-11 原话：「清理 agent 缓存包的时候有点卡」）。
+     * 一边删一边把 `BasicFileAttributes.size()` 加起来，只走一遍，得到同一份数字，
+     * 也顺手消掉"量的时候与删的时候文件变了、数字对不上"的老问题。
+     *
+     * 口径与 [fileLengths] 一致：**软链不跟随**（删的是链接自身，且不计入字节数
+     * ——`attrs.size()` 对软链返回的是链接目标的长度，计进去就是虚报）。
+     * 删不掉的部分静默跳过：宁可少报，也不抛异常、不虚报。
      */
-    internal fun deleteTree(root: File): Boolean {
-        if (!root.exists()) return false
-        var any = false
+    internal fun deleteTreeCounted(root: File): DeleteStat {
+        if (!root.exists()) return DeleteStat(0, 0, 0L)
+        var files = 0
+        var dirs = 0
+        var bytes = 0L
         try {
             java.nio.file.Files.walkFileTree(
                 root.toPath(),
@@ -465,7 +484,10 @@ esac
                         file: java.nio.file.Path,
                         attrs: java.nio.file.attribute.BasicFileAttributes,
                     ): java.nio.file.FileVisitResult {
-                        if (java.nio.file.Files.deleteIfExists(file)) any = true
+                        if (java.nio.file.Files.deleteIfExists(file)) {
+                            files++
+                            if (!attrs.isSymbolicLink) bytes += attrs.size()
+                        }
                         return java.nio.file.FileVisitResult.CONTINUE
                     }
 
@@ -473,7 +495,7 @@ esac
                         dir: java.nio.file.Path,
                         exc: java.io.IOException?,
                     ): java.nio.file.FileVisitResult {
-                        if (java.nio.file.Files.deleteIfExists(dir)) any = true
+                        if (java.nio.file.Files.deleteIfExists(dir)) dirs++
                         return java.nio.file.FileVisitResult.CONTINUE
                     }
                 },
@@ -481,8 +503,20 @@ esac
         } catch (_: Throwable) {
             // 删不掉就算没删
         }
-        return any
+        return DeleteStat(files, dirs, bytes)
     }
+
+    /**
+     * 递归删除一棵目录树（返回"是否删掉了东西"）。
+     *
+     * **绝不跟随软链**：`walkFileTree` 不传 `FOLLOW_LINKS` 时软链按普通文件处理，
+     * 删掉的是链接自身——uv 缓存里 `archive-v0/<hash>` 全是指向别处的软链，
+     * 跟着走就可能删到白名单之外的东西。删不掉的部分静默跳过（宁可少报，也不抛异常）。
+     *
+     * 现在只是 [deleteTreeCounted] 的一层薄壳（保留这个签名：`HermesEnv`、
+     * `StorageAudit` 等处只关心"删没删掉"，不需要数字）。
+     */
+    internal fun deleteTree(root: File): Boolean = deleteTreeCounted(root).any
 
     // ── 工具 ────────────────────────────────────────────────────────────────
 

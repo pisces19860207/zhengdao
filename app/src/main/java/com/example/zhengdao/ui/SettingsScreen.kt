@@ -245,6 +245,11 @@ fun SettingsScreen(
                 manageOk = manageGranted()
                 storageOk = storageGrantedNow()
                 storageTick++
+                // 2026-10-11：回到设置页就顺手刷一次资料库清单。用户常常是"先去文件管理器
+                // 把资料丢进 原始/，再切回 App"——那条路上没有任何机会触发会话启动，
+                // 于是旧版显示的一直是"还没放资料"（他看到的＝"放了东西没反应"）。
+                // autoRefresh 只在后台比指纹+重建清单，不建骨架、不写分发指路。
+                com.example.zhengdao.terminal.KnowledgeBase.autoRefresh(ctx)
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
@@ -264,6 +269,54 @@ fun SettingsScreen(
         kbEnabled = com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)
         kbHints = com.example.zhengdao.terminal.KnowledgeBaseHints.isEnabled(ctx)
         kbStatus = withContext(Dispatchers.IO) { com.example.zhengdao.terminal.KnowledgeBase.status(ctx) }
+    }
+
+    /**
+     * 「清理」类按钮的统一执行器（2026-10-11 新增）。
+     *
+     * 用户当时的原话是「清理 agent 缓存包的时候有点卡，反应有点慢，能快一点那种吗？」。
+     * 根因：这些清理是**真删目录**——npm 的 `_cacache`／uv 缓存动辄几万个小文件，
+     * 旧实现还是"先量一遍再删一遍"（两遍遍历），总共十几万次 stat+unlink 全压在
+     * 主线程里（按钮的 onClick 直调）。放主线程轻则掉帧，重则 ANR。
+     *
+     * 现在：整体挪到 [Dispatchers.IO]，期间 [cleaning] 为真 → 相关按钮禁用并显示「清理中…」，
+     * 完成后统一 Toast + 让 [storageTick] 走一格（量出来的数字跟着变）。
+     */
+    var cleaning by remember { mutableStateOf(false) }
+    fun runClean(
+        work: () -> Pair<Int, Long>,
+        toast: (files: Int, freed: Long) -> String,
+    ) {
+        if (cleaning) return
+        cleaning = true
+        scope.launch {
+            val (files, freed) = withContext(Dispatchers.IO) {
+                runCatching { work() }.getOrElse { 0 to 0L }
+            }
+            cleaning = false
+            Toast.makeText(ctx, toast(files, freed), Toast.LENGTH_SHORT).show()
+            storageTick++
+        }
+    }
+
+    /**
+     * 换工作区前的闸（2026-10-11 新增）。
+     *
+     * 为什么要有：`资料库` 挂在**工作区**下面（[KnowledgeBase.root] = `hostDir/资料库`），
+     * 换工作区就等于换了一份资料库 —— 旧那份原样留在原地、不再被读。真机上正是这件事
+     * 把用户绕住了：他先把 19 个文件放进 `Download/证道/资料库/原始/`，随后在设置页把
+     * 工作区换成了 `Download/男性`，回来只看到「未挂载 · 还没放资料」，以为 App 没反应。
+     * ⇒ 当前资料库里有东西时先问一句，并给"顺手复制过去"这条路（原件不动）。
+     */
+    var wsAsk by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    fun changeWorkspace(toastText: String, doSwitch: () -> Unit) {
+        if ((kbStatus?.files ?: 0) > 0) {
+            wsAsk = toastText to doSwitch
+        } else {
+            doSwitch()
+            Toast.makeText(ctx, toastText, Toast.LENGTH_SHORT).show()
+            storageTick++
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -322,8 +375,8 @@ fun SettingsScreen(
             var optConfirm by remember { mutableStateOf(false) }
             if (optMb > 0) {
                 Spacer(Modifier.height(4.dp))
-                TextButton(onClick = { optConfirm = true }) {
-                    Text("清理可选工具（$optMb MB）")
+                TextButton(enabled = !cleaning, onClick = { optConfirm = true }) {
+                    Text(if (cleaning) "清理中…" else "清理可选工具（$optMb MB）")
                 }
                 if (optConfirm) {
                     AlertDialog(
@@ -352,19 +405,21 @@ fun SettingsScreen(
                             }
                         },
                         confirmButton = {
-                            TextButton(onClick = {
+                            TextButton(enabled = !cleaning, onClick = {
                                 optConfirm = false
-                                val (count, freed) =
-                                    com.example.zhengdao.terminal.StorageAudit.cleanOptionalTools(ctx)
-                                Toast.makeText(
-                                    ctx,
-                                    if (count > 0)
-                                        "已删除 $count 项，释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                    else "没有可清理的可选工具",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                storageTick++
-                            }) { Text("清理") }
+                                // 2026-10-11：≈1.0G 的删除，绝不能在主线程做（见 runClean）
+                                runClean(
+                                    work = {
+                                        com.example.zhengdao.terminal.StorageAudit
+                                            .cleanOptionalTools(ctx)
+                                    },
+                                    toast = { count, freed ->
+                                        if (count > 0)
+                                            "已删除 $count 项，释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                        else "没有可清理的可选工具"
+                                    },
+                                )
+                            }) { Text(if (cleaning) "清理中…" else "清理") }
                         },
                         dismissButton = {
                             TextButton(onClick = { optConfirm = false }) { Text("取消") }
@@ -404,19 +459,21 @@ fun SettingsScreen(
                             }
                         },
                         confirmButton = {
-                            TextButton(onClick = {
+                            TextButton(enabled = !cleaning, onClick = {
                                 scriptConfirm = false
-                                val (count, freed) =
-                                    com.example.zhengdao.terminal.StorageAudit.cleanAgentScriptCache(ctx)
-                                Toast.makeText(
-                                    ctx,
-                                    if (count > 0)
-                                        "已清 $count 个脚本缓存文件（释放 ${CacheCleaner.bytesToMb(freed)} MB），下次安装会重新下载"
-                                    else "没有脚本缓存可清",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                storageTick++
-                            }) { Text("清理") }
+                                // 2026-10-11：挪到 IO + 期间禁用/显示「清理中…」（见 runClean）
+                                runClean(
+                                    work = {
+                                        com.example.zhengdao.terminal.StorageAudit
+                                            .cleanAgentScriptCache(ctx)
+                                    },
+                                    toast = { count, freed ->
+                                        if (count > 0)
+                                            "已清 $count 个脚本缓存文件（释放 ${CacheCleaner.bytesToMb(freed)} MB），下次安装会重新下载"
+                                        else "没有脚本缓存可清"
+                                    },
+                                )
+                            }) { Text(if (cleaning) "清理中…" else "清理") }
                         },
                         dismissButton = {
                             TextButton(onClick = { scriptConfirm = false }) { Text("取消") }
@@ -481,8 +538,14 @@ fun SettingsScreen(
             // 二档：宿主侧直接删（rootfs 就是宿主上的普通目录），因此**不需要会话**
             val tempMb = cacheSizes["临时文件"] ?: 0L
             var tempConfirm by remember { mutableStateOf(false) }
-            TextButton(enabled = tempMb > 0, onClick = { tempConfirm = true }) {
-                Text(if (tempMb > 0) "清理临时文件（$tempMb MB）" else "无临时文件可清")
+            TextButton(enabled = tempMb > 0 && !cleaning, onClick = { tempConfirm = true }) {
+                Text(
+                    when {
+                        cleaning -> "清理中…"
+                        tempMb > 0 -> "清理临时文件（$tempMb MB）"
+                        else -> "无临时文件可清"
+                    }
+                )
             }
             if (tempConfirm) {
                 AlertDialog(
@@ -496,17 +559,17 @@ fun SettingsScreen(
                         )
                     },
                     confirmButton = {
-                        TextButton(onClick = {
+                        TextButton(enabled = !cleaning, onClick = {
                             tempConfirm = false
-                            val freed = CacheCleaner.cleanTempFiles(ctx)
-                            Toast.makeText(
-                                ctx,
-                                if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                else "没有可清理的临时文件",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                            storageTick++ // 触发重新统计，数字立刻回落到真实值
-                        }) { Text("清理") }
+                            // 2026-10-11：挪到 IO（见 runClean）。清理前后 storageTick++ 由它统一做。
+                            runClean(
+                                work = { 0 to CacheCleaner.cleanTempFiles(ctx) },
+                                toast = { _, freed ->
+                                    if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                    else "没有可清理的临时文件"
+                                },
+                            )
+                        }) { Text(if (cleaning) "清理中…" else "清理") }
                     },
                     dismissButton = {
                         TextButton(onClick = { tempConfirm = false }) { Text("取消") }
@@ -525,8 +588,14 @@ fun SettingsScreen(
             }
             val agentMb = agentSizes.sumOf { it.second }
             var agentConfirm by remember { mutableStateOf(false) }
-            TextButton(onClick = { agentConfirm = true }) {
-                Text(if (agentMb > 0) "清理 Agent 缓存包（$agentMb MB）" else "清理 Agent 缓存包")
+            TextButton(enabled = !cleaning, onClick = { agentConfirm = true }) {
+                Text(
+                    when {
+                        cleaning -> "清理中…"
+                        agentMb > 0 -> "清理 Agent 缓存包（$agentMb MB）"
+                        else -> "清理 Agent 缓存包"
+                    }
+                )
             }
             if (agentConfirm) {
                 AlertDialog(
@@ -557,17 +626,18 @@ fun SettingsScreen(
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = {
+                        TextButton(enabled = !cleaning, onClick = {
                             agentConfirm = false
-                            val freed = CacheCleaner.cleanAgentCaches(ctx)
-                            Toast.makeText(
-                                ctx,
-                                if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                else "没有可清理的 Agent 缓存",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                            storageTick++ // 重新统计，数字立刻回落
-                        }) { Text("清理") }
+                            // 2026-10-11：这就是用户报的那一处「清理 agent 缓存包的时候有点卡」。
+                            // 现在整体在 IO 线程跑，且缓存清理函数已改成"边删边统计"（单遍遍历）。
+                            runClean(
+                                work = { 0 to CacheCleaner.cleanAgentCaches(ctx) },
+                                toast = { _, freed ->
+                                    if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                    else "没有可清理的 Agent 缓存"
+                                },
+                            )
+                        }) { Text(if (cleaning) "清理中…" else "清理") }
                     },
                     dismissButton = {
                         TextButton(onClick = { agentConfirm = false }) { Text("取消") }
@@ -587,8 +657,8 @@ fun SettingsScreen(
             }
             if (genMb > 0) {
                 var genConfirm by remember { mutableStateOf(false) }
-                TextButton(onClick = { genConfirm = true }) {
-                    Text("清理 Agent 旧依赖代（$genMb MB）")
+                TextButton(enabled = !cleaning, onClick = { genConfirm = true }) {
+                    Text(if (cleaning) "清理中…" else "清理 Agent 旧依赖代（$genMb MB）")
                 }
                 if (genConfirm) {
                     AlertDialog(
@@ -611,18 +681,18 @@ fun SettingsScreen(
                             }
                         },
                         confirmButton = {
-                            TextButton(onClick = {
+                            TextButton(enabled = !cleaning, onClick = {
                                 genConfirm = false
-                                val (count, freed) = HermesEnv.pruneGenerations(HermesEnv.hermesHome(ctx))
-                                Toast.makeText(
-                                    ctx,
-                                    if (count > 0)
-                                        "已删除 $count 代，释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                    else "没有可清理的旧依赖代",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                storageTick++
-                            }) { Text("清理") }
+                                // 2026-10-11：同样挪到 IO（删一"代"是整棵 venv，几万个小文件）
+                                runClean(
+                                    work = { HermesEnv.pruneGenerations(HermesEnv.hermesHome(ctx)) },
+                                    toast = { count, freed ->
+                                        if (count > 0)
+                                            "已删除 $count 代，释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                        else "没有可清理的旧依赖代"
+                                    },
+                                )
+                            }) { Text(if (cleaning) "清理中…" else "清理") }
                         },
                         dismissButton = {
                             TextButton(onClick = { genConfirm = false }) { Text("取消") }
@@ -672,6 +742,78 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // ── 2026-10-11（真机现场）──
+            // 用户原话：「资料库我已经放了东西到原始文件了，但是APP这边没反应」。
+            // 真实原因是**换过工作区**：资料库挂在工作区下面（KnowledgeBase.root），换工作区
+            // 就等于换了一份资料库；旧那份原样留在原地、不再被读。以前界面对此只字不提，
+            // 他看到的只有"未挂载 · 还没放资料"，自然以为 App 坏了。
+            // 现在主动报出"别处还有一份带资料的资料库"，并给一键复制过来（只增不减）。
+            var otherKb by remember(storageTick) {
+                mutableStateOf<List<Pair<String, Int>>>(emptyList())
+            }
+            LaunchedEffect(storageTick) {
+                otherKb = withContext(Dispatchers.IO) {
+                    com.example.zhengdao.terminal.KnowledgeBase.otherPopulated(ctx)
+                }
+            }
+            if (st?.state == com.example.zhengdao.terminal.KnowledgeBase.State.NOT_MOUNTED &&
+                otherKb.isNotEmpty()
+            ) {
+                val otherPath = otherKb.first().first
+                val otherCount = otherKb.first().second
+                var copyAsk by remember { mutableStateOf(false) }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "另外发现一份带资料的资料库：$otherPath（$otherCount 个文件）。\n" +
+                        "资料库是跟着「工作区」走的——换过工作区之后，旧那份还留在原地，" +
+                        "但 App 只读上面这个路径。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                TextButton(enabled = !cleaning, onClick = { copyAsk = true }) {
+                    Text("把那份复制过来（$otherCount 个文件）")
+                }
+                if (copyAsk) {
+                    AlertDialog(
+                        onDismissRequest = { copyAsk = false },
+                        title = { Text("复制过来？") },
+                        text = {
+                            Text(
+                                "把 $otherPath 里的文件**复制**进当前资料库的 " +
+                                    "${com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW}/ 目录。" +
+                                    "原件一份不动；同名的文件不覆盖（当前这份优先）。"
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(enabled = !cleaning, onClick = {
+                                copyAsk = false
+                                runClean(
+                                    work = {
+                                        val n = com.example.zhengdao.terminal.KnowledgeBase
+                                            .copyRawInto(
+                                                ctx,
+                                                File(
+                                                    otherPath,
+                                                    com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW,
+                                                ),
+                                            )
+                                        com.example.zhengdao.terminal.KnowledgeBase
+                                            .rebuildAfterCopy(ctx)
+                                        n to 0L
+                                    },
+                                    toast = { n, _ ->
+                                        if (n > 0) "已复制 $n 个文件，清单已重建"
+                                        else "没有可复制的文件（可能都已在当前资料库里）"
+                                    },
+                                )
+                            }) { Text("复制") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { copyAsk = false }) { Text("取消") }
+                        },
+                    )
+                }
+            }
             Spacer(Modifier.height(6.dp))
             Row {
                 TextButton(onClick = {
@@ -993,14 +1135,17 @@ fun SettingsScreen(
             )
             Spacer(Modifier.height(6.dp))
             Row {
-                TextButton(onClick = { wsPickerOpen = true }) { Text("选择文件夹") }
+                TextButton(enabled = !cleaning, onClick = { wsPickerOpen = true }) { Text("选择文件夹") }
                 TextButton(onClick = {
-                    com.example.zhengdao.terminal.Workspace.setDefault(ctx)
-                    Toast.makeText(ctx, "已恢复默认（Download/证道），下次启动会话生效", Toast.LENGTH_SHORT).show()
+                    // 2026-10-11：先过 changeWorkspace 的闸（当前资料库有东西时会先问一句）
+                    changeWorkspace("已恢复默认（Download/证道），下次启动会话生效") {
+                        com.example.zhengdao.terminal.Workspace.setDefault(ctx)
+                    }
                 }) { Text("恢复默认") }
                 TextButton(onClick = {
-                    com.example.zhengdao.terminal.Workspace.setPrivate(ctx)
-                    Toast.makeText(ctx, "已切换仅私有，下次启动会话生效", Toast.LENGTH_SHORT).show()
+                    changeWorkspace("已切换仅私有，下次启动会话生效") {
+                        com.example.zhengdao.terminal.Workspace.setPrivate(ctx)
+                    }
                 }) { Text("仅私有") }
             }
             Text(
@@ -1015,11 +1160,70 @@ fun SettingsScreen(
                 onDismiss = { wsPickerOpen = false },
                 onPick = { path ->
                     wsPickerOpen = false
-                    if (com.example.zhengdao.terminal.Workspace.setCustom(ctx, path)) {
-                        Toast.makeText(ctx, "工作区已设为 $path，下次启动会话生效", Toast.LENGTH_LONG).show()
-                    } else {
+                    if (!path.startsWith("/storage/emulated/0")) {
                         Toast.makeText(ctx, "该位置不可用，请选择内部存储中的文件夹", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // 同样过 changeWorkspace 的闸：换工作区 = 换一份资料库
+                        changeWorkspace("工作区已设为 $path，下次启动会话生效") {
+                            com.example.zhengdao.terminal.Workspace.setCustom(ctx, path)
+                        }
                     }
+                },
+            )
+        }
+
+        // 换工作区的确认框（只有"当前资料库里确实有文件"时才会被 changeWorkspace 置上）
+        wsAsk?.let { ask ->
+            val askToast = ask.first
+            val askSwitch = ask.second
+            val curFiles = kbStatus?.files ?: 0
+            val curKb = com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
+            AlertDialog(
+                onDismissRequest = { wsAsk = null },
+                title = { Text("换工作区后，资料库也跟着换") },
+                text = {
+                    Column {
+                        Text("当前资料库：$curKb（$curFiles 个文件）")
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "资料库挂在「工作区」下面，所以换工作区就等于换了一份资料库。" +
+                                "这一份会原样留在原地、不再被读（不会被删）。"
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text("要不要把这些文件一并复制到新工作区的资料库里？原件不动、同名不覆盖。")
+                    }
+                },
+                confirmButton = {
+                    TextButton(enabled = !cleaning, onClick = {
+                        wsAsk = null
+                        askSwitch()
+                        Toast.makeText(ctx, askToast, Toast.LENGTH_SHORT).show()
+                        runClean(
+                            work = {
+                                val c = com.example.zhengdao.terminal.KnowledgeBase.copyRawInto(
+                                    ctx,
+                                    File(
+                                        curKb,
+                                        com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW,
+                                    ),
+                                )
+                                com.example.zhengdao.terminal.KnowledgeBase.rebuildAfterCopy(ctx)
+                                c to 0L
+                            },
+                            toast = { c, _ ->
+                                if (c > 0) "已把 $c 个文件复制到新工作区，清单已重建"
+                                else "新工作区里已有这些文件，没有可复制的"
+                            },
+                        )
+                    }) { Text("复制过去并切换") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        wsAsk = null
+                        askSwitch()
+                        Toast.makeText(ctx, askToast, Toast.LENGTH_SHORT).show()
+                        storageTick++
+                    }) { Text("只切换，资料留在原地") }
                 },
             )
         }
