@@ -1,3 +1,5 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 // 真机 + 真签名验收：线上 `latest/rootfs-index.json` 的 `.sig` 必须过 App 的验签入口。
 //
 // 为什么必须有这一条：JVM 单测用的是**现造的密钥对**（`RootfsIndexSignatureTest`），只能证明

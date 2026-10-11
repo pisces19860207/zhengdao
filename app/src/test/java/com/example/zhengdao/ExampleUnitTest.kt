@@ -1,3 +1,5 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao
 
 import org.junit.Test
