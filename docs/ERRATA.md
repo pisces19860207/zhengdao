@@ -4286,7 +4286,7 @@ Android 13+ 上 READ 权限为空 ⇒ 能写私有目录、读不到共享存储
 
 ## E-077　体检表 / 前台服务 / 修复线程三处崩溃入口兜底（#10）
 
-**背景**：Issue #10 收的是审计报告（`证道-App缺陷审计报告-2026-10-09.md`）里的 P0-1/P0-2/P0-3 三处"用户点一下就闪退"的入口：
+**背景**：Issue #10 收的是外部审计报告《证道-App缺陷审计报告-2026-10-09》（**该报告已于 2026-10-11 删除**，见 `FEATURE-LEDGER.md` §A #26；逐条位置已抄进台账 §B-补 ③）里的 P0-1/P0-2/P0-3 三处"用户点一下就闪退"的入口：
 
 - **P0-2（最严重）**：`ui/HomeScreen.kt` 的 `LaunchedEffect(statusExpanded, healthEpoch)` 里裸调 `EnvHealth.inspect(context)`。体检项里 `dnsCheck` / `uvCheck` 直接 `File.readText()`，任何一次 `FileNotFoundException` / `EACCES` 都会在组合期抛出 ⇒ 展开体检面板即崩。
 - **P0-3**：`terminal/SessionService.start/stop` 裸调 `context.startForegroundService(...)` / `stopService(...)`；Android 12+ 在后台起前台服务会抛 `ForegroundServiceStartNotAllowedException` ⇒ 会话起来前后闪退，且 `SessionManager.start()` 的「会话启动」日志写在 `SessionService.start` **之后**，服务起不来时连一行日志都不留。
@@ -4671,7 +4671,7 @@ P3-6 把 `pickExpectedSha` 的 `rememberedSha` 参数与那处 fail-open 改回�
 
 ## E-083 · 2026-10-10 · rootfs 审计复核的两条真 BUG：Rust 解压不认「0 条目」、termux-proot 每次开会话重算 313,648 B 哈希（BUG-1 / BUG-2）
 
-**来源**：外部审计报告 `证道-rootfs审计与复核-2026-10-10.md`（workbuddy）。我把报告里每一条带 `文件:行号` 的断言都拉回代码核对了一遍：行数、asset 字节、引用行号绝大多数**属实**（详见 FEATURE-LEDGER 的核对表），其中标 🔴 的 BUG-1、BUG-2 在本条修掉；其余条目按「加固 / 优化」归类，进工作表（GitHub issue）而**不在本次动手**。
+**来源**：外部审计报告《rootfs 审计与复核》2026-10-10（workbuddy；**该报告已于 2026-10-11 删除**，见 `FEATURE-LEDGER.md` §A #26）。我把报告里每一条带 `文件:行号` 的断言都拉回代码核对了一遍：行数、asset 字节、引用行号绝大多数**属实**（详见 FEATURE-LEDGER 的核对表），其中标 🔴 的 BUG-1、BUG-2 在本条修掉；其余条目按「加固 / 优化」归类，进工作表（GitHub issue）而**不在本次动手**。
 
 **问题 1（BUG-1）：两条解压路径对「0 条目」的判定不一致，Rust 那条会把空包装成装成功。**
 - Java 路径有兜底：`RootfsInstaller.kt` 的 `extractArchive → extractTar` 里 `if (extracted == 0) throw InstallFailed("压缩包不含任何条目或格式不受支持")`。
@@ -4792,7 +4792,7 @@ tmux 历史能否接受）**必须真机看** —— 这正是 DSH 坚持"先让
 
 ## E-085 · 2026-10-10 · rootfs 审计工作表第一批：#18 的五条加固/优化（软链 linkname、resolv.conf 权限还原、路径前缀、增量空间预检、zz 脚本按内容比对）
 
-**来源**：E-083 那份审计报告（`证道-rootfs审计与复核-2026-10-10.md`）里除 BUG-1/BUG-2 之外的条目，按用户 2026-10-10 的指示「BUG 先做了，其他的放进工作表」立成 issue #18；本次做其中五条（加固-1/2/3/4 + 优化-2），另两条（优化-1 / 优化-3）读码后判定不做，理由写进 issue #18 留档。
+**来源**：E-083 那份外部审计报告（《rootfs 审计与复核》2026-10-10；**该报告已于 2026-10-11 删除**，见 `FEATURE-LEDGER.md` §A #26）里除 BUG-1/BUG-2 之外的条目，按用户 2026-10-10 的指示「BUG 先做了，其他的放进工作表」立成 issue #18；本次做其中五条（加固-1/2/3/4 + 优化-2），另两条（优化-1 / 优化-3）读码后判定不做，理由写进 issue #18 留档。
 
 **五条问题与改动**
 
