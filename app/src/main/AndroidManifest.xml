@@ -109,6 +109,17 @@
             android:theme="@style/Theme.Zhengdao"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
 
+        <!-- 开源许可（随包分发的第三方许可证正文）二级页（2026-10-11）：正文在 assets/licenses/，
+             由 app/build.gradle.kts 的 stageLicenseAssets 在构建期从仓库根 licenses/ 与 LICENSE 装配。
+             exported=false —— 只有设置页「关于」会拉起；本页只读 assets，不碰任何私有数据。
+             configChanges 与保活记录页同款：转屏不重建，正在读的那份正文不会被重置。 -->
+        <activity
+            android:name=".ui.OpenSourceLicensesActivity"
+            android:exported="false"
+            android:label="开源许可"
+            android:theme="@style/Theme.Zhengdao"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
         <!-- M2 保活锚点：targetSdk 28 无需 foregroundServiceType -->
         <service
             android:name=".terminal.SessionService"

@@ -4,7 +4,7 @@
 它们与本项目第一方代码**不链接、不混合**：App 运行时将其释放为独立可执行文件并
 以独立进程方式调用。本项目的 Kotlin/C 源码中**不含任何来自下列项目的代码**。
 
-> ### 许可证正文随仓库分发（2026-10-11 补齐）
+> ### 许可证正文随仓库与 APK 分发（2026-10-11 补齐）
 >
 > 各组件需要哪几份正文、正文在哪：
 >
@@ -17,6 +17,8 @@
 > | JetBrains Maple Mono（§6） | SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt`（随字体同目录，上游原文件） |
 >
 > - 每份正文的**来源 URL、取回日期、字节数与 SHA256** 见 [`licenses/README.md`](licenses/README.md)。
+> - 这些正文**随分发物提供**：构建期（`app/build.gradle.kts` 的 `stageLicenseAssets`）把它们拷贝进
+>   APK 的 `assets/licenses/`，应用内入口 = 设置页「关于」→「**开源许可**」（离线可读全文，2026-10-11 晚起）。
 > - Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**随各自构件分发**
 >   （AAR/JAR 内的 `META-INF/LICENSE*`），本项目不另行翻印。
 > - 本文件与 `PROVENANCE.md`、`docs/闭源切换清单-2026-10-11.md` 三份文件如有冲突，
