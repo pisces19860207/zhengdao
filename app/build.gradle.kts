@@ -112,7 +112,24 @@ plugins {
 //      ⚠️ 这条只有代码复核 + 单测，未做真机复现（触发需要 `资料库/原始/` 下 > 2000 个文件）。
 //    ③README / README.en 把系统要求（Android 16+ / arm64）提到第一屏。
 //    仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.11"
+// ⚠️ 2.0.12（2026-10-11）：三批修复攒在一起发，均无破坏性改动：
+//    ①太极连接保活（用户报「每次重进太极都会重新连接」）：网络实例与轮询/SSE 改挂进程级
+//      `OcRuntime`（原先挂在页面上，切 Tab 即销毁），`OcRepository.open()` 按纯函数
+//      `shouldReopenConnection()` 判断"连接还活着就复用"。真机验收：切到终端再回太极，
+//      日志为 `open 复用现有连接：会话 ses_…（切 Tab / 返回不重连）`，期间 SSE 事件照收
+//      （docs/acceptance/taiji-keepalive-2026-10-11.md）。附 E-093：换包后首次进太极可能
+//      因 serve.log「listening 先、password 后」的落盘竞态拿到 null 密码 → 401，
+//      已给孤儿 serve 分支补有界等待。
+//    ②E-092 缓存口径：ffmpeg 是 hermes **必需**包（`pm/install.py` 的 drift 里 optional
+//      才跳过），原先被「可选工具清理」当可清项删掉 ⇒ hermes 每次启动报
+//      `install out of sync (ffmpeg: …)` 且不会自愈；现归入保留，并新增「hermes 自检」组
+//      列出「已注册但目录不在」的包。另：终端外观卡的 字号/画布留白/配色 改为只读默认
+//      （只有行距可选）、快捷键条 `⌫` 改发 Delete（CSI `3~`）、公共区安装脚本可单独清。
+//    ③UI/UX 审计 10 条 P0/P1（台账 §A #21）：首页按钮折行、顶栏副行溢出、太极关闭/删除
+//      防误触与文案、终端选词时左缘右滑不再误关、权限抽屉 remember 跨请求残留、
+//      抽屉底部被键盘/手势条遮挡、存储卡「统计中…」等。
+//    仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.12"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -145,7 +162,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 27
+        versionCode = 28
         versionName = appVersionName
 
         ndk {
