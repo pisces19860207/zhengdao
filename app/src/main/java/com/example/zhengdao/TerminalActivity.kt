@@ -580,7 +580,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     // 固定 150ms 延迟，而提示符是异步打开的——本文件早先已因同一竞态把
     // injectPendingAutocmd 改成 `C-b c`，分屏却还留在老路上。删掉它，免得以后被重新用上。
 
-    /** 轻量网络预检（异步，不阻塞）：npmjs ping 不通 → 键入一行代理提示。 */
+    /**
+     * 轻量网络预检（异步，不阻塞）：npmjs ping 不通 → **终端页顶部横幅**提示。
+     *
+     * B-补-2 修正（2026-10-11）：这里原先用 `SessionManager.write("echo '…'\n")` 把一整行
+     * **打进会话**。本方法由 [onEmulatorSet]（每次会话 spawn 完成）触发、5–10 秒后才回来，
+     * 那时 pane 里很可能已经在跑 `hermes` / `vim` 这类吃 stdin 的程序 ⇒ 那行会被当成
+     * "用户输入"（对 Agent 会话就是**凭空发一条消息**）。改成 App 侧横幅：用户看得见、
+     * 点一下收起、一个字节都不进会话——也正是 2026-10-05 那次改动的原始意图
+     * （"非 2xx / 超时 → 横幅代理提示，不阻塞会话"）。见 ERRATA E-095。
+     */
     private fun networkPreCheck() {
         Thread {
             val ok = try {
@@ -592,7 +601,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 r
             } catch (_: Throwable) { false }
             if (!ok) {
-                SessionManager.write("echo '[网络] ⚠️ 检测失败：请确认代理已开启，并在分应用代理中勾选「证道」'\n".toByteArray(Charsets.UTF_8))
+                RunLog.log("网络预检：registry.npmjs.org 不通 —— 终端页横幅提示（不往会话里打字）")
+                runOnUiThread {
+                    // 正在装东西时别把安装进度横幅刷掉：安装流程自己会报网络失败（E-095 附带守卫）。
+                    if (com.example.zhengdao.ui.InstallProgress.state.value == null) {
+                        showBanner("网络不通：请确认代理已开启，并在代理 App 的「分应用代理」里勾选「证道」")
+                    }
+                }
             }
         }.start()
     }

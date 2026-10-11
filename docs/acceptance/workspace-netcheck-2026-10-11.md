@@ -1,0 +1,68 @@
+# B-补-1「仅私有模式」整条分支不可达 + B-补-2 网络预检往会话里打字 —— 真机验收（2026-10-11）
+
+**分支**：`fix/workspace-netcheck`（基线 `d0015bf`）
+**真机**：`AD3J023824001723`（Android 16 / arm64-v8a），装的是 debug 包 `zhengdao-2.0.12-debug.apk`（43,458,008 B / 14:53 构建）
+**构建**：`gradlew.bat --offline :app:testDebugUnitTest :app:assembleDebug` = **BUILD SUCCESSFUL in 1m 57s**（含新增 `WorkspacePathTest` 6 例）；`adb install -r` = Success
+
+> 两条都来自 2026-10-11 的「还有没有紧急 BUG」盘点（台账 §B-补-1 / §B-补-2），用户当场拍板「两条都修」。判据、证据链与未验项同时写进 `docs/ERRATA.md` 的 **E-094 / E-095**。
+
+---
+
+## 1. 改了什么
+
+| 编号 | 改动 | 文件 |
+|---|---|---|
+| **B-补-1** | `isShared()` 的判据从「路径前缀 `startsWith("/storage/emulated/0")`」改成「宿主目录 ≠ App 外部目录」，并抽成纯函数 `isSharedPath(hostPath, privatePath)`；`isPrivate()` 保持 `= !isShared()`（现在才第一次可能为真） | `app/src/main/java/com/example/zhengdao/terminal/Workspace.kt`（`:67-76`） |
+| **B-补-1**（测试） | 新增 6 例：仅私有档判非共享（回归正身）、默认档判共享、自定义档判共享、无存储权限回落私有判非共享、尾部斜杠不敏感、把 App 外部目录的**子目录**选成自定义档仍判共享（已知边界） | 新增 `app/src/test/java/com/example/zhengdao/terminal/WorkspacePathTest.kt` |
+| **B-补-1**（附带） | 仅私有档下，交付给终端 Agent 的「文件地图」不再写「/sdcard —— 共享存储整体可读可写」与「先 ls /workspace 和 /sdcard/Download」，改成明说本档没有挂载共享存储。**只改与模式相关的两行**，其余文案一字未动 | `app/src/main/java/com/example/zhengdao/terminal/KnowledgeBase.kt`（`dispatchAgentsText()`） |
+| **B-补-2** | 网络预检失败不再 `SessionManager.write("echo …")` 往会话里打字，改成终端页横幅 `showBanner(...)`（并加「安装进行中不刷横幅」守卫） | `app/src/main/java/com/example/zhengdao/TerminalActivity.kt`（`:593-613`） |
+
+---
+
+## 2. 真机验收（逐条）
+
+| 项 | 断言 | 结果 | 证据 |
+|---|---|---|---|
+| **B-补-1**（仅私有档） | 路径与文案都按「应用专属目录、随卸载删除」走 | ✅ | 把 `shared_prefs/zhengdao-settings.xml` 的 `workspace_mode` 临时改成 `private` 后重启 App ⇒ 设置页「工作区」卡：路径 `/storage/emulated/0/Android/data/com.example.zhengdao/files/workspace`，文案 **「应用专属目录：卸载证道时随之删除（在意痕迹时用）。」**（截图 `01-workspace-private-mode.webp`；`uiautomator` 文本节点逐字核过） |
+| **B-补-1**（共享档·反向） | 默认/自定义档的行为没被改坏 | ✅ | 还原 `custom` 后同一张卡：路径 `/storage/emulated/0/Download/男性`，文案 **「手机文件管理器直接可见、可自由删除；卸载证道后此文件夹仍会保留——产出不丢。」**（截图 `02-workspace-shared-mode.webp`）—— **用户的设置已还原**（`workspace_path` / `workspace_mode` 与改动前逐字一致） |
+| **B-补-1**（单测） | 四种档位判据都对 | ✅ | `WorkspacePathTest` 6 例全绿；整体 `:app:testDebugUnitTest` BUILD SUCCESSFUL |
+| **B-补-2** | 不再往会话里写字节 | ✅（代码级） | `TerminalActivity.kt:593-613` 已无 `SessionManager.write`；失败分支只 `RunLog.log(...)` + `showBanner(...)`。⚠️ **真机没触发失败路径**（见 2.1） |
+
+### 2.1 没验的（连理由一起记）
+
+| 项 | 为什么没验 |
+|---|---|
+| 仅私有档下 guest 里 `/sdcard` 到底 bind 没 bind | 改档要**重开会话**才会重新 bind，而设备上跑着用户正在用的 Hermes 会话（tmux 窗口 0）⇒ 没去重启它。由 `terminal/ProotLauncher.kt:470` 的 `if (storageGranted(context) && wsShared)` 代码路径覆盖 |
+| B-补-2 的横幅**真的**会弹 | 得切断手机网络（或让 `registry.npmjs.org` 不可达）再开一次会话才复现 —— 会临时断网 / 打扰在跑的会话，本轮没做；`showBanner` 本身在安装流程上已有真机表现 |
+| 「无存储权限 → 自动回落仅私有」这条 | 需要撤销「所有文件访问」（系统设置里操作），本轮没动系统权限；只有单测覆盖 |
+
+### 2.2 改档手法（可复现，也记录了"怎么改回去"）
+
+```powershell
+# 读（先备份）
+adb exec-out run-as com.example.zhengdao cat shared_prefs/zhengdao-settings.xml > backup.xml
+# 改档：private ↔ custom（文件里 "custom"/"private" 各只出现一次）
+adb shell am force-stop com.example.zhengdao
+adb shell run-as com.example.zhengdao sed -i s/custom/private/ shared_prefs/zhengdao-settings.xml
+# 改回去
+adb shell run-as com.example.zhengdao sed -i s/private/custom/ shared_prefs/zhengdao-settings.xml
+```
+
+改档后必须**重启 App**（`am force-stop` 再拉起）才生效 —— 与界面上的「已切换仅私有，**下次启动会话生效**」是两件事：界面文案立刻变，**挂载**要等下次会话。
+
+---
+
+## 3. 资产
+
+| 文件 | 内容 |
+|---|---|
+| `assets/workspace-netcheck-2026-10-11/01-workspace-private-mode.webp` | 仅私有档：「工作区」卡路径 = 应用外部目录 + 「应用专属目录：卸载证道时随之删除（在意痕迹时用）。」 |
+| `assets/workspace-netcheck-2026-10-11/02-workspace-shared-mode.webp` | 还原成自定义档后：「工作区」卡路径 = `/storage/emulated/0/Download/男性` + 「手机文件管理器直接可见…卸载证道后此文件夹仍会保留——产出不丢。」 |
+
+---
+
+## 4. 收尾
+
+- 两条都不是新设计：B-补-1 让实现回到它自己的 KDoc（0.6 提交 `2b60a44` 写的用户定稿语义），B-补-2 回到 2026-10-05 提交 `ca8825c` 的原始意图（横幅，不注入）。
+- 台账同步：`docs/FEATURE-LEDGER.md` §A 新增 #27、§B-补-1 / §B-补-2 两行销账；`docs/ERRATA.md` 新增 E-094 / E-095。
+- 没有触碰的东西：用户的 `workspace_path`（`Download/男性`）与 `workspace_mode`（`custom`）已逐字还原；设备上正在跑的 Hermes 会话没被打断；本轮没有升级版本号、没有打 tag（等用户说发版再发）。
