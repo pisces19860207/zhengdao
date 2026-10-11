@@ -15,6 +15,11 @@
 | [`LGPL-3.0.txt`](LGPL-3.0.txt) | GNU LGPL v3.0 | libtalloc（在 proot 进程内动态加载） | <https://www.gnu.org/licenses/lgpl-3.0.txt> | 2026-10-11 | 7,652 | 165 | `e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118` |
 | [`BSD-3-Clause.txt`](BSD-3-Clause.txt) | BSD 3-Clause | libandroid-shmem（在 proot 进程内动态加载） | <https://github.com/termux/libandroid-shmem>（`LICENSE` 原样照录） | 2026-10-11 | 1,529 | 28 | `0dd43abe17196b0224cb0b159819af798cd508a82a21e5870126fff4e899a7eb` |
 
+> 📌 `BSD-3-Clause.txt` 是上游 `LICENSE` 的**原文照录**：其第三条里的 `{organization}` 是
+> **上游自己没填的占位符**（见 <https://github.com/termux/libandroid-shmem> 的 `LICENSE`）。
+> 本项目刻意**不改动正文**——改了就与上游原文不一致，SHA256 也不再是「逐字节可核」的那一份。
+> 该条要求的是「不得用本项目（作者）的名义为衍生品背书」，本项目也确实没有这样做。
+
 ### 不放在本目录、但同样是「随附正文」的两份
 
 | 正文 | 位置 | 覆盖 | 字节数 | 行数 | SHA256（小写） |
