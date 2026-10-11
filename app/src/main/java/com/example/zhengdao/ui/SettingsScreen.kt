@@ -1615,6 +1615,16 @@ fun SettingsScreen(
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             SettingRow(
+                label = "开源许可",
+                value = "随包正文",
+                onClick = {
+                    // 2026-10-11：许可证正文已随 APK 分发（assets/licenses/），这一页离线可读。
+                    // 上面那行「许可证」不动（仍是 GitHub 链接）—— 联网的人照样能去仓库看。
+                    ctx.startActivity(Intent(ctx, OpenSourceLicensesActivity::class.java))
+                },
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            SettingRow(
                 label = "联系作者",
                 value = "",
                 onClick = {

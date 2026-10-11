@@ -195,6 +195,19 @@ android {
         archivesName.set("zhengdao-$appVersionName")
     }
 
+    // ── 许可证正文随 APK 分发（2026-10-11）──────────────────────────────────────────
+    // 义务来源：Apache-2.0 §4(a)（要给接收者许可证副本）、GPL-3.0 §4、LGPL-3.0 §2（libtalloc 并入
+    // GPL-3.0）、BSD-3-Clause（二进制分发须复现声明）。此前正文只在仓库里 ⇒ 只拿到 APK 的人取不到，
+    // §4(a) 在分发物层面没落实（docs/ERRATA.md E-104）。
+    // ⚠️ **git 里只存一份正文**：源 = 仓库根 `licenses/` 与根 `LICENSE`，构建期由
+    //    `stageLicenseAssets` 原样复制进 assets。之所以复制而不各存一份，是为了让
+    //    「licenses/README.md 记的 SHA256」永远等于「随包的那一份」——两份一旦漂移，
+    //    README 的校验命令就成了一句空话。
+    // 入口：设置页「关于」→「开源许可」页（OpenSourceLicensesActivity）。
+    // ⚠️ 资源目录不在这里挂：AGP 9 明确不允许 sourceSets API 接收 Provider（`srcDir(Any)` 也已弃用），
+    //    改用本文件末尾的 Variant API 装配（`androidComponents { onVariants { … } }`）——
+    //    顺带由它带上「装配任务 → 资源合并」的任务依赖，不靠 preBuild 兜。
+
     // 显式覆盖 AGP 内建「debug」签名配置的 storeFile（见文件顶部 zdKeystorePath 的说明）。
     // ⚠️ 只覆盖 storeFile，不新建签名配置：debug / release / benchmark 三个变体本来就都指
     //    这一份（:82、:95），覆盖一处即三处同时生效。
@@ -403,4 +416,85 @@ val assertAgentPublicKey = tasks.register("assertAgentPublicKey") {
 // 挂到所有变体的编译前置：assembleDebug / assembleRelease / bundle* 都绕不过去。
 tasks.matching { it.name.matches(Regex("pre[A-Z].*Build")) }.configureEach {
     dependsOn(assertAgentPublicKey)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 许可证正文装配（2026-10-11）：仓库根 licenses/*.txt + 根 LICENSE → assets/licenses/
+//   · Apache-2.0.txt / GPL-2.0.txt / LGPL-3.0.txt / BSD-3-Clause.txt / README.md 原样复制
+//   · 根 LICENSE 更名为 GPL-3.0.txt（与 licenses/GPL-2.0.txt 区分开）
+// 末尾断言五份 .txt 必须落到实处：漏一份就等于 APK 里缺一份正文，
+// 而这正是 E-104 记的「台账写了、文件里没有」的同款错误 —— 宁可构建失败。
+// 校验随包结果（不必装包）：
+//   .\gradlew.bat :app:assembleDebug
+//   powershell -c "Add-Type -A System.IO.Compression.FileSystem; $z=[IO.Compression.ZipFile]::OpenRead('<apk>'); $z.Entries | ? FullName -like 'assets/licenses/*' | %% { \"{0}  {1}\" -f $_.Length, $_.FullName }; $z.Dispose()"
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * 许可证正文装配：把仓库根 `licenses/`（四份正文 + README）与根 `LICENSE`（更名 GPL-3.0.txt）
+ * 原样复制进一个受 AGP 管辖的「生成资源目录」，由变体资源合并随 APK 打包。
+ *
+ * 为什么不直接 `sourceSets.assets.srcDir(<仓库根 licenses>)`：
+ *   · 根 `LICENSE` 在仓库根目录下，没法只挑一个文件加进 assets 源集（挂目录会把整个仓库根带进去）；
+ *   · AGP 9 明确禁止 sourceSets API 接收 Provider，并要求改用 Variant API。
+ * 复制而不是在 assets 里再存一份：见 `android {}` 里的说明（免两份漂移）。
+ */
+abstract class StageLicenseAssetsTask : DefaultTask() {
+
+    @get:InputDirectory
+    abstract val licensesDir: DirectoryProperty
+
+    @get:InputFile
+    abstract val rootLicense: RegularFileProperty
+
+    /** 由 `addGeneratedSourceDirectory` 指定（build/generated/…/assets/licenses），不手工设置。 */
+    @get:OutputDirectory
+    abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun stage() {
+        val outRoot = outDir.get().asFile
+        if (outRoot.exists() && !outRoot.deleteRecursively()) {
+            error("[stageLicenseAssets] 清不掉旧输出目录：$outRoot")
+        }
+        // ⚠️ AGP 把这个目录当作 assets 的**根**：正文必须落在它以下的 licenses/ 子目录里，
+        //    包内路径才会是 assets/licenses/<正文>（否则会摊平到 assets/<正文>）。
+        val out = File(outRoot, "licenses")
+        check(out.mkdirs() || out.isDirectory) { "[stageLicenseAssets] 建不出输出目录：$out" }
+
+        licensesDir.get().asFile.listFiles().orEmpty()
+            .filter { it.isFile }
+            .forEach { src -> src.copyTo(File(out, src.name), overwrite = true) }
+        rootLicense.get().asFile.copyTo(File(out, "GPL-3.0.txt"), overwrite = true)
+
+        val txts = out.listFiles { f -> f.isFile && f.name.endsWith(".txt") }
+            ?.map { it.name }
+            ?.sorted()
+            .orEmpty()
+        val need = listOf("Apache-2.0.txt", "BSD-3-Clause.txt", "GPL-2.0.txt", "GPL-3.0.txt", "LGPL-3.0.txt")
+        check(txts.containsAll(need)) {
+            "[stageLicenseAssets] 许可证正文缺失：应有 $need，实际 $txts ——" +
+                "APK 将不带正文（见 docs/ERRATA.md E-104 与 licenses/README.md）"
+        }
+        logger.lifecycle("[stageLicenseAssets] OK：已装配 ${txts.size} 份许可证正文 → ${out.absolutePath}")
+    }
+}
+
+val stageLicenseAssets = tasks.register<StageLicenseAssetsTask>("stageLicenseAssets") {
+    description = "把仓库根 licenses/ 与 LICENSE 复制进 assets/licenses/（随 APK 分发的许可证正文）"
+    group = "build"
+    licensesDir.set(rootProject.layout.projectDirectory.dir("licenses"))
+    rootLicense.set(rootProject.layout.projectDirectory.file("LICENSE"))
+    // 复制 + 列目录 + 比文件名极廉价，不做增量跳过 —— 免得「跳过」看起来像「通过」。
+    outputs.upToDateWhen { false }
+}
+
+// 每个变体（debug / release / benchmark）的 assets 里都生成一份，任务依赖由 AGP 负责携带。
+androidComponents {
+    onVariants { variant ->
+        // assets 源集在 AGP 里声明为可空 → 用安全调用。真漏挂的兜底不是这里的编译期，
+        // 而是「解包 APK 逐份核 SHA256」那一步（装配目录照样生成，但不进包会被当场看见）。
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            stageLicenseAssets,
+            StageLicenseAssetsTask::outDir,
+        )
+    }
 }

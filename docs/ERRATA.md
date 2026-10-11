@@ -5758,3 +5758,39 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
 **教训**：**报一个哈希时必须说清是哪个形态的。** 文档里一律以**仓库内形态（LF）**为准，
 用 `git ls-files --eol` 证明属性生效，或用 `git cat-file blob HEAD:<path> | sha256sum` 直接核；
 **绝不要用工作区文件反推文档里的数字** —— 那正是这次差点第二次写错的地方。
+
+### 补记（2026-10-11 晚）· 正文进了仓库，可**分发物**里还是没有
+
+哈希口径修完（`ae18d60`）之后核对 APK 才发现的第二层缺口：正文确实进了仓库，但**APK 里没有**。
+
+- **实测**：`app/src/main/assets/` 只有 `fonts/` 与 `proot/`；解包 `app\build\outputs\apk\debug\*.apk`
+  只见 `assets/fonts/OFL.txt`，**没有任何许可证正文**。应用内唯一的许可证入口是
+  `app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` 的「许可证」行 —— 它 `Uri.parse`
+  打开 GitHub 网址 ⇒ **只拿到 APK、不联网的接收者依然拿不到 Apache-2.0 副本**，
+  第 4(a) 条在「分发物」层面仍不成立（E-104 当初只查到「仓库里没有正文」，查到这一层就停了）。
+- **处置**（2026-10-11 晚，分支 `feat/licenses-in-apk`）：① `app/build.gradle.kts` 新增
+  `stageLicenseAssets`（`StageLicenseAssetsTask`，`DefaultTask` 子类，`@InputDirectory` / `@InputFile` /
+  `@OutputDirectory`），构建期把仓库根 `licenses/`（含 README）与根 `LICENSE`（更名 `GPL-3.0.txt`）
+  拷进 `assets/licenses/`，末尾 `check` 五份 `.txt` 齐、缺一份就构建失败；通过 AGP 的
+  `androidComponents { onVariants { it.sources.assets?.addGeneratedSourceDirectory(…) } }` 挂进 assets。
+  ② 新增 `app/src/main/java/com/example/zhengdao/ui/OpenSourceLicensesActivity.kt`（列表 + 详情，
+  正文按 120 行切块交给 `LazyColumn`，`assets.open(...)` 在 `Dispatchers.IO` 读）；
+  ③ `SettingsScreen.kt` 在「许可证」行之后加一行「开源许可 → 随包正文」（**原 GitHub 行不动**）；
+  ④ `AndroidManifest.xml` 注册 `.ui.OpenSourceLicensesActivity`（`exported="false"`）；
+  ⑤ 新增单测 `app/src/test/java/com/example/zhengdao/LicenseTextsTest.kt` 把
+  「`licenses/README.md` 表里的字节数/行数/SHA256 ↔ 仓库实际文件」钉成断言，另断言
+  `.gitattributes` 三条 `eol=lf` 与构建期装配仍在。
+- **验证**：`.\gradlew.bat --offline :app:assembleDebug :app:testDebugUnitTest` 通过
+  （单测 suite 67 / tests 605 / 0 失败）；解包 APK 逐份核 —— `assets/licenses/Apache-2.0.txt` 11,358 B
+  `cfc7749b…`、`GPL-2.0.txt` 17,984 B `edaef632…`、`LGPL-3.0.txt` 7,652 B `e3a994d8…`、
+  `BSD-3-Clause.txt` 1,529 B `0dd43abe…`、`GPL-3.0.txt` 35,149 B `3972dc97…`、
+  `assets/fonts/OFL.txt` 4,572 B `6728aae7…` —— **与 `licenses/README.md` 表逐份一致**。
+- **教训（比上一条更贵）**：**「义务落在哪一层」要一次查到底。** 「仓库里有正文」≠「分发物里有正文」；
+  E-104 的判据只跑在仓库里（`find . -iname 'LICENSE*'`），所以漏掉了 APK 这一层。
+  以后凡是「随分发物」的义务，判据必须**从分发物本身出发**（解包 APK / AAB 列 `assets/`），
+  而不是从源码树出发；顺带也证明**只查文档不查产物**的审计是有盲区的。
+
+> **换行坑的续集**（同日晚）：`stageLicenseAssets` 第一次装配出来，包里只看到 `assets/fonts/OFL.txt` ——
+> 原因是把源文件直接摊进了 `outDir`，而 AGP 把该目录当作 **assets 的根**，于是正文落在
+> `assets/<文件名>` 而不是 `assets/licenses/<文件名>`。**修法**：任务在 `outDir` 下先建 `licenses/`
+> 子目录再复制。判据仍然是「解包看路径」，不是「任务跑成功了」。
