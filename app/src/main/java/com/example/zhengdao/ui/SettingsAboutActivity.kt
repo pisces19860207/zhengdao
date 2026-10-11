@@ -154,10 +154,11 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 },
             )
             SettingsDivider()
-            // 许可证与署名：GPL-3.0 要求分发者保留这两样，写在最显眼的「关于」里最省事
+            // 许可证与署名（2026-10-11 起）：第一方代码改为「保留所有权利」（商业使用需书面许可），
+            // 历史版本（≤ v2.0.15）仍按当时发布的 GPL-3.0 —— 详见仓库根 LICENSE 与下一页「开源许可」。
             SettingRow(
                 label = "许可证",
-                value = "GPL-3.0",
+                value = "保留所有权利（第一方代码）",
                 onClick = {
                     ctx.startActivity(
                         Intent(

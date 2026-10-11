@@ -175,11 +175,19 @@ private val ENTRIES = listOf(
         obligation = "OFL 允许修改与再分发，须保留许可证全文与版权行；本字体无 Reserved Font Name。",
     ),
     LicenseEntry(
-        title = "GNU GPL v3.0（本项目）",
+        title = "第一方代码（本项目）",
+        asset = "licenses/LICENSE-zhengdao.txt",
+        covers = "证道（zhengdao）自身的第一方代码（app/ 里本项目编写部分、tools/、rootfs 脚本、docs/ 等）",
+        obligation = "自 2026-10-11 起为**保留所有权利**：可浏览、克隆、本地评估；再分发与任何商业使用" +
+            "（含 SaaS / 捆绑 / OEM / 企业内部规模化部署）需项目所有者事先书面许可。" +
+            "正文 = 仓库根 LICENSE 的构建期副本。",
+    ),
+    LicenseEntry(
+        title = "GNU GPL v3.0",
         asset = "licenses/GPL-3.0.txt",
-        covers = "证道（zhengdao）自身：当前以 GPL-3.0 发布，版权在项目所有者",
-        obligation = "仓库根 LICENSE 的构建期副本 —— 让只拿到 APK 的人也能读到它。" +
-            "换许可证属重大操作，需项目所有者确认。",
+        covers = "① 历史版本（≤ v2.0.15）里本项目自身的许可正文；② libtalloc 的 LGPL-3.0 第 2 条「并入 GPL-3.0」要求",
+        obligation = "GPL 授权一经发布不可撤回：已经拿到旧版本（≤ v2.0.15）的人，其 GPL-3.0 权利继续有效。" +
+            "此正文原为仓库根 LICENSE，2026-10-11 移入 licenses/ 逐字节未改（SHA256 与 licenses/README.md 一致）。",
     ),
     LicenseEntry(
         title = "正文来源与校验记录",

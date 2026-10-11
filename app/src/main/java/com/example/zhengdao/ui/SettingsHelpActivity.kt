@@ -102,18 +102,26 @@ class SettingsHelpActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 首页「最近问题」卡上的「看日志」：本页的「运行日志」是最后一张卡，
+        // 带这个 extra 进来就直接停在那一节（台账 §B 顺序 11 / 原 §B-补-42）。
+        val focusLogs = intent?.getBooleanExtra(EXTRA_FOCUS_LOGS, false) == true
         setContent {
             ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    SettingsHelpPage(onBack = { finish() })
+                    SettingsHelpPage(onBack = { finish() }, scrollToEnd = focusLogs)
                 }
             }
         }
     }
+
+    companion object {
+        /** 打开本页时直接停在「运行日志」一节。 */
+        const val EXTRA_FOCUS_LOGS = "focus_logs"
+    }
 }
 
 @Composable
-private fun SettingsHelpPage(onBack: () -> Unit) {
+private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     val ctx = LocalContext.current
     var storageTick by remember { mutableStateOf(0) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
@@ -122,7 +130,7 @@ private fun SettingsHelpPage(onBack: () -> Unit) {
     var prevLogText by remember { mutableStateOf<String?>(null) }
     var archiveCount by remember { mutableStateOf(0) }
 
-    SettingsSubPage(title = "帮助", onBack = onBack) {
+    SettingsSubPage(title = "帮助", onBack = onBack, scrollToEnd = scrollToEnd) {
         // ── 新手指南（第三批）──
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")

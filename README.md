@@ -194,8 +194,21 @@ hermes 自带的 pinned uv 二进制破局）——整个"证道"从一行命令
 
 ## 许可
 
-本项目第一方代码以 **GPL-3.0** 发布（作者选择的许可证）。集成的 Termux
-terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此前误标为 GPL，
+本项目**第一方代码**自 **2026-10-11** 起采用 **「保留所有权利」**（正文见仓库根 [`LICENSE`](LICENSE)）：
+允许浏览、克隆与本地评估（含为评估而自行构建运行），**再分发与任何商业使用 —— 收费或免费提供、
+作为服务对外提供（SaaS / 托管）、捆绑 / OEM / 贴牌、企业内部规模化部署 —— 需事先取得项目所有者的
+书面许可**（联系：putaopanpan@gmail.com）。
+
+**在此之前发布的版本（≤ v2.0.15）不受影响**，仍按各自发布时的 **GPL-3.0** 分发：GPL 授权一经发布
+不可撤回，已经拿到那些副本的人，其 GPL 权利继续有效。那份 GPL-3.0 正文现在保存在
+[`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt)（从仓库根 `LICENSE` 移入，**逐字节未改**）。
+
+> **为什么可以换**：仓库历史上**没有外部人类贡献者**，第一方代码版权全在项目所有者手里 ——
+> 取证（710 个提交的作者统计）见
+> [`docs/闭源切换清单-2026-10-11.md`](docs/闭源切换清单-2026-10-11.md) 第七节。
+> 外部贡献者此后若要合入代码，须先签 [`CLA.md`](CLA.md)（授予再许可权），见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
+集成的 Termux terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此前误标为 GPL，
 勘误详见 PROVENANCE.md）；内置 proot 组件基于上游 GPL 项目（proot-me/proot）编译，
 作为独立可执行文件聚合分发，来源与许可义务见 [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)。
 
@@ -203,10 +216,10 @@ terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此�
 
 | 组件 | 许可证 | 正文 |
 |---|---|---|
-| 本项目第一方代码 | GPL-3.0 | 仓库根 [`LICENSE`](LICENSE) |
+| 本项目第一方代码 | **保留所有权利**（≤ v2.0.15 的版本为 GPL-3.0） | 仓库根 [`LICENSE`](LICENSE)；历史 GPL-3.0 正文见 [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt) |
 | Termux `terminal-emulator` / `terminal-view` | Apache-2.0 | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
 | proot（Termux fork 发行版，独立进程调用） | GPL-2.0-or-later | [`licenses/GPL-2.0.txt`](licenses/GPL-2.0.txt) |
-| libtalloc（proot 进程内动态库） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ 根 [`LICENSE`](LICENSE) |
+| libtalloc（proot 进程内动态库） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt)（LGPL-3.0 第 2 条并入 GPL-3.0） |
 | libandroid-shmem（proot 进程内动态库） | BSD-3-Clause | [`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) |
 | JetBrains Maple Mono（终端默认字体） | SIL OFL 1.1 | [`app/src/main/assets/fonts/OFL.txt`](app/src/main/assets/fonts/OFL.txt) |
 | Maven 运行时依赖（Compose / AndroidX / OkHttp / kotlinx / commons-* 等，共 136 个已解析模块） | Apache-2.0 | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
@@ -214,8 +227,9 @@ terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此�
 | 归属声明（Apache Commons Compress、Public Suffix List 数据） | NOTICE（Apache-2.0 §4(d) / MPL-2.0 数据） | [`licenses/NOTICES.txt`](licenses/NOTICES.txt) |
 | xz（`org.tukaani:xz`） | Public Domain | 无正文义务（仅登记） |
 
-**上表每一份正文都随安装包分发**：构建期装进 APK 的 `assets/licenses/`，App 内 **设置 → 关于 →「开源许可」**
-可离线阅读全文；来源 URL、取回日期、字节数与 SHA256 见 [`licenses/README.md`](licenses/README.md)。
+**上表每一份正文都随安装包分发**：构建期装进 APK 的 `assets/licenses/`（第一方声明也在内，包内名为
+`LICENSE-zhengdao.txt`），App 内 **设置 → 关于 →「开源许可」** 可离线阅读全文；来源 URL、取回日期、
+字节数与 SHA256 见 [`licenses/README.md`](licenses/README.md)。
 Maven 运行时依赖逐组对照表（声明许可证 + 覆盖方式 + 重新生成的方法）见
 [THIRD-PARTY-LICENSES.md §8](THIRD-PARTY-LICENSES.md)：其中 **Apache-2.0 / Public Domain 由 `licenses/Apache-2.0.txt`
 与登记覆盖，zstd-jni 的 BSD 2-Clause 见 `licenses/BSD-2-Clause.txt`，需要复现的归属声明见 `licenses/NOTICES.txt`**。
@@ -224,12 +238,14 @@ Maven 运行时依赖逐组对照表（声明许可证 + 覆盖方式 + 重新�
 
 ## 转载、二次打包与「证道」这个名字
 
-第一方代码是 **GPL-3.0**，所以**允许**转载、修改、重新打包，甚至拿去卖 —— 前提是照 GPL 的规矩来：
-保留作者署名与许可证、公开你的改动、不给下游加额外限制。作者的态度写在这里，省得来回问：
+第一方代码自 **2026-10-11** 起是 **「保留所有权利」**（≤ v2.0.15 的旧版本仍是 GPL-3.0）。作者的态度
+写在这里，省得来回问：
 
-- **欢迎**：写教程、录视频、代配环境/答疑收费、基于它做自己的发行版（改名即可）、给上游提 PR 或 Issue。
+- **欢迎**：写教程、录视频、代配环境/答疑收费、读源码学习、为评估在自己机器上构建运行、给上游提 PR 或 Issue。
+- **需要先问（书面许可）**：再分发 —— 包括换个名字发布你自己的版本、任何商业使用、把本项目或其衍生品
+  作为服务对外提供、捆绑进硬件或其它产品。商业授权与合作：putaopanpan@gmail.com。
 - **请不要**：把安装包换个皮就说是你做的；删掉「关于」页里的作者、许可证与源码地址；
-  用「证道」这个名字（或作者署名「小信多多」）发布你的重打包版本 —— GPL 只授权**代码**，
+  用「证道」这个名字（或作者署名「小信多多」）发布你的重打包版本 —— 代码许可本来也只授权**代码**，
   **不含名称/商标授权**，冒用名字与署名是另一码事。
 - **App 会说实话**：每个安装包都带签名，证道的「关于」页会显示「官方发布 ✓ / ⚠️ 非官方（被重新打包过）」，
   非官方包启动时再提示一次（ERRATA E-065）。这不是防谁，只是让用户知道手里这个包是谁签的。

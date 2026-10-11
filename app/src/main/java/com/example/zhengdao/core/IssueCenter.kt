@@ -71,6 +71,15 @@ object IssueCenter {
     /** 打开运行日志（终端里 tail 那份文本）。 */
     const val ACTION_VIEW_LOGS = "view-logs"
 
+    /**
+     * 打开「保活记录（被杀留档）」页（台账 §B 顺序 11 / 原 §B-补-42）。
+     *
+     * 与 [ACTION_VIEW_LOGS] 分开是**刻意的**：两者原先共用同一个 actionId，
+     * 而首页的 `when(aid)` 既没有这个分支、也无法区分「去设置看记录」与「看日志」，
+     * 于是两处都只落到「打开设置首页」。文案不同 ⇒ 目的地不同 ⇒ 标识必须不同。
+     */
+    const val ACTION_VIEW_KEEPALIVE_LOGS = "view-keepalive-logs"
+
     /** 去 GitHub 提 issue（用户看不懂/修不了的失败，给一条反馈通道）。 */
     const val ACTION_FEEDBACK = "feedback"
 

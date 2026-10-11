@@ -156,21 +156,33 @@ internal fun SettingsTopBar(title: String, onBack: () -> Unit) {
  *
  * 顶栏 + 与设置页完全一致的滚动内容区（同样的 16dp 横向边距、20dp 组间距、8dp 页脚）。
  * 卡片内容是从原设置页**逐字搬过来**的，没有改过一个字 —— 这里只负责外壳。
+ *
+ * [scrollToEnd]（2026-10-11，台账 §B 顺序 11）：给「首页通知按钮直接跳到本页某一节」用 ——
+ * 目前只有「帮助」页的「运行日志」是**最后一张卡**（`ui/SettingsHelpActivity.kt`），
+ * 从首页点「看日志」时直接落在那张卡上，不用自己往下滑。
  */
 @Composable
 internal fun SettingsSubPage(
     title: String,
     onBack: () -> Unit,
     snackbar: SnackbarHostState? = null,
+    scrollToEnd: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val scrollState = rememberScrollState()
+    if (scrollToEnd) {
+        // maxValue 要等测量完成才有值，故在它变化时再滚一次（只在首帧后生效）
+        LaunchedEffect(scrollState.maxValue) {
+            if (scrollState.maxValue > 0) scrollState.scrollTo(scrollState.maxValue)
+        }
+    }
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         SettingsTopBar(title = title, onBack = onBack)
         Box(Modifier.fillMaxWidth().weight(1f)) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
