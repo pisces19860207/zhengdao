@@ -5983,6 +5983,16 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
   台账 §B-补-47 仍挂着这一条与复现步骤，**不能把"顺手修掉的那一处"说成"症状已修"**。
 - **教训**：把复制粘贴来的循环抽成**单一实现**，能在**不改行为**的前提下消掉「两套判据会漂移」的风险；
   但判据收敛 ≠ 症状修复 —— 没能在真机复现的症状，只能记「判据已收敛、症状待真机核对」。
+- **补记（2026-10-11 晚，真机核对已做）**：上面那句「真机手感核对留作余账」**已结**。在正式签名包
+  （2.0.16 / versionCode 32）上，用 `adb shell input swipe` 合成手势做到了此前做不到的两件事：
+  ① **选词中不滚动** —— 长按 `NOUS HERMES - AI Agent Framework` 那一行 ⇒ 该行高亮、两端出蓝色圆手柄、
+  上方弹「复制 / 更多」工具条；再拖右手柄向下跨 4 行 ⇒ 选区按行扩展、终端内容**一动不动** ⇒ 守卫生效实测；
+  ② **中文区拖动** —— 回滚历史（状态条 `[8/8]`）露出中文行（`【提示】不要执行 apt upgrade…`）后选词、
+  把手柄拖进中文区 ⇒ 手柄跟手、不带走滚动、无崩溃 / 无 ANR
+  （逐页读数见 `docs/acceptance/v2.0.16-license-boundary-and-issue-routing-2026-10-11.md`）。
+  **仍未核的**：手柄是否**逐格落在字符边界**（`input swipe` 只能给目标坐标，取回的手柄中心与字符格宽同量级），
+  以及**中文输入**（`adb` 的 `input text` 只支持 ASCII、剪贴板无从注入）⇒ 该判据仍由
+  `app/src/test/java/com/example/zhengdao/terminal/DisplayColumnIndexTest.kt` 的 8 例钉住。
 
 ## E-110 · 2026-10-11 · 「证道的机器是荣耀（Mali）」写错了：SoC 是骁龙、GPU 是 Adreno 740 —— 于是「Warp Mobile 只在 S24 Ultra 验证过」这条否决不成立（用户当场指出）
 
@@ -6004,3 +6014,53 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
   `app/src/main/java/com/example/zhengdao/ui/SettingsKeepaliveActivity.kt:132`），不涉及 GPU 判断。
 - **教训**：**从品牌推硬件能力是错的** —— GPU 由 **SoC** 决定，安卓厂商普遍同时卖骁龙机与联发科机。判断"某方案在不在本机验证过"之前，先落到 **SoC 代号 / GPU 型号**
   （本机：`kalama` / Adreno 740），而且仓库里可能早就记着，只是这一轮没读。
+
+## E-111 · 2026-10-11 · 设置页「存储与缓存」四个字竖着排：Compose `Row` 先量无权重子项，长数值把带权重的标签挤到 0 宽（用户真机走查时当场指出）
+
+- **现象**（用户 2026-10-11 真机走查 v2.0.16 时点出，逐字）：「存储与缓存这几个字是竖着的，和其他的也不搭啊」——
+  设置入口页「环境」卡第一行的标签**逐字换行、竖着排**，同页其它行都正常；二级页里同一对控件也跟着受影响。
+- **根因** —— `app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` 的两个共享行件
+  `internal fun SettingRow(label: String, value: String, valueColor: Color = Color.Unspecified, onClick: () -> Unit)`
+  （原 `:304-337`）与 `internal fun InfoRow(label: String, value: String)`（原 `:278-297`）：
+  `label` 带 `Modifier.weight(1f)`、`value` 不带权重。Compose 的 `Row` **先量无权重子项**，
+  `value` 按**固有宽度**占据，带权重的 `label` 只分到「总宽 − 无权重子项宽」。
+  真机 `uiautomator` 实测这一行的值 `rootfs 768 MB · home 3530 MB · cache 6 MB` 占
+  **x 112→1172 = 1060px**（整行可用宽约 1088px）⇒ 标签分到 ≈0 宽，中文逐字换行成竖排。
+  入口页只有这一行数值这么长，所以**只有这一行暴露**——是「值越长、标签越窄」的必然，不是偶发排版抖动。
+- **修法（最小改动，两处同款）** —— 把伸缩责任从标签挪到值侧：
+  标签 `maxLines = 1` + `softWrap = false`（按固有宽度一行，永不被挤）；
+  标签与值之间加 `Spacer(Modifier.width(12.dp))`；
+  值 `modifier = Modifier.weight(1f)` + `textAlign = TextAlign.End`（吃剩余宽度、右对齐、过长自己换行）；
+  新增 `import androidx.compose.ui.text.style.TextAlign`。
+  两个行件是 `internal` 共享件 ⇒ 修一处全修，调用点：
+  `SettingsAboutActivity.kt:121/123/127/137/147/159/172/182`、`SettingsDataActivity.kt:270/456/457/458/501/535/548/578`、
+  `SettingsKeepaliveActivity.kt:205`、`SettingsStorageActivity.kt:191/192/193/218/353`。
+- **取证（真机 dump 前后对比）** —— 修后：`存储与缓存 :: [112,575][361,645]`（**单行**、宽 249px）；
+  值 `rootfs 768 MB · home 3530 MB · cache 6 MB :: [403,540][1161,680]`（**140px 高 = 两行**、右对齐）；
+  下一行 `环境与更新 :: [112,780][361,850]` 单行。二桩复测**无回归**：二级页「存储与缓存」三行
+  （`rootfs（系统层）` / `home（登录态与配置）` / `cache（下载缓存）`）与「关于」页各行
+  （`版本` → `2.0.16 (versionCode 32)`、`版本来源` → `官方发布 ✓`、`许可证` → `保留所有权利（第一方代码）`）
+  数值仍贴行右端、「›」位置不变。构建证据：`assembleRelease` BUILD SUCCESSFUL（2m 7s）、
+  全量单测 68 suite / 620 例不变、`apksigner` 证书指纹 `b93169f2…86ec2`；截图
+  `C:\Users\guoli\AppData\Local\Temp\zd-fix-crop.png`（裁 y240 起 1312×760，肉眼确认标签横排）。
+- **教训** —— 「左标签 + 右值」这种行，**伸缩必须明确交给一侧**：把 `weight(1f)` 只给标签、值侧裸奔，
+  等价于「值有多长、标签就有多窄」，值一长就竖排。要么标签按固有宽度定死、值侧吃剩余宽度，
+  要么两侧都给权重；**别让无权重子项的固有宽度去决定另一侧**。修在共享件上，一处修全修；
+  但新加的这类行件以后要**拿最长的一条数值去过一遍真机**（同页其它行都短，正是它掩盖了这个 bug）。
+
+## E-112 · 2026-10-11 · 真机走查时被第三方悬浮窗吞掉点击：`input tap` 落在 `APPLICATION_OVERLAY` 矩形内会静默失效（同日两处误判）
+
+- **现象** —— 真机走查中两次「点了没反应」：`uiautomator dump` 的字节数与内容**一字不变**，
+  看上去像界面卡死或按钮不可点；实际是手机前台挂着第三方悬浮小窗 `com.phoenix.read`
+  （`ty=APPLICATION_OVERLAY`，mAttrs `(35,y)(1243x699)`，**帧 y = attrs.y + 141**，高 699），
+  **落在它矩形内的 `input tap` / `input swipe` 被它吞掉**，根本传不到证道。
+- **判据（怎么区分"吞掉"与"真没反应"）** —— 点前后各 dump 一次：
+  ① 屏幕**字节数完全不变**且连聚焦态都没动 ⇒ 先怀疑悬浮窗，再怀疑界面；
+  ② 用 `dumpsys window windows | grep -A2 phoenix` 读 `mAttrs`，把矩形换算成屏幕坐标对一下手指落点。
+- **处置** —— 本次用 `input swipe x 640 x 2300 1500` 之类**把悬浮窗拖出操作区**（从 y=432 拖到 1973 再拖到 1640，
+  覆盖带变成 1781..2480），而不是去关它（**没动用户的悬浮窗设置**）；
+  走查选点一律避开该带，必要时先滚屏再把目标滚进安全区。
+- **教训** —— 真机自动化必须把**第三方悬浮窗**当成环境噪声纳入判据：先取 `mAttrs` 算安全区，
+  再对「点击无效」下结论；**别把"第三方窗口吃了手势"记成 App 的 bug**。
+  同批次还踩到：`uiautomator dump` **只含可见窗口**、`am start` 打不开**未 exported** 的二级页
+  （`java.lang.SecurityException: Permission denied … not exported from uid 10418`）。
