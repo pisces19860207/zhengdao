@@ -119,6 +119,12 @@ Zhengdao does not upload user data. Network access is used only to:
 Server access logs exist only for troubleshooting, are kept for 7 days, and are not used for
 behavioural analysis.
 
+⚠️ **The terminal is not a sandbox.** Guest processes (under PRoot) run with the **same Android UID**
+as the app, on the same kernel and network stack, and can read and write any file the app can.
+**Run only commands you trust** — the app's signing and verification chain protects against a
+*tampered distribution*, not against *code you execute inside the terminal yourself*. See
+[`docs/milestones/已知限制.md`](docs/milestones/已知限制.md) §10 (Chinese).
+
 ## Status (2026-10-11)
 
 **Current release: v2.0.12** (`versionCode 28`, 2026-10-11). The feature surface was frozen at
