@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
@@ -282,16 +283,25 @@ internal fun InfoRow(label: String, value: String) {
             .padding(vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 2026-10-11 修：**标签先按固有宽度排，数值吃剩余宽度并右对齐**。
+        // 旧写法是 `label` 带 `weight(1f)`、`value` 不带权重 —— Row 里无权重子项先按固有宽度量，
+        // 长数值（如「rootfs 768 MB · home 3530 MB · cache 6 MB」实测占 1060px）会把
+        // 带权重标签分到的剩余宽度压到接近 0，中文标签于是**逐字换行成竖排**（用户 2026-10-11 报：
+        // 「存储与缓存这几个字是竖着的」）。现在长数值自己换行，标签永不被挤。
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false,
         )
+        Spacer(Modifier.width(12.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -316,16 +326,23 @@ internal fun SettingRow(
             .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 2026-10-11 修（同 `InfoRow`）：标签按固有宽度一行显示，数值吃剩余宽度右对齐。
+        // 这里是最先暴露问题的一行 —— 「存储与缓存」的数值 `rootfs 768 MB · home 3530 MB ·
+        // cache 6 MB` 是入口页最长的一条，旧写法把标签挤成竖排。
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false,
         )
+        Spacer(Modifier.width(12.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             color = if (valueColor == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant
             else valueColor,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(6.dp))
         Text(
