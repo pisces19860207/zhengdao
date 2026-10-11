@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -530,6 +533,15 @@ fun HomeTabs(
     //   NavigationBarItem 已自带 onClick 包了 clickable，叠加 pointerInput 会与 clickable
     //   抢事件，得自己处理 tap/doubleTap 互斥。这里走"时间窗口判定"逻辑等价（300ms
     //   是 Material Design 文档里 Tap-Double 区分的推荐值），代码少一半。
+    // 2026-10-10 改：iOS Tab 标签 = 10sp Medium（iOS HIG 文档值）。
+    // 不走 MaterialTheme.typography.labelSmall：PluginsScreen.kt:133 把它当 13sp
+    // 副标题用，全局改会破坏既有视觉。本次只在 HomeTabs 局部用。
+    val tabLabelStyle = TextStyle(
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 0.12.sp,
+    )
+
     val lastTabClickAt = androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     val now = { android.os.SystemClock.uptimeMillis() }
 
@@ -569,6 +581,7 @@ fun HomeTabs(
                     color = MaterialTheme.colorScheme.outlineVariant,
                 )
                 NavigationBar(
+                    modifier = Modifier.height(56.dp),
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
                 ) {
@@ -576,7 +589,7 @@ fun HomeTabs(
                     val tabColors = NavigationBarItemDefaults.colors(
                         selectedIconColor = MaterialTheme.colorScheme.primary,
                         selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        indicatorColor = Color.Transparent,
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -587,7 +600,7 @@ fun HomeTabs(
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
                         onClick = { onTabClicked(0) {} },
                         icon = { TaijiIcon(tab == 0) },
-                        label = { Text("太极") },
+                        label = { Text("太极", style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -609,7 +622,7 @@ fun HomeTabs(
                         // 却找不到叫「洞天」的地方。「终端」是用户已有的通用认知，无需学。
                         // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
                         // 见 :624 的设计说明），此处只改用户可见文案。
-                        label = { Text("终端") },
+                        label = { Text("终端", style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -617,7 +630,7 @@ fun HomeTabs(
                         // K1：双击 = 滚到丹房 Agent 列表顶。
                         onClick = { onTabClicked(2) {} },
                         icon = { DingIcon(tab == 2) },
-                        label = { Text("丹房") },
+                        label = { Text("丹房", style = tabLabelStyle) },
                         colors = tabColors,
                     )
                 }
@@ -729,8 +742,36 @@ private const val TAB_STROKE = 1.9f
 /** 统一取色：选中＝主色（systemBlue），未选中＝次要文字色。 */
 @Composable
 private fun tabIconColor(selected: Boolean) =
-    if (selected) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.onSurfaceVariant
+    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+
+/**
+ * 2026-10-11 加：Tab 图标的选中态弹动（iOS SF Symbols 变体切换的观感）。
+ *
+ * 选中＝弹到 1.0，未选中＝收在 0.86 —— 切换时 spring 过渡，
+ * 缩略比里插一段 overshoot（≈8%），像"啪地弹到位"。
+ *
+ * ⚠️ 为什么改 scale 而不是改 Canvas 内的几何：
+ *   26dp 图标里任何几何改动都要重算 Path；scale 是**整块缩放**，
+ *   三个图标的绘制代码一行不动，也不破坏 TAB_ICON_DP 的光学框契约
+ *   （呼吸留白等比缩放，视觉上仍是同一套设计语言）。
+ *
+ * ⚠️ 为什么不做「页面内容 Crossfade 转场」：
+ *   淡出需要新旧两页在过渡期**同时存在**，而 tab=0 的 TaijiScreen 会
+ *   在 LaunchedEffect 里开一条 SSE 长连接 —— 重叠 160ms 就是**同时两条连接**，
+ *   且滚动/会话定位状态在过渡中途会被读两次。图标动效没有这个副作用。
+ */
+@Composable
+private fun tabIconScale(selected: Boolean): Float {
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (selected) 1f else 0.86f,
+        animationSpec = androidx.compose.animation.core.spring<Float>(
+            dampingRatio = 0.55f,
+            stiffness = 420f,
+        ),
+        label = "tab-icon-scale",
+    )
+    return scale
+}
 
 /** 统一描边样式（圆头圆角）——三个图标共用，保证线感一致。 */
 private fun tabStroke() = Stroke(
@@ -749,7 +790,8 @@ private fun tabStroke() = Stroke(
 @Composable
 fun TaijiIcon(selected: Boolean) {
     val color = tabIconColor(selected)
-    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp)) {
+    val scale = tabIconScale(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
         val stroke = tabStroke()
         val r = (size.minDimension - TAB_STROKE) / 2f
         val cx = size.width / 2f
@@ -781,7 +823,8 @@ fun TaijiIcon(selected: Boolean) {
 @Composable
 fun CaveIcon(selected: Boolean) {
     val color = tabIconColor(selected)
-    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp)) {
+    val scale = tabIconScale(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
         val stroke = tabStroke()
         val w = size.width
         val h = size.height
@@ -819,7 +862,8 @@ fun CaveIcon(selected: Boolean) {
 @Composable
 fun DingIcon(selected: Boolean) {
     val color = tabIconColor(selected)
-    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp)) {
+    val scale = tabIconScale(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
         val stroke = tabStroke()
         val w = size.width
         val h = size.height
