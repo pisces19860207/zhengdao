@@ -5171,3 +5171,40 @@ E-082（提交 `37bc860`，`git describe --contains 37bc860` = `v2.0.9~4^2~1` �
 「深色 chrome」这批只做了**键条**（`acb2044`：键条 `#1C1C1E` + 按键 `#2C2C2E` + 浅字），工具条那次只动了尺寸/字色/链接色（`b6f7c92`）。
 写结论时把「键条深了」顺手推广成「工具条也深了」，是没有回看截图就下的判断 —— **凡涉及配色的结论，落笔前先在截图上取一次色**。
 
+---
+
+## E-092 · 2026-10-11 · 「可选工具清理」把 hermes 的**必需包** ffmpeg 当作可清项，说明文案还写反了（「删了会自己重新下载」）
+
+**现象**
+
+用户报：环境里似乎有 ffmpeg，为什么「缓存清理」把它列成可清除？清完 hermes 又报 ffmpeg 没了；「如果环境里有，为什么 hermes 不认？」
+并要求「hermes 的安装包要可以清除，免得重新安装的时候又拿这个显示出问题导致安装失败」。
+真机原文：`⚠ install out of sync (ffmpeg: not installed or outdated) — run 'hermes pm install'`。
+
+**复核（真机 run-as + 上游源码）**
+
+- 系统层**确实自带** ffmpeg：`files/rootfs/usr/bin/{ffmpeg,ffplay,ffprobe}`、`files/rootfs/usr/share/ffmpeg`。
+- hermes **只认自己工具库那份**：`hermes_cli/pm/install.py:951 activate()` 把 store 的工具目录**插到 PATH 最前**
+  （docstring 逐字：「so reactive `shutil.which('git'|'node'|'ffmpeg'|...)` resolves the bundled binaries, never a user copy that sorts earlier」）；
+  启动自检 `check()`（`:901`）→ `drift()`（`:863`）遍历 lockfile，其中 **`if package.optional or package.internal: continue`**
+  ⇒ 只有**非 optional** 的缺失包才进问题列表。ffmpeg 报了 ⇒ **它在 hermes 里是必需包**；chromium / cua-driver / agent-browser 是 optional（所以只报一个）。
+- 被清掉的恰好是这些：`files/home/.hermes/tools/` 只剩 `python/node/uv/npm/ripgrep`，而 `files/home/.hermes/tools/facts.json`（schema 1）仍注册 9 个包
+  （ffmpeg→`ffmpeg-9.0.1-linux-arm64`、chromium→`chromium-1208`、agent-browser→`agent-browser-0.26.0-linux-arm64`、cua-driver→`cua-driver-0.21.0-linux-arm64` …）。
+- **删了不会自己回来**：facts.json 只是注册表，要跑 `hermes pm install` 才补。App 旧文案「删了 hermes 用到时会自己重新下载」**是错的**。
+- 另一件独立的事：用户说的「hermes 的安装包」= 公共区 `Download/证道/agents/scripts/hermes-install.sh`（52,868 B）；
+  `app/src/main/java/com/example/zhengdao/ui/AgentInstaller.kt:133-134` 注释「重试免下载：脚本已在且非空直接复用」，
+  指纹不可信才重下 ⇒ **一份被采信的旧脚本会被每次重装复用**（用户抱怨的「又拿这个显示出问题」），需要能手动清。
+
+**更正**
+
+- `app/src/main/java/com/example/zhengdao/terminal/StorageAudit.kt`：ffmpeg 移入新增的 `REQUIRED_TOOL_NAMES`（不再可清，
+  note 写「hermes 必需：缺了它启动自检会报错（系统层那份它不认）：不动」）；optional 文案改为「可选（浏览器/自动化）：删了不会自己回来，要用时在终端跑 hermes pm install」。
+  另新增 `missingRegisteredPackages()` 与「hermes 自检」组，把「facts.json 注册了但目录不在」的包显式列出（真机如实报出四个缺口）；
+  新增 `cleanAgentScriptCache()` + 设置页入口「清理安装脚本缓存（下次安装重新下载）」。
+- 测试 `app/src/test/java/com/example/zhengdao/terminal/StorageAuditTest.kt` 同步（ffmpeg 断言 `ToolKind.REQUIRED`；清理断言「只删可选工具，ffmpeg 必须还在」）。
+- 真机验收：`docs/acceptance/cache-audit-appearance-delkey-2026-10-11.md`。
+
+**教训**
+
+「可选」是 **upstream 的语义**（lockfile / facts.json 里的 optional），不是我们 App 能靠名字猜的：
+清理白名单必须对着上游的 optional 名单核一遍 —— **看见 ffmpeg 就当成可丢的工具**，代价是弄坏 hermes 的启动自检。
