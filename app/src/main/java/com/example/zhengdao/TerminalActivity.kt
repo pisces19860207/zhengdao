@@ -444,31 +444,20 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }
     }
 
-    /**
-     * 「杀 App 再开，还是刚才那个 Agent」的兜底。
-     *
-     * 老实说一句：proot / tmux 都是**本 App 进程的子进程**，进程被系统或用户杀掉时
-     * 它们跟着一起死（Android 不会替我们托管它）。所以这里的"回来还是它"不是 attach，
-     * 而是**把那句启动命令重新执行一遍** —— 对用户来说结果是一样的。
-     * （后台切走 30 分钟那种情况进程还活着，走的是真正的 attach，现场原样保留。）
-     *
-     * 只在"全新会话 + 本次请求没带命令"时触发：用户明确要求启动别的 Agent 时，
-     * 不该被上一轮的残留插一脚。
-     */
-    private fun restoreLastAgentIfAny(): String? {
-        val id = SessionManager.currentAgentId ?: return null
-        val agent = runCatching {
-            AppState.agents(this).firstOrNull { it.id == id }
-        }.getOrNull()
-        if (agent == null || !agent.installed || agent.launchCmd.isBlank()) {
-            // 记录指向一个已经不存在的 Agent（卸载过 / 装了别的环境）→ 清掉，别下次再试
-            SessionManager.setCurrentAgent(null)
-            return null
-        }
-        RunLog.log("恢复：上次会话里是 ${agent.id}，重新执行它的启动命令")
-        Toast.makeText(this, "上次在用的是 ${agent.name}，正在重新打开…", Toast.LENGTH_SHORT).show()
-        return agent.launchCmd
-    }
+    // ⚠️ 已删除 `restoreLastAgentIfAny()`（2026-10-11，用户真机反馈）。
+    //
+    // 它当年要解的是 E-018 那个坑：「杀 App 再开，还是刚才那个 Agent」——proot / tmux 都是
+    // 本进程的子进程，进程被杀时现场一起没，于是退而求其次，**把启动命令重放一遍**。
+    //
+    // 被删的理由（用户原话）：「进入环境或者终端不应该默认某个 agent 啊，我一进去就是
+    // hermes 的命令然后就进入 hermes 的 tui 了……那个默认才是要命的」。
+    // 也就是这条兜底把"我想回到刚才那个 Agent"办成了"App 替我决定跑哪个 Agent"：
+    // 冷启动后**任何**一次进终端（洞天 tab、丹房点「安装中」看进度、通知栏）都会重放，
+    // 用户没有机会得到一个干净的 shell。
+    //
+    // 代价说明（写清楚，免得以后又被当成 bug 修回来）：进程被系统/用户杀掉后，重进终端
+    // **不会**再自动回到那个 Agent，落点是裸 shell，用户自己敲 `hermes` 或点丹房的启动卡。
+    // 进程还活着（切后台、关页面）时本来就是真正的 attach，那条路径没动。
 
     /** 会话存活 → 仅 attach（引擎自动重排恢复画面）；否则启动新会话。安装后复用。 */
     private fun ensureStartedAndAttach() {
@@ -479,6 +468,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 先路由（可能把旧会话整条换掉），再决定起/接
         routeSessionIfNeeded()
         if (!SessionManager.hasSession()) {
+            // 全新会话 + 本次没带命令 ⇒ 「这条会话里是谁」的记录要一起清掉：
+            // 它是上一条会话的遗留（进程被杀时 prefs 里的 `current_agent` 照样留着），
+            // 而眼前这条会话是个裸 shell。留着它会**两处出错**：
+            //   ① 丹房的启动卡片被路由判成 ATTACH_CURRENT（"Hermes 已在运行，已切回原来那个"）
+            //      ⇒ 用户点了启动却什么都没发生；
+            //   ② 运行日志把这条裸 shell 记成 agent=hermes，事后查现场会被自己误导。
+            // 放在 start() 之前就是为了 ② —— start() 里那行「会话启动…」直接读这个字段。
+            if (pendingAutocmd == null) SessionManager.setCurrentAgent(null)
             val plan = SessionManager.start(this)
             usesTmux = plan.usesTmux
             SessionManager.usesTmux = plan.usesTmux
@@ -497,13 +494,23 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             // ⚠️ v1.1 重写 TerminalActivity 时此调用曾丢失——新用户装完 App 卡在
             // fallback shell、没有任何安装入口（2026-10-07 恢复数据时实测发现）。
             if (fallbackActive) promptInstallOnce()
-            // 新会话且本次没带命令 → 试试把上次那个 Agent 接回来
-            if (!fallbackActive && pendingAutocmd == null) {
-                restoreLastAgentIfAny()?.let {
-                    pendingAutocmd = it
-                    pendingAgentId = SessionManager.currentAgentId
-                }
-            }
+            // 全新会话且本次没带命令 ⇒ 什么都不跑，落在一个**干净的 shell** 上。
+            //
+            // ⚠️ 这里原先是 `restoreLastAgentIfAny()`：把上次那个 Agent 的启动命令重放一遍
+            //    （E-018 的"杀 App 再开还是它"）。用户 2026-10-11 真机反馈推翻了它——
+            //    「进入环境或者终端不应该默认某个 agent」：一进终端就自动跑 `hermes`、
+            //    直接进它的 TUI，看着像 App 自己替他做了决定（2026-10-11 日志实测：
+            //    每次冷启动进终端都记一行「恢复：上次会话里是 hermes…」）。
+            //    要跑 Agent 就点丹房的启动卡片（那条**带命令**，走 [routeSessionIfNeeded]）；
+            //    进程**还活着**时进终端仍是真正的 attach，现场照旧保留。
+            //    台账：ERRATA E-113、FEATURE-LEDGER §A #52。
+            //
+            // ⚠️ 同时必须把「这条会话里是谁」的记录清掉。记录是**上一条会话**的遗留
+            //    （prefs 里的 `current_agent`，进程被杀时它照样留着），而眼前这条会话
+            //    是个裸 shell：留着它，用户去点丹房的「Hermes」启动卡时会被路由判成
+            //    ATTACH_CURRENT（"Hermes 已在运行，已切回原来那个"）⇒ **点了没反应**。
+            //    只有本次**没带命令**时才清：带命令时记录已由路由层登记成正确的那个。
+            //    （清除动作在 `SessionManager.start()` **之前**，见上面那处。）
         } else {
             usesTmux = SessionManager.usesTmux
             fallbackActive = false

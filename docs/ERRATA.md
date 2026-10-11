@@ -6064,3 +6064,53 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
   再对「点击无效」下结论；**别把"第三方窗口吃了手势"记成 App 的 bug**。
   同批次还踩到：`uiautomator dump` **只含可见窗口**、`am start` 打不开**未 exported** 的二级页
   （`java.lang.SecurityException: Permission denied … not exported from uid 10418`）。
+
+## E-113 · 2026-10-11 · 进终端会自动重放上次 Agent 的启动命令：点「终端」就被直接拉进 Hermes TUI（v2.0.16 发版后修正）
+
+- **现象（用户原话）** —— 「进入环境或者终端不应该默认某个agent啊，我一进去就是hermes的命令然后就进入hermes的tui了」。
+  修复前的真机运行日志（`/storage/emulated/0/Download/证道/logs/zhengdao-log.txt`）里，每次冷启动进终端都先记一行
+  `恢复：上次会话里是 hermes，重新执行它的启动命令`，紧接着 `会话启动（Termux 引擎）tmux=zhengdao agent=hermes`。
+- **根因** —— `app/src/main/java/com/example/zhengdao/TerminalActivity.kt` 的
+  `private fun restoreLastAgentIfAny(): String?`（原 `:458-471`，KDoc 原 `:447-457`）＋ `ensureStartedAndAttach()` 里的调用点（原 `:500-506`）：
+  本次请求不带命令、且不是 fallback 时，把 `terminal/SessionManager.kt` 落盘的 `currentAgentId`
+  （prefs `zhengdao-session` / `current_agent`）对应的 `launchCmd` **重放一遍**，还弹一句 Toast
+  「上次在用的是 ${agent.name}，正在重新打开…」。它是**为 E-018 里那条验收做的兜底**（`docs/ERRATA.md:1062-1099` 与
+  `docs/milestones/证道-终端单会话模型.md:63`/`:96` 都记着它），当初要解决的问题是「杀 App 再开，还是原来那个 Agent」。
+- **为什么这是 bug 而不是特性** —— 兜底把「上次用的是谁」当成了「这次要开谁」。可 App 进程被杀时
+  **proot / tmux 都是 App 的子进程，会话早就没了、对话上下文也丢了**（同一份里程碑文档 §5 自己写明了这一点）：
+  于是「重放」并不真的接回什么，只是把用户**拉进一个自己没点过的 TUI**。反过来，「点 Agent 卡片启动」本来就走
+  `terminal/SessionRouter.kt:39-62 decide(...)` 的 `REPLACE_SESSION` 分支正常起会话（`hasSession` 是 ATTACH 的必要条件），
+  **不依赖**这条兜底。
+- **处置（2026-10-11）** ——
+  ① 删掉 `restoreLastAgentIfAny()` 与它的调用点；原位置改成墓志铭注释（`TerminalActivity.kt:447` 与 `:499-506`，
+  写明删除理由、**代价**与台账指向 ERRATA E-113 / FEATURE-LEDGER §A #52），方便后人 grep 到「这里曾经有什么、为什么没了」。
+  ② 顺手补上原设计没覆盖的一个坑：**全新会话且本次请求不带命令**时，在 `SessionManager.start(this)` **之前**执行
+  `if (pendingAutocmd == null) SessionManager.setCurrentAgent(null)`（`TerminalActivity.kt:478`）——
+  不清的话，遗留的 `current_agent` 会让丹房那张 Agent 启动卡被路由判成 `ATTACH_CURRENT`
+  （界面提示「Hermes 已在运行，已切回原来那个」⇒ **点了没反应**），也会让运行日志把这条件裸 shell 会话记成
+  `agent=hermes`（该字段是排查路由问题的第一手线索，记错比不记更坏）。放在 `start()` **之前**是刻意的：
+  `start()` 里那行「会话启动… agent=…」直接读这个字段。
+  ③ `app/src/test/java/com/example/zhengdao/terminal/SessionRouterTest.kt` 里
+  `不带命令时也保留会话 - 会话已经死了也一样` 用例的注释同步改写，写明「2026-10-11 起那条兜底已删除，
+  任何不带命令的进终端都落在干净 shell」。
+- **代价（明说）** —— App 进程被杀之后重进终端，**不再自动回到上次那个 Agent**，落点是干净 shell（`root@localhost:~#`）；
+  进程还活着时（切后台 / 关页面 / 断线重连）仍是**真 attach** —— 同一个 pty、同一块画面，上下文照旧。
+  也就是说：只有「会话真的没了」这一种情况下的行为变了，而这正是原先那条兜底在瞎猜的那一种。
+- **真机取证（正式签名包 2.0.16 / versionCode 32，2026-10-11 22:40 `install -r` 之后）** ——
+  运行日志实测：
+  ```
+  [10-11 22:40:57] 路由：本次只打开终端（无命令）→ 会话原样保留
+  [10-11 22:40:57] 会话启动（Termux 引擎）tmux=zhengdao agent=- isFallback=false usesTmux=true
+  ```
+  ⇒ **不再出现「恢复：…」那一行**，且 `agent=-`（遗留记录确实被清掉了）。
+  目视核对（`adb shell am start -n com.example.zhengdao/.MainActivity --ez open_terminal true`，即通知栏「回到终端」那条路，
+  与点底部导航「终端」走同一个 `onOpenTerminal(null, null)`）：终端停在 `root@localhost:~#`，tmux 状态栏
+  `[zhengdao]0:bash*`，**没有 Hermes TUI**；截图 `C:\Users\guoli\AppData\Local\Temp\zd-term5-small.png`。
+  构建证据：`python tools\check-native-so.py` 退出 0、`testDebugUnitTest` **68 suite / 620 例 / 0 失败**、
+  `assembleRelease` 产物 8,316,956 B（22:40:21）、`apksigner` 证书指纹 `b93169f2…86ec2`。
+- **教训** —— 「自动帮你回到上次的状态」这类兜底，落笔前必须问一句**「上次的状态还算数吗」**：
+  进程被杀 = 上下文已经丢了，重放命令救不回任何东西，只会制造「我没点过的东西自己跑起来」的惊吓；
+  兜底真有必要，也该**先问一句**（或做成显式的一键恢复），而不是默认替用户按下去。
+  同批次还记两条真机自动化的坑：点底部导航最底边会被 MagicOS 判成 `SystemManagerSwipeUp`
+  （日志 `[FORCE STOP] stop com.example.zhengdao … iAwareF[SystemManagerSwipeUp]`，App 被强停重启）⇒
+  **点导航项要往上挪几 px**；打不开 `exported="false"` 的终端页时，可用 `MainActivity` 的 `open_terminal` extra 直达（同一代码路径）。
