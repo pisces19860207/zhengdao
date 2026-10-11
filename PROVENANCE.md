@@ -9,7 +9,9 @@
 - proot 上游官方仓库与官方文档（proot-me/proot）及其官方运行参数
 - Termux `terminal-emulator` / `terminal-view` 库的官方文档与源码（**Apache-2.0**，
   见上游 termux-app 仓库 LICENSE.md 的 Exceptions 一节；v3.9 起聚合为本项目的
-  终端渲染层，**允许按 Apache-2.0 条款使用**，须保留其许可证与 NOTICE）
+  终端渲染层，**允许按 Apache-2.0 条款使用**，须保留其许可证与版权声明；**2026-10-11 起许可证正文
+  随仓库分发**（`licenses/Apache-2.0.txt`，履行第 4(a) 条；上游没有 NOTICE 文件，故第 4(d) 条不适用，
+  逐条对照见 `THIRD-PARTY-LICENSES.md` 末节）
 - 标准库官方文档：OkHttp（Apache-2.0）、Apache Commons Compress、zstd / zstd-jni
 - POSIX 标准 API（forkpty 等）与 ADB 公开协议文档
 
@@ -49,8 +51,8 @@
 | ~~xterm.js~~ （**v3.9 已移除**） | MIT | 曾作为 WebView 终端渲染层；2026-10-05 随终端渲染层切换为原生 TerminalView 而删除，历史实现保留在 git 中 |
 | **Termux `terminal-emulator`**（v3.9 新增） | **Apache-2.0** | 以源码形式集成（`app/src/main/java/com/termux/terminal/`），作为独立库聚合，未修改其许可证头（上游这些文件原本就没有许可证头）；本项目**在其基础上做过修改** ⇒ 2026-10-11 起在文件头加 Apache-2.0 第 4(b) 条要求的修改通知，逐文件见下节「Apache-2.0 修改通知」 |
 | **Termux `terminal-view`**（v3.9 新增） | **Apache-2.0** | 同上（`app/src/main/java/com/termux/view/`）；其 native 半边由 `app/src/main/cpp/termux/` 编译为 `libtermux.so`。本项目在其上**改过 2 个文件、另新写 6 个第一方类**（沿用 `com.termux.view` 包名），见下节「Apache-2.0 修改通知」 |
-| proot（**Termux fork 发行版**，2026-10-04 基线切换） | GPL-2.0-or-later | 官方发行二进制，assets 内置、运行时释放为**独立可执行文件**调用（聚合分发，不链接不混源） |
-| libtalloc / libandroid-shmem | LGPL / 宽松许可 | 同上，作为 proot 的运行时依赖随包分发 |
+| proot（**Termux fork 发行版**，2026-10-04 基线切换） | **GPL-2.0-or-later** | 官方发行二进制，assets 内置、运行时释放为**独立可执行文件**调用（聚合分发，不链接不混源）；**正文随仓库分发** = `licenses/GPL-2.0.txt`，官方 `.deb` 摘要见「版本固定」节 |
+| libtalloc / libandroid-shmem | **LGPL-3.0-or-later** / **BSD-3-Clause**（2026-10-11 钉死，此前只写「LGPL / 宽松许可」） | 同上，作为 proot 的运行时依赖随包分发；**两者都是被 proot 进程在进程内动态加载的 ELF 动态库** ⇒ 不受「聚合不传染」判据保护，随附义务必须履行：正文 = `licenses/LGPL-3.0.txt` ＋ 根 `LICENSE`（GPL-3.0 全文，LGPL-3.0 第 2 条并入）、`licenses/BSD-3-Clause.txt`；源码可得性与使用形态见 `THIRD-PARTY-LICENSES.md` §2 / §3 |
 | **hermes pinned uv 0.12.3**（astral-sh/uv，运行时下载） | MIT OR Apache-2.0 | **不随包分发**。hermes 只认它自装的 pinned uv（剥离一切环境变量与配置），证道的包装器（`ProotLauncher.HERMES_UV_WRAPPER_B64`，源文件 `build/hermes-uv-wrapper.sh`）按 hermes install.sh 同源 URL 下载该工件并做 SHA256 校验（`bb66cb52…68dcca2`）后 exec；包装器同时强制 `UV_LINK_MODE=copy`（Android/proot 无可用硬链接） |
 | OkHttp / Compose 等 | Apache-2.0 | Maven 依赖，按官方文档使用 |
 | **JetBrains Maple Mono**（终端默认字体，2026-10-10 引入；2026-10-10 追加子集化） | **SIL OFL 1.1** | 随包分发的字体文件（`app/src/main/assets/fonts/JetBrainsMapleMono-NF-Regular.ttf`），取自 SpaceTimee/Fusion-JetBrainsMapleMono 的 `NF-XX-XX-XX` 变体包；**已由本项目子集化**（GB2312 常用汉字 6,763 字 + 终端必备区 + Nerd Font 图标区，见下节「字体」；工具与参数随仓库 `tools/subset-terminal-font.py`，OFL 1.1 允许修改与再分发，子集化产物仍受 OFL 1.1 约束），OFL 全文随字体同目录分发（`app/src/main/assets/fonts/OFL.txt`） |
@@ -99,7 +101,10 @@ tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6
 其余 **11 个上游文件逐字节未改**（terminal 7：`ByteQueue` / `JNI` / `Logger` / `TerminalColors` /
 `TerminalOutput` / `TerminalSessionClient` / `WcWidth`；view 3：`GestureAndScaleRecognizer` /
 `TerminalViewClient` / `support/PopupWindowCompatGingerbread`；textselection 1：`CursorController`），
-保持原样、不加任何标记。上游仓库级 `LICENSE.md` 与 `THIRD-PARTY-LICENSES.md` 照常随仓库分发；
+保持原样、不加任何标记。**更正（2026-10-11）**：早前此处写「上游仓库级 `LICENSE.md` 与
+`THIRD-PARTY-LICENSES.md` 照常随仓库分发」**不准确** —— 上游这两个文件在**仓库根/termux-shared 下，
+不在被聚合的 `terminal-emulator` / `terminal-view` 模块目录内**，本项目因此**没有**它们，这是聚合范围问题，
+**不构成"移除"**；本项目随自己仓库分发的声明在根 `THIRD-PARTY-LICENSES.md`、正文在 `licenses/`；
 **没有任何第三方版权声明、LICENSE 或 NOTICE 被移除**。
 
 复现比对：`git diff --no-index --numstat <上游 tarball 解包目录> app/src/main/java/com/termux`。
@@ -126,6 +131,17 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 | tloader | files/termux-proot/loader | `cbdef0e652c2b78af25d867e1719fdebbb0915e25aae2dd35b3b5c1835f6b551` |
 | libtalloc.so | files/termux-proot/libtalloc.so.2 | `742b438c4d09e276985a61d44164c9de207b6d8cc268f3018cb3001961bcb309` |
 | libandroid-shmem.so | files/termux-proot/libandroid-shmem.so | `84475798e07c8174dbbfaec70a827fdb02f19ffa69a589380c13e7507fd0e731` |
+
+**官方产物摘要（2026-10-11 补，取自 Termux 官方 apt 索引
+<https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages>，
+索引快照 1,863,706 B）**：`proot_5.1.107.96_aarch64.deb` =
+`8199dca06dccb693ec09fb1759e3e1ad08b4863f0c11c612f89c20bd9ecdc1a0`、
+`libtalloc_2.5.0_aarch64.deb` = `556591f43bb773ad8777e1a29522640866a55f95dab71914418b94a8c58ad5a7`、
+`libandroid-shmem_0.7_aarch64.deb` = `0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6`
+（官方索引**不发布构建 commit**；按 `termux/termux-packages` 的 `packages/proot/build.sh` 版本号
+回查 commit 属待办，见 `docs/闭源切换清单-2026-10-11.md` 第四节）。
+许可证正文随仓库分发：`licenses/GPL-2.0.txt`（proot）、`licenses/LGPL-3.0.txt` ＋ 根 `LICENSE`
+（libtalloc）、`licenses/BSD-3-Clause.txt`（libandroid-shmem）。
 
 升级流程：从 Termux 仓库取新版本 → 计算新 SHA256 → 更新 assets 与上表 →
 真机回归（bash 存活 + 四项验收）→ 提交。
