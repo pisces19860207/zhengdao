@@ -45,3 +45,14 @@
 
 **备份包**（含被删的 59 个条目，可整体还原）：`C:\Users\guoli\AppData\Local\Temp\zd-workspace-root-backup-2026-10-11.zip`，
 679,479 B，`sha256 A4A25E5D3957155A54BD0B2C569D73FEACDAE0EAB68A989B988CEC780ECBFF40`。系统 Temp 会被清理，**不要把长期依赖放在那里**。
+
+**「原样」到什么程度（2026-10-11 实测比对）**：这 4 份在仓库里的 **blob 与备份 zip 中的同名条目 sha256 逐字节相同** ——
+
+| 文件 | 仓库 blob 与 zip 的 sha256 |
+|---|---|
+| `交接-DSH-FIX-F-资料库线索-2026-10-10.md` | `f47243ae52269db22dbcfcd091fa3f5f5a347b68fd4a367fbefdd1bd0596572e` |
+| `小说库-零token工作规程.md` | `c77845fd3b07e23a4d025f869467b8197134dae2a2baef175461942fe61b782e` |
+| `工具-重建小说总目录.py` | `6e36f5c9ec7f88fb14835e07311a0cf73ffa07b53e7490ad94c5503903cfaf9d` |
+| `检索实测-grep能不能一下定位-2026-10-10.md` | `ac9d4235d5f674bffe90b8835c4894f4c03419ce4e96f237ed74f12c1a653e92` |
+
+（本机工作区里它们会**比 zip 里大几十到一百多字节**，那是仓库既有属性 `.gitattributes` 的 `* text=auto` + `core.autocrlf=true` 把 LF 检出成 CRLF，不是内容变化。）
