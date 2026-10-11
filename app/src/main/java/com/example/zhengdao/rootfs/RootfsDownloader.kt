@@ -36,6 +36,45 @@ object RootfsDownloader {
     /** 下载内容与校验值不符（多为发布资产在下载途中被更新）——残件作废、重取校验值、从头再来 */
     class ShaMismatch(message: String) : IOException(message)
 
+    /**
+     * 传输过慢/卡死（**不是错误，是"该换源了"**）：残件保留，交给下一个候选源续传。
+     *
+     * 为什么要有这条（2026-10-11，用户：「给终端里的 git 加下速和加固一下」，同一批把下载层
+     * 一起收口）：原来的换源只发生在**失败**时——而国内网络的典型形态是「连得上、慢得像屎」
+     * （直连 65 KB/s vs 镜像 625 KB/s，差 9.5×）。没有这条，直连能连通的机器永远吃不到镜像的
+     * 速度；有了它，"卡住"也变成可切换信号。
+     */
+    internal class SlowTransfer(message: String) : IOException(message)
+
+    /**
+     * 慢速判定（纯函数，可单测）：**只对还有后续候选的源**生效。
+     *
+     * 三个参数都是实测/权衡出来的：
+     * - `MIN_BYTES_PER_SEC = 192 KB/s`：实测直连 65 KB/s、gh-proxy 138 KB/s 都要被换掉，
+     *   而 ghfast.top 625 KB/s 要能留下 ⇒ 阈值取在两者之间；
+     * - `GRACE_MS = 15s`：前 15 秒不看速度（DNS/握手/TTFB 与 TCP 慢启动都在这段里，
+     *   一上来就判"慢"会误伤；顺带把"连接挂着不动"的检测从 OkHttp 的 60s readTimeout
+     *   提前到 15s）；
+     * - 最后一个候选**永不**中断：没有备选时再慢也只能下完，否则等于把用户卡死。
+     */
+    internal object SpeedGuard {
+        const val MIN_BYTES_PER_SEC = 192L * 1024
+        const val GRACE_MS = 15_000L
+
+        fun shouldAbort(
+            elapsedMs: Long,
+            transferredBytes: Long,
+            hasFallback: Boolean,
+            minBps: Long = MIN_BYTES_PER_SEC,
+            graceMs: Long = GRACE_MS,
+        ): Boolean {
+            if (!hasFallback) return false
+            if (elapsedMs < graceMs) return false
+            val bps = transferredBytes * 1000 / elapsedMs
+            return bps < minBps
+        }
+    }
+
     /** 共享 HTTP 客户端：连接池常驻，退后台时由 releaseIdleResources() 清空。 */
     private val sharedClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -45,23 +84,44 @@ object RootfsDownloader {
     }
 
     /**
+     * **大文件**下载专用客户端（2026-10-11）：readTimeout 从 60s 收紧到 25s。
+     *
+     * 为什么要单独一个：换源只在"失败"时发生，而 60s 的 readTimeout 意味着一条**挂死的**
+     * 连接要占满 60 秒才被判失败（再乘上每源 3 次重试）。25s 让"卡住的源"更快让位给镜像；
+     * 小文件（.sha256 / 索引 / 清单）仍走 [sharedClient] 的 60s，不受影响——它们慢的原因
+     * 往往是服务端 TTFB 而非带宽。
+     *
+     * ⚠️ 慢而**活着**的连接不会被这个超时误伤：读缓冲 64 KB，只要字节在流，read() 就不会超时；
+     *    那种"稳定慢"由 [SpeedGuard] 处理。
+     */
+    private val downloadClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(25, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /**
      * 内存看护（onTrimMemory 退后台时调用）：清掉空闲 TCP 连接与缓冲。
      * WebView/Chromium 的内存由系统回调自动管理，不在此处理。
      */
     fun releaseIdleResources() {
         try { sharedClient.connectionPool.evictAll() } catch (_: Throwable) {}
+        try { downloadClient.connectionPool.evictAll() } catch (_: Throwable) {}
     }
 
     /**
-     * 给 github.com 直链补一条 gh-proxy 镜像兜底（v1.2 B3）。
+     * 给 github.com 直链补镜像兜底（v1.2 B3 起；2026-10-11 起镜像表收口到 [GithubMirror]）。
      *
-     * 为什么需要：github.com 在部分网络下不可达（实测本机 http=000、gh-proxy.com 200），
+     * 为什么需要：github.com 在部分网络下不可达（实测本机 http=000、镜像 200），
      * 而 rootfs（326MB）此前只有这一个地址——新用户第一步就可能卡死。
-     * 太极的 OpenCode 包早就有 gh-proxy 兜底，两边此前不对称。
+     *
+     * ⚠️ 2026-10-11 变更：兜底源从「只有 gh-proxy.com」变成 **[GithubMirror.DOWNLOAD_CHAIN]**
+     *    （ghfast.top → gh-proxy.com）。实测同一 8 MB 资产：直连 65 KB/s、gh-proxy.com
+     *    138 KB/s、**ghfast.top 625 KB/s**。主源仍在首位，镜像只在直连失败/过慢时接手
+     *    （慢速接手见 [SpeedGuard]）。
      */
-    fun withMirrorFallback(url: String): List<String> =
-        if (url.startsWith("https://github.com/")) listOf(url, "https://gh-proxy.com/$url")
-        else listOf(url)
+    fun withMirrorFallback(url: String): List<String> = GithubMirror.candidates(url)
 
     /**
      * 对象存储镜像变换——**方案一已于 2026-10-07 被用户废弃（见 docs/ERRATA.md E-015）**：
@@ -108,11 +168,16 @@ object RootfsDownloader {
             )
         }
         var lastError: Exception? = null
-        for (url in urls) {
-            repeat(MAX_ATTEMPTS_PER_URL) { attempt ->
+        urls.forEachIndexed { index, url ->
+            val hasFallback = index < urls.size - 1
+            for (attempt in 0 until MAX_ATTEMPTS_PER_URL) {
                 try {
-                    Log.i(TAG, "下载尝试：$url（第 ${attempt + 1} 次）")
-                    downloadOne(sharedClient, url, dest, onProgress)
+                    Log.i(
+                        TAG,
+                        "下载尝试：$url（第 ${attempt + 1} 次）" +
+                            if (hasFallback) "，过慢会被换源" else "（最后一个候选，不再换源）",
+                    )
+                    downloadOne(downloadClient, url, dest, hasFallback, onProgress)
                     if (expectedSha.isNullOrBlank()) {
                         Log.w(TAG, "未提供 SHA256，跳过完整性校验")
                     } else {
@@ -126,6 +191,17 @@ object RootfsDownloader {
                     dest.delete()
                     expectedSha = fetchFirstSha(shaUrls) ?: expectedSha
                     lastError = e
+                } catch (e: SlowTransfer) {
+                    // 不是失败、是"这个源不行"：**残件保留**给下一个源续传（Range）；
+                    // 换源后字节若不一致，最终 sha256 校验会拦住（见 downloadOne 的 416 处理）。
+                    Log.w(TAG, "传输过慢，换下一个源：$url —— ${e.message}")
+                    lastError = e
+                    break
+                } catch (e: java.net.SocketTimeoutException) {
+                    // 挂死的连接（readTimeout）：既然还有别的源，就别在同一个源上再等 3 轮
+                    Log.w(TAG, "连接超时，换下一个源：$url —— ${e.message}")
+                    lastError = e
+                    if (hasFallback) break
                 } catch (e: Exception) {
                     Log.w(TAG, "下载失败：$url", e)
                     lastError = e
@@ -177,6 +253,7 @@ object RootfsDownloader {
         client: OkHttpClient,
         url: String,
         dest: File,
+        hasFallback: Boolean,
         onProgress: (Long, Long) -> Unit,
     ) {
         val part = File(dest.parentFile, dest.name + PART_SUFFIX)
@@ -204,6 +281,10 @@ object RootfsDownloader {
 
             var done = if (resumed) already else 0L
             var lastReported = -1L
+            // 慢速看护（2026-10-11）：从本次连接的 0 字节算起，不看已续传的历史字节。
+            val startedAt = System.nanoTime()
+            val startBytes = done
+            var lastCheckedMs = 0L
             RandomAccessFile(part, "rw").use { out ->
                 if (resumed) out.seek(done)
                 body.byteStream().use { input ->
@@ -216,6 +297,17 @@ object RootfsDownloader {
                         if (total > 0 && done - lastReported >= 512 * 1024) {
                             lastReported = done
                             onProgress(done, total)
+                        }
+                        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+                        if (elapsedMs - lastCheckedMs >= 1_000) {
+                            lastCheckedMs = elapsedMs
+                            if (SpeedGuard.shouldAbort(elapsedMs, done - startBytes, hasFallback)) {
+                                val kb = (done - startBytes) / 1024
+                                throw SlowTransfer(
+                                    "本次连接 ${elapsedMs / 1000}s 只收到 ${kb}KB" +
+                                        "（低于 ${SpeedGuard.MIN_BYTES_PER_SEC / 1024}KB/s），残件保留待续传",
+                                )
+                            }
                         }
                     }
                 }
