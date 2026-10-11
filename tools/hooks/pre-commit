@@ -5,7 +5,9 @@
 #   1) 禁止在集成分支 main 上直接提交（一个 worktree = 一个分支 = 一个 agent）；
 #      **合并提交（MERGE_HEAD 存在）例外** —— 集成本来就该在 main 上做
 #   2) 你要提交的文件，origin/main 上你还没同步的提交也改过 —— 说明你在旧版本上改，
-#      提交上去会把别人的改动覆盖回去（这是「功能没了」的主要来源）
+#      提交上去会把别人的改动覆盖回去（这是「功能没了」的主要来源）；
+#      **合并提交（MERGE_HEAD 存在）例外** —— 合并的暂存路径必然与 origin/main 新进的提交重叠，
+#      这是合并的定义、不是「在旧版本上改」（见 docs/ERRATA.md E-102）
 #   3) 你要新增的文件，历史上被删除过 —— 复活检测（被拍板删掉的功能不许悄悄加回来）
 #
 # 详见 docs/FEATURE-LEDGER.md §0
@@ -43,12 +45,14 @@ fi
 # ---- 1. 禁止在 main 上直接提交（**合并提交除外**）----
 #   rationale：集成本来就发生在 main 上（把各功能分支 merge 进来就是这棵工作树的职责）。
 #   要拦的是"在 main 上直接动手改文件然后 commit"——那才会让别的 agent 看不到你的进度。
-#   合并提交（存在 MERGE_HEAD）放行，但闸 2 / 闸 3 仍然照查。
+#   合并提交（存在 MERGE_HEAD）放行；闸 2 同样对合并豁免，闸 3（复活检测）仍然照查。
+merge_head="$(git rev-parse --path-format=absolute --git-path MERGE_HEAD 2>/dev/null || true)"
+is_merge=0
+if [ -n "$merge_head" ] && [ -f "$merge_head" ]; then is_merge=1; fi
 cur="$(git symbolic-ref --short -q HEAD || true)"
 if [ "$cur" = "main" ]; then
-  merge_head="$(git rev-parse --path-format=absolute --git-path MERGE_HEAD 2>/dev/null || true)"
-  if [ -n "$merge_head" ] && [ -f "$merge_head" ]; then
-    echo "ℹ️  pre-commit: main 上的**合并提交**，放行（集成正当）——但仍会跑陈旧基准/复活检测。" >&2
+  if [ "$is_merge" = "1" ]; then
+    echo "ℹ️  pre-commit: main 上的**合并提交**，放行（集成正当）——闸 2 对合并豁免，闸 3 仍会跑。" >&2
   else
     echo "" >&2
     echo "✗ pre-commit 拦截：不允许在集成分支 main 上直接提交。" >&2
@@ -68,10 +72,16 @@ oldIFS=$IFS
 IFS='
 '
 
-# ---- 2. 陈旧基准检测 ----
+# ---- 2. 陈旧基准检测（**合并提交豁免**）----
+#   rationale：合并提交暂存的路径，正是 origin/main 上刚进的提交动过的路径 —— 那是合并的定义，
+#   不是「停在旧版本上改」⇒ 判据对合并恒真，只能误报。合并只跑闸 3。见 docs/ERRATA.md E-102。
+if [ "$is_merge" = "1" ]; then
+  echo "ℹ️  pre-commit: 合并提交，跳过闸 2（陈旧基准）——判据对合并恒真；闸 3（复活检测）仍然照查。" >&2
+fi
 stale_hits=""
 for p in $staged; do
   [ -z "$p" ] && continue
+  [ "$is_merge" = "1" ] && continue
   hits="$(git log --date=short --pretty=format:'%h %ad %s' "HEAD..$BASE" -- "$p" 2>/dev/null)"
   if [ -n "$hits" ]; then
     if [ -z "$stale_hits" ]; then
