@@ -57,6 +57,32 @@
   OFL 文本 `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533`
   （来源包与完整清单见 PROVENANCE.md「字体」小节）
 
+## 7. Debian GNU/Linux 13.7 base（guest 系统层 rootfs）
+
+- 用途：PRoot 加载的 guest 用户空间**系统层**（终端里那个 rootfs）
+- 版本：Debian GNU/Linux **13.7（trixie）**，aarch64
+  （2026-10-11 真机核对：`/etc/os-release` = `PRETTY_NAME="Debian GNU/Linux 13 (trixie)"`、
+  `VERSION_ID="13"`、`VERSION_CODENAME=trixie`；`/etc/debian_version` = `13.7`）
+- 构建：本仓库 `rootfs/build-rootfs.sh`（qemu 交叉构建，CI 流水线产出）⇒ 发布为 Release 资产
+  `debian-13.7-base-arm64.tar.zst`（约 229 MB，zstd；另有增量补丁与 Ed25519 签名索引）
+- 许可证：**Debian 是数百个独立软件包的聚合发行版，各包许可互不相同**
+  （GPL-2.0/3.0、LGPL、BSD、MIT、Apache-2.0、Artistic 等）。镜像内实测装了 **353 个包**
+  （2026-10-11 真机 `grep -c '^Package:' /var/lib/dpkg/status`）
+- ⚠️ **本环境为控制体积，在构建时删除了 `/usr/share/doc`、`/usr/share/man`、`/usr/share/info`
+  （`rootfs/build-rootfs.sh:363`）** ⇒ 镜像内**不含**逐包版权文本
+  （真机核对：`/usr/share/doc` 只剩 4 个构建后才装的条目）。
+  逐包 copyright 的替代获取途径（任一即可）：
+  1. `http://deb.debian.org/debian`（镜像内 `sources.list` 即指向此处的 `trixie main`）
+     取同版本包，包内自带 `usr/share/doc/<包>/copyright`；
+  2. `apt-get source <包>`，读源码包里的 `debian/copyright`；
+  3. 历史/已下架版本用 <https://snapshot.debian.org/>。
+- 源码要约：本仓库对**自己分发**的 GPL 组件（proot 等，见 §1）以指向官方源码仓库的方式满足
+  GPL 第 3 条；系统层里各 GPL/AGPL 组件的源码，由 Debian 官方源按上一条途径提供。
+- 改动情况：构建脚本对系统层只做**删减**（文档 / man / info / 多余 locale / 构建残留）与少量
+  **配置文件写入**（`/etc/resolv.conf`、`/etc/hosts`、`/etc/uv/uv.toml`、
+  `/etc/profile.d/zhengdao-uv.sh`、`/etc/localtime`、apt 源），**未修改任何包的二进制**；
+  各包功能与上游同版本一致，卸载/升级仍走 `apt`。
+
 ---
 
 ## 红线声明（对协作者与 AI 的约束）
