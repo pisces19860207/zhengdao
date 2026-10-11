@@ -5481,3 +5481,38 @@ fun candidates(url: String, chain: List<String> = DOWNLOAD_CHAIN): List<String> 
 **教训**
 
 「能力描述」会默认被读成「边界描述」：说"我们有一个 Debian 终端"而不说"它不是沙箱"，就是让用户自己补一句错的安全假设。凡是**安全边界**，无论做没做隔离，都要有一句显式声明（做了就写"隔离到什么程度"，没做就写"不是边界"）。
+
+## E-099 · 2026-10-11 · 正式包与开发包共用同一把 debug keystore（"关于"页只认一枚指纹）；换独立 release key，**代价 = 已装旧包必须卸载重装一次**
+
+**背景**
+
+E-013/E-014 时代的遗留：`app/build.gradle.kts` 的 release 与 debug 变体都指向 AGP 内建的 `debug` 签名配置（`:82`/`:95`，真正生效的 storeFile 由 `ZHENGDAO_KEYSTORE_FILE` 决定），CI 里两者也都还原自同一个 secret `DEBUG_KEYSTORE_B64`。后果三条：
+
+1. "正式包"与"开发者本地随手 `assembleDebug` 出来的包"**同签名** ⇒ 用户无法据此分辨来源，`SigningCheck` 也只能白名单这一枚；
+2. 轮换钥匙等于一次性废掉所有已发布包 ⇒ 这把钥匙事实上**换不动**；
+3. 这把 debug keystore 历史上进过 base64 文本、GitHub Secret 与 D 盘加密备份 ⇒ 一旦泄露没有退路。
+
+**决策（用户 2026-10-11 拍板）**
+
+用户原话要点：「才上 github 几天而已，目前就我一个，倒是可以先做了。」⇒ 现在换成**独立的正式 release keystore**；其代价（签名不同 ⇒ 已装旧包必须卸载重装一次，App 私有目录被清 = Debian 环境重下）由用户明确接受。
+
+**做法**
+
+- 生成：`keytool -genkeypair -keyalg RSA -keysize 4096 -validity 10950`（有效期至 2056-10，签名算法 SHA384withRSA），alias `zhengdao`，DN `CN=Zhengdao, O=Zhengdao, C=CN`。文件在本机 `C:\Users\guoli\.zhengdao-keys\zhengdao-release.jks`（4,300 B），口令单独写在该目录 `RELEASE_KEY_PASSWORD.txt`；证书 SHA-256（大写无冒号）= `B93169F211C6B3D9FDAE36B2C614C23BEF28EAE3582E4D8BCA0657C27AC86EC2`（`RELEASE_CERT_SHA256.txt`）。
+- CI（`.github/workflows/build.yml`）：
+  - 新增步骤「还原正式 release 签名密钥」（**硬失败**：缺 secret 直接红）—— 从 `RELEASE_KEYSTORE_B64` 解出 `$GITHUB_WORKSPACE/.ci-release.keystore`，并 keytool 比对上面那枚指纹；
+  - 「编译 Release APK」改用 `.ci-release.keystore` + `ZHENGDAO_KEYSTORE_PASSWORD` / `ZHENGDAO_KEY_ALIAS` / `ZHENGDAO_KEY_PASSWORD`（正式钥匙的口令不是 `android`）；
+  - 「校验 release 包的签名」的 `EXPECTED_SHA256` 换成新指纹（仍然对着**产物**验，E-014 §7 的立场不变）；
+  - 滚动版上传门槛（`KS_READY`）与 tag 发布 job 的把关，都改成判 `RELEASE_KEYSTORE_B64`；
+  - 「编译 Debug APK（开发者用）」保持 `.ci-debug.keystore` 不变 —— 开发包继续用 debug 钥匙。
+  - 新增 secrets：`RELEASE_KEYSTORE_B64`（5,736 字符单行 base64）、`RELEASE_KEYSTORE_PASSWORD`、`RELEASE_KEY_ALIAS`。
+- App 侧：`app/src/main/java/com/example/zhengdao/util/SigningCheck.kt` 从**单枚**指纹改成**两枚白名单** —— `OFFICIAL_RELEASE_SHA256`（新）与 `OFFICIAL_LEGACY_DEBUG_SHA256`（`44E2FE86…A3BE18`），`check()` 判 `hex in OFFICIAL_SHA256S`。理由：用户手机上装着的旧包正是老钥匙签的，它**是**官方包，不该被自己的 App 报成"非官方"；开发者本地 `assembleDebug` 同理。单测 `app/src/test/java/com/example/zhengdao/util/SigningCheckTest.kt` 增加两条断言（两枚都是 64 位大写十六进制；两枚互不相同且都在白名单里）。
+
+**代价（必须让用户知道）**
+
+- 已装旧包**不能覆盖安装**新正式包，必须先卸载 ⇒ App 私有目录清空 ⇒ **Debian 环境（约 200 MB）要重新下载**；共享存储里的工作区/资料库不受影响。
+- 因此这次同时写了 tag 发布正文 `.github/release-notes/v2.0.13.md`，顶部第一句就是"先卸载旧版再装"。
+
+**教训**
+
+"正式包与开发包同签名"是一笔**隐性债**：不报错、不影响功能，只在两处咬人 —— 想换钥匙时（换不动）、想区分来源时（分不出）。判据：**签名是"分发身份"，身份不该与开发脚手架共用**。换这类钥匙前，先把"老用户要不要卸载重装"这句话问出来，再动手。

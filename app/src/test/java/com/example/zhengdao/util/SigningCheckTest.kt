@@ -44,7 +44,29 @@ class SigningCheckTest {
     fun `32 字节输出 64 个字符与官方常量同形`() {
         val hex = SigningCheck.hexOf(ByteArray(32) { 0xAB.toByte() })
         assertEquals(64, hex.length)
-        assertEquals(64, SigningCheck.OFFICIAL_SHA256.length)
-        assertEquals(true, SigningCheck.OFFICIAL_SHA256.all { it in "0123456789ABCDEF" })
+        assertEquals(64, SigningCheck.OFFICIAL_RELEASE_SHA256.length)
+        assertEquals(true, SigningCheck.OFFICIAL_RELEASE_SHA256.all { it in "0123456789ABCDEF" })
+    }
+
+    @Test
+    fun `两枚官方指纹都是 64 位大写十六进制`() {
+        assertEquals(2, SigningCheck.OFFICIAL_SHA256S.size)
+        SigningCheck.OFFICIAL_SHA256S.forEach { fp ->
+            assertEquals("指纹长度: $fp", 64, fp.length)
+            assertEquals("指纹须为大写十六进制: $fp", true, fp.all { it in "0123456789ABCDEF" })
+        }
+    }
+
+    @Test
+    fun `白名单同时含新 release 与历史 debug 两枚且互不相同`() {
+        // E-099：2026-10-11 起正式包改用独立 release key；旧包（debug key 签）仍是官方包，
+        // 不该被报成"非官方"。两枚要是写成一个，白名单就等于白做。
+        assertEquals(true, SigningCheck.OFFICIAL_RELEASE_SHA256 in SigningCheck.OFFICIAL_SHA256S)
+        assertEquals(true, SigningCheck.OFFICIAL_LEGACY_DEBUG_SHA256 in SigningCheck.OFFICIAL_SHA256S)
+        assertEquals(
+            "两枚指纹不能相同（相同 = 白名单实际只剩一把）",
+            false,
+            SigningCheck.OFFICIAL_RELEASE_SHA256 == SigningCheck.OFFICIAL_LEGACY_DEBUG_SHA256,
+        )
     }
 }
