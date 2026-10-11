@@ -163,7 +163,11 @@ plugins {
 //      资料库 / 保活记录 / 运行日志 / 帮助；首页「去设置看记录」「看日志」的通知按钮**接到对应二级页**
 //      （台账 §B 顺序 11 = 原 §B-补-42；此前两处都只是打开设置首页）。
 //    仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.16"
+//    2.0.17（2026-10-11 深夜，用户「今天就彻底结束了」那一轮）：
+//    ① 进终端不再自动重放上次 Agent 的启动命令（ERRATA E-113）；② 首页体检「Hermes 依赖环境」
+//      红叉误报修掉（E-114）；③ hermes 自己装的扩展——浏览器工具 agent-browser/chromium 与桌面
+//      自动化 cua-driver——一律保留、不给任何清理入口（E-115）。三条都是修正既有行为，仍 patch 级。
+val appVersionName = "2.0.17"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -196,7 +200,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 32
+        versionCode = 33
         versionName = appVersionName
 
         ndk {

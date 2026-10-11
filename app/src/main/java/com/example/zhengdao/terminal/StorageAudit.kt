@@ -23,10 +23,14 @@ import java.io.File
  * "never a user copy that sorts earlier"）。所以 ffmpeg 归 [REQUIRED_TOOL_NAMES]，
  * 任何清理入口都不许碰；并且**删掉的包不会自己回来**——要用户在终端跑 `hermes pm install`。
  *
- * 所以本文件的边界是：**只碰 [OPTIONAL_TOOL_NAMES] 这一组**（桌面自动化 cua-driver）——
- * python / node / uv / npm / ripgrep 这些核心运行时、ffmpeg（必需包）、以及
- * **用户点名要留的浏览器工具**（[PINNED_TOOL_NAMES]：agent-browser + chromium），都**绝不动**，
- * 未归类的目录也不动（宁可少清，不可清错）。
+ * ⚠️ **2026-10-11 深夜再更正：hermes 装的工具一律不提供清理。** 用户点名保留浏览器工具之后，
+ * 顺手把桌面自动化 `cua-driver` 也划进保留（同一句「有的话 hermes 是可以用的」）⇒
+ * [OPTIONAL_TOOL_NAMES] 现在是**空表**，`hermes 工具` 那一组再也点不出「清理可选工具」按钮
+ * （`ui/SettingsStorageActivity.kt` 的入口按「可清体积 > 0」渲染，自然隐藏）。
+ * 空表 + [ToolKind.OPTIONAL] 这套判据**留着**，是为了下次要放开时有地方放，不是遗留死代码。
+ *
+ * 所以本文件的边界是：**[PINNED_TOOL_NAMES]（用户点名保留）、[REQUIRED_TOOL_NAMES]（必需包）、
+ * 核心运行时、未归类目录，一律只报体积、不给删除入口**（宁可少清，不可清错）。
  *
  * 另一个边界来自 #6 的结论：`~/.hermes/hermes-agent/.git`（638M）**不能剥离**
  * （`hermes update` 走 git blobless partial clone + `git fetch` / `merge --ff-only`），
@@ -48,14 +52,21 @@ object StorageAudit {
      * 都不能开网页；它们当初被归进可选，是因为 hermes 的 lockfile 标着 `optional`——那是
      * "装不装都行"（针对别人的机器），不是"可以删"（针对这台机器上真用得起它的用户）。
      * ⇒ 从清理名单里摘出来，明细里显示「保留」，任何清理入口都不许碰。
+     *
+     * 2026-10-11 深夜追加：**`cua-driver`（桌面自动化驱动）也归这组**——同一条理由
+     * （hermes 自己装的扩展，有它 hermes 就多一种能力），用户看到浏览器工具保留后一并点头。
+     * ⇒ 至此 `hermes 工具` 一组里**没有任何可清项**。
      */
-    internal val PINNED_TOOL_NAMES = listOf("chromium", "agent-browser")
+    internal val PINNED_TOOL_NAMES = listOf("chromium", "agent-browser", "cua-driver")
 
     /**
-     * 可选工具（桌面自动化）：hermes 的 lockfile 里标着 `optional`，不用时可以清掉
-     * ——**但不会自己回来**，要用时得在终端跑 `hermes pm install`（用户 2026-10-11 实测）。
+     * 可选工具（可以清、但不会自己回来的那些）：**2026-10-11 深夜起为空表**。
+     *
+     * 原先是 `listOf("cua-driver")`；用户决定把 hermes 自己装的扩展一律保留（见
+     * [PINNED_TOOL_NAMES]），于是这里空掉。判据与清理函数（[cleanOptionalTools]）保留：
+     * 哪天要放开某个工具，把它挪进来即可，UI 的「清理可选工具」入口会自动出现。
      */
-    internal val OPTIONAL_TOOL_NAMES = listOf("cua-driver")
+    internal val OPTIONAL_TOOL_NAMES = emptyList<String>()
 
     /** 核心运行时：清掉等于把 hermes 弄瘸，任何清理入口都不许碰。 */
     internal val CORE_TOOL_NAMES = listOf("python", "node", "uv", "npm", "ripgrep", "rg", "busybox", "git", "tmux", "hermes")
@@ -104,8 +115,8 @@ object StorageAudit {
 
     private fun note(kind: ToolKind): String = when (kind) {
         ToolKind.REQUIRED -> "hermes 必需：缺了它启动自检会报错（系统层那份它不认）：不动"
-        ToolKind.PINNED -> "hermes 的浏览器工具（agent-browser + chromium 一套）：用户点名保留，不提供清理"
-        ToolKind.OPTIONAL -> "可选（桌面自动化）：删了不会自己回来，要用时在终端跑 hermes pm install"
+        ToolKind.PINNED -> "hermes 自己装的扩展（浏览器 agent-browser + chromium／桌面自动化 cua-driver）：用户点名保留，不提供清理"
+        ToolKind.OPTIONAL -> "可选：删了不会自己回来，要用时在终端跑 hermes pm install"
         ToolKind.CORE -> "核心运行时：不动"
         ToolKind.OTHER -> "未归类：不动"
     }
