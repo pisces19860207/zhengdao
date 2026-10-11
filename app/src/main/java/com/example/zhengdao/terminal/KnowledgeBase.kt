@@ -530,7 +530,8 @@ object KnowledgeBase {
         ## 想让 AI 更快找到
 
         - 文件放进 `原始/` 就行，它自己会看
-        - `txt`、`md` 最稳；**Word 的 `.docx`** 也能读（AI 可能需要自己先解一下）
+        - `txt`、`md` 最稳；**Word 的 `.docx`** 也能读（AI 自己敲一句就能解出来：
+          `busybox unzip -p 文件.docx word/document.xml`）
         - 如果是 `pdf` 或很老的 `.doc`，AI 可能要先转一下格式，第一次会慢一点
 
         $MARK
@@ -564,6 +565,8 @@ object KnowledgeBase {
         - 发现某个文件还没被整理过 → **在回复里告诉用户**即可，由 App 去处理；**你自己不要写索引**。
         - 格式提示：⚠️ **App 不再预先抽取正文**（摘要功能已于 2026-10-10 移除，E-080）。
           需要 `.docx` 全文时**自己解压取正文**（`.docx` 本质是个 zip）；
+          ⚠️ 这个环境**没装 `unzip`（也没 `7z`）**：`busybox unzip -p 文件.docx word/document.xml` 最省事；
+          要纯文本就在 `python3` 里 `import zipfile` 读 `word/document.xml`，再把 XML 标签去掉。
           真正的旧版 `.doc` 与 `.pdf` App **不解析** —— 读不了时用工具转成文本，**转出的副本放 `改版/`**。
     """.trimIndent()
 

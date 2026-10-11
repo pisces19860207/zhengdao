@@ -4526,8 +4526,19 @@ I/DIRSIZE: rootfs 对拍：Rust=805312468(70ms) Java=805312468(177ms)
 - **清理**：删掉探针后重跑一次 ⇒ 清单回到「_（还没有文件。把资料放进 `原始/`，就会出现在这里。）_」、摘要节消失
   （`grep -c 文件摘要` = 0）；`last_route` 用 `run-as` 还原成 `home`；手机与主机临时文件清空；手机装回官方滚动包。
 
-**仍未验（诚实标注）**：① 终端里让 agent 自己解压 `.docx` 的实际体验（要真在会话里读一份 `.docx`）；
-② 仅私有模式工作区的骨架文案（本次只验了共享工作区 `Download/男性/资料库`）。
+**补验（2026-10-11，真机 PGT-AN10 / `AD3J023824001723`，`zhengdao-2.0.12-debug.apk`）**：
+
+- ① **agent 自己解压 `.docx`：可行，但 `unzip` 这个名字在这台机器上不存在**。往 `资料库/原始/` 放一份 1016 B 的探针
+  `.docx`（正文含唯一标记 `ZZ-DOCX-PROBE-OK 租金每月 4200 元，押一付三。`），在**会话里**实测：环境里
+  **没有 `unzip` / `zip` / `7z` / `bsdtar`**，但有 `busybox`（含 unzip applet）、`python3`（`/usr/bin/python3`）、`node`、`tar`。
+  两条路都取出了正文逐字：`busybox unzip -p 探针.docx word/document.xml`、`python3 -c "import zipfile…"`；
+  `python3 -m zipfile -l` 也能列条目。指引现场核对：`资料库/AGENTS.md:26`「需要 `.docx` 全文时**自己解压取正文**
+  （`.docx` 本质是个 zip）」、`资料库/说明.md:28`「Word 的 `.docx` 也能读（AI 可能需要自己先解一下）」。
+  ⇒ 摩擦点只是**命令名**（直接敲 `unzip` 会 command not found），已把具体命令补进两条指引的模板
+  （`app/src/main/java/com/example/zhengdao/terminal/KnowledgeBase.kt:533` / `:566`；`seedFiles()` 走 `writeIfChanged()`
+  ⇒ 既有工作区下次会话也会更新）。（本轮引文里 `资料库/说明.md:28` 那句原文即随本次改动更新。）
+- ② **仅私有模式不预置资料库骨架：已验**（同一轮）：仅私有档重开会话后 `/workspace` 只有 `.ignore`、**没有** `资料库/`，
+  设置页那张卡显示「未挂载 · 还没放资料」+ 应用外部目录路径 ⇒ 与 `KnowledgeBase.kt:200-203`（仅私有档要用户先自建目录才补骨架）一致。
 
 **回退**：`git revert <本提交>`（零风险，纯加法/删调用的反向）。摘要能力本身未被删除，只是不再挂按钮。
 
@@ -5333,9 +5344,20 @@ runOnUiThread {
 - `showBanner`（`:1078`）本来就是安装流程的横幅出口（用户点一下收起）；那句 `InstallProgress.state.value == null` 守卫是**防止把正在显示的安装进度横幅刷掉**（与该 Activity 初始化横幅时的判断口径一致）。
 - 「给终端里留话」的正道另有其人：`ProotLauncher.kt` 生成的 `/etc/profile.d/zz-banner.sh` 读 `/tmp/.zhengdao-banner-pending`、在**首个 shell** 打印一次；`ProotLauncher.kt:613` 的注释逐字写着「App 侧是原生 TerminalView，**不能往里注入文本**」—— 本条 BUG 正是违反了它。
 
-**边界（未实测的部分）**
+**真机复现（2026-10-11，PGT-AN10 / `AD3J023824001723`，`zhengdao-2.0.12-debug.apk`）**
 
-- ⚠️ **真机没触发过失败路径**：要复现得把手机网络切断（或让 `registry.npmjs.org` 不可达）再开一次会话 —— 本轮没做（会临时断网 / 打扰正在跑的终端会话）。所以"改后横幅一定会出现"目前只有代码复核 + `showBanner` 在安装流程上的既有真机表现支撑，**不写成"已真机验证"**。
+- 步骤：`adb shell svc wifi disable` + `svc data disable`（设备侧 `ping registry.npmjs.org` 立刻变成 `unknown host`）
+  → `am force-stop com.example.zhengdao` → `am start -n com.example.zhengdao/.MainActivity --ez open_terminal true`
+  （**必须冷启动**：`networkPreCheck()` 只由 `onEmulatorSet()` 触发，而 `--ez open_terminal` 只在 `onCreate` 生效）。
+- 日志逐字（15:59:35，**一次冷启动出现 3 行**）：`网络预检：registry.npmjs.org 不通 —— 终端页横幅提示（不往会话里打字）`。
+- 屏幕逐字：终端页顶部黄色横幅「**网络不通：请确认代理已开启，并在代理 App 的「分应用代理」里勾选「证道」**」；
+  同一屏的会话区只有那三行启动提示 + `root@localhost:~#` 提示符 —— **没有一个字节被打进会话**
+  （旧行为会在提示符后多出 `echo '[网络] ⚠️ 检测失败…'`，本轮截图与旧行为的差别肉眼可辨）。
+- 点一下横幅 ⇒ 收起 ✓（`showBanner` 的既有交互）；`svc wifi enable` + `svc data enable` 后 `ping` 立刻恢复，
+  日志不再新增失败行 ✓。
+- 观察（**非缺陷**）：一次冷启动触发 **3 次**预检（同秒 3 行日志），横幅只显示一次；成因未追
+  （`onEmulatorSet` 在 `TerminalActivity.kt:842`，本次启动里被调了多次）。
+- 代价说明：复现要 `force-stop`，会杀掉当时在跑的会话与 Agent 进程（会话历史在盘上，重开即可）；网络与工作区档位已还原。
 - 已知取舍：横幅只挂在**会话页**顶部；用户若一直不回该页就看不到它 —— 即便如此，也比往会话里打字好。
 
 **教训**
