@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.ui.theme.iosSwitchColors
@@ -345,6 +346,7 @@ fun PluginsScreen() {
     if (cleanConfirm) {
         AlertDialog(
             onDismissRequest = { cleanConfirm = false },
+            shape = RoundedCornerShape(14.dp),
             title = { Text("清理插件包缓存？") },
             text = { Text("将删除已下载的插件包（约 ${cached.sumOf { it.second }} MB）。插件本身保持启用，下次启动会重新下载。") },
             confirmButton = {
