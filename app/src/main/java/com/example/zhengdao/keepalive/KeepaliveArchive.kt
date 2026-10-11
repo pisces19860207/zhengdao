@@ -306,7 +306,7 @@ object KeepaliveArchive {
                 detail = "${timeText(latest.timestamp)} · $mem。留档在设置页「保活记录」里" +
                     "（可导出给作者分析清理策略）。",
                 actionLabel = "去设置看记录",
-                actionId = IssueCenter.ACTION_VIEW_LOGS,
+                actionId = IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS,
             )
         } else {
             IssueCenter.resolve(ISSUE_LAST_EXIT)

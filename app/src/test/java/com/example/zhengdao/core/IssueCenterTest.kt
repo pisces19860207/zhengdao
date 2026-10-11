@@ -112,4 +112,31 @@ class IssueCenterTest {
         IssueCenter.resolve("a")
         assertTrue(IssueCenter.issues.value.isEmpty())
     }
+
+    /**
+     * 台账 §B 顺序 11（原 §B-补-42）：两条「去看记录 / 看日志」以前**共用** `ACTION_VIEW_LOGS`，
+     * 而首页的 `when(aid)` 既没有这个分支、也无法把两者区分开 ⇒ 两处都只落到「打开设置首页」。
+     *
+     * 这个断言锁的是**标识的唯一性**（不是文案）：只要还有两条不同的去路，它们的 id 就不能相同 ——
+     * 否则无论首页怎么写分支，都必然有一条走错地方。Compose 的分支本身进不了 JVM 单测，
+     * 但「标识能不能区分」是它的前提，前提塌了后面一定塌。
+     */
+    @Test
+    fun `去路标识互不相同_保活记录与运行日志不共用一个 id`() {
+        val all = listOf(
+            IssueCenter.ACTION_OPEN_SETTINGS,
+            IssueCenter.ACTION_REPAIR_ENV,
+            IssueCenter.ACTION_RETRY_SERVE,
+            IssueCenter.ACTION_RESTART_SERVE,
+            IssueCenter.ACTION_GRANT_STORAGE,
+            IssueCenter.ACTION_VIEW_LOGS,
+            IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS,
+            IssueCenter.ACTION_FEEDBACK,
+        )
+        assertEquals("去路标识必须唯一：重复 = 首页 when 分支必然走错一条", all.size, all.toSet().size)
+        assertTrue(
+            "「去设置看记录」与「看日志」是两条不同的去路，不能共用标识",
+            IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS != IssueCenter.ACTION_VIEW_LOGS,
+        )
+    }
 }

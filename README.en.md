@@ -278,25 +278,41 @@ And thanks to the open-source projects we stand on:
 
 ## License
 
-First-party code is released under **GPL-3.0** (the licence the author chose). The bundled Termux
-terminal-emulator / terminal-view (v0.119.0-beta.3) is **Apache-2.0** (it was previously mis-labelled
-GPL; see PROVENANCE.md for the erratum); the bundled PRoot component is compiled from the upstream
-GPL project (proot-me/proot) and aggregated as a standalone executable — its origin and licence
-obligations are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+First-party code has been **"All rights reserved"** since **2026-10-11** (see the repository-root
+[`LICENSE`](LICENSE)): reading, cloning and evaluating it locally (including building and running it
+for evaluation) is fine, but **redistribution and any commercial use — paid or free, offering it as a
+service (SaaS / hosting), bundling / OEM / white-labelling, company-wide deployment — require prior
+written permission from the project owner** (contact: putaopanpan@gmail.com).
+
+**Releases up to and including v2.0.15 are unaffected**: they remain under the **GPL-3.0** they shipped
+with, and GPL grants are irrevocable — anyone who already has such a copy keeps their GPL rights. That
+GPL-3.0 text now lives at [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt) (moved out of the root
+`LICENSE`, byte-for-byte unchanged).
+
+> **Why the change was possible**: the repository has **no external human contributors** — first-party
+> copyright is entirely with the project owner. See section 7 of
+> [`docs/闭源切换清单-2026-10-11.md`](docs/闭源切换清单-2026-10-11.md) for the evidence (an authorship
+> census over all 710 commits). Future outside contributions must sign [`CLA.md`](CLA.md) first —
+> see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+The bundled Termux terminal-emulator / terminal-view (v0.119.0-beta.3) is **Apache-2.0** (it was
+previously mis-labelled GPL; see PROVENANCE.md for the erratum); the bundled PRoot component is
+compiled from the upstream GPL project (proot-me/proot) and aggregated as a standalone executable —
+its origin and licence obligations are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
 ## Redistribution, repackaging and the name "Zhengdao"
 
-First-party code is **GPL-3.0**, so redistributing, modifying, repackaging — even selling — is
-**allowed**, as long as you follow the GPL rules: keep the author's attribution and the licence,
-publish your changes, and add no further restrictions downstream. The author's stance, written down
-so nobody has to ask:
+First-party code is **"All rights reserved"** as of **2026-10-11** (older releases, ≤ v2.0.15, remain
+GPL-3.0). The author's stance, written down so nobody has to ask:
 
-- **Welcome**: writing tutorials, recording videos, charging for setting up environments or
-  answering questions, building your own distribution on top of it (just rename it), sending PRs or
-  issues upstream.
+- **Welcome**: writing tutorials, recording videos, charging for setting up environments or answering
+  questions, reading the source, building it locally for evaluation, sending PRs or issues upstream.
+- **Ask first (written permission required)**: redistribution — including publishing your own renamed
+  build, any commercial use, offering this project or a derivative as a service, bundling it into
+  hardware or another product. Licensing and business enquiries: putaopanpan@gmail.com.
 - **Please don't**: take the installer, reskin it and claim it as yours; delete the author, licence
   and source links from the "About" page; publish your repackaged build under the name "Zhengdao"
-  (or the author's name "小信多多") — the GPL licenses **code only** and grants **no name or
+  (or the author's name "小信多多") — the code licence covers **code only** and grants **no name or
   trademark rights**, so passing off the name or the attribution is a separate matter.
 - **The app tells the truth**: every build is signed, and Zhengdao's "About" page shows
   "Official release ✓ / ⚠️ Unofficial (repackaged)", with a second warning at launch for unofficial

@@ -153,7 +153,17 @@ plugins {
 //    另附渲染层两处（台账 §B-补-47）：选词拖动时不再跟着滚终端；「显示列 → 合法游标列」的判据
 //    收敛成单一第一方实现，并修掉「行内出现零宽字符就把手柄列夹回去」的毛病（有 JVM 单测）。
 //    仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.15"
+// 2.0.16（2026-10-11）：许可边界与信息架构收尾 ——
+//    ①**第一方代码自本版起改为「保留所有权利」**（用户拍板；依据 = 全历史 710 提交无外部人类贡献者）：
+//      根 `LICENSE` 换成第一方声明，原 GPL-3.0 全文**逐字节**移入 `licenses/GPL-3.0.txt`，
+//      **≤ v2.0.15 的已发布版本仍按 GPL-3.0 分发**（GPL 不可撤回）。随包正文因此变成**九份** .txt
+//      （第一方声明在包内名 `LICENSE-zhengdao.txt`）；设置页「关于 → 许可证」与「开源许可」页
+//      同步改口径。新增 `CONTRIBUTING.md` / `CLA.md`（外部贡献须先签 CLA，且必须早于第一个外部 PR）。
+//    ②设置页信息架构重排：入口页 + 六个二级页（另一会话产出，蓝总管验收）——终端外观 / 工作区 /
+//      资料库 / 保活记录 / 运行日志 / 帮助；首页「去设置看记录」「看日志」的通知按钮**接到对应二级页**
+//      （台账 §B 顺序 11 = 原 §B-补-42；此前两处都只是打开设置首页）。
+//    仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.16"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -186,7 +196,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 31
+        versionCode = 32
         versionName = appVersionName
 
         ndk {
@@ -210,7 +220,8 @@ android {
     // 义务来源：Apache-2.0 §4(a)（要给接收者许可证副本）、GPL-3.0 §4、LGPL-3.0 §2（libtalloc 并入
     // GPL-3.0）、BSD-3-Clause（二进制分发须复现声明）。此前正文只在仓库里 ⇒ 只拿到 APK 的人取不到，
     // §4(a) 在分发物层面没落实（docs/ERRATA.md E-104）。
-    // ⚠️ **git 里只存一份正文**：源 = 仓库根 `licenses/` 与根 `LICENSE`，构建期由
+    // ⚠️ **git 里只存一份正文**：源 = 仓库根 `licenses/`（八份 .txt + README）与根 `LICENSE`
+    //    （第一方代码声明，随包更名为 `LICENSE-zhengdao.txt`），构建期由
     //    `stageLicenseAssets` 原样复制进 assets。之所以复制而不各存一份，是为了让
     //    「licenses/README.md 记的 SHA256」永远等于「随包的那一份」——两份一旦漂移，
     //    README 的校验命令就成了一句空话。
@@ -430,19 +441,20 @@ tasks.matching { it.name.matches(Regex("pre[A-Z].*Build")) }.configureEach {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 许可证正文装配（2026-10-11）：仓库根 licenses/*.txt + 根 LICENSE → assets/licenses/
-//   · licenses/ 里每份 .txt（Apache-2.0 / BSD-2-Clause / BSD-3-Clause / BSD-3-Clause-zstd / GPL-2.0 / LGPL-3.0 / NOTICES）
-//     与 README.md 内容一字不改，换行归一成 LF
-//   · 根 LICENSE 更名为 GPL-3.0.txt（与 licenses/GPL-2.0.txt 区分开）
-// 末尾断言八份 .txt 必须落到实处：漏一份就等于 APK 里缺一份正文，
+// 许可证正文装配（2026-10-11；同日随「第一方代码换许可」调整）：仓库根 licenses/*.txt + 根 LICENSE → assets/licenses/
+//   · licenses/ 里每份 .txt（Apache-2.0 / BSD-2-Clause / BSD-3-Clause / BSD-3-Clause-zstd /
+//     GPL-2.0 / GPL-3.0 / LGPL-3.0 / NOTICES）与 README.md 内容一字不改，换行归一成 LF
+//   · 根 LICENSE 更名为 LICENSE-zhengdao.txt（**第一方代码声明**；GPL-3.0 正文自本版起在 licenses/GPL-3.0.txt）
+// 末尾断言九份 .txt 必须落到实处：漏一份就等于 APK 里缺一份正文，
 // 而这正是 E-104 记的「台账写了、文件里没有」的同款错误 —— 宁可构建失败。
 // 校验随包结果（不必装包）：
 //   .\gradlew.bat :app:assembleDebug
 //   powershell -c "Add-Type -A System.IO.Compression.FileSystem; $z=[IO.Compression.ZipFile]::OpenRead('<apk>'); $z.Entries | ? FullName -like 'assets/licenses/*' | %% { \"{0}  {1}\" -f $_.Length, $_.FullName }; $z.Dispose()"
 // ─────────────────────────────────────────────────────────────────────────────
 /**
- * 许可证正文装配：把仓库根 `licenses/`（六份 .txt 正文 + NOTICE 汇总 + README）与根 `LICENSE`（更名 GPL-3.0.txt）
- * 原样复制进一个受 AGP 管辖的「生成资源目录」，由变体资源合并随 APK 打包。
+ * 许可证正文装配：把仓库根 `licenses/`（八份 .txt 正文 + NOTICE 汇总 + README）与根 `LICENSE`
+ * （第一方代码声明，更名 LICENSE-zhengdao.txt）原样复制进一个受 AGP 管辖的「生成资源目录」，
+ * 由变体资源合并随 APK 打包。
  *
  * 为什么不直接 `sourceSets.assets.srcDir(<仓库根 licenses>)`：
  *   · 根 `LICENSE` 在仓库根目录下，没法只挑一个文件加进 assets 源集（挂目录会把整个仓库根带进去）；
@@ -491,7 +503,7 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
             licensesDir.get().asFile.listFiles().orEmpty()
                 .filter { it.isFile }
                 .map { it to it.name } +
-                (rootLicense.get().asFile to "GPL-3.0.txt")
+                (rootLicense.get().asFile to "LICENSE-zhengdao.txt")
         copies.forEach { (src, name) ->
             val canonical = normalizeToLf(src.readBytes())
             File(out, name).writeBytes(canonical)
@@ -520,6 +532,7 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
             "GPL-2.0.txt",
             "GPL-3.0.txt",
             "LGPL-3.0.txt",
+            "LICENSE-zhengdao.txt",
             "NOTICES.txt",
         )
         check(txts.containsAll(need)) {
