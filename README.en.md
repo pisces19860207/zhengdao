@@ -199,9 +199,10 @@ in features):
 - **OpenCode built in**, **Hermes Agent supported** (both verified end-to-end on real hardware);
   Claude Code / AGY CLI use their own official scripts
 - Storage policy, settled: MANAGE as the main path plus direct `/sdcard`; 4 notification channels;
-  cache cleanup is **shown in tiers** — the desktop-automation tool (`cua-driver`) can be cleared;
-  Hermes **required** packages (such as `ffmpeg`) and the **browser tools** (`chromium` /
-  `agent-browser`, kept on the user's explicit request) are reported but not clearable; and in
+  cache cleanup is **shown in tiers** — nothing under `~/.hermes/tools` is clearable: Hermes
+  **required** packages (such as `ffmpeg`) and the **extensions it installs itself** (`chromium` /
+  `agent-browser` for browsing, `cua-driver` for desktop automation — all kept on the user's explicit
+  request, so since v2.0.17 the tools group has no clearable entry) are reported but never clearable; and in
   the public area "install scripts" can be cleared while the "workspace" is your data and is not
 
 > **⚠️ Where OpenCode runs (since v1.2)**: the "Taiji" tab uses the **built-in** host build
