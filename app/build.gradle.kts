@@ -420,16 +420,17 @@ tasks.matching { it.name.matches(Regex("pre[A-Z].*Build")) }.configureEach {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 许可证正文装配（2026-10-11）：仓库根 licenses/*.txt + 根 LICENSE → assets/licenses/
-//   · Apache-2.0.txt / GPL-2.0.txt / LGPL-3.0.txt / BSD-3-Clause.txt / README.md 内容一字不改，换行归一成 LF
+//   · licenses/ 里每份 .txt（Apache-2.0 / BSD-2-Clause / BSD-3-Clause / BSD-3-Clause-zstd / GPL-2.0 / LGPL-3.0 / NOTICES）
+//     与 README.md 内容一字不改，换行归一成 LF
 //   · 根 LICENSE 更名为 GPL-3.0.txt（与 licenses/GPL-2.0.txt 区分开）
-// 末尾断言五份 .txt 必须落到实处：漏一份就等于 APK 里缺一份正文，
+// 末尾断言八份 .txt 必须落到实处：漏一份就等于 APK 里缺一份正文，
 // 而这正是 E-104 记的「台账写了、文件里没有」的同款错误 —— 宁可构建失败。
 // 校验随包结果（不必装包）：
 //   .\gradlew.bat :app:assembleDebug
 //   powershell -c "Add-Type -A System.IO.Compression.FileSystem; $z=[IO.Compression.ZipFile]::OpenRead('<apk>'); $z.Entries | ? FullName -like 'assets/licenses/*' | %% { \"{0}  {1}\" -f $_.Length, $_.FullName }; $z.Dispose()"
 // ─────────────────────────────────────────────────────────────────────────────
 /**
- * 许可证正文装配：把仓库根 `licenses/`（四份正文 + README）与根 `LICENSE`（更名 GPL-3.0.txt）
+ * 许可证正文装配：把仓库根 `licenses/`（六份 .txt 正文 + NOTICE 汇总 + README）与根 `LICENSE`（更名 GPL-3.0.txt）
  * 原样复制进一个受 AGP 管辖的「生成资源目录」，由变体资源合并随 APK 打包。
  *
  * 为什么不直接 `sourceSets.assets.srcDir(<仓库根 licenses>)`：
@@ -500,7 +501,16 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
             ?.map { it.name }
             ?.sorted()
             .orEmpty()
-        val need = listOf("Apache-2.0.txt", "BSD-3-Clause.txt", "GPL-2.0.txt", "GPL-3.0.txt", "LGPL-3.0.txt")
+        val need = listOf(
+            "Apache-2.0.txt",
+            "BSD-2-Clause.txt",
+            "BSD-3-Clause.txt",
+            "BSD-3-Clause-zstd.txt",
+            "GPL-2.0.txt",
+            "GPL-3.0.txt",
+            "LGPL-3.0.txt",
+            "NOTICES.txt",
+        )
         check(txts.containsAll(need)) {
             "[stageLicenseAssets] 许可证正文缺失：应有 $need，实际 $txts ——" +
                 "APK 将不带正文（见 docs/ERRATA.md E-104 与 licenses/README.md）"
