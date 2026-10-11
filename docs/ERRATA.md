@@ -6195,3 +6195,32 @@ BUILD SUCCESSFUL（**68 suite / 622 例 / 0 失败**；新增 `新版布局的�
 **教训**：**清理白名单要跟着用户的实测走，不能只跟着上游的 optional 标记走。**
 凡是"删了不会自己回来"的东西，宁可默认保留、让用户点名要清；
 「可选」是上游的词，不是用户的意图。
+
+## E-115 深夜补记（2026-10-11 v2.0.17 发版前）
+
+**口径更正：`cua-driver` 也划入「保留」，`OPTIONAL_TOOL_NAMES` 收窄为空表。**
+
+E-115 正文里那句「`cua-driver` 仍可清」是**当天下午**的处置（当时把桌面自动化驱动当
+「删了不会自己回来、要用时再装」的可选项，留了一条清理入口，并在 #54 的行内标为
+「待用户点头」）。用户 2026-10-11 深夜收尾时逐字交办：
+
+> 这两个做了就对账、清账、销账。今天就彻底结束了。
+
+按「这两个做了」执行 ⇒ **`cua-driver` 归入 `PINNED_TOOL_NAMES`**（同 `chromium` /
+`agent-browser` 一组），`app/src/main/java/com/example/zhengdao/terminal/StorageAudit.kt`
+的 `OPTIONAL_TOOL_NAMES` 变为 `emptyList<String>()`。连带后果两条：
+
+1. `app/src/main/java/com/example/zhengdao/ui/SettingsStorageActivity.kt` 的清理入口按
+   `if (optMb > 0)` 渲染 ⇒ **`optMb` 恒为 0 ⇒ 「清理可选工具」按钮不再出现**
+   （代码与弹窗文案保留，以便日后放开；注释就地写明缘由）。
+2. `note(ToolKind.PINNED)` 文案改为「hermes 自己装的扩展（浏览器 agent-browser +
+   chromium／桌面自动化 cua-driver）：用户点名保留，不提供清理」——
+   **`~/.hermes/tools/` 下现在没有任何可清项**，工具组一律只报体积。
+
+**教训（补一条）**：「上游标成 optional / 用户当天没否定」都不等于用户愿意删。
+判定一个目录能不能给删除入口，只看**用户对它的使用价值有没有说过话**；
+说不清的一律不给入口（只报体积），要放开随时能放开——
+把删除入口留着「以防万一」，代价是用户某天点一下、能力就没了。
+**取数口径**（本次真机读数）：`cua-driver-0.21.0-linux-arm64` 80 MB ·
+`chromium-1208` 600 MB · `agent-browser-0.26.0-linux-arm64` 9 MB，
+三项在 v2.0.17 上全部显示「保留」。
