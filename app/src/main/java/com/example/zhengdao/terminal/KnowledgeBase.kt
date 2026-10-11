@@ -573,8 +573,22 @@ object KnowledgeBase {
      */
     private fun dispatchAgentsText(ctx: Context): String {
         val ws = Workspace.hostDir(ctx).absolutePath
-        val wsNote = if (Workspace.isShared(ctx)) "手机文件管理器直接可见、可自由删除；卸载证道后仍保留"
+        val shared = Workspace.isShared(ctx)
+        val wsNote = if (shared) "手机文件管理器直接可见、可自由删除；卸载证道后仍保留"
         else "应用专属目录，随应用卸载自动删除"
+        // 仅私有档**不 bind /sdcard**（B-补-1 修正之后 [Workspace.isShared] 才真的会判成 false）⇒
+        // 文件地图里的共享盘指路必须跟着改，否则 agent 会照着一句到不了的路径满世界撞墙
+        // （E-094 附带修正：改的是本函数里两处与模式相关的句子，其余文案一字未动）。
+        val sdcardLine = if (shared) {
+            "- /sdcard —— 共享存储整体可读可写，用于查找资料；**产出约定只进 /workspace**"
+        } else {
+            "- /sdcard —— **本档没有挂载共享存储**（仅私有）：手机相册 / 下载那类目录在 guest 里看不到，别去找"
+        }
+        val findLine = if (shared) {
+            "找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃"
+        } else {
+            "找不到用户文件时：先 ls /workspace，把已搜索的路径列出来再下结论，不要直接放弃"
+        }
         val kb = root(ctx).absolutePath
         val hasRaw = rawDir(ctx).isDirectory && (rawDir(ctx).list()?.isNotEmpty() == true)
         return """
@@ -587,7 +601,7 @@ object KnowledgeBase {
 
             ## 文件地图
             - /workspace —— **产出与边界区**（手机侧：$ws；$wsNote）
-            - /sdcard —— 共享存储整体可读可写，用于查找资料；**产出约定只进 /workspace**
+            $sdcardLine
             - /root —— 你的 home；各 Agent 配置在此（~/.hermes、~/.claude 等）
 
             ## 用户的资料库${if (hasRaw) "（里面有东西）" else "（目前是空的）"}
@@ -600,7 +614,7 @@ object KnowledgeBase {
             ## 能力边界
             - 无 root，不要尝试需要 root 的操作
             - 禁止执行 apt upgrade；装依赖用 pip / npm
-            - 找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃
+            - $findLine
         """.trimIndent()
     }
 }
