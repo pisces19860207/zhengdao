@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | 1 | 底栏 56dp + 10sp 标签 | `uiautomator` 量底栏容器 `[0,2652][1312,2848]` = **196 px**；本机 1312 px / 375 dp = 3.5 px/dp ⇒ **56.0 dp** ✓；三个标签节点高 46 px，完整落在 栏内（无裁切） | ✅ |
 | 2 | 选中态去胶囊 | 改动前（`00-before`）选中 Tab 有浅蓝胶囊；改动后（`01-after`）胶囊消失，只剩 iOS 蓝图标 + 标签 | ✅ |
-| 3 | 终端页深色 chrome | 工具条实测 **154 px = 44.0 dp**；标题浅色、复制/粘贴 `#007AFF`；画布仍是 Catppuccin Mocha（见 `02-terminal-chrome-dark`） | ✅ |
+| 3 | 终端页 chrome（键条深色化） | 工具条实测 **154 px = 44.0 dp**；标题**深色** `#FF1C1C1E`（工具条本身仍是浅色底）、复制/粘贴 `#007AFF`；画布仍是 Catppuccin Mocha（见 `02-terminal-chrome-dark`） | ✅ |
 | 4 | **红线**：终端快捷键 17 键 id/顺序不变 | `uiautomator` 逐条列出第一行 `key_esc` / `key_tab` / `key_ctrl` / `key_shift` / `key_interrupt`，第二行 `key_up` / `key_down` / `key_left` / `key_right` / `key_pgup` / `key_pgdn` / `key_home` / `key_end` / `key_pipe` / `key_minus` / `key_slash` / `key_backspace` = **17 个**，id 与顺序与改动前一字不差；单键高 **168 px = 48.0 dp** | ✅ |
 | 5 | **红线**：终端页红点仍关闭终端 | 点红点（`btn_close`）后 `dumpsys activity activities` 的 `topResumedActivity` 从 `TerminalActivity` 回到 `com.example.zhengdao/.MainActivity`；重进终端 **tmux 会话仍在**（Hermes Agent v0.21.6 横幅原样），即 `finish()` 不杀会话 | ✅ |
 | 6 | Compose 对话框 14dp 圆角 | 「资料库说明」对话框（`SettingsScreen.kt` 的 `资料库说明`）左上角圆弧可见（`04-dialog-compose-14dp`） | ✅ |
@@ -36,12 +36,14 @@
 2. **iOS 绿开关的颜色** —— 设置页两个开关都在屏幕最右侧（x ≈ 1018–1200），被系统**画中画小窗**遮住（`03-keybar-dark-17keys` 同期截图可见），未拍到。代码层面 `iosSwitchColors()` 共替换 4 处（`ui/SettingsScreen.kt` 2 处、`ui/PluginsScreen.kt` 2 处）。
 3. **Tab 图标弹动**（0.86 → 1.0 spring）在静止截图里看不出，需要录屏。
 
-## 4. 顺手发现、**本次未改**的问题（待拍板）
+## 4. 顺手发现的四条（2026-10-11 当天处理完毕）
 
-1. **开关颜色不统一**：`app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` 的「资料库」卡里，「让终端 AI 自动读取」换成了 iOS 绿，紧邻的「提问时自动附上资料线索」**没换**（仍是 M3 主色）⇒ 同一张卡里两个开关颜色不同。修法 = 给另一处也加 `colors = iosSwitchColors()`（一行）；或者这次统一撤回。
-2. **两套对话框按钮色不同**：Compose 对话框按钮走 iOS 蓝，框架 `android.app.AlertDialog` 的按钮跟着主题 accent 走（偏绿）。
-3. **终端页状态栏是浅底深字**（`windowLightStatusBar=true` + 透明状态栏）⇒ 深色工具条上方有一条亮带，终端页尤其明显（见 `02-terminal-chrome-dark` 顶部）。
-4. **交接文档措辞与代码不符**：`docs/证道-UI美化动画-交接-2026-10-11.md` 与 `b6f7c92` 提交信息写「终端页分隔线改 0.5dp 发丝线 / 透明」，实际 `app/src/main/res/layout/activity_main.xml` 只改了颜色 `#FFE0E0E0 → #FFC6C6C8`，`height` 仍是 1dp。代码没问题，是文档写过头了。
+| # | 发现 | 处置 | 证据 |
+| --- | --- | --- | --- |
+| 1 | 「资料库」卡里两个开关颜色不统一：「让终端 AI 自动读取」是 iOS 绿，「提问时自动附上资料线索」还是 M3 主色 | ✅ **已修**：`app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` 第二处补 `colors = iosSwitchColors()`（一行） | 把该开关**打开**后抓屏，探针在 **x 1018–1220** 判定出第二条 iOS 绿轨（**y ≈ 2320–2439**，2993 px），与第一条同色；验完已按回默认「关」——见 `08-switch-two-green` / `10-switch-restored-off` |
+| 2 | 两套对话框按钮色不同：Compose 走 iOS 蓝，框架 `android.app.AlertDialog` 跟系统 accent（偏绿） | ✅ **已修**：`app/src/main/res/values/themes.xml` 的 `Theme.ZhengdaoDialog` 加 `android:colorAccent = #FF007AFF` —— 改这一处，5 个框架对话框全跟 | 长按圆点弹对话框后抓屏，按钮区饱和主色 = **hue 218°**（`#007AFF` 系；改前是绿）——见 `09-dialog-framework-iosblue` |
+| 3 | 「终端页状态栏浅底深字 ⇒ 深色工具条上方一条亮带」 | ❌ **不是缺陷，是我判断错了**（已更正：`docs/ERRATA.md` **E-091**）。像素实测：状态栏 `(250,250,250)`、工具条 `(255,255,255)` —— **工具条本来就是浅色**（只是标题字色深 `#FF1C1C1E`），根本不存在"深色工具条"；浅色顶栏 + 深色画布/键条是交接文档写明**有意保留**的 PAPER 取舍 | `02-terminal-chrome-dark` 顶部逐行取色 |
+| 4 | 交接文档措辞与代码不符：写「分隔线改 0.5dp 发丝线」，实际只改了颜色 | ✅ **已修**：`docs/证道-UI美化动画-交接-2026-10-11.md` 该行改为「分隔线**只改颜色** `#E0E0E0`→`#C6C6C8`（`height` 仍 1dp）」 | 文档改动本身 |
 
 ## 5. 复现命令（PC 侧）
 
@@ -78,3 +80,6 @@ Start-Sleep -Milliseconds 1300
 | `05-dialog-framework-14dp.webp` | 框架对话框：长按圆点弹出的「顶部三个圆点」，14dp 圆角 + `#F2F2F7` 底 |
 | `06-press-normal.webp` | 常态：「环境就绪」卡宽 1196 px |
 | `07-press-holding-097.webp` | 按住中：同卡 1160 px（= 0.97），且整卡被按下态着色 |
+| `08-switch-two-green.webp` | §4-1 修复后：把第二个开关**打开**，「资料库」卡里两条轨道同为 iOS 绿 |
+| `09-dialog-framework-iosblue.webp` | §4-2 修复后：框架对话框按钮变 iOS 蓝（饱和主色 hue 218°，改前偏绿） |
+| `10-switch-restored-off.webp` | 验证完把开关按回默认「关」：两条轨道同为灰，没在用户设置里留下改动 |
