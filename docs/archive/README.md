@@ -43,8 +43,10 @@
 其中 FIX-F 的真机验收在台账里还有一处自相矛盾待查（`docs/ERRATA.md:4779` 写「⚠️ 未真机」，§A #9 写「单测 + 真机」，且
 `docs/acceptance/` 无对应页，见 ledger §B-补-31~39）。
 
-**备份包**（含被删的 59 个条目，可整体还原）：`C:\Users\guoli\AppData\Local\Temp\zd-workspace-root-backup-2026-10-11.zip`，
-679,479 B，`sha256 A4A25E5D3957155A54BD0B2C569D73FEACDAE0EAB68A989B988CEC780ECBFF40`。系统 Temp 会被清理，**不要把长期依赖放在那里**。
+**备份包**（含被删的 59 个条目，可整体还原）：`docs/archive/zd-workspace-root-backup-2026-10-11.zip`，
+679,479 B，`sha256 A4A25E5D3957155A54BD0B2C569D73FEACDAE0EAB68A989B988CEC780ECBFF40`。
+**2026-10-11 晚已从系统 Temp 挪进仓库**（用户：「挪到仓库，不备份」）—— Temp 那份原件已 `Move-Item` 移走、**不留副本**，
+zip 的字节与 sha256 一字未变；仓库里就此有了一份不受 Temp 清理影响的还原点。
 
 **「原样」到什么程度（2026-10-11 实测比对）**：这 4 份在仓库里的 **blob 与备份 zip 中的同名条目 sha256 逐字节相同** ——
 
