@@ -126,7 +126,7 @@ v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven
 keeping up with upstream, not further restructuring. Remaining items (7 open, including known
 performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
 
-`main` currently runs **574 unit tests across 64 suites, all green** (2026-10-11: 0 failures,
+`main` currently runs **600 unit tests across 66 suites, all green** (2026-10-11: 0 failures,
 0 errors, 1 skipped by environment).
 
 ### Recent releases

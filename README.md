@@ -85,7 +85,7 @@
 
 **当前版本：v2.0.12**（`versionCode 28`，2026-10-11）。功能面在 v1.1 定型、v2.0.12 起收口——**之后以修 BUG、跟上游变化为主，不再按批次改结构**。仍未关的账（7 项，含已知的性能与体验条目）见 [Issues](https://github.com/pisces19860207/zhengdao/issues)。
 
-当前 `main`：单测 **574 例 / 64 个 suite 全绿**（`app\build\test-results\testDebugUnitTest`，2026-10-11 实测 0 失败 0 错误、1 例按环境条件跳过）。
+当前 `main`：单测 **600 例 / 66 个 suite 全绿**（`app\build\test-results\testDebugUnitTest`，2026-10-11 实测 0 失败 0 错误、1 例按环境条件跳过）。
 
 ### 近期版本
 
