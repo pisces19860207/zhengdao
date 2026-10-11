@@ -1,3 +1,5 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 // JNI 薄层（仅 Android 目标编译）。收编前是两份独立实现
 // （sha256poc 的 nativeSha256Hex、extract 的 nativeExtract + report_progress），
 // R1 合并进同一个 .so、同一个 Kotlin 类：
