@@ -294,7 +294,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     val dy = kotlin.math.abs(ev.y - edgeStartY)
                     // 横向占优 + 走够阈值 + 纵向没跑偏，才算「右滑返回」；
                     // 纵向占优的滑动一律放过（终端继续滚动）。
-                    if (dx > trigger && dx > dy && dy < slop) {
+                    //
+                    // 2026-10-10 UIUX 审计 B7 修：**排除"正在选词"**。
+                    // 长按选中文字后拖动选择手柄，轨迹恰好是"横向 >40dp、纵向 <40dp"——
+                    // 和右滑返回判据完全同形。旧代码不查选词状态 ⇒ 起手点又常在左边缘，
+                    // 于是"想选一段命令"被判成"右滑关闭"，终端连带这一屏直接没了，且无撤销。
+                    // [TerminalView.isSelectingText()] 是上游公开方法（terminal-view:1463）。
+                    val selectingText = ::termView.isInitialized && termView.isSelectingText()
+                    if (!selectingText && dx > trigger && dx > dy && dy < slop) {
                         edgeTracking = false
                         android.util.Log.d(
                             "EdgeSwipe",
@@ -852,7 +859,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // FIX-F：会话没了，行缓冲里那半句也就不该存在（避免下次进来串味）。
         KnowledgeBaseHints.reset()
         runOnUiThread {
-            Toast.makeText(this, "会话已退出（code=$code）", Toast.LENGTH_LONG).show()
+            // 2026-10-10 UIUX 审计 P1-4 修：原 Toast 带 "code=$code" 是开发术语，对非技术用户
+            // 没有任何信息量（甚至会让人以为"出错了"）。改成中文大白话：会话**已经**结束
+            // 是事实陈述；exit status 仍可在日志里查，但不必每次都弹到用户脸上。
+            // code 这个变量保留在 logcat 中给后续调试用。
+            android.util.Log.i("TerminalSession", "onSessionFinished code=$code")
+            Toast.makeText(
+                this,
+                "这一屏的会话已经结束了。命令在后台跑完了，下次进来就是新的一屏。",
+                Toast.LENGTH_LONG,
+            ).show()
         }
     }
     /**
