@@ -44,6 +44,8 @@
 
 | 25 | **顺序 10 收口：刻意未跟踪的产出物归档入库**（用户 2026-10-11 交办：「收口」，在四个选项（全删 / 只删过期 / **归档进仓库** / 原地保留）里选归档）：①**归档** —— 6 个未跟踪文件（5 份文档，其中 Rust 化余地审计是 `.md` + 同名 `.html`）移入 `docs/archive/` 并入库；新增 `docs/archive/README.md` 逐条写明产出者·日期·内容·现状，并声明「**归档 ≠ 有效**，现状一律以本 ledger 为准」；②**删除** —— `.zd-scratch/`（临时草稿：61 行仓库文件清单 `mainfiles.txt` + 305 B 上游 `upstream/TerminalView.java` 片段，皆可从仓库 / 上游重建），删前逐项列过；③**修引用** —— 这些文档的路径引用全部改指 `docs/archive/…`：ERRATA 3 处、`docs/acceptance/terminal-render-p0-2026-10-10.md` 2 处、`docs/acceptance/ui-ios-skin-2026-10-11.md` §4、`docs/Rust化-dirSizeMb-交接.md` §7、`rust/core/src/dirsize.rs:4`、`app/src/main/java/com/example/zhengdao/rust/CoreNative.kt:83`、`app/src/main/java/com/example/zhengdao/ui/SystemInfoProvider.kt:265`、`app/src/test/java/com/example/zhengdao/ui/DirSizeMbTest.kt:12`、`app/src/test/java/com/example/zhengdao/rust/R8KeepRuleGuardTest.kt:13`（**注释 / 文档 only，零行为改动**；`DirSizeParityTest.kt:25` 是《》书名式引用，无路径可改） | `docs/archive-untracked-2026-10-11` 分支（`2253491`，16 files / **+1103 −13**）→ 合并 `main` | 收口前 `git status --porcelain` = `?? .zd-scratch/` + 6 个 `??` 文档；收口后未跟踪项**归零**；`gradlew.bat --offline :app:testDebugUnitTest` **BUILD SUCCESSFUL in 28s** —— `:app:compileDebugKotlin` / `:app:compileDebugUnitTestKotlin` 实际执行并成功，测试任务判 **UP-TO-DATE**（注释改动未改变编译产物 ⇒ 零行为改动的旁证）；`git diff --check` 对 ERRATA 那 3 行报 trailing whitespace = 该文件本来就是 CRLF（`text=auto` + `autocrlf=true`）的既有现象，非本次引入 |
 
+| 26 | **外部报告清账：工作区根两个目录全删 + 未立账项补记**（用户 2026-10-11 交办：「给前两个清理一下，有些已经做了，没做的立账吧，归档最后看真实情况」，随后「删，小说侧的也删……该入账的入账」）：①**只读对账** —— 5 路并行（App 缺陷审计 / proot·proroot / rootfs·终端·知识库 / UI 批次 / 知识库+小说侧+`.zd-scratch`），对 17 份报告逐条判定「已落地 / 已立账 / 未落地且未立账」；②**立账** —— 新增 **§B-补** 小节，把 30 条「未落地又没账」的条目逐条写进台账（其中 `Workspace.isPrivate()` 恒 false、网络预检注入 pty、`EnvSelfHeal` 两处、`CacheCleaner` 四处静默兜底这几条由我拉代码逐行复核过）；③**修引用** —— 仓库里 5 个文件共 8 处引用这两个目录，全部改成不带路径的「外部报告（2026-10-11 已删）」；④**删除** —— `证道设计报告\`（37 文件）+ `.zd-scratch\`（22 文件）= 59 个文件整体删除（删前打包留底）；⑤**台账修正** —— §B 顺序 3（issue #12）实为已完成、顺序 8 第②条当前不可达、§C 补 6 条「不做」留痕 | 无代码改动（docs + 注释 only，`docs/reconcile-report-2026-10-11` 分支） | 备份 `C:\Users\guoli\AppData\Local\Temp\zd-workspace-root-backup-2026-10-11.zip`（**59 条目 / 679,479 B / `sha256 A4A25E5D3957155A54BD0B2C569D73FEACDAE0EAB68A989B988CEC780ECBFF40`**）；删后工作区根不再有未跟踪目录、`git status --porcelain` 归零；`git grep 证道设计报告` 与 `git grep .zd-scratch` 改后 0 命中；`:app:testDebugUnitTest` BUILD SUCCESSFUL |
+
 > **发版流程（下次照抄）**：改 `app/build.gradle.kts` 的 `appVersionName` / `versionCode` → 新增 `.github/release-notes/vX.Y.Z.md` → 合进 `main`（`build.yml` 会把滚动 release `latest` 刷成新版，确认落在 `latest` 的 apk 尺寸/时间变了）→ `git tag -a vX.Y.Z && git push origin vX.Y.Z` → `build.yml` 的 `release` job（`if: startsWith(github.ref, 'refs/tags/v')`）建正式 Release。注意滚动包**每次构建都会重传、sha256 不可复现**，别把历史 sha256 当"在架值"（E-081）。
 
 > ⚠️ **2026-10-10 16:34 的一次事故与自愈**（记在 E-085 里）：跑 `.\gradlew.bat :app:connectedDebugAndroidTest` 会先卸载 App ⇒ **App 内部数据被清**（`files/rootfs`、`files/home`、prefs）；外部数据完好（`Download/证道/*` 与用户的 `Download/男性` 都在）。16:36:40 重进终端时 App 自己用本地缓存包重装了 rootfs（`SHA256 校验通过（来源：索引）`，768 MB，不联网）；工作区设置回落成默认值、已改回 `/storage/emulated/0/Download/男性`；并给本地归档补了 `.sha256` 边车（65 B，`d80639e7…4f02`），免得「清数据后离线重装」被 E-082 的 fail-closed 拒掉。
@@ -54,12 +56,12 @@
 | --- | --- | --- |
 | 1 | **P3-3 备份范围没排除大目录**（`AndroidManifest.xml:45/48/49` + 两个 `res/xml/*rules.xml` 至今是模板、零 `exclude` ⇒ rootfs / home / logs / oc 可能被云备份带走） | **issue #19**（本轮新开登记） |
 | 2 | 第六批：状态寿命与手感硬伤（P2-1 ~ P2-5） | issue #15 |
-| 3 | 第三批：两处长期泄漏（P1-1 / P1-2） | issue #12 |
+| 3 | ✅ **已结（2026-10-11 对账：代码早已落地，issue #12 可直接关）** —— ~~第三批：两处长期泄漏（P1-1 / P1-2）~~：**P1-1** = 终端审计 🟡-5（新建 `app/src/main/java/com/termux/view/TerminalCursorBlinker.java`，`ea0cbe6`；`app/src/main/java/com/termux/view/TerminalView.java:694` 补 `mTerminalCursorBlinkerRunnable = null`、`:749 onDetachedFromWindow()` → `:756 stopTerminalCursorBlinker()`）；**P1-2** = 终端审计 🟡-4（`app/src/main/java/com/example/zhengdao/TerminalActivity.kt:1362/:1365/:1366` 把 `SessionManager.onViewUpdate / onCopyText / onPasteRequest` 三条置 `null`，`75c9da6`）；证据页 `docs/acceptance/terminal-view-refactor-p1-2026-10-10.md`（含「连续进出终端页 10 次」实测） | issue #12（**只剩关单**） |
 | 4 | 第五批：资源不回收（P1-6 / P1-7） | issue #14 |
 | 5 | opencode 2.0.22 新增 SSE 事件类型未适配（15 种只落日志，其中 4 种其实有用） | issue #9 |
 | 6 | 第四批：冷启动主线程 IO（P1-3 / P1-4 / P1-5） | issue #13 |
 | 7 | 第八批：错误原文与技术债（P2-6 ~ P2-18 / P4） | issue #17 |
-| 8 | **E-080 还差两条没真机验**：① 终端里让 agent 自己解压 `.docx` 的实际体验 ② 「仅私有模式」工作区的骨架文案 | E-080 末尾 |
+| 8 | **E-080 还差两条没真机验**：① 终端里让 agent 自己解压 `.docx` 的实际体验 ② 「仅私有模式」工作区的骨架文案 ⚠️ **第②条当前验不了**：`Workspace.isPrivate()` 恒为 `false`（前缀误判，见 §B-补 第 1 条），「仅私有」分支不可达 —— **先修再验** | E-080 末尾 + §B-补 第 1 条 |
 | 9 | ~~hermes 没装回~~ ✅ **2026-10-11 真机核实已装回**：设置页可见「hermes 工具」（python / node / uv / npm / ripgrep 共 247 MB · 保留）＋「hermes 本体 hermes-agent」，终端里 **Hermes Agent v0.21.6** 正在跑，丹房显示「1 个 Agent」。**2026-10-11 补**：hermes 自检曾报 `install out of sync (ffmpeg: not installed or outdated)` —— 那是「可选工具清理」误删了它的**必需包** ffmpeg（口径已修，见 §A #20 与 ERRATA **E-092**）；包本身要补装仍是在终端里跑 `hermes pm install` | 用户侧（已完成） |
 | 10 | ✅ **已结（2026-10-11 用户交办「收口」，选「归档进仓库，无损收口」，见 §A #25）** —— ~~**刻意未跟踪**的文件去留（2026-10-11 对账改正：**不是 4 个，是 5 份文档 + 1 个目录**）：`.zd-scratch/`、`docs/待办-dirSizeMb支线-2026-10-09.md`、`docs/证道-Rust化余地审计-2026-10-09.md`（+ 同名 `.html`）、`docs/证道-Rust终端方案查证复核-2026-10-11.md`、`docs/证道-UI美化动画-交接-2026-10-11.md`、`docs/证道-终端显示交互层重写方案-2026-10-10.md`（**不要顺手提交**）~~ | 用户侧（2026-10-11 已结：5 文档 → `docs/archive/`，`.zd-scratch/` 已删） |
 
@@ -70,6 +72,116 @@
 > - **顺序 10（刻意未跟踪的文件）= 2026-10-11 已结**：当日实测是 **5 份文档 + 1 个目录**（旧清单写 4 个，已改正）；同日用户交办「收口」并选**归档进仓库**：6 个未跟踪文件全部移入 `docs/archive/`（新增 `docs/archive/README.md` 逐条写明产出者/日期/内容/现状，完整清单与实况见 §A #25），`.zd-scratch/` 已删，全仓对这些文档的路径引用同步改指 `docs/archive/…`。**原来那句「一律不要顺手提交」随之失效；此条不再等拍板。**
 > - **当日清掉/销掉的账**：`fix/uiux-p0` / `wt-uiux` / `wt-ios-skin` 三条线结清（§A #19 / #21）；本地 6 个**已并入 `main`** 的分支删除（`docs/ledger-20`、`docs/ledger-20-ci`、`docs/ledger-22`、`docs/ledger-22-ci`、`fix/cache-audit-termcard`、`fix/taiji-keepalive` —— 提交全在 `main` 历史里，零丢失）；§D 随之清空。
 > - **没动的账**：GitHub 那 7 个 issue **一个都没关、没评**（共享浏览器未登录 GitHub；关单要么你自己点，要么先让我登录）。
+> - **本次（2026-10-11 第二轮清账）的增改**：① §B 顺序 3（issue #12）经逐行复核**代码早已落地** ⇒ 改成「只剩关单」；② §B 顺序 8 第②条标注**当前不可达**（`Workspace.isPrivate()` 恒 false）；③ 新增 **§B-补**：30 条「未落地、又没有任何 issue / ERRATA 认得它」的条目逐条留档（来源＝工作区根 `证道设计报告\` 那批外部报告，**同日已整体删除**，见 §A #26）；④ §C 补 7 条「不做」留痕。
+
+### B-补. 未立账的开放项（2026-10-11 对账补记）
+
+> **为什么有这一节**：这些条目原本只写在**工作区根 `证道设计报告\` 的外部报告**里（2026-10-11 已整体删除，见 §A #26）。删之前先把它们抄进台账 —— 否则「未落地、又没有任何 issue / ERRATA 认得它」的条目就再无据可查。原报告名保留在每组的标题里以便追溯（原文已不在磁盘，可从 §A #26 的备份 zip 取回）。
+> 判定口径：**已落地**（代码 / ERRATA / 台账在册）的条目不再重复；这里只收**未落地且没有账**的。
+
+#### ① 终端代码审计（原报告 `证道-终端代码审计-2026-10-10.md`）—— 5 条
+
+| # | 事项 | 位置（2026-10-11 逐行复核） | 建议账 |
+| --- | --- | --- | --- |
+| B-补-1 | 🔴 **`Workspace.isShared` 前缀误判 ⇒ `isPrivate()` 恒 `false`**：`SHARED_ROOT = "/storage/emulated/0"` 与应用外部目录 `getExternalFilesDir(null)/workspace`（本身就长成 `/storage/emulated/0/Android/data/…`）天然同前缀。后果：**「仅私有模式」分支不可达**，调用方一律按共享存储走（决定要不要 bind `/sdcard`、写哪句界面文案） | `app/src/main/java/com/example/zhengdao/terminal/Workspace.kt:30` / `:57` / `:60` / `:64`；调用点 `terminal/KnowledgeBase.kt:200`、`:576`、`terminal/ProotLauncher.kt:200`、`ui/SettingsScreen.kt:973` | **单独立账**（功能性 BUG）；并且是 **§B 顺序 8 第②条真机验的前置** |
+| B-补-2 | 🔴 网络预检往**正在跑的会话**里注入 `echo`（不判断会话是否在跑，会打断 TUI / Agent 的输入） | `app/src/main/java/com/example/zhengdao/TerminalActivity.kt:584 networkPreCheck()` → `:595 SessionManager.write("echo '[网络] ⚠️ 检测失败…'")`；调用点 `:838 onEmulatorSet()` 内 `if (!fallbackActive) networkPreCheck()` | 单独立账，或并入 issue #17 |
+| B-补-3 | 🟢 同一个 `resolv.conf` 连读两次（`readText()` ×2） | `app/src/main/java/com/example/zhengdao/terminal/EnvSelfHeal.kt:90-91` | 并入 issue #17 |
+| B-补-4 | 🟢 `/etc/hosts` 的「已存在」集合把**注释行里的词**也算进去 ⇒ 可能误判「钉住项已在」 | `app/src/main/java/com/example/zhengdao/terminal/EnvSelfHeal.kt:156 cur.split(Regex("\\s+")).toSet()` | 并入 issue #17 |
+| B-补-5 | 🟢 `CacheCleaner.cleanableBytes` 四处 `runCatching{…}.getOrDefault(0L)` 静默兜底（算不出来就显示「没得清」，不报错） | `app/src/main/java/com/example/zhengdao/terminal/CacheCleaner.kt:133-141` | 并入 issue #17（#17 正文没点 CacheCleaner） |
+
+#### ② 知识库架构体检（原报告 `证道-知识库架构体检与RAG评估-2026-10-10.md`）—— 2 条
+
+| # | 事项 | 现状 | 建议账 |
+| --- | --- | --- | --- |
+| B-补-6 | FIX-C「资料库摘要归属三选一」没有销账行 | 实际已收敛为「App 不写摘要，终端 AI 需要时自己读原文」（E-080 的后果），仓库里搜 `FIX-C` 零命中 | 在 ERRATA **E-080** 或 `docs/知识库-收工条件.md` 补一行销账 |
+| B-补-7 | FIX-G 向量检索 / RAG | R16 裁决「不主动上 RAG」，`docs/知识库-收工条件.md:5` 记「资料库全部收工」，但 §C 里没有这一条 | 记入 **§C**「不做，别复活」 |
+
+#### ③ App 缺陷审计（原报告 `证道-App缺陷审计报告-2026-10-09.md` + `证道-App缺陷审计-销账-2026-10-09.md`）—— 未落地 22 条 + 部分 9 条
+
+> 全 43 条（作者自废 P2-8 / P4-8、降级 P3-1 ⇒ 有效 40 条）：**9 已落地 / 9 部分 / 22 未落地**。销账文档声称销掉的 P0×4 经逐条复核**全部属实**，没有一条「说已做但仓库查不到」；9 条已落地的证据在 ERRATA **E-077 / E-078 / E-082** 与 §A #7 / #25。下面按**已认领它的 issue** 分组 —— 那些 issue 只写了批次名，没写逐条位置，位置在此留档。
+
+**issue #13（第四批 · 冷启动主线程 IO）**
+- **P1-3** 冷启动在主线程算 SHA256 + 拷 assets：`terminal/SessionManager.kt:122 start(context)`（非 `suspend`）→ `:126 buildLaunchPlan`
+- **P1-4** 丹房每 2 秒在主线程扫盘 / 查进程：`ui/HomeScreen.kt:214 LaunchedEffect` + `:223 delay(2000)`（无 `withContext(IO)` / `repeatOnLifecycle`）
+- **P1-5** 列表每格实时查盘：`ui/HomeScreen.kt` 卡片仍走 `installStates[…] ?: AgentRepository.stateOf(…)`
+- **补正文（这条 issue #13 正文没有）**：主线程 `Store.adoptDir` 搬 JM 级缓存 —— `terminal/ProotLauncher.kt:527 bindSharedCache` → `:682 Store.adoptDir` 仍在 `buildLaunchPlan` 主路径上（`ProotLauncher` 内 `Dispatchers` / `withContext` / `Thread` 零命中）
+
+**issue #15（第六批 · 状态寿命与手感）**
+- **P2-1** 转屏跳回丹房：`MainActivity.kt:501 var tab by remember { mutableIntStateOf(2) }`
+- **P2-2** 切走丢输入草稿（全仓无 `SaveableStateHolder`）
+- **P2-3** 切 Tab 会话被换（`ui/taiji/TaijiScreen.kt:127 rememberSaveable` 只保住转屏）
+- **P2-4** 欢迎页不能滚：`ui/WelcomeScreen.kt:43 .fillMaxSize()`
+- **P2-5** 删除无二次确认：`ui/SettingsScreen.kt:1263` / `:1425` / `:1597`
+
+**issue #14（第五批 · 资源不回收）**
+- **P1-6** `serve` 进程没人关：全仓唯一调用点 `ui/HomeScreen.kt:119 if (restart) OcManager.stopServe()`，`ui/taiji/TaijiScreen.kt` 内 0 命中
+- **P1-7** `terminal/KnowledgeBaseSummarizerRunner.kt:199` 仍每次 `new OkHttpClient`（headline 已被 `oc/OcRuntime.kt` 的进程级单例消解）
+
+**issue #17（第八批 · 错误原文与技术债）**
+- **P2-6** 报错原文弹给用户：`失败：${` 命中 55 行、`util/HumanizeError.kt` 31 行 / 7 文件
+- **P2-7** 空 catch 只剩 2 处
+- **P2-10** 4 处点击区 < 48dp：`ui/taiji/TaijiComponents.kt` 内 `defaultMinSize` 0 命中
+- **P2-11** 红字对比度 3.55:1：`ui/taiji/TaijiComponents.kt:281`
+- **P2-12** 无下拉刷新（全仓 `PullToRefresh` / `SwipeRefresh` 0 命中）
+- **P2-13** `rootfs/RunLog.kt:233 appendRotated` 三步无锁（`:236 writeText` + `:238 appendText`）
+- **P2-14** `rootfs/RootfsDownloader.kt:32 MAX_ATTEMPTS_PER_URL=3`、`:112` 无退避
+- **P2-15** SSE 无限重连：`oc/OcRepository.kt:195 while (isActive)`；`oc/SseClient.kt:197/:203` 封顶 15s 但无上限
+- **P2-16** 保活锁乐观默认：`terminal/SessionService.kt:202 runCatching{wakeLock.isHeld}.getOrDefault(true)`
+- **P2-17** 版本号 `toInt()`：`oc/OcManager.kt:724/:731`
+- **P2-18** JNI 错误串未转义：`rust/core/src/jni_bridge.rs:239`
+- **P4-1** 巨型文件：SettingsScreen 2242 / TaijiComponents 1796 / TerminalActivity 1404 / OcRepository 1022 / HomeScreen 1028 / MainActivity 956 行
+- **P4-2** 裸 Thread 35 处｜**P4-3** 并发原语 0（`Mutex` / `AtomicFile` / `Semaphore` / `ReentrantLock` 全仓 0）
+- **P4-4** 有 `keepalive/KeepaliveWatcher.kt:218 setDefaultUncaughtExceptionHandler`，`CoroutineExceptionHandler` 仍 0
+- **P4-5** Compose UI 测试 0｜**P4-6** `res/values/colors.xml` 模板 8 色仍在（`res/layout/window_bg.xml` 已不存在）
+- **P4-7** `LocalLifecycleOwner` 废弃 3 处：`ui/HomeScreen.kt:228`、`ui/SettingsScreen.kt:241`、`MainActivity.kt:300`
+
+**issue #19（备份范围）**
+- **P3-3** `res/xml/backup_rules.xml`、`res/xml/data_extraction_rules.xml` 至今 0 `exclude`
+
+**没有任何 issue 认领的 3 条（本次新立）**
+- **B-补-8** **P2-9 写死尺寸只修了一半**：`ui/HomeScreen.kt:66 BUTTON_MIN_WIDTH_DP = 108` 那六处已改（§A #21/#19），**48dp 顶栏 + 360 / 280 / 300dp 弹层宽度没改**
+- **B-补-9** **P3-4 运行日志「刻意」落在公共 `Download`**（`rootfs/RunLog.kt:17/:24` 写了理由、`:83-95` 是落点）⇒ 这是**设计决定不是缺陷**，应记进 **§C**，免得下次被当缺陷翻出来
+- **B-补-10** **P3-1 已被真机实测证伪**（`0100007F:36B0` = `127.0.0.1:14000` 仅回环）⇒ 记 **§C**「不修（实测证伪）」，或顺手给它钉 `--hostname`
+
+#### ④ UIUX 审计（原报告 `证道-UIUX审计-2026-10-10.md`）—— 17 条
+
+> B1 / B2 / B3 / B4 / B5 / B6 / B7、P0-1 / P0-2、P1-4 / P1-5 已由 §A #21（合并 `9f1f68f`）落地；下面这些**没账**。
+
+- **B-补-11**（B9 / P1-2）运行日志无滚动：`ui/SettingsScreen.kt:1793 Text(log.takeLast(6000))` 没加 `verticalScroll`
+- **B-补-12**（B8 / P1-3）Root 开关永远关不上：`ui/SettingsScreen.kt:1460 Switch(checked = false, enabled = hasSu, onCheckedChange = { Toast("即将在 v1.x 版本推出（chroot 后端）") })`
+- **B-补-13**（P1-6）终端状态横幅是「无形交互」：`TerminalActivity.kt:108-109 setOnClickListener { visibility = View.GONE }`（没有任何「可点」的提示）
+- **B-补-14**（P1-7）注释与实现不符：`res/layout/term_keys.xml:7`、`:60` 仍写「第二行：…粘贴」，实现已改成 `DEL`（§A #20）
+- **B-补-15**（P1-8）冷启动只恢复 `lastRoute == "settings"`，plugins 不恢复：`MainActivity.kt:334`
+- **B-补-16**（美化第 9 条）分隔线缩进：全仓 `HorizontalDivider` 16 处，带 `padding(start = 16.dp)` 的 **0 处**（#19 只改颜色 `#E0E0E0`→`#C6C6C8`，`height` 仍 1dp）
+- **B-补-17**（美化第 11 条）首页标题常驻 22sp、不随滚动收缩：`ui/HomeScreen.kt:259 style = MaterialTheme.typography.titleLarge`
+- **B-补-18**（美化第 6 条 / 统一美化方案批次 3）字号没补：`ui/theme/Type.kt` 仍只 3 档（`bodyLarge 16sp` / `titleLarge 22sp` / `labelSmall 11sp`），iOS 目标 34 / 17 / 15 / 13 / 10sp 一个都没落
+- **B-补-19**（P0-3）**冷启动弹窗风暴**：`MainActivity.kt` 三段独立 `runCatching`，首启弹 3~4 个框；原文档自记「已放弃」，但**用户从未在台账层面拍板** ⇒ 要么立账、要么明确不做
+- **B-补-20**（R5 / P3-6）触摸目标偏小：模型胶囊约 40dp（`ui/taiji/TaijiComponents.kt:227-250`）、抽屉插件行与结束会话行约 36dp（`:1676-1682`）、权限 Checkbox 文字 24dp 不可点（`:1194`）、终端红点 30dp、`res/layout/term_keys.xml` 第二行 12 键在 360dp 屏每键约 28dp
+- **B-补-21**（R6 / P3-1）无障碍：`clickable` 无 `role`、符号按钮 ●○✓▴▾⌫☯ 读屏念符号、横幅无 `liveRegion`、装饰性「·」被念
+- **B-补-22**（R3 / P3-2）大字体换行：`ui/SettingsScreen.kt:605-630` / `:952-962` / `:1544-1558` 的 Row 不换行
+- **B-补-23**（R8 / P3-4）设置页分区与文案方向：「输入回归页」混在用户设置页（`ui/SettingsScreen.kt:1429`）、「新手指南」埋在很后面且方向指反（`:1604`）
+- **B-补-24**（R4 / P3-3）性能：`SimpleDateFormat` 每会话行每次重组新建（`ui/taiji/TaijiComponents.kt:1663`）、思考块每次重组全量 `joinToString` + `count`（`:894-901`）、流式 Markdown 每 token 全量重解析（`:651-673`）、`groupSessionsByDay` 未 `remember`、设置页不是 `LazyColumn`（2200 行 + 6 路 I/O）—— issue #17 可能覆盖但**正文没点名**
+- **B-补-25**（R2 剩余对比度）`#18A018` 白底 3.45:1（`res/values/colors.xml` 的 `term_key_active`）、`IOSBlueText #0058B0` 只落在 text 语义、选中 chip `#E1ECFF` 上 3.38:1 —— #19 只解决了主蓝一档
+- **B-补-26**（统一美化方案批次 2 未做项）NavHost 转场、终端 Activity `overridePendingTransition`、LazyColumn `animateItemPlacement()`；（Tab 内容 Crossfade 已被 `MainActivity.kt:766` 的注释**明确否决** ⇒ 见 §C）
+
+#### ⑤ 其他三处对账发现
+
+- **B-补-27** **proroot 影子试验等你拍板**：原报告结论写着「专有软件、源码不公开、**不允许分发修改版** ⇒ 是否进分发链」= **未定，用户拍板**；「编译带影子通道的 APK」排在「在你点头之后」。报告已删，这个决策**仍然挂着** ⇒ **等你一句话**（要做 / 不做）
+- **B-补-28** **AVF / `virtualization_framework` 没进季度复查清单**：`docs/milestones/已知限制.md` §6 的季度复查里没有它（全仓 `AVF|virtualization_framework|虚拟化框架` **0 命中**）⇒ 补一行进 §6
+- **B-补-29** **rootfs 内 Debian 二进制的 16 KB 页对齐没重编、没门禁**：`app/src/main/cpp/CMakeLists.txt:18` 只给终端 `.so` 加了 `-Wl,-z,max-page-size=16384`（APK 内 `.so` 侧另有 `tools/check-native-so.py` 门禁），rootfs 里那批没有；本机实测 `PAGE_SIZE 4096` 当前不卡，**风险在未来 16 KB 机型**
+- **B-补-30** `docs/知识库-P2交接.md` 等仍按「借太极云端模型补摘要」的旧形态描述（该功能已由 E-080 摘掉）⇒ 加一行「已废止」注记即可
+
+#### ⑥ 知识库线索 / 小说侧 / `.zd-scratch`（原 `交接-DSH-FIX-F-资料库线索-2026-10-10.md`、`检索实测-grep能不能一下定位-2026-10-10.md`、`小说库-零token工作规程.md` + 3 个 `工具-*.py`；报告均已删，见 §A #26）
+
+- **B-补-31** **FIX-F 的真机验收自相矛盾（必有一处错）**：`docs/ERRATA.md:4779` 至今写「⚠️ 未真机：终端的手感（回车是否被吞、注入块在 Claude Code / Hermes / OpenCode 三种 TUI 的显示形态、tmux 历史能否接受）必须真机看」，而 §A #9 的证据栏写「单测 + 真机」，且 `docs/acceptance/` 里**没有** FIX-F / kb-ask-hints 的验收页 ⇒ 要么补真机记录，要么改台账措辞
+- **B-补-32** 交接 §四那三项手感（回车延迟 / 三种 TUI 的显示形态 / tmux 历史能否接受）**从未立账**，此前只以「请你真机看」的形式写在交接文档里
+- **B-补-33** 交接 §五的**形状争议未拍板**：注入块放「提问之前」还是「追加在原话后面」；只留痕在 `docs/ERRATA.md:4747-4751` 与 `app/src/main/java/com/example/zhengdao/terminal/KnowledgeBaseHints.kt:41`。若坚持「块在前」，代价是**输入回显消失**，要另开支线
+- **B-补-34** 「不建向量库」没有独立账目：`检索实测` §三 的两条结论（定位**不需要**向量／瓶颈是「命中太多、没法排序」）在仓库零记录，只有 `docs/ERRATA.md:4730` 一句「向量只是把『这次查』变聪明的一档」—— 与 §B-补-7（FIX-G）是同一件事，合并看
+- **B-补-35** 「资料库有内容之后要量命中率、攒证据再谈向量」（`检索实测` §五 第二条）未立账
+- **B-补-36** 小说库规程**从未并入设备端**：规程首行自称「可直接并入 `Download/小说/AGENTS.md`」，无并入记录；设备上 `_总目录.md` 也**待重跑**（规程 §二「过期了就重跑一次」，但没有生成时间记录）
+- **B-补-37** **真 VM 可行性报告的结论要点（原报告已删，留档用）**：本机**无 AVF 特性标志 / 无 `/dev/kvm` / 虚拟化服务不齐** ⇒ 不集成真实虚拟机；proot 的「不真」分两层 —— **面子层（可补）／里子层（不可补）**。§C 已记「不做」，理由记在这里
+- **B-补-38** **孤本删除留痕**（用户 2026-10-11 明确「删，小说侧的也删」）：4 份在仓库外**没有第二份**的文件被删 —— ① `小说库-零token工作规程.md`（手机侧 `/sdcard/Download/小说` 那个工作区的唯一检索规程）② `工具-重建小说总目录.py`（= 规程里的 `gen_novel_index.py`，仓库 `tools/` 下 9 个 `.py` 无同功能脚本）③ `交接-DSH-FIX-F-资料库线索-2026-10-10.md`（FIX-F 的唯一原始设计说明，E-084 只是精简版）④ `检索实测-grep能不能一下定位-2026-10-10.md`（唯一一份 toybox grep 在 2.1 GB 上的实测数字 + `xargs -d` 假象坑）。另有 `.zd-scratch\proroot\` 的 5 个 `.so`（proroot **v1.2.8** 官方二进制，共 **666,320 B**）**可重新下载**：`https://api.github.com/repos/coderredlab/proroot/releases`（当时的完整快照 `proroot-releases.json` 265,386 B，含 20 个 release / 88 处 digest；实测 5 个文件的 sha256 与 v1.2.8 的 `asset.digest` **逐字节一致**）。**这 59 个文件的原件都在 §A #26 的备份 zip 里**，要找回不需要重新下载
+- **B-补-39** **口径更正**：`.zd-scratch\` 顶层是 **17 个文件**（`probe-*.sh` 实际是 **11 个**，此前记的 14 个是错的）+ `elf_probe.py`，再加 `proroot\` 下 5 个 `.so` = **22**（总数对，明细错）。11 个探针的原始输出已逐轮转录进 `证道-集成真实虚拟机可行性报告-2026-10-09.md` 附录 A（`:455` 第二轮、`:492` 第三~五轮、`:527` 第六~七轮、`:560` 第七轮搜索）—— 该报告同日一并删除，故这条亦为留痕
 
 ### C. 已经拍板「不做」，别复活
 
@@ -77,6 +189,16 @@
 - **P3-3 曾一度是「本次不做」**（E-082，2026-10-10 用户选「只做最要紧的三条」）—— 现已单独立账 **issue #19**，别再说「它已经做过了」。
 - §3 里那些被拍板删除的功能，要复活必须先问用户。
 - **给太极「配个简单的文件工具（查找 / 读写，不影响上游 bionic 版）」—— 2026-10-11 用户当场撤回**（原话：「那算了，还是这样吧。」）⇒ **不做，别复活**。留档：技术上可行（`opencode.json` 的 `plugin` 数组 + 本地 `.js` 插件跑在 opencode 自带 Bun 里；或 App 侧 mksh 小工具），当时给了三条选项、用户一条没选。
+
+**2026-10-11 对账补记的几条「不做」（原本只在已删的外部报告 / 代码注释里，见 §A #26）：**
+
+- **真虚拟机方向（QEMU / TCG）** —— **不做**。§A #2 只显式排除了「云机瘦客户端」，真 VM 这一支一直没结账；本次补结：不做，别再重开（`docs/milestones/已知限制.md:81` §7）。
+- **guest 内引入 init / 服务管理器（s6 / supervisord）** —— **不做**。现状由 pty 直起进程，够用；全仓 `supervisord|s6-svscan|s6-rc` **0 命中**，属「从没做过的想法」，要复活先问用户。
+- **FIX-G 向量检索 / RAG** —— **不做，别复活**。R16 裁决「不主动上 RAG」，`docs/知识库-收工条件.md:5` 记「资料库全部收工」；此前只在被删的知识库体检报告里，见 §B-补-7。
+- **Tab 内容 Crossfade 转场** —— **不做**。`app/src/main/java/com/example/zhengdao/MainActivity.kt:766` 的注释已写明否决理由（统一美化方案批次 2 的余项之一，见 §B-补-26）。
+- **终端页键条上方那三个圆点** —— **保持原样，一个像素都不动**。这是「UI 统一美化方案 §零」的撤回收口（原方案想改，判不做）。
+- **P3-4 运行日志落在公共 `Download`** —— **有意为之，不搬回私有目录**。`rootfs/RunLog.kt:17/:24` 写了理由（用户要能用文件管理器直接取日志）；这是设计决定不是缺陷，见 §B-补-9。
+- **P3-1「服务端口对外暴露」** —— **不修（真机实测证伪）**。实测 `0100007F:36B0` = `127.0.0.1:14000`，只监听回环，原判据不成立；见 §B-补-10。
 
 ### D. 别人正在干的（不要碰）
 
@@ -641,7 +763,7 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 > 与 `:app:assembleRelease`（含 R8 冒烟）本地均 BUILD SUCCESSFUL。
 
 > **2026-10-10 续（rootfs 审计复核：两条真 BUG 收口，其余七条进工作表）**：
-> 外部审计报告（`证道-rootfs审计与复核-2026-10-10.md`）逐条核对后：行数、asset 字节与绝大多数引用行号**属实**，
+> 外部审计报告（《rootfs 审计与复核》2026-10-10；**2026-10-11 已删**，见 §A #26）逐条核对后：行数、asset 字节与绝大多数引用行号**属实**，
 > 其中两条 🔴 本次修掉——① **BUG-1**：Java 解压路径有「落盘 0 条目就报错」的兜底，Rust 优先路径没有，
 > 空包 / 成员全被 `skipNames` 跳过的增量补丁会被标记成 `.zhengdao-rootfs-ok` 并换上树（用户拿到空 Debian 还被告知装好）
 > ⇒ Rust 侧新增 `ExtractError::EmptyArchive`，Kotlin 侧把「归档不含任何条目」列入**不回退 Java** 的分流；

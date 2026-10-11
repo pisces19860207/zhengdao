@@ -12,7 +12,8 @@ import java.io.File
 /**
  * 解包路径边界判定（**加固-1 / 加固-3**，2026-10-10 / E-085）。
  *
- * 审计报告（`证道-rootfs审计与复核-2026-10-10.md`）指出两处口径问题，都收在这里：
+ * 外部《rootfs 审计与复核》报告（2026-10-10；该报告已于 2026-10-11 删除，
+ * 见 `docs/FEATURE-LEDGER.md` §A #26）指出两处口径问题，都收在这里：
  *
  * 1. **成员名的越界判据是字符串前缀**：`target.canonicalFile.path.startsWith(root.path)`
  *    —— `/data/data/…/rootfs-evil` 会被判成「在 rootfs 内」（`…/rootfs` 是它的前缀）。
