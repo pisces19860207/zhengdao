@@ -5516,3 +5516,52 @@ E-013/E-014 时代的遗留：`app/build.gradle.kts` 的 release 与 debug 变�
 **教训**
 
 "正式包与开发包同签名"是一笔**隐性债**：不报错、不影响功能，只在两处咬人 —— 想换钥匙时（换不动）、想区分来源时（分不出）。判据：**签名是"分发身份"，身份不该与开发脚手架共用**。换这类钥匙前，先把"老用户要不要卸载重装"这句话问出来，再动手。
+
+## E-100 · 2026-10-11 · 聚合进来的 Termux 代码改过 11 个文件，其中 **7 个连一句修改标注都没有** —— Apache-2.0 §4(b) 的修改通知义务事实上没履行
+
+**背景**
+
+v3.9 起 `terminal-emulator` / `terminal-view`（Apache-2.0）以源码形式聚合进本项目，`PROVENANCE.md` 登记为「作为独立库聚合，未修改其许可证头」。这句话只说对了第 4(b) 条的一半：「不删上游许可证头」与「**改过就要明确标注**」是两件事。实际情形是：我们改了不少，标注却只是**在改动点顺手写的注释**，既没有统一形式，也没有覆盖全部文件。
+
+**复核（2026-10-11，对上游 `v0.119.0-beta.3` 逐文件 `git diff --no-index --numstat`）**
+
+12 个有差异的文件里，只有 **5 个**在改动点带了「证道 …」说明：`app/src/main/java/com/termux/terminal/TerminalEmulator.java:200` / `:2045` / `:2349`、`app/src/main/java/com/termux/terminal/TerminalColorScheme.java:70`、`app/src/main/java/com/termux/terminal/TextStyle.java:43`、`app/src/main/java/com/termux/view/TerminalRenderer.java:85` / `:206`、`app/src/main/java/com/termux/view/TerminalView.java:54` / `:701` / `:742` / `:752` / `:766`。**另外 7 个一句都没有**：
+
+- `app/src/main/java/com/termux/terminal/KeyHandler.java`（`kN` / `kP` 上下翻页对调修正）
+- `app/src/main/java/com/termux/terminal/TerminalBuffer.java`（行尾清空补 `clearLineWrap`）
+- `app/src/main/java/com/termux/terminal/TerminalRow.java`（`mSpaceUsed` `short` → `int`）
+- `app/src/main/java/com/termux/terminal/TerminalSession.java`（IO 队列 4 KiB → 64 KiB）
+- `app/src/main/java/com/termux/textselection/TextSelectionCursorController.java`（仅 `R` 类导入）
+- `app/src/main/java/com/termux/textselection/TextSelectionHandleView.java`（同上）
+- `app/src/main/cpp/termux/termux.c`（`ReleaseStringUTFChars(env, cmd, cmd_cwd)` → `(env, cwd, cmd_cwd)`，上游 beta.3 未修的内存 bug）
+
+危害不是「会被告」，而是**审计不可判**：上游这 12 个文件本身就没有许可证头（上游只有仓库级 `LICENSE.md`），于是「文件头干干净净」既可能是原样、也可能是被改过 —— 外部审计者、后来的协作者、甚至我们自己，都只能靠再下一遍上游 tarball 才能分辨。
+
+**处置**
+
+- 12 个衍生文件统一加文件头通知（`本文件是 Termux …（Apache-2.0，上游 v0.119.0-beta.3）的衍生文件，已由证道项目修改 … PROVENANCE.md「Apache-2.0 修改通知」`），位置在 `package` / `#include` 之上；
+- `PROVENANCE.md` 新增「Apache-2.0 修改通知」一节，**逐文件登记修改方向**（与既有的逐文件 SHA256 登记同一种审计形态）；
+- 6 个新写的第一方类（`TerminalImeBridge` / `TerminalGestureController` / `TerminalCursorBlinker` / `TerminalA11yDelegate` / `TerminalSelectionController` / `TerminalSizeResolver`）补上「代码文件头」一节规定的**独立开发声明** —— 它们沿用 `com.termux.view` 包名，没有声明就与上游文件无法区分。
+
+**教训**
+
+许可证义务必须落在**文件本身**。只在台账、README 或提交信息里写一句「已按 §4(b) 标注」，是**自我报告**：这句话这次差点被原样写进 `FEATURE-LEDGER.md` §A #34（拟定措辞里那句「所有修改文件已按 Apache-2.0 第 4(b) 条标注修改通知」），复核发现它当时**为假**。判据：写「已标注」之前，先逐文件 `grep` 一遍，别信记忆。
+
+## E-101 · 2026-10-11 · `textselection` 三个上游文件的包名是 `com.termux.view.textselection`，物理路径却在 `com/termux/textselection/`
+
+**背景**
+
+聚合 Termux `terminal-view` 的 `textselection` 包时，文件落在 `app/src/main/java/com/termux/textselection/`，但三个文件的 `package` 仍写 `com.termux.view.textselection`。Java 不强制包名与目录一致，编译与运行都正常。
+
+**复核**
+
+- `app/src/main/java/com/termux/textselection/CursorController.java` 与上游**逐字节一致**；`TextSelectionCursorController.java`、`TextSelectionHandleView.java` 各只改 **1 行**（`import com.termux.view.R;` → `import com.example.zhengdao.R;`）。
+- 代价这次当场现形：对上游跑 `git diff --no-index --numstat` 时，上游 `terminal-view/src/main/java/com/termux/view/textselection/` 与我们的 `app/src/main/java/com/termux/textselection/` **对不上**，diff 把这三个文件报成「被删除」（`0/55`、`0/407`、`0/352`）—— 一度被读成「我们删了上游文件」，实际只是路径错位。
+
+**处置**
+
+本次**只登记不改**：改包名要同时动 3 个文件的 `package`、所有引用方的 `import`、以及可能的 R8 `-keep` 规则，属「改起来简单、风险不小」的类别。留作待办，可并入下一次渲染层改动。
+
+**教训**
+
+目录与包名不一致是**延迟爆雷**：编译器不报，但 IDE 重构、`git diff` 比对、`-keep` 规则、新人定位文件都会踩。判据：聚合第三方源码时，**目录结构照抄上游**，别为了"放进自己的包"改路径。
