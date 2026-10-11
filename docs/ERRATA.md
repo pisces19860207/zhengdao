@@ -5614,3 +5614,42 @@ v3.9 起 `terminal-emulator` / `terminal-view`（Apache-2.0）以源码形式聚
 **教训**
 
 闸门必须给「正道」留口子。**凡是合法操作必须绕过才能完成的闸，问题在闸、不在操作者。** 判据：设计闸门时先问「这个条件对正确做法是否可能恒真」—— 尤其合并 / 变基 / cherry-pick 这类「内容已经在别处存在」的操作。
+**修复（2026-10-11，蓝总管；本节是追加，上面的原文一字不动）**
+
+用户当晚拍板「改」。修法落在**版本化源文件**上 —— 这也是对原文处置建议那句「本次不改钩子：`.git/hooks/` 不在版本控制内，属本机配置」的**更正**：`.git/hooks/pre-commit` 只是安装产物，源文件是 `tools/hooks/pre-commit`（`.gitattributes` 定 `text eol=lf`），由 `python tools\zd.py install-hooks` 装进共享 `.git`。**只改安装产物、不改源文件，下次重装或新克隆就把修复冲掉了。**
+
+- 闸 2 加合并豁免，与闸 1 共用同一个判据：`merge_head="$(git rev-parse --path-format=absolute --git-path MERGE_HEAD)"` → `is_merge`；命中时打印 `ℹ️  pre-commit: 合并提交，跳过闸 2（陈旧基准）——判据对合并恒真；闸 3（复活检测）仍然照查。`，闸 2 循环内 `continue`，**闸 3 保留**。
+- 头注释与闸 1 的说明同步（`tools/hooks/pre-commit` 第 6-9、45-55、75-84 行）。装后 `5649` 字节、LF 无 BOM、`sh -n` 退出码 0、`hooks-status` 一致。
+
+**验证（临时仓库真跑，不动源仓）**：`git clone --local` 到 `%TEMP%\zd-hooktest2\clone`（基线 `ba050e6`，`git version 2.55.0.windows.2`），造「`origin/main` 已前进到 `upstream#4`、本次并入的是 `upstream#3`、两边都动过 `probe/stale.txt`」的场景，旧钩子（`git show HEAD:tools/hooks/pre-commit`，4831 B）与新钩子（5649 B）各跑一遍：
+
+| 用例 | 场景 | 期望 | 实测 |
+|---|---|---|---|
+| T1 | 新钩子，`main` 上直接提交 | 拦（闸 1） | exit 1 ✓ |
+| 夹具 | `feature` 分支提交 `probe/feature.txt` | 过 | exit 0 ✓ |
+| T2a | **旧**钩子：`git merge --no-ff --no-commit upstream~1` 后 `git commit`（`MERGE_HEAD` 在） | 拦（闸 2） | exit 1 ✓（列出 `probe/stale.txt` + `upstream#1`/`#4`） |
+| T2b | **新**钩子：同一提交 | 过 | exit 0 ✓（打印「合并提交，跳过闸 2」） |
+| T3 | 新钩子：非合并的陈旧基准提交（同样是 `probe/stale.txt`） | 拦（闸 2 仍有效） | exit 1 ✓ |
+| T4 | 新钩子：合并中并入一个历史上被删过的 `probe/gone.txt` | 跳过闸 2、闸 3 拦 | exit 1 ✓（ℹ️ + 复活检测） |
+
+**口径更正（本次实测推翻原文一处说法）**：`git merge` 自动生成的合并提交**根本不跑 `pre-commit`** —— git ≥ 2.24 对合并走 `pre-merge-commit` 钩子（官方样例内容就是 `exec "$GIT_DIR/hooks/pre-commit"`），而本机 `.git/hooks/` 里只有 `pre-commit`、`pre-merge-commit.sample` 没启用。所以本条的**现象**应读作：被拦的是**手工完成的合并提交**（冲突解决后 `git commit`，或 `merge --no-commit` 后 `git commit`）—— 那时 `MERGE_HEAD` 在、闸 2 照跑，暂存路径又全是两边都动过的文件 ⇒ 必中。修法覆盖的正是这条路径（T2a/T2b 就是它的最小复现）。由此暴露的另一个洞口另立 E-103。
+
+## E-103 · 2026-10-11 · 自动合并提交不跑任何闸门（`pre-merge-commit` 钩子未安装）
+
+**现象**（做 E-102 修复时在临时仓库里发现）
+
+`git merge`（无冲突、自动生成合并提交）时三道闸**一条都不跑**。把 `.git/hooks/pre-commit` 换成只写日志的**探针钩子**后：自动合并提交跑完 `hooklog.txt` 是空的，而同一次实验里的普通 `git commit` 照常有记录。原因：git ≥ 2.24 对合并提交走 `pre-merge-commit` 钩子，`pre-commit` 不再被自动调用；本机 `.git/hooks/` 只有 `pre-commit`（`pre-merge-commit.sample` 未启用）。
+
+**影响**
+
+- 闸 3（复活检测）对「别人把被拍板删掉的文件通过合并带回来」这条路径**完全失效** —— 而合并正是东西落进 `main` 的主要方式。
+- 闸 1 的合并豁免本来是「放行」，现在等于**连闸门都没进**；`docs/协作规约.md` §6 / §8 里把闸门记作「现在靠什么挡」的那几行，对合并路径当前不成立。
+
+**处置建议（本次未做，待用户拍板）**
+
+1. 新增 `tools/hooks/pre-merge-commit`（内容同 git 官方样例：`exec "$GIT_DIR/hooks/pre-commit"`），并让安装器一并装 —— `tools/zd.py:321-331` 现在**硬编码只装 `pre-commit` 一个文件**，`hooks-status` 也只比这一个。
+2. 装上后重跑上面那套临时仓库用例，重点两条：「自动合并提交」「合并里复活」。
+
+**教训**
+
+闸门要验「它到底跑没跑」，不能只看「它写了什么」。**探针钩子（只写日志、不做判定）是最便宜的证伪手段。**
