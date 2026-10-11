@@ -917,7 +917,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     // 选中文字存进 TerminalView.getStoredSelectedText()（选择模式已停，文字仍可用）。
     private val menuWebSearch = 101
     private val menuClear = 102
-    private val menuReloadFont = 103
+    // 103 曾是「重载字号」：2026-10-11 用户要求删掉（字号改由双指缩放 + 设置页「终端外观」
+    // 查看，菜单里那一项既冗余又占位）。ID 不复用，免得将来翻旧日志时对不上。
     private val menuReset = 104
 
     override fun onCreateContextMenu(
@@ -929,11 +930,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         val sel = runCatching { termView.storedSelectedText }.getOrNull()?.toString()?.trim()
         menu.setHeaderTitle("终端操作")
         // 复制/粘贴不再入列：顶部工具栏 + 选择工具条已有两条通路（用户定）
-        menu.add(0, menuWebSearch, 0, "浏览器搜索选中文字").isEnabled = !sel.isNullOrEmpty()
-        // 清屏 / 重载字号（v1.1.1 阶段 2.3）：清屏走 Ctrl-L（不往 stdin 写命令，
-        // 免得在 TUI 里变成输入）；字号重载用于旋转或缩放后网格没跟上的兜底。
+        // 文案 2026-10-11 由「浏览器搜索选中文字」改「搜索选中文字」：现在交给系统默认搜索
+        // （ACTION_WEB_SEARCH），未必是浏览器，标题别再替用户假定。
+        menu.add(0, menuWebSearch, 0, "搜索选中文字").isEnabled = !sel.isNullOrEmpty()
+        // 清屏（v1.1.1 阶段 2.3）：走 Ctrl-L（不往 stdin 写命令，免得在 TUI 里变成输入）。
         menu.add(0, menuClear, 0, "清屏")
-        menu.add(0, menuReloadFont, 0, "重载字号（当前 ${TerminalPrefs.sizeDp(this)}）")
         menu.add(0, menuReset, 0, "重置终端")
     }
 
@@ -945,13 +946,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 if (q.isEmpty()) {
                     Toast.makeText(this, "没有选中的文字", Toast.LENGTH_SHORT).show()
                 } else {
-                    runCatching {
-                        val url = "https://www.bing.com/search?q=" +
-                            java.net.URLEncoder.encode(q, "UTF-8")
-                        startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-                    }.onFailure {
-                        Toast.makeText(this, "打开浏览器失败：${it.message}", Toast.LENGTH_SHORT).show()
-                    }
+                    openWebSearch(q)
                 }
                 termView.unsetStoredSelectedText()
                 return true
@@ -966,19 +961,6 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     }
                 return true
             }
-            menuReloadFont -> {
-                // 字号/配色/留白整体重刷 + 重算行列：旋转、缩放或改过设置后网格没跟上时用。
-                runCatching {
-                    // 留白写在容器上（见 applyTo 的注释），容器变了 → 视图尺寸随之变 → updateSize 才准
-                    TerminalPrefs.applyTo(termView, findViewById(R.id.canvas_host), this)
-                    termView.updateSize()
-                    termView.onScreenUpdated()
-                }.onFailure {
-                    Toast.makeText(this, "重载字号失败：${it.message}", Toast.LENGTH_SHORT).show()
-                }
-                Toast.makeText(this, "字号 ${TerminalPrefs.sizeDp(this)} 已重载", Toast.LENGTH_SHORT).show()
-                return true
-            }
             menuReset -> {
                 runCatching {
                     SessionManager.session?.emulator?.reset()
@@ -989,6 +971,28 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             else -> return super.onContextItemSelected(item)
         }
     }
+
+    /**
+     * 选中文字 → 交给**手机自己的默认搜索 / 浏览器**（用户 2026-10-11 要求）。
+     *
+     * 判据：旧实现把搜索引擎写死成 bing 的 URL —— 等于我们替用户选好了搜索引擎。
+     * `ACTION_WEB_SEARCH`（系统「网页搜索」动作）由系统里设的默认搜索 App 处理：
+     * 用户装什么、设什么就用什么（Chrome / 夸克 / 各家自带浏览器都认这个动作）。
+     * 只有设备上**没有**任何 App 能处理该动作时（极罕见），才回落到「用浏览器打开一个
+     * 搜索 URL」——这条兜底路径沿用原来的 bing 地址，保证功能不至于完全没有。
+     */
+    private fun openWebSearch(query: String) {
+        val viaSystem = Intent(Intent.ACTION_WEB_SEARCH)
+            .putExtra(android.app.SearchManager.QUERY, query)
+        if (runCatching { startActivity(viaSystem) }.isSuccess) return
+        runCatching {
+            val url = "https://www.bing.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        }.onFailure {
+            Toast.makeText(this, "打开浏览器失败：${it.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onBell(session: TerminalSession) {}
     override fun onColorsChanged(session: TerminalSession) {}
     override fun onTerminalCursorStateChange(state: Boolean) {}
