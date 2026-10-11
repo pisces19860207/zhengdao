@@ -147,7 +147,7 @@ CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisce
 |---|---|---|
 | **① 总设计** | [`docs/milestones/安卓AgentApp-设计方案-v3.md`](docs/milestones/安卓AgentApp-设计方案-v3.md) | 整体架构、技术选型与架构级红线（如 targetSdk 28 钉死、单会话模型、proot 分发方式）。所有分期规范的依据。 |
 | **② 分期规范** | [`docs/milestones/`](docs/milestones/)（M1.1 ~ M5） | 每个里程碑的**工程约束与验收标准**。原则：**实现以代码为准，约束与红线以本文档为准**。 |
-| **③ 合规底线** | [`PROVENANCE.md`](PROVENANCE.md) | 第三方组件的来源、许可证与不可踩的红线（例如 proot 只能 exec、绝不能 `loadLibrary`）。 |
+| **③ 合规底线** | [`PROVENANCE.md`](PROVENANCE.md) | 第三方组件的来源、许可证与不可踩的红线（例如 proot 只能 exec、绝不能 `loadLibrary`）。逐组件的许可义务与许可证正文见 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) 与 [`licenses/`](licenses/)。 |
 
 > 一句话记忆：**总设计定方向，分期规范定标准，PROVENANCE 定底线。**
 
@@ -197,6 +197,21 @@ hermes 自带的 pinned uv 二进制破局）——整个"证道"从一行命令
 terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此前误标为 GPL，
 勘误详见 PROVENANCE.md）；内置 proot 组件基于上游 GPL 项目（proot-me/proot）编译，
 作为独立可执行文件聚合分发，来源与许可义务见 [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)。
+
+随包携带的第三方组件、各自需要哪份许可证正文、正文在仓库里的位置：
+
+| 组件 | 许可证 | 正文 |
+|---|---|---|
+| 本项目第一方代码 | GPL-3.0 | 仓库根 [`LICENSE`](LICENSE) |
+| Termux `terminal-emulator` / `terminal-view` | Apache-2.0 | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| proot（Termux fork 发行版，独立进程调用） | GPL-2.0-or-later | [`licenses/GPL-2.0.txt`](licenses/GPL-2.0.txt) |
+| libtalloc（proot 进程内动态库） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ 根 [`LICENSE`](LICENSE) |
+| libandroid-shmem（proot 进程内动态库） | BSD-3-Clause | [`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) |
+| JetBrains Maple Mono（终端默认字体） | SIL OFL 1.1 | [`app/src/main/assets/fonts/OFL.txt`](app/src/main/assets/fonts/OFL.txt) |
+
+**上表每一份正文都随安装包分发**：构建期装进 APK 的 `assets/licenses/`，App 内 **设置 → 关于 →「开源许可」**
+可离线阅读全文；来源 URL、取回日期、字节数与 SHA256 见 [`licenses/README.md`](licenses/README.md)。
+Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本随各自构件分发，本项目不另行翻印。
 
 ## 转载、二次打包与「证道」这个名字
 
