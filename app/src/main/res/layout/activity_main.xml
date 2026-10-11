@@ -73,6 +73,15 @@
                 android:clickable="true"
                 android:focusable="true" />
 
+            <!-- 标题（2026-10-11 修「后面遮挡」）：17sp 粗体的
+                 `证道 — Debian 13.7 · bash` 要 ~190dp，而 375dp 屏（1312px @560dpi）
+                 在这条 14dp 内边距的 44dp 工具条里，扣掉三个圆点热区 104dp 与
+                 复制/粘贴 ~92dp 后**只剩 ~150dp** ⇒ 尾巴「· bash」整段被省略号吃掉。
+                 两处修：
+                 1) 文案缩成 `证道 - Debian 13.7`（TerminalActivity 两处赋值同步改）；
+                 2) 加 autoSize —— 更窄的屏上自动降号（12sp 起）也不截断；
+                    ellipsize 只作极端窄屏的最后兜底。
+                 注：回退态那条 `证道 — 系统 shell（环境未安装）` 更长，本次未动。 -->
             <TextView
                 android:id="@+id/toolbar_title"
                 android:layout_width="0dp"
@@ -82,7 +91,11 @@
                 android:textColor="#FF1C1C1E"
                 android:textSize="17sp"
                 android:textStyle="bold"
-                android:singleLine="true"
+                android:maxLines="1"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="12sp"
+                android:autoSizeMaxTextSize="17sp"
+                android:autoSizeStepGranularity="1sp"
                 android:ellipsize="end" />
 
             <!-- 复制 / 粘贴：常驻顶部（借鉴同类终端的信息层级——放底部快捷键条

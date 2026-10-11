@@ -486,7 +486,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             // 全新会话只有一块窗格（attach 到旧会话时 paneCount 保持 -1 = 未知，
             // 见 paneCount 注释：服务端有几块我们问不到，不去猜）
             paneCount = 1
-            toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 — Debian 13.7 · bash"
+            // 2026-10-11 用户反馈「后面遮挡的有点多了」：原串 `证道 — Debian 13.7 · bash`
+            // 在 17sp 粗体下要 ~190dp，而 375dp 屏的顶栏给标题只剩 ~150dp
+            //（三个圆点热区占 104dp + 复制/粘贴占 ~92dp）⇒「· bash」整段被省略号吃掉、
+            // `13.7` 也只剩半截。改成短标题，并由 activity_main.xml 里 toolbar_title 的
+            // autoSize 在更窄的屏上自动降号兜底（宁可小一号，不再截断）。
+            // ⚠️ 回退态那条 `证道 — 系统 shell（环境未安装）` 同样偏长，本次未动。
+            toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 - Debian 13.7"
             // 环境未装：给安装引导（本地有归档则零交互自动装）。
             // ⚠️ v1.1 重写 TerminalActivity 时此调用曾丢失——新用户装完 App 卡在
             // fallback shell、没有任何安装入口（2026-10-07 恢复数据时实测发现）。
@@ -501,7 +507,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         } else {
             usesTmux = SessionManager.usesTmux
             fallbackActive = false
-            toolbarTitle?.text = "证道 — Debian 13.7 · bash"
+            // 同一串短标题：attach 到已有会话也走这条（理由见上面新会话那处的注释）
+            toolbarTitle?.text = "证道 - Debian 13.7"
         }
         // 视尺寸就绪后 attach：首次 attach 触发进程 spawn（新会话）或重排恢复（旧会话）
         termView.post {
