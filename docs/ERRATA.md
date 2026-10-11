@@ -5427,3 +5427,57 @@ fun candidates(url: String, chain: List<String> = DOWNLOAD_CHAIN): List<String> 
 **教训**
 
 「配镜像」必须分开答两个问题：**谁走镜像**（只有取数，写操作免谈）和**什么时候写**（按内容比对，不是按文件存在）。一句全局 `insteadOf` 一把梭，等于把用户的写操作和凭据一起交给第三方代理 —— 快是快了，方向反了。
+
+---
+
+## E-097 · 2026-10-11 · 系统层镜像是 Debian（353 个包），却把逐包版权文本删掉了 —— 第三方声明缺 Debian 一节
+
+**现象**
+
+外部安全审查指出（🟡 供应链/合规条目）：仓库有 `LICENSE`（GPL-3.0）、`PROVENANCE.md`、`THIRD-PARTY-LICENSES.md`，但 `THIRD-PARTY-LICENSES.md` 里**没有 Debian 系统层这一节** —— 而 App 分发的是整个 Debian rootfs（Release 资产 `debian-13.7-base-arm64.tar.zst`，约 229 MB）。
+
+**核对（2026-10-11，真机 + 仓库）**
+
+| 项 | 实测 |
+|---|---|
+| 发行版 | `/etc/os-release` = `PRETTY_NAME="Debian GNU/Linux 13 (trixie)"`、`VERSION_CODENAME=trixie`；`/etc/debian_version` = `13.7` |
+| 已装包 | `grep -c '^Package:' /var/lib/dpkg/status` = **353** |
+| apt 源 | `deb http://deb.debian.org/debian trixie main` |
+| 逐包版权文本 | ⚠️ **镜像里没有**：`rootfs/build-rootfs.sh:363` 为瘦身执行 `rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*`（2026-10-08 环境包瘦身），真机 `/usr/share/doc` 只剩 4 个构建后才装的条目（`libgpm2` / `vim` / `vim-common` / `vim-runtime`） |
+
+⇒ Debian 各包的版权与许可原文原本在 `/usr/share/doc/<包>/copyright`，被瘦身步骤一并删掉。各包**许可效力不受影响**（二进制与源码的许可状态没变），但"随分发提供版权文本"这个常规做法在镜像内不成立 ⇒ 必须在文档里给出替代获取途径，否则等于把举证责任丢给用户。
+
+**处置**
+
+- `THIRD-PARTY-LICENSES.md` 新增 **§7 Debian GNU/Linux 13.7 base（guest 系统层 rootfs）**：版本 / 构建来源（`rootfs/build-rootfs.sh`，qemu 交叉，CI 产出）/ 353 个包；**明确写出 `/usr/share/doc` 被删**，并给三条替代获取途径（`deb.debian.org` 取同版本包自带 `copyright`；`apt-get source <包>` 读 `debian/copyright`；`snapshot.debian.org` 取历史版本），另附源码要约与「未修改任何包的二进制」说明（构建脚本只做删减 + 少量配置文件写入）。
+- 未做（可选，等拍板）：把 353 个包的 `copyright` 文本单独打成一个小包随 Release 分发（或提交进仓库），让"镜像内不含版权文本"不再依赖外部可达性。
+
+**教训**
+
+「瘦身」删的是**体积**，而 `/usr/share/doc` 里同时装着**许可证文本** —— 按体积删文件前先问一句「这里面有没有非体积的东西」。另外：第三方组件声明要按**分发物**（APK + rootfs + 字体 + 原生库）逐项核对，不能按**源码依赖**核对 —— 源码里看不到 Debian。
+
+---
+
+## E-098 · 2026-10-11 · 全库没有一句「PRoot 不提供安全隔离」的声明
+
+**现象**
+
+同一份外部安全审查的 🟠 条目指出：PRoot 不是安全沙箱，但库里没有一处声明。逐项核对属实 —— 文档里只有「能跑起 Debian」「免 root」这类正面描述，`docs/milestones/已知限制.md` 唯一相关的一句是 §8 旧注「proot 子进程与 App 同 UID、同路由表」（写 DNS/VPN 归因时顺带提到），**没有任何一处把结论写明**。⇒ 读者（包括用户）容易把终端理解成沙箱。
+
+**核对（2026-10-11）**
+
+- 机制：PRoot 是**用户空间** syscall 转发层，不做 namespace / seccomp / SELinux 域切换，也不需要 root。
+- 后果（真机 `ps -A`）：guest 进程与 App **同一个 Android UID**（`u0_a416 proot → tmux → -bash`）、同一个内核、同一个网络栈 ⇒ guest 内程序能读写 App 能读写的任何位置。
+
+**处置**
+
+- `docs/milestones/已知限制.md` 新增 **§10「PRoot 不是安全沙箱（对用户与协作者的明确声明）」**：机制、后果、三条「因此」（只跑信任的命令 / App 侧签名链防的是分发被篡改、防不了你自己执行的代码 / 要隔离得靠 Android 自身机制）。
+- `README.md` 隐私声明末尾 + `README.en.md` Privacy 末尾各加一条 ⚠️ 提示，指向该节。
+
+**边界（诚实标注）**
+
+- 未做真机 PoC（比如"guest 内读 App 私有目录"的实测截图）。结论来自机制与同 UID 的证据，**不是**攻防实测；如需坐实，可在 guest 里 `cat` 一个 App 私有目录文件取证。
+
+**教训**
+
+「能力描述」会默认被读成「边界描述」：说"我们有一个 Debian 终端"而不说"它不是沙箱"，就是让用户自己补一句错的安全假设。凡是**安全边界**，无论做没做隔离，都要有一句显式声明（做了就写"隔离到什么程度"，没做就写"不是边界"）。
