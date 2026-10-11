@@ -9,7 +9,7 @@ import java.io.File
  * 目录占用统计单测（[SystemInfoProvider.dirSizeMb]）。
  *
  * 背景（2026-10-09 Rust 化）：`dirSizeMb` 现在是 **Rust 优先 + Java 回退** 两条路径
- * （见 `docs/证道-Rust化余地审计-2026-10-09.md` 候选 A）。
+ * （见 `docs/archive/证道-Rust化余地审计-2026-10-09.md` 候选 A）。
  *
  * ⚠️ JVM 单测里 `CoreNative.dirSizeBytes` 必然返回 `null`（Android 的 `System.loadLibrary`
  * 在纯 JVM 上不成立 ⇒ `rustAvailable=false`），所以这里测的是**回退那半条**：

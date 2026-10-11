@@ -1,7 +1,7 @@
 # 终端渲染 P0 实测（真机 · 2026-10-10）
 
 > 产出：2026-10-10（DeepSeek Harness）｜被测包：**v2.0.9**（versionCode 25，真机 `lastUpdateTime` 10-10 16:54:34）
-> 对应方案：`docs/证道-终端显示交互层重写方案-2026-10-10.md` 的 **P0「量三个数」**
+> 对应方案：`docs/archive/证道-终端显示交互层重写方案-2026-10-10.md` 的 **P0「量三个数」**
 > 设备：Honor **PGT-AN10**（`AD3J023824001723`，Android 16，1312×2848，density 560，未 root）
 > 方法：`adb shell dumpsys gfxinfo com.example.zhengdao`（summary）＋ `… framestats`（相位拆解）
 > 一句话：**渲染器不是瓶颈——`render()` 一帧 2.3 ms，只占 16.67 ms 预算的 14%；中文与英文没有可测差异。掉帧发生在 GPU/合成侧。**
@@ -144,7 +144,7 @@
    「全屏重绘在 UI 线程上 30 ms（ASCII）/ 38 ms（中文）中位，是 16.67 ms 预算的 1.8–2.9 倍」
    ——那是 `gfxinfo` 的**帧总时长百分位**。拆相位后 `draw(render)` = **2.3 ms**。
 2. **"中文比英文慢 27%（p50）/ 50%（p90）"不成立。** 同一口径下中英 p50 相同（2.27 vs 2.27 ms）。
-3. 由此，`docs/证道-终端显示交互层重写方案-2026-10-10.md:183` 的
+3. 由此，`docs/archive/证道-终端显示交互层重写方案-2026-10-10.md:183` 的
    「Compose 文本测量性能 🟡 —— `TerminalRenderer.java:111` 只有 ASCII 走缓存，中文每码点每帧一次 `measureText`，
    Compose 侧需加宽度缓存」**在本机这个屏上不是风险**：40 行满屏中文没有可测代价。该条可降级；
    真要加 `SparseArray<Float>` 宽度缓存，应作为"顺手做"而不是"必须先做"。
