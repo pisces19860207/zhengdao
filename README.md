@@ -208,10 +208,18 @@ terminal-emulator / terminal-view（v0.119.0-beta.3）为 **Apache-2.0**（此�
 | libtalloc（proot 进程内动态库） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ 根 [`LICENSE`](LICENSE) |
 | libandroid-shmem（proot 进程内动态库） | BSD-3-Clause | [`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) |
 | JetBrains Maple Mono（终端默认字体） | SIL OFL 1.1 | [`app/src/main/assets/fonts/OFL.txt`](app/src/main/assets/fonts/OFL.txt) |
+| Maven 运行时依赖（Compose / AndroidX / OkHttp / kotlinx / commons-* 等，共 136 个已解析模块） | Apache-2.0 | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
+| zstd-jni 包装代码 ＋ 其内的 zstd 本体（随包 native 库 `libzstd-jni-1.5.6-4.so`） | BSD 2-Clause（zstd-jni）／ BSD 3-Clause（facebook/zstd） | [`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt) ＋ [`licenses/BSD-3-Clause-zstd.txt`](licenses/BSD-3-Clause-zstd.txt) |
+| 归属声明（Apache Commons Compress、Public Suffix List 数据） | NOTICE（Apache-2.0 §4(d) / MPL-2.0 数据） | [`licenses/NOTICES.txt`](licenses/NOTICES.txt) |
+| xz（`org.tukaani:xz`） | Public Domain | 无正文义务（仅登记） |
 
 **上表每一份正文都随安装包分发**：构建期装进 APK 的 `assets/licenses/`，App 内 **设置 → 关于 →「开源许可」**
 可离线阅读全文；来源 URL、取回日期、字节数与 SHA256 见 [`licenses/README.md`](licenses/README.md)。
-Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本随各自构件分发，本项目不另行翻印。
+Maven 运行时依赖逐组对照表（声明许可证 + 覆盖方式 + 重新生成的方法）见
+[THIRD-PARTY-LICENSES.md §8](THIRD-PARTY-LICENSES.md)：其中 **Apache-2.0 / Public Domain 由 `licenses/Apache-2.0.txt`
+与登记覆盖，zstd-jni 的 BSD 2-Clause 见 `licenses/BSD-2-Clause.txt`，需要复现的归属声明见 `licenses/NOTICES.txt`**。
+（2026-10-11 更正：此前这里写「依赖正文随各自构件分发」，实测不成立——Android 打包默认剥掉构件顶层的
+`META-INF/LICENSE*` / `NOTICE*`，见 `docs/ERRATA.md` E-105。）
 
 ## 转载、二次打包与「证道」这个名字
 

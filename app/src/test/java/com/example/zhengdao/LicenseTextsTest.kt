@@ -70,8 +70,8 @@ class LicenseTextsTest {
     fun `README 记的每一份正文都与仓库文件逐字节一致`() {
         val records = parseRecords()
         assertEquals(
-            "README 的两张表应记 6 份正文（licenses/ 四份 + 仓库根 LICENSE + 字体 OFL.txt）",
-            6,
+            "README 的两张表应记 9 份正文（licenses/ 七份 + 仓库根 LICENSE + 字体 OFL.txt）",
+            9,
             records.size,
         )
         var stale = 0
@@ -132,7 +132,16 @@ class LicenseTextsTest {
             "build.gradle.kts 里没有 normalizeToLf：随包正文会随构建机的换行设置漂移（E-104 第三条补记）",
             g.contains("normalizeToLf"),
         )
-        listOf("Apache-2.0.txt", "BSD-3-Clause.txt", "GPL-2.0.txt", "GPL-3.0.txt", "LGPL-3.0.txt").forEach {
+        listOf(
+            "Apache-2.0.txt",
+            "BSD-2-Clause.txt",
+            "BSD-3-Clause.txt",
+            "BSD-3-Clause-zstd.txt",
+            "GPL-2.0.txt",
+            "GPL-3.0.txt",
+            "LGPL-3.0.txt",
+            "NOTICES.txt",
+        ).forEach {
             assertTrue("装配断言里漏了 $it —— 少一份就等于 APK 里没有它", g.contains(it))
         }
     }
