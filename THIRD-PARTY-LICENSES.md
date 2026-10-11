@@ -12,14 +12,15 @@
 > |---|---|---|
 > | Termux `terminal-emulator` / `terminal-view`（本文末节） | Apache-2.0 | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（第 4(a) 条「给接收者一份副本」） |
 > | proot（§1） | GPL-2.0-or-later | [`licenses/GPL-2.0.txt`](licenses/GPL-2.0.txt) |
-> | libtalloc（§2） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ 仓库根 [`LICENSE`](LICENSE)（GPL-3.0 全文；LGPL-3.0 第 2 条并入 GPL-3.0） |
+> | libtalloc（§2） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt)（GPL-3.0 全文；LGPL-3.0 第 2 条并入 GPL-3.0。2026-10-11 前该正文放在仓库根 `LICENSE`） |
 > | libandroid-shmem（§3） | BSD-3-Clause | [`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) |
 > | JetBrains Maple Mono（§6） | SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt`（随字体同目录，上游原文件） |
 > | Maven 运行时依赖（§8，136 个已解析模块） | 绝大多数 Apache-2.0；`com.github.luben:zstd-jni`＝**BSD 2-Clause**；`org.tukaani:xz`＝Public Domain | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）、[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)（zstd-jni）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
 >
 > - 每份正文的**来源 URL、取回日期、字节数与 SHA256** 见 [`licenses/README.md`](licenses/README.md)。
 > - 这些正文**随分发物提供**：构建期（`app/build.gradle.kts` 的 `stageLicenseAssets`）把它们拷贝进
->   APK 的 `assets/licenses/`，应用内入口 = 设置页「关于」→「**开源许可**」（离线可读全文，2026-10-11 晚起）。
+>   APK 的 `assets/licenses/`（**第一方代码声明 `LICENSE` 也在内**，包内名为 `LICENSE-zhengdao.txt`），
+>   应用内入口 = 设置页「关于」→「**开源许可**」（离线可读全文，2026-10-11 晚起）。
 > - Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**不能指望「随构件分发」**：
 >   Android 打包**默认剥掉**构件顶层的 `META-INF/LICENSE*` / `NOTICE*`（2026-10-11 实测：
 >   `commons-compress` 构件里有的 `META-INF/LICENSE.txt` 与 `META-INF/NOTICE.txt`，APK 里一个都没有）。
@@ -54,7 +55,7 @@
 - 许可证：**LGPL-3.0-or-later**（talloc 上游）
 - 来源：上游 <https://www.samba.org/ftp/talloc/>（本项目取的是 Termux 官方构建产物，
   包元数据主页 <https://talloc.samba.org/talloc/doc/html/index.html>）
-- **随附正文**：`licenses/LGPL-3.0.txt` ＋ 仓库根 `LICENSE`（GPL-3.0 全文）
+- **随附正文**：`licenses/LGPL-3.0.txt` ＋ `licenses/GPL-3.0.txt`（GPL-3.0 全文；2026-10-11 前该正文放在仓库根 `LICENSE`）
 - **官方产物摘要**：`libtalloc_2.5.0_aarch64.deb`
   SHA256 = `556591f43bb773ad8777e1a29522640866a55f95dab71914418b94a8c58ad5a7`
 - ⚠️ **使用形态（2026-10-11 核实，此前只写了「动态库方式独立分发」）**：

@@ -17,7 +17,9 @@ class LicenseTextsTest {
      * 从 `licenses/README.md` 的两张表里读出「文件路径 → (字节数, 行数, SHA256)」。
      *
      * 表行形如：`| [`Apache-2.0.txt`](Apache-2.0.txt) | Apache License 2.0 | … | 11,358 | 202 | `cfc7…` |`
-     * 与 `| GNU GPL v3.0 | 仓库根 [`LICENSE`](../LICENSE) | … | 35,149 | 674 | `3972…` |`。
+     * 与 `| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | … | 4,572 | 95 | `6728…` |`。
+     * 取路径的规则：该行里**第一个**「像路径」的反引号片段（`*.txt` 或 `LICENSE`）。
+     * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 9 条 = `licenses/` 八份 + `OFL.txt`。
      */
     private fun parseRecords(): Map<String, Record> {
         val md = File(repo, "licenses/README.md")
@@ -38,8 +40,8 @@ class LicenseTextsTest {
                     ?: return@forEach
                 val path = when {
                     token.contains('/') -> token          // app/src/main/assets/fonts/OFL.txt
-                    token == "LICENSE" -> token           // 仓库根 LICENSE
-                    else -> "licenses/$token"             // licenses/ 下的四份正文
+                    token == "LICENSE" -> token           // 仓库根 LICENSE（历史形态；现已不进表）
+                    else -> "licenses/$token"             // licenses/ 下的八份正文
                 }
                 out[path] = Record(bytes, lines, sha)
             }
@@ -70,7 +72,7 @@ class LicenseTextsTest {
     fun `README 记的每一份正文都与仓库文件逐字节一致`() {
         val records = parseRecords()
         assertEquals(
-            "README 的两张表应记 9 份正文（licenses/ 七份 + 仓库根 LICENSE + 字体 OFL.txt）",
+            "README 的两张表应记 9 份正文（licenses/ 八份 + 字体 OFL.txt）",
             9,
             records.size,
         )
@@ -140,6 +142,7 @@ class LicenseTextsTest {
             "GPL-2.0.txt",
             "GPL-3.0.txt",
             "LGPL-3.0.txt",
+            "LICENSE-zhengdao.txt",
             "NOTICES.txt",
         ).forEach {
             assertTrue("装配断言里漏了 $it —— 少一份就等于 APK 里没有它", g.contains(it))

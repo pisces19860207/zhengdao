@@ -99,6 +99,30 @@ fun HomeScreen(
             ).show()
         }
     }
+    // 台账 §B 顺序 11（原 §B-补-42）：两条「去看记录 / 看日志」的通知按钮各自的落点。
+    // ①保活留档 →「保活记录」页（再往里一层就是留档原文）；②运行日志 → 帮助页的「运行日志」一节。
+    val openKeepaliveLogs: () -> Unit = {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(context, com.example.zhengdao.ui.KeepaliveLogActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.onFailure {
+            // 极少数 ROM/策略下起不来：退回设置首页，至少不会一点反应都没有
+            onOpenSettings()
+        }
+    }
+    val openRunLogs: () -> Unit = {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(context, com.example.zhengdao.ui.SettingsHelpActivity::class.java)
+                    .putExtra(com.example.zhengdao.ui.SettingsHelpActivity.EXTRA_FOCUS_LOGS, true)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.onFailure {
+            onOpenSettings()
+        }
+    }
     // 反馈通道：用户看不懂、也修不了的失败，至少有个地方说（带日志的话更好定位）
     val openFeedback: () -> Unit = {
         runCatching {
@@ -637,7 +661,11 @@ fun HomeScreen(
                                             IssueCenter.ACTION_RESTART_SERVE -> retryServe(true, issue.id)
                                             IssueCenter.ACTION_GRANT_STORAGE -> openStorageGrant()
                                             IssueCenter.ACTION_FEEDBACK -> openFeedback()
-                                            // 修复环境 / 看日志 / 通用去设置：设置页里都有对应那一节
+                                            // 台账 §B 顺序 11（原 §B-补-42）：这两条以前和「修复环境」一起
+                                            // 落进 else = 只打开设置首页，用户还得自己找；现在各去各的页。
+                                            IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS -> openKeepaliveLogs()
+                                            IssueCenter.ACTION_VIEW_LOGS -> openRunLogs()
+                                            // 修复环境 / 通用去设置：设置页里都有对应那一节
                                             else -> onOpenSettings()
                                         }
                                     }) { Text(label) }
