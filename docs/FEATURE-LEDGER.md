@@ -10,7 +10,7 @@
 ## 结账 · 现状总表（2026-10-10 晚）
 
 > **这一节是给「新开一个会话」用的**：开工前先看这里，别把已经做完的又当成没做，也别把待做的说成做完了。
-> 结账基准：`origin/main` = 本批合并后的 tip（2026-10-10 深夜；精确 SHA 以 `git rev-parse origin/main` 为准；本节 #12–#15 即这批合并），版本 **v2.0.10（versionCode 26）**，CI 双绿（`ci.yml` 的 `verify` + `build.yml` 的 `build`；tag 推送时 `build.yml` 的 `release` job 另建正式 Release）。
+> 结账基准：**本地 `main` tip = `159c044`**（2026-10-11 上午，即 §A #19 的 UI 皮肤合并；`origin/main` 仍停在 `391f8b6`，**尚未推送**；精确 SHA 以 `git rev-parse HEAD` 为准；本节 #12–#15 是 2026-10-10 那批合并、#17–#18 是 v2.0.11 那条线、#19 是 UI 皮肤），版本 **v2.0.11（versionCode 27）**，CI 双绿（`ci.yml` 的 `verify` + `build.yml` 的 `build`；tag 推送时 `build.yml` 的 `release` job 另建正式 Release）。
 > 这一节比顶部那行 `682dceb`（2026-10-07）的旧基准新得多；逐条细节按编号查 `docs/ERRATA.md`，逐功能台账仍在下面 §2。
 
 ### A. 已经做完，且有证据（2026-10-10 这一轮，从旧到新）
@@ -35,6 +35,7 @@
 | 16 | **支线与引用清理（处理后：远端只剩 `main`，本地只剩 3 个分支）**：远端删 `feature/terminal-view-refactor-p1`；本地删 25 个已并入 main 的分支（SHA 留档，见备注）；工作树 5 → 3（删 `wt-p1-terminal`、`wt-p0-render`，`wt-ios-skin` / `wt-uiux` 未碰）；删残留目录 `zhengdao-wt-session`（仅 lint 缓存、无 `.git`）与临时工作树 `%TEMP%\zd-kbmerge`；`git worktree prune`、`git remote prune` 后无残留 | 无独立提交（仓库引用层操作） | 被删分支 SHA 留档于 `%TEMP%\zd-deleted-branches.txt`；过时 stash `stash@{0}`（`114d06e7`，2026-10-07「单会话」那批）已 `stash drop` —— 比对其快照与 main：`SessionRouter.kt` / `SessionRouterTest.kt` / `AgentRepository.kt` **完全相同**、新建的两份 docs 在 main 上更长、其余文件 main 只多不少 ⇒ 内容已落地，补丁留档 `%TEMP%\zd-stale-stash-2026-10-07.patch`（1715 行），必要时 `git show 114d06e7` 仍可取出 |
 | 17 | **E-090 修复落地**（opencode bionic 装不上）：前缀提成 `PKG_ENTRY_PREFIX` + `relPathOf()` 由准入判断与剥前缀共用、清旧残留 `oc/usr/data/`、失败分支补日志、4 条单测 | `b77cab4` → 合并 `eb377d0` | 真机 AD3J023824001723：`清理旧版错位释放残留（约 275 MB）` → `OpenCode 2.0.22 释放完成（2 个文件）` → 太极 **● 已连接**（SSE HTTP 200）；单测 63 suite / 563 例 / 0 失败；**未发版**（与另两条一起发 v2.0.11） |
 | 18 | **v2.0.11 发版**（`versionCode 27` + `.github/release-notes/v2.0.11.md` + 注记 tag `v2.0.11`）：①E-090 opencode 装不上（v2.0.9 起 100% 失败）修复；②E-089 资料库扫描上限不再静默截断；③README（中/英）系统要求提到第一屏 | `4578a66` → 合并 `41c4869`（tag `v2.0.11`） | 正式 Release「证道 v2.0.11 — 正式版」（<https://github.com/pisces19860207/zhengdao/releases/tag/v2.0.11>）：`zhengdao-2.0.11-release.apk` 8,198,507 B / `sha256:4ba43322665c3f9108d04eaf6f0704f75c575cfa9743d9035d1d596abd5d041b`；CI：main 上 build（run 38067358636）/ ci（run 38067358657）双绿，tag v2.0.11 的 build（run 38067362809）绿并产出 Release；本地预跑 `tools/check-native-so.py` 与 `tools/check-r8-mapping.py` 双通过、`:app:assembleRelease` BUILD SUCCESSFUL；真机 AD3J023824001723 已用带此修复的包验证（清理 275 MB 残留 → 释放完成 → 太极 ● 已连接） |
+| 19 | **iOS 化 UI 皮肤合进 `main`**：三 Tab 去胶囊 + 底栏 56dp/10sp + Tab 图标弹动；终端页深色 chrome（工具条 44dp、标题 17sp、复制/粘贴 iOS 蓝）；键条深色化（`#1C1C1E` 底 / `#2C2C2E` 键，**17 键 id 与顺序零改动**）；`pressClickable` 13 处（0.97 缩放 + 长按触感 + ripple）；圆角令牌 `Radius.kt`、iOS 绿开关 `SwitchTokens.kt`、两套对话框 14dp 圆角 | `52c1ea4`（支线 8 commit）→ 合并 **`159c044`**（基线 `391f8b6`） | 验收页 `docs/acceptance/ui-ios-skin-2026-10-11.md`（8 张真机截图资产）：真机 8 项全过 —— 底栏容器 196 px = **56.0 dp**、工具条 154 px = 44.0 dp、单键 168 px = 48.0 dp、17 键 id/顺序一字不差、点红点后 `topResumedActivity` 回 `MainActivity` 且 **tmux 会话仍在**、Compose 与框架对话框圆角 14dp 可见、按住卡片卡宽 **1196 → 1160 px = 0.9699 ≈ 0.97**；`git diff --shortstat 391f8b6 HEAD` = **16 文件 +323/−43**；⚠️ 触感反馈、iOS 绿开关的实际颜色（被系统画中画小窗遮挡）、Tab 图标弹动**未验** |
 
 > **发版流程（下次照抄）**：改 `app/build.gradle.kts` 的 `appVersionName` / `versionCode` → 新增 `.github/release-notes/vX.Y.Z.md` → 合进 `main`（`build.yml` 会把滚动 release `latest` 刷成新版，确认落在 `latest` 的 apk 尺寸/时间变了）→ `git tag -a vX.Y.Z && git push origin vX.Y.Z` → `build.yml` 的 `release` job（`if: startsWith(github.ref, 'refs/tags/v')`）建正式 Release。注意滚动包**每次构建都会重传、sha256 不可复现**，别把历史 sha256 当"在架值"（E-081）。
 
@@ -52,7 +53,7 @@
 | 6 | 第四批：冷启动主线程 IO（P1-3 / P1-4 / P1-5） | issue #13 |
 | 7 | 第八批：错误原文与技术债（P2-6 ~ P2-18 / P4） | issue #17 |
 | 8 | **E-080 还差两条没真机验**：① 终端里让 agent 自己解压 `.docx` 的实际体验 ② 「仅私有模式」工作区的骨架文案 | E-080 末尾 |
-| 9 | hermes 没装回（数据事故后没重装；想装就在丹房点「安装」，但它在受限网络下依赖重、且按 E-081 已摘出恢复候选） | 用户侧 |
+| 9 | ~~hermes 没装回~~ ✅ **2026-10-11 真机核实已装回**：设置页可见「hermes 工具」（python / node / uv / npm / ripgrep 共 247 MB · 保留）＋「hermes 本体 hermes-agent」，终端里 **Hermes Agent v0.21.6** 正在跑，丹房显示「1 个 Agent」 | 用户侧（已完成） |
 | 10 | 4 个**刻意未跟踪**的文件去留：`.zd-scratch/`、`docs/待办-dirSizeMb支线-2026-10-09.md`、`docs/证道-Rust化余地审计-2026-10-09.md`、`…html`（**不要顺手提交**） | 用户侧 |
 
 ### C. 已经拍板「不做」，别复活
@@ -63,8 +64,8 @@
 
 ### D. 别人正在干的（不要碰）
 
-- 工作树 `C:\Users\guoli\AndroidStudioProjects\wt-uiux`（分支 `fix/uiux-p0`，`9f1e3ed`）
-- 工作树 `C:\Users\guoli\AndroidStudioProjects\wt-ios-skin`（分支 `feat/ui-ios-skin`，起点 `ce161be`）
+- 工作树 `C:\Users\guoli\AndroidStudioProjects\wt-uiux`（分支 `fix/uiux-p0`，`9f1e3ed`）—— **仍未合并**（6 文件 +131/−28：顶栏溢出 / 关闭删除防误触 / Toast / 统计占位）
+- ~~工作树 `wt-ios-skin`（分支 `feat/ui-ios-skin`，起点 `ce161be`）~~ —— **2026-10-11 已合并**：`52c1ea4` → 合并 `159c044`（见 §A #19）；分支与工作树**尚未清理**，等用户发话
 
 ## 0. 开工前必读
 
