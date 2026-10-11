@@ -187,7 +187,8 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 
 **判据不是本项目自记**，而是从公开地址回读 GitHub REST
 `/repos/pisces19860207/zhengdao/releases/tags/<tag>` 返回的 `assets[].digest`（GitHub 自己算的
-`sha256:` 值）⇒ 任何人下载后都能独立复算。取数时间 2026-10-11T13:1xZ。
+`sha256:` 值）⇒ 任何人下载后都能独立复算。取数时间：v2.0.14 / v2.0.15 段为 2026-10-11T13:1xZ，
+**v2.0.16 段为 2026-10-11T14:27Z**（Release 建立于 `2026-10-11T14:26:37Z`，tag 指向 `6ed8de4`）。
 
 随版本变化的产物：
 
@@ -195,9 +196,10 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 |---|---|---|---|
 | v2.0.14 | `zhengdao-2.0.14-release.apk` | 8,226,607 | `3ea4b2f1d2dd2620a178ade52062474f470273419aeb4edf718ad3995adca0a8` |
 | v2.0.15 | `zhengdao-2.0.15-release.apk` | 8,293,206 | `35e2feac79e110a4b4a246a3c41e411fd1c6d245a786f967ddf0aaf8b6ea9210` |
+| v2.0.16 | `zhengdao-2.0.16-release.apk` | 8,317,372 | `b9702f32f44f532315100c2bbef003d5db9ddc99bdb1301a63f216b7bc5156ee` |
 
-rootfs 五项（**v2.0.14 与 v2.0.15 逐字节相同、digest 一致** —— 这两版没有改动 rootfs；末两项是随资产
-分发的校验文件）：
+rootfs 五项（**v2.0.14 / v2.0.15 / v2.0.16 三版逐字节相同、digest 一致** —— 这三版都没有改动 rootfs；
+末两项是随资产分发的校验文件）：
 
 | 资产 | 字节 | SHA256 |
 |---|---|---|
@@ -213,9 +215,11 @@ rootfs 五项（**v2.0.14 与 v2.0.15 逐字节相同、digest 一致** —— �
 ⇒ **App 实际下载消费的离线包与线上发布资产逐字节一致**（不是"名字一样"，是同一串字节）。
 
 **滚动版 `latest` 不入册**：它每次构建都刷新（`zhengdao-2.0.15-release.apk` 的 `updated_at`
-= 2026-10-11T13:09:45Z），同一版本号的两次构建 sha256 并不相同（v2.0.15 本地构建 8,293,218 B
-vs CI 构建 8,293,206 B，差 12 B —— 见 `docs/ERRATA.md` E-081：滚动构建不可复现：同密钥、
-同 versionCode ⇒ 覆盖安装仍兼容）。**只有打了 tag 的正式版入册。**
+= 2026-10-11T13:09:45Z；`zhengdao-2.0.16-release.apk` 在 `2026-10-11T14:07:53Z` 那次为
+**8,317,176 B / `987bce291cac776664dc0291a2c53041336efe2c9fd59ddf4df5af98e30082d3`**），
+同一版本号的两次构建 sha256 并不相同（v2.0.15 本地构建 8,293,218 B vs CI 构建 8,293,206 B；v2.0.16
+本地构建 8,317,384 B vs tag 正式包 8,317,372 B —— **差值都是 12 B**，见 `docs/ERRATA.md` E-081：
+滚动构建不可复现：同密钥、同 versionCode ⇒ 覆盖安装仍兼容）。**只有打了 tag 的正式版入册。**
 
 `THIRD-PARTY-LICENSES.md` §7「Debian rootfs」一节据此加了指向本节的一行。
 
