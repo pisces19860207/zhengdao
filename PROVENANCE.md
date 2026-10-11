@@ -145,13 +145,61 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 `8199dca06dccb693ec09fb1759e3e1ad08b4863f0c11c612f89c20bd9ecdc1a0`、
 `libtalloc_2.5.0_aarch64.deb` = `556591f43bb773ad8777e1a29522640866a55f95dab71914418b94a8c58ad5a7`、
 `libandroid-shmem_0.7_aarch64.deb` = `0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6`
-（官方索引**不发布构建 commit**；按 `termux/termux-packages` 的 `packages/proot/build.sh` 版本号
-回查 commit 属待办，见 `docs/闭源切换清单-2026-10-11.md` 第四节）。
+**构建侧回查（2026-10-11 补做，替代"构建 commit"）**：Termux 官方索引**不发布构建 commit**
+（`.deb` 由 `termux/termux-packages` 的 CI 产出，没有对应的源码提交号），所以锚点落在**三样可核验的东西**上：
+
+| 组件 | 构建配方（`termux/termux-packages`） | 版本 bump 提交 | 上游源码包 SHA256 |
+|---|---|---|---|
+| proot 5.1.107.96 | `packages/proot/build.sh`（blob `440897beb2717fc334edd5ad2ab42bd63b504910`） | `de39661946f7e8175b5dd0755121fa28cb0aebd1`（2026-10-01T18:39:38Z，「bump(main/proot): 5.1.107.96」） | `https://github.com/termux/proot/archive/v5.1.107.96.zip` = `75f654fe60dea92dabff2bf083ae8bfe4f91baa6a1a374786a6bf391015eebaa`（上游 tag `v5.1.107.96` → commit `a179d3e8a4e045aaa1fb8cc3284f23509d96d353`） |
+| libtalloc 2.5.0 | `packages/libtalloc/build.sh`（blob `814cb06bc6a5052b84012ce2bb99e8c9cec84ee8`） | — | `https://www.samba.org/ftp/talloc/talloc-2.5.0.tar.gz` = `912afa237510ae542a7733998eb18a12bcda35ab6729c8e2ddb43e8d0ebab007` |
+| libandroid-shmem 0.7 | `packages/libandroid-shmem/build.sh`（blob `7e013d0a658622a3a1797f868d4028cfd58f42a7`） | — | `https://github.com/termux/libandroid-shmem/archive/refs/tags/v0.7.tar.gz` = `1e5ff8459bc0a8c229dd8a94b27d119987e09ef3414331c2b5ebfff20b98e867` |
+
+配方里 `export PROOT_UNBUNDLE_LOADER=$TERMUX_PREFIX/libexec/proot` 正是 assets 里 **`tproot` ＋ `tloader`**
+两个文件的来源（loader 不内嵌，装到 `libexec`，随包释放成 `files/termux-proot/loader`）；
+`TERMUX_PKG_DEPENDS="libandroid-shmem, libtalloc"` 与上表两个 `.so` 对应。
+取数时间 2026-10-11，来源 GitHub REST（`/commits?path=packages/proot/build.sh`、`/contents/...`、
+`/repos/termux/proot/git/ref/tags/v5.1.107.96`）。
 许可证正文随仓库分发：`licenses/GPL-2.0.txt`（proot）、`licenses/LGPL-3.0.txt` ＋ 根 `LICENSE`
 （libtalloc）、`licenses/BSD-3-Clause.txt`（libandroid-shmem）。
 
 升级流程：从 Termux 仓库取新版本 → 计算新 SHA256 → 更新 assets 与上表 →
 真机回归（bash 存活 + 四项验收）→ 提交。
+
+### 官方发布资产摘要（Release assets，2026-10-11 入册）
+
+**判据不是本项目自记**，而是从公开地址回读 GitHub REST
+`/repos/pisces19860207/zhengdao/releases/tags/<tag>` 返回的 `assets[].digest`（GitHub 自己算的
+`sha256:` 值）⇒ 任何人下载后都能独立复算。取数时间 2026-10-11T13:1xZ。
+
+随版本变化的产物：
+
+| 版本 | 资产 | 字节 | SHA256 |
+|---|---|---|---|
+| v2.0.14 | `zhengdao-2.0.14-release.apk` | 8,226,607 | `3ea4b2f1d2dd2620a178ade52062474f470273419aeb4edf718ad3995adca0a8` |
+| v2.0.15 | `zhengdao-2.0.15-release.apk` | 8,293,206 | `35e2feac79e110a4b4a246a3c41e411fd1c6d245a786f967ddf0aaf8b6ea9210` |
+
+rootfs 五项（**v2.0.14 与 v2.0.15 逐字节相同、digest 一致** —— 这两版没有改动 rootfs；末两项是随资产
+分发的校验文件）：
+
+| 资产 | 字节 | SHA256 |
+|---|---|---|
+| `debian-13.7-base-arm64.tar.zst` | 201,632,517 | `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02` |
+| `debian-13.7-base-arm64.tar.zst.sha256` | 65 | `2b7b292e5d8641fb3eaf0014adede54beee627606993a652380bbcd1038717b5` |
+| `rootfs-index.json` | 469 | `50f10326d9e68a4c1fdd03154e317c9d6068a0d6fa2c71a4c5e73f3b073b78ff` |
+| `rootfs-manifest.txt` | 2,117,653 | `82fa3f4e84a7963d399cf5f63a3bb8a41d5af183ee7f5812a6a8e84eeecdf16c` |
+| `rootfs-manifest.txt.sha256` | 65 | `5fc8007e93a30609f3e5e9ba3d9f57f6e51321fc16dcad340b75dbaa8f4cd66f` |
+
+**真机交叉核对（2026-10-11 实测）**：手机公共区缓存
+`/sdcard/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst`（201,632,517 B）端侧 `sha256sum`
+= `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02` = 上表 digest
+⇒ **App 实际下载消费的离线包与线上发布资产逐字节一致**（不是"名字一样"，是同一串字节）。
+
+**滚动版 `latest` 不入册**：它每次构建都刷新（`zhengdao-2.0.15-release.apk` 的 `updated_at`
+= 2026-10-11T13:09:45Z），同一版本号的两次构建 sha256 并不相同（v2.0.15 本地构建 8,293,218 B
+vs CI 构建 8,293,206 B，差 12 B —— 见 `docs/ERRATA.md` E-081：滚动构建不可复现：同密钥、
+同 versionCode ⇒ 覆盖安装仍兼容）。**只有打了 tag 的正式版入册。**
+
+`THIRD-PARTY-LICENSES.md` §7「Debian rootfs」一节据此加了指向本节的一行。
 
 ### 字体（终端默认正文，2026-10-10 固化）
 
