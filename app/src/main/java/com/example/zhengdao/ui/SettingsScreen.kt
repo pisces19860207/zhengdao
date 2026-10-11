@@ -669,6 +669,9 @@ fun SettingsScreen(
                         kbHints = on
                         com.example.zhengdao.terminal.KnowledgeBaseHints.setEnabled(ctx, on)
                     },
+                    // 2026-10-11 补（验收页 §4-1）：同一张卡里的两个开关必须同色，
+                    // 上一处（「让终端 AI 自动读取」）已用 iOS 绿，这处漏了。
+                    colors = iosSwitchColors(),
                 )
             }
             Text(
