@@ -38,6 +38,16 @@
 Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**随各自构件分发**
 （AAR/JAR 内的 `META-INF/LICENSE*`），本项目不另存副本——聚合的是构件本身，正文就在里面。
 
+### 这几份正文也随 APK 分发（2026-10-11 起）
+
+上表里 `licenses/` 的四份 ＋ 仓库根 `LICENSE` ＋ 字体 `OFL.txt`，构建期会被原样复制进 APK 的
+`assets/licenses/`（`app/build.gradle.kts` 的 `stageLicenseAssets` 任务，由 `preDebugBuild` /
+`preReleaseBuild` 拉起来）⇒ **只拿到安装包、不联网的人也能读到全部正文**。应用内入口 = 设置页
+「关于」→「**开源许可**」（`app/src/main/java/com/example/zhengdao/ui/OpenSourceLicensesActivity.kt`）。
+
+> **git 里只留这一份正文**，随包那份是构建期拷出来的 —— 免得两份副本漂移之后，
+> 上表的 SHA256 与「随包正文」各说各话（这正是 E-104 的教训）。
+
 ## 二、校验（一条命令）
 
 ```bash
@@ -60,6 +70,21 @@ git cat-file blob HEAD:licenses/Apache-2.0.txt | sha256sum     # 与上表逐一
 ```
 
 直接 `sha256sum licenses/*.txt` 也对得上——前提是 `.gitattributes` 的 `eol=lf` 生效（`git ls-files --eol` 可证）。
+
+### 包内正文核对（不必装包）
+
+```powershell
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$apk = Get-ChildItem app\build\outputs\apk\debug\*.apk | Select-Object -First 1
+$z = [IO.Compression.ZipFile]::OpenRead($apk.FullName)
+$z.Entries | Where-Object FullName -like 'assets/licenses/*' |
+    ForEach-Object { "{0,8}  {1}" -f $_.Length, $_.FullName }
+$z.Dispose()
+```
+
+期望看到 `assets/licenses/` 下五份 `.txt`（Apache-2.0 / BSD-3-Clause / GPL-2.0 / GPL-3.0 / LGPL-3.0）
+与本 README，字节数与上表一致；`assets/fonts/OFL.txt` 也在包里（字体那份按 OFL 惯例与字体同目录）。
+**少一份就是构建期装配出了问题**：`stageLicenseAssets` 末尾有 `check` 断言，构建会直接失败。
 
 ## 三、维护规则（改动需经项目所有者确认）
 
