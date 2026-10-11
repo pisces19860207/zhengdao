@@ -9,7 +9,8 @@ import org.junit.Test
 /**
  * URL 变换函数纯逻辑测试（零设备依赖、零网络）。
  *
- * - [RootfsDownloader.withMirrorFallback]：v1.2 B3 的 gh-proxy 兜底
+ * - [RootfsDownloader.withMirrorFallback]：v1.2 B3 的镜像兜底（2026-10-11 起镜像表收口到
+ *   [GithubMirror.DOWNLOAD_CHAIN]，主源仍在首位）
  * - [RootfsDownloader.withObjectStorage]：方案一的对象存储首选源
  *   （docs/milestones/证道-方案一执行清单.md；桶未配置时不接入下载列表）
  */
@@ -18,10 +19,10 @@ class UrlTransformTest {
     // ── withMirrorFallback ──────────────────────────────────────────
 
     @Test
-    fun mirror_github直链补gh代理兜底() {
+    fun mirror_github直链补镜像兜底() {
         val url = "https://github.com/pisces19860207/zhengdao/releases/download/v1.0.0/debian.tar.zst"
         assertEquals(
-            listOf(url, "https://gh-proxy.com/$url"),
+            listOf(url) + GithubMirror.DOWNLOAD_CHAIN.map { "$it$url" },
             RootfsDownloader.withMirrorFallback(url)
         )
     }
@@ -41,10 +42,10 @@ class UrlTransformTest {
 
     @Test
     fun mirror_带查询参数的github链接兜底仍可拼接() {
-        // 拼接语义是字符串前置 gh-proxy.com/——查询参数按原样保留（gh-proxy 透传）
+        // 拼接语义是字符串前缀 —— 查询参数按原样保留（镜像透传）
         val url = "https://github.com/a/b/releases/download/v1/f.bin?X=1"
         assertEquals(
-            listOf(url, "https://gh-proxy.com/$url"),
+            listOf(url) + GithubMirror.DOWNLOAD_CHAIN.map { "$it$url" },
             RootfsDownloader.withMirrorFallback(url)
         )
     }

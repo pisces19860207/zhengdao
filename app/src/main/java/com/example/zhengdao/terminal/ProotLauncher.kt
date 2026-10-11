@@ -352,19 +352,15 @@ object ProotLauncher {
         // 这样「修复环境」重解压系统层时不碰用户数据（homeDir/prootTmp 已在前面的
         // hermes 巡检块之前定义）
 
-        // git 克隆加速（用户实测：v2vpn 下 github 克隆仍极慢，Hermes 安装卡在克隆）：
-        // /root/.gitconfig 把 github.com 替换为可用的加速镜像（2026-10-05 实测 gh-proxy.com
-        // 200/1.5s）。镜像失效时删除 /root/.gitconfig 即恢复直连。
-        runCatching {
-            val gitconfig = File(homeDir, ".gitconfig")
-            if (!gitconfig.isFile) {
-                gitconfig.writeText(
-                    "[url \"https://gh-proxy.com/https://github.com/\"]\n" +
-                        "\tinsteadOf = https://github.com/\n"
-                )
-                RunLog.log("git 镜像已配置（gh-proxy.com）")
-            }
-        }
+        // git 克隆加速 + 加固（2026-10-11 重做，用户：「给终端里的 git 加下速和加固一下」）。
+        // 旧写法（只在 .gitconfig 不存在时写一段全局 url.insteadOf=gh-proxy.com）有两个毛病：
+        // ① 只判存在 ⇒ 换镜像是"只对新环境生效"；② 全局 insteadOf 连 push 一起改道到第三方镜像
+        // （凭据外泄 + 镜像不收 push）。现在改成：.gitconfig 只放加固键（绝不放 insteadOf），
+        // 镜像只在 /usr/local/bin/git 包装器里、对取数类子命令**临时**注入，且按内容比对幂等重写。
+        // 实现与理由见 terminal/GitAccel.kt。
+        runCatching { GitAccel.apply(rootfsDir, homeDir) }
+            .onSuccess { actions -> actions.forEach { RunLog.log(it) } }
+            .onFailure { RunLog.log("git 加速配置失败：${it.message}") }
         // ── 太极实例的预置（人设 + opencode.json 性能/插件字段）已搬走 ──────────────
         // 2026-10-09（ERRATA E-069）：那些内容是**太极的**，不该由"用户开终端"来触发，
         // 也不该和终端耦合。现唯一入口 oc/TaijiPreset.ensure(ctx)，由 ui/taiji/TaijiScreen
