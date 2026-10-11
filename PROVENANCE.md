@@ -90,10 +90,11 @@ tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6
 | `java/com/termux/textselection/TextSelectionHandleView.java` | 同上 |
 | `cpp/termux/termux.c` | JNI `ReleaseStringUTFChars(env, cmd, cmd_cwd)` → `(env, cwd, cmd_cwd)`（**上游 beta.3 尚未修的内存 bug**） |
 
-另有 **6 个纯第一方**文件沿用 `com.termux.view` 包名（合计 1,477 行，非上游作品）——
-`TerminalImeBridge` 438、`TerminalGestureController` 304、`TerminalCursorBlinker` 246、
-`TerminalA11yDelegate` 202、`TerminalSelectionController` 190、`TerminalSizeResolver` 97 ——
-它们带本文件「代码文件头」一节规定的**独立开发声明**。
+另有 **6 个纯第一方**文件沿用 `com.termux.view` 包名（合计 1,501 行，非上游作品；
+上游 `terminal-view` 里**不存在同名文件**，2026-10-11 逐文件核对）——
+`TerminalImeBridge` 442、`TerminalGestureController` 308、`TerminalCursorBlinker` 250、
+`TerminalA11yDelegate` 206、`TerminalSelectionController` 194、`TerminalSizeResolver` 101 ——
+行数为**含声明头的现状行数**（各含本文件「代码文件头」一节规定的**独立开发声明** 4 行）。
 
 其余 **11 个上游文件逐字节未改**（terminal 7：`ByteQueue` / `JNI` / `Logger` / `TerminalColors` /
 `TerminalOutput` / `TerminalSessionClient` / `WcWidth`；view 3：`GestureAndScaleRecognizer` /
@@ -103,6 +104,15 @@ tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6
 
 复现比对：`git diff --no-index --numstat <上游 tarball 解包目录> app/src/main/java/com/termux`。
 （注意 `textselection` 存在包名与目录不符的历史遗留，比对时按路径而非包名对应，见 `docs/ERRATA.md` E-101。）
+
+**2026-10-11 复核结果**（按上述方法，对 `v0.119.0-beta.3` tarball 快照逐文件核）：terminal 14/**14**、
+view 上游 8 / 本项目 11（**6 个第一方类上游无同名文件**）、textselection 3/**3**；逐字节相同的
+**11 个文件**为 `ByteQueue` / `JNI` / `Logger` / `TerminalColors` / `TerminalOutput` /
+`TerminalSessionClient` / `WcWidth` / `GestureAndScaleRecognizer` / `TerminalViewClient` /
+`support/PopupWindowCompatGingerbread` / `CursorController`；12 个衍生文件**逐个实测带文件头修改通知**；
+`cpp/termux/termux.c` 的差异为 7 增 1 删（通知头 6 行 + `ReleaseStringUTFChars(env, cmd, cmd_cwd)`
+→ `(env, cwd, cmd_cwd)` 的内存 bug 修复）。**没有任何"上游有、本项目缺"的文件**（除按设计未收的
+上游其它模块）。取证与台账见 `docs/FEATURE-LEDGER.md` §A #36。
 ### 版本固定（可复现构建基线，2026-10-04 固化）
 
 来源：Termux 官方仓库 stable/main（packages.termux.dev），aarch64 官方构建产物，
@@ -176,6 +186,30 @@ TerminalPrefs.kt`）在 `applyTo()` 里于 `setTextSize()` **之后**调用
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 ```
+
+### 落账流程（2026-10-11 固化：先补文件内声明，再落账）
+
+许可证 / 来源类结论**必须先落在文件本身，再写进台账或 ERRATA**。2026-10-11 的
+`docs/ERRATA.md` E-100 就是反面教材：当时台账已准备写「12 个衍生文件均已标注修改」，
+逐文件 `grep` 后发现其中 **7 个连一句标注都没有**。
+
+1. **先取证**——逐文件读文件头（`grep` / 读前 6 行），不凭「应该已经标了」下笔；
+2. **缺什么当场补**——声明 / 通知只加在文件头注释，不动代码逻辑；
+3. **复核**——复查「缺声明计数 = 0」、`git diff --stat` 只增注释行；能编译就编译；
+4. **最后才落账**——台账 / ERRATA 里每一句「已补 / 已标注」都要能指到**具体文件（含行号）**；
+   台账里的文件数、行数要与文件实况一致（**行数含声明头时必须注明**）。
+
+依此流程，2026-10-11 补齐了 **11 个第一方文件**缺失的声明头（清单与验证见
+`docs/FEATURE-LEDGER.md` §A #36）：
+
+| 位置 | 文件 |
+|---|---|
+| `app/src/main/java/com/example/zhengdao/` | `ZhengdaoApp.kt`、`oc/OcConnectionPolicy.kt`、`oc/OcRuntime.kt`、`terminal/StorageAudit.kt`、`ui/theme/Type.kt`、`ui/HermesInstallScript.kt`、`ui/ImeProbe.kt`、`ui/ImeRegressionActivity.kt`、`ui/NetSelfCheck.kt` |
+| `rust/core/src/` | `jni_bridge.rs`、`tests.rs` |
+
+其中 `OcRuntime.kt` / `StorageAudit.kt` / `NetSelfCheck.kt` / `jni_bridge.rs` 四个（即下方
+「实现方红线清单」第 2 条最可能被质疑之处）**额外一行**写明「只按 POSIX 标准接口 / Android
+NDK 官方文档实现，未参考任何第三方同类应用（含 termux-app）的源码」。
 
 ## 实现方红线清单（发给 Zcode / 任何实现方之前，请先读这一节）
 
