@@ -262,7 +262,7 @@ object SystemInfoProvider {
      * 指向整个共享存储 —— 必须跳过符号链接子树，否则会把用户的照片视频全算进来。
      * 无权限目录（bind 挂载点为 0000 模式）跳过继续，整体失败返回 0。
      *
-     * **下沉形态（v2.0 R3，见 `docs/证道-Rust化余地审计-2026-10-09.md` 候选 A）**：
+     * **下沉形态（v2.0 R3，见 `docs/archive/证道-Rust化余地审计-2026-10-09.md` 候选 A）**：
      * 先走 Rust（`CoreNative.dirSizeBytes`，输入路径、输出一个字节数，边界只跨一次），
      * 拿不到再回退下面这段 Java `walkFileTree`——两条路径语义逐条对齐（跳过软链、
      * 只累加普通文件、无权限静默跳过），且可用 [com.example.zhengdao.rust.CoreNative.isRustAvailable]

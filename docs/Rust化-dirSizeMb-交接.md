@@ -166,8 +166,10 @@ git -C C:/Users/guoli/AndroidStudioProjects/zhengdao merge --no-ff feat/rust-dir
 ## 7. 为什么这件事值得做（背景，可略读）
 
 出处：同名审计报告《证道-Rust化余地审计-2026-10-09》的候选 A。
-⚠️ 该报告**没有进仓库**（是主工作树 `zhengdao/docs/` 下的**未跟踪文件**，
-`证道-Rust化余地审计-2026-10-09.md` + `.html`）；本文档不依赖它，背景信息此处已够用。
+⚠️ 该报告当时**没有进仓库**（主工作树 `zhengdao/docs/` 下的未跟踪文件，
+`证道-Rust化余地审计-2026-10-09.md` + `.html`）；**2026-10-11 已归档入库**：
+`docs/archive/证道-Rust化余地审计-2026-10-09.md`（+ 同名 `.html`，见 `docs/FEATURE-LEDGER.md` §A #25）。
+本文档不依赖它，背景信息此处已够用。
 
 `dirSizeMb` 原本每次进设置页/首页都用 Java `Files.walkFileTree` 全量重算
 `rootfs`（约 1.6 GB）+ `home`（可达数 GB）。它契合"收益模型铁律"（输入一个路径、输出一个数，
