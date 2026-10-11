@@ -48,6 +48,11 @@ Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**
 > **git 里只留这一份正文**，随包那份是构建期拷出来的 —— 免得两份副本漂移之后，
 > 上表的 SHA256 与「随包正文」各说各话（这正是 E-104 的教训）。
 
+**换行**：装配时一律**归一成 LF**（`app/build.gradle.kts` 的 `normalizeToLf`），所以随包正文与上表的
+字节数 / SHA256 逐字节一致 —— 与构建机是 Windows 还是 Linux、`core.autocrlf` 怎么设都无关。
+若你本机的**老检出**里这几份还是 CRLF（`.gitattributes` 的 `eol=lf` 只对新检出 / 被重写的文件生效），
+`Get-FileHash` 会得到另一组值：那是本地检出陈旧，不是上表错了 —— 删掉该文件重新检出即变 LF。
+
 ## 二、校验（一条命令）
 
 ```bash
