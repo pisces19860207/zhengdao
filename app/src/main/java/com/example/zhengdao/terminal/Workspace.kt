@@ -26,6 +26,7 @@ object Workspace {
 
     private const val KEY_MODE = "workspace_mode" // default | custom | private
     private const val KEY_PATH = "workspace_path" // custom 模式的绝对路径
+    private const val KEY_PREV = "workspace_prev_host" // 上一次用过的工作区（仅用于提示，不参与解析）
     private const val KEY_MIGRATED = "workspace_migrated_v2"
     private const val SHARED_ROOT = "/storage/emulated/0"
 
@@ -87,14 +88,42 @@ object Workspace {
             ?.let { File(it) }
             ?.takeIf { it.isDirectory || it.mkdirs() }
 
+    /**
+     * 上一次用过的工作区宿主目录（没有记录、或者记录的正是当前这个 ⇒ null）。
+     *
+     * 2026-10-11 新增。起因是一次真机现场：用户先把资料放进了 **旧工作区** 的
+     * `资料库/原始/`，随后在设置页把工作区从 `Download/证道` 换成了 `Download/男性`
+     * —— 而 `资料库` 是挂在工作区下面的（[KnowledgeBase.root]），换工作区就等于换了一份
+     * 资料库；旧那份原样留在原地、不再被读。用户看到的现象是"我明明放了东西，
+     * App 这边没反应"。记一笔"上一个工作区"，设置页就能**准确地说出**资料可能落在哪，
+     * 而不是让用户自己猜。
+     *
+     * 只读用途：不要把本值喂回 [hostDir] 的解析（那是 [KEY_MODE]/[KEY_PATH] 的事）。
+     */
+    fun prevHostDir(ctx: Context): File? =
+        Settings.prefs(ctx).getString(KEY_PREV, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { it.trimEnd('/') != hostDir(ctx).absolutePath.trimEnd('/') }
+            ?.let { File(it) }
+
+    /** 切换工作区**之前**把"现在这个"记进 [KEY_PREV]（供资料库提示用）。 */
+    private fun rememberCurrent(ctx: Context) {
+        runCatching {
+            val cur = hostDir(ctx).absolutePath
+            Settings.prefs(ctx).edit().putString(KEY_PREV, cur).apply()
+        }
+    }
+
     /** 设置为默认工作区（Download/证道）。 */
     fun setDefault(ctx: Context) {
+        rememberCurrent(ctx)
         Settings.prefs(ctx).edit().putString(KEY_MODE, "default").apply()
     }
 
     /** 设置为自定义工作区（任意共享存储路径；非法路径拒绝）。 */
     fun setCustom(ctx: Context, path: String): Boolean {
         if (!path.startsWith(SHARED_ROOT)) return false
+        rememberCurrent(ctx)
         Settings.prefs(ctx).edit()
             .putString(KEY_MODE, "custom")
             .putString(KEY_PATH, path.trimEnd('/'))
@@ -104,6 +133,7 @@ object Workspace {
 
     /** 设置为仅私有。 */
     fun setPrivate(ctx: Context) {
+        rememberCurrent(ctx)
         Settings.prefs(ctx).edit().putString(KEY_MODE, "private").apply()
     }
 

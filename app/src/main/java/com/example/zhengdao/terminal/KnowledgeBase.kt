@@ -127,8 +127,10 @@ object KnowledgeBase {
     }
 
     /** 轻量计数（只数文件，不建对象列表）。 */
-    private fun countRaw(ctx: Context): Int {
-        val base = rawDir(ctx)
+    private fun countRaw(ctx: Context): Int = countRawIn(rawDir(ctx))
+
+    /** 同上，但指定 `原始/` 目录本身（提示"别处还有一份带资料的资料库"时要用）。 */
+    internal fun countRawIn(base: File): Int {
         if (!base.isDirectory) return 0
         var n = 0
         val stack = ArrayDeque<File>()
@@ -181,6 +183,104 @@ object KnowledgeBase {
             t.isDaemon = true
             t.start()
         }.onFailure { RunLog.log("资料库刷新失败：${it.message}") }
+    }
+
+    /**
+     * 轻量自动刷新（2026-10-11 新增）。
+     *
+     * 起因是真机现场：用户用文件管理器/电脑把资料放进 `资料库/原始/`，回到 App 却仍是
+     * "未挂载 · 还没放资料" —— [refresh] 只在**启动终端会话前**跑（ProotLauncher），
+     * 而用户此时根本没开会话。于是"放了东西没反应"。
+     *
+     * 与 [refresh] 的分工：本方法**不碰骨架**（不替用户决定建目录、也不写分发指路文件），
+     * 只在后台跑一次 [rebuildIndex] —— 它自己会先比指纹，没变就是一次目录扫描的量级。
+     * 由设置页「回到前台」时调用。
+     */
+    fun autoRefresh(ctx: Context) {
+        runCatching {
+            if (!isEnabled(ctx)) return@runCatching
+            if (!root(ctx).isDirectory) return@runCatching
+            val t = Thread({
+                runCatching { rebuildIndex(ctx) }
+                    .onFailure { RunLog.log("资料库自动刷新失败：${it.message}") }
+            }, "zd-knowledge-base-auto")
+            t.isDaemon = true
+            t.start()
+        }.onFailure { RunLog.log("资料库自动刷新失败：${it.message}") }
+    }
+
+    /**
+     * 其他地方还放着资料的「资料库」候选（给设置页提示"你的资料可能在别处"）。
+     *
+     * 只看**我们知道的**那几个位置：上一次用过的自定义工作区（[Workspace.prevHostDir]）、
+     * 默认工作区 `Download/证道`、仅私有模式的 App 外部目录。**刻意不做全盘搜索** ——
+     * 全盘扫一遍既慢又越界。也刻意不含"当前工作区"（那是卡片本来就在显示的那份）。
+     *
+     * ⚠️ 本方法会读目录，**必须在 IO 线程调用**。
+     *
+     * @return 资料库根路径 → `原始/` 里的文件数（只含有文件、且不是当前那一个）
+     */
+    fun otherPopulated(ctx: Context): List<Pair<String, Int>> = runCatching {
+        val cur = rawDir(ctx).absolutePath.trimEnd('/')
+        val candidates = LinkedHashSet<File>()
+        Workspace.prevHostDir(ctx)?.let { candidates.add(File(it, DIR)) }
+        candidates.add(File(Workspace.defaultDir(ctx), DIR))
+        candidates.add(File(Workspace.privateDir(ctx), DIR))
+        candidates.map { File(it, SUB_RAW) }
+            .filter { it.absolutePath.trimEnd('/') != cur }
+            .mapNotNull { raw ->
+                val n = countRawIn(raw)
+                val parent = raw.parentFile
+                if (n > 0 && parent != null) parent.absolutePath to n else null
+            }
+    }.getOrDefault(emptyList())
+
+    /**
+     * 把**另一份**资料库 `原始/` 里的文件复制进当前资料库的 `原始/`。
+     *
+     * 只增不减（这条与整个工作区的纪律一致）：
+     * - 同名文件**不覆盖**（用户可能已经在新的那份里改过）
+     * - 软链跳过（不跟随、也不复制链接本身）
+     * - 源文件一份不动；失败的单条静默跳过，最后只报成功的条数
+     *
+     * 用途：换工作区后把旧资料一起带过来；以及设置页"另外发现一份带资料的资料库 → 复制过来"。
+     *
+     * ⚠️ 会做大量文件 IO，**必须在后台/IO 线程调用**。
+     *
+     * @return 实际复制过来的文件数
+     */
+    fun copyRawInto(ctx: Context, srcRaw: File): Int = runCatching {
+        val dstRaw = rawDir(ctx)
+        val srcAbs = srcRaw.absolutePath.trimEnd('/')
+        val dstAbs = dstRaw.absolutePath.trimEnd('/')
+        // 源就是目标 / 目标在源里面 ⇒ 什么都不做（否则会自己复制自己）
+        if (srcAbs == dstAbs || dstAbs.startsWith("$srcAbs/")) return@runCatching 0
+        val srcFiles = srcRaw.walkTopDown()
+            .filter { it.isFile && !isSymlink(it) }
+            .sortedBy { it.absolutePath }
+            .take(MAX_SCAN)
+            .toList()
+        var copied = 0
+        for (src in srcFiles) {
+            val rel = src.absolutePath.removePrefix("$srcAbs/")
+            val dst = File(dstRaw, rel)
+            if (dst.exists()) continue
+            runCatching {
+                dst.parentFile?.mkdirs()
+                src.copyTo(dst, overwrite = false)
+                copied++
+            }
+        }
+        if (copied > 0) RunLog.log("资料库：从 $srcAbs 复制了 $copied 个文件到 $dstAbs")
+        copied
+    }.getOrDefault(0)
+
+    /**
+     * 复制过来之后就地重建一次清单（[copyRawInto] 的搭档；同样要在后台线程调用）。
+     */
+    fun rebuildAfterCopy(ctx: Context) {
+        runCatching { rebuildIndex(ctx) }
+            .onFailure { RunLog.log("资料库复制后重建清单失败：${it.message}") }
     }
 
     // ── 预置骨架 ────────────────────────────────────────────────────────────
