@@ -19,8 +19,16 @@
 
 | 正文 | 位置 | 覆盖 | 字节数 | 行数 | SHA256（小写） |
 |---|---|---|---|---|---|
-| GNU GPL v3.0 | 仓库根 [`LICENSE`](../LICENSE) | **本项目自身**的许可证；同时满足 LGPL-3.0 第 2 条「并入 GPL-3.0」的要求 | 35,823 | 674 | `230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809` |
-| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | JetBrains Maple Mono（终端默认字体） | 4,666 | 95 | `9e34ed245e14e5986fb693e043c9ab36493a9b3b1e624e9b3073e89a512570a7` |
+| GNU GPL v3.0 | 仓库根 [`LICENSE`](../LICENSE) | **本项目自身**的许可证；同时满足 LGPL-3.0 第 2 条「并入 GPL-3.0」的要求 | 35,149 | 674 | `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986` |
+| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | JetBrains Maple Mono（终端默认字体） | 4,572 | 95 | `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533` |
+
+> ⚠️ **上表的字节数与 SHA256 一律以「仓库内形态」为准（即 git 索引/blob 里的 LF 换行）。**
+> 本仓 `core.autocrlf=true` ＋ `.gitattributes` 的 `* text=auto` 会让 Windows 工作区检出成 CRLF
+> （同一份 `OFL.txt`：仓库形态 4,572 B，Windows 工作区形态 4,666 B），**照着工作区算出来的摘要会与上表不符**。
+> 现已为这六份文本固定 `eol=lf`（`licenses/*.txt`、根 `LICENSE`、`app/src/main/assets/fonts/OFL.txt`），
+> 任何平台检出后直接校验都能对上；对不上就先跑 `git ls-files --eol` 看属性是否生效，
+> **不要改上表的数字去迁就工作区**。二进制资产（字体 ttf）不受换行影响。
+> （2026-10-11 更正：此前一度把 `OFL.txt` 写成 4,666 B / `9e34ed24…`，那是 CRLF 工作区形态，见 `docs/ERRATA.md` E-104 补记。）
 
 > 字体那份**故意留在字体同目录**：OFL 要求「随字体一起分发」的惯例是文本与字体同处一地，
 > 而它在本项目里不是「第三方组件目录」而是 assets 资源。
@@ -43,6 +51,15 @@ Windows PowerShell 等价：
 ```powershell
 Get-FileHash licenses\*.txt, LICENSE, app\src\main\assets\fonts\OFL.txt -Algorithm SHA256
 ```
+
+### 不依赖工作区换行的校准命令
+
+```bash
+cd <仓库根>
+git cat-file blob HEAD:licenses/Apache-2.0.txt | sha256sum     # 与上表逐一比对
+```
+
+直接 `sha256sum licenses/*.txt` 也对得上——前提是 `.gitattributes` 的 `eol=lf` 生效（`git ls-files --eol` 可证）。
 
 ## 三、维护规则（改动需经项目所有者确认）
 

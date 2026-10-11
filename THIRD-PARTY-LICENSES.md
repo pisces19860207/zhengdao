@@ -110,7 +110,7 @@
 - 版权（`OFL.txt` 首三行）：JetBrains Mono Project Authors（2020）、Maple Mono Project
   Authors（2022）、Space Time（2025）
 - SHA256：字体（子集化后）`10c8ea51ab6bb2df9a615424df1054ad6b3c08ad60a47e8bb3368039b92b5089`、
-  OFL 文本 `9e34ed245e14e5986fb693e043c9ab36493a9b3b1e624e9b3073e89a512570a7`（4,666 B，上游原文件）
+  OFL 文本 `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533`（4,572 B，仓库内 LF 形态 = 上游原文件；Windows 检出为 4,666 B，见 `docs/ERRATA.md` E-104 补记）
   （来源包与完整清单见 PROVENANCE.md「字体」小节）
 
 ## 7. Debian GNU/Linux 13.7 base（guest 系统层 rootfs）

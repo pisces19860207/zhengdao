@@ -5688,7 +5688,7 @@ v3.9 起 `terminal-emulator` / `terminal-view`（Apache-2.0）以源码形式聚
 **复核（2026-10-11，全部实测）**
 
 1. **Apache-2.0 §4(a) 事实上没履行**：全仓许可证文件只有两个 —— 根 `LICENSE` = GPL-3.0 全文
-   （35,823 B）与 `app/src/main/assets/fonts/OFL.txt`（4,666 B）⇒ **仓库里没有任何 Apache-2.0 正文**。
+   （35,149 B，LF 形态）与 `app/src/main/assets/fonts/OFL.txt`（4,572 B，LF 形态）⇒ **仓库里没有任何 Apache-2.0 正文**。
    台账里写「保留 LICENSE / NOTICE」这句话，在文件层面没有对应物。
    反而第 4(d) 条**不适用**：上游 `termux-app` v0.119.0-beta.3 快照内只有根 `LICENSE.md` 与
    `termux-shared/LICENSE.md`，**没有 NOTICE 文件**。
@@ -5712,7 +5712,7 @@ v3.9 起 `terminal-emulator` / `terminal-view`（Apache-2.0）以源码形式聚
    字节与上游一致」，实测随包字体是**已子集化**的 `JetBrainsMapleMono-NF-Regular.ttf`（6,773,564 B，
    sha256 `10c8ea51ab6bb2df9a615424df1054ad6b3c08ad60a47e8bb3368039b92b5089`，工具
    `tools/subset-terminal-font.py`），且 OFL 文本的 sha256 也抄错了（正确 =
-   `9e34ed245e14e5986fb693e043c9ab36493a9b3b1e624e9b3073e89a512570a7`）。
+   `9e34ed245e14e5986fb693e043c9ab36493a9b3b1e624e9b3073e89a512570a7`，4,666 B）——**这一句当天就被推翻了，见文末补记**：4,666 B / `9e34ed24…` 是 Windows **CRLF 工作区**形态，仓库（LF）权威值 = **4,572 B / `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533`**。
 
 **处置（2026-10-11）**
 
@@ -5736,3 +5736,25 @@ v3.9 起 `terminal-emulator` / `terminal-view`（Apache-2.0）以源码形式聚
 **判据**：跑一遍 `find . -iname 'LICENSE*' -o -iname 'NOTICE*'`（排除 `build/`），看**实际存在的正文**
 够不够覆盖每一个随包分发的组件；再核对每个组件的**使用形态**（进程内 `.so` vs 独立进程 `exec`），
 因为「聚合不传染」只保护后者。
+
+### 补记（2026-10-11 同日）· 文档里的哈希差点被平台换行坑第二次
+
+E-104 处置过程中我把「字体 OFL 哈希」从 `6728aae7…` 改成了 `9e34ed24…`，那是个**错的更正**：
+`9e34ed24…`（4,666 B）是 **Windows 工作区的 CRLF 形态**，`6728aae7…`（4,572 B）才是**仓库形态（LF）**，
+而 `PROVENANCE.md:160` 记的一直是后者（上游 zip 内 `LICENSE.txt`，4572 B）。根 `LICENSE` 同理：
+我记的 35,823 B / `230184f6…` 是 CRLF 形态，**LF 权威值 = 35,149 B / 674 行 /
+`3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`**。二进制资产（字体 ttf
+6,773,564 B / `10c8ea51…`）不受影响。
+
+**根因**：本仓 `core.autocrlf=true` ＋ `.gitattributes` 的 `* text=auto` ⇒ **索引/blob 恒为 LF、
+Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256」是平台相关的；一份文档记仓库形态、
+另一份记工作区形态，两份就打架。
+
+**处置**：`.gitattributes` 给这六份文本固定 `eol=lf`（`licenses/*.txt`、根 `LICENSE`、
+`app/src/main/assets/fonts/OFL.txt`），`git add --renormalize .` 后 `git ls-files --eol` 六份全为
+`i/lf w/lf attr/text eol=lf`；`licenses/README.md`、`THIRD-PARTY-LICENSES.md`、台账 §A #40 与
+`docs/闭源切换清单-2026-10-11.md` 里的数字统一改成**仓库内 LF 形态**，并加注「工作区形态」对照。
+
+**教训**：**报一个哈希时必须说清是哪个形态的。** 文档里一律以**仓库内形态（LF）**为准，
+用 `git ls-files --eol` 证明属性生效，或用 `git cat-file blob HEAD:<path> | sha256sum` 直接核；
+**绝不要用工作区文件反推文档里的数字** —— 那正是这次差点第二次写错的地方。
