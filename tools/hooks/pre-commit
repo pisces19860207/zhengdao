@@ -45,10 +45,17 @@ fi
 # ---- 1. 禁止在 main 上直接提交（**合并提交除外**）----
 #   rationale：集成本来就发生在 main 上（把各功能分支 merge 进来就是这棵工作树的职责）。
 #   要拦的是"在 main 上直接动手改文件然后 commit"——那才会让别的 agent 看不到你的进度。
-#   合并提交（存在 MERGE_HEAD）放行；闸 2 同样对合并豁免，闸 3（复活检测）仍然照查。
+#   合并提交放行；闸 2 同样对合并豁免，闸 3（复活检测）仍然照查。
+#
+#   怎么认出"这次是合并提交"（两条路都要认，实测过，见 docs/ERRATA.md E-103）：
+#     a) `git merge --no-commit` 后手工 `git commit`：MERGE_HEAD 在 ⇒ 直接看文件就行；
+#     b) `git merge` 自动生成的合并提交：走的是 `pre-merge-commit` 钩子，而 git **要到这个钩子跑完
+#        之后才写 MERGE_HEAD / MERGE_MSG**（实测：钩子内两者都不存在，只有 GIT_REFLOG_ACTION=merge xxx）
+#        ⇒ 由 `pre-merge-commit` 用环境变量 ZHENGDAO_IN_MERGE=1 把"这是合并"传过来。
 merge_head="$(git rev-parse --path-format=absolute --git-path MERGE_HEAD 2>/dev/null || true)"
 is_merge=0
-if [ -n "$merge_head" ] && [ -f "$merge_head" ]; then is_merge=1; fi
+if [ "${ZHENGDAO_IN_MERGE:-0}" = "1" ]; then is_merge=1; fi
+if [ "$is_merge" = "0" ] && [ -n "$merge_head" ] && [ -f "$merge_head" ]; then is_merge=1; fi
 cur="$(git symbolic-ref --short -q HEAD || true)"
 if [ "$cur" = "main" ]; then
   if [ "$is_merge" = "1" ]; then
