@@ -3,6 +3,24 @@
 本项目（zhengdao / 安卓轻量级 AI Agent App）为**从零独立开发**。
 本文件是整个仓库的原创性规则，所有协作者（包括 AI）必须遵守。
 
+## 第一方代码的版权与许可（2026-10-11）
+
+- **版权归属**：本仓库**第一方代码**（`app/` 中本项目编写的部分、`tools/`、`rootfs/` 下的本项目
+  脚本、`.github/`、`docs/` 及仓库自身配置与文档）的**版权归项目所有者所有**。
+- **许可**：自 **2026-10-11** 起为 **「保留所有权利」**（正文见仓库根 `LICENSE`）——
+  允许浏览、克隆与本地评估（含为评估自行构建运行）；**再分发，以及任何商业使用**
+  （收费或免费提供、SaaS / 托管、捆绑 / OEM / 贴牌、企业内部规模化部署），
+  **须事先取得项目所有者的书面许可**（联系：putaopanpan@gmail.com）。
+- **历史版本不受影响**：**≤ v2.0.15** 的已发布版本仍按各自发布时的 **GPL-3.0** 分发 ——
+  GPL 授权一经发布不可撤回。那份 GPL-3.0 正文自 2026-10-11 起存放在
+  `licenses/GPL-3.0.txt`（由仓库根 `LICENSE` 移入，**逐字节未改**，SHA256 见 `licenses/README.md`）。
+- **换证的依据**：仓库历史（710 个提交）中**不存在外部人类贡献者**，第一方版权完整 ——
+  取证见 `docs/闭源切换清单-2026-10-11.md` 第七节。此后任何外部贡献须**先签** `CLA.md`
+  （授予版权与再许可权），流程见 `CONTRIBUTING.md`。
+- **第三方义务不因换证改变**：下表各第三方组件的许可证与随附义务维持原样，尤其两点红线 ——
+  ① `com/termux/**` 的 Apache-2.0 衍生文件继续按 Apache-2.0 分发并保留修改通知；
+  ② proot 只能以**独立进程 `exec`** 调用（聚合分发，不传染），绝不可 `dlopen` / `loadLibrary`。
+
 ## 允许参考（官方一手资料）
 
 - Android 官方开发者文档（developer.android.com / developer.android.google.cn）
@@ -52,7 +70,7 @@
 | **Termux `terminal-emulator`**（v3.9 新增） | **Apache-2.0** | 以源码形式集成（`app/src/main/java/com/termux/terminal/`），作为独立库聚合，未修改其许可证头（上游这些文件原本就没有许可证头）；本项目**在其基础上做过修改** ⇒ 2026-10-11 起在文件头加 Apache-2.0 第 4(b) 条要求的修改通知，逐文件见下节「Apache-2.0 修改通知」 |
 | **Termux `terminal-view`**（v3.9 新增） | **Apache-2.0** | 同上（`app/src/main/java/com/termux/view/`）；其 native 半边由 `app/src/main/cpp/termux/` 编译为 `libtermux.so`。本项目在其上**改过 2 个文件、另新写 6 个第一方类**（沿用 `com.termux.view` 包名），见下节「Apache-2.0 修改通知」 |
 | proot（**Termux fork 发行版**，2026-10-04 基线切换） | **GPL-2.0-or-later** | 官方发行二进制，assets 内置、运行时释放为**独立可执行文件**调用（聚合分发，不链接不混源）；**正文随仓库分发** = `licenses/GPL-2.0.txt`，官方 `.deb` 摘要见「版本固定」节 |
-| libtalloc / libandroid-shmem | **LGPL-3.0-or-later** / **BSD-3-Clause**（2026-10-11 钉死，此前只写「LGPL / 宽松许可」） | 同上，作为 proot 的运行时依赖随包分发；**两者都是被 proot 进程在进程内动态加载的 ELF 动态库** ⇒ 不受「聚合不传染」判据保护，随附义务必须履行：正文 = `licenses/LGPL-3.0.txt` ＋ 根 `LICENSE`（GPL-3.0 全文，LGPL-3.0 第 2 条并入）、`licenses/BSD-3-Clause.txt`；源码可得性与使用形态见 `THIRD-PARTY-LICENSES.md` §2 / §3 |
+| libtalloc / libandroid-shmem | **LGPL-3.0-or-later** / **BSD-3-Clause**（2026-10-11 钉死，此前只写「LGPL / 宽松许可」） | 同上，作为 proot 的运行时依赖随包分发；**两者都是被 proot 进程在进程内动态加载的 ELF 动态库** ⇒ 不受「聚合不传染」判据保护，随附义务必须履行：正文 = `licenses/LGPL-3.0.txt` ＋ `licenses/GPL-3.0.txt`（GPL-3.0 全文，LGPL-3.0 第 2 条并入；2026-10-11 前它放在仓库根 `LICENSE`）、`licenses/BSD-3-Clause.txt`；源码可得性与使用形态见 `THIRD-PARTY-LICENSES.md` §2 / §3 |
 | **hermes pinned uv 0.12.3**（astral-sh/uv，运行时下载） | MIT OR Apache-2.0 | **不随包分发**。hermes 只认它自装的 pinned uv（剥离一切环境变量与配置），证道的包装器（`ProotLauncher.HERMES_UV_WRAPPER_B64`，源文件 `build/hermes-uv-wrapper.sh`）按 hermes install.sh 同源 URL 下载该工件并做 SHA256 校验（`bb66cb52…68dcca2`）后 exec；包装器同时强制 `UV_LINK_MODE=copy`（Android/proot 无可用硬链接） |
 | OkHttp / Compose 等 | Apache-2.0 | Maven 依赖，按官方文档使用 |
 | **JetBrains Maple Mono**（终端默认字体，2026-10-10 引入；2026-10-10 追加子集化） | **SIL OFL 1.1** | 随包分发的字体文件（`app/src/main/assets/fonts/JetBrainsMapleMono-NF-Regular.ttf`），取自 SpaceTimee/Fusion-JetBrainsMapleMono 的 `NF-XX-XX-XX` 变体包；**已由本项目子集化**（GB2312 常用汉字 6,763 字 + 终端必备区 + Nerd Font 图标区，见下节「字体」；工具与参数随仓库 `tools/subset-terminal-font.py`，OFL 1.1 允许修改与再分发，子集化产物仍受 OFL 1.1 约束），OFL 全文随字体同目录分发（`app/src/main/assets/fonts/OFL.txt`） |
@@ -159,8 +177,8 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 `TERMUX_PKG_DEPENDS="libandroid-shmem, libtalloc"` 与上表两个 `.so` 对应。
 取数时间 2026-10-11，来源 GitHub REST（`/commits?path=packages/proot/build.sh`、`/contents/...`、
 `/repos/termux/proot/git/ref/tags/v5.1.107.96`）。
-许可证正文随仓库分发：`licenses/GPL-2.0.txt`（proot）、`licenses/LGPL-3.0.txt` ＋ 根 `LICENSE`
-（libtalloc）、`licenses/BSD-3-Clause.txt`（libandroid-shmem）。
+许可证正文随仓库分发：`licenses/GPL-2.0.txt`（proot）、`licenses/LGPL-3.0.txt` ＋ `licenses/GPL-3.0.txt`
+（libtalloc；后者 2026-10-11 前放在仓库根 `LICENSE`）、`licenses/BSD-3-Clause.txt`（libandroid-shmem）。
 
 升级流程：从 Termux 仓库取新版本 → 计算新 SHA256 → 更新 assets 与上表 →
 真机回归（bash 存活 + 四项验收）→ 提交。
