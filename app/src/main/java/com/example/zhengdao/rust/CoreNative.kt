@@ -80,7 +80,7 @@ object CoreNative {
      * 递归统计目录下**普通文件**的字节数（跳过符号链接子树、无权限条目静默跳过）。
      *
      * 语义与 [com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb] 的 Java 实现逐条对齐
-     * （见 `docs/证道-Rust化余地审计-2026-10-09.md` 候选 A）——那是本方法的**对拍基准**。
+     * （见 `docs/archive/证道-Rust化余地审计-2026-10-09.md` 候选 A）——那是本方法的**对拍基准**。
      *
      * 返回 `null` = 这条路走不通（Rust 不可用 / JNI 字符串转换失败），
      * 调用方**必须**回退 Java 的 `walkFileTree`（规范 #2 回退纪律）。

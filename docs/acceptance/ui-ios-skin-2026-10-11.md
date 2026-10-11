@@ -43,7 +43,7 @@
 | 1 | 「资料库」卡里两个开关颜色不统一：「让终端 AI 自动读取」是 iOS 绿，「提问时自动附上资料线索」还是 M3 主色 | ✅ **已修**：`app/src/main/java/com/example/zhengdao/ui/SettingsScreen.kt` 第二处补 `colors = iosSwitchColors()`（一行） | 把该开关**打开**后抓屏，探针在 **x 1018–1220** 判定出第二条 iOS 绿轨（**y ≈ 2320–2439**，2993 px），与第一条同色；验完已按回默认「关」——见 `08-switch-two-green` / `10-switch-restored-off` |
 | 2 | 两套对话框按钮色不同：Compose 走 iOS 蓝，框架 `android.app.AlertDialog` 跟系统 accent（偏绿） | ✅ **已修**：`app/src/main/res/values/themes.xml` 的 `Theme.ZhengdaoDialog` 加 `android:colorAccent = #FF007AFF` —— 改这一处，5 个框架对话框全跟 | 长按圆点弹对话框后抓屏，按钮区饱和主色 = **hue 218°**（`#007AFF` 系；改前是绿）——见 `09-dialog-framework-iosblue` |
 | 3 | 「终端页状态栏浅底深字 ⇒ 深色工具条上方一条亮带」 | ❌ **不是缺陷，是我判断错了**（已更正：`docs/ERRATA.md` **E-091**）。像素实测：状态栏 `(250,250,250)`、工具条 `(255,255,255)` —— **工具条本来就是浅色**（只是标题字色深 `#FF1C1C1E`），根本不存在"深色工具条"；浅色顶栏 + 深色画布/键条是交接文档写明**有意保留**的 PAPER 取舍 | `02-terminal-chrome-dark` 顶部逐行取色 |
-| 4 | 交接文档措辞与代码不符：写「分隔线改 0.5dp 发丝线」，实际只改了颜色 | ✅ **已修**：`docs/证道-UI美化动画-交接-2026-10-11.md` 该行改为「分隔线**只改颜色** `#E0E0E0`→`#C6C6C8`（`height` 仍 1dp）」 | 文档改动本身 |
+| 4 | 交接文档措辞与代码不符：写「分隔线改 0.5dp 发丝线」，实际只改了颜色 | ✅ **已修**：`docs/archive/证道-UI美化动画-交接-2026-10-11.md` 该行改为「分隔线**只改颜色** `#E0E0E0`→`#C6C6C8`（`height` 仍 1dp）」 | 文档改动本身 |
 
 ## 5. 复现命令（PC 侧）
 
