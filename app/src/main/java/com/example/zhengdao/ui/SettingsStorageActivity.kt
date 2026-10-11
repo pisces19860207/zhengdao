@@ -219,8 +219,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                 }
             }
 
-            // B：可选工具（浏览器 / 媒体 / 桌面自动化）那一组 —— 真机实测 ≈1.0G。
-            // 只删 StorageAudit.OPTIONAL_TOOL_NAMES 命中的目录，python/node/uv/npm 等核心运行时永不动。
+            // B：可选工具（桌面自动化）那一组。只删 StorageAudit.OPTIONAL_TOOL_NAMES 命中的目录；
+            // python/node/uv/npm 等核心运行时、ffmpeg（必需包）、以及 **hermes 的浏览器工具**
+            // （agent-browser + chromium，用户 2026-10-11 点名保留）永不在删除范围内。
             val optMb = audit.filter {
                 it.removable && it.group == "hermes 工具"
             }.sumOf { it.mb }
@@ -239,14 +240,18 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 Text("可释放约 $optMb MB。")
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "删的是 hermes 自带的浏览器 / 桌面自动化工具" +
-                                        "（chromium、cua-driver、agent-browser）。" +
-                                        "它们只在这类会话里用得上；删了不会自己回来——" +
+                                    "删的是 hermes 自带的桌面自动化工具（cua-driver）。" +
+                                        "它只在这类会话里用得上；删了不会自己回来——" +
                                         "要用时得在终端里跑一次 hermes pm install（要联网、要等一会儿）。"
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "ffmpeg 不在这里面：它是 hermes 的必需包，清掉之后它每次启动都会报 " +
+                                    "浏览器工具（agent-browser / chromium）不在删除范围内——" +
+                                        "有它 hermes 才能开网页，保留。"
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "ffmpeg 也不在这里面：它是 hermes 的必需包，清掉之后它每次启动都会报 " +
                                         "install out of sync（系统层自带的那份它不认）。"
                                 )
                                 Spacer(Modifier.height(6.dp))
