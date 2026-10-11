@@ -899,6 +899,7 @@ fun HomeScreen(
         }
         AlertDialog(
             onDismissRequest = { uninstallTarget = null },
+            shape = RoundedCornerShape(14.dp),
             title = { Text("卸载 ${target.name}？") },
             text = {
                 Text(
@@ -937,6 +938,7 @@ fun HomeScreen(
     reinstallTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { reinstallTarget = null },
+            shape = RoundedCornerShape(14.dp),
             title = { Text("重新安装 ${target.name}？") },
             text = {
                 Text(
