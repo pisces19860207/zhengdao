@@ -180,27 +180,46 @@ TerminalPrefs.kt`）在 `applyTo()` 里于 `setTextSize()` **之后**调用
 
 ## 代码文件头
 
-本项目所有第一方代码文件头部须带声明：
+本项目**所有第一方代码文件**（`*.kt` / `*.rs`，含 `app/src/main`、单元测试 `app/src/test`、
+仪器测试 `app/src/androidTest`、`macrobenchmark` 与 `rust/core/src`）头部须带声明：
 
 ```kotlin
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 ```
 
-### 落账流程（2026-10-11 固化：先补文件内声明，再落账）
+两类例外：① `app/src/main/java/com/termux/**` 下**源自上游的衍生文件**用上节规定的 Apache-2.0 §4(b)
+修改通知（那里只用通知，不再叠加本节声明）；② 同目录下 6 个纯第一方类（`TerminalImeBridge` /
+`TerminalGestureController` / `TerminalCursorBlinker` / `TerminalA11yDelegate` /
+`TerminalSelectionController` / `TerminalSizeResolver`）仍用本节声明，并额外补一行说明它们沿用
+`com.termux.view` 包名、非上游文件。
 
-许可证 / 来源类结论**必须先落在文件本身，再写进台账或 ERRATA**。2026-10-11 的
-`docs/ERRATA.md` E-100 就是反面教材：当时台账已准备写「12 个衍生文件均已标注修改」，
-逐文件 `grep` 后发现其中 **7 个连一句标注都没有**。
+自查（逐文件取前 10 行判关键词，**不要手工维护清单**）：
 
-1. **先取证**——逐文件读文件头（`grep` / 读前 6 行），不凭「应该已经标了」下笔；
-2. **缺什么当场补**——声明 / 通知只加在文件头注释，不动代码逻辑；
-3. **复核**——复查「缺声明计数 = 0」、`git diff --stat` 只增注释行；能编译就编译；
-4. **最后才落账**——台账 / ERRATA 里每一句「已补 / 已标注」都要能指到**具体文件（含行号）**；
-   台账里的文件数、行数要与文件实况一致（**行数含声明头时必须注明**）。
+```bash
+git ls-files '*.kt' '*.rs' | grep -v '/com/termux/' |
+  while read f; do head -10 "$f" | grep -q '独立开发声明' || echo "缺声明：$f"; done
+```
 
-依此流程，2026-10-11 补齐了 **11 个第一方文件**缺失的声明头（清单与验证见
-`docs/FEATURE-LEDGER.md` §A #36）：
+2026-10-11 实测：第一方 `*.kt` / `*.rs` 共 **175** 个，声明齐全（本轮补做 **34** 个 —— 早前只扫了
+`app/src/main` + `rust`，漏掉单测 / androidTest / macrobenchmark；口径更正见 `docs/ERRATA.md` E-100
+补记与 `docs/FEATURE-LEDGER.md` §A #36）。
+
+## 义务核验流程（2026-10-11 新增，模板）
+
+任何「某项许可证义务已履行」的话，**在写进台账 / README / 提交信息之前**，必须走完四步：
+
+1. **核验** —— 逐文件查义务是否真落在**文件本身**，而不是台账里的自我报告。
+   两个现成判据：本节上面的文件头自查命令；`git diff --no-index --numstat <上游 tarball 解包目录> <聚合目录>`。
+2. **补齐** —— 缺的当场补，不写「待办」。
+3. **复验** —— 同一条命令再跑一遍，必须**零命中**；同时**重数一遍数量**。
+   教训（2026-10-11 一晚踩了两次）：先说「上游 12 个有差异文件里 7 个没标注」（对），
+   紧接着说「第一方缺声明 11 个」——**实际 34 个**，因为那次只扫了 `app/src/main` + `rust`。
+   **「有没有」和「有几个」都必须用同一条命令数一遍再写**，别用手工清单。
+4. **落账** —— 核验命令、命中数量、复验结果，一起写进台账的「证据 / 验证方式」列。
+
+应用示例（本轮全量补齐 **34** 个第一方文件，逐个名单见 `docs/ERRATA.md` E-100 补记与
+`docs/FEATURE-LEDGER.md` §A #36；下表是本仓 `app/src/main` + `rust/core/src` 的那 11 个）：
 
 | 位置 | 文件 |
 |---|---|
@@ -210,6 +229,10 @@ TerminalPrefs.kt`）在 `applyTo()` 里于 `setTextSize()` **之后**调用
 其中 `OcRuntime.kt` / `StorageAudit.kt` / `NetSelfCheck.kt` / `jni_bridge.rs` 四个（即下方
 「实现方红线清单」第 2 条最可能被质疑之处）**额外一行**写明「只按 POSIX 标准接口 / Android
 NDK 官方文档实现，未参考任何第三方同类应用（含 termux-app）的源码」。
+
+来历：`docs/ERRATA.md` E-100（措辞里那句「所有修改文件已按第 4(b) 条标注修改通知」当时为假，
+文件先补、话后说）与 `docs/FEATURE-LEDGER.md` §A #36（34 个第一方文件头补齐）。
+**文件先改，话后说；数字先数，再写。**
 
 ## 实现方红线清单（发给 Zcode / 任何实现方之前，请先读这一节）
 
