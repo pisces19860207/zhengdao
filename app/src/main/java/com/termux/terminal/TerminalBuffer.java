@@ -1,3 +1,9 @@
+/*
+ * 本文件是 Termux terminal-emulator / terminal-view（Apache-2.0，上游 v0.119.0-beta.3）的衍生文件，
+ * 已由证道项目修改。逐文件修改点见仓库根目录 PROVENANCE.md「Apache-2.0 修改通知」一节。
+ * This file is a derivative of an Apache-2.0 work by the Termux project and has been modified.
+ */
+
 package com.termux.terminal;
 
 import java.util.Arrays;
