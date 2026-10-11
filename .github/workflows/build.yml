@@ -41,11 +41,18 @@
 #    或拿不到 `github.event.before`（tag 推送/强制推送，保守处理）时才重建；纯 App 代码
 #    与文档改动会跳过它，省下 30–90 分钟。判定见「判断本次推送要不要重建 RootFS」。
 #
-# ⚠️ 必须配置 repo secret `DEBUG_KEYSTORE_B64`（= **存量用户已安装的那把** debug keystore 的
-#    base64，证书 SHA-256 = 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18）。
-#    runner 每次都是全新的、~/.android/debug.keystore 不在缓存里，AGP 找不到就随机生成新 key，
-#    那样每个 CI 产物签名都不同、互相装不上，也盖不了存量正式版（见 docs/ERRATA.md E-014）。
+# ⚠️ 必须配置签名 secret（两把钥匙，见 docs/ERRATA.md E-014 / E-099）：
+#    ① **正式包**用 `RELEASE_KEYSTORE_B64` + `RELEASE_KEYSTORE_PASSWORD` + `RELEASE_KEY_ALIAS`
+#       （2026-10-11 启用的独立 release keystore，证书 SHA-256 = B93169F2…86EC2）；
+#    ② **debug 包**（开发者用）继续用 `DEBUG_KEYSTORE_B64`（= 存量旧包那把 debug keystore，
+#       证书 SHA-256 = 44E2FE86…A3BE18）。
+#    runner 每次都是全新的、keystore 不在缓存里，AGP 找不到就随机生成新 key，
+#    那样每个 CI 产物签名都不同、互相装不上（见 docs/ERRATA.md E-014）。
 #    未配置时：main 的滚动版**跳过 APK 上传**，tag 的正式发布**硬失败**。
+#
+# ⚠️ 2026-10-11 换正式钥匙的**已知代价**：签名与旧包不同 ⇒ 已装旧包的用户必须**卸载重装一次**
+#    （App 私有目录被清 = Debian 环境要重下；共享存储里的工作区/资料不受影响）。用户已拍板接受
+#    （当时 GitHub 上只有他一个用户、没有存量包袱，见 ERRATA E-099）。
 
 name: build
 
@@ -201,6 +208,37 @@ jobs:
           # ⚠️ 到这里为止只证明"**钥匙文件**是对的"。钥匙文件对 ≠ 打出来的包对 ——
           #    真正的关卡在 assembleRelease 之后那一步「校验 release 包的签名」（E-014 §7）。
 
+      - name: 还原正式 release 签名密钥（正式包用它签；2026-10-11 起，见 ERRATA E-099）
+        # 为什么换：原来 release 与 debug 共用同一把 debug keystore（E-013/E-014 的遗留），
+        #   "正式包"与"开发者本地随手打的包"因此同签名，也没给将来轮换留余地。
+        # 代价（明写在案）：签名变了 ⇒ 已装旧包的用户必须**卸载重装一次**（App 私有目录被清）。
+        # ⚠️ 与上一步不同，本步**硬失败**：拿不到正式钥匙就不许往下走 —— 否则 release 包会被
+        #   runner 随机 key 签，用户必须卸载重装，而 CI 照样"全绿"（E-014 §7 的教训）。
+        env:
+          KS_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          # 期望指纹 = 那把正式 release keystore 的证书（本机 .zhengdao-keys/zhengdao-release.jks）
+          EXPECTED_SHA256: B93169F211C6B3D9FDAE36B2C614C23BEF28EAE3582E4D8BCA0657C27AC86EC2
+        run: |
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ]; then
+            echo "::error::未配置 RELEASE_KEYSTORE_B64 / RELEASE_KEYSTORE_PASSWORD —— 正式包会被随机 key 签，用户必须卸载重装（docs/ERRATA.md E-099）"
+            exit 1
+          fi
+          CANON="$GITHUB_WORKSPACE/.ci-release.keystore"
+          printf '%s' "$KS_B64" | base64 -d > "$CANON"
+          echo "已写入权威副本: $CANON ($(stat -c%s "$CANON") 字节)"
+          FP="$(keytool -list -v -keystore "$CANON" \
+                  -storepass "$KS_PASS" -alias "${KS_ALIAS:-zhengdao}" 2>/dev/null \
+                | grep -m1 'SHA256:' \
+                | sed 's/.*SHA256: *//' \
+                | tr -d ':' | tr 'a-f' 'A-F')"
+          echo "release keystore 证书 SHA-256 = $FP"
+          if [ "$FP" != "$EXPECTED_SHA256" ]; then
+            echo "::error::RELEASE_KEYSTORE_B64 里不是那把正式 key（期望 $EXPECTED_SHA256，实际 $FP）——见 docs/ERRATA.md E-099"
+            exit 1
+          fi
+
       # E-048：与 ci.yml 同一道门禁，放在这里是因为"入库的 .so 是人工拷进来的"——
       # 发布路径自己也得挡住"16KB 对齐漏了 / JNI 入口被 strip 掉"这两类静默降级
       # （它们不会让编译失败，只会让真机悄悄退回 Java 路径）。
@@ -209,15 +247,19 @@ jobs:
 
       - name: 编译 Release APK（最终用户用；R8 + 资源收缩 + lintVital）
         # ⚠️ 这一步是本流水线以前**没有**的，正是它缺席让 CI 发布的「正式版」实为 debug 包
-        #    （见 docs/ERRATA.md E-013）。release 变体用 debug 签名
-        #    （app/build.gradle.kts:82 `signingConfig = signingConfigs.getByName("debug")`），
-        #    但**这不等于 CI 不需要密钥**：CI 每次全新 runner，AGP 找不到 keystore 会随机
-        #    生成一把新 key，产出的包与存量用户签名冲突、盖不上（见 E-014）。所以上面那一步
-        #    「还原 debug 签名密钥」是这一步能用的前提；ZHENGDAO_KEYSTORE_FILE 则保证
-        #    Gradle **用的是还原进去的那一份**，而不是 AGP 自己找的（E-014 §8）。
+        #    （见 docs/ERRATA.md E-013）。签名走 AGP 内建的 "debug" 签名配置
+        #    （app/build.gradle.kts:82 `signingConfig = signingConfigs.getByName("debug")`，
+        #     名字是历史遗留，实际含义是"由 ZHENGDAO_KEYSTORE_FILE 指定的那一份"）——
+        #    2026-10-11 起这里指向**正式 release keystore**（上一步还原出的 .ci-release.keystore）。
+        #    CI 每次全新 runner，AGP 找不到 keystore 会随机生成新 key、产出装不上的包（E-014），
+        #    所以上面两步「还原 debug / 还原正式 release 签名密钥」是这一步能用的前提；
+        #    ZHENGDAO_KEYSTORE_FILE 等环境变量则保证 Gradle **用的是还原进去的那一份**（E-014 §8）。
         #    这一步失败会让整个 job 变红（这是刻意的）：宁可 CI 红，也不要再悄悄发调试包。
         env:
-          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
+          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          ZHENGDAO_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          ZHENGDAO_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          ZHENGDAO_KEY_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: ./gradlew :app:assembleRelease --console=plain
 
       # E-072：R8 究竟把哪个类/方法改了名，唯一的地面真值是构建产物 mapping.txt ——
@@ -228,15 +270,15 @@ jobs:
       - name: R8 产物断言（关键类未被改名 + onProgress 保住）
         run: python3 tools/check-r8-mapping.py
 
-      - name: 校验 release 包的签名真的是存量那把 key（验**产物**，不验替身）
-        # ⚠️ 见 docs/ERRATA.md E-014 §7。上面那步「还原 debug 签名密钥」只证明了**钥匙文件对**；
-        #    2026-10-07 实测就是这个坑——第 9 步全绿、密钥指纹逐字符吻合，打出来的包却是
+      - name: 校验 release 包的签名真的是那把正式 release key（验**产物**，不验替身）
+        # ⚠️ 见 docs/ERRATA.md E-014 §7 与 E-099。上面那两步「还原签名密钥」只证明了**钥匙文件对**；
+        #    2026-10-07 实测就是这个坑——「还原」那步全绿、密钥指纹逐字符吻合，打出来的包却是
         #    `18e5268a…`（另一把 key），发到 latest 之后老用户照样 INSTALL_FAILED_UPDATE_INCOMPATIBLE。
         #    "签名"是最终属性，只能对着最终产物验。所以这一步直接读 APK 里的证书。
         #    位置刻意排在「发布 APK 到 Releases」之前：指纹不对就让 run 红 —— 宁可不发，
         #    也不要再往 latest 扔一个装不上的包。
         env:
-          EXPECTED_SHA256: 44E2FE86B1F62A9FDB2E86805FE0A4DAE7CAD0C3024DBF6AF84D0C45B5A3BE18
+          EXPECTED_SHA256: B93169F211C6B3D9FDAE36B2C614C23BEF28EAE3582E4D8BCA0657C27AC86EC2
         run: |
           APK="$(ls app/build/outputs/apk/release/zhengdao-*-release.apk | head -1)"
           echo "被验的产物: $APK ($(stat -c%s "$APK") 字节)"
@@ -253,10 +295,10 @@ jobs:
           FP="$(grep -m1 'SHA-256 digest' /tmp/apksigner-out.txt | awk '{print $NF}' | tr -d ':' | tr 'a-f' 'A-F')"
           echo "产物证书 SHA-256 = $FP"
           if [ "$FP" != "$EXPECTED_SHA256" ]; then
-            echo "::error::打出来的包不是存量那把 key 签的（期望 $EXPECTED_SHA256，实际 $FP）——发出去老用户装不上，见 docs/ERRATA.md E-014 §7"
+            echo "::error::打出来的包不是那把正式 release key 签的（期望 $EXPECTED_SHA256，实际 $FP）——发出去用户装不上，见 docs/ERRATA.md E-014 §7 / E-099"
             exit 1
           fi
-          echo "✅ 产物签名 = 存量 key（$EXPECTED_SHA256），可以发布。"
+          echo "✅ 产物签名 = 正式 release key（$EXPECTED_SHA256），可以发布。"
 
       - name: 收集 APK 产物（此刻只收 release —— 发布路径越短越好）
         # 三个目录各司其职：apk-debug 只给开发者从 Actions 页面下，
@@ -282,18 +324,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 只判存在性，不把密钥本身带进这一步
-          KS_READY: ${{ secrets.DEBUG_KEYSTORE_B64 != '' }}
+          KS_READY: ${{ secrets.RELEASE_KEYSTORE_B64 != '' }}
         run: |
           gh release view latest --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
             gh release create latest --repo "$GITHUB_REPOSITORY" \
               --title "证道 · 最新构建" --latest \
               --notes "main 分支每次构建成功后自动更新的最新产物。App 内的下载地址已内置。"
-          # 没配签名密钥时不发 APK：一份随机 key 签的包会让老用户被迫卸载重装（E-014），
+          # 没配签名密钥时不发 APK：一份随机 key 签的包会让用户被迫卸载重装（E-014），
           # 宁可滚动版停在旧包上，也不要发一份装不上的。
           if [ "$KS_READY" = "true" ]; then
             gh release upload latest apk-release/* --repo "$GITHUB_REPOSITORY" --clobber
           else
-            echo "::warning::未配置 DEBUG_KEYSTORE_B64，跳过 APK 上传（E-014）——用随机 key 签的包会让老用户无法覆盖安装"
+            echo "::warning::未配置 RELEASE_KEYSTORE_B64，跳过 APK 上传（E-014 / E-099）——用随机 key 签的包会迫使用户卸载重装"
           fi
 
       - name: 编译 Debug APK（开发者用）
@@ -426,9 +468,9 @@ jobs:
         if: failure() || github.event_name == 'workflow_dispatch'
         continue-on-error: true
         env:
-          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-debug.keystore
+          ZHENGDAO_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
         run: |
-          echo "== AGP 报的签名配置（应指向 .ci-debug.keystore）=="
+          echo "== AGP 报的签名配置（release 变体应指向 .ci-release.keystore）=="
           ./gradlew :app:signingReport --console=plain 2>&1 | grep -A3 -iE '^(Variant|Config|Store|Alias)|SHA-?1' || true
           echo "== 全盘 debug.keystore =="
           find / -name 'debug.keystore' -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null || true
@@ -446,14 +488,14 @@ jobs:
       contents: write
     steps:
       - name: 把关：没有签名密钥就不许发正式版
-        # E-014。这是**硬失败**（和 build job 里那步刻意不同）：正式版一旦用随机 key 签出去，
-        # 所有存量用户升级时都会 INSTALL_FAILED_UPDATE_INCOMPATIBLE，只能卸载重装、
-        # Debian 环境全没。宁可这次 tag 发布失败，也不要发一份装不上的"正式版"。
+        # E-014 / E-099。这是**硬失败**（和 build job 里那两步刻意不同）：正式版一旦用随机 key
+        # 签出去，用户升级时都会 INSTALL_FAILED_UPDATE_INCOMPATIBLE，只能卸载重装、Debian 环境全没。
+        # 宁可这次 tag 发布失败，也不要发一份装不上的"正式版"。
         env:
-          KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          KS_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
         run: |
           if [ -z "$KS_B64" ]; then
-            echo "::error::未配置 secret DEBUG_KEYSTORE_B64——CI 会用随机 key 给正式版签名，老用户装不上（docs/ERRATA.md E-014）。先配好 secret 再推 tag。"
+            echo "::error::未配置 secret RELEASE_KEYSTORE_B64——CI 会用随机 key 给正式版签名，用户装不上（docs/ERRATA.md E-014 / E-099）。先配好 secret 再推 tag。"
             exit 1
           fi
 
