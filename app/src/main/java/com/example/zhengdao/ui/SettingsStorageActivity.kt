@@ -219,9 +219,13 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                 }
             }
 
-            // B：可选工具（桌面自动化）那一组。只删 StorageAudit.OPTIONAL_TOOL_NAMES 命中的目录；
-            // python/node/uv/npm 等核心运行时、ffmpeg（必需包）、以及 **hermes 的浏览器工具**
-            // （agent-browser + chromium，用户 2026-10-11 点名保留）永不在删除范围内。
+            // B：可选工具那一组。只删 StorageAudit.OPTIONAL_TOOL_NAMES 命中的目录；
+            // python/node/uv/npm 等核心运行时、ffmpeg（必需包）、以及 **hermes 自己装的扩展**
+            // （浏览器 agent-browser + chromium，用户 2026-10-11 点名保留；桌面自动化 cua-driver
+            // 同一天深夜一并划入）永不在删除范围内。
+            // ⚠️ 2026-10-11 深夜起 OPTIONAL_TOOL_NAMES **是空表** ⇒ optMb 恒为 0 ⇒ 这个入口
+            // 不会渲染（下方 `if (optMb > 0)`）。代码与弹窗文案留着：哪天要放开某个工具，
+            // 把它挪进 StorageAudit 的 OPTIONAL 表，这里就自动出现，不用再改 UI。
             val optMb = audit.filter {
                 it.removable && it.group == "hermes 工具"
             }.sumOf { it.mb }
