@@ -185,7 +185,9 @@ class HermesEnvTest {
         File(install, ".repair-incomplete").writeText("")
 
         val before = HermesEnv.inspect(root())
-        assertFalse(before.ok)
+        // 2026-10-11（用户 m01758）：标记文件只是"上次更新被打断"的残渣，环境本身是好的
+        // ⇒ 不再算故障（打红叉会把人引去重建一个没坏的环境），但清理入口照样给。
+        assertTrue("标记文件不该让整项变红", before.ok)
         assertEquals(2, before.staleLocks)
         assertTrue("只是清标记 ⇒ 宿主侧修得上", before.canRepairOnHost)
 
@@ -223,5 +225,39 @@ class HermesEnvTest {
         assertFalse("读不动就交给终端脚本处理", st.canRepairOnHost)
         assertNotNull(st.detail)
         assertFalse("读不动就别乱改文件", HermesEnv.repairOnHost(root()))
+    }
+
+    @Test
+    fun `新版布局的代目录没有 uv_lock 也算好环境`() {
+        // 真机实况（2026-10-11，用户 m01758 报的正是这个）：hermes 新版把一代目录的 workspace/
+        // 放成源码树（pyproject.toml / setup.py / hermes_agent.egg-info…），没有 uv.lock；
+        // 记录里那条 resolved_lock 指过去自然不存在 —— 但 hermes 起得来、用得了。
+        val install = File(root(), "installs/8a4017c4cabfe15f").apply { mkdirs() }
+        val gen = File(install, "environments/ef92eb0a28654a90b1e64899d3c3bbf9")
+        File(gen, "venv").mkdirs()
+        File(gen, "venv/pyvenv.cfg").writeText("home = /root/.hermes/tools/python-3.14.7\n")
+        File(gen, "workspace").mkdirs()
+        File(gen, "workspace/pyproject.toml").writeText("[project]\nname = \"hermes\"\n")
+        facts(install, guest(File(gen, "venv")), guest(File(gen, "workspace/uv.lock")))
+
+        val st = HermesEnv.inspect(root())
+
+        assertTrue("环境好用就不该报「依赖环境已丢失」", st.ok)
+        assertEquals("依赖环境记录有效", st.detail)
+        assertFalse("没坏就没有要修的", st.canRepairOnHost)
+    }
+
+    @Test
+    fun `venv 里没有 pyvenv_cfg 才算坏环境`() {
+        val install = File(root(), "installs/8a4017c4cabfe15f").apply { mkdirs() }
+        val gen = File(install, "environments/deadbeef")
+        File(gen, "workspace").mkdirs() // 只有 workspace、没有 venv/pyvenv.cfg
+        facts(install, guest(File(gen, "venv")), null)
+
+        val st = HermesEnv.inspect(root())
+
+        assertFalse("venv 不在 ⇒ 确实是坏记录", st.ok)
+        assertTrue("盘上没有可用代 ⇒ 只能进终端重建", st.detail.contains("依赖环境已丢失"))
+        assertFalse(st.canRepairOnHost)
     }
 }

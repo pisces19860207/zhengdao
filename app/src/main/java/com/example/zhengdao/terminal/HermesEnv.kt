@@ -159,7 +159,7 @@ object HermesEnv {
             anyRecord = true
             if (recordedEnv == null) recordedEnv = env
             if (!isGuestViewPath(env)) hostViewRecord = true
-            if (!venvUsable(env, venv.second, root)) brokenRecord = true
+            if (!venvUsable(env, root)) brokenRecord = true
         }
 
         val hostFixable = when {
@@ -174,7 +174,10 @@ object HermesEnv {
             else -> false
         }
 
-        val ok = anyRecord && !brokenRecord && !sourceLockMissing && stale == 0
+        // 2026-10-11（用户 m01758）：`stale > 0` 不再算故障——标记文件只是"上次更新被打断"的
+        // 残渣，环境本身是好的（真机实测 hermes 照常起 TUI），打红叉会把人引去重建一个没坏的环境。
+        // 清理入口照旧（见 hostFixable 的 stale 分支与设置页按钮）。
+        val ok = anyRecord && !brokenRecord && !sourceLockMissing
         val detail = when {
             brokenRecord && hostViewRecord && complete.isNotEmpty() ->
                 "依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）"
@@ -182,8 +185,28 @@ object HermesEnv {
             brokenRecord -> "依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）"
             !anyRecord -> "尚未登记依赖环境（安装可能没跑完），需在终端重建"
             sourceLockMissing -> "源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回"
-            stale > 0 -> "有 $stale 个更新中断留下的标记文件，可一键清理"
+            stale > 0 -> "依赖环境记录有效（另有 $stale 个更新中断留下的标记文件，可一键清理）"
             else -> "依赖环境记录有效"
+        }
+        if (!ok) {
+            // 误报排查靠这行（用户 2026-10-11 报「依赖环境是好的但还是红叉」）：判定只看文件，
+            // 单测覆盖不到真机那套目录布局，所以把每条判据的原始读数一并记进运行日志。
+            val envDir = recordedEnv?.let { toHostFile(it, root) }
+            val genDir = envDir?.parentFile
+            val envOk = envDir?.isDirectory == true
+            val pyvenvOk = envDir?.let { File(it, "pyvenv.cfg").isFile } == true
+            val genNames = genDir?.list()?.sorted()?.joinToString(",") ?: "-"
+            val wsNames = File(genDir, "workspace").list()?.sorted()?.joinToString(",") ?: "-"
+            val toolNames = File(root, "tools").list()?.sorted()?.joinToString(",") ?: "-"
+            val cacheNames = File(root.parentFile ?: root, ".cache").list()?.sorted()?.joinToString(",") ?: "-"
+            RunLog.log(
+                "HermesEnv 诊断 ok=false anyRecord=$anyRecord brokenRecord=$brokenRecord" +
+                    " hostViewRecord=$hostViewRecord sourceLockMissing=$sourceLockMissing stale=$stale" +
+                    " completeGens=${complete.size} recordedEnv=${recordedEnv ?: "-"}" +
+                    " envDir=$envOk pyvenv=$pyvenvOk" +
+                    " gen=[$genNames] workspace=[$wsNames] tools=[$toolNames] cache=[$cacheNames]" +
+                    " detail=$detail"
+            )
         }
         return State(true, ok, detail, recordedEnv, hostFixable, sourceLockMissing, stale, hostViewRecord)
     }
@@ -211,7 +234,7 @@ object HermesEnv {
             if (!facts.isFile) return@forEach
             val venv = readVenv(facts) ?: return@forEach
             val env = venv.first ?: return@forEach
-            if (venvUsable(env, venv.second, root)) return@forEach
+            if (venvUsable(env, root)) return@forEach
 
             runCatching { facts.copyTo(File(dir, "facts.json.bak-证道$ts"), overwrite = true) }
             val target = complete.maxByOrNull { it.lastModified() }
@@ -287,14 +310,22 @@ object HermesEnv {
         env to lock
     }.getOrNull()
 
-    /** 记录可用 = **guest 视角**的路径；环境目录在且含 `pyvenv.cfg`；记了锁则锁也得在（与 pm/environments.py 同条件）。 */
-    internal fun venvUsable(env: String?, lock: String?, root: File): Boolean {
+    /**
+     * 记录可用 = **guest 视角**的路径 + 环境目录在且含 `pyvenv.cfg`。
+     *
+     * 2026-10-11（真机 + 用户 m01758「依赖环境是好的但是还是会出现红叉」）：这里**不再**要求
+     * `facts.json` 里记的 `resolved_lock` 文件存在。hermes 新版布局把一代目录的 `workspace/`
+     * 放成**源码树**（`pyproject.toml` / `setup.py` / `hermes_agent.egg-info` …），里面并没有
+     * `uv.lock`；真机上 hermes 照常起 TUI、用户也实测可用，只因为这条判据把**好环境**判成
+     * 「依赖环境已丢失」。锁文件在不在由 [State.sourceLockMissing]
+     * （`~/.hermes/hermes-agent/uv.lock`）单独管。
+     */
+    internal fun venvUsable(env: String?, root: File): Boolean {
         if (env == null) return false
         // 宿主视角的路径（老版本 App 修记录时写坏的）在 proot 里根本不存在，
         // 对 hermes 来说等于"环境丢了"——必须当成坏记录改回 guest 视角（ERRATA E-066）。
         if (!isGuestViewPath(env)) return false
-        if (!File(toHostFile(env, root), "pyvenv.cfg").isFile) return false
-        return lock == null || toHostFile(lock, root).isFile
+        return File(toHostFile(env, root), "pyvenv.cfg").isFile
     }
 
     /**

@@ -38,9 +38,11 @@ class StorageAuditTest {
 
     @Test
     fun `工具目录按词边界分类`() {
-        assertEquals(StorageAudit.ToolKind.OPTIONAL, StorageAudit.toolKind("chromium-1208-linux-arm64"))
+        // 2026-10-11（用户点名）：chromium / agent-browser 由「可选」升为「保留」——
+        // 有它们 hermes 才能开网页（用户实测过），所以不再是可清项。
+        assertEquals(StorageAudit.ToolKind.PINNED, StorageAudit.toolKind("chromium-1208-linux-arm64"))
+        assertEquals(StorageAudit.ToolKind.PINNED, StorageAudit.toolKind("agent-browser-0.5.1"))
         assertEquals(StorageAudit.ToolKind.OPTIONAL, StorageAudit.toolKind("cua-driver-0.3.0-linux-arm64"))
-        assertEquals(StorageAudit.ToolKind.OPTIONAL, StorageAudit.toolKind("agent-browser-0.5.1"))
         // E-092：ffmpeg 是 hermes 必需包，永远不许被清理入口扫到。
         assertEquals(StorageAudit.ToolKind.REQUIRED, StorageAudit.toolKind("ffmpeg-7.1.5-linux-arm64"))
         assertEquals(StorageAudit.ToolKind.CORE, StorageAudit.toolKind("python-3.14.7"))
@@ -58,27 +60,30 @@ class StorageAuditTest {
     @Test
     fun `明细只把可选工具标成可清`() {
         val tools = tmp.newFolder("tools")
-        dirWith(tools, "chromium-1208-linux-arm64", 2)
+        dirWith(tools, "cua-driver-0.3.0-linux-arm64", 2)
+        dirWith(tools, "chromium-1208-linux-arm64", 3)
         dirWith(tools, "python-3.14.7", 1)
-        dirWith(tools, "uv-0.12.3-linux-arm64", 1)
         dirWith(tools, "something-else", 1)
 
         val items = StorageAudit.toolItemsIn(tools)
         assertEquals(4, items.size)
-        assertEquals(2L, items.first { it.label == "chromium-1208-linux-arm64" }.mb)
-        assertTrue(items.first { it.label == "chromium-1208-linux-arm64" }.removable)
-        assertTrue(items.first { it.label == "chromium-1208-linux-arm64" }.note.contains("hermes pm install"))
+        assertTrue(items.first { it.label == "cua-driver-0.3.0-linux-arm64" }.removable)
+        assertTrue(items.first { it.label == "cua-driver-0.3.0-linux-arm64" }.note.contains("hermes pm install"))
+        // 浏览器工具是「保留」，行内要写明理由（用户 2026-10-11 点名保留）。
+        assertFalse(items.first { it.label == "chromium-1208-linux-arm64" }.removable)
+        assertTrue(items.first { it.label == "chromium-1208-linux-arm64" }.note.contains("浏览器"))
         assertFalse(items.first { it.label == "python-3.14.7" }.removable)
-        assertFalse(items.first { it.label == "uv-0.12.3-linux-arm64" }.removable)
         assertFalse(items.first { it.label == "something-else" }.removable)
         // 按体积降序：最大的排在最前，用户一眼看到"哪里最占地方"。
         assertEquals("chromium-1208-linux-arm64", items.first().label)
     }
 
     @Test
-    fun `清理只删可选工具，ffmpeg 与核心运行时原样留在原地`() {
+    fun `清理只删可选工具，浏览器工具与 ffmpeg 原样留在原地`() {
         val tools = tmp.newFolder("tools")
         val chromium = dirWith(tools, "chromium-1208-linux-arm64", 2)
+        val browser = dirWith(tools, "agent-browser-0.5.1", 1)
+        val cua = dirWith(tools, "cua-driver-0.3.0-linux-arm64", 1)
         val ffmpeg = dirWith(tools, "ffmpeg-7.1.5-linux-arm64", 1)
         val python = dirWith(tools, "python-3.14.7", 1)
         val uv = dirWith(tools, "uv-0.12.3-linux-arm64", 1)
@@ -86,10 +91,12 @@ class StorageAuditTest {
 
         val (count, freed) = StorageAudit.cleanOptionalToolDirs(tools)
 
-        // E-092：ffmpeg 是必需包 ⇒ 只有 1 项被删（chromium），别再指望它腾 1MB。
+        // 可清项只剩桌面自动化那一个；E-092 的 ffmpeg 与 2026-10-11 的浏览器工具都不在内。
         assertEquals(1, count)
-        assertEquals(2L * 1024 * 1024, freed)
-        assertFalse("可选工具要被删掉", chromium.exists())
+        assertEquals(1L * 1024 * 1024, freed)
+        assertFalse("桌面自动化是可选工具，会被删掉", cua.exists())
+        assertTrue("浏览器工具是用户点名保留的，不许碰", chromium.isDirectory)
+        assertTrue("浏览器工具是用户点名保留的，不许碰", browser.isDirectory)
         assertTrue("ffmpeg 是 hermes 必需包，不许碰", ffmpeg.isDirectory)
         assertTrue("核心运行时不许碰", python.isDirectory)
         assertTrue("核心运行时不许碰", uv.isDirectory)
@@ -118,7 +125,7 @@ class StorageAuditTest {
     @Test
     fun `清理是幂等的，且不存在目录时安静返回零`() {
         val tools = tmp.newFolder("tools")
-        dirWith(tools, "agent-browser-0.5.1", 1)
+        dirWith(tools, "cua-driver-0.3.0-linux-arm64", 1)
         val (c1, f1) = StorageAudit.cleanOptionalToolDirs(tools)
         assertEquals(1, c1)
         assertTrue(f1 > 0)
