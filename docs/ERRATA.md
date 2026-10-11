@@ -5289,7 +5289,8 @@ for (i in 0 until 20) {                 // 最多 3 秒
 
 - 单测 / 构建：`gradlew.bat --offline :app:testDebugUnitTest :app:assembleDebug` ⇒ **BUILD SUCCESSFUL in 1m 57s**（含 `WorkspacePathTest` 6 例）。
 - 真机（`AD3J023824001723`，debug 包）：把 `shared_prefs/zhengdao-settings.xml` 的 `workspace_mode` 临时改成 `private`、重启 App ——「工作区」卡变成路径 `/storage/emulated/0/Android/data/com.example.zhengdao/files/workspace` + 文案「应用专属目录：卸载证道时随之删除（在意痕迹时用）。」（资产 `01-workspace-private-mode.webp`）；还原成 `custom` 后卡回到路径 `/storage/emulated/0/Download/男性` + 文案「手机文件管理器直接可见、可自由删除；卸载证道后此文件夹仍会保留——产出不丢。」（`02-workspace-shared-mode.webp`）。**改档是 prefs 手工改、验完已还原，用户的设置没被改掉。**
-- ⚠️ **未验**：仅私有档下 guest 里 `/sdcard` 到底 bind 没 bind —— 本轮没起会话看（改档要**重开会话**才重新 bind，用户的终端会话正在跑、不去打扰），由 `ProotLauncher.kt:470` 的 `if (storageGranted(context) && wsShared)` 代码路径覆盖。
+- ✅ **2026-10-11 补验（同一台真机，重开会话跑 guest 内脚本）**：仅私有档下 guest 挂载只剩 `…/files/workspace on /workspace` + `Download/证道 on /opt/zhengdao` —— **`/sdcard` 与 `/storage/emulated/0` 都不再 bind**（`/sdcard` 目录存在但空）、pip/npm 包缓存也不挂；`/workspace` 里没有预置「资料库」骨架（`:198-203` 那个分支要求用户先自建目录）；会话日志逐字「工作区: /workspace <- /storage/emulated/0/Android/data/com.example.zhengdao/files/workspace（仅私有，随卸载删除）」。切回 `custom` 后重新 bind、文案全回。⇒ `ProotLauncher.kt:470` 的 `if (storageGranted(context) && wsShared)` 在真机两种档位下都走对了。
+- ⚠️ **附带限制（本轮新发现，不是缺陷）**：⑤ 里那句「文件地图」文案只对**新装 / 清空 home** 生效 —— `terminal/KnowledgeBase.kt:267` 用 `writeOrAppend(File(home, F_AGENTS), dispatchAgentsText(ctx))`（缺 marker 才追加一次），老安装的 guest `/root/AGENTS.md` 不会被回填（真机上核到它仍是共享档文案）。要让它更新，得删掉 home 里 `AGENTS.md` 的 zhengdao 块或重装。
 
 **教训**
 
@@ -5397,7 +5398,7 @@ fun candidates(url: String, chain: List<String> = DOWNLOAD_CHAIN): List<String> 
 
 **边界（未实测的部分）**
 
-- ⚠️ **本轮无真机取证**：用户明确「还有个会话在操作手机，你等下」⇒ 没装 debug 包、没在真机 guest 里计时。包装器的行为结论来自 Git Bash + 真实 git 的网络实测（与 guest 同为 Linux/POSIX sh，但不是同一环境）；`.gitconfig` 托管段与幂等重写只有单测覆盖。
+- ✅ **2026-10-11 真机取证已补**（`AD3J023824001723` / PGT-AN10 / `zhengdao-2.0.12-debug.apk`，用户说「你一起做了吧」）：`which git` = `/usr/local/bin/git`、包装器 `3441B -rwx--x--x` 带 marker、`/root/.gitconfig` 只有托管段且 `grep insteadOf` 只命中「故意没有」那句注释；直连可用时 `ls-remote` / `clone` 成功（日志 `direct:` 两条）；**回退链用死代理逼出**（`https_proxy=http://127.0.0.1:9 … ZZ_GIT_MIRROR_RETRIES=1`）⇒ 直连 → `gh-proxy.com` → `ghproxy.net` 逐源各 `fail(128)` 一次、退出码 128、并打印看日志的提示；`push --dry-run` 报 `could not read Username for 'https://github.com'` ⇒ 写操作确实直连（加固点得证）；内容未变时重启会话不再打印 `git 配置已更新` ⇒ 幂等 ✓。
 - 已知取舍：镜像只对**取数**生效，`push` 保持直连 —— 这正是加固点，代价是 push 慢（原来"快"是错觉，靠的是把凭据交给第三方）。
 - 未做（破 v3.7 / M5 §6「一律不预置国内镜像源」红线，等用户拍板）：apt / pip / HuggingFace 预置镜像；`hf-mirror.com` 实测当前网络**不通**（15 s 超时）；Claude Code 官方安装脚本被地域封锁（302 → 网站 HTML），绕道 `npm i -g @anthropic-ai/claude-code` 属改产品行为，本轮未做。
 

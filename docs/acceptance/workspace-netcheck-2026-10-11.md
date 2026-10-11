@@ -27,14 +27,16 @@
 | **B-补-1**（共享档·反向） | 默认/自定义档的行为没被改坏 | ✅ | 还原 `custom` 后同一张卡：路径 `/storage/emulated/0/Download/男性`，文案 **「手机文件管理器直接可见、可自由删除；卸载证道后此文件夹仍会保留——产出不丢。」**（截图 `02-workspace-shared-mode.webp`）—— **用户的设置已还原**（`workspace_path` / `workspace_mode` 与改动前逐字一致） |
 | **B-补-1**（单测） | 四种档位判据都对 | ✅ | `WorkspacePathTest` 6 例全绿；整体 `:app:testDebugUnitTest` BUILD SUCCESSFUL |
 | **B-补-2** | 不再往会话里写字节 | ✅（代码级） | `TerminalActivity.kt:593-613` 已无 `SessionManager.write`；失败分支只 `RunLog.log(...)` + `showBanner(...)`。⚠️ **真机没触发失败路径**（见 2.1） |
+| **B-补-1**（仅私有档·会话内） | 重开会话后 guest 里不再 bind `/sdcard`、资料库不预置骨架 | ✅ **2026-10-11 补验** | guest 内 `mount` 只剩 `…/files/workspace on /workspace` + `Download/证道 on /opt/zhengdao`（**没有** `/sdcard`、`/storage/emulated/0`、pip/npm 缓存）⇒ `/sdcard` 目录在但**空**，`ls /storage/emulated/0` 无输出；`/workspace` 只有 `.ignore`（**没有**「资料库」骨架）；会话日志逐字 `工作区: /workspace <- …/files/workspace（仅私有，随卸载删除）`；切回 `custom` 后重新 bind + 文案全回（日志 `（共享存储，卸载保留）`） |
 
 ### 2.1 没验的（连理由一起记）
 
 | 项 | 为什么没验 |
 |---|---|
-| 仅私有档下 guest 里 `/sdcard` 到底 bind 没 bind | 改档要**重开会话**才会重新 bind，而设备上跑着用户正在用的 Hermes 会话（tmux 窗口 0）⇒ 没去重启它。由 `terminal/ProotLauncher.kt:470` 的 `if (storageGranted(context) && wsShared)` 代码路径覆盖 |
 | B-补-2 的横幅**真的**会弹 | 得切断手机网络（或让 `registry.npmjs.org` 不可达）再开一次会话才复现 —— 会临时断网 / 打扰在跑的会话，本轮没做；`showBanner` 本身在安装流程上已有真机表现 |
 | 「无存储权限 → 自动回落仅私有」这条 | 需要撤销「所有文件访问」（系统设置里操作），本轮没动系统权限；只有单测覆盖 |
+
+> 已知限制（不是缺陷）：仅私有档的「文件地图」文案（`KnowledgeBase.dispatchAgentsText()` 里改掉的那两行）**只对新装 / 清空 home 生效** —— `terminal/KnowledgeBase.kt:267` 用 `writeOrAppend(File(home, F_AGENTS), …)`（缺 marker 才追加一次，不是 `writeIfChanged`），所以老安装的 guest `/root/AGENTS.md` 不会回填（本轮真机上核到它仍是共享档文案）。要让它更新就删掉 home 里 `AGENTS.md` 的 zhengdao 块，或重装。
 
 ### 2.2 改档手法（可复现，也记录了"怎么改回去"）
 
