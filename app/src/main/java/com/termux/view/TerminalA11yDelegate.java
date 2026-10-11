@@ -1,3 +1,7 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+// 说明：证道第一方代码，沿用 com.termux.view 包名以便与聚合的终端视图层同包，非上游 Termux 文件。
+
 package com.termux.view;
 
 import android.content.Context;

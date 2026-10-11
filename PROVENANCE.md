@@ -47,8 +47,8 @@
 | 组件 | 许可证 | 使用方式 |
 |---|---|---|
 | ~~xterm.js~~ （**v3.9 已移除**） | MIT | 曾作为 WebView 终端渲染层；2026-10-05 随终端渲染层切换为原生 TerminalView 而删除，历史实现保留在 git 中 |
-| **Termux `terminal-emulator`**（v3.9 新增） | **Apache-2.0** | 以源码形式集成（`app/src/main/java/com/termux/terminal/`），作为独立库聚合，未修改其许可证头 |
-| **Termux `terminal-view`**（v3.9 新增） | **Apache-2.0** | 同上（`app/src/main/java/com/termux/view/`）；其 native 半边由 `app/src/main/cpp/termux/` 编译为 `libtermux.so` |
+| **Termux `terminal-emulator`**（v3.9 新增） | **Apache-2.0** | 以源码形式集成（`app/src/main/java/com/termux/terminal/`），作为独立库聚合，未修改其许可证头（上游这些文件原本就没有许可证头）；本项目**在其基础上做过修改** ⇒ 2026-10-11 起在文件头加 Apache-2.0 第 4(b) 条要求的修改通知，逐文件见下节「Apache-2.0 修改通知」 |
+| **Termux `terminal-view`**（v3.9 新增） | **Apache-2.0** | 同上（`app/src/main/java/com/termux/view/`）；其 native 半边由 `app/src/main/cpp/termux/` 编译为 `libtermux.so`。本项目在其上**改过 2 个文件、另新写 6 个第一方类**（沿用 `com.termux.view` 包名），见下节「Apache-2.0 修改通知」 |
 | proot（**Termux fork 发行版**，2026-10-04 基线切换） | GPL-2.0-or-later | 官方发行二进制，assets 内置、运行时释放为**独立可执行文件**调用（聚合分发，不链接不混源） |
 | libtalloc / libandroid-shmem | LGPL / 宽松许可 | 同上，作为 proot 的运行时依赖随包分发 |
 | **hermes pinned uv 0.12.3**（astral-sh/uv，运行时下载） | MIT OR Apache-2.0 | **不随包分发**。hermes 只认它自装的 pinned uv（剥离一切环境变量与配置），证道的包装器（`ProotLauncher.HERMES_UV_WRAPPER_B64`，源文件 `build/hermes-uv-wrapper.sh`）按 hermes install.sh 同源 URL 下载该工件并做 SHA256 校验（`bb66cb52…68dcca2`）后 exec；包装器同时强制 `UV_LINK_MODE=copy`（Android/proot 无可用硬链接） |
@@ -68,6 +68,41 @@
 > 打进 jniLibs（只为借用原生库打包机制），该方案已废弃；但即便沿用那个名字，
 > proot 依然只能 exec，不因叫 `.so` 就能当库加载。
 
+### Apache-2.0 修改通知（2026-10-11 补做）
+
+`app/src/main/java/com/termux/` 与 `app/src/main/cpp/termux/` 里的文件**不是上游副本**：它们源自
+Termux `terminal-emulator` / `terminal-view`（**Apache-2.0**，上游基线 **`v0.119.0-beta.3`**，
+tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6`，四来源下载逐字节一致），
+**已由本项目修改**。按 Apache-2.0 第 4(b) 条，下表 12 个文件在文件头带统一修改通知。
+
+| 文件（相对 `app/src/main/`） | 修改方向 |
+|---|---|
+| `java/com/termux/terminal/TerminalEmulator.java` | 移植上游 `d8d6b02`（OSC52 100 KB 上限）+ 自研 🟡-7 OSC 载荷超限丢弃（`MAX_OSC_DISCARD_LENGTH`）+ 日志与 `Base64.DEFAULT` |
+| `java/com/termux/terminal/TerminalColorScheme.java` | `NUM_INDEXED_COLORS` 259 → 260、新增 `COLOR_INDEX_SELECTION`、`reset()` private → public |
+| `java/com/termux/terminal/TextStyle.java` | 选区底色（`COLOR_INDEX_SELECTION`） |
+| `java/com/termux/terminal/TerminalBuffer.java` | 行尾清空时补 `clearLineWrap` |
+| `java/com/termux/terminal/TerminalRow.java` | `mSpaceUsed` `short` → `int` |
+| `java/com/termux/terminal/TerminalSession.java` | 进程 / 终端 IO 队列 4 KiB → 64 KiB |
+| `java/com/termux/terminal/KeyHandler.java` | `kN` / `kP` 上下翻页对调修正 |
+| `java/com/termux/view/TerminalView.java` | 拆分：1,589 → 758 行（职责搬进 6 个第一方类）+ 输入 / 选区定制 |
+| `java/com/termux/view/TerminalRenderer.java` | 行高倍率构造器、选区底色、`drawTextRun` 的 API 版本闸 |
+| `java/com/termux/textselection/TextSelectionCursorController.java` | 仅 `R` 类导入改为 `com.example.zhengdao.R` |
+| `java/com/termux/textselection/TextSelectionHandleView.java` | 同上 |
+| `cpp/termux/termux.c` | JNI `ReleaseStringUTFChars(env, cmd, cmd_cwd)` → `(env, cwd, cmd_cwd)`（**上游 beta.3 尚未修的内存 bug**） |
+
+另有 **6 个纯第一方**文件沿用 `com.termux.view` 包名（合计 1,477 行，非上游作品）——
+`TerminalImeBridge` 438、`TerminalGestureController` 304、`TerminalCursorBlinker` 246、
+`TerminalA11yDelegate` 202、`TerminalSelectionController` 190、`TerminalSizeResolver` 97 ——
+它们带本文件「代码文件头」一节规定的**独立开发声明**。
+
+其余 **11 个上游文件逐字节未改**（terminal 7：`ByteQueue` / `JNI` / `Logger` / `TerminalColors` /
+`TerminalOutput` / `TerminalSessionClient` / `WcWidth`；view 3：`GestureAndScaleRecognizer` /
+`TerminalViewClient` / `support/PopupWindowCompatGingerbread`；textselection 1：`CursorController`），
+保持原样、不加任何标记。上游仓库级 `LICENSE.md` 与 `THIRD-PARTY-LICENSES.md` 照常随仓库分发；
+**没有任何第三方版权声明、LICENSE 或 NOTICE 被移除**。
+
+复现比对：`git diff --no-index --numstat <上游 tarball 解包目录> app/src/main/java/com/termux`。
+（注意 `textselection` 存在包名与目录不符的历史遗留，比对时按路径而非包名对应，见 `docs/ERRATA.md` E-101。）
 ### 版本固定（可复现构建基线，2026-10-04 固化）
 
 来源：Termux 官方仓库 stable/main（packages.termux.dev），aarch64 官方构建产物，
