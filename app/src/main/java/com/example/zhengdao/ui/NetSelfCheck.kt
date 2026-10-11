@@ -1,3 +1,6 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 本文件只按 POSIX 标准接口（execve / wait4 / pipe / lstat 等）与 Android 官方文档实现，未参考任何第三方同类应用（含 termux-app）的源码。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
