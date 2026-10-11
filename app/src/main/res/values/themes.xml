@@ -1,7 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Zhengdao" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Zhengdao" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 2026-10-10 改：补状态栏透明 + 浅色图标 + 键盘 resize，
+             之前只有 1 行（parent + NoActionBar），状态栏是默认灰底黑图标，
+             与浅色主题冲突。 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+        <!-- 2026-10-11 加：框架 AlertDialog 统一 iOS 风（14dp 圆角）。
+             5 处 `android.app.AlertDialog.Builder` 不受 Compose 侧 shape 参数影响，
+             只认这个属性；MainActivity ×3 + TerminalActivity ×2 一并生效。 -->
+        <item name="android:alertDialogTheme">@style/Theme.ZhengdaoDialog</item>
+    </style>
+
+    <!-- 框架对话框主题：只换背景 drawable（14dp 圆角 + 发丝描边）。
+         不覆盖文字/按钮样式 —— 那些由 Android 12+ 的 Material 对话框默认
+         主题提供，改了反而会在低版本设备上丢 Material 观感。 -->
+    <style name="Theme.ZhengdaoDialog" parent="android:ThemeOverlay.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_bg_ios</item>
+    </style>
 
     <!-- 终端快捷键条按键的公共外观 -->
     <style name="TermKey">
@@ -36,7 +55,7 @@
         <item name="android:paddingStart">2dp</item>
         <item name="android:paddingEnd">2dp</item>
         <item name="android:background">@drawable/key_button_bg</item>
-        <item name="android:textColor">#FF222222</item>
+        <item name="android:textColor">#FFE5E5EA</item>
         <item name="android:maxLines">1</item>
         <!-- 宽窄自适应字号：按键等宽均分后，"PGUP/HOME/END" 这类长标签在窄屏
              会被截断成 "PG"/"HO"（2026-10-05 真机实测）。改为按可用宽度自动

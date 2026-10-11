@@ -11,8 +11,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.IOSBlueText
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -136,7 +139,7 @@ fun PluginsScreen() {
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Switch(checked = on, enabled = !busy, onCheckedChange = { toggle(spec, it) })
+            Switch(checked = on, enabled = !busy, onCheckedChange = { toggle(spec, it) }, colors = iosSwitchColors())
         }
     }
 
@@ -196,13 +199,14 @@ fun PluginsScreen() {
                             Text(
                                 text = "已启用",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = IOSBlueText,
                             )
                         } else {
                             Switch(
                                 checked = false,
                                 enabled = !busy && envReady,
                                 onCheckedChange = { toggle(r.spec, it) },
+                                colors = iosSwitchColors(),
                             )
                         }
                     }
@@ -334,7 +338,7 @@ fun PluginsScreen() {
             Text(
                 text = it,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = IOSBlueText,
             )
         }
     }
@@ -342,6 +346,7 @@ fun PluginsScreen() {
     if (cleanConfirm) {
         AlertDialog(
             onDismissRequest = { cleanConfirm = false },
+            shape = RoundedCornerShape(14.dp),
             title = { Text("清理插件包缓存？") },
             text = { Text("将删除已下载的插件包（约 ${cached.sumOf { it.second }} MB）。插件本身保持启用，下次启动会重新下载。") },
             confirmButton = {

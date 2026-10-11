@@ -98,6 +98,7 @@ import com.example.zhengdao.oc.ConnectionState
 import com.example.zhengdao.oc.OcRepository
 import com.example.zhengdao.oc.OcTodo
 import com.example.zhengdao.oc.TaijiPhase
+import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.oc.ToolState
 import com.example.zhengdao.ui.AttachmentGlyph
@@ -233,7 +234,7 @@ private fun ModelChip(text: String, onClick: () -> Unit) {
             // ⚠️ 必须先 clip 再 clickable：胶囊是 50% 圆角，涟漪默认按矩形绘制，
             //    不裁会在两个圆头外糊出方角（与首页「环境就绪」卡同一个坑，v1.1.1 阶段 1.3 补齐）。
             .clip(RoundedCornerShape(50))
-            .clickable(onClick = onClick),
+            .pressClickable(onClick = onClick),
     ) {
         Text(
             shortModelName(text),
@@ -516,7 +517,7 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.secondaryContainer,
         shadowElevation = 4.dp,
         // 同上：胶囊浮标，涟漪要跟着圆形走
-        modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick),
+        modifier = Modifier.clip(RoundedCornerShape(50)).pressClickable(onClick = onClick),
     ) {
         Text(
             "⬇ 回到最新",
@@ -1304,7 +1305,7 @@ private fun SheetActionRow(label: String, enabled: Boolean, onClick: () -> Unit)
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (enabled) Modifier.pressClickable(onClick = onClick) else Modifier)
             .padding(horizontal = 4.dp, vertical = 14.dp)
             .semantics { contentDescription = label },
     )
@@ -1379,7 +1380,7 @@ fun HistoryDrawer(
                 .padding(horizontal = 12.dp)
                 // 同上：12dp 圆角的「新会话」按钮，涟漪跟着圆角走
                 .clip(RoundedCornerShape(12.dp))
-                .clickable(onClick = onNew),
+                .pressClickable(onClick = onNew),
         ) {
             Text(
                 "＋  新会话",
@@ -1678,7 +1679,7 @@ private fun DrawerActionRow(label: String, value: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
+            .pressClickable(onClick = onClick)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

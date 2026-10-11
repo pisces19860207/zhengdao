@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.oc.OcModel
+import com.example.zhengdao.ui.util.pressClickable
 
 /**
  * 模型池选择器（v1.0 任务一）：底部抽屉，按 providerID 分组、免费模型置顶。
@@ -68,7 +69,7 @@ fun ModelSheet(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
-                            .clickable(onClick = onReload)
+                            .pressClickable(onClick = onReload)
                             // 2026-10-08 审查（MINOR-3）：触控区抬到 ≥48dp（Material 最小目标）。
                             // 原先只有 labelLarge 行高 + 6dp 内边距 ≈ 32–33dp——弱网下最需要点它的
                             // 时候最难点到。sizeIn 只约束**最小值**：文字视觉大小完全不变，多出来的
@@ -128,7 +129,7 @@ fun ModelSheet(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
-                            .clickable(onClick = onReload)
+                            .pressClickable(onClick = onReload)
                             // 2026-10-08 走查：8dp → 14dp。这是模型池拉不到时**唯一**的
                             // 重试入口，原来只有约 36dp 高、四个字宽，弱网下最需要它的
                             // 时候最难点到。
@@ -140,7 +141,7 @@ fun ModelSheet(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onSelectDefault)
+                        .pressClickable(onClick = onSelectDefault)
                         // 2026-10-08 走查：10dp → 14dp（与上方「重新加载」同一标准）
                         .padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -168,7 +169,7 @@ fun ModelSheet(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onSelect(m) }
+                                    .pressClickable { onSelect(m) }
                                     .padding(vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {

@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import com.example.zhengdao.ui.util.pressClickable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -276,7 +277,7 @@ fun HomeScreen(
                     //    按下去会在圆角外糊出一块方形的印子（2026-10-07 用户当面指出）。
                     //    clip 在外层 → 内层 clickable 画的涟漪被裁成圆角。
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { statusExpanded = !statusExpanded },
+                    .pressClickable { statusExpanded = !statusExpanded },
                 shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
                 colors = CardDefaults.cardColors(
@@ -728,7 +729,7 @@ fun HomeScreen(
                                         .size(48.dp)
                                         // 同上：圆形热区配方形涟漪很难看，裁成圆
                                         .clip(CircleShape)
-                                        .clickable { menuOpenFor = agent.id },
+                                        .pressClickable { menuOpenFor = agent.id },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
@@ -898,6 +899,7 @@ fun HomeScreen(
         }
         AlertDialog(
             onDismissRequest = { uninstallTarget = null },
+            shape = RoundedCornerShape(14.dp),
             title = { Text("卸载 ${target.name}？") },
             text = {
                 Text(
@@ -936,6 +938,7 @@ fun HomeScreen(
     reinstallTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { reinstallTarget = null },
+            shape = RoundedCornerShape(14.dp),
             title = { Text("重新安装 ${target.name}？") },
             text = {
                 Text(
