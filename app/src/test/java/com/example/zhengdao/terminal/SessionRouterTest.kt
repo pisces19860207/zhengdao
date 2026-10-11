@@ -36,8 +36,12 @@ class SessionRouterTest {
 
     @Test
     fun `不带命令时也保留会话 - 会话已经死了也一样`() {
-        // 死了就死了：这里不该顺手替用户起一个他不知道的东西（要"接回来"是
-        // restoreLastAgentIfAny 的职责，且只在没有待执行命令时发生）。
+        // 死了就死了：这里不该顺手替用户起一个他不知道的东西。
+        // ⚠️ 2026-10-11 起这条更硬了：原先死了会让 TerminalActivity.restoreLastAgentIfAny()
+        //    把上次那个 Agent 的启动命令重放一遍（E-018 的"杀 App 再开还是它"），
+        //    用户真机反馈那是"App 替我决定跑哪个 Agent"（一进终端就 auto-run hermes）⇒
+        //    那个兜底已删除，现在**任何**不带命令的进终端都落在干净的 shell 上。
+        //    台账：ERRATA E-113、FEATURE-LEDGER §A #52。
         assertEquals(
             SessionRouter.Action.KEEP_SESSION,
             decide(hasCommand = false, current = "agy", hasSession = false),
