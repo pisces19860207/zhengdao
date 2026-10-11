@@ -3,20 +3,26 @@ package com.example.zhengdao.terminal
 import android.content.Context
 import com.example.zhengdao.rootfs.RootfsCache
 import com.example.zhengdao.rootfs.RunLog
+import org.json.JSONObject
 import java.io.File
 
 /**
  * 存储明细与「可选工具」清理（Issue #8 的 B / C / D）。
  *
  * 背景：`~/.hermes/tools` 里躺着一整套 hermes 自带的工具链（chromium / ffmpeg / python /
- * node / uv / cua-driver / agent-browser …）。真机实测里 **可选工具那一组 ≈ 1.0G**
- * （chromium 602M + ffmpeg 329M + cua-driver 81M + agent-browser 10M），而它们都是
- * 「浏览器 / 媒体 / 桌面自动化」类能力：不用的时候没有理由占着，**删掉之后 hermes 在
- * 需要时会自己重新下载**（用户 2026-10-08 对 rootfs 预装清单的原话就是这个理由：
- * 「ffmpeg 是 hermes agent 要用的，不然 hermes 会自己下载的」）。
+ * node / uv / cua-driver / agent-browser …），真机实测那几件大件合计 ≈1.0G。
  *
- * 所以本文件的边界是：**只碰 [OPTIONAL_TOOL_NAMES] 这一组**——
- * python / node / uv / npm / ripgrep 这些核心运行时**绝不动**（删了 hermes 直接瘸），
+ * ⚠️ **2026-10-11 更正（ERRATA E-092）：ffmpeg 不是"可选工具"。** 真机上把它清掉之后，
+ * hermes 每次启动都报 `install out of sync (ffmpeg: not installed or outdated)`——
+ * `~/.hermes/hermes-agent/pm/install.py` 的 `drift()` 只跳过 `package.optional` 的包，
+ * 而 ffmpeg 进了问题列表 ⇒ 它是**必需包**。系统层那份（rootfs 自带的 `/usr/bin/ffmpeg`）
+ * hermes 也不认：`pm.activate()` 会把自己的 store 工具目录插到 PATH 最前（docstring 原话
+ * "never a user copy that sorts earlier"）。所以 ffmpeg 归 [REQUIRED_TOOL_NAMES]，
+ * 任何清理入口都不许碰；并且**删掉的包不会自己回来**——要用户在终端跑 `hermes pm install`。
+ *
+ * 所以本文件的边界是：**只碰 [OPTIONAL_TOOL_NAMES] 这一组**（chromium / cua-driver /
+ * agent-browser：hermes 的 lockfile 里标着 optional 的真扩展）——
+ * python / node / uv / npm / ripgrep 这些核心运行时、以及 ffmpeg，都**绝不动**，
  * 未归类的目录也不动（宁可少清，不可清错）。
  *
  * 另一个边界来自 #6 的结论：`~/.hermes/hermes-agent/.git`（638M）**不能剥离**
@@ -25,8 +31,17 @@ import java.io.File
  */
 object StorageAudit {
 
-    /** 可选工具（浏览器 / 媒体 / 桌面自动化）：不用时可以清掉，需要时 hermes 会重新下载。 */
-    internal val OPTIONAL_TOOL_NAMES = listOf("chromium", "ffmpeg", "cua-driver", "agent-browser")
+    /**
+     * hermes 的**必需**包：它的启动自检（`pm/install.py` 的 `drift()`）会因为缺它们而报
+     * `install out of sync`。清掉 = 每次启动都带着一条红字，**任何清理入口都不许碰**。
+     */
+    internal val REQUIRED_TOOL_NAMES = listOf("ffmpeg")
+
+    /**
+     * 可选工具（浏览器 / 桌面自动化）：hermes 的 lockfile 里标着 `optional`，不用时可以清掉
+     * ——**但不会自己回来**，要用时得在终端跑 `hermes pm install`（用户 2026-10-11 实测）。
+     */
+    internal val OPTIONAL_TOOL_NAMES = listOf("chromium", "cua-driver", "agent-browser")
 
     /** 核心运行时：清掉等于把 hermes 弄瘸，任何清理入口都不许碰。 */
     internal val CORE_TOOL_NAMES = listOf("python", "node", "uv", "npm", "ripgrep", "rg", "busybox", "git", "tmux", "hermes")
@@ -40,7 +55,7 @@ object StorageAudit {
         val note: String = "",
     )
 
-    internal enum class ToolKind { OPTIONAL, CORE, OTHER }
+    internal enum class ToolKind { REQUIRED, OPTIONAL, CORE, OTHER }
 
     /**
      * 公共区 rootfs 安装包留档数：**当前 + 上一个**（用户 2026-10-08 定案）。
@@ -65,6 +80,7 @@ object StorageAudit {
             dirName.equals(n, ignoreCase = true) || dirName.startsWith("$n-", ignoreCase = true)
         }
         return when {
+            hit(REQUIRED_TOOL_NAMES) -> ToolKind.REQUIRED
             hit(OPTIONAL_TOOL_NAMES) -> ToolKind.OPTIONAL
             hit(CORE_TOOL_NAMES) -> ToolKind.CORE
             else -> ToolKind.OTHER
@@ -72,7 +88,8 @@ object StorageAudit {
     }
 
     private fun note(kind: ToolKind): String = when (kind) {
-        ToolKind.OPTIONAL -> "可选（浏览器/媒体/自动化）：删了 hermes 用到时会自己重新下载"
+        ToolKind.REQUIRED -> "hermes 必需：缺了它启动自检会报错（系统层那份它不认）：不动"
+        ToolKind.OPTIONAL -> "可选（浏览器/自动化）：删了不会自己回来，要用时在终端跑 hermes pm install"
         ToolKind.CORE -> "核心运行时：不动"
         ToolKind.OTHER -> "未归类：不动"
     }
@@ -95,6 +112,30 @@ object StorageAudit {
     fun toolItems(ctx: Context): List<Item> =
         runCatching { toolItemsIn(toolsDir(HermesEnv.hermesHome(ctx))) }.getOrDefault(emptyList())
 
+    /**
+     * hermes 自检：读它自己的 `tools/facts.json`，把**注册了但目录已经不在**的包列出来。
+     *
+     * 这正是用户 2026-10-11 撞见的那一幕：清了工具目录，hermes 启动就报
+     * `install out of sync (ffmpeg: not installed or outdated)`，而面板什么都不说。
+     * 「包名 → 目录名」的对应关系只写在 facts.json 里（`ffmpeg` → `ffmpeg-9.0.1-linux-arm64`），
+     * 所以这里照它的 `entry` 判，不猜名字。
+     */
+    internal fun missingRegisteredPackages(factsJson: File): List<Pair<String, String>> {
+        if (!factsJson.isFile) return emptyList()
+        val store = factsJson.parentFile ?: return emptyList()
+        val pkgs = runCatching {
+            JSONObject(factsJson.readText()).optJSONObject("packages")
+        }.getOrNull() ?: return emptyList()
+        val out = mutableListOf<Pair<String, String>>()
+        for (name in pkgs.keys()) {
+            val p = pkgs.optJSONObject(name) ?: continue
+            if (p.optBoolean("internal", false)) continue
+            val entry = p.optString("entry").takeIf { it.isNotEmpty() } ?: continue
+            if (!File(store, entry).exists()) out += name to entry
+        }
+        return out.sortedBy { it.first }
+    }
+
     /** 可选工具合计（MB）：这就是 #8-B 里「能省多少」的真机数字来源。 */
     fun optionalToolsMb(ctx: Context): Long =
         toolItems(ctx).filter { it.removable }.sumOf { it.mb }
@@ -110,8 +151,8 @@ object StorageAudit {
         val res = cleanOptionalToolDirs(tools)
         if (res.first > 0) {
             RunLog.log(
-                "清理可选工具: 删除 ${res.first} 项（浏览器/媒体/自动化），释放 " +
-                    "${CacheCleaner.bytesToMb(res.second)}MB（需要时 hermes 会重新下载）"
+                "清理可选工具: 删除 ${res.first} 项（浏览器/桌面自动化），释放 " +
+                    "${CacheCleaner.bytesToMb(res.second)}MB（要用时得在终端跑 hermes pm install）"
             )
         }
         return res
@@ -142,6 +183,43 @@ object StorageAudit {
     }
 
     /**
+     * 清理公共区那份**安装脚本缓存**（连同宿主侧指纹记录与 guest 私有副本），返回 `项数 to 字节数`。
+     *
+     * 为什么要有这个入口（用户 2026-10-11）：「重试免下载」让一份脚本被**每次重装原样复用**
+     * （用户当初指定，见 AgentInstaller）。可一旦这份缓存本身有问题——上游改了脚本格式、
+     * 代理塞了拦截页、写到一半被杀——用户看到的就是**永远同一个失败**，而且没有任何自救手段
+     * （公共区 App 卸载也清不掉）。清掉它，下次安装就会重新下载一份干净的。
+     *
+     * 账本 `installed.json` **不动**：那是"装过什么"（重装 App 后一键恢复的依据），不是缓存。
+     */
+    fun cleanAgentScriptCache(ctx: Context): Pair<Int, Long> {
+        var count = 0
+        var freed = 0L
+        fun wipeFiles(dir: File?) {
+            val files = runCatching { dir?.listFiles { f -> f.isFile } }.getOrNull() ?: return
+            files.forEach { f ->
+                val len = f.length()
+                if (runCatching { f.delete() }.getOrDefault(false)) {
+                    count++
+                    freed += len
+                }
+            }
+        }
+        runCatching { wipeFiles(Store.agentScriptsDir(ctx)) }
+        // guest 私有执行副本（/root/.zhengdao/scripts ← filesDir/home/.zhengdao/scripts）
+        runCatching { wipeFiles(Store.hostPrivateScriptsDir(ctx)) }
+        // 宿主侧指纹记录目录：filesDir/agents/script-sha（路径由 Store 自己算，这里不重复拼）
+        runCatching { wipeFiles(Store.scriptRecordFile(ctx, "hermes").parentFile) }
+        if (count > 0) {
+            RunLog.log(
+                "清理安装脚本缓存: 删除 $count 个文件，释放 ${CacheCleaner.bytesToMb(freed)}MB" +
+                    "（下次安装会重新下载）"
+            )
+        }
+        return count to freed
+    }
+
+    /**
      * 全景明细：能清的标 `removable`，不能清的把**为什么不能清**写出来。
      *
      * 数字口径与 [CacheCleaner.cleanableMb] 同源（都走 `fileLengths` / `bytesToMb`），
@@ -167,8 +245,23 @@ object StorageAudit {
                 )
             }
 
-        // B. hermes 工具（可选工具可清，核心运行时不动）
+        // B. hermes 工具（可选工具可清，ffmpeg 与核心运行时不动）
         out += toolItems(ctx)
+
+        // B2. hermes 自检缺口：facts.json 里注册了、目录却不在了 ⇒ 它启动就会报
+        // `install out of sync`。面板必须把这件事说出来（用户 2026-10-11 的困惑源头）。
+        runCatching {
+            missingRegisteredPackages(File(toolsDir(HermesEnv.hermesHome(ctx)), "facts.json"))
+        }.getOrDefault(emptyList()).forEach { (name, entry) ->
+            out += Item(
+                group = "hermes 自检",
+                // 行里就把补救办法写上：用户看到"目录不在"时最想知道的就是怎么办。
+                label = "$name（$entry 目录不在）· 跑 hermes pm install 补",
+                mb = 0,
+                removable = false,
+                note = "在终端跑 hermes pm install 补回来",
+            )
+        }
 
         // hermes 本体：只展示，不给删除入口（.git 不可剥离，#6 结论）
         runCatching { File(HermesEnv.hermesHome(ctx), "hermes-agent") }
@@ -191,10 +284,30 @@ object StorageAudit {
                 }
             }
 
-        // C. 公共区工作区数据：只展示，永不清
-        runCatching { Store.root(ctx) }.getOrNull()?.let { root ->
-            listOf("agents" to "Agent 安装脚本与账本", "logs" to "运行日志", "资料库" to "资料库").forEach { (n, label) ->
-                val d = File(root, n)
+        // C. 公共区：安装脚本缓存可清（下次安装重下），账本 / 日志 / 资料库只展示、永不清
+        runCatching { Store.agentsDir(ctx) }.getOrNull()?.let { agents ->
+            val scriptFiles = runCatching {
+                Store.agentScriptsDir(ctx).listFiles { f -> f.isFile }
+            }.getOrNull() ?: emptyArray()
+            if (scriptFiles.isNotEmpty()) {
+                out += Item(
+                    group = "公共区安装脚本",
+                    label = "Agent 安装脚本缓存（${scriptFiles.size} 个）",
+                    mb = CacheCleaner.bytesToMb(scriptFiles.sumOf { it.length() }),
+                    removable = true,
+                    note = "删了下次安装会重新下载（脚本本身出问题时清它）",
+                )
+            }
+            val ledger = File(agents, Store.LEDGER_NAME)
+            if (ledger.isFile) {
+                out += Item(
+                    "公共区工作区", "Agent 账本 ${Store.LEDGER_NAME}",
+                    CacheCleaner.bytesToMb(ledger.length()), removable = false,
+                    note = "用户数据：不清",
+                )
+            }
+            listOf("logs" to "运行日志", "资料库" to "资料库").forEach { (n, label) ->
+                val d = File(Store.root(ctx), n)
                 val mb = CacheCleaner.bytesToMb(CacheCleaner.fileLengths(d))
                 if (mb > 0) out += Item("公共区工作区", label, mb, removable = false, note = "用户数据：不清")
             }

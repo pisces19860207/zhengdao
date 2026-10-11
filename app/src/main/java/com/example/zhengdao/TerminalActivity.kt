@@ -641,16 +641,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }
         // 粘贴：顶部工具栏入口（快捷键条末位让给更常用的退格）
         findViewById<TextView>(R.id.btn_paste_top)?.setOnClickListener { doPaste() }
-        // 退格（⌫）：发 DEL(0x7F)。readline / bash 默认把 backward-delete-char
-        // 绑在 0x7F，与桌面终端一致（不是 0x08 BS）。
+        // Delete（前向删除）：发 CSI 3~（xterm 的 Delete 序列），键盘上的这颗键现在
+        // 干的是"删掉光标所在的那个字"，与手机输入法自带的退格不再重复（用户 2026-10-11）。
+        // ⚠️ 这里**不再**调 KnowledgeBaseHints.onUserBackspace()：那是退格语义（把缓冲的
+        // 最后一个字退掉），Delete 是前向删——光标通常在行尾，本来也无字可删，硬退一格
+        // 反而会把用户刚打进去的字从检索缓冲里抹掉。
         findViewById<TextView>(R.id.key_backspace)?.setOnClickListener {
-            runCatching { SessionManager.write(byteArrayOf(0x7F)) }
-                .onFailure {
-                    Toast.makeText(this, "发送退格失败：${it.message}", Toast.LENGTH_SHORT).show()
-                }
-            // FIX-F：这颗按钮是**直写 pty**的，不经过 onCodePoint ⇒ 行缓冲得单喂一口，
-            // 否则用户用退格改完错字再回车，检索词里还留着删掉的字。
-            KnowledgeBaseHints.onUserBackspace()
+            sendKey("\u001b[3~")
         }
         findViewById<TextView>(R.id.key_tab)?.setOnClickListener {
             // SHIFT+TAB = Backtab（\u001b[Z），Claude Code 的模式切换依赖它

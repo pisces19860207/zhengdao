@@ -105,9 +105,10 @@
         style="@style/TermKeyFlex"
         android:text="/" />
 
-    <!-- 退格（⌫）：与窄屏两行版保持同一 id 与位置语义（最右） -->
+    <!-- Delete（前向删除）：与窄屏两行版保持同一 id 与位置语义（最右）。
+         ⚠️ 2026-10-11 起这颗键发的是 Delete（CSI 3~），不再是退格——见 layout/term_keys.xml 的注释 -->
     <TextView
         android:id="@+id/key_backspace"
         style="@style/TermKeyFlex"
-        android:text="⌫" />
+        android:text="DEL" />
 </LinearLayout>

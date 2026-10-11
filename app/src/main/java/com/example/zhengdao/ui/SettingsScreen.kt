@@ -329,10 +329,15 @@ fun SettingsScreen(
                                 Text("可释放约 $optMb MB。")
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "删的是 hermes 自带的浏览器 / 媒体 / 桌面自动化工具" +
-                                        "（chromium、ffmpeg、cua-driver、agent-browser）。" +
-                                        "它们只在这类会话里用得上；需要时 hermes 会自己重新下载" +
-                                        "（要联网、要等一会儿）。"
+                                    "删的是 hermes 自带的浏览器 / 桌面自动化工具" +
+                                        "（chromium、cua-driver、agent-browser）。" +
+                                        "它们只在这类会话里用得上；删了不会自己回来——" +
+                                        "要用时得在终端里跑一次 hermes pm install（要联网、要等一会儿）。"
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "ffmpeg 不在这里面：它是 hermes 的必需包，清掉之后它每次启动都会报 " +
+                                        "install out of sync（系统层自带的那份它不认）。"
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
@@ -358,6 +363,58 @@ fun SettingsScreen(
                         },
                         dismissButton = {
                             TextButton(onClick = { optConfirm = false }) { Text("取消") }
+                        },
+                    )
+                }
+            }
+
+            // 公共区那份**安装脚本缓存**：清掉它，下次安装就会重新下载。
+            // 为什么要单独给一个入口（用户 2026-10-11）：这份缓存会被"重试免下载"复用
+            // （用户当初指定），可一旦脚本本身有问题——上游改了格式、代理塞了拦截页、
+            // 写到一半被杀——用户看到的是**永远同一个失败**且毫无自救手段（公共区连
+            // 卸载 App 都清不掉）。清掉它，下次安装重新下一份干净的。
+            var scriptConfirm by remember { mutableStateOf(false) }
+            if (audit.any { it.group == "公共区安装脚本" }) {
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = { scriptConfirm = true }) {
+                    Text("清理安装脚本缓存（下次安装重新下载）")
+                }
+                if (scriptConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { scriptConfirm = false },
+                        title = { Text("清理安装脚本缓存？") },
+                        text = {
+                            Column {
+                                Text(
+                                    "会删掉公共区 agents/scripts 里缓存的安装脚本、宿主侧记的指纹、" +
+                                        "以及 guest 里的私有执行副本。"
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "脚本只有几十 KB——这一步不是为了腾地方，而是让下次安装重新下载" +
+                                        "一份干净的（重装被同一个失败卡住时，先点这里）。"
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text("不会删：Agent 账本 installed.json、装好的 Agent 本体与工具链、日志、资料库。")
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                scriptConfirm = false
+                                val (count, freed) =
+                                    com.example.zhengdao.terminal.StorageAudit.cleanAgentScriptCache(ctx)
+                                Toast.makeText(
+                                    ctx,
+                                    if (count > 0)
+                                        "已清 $count 个脚本缓存文件（释放 ${CacheCleaner.bytesToMb(freed)} MB），下次安装会重新下载"
+                                    else "没有脚本缓存可清",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                storageTick++
+                            }) { Text("清理") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { scriptConfirm = false }) { Text("取消") }
                         },
                     )
                 }
@@ -797,57 +854,26 @@ fun SettingsScreen(
             )
         }
 
-        // ── 终端外观（字号 + 配色；下次进入终端时应用）──
+        // ── 终端外观（行距可选；字号 / 画布留白 / 配色是定稿默认，只展示）──
+        // 用户 2026-10-11 定：这一卡只留「行距」能选（舒适 / 紧凑），
+        // 字号 / 画布留白 / 配色按 2026-10-10 定稿的那一套（Catppuccin Mocha · 12 ·
+        // 上下 8dp）当默认展示，不再给选项——选项太多反而挑不出哪个是"对的"。
+        // 字号仍可在终端里双指缩放临时改（同一份 TerminalPrefs，见 TerminalActivity）。
         SectionCard("终端外观") {
-            var sizeDp by remember { mutableStateOf(TerminalPrefs.sizeDp(ctx)) }
-            var schemeId by remember { mutableStateOf(TerminalPrefs.scheme(ctx).id) }
-            var insetDp by remember { mutableStateOf(TerminalPrefs.insetDp(ctx)) }
+            val sizeDp = TerminalPrefs.sizeDp(ctx)
+            val insetDp = TerminalPrefs.insetDp(ctx)
+            val scheme = TerminalPrefs.scheme(ctx)
             var spacingId by remember { mutableStateOf(TerminalPrefs.spacing(ctx).id) }
 
             Text(
-                text = "下次进入终端时生效。字号越小，同屏能显示的内容越多。",
+                text = "下次进入终端时生效。字号 / 画布留白 / 配色按定稿默认；只有行距可选。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(10.dp))
-
-            Text("字号", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                TerminalPrefs.SIZE_OPTIONS.forEach { dp ->
-                    // 与「运行内存上限」共用同一个芯片组件：同一页里两个选项组，
-                    // 选中态必须是同一套视觉（淡蓝底 + 主色描边）。
-                    FilterChip2("$dp", dp == sizeDp) {
-                        sizeDp = dp
-                        TerminalPrefs.saveSize(ctx, dp)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Text("画布留白", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                TerminalPrefs.INSET_OPTIONS.forEach { dp ->
-                    FilterChip2(if (dp == 0) "无" else "$dp", dp == insetDp) {
-                        insetDp = dp
-                        TerminalPrefs.saveInset(ctx, dp)
-                    }
-                }
-            }
-            Text(
-                text = "文字与边框之间的距离。留白占的是可用宽度——8dp 在 375dp 宽屏上约损失 4% 列宽，" +
-                    "觉得同屏内容变少就调小或选「无」。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            InfoRow("字号", "$sizeDp（默认）")
+            InfoRow("画布留白", if (insetDp == 0) "无（默认）" else "上下 $insetDp dp")
+            InfoRow("配色", scheme.label)
 
             Spacer(Modifier.height(12.dp))
             Text("行距", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -869,52 +895,6 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
-
-            Spacer(Modifier.height(12.dp))
-            Text("配色", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                TerminalPrefs.Scheme.values().forEach { sc ->
-                    val selected = sc.id == schemeId
-                    OutlinedButton(
-                        onClick = { schemeId = sc.id; TerminalPrefs.saveScheme(ctx, sc) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        // 选中＝淡蓝底 + 主色描边（与芯片同一套选中语言），不再只靠行尾一个 ✓
-                        border = BorderStroke(
-                            width = if (selected) 1.dp else 0.5.dp,
-                            color = if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outlineVariant,
-                        ),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surface,
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // 色块预览：用方案自身的底色 + 前景色显示 "Aa"
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp, 22.dp)
-                                    .background(Color(sc.bg), RoundedCornerShape(4.dp)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("Aa", style = MaterialTheme.typography.labelSmall, color = Color(sc.fg))
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = sc.label + if (selected) "  ✓" else "",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                }
-            }
         }
 
         // ── 修复环境 ──
