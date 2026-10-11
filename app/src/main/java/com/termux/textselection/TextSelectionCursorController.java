@@ -20,7 +20,6 @@ import android.view.View;
 import androidx.annotation.Nullable;
 
 import com.termux.terminal.TerminalBuffer;
-import com.termux.terminal.WcWidth;
 import com.example.zhengdao.R;
 import com.termux.view.TerminalView;
 
@@ -313,30 +312,9 @@ public class TextSelectionCursorController implements CursorController {
     private int getValidCurX(TerminalBuffer screen, int cy, int cx) {
         String line = screen.getSelectedText(0, cy, cx, cy);
         if (!TextUtils.isEmpty(line)) {
-            int col = 0;
-            for (int i = 0, len = line.length(); i < len; i++) {
-                char ch1 = line.charAt(i);
-                if (ch1 == 0) {
-                    break;
-                }
-
-                int wc;
-                if (Character.isHighSurrogate(ch1) && i + 1 < len) {
-                    char ch2 = line.charAt(++i);
-                    wc = WcWidth.width(Character.toCodePoint(ch1, ch2));
-                } else {
-                    wc = WcWidth.width(ch1);
-                }
-
-                final int cend = col + wc;
-                if (cx > col && cx < cend) {
-                    return cend;
-                }
-                if (cend == col) {
-                    return col;
-                }
-                col = cend;
-            }
+            // 证道 2026-10-11（B-补-47②）：判据抽到第一方类 DisplayColumnIndex，
+            // 与 TerminalRow#findStartOfColumn 的整行 walker 同源同判据；此处行为未变。
+            return DisplayColumnIndex.validCursorColumn(line, cx);
         }
         return cx;
     }

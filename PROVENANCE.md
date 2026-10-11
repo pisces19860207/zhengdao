@@ -88,7 +88,7 @@ tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6
 | `java/com/termux/terminal/KeyHandler.java` | `kN` / `kP` 上下翻页对调修正 |
 | `java/com/termux/view/TerminalView.java` | 拆分：1,589 → 758 行（职责搬进 6 个第一方类）+ 输入 / 选区定制 |
 | `java/com/termux/view/TerminalRenderer.java` | 行高倍率构造器、选区底色、`drawTextRun` 的 API 版本闸 |
-| `java/com/termux/textselection/TextSelectionCursorController.java` | 仅 `R` 类导入改为 `com.example.zhengdao.R` |
+| `java/com/termux/textselection/TextSelectionCursorController.java` | `R` 类导入改为 `com.example.zhengdao.R`；**2026-10-11 追加**：`getValidCurX()` 里「列 → 合法游标列」的判据抽到第一方类 `com.termux.view.textselection.DisplayColumnIndex`（同时移出已无用的 `com.termux.terminal.WcWidth` 导入），此处行为改为调用该判据 |
 | `java/com/termux/textselection/TextSelectionHandleView.java` | 同上 |
 | `cpp/termux/termux.c` | JNI `ReleaseStringUTFChars(env, cmd, cmd_cwd)` → `(env, cwd, cmd_cwd)`（**上游 beta.3 尚未修的内存 bug**） |
 
@@ -97,6 +97,13 @@ tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6
 `TerminalImeBridge` 442、`TerminalGestureController` 308、`TerminalCursorBlinker` 250、
 `TerminalA11yDelegate` 206、`TerminalSelectionController` 194、`TerminalSizeResolver` 101 ——
 行数为**含声明头的现状行数**（各含本文件「代码文件头」一节规定的**独立开发声明** 4 行）。
+
+**2026-10-11 追加的第一方类**：`app/src/main/java/com/termux/view/textselection/DisplayColumnIndex.java`
+（`package com.termux.view.textselection`，目录与包名一致；带同一套独立开发声明头）。用途：把
+「显示列 → 合法游标列」的判据收敛成单一实现（终端按列排版，宽字符占两列、组合字符占零列，
+选词手柄按列给坐标），供上表的 `TextSelectionCursorController` 调用；纯计算、无 Android 依赖，
+JVM 单测在 `app/src/test/java/com/example/zhengdao/terminal/DisplayColumnIndexTest.kt`。
+它不在上述 6 个之列（那 6 个在 `com/termux/view/` 目录下）。
 
 其余 **11 个上游文件逐字节未改**（terminal 7：`ByteQueue` / `JNI` / `Logger` / `TerminalColors` /
 `TerminalOutput` / `TerminalSessionClient` / `WcWidth`；view 3：`GestureAndScaleRecognizer` /

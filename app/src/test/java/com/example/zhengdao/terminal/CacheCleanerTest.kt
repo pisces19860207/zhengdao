@@ -237,6 +237,57 @@ class CacheCleanerTest {
         assertFalse(CacheCleaner.deleteTree(File(tmpDir(), "不存在")))
     }
 
+    // ── deleteTreeCounted（2026-10-11 新增：一边删一边统计，消掉"先量后删"的两遍遍历）──
+    // 起因：用户反馈「清理 agent 缓存包的时候有点卡」——旧实现量一遍、删一遍，
+    // 几万个小文件的 npm/uv 缓存要跑十几万次 stat+unlink。这一版只走一遍，数字口径不变。
+
+    @Test
+    fun `边删边数：文件数、目录数与真实字节数一次遍历算清`() {
+        val dir = tmpDir()
+        dir.aged("a.bin", 1000, ageMs = 0)
+        File(dir, "sub").mkdirs()
+        dir.aged("sub/b.bin", 2000, ageMs = 0)
+        File(dir, "sub/deep").mkdirs()
+        dir.aged("sub/deep/c.bin", 3000, ageMs = 0)
+
+        val st = CacheCleaner.deleteTreeCounted(dir)
+
+        assertEquals("三个真文件", 3, st.files)
+        assertEquals("根 + sub + sub/deep", 3, st.dirs)
+        assertEquals("与 fileLengths 同一口径的字节数", 6000L, st.bytes)
+        assertTrue("删掉了东西", st.any)
+        assertFalse("目录必须真删掉", dir.exists())
+    }
+
+    @Test
+    fun `边删边数：软链自身删掉但不计入字节数`() {
+        val root = tmpDir()
+        val real = root.aged("real.bin", 500_000, ageMs = 0)
+        val created = runCatching {
+            java.nio.file.Files.createSymbolicLink(
+                File(root, "link.bin").toPath(),
+                real.toPath(),
+            )
+        }.isSuccess
+        // 建不了软链就跳过（Windows 非开发者模式；Linux CI 上会真跑）
+        if (!created) return
+
+        val st = CacheCleaner.deleteTreeCounted(root)
+
+        assertEquals("软链的 attrs.size() 是目标长度，计进来就是虚报", 500_000L, st.bytes)
+        assertEquals("真文件 + 软链自身", 2, st.files)
+        assertFalse(root.exists())
+    }
+
+    @Test
+    fun `边删边数：不存在的目录返回全零而不是抛异常`() {
+        val st = CacheCleaner.deleteTreeCounted(File(tmpDir(), "不存在"))
+        assertEquals(0, st.files)
+        assertEquals(0, st.dirs)
+        assertEquals(0L, st.bytes)
+        assertFalse(st.any)
+    }
+
     // ── 目录求和：必须不跟进符号链接 ────────────────────────────────────────
 
     @Test

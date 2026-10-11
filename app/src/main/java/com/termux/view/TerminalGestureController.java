@@ -102,6 +102,20 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
     public boolean onScroll(MotionEvent e, float distanceX, float distanceY) {
         if (mView.mEmulator == null) return true;
 
+        // ── 证道定制（2026-10-11，B-补-47①）：选词中不滚动 ──
+        // 现象：长按选词后拖动手柄，终端内容跟着一起滚。
+        // 根因：选词时拖动的是选区手柄（TextSelectionCursorController 自己会做边缘
+        //      自动滚动：`topRow--` / `topRow++` 后 setTopRow），而本方法没判
+        //      选词态 ⇒ 同一次拖动被当成"滚终端"，两套滚动叠加打架。
+        //      同文件的 onUp()（:77）与 onScale()（:153）都判了 isSelectingText()，
+        //      只有这里漏判。
+        // 修法：选词态一律吃掉滑动（返回 true = 已消费，不冒泡），并把余量清零，
+        //      免得退出选词后的第一次滑动跳一下。
+        if (mView.isSelectingText()) {
+            mScrollRemainder = 0.0f;
+            return true;
+        }
+
         // ── 证道定制（2026-10-05 真机实测）：让触摸滑动在全屏应用下也能滚动历史 ──
         // 现象：终端里单指上滑没有反应。
         // 根因：tmux / 全屏 TUI 采用"定位光标 + 重绘整屏"的方式输出，不产生行滚动，
