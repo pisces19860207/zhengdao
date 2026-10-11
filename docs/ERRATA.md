@@ -5654,6 +5654,29 @@ v3.9 起 `terminal-emulator` / `terminal-view`（Apache-2.0）以源码形式聚
 
 闸门要验「它到底跑没跑」，不能只看「它写了什么」。**探针钩子（只写日志、不做判定）是最便宜的证伪手段。**
 
+**修复（2026-10-11 同日，用户拍板「补」）**
+
+新增版本化钩子 `tools/hooks/pre-merge-commit`（1408 字节，LF 无 BOM，`sh -n` = 0），随 `python tools\zd.py install-hooks` 一并安装；`tools/zd.py` 的安装与 `hooks-status` 都已从「硬编码只认 `pre-commit`」改为**遍历 `tools/hooks/*`** ⇒ 上面「处置建议」第 1 条里「现在硬编码只装一个文件」的现状描述，随本次修复失效（那天的结论保留：当时确实是那样）。
+
+**与 git 官方样例的唯一差别（必须有）**：官方样例是 `exec "$GIT_DIR/hooks/pre-commit"`；本仓是 `ZHENGDAO_IN_MERGE=1 exec "$(dirname "$0")/pre-commit" "$@"`。依据是本轮实测：**git 要到 `pre-merge-commit` 跑完之后才写 `MERGE_HEAD` / `MERGE_MSG`** —— 钩子内两者都不存在（只有 `GIT_REFLOG_ACTION=merge <branch>`，且 `GIT_DIR` 未设）。照抄官方样例，`pre-commit` 就认不出「这是合并提交」：闸 1 会把 `merge` 进 `main` 当成「在 main 上直接提交」**拦死**，闸 2 的 E-102 豁免对自动合并也不生效。`tools/hooks/pre-commit` 侧同步改成两条路都认（`${ZHENGDAO_IN_MERGE:-0}` 或 `MERGE_HEAD` 文件，`:55-58`）。
+
+**验证（临时仓库真跑，`%TEMP%\zd-hooktest5`，`git version 2.55.0.windows.2`；夹具：上游 U1 加 `probe/stale.txt`、U2 改它、U3 加 `probe/gone.txt`、U4 删它，侧分支 `hasgone`）**：
+
+| 用例 | 钩子配置 | 动作 | 预期 | 实测 |
+|---|---|---|---|---|
+| A | 只有 `pre-commit`（无 `pre-merge-commit`） | 陈旧基准下自动合并进 `integ` | 静默通过（＝本条描述的洞） | exit 0 ✓（闸门完全没跑） |
+| B1 | 握手版 | 同一合并 | 放行 + 打印跳过闸 2 | exit 0 ✓（ℹ️ 跳过闸 2） |
+| B2 | 握手版 | 自动合并进 `main` | 放行 + 打印「main 上的**合并提交**，放行」 | exit 0 ✓ |
+| B3 | 握手版 | 合并把 U4 删掉的 `probe/gone.txt` 带回来 | 闸 3 拦 | exit 1 ✓（ℹ️ 跳过闸 2 + 复活检测，报出 U4） |
+| C1 | 同一份转发、但**不带标记**（＝照抄官方样例的效果） | 陈旧基准下自动合并进 `integ` | 闸 2 误拦（E-102 原样） | exit 1 ✓ |
+| C2 | 同一份转发、不带标记 | 自动合并进 `main` | 闸 1 把正常集成拦死 | exit 1 ✓（闸 1 + 闸 2 双拦） |
+
+⇒ **六条全部符合预期**。C1/C2 就是「官方样例照抄不得」的反例 —— 尤其 C2，它拦的正是这棵工作树最正当的操作。
+
+**装机状态**：`python tools\zd.py install-hooks` ⇒ `pre-commit` 6273 字节 / `pre-merge-commit` 1408 字节；`hooks-status` 两行均 ✓。
+
+**同批更新的文档**：`AGENTS.md`（钩子那段补一句「**合并提交**走 `pre-merge-commit`」）、`docs/协作规约.md` §6 的 ⚠️ 加注「**已处置**」、`docs/FEATURE-LEDGER.md` §0 与 §A #39。
+
 ---
 
 ## E-104 · 2026-10-11 · 三处许可证义务「台账写了、文件里没落地」：**仓库内没有任何 Apache-2.0 正文**；LGPL 组件的随附与源码可得性缺失；`libandroid-shmem` 的许可证从未钉死
