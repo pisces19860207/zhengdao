@@ -23,9 +23,9 @@ import java.io.File
  * "never a user copy that sorts earlier"）。所以 ffmpeg 归 [REQUIRED_TOOL_NAMES]，
  * 任何清理入口都不许碰；并且**删掉的包不会自己回来**——要用户在终端跑 `hermes pm install`。
  *
- * 所以本文件的边界是：**只碰 [OPTIONAL_TOOL_NAMES] 这一组**（chromium / cua-driver /
- * agent-browser：hermes 的 lockfile 里标着 optional 的真扩展）——
- * python / node / uv / npm / ripgrep 这些核心运行时、以及 ffmpeg，都**绝不动**，
+ * 所以本文件的边界是：**只碰 [OPTIONAL_TOOL_NAMES] 这一组**（桌面自动化 cua-driver）——
+ * python / node / uv / npm / ripgrep 这些核心运行时、ffmpeg（必需包）、以及
+ * **用户点名要留的浏览器工具**（[PINNED_TOOL_NAMES]：agent-browser + chromium），都**绝不动**，
  * 未归类的目录也不动（宁可少清，不可清错）。
  *
  * 另一个边界来自 #6 的结论：`~/.hermes/hermes-agent/.git`（638M）**不能剥离**
@@ -41,10 +41,21 @@ object StorageAudit {
     internal val REQUIRED_TOOL_NAMES = listOf("ffmpeg")
 
     /**
-     * 可选工具（浏览器 / 桌面自动化）：hermes 的 lockfile 里标着 `optional`，不用时可以清掉
+     * **用户点名要留的 hermes 扩展**（2026-10-11）：「hermes 自己下载的那个浏览器工具也是要
+     * 保留的，虽然没有也可以用，但是有的话 hermes 是可以用的，我试过了。」
+     *
+     * `agent-browser`（驱动）+ `chromium-1208`（被驱动的浏览器本体）是**一套**，少了任一半
+     * 都不能开网页；它们当初被归进可选，是因为 hermes 的 lockfile 标着 `optional`——那是
+     * "装不装都行"（针对别人的机器），不是"可以删"（针对这台机器上真用得起它的用户）。
+     * ⇒ 从清理名单里摘出来，明细里显示「保留」，任何清理入口都不许碰。
+     */
+    internal val PINNED_TOOL_NAMES = listOf("chromium", "agent-browser")
+
+    /**
+     * 可选工具（桌面自动化）：hermes 的 lockfile 里标着 `optional`，不用时可以清掉
      * ——**但不会自己回来**，要用时得在终端跑 `hermes pm install`（用户 2026-10-11 实测）。
      */
-    internal val OPTIONAL_TOOL_NAMES = listOf("chromium", "cua-driver", "agent-browser")
+    internal val OPTIONAL_TOOL_NAMES = listOf("cua-driver")
 
     /** 核心运行时：清掉等于把 hermes 弄瘸，任何清理入口都不许碰。 */
     internal val CORE_TOOL_NAMES = listOf("python", "node", "uv", "npm", "ripgrep", "rg", "busybox", "git", "tmux", "hermes")
@@ -58,7 +69,7 @@ object StorageAudit {
         val note: String = "",
     )
 
-    internal enum class ToolKind { REQUIRED, OPTIONAL, CORE, OTHER }
+    internal enum class ToolKind { REQUIRED, PINNED, OPTIONAL, CORE, OTHER }
 
     /**
      * 公共区 rootfs 安装包留档数：**当前 + 上一个**（用户 2026-10-08 定案）。
@@ -84,6 +95,7 @@ object StorageAudit {
         }
         return when {
             hit(REQUIRED_TOOL_NAMES) -> ToolKind.REQUIRED
+            hit(PINNED_TOOL_NAMES) -> ToolKind.PINNED
             hit(OPTIONAL_TOOL_NAMES) -> ToolKind.OPTIONAL
             hit(CORE_TOOL_NAMES) -> ToolKind.CORE
             else -> ToolKind.OTHER
@@ -92,7 +104,8 @@ object StorageAudit {
 
     private fun note(kind: ToolKind): String = when (kind) {
         ToolKind.REQUIRED -> "hermes 必需：缺了它启动自检会报错（系统层那份它不认）：不动"
-        ToolKind.OPTIONAL -> "可选（浏览器/自动化）：删了不会自己回来，要用时在终端跑 hermes pm install"
+        ToolKind.PINNED -> "hermes 的浏览器工具（agent-browser + chromium 一套）：用户点名保留，不提供清理"
+        ToolKind.OPTIONAL -> "可选（桌面自动化）：删了不会自己回来，要用时在终端跑 hermes pm install"
         ToolKind.CORE -> "核心运行时：不动"
         ToolKind.OTHER -> "未归类：不动"
     }

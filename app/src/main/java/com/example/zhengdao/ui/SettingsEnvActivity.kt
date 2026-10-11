@@ -203,7 +203,9 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (st != null && !st.ok && st.canRepairOnHost) {
+                // 2026-10-11（用户 m01758）：环境本身好、只剩更新中断的标记文件时不再打红叉，
+                // 但清理入口要留着 ⇒ 按 canRepairOnHost 显示，按钮文案随情形变。
+                if (st != null && st.canRepairOnHost) {
                     OutlinedButton(onClick = {
                         Thread {
                             val home = com.example.zhengdao.terminal.HermesEnv.hermesHome(ctx)
@@ -211,7 +213,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             android.os.Handler(android.os.Looper.getMainLooper())
                                 .post { storageTick++ }
                         }.start()
-                    }) { Text("一键修正记录") }
+                    }) { Text(if (!st.ok) "一键修正记录" else "清理更新标记") }
                 }
                 TextButton(onClick = {
                     if (com.example.zhengdao.terminal.HermesEnv.writeRepairScript(ctx)) {

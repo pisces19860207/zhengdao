@@ -6114,3 +6114,84 @@ Windows 检出恒为 CRLF**，于是「照着工作区文件算出来的 SHA256�
   同批次还记两条真机自动化的坑：点底部导航最底边会被 MagicOS 判成 `SystemManagerSwipeUp`
   （日志 `[FORCE STOP] stop com.example.zhengdao … iAwareF[SystemManagerSwipeUp]`，App 被强停重启）⇒
   **点导航项要往上挪几 px**；打不开 `exported="false"` 的终端页时，可用 `MainActivity` 的 `open_terminal` extra 直达（同一代码路径）。
+
+## E-114 · 2026-10-11 · 首页体检「Hermes 依赖环境」误报红叉：把「代目录里没有 uv.lock」当成「依赖环境已丢失」（用户 m01758 指出）
+
+**现象**（用户原话）：「环境环境就绪检测动态卡又回到了之前的那个依赖环境是好的但是还是会出现红叉的情况。」
+即：hermes 明明起得来、用得了，首页「环境就绪」卡的 `Hermes 依赖环境` 那一项仍是红 ✗，
+文案正是 E-066 那次的「依赖环境已丢失，需在终端重建」。
+
+**为什么查了半晚才定案**：判据全在宿主侧读文件（`HermesEnv.inspect`），而真机那套目录布局单测造不出来；
+真机终端里手动敲命令取数又时灵时不灵（见「教训 2」）。最后改成**让 App 自己报**：
+在 `inspect()` 里、`return` 之前加一行「只在 `!ok` 时打」的 `RunLog.log`，把每条判据的原始读数一次性写进
+`Download/证道/logs/zhengdao-log.txt`。真机回读（2026-10-11 23:05:05）：
+```
+HermesEnv 诊断 ok=false anyRecord=true brokenRecord=true hostViewRecord=false sourceLockMissing=false stale=1
+  completeGens=0 recordedEnv=/root/.hermes/installs/8a4017c4cabfe15f/environments/ef92eb0a28654a90b1e64899d3c3bbf9/venv
+  envDir=true pyvenv=true gen=[.lease-managed,.leases,venv,workspace]
+  workspace=[LICENSE,README.md,acp_adapter,agent,batch_runner.py,cli.py,cron,gateway,hermes_agent.egg-info,…,pyproject.toml,…]
+  tools=[.install.lock,agent-browser-0.26.0-linux-arm64,chromium-1208,cua-driver-0.21.0-linux-arm64,facts.json,ffmpeg-9.0.1-linux-arm64,node-26.7.0-linux-arm64,npm-12.0.2-linux-arm64,python-3.14.7+20260901-linux-arm64,ripgrep-15.2.0-linux-arm64,uv-0.12.3-linux-arm64]
+  cache=[pip] detail=依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）
+```
+
+**根因（两条判据各错一半）**：
+1. `venvUsable(env, lock, root)` 要求「`facts.json` 里记的 `resolved_lock` 文件也存在」。可 hermes 新版布局把
+   一代目录的 `workspace/` 放成**源码树**（`pyproject.toml` / `setup.py` / `hermes_agent.egg-info` …），
+   根本没有 `uv.lock` ⇒ 记录里那条锁指过去自然不存在 ⇒ `brokenRecord=true` ⇒ 报「已丢失」。
+   （真正该管的锁是 `~/.hermes/hermes-agent/uv.lock`，那条由 `sourceLockMissing` 单独判，本次实测为 `false`。）
+2. `.hermes/.hermes-update-in-progress.lock`（19:26 留下）让 `stale=1`，而 `ok` 里写着 `stale == 0`
+   ⇒ 只要有一条残渣标记，整项就判负 —— 可那只是"上次更新被打断"的痕迹，环境本身没坏。
+
+**处置（`terminal/HermesEnv.kt` ＋ `ui/SettingsEnvActivity.kt`）**：
+- `venvUsable(env: String?, root: File)`：去掉锁文件要求，只留「**guest 视角** + `venv/pyvenv.cfg` 在」；
+  KDoc 里写清为什么（同一代目录既可能是新布局的源码树，也可能是老布局的 `workspace/uv.lock`）。
+- `ok = anyRecord && !brokenRecord && !sourceLockMissing`（去掉 `stale == 0`）；`stale > 0` 改为
+  detail 里的一句提示「依赖环境记录有效（另有 N 个更新中断留下的标记文件，可一键清理）」。
+- `canRepairOnHost`（= `hostFixable`）里 `stale > 0 -> true` 保持不变 ⇒ 清理入口照旧；
+  设置页按钮条件从 `!st.ok && st.canRepairOnHost` 放宽到 `st.canRepairOnHost`，文案按情形切
+  「一键修正记录」/「清理更新标记」。
+- **诊断日志保留**（只在判定失败时打）：这类"判定只看文件、单测造不出真机布局"的 bug，下次直接读日志即可。
+
+**取证**：`python tools\check-native-so.py` 退出 0；`.\gradlew.bat --offline testDebugUnitTest`
+BUILD SUCCESSFUL（**68 suite / 622 例 / 0 失败**；新增 `新版布局的代目录没有 uv_lock 也算好环境`、
+`venv 里没有 pyvenv_cfg 才算坏环境`，并把 `更新中断留下的标记可一键清理_记录本身不动` 里
+`assertFalse(before.ok)` 改成 `assertTrue`）；`assembleRelease` → `adb install -r` Success（正式签名包）；
+真机：设置 → 环境与更新 卡面 = 「依赖环境记录有效（另有 1 个更新中断留下的标记文件，可一键清理）」＋
+按钮「清理更新标记 / 在终端里修复」；首页状态卡展开 = 「环境体检 **11/11 通过**」（修前该行是 ✗）。
+
+**教训**：
+1. **「上次更新被打断的残渣」不等于「环境坏了」。** 判红叉前先问一句「这影响 hermes 能不能跑吗」——
+   不影响就别用红色，用提示 + 一键清理；红色是给"现在就用不了"的。
+2. **记录里的路径不必等于运行时的必需文件。** `resolved_lock` 是"当时解析用的那份锁"的历史记录，
+   上游换了布局就不在了；把它当硬条件，等于替上游宣布「环境丢了」。
+3. 本轮另一条同源教训：真机上 `adb shell input text '<带单引号/花括号的命令>'` 会把终端带进 bash 续行
+   （`>` 提示符），回车不执行、现场看还以为"命令跑了但没输出"；**要取数就让 App 自己写日志**，
+   或 `adb push` 一个纯 ASCII 脚本再敲一句无元字符的 `bash /workspace/x.sh`。
+
+## E-115 · 2026-10-11 · hermes 自己下载的浏览器工具（chromium + agent-browser）被列进「可选工具」可一键删除（用户点名保留）
+
+**现象**（用户原话）：「hermes 自己下载的那个浏览器工具也是要保留的，虽然没有也可以用，但是有的话hermes是可以用的，我试过了。」
+设置 → 存储与缓存里，`chromium-1208`（600 MB）与 `agent-browser-0.26.0-linux-arm64`（9 MB）
+都标着「可清」，并被算进「清理可选工具（689 MB）」的总额里 —— 点一下就把用户实测过、hermes 真在用的
+浏览器工具删掉。它是 hermes 自己 `pm install` 下来的（`~/.hermes/tools/`），删了不会自己回来。
+
+**判定沿革**：E-092 之后 `OPTIONAL_TOOL_NAMES = [chromium, cua-driver, agent-browser]`（ffmpeg 已因必需被移出）。
+当时的依据是 hermes lockfile 里这几个包标着 optional；但"上游标 optional"≠"用户愿意删"——
+用户实测「有它 hermes 能开网页，没有也能用，但我要留着」。
+
+**处置（`terminal/StorageAudit.kt` ＋ `ui/SettingsStorageActivity.kt` ＋ 单测）**：
+- 新增 `PINNED_TOOL_NAMES = listOf("chromium", "agent-browser")` 与 `ToolKind.PINNED`，
+  `toolKind()` 里 `hit(PINNED_TOOL_NAMES) -> ToolKind.PINNED`；
+  `note(ToolKind.PINNED) = "hermes 的浏览器工具（agent-browser + chromium 一套）：用户点名保留，不提供清理"`。
+- `OPTIONAL_TOOL_NAMES` 收窄为 `listOf("cua-driver")`（桌面自动化仍可清 —— **待用户点头**）；
+  `removable = kind == ToolKind.OPTIONAL` 不变 ⇒ 浏览器工具两个目录不再出现在任何可清项里。
+- 设置页清理弹窗文案改写：只删 `cua-driver`，并明确写「浏览器工具（agent-browser / chromium）不在删除范围内」。
+
+**取证**：真机设置 → 存储与缓存明细 = `chromium-1208` **600 MB · 保留**、
+`agent-browser-0.26.0-linux-arm64` **9 MB · 保留**、`cua-driver-0.21.0-linux-arm64` **80 MB · 可清**、
+`ffmpeg-9.0.1-linux-arm64` 328 MB · 保留；`StorageAuditTest` 四条用例改后全绿（含
+`清理只删可选工具，浏览器工具与 ffmpeg 原样留在原地`：七目录里只删 cua-driver 1 项）。
+
+**教训**：**清理白名单要跟着用户的实测走，不能只跟着上游的 optional 标记走。**
+凡是"删了不会自己回来"的东西，宁可默认保留、让用户点名要清；
+「可选」是上游的词，不是用户的意图。
