@@ -19,8 +19,8 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 
 - **Android 16 (API 36)** or newer
 - **arm64-v8a** device
-- Verified on Honor Magic 5 Pro (MagicOS 10 / Android 16). Other Android versions are **not**
-  tested and may not work.
+- Verified on Honor Magic 5 Pro (MagicOS 10 / Android 16, model code `PGT-AN10`). Other Android
+  versions are **not** tested and may not work.
 
 > **Why `targetSdk` is pinned to 28:** Android 10+ forbids executing files from an app's own
 > writable data directory (W^X), and Zhengdao's entire Linux environment — thousands of
@@ -39,10 +39,29 @@ Three bottom tabs:
 Settings live behind the gear icon. Agent output goes to a shared workspace (default
 `Download/证道`), visible in any file manager and kept after uninstalling Zhengdao.
 
-## Status (2026-10-09)
+## Status (2026-10-11)
 
-**v2.0.0** (`versionCode 16`, 2026-10-09) — foundations plus a signed trust chain for the
-environment; no new feature surface:
+**Current release: v2.0.12** (`versionCode 28`, 2026-10-11). The feature surface was frozen at
+v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven**: bug fixes and
+keeping up with upstream, not further restructuring. Remaining items (7 open, including known
+performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
+
+`main` currently runs **574 unit tests across 64 suites, all green** (2026-10-11: 0 failures,
+0 errors, 1 skipped by environment).
+
+### Recent releases
+
+| Version | Date | In one line |
+|---|---|---|
+| **v2.0.12** (current) | 2026-10-11 | The Taiji page's connection now stays alive while the app is open — switching tabs or coming back no longer re-handshakes (also fixes an occasional 401 right after an app update). The UI is unified on an iOS-style skin (tab pills removed, dark terminal chrome, dark key bar — **the 17 key ids and their order are untouched**). Cache cleanup no longer counts Hermes' **required** package `ffmpeg` as optional, the appearance card keeps only line spacing selectable, and the key bar's `⌫` is now **DEL**. Plus ten UI/UX fixes. |
+| v2.0.11 | 2026-10-11 | Fixed the built-in opencode (bionic host build) failing to install (E-090); library scanning no longer truncates silently (E-089); requirements moved to the first screen. |
+| v2.0.10 | 2026-10-10 | Terminal visual upgrade: **Catppuccin Mocha** as the factory palette, a GB2312-subset font (APK 13.53 → **7.82 MB**), and a "comfortable" line-spacing default. |
+| v2.0.9 | 2026-10-10 | Install-path hardening (scripts in the public area are fingerprinted before they are ever executed); two real rootfs bugs plus five audit items; library summaries became local-only. |
+| v2.0.0 | 2026-10-09 | Engine consolidation and the signed **environment trust chain** (below). |
+
+Release notes for every version are on the [Releases page](https://github.com/pisces19860207/zhengdao/releases).
+
+### Environment trust chain (established in v2.0.0, unchanged since)
 
 - **Rust core consolidation** (`zhengdao_core`): SHA-256, rootfs extraction (zstd + tar) and
   install-integrity digests now live behind a **single** `libzhengdao_core.so` (one JNI boundary,
@@ -68,8 +87,8 @@ environment; no new feature surface:
   entry on session rows, and non-silent session-refresh failures that keep the existing list.
 - **Reliability batch**: session wakelock renewal, terminal canvas insets, non-silent model-pool
   refresh with human-readable errors, the `zzclean` cache command, and three real-device UI fixes.
-- **Tests**: 296 unit tests across 35 suites green (measured 2026-10-09 09:24: 0 failures, 0 errors,
-  0 skipped); Macrobenchmark and Compose performance baselines in use.
+- **Tests at v2.0.0**: 296 unit tests across 35 suites green (measured 2026-10-09 09:24: 0 failures,
+  0 errors, 0 skipped); Macrobenchmark and Compose performance baselines in use.
 
 ## Network
 
