@@ -127,19 +127,21 @@ as the app, on the same kernel and network stack, and can read and write any fil
 
 ## Status (2026-10-11)
 
-**Current release: v2.0.12** (`versionCode 28`, 2026-10-11). The feature surface was frozen at
+**Current release: v2.0.14** (`versionCode 30`, 2026-10-11). The feature surface was frozen at
 v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven**: bug fixes and
-keeping up with upstream, not further restructuring. Remaining items (7 open, including known
+keeping up with upstream, not further restructuring. Remaining items (including known
 performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
 
-`main` currently runs **600 unit tests across 66 suites, all green** (2026-10-11: 0 failures,
+`main` currently runs **602 unit tests across 66 suites, all green** (2026-10-11: 0 failures,
 0 errors, 1 skipped by environment).
 
 ### Recent releases
 
 | Version | Date | In one line |
 |---|---|---|
-| **v2.0.12** (current) | 2026-10-11 | The Taiji page's connection now stays alive while the app is open — switching tabs or coming back no longer re-handshakes (also fixes an occasional 401 right after an app update). The UI is unified on an iOS-style skin (tab pills removed, dark terminal chrome, dark key bar — **the 17 key ids and their order are untouched**). Cache cleanup no longer counts Hermes' **required** package `ffmpeg` as optional, the appearance card keeps only line spacing selectable, and the key bar's `⌫` is now **DEL**. Plus ten UI/UX fixes. |
+| **v2.0.14** (current) | 2026-10-11 | Three named UI fixes: first-run permissions went from a series of system dialogs to a single **permissions page** (everything on one screen, grant row by row, remembered as guided); the terminal's long-press "more" menu drops "reload font size" and selected text now goes to the **system default search** instead of a hard-coded Bing URL; Settings' "keep-alive record" card became a **single-row entry plus its own page** (content unchanged). |
+| v2.0.13 | 2026-10-11 | Release builds moved to an **independent release signing key** (E-099; already-installed older builds must be uninstalled once); the terminal title bar was shortened with auto-sizing so it is no longer ellipsised; the v2.0.12 notes gained an "uninstall first" warning and 19 old official releases were cleaned up. |
+| v2.0.12 | 2026-10-11 | The Taiji page's connection now stays alive while the app is open — switching tabs or coming back no longer re-handshakes (also fixes an occasional 401 right after an app update). The UI is unified on an iOS-style skin (tab pills removed, dark terminal chrome, dark key bar — **the 17 key ids and their order are untouched**). Cache cleanup no longer counts Hermes' **required** package `ffmpeg` as optional, the appearance card keeps only line spacing selectable, and the key bar's `⌫` is now **DEL**. Plus ten UI/UX fixes. |
 | v2.0.11 | 2026-10-11 | Fixed the built-in opencode (bionic host build) failing to install (E-090); library scanning no longer truncates silently (E-089); requirements moved to the first screen. |
 | v2.0.10 | 2026-10-10 | Terminal visual upgrade: **Catppuccin Mocha** as the factory palette, a GB2312-subset font (APK 13.53 → **7.82 MB**), and a "comfortable" line-spacing default. |
 | v2.0.9 | 2026-10-10 | Install-path hardening (scripts in the public area are fingerprinted before they are ever executed); two real rootfs bugs plus five audit items; library summaries became local-only. |

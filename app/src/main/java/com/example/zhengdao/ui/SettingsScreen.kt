@@ -1508,97 +1508,39 @@ fun SettingsScreen(
                     Toast.makeText(ctx, "请到系统设置 → 应用管理中找到证道", Toast.LENGTH_LONG).show()
                 }
             }) { Text("打开应用详情（启动管理入口）") }
-        }
 
-        // ── 保活记录（被杀留档，#5，2026-10-09）──
-        // 用户报障「终端用着用着就没了」时我们手上什么都没有：进程死掉那一刻不留痕迹，
-        // 杀掉它的不是我们（厂商清理 / LMK / 冻结）。这里把三件可查的事实摆出来：
-        // 系统的死亡证明（原因/时间/RSS）、心跳（最后一行=遇难现场）、logcat 片段。
-        // 位置在私有目录（不是人人天天看的日志区），要交给作者分析时点「导出」拷进公共区。
-        var exitLines by remember { mutableStateOf(emptyList<String>()) }
-        var beatLines by remember { mutableStateOf(emptyList<String>()) }
-        var snippetCount by remember { mutableStateOf(0) }
-        var keepAliveTick by remember { mutableStateOf(0) }
-        LaunchedEffect(keepAliveTick) {
-            withContext(Dispatchers.IO) {
-                exitLines = com.example.zhengdao.keepalive.KeepaliveArchive.history(ctx, 3)
-                beatLines = com.example.zhengdao.keepalive.KeepaliveArchive.heartbeatTail(ctx, 5)
-                snippetCount = com.example.zhengdao.keepalive.KeepaliveArchive.snippets(ctx).size
-            }
-        }
-        SectionCard("保活记录（被杀留档）") {
-            Text(
-                "位置：${com.example.zhengdao.keepalive.KeepaliveArchive.dirPath(ctx)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "进程被杀时系统会自己记下原因（内存不足 / 资源占用超限 / 厂商后台清理 / 崩溃 / ANR），" +
-                    "下次启动时收进这里；心跳每 10 分钟一条，**最后一条就是遇难现场**（内存水位、" +
-                    "前台服务在不在、用户当时在哪一页）。导出后连同 logcat 片段一起可交给作者分析。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(6.dp))
-            if (exitLines.isEmpty()) {
-                Text(
-                    "还没有退出记录——被杀过一次并重开之后就会有。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Text(
-                    "最近退出：",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                exitLines.forEach { line ->
-                    Text(
-                        line,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            // ── 保活记录：只留一行入口（2026-10-11 搬家）──
+            // 用户原话：「保活记录这个卡弄成和问题反馈那种，太多太长了，单独给他弄一个。」
+            // 判据：那张卡是**报障时才看**的内容（位置 / 长解释 / 最近退出 / 最近心跳 /
+            // logcat 片段数 / 导出 / 清空），却天天占着设置页一整屏 ⇒ 整段搬进二级页
+            // ui/KeepaliveLogActivity.kt，文案与 KeepaliveArchive 调用逐字未改；
+            // 设置页只留一行，写法与「关于」卡里的「问题反馈（Issues）」同款
+            //（SettingRow：整行可点 + 右侧 ›）。
+            //
+            // 为什么并进这张卡，而不是自己再起一张 SectionCard("保活记录")：
+            // 用户嫌的就是"占地方"，而一张只有一行的卡仍要吃掉一个卡头 + 20dp 组间距
+            //（组间距约定见本文件内容区 Column 的 verticalArrangement：组间距 20dp）；紧邻这张讲的正是同一件事
+            //（怎么活下来 / 活下来的证据：死亡证明、心跳、logcat），合并省掉一整块版面。
+            // 被否决：并入「关于」卡 —— 那里是签名 / 更新 / 开源协议，用户报障时得在
+            // 一堆"关于"信息里翻找，反而更难找。
+            //
+            // 摘要「最近 N 条退出记录」：读的是 exits.log，必须 IO 线程。
+            // 口径刻意用页面同一个 history(ctx, 3)、不自己数文件 —— 同一件事两套账
+            //（本仓 E-073 的教训）迟早对不上。读不到时 history 自己返回空表 ⇒ 显示空串。
+            // 键用 storageTick（上面 ON_RESUME 观察者自增）而不是 Unit：在新页面点完
+            // 「清空记录」返回，这一行会自己刷成空串，不会留着已清掉的旧数字。
+            var kaExitCount by remember { mutableStateOf(0) }
+            LaunchedEffect(storageTick) {
+                kaExitCount = withContext(Dispatchers.IO) {
+                    com.example.zhengdao.keepalive.KeepaliveArchive.history(ctx, 3).size
                 }
             }
-            if (beatLines.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "最近心跳：",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                beatLines.forEach { line ->
-                    Text(
-                        line,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "logcat 片段：$snippetCount 份（每次启动与巡检各留一份，最多 5 份）",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            SettingRow(
+                label = "保活记录（被杀留档）",
+                value = if (kaExitCount > 0) "最近 $kaExitCount 条退出记录" else "",
+                onClick = { ctx.startActivity(Intent(ctx, KeepaliveLogActivity::class.java)) },
             )
-            Row {
-                OutlinedButton(onClick = {
-                    val dst = com.example.zhengdao.keepalive.KeepaliveArchive.export(ctx)
-                    Toast.makeText(
-                        ctx,
-                        dst?.let { "已导出到 ${it.absolutePath}" } ?: "导出失败：公共区不可用（先在权限里开启「所有文件访问」）",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }) { Text("导出到 Download/证道/logs") }
-                TextButton(onClick = {
-                    val n = com.example.zhengdao.keepalive.KeepaliveArchive.clear(ctx)
-                    keepAliveTick++
-                    Toast.makeText(ctx, "已清空 $n 份留档", Toast.LENGTH_SHORT).show()
-                }) { Text("清空记录", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
         }
 
         // ── 新手指南（第三批）──
