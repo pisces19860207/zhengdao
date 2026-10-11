@@ -134,7 +134,15 @@ plugins {
 //    文档补「PRoot 不提供安全隔离」与 Debian rootfs 许可段（E-097/E-098）、
 //    **正式包改用独立 release keystore**（E-099）、顶栏标题改短并加 autoSize（另一会话产出，蓝总管验收）。
 //    ⚠️ 换签名钥匙 = 装这一版前必须先卸载旧版（README、CI 正文、E-099 三处都写明）。
-val appVersionName = "2.0.13"
+// 2.0.14（2026-10-11）：三处用户点名的界面改动 ——
+//    ①首启权限引导合并成一个**权限页**（原来是一次弹一个系统对话框，用户说「有点晃眼也不符合
+//      使用习惯」）：一屏列全、逐条点授权，记「已引导过」不再反复弹；
+//    ②终端长按「更多」删掉「重载字号」一项（字号已有双指缩放 + 设置页「终端外观」可看），
+//      并把「搜索选中文字」从写死 bing 的 URL 改成 `ACTION_WEB_SEARCH`（交给手机自己的默认
+//      搜索 / 浏览器，只有设备没有可用 App 时才回落到浏览器打开搜索 URL）；
+//    ③设置页「保活记录（被杀留档）」由内联大卡改成一行入口，内容搬进独立页面。
+//    仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.14"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -167,7 +175,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 29
+        versionCode = 30
         versionName = appVersionName
 
         ndk {

@@ -58,6 +58,8 @@ import androidx.navigation.compose.rememberNavController
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
+import com.example.zhengdao.ui.PermissionSetup
+import com.example.zhengdao.ui.PermissionSetupScreen
 import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.SettingsScreen
 import kotlinx.coroutines.launch
@@ -107,66 +109,57 @@ class MainActivity : ComponentActivity() {
         // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户
         checkAppUpdateInBackground()
 
-        // 存储运行时权限（第 0 步修复，2026-10-06）：此前全 App 没有任何请求代码，
-        // WRITE 靠用户手点设置授予、READ 因 manifest maxSdkVersion=32 帽子从未可授，
-        // Android 16 上共享存储读写全被 FUSE 拒——hermes"只能写不能读"的根因。
-        // 冷启动缺哪个补哪个；拒绝不打断使用（bind 会静默跳过，终端照常）。
-        runCatching {
-            val needed = arrayOf(
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            ).filter {
-                androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
-                    android.content.pm.PackageManager.PERMISSION_GRANTED
-            }
-            if (needed.isNotEmpty()) {
-                androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
-            }
-        }
+        // 首启权限引导（2026-10-11，用户反馈「新安装的时候申请各种权限的那个页面……单个卡片
+        // 有点晃眼也不符合使用习惯」）：首次安装且缺必需权限时，下面那些**逐个弹的系统对话框
+        // 全部让路**，改由一页「权限」（ui/PermissionSetupScreen.kt）把几项权限列在一屏里、
+        // 逐项点开授权。判定必须在这里算出来（而不是只放在 Compose 里）：对话框的触发点就在
+        // 下面几行，晚一步判断就会先弹系统对话框、把权限页顶到后面——那仍旧是"一次一个"。
+        val permissionSetupPending = PermissionSetup.shouldGuide(this)
 
-        // 通知权限（2026-10-09，#3 验收时发现）：安卓 13 起「装完清理 >500MB」的静默提示
-        // 必须拿到 POST_NOTIFICATIONS，否则系统直接把通知丢掉（真机 `dumpsys package` 里
-        // `POST_NOTIFICATIONS: granted=false`、`AppSettings importance=NONE`、通知列表为空，
-        // 而代码这边"发了通知"看起来一切正常）。冷启动缺就补一次；拒绝只是没有通知，
-        // 不影响任何功能（清理照跑、日志照写）。
-        runCatching {
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
-                val perm = "android.permission.POST_NOTIFICATIONS"
-                if (androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
-                    android.content.pm.PackageManager.PERMISSION_GRANTED
-                ) {
-                    androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
+        if (!permissionSetupPending) {
+            // 存储运行时权限（第 0 步修复，2026-10-06）：此前全 App 没有任何请求代码，
+            // WRITE 靠用户手点设置授予、READ 因 manifest maxSdkVersion=32 帽子从未可授，
+            // Android 16 上共享存储读写全被 FUSE 拒——hermes"只能写不能读"的根因。
+            // 冷启动缺哪个补哪个；拒绝不打断使用（bind 会静默跳过，终端照常）。
+            // 首次安装由权限页接管；这段保留给"已引导过却依然缺权限"的冷启动补漏
+            // （否则用户一旦点过「稍后再说」，后来想补权限就只剩设置页一条路）。
+            runCatching {
+                val needed = arrayOf(
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                ).filter {
+                    androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                }
+                if (needed.isNotEmpty()) {
+                    androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
+                }
+            }
+
+            // 通知权限（2026-10-09，#3 验收时发现）：安卓 13 起「装完清理 >500MB」的静默提示
+            // 必须拿到 POST_NOTIFICATIONS，否则系统直接把通知丢掉（真机 `dumpsys package` 里
+            // `POST_NOTIFICATIONS: granted=false`、`AppSettings importance=NONE`、通知列表为空，
+            // 而代码这边"发了通知"看起来一切正常）。冷启动缺就补一次；拒绝只是没有通知，
+            // 不影响任何功能（清理照跑、日志照写）。
+            runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    val perm = "android.permission.POST_NOTIFICATIONS"
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
+                    }
                 }
             }
         }
 
-        // 存储主路径引导（E-005 修订 / P1，2026-10-06）：MANAGE_EXTERNAL_STORAGE 升为
-        // 正式主路径。首启且未授权时主动引导用户到「所有文件访问」设置页（带包名），
-        // 失败回退通用设置页；非阻塞，可稍后，设置页仍保留入口。
-        runCatching {
-            val sp = getSharedPreferences("zhengdao-ui", MODE_PRIVATE)
-            if (!sp.getBoolean("manage_prompted", false) && !android.os.Environment.isExternalStorageManager()) {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("开启完整存储访问")
-                    .setMessage("证道需要访问手机存储，以便 Agent 在你的文件中查找与产出。将打开系统设置，请开启「所有文件访问」；也可稍后在设置中开启。")
-                    .setCancelable(false)
-                    .setPositiveButton("去开启") { _, _ ->
-                        try {
-                            startActivity(
-                                Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                                    .setData(android.net.Uri.parse("package:$packageName"))
-                            )
-                        } catch (_: Exception) {
-                            try {
-                                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                            } catch (_: Exception) { /* 个别 ROM 无此入口，忽略 */ }
-                        }
-                    }
-                    .setNegativeButton("稍后") { _, _ -> }
-                    .show()
-                sp.edit().putBoolean("manage_prompted", true).apply()
-            }
-        }
+        // 存储主路径引导（E-005 修订 / P1，2026-10-06）：MANAGE_EXTERNAL_STORAGE 升为正式主路径。
+        // **2026-10-11 起这里那个「开启完整存储访问」AlertDialog 撤掉**，由权限页的
+        // 「所有文件访问」行替代（同一件事、同一个系统页，只是不再单独弹窗抢在前面）；
+        // 设置页入口照旧保留。连带效果：prefs 键 `manage_prompted` 不再写入、也不再有人读。
+        // ⚠️ 该开关在本机对证道**恒为 false**（targetSdk=28 拿不到这个开关，见
+        // ProotLauncher.kt:40-49 的 2026-10-04 修复记录），所以它在权限页里只是"可选增强"，
+        // 不参与"必需项是否就绪"的判定——不然后果是主按钮永远不会变成「完成，进入证道」。
 
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
@@ -183,7 +176,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ZhengdaoApp(startInTerminal = openTerminal, lastRoute = lastRoute)
+                    ZhengdaoApp(
+                        startInTerminal = openTerminal,
+                        lastRoute = lastRoute,
+                        guidePermissions = permissionSetupPending,
+                    )
                 }
             }
         }
@@ -288,7 +285,13 @@ private fun terminalIntent(context: android.content.Context, autocmd: String?, a
     }
 
 @Composable
-fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
+fun ZhengdaoApp(
+    startInTerminal: Boolean = false,
+    lastRoute: String? = null,
+    // 首启是否需要先走一遍「权限」页（判定在 MainActivity.onCreate，见那里的说明）。
+    // 默认 false：不传的调用方（预览/测试）行为与改动前完全一致。
+    guidePermissions: Boolean = false,
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
     // 可观察状态：环境装/没装会变（终端里装完、设置里卸载），必须跟着变。
@@ -322,6 +325,18 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
     if (startInTerminal) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
             context.startActivity(terminalIntent(context, null, null))
+        }
+    }
+
+    // 首启「权限」页（2026-10-11）：叠在起始页之上，**绝不当 startDestination**——
+    // 同上面 startRoute 处的教训：起始页底下没有返回栈，popBackStack 无处可退（真机实测返回键与
+    // 右滑全失效）。起始页是 welcome（首次安装）还是 home（老装机补漏）都成立。
+    //
+    // 顺序有意为之：本效果写在下面的"恢复上次页面"之前，于是恢复页会看到 cur 不是起始页
+    // 而跳过这一次恢复——权限是门槛，先过门槛再谈回到哪一页（下次冷启动照常恢复）。
+    androidx.compose.runtime.LaunchedEffect(guidePermissions) {
+        if (guidePermissions) {
+            nav.navigate(PermissionSetup.ROUTE) { launchSingleTop = true }
         }
     }
 
@@ -405,6 +420,22 @@ fun ZhengdaoApp(startInTerminal: Boolean = false, lastRoute: String? = null) {
             HomeTabs(
                 onOpenTerminal = openTerminal,
                 onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
+            )
+        }
+        composable(PermissionSetup.ROUTE) {
+            // 首启「权限」页（2026-10-11）：一屏列全几项权限，逐项点开授权，
+            // 底部主按钮「完成，进入证道」／「稍后再说」。系统栏由该页自行避让
+            //（不套设置页那种"返回 + 居中标题"顶栏：这是首启的过渡页，出口只有底部那一个按钮，
+            //  少一个"返回"歧义入口——按返回＝不写已引导标记，见该页 KDoc）。
+            PermissionSetupScreen(
+                onDone = {
+                    // 摘掉本页再进主界面：只 navigate 不 popUpTo 会把权限页留在家页下方，
+                    // 用户一按返回又弹回来（正是"反复弹"）。
+                    nav.navigate("home") {
+                        popUpTo(PermissionSetup.ROUTE) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
             )
         }
         composable("settings") {
