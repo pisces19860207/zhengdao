@@ -299,6 +299,23 @@ object OcManager {
             //   passwordProvider（{ OcManager.servePassword }）恒为 null，请求无
             //   Authorization → 全程 401。
             parseServePassword(ctx)
+            // ⚠️ E-093（2026-10-11 真机抓到，就在发 v2.0.12 那次）：
+            //   孤儿 serve 这条路径**没有**下面那次"轮询等 password 落盘"的兜底，而 serve 的日志
+            //   顺序是「listening 先、password 后」（见 parseServePassword 的注释）。恰好卡在两次
+            //   落盘之间解析，就会拿到 null ⇒ 客户端不带 Authorization ⇒ `/api/*` 全程 401。
+            //   真机现象：刚 `adb install -r` 完第一次进太极报
+            //   `太极: 创建会话失败：HTTP 401 …Authentication required`，退出来再进一次就好了
+            //   （那时 password 已落盘）。**未实测**这条竞态是否就是那次 401 的唯一成因
+            //   （另一种可能是取到了过期场次的密码），但"孤儿分支缺轮询"是实打实的缺口，
+            //   而它恰好落在"更新完 App 第一次进太极"这条必经路径上，故补一段**有界等待**：
+            //   最多 3 秒，每 150ms 重解析一次；仍拿不到就照旧返回 null，由 UI 报"鉴权未就绪"。
+            if (servePassword == null) {
+                for (i in 0 until 20) {
+                    Thread.sleep(150)
+                    parseServePassword(ctx)
+                    if (servePassword != null) break
+                }
+            }
             return null
         }
         val bin = binaryFile(ctx)
