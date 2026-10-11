@@ -129,7 +129,12 @@ plugins {
 //      防误触与文案、终端选词时左缘右滑不再误关、权限抽屉 remember 跨请求残留、
 //      抽屉底部被键盘/手势条遮挡、存储卡「统计中…」等。
 //    仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.12"
+// 2.0.13（2026-10-11）：git 提速与加固（镜像包装器 + push 直连，E-096）、仅私有模式判据修好（E-094）、
+//    网络预检改横幅不再往会话里打字（E-095）、资料库 .docx 指引补可照抄命令（E-080）、
+//    文档补「PRoot 不提供安全隔离」与 Debian rootfs 许可段（E-097/E-098）、
+//    **正式包改用独立 release keystore**（E-099）、顶栏标题改短并加 autoSize（另一会话产出，蓝总管验收）。
+//    ⚠️ 换签名钥匙 = 装这一版前必须先卸载旧版（README、CI 正文、E-099 三处都写明）。
+val appVersionName = "2.0.13"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -162,7 +167,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 28
+        versionCode = 29
         versionName = appVersionName
 
         ndk {
