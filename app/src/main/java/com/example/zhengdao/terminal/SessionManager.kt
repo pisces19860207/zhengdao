@@ -64,6 +64,16 @@ object SessionManager {
     var currentAgentId: String? = null
         private set
 
+    /**
+     * 当前会话对象。
+     *
+     * ⚠️ 2026-10-12 修 ANR 时补 `@Volatile`：这个字段此前只在主线程读写（`start()` 写、
+     * `killInternal()` 清），而现在**粘贴写盘走的是后台线程**（见 `TerminalPasteWriter`），
+     * 后台线程需要读它取 pty 出口。没有 `@Volatile` 时，后台线程可能长时间读到旧值
+     * （表现为"粘贴无声无息、命令没进去"），而且这种漏读在真机上不可复现——属于典型的
+     * "只在别的手机上偶尔发生"的静默错误。赋值语义没变，仍是 `private set` 只许主线程写。
+     */
+    @Volatile
     var session: TerminalSession? = null
         private set
     var startedAtMs: Long = 0L
