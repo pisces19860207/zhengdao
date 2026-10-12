@@ -618,7 +618,16 @@ public final class TerminalEmulator {
                     mSession.onBell();
                 break;
             case 8: // Backspace (BS, ^H).
-                if (mLeftMargin == mCursorCol) {
+                // ⚠️ 2026-10-12 修（终端缺陷审计 🔴1）：判据从 `mLeftMargin == mCursorCol` 放宽到 `<=`。
+                // 等号写法只在"光标从右边一路退回、正好停在左边距"时成立；而 DECSLRM
+                // （`ESC[?69h ESC[10;70s`，见下面 case 's'）会**在不移动光标到边距内的前提下**
+                // 把 mLeftMargin 设到光标右侧（它把光标送到 (0,0) —— 第 0 列，左边距却是 9）。
+                // 此时 `setCursorCol(mCursorCol - 1)` 会把光标列写成 **-1**；紧接着任何触碰该列的
+                // 序列（如 ICH `ESC[@` → `mScreen.blockCopy(-1, …)`）都会被 TerminalBuffer 的边界
+                // 断言拦下并抛 IllegalArgumentException —— 异常从 pty 读线程一路冒顶，**直接崩进程**。
+                // 用 `<=` 后：光标已不在左边距右侧时一律不动，等于把"退格不越左边距"这条不变式补齐；
+                // 无水平边距（mLeftMargin == 0）时行为与旧写法逐字一致。
+                if (mCursorCol <= mLeftMargin) {
                     // Jump to previous line if it was auto-wrapped.
                     int previousRow = mCursorRow - 1;
                     if (previousRow >= 0 && mScreen.getLineWrap(previousRow)) {
@@ -2580,8 +2589,21 @@ public final class TerminalEmulator {
         mAboutToAutoWrap = false;
     }
 
+    /**
+     * ⚠️ 2026-10-12 修（终端缺陷审计 🔴1 的第二道闸）：落值前先把列钳进缓冲区真实范围。
+     *
+     * 这不是"顺手加的保险"，而是同一个崩溃的第二条路径：BS（见上面 case 8）之外，任何把
+     * 越界列塞进 mCursorCol 的调用，都会在稍后某个触碰该列的序列里炸掉 —— `TerminalBuffer`
+     * 的 `blockCopy/blockSet` 对负列直接 `throw new IllegalArgumentException()`，异常从 pty
+     * 读线程冒顶 ⇒ 崩进程。上游对"列"的假设是"调用方自己保证在范围内"，但 DECSLRM 能在
+     * 光标不动的前提下改变左边距，这个假设就不再成立。
+     *
+     * 钳的是**缓冲区**边界（0 .. mColumns-1），**不是左右边距**：边距是"光标该往哪儿走"的
+     * 语义约束（由 case 8 / CUB / CR 各自负责），不该由一个底层 setter 悄悄改写 ——
+     * 否则 CHA（`ESC[nG`）这类"按绝对列定位"的序列会变得无法预测。
+     */
     private void setCursorCol(int col) {
-        mCursorCol = col;
+        mCursorCol = Math.max(0, Math.min(col, mColumns - 1));
         mAboutToAutoWrap = false;
     }
 

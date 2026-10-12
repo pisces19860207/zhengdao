@@ -30,10 +30,13 @@ import com.example.zhengdao.terminal.KnowledgeBaseHints
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
 import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.terminal.TerminalPasteWriter
 import com.example.zhengdao.terminal.SessionService
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -58,6 +61,19 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private val installing = AtomicBoolean(false)
     /** 当前会话是否由 tmux 保持（绿点分屏按钮的前置条件） */
     private var usesTmux = false
+
+    /**
+     * 粘贴专用单线程通道（🔴3 修 ANR，2026-10-12）。
+     *
+     * 为什么单线程：写 pty 必须与用户操作**同序**，两条粘贴并发会把字符交错送进 shell。
+     * 为什么 daemon：页面销毁时不必等它（`onDestroy` 里还会显式 shutdownNow 兜一道），
+     * 进程被回收也不能留一条非 daemon 线程把 VM 挂住。
+     * 线程是**首次提交任务时才创建**的 ⇒ 这个字段本身不花任何代价。
+     */
+    private val pasteExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "zd-paste").apply { isDaemon = true }
+    }
+    private val pasteWriter by lazy { TerminalPasteWriter(pasteExecutor) }
 
     /**
      * 当前 tmux 窗格数（**客户端计数**，只在本次进程内可信）。
@@ -185,7 +201,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                     as android.content.ClipboardManager
                 val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
-                if (text.isNotEmpty()) SessionManager.write(text)
+                // 🔴3（2026-10-12）：这里原来直接 `SessionManager.write(text)` 在**主线程**写 pty，
+                // 与 doPaste() 是同一个 ANR 面（文字选择菜单的"粘贴"同样能贴进任意长文本）。
+                if (text.isNotEmpty()) pasteText(text)
             }
         }
         // 「更多」菜单：showContextMenu() 需要注册上下文菜单才有效
@@ -720,7 +738,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         }.onFailure { Toast.makeText(this, "发送失败：${it.message}", Toast.LENGTH_SHORT).show() }
     }
 
-    /** 粘贴：读系统剪贴板直写会话（顶部工具栏按钮与快捷键条按钮共用）。 */
+    /** 粘贴：读系统剪贴板后交给后台通道（顶部工具栏按钮与快捷键条按钮共用）。 */
     private fun doPaste() {
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
@@ -728,12 +746,46 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
             return
         }
-        // 2026-10-08 走查修 bug：原来「成功」的 Toast 是**无条件**执行的，写入失败时
-        // 它会紧跟在失败 Toast 后面把失败提示覆盖掉——用户以为粘进去了，终端里其实
-        // 什么都没发生。改为成功提示只在 onSuccess 里出。
-        runCatching { SessionManager.write(text) }
-            .onSuccess { Toast.makeText(this, "已粘贴 ${text.length} 个字符", Toast.LENGTH_SHORT).show() }
-            .onFailure { Toast.makeText(this, "粘贴失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        pasteText(text)
+    }
+
+    /**
+     * 把一段文本写进 pty —— **写入本身不在主线程**（🔴3，2026-10-12）。
+     *
+     * 改动前的写法是主线程上 `runCatching { SessionManager.write(text) }`，而
+     * `TerminalSession.write()` 会落进只有 4096 字节的 `ByteQueue` 并在满了以后
+     * `wait()` 到 guest 读走为止：粘一篇文档 = 主线程干等几秒到几十秒 ⇒ 系统 ANR
+     * （用户的观感是"点了粘贴就卡住，过一会儿弹无响应"）。现在整段写盘交给
+     * [pasteWriter]（单线程、按 4 KiB 分块、每块前查会话是否还活着），
+     * 主线程只负责读剪贴板与弹提示。
+     *
+     * 另一处顺带修的旧毛病（2026-10-08 那版就没盖全）：会话还没 spawn 时
+     * `TerminalSession.write()` 会因为 `mShellPid > 0` 不成立而**静默什么都不做**，
+     * 而旧代码照样弹"已粘贴 N 个字符"——用户以为粘进去了。现在这种情况会明确说
+     * "会话未就绪"，成功提示也只在真的写完后出。
+     */
+    private fun pasteText(text: String) {
+        if (text.isEmpty()) return
+        if (SessionManager.session?.isRunning != true) {
+            Toast.makeText(this, "会话未就绪，暂不能粘贴", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "正在粘贴 ${text.length} 个字符…", Toast.LENGTH_SHORT).show()
+        pasteWriter.submit(
+            text = text,
+            isSessionAlive = { SessionManager.session?.isRunning == true },
+            writeChunk = { SessionManager.write(it) },
+        ) { result ->
+            runOnUiThread {
+                result
+                    .onSuccess {
+                        Toast.makeText(this, "已粘贴 $it 个字符", Toast.LENGTH_SHORT).show()
+                    }
+                    .onFailure {
+                        Toast.makeText(this, "粘贴未完成：${it.message}", Toast.LENGTH_SHORT).show()
+                    }
+            }
+        }
         // FIX-F：粘贴是"直写 pty"，同样绕过 onCodePoint ⇒ 单喂一口到行缓冲，
         // 这样「粘一段问题 + 回车」也能被检索。多行/超长粘贴会被它自己丢掉（那不是一次提问）。
         KnowledgeBaseHints.onUserText(text)
@@ -1397,6 +1449,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // （getSystemService / Toast），不清同样会把已销毁的 Activity 钉在单例上。
         SessionManager.onCopyText = null
         SessionManager.onPasteRequest = null
+        // 🔴3（2026-10-12）：粘贴通道是本次新增的后台线程，页面没了就收掉。
+        // shutdownNow 会打断正在 `wait()` 的 pty 写 —— 那笔粘贴转为失败回调，前台已无
+        // Toast，但 RunLog 之外不该再有人持有本 Activity（回调里 runOnUiThread 已被销毁）。
+        pasteExecutor.shutdownNow()
         // FIX-F：清掉行缓冲（Activity 都没了，那半句提问也不该留着）。
         KnowledgeBaseHints.reset()
         super.onDestroy()

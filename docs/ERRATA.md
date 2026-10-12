@@ -6224,3 +6224,49 @@ E-115 正文里那句「`cua-driver` 仍可清」是**当天下午**的处置（
 **取数口径**（本次真机读数）：`cua-driver-0.21.0-linux-arm64` 80 MB ·
 `chromium-1208` 600 MB · `agent-browser-0.26.0-linux-arm64` 9 MB，
 三项在 v2.0.17 上全部显示「保留」。
+
+## E-116 · 2026-10-12 · 移植进门的 Termux 文件里，**哨兵值语义与判据不自洽**：退格能把光标列写成 −1（崩进程）、`isRunning()` 把「还没 spawn」当「在跑」（`Os.kill(0)` 自杀）—— 审计那 18 条里最危险的两条，都出在「照抄上游判据、没复核字段语义」
+
+**症状（两条都还没在真机上咬过人，属"修在前头"）**：
+
+1. **退格 ⇒ 光标列 −1 ⇒ 整页 FATAL**。触发只要四步：`ESC[?69h`（开左右边距模式）
+   → `ESC[10;70s`（设边距；上游这里 `setCursorPosition(0, 0)`，**不把光标送进边距内**
+   —— 光标停在列 0，而左边距已经是 9）→ `\b`（退格：旧判据 `mLeftMargin == mCursorCol`
+   不成立 ⇒ `setCursorCol(mCursorCol - 1)` = **−1**）→ `ESC[@`（ICH 拿 `mCursorCol`
+   去 `TerminalBuffer.blockCopy` ⇒ `IllegalArgumentException`）。抛出点在
+   `TerminalEmulator.processByte()`，而它的调用链是 **pty 读线程** ⇒ 未捕获即 FATAL。
+   改法：BS 判据 `mCursorCol <= mLeftMargin`；`setCursorCol()` 钳到 `[0, mColumns - 1]`。
+
+2. **未 spawn 的会话被当成"在跑" ⇒ `Os.kill(0, SIGKILL)` 自杀**。
+   `mShellPid` 的语义（上游字段注释与构造器默认值都写着）：**0 = 还没启动、−1 = 已结束**；
+   但 `isRunning()` 写的是 `!= -1`。`TerminalSession` 的构造器不初始化 `mShellPid`，
+   于是"刚构造好、还没 spawn"落在 0 上 ⇒ `isRunning()` 为真；
+   `finishIfRunning()`（由 `SessionManager.killInternal()` 在起新会话前调用）于是
+   `Os.kill(0, SIGKILL)` —— pid 0 是**调用者自己的进程组**，杀的是自己。
+   改法：`isRunning()` → `mShellPid > 0`，与同文件的 `write()`（`> 0`）、
+   `getCwd()`（`< 1`）对齐。
+
+**教训**：移植上游文件时，**字段注释里的哨兵值语义就是契约**；
+判据要逐个拿语义复核，不能因为"上游就这么写的"照搬。
+这两条都不是我们新写的代码出错，而是「上游写法 ＋ 我们的用法」碰出来的 ——
+所以**只给新写的类写测试不够：动过的上游文件也要有直接钉判据的单测**。
+
+**方法论（顺带一条）**：这类「触发路径极窄、后果是崩进程」的缺陷，真机手测很容易
+碰巧躲过，**能用 JVM 单测钉死的就不要留给真机**。本次做法是「先写测试、再证明测试有效」：
+`git stash push` 掉那两个 vendored 文件（代码回到 HEAD 原样）后跑
+`.\gradlew.bat --offline testDebugUnitTest --tests "com.termux.terminal.*"` ⇒
+`6 tests completed, 4 failed`（两条崩溃复现 ＋ 两条存活判据全红），`git stash pop` 后全绿。
+**只看见"新测试通过"说明不了什么，看见"旧代码把新测试跑红"才算钉住。**
+
+## E-117 · 2026-10-12 · 真机复测这一步自己也有坑：会话跑在 **tmux** 里 ⇒ 裸转义序列根本到不了模拟器；`adb shell input text` 会把引号当语法吃掉；PowerShell 里 `screencap` 重定向写坏图片；MagicOS 没有 `cmd clipboard`；`TerminalActivity` 未导出
+
+E-116 修完后我拿正式签名包上真机（PGT-AN10 / MagicOS / Android 16 / `AD3J023824001723`）复测三条 🔴，结果**一条也没能在真机上复现旧行为**。踩的坑本身值得记下来，免得下次再撞：
+
+1. **tmux 站在模拟器前面。** 设备会话里 `echo $TMUX` → `/tmp/tmux-0/default,28851,0`，屏幕上也有 tmux 状态行。pty 的唯一子进程是 tmux，**所有进到 `TerminalEmulator` 的输出都先过 tmux 的屏幕模型**，DECSLRM/BS 这类序列会被它按自己的模型重画、不再原样透传 ⇒ 从 guest shell 里打
+   `printf '\033[?69h\033[10;70s\b\033[@'` **到不了模拟器**（旧包连打三次，App 全程没崩、logcat 无 `IllegalArgumentException`）。
+   **教训**：要真机复现「模拟器级」缺陷，前提是**该会话不在 tmux 里**（非 tmux 会话、或 tmux 自己发这类序列时才会踩）。顺带一条判断：这类缺陷的**用户可见面比审计报告口径小**，但代码里的雷是真的 —— 别因为"真机没崩"就把修复撤掉。
+2. **`adb shell input text` 会吃掉引号。** `input text 'printf '\''\033[?69h…'\'''` 里 adb 那层 shell 先解一层引号 ⇒ 喂进终端的正文**没有引号**：`\033` 被降级成 `033`、`;` 把命令切断（屏幕实证：`-bash: 70sb033[@: command not found`）。**判据**：屏幕上看到的命令行必须与预期**逐字**一致，否则这轮等于没测。
+3. **`adb exec-out screencap -p > x.png` 在 PowerShell 里写坏二进制**（`read_image` 报 `Unsupported or malformed image data`）⇒ 改成设备内 `screencap -p /sdcard/x.png` 再 `adb pull`。
+4. **MagicOS 没有 `cmd clipboard`**：`adb shell cmd clipboard set-text/get-text` 回 `No shell command implementation` ⇒ 没法从外部预置剪贴板，「粘贴大文本」只能靠 App 自己的整屏快拷。**注意**：快拷会把**刚打的那条命令行本身**也拷进去，粘贴时重放该命令 ⇒ 落盘字节数统计会被搅乱（本次就留下过一个 0 字节的 `zd_paste.txt[提示]`），设计这类测试时要先把命令行清出屏幕。
+5. **`TerminalActivity` 未导出**：`am start -n com.example.zhengdao/.TerminalActivity` 报 `SecurityException: … not exported from uid 10418` ⇒ 只能 `monkey -p com.example.zhengdao -c android.intent.category.LAUNCHER 1` 起主界面，再用 `uiautomator dump` 找底部导航（太极/终端/丹房 @ y≈2810）点进去。
+6. **真机验到的边界要说清**：本次验到的是「装上修复包 → 终端照常用 → 粘贴走新路径（弹『正在粘贴 N 个字符…』）且界面不冻、无 ANR」；**没验到**「修复前会 FATAL / 会 ANR」——那两半的证明在 JVM 单测（E-116）。别把「没崩」当作「缺陷不存在」的证据，也别把「单测在旧代码上红过」当作「真机一定崩」。
