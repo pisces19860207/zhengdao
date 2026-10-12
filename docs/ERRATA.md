@@ -4725,7 +4725,8 @@ P3-6 把 `pickExpectedSha` 的 `rememberedSha` 参数与那处 fail-open 改回�
 
 **未取证部分（如实记录）**：BUG-1 的**设备端触发**本次没做——造一份「sha 合法或压根没 sha 的 0 条目归档」再走一次真装机会把用户环境搅乱，而这条逻辑的入口是纯函数级的（Rust 两例单测 + Kotlin 分流代码复核）。增量路径（`RootfsDelta` 的 skipNames）同理只有代码复核。**BUG-1 的修复因此按「单测 + 代码复核」记录，不当作真机验证。**
 
-> **补记（2026-10-10 晚，E-085）**：本条 Rust 那半的**二进制**直到 E-085 重编 pp/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 时才进包（入库的 .so 是人工产物，CI 只验对齐/符号、不重编，见 E-085）。在此期间「0 条目」全靠 Kotlin 侧那道 eport.first <= 0L ⇒ throw InstallFailed(...) 兜住 —— 行为正确，只是 Rust 那半没在包里。
+> **补记（2026-10-10 晚，E-085）**：本条 Rust 那半的**二进制**直到 E-085 重编 pp/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 时才进包（入库的 .so 是人工产物，CI 只验对齐/符号、不重编，见 E-085）。在此期间「0 条目」全靠 Kotlin 侧那道 
+eport.first <= 0L ⇒ throw InstallFailed(...) 兜住 —— 行为正确，只是 Rust 那半没在包里。
 
 **后果**：① 空包/全被跳过的包不再能装成"成功"，用户不会再拿到一个空 Debian 还被报"装好了"；② 正常开会话省掉 313,648 B 的 SHA-256（首启与文件被改写后仍会算）；③ 离线纯 tar 包照旧可装（`BadArchive` 仍在回退里）；④ 戳文件是纯优化：删掉、损坏、或格式升级读不动，都只是退回"每次都算"，不影响正确性；⑤ RunLog 多一行每次会话的校验摘要——用户报「终端开得慢」时可据此判断是不是又退回了全量重算。
 
@@ -6291,3 +6292,47 @@ E-116 修完后我拿正式签名包上真机（PGT-AN10 / MagicOS / Android 16 
 5. **「发完一个按键，再延迟补发另一个按键」这个模式本身要避免**（§B 顺序 22 ②「黄点盲发 `y`」）。黄点要关分屏，tmux 的默认绑定是 `confirm-before`（要答一次 `y`），客户端原先发 `C-b x` 后延迟 250 ms **盲发** `y` —— 那条 `y` 没有任何依据能保证此刻屏幕上正等着确认：会话没启用 tmux、pane 数判断漂移、确认框还没起来，它都会直接落进 pane 里前台程序的 stdin（在跑 agent TUI 时就是乱打字，正是外部审计的 A4）。这与 E-109（`onScroll` 的选词态守卫）是同一族：**时序假设**。
    正解是**把那个确认从源头去掉**：往 guest 的 `~/.tmux.conf` 幂等追加 `bind-key x kill-pane`（覆盖默认绑定，且不覆盖用户自写的配置，纯函数 `ProotLauncher.tmuxConfAppend()` 有单测），客户端就只发一次 `C-b x`。**教训**：遇到"要等某个界面出现再补按键"，先问「能不能让那个界面不出现」，而不是调延迟时间。
 
+## E-119 · 2026-10-12 · 「一顿一顿、不跟手」的定案：真凶是 tmux 默认每次滚 5 行；而我按假设先写的那版渲染改造，真机一测才发现**根本不会被调用**
+
+用户真机（PGT-AN10 / Android 16）拖动终端页，画面**一顿一顿、且不跟手**；同时转来另一个会话的诊断（PTY 读缓冲
+4 KiB → 64 KiB，引 Termux [issue #4976](https://github.com/termux/termux-app/issues/4976) / [PR #4977](https://github.com/termux/termux-app/pull/4977)）
+让我核。**这一条里错的不止一个环节，逐条记下来：**
+
+1. **外部诊断：引用为真，结论层不成立 —— 因为这条路径本仓库早就修过。** issue/PR 确有其事（作者 `xJonathanLEI`，
+   2026-02-18，S25 Ultra 上 zellij/tmux 整屏刷新时滚动 <1 FPS）；但本仓库**从 v2.0.0 起读缓冲就是 64 KiB**：
+   `app/src/main/java/com/termux/terminal/TerminalSession.java:50` `new ByteQueue(64 * 1024)`、`:360` `new byte[64 * 1024]`
+   （backport 提交 `4bb1f0d`，`git tag --contains 4bb1f0d` = v2.0.0…v2.0.17 全覆盖）；而「4 KiB ⇒ 消息洪水 ⇒ 渲染挨饿」
+   这条因果链本项目**已实测并正式撤回**（E-088：`seq 1 2000000` ≈14 MB / `real 1.702s` 吃干净；200 MB base64 洪水下 52 fps、janky 0；
+   单次 64 KB `append` 3–4 ms）。
+   **教训**：拿到外部诊断，先问「这条路径在本仓库当前代码里是否已经修过」（`git tag --contains` ＋ 读那一行），再谈成不成立。
+   引用真实 ≠ 结论成立 —— 前者容易核，后者要拿本仓库的代码与实测去对。
+
+2. **我自己也量错了：把「帧数 ∝ 距离」直接读成「App 按整行量化」。** 第一轮数据（300/600/1000 px 固定 1500 ms ⇒ 9/14/22 帧，
+   斜率 ≈54 px/帧 = 恰好一行）确实说明「一次重画对应一行」，但我跳过了「**一行是谁产生的一行**」这一步 ——
+   于是写了一版**像素级平滑滚动**（新 `TerminalScrollMath.java` ＋ `TerminalView.java` 亚行偏移/`scrollByPixels`/画布平移 ＋
+   `TerminalRenderer.java` 多画一行 ＋ `TerminalGestureController.java` 拖动改像素 ＋ 3 个测试文件 17 条用例），
+   装到真机上帧数**反而更少**（7/5/4）。
+   **教训**：性能/手感类问题，指标（帧数）只能当旁证；**先确认手势走的是哪条路径**，再谈那条路径要不要改。
+
+3. **探针是唯一能定案的量具。** 在 `app/src/main/java/com/termux/view/TerminalGestureController.java` 的 `onUp` 打一行
+   `ZDSCROLL` 日志，真机读回：`mouseTracking=true scrollCalls=0 px=0.0 wheelRows=9 localBlocked=0 transcriptRows=0 topRow=0 offset=0.0`
+   ⇒ ① 手势进的是**滚轮分支**（tmux 开了鼠标跟踪）；② 我新写的本地滚动路径 `scrollCalls=0`，**一次都没被调用**；
+   ③ tmux 用备用屏，App 的本地回滚缓冲 `transcriptRows=0` ⇒ 本地像素级平滑**结构上就帮不上忙**。
+   （探针用完即删；它留在生产代码里就是下一轮的噪声。）
+
+4. **真凶：tmux 默认每次滚 5 行 —— 量它的唯一量具是状态栏位置指示。** 进 copy-mode 后 tmux 状态栏会显示 `[位置/总行数]`
+   （状态栏同时多出 `[tmux]` 标记）。两次 600 px 慢拖（各 9 个滚轮事件）把位置从 `[0/1992]` 推到 `[55/1992]`、再推到 `[115/1992]`
+   ⇒ **≈6 行/事件**（默认 `WheelUpPane` 一次 5 行，带惯性更多）⇒ 手指走 11 行、内容跳 55~60 行：
+   **不跟手 = 5~6 倍速；一顿一顿 = 每次跳 5 行**。
+   **教训**：第三方的默认值（tmux 每次滚几行、每次滚多少像素）**必须实测**，不能凭印象；量它的办法要从那个程序自己的
+   状态显示里找（这里就是位置指示），而不是只看 App 侧的帧数。
+
+5. **修在源头，客户端一行没改。** `app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` 的 `tmuxConfAppend()`
+   幂等追加 `bind -T copy-mode/-vi WheelUpPane/WheelDownPane send -N1 -X scroll-up/down`（**同一表同一键用户已写过绑定就让位**），
+   于是一个滚轮事件 = 一行，与客户端「手指一行 ⇒ 一个滚轮事件」对齐 ⇒ **手指一行 = 内容一行**。
+   复测：一次 600 px 慢拖约 9 行（两次共 `[17/1990]`），内容位移降到修前的 1/6。
+   **教训**：与 E-118⑤（黄点盲发 `y`）同一族 —— **能改在源头（配置/让那个状态不出现），就不要改在客户端（时序/补发/延迟/平滑）**。
+   客户端那一版已经写好又撤回，备份在 `%TEMP%\zd-smooth-scroll-20261012\`，留给「rootfs 未带 tmux ⇒ 裸 bash 会话」这条回落路径将来取用。
+
+**附带记一条量具坑**：静止满屏的 fps 不可信 —— 只有 600 ms 一次的光标闪烁帧在驱动重绘（3 秒静止 ≈ 6 帧），
+拿它当"渲染能力"会得出完全错误的结论（同族见 E-087 的 clip 口径、E-088 的百分位口径）。
