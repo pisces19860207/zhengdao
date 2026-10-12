@@ -59,7 +59,8 @@ fun PluginsScreen() {
 
     var tick by remember { mutableStateOf(0) }
     var specs by remember { mutableStateOf<List<String>>(emptyList()) }
-    var cached by remember { mutableStateOf<List<Pair<String, Long>>>(emptyList()) }
+    // 2026-10-12 无感化（§5.5 第 7 处）：首帧即显上次包缓存快照，扫完就地覆盖。
+    var cached by remember { mutableStateOf(LastValues.loadPluginCache(ctx).orEmpty()) }
     var versions by remember { mutableStateOf<Map<String, String?>>(emptyMap()) }
     var envReady by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
@@ -83,6 +84,7 @@ fun PluginsScreen() {
         specs = data.second
         cached = data.third.first
         versions = data.third.second
+        LastValues.savePluginCache(ctx, cached)
     }
 
     /**

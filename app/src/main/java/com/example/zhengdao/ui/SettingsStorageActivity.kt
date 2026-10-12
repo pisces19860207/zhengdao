@@ -118,9 +118,11 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var storageTick by remember { mutableStateOf(0) }
-    var rootfsMb by remember { mutableStateOf(-1L) }
-    var homeMb by remember { mutableStateOf(-1L) }
-    var cacheMb by remember { mutableStateOf(-1L) }
+    // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖。
+    val lastStorage = remember { LastValues.loadStorageMb(ctx) }
+    var rootfsMb by remember { mutableStateOf(lastStorage?.first ?: -1L) }
+    var homeMb by remember { mutableStateOf(lastStorage?.second ?: -1L) }
+    var cacheMb by remember { mutableStateOf(lastStorage?.third ?: -1L) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
 
     /** 卡片里原本直调设置页的 `onOpenTerminal`，这里接到同一条意图上。 */
@@ -153,6 +155,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
         rootfsMb = sizes.first
         homeMb = sizes.second
         cacheMb = sizes.third
+        LastValues.saveStorageMb(ctx, sizes.first, sizes.second, sizes.third)
     }
 
     /**
@@ -195,13 +198,15 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             // Issue #8-D：把 A（旧依赖代）/ B（hermes 可选工具）/ C（公共区安装包）的体积摊开，
             // 数字来源是 StorageAudit（与自动清理、体检面板同一套口径，避免 E-073 那种两套账）。
             // 不可清的行也列出来并标「保留」：用户最想知道的是"哪些点了真能腾地方"。
+            // 2026-10-12 无感化（§5.5）：首帧即显上次明细，量完就地覆盖，不再整列表凭空出现。
             var audit by remember(storageTick) {
-                mutableStateOf<List<com.example.zhengdao.terminal.StorageAudit.Item>>(emptyList())
+                mutableStateOf(LastValues.loadAudit(ctx).orEmpty())
             }
             LaunchedEffect(storageTick) {
                 audit = withContext(Dispatchers.IO) {
                     com.example.zhengdao.terminal.StorageAudit.items(ctx)
                 }
+                LastValues.saveAudit(ctx, audit)
             }
             if (audit.isNotEmpty()) {
                 var lastGroup = ""
@@ -345,12 +350,16 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
         }
         // ── 缓存清理（三档白名单：一档走 guest 官方命令，二档走宿主侧；详见 CacheCleaner）──
         SectionCard("缓存清理") {
-            var cacheSizes by remember(storageTick) { mutableStateOf<Map<String, Long>>(emptyMap()) }
+            // 2026-10-12 无感化（§5.5）：首帧即显上次各目录体积，量完就地覆盖。
+            var cacheSizes by remember(storageTick) {
+                mutableStateOf(LastValues.loadCacheSizes(ctx))
+            }
             // 量目录要遍历整棵文件树（npm 缓存动辄几万个小文件），不能放主线程——旧实现
             // 直接在组合期 remember { measure() } 里走，滚动设置页会卡。同时跟着 storageTick
             // 走：去 guest 里装完东西再回来，数字要跟着变，而不是停在进页那一刻。
             LaunchedEffect(storageTick) {
                 cacheSizes = withContext(Dispatchers.IO) { CacheCleaner.measure(ctx) }
+                LastValues.saveCacheSizes(ctx, cacheSizes)
             }
             if (cacheSizes.isEmpty()) {
                 Text(
@@ -563,7 +572,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
         }
         // ── 安装包缓存（第三批）──
         SectionCard("安装包缓存") {
-            var cacheText by remember { mutableStateOf("统计中…") }
+            // 2026-10-12 无感化（§5.5 第 4 处）：打开即显上次快照，量完就地覆盖。
+            var cacheText by remember { mutableStateOf(LastValues.loadText(ctx, "installer_cache_text") ?: "统计中…") }
             var rollbacks by remember { mutableStateOf<List<File>>(emptyList()) }
             var rollbackConfirm by remember { mutableStateOf<File?>(null) }
             fun reloadCache() {
@@ -579,7 +589,11 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         }
                     }
                     val rb = com.example.zhengdao.rootfs.RootfsCache.rollbackCandidates(ctx)
-                    android.os.Handler(ctx.mainLooper).post { cacheText = lines; rollbacks = rb }
+                    android.os.Handler(ctx.mainLooper).post {
+                        cacheText = lines
+                        rollbacks = rb
+                        LastValues.saveText(ctx, "installer_cache_text", lines)
+                    }
                 }.start()
             }
             LaunchedEffect(Unit) { reloadCache() }

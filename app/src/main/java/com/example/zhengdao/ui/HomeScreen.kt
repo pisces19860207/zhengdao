@@ -66,6 +66,12 @@ import com.example.zhengdao.core.IssueCenter
 private const val BUTTON_MIN_WIDTH_DP = 108
 
 /**
+ * 系统信息的进程级缓存（2026-10-12 无感化 §5.5）：跨页面重进保留上一次快照，
+ * 让「加载中…」只出现在本进程第一次采集时。仅作展示兜底，不参与任何判定。
+ */
+private var sysInfoProcessCache: SystemInfoProvider.Info? = null
+
+/**
  * 首页：顶部可折叠系统状态卡 + Agent 卡片列表；底部 Tab 的「终端」页由
  * 外层 MainActivity 处理（导航到 TerminalActivity）。
  */
@@ -161,8 +167,10 @@ fun HomeScreen(
     }
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
-    // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复
-    var healthChecks by remember { mutableStateOf<List<EnvHealth.Check>?>(null) }
+    // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复。
+    // 2026-10-12 无感化（走查报告 §5.4）：**打开即显上次缓存值**（旧值），
+    // 流式刷新逐项就地覆盖——不再「先空白 → 11 行同时蹦出来」（用户原话：有点吓人）。
+    var healthChecks by remember { mutableStateOf(LastValues.loadChecks(context)) }
     var healthEpoch by remember { mutableStateOf(0) }
     // 卸载二次确认（P3）：非 null 时弹出确认弹窗
     var uninstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
@@ -178,22 +186,32 @@ fun HomeScreen(
     // 展开状态卡（或修复完成）时跑一遍体检；IO 采集，与 sysInfo 同模式。
     // #10：inspect 内部已逐项兜底（不抛异常），这里再兜一层——展开状态卡这个动作
     // 宁可少显示几项，也不能变成闪退。
+    // 2026-10-12 无感化（§5.4）：改串行整体替换为**流式逐项**——11 项并行跑，先算完先上屏，
+    // 每到达一项只替换那一行；全部到齐后落盘，下次打开（含冷启动）先显旧值。
     LaunchedEffect(statusExpanded, healthEpoch) {
         if (statusExpanded) {
-            healthChecks = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching { EnvHealth.inspect(context) }.getOrElse { emptyList() }
-            }
+            runCatching {
+                EnvHealth.inspectStream(context).collect { c ->
+                    val cur = healthChecks
+                    healthChecks = if (cur.isNullOrEmpty()) listOf(c)
+                    else cur.filter { it.id != c.id } + c
+                }
+            }.onFailure { healthChecks = emptyList() }
+            LastValues.saveChecks(context, healthChecks.orEmpty())
         }
     }
-    var sysInfo by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
+    var sysInfo by remember { mutableStateOf(sysInfoProcessCache) }
     // 系统信息采集轮次：进页面采一次，之后每次 ON_RESUME 再采一次。
     // 原先只在 LaunchedEffect(Unit) 里采一次——用户去终端装完环境/Agent 再回来，
     // 卡片里的"内存可用 / 已装 Agent / 发行版"全是切走之前的旧快照。
+    // 2026-10-12 无感化（§5.5 第 5 处）：进程级缓存兜底——重进页面先显上一次的系统信息，
+    // 新快照到达后就地覆盖，不再「加载中…」整块闪现。
     var sysTick by remember { mutableStateOf(0) }
     LaunchedEffect(sysTick) {
         sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             SystemInfoProvider.collect(context)
         }
+        sysInfoProcessCache = sysInfo
     }
     // 每次回到本页（从终端返回）刷新安装状态
     LaunchedEffect(Unit) {

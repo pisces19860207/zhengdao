@@ -481,7 +481,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         // 存储：/sdcard 共享存储读写全靠 READ/WRITE 运行时授权（E-005 修正后的事实）
         // 网络：INTERNET 为安装时权限系统自动授，无可引导项；用户真正会卡的是
         //      代理 App 分应用没勾选证道——给一键自检代替空喊"网络权限"
-        SectionCard("权限") {
+        SectionCard("权限与工作区") {
             // 两行常驻可点（用户提议）：已授权时点击 = 跳系统 App 详情页（查看/撤销/
             // MagicOS 联网管控都在那里）；未授权时行内另给授权按钮
             val openAppDetails = {
@@ -585,9 +585,14 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        // ── 工作区（0.6 显性化：产出边界让用户看得见）──
-        SectionCard("工作区") {
+
+            Spacer(Modifier.height(10.dp))
+            SettingsDivider()
+            Spacer(Modifier.height(10.dp))
+
+            // ── 工作区（0.6 显性化：产出边界让用户看得见）──
+            // 2026-10-12 并入「权限」卡（走查报告 §1.3：5 卡 → 3 卡）：权限与工作区
+            // 本就是同一件事的两面——权限决定「能不能读写」，工作区决定「读写落在哪」。
             val wsHost = com.example.zhengdao.terminal.Workspace.hostDir(ctx)
             val wsShared = com.example.zhengdao.terminal.Workspace.isShared(ctx)
             Text(
