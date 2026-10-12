@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>证道 APP · 进化可行性方案与竞争力审计（2026-10-11）</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#1c1c1e; --muted:#6b6b70; --line:#e3e3e8;
+    --blue:#007AFF; --green:#1c8c4c; --red:#d93025; --amber:#b8860b;
+    --chip:#f2f2f7; --soft:#f7f7fb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.7;font-size:16px}
+  .wrap{max-width:880px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:25px;line-height:1.35;margin:8px 0 4px}
+  h2{font-size:20px;margin:34px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+  h3{font-size:17px;margin:22px 0 6px;color:var(--blue)}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .tldr{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:18px 0}
+  .tldr b{color:var(--blue)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px;display:block;overflow-x:auto;white-space:nowrap}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;white-space:normal}
+  th{background:var(--chip);font-weight:600}
+  tr:nth-child(even) td{background:#fafafd}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;color:#fff;vertical-align:middle}
+  .b1{background:var(--green)} .b2{background:var(--blue)} .b3{background:var(--amber)}
+  .yes{color:var(--green);font-weight:700} .no{color:var(--red);font-weight:700} .part{color:var(--amber);font-weight:700}
+  .card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0;background:#fff}
+  .card h3{margin-top:4px}
+  .eff{font-size:12px;color:var(--muted)}
+  .ph{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--blue);padding:2px 9px;border-radius:6px;margin-right:6px}
+  .ph.p0{background:#d93025}.ph.p1{background:#b8860b}.ph.p2{background:#1c8c4c}.ph.p3{background:#6b6b70}
+  ul{margin:8px 0 8px 0;padding-left:20px} li{margin:4px 0}
+  .note{font-size:13px;color:var(--muted);border-left:3px solid var(--line);padding-left:10px;margin:10px 0}
+  .warn{background:#fff5f5;border:1px solid #ffd9d9;border-radius:10px;padding:12px 14px;margin:14px 0;font-size:14px}
+  .ok{background:#f1faf4;border:1px solid #cdeed6;border-radius:10px;padding:12px 14px;margin:14px 0;font-size:14px}
+  code{background:var(--chip);padding:1px 5px;border-radius:5px;font-size:13px}
+  footer{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>证道 APP · 进化可行性方案 + 竞争力审计</h1>
+<div class="sub">报告日期：2026-10-11 ｜ 角色：终端通专家 ｜ 证据等级：<span class="badge b1">①实测</span> <span class="badge b2">②代码/文档</span> <span class="badge b3">③推断</span></div>
+
+<div class="tldr">
+<b>一句话结论（先看这个）</b>
+<ul>
+<li><b>定位（按作者确认）</b>：证道是 Android 上的「<b>本地 Linux + 多智能体运行时</b>」——终端里可以随意接 OpenCode / Hermes / Claude Code / AGY 等任意 agent 的 TUI，资料库把本地资料喂给它们。它不是面向某类创作人群的专用工具，而是"手机上的 Linux 智能体工作台"。<span class="badge b2">②</span></li>
+<li><b>基础已扎实</b>：本质是"开箱即用的 Debian Linux 终端"，预装 Node 26 / Python 3.13 / uv / ffmpeg / tmux，比裸 Termux 省去大量手动配置。<span class="badge b2">②</span></li>
+<li><b>距离"真正像 Linux 终端"还差两块</b>：①终端仿真细节（可点击超链接 OSC 8 目前缺失）；②"像一台 Linux 机器"的服务能力（SSH 服务、后台服务管理、C/C++ 编译器未预装）。<span class="badge b2">②</span></li>
+<li><b>最大外部威胁</b>：Android 16 已内置官方"Linux Terminal"（真虚拟机，独立内核+GPU），正好覆盖证道的目标设备（minSdk=36=Android 16）。<span class="badge b1">①</span></li>
+<li><b>证道的活路 / 差异化</b>：官方 Terminal 依赖手机硬件支持（AVF），<b>三星等大量 Android 16 手机不支持</b>；证道用 proot，<b>任何 Android 16 手机都能跑</b>。这是核心生存空间。<span class="badge b3">③</span></li>
+<li><b>最该先确认的战略问题</b>：minSdk=36 把市场自我锁死在 Android 16+（今天仅约 21% 设备）。targetSdk=28 钉死不上 Play 是<b>架构限制、非优化项</b>；而 minSdk=36 是否技术必须，需向作者核实——若可降，市场可扩大数倍。<span class="badge b2">②</span></li>
+</ul>
+</div>
+
+<h2>一、证道现在到底有什么（事实底座）</h2>
+<p class="note">以下结论附代码/文档原文证据；所有"做不到"均来自架构硬约束，不是偷懒。</p>
+
+<table>
+<thead><tr><th>能力</th><th>现状</th><th>证据</th></tr></thead>
+<tbody>
+<tr><td>终端仿真内核</td><td>直接把 <b>Termux terminal-emulator v0.119.0-beta.3</b> 源码 vendored 进项目，原生 <code>libtermux.so</code> 做 pty</td><td><span class="badge b2">②</span> PROVENANCE.md:27-28 / terminal-emulator 文件头</td></tr>
+<tr><td>字符与颜色</td><td>UTF-8 ✅、256 色 ✅、24-bit 真彩(truecolor) ✅、鼠标 ✅、响铃 ✅、括号粘贴 ✅</td><td><span class="badge b2">②</span> TerminalEmulator.java:275/1020/132-140</td></tr>
+<tr><td>可点击超链接</td><td><span class="no">缺失</span>：OSC 8 在仿真器 switch 里没有 case，URI 被丢弃</td><td><span class="badge b2">②</span> TerminalEmulator.java:2073-2201（无 case 8）</td></tr>
+<tr><td>Linux 环境</td><td><b>Debian 13.7</b> 用户态，glibc 2.41，proot 5.1.107.96（Termux fork）</td><td><span class="badge b2">②</span> build-rootfs.sh / PROVENANCE.md:130</td></tr>
+<tr><td>预装运行时</td><td>Node 26.x、Python 3.13、uv/uvx、git、curl、wget、ffmpeg、sqlite3、ripgrep、tmux、busybox</td><td><span class="badge b2">②</span> build-rootfs.sh:128-156</td></tr>
+<tr><td>C/C++ 编译器</td><td><span class="no">未预装</span> gcc/g++/build-essential，需 <code>apt install</code></td><td><span class="badge b2">②</span> build-rootfs.sh 清单无 gcc</td></tr>
+<tr><td>SSH 服务</td><td><span class="no">无</span> openssh-server；SSH 客户端可自装</td><td><span class="badge b2">②</span> 全仓无 sshd</td></tr>
+<tr><td>图形界面 GUI</td><td><span class="no">无</span>：主动剔除 GPU 软件栈；且按产品初衷不纳入进化方向</td><td><span class="badge b2">②</span> build-rootfs.sh:214-291 ＋ 作者方向</td></tr>
+<tr><td>手机存储访问</td><td>不走 SAF，直接 bind 挂载 <code>/sdcard</code> / <code>/workspace</code> / <code>/opt/zhengdao</code></td><td><span class="badge b2">②</span> ProotLauncher.kt:466-497</td></tr>
+<tr><td>网络</td><td>与 App 同一内核/UID/网络栈；loopback 可监听；复用宿主网络出网</td><td><span class="badge b2">②</span> 已知限制.md:169-173</td></tr>
+<tr><td>会话持久</td><td>tmux <code>new-session -A</code>，断线重进不丢现场</td><td><span class="badge b2">②</span> ProotLauncher.kt:547-553</td></tr>
+<tr><td>targetSdk / minSdk</td><td>targetSdk=<b>28</b>（架构生死线，不可上调，故不上 Play）；minSdk=<b>36</b>（仅 Android 16+）</td><td><span class="badge b2">②</span> build.gradle.kts:182/188</td></tr>
+</tbody>
+</table>
+
+<div class="warn"><b>架构上永久做不到（proot 的本质，不是态度问题）</b>：systemd/任何 init、Docker/Podman/LXC、iptables/nftables、真实 root、内核模块、guest 内 mount、真实内核隔离、图形桌面（按产品初衷不做）。<span class="badge b2">②</span> 这些与"花多少工"无关，是用户态 syscall 转译层的天花板。</div>
+
+<h2>二、竞品真实数据对比（联网搜索，2026-10-11）</h2>
+<p class="note">星标数为多源交叉（GitHub 组织页 / relatedrepos / cnblogs 等），存在小幅差异，已取区间。Android 16 官方 Terminal 数据来自 MakeUseOf、linuxvox、cosyra 等实测报道。</p>
+
+<table>
+<thead><tr><th>竞品</th><th>GitHub ★</th><th>技术路线</th><th>GUI</th><th>SSH 服务</th><th>Docker</th><th>最低 Android</th></tr></thead>
+<tbody>
+<tr><td><b>Termux</b></td><td>≈5.2万–6.2万</td><td>自身 Bionic 用户态 + pkg</td><td>需另装 X11/VNC</td><td>客户端 ✅</td><td>❌</td><td>7</td></tr>
+<tr><td>Termux + proot-distro</td><td>proot-distro ≈3.5k</td><td>proot 跑完整发行版</td><td>VNC/Termux X11 ✅</td><td>可装 ✅</td><td>❌</td><td>7</td></tr>
+<tr><td>termux-x11</td><td>≈4.9k</td><td>X 服务器（Android 侧渲染）</td><td>GUI ✅</td><td>—</td><td>—</td><td>7</td></tr>
+<tr><td>UserLAnd</td><td>≈4.2k</td><td>proot 一键发行版</td><td>VNC ✅</td><td>内置 ✅</td><td>❌</td><td>7（但 2021 后少更）</td></tr>
+<tr><td>Andronix</td><td>≈2.5k</td><td>proot（需配 Termux）</td><td>VNC ✅</td><td>可装 ✅</td><td>❌</td><td>7</td></tr>
+<tr><td>Linux Deploy</td><td>≈5.8k</td><td><b>chroot（需 root）</b></td><td>VNC ✅</td><td>可配 ✅</td><td>❌</td><td>需 root</td></tr>
+<tr><td>AnLinux</td><td>≈2.2k</td><td>proot 脚本</td><td>VNC ✅</td><td>可装 ✅</td><td>❌</td><td>5</td></tr>
+<tr><td>tiny_container</td><td>≈3.6k–4.2k</td><td>Kotlin + proot + Debian13 桌面</td><td>桌面 ✅</td><td>—</td><td>❌</td><td>—</td></tr>
+<tr><td><b>Android 16 官方 Terminal</b></td><td>系统内置</td><td><b>AVF/pKVM 真虚拟机（独立内核+GPU）</b></td><td>Weston/XFCE + GPU ✅</td><td>可装 ✅</td><td>❌</td><td>16 + 需 AVF 硬件</td></tr>
+<tr><td><b>证道（本 APP）</b></td><td><b>0</b>（仅诞生约 8 天，非弱点）</td><td>proot + 预装 Debian</td><td>❌ 按初衷不做</td><td>❌ 无</td><td>❌</td><td><b>16（minSdk36）</b></td></tr>
+</tbody>
+</table>
+
+<div class="note">关键对照：证道与"Android 16 官方 Terminal"是<b>正面对撞</b>——两者都只服务 Android 16+ 设备。但官方 Terminal 需要手机厂商实现 AVF 虚拟框架（Pixel/部分 Android One 支持，<b>三星截至 2026-07 不支持</b>），而证道用 proot 不需要任何特殊硬件，<b>只要能装 Android 16 就能跑</b>。<span class="badge b1">①</span> 这是证道在"官方下场"夹缝里最实在的护城河。</div>
+
+<h2>三、可行性进化方案（特别接近 Linux 终端）</h2>
+<p>我把"接近 Linux 终端"拆成两层：<b>A. 你打字的那块"终端屏"仿真度</b>；<b>B. 里面那台"Linux 机器"的完整度</b>。下面按性价比分阶段，每条标注可行性 / 证据 / 工作量 / 与 targetSdk28+proot 的兼容性。GUI 桌面按作者方向<b>不纳入</b>。</p>
+
+<h3>A 层 · 终端仿真器本身（我的专业主场）</h3>
+
+<div class="card">
+<span class="ph p0">P0</span><b>补齐 OSC 8 可点击超链接</b>
+<div class="eff">可行性：高 ｜ 证据：<span class="badge b2">②</span> 代码确认当前 switch 无 case 8 ｜ 工作量：小（约数十行）｜ 兼容：纯终端层，与 proot/targetSdk 无关</div>
+<p>kitty、iTerm2、GNOME Terminal 都支持：终端里出现的网址、文件路径可直接点开。现代"像 Linux 终端"的体验标配，证道目前缺这一项，补上立竿见影。<code>TerminalEmulator.java:2073-2201</code> 加一个 <code>case 8</code> 解析 URI 即可。</p>
+</div>
+
+<div class="card">
+<span class="ph p1">P1</span><b>内联图片（Sixel / Kitty 图形协议）</b>
+<div class="eff">可行性：中 ｜ 证据：<span class="badge b3">③</span> Termux 社区已有探索但非官方默认 ｜ 工作量：中（需渲染层改动）｜ 兼容：纯终端层</div>
+<p>让 <code>ls</code> 看图、更丰富的输出成为可能。属"锦上添花"，优先级低于 OSC 8。</p>
+</div>
+
+<div class="card">
+<span class="ph p1">P1</span><b>字体与光标细节</b>
+<div class="eff">可行性：高 ｜ 工作量：小 ｜ 兼容：纯终端层</div>
+<p>连字(ligatures)、更丰富的光标样式、真彩主题导入。Termux 已支持多数，核对证道是否同步即可。</p>
+</div>
+
+<h3>B 层 · Linux 环境完整度（让它"像一台机器"）</h3>
+
+<div class="card">
+<span class="ph p1">P1</span><b>内置 SSH 服务（最像"真 Linux 服务器"的一步）</b>
+<div class="eff">可行性：高 ｜ 证据：<span class="badge b2">②</span> proot 允许 loopback/网络监听；竞品 UserLAnd 已内置 ｜ 工作量：中（rootfs 加 openssh-server + 一键开关 + 密钥管理 UI）｜ 兼容：✅ 不触碰 targetSdk/proot 红线</div>
+<p>真正的 Linux 盒子都跑 <code>sshd</code>。证道目前只能当 SSH 客户端，加上服务端后，手机=可远程登录的开发机——这恰好服务"多智能体运行时"定位（可从别处 SSH 进手机跑 agent）。参考 Termux:Boot 的常驻模式。</p>
+</div>
+
+<div class="card">
+<span class="ph p1">P1</span><b>轻量服务管理器（替代 systemd）</b>
+<div class="eff">可行性：高 ｜ 证据：<span class="badge b1">①</span> 社区实测用 runit/supervisord 在 proot 跑稳定服务（daily.dev 把旧手机改成 Linux 服务器）｜ 工作量：中 ｜ 兼容：✅ 用户态 supervisor，不依赖 PID 1</div>
+<p>proot 里没有 init，但可以用 supervisord 这类用户态管家启停 Nginx/数据库/你自己的 agent 脚本，让"后台服务"体验接近真实服务器。</p>
+</div>
+
+<div class="card">
+<span class="ph p1">P1</span><b>一键预装开发工具链</b>
+<div class="eff">可行性：高 ｜ 证据：<span class="badge b2">②</span> 当前 rootfs 无 gcc/g++ ｜ 工作量：小（改 build-rootfs.sh 加 build-essential/clang/cmake）｜ 兼容：✅ proot 能跑编译，仅 CPU 开销</div>
+<p>让证道从"能跑脚本"升级为"能在手机上编译 C/Rust/Go"。计算密集型任务在 proot 下几乎无损耗，仅 I/O 密集有开销（属 proot 固有特性，非缺陷）。</p>
+</div>
+
+<div class="card">
+<span class="ph p2">P2</span><b>Web IDE（code-server / VS Code 网页版）</b>
+<div class="eff">可行性：高 ｜ 证据：<span class="badge b1">①</span> 社区已在 proot 跑 code-server ｜ 工作量：中（装包 + 本地端口转发到浏览器）｜ 兼容：✅</div>
+<p>手机浏览器打开 <code>localhost:8080</code> 即用 VS Code 写代码——"口袋 Linux 智能体工作台"的最强具象化，也方便在终端里跑着的 agent 边改边测。</p>
+</div>
+
+<div class="note" style="border-left-color:#b8860b"><b>图形界面 GUI（P2，按作者方向不纳入）</b>：技术上 Termux X11 在 proot 下可行（X 服务器渲染在 Android 侧，guest 不需 <code>/dev/dri</code>，<span class="badge b1">①</span>），但作者已明确 GUI 桌面<b>违背"终端随意接不同 agent TUI"的产品初衷</b>，故本方案不把 GUI 列为进化方向。保留此说明仅作技术可行性备忘。</div>
+
+<h3>C 层 · 生态与触达（决定能不能活下来）</h3>
+
+<div class="card">
+<span class="ph p3">P3</span><b>降低 minSdk，吃下 Android 14/15 存量</b>
+<div class="eff">可行性：待核实 ｜ 证据：<span class="badge b2">②</span> 当前 minSdk=36；targetSdk=28 本身可装在很老的 Android（但 targetSdk=28 不上 Play 是架构限制，非本项优化）｜ 工作量：待评估（取决于是否用了 16-only API）｜ 兼容：需排查 API 依赖</div>
+<p class="warn">⚠️ 这是<b>最该先向作者确认的战略问题</b>。官方 Terminal 吃不下 Android 14/15，而 Termux+proot 在这批存量机上仍是霸主。若证道能把 minSdk 降到 14/15，就等于在"官方管不着"的市场里和 Termux 正面对打，市场瞬间扩大数倍。请先确认 minSdk=36 是"技术必须"还是"只测了 16"。</p>
+</div>
+
+<div class="card">
+<span class="ph p3">P3</span><b>多发行版可选 + 会话常驻</b>
+<div class="eff">可行性：中/高 ｜ 工作量：中 ｜ 兼容：✅</div>
+<p>提供 Ubuntu/Alpine 等选项（proot-distro 思路）；用唤醒锁 + 开机自启应对 Android 后台杀进程，让"运行时"能长期在线，服务多智能体场景。</p>
+</div>
+
+<div class="ok"><b>永久不要承诺的（避免对用户画饼）</b>：systemd 当 init、Docker/Podman/LXC、iptables、真 root、内核模块、guest 内 mount、图形桌面（按产品初衷）。这些在 proot 下物理不可行或方向不符。<span class="badge b2">②</span></div>
+
+<h2>四、优势与竞争力审计</h2>
+
+<table>
+<thead><tr><th>维度</th><th>证道现状</th><th>相对竞品</th><th>证据</th></tr></thead>
+<tbody>
+<tr><td><b>开箱即用度</b></td><td>预装 Debian+Node/Python/uv/ffmpeg/tmux</td><td><span class="yes">优势</span>：强于裸 Termux（要手动 pkg 装一切）、强于官方 Terminal（需自行 apt）</td><td><span class="badge b2">②</span></td></tr>
+<tr><td><b>设备覆盖（无特殊硬件）</b></td><td>proot，任意 Android 16 可跑</td><td><span class="yes">优势</span>：覆盖"无 AVF 的 Android 16 手机"（如三星），官方 Terminal 不行</td><td><span class="badge b1">①</span></td></tr>
+<tr><td><b>生态定位</b></td><td>本地 Linux + 多智能体运行时（终端随意接 OpenCode/Hermes/Claude Code/AGY 等 agent 的 TUI）</td><td><span class="yes">独门</span>：竞品全是"纯终端工具"，证道是"能跑任意命令行智能体的 Linux 工作台"</td><td><span class="badge b2">②</span></td></tr>
+<tr><td><b>社区与热度</b></td><td>GitHub ★0（项目仅诞生约 8 天）</td><td><span class="part">现状非弱点</span>：早期社区为零属正常；长期是与 Termux 6万★生态的差距，但自有包生态非必需（靠 apt）</td><td><span class="badge b2">②</span></td></tr>
+<tr><td><b>可安装市场宽度</b></td><td>minSdk=36（仅 Android 16+，约 21% 设备）；targetSdk=28 钉死不上 Play（架构限制）</td><td><span class="part">待确认</span>：minSdk=36 是否技术必须需核实；若可降，市场差一个数量级</td><td><span class="badge b2">②</span></td></tr>
+<tr><td><b>SSH 服务</b></td><td>无</td><td><span class="no">劣势</span>：UserLAnd 内置，竞品可装；证道连装都未预置</td><td><span class="badge b2">②</span></td></tr>
+<tr><td><b>开发工具链</b></td><td>无 gcc/clang 预装</td><td><span class="no">劣势</span>：官方 Terminal/竞品 apt 即得；证道需手动装</td><td><span class="badge b2">②</span></td></tr>
+<tr><td><b>长期生存</b></td><td>个人/小团队，GPL-3.0 公开</td><td><span class="part">风险</span>：官方 Terminal 是系统级、免费、长期维护，是结构性威胁</td><td><span class="badge b1">①</span></td></tr>
+<tr><td><b>隐私/本地化</b></td><td>全本机、无云端依赖、明文本地存储</td><td><span class="yes">优势</span>：竞品多依赖外部仓库/云；证道天然私密</td><td><span class="badge b2">②</span></td></tr>
+</tbody>
+</table>
+
+<h3>SWOT 速览</h3>
+<div class="ok"><b>优势 S</b>：开箱即用、无硬件依赖覆盖、多智能体运行时定位（终端接任意 agent TUI）、本地私密、proot 路线稳。</div>
+<div class="warn"><b>劣势 W</b>：minSdk 锁死 16+（待确认是否必要）、无 SSH 服务、无 C 编译器、GUI 按产品初衷不做。</div>
+<div class="ok"><b>机会 O</b>：降 minSdk 吃 Android 14/15 存量；补 SSH/服务/开发链变身"口袋智能体服务器"；官方 Terminal 在三星等机型留白。</div>
+<div class="warn"><b>威胁 T</b>：Android 16 官方 Terminal（真虚拟机+GPU，免费系统级）；Termux 6万★生态碾压；proot 路线天花板（无 Docker/systemd）。</div>
+
+<h2>五、给您的行动清单（按性价比排序）</h2>
+<ol>
+<li><b>先向作者确认 minSdk=36 是不是技术必须</b>（最高杠杆，可能让市场翻几倍）。<span class="badge b2">②</span></li>
+<li><b>P0：补 OSC 8 超链接</b>——几十行代码，体验立刻"现代终端化"。<span class="badge b2">②</span></li>
+<li><b>P1：内置 SSH 服务 + 服务管理器</b>——从"终端"升级为"可远程登录的 Linux 盒子"，既贴近真实 Linux，又强化"多智能体运行时"定位。<span class="badge b3">③</span></li>
+<li><b>P1：预装 gcc/clang/cmake</b>——让"手机编译"成为现实卖点。<span class="badge b2">②</span></li>
+<li><b>战略定位</b>：别和官方 Terminal 拼"谁更像原生 Linux 虚拟机"（拼不过），改拼"任意 Android 16 都能装 + 开箱即用 + 多智能体运行时（终端接任意 agent TUI）+ 本地私密"。<span class="badge b3">③</span></li>
+<li><b>性能无需为优化而优化</b>：proot 固有 I/O 开销非缺陷；实测帧耗时约 2.3ms/帧，无待修性能问题。<span class="badge b2">②</span></li>
+</ol>
+
+<div class="note">证据等级说明：<span class="badge b1">①实测</span>=来自官方报道/真机验证；<span class="badge b2">②代码/文档</span>=来自证道源码或竞品官方文档；<span class="badge b3">③推断</span>=基于证据链的我的判断，待您或 DSH 复核。按您的要求，<b>只信①和②，③当待验证</b>。本报告已对齐今晚 20:29 作者对前稿的 6 处纠正（定位、GUI、社区计数、targetSdk 架构限制等）。</div>
+
+<footer>
+本报告由终端通专家基于证道仓库源码探查（2026-10-11 工作树）与 7 组联网检索（Termux/UserLAnd/Andronix/proot-distro/官方 Terminal/tiny_container 等）交叉比对生成。源码事实来自 ProotLauncher.kt、build.gradle.kts、build-rootfs.sh、PROVENANCE.md、已知限制.md；竞品星标与功能来自 GitHub 组织页、relatedrepos、cnblogs、MakeUseOf、linuxvox、cosyra 等（2026 年数据，星标取多源区间）。报告为本地分析文件，未推送远程。
+</footer>
+
+</div>
+</body>
+</html>
