@@ -37,6 +37,9 @@
     <string name="common_default">Default</string>
     <string name="common_later">Later</string>
     <string name="common_not_installed">Not installed</string>
+    <string name="common_approx_mb">about %1$d MB</string>
+    <string name="common_size_unknown">size unknown</string>
+    <string name="common_mb">%1$d MB</string>
 
     <!-- ── Bottom navigation ── -->
     <string name="nav_taiji">Taiji</string>
@@ -552,4 +555,81 @@
     <string name="copy_tool_output">Result:</string>
     <string name="copy_truncated">\n… (truncated, original was %1$d characters)</string>
     <string name="copy_state_unknown">Unknown</string>
+
+    <!-- ── First-run welcome screen (WelcomeScreen) ── -->
+    <string name="welcome_tagline">Run your own AI agents on your phone</string>
+    <string name="welcome_step1">Add a model API key in Settings (only the one you\'ll use)</string>
+    <string name="welcome_step2">Open Taiji and start chatting — no need to wait for the runtime</string>
+    <string name="welcome_step3">Come back and install the runtime when you want a shell or other agents</string>
+    <string name="welcome_enter">Enter</string>
+    <string name="welcome_install_env">Install the runtime</string>
+    <string name="welcome_skip">Try Taiji first (skip the runtime)</string>
+    <string name="welcome_ready">Runtime ready</string>
+    <string name="welcome_env_note">The runtime powers Terminal and other agents; Taiji doesn\'t need it</string>
+
+    <!-- ── Keep-alive log page (KeepaliveLogActivity) ── -->
+    <string name="keepalive_log_title">Keep-alive log</string>
+    <string name="keepalive_log_location_card">Where it\'s stored</string>
+    <string name="keepalive_log_location">Location: %1$s</string>
+    <string name="keepalive_log_hint">When the process is killed, the system records why (out of memory / resource limit exceeded / vendor background cleanup / crash / not responding). It\'s collected here on the next launch. Heartbeats are logged every 10 minutes, and the last one shows the state right before it died (memory level, whether the foreground service was running, which page you were on). Export it and send it to the author for analysis.</string>
+    <string name="keepalive_log_recent_card">Recent records</string>
+    <string name="keepalive_log_empty">No exit records yet — they appear after the app is killed once and reopened.</string>
+    <string name="keepalive_log_last_exits">Recent exits:</string>
+    <string name="keepalive_log_last_beats">Recent heartbeats:</string>
+    <string name="keepalive_log_snippets">logcat snapshots: %1$d (one per launch and per check, up to 5)</string>
+    <string name="keepalive_log_exported">Exported to %1$s</string>
+    <string name="keepalive_log_export_failed">Export failed: shared storage unavailable (enable \"All files access\" in permissions first)</string>
+    <string name="keepalive_log_export">Export to Download/证道/logs</string>
+    <string name="keepalive_log_cleared">Cleared %1$d records</string>
+    <string name="keepalive_log_clear">Clear records</string>
+
+    <!-- ── Plugins page (PluginsScreen) ── -->
+    <string name="plugins_card_enabled">Enabled</string>
+    <string name="plugins_state_enabled">Enabled</string>
+    <string name="plugins_empty_enabled">No plugins enabled yet. Add one from \"Recommended\" below.</string>
+    <string name="plugins_empty_no_env">Taiji\'s OpenCode isn\'t initialized — open Taiji once and the plugin config will be generated automatically.</string>
+    <string name="plugins_card_recommended">Recommended</string>
+    <string name="plugins_legacy">⚠️ Deprecated plugin (installed before but no longer working) — turning it off is recommended</string>
+    <string name="plugins_cached_ver">v%1$s cached</string>
+    <string name="plugins_not_downloaded">Not downloaded yet (installed over the network the first time an agent starts)</string>
+    <string name="plugins_enabled_toast">Enabled: %1$s (takes effect the next time an agent starts)</string>
+    <string name="plugins_disabled_toast">Disabled: %1$s</string>
+    <string name="plugins_oc_not_ready">Taiji\'s OpenCode isn\'t initialized — open Taiji once first</string>
+    <string name="plugins_no_change">No change</string>
+    <string name="plugins_card_add">Add a plugin (npm package name)</string>
+    <string name="plugins_add_hint">"e.g. @scope/opencode-plugin-xxx"</string>
+    <string name="plugins_bad_spec">"That doesn\'t look like an npm package name: it should look like my-plugin or @scope/my-plugin, with no spaces"</string>
+    <string name="plugins_not_written">Not written to the config: %1$s (it may already be in the plugin list)</string>
+    <string name="plugins_not_added">Not added: %1$s — Taiji\'s OpenCode isn\'t initialized, open Taiji once first</string>
+    <string name="plugins_add_enable">Add and enable</string>
+    <string name="plugins_add_note">Copy the package name from the plugin\'s npm / GitHub page. Once added, opencode\'s bundled Bun downloads it from npm the next time an agent starts (the first time needs a network connection). Plugins run third-party code — only add packages you trust.</string>
+    <string name="plugins_cache_card">Plugin package cache (%1$d MB)</string>
+    <string name="plugins_cache_empty">No cache yet. On a plugin\'s first start, opencode\'s bundled Bun downloads it here from npm; after that it works offline.</string>
+    <string name="plugins_cache_clean">Clear plugin package cache</string>
+    <string name="plugins_cache_clean_note">Clearing doesn\'t disable the plugin — it\'s re-downloaded the next time an agent starts.</string>
+    <string name="plugins_card_about">About plugins</string>
+    <string name="plugins_about_note">Plugins are downloaded from npm and run third-party code — only enable ones you trust.\n\n\"Plugins\" here means the kind declared by package name in the config and downloaded automatically at startup; local .js files aren\'t handled here.\n\nThis page only covers OpenCode inside Taiji; an opencode you installed yourself in the terminal isn\'t managed here.</string>
+    <string name="plugins_clean_confirm_title">Clear the plugin package cache?</string>
+    <string name="plugins_clean_confirm_msg">This deletes the downloaded plugin packages (about %1$d MB). The plugins stay enabled and will be re-downloaded next time.</string>
+    <string name="plugins_cleaned_toast">Cleared, reclaimed about %1$d MB</string>
+
+    <!-- ── First-run permissions screen (PermissionSetupScreen) ── -->
+    <string name="perm_title">Permissions</string>
+    <string name="perm_intro">Zhengdao needs to read and write your files, and to notify you when a cleanup finishes. It needs the permissions below. You can grant them one by one, or set them up later (Settings → Permissions, any time).</string>
+    <string name="perm_status_card">Grant status</string>
+    <string name="perm_storage_label">Storage read/write (shared storage /sdcard)</string>
+    <string name="perm_storage_detail">Agents need this to read and write files on your phone (/sdcard). Without it, every file access in the terminal fails (required).</string>
+    <string name="perm_manage_label">All files access (optional · preferred)</string>
+    <string name="perm_manage_detail">With this on, agents can reach a wider range of storage. Basic /sdcard read/write works without it; this device doesn\'t offer the switch for Zhengdao, so leaving it off is normal and costs you nothing.</string>
+    <string name="perm_notify_label">Notifications</string>
+    <string name="perm_notify_detail">Silent notes like \"cleaned up after install\" use notifications. Without the permission the system discards them, but no feature is affected.</string>
+    <string name="perm_net_label">Network access</string>
+    <string name="perm_net_value">Granted automatically</string>
+    <string name="perm_net_detail">INTERNET is an install-time permission and needs no action. If you use a proxy: enable Zhengdao in the proxy app\'s per-app proxy list.</string>
+    <string name="perm_hint_storage_denied">The system didn\'t allow it — open \"Settings → Apps → Zhengdao → Permissions\" and grant it manually (some systems silently dismiss the dialog)</string>
+    <string name="perm_hint_notify_denied">Notifications weren\'t allowed — nothing breaks, you just won\'t get silent notes like \"cleaned up after install\"</string>
+    <string name="perm_open_failed">Couldn\'t open: %1$s</string>
+    <string name="perm_done">Done, enter Zhengdao</string>
+    <string name="perm_later">Later</string>
+    <string name="perm_storage_required_note">\"Storage read/write\" is required, but you can go in for now.</string>
 </resources>

@@ -36,6 +36,9 @@
     <string name="common_default">默认</string>
     <string name="common_later">稍后</string>
     <string name="common_not_installed">未安装</string>
+    <string name="common_approx_mb">约 %1$d MB</string>
+    <string name="common_size_unknown">大小未知</string>
+    <string name="common_mb">%1$d MB</string>
 
     <!-- ── 底部导航 ── -->
     <string name="nav_taiji">太极</string>
@@ -550,4 +553,81 @@
     <string name="copy_tool_output">结果：</string>
     <string name="copy_truncated">\n…（已截断，原文 %1$d 字）</string>
     <string name="copy_state_unknown">未知</string>
+
+    <!-- ── 首次启动欢迎页（WelcomeScreen）── -->
+    <string name="welcome_tagline">在手机上运行你自己的 AI Agent</string>
+    <string name="welcome_step1">在「设置」填好模型密钥（用哪个填哪个）</string>
+    <string name="welcome_step2">进「太极」直接对话——不必等运行环境装完</string>
+    <string name="welcome_step3">要用命令行或装其他 Agent，再回来装运行环境</string>
+    <string name="welcome_enter">进 入</string>
+    <string name="welcome_install_env">安装运行环境</string>
+    <string name="welcome_skip">先去太极看看（不装环境）</string>
+    <string name="welcome_ready">运行环境就绪</string>
+    <string name="welcome_env_note">运行环境用于「终端」和其他 Agent，太极不需要</string>
+
+    <!-- ── 保活记录页（KeepaliveLogActivity）── -->
+    <string name="keepalive_log_title">保活记录</string>
+    <string name="keepalive_log_location_card">留档位置与说明</string>
+    <string name="keepalive_log_location">位置：%1$s</string>
+    <string name="keepalive_log_hint">进程被杀时系统会自己记下原因（内存不足 / 资源占用超限 / 厂商后台清理 / 崩溃 / 无响应），下次启动时收进这里；心跳每 10 分钟一条，最后一条就是出事后留下的现场（内存水位、前台服务在不在、用户当时在哪一页）。导出后可交给作者分析。</string>
+    <string name="keepalive_log_recent_card">最近的记录</string>
+    <string name="keepalive_log_empty">还没有退出记录——被杀过一次并重开之后就会有。</string>
+    <string name="keepalive_log_last_exits">最近退出：</string>
+    <string name="keepalive_log_last_beats">最近心跳：</string>
+    <string name="keepalive_log_snippets">logcat 片段：%1$d 份（每次启动与巡检各留一份，最多 5 份）</string>
+    <string name="keepalive_log_exported">已导出到 %1$s</string>
+    <string name="keepalive_log_export_failed">导出失败：公共区不可用（先在权限里开启「所有文件访问」）</string>
+    <string name="keepalive_log_export">导出到 Download/证道/logs</string>
+    <string name="keepalive_log_cleared">已清空 %1$d 份留档</string>
+    <string name="keepalive_log_clear">清空记录</string>
+
+    <!-- ── 插件页（PluginsScreen）── -->
+    <string name="plugins_card_enabled">已启用</string>
+    <string name="plugins_state_enabled">已启用</string>
+    <string name="plugins_empty_enabled">还没有启用任何插件。可到下面「推荐」里一键添加。</string>
+    <string name="plugins_empty_no_env">太极的 OpenCode 尚未初始化——先到「太极」启动一次，插件配置会自动生成。</string>
+    <string name="plugins_card_recommended">推荐插件</string>
+    <string name="plugins_legacy">⚠️ 已废弃插件（曾装上但不工作），建议停用</string>
+    <string name="plugins_cached_ver">已缓存 v%1$s</string>
+    <string name="plugins_not_downloaded">尚未下载（首次启动 Agent 时联网安装）</string>
+    <string name="plugins_enabled_toast">已启用：%1$s（下次启动 Agent 时生效）</string>
+    <string name="plugins_disabled_toast">已停用：%1$s</string>
+    <string name="plugins_oc_not_ready">太极的 OpenCode 尚未初始化，先到「太极」启动一次</string>
+    <string name="plugins_no_change">状态无变化</string>
+    <string name="plugins_card_add">添加插件（npm 包名）</string>
+    <string name="plugins_add_hint">"例如 @scope/opencode-plugin-xxx"</string>
+    <string name="plugins_bad_spec">"这不像一个 npm 包名：应形如 my-plugin 或 @scope/my-plugin，且不含空格"</string>
+    <string name="plugins_not_written">未写入配置：%1$s（可能已在插件列表中）</string>
+    <string name="plugins_not_added">未添加：%1$s —— 太极的 OpenCode 尚未初始化，先到「太极」启动一次</string>
+    <string name="plugins_add_enable">添加并启用</string>
+    <string name="plugins_add_note">包名从插件的 npm / GitHub 页面复制。添加后由 opencode 内置的 Bun 在下次启动 Agent 时从 npm 下载（首次需要联网）。插件会执行第三方代码——只添加你信任的包。</string>
+    <string name="plugins_cache_card">插件包缓存（共 %1$d MB）</string>
+    <string name="plugins_cache_empty">暂无缓存。插件首次启动时由 opencode 内置的 Bun 从 npm 下载到此，之后离线可用。</string>
+    <string name="plugins_cache_clean">清理插件包缓存</string>
+    <string name="plugins_cache_clean_note">清理不会停用插件——下次启动 Agent 时会重新联网下载。</string>
+    <string name="plugins_card_about">关于插件</string>
+    <string name="plugins_about_note">插件从 npm 下载，会执行第三方代码——只启用你信任的。\n\n这里的「插件」指在配置里写了包名、启动时自动下载的那种；本地 .js 文件不归这里管。\n\n本页只管「太极」里的 OpenCode；终端里自己装的 opencode 不在这里管。</string>
+    <string name="plugins_clean_confirm_title">清理插件包缓存？</string>
+    <string name="plugins_clean_confirm_msg">将删除已下载的插件包（约 %1$d MB）。插件本身保持启用，下次启动会重新下载。</string>
+    <string name="plugins_cleaned_toast">已清理，回收约 %1$d MB</string>
+
+    <!-- ── 首启权限页（PermissionSetupScreen）── -->
+    <string name="perm_title">权限</string>
+    <string name="perm_intro">证道要读写你的文件、在清理完成时给你提示，需要下面几项权限。可以逐项点开授权；也可以稍后再设（设置 → 权限里随时能改）。</string>
+    <string name="perm_status_card">授权状态</string>
+    <string name="perm_storage_label">存储读写（共享存储 /sdcard）</string>
+    <string name="perm_storage_detail">Agent 读写手机文件（/sdcard）依赖此项；缺失时终端里读写手机文件会全部失败（必需项）。</string>
+    <string name="perm_manage_label">所有文件访问（可选 · 主路径）</string>
+    <string name="perm_manage_detail">开启后 Agent 可访问更广的存储范围。基础 /sdcard 读写不开也能用；本机系统对证道不提供这个开关，未开启属正常，不影响使用。</string>
+    <string name="perm_notify_label">通知</string>
+    <string name="perm_notify_detail">「装完清理」等静默提示走通知；未授权时系统会直接丢掉通知，但不影响任何功能。</string>
+    <string name="perm_net_label">网络访问</string>
+    <string name="perm_net_value">自动授予</string>
+    <string name="perm_net_detail">INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道。</string>
+    <string name="perm_hint_storage_denied">系统未放行——到「设置 → 应用 → 证道 → 权限」手动开启（部分系统会把弹窗静默掉）</string>
+    <string name="perm_hint_notify_denied">通知未放行——不影响使用，只是收不到「装完清理」这类静默提示</string>
+    <string name="perm_open_failed">打开失败：%1$s</string>
+    <string name="perm_done">完成，进入证道</string>
+    <string name="perm_later">稍后再说</string>
+    <string name="perm_storage_required_note">「存储读写」是必需项，现在也可以先进去。</string>
 </resources>
