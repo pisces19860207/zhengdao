@@ -68,9 +68,12 @@ fun SettingsScreen(
 ) {
     val ctx = LocalContext.current
     var storageTick by remember { mutableStateOf(0) }
-    var rootfsMb by remember { mutableStateOf(-1L) }
-    var homeMb by remember { mutableStateOf(-1L) }
-    var cacheMb by remember { mutableStateOf(-1L) }
+    // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖——
+    // 不再先显示「统计中…」再让三个数字一起蹦出来。
+    val lastStorage = remember { LastValues.loadStorageMb(ctx) }
+    var rootfsMb by remember { mutableStateOf(lastStorage?.first ?: -1L) }
+    var homeMb by remember { mutableStateOf(lastStorage?.second ?: -1L) }
+    var cacheMb by remember { mutableStateOf(lastStorage?.third ?: -1L) }
 
     // 局部函数没有提升：必须先声明再用（否则 remember { } 里的调用会推不出类型）。
     fun storageGrantedNow(): Boolean =
@@ -111,6 +114,7 @@ fun SettingsScreen(
         rootfsMb = sizes.first
         homeMb = sizes.second
         cacheMb = sizes.third
+        LastValues.saveStorageMb(ctx, sizes.first, sizes.second, sizes.third)
         kbFiles = withContext(Dispatchers.IO) {
             runCatching { com.example.zhengdao.terminal.KnowledgeBase.status(ctx).files }.getOrNull()
         }

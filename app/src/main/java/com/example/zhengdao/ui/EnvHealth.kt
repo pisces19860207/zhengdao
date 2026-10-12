@@ -12,6 +12,10 @@ import com.example.zhengdao.terminal.EnvSelfHeal
 import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.ResMonitor
 import com.example.zhengdao.terminal.StorageAudit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -159,6 +163,22 @@ object EnvHealth {
      * 转成「体检异常 + 原因」，其余项照跑——体检面板不再可能因为某一项而整表崩掉。
      */
     fun inspect(ctx: Context): List<Check> = evaluate(ITEMS) { it.body(ctx) }
+
+    /**
+     * 流式体检（2026-10-12 走查报告 §5.4 无感化）：11 项**并行**跑，谁先算完谁先发射。
+     *
+     * 墙钟耗时 = 最慢一项，不再是各项之和（旧 [inspect] 是串行 map）；调用方逐项上屏，
+     * 快项（文件 stat，毫秒级）先出，慢项（磁盘遍历/资源采样）后到——信息是「流」出来的，
+     * 不是等齐了「蹦」出来的。单项异常同样被 [fallbackOf] 接住，不影响其他项。
+     */
+    fun inspectStream(ctx: Context): Flow<Check> = channelFlow {
+        ITEMS.forEach { item ->
+            launch(Dispatchers.IO) {
+                val c = runCatching { item.body(ctx) }.getOrElse { fallbackOf(item, it) }
+                send(c)
+            }
+        }
+    }
 
     /**
      * [inspect] 的求值壳：逐项 `runCatching`，炸了的那一项换成 [fallbackOf]，其余照跑。
@@ -358,13 +378,14 @@ object EnvHealth {
     }
 
     /**
-     * 真实连通性探测：TCP 连一下国内公共 DNS 的 53 端口，超时 1.2 秒。
-     * 体检要求"秒级完成"，所以只连一个目标、超时给短；连得上即说明出网路径通。
+     * 真实连通性探测：TCP 连一下国内公共 DNS 的 53 端口，超时 0.6 秒（2026-10-12 由 1.2s 降，
+     * 走查报告 §5.4 第 5 条：它只该占「慢车道」，不挡快项上屏）。
+     * 连得上即说明出网路径通。
      * IO 线程调用（inspect 整体在 Dispatchers.IO）。
      */
     private fun tcpReachable(): Boolean = runCatching {
         java.net.Socket().use { s ->
-            s.connect(java.net.InetSocketAddress("223.5.5.5", 53), 1200)
+            s.connect(java.net.InetSocketAddress("223.5.5.5", 53), 600)
             true
         }
     }.getOrDefault(false)
