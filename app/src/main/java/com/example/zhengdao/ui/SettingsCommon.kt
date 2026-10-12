@@ -44,8 +44,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
+import com.example.zhengdao.R
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
@@ -138,7 +141,7 @@ internal fun SettingsTopBar(title: String, onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BackChevron(tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(4.dp))
-                Text("返回", color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.common_back), color = MaterialTheme.colorScheme.primary)
             }
         }
         Text(
@@ -207,6 +210,55 @@ internal fun SettingsDivider() {
 }
 
 /**
+ * 「了解详情」折叠说明（2026-10-12 走查报告 §5.6）。
+ *
+ * 要解决的现象：每张卡都是「标题 + 一大段解释 + 按钮」，十几张卡读下来眼睛全被解释性
+ * 文字占满。药方是**按需展开**：默认只显示第一句，长说明折起来，点「了解详情」再看。
+ * 信息不丢——只是从「默认全摊」改成「要的时候才展开」。
+ *
+ * 取材策略（[shortThreshold] = 40 字）：短于此的说明直接全显、不给折叠入口（折叠本身
+ * 也是干扰）；更长的取**第一句**（按 `。` / `！` / `？` / 换行切），切不出合适句子时
+ * 退化为按字数截断 + 省略号。
+ */
+@Composable
+internal fun ExpandableHint(
+    text: String,
+    style: TextStyle = MaterialTheme.typography.bodySmall,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    shortThreshold: Int = 40,
+) {
+    if (text.length <= shortThreshold) {
+        Text(text = text, style = style, color = color)
+        return
+    }
+    var expanded by remember { mutableStateOf(false) }
+    Text(
+        text = if (expanded) text else firstSentenceOf(text, shortThreshold),
+        style = style,
+        color = color,
+    )
+    Text(
+        text = if (expanded) stringResource(R.string.common_collapse)
+        else stringResource(R.string.common_learn_more),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .padding(top = 2.dp)
+            .pressClickable { expanded = !expanded },
+    )
+}
+
+/** 取第一句；切点太靠前（<4 字）或太靠后（等于全文）时按字数截断。 */
+private fun firstSentenceOf(text: String, threshold: Int): String {
+    val end = text.indexOfFirst { it == '。' || it == '！' || it == '？' || it == '\n' }
+    return if (end in 4 until text.length - 1) {
+        text.substring(0, end + 1)
+    } else {
+        text.take(threshold).trimEnd() + "…"
+    }
+}
+
+/**
  * 运行日志弹窗：**文本即开关**（null = 不弹）。
  *
  * 逐字搬自设置页原实现（含「复制全部」与 takeLast(6000)）——
@@ -218,17 +270,17 @@ internal fun SettingsLogDialog(log: String?, onDismiss: () -> Unit) {
     log?.takeIf { it.isNotBlank() }?.let { text ->
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("运行日志") },
+            title = { Text(stringResource(R.string.help_log_title)) },
             text = { Text(text.takeLast(6000), style = MaterialTheme.typography.bodySmall) },
             confirmButton = {
                 TextButton(onClick = {
                     val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     cm.setPrimaryClip(ClipData.newPlainText("zhengdao-log", text))
-                    Toast.makeText(ctx, "已复制全部日志", Toast.LENGTH_SHORT).show()
-                }) { Text("复制全部") }
+                    Toast.makeText(ctx, ctx.getString(R.string.help_log_copied), Toast.LENGTH_SHORT).show()
+                }) { Text(stringResource(R.string.common_copy_all)) }
             },
             dismissButton = {
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
             },
         )
     }
@@ -248,7 +300,7 @@ internal fun openLogDialog(scope: CoroutineScope, ctx: Context, onLog: (String) 
         if (text.isNullOrBlank()) {
             Toast.makeText(
                 ctx,
-                "这次的日志还没写出来。日志目录：${RunLog.dirPath(ctx)}（用文件管理器打开）",
+                ctx.getString(R.string.help_log_missing, RunLog.dirPath(ctx)),
                 Toast.LENGTH_LONG,
             ).show()
         } else {
@@ -310,21 +362,24 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择工作区文件夹", style = MaterialTheme.typography.titleMedium) },
+        title = { Text(stringResource(R.string.ws_picker_title), style = MaterialTheme.typography.titleMedium) },
         text = {
             Column {
                 Text(
-                    text = current.removePrefix(sharedRoot).ifBlank { "/（内部存储根目录）" },
+                    text = current.removePrefix(sharedRoot)
+                        .ifBlank { stringResource(R.string.ws_picker_root) },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
                 if (current != sharedRoot) {
-                    TextButton(onClick = { current = File(current).parent ?: sharedRoot }) { Text("← 上一级") }
+                    TextButton(onClick = { current = File(current).parent ?: sharedRoot }) {
+                        Text(stringResource(R.string.ws_picker_up))
+                    }
                 }
                 Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
                     if (entries.isEmpty()) {
-                        Text("（无子文件夹）", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.ws_picker_empty), style = MaterialTheme.typography.bodySmall)
                     }
                     entries.forEach { name ->
                         Row(
@@ -342,17 +397,17 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Agent 产出会写入所选文件夹（手机文件管理器可见）",
+                    text = stringResource(R.string.ws_picker_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
         confirmButton = {
-            Button(onClick = { onPick(current) }) { Text("选定此文件夹") }
+            Button(onClick = { onPick(current) }) { Text(stringResource(R.string.ws_picker_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -364,7 +419,7 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
  */
 @Composable
 internal fun KnowledgeBaseHelpDialog(ctx: android.content.Context, onDismiss: () -> Unit) {
-    var body by remember { mutableStateOf("读取中…") }
+    var body by remember { mutableStateOf(ctx.getString(R.string.common_loading)) }
     LaunchedEffect(Unit) {
         body = withContext(Dispatchers.IO) {
             runCatching {
@@ -373,15 +428,17 @@ internal fun KnowledgeBaseHelpDialog(ctx: android.content.Context, onDismiss: ()
                     com.example.zhengdao.terminal.KnowledgeBase.F_README,
                 )
                 if (f.isFile) f.readText(Charsets.UTF_8)
-                else "说明文件还没生成 —— 打开一次终端后，它就会出现在资料库文件夹里。\n\n" +
-                    "位置：" + com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
-            }.getOrDefault("读取失败，请到资料库文件夹里直接打开「说明.md」。")
+                else ctx.getString(
+                    R.string.kb_help_missing,
+                    com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath,
+                )
+            }.getOrDefault(ctx.getString(R.string.kb_help_failed))
         }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } },
-        title = { Text("资料库说明") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_got_it)) } },
+        title = { Text(stringResource(R.string.kb_help_title)) },
         text = {
             Text(
                 text = body,
