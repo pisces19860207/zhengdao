@@ -60,7 +60,6 @@ import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.PermissionSetup
 import com.example.zhengdao.ui.PermissionSetupScreen
-import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.SettingsScreen
 import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.WelcomeScreen
@@ -486,38 +485,7 @@ fun ZhengdaoApp(
                 }
                 SettingsScreen(
                     onOpenTerminal = openTerminal,
-                    onOpenPlugins = { nav.navigate("plugins") { launchSingleTop = true } },
                 )
-            }
-        }
-        composable("plugins") {
-            // 三级页：顶栏与设置页同款（返回 + 居中标题），内容由 PluginsScreen 负责
-            Column(Modifier.statusBarsPadding().navigationBarsPadding()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    TextButton(
-                        onClick = { nav.popBackStack() },
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 4.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            BackChevron(tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(4.dp))
-                            Text("返回", color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Text(
-                        text = "插件",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                PluginsScreen()
             }
         }
     }
