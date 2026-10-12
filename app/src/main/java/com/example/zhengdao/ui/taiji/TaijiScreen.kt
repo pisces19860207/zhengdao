@@ -109,7 +109,7 @@ fun TaijiScreen(
     //   切 Tab 用的是 `when (tab)`（切走的页面直接退出 Composition）⇒ "切去丹房再切回来"
     //   会把 repository 与它的轮询/SSE 任务一起拆掉重建。现在连接挂在进程上，切 Tab、
     //   转屏、退到后台都不再重连；只有「关闭太极并退出」或进程被杀才结束（见 OcRuntime）。
-    val repo = remember { OcRuntime.repository() }
+    val repo = remember { OcRuntime.repository(ctx.resources) }
     // 用项目已有的 collectAsState，避免为collectAsStateWithLifecycle 引入 lifecycle-runtime-compose
     val state by repo.state.collectAsState()
 

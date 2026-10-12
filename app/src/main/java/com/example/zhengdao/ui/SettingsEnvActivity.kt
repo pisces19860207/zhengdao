@@ -191,7 +191,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
         }
         LaunchedEffect(storageTick) {
             hermesEnv = withContext(Dispatchers.IO) {
-                com.example.zhengdao.terminal.HermesEnv.inspect(ctx)
+                com.example.zhengdao.terminal.HermesEnv.inspect(ctx, ctx.resources)
             }
         }
         SectionCard(stringResource(R.string.env_hermes_card)) {

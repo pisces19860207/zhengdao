@@ -366,7 +366,7 @@ object EnvHealth {
      * 要重建 Python 环境、或要 `git checkout` 补回源码锁 ⇒ 脚本落盘后进终端跑（[Check.terminalCmd]）。
      */
     private fun hermesDepsCheck(ctx: Context, @Suppress("UNUSED_PARAMETER") res: Resources?): Check {
-        val st = HermesEnv.inspect(ctx)
+        val st = HermesEnv.inspect(ctx, res)
         return Check(
             id = "hermes-deps",
             label = "Hermes 依赖环境",
@@ -543,8 +543,8 @@ object EnvHealth {
      * 「红 = 修得了」的不变量。采样与判定都在 [ResMonitor]。
      */
     private fun resourceCheck(@Suppress("UNUSED_PARAMETER") res: Resources?): Check {
-        val v = runCatching { ResMonitor.sampleWithLog() }
-            .getOrElse { ResMonitor.verdict(null) }
+        val v = runCatching { ResMonitor.sampleWithLog(res = res) }
+            .getOrElse { ResMonitor.verdict(null, res) }
         return Check(
             id = "resource", label = "资源占用",
             ok = v.ok, detail = v.detail, warn = v.warn,
