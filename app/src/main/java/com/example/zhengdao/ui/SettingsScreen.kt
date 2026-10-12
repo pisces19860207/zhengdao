@@ -41,6 +41,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.ChevronRight
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.terminal.Workspace
@@ -289,11 +290,7 @@ internal fun SettingRow(
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(6.dp))
-        Text(
-            text = "›",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        ChevronRight(tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
