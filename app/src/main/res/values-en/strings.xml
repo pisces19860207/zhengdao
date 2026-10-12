@@ -632,4 +632,102 @@
     <string name="perm_done">Done, enter Zhengdao</string>
     <string name="perm_later">Later</string>
     <string name="perm_storage_required_note">\"Storage read/write\" is required, but you can go in for now.</string>
+
+    <!-- ── Environment health check (EnvHealth: labels and verdicts) ── -->
+    <string name="health_abnormal">Check failed: %1$s</string>
+    <string name="health_label_proot">proot ready</string>
+    <string name="health_label_rootfs">RootFS integrity</string>
+    <string name="health_label_dns">DNS settings</string>
+    <string name="health_label_timezone">Timezone</string>
+    <string name="health_label_uv">uv settings</string>
+    <string name="health_label_hermes">Hermes dependencies</string>
+    <string name="health_label_network">Network</string>
+    <string name="health_label_storage">Storage permission</string>
+    <string name="health_label_disk">Storage usage</string>
+    <string name="health_label_native">Native acceleration</string>
+    <string name="health_label_resource">Resource usage</string>
+    <string name="health_proot_ok">proot + loader in place</string>
+    <string name="health_proot_missing">proot or loader missing (it\'s replayed automatically on each launch; if still missing, use \"Repair environment\" to re-extract)</string>
+    <string name="health_rootfs_ok">Debian system layer intact</string>
+    <string name="health_rootfs_broken">System layer files missing — use \"Repair environment\" to re-extract (about 30 seconds)</string>
+    <string name="health_rootfs_missing">Runtime not installed or installation incomplete</string>
+    <string name="health_dns_ok">CN mirrors + retry options configured</string>
+    <string name="health_dns_stale">Missing CN mirrors or retry options (old-style config) — one tap to rewrite</string>
+    <string name="health_dns_missing">resolv.conf doesn\'t exist — one tap to create</string>
+    <string name="health_tz_off">localtime doesn\'t point to Asia/Shanghai (the TZ env var covers it for now) — one tap to fix</string>
+    <string name="health_uv_naked">hermes\' bundled uv isn\'t wrapped (hard links would fail) — one tap to wrap</string>
+    <string name="health_uv_missing">/etc/uv/uv.toml is missing — one tap to create</string>
+    <string name="health_uv_nolinkmode">uv.toml lacks link-mode — one tap to rewrite</string>
+    <string name="health_uv_ok">System-level link-mode=copy and bundled uv wrapped</string>
+    <string name="health_net_validated">Network available (verified by the system)</string>
+    <string name="health_net_reachable">Network available (verified by a live probe)</string>
+    <string name="health_net_no_wan">Connected, but the wider internet is unreachable (proxy or restricted network?)</string>
+    <string name="health_net_down">Network unavailable — agent installs and updates will fail</string>
+    <string name="health_storage_ok">All-files access granted; shared storage directly readable</string>
+    <string name="health_storage_read_fail">All-files access granted, but shared storage can\'t be read (permission gating or restricted storage view — needs a second look)</string>
+    <string name="health_storage_denied">All-files access not granted; the workspace\'s main path is unavailable — enable it in system settings</string>
+    <string name="health_disk_cleanable">%1$d MB cleanable (agent package cache / old installers / old dependency generations / optional tools)</string>
+    <string name="health_disk_below">%1$d MB cleanable, below the %2$d MB threshold</string>
+    <string name="health_native_ok">libzhengdao_core.so loaded: extraction and SHA256 run natively</string>
+    <string name="health_native_fallback">Not loaded: extraction and SHA256 fall back to Java (works, but slower); likely a packaging or page-alignment issue, see E-012/E-022</string>
+
+    <!-- ── Network self-check (NetSelfCheck: plain-language verdicts of the two probes) ── -->
+    <string name="net_ok_both">✅ Network available (%1$d ms) · ✅ update source reachable (%2$d ms)</string>
+    <string name="net_ok_index_down">✅ Network available (%1$d ms) · ⚠️ update source unreachable: downloading the runtime and \"Check for environment updates\" will both fail. If you\'re behind a proxy, enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="net_cn_down_index_ok">⚠️ CN mirror unreachable (%1$s), but the update source is reachable (%2$d ms)</string>
+    <string name="net_all_down">❌ Unreachable: %1$s — check the network, or enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="net_timeout">timed out</string>
+    <string name="net_timeout_secs">timed out after %1$ds</string>
+    <string name="net_index_unreachable">index unreachable</string>
+
+    <!-- ── Exception plain-language mapping (HumanizeError) ── -->
+    <string name="err_no_permission">Permission denied</string>
+    <string name="err_file_not_found">File not found</string>
+    <string name="err_file_exists">A file with the same name already exists at the destination</string>
+    <string name="err_host_not_found">Server not found (check the network)</string>
+    <string name="err_net_timeout">Network timed out (try again)</string>
+    <string name="err_ssl_fail">Secure connection failed (check the network)</string>
+    <string name="err_connect_fail">Couldn\'t reach the server (check the network)</string>
+    <string name="err_net_interrupted">Connection lost (try again)</string>
+    <string name="err_generic">Something went wrong (%1$s)</string>
+    <string name="err_unknown_type">unknown type</string>
+    <string name="err_disk_full">Not enough storage space</string>
+    <string name="err_no_write">No write permission</string>
+    <string name="err_file_too_large">File too large</string>
+    <string name="err_io">File read/write failed</string>
+
+    <!-- ── System info (SystemInfoProvider: line labels and value strings) ── -->
+    <string name="sys_section_hw">── System &amp; hardware ──</string>
+    <string name="sys_android">Android version: %1$s (API %2$s)</string>
+    <string name="sys_model">Device model: %1$s</string>
+    <string name="sys_manufacturer">Manufacturer: %1$s</string>
+    <string name="sys_abi">CPU architecture: %1$s</string>
+    <string name="sys_cores">Cores: %1$s</string>
+    <string name="sys_ram">Memory: %1$s free / %2$s total</string>
+    <string name="sys_storage">Storage (app partition): %1$s free / %2$s total</string>
+    <string name="sys_screen">Screen: %1$s</string>
+    <string name="sys_kernel">Kernel: %1$s</string>
+    <string name="sys_section_security">── Security &amp; runtime ──</string>
+    <string name="sys_selinux">SELinux: %1$s</string>
+    <string name="sys_root">Root: %1$s</string>
+    <string name="sys_gms_line">GMS: %1$s</string>
+    <string name="sys_webview">WebView: %1$s</string>
+    <string name="sys_section_zd">── Zhengdao environment ──</string>
+    <string name="sys_rootfs_line">RootFS: %1$s</string>
+    <string name="sys_distro">Distribution: %1$s</string>
+    <string name="sys_proot_line">proot: %1$s</string>
+    <string name="sys_agents">Installed agents: %1$s</string>
+    <string name="sys_python_line">Python: %1$s</string>
+    <string name="sys_node_line">Node: %1$s</string>
+    <string name="sys_uv_line">uv: %1$s</string>
+    <string name="sys_unknown">Unknown</string>
+    <string name="sys_rooted">Rooted</string>
+    <string name="sys_not_rooted">Not rooted</string>
+    <string name="sys_gms_yes">GMS present (certified device)</string>
+    <string name="sys_gms_no">No GMS</string>
+    <string name="sys_installed">Installed</string>
+    <string name="sys_not_installed">Not installed</string>
+    <string name="sys_proot_ready">Ready (Termux fork)</string>
+    <string name="sys_none">None</string>
+    <string name="sys_uv_embedded">%1$s (bundled with hermes)</string>
 </resources>

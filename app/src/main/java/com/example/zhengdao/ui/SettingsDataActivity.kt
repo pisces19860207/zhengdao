@@ -162,7 +162,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文已落日志
                 Toast.makeText(
                     ctx,
-                    ctx.getString(R.string.data_open_failed, HumanizeError.title(e2)),
+                    ctx.getString(R.string.data_open_failed, HumanizeError.title(e2, ctx.resources)),
                     Toast.LENGTH_SHORT,
                 ).show()
             }
@@ -513,7 +513,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     // 2026-10-08：异常原文 → 人话（[HumanizeError]）
                     Toast.makeText(
                         ctx,
-                        ctx.getString(R.string.data_open_failed, HumanizeError.title(it)),
+                        ctx.getString(R.string.data_open_failed, HumanizeError.title(it, ctx.resources)),
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -583,8 +583,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     // 用户拿着"✅ 网络可用"却下不动环境包。见 NetSelfCheck 的类注释与 ERRATA E-034。
                     Thread {
                         val cn = NetSelfCheck.probeCn()
-                        val update = NetSelfCheck.probeIndex()
-                        netMsg = NetSelfCheck.summary(cn, update)
+                        val update = NetSelfCheck.probeIndex(res = ctx.resources)
+                        netMsg = NetSelfCheck.summary(cn, update, ctx.resources)
                         netChecking = false
                     }.start()
                     }

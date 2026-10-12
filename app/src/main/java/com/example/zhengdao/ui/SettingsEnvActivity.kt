@@ -614,14 +614,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             } catch (t: Throwable) {
                                 InstallFlow.fail(
                                     ctx,
-                                    ctx.getString(R.string.env_repair_failed, HumanizeError.title(t)),
+                                    ctx.getString(R.string.env_repair_failed, HumanizeError.title(t, ctx.resources)),
                                 )
                                 // 2026-10-08：Toast → Snackbar（带"查看日志"action），同"回退失败"分支
                                 scope.launch {
                                     val r = snackbarHostState.showSnackbar(
                                         message = ctx.getString(
                                             R.string.env_repair_failed,
-                                            HumanizeError.title(t),
+                                            HumanizeError.title(t, ctx.resources),
                                         ),
                                         actionLabel = ctx.getString(R.string.common_view_log),
                                         duration = SnackbarDuration.Indefinite,

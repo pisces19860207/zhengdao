@@ -3,6 +3,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import android.content.res.Resources
+import com.example.zhengdao.R
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import java.net.HttpURLConnection
 import java.net.URL
@@ -40,20 +42,29 @@ object NetSelfCheck {
 
     /**
      * 按两个探针的成败给出人话结论。四种组合都有确定文案，**不让绿灯掩盖"下不动"**。
+     *
+     * [res] 传 `ctx.resources` 即随界面语言；传 null（JVM 单测）回退中文。
      */
-    fun summary(cn: Probe, update: Probe): String = when {
-        cn.ok && update.ok ->
-            "✅ 网络可用（${cn.ms}ms）· ✅ 更新源可达（${update.ms}ms）"
+    fun summary(cn: Probe, update: Probe, res: Resources? = null): String {
+        val timeoutText = res?.getString(R.string.net_timeout) ?: "超时"
+        return when {
+            cn.ok && update.ok ->
+                res?.getString(R.string.net_ok_both, cn.ms, update.ms)
+                    ?: "✅ 网络可用（${cn.ms}ms）· ✅ 更新源可达（${update.ms}ms）"
 
-        cn.ok ->
-            "✅ 网络可用（${cn.ms}ms）· ⚠️ 更新源不可达：下载环境包与「检查环境更新」都会失败。" +
-                "若在代理下，请到代理 App 的「分应用代理」里勾选证道"
+            cn.ok ->
+                res?.getString(R.string.net_ok_index_down, cn.ms)
+                    ?: "✅ 网络可用（${cn.ms}ms）· ⚠️ 更新源不可达：下载环境包与「检查环境更新」都会失败。" +
+                    "若在代理下，请到代理 App 的「分应用代理」里勾选证道"
 
-        update.ok ->
-            "⚠️ 国内镜像不通（${cn.err ?: "超时"}），但更新源可达（${update.ms}ms）"
+            update.ok ->
+                res?.getString(R.string.net_cn_down_index_ok, cn.err ?: timeoutText, update.ms)
+                    ?: "⚠️ 国内镜像不通（${cn.err ?: timeoutText}），但更新源可达（${update.ms}ms）"
 
-        else ->
-            "❌ 不通：${cn.err ?: "超时"}——检查网络，或在代理 App 的分应用代理里勾选证道"
+            else ->
+                res?.getString(R.string.net_all_down, cn.err ?: timeoutText)
+                    ?: "❌ 不通：${cn.err ?: timeoutText}——检查网络，或在代理 App 的分应用代理里勾选证道"
+        }
     }
 
     /** 探国内基线：只关心「有没有网」，5 秒超时不拖慢自检。 */
@@ -77,7 +88,7 @@ object NetSelfCheck {
      * 于是自检问的就是「检查环境更新」问的那个问题，不会各说各话。
      * 超出 [timeoutMs] 按不可达处理（底下的请求是 daemon 线程，不会拦住进程退出）。
      */
-    fun probeIndex(timeoutMs: Long = INDEX_TIMEOUT_MS): Probe {
+    fun probeIndex(timeoutMs: Long = INDEX_TIMEOUT_MS, res: Resources? = null): Probe {
         val t0 = System.currentTimeMillis()
         val task = FutureTask(Callable { RootfsIndexFetcher.fetch() })
         val th = Thread(task, "net-self-check-index").apply { isDaemon = true }
@@ -85,6 +96,14 @@ object NetSelfCheck {
         val idx = runCatching { task.get(timeoutMs, TimeUnit.MILLISECONDS) }.getOrNull()
         val ms = System.currentTimeMillis() - t0
         return if (idx != null) Probe(true, ms)
-        else Probe(false, ms, if (ms >= timeoutMs) "超时 ${timeoutMs / 1000}s" else "索引不可达")
+        else Probe(
+            false, ms,
+            if (ms >= timeoutMs) {
+                res?.getString(R.string.net_timeout_secs, timeoutMs / 1000)
+                    ?: "超时 ${timeoutMs / 1000}s"
+            } else {
+                res?.getString(R.string.net_index_unreachable) ?: "索引不可达"
+            },
+        )
     }
 }

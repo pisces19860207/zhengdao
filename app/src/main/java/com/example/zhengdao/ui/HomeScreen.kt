@@ -208,7 +208,7 @@ fun HomeScreen(
     LaunchedEffect(statusExpanded, healthEpoch) {
         if (statusExpanded) {
             runCatching {
-                EnvHealth.inspectStream(context).collect { c ->
+                EnvHealth.inspectStream(context, context.resources).collect { c ->
                     val cur = healthChecks
                     healthChecks = if (cur.isNullOrEmpty()) listOf(c)
                     else cur.filter { it.id != c.id } + c
@@ -226,7 +226,7 @@ fun HomeScreen(
     var sysTick by remember { mutableStateOf(0) }
     LaunchedEffect(sysTick) {
         sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            SystemInfoProvider.collect(context)
+            SystemInfoProvider.collect(context, context.resources)
         }
         sysInfoProcessCache = sysInfo
     }
@@ -492,7 +492,7 @@ fun HomeScreen(
                                                             // 修复动作"跑过了"不等于"修好了"（例如
                                                             // link-mode 写成功但 uv 仍裸奔），所以
                                                             // 复检一次再决定要不要在「最近问题」里留一条。
-                                                            val again = EnvHealth.inspect(context)
+                                                            val again = EnvHealth.inspect(context, context.resources)
                                                                 .firstOrNull { it.id == c.id }
                                                             android.os.Handler(context.mainLooper).post {
                                                                 healthEpoch++
@@ -607,7 +607,7 @@ fun HomeScreen(
                                         .padding(10.dp),
                                 ) {
                                     Text(
-                                        text = info.asText(),
+                                        text = info.asText(context.resources),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -617,7 +617,7 @@ fun HomeScreen(
                                     val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                         as android.content.ClipboardManager
                                     cm.setPrimaryClip(
-                                        android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText())
+                                        android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText(context.resources))
                                     )
                                     snack(context.getString(R.string.home_sysinfo_copied))
                                 }) { Text(stringResource(R.string.home_copy_sysinfo)) }

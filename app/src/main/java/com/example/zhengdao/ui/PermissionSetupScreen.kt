@@ -239,7 +239,7 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                     .setData(Uri.parse("package:${ctx.packageName}"))
             )
         }.onFailure {
-            Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it)), Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it, ctx.resources)), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -256,7 +256,7 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
             runCatching {
                 ctx.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             }.onFailure {
-                Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it)), Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it, ctx.resources)), Toast.LENGTH_SHORT).show()
             }
         }
     }
