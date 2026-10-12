@@ -44,9 +44,10 @@ object ResMonitor {
         val procs: Int,
     )
 
-    /** 告警阈值。取值依据：真机基线（2026-10-07）太极 serve 空闲 RSS 375–468 MB、
-     *  CPU 5.6–7.4%；阈值须明显高于基线，否则一开太极就告警 = 狼来了。 */
-    const val RSS_WARN_MB = 800
+    /** 体检卡口径的内存告警阈值；取值依据与"为什么与通知栏那个阈值不同"见 [RssThresholds]。
+     *  真机基线（2026-10-07）太极 serve 空闲 RSS 375–468 MB、CPU 5.6–7.4%；
+     *  阈值须明显高于基线，否则一开太极就告警 = 狼来了。 */
+    const val RSS_WARN_MB = RssThresholds.HEALTH_CARD_MB
     const val CPU_WARN_PCT = 25f
 
     /** 体检结论：ok=false 表示故障，warn=true 表示超阈值但无一键修复。 */

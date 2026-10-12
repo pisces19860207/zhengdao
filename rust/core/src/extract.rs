@@ -216,6 +216,15 @@ pub fn extract_pipeline_skip(
                     .to_string_lossy()
                     .trim_start_matches("./")
                     .to_string();
+                // §B 顺序 20（2026-10-12）：**源路径也要在树内**（与 Kotlin 版
+                // `PathGuard.linkStaysInside` 对拍）。落盘走的是 `fs::copy`（不是真硬链），
+                // 所以「相对路径 `../..` 逃出解压根」「形如 `/../../etc/passwd` 的绝对路径」
+                // 这类 linkName 的后果是：把树外文件的内容复制进环境目录。
+                // 绝对路径按 guest 根解释 ⇒ `/etc/passwd` 本身合法，只有带 `..` 逃出才拒。
+                // 越界则跳过该成员 —— 与「源还没解出来」同一条退路。
+                if !link_stays_inside(target_dir, &target, Path::new(&link_target)) {
+                    continue;
+                }
                 let src = target_dir.join(&link_target);
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(ExtractError::Io)?;
@@ -246,6 +255,10 @@ pub fn extract_pipeline_skip(
     for (link_path, src_name) in &pending_hardlinks {
         let src = target_dir.join(src_name);
         let dst = target_dir.join(link_path);
+        // §B 顺序 20：登记时已验过一遍，这里再验一遍防「登记 → 使用」之间的漂移
+        if !link_stays_inside(target_dir, &dst, Path::new(src_name)) {
+            continue;
+        }
         if src.is_file() {
             fs::copy(&src, &dst).map_err(ExtractError::Io)?;
         }

@@ -47,8 +47,12 @@ class SessionService : Service() {
         private const val NOTIF_ID = 42
         const val ACTION_TOGGLE_KEEPALIVE = "zhengdao.toggle_keepalive"
         const val ACTION_STOP_SESSION = "zhengdao.stop_session"
-        /** RSS 警告阈值（MB）：超过则在通知栏明示（骨架 §6 软监控，不主动杀） */
-        private const val RSS_WARN_MB = 3072L
+        /**
+         * 通知栏口径的 RSS 警告阈值（MB）：超过则在通知里明示（骨架 §6 软监控，不主动杀）。
+         * 只量**会话 shell 这一个进程**，而它下面挂着 agent（node/python/tmux），正常就能上 GB
+         * ⇒ 比体检卡那个阈值高得多。两处阈值**故意不同**，集中登记在 [RssThresholds]。
+         */
+        private const val NOTIFY_RSS_WARN_MB = RssThresholds.NOTIFY_MB
 
         /**
          * 前台服务是否在跑（#5 留档，2026-10-09）。
@@ -240,7 +244,7 @@ class SessionService : Service() {
         lastRssMb = rss
         val runtime = elapsedText()
         val memText = if (rss > 0) "$rss MB" else "统计中"
-        val warn = if (rss > RSS_WARN_MB) " · ⚠️ 内存偏高，建议回到终端清理" else ""
+        val warn = if (rss > NOTIFY_RSS_WARN_MB) " · ⚠️ 内存偏高，建议回到终端清理" else ""
         // 「保活已关」必须显性：锁没在手上时 CPU 可以睡、长任务可能被拖慢/中断，
         // 用户只有看到这一句才知道自己点掉过保活（此前这个状态在通知里完全不可见）。
         val keepText = if (keepAlive) "" else " · 保活已关"

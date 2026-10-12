@@ -361,6 +361,11 @@ object RootfsInstaller {
             for (hl in pendingHardLinks) {
                 val src = File(destDir, hl.linkName.removePrefix("./"))
                 val dst = File(destDir, hl.name.removePrefix("./"))
+                // §B 顺序 20：登记时已验过一遍，这里再验一遍防「登记 → 使用」之间的路径漂移
+                if (!PathGuard.linkStaysInside(destDir, dst, hl.linkName)) {
+                    Log.w(TAG, "硬链接源越界（二阶段），跳过: ${hl.name} -> ${hl.linkName}")
+                    continue
+                }
                 if (src.isFile) {
                     dst.delete() // 先断开可能存在的硬链接，别写穿到旧树
                     src.copyTo(dst, overwrite = true)
@@ -486,14 +491,24 @@ object RootfsInstaller {
                 }
             }
             entry.isLink -> {
-                // 硬链接 → 复制内容落地；源文件若尚未解出（前向引用），登记到二阶段
-                val src = File(tmpDir, entry.linkName.removePrefix("./"))
-                target.parentFile?.mkdirs()
-                if (src.isFile) {
-                    target.delete() // 先断链接再写，避免写穿到旧 rootfs 的同一 inode
-                    src.copyTo(target, overwrite = true)
+                // 硬链接 → 复制内容落地；源文件若尚未解出（前向引用），登记到二阶段。
+                // §B 顺序 20（2026-10-12）：**源路径也要在树内**。落盘走的是 copyTo（不是真硬链），
+                // 所以「相对路径 `../..` 逃出解压根」「形如 `/../../etc/passwd` 的绝对路径」这类
+                // linkName 的后果是：把树外文件的内容**复制进**环境目录。
+                // 判定用与 symlink 同一个 [PathGuard.linkStaysInside]（绝对路径按 guest 根解释，
+                // 所以 `/etc/passwd` 本身是合法的树内路径，只有带 `..` 逃出才拒）。
+                // 越界则跳过该成员 —— 与「源还没解出来」同一条退路（不建文件，环境仍可用）。
+                if (!PathGuard.linkStaysInside(tmpDir, target, entry.linkName)) {
+                    Log.w(TAG, "硬链接源越界，跳过: $name -> ${entry.linkName}")
                 } else {
-                    pendingHardLinks.add(entry)
+                    val src = File(tmpDir, entry.linkName.removePrefix("./"))
+                    target.parentFile?.mkdirs()
+                    if (src.isFile) {
+                        target.delete() // 先断链接再写，避免写穿到旧 rootfs 的同一 inode
+                        src.copyTo(target, overwrite = true)
+                    } else {
+                        pendingHardLinks.add(entry)
+                    }
                 }
             }
             entry.isFIFO || entry.linkFlag == TarConstants.LF_CHR || entry.linkFlag == TarConstants.LF_BLK -> {

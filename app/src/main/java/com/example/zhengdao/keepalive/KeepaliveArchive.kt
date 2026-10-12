@@ -335,12 +335,6 @@ object KeepaliveArchive {
             ?.sortedByDescending { it.lastModified() } ?: emptyList()
     }.getOrDefault(emptyList())
 
-    /** 崩溃留档（新 → 旧）。 */
-    fun crashes(ctx: Context): List<File> = runCatching {
-        dir(ctx).listFiles { f -> f.isFile && f.name.startsWith("crash-") }
-            ?.sortedByDescending { it.lastModified() } ?: emptyList()
-    }.getOrDefault(emptyList())
-
     /** 导出到公共区（`Download/证道/logs/keepalive`），返回目标目录；失败返回 null。 */
     fun export(ctx: Context): File? = runCatching {
         val src = dir(ctx)
