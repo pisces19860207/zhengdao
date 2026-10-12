@@ -263,7 +263,12 @@ object RootfsCache {
         try {
             val cacheDir = dir(ctx).canonicalFile
             val target = f.canonicalFile
-            val inside = target.path.startsWith(cacheDir.path + File.separator)
+            // 2026-10-12（审计 C8）：改用 [PathGuard.isInside] 做**路径组件级**比较。
+            // 原写法 `target.path.startsWith(cacheDir.path + File.separator)` 虽然带了分隔符、
+            // 在本例里凑巧等价，但项目已把「字符串前缀判越界」定为禁止写法（见 PathGuard 类注释
+            // 与 E-085）——同前缀兄弟目录（`…/rootfs-cache-evil/`）就是它放过去的口子。
+            // 判据统一到一处，别让下一个抄这段的人以为前缀比较是可以用的。
+            val inside = PathGuard.isInside(cacheDir, target)
             if (!inside || !target.name.startsWith(DELTA_PREFIX)) {
                 RunLog.log("拒绝清理非补丁缓存文件：${f.path}")
                 return

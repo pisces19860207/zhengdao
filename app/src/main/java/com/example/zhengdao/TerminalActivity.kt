@@ -840,6 +840,12 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
     override fun shouldEnforceCharBasedInput(): Boolean = true  // 中文 IME 组合输入需要
+    // 刻意返回 false（2026-10-12 补注释，审计 §2.5 的"确认后删接口"确认结论）：
+    //   上游注释原话是「某些 ROM 上 ctrl+space 没这个 workaround 不行，但在本来就能用的设备上
+    //   它会把 ctrl+space 弄坏」——本项目真机不需要它，所以关掉。
+    //   为什么不能"删接口"：它是 vendored Termux 的契约方法
+    //   （`app/src/main/java/com/termux/view/TerminalViewClient.java:35`，被 `TerminalImeBridge.java:226` 调用），
+    //   删掉就得改上游文件、并在 PROVENANCE 里记一笔 —— 收益为零，故保留。
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
     override fun isTerminalViewSelected(): Boolean = true
     override fun copyModeChanged(copyMode: Boolean) {}

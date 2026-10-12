@@ -1,19 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+  证道 · 数据提取规则（API 31+；API ≤ 30 走 backup_rules.xml）。
+  两个入口都在 AndroidManifest.xml：android:dataExtractionRules / android:fullBackupContent。
+
+  云备份（cloud-backup）：排除整套"可重新下载/重建 + 体积不可控"的目录 —— 否则
+  Google Drive 的 25 MB 配额必然撑不住，而且会把用户的工作内容上传到云端。
+  设备迁移（device-transfer）：只排除**纯系统层**（新机重装即可拿回），
+  用户数据（home / oc / workspace）留给本地迁移通道 —— 那是同一台手机到另一台手机的
+  近距离传输，不经云。
+
+  改动前先看 docs/ERRATA.md E-121 与 docs/FEATURE-LEDGER.md §B 顺序 1（issue #19）。
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- 系统层：可重新下载 / 重建 -->
+        <exclude domain="file" path="rootfs" />
+        <exclude domain="file" path="termux-proot" />
+        <exclude domain="file" path="proot-tmp" />
+        <!-- 用户数据与运行时：体积不可控 -->
+        <exclude domain="file" path="home" />
+        <exclude domain="file" path="oc" />
+        <!-- 「仅私有模式」的工作区（App 外部私有目录） -->
+        <exclude domain="external" path="workspace" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- 只挡系统层：rootfs 与 proot 二进制在新机上重装一份更干净 -->
+        <exclude domain="file" path="rootfs" />
+        <exclude domain="file" path="termux-proot" />
+        <exclude domain="file" path="proot-tmp" />
     </device-transfer>
-    -->
 </data-extraction-rules>

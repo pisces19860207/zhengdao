@@ -6336,3 +6336,38 @@ E-116 修完后我拿正式签名包上真机（PGT-AN10 / MagicOS / Android 16 
 
 **附带记一条量具坑**：静止满屏的 fps 不可信 —— 只有 600 ms 一次的光标闪烁帧在驱动重绘（3 秒静止 ≈ 6 帧），
 拿它当"渲染能力"会得出完全错误的结论（同族见 E-087 的 clip 口径、E-088 的百分位口径）。
+## E-120 · 2026-10-12 · 外部诊断复核②：proot/服务性能报告引用全实、但三项实测里两项口径不成立；I/O 只差 1.2×，execve 的税在「建进程」不在 syscall
+
+另一会话交了《证道 · proot 环境与服务性能优化》（347 行，基线 `bd108ef`）＋ `zzsvc.sh`。我逐条核了引用，并把它要求的三项实测自己跑了一遍。
+
+1. **引用全部属实**（逐处读过）：`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt:408-410`（勿设 `PROOT_NO_SECCOMP`；2026-10-04 实测关掉后 guest 静默退 255）、`:401`（PATH 首项 `/root/.local/bin`）、`:447`（`-b /proc` 直通）、`:454-455`（`/sdcard` 与 `/storage/emulated/0` 双绑）、`:497-507`（FUSE 上建软链 EACCES、`flock` ENOSYS ⇒ uv 缓存必须留私有盘）；`app/src/main/java/com/example/zhengdao/terminal/SessionService.kt:120-126`（30 s 心跳里续 WakeLock）、`app/src/main/java/com/example/zhengdao/keepalive/KeepaliveWatcher.kt:189`（10 分钟巡更）、`app/src/main/java/com/example/zhengdao/oc/OcManager.kt:293-301`（`startServe` 先判活）、`app/src/main/java/com/example/zhengdao/rootfs/RunLog.kt:80-86`（日志落公开 `Download/证道/logs`，不可用才退化 cacheDir）。`rootfs/build-rootfs.sh` 里确实没有预装 sshd/cron/systemd（只有一句 DNS 锁定注释提到 systemd-resolved）。
+2. **它的三项实测里，两项口径不成立、一项已得出结论**：
+   - ① 宿主 proot 冷启动计时（`run-as`）**跑不了**：`adb shell run-as com.example.zhengdao id` ⇒ `run-as: package not debuggable: com.example.zhengdao` —— 正式签名包不给 run-as，而 guest 里也没有 proot 二进制（`proot in guest: (无)`）。这条要另出 debuggable 包，或在 guest 里放一份 proot 做对照。
+   - ② 宿主 execve 基线**不可比且命令脆弱**：`date +%s%N` 本身可用（宿主输出 19 位纳秒），但同一命令第一次算出 **−728 ms**（垃圾值）；宿主 mksh 3000× `/system/bin/true` = **75 s（≈25 ms/次）**，与 guest 的 bash+glibc 不是同一层。
+   - ③ **I/O 差几倍：只差 1.2×**。dd 200 MiB、`conv=fsync`：私有 f2fs `/root/tmp` = **792 MB/s**（0.265 s），共享 FUSE `/opt/zhengdao` = **652 MB/s**（0.322 s）。按报告自己的判据（差距小 ⇒ FUSE 页缓存兜得住）⇒ **npm/pip 缓存不必搬回私有盘**，这条可以结案。
+   - 附：`am memory-limiter` 与 `am memory-limiter status` 都回 **`Unknown command: memory-limiter`** ⇒ 「Android 16 没有 Memory Limiter」成立，且比报告写的更硬（该子命令在这台机器上根本不存在）。
+3. **我补的同层对照（guest 内同一个 bash，脚本 `/sdcard/Download/zzbench2.sh`）**：纯内建循环 3000 次 = **23/26/27 ms（7–9 µs/次）**；`/bin/true` 300 次 = **2457/3370/3022 ms（8.2–11.2 ms/次）**；`/bin/echo x >/dev/null` 300 次 = **18.4–21.8 ms/次**；`time (300× /bin/true)` = real **2.785 s**（user 0.533 ＋ sys 1.133 ⇒ 另有约 1.1 s 花在等调度上，不计入子进程 CPU）。
+   **读法**：循环本身几乎免费（µs 级），钱全花在 **fork+exec（≈9–10 ms/次）**；这个数比宿主原生 mksh+bionic 的 25 ms/次**还快** ⇒ 「ptrace 让 I/O 掉 44%」至今是本机未证实的外部假设，而报告②原本要量的正是它。
+   **一个实操坑**：脚本必须用 `bash` 跑 —— 用 `sh`（Debian 的 dash）会在 `time ( … )` 那行报 `Syntax error: word unexpected (expecting ")")`，脚本前半段照跑、后半段静默缺失。
+4. **教训**：
+   - 跨环境基准先对齐「同一层」（同 shell、同 libc、同启动方式），否则算出来的倍数指向错误方向；`/system/bin/true` 的 bionic 启动开销本身就远大于 Debian 的 `/bin/true`。
+   - 带真机实测要求的报告**先写清前提**（正式签名包不给 `run-as`、guest 里没有 proot），否则执行人卡在第一步。
+   - 能直接采信的只有「不做什么」：**别动 seccomp、别搬 npm/pip 缓存、`/sdcard` 双绑冗余**；「要做什么」（`zzsvc` 收编进 App、WakeLock 跟任务而不是跟会话、去掉一条双绑）属新增项，另立项排队。
+
+## E-121 · 2026-10-12 · 这一轮「扫 bug 与死代码」六件事：安装锁没盖住会话启动、备份规则是 AGP 模板（rootfs/home 会被传上云）、`stopServe()` 会顺手杀掉用户自己在终端装的 opencode、重 I/O 函数没有「必须在后台」的硬约束、字符串前缀判越界在别处还留着
+
+用户这一轮的原话是「看看有没有BUG、死代码什么的修修」（发版不急）。做完六件事，每条都留了测试或注释。
+
+1. **B3：安装锁只保护「安装/替换」，没盖住「开会话时写 rootfs」**（审计 B3 属实）。`RootfsInstaller.withInstallLock` 之外，`ProotLauncher.buildLaunchPlan` 每次开会话都要写 `/etc/profile.d/*`、`zzclean`、`home/.*` 等，安装进行中开终端 ⇒ 两边并发改同一棵树。修法：同一把 `ReentrantLock` 加**第二个入口** `RootfsInstaller.withPrepareLock(what){}`，`buildLaunchPlan` 整体包进去；安装中开会话立即抛「正在安装/更新环境，本次…未执行」而不是排队等 —— 排队会让用户面对一个没反馈的转圈。单测 `SessionPrepareLockTest`（5 条，真线程 + CountDownLatch）。
+2. **#1：`backup_rules.xml` / `data_extraction_rules.xml` 是 AGP 模板，零 `<exclude>`**（issue #19 属实）。后果：Auto Backup 会把整棵 Debian rootfs、guest home、太极 oc 运行时往 Google Drive 塞，而配额只有 25MB —— 要么一直失败、要么把用户的工作内容传上云。修法：两份文件逐条排除 `rootfs` / `termux-proot` / `proot-tmp` / `home` / `oc` / 外部私有 `workspace`；device-transfer 只挡前三者（近场迁移不经云，用户数据该跟着走）。门禁 `BackupRulesGuardTest`（4 条）。
+3. **A1：`stopServe()` 的匹配串太宽**（审计 A1 属实）。原判据 `cmdline.contains("usr/bin/opencode")` —— proot 里的 guest 进程在宿主 `/proc` 里是真进程，用户自己在 Debian 里装的 opencode（`…/files/rootfs/usr/bin/opencode`）同样命中 ⇒ 「关一下太极 serve，终端里的 agent 莫名其妙死掉」。修法：只匹配本 App 那一份 `…/files/oc/usr/bin/opencode`。
+4. **B4：重 I/O 函数没有「必须在后台」的硬约束**（审计 B4 属实）。新增 `terminal/BackgroundOnly.kt`：主线程调用时 `check(...)` 抛异常并点名调用处；两个 Looper 可注入（JVM 单测里 `Looper.getMainLooper()` 为 null ⇒ 一律放行）。已挂到 `ResMonitor.measure` 与 `AgentProcesses.scan`。**为什么抛而不是自动切后台**：自动切会让调用方以为它是异步的，实际仍在原地等结果 —— 那是更坏的谎。
+5. **C8：字符串前缀判越界在别处还留着**。`RootfsCache.cleanupDelta` 用的是 `target.path.startsWith(cacheDir.path + File.separator)`（本例凑巧等价，但正是 `PathGuard` 类注释禁止的写法）⇒ 统一改成 `PathGuard.isInside`。
+6. **死代码：审计的「✅ 能删」要分四类**（接 E-118①）。本轮删掉三个零引用类型（`oc/OcDto.kt` 的 `OcHealth`/`OcApiError`、`oc/TaijiState.kt` 的 `TaijiPhase.Ready`，全仓连测试都不构造），但**保住**了 `ui/` 的四个（前端类归 workbuddy）与 `shouldUseCtrlSpaceWorkaround`（它是 vendored Termux 的契约方法，删它要改上游文件、收益为零 —— 结论写成注释钉在原地）。
+7. **把「临时值」转正**：`OcClient.sseClient` 的 `readTimeout(60)` 原本写着「诊断期临时值；常规应改回 0」，而那次排查早已定案（SSE 空流是服务端缺陷，上游 #38458）。现在它是 `OcClient.SSE_READ_TIMEOUT_SEC = 60L`，并写清**为什么不是 0**：本 App 把 SSE 当信号通道，连接静默挂死会让退避重连永远不触发，必须留一个高于心跳（15s）的上限。
+
+**教训** ——
+- **「测试通过」不等于「这件事有人管」**：B3 / B4 / #1 三条都不是编译错误、也不会让任何一条既有单测变红，它们全是「没有约束」的洞。补洞的方式不是改逻辑，而是**把约束写进 锁 / 门禁 / 异常 / 类型，并配一条会红的测试**。
+- **判据要统一到一处**（C8）：同一件事（越界判定）在两个文件里各写一遍，早晚会漂成两种语义。
+- **删之前先问「谁还记得它为什么在这儿」**：`shouldUseCtrlSpaceWorkaround` 是「名存实亡」，但它存在的理由写在 vendored 接口里 —— 删它＝改上游，收益为零。**有理由的保留是决定，要留注释；没理由的保留才是垃圾。**
+- **文档里的「临时期」要收口**：那条 `readTimeout(60)` 注释挂了 5 天，期间任何人看到都会以为是待办。定案后必须把措讞改成「决定 + 依据」，否则下一个人会按旧注释改回去。

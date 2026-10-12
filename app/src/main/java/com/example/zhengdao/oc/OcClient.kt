@@ -55,16 +55,24 @@ class OcClient(
 
     /**
      * SSE 专用。
-     * ⚠️ 诊断实验（次要验证）：常规应为 readTimeout=0（无限等待，教科书写法）。
-     *   现临时设为 60s（> 服务端 15s 心跳），只为排除"读超时配置异常"这一变量。
-     *   注意：本 symptom 是"连上即断、读到 0 行"，属立即断开，读超时本不应触发——
-     *   此改动大概率只是排除法的一步，真正根因更可能在请求头/路径/服务端侧。
+     *
+     * **读超时为什么是有限值（而不是教科书的 0）**：本 App 把 SSE 当**信号通道**用
+     * （服务端 `/api/event` 每次 flush 后 0.1–1.4 秒就主动 FIN，见 ERRATA 那条
+     * 「服务端缺陷」条目与上游 Issue #38458），真正的数据源是 REST 轮询。
+     * 这条连接若静默挂死，`SseClient` 的退避重连就永远等不到流结束、永远不触发 ——
+     * 所以留一个**高于服务端心跳（15s）**的上限：4 倍心跳 = 60s，作为活性兜底。
+     *
+     * 历史：这个 60s 原本是 2026-10-07 那次 SSE 空流排查留下的「诊断期临时值」，
+     * 结论是**服务端缺陷、与本客户端超时无关**（该排查的排除项清单见 ERRATA）。
+     * 2026-10-12 把它从"临时值"转正为 [SSE_READ_TIMEOUT_SEC] 并写清依据，
+     * 免得下一个人照着旧注释又改回 0。
+     *
      * callTimeout 未设置（默认 0 = 不限时长），对 SSE 正确，绝不改。
      * 鉴权同样在此注入（不是复用 [client]，避免流式响应占用普通连接池条目过久）。
      */
     val sseClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)   // 诊断期临时值；常规应改回 0
+        .readTimeout(SSE_READ_TIMEOUT_SEC, TimeUnit.SECONDS)
         .retryOnConnectionFailure(false)   // 重连由 SseClient 的退避策略负责
         .addInterceptor(AuthInterceptor(passwordProvider))
         .build()
@@ -90,6 +98,14 @@ class OcClient(
         const val CONNECT_TIMEOUT_SEC = 10L
         const val NORMAL_TIMEOUT_SEC = 30L
 
+        /**
+         * SSE 读超时（活性兜底，不是"等数据"）。
+         *
+         * 取值 = 服务端心跳 15s 的 4 倍。别改成 0：见 [sseClient] 的注释 ——
+         * 挂死的信号连接会让退避重连永远不触发。
+         */
+        const val SSE_READ_TIMEOUT_SEC = 60L
+
         /** 太极 Tab 固定绑定的工作区。不做目录选择器（会话/文件/权限三类接口全带此参数）。 */
         const val WORKSPACE_DIR = "/workspace"
     }
@@ -103,9 +119,17 @@ class OcClient(
  *
  * - `Authorization: Basic base64(opencode:<password>)` —— 密码由 [OcManager] 从
  *   serve.log 解析（见 OcManager.servePassword）。
- * - `x-opencode-directory` —— ⚠️ 该头**真实 spec 里并不存在**，是骨架的幻想产物
- *   （真实目录参数走 query：`directory` / `location[directory]`）。当前**仅对 REST 请求保留**；
- *   **SSE 请求已去掉它**（诊断实验：疑似该头让 `/api/event` 立刻返空流，见 [intercept] 注释）。
+ * - `x-opencode-directory` —— ⚠️ 该头**真实 spec 里并不存在**（真实目录参数走 query：
+ *   `directory` / `location[directory]`，本项目实际只用了
+ *   `GET /api/model?location[directory]=`，见 `oc/OcRepository.kt` 里的 `location[directory]`）。
+ *
+ *   所以它是一条**兼容垫片**，不是机制：留着是因为「删掉会不会改变目录上下文」没在真机上验证过，
+ *   而它已知无害（2026-10-07 那次 SSE 空流排查把它列进排除项；空流的真因是服务端缺陷，
+ *   上游 Issue #38458）。**新增的接口请直接用 query 参数，不要再抄这个头。**
+ *
+ *   历史（2026-10-12 改写措辞）：原文写"🔬 诊断实验：SSE 请求不注入"——那次实验早已定案
+ *   （服务端缺陷），继续用"实验"的口气会让人以为这里还有变量没排完。
+ *   行为**未改**：SSE 仍然不带这个头（改它等于改流式路径的请求形状，要有真机验证才动）。
  *
  * 密码解析失败时**不抛异常、不加 header**（返回原请求）：让服务端返回 401，
  * 由 UI 明确报"鉴权未就绪"，好过本地崩溃。
@@ -118,11 +142,8 @@ private class AuthInterceptor(
         val request = chain.request()
         val builder = request.newBuilder()
 
-        // 🔬 诊断实验（用户首选，最高优先级）：SSE 请求**不注入** x-opencode-directory。
-        //    依据：该头是骨架幻想产物（spec 无此 header），是 App 与 PC curl 的实质差异之一，
-        //    疑似让 /api/event 立即返回空流 → 表现为"连上即断、读到 0 行、每秒一轮"。
-        //    为隔离变量，**只对 SSE 去掉**，REST 请求保持不变（避免连带破坏目录上下文）。
-        //    判据：若 SSE 因此稳定、REST 又未受影响 → 该头即 SSE 空流的真凶。
+        // 兼容垫片（见类注释）：只给 REST 带上。SSE 刻意不带 —— 不是"实验"，
+        // 而是流式路径的请求形状保持现状，改动要有真机验证才做。
         val isSse = request.header("Accept")?.contains("text/event-stream") == true
         if (!isSse) {
             builder.header("x-opencode-directory", OcClient.WORKSPACE_DIR)
