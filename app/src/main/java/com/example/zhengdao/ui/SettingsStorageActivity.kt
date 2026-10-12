@@ -266,7 +266,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(
                                     "不会删除：python / node / uv / npm / ripgrep 这些核心运行时、" +
-                                        "依赖环境、记忆、hermes 本体、rootfs 系统层、任何用户数据。"
+                                        "依赖环境、记忆、hermes 本体、系统文件、任何用户数据。"
                                 )
                             }
                         },
@@ -312,8 +312,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         text = {
                             Column {
                                 Text(
-                                    "会删掉公共区 agents/scripts 里缓存的安装脚本、宿主侧记的指纹、" +
-                                        "以及 guest 里的私有执行副本。"
+                                    "会删掉公共区 agents/scripts 里缓存的安装脚本、App 自己记的校验值、" +
+                                        "以及终端里的执行副本。"
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
@@ -381,10 +381,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "一档（极低风险）：npm / uv / apt 包缓存，清理命令在终端里执行、输出可见。" +
-                    "二档（低风险）：临时目录里带固定命名指纹、且 24 小时内没动过的残留文件，" +
-                    "不需要终端会话，且 App 启动时若超过 500MB 会自动清一次。" +
-                    "OpenCode/Hermes 工具链、rootfs 系统层、用户数据永不清。",
+                text = "包缓存（风险极低）：npm / uv / apt 下载的缓存，在终端里清，你能看到过程。" +
+                    "临时文件（风险低）：临时目录里超过一天没动过的残留；不用开终端，App 启动时超过 500MB 也会自动清一次。" +
+                    "工具链、系统文件、你的数据，永远不动。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -422,9 +421,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                     title = { Text("清理临时文件？") },
                     text = {
                         Text(
-                            "将删除临时目录里约 $tempMb MB 的残留文件（固定命名指纹、且 24 " +
-                                "小时内没动过）。\n\n不会删除 tmux 会话、编译缓存、锁文件，" +
-                                "也不碰任何用户数据。"
+                            "将删除临时目录里约 $tempMb MB 的残留文件（超过一天没动过的）。\n\n" +
+                                "不会删终端会话、编译缓存、锁文件，也不碰你的数据。"
                         )
                     },
                     confirmButton = {
@@ -489,7 +487,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             }
                             Text(
                                 "不会删除：装好的 Agent 本体与工具链（hermes/tools、Python/Node）、" +
-                                    "依赖环境与记忆、配置文件、rootfs 系统层，以及你自己的文件。" +
+                                    "依赖环境与记忆、配置文件、系统文件，以及你自己的文件。" +
                                     "下次需要时这些缓存会自己重新下载。"
                             )
                         }
@@ -527,25 +525,25 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             if (genMb > 0) {
                 var genConfirm by remember { mutableStateOf(false) }
                 TextButton(enabled = !cleaning, onClick = { genConfirm = true }) {
-                    Text(if (cleaning) "清理中…" else "清理 Agent 旧依赖代（$genMb MB）")
+                    Text(if (cleaning) "清理中…" else "清理旧版依赖文件（$genMb MB）")
                 }
                 if (genConfirm) {
                     AlertDialog(
                         onDismissRequest = { genConfirm = false },
-                        title = { Text("清理旧依赖代？") },
+                        title = { Text("清理旧版依赖文件？") },
                         text = {
                             Column {
                                 Text("可释放约 $genMb MB。")
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "每次重建依赖环境都会留下一整代（venv + 依赖锁），" +
-                                        "而记录（facts.json）只指向其中一代；这里删的是**没人指**的那些。" +
-                                        "当前用的那一代与最新一代都会留着。"
+                                    "每次重装依赖环境都会留下一份旧的（几百 MB），" +
+                                        "而记录只认得最新那份——这里删的就是没人再用的那些。" +
+                                        "正在用的和最新的都会留着。"
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "不会删除：当前的依赖环境、记忆、装好的工具链、rootfs 系统层。" +
-                                        "如果哪天需要回退到旧代，hermes 会重新装（要联网）。"
+                                    "不会删：正在用的依赖环境、记忆、装好的工具链、系统文件。" +
+                                        "需要回到旧版时 hermes 会重装（要联网）。"
                                 )
                             }
                         },
@@ -557,8 +555,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     work = { HermesEnv.pruneGenerations(HermesEnv.hermesHome(ctx)) },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            "已删除 $count 代，释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                        else "没有可清理的旧依赖代"
+                                            "已删除 $count 份，释放 ${CacheCleaner.bytesToMb(freed)} MB"
+                                        else "没有可清理的旧依赖文件"
                                     },
                                 )
                             }) { Text(if (cleaning) "清理中…" else "清理") }
@@ -611,7 +609,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             if (rollbacks.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "可回退的历史版本（安装包保留最近 2 个）",
+                    "能回到的旧版本（只留最近 2 个安装包）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -631,7 +629,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                 AlertDialog(
                     onDismissRequest = { rollbackConfirm = null },
                     title = { Text("回退环境版本") },
-                    text = { Text("将用 ${target.name} 重装系统层（约几分钟）。登录态与工作区都会保留。") },
+                    text = { Text("会用 ${target.name} 重装系统文件（约几分钟）。登录状态和工作区都会保留。") },
                     confirmButton = {
                         TextButton(
                             enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
@@ -641,11 +639,11 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）
                                 InstallFlow.start(
                                     ctx,
-                                    "回退环境：用本地安装包 ${target.name} 重装系统层（不联网下载）",
+                                    "回退环境：用本地安装包 ${target.name} 重装（不联网）",
                                     fromLocal = true,
                                 )
                                 try {
-                                    InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请留在本页或看通知栏）…")
+                                    InstallFlow.update(ctx, "正在解压（没有详细进度，请留在本页或看通知栏）…")
                                     RootfsInstaller.ensureFreeSpace(ctx, target.length())
                                     // 回退到"与当前环境同源的那个包"（例如刚回退过又点了一次同一个版本）时
                                     // 保留环境指纹；换成别的版本必然对不上 ⇒ null，照装不写 env。
@@ -657,7 +655,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     )
                                     com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, target, rollEnv, rollSha) { }
                                     com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
-                                    InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（未联网下载）")
+                                    InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（没联网）")
                                     android.os.Handler(ctx.mainLooper).post { storageTick++ }
                                 } catch (t: Throwable) {
                                     InstallFlow.fail(ctx, "回退失败：${HumanizeError.title(t)}")

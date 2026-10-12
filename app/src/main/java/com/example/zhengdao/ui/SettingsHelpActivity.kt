@@ -134,7 +134,7 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
         // ── 新手指南（第三批）──
         SectionCard("新手指南") {
             GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
-            GuideLine("2", "进各 Agent 内完成各自的登录 / 授权（凭据由 Agent 自己保管），会话内直接可用。")
+            GuideLine("2", "在每个 Agent 里完成它自己的登录（密码由它自己保管），之后直接就能用。")
             // 2026-10-08：「洞天」→「终端」，与底栏 Tab 文案一致（见 MainActivity.kt:470）
             GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在终端里另外装的 opencode 是另一份，两者互不干扰。")
             Spacer(Modifier.height(8.dp))
@@ -145,9 +145,9 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
-            FaqLine("环境打不开 / 下载失败？", "用上方「修复环境」重新解压系统层，登录态会保留。")
-            FaqLine("Agent 想更新？", "在终端里重跑一遍安装命令即可；系统层更新用「检查环境更新」。")
-            FaqLine("我的文件在哪？", "见下方「工作区」：Agent 产出都在工作区文件夹（默认手机 Download/证道），guest 内是 /workspace。")
+            FaqLine("环境打不开 / 下载失败？", "用上面的「修复环境」重新解压，登录状态会保留。")
+            FaqLine("Agent 想更新？", "在终端里重跑一遍安装命令；更新系统用「检查环境更新」。")
+            FaqLine("我的文件在哪？", "产物都在工作区文件夹里（默认是手机的 Download/证道）。")
         }
         SectionCard("运行日志") {
             // 用户 2026-10-08：日志要和下载物一样"看得见、找得到"——不再藏在私有 cache 里。
@@ -158,9 +158,9 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "zhengdao-log.txt = 本轮运行；zhengdao-log.<时间>.txt = 历次运行的存档" +
-                    "（留最近 20 份 / 最多 20 MB，从最旧的开始轮转；不会因为「这轮没出错」就删）；" +
-                    "errors.log = 历次错误汇总（只记错误行）。用文件管理器可直接打开，也可以直接丢给我们查问题。",
+                "zhengdao-log.txt 是本次运行；带时间的存档最多留 20 份 / 20 MB，从最旧的开始删" +
+                    "（不会因为「这轮没出错」就删）；errors.log 只记错误行。" +
+                    "可以用文件管理器直接打开，也可以丢给我们查问题。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

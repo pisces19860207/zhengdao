@@ -139,7 +139,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
     var permHint by remember { mutableStateOf<String?>(null) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         storageOk = storageGrantedNow()
-        permHint = if (storageOk) "已授权" else "系统未放行——点「去系统设置」手动开启（部分系统会把弹窗静默掉）"
+        permHint = if (storageOk) "已授权" else "系统没放行——点「去系统设置」手动开（有些系统会悄悄拦掉弹窗）"
     }
 
     var netChecking by remember { mutableStateOf(false) }
@@ -278,7 +278,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "把你的资料放进这个文件夹，终端里的 AI 就会自动找到它。各种格式都行。",
+                text = "把资料放进这个文件夹，终端里的 AI 就会自动找到它。什么格式都行。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -324,9 +324,9 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                         title = { Text("复制过来？") },
                         text = {
                             Text(
-                                "把 $otherPath 里的文件**复制**进当前资料库的 " +
+                                "把 $otherPath 里的文件复制进当前资料库的 " +
                                     "${com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW}/ 目录。" +
-                                    "原件一份不动；同名的文件不覆盖（当前这份优先）。"
+                                    "原件不动；同名的文件不覆盖（以当前这份为准）。"
                             )
                         },
                         confirmButton = {
@@ -447,7 +447,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             var spacingId by remember { mutableStateOf(TerminalPrefs.spacing(ctx).id) }
 
             Text(
-                text = "下次进入终端时生效。字号 / 画布留白 / 配色按定稿默认；只有行距可选。",
+                text = "下次进终端时生效。字号、画布留白、配色用默认值，只有行距能改。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -471,7 +471,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 }
             }
             Text(
-                text = "舒适＝行高 1.15 倍、终端上下各留 4dp；紧凑＝与旧版一致。只影响行盒高度，不影响列宽（中英 2:1）。",
+                text = "舒适：行距更松、上下留白更多。紧凑：与旧版一致。只影响行高，不影响列宽。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
@@ -515,7 +515,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 },
             )
             Text(
-                text = "Agent 读写手机文件（/sdcard）依赖此权限；缺失时终端里读写手机文件会全部失败。点击本行可到系统设置查看或调整。",
+                text = "终端里的 AI 要读写手机文件（/sdcard）就靠这个权限，缺了会全部失败。点这一行去系统设置里改。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -538,7 +538,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 onClick = openAppDetails,
             )
             Text(
-                text = "INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道；点击本行可到系统设置查看联网管控。",
+                text = "联网权限装 App 时自动给了，不用管。如果用代理，记得在代理 App 的「分应用代理」里勾上证道。点这一行看系统里的联网管控。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -581,7 +581,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 onClick = { launchManage() },
             )
             Text(
-                text = "推荐开启：Agent 可访问更广的存储范围（主路径）。基础 /sdcard 读写不开启此项亦可用；不开启或系统无此开关都不影响基本使用。",
+                text = "建议开启。开了它，终端里的 AI 能访问更广的存储范围；不开也能用，只是范围小一些。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -596,7 +596,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             val wsHost = com.example.zhengdao.terminal.Workspace.hostDir(ctx)
             val wsShared = com.example.zhengdao.terminal.Workspace.isShared(ctx)
             Text(
-                "终端与 Agent 的产出位置（guest 内路径固定为 /workspace）",
+                "终端和 Agent 的产出放在这里（终端里固定是 /workspace）",
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(4.dp))
@@ -631,8 +631,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 }) { Text("仅私有") }
             }
             Text(
-                text = "边界约定：Agent 可读写整个 /sdcard 用于查找资料，但产出约定只进工作区——此约定已写入**终端** Agent 的人设。" +
-                    "（太极的产出与数据在 App 私有目录里，与这里无关：它的工作区是内部的 files/oc/workspace，人设单独一份。）",
+                text = "约定：终端里的 AI 能读整个 /sdcard 找资料，但产出只写进工作区（这条已写进它的人设）。" +
+                    "太极的产出在 App 内部目录，跟这里无关。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -139,7 +139,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             // Root 增强模式（2026-10-12 从设置 Hub 移来）：未实现项不再占设置页的行，
             // 但它是个真实的状态说明，放在关于页纯文本展示。
-            InfoRow("Root 增强模式", "未实现 · 计划 v1.x（证道用 PRoot 免 Root 跑 Debian，不需要 Root 权限）")
+            InfoRow("Root 增强模式", "未实现 · 计划以后加（证道现在免 Root 就能跑 Debian）")
             Spacer(Modifier.height(4.dp))
             // 安装包来源（E-065）：GPL 允许别人重打包，但用户有权知道手里这个包是谁签的。
             // 只报告，不拦功能 —— 自己改代码自己签名也是 GPL 明确允许的用法。

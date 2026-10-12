@@ -168,7 +168,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
         // ── 修复环境 ──
         SectionCard("修复环境") {
             Text(
-                text = "重新解压系统层，保留登录态与工作区。",
+                text = "重新解压系统文件，保留登录状态和工作区。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -223,18 +223,20 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     }
                 }) { Text("在终端里修复") }
             }
-            Text(
-                text = "搬家包恢复、或更新被中断，都会让 Hermes 的依赖环境记录指向不存在的目录，" +
-                    "于是敲 hermes 直接报错退出（连 hermes update 也救不了）。终端修复过程可见：" +
-                    "补回源码锁 → 清失效记录 → hermes pm repair。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // 说明只在出问题时给（2026-10-12 走查 §5.6 文案瘦身）：正常时不解释，
+            // 出问题时一句人话 + 一条去路，不摊原理。
+            if (st != null && !st.ok) {
+                Text(
+                    text = "依赖环境记录失效了，敲 hermes 会直接报错。点上面的按钮修一下即可。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         // ── 检查环境更新（第三批：manifest 对比 + 应用内下载安装，不自动检查）──
         SectionCard("环境更新") {
             Text(
-                text = "系统环境通过此按钮更新。不要在终端内执行 apt upgrade，可能导致环境损坏；语言级依赖优先用 pip / npm 管理。",
+                text = "环境更新点下面的按钮。终端里的 apt upgrade 不要用，会弄坏环境。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -284,18 +286,18 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         val sameVer = localVer.isNotBlank() && localVer.equals(ver, ignoreCase = true)
                                         when {
                                             cached != null && sameVer ->
-                                                "本地已安装 $ver，但缺少环境指纹记录（env）：" +
-                                                    "本地已有该版本的安装包（${bytesMbText(cached.length())}），" +
-                                                    "将直接用它重装补指纹，无需下载。"
+                                                "已装 $ver，但少了环境记录。" +
+                                                    "本地有现成的安装包（${bytesMbText(cached.length())}），" +
+                                                    "直接重装补上就行，不用下载。"
                                             cached != null ->
-                                                "本地已有该版本的安装包（${bytesMbText(cached.length())}），" +
-                                                    "将直接用它安装，无需下载。"
+                                                "本地有现成的安装包（${bytesMbText(cached.length())}），" +
+                                                    "直接用它装，不用下载。"
                                             sameVer ->
-                                                "本地已安装 $ver，但缺少环境指纹记录（env）：" +
-                                                    "本次将用全量包（${bytesMbText(idx.size)}）重装一次以补上指纹，" +
-                                                    "重装后「检查环境更新」才能正确判断新旧。"
+                                                "已装 $ver，但少了环境记录：" +
+                                                    "这次会用完整包（${bytesMbText(idx.size)}）重装一次补上，" +
+                                                    "之后「检查环境更新」才能判断新旧。"
                                             else ->
-                                                "发现新版本 $ver（本地环境未记录版本，本次需全量下载，${bytesMbText(idx.size)}）"
+                                                "发现新版本 $ver（本地没记录版本，这次要重新下载完整包，${bytesMbText(idx.size)}）"
                                         }
                                     }
                                     localEnv.equals(idx.env, ignoreCase = true) ->
@@ -310,14 +312,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         pendingLocal = cached
                                         when {
                                             cached != null ->
-                                                "发现新版本 $ver（本地已有该版本的安装包（${bytesMbText(cached.length())}），" +
-                                                    "将直接用它安装，无需下载）"
+                                                "发现新版本 $ver（本地有现成的安装包（${bytesMbText(cached.length())}），" +
+                                                    "直接用它装，不用下载）"
                                             p != null && p.from.equals(localEnv, ignoreCase = true) -> {
                                                 pendingPatchRef = p
-                                                "发现新版本 $ver，可增量更新（${bytesMbText(p.size)}，无需重下全量包）"
+                                                "发现新版本 $ver，可以小更新（只下 ${bytesMbText(p.size)}，不用重下完整包）"
                                             }
                                             else ->
-                                                "发现新版本 $ver（当前环境 $localEnv，索引未给对应增量包），需全量下载，${bytesMbText(idx.size)}"
+                                                "发现新版本 $ver（当前环境 $localEnv，没有对应的更新补丁），要重新下载完整包，${bytesMbText(idx.size)}"
                                         }
                                     }
                                 }
@@ -332,14 +334,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     val installed = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
                                     when {
                                         ver == null || url == null ->
-                                            "manifest 格式异常，无法解析版本"
+                                            "更新信息读不出来，拿不到版本号"
                                         // 刻意不再判定"已是最新"：旧 manifest 的 version 恒为发行版号
                                         // （13.7），拿它跟本地比得出的"最新"是假的（见 ERRATA E-033）。
                                         // 拿不到索引时只给"可下载"的事实，不替用户下结论。
                                         else -> {
                                             pendingUrl = url; pendingSha = sha
-                                            "拿不到环境索引（已降级读旧 manifest）：本地 $installed、清单 $ver。" +
-                                                "清单版本号恒为发行版号，不能用来判断新旧；如需更新请直接下载安装。"
+                                            "拿不到更新信息，只读到旧清单（本地 $installed、清单 $ver）。" +
+                                                "这个号是发行版号，判断不了新旧；要更新直接点下面的按钮。"
                                         }
                                     }
                                 } else {
@@ -350,7 +352,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     c.setRequestProperty("Accept", "application/vnd.github+json")
                                     val body = c.inputStream.bufferedReader().readText()
                                     val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-                                    if (tag != null) "仓库最新发布：$tag（应用内直装通道未就绪，可点「去下载」手动获取安装包）"
+                                    if (tag != null) "最新版本：$tag（App 内暂时装不了，可点「去下载」手动获取）"
                                     else "仓库结构变化，无法解析版本"
                                 }
                             }
@@ -389,8 +391,8 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 Text(
                     text = when (st.phase) {
                         InstallProgress.Phase.Running ->
-                            "$icon 正在安装环境（${if (st.fromLocal) "使用本地缓存包，不联网下载" else "联网下载"}）：" +
-                                "${st.text}\n安装完成前不需要、也不能重复检查更新；进度同时显示在终端页顶部横幅与系统通知里。"
+                            "$icon 正在安装环境（${if (st.fromLocal) "用本地缓存包，不联网" else "联网下载"}）：" +
+                                "${st.text}\n装完之前不用重复点；进度也会显示在终端页顶部和系统通知里。"
                         InstallProgress.Phase.Done -> "$icon 上一次安装：${st.text}"
                         InstallProgress.Phase.Failed -> "$icon 上一次安装失败：${st.text}"
                     },
@@ -412,7 +414,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Agent 清单：${AgentManifest.cachedVersionText(ctx)}（安装命令可免发版更新，进主页时自动刷新）",
+                "Agent 清单：${AgentManifest.cachedVersionText(ctx)}（进主页时自动刷新，不用等 App 更新）",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -437,7 +439,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
         // ── 运行内存上限（用户第四批）：ulimit -v 防单个任务膨胀拖垮整机 ──
         SectionCard("运行内存上限") {
             Text(
-                text = "限制 guest 内每个进程的虚拟内存。⚠️ 默认关闭：虚拟地址空间≠物理内存，真实负载下可能误伤 Agent（内存治理由 M2 软监控负责）。仅在某任务失控膨胀、拖垮整机时才建议临时开启。",
+                text = "限制终端里每个进程能用的内存。默认关闭：它管的是虚拟地址，不是真实占用，开了可能误伤 Agent。只在某个任务失控、拖垮整机时才临时开。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -484,7 +486,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { repairConfirm = false },
             title = { Text("修复环境") },
-            text = { Text("将重新解压 Debian 系统层（约 30 秒 + Agent 重装时间）。登录态与工作区保留。需要本地已有安装包（Download/证道/rootfs 缓存，或 Download/证道 根目录里的安装包）。确定？") },
+            text = { Text("会用本地安装包重新解压系统文件（约 30 秒，另加 Agent 重装时间）。登录状态和工作区都会保留。确定？") },
             confirmButton = {
                 TextButton(
                     enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
@@ -496,21 +498,21 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                         ) + com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx)
                         ).firstOrNull { it.isFile && it.length() > 100_000_000L }
                     if (candidates == null) {
-                        Toast.makeText(ctx, "未找到本地安装包：请先在终端重新下载一次", Toast.LENGTH_LONG).show()
+                        Toast.makeText(ctx, "没找到本地安装包，请先在终端重新下载一次", Toast.LENGTH_LONG).show()
                     } else {
                         Thread {
                             // 进度走 InstallFlow（横幅状态 + 通知栏常驻 + RunLog）——此前这条路
                             // 从头到尾只有两条 Toast，用户看到的就是"点了没反应"（E-036 §7）。
                             InstallFlow.start(
                                 ctx,
-                                "修复环境：用本地安装包（${candidates.length() / (1024 * 1024)} MB）重新解压系统层，不联网下载",
+                                "修复环境：用本地安装包（${candidates.length() / (1024 * 1024)} MB）重新解压，不联网",
                                 fromLocal = true,
                             )
                             try {
                                 InstallFlow.update(ctx, "正在准备安装包：${candidates.name}")
                                 val archive = File(ctx.cacheDir, candidates.name)
                                 if (archive.absolutePath != candidates.absolutePath) candidates.copyTo(archive, true)
-                                InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，约 30 秒～几分钟）…")
+                                InstallFlow.update(ctx, "正在解压（没有详细进度，约 30 秒到几分钟）…")
                                 // 修复＝拿本地这个包再解压一次。若它与「当初装出当前 env 的那个包」
                                 // 逐字节相同（标记里的 archive-sha256 对得上），内容指纹照样成立 ⇒ 原样写回，
                                 // 否则一次修复就把增量基线抹掉、下次更新被迫全量（2026-10-08 真机 bug，
@@ -522,17 +524,17 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 )
                                 if (repairEnv != null) {
                                     com.example.zhengdao.rootfs.RunLog.log(
-                                        "修复环境：本地包与当前环境同源（sha=${repairSha.take(12)}），保留环境指纹 $repairEnv",
+                                        "修复环境：本地包与当前环境同源（sha=${repairSha.take(12)}），保留环境记录 $repairEnv",
                                     )
                                 } else {
                                     com.example.zhengdao.rootfs.RunLog.log(
-                                        "修复环境：本地包与当前环境无法确认同源（sha=${repairSha.take(12)}），不写环境指纹（下次更新走全量）",
+                                        "修复环境：本地包与当前环境无法确认同源（sha=${repairSha.take(12)}），不写环境记录（下次更新要重下完整包）",
                                     )
                                 }
                                 com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive, repairEnv, repairSha) { }
                                 InstallFlow.finish(
                                     ctx,
-                                    "修复完成：环境已重置，登录态与工作区保留（本次未联网下载）",
+                                    "修复完成：环境已重置，登录状态和工作区保留（这次没联网）",
                                 )
                                 android.os.Handler(ctx.mainLooper).post { storageTick++ }
                             } catch (t: Throwable) {
@@ -599,8 +601,8 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 if (expectedSha.isNullOrBlank() || localSha.equals(expectedSha, ignoreCase = true)) {
                                     InstallFlow.start(
                                         ctx,
-                                        "检查环境更新：本地已有同版本安装包" +
-                                            "（${localCandidate.length() / (1024 * 1024)} MB），直接重解压，不下载",
+                                        "检查环境更新：本地有现成安装包" +
+                                            "（${localCandidate.length() / (1024 * 1024)} MB），直接重解压，不用下载",
                                         fromLocal = true,
                                     )
                                     InstallFlow.update(ctx, "正在准备安装包：${localCandidate.name}")
@@ -611,28 +613,28 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     val envToWrite = RootfsInstaller.envForMarker(index?.env, index?.sha256, localSha)
                                     if (index != null && envToWrite == null) {
                                         com.example.zhengdao.rootfs.RunLog.log(
-                                            "本地包 sha256 与索引不一致（或索引字段缺失），本次安装不写 env 标记"
+                                            "本地包校验值与更新信息对不上，这次不写环境记录"
                                         )
                                     }
                                     com.example.zhengdao.rootfs.RunLog.log(
-                                        "环境更新：用本地安装包（sha=${localSha.take(12)}）重解压，本次未联网下载"
+                                        "环境更新：用本地安装包重解压，这次没联网"
                                     )
-                                    InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请勿离开本页）…")
+                                    InstallFlow.update(ctx, "正在解压（没有详细进度，请留在本页）…")
                                     RootfsInstaller.ensureFreeSpace(ctx, archive.length())
                                     RootfsInstaller.install(ctx, archive, envToWrite, localSha) { }
                                     RootfsCache.pruneKeep(ctx)
-                                    InstallFlow.finish(ctx, "环境更新完成（用本地安装包，本次未联网下载），重进终端生效")
+                                    InstallFlow.finish(ctx, "环境更新完成（用本地安装包，没联网），重进终端生效")
                                     android.os.Handler(ctx.mainLooper).post { storageTick++ }
                                     return@Thread
                                 }
                                 com.example.zhengdao.rootfs.RunLog.log(
-                                    "本地缓存包 sha（${localSha.take(12)}）与索引不一致（${expectedSha?.take(12)}），改为下载"
+                                    "本地缓存包校验值对不上，改为下载"
                                 )
                             }
                             // 进度走 InstallFlow：通知栏常驻进度条 + 设置页状态行 + RunLog。
                             // 此前是每 20% 闪一条 Toast（"下载中 20%"），正是用户说的
                             // "提示时间有点短……我以为要重新下载呢"（E-036 §7）。
-                            InstallFlow.start(ctx, "检查环境更新：开始下载新版本环境包", fromLocal = false)
+                            InstallFlow.start(ctx, "检查环境更新：开始下载新版本", fromLocal = false)
                             val archive = RootfsCache.archiveFor(ctx, url)
 
                             // ── ① 先试增量（协议 §6）：只有索引给了补丁、且本机基线正是补丁基线时才走 ──
@@ -640,7 +642,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             if (patchRef != null && RootfsDelta.canApply(ctx, patchRef)) {
                                 val deltaFile = RootfsCache.deltaFor(ctx, patchRef.url)
                                 try {
-                                    InstallFlow.update(ctx, "正在下载增量补丁（${bytesMbText(patchRef.size)}）…")
+                                    InstallFlow.update(ctx, "正在下载更新补丁（${bytesMbText(patchRef.size)}）…")
                                     RootfsDownloader.download(
                                         urls = RootfsDownloader.withMirrorFallback(patchRef.url),
                                         dest = deltaFile,
@@ -650,7 +652,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                             val pct = (done * 100 / total).toInt()
                                             InstallFlow.update(
                                                 ctx,
-                                                "增量补丁下载中 $pct%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB）",
+                                                "更新补丁下载中 $pct%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB）",
                                                 pct,
                                             )
                                         }
@@ -676,13 +678,13 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     // 让用户明确知道"这次没有重下 300MB"——他上次的误会正来自这里
                                     InstallFlow.update(
                                         ctx,
-                                        "增量补丁已应用（本次只下了 ${bytesMbText(patchRef.size)}，没有重下完整包）",
+                                        "小更新完成（这次只下了 ${bytesMbText(patchRef.size)}，没有重下完整包）",
                                     )
                                 } catch (t: Throwable) {
                                     // 增量路径的任何失败（含基线不符 BaseMismatch）都回退全量：
                                     // applyTo 是原子的——此时 rootfs 要么没动，要么已完整换成新环境
-                                    fallbackNote = "增量更新失败（${t.message}），已回退全量下载；"
-                                    com.example.zhengdao.rootfs.RunLog.log("增量更新失败，回退全量：${t.message}")
+                                    fallbackNote = "小更新失败（${t.message}），已改为完整下载；"
+                                    com.example.zhengdao.rootfs.RunLog.log("小更新失败，改为完整下载：${t.message}")
                                 } finally {
                                     RootfsCache.cleanupDelta(ctx, deltaFile)
                                 }
@@ -700,7 +702,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         val pct = (done * 100 / total).toInt()
                                         InstallFlow.update(
                                             ctx,
-                                            "环境包下载中 $pct%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB，可离开本页）",
+                                            "正在下载环境包 $pct%（${done / (1024 * 1024)}/${total / (1024 * 1024)} MB，可以离开本页）",
                                             pct,
                                         )
                                     }
@@ -714,10 +716,10 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 val envToWrite = RootfsInstaller.envForMarker(index?.env, index?.sha256, actualSha)
                                 if (index != null && envToWrite == null) {
                                     com.example.zhengdao.rootfs.RunLog.log(
-                                        "索引 sha256 与实际校验值不一致（或索引字段缺失），本次安装不写 env 标记"
+                                        "安装包校验值与更新信息对不上，这次不写环境记录"
                                     )
                                 }
-                                InstallFlow.update(ctx, "正在解压系统层（没有细粒度进度，请勿离开本页）…")
+                                InstallFlow.update(ctx, "正在解压（没有详细进度，请留在本页）…")
                                 RootfsInstaller.ensureFreeSpace(ctx, archive.length())
                                 // archiveSha256 一并写进标记：它是下次「修复环境/回退」判断
                                 // "本地这个包是否就是装出当前 env 的那个包"的唯一依据（见

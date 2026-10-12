@@ -327,10 +327,9 @@ fun PluginsScreen() {
         // ── 说明 ──
         SectionCard("关于插件") {
             Text(
-                text = "OpenCode 没有官方「插件市场」。插件的加载方式只有两种：在 opencode.json 里写包名" +
-                    "（启动时由 Bun 自动从 npm 安装），或引用本地 .js 文件。本页管理的即前者。\n\n" +
-                    "插件会扩展 Agent 的能力（如记忆、工具），但也会执行第三方代码——只启用你信任的插件。\n\n" +
-                    "本页只作用于**太极**的 OpenCode 实例；终端里自装的 opencode 不在管理范围内。",
+                text = "插件从 npm 下载，会执行第三方代码——只启用你信任的。\n\n" +
+                    "这里的「插件」指在配置里写了包名、启动时自动下载的那种；本地 .js 文件不归这里管。\n\n" +
+                    "本页只管「太极」里的 OpenCode；终端里自己装的 opencode 不在这里管。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
