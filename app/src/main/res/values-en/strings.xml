@@ -730,4 +730,94 @@
     <string name="sys_proot_ready">Ready (Termux fork)</string>
     <string name="sys_none">None</string>
     <string name="sys_uv_embedded">%1$s (bundled with hermes)</string>
+
+    <!-- ── Taiji OpenCode (OcManager: serve / install / update) ── -->
+    <string name="oc_not_installed">OpenCode is not installed</string>
+    <string name="oc_serve_no_password_title">Taiji connected but didn\'t get the access password</string>
+    <string name="oc_serve_no_password_detail">The serve process is alive on port 14000, but serve.log contains no usable server password line (a password from a previous session can\'t be reused) ⇒ every request from now on gets a 401 and the UI looks stuck.</string>
+    <string name="oc_restart_taiji">Restart Taiji</string>
+    <string name="oc_serve_timeout_title">Taiji (OpenCode) start timed out</string>
+    <string name="oc_serve_timeout_detail">serve wasn\'t ready within 15 seconds (port 14000 unresponsive). Common causes: a previous serve still hanging around, the port being taken, or the bundled binary blocked by security software.</string>
+    <string name="oc_serve_timeout_short">Start timed out: serve wasn\'t ready within 15 seconds (see the run log)</string>
+    <string name="oc_serve_start_failed_title">Taiji (OpenCode) failed to start</string>
+    <string name="oc_serve_start_failed_short">Start failed: %1$s</string>
+    <string name="oc_cached_verifying">Found a downloaded installer — verifying…</string>
+    <string name="oc_cached_verified">Installer verified — extracting…</string>
+    <string name="oc_downloading_start">Downloading OpenCode %1$s (about 65 MB, resumable)…</string>
+    <string name="oc_downloading_pct">Downloading %1$d%% (%2$d/%3$d MB)</string>
+    <string name="oc_verified_extracting">Verified — extracting (about a minute)…</string>
+    <string name="oc_download_failed">Download failed: %1$s</string>
+    <string name="oc_no_digest_rejected">The update package has no SHA256 (release digest missing) — installation refused</string>
+    <string name="oc_update_failed">Update failed: %1$s</string>
+    <string name="oc_extract_incomplete">Incomplete extraction: %1$s (%2$d/%3$d bytes)</string>
+    <string name="oc_extracting_count">Extracting… %1$d</string>
+    <string name="oc_extract_failed">Extraction failed: %1$s</string>
+    <string name="oc_binary_missing">Binary missing after extraction (incomplete package?)</string>
+    <string name="oc_install_done">OpenCode %1$s installed</string>
+
+    <!-- ── Taiji connection layer (OcRepository: banner / send / model-pool errors) ── -->
+    <string name="oc_create_session_failed">Couldn\'t create a session</string>
+    <string name="oc_polling_retry">Polling failed, retrying</string>
+    <string name="oc_empty_response">Empty response from %1$s</string>
+    <string name="oc_empty_response_perm">Empty response from permission/request</string>
+    <string name="oc_get_failed">GET %1$s failed: %2$s</string>
+    <string name="oc_get_http">GET %1$s HTTP %2$d</string>
+    <string name="oc_bad_body">Response is neither an array nor has a data array: %1$s</string>
+    <string name="oc_models_http">Fetching model catalog: HTTP %1$d</string>
+    <string name="oc_empty_body">Response body is empty</string>
+    <string name="oc_http_status">Server returned %1$d</string>
+    <string name="oc_session_not_ready">Session not ready</string>
+    <string name="oc_switch_model_http">Switching model: HTTP %1$d</string>
+    <string name="oc_session_not_open">No open session</string>
+    <string name="oc_send_http">Send failed: HTTP %1$d</string>
+    <string name="oc_send_failed">Send failed: %1$s</string>
+    <string name="oc_abort_failed">Abort failed: %1$s</string>
+    <string name="oc_perm_http">Authorization failed: HTTP %1$d</string>
+    <string name="oc_perm_submit_failed">Authorization submit failed: %1$s</string>
+    <string name="oc_nothing_to_retry">Nothing to retry</string>
+    <string name="oc_list_sessions_failed">Fetching the session list failed: %1$s</string>
+    <string name="oc_delete_session_failed">Delete session failed (id=%1$s): %2$s</string>
+
+    <!-- ── Hermes dependency health (HermesEnv) ── -->
+    <string name="hermes_not_installed">Hermes not installed — skipped</string>
+    <string name="hermes_record_host_path">The dependency record points to host paths (invisible inside proot) — one tap to fix (a usable generation is on disk)</string>
+    <string name="hermes_record_broken">The dependency record points to a missing directory — one tap to fix (a usable generation is on disk)</string>
+    <string name="hermes_record_lost">The dependency environment is lost and must be rebuilt in the terminal (tap \"Repair\" — it runs in the terminal, visible)</string>
+    <string name="hermes_no_record">No dependency environment recorded yet (installation may not have finished) — rebuild in the terminal</string>
+    <string name="hermes_lock_missing">Source lock uv.lock is missing (a warning will appear on every launch) — one tap to restore it in the terminal</string>
+    <string name="hermes_ok_stale">Dependency record is valid (plus %1$d leftover marker files from interrupted updates — one tap to clean)</string>
+    <string name="hermes_ok">Dependency environment record is valid</string>
+
+    <!-- ── Resource usage health (ResMonitor) ── -->
+    <string name="resmon_idle">Neither Taiji nor the terminal is running — nothing to sample</string>
+    <string name="resmon_rss_over">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Taiji</string>
+    <string name="resmon_cpu_over">⚠ CPU %1$s%% over the %2$d%% threshold — check plugins and session count</string>
+    <string name="resmon_normal">RSS %1$d MB · CPU %2$s%% · %3$d processes</string>
+
+    <!-- ── Terminal page subset (TerminalActivity: install guide + long-press menu + copy/paste) ── -->
+    <!-- Remaining toasts (split panes / dot help / install progress details) are exempt by user decision: the terminal screen itself prints in English -->
+    <string name="term_no_network">No network: make sure your proxy is on, and enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="term_nothing_to_copy">Nothing to copy</string>
+    <string name="term_copied_screen">Copied the screen content (%1$d characters)</string>
+    <string name="term_clipboard_empty">Clipboard is empty</string>
+    <string name="term_session_not_ready">Session isn\'t ready yet — can\'t paste</string>
+    <string name="term_pasting">Pasting %1$d characters…</string>
+    <string name="term_pasted">Pasted %1$d characters</string>
+    <string name="term_paste_failed">Paste didn\'t finish: %1$s</string>
+    <string name="term_copied_chars">Copied %1$d characters</string>
+    <string name="term_menu_title">Terminal actions</string>
+    <string name="term_menu_web_search">Search selected text</string>
+    <string name="term_menu_clear">Clear screen</string>
+    <string name="term_menu_reset">Reset terminal</string>
+    <string name="term_no_selection">No text selected</string>
+    <string name="term_cleared">Screen cleared</string>
+    <string name="term_clear_failed">Clear failed: %1$s</string>
+    <string name="term_reset_done">Terminal reset</string>
+    <string name="term_browser_failed">Couldn\'t open a browser: %1$s</string>
+    <string name="term_local_cache_installing">Using a locally cached package (%1$d MB, no download) — verifying and extracting…</string>
+    <string name="term_first_run_need_grant">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nTap \"Grant storage\" first — after granting, put the installer into the Download/证道 folder and reinstalling the app won\'t need another download.</string>
+    <string name="term_first_run">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nWi-Fi recommended; resumable, so an interruption can be retried.\nTip: you can also place the installer into the Download/证道 folder manually and restart the app to install without downloading.</string>
+    <string name="term_install_title">Install the runtime (Debian 13.7)</string>
+    <string name="term_start_download">Start download</string>
+    <string name="term_pick_file">Pick from files</string>
 </resources>

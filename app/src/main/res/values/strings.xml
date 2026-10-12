@@ -728,4 +728,94 @@
     <string name="sys_proot_ready">就绪（Termux fork）</string>
     <string name="sys_none">无</string>
     <string name="sys_uv_embedded">%1$s（hermes 内嵌）</string>
+
+    <!-- ── 太极 OpenCode（OcManager：启动 / 安装 / 更新）── -->
+    <string name="oc_not_installed">OpenCode 尚未安装</string>
+    <string name="oc_serve_no_password_title">太极连上了、但没拿到访问密码</string>
+    <string name="oc_serve_no_password_detail">serve 在 14000 端口活着，serve.log 里没有可用的 server password 行（旧场次的密码不能复用）⇒ 之后每个请求都会 401，界面看着像卡住。</string>
+    <string name="oc_restart_taiji">重启太极</string>
+    <string name="oc_serve_timeout_title">太极（OpenCode）启动超时</string>
+    <string name="oc_serve_timeout_detail">15 秒内 serve 没就绪（端口 14000 无响应）。常见原因：上一场 serve 僵着、端口被占、或内置二进制被杀软拦下。</string>
+    <string name="oc_serve_timeout_short">启动超时：serve 未在 15 秒内就绪（详见运行日志）</string>
+    <string name="oc_serve_start_failed_title">太极（OpenCode）启动失败</string>
+    <string name="oc_serve_start_failed_short">启动失败：%1$s</string>
+    <string name="oc_cached_verifying">检测到已下载的安装包，校验中…</string>
+    <string name="oc_cached_verified">安装包校验通过，释放中…</string>
+    <string name="oc_downloading_start">开始下载 OpenCode %1$s（约 65MB，断点续传）…</string>
+    <string name="oc_downloading_pct">下载中 %1$d%%（%2$d/%3$d MB）</string>
+    <string name="oc_verified_extracting">校验通过，释放中（约需一分钟）…</string>
+    <string name="oc_download_failed">下载失败：%1$s</string>
+    <string name="oc_no_digest_rejected">更新包缺少 SHA256（release digest 缺失），已拒绝安装</string>
+    <string name="oc_update_failed">更新失败：%1$s</string>
+    <string name="oc_extract_incomplete">释放不完整：%1$s（%2$d/%3$d 字节）</string>
+    <string name="oc_extracting_count">释放中… %1$d</string>
+    <string name="oc_extract_failed">释放失败：%1$s</string>
+    <string name="oc_binary_missing">释放后二进制缺失（包不完整？）</string>
+    <string name="oc_install_done">OpenCode %1$s 安装完成</string>
+
+    <!-- ── 太极连接层（OcRepository：横幅 / 发送 / 模型池的错误）── -->
+    <string name="oc_create_session_failed">无法创建会话</string>
+    <string name="oc_polling_retry">轮询失败，正在重试</string>
+    <string name="oc_empty_response">空响应 %1$s</string>
+    <string name="oc_empty_response_perm">空响应 permission/request</string>
+    <string name="oc_get_failed">GET %1$s 失败：%2$s</string>
+    <string name="oc_get_http">GET %1$s HTTP %2$d</string>
+    <string name="oc_bad_body">响应既非数组也无 data 数组：%1$s</string>
+    <string name="oc_models_http">拉取模型目录 HTTP %1$d</string>
+    <string name="oc_empty_body">响应体为空</string>
+    <string name="oc_http_status">服务器返回 %1$d</string>
+    <string name="oc_session_not_ready">会话未就绪</string>
+    <string name="oc_switch_model_http">切换模型 HTTP %1$d</string>
+    <string name="oc_session_not_open">未打开会话</string>
+    <string name="oc_send_http">发送失败 HTTP %1$d</string>
+    <string name="oc_send_failed">发送失败：%1$s</string>
+    <string name="oc_abort_failed">中止失败：%1$s</string>
+    <string name="oc_perm_http">授权失败 HTTP %1$d</string>
+    <string name="oc_perm_submit_failed">授权提交失败：%1$s</string>
+    <string name="oc_nothing_to_retry">没有可重试的内容</string>
+    <string name="oc_list_sessions_failed">拉取会话列表失败：%1$s</string>
+    <string name="oc_delete_session_failed">删除会话失败（id=%1$s）：%2$s</string>
+
+    <!-- ── Hermes 依赖体检（HermesEnv）── -->
+    <string name="hermes_not_installed">未安装 Hermes，跳过</string>
+    <string name="hermes_record_host_path">依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）</string>
+    <string name="hermes_record_broken">依赖环境记录指向不存在的目录，可一键修正（盘上有可用的代）</string>
+    <string name="hermes_record_lost">依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）</string>
+    <string name="hermes_no_record">尚未登记依赖环境（安装可能没跑完），需在终端重建</string>
+    <string name="hermes_lock_missing">源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回</string>
+    <string name="hermes_ok_stale">依赖环境记录有效（另有 %1$d 个更新中断留下的标记文件，可一键清理）</string>
+    <string name="hermes_ok">依赖环境记录有效</string>
+
+    <!-- ── 资源占用体检（ResMonitor）── -->
+    <string name="resmon_idle">太极与终端均未运行，无进程可采样</string>
+    <string name="resmon_rss_over">⚠ 内存 %1$d MB 超阈值 %2$d MB（%3$d 个进程）——关掉不用的会话，或重启太极</string>
+    <string name="resmon_cpu_over">⚠ CPU %1$s%% 超阈值 %2$d%%——检查插件与会话规模</string>
+    <string name="resmon_normal">RSS %1$d MB · CPU %2$s%% · %3$d 个进程</string>
+
+    <!-- ── 终端页子集（TerminalActivity：安装引导 + 长按菜单 + 复制粘贴）── -->
+    <!-- 其余 Toast（分屏 / 圆点说明 / 安装过程细节）按用户拍板登记豁免：终端画面本身是英文输出 -->
+    <string name="term_no_network">网络不通：请确认代理已开启，并在代理 App 的「分应用代理」里勾选「证道」</string>
+    <string name="term_nothing_to_copy">没有可复制的内容</string>
+    <string name="term_copied_screen">已复制屏幕内容（%1$d 字）</string>
+    <string name="term_clipboard_empty">剪贴板为空</string>
+    <string name="term_session_not_ready">会话未就绪，暂不能粘贴</string>
+    <string name="term_pasting">正在粘贴 %1$d 个字符…</string>
+    <string name="term_pasted">已粘贴 %1$d 个字符</string>
+    <string name="term_paste_failed">粘贴未完成：%1$s</string>
+    <string name="term_copied_chars">已复制 %1$d 个字符</string>
+    <string name="term_menu_title">终端操作</string>
+    <string name="term_menu_web_search">搜索选中文字</string>
+    <string name="term_menu_clear">清屏</string>
+    <string name="term_menu_reset">重置终端</string>
+    <string name="term_no_selection">没有选中的文字</string>
+    <string name="term_cleared">已清屏</string>
+    <string name="term_clear_failed">清屏失败：%1$s</string>
+    <string name="term_reset_done">终端已重置</string>
+    <string name="term_browser_failed">打开浏览器失败：%1$s</string>
+    <string name="term_local_cache_installing">使用本地缓存包（%1$d MB，不联网下载）—— 正在校验并解压…</string>
+    <string name="term_first_run_need_grant">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议先点「授权存储」——授权后把安装包放进 Download/证道 文件夹，以后重装 App 无需重新下载。</string>
+    <string name="term_first_run">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。\n提示：也可以手动把安装包放到 Download/证道 文件夹，重启 App 即可免下载安装。</string>
+    <string name="term_install_title">安装运行环境（Debian 13.7）</string>
+    <string name="term_start_download">开始下载</string>
+    <string name="term_pick_file">从文件选择</string>
 </resources>
