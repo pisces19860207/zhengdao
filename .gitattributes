@@ -10,3 +10,4 @@ rootfs/agents.json.sig binary
 licenses/*.txt text eol=lf
 LICENSE text eol=lf
 app/src/main/assets/fonts/OFL.txt text eol=lf
+docs/archive/** -text
