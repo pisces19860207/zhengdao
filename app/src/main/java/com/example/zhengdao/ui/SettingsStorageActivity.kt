@@ -225,7 +225,14 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         lastGroup = item.group
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = item.group,
+                            // 数据层分组名是匹配契约（"hermes 工具"等原样比较），展示层换白话——
+                            // 用户反馈：「不知道清理的是什么，专业人才看得懂」。
+                            text = when (item.group) {
+                                "hermes 工具" -> "装 hermes 工具时下载的文件"
+                                "hermes 自检" -> "hermes 自检记录"
+                                "公共区安装脚本" -> "安装时下载的脚本"
+                                else -> item.group
+                            },
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
