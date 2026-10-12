@@ -30,6 +30,9 @@
     <string name="common_done">完成</string>
     <string name="common_read_failed">读取失败</string>
     <string name="common_view_log">查看日志</string>
+    <string name="common_clear">清空</string>
+    <string name="common_feedback">反馈</string>
+    <string name="common_repair">修复</string>
 
     <!-- ── 底部导航 ── -->
     <string name="nav_taiji">太极</string>
@@ -64,6 +67,71 @@
     <string name="settings_status_file_count">%1$d 个文件</string>
     <string name="settings_status_guide">指南</string>
     <string name="settings_value_help">新手指南 · 日志</string>
+
+    <!-- ── 首页 ── -->
+    <string name="home_grant_page_failed">打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启</string>
+    <string name="home_no_browser">没有可用的浏览器</string>
+    <string name="home_start_error">启动异常：%1$s</string>
+    <string name="home_taiji_not_up">太极（OpenCode）仍没起来</string>
+    <string name="home_env_ready">环境就绪</string>
+    <string name="home_env_missing">环境未安装</string>
+    <string name="home_agent_count">%1$d 个 Agent</string>
+    <string name="home_abi_unknown">未知</string>
+    <string name="home_debian_installed">Debian 13.7 已安装</string>
+    <string name="home_debian_missing">Debian 未安装</string>
+    <string name="home_health_checking">环境体检中…</string>
+    <string name="home_health_pass">环境体检 %1$d/%2$d 通过</string>
+    <string name="home_health_scanning">正在检查环境状态…</string>
+    <string name="home_fix_ineffective">一键修复没生效：%1$s</string>
+    <string name="home_fix_error_prefix">修复时出错：%1$s；</string>
+    <string name="home_fix_still">「修复」已执行，复检仍是：%1$s。可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。</string>
+    <string name="home_fix_crashed">一键修复出错：%1$s</string>
+    <string name="home_fix_thread_threw">修复线程抛出 %1$s%2$s。可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。</string>
+    <string name="home_fix_thread_msg">：%1$s</string>
+    <string name="home_repair_script_failed">修复脚本写入失败，请到设置页重试</string>
+    <string name="home_hermes_script_issue">Hermes 修复脚本没写进工作区</string>
+    <string name="home_hermes_script_issue_detail">脚本落盘失败（工作区不可写？），终端里那条修复命令跑不起来。</string>
+    <string name="home_go_settings">去设置</string>
+    <string name="home_btn_repair_env">去修复</string>
+    <string name="home_btn_grant">去授权</string>
+    <string name="home_btn_net_check">网络自检</string>
+    <string name="home_btn_storage_detail">看明细</string>
+    <string name="home_btn_handle">去处理</string>
+    <string name="home_sysinfo_copied">已复制全部系统信息</string>
+    <string name="home_copy_sysinfo">一键复制全部信息</string>
+    <string name="home_env_not_installed">运行环境尚未安装</string>
+    <string name="home_env_install_desc">安装 Agent 前需要先装好 Debian 环境（约 3 分钟，只需一次）。</string>
+    <string name="home_install_env">安装运行环境</string>
+    <string name="home_recent_issues">最近问题（%1$d）</string>
+    <string name="home_issues_note">后台失败的痕迹以前只写日志、界面上看不见；这里列出来，每条能处理就点按钮。完整原文仍在 Download/证道/logs/zhengdao-log.txt</string>
+    <string name="home_restore_title">恢复上次装过的 %1$d 个 Agent</string>
+    <string name="home_restore_desc">这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 Download/证道/agents 与 cache 里 —— 恢复时能走本地的就不联网：</string>
+    <string name="home_restore_all">恢复全部（%1$d 个）</string>
+    <string name="home_agent_reinstall">重新安装</string>
+    <string name="home_agent_uninstall">卸载</string>
+    <string name="home_agent_retry_install">重试安装</string>
+    <string name="home_agent_start">启动</string>
+    <string name="home_agent_installing">安装中</string>
+    <string name="home_agent_install">安装</string>
+    <string name="home_agent_coming_soon">即将支持</string>
+    <string name="home_agent_install_env_first">先装环境</string>
+    <string name="home_agent_install_hint">正在安装，输出实时显示在「终端」…（若终端停在配置提问，请在终端里回答或按 ESC 跳过）</string>
+    <string name="home_agent_version">已装版本：%1$s</string>
+    <string name="home_manifest_unreachable">Agent 清单暂时拉不到，检查网络后回到本页会自动刷新。</string>
+    <string name="home_agent_note">安装与启动均在「终端」内进行；会话由 tmux 保持，断线重进不丢现场。</string>
+    <string name="home_size_measuring">尺寸统计中…</string>
+    <string name="home_about_mb">（约 %1$d MB）</string>
+    <string name="home_actual_usage">（以实际占用为准）</string>
+    <string name="home_uninstall_detail">· Agent 程序%1$s\n· 安装包缓存（全局，约 %2$d MB）</string>
+    <string name="home_uninstall_title">卸载 %1$s？</string>
+    <string name="home_uninstall_delete">将删除：\n</string>
+    <string name="home_uninstall_keep">将保留：\n· 会话历史与记忆\n· API Key 配置（如适用）</string>
+    <string name="home_uninstall_purge">\n\n「彻底清除」将连同用户数据（%1$s）一起删除，不可恢复。</string>
+    <string name="home_uninstall_action">卸载</string>
+    <string name="home_purge_action">彻底清除（含用户数据）</string>
+    <string name="home_reinstall_title">重新安装 %1$s？</string>
+    <string name="home_reinstall_desc">会重新跑一遍官方安装脚本（增量执行）：不会删除已有的配置、API Key 和会话数据。安装输出实时显示在「终端」。</string>
+    <string name="home_reinstall_action">重新安装</string>
 
     <!-- ── 终端与资料页 ── -->
     <string name="data_page_title">终端与资料</string>
