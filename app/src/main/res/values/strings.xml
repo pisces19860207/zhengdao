@@ -33,6 +33,9 @@
     <string name="common_clear">清空</string>
     <string name="common_feedback">反馈</string>
     <string name="common_repair">修复</string>
+    <string name="common_default">默认</string>
+    <string name="common_later">稍后</string>
+    <string name="common_not_installed">未安装</string>
 
     <!-- ── 底部导航 ── -->
     <string name="nav_taiji">太极</string>
@@ -425,4 +428,126 @@
     <string name="main_update_go">去下载</string>
     <string name="main_update_ignore">忽略</string>
     <string name="main_unofficial_build">这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。</string>
+
+    <!-- ── 太极 Tab（TaijiScreen：安装 / 连接 / 版本）── -->
+    <string name="taiji_connecting">正在连接 OpenCode…</string>
+    <string name="taiji_refresh_failed">刷新会话失败：%1$s</string>
+    <string name="taiji_send_failed">发送失败：%1$s</string>
+    <string name="taiji_copied">已复制到剪贴板</string>
+    <string name="taiji_copy_failed">复制失败：系统剪贴板不可用</string>
+    <string name="taiji_start_new">开始一段新对话</string>
+    <string name="taiji_start_new_hint">在下方输入你的任务，例如「帮我看看下载文件夹里有什么」</string>
+    <string name="taiji_oc_not_installed_title">尚未安装 OpenCode</string>
+    <string name="taiji_oc_install_hint">点下方按钮下载安装（约 65MB，已有缓存则约 1 分钟）</string>
+    <string name="taiji_oc_preparing">准备中…</string>
+    <string name="taiji_oc_installing">安装中…</string>
+    <string name="taiji_oc_retry_install">重试安装</string>
+    <string name="taiji_oc_download_install">下载并安装</string>
+    <string name="taiji_oc_install_done">安装完成，正在启动 OpenCode…</string>
+    <string name="taiji_oc_install_failed">安装失败：%1$s</string>
+    <string name="taiji_oc_start_failed">OpenCode 启动失败</string>
+    <string name="taiji_oc_auth_hint">若提示鉴权失败，说明 serve 密码未就绪——可重启 App 再试</string>
+    <string name="taiji_oc_version_line">OpenCode %1$s（出厂 %2$s）</string>
+    <string name="taiji_oc_up_to_date">OpenCode 已是最新（%1$s）</string>
+    <string name="taiji_oc_check_failed">检查更新失败：%1$s</string>
+    <string name="taiji_oc_processing">处理中…</string>
+    <string name="taiji_oc_check_update">检查 OpenCode 更新</string>
+    <string name="taiji_oc_install">安装 OpenCode</string>
+    <string name="taiji_oc_found_new">发现 OpenCode %1$s</string>
+    <string name="taiji_oc_no_digest">当前 %1$s → %2$s。该 release 未提供 SHA256 digest，为安全起见不提供 App 内直装 —— 可到 GitHub 手动下载。</string>
+    <string name="taiji_oc_digest_ok">当前 %1$s → %2$s。将从 GitHub 下载约 65MB 并校验 digest，通过后覆盖安装。安装完成后重启 App 生效。</string>
+
+    <!-- ── 太极 Tab：模型池（ModelSheet）── -->
+    <string name="taiji_model_pool">模型池</string>
+    <string name="taiji_fetching">拉取中…</string>
+    <string name="taiji_refresh_action">⟳ 刷新</string>
+    <string name="taiji_current_prefix">当前：</string>
+    <string name="taiji_session_override">（本会话覆盖）</string>
+    <string name="taiji_server_default">服务端默认</string>
+    <string name="taiji_model_refresh_failed">刷新失败：%1$s</string>
+    <string name="taiji_loading_model_catalog">正在拉取模型目录…</string>
+    <string name="taiji_no_models">暂无可用模型</string>
+    <string name="taiji_catalog_unreachable">模型目录来自 models.dev，当前网络不可达（免费模型也依赖目录）。在代理 App 的「分应用代理」里勾选证道后重试。</string>
+    <string name="taiji_reload">重新加载</string>
+    <string name="taiji_default_clear_override">默认（清除本会话覆盖）</string>
+    <string name="taiji_free">免费</string>
+
+    <!-- ── 太极 Tab：会话顶栏 / 连接 / 工具卡（TaijiComponents）── -->
+    <string name="taiji_session_history">会话历史</string>
+    <string name="taiji_new_session">新会话</string>
+    <string name="taiji_new_session_plus">＋  新会话</string>
+    <string name="taiji_conn_connected">● 已连接</string>
+    <string name="taiji_conn_connecting">○ 连接中…</string>
+    <string name="taiji_conn_reconnecting">○ 已断开，正在重连（第 %1$d 次）</string>
+    <string name="taiji_banner_connecting">正在连接…</string>
+    <string name="taiji_banner_idle">未连接</string>
+    <string name="taiji_banner_reconnecting">连接已断开，正在重连…</string>
+    <string name="taiji_agent_run_failed">Agent 运行失败：%1$s</string>
+    <string name="taiji_back_to_latest">⬇ 回到最新</string>
+    <string name="taiji_back_to_latest_desc">回到最新消息</string>
+    <string name="taiji_copy_message">复制这条消息</string>
+    <string name="taiji_unknown_part">未知内容（%1$s）</string>
+    <string name="taiji_state_running">执行中</string>
+    <string name="taiji_state_done">已完成</string>
+    <string name="taiji_state_failed">失败</string>
+    <string name="taiji_tool">工具</string>
+    <string name="taiji_tool_input">入参</string>
+    <string name="taiji_tool_output">结果</string>
+    <string name="taiji_reasoning_head">思考过程</string>
+    <string name="taiji_reasoning_head_steps">思考过程 · %1$d 步</string>
+    <string name="common_collapse_arrow">收起 ▲</string>
+    <string name="common_expand_arrow">展开 ▼</string>
+    <string name="taiji_todo_header">任务清单（%1$d/%2$d）</string>
+    <string name="taiji_placeholder_streaming">AI 正在回复…</string>
+    <string name="taiji_placeholder_idle">描述你的任务…</string>
+    <string name="taiji_send_desc">发送</string>
+    <string name="taiji_stop_desc">停止生成</string>
+    <string name="taiji_perm_title">工具请求授权</string>
+    <string name="taiji_perm_tool">工具：%1$s</string>
+    <string name="taiji_perm_target">目标</string>
+    <string name="taiji_perm_remember">记住这个选择</string>
+    <string name="taiji_perm_deny">拒绝</string>
+    <string name="taiji_perm_allow">允许</string>
+    <string name="taiji_perm_hint">不处理会让 Agent 卡住等待，任务无法继续。</string>
+    <string name="taiji_msg_actions_title">消息操作</string>
+    <string name="taiji_no_copyable_text">（这条消息没有可复制的文字）</string>
+    <string name="taiji_copy_all_conv">复制全部对话（%1$d 条）</string>
+    <string name="taiji_delete_hint">不能单独删其中一条；要删就得把整段对话删掉，去左侧「会话历史」里删。</string>
+    <string name="taiji_sessions">会话</string>
+    <string name="taiji_refresh_sessions_desc">刷新会话列表</string>
+    <string name="taiji_no_sessions">还没有历史会话。\n点上方「＋ 新会话」开始第一段对话。</string>
+    <string name="taiji_plugins">插件</string>
+    <string name="taiji_plugins_enabled">%1$d 个已启用</string>
+    <string name="taiji_plugins_none">未启用</string>
+    <string name="taiji_close_session">关闭太极并退出</string>
+    <string name="taiji_close_session_hint">记录还在，下次接着聊</string>
+    <string name="taiji_close_session_title">关闭太极并退出？</string>
+    <string name="taiji_close_session_msg">关闭后聊天列表里还能看到这次对话，点进去会重新打开。</string>
+    <string name="taiji_delete_session_title">永久删除这个会话</string>
+    <string name="taiji_delete_session_msg">「%1$s」将在服务端被永久删除，无法恢复。</string>
+    <string name="taiji_delete_failed">删除失败：服务端未确认（网络异常或该会话已不存在）</string>
+    <string name="taiji_deleting">删除中…</string>
+    <string name="taiji_delete">删除</string>
+    <string name="taiji_msg_count">%1$d 条消息</string>
+    <string name="taiji_current">当前</string>
+    <string name="taiji_delete_session_desc">删除会话「%1$s」</string>
+    <string name="taiji_session_fallback">会话 %1$s</string>
+    <string name="taiji_day_today">今天</string>
+    <string name="taiji_day_yesterday">昨天</string>
+    <string name="taiji_day_earlier">更早</string>
+
+    <!-- ── 复制到剪贴板的文本（MessageCopy，随界面语言）── -->
+    <string name="copy_role_separator">：</string>
+    <string name="copy_role_user">我</string>
+    <string name="copy_role_assistant">助手</string>
+    <string name="copy_role_system">系统</string>
+    <string name="copy_reasoning">（思考过程）</string>
+    <string name="copy_attachment">（附件）%1$s</string>
+    <string name="copy_unknown">（未知内容 %1$s）</string>
+    <string name="copy_tool_open">（工具 %1$s · %2$s）</string>
+    <string name="copy_unnamed_tool">未命名</string>
+    <string name="copy_tool_input">入参：</string>
+    <string name="copy_tool_output">结果：</string>
+    <string name="copy_truncated">\n…（已截断，原文 %1$d 字）</string>
+    <string name="copy_state_unknown">未知</string>
 </resources>

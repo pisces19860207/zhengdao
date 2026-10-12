@@ -31,6 +31,12 @@
     <string name="common_done">Done</string>
     <string name="common_read_failed">Couldn\'t read</string>
     <string name="common_view_log">View log</string>
+    <string name="common_clear">Clear</string>
+    <string name="common_feedback">Feedback</string>
+    <string name="common_repair">Repair</string>
+    <string name="common_default">Default</string>
+    <string name="common_later">Later</string>
+    <string name="common_not_installed">Not installed</string>
 
     <!-- ── Bottom navigation ── -->
     <string name="nav_taiji">Taiji</string>
@@ -423,4 +429,127 @@
     <string name="main_update_go">Download</string>
     <string name="main_update_ignore">Ignore</string>
     <string name="main_unofficial_build">This build was not signed by the original author. Please download the official release from GitHub.</string>
+
+    <!-- ── Taiji tab (TaijiScreen: install / connection / version) ── -->
+    <string name="taiji_connecting">Connecting to OpenCode…</string>
+    <string name="taiji_refresh_failed">Couldn\'t refresh sessions: %1$s</string>
+    <string name="taiji_send_failed">Couldn\'t send: %1$s</string>
+    <string name="taiji_copied">Copied to clipboard</string>
+    <string name="taiji_copy_failed">Copy failed: the system clipboard is unavailable</string>
+    <string name="taiji_start_new">Start a new conversation</string>
+    <string name="taiji_start_new_hint">Type your task below — for example, \"show me what\'s in my Downloads folder\"</string>
+    <string name="taiji_oc_not_installed_title">OpenCode isn\'t installed yet</string>
+    <string name="taiji_oc_install_hint">Tap the button below to download and install (about 65 MB; roughly a minute if it\'s already cached)</string>
+    <string name="taiji_oc_preparing">Preparing…</string>
+    <string name="taiji_oc_installing">Installing…</string>
+    <string name="taiji_oc_retry_install">Retry install</string>
+    <string name="taiji_oc_download_install">Download and install</string>
+    <string name="taiji_oc_install_done">Installed. Starting OpenCode…</string>
+    <string name="taiji_oc_install_failed">Install failed: %1$s</string>
+    <string name="taiji_oc_start_failed">OpenCode failed to start</string>
+    <string name="taiji_oc_auth_hint">If it reports an authentication failure, the serve password isn\'t ready yet — restart the app and try again</string>
+    <string name="taiji_oc_version_line">OpenCode %1$s (bundled %2$s)</string>
+    <string name="taiji_oc_up_to_date">OpenCode is up to date (%1$s)</string>
+    <string name="taiji_oc_check_failed">Update check failed: %1$s</string>
+    <string name="taiji_oc_processing">Working…</string>
+    <string name="taiji_oc_check_update">Check for OpenCode updates</string>
+    <string name="taiji_oc_install">Install OpenCode</string>
+    <string name="taiji_oc_found_new">OpenCode %1$s available</string>
+    <string name="taiji_oc_no_digest">Current %1$s → %2$s. This release provides no SHA256 digest, so in-app install is disabled for safety — download it manually from GitHub.</string>
+    <string name="taiji_oc_digest_ok">Current %1$s → %2$s. About 65 MB will be downloaded from GitHub and verified against the digest, then installed over the current version. Restart the app afterwards for it to take effect.</string>
+
+    <!-- ── Taiji tab: model pool (ModelSheet) ── -->
+    <string name="taiji_model_pool">Models</string>
+    <string name="taiji_fetching">Loading…</string>
+    <string name="taiji_refresh_action">⟳ Refresh</string>
+    <!-- 首尾空格用一层引号包裹，否则 aapt2 会 trim 掉（外层引号本身不显示） -->
+    <string name="taiji_current_prefix">"Current: "</string>
+    <string name="taiji_session_override">" (this session)"</string>
+    <string name="taiji_server_default">Server default</string>
+    <string name="taiji_model_refresh_failed">Refresh failed: %1$s</string>
+    <string name="taiji_loading_model_catalog">Loading the model catalog…</string>
+    <string name="taiji_no_models">No models available</string>
+    <string name="taiji_catalog_unreachable">The catalog comes from models.dev and isn\'t reachable right now (even free models need it). Enable Zhengdao in your proxy app\'s per-app proxy list and try again.</string>
+    <string name="taiji_reload">Reload</string>
+    <string name="taiji_default_clear_override">Default (clear this session\'s override)</string>
+    <string name="taiji_free">Free</string>
+
+    <!-- ── Taiji tab: session bar / connection / tool cards (TaijiComponents) ── -->
+    <string name="taiji_session_history">Session history</string>
+    <string name="taiji_new_session">New session</string>
+    <string name="taiji_new_session_plus">"＋  New session"</string>
+    <string name="taiji_conn_connected">● Connected</string>
+    <string name="taiji_conn_connecting">○ Connecting…</string>
+    <string name="taiji_conn_reconnecting">○ Disconnected, reconnecting (attempt %1$d)</string>
+    <string name="taiji_banner_connecting">Connecting…</string>
+    <string name="taiji_banner_idle">Not connected</string>
+    <string name="taiji_banner_reconnecting">Disconnected, reconnecting…</string>
+    <string name="taiji_agent_run_failed">Agent run failed: %1$s</string>
+    <string name="taiji_back_to_latest">⬇ Back to latest</string>
+    <string name="taiji_back_to_latest_desc">Jump to the latest message</string>
+    <string name="taiji_copy_message">Copy this message</string>
+    <string name="taiji_unknown_part">Unknown content (%1$s)</string>
+    <string name="taiji_state_running">Running</string>
+    <string name="taiji_state_done">Done</string>
+    <string name="taiji_state_failed">Failed</string>
+    <string name="taiji_tool">Tool</string>
+    <string name="taiji_tool_input">Input</string>
+    <string name="taiji_tool_output">Output</string>
+    <string name="taiji_reasoning_head">Reasoning</string>
+    <string name="taiji_reasoning_head_steps">Reasoning · %1$d steps</string>
+    <string name="common_collapse_arrow">Collapse ▲</string>
+    <string name="common_expand_arrow">Expand ▼</string>
+    <string name="taiji_todo_header">Task list (%1$d/%2$d)</string>
+    <string name="taiji_placeholder_streaming">AI is replying…</string>
+    <string name="taiji_placeholder_idle">Describe your task…</string>
+    <string name="taiji_send_desc">Send</string>
+    <string name="taiji_stop_desc">Stop generating</string>
+    <string name="taiji_perm_title">Tool permission requested</string>
+    <string name="taiji_perm_tool">Tool: %1$s</string>
+    <string name="taiji_perm_target">Target</string>
+    <string name="taiji_perm_remember">Remember this choice</string>
+    <string name="taiji_perm_deny">Deny</string>
+    <string name="taiji_perm_allow">Allow</string>
+    <string name="taiji_perm_hint">If you don\'t respond, the agent keeps waiting and the task can\'t continue.</string>
+    <string name="taiji_msg_actions_title">Message actions</string>
+    <string name="taiji_no_copyable_text">(This message has no text to copy)</string>
+    <string name="taiji_copy_all_conv">Copy the whole conversation (%1$d messages)</string>
+    <string name="taiji_delete_hint">You can\'t delete a single message; to remove anything, delete the whole conversation from \"Session history\" on the left.</string>
+    <string name="taiji_sessions">Sessions</string>
+    <string name="taiji_refresh_sessions_desc">Refresh the session list</string>
+    <string name="taiji_no_sessions">No past conversations yet.\nTap \"＋ New session\" above to start your first one.</string>
+    <string name="taiji_plugins">Plugins</string>
+    <string name="taiji_plugins_enabled">%1$d enabled</string>
+    <string name="taiji_plugins_none">None enabled</string>
+    <string name="taiji_close_session">Close Taiji and exit</string>
+    <string name="taiji_close_session_hint">Chat is saved — pick it up later</string>
+    <string name="taiji_close_session_title">Close Taiji and exit?</string>
+    <string name="taiji_close_session_msg">This conversation stays in the list — tap it to open it again.</string>
+    <string name="taiji_delete_session_title">Permanently delete this conversation</string>
+    <string name="taiji_delete_session_msg">\"%1$s\" will be permanently deleted on the server. This can\'t be undone.</string>
+    <string name="taiji_delete_failed">Delete failed: the server didn\'t confirm (network problem, or the conversation no longer exists)</string>
+    <string name="taiji_deleting">Deleting…</string>
+    <string name="taiji_delete">Delete</string>
+    <string name="taiji_msg_count">%1$d messages</string>
+    <string name="taiji_current">Current</string>
+    <string name="taiji_delete_session_desc">Delete conversation \"%1$s\"</string>
+    <string name="taiji_session_fallback">Session %1$s</string>
+    <string name="taiji_day_today">Today</string>
+    <string name="taiji_day_yesterday">Yesterday</string>
+    <string name="taiji_day_earlier">Earlier</string>
+
+    <!-- ── Text copied to the clipboard (MessageCopy, follows the UI language) ── -->
+    <string name="copy_role_separator">": "</string>
+    <string name="copy_role_user">Me</string>
+    <string name="copy_role_assistant">Assistant</string>
+    <string name="copy_role_system">System</string>
+    <string name="copy_reasoning">(reasoning)</string>
+    <string name="copy_attachment">(attachment) %1$s</string>
+    <string name="copy_unknown">(unknown content %1$s)</string>
+    <string name="copy_tool_open">(tool %1$s · %2$s)</string>
+    <string name="copy_unnamed_tool">unnamed</string>
+    <string name="copy_tool_input">Input:</string>
+    <string name="copy_tool_output">Result:</string>
+    <string name="copy_truncated">\n… (truncated, original was %1$d characters)</string>
+    <string name="copy_state_unknown">Unknown</string>
 </resources>

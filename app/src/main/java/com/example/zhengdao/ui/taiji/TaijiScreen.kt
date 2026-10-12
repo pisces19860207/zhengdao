@@ -43,8 +43,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
+import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.oc.OcModel
 import com.example.zhengdao.oc.ConnectionState
@@ -176,8 +178,8 @@ fun TaijiScreen(
                 // 也不能让用户以为会话被删光了。
                 val title = com.example.zhengdao.util.HumanizeError.title(e)
                 val r = snackbarHostState.showSnackbar(
-                    message = "刷新会话失败：$title",
-                    actionLabel = "重试",
+                    message = ctx.getString(R.string.taiji_refresh_failed, title),
+                    actionLabel = ctx.getString(R.string.common_retry),
                     withDismissAction = true,
                     duration = SnackbarDuration.Short,
                 )
@@ -233,6 +235,11 @@ fun TaijiScreen(
     // 也不知道装完没有，且装完必须手动退出再进（serve 没人拉起）。
     var ocInstalling by remember { mutableStateOf(false) }
     var ocProgress by remember { mutableStateOf("") }
+    // 2026-10-12 i18n：安装失败由这个显式标志表达，**不再**用
+    // `progress.startsWith("安装失败")` 猜——切到 English 后文案前缀变了，那个判断恒为
+    // false，失败态会退化成"普通引导页 + 无重试按钮"（同类隐患见 SettingsEnvActivity 的
+    // 更新弹窗标题）。文案与状态解耦是这段的要害。
+    var ocInstallFailed by remember { mutableStateOf(false) }
     // 装成功后自增 → 让下面的 LaunchedEffect 重跑一次（起 serve + 开会话）。
     // 只在成功时自增，故不会重复开会话。
     var serveStartTrigger by remember { mutableStateOf(0) }
@@ -272,9 +279,11 @@ fun TaijiScreen(
                 onExit = onExit,
                 installing = ocInstalling,
                 progress = ocProgress,
+                failed = ocInstallFailed,
                 onInstall = {
                     ocInstalling = true
-                    ocProgress = "准备中…"
+                    ocInstallFailed = false
+                    ocProgress = ctx.getString(R.string.taiji_oc_preparing)
                     scope.launch(Dispatchers.IO) {
                         val r = OcManager.downloadAndInstall(ctx) { msg ->
                             // 进度回调在后台线程 → 切主线程再改状态
@@ -285,11 +294,12 @@ fun TaijiScreen(
                             if (r.ok) {
                                 // installed() 此时已为 true ⇒ 本分支自动切到主界面；
                                 // 自增 trigger 让上面的 LaunchedEffect 重跑，自动起 serve + 开会话。
-                                ocProgress = "安装完成，正在启动 OpenCode…"
+                                ocProgress = ctx.getString(R.string.taiji_oc_install_done)
                                 serveStartTrigger++
                             } else {
                                 // 失败必须可见（项目原则）：留在引导页并给出原因
-                                ocProgress = "安装失败：${r.message}"
+                                ocInstallFailed = true
+                                ocProgress = ctx.getString(R.string.taiji_oc_install_failed, r.message)
                             }
                         }
                     }
@@ -400,7 +410,7 @@ fun TaijiScreen(
                             }
                         },
                         currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
-                            ?: state.currentModel ?: "默认",
+                            ?: state.currentModel ?: stringResource(R.string.common_default),
                         onModelClick = {
                             // 2026-10-08：**先弹抽屉、再拉目录**（原来相反）。
                             // 原顺序是"拉完才弹"——用户在那一两秒里看到的是"点了没反应"，
@@ -463,8 +473,8 @@ fun TaijiScreen(
                                     // 人话化：把 Java 异常翻成短句（详见 HumanizeError.title）。
                                     val title = com.example.zhengdao.util.HumanizeError.title(e)
                                     val r = snackbarHostState.showSnackbar(
-                                        message = "发送失败：$title",
-                                        actionLabel = "重试",
+                                        message = ctx.getString(R.string.taiji_send_failed, title),
+                                        actionLabel = ctx.getString(R.string.common_retry),
                                         withDismissAction = true,
                                         duration = SnackbarDuration.Short,
                                     )
@@ -529,7 +539,8 @@ fun TaijiScreen(
                     val ok = com.example.zhengdao.util.copyPlainText(ctx, label, text)
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            message = if (ok) "已复制到剪贴板" else "复制失败：系统剪贴板不可用",
+                            message = if (ok) ctx.getString(R.string.taiji_copied)
+                            else ctx.getString(R.string.taiji_copy_failed),
                             withDismissAction = true,
                             duration = SnackbarDuration.Short,
                         )
@@ -574,7 +585,8 @@ private fun LoadingPane() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
-            Text("  正在连接 OpenCode…", style = MaterialTheme.typography.bodyMedium)
+            // 前导两空格是与转圈图标的视觉缩进，不随语言变（故与文案拼接而非写进资源）
+            Text("  " + stringResource(R.string.taiji_connecting), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -595,12 +607,12 @@ private fun EmptyConversationHint() {
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                "开始一段新对话",
+                stringResource(R.string.taiji_start_new),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 12.dp),
             )
             Text(
-                "在下方输入你的任务，例如「帮我看看下载文件夹里有什么」",
+                stringResource(R.string.taiji_start_new_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -615,15 +627,16 @@ private fun NotInstalledPane(
     onExit: () -> Unit,
     installing: Boolean = false,
     progress: String = "",
+    // 失败态由调用方的显式标志给出，不从 progress 文案前缀推断（i18n：见 ocInstallFailed 注释）
+    failed: Boolean = false,
     onInstall: () -> Unit = {},
 ) {
-    val failed = progress.startsWith("安装失败")
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("尚未安装 OpenCode", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.taiji_oc_not_installed_title), style = MaterialTheme.typography.titleMedium)
             Text(
                 if (installing || failed) progress
-                else "点下方按钮下载安装（约 65MB，已有缓存则约 1 分钟）",
+                else stringResource(R.string.taiji_oc_install_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (failed) MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -641,10 +654,16 @@ private fun NotInstalledPane(
                 enabled = !installing,
                 modifier = Modifier.padding(top = 16.dp),
             ) {
-                Text(if (installing) "安装中…" else if (failed) "重试安装" else "下载并安装")
+                Text(
+                    when {
+                        installing -> stringResource(R.string.taiji_oc_installing)
+                        failed -> stringResource(R.string.taiji_oc_retry_install)
+                        else -> stringResource(R.string.taiji_oc_download_install)
+                    }
+                )
             }
             OutlinedButton(onClick = onExit, modifier = Modifier.padding(top = 8.dp)) {
-                Text("返回")
+                Text(stringResource(R.string.common_back))
             }
         }
     }
@@ -654,7 +673,7 @@ private fun NotInstalledPane(
 private fun FailedPane(message: String, onRetry: () -> Unit) {
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("OpenCode 启动失败", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.taiji_oc_start_failed), style = MaterialTheme.typography.titleMedium)
             Text(
                 message,
                 style = MaterialTheme.typography.bodySmall,
@@ -662,13 +681,13 @@ private fun FailedPane(message: String, onRetry: () -> Unit) {
                 modifier = Modifier.padding(top = 8.dp),
             )
             Text(
-                "若提示鉴权失败，说明 serve 密码未就绪——可重启 App 再试",
+                stringResource(R.string.taiji_oc_auth_hint),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
             OutlinedButton(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
-                Text("重试")
+                Text(stringResource(R.string.common_retry))
             }
         }
     }
@@ -694,7 +713,11 @@ private fun OcVersionFooter() {
 
     Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
         Text(
-            "OpenCode ${installed ?: "未安装"}（出厂 ${OcManager.VERSION}）",
+            stringResource(
+                R.string.taiji_oc_version_line,
+                installed ?: stringResource(R.string.common_not_installed),
+                OcManager.VERSION,
+            ),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -721,33 +744,50 @@ private fun OcVersionFooter() {
                         is OcManager.UpdateCheck.Available -> pending = chk.info
                         OcManager.UpdateCheck.UpToDate -> Toast.makeText(
                             ctx,
-                            "OpenCode 已是最新（${installed ?: OcManager.VERSION}）",
+                            ctx.getString(
+                                R.string.taiji_oc_up_to_date,
+                                installed ?: OcManager.VERSION,
+                            ),
                             Toast.LENGTH_SHORT,
                         ).show()
                         is OcManager.UpdateCheck.Failed -> Toast.makeText(
                             ctx,
-                            "检查更新失败：${chk.reason}",
+                            ctx.getString(R.string.taiji_oc_check_failed, chk.reason),
                             Toast.LENGTH_LONG,
                         ).show()
                     }
                 }
             },
-        ) { Text(if (checking) "处理中…" else if (isInstalled) "检查 OpenCode 更新" else "安装 OpenCode") }
+        ) {
+            Text(
+                when {
+                    checking -> stringResource(R.string.taiji_oc_processing)
+                    isInstalled -> stringResource(R.string.taiji_oc_check_update)
+                    else -> stringResource(R.string.taiji_oc_install)
+                }
+            )
+        }
     }
 
     // 有新版：弹确认（digest 缺失时明确说明为何不给直装 —— 不静默降级）
     pending?.let { info ->
         AlertDialog(
             onDismissRequest = { pending = null },
-            title = { Text("发现 OpenCode ${info.version}") },
+            title = { Text(stringResource(R.string.taiji_oc_found_new, info.version)) },
             text = {
                 Text(
                     if (info.sha256 == null) {
-                        "当前 $installed → ${info.version}。该 release 未提供 SHA256 digest，" +
-                            "为安全起见不提供 App 内直装 —— 可到 GitHub 手动下载。"
+                        stringResource(
+                            R.string.taiji_oc_no_digest,
+                            installed ?: stringResource(R.string.common_not_installed),
+                            info.version,
+                        )
                     } else {
-                        "当前 $installed → ${info.version}。将从 GitHub 下载约 65MB 并校验 digest，" +
-                            "通过后覆盖安装。安装完成后重启 App 生效。"
+                        stringResource(
+                            R.string.taiji_oc_digest_ok,
+                            installed ?: stringResource(R.string.common_not_installed),
+                            info.version,
+                        )
                     }
                 )
             },
@@ -766,10 +806,10 @@ private fun OcVersionFooter() {
                             Toast.makeText(ctx, r.message, Toast.LENGTH_LONG).show()
                         }
                     },
-                ) { Text("下载并安装") }
+                ) { Text(stringResource(R.string.taiji_oc_download_install)) }
             },
             dismissButton = {
-                TextButton(onClick = { pending = null }) { Text("稍后") }
+                TextButton(onClick = { pending = null }) { Text(stringResource(R.string.common_later)) }
             },
         )
     }
