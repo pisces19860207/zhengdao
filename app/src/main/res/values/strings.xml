@@ -29,6 +29,7 @@
     <string name="common_loading">加载中…</string>
     <string name="common_done">完成</string>
     <string name="common_read_failed">读取失败</string>
+    <string name="common_view_log">查看日志</string>
 
     <!-- ── 底部导航 ── -->
     <string name="nav_taiji">太极</string>
@@ -63,6 +64,72 @@
     <string name="settings_status_file_count">%1$d 个文件</string>
     <string name="settings_status_guide">指南</string>
     <string name="settings_value_help">新手指南 · 日志</string>
+
+    <!-- ── 存储与缓存页 ── -->
+    <string name="storage_usage_title">存储占用</string>
+    <string name="storage_row_rootfs">rootfs（系统层）</string>
+    <string name="storage_row_home">home（登录态与配置）</string>
+    <string name="storage_row_cache">cache（下载缓存）</string>
+    <string name="storage_tag_removable">可清</string>
+    <string name="storage_tag_keep">保留</string>
+    <string name="storage_opt_btn">清理可选工具（%1$d MB）</string>
+    <string name="storage_opt_title">清理可选工具？</string>
+    <string name="storage_opt_free">可释放约 %1$d MB。</string>
+    <string name="storage_opt_desc">删的是 hermes 自带的桌面自动化工具（cua-driver）。它只在这类会话里用得上；删了不会自己回来——要用时得在终端里跑一次 hermes pm install（要联网、要等一会儿）。</string>
+    <string name="storage_opt_browser">浏览器工具（agent-browser / chromium）不在删除范围内——有它 hermes 才能开网页，保留。</string>
+    <string name="storage_opt_ffmpeg">ffmpeg 也不在这里面：它是 hermes 的必需包，清掉之后它每次启动都会报 install out of sync（系统层自带的那份它不认）。</string>
+    <string name="storage_opt_keeps">不会删除：python / node / uv / npm / ripgrep 这些核心运行时、依赖环境、记忆、hermes 本体、系统文件、任何用户数据。</string>
+    <string name="storage_opt_deleted">已删除 %1$d 项，释放 %2$d MB</string>
+    <string name="storage_opt_none">没有可清理的可选工具</string>
+    <string name="storage_script_btn">清理安装脚本缓存（下次安装重新下载）</string>
+    <string name="storage_script_title">清理安装脚本缓存？</string>
+    <string name="storage_script_desc1">会删掉公共区 agents/scripts 里缓存的安装脚本、App 自己记的校验值、以及终端里的执行副本。</string>
+    <string name="storage_script_desc2">脚本只有几十 KB——这一步不是为了腾地方，而是让下次安装重新下载一份干净的（重装被同一个失败卡住时，先点这里）。</string>
+    <string name="storage_script_keeps">不会删：Agent 账本 installed.json、装好的 Agent 本体与工具链、日志、资料库。</string>
+    <string name="storage_script_cleared">已清 %1$d 个脚本缓存文件（释放 %2$d MB），下次安装会重新下载</string>
+    <string name="storage_script_none">没有脚本缓存可清</string>
+    <string name="storage_cache_title">缓存清理</string>
+    <string name="storage_cache_location">存放位置：%1$s（cache 包缓存 / logs 日志 / agents 脚本与账本；rootfs、opencode 是安装包）</string>
+    <string name="storage_cache_tiers">包缓存（风险极低）：npm / uv / apt 下载的缓存，在终端里清，你能看到过程。临时文件（风险低）：临时目录里超过一天没动过的残留；不用开终端，App 启动时超过 500MB 也会自动清一次。工具链、系统文件、你的数据，永远不动。</string>
+    <string name="storage_cache_not_installed">运行环境还没装好，终端里暂时没得清</string>
+    <string name="storage_cache_guest_btn">在终端里清理包缓存</string>
+    <string name="storage_temp_btn">清理临时文件（%1$d MB）</string>
+    <string name="storage_temp_none">没有临时文件可清</string>
+    <string name="storage_temp_title">清理临时文件？</string>
+    <string name="storage_temp_desc">将删除临时目录里约 %1$d MB 的残留文件（超过一天没动过的）。\n\n不会删终端会话、编译缓存、锁文件，也不碰你的数据。</string>
+    <string name="storage_freed">已释放 %1$d MB</string>
+    <string name="storage_temp_cleaned_none">没有可清理的临时文件</string>
+    <string name="storage_agent_btn">清理 Agent 缓存包（%1$d MB）</string>
+    <string name="storage_agent_btn_bare">清理 Agent 缓存包</string>
+    <string name="storage_agent_title">清理 Agent 缓存包？</string>
+    <string name="storage_agent_desc">将删除下面这些能重新下载 / 重新生成的缓存：</string>
+    <string name="storage_agent_empty">（这次没量到可清理的缓存）</string>
+    <string name="storage_agent_item">· %1$s — %2$d MB</string>
+    <string name="storage_agent_busy">⚠️ 终端会话正在运行：如果此刻正在装依赖，清理可能打断那一次安装（已经装好的东西不受影响）。</string>
+    <string name="storage_agent_keeps">不会删除：装好的 Agent 本体与工具链（hermes/tools、Python/Node）、依赖环境与记忆、配置文件、系统文件，以及你自己的文件。下次需要时这些缓存会自己重新下载。</string>
+    <string name="storage_agent_cleaned_none">没有可清理的 Agent 缓存</string>
+    <string name="storage_gen_btn">清理旧版依赖文件（%1$d MB）</string>
+    <string name="storage_gen_title">清理旧版依赖文件？</string>
+    <string name="storage_gen_free">可释放约 %1$d MB。</string>
+    <string name="storage_gen_desc">每次重装依赖环境都会留下一份旧的（几百 MB），而记录只认得最新那份——这里删的就是没人再用的那些。正在用的和最新的都会留着。</string>
+    <string name="storage_gen_keeps">不会删：正在用的依赖环境、记忆、装好的工具链、系统文件。需要回到旧版时 hermes 会重装（要联网）。</string>
+    <string name="storage_gen_deleted">已删除 %1$d 份，释放 %2$d MB</string>
+    <string name="storage_gen_none">没有可清理的旧依赖文件</string>
+    <string name="storage_installer_title">安装包缓存</string>
+    <string name="storage_installer_dir">目录：%1$s</string>
+    <string name="storage_installer_count">已缓存 %1$d 个安装包（当前环境：%2$s）</string>
+    <string name="storage_installer_item">· %1$s（%2$d MB）</string>
+    <string name="storage_installer_cleaned">已清理 %1$d 个旧版本文件</string>
+    <string name="storage_installer_clean_btn">清理旧版本缓存（保留当前版本）</string>
+    <string name="storage_rollback_list">能回到的旧版本（只留最近 2 个安装包）</string>
+    <string name="storage_rollback_to">回退到 %1$s</string>
+    <string name="storage_rollback_title">回退环境版本</string>
+    <string name="storage_rollback_desc">会用 %1$s 重装系统文件（约几分钟）。登录状态和工作区都会保留。</string>
+    <string name="storage_rollback_start">回退环境：用本地安装包 %1$s 重装（不联网）</string>
+    <string name="storage_unpacking">正在解压（没有详细进度，请留在本页或看通知栏）…</string>
+    <string name="storage_rollback_done">回退完成：已换回 %1$s，重进终端生效（没联网）</string>
+    <string name="storage_rollback_failed">回退失败：%1$s</string>
+    <string name="storage_rollback_btn">回退</string>
 
     <!-- ── 帮助页 ── -->
     <string name="help_guide_title">新手指南</string>
