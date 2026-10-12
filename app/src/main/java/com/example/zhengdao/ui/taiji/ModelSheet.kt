@@ -19,7 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcModel
 import com.example.zhengdao.ui.util.pressClickable
 
@@ -49,7 +51,7 @@ fun ModelSheet(
         Column(Modifier.padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "模型池",
+                    stringResource(R.string.taiji_model_pool),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
@@ -59,13 +61,13 @@ fun ModelSheet(
                 // 列表在拉取中时同一个位置显示状态，避免"按了没反应"。
                 if (isLoading) {
                     Text(
-                        "拉取中…",
+                        stringResource(R.string.taiji_fetching),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     Text(
-                        "⟳ 刷新",
+                        stringResource(R.string.taiji_refresh_action),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
@@ -80,8 +82,11 @@ fun ModelSheet(
                 }
             }
             Text(
-                "当前：" + (override?.let { "${it.providerID}/${it.id}（本会话覆盖）" }
-                    ?: currentModel ?: "服务端默认"),
+                stringResource(R.string.taiji_current_prefix) +
+                    (override?.let {
+                        "${it.providerID}/${it.id}" + stringResource(R.string.taiji_session_override)
+                    }
+                        ?: currentModel ?: stringResource(R.string.taiji_server_default)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
@@ -92,7 +97,7 @@ fun ModelSheet(
             // 拉取中不显示：此刻顶行已写「拉取中…」，留着上一次的旧原因只会让人以为这次也失败了。
             if (!isLoading && error != null) {
                 Text(
-                    "刷新失败：$error",
+                    stringResource(R.string.taiji_model_refresh_failed, error),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -105,7 +110,7 @@ fun ModelSheet(
             // 反馈由顶行的「拉取中…」承担，列表有内容就原地保留。
             if (isLoading && models.isEmpty()) {
                 Text(
-                    "正在拉取模型目录…",
+                    stringResource(R.string.taiji_loading_model_catalog),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 24.dp),
                 )
@@ -115,17 +120,16 @@ fun ModelSheet(
                     // 「刷新失败：…」已经把真实原因说清楚了，这里再断言一次"没有模型"
                     // 就又把两种空态混成一句了——正是本次要修的那件事。
                     if (error == null) {
-                        Text("暂无可用模型", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.taiji_no_models), style = MaterialTheme.typography.bodyMedium)
                     }
                     Text(
-                        "模型目录来自 models.dev，当前网络不可达（免费模型也依赖目录）。" +
-                            "在代理 App 的「分应用代理」里勾选证道后重试。",
+                        stringResource(R.string.taiji_catalog_unreachable),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
                     )
                     Text(
-                        "重新加载",
+                        stringResource(R.string.taiji_reload),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
@@ -146,7 +150,10 @@ fun ModelSheet(
                         .padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("默认（清除本会话覆盖）", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.taiji_default_clear_override),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
                 HorizontalDivider()
                 LazyColumn(Modifier.height(360.dp)) {
@@ -188,7 +195,7 @@ fun ModelSheet(
                                 }
                                 if (m.free) {
                                     Text(
-                                        "免费",
+                                        stringResource(R.string.taiji_free),
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.primary,
                                     )
