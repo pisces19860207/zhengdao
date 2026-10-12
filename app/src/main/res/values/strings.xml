@@ -38,6 +38,7 @@
     <string name="settings_knowledge_base">资料库</string>
     <string name="settings_keepalive">后台保活</string>
     <string name="settings_language">界面语言</string>
+    <string name="settings_appearance">外观</string>
     <string name="settings_help">帮助</string>
     <string name="settings_about">关于</string>
 
@@ -56,6 +57,11 @@
     <string name="language_system">跟随系统</string>
     <string name="language_zh">简体中文</string>
     <string name="language_en">English</string>
+
+    <!-- ── 外观（浅色 / 深色）── -->
+    <string name="appearance_system">跟随系统</string>
+    <string name="appearance_light">浅色</string>
+    <string name="appearance_dark">深色</string>
 
     <!-- ── 启动与更新提示（MainActivity）── -->
     <string name="main_android_too_old_title">系统版本过低</string>

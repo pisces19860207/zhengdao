@@ -48,6 +48,7 @@ import com.example.zhengdao.ChevronRight
 import com.example.zhengdao.R
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
+import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -97,6 +98,10 @@ fun SettingsScreen(
     // 界面语言（2026-10-12）：读系统记的 per-app locale，切换后系统重建 Activity、当场生效。
     var langTag by remember { mutableStateOf(LanguagePrefs.current(ctx)) }
     var langDialog by remember { mutableStateOf(false) }
+    // 外观（2026-10-12 深色主题）：订阅变更信号，切换即重组、不用重建页面。
+    var appearDialog by remember { mutableStateOf(false) }
+    val appearTick = AppearancePrefs.changeTick.value
+    val appearPref = remember(appearTick) { AppearancePrefs.get(ctx) }
 
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
@@ -190,6 +195,15 @@ fun SettingsScreen(
 
             SectionCard(stringResource(R.string.settings_group_interface)) {
                 SettingRow(
+                    label = stringResource(R.string.settings_appearance),
+                    value = when (appearPref) {
+                        AppearancePrefs.LIGHT -> stringResource(R.string.appearance_light)
+                        AppearancePrefs.DARK -> stringResource(R.string.appearance_dark)
+                        else -> stringResource(R.string.appearance_system)
+                    },
+                ) { appearDialog = true }
+                SettingsDivider()
+                SettingRow(
                     label = stringResource(R.string.settings_language),
                     value = when (langTag) {
                         LanguagePrefs.ZH -> stringResource(R.string.language_zh)
@@ -213,6 +227,38 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(8.dp))
+        }
+
+        // 外观选择（2026-10-12）：写偏好即改内存状态 ⇒ 整个界面当场重绘，不用重建页面。
+        if (appearDialog) {
+            val options = listOf(
+                AppearancePrefs.SYSTEM to stringResource(R.string.appearance_system),
+                AppearancePrefs.LIGHT to stringResource(R.string.appearance_light),
+                AppearancePrefs.DARK to stringResource(R.string.appearance_dark),
+            )
+            AlertDialog(
+                onDismissRequest = { appearDialog = false },
+                shape = RoundedCornerShape(14.dp),
+                title = { Text(stringResource(R.string.settings_appearance)) },
+                text = {
+                    Column {
+                        options.forEach { (value, name) ->
+                            SettingRow(
+                                label = name,
+                                value = if (value == appearPref) "✓" else "",
+                            ) {
+                                appearDialog = false
+                                AppearancePrefs.set(ctx, value)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { appearDialog = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                },
+            )
         }
 
         // 界面语言选择（2026-10-12）：系统级 per-app locale，选完系统自动重建页面。
