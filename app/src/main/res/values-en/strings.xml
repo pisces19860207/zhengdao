@@ -292,8 +292,8 @@
     <string name="storage_row_cache">cache (downloads)</string>
     <string name="storage_tag_removable">removable</string>
     <string name="storage_tag_keep">keep</string>
-    <string name="storage_opt_btn">Clean optional tools (%1$d MB)</string>
-    <string name="storage_opt_title">Clean optional tools?</string>
+    <string name="storage_opt_btn">Clear rarely-used add-on tools (%1$d MB)</string>
+    <string name="storage_opt_title">Clear rarely-used add-on tools?</string>
     <string name="storage_opt_free">Frees about %1$d MB.</string>
     <string name="storage_opt_desc">This removes hermes\' bundled desktop-automation tool (cua-driver). It is only used in that kind of session, and it won\'t come back on its own — run hermes pm install once in the terminal to get it back (needs network, takes a while).</string>
     <string name="storage_opt_browser">Browser tools (agent-browser / chromium) are not removed — hermes needs them to open web pages, so they stay.</string>
@@ -301,7 +301,7 @@
     <string name="storage_opt_keeps">Not removed: python / node / uv / npm / ripgrep runtimes, the dependency environment, memory, the hermes installation itself, system files, or any of your data.</string>
     <string name="storage_opt_deleted">Deleted %1$d items, freed %2$d MB</string>
     <string name="storage_opt_none">No optional tools to clean</string>
-    <string name="storage_script_btn">Clean installer script cache (re-downloads next install)</string>
+    <string name="storage_script_btn">Clean scripts downloaded during install (re-downloaded next time)</string>
     <string name="storage_script_title">Clean installer script cache?</string>
     <string name="storage_script_desc1">This deletes the cached installer scripts in the shared agents/scripts folder, the checksums the app keeps, and the copy in the terminal.</string>
     <string name="storage_script_desc2">The scripts are only tens of KB — this isn\'t about freeing space, it\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
@@ -312,15 +312,15 @@
     <string name="storage_cache_location">Location: %1$s (cache = package cache, logs = logs, agents = scripts &amp; ledger; rootfs and opencode are installers)</string>
     <string name="storage_cache_tiers">Package cache (very low risk): downloads from npm / uv / apt, cleaned in the terminal so you can watch it. Temp files (low risk): leftovers in the temp folder untouched for over a day; no terminal needed, and the app also clears automatically when it exceeds 500 MB at startup. Toolchains, system files and your data are never touched.</string>
     <string name="storage_cache_not_installed">The environment isn\'t installed yet, so there\'s nothing to clean in the terminal</string>
-    <string name="storage_cache_guest_btn">Clean package cache in terminal</string>
+    <string name="storage_cache_guest_btn">Clean package-download cache in the terminal</string>
     <string name="storage_temp_btn">Clean temp files (%1$d MB)</string>
     <string name="storage_temp_none">No temp files to clean</string>
     <string name="storage_temp_title">Clean temp files?</string>
     <string name="storage_temp_desc">Deletes about %1$d MB of leftovers in the temp folder (untouched for over a day).\n\nTerminal sessions, build caches and lock files are not deleted, and your data is untouched.</string>
     <string name="storage_freed">Freed %1$d MB</string>
     <string name="storage_temp_cleaned_none">No temp files to clean</string>
-    <string name="storage_agent_btn">Clean agent cache (%1$d MB)</string>
-    <string name="storage_agent_btn_bare">Clean agent cache</string>
+    <string name="storage_agent_btn">Clean download caches left by tool installs (%1$d MB)</string>
+    <string name="storage_agent_btn_bare">Clean download caches left by tool installs</string>
     <string name="storage_agent_title">Clean agent cache?</string>
     <string name="storage_agent_desc">These caches will be deleted (they can be re-downloaded or regenerated):</string>
     <string name="storage_agent_empty">(nothing measurable to clean this time)</string>
@@ -328,7 +328,7 @@
     <string name="storage_agent_busy">⚠️ A terminal session is running: if it is installing dependencies right now, cleaning may interrupt that install (anything already installed is unaffected).</string>
     <string name="storage_agent_keeps">Not removed: installed agents and toolchains (hermes/tools, Python/Node), the dependency environment and memory, config files, system files, or your own files. These caches re-download when needed.</string>
     <string name="storage_agent_cleaned_none">No agent cache to clean</string>
-    <string name="storage_gen_btn">Clean old dependency files (%1$d MB)</string>
+    <string name="storage_gen_btn">Clean pre-upgrade old Python environments (%1$d MB)</string>
     <string name="storage_gen_title">Clean old dependency files?</string>
     <string name="storage_gen_free">Frees about %1$d MB.</string>
     <string name="storage_gen_desc">Every reinstall of the dependency environment leaves an old copy (hundreds of MB), and the record only points at the newest one — this deletes the ones nothing refers to. The one in use and the newest one are kept.</string>
@@ -666,7 +666,7 @@
     <string name="health_storage_ok">All-files access granted; shared storage directly readable</string>
     <string name="health_storage_read_fail">All-files access granted, but shared storage can\'t be read (permission gating or restricted storage view — needs a second look)</string>
     <string name="health_storage_denied">All-files access not granted; the workspace\'s main path is unavailable — enable it in system settings</string>
-    <string name="health_disk_cleanable">%1$d MB cleanable (agent package cache / old installers / old dependency generations / optional tools)</string>
+    <string name="health_disk_cleanable">%1$d MB cleanable — all re-downloadable stuff: old installers, tool-install caches, pre-upgrade old environments</string>
     <string name="health_disk_below">%1$d MB cleanable, below the %2$d MB threshold</string>
     <string name="health_native_ok">libzhengdao_core.so loaded: extraction and SHA256 run natively</string>
     <string name="health_native_fallback">Not loaded: extraction and SHA256 fall back to Java (works, but slower); likely a packaging or page-alignment issue, see E-012/E-022</string>
