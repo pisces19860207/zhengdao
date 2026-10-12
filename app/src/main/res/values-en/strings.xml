@@ -286,23 +286,23 @@
     <string name="storage_opt_btn">Clean optional tools (%1$d MB)</string>
     <string name="storage_opt_title">Clean optional tools?</string>
     <string name="storage_opt_free">Frees about %1$d MB.</string>
-    <string name="storage_opt_desc">This removes hermes\\' bundled desktop-automation tool (cua-driver). It is only used in that kind of session, and it won\\'t come back on its own — run hermes pm install once in the terminal to get it back (needs network, takes a while).</string>
+    <string name="storage_opt_desc">This removes hermes\' bundled desktop-automation tool (cua-driver). It is only used in that kind of session, and it won\'t come back on its own — run hermes pm install once in the terminal to get it back (needs network, takes a while).</string>
     <string name="storage_opt_browser">Browser tools (agent-browser / chromium) are not removed — hermes needs them to open web pages, so they stay.</string>
-    <string name="storage_opt_ffmpeg">ffmpeg isn\\'t included either: it\\'s a required package for hermes, and removing it makes hermes report \"install out of sync\" on every start (it doesn\\'t accept the copy bundled with the system layer).</string>
+    <string name="storage_opt_ffmpeg">ffmpeg isn\'t included either: it\'s a required package for hermes, and removing it makes hermes report \"install out of sync\" on every start (it doesn\'t accept the copy bundled with the system layer).</string>
     <string name="storage_opt_keeps">Not removed: python / node / uv / npm / ripgrep runtimes, the dependency environment, memory, the hermes installation itself, system files, or any of your data.</string>
     <string name="storage_opt_deleted">Deleted %1$d items, freed %2$d MB</string>
     <string name="storage_opt_none">No optional tools to clean</string>
     <string name="storage_script_btn">Clean installer script cache (re-downloads next install)</string>
     <string name="storage_script_title">Clean installer script cache?</string>
     <string name="storage_script_desc1">This deletes the cached installer scripts in the shared agents/scripts folder, the checksums the app keeps, and the copy in the terminal.</string>
-    <string name="storage_script_desc2">The scripts are only tens of KB — this isn\\'t about freeing space, it\\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
+    <string name="storage_script_desc2">The scripts are only tens of KB — this isn\'t about freeing space, it\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
     <string name="storage_script_keeps">Not removed: the agent ledger installed.json, installed agents and toolchains, logs, or the knowledge base.</string>
     <string name="storage_script_cleared">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</string>
     <string name="storage_script_none">No script cache to clean</string>
     <string name="storage_cache_title">Cache cleanup</string>
     <string name="storage_cache_location">Location: %1$s (cache = package cache, logs = logs, agents = scripts &amp; ledger; rootfs and opencode are installers)</string>
     <string name="storage_cache_tiers">Package cache (very low risk): downloads from npm / uv / apt, cleaned in the terminal so you can watch it. Temp files (low risk): leftovers in the temp folder untouched for over a day; no terminal needed, and the app also clears automatically when it exceeds 500 MB at startup. Toolchains, system files and your data are never touched.</string>
-    <string name="storage_cache_not_installed">The environment isn\\'t installed yet, so there\\'s nothing to clean in the terminal</string>
+    <string name="storage_cache_not_installed">The environment isn\'t installed yet, so there\'s nothing to clean in the terminal</string>
     <string name="storage_cache_guest_btn">Clean package cache in terminal</string>
     <string name="storage_temp_btn">Clean temp files (%1$d MB)</string>
     <string name="storage_temp_none">No temp files to clean</string>
