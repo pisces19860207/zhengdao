@@ -630,4 +630,102 @@
     <string name="perm_done">完成，进入证道</string>
     <string name="perm_later">稍后再说</string>
     <string name="perm_storage_required_note">「存储读写」是必需项，现在也可以先进去。</string>
+
+    <!-- ── 环境体检（EnvHealth：标签与各项结论）── -->
+    <string name="health_abnormal">体检异常：%1$s</string>
+    <string name="health_label_proot">proot 就绪</string>
+    <string name="health_label_rootfs">RootFS 完整性</string>
+    <string name="health_label_dns">DNS 配置</string>
+    <string name="health_label_timezone">时区校准</string>
+    <string name="health_label_uv">uv 配置</string>
+    <string name="health_label_hermes">Hermes 依赖环境</string>
+    <string name="health_label_network">网络连通性</string>
+    <string name="health_label_storage">存储权限</string>
+    <string name="health_label_disk">存储占用</string>
+    <string name="health_label_native">native 加速层</string>
+    <string name="health_label_resource">资源占用</string>
+    <string name="health_proot_ok">proot + loader 就位</string>
+    <string name="health_proot_missing">proot 或 loader 缺失（启动时会自动重放，仍缺就用「修复环境」重解压）</string>
+    <string name="health_rootfs_ok">Debian 系统层完整</string>
+    <string name="health_rootfs_broken">系统层文件缺失，需「修复环境」重解压（约 30 秒）</string>
+    <string name="health_rootfs_missing">环境未安装或安装未完成</string>
+    <string name="health_dns_ok">国内源 + 重试参数已配置</string>
+    <string name="health_dns_stale">缺国内源或重试参数（旧版配置），可一键重写</string>
+    <string name="health_dns_missing">resolv.conf 不存在，可一键写入</string>
+    <string name="health_tz_off">localtime 未指向 Asia/Shanghai（TZ 环境变量兜底中），可一键校准</string>
+    <string name="health_uv_naked">hermes 内嵌 uv 未包装（硬链接会失败），可一键包装</string>
+    <string name="health_uv_missing">/etc/uv/uv.toml 缺失，可一键写入</string>
+    <string name="health_uv_nolinkmode">uv.toml 缺 link-mode，可一键重写</string>
+    <string name="health_uv_ok">系统级 link-mode=copy + 内嵌 uv 已包装</string>
+    <string name="health_net_validated">宿主网络可用（系统已验证）</string>
+    <string name="health_net_reachable">宿主网络可用（实测已连通）</string>
+    <string name="health_net_no_wan">已连上网络但外网不通（代理或受限网络？）</string>
+    <string name="health_net_down">宿主网络不可用，Agent 安装与更新会失败</string>
+    <string name="health_storage_ok">所有文件访问已授权，共享存储可直读</string>
+    <string name="health_storage_read_fail">所有文件访问已授权，但共享存储读不到（权限帽子或存储视图受限，需复查）</string>
+    <string name="health_storage_denied">所有文件访问未授权，工作区主路径不可用；到系统设置开启</string>
+    <string name="health_disk_cleanable">可清理 %1$dMB（Agent 包缓存 / 旧安装包 / 旧依赖代 / 可选工具）</string>
+    <string name="health_disk_below">可清理 %1$dMB，未超过 %2$dMB 阈值</string>
+    <string name="health_native_ok">libzhengdao_core.so 已加载：解压与 SHA256 走 native</string>
+    <string name="health_native_fallback">未加载：解压与 SHA256 走 Java 回退（功能正常但更慢）；疑似打包或页对齐问题，见 E-012/E-022</string>
+
+    <!-- ── 网络自检（NetSelfCheck：两条探针的人话结论）── -->
+    <string name="net_ok_both">✅ 网络可用（%1$dms）· ✅ 更新源可达（%2$dms）</string>
+    <string name="net_ok_index_down">✅ 网络可用（%1$dms）· ⚠️ 更新源不可达：下载环境包与「检查环境更新」都会失败。若在代理下，请到代理 App 的「分应用代理」里勾选证道</string>
+    <string name="net_cn_down_index_ok">⚠️ 国内镜像不通（%1$s），但更新源可达（%2$dms）</string>
+    <string name="net_all_down">❌ 不通：%1$s——检查网络，或在代理 App 的分应用代理里勾选证道</string>
+    <string name="net_timeout">超时</string>
+    <string name="net_timeout_secs">超时 %1$ds</string>
+    <string name="net_index_unreachable">索引不可达</string>
+
+    <!-- ── 异常人话映射（HumanizeError）── -->
+    <string name="err_no_permission">没有权限</string>
+    <string name="err_file_not_found">文件找不到</string>
+    <string name="err_file_exists">目标位置已存在同名文件</string>
+    <string name="err_host_not_found">找不到服务器（请检查网络）</string>
+    <string name="err_net_timeout">网络超时（请重试）</string>
+    <string name="err_ssl_fail">安全连接失败（请检查网络）</string>
+    <string name="err_connect_fail">连不上服务器（请检查网络）</string>
+    <string name="err_net_interrupted">网络连接中断（请重试）</string>
+    <string name="err_generic">出错了（%1$s）</string>
+    <string name="err_unknown_type">未知类型</string>
+    <string name="err_disk_full">存储空间不足</string>
+    <string name="err_no_write">没有写入权限</string>
+    <string name="err_file_too_large">文件太大</string>
+    <string name="err_io">文件读写失败</string>
+
+    <!-- ── 系统信息（SystemInfoProvider：行标签与各值文案）── -->
+    <string name="sys_section_hw">── 系统与硬件 ──</string>
+    <string name="sys_android">Android 版本: %1$s (API %2$s)</string>
+    <string name="sys_model">设备型号: %1$s</string>
+    <string name="sys_manufacturer">制造商: %1$s</string>
+    <string name="sys_abi">CPU 架构: %1$s</string>
+    <string name="sys_cores">核心数: %1$s</string>
+    <string name="sys_ram">内存: %1$s 可用 / %2$s 总量</string>
+    <string name="sys_storage">存储(应用分区): %1$s 可用 / %2$s 总量</string>
+    <string name="sys_screen">屏幕: %1$s</string>
+    <string name="sys_kernel">内核: %1$s</string>
+    <string name="sys_section_security">── 安全与运行环境 ──</string>
+    <string name="sys_selinux">SELinux: %1$s</string>
+    <string name="sys_root">Root: %1$s</string>
+    <string name="sys_gms_line">GMS: %1$s</string>
+    <string name="sys_webview">WebView: %1$s</string>
+    <string name="sys_section_zd">── 证道环境 ──</string>
+    <string name="sys_rootfs_line">RootFS: %1$s</string>
+    <string name="sys_distro">发行版: %1$s</string>
+    <string name="sys_proot_line">proot: %1$s</string>
+    <string name="sys_agents">已装 Agent: %1$s</string>
+    <string name="sys_python_line">Python: %1$s</string>
+    <string name="sys_node_line">Node: %1$s</string>
+    <string name="sys_uv_line">uv: %1$s</string>
+    <string name="sys_unknown">未知</string>
+    <string name="sys_rooted">已 Root</string>
+    <string name="sys_not_rooted">未 Root</string>
+    <string name="sys_gms_yes">带 GMS（认证设备）</string>
+    <string name="sys_gms_no">无 GMS</string>
+    <string name="sys_installed">已安装</string>
+    <string name="sys_not_installed">未安装</string>
+    <string name="sys_proot_ready">就绪（Termux fork）</string>
+    <string name="sys_none">无</string>
+    <string name="sys_uv_embedded">%1$s（hermes 内嵌）</string>
 </resources>

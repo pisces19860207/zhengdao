@@ -3,9 +3,11 @@
 package com.example.zhengdao.ui
 
 import android.content.Context
+import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
+import com.example.zhengdao.R
 import com.example.zhengdao.rust.CoreNative
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.EnvSelfHeal
@@ -117,28 +119,34 @@ object EnvHealth {
     internal data class Item(
         val id: String,
         val label: String,
+        /** 标签的资源 ID；[inspect] 传了 [Resources] 时用它取当前语言的标签，null 则恒用 [label]。 */
+        val labelRes: Int? = null,
         val warnOnly: Boolean = false,
         val fixId: String? = null,
         val terminalCmd: String? = null,
         val route: String? = null,
-        val body: (Context) -> Check,
-    )
+        val body: (Context, Resources?) -> Check,
+    ) {
+        /** 当前语言的标签：[res] 传 null（JVM 单测 / 无 Context）回退中文 [label]。 */
+        fun labelFor(res: Resources?): String =
+            res?.let { r -> labelRes?.let { runCatching { r.getString(it) }.getOrNull() } } ?: label
+    }
 
     internal val ITEMS: List<Item> = listOf(
-        Item("proot", "proot 就绪", route = GUIDED_ROUTES["proot"], body = ::prootCheck),
-        Item("rootfs", "RootFS 完整性", route = GUIDED_ROUTES["rootfs"], body = ::rootfsCheck),
-        Item("dns", "DNS 配置", fixId = FIX_DNS, body = ::dnsCheck),
-        Item("timezone", "时区校准", fixId = FIX_TIMEZONE, body = ::timezoneCheck),
-        Item("uv", "uv 配置", fixId = FIX_UV, body = ::uvCheck),
+        Item("proot", "proot 就绪", R.string.health_label_proot, route = GUIDED_ROUTES["proot"], body = ::prootCheck),
+        Item("rootfs", "RootFS 完整性", R.string.health_label_rootfs, route = GUIDED_ROUTES["rootfs"], body = ::rootfsCheck),
+        Item("dns", "DNS 配置", R.string.health_label_dns, fixId = FIX_DNS, body = ::dnsCheck),
+        Item("timezone", "时区校准", R.string.health_label_timezone, fixId = FIX_TIMEZONE, body = ::timezoneCheck),
+        Item("uv", "uv 配置", R.string.health_label_uv, fixId = FIX_UV, body = ::uvCheck),
         Item(
-            "hermes-deps", "Hermes 依赖环境",
+            "hermes-deps", "Hermes 依赖环境", R.string.health_label_hermes,
             terminalCmd = HermesEnv.REPAIR_CMD, body = ::hermesDepsCheck,
         ),
-        Item("network", "网络连通性", route = GUIDED_ROUTES["network"], body = ::networkCheck),
-        Item("storage", "存储权限", route = GUIDED_ROUTES["storage"], body = ::storageCheck),
-        Item("disk", "存储占用", route = GUIDED_ROUTES["disk"], body = ::diskCheck),
-        Item("native", "native 加速层", warnOnly = true, body = { nativeCheck() }),
-        Item("resource", "资源占用", warnOnly = true, body = { resourceCheck() }),
+        Item("network", "网络连通性", R.string.health_label_network, route = GUIDED_ROUTES["network"], body = ::networkCheck),
+        Item("storage", "存储权限", R.string.health_label_storage, route = GUIDED_ROUTES["storage"], body = ::storageCheck),
+        Item("disk", "存储占用", R.string.health_label_disk, route = GUIDED_ROUTES["disk"], body = ::diskCheck),
+        Item("native", "native 加速层", R.string.health_label_native, warnOnly = true, body = { _, res -> nativeCheck(res) }),
+        Item("resource", "资源占用", R.string.health_label_resource, warnOnly = true, body = { _, res -> resourceCheck(res) }),
     )
 
     /** 异常摘要（人话 + 类名；用户能截图，我们能在日志里 grep）。 */
@@ -146,23 +154,30 @@ object EnvHealth {
         t.javaClass.simpleName + (t.message?.let { "：$it" } ?: "")
 
     /** 某一项体检抛异常时的兜底结果（纯函数，便于单测）：该项判失败 + 原因 + 登记好的去路。 */
-    internal fun fallbackOf(item: Item, t: Throwable): Check =
+    internal fun fallbackOf(item: Item, t: Throwable, res: Resources? = null): Check =
         if (item.warnOnly) {
-            Check(item.id, item.label, ok = true, detail = "体检异常：${reason(t)}", warn = true)
+            Check(item.id, item.labelFor(res), ok = true, detail = abnormalOf(res, t), warn = true)
         } else {
             Check(
-                item.id, item.label, ok = false, detail = "体检异常：${reason(t)}",
+                item.id, item.labelFor(res), ok = false, detail = abnormalOf(res, t),
                 fixId = item.fixId, terminalCmd = item.terminalCmd, route = item.route,
             )
         }
+
+    /** 「体检异常 + 原因」：[res] 传 null（单测）回退中文。 */
+    private fun abnormalOf(res: Resources?, t: Throwable): String =
+        res?.getString(R.string.health_abnormal, reason(t)) ?: "体检异常：${reason(t)}"
 
     /**
      * 逐项体检。IO 线程调用（文件读取若干 + 一个 ConnectivityManager 查询 + 一次资源采样 ~0.7 s）。
      *
      * **本函数不抛异常**（#10）：每一项跑在 `runCatching` 里，抛异常的那一项由 [fallbackOf]
      * 转成「体检异常 + 原因」，其余项照跑——体检面板不再可能因为某一项而整表崩掉。
+     *
+     * [res] 传 `ctx.resources` 即随界面语言（标签与各项 detail），传 null 回退中文（JVM 单测）。
      */
-    fun inspect(ctx: Context): List<Check> = evaluate(ITEMS) { it.body(ctx) }
+    fun inspect(ctx: Context, res: Resources? = null): List<Check> =
+        evaluate(ITEMS, res) { it.body(ctx, res) }
 
     /**
      * 流式体检（2026-10-12 走查报告 §5.4 无感化）：11 项**并行**跑，谁先算完谁先发射。
@@ -171,10 +186,12 @@ object EnvHealth {
      * 快项（文件 stat，毫秒级）先出，慢项（磁盘遍历/资源采样）后到——信息是「流」出来的，
      * 不是等齐了「蹦」出来的。单项异常同样被 [fallbackOf] 接住，不影响其他项。
      */
-    fun inspectStream(ctx: Context): Flow<Check> = channelFlow {
+    fun inspectStream(ctx: Context, res: Resources? = null): Flow<Check> = channelFlow {
         ITEMS.forEach { item ->
             launch(Dispatchers.IO) {
-                val c = runCatching { item.body(ctx) }.getOrElse { fallbackOf(item, it) }
+                val c = runCatching { item.body(ctx, res) }
+                    .getOrElse { fallbackOf(item, it, res) }
+                    .withLabel(item, res)
                 send(c)
             }
         }
@@ -185,9 +202,22 @@ object EnvHealth {
      *
      * 抽成纯函数是为了让「一项抛异常不影响其余项」这条不变量能在 JVM 单测里直接验
      * （[inspect] 需要 Context，单测给不出来）；求值语义与 [inspect] 完全一致。
+     *
+     * 正常路径的 [Check.label] 由 body 生成（中文），这里统一用 [Item.labelFor] 覆盖——
+     * body 只对"这一项是否正常"负责，标签跟登记表走（i18n 后 label 的唯一出处）。
      */
-    internal fun evaluate(items: List<Item>, check: (Item) -> Check): List<Check> =
-        items.map { item -> runCatching { check(item) }.getOrElse { fallbackOf(item, it) } }
+    internal fun evaluate(
+        items: List<Item>,
+        res: Resources? = null,
+        check: (Item) -> Check,
+    ): List<Check> =
+        items.map { item ->
+            runCatching { check(item).withLabel(item, res) }.getOrElse { fallbackOf(item, it, res) }
+        }
+
+    /** 用登记表的当前语言标签覆盖 [Check.label]（详见 [evaluate] 注释）。 */
+    private fun Check.withLabel(item: Item, res: Resources?): Check =
+        copy(label = item.labelFor(res))
 
     /** [fixDetailed] 的结果：`changed` = 真的动过文件（可能仍没修好）；`error` 非空 = 抛异常了。 */
     data class FixResult(val changed: Boolean, val error: String? = null)
@@ -223,23 +253,24 @@ object EnvHealth {
 
     // ── 各项判定（条件与 EnvSelfHeal 的重写条件同源，红=可修绿）──
 
-    private fun prootCheck(ctx: Context): Check {
+    private fun prootCheck(ctx: Context, res: Resources?): Check {
         val proot = File(ctx.filesDir, "termux-proot/proot")
         val loader = File(ctx.filesDir, "termux-proot/loader")
         val ok = proot.isFile && proot.canExecute() && loader.isFile
         return Check(
             id = "proot", label = "proot 就绪", ok = ok,
             detail = when {
-                ok -> "proot + loader 就位"
+                ok -> res?.getString(R.string.health_proot_ok) ?: "proot + loader 就位"
                 // 每次启动都会按 SHA256 从内置资源重放（[ProotLauncher]），所以这里还缺
                 // 说明连重放都没成功——去路给「修复环境」，别再让用户自己找。
-                else -> "proot 或 loader 缺失（启动时会自动重放，仍缺就用「修复环境」重解压）"
+                else -> res?.getString(R.string.health_proot_missing)
+                    ?: "proot 或 loader 缺失（启动时会自动重放，仍缺就用「修复环境」重解压）"
             },
             route = if (ok) null else GUIDED_ROUTES["proot"],
         )
     }
 
-    private fun rootfsCheck(ctx: Context): Check {
+    private fun rootfsCheck(ctx: Context, res: Resources?): Check {
         val rootfs = File(ctx.filesDir, "rootfs")
         val marker = File(rootfs, ".zhengdao-rootfs-ok")
         // 最小完整性集：安装完成标记 + shell 与 coreutils 入口存在。
@@ -249,15 +280,17 @@ object EnvHealth {
         return Check(
             id = "rootfs", label = "RootFS 完整性", ok = ok,
             detail = when {
-                ok -> "Debian 系统层完整"
-                marker.isFile -> "系统层文件缺失，需「修复环境」重解压（约 30 秒）"
-                else -> "环境未安装或安装未完成"
+                ok -> res?.getString(R.string.health_rootfs_ok) ?: "Debian 系统层完整"
+                marker.isFile -> res?.getString(R.string.health_rootfs_broken)
+                    ?: "系统层文件缺失，需「修复环境」重解压（约 30 秒）"
+                else -> res?.getString(R.string.health_rootfs_missing)
+                    ?: "环境未安装或安装未完成"
             },
             route = if (ok) null else GUIDED_ROUTES["rootfs"],
         )
     }
 
-    private fun dnsCheck(ctx: Context): Check {
+    private fun dnsCheck(ctx: Context, res: Resources?): Check {
         val resolv = File(ctx.filesDir, "rootfs/etc/resolv.conf")
         // 判定与 EnvSelfHeal.ensureDnsFiles 的 stale 条件同源：
         // 文件在、含国内源、含重试参数 = 新版配置
@@ -268,15 +301,17 @@ object EnvHealth {
         return Check(
             id = "dns", label = "DNS 配置", ok = ok,
             detail = when {
-                ok -> "国内源 + 重试参数已配置"
-                resolv.isFile -> "缺国内源或重试参数（旧版配置），可一键重写"
-                else -> "resolv.conf 不存在，可一键写入"
+                ok -> res?.getString(R.string.health_dns_ok) ?: "国内源 + 重试参数已配置"
+                resolv.isFile -> res?.getString(R.string.health_dns_stale)
+                    ?: "缺国内源或重试参数（旧版配置），可一键重写"
+                else -> res?.getString(R.string.health_dns_missing)
+                    ?: "resolv.conf 不存在，可一键写入"
             },
             fixId = if (ok) null else FIX_DNS,
         )
     }
 
-    private fun timezoneCheck(ctx: Context): Check {
+    private fun timezoneCheck(ctx: Context, res: Resources?): Check {
         val rootfs = File(ctx.filesDir, "rootfs")
         val wanted = "/usr/share/zoneinfo/Asia/Shanghai"
         val cur = runCatching {
@@ -288,13 +323,14 @@ object EnvHealth {
             detail = when {
                 ok -> "Asia/Shanghai"
                 // 会话启动时 TZ 环境变量兜底，guest 时间仍正确，但属"未校准"状态
-                else -> "localtime 未指向 Asia/Shanghai（TZ 环境变量兜底中），可一键校准"
+                else -> res?.getString(R.string.health_tz_off)
+                    ?: "localtime 未指向 Asia/Shanghai（TZ 环境变量兜底中），可一键校准"
             },
             fixId = if (ok) null else FIX_TIMEZONE,
         )
     }
 
-    private fun uvCheck(ctx: Context): Check {
+    private fun uvCheck(ctx: Context, res: Resources?): Check {
         val uvToml = File(ctx.filesDir, "rootfs/etc/uv/uv.toml")
         // 坑 #1：hermes 内嵌 uv 裸奔（ELF 未包装）会让硬链接必然失败。
         // 无 tools 目录 = 未装 hermes 或无内嵌 uv，视为通过。
@@ -309,10 +345,14 @@ object EnvHealth {
         return Check(
             id = "uv", label = "uv 配置", ok = ok,
             detail = when {
-                naked -> "hermes 内嵌 uv 未包装（硬链接会失败），可一键包装"
-                !uvToml.isFile -> "/etc/uv/uv.toml 缺失，可一键写入"
-                !hasLinkMode -> "uv.toml 缺 link-mode，可一键重写"
-                else -> "系统级 link-mode=copy + 内嵌 uv 已包装"
+                naked -> res?.getString(R.string.health_uv_naked)
+                    ?: "hermes 内嵌 uv 未包装（硬链接会失败），可一键包装"
+                !uvToml.isFile -> res?.getString(R.string.health_uv_missing)
+                    ?: "/etc/uv/uv.toml 缺失，可一键写入"
+                !hasLinkMode -> res?.getString(R.string.health_uv_nolinkmode)
+                    ?: "uv.toml 缺 link-mode，可一键重写"
+                else -> res?.getString(R.string.health_uv_ok)
+                    ?: "系统级 link-mode=copy + 内嵌 uv 已包装"
             },
             fixId = if (ok) null else FIX_UV,
         )
@@ -325,7 +365,7 @@ object EnvHealth {
      * 记录指向不存在的依赖代、而盘上还有**完整**代 ⇒ 宿主侧一键改写记录（[FIX_HERMES_DEPS]）；
      * 要重建 Python 环境、或要 `git checkout` 补回源码锁 ⇒ 脚本落盘后进终端跑（[Check.terminalCmd]）。
      */
-    private fun hermesDepsCheck(ctx: Context): Check {
+    private fun hermesDepsCheck(ctx: Context, @Suppress("UNUSED_PARAMETER") res: Resources?): Check {
         val st = HermesEnv.inspect(ctx)
         return Check(
             id = "hermes-deps",
@@ -345,7 +385,7 @@ object EnvHealth {
      * 也不能直接判失败。所以系统标记只作为快路径，不确定时用一次**真实 TCP 探测**
      * 给出结论——体检要的是真实情况，不是"猜"。
      */
-    private fun networkCheck(ctx: Context): Check {
+    private fun networkCheck(ctx: Context, res: Resources?): Check {
         val cap = runCatching {
             val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             cm.getNetworkCapabilities(cm.activeNetwork)
@@ -356,6 +396,7 @@ object EnvHealth {
             validated = validated,
             reachable = validated || tcpReachable(),
             hasInternet = hasInternet,
+            res = res,
         )
         return Check(
             id = "network", label = "网络连通性", ok = ok, detail = detail,
@@ -365,16 +406,21 @@ object EnvHealth {
         )
     }
 
-    /** 网络体检结论（纯函数，便于单测锁死文案与判定）。 */
+    /** 网络体检结论（纯函数，便于单测锁死文案与判定；[res] 传 null 回退中文）。 */
     internal fun networkVerdict(
         validated: Boolean,
         reachable: Boolean,
         hasInternet: Boolean,
+        res: Resources? = null,
     ): Pair<Boolean, String> = when {
-        validated -> true to "宿主网络可用（系统已验证）"
-        reachable -> true to "宿主网络可用（实测已连通）"
-        hasInternet -> false to "已连上网络但外网不通（代理或受限网络？）"
-        else -> false to "宿主网络不可用，Agent 安装与更新会失败"
+        validated -> true to (res?.getString(R.string.health_net_validated)
+            ?: "宿主网络可用（系统已验证）")
+        reachable -> true to (res?.getString(R.string.health_net_reachable)
+            ?: "宿主网络可用（实测已连通）")
+        hasInternet -> false to (res?.getString(R.string.health_net_no_wan)
+            ?: "已连上网络但外网不通（代理或受限网络？）")
+        else -> false to (res?.getString(R.string.health_net_down)
+            ?: "宿主网络不可用，Agent 安装与更新会失败")
     }
 
     /**
@@ -390,7 +436,7 @@ object EnvHealth {
         }
     }.getOrDefault(false)
 
-    private fun storageCheck(ctx: Context): Check {
+    private fun storageCheck(ctx: Context, res: Resources?): Check {
         // 主路径 = MANAGE_EXTERNAL_STORAGE（E-005 修订）。基础 /sdcard 读写不依赖它，
         // 但 Agent 产出工作区的主路径依赖，故以此为准。
         val granted = runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
@@ -398,7 +444,7 @@ object EnvHealth {
         // 共享存储就是读不到」正是 READ 的 `maxSdkVersion` 帽子造成的。这里补一次**真实读**
         // （`/storage/emulated/0/Download` 列得出来吗），把授权位和真实能力分开报。
         val readable = SystemInfoProvider.sharedStorageReadable()
-        val (ok, detail) = storageVerdict(granted, readable)
+        val (ok, detail) = storageVerdict(granted, readable, res)
         return Check(
             id = "storage", label = "存储权限", ok = ok, detail = detail,
             // 授权页可由主页直接拉起（HomeScreen 里发 ACTION_MANAGE_APP_ALL_FILES_ACCESS_
@@ -414,10 +460,13 @@ object EnvHealth {
      * 权限位与真实能力会脱节（`READ_EXTERNAL_STORAGE` 带 `maxSdkVersion` 帽子时，
      * Android 13+ 上 READ 权限为空，而 MANAGE 仍可能是 true）。
      */
-    internal fun storageVerdict(granted: Boolean, readable: Boolean): Pair<Boolean, String> = when {
-        granted && readable -> true to "所有文件访问已授权，共享存储可直读"
-        granted -> false to "所有文件访问已授权，但共享存储读不到（权限帽子或存储视图受限，需复查）"
-        else -> false to "所有文件访问未授权，工作区主路径不可用；到系统设置开启"
+    internal fun storageVerdict(granted: Boolean, readable: Boolean, res: Resources? = null): Pair<Boolean, String> = when {
+        granted && readable -> true to (res?.getString(R.string.health_storage_ok)
+            ?: "所有文件访问已授权，共享存储可直读")
+        granted -> false to (res?.getString(R.string.health_storage_read_fail)
+            ?: "所有文件访问已授权，但共享存储读不到（权限帽子或存储视图受限，需复查）")
+        else -> false to (res?.getString(R.string.health_storage_denied)
+            ?: "所有文件访问未授权，工作区主路径不可用；到系统设置开启")
     }
 
     /**
@@ -427,9 +476,9 @@ object EnvHealth {
      * 超过就报 ⚠（**黄色告警而不是红 ✗**——它没坏，只是占地方；而且这里不给一键清理，
      * 真正动手的按钮在设置页那张卡里，理由与确认弹窗都在那儿）。
      */
-    private fun diskCheck(ctx: Context): Check {
+    private fun diskCheck(ctx: Context, res: Resources?): Check {
         val cleanable = runCatching { StorageAudit.totalCleanableMb(ctx) }.getOrDefault(0L)
-        val (ok, detail) = diskVerdict(cleanable)
+        val (ok, detail) = diskVerdict(cleanable, res)
         return Check(
             id = "disk", label = "存储占用", ok = ok, detail = detail,
             warn = !ok,
@@ -437,12 +486,15 @@ object EnvHealth {
         )
     }
 
-    /** 存储占用结论（纯函数，便于单测锁死阈值与文案）。 */
-    internal fun diskVerdict(cleanableMb: Long): Pair<Boolean, String> =
+    /** 存储占用结论（纯函数，便于单测锁死阈值与文案；[res] 传 null 回退中文）。 */
+    internal fun diskVerdict(cleanableMb: Long, res: Resources? = null): Pair<Boolean, String> =
         if (cleanableMb >= CacheCleaner.AUTO_THRESHOLD_MB) {
-            false to "可清理 ${cleanableMb}MB（Agent 包缓存 / 旧安装包 / 旧依赖代 / 可选工具）"
+            false to (res?.getString(R.string.health_disk_cleanable, cleanableMb)
+                ?: "可清理 ${cleanableMb}MB（Agent 包缓存 / 旧安装包 / 旧依赖代 / 可选工具）")
         } else {
-            true to "可清理 ${cleanableMb}MB，未超过 ${CacheCleaner.AUTO_THRESHOLD_MB}MB 阈值"
+            true to (res?.getString(R.string.health_disk_below, cleanableMb,
+                CacheCleaner.AUTO_THRESHOLD_MB)
+                ?: "可清理 ${cleanableMb}MB，未超过 ${CacheCleaner.AUTO_THRESHOLD_MB}MB 阈值")
         }
 
     /**
@@ -463,22 +515,24 @@ object EnvHealth {
      * 本 App 只打 `arm64-v8a`（`app/build.gradle.kts` 的 abiFilters），所以在能装上本包的设备上
      * 它**本不该**是 false；真是 false 就说明打出来的包有问题。
      */
-    internal fun nativeCheck(): Check {
+    internal fun nativeCheck(res: Resources? = null): Check {
         val available = runCatching { CoreNative.isRustAvailable() }.getOrDefault(false)
         return Check(
             id = "native",
             label = "native 加速层",
             ok = true,
             warn = !available,
-            detail = nativeDetail(available),
+            detail = nativeDetail(available, res),
         )
     }
 
-    /** native 体检文案（纯函数：类加载与 .so 在 JVM 单测里都不存在，故判定与文案分家）。 */
-    internal fun nativeDetail(available: Boolean): String = if (available) {
-        "libzhengdao_core.so 已加载：解压与 SHA256 走 native"
+    /** native 体检文案（纯函数：类加载与 .so 在 JVM 单测里都不存在，故判定与文案分家；[res] 传 null 回退中文）。 */
+    internal fun nativeDetail(available: Boolean, res: Resources? = null): String = if (available) {
+        res?.getString(R.string.health_native_ok)
+            ?: "libzhengdao_core.so 已加载：解压与 SHA256 走 native"
     } else {
-        "未加载：解压与 SHA256 走 Java 回退（功能正常但更慢）；疑似打包或页对齐问题，见 E-012/E-022"
+        res?.getString(R.string.health_native_fallback)
+            ?: "未加载：解压与 SHA256 走 Java 回退（功能正常但更慢）；疑似打包或页对齐问题，见 E-012/E-022"
     }
 
     /**
@@ -488,7 +542,7 @@ object EnvHealth {
      * 超阈值走 **warn（黄色 ⚠）**——内存/CPU 没有一键修复，报红会违反
      * 「红 = 修得了」的不变量。采样与判定都在 [ResMonitor]。
      */
-    private fun resourceCheck(): Check {
+    private fun resourceCheck(@Suppress("UNUSED_PARAMETER") res: Resources?): Check {
         val v = runCatching { ResMonitor.sampleWithLog() }
             .getOrElse { ResMonitor.verdict(null) }
         return Check(

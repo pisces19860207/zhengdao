@@ -692,7 +692,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 } catch (t: Throwable) {
                                     InstallFlow.fail(
                                         ctx,
-                                        ctx.getString(R.string.storage_rollback_failed, HumanizeError.title(t)),
+                                        ctx.getString(R.string.storage_rollback_failed, HumanizeError.title(t, ctx.resources)),
                                     )
                                     // 2026-10-08：Toast → Snackbar（带"查看日志"action）。
                                     // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
@@ -704,7 +704,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                         val r = snackbarHostState.showSnackbar(
                                             message = ctx.getString(
                                                 R.string.storage_rollback_failed,
-                                                HumanizeError.title(t),
+                                                HumanizeError.title(t, ctx.resources),
                                             ),
                                             actionLabel = ctx.getString(R.string.common_view_log),
                                             duration = SnackbarDuration.Indefinite,

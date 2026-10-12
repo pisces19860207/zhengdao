@@ -176,7 +176,7 @@ fun TaijiScreen(
             onFailure = { e ->
                 // 人话化：与发送失败同款（HumanizeError）。旧列表**不动**——宁可显示陈旧数据，
                 // 也不能让用户以为会话被删光了。
-                val title = com.example.zhengdao.util.HumanizeError.title(e)
+                val title = com.example.zhengdao.util.HumanizeError.title(e, ctx.resources)
                 val r = snackbarHostState.showSnackbar(
                     message = ctx.getString(R.string.taiji_refresh_failed, title),
                     actionLabel = ctx.getString(R.string.common_retry),
@@ -471,7 +471,7 @@ fun TaijiScreen(
                             scope.launch {
                                 repo.prompt(text).onFailure { e ->
                                     // 人话化：把 Java 异常翻成短句（详见 HumanizeError.title）。
-                                    val title = com.example.zhengdao.util.HumanizeError.title(e)
+                                    val title = com.example.zhengdao.util.HumanizeError.title(e, ctx.resources)
                                     val r = snackbarHostState.showSnackbar(
                                         message = ctx.getString(R.string.taiji_send_failed, title),
                                         actionLabel = ctx.getString(R.string.common_retry),

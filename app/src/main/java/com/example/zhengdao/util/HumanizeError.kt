@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.util
 
+import android.content.res.Resources
+import com.example.zhengdao.R
 import java.io.EOFException
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -57,30 +59,40 @@ import javax.net.ssl.SSLException
  */
 object HumanizeError {
 
-    /** 单行「人话」问题描述，可直接 Toast/Snackbar。 */
-    fun title(t: Throwable): String = when (t) {
-        is SecurityException -> "没有权限"
-        is FileNotFoundException -> "文件找不到"
-        is FileAlreadyExistsException -> "目标位置已存在同名文件"
+    /**
+     * 单行「人话」问题描述，可直接 Toast/Snackbar。
+     *
+     * [res] 传 `ctx.resources` 即随界面语言；传 null（JVM 单测 / 无 Context 场景）回退中文。
+     */
+    fun title(t: Throwable, res: Resources? = null): String = when (t) {
+        is SecurityException -> res?.getString(R.string.err_no_permission) ?: "没有权限"
+        is FileNotFoundException -> res?.getString(R.string.err_file_not_found) ?: "文件找不到"
+        is FileAlreadyExistsException -> res?.getString(R.string.err_file_exists)
+            ?: "目标位置已存在同名文件"
 
         // ── 网络类（必须排在 `is IOException` 之前）──────────────────────────
         // SSLException / SocketException / EOFException 全是 IOException 的子类：
         // 放到后面就会被 ioTitle 一律报成"文件读写失败"，用户据此去查存储只会白忙。
         // ⚠️ SocketException 必须排在 ConnectException **之后**——ConnectException 是它的子类，
         //    顺序颠倒会让"服务器拒绝连接"退化成笼统的"连接中断"。
-        is UnknownHostException -> "找不到服务器（请检查网络）"
-        is SocketTimeoutException -> "网络超时（请重试）"
-        is SSLException -> "安全连接失败（请检查网络）"
-        is ConnectException -> "连不上服务器（请检查网络）"
-        is SocketException -> "网络连接中断（请重试）"
-        is EOFException -> "网络连接中断（请重试）"
+        is UnknownHostException -> res?.getString(R.string.err_host_not_found)
+            ?: "找不到服务器（请检查网络）"
+        is SocketTimeoutException -> res?.getString(R.string.err_net_timeout) ?: "网络超时（请重试）"
+        is SSLException -> res?.getString(R.string.err_ssl_fail) ?: "安全连接失败（请检查网络）"
+        is ConnectException -> res?.getString(R.string.err_connect_fail)
+            ?: "连不上服务器（请检查网络）"
+        is SocketException -> res?.getString(R.string.err_net_interrupted) ?: "网络连接中断（请重试）"
+        is EOFException -> res?.getString(R.string.err_net_interrupted) ?: "网络连接中断（请重试）"
 
-        is IOException -> ioTitle(t)
+        is IOException -> ioTitle(t, res)
 
         // 兜底：仍是"出错了"，但带上异常类简名（如「出错了（SocketTimeoutException）」）。
         // 旧版只给"出错了"，用户/支持都无从对号；类简名不含路径与 errno，不违反原则 3。
         // 匿名类的 simpleName 是空串 → 退回"未知类型"，避免出现"出错了（）"。
-        else -> "出错了（${t.javaClass.simpleName.ifBlank { "未知类型" }}）"
+        else -> res?.getString(
+            R.string.err_generic,
+            t.javaClass.simpleName.ifBlank { res?.getString(R.string.err_unknown_type) ?: "未知类型" },
+        ) ?: "出错了（${t.javaClass.simpleName.ifBlank { "未知类型" }}）"
     }
 
     // ── IOException 子分支（按 message 关键词）─────────────────────────────
@@ -96,10 +108,12 @@ object HumanizeError {
         return "no space left on device" in m || "enospc" in m || "disk full" in m
     }
 
-    private fun ioTitle(t: IOException): String = when {
-        isDiskFull(t) -> "存储空间不足"
-        t.message?.contains("Permission denied", ignoreCase = true) == true -> "没有写入权限"
-        t.message?.contains("File too large", ignoreCase = true) == true -> "文件太大"
-        else -> "文件读写失败"
+    private fun ioTitle(t: IOException, res: Resources?): String = when {
+        isDiskFull(t) -> res?.getString(R.string.err_disk_full) ?: "存储空间不足"
+        t.message?.contains("Permission denied", ignoreCase = true) == true ->
+            res?.getString(R.string.err_no_write) ?: "没有写入权限"
+        t.message?.contains("File too large", ignoreCase = true) == true ->
+            res?.getString(R.string.err_file_too_large) ?: "文件太大"
+        else -> res?.getString(R.string.err_io) ?: "文件读写失败"
     }
 }
