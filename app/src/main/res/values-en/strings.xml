@@ -19,6 +19,17 @@
     <string name="common_settings">Settings</string>
     <string name="common_confirm">OK</string>
     <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+    <string name="common_copy_all">Copy all</string>
+    <string name="common_got_it">Got it</string>
+    <string name="common_learn_more">Learn more ›</string>
+    <string name="common_collapse">Collapse</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_clean">Clean</string>
+    <string name="common_cleaning">Cleaning…</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_done">Done</string>
+    <string name="common_read_failed">Couldn\'t read</string>
 
     <!-- ── Bottom navigation ── -->
     <string name="nav_taiji">Taiji</string>
@@ -53,6 +64,69 @@
     <string name="settings_status_file_count">%1$d files</string>
     <string name="settings_status_guide">Guide</string>
     <string name="settings_value_help">Getting started · Logs</string>
+
+    <!-- ── Help page ── -->
+    <string name="help_guide_title">Getting started</string>
+    <string name="help_guide_1">Tap \"Install environment\" on the home screen to set up Debian; then tap \"Install\" on any agent you want.</string>
+    <string name="help_guide_2">Sign in inside each agent (it keeps its own credentials), and it is ready to use.</string>
+    <string name="help_guide_3">Open the \"Terminal\" tab and type an agent command (claude / hermes / agy). OpenCode is built into \"Taiji\" and works out of the box. A separate opencode you install in the terminal is a different copy — the two do not interfere.</string>
+    <string name="help_faq_title">Common questions</string>
+    <string name="help_faq_q1">Environment won\'t open / download fails?</string>
+    <string name="help_faq_a1">Use \"Repair environment\" above to unpack it again — your logins are kept.</string>
+    <string name="help_faq_q2">How do I update an agent?</string>
+    <string name="help_faq_a2">Re-run the install command in the terminal. To update the system, use \"Check for updates\".</string>
+    <string name="help_faq_q3">Where are my files?</string>
+    <string name="help_faq_a3">Output goes into the workspace folder (by default Download/证道 on your phone).</string>
+    <string name="help_log_location">Location: %1$s</string>
+    <string name="help_log_desc">zhengdao-log.txt is this run; timestamped archives keep at most 20 files / 20 MB, oldest deleted first (a clean run is never deleted); errors.log records error lines only. Open them with a file manager, or send them to us to look into a problem.</string>
+    <string name="help_log_archive_count">%1$d archived logs.</string>
+    <string name="help_log_prev_error">The last run hit an error; the log was kept (copy it and send it to us).</string>
+    <string name="help_log_view_prev">View last log</string>
+    <string name="help_log_prune_btn">Keep only the latest 3</string>
+    <string name="help_log_pruned">Deleted %1$d old logs, kept the latest 3</string>
+
+    <!-- ── Shared components (top bar / log dialog / folder picker / KB help) ── -->
+    <string name="help_log_title">Run log</string>
+    <string name="help_log_copied">Copied the whole log</string>
+    <string name="help_log_missing">This run hasn\'t written a log yet. Log folder: %1$s (open it with a file manager)</string>
+    <string name="ws_picker_title">Choose a workspace folder</string>
+    <string name="ws_picker_root">/ (internal storage root)</string>
+    <string name="ws_picker_up">← Up</string>
+    <string name="ws_picker_empty">(no subfolders)</string>
+    <string name="ws_picker_hint">Agent output goes into this folder (visible in your file manager)</string>
+    <string name="ws_picker_confirm">Use this folder</string>
+    <string name="kb_help_title">About the knowledge base</string>
+    <string name="kb_help_missing">The readme hasn\'t been generated yet — open the terminal once and it will appear in the knowledge base folder.\n\nLocation: %1$s</string>
+    <string name="kb_help_failed">Couldn\'t read it — open the readme (说明.md) directly in the knowledge base folder.</string>
+
+    <!-- ── Keep-alive page ── -->
+    <string name="keepalive_title">Keep-alive</string>
+    <string name="keepalive_guide_title">Honor / MagicOS keep-alive guide</string>
+    <string name="keepalive_guide_steps">① App launch: Settings → Apps → App launch → Zhengdao → turn off \"Auto-manage\", then allow auto-start / linked start / background activity\n② Battery: Settings → Battery → More battery settings → Zhengdao → set to \"Don\'t optimize\"\n③ Task lock: in Recents find the Zhengdao card, swipe down for the lock icon and tap it\n④ If it exits on its own: Developer options → make sure \"Don\'t keep activities\" is off</string>
+    <string name="keepalive_note">Honor is fairly lenient with background services: keep the \"Session running\" notification visible and lock the task, and it will stay alive in the background. If the system does kill it, reopening the terminal takes you back to where you left off.</string>
+    <string name="keepalive_battery_btn">One tap: set Zhengdao to \"Don\'t optimize\"</string>
+    <string name="keepalive_details_btn">Open app details (startup manager)</string>
+    <string name="keepalive_battery_toast">Set it manually in Settings → Battery optimization</string>
+    <string name="keepalive_details_toast">Find Zhengdao under Settings → Apps</string>
+    <string name="keepalive_log_row">Keep-alive records</string>
+    <string name="keepalive_log_recent">%1$d recent exits</string>
+
+    <!-- ── About page ── -->
+    <string name="about_version">Version</string>
+    <string name="about_author">Author</string>
+    <string name="about_root_mode">Root mode</string>
+    <string name="about_root_mode_value">Not implemented yet — Zhengdao runs Debian without root</string>
+    <string name="about_build_source">Build source</string>
+    <string name="about_build_official">Official release ✓</string>
+    <string name="about_build_unofficial">⚠️ Unofficial (re-signed)</string>
+    <string name="about_build_unknown">Unrecognized</string>
+    <string name="about_repo">GitHub repository</string>
+    <string name="about_issues">Issues</string>
+    <string name="about_license">License</string>
+    <string name="about_license_value">All rights reserved (first-party code)</string>
+    <string name="about_licenses">Open-source licenses</string>
+    <string name="about_licenses_value">Bundled texts</string>
+    <string name="about_contact">Contact the author</string>
 
     <!-- ── App language picker ── -->
     <string name="language_system">System default</string>

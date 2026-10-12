@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -60,6 +61,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -127,24 +129,16 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    SettingsSubPage(title = "后台与保活", onBack = onBack) {
+    SettingsSubPage(title = stringResource(R.string.keepalive_title), onBack = onBack) {
         // ── 荣耀 / MagicOS 保活指南（Magic 5 Pro 实测）──
-        SectionCard("荣耀 / MagicOS 保活指南") {
+        SectionCard(stringResource(R.string.keepalive_guide_title)) {
             Text(
-                text = "① 应用启动管理：设置 → 应用和服务 → 应用启动管理 → 证道 → 关闭「自动管理」，" +
-                    "手动开启「允许自启动 / 关联启动 / 后台活动」\n" +
-                    "② 电池优化：设置 → 电池 → 更多电池设置 → 证道 → 设为「不允许优化」\n" +
-                    "③ 多任务锁定：多任务界面找到证道卡片，下滑出现小锁图标，点击锁定\n" +
-                    "④ 进程意外退出时：开发者选项 → 确认「不要保留活动」未勾选",
+                text = stringResource(R.string.keepalive_guide_steps),
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(6.dp))
-            Text(
-                text = "荣耀对后台服务比较宽容：让「会话运行中」通知保持可见、再多任务上锁，" +
-                    "就能长期后台存活。万一被系统清掉，重进终端时会自动回到离开时的现场。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // 这条是解释性长句 ⇒ 默认只显第一句，要细看再展开（走查报告 §5.6）
+            ExpandableHint(stringResource(R.string.keepalive_note))
             Spacer(Modifier.height(6.dp))
             TextButton(onClick = {
                 // 电池优化白名单（用户第四批）：直接拉起系统"忽略电池优化"请求对话框；
@@ -158,10 +152,10 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
                     try {
                         ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                     } catch (_: Throwable) {
-                        Toast.makeText(ctx, "请到系统设置的电池优化中手动设置", Toast.LENGTH_LONG).show()
+                        Toast.makeText(ctx, ctx.getString(R.string.keepalive_battery_toast), Toast.LENGTH_LONG).show()
                     }
                 }
-            }) { Text("一键跳转：把证道设为「不优化」") }
+            }) { Text(stringResource(R.string.keepalive_battery_btn)) }
             TextButton(onClick = {
                 // 应用详情页（启动管理/自启动设置的入口）：荣耀等国产 ROM 的保活开关都在这层
                 runCatching {
@@ -170,9 +164,9 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
                             .apply { data = android.net.Uri.parse("package:${ctx.packageName}") }
                     )
                 }.onFailure {
-                    Toast.makeText(ctx, "请到系统设置 → 应用管理中找到证道", Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx, ctx.getString(R.string.keepalive_details_toast), Toast.LENGTH_LONG).show()
                 }
-            }) { Text("打开应用详情（启动管理入口）") }
+            }) { Text(stringResource(R.string.keepalive_details_btn)) }
 
             // ── 保活记录：只留一行入口（2026-10-11 搬家）──
             // 用户原话：「保活记录这个卡弄成和问题反馈那种，太多太长了，单独给他弄一个。」
@@ -202,8 +196,10 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
             }
             SettingsDivider()
             SettingRow(
-                label = "保活记录（被杀留档）",
-                value = if (kaExitCount > 0) "最近 $kaExitCount 条退出记录" else "",
+                label = stringResource(R.string.keepalive_log_row),
+                value = if (kaExitCount > 0) {
+                    stringResource(R.string.keepalive_log_recent, kaExitCount)
+                } else "",
                 onClick = { ctx.startActivity(Intent(ctx, KeepaliveLogActivity::class.java)) },
             )
         }

@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -60,6 +61,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -129,44 +131,39 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     var prevLogText by remember { mutableStateOf<String?>(null) }
     var archiveCount by remember { mutableStateOf(0) }
 
-    SettingsSubPage(title = "帮助", onBack = onBack, scrollToEnd = scrollToEnd) {
+    SettingsSubPage(title = stringResource(R.string.settings_help), onBack = onBack, scrollToEnd = scrollToEnd) {
         // ── 新手指南（第三批）──
-        SectionCard("新手指南") {
-            GuideLine("1", "主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。")
-            GuideLine("2", "在每个 Agent 里完成它自己的登录（密码由它自己保管），之后直接就能用。")
+        SectionCard(stringResource(R.string.help_guide_title)) {
+            GuideLine("1", stringResource(R.string.help_guide_1))
+            GuideLine("2", stringResource(R.string.help_guide_2))
             // 2026-10-08：「洞天」→「终端」，与底栏 Tab 文案一致（见 MainActivity.kt:470）
-            GuideLine("3", "进底部「终端」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在终端里另外装的 opencode 是另一份，两者互不干扰。")
+            GuideLine("3", stringResource(R.string.help_guide_3))
             Spacer(Modifier.height(8.dp))
             Text(
-                "常见问题",
+                stringResource(R.string.help_faq_title),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
-            FaqLine("环境打不开 / 下载失败？", "用上面的「修复环境」重新解压，登录状态会保留。")
-            FaqLine("Agent 想更新？", "在终端里重跑一遍安装命令；更新系统用「检查环境更新」。")
-            FaqLine("我的文件在哪？", "产物都在工作区文件夹里（默认是手机的 Download/证道）。")
+            FaqLine(stringResource(R.string.help_faq_q1), stringResource(R.string.help_faq_a1))
+            FaqLine(stringResource(R.string.help_faq_q2), stringResource(R.string.help_faq_a2))
+            FaqLine(stringResource(R.string.help_faq_q3), stringResource(R.string.help_faq_a3))
         }
-        SectionCard("运行日志") {
+        SectionCard(stringResource(R.string.help_log_title)) {
             // 用户 2026-10-08：日志要和下载物一样"看得见、找得到"——不再藏在私有 cache 里。
             Text(
-                "位置：${com.example.zhengdao.rootfs.RunLog.dirPath(ctx)}",
+                stringResource(R.string.help_log_location, com.example.zhengdao.rootfs.RunLog.dirPath(ctx)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                "zhengdao-log.txt 是本次运行；带时间的存档最多留 20 份 / 20 MB，从最旧的开始删" +
-                    "（不会因为「这轮没出错」就删）；errors.log 只记错误行。" +
-                    "可以用文件管理器直接打开，也可以丢给我们查问题。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // 解释性长句 ⇒ 默认只显第一句（走查报告 §5.6）
+            ExpandableHint(stringResource(R.string.help_log_desc))
             if (archiveCount > 0) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "已有 $archiveCount 份历史日志。",
+                    stringResource(R.string.help_log_archive_count, archiveCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -174,19 +171,26 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
             prevLogText?.let { prev ->
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "上次运行检测到错误，日志已保留（可直接复制反馈）。",
+                    stringResource(R.string.help_log_prev_error),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = { logDialogText = prev }) { Text("查看上次日志") }
+                OutlinedButton(onClick = { logDialogText = prev }) {
+                    Text(stringResource(R.string.help_log_view_prev))
+                }
             }
             if (archiveCount > 3) {
                 TextButton(onClick = {
                     val n = com.example.zhengdao.rootfs.RunLog.pruneArchivesKeep(ctx, keep = 3)
                     archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
-                    Toast.makeText(ctx, "已删掉 $n 份旧日志，保留最近 3 份", Toast.LENGTH_SHORT).show()
-                }) { Text("只留最近 3 份", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Toast.makeText(ctx, ctx.getString(R.string.help_log_pruned, n), Toast.LENGTH_SHORT).show()
+                }) {
+                    Text(
+                        stringResource(R.string.help_log_prune_btn),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
