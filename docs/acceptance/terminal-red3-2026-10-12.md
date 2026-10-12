@@ -29,19 +29,30 @@
 
 ---
 
-## 3. 还没验的：真机
+## 3. 真机复测（2026-10-12 17:0x · PGT-AN10 / MagicOS / Android 16 · `AD3J023824001723`）
 
-设备当前**未连接**（`adb devices` 列表为空，2026-10-12 12:0x 实测）⇒ 真机复测**未做**。三条各自的验法已定：
+**装的是哪只包**：本次修复的**正式签名**构建 `app/build/outputs/apk/release/zhengdao-2.0.17-release.apk`（8,320,032 B／本机 sha256 `d4cd560c…66eab`；`apksigner` 证书 `CN=Zhengdao`／`b93169f2…86ec2`，与线上 v2.0.17 **同一张证书** ⇒ `adb install -r` 保数据）。
+装后 `dumpsys package com.example.zhengdao`：`versionName=2.0.17` / `versionCode=33` / `lastUpdateTime=2026-10-12 17:04:54`。
+**包内容自证**：把 `classes.dex` 解出来查字符串池，能找到新线程名 `zd-paste` ⇒ 装进去的确实是本次改动（类名被 R8 混淆，线程名是常量字符串、留得住）。
 
-- **🔴1**：进终端页，在 guest shell 里执行
-  `printf '\033[?69h\033[10;70s\b\033[@'`
-  （这串全是可打印字符，`adb shell input text` 打得进去，不需要真按 ESC）。
-  修复前这一条会让 App **FATAL**；修复后应当只是光标不动、页面照常。
-- **🔴2**：走「冷启动 App → 进终端 → 退出 → 再进终端」，全程 logcat 不得出现 `Os.kill(0)` 引发的异常／FATAL。
-  判据本身（`mShellPid == 0` ⇒ `isRunning() == false`）已由 JVM 单测钉死，真机只作回归。
-- **🔴3**：复制一段 > 50 KB 的文本（例如整个 `docs/ERRATA.md`）→ 在终端页点粘贴：
-  应立刻弹「正在粘贴 N 个字符…」、界面**不冻**，随后弹「已粘贴 N 个字符」。
-  剪贴板可用 `adb shell cmd clipboard set-text` 预置（该命令在 MagicOS 上是否可用**待实测**）。
+| 项 | 做法 | 结果 |
+|---|---|---|
+| 冒烟 | 冷启动 → 进「终端」Tab（焦点 `com.example.zhengdao/.TerminalActivity`） | pid 存活、bash/tmux 会话正常、无 FATAL |
+| 🔴3 新粘贴路径 | 点「复制」（整屏快拷）→ 终端里起 `cat > /sdcard/zd_p3.txt` → 点「粘贴」 | 立刻弹 **「正在粘贴 736 个字符…」**（另一次 204 个字符），字节确实进了 pty（bash 把粘进去的行当命令执行、回 `command not found`）⇒ **界面不冻、无 ANR、无崩溃** |
+| ANR 复核 | 粘贴前后 `logcat` 过滤 `ANR in` / `Not responding` / `FATAL EXCEPTION` | 空；`pidof` 前后一致（30787） |
+
+**三条各自的真机结论 —— 哪些「验过」、哪些「验不了」：**
+
+- **🔴1：真机复现不了 —— 被 tmux 挡住。** 设备会话跑在 tmux 里（终端里 `echo $TMUX` → `/tmp/tmux-0/default,28851,0`，屏幕上也有 tmux 状态行）。pty 的唯一子进程是 tmux，**所有进到模拟器的输出都先过 tmux 的屏幕模型**，DECSLRM/BS 这类序列会被它按自己的模型重画、不再原样透传 ⇒ 从 shell 里打这串**到不了 `TerminalEmulator`**。当场连打三次（含一次把引号喂对的），App 全程没崩、logcat 无 `TerminalBuffer` / `IllegalArgumentException`。
+  ⇒ 缺陷**存在性**与修复**有效性**由 JVM 单测钉死（`TerminalEmulatorTest`：修前两条红、修后四条绿，见 §2）；真机这一趟只证明「改了之后终端照常用」。
+  ⇒ 顺带一条判断（记进 ERRATA）：只要会话在 tmux 里，「往模拟器喂裸转义序列」这条路走不通 —— 这条缺陷的**用户可见面比审计报告的口径小**，但代码里的雷仍然是真的（非 tmux 会话、或 tmux 自己发这类序列时会踩）。
+- **🔴2：真机复现不了 —— 触发窗口抓不到。** 崩的前提是「会话对象已建、spawn 还没发生」的那一瞬间去 kill 它；App 里没有导出的入口能从 adb 打进这个窗口（`TerminalActivity` 未导出，通知栏「停止会话」是 PendingIntent，抓不到毫秒级时序）。⇒ 同样由 JVM 单测钉（`getPid()==0` ⇒ `isRunning()==false`；`finishIfRunning()` 不得发信号）。**注意**：单测里 `Os.kill` 若被调到会走 android.jar 桩抛异常，所以「不抛」等价于「没调」—— 但这一条是**推断**，我没有单独断言过。
+- **🔴3：新路径真机验过（见上表）；「修复前一定 ANR」这一半没有在真机上反证。** 原因：① `adb shell cmd clipboard set-text` 在 MagicOS 上不可用（回 `No shell command implementation`），没法从外部预置 > 4 KB 的**单行**文本；② 会话在 tmux 里时 tmux 会先吃掉粘贴的字节，pty 写入不一定阻塞。⇒ 「旧代码会 ANR」仍只有代码链论证（`ByteQueue.wait()` 阻塞调用线程 ＋ 主线程调用）＋ 单测（`TerminalPasteWriterTest` 10 条：分块、跨块 round-trip、会话中途结束、写失败、线程归属、`submit` 立即返回）。
+
+**踩到的坑（都记进 ERRATA）**
+- `adb shell input text` 打带引号/分号/反斜杠的命令时：adb 那层 shell 会把引号当**语法**吃掉，喂进终端的正文里就**没有引号**了 ⇒ `\033` 被降级成 `033`、`;` 把命令切断（真机屏幕上亲手见：`-bash: 70sb033[@: command not found`）。要送引号得用 `'\''` 这类写法把它当**数据**送进去。
+- `adb exec-out screencap -p > x.png` 在 PowerShell 里会把二进制写坏（`read_image` 报 malformed）；改成设备内 `screencap -p /sdcard/x.png` 再 `adb pull`。
+- `adb shell cmd clipboard` 在 MagicOS 上不可用。
 
 ---
 
