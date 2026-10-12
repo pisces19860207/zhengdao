@@ -6270,3 +6270,24 @@ E-116 修完后我拿正式签名包上真机（PGT-AN10 / MagicOS / Android 16 
 4. **MagicOS 没有 `cmd clipboard`**：`adb shell cmd clipboard set-text/get-text` 回 `No shell command implementation` ⇒ 没法从外部预置剪贴板，「粘贴大文本」只能靠 App 自己的整屏快拷。**注意**：快拷会把**刚打的那条命令行本身**也拷进去，粘贴时重放该命令 ⇒ 落盘字节数统计会被搅乱（本次就留下过一个 0 字节的 `zd_paste.txt[提示]`），设计这类测试时要先把命令行清出屏幕。
 5. **`TerminalActivity` 未导出**：`am start -n com.example.zhengdao/.TerminalActivity` 报 `SecurityException: … not exported from uid 10418` ⇒ 只能 `monkey -p com.example.zhengdao -c android.intent.category.LAUNCHER 1` 起主界面，再用 `uiautomator dump` 找底部导航（太极/终端/丹房 @ y≈2810）点进去。
 6. **真机验到的边界要说清**：本次验到的是「装上修复包 → 终端照常用 → 粘贴走新路径（弹『正在粘贴 N 个字符…』）且界面不冻、无 ANR」；**没验到**「修复前会 FATAL / 会 ANR」——那两半的证明在 JVM 单测（E-116）。别把「没崩」当作「缺陷不存在」的证据，也别把「单测在旧代码上红过」当作「真机一定崩」。
+
+## E-118 · 2026-10-12 · v2.0.18 批次五条：审计的「✅ 能删」不等于该删；**改完 Rust 源码 ≠ 手机里是新库**；删死代码的收益不是体积；AGP 9.4 资源收缩仍叫 `isShrinkResources`；「发完按键再延迟补发一个按键」这个模式本身要避免
+
+清 §B 顺序 19/16/17/20/21/22② 这一批时踩到的五条，都是**方法层面**的：
+
+1. **审计报告里的「✅ 能删」不是判决书，是候选。** 死代码审计表把 17 条全标 ✅，但逐条读代码后我的处置是三类：13 条真零引用（含测试里也没有）**删**；4 条「只有测试引用」里 —— `DocxTextExtractor.canHandle` **接线**（把 `KnowledgeBaseSummarizerRunner` 里另写一遍的 `ext == "docx"` 换成它，判据收敛到一处，测试与功能都留下）、`KnowledgeBaseSummarizer.failureLine` **删**（没有人调，KDoc 自述是「设置页状态行」但从没接上）、`AppState.markRemoved` 与 `RootfsDownloader.withObjectStorage` **保留**（前者是测试用来复位状态的真实 API，删了等于降低测试可读性；后者的 KDoc 明写「保留实现仅供试验与单测」，删它等于悄悄推翻 E-015 的记载）。
+   **教训**：清理动作的正确性取决于「这个函数的注释里有没有写明它为什么在这儿」——**有记载的保留是决定，没记载的保留才是垃圾**。审计只能看引用计数，看不到 KDoc。
+
+2. **改完 Rust 源码 ≠ 手机上跑的是改完的库。** App 加载的是**入库的预编译** `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so`，Gradle 根本不编译 Rust（只有 `ndkVersion` 与 abiFilters）。所以硬链校验那半必须：`cargo build --release --offline --target aarch64-linux-android`（路径见 `rust/.cargo/config.toml`，NDK 27.2.12479018 的 `aarch64-linux-android35-clang.cmd` 已在里面配好，不需要 cargo-ndk）→ `llvm-strip --strip-unneeded`（入库件必须是 strip 过的，否则比旧件大一截）→ 覆盖入库件 → 跑 `tools/check-native-so.py`（16 KB 页对齐 + JNI 入口齐全）。
+   更关键的一条：**回读 APK 里那份 `.so` 的 sha256**，与入库件比对（本次用 `zipfile` + `sha256`：`lib/arm64-v8a/libzhengdao_core.so` = 960,608 B / `91443065974DDAC929B849DE9D2A4E5BBEAD33AA6280408C80CEAABD1C4BE664` ✓）。只看「源码改了、入库文件换了」不能证明包里是新的 —— 打包链路里有压缩、strip、缓存三道可能把旧的带进去。
+   附：**本机跑不了 Rust 宿主单测** —— `rust/core` 里 `cargo test --offline` 报 `error occurred in cc-rs: failed to find tool "gcc.exe": program not found`（host = x86_64-pc-windows-gnu，zstd 要 C 编译器）。所以 Rust 侧的测试只能等 CI（Linux）跑，本地判据只有「交叉编译通过 + 入库件可加载 + Kotlin 侧行为单测」。
+
+3. **删死代码的收益不是包体积。** R8 本来就会剥掉未引用的成员，所以删完之后 `assembleRelease` 只小 **600 B**（8,320,032 → 8,319,432）。真正的收益是**源码卫生与认知负担**（读代码时不再需要判断"这条到底有没有人调"）。
+   **教训**：台账里写判据时别只写「体积不涨」——那条几乎永远成立，等于没有判据；要写「删掉的东西确实零引用（grep 全仓含测试）＋ 保留下来的理由写进 KDoc」。
+
+4. **AGP 9.4 里资源收缩仍然叫 `isShrinkResources`**（在 release 块里单独给）。`optimization { enable = true }` 只管**代码侧**（取代了旧的 `isMinifyEnabled`），资源侧不会被带开。
+   判定方法不是猜：用 Python 解 `~/.gradle/caches/.../com.android.tools.build/gradle-api-9.4.0.jar`，在 `com/android/build/api/dsl/BuildType.class` 的字节里搜 `shrinkResources` —— 命中即该名字仍然存在。**结论落在这里，下次别再猜。**
+
+5. **「发完一个按键，再延迟补发另一个按键」这个模式本身要避免**（§B 顺序 22 ②「黄点盲发 `y`」）。黄点要关分屏，tmux 的默认绑定是 `confirm-before`（要答一次 `y`），客户端原先发 `C-b x` 后延迟 250 ms **盲发** `y` —— 那条 `y` 没有任何依据能保证此刻屏幕上正等着确认：会话没启用 tmux、pane 数判断漂移、确认框还没起来，它都会直接落进 pane 里前台程序的 stdin（在跑 agent TUI 时就是乱打字，正是外部审计的 A4）。这与 E-109（`onScroll` 的选词态守卫）是同一族：**时序假设**。
+   正解是**把那个确认从源头去掉**：往 guest 的 `~/.tmux.conf` 幂等追加 `bind-key x kill-pane`（覆盖默认绑定，且不覆盖用户自写的配置，纯函数 `ProotLauncher.tmuxConfAppend()` 有单测），客户端就只发一次 `C-b x`。**教训**：遇到"要等某个界面出现再补按键"，先问「能不能让那个界面不出现」，而不是调延迟时间。
+
