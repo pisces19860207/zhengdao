@@ -69,6 +69,30 @@ class TmuxConfAppendTest {
         assertTrue("只缺 set-clipboard，应补上：\n$add", add.contains("set -g set-clipboard on\n"))
     }
 
+    // ── 第四条的滚轮绑定（2026-10-12：滑动"一顿一顿、不跟手"的真凶之一） ──────
+
+    @Test
+    fun `空配置时四条滚轮绑定都补上_且都是每次一行`() {
+        val add = ProotLauncher.tmuxConfAppend("")
+        for (table in listOf("copy-mode", "copy-mode-vi")) {
+            for ((pane, action) in listOf("WheelUpPane" to "scroll-up", "WheelDownPane" to "scroll-down")) {
+                assertTrue(
+                    "缺 bind -T $table $pane（客户端手指 1 行 = 内容 1 行就靠它）：\n$add",
+                    add.contains("bind -T $table $pane send -N1 -X $action\n")
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `用户自己写过滚轮绑定时只让位该表该键_其余照补`() {
+        val cur = "bind -T copy-mode WheelUpPane send -N5 -X scroll-up\n"
+        val add = ProotLauncher.tmuxConfAppend(cur)
+        assertFalse("用户写了自己那张表的 WheelUpPane，不该覆盖：\n$add", add.contains("bind -T copy-mode WheelUpPane"))
+        assertTrue("同表 WheelDownPane 仍该补：\n$add", add.contains("bind -T copy-mode WheelDownPane send -N1 -X scroll-down\n"))
+        assertTrue("另一张表 copy-mode-vi 也仍该补：\n$add", add.contains("bind -T copy-mode-vi WheelUpPane send -N1 -X scroll-up\n"))
+    }
+
     // ── 第二半：客户端侧（文本门禁） ──────────────────────────────────────
 
     private fun yellowDotBlock(): String {

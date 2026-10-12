@@ -665,6 +665,14 @@ object ProotLauncher {
      *    ⚠️ 生效范围：主会话每次启动都会先 `tmux kill-server`（见 [buildLaunchPlan]），
      *    因此**主会话一进终端就吃到新绑定**；已经跑着的旧 server 要等它下次被重启
      *    （副会话只是 attach 上现有 server，不负责读新配置）。
+     * 4. **copy-mode 的滚轮绑定改成 1 行/次**（2026-10-12 补 · 真机实测）—— tmux 默认
+     *    `WheelUpPane`/`WheelDownPane` 是每次滚 5 行，而客户端每滑过**一行**就发一个滚轮
+     *    事件（`TerminalGestureController.onScroll` 的 `rowsToScroll` 累加循环，实测
+     *    600 px 手指 = 9 次 `onScroll`）。两者相乘就是当年那句"滑动一顿一顿、不跟手"的
+     *    来源：**手指走 1 行，内容跳 5 行**（真机实测：两次 600 px 拖动让 tmux 的
+     *    `[位置/总行数]` 从 0 → 55 → 115，每次约 6 行/事件 = 5 行绑定 + 惯性补发）。
+     *    绑定成 `send -N1 -X scroll-up` 之后，手指 1 行 = 内容 1 行，且每次只跳一行 ——
+     *    与终端自己的本地回滚缓冲（也是 1 行 = 1 行）口径一致。
      */
     internal fun tmuxConfAppend(cur: String): String = buildString {
         if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
@@ -675,6 +683,33 @@ object ProotLauncher {
         }
         if (!Regex("(?m)^\\s*bind(-key)?\\s+x\\s+kill-pane\\b").containsMatchIn(cur)) {
             append("bind-key x kill-pane\n")
+        }
+        // 四条各自判重（与上面三条同一原则：用户自己写过该表的滚轮绑定就不动它）。
+        appendWheelBindIfMissing(cur, "copy-mode", "WheelUpPane", "scroll-up")
+        appendWheelBindIfMissing(cur, "copy-mode", "WheelDownPane", "scroll-down")
+        appendWheelBindIfMissing(cur, "copy-mode-vi", "WheelUpPane", "scroll-up")
+        appendWheelBindIfMissing(cur, "copy-mode-vi", "WheelDownPane", "scroll-down")
+    }
+
+    /**
+     * 追加一条"滚轮 = 1 行"的 copy-mode 绑定。
+     *
+     * **只在完全没有该表该键的绑定时才补** —— 与 [tmuxConfAppend] 前三条同一原则：
+     * 用户自己写过（哪怕行数不是 1）就说明他有意见，我们不覆盖。想改回去的人，
+     * 自己写一条 `bind -T copy-mode WheelUpPane …` 即可让这四条全部让位。
+     */
+    private fun StringBuilder.appendWheelBindIfMissing(
+        cur: String,
+        table: String,
+        pane: String,
+        action: String,
+    ) {
+        val re = Regex(
+            "(?m)^\\s*bind(-key)?\\s+-T\\s+" + Regex.escape(table) +
+                "\\s+" + Regex.escape(pane) + "\\b"
+        )
+        if (!re.containsMatchIn(cur)) {
+            append("bind -T $table $pane send -N1 -X $action\n")
         }
     }
 
