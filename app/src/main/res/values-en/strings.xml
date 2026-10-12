@@ -30,6 +30,7 @@
     <string name="common_loading">Loading…</string>
     <string name="common_done">Done</string>
     <string name="common_read_failed">Couldn\'t read</string>
+    <string name="common_view_log">View log</string>
 
     <!-- ── Bottom navigation ── -->
     <string name="nav_taiji">Taiji</string>
@@ -64,6 +65,72 @@
     <string name="settings_status_file_count">%1$d files</string>
     <string name="settings_status_guide">Guide</string>
     <string name="settings_value_help">Getting started · Logs</string>
+
+    <!-- ── Storage & cache page ── -->
+    <string name="storage_usage_title">Storage usage</string>
+    <string name="storage_row_rootfs">rootfs (system layer)</string>
+    <string name="storage_row_home">home (logins &amp; config)</string>
+    <string name="storage_row_cache">cache (downloads)</string>
+    <string name="storage_tag_removable">removable</string>
+    <string name="storage_tag_keep">keep</string>
+    <string name="storage_opt_btn">Clean optional tools (%1$d MB)</string>
+    <string name="storage_opt_title">Clean optional tools?</string>
+    <string name="storage_opt_free">Frees about %1$d MB.</string>
+    <string name="storage_opt_desc">This removes hermes\\' bundled desktop-automation tool (cua-driver). It is only used in that kind of session, and it won\\'t come back on its own — run hermes pm install once in the terminal to get it back (needs network, takes a while).</string>
+    <string name="storage_opt_browser">Browser tools (agent-browser / chromium) are not removed — hermes needs them to open web pages, so they stay.</string>
+    <string name="storage_opt_ffmpeg">ffmpeg isn\\'t included either: it\\'s a required package for hermes, and removing it makes hermes report \"install out of sync\" on every start (it doesn\\'t accept the copy bundled with the system layer).</string>
+    <string name="storage_opt_keeps">Not removed: python / node / uv / npm / ripgrep runtimes, the dependency environment, memory, the hermes installation itself, system files, or any of your data.</string>
+    <string name="storage_opt_deleted">Deleted %1$d items, freed %2$d MB</string>
+    <string name="storage_opt_none">No optional tools to clean</string>
+    <string name="storage_script_btn">Clean installer script cache (re-downloads next install)</string>
+    <string name="storage_script_title">Clean installer script cache?</string>
+    <string name="storage_script_desc1">This deletes the cached installer scripts in the shared agents/scripts folder, the checksums the app keeps, and the copy in the terminal.</string>
+    <string name="storage_script_desc2">The scripts are only tens of KB — this isn\\'t about freeing space, it\\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
+    <string name="storage_script_keeps">Not removed: the agent ledger installed.json, installed agents and toolchains, logs, or the knowledge base.</string>
+    <string name="storage_script_cleared">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</string>
+    <string name="storage_script_none">No script cache to clean</string>
+    <string name="storage_cache_title">Cache cleanup</string>
+    <string name="storage_cache_location">Location: %1$s (cache = package cache, logs = logs, agents = scripts &amp; ledger; rootfs and opencode are installers)</string>
+    <string name="storage_cache_tiers">Package cache (very low risk): downloads from npm / uv / apt, cleaned in the terminal so you can watch it. Temp files (low risk): leftovers in the temp folder untouched for over a day; no terminal needed, and the app also clears automatically when it exceeds 500 MB at startup. Toolchains, system files and your data are never touched.</string>
+    <string name="storage_cache_not_installed">The environment isn\\'t installed yet, so there\\'s nothing to clean in the terminal</string>
+    <string name="storage_cache_guest_btn">Clean package cache in terminal</string>
+    <string name="storage_temp_btn">Clean temp files (%1$d MB)</string>
+    <string name="storage_temp_none">No temp files to clean</string>
+    <string name="storage_temp_title">Clean temp files?</string>
+    <string name="storage_temp_desc">Deletes about %1$d MB of leftovers in the temp folder (untouched for over a day).\n\nTerminal sessions, build caches and lock files are not deleted, and your data is untouched.</string>
+    <string name="storage_freed">Freed %1$d MB</string>
+    <string name="storage_temp_cleaned_none">No temp files to clean</string>
+    <string name="storage_agent_btn">Clean agent cache (%1$d MB)</string>
+    <string name="storage_agent_btn_bare">Clean agent cache</string>
+    <string name="storage_agent_title">Clean agent cache?</string>
+    <string name="storage_agent_desc">These caches will be deleted (they can be re-downloaded or regenerated):</string>
+    <string name="storage_agent_empty">(nothing measurable to clean this time)</string>
+    <string name="storage_agent_item">· %1$s — %2$d MB</string>
+    <string name="storage_agent_busy">⚠️ A terminal session is running: if it is installing dependencies right now, cleaning may interrupt that install (anything already installed is unaffected).</string>
+    <string name="storage_agent_keeps">Not removed: installed agents and toolchains (hermes/tools, Python/Node), the dependency environment and memory, config files, system files, or your own files. These caches re-download when needed.</string>
+    <string name="storage_agent_cleaned_none">No agent cache to clean</string>
+    <string name="storage_gen_btn">Clean old dependency files (%1$d MB)</string>
+    <string name="storage_gen_title">Clean old dependency files?</string>
+    <string name="storage_gen_free">Frees about %1$d MB.</string>
+    <string name="storage_gen_desc">Every reinstall of the dependency environment leaves an old copy (hundreds of MB), and the record only points at the newest one — this deletes the ones nothing refers to. The one in use and the newest one are kept.</string>
+    <string name="storage_gen_keeps">Not removed: the dependency environment in use, memory, installed toolchains, system files. hermes reinstalls when you need to go back (requires network).</string>
+    <string name="storage_gen_deleted">Deleted %1$d copies, freed %2$d MB</string>
+    <string name="storage_gen_none">No old dependency files to clean</string>
+    <string name="storage_installer_title">Installer cache</string>
+    <string name="storage_installer_dir">Folder: %1$s</string>
+    <string name="storage_installer_count">%1$d installers cached (current environment: %2$s)</string>
+    <string name="storage_installer_item">· %1$s (%2$d MB)</string>
+    <string name="storage_installer_cleaned">Cleaned %1$d old version files</string>
+    <string name="storage_installer_clean_btn">Clean old version cache (keeps the current version)</string>
+    <string name="storage_rollback_list">Old versions you can go back to (only the latest 2 installers are kept)</string>
+    <string name="storage_rollback_to">Roll back to %1$s</string>
+    <string name="storage_rollback_title">Roll back environment</string>
+    <string name="storage_rollback_desc">Will reinstall system files from %1$s (a few minutes). Logins and your workspace are kept.</string>
+    <string name="storage_rollback_start">Roll back: reinstall from local installer %1$s (no download)</string>
+    <string name="storage_unpacking">Unpacking (no detailed progress — stay on this page or watch the notification)…</string>
+    <string name="storage_rollback_done">Rollback done: switched back to %1$s, takes effect after reopening the terminal (no download)</string>
+    <string name="storage_rollback_failed">Rollback failed: %1$s</string>
+    <string name="storage_rollback_btn">Roll back</string>
 
     <!-- ── Help page ── -->
     <string name="help_guide_title">Getting started</string>

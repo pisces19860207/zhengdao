@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -60,6 +61,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -185,14 +187,23 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
         }
     }
 
-    SettingsSubPage(title = "存储与缓存", onBack = onBack, snackbar = snackbarHostState) {
+    SettingsSubPage(title = stringResource(R.string.settings_storage), onBack = onBack, snackbar = snackbarHostState) {
         // ── 存储占用 ──
-        SectionCard("存储占用") {
+        SectionCard(stringResource(R.string.storage_usage_title)) {
             // 2026-10-10 UIUX 审计 P1-5：未统计完前显示"统计中…"，避免一进设置页
             // 看到三个 0 MB 误以为 App 占空或统计坏了。
-            InfoRow("rootfs（系统层）", if (rootfsMb < 0) "统计中…" else "$rootfsMb MB")
-            InfoRow("home（登录态与配置）", if (homeMb < 0) "统计中…" else "$homeMb MB")
-            InfoRow("cache（下载缓存）", if (cacheMb < 0) "统计中…" else "$cacheMb MB")
+            InfoRow(
+                stringResource(R.string.storage_row_rootfs),
+                if (rootfsMb < 0) stringResource(R.string.settings_status_measuring) else "$rootfsMb MB",
+            )
+            InfoRow(
+                stringResource(R.string.storage_row_home),
+                if (homeMb < 0) stringResource(R.string.settings_status_measuring) else "$homeMb MB",
+            )
+            InfoRow(
+                stringResource(R.string.storage_row_cache),
+                if (cacheMb < 0) stringResource(R.string.settings_status_measuring) else "$cacheMb MB",
+            )
 
             // Issue #8-D：把 A（旧依赖代）/ B（hermes 可选工具）/ C（公共区安装包）的体积摊开，
             // 数字来源是 StorageAudit（与自动清理、体检面板同一套口径，避免 E-073 那种两套账）。
@@ -219,7 +230,14 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    InfoRow(item.label, "${item.mb} MB · ${if (item.removable) "可清" else "保留"}")
+                    InfoRow(
+                        item.label,
+                        "${item.mb} MB · " + if (item.removable) {
+                            stringResource(R.string.storage_tag_removable)
+                        } else {
+                            stringResource(R.string.storage_tag_keep)
+                        },
+                    )
                 }
             }
 
@@ -230,6 +248,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             // ⚠️ 2026-10-11 深夜起 OPTIONAL_TOOL_NAMES **是空表** ⇒ optMb 恒为 0 ⇒ 这个入口
             // 不会渲染（下方 `if (optMb > 0)`）。代码与弹窗文案留着：哪天要放开某个工具，
             // 把它挪进 StorageAudit 的 OPTIONAL 表，这里就自动出现，不用再改 UI。
+            // ⚠️ "hermes 工具" 是 StorageAudit 侧的分组名（数据契约，不是界面文案）——
+            // 这里按原样匹配，不做 i18n 抽取，改了会破坏分组匹配。
             val optMb = audit.filter {
                 it.removable && it.group == "hermes 工具"
             }.sumOf { it.mb }
@@ -237,36 +257,26 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             if (optMb > 0) {
                 Spacer(Modifier.height(4.dp))
                 TextButton(enabled = !cleaning, onClick = { optConfirm = true }) {
-                    Text(if (cleaning) "清理中…" else "清理可选工具（$optMb MB）")
+                    Text(
+                        if (cleaning) stringResource(R.string.common_cleaning)
+                        else stringResource(R.string.storage_opt_btn, optMb),
+                    )
                 }
                 if (optConfirm) {
                     AlertDialog(
                         onDismissRequest = { optConfirm = false },
-                        title = { Text("清理可选工具？") },
+                        title = { Text(stringResource(R.string.storage_opt_title)) },
                         text = {
                             Column {
-                                Text("可释放约 $optMb MB。")
+                                Text(stringResource(R.string.storage_opt_free, optMb))
                                 Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "删的是 hermes 自带的桌面自动化工具（cua-driver）。" +
-                                        "它只在这类会话里用得上；删了不会自己回来——" +
-                                        "要用时得在终端里跑一次 hermes pm install（要联网、要等一会儿）。"
-                                )
+                                Text(stringResource(R.string.storage_opt_desc))
                                 Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "浏览器工具（agent-browser / chromium）不在删除范围内——" +
-                                        "有它 hermes 才能开网页，保留。"
-                                )
+                                Text(stringResource(R.string.storage_opt_browser))
                                 Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "ffmpeg 也不在这里面：它是 hermes 的必需包，清掉之后它每次启动都会报 " +
-                                        "install out of sync（系统层自带的那份它不认）。"
-                                )
+                                Text(stringResource(R.string.storage_opt_ffmpeg))
                                 Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "不会删除：python / node / uv / npm / ripgrep 这些核心运行时、" +
-                                        "依赖环境、记忆、hermes 本体、系统文件、任何用户数据。"
-                                )
+                                Text(stringResource(R.string.storage_opt_keeps))
                             }
                         },
                         confirmButton = {
@@ -280,14 +290,18 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            "已删除 $count 项，释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                        else "没有可清理的可选工具"
+                                            ctx.getString(
+                                                R.string.storage_opt_deleted,
+                                                count,
+                                                CacheCleaner.bytesToMb(freed),
+                                            )
+                                        else ctx.getString(R.string.storage_opt_none)
                                     },
                                 )
-                            }) { Text(if (cleaning) "清理中…" else "清理") }
+                            }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { optConfirm = false }) { Text("取消") }
+                            TextButton(onClick = { optConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
                         },
                     )
                 }
@@ -302,25 +316,19 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             if (audit.any { it.group == "公共区安装脚本" }) {
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = { scriptConfirm = true }) {
-                    Text("清理安装脚本缓存（下次安装重新下载）")
+                    Text(stringResource(R.string.storage_script_btn))
                 }
                 if (scriptConfirm) {
                     AlertDialog(
                         onDismissRequest = { scriptConfirm = false },
-                        title = { Text("清理安装脚本缓存？") },
+                        title = { Text(stringResource(R.string.storage_script_title)) },
                         text = {
                             Column {
-                                Text(
-                                    "会删掉公共区 agents/scripts 里缓存的安装脚本、App 自己记的校验值、" +
-                                        "以及终端里的执行副本。"
-                                )
+                                Text(stringResource(R.string.storage_script_desc1))
                                 Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "脚本只有几十 KB——这一步不是为了腾地方，而是让下次安装重新下载" +
-                                        "一份干净的（重装被同一个失败卡住时，先点这里）。"
-                                )
+                                Text(stringResource(R.string.storage_script_desc2))
                                 Spacer(Modifier.height(6.dp))
-                                Text("不会删：Agent 账本 installed.json、装好的 Agent 本体与工具链、日志、资料库。")
+                                Text(stringResource(R.string.storage_script_keeps))
                             }
                         },
                         confirmButton = {
@@ -334,21 +342,25 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            "已清 $count 个脚本缓存文件（释放 ${CacheCleaner.bytesToMb(freed)} MB），下次安装会重新下载"
-                                        else "没有脚本缓存可清"
+                                            ctx.getString(
+                                                R.string.storage_script_cleared,
+                                                count,
+                                                CacheCleaner.bytesToMb(freed),
+                                            )
+                                        else ctx.getString(R.string.storage_script_none)
                                     },
                                 )
-                            }) { Text(if (cleaning) "清理中…" else "清理") }
+                            }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { scriptConfirm = false }) { Text("取消") }
+                            TextButton(onClick = { scriptConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
                         },
                     )
                 }
             }
         }
         // ── 缓存清理（三档白名单：一档走 guest 官方命令，二档走宿主侧；详见 CacheCleaner）──
-        SectionCard("缓存清理") {
+        SectionCard(stringResource(R.string.storage_cache_title)) {
             // 2026-10-12 无感化（§5.5）：首帧即显上次各目录体积，量完就地覆盖。
             var cacheSizes by remember(storageTick) {
                 mutableStateOf(LastValues.loadCacheSizes(ctx))
@@ -362,30 +374,29 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             }
             if (cacheSizes.isEmpty()) {
                 Text(
-                    text = "统计中…",
+                    text = stringResource(R.string.settings_status_measuring),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
+                // 注意：这里的 name 是 CacheCleaner.measure() 返回的目录名（数据侧 key，
+                // 同时也是展示文案）——按原样显示，不做 i18n 抽取。
                 cacheSizes.forEach { (name, mb) -> InfoRow(name, "$mb MB") }
             }
             Spacer(Modifier.height(6.dp))
             // 用户 2026-10-08：「下载的东西都放到 download 证道文件夹里」——那么面板就该把
             // 这个位置写出来，用户才能自己进去看、自己删（此前只有私有 cache，看不也删不掉）。
             Text(
-                text = "存放位置：${com.example.zhengdao.terminal.Store.root(ctx).path}" +
-                    "（cache 包缓存 / logs 日志 / agents 脚本与账本；rootfs、opencode 是安装包）",
+                text = stringResource(
+                    R.string.storage_cache_location,
+                    com.example.zhengdao.terminal.Store.root(ctx).path,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = "包缓存（风险极低）：npm / uv / apt 下载的缓存，在终端里清，你能看到过程。" +
-                    "临时文件（风险低）：临时目录里超过一天没动过的残留；不用开终端，App 启动时超过 500MB 也会自动清一次。" +
-                    "工具链、系统文件、你的数据，永远不动。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // 三档说明是解释性长句 ⇒ 折叠（走查报告 §5.6）
+            ExpandableHint(stringResource(R.string.storage_cache_tiers))
             Spacer(Modifier.height(2.dp))
 
             // 一档：官方 CLI（命令在 guest 里跑，输出可见、可中断）。
@@ -396,11 +407,15 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             //    跑不了的情况：环境未安装（此时终端是回退 shell，命令无处可去）。
             TextButton(onClick = {
                 if (!AppState.rootfsInstalled(ctx)) {
-                    Toast.makeText(ctx, "运行环境尚未安装，无法在终端中清理", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        ctx,
+                        ctx.getString(R.string.storage_cache_not_installed),
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 } else {
                     onOpenTerminal(com.example.zhengdao.terminal.CacheCleaner.guestCommand(), null)
                 }
-            }) { Text("在终端中清理包缓存") }
+            }) { Text(stringResource(R.string.storage_cache_guest_btn)) }
 
             // 二档：宿主侧直接删（rootfs 就是宿主上的普通目录），因此**不需要会话**
             val tempMb = cacheSizes["临时文件"] ?: 0L
@@ -408,21 +423,18 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             TextButton(enabled = tempMb > 0 && !cleaning, onClick = { tempConfirm = true }) {
                 Text(
                     when {
-                        cleaning -> "清理中…"
-                        tempMb > 0 -> "清理临时文件（$tempMb MB）"
-                        else -> "无临时文件可清"
+                        cleaning -> stringResource(R.string.common_cleaning)
+                        tempMb > 0 -> stringResource(R.string.storage_temp_btn, tempMb)
+                        else -> stringResource(R.string.storage_temp_none)
                     }
                 )
             }
             if (tempConfirm) {
                 AlertDialog(
                     onDismissRequest = { tempConfirm = false },
-                    title = { Text("清理临时文件？") },
+                    title = { Text(stringResource(R.string.storage_temp_title)) },
                     text = {
-                        Text(
-                            "将删除临时目录里约 $tempMb MB 的残留文件（超过一天没动过的）。\n\n" +
-                                "不会删终端会话、编译缓存、锁文件，也不碰你的数据。"
-                        )
+                        Text(stringResource(R.string.storage_temp_desc, tempMb))
                     },
                     confirmButton = {
                         TextButton(enabled = !cleaning, onClick = {
@@ -431,14 +443,14 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             runClean(
                                 work = { 0 to CacheCleaner.cleanTempFiles(ctx) },
                                 toast = { _, freed ->
-                                    if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                    else "没有可清理的临时文件"
+                                    if (freed > 0) ctx.getString(R.string.storage_freed, CacheCleaner.bytesToMb(freed))
+                                    else ctx.getString(R.string.storage_temp_cleaned_none)
                                 },
                             )
-                        }) { Text(if (cleaning) "清理中…" else "清理") }
+                        }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { tempConfirm = false }) { Text("取消") }
+                        TextButton(onClick = { tempConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
                     },
                 )
             }
@@ -457,38 +469,33 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             TextButton(enabled = !cleaning, onClick = { agentConfirm = true }) {
                 Text(
                     when {
-                        cleaning -> "清理中…"
-                        agentMb > 0 -> "清理 Agent 缓存包（$agentMb MB）"
-                        else -> "清理 Agent 缓存包"
+                        cleaning -> stringResource(R.string.common_cleaning)
+                        agentMb > 0 -> stringResource(R.string.storage_agent_btn, agentMb)
+                        else -> stringResource(R.string.storage_agent_btn_bare)
                     }
                 )
             }
             if (agentConfirm) {
                 AlertDialog(
                     onDismissRequest = { agentConfirm = false },
-                    title = { Text("清理 Agent 缓存包？") },
+                    title = { Text(stringResource(R.string.storage_agent_title)) },
                     text = {
                         Column {
-                            Text("将删除下面这些能重新下载 / 重新生成的缓存：")
+                            Text(stringResource(R.string.storage_agent_desc))
                             if (agentSizes.isEmpty()) {
-                                Text("（这次没量到可清理的缓存）")
+                                Text(stringResource(R.string.storage_agent_empty))
                             } else {
-                                agentSizes.forEach { (name, mb) -> Text("· $name —— $mb MB") }
+                                agentSizes.forEach { (name, mb) ->
+                                    Text(stringResource(R.string.storage_agent_item, name, mb))
+                                }
                             }
                             Spacer(Modifier.height(6.dp))
                             // 会话是常驻的 ⇒ 不做"拒绝执行"，只把风险讲清楚，让用户自己决定
                             if (CacheCleaner.busy(ctx)) {
-                                Text(
-                                    "⚠️ 终端会话正在运行：如果此刻正在装依赖，清理可能打断那一次安装" +
-                                        "（已经装好的东西不受影响）。"
-                                )
+                                Text(stringResource(R.string.storage_agent_busy))
                                 Spacer(Modifier.height(6.dp))
                             }
-                            Text(
-                                "不会删除：装好的 Agent 本体与工具链（hermes/tools、Python/Node）、" +
-                                    "依赖环境与记忆、配置文件、系统文件，以及你自己的文件。" +
-                                    "下次需要时这些缓存会自己重新下载。"
-                            )
+                            Text(stringResource(R.string.storage_agent_keeps))
                         }
                     },
                     confirmButton = {
@@ -499,14 +506,14 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             runClean(
                                 work = { 0 to CacheCleaner.cleanAgentCaches(ctx) },
                                 toast = { _, freed ->
-                                    if (freed > 0) "已释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                    else "没有可清理的 Agent 缓存"
+                                    if (freed > 0) ctx.getString(R.string.storage_freed, CacheCleaner.bytesToMb(freed))
+                                    else ctx.getString(R.string.storage_agent_cleaned_none)
                                 },
                             )
-                        }) { Text(if (cleaning) "清理中…" else "清理") }
+                        }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { agentConfirm = false }) { Text("取消") }
+                        TextButton(onClick = { agentConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
                     },
                 )
             }
@@ -524,26 +531,22 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             if (genMb > 0) {
                 var genConfirm by remember { mutableStateOf(false) }
                 TextButton(enabled = !cleaning, onClick = { genConfirm = true }) {
-                    Text(if (cleaning) "清理中…" else "清理旧版依赖文件（$genMb MB）")
+                    Text(
+                        if (cleaning) stringResource(R.string.common_cleaning)
+                        else stringResource(R.string.storage_gen_btn, genMb),
+                    )
                 }
                 if (genConfirm) {
                     AlertDialog(
                         onDismissRequest = { genConfirm = false },
-                        title = { Text("清理旧版依赖文件？") },
+                        title = { Text(stringResource(R.string.storage_gen_title)) },
                         text = {
                             Column {
-                                Text("可释放约 $genMb MB。")
+                                Text(stringResource(R.string.storage_gen_free, genMb))
                                 Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "每次重装依赖环境都会留下一份旧的（几百 MB），" +
-                                        "而记录只认得最新那份——这里删的就是没人再用的那些。" +
-                                        "正在用的和最新的都会留着。"
-                                )
+                                Text(stringResource(R.string.storage_gen_desc))
                                 Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "不会删：正在用的依赖环境、记忆、装好的工具链、系统文件。" +
-                                        "需要回到旧版时 hermes 会重装（要联网）。"
-                                )
+                                Text(stringResource(R.string.storage_gen_keeps))
                             }
                         },
                         confirmButton = {
@@ -554,23 +557,32 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     work = { HermesEnv.pruneGenerations(HermesEnv.hermesHome(ctx)) },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            "已删除 $count 份，释放 ${CacheCleaner.bytesToMb(freed)} MB"
-                                        else "没有可清理的旧依赖文件"
+                                            ctx.getString(
+                                                R.string.storage_gen_deleted,
+                                                count,
+                                                CacheCleaner.bytesToMb(freed),
+                                            )
+                                        else ctx.getString(R.string.storage_gen_none)
                                     },
                                 )
-                            }) { Text(if (cleaning) "清理中…" else "清理") }
+                            }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { genConfirm = false }) { Text("取消") }
+                            TextButton(onClick = { genConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
                         },
                     )
                 }
             }
         }
         // ── 安装包缓存（第三批）──
-        SectionCard("安装包缓存") {
+        SectionCard(stringResource(R.string.storage_installer_title)) {
             // 2026-10-12 无感化（§5.5 第 4 处）：打开即显上次快照，量完就地覆盖。
-            var cacheText by remember { mutableStateOf(LastValues.loadText(ctx, "installer_cache_text") ?: "统计中…") }
+            var cacheText by remember {
+                mutableStateOf(
+                    LastValues.loadText(ctx, "installer_cache_text")
+                        ?: ctx.getString(R.string.settings_status_measuring)
+                )
+            }
             var rollbacks by remember { mutableStateOf<List<File>>(emptyList()) }
             var rollbackConfirm by remember { mutableStateOf<File?>(null) }
             fun reloadCache() {
@@ -579,10 +591,22 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                     val dir = com.example.zhengdao.rootfs.RootfsCache.dir(ctx)
                     val current = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
                     val lines = buildString {
-                        appendLine("目录：${dir.path}")
-                        appendLine("已缓存 ${archives.size} 个安装包（当前环境：${current ?: "未安装"}）")
+                        appendLine(ctx.getString(R.string.storage_installer_dir, dir.path))
+                        appendLine(
+                            ctx.getString(
+                                R.string.storage_installer_count,
+                                archives.size,
+                                current ?: ctx.getString(R.string.settings_status_not_installed),
+                            )
+                        )
                         archives.forEach {
-                            appendLine("· ${it.name}（${it.length() / (1024 * 1024)} MB）")
+                            appendLine(
+                                ctx.getString(
+                                    R.string.storage_installer_item,
+                                    it.name,
+                                    it.length() / (1024 * 1024),
+                                )
+                            )
                         }
                     }
                     val rb = com.example.zhengdao.rootfs.RootfsCache.rollbackCandidates(ctx)
@@ -600,15 +624,19 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                 Thread {
                     val n = com.example.zhengdao.rootfs.RootfsCache.cleanupNonCurrent(ctx)
                     android.os.Handler(ctx.mainLooper).post {
-                        Toast.makeText(ctx, "已清理 $n 个旧版本文件", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.storage_installer_cleaned, n),
+                            Toast.LENGTH_SHORT,
+                        ).show()
                         reloadCache()
                     }
                 }.start()
-            }) { Text("清理旧版本缓存（保留当前版本）") }
+            }) { Text(stringResource(R.string.storage_installer_clean_btn)) }
             if (rollbacks.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "能回到的旧版本（只留最近 2 个安装包）",
+                    stringResource(R.string.storage_rollback_list),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -617,7 +645,12 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         onClick = { rollbackConfirm = f },
                         enabled = !InstallFlow.isRunning(),
                     ) {
-                        Text("回退到 ${com.example.zhengdao.rootfs.RootfsCache.versionOf(f.name) ?: f.name}")
+                        Text(
+                            stringResource(
+                                R.string.storage_rollback_to,
+                                com.example.zhengdao.rootfs.RootfsCache.versionOf(f.name) ?: f.name,
+                            )
+                        )
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -627,8 +660,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                 val target = rollbackConfirm!!
                 AlertDialog(
                     onDismissRequest = { rollbackConfirm = null },
-                    title = { Text("回退环境版本") },
-                    text = { Text("会用 ${target.name} 重装系统文件（约几分钟）。登录状态和工作区都会保留。") },
+                    title = { Text(stringResource(R.string.storage_rollback_title)) },
+                    text = { Text(stringResource(R.string.storage_rollback_desc, target.name)) },
                     confirmButton = {
                         TextButton(
                             enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
@@ -638,11 +671,11 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）
                                 InstallFlow.start(
                                     ctx,
-                                    "回退环境：用本地安装包 ${target.name} 重装（不联网）",
+                                    ctx.getString(R.string.storage_rollback_start, target.name),
                                     fromLocal = true,
                                 )
                                 try {
-                                    InstallFlow.update(ctx, "正在解压（没有详细进度，请留在本页或看通知栏）…")
+                                    InstallFlow.update(ctx, ctx.getString(R.string.storage_unpacking))
                                     RootfsInstaller.ensureFreeSpace(ctx, target.length())
                                     // 回退到"与当前环境同源的那个包"（例如刚回退过又点了一次同一个版本）时
                                     // 保留环境指纹；换成别的版本必然对不上 ⇒ null，照装不写 env。
@@ -654,10 +687,13 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     )
                                     com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, target, rollEnv, rollSha) { }
                                     com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
-                                    InstallFlow.finish(ctx, "回退完成：已换回 ${target.name}，重进终端生效（没联网）")
+                                    InstallFlow.finish(ctx, ctx.getString(R.string.storage_rollback_done, target.name))
                                     android.os.Handler(ctx.mainLooper).post { storageTick++ }
                                 } catch (t: Throwable) {
-                                    InstallFlow.fail(ctx, "回退失败：${HumanizeError.title(t)}")
+                                    InstallFlow.fail(
+                                        ctx,
+                                        ctx.getString(R.string.storage_rollback_failed, HumanizeError.title(t)),
+                                    )
                                     // 2026-10-08：Toast → Snackbar（带"查看日志"action）。
                                     // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
                                     // 用户看的用人话，进 Snackbar 后点 action 由 openLogFromSnackbar()
@@ -666,8 +702,11 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     // 但 rememberCoroutineScope() 默认走 Dispatchers.Main.immediate。
                                     scope.launch {
                                         val r = snackbarHostState.showSnackbar(
-                                            message = "回退失败：${HumanizeError.title(t)}",
-                                            actionLabel = "查看日志",
+                                            message = ctx.getString(
+                                                R.string.storage_rollback_failed,
+                                                HumanizeError.title(t),
+                                            ),
+                                            actionLabel = ctx.getString(R.string.common_view_log),
                                             duration = SnackbarDuration.Indefinite,
                                         )
                                         if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
@@ -677,9 +716,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     }
                                 }
                             }.start()
-                        }) { Text("回退") }
+                        }) { Text(stringResource(R.string.storage_rollback_btn)) }
                     },
-                    dismissButton = { TextButton(onClick = { rollbackConfirm = null }) { Text("取消") } },
+                    dismissButton = { TextButton(onClick = { rollbackConfirm = null }) { Text(stringResource(R.string.common_cancel)) } },
                 )
             }
         }
