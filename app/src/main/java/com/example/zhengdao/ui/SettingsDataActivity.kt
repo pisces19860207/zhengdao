@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -59,6 +60,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.HermesEnv
 import com.example.zhengdao.terminal.TerminalPrefs
@@ -137,7 +139,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
     var permHint by remember { mutableStateOf<String?>(null) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         storageOk = storageGrantedNow()
-        permHint = if (storageOk) "已授权" else "系统没放行——点「去系统设置」手动开（有些系统会悄悄拦掉弹窗）"
+        permHint = if (storageOk) ctx.getString(R.string.data_perm_granted)
+        else ctx.getString(R.string.data_perm_denied)
     }
 
     var netChecking by remember { mutableStateOf(false) }
@@ -157,7 +160,11 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             } catch (e2: Exception) {
                 // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文已落日志
-                Toast.makeText(ctx, "打开失败：${HumanizeError.title(e2)}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    ctx,
+                    ctx.getString(R.string.data_open_failed, HumanizeError.title(e2)),
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
         }
     }
@@ -244,27 +251,34 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         }
     }
 
-    SettingsSubPage(title = "终端与资料", onBack = onBack) {
+    SettingsSubPage(title = stringResource(R.string.data_page_title), onBack = onBack) {
         // ── 资料库（2026-10-09 新增）──
         // 定位：用户把手里的资料丢进工作区后，**终端里的各类 AI 自动能读到**。
         // 机械层（预置骨架／扫描／写清单／分发指路）由 App 完成；内容理解交给 AI。
         // ⚠️ 与「太极」无关：OpenCode 插件入口在太极页抽屉里（TaijiScreen 的 HistoryDrawer）；
         //    本项服务的是**终端**里的 agent（Claude Code／Hermes／AGY／用户自装的其他 agent）。
-        SectionCard("资料库") {
+        SectionCard(stringResource(R.string.data_kb_card)) {
             val st = kbStatus
             // E-089（让号自 E-082）：文件数达到扫描上限时**必须提示** —— 否则用户会以为"资料全在这儿了"
             val capNote = { n: Int ->
-                if (n >= com.example.zhengdao.terminal.KnowledgeBase.MAX_SCAN) "（已达扫描上限，可能未列全）" else ""
+                if (n >= com.example.zhengdao.terminal.KnowledgeBase.MAX_SCAN)
+                    ctx.getString(R.string.data_kb_cap_note)
+                else ""
             }
             val stateText = when (st?.state) {
-                com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED -> "已关闭"
-                com.example.zhengdao.terminal.KnowledgeBase.State.NOT_MOUNTED -> "未挂载 · 还没放资料"
-                com.example.zhengdao.terminal.KnowledgeBase.State.BUSY -> "正在整理中…"
-                com.example.zhengdao.terminal.KnowledgeBase.State.ORGANIZED -> "已挂载 · ${st.files} 个文件（含摘要）" + capNote(st.files)
-                com.example.zhengdao.terminal.KnowledgeBase.State.MOUNTED -> "已挂载 · ${st.files} 个文件" + capNote(st.files)
-                null -> "读取中…"
+                com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED ->
+                    stringResource(R.string.data_kb_disabled)
+                com.example.zhengdao.terminal.KnowledgeBase.State.NOT_MOUNTED ->
+                    stringResource(R.string.data_kb_not_mounted)
+                com.example.zhengdao.terminal.KnowledgeBase.State.BUSY ->
+                    stringResource(R.string.data_kb_busy)
+                com.example.zhengdao.terminal.KnowledgeBase.State.ORGANIZED ->
+                    stringResource(R.string.data_kb_organized, st.files) + capNote(st.files)
+                com.example.zhengdao.terminal.KnowledgeBase.State.MOUNTED ->
+                    stringResource(R.string.data_kb_mounted, st.files) + capNote(st.files)
+                null -> stringResource(R.string.data_kb_reading)
             }
-            InfoRow("状态", stateText)
+            InfoRow(stringResource(R.string.data_state_label), stateText)
             if (st != null && st.state != com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED) {
                 Text(
                     text = st.path,
@@ -276,12 +290,12 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "把资料放进这个文件夹，终端里的 AI 就会自动找到它。什么格式都行。",
+                text = stringResource(R.string.data_kb_hint),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "资料存在你自己的手机上。证道本身不会把它发出去（终端里的 AI 自己联网时另说）。",
+                text = stringResource(R.string.data_kb_privacy),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -307,24 +321,24 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 var copyAsk by remember { mutableStateOf(false) }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "另外发现一份带资料的资料库：$otherPath（$otherCount 个文件）。\n" +
-                        "资料库是跟着「工作区」走的——换过工作区之后，旧那份还留在原地，" +
-                        "但 App 只读上面这个路径。",
+                    text = stringResource(R.string.data_kb_other_found, otherPath, otherCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 TextButton(enabled = !cleaning, onClick = { copyAsk = true }) {
-                    Text("把那份复制过来（$otherCount 个文件）")
+                    Text(stringResource(R.string.data_kb_copy_btn, otherCount))
                 }
                 if (copyAsk) {
                     AlertDialog(
                         onDismissRequest = { copyAsk = false },
-                        title = { Text("复制过来？") },
+                        title = { Text(stringResource(R.string.data_kb_copy_title)) },
                         text = {
                             Text(
-                                "把 $otherPath 里的文件复制进当前资料库的 " +
-                                    "${com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW}/ 目录。" +
-                                    "原件不动；同名的文件不覆盖（以当前这份为准）。"
+                                stringResource(
+                                    R.string.data_kb_copy_desc,
+                                    otherPath,
+                                    com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW,
+                                )
                             )
                         },
                         confirmButton = {
@@ -345,14 +359,14 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                         n to 0L
                                     },
                                     toast = { n, _ ->
-                                        if (n > 0) "已复制 $n 个文件，清单已重建"
-                                        else "没有可复制的文件（可能都已在当前资料库里）"
+                                        if (n > 0) ctx.getString(R.string.data_kb_copied, n)
+                                        else ctx.getString(R.string.data_kb_copy_none)
                                     },
                                 )
-                            }) { Text("复制") }
+                            }) { Text(stringResource(R.string.data_copy_action)) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { copyAsk = false }) { Text("取消") }
+                            TextButton(onClick = { copyAsk = false }) { Text(stringResource(R.string.common_cancel)) }
                         },
                     )
                 }
@@ -365,11 +379,16 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     runCatching {
                         val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                             as android.content.ClipboardManager
-                        cm.setPrimaryClip(android.content.ClipData.newPlainText("资料库路径", p))
+                        cm.setPrimaryClip(
+                            android.content.ClipData.newPlainText(
+                                ctx.getString(R.string.data_kb_path_label),
+                                p,
+                            )
+                        )
                     }
-                    toastOnMain("路径已复制：$p")
-                }) { Text("复制路径") }
-                TextButton(onClick = { kbHelpOpen = true }) { Text("查看说明") }
+                    toastOnMain(ctx.getString(R.string.data_path_copied, p))
+                }) { Text(stringResource(R.string.data_copy_path)) }
+                TextButton(onClick = { kbHelpOpen = true }) { Text(stringResource(R.string.data_view_help)) }
                 TextButton(onClick = {
                     com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
                     // ── FIX-A（2026-10-10，E-080）：此处原先顺带调
@@ -380,13 +399,13 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     //    ⇒ 摘除该调用。「重新整理」从此只做纯本地的「重建清单」这一件事。
                     //    Runner 源码保留不删（将来若做"本地摘要"可在此重新接线）；
                     //    摘要改由终端里带工具的 agent 自行生成（见 docs/知识库-收工条件.md）。
-                    toastOnMain("正在整理…")
+                    toastOnMain(ctx.getString(R.string.data_organizing))
                     storageTick++
-                }) { Text("重新整理") }
+                }) { Text(stringResource(R.string.data_rebuild)) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "让终端 AI 自动读取",
+                    text = stringResource(R.string.data_kb_toggle),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f),
                 )
@@ -406,7 +425,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             // 默认关：这是往用户屏幕上贴字的功能，先让他自己决定开不开。
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "提问时自动附上资料线索",
+                    text = stringResource(R.string.data_hints_toggle),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f),
                 )
@@ -421,13 +440,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     colors = iosSwitchColors(),
                 )
             }
-            Text(
-                text = "打开后：你在终端里问问题时，证道先在本机把相关资料找出来，" +
-                    "把「文件名 ＋ 第几行」附在你这句话后面一起发出去 —— 这样 AI 不用自己翻一遍。" +
-                    "只在找到时才附，找不到就不加；全程不联网，随时可以关。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            ExpandableHint(stringResource(R.string.data_hints_desc))
         }
 
         if (kbHelpOpen) {
@@ -438,24 +451,32 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         // 字号 / 画布留白 / 配色按 2026-10-10 定稿的那一套（Catppuccin Mocha · 12 ·
         // 上下 8dp）当默认展示，不再给选项——选项太多反而挑不出哪个是"对的"。
         // 字号仍可在终端里双指缩放临时改（同一份 TerminalPrefs，见 TerminalActivity）。
-        SectionCard("终端外观") {
+        SectionCard(stringResource(R.string.data_appearance_card)) {
             val sizeDp = TerminalPrefs.sizeDp(ctx)
             val insetDp = TerminalPrefs.insetDp(ctx)
             val scheme = TerminalPrefs.scheme(ctx)
             var spacingId by remember { mutableStateOf(TerminalPrefs.spacing(ctx).id) }
 
             Text(
-                text = "下次进终端时生效。字号、画布留白、配色用默认值，只有行距能改。",
+                text = stringResource(R.string.data_appearance_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
-            InfoRow("字号", "$sizeDp（默认）")
-            InfoRow("画布留白", if (insetDp == 0) "无（默认）" else "上下 $insetDp dp")
-            InfoRow("配色", scheme.label)
+            InfoRow(stringResource(R.string.data_font_size), stringResource(R.string.data_font_size_value, sizeDp))
+            InfoRow(
+                stringResource(R.string.data_inset),
+                if (insetDp == 0) stringResource(R.string.data_inset_none)
+                else stringResource(R.string.data_inset_value, insetDp),
+            )
+            InfoRow(stringResource(R.string.data_color_scheme), scheme.label)
 
             Spacer(Modifier.height(12.dp))
-            Text("行距", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(R.string.data_spacing),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+            )
             Spacer(Modifier.height(6.dp))
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -469,7 +490,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 }
             }
             Text(
-                text = "舒适：行距更松、上下留白更多。紧凑：与旧版一致。只影响行高，不影响列宽。",
+                text = stringResource(R.string.data_spacing_desc),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
@@ -479,7 +500,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         // 存储：/sdcard 共享存储读写全靠 READ/WRITE 运行时授权（E-005 修正后的事实）
         // 网络：INTERNET 为安装时权限系统自动授，无可引导项；用户真正会卡的是
         //      代理 App 分应用没勾选证道——给一键自检代替空喊"网络权限"
-        SectionCard("权限与工作区") {
+        SectionCard(stringResource(R.string.data_perm_ws_card)) {
             // 两行常驻可点（用户提议）：已授权时点击 = 跳系统 App 详情页（查看/撤销/
             // MagicOS 联网管控都在那里）；未授权时行内另给授权按钮
             val openAppDetails = {
@@ -490,14 +511,19 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     )
                 }.onFailure {
                     // 2026-10-08：异常原文 → 人话（[HumanizeError]）
-                    Toast.makeText(ctx, "打开失败：${HumanizeError.title(it)}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        ctx,
+                        ctx.getString(R.string.data_open_failed, HumanizeError.title(it)),
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
                 Unit
             }
             // 未授权时整行可点＝直接拉起系统授权弹窗；已授权时点击＝去系统设置查看/撤销。
             SettingRow(
-                label = "存储读写（共享存储 /sdcard）",
-                value = if (storageOk) "已授权" else "未授权",
+                label = stringResource(R.string.data_perm_storage),
+                value = if (storageOk) stringResource(R.string.data_perm_granted)
+                else stringResource(R.string.data_perm_not_granted),
                 valueColor = if (storageOk) zhengdaoReadyGreen() else MaterialTheme.colorScheme.error,
                 onClick = {
                     if (storageOk) {
@@ -513,7 +539,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 },
             )
             Text(
-                text = "终端里的 AI 要读写手机文件（/sdcard）就靠这个权限，缺了会全部失败。点这一行去系统设置里改。",
+                text = stringResource(R.string.data_perm_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -530,27 +556,28 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             Spacer(Modifier.height(10.dp))
 
             SettingRow(
-                label = "网络访问",
-                value = "自动授予",
+                label = stringResource(R.string.data_net_row),
+                value = stringResource(R.string.data_net_auto),
                 valueColor = zhengdaoReadyGreen(),
                 onClick = openAppDetails,
             )
             Text(
-                text = "联网权限装 App 时自动给了，不用管。如果用代理，记得在代理 App 的「分应用代理」里勾上证道。点这一行看系统里的联网管控。",
+                text = stringResource(R.string.data_net_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
             // 自检也收进同一套行式组件（状态在右、结论在行下方），不再是一个孤立的文字按钮
             SettingRow(
-                label = "网络自检",
-                value = if (netChecking) "检测中…" else "点击检测",
+                label = stringResource(R.string.data_net_check),
+                value = if (netChecking) stringResource(R.string.data_net_checking)
+                else stringResource(R.string.data_net_check_btn),
                 valueColor = if (netChecking) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.primary,
                 onClick = {
                     if (!netChecking) {
                     netChecking = true
-                    netMsg = "检测中…"
+                    netMsg = ctx.getString(R.string.data_net_checking)
                     // 两个探针：国内基线 + 更新源（GitHub 家族，含 gh-proxy 镜像回退）。
                     // 只探前者会在「国内通、GitHub 家族全灭」的设备上给出骗人的绿灯——
                     // 用户拿着"✅ 网络可用"却下不动环境包。见 NetSelfCheck 的类注释与 ERRATA E-034。
@@ -573,13 +600,14 @@ private fun SettingsDataPage(onBack: () -> Unit) {
 
             // ── 所有文件访问（MANAGE_EXTERNAL_STORAGE，可选增强；用户定稿简化版）──
             SettingRow(
-                label = "所有文件访问（推荐开启·主路径）",
-                value = if (manageOk) "已开启" else "未开启",
+                label = stringResource(R.string.data_manage_row),
+                value = if (manageOk) stringResource(R.string.data_manage_on)
+                else stringResource(R.string.data_manage_off),
                 valueColor = if (manageOk) zhengdaoReadyGreen() else MaterialTheme.colorScheme.onSurfaceVariant,
                 onClick = { launchManage() },
             )
             Text(
-                text = "建议开启。开了它，终端里的 AI 能访问更广的存储范围；不开也能用，只是范围小一些。",
+                text = stringResource(R.string.data_manage_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -594,7 +622,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             val wsHost = com.example.zhengdao.terminal.Workspace.hostDir(ctx)
             val wsShared = com.example.zhengdao.terminal.Workspace.isShared(ctx)
             Text(
-                "终端和 Agent 的产出放在这里（终端里固定是 /workspace）",
+                stringResource(R.string.data_ws_output),
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(4.dp))
@@ -606,31 +634,32 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             Text(
                 text = if (wsShared) {
-                    "手机文件管理器直接可见、可自由删除；卸载证道后此文件夹仍会保留——产出不丢。"
+                    stringResource(R.string.data_ws_shared_desc)
                 } else {
-                    "应用专属目录：卸载证道时随之删除（在意痕迹时用）。"
+                    stringResource(R.string.data_ws_private_desc)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
             Row {
-                TextButton(enabled = !cleaning, onClick = { wsPickerOpen = true }) { Text("选择文件夹") }
+                TextButton(enabled = !cleaning, onClick = { wsPickerOpen = true }) {
+                    Text(stringResource(R.string.data_ws_pick))
+                }
                 TextButton(onClick = {
                     // 2026-10-11：先过 changeWorkspace 的闸（当前资料库有东西时会先问一句）
-                    changeWorkspace("已恢复默认（Download/证道），下次启动会话生效") {
+                    changeWorkspace(ctx.getString(R.string.data_ws_restored)) {
                         com.example.zhengdao.terminal.Workspace.setDefault(ctx)
                     }
-                }) { Text("恢复默认") }
+                }) { Text(stringResource(R.string.data_ws_restore)) }
                 TextButton(onClick = {
-                    changeWorkspace("已切换仅私有，下次启动会话生效") {
+                    changeWorkspace(ctx.getString(R.string.data_ws_private_done)) {
                         com.example.zhengdao.terminal.Workspace.setPrivate(ctx)
                     }
-                }) { Text("仅私有") }
+                }) { Text(stringResource(R.string.data_ws_private)) }
             }
             Text(
-                text = "约定：终端里的 AI 能读整个 /sdcard 找资料，但产出只写进工作区（这条已写进它的人设）。" +
-                    "太极的产出在 App 内部目录，跟这里无关。",
+                text = stringResource(R.string.data_ws_rule),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -641,10 +670,14 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 onPick = { path ->
                     wsPickerOpen = false
                     if (!path.startsWith("/storage/emulated/0")) {
-                        Toast.makeText(ctx, "该位置不可用，请选择内部存储中的文件夹", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.data_ws_invalid),
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     } else {
                         // 同样过 changeWorkspace 的闸：换工作区 = 换一份资料库
-                        changeWorkspace("工作区已设为 $path，下次启动会话生效") {
+                        changeWorkspace(ctx.getString(R.string.data_ws_set, path)) {
                             com.example.zhengdao.terminal.Workspace.setCustom(ctx, path)
                         }
                     }
@@ -660,17 +693,14 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             val curKb = com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
             AlertDialog(
                 onDismissRequest = { wsAsk = null },
-                title = { Text("换工作区后，资料库也跟着换") },
+                title = { Text(stringResource(R.string.data_ws_change_title)) },
                 text = {
                     Column {
-                        Text("当前资料库：$curKb（$curFiles 个文件）")
+                        Text(stringResource(R.string.data_ws_change_current, curKb, curFiles))
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            "资料库挂在「工作区」下面，所以换工作区就等于换了一份资料库。" +
-                                "这一份会原样留在原地、不再被读（不会被删）。"
-                        )
+                        Text(stringResource(R.string.data_ws_change_desc))
                         Spacer(Modifier.height(6.dp))
-                        Text("要不要把这些文件一并复制到新工作区的资料库里？原件不动、同名不覆盖。")
+                        Text(stringResource(R.string.data_ws_change_ask))
                     }
                 },
                 confirmButton = {
@@ -691,11 +721,11 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                 c to 0L
                             },
                             toast = { c, _ ->
-                                if (c > 0) "已把 $c 个文件复制到新工作区，清单已重建"
-                                else "新工作区里已有这些文件，没有可复制的"
+                                if (c > 0) ctx.getString(R.string.data_ws_change_copied, c)
+                                else ctx.getString(R.string.data_ws_change_none)
                             },
                         )
-                    }) { Text("复制过去并切换") }
+                    }) { Text(stringResource(R.string.data_ws_change_copy_btn)) }
                 },
                 dismissButton = {
                     TextButton(onClick = {
@@ -703,7 +733,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                         askSwitch()
                         Toast.makeText(ctx, askToast, Toast.LENGTH_SHORT).show()
                         storageTick++
-                    }) { Text("只切换，资料留在原地") }
+                    }) { Text(stringResource(R.string.data_ws_change_move_btn)) }
                 },
             )
         }
