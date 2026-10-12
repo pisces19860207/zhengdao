@@ -4,6 +4,16 @@ package com.example.zhengdao.ui
 
 import com.example.zhengdao.ui.util.pressClickable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,13 +60,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -365,10 +381,14 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(8.dp)
                                 .background(
-                                    if (envReady) MaterialTheme.colorScheme.tertiary
-                                    else MaterialTheme.colorScheme.error,
-                                    CircleShape,
-                                ),
+                                    // 状态点颜色过渡：环境装好/卸载的瞬间不闪变（300ms 淡入新色）
+                                    animateColorAsState(
+                                        targetValue = if (envReady) MaterialTheme.colorScheme.tertiary
+                                        else MaterialTheme.colorScheme.error,
+                                        animationSpec = tween(300),
+                                        label = "statusDot",
+                                    ).value
+                                , CircleShape,),
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
@@ -384,10 +404,19 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = if (statusExpanded) "▴" else "▾",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // 展开指示：自绘 chevron（与 BackChevron/ChevronRight 同一套笔）+ 180° 弹性旋转。
+                        // 取代原先的 "▴/▾" 字符切换——字符突变是"跳"，旋转是"动"（走查报告 §五同源问题）。
+                        val chevronRotation by animateFloatAsState(
+                            targetValue = if (statusExpanded) 180f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium,
+                            ),
+                            label = "expandChevron",
+                        )
+                        ExpandChevron(
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.rotate(chevronRotation),
                         )
                     }
                     Spacer(Modifier.height(2.dp))
@@ -409,7 +438,26 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    AnimatedVisibility(visible = statusExpanded) {
+                    // 展开/收起换弹簧曲线（2026-10-12）：默认的短淡入观感廉价——用户原话
+                    // 「说是动态卡一点也不动态」。展开带一点回弹（LowBouncy），
+                    // 收起不回弹（收起弹跳观感很怪）。体检项自身的入场见 StaggeredAppear。
+                    AnimatedVisibility(
+                        visible = statusExpanded,
+                        enter = expandVertically(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            expandFrom = Alignment.Top,
+                        ) + fadeIn(tween(180)),
+                        exit = shrinkVertically(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            shrinkTowards = Alignment.Top,
+                        ) + fadeOut(tween(140)),
+                    ) {
                         Column {
                             // 摘要与体检之间加一条发丝线：展开后内容骤增，需要一条明确的
                             // "以下属于详情"的分界（与卡片、底栏同一套 0.5dp outlineVariant）。
@@ -439,7 +487,11 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             } else {
-                                checks.forEach { c ->
+checks.forEachIndexed { index, c ->
+                                    // 每项延迟 index*50ms 淡入+上移：体检结果"飘进来"而不是"砸进来"
+                                    // （2026-10-12 用户：「说是动态卡一点也不动态」）。remember 不带 key：
+                                    // 流式新项出现在新组合位置 ⇒ 各自播入场；复检更新同位置 ⇒ 不重播。
+                                    StaggeredAppear(index = index) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
@@ -591,6 +643,7 @@ fun HomeScreen(
                                             }
                                         }
                                     }
+                                    } // StaggeredAppear 收尾
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
@@ -1126,4 +1179,53 @@ private fun programSizeMb(ctx: android.content.Context, uninstallCmd: String): L
         .toList()
     if (paths.isEmpty()) return -1
     return paths.sumOf { SystemInfoProvider.dirSizeMb(it) }
+}
+
+/**
+ * 交错入场（2026-10-12，用户「说是动态卡一点也不动态」）：体检项延迟 [index]×50ms
+ * 淡入并轻微上移——检查结果"飘进来"而不是"砸进来"。突兀的闪现会被大脑处理成
+ * 异常事件（用户原话「吓人」），有过渡才是"正常变化"。
+ *
+ * remember **不带 key** 是刻意的：流式上屏的新项出现在新的组合位置 ⇒ 各自播入场；
+ * 复检更新的项位置不变 ⇒ 不重播（体检结果刷新时整列重弹一遍会很吵）。
+ */
+@Composable
+private fun StaggeredAppear(index: Int, content: @Composable () -> Unit) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(index * 50L)
+        shown = true
+    }
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(220)) +
+            expandVertically(
+                animationSpec = tween(220),
+                expandFrom = Alignment.Top,
+            ),
+        exit = shrinkVertically(tween(180)) + fadeOut(tween(180)),
+    ) { content() }
+}
+
+/**
+ * 展开指示 chevron（朝下）：与 [com.example.zhengdao.MainActivity] 的 BackChevron /
+ * ChevronRight 同一套笔（圆头圆角 + 1.8f 描边，与 MainActivity 那对同源）。旋转动画由调用方
+ * `Modifier.rotate(...)` 承担（180° 弹性旋转），本组件只负责画形。
+ */
+@Composable
+private fun ExpandChevron(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(15.dp)) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.30f, h * 0.34f)
+            lineTo(w * 0.50f, h * 0.66f)
+            lineTo(w * 0.70f, h * 0.34f)
+        }
+        drawPath(
+            path,
+            tint,
+            style = Stroke(width = 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
 }
