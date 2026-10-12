@@ -161,18 +161,19 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 }
             }
         }
-        // 黄点 = 关闭当前分屏。`C-b x` 是 kill-pane 的即时键绑定（默认带一次确认，补发 y）。
+        // 黄点 = 关闭当前分屏。`C-b x` 是 kill-pane 的即时键绑定 —— **不再补发 `y`**
+        // （2026-10-12 · §B 顺序 22 ②）：guest 的 `~/.tmux.conf` 里现在会写入
+        // `bind-key x kill-pane`（`ProotLauncher.tmuxConfAppend`，理由见那里的 KDoc），
+        // 覆盖掉 tmux 默认那条 `confirm-before`，一次按键就关。原先这里发完 `C-b x`
+        // 再延迟 250 ms 盲发一个 `y` —— 那条按键没有任何依据能保证此刻屏幕上正等着
+        // 确认：未启用 tmux、pane 数判断漂移、确认框还没起来时，`y` 会直接落进 pane 里
+        // 前台程序的 stdin（在跑 agent TUI 时就是乱打字，即审计的 A4）。
         findViewById<android.view.View>(R.id.btn_yellow).setOnClickListener {
             when {
                 !usesTmux -> noTmuxHint()
                 paneCount == 1 -> Toast.makeText(this, "只剩一块，不用关", Toast.LENGTH_SHORT).show()
                 else -> {
-                    runCatching {
-                        SessionManager.write(byteArrayOf(0x02, 'x'.code.toByte()))
-                        mainHandler.postDelayed({
-                            runCatching { SessionManager.write("y".toByteArray(Charsets.UTF_8)) }
-                        }, 250)
-                    }
+                    runCatching { SessionManager.write(byteArrayOf(0x02, 'x'.code.toByte())) }
                     paneCount = if (paneCount > 1) paneCount - 1 else 1
                 }
             }

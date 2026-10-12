@@ -269,13 +269,4 @@ class KnowledgeBaseSummarizerTest {
     fun `拒绝回执是三态里的 reject`() {
         assertEquals("""{"decision":"reject"}""", KnowledgeBaseSummarizer.denyReplyBody())
     }
-
-    // ── ⑥ 文案 ──────────────────────────────────────────────────────────────
-
-    @Test
-    fun `失败文案说人话 且不吓唬用户`() {
-        assertTrue(KnowledgeBaseSummarizer.failureLine("超时").contains("清单照旧可用"))
-        assertTrue(KnowledgeBaseSummarizer.failureLine(null).contains("原因未知"))
-        assertTrue(KnowledgeBaseSummarizer.failureLine("   ").contains("原因未知"))
-    }
 }

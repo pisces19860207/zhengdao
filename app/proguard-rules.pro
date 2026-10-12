@@ -15,7 +15,3 @@
     public static void onProgress(java.lang.String, java.lang.String);
 }
 
-# WebView JS 桥：xterm.js 页面按方法名调用 Android 侧接口。
--keepclassmembers class com.example.zhengdao.terminal.TerminalBridge {
-    @android.webkit.JavascriptInterface <methods>;
-}

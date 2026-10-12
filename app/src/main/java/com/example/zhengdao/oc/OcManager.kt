@@ -468,16 +468,6 @@ object OcManager {
         }
     }
 
-    @Suppress("unused")
-    private fun parseServePasswordFromLog(ctx: Context): String? = runCatching {
-        // ⚠️ 已废弃、不再调用：这是 `lastOrNull` 的**有 bug 版本**（会取到最后一场
-        //   "打了密码但没绑上端口"的失败进程的密码 → 全程 401）。保留仅为历史溯源，
-        //   统一改用 parseServePassword()（只认"密码+listening"配对的 lastGood）。
-        File(ctx.filesDir, "oc/serve.log").readText()
-            .lineSequence().lastOrNull { it.contains("server password") }
-            ?.substringAfter("server password ")?.trim()
-    }.getOrNull()
-
     class DownloadResult(val ok: Boolean, val message: String)
 
     /**
@@ -593,6 +583,26 @@ object OcManager {
         return canon
     }
 
+    /**
+     * 把 `.part` 发布到最终路径，**再**给 `bin/` 下的可执行文件补执行位（§B 顺序 17）。
+     *
+     * 为什么顺序不能反：`renameTo` 失败时会退化成 `copyTo`（见下），而 **`copyTo` 不保留执行位**。
+     * 旧写法把 `chmod` 打在 `part` 上，一旦走了复制分支，执行位就落在一个马上被删掉的临时文件上，
+     * 最终文件是 0644 ⇒ serve 只能靠 `startServe` 的自愈兜底（那条注释自己写着）。
+     * 现在两种落盘路径都补在 [target] 上。
+     *
+     * @param chmod 补执行位的动作（生产传 `android.system.Os.chmod(path, 0755)`；单测传记账替身）
+     */
+    internal fun publishExtractedFile(part: File, target: File, rel: String, chmod: (File) -> Unit) {
+        if (!part.renameTo(target)) {
+            // 同目录 rename 理论不失败；极端场景退化为复制（失败照旧抛出，不静默丢文件）
+            part.copyTo(target, overwrite = true)
+            part.delete()
+        }
+        // 执行位补在**最终路径**上；只在 bin/ 下补，其余文件不动权限
+        if (rel.startsWith("bin/")) chmod(target)
+    }
+
     /** xz + tar 双层解包 → files/oc/usr/...（跳过元数据点文件，bin 补执行位）。 */
     private fun extract(ctx: Context, pkg: File, onProgress: (String) -> Unit, version: String): DownloadResult {
         val ocRoot = File(ctx.filesDir, "oc")
@@ -649,17 +659,15 @@ object OcManager {
                         RunLog.log("太极: 释放不完整 $rel（$got/${entry.size} 字节）——存储不足或进程被中断")
                         return DownloadResult(false, "释放不完整：$rel（$got/${entry.size} 字节）")
                     }
-                    if (rel.startsWith("bin/")) {
-                        val chmod = runCatching { android.system.Os.chmod(part.absolutePath, 493) } // 0755
+                    // §B 顺序 17：chmod 必须在**最终路径**上补（copyTo 分支不保留执行位）。
+                    // chmod 失败不中断安装（startServe 仍兜底自愈），但必须留痕。
+                    publishExtractedFile(part, target, rel) { final ->
+                        val chmod = runCatching {
+                            android.system.Os.chmod(final.absolutePath, 493) // 0755
+                        }
                         if (chmod.isFailure) {
-                            // 不中断安装（startServe 自愈兜底），但必须留痕
                             RunLog.log("太极: chmod 0755 失败 $rel: ${chmod.exceptionOrNull()?.message}")
                         }
-                    }
-                    if (!part.renameTo(target)) {
-                        // 同目录 rename 理论不失败；极端场景退化为复制（不静默丢文件）
-                        part.copyTo(target, overwrite = true)
-                        part.delete()
                     }
                     count++
                     if (count % 5 == 0) onProgress("释放中… $count")

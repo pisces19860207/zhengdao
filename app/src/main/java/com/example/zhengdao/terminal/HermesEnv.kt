@@ -357,12 +357,6 @@ object HermesEnv {
     private fun canonical(f: File): String =
         runCatching { f.canonicalPath }.getOrDefault(f.absolutePath)
 
-    /** `installs/<hash>/environments/<代>` 全部代目录（按 install 遍历）。 */
-    private fun generationDirs(installs: File): List<File> =
-        installDirs(installs).flatMap { dir ->
-            File(dir, "environments").listFiles { f: File -> f.isDirectory }?.toList() ?: emptyList()
-        }
-
     private fun isCompleteGeneration(gen: File): Boolean =
         File(gen, "venv/pyvenv.cfg").isFile && File(gen, "workspace/uv.lock").isFile
 

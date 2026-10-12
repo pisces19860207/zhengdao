@@ -360,7 +360,9 @@ object KnowledgeBaseSummarizerRunner {
         val isLink = runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
         if (isLink) return null
 
-        if (ext == "docx") return readDocxHead(f)
+        // 判据收敛到一处：能不能处理 `.docx` 由 DocxTextExtractor 自己说了算
+        // （原先这里另写一遍 `ext == "docx"`，与 canHandle 各写各的）。
+        if (DocxTextExtractor.canHandle(f.name)) return readDocxHead(f)
 
         if (ext !in TEXT_EXT) return null
         return runCatching {

@@ -107,8 +107,8 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
         // 根因：选词时拖动的是选区手柄（TextSelectionCursorController 自己会做边缘
         //      自动滚动：`topRow--` / `topRow++` 后 setTopRow），而本方法没判
         //      选词态 ⇒ 同一次拖动被当成"滚终端"，两套滚动叠加打架。
-        //      同文件的 onUp()（:77）与 onScale()（:153）都判了 isSelectingText()，
-        //      只有这里漏判。
+        //      同文件的 onUp()（:77）与 onScale() 都判了 isSelectingText()，onScroll（此处）
+        //      漏判；**onFling（:175 起）同样漏判** —— 2026-10-12 两处一并补上（§B-补-49 🟡1）。
         // 修法：选词态一律吃掉滑动（返回 true = 已消费，不冒泡），并把余量清零，
         //      免得退出选词后的第一次滑动跳一下。
         if (mView.isSelectingText()) {
@@ -126,7 +126,11 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
         // 修法：应用若启用了鼠标跟踪（tmux 需 `set -g mouse on`，已由 ProotLauncher
         //      预置到 ~/.tmux.conf），就把触摸滑动按行高换算成滚轮事件转发给应用，
         //      由应用滚动它自己的历史缓冲。
-        if (mView.mEmulator.isMouseTrackingActive()) {
+        //      2026-10-12 修（§B-补-49 🟡2）：本分支原不判事件来源，跟着下面的鼠标分支
+        //      一起被吃掉 —— 外接鼠标按住拖动时会**一事两报**（这里发滚轮、onTouchEvent
+        //      又发 MOUSE_LEFT_BUTTON_MOVED），而 `:149` 那段鼠标拖动路径成了死代码。
+        //      上游 `5a0fd2e` 原文就是 `isMouseTrackingActive() && isFromSource(SOURCE_MOUSE)`。
+        if (mView.mEmulator.isMouseTrackingActive() && !e.isFromSource(InputDevice.SOURCE_MOUSE)) {
             distanceY += mScrollRemainder;
             int wheelRows = (int) (distanceY / mView.mRenderer.mFontLineSpacing);
             mScrollRemainder = distanceY - wheelRows * mView.mRenderer.mFontLineSpacing;
@@ -173,6 +177,14 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
     @Override
     public boolean onFling(final MotionEvent e2, float velocityX, float velocityY) {
         if (mView.mEmulator == null) return true;
+        // 证道修复（2026-10-12，§B-补-49 🟡1）：选词态不许起滚（E-109 那次只修了 onScroll）。
+        // onFling 起来的是 Scroller + 每帧 doScroll 的 Runnable，不判的话选词时拖手柄
+        // 照样会把终端滚走 —— 与 onScroll 判的守卫重复，正是为了覆盖这条异步路径。
+        if (mView.isSelectingText()) {
+            mScroller.forceFinished(true);
+            mScrollRemainder = 0.0f;
+            return true;
+        }
         // Do not start scrolling until last fling has been taken care of:
         if (!mScroller.isFinished()) return true;
 

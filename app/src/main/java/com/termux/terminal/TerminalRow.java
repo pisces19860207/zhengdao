@@ -152,6 +152,10 @@ public final class TerminalRow {
         Arrays.fill(mStyle, style);
         mSpaceUsed = mColumns;
         mHasNonOneWidthOrSurrogateChars = false;
+        // 证道修复（2026-10-12，§B-补-49 🟡6）：行复用（滚动 / IL / DL 都走 clear()）必须把
+        // 换行标志一起清掉。上游只在少数路径清它，于是复用后的行带着上一行的 mLineWrap
+        // ⇒ TerminalBuffer.getSelectedText() 会把两行粘成一行、或凭空多出一整行空格。
+        mLineWrap = false;
     }
 
     // https://github.com/steven676/Android-Terminal-Emulator/commit/9a47042620bec87617f0b4f5d50568535668fe26

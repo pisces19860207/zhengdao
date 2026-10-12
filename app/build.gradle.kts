@@ -259,6 +259,11 @@ android {
             }
             // R8 字节码优化 + 资源收缩（用户第四批后追加）：显著减小体积与内存占用。
             // JNI / JS 桥的 keep 规则见 proguard-rules.pro。
+            // 2026-10-12（§B 顺序 21 ③）：`isShrinkResources` 之前**没开**，资源侧
+            //   一直只有代码侧在被 R8 缩；审计点出后补上（AGP 9.4 的 BuildType 上
+            //   仍是这个属性名，已核对 gradle-api-9.4.0.jar 的 DSL 接口）。
+            //   只影响未引用资源（模板色、旧 drawable），不动 JNI/JS 桥的 keep。
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -163,10 +163,6 @@ object StorageAudit {
         return out.sortedBy { it.first }
     }
 
-    /** 可选工具合计（MB）：这就是 #8-B 里「能省多少」的真机数字来源。 */
-    fun optionalToolsMb(ctx: Context): Long =
-        toolItems(ctx).filter { it.removable }.sumOf { it.mb }
-
     /**
      * 清理可选工具：只删 [OPTIONAL_TOOL_NAMES] 命中的目录，返回 `删除项数 to 释放字节数`。
      *

@@ -414,9 +414,6 @@ esac
     fun agentCacheMeasure(ctx: Context): List<Pair<String, Long>> =
         agentCacheTargetsFor(ctx).map { (name, dir) -> name to dirSizeMb(dir) }.filter { it.second > 0 }
 
-    /** Agent 包缓存合计（MB）。 */
-    fun agentCacheMb(ctx: Context): Long = agentCacheMeasure(ctx).sumOf { it.second }
-
     /**
      * 执行清理：删掉 [agentCacheTargets] 里的目录，返回实际释放的字节数。
      *
