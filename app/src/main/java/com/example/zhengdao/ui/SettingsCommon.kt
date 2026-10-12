@@ -101,9 +101,16 @@ import kotlinx.coroutines.CoroutineScope
 /**
  * 索引里的字节数 → 人读大小。`<= 0` = 索引没给这个字段（老格式/字段缺失），
  * 显示"大小未知"而不是"约 0 MB"（后者会让用户以为包是空的）。
+ *
+ * [res] 传 null 时回退中文（无 Context 场景），传 `ctx.resources` 即随界面语言。
  */
-internal fun bytesMbText(bytes: Long): String =
-    if (bytes > 0) "约 ${(bytes + 524_288) / 1_048_576} MB" else "大小未知"
+internal fun bytesMbText(bytes: Long, res: android.content.res.Resources? = null): String =
+    if (bytes > 0) {
+        val mb = (bytes + 524_288) / 1_048_576
+        res?.getString(R.string.common_approx_mb, mb) ?: "约 $mb MB"
+    } else {
+        res?.getString(R.string.common_size_unknown) ?: "大小未知"
+    }
 /** 设置偏好（工作区模式 / 已安装环境版本登记）。 */
 object Settings {
     fun prefs(ctx: android.content.Context) =

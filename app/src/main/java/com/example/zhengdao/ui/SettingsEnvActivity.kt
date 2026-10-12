@@ -301,24 +301,24 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                                 ctx.getString(
                                                     R.string.env_local_env_missing_cached,
                                                     ver,
-                                                    bytesMbText(cached.length()),
+                                                    bytesMbText(cached.length(), ctx.resources),
                                                 )
                                             cached != null ->
                                                 ctx.getString(
                                                     R.string.env_local_cached,
-                                                    bytesMbText(cached.length()),
+                                                    bytesMbText(cached.length(), ctx.resources),
                                                 )
                                             sameVer ->
                                                 ctx.getString(
                                                     R.string.env_local_env_missing_full,
                                                     ver,
-                                                    bytesMbText(idx.size),
+                                                    bytesMbText(idx.size, ctx.resources),
                                                 )
                                             else ->
                                                 ctx.getString(
                                                     R.string.env_new_version_no_local_record,
                                                     ver,
-                                                    bytesMbText(idx.size),
+                                                    bytesMbText(idx.size, ctx.resources),
                                                 )
                                         }
                                     }
@@ -337,14 +337,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                                 ctx.getString(
                                                     R.string.env_new_version_cached,
                                                     ver,
-                                                    bytesMbText(cached.length()),
+                                                    bytesMbText(cached.length(), ctx.resources),
                                                 )
                                             p != null && p.from.equals(localEnv, ignoreCase = true) -> {
                                                 pendingPatchRef = p
                                                 ctx.getString(
                                                     R.string.env_new_version_patch,
                                                     ver,
-                                                    bytesMbText(p.size),
+                                                    bytesMbText(p.size, ctx.resources),
                                                 )
                                             }
                                             else ->
@@ -352,7 +352,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                                     R.string.env_new_version_full,
                                                     ver,
                                                     localEnv,
-                                                    bytesMbText(idx.size),
+                                                    bytesMbText(idx.size, ctx.resources),
                                                 )
                                         }
                                     }
@@ -726,7 +726,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 try {
                                     InstallFlow.update(
                                         ctx,
-                                        ctx.getString(R.string.env_patch_downloading, bytesMbText(patchRef.size)),
+                                        ctx.getString(R.string.env_patch_downloading, bytesMbText(patchRef.size, ctx.resources)),
                                     )
                                     RootfsDownloader.download(
                                         urls = RootfsDownloader.withMirrorFallback(patchRef.url),
@@ -770,7 +770,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     // 让用户明确知道"这次没有重下 300MB"——他上次的误会正来自这里
                                     InstallFlow.update(
                                         ctx,
-                                        ctx.getString(R.string.env_patch_done, bytesMbText(patchRef.size)),
+                                        ctx.getString(R.string.env_patch_done, bytesMbText(patchRef.size, ctx.resources)),
                                     )
                                 } catch (t: Throwable) {
                                     // 增量路径的任何失败（含基线不符 BaseMismatch）都回退全量：

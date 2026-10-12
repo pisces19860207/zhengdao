@@ -2,6 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import androidx.compose.ui.res.stringResource
+import com.example.zhengdao.R
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -120,11 +122,11 @@ private fun KeepaliveLogTopBar(onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BackChevron(tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(4.dp))
-                Text("返回", color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.common_back), color = MaterialTheme.colorScheme.primary)
             }
         }
         Text(
-            text = "保活记录",
+            text = stringResource(R.string.keepalive_log_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.align(Alignment.Center),
@@ -165,32 +167,30 @@ private fun KeepaliveLogScreen() {
         // 卡片外的小标题会读成上一张卡的注脚。
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        SectionCard("留档位置与说明") {
+        SectionCard(stringResource(R.string.keepalive_log_location_card)) {
             Text(
-                "位置：${KeepaliveArchive.dirPath(ctx)}",
+                stringResource(R.string.keepalive_log_location, KeepaliveArchive.dirPath(ctx)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "进程被杀时系统会自己记下原因（内存不足 / 资源占用超限 / 厂商后台清理 / 崩溃 / 无响应），" +
-                    "下次启动时收进这里；心跳每 10 分钟一条，最后一条就是出事后留下的现场（内存水位、" +
-                    "前台服务在不在、用户当时在哪一页）。导出后可交给作者分析。",
+                stringResource(R.string.keepalive_log_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        SectionCard("最近的记录") {
+        SectionCard(stringResource(R.string.keepalive_log_recent_card)) {
             if (exitLines.isEmpty()) {
                 Text(
-                    "还没有退出记录——被杀过一次并重开之后就会有。",
+                    stringResource(R.string.keepalive_log_empty),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 Text(
-                    "最近退出：",
+                    stringResource(R.string.keepalive_log_last_exits),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -206,7 +206,7 @@ private fun KeepaliveLogScreen() {
             if (beatLines.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "最近心跳：",
+                    stringResource(R.string.keepalive_log_last_beats),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -221,7 +221,7 @@ private fun KeepaliveLogScreen() {
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "logcat 片段：$snippetCount 份（每次启动与巡检各留一份，最多 5 份）",
+                stringResource(R.string.keepalive_log_snippets, snippetCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -230,15 +230,20 @@ private fun KeepaliveLogScreen() {
                     val dst = KeepaliveArchive.export(ctx)
                     Toast.makeText(
                         ctx,
-                        dst?.let { "已导出到 ${it.absolutePath}" } ?: "导出失败：公共区不可用（先在权限里开启「所有文件访问」）",
+                        dst?.let { ctx.getString(R.string.keepalive_log_exported, it.absolutePath) }
+                            ?: ctx.getString(R.string.keepalive_log_export_failed),
                         Toast.LENGTH_LONG,
                     ).show()
-                }) { Text("导出到 Download/证道/logs") }
+                }) { Text(stringResource(R.string.keepalive_log_export)) }
                 TextButton(onClick = {
                     val n = KeepaliveArchive.clear(ctx)
                     tick++
-                    Toast.makeText(ctx, "已清空 $n 份留档", Toast.LENGTH_SHORT).show()
-                }) { Text("清空记录", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Toast.makeText(
+                        ctx,
+                        ctx.getString(R.string.keepalive_log_cleared, n),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }) { Text(stringResource(R.string.keepalive_log_clear), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     }

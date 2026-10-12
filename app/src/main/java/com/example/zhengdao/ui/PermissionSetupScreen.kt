@@ -2,6 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import androidx.compose.ui.res.stringResource
+import com.example.zhengdao.R
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -200,9 +202,9 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
     ) {
         refresh()
         hint = if (PermissionSetup.storageGranted(ctx)) {
-            "已授权"
+            ctx.getString(R.string.data_perm_granted)
         } else {
-            "系统未放行——到「设置 → 应用 → 证道 → 权限」手动开启（部分系统会把弹窗静默掉）"
+            ctx.getString(R.string.perm_hint_storage_denied)
         }
     }
 
@@ -214,7 +216,7 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
         hint = if (PermissionSetup.notificationsGranted(ctx)) {
             null
         } else {
-            "通知未放行——不影响使用，只是收不到「装完清理」这类静默提示"
+            ctx.getString(R.string.perm_hint_notify_denied)
         }
     }
 
@@ -237,7 +239,7 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                     .setData(Uri.parse("package:${ctx.packageName}"))
             )
         }.onFailure {
-            Toast.makeText(ctx, "打开失败：${HumanizeError.title(it)}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it)), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -254,7 +256,7 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
             runCatching {
                 ctx.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             }.onFailure {
-                Toast.makeText(ctx, "打开失败：${HumanizeError.title(it)}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it)), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -276,14 +278,13 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
         ) {
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "权限",
+                text = stringResource(R.string.perm_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "证道要读写你的文件、在清理完成时给你提示，需要下面几项权限。" +
-                    "可以逐项点开授权；也可以稍后再设（设置 → 权限里随时能改）。",
+                text = stringResource(R.string.perm_intro),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -292,13 +293,13 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
             // 卡片标题叫「授权状态」而不是「权限」：页头已经是大字「权限」，
             // 上下再来一个「权限」就是设置页犯过的重复（旧版外层"设置"与页内大字"设置"叠着，
             // 见 MainActivity 里设置页顶栏那段注释）。
-            SectionCard("授权状态") {
+            SectionCard(stringResource(R.string.perm_status_card)) {
                 PermissionRow(
-                    label = "存储读写（共享存储 /sdcard）",
+                    label = stringResource(R.string.perm_storage_label),
                     granted = storageOk,
-                    status = if (storageOk) "已授权" else "未授权",
-                    desc = "Agent 读写手机文件（/sdcard）依赖此项；缺失时终端里读写手机文件会全部失败" +
-                        "（必需项）。",
+                    status = if (storageOk) stringResource(R.string.data_perm_granted)
+                    else stringResource(R.string.data_perm_not_granted),
+                    desc = stringResource(R.string.perm_storage_detail),
                     onClick = {
                         if (storageOk) {
                             openAppDetails()
@@ -314,20 +315,20 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                 )
                 RowGapDivider()
                 PermissionRow(
-                    label = "所有文件访问（可选 · 主路径）",
+                    label = stringResource(R.string.perm_manage_label),
                     granted = manageOk,
-                    status = if (manageOk) "已开启" else "未开启",
-                    desc = "开启后 Agent 可访问更广的存储范围。基础 /sdcard 读写不开也能用；" +
-                        "本机系统对证道不提供这个开关，未开启属正常，不影响使用。",
+                    status = if (manageOk) stringResource(R.string.data_manage_on)
+                    else stringResource(R.string.data_manage_off),
+                    desc = stringResource(R.string.perm_manage_detail),
                     onClick = openManageAllFiles,
                 )
                 RowGapDivider()
                 PermissionRow(
-                    label = "通知",
+                    label = stringResource(R.string.perm_notify_label),
                     granted = notifyOk,
-                    status = if (notifyOk) "已授权" else "未授权",
-                    desc = "「装完清理」等静默提示走通知；未授权时系统会直接丢掉通知，" +
-                        "但不影响任何功能。",
+                    status = if (notifyOk) stringResource(R.string.data_perm_granted)
+                    else stringResource(R.string.data_perm_not_granted),
+                    desc = stringResource(R.string.perm_notify_detail),
                     onClick = {
                         if (notifyOk) {
                             openAppDetails()
@@ -340,11 +341,10 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                 // 网络访问：安装时权限（INTERNET），必然已授予 ⇒ granted 恒 true、onClick = null
                 //（不可点、不画 ›：没事可做的地方给个能点的行，点了没反应比不给点更糟）
                 PermissionRow(
-                    label = "网络访问",
+                    label = stringResource(R.string.perm_net_label),
                     granted = true,
-                    status = "自动授予",
-                    desc = "INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的" +
-                        "「分应用代理」里勾选证道。",
+                    status = stringResource(R.string.perm_net_value),
+                    desc = stringResource(R.string.perm_net_detail),
                     onClick = null,
                 )
             }
@@ -372,14 +372,15 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                     .height(56.dp),
             ) {
                 Text(
-                    text = if (allReady) "完成，进入证道" else "稍后再说",
+                    text = if (allReady) stringResource(R.string.perm_done)
+                    else stringResource(R.string.perm_later),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
             if (!allReady) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "「存储读写」是必需项，现在也可以先进去。",
+                    text = stringResource(R.string.perm_storage_required_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
