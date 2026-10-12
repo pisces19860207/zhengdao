@@ -856,13 +856,19 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 所以回车与退格在这里单独喂给行缓冲／交给注入器处理。
         // ⚠️ 挂在"用户按键"这条路径上是有意的：App 自己写的启动命令不从这里过，
         //    所以恢复会话不会被重复注入。
-        if (e != null && !stickyCtrl) {
+        if (e != null) {
             when (keyCode) {
+                // 回车仍在"粘滞 Ctrl 之外"这条守卫里：Ctrl 点亮时的回车语义是 Ctrl+Enter，
+                // 不该被「提交提问」那套逻辑接管（那会改写用户正要送进 pty 的内容）。
                 KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
-                    if (KnowledgeBaseHints.onUserCodePoint(
+                    if (!stickyCtrl && KnowledgeBaseHints.onUserCodePoint(
                             this, '\r'.code, ctrlDown = false
                         ) { payload -> writeToSession(session, payload) }
                     ) return true
+                // 退格**不受粘滞 Ctrl 影响**（审计 C4）：不管 Ctrl 亮没亮，shell 行上的字都被删掉了，
+                // 行缓冲必须跟着退 —— 否则"已删掉的字"会在下一次提交时被当成提问的一部分。
+                // 近似之处：Ctrl+退格在 readline 里删的是一个词，这里只退一个字符；
+                // 宁可少退（残留一个词的前缀）也不多留（整词留在缓冲里）。
                 KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL ->
                     KnowledgeBaseHints.onUserBackspace()
             }
