@@ -57,7 +57,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.terminal.CacheCleaner
@@ -705,22 +704,9 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 },
             )
         }
-        // ── 输入回归页（Issue #2 / 设计方案 v3 §3）──
-        SectionCard("输入回归页") {
-            Text(
-                "终端输入相关的改动（渲染、输入层、快捷键条）之后，进这一页 30 秒回归一次中文输入：" +
-                    "页内是一个跑 cat 的终端，按三个场景的顺序输入，各自点「判定」——判定读的是终端缓冲最后一行，" +
-                    "同时会把输入法真实送进来的 composition/commit 事件留档。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(6.dp))
-            Button(onClick = {
-                ctx.startActivity(
-                    android.content.Intent(ctx, ImeRegressionActivity::class.java),
-                )
-            }) { Text("进入输入回归页") }
-        }
+        // ── 输入回归页入口已下沉（2026-10-12 走查报告 §1.2-D）──
+        // 这是开发自测页（Issue #2 / 设计方案 v3 §3），普通用户不需要；
+        // 现在收进「关于」页的隐藏入口：版本行连点 3 次进入。
     }
 }
 

@@ -115,12 +115,31 @@ class SettingsAboutActivity : ComponentActivity() {
 @Composable
 private fun SettingsAboutPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
+    // 隐藏入口（2026-10-12 走查报告 §1.2-D）：输入回归页是开发自测页，从用户设置里撤下，
+    // 收成「版本」行连点 3 次。普通人误点三次也只会当它是彩蛋。
+    var versionTaps by remember { mutableStateOf(0) }
     SettingsSubPage(title = "关于", onBack = onBack) {
         // ── 关于 ──
         SectionCard("关于") {
-            InfoRow("版本", "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})")
+            InfoRow(
+                "版本",
+                "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})",
+                onClick = {
+                    versionTaps++
+                    if (versionTaps >= 3) {
+                        versionTaps = 0
+                        ctx.startActivity(
+                            android.content.Intent(ctx, ImeRegressionActivity::class.java),
+                        )
+                    }
+                },
+            )
             Spacer(Modifier.height(4.dp))
             InfoRow("作者", "小信多多")
+            Spacer(Modifier.height(4.dp))
+            // Root 增强模式（2026-10-12 从设置 Hub 移来）：未实现项不再占设置页的行，
+            // 但它是个真实的状态说明，放在关于页纯文本展示。
+            InfoRow("Root 增强模式", "未实现 · 计划 v1.x（证道用 PRoot 免 Root 跑 Debian，不需要 Root 权限）")
             Spacer(Modifier.height(4.dp))
             // 安装包来源（E-065）：GPL 允许别人重打包，但用户有权知道手里这个包是谁签的。
             // 只报告，不拦功能 —— 自己改代码自己签名也是 GPL 明确允许的用法。
