@@ -173,9 +173,9 @@ private fun KeepaliveLogScreen() {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "进程被杀时系统会自己记下原因（内存不足 / 资源占用超限 / 厂商后台清理 / 崩溃 / ANR），" +
-                    "下次启动时收进这里；心跳每 10 分钟一条，**最后一条就是遇难现场**（内存水位、" +
-                    "前台服务在不在、用户当时在哪一页）。导出后连同 logcat 片段一起可交给作者分析。",
+                "进程被杀时系统会自己记下原因（内存不足 / 资源占用超限 / 厂商后台清理 / 崩溃 / 无响应），" +
+                    "下次启动时收进这里；心跳每 10 分钟一条，最后一条就是出事后留下的现场（内存水位、" +
+                    "前台服务在不在、用户当时在哪一页）。导出后可交给作者分析。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

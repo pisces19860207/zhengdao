@@ -131,7 +131,7 @@ private val ENTRIES = listOf(
         title = "GNU GPL v2.0",
         asset = "licenses/GPL-2.0.txt",
         covers = "proot（Termux fork 发行版；assets 内置官方二进制，运行时释放为独立文件）",
-        obligation = "以**独立进程 exec** 调用、与本项目不链接 ⇒ 聚合分发（FSF GPL FAQ 的 fork/exec 判据）。" +
+        obligation = "以独立进程 exec 调用、与本项目不链接 ⇒ 聚合分发（FSF GPL FAQ 的 fork/exec 判据）。" +
             "红线：只能 exec，绝不 dlopen / loadLibrary。",
     ),
     LicenseEntry(
@@ -158,7 +158,7 @@ private val ENTRIES = listOf(
         title = "BSD 3-Clause（zstd 核心）",
         asset = "licenses/BSD-3-Clause-zstd.txt",
         covers = "zstd 本体（facebook/zstd v1.5.6，编译进随包 native 库 libzstd-jni-1.5.6-4.so）",
-        obligation = "与 zstd-jni 的包装代码是**两份不同的 BSD 文本**（版权人不同），必须分开提供；" +
+        obligation = "与 zstd-jni 的包装代码是两份不同的 BSD 文本（版权人不同），必须分开提供；" +
             "上游构件里同样不带这份正文，见 docs/ERRATA.md E-105。",
     ),
     LicenseEntry(
@@ -178,7 +178,7 @@ private val ENTRIES = listOf(
         title = "第一方代码（本项目）",
         asset = "licenses/LICENSE-zhengdao.txt",
         covers = "证道（zhengdao）自身的第一方代码（app/ 里本项目编写部分、tools/、rootfs 脚本、docs/ 等）",
-        obligation = "自 2026-10-11 起为**保留所有权利**：可浏览、克隆、本地评估；再分发与任何商业使用" +
+        obligation = "自 2026-10-11 起为「保留所有权利」：可浏览、克隆、本地评估；再分发与任何商业使用" +
             "（含 SaaS / 捆绑 / OEM / 企业内部规模化部署）需项目所有者事先书面许可。" +
             "正文 = 仓库根 LICENSE 的构建期副本。",
     ),

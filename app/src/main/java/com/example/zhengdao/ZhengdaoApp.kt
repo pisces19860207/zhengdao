@@ -66,7 +66,7 @@ class ZhengdaoApp : Application() {
                 com.example.zhengdao.util.SigningCheck.Result.OFFICIAL ->
                     RunLog.log("启动自检：安装包签名 = 官方 ✓")
                 com.example.zhengdao.util.SigningCheck.Result.UNOFFICIAL ->
-                    RunLog.log("⚠️ 启动自检：安装包签名**不是官方的** —— 这个包被重新签过名（重打包）。如果你不是从作者 GitHub 下载的，建议换回官方包。")
+                    RunLog.log("⚠️ 启动自检：安装包签名不是官方的 —— 这个包被重新签过名（重打包）。如果你不是从作者 GitHub 下载的，建议换回官方包。")
                 com.example.zhengdao.util.SigningCheck.Result.UNKNOWN ->
                     RunLog.log("启动自检：读不到安装包签名（已跳过）")
             }

@@ -141,8 +141,8 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "荣耀对前台服务较为尊重：保持「会话运行中」通知可见 + 多任务上锁，" +
-                    "即可长期后台存活；即便被清理，tmux 会话恢复机制会在重进时自动回到现场。",
+                text = "荣耀对后台服务比较宽容：让「会话运行中」通知保持可见、再多任务上锁，" +
+                    "就能长期后台存活。万一被系统清掉，重进终端时会自动回到离开时的现场。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
