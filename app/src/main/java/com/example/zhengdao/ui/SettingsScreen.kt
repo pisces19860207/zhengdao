@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,15 +42,17 @@ import com.example.zhengdao.ui.util.pressClickable
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.res.stringResource
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.ChevronRight
+import com.example.zhengdao.R
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+
 /**
  * 设置（入口页，2026-10-11 重排；2026-10-12 按走查报告 §2 再收敛）。
  *
@@ -89,6 +94,9 @@ fun SettingsScreen(
         mutableStateOf(com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx))
     }
     var kbFiles by remember { mutableStateOf<Int?>(null) }
+    // 界面语言（2026-10-12）：读系统记的 per-app locale，切换后系统重建 Activity、当场生效。
+    var langTag by remember { mutableStateOf(LanguagePrefs.current(ctx)) }
+    var langDialog by remember { mutableStateOf(false) }
 
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
@@ -135,54 +143,111 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // 2026-10-12 重构（走查报告 §2）：Hub 只做菜单——每行一个去向、状态一律短词。
-            SectionCard("环境") {
+            // 同日接入 i18n（§5.7）：文案走 strings.xml，切英文时本页整页变英文。
+            SectionCard(stringResource(R.string.settings_group_env)) {
                 SettingRow(
-                    label = "环境与更新",
-                    value = if (AppState.rootfsInstalled(ctx)) "已安装" else "未安装",
+                    label = stringResource(R.string.settings_env_update),
+                    value = if (AppState.rootfsInstalled(ctx)) {
+                        stringResource(R.string.settings_status_installed)
+                    } else {
+                        stringResource(R.string.settings_status_not_installed)
+                    },
                 ) { open(SettingsEnvActivity::class.java) }
                 SettingsDivider()
                 SettingRow(
-                    label = "存储与缓存",
-                    value = if (rootfsMb < 0) "统计中…" else "${rootfsMb + homeMb + cacheMb} MB",
+                    label = stringResource(R.string.settings_storage),
+                    value = if (rootfsMb < 0) stringResource(R.string.settings_status_measuring)
+                    else "${rootfsMb + homeMb + cacheMb} MB",
                 ) { open(SettingsStorageActivity::class.java) }
             }
 
-            SectionCard("终端与资料") {
+            SectionCard(stringResource(R.string.settings_group_terminal)) {
                 // 权限不再单占一行：待处理时由本行状态直接说出来，权限卡在二级页内。
                 SettingRow(
-                    label = "终端与工作区",
-                    value = if (storageOk && manageOk) Workspace.hostDir(ctx).name else "权限待处理",
+                    label = stringResource(R.string.settings_terminal_workspace),
+                    value = if (storageOk && manageOk) Workspace.hostDir(ctx).name
+                    else stringResource(R.string.settings_status_perm_pending),
                     valueColor = if (storageOk && manageOk) Color.Unspecified else MaterialTheme.colorScheme.error,
                 ) { open(SettingsDataActivity::class.java) }
                 SettingsDivider()
                 SettingRow(
-                    label = "资料库",
+                    label = stringResource(R.string.settings_knowledge_base),
                     value = when {
-                        !kbEnabled -> "未启用"
-                        (kbFiles ?: 0) > 0 -> "${kbFiles} 个文件"
-                        else -> "已启用"
+                        !kbEnabled -> stringResource(R.string.settings_status_disabled)
+                        (kbFiles ?: 0) > 0 ->
+                            stringResource(R.string.settings_status_file_count, kbFiles ?: 0)
+                        else -> stringResource(R.string.settings_status_enabled)
                     },
                 ) { open(SettingsDataActivity::class.java) }
             }
 
-            SectionCard("后台") {
+            SectionCard(stringResource(R.string.settings_group_background)) {
                 SettingRow(
-                    label = "后台保活",
-                    value = "指南",
+                    label = stringResource(R.string.settings_keepalive),
+                    value = stringResource(R.string.settings_status_guide),
                 ) { open(SettingsKeepaliveActivity::class.java) }
             }
 
-            SectionCard("支持") {
-                SettingRow(label = "帮助", value = "新手指南 · 日志") {
+            SectionCard(stringResource(R.string.settings_group_interface)) {
+                SettingRow(
+                    label = stringResource(R.string.settings_language),
+                    value = when (langTag) {
+                        LanguagePrefs.ZH -> stringResource(R.string.language_zh)
+                        LanguagePrefs.EN -> stringResource(R.string.language_en)
+                        else -> stringResource(R.string.language_system)
+                    },
+                ) { langDialog = true }
+            }
+
+            SectionCard(stringResource(R.string.settings_group_support)) {
+                SettingRow(
+                    label = stringResource(R.string.settings_help),
+                    value = stringResource(R.string.settings_value_help),
+                ) {
                     open(SettingsHelpActivity::class.java)
                 }
                 SettingsDivider()
-                SettingRow(label = "关于", value = BuildConfig.VERSION_NAME) {
+                SettingRow(label = stringResource(R.string.settings_about), value = BuildConfig.VERSION_NAME) {
                     open(SettingsAboutActivity::class.java)
                 }
             }
 
             Spacer(Modifier.height(8.dp))
+        }
+
+        // 界面语言选择（2026-10-12）：系统级 per-app locale，选完系统自动重建页面。
+        if (langDialog) {
+            val options = listOf(
+                LanguagePrefs.SYSTEM to stringResource(R.string.language_system),
+                LanguagePrefs.ZH to stringResource(R.string.language_zh),
+                LanguagePrefs.EN to stringResource(R.string.language_en),
+            )
+            AlertDialog(
+                onDismissRequest = { langDialog = false },
+                shape = RoundedCornerShape(14.dp),
+                title = { Text(stringResource(R.string.settings_language)) },
+                text = {
+                    Column {
+                        options.forEach { (tag, name) ->
+                            SettingRow(
+                                label = name,
+                                value = if (tag == langTag) "✓" else "",
+                            ) {
+                                langDialog = false
+                                if (tag != langTag) {
+                                    LanguagePrefs.set(ctx, tag)
+                                    langTag = tag
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { langDialog = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                },
+            )
         }
     }
 }
