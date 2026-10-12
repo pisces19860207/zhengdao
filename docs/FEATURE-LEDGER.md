@@ -332,6 +332,8 @@
 - **本轮清账（2026-10-11 15:2x）**：工作树 `zhengdao-wt-fix-ws-net` 与分支 `fix/workspace-netcheck`（`b7676e3` → merge `c91e394`，§A #27）、`docs/ledger-27`（`e447a2a` → merge `f557d6c`）**已删除**；删前逐条核对过「都已并入 `main`」。
 - ⚠️ **另一会话（同一天的第二条线）：终端 git 提速 + 下载层换源** —— `7923f48`（`fix(terminal)` 镜像表独立 / push 不再被 insteadOf 改道 / 慢源自动切换，ERRATA **E-096**）+ `7d37a8e`（§A #28 立账）+ `6b71ef6`（merge `fix/git-accel`）。**已并进本地 `main`，但当时还没 push**（`main` 领先 `origin/main` 3 个提交）⇒ 谁要动 `main` 的推送，先跟它对齐。相关文件：`app/src/main/java/com/example/zhengdao/rootfs/GithubMirror.kt`（新）、`app/src/main/java/com/example/zhengdao/terminal/GitAccel.kt`（新）、`rootfs/RootfsDownloader.kt`、`oc/OcManager.kt`、`terminal/ProotLauncher.kt`、`app/src/test/java/com/example/zhengdao/rootfs/RootfsDownloaderTest.kt`、`rootfs/UrlTransformTest.kt`、`app/src/test/java/com/example/zhengdao/terminal/GitAccelTest.kt`（新）、`docs/ERRATA.md`（E-096）。以它自己的提交和 §A #28 为准，本行只是**当时快照**。
 
+- ⏸️ **终端 View 现代化原型（GPT-luna，2026-10-12）—— 已封档，不要接着改。** 用户 2026-10-12 拍板：「算了，暂时不弄 terminal view 了，把 GPT-luna 弄的封档吧。」原型 = 在 vendored `com/termux/view/` 内另写的渲染器 + 手势控制器 + 子类 View（`ZhengdaoTerminalView`／`ZhengdaoTerminalRenderer`／`ZhengdaoTerminalGestureController`／`TerminalRenderRunGrouper`，配测试 `app/src/test/java/com/termux/view/TerminalRenderRunGrouperTest.java`），只在回归页 `app/src/main/java/com/example/zhengdao/ui/ImeRegressionActivity.kt` 接线（开关 `modern_terminal_view`），**生产 `TerminalActivity` 未接、真机未验收**。工作树已还原干净；原件（4 个新文件逐字节副本 + 5 个被跟踪文件的完整补丁 `diff-tracked.patch`）在 `docs/archive/terminal-view-2026-10-12/`，恢复命令见该目录 `README.md`。**要复活必须先问用户。**
+
 ## 0. 开工前必读
 
 1. 先 `git fetch`，再用 `git rev-list --left-right --count origin/main...HEAD` 确认自己落后多少；落后就先 `rebase`，**不要在旧基准上动手**。
