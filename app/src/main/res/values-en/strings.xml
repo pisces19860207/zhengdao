@@ -39,6 +39,7 @@
     <string name="settings_knowledge_base">Knowledge base</string>
     <string name="settings_keepalive">Keep-alive</string>
     <string name="settings_language">Language</string>
+    <string name="settings_appearance">Appearance</string>
     <string name="settings_help">Help</string>
     <string name="settings_about">About</string>
 
@@ -57,6 +58,11 @@
     <string name="language_system">System default</string>
     <string name="language_zh">简体中文</string>
     <string name="language_en">English</string>
+
+    <!-- ── Appearance (light / dark) ── -->
+    <string name="appearance_system">System default</string>
+    <string name="appearance_light">Light</string>
+    <string name="appearance_dark">Dark</string>
 
     <!-- ── Startup / update dialogs (MainActivity) ── -->
     <string name="main_android_too_old_title">Android version too old</string>

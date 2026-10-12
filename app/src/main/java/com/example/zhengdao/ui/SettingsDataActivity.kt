@@ -72,7 +72,7 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
-import com.example.zhengdao.ui.theme.IOSReadyGreen
+import com.example.zhengdao.ui.theme.zhengdaoReadyGreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -112,12 +112,10 @@ class SettingsDataActivity : ComponentActivity() {
 }
 
 /**
- * 状态行"就绪／已授权"用的绿：比主题 tertiary(#34C759) 更深，浅底上作正文色才有对比度。
- *
- * 同一个包里的 top-level 不能有两个同名 `internal`（`PermissionSetupScreen.kt` 也有一份），
- * 所以按文件各自 `private` 一份；三处取值同源（`IOSReadyGreen`）。
+ * 状态行"就绪／已授权"用的绿：2026-10-12 起改走主题感知取色
+ * （浅色 #2E7D32 / 深色 #30D158，见 theme/Theme.kt 的 zhengdaoReadyGreen()），
+ * 深色主题下不再是一枚看不清的深绿。
  */
-private val ReadyGreen = IOSReadyGreen
 
 @Composable
 private fun SettingsDataPage(onBack: () -> Unit) {
@@ -500,7 +498,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             SettingRow(
                 label = "存储读写（共享存储 /sdcard）",
                 value = if (storageOk) "已授权" else "未授权",
-                valueColor = if (storageOk) ReadyGreen else MaterialTheme.colorScheme.error,
+                valueColor = if (storageOk) zhengdaoReadyGreen() else MaterialTheme.colorScheme.error,
                 onClick = {
                     if (storageOk) {
                         openAppDetails()
@@ -534,7 +532,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             SettingRow(
                 label = "网络访问",
                 value = "自动授予",
-                valueColor = ReadyGreen,
+                valueColor = zhengdaoReadyGreen(),
                 onClick = openAppDetails,
             )
             Text(
@@ -577,7 +575,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             SettingRow(
                 label = "所有文件访问（推荐开启·主路径）",
                 value = if (manageOk) "已开启" else "未开启",
-                valueColor = if (manageOk) ReadyGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                valueColor = if (manageOk) zhengdaoReadyGreen() else MaterialTheme.colorScheme.onSurfaceVariant,
                 onClick = { launchManage() },
             )
             Text(

@@ -42,12 +42,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.zhengdao.terminal.ProotLauncher
-import com.example.zhengdao.ui.theme.IOSReadyGreen
+import com.example.zhengdao.ui.theme.zhengdaoReadyGreen
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 
-/** 状态行「已授权／已开启」用的绿：与设置页同一枚色（定义见 ui/theme/Color.kt:34）。 */
-private val ReadyGreen = IOSReadyGreen
+// 状态行「已授权／已开启」用的绿：2026-10-12 起改走主题感知取色
+// （浅色 #2E7D32 / 深色 #30D158，见 theme/Theme.kt 的 zhengdaoReadyGreen()），
+// 深色主题下不再是一枚看不清的深绿。
 
 /**
  * 首启「权限」页的状态与判据（2026-10-11）。
@@ -156,8 +157,9 @@ object PermissionSetup {
  *
  * 判据与取舍（都是有意为之，改之前先读）：
  * - 视觉语言沿用设置页「权限」卡的排版习惯（SectionCard 的卡片 + SettingRow 的行节奏：
- *   文字 + 右侧状态 + 行尾 ›），不另起一套审美；绿色用 [IOSReadyGreen]——
- *   主题 tertiary `#34C759` 白底只有 2.22:1，作正文色读不清，该值 5.13:1（ui/theme/Color.kt:34）。
+ *   文字 + 右侧状态 + 行尾 ›），不另起一套审美；绿色用 `zhengdaoReadyGreen()`——
+ *   主题 tertiary `#34C759` 白底只有 2.22:1，作正文色读不清；浅色走 #2E7D32（5.13:1）、
+ *   深色走 #30D158（8.4:1），见 ui/theme/Theme.kt。
  * - 未授权时点整行直接去授权；已授权时点整行去系统「应用详情」看/改（权限已给，
  *   再拉一次请求系统会直接回「已授予」，表现就是点了没反应）。
  * - 「网络访问」是安装时权限，**行不可点、不画 ›**：没事可做的地方给一个能点的行，
@@ -419,7 +421,7 @@ private fun PermissionRow(
             Text(
                 text = status,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (granted) ReadyGreen else MaterialTheme.colorScheme.error,
+                color = if (granted) zhengdaoReadyGreen() else MaterialTheme.colorScheme.error,
             )
             if (onClick != null) {
                 Spacer(Modifier.width(6.dp))

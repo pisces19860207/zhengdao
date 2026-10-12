@@ -15,7 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.ui.theme.iosSwitchColors
-import com.example.zhengdao.ui.theme.IOSBlueText
+import com.example.zhengdao.ui.theme.zhengdaoBlueText
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -201,7 +201,7 @@ fun PluginsScreen() {
                             Text(
                                 text = "已启用",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = IOSBlueText,
+                                color = zhengdaoBlueText(),
                             )
                         } else {
                             Switch(
@@ -339,7 +339,7 @@ fun PluginsScreen() {
             Text(
                 text = it,
                 style = MaterialTheme.typography.labelSmall,
-                color = IOSBlueText,
+                color = zhengdaoBlueText(),
             )
         }
     }
