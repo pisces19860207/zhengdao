@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  UI strings (English). 2026-10-12 — user asked for a switchable English UI.
+  Mirrors res/values/strings.xml. Language names stay in their own language
+  (iOS convention), so "简体中文" is not translated here.
+
+  Not translated by design: terminal content/output, logs, user files,
+  agent replies, file paths, raw error codes. The terminal title
+  "证道 - Debian 13.7" is a fixed identity string (user requested).
+-->
+<resources>
+    <string name="app_name">Zhengdao</string>
+    <string name="copy_text">Copy</string>
+    <string name="paste_text">Paste</string>
+    <string name="text_selection_more">More</string>
+
+    <!-- ── Common ── -->
+    <string name="common_back">Back</string>
+    <string name="common_settings">Settings</string>
+    <string name="common_confirm">OK</string>
+    <string name="common_cancel">Cancel</string>
+
+    <!-- ── Bottom navigation ── -->
+    <string name="nav_taiji">Taiji</string>
+    <string name="nav_terminal">Terminal</string>
+    <string name="nav_agents">Agents</string>
+
+    <!-- ── Settings hub: groups ── -->
+    <string name="settings_group_env">Environment</string>
+    <string name="settings_group_terminal">Terminal &amp; Files</string>
+    <string name="settings_group_background">Background</string>
+    <string name="settings_group_interface">Interface</string>
+    <string name="settings_group_support">Support</string>
+
+    <!-- ── Settings hub: rows ── -->
+    <string name="settings_env_update">Environment &amp; updates</string>
+    <string name="settings_storage">Storage &amp; cache</string>
+    <string name="settings_terminal_workspace">Terminal &amp; workspace</string>
+    <string name="settings_knowledge_base">Knowledge base</string>
+    <string name="settings_keepalive">Keep-alive</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_help">Help</string>
+    <string name="settings_about">About</string>
+
+    <!-- ── Settings hub: row status ── -->
+    <string name="settings_status_installed">Installed</string>
+    <string name="settings_status_not_installed">Not installed</string>
+    <string name="settings_status_measuring">Measuring…</string>
+    <string name="settings_status_perm_pending">Permission needed</string>
+    <string name="settings_status_disabled">Off</string>
+    <string name="settings_status_enabled">On</string>
+    <string name="settings_status_file_count">%1$d files</string>
+    <string name="settings_status_guide">Guide</string>
+    <string name="settings_value_help">Getting started · Logs</string>
+
+    <!-- ── App language picker ── -->
+    <string name="language_system">System default</string>
+    <string name="language_zh">简体中文</string>
+    <string name="language_en">English</string>
+
+    <!-- ── Startup / update dialogs (MainActivity) ── -->
+    <string name="main_android_too_old_title">Android version too old</string>
+    <string name="main_android_too_old_msg">Zhengdao requires Android 16 or newer (current: Android %1$s).</string>
+    <string name="main_update_title">Update available</string>
+    <string name="main_update_msg">Version %1$s is available (you have %2$s). Get it from GitHub Releases.</string>
+    <string name="main_update_go">Download</string>
+    <string name="main_update_ignore">Ignore</string>
+    <string name="main_unofficial_build">This build was not signed by the original author. Please download the official release from GitHub.</string>
+</resources>

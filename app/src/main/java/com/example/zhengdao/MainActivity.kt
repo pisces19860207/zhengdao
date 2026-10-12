@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -92,10 +93,10 @@ class MainActivity : ComponentActivity() {
         // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
         if (android.os.Build.VERSION.SDK_INT < 36) {
             android.app.AlertDialog.Builder(this)
-                .setTitle("系统版本过低")
-                .setMessage("证道需要安卓 16 或更高版本（当前安卓 ${android.os.Build.VERSION.RELEASE}）。")
+                .setTitle(getString(R.string.main_android_too_old_title))
+                .setMessage(getString(R.string.main_android_too_old_msg, android.os.Build.VERSION.RELEASE))
                 .setCancelable(false)
-                .setPositiveButton("确定") { _, _ -> finish() }
+                .setPositiveButton(getString(R.string.common_confirm)) { _, _ -> finish() }
                 .show()
             return
         }
@@ -200,7 +201,7 @@ class MainActivity : ComponentActivity() {
         runCatching {
             android.widget.Toast.makeText(
                 this,
-                "这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。",
+                getString(R.string.main_unofficial_build),
                 android.widget.Toast.LENGTH_LONG,
             ).show()
         }
@@ -221,9 +222,15 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     android.app.AlertDialog.Builder(this)
-                        .setTitle("发现新版本")
-                        .setMessage("最新版 ${tag.removePrefix("v")}（当前 ${BuildConfig.VERSION_NAME}），可到 GitHub Releases 下载。")
-                        .setPositiveButton("去下载") { _, _ ->
+                        .setTitle(getString(R.string.main_update_title))
+                        .setMessage(
+                            getString(
+                                R.string.main_update_msg,
+                                tag.removePrefix("v"),
+                                BuildConfig.VERSION_NAME,
+                            )
+                        )
+                        .setPositiveButton(getString(R.string.main_update_go)) { _, _ ->
                             startActivity(
                                 Intent(
                                     Intent.ACTION_VIEW,
@@ -231,7 +238,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
                         }
-                        .setNegativeButton("忽略", null)
+                        .setNegativeButton(getString(R.string.main_update_ignore), null)
                         .show()
                 }
             } catch (_: Throwable) {
@@ -473,11 +480,11 @@ fun ZhengdaoApp(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             BackChevron(tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(4.dp))
-                            Text("返回", color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.common_back), color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     Text(
-                        text = "设置",
+                        text = stringResource(R.string.common_settings),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.align(Alignment.Center),
@@ -599,7 +606,7 @@ fun HomeTabs(
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
                         onClick = { onTabClicked(0) {} },
                         icon = { TaijiIcon(tab == 0) },
-                        label = { Text("太极", style = tabLabelStyle) },
+                        label = { Text(stringResource(R.string.nav_taiji), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -621,7 +628,7 @@ fun HomeTabs(
                         // 却找不到叫「洞天」的地方。「终端」是用户已有的通用认知，无需学。
                         // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
                         // 见 :624 的设计说明），此处只改用户可见文案。
-                        label = { Text("终端", style = tabLabelStyle) },
+                        label = { Text(stringResource(R.string.nav_terminal), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -629,7 +636,7 @@ fun HomeTabs(
                         // K1：双击 = 滚到丹房 Agent 列表顶。
                         onClick = { onTabClicked(2) {} },
                         icon = { DingIcon(tab == 2) },
-                        label = { Text("丹房", style = tabLabelStyle) },
+                        label = { Text(stringResource(R.string.nav_agents), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                 }
