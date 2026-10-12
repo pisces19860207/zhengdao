@@ -97,12 +97,12 @@ tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6
 
 | 文件（相对 `app/src/main/`） | 修改方向 |
 |---|---|
-| `java/com/termux/terminal/TerminalEmulator.java` | 移植上游 `d8d6b02`（OSC52 100 KB 上限）+ 自研 🟡-7 OSC 载荷超限丢弃（`MAX_OSC_DISCARD_LENGTH`）+ 日志与 `Base64.DEFAULT` |
+| `java/com/termux/terminal/TerminalEmulator.java` | 移植上游 `d8d6b02`（OSC52 100 KB 上限）+ 自研 🟡-7 OSC 载荷超限丢弃（`MAX_OSC_DISCARD_LENGTH`）+ 日志与 `Base64.DEFAULT`；**2026-10-12 追加**：DECSLRM 之后退格会把光标列写成 −1（随后 ICH 撞 `TerminalBuffer.blockCopy` 的断言、从 pty 读线程冒顶崩进程）⇒ BS 判据改 `mCursorCol <= mLeftMargin`，`setCursorCol()` 钳到缓冲区边界 |
 | `java/com/termux/terminal/TerminalColorScheme.java` | `NUM_INDEXED_COLORS` 259 → 260、新增 `COLOR_INDEX_SELECTION`、`reset()` private → public |
 | `java/com/termux/terminal/TextStyle.java` | 选区底色（`COLOR_INDEX_SELECTION`） |
 | `java/com/termux/terminal/TerminalBuffer.java` | 行尾清空时补 `clearLineWrap` |
 | `java/com/termux/terminal/TerminalRow.java` | `mSpaceUsed` `short` → `int` |
-| `java/com/termux/terminal/TerminalSession.java` | 进程 / 终端 IO 队列 4 KiB → 64 KiB |
+| `java/com/termux/terminal/TerminalSession.java` | 进程 / 终端 IO 队列 4 KiB → 64 KiB；**2026-10-12 追加**：`isRunning()` 判据 `mShellPid != -1` → `mShellPid > 0`（字段语义是 0 = 未启动、−1 = 已结束；旧判据让 `finishIfRunning()` 对未 spawn 的会话发 `Os.kill(0, SIGKILL)` ＝ 自杀） |
 | `java/com/termux/terminal/KeyHandler.java` | `kN` / `kP` 上下翻页对调修正 |
 | `java/com/termux/view/TerminalView.java` | 拆分：1,589 → 758 行（职责搬进 6 个第一方类）+ 输入 / 选区定制 |
 | `java/com/termux/view/TerminalRenderer.java` | 行高倍率构造器、选区底色、`drawTextRun` 的 API 版本闸 |

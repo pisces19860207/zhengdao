@@ -266,8 +266,23 @@ public final class TerminalSession extends TerminalOutput {
         mClient.onTitleChanged(this);
     }
 
+    /**
+     * ⚠️ 2026-10-12 修（终端缺陷审计 🔴2）：判据从 `mShellPid != -1` 改成 `mShellPid > 0`。
+     *
+     * {@link #mShellPid} 的语义在它自己的字段注释里写得很清楚：**0 = 还没启动，-1 = 已结束**。
+     * 旧判据把"0"也算成在跑，于是 shell 还没 spawn 的会话被当成活会话，`finishIfRunning()`
+     * 会对它执行 `Os.kill(0, SIGKILL)` —— POSIX 里 pid 0 是"**调用者自己的进程组**"，
+     * 结果是 App 把自己 SIGKILL 掉（表现为"换个 Agent 就整页消失、无异常堆栈"）。
+     *
+     * 触发路径窄但真实：`SessionManager.start()` 先 `session = s`（此时 mShellPid 仍是 0，
+     * spawn 发生在视图首次 updateSize），用户在这个窗口里点"换 Agent／关会话"就会走
+     * `killInternal() → s.finishIfRunning()`。
+     *
+     * 顺带对齐了另外两处：`write()`（`mShellPid > 0`）与 `getCwd()`（`mShellPid < 1` 判无效）
+     * 本来就是按 0/-1 两个哨兵值写的，只有这里漏了。
+     */
     public synchronized boolean isRunning() {
-        return mShellPid != -1;
+        return mShellPid > 0;
     }
 
     /** Only valid if not {@link #isRunning()}. */
