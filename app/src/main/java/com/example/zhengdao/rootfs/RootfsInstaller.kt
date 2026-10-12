@@ -25,6 +25,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * RootFS 解压安装器（设计文档 §6/§8）：
@@ -89,6 +90,14 @@ object RootfsInstaller {
     // 才是他要的信息。
     private val lock = AtomicBoolean(false)
 
+    /**
+     * 「会话准备」与「安装置位」之间的互斥（§B 顺序 18，2026-10-12；见 [withPrepareLock]）。
+     *
+     * 与 [lock] 的分工：`lock` 回答"现在有没有安装在跑"（看一眼就走，持锁分钟级）；
+     * 这把锁保护"**开始**往 rootfs 写"与"**开始**安装"这两件事不能同时发生（持锁秒级）。
+     */
+    private val prepareLock = ReentrantLock()
+
     private val _installing = mutableStateOf(false)
 
     /** Compose 可读的进行中状态（设置页 / 终端页据此禁用按钮）。 */
@@ -104,15 +113,52 @@ object RootfsInstaller {
      * （按钮 enabled、入口预检），绝不能让别人为了看它而阻塞两分钟。
      */
     internal fun <T> withInstallLock(what: String, block: () -> T): T {
-        if (!lock.compareAndSet(false, true)) {
-            throw InstallFailed("已有安装/更新任务在跑，本次「$what」未执行（等它结束后再试）")
+        // 置位这一下必须与「会话准备」互斥（§B 顺序 18，2026-10-12）：
+        // 否则启动器那边是「查一眼 isInstalling() → 没在装 → 开始往 rootfs 写」，
+        // 安装恰在这一瞬置位 ⇒ 两边同时动 rootfs。只圈住置位、不圈住 block()：
+        // 安装以分钟计，绝不能让开会话的人为此等它（那条路靠下面 withPrepareLock 直接拒绝）。
+        prepareLock.lock()
+        try {
+            if (!lock.compareAndSet(false, true)) {
+                throw InstallFailed("已有安装/更新任务在跑，本次「$what」未执行（等它结束后再试）")
+            }
+            _installing.value = true
+        } finally {
+            prepareLock.unlock()
         }
-        _installing.value = true
         try {
             return block()
         } finally {
             _installing.value = false
             lock.set(false)
+        }
+    }
+
+    /**
+     * 「开启一次会话前的准备」临界区（§B 顺序 18，2026-10-12）。
+     *
+     * 准备期指的是 [com.example.zhengdao.terminal.ProotLauncher.buildLaunchPlan] 里那一整段
+     * 往 guest rootfs 写东西的动作（DNS/时区/profile.d/`zzclean`/npm 镜像/软链/挂载落点/横幅）。
+     * 这些写操作原本只靠「先看一眼 [isInstalling]」防并发，那是 **TOCTOU**：
+     * 查完到写之间安装可能刚好置位，于是「启动器写 rootfs」与「安装替换整棵树
+     * （[swapIntoPlace] 会把 rootfs 改名搬走再放新的）」交错 —— 轻则刚写的配置落进被丢弃的旧树，
+     * 重则写进正在被搬走的目录。
+     *
+     * 语义：
+     *  - 与 [withInstallLock]**置位那一下**互斥 ⇒ 持锁期间安装无法置位，[block] 里的写是安全的；
+     *  - 安装已在跑时**直接抛** [InstallFailed]（沿用旧行为：给一句可读文案，而不是让人排队几分钟）；
+     *  - 用 `ReentrantLock` 而不是 `AtomicBoolean`：这是"最多等几秒"的短临界区，
+     *    而且同一线程在准备期里再进一次不该死锁（重入计数）。
+     */
+    internal fun <T> withPrepareLock(what: String, block: () -> T): T {
+        prepareLock.lock()
+        try {
+            if (lock.get()) {
+                throw InstallFailed("正在安装/更新环境，本次「$what」未执行（等它结束后再开会话）")
+            }
+            return block()
+        } finally {
+            prepareLock.unlock()
         }
     }
 

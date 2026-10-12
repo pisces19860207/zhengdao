@@ -9,6 +9,7 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import com.example.zhengdao.core.IssueCenter
+import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.io.IOException
@@ -67,7 +68,21 @@ object ProotLauncher {
      *  - 已安装 Debian 13.7 环境（rootfs 目录存在且带完成标记）→ 经 proot 启动 guest bash；
      *  - 未安装 → 回退到系统自带 shell，App 端行为完全一致，用户无感降级。
      */
-    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan {
+    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan =
+        RootfsInstaller.withPrepareLock("准备会话") { buildLaunchPlanLocked(context, tmuxSession) }
+
+    /**
+     * [buildLaunchPlan] 的实现（**调用方必须已持有会话准备锁**，见 [RootfsInstaller.withPrepareLock]）。
+     *
+     * 为什么必须持锁：这一整段都会往 guest rootfs 里写东西 —— `etc/resolv.conf` / `etc/hosts`
+     * （[EnvSelfHeal.ensureDnsFiles]）、`/etc/localtime` 与时区、`etc/profile.d/zz-*.sh`、
+     * `usr/local/bin/zzclean`、`usr/local/bin/hermes` 软链、挂载落点 `opt/zhengdao`、
+     * `tmp/.zhengdao-banner-pending` 等。原先只在启动前"看一眼"
+     * [RootfsInstaller.isInstalling]，那是 TOCTOU：查完到写之间安装可能刚好置位，
+     * 而安装最后会**把整棵 rootfs 改名搬走再放新的**（[RootfsInstaller.swapIntoPlace]）
+     * ⇒ 刚写的配置落进被丢弃的旧树，或写进正在被搬走的目录（§B 顺序 18，2026-10-12）。
+     */
+    private fun buildLaunchPlanLocked(context: Context, tmuxSession: String): LaunchPlan {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
 

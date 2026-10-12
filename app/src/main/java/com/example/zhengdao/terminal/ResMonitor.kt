@@ -60,6 +60,8 @@ object ResMonitor {
      * @return 聚合结果；无进程可采（太极与终端都没开）时返回 null。
      */
     fun measure(windowMs: Long = 700): Sample? {
+        // 硬约束（审计 B4）：本函数 sleep + 全量扫 /proc，在主线程调用会掉帧甚至 ANR。
+        BackgroundOnly.check("ResMonitor.measure")
         val uid = android.os.Process.myUid()
         // 剔除 App 自身：否则量到的是体检过程本身（见类注释，实测 0.0% → 报 90%）。
         val pids = excludeSelf(pidsOfUid(uid), android.os.Process.myPid())

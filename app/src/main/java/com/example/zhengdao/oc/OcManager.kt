@@ -455,12 +455,21 @@ object OcManager {
     fun stopServe() {
         serveProcess?.destroy()
         serveProcess = null
-        // 孤儿 serve（App 重启后 Process 引用已丢）：同 uid 进程互相可杀，扫 /proc 清理
+        // 孤儿 serve（App 重启后 Process 引用已丢）：同 uid 进程互相可杀，扫 /proc 清理。
+        //
+        // ⚠️ 2026-10-12 修正（审计报告 A1）：判据原来是 `cmdline.contains("usr/bin/opencode")`，
+        //    那会把**用户自己在终端 Debian 里装的 opencode** 一起杀掉 —— proot 里的 guest 进程
+        //    在宿主 /proc 里就是真实进程，其 cmdline 形如
+        //    `/data/.../files/rootfs/usr/bin/opencode`（同 uid），同样命中那个宽泛子串。
+        //    症状：关一下太极 serve，终端里正跑着的 agent 莫名其妙死掉。
+        //    现在只匹配**本 App 装的那一份**：`filesDir/oc/usr/bin/opencode`
+        //    （见 [binaryFile] 与 `ProcessBuilder(bin.absolutePath, "serve", …)`，:332），
+        //    它的路径里带 `/oc/usr/bin/opencode`，而 guest 的那份在 `.../files/rootfs/...` 之下 —— 前缀不同，不会误杀。
         runCatching {
             File("/proc").listFiles { f -> f.name.all { it.isDigit() } }?.forEach { p ->
                 runCatching {
                     val cmd = p.resolve("cmdline").readText()
-                    if (cmd.contains("usr/bin/opencode")) {
+                    if (cmd.contains("/oc/usr/bin/opencode")) {
                         android.os.Process.killProcess(p.name.toInt())
                     }
                 }
