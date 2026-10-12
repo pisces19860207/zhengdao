@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +35,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.core.IssueCenter
+import kotlinx.coroutines.launch
 
 /**
  * 卡片右侧操作按钮的**最小**宽度（2026-10-10 UIUX 审计 B2 修）。
@@ -86,6 +91,14 @@ fun HomeScreen(
         androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // 2026-10-12（走查报告 §五）：错误提示从 Toast 迁 Snackbar——Toast 不能带动作、
+    // 与页面内容脱节；Snackbar 挂在本页底部，可读、可跟随、不打断。
+    // 定义在使用点之前（Kotlin 局部函数作用域从声明处开始）。
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
+    fun snack(msg: String) {
+        snackbarScope.launch { snackbarHostState.showSnackbar(msg) }
+    }
     // 去路执行（#4 走查，2026-10-09）：把 EnvHealth / IssueCenter 的「标识」翻译成「行为」的
     // 唯一一处（体检行与「最近问题」卡共用），免得同一句"去处理"在各处各写一遍、各指一个地方。
     val openStorageGrant: () -> Unit = {
@@ -98,11 +111,7 @@ fun HomeScreen(
             context.startActivity(i)
         }.onFailure {
             // 个别 ROM 没有这个页面（或被策略拦下）——不能静默失败，给一句人话 + 手动路径
-            android.widget.Toast.makeText(
-                context,
-                "打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启",
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
+            snack("打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启")
         }
     }
     // 台账 §B 顺序 11（原 §B-补-42）：两条「去看记录 / 看日志」的通知按钮各自的落点。
@@ -139,7 +148,7 @@ fun HomeScreen(
             i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(i)
         }.onFailure {
-            android.widget.Toast.makeText(context, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show()
+            snack("没有可用的浏览器")
         }
     }
     // 太极 serve 的重试 / 重启：动作在后台线程跑，结果回主线程汇报（成功撤下问题，失败留在卡上）
@@ -160,11 +169,12 @@ fun HomeScreen(
                         actionLabel = "重试",
                         actionId = IssueCenter.ACTION_RETRY_SERVE,
                     )
-                    android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_LONG).show()
+                    snack(err)
                 }
             }
         }.start()
     }
+
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
     // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复。
@@ -286,6 +296,7 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         // ── 固定顶栏（不随内容滚动）──
         // 与太极页一致：标题常驻、内容在下方自滚。原先把标题塞进 LazyColumn 的第一项，
@@ -511,9 +522,7 @@ fun HomeScreen(
                                                         // 静默失败改正：以前只有一句 Toast，现在同时
                                                         // 留一条「最近问题」（去路 = 去设置页重试）
                                                         val msg = "修复脚本写入失败，请到设置页重试"
-                                                        android.widget.Toast.makeText(
-                                                            context, msg, android.widget.Toast.LENGTH_SHORT
-                                                        ).show()
+                                                        snack(msg)
                                                         IssueCenter.report(
                                                             id = "hermes-repair-script",
                                                             title = "Hermes 修复脚本没写进工作区",
@@ -578,9 +587,7 @@ fun HomeScreen(
                                     cm.setPrimaryClip(
                                         android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText())
                                     )
-                                    android.widget.Toast.makeText(
-                                        context, "已复制全部系统信息", android.widget.Toast.LENGTH_SHORT
-                                    ).show()
+                                    snack("已复制全部系统信息")
                                 }) { Text("一键复制全部信息") }
                             } ?: Text("加载中…", style = MaterialTheme.typography.bodySmall)
                         }
@@ -939,6 +946,16 @@ fun HomeScreen(
         }
         } // LazyColumn 结束
     } // 外层 Column（固定顶栏 + 列表）结束
+
+    // Snackbar 宿主（2026-10-12）：挂在页面最底层，错误提示从 Toast 迁到此处
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .padding(bottom = 8.dp),
+    )
+    } // Box（内容 + Snackbar 浮层）结束
 
     // 卸载二次确认（P3/v1.0）：「卸载」删程序、留用户数据；「彻底清除」连用户数据一起删
     // （仅限已知名单内的 Agent——未知 manifest 条目的数据布局不猜测，不提供该选项）。

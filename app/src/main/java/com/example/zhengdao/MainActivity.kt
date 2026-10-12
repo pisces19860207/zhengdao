@@ -922,6 +922,29 @@ fun BackChevron(tint: Color, side: Dp = 13.dp) {
 }
 
 /**
+ * 右箭头（›）：设置行行尾用。与 [BackChevron] 同一套笔（圆头圆角 + 1.9f 描边）。
+ * 2026-10-12 取代设置行里的 "›" 文本字符——字符箭头各机型字体渲染不一
+ * （胖瘦高低没个准），与全套自绘图标不同路（走查报告 §五）。
+ */
+@Composable
+fun ChevronRight(tint: Color, side: Dp = 13.dp) {
+    Canvas(modifier = Modifier.size(side)) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.34f, h * 0.12f)
+            lineTo(w * 0.72f, h * 0.50f)
+            lineTo(w * 0.34f, h * 0.88f)
+        }
+        drawPath(
+            path,
+            tint,
+            style = Stroke(width = TAB_STROKE * 0.95f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
+/**
  * 设置入口图标（滑杆，sliders/tune）：三条横轨 + 各一个圆点。
  *
  * 为什么不是齿轮：17dp 的尺寸下，齿轮只能画成"细圆 + 一圈放射线"，
