@@ -31,7 +31,7 @@
       *判据来源*：`ReleaseSigningGateTest.kt:69-87`（`版本号三处一致_且该版本有 release note`）。
 - [ ] **0.4 单测全绿** —— `.\gradlew.bat --offline testDebugUnitTest`
       （`JAVA_HOME=D:\Program Files\Android\Android Studio\jbr`）；读数记下 **suite 数 / 例数 / 0 失败 / 0 错误 / skipped 数**。
-      *上一版（v2.0.18）基准*：84 suite / 685 例 / 0 失败 0 错误 / 1 skipped。
+      *上一版（v2.0.18）**实际**基准*：86 suite / 690 例 / 0 失败 0 错误 / 1 skipped（含 Qoder 三条修复后的读数：`13d18ff` 带进 2 个测试类 5 例，改前为 84/685）。
 - [ ] **0.5 开工前置（本仓铁律）** —— `python tools\zd.py preflight -k <本次关键词> -p <本次要动的文件>` 退出码 **0**；
       仓库奇怪时补跑 `python tools\zd.py doctor`。落后 origin 就不许继续（`git rev-list --left-right --count origin/main...HEAD` 左侧必须为 **0**）。
 - [ ] **0.6 `assembleRelease` 成功** —— 四个环境变量齐备：`ZHENGDAO_KEYSTORE_FILE` / `ZHENGDAO_KEYSTORE_PASSWORD` / `ZHENGDAO_KEY_ALIAS` / `ZHENGDAO_KEY_PASSWORD`；产物 = `app\build\outputs\apk\release\zhengdao-X.Y.Z-release.apk`。
