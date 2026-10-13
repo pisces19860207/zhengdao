@@ -32,3 +32,27 @@ val IOSRed = Color(0xFFFF3B30)            // systemRed：破坏性操作
 val IOSErrorText = Color(0xFFC0392B)      // 错误正文：#FF3B30 白底仅 3.55:1，此值 5.4:1
 val IOSGreen = Color(0xFF34C759)          // systemGreen：就绪/成功
 val IOSReadyGreen = Color(0xFF2E7D32)     // 就绪绿的小字/图形变体：#34C759 白底仅 2.22:1，此值 5.13:1
+
+// ── 深色变体（2026-10-12 接入深色主题）────────────────────────────────────────
+//
+// 取值 = Apple HIG 的 dark 系统色；每个「用作小字」的色都验过对比度（对 #1C1C1E 卡片底）。
+// 规则同浅色：大色块/图标用系统原色，小字用加深/加亮变体。
+val IOSDarkBg = Color(0xFF000000)             // systemGroupedBackground (dark)：纯黑页面底
+val IOSDarkCard = Color(0xFF1C1C1E)           // secondarySystemGroupedBackground (dark)
+val IOSDarkLabel = Color(0xFFFFFFFF)          // label (dark)：主文字
+val IOSDarkSecondaryLabel = Color(0xFF98989F) // secondaryLabel (dark) ≈ #EBEBF5 @60% 叠在 #1C1C1E 上的合成色
+                                              // 对比度 5.9:1（对卡片底），达 WCAG AA
+val IOSDarkSeparator = Color(0xFF38383A)      // separator (dark)
+val IOSDarkFill = Color(0xFF2C2C2E)           // systemFill (dark)
+val IOSDarkBlue = Color(0xFF0A84FF)           // systemBlue (dark)：卡片底 4.7:1 / 纯黑底 5.8:1
+val IOSDarkBlueText = Color(0xFF64B5F6)       // 蓝色小字（深底）：#0A84FF 在卡片底 4.7:1 偏紧，此值 6.9:1
+val IOSDarkRed = Color(0xFFFF453A)            // systemRed (dark)
+val IOSDarkErrorText = Color(0xFFFF6B5E)      // 错误正文（深底）：#FF453A 卡片底 4.0:1 不达标，此值 6.1:1
+val IOSDarkGreen = Color(0xFF30D158)          // systemGreen (dark)
+val IOSDarkReadyGreen = Color(0xFF30D158)     // 就绪绿（深底）：对比 8.4:1
+val IOSDarkTintedBlue = Color(0xFF1A3A5C)     // 蓝 18% 叠加于深底：选中 chip / primaryContainer
+val IOSDarkTintedRed = Color(0xFF4A1F1C)      // 红 18% 叠加于深底：errorContainer
+val IOSDarkTintedGreen = Color(0xFF1B3A22)    // 绿 18% 叠加于深底：tertiaryContainer
+val IOSDarkOnTintedBlue = Color(0xFF9FC7FF)   // 深底 primaryContainer 上的文字（6.7:1）
+val IOSDarkOnTintedGreen = Color(0xFFB8E6C2)  // 深底 tertiaryContainer 上的文字
+val IOSDarkOnTintedRed = Color(0xFFFFC9C2)    // 深底 errorContainer 上的文字

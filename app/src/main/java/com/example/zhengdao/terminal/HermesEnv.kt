@@ -3,6 +3,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import com.example.zhengdao.R
 import com.example.zhengdao.rootfs.RunLog
 import org.json.JSONObject
 import java.io.File
@@ -132,15 +133,39 @@ object HermesEnv {
         val hostViewRecord: Boolean = false,
     )
 
-    fun inspect(ctx: Context): State = inspect(hermesHome(ctx))
+    /** JVM 单测的中文兜底（无 Android 运行时取不到资源；与 hermes_* 资源条目一一对应）。 */
+    private fun hermesFallback(id: Int, vararg args: Any): String {
+        val zh = mapOf(
+            R.string.hermes_not_installed to "未安装 Hermes，跳过",
+            R.string.hermes_record_host_path to "依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）",
+            R.string.hermes_record_broken to "依赖环境记录指向不存在的目录，可一键修正（盘上有可用的代）",
+            R.string.hermes_record_lost to "依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）",
+            R.string.hermes_no_record to "尚未登记依赖环境（安装可能没跑完），需在终端重建",
+            R.string.hermes_lock_missing to "源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回",
+            R.string.hermes_ok_stale to "依赖环境记录有效（另有 %1\$d 个更新中断留下的标记文件，可一键清理）",
+            R.string.hermes_ok to "依赖环境记录有效",
+        )
+        var out = zh[id] ?: ""
+        args.forEachIndexed { i, a ->
+            out = out.replace("%${i + 1}\$d", a.toString()).replace("%${i + 1}\$s", a.toString())
+        }
+        return out
+    }
+
+    fun inspect(ctx: Context, res: android.content.res.Resources? = null): State =
+        inspect(hermesHome(ctx), res)
 
     /**
      * 宿主侧只读判定（纯文件，可单测）。`root` = `.hermes` 目录。
+     *
+     * [res] 传 `ctx.resources` 即随界面语言（detail 进 EnvHealth 体检表）；传 null（单测）回退中文。
      */
-    fun inspect(root: File): State {
+    fun inspect(root: File, res: android.content.res.Resources? = null): State {
+        fun s(id: Int, vararg args: Any): String =
+            res?.getString(id, *args) ?: hermesFallback(id, *args)
         val installs = File(root, "installs")
         if (!installs.isDirectory) {
-            return State(false, true, "未安装 Hermes，跳过", null, false, false, 0)
+            return State(false, true, s(R.string.hermes_not_installed), null, false, false, 0)
         }
         val stale = staleLockFiles(root).size
         val sourceLockMissing = File(root, "hermes-agent").isDirectory &&
@@ -180,13 +205,13 @@ object HermesEnv {
         val ok = anyRecord && !brokenRecord && !sourceLockMissing
         val detail = when {
             brokenRecord && hostViewRecord && complete.isNotEmpty() ->
-                "依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）"
-            brokenRecord && complete.isNotEmpty() -> "依赖环境记录指向不存在的目录，可一键修正（盘上有可用的代）"
-            brokenRecord -> "依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）"
-            !anyRecord -> "尚未登记依赖环境（安装可能没跑完），需在终端重建"
-            sourceLockMissing -> "源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回"
-            stale > 0 -> "依赖环境记录有效（另有 $stale 个更新中断留下的标记文件，可一键清理）"
-            else -> "依赖环境记录有效"
+                s(R.string.hermes_record_host_path)
+            brokenRecord && complete.isNotEmpty() -> s(R.string.hermes_record_broken)
+            brokenRecord -> s(R.string.hermes_record_lost)
+            !anyRecord -> s(R.string.hermes_no_record)
+            sourceLockMissing -> s(R.string.hermes_lock_missing)
+            stale > 0 -> s(R.string.hermes_ok_stale, stale)
+            else -> s(R.string.hermes_ok)
         }
         if (!ok) {
             // 误报排查靠这行（用户 2026-10-11 报「依赖环境是好的但还是红叉」）：判定只看文件，

@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import com.example.zhengdao.R
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import java.io.File
 
@@ -34,79 +35,131 @@ object SystemInfoProvider {
         val rootfs: String, val distro: String, val proot: String,
         val agentList: String, val python: String, val node: String, val uv: String,
     ) {
-        fun asText(): String {
+        /**
+         * 拼用户可读的系统信息（「一键复制」+ 弹窗展示同一份）。
+         *
+         * [res] 传 `ctx.resources` 即随界面语言；传 null（JVM 单测）回退中文。
+         */
+        fun asText(res: android.content.res.Resources? = null): String {
+            fun s(id: Int, vararg args: Any): String =
+                res?.getString(id, *args) ?: sysFallback(id, *args)
             val out = mutableListOf<String>()
-            out += "── 系统与硬件 ──"
-            out += "Android 版本: $androidVersion (API $apiLevel)"
-            out += "设备型号: $model"
-            out += "制造商: $manufacturer"
-            out += "CPU 架构: $abi"
-            out += "核心数: $cores"
-            out += "内存: $ramAvail 可用 / $ramTotal 总量"
-            out += "存储(应用分区): $storageAvail 可用 / $storageTotal 总量"
-            out += "屏幕: $screen"
-            out += "内核: $kernel"
-            out += "── 安全与运行环境 ──"
-            selinux?.let { out += "SELinux: $it" }
-            out += "Root: $rooted"
-            out += "GMS: $gms"
-            out += "WebView: $webview"
-            out += "── 证道环境 ──"
-            out += "RootFS: $rootfs"
-            out += "发行版: $distro"
-            out += "proot: $proot"
-            out += "已装 Agent: $agentList"
-            out += "Python: $python"
-            out += "Node: $node"
-            out += "uv: $uv"
+            out += s(R.string.sys_section_hw)
+            out += s(R.string.sys_android, androidVersion, apiLevel)
+            out += s(R.string.sys_model, model)
+            out += s(R.string.sys_manufacturer, manufacturer)
+            out += s(R.string.sys_abi, abi)
+            out += s(R.string.sys_cores, cores)
+            out += s(R.string.sys_ram, ramAvail, ramTotal)
+            out += s(R.string.sys_storage, storageAvail, storageTotal)
+            out += s(R.string.sys_screen, screen)
+            out += s(R.string.sys_kernel, kernel)
+            out += s(R.string.sys_section_security)
+            selinux?.let { out += s(R.string.sys_selinux, it) }
+            out += s(R.string.sys_root, rooted)
+            out += s(R.string.sys_gms_line, gms)
+            out += s(R.string.sys_webview, webview)
+            out += s(R.string.sys_section_zd)
+            out += s(R.string.sys_rootfs_line, rootfs)
+            out += s(R.string.sys_distro, distro)
+            out += s(R.string.sys_proot_line, proot)
+            out += s(R.string.sys_agents, agentList)
+            out += s(R.string.sys_python_line, python)
+            out += s(R.string.sys_node_line, node)
+            out += s(R.string.sys_uv_line, uv)
             return out.joinToString("\n")
         }
     }
 
-    private fun safe(f: () -> String): String = try { f() } catch (_: Throwable) { "未知" }
+    /** JVM 单测的中文兜底（无 Android 运行时取不到资源；与各资源条目一一对应）。 */
+    private fun sysFallback(id: Int, vararg args: Any): String {
+        val zh = mapOf(
+            R.string.sys_section_hw to "── 系统与硬件 ──",
+            R.string.sys_android to "Android 版本: %1\$s (API %2\$s)",
+            R.string.sys_model to "设备型号: %1\$s",
+            R.string.sys_manufacturer to "制造商: %1\$s",
+            R.string.sys_abi to "CPU 架构: %1\$s",
+            R.string.sys_cores to "核心数: %1\$s",
+            R.string.sys_ram to "内存: %1\$s 可用 / %2\$s 总量",
+            R.string.sys_storage to "存储(应用分区): %1\$s 可用 / %2\$s 总量",
+            R.string.sys_screen to "屏幕: %1\$s",
+            R.string.sys_kernel to "内核: %1\$s",
+            R.string.sys_section_security to "── 安全与运行环境 ──",
+            R.string.sys_selinux to "SELinux: %1\$s",
+            R.string.sys_root to "Root: %1\$s",
+            R.string.sys_gms_line to "GMS: %1\$s",
+            R.string.sys_webview to "WebView: %1\$s",
+            R.string.sys_section_zd to "── 证道环境 ──",
+            R.string.sys_rootfs_line to "RootFS: %1\$s",
+            R.string.sys_distro to "发行版: %1\$s",
+            R.string.sys_proot_line to "proot: %1\$s",
+            R.string.sys_agents to "已装 Agent: %1\$s",
+            R.string.sys_python_line to "Python: %1\$s",
+            R.string.sys_node_line to "Node: %1\$s",
+            R.string.sys_uv_line to "uv: %1\$s",
+        )
+        var out = zh[id] ?: ""
+        args.forEachIndexed { i, a ->
+            out = out.replace("%${i + 1}\$s", a.toString()).replace("%${i + 1}\$d", a.toString())
+        }
+        return out
+    }
+
+    private fun safe(res: android.content.res.Resources?, f: () -> String): String =
+        try {
+            f()
+        } catch (_: Throwable) {
+            res?.getString(R.string.sys_unknown) ?: "未知"
+        }
 
     private fun mb(bytes: Long): String = "${(bytes + 1048575) / 1048576} MB"
 
-    fun collect(ctx: Context): Info {
+    /**
+     * 采集系统信息。[res] 传 `ctx.resources` 即随界面语言（各"值"文案：已 Root / 已安装等）；
+     * 传 null 回退中文。
+     */
+    fun collect(ctx: Context, res: android.content.res.Resources? = null): Info {
+        fun unknown() = res?.getString(R.string.sys_unknown) ?: "未知"
         // 二进制版本探测带缓存，一次采集只探一遍。
         val runtime = probe(ctx)
         return Info(
-        androidVersion = safe { "Android ${Build.VERSION.RELEASE}" },
-        apiLevel = safe { Build.VERSION.SDK_INT.toString() },
-        model = safe { Build.MODEL },
-        manufacturer = safe { Build.MANUFACTURER },
-        abi = safe { Build.SUPPORTED_ABIS.firstOrNull() ?: "未知" },
-        cores = safe { Runtime.getRuntime().availableProcessors().toString() },
-        ramTotal = safe {
+        androidVersion = safe(res) { "Android ${Build.VERSION.RELEASE}" },
+        apiLevel = safe(res) { Build.VERSION.SDK_INT.toString() },
+        model = safe(res) { Build.MODEL },
+        manufacturer = safe(res) { Build.MANUFACTURER },
+        abi = safe(res) { Build.SUPPORTED_ABIS.firstOrNull() ?: unknown() },
+        cores = safe(res) { Runtime.getRuntime().availableProcessors().toString() },
+        ramTotal = safe(res) {
             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val mi = ActivityManager.MemoryInfo()
             am.getMemoryInfo(mi)
             mb(mi.totalMem)
         },
-        ramAvail = safe {
+        ramAvail = safe(res) {
             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val mi = ActivityManager.MemoryInfo()
             am.getMemoryInfo(mi)
             mb(mi.availMem)
         },
-        storageTotal = safe {
+        storageTotal = safe(res) {
             val st = StatFs(ctx.filesDir.absolutePath); mb(st.totalBytes)
         },
-        storageAvail = safe {
+        storageAvail = safe(res) {
             val st = StatFs(ctx.filesDir.absolutePath); mb(st.availableBytes)
         },
-        screen = safe {
+        screen = safe(res) {
             val dm = ctx.resources.displayMetrics
             "${dm.widthPixels}x${dm.heightPixels}"
         },
-        kernel = safe { System.getProperty("os.version") ?: "未知" },
+        kernel = safe(res) { System.getProperty("os.version") ?: unknown() },
         selinux = readSelinux(),
-        rooted = safe {
+        rooted = safe(res) {
             val su = listOf("/system/bin/su", "/system/xbin/su", "/sbin/su")
                 .any { File(it).exists() }
-            if (su) "已 Root" else "未 Root"
+            if (su) res?.getString(R.string.sys_rooted) ?: "已 Root"
+            else res?.getString(R.string.sys_not_rooted) ?: "未 Root"
         },
-        gms = safe {
+        gms = safe(res) {
             val r = ctx.packageManager.resolveActivity(
                 android.content.Intent("android.intent.action.VIEW").apply {
                     data = android.net.Uri.parse("https://play.google.com")
@@ -115,38 +168,48 @@ object SystemInfoProvider {
             val has = try {
                 ctx.packageManager.getPackageInfo("com.google.android.gms", 0); true
             } catch (_: Throwable) { false }
-            if (has || r != null) "带 GMS（认证设备）" else "无 GMS"
+            if (has || r != null) res?.getString(R.string.sys_gms_yes) ?: "带 GMS（认证设备）"
+            else res?.getString(R.string.sys_gms_no) ?: "无 GMS"
         },
-        webview = safe {
+        webview = safe(res) {
             val pi = ctx.packageManager.getPackageInfo("com.google.android.webview", 0)
-            pi.versionName ?: "未知"
+            pi.versionName ?: unknown()
         },
-        rootfs = safe {
-            if (rootfsInstalled(ctx)) "已安装" else "未安装"
+        rootfs = safe(res) {
+            if (rootfsInstalled(ctx)) res?.getString(R.string.sys_installed) ?: "已安装"
+            else res?.getString(R.string.sys_not_installed) ?: "未安装"
         },
         // info 里存的是 debian-13.7，旧代码又拼了一次 "Debian "，
         // 真机上显示成 "Debian debian-13.7"。
         distro = envField(ctx, "distro")?.removePrefix("debian-")
-            ?.let { "Debian $it" } ?: "未安装",
-        proot = safe {
+            ?.let { "Debian $it" }
+            ?: (res?.getString(R.string.sys_not_installed) ?: "未安装"),
+        proot = safe(res) {
             val p = File(ctx.filesDir, "termux-proot/proot")
-            if (p.isFile && p.canExecute()) "就绪（Termux fork）" else "未安装"
+            if (p.isFile && p.canExecute()) res?.getString(R.string.sys_proot_ready)
+                ?: "就绪（Termux fork）"
+            else res?.getString(R.string.sys_not_installed) ?: "未安装"
         },
-        agentList = safe {
+        agentList = safe(res) {
             val a = AppState.agents(ctx).filter { it.installed }
-            if (a.isEmpty()) "无" else a.joinToString("、") { it.name }
+            if (a.isEmpty()) res?.getString(R.string.sys_none) ?: "无"
+            else a.joinToString("、") { it.name }
         },
         // 注意别在这里再拼一遍 "Python "——展示行已经是 "Python: $python"，
         // 原先就渲染成了 "Python: Python 3.13"。
-        python = envField(ctx, "python") ?: "未安装",
+        python = envField(ctx, "python")
+            ?: (res?.getString(R.string.sys_not_installed) ?: "未安装"),
         // 环境包里的 info 只写了大版本（构建期常量）；真机上能从 node 二进制的
         // process.version 常量读到精确补丁号，读不到才退回大版本。
-        node = runtime.node ?: envField(ctx, "node_major")?.let { "v$it" } ?: "未安装",
+        node = runtime.node ?: envField(ctx, "node_major")?.let { "v$it" }
+            ?: (res?.getString(R.string.sys_not_installed) ?: "未安装"),
         // uv 有两个：rootfs 里的系统级二进制（上游 ELF，版本只能扫二进制，暂不取），
         // 以及 hermes 装在工作区的内嵌版——后者的版本号就在目录名里
         // （home/.hermes/tools/uv-0.12.3-linux-arm64），取它比笼统报"已安装"具体。
-        uv = embeddedUvVersion(ctx)?.let { "$it（hermes 内嵌）" }
-            ?: if (runtime.uvInstalled) "已安装" else "未安装",
+        uv = embeddedUvVersion(ctx)?.let {
+            res?.getString(R.string.sys_uv_embedded, it) ?: "$it（hermes 内嵌）"
+        } ?: if (runtime.uvInstalled) res?.getString(R.string.sys_installed) ?: "已安装"
+        else res?.getString(R.string.sys_not_installed) ?: "未安装",
         )
     }
 

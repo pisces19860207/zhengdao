@@ -195,7 +195,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                 as android.content.ClipboardManager
             cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-term", text))
-            runOnUiThread { Toast.makeText(this, "已复制 ${text.length} 个字符", Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, getString(R.string.term_copied_chars, text.length), Toast.LENGTH_SHORT).show() }
         }
         SessionManager.onPasteRequest = {
             runOnUiThread {
@@ -638,7 +638,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 runOnUiThread {
                     // 正在装东西时别把安装进度横幅刷掉：安装流程自己会报网络失败（E-095 附带守卫）。
                     if (com.example.zhengdao.ui.InstallProgress.state.value == null) {
-                        showBanner("网络不通：请确认代理已开启，并在代理 App 的「分应用代理」里勾选「证道」")
+                        showBanner(getString(R.string.term_no_network))
                     }
                 }
             }
@@ -679,11 +679,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 em.screen.getSelectedText(0, top, em.mColumns, top + em.mRows)?.toString()
             }.getOrNull()?.trimEnd()
             if (text.isNullOrEmpty()) {
-                Toast.makeText(this, "没有可复制的内容", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.term_nothing_to_copy), Toast.LENGTH_SHORT).show()
             } else {
                 val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text))
-                Toast.makeText(this, "已复制屏幕内容（${text.length} 字）", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.term_copied_screen, text.length), Toast.LENGTH_SHORT).show()
             }
         }
         // ^C 中断：独立按钮。点一下直接发 Ctrl+C（0x03 = ETX），
@@ -744,7 +744,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
         if (text.isEmpty()) {
-            Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.term_clipboard_empty), Toast.LENGTH_SHORT).show()
             return
         }
         pasteText(text)
@@ -768,10 +768,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private fun pasteText(text: String) {
         if (text.isEmpty()) return
         if (SessionManager.session?.isRunning != true) {
-            Toast.makeText(this, "会话未就绪，暂不能粘贴", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.term_session_not_ready), Toast.LENGTH_SHORT).show()
             return
         }
-        Toast.makeText(this, "正在粘贴 ${text.length} 个字符…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.term_pasting, text.length), Toast.LENGTH_SHORT).show()
         pasteWriter.submit(
             text = text,
             isSessionAlive = { SessionManager.session?.isRunning == true },
@@ -780,10 +780,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             runOnUiThread {
                 result
                     .onSuccess {
-                        Toast.makeText(this, "已粘贴 $it 个字符", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.term_pasted, it), Toast.LENGTH_SHORT).show()
                     }
                     .onFailure {
-                        Toast.makeText(this, "粘贴未完成：${it.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.term_paste_failed, it.message), Toast.LENGTH_SHORT).show()
                     }
             }
         }
@@ -974,7 +974,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (text.isEmpty()) return
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text))
-        Toast.makeText(this, "已复制 ${text.length} 个字符", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.term_copied_chars, text.length), Toast.LENGTH_SHORT).show()
     }
 
     /** 系统文本选择工具栏点「粘贴」时走到这里：读剪贴板并写回终端。 */
@@ -1000,14 +1000,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     ) {
         super.onCreateContextMenu(menu, v, menuInfo)
         val sel = runCatching { termView.storedSelectedText }.getOrNull()?.toString()?.trim()
-        menu.setHeaderTitle("终端操作")
+        menu.setHeaderTitle(getString(R.string.term_menu_title))
         // 复制/粘贴不再入列：顶部工具栏 + 选择工具条已有两条通路（用户定）
         // 文案 2026-10-11 由「浏览器搜索选中文字」改「搜索选中文字」：现在交给系统默认搜索
         // （ACTION_WEB_SEARCH），未必是浏览器，标题别再替用户假定。
-        menu.add(0, menuWebSearch, 0, "搜索选中文字").isEnabled = !sel.isNullOrEmpty()
+        menu.add(0, menuWebSearch, 0, getString(R.string.term_menu_web_search)).isEnabled = !sel.isNullOrEmpty()
         // 清屏（v1.1.1 阶段 2.3）：走 Ctrl-L（不往 stdin 写命令，免得在 TUI 里变成输入）。
-        menu.add(0, menuClear, 0, "清屏")
-        menu.add(0, menuReset, 0, "重置终端")
+        menu.add(0, menuClear, 0, getString(R.string.term_menu_clear))
+        menu.add(0, menuReset, 0, getString(R.string.term_menu_reset))
     }
 
     override fun onContextItemSelected(item: android.view.MenuItem): Boolean {
@@ -1016,7 +1016,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             menuWebSearch -> {
                 val q = sel?.trim().orEmpty()
                 if (q.isEmpty()) {
-                    Toast.makeText(this, "没有选中的文字", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.term_no_selection), Toast.LENGTH_SHORT).show()
                 } else {
                     openWebSearch(q)
                 }
@@ -1027,16 +1027,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 // Ctrl-L（0x0C）= clear-screen：bash / zsh / 多数 TUI 都认，
                 // 且不往 stdin 灌命令（Tab 补全状态或跑着 TUI 时不会被当输入）。
                 runCatching { SessionManager.write(byteArrayOf(0x0C)) }
-                    .onSuccess { Toast.makeText(this, "已清屏", Toast.LENGTH_SHORT).show() }
+                    .onSuccess { Toast.makeText(this, getString(R.string.term_cleared), Toast.LENGTH_SHORT).show() }
                     .onFailure {
-                        Toast.makeText(this, "清屏失败：${it.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.term_clear_failed, it.message), Toast.LENGTH_SHORT).show()
                     }
                 return true
             }
             menuReset -> {
                 runCatching {
                     SessionManager.session?.emulator?.reset()
-                    Toast.makeText(this, "终端已重置", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.term_reset_done), Toast.LENGTH_SHORT).show()
                 }
                 return true
             }
@@ -1061,7 +1061,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             val url = "https://www.bing.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
             startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
         }.onFailure {
-            Toast.makeText(this, "打开浏览器失败：${it.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.term_browser_failed, it.message), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1102,22 +1102,22 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             // 否则"提示只有 2 秒 + 终端里看不到进度"叠加起来，用户只能靠猜。
             val mb = local.length() / (1024 * 1024)
             RunLog.log("检测到本地归档，自动安装: ${local.path}")
-            installStatus("使用本地缓存包（$mb MB，不联网下载）—— 正在校验并解压…")
+            installStatus(getString(R.string.term_local_cache_installing, mb))
             startInstallFromFile(local)
             return
         }
         if (!installPromptShown.compareAndSet(false, true)) return
         mainHandler.post {
             val msg = if (!ProotLauncher.storageGranted(this)) {
-                "首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议先点「授权存储」——授权后把安装包放进 Download/证道 文件夹，以后重装 App 无需重新下载。"
+                getString(R.string.term_first_run_need_grant)
             } else {
-                "首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。\n提示：也可以手动把安装包放到 Download/证道 文件夹，重启 App 即可免下载安装。"
+                getString(R.string.term_first_run)
             }
             AlertDialog.Builder(this)
-                .setTitle("安装运行环境（Debian 13.7）")
+                .setTitle(getString(R.string.term_install_title))
                 .setMessage(msg)
-                .setPositiveButton("开始下载") { _, _ -> startInstall(ProotLauncher.DEFAULT_ROOTFS_URL) }
-                .setNeutralButton("从文件选择") { _, _ ->
+                .setPositiveButton(getString(R.string.term_start_download)) { _, _ -> startInstall(ProotLauncher.DEFAULT_ROOTFS_URL) }
+                .setNeutralButton(getString(R.string.term_pick_file)) { _, _ ->
                     try {
                         startActivityForResult(
                             android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1128,7 +1128,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     } catch (_: Throwable) {
                     }
                 }
-                .setNegativeButton("稍后", null)
+                .setNegativeButton(getString(R.string.common_later), null)
                 .show()
         }
     }

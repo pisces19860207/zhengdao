@@ -3,6 +3,7 @@
 // 依据的公开接口：OpenCode 官方 serve 模式 REST 端点 + SSE 事件流。
 package com.example.zhengdao.oc
 
+import com.example.zhengdao.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +43,58 @@ import org.json.JSONObject
 class OcRepository(
     private val http: OcClient,
     private val sse: SseClient,
+    /**
+     * UI 语言资源（2026-10-12 i18n）：进用户可见文案（连接横幅 / FailedPane / ModelSheet
+     * 错误行 / 发送失败 Snackbar）。由 [com.example.zhengdao.oc.OcRuntime.repository] 从
+     * 调用方 Context 注入；null（无 UI / 单测）回退中文。日志（ocLog / RunLog）不受影响。
+     */
+    res: android.content.res.Resources? = null,
 ) {
+
+    /** 可更新：单例寿命跨语言切换，每次进太极由调用方重新注入当前语言的 Resources。 */
+    @Volatile
+    private var res: android.content.res.Resources? = res
+
+    /** 语言切换后由 [OcRuntime.repository] 调用；传 null 不动（避免误清成回退中文）。 */
+    internal fun attachResources(newRes: android.content.res.Resources?) {
+        if (newRes != null) res = newRes
+    }
+
+    /** 用户可见文案取词：[res] 为 null 时回退中文（与 [ocFallback] 的表一一对应）。参数可为 null（原字符串模板 ${it.message} 本就可能为 null）。 */
+    private fun s(id: Int, vararg args: Any?): String =
+        res?.getString(id, *args) ?: ocFallback(id, *args)
+
+    /** JVM 单测 / 无 UI 场景的中文兜底（与 oc_* 资源条目一一对应）。 */
+    private fun ocFallback(id: Int, vararg args: Any?): String {
+        val zh = mapOf(
+            R.string.oc_create_session_failed to "无法创建会话",
+            R.string.oc_polling_retry to "轮询失败，正在重试",
+            R.string.oc_empty_response to "空响应 %1\$s",
+            R.string.oc_empty_response_perm to "空响应 permission/request",
+            R.string.oc_get_failed to "GET %1\$s 失败：%2\$s",
+            R.string.oc_get_http to "GET %1\$s HTTP %2\$d",
+            R.string.oc_bad_body to "响应既非数组也无 data 数组：%1\$s",
+            R.string.oc_models_http to "拉取模型目录 HTTP %1\$d",
+            R.string.oc_empty_body to "响应体为空",
+            R.string.oc_http_status to "服务器返回 %1\$d",
+            R.string.oc_session_not_ready to "会话未就绪",
+            R.string.oc_switch_model_http to "切换模型 HTTP %1\$d",
+            R.string.oc_session_not_open to "未打开会话",
+            R.string.oc_send_http to "发送失败 HTTP %1\$d",
+            R.string.oc_send_failed to "发送失败：%1\$s",
+            R.string.oc_abort_failed to "中止失败：%1\$s",
+            R.string.oc_perm_http to "授权失败 HTTP %1\$d",
+            R.string.oc_perm_submit_failed to "授权提交失败：%1\$s",
+            R.string.oc_nothing_to_retry to "没有可重试的内容",
+            R.string.oc_list_sessions_failed to "拉取会话列表失败：%1\$s",
+            R.string.oc_delete_session_failed to "删除会话失败（id=%1\$s）：%2\$s",
+        )
+        var out = zh[id] ?: ""
+        args.forEachIndexed { i, a ->
+            out = out.replace("%${i + 1}\$d", a.toString()).replace("%${i + 1}\$s", a.toString())
+        }
+        return out
+    }
 
     private val _state = MutableStateFlow(TaijiState())
     val state: StateFlow<TaijiState> = _state.asStateFlow()
@@ -100,7 +152,7 @@ class OcRepository(
             ?: latestSessionId()?.also { ocLog("复用服务端最近会话 id=$it") }
             ?: createSession()?.also { logSession(it) }
         if (id == null) {
-            _state.update { it.copy(phase = TaijiPhase.Failed("无法创建会话", retryable = true)) }
+            _state.update { it.copy(phase = TaijiPhase.Failed(s(R.string.oc_create_session_failed), retryable = true)) }
             return
         }
         _state.update {
@@ -207,7 +259,7 @@ class OcRepository(
                     _state.update {
                         it.copy(
                             connection = ConnectionState.Reconnecting,
-                            lastError = e.message ?: "轮询失败，正在重试",
+                            lastError = e.message ?: s(R.string.oc_polling_retry),
                             reconnectAttempt = errStreak,
                         )
                     }
@@ -263,8 +315,8 @@ class OcRepository(
     private suspend fun fetchJsonArrayOrThrow(url: String): JSONArray = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url).get().build()
         http.client.newCall(req).execute().use { resp ->
-            val text = resp.body?.string() ?: throw java.io.IOException("空响应 $url")
-            if (!resp.isSuccessful) throw OcHttpException(resp.code, "GET $url HTTP ${resp.code}")
+            val text = resp.body?.string() ?: throw java.io.IOException(s(R.string.oc_empty_response, url))
+            if (!resp.isSuccessful) throw OcHttpException(resp.code, s(R.string.oc_get_http, url, resp.code))
             unwrapArray(text)
         }
     }
@@ -293,7 +345,7 @@ class OcRepository(
     private suspend fun fetchPermissionRequests(): List<OcPermission> = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(http.url("/api/permission/request")).get().build()
         http.client.newCall(req).execute().use { resp ->
-            val text = resp.body?.string() ?: throw java.io.IOException("空响应 permission/request")
+            val text = resp.body?.string() ?: throw java.io.IOException(s(R.string.oc_empty_response_perm))
             if (!resp.isSuccessful) {
                 throw OcHttpException(resp.code, "GET permission/request HTTP ${resp.code}")
             }
@@ -319,7 +371,7 @@ class OcRepository(
             val req = Request.Builder().url(url).get().build()
             http.client.newCall(req).execute().use { resp ->
                 val text = resp.body?.string() ?: return@runCatching null
-                if (!resp.isSuccessful) throw OcHttpException(resp.code, "GET $url HTTP ${resp.code}")
+                if (!resp.isSuccessful) throw OcHttpException(resp.code, s(R.string.oc_get_http, url, resp.code))
                 unwrapArray(text)
             }
         }.onFailure { ocLog("GET $url 失败：${it.message}") }.getOrNull()
@@ -347,7 +399,7 @@ class OcRepository(
         if (t.startsWith("[")) return JSONArray(text)
         val o = JSONObject(text)
         return o.optJSONArray("data")
-            ?: throw org.json.JSONException("响应既非数组也无 data 数组：${text.take(100)}")
+            ?: throw org.json.JSONException(s(R.string.oc_bad_body, text.take(100)))
     }
 
     private fun connectSse(scope: CoroutineScope, sessionId: String) {
@@ -533,9 +585,9 @@ class OcRepository(
             http.client.newCall(req).execute().use { resp ->
                 // 非 2xx 原先也走 emptyList()（同样与"目录为空"混为一谈）。改成抛出，
                 // 与 setSessionModel 等同类写操作共用 OcHttpException 口径。
-                if (!resp.isSuccessful) throw OcHttpException(resp.code, "拉取模型目录 HTTP ${resp.code}")
+                if (!resp.isSuccessful) throw OcHttpException(resp.code, s(R.string.oc_models_http, resp.code))
                 val text = resp.body?.string()
-                    ?: throw IllegalStateException("响应体为空")
+                    ?: throw IllegalStateException(s(R.string.oc_empty_body))
                 unwrapArray(text).let { arr ->
                     (0 until arr.length()).mapNotNull { i ->
                         arr.optJSONObject(i)?.let { OcModel.fromJson(it) }
@@ -557,7 +609,7 @@ class OcRepository(
                 // ⚠️ OcHttpException 是 IOException 的子类，直接交给 HumanizeError 会被
                 //    ioTitle 报成"文件读写失败"（用户会去查存储）。所以 HTTP 失败单独说状态码。
                 val shown = when {
-                    t is OcHttpException -> "服务器返回 ${t.code}"
+                    t is OcHttpException -> s(R.string.oc_http_status, t.code)
                     t is java.io.IOException -> com.example.zhengdao.util.HumanizeError.title(t)
                     else -> t.message?.take(120) ?: t.javaClass.simpleName
                 }
@@ -573,13 +625,13 @@ class OcRepository(
      */
     suspend fun setSessionModel(model: OcModel): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val sid = _state.value.sessionId ?: throw IllegalStateException("会话未就绪")
+            val sid = _state.value.sessionId ?: throw IllegalStateException(s(R.string.oc_session_not_ready))
             val body = JSONObject().put(
                 "model", JSONObject().put("id", model.id).put("providerID", model.providerID)
             )
             val req = body.toString().toPostRequest(http.url("/api/session/$sid/model"))
             http.client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw OcHttpException(resp.code, "切换模型 HTTP ${resp.code}")
+                if (!resp.isSuccessful) throw OcHttpException(resp.code, s(R.string.oc_switch_model_http, resp.code))
                 parseBody(resp) { "" }
             }
             _state.update { it.copy(modelOverride = model, currentModel = "${model.providerID}/${model.id}") }
@@ -605,15 +657,15 @@ class OcRepository(
 
     suspend fun prompt(text: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val id = _state.value.sessionId ?: error("未打开会话")
+            val id = _state.value.sessionId ?: error(s(R.string.oc_session_not_open))
             // 真实载荷是 {text, files[], agents[], skills[]}，不是 {parts:[...]}
             val body = JSONObject().apply { put("text", text) }
             val req = body.toString().toPostRequest(http.url("/api/session/$id/prompt"))
             http.client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw OcHttpException(resp.code, "发送失败 HTTP ${resp.code}")
+                if (!resp.isSuccessful) throw OcHttpException(resp.code, s(R.string.oc_send_http, resp.code))
             }
             _state.update { it.copy(isStreaming = true, input = "", runFailure = null, lastPrompt = text) }
-        }.onFailure { ocLog("发送失败：${it.message}") }
+        }.onFailure { ocLog(s(R.string.oc_send_failed, it.message)) }
     }
 
     suspend fun abort(): Result<Unit> = withContext(Dispatchers.IO) {
@@ -623,7 +675,7 @@ class OcRepository(
             val req = EMPTY_BODY.toPostRequestVoid(http.url("/api/session/$id/interrupt"))
             http.client.newCall(req).execute().use { }
             _state.update { it.copy(isStreaming = false) }
-        }.onFailure { ocLog("中止失败：${it.message}") }
+        }.onFailure { ocLog(s(R.string.oc_abort_failed, it.message)) }
     }
 
     /** 权限批准 —— 不实现则 Agent 改文件时卡死（设计文档 §4.3 门禁）。 */
@@ -631,7 +683,7 @@ class OcRepository(
         permissionId: String, allow: Boolean, remember: Boolean = false,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val id = _state.value.sessionId ?: error("未打开会话")
+            val id = _state.value.sessionId ?: error(s(R.string.oc_session_not_open))
             // 三态（实测确认）：once=一次性 / always=永久写入 saved / reject=拒绝
             val decision = when {
                 !allow -> "reject"
@@ -643,12 +695,12 @@ class OcRepository(
                 http.url("/api/session/$id/permission/$permissionId/reply")
             )
             http.client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw OcHttpException(resp.code, "授权失败 HTTP ${resp.code}")
+                if (!resp.isSuccessful) throw OcHttpException(resp.code, s(R.string.oc_perm_http, resp.code))
             }
             // 记下已响应，避免下一轮权限轮询把它"复活"（权限抽屉刚点完又弹回来）
             answeredPermissions.add(permissionId)
             _state.update { it.copy(pendingPermission = null) }
-        }.onFailure { ocLog("授权提交失败：${it.message}") }
+        }.onFailure { ocLog(s(R.string.oc_perm_submit_failed, it.message)) }
     }
 
     fun setInput(text: String) = _state.update { it.copy(input = text) }
@@ -667,7 +719,7 @@ class OcRepository(
      */
     suspend fun retryLastPrompt(): Result<Unit> {
         val text = _state.value.lastPrompt
-            ?: return Result.failure(IllegalStateException("没有可重试的内容"))
+            ?: return Result.failure(IllegalStateException(s(R.string.oc_nothing_to_retry)))
         return prompt(text)
     }
 
@@ -700,7 +752,7 @@ class OcRepository(
      */
     suspend fun listSessionsResult(): Result<List<OcSessionSummary>> = withContext(Dispatchers.IO) {
         val raw = runCatching { fetchSessions() }
-            .onFailure { ocLog("拉取会话列表失败：${it.message}") }
+            .onFailure { ocLog(s(R.string.oc_list_sessions_failed, it.message)) }
             .getOrElse { return@withContext Result.failure(it) }
         if (raw.isEmpty()) return@withContext Result.success(emptyList())
         Result.success(
@@ -736,7 +788,7 @@ class OcRepository(
     suspend fun startNewSession(scope: CoroutineScope): String? {
         val id = createSession()
         if (id == null) {
-            _state.update { it.copy(phase = TaijiPhase.Failed("无法创建新会话", retryable = true)) }
+            _state.update { it.copy(phase = TaijiPhase.Failed(s(R.string.oc_create_session_failed), retryable = true)) }
             return null
         }
         ocLog("新建会话 id=$id")
@@ -791,7 +843,7 @@ class OcRepository(
             }
             ocLog("已删除会话 id=$sessionId")
             true
-        }.onFailure { ocLog("删除会话失败（id=$sessionId）：${it.message}") }.getOrDefault(false)
+        }.onFailure { ocLog(s(R.string.oc_delete_session_failed, sessionId, it.message)) }.getOrDefault(false)
     }
 
     // ── 状态模型 ──────────────────────────────────────────────────────
