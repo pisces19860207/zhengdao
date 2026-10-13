@@ -8,10 +8,12 @@ package com.example.zhengdao.oc
 
 import android.util.Base64
 import com.example.zhengdao.rootfs.RunLog
+import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.Route
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -40,6 +42,12 @@ import java.util.concurrent.TimeUnit
  */
 class OcClient(
     private val passwordProvider: () -> String?,
+
+    /**
+     * A 步（2026-10-13，太极 401 自治愈）：收到 401 时重新解析 `oc/serve.log` 并返回新密码。
+     * 返回 null / 空串 = 放弃重试。默认 null ⇒ 不传就是今天的行为（API 向后兼容）。
+     */
+    private val passwordRefresher: (() -> String?)? = null,
 ) {
 
     private val baseUrl: String = "http://127.0.0.1:${OcManager.PORT}"
@@ -51,6 +59,7 @@ class OcClient(
         .writeTimeout(NORMAL_TIMEOUT_SEC, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .addInterceptor(AuthInterceptor(passwordProvider))
+        .authenticator(OcAuthenticator(passwordRefresher))
         .build()
 
     /**
@@ -75,6 +84,7 @@ class OcClient(
         .readTimeout(SSE_READ_TIMEOUT_SEC, TimeUnit.SECONDS)
         .retryOnConnectionFailure(false)   // 重连由 SseClient 的退避策略负责
         .addInterceptor(AuthInterceptor(passwordProvider))
+        .authenticator(OcAuthenticator(passwordRefresher))   // 内部对 SSE 一律返回 null，形状不变
         .build()
 
     fun url(path: String): String = baseUrl + path
@@ -159,6 +169,47 @@ private class AuthInterceptor(
             RunLog.log("太极: serve 密码未就绪，请求将返回 401")
         }
         return chain.proceed(builder.build())
+    }
+}
+
+/**
+ * A 步（2026-10-13，太极 401 自治愈）：OkHttp 原生的 401 处理器。
+ *
+ * 为什么是 Authenticator 而不是在 [AuthInterceptor] 里再 proceed 一次：它是 OkHttp 为
+ * **凭据过期**准备的正规入口 —— 只在收到 401 时被调用，返回新请求即自动重试、返回 null
+ * 即放弃；拦截器只管「照当前密码发请求」，两件事不混在一处。
+ *
+ * 三条显式守卫（宁可少重试，也不打转）：
+ *  1. SSE 跳过 —— 流式路径的请求形状保持现状（与 [AuthInterceptor] 的既有约定一致）；
+ *  2. 最多重试一次 —— 数 [Response.priorResponse]，已有一次重试就不再试；
+ *  3. 新密码与旧 Authorization 逐字相同 → 不试（说明重解析没拿到新东西）。
+ */
+internal class OcAuthenticator(
+    private val passwordRefresher: (() -> String?)?,
+) : Authenticator {
+
+    override fun authenticate(route: Route?, response: Response): Request? {
+        if (passwordRefresher == null) return null
+        if (response.request.header("Accept")?.contains("text/event-stream") == true) return null
+        if (responseCount(response) >= 2) return null
+
+        val fresh = passwordRefresher.invoke()
+        if (fresh.isNullOrEmpty()) return null
+
+        val creds = Base64.encodeToString(
+            "opencode:$fresh".toByteArray(Charsets.UTF_8), Base64.NO_WRAP
+        )
+        val header = "Basic $creds"
+        if (header == response.request.header("Authorization")) return null
+        RunLog.log("太极: 收到 401，用重新解析到的密码重试一次")
+        return response.request.newBuilder().header("Authorization", header).build()
+    }
+
+    private fun responseCount(response: Response): Int {
+        var count = 1
+        var prior = response.priorResponse
+        while (prior != null) { count++; prior = prior.priorResponse }
+        return count
     }
 }
 

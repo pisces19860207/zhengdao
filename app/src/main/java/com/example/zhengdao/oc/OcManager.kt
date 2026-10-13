@@ -4,6 +4,7 @@
 package com.example.zhengdao.oc
 
 import android.content.Context
+import android.util.Base64
 import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
@@ -236,13 +237,29 @@ object OcManager {
     @Volatile
     private var serveProcess: Process? = null
 
+    /**
+     * C 步（2026-10-13）：候选口令上限 —— 每个候选要打一次 `/api/session` 探针，必须封顶
+     * （[startServe] 的孤儿分支是 150ms 一轮在调它，不封顶会堆出一串 HTTP）。
+     */
+    private const val SERVE_PW_MAX_CANDIDATES = 3
+
+    /** C 步：单次探测超时（毫秒）—— 回环调用是毫秒级，这里只兜住「端口在、没人应答」。 */
+    private const val SERVE_PROBE_TIMEOUT_MS = 700
+
+    /** C 步：测试接缝 —— 非空时替代真实 HTTP 探测；生产路径永远为 null。 */
+    internal var serveProbeForTest: ((String) -> Boolean)? = null
+
     /** serve 的 HTTP Basic 密码（启动后从日志解析；OcClient 直连鉴权用）。 */
     @Volatile
     var servePassword: String? = null
         private set
 
+    /** A 步（2026-10-13）：最近一次用过的应用上下文 —— 供 refreshServePassword() 无参重解析。 */
+    @Volatile
+    private var lastCtx: Context? = null
+
     /**
-     * 取「最后一个**确认监听成功**的那场」的密码，而不是日志最后一行。
+     * 解析 `oc/serve.log` 里当前**真正在生效**的密码，写入 [servePassword]。
      *
      * 日志形态（真机 `files/oc/serve.log` 实录）：
      * ```
@@ -252,44 +269,92 @@ object OcManager {
      * server listening on http://127.0.0.1:14000     ← pw2 绑上了
      * server password <pw3>                          ← 最后一场没绑上端口，无 listening
      * ```
-     * ⚠️ **两种顺序都实测出现过**，解析必须同时兼容：
-     *   - 调试期多场启动：`password` 在前、`listening` 在后
-     *   - 干净生产路径单场启动：`listening` 在前、`password` 在后（2026-10-06 实机确认）
+     * ⚠️ **两种顺序都实测出现过**：调试期多场启动 `password` 在前，干净生产路径单场启动
+     * `listening` 在前（2026-10-06 实机确认）⇒ 任何"只看顺序猜"的解析都必然踩坑。
      *
-     * 原实现 `lastOrNull { contains("server password") }` 在"最后一次启动没绑上端口"
-     * （端口已被孤儿进程占用 / 启动失败）时，必然取到那场失败进程的密码 →
-     * 拿它打 `/api/…` 全部 401。PoC #3 已复现：日志末行 `PduH4…` 无 listening，
-     * 真正在监听的进程用的是更早一场的密码。
+     * 历代教训：原实现取 `lastOrNull { contains("server password") }`，在"最后一次启动没绑上
+     * 端口"时必取失败场次的密码 → `/api/…` 全程 401（PoC #3 复现）；改成"只认后面跟着
+     * listening 的那一场"后，又漏掉「新场次已打密码、它的 listening 行尚未落盘」这个中间态 ——
+     * 那时返回上一场的 lastGood 就是**过期密码**（E-093 的另一半；2026-10-13 16:17 真机十条
+     * `创建会话失败：HTTP 401` 就是它）。
      *
-     * 修复：只认"打了密码且后面跟着 listening"的场次，取最后一个这样的密码。
-     * 拿不到就返回 null（让 UI 明确报"鉴权未就绪"，好过拿错密码到处 401）。
+     * C 步（2026-10-13）定稿：**不猜顺序，直接问端口** —— 把日志里所有候选口令按新→旧收集，
+     * 逐个拿 `GET /api/session` 试，谁能过鉴权就用谁。日志里会长期留着**已退出场次**的口令，
+     * 只有探测能区分"谁在听"：活着的若是旧场次，旧口令自然胜出（这才是对的）。
+     * 都试不过 ⇒ 置 null，让 UI 明确报"鉴权未就绪"，好过拿错口令到处 401。
      */
     private fun parseServePassword(ctx: Context) {
-        servePassword = runCatching {
-            var pending: String? = null   // 已打密码、尚未见到 listening
-            var awaitingPw = false        // 已见 listening、尚未见到密码（顺序相反的情形）
-            var lastGood: String? = null  // 最后一个确认监听成功的密码
-            File(ctx.filesDir, "oc/serve.log").useLines { lines ->
-                for (line in lines) {
-                    when {
-                        line.contains("server password") -> {
-                            val pw = line.substringAfter("server password").trim()
-                            if (awaitingPw) { lastGood = pw; awaitingPw = false }
-                            else pending = pw
-                        }
-                        line.contains("server listening") -> {
-                            if (pending != null) { lastGood = pending; pending = null }
-                            else awaitingPw = true
-                        }
-                    }
+        lastCtx = ctx.applicationContext   // A 步（2026-10-13）：给 refreshServePassword() 留一份上下文
+        val candidates = runCatching {
+            File(ctx.filesDir, "oc/serve.log").useLines { passwordCandidates(it) }
+        }.getOrDefault(emptyList())
+
+        val prober = serveProbeForTest ?: ::serveAcceptsPassword
+        val picked = if (candidates.isEmpty()) null else pickServePassword(candidates, prober)
+        if (picked != servePassword) {
+            RunLog.log(
+                when {
+                    candidates.isEmpty() -> "太极: serve.log 里还没有口令"
+                    picked != null -> "太极: 用第 ${candidates.indexOf(picked) + 1} 个候选口令过了 /api/session 鉴权（共 ${candidates.size} 个）"
+                    else -> "太极: ${candidates.size} 个候选口令都没过 /api/session 鉴权，按未就绪处理（E-093）"
                 }
-            }
-            // ⚠️ 竞态修复（本次「进不了 UI」真因）：若**最后看到一个 listening 但它的
-            //   password 尚未落盘**（awaitingPw == true，即新场次正在启动），
-            //   绝不能返回上一场的 lastGood —— 那是**过期密码**，拿它打 /api/* 会全程 401。
-            //   返回 null，逼调用方（startServe 的轮询）继续等待新场次的 password 落盘。
-            if (awaitingPw) null else lastGood
-        }.getOrNull()
+            )
+        }
+        servePassword = picked
+    }
+
+    /** C 步（2026-10-13）：从日志行收集候选口令 —— 新→旧、去重、封顶 [SERVE_PW_MAX_CANDIDATES]。纯函数。 */
+    internal fun passwordCandidates(lines: Sequence<String>): List<String> =
+        lines.filter { it.contains("server password") }
+            .map { it.substringAfter("server password").trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
+            .asReversed()
+            .distinct()
+            .take(SERVE_PW_MAX_CANDIDATES)
+
+    /** C 步：按「新→旧」逐个探测，返回当前真能过鉴权的那个；都不过返回 null。纯函数（探测逻辑外置）。 */
+    internal fun pickServePassword(candidates: List<String>, prober: (String) -> Boolean): String? =
+        candidates.firstOrNull { pw -> runCatching { prober(pw) }.getOrDefault(false) }
+
+    /**
+     * C 步：带 Basic 口令打一次 `/api/session` 做鉴权探针。
+     *
+     * 判据用 `!= 401` 而不是 `== 200`：401 才是"口令不对"，其它状态码（200/204/404…）
+     * 说明请求已经过了鉴权这一关 —— 比死等 200 更抗 opencode 的接口变化。
+     * 端口没人听 / 超时 ⇒ 抛异常 ⇒ false（那个口令就不可用）。
+     */
+    private fun serveAcceptsPassword(password: String): Boolean {
+        val conn = URL("http://127.0.0.1:$PORT/api/session").openConnection() as java.net.HttpURLConnection
+        return try {
+            conn.connectTimeout = SERVE_PROBE_TIMEOUT_MS
+            conn.readTimeout = SERVE_PROBE_TIMEOUT_MS
+            conn.setRequestProperty(
+                "Authorization",
+                "Basic " + Base64.encodeToString(
+                    "opencode:$password".toByteArray(Charsets.UTF_8), Base64.NO_WRAP
+                )
+            )
+            conn.responseCode != 401
+        } catch (_: Exception) {
+            false
+        } finally {
+            runCatching { conn.disconnect() }
+        }
+    }
+
+    /**
+     * A 步（2026-10-13）：OkHttp 的 [okhttp3.Authenticator] 收到 401 时回调 —— 重解析
+     * `oc/serve.log` 并返回当前密码；拿不到就返回 null（调用方放弃重试，退回今天的行为）。
+     *
+     * 为什么不要 Context 参数：能发出请求就说明 serve 已经起步，必然先经过
+     * [startServe] / [parseServePassword] 中任一处，[lastCtx] 已留存（存的是
+     * applicationContext，不会泄漏 Activity）；万一为空就返回 null，只是不重试。
+     */
+    fun refreshServePassword(): String? {
+        val c = lastCtx ?: return null
+        parseServePassword(c)
+        return servePassword
     }
 
     /**
