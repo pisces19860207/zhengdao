@@ -4,6 +4,7 @@
 package com.example.zhengdao.oc
 
 import android.content.Context
+import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
@@ -28,7 +29,12 @@ import java.net.URL
  * 已知取舍（用户拍板）：
  * - 落盘 289MB（xz 包 65MB）——bionic 路线的代价，换无 PRoot 开销
  * - 宿主侧无 node_modules → opencode-mem 记忆插件不可用（终端侧不受影响）
- * - serve 密码字段有输出但 HTTP 层未强制鉴权（PoC 实测），v1 直接接入
+ * - serve 的 HTTP Basic 鉴权**确实生效**（2026-10-11 实测：无鉴权 `GET /api/session` = 401，
+ *   只有无前缀的 SPA 外壳 `GET /` 公开；密码由 `parseServePassword` 从 serve.log 解析、
+ *   经 `OcClient` 的 AuthInterceptor 注入）。
+ *   ⚠️ 本行旧文曾写「serve 密码字段有输出但 HTTP 层未强制鉴权（PoC 实测），v1 直接接入」——
+ *   那是把**无前缀路径**当成 API 打（`/session` ≠ `/api/session`）造成的误记，也是
+ *   2026-10-11 那份外部安全审查抄错的源头；更正记录见 ERRATA 与台账 §A #29。
  */
 object OcManager {
 
@@ -319,7 +325,7 @@ object OcManager {
             return null
         }
         val bin = binaryFile(ctx)
-        if (!installed(ctx)) return "OpenCode 尚未安装"
+        if (!installed(ctx)) return ctx.getString(R.string.oc_not_installed)
         return try {
             homeDir(ctx).mkdirs()
             listOf("data", "cache", "config", "state").forEach { xdgDir(ctx, it).mkdirs() }
@@ -395,10 +401,9 @@ object OcManager {
                     RunLog.log(msg)
                     IssueCenter.report(
                         id = "oc-serve-password",
-                        title = "太极连上了、但没拿到访问密码",
-                        detail = "serve 在 14000 端口活着，serve.log 里没有可用的 server password 行" +
-                            "（旧场次的密码不能复用）⇒ 之后每个请求都会 401，界面看着像卡住。",
-                        actionLabel = "重启太极",
+                        title = ctx.getString(R.string.oc_serve_no_password_title),
+                        detail = ctx.getString(R.string.oc_serve_no_password_detail),
+                        actionLabel = ctx.getString(R.string.oc_restart_taiji),
                         actionId = IssueCenter.ACTION_RESTART_SERVE,
                     )
                     return null
@@ -408,28 +413,27 @@ object OcManager {
             serveProcess?.destroy()
             IssueCenter.report(
                 id = "oc-serve-timeout",
-                title = "太极（OpenCode）启动超时",
-                detail = "15 秒内 serve 没就绪（端口 14000 无响应）。常见原因：上一场 serve 僵着、" +
-                    "端口被占、或内置二进制被杀软拦下。",
-                actionLabel = "重试",
+                title = ctx.getString(R.string.oc_serve_timeout_title),
+                detail = ctx.getString(R.string.oc_serve_timeout_detail),
+                actionLabel = ctx.getString(R.string.common_retry),
                 actionId = IssueCenter.ACTION_RETRY_SERVE,
             )
-            "启动超时：serve 未在 15 秒内就绪（详见 RunLog）"
+            ctx.getString(R.string.oc_serve_timeout_short)
         } catch (t: Throwable) {
             RunLog.log("太极 serve 启动失败: ${t.message}")
             // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文仍落 RunLog，UI 看到的是
             // 「网络超时 / 存储空间不足 / 没有写入权限」等。TaijiScreen:539/590 透传此 msg
             // 给用户；此处换为 HumanizeError.title 即可让用户读懂。
-            val human = HumanizeError.title(t)
+            val human = HumanizeError.title(t, ctx.resources)
             // #4：太极页会显示这句，但用户可能正在主页/丹房 —— 同步报一条到「最近问题」。
             IssueCenter.report(
                 id = "oc-serve-start",
-                title = "太极（OpenCode）启动失败",
+                title = ctx.getString(R.string.oc_serve_start_failed_title),
                 detail = human,
-                actionLabel = "重试",
+                actionLabel = ctx.getString(R.string.common_retry),
                 actionId = IssueCenter.ACTION_RETRY_SERVE,
             )
-            "启动失败：$human"
+            ctx.getString(R.string.oc_serve_start_failed_short, human)
         }
     }
 
@@ -455,28 +459,27 @@ object OcManager {
     fun stopServe() {
         serveProcess?.destroy()
         serveProcess = null
-        // 孤儿 serve（App 重启后 Process 引用已丢）：同 uid 进程互相可杀，扫 /proc 清理
+        // 孤儿 serve（App 重启后 Process 引用已丢）：同 uid 进程互相可杀，扫 /proc 清理。
+        //
+        // ⚠️ 2026-10-12 修正（审计报告 A1）：判据原来是 `cmdline.contains("usr/bin/opencode")`，
+        //    那会把**用户自己在终端 Debian 里装的 opencode** 一起杀掉 —— proot 里的 guest 进程
+        //    在宿主 /proc 里就是真实进程，其 cmdline 形如
+        //    `/data/.../files/rootfs/usr/bin/opencode`（同 uid），同样命中那个宽泛子串。
+        //    症状：关一下太极 serve，终端里正跑着的 agent 莫名其妙死掉。
+        //    现在只匹配**本 App 装的那一份**：`filesDir/oc/usr/bin/opencode`
+        //    （见 [binaryFile] 与 `ProcessBuilder(bin.absolutePath, "serve", …)`，:332），
+        //    它的路径里带 `/oc/usr/bin/opencode`，而 guest 的那份在 `.../files/rootfs/...` 之下 —— 前缀不同，不会误杀。
         runCatching {
             File("/proc").listFiles { f -> f.name.all { it.isDigit() } }?.forEach { p ->
                 runCatching {
                     val cmd = p.resolve("cmdline").readText()
-                    if (cmd.contains("usr/bin/opencode")) {
+                    if (cmd.contains("/oc/usr/bin/opencode")) {
                         android.os.Process.killProcess(p.name.toInt())
                     }
                 }
             }
         }
     }
-
-    @Suppress("unused")
-    private fun parseServePasswordFromLog(ctx: Context): String? = runCatching {
-        // ⚠️ 已废弃、不再调用：这是 `lastOrNull` 的**有 bug 版本**（会取到最后一场
-        //   "打了密码但没绑上端口"的失败进程的密码 → 全程 401）。保留仅为历史溯源，
-        //   统一改用 parseServePassword()（只认"密码+listening"配对的 lastGood）。
-        File(ctx.filesDir, "oc/serve.log").readText()
-            .lineSequence().lastOrNull { it.contains("server password") }
-            ?.substringAfter("server password ")?.trim()
-    }.getOrNull()
 
     class DownloadResult(val ok: Boolean, val message: String)
 
@@ -489,15 +492,15 @@ object OcManager {
         val dest = File(cache, PKG_NAME)
         // 缓存命中：包在且 SHA 对 → 跳过下载
         if (dest.isFile && dest.length() > 50L * 1024 * 1024) {
-            onProgress("检测到已下载的安装包，校验中…")
+            onProgress(ctx.getString(R.string.oc_cached_verifying))
             val hit = runCatching { RootfsDownloader.verifySha256(dest, PINNED_SHA) }.isSuccess
             if (hit) {
-            onProgress("安装包校验通过，释放中…")
+            onProgress(ctx.getString(R.string.oc_cached_verified))
             return extract(ctx, dest, onProgress, VERSION)
             }
             dest.delete()
         }
-        onProgress("开始下载 OpenCode $VERSION（约 65MB，断点续传）…")
+        onProgress(ctx.getString(R.string.oc_downloading_start, VERSION))
         return try {
             RootfsDownloader.download(
                 // 2026-10-11：镜像链收口到 GithubMirror（原为手写的 gh-proxy.com 一行）；
@@ -509,16 +512,21 @@ object OcManager {
                 // digest 无 sidecar；下载后用定版 SHA 手动校验（故不传 shaUrls）
                 shaUrls = emptyList(),
                 onProgress = { done, total ->
-                    if (total > 0) onProgress("下载中 ${(done * 100 / total).coerceIn(0, 100)}%（${done / 1048576}/${total / 1048576} MB）")
+                    if (total > 0) onProgress(
+                        ctx.getString(
+                            R.string.oc_downloading_pct,
+                            (done * 100 / total).coerceIn(0, 100), done / 1048576, total / 1048576,
+                        )
+                    )
                 },
             )
             RootfsDownloader.verifySha256(dest, PINNED_SHA)
-            onProgress("校验通过，释放中（约需一分钟）…")
+            onProgress(ctx.getString(R.string.oc_verified_extracting))
             extract(ctx, dest, onProgress, VERSION)
         } catch (t: Throwable) {
             RunLog.log("太极: OpenCode 下载失败 ${t.message}")
             // 2026-10-08：见 [HumanizeError] 设计
-            DownloadResult(false, "下载失败：${HumanizeError.title(t)}")
+            DownloadResult(false, ctx.getString(R.string.oc_download_failed, HumanizeError.title(t, ctx.resources)))
         }
     }
 
@@ -526,11 +534,11 @@ object OcManager {
      * release API 动态数据，不落定版 SHA。digest 缺失直接拒绝（无校验 = 不装）。 */
     fun downloadAndInstall(ctx: Context, update: UpdateInfo, onProgress: (String) -> Unit): DownloadResult {
         if (update.sha256 == null) {
-            return DownloadResult(false, "更新包缺少 SHA256（release digest 缺失），已拒绝安装")
+            return DownloadResult(false, ctx.getString(R.string.oc_no_digest_rejected))
         }
         val cache = cacheDir(ctx).apply { mkdirs() }
         val dest = File(cache, "opencode-${update.version}-aarch64.pkg.tar.xz")
-        onProgress("开始下载 OpenCode ${update.version}（约 65MB，断点续传）…")
+        onProgress(ctx.getString(R.string.oc_downloading_start, update.version))
         return try {
             RootfsDownloader.download(
                 // 2026-10-11：同上，镜像链收口到 GithubMirror；校验锚点 = API digest（:546）。
@@ -539,16 +547,21 @@ object OcManager {
                 // digest 无 sidecar；下载后用 API digest 手动校验（故不传 shaUrls）
                 shaUrls = emptyList(),
                 onProgress = { done, total ->
-                    if (total > 0) onProgress("下载中 ${(done * 100 / total).coerceIn(0, 100)}%（${done / 1048576}/${total / 1048576} MB）")
+                    if (total > 0) onProgress(
+                        ctx.getString(
+                            R.string.oc_downloading_pct,
+                            (done * 100 / total).coerceIn(0, 100), done / 1048576, total / 1048576,
+                        )
+                    )
                 },
             )
             RootfsDownloader.verifySha256(dest, update.sha256)
-            onProgress("校验通过，释放中（约需一分钟）…")
+            onProgress(ctx.getString(R.string.oc_verified_extracting))
             extract(ctx, dest, onProgress, update.version)
         } catch (t: Throwable) {
             RunLog.log("太极: OpenCode ${update.version} 更新失败 ${t.message}")
             // 2026-10-08：见 [HumanizeError] 设计
-            DownloadResult(false, "更新失败：${HumanizeError.title(t)}")
+            DownloadResult(false, ctx.getString(R.string.oc_update_failed, HumanizeError.title(t, ctx.resources)))
         }
     }
 
@@ -591,6 +604,26 @@ object OcManager {
         if (canon.path == root.path) return null
         if (!canon.path.startsWith(root.path + File.separator)) return null
         return canon
+    }
+
+    /**
+     * 把 `.part` 发布到最终路径，**再**给 `bin/` 下的可执行文件补执行位（§B 顺序 17）。
+     *
+     * 为什么顺序不能反：`renameTo` 失败时会退化成 `copyTo`（见下），而 **`copyTo` 不保留执行位**。
+     * 旧写法把 `chmod` 打在 `part` 上，一旦走了复制分支，执行位就落在一个马上被删掉的临时文件上，
+     * 最终文件是 0644 ⇒ serve 只能靠 `startServe` 的自愈兜底（那条注释自己写着）。
+     * 现在两种落盘路径都补在 [target] 上。
+     *
+     * @param chmod 补执行位的动作（生产传 `android.system.Os.chmod(path, 0755)`；单测传记账替身）
+     */
+    internal fun publishExtractedFile(part: File, target: File, rel: String, chmod: (File) -> Unit) {
+        if (!part.renameTo(target)) {
+            // 同目录 rename 理论不失败；极端场景退化为复制（失败照旧抛出，不静默丢文件）
+            part.copyTo(target, overwrite = true)
+            part.delete()
+        }
+        // 执行位补在**最终路径**上；只在 bin/ 下补，其余文件不动权限
+        if (rel.startsWith("bin/")) chmod(target)
     }
 
     /** xz + tar 双层解包 → files/oc/usr/...（跳过元数据点文件，bin 补执行位）。 */
@@ -647,29 +680,27 @@ object OcManager {
                         val got = part.length()
                         part.delete()
                         RunLog.log("太极: 释放不完整 $rel（$got/${entry.size} 字节）——存储不足或进程被中断")
-                        return DownloadResult(false, "释放不完整：$rel（$got/${entry.size} 字节）")
+                        return DownloadResult(false, ctx.getString(R.string.oc_extract_incomplete, rel, got, entry.size))
                     }
-                    if (rel.startsWith("bin/")) {
-                        val chmod = runCatching { android.system.Os.chmod(part.absolutePath, 493) } // 0755
+                    // §B 顺序 17：chmod 必须在**最终路径**上补（copyTo 分支不保留执行位）。
+                    // chmod 失败不中断安装（startServe 仍兜底自愈），但必须留痕。
+                    publishExtractedFile(part, target, rel) { final ->
+                        val chmod = runCatching {
+                            android.system.Os.chmod(final.absolutePath, 493) // 0755
+                        }
                         if (chmod.isFailure) {
-                            // 不中断安装（startServe 自愈兜底），但必须留痕
                             RunLog.log("太极: chmod 0755 失败 $rel: ${chmod.exceptionOrNull()?.message}")
                         }
                     }
-                    if (!part.renameTo(target)) {
-                        // 同目录 rename 理论不失败；极端场景退化为复制（不静默丢文件）
-                        part.copyTo(target, overwrite = true)
-                        part.delete()
-                    }
                     count++
-                    if (count % 5 == 0) onProgress("释放中… $count")
+                    if (count % 5 == 0) onProgress(ctx.getString(R.string.oc_extracting_count, count))
                     entry = tar.nextTarEntry
                 }
             }
         } catch (t: Throwable) {
             RunLog.log("太极: 释放失败 ${t.message}")
             // 2026-10-08：见 [HumanizeError] 设计
-            return DownloadResult(false, "释放失败：${HumanizeError.title(t)}")
+            return DownloadResult(false, ctx.getString(R.string.oc_extract_failed, HumanizeError.title(t, ctx.resources)))
         }
         if (skipped > 0) {
             RunLog.log("太极: 释放时跳过了 $skipped 个可疑条目（越界路径/链接，P3-5）——若 serve 报缺文件，多半是它")
@@ -683,11 +714,11 @@ object OcManager {
                     (if (bin.isFile) "${bin.length()} 字节" else "不存在") +
                     "；本轮写入 $count 个文件、跳过 $skipped 个（E-090）",
             )
-            return DownloadResult(false, "释放后二进制缺失（包不完整？）")
+            return DownloadResult(false, ctx.getString(R.string.oc_binary_missing))
         }
         Settings2.prefs(ctx).edit().putString(VERSION_KEY, version).apply()
         RunLog.log("太极: OpenCode $version 释放完成（$count 个文件）")
-        return DownloadResult(true, "OpenCode $version 安装完成")
+        return DownloadResult(true, ctx.getString(R.string.oc_install_done, version))
     }
 
     /** 可安装的更新包（P2.5）：版本 + 直链 + release asset 的 digest（"sha256:…"去前缀）。

@@ -47,8 +47,12 @@ class SessionService : Service() {
         private const val NOTIF_ID = 42
         const val ACTION_TOGGLE_KEEPALIVE = "zhengdao.toggle_keepalive"
         const val ACTION_STOP_SESSION = "zhengdao.stop_session"
-        /** RSS 警告阈值（MB）：超过则在通知栏明示（骨架 §6 软监控，不主动杀） */
-        private const val RSS_WARN_MB = 3072L
+        /**
+         * 通知栏口径的 RSS 警告阈值（MB）：超过则在通知里明示（骨架 §6 软监控，不主动杀）。
+         * 只量**会话 shell 这一个进程**，而它下面挂着 agent（node/python/tmux），正常就能上 GB
+         * ⇒ 比体检卡那个阈值高得多。两处阈值**故意不同**，集中登记在 [RssThresholds]。
+         */
+        private const val NOTIFY_RSS_WARN_MB = RssThresholds.NOTIFY_MB
 
         /**
          * 前台服务是否在跑（#5 留档，2026-10-09）。
@@ -134,6 +138,28 @@ class SessionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 🟠-1（Qoder 2026-10-13，采用方案 B：识别"系统重建"这条回调，语义最精确）
+        //
+        // START_STICKY 的意义是：本服务进程被系统回收后，服务被重建、保活继续 —— 这是刻意设计，
+        // 不能改成全局 START_NOT_STICKY。但重建这一次的 intent 是 **null**，而"有没有会话"是
+        // **进程内**状态（SessionManager.session）：新进程里必然没有会话，onCreate 那句无条件的
+        // startForeground 却照样组装出「证道 · 会话运行中」，30 秒一次的 monitorTick 只会原样
+        // 重发同一张，**没有任何一轮会自愈** ⇒ 通知栏挂着一条"任务还在跑"的假消息（纯显示谎言：
+        // acquireWakeLockIfActive 有 isAlive 守卫，不会误持锁，见 Qoder 报告的缓和因素）。
+        //
+        // 这里只掐断"重建且确实没有会话"这一条路：自愈式 stopSelf 后返回 START_NOT_STICKY，
+        // 不再让它被再次重建；其余所有路径（正常首次启动 intent 非 null、ACTION_TOGGLE_KEEPALIVE、
+        // ACTION_STOP_SESSION）一律保持 START_STICKY，既有的保活设计不动。
+        //
+        // 刻意不把守卫挪进 onCreate 去"干脆不装前台"（报告里的方案 A）：前台服务被
+        // startForegroundService 拉起后必须在 5 秒内调用 startForeground，
+        // 在 onCreate 里条件跳过会把这条契约变成"看时机"，而方案 B 里 onCreate 照常调用、
+        // 只是随后 stopSelf —— 假通知的存活窗口是毫秒级，契约也始终满足。
+        if (intent == null && !SessionManager.isAlive()) {
+            RunLog.log("本服务被系统重建，但进程内已无会话：按僵尸通知处理，停止服务（Qoder 🟠-1）")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_TOGGLE_KEEPALIVE -> {
                 keepAlive = !keepAlive
@@ -240,7 +266,7 @@ class SessionService : Service() {
         lastRssMb = rss
         val runtime = elapsedText()
         val memText = if (rss > 0) "$rss MB" else "统计中"
-        val warn = if (rss > RSS_WARN_MB) " · ⚠️ 内存偏高，建议回到终端清理" else ""
+        val warn = if (rss > NOTIFY_RSS_WARN_MB) " · ⚠️ 内存偏高，建议回到终端清理" else ""
         // 「保活已关」必须显性：锁没在手上时 CPU 可以睡、长任务可能被拖慢/中断，
         // 用户只有看到这一句才知道自己点掉过保活（此前这个状态在通知里完全不可见）。
         val keepText = if (keepAlive) "" else " · 保活已关"

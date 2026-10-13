@@ -198,8 +198,5 @@ class SseClient(private val http: OkHttpClient) {
 
         private val REGEX_TYPE = Regex("\"(?:event|type|name)\"\\s*:\\s*\"([^\"]+)\"")
         private val REGEX_DELTA = Regex("\"delta\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
-
-        /** 取当前退避档位，供 UI 展示"重连中…第 N 次"。 */
-        fun backoffMs(attempt: Int): Long = BACKOFF_MS[minOf(attempt, BACKOFF_MS.lastIndex)]
     }
 }

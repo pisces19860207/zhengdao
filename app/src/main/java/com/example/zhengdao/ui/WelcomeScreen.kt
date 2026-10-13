@@ -2,6 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import androidx.compose.ui.res.stringResource
+import com.example.zhengdao.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,7 +54,7 @@ fun WelcomeScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "在手机上运行你自己的 AI Agent",
+            text = stringResource(R.string.welcome_tagline),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -68,9 +70,9 @@ fun WelcomeScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            StepRow(1, "在「设置」填好模型密钥（用哪个填哪个）")
-            StepRow(2, "进「太极」直接对话——不必等运行环境装完")
-            StepRow(3, "要用命令行或装其他 Agent，再回来装运行环境")
+            StepRow(1, stringResource(R.string.welcome_step1))
+            StepRow(2, stringResource(R.string.welcome_step2))
+            StepRow(3, stringResource(R.string.welcome_step3))
         }
         Spacer(modifier = Modifier.height(32.dp))
         Button(
@@ -78,7 +80,8 @@ fun WelcomeScreen(
             modifier = Modifier.height(56.dp),
         ) {
             Text(
-                text = if (environmentInstalled) "进 入" else "安装运行环境",
+                text = if (environmentInstalled) stringResource(R.string.welcome_enter)
+                else stringResource(R.string.welcome_install_env),
                 style = MaterialTheme.typography.titleMedium,
             )
         }
@@ -86,16 +89,16 @@ fun WelcomeScreen(
         // 做成次级文字按钮——主路径仍是装环境（洞天与 Agent 离不开它）。
         if (!environmentInstalled) {
             TextButton(onClick = onSkip, modifier = Modifier.padding(top = 8.dp)) {
-                Text("先去太极看看（不装环境）")
+                Text(stringResource(R.string.welcome_skip))
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = if (environmentInstalled) "运行环境就绪"
+            text = if (environmentInstalled) stringResource(R.string.welcome_ready)
             // 2026-10-08：原句「运行环境用于「洞天」终端与 Agent，太极不需要」在一句话里
             // 同时出现「洞天」和「终端」——而底栏只有三个 Tab，用户找不到叫「洞天」的地方。
             // 底栏已统一叫「终端」，这里也跟着改。
-            else "运行环境用于「终端」和其他 Agent，太极不需要",
+            else stringResource(R.string.welcome_env_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -81,9 +81,6 @@ object KnowledgeBase {
     /** guest `/root` 的宿主侧路径（ProotLauncher 的 bind：filesDir/home → /root） */
     private fun guestHome(ctx: Context): File = File(ctx.filesDir, "home")
 
-    /** 资料库是否已就绪（骨架存在） */
-    fun isReady(ctx: Context): Boolean = File(root(ctx), F_README).isFile
-
     /** 总开关（默认开）。 */
     fun isEnabled(ctx: Context): Boolean = Settings.prefs(ctx).getBoolean(KEY_ENABLED, true)
 

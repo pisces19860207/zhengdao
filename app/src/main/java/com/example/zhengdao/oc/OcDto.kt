@@ -146,14 +146,7 @@ data class OcPermission(
     val resources: List<String> = emptyList(),
 )
 
-// ── 服务端健康与版本 ──────────────────────────────────────────────────
-
-data class OcHealth(
-    val version: String = "",
-)
-
-/** HTTP API 的错误体（OpenCode 的 global error handler 返回 `{name, data}`）。 */
-data class OcApiError(
-    val name: String = "",
-    val data: String? = null,
-)
+// 2026-10-12 删除两个零引用 DTO（`docs/archive/audit-reports-2026-10-11-12/证道-死代码与BUG审计报告-2026-10-11.md` §2.2）：
+//   `OcHealth { version }` 与 `OcApiError { name, data }`。
+// 两者全仓**从未被构造**（含测试）——健康检查与错误体一直是手工 JSON 解析，
+// 形状记录在各自的解析点与那份审计报告里，不需要留一份没人用的类型声明。

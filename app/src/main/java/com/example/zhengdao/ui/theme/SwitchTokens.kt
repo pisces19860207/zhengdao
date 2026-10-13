@@ -21,13 +21,19 @@ import androidx.compose.ui.graphics.Color
  * - 选中/未选中滑块 = 纯白（iOS 是白，M3 默认是 onPrimary 本项目 = 白，刚好一致）
  * - 边框全透明：iOS Switch 没有描边
  * - 未选中轨道 = IOSFill（iOS 系统填充灰 #E9E9EB）
+ *
+ * 2026-10-12：接入深色——轨道色改从主题取（深色下 #30D158 / #2C2C2E），
+ * 否则深底上一条 #E9E9EB 的浅灰轨道会亮得刺眼。滑块保持纯白（两套主题下都成立）。
  */
 @Composable
-fun iosSwitchColors(): SwitchColors = SwitchDefaults.colors(
-    checkedThumbColor = Color.White,
-    checkedTrackColor = IOSGreen,
-    checkedBorderColor = Color.Transparent,
-    uncheckedThumbColor = Color.White,
-    uncheckedTrackColor = IOSFill,
-    uncheckedBorderColor = Color.Transparent,
-)
+fun iosSwitchColors(): SwitchColors {
+    val dark = isZhengdaoDark()
+    return SwitchDefaults.colors(
+        checkedThumbColor = Color.White,
+        checkedTrackColor = if (dark) IOSDarkGreen else IOSGreen,
+        checkedBorderColor = Color.Transparent,
+        uncheckedThumbColor = Color.White,
+        uncheckedTrackColor = if (dark) IOSDarkFill else IOSFill,
+        uncheckedBorderColor = Color.Transparent,
+    )
+}

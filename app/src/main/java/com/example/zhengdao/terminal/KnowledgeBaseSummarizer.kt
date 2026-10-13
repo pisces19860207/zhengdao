@@ -369,16 +369,4 @@ object KnowledgeBaseSummarizer {
 
     /** 生成回执用的请求体（三态之一，见 OcRepository.respondPermission 的实测注释）。 */
     fun denyReplyBody(): String = JSONObject().apply { put("decision", AUTO_DENY_DECISION) }.toString()
-
-    // ── ⑤ 状态文案 ──────────────────────────────────────────────────────────
-
-    /**
-     * 给用户看的一句话（设置页状态行 / 日志）。
-     * 失败也要说人话 —— 这是项目里 [com.example.zhengdao.util.HumanizeError] 的口径。
-     */
-    fun failureLine(reason: String?): String {
-        val r = reason?.trim().orEmpty()
-        return if (r.isEmpty()) "这次没整理成（原因未知），下次再试"
-        else "这次没整理成：$r（清单照旧可用）"
-    }
 }

@@ -64,6 +64,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -90,6 +92,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.content.res.Resources
+import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart
 import com.example.zhengdao.oc.OcPermission
@@ -151,6 +155,11 @@ fun SessionBar(
     currentModelText: String? = null,
     onModelClick: () -> Unit = {},
 ) {
+    // 无障碍播报文本（图标是 Unicode 字形，读屏需 contentDescription 覆盖字形）
+    val sessionHistoryDesc = stringResource(R.string.taiji_session_history)
+    val newSessionDesc = stringResource(R.string.taiji_new_session)
+    // 标题为空时的兜底文案：先取出来，不在 ifEmpty 的内联 lambda 里再调 Composable
+    val newSessionLabel = stringResource(R.string.taiji_new_session)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -164,7 +173,7 @@ fun SessionBar(
             Text(
                 "☰",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.semantics { contentDescription = "会话历史" },
+                modifier = Modifier.semantics { contentDescription = sessionHistoryDesc },
             )
         }
         Column(
@@ -172,7 +181,7 @@ fun SessionBar(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                title.ifEmpty { "新会话" },
+                title.ifEmpty { newSessionLabel },
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -207,7 +216,7 @@ fun SessionBar(
         // contentDescription 明示它是「新会话」（语法与 [SendGlyph]/[StopGlyph] 的用法一致）。
         FilledTonalIconButton(
             onClick = onNew,
-            modifier = Modifier.size(48.dp).semantics { contentDescription = "新会话" },
+            modifier = Modifier.size(48.dp).semantics { contentDescription = newSessionDesc },
         ) { PlusGlyph() }
     }
 }
@@ -275,10 +284,12 @@ private fun ConnectionLabel(
     modifier: Modifier = Modifier,
 ) {
     val (text, color) = when (connection) {
-        ConnectionState.Connected -> "● 已连接" to MaterialTheme.colorScheme.primary
-        ConnectionState.Connecting -> "○ 连接中…" to MaterialTheme.colorScheme.onSurfaceVariant
+        ConnectionState.Connected ->
+            stringResource(R.string.taiji_conn_connected) to MaterialTheme.colorScheme.primary
+        ConnectionState.Connecting ->
+            stringResource(R.string.taiji_conn_connecting) to MaterialTheme.colorScheme.onSurfaceVariant
         ConnectionState.Reconnecting ->
-            "○ 已断开，正在重连（第 $attempt 次）" to MaterialTheme.colorScheme.error
+            stringResource(R.string.taiji_conn_reconnecting, attempt) to MaterialTheme.colorScheme.error
         ConnectionState.Idle -> "" to MaterialTheme.colorScheme.onSurface
     }
     if (text.isNotEmpty()) {
@@ -329,10 +340,10 @@ fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
         else
             MaterialTheme.colorScheme.onErrorContainer
         val msg = when {
-            isConnecting -> "正在连接…"
+            isConnecting -> stringResource(R.string.taiji_banner_connecting)
             state.lastError != null -> state.lastError
-            state.connection == ConnectionState.Idle -> "未连接"
-            else -> "连接已断开，正在重连…"
+            state.connection == ConnectionState.Idle -> stringResource(R.string.taiji_banner_idle)
+            else -> stringResource(R.string.taiji_banner_reconnecting)
         }
         // 「首次连接中」不给「知道了」——否则用户点了之后以为连接已建立，发消息必失败
         val showDismiss = !isConnecting
@@ -349,7 +360,7 @@ fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f),
                 )
                 if (showDismiss) {
-                    TextButton(onClick = onDismiss) { Text("知道了") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_got_it)) }
                 }
             }
         }
@@ -379,16 +390,16 @@ fun RunFailureBanner(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Agent 运行失败：$reason",
+                stringResource(R.string.taiji_agent_run_failed, reason),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.weight(1f),
             )
             // 有可重试内容、且当前没在跑，才给「重试」——否则是个骗人的按钮
             if (state.lastPrompt != null && !state.isStreaming) {
-                TextButton(onClick = onRetry) { Text("重试") }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.common_retry)) }
             }
-            TextButton(onClick = onDismiss) { Text("知道了") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_got_it)) }
         }
     }
 }
@@ -535,6 +546,8 @@ fun MessageList(
  */
 @Composable
 private fun JumpToLatestButton(onClick: () -> Unit) {
+    // semantics{} 的 lambda 不是 @Composable，取文本先落局部变量
+    val desc = stringResource(R.string.taiji_back_to_latest_desc)
     Surface(
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -543,7 +556,7 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
         modifier = Modifier.clip(RoundedCornerShape(50)).pressClickable(onClick = onClick),
     ) {
         Text(
-            "⬇ 回到最新",
+            stringResource(R.string.taiji_back_to_latest),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             // 2026-10-08 走查：vertical 10dp → 14dp。原来 10+labelLarge 行高 ≈ 26dp 高，
@@ -554,7 +567,7 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 14.dp)
                 // 同上：浮标纯文字 Surface，没 contentDescription 读屏只能读出"⬇ 回到最新"
                 // ——能听懂，但没标它是按钮，故加 role 让用户知道可以点。
-                .semantics { contentDescription = "回到最新消息" },
+                .semantics { contentDescription = desc },
         )
     }
 }
@@ -611,7 +624,7 @@ fun MessageBubble(msg: OcMessage, onLongPress: () -> Unit = {}) {
                     .clip(RoundedCornerShape(12.dp))
                     .combinedClickable(
                         onLongClick = onLongPress,
-                        onLongClickLabel = "复制这条消息",
+                        onLongClickLabel = stringResource(R.string.taiji_copy_message),
                         onClick = {},
                         // 2026-10-10 UIUX 审计 B6 修：单击气泡**没有动作**却带涟漪
                         // ⇒ 用户看到"按下去有反应、结果什么也没发生"，是最典型的手感欺骗。
@@ -637,7 +650,7 @@ fun MessageBubble(msg: OcMessage, onLongPress: () -> Unit = {}) {
             .fillMaxWidth()
             .combinedClickable(
                 onLongClick = onLongPress,
-                onLongClickLabel = "复制这条消息",
+                onLongClickLabel = stringResource(R.string.taiji_copy_message),
                 onClick = {},
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -778,7 +791,10 @@ fun PartRow(part: OcPart, onLongPress: (() -> Unit)? = null) {
             Text(part.filename, style = MaterialTheme.typography.bodySmall)
         }
         // ⚠️ 未知 part 保留原文而非静默丢弃（见 OcDto 注释）
-        is OcPart.Unknown -> CollapsibleBlock("未知内容（${part.type}）", onLongPress) {
+        is OcPart.Unknown -> CollapsibleBlock(
+            stringResource(R.string.taiji_unknown_part, part.type),
+            onLongPress,
+        ) {
             Text(part.raw.take(400), style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace)
         }
@@ -799,9 +815,15 @@ fun ToolCallCard(part: OcPart.Tool, onLongPress: (() -> Unit)? = null) {
     // v1.1 第二阶段：统一为「<状态图标> 🔧 <工具名> · <状态>」。
     // 状态图标：运行中 ● / 完成 ✓ / 失败 ✗（计划第 8 条）。
     val (icon, tint, stateText) = when (part.state) {
-        ToolState.Running -> Triple("●", MaterialTheme.colorScheme.primary, "执行中")
-        ToolState.Success -> Triple("✓", MaterialTheme.colorScheme.primary, "已完成")
-        ToolState.Error -> Triple("✗", MaterialTheme.colorScheme.error, "失败")
+        ToolState.Running -> Triple(
+            "●", MaterialTheme.colorScheme.primary, stringResource(R.string.taiji_state_running),
+        )
+        ToolState.Success -> Triple(
+            "✓", MaterialTheme.colorScheme.primary, stringResource(R.string.taiji_state_done),
+        )
+        ToolState.Error -> Triple(
+            "✗", MaterialTheme.colorScheme.error, stringResource(R.string.taiji_state_failed),
+        )
         ToolState.Unknown -> Triple("•", MaterialTheme.colorScheme.onSurfaceVariant, "")
     }
     Card(
@@ -818,7 +840,7 @@ fun ToolCallCard(part: OcPart.Tool, onLongPress: (() -> Unit)? = null) {
             .combinedClickable(
                 onClick = { expanded = !expanded },
                 onLongClick = onLongPress,
-                onLongClickLabel = "复制这条消息",
+                onLongClickLabel = stringResource(R.string.taiji_copy_message),
             ),
     ) {
         Column(Modifier.padding(10.dp)) {
@@ -826,7 +848,7 @@ fun ToolCallCard(part: OcPart.Tool, onLongPress: (() -> Unit)? = null) {
                 ToolGlyph(tint = tint)
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    part.toolName.ifEmpty { "工具" },
+                    part.toolName.ifEmpty { stringResource(R.string.taiji_tool) },
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -860,13 +882,13 @@ fun ToolCallCard(part: OcPart.Tool, onLongPress: (() -> Unit)? = null) {
                 HorizontalDivider()
                 Spacer(Modifier.height(6.dp))
                 part.input?.let {
-                    Text("入参", style = MaterialTheme.typography.labelSmall)
+                    Text(stringResource(R.string.taiji_tool_input), style = MaterialTheme.typography.labelSmall)
                     Text(it.take(600), style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace, maxLines = 8, overflow = TextOverflow.Ellipsis)
                 }
                 part.output?.let {
                     Spacer(Modifier.height(6.dp))
-                    Text("结果", style = MaterialTheme.typography.labelSmall)
+                    Text(stringResource(R.string.taiji_tool_output), style = MaterialTheme.typography.labelSmall)
                     Text(it.take(600), style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace, maxLines = 8, overflow = TextOverflow.Ellipsis)
                 }
@@ -925,7 +947,8 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>, onLongPress: (() -> Un
 
     // 步数 = 非空段数（直接来自数据，不猜测）；<2 段时不显示「· N 步」，避免「· 1 步」的怪读法。
     val steps = parts.count { it.text.isNotBlank() }
-    val head = if (steps > 1) "思考过程 · $steps 步" else "思考过程"
+    val head = if (steps > 1) stringResource(R.string.taiji_reasoning_head_steps, steps)
+    else stringResource(R.string.taiji_reasoning_head)
     // 头部摘要：取首个非空行
     val summary = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
@@ -935,7 +958,7 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>, onLongPress: (() -> Un
                 .combinedClickable(
                     onClick = { expanded = !expanded },
                     onLongClick = onLongPress,
-                    onLongClickLabel = "复制这条消息",
+                    onLongClickLabel = stringResource(R.string.taiji_copy_message),
                 )
                 // 2026-10-08 走查：2dp → 12dp。原来整行只有约 20dp 高，
                 // 「展开/收起思考过程」这个折叠头是全 App 点不中排行榜的第二名。
@@ -963,7 +986,8 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>, onLongPress: (() -> Un
                 Spacer(Modifier.weight(1f))
             }
             Text(
-                if (expanded) "收起 ▲" else "展开 ▼",
+                if (expanded) stringResource(R.string.common_collapse_arrow)
+                else stringResource(R.string.common_expand_arrow),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1001,7 +1025,7 @@ private fun CollapsibleBlock(
                 .combinedClickable(
                     onClick = { expanded = !expanded },
                     onLongClick = onLongPress,
-                    onLongClickLabel = "复制这条消息",
+                    onLongClickLabel = stringResource(R.string.taiji_copy_message),
                 )
                 .padding(vertical = 12.dp),
         )
@@ -1016,8 +1040,14 @@ fun TodoPanel(todos: List<OcTodo>) {
     if (todos.isEmpty()) return
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
-            Text("任务清单（${todos.count { it.status == OcTodo.TodoStatus.Completed }}/${todos.size}）",
-                style = MaterialTheme.typography.labelLarge)
+            Text(
+                stringResource(
+                    R.string.taiji_todo_header,
+                    todos.count { it.status == OcTodo.TodoStatus.Completed },
+                    todos.size,
+                ),
+                style = MaterialTheme.typography.labelLarge,
+            )
             todos.forEach { t ->
                 Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -1093,7 +1123,12 @@ fun ComposerBar(
                     // 2026-10-08 走查：流式输出中 placeholder 仍写「描述你的任务…」会让用户
                     // 困惑——「我这时还能发吗？」切到「AI 正在回复…」明示状态；发送键已变停止
                     // (FilledTonalIconButton)，双指示器一致。
-                    placeholder = { Text(if (isStreaming) "AI 正在回复…" else "描述你的任务…") },
+                    placeholder = {
+                        Text(
+                            if (isStreaming) stringResource(R.string.taiji_placeholder_streaming)
+                            else stringResource(R.string.taiji_placeholder_idle)
+                        )
+                    },
                     maxLines = 6,
                     // 圆润：胶囊形。TextField 默认是只有上圆角的 4dp 矩形，与"打开就用"的
                     // 观感不搭；24dp 在单行时是胶囊、多行时仍是柔和的大圆角。
@@ -1136,12 +1171,14 @@ fun ComposerBar(
 @Composable
 private fun SendGlyph() {
     val tint = LocalContentColor.current
+    // semantics{} 的 lambda 不是 @Composable，Composable 取文本必须先落到局部变量
+    val desc = stringResource(R.string.taiji_send_desc)
     // 2026-10-08：无障碍。Canvas 自绘默认**不带任何语义**，读屏用户听到的是空白按钮。
     // contentDescription 写在 Canvas 上会与父 IconButton 的语义合并，播报为「发送，按钮」。
     Canvas(
         Modifier
             .size(20.dp)
-            .semantics { contentDescription = "发送" }
+            .semantics { contentDescription = desc }
     ) {
         val w = size.width
         val h = size.height
@@ -1156,11 +1193,13 @@ private fun SendGlyph() {
 @Composable
 private fun StopGlyph() {
     val tint = LocalContentColor.current
+    // semantics{} 的 lambda 不是 @Composable，取文本先落局部变量（同 SendGlyph）
+    val desc = stringResource(R.string.taiji_stop_desc)
     // 2026-10-08：无障碍，同 SendGlyph（Canvas 无语义）。
     Canvas(
         Modifier
             .size(20.dp)
-            .semantics { contentDescription = "停止生成" }
+            .semantics { contentDescription = desc }
     ) {
         val s = size.minDimension
         drawRoundRect(
@@ -1199,15 +1238,19 @@ fun PermissionSheet(
         // 2026-10-10 UIUX 审计 B5b：补 navigationBarsPadding——手势导航下「允许 / 拒绝」
         // 会被导航条压住一截；这个抽屉还不能被 dismiss，用户只能选一个，被压住就没法选。
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) {
-            Text("工具请求授权", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.taiji_perm_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(12.dp))
             // 工具名（action）：bash / edit / write …
-            Text("工具：${permission.title}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(
+                stringResource(R.string.taiji_perm_tool, permission.title),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
             // 具体目标（resources[]）：命令 / 文件路径 —— 用户判断的唯一依据，必须显示
             permission.detail?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "目标",
+                    stringResource(R.string.taiji_perm_target),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1227,21 +1270,21 @@ fun PermissionSheet(
             }
             Spacer(Modifier.height(8.dp))
             androidx.compose.material3.Checkbox(remember, onCheckedChange = { remember = it })
-            Text("记住这个选择", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.taiji_perm_remember), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
                     onClick = { onRespond(false, false) },
                     modifier = Modifier.weight(1f),
-                ) { Text("拒绝") }
+                ) { Text(stringResource(R.string.taiji_perm_deny)) }
                 Button(
                     onClick = { onRespond(true, remember) },
                     modifier = Modifier.weight(1f),
-                ) { Text("允许") }
+                ) { Text(stringResource(R.string.taiji_perm_allow)) }
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "不处理会让 Agent 卡住等待，任务无法继续。",
+                stringResource(R.string.taiji_perm_hint),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1277,9 +1320,14 @@ fun MessageActionsSheet(
     onCopy: (label: String, text: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val messageText = remember(message) { MessageCopy.textOf(message) }
-    val conversationText = remember(conversation) { MessageCopy.textOfConversation(conversation) }
+    val ctx = LocalContext.current
+    // 复制进剪贴板的文本随界面语言走（角色抬头、思考过程/入参/结果等标签）
+    val messageText = remember(message, ctx) { MessageCopy.textOf(message, ctx.resources) }
+    val conversationText = remember(conversation, ctx) {
+        MessageCopy.textOfConversation(conversation, ctx.resources)
+    }
     val preview = messageText.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+    val messageCopyRoleSep = stringResource(R.string.copy_role_separator)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1290,22 +1338,22 @@ fun MessageActionsSheet(
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text("消息操作", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.taiji_msg_actions_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text(
-                if (preview.isEmpty()) "（这条消息没有可复制的文字）"
-                else "${MessageCopy.roleLabel(message)}：$preview",
+                if (preview.isEmpty()) stringResource(R.string.taiji_no_copyable_text)
+                else MessageCopy.roleLabel(message, ctx.resources) + messageCopyRoleSep + preview,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(6.dp))
-            SheetActionRow("复制这条消息", enabled = messageText.isNotEmpty()) {
+            SheetActionRow(stringResource(R.string.taiji_copy_message), enabled = messageText.isNotEmpty()) {
                 onCopy("zhengdao-message", messageText)
             }
             SheetActionRow(
-                "复制全部对话（${conversation.size} 条）",
+                stringResource(R.string.taiji_copy_all_conv, conversation.size),
                 enabled = conversationText.isNotEmpty(),
             ) {
                 onCopy("zhengdao-conversation", conversationText)
@@ -1314,7 +1362,7 @@ fun MessageActionsSheet(
             Text(
                 // 2026-10-10 UIUX 审计 P0-2 顺手：把"接口"这个开发术语换成大白话。
                 // "不能单独删其中一条" ⇒ 用户能立刻 get。
-                "不能单独删其中一条；要删就得把整段对话删掉，去左侧「会话历史」里删。",
+                stringResource(R.string.taiji_delete_hint),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1385,6 +1433,10 @@ fun HistoryDrawer(
 ) {
     var pendingDelete by remember { mutableStateOf<OcSessionSummary?>(null) }
     var confirmClose by remember { mutableStateOf(false) }
+    // semantics{} 的 lambda 不是 @Composable，取文本先落局部变量
+    val newSessionDesc = stringResource(R.string.taiji_new_session)
+    // LazyColumn 的 content 是 LazyListScope 作用域、不是 @Composable，故 Resources 在这里取
+    val resources = LocalContext.current.resources
 
     Column(modifier.fillMaxSize()) {
         // 头部：edge-to-edge 下抽屉顶到屏幕最上沿，必须自己避开状态栏
@@ -1395,13 +1447,18 @@ fun HistoryDrawer(
                 .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("会话", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(
+                stringResource(R.string.taiji_sessions),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
             IconButton(onClick = onRefresh) {
                 // 2026-10-08：无障碍，同「☰」——「⟳」字形读屏会念成"逆时针箭头"。
+                val refreshDesc = stringResource(R.string.taiji_refresh_sessions_desc)
                 Text(
                     "⟳",
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.semantics { contentDescription = "刷新会话列表" },
+                    modifier = Modifier.semantics { contentDescription = refreshDesc },
                 )
             }
         }
@@ -1419,7 +1476,7 @@ fun HistoryDrawer(
                 .pressClickable(onClick = onNew),
         ) {
             Text(
-                "＋  新会话",
+                stringResource(R.string.taiji_new_session_plus),
                 style = MaterialTheme.typography.bodyMedium,
                 // 2026-10-08 走查：vertical 10dp → 14dp。原来 10dp + bodyMedium ≈ 30dp 高，
                 // 而它是**会话列表抽屉的正面入口**（打开抽屉第一眼就在这里），
@@ -1428,7 +1485,7 @@ fun HistoryDrawer(
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 14.dp)
                     // 同上：纯文字 Surface，读屏需要明示这是按钮 + 它的含义
-                    .semantics { contentDescription = "新建会话" },
+                    .semantics { contentDescription = newSessionDesc },
             )
         }
 
@@ -1443,7 +1500,7 @@ fun HistoryDrawer(
             ) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
 
             sessions.isEmpty() -> Text(
-                "还没有历史会话。\n点上方「＋ 新会话」开始第一段对话。",
+                stringResource(R.string.taiji_no_sessions),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
@@ -1456,7 +1513,7 @@ fun HistoryDrawer(
                     .navigationBarsPadding(),          // 避开底部导航条
                 contentPadding = PaddingValues(vertical = 6.dp),
             ) {
-                groupSessionsByDay(sessions).forEach { (label, items) ->
+                groupSessionsByDay(sessions, resources).forEach { (label, items) ->
                     item(key = "header-$label") { DayHeader(label) }
                     items(items, key = { it.id }) { s ->
                         SessionRow(
@@ -1488,16 +1545,20 @@ fun HistoryDrawer(
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
             DrawerActionRow(
-                label = "插件",
-                value = if (pluginCount > 0) "$pluginCount 个已启用" else "未启用",
+                label = stringResource(R.string.taiji_plugins),
+                value = if (pluginCount > 0) {
+                    stringResource(R.string.taiji_plugins_enabled, pluginCount)
+                } else {
+                    stringResource(R.string.taiji_plugins_none)
+                },
                 onClick = onPlugins,
             )
             DrawerActionRow(
                 // 2026-10-10 UIUX 审计 P0-2：原"结束本次会话"与底下"删除会话"字面几乎一样、
                 // 后果完全不同。非技术用户极易看走眼。改名 + 把后果写在右侧副字段里：
                 // 这里**只关 OpenCode 实例、释放内存**，聊天记录在服务端，下次进来还在。
-                label = "关闭太极并退出",
-                value = "记录还在，下次接着聊",
+                label = stringResource(R.string.taiji_close_session),
+                value = stringResource(R.string.taiji_close_session_hint),
                 onClick = { confirmClose = true },
             )
         }
@@ -1506,15 +1567,21 @@ fun HistoryDrawer(
     if (confirmClose) {
         AlertDialog(
             onDismissRequest = { confirmClose = false },
-            title = { Text("关闭太极并退出？") },
+            title = { Text(stringResource(R.string.taiji_close_session_title)) },
             text = {
                 // 措辞重写：**只关实例、不删记录**。避免"释放内存"这种开发术语。
-                Text("关闭后聊天列表里还能看到这次对话，点进去会重新打开。")
+                Text(stringResource(R.string.taiji_close_session_msg))
             },
             confirmButton = {
-                TextButton(onClick = { confirmClose = false; onCloseSession() }) { Text("关闭") }
+                TextButton(onClick = { confirmClose = false; onCloseSession() }) {
+                    Text(stringResource(R.string.common_close))
+                }
             },
-            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("取消") } },
+            dismissButton = {
+                TextButton(onClick = { confirmClose = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
         )
     }
 
@@ -1542,6 +1609,9 @@ private fun DeleteSessionDialog(
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // scope.launch 内不是 @Composable 上下文，失败文案先取出来
+    val deleteFailedText = stringResource(R.string.taiji_delete_failed)
+    val targetTitle = sessionTitle(summary, LocalContext.current.resources)
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },   // 删除中不许点外面关掉
@@ -1549,14 +1619,16 @@ private fun DeleteSessionDialog(
         // 颜色取 error（C0392B，5.4:1 满足 AA），不需要等到用户点完确认才知道后果。
         title = {
             Text(
-                "永久删除这个会话",
+                stringResource(R.string.taiji_delete_session_title),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.titleLarge,
             )
         },
         text = {
             Column {
-                Text("「${sessionTitle(summary)}」将在服务端被永久删除，无法恢复。")
+                Text(
+                    stringResource(R.string.taiji_delete_session_msg, targetTitle),
+                )
                 error?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -1575,13 +1647,19 @@ private fun DeleteSessionDialog(
                     scope.launch {
                         val ok = onConfirm()
                         busy = false
-                        if (ok) onDismiss() else error = "删除失败：服务端未确认（网络异常或该会话已不存在）"
+                        if (ok) onDismiss()
+                        else error = deleteFailedText
                     }
                 },
-            ) { Text(if (busy) "删除中…" else "删除") }
+            ) {
+                Text(
+                    if (busy) stringResource(R.string.taiji_deleting)
+                    else stringResource(R.string.taiji_delete)
+                )
+            }
         },
         dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") }
+            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -1615,6 +1693,10 @@ private fun SessionRow(
     onDelete: () -> Unit,
     onLongClick: () -> Unit = {},
 ) {
+    val ctx = LocalContext.current
+    // 会话标题（可能回退成「会话 + id 尾缀」）与删除按钮的无障碍播报都随语言走
+    val rowTitle = sessionTitle(summary, ctx.resources)
+    val deleteDesc = stringResource(R.string.taiji_delete_session_desc, rowTitle)
     Surface(
         color = if (current) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         shape = RoundedCornerShape(10.dp),
@@ -1629,7 +1711,7 @@ private fun SessionRow(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    sessionTitle(summary),
+                    rowTitle,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1640,7 +1722,7 @@ private fun SessionRow(
                         summary.updatedAt?.let { append(formatClock(it)) }
                         summary.messageCount?.let {
                             if (isNotEmpty()) append(" · ")
-                            append("$it 条消息")
+                            append(stringResource(R.string.taiji_msg_count, it))
                         }
                     }.ifEmpty { summary.id.take(12) },
                     style = MaterialTheme.typography.labelSmall,
@@ -1650,7 +1732,7 @@ private fun SessionRow(
             if (current) {
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "当前",
+                    stringResource(R.string.taiji_current),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -1666,7 +1748,7 @@ private fun SessionRow(
                 onClick = onDelete,
                 modifier = Modifier
                     .size(40.dp)
-                    .semantics { contentDescription = "删除会话「${sessionTitle(summary)}」" },
+                    .semantics { contentDescription = deleteDesc },
             ) {
                 TrashGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1677,9 +1759,13 @@ private fun SessionRow(
 /**
  * 会话标题：服务端 `title` 优先；为空回退「会话 + id 尾缀」。
  * **不调模型生成标题**（计划 P1-4 明确）。
+ *
+ * [res] 传 null 时回退中文（供 JVM 单测 / 无 Context 场景），传 `ctx.resources` 即随界面语言。
  */
-private fun sessionTitle(s: OcSessionSummary): String =
-    s.title?.takeIf { it.isNotBlank() } ?: "会话 ${s.id.takeLast(6)}"
+private fun sessionTitle(s: OcSessionSummary, res: Resources? = null): String =
+    s.title?.takeIf { it.isNotBlank() }
+        ?: (res?.getString(R.string.taiji_session_fallback, s.id.takeLast(6))
+            ?: "会话 ${s.id.takeLast(6)}")
 
 /**
  * 按天分组：今天 / 昨天 / 更早。保持输入顺序（服务端已按时间倒序）。时间缺失归「更早」。
@@ -1687,15 +1773,23 @@ private fun sessionTitle(s: OcSessionSummary): String =
  * `internal` 而非 `private`：供 JVM 单元测试（TaijiSessionGroupingTest）直接验证分组
  * —— 这是 v1.1 第一阶段唯一可脱离真机自动验证的核心逻辑。同模块可见，不扩大外部 API。
  */
-internal fun groupSessionsByDay(list: List<OcSessionSummary>): List<Pair<String, List<OcSessionSummary>>> {
+internal fun groupSessionsByDay(
+    list: List<OcSessionSummary>,
+    res: Resources? = null,
+): List<Pair<String, List<OcSessionSummary>>> {
     val out = LinkedHashMap<String, MutableList<OcSessionSummary>>()
-    list.forEach { out.getOrPut(dayLabel(it.updatedAt)) { mutableListOf() }.add(it) }
+    list.forEach { out.getOrPut(dayLabel(it.updatedAt, res)) { mutableListOf() }.add(it) }
     return out.map { it.key to it.value }
 }
 
-/** 「今天 / 昨天 / 更早」判据。`internal` 供单测（见 [groupSessionsByDay]）。 */
-internal fun dayLabel(ts: Long?): String {
-    ts ?: return "更早"
+/**
+ * 「今天 / 昨天 / 更早」判据。`internal` 供单测（见 [groupSessionsByDay]）。
+ *
+ * [res] 传 null 时回退中文（单测与无 Context 场景），传 `ctx.resources` 即随界面语言。
+ */
+internal fun dayLabel(ts: Long?, res: Resources? = null): String {
+    val earlier = res?.getString(R.string.taiji_day_earlier) ?: "更早"
+    ts ?: return earlier
     val startOfToday = java.util.Calendar.getInstance().apply {
         set(java.util.Calendar.HOUR_OF_DAY, 0)
         set(java.util.Calendar.MINUTE, 0)
@@ -1703,9 +1797,9 @@ internal fun dayLabel(ts: Long?): String {
         set(java.util.Calendar.MILLISECOND, 0)
     }.timeInMillis
     return when {
-        ts >= startOfToday -> "今天"
-        ts >= startOfToday - 86_400_000L -> "昨天"
-        else -> "更早"
+        ts >= startOfToday -> res?.getString(R.string.taiji_day_today) ?: "今天"
+        ts >= startOfToday - 86_400_000L -> res?.getString(R.string.taiji_day_yesterday) ?: "昨天"
+        else -> earlier
     }
 }
 
@@ -1784,11 +1878,11 @@ fun PluginsSheet(onDismiss: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "插件",
+                    stringResource(R.string.taiji_plugins),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onDismiss) { Text("完成") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
             }
             PluginsScreen()
         }

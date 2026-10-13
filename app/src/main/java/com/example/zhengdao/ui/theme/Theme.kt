@@ -2,14 +2,22 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 
 /**
- * 唯一主题：iOS 风格浅色（固定不随系统深色切换——证道面向"打开就用"的普通用户，
- * 两套主题等于两倍的走查成本；终端页自成黑底白框，不依赖此主题）。
+ * 浅色主题：iOS 风格（白卡片 + 系统蓝点缀）。
+ *
+ * 原注释「唯一主题、不随系统深色切换」已于 2026-10-12 作废——用户要求补深色，
+ * 现由 [ZhengdaoTheme] 在浅/深之间按偏好选择（见 [AppearancePrefs]）。
+ * 终端页仍自成黑底白框，不依赖此主题。
  */
 val ZhengdaoLightScheme = lightColorScheme(
     primary = IOSBlue,
@@ -48,11 +56,78 @@ val ZhengdaoLightScheme = lightColorScheme(
     onError = Color.White,
 )
 
+/**
+ * 深色主题（2026-10-12 新增）：取值 = Apple HIG 的 dark 系统色，
+ * 逐色对比度已在 `Color.kt` 里注（对 #1C1C1E 卡片底，均达 WCAG AA 4.5:1）。
+ *
+ * 槽位与浅色**一一对应**，业务代码全走 `MaterialTheme.colorScheme.*`，
+ * 因此无需为深色改任何布局代码。
+ */
+val ZhengdaoDarkScheme = darkColorScheme(
+    primary = IOSDarkBlue,
+    onPrimary = Color.Black,
+    primaryContainer = IOSDarkTintedBlue,
+    onPrimaryContainer = IOSDarkOnTintedBlue,
+    secondary = IOSDarkSecondaryLabel,
+    onSecondary = Color.Black,
+    secondaryContainer = IOSDarkFill,
+    onSecondaryContainer = IOSDarkLabel,
+    tertiary = IOSDarkGreen,
+    errorContainer = IOSDarkTintedRed,
+    onErrorContainer = IOSDarkOnTintedRed,
+    tertiaryContainer = IOSDarkTintedGreen,
+    onTertiaryContainer = IOSDarkOnTintedGreen,
+    background = IOSDarkBg,
+    onBackground = IOSDarkLabel,
+    surface = IOSDarkCard,
+    onSurface = IOSDarkLabel,
+    surfaceVariant = IOSDarkFill,
+    onSurfaceVariant = IOSDarkSecondaryLabel,
+    surfaceContainerLowest = IOSDarkBg,
+    surfaceContainerLow = Color(0xFF141416),
+    surfaceContainer = IOSDarkCard,
+    surfaceContainerHigh = Color(0xFF242426),
+    surfaceContainerHighest = IOSDarkFill,
+    outline = IOSDarkSeparator,
+    outlineVariant = Color(0xFF2C2C2E),
+    error = IOSDarkRed,
+    onError = Color.Black,
+)
+
+/**
+ * 应用主题：按 [AppearancePrefs] 的偏好在浅/深之间选择。
+ *
+ * 订阅 `AppearancePrefs.changeTick` ⇒ 用户在设置页切换外观时**当场换主题**
+ * （无需 recreate Activity）。偏好本体存在 SharedPreferences，冷启动直接读回。
+ * 组合期间只读不写——避免「首帧渲染完再纠正」的闪一下。
+ */
 @Composable
 fun ZhengdaoTheme(content: @Composable () -> Unit) {
+    val ctx = LocalContext.current
+    val tick = AppearancePrefs.changeTick.value
+    val pref = remember(tick) { AppearancePrefs.get(ctx) }
+    val dark = AppearancePrefs.resolveDark(pref, isSystemInDarkTheme())
     MaterialTheme(
-        colorScheme = ZhengdaoLightScheme,
+        colorScheme = if (dark) ZhengdaoDarkScheme else ZhengdaoLightScheme,
         typography = Typography,
         content = content,
     )
 }
+
+/**
+ * 当前是否深色主题。
+ *
+ * 判据取 `colorScheme.background` 的实际亮度，**不取** [isSystemInDarkTheme]——
+ * 用户在设置里把外观锁成「浅色」时系统仍是深色，后者会撒谎；
+ * 派生自 colorScheme 则永远与真正渲染出来的画面一致。
+ */
+@Composable
+fun isZhengdaoDark(): Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+/** 语义色「就绪绿」（小字/图形用）：浅色 #2E7D32（5.1:1）/ 深色 #30D158（8.4:1）。 */
+@Composable
+fun zhengdaoReadyGreen(): Color = if (isZhengdaoDark()) IOSDarkReadyGreen else IOSReadyGreen
+
+/** 语义色「蓝色小字」（链接/强调文字）：浅色 #0058B0（5.1:1）/ 深色 #64B5F6（6.9:1）。 */
+@Composable
+fun zhengdaoBlueText(): Color = if (isZhengdaoDark()) IOSDarkBlueText else IOSBlueText

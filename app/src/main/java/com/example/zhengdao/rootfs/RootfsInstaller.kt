@@ -25,6 +25,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * RootFS 解压安装器（设计文档 §6/§8）：
@@ -89,6 +90,14 @@ object RootfsInstaller {
     // 才是他要的信息。
     private val lock = AtomicBoolean(false)
 
+    /**
+     * 「会话准备」与「安装置位」之间的互斥（§B 顺序 18，2026-10-12；见 [withPrepareLock]）。
+     *
+     * 与 [lock] 的分工：`lock` 回答"现在有没有安装在跑"（看一眼就走，持锁分钟级）；
+     * 这把锁保护"**开始**往 rootfs 写"与"**开始**安装"这两件事不能同时发生（持锁秒级）。
+     */
+    private val prepareLock = ReentrantLock()
+
     private val _installing = mutableStateOf(false)
 
     /** Compose 可读的进行中状态（设置页 / 终端页据此禁用按钮）。 */
@@ -104,15 +113,52 @@ object RootfsInstaller {
      * （按钮 enabled、入口预检），绝不能让别人为了看它而阻塞两分钟。
      */
     internal fun <T> withInstallLock(what: String, block: () -> T): T {
-        if (!lock.compareAndSet(false, true)) {
-            throw InstallFailed("已有安装/更新任务在跑，本次「$what」未执行（等它结束后再试）")
+        // 置位这一下必须与「会话准备」互斥（§B 顺序 18，2026-10-12）：
+        // 否则启动器那边是「查一眼 isInstalling() → 没在装 → 开始往 rootfs 写」，
+        // 安装恰在这一瞬置位 ⇒ 两边同时动 rootfs。只圈住置位、不圈住 block()：
+        // 安装以分钟计，绝不能让开会话的人为此等它（那条路靠下面 withPrepareLock 直接拒绝）。
+        prepareLock.lock()
+        try {
+            if (!lock.compareAndSet(false, true)) {
+                throw InstallFailed("已有安装/更新任务在跑，本次「$what」未执行（等它结束后再试）")
+            }
+            _installing.value = true
+        } finally {
+            prepareLock.unlock()
         }
-        _installing.value = true
         try {
             return block()
         } finally {
             _installing.value = false
             lock.set(false)
+        }
+    }
+
+    /**
+     * 「开启一次会话前的准备」临界区（§B 顺序 18，2026-10-12）。
+     *
+     * 准备期指的是 [com.example.zhengdao.terminal.ProotLauncher.buildLaunchPlan] 里那一整段
+     * 往 guest rootfs 写东西的动作（DNS/时区/profile.d/`zzclean`/npm 镜像/软链/挂载落点/横幅）。
+     * 这些写操作原本只靠「先看一眼 [isInstalling]」防并发，那是 **TOCTOU**：
+     * 查完到写之间安装可能刚好置位，于是「启动器写 rootfs」与「安装替换整棵树
+     * （[swapIntoPlace] 会把 rootfs 改名搬走再放新的）」交错 —— 轻则刚写的配置落进被丢弃的旧树，
+     * 重则写进正在被搬走的目录。
+     *
+     * 语义：
+     *  - 与 [withInstallLock]**置位那一下**互斥 ⇒ 持锁期间安装无法置位，[block] 里的写是安全的；
+     *  - 安装已在跑时**直接抛** [InstallFailed]（沿用旧行为：给一句可读文案，而不是让人排队几分钟）；
+     *  - 用 `ReentrantLock` 而不是 `AtomicBoolean`：这是"最多等几秒"的短临界区，
+     *    而且同一线程在准备期里再进一次不该死锁（重入计数）。
+     */
+    internal fun <T> withPrepareLock(what: String, block: () -> T): T {
+        prepareLock.lock()
+        try {
+            if (lock.get()) {
+                throw InstallFailed("正在安装/更新环境，本次「$what」未执行（等它结束后再开会话）")
+            }
+            return block()
+        } finally {
+            prepareLock.unlock()
         }
     }
 
@@ -361,6 +407,11 @@ object RootfsInstaller {
             for (hl in pendingHardLinks) {
                 val src = File(destDir, hl.linkName.removePrefix("./"))
                 val dst = File(destDir, hl.name.removePrefix("./"))
+                // §B 顺序 20：登记时已验过一遍，这里再验一遍防「登记 → 使用」之间的路径漂移
+                if (!PathGuard.linkStaysInside(destDir, dst, hl.linkName)) {
+                    Log.w(TAG, "硬链接源越界（二阶段），跳过: ${hl.name} -> ${hl.linkName}")
+                    continue
+                }
                 if (src.isFile) {
                     dst.delete() // 先断开可能存在的硬链接，别写穿到旧树
                     src.copyTo(dst, overwrite = true)
@@ -486,14 +537,24 @@ object RootfsInstaller {
                 }
             }
             entry.isLink -> {
-                // 硬链接 → 复制内容落地；源文件若尚未解出（前向引用），登记到二阶段
-                val src = File(tmpDir, entry.linkName.removePrefix("./"))
-                target.parentFile?.mkdirs()
-                if (src.isFile) {
-                    target.delete() // 先断链接再写，避免写穿到旧 rootfs 的同一 inode
-                    src.copyTo(target, overwrite = true)
+                // 硬链接 → 复制内容落地；源文件若尚未解出（前向引用），登记到二阶段。
+                // §B 顺序 20（2026-10-12）：**源路径也要在树内**。落盘走的是 copyTo（不是真硬链），
+                // 所以「相对路径 `../..` 逃出解压根」「形如 `/../../etc/passwd` 的绝对路径」这类
+                // linkName 的后果是：把树外文件的内容**复制进**环境目录。
+                // 判定用与 symlink 同一个 [PathGuard.linkStaysInside]（绝对路径按 guest 根解释，
+                // 所以 `/etc/passwd` 本身是合法的树内路径，只有带 `..` 逃出才拒）。
+                // 越界则跳过该成员 —— 与「源还没解出来」同一条退路（不建文件，环境仍可用）。
+                if (!PathGuard.linkStaysInside(tmpDir, target, entry.linkName)) {
+                    Log.w(TAG, "硬链接源越界，跳过: $name -> ${entry.linkName}")
                 } else {
-                    pendingHardLinks.add(entry)
+                    val src = File(tmpDir, entry.linkName.removePrefix("./"))
+                    target.parentFile?.mkdirs()
+                    if (src.isFile) {
+                        target.delete() // 先断链接再写，避免写穿到旧 rootfs 的同一 inode
+                        src.copyTo(target, overwrite = true)
+                    } else {
+                        pendingHardLinks.add(entry)
+                    }
                 }
             }
             entry.isFIFO || entry.linkFlag == TarConstants.LF_CHR || entry.linkFlag == TarConstants.LF_BLK -> {

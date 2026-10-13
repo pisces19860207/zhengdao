@@ -16,7 +16,9 @@ sealed interface TaijiPhase {
     /** 正在首次加载（全量拉取 + 建立 SSE） */
     data object Loading : TaijiPhase
 
-    data object Ready : TaijiPhase
+    // 2026-10-12 删除 `data object Ready`（审计报告 §2.2）：全仓从未构造它，UI 也从不匹配它
+    // ——「首屏加载完了」这件事由 [TaijiState.loadedOnce] 表达（见 TaijiScreen 的空列表判定）。
+    // 将来若真要区分「就绪」与「加载中」，请连同 UI 的 when 分支一起加，别只加个类型声明。
 
     /**
      * 启动/连接失败。

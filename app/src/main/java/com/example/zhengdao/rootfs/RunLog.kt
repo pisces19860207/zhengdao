@@ -242,11 +242,6 @@ object RunLog {
 
     fun prevFile(): File? = appContext?.let { File(dir(it), PREV_NAME) }?.takeIf { it.isFile }
 
-    /** 跨轮次错误汇总（可能不存在——没有任何错误时本来也不该有）。 */
-    fun errorsFile(): File? = appContext?.let { File(dir(it), ERRORS_NAME) }?.takeIf { it.isFile }
-
-    fun readAll(): String = file()?.readText() ?: "（暂无日志）"
-
     /** 日志目录的真实路径（设置页展示用：告诉用户"东西在哪"，而不是让他去猜）。 */
     fun dirPath(context: Context): String = dir(context).absolutePath
 
