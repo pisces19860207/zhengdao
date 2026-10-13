@@ -6431,3 +6431,44 @@ E-116 修完后我拿正式签名包上真机（PGT-AN10 / MagicOS / Android 16 
 - **纪律**：**这不是绕闸门**，只是让钩子进程能建管道；钩子的实际判定照样执行，该红的还是红。
   与 `--no-verify`（让钩子不跑）是两回事 —— 前者让钩子**能**跑，后者让钩子**不**跑，后者在本仓禁止。
 - **目的**：下一个 agent 在沙箱里提交时，看到 `couldn't create signal pipe` 不要去改代码、不要去改分支策略，先提权重跑一次。
+
+## E-123 · 2026-10-13 · 太极页切到历史会话后页面停在空列表、轮询还挂在旧会话上（要杀掉 App 重进才恢复）—— `switchSession()` 先把 `sessionId` 写成目标 id，于是「切会话」被自己的复用判据判成了「同会话」
+
+**现象**（用户原话）：「我刚刚在太极页切换会话的时候就有个出错，然后关闭APP重进了才没问题的 —— 那种切换回旧聊天会话的时候」。
+
+**真机留痕**（`Download/证道/logs/zhengdao-log.txt`，22:47–22:54 那一轮；同一份日志里正好同时含「正常」与「出问题」两段）：
+
+```
+[22:47:13] 太极: 用第 1 个候选口令过了 /api/session 鉴权（共 3 个）
+[22:47:13] 复用服务端最近会话 id=ses_ed56777b7ffeXbmoIGVEsWwmbg
+[22:47:13] 全量加载 22 条消息                     ← 冷启动：真加载了
+[22:47:14] SSE 信号通道就绪（HTTP 200）
+……
+[22:53:59] 太极: open 复用现有连接：会话 ses_ed56777b7ffeXbmoIGVEsWwmbg
+[22:54:01] 太极: 新建会话 id=ses_eca3e6a0cffe8wXMF8fXJLbJK9
+[22:54:01] 太极: open 复用现有连接：会话 ses_eca3e6a0cffe8wXMF8fXJLbJK9
+[22:54:04] 太极: open 复用现有连接：会话 ses_ed56777b7ffeXbmoIGVEsWwmbg    ← 切回旧会话，也「复用」
+[22:54:09] 太极: open 复用现有连接：会话 ses_eca3e6a0cffe8wXMF8fXJLbJK9    ← 再切一次，还是「复用」
+```
+
+判读：**22:54:04 与 22:54:09 两次换会话之间，没有一行「全量加载 N 条消息」** ⇒ 切会话根本没有重载。同期 `errors.log` 零新行（最新仍是 16:08:01 的 SSE 空闲超时与 16:17 那十条 401）—— 用户说的「出错」不是抛异常，而是**界面停在空列表不动**。日志里 `[22:47:08] [FORCE STOP] … iAwareF[SystemManagerSwipeUp]` 即他说的「关闭 APP 重进」。
+
+**根因**（日志、判据、调用方三方对上）：
+
+1. 复用判据最后一条（`app/src/main/java/com/example/zhengdao/oc/OcConnectionPolicy.kt` 的 `shouldReopenConnection`）：`return requested != null && requested != current` —— 语义是「换了会话才重开」。
+2. `app/src/main/java/com/example/zhengdao/oc/OcRepository.kt:128-171` 的 `open()` 在判据返回 false 时只打一行 `ocLog("open 复用现有连接：会话 …（切 Tab / 返回不重连）")` 就 `return` —— **这行日志是「什么都没做」的唯一证据**；正常路径会依次走 `loadAll(id)`（打「全量加载 N 条消息」）→ `startPolling()` → `connectSse()`。
+3. 旧的 `switchSession()` 在调 `open()` **之前**就把 `sessionId = 目标 id` 写进了 state ⇒ `open()` 里 `requested == current` 恒成立 ⇒ 永远走复用分支。`startNewSession()` 走同一条路（`createSession()` → `switchSession()`）。
+
+**为什么潜伏了两个版本**：`git log -L` 显示这段「预置 copy」出自 `f61dd51`（v1.1「会话完整化」）—— **那时 `open()` 还没有复用判据**；复用判据是 v2.0.12（台账 §A #22「重进太极不再重连」）才加的 ⇒ **加判据的人没有回头扫「已有调用方是否自己先写过判据要读的状态」**。全仓 `docs/` 搜过 `switchSession` / 切会话 / 复用现有连接，此前**没有任何一条账记过它**。调用点只有一处：`app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt:340-344` 的抽屉 `onPick`。
+
+**修法**（已落盘）：
+
+- `oc/OcConnectionPolicy.kt` 新增 `internal fun TaijiState.afterSessionSwitchStarted(): TaijiState`：只清残留（`messages` / `parts` / `loadedOnce` / `input` / `isStreaming` / `pendingPermission` / `phase = Loading`），**刻意不动 `sessionId`**。
+- `OcRepository.switchSession()` 改为 `_state.update { it.afterSessionSwitchStarted() }` 后交给 `open()`；目标 id 由 `open()` 自己写 —— **那里是唯一写点**。
+- 回归用例（`app/src/test/java/com/example/zhengdao/oc/OcConnectionPolicyTest.kt`）：`切会话的预置状态只清残留，绝不动 sessionId`、`切会话预置后 + 判据 ⇒ 必须重开（E-123 的真正断点）`（后者附反例：预置写了 id 就会被判成「同会话」，正是旧行为）。
+
+**教训**：
+
+- **加「跳过重活」的判据时，必须回头扫所有调用方有没有先手写那个判据要读的状态** —— 判据本身是对的，错的是调用顺序；这种回归不会红任何既有测试，只会让某个调用点悄悄变成 no-op。
+- **每个 early-return 都要配一句能被人读懂的动作日志**：这次全靠「open 复用现有连接」这一行才把静默故障钉住。
+- **用户说「出错了」而日志里没有 error 时，别急着怀疑用户看错** —— 这里的「错」是**界面停在空列表**，属静默失败，比抛异常更难查；判断口径应是「该出现的日志有没有出现」（本例：没有「全量加载」）。
