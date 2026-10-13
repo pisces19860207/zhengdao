@@ -107,4 +107,38 @@ class AgentCatalogTest {
         File(files, "rootfs/.zhengdao-rootfs-ok").writeText("installed-by=zhengdao", Charsets.UTF_8)
         assertTrue(codexOf(ctx).installed)
     }
+
+    /**
+     * 软链映射回归：guest 里 `~/.local/bin/claude` 是指向 `/root/…` 的**软链**，
+     * 宿主侧 `File.isFile()` 读它是悬空的（目标 `/root/…` 在宿主上不存在）⇒ 会误判「没装」。
+     * 修法是读到软链后把 `/root/` 前缀映射回 `files/home/` 再判一次。
+     *
+     * Windows 上建软链要特权；建不出来就 `assumeTrue` 跳过（Linux CI 会真跑）。
+     */
+    @Test
+    fun `软链映射_guest 的 home 软链按 files_home 再判一次`() {
+        val files = tmp.newFolder()
+        val home = File(files, "home").apply { mkdirs() }
+        File(home, "real-claude").writeText("#!/bin/sh\n", Charsets.UTF_8)
+        val link = File(home, ".local/bin/claude").apply { parentFile!!.mkdirs() }
+        val made = runCatching {
+            java.nio.file.Files.createSymbolicLink(
+                link.toPath(), java.nio.file.Paths.get("/root/real-claude")
+            )
+        }.isSuccess
+        org.junit.Assume.assumeTrue("本机/本用户不允许建软链，跳过", made)
+
+        val ctx = FakeFilesContext(files)
+        assertTrue(existsInHost(ctx, "home/.local/bin/claude"))
+        assertFalse(existsInHost(ctx, "home/.local/bin/not-there"))
+    }
+
+    /** `existsInHost` 是 private —— 用反射调，刻意不为测试放宽生产代码可见性。 */
+    private fun existsInHost(ctx: Context, relative: String): Boolean {
+        val m = AppState::class.java.getDeclaredMethod(
+            "existsInHost", Context::class.java, String::class.java
+        )
+        m.isAccessible = true
+        return m.invoke(AppState, ctx, relative) as Boolean
+    }
 }
