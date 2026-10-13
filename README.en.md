@@ -132,9 +132,9 @@ v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven
 keeping up with upstream, not further restructuring. Remaining items (including known
 performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
 
-The v2.0.18 batch branch (`fix/batch-v2.0.18`) runs **685 unit tests across 84 suites, all green**
+The v2.0.18 batch branch (`fix/batch-v2.0.18`) runs **690 unit tests across 86 suites, all green**
 (2026-10-13: 0 failures, 0 errors, 1 skipped by environment); it was merged back into `main` the
-same day (merge commit `0ab3643`).
+same day (merge commit `2650c68`).
 
 ### Recent releases
 
