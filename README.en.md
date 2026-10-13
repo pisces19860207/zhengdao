@@ -127,19 +127,22 @@ as the app, on the same kernel and network stack, and can read and write any fil
 
 ## Status (2026-10-11)
 
-**Current release: v2.0.15** (`versionCode 31`, 2026-10-11). The feature surface was frozen at
+**Current release: v2.0.17** (`versionCode 33`, 2026-10-11). The feature surface was frozen at
 v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven**: bug fixes and
 keeping up with upstream, not further restructuring. Remaining items (including known
 performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
 
-`main` currently runs **619 unit tests across 68 suites, all green** (2026-10-11: 0 failures,
-0 errors, 1 skipped by environment).
+The v2.0.18 batch branch (`fix/batch-v2.0.18`) currently runs **675 unit tests across 82 suites,
+all green** (2026-10-12: 0 failures, 0 errors, 1 skipped by environment); it merges back into
+`main` with the v2.0.18 release.
 
 ### Recent releases
 
 | Version | Date | In one line |
 |---|---|---|
-| **v2.0.15** (current) | 2026-10-11 | Three fixes from on-device feedback: "clean Agent caches" now runs off the main thread and **counts while deleting** (it used to delete synchronously, so a large cache froze the UI); switching workspaces now **asks first** (copy and switch / switch only), and when the current library is unmounted but another one has files the app offers **one-tap copy**; returning to Settings **re-organises the library automatically** (no detour through the terminal). Also: dragging while selecting text no longer scrolls the terminal, and the "column → valid cursor column" rule is now a single implementation (fixing the zero-width-character case that snapped the handle back a column, pinned by 8 unit tests). |
+| **v2.0.17** (current) | 2026-10-11 | Cache-cleanup policy closed out (E-115): Hermes' own browser tool and `cua-driver` are now **named-keep** items — the tools group has **zero clearable entries** and the cleanup entry is no longer rendered, following the rule set in v2.0.12 (never treat Agent-required packages as optional; that incident was `ffmpeg`). |
+| v2.0.16 | 2026-10-11 | License boundary closed out: every third-party license text now ships inside the APK under `assets/licenses/`, readable offline under About → Open-source licenses; the two "view logs" buttons (keep-alive record / run logs) now open the right destination instead of falling back to Settings; fixed Settings row labels being squeezed vertical by long values (E-111, the trigger for this release). |
+| v2.0.15 | 2026-10-11 | Three fixes from on-device feedback: "clean Agent caches" now runs off the main thread and **counts while deleting** (it used to delete synchronously, so a large cache froze the UI); switching workspaces now **asks first** (copy and switch / switch only), and when the current library is unmounted but another one has files the app offers **one-tap copy**; returning to Settings **re-organises the library automatically** (no detour through the terminal). Also: dragging while selecting text no longer scrolls the terminal, and the "column → valid cursor column" rule is now a single implementation (fixing the zero-width-character case that snapped the handle back a column, pinned by 8 unit tests). |
 | v2.0.14 | 2026-10-11 | Three named UI fixes: first-run permissions went from a series of system dialogs to a single **permissions page** (everything on one screen, grant row by row, remembered as guided); the terminal's long-press "more" menu drops "reload font size" and selected text now goes to the **system default search** instead of a hard-coded Bing URL; Settings' "keep-alive record" card became a **single-row entry plus its own page** (content unchanged). |
 | v2.0.13 | 2026-10-11 | Release builds moved to an **independent release signing key** (E-099; already-installed older builds must be uninstalled once); the terminal title bar was shortened with auto-sizing so it is no longer ellipsised; the v2.0.12 notes gained an "uninstall first" warning and 19 old official releases were cleaned up. |
 | v2.0.12 | 2026-10-11 | The Taiji page's connection now stays alive while the app is open — switching tabs or coming back no longer re-handshakes (also fixes an occasional 401 right after an app update). The UI is unified on an iOS-style skin (tab pills removed, dark terminal chrome, dark key bar — **the 17 key ids and their order are untouched**). Cache cleanup no longer counts Hermes' **required** package `ffmpeg` as optional, the appearance card keeps only line spacing selectable, and the key bar's `⌫` is now **DEL**. Plus ten UI/UX fixes. |
