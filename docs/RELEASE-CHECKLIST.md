@@ -198,16 +198,13 @@
 
 ---
 
-## 怎么把它变成 `/release`（DSH 侧，待用户拍板）
+## 怎么用这份清单
 
-DSH **支持**自定义斜杠命令，但命令由**插件**注册（`ctx.commands.register({ name, description, input, handler })`，
-服务 `@deepseek-ai/dsh-commands`，本机版本 `0.2.0-rc.2`）——**没有**「往某个目录丢一个 md 就出现 /release」的机制。
-两条落地路线（细节与取舍见我每次交付时的说明）：
+**不注册自定义命令。** 每次发版直接说：
 
-1. **做成 DSH 插件**（真正的 `/release`）：插件 handler 读本文件正文并把它作为清单注入当前会话，按阶段推进、每阶段末尾停等确认。
-   安装方式与既有插件一致（profile bundle）：`~\.dsh\profiles\desktop\cordis.patch.yml` 里 `insert` 一行指向插件包，重启 profile 生效。
-2. **兜底**：在 `AGENTS.md` 里加一条硬条款 ——
-   > 发版收尾必须严格按 `docs/RELEASE-CHECKLIST.md` 执行，阶段 0/1/2/4 的「停下来等确认」节点不得跳过。
+> 按 `docs/RELEASE-CHECKLIST.md` 走 `vX.Y.Z` 收尾。
+
+DSH 会读本文件、按阶段执行、每阶段末尾停下来等确认。若将来命令注册机制稳定了再考虑封装成 `/release`，当前不引入插件依赖。
 
 > 本文件由 DSH（蓝总管）于 2026-10-13 建立；内容依据：`app/src/test/java/com/example/zhengdao/ReleaseSigningGateTest.kt`、
 > `.github/workflows/build.yml`、`.github/workflows/ci.yml`、`docs/FEATURE-LEDGER.md` §A #29 / #32 / #46 / #64 / #65 / #66 / #67、
