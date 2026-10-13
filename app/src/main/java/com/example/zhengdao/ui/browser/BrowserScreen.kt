@@ -67,13 +67,7 @@ import com.example.zhengdao.browser.NavigationDelegate
  * WebView onPause/onResize 生命周期精细管理、JS 弹窗 Activity 级对话框。
  */
 @Composable
-fun BrowserScreen(
-    /** 外部打开入口传入的待加载 URL（§4.6：终端链接点击 / 桥分享 / 系统分享共用）。 */
-    pendingUrl: String? = null,
-    /** pendingUrl 消费后回调（防重复加载）。 */
-    onConsumePendingUrl: () -> Unit = {},
-    modifier: Modifier = Modifier,
-) {
+fun BrowserScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val engine = remember { BrowserHolder.obtain(context) }
 
@@ -134,13 +128,12 @@ fun BrowserScreen(
         }
     }
 
-    // 外部打开入口（§4.6）：终端链接点击（阶段 1.5）/ 桥分享（阶段 3）/ 系统分享共用
-    LaunchedEffect(pendingUrl) {
-        val target = pendingUrl?.trim().orEmpty()
-        if (target.isNotEmpty()) {
+    // 外部打开入口（§4.6，2026-10-14 第 ② 刀接线）：终端链接点击把 URL 写进
+    // BrowserHolder；这里组合时一次性消费（阶段 3 的桥分享、系统分享同走此入口）。
+    LaunchedEffect(Unit) {
+        BrowserHolder.consumePendingUrl()?.let { target ->
             urlInput = target
             engine.loadUrl(target)
-            onConsumePendingUrl()
         }
     }
 

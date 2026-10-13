@@ -522,10 +522,20 @@ fun HomeTabs(
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val taijiListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    // 玄览：外部打开入口的待加载 URL（§4.6：终端链接点击 / 桥分享 / 系统分享共用；
-    // 阶段 1.5 由 TerminalActivity 写入，当前先在 MainActivity 内占位）。
-    val browserPendingUrl = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
+    // 玄览：外部打开请求的切 Tab 消费（§4.6，2026-10-14 第 ② 刀接线）。
+    // TerminalActivity 点链接时置请求 + finish() 回主页；这里 ON_RESUME 时切到玄览，
+    // pendingUrl 由 BrowserHolder 持有、BrowserScreen 组合时消费（不经过此层状态）。
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME &&
+                com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
+            ) {
+                tab = 3
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // K2 配套（2026-10-08 审查）：太极消息列表的「是否跟随最新」与「已经定位过哪个会话」
@@ -701,12 +711,9 @@ fun HomeTabs(
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
                 1 -> TerminalTabEmptyState(onOpenTerminal = { onOpenTerminal(null, null) })
                 // 玄览：浏览器（用户模式 MVP，阶段 1）。WebView 实例由 BrowserHolder
-                // 跨 Tab 保活；pendingUrl 是外部打开入口（§4.6：终端链接点击（阶段 1.5）/
-                // 桥分享（阶段 3）共用，当前先在 MainActivity 内占位）。
-                3 -> com.example.zhengdao.ui.browser.BrowserScreen(
-                    pendingUrl = browserPendingUrl.value,
-                    onConsumePendingUrl = { browserPendingUrl.value = null },
-                )
+                // 跨 Tab 保活；外部打开入口（终端链接点击等）走 BrowserHolder.pendingUrl
+                // + 上面 ON_RESUME 的切 Tab 消费（§4.6，第 ② 刀接线）。
+                3 -> com.example.zhengdao.ui.browser.BrowserScreen()
                 else -> {}
             }
         }

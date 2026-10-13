@@ -26,9 +26,12 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
+import com.example.zhengdao.ui.browser.BrowserHolder
 import com.example.zhengdao.terminal.KnowledgeBaseHints
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
+import com.example.zhengdao.terminal.TerminalLinkPolicy
+import com.example.zhengdao.terminal.TerminalLinkScanner
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.terminal.TerminalPasteWriter
 import com.example.zhengdao.terminal.SessionService
@@ -832,11 +835,70 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         return scale
     }
     override fun onSingleTapUp(e: android.view.MotionEvent) {
+        // 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：B 路径——非 OSC 8 的裸 URL 文本。
+        // OSC 8 链接已在手势层命中并短路（TerminalGestureController.onSingleTapUp 调
+        // onLinkOpen 返回 true 就不来这里），走到这里说明该格无 OSC 8 链接；
+        // 再扫所在行找覆盖该列的 URL，命中走同一套策略 + 打开链。
+        val bareUrl = findBareUrlAt(e)
+        if (bareUrl != null) {
+            onLinkOpen(bareUrl)
+            return
+        }
         // 点击终端即弹软键盘（TerminalView 不是 EditText，不会自动弹）
         termView.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE)
             as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(termView, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    /**
+     * OSC 8 链接 / B 路径 URL 的统一打开策略（证道 2026-10-14，§B-12）。
+     *
+     * 落点（派工单）：解析结果走 TerminalLinkPolicy，**打开交玄览的 B 路径**——
+     * App 内打开不新开 Activity：写 BrowserHolder.pendingUrl + 请求主页切 Tab + finish()
+     * 回主页，由 MainActivity ON_RESUME 消费切 Tab 请求落到玄览。
+     */
+    override fun onLinkOpen(uri: String): Boolean {
+        return when (TerminalLinkPolicy.classify(uri)) {
+            TerminalLinkPolicy.Verdict.OPEN_IN_APP -> {
+                BrowserHolder.pendingUrl = uri
+                BrowserHolder.requestBrowserTab()
+                finish() // 回主页（主页 ON_RESUME 消费切 Tab 请求）
+                true
+            }
+            TerminalLinkPolicy.Verdict.OPEN_SYSTEM -> {
+                val ok = runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)))
+                }.isSuccess
+                if (!ok) {
+                    Toast.makeText(this, getString(R.string.term_browser_failed, ""), Toast.LENGTH_SHORT).show()
+                }
+                true
+            }
+            TerminalLinkPolicy.Verdict.REJECT -> {
+                Toast.makeText(this, getString(R.string.term_link_blocked), Toast.LENGTH_SHORT).show()
+                true
+            }
+            TerminalLinkPolicy.Verdict.CONFIRM -> {
+                // 一期不产生该判定（needsConfirm 恒 false，"已知域名簿"留二期）——
+                // 真出现时按最严处理：不打开。
+                Toast.makeText(this, getString(R.string.term_link_blocked), Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+    }
+
+    /** B 路径：tap 列所在行的裸 URL 命中（OSC 8 未覆盖时）。 */
+    private fun findBareUrlAt(e: android.view.MotionEvent): String? {
+        val em = SessionManager.session?.emulator ?: return null
+        val colRow = termView.getColumnAndRow(e, false) ?: return null
+        val col = colRow[0]
+        val row = colRow[1]
+        val screen = em.screen
+        val line = screen.allocateFullLineIfNecessary(screen.externalToInternalRow(row))
+        val text = String(line.mText, 0, line.spaceUsed)
+        val charIndex = line.findStartOfColumn(col)
+        return TerminalLinkScanner.findLinkCovering(text, charIndex)
     }
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
     override fun shouldEnforceCharBasedInput(): Boolean = true  // 中文 IME 组合输入需要

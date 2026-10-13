@@ -93,6 +93,16 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
             mView.stopTextSelectionMode();
             return true;
         }
+        // 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 链接命中 →
+        // 交客户端打开（落点是 App 内玄览，不新开 Activity）；客户端返回 true = 已处理，
+        // 该次 tap 不再当普通点击（不进焦点逻辑）。未命中/未处理则走原有路径。
+        int[] colRow = mView.getColumnAndRow(event, false);
+        if (colRow != null) {
+            String uri = mView.mEmulator.getScreen().getLinkAt(colRow[1], colRow[0]);
+            if (uri != null && mView.mClient.onLinkOpen(uri)) {
+                return true;
+            }
+        }
         mView.requestFocus();
         mView.mClient.onSingleTapUp(event);
         return true;

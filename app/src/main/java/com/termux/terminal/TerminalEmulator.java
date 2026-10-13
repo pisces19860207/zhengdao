@@ -186,6 +186,11 @@ public final class TerminalEmulator {
     final TerminalBuffer mAltBuffer;
     /** The current screen buffer, pointing at either {@link #mMainBuffer} or {@link #mAltBuffer}. */
     private TerminalBuffer mScreen;
+    // 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 超链接——打开中的链接。
+    // 行号记 buffer 内部位置（行对象物理索引），滚动不漂移；落点见 TerminalBuffer.setLink。
+    private String mOpenLinkUri = null;
+    private int mLinkStartRow = -1;
+    private int mLinkStartCol = -1;
 
     /** The terminal session this emulator is bound to. */
     private final TerminalOutput mSession;
@@ -2058,6 +2063,32 @@ public final class TerminalEmulator {
         }
     }
 
+    /**
+     * 证道追加（2026-10-14，§B-12）：OSC 8 超链接开关。
+     *
+     * textParameter 已由 tokenizer 去掉开头的 "8;"，形如 "params;URI"（开）或 ";"（闭）。
+     * 区间按 [起点, 当前光标) 登记到行（可跨行——折行长 URI 由 TerminalBuffer.setLink 分段灌）。
+     * 程序忘发关闭序列时，下一条开链接会先把上一条落掉（防御）。
+     */
+    private void handleOsc8Hyperlink(String textParameter) {
+        int sep = textParameter.indexOf(';');
+        String uri = (sep < 0) ? "" : textParameter.substring(sep + 1);
+        if (mOpenLinkUri != null) {
+            // 先落掉上一条（闭链接，或忘闭时的防御性落点 = 当前光标处）
+            mScreen.setLink(mLinkStartRow, mLinkStartCol,
+                mScreen.externalToInternalRow(mCursorRow), mCursorCol, mOpenLinkUri);
+        }
+        if (!uri.isEmpty()) {
+            mOpenLinkUri = uri;
+            mLinkStartRow = mScreen.externalToInternalRow(mCursorRow);
+            mLinkStartCol = mCursorCol;
+        } else {
+            mOpenLinkUri = null;
+            mLinkStartRow = -1;
+            mLinkStartCol = -1;
+        }
+    }
+
     /** An Operating System Controls (OSC) Set Text Parameters. May come here from BEL or ST. */
     private void doOscSetTextParameters(String bellOrStringTerminator) {
         if (mOscArgsDropped) {
@@ -2084,6 +2115,12 @@ public final class TerminalEmulator {
         }
 
         switch (value) {
+            case 8:
+                // 证道追加（2026-10-14，§B-12）：OSC 8 hyperlink。
+                // 开：ESC ] 8 ; params ; URI ST（URI 非空）／闭：ESC ] 8 ; ; ST（URI 空）。
+                // 上游整段丢弃 OSC 8，agent 打出的链接只能手抄；本刀补解析 + 行区间登记。
+                handleOsc8Hyperlink(textParameter);
+                break;
             case 0: // Change icon name and window title to T.
             case 1: // Change icon name to T.
             case 2: // Change window title to T.
@@ -2659,6 +2696,11 @@ public final class TerminalEmulator {
         mBottomMargin = mRows;
         mRightMargin = mColumns;
         mAboutToAutoWrap = false;
+        // 证道追加（2026-10-14，§B-12）：reset 要清掉打开中的 OSC 8 链接态，
+        // 否则 reset 后第一条关闭序列会把区间标到错误位置。
+        mOpenLinkUri = null;
+        mLinkStartRow = -1;
+        mLinkStartCol = -1;
         mForeColor = mSavedStateMain.mSavedForeColor = mSavedStateAlt.mSavedForeColor = TextStyle.COLOR_INDEX_FOREGROUND;
         mBackColor = mSavedStateMain.mSavedBackColor = mSavedStateAlt.mSavedBackColor = TextStyle.COLOR_INDEX_BACKGROUND;
         setDefaultTabStops();
