@@ -67,6 +67,14 @@ jobs:
       - name: 编译 Debug APK（含 .so 打包验证）
         run: ./gradlew :app:assembleDebug --console=plain
 
+      # E-105 的门禁：那次实测发现 AGP 打包**会剥掉构件顶层的 META-INF/LICENSE* / NOTICE***
+      #   （commons-compress 有 LICENSE.txt/NOTICE.txt 却一个都没进 APK，zstd-jni 的 .so 进了
+      #   包而它的 BSD-2 正文没进），所以「随构件分发」不能当承诺 —— 义务只能由我们自己随包
+      #   放进 assets/licenses/。这一步把它变成会红的断言：仓库 licenses/ 里的每份正文都要在
+      #   APK 里逐字节存在，并对 zstd 原生产物、okhttp 的 publicsuffixes.gz 这两处单独核。
+      - name: 许可证正文门禁（APK assets/licenses/ 与仓库逐字节一致）
+        run: python3 tools/check-licenses.py
+
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
@@ -127,7 +135,10 @@ jobs:
       #    ⇒ 这里只在 PR 与手动触发时跑，省下 2 分钟；PR 上仍保留"R8 能不能编"的快反馈。
       - name: R8 冒烟（release 可构建——验证混淆/资源收缩不炸）
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-        run: ./gradlew :app:assembleRelease --console=plain
+        # 只验「混淆 + 资源收缩会不会炸」，产物**不发布**，所以放行 build.gradle.kts 里那道
+        # 「没有发版钥匙就不许打 release 包」的断言（CI 的发布路径由 build.yml 把关：还原正式
+        # 钥匙时对指纹 + assembleRelease 之后 apksigner 验产物）。
+        run: ./gradlew :app:assembleRelease --console=plain -PallowDebugSignedRelease
 
       # E-072：R8 究竟把哪个类/方法改了名，唯一的地面真值是构建产物 mapping.txt —— 单测和
       #   .so 门禁都够不到它。这一步把"关键类未被改名 + onProgress 保住"变成会红的断言
