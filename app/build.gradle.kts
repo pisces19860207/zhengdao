@@ -189,6 +189,17 @@ plugins {
 //      直接失败（见下方发版签名断言）；CI 增加许可证正文门禁 `tools/check-licenses.py`
 //      （E-105 实测过 AGP 会剥掉构件里的 `META-INF/LICENSE*`，所以「随构件分发」不能当承诺）。
 //    仍无破坏性改动，故进 patch 级。
+// ⚠️ 2.1.1（2026-10-13）：patch 级 —— 修 **E-123「太极页切到历史会话后页面不重载」**。
+//    现象（用户 2026-10-13 真机报障，逐字：「我刚刚在太极页切换会话的时候就有个出错，然后关闭 APP
+//    重进了才没问题的。是那种切换回旧聊天会话的时候」）：切会话后页面停在空列表、看着像卡死/出错，
+//    杀进程重进才恢复。根因：`OcRepository.switchSession()` 先把 `sessionId` 预置成目标 id，再去调
+//    `open()`；而 `open()` 的连接复用判据（v2.0.12 / §A #22 引入）看到 `requested == current` 就
+//    整段 `return`（只打「open 复用现有连接」，不 `loadAll`、不重建轮询与 SSE）⇒ 换会话等于没换。
+//    修法：把「清残留状态」抽成 `TaijiState.afterSessionSwitchStarted()`，**刻意不动 sessionId**，
+//    让判据照旧判「换会话」；`switchSession()` 只负责清状态 + 调 `open()`。两条 JVM 回归用例钉住
+//    （`OcConnectionPolicyTest`：「预置状态绝不动 sessionId」「预置后 + 判据 ⇒ 必须重开」）。
+//    另附一处顺带澄清：`startNewSession()` 走同一条路，一并修好。
+//    无破坏性改动：与 v2.0.13~v2.1.0 同一把发布钥匙，**直接覆盖安装、数据全在**。
 // ⚠️ 2.1.0（2026-10-13）：本版是**新功能面**，故进 minor 级（2.0.x 那几版都走 patch 级）。
 //    ①Agents 页新增 **Codex CLI 卡**：npm 全局安装 `@openai/codex`，启动命令 `codex --no-daemon`
 //      （`--no-daemon` 必须是**顶层**标志，写到子命令后面 Codex 会报未知参数 —— §A #69 的坑一）；
@@ -203,7 +214,7 @@ plugins {
 //      （OkHttp 原生 `Authenticator`，最多重试一次、SSE 不碰）；密码解析改为「收集候选口令
 //      （最多 3 个、新→旧）+ `GET /api/session` 探针定案」，不再只看日志最后一行。
 //    三处都无破坏性改动：与 v2.0.13~v2.0.18 同一把发布钥匙，**直接覆盖安装、数据全在**。
-val appVersionName = "2.1.0"
+val appVersionName = "2.1.1"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -260,7 +271,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 35
+        versionCode = 36
         versionName = appVersionName
 
         ndk {
