@@ -1156,6 +1156,7 @@ private fun StatusNote(text: String, tone: Color) {
 private val wipeTargets: Map<String, List<String>> = mapOf(
     "claude-code" to listOf("~/.claude"),
     "hermes" to listOf("~/.hermes"),
+    "codex" to listOf("~/.codex"),
 )
 
 /** 依据 manifest 的 uninstall 命令估算 Agent 程序体积：解析其中 rm -rf 的目标路径，
