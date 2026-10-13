@@ -189,7 +189,21 @@ plugins {
 //      直接失败（见下方发版签名断言）；CI 增加许可证正文门禁 `tools/check-licenses.py`
 //      （E-105 实测过 AGP 会剥掉构件里的 `META-INF/LICENSE*`，所以「随构件分发」不能当承诺）。
 //    仍无破坏性改动，故进 patch 级。
-val appVersionName = "2.0.18"
+// ⚠️ 2.1.0（2026-10-13）：本版是**新功能面**，故进 minor 级（2.0.x 那几版都走 patch 级）。
+//    ①Agents 页新增 **Codex CLI 卡**：npm 全局安装 `@openai/codex`，启动命令 `codex --no-daemon`
+//      （`--no-daemon` 必须是**顶层**标志，写到子命令后面 Codex 会报未知参数 —— §A #69 的坑一）；
+//      这张卡只做安装 / 启动 / 卸载三件事，**不预置** `~/.codex/config.toml`、**不预置**
+//      `models.json`、App 内**不收**密钥（用户 2026-10-13 拍板：国外用户走官方登录；
+//      想换基底——比如 DeepSeek——的人自己在 guest 里配，卸载时 `~/.codex` 保留）。
+//    ②终端 **WakeLock 空闲策略**：保活锁不再跟「会话存不存在」走，改为跟「终端有没有活动」走 ——
+//      每 30s 汇总本 UID 全部进程的 CPU jiffies，连续 20 轮（10 分钟）单轮 < 2 jiffy 且累计
+//      < 15 jiffy 才释放；释放期间活动回来立即重取；通知文案两态（会话运行中 ⇄ 空闲休眠）。
+//      判据一律偏保守：**宁可多持锁，不误判为空闲**（用户逐字）。
+//    ③太极 **401 自治愈**（E-093 的另一半）：收到 401 就用**重新解析到**的 serve 密码重试一次
+//      （OkHttp 原生 `Authenticator`，最多重试一次、SSE 不碰）；密码解析改为「收集候选口令
+//      （最多 3 个、新→旧）+ `GET /api/session` 探针定案」，不再只看日志最后一行。
+//    三处都无破坏性改动：与 v2.0.13~v2.0.18 同一把发布钥匙，**直接覆盖安装、数据全在**。
+val appVersionName = "2.1.0"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -246,7 +260,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 34
+        versionCode = 35
         versionName = appVersionName
 
         ndk {
