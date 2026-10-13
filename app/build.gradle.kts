@@ -167,7 +167,29 @@ plugins {
 //    ① 进终端不再自动重放上次 Agent 的启动命令（ERRATA E-113）；② 首页体检「Hermes 依赖环境」
 //      红叉误报修掉（E-114）；③ hermes 自己装的扩展——浏览器工具 agent-browser/chromium 与桌面
 //      自动化 cua-driver——一律保留、不给任何清理入口（E-115）。三条都是修正既有行为，仍 patch 级。
-val appVersionName = "2.0.17"
+//    2.0.18（2026-10-13，前端线与「扫 bug / 死代码」两批合并后收口）：
+//    ①界面双语化 + 深色主题（另一会话产出，蓝总管本机验收后合并）：全部用户可见文案进
+//      `res/values-en/`（743 键与中文一一对应、占位符零差异）＋ `res/xml/locales_config.xml`
+//      ＋ manifest `localeConfig`；设置页「外观」可切跟随系统 / 浅色 / 深色；体检改并行流式
+//      上屏（TCP 探测 1.2s→0.6s）、首页 Toast→Snackbar、「上次值」缓存接住数字位点；顺带
+//      修掉 3 处「按中文文案判分支」——切英文后必然失效的真 bug。终端页标题
+//      「证道 - Debian 13.7」按用户点名豁免、不翻。
+//    ②明文放行收窄（审计）：`usesCleartextTraffic="true"` → `network_security_config`
+//      白名单，只放行回环。曾把 `deb.debian.org` 也加进去，后**撤掉**：明文策略只在平台
+//      网络栈生效（AOSP NetworkSecurityPolicy），不拦 bionic 的 `connect()`，guest 里的
+//      apt 是 glibc + GnuTLS 原生程序 ⇒ 与 NSC 无关（真机实测 `apt-get update` 照常）。
+//    ③E-097 收口（用户拍板「随包分发」）：镜像构建时把 348 个 Debian 包的 `copyright` 收成
+//      `/usr/share/zhengdao-copyright.tar.zst`（4.78 MiB → 0.49 MiB；份数 < 300 即 `exit 1`），
+//      并作为独立资产随 Release 分发（v2.0.13~v2.0.17 的旧镜像已回补挂上）。
+//    ④「扫 bug 与死代码」一批（审计）：安装锁罩住会话启动（`withPrepareLock`）、备份规则由
+//      AGP 空模板改成逐条 exclude、serve 停服判据收窄到 `/oc/usr/bin/opencode`、
+//      `BackgroundOnly` 把「别在主线程量内存」变成会抛的断言、越界判据统一到 `PathGuard`、
+//      硬件退格在粘滞 Ctrl 下也镜像行缓冲（`HardwareKeyBufferGuardTest` 钉住）、删 3 个零引用类型。
+//    ⑤本版新增两道「不许静默退化」的关卡：本地打 release 包若没设 `ZHENGDAO_KEYSTORE_FILE`
+//      直接失败（见下方发版签名断言）；CI 增加许可证正文门禁 `tools/check-licenses.py`
+//      （E-105 实测过 AGP 会剥掉构件里的 `META-INF/LICENSE*`，所以「随构件分发」不能当承诺）。
+//    仍无破坏性改动，故进 patch 级。
+val appVersionName = "2.0.18"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -178,6 +200,30 @@ val appVersionName = "2.0.17"
 // 因此：CI 里设 ZHENGDAO_KEYSTORE_FILE=<keystore 绝对路径>，这里把 AGP 内建「debug」签名配置的
 //   storeFile 直接钉到该路径。本地不设这个变量 ⇒ 行为与从前一字不差（仍用 ~/.android/debug.keystore）。
 val zdKeystorePath: String? = System.getenv("ZHENGDAO_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+
+// ── 发版签名断言（2026-10-13）──────────────────────────────────────────────────
+// 为什么需要：release 变体用的是 AGP 内建「debug」签名配置（见下面 buildTypes 里的说明），
+//   本机没设 ZHENGDAO_KEYSTORE_FILE 时它会**静默回退**到 `~/.android/debug.keystore` ——
+//   打出来的「正式包」与存量用户机上那把签名不一致，用户只能卸载重装（卸载会清掉 App 私有
+//   目录 = 整个 Debian 环境重下，E-014 / E-099 的旧伤）。CI 侧本来就有两道关卡（build.yml
+//   还原钥匙时对指纹、assembleRelease 之后 apksigner 验产物），唯独「在本机打正式包」这条路
+//   没有任何提示，所以补这一道**配置期**断言：要跑 release 任务而钥匙没设 ⇒ 直接失败。
+// 只对名字里带 Release 的任务生效 ⇒ debug 包、单测、Lint、IDE 同步都不受影响。
+// CI 的 R8 冒烟（.github/workflows/ci.yml）不带这个变量、产物也刻意不发布，故显式传
+//   -PallowDebugSignedRelease 放行（它只验「混淆与资源收缩会不会炸」）。
+val releaseTaskNames = gradle.startParameter.taskNames.filter { it.contains("Release") }
+if (releaseTaskNames.isNotEmpty() && zdKeystorePath == null &&
+    !project.hasProperty("allowDebugSignedRelease")
+) {
+    throw GradleException(
+        "拒绝在没有发版钥匙的情况下打正式包：本次任务 ${releaseTaskNames.joinToString(" ")}，" +
+            "但环境变量 ZHENGDAO_KEYSTORE_FILE 未设置 ⇒ 产物会用 ~/.android/debug.keystore 签，" +
+            "存量用户无法覆盖安装、只能卸载重装（详见 docs/ERRATA.md E-014 / E-099）。" +
+            "请先设置 ZHENGDAO_KEYSTORE_FILE / ZHENGDAO_KEY_ALIAS / ZHENGDAO_KEYSTORE_PASSWORD / " +
+            "ZHENGDAO_KEY_PASSWORD；确实只想验证混淆与资源收缩（产物不发布）时，加 " +
+            "-PallowDebugSignedRelease 放行。"
+    )
+}
 
 android {
     namespace = "com.example.zhengdao"
@@ -200,7 +246,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 33
+        versionCode = 34
         versionName = appVersionName
 
         ndk {

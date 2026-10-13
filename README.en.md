@@ -125,22 +125,23 @@ as the app, on the same kernel and network stack, and can read and write any fil
 *tampered distribution*, not against *code you execute inside the terminal yourself*. See
 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md) §10 (Chinese).
 
-## Status (2026-10-11)
+## Status (2026-10-13)
 
-**Current release: v2.0.17** (`versionCode 33`, 2026-10-11). The feature surface was frozen at
+**Current release: v2.0.18** (`versionCode 34`, 2026-10-13). The feature surface was frozen at
 v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven**: bug fixes and
 keeping up with upstream, not further restructuring. Remaining items (including known
 performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
 
-The v2.0.18 batch branch (`fix/batch-v2.0.18`) currently runs **675 unit tests across 82 suites,
-all green** (2026-10-12: 0 failures, 0 errors, 1 skipped by environment); it merges back into
-`main` with the v2.0.18 release.
+The v2.0.18 batch branch (`fix/batch-v2.0.18`) runs **685 unit tests across 84 suites, all green**
+(2026-10-13: 0 failures, 0 errors, 1 skipped by environment); it was merged back into `main` the
+same day (merge commit `0ab3643`).
 
 ### Recent releases
 
 | Version | Date | In one line |
 |---|---|---|
-| **v2.0.17** (current) | 2026-10-11 | Cache-cleanup policy closed out (E-115): Hermes' own browser tool and `cua-driver` are now **named-keep** items — the tools group has **zero clearable entries** and the cleanup entry is no longer rendered, following the rule set in v2.0.12 (never treat Agent-required packages as optional; that incident was `ffmpeg`). |
+| **v2.0.18** (current) | 2026-10-13 | English UI plus a dark theme (743 strings localised end to end, Appearance can follow the system or pin light/dark, the environment check now streams results in parallel); cleartext traffic narrowed from a global switch to a `network_security_config` that allows loopback only; E-097 closed out — the copyright texts of all 348 Debian packages now ship with the image (a `zstd` archive inside the rootfs, also published as a standalone Release asset); a "bugs and dead code" sweep (install lock now covers session startup, backup rules exclude path by path, the serve-stop matcher was narrowed, a main-thread assertion, one shared path-containment rule, backspace still mirrors the line buffer under sticky Ctrl); two new gates — building a release locally without the signing key now fails, and CI verifies the licence texts byte-for-byte. |
+| v2.0.17 | 2026-10-11 | Cache-cleanup policy closed out (E-115): Hermes' own browser tool and `cua-driver` are now **named-keep** items — the tools group has **zero clearable entries** and the cleanup entry is no longer rendered, following the rule set in v2.0.12 (never treat Agent-required packages as optional; that incident was `ffmpeg`). |
 | v2.0.16 | 2026-10-11 | License boundary closed out: every third-party license text now ships inside the APK under `assets/licenses/`, readable offline under About → Open-source licenses; the two "view logs" buttons (keep-alive record / run logs) now open the right destination instead of falling back to Settings; fixed Settings row labels being squeezed vertical by long values (E-111, the trigger for this release). |
 | v2.0.15 | 2026-10-11 | Three fixes from on-device feedback: "clean Agent caches" now runs off the main thread and **counts while deleting** (it used to delete synchronously, so a large cache froze the UI); switching workspaces now **asks first** (copy and switch / switch only), and when the current library is unmounted but another one has files the app offers **one-tap copy**; returning to Settings **re-organises the library automatically** (no detour through the terminal). Also: dragging while selecting text no longer scrolls the terminal, and the "column → valid cursor column" rule is now a single implementation (fixing the zero-width-character case that snapped the handle back a column, pinned by 8 unit tests). |
 | v2.0.14 | 2026-10-11 | Three named UI fixes: first-run permissions went from a series of system dialogs to a single **permissions page** (everything on one screen, grant row by row, remembered as guided); the terminal's long-press "more" menu drops "reload font size" and selected text now goes to the **system default search** instead of a hard-coded Bing URL; Settings' "keep-alive record" card became a **single-row entry plus its own page** (content unchanged). |
