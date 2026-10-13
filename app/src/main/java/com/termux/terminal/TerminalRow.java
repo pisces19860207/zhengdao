@@ -115,7 +115,12 @@ public final class TerminalRow {
 
     /** Note that the column may end of second half of wide character. */
     public int findStartOfColumn(int column) {
-        if (column == mColumns) return getSpaceUsed();
+        // 证道修复（2026-10-14，§B-补-49 🟡9）：column == mColumns 改 >=。
+        // 上游只拦"恰好等于列数"，但调用方 TerminalBuffer.getSelectedText() 的
+        // `x2Index == x1Index` 分支会传 mColumns + 1（x2 已被夹到 mColumns 再 +1）
+        // ⇒ 越界列号进主循环：扩容区是 \0、WcWidth.width(0)==0 列号不推进，
+        // 读到数组尾 ArrayIndexOutOfBoundsException（主线程 Handler 冒顶）。
+        if (column >= mColumns) return getSpaceUsed();
 
         int currentColumn = 0;
         int currentCharIndex = 0;
