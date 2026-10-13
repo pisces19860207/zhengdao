@@ -471,6 +471,29 @@ fi
 if [ -n "$TAR_OUT" ]; then echo "$TAR_OUT"; fi
 sha256sum "$OUT_DIR/$ASSET" | awk '{print $1}' > "$OUT_DIR/$ASSET.sha256"
 
+# ── 版权归档也导出一份独立资产（2026-10-13 补，E-097 的「补挂 Release」）────────────
+# §2.10 已经把逐包 copyright 收成 $ROOTFS_DIR/usr/share/zhengdao-copyright.tar.zst，但它只在
+# **镜像内部**：谁要查证版权，就得先下完 200 MB 的整包。而 2026-10-12 之前构建、已经发出去的
+# 镜像（v2.0.13 ~ v2.0.17 用的都是同一份 digest d80639e7…）**根本不含它** —— 那些版本的用户
+# 手上没有任何版权文本，只能走外部三条途径（THIRD-PARTY-LICENSES.md §7）。所以把它再落一份到
+# 输出目录，让 CI 当独立资产发出去：
+#   · build.yml 的「发布 RootFS 包到 Releases」是 `gh release upload latest rootfs-files/*`，
+#     凡落在 $OUT_DIR 的都会被带上滚动版 latest；
+#   · tag 的「补挂该版本的 RootFS 资产」按 glob `debian-*.tar.zst` 与 `debian-*.tar.zst.sha256`
+#     搬运，本文件名正好命中这两个通配符 ⇒ 每个正式 Release 自动带上它，不需要改 build.yml；
+#   · 边车沿用本项目既有约定：**只有 64 位摘要、不带文件名**（见 build.yml 里那段解释，
+#     `sha256sum -c` 读不了这种裸摘要）。
+# 镜像内那份**照旧保留**（离线可查、不依赖网络）；这里只是多一个不依赖整包的分发口。
+ASSET_DOC="debian-${DEBIAN_VERSION}-copyright.tar.zst"
+if [ -f "$ROOTFS_DIR/usr/share/zhengdao-copyright.tar.zst" ]; then
+  cp -f "$ROOTFS_DIR/usr/share/zhengdao-copyright.tar.zst" "$OUT_DIR/$ASSET_DOC"
+  sha256sum "$OUT_DIR/$ASSET_DOC" | awk '{print $1}' > "$OUT_DIR/$ASSET_DOC.sha256"
+  echo "[zhengdao] 版权归档已导出为独立资产：$ASSET_DOC（$(stat -c%s "$OUT_DIR/$ASSET_DOC") 字节）"
+else
+  annot "[断言失败] 镜像里找不到 /usr/share/zhengdao-copyright.tar.zst —— §2.10 的版权归档没做成，拒发（E-097）"
+  exit 1
+fi
+
 # 包体积门禁（2026-10-08 新增）：防"某个预装包又把大依赖整棵拖回来"而无人发现。
 # 基线：zstd-19 全量 ≈ 245.7MB（门禁留到 280MB）；若将来执行方案 B1（剔 ffmpeg 闭包）应降到 ≈158MB。
 PKG_MB=$(( $(stat -c%s "$OUT_DIR/$ASSET") / 1000000 ))
