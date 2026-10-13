@@ -48,4 +48,19 @@ interface BrowserEngine {
      * 注意：本方法属"硬红线区"——agent 无权触发（§4.3 二分区表），仅 App 自身启动时应用一次。
      */
     fun applySecurityConfig(config: EngineSecurityConfig)
+
+    // ── 历史栈导航（阶段 1 补：§4.2 用户模式"导航按钮 + WebBackForwardList 历史栈"；
+    //    骨架初版漏了这四个方法，填肉时按 §4.2 需求补上，属接口完善非破坏变更）──
+
+    /** 后退（无历史时 no-op）。 */
+    fun goBack()
+
+    /** 前进。 */
+    fun goForward()
+
+    /** 是否可后退（UI 按钮 enable 用）。 */
+    fun canGoBack(): Boolean
+
+    /** 是否可前进。 */
+    fun canGoForward(): Boolean
 }

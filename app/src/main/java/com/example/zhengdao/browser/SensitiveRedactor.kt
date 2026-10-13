@@ -29,22 +29,38 @@ class SensitiveRedactor(
     /** 脱敏纯文本（快照文本 / console / execJS 返回值）。检测到的 PII 一律替换为 [MASK]。 */
     fun redactText(input: String): String {
         if (!enabled || input.isEmpty()) return input
-        // TODO(阶段1)：PHONE / BANK_CARD / PASSWORD_KV / ID_CARD 等模式逐项替换为 MASK
-        return input
+        // 顺序：先密码键值（整段，避免值里的数字被后续号码规则部分匹配），再号码。
+        // ID_CARD 必须早于 BANK_CARD：否则身份证的 17 位数字部分被卡号规则先吃、漏个 X（"***X"）。
+        // 全部命中一律 MASK——宁可误报（长数字串被当卡号）不漏报（隐私优先，用户定调 ②）。
+        var out = PASSWORD_KV.replace(input) { m -> m.groupValues[1] + "=" + MASK }
+        out = PHONE.replace(out, MASK)
+        out = ID_CARD.replace(out, MASK)
+        out = BANK_CARD.replace(out, MASK)
+        return out
     }
 
-    /** 脱敏 DOM 快照（input[type=password] 的 value、token 样式内容等）。 */
+    /**
+     * password 类输入框的 value 属性（DOM 快照用）。
+     * TODO(阶段3)：接桥时换完整 DOM 解析（jsoup 或 WebMessagePort 侧结构化处理），
+     * 正则只能覆盖规整写法；本版 + redactText 兜底已可挡常见形态。
+     */
+    private val PASSWORD_INPUT = Regex(
+        """(?i)(<input\b[^>]*\btype\s*=\s*["']?password["']?[^>]*?\bvalue\s*=\s*["'])([^"']*)(["'])"""
+    )
+
+    /** 脱敏 DOM 快照：password input 值置 MASK，其余文本再过 [redactText] 兜底。 */
     fun redactDom(html: String): String {
         if (!enabled || html.isEmpty()) return html
-        // TODO(阶段1)：解析 DOM，password 类输入框值置 MASK；attribute 里的 token 置 MASK
-        return html
+        val maskedInputs = PASSWORD_INPUT.replace(html) { m ->
+            m.groupValues[1] + MASK + m.groupValues[3]
+        }
+        return redactText(maskedInputs)
     }
 
-    /** 脱敏 cookie / localStorage 读取结果（键值对形式，§4.5 snapshot 边界）。 */
+    /** 敏感键的值置 MASK（cookie/localStorage 键值对，§4.5 snapshot 边界）。 */
     fun redactKeyValues(kvs: String): String {
         if (!enabled || kvs.isEmpty()) return kvs
-        // TODO(阶段1)：session/token/auth/cookie 类键的值置 MASK
-        return kvs
+        return SENSITIVE_KEY.replace(kvs) { m -> m.groupValues[1] + "=" + MASK }
     }
 
     companion object {
@@ -63,5 +79,14 @@ class SensitiveRedactor(
 
         /** 身份证号（18 位，末位可 X）。 */
         val ID_CARD = Regex("""(?<![0-9Xx])\d{17}[\dXx](?![0-9Xx])""")
+
+        /**
+         * 敏感键的值置 MASK（cookie/localStorage/session）：命中则值置 MASK，完整键名保留。
+         * 键名后允许 [\w-]* 后缀（sessionid / csrf_token / api-key 都算）。
+         * 已知误报（可接受，隐私优先）：author= 也会被当敏感键打码。
+         */
+        val SENSITIVE_KEY = Regex(
+            """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|passwd|password)[\w-]*)["']?\s*[:=]\s*["']?[^\s"',;}]+"""
+        )
     }
 }

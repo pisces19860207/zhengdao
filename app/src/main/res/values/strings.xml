@@ -41,9 +41,12 @@
     <string name="common_mb">%1$d MB</string>
 
     <!-- ── 底部导航 ── -->
-    <string name="nav_taiji">太极</string>
-    <string name="nav_terminal">终端</string>
-    <string name="nav_agents">丹房</string>
+    <!-- 2026-10-14 派工单：前三 Tab 同步改名为四祝福定稿（抱朴真实/逍遥自由/怡然幸福/玄览期望）。
+         改的只是 Tab 名；各处"终端里…"类功能指代文案不在改名范围（终端=功能，逍遥=Tab 名）。 -->
+    <string name="nav_taiji">抱朴</string>
+    <string name="nav_terminal">逍遥</string>
+    <string name="nav_agents">怡然</string>
+    <string name="nav_browser">玄览</string>
 
     <!-- ── 设置 Hub：分组 ── -->
     <string name="settings_group_env">环境</string>
@@ -354,7 +357,7 @@
     <string name="help_guide_title">新手指南</string>
     <string name="help_guide_1">主页点「安装运行环境」装好 Debian 环境；再给想用的 Agent 点「安装」。</string>
     <string name="help_guide_2">在每个 Agent 里完成它自己的登录（密码由它自己保管），之后直接就能用。</string>
-    <string name="help_guide_3">进底部「终端」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「太极」，开箱即用；你在终端里另外装的 opencode 是另一份，两者互不干扰。</string>
+    <string name="help_guide_3">进底部「逍遥」，直接输入 agent 命令使用（claude / hermes / agy）。OpenCode 已内置在「抱朴」，开箱即用；你在终端里另外装的 opencode 是另一份，两者互不干扰。</string>
     <string name="help_faq_title">常见问题</string>
     <string name="help_faq_q1">环境打不开 / 下载失败？</string>
     <string name="help_faq_a1">用上面的「修复环境」重新解压，登录状态会保留。</string>
@@ -557,13 +560,13 @@
     <!-- ── 首次启动欢迎页（WelcomeScreen）── -->
     <string name="welcome_tagline">在手机上运行你自己的 AI Agent</string>
     <string name="welcome_step1">在「设置」填好模型密钥（用哪个填哪个）</string>
-    <string name="welcome_step2">进「太极」直接对话——不必等运行环境装完</string>
+    <string name="welcome_step2">进「抱朴」直接对话——不必等运行环境装完</string>
     <string name="welcome_step3">要用命令行或装其他 Agent，再回来装运行环境</string>
     <string name="welcome_enter">进 入</string>
     <string name="welcome_install_env">安装运行环境</string>
-    <string name="welcome_skip">先去太极看看（不装环境）</string>
+    <string name="welcome_skip">先去抱朴看看（不装环境）</string>
     <string name="welcome_ready">运行环境就绪</string>
-    <string name="welcome_env_note">运行环境用于「终端」和其他 Agent，太极不需要</string>
+    <string name="welcome_env_note">运行环境用于「逍遥」和其他 Agent，抱朴不需要</string>
 
     <!-- ── 保活记录页（KeepaliveLogActivity）── -->
     <string name="keepalive_log_title">保活记录</string>
@@ -812,6 +815,19 @@
     <string name="term_clear_failed">清屏失败：%1$s</string>
     <string name="term_reset_done">终端已重置</string>
     <string name="term_browser_failed">打开浏览器失败：%1$s</string>
+
+    <!-- 玄览（浏览器 Tab，阶段 1 用户模式） -->
+    <string name="browser_url_hint">输入网址或搜索</string>
+    <string name="browser_go">前往</string>
+    <string name="browser_back">返回</string>
+    <string name="browser_forward">前进</string>
+    <string name="browser_reload">刷新</string>
+    <string name="browser_dismiss">关闭</string>
+    <string name="browser_blocked_scheme">为了安全，这种链接不允许在 App 内打开</string>
+    <string name="browser_ssl_error">这个网址的安全证书有问题，已停止加载</string>
+    <string name="browser_safe_browsing_hit">这个网址有安全风险，已被拦下</string>
+    <string name="browser_page_error">页面加载出了点问题</string>
+    <string name="browser_empty_hint">在上方输入网址，或从终端里点一条链接进来</string>
     <string name="term_local_cache_installing">使用本地缓存包（%1$d MB，不联网下载）—— 正在校验并解压…</string>
     <string name="term_first_run_need_grant">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议先点「授权存储」——授权后把安装包放进 Download/证道 文件夹，以后重装 App 无需重新下载。</string>
     <string name="term_first_run">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。\n提示：也可以手动把安装包放到 Download/证道 文件夹，重启 App 即可免下载安装。</string>
