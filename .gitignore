@@ -37,3 +37,4 @@ rust/target/
 # Python 字节码缓存：tools/ 下的脚本会在本机被 import 调试，别把 .pyc 带进库里（E-048）。
 __pycache__/
 *.pyc
+.kotlin

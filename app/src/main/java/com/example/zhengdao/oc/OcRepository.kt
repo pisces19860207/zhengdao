@@ -801,20 +801,15 @@ class OcRepository(
      *
      * 先清空消息并置 Loading —— 否则旧会话内容会在新会话加载完成前"闪现"，
      * 用户会以为切错了。之后复用 [open]（全量拉取 + 轮询 + SSE）。
+     *
+     * ⚠️ 预置状态**不得顺手把 [TaijiState.sessionId] 改成目标 id**（2026-10-13，ERRATA E-123）：
+     * 改了会让 [open] 的复用判据（[shouldReopenConnection] 第 4 条 `requested != current`）
+     * 把「切会话」误判成「同会话」，直接走复用分支返回 —— 既不 loadAll、也不重建
+     * 轮询/SSE，页面停在空列表上，只有杀掉 App 重进才能恢复。清残留这件事由
+     * [afterSessionSwitchStarted] 负责，目标 id 由 [open] 自己写。
      */
     suspend fun switchSession(scope: CoroutineScope, sessionId: String) {
-        _state.update {
-            it.copy(
-                messages = emptyList(),
-                parts = emptyMap(),
-                loadedOnce = false,
-                input = "",
-                isStreaming = false,
-                pendingPermission = null,
-                phase = TaijiPhase.Loading,
-                sessionId = sessionId,
-            )
-        }
+        _state.update { it.afterSessionSwitchStarted() }
         open(scope, sessionId)
     }
 
