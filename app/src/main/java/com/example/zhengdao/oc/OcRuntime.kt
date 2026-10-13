@@ -62,7 +62,10 @@ object OcRuntime {
         }
         return synchronized(this) {
             repo ?: run {
-                val client = OcClient(passwordProvider = { OcManager.servePassword })
+                val client = OcClient(
+                    passwordProvider = { OcManager.servePassword },
+                    passwordRefresher = { OcManager.refreshServePassword() },
+                )
                 OcRepository(client, SseClient(client.sseClient), res).also { repo = it }
             }
         }

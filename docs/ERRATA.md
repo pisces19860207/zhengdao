@@ -5223,7 +5223,7 @@ E-082（提交 `37bc860`，`git describe --contains 37bc860` = `v2.0.9~4^2~1` �
 
 ---
 
-## E-093 · 2026-10-11 · 换包后**第一次**进太极偶发 `创建会话失败：HTTP 401`（孤儿 serve 分支解析密码时不等待 `password` 落盘；**已补有界等待**）
+## E-093 · 2026-10-11 · 换包后**第一次**进太极偶发 `创建会话失败：HTTP 401`（**两个方向都实测过**：孤儿 serve 分支不等待 `password` 落盘、以及取了**已退出场次**的口令；2026-10-13 改为「候选口令 + `/api/session` 探针定案」）
 
 **现象**
 
@@ -5266,6 +5266,36 @@ for (i in 0 until 20) {                 // 最多 3 秒
 
 "上一次流程留下的孤儿资源"最容易漏掉等待：**写"复用已有进程"的分支时，要把"新起一个进程"那条路上的每一处等待都对照一遍** —— 这次漏的就是"等它把凭据写出来"。
 
+#### 补记（2026-10-13 · v2.0.18 之后）：另一半实测复现，解析不再「猜顺序」
+
+**真机时间线**（`/sdcard/Download/证道/logs/errors.log`、`zhengdao-log.20261013-161735.txt`）
+
+```
+16:16:45            太极: SSE 信号通道就绪（HTTP 200）        ← 那一刻口令是对的
+16:17:29 ~ 16:17:47 太极: 创建会话失败：HTTP 401: {"_tag":"UnauthorizedError","message":"Authentication required"}   × 10
+16:18:02            太极: 复用服务端最近会话 id=ses_… ＋ SSE 信号通道就绪（HTTP 200）   ← 自愈
+```
+
+**关键反证**：这 10 条里**没有**那句 `太极: serve 密码未就绪，请求将返回 401`（`oc/OcClient.kt` 的 `AuthInterceptor` 只在口令为 null 时打）⇒ 手里握的不是 null，而是**过期口令**。这正是本文档「边界（未实测的部分）」里写的第二种可能 —— 2026-10-13 实测坐实。
+
+**根因**：旧 `parseServePassword` 的状态机只覆盖「先 `listening`、后 `password`」（`awaitingPw` 那一路），漏掉「**先 `password`、它的 `listening` 行还没落盘**」这个中间态 —— 此时 `pending` 握着新口令、`lastGood` 是上一场的旧口令、`awaitingPw == false`，函数结尾的 `if (awaitingPw) null else lastGood` 于是**返回上一场的旧口令**。
+
+**处置（A + B + C 三步，本轮提交）**
+
+- **A**（`app/src/main/java/com/example/zhengdao/oc/OcClient.kt`）：新增 OkHttp 原生 `OcAuthenticator` —— 收到 401 时回调 `OcManager.refreshServePassword()` 重解析并重试一次。三条守卫：SSE 请求跳过（流式形状不变）、最多重试一次（数 `priorResponse`）、新口令与旧 `Authorization` 逐字相同则不重试。
+- **B**（`app/src/test/java/com/example/zhengdao/oc/OcAuthenticatorTest.kt`、`OcServePasswordParseTest.kt`）：合成 `serve.log` + 假探针钉住行为；旧实现那条「末场已打密码、listening 未落盘 ⇒ 返回上一场旧密码」的特征化用例**翻成**新语义。
+- **C**（`app/src/main/java/com/example/zhengdao/oc/OcManager.kt`）：解析改为**问端口**而非猜顺序 —— `passwordCandidates()` 收集全部候选（新→旧、去重、封顶 `SERVE_PW_MAX_CANDIDATES = 3`），`pickServePassword()` 逐个用 `GET /api/session` 探针试（`serveAcceptsPassword()`，判据 `!= 401`，端口没人听即 false），**谁能过鉴权就用谁**；都不过 ⇒ 置 `null`，按「鉴权未就绪」处理。
+- 单测：`89 suite / 713 例 / 0 失败 0 错误 / 1 skipped`（改前 88/703）。
+
+**边界**
+
+- 探针会向 `127.0.0.1:14000` 多打 1~3 次本机请求（`SERVE_PROBE_TIMEOUT_MS = 700`），调用点是 `startServe()` 的孤儿轮询与 OkHttp 的 Authenticator 线程，都不在主线程。
+- 若日志里的候选**全都**过不了鉴权（例：正在监听那个进程的口令压根没写进日志），结果与现状一致：置 null、UI 报未就绪 —— **宁可报未就绪，也不拿错口令到处 401**。
+
+**纪律（给下一个 agent）**
+
+- 这条竞态的**两个方向都真实存在**（口令未落盘 / 取到已退出场次的口令），别再只修一半就收。
+- 判断「这次的 401 是不是口令问题」，先看日志里有没有 `太极: serve 密码未就绪`：**有** = 口令为 null（等它落盘）；**没有** = 手上有错口令（要重新定案）。
 ---
 
 ## E-094 · 2026-10-11 · `Workspace.isShared` 前缀误判 ⇒ 应用外部目录也被当成「共享存储」，「仅私有模式」整条分支不可达（**已修**）
