@@ -218,6 +218,14 @@ public final class TerminalEmulator {
     /** 已丢弃的字节数（仅在 {@link #mOscArgsDropped} 为真时累计）。 */
     private int mOscArgsDiscarded;
 
+    /**
+     * 证道本地补丁（2026-10-14，§B-补-49 🟡8，第 ③ 刀）：DCS 载荷超限后置位。
+     * 与 {@link #mOscArgsDropped} 同构——上游在 {@link #doDeviceControl} 的 default
+     * 分支超限时 setLength(0) + finishSequence，余下载荷被当正文打印、载荷里的
+     * ESC[ / ESC] 还会被当真转义序列执行；这里改为整条作废、继续吞到 ST。
+     */
+    private boolean mDcsArgsDropped;
+
     /** 超限后最多再丢弃这么多字节去找终结符，超过就放弃这条序列（绝对上限）。 */
     private static final int MAX_OSC_DISCARD_LENGTH = 1024 * 1024;
 
@@ -964,6 +972,14 @@ public final class TerminalEmulator {
         switch (b) {
             case (byte) '\\': // End of ESC \ string Terminator
             {
+                // 证道追加（2026-10-14，§B-补-49 🟡8）：超限作废的 DCS 整条丢弃，
+                // 不拿截断的前缀去解参数（与 doOscSetTextParameters 的 mOscArgsDropped 同构）。
+                if (mDcsArgsDropped) {
+                    mDcsArgsDropped = false;
+                    mOscArgsDiscarded = 0;
+                    finishSequence();
+                    return;
+                }
                 String dcs = mOSCOrDeviceControlArgs.toString();
                 // DCS $ q P t ST. Request Status String (DECRQSS)
                 if (dcs.startsWith("$q")) {
@@ -1072,9 +1088,21 @@ public final class TerminalEmulator {
             break;
             default:
                 if (mOSCOrDeviceControlArgs.length() > MAX_OSC_STRING_LENGTH) {
-                    // Too long.
-                    mOSCOrDeviceControlArgs.setLength(0);
-                    finishSequence();
+                    // 证道修复（2026-10-14，§B-补-49 🟡8）：DCS 收集超限。
+                    // 上游在此 setLength(0) + finishSequence ⇒ 后续载荷字节走 ESC_NONE
+                    // 被当正文打印，载荷里的 ESC[ / ESC] 还会被当**真转义序列执行**。
+                    // 改为：整条作废、继续吞到 ST（与 mOscArgsDropped 补丁同构），
+                    // 丢弃量超 MAX_OSC_DISCARD_LENGTH 才彻底放弃（防永远等不到终结符）。
+                    mDcsArgsDropped = true;
+                    if (++mOscArgsDiscarded > MAX_OSC_DISCARD_LENGTH) {
+                        logError("DCS string exceeded limits, giving up");
+                        mOSCOrDeviceControlArgs.setLength(0);
+                        finishSequence();
+                    } else {
+                        // 显式保持 ESC_P 序列状态（与 else 的 append 分支同构）：
+                        // 只置标志不 continueSequence 时，后续字节可能从隐式路径掉状态。
+                        continueSequence(mEscapeState);
+                    }
                 } else {
                     mOSCOrDeviceControlArgs.appendCodePoint(b);
                     continueSequence(mEscapeState);
