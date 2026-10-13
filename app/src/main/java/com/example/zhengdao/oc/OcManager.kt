@@ -28,7 +28,12 @@ import java.net.URL
  * 已知取舍（用户拍板）：
  * - 落盘 289MB（xz 包 65MB）——bionic 路线的代价，换无 PRoot 开销
  * - 宿主侧无 node_modules → opencode-mem 记忆插件不可用（终端侧不受影响）
- * - serve 密码字段有输出但 HTTP 层未强制鉴权（PoC 实测），v1 直接接入
+ * - serve 的 HTTP Basic 鉴权**确实生效**（2026-10-11 实测：无鉴权 `GET /api/session` = 401，
+ *   只有无前缀的 SPA 外壳 `GET /` 公开；密码由 `parseServePassword` 从 serve.log 解析、
+ *   经 `OcClient` 的 AuthInterceptor 注入）。
+ *   ⚠️ 本行旧文曾写「serve 密码字段有输出但 HTTP 层未强制鉴权（PoC 实测），v1 直接接入」——
+ *   那是把**无前缀路径**当成 API 打（`/session` ≠ `/api/session`）造成的误记，也是
+ *   2026-10-11 那份外部安全审查抄错的源头；更正记录见 ERRATA 与台账 §A #29。
  */
 object OcManager {
 
