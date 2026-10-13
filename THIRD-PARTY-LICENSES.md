@@ -146,18 +146,37 @@
   根 `PROVENANCE.md`「官方发布资产摘要」一节。
 - 许可证：**Debian 是数百个独立软件包的聚合发行版，各包许可互不相同**
   （GPL-2.0/3.0、LGPL、BSD、MIT、Apache-2.0、Artistic 等）。镜像内实测装了 **353 个包**
-  （2026-10-11 真机 `grep -c '^Package:' /var/lib/dpkg/status`）
+  （2026-10-11 真机 `grep -c '^Package:' /var/lib/dpkg/status`）。
+  2026-10-12 细化：**镜像内**（`var/lib/dpkg/status`，即真正的分发物）是 **348** 个
+  （313 `arm64` + 35 `all`）；真机那 353 个里多出的 `libgpm2`/`vim`/`vim-common`/`vim-runtime`
+  等是构建之后在客服端装的，不属于分发物 —— 见 `docs/ERRATA.md` E-097 补记
 - ⚠️ **本环境为控制体积，在构建时删除了 `/usr/share/doc`、`/usr/share/man`、`/usr/share/info`
-  （`rootfs/build-rootfs.sh:363`）** ⇒ 镜像内**不含**逐包版权文本
-  （真机核对：`/usr/share/doc` 只剩 4 个构建后才装的条目）。
-  逐包 copyright 的替代获取途径（任一即可）：
+  （`rootfs/build-rootfs.sh` 的 §2.10 清理段）** ⇒ 镜像里没有逐包版权**目录树**。
+  **但版权文本本身随包分发**（2026-10-12 结 ERRATA E-097，用户拍板「随包分发」）：
+  构建脚本在删除之前，把每包的 `copyright` 收成一个归档留在镜像里 ——
+  `/usr/share/zhengdao-copyright.tar.zst`（路径刻意放在 `/usr/share` 顶层，避开被删的
+  `/usr/share/doc/*`；归档内另附 `README.txt` 说明来源与查法）。镜像内展开即可查证：
+
+  ```bash
+  tar --zstd -xf /usr/share/zhengdao-copyright.tar.zst -C /tmp/zd-copyright
+  dpkg -S /usr/bin/node          # 查某文件属于哪个包
+  dpkg-query -W -f='${Package} ${Version}\n'   # 已装包与版本
+  ```
+
+  ⚠️ **版本边界（诚实标注）**：该归档是**本次改动之后重建的镜像**才自带。
+  v2.0.14 ~ v2.0.17 用的那份镜像（`debian-13.7-base-arm64.tar.zst`，摘要见上）构建于改动之前，
+  **不含**该归档；对那份镜像，逐包 copyright 的替代获取途径（任一即可）：
   1. `http://deb.debian.org/debian`（镜像内 `sources.list` 即指向此处的 `trixie main`）
      取同版本包，包内自带 `usr/share/doc/<包>/copyright`；
   2. `apt-get source <包>`，读源码包里的 `debian/copyright`；
   3. 历史/已下架版本用 <https://snapshot.debian.org/>。
 - **待核（诚实标注，不是缺陷）**：*Debian rootfs 所含各包的完整许可证清单及源码获取方式，
-  待逐包核查后补充。* 当前口径：各包许可证以 Debian 官方仓库同版本包内的
-  `debian/copyright` 为准，本项目**未逐包点数**（rootfs 为 200 MB 级、353 个包）。
+  待逐包核查后补充。* 2026-10-12 起**文本层面已随包分发**（上一条），仍是欠账的是
+  **逐包许可证标识的汇总表**（哪个包 = 哪个 SPDX 标识）——那需要解析每份 `copyright` 的
+  `License:` 字段（多数包是 DEP-5 机读格式，但有相当一部分是自由文本，只能半自动 + 人工核）。
+  **原文已经没有障碍**：2026-10-12 已把镜像内 348 个包的 `copyright` 逐份取齐（含 SHA-256，
+  见 `docs/ERRATA.md` E-097 补记），缺的只是这份汇总表本身 —— 本项目**未逐包点数**。
+  当前口径：各包许可证以随包归档 / Debian 官方仓库同版本包内的 `debian/copyright` 为准。
 - 源码要约：本仓库对**自己分发**的 GPL 组件（proot 等，见 §1）以指向官方源码仓库的方式满足
   GPL 第 3 条；系统层里各 GPL/AGPL 组件的源码，由 Debian 官方源按上一条途径提供。
 - 改动情况：构建脚本对系统层只做**删减**（文档 / man / info / 多余 locale / 构建残留）与少量

@@ -5451,11 +5451,20 @@ fun candidates(url: String, chain: List<String> = DOWNLOAD_CHAIN): List<String> 
 **处置**
 
 - `THIRD-PARTY-LICENSES.md` 新增 **§7 Debian GNU/Linux 13.7 base（guest 系统层 rootfs）**：版本 / 构建来源（`rootfs/build-rootfs.sh`，qemu 交叉，CI 产出）/ 353 个包；**明确写出 `/usr/share/doc` 被删**，并给三条替代获取途径（`deb.debian.org` 取同版本包自带 `copyright`；`apt-get source <包>` 读 `debian/copyright`；`snapshot.debian.org` 取历史版本），另附源码要约与「未修改任何包的二进制」说明（构建脚本只做删减 + 少量配置文件写入）。
-- 未做（可选，等拍板）：把 353 个包的 `copyright` 文本单独打成一个小包随 Release 分发（或提交进仓库），让"镜像内不含版权文本"不再依赖外部可达性。
+- ✅ `2026-10-12` 已结（用户拍板「**随包分发**」）：做法与实测见下方补记。
 
 **教训**
 
 「瘦身」删的是**体积**，而 `/usr/share/doc` 里同时装着**许可证文本** —— 按体积删文件前先问一句「这里面有没有非体积的东西」。另外：第三方组件声明要按**分发物**（APK + rootfs + 字体 + 原生库）逐项核对，不能按**源码依赖**核对 —— 源码里看不到 Debian。
+
+**补记（2026-10-12，用户拍板「随包分发」）**
+
+- **决定**：不把静态归档提交进仓库，也不只挂 Release 附件 —— **随包分发**。由 `rootfs/build-rootfs.sh` 在清零 `/usr/share/doc` **之前**，把每个已装包的 `/usr/share/doc/<包>/copyright` 收进镜像内的 `/usr/share/zhengdao-copyright.tar.zst`（内含 `README.txt` 与 `copyright-index.tsv`）。版权文本与镜像**同生共死**：不依赖 `deb.debian.org` 长期可达，也不会随包升级漂移。归档段带「少于 300 个包就 `exit 1`」的断言，避免静默产出空归档。
+- **代价（实测）**：当前镜像 348 个包的版权原文共 **4.78 MiB**，`zstd -19` 后归档 **0.49 MiB**（517,471 B，SHA-256 `512515f34c562c4f12f7d858266e1ad4fefb6141a4896204d7456fc3a053e816`）——对 229 MB 的镜像可忽略。
+- **包数口径**：镜像内 `var/lib/dpkg/status` 实测 **348** 个（313 `arm64` + 35 `all`），与上表真机 `dpkg` 的 353 个差 5 个 —— 真机是构建后又装过东西（`libgpm2`/`vim`/`vim-common`/`vim-runtime` 等）。**以镜像内的 status 为准**，真机那 5 个不属于分发物。
+- **取法（本轮实测，348/348 全取齐）**：优先从 `https://metadata.ftp-master.debian.org/changelogs/main/<字母>/<源码包>/<源码包>_<版本>_copyright` 取（`lib*` 用前四位、其余用首字母；版本要去掉 epoch 与 binNMU 后缀）；**该站点缺失的**（`libxcb` 系列 11 个、`libxcrypt`、`nodejs`）改从对应 `.deb` 内的 `copyright` 取（`nodejs` 来自 NodeSource 源）。逐包来源与 SHA-256 记在归档内的 `copyright-index.tsv`。
+- **何时生效**：合并进 `main` 会触发 CI 重建 `rootfs/` 资产 ⇒ 下一次镜像更新即带归档。**v2.0.14–v2.0.17 那份镜像仍不含版权文本**；本轮实测产出的归档可以补挂 Release 附件（是否挂、挂哪个 Release 待用户点头）。
+- **一个值得记住的坑**：`metadata.ftp-master.debian.org` 对某些包只有 `_changelog` 没有 `_copyright`，HTTP 200/404 随包而异 —— 批量取时要**逐包记录失败再补**，不能「一次 404 就当这个包没有版权文本」。
 
 ---
 

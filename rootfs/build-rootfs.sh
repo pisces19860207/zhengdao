@@ -360,6 +360,41 @@ version_ge "$UV_VER" "$UV_MIN" || {
 echo "[zhengdao] uv=${UV_VER} ≥ ${UV_MIN}（§2.6 的 /etc/uv/uv.toml 系统级配置会被读取）"
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# ── 版权文本随包分发（2026-10-12，结 ERRATA E-097）────────────────────────────
+# 本 rootfs 是**独立分发物**（Release 资产 debian-13.7-base-arm64.tar.zst），而下一行
+# 会把 /usr/share/doc/* 整体删掉 —— Debian 各包的版权声明（含 GPL/BSD/OFL 全文、
+# Apache-2.0 各包的 NOTICE 段）原本就在那儿。DFSG 与各许可证都要求版权与许可文本
+# **随二进制一起分发**；只写"请自行到 deb.debian.org 取"在镜像归档这种场景下并不成立
+# （E-097 悬着的正是这一点，2026-10-12 用户拍板「随包分发」）。
+# 做法：瘦身前把每包的 copyright 收成一个归档留在镜像里，用户随时可展开查证，
+# 不依赖任何外部站点还活着。归档路径刻意放在 /usr/share 顶层，避开下一行的 /usr/share/doc/*。
+ZDDOC="/usr/share/zhengdao-copyright.tar.zst"
+ZDSTAGE="$(mktemp -d)"
+# -xtype f：同时匹配真文件与"指向文件的软链"（/usr/share/doc 下不少 copyright 是软链），
+# 悬空软链会落选——那种情况下文本本来也不在了，跳过比让 cp 报错中断构建好。
+( cd /usr/share/doc && find . -name copyright -xtype f -exec cp -L --parents {} "$ZDSTAGE" \; )
+ZDN="$(find "$ZDSTAGE" -type f | wc -l)"
+PKGN="$(grep -c '^Package:' /var/lib/dpkg/status || true)"
+if [ "$ZDN" -lt 300 ]; then
+  annot "[断言失败] 只收到 ${ZDN} 份 copyright（已装 ${PKGN} 个包）——收集步骤坏了，不许把空壳发出去（E-097）"
+  exit 1
+fi
+cat > "$ZDSTAGE/README.txt" <<'ZDEOD'
+本归档 = Debian 13.7（trixie）基础系统里各已安装软件包的版权与许可证文本，
+逐包对应 /usr/share/doc/<包名>/copyright，文本逐字取自 Debian 官方包、未经改动。
+
+为什么单独收在这里：发行镜像为控制体积删掉了 /usr/share/doc/*，而这些文本按
+DFSG 与各许可证要求必须随二进制一起分发，所以构建时先归档、再删除。
+
+展开：  tar --zstd -xf /usr/share/zhengdao-copyright.tar.zst -C /tmp/zd-copyright
+归属：  dpkg -S <文件路径>              查某文件属于哪个包
+        dpkg-query -W -f='${Package} ${Version}\n'   看已装包与版本
+App 自身（含其内置组件）的第三方许可见仓库 THIRD-PARTY-LICENSES.md。
+ZDEOD
+tar -C "$ZDSTAGE" -cf - . | zstd -q -19 -T0 -o "$ZDDOC"
+rm -rf "$ZDSTAGE"
+echo "[zhengdao] 版权归档：${ZDN} 份 / $(du -h "$ZDDOC" | cut -f1)（已装 ${PKGN} 个包）→ ${ZDDOC}"
+sha256sum "$ZDDOC"
 rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
 # 构建残留清理（2026-10-08 瘦身取证，见 docs/milestones/证道-环境包瘦身与压缩方案-2026-10-08.md §4 A）：
 # 下面这些只有**构建期**才用得到，运行时没有任何东西引用它们（合计约 13 MB 落盘 / 3.8 MB 包体积）。

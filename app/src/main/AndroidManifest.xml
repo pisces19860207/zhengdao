@@ -40,10 +40,17 @@
          正是 E-020 一类的静默降级）。合并清单（debug/release/benchmark）实测均无此权限。 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- 明文（cleartext）放行范围收窄（2026-10-12，用户交办）：
+         改前这里是 android:usesCleartextTraffic="true" —— 全局放行，等于允许 App 与
+         guest 内任何程序对任意域名发明文 HTTP。实际只用到两处（本机 oc serve 环回
+         ＋ guest 的 apt 源），所以换成白名单式 network security config。
+         ⚠️ 有 networkSecurityConfig 时，android:usesCleartextTraffic 会被忽略 ——
+         所以那条已删掉，避免留下"看着全局放行、其实是白名单"的双口径。
+         范围与理由逐条写在 app/src/main/res/xml/network_security_config.xml。 -->
     <application
         android:name="com.example.zhengdao.ZhengdaoApp"
         android:allowBackup="true"
-        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
