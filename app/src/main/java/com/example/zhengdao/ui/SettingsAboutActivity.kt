@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -71,9 +72,9 @@ import com.example.zhengdao.rootfs.RootfsIndex
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
+import com.example.zhengdao.R
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
-import com.example.zhengdao.ui.theme.IOSReadyGreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -115,27 +116,51 @@ class SettingsAboutActivity : ComponentActivity() {
 @Composable
 private fun SettingsAboutPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    SettingsSubPage(title = "关于", onBack = onBack) {
+    // 隐藏入口（2026-10-12 走查报告 §1.2-D）：输入回归页是开发自测页，从用户设置里撤下，
+    // 收成「版本」行连点 3 次。普通人误点三次也只会当它是彩蛋。
+    var versionTaps by remember { mutableStateOf(0) }
+    SettingsSubPage(title = stringResource(R.string.settings_about), onBack = onBack) {
         // ── 关于 ──
-        SectionCard("关于") {
-            InfoRow("版本", "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})")
+        SectionCard(stringResource(R.string.settings_about)) {
+            InfoRow(
+                stringResource(R.string.about_version),
+                "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})",
+                onClick = {
+                    versionTaps++
+                    if (versionTaps >= 3) {
+                        versionTaps = 0
+                        ctx.startActivity(
+                            android.content.Intent(ctx, ImeRegressionActivity::class.java),
+                        )
+                    }
+                },
+            )
             Spacer(Modifier.height(4.dp))
-            InfoRow("作者", "小信多多")
+            InfoRow(stringResource(R.string.about_author), "小信多多")
+            Spacer(Modifier.height(4.dp))
+            // Root 增强模式（2026-10-12 从设置 Hub 移来）：未实现项不再占设置页的行，
+            // 但它是个真实的状态说明，放在关于页纯文本展示。
+            InfoRow(
+                stringResource(R.string.about_root_mode),
+                stringResource(R.string.about_root_mode_value),
+            )
             Spacer(Modifier.height(4.dp))
             // 安装包来源（E-065）：GPL 允许别人重打包，但用户有权知道手里这个包是谁签的。
             // 只报告，不拦功能 —— 自己改代码自己签名也是 GPL 明确允许的用法。
             InfoRow(
-                "版本来源",
+                stringResource(R.string.about_build_source),
                 when (remember { runCatching { com.example.zhengdao.util.SigningCheck.check(ctx) }.getOrNull() }) {
-                    com.example.zhengdao.util.SigningCheck.Result.OFFICIAL -> "官方发布 ✓"
-                    com.example.zhengdao.util.SigningCheck.Result.UNOFFICIAL -> "⚠️ 非官方（被重新打包过）"
-                    else -> "未识别"
+                    com.example.zhengdao.util.SigningCheck.Result.OFFICIAL ->
+                        stringResource(R.string.about_build_official)
+                    com.example.zhengdao.util.SigningCheck.Result.UNOFFICIAL ->
+                        stringResource(R.string.about_build_unofficial)
+                    else -> stringResource(R.string.about_build_unknown)
                 },
             )
             Spacer(Modifier.height(4.dp))
             // 外链也走同一套行式组件（右侧统一是 ›），不再是一排蓝色文字按钮
             SettingRow(
-                label = "GitHub 仓库",
+                label = stringResource(R.string.about_repo),
                 value = "",
                 onClick = {
                     ctx.startActivity(
@@ -145,7 +170,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
             )
             SettingsDivider()
             SettingRow(
-                label = "问题反馈（Issues）",
+                label = stringResource(R.string.about_issues),
                 value = "",
                 onClick = {
                     ctx.startActivity(
@@ -157,8 +182,8 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
             // 许可证与署名（2026-10-11 起）：第一方代码改为「保留所有权利」（商业使用需书面许可），
             // 历史版本（≤ v2.0.15）仍按当时发布的 GPL-3.0 —— 详见仓库根 LICENSE 与下一页「开源许可」。
             SettingRow(
-                label = "许可证",
-                value = "保留所有权利（第一方代码）",
+                label = stringResource(R.string.about_license),
+                value = stringResource(R.string.about_license_value),
                 onClick = {
                     ctx.startActivity(
                         Intent(
@@ -170,8 +195,8 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
             )
             SettingsDivider()
             SettingRow(
-                label = "开源许可",
-                value = "随包正文",
+                label = stringResource(R.string.about_licenses),
+                value = stringResource(R.string.about_licenses_value),
                 onClick = {
                     // 2026-10-11：许可证正文已随 APK 分发（assets/licenses/），这一页离线可读。
                     // 上面那行「许可证」不动（仍是 GitHub 链接）—— 联网的人照样能去仓库看。
@@ -180,7 +205,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
             )
             SettingsDivider()
             SettingRow(
-                label = "联系作者",
+                label = stringResource(R.string.about_contact),
                 value = "",
                 onClick = {
                     ctx.startActivity(

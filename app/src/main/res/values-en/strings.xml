@@ -1,0 +1,823 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  UI strings (English). 2026-10-12 — user asked for a switchable English UI.
+  Mirrors res/values/strings.xml. Language names stay in their own language
+  (iOS convention), so "简体中文" is not translated here.
+
+  Not translated by design: terminal content/output, logs, user files,
+  agent replies, file paths, raw error codes. The terminal title
+  "证道 - Debian 13.7" is a fixed identity string (user requested).
+-->
+<resources>
+    <string name="app_name">Zhengdao</string>
+    <string name="copy_text">Copy</string>
+    <string name="paste_text">Paste</string>
+    <string name="text_selection_more">More</string>
+
+    <!-- ── Common ── -->
+    <string name="common_back">Back</string>
+    <string name="common_settings">Settings</string>
+    <string name="common_confirm">OK</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+    <string name="common_copy_all">Copy all</string>
+    <string name="common_got_it">Got it</string>
+    <string name="common_learn_more">Learn more ›</string>
+    <string name="common_collapse">Collapse</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_clean">Clean</string>
+    <string name="common_cleaning">Cleaning…</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_done">Done</string>
+    <string name="common_read_failed">Couldn\'t read</string>
+    <string name="common_view_log">View log</string>
+    <string name="common_clear">Clear</string>
+    <string name="common_feedback">Feedback</string>
+    <string name="common_repair">Repair</string>
+    <string name="common_default">Default</string>
+    <string name="common_later">Later</string>
+    <string name="common_not_installed">Not installed</string>
+    <string name="common_approx_mb">about %1$d MB</string>
+    <string name="common_size_unknown">size unknown</string>
+    <string name="common_mb">%1$d MB</string>
+
+    <!-- ── Bottom navigation ── -->
+    <string name="nav_taiji">Taiji</string>
+    <string name="nav_terminal">Terminal</string>
+    <string name="nav_agents">Agents</string>
+
+    <!-- ── Settings hub: groups ── -->
+    <string name="settings_group_env">Environment</string>
+    <string name="settings_group_terminal">Terminal &amp; Files</string>
+    <string name="settings_group_background">Background</string>
+    <string name="settings_group_interface">Interface</string>
+    <string name="settings_group_support">Support</string>
+
+    <!-- ── Settings hub: rows ── -->
+    <string name="settings_env_update">Environment &amp; updates</string>
+    <string name="settings_storage">Storage &amp; cache</string>
+    <string name="settings_terminal_workspace">Terminal &amp; workspace</string>
+    <string name="settings_knowledge_base">Knowledge base</string>
+    <string name="settings_keepalive">Keep-alive</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_help">Help</string>
+    <string name="settings_about">About</string>
+
+    <!-- ── Settings hub: row status ── -->
+    <string name="settings_status_installed">Installed</string>
+    <string name="settings_status_not_installed">Not installed</string>
+    <string name="settings_status_measuring">Measuring…</string>
+    <string name="settings_status_perm_pending">Permission needed</string>
+    <string name="settings_status_disabled">Off</string>
+    <string name="settings_status_enabled">On</string>
+    <string name="settings_status_file_count">%1$d files</string>
+    <string name="settings_status_guide">Guide</string>
+    <string name="settings_value_help">Getting started · Logs</string>
+
+    <!-- ── Home screen ── -->
+    <string name="home_grant_page_failed">Couldn\'t open the settings page — go to Settings → Apps → Zhengdao → All files access and enable it manually</string>
+    <string name="home_no_browser">No browser available</string>
+    <string name="home_start_error">Failed to start: %1$s</string>
+    <string name="home_taiji_not_up">Taiji (OpenCode) still isn\'t up</string>
+    <string name="home_env_ready">Environment ready</string>
+    <string name="home_env_missing">Environment not installed</string>
+    <string name="home_agent_count">%1$d agents</string>
+    <string name="home_abi_unknown">Unknown</string>
+    <string name="home_debian_installed">Debian 13.7 installed</string>
+    <string name="home_debian_missing">Debian not installed</string>
+    <string name="home_health_checking">Checking environment…</string>
+    <string name="home_health_pass">Environment check %1$d/%2$d passed</string>
+    <string name="home_health_scanning">Checking environment status…</string>
+    <string name="home_fix_ineffective">One-tap fix didn\'t take effect: %1$s</string>
+    <string name="home_fix_error_prefix">Error during repair: %1$s;</string>
+    <string name="home_fix_still">\"Repair\" ran, but the check still reports: %1$s. Go to Settings → \"Repair environment\" to unpack again (about 30s), then restart the app.</string>
+    <string name="home_fix_crashed">One-tap fix failed: %1$s</string>
+    <string name="home_fix_thread_threw">The repair thread threw %1$s%2$s. Go to Settings → \"Repair environment\" to unpack again (about 30s), then restart the app.</string>
+    <string name="home_fix_thread_msg">: %1$s</string>
+    <string name="home_repair_script_failed">Couldn\'t write the repair script — retry from Settings</string>
+    <string name="home_hermes_script_issue">Hermes repair script wasn\'t written to the workspace</string>
+    <string name="home_hermes_script_issue_detail">The script couldn\'t be saved (workspace not writable?) — the repair command won\'t run in the terminal.</string>
+    <string name="home_go_settings">Go to Settings</string>
+    <string name="home_btn_repair_env">Repair</string>
+    <string name="home_btn_grant">Grant</string>
+    <string name="home_btn_net_check">Network test</string>
+    <string name="home_btn_storage_detail">Details</string>
+    <string name="home_btn_handle">Fix it</string>
+    <string name="home_sysinfo_copied">System info copied</string>
+    <string name="home_copy_sysinfo">Copy all info</string>
+    <string name="home_env_not_installed">The environment isn\'t installed yet</string>
+    <string name="home_env_install_desc">You need the Debian environment before installing agents (about 3 minutes, one time).</string>
+    <string name="home_install_env">Install environment</string>
+    <string name="home_recent_issues">Recent problems (%1$d)</string>
+    <string name="home_issues_note">Background failures used to go to the log only, invisible in the UI. They are listed here — tap a button when one can be handled. The full text is still in Download/证道/logs/zhengdao-log.txt</string>
+    <string name="home_restore_title">Restore the %1$d agents installed before</string>
+    <string name="home_restore_desc">These agents didn\'t finish installing (or are no longer on the device), but their install scripts and package cache are still in Download/证道/agents and cache — restoring uses local copies where possible:</string>
+    <string name="home_restore_all">Restore all (%1$d)</string>
+    <string name="home_agent_reinstall">Reinstall</string>
+    <string name="home_agent_uninstall">Uninstall</string>
+    <string name="home_agent_retry_install">Retry install</string>
+    <string name="home_agent_start">Start</string>
+    <string name="home_agent_installing">Installing</string>
+    <string name="home_agent_install">Install</string>
+    <string name="home_agent_coming_soon">Coming soon</string>
+    <string name="home_agent_install_env_first">Install environment first</string>
+    <string name="home_agent_install_hint">Installing — output shows live in the terminal… (if the terminal is waiting on a prompt, answer it there or press ESC to skip)</string>
+    <string name="home_agent_version">Installed: %1$s</string>
+    <string name="home_manifest_unreachable">Can\'t reach the agent manifest right now; check your network and come back — it refreshes automatically.</string>
+    <string name="home_agent_note">Installing and starting both happen in the terminal; the session stays alive, so reconnecting won\'t lose your place.</string>
+    <string name="home_size_measuring">Measuring size…</string>
+    <string name="home_about_mb">(about %1$d MB)</string>
+    <string name="home_actual_usage">(actual usage may vary)</string>
+    <string name="home_uninstall_detail">· Agent program %1$s\n· Installer cache (global, about %2$d MB)</string>
+    <string name="home_uninstall_title">Uninstall %1$s?</string>
+    <string name="home_uninstall_delete">Will delete:\n</string>
+    <string name="home_uninstall_keep">Will keep:\n· Session history and memory\n· API key config (if any)</string>
+    <string name="home_uninstall_purge">\n\n\"Erase everything\" also deletes your data (%1$s) — this cannot be undone.</string>
+    <string name="home_uninstall_action">Uninstall</string>
+    <string name="home_purge_action">Erase everything (incl. data)</string>
+    <string name="home_reinstall_title">Reinstall %1$s?</string>
+    <string name="home_reinstall_desc">Runs the official install script again (incremental): existing config, API keys and session data are kept. Output shows live in the terminal.</string>
+    <string name="home_reinstall_action">Reinstall</string>
+
+    <!-- ── Terminal & files page ── -->
+    <string name="data_page_title">Terminal &amp; files</string>
+    <string name="data_perm_granted">Granted</string>
+    <string name="data_perm_not_granted">Not granted</string>
+    <string name="data_perm_denied">The system blocked it — tap \"System settings\" to enable it manually (some systems silently drop the dialog)</string>
+    <string name="data_open_failed">Couldn\'t open: %1$s</string>
+    <string name="data_kb_card">Knowledge base</string>
+    <string name="data_kb_cap_note">(hit the scan limit — the list may be incomplete)</string>
+    <string name="data_kb_disabled">Off</string>
+    <string name="data_kb_not_mounted">Not mounted · no files yet</string>
+    <string name="data_kb_busy">Organizing…</string>
+    <string name="data_kb_organized">Mounted · %1$d files (with summaries)</string>
+    <string name="data_kb_mounted">Mounted · %1$d files</string>
+    <string name="data_kb_reading">Reading…</string>
+    <string name="data_state_label">Status</string>
+    <string name="data_kb_hint">Drop your files into this folder and the AI in the terminal will find them automatically. Any format works.</string>
+    <string name="data_kb_privacy">Your files stay on your phone. Zhengdao itself never sends them out (it is a different matter if the AI in the terminal goes online on its own).</string>
+    <string name="data_kb_other_found">Found another knowledge base with files: %1$s (%2$d files).\nThe knowledge base follows the workspace — after switching workspaces the old one stays where it is, but the app only reads the path above.</string>
+    <string name="data_kb_copy_btn">Copy it over (%1$d files)</string>
+    <string name="data_kb_copy_title">Copy it over?</string>
+    <string name="data_kb_copy_desc">Copies files from %1$s into the current knowledge base\'s %2$s/ folder. Originals are untouched; same-name files are not overwritten (the current copy wins).</string>
+    <string name="data_kb_copied">Copied %1$d files, index rebuilt</string>
+    <string name="data_kb_copy_none">No files to copy (they may all be in the current knowledge base already)</string>
+    <string name="data_copy_action">Copy</string>
+    <string name="data_kb_path_label">knowledge-base path</string>
+    <string name="data_path_copied">Path copied: %1$s</string>
+    <string name="data_copy_path">Copy path</string>
+    <string name="data_view_help">View readme</string>
+    <string name="data_organizing">Organizing…</string>
+    <string name="data_rebuild">Rebuild</string>
+    <string name="data_kb_toggle">Let the terminal AI read it</string>
+    <string name="data_hints_toggle">Attach file hints when asking</string>
+    <string name="data_hints_desc">When on: as you ask a question in the terminal, Zhengdao first searches your files locally and appends \"file name + line number\" to your message — so the AI doesn\'t have to search itself. It only attaches when something is found, and never goes online; you can turn it off anytime.</string>
+    <string name="data_appearance_card">Terminal appearance</string>
+    <string name="data_appearance_desc">Takes effect next time you open the terminal. Font size, padding and colours use the defaults; only line spacing can be changed.</string>
+    <string name="data_font_size">Font size</string>
+    <string name="data_font_size_value">%1$d (default)</string>
+    <string name="data_inset">Padding</string>
+    <string name="data_inset_none">None (default)</string>
+    <string name="data_inset_value">%1$d dp top &amp; bottom</string>
+    <string name="data_color_scheme">Colours</string>
+    <string name="data_spacing">Line spacing</string>
+    <string name="data_spacing_desc">Comfortable: looser lines and more padding. Compact: same as before. Only affects line height, not column width.</string>
+    <string name="data_perm_ws_card">Permissions &amp; workspace</string>
+    <string name="data_perm_storage">File access (/sdcard)</string>
+    <string name="data_perm_desc">The AI in the terminal needs this permission to read and write phone files (/sdcard); without it everything fails. Tap this row to change it in system settings.</string>
+    <string name="data_net_row">Network access</string>
+    <string name="data_net_auto">Granted automatically</string>
+    <string name="data_net_hint">The network permission is granted automatically at install — nothing to do. If you use a proxy, remember to tick Zhengdao in the proxy app\'s per-app list. Tap this row to see network controls in system settings.</string>
+    <string name="data_net_check">Network self-test</string>
+    <string name="data_net_checking">Checking…</string>
+    <string name="data_net_check_btn">Tap to test</string>
+    <string name="data_manage_row">All files access (recommended)</string>
+    <string name="data_manage_on">On</string>
+    <string name="data_manage_off">Off</string>
+    <string name="data_manage_hint">Recommended. With it, the AI in the terminal can reach a wider storage range; without it things still work, just with a smaller range.</string>
+    <string name="data_ws_output">Terminal and agent output goes here (always /workspace inside the terminal)</string>
+    <string name="data_ws_shared_desc">Visible in your file manager and safe to delete; the folder stays even if you uninstall Zhengdao — your output isn\'t lost.</string>
+    <string name="data_ws_private_desc">App-private folder: deleted when you uninstall Zhengdao (use this if you care about traces).</string>
+    <string name="data_ws_pick">Choose folder</string>
+    <string name="data_ws_restored">Restored to default (Download/证道) — takes effect next session</string>
+    <string name="data_ws_restore">Restore default</string>
+    <string name="data_ws_private_done">Switched to private-only — takes effect next session</string>
+    <string name="data_ws_private">Private only</string>
+    <string name="data_ws_rule">Rule: the terminal AI can read all of /sdcard to find material, but output only goes into the workspace (this is written into its persona). Taiji\'s output lives in an app-internal folder and is unrelated.</string>
+    <string name="data_ws_invalid">That location isn\'t usable — pick a folder in internal storage</string>
+    <string name="data_ws_set">Workspace set to %1$s — takes effect next session</string>
+    <string name="data_ws_change_title">Switching workspace also switches the knowledge base</string>
+    <string name="data_ws_change_current">Current knowledge base: %1$s (%2$d files)</string>
+    <string name="data_ws_change_desc">The knowledge base sits under the workspace, so switching workspaces switches to a different one. This one stays where it is, no longer read (and never deleted).</string>
+    <string name="data_ws_change_ask">Copy these files into the new workspace\'s knowledge base? Originals stay put; same names are not overwritten.</string>
+    <string name="data_ws_change_copied">Copied %1$d files to the new workspace, index rebuilt</string>
+    <string name="data_ws_change_none">The new workspace already has these files — nothing to copy</string>
+    <string name="data_ws_change_copy_btn">Copy and switch</string>
+    <string name="data_ws_change_move_btn">Switch only, keep files here</string>
+
+    <!-- ── Environment page ── -->
+    <string name="env_repair_card">Repair environment</string>
+    <string name="env_repair_action">Repair</string>
+    <string name="env_repair_desc">Unpacks the system files again; your logins and workspace are kept.</string>
+    <string name="env_repair_btn">Repair environment (30s)</string>
+    <string name="env_repair_confirm">Will unpack the system files again from a local installer (about 30s, plus agent reinstall time). Logins and your workspace are kept. Continue?</string>
+    <string name="env_repair_no_local">No local installer found — download one in the terminal first</string>
+    <string name="env_repair_start">Repair: unpack again from local installer (%1$d MB), no download</string>
+    <string name="env_repair_done">Repair done: environment reset, logins and workspace kept (no download)</string>
+    <string name="env_repair_failed">Repair failed: %1$s</string>
+    <string name="env_hermes_card">Hermes dependencies</string>
+    <string name="env_hermes_checking">Checking…</string>
+    <string name="env_hermes_fix_record">Fix the record</string>
+    <string name="env_hermes_clean_marker">Clear update marker</string>
+    <string name="env_hermes_script_failed">Couldn\'t write the repair script</string>
+    <string name="env_hermes_repair_terminal">Repair in terminal</string>
+    <string name="env_hermes_broken">The dependency record is broken — running hermes fails immediately. Tap the button above to fix it.</string>
+    <string name="env_update_card">Environment update</string>
+    <string name="env_update_desc">Tap the button below to update the environment. Don\'t run apt upgrade in the terminal — it breaks the environment.</string>
+    <string name="env_checking">Checking…</string>
+    <string name="env_check_btn">Check for updates</string>
+    <string name="env_version_unknown">Unknown version</string>
+    <string name="env_local_env_missing_cached">%1$s is installed but the environment record is missing. A local installer is available (%2$s) — just reinstall from it, no download needed.</string>
+    <string name="env_local_cached">A local installer is available (%1$s) — install from it, no download needed.</string>
+    <string name="env_local_env_missing_full">%1$s is installed but the environment record is missing: this time it will reinstall from the full package (%2$s) so later checks can tell old from new.</string>
+    <string name="env_new_version_no_local_record">New version %1$s (no local record, so this time it downloads the full package, %2$s)</string>
+    <string name="env_up_to_date">Up to date (%1$s, environment %2$s)</string>
+    <string name="env_new_version_cached">New version %1$s (local installer available (%2$s) — install from it, no download)</string>
+    <string name="env_new_version_patch">New version %1$s — a small update is enough (only %2$s, no full download)</string>
+    <string name="env_new_version_full">New version %1$s (current environment %2$s, no matching patch) — full download required, %3$s</string>
+    <string name="env_feed_unreadable">Couldn\'t read the update info — no version number</string>
+    <string name="env_only_old_manifest">Couldn\'t reach the update feed; only the old manifest (local %1$s, manifest %2$s). That number is a distro version, so it can\'t tell new from old — to update, tap the button below.</string>
+    <string name="env_latest_release">Latest release: %1$s (can\'t install in-app yet — use \"Download\" to get it manually)</string>
+    <string name="env_repo_unparsable">Repository layout changed — couldn\'t parse the version</string>
+    <string name="env_check_failed">Check failed (network unreachable): %1$s</string>
+    <string name="env_installing">Installing (%1$s): %2$s\nNo need to tap again until it finishes; progress also shows at the top of the terminal and in the system notification.</string>
+    <string name="env_install_local">using the local package, no network</string>
+    <string name="env_install_online">downloading</string>
+    <string name="env_install_last">Last install: %1$s</string>
+    <string name="env_install_last_failed">Last install failed: %1$s</string>
+    <string name="env_retry_install">Retry install</string>
+    <string name="env_manifest_line">Agent manifest: %1$s (refreshes automatically when you open the home screen; no app update needed)</string>
+    <string name="env_manifest_refreshing">Refreshing agent manifest…</string>
+    <string name="env_manifest_updated">Agent manifest updated</string>
+    <string name="env_manifest_failed">Refresh failed (keeping the current manifest)</string>
+    <string name="env_manifest_refresh_btn">Refresh agent manifest now</string>
+    <string name="env_memlimit_card">Memory limit</string>
+    <string name="env_memlimit_desc">Caps how much memory each process in the terminal can use. Off by default: it limits virtual address space, not real usage, so turning it on can hurt agents. Use it only when one task runs away and drags the whole phone down.</string>
+    <string name="env_memlimit_off">Off</string>
+    <string name="env_memlimit_toast_off">Turned off — takes effect next session</string>
+    <string name="env_memlimit_toast">Set to %1$s — takes effect next session</string>
+    <string name="env_update_dialog_title">Environment update</string>
+    <string name="env_preparing">Preparing the installer: %1$s</string>
+    <string name="env_unpacking_long">Unpacking (no detailed progress, about 30 seconds to a few minutes)…</string>
+    <string name="env_unpacking_here">Unpacking (no detailed progress — stay on this page)…</string>
+    <string name="env_update_local_cached">Checking for updates: a local installer is available (%1$d MB) — unpacking again, no download</string>
+    <string name="env_update_done_local">Update done (from the local installer, no download) — takes effect after reopening the terminal</string>
+    <string name="env_update_start_download">Checking for updates: downloading the new version</string>
+    <string name="env_patch_downloading">Downloading the update patch (%1$s)…</string>
+    <string name="env_patch_progress">Downloading patch %1$d%% (%2$d/%3$d MB)</string>
+    <string name="env_patch_meta_missing">Patch metadata missing or unreadable</string>
+    <string name="env_patch_done">Small update done (only %1$s downloaded, no full package)</string>
+    <string name="env_patch_fallback">Small update failed (%1$s); switched to a full download;</string>
+    <string name="env_full_downloading">Downloading the environment %1$d%% (%2$d/%3$d MB — you can leave this page)</string>
+    <string name="env_update_done">Update done — takes effect after reopening the terminal</string>
+    <string name="env_update_failed">Update failed: %1$s</string>
+    <string name="env_install_local_btn">Install from local package</string>
+    <string name="env_install_download_btn">Download &amp; install</string>
+
+    <!-- ── Storage & cache page ── -->
+    <string name="storage_usage_title">Storage usage</string>
+    <string name="storage_row_rootfs">rootfs (system layer)</string>
+    <string name="storage_row_home">home (logins &amp; config)</string>
+    <string name="storage_row_cache">cache (downloads)</string>
+    <string name="storage_tag_removable">removable</string>
+    <string name="storage_tag_keep">keep</string>
+    <string name="storage_opt_btn">Clear rarely-used add-on tools (%1$d MB)</string>
+    <string name="storage_opt_title">Clear rarely-used add-on tools?</string>
+    <string name="storage_opt_free">Frees about %1$d MB.</string>
+    <string name="storage_opt_desc">This removes hermes\' bundled desktop-automation tool (cua-driver). It is only used in that kind of session, and it won\'t come back on its own — run hermes pm install once in the terminal to get it back (needs network, takes a while).</string>
+    <string name="storage_opt_browser">Browser tools (agent-browser / chromium) are not removed — hermes needs them to open web pages, so they stay.</string>
+    <string name="storage_opt_ffmpeg">ffmpeg isn\'t included either: it\'s a required package for hermes, and removing it makes hermes report \"install out of sync\" on every start (it doesn\'t accept the copy bundled with the system layer).</string>
+    <string name="storage_opt_keeps">Not removed: python / node / uv / npm / ripgrep runtimes, the dependency environment, memory, the hermes installation itself, system files, or any of your data.</string>
+    <string name="storage_opt_deleted">Deleted %1$d items, freed %2$d MB</string>
+    <string name="storage_opt_none">No optional tools to clean</string>
+    <string name="storage_script_btn">Clean scripts downloaded during install (re-downloaded next time)</string>
+    <string name="storage_script_title">Clean installer script cache?</string>
+    <string name="storage_script_desc1">This deletes the cached installer scripts in the shared agents/scripts folder, the checksums the app keeps, and the copy in the terminal.</string>
+    <string name="storage_script_desc2">The scripts are only tens of KB — this isn\'t about freeing space, it\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
+    <string name="storage_script_keeps">Not removed: the agent ledger installed.json, installed agents and toolchains, logs, or the knowledge base.</string>
+    <string name="storage_script_cleared">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</string>
+    <string name="storage_script_none">No script cache to clean</string>
+    <string name="storage_cache_title">Cache cleanup</string>
+    <string name="storage_cache_location">Location: %1$s (cache = package cache, logs = logs, agents = scripts &amp; ledger; rootfs and opencode are installers)</string>
+    <string name="storage_cache_tiers">Package cache (very low risk): downloads from npm / uv / apt, cleaned in the terminal so you can watch it. Temp files (low risk): leftovers in the temp folder untouched for over a day; no terminal needed, and the app also clears automatically when it exceeds 500 MB at startup. Toolchains, system files and your data are never touched.</string>
+    <string name="storage_cache_not_installed">The environment isn\'t installed yet, so there\'s nothing to clean in the terminal</string>
+    <string name="storage_cache_guest_btn">Clean package-download cache in the terminal</string>
+    <string name="storage_temp_btn">Clean temp files (%1$d MB)</string>
+    <string name="storage_temp_none">No temp files to clean</string>
+    <string name="storage_temp_title">Clean temp files?</string>
+    <string name="storage_temp_desc">Deletes about %1$d MB of leftovers in the temp folder (untouched for over a day).\n\nTerminal sessions, build caches and lock files are not deleted, and your data is untouched.</string>
+    <string name="storage_freed">Freed %1$d MB</string>
+    <string name="storage_temp_cleaned_none">No temp files to clean</string>
+    <string name="storage_agent_btn">Clean download caches left by tool installs (%1$d MB)</string>
+    <string name="storage_agent_btn_bare">Clean download caches left by tool installs</string>
+    <string name="storage_agent_title">Clean agent cache?</string>
+    <string name="storage_agent_desc">These caches will be deleted (they can be re-downloaded or regenerated):</string>
+    <string name="storage_agent_empty">(nothing measurable to clean this time)</string>
+    <string name="storage_agent_item">· %1$s — %2$d MB</string>
+    <string name="storage_agent_busy">⚠️ A terminal session is running: if it is installing dependencies right now, cleaning may interrupt that install (anything already installed is unaffected).</string>
+    <string name="storage_agent_keeps">Not removed: installed agents and toolchains (hermes/tools, Python/Node), the dependency environment and memory, config files, system files, or your own files. These caches re-download when needed.</string>
+    <string name="storage_agent_cleaned_none">No agent cache to clean</string>
+    <string name="storage_gen_btn">Clean pre-upgrade old Python environments (%1$d MB)</string>
+    <string name="storage_gen_title">Clean old dependency files?</string>
+    <string name="storage_gen_free">Frees about %1$d MB.</string>
+    <string name="storage_gen_desc">Every reinstall of the dependency environment leaves an old copy (hundreds of MB), and the record only points at the newest one — this deletes the ones nothing refers to. The one in use and the newest one are kept.</string>
+    <string name="storage_gen_keeps">Not removed: the dependency environment in use, memory, installed toolchains, system files. hermes reinstalls when you need to go back (requires network).</string>
+    <string name="storage_gen_deleted">Deleted %1$d copies, freed %2$d MB</string>
+    <string name="storage_gen_none">No old dependency files to clean</string>
+    <string name="storage_installer_title">Installer cache</string>
+    <string name="storage_installer_dir">Folder: %1$s</string>
+    <string name="storage_installer_count">%1$d installers cached (current environment: %2$s)</string>
+    <string name="storage_installer_item">· %1$s (%2$d MB)</string>
+    <string name="storage_installer_cleaned">Cleaned %1$d old version files</string>
+    <string name="storage_installer_clean_btn">Clean old version cache (keeps the current version)</string>
+    <string name="storage_rollback_list">Old versions you can go back to (only the latest 2 installers are kept)</string>
+    <string name="storage_rollback_to">Roll back to %1$s</string>
+    <string name="storage_rollback_title">Roll back environment</string>
+    <string name="storage_rollback_desc">Will reinstall system files from %1$s (a few minutes). Logins and your workspace are kept.</string>
+    <string name="storage_rollback_start">Roll back: reinstall from local installer %1$s (no download)</string>
+    <string name="storage_unpacking">Unpacking (no detailed progress — stay on this page or watch the notification)…</string>
+    <string name="storage_rollback_done">Rollback done: switched back to %1$s, takes effect after reopening the terminal (no download)</string>
+    <string name="storage_rollback_failed">Rollback failed: %1$s</string>
+    <string name="storage_rollback_btn">Roll back</string>
+
+    <!-- ── Help page ── -->
+    <string name="help_guide_title">Getting started</string>
+    <string name="help_guide_1">Tap \"Install environment\" on the home screen to set up Debian; then tap \"Install\" on any agent you want.</string>
+    <string name="help_guide_2">Sign in inside each agent (it keeps its own credentials), and it is ready to use.</string>
+    <string name="help_guide_3">Open the \"Terminal\" tab and type an agent command (claude / hermes / agy). OpenCode is built into \"Taiji\" and works out of the box. A separate opencode you install in the terminal is a different copy — the two do not interfere.</string>
+    <string name="help_faq_title">Common questions</string>
+    <string name="help_faq_q1">Environment won\'t open / download fails?</string>
+    <string name="help_faq_a1">Use \"Repair environment\" above to unpack it again — your logins are kept.</string>
+    <string name="help_faq_q2">How do I update an agent?</string>
+    <string name="help_faq_a2">Re-run the install command in the terminal. To update the system, use \"Check for updates\".</string>
+    <string name="help_faq_q3">Where are my files?</string>
+    <string name="help_faq_a3">Output goes into the workspace folder (by default Download/证道 on your phone).</string>
+    <string name="help_log_location">Location: %1$s</string>
+    <string name="help_log_desc">zhengdao-log.txt is this run; timestamped archives keep at most 20 files / 20 MB, oldest deleted first (a clean run is never deleted); errors.log records error lines only. Open them with a file manager, or send them to us to look into a problem.</string>
+    <string name="help_log_archive_count">%1$d archived logs.</string>
+    <string name="help_log_prev_error">The last run hit an error; the log was kept (copy it and send it to us).</string>
+    <string name="help_log_view_prev">View last log</string>
+    <string name="help_log_prune_btn">Keep only the latest 3</string>
+    <string name="help_log_pruned">Deleted %1$d old logs, kept the latest 3</string>
+
+    <!-- ── Shared components (top bar / log dialog / folder picker / KB help) ── -->
+    <string name="help_log_title">Run log</string>
+    <string name="help_log_copied">Copied the whole log</string>
+    <string name="help_log_missing">This run hasn\'t written a log yet. Log folder: %1$s (open it with a file manager)</string>
+    <string name="ws_picker_title">Choose a workspace folder</string>
+    <string name="ws_picker_root">/ (internal storage root)</string>
+    <string name="ws_picker_up">← Up</string>
+    <string name="ws_picker_empty">(no subfolders)</string>
+    <string name="ws_picker_hint">Agent output goes into this folder (visible in your file manager)</string>
+    <string name="ws_picker_confirm">Use this folder</string>
+    <string name="kb_help_title">About the knowledge base</string>
+    <string name="kb_help_missing">The readme hasn\'t been generated yet — open the terminal once and it will appear in the knowledge base folder.\n\nLocation: %1$s</string>
+    <string name="kb_help_failed">Couldn\'t read it — open the readme (说明.md) directly in the knowledge base folder.</string>
+
+    <!-- ── Keep-alive page ── -->
+    <string name="keepalive_title">Keep-alive</string>
+    <string name="keepalive_guide_title">Honor / MagicOS keep-alive guide</string>
+    <string name="keepalive_guide_steps">① App launch: Settings → Apps → App launch → Zhengdao → turn off \"Auto-manage\", then allow auto-start / linked start / background activity\n② Battery: Settings → Battery → More battery settings → Zhengdao → set to \"Don\'t optimize\"\n③ Task lock: in Recents find the Zhengdao card, swipe down for the lock icon and tap it\n④ If it exits on its own: Developer options → make sure \"Don\'t keep activities\" is off</string>
+    <string name="keepalive_note">Honor is fairly lenient with background services: keep the \"Session running\" notification visible and lock the task, and it will stay alive in the background. If the system does kill it, reopening the terminal takes you back to where you left off.</string>
+    <string name="keepalive_battery_btn">One tap: set Zhengdao to \"Don\'t optimize\"</string>
+    <string name="keepalive_details_btn">Open app details (startup manager)</string>
+    <string name="keepalive_battery_toast">Set it manually in Settings → Battery optimization</string>
+    <string name="keepalive_details_toast">Find Zhengdao under Settings → Apps</string>
+    <string name="keepalive_log_row">Keep-alive records</string>
+    <string name="keepalive_log_recent">%1$d recent exits</string>
+
+    <!-- ── About page ── -->
+    <string name="about_version">Version</string>
+    <string name="about_author">Author</string>
+    <string name="about_root_mode">Root mode</string>
+    <string name="about_root_mode_value">Not implemented yet — Zhengdao runs Debian without root</string>
+    <string name="about_build_source">Build source</string>
+    <string name="about_build_official">Official release ✓</string>
+    <string name="about_build_unofficial">⚠️ Unofficial (re-signed)</string>
+    <string name="about_build_unknown">Unrecognized</string>
+    <string name="about_repo">GitHub repository</string>
+    <string name="about_issues">Issues</string>
+    <string name="about_license">License</string>
+    <string name="about_license_value">All rights reserved (first-party code)</string>
+    <string name="about_licenses">Open-source licenses</string>
+    <string name="about_licenses_value">Bundled texts</string>
+    <string name="about_contact">Contact the author</string>
+
+    <!-- ── App language picker ── -->
+    <string name="language_system">System default</string>
+    <string name="language_zh">简体中文</string>
+    <string name="language_en">English</string>
+
+    <!-- ── Appearance (light / dark) ── -->
+    <string name="appearance_system">System default</string>
+    <string name="appearance_light">Light</string>
+    <string name="appearance_dark">Dark</string>
+
+    <!-- ── Startup / update dialogs (MainActivity) ── -->
+    <string name="main_android_too_old_title">Android version too old</string>
+    <string name="main_android_too_old_msg">Zhengdao requires Android 16 or newer (current: Android %1$s).</string>
+    <string name="main_update_title">Update available</string>
+    <string name="main_update_msg">Version %1$s is available (you have %2$s). Get it from GitHub Releases.</string>
+    <string name="main_update_go">Download</string>
+    <string name="main_update_ignore">Ignore</string>
+    <string name="main_unofficial_build">This build was not signed by the original author. Please download the official release from GitHub.</string>
+
+    <!-- ── Taiji tab (TaijiScreen: install / connection / version) ── -->
+    <string name="taiji_connecting">Connecting to OpenCode…</string>
+    <string name="taiji_refresh_failed">Couldn\'t refresh sessions: %1$s</string>
+    <string name="taiji_send_failed">Couldn\'t send: %1$s</string>
+    <string name="taiji_copied">Copied to clipboard</string>
+    <string name="taiji_copy_failed">Copy failed: the system clipboard is unavailable</string>
+    <string name="taiji_start_new">Start a new conversation</string>
+    <string name="taiji_start_new_hint">Type your task below — for example, \"show me what\'s in my Downloads folder\"</string>
+    <string name="taiji_oc_not_installed_title">OpenCode isn\'t installed yet</string>
+    <string name="taiji_oc_install_hint">Tap the button below to download and install (about 65 MB; roughly a minute if it\'s already cached)</string>
+    <string name="taiji_oc_preparing">Preparing…</string>
+    <string name="taiji_oc_installing">Installing…</string>
+    <string name="taiji_oc_retry_install">Retry install</string>
+    <string name="taiji_oc_download_install">Download and install</string>
+    <string name="taiji_oc_install_done">Installed. Starting OpenCode…</string>
+    <string name="taiji_oc_install_failed">Install failed: %1$s</string>
+    <string name="taiji_oc_start_failed">OpenCode failed to start</string>
+    <string name="taiji_oc_auth_hint">If it reports an authentication failure, the serve password isn\'t ready yet — restart the app and try again</string>
+    <string name="taiji_oc_version_line">OpenCode %1$s (bundled %2$s)</string>
+    <string name="taiji_oc_up_to_date">OpenCode is up to date (%1$s)</string>
+    <string name="taiji_oc_check_failed">Update check failed: %1$s</string>
+    <string name="taiji_oc_processing">Working…</string>
+    <string name="taiji_oc_check_update">Check for OpenCode updates</string>
+    <string name="taiji_oc_install">Install OpenCode</string>
+    <string name="taiji_oc_found_new">OpenCode %1$s available</string>
+    <string name="taiji_oc_no_digest">Current %1$s → %2$s. This release provides no SHA256 digest, so in-app install is disabled for safety — download it manually from GitHub.</string>
+    <string name="taiji_oc_digest_ok">Current %1$s → %2$s. About 65 MB will be downloaded from GitHub and verified against the digest, then installed over the current version. Restart the app afterwards for it to take effect.</string>
+
+    <!-- ── Taiji tab: model pool (ModelSheet) ── -->
+    <string name="taiji_model_pool">Models</string>
+    <string name="taiji_fetching">Loading…</string>
+    <string name="taiji_refresh_action">⟳ Refresh</string>
+    <!-- 首尾空格用一层引号包裹，否则 aapt2 会 trim 掉（外层引号本身不显示） -->
+    <string name="taiji_current_prefix">"Current: "</string>
+    <string name="taiji_session_override">" (this session)"</string>
+    <string name="taiji_server_default">Server default</string>
+    <string name="taiji_model_refresh_failed">Refresh failed: %1$s</string>
+    <string name="taiji_loading_model_catalog">Loading the model catalog…</string>
+    <string name="taiji_no_models">No models available</string>
+    <string name="taiji_catalog_unreachable">The catalog comes from models.dev and isn\'t reachable right now (even free models need it). Enable Zhengdao in your proxy app\'s per-app proxy list and try again.</string>
+    <string name="taiji_reload">Reload</string>
+    <string name="taiji_default_clear_override">Default (clear this session\'s override)</string>
+    <string name="taiji_free">Free</string>
+
+    <!-- ── Taiji tab: session bar / connection / tool cards (TaijiComponents) ── -->
+    <string name="taiji_session_history">Session history</string>
+    <string name="taiji_new_session">New session</string>
+    <string name="taiji_new_session_plus">"＋  New session"</string>
+    <string name="taiji_conn_connected">● Connected</string>
+    <string name="taiji_conn_connecting">○ Connecting…</string>
+    <string name="taiji_conn_reconnecting">○ Disconnected, reconnecting (attempt %1$d)</string>
+    <string name="taiji_banner_connecting">Connecting…</string>
+    <string name="taiji_banner_idle">Not connected</string>
+    <string name="taiji_banner_reconnecting">Disconnected, reconnecting…</string>
+    <string name="taiji_agent_run_failed">Agent run failed: %1$s</string>
+    <string name="taiji_back_to_latest">⬇ Back to latest</string>
+    <string name="taiji_back_to_latest_desc">Jump to the latest message</string>
+    <string name="taiji_copy_message">Copy this message</string>
+    <string name="taiji_unknown_part">Unknown content (%1$s)</string>
+    <string name="taiji_state_running">Running</string>
+    <string name="taiji_state_done">Done</string>
+    <string name="taiji_state_failed">Failed</string>
+    <string name="taiji_tool">Tool</string>
+    <string name="taiji_tool_input">Input</string>
+    <string name="taiji_tool_output">Output</string>
+    <string name="taiji_reasoning_head">Reasoning</string>
+    <string name="taiji_reasoning_head_steps">Reasoning · %1$d steps</string>
+    <string name="common_collapse_arrow">Collapse ▲</string>
+    <string name="common_expand_arrow">Expand ▼</string>
+    <string name="taiji_todo_header">Task list (%1$d/%2$d)</string>
+    <string name="taiji_placeholder_streaming">AI is replying…</string>
+    <string name="taiji_placeholder_idle">Describe your task…</string>
+    <string name="taiji_send_desc">Send</string>
+    <string name="taiji_stop_desc">Stop generating</string>
+    <string name="taiji_perm_title">Tool permission requested</string>
+    <string name="taiji_perm_tool">Tool: %1$s</string>
+    <string name="taiji_perm_target">Target</string>
+    <string name="taiji_perm_remember">Remember this choice</string>
+    <string name="taiji_perm_deny">Deny</string>
+    <string name="taiji_perm_allow">Allow</string>
+    <string name="taiji_perm_hint">If you don\'t respond, the agent keeps waiting and the task can\'t continue.</string>
+    <string name="taiji_msg_actions_title">Message actions</string>
+    <string name="taiji_no_copyable_text">(This message has no text to copy)</string>
+    <string name="taiji_copy_all_conv">Copy the whole conversation (%1$d messages)</string>
+    <string name="taiji_delete_hint">You can\'t delete a single message; to remove anything, delete the whole conversation from \"Session history\" on the left.</string>
+    <string name="taiji_sessions">Sessions</string>
+    <string name="taiji_refresh_sessions_desc">Refresh the session list</string>
+    <string name="taiji_no_sessions">No past conversations yet.\nTap \"＋ New session\" above to start your first one.</string>
+    <string name="taiji_plugins">Plugins</string>
+    <string name="taiji_plugins_enabled">%1$d enabled</string>
+    <string name="taiji_plugins_none">None enabled</string>
+    <string name="taiji_close_session">Close Taiji and exit</string>
+    <string name="taiji_close_session_hint">Chat is saved — pick it up later</string>
+    <string name="taiji_close_session_title">Close Taiji and exit?</string>
+    <string name="taiji_close_session_msg">This conversation stays in the list — tap it to open it again.</string>
+    <string name="taiji_delete_session_title">Permanently delete this conversation</string>
+    <string name="taiji_delete_session_msg">\"%1$s\" will be permanently deleted on the server. This can\'t be undone.</string>
+    <string name="taiji_delete_failed">Delete failed: the server didn\'t confirm (network problem, or the conversation no longer exists)</string>
+    <string name="taiji_deleting">Deleting…</string>
+    <string name="taiji_delete">Delete</string>
+    <string name="taiji_msg_count">%1$d messages</string>
+    <string name="taiji_current">Current</string>
+    <string name="taiji_delete_session_desc">Delete conversation \"%1$s\"</string>
+    <string name="taiji_session_fallback">Session %1$s</string>
+    <string name="taiji_day_today">Today</string>
+    <string name="taiji_day_yesterday">Yesterday</string>
+    <string name="taiji_day_earlier">Earlier</string>
+
+    <!-- ── Text copied to the clipboard (MessageCopy, follows the UI language) ── -->
+    <string name="copy_role_separator">": "</string>
+    <string name="copy_role_user">Me</string>
+    <string name="copy_role_assistant">Assistant</string>
+    <string name="copy_role_system">System</string>
+    <string name="copy_reasoning">(reasoning)</string>
+    <string name="copy_attachment">(attachment) %1$s</string>
+    <string name="copy_unknown">(unknown content %1$s)</string>
+    <string name="copy_tool_open">(tool %1$s · %2$s)</string>
+    <string name="copy_unnamed_tool">unnamed</string>
+    <string name="copy_tool_input">Input:</string>
+    <string name="copy_tool_output">Result:</string>
+    <string name="copy_truncated">\n… (truncated, original was %1$d characters)</string>
+    <string name="copy_state_unknown">Unknown</string>
+
+    <!-- ── First-run welcome screen (WelcomeScreen) ── -->
+    <string name="welcome_tagline">Run your own AI agents on your phone</string>
+    <string name="welcome_step1">Add a model API key in Settings (only the one you\'ll use)</string>
+    <string name="welcome_step2">Open Taiji and start chatting — no need to wait for the runtime</string>
+    <string name="welcome_step3">Come back and install the runtime when you want a shell or other agents</string>
+    <string name="welcome_enter">Enter</string>
+    <string name="welcome_install_env">Install the runtime</string>
+    <string name="welcome_skip">Try Taiji first (skip the runtime)</string>
+    <string name="welcome_ready">Runtime ready</string>
+    <string name="welcome_env_note">The runtime powers Terminal and other agents; Taiji doesn\'t need it</string>
+
+    <!-- ── Keep-alive log page (KeepaliveLogActivity) ── -->
+    <string name="keepalive_log_title">Keep-alive log</string>
+    <string name="keepalive_log_location_card">Where it\'s stored</string>
+    <string name="keepalive_log_location">Location: %1$s</string>
+    <string name="keepalive_log_hint">When the process is killed, the system records why (out of memory / resource limit exceeded / vendor background cleanup / crash / not responding). It\'s collected here on the next launch. Heartbeats are logged every 10 minutes, and the last one shows the state right before it died (memory level, whether the foreground service was running, which page you were on). Export it and send it to the author for analysis.</string>
+    <string name="keepalive_log_recent_card">Recent records</string>
+    <string name="keepalive_log_empty">No exit records yet — they appear after the app is killed once and reopened.</string>
+    <string name="keepalive_log_last_exits">Recent exits:</string>
+    <string name="keepalive_log_last_beats">Recent heartbeats:</string>
+    <string name="keepalive_log_snippets">logcat snapshots: %1$d (one per launch and per check, up to 5)</string>
+    <string name="keepalive_log_exported">Exported to %1$s</string>
+    <string name="keepalive_log_export_failed">Export failed: shared storage unavailable (enable \"All files access\" in permissions first)</string>
+    <string name="keepalive_log_export">Export to Download/证道/logs</string>
+    <string name="keepalive_log_cleared">Cleared %1$d records</string>
+    <string name="keepalive_log_clear">Clear records</string>
+
+    <!-- ── Plugins page (PluginsScreen) ── -->
+    <string name="plugins_card_enabled">Enabled</string>
+    <string name="plugins_state_enabled">Enabled</string>
+    <string name="plugins_empty_enabled">No plugins enabled yet. Add one from \"Recommended\" below.</string>
+    <string name="plugins_empty_no_env">Taiji\'s OpenCode isn\'t initialized — open Taiji once and the plugin config will be generated automatically.</string>
+    <string name="plugins_card_recommended">Recommended</string>
+    <string name="plugins_legacy">⚠️ Deprecated plugin (installed before but no longer working) — turning it off is recommended</string>
+    <string name="plugins_cached_ver">v%1$s cached</string>
+    <string name="plugins_not_downloaded">Not downloaded yet (installed over the network the first time an agent starts)</string>
+    <string name="plugins_enabled_toast">Enabled: %1$s (takes effect the next time an agent starts)</string>
+    <string name="plugins_disabled_toast">Disabled: %1$s</string>
+    <string name="plugins_oc_not_ready">Taiji\'s OpenCode isn\'t initialized — open Taiji once first</string>
+    <string name="plugins_no_change">No change</string>
+    <string name="plugins_card_add">Add a plugin (npm package name)</string>
+    <string name="plugins_add_hint">"e.g. @scope/opencode-plugin-xxx"</string>
+    <string name="plugins_bad_spec">"That doesn\'t look like an npm package name: it should look like my-plugin or @scope/my-plugin, with no spaces"</string>
+    <string name="plugins_not_written">Not written to the config: %1$s (it may already be in the plugin list)</string>
+    <string name="plugins_not_added">Not added: %1$s — Taiji\'s OpenCode isn\'t initialized, open Taiji once first</string>
+    <string name="plugins_add_enable">Add and enable</string>
+    <string name="plugins_add_note">Copy the package name from the plugin\'s npm / GitHub page. Once added, opencode\'s bundled Bun downloads it from npm the next time an agent starts (the first time needs a network connection). Plugins run third-party code — only add packages you trust.</string>
+    <string name="plugins_cache_card">Plugin package cache (%1$d MB)</string>
+    <string name="plugins_cache_empty">No cache yet. On a plugin\'s first start, opencode\'s bundled Bun downloads it here from npm; after that it works offline.</string>
+    <string name="plugins_cache_clean">Clear plugin package cache</string>
+    <string name="plugins_cache_clean_note">Clearing doesn\'t disable the plugin — it\'s re-downloaded the next time an agent starts.</string>
+    <string name="plugins_card_about">About plugins</string>
+    <string name="plugins_about_note">Plugins are downloaded from npm and run third-party code — only enable ones you trust.\n\n\"Plugins\" here means the kind declared by package name in the config and downloaded automatically at startup; local .js files aren\'t handled here.\n\nThis page only covers OpenCode inside Taiji; an opencode you installed yourself in the terminal isn\'t managed here.</string>
+    <string name="plugins_clean_confirm_title">Clear the plugin package cache?</string>
+    <string name="plugins_clean_confirm_msg">This deletes the downloaded plugin packages (about %1$d MB). The plugins stay enabled and will be re-downloaded next time.</string>
+    <string name="plugins_cleaned_toast">Cleared, reclaimed about %1$d MB</string>
+
+    <!-- ── First-run permissions screen (PermissionSetupScreen) ── -->
+    <string name="perm_title">Permissions</string>
+    <string name="perm_intro">Zhengdao needs to read and write your files, and to notify you when a cleanup finishes. It needs the permissions below. You can grant them one by one, or set them up later (Settings → Permissions, any time).</string>
+    <string name="perm_status_card">Grant status</string>
+    <string name="perm_storage_label">Storage read/write (shared storage /sdcard)</string>
+    <string name="perm_storage_detail">Agents need this to read and write files on your phone (/sdcard). Without it, every file access in the terminal fails (required).</string>
+    <string name="perm_manage_label">All files access (optional · preferred)</string>
+    <string name="perm_manage_detail">With this on, agents can reach a wider range of storage. Basic /sdcard read/write works without it; this device doesn\'t offer the switch for Zhengdao, so leaving it off is normal and costs you nothing.</string>
+    <string name="perm_notify_label">Notifications</string>
+    <string name="perm_notify_detail">Silent notes like \"cleaned up after install\" use notifications. Without the permission the system discards them, but no feature is affected.</string>
+    <string name="perm_net_label">Network access</string>
+    <string name="perm_net_value">Granted automatically</string>
+    <string name="perm_net_detail">INTERNET is an install-time permission and needs no action. If you use a proxy: enable Zhengdao in the proxy app\'s per-app proxy list.</string>
+    <string name="perm_hint_storage_denied">The system didn\'t allow it — open \"Settings → Apps → Zhengdao → Permissions\" and grant it manually (some systems silently dismiss the dialog)</string>
+    <string name="perm_hint_notify_denied">Notifications weren\'t allowed — nothing breaks, you just won\'t get silent notes like \"cleaned up after install\"</string>
+    <string name="perm_open_failed">Couldn\'t open: %1$s</string>
+    <string name="perm_done">Done, enter Zhengdao</string>
+    <string name="perm_later">Later</string>
+    <string name="perm_storage_required_note">\"Storage read/write\" is required, but you can go in for now.</string>
+
+    <!-- ── Environment health check (EnvHealth: labels and verdicts) ── -->
+    <string name="health_abnormal">Check failed: %1$s</string>
+    <string name="health_label_proot">proot ready</string>
+    <string name="health_label_rootfs">RootFS integrity</string>
+    <string name="health_label_dns">DNS settings</string>
+    <string name="health_label_timezone">Timezone</string>
+    <string name="health_label_uv">uv settings</string>
+    <string name="health_label_hermes">Hermes dependencies</string>
+    <string name="health_label_network">Network</string>
+    <string name="health_label_storage">Storage permission</string>
+    <string name="health_label_disk">Storage usage</string>
+    <string name="health_label_native">Native acceleration</string>
+    <string name="health_label_resource">Resource usage</string>
+    <string name="health_proot_ok">proot + loader in place</string>
+    <string name="health_proot_missing">proot or loader missing (it\'s replayed automatically on each launch; if still missing, use \"Repair environment\" to re-extract)</string>
+    <string name="health_rootfs_ok">Debian system layer intact</string>
+    <string name="health_rootfs_broken">System layer files missing — use \"Repair environment\" to re-extract (about 30 seconds)</string>
+    <string name="health_rootfs_missing">Runtime not installed or installation incomplete</string>
+    <string name="health_dns_ok">CN mirrors + retry options configured</string>
+    <string name="health_dns_stale">Missing CN mirrors or retry options (old-style config) — one tap to rewrite</string>
+    <string name="health_dns_missing">resolv.conf doesn\'t exist — one tap to create</string>
+    <string name="health_tz_off">localtime doesn\'t point to Asia/Shanghai (the TZ env var covers it for now) — one tap to fix</string>
+    <string name="health_uv_naked">hermes\' bundled uv isn\'t wrapped (hard links would fail) — one tap to wrap</string>
+    <string name="health_uv_missing">/etc/uv/uv.toml is missing — one tap to create</string>
+    <string name="health_uv_nolinkmode">uv.toml lacks link-mode — one tap to rewrite</string>
+    <string name="health_uv_ok">System-level link-mode=copy and bundled uv wrapped</string>
+    <string name="health_net_validated">Network available (verified by the system)</string>
+    <string name="health_net_reachable">Network available (verified by a live probe)</string>
+    <string name="health_net_no_wan">Connected, but the wider internet is unreachable (proxy or restricted network?)</string>
+    <string name="health_net_down">Network unavailable — agent installs and updates will fail</string>
+    <string name="health_storage_ok">All-files access granted; shared storage directly readable</string>
+    <string name="health_storage_read_fail">All-files access granted, but shared storage can\'t be read (permission gating or restricted storage view — needs a second look)</string>
+    <string name="health_storage_denied">All-files access not granted; the workspace\'s main path is unavailable — enable it in system settings</string>
+    <string name="health_disk_cleanable">%1$d MB cleanable — all re-downloadable stuff: old installers, tool-install caches, pre-upgrade old environments</string>
+    <string name="health_disk_below">%1$d MB cleanable, below the %2$d MB threshold</string>
+    <string name="health_native_ok">libzhengdao_core.so loaded: extraction and SHA256 run natively</string>
+    <string name="health_native_fallback">Not loaded: extraction and SHA256 fall back to Java (works, but slower); likely a packaging or page-alignment issue, see E-012/E-022</string>
+
+    <!-- ── Network self-check (NetSelfCheck: plain-language verdicts of the two probes) ── -->
+    <string name="net_ok_both">✅ Network available (%1$d ms) · ✅ update source reachable (%2$d ms)</string>
+    <string name="net_ok_index_down">✅ Network available (%1$d ms) · ⚠️ update source unreachable: downloading the runtime and \"Check for environment updates\" will both fail. If you\'re behind a proxy, enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="net_cn_down_index_ok">⚠️ CN mirror unreachable (%1$s), but the update source is reachable (%2$d ms)</string>
+    <string name="net_all_down">❌ Unreachable: %1$s — check the network, or enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="net_timeout">timed out</string>
+    <string name="net_timeout_secs">timed out after %1$ds</string>
+    <string name="net_index_unreachable">index unreachable</string>
+
+    <!-- ── Exception plain-language mapping (HumanizeError) ── -->
+    <string name="err_no_permission">Permission denied</string>
+    <string name="err_file_not_found">File not found</string>
+    <string name="err_file_exists">A file with the same name already exists at the destination</string>
+    <string name="err_host_not_found">Server not found (check the network)</string>
+    <string name="err_net_timeout">Network timed out (try again)</string>
+    <string name="err_ssl_fail">Secure connection failed (check the network)</string>
+    <string name="err_connect_fail">Couldn\'t reach the server (check the network)</string>
+    <string name="err_net_interrupted">Connection lost (try again)</string>
+    <string name="err_generic">Something went wrong (%1$s)</string>
+    <string name="err_unknown_type">unknown type</string>
+    <string name="err_disk_full">Not enough storage space</string>
+    <string name="err_no_write">No write permission</string>
+    <string name="err_file_too_large">File too large</string>
+    <string name="err_io">File read/write failed</string>
+
+    <!-- ── System info (SystemInfoProvider: line labels and value strings) ── -->
+    <string name="sys_section_hw">── System &amp; hardware ──</string>
+    <string name="sys_android">Android version: %1$s (API %2$s)</string>
+    <string name="sys_model">Device model: %1$s</string>
+    <string name="sys_manufacturer">Manufacturer: %1$s</string>
+    <string name="sys_abi">CPU architecture: %1$s</string>
+    <string name="sys_cores">Cores: %1$s</string>
+    <string name="sys_ram">Memory: %1$s free / %2$s total</string>
+    <string name="sys_storage">Storage (app partition): %1$s free / %2$s total</string>
+    <string name="sys_screen">Screen: %1$s</string>
+    <string name="sys_kernel">Kernel: %1$s</string>
+    <string name="sys_section_security">── Security &amp; runtime ──</string>
+    <string name="sys_selinux">SELinux: %1$s</string>
+    <string name="sys_root">Root: %1$s</string>
+    <string name="sys_gms_line">GMS: %1$s</string>
+    <string name="sys_webview">WebView: %1$s</string>
+    <string name="sys_section_zd">── Zhengdao environment ──</string>
+    <string name="sys_rootfs_line">RootFS: %1$s</string>
+    <string name="sys_distro">Distribution: %1$s</string>
+    <string name="sys_proot_line">proot: %1$s</string>
+    <string name="sys_agents">Installed agents: %1$s</string>
+    <string name="sys_python_line">Python: %1$s</string>
+    <string name="sys_node_line">Node: %1$s</string>
+    <string name="sys_uv_line">uv: %1$s</string>
+    <string name="sys_unknown">Unknown</string>
+    <string name="sys_rooted">Rooted</string>
+    <string name="sys_not_rooted">Not rooted</string>
+    <string name="sys_gms_yes">GMS present (certified device)</string>
+    <string name="sys_gms_no">No GMS</string>
+    <string name="sys_installed">Installed</string>
+    <string name="sys_not_installed">Not installed</string>
+    <string name="sys_proot_ready">Ready (Termux fork)</string>
+    <string name="sys_none">None</string>
+    <string name="sys_uv_embedded">%1$s (bundled with hermes)</string>
+
+    <!-- ── Taiji OpenCode (OcManager: serve / install / update) ── -->
+    <string name="oc_not_installed">OpenCode is not installed</string>
+    <string name="oc_serve_no_password_title">Taiji connected but didn\'t get the access password</string>
+    <string name="oc_serve_no_password_detail">The serve process is alive on port 14000, but serve.log contains no usable server password line (a password from a previous session can\'t be reused) ⇒ every request from now on gets a 401 and the UI looks stuck.</string>
+    <string name="oc_restart_taiji">Restart Taiji</string>
+    <string name="oc_serve_timeout_title">Taiji (OpenCode) start timed out</string>
+    <string name="oc_serve_timeout_detail">serve wasn\'t ready within 15 seconds (port 14000 unresponsive). Common causes: a previous serve still hanging around, the port being taken, or the bundled binary blocked by security software.</string>
+    <string name="oc_serve_timeout_short">Start timed out: serve wasn\'t ready within 15 seconds (see the run log)</string>
+    <string name="oc_serve_start_failed_title">Taiji (OpenCode) failed to start</string>
+    <string name="oc_serve_start_failed_short">Start failed: %1$s</string>
+    <string name="oc_cached_verifying">Found a downloaded installer — verifying…</string>
+    <string name="oc_cached_verified">Installer verified — extracting…</string>
+    <string name="oc_downloading_start">Downloading OpenCode %1$s (about 65 MB, resumable)…</string>
+    <string name="oc_downloading_pct">Downloading %1$d%% (%2$d/%3$d MB)</string>
+    <string name="oc_verified_extracting">Verified — extracting (about a minute)…</string>
+    <string name="oc_download_failed">Download failed: %1$s</string>
+    <string name="oc_no_digest_rejected">The update package has no SHA256 (release digest missing) — installation refused</string>
+    <string name="oc_update_failed">Update failed: %1$s</string>
+    <string name="oc_extract_incomplete">Incomplete extraction: %1$s (%2$d/%3$d bytes)</string>
+    <string name="oc_extracting_count">Extracting… %1$d</string>
+    <string name="oc_extract_failed">Extraction failed: %1$s</string>
+    <string name="oc_binary_missing">Binary missing after extraction (incomplete package?)</string>
+    <string name="oc_install_done">OpenCode %1$s installed</string>
+
+    <!-- ── Taiji connection layer (OcRepository: banner / send / model-pool errors) ── -->
+    <string name="oc_create_session_failed">Couldn\'t create a session</string>
+    <string name="oc_polling_retry">Polling failed, retrying</string>
+    <string name="oc_empty_response">Empty response from %1$s</string>
+    <string name="oc_empty_response_perm">Empty response from permission/request</string>
+    <string name="oc_get_failed">GET %1$s failed: %2$s</string>
+    <string name="oc_get_http">GET %1$s HTTP %2$d</string>
+    <string name="oc_bad_body">Response is neither an array nor has a data array: %1$s</string>
+    <string name="oc_models_http">Fetching model catalog: HTTP %1$d</string>
+    <string name="oc_empty_body">Response body is empty</string>
+    <string name="oc_http_status">Server returned %1$d</string>
+    <string name="oc_session_not_ready">Session not ready</string>
+    <string name="oc_switch_model_http">Switching model: HTTP %1$d</string>
+    <string name="oc_session_not_open">No open session</string>
+    <string name="oc_send_http">Send failed: HTTP %1$d</string>
+    <string name="oc_send_failed">Send failed: %1$s</string>
+    <string name="oc_abort_failed">Abort failed: %1$s</string>
+    <string name="oc_perm_http">Authorization failed: HTTP %1$d</string>
+    <string name="oc_perm_submit_failed">Authorization submit failed: %1$s</string>
+    <string name="oc_nothing_to_retry">Nothing to retry</string>
+    <string name="oc_list_sessions_failed">Fetching the session list failed: %1$s</string>
+    <string name="oc_delete_session_failed">Delete session failed (id=%1$s): %2$s</string>
+
+    <!-- ── Hermes dependency health (HermesEnv) ── -->
+    <string name="hermes_not_installed">Hermes not installed — skipped</string>
+    <string name="hermes_record_host_path">The dependency record points to host paths (invisible inside proot) — one tap to fix (a usable generation is on disk)</string>
+    <string name="hermes_record_broken">The dependency record points to a missing directory — one tap to fix (a usable generation is on disk)</string>
+    <string name="hermes_record_lost">The dependency environment is lost and must be rebuilt in the terminal (tap \"Repair\" — it runs in the terminal, visible)</string>
+    <string name="hermes_no_record">No dependency environment recorded yet (installation may not have finished) — rebuild in the terminal</string>
+    <string name="hermes_lock_missing">Source lock uv.lock is missing (a warning will appear on every launch) — one tap to restore it in the terminal</string>
+    <string name="hermes_ok_stale">Dependency record is valid (plus %1$d leftover marker files from interrupted updates — one tap to clean)</string>
+    <string name="hermes_ok">Dependency environment record is valid</string>
+
+    <!-- ── Resource usage health (ResMonitor) ── -->
+    <string name="resmon_idle">Neither Taiji nor the terminal is running — nothing to sample</string>
+    <string name="resmon_rss_over">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Taiji</string>
+    <string name="resmon_cpu_over">⚠ CPU %1$s%% over the %2$d%% threshold — check plugins and session count</string>
+    <string name="resmon_normal">RSS %1$d MB · CPU %2$s%% · %3$d processes</string>
+
+    <!-- ── Terminal page subset (TerminalActivity: install guide + long-press menu + copy/paste) ── -->
+    <!-- Remaining toasts (split panes / dot help / install progress details) are exempt by user decision: the terminal screen itself prints in English -->
+    <string name="term_no_network">No network: make sure your proxy is on, and enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="term_nothing_to_copy">Nothing to copy</string>
+    <string name="term_copied_screen">Copied the screen content (%1$d characters)</string>
+    <string name="term_clipboard_empty">Clipboard is empty</string>
+    <string name="term_session_not_ready">Session isn\'t ready yet — can\'t paste</string>
+    <string name="term_pasting">Pasting %1$d characters…</string>
+    <string name="term_pasted">Pasted %1$d characters</string>
+    <string name="term_paste_failed">Paste didn\'t finish: %1$s</string>
+    <string name="term_copied_chars">Copied %1$d characters</string>
+    <string name="term_menu_title">Terminal actions</string>
+    <string name="term_menu_web_search">Search selected text</string>
+    <string name="term_menu_clear">Clear screen</string>
+    <string name="term_menu_reset">Reset terminal</string>
+    <string name="term_no_selection">No text selected</string>
+    <string name="term_cleared">Screen cleared</string>
+    <string name="term_clear_failed">Clear failed: %1$s</string>
+    <string name="term_reset_done">Terminal reset</string>
+    <string name="term_browser_failed">Couldn\'t open a browser: %1$s</string>
+    <string name="term_local_cache_installing">Using a locally cached package (%1$d MB, no download) — verifying and extracting…</string>
+    <string name="term_first_run_need_grant">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nTap \"Grant storage\" first — after granting, put the installer into the Download/证道 folder and reinstalling the app won\'t need another download.</string>
+    <string name="term_first_run">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nWi-Fi recommended; resumable, so an interruption can be retried.\nTip: you can also place the installer into the Download/证道 folder manually and restart the app to install without downloading.</string>
+    <string name="term_install_title">Install the runtime (Debian 13.7)</string>
+    <string name="term_start_download">Start download</string>
+    <string name="term_pick_file">Pick from files</string>
+</resources>

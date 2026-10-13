@@ -4,6 +4,16 @@ package com.example.zhengdao.ui
 
 import com.example.zhengdao.ui.util.pressClickable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +45,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,15 +55,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 卡片右侧操作按钮的**最小**宽度（2026-10-10 UIUX 审计 B2 修）。
@@ -64,6 +87,12 @@ import com.example.zhengdao.core.IssueCenter
  * 若将来按钮文案超过 4 个字，改这一个常量即可。
  */
 private const val BUTTON_MIN_WIDTH_DP = 108
+
+/**
+ * 系统信息的进程级缓存（2026-10-12 无感化 §5.5）：跨页面重进保留上一次快照，
+ * 让「加载中…」只出现在本进程第一次采集时。仅作展示兜底，不参与任何判定。
+ */
+private var sysInfoProcessCache: SystemInfoProvider.Info? = null
 
 /**
  * 首页：顶部可折叠系统状态卡 + Agent 卡片列表；底部 Tab 的「终端」页由
@@ -80,6 +109,14 @@ fun HomeScreen(
         androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // 2026-10-12（走查报告 §五）：错误提示从 Toast 迁 Snackbar——Toast 不能带动作、
+    // 与页面内容脱节；Snackbar 挂在本页底部，可读、可跟随、不打断。
+    // 定义在使用点之前（Kotlin 局部函数作用域从声明处开始）。
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
+    fun snack(msg: String) {
+        snackbarScope.launch { snackbarHostState.showSnackbar(msg) }
+    }
     // 去路执行（#4 走查，2026-10-09）：把 EnvHealth / IssueCenter 的「标识」翻译成「行为」的
     // 唯一一处（体检行与「最近问题」卡共用），免得同一句"去处理"在各处各写一遍、各指一个地方。
     val openStorageGrant: () -> Unit = {
@@ -92,11 +129,7 @@ fun HomeScreen(
             context.startActivity(i)
         }.onFailure {
             // 个别 ROM 没有这个页面（或被策略拦下）——不能静默失败，给一句人话 + 手动路径
-            android.widget.Toast.makeText(
-                context,
-                "打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启",
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
+            snack(context.getString(R.string.home_grant_page_failed))
         }
     }
     // 台账 §B 顺序 11（原 §B-补-42）：两条「去看记录 / 看日志」的通知按钮各自的落点。
@@ -133,7 +166,7 @@ fun HomeScreen(
             i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(i)
         }.onFailure {
-            android.widget.Toast.makeText(context, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show()
+            snack(context.getString(R.string.home_no_browser))
         }
     }
     // 太极 serve 的重试 / 重启：动作在后台线程跑，结果回主线程汇报（成功撤下问题，失败留在卡上）
@@ -142,27 +175,35 @@ fun HomeScreen(
             val err = runCatching {
                 if (restart) com.example.zhengdao.oc.OcManager.stopServe()
                 com.example.zhengdao.oc.OcManager.startServe(context)
-            }.getOrElse { "启动异常：" + (it.message ?: it.javaClass.simpleName) }
+            }.getOrElse {
+                context.getString(
+                    R.string.home_start_error,
+                    it.message ?: it.javaClass.simpleName,
+                )
+            }
             android.os.Handler(context.mainLooper).post {
                 if (err == null) {
                     IssueCenter.resolve(issueId)
                 } else {
                     IssueCenter.report(
                         id = issueId,
-                        title = "太极（OpenCode）仍没起来",
+                        title = context.getString(R.string.home_taiji_not_up),
                         detail = err,
-                        actionLabel = "重试",
+                        actionLabel = context.getString(R.string.common_retry),
                         actionId = IssueCenter.ACTION_RETRY_SERVE,
                     )
-                    android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_LONG).show()
+                    snack(err)
                 }
             }
         }.start()
     }
+
     var agents by remember { mutableStateOf(AppState.agents(context)) }
     var statusExpanded by remember { mutableStateOf(false) }
-    // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复
-    var healthChecks by remember { mutableStateOf<List<EnvHealth.Check>?>(null) }
+    // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复。
+    // 2026-10-12 无感化（走查报告 §5.4）：**打开即显上次缓存值**（旧值），
+    // 流式刷新逐项就地覆盖——不再「先空白 → 11 行同时蹦出来」（用户原话：有点吓人）。
+    var healthChecks by remember { mutableStateOf(LastValues.loadChecks(context)) }
     var healthEpoch by remember { mutableStateOf(0) }
     // 卸载二次确认（P3）：非 null 时弹出确认弹窗
     var uninstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
@@ -178,22 +219,32 @@ fun HomeScreen(
     // 展开状态卡（或修复完成）时跑一遍体检；IO 采集，与 sysInfo 同模式。
     // #10：inspect 内部已逐项兜底（不抛异常），这里再兜一层——展开状态卡这个动作
     // 宁可少显示几项，也不能变成闪退。
+    // 2026-10-12 无感化（§5.4）：改串行整体替换为**流式逐项**——11 项并行跑，先算完先上屏，
+    // 每到达一项只替换那一行；全部到齐后落盘，下次打开（含冷启动）先显旧值。
     LaunchedEffect(statusExpanded, healthEpoch) {
         if (statusExpanded) {
-            healthChecks = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching { EnvHealth.inspect(context) }.getOrElse { emptyList() }
-            }
+            runCatching {
+                EnvHealth.inspectStream(context, context.resources).collect { c ->
+                    val cur = healthChecks
+                    healthChecks = if (cur.isNullOrEmpty()) listOf(c)
+                    else cur.filter { it.id != c.id } + c
+                }
+            }.onFailure { healthChecks = emptyList() }
+            LastValues.saveChecks(context, healthChecks.orEmpty())
         }
     }
-    var sysInfo by remember { mutableStateOf<SystemInfoProvider.Info?>(null) }
+    var sysInfo by remember { mutableStateOf(sysInfoProcessCache) }
     // 系统信息采集轮次：进页面采一次，之后每次 ON_RESUME 再采一次。
     // 原先只在 LaunchedEffect(Unit) 里采一次——用户去终端装完环境/Agent 再回来，
     // 卡片里的"内存可用 / 已装 Agent / 发行版"全是切走之前的旧快照。
+    // 2026-10-12 无感化（§5.5 第 5 处）：进程级缓存兜底——重进页面先显上一次的系统信息，
+    // 新快照到达后就地覆盖，不再「加载中…」整块闪现。
     var sysTick by remember { mutableStateOf(0) }
     LaunchedEffect(sysTick) {
         sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            SystemInfoProvider.collect(context)
+            SystemInfoProvider.collect(context, context.resources)
         }
+        sysInfoProcessCache = sysInfo
     }
     // 每次回到本页（从终端返回）刷新安装状态
     LaunchedEffect(Unit) {
@@ -268,6 +319,7 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         // ── 固定顶栏（不随内容滚动）──
         // 与太极页一致：标题常驻、内容在下方自滚。原先把标题塞进 LazyColumn 的第一项，
@@ -279,7 +331,7 @@ fun HomeScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "证道",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
@@ -289,7 +341,7 @@ fun HomeScreen(
             TextButton(onClick = onOpenSettings) {
                 com.example.zhengdao.SettingsIcon(tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(6.dp))
-                Text("设置", color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.common_settings), color = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -329,28 +381,42 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(8.dp)
                                 .background(
-                                    if (envReady) MaterialTheme.colorScheme.tertiary
-                                    else MaterialTheme.colorScheme.error,
-                                    CircleShape,
-                                ),
+                                    // 状态点颜色过渡：环境装好/卸载的瞬间不闪变（300ms 淡入新色）
+                                    animateColorAsState(
+                                        targetValue = if (envReady) MaterialTheme.colorScheme.tertiary
+                                        else MaterialTheme.colorScheme.error,
+                                        animationSpec = tween(300),
+                                        label = "statusDot",
+                                    ).value
+                                , CircleShape,),
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = if (envReady) "环境就绪" else "环境未安装",
+                            text = if (envReady) stringResource(R.string.home_env_ready)
+                            else stringResource(R.string.home_env_missing),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
                         )
                         Text(
-                            text = "$installedCount 个 Agent",
+                            text = stringResource(R.string.home_agent_count, installedCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = if (statusExpanded) "▴" else "▾",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // 展开指示：自绘 chevron（与 BackChevron/ChevronRight 同一套笔）+ 180° 弹性旋转。
+                        // 取代原先的 "▴/▾" 字符切换——字符突变是"跳"，旋转是"动"（走查报告 §五同源问题）。
+                        val chevronRotation by animateFloatAsState(
+                            targetValue = if (statusExpanded) 180f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium,
+                            ),
+                            label = "expandChevron",
+                        )
+                        ExpandChevron(
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.rotate(chevronRotation),
                         )
                     }
                     Spacer(Modifier.height(2.dp))
@@ -360,13 +426,38 @@ fun HomeScreen(
                     Text(
                         text = buildString {
                             append("Android ").append(android.os.Build.VERSION.RELEASE)
-                            append(" · ").append(android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "未知")
-                            append(" · ").append(if (envReady) "Debian 13.7 已安装" else "Debian 未安装")
+                            append(" · ").append(
+                                android.os.Build.SUPPORTED_ABIS.firstOrNull()
+                                    ?: context.getString(R.string.home_abi_unknown)
+                            )
+                            append(" · ").append(
+                                if (envReady) context.getString(R.string.home_debian_installed)
+                                else context.getString(R.string.home_debian_missing)
+                            )
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    AnimatedVisibility(visible = statusExpanded) {
+                    // 展开/收起换弹簧曲线（2026-10-12）：默认的短淡入观感廉价——用户原话
+                    // 「说是动态卡一点也不动态」。展开带一点回弹（LowBouncy），
+                    // 收起不回弹（收起弹跳观感很怪）。体检项自身的入场见 StaggeredAppear。
+                    AnimatedVisibility(
+                        visible = statusExpanded,
+                        enter = expandVertically(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            expandFrom = Alignment.Top,
+                        ) + fadeIn(tween(180)),
+                        exit = shrinkVertically(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            shrinkTowards = Alignment.Top,
+                        ) + fadeOut(tween(140)),
+                    ) {
                         Column {
                             // 摘要与体检之间加一条发丝线：展开后内容骤增，需要一条明确的
                             // "以下属于详情"的分界（与卡片、底栏同一套 0.5dp outlineVariant）。
@@ -379,10 +470,11 @@ fun HomeScreen(
                             // 环境体检（P7）：逐项勾叉 + 定向修复；先于系统信息展示
                             val checks = healthChecks
                             Text(
-                                text = if (checks == null) "环境体检中…" else {
+                                text = if (checks == null) stringResource(R.string.home_health_checking)
+                                else {
                                     // 告警（warn）不计入"通过"：否则会出现"8/8 通过"却带 ⚠ 的自相矛盾
                                     val pass = checks.count { it.ok && !it.warn }
-                                    "环境体检 $pass/${checks.size} 通过"
+                                    stringResource(R.string.home_health_pass, pass, checks.size)
                                 },
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
@@ -390,12 +482,16 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(6.dp))
                             if (checks == null) {
                                 Text(
-                                    text = "正在检查环境状态…",
+                                    text = stringResource(R.string.home_health_scanning),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             } else {
-                                checks.forEach { c ->
+checks.forEachIndexed { index, c ->
+                                    // 每项延迟 index*50ms 淡入+上移：体检结果"飘进来"而不是"砸进来"
+                                    // （2026-10-12 用户：「说是动态卡一点也不动态」）。remember 不带 key：
+                                    // 流式新项出现在新组合位置 ⇒ 各自播入场；复检更新同位置 ⇒ 不重播。
+                                    StaggeredAppear(index = index) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
@@ -448,18 +544,25 @@ fun HomeScreen(
                                                             // 修复动作"跑过了"不等于"修好了"（例如
                                                             // link-mode 写成功但 uv 仍裸奔），所以
                                                             // 复检一次再决定要不要在「最近问题」里留一条。
-                                                            val again = EnvHealth.inspect(context)
+                                                            val again = EnvHealth.inspect(context, context.resources)
                                                                 .firstOrNull { it.id == c.id }
                                                             android.os.Handler(context.mainLooper).post {
                                                                 healthEpoch++
                                                                 if (again != null && !again.ok) {
                                                                     IssueCenter.report(
                                                                         id = "health-fix-${c.id}",
-                                                                        title = "一键修复没生效：${c.label}",
-                                                                        detail = (res.error?.let { "修复时出错：$it；" } ?: "") +
-                                                                            "「修复」已执行，复检仍是：${again.detail}。" +
-                                                                            "可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。",
-                                                                        actionLabel = "反馈",
+                                                                        title = context.getString(
+                                                                            R.string.home_fix_ineffective, c.label,
+                                                                        ),
+                                                                        detail = (res.error?.let {
+                                                                            context.getString(
+                                                                                R.string.home_fix_error_prefix, it,
+                                                                            )
+                                                                        } ?: "") +
+                                                                            context.getString(
+                                                                                R.string.home_fix_still, again.detail,
+                                                                            ),
+                                                                        actionLabel = context.getString(R.string.common_feedback),
                                                                         actionId = IssueCenter.ACTION_FEEDBACK,
                                                                     )
                                                                 } else {
@@ -469,18 +572,24 @@ fun HomeScreen(
                                                         } catch (t: Throwable) {
                                                             IssueCenter.report(
                                                                 id = "health-fix-${c.id}",
-                                                                title = "一键修复出错：${c.label}",
-                                                                detail = "修复线程抛出 ${t.javaClass.simpleName}" +
-                                                                    (t.message?.let { m -> "：$m" } ?: "") +
-                                                                    "。可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。",
-                                                                actionLabel = "反馈",
+                                                                title = context.getString(
+                                                                    R.string.home_fix_crashed, c.label,
+                                                                ),
+                                                                detail = context.getString(
+                                                                    R.string.home_fix_thread_threw,
+                                                                    t.javaClass.simpleName,
+                                                                    t.message?.let { m ->
+                                                                        context.getString(R.string.home_fix_thread_msg, m)
+                                                                    } ?: "",
+                                                                ),
+                                                                actionLabel = context.getString(R.string.common_feedback),
                                                                 actionId = IssueCenter.ACTION_FEEDBACK,
                                                             )
                                                             android.os.Handler(context.mainLooper)
                                                                 .post { healthEpoch++ }
                                                         }
                                                     }.start()
-                                                }) { Text("修复") }
+                                                }) { Text(stringResource(R.string.common_repair)) }
 
                                                 tcmd != null -> TextButton(onClick = {
                                                     // 宿主侧修不了（要重建 Python 环境、或要 git checkout 补
@@ -492,19 +601,17 @@ fun HomeScreen(
                                                     } else {
                                                         // 静默失败改正：以前只有一句 Toast，现在同时
                                                         // 留一条「最近问题」（去路 = 去设置页重试）
-                                                        val msg = "修复脚本写入失败，请到设置页重试"
-                                                        android.widget.Toast.makeText(
-                                                            context, msg, android.widget.Toast.LENGTH_SHORT
-                                                        ).show()
+                                                        val msg = context.getString(R.string.home_repair_script_failed)
+                                                        snack(msg)
                                                         IssueCenter.report(
                                                             id = "hermes-repair-script",
-                                                            title = "Hermes 修复脚本没写进工作区",
-                                                            detail = "脚本落盘失败（工作区不可写？），终端里那条修复命令跑不起来。",
-                                                            actionLabel = "去设置",
+                                                            title = context.getString(R.string.home_hermes_script_issue),
+                                                            detail = context.getString(R.string.home_hermes_script_issue_detail),
+                                                            actionLabel = context.getString(R.string.home_go_settings),
                                                             actionId = IssueCenter.ACTION_OPEN_SETTINGS,
                                                         )
                                                     }
-                                                }) { Text("修复") }
+                                                }) { Text(stringResource(R.string.common_repair)) }
 
                                                 // 引导项：文案按去路给，不再统统叫「去处理」
                                                 else -> {
@@ -519,12 +626,16 @@ fun HomeScreen(
                                                     }) {
                                                         Text(
                                                             when (route) {
-                                                                EnvHealth.ROUTE_REPAIR_ENV -> "去修复"
-                                                                EnvHealth.ROUTE_STORAGE_GRANT -> "去授权"
-                                                                EnvHealth.ROUTE_NET_CHECK -> "网络自检"
+                                                                EnvHealth.ROUTE_REPAIR_ENV ->
+                                                                    stringResource(R.string.home_btn_repair_env)
+                                                                EnvHealth.ROUTE_STORAGE_GRANT ->
+                                                                    stringResource(R.string.home_btn_grant)
+                                                                EnvHealth.ROUTE_NET_CHECK ->
+                                                                    stringResource(R.string.home_btn_net_check)
                                                                 // #8-D：存储明细与一键清理都在设置页「存储占用」那张卡上
-                                                                EnvHealth.ROUTE_STORAGE_DETAIL -> "看明细"
-                                                                else -> "去处理"
+                                                                EnvHealth.ROUTE_STORAGE_DETAIL ->
+                                                                    stringResource(R.string.home_btn_storage_detail)
+                                                                else -> stringResource(R.string.home_btn_handle)
                                                             }
                                                         )
                                                     }
@@ -532,6 +643,7 @@ fun HomeScreen(
                                             }
                                         }
                                     }
+                                    } // StaggeredAppear 收尾
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
@@ -548,7 +660,7 @@ fun HomeScreen(
                                         .padding(10.dp),
                                 ) {
                                     Text(
-                                        text = info.asText(),
+                                        text = info.asText(context.resources),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -558,13 +670,14 @@ fun HomeScreen(
                                     val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                         as android.content.ClipboardManager
                                     cm.setPrimaryClip(
-                                        android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText())
+                                        android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText(context.resources))
                                     )
-                                    android.widget.Toast.makeText(
-                                        context, "已复制全部系统信息", android.widget.Toast.LENGTH_SHORT
-                                    ).show()
-                                }) { Text("一键复制全部信息") }
-                            } ?: Text("加载中…", style = MaterialTheme.typography.bodySmall)
+                                    snack(context.getString(R.string.home_sysinfo_copied))
+                                }) { Text(stringResource(R.string.home_copy_sysinfo)) }
+                            } ?: Text(
+                                stringResource(R.string.common_loading),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 }
@@ -584,14 +697,14 @@ fun HomeScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "运行环境尚未安装",
+                            text = stringResource(R.string.home_env_not_installed),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "安装 Agent 前需要先装好 Debian 环境（约 3 分钟，只需一次）。",
+                            text = stringResource(R.string.home_env_install_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
@@ -600,7 +713,7 @@ fun HomeScreen(
                             onClick = { onOpenTerminal(null, null) },
                             shape = RoundedCornerShape(50),
                         ) {
-                            Text("安装运行环境")
+                            Text(stringResource(R.string.home_install_env))
                         }
                     }
                 }
@@ -623,19 +736,18 @@ fun HomeScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "最近问题（${issues.size}）",
+                                text = stringResource(R.string.home_recent_issues, issues.size),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 modifier = Modifier.weight(1f),
                             )
                             TextButton(onClick = { IssueCenter.clear() }) {
-                                Text("清空", color = MaterialTheme.colorScheme.onErrorContainer)
+                                Text(stringResource(R.string.common_clear), color = MaterialTheme.colorScheme.onErrorContainer)
                             }
                         }
                         Text(
-                            text = "后台失败的痕迹以前只写日志、界面上看不见；这里列出来，" +
-                                "每条能处理就点按钮。完整原文仍在 Download/证道/logs/zhengdao-log.txt",
+                            text = stringResource(R.string.home_issues_note),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                         )
@@ -694,15 +806,14 @@ fun HomeScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "恢复上次装过的 ${restoreList.size} 个 Agent",
+                            text = stringResource(R.string.home_restore_title, restoreList.size),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 " +
-                                "Download/证道/agents 与 cache 里 —— 恢复时能走本地的就不联网：" +
+                            text = stringResource(R.string.home_restore_desc) +
                                 restoreList.joinToString("、") { it.name },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -718,7 +829,7 @@ fun HomeScreen(
                             },
                             shape = RoundedCornerShape(50),
                         ) {
-                            Text("恢复全部（${restoreList.size} 个）")
+                            Text(stringResource(R.string.home_restore_all, restoreList.size))
                         }
                     }
                 }
@@ -786,7 +897,7 @@ fun HomeScreen(
                                 ) {
                                     if (agent.installCmd != null && envReady) {
                                         DropdownMenuItem(
-                                            text = { Text("重新安装") },
+                                            text = { Text(stringResource(R.string.home_agent_reinstall)) },
                                             onClick = {
                                                 menuOpenFor = null
                                                 reinstallTarget = agent
@@ -794,7 +905,7 @@ fun HomeScreen(
                                         )
                                     }
                                     DropdownMenuItem(
-                                        text = { Text("卸载") },
+                                        text = { Text(stringResource(R.string.home_agent_uninstall)) },
                                         onClick = {
                                             menuOpenFor = null
                                             uninstallTarget = agent
@@ -816,12 +927,12 @@ fun HomeScreen(
                                 onClick = startInstall,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
-                            ) { Text("重试安装") }
+                            ) { Text(stringResource(R.string.home_agent_retry_install)) }
                             agent.installed -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd, agent.id) },
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
-                            ) { Text("启动") }
+                            ) { Text(stringResource(R.string.home_agent_start)) }
                             // ⚠️ 这里**不能用 enabled=false**（2026-10-07 真机血案）：
                             // AgentRepository 的「安装中」标记是 SharedPreferences 里的一个
                             // 时间戳，只有"文件真的出现"或"撑过 15 分钟 TTL"两条清除出口。
@@ -836,25 +947,25 @@ fun HomeScreen(
                                 onClick = { onOpenTerminal(null, agent.id) },
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
-                            ) { Text("安装中") }
+                            ) { Text(stringResource(R.string.home_agent_installing)) }
                             agent.installCmd != null && envReady -> OutlinedButton(
                                 onClick = startInstall,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
-                            ) { Text("安装") }
+                            ) { Text(stringResource(R.string.home_agent_install)) }
                             agent.installCmd == null -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
-                            ) { Text("即将支持") }
+                            ) { Text(stringResource(R.string.home_agent_coming_soon)) }
                             // 环境未装：Agent 无法安装，按钮禁用（上方横幅已给一键安装路径）
                             else -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
-                            ) { Text("先装环境") }
+                            ) { Text(stringResource(R.string.home_agent_install_env_first)) }
                         }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
@@ -879,13 +990,13 @@ fun HomeScreen(
                         // （不是 ESC）会把脚本打断，退出码非 0，又变成"装好了却报失败"。
                         // 我们没法替用户回答向导，但至少能提前把这件事说出来。
                         StatusNote(
-                            text = "正在安装，输出实时显示在「终端」…（若终端停在配置提问，请在终端里回答或按 ESC 跳过）",
+                            text = stringResource(R.string.home_agent_install_hint),
                             tone = MaterialTheme.colorScheme.primary,
                         )
                     } else if (agent.installed && agent.installedVersion != null) {
                         // 只显示已装版本（本地 package.json 探测）；要不要更新由用户自己决定
                         Text(
-                            text = "已装版本：${agent.installedVersion}",
+                            text = stringResource(R.string.home_agent_version, agent.installedVersion),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -898,7 +1009,7 @@ fun HomeScreen(
         if (agents.none { it.id != "opencode" }) {
             item {
                 Text(
-                    text = "Agent 清单暂时拉不到，检查网络后回到本页会自动刷新。",
+                    text = stringResource(R.string.home_manifest_unreachable),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -910,7 +1021,7 @@ fun HomeScreen(
         }
         item {
             Text(
-                text = "安装与启动均在「终端」内进行；会话由 tmux 保持，断线重进不丢现场。",
+                text = stringResource(R.string.home_agent_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -922,35 +1033,48 @@ fun HomeScreen(
         } // LazyColumn 结束
     } // 外层 Column（固定顶栏 + 列表）结束
 
+    // Snackbar 宿主（2026-10-12）：挂在页面最底层，错误提示从 Toast 迁到此处
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .padding(bottom = 8.dp),
+    )
+    } // Box（内容 + Snackbar 浮层）结束
+
     // 卸载二次确认（P3/v1.0）：「卸载」删程序、留用户数据；「彻底清除」连用户数据一起删
     // （仅限已知名单内的 Agent——未知 manifest 条目的数据布局不猜测，不提供该选项）。
     // 尺寸用真实 du（从 uninstall 命令解析 rm 目标路径映射宿主后统计），不写死数字。
     uninstallTarget?.let { target ->
         val cmd = target.uninstallCmd ?: return@let
         val wipe = wipeTargets[target.id]
-        var sizesText by remember(target.id) { mutableStateOf("尺寸统计中…") }
+        var sizesText by remember(target.id) {
+            mutableStateOf(context.getString(R.string.home_size_measuring))
+        }
         LaunchedEffect(target.id) {
             sizesText = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val prog = programSizeMb(context, cmd)
                 val cache = runCatching {
+                    // "安装包缓存" 是 CacheCleaner.measure() 的目录名（数据侧 key），按原样匹配
                     com.example.zhengdao.terminal.CacheCleaner.measure(context)["安装包缓存"] ?: 0L
                 }.getOrDefault(0L)
-                val progText = if (prog >= 0) "（约 $prog MB）" else "（以实际占用为准）"
-                "· Agent 程序$progText\n· 安装包缓存（全局，约 $cache MB）"
+                val progText = if (prog >= 0) context.getString(R.string.home_about_mb, prog)
+                else context.getString(R.string.home_actual_usage)
+                context.getString(R.string.home_uninstall_detail, progText, cache)
             }
         }
         AlertDialog(
             onDismissRequest = { uninstallTarget = null },
             shape = RoundedCornerShape(14.dp),
-            title = { Text("卸载 ${target.name}？") },
+            title = { Text(stringResource(R.string.home_uninstall_title, target.name)) },
             text = {
                 Text(
                     buildString {
-                        append("将删除：\n").append(sizesText).append("\n\n")
-                        append("将保留：\n· 会话历史与记忆\n· API Key 配置（如适用）")
+                        append(context.getString(R.string.home_uninstall_delete)).append(sizesText).append("\n\n")
+                        append(context.getString(R.string.home_uninstall_keep))
                         wipe?.let {
-                            append("\n\n「彻底清除」将连同用户数据（").append(it.joinToString("、"))
-                                .append("）一起删除，不可恢复。")
+                            append(context.getString(R.string.home_uninstall_purge, it.joinToString("、")))
                         }
                     }
                 )
@@ -960,7 +1084,7 @@ fun HomeScreen(
                     uninstallTarget = null
                     // agentId 传 null：卸载不走「一键安装」登记，传 id 会被误标「安装中」
                     onOpenTerminal(cmd, null)
-                }) { Text("卸载") }
+                }) { Text(stringResource(R.string.home_uninstall_action)) }
             },
             dismissButton = {
                 Row {
@@ -968,9 +1092,14 @@ fun HomeScreen(
                         TextButton(onClick = {
                             uninstallTarget = null
                             onOpenTerminal(cmd + " && rm -rf " + wipe.joinToString(" "), null)
-                        }) { Text("彻底清除（含用户数据）", color = MaterialTheme.colorScheme.error) }
+                        }) {
+                            Text(
+                                stringResource(R.string.home_purge_action),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
-                    TextButton(onClick = { uninstallTarget = null }) { Text("取消") }
+                    TextButton(onClick = { uninstallTarget = null }) { Text(stringResource(R.string.common_cancel)) }
                 }
             },
         )
@@ -981,12 +1110,9 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { reinstallTarget = null },
             shape = RoundedCornerShape(14.dp),
-            title = { Text("重新安装 ${target.name}？") },
+            title = { Text(stringResource(R.string.home_reinstall_title, target.name)) },
             text = {
-                Text(
-                    "会重新跑一遍官方安装脚本（增量执行）：不会删除已有的配置、API Key 和会话数据。" +
-                        "安装输出实时显示在「终端」。"
-                )
+                Text(stringResource(R.string.home_reinstall_desc))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -994,10 +1120,10 @@ fun HomeScreen(
                     AgentInstaller.prepareInstall(context, target) { cmd ->
                         onOpenTerminal(cmd, target.id)
                     }
-                }) { Text("重新安装") }
+                }) { Text(stringResource(R.string.home_reinstall_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { reinstallTarget = null }) { Text("取消") }
+                TextButton(onClick = { reinstallTarget = null }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }
@@ -1053,4 +1179,53 @@ private fun programSizeMb(ctx: android.content.Context, uninstallCmd: String): L
         .toList()
     if (paths.isEmpty()) return -1
     return paths.sumOf { SystemInfoProvider.dirSizeMb(it) }
+}
+
+/**
+ * 交错入场（2026-10-12，用户「说是动态卡一点也不动态」）：体检项延迟 [index]×50ms
+ * 淡入并轻微上移——检查结果"飘进来"而不是"砸进来"。突兀的闪现会被大脑处理成
+ * 异常事件（用户原话「吓人」），有过渡才是"正常变化"。
+ *
+ * remember **不带 key** 是刻意的：流式上屏的新项出现在新的组合位置 ⇒ 各自播入场；
+ * 复检更新的项位置不变 ⇒ 不重播（体检结果刷新时整列重弹一遍会很吵）。
+ */
+@Composable
+private fun StaggeredAppear(index: Int, content: @Composable () -> Unit) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(index * 50L)
+        shown = true
+    }
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(220)) +
+            expandVertically(
+                animationSpec = tween(220),
+                expandFrom = Alignment.Top,
+            ),
+        exit = shrinkVertically(tween(180)) + fadeOut(tween(180)),
+    ) { content() }
+}
+
+/**
+ * 展开指示 chevron（朝下）：与 [com.example.zhengdao.MainActivity] 的 BackChevron /
+ * ChevronRight 同一套笔（圆头圆角 + 1.8f 描边，与 MainActivity 那对同源）。旋转动画由调用方
+ * `Modifier.rotate(...)` 承担（180° 弹性旋转），本组件只负责画形。
+ */
+@Composable
+private fun ExpandChevron(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(15.dp)) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.30f, h * 0.34f)
+            lineTo(w * 0.50f, h * 0.66f)
+            lineTo(w * 0.70f, h * 0.34f)
+        }
+        drawPath(
+            path,
+            tint,
+            style = Stroke(width = 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
 }
