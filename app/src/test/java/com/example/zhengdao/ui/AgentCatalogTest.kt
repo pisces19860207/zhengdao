@@ -1,0 +1,110 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 依据的公开接口：Android ContextWrapper（android.content）、JUnit 4（TemporaryFolder）。
+package com.example.zhengdao.ui
+
+import android.content.Context
+import android.content.ContextWrapper
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
+
+/**
+ * Codex CLI 卡（2026-10-13 上架）钉住三处口径 —— 每一处错了都会在现场出洋相，
+ * 而它们都不靠"看代码才发现"：
+ *
+ * 1. **`launchCmd` 必须是 `codex --no-daemon` 整串**：`TerminalActivity.kt:434` 与
+ *    `:605-607` 靠「注入的命令字面量 == `launchCmd`」区分「点启动」和「点安装」，
+ *    `AgentInstaller.kt:245` 又取 `substringBefore(' ')` 当"装完自动启动"的入口
+ *    ⇒ 这条字符串既是启动命令、也是身份指纹，被谁顺手格式化一下就废。
+ * 2. **npm 类不下载脚本**：`AgentInstaller.SCRIPT_URLS` 里没有它 ⇒ 走组合命令
+ *    `npm i -g @openai/codex`；`npmPackage` 来自 `AppState.agents` 的内置映射，
+ *    决定版本探测能不能读到 `rootfs/usr/lib/node_modules/@openai/codex/package.json`。
+ * 3. **卸载只删程序、保留 `~/.codex`**：与 claude-code / hermes 同一口径（配置是用户的）。
+ *
+ * 为什么用 `ContextWrapper(null)`：`agents()` 只用到 `ctx.filesDir`（安装探测）与
+ * `getSharedPreferences`（验签清单缓存；base 为 null 会抛 NPE，被 `AgentManifest.cached`
+ * 自己吞掉 ⇒ 正常回退出厂版）。单测 classpath 里 `android.test.mock.MockContext` 实测不可见。
+ */
+class AgentCatalogTest {
+
+    @get:Rule
+    val tmp = TemporaryFolder()
+
+    private class FakeFilesContext(private val dir: File) : ContextWrapper(null) {
+        override fun getFilesDir(): File = dir
+        override fun getApplicationContext(): Context = this
+    }
+
+    /** 造一个"rootfs 已装好"的假私有目录（探测会先看 `.zhengdao-rootfs-ok` 标记）。 */
+    private fun ctxWithRootfs(): Pair<Context, File> {
+        val files = tmp.newFolder()
+        File(files, "rootfs").mkdirs()
+        File(files, "rootfs/.zhengdao-rootfs-ok").writeText("installed-by=zhengdao")
+        return FakeFilesContext(files) to files
+    }
+
+    private fun codexOf(ctx: Context) = AppState.agents(ctx).first { it.id == "codex" }
+
+    @Test
+    fun `出厂清单_三条老卡在前_codex 排在最后`() {
+        val (ctx, _) = ctxWithRootfs()
+        assertEquals(
+            listOf("claude-code", "hermes", "antigravity", "codex"),
+            AppState.agents(ctx).map { it.id },
+        )
+    }
+
+    @Test
+    fun `codex 卡的启动_安装_卸载口径`() {
+        val (ctx, _) = ctxWithRootfs()
+        val c = codexOf(ctx)
+        assertEquals("Codex CLI", c.name)
+        assertEquals("codex --no-daemon", c.launchCmd)
+        assertEquals("npm i -g @openai/codex", c.installCmd)
+        assertTrue(c.restorable)
+        val uninstall = c.uninstallCmd
+        assertNotNull(uninstall)
+        assertTrue(uninstall!!.contains("npm uninstall -g @openai/codex"))
+        assertTrue(uninstall.contains("~/.codex 保留"))
+        assertFalse(uninstall.contains("rm -rf /root/.codex"))
+    }
+
+    @Test
+    fun `npmPackage 走内置映射_版本从 rootfs 的 package_json 读`() {
+        val (ctx, files) = ctxWithRootfs()
+        val pkgJson = File(files, "rootfs/usr/lib/node_modules/@openai/codex/package.json")
+        pkgJson.parentFile!!.mkdirs()
+        pkgJson.writeText("""{"name":"@openai/codex","version":"0.162.1"}""", Charsets.UTF_8)
+        val c = codexOf(ctx)
+        assertEquals("@openai/codex", c.npmPackage)
+        assertEquals("0.162.1", c.installedVersion)
+    }
+
+    @Test
+    fun `装没装看落点_rootfs 的 usr bin 算装上`() {
+        val (ctx, files) = ctxWithRootfs()
+        assertFalse(codexOf(ctx).installed)
+
+        File(files, "rootfs/usr/bin").mkdirs()
+        File(files, "rootfs/usr/bin/codex").writeText("#!/bin/sh\n", Charsets.UTF_8)
+        assertTrue(codexOf(ctx).installed)
+    }
+
+    @Test
+    fun `home 下的本地 bin 也算装上_且没有 rootfs 标记时全部未装`() {
+        val files = tmp.newFolder()
+        val ctx = FakeFilesContext(files)
+        assertTrue(AppState.agents(ctx).none { it.installed })
+
+        File(files, "home/.local/bin").mkdirs()
+        File(files, "home/.local/bin/codex").writeText("#!/bin/sh\n", Charsets.UTF_8)
+        File(files, "rootfs").mkdirs()
+        File(files, "rootfs/.zhengdao-rootfs-ok").writeText("installed-by=zhengdao", Charsets.UTF_8)
+        assertTrue(codexOf(ctx).installed)
+    }
+}
