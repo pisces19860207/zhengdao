@@ -44,3 +44,31 @@ internal fun shouldReopenConnection(
     if (!pollAlive || !sseAlive) return true
     return requested != null && requested != current
 }
+
+/**
+ * 切会话（`switchSession` / `startNewSession`）时写进 state 的**预置状态**：
+ * 只清掉上一场的残留，**绝不改 [TaijiState.sessionId]**。
+ *
+ * ## 为什么专门抽成函数（2026-10-13 真机，ERRATA E-123）
+ *
+ * [shouldReopenConnection] 的第 4 条判据是 `requested != current`。`switchSession` 原先把
+ * `sessionId = 目标 id` 一起写进这次预置（`f61dd51`，v1.1 时代落笔，那时 `OcRepository.open`
+ * 还没有复用判据），于是 `open()` 里 `requested == current` 恒成立 ⇒ 直接走
+ * 「open 复用现有连接」分支 `return`：既不 `loadAll()`，也不重建轮询 / SSE
+ * ⇒ **切到历史会话后页面停在空列表、轮询还挂在旧会话上**；杀掉 App 重进
+ * （repository 重建、`current` 为 null）才恢复。
+ *
+ * 用户原话（2026-10-13）：「我刚刚在太极页切换会话的时候就有个出错，然后关闭APP重进了
+ * 才没问题的 —— 那种切换回旧聊天会话的时候」。
+ *
+ * 目标 id 由 `OcRepository.open` 自己在 Loading 那次 update 里写进 state —— 那里是唯一写点。
+ */
+internal fun TaijiState.afterSessionSwitchStarted(): TaijiState = copy(
+    messages = emptyList(),
+    parts = emptyMap(),
+    loadedOnce = false,
+    input = "",
+    isStreaming = false,
+    pendingPermission = null,
+    phase = TaijiPhase.Loading,
+)

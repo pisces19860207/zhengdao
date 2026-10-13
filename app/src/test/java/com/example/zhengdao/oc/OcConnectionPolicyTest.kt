@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.oc
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -114,6 +115,53 @@ class OcConnectionPolicyTest {
         assertTrue(
             shouldReopenConnection(
                 requested = null, current = "",
+                pollAlive = true, sseAlive = true, isFailed = false,
+            )
+        )
+    }
+
+    // ── E-123 回归（2026-10-13 真机：太极页切会话后页面停在空列表、轮询还挂在旧会话上，
+    //    杀掉 App 重进才能恢复）────────────────────────────────────────────────
+
+    @Test
+    fun `切会话的预置状态只清残留，绝不动 sessionId`() {
+        val current = TaijiState(
+            sessionId = "s1",
+            loadedOnce = true,
+            input = "半句话",
+            isStreaming = true,
+        )
+
+        val preset = current.afterSessionSwitchStarted()
+
+        // ⚠️ 这一条是 E-095 的要害：预置里若把 sessionId 写成目标 id，
+        //    下面的判据就会把「切会话」当成「同会话」。
+        assertEquals("s1", preset.sessionId)
+        assertFalse(preset.loadedOnce)
+        assertEquals("", preset.input)
+        assertFalse(preset.isStreaming)
+        assertEquals(TaijiPhase.Loading, preset.phase)
+        assertTrue(preset.messages.isEmpty())
+        assertTrue(preset.parts.isEmpty())
+    }
+
+    @Test
+    fun `切会话预置后 + 判据 ⇒ 必须重开（E-123 的真正断点）`() {
+        val preset = TaijiState(sessionId = "s1", loadedOnce = true).afterSessionSwitchStarted()
+
+        // 正确写法：预置不动 sessionId ⇒ requested(s2) != current(s1) ⇒ 重开
+        assertTrue(
+            shouldReopenConnection(
+                requested = "s2", current = preset.sessionId,
+                pollAlive = true, sseAlive = true, isFailed = false,
+            )
+        )
+
+        // 反例（老写法）：预置时就把 sessionId 写成 s2 ⇒ 判据看到 requested == current
+        // ⇒ 走复用分支 return ⇒ 不 loadAll、不重建轮询/SSE、页面停在空列表。
+        assertFalse(
+            shouldReopenConnection(
+                requested = "s2", current = "s2",
                 pollAlive = true, sseAlive = true, isFailed = false,
             )
         )
