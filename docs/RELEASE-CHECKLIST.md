@@ -124,6 +124,8 @@
 
 - 本次机型 / 系统：`__________`（上一版口径示例：PGT-AN10 / Android 16 / MagicOS）
 
+- ⚠️ **用 adb 合成点击代跑 UI 项之前，先查有没有第三方悬浮窗**（2026-10-13 踩到，教训）：`红果小视窗` 一类 `TYPE_APPLICATION_OVERLAY` 窗口会**吞掉 `input tap`**，现象是「某几行怎么点都不动、同一屏别处一点就开」，很容易被误判成应用缺陷（那天先把「设置页首卡」记成了疑似缺陷，人工复核后销账）。查法：`adb shell dumpsys window windows | Select-String "mCurrentFocus|APPLICATION_OVERLAY"`，或直接问用户「屏幕上有没有挂着的小窗」。**判据**：真被吞时，App 自己的日志/保活心跳里**不会**出现那一页的「界面进入」记录。
+
 - [ ] **3.1 升级安装（E-099）** —— `adb install -r app\build\outputs\apk\release\zhengdao-X.Y.Z-release.apk` = `Success`，**未卸载**，`files/rootfs`、`files/home`、prefs 全保留。
       - [ ] 若从 **v2.0.12 或更早**升级：必须**先卸载**（那些版本是旧 debug 钥匙签的，Android 不允许覆盖），卸载会清掉 App 私有目录（Debian 环境约 200 MB 需重新下载；手机存储里的工作区 / 资料库 / 日志不受影响）
 - [ ] **3.2 首启权限页（§B-15；实现见 §A #32）** —— **清应用数据后连续冷启动 5 次**：不得自动弹权限框 / 通知框（§B-15 的判据）；
