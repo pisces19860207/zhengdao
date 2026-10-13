@@ -189,7 +189,9 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 `/repos/pisces19860207/zhengdao/releases/tags/<tag>` 返回的 `assets[].digest`（GitHub 自己算的
 `sha256:` 值）⇒ 任何人下载后都能独立复算。取数时间：v2.0.14 / v2.0.15 段为 2026-10-11T13:1xZ，
 **v2.0.16 段为 2026-10-11T14:27Z**（Release 建立于 `2026-10-11T14:26:37Z`，tag 指向 `6ed8de4`）；
-**v2.0.17 段为 2026-10-11T15:43Z**（Release 建立于 `2026-10-11T15:43:04Z`，tag 指向 `6aa1517`）。
+**v2.0.17 段为 2026-10-11T15:43Z**（Release 建立于 `2026-10-11T15:43:04Z`，tag 指向 `6aa1517`）；
+**v2.0.18 段与 v2.1.0 段均为 2026-10-13T13:50Z**（v2.0.18 的 Release 建立于 `2026-10-13T03:32:50Z`、tag 指向 `a7b2890`；
+v2.1.0 的 Release 建立于 `2026-10-13T13:28:10Z`、tag 指向 `0370347`）—— 其中 **v2.0.18 是回头补记**：那一版发版时漏了本节入册，2026-10-13 从公开地址回读补齐。
 
 随版本变化的产物：
 
@@ -199,9 +201,18 @@ proot 版本 **5.1.107.96**、libtalloc **2.5.0**、libandroid-shmem **0.7**。
 | v2.0.15 | `zhengdao-2.0.15-release.apk` | 8,293,206 | `35e2feac79e110a4b4a246a3c41e411fd1c6d245a786f967ddf0aaf8b6ea9210` |
 | v2.0.16 | `zhengdao-2.0.16-release.apk` | 8,317,372 | `b9702f32f44f532315100c2bbef003d5db9ddc99bdb1301a63f216b7bc5156ee` |
 | v2.0.17 | `zhengdao-2.0.17-release.apk` | 8,318,188 | `ee269c37e2b88483cec834fe356db6f598c9a44bb6574f5924a2b14268679c9d` |
+| v2.0.18 | `zhengdao-2.0.18-release.apk` | 8,698,432 | `96f39aec11c37ce01410a4f40865b2989bd9b3c10d81637d4d011ec2a5f61825` |
+| v2.1.0 | `zhengdao-2.1.0-release.apk` | 8,704,600 | `fc1a243154772baa6adc98d8b7d8aeaa78a63f6a6c66a990ce1f0d98bc159b5c` |
 
-rootfs 五项（**v2.0.14 ~ v2.0.17 四版逐字节相同、digest 一致** —— 这四版都没有改动 rootfs；
+rootfs 五项（**v2.0.14 ~ v2.1.0 六版逐字节相同、digest 一致** —— 这六版都没有改动 rootfs；
 末两项是随资产分发的校验文件）：
+
+> **v2.1.0 的本机复核（2026-10-13）**：**8 件资产里的 7 件**逐件下载后本机 `Get-FileHash -Algorithm SHA256` 复算，
+> 与 GitHub REST 的 `assets[].digest` **逐字节一致**（含 `zhengdao-2.1.0-release.apk` 8,704,600 B）；
+> 三份 `.sha256` 边车的**正文**也与各自兄弟资产的 digest 一致（`d80639e7…` / `512515f3…` / `82fa3f4e…`）。
+> 第 8 件（rootfs 整包 201,632,517 B）本机下载走公网太慢，改用**端侧实算**：手机公共区缓存那份
+> `/sdcard/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst` 的 `sha256sum`
+> = `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02` = tag 资产 digest（同一串字节，见下节真机交叉核对）。
 
 | 资产 | 字节 | SHA256 |
 |---|---|---|
@@ -211,10 +222,22 @@ rootfs 五项（**v2.0.14 ~ v2.0.17 四版逐字节相同、digest 一致** —�
 | `rootfs-manifest.txt` | 2,117,653 | `82fa3f4e84a7963d399cf5f63a3bb8a41d5af183ee7f5812a6a8e84eeecdf16c` |
 | `rootfs-manifest.txt.sha256` | 65 | `5fc8007e93a30609f3e5e9ba3d9f57f6e51321fc16dcad340b75dbaa8f4cd66f` |
 
+版权归档两项（E-097 的收口产物，**v2.0.14 ~ v2.1.0 逐字节相同** —— §A #65 记 v2.0.14–v2.0.18
+五版 `digest` 相同，v2.1.0 复核后仍相同）：
+
+| 资产 | 字节 | SHA256 |
+|---|---|---|
+| `debian-13.7-copyright.tar.zst` | 517,471 | `512515f34c562c4f12f7d858266e1ad4fefb6141a4896204d7456fc3a053e816` |
+| `debian-13.7-copyright.tar.zst.sha256` | 65 | `975edf271be830b7bbf579826d1887666db50948d125bf80f188486f866516d5` |
+
 **真机交叉核对（2026-10-11 实测）**：手机公共区缓存
 `/sdcard/Download/证道/rootfs/debian-13.7-base-arm64.tar.zst`（201,632,517 B）端侧 `sha256sum`
 = `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02` = 上表 digest
 ⇒ **App 实际下载消费的离线包与线上发布资产逐字节一致**（不是"名字一样"，是同一串字节）。
+
+**v2.1.0 实测（2026-10-13T13:2xZ）**：滚动版 `latest` 里那份 `zhengdao-2.1.0-release.apk`
+= **8,704,600 B / `3cae58697595995a8711b4cccdde052179f46cc7885031d48d3c9657f4905aca`**（台账合并后的重跑构建），
+与 tag 正式包 **字节数相同、sha256 不同** —— 又一次 E-081 现场。
 
 **滚动版 `latest` 不入册**：它每次构建都刷新（`zhengdao-2.0.15-release.apk` 的 `updated_at`
 = 2026-10-11T13:09:45Z；`zhengdao-2.0.16-release.apk` 在 `2026-10-11T14:07:53Z` 那次为
