@@ -5463,8 +5463,17 @@ fun candidates(url: String, chain: List<String> = DOWNLOAD_CHAIN): List<String> 
 - **代价（实测）**：当前镜像 348 个包的版权原文共 **4.78 MiB**，`zstd -19` 后归档 **0.49 MiB**（517,471 B，SHA-256 `512515f34c562c4f12f7d858266e1ad4fefb6141a4896204d7456fc3a053e816`）——对 229 MB 的镜像可忽略。
 - **包数口径**：镜像内 `var/lib/dpkg/status` 实测 **348** 个（313 `arm64` + 35 `all`），与上表真机 `dpkg` 的 353 个差 5 个 —— 真机是构建后又装过东西（`libgpm2`/`vim`/`vim-common`/`vim-runtime` 等）。**以镜像内的 status 为准**，真机那 5 个不属于分发物。
 - **取法（本轮实测，348/348 全取齐）**：优先从 `https://metadata.ftp-master.debian.org/changelogs/main/<字母>/<源码包>/<源码包>_<版本>_copyright` 取（`lib*` 用前四位、其余用首字母；版本要去掉 epoch 与 binNMU 后缀）；**该站点缺失的**（`libxcb` 系列 11 个、`libxcrypt`、`nodejs`）改从对应 `.deb` 内的 `copyright` 取（`nodejs` 来自 NodeSource 源）。逐包来源与 SHA-256 记在归档内的 `copyright-index.tsv`。
-- **何时生效**：合并进 `main` 会触发 CI 重建 `rootfs/` 资产 ⇒ 下一次镜像更新即带归档。**v2.0.14–v2.0.17 那份镜像仍不含版权文本**；本轮实测产出的归档可以补挂 Release 附件（是否挂、挂哪个 Release 待用户点头）。
+- **何时生效**：合并进 `main` 会触发 CI 重建 `rootfs/` 资产 ⇒ 下一次镜像更新即带归档。**v2.0.14–v2.0.17 那份镜像仍不含版权文本**；本轮实测产出的归档**已补挂**为独立 Release 资产（2026-10-13，用户拍板「补挂」，见下方补记）。
 - **一个值得记住的坑**：`metadata.ftp-master.debian.org` 对某些包只有 `_changelog` 没有 `_copyright`，HTTP 200/404 随包而异 —— 批量取时要**逐包记录失败再补**，不能「一次 404 就当这个包没有版权文本」。
+
+**补记（2026-10-13：把归档补挂成独立 Release 资产）**
+
+用户拍板「补挂」后落地：
+
+- **挂在哪**：滚动版 `latest` ＋ **v2.0.13 ~ v2.0.17** 五个正式 Release，各两份文件（`debian-13.7-copyright.tar.zst` 517,471 B、同名 `.sha256` 65 B）。判据 = 从 GitHub REST 回读 `assets[].digest`：这五个 tag 与 `latest` 的整包镜像**都是** `sha256:d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02` ⇒ 版权文本逐字相同，同一份归档对它们都成立。下载地址（App 内下载用的是同一套 `latest` 前缀）：<https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-copyright.tar.zst>。
+- **更早的版本（v2.0.12 及以前）Release 里没有镜像副本**（那份资产是 v2.0.13 起由 tag job 拷贝的），而 App 侧一直是从 `latest` 读 manifest 下载镜像 ⇒ `latest` 上现在有这份归档，它们也被覆盖；未逐版核对它们的镜像指纹，所以**没有**在那些 tag 上补挂。
+- **构建侧从此自动带上**：`rootfs/build-rootfs.sh` 在「[4/4] 打包」之后把镜像内那份**再导出**到 `$OUT_DIR/debian-13.7-copyright.tar.zst(+.sha256)`，并带断言（镜像里找不到归档就 `exit 1`，拒发空壳）。**CI 无需改动**：`build.yml` 的 `gh release upload latest rootfs-files/*` 会带上它；tag job 的「补挂该版本的 RootFS 资产」按 `debian-*.tar.zst` / `debian-*.tar.zst.sha256` glob 搬运，新文件名正好命中这两个通配符。
+- **未做（刻意的）**：没有把归档提交进仓库 —— 那会变成**第二个真源**，早晚与镜像内容漂移；镜像内那份才是与二进制同生共死的那份。
 
 ---
 

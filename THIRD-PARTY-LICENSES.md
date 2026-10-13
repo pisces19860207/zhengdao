@@ -163,9 +163,25 @@
   dpkg-query -W -f='${Package} ${Version}\n'   # 已装包与版本
   ```
 
-  ⚠️ **版本边界（诚实标注）**：该归档是**本次改动之后重建的镜像**才自带。
+  ⚠️ **版本边界（诚实标注）**：镜像**内**那份归档是「本次改动之后重建的镜像」才自带。
   v2.0.14 ~ v2.0.17 用的那份镜像（`debian-13.7-base-arm64.tar.zst`，摘要见上）构建于改动之前，
-  **不含**该归档；对那份镜像，逐包 copyright 的替代获取途径（任一即可）：
+  镜像里**不含**它。✅ **已用独立资产补上（2026-10-13）**：同一份归档另发为独立的 Release 资产，
+  只有 0.49 MiB —— 不必为了查版权再下 200 MB 整包：
+
+  - 滚动版：<https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-copyright.tar.zst>
+    （同名 `.sha256` = `512515f34c562c4f12f7d858266e1ad4fefb6141a4896204d7456fc3a053e816`，517,471 B）
+  - 也已补挂到 **v2.0.13 ~ v2.0.17 五个正式 Release**：这五版与滚动版用的都是**同一份镜像**
+    （`d80639e7…74f02`，判据 = 从 GitHub REST 回读 `assets[].digest`）⇒ 版权文本逐字相同，
+    同一份归档对它们都成立。
+  - 构建侧从此自动带上：`rootfs/build-rootfs.sh` 在打包镜像之后把镜像内那份**再导出**到输出目录
+    （`debian-13.7-copyright.tar.zst` + 裸摘要 `.sha256`），CI 的
+    `gh release upload latest rootfs-files/*` 与 tag job 搬运 rootfs 资产时的 `debian-*.tar.zst` /
+    `debian-*.tar.zst.sha256` glob 都会一并带上 ⇒ **不需要改 `.github/workflows/build.yml`**。
+  - 归档内容 = 镜像内那 348 个包的 `copyright` 全文（未压缩 4.78 MiB → zstd-19 后 0.49 MiB），
+    逐份 SHA-256 与来源 URL 见 `docs/ERRATA.md` E-097 补记。
+
+  对**更早**的版本（v2.0.12 及以前，Release 里没有镜像副本；它们的镜像指纹未经核对），
+  替代获取途径（任一即可）：
   1. `http://deb.debian.org/debian`（镜像内 `sources.list` 即指向此处的 `trixie main`）
      取同版本包，包内自带 `usr/share/doc/<包>/copyright`；
   2. `apt-get source <包>`，读源码包里的 `debian/copyright`；
