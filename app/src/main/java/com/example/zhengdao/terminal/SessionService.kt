@@ -29,15 +29,25 @@ import java.io.File
  * 于是会话跑满 6 小时后锁静默失效。现在定时器每轮补取（[renewWakeLockIfLost]），
  * 并在通知里显性化「保活已关」。
  *
- * ⚠️ **已知的长期问题（本次没动，需要产品决策）**：本服务是"**会话活着就一直持锁**"，
- * 而"会话活着"不等于"有活在跑"——tmux 常驻 ⇒ 只要进过一次终端，锁就一直被握着。
+ * 2026-10-13（用户拍板）上面的长期问题落地——**锁改为跟「终端有无活动」走**：
+ * - 30 秒一轮汇总本 App UID 全部进程的 CPU jiffies（[GuestCpuCounter]）：agent 在跑时
+ *   jiffies 持续增长，tmux 空转时不再增长；
+ * - 连续 [WakeLockIdlePolicy.DEFAULT_IDLE_TICKS] 轮（10 分钟）无增长 ⇒ 释放 WakeLock
+ *   （[WakeLockIdlePolicy]）。前台服务、通知、tmux 会话一律不动——只是允许系统睡眠；
+ * - 检测到 CPU 回升立即补取（[IdleDecision.ACQUIRE]），通知文案随之在
+ *   「会话运行中」⇄「空闲休眠」之间切换；
+ * - 释放期间暂停调用 [renewWakeLockIfLost]：否则刚释放的锁会被下一轮「补取」原样取回
+ *   （该函数的 `!SessionManager.isAlive()` 守卫一行未动，只是由调用方决定要不要调它）。
+ *
+ * **判据刻意偏保守（用户原话「宁可多持一会儿锁，也不要误判有任务在跑为空闲」）**：
+ * 读不到 /proc、首轮无基线、计数倒退，一律按"有活动"处理；微量增长（低于单轮阈值）
+ * 还有窗口累计预算兜底——慢速下载这类 I/O 型任务每轮只涨一点，累计超预算同样算活动。
+ *
  * Google Play 2026-03 起把「屏幕关闭时平均持有非豁免 PARTIAL_WAKE_LOCK ≥ 2 小时、
  * 且覆盖 >5% 会话」定为**过度持锁**，超阈值会影响商店展示（见
  * android-developers.googleblog.com/2026/03/battery-technical-quality-enforcement.html）。
  * 证道不在 Play 上架，这条对"能不能上架"不构成硬约束；但它指出的问题是真的：
- * **锁应该跟着"有无活动任务"走，而不是跟着"会话是否存在"走**。
- * 拆分方式（前台服务负责"不被回收"、锁只负责"CPU 别睡"）与取舍已写在
- * `docs/milestones/证道-故障排查手册.md` 与今日报告里，改动面比本次大，故留作独立议题。
+ * **锁应该跟着"有无活动任务"走，而不是跟着"会话是否存在"走**——本次改动即为此落地。
  */
 class SessionService : Service() {
 
@@ -117,9 +127,18 @@ class SessionService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastRssMb = 0L
 
+    /** 空闲检测策略（纯逻辑，JVM 可测；判据与阈值见 [WakeLockIdlePolicy] 的 KDoc）。 */
+    private val idlePolicy = WakeLockIdlePolicy()
+
     private val monitorTick = object : Runnable {
         override fun run() {
-            renewWakeLockIfLost()
+            val decision = applyIdlePolicy()
+            // 补取只该发生在"维持现状"这一轮（①：ACQUIRE 分支已经补过，再来一遍只是让
+            // isHeld 守卫空转；RELEASE/刻意空闲时补取更会把刚放的锁原样取回）。
+            // （renewWakeLockIfLost 的 !keepAlive/!isAlive 守卫原样保留、一行未动；
+            //   这里只是调用方决定"要不要调它"。6h 上限到期+CPU 活动的丢锁场景由 NONE
+            //   轮的补取覆盖，与旧行为等价。）
+            if (decision == IdleDecision.NONE && !idlePolicy.isDeliberatelyIdle) renewWakeLockIfLost()
             updateNotification()
             handler.postDelayed(this, 30_000L)
         }
@@ -163,6 +182,9 @@ class SessionService : Service() {
         when (intent?.action) {
             ACTION_TOGGLE_KEEPALIVE -> {
                 keepAlive = !keepAlive
+                // 空闲策略重新基线（2026-10-13）：重新打开保活后第一轮按"活动"处理（保守），
+                // 避免上一轮残留的空闲计数把用户刚点开的锁又立刻放掉
+                idlePolicy.reset()
                 if (keepAlive) acquireWakeLockIfActive() else releaseWakeLock()
                 updateNotification()
             }
@@ -222,6 +244,9 @@ class SessionService : Service() {
      * ⚠️ E-054 的教训：真机上这条日志曾**每 30 秒一条、连刷 12 分钟**——因为权限缺失导致
      * 补取永远失败。同一件事反复刷屏 = 用户只会当噪声看，所以现在**首次与每 10 次各记一条**
      * （第 10 次 = 5 分钟），中间的重复只累加不落盘。
+     *
+     * 2026-10-13 起本函数**只在该持锁时被调用**（monitorTick 里被 `isDeliberatelyIdle` 门控）：
+     * 空闲释放期间调用它会把刚释放的锁原样补回，等于白放。函数本体一行未动。
      */
     private fun renewWakeLockIfLost() {
         if (!keepAlive || !SessionManager.isAlive()) return
@@ -233,6 +258,40 @@ class SessionService : Service() {
             )
         }
         acquireWakeLockIfActive()
+    }
+
+    /**
+     * 空闲检测（2026-10-13）：每轮 tick 把「本 App 全部进程的 CPU jiffies 读数」喂给策略，
+     * 按决策补取/释放锁。会话不在或保活被关时策略退出判定（回到既有守卫行为）。
+     * @return 本轮的决策（monitorTick 据此决定是否还需要走一次补取）
+     */
+    private fun applyIdlePolicy(): IdleDecision {
+        if (!keepAlive || !SessionManager.isAlive()) {
+            idlePolicy.reset()
+            return IdleDecision.NONE
+        }
+        val cpu = GuestCpuCounter.read(
+            myUid = android.os.Process.myUid(),
+            myPid = android.os.Process.myPid(),
+        )
+        val held = runCatching { wakeLock.isHeld }.getOrDefault(true)
+        return when (val decision = idlePolicy.onTick(cpu, held)) {
+            IdleDecision.ACQUIRE -> {
+                RunLog.log("检测到终端活动（CPU 回升），重新获取保活锁")
+                acquireWakeLockIfActive()
+                decision
+            }
+            IdleDecision.RELEASE -> {
+                val minutes = WakeLockIdlePolicy.DEFAULT_IDLE_TICKS * WakeLockIdlePolicy.TICK_MS / 60_000
+                RunLog.log(
+                    "终端已连续 $minutes 分钟无活动（CPU 无增长），释放保活锁；" +
+                        "会话保持，检测到活动将自动恢复"
+                )
+                releaseWakeLock()
+                decision
+            }
+            IdleDecision.NONE -> decision
+        }
     }
 
     private fun releaseWakeLock() {
@@ -260,6 +319,10 @@ class SessionService : Service() {
         return if (min < 60) "${min} 分钟" else "${min / 60} 小时 ${min % 60} 分"
     }
 
+    /** 通知标题区分持锁状态（用户要求：持锁=「会话运行中」，空闲释放=「空闲休眠」）。 */
+    private fun notifTitle(): String =
+        if (keepAlive && idlePolicy.isDeliberatelyIdle) "证道 · 空闲休眠" else "证道 · 会话运行中"
+
     private fun buildNotification(): Notification {
         val s = SessionManager.session
         val rss = s?.let { readRssMb(it.pid) } ?: 0L
@@ -270,6 +333,9 @@ class SessionService : Service() {
         // 「保活已关」必须显性：锁没在手上时 CPU 可以睡、长任务可能被拖慢/中断，
         // 用户只有看到这一句才知道自己点掉过保活（此前这个状态在通知里完全不可见）。
         val keepText = if (keepAlive) "" else " · 保活已关"
+        // 空闲休眠是 App 自己的省电行为（区别于用户手动关保活）：告诉用户"有活动会自动回来"，
+        // 避免他看到"空闲休眠"以为任务死了
+        val idleText = if (keepAlive && idlePolicy.isDeliberatelyIdle) " · 有活动自动唤醒" else ""
         val contentIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java)
@@ -289,8 +355,8 @@ class SessionService : Service() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_terminal)
-            .setContentTitle("证道 · 会话运行中")
-            .setContentText("已运行 $runtime · 内存 $memText$warn$keepText")
+            .setContentTitle(notifTitle())
+            .setContentText("已运行 $runtime · 内存 $memText$warn$idleText$keepText")
             .setOngoing(true)
             .setContentIntent(contentIntent)
             .addAction(0, "停止会话", stopIntent)
@@ -301,5 +367,183 @@ class SessionService : Service() {
     private fun updateNotification() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.notify(NOTIF_ID, buildNotification())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 空闲检测的三块可单测内核（2026-10-13）：不 import 任何 android.*，
+// JVM 单测直接跑（SessionServiceIdleTest）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 一轮 tick 后对锁的决策。 */
+internal enum class IdleDecision {
+    /** 当前没持锁且判为有活动 ⇒ 补取。 */
+    ACQUIRE,
+    /** 连续空闲达到阈值 ⇒ 释放。 */
+    RELEASE,
+    /** 维持现状。 */
+    NONE,
+}
+
+/**
+ * WakeLock 空闲策略（纯逻辑，无 Android 依赖）。
+ *
+ * 输入是每轮 tick 的「本 App 全部进程 CPU jiffies 总读数」（[GuestCpuCounter]），
+ * 输出对锁的 [IdleDecision]。设计取向**刻意偏保守**（用户原话：宁可多持一会儿锁，
+ * 也不要把"有任务在跑"误判成空闲）：
+ *
+ * 1. **读不到 / 无基线 / 计数倒退 ⇒ 一律按"有活动"**：jiffies 读数是推断证据里最弱的一类，
+ *    任何"读不到所以当空闲"都会变成悄悄放锁；
+ * 2. **单轮阈值 [DEFAULT_ACTIVE_JIFFIES]（2 jiffy ≈ 20ms CPU / 30s ≈ 0.07% 单核）**：
+ *    低于它视为"这轮没干活"。tmux 空转的噪声（状态栏默认 15s 重绘一次）通常 <1 jiffy/30s；
+ * 3. **窗口累计预算 [DEFAULT_STREAK_BUDGET]**：慢速 I/O 型任务（trickle 下载）单轮可能
+ *    只有 1 jiffy，但 20 轮累计不低——累计超预算同样判为活动、清零空闲计数，
+ *    宁可永不释放也不能把下载中的任务放睡着（睡了网络就断，任务假死比费电更糟）；
+ * 4. **连续 [DEFAULT_IDLE_TICKS] 轮（10 分钟）全部"没干活"且累计未超预算 ⇒ 释放**。
+ *    计数达标即置位"刻意空闲"标记（不依赖锁状态）：锁被外部释放、isHeld 又读不到时
+ *    也当轮收敛，补取门控立即生效，不必多等一轮。
+ *
+ * `held` 每轮由调用方传**真实锁状态**：策略因此能自愈（外部把锁取走了/补回来了都能对齐）。
+ * 阈值是读码+推断值（证据等级 ③），待真机校准——偏保守方向只会"多持锁"，不会误放。
+ */
+internal class WakeLockIdlePolicy(
+    private val idleTicksRequired: Int = WakeLockIdlePolicy.DEFAULT_IDLE_TICKS,
+    private val activeCpuJiffies: Long = WakeLockIdlePolicy.DEFAULT_ACTIVE_JIFFIES,
+    private val streakCpuBudget: Long = WakeLockIdlePolicy.DEFAULT_STREAK_BUDGET,
+) {
+    companion object {
+        /** monitorTick 的周期（SessionService 里 postDelayed 用的同一个值）。 */
+        const val TICK_MS = 30_000L
+
+        /** 连续多少轮"没干活"才放锁：20 轮 × 30s = 10 分钟。 */
+        const val DEFAULT_IDLE_TICKS = 20
+
+        /** 单轮判"有活动"的 jiffy 增量下限（Android USER_HZ=100 ⇒ 1 jiffy = 10ms CPU）。 */
+        const val DEFAULT_ACTIVE_JIFFIES = 2L
+
+        /** 空闲连续期内累计 CPU 增量预算：超过即视为活动（防 trickle 型任务被误放）。 */
+        const val DEFAULT_STREAK_BUDGET = 15L
+    }
+
+    private var lastCpu = -1L
+    private var idleTicks = 0
+    private var streakGrowth = 0L
+    private var idle = false
+
+    /** 当前是否处于"刻意释放"状态（monitorTick 据此暂停补取、通知据此换文案）。 */
+    val isDeliberatelyIdle: Boolean get() = idle
+
+    /** 回到初始判定态（保活开关被用户拨动、会话不存在时调用）。 */
+    fun reset() {
+        lastCpu = -1L
+        idleTicks = 0
+        streakGrowth = 0L
+        idle = false
+    }
+
+    /**
+     * 喂一轮 CPU 读数。
+     * @param totalCpu 本 App 全部进程的 jiffies 总读数；null = 读不到（按活动处理）
+     * @param held 当前锁的真实持有状态
+     */
+    fun onTick(totalCpu: Long?, held: Boolean): IdleDecision {
+        val active = when {
+            totalCpu == null -> true               // 读不到 ⇒ 保守
+            lastCpu < 0L -> true                   // 首轮无基线 ⇒ 保守
+            totalCpu < lastCpu -> true             // 计数倒退（进程树重建等）⇒ 保守
+            totalCpu - lastCpu >= activeCpuJiffies -> true
+            else -> false
+        }
+        if (totalCpu != null) {
+            if (lastCpu >= 0L && totalCpu > lastCpu) streakGrowth += totalCpu - lastCpu
+            lastCpu = totalCpu
+        }
+        if (active || streakGrowth > streakCpuBudget) {
+            idleTicks = 0
+            streakGrowth = 0L
+            idle = false
+            return if (!held) IdleDecision.ACQUIRE else IdleDecision.NONE
+        }
+        idleTicks++
+        if (idleTicks >= idleTicksRequired) {
+            // 计数达标即置位「刻意空闲」（不依赖锁状态）：若锁已被外部释放、isHeld 又读不到
+            // 而默认 true，旧写法要再等一轮才收敛；现在标记当轮就位，补取门控立即生效。
+            idle = true
+            return if (held) IdleDecision.RELEASE else IdleDecision.NONE
+        }
+        return IdleDecision.NONE
+    }
+}
+
+/**
+ * 「本 App 全部进程 CPU jiffies」读取器。
+ *
+ * 为什么量 **UID 全体**而不是只量会话 shell 进程：
+ * - 终端里的真实负载（agent、编译、下载）跑在 tmux server 之下，而 tmux server 是
+ *   **daemonize 出去的**——它的真实 ppid 是 init，**不在**会话进程的子树里
+ *   （与「双 fork 守护进程会跑出 proot」是同一件事的进程树侧写）；
+ *   按父子树从会话 pid 往下爬会漏掉全部 agent ⇒ 必须按 UID 圈定。
+ * - hidepid=2（Android 9+ 默认）下 `/proc` 只列得出自己 UID 的进程 ⇒ 遍历成本是
+ *   几十项的小读，主线程可承受；再按 status 的 Uid 行过滤一次兜底（防个别机型
+ *   hidepid 配置不同导致读到别家进程）。
+ * - App 自己的进程（[myPid]）**排除**：否则每次扫描自身消耗的 CPU 会喂进判据，
+ *   形成"扫描活动 ⇒ 判活动 ⇒ 永不放锁"的自激。
+ * - cutime/cstime 一并计入：agent 进程退出瞬间，它一生消耗的 CPU 会折叠进收尸父进程
+ *   的 cutime——只看 utime/stime 会把"刚跑完的任务"读成零。
+ */
+internal object GuestCpuCounter {
+
+    /**
+     * 解析 /proc/<pid>/stat 的 (utime, stime, cutime, cstime)。
+     *
+     * ⚠️ 这四个字段在 **stat** 里而不是 status 里（status 只有 VmRSS 等内存行）；
+     * stat 的第 2 字段 comm 是**括号包裹、可含空格与括号**的进程名
+     * （如 `tmux: server`）⇒ 以**最后一个 `)`** 为界，其后才是空格分隔的数字字段：
+     * `state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt utime stime cutime cstime …`
+     * （state 是去头后的第 0 项，utime 起 = 第 11~14 项）。
+     *
+     * @return 长度 4 的数组 [utime, stime, cutime, cstime]；解析不出返回 null
+     */
+    internal fun parseCpuJiffies(stat: String): LongArray? {
+        val rparen = stat.lastIndexOf(')')
+        if (rparen < 0) return null
+        val fields = stat.substring(rparen + 1).trim().split(Regex("\\s+"))
+        if (fields.size < 15) return null
+        val utime = fields[11].toLongOrNull() ?: return null
+        val stime = fields[12].toLongOrNull() ?: return null
+        val cutime = fields[13].toLongOrNull() ?: return null
+        val cstime = fields[14].toLongOrNull() ?: return null
+        return longArrayOf(utime, stime, cutime, cstime)
+    }
+
+    /** 解析 status 里的 `Uid:` 行首字段（真实 uid）；不是 Uid 行 / 解析不出 ⇒ null。 */
+    internal fun parseUid(statusLine: String): Int? =
+        if (!statusLine.startsWith("Uid:")) null
+        else statusLine.split(Regex("\\s+")).getOrNull(1)?.toIntOrNull()
+
+    /**
+     * 汇总本 UID 全部进程的 CPU jiffies 总读数。
+     *
+     * @param myUid 当前 App 的 uid（`Process.myUid()`）
+     * @param myPid 当前 App 进程号（`Process.myPid()`，**排除自身**，防扫描自激）
+     * @return jiffies 总和；一个进程都读不到（/proc 不可用等）⇒ null（调用方按活动处理）
+     */
+    fun read(myUid: Int, myPid: Int): Long? {
+        val names = File("/proc").list() ?: return null
+        var total = 0L
+        var seen = false
+        for (name in names) {
+            val pid = name.toIntOrNull() ?: continue
+            if (pid == myPid) continue
+            val stat = runCatching { File("/proc/$pid/stat").readText() }.getOrNull() ?: continue
+            val cpu = parseCpuJiffies(stat) ?: continue
+            val uidLine = runCatching {
+                File("/proc/$pid/status").readLines().firstOrNull { it.startsWith("Uid:") }
+            }.getOrNull() ?: continue
+            if (parseUid(uidLine) != myUid) continue
+            total += cpu[0] + cpu[1] + cpu[2] + cpu[3]
+            seen = true
+        }
+        return if (seen) total else null
     }
 }
