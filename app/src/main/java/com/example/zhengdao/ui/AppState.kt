@@ -141,6 +141,7 @@ object AppState {
             manifest?.firstOrNull { it.id == id }?.npmPackage
                 ?: mapOf(
                     "claude-code" to "@anthropic-ai/claude-code",
+                    "codex" to "@openai/codex",
                 )[id]
         }
         // manifest 卡片合并：按 id 覆盖内置（安装命令免发版更新），未知 id 追加
@@ -219,6 +220,27 @@ object AppState {
                 // 不参与「恢复全部」：官方安装器要从 antigravity.google 拉 manifest，
                 // 国内网络到不了（见 AgentInfo.restorable 的注释与网络探针记录）。
                 restorable = false,
+            ),
+            AgentInfo(
+                id = "codex",
+                name = "Codex CLI",
+                desc = "OpenAI 官方编程 Agent（可用自己的 API Key 换基底）",
+                // `--no-daemon` 不是装饰：非 root 的 Android 上 bubblewrap 起不来
+                // （/proc/sys/kernel/overflowuid 读不到）⇒ Codex 的 pid-managed app-server
+                // 子进程秒退。它是**顶层**标志，写在 exec 后面会报 unexpected argument。
+                launchCmd = "codex --no-daemon",
+                // npm 全局安装（与 opencode 同类）：不下载脚本、不预置任何配置，装完走官方登录；
+                // 想换基底（DeepSeek 等）由用户自己在 guest 里配 —— 卡不做这件事。
+                installCmd = "npm i -g @openai/codex",
+                installed = rootfsInstalled && firstExisting(
+                    ctx, listOf(
+                        "rootfs/usr/bin/codex", "rootfs/usr/local/bin/codex", "home/.local/bin/codex",
+                    )
+                ),
+                // 卸载只删程序，配置 ~/.codex 保留（与 claude-code / hermes 同一口径）
+                uninstallCmd = "npm uninstall -g @openai/codex 2>/dev/null; " +
+                    "rm -rf /root/.local/bin/codex /usr/lib/node_modules/@openai/codex 2>/dev/null; " +
+                    "echo '[卸载] Codex CLI 已删除（配置 ~/.codex 保留）'",
             ),
         )
 
