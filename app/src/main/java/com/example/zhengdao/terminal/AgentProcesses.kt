@@ -58,6 +58,8 @@ object AgentProcesses {
      * [procRoot] 与 [selfPid] 可注入，单测喂假目录即可；真机是 `/proc` + [android.os.Process.myPid]。
      */
     internal fun scan(procRoot: File = File("/proc"), selfPid: Int = android.os.Process.myPid()): List<String> {
+        // 硬约束（审计 B4）：读遍所有进程的 cmdline，属于重 I/O，别在主线程调。
+        BackgroundOnly.check("AgentProcesses.scan")
         val found = ArrayList<String>()
         val dirs = procRoot.listFiles() ?: return found
         for (d in dirs) {

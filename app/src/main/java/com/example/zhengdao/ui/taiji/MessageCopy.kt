@@ -3,6 +3,8 @@
 // 依据的公开接口：本项目自己的数据模型（OcMessage / OcPart）。
 package com.example.zhengdao.ui.taiji
 
+import android.content.res.Resources
+import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart
 import com.example.zhengdao.oc.ToolState
@@ -28,6 +30,12 @@ import com.example.zhengdao.oc.ToolState
  *
  * 工具入参 / 结果可能极长（`shell` 的输出、整份文件内容），故各自截断（见 [TOOL_FIELD_LIMIT]），
  * 截断处明确写「（已截断）」而不是静默切掉。
+ *
+ * ## i18n（2026-10-12）
+ *
+ * 复制进剪贴板的文本是**用户可见输出**，故随界面语言走：各函数多一个可选的
+ * [Resources] 参数，**传 null 时一律回退中文**——这样 JVM 单测（`MessageCopyTest`）
+ * 不用改一行、也不需要 mock Context，UI 层传 `ctx.resources` 即得英文。
  */
 internal object MessageCopy {
 
@@ -35,7 +43,7 @@ internal object MessageCopy {
     internal const val TOOL_FIELD_LIMIT = 8000
 
     /** 拼一条消息的可复制文本。空消息返回空串（调用方据此禁用「复制」入口）。 */
-    internal fun textOf(msg: OcMessage): String {
+    internal fun textOf(msg: OcMessage, res: Resources? = null): String {
         val body = msg.parts
             .filterIsInstance<OcPart.Text>()
             .map { it.text.trim() }
@@ -48,15 +56,21 @@ internal object MessageCopy {
             when (part) {
                 is OcPart.Reasoning -> part.text.trim()
                     .takeIf { it.isNotEmpty() }
-                    ?.let { "（思考过程）\n$it" }
+                    ?.let { (res?.getString(R.string.copy_reasoning) ?: "（思考过程）") + "\n$it" }
 
-                is OcPart.Tool -> toolText(part)
+                is OcPart.Tool -> toolText(part, res)
 
-                is OcPart.File -> "（附件）${part.filename}"
+                is OcPart.File ->
+                    res?.getString(R.string.copy_attachment, part.filename)
+                        ?: "（附件）${part.filename}"
 
                 is OcPart.Unknown -> part.raw.trim()
                     .takeIf { it.isNotEmpty() }
-                    ?.let { "（未知内容 ${part.type}）\n${clip(it, TOOL_FIELD_LIMIT)}" }
+                    ?.let {
+                        val head = res?.getString(R.string.copy_unknown, part.type)
+                            ?: "（未知内容 ${part.type}）"
+                        "$head\n${clip(it, TOOL_FIELD_LIMIT, res)}"
+                    }
 
                 is OcPart.Text -> null // 已在上面的正文分支处理
             }
@@ -64,41 +78,54 @@ internal object MessageCopy {
     }
 
     /** 整段对话的可复制文本：每条消息加一行角色抬头，消息之间用分隔线断开。 */
-    internal fun textOfConversation(messages: List<OcMessage>): String =
-        messages.mapNotNull { msg ->
-            val body = textOf(msg)
-            if (body.isEmpty()) null else "${roleLabel(msg)}：\n$body"
+    internal fun textOfConversation(messages: List<OcMessage>, res: Resources? = null): String {
+        val sep = res?.getString(R.string.copy_role_separator) ?: "："
+        return messages.mapNotNull { msg ->
+            val body = textOf(msg, res)
+            if (body.isEmpty()) null else "${roleLabel(msg, res)}$sep\n$body"
         }.joinToString("\n\n———\n\n")
-
-    /** 角色抬头（中文，给"复制全部对话"用）。 */
-    internal fun roleLabel(msg: OcMessage): String = when (msg.role) {
-        OcMessage.Role.USER -> "我"
-        OcMessage.Role.ASSISTANT -> "助手"
-        OcMessage.Role.SYSTEM -> "系统"
     }
 
-    /** 工具状态的中文文案（复制用；UI 里 [ToolCallCard] 的徽标文案与这里语义一致）。 */
-    internal fun stateText(state: ToolState): String = when (state) {
-        ToolState.Running -> "执行中"
-        ToolState.Success -> "已完成"
-        ToolState.Error -> "失败"
-        ToolState.Unknown -> "未知"
+    /** 角色抬头（给"复制全部对话"用）。 */
+    internal fun roleLabel(msg: OcMessage, res: Resources? = null): String = when (msg.role) {
+        OcMessage.Role.USER -> res?.getString(R.string.copy_role_user) ?: "我"
+        OcMessage.Role.ASSISTANT -> res?.getString(R.string.copy_role_assistant) ?: "助手"
+        OcMessage.Role.SYSTEM -> res?.getString(R.string.copy_role_system) ?: "系统"
     }
 
-    private fun toolText(part: OcPart.Tool): String {
+    /** 工具状态文案（复制用；UI 里 [ToolCallCard] 的徽标文案与这里语义一致）。 */
+    internal fun stateText(state: ToolState, res: Resources? = null): String = when (state) {
+        ToolState.Running -> res?.getString(R.string.taiji_state_running) ?: "执行中"
+        ToolState.Success -> res?.getString(R.string.taiji_state_done) ?: "已完成"
+        ToolState.Error -> res?.getString(R.string.taiji_state_failed) ?: "失败"
+        ToolState.Unknown -> res?.getString(R.string.copy_state_unknown) ?: "未知"
+    }
+
+    private fun toolText(part: OcPart.Tool, res: Resources?): String {
         val sb = StringBuilder()
-        sb.append("（工具 ").append(part.toolName.ifBlank { "未命名" })
-            .append(" · ").append(stateText(part.state)).append('）')
+        val name = part.toolName.ifBlank {
+            res?.getString(R.string.copy_unnamed_tool) ?: "未命名"
+        }
+        sb.append(
+            res?.getString(R.string.copy_tool_open, name, stateText(part.state, res))
+                ?: "（工具 $name · ${stateText(part.state, res)}）"
+        )
         part.input?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            sb.append("\n入参：\n").append(clip(it, TOOL_FIELD_LIMIT))
+            sb.append("\n").append(res?.getString(R.string.copy_tool_input) ?: "入参：")
+                .append("\n").append(clip(it, TOOL_FIELD_LIMIT, res))
         }
         part.output?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            sb.append("\n结果：\n").append(clip(it, TOOL_FIELD_LIMIT))
+            sb.append("\n").append(res?.getString(R.string.copy_tool_output) ?: "结果：")
+                .append("\n").append(clip(it, TOOL_FIELD_LIMIT, res))
         }
         return sb.toString()
     }
 
     /** 超长截断，并在尾部明确标注「已截断」（不静默）。 */
-    private fun clip(text: String, limit: Int): String =
-        if (text.length <= limit) text else text.take(limit) + "\n…（已截断，原文 ${text.length} 字）"
+    private fun clip(text: String, limit: Int, res: Resources?): String {
+        if (text.length <= limit) return text
+        val tail = res?.getString(R.string.copy_truncated, text.length)
+            ?: "\n…（已截断，原文 ${text.length} 字）"
+        return text.take(limit) + tail
+    }
 }

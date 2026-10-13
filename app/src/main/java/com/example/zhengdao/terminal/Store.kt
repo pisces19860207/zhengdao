@@ -180,7 +180,16 @@ object Store {
                     f.copyRecursively(dst, overwrite = false)
                     f.deleteRecursively()
                     true
-                }.getOrDefault(false)
+                }.getOrElse {
+                    // 🟡-1（Qoder 2026-10-13）：copyRecursively 的默认 onError 是**重抛**，所以复制中途
+                    // 失败时会在上面那句就被接住 —— 源文件不会被删（这一点报告已用 kotlin-stdlib 源码
+                    // 证伪了"复制失败仍删源"的旧疑似 🔴）。但 dst 里会留下**半截副本**，而下一轮的
+                    // `dst.exists() → continue` 会把半截当成"已搬过"，于是**永不重拷**。
+                    // 这里把半截清掉，让下一轮自愈；清不掉也无妨（比方说文件被占用），返回 false 的
+                    // 语义不变：宁可下轮再试，也不能把半截留在公共区当成品。
+                    runCatching { dst.deleteRecursively() }
+                    false
+                }
             if (ok) moved++
         }
         // 源目录空了就删掉（留着会在公共/私有两侧都留一个空壳）

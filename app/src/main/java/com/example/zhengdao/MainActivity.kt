@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,7 +61,6 @@ import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.PermissionSetup
 import com.example.zhengdao.ui.PermissionSetupScreen
-import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.SettingsScreen
 import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.WelcomeScreen
@@ -93,10 +93,10 @@ class MainActivity : ComponentActivity() {
         // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
         if (android.os.Build.VERSION.SDK_INT < 36) {
             android.app.AlertDialog.Builder(this)
-                .setTitle("系统版本过低")
-                .setMessage("证道需要安卓 16 或更高版本（当前安卓 ${android.os.Build.VERSION.RELEASE}）。")
+                .setTitle(getString(R.string.main_android_too_old_title))
+                .setMessage(getString(R.string.main_android_too_old_msg, android.os.Build.VERSION.RELEASE))
                 .setCancelable(false)
-                .setPositiveButton("确定") { _, _ -> finish() }
+                .setPositiveButton(getString(R.string.common_confirm)) { _, _ -> finish() }
                 .show()
             return
         }
@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
         runCatching {
             android.widget.Toast.makeText(
                 this,
-                "这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。",
+                getString(R.string.main_unofficial_build),
                 android.widget.Toast.LENGTH_LONG,
             ).show()
         }
@@ -222,9 +222,15 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     android.app.AlertDialog.Builder(this)
-                        .setTitle("发现新版本")
-                        .setMessage("最新版 ${tag.removePrefix("v")}（当前 ${BuildConfig.VERSION_NAME}），可到 GitHub Releases 下载。")
-                        .setPositiveButton("去下载") { _, _ ->
+                        .setTitle(getString(R.string.main_update_title))
+                        .setMessage(
+                            getString(
+                                R.string.main_update_msg,
+                                tag.removePrefix("v"),
+                                BuildConfig.VERSION_NAME,
+                            )
+                        )
+                        .setPositiveButton(getString(R.string.main_update_go)) { _, _ ->
                             startActivity(
                                 Intent(
                                     Intent.ACTION_VIEW,
@@ -232,7 +238,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
                         }
-                        .setNegativeButton("忽略", null)
+                        .setNegativeButton(getString(R.string.main_update_ignore), null)
                         .show()
                 }
             } catch (_: Throwable) {
@@ -394,7 +400,7 @@ fun ZhengdaoApp(
             // 2026-10-08：异常原文 → 人话。原文已落 RunLog，用户看的用 [HumanizeError]
             // 转成「没有权限 / 网络超时 / 文件找不到」之类可读短语
             android.widget.Toast.makeText(
-                context, "无法打开终端：${com.example.zhengdao.util.HumanizeError.title(t)}", android.widget.Toast.LENGTH_LONG
+                context, "无法打开终端：${com.example.zhengdao.util.HumanizeError.title(t, context.resources)}", android.widget.Toast.LENGTH_LONG
             ).show()
         }
     }
@@ -474,11 +480,11 @@ fun ZhengdaoApp(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             BackChevron(tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(4.dp))
-                            Text("返回", color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.common_back), color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     Text(
-                        text = "设置",
+                        text = stringResource(R.string.common_settings),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.align(Alignment.Center),
@@ -486,38 +492,7 @@ fun ZhengdaoApp(
                 }
                 SettingsScreen(
                     onOpenTerminal = openTerminal,
-                    onOpenPlugins = { nav.navigate("plugins") { launchSingleTop = true } },
                 )
-            }
-        }
-        composable("plugins") {
-            // 三级页：顶栏与设置页同款（返回 + 居中标题），内容由 PluginsScreen 负责
-            Column(Modifier.statusBarsPadding().navigationBarsPadding()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    TextButton(
-                        onClick = { nav.popBackStack() },
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 4.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            BackChevron(tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(4.dp))
-                            Text("返回", color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Text(
-                        text = "插件",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                PluginsScreen()
             }
         }
     }
@@ -631,7 +606,7 @@ fun HomeTabs(
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
                         onClick = { onTabClicked(0) {} },
                         icon = { TaijiIcon(tab == 0) },
-                        label = { Text("太极", style = tabLabelStyle) },
+                        label = { Text(stringResource(R.string.nav_taiji), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -653,7 +628,7 @@ fun HomeTabs(
                         // 却找不到叫「洞天」的地方。「终端」是用户已有的通用认知，无需学。
                         // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
                         // 见 :624 的设计说明），此处只改用户可见文案。
-                        label = { Text("终端", style = tabLabelStyle) },
+                        label = { Text(stringResource(R.string.nav_terminal), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
@@ -661,7 +636,7 @@ fun HomeTabs(
                         // K1：双击 = 滚到丹房 Agent 列表顶。
                         onClick = { onTabClicked(2) {} },
                         icon = { DingIcon(tab == 2) },
-                        label = { Text("丹房", style = tabLabelStyle) },
+                        label = { Text(stringResource(R.string.nav_agents), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                 }
@@ -944,6 +919,29 @@ fun BackChevron(tint: Color, side: Dp = 13.dp) {
             moveTo(w * 0.66f, h * 0.12f)
             lineTo(w * 0.28f, h * 0.50f)
             lineTo(w * 0.66f, h * 0.88f)
+        }
+        drawPath(
+            path,
+            tint,
+            style = Stroke(width = TAB_STROKE * 0.95f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
+/**
+ * 右箭头（›）：设置行行尾用。与 [BackChevron] 同一套笔（圆头圆角 + 1.9f 描边）。
+ * 2026-10-12 取代设置行里的 "›" 文本字符——字符箭头各机型字体渲染不一
+ * （胖瘦高低没个准），与全套自绘图标不同路（走查报告 §五）。
+ */
+@Composable
+fun ChevronRight(tint: Color, side: Dp = 13.dp) {
+    Canvas(modifier = Modifier.size(side)) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.34f, h * 0.12f)
+            lineTo(w * 0.72f, h * 0.50f)
+            lineTo(w * 0.34f, h * 0.88f)
         }
         drawPath(
             path,

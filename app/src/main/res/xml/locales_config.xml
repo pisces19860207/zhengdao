@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用内语言（per-app language，Android 13+）。
+  声明本 App 支持的语言，系统「设置 → 应用 → 证道 → 语言」会列出这几项；
+  App 内的「界面语言」选择器也写同一份列表（见 LanguagePrefs.kt）。
+  minSdk 36 ⇒ 不需要 androidx.appcompat 兼容层，直接走 LocaleManager。
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="zh-CN" />
+    <locale android:name="en" />
+</locale-config>

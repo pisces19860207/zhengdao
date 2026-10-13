@@ -1,13 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+  证道 · Auto Backup 排除表（API ≤ 30 走这份；API 31+ 走 data_extraction_rules.xml，
+  两个入口都在 AndroidManifest.xml：android:fullBackupContent / android:dataExtractionRules）。
+
+  为什么这份不能是模板：App 私有目录里放着整棵 Debian rootfs（几百 MB 到数 GB）、
+  guest home（agent 工具链与缓存）、太极 opencode 运行时、proot 二进制与临时树；
+  Auto Backup 默认把它们全算进备份 —— Google Drive 配额只有 25 MB，结果只有两种：
+  「备份一直失败」或「备份到一半把用户的工作内容传上云」。设计文档 §8 的口径是
+  「系统层可重建、用户数据不进云备份」。
+
+  所以这里只写排除、不写 include：需要跨设备恢复的是设置与数据库
+  （sharedpref / database 保持默认包含）。改动前先看 docs/ERRATA.md E-121
+  与 docs/FEATURE-LEDGER.md §B 顺序 1（issue #19）。
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- 系统层：可重新下载 / 重建（Debian rootfs、Termux proot 二进制、临时树） -->
+    <exclude domain="file" path="rootfs" />
+    <exclude domain="file" path="termux-proot" />
+    <exclude domain="file" path="proot-tmp" />
+    <!-- 用户数据与运行时：体积不可控（agent 工具链、包缓存、会话工作区） -->
+    <exclude domain="file" path="home" />
+    <exclude domain="file" path="oc" />
+    <!-- 「仅私有模式」的工作区落在 App 的外部私有目录，同样不进云备份 -->
+    <exclude domain="external" path="workspace" />
 </full-backup-content>

@@ -2,6 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import androidx.compose.ui.res.stringResource
+import com.example.zhengdao.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,7 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.ui.theme.iosSwitchColors
-import com.example.zhengdao.ui.theme.IOSBlueText
+import com.example.zhengdao.ui.theme.zhengdaoBlueText
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -59,7 +61,8 @@ fun PluginsScreen() {
 
     var tick by remember { mutableStateOf(0) }
     var specs by remember { mutableStateOf<List<String>>(emptyList()) }
-    var cached by remember { mutableStateOf<List<Pair<String, Long>>>(emptyList()) }
+    // 2026-10-12 无感化（§5.5 第 7 处）：首帧即显上次包缓存快照，扫完就地覆盖。
+    var cached by remember { mutableStateOf(LastValues.loadPluginCache(ctx).orEmpty()) }
     var versions by remember { mutableStateOf<Map<String, String?>>(emptyMap()) }
     var envReady by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
@@ -83,6 +86,7 @@ fun PluginsScreen() {
         specs = data.second
         cached = data.third.first
         versions = data.third.second
+        LastValues.savePluginCache(ctx, cached)
     }
 
     /**
@@ -98,10 +102,10 @@ fun PluginsScreen() {
             val n = withContext(Dispatchers.IO) { PluginManager.setEnabled(ctx, spec, on) }
             busy = false
             msg = when {
-                n > 0 && on -> "已启用：$spec（下次启动 Agent 时生效）"
-                n > 0 -> "已停用：$spec"
-                !envReady -> "太极的 OpenCode 尚未初始化，先到「太极」启动一次"
-                else -> "状态无变化"
+                n > 0 && on -> ctx.getString(R.string.plugins_enabled_toast, spec)
+                n > 0 -> ctx.getString(R.string.plugins_disabled_toast, spec)
+                !envReady -> ctx.getString(R.string.plugins_oc_not_ready)
+                else -> ctx.getString(R.string.plugins_no_change)
             }
             onDone(n)
             tick++
@@ -146,10 +150,11 @@ fun PluginsScreen() {
     fun subtitleFor(spec: String, enabled: Boolean): String {
         val v = versions[spec]
         val legacy = PluginManager.isLegacy(spec)
+        // 这是 Composable 里的**局部 fun**（不是 @Composable），故文案走 ctx.getString
         val verText = when {
-            legacy -> "⚠️ 已废弃插件（曾装上但不工作），建议停用"
-            v != null -> "已缓存 v$v"
-            enabled -> "尚未下载（首次启动 Agent 时联网安装）"
+            legacy -> ctx.getString(R.string.plugins_legacy)
+            v != null -> ctx.getString(R.string.plugins_cached_ver, v)
+            enabled -> ctx.getString(R.string.plugins_not_downloaded)
             else -> ""
         }
         return verText
@@ -163,11 +168,11 @@ fun PluginsScreen() {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         // ── 已启用 ──
-        SectionCard("已启用") {
+        SectionCard(stringResource(R.string.plugins_card_enabled)) {
             if (specs.isEmpty()) {
                 Text(
-                    text = if (envReady) "还没有启用任何插件。可到下面「推荐」里一键添加。"
-                    else "太极的 OpenCode 尚未初始化——先到「太极」启动一次，插件配置会自动生成。",
+                    text = if (envReady) stringResource(R.string.plugins_empty_enabled)
+                    else stringResource(R.string.plugins_empty_no_env),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -179,7 +184,7 @@ fun PluginsScreen() {
         }
 
         // ── 推荐 ──
-        SectionCard("推荐插件") {
+        SectionCard(stringResource(R.string.plugins_card_recommended)) {
             PluginManager.RECOMMENDED.forEach { r ->
                 val on = specs.any { PluginManager.samePackage(it, r.spec) }
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -197,9 +202,9 @@ fun PluginsScreen() {
                         // 同一页出现两个控制同一件事的开关只会让人怀疑它们是否同步。
                         if (on) {
                             Text(
-                                text = "已启用",
+                                text = stringResource(R.string.plugins_state_enabled),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = IOSBlueText,
+                                color = zhengdaoBlueText(),
                             )
                         } else {
                             Switch(
@@ -224,12 +229,12 @@ fun PluginsScreen() {
         // 用户问「有没有新增插件的入口」——此前只有「推荐」里那一项，想装别的只能去改
         // opencode.json，等于把用户赶回终端。OpenCode 没有插件市场，插件的标识就是
         // **npm 包名**，所以这里只做一件事：把包名写进 plugin 数组（启动 Agent 时由 Bun 装）。
-        SectionCard("添加插件（npm 包名）") {
+        SectionCard(stringResource(R.string.plugins_card_add)) {
             OutlinedTextField(
                 value = specInput,
                 onValueChange = { specInput = it; specError = null },
                 singleLine = true,
-                label = { Text("例如 @scope/opencode-plugin-xxx") },
+                label = { Text(stringResource(R.string.plugins_add_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 // 与全仓一致：**绝不用密码类型**（国产 ROM 会弹安全键盘，v3 §7 红线）
                 keyboardOptions = KeyboardOptions(
@@ -252,7 +257,7 @@ fun PluginsScreen() {
                 onClick = {
                     val spec = PluginManager.normalizeSpecInput(specInput)
                     if (spec == null) {
-                        specError = "这不像一个 npm 包名：应形如 my-plugin 或 @scope/my-plugin，且不含空格"
+                        specError = ctx.getString(R.string.plugins_bad_spec)
                     } else {
                         // 只有**真写进配置**（n > 0）才清空输入框：失败时保留原文，用户能直接改错重试，
                         // 不用重新去 npm 页面复制一遍。失败提示必须带上包名，否则用户只看到一句泛泛的
@@ -261,17 +266,19 @@ fun PluginsScreen() {
                             if (n > 0) {
                                 specInput = ""
                             } else {
-                                specError = if (envReady) "未写入配置：$spec（可能已在插件列表中）"
-                                else "未添加：$spec —— 太极的 OpenCode 尚未初始化，先到「太极」启动一次"
+                                specError = if (envReady) {
+                                    ctx.getString(R.string.plugins_not_written, spec)
+                                } else {
+                                    ctx.getString(R.string.plugins_not_added, spec)
+                                }
                             }
                         }
                     }
                 },
-            ) { Text("添加并启用") }
+            ) { Text(stringResource(R.string.plugins_add_enable)) }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "包名从插件的 npm / GitHub 页面复制。添加后由 opencode 内置的 Bun 在下次" +
-                    "启动 Agent 时从 npm 下载（首次需要联网）。插件会执行第三方代码——只添加你信任的包。",
+                text = stringResource(R.string.plugins_add_note),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -279,10 +286,10 @@ fun PluginsScreen() {
 
         // ── 缓存 ──
         val totalMb = cached.sumOf { it.second }
-        SectionCard("插件包缓存（共 $totalMb MB）") {
+        SectionCard(stringResource(R.string.plugins_cache_card, totalMb)) {
             if (cached.isEmpty()) {
                 Text(
-                    text = "暂无缓存。插件首次启动时由 opencode 内置的 Bun 从 npm 下载到此，之后离线可用。",
+                    text = stringResource(R.string.plugins_cache_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -305,16 +312,18 @@ fun PluginsScreen() {
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text = "$mb MB",
+                            text = stringResource(R.string.common_mb, mb),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                         )
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                OutlinedButton(onClick = { cleanConfirm = true }) { Text("清理插件包缓存") }
+                OutlinedButton(onClick = { cleanConfirm = true }) {
+                    Text(stringResource(R.string.plugins_cache_clean))
+                }
                 Text(
-                    text = "清理不会停用插件——下次启动 Agent 时会重新联网下载。",
+                    text = stringResource(R.string.plugins_cache_clean_note),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
@@ -323,12 +332,9 @@ fun PluginsScreen() {
         }
 
         // ── 说明 ──
-        SectionCard("关于插件") {
+        SectionCard(stringResource(R.string.plugins_card_about)) {
             Text(
-                text = "OpenCode 没有官方「插件市场」。插件的加载方式只有两种：在 opencode.json 里写包名" +
-                    "（启动时由 Bun 自动从 npm 安装），或引用本地 .js 文件。本页管理的即前者。\n\n" +
-                    "插件会扩展 Agent 的能力（如记忆、工具），但也会执行第三方代码——只启用你信任的插件。\n\n" +
-                    "本页只作用于**太极**的 OpenCode 实例；终端里自装的 opencode 不在管理范围内。",
+                text = stringResource(R.string.plugins_about_note),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -338,7 +344,7 @@ fun PluginsScreen() {
             Text(
                 text = it,
                 style = MaterialTheme.typography.labelSmall,
-                color = IOSBlueText,
+                color = zhengdaoBlueText(),
             )
         }
     }
@@ -347,8 +353,15 @@ fun PluginsScreen() {
         AlertDialog(
             onDismissRequest = { cleanConfirm = false },
             shape = RoundedCornerShape(14.dp),
-            title = { Text("清理插件包缓存？") },
-            text = { Text("将删除已下载的插件包（约 ${cached.sumOf { it.second }} MB）。插件本身保持启用，下次启动会重新下载。") },
+            title = { Text(stringResource(R.string.plugins_clean_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.plugins_clean_confirm_msg,
+                        cached.sumOf { it.second },
+                    )
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     cleanConfirm = false
@@ -356,12 +369,14 @@ fun PluginsScreen() {
                     scope.launch {
                         val freed = withContext(Dispatchers.IO) { PluginManager.clearCaches(ctx) }
                         busy = false
-                        msg = "已清理，回收约 $freed MB"
+                        msg = ctx.getString(R.string.plugins_cleaned_toast, freed)
                         tick++
                     }
-                }) { Text("清理") }
+                }) { Text(stringResource(R.string.common_clean)) }
             },
-            dismissButton = { TextButton(onClick = { cleanConfirm = false }) { Text("取消") } },
+            dismissButton = {
+                TextButton(onClick = { cleanConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+            },
         )
     }
 }

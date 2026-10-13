@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.R
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
@@ -44,9 +45,10 @@ object ResMonitor {
         val procs: Int,
     )
 
-    /** 告警阈值。取值依据：真机基线（2026-10-07）太极 serve 空闲 RSS 375–468 MB、
-     *  CPU 5.6–7.4%；阈值须明显高于基线，否则一开太极就告警 = 狼来了。 */
-    const val RSS_WARN_MB = 800
+    /** 体检卡口径的内存告警阈值；取值依据与"为什么与通知栏那个阈值不同"见 [RssThresholds]。
+     *  真机基线（2026-10-07）太极 serve 空闲 RSS 375–468 MB、CPU 5.6–7.4%；
+     *  阈值须明显高于基线，否则一开太极就告警 = 狼来了。 */
+    const val RSS_WARN_MB = RssThresholds.HEALTH_CARD_MB
     const val CPU_WARN_PCT = 25f
 
     /** 体检结论：ok=false 表示故障，warn=true 表示超阈值但无一键修复。 */
@@ -59,6 +61,8 @@ object ResMonitor {
      * @return 聚合结果；无进程可采（太极与终端都没开）时返回 null。
      */
     fun measure(windowMs: Long = 700): Sample? {
+        // 硬约束（审计 B4）：本函数 sleep + 全量扫 /proc，在主线程调用会掉帧甚至 ANR。
+        BackgroundOnly.check("ResMonitor.measure")
         val uid = android.os.Process.myUid()
         // 剔除 App 自身：否则量到的是体检过程本身（见类注释，实测 0.0% → 报 90%）。
         val pids = excludeSelf(pidsOfUid(uid), android.os.Process.myPid())
@@ -87,21 +91,42 @@ object ResMonitor {
      * **无进程可采不算故障**——太极和终端都没开时占用本来就是 0，报红会违反
      * 体检卡「红 = 修得了」的不变量（资源占用没有一键修复）。
      * 超阈值走 **warn**（黄色 ⚠），不是红叉。
+     *
+     * [res] 传 `ctx.resources` 即随界面语言（detail 进 EnvHealth 体检表）；传 null（单测）回退中文。
      */
-    internal fun verdict(s: Sample?): Verdict = when {
-        s == null -> Verdict(true, false, "太极与终端均未运行，无进程可采样")
-        s.rssMb >= RSS_WARN_MB -> Verdict(
-            true, true,
-            "⚠ 内存 ${s.rssMb} MB 超阈值 ${RSS_WARN_MB} MB（${s.procs} 个进程）——关掉不用的会话，或重启太极",
+    internal fun verdict(s: Sample?, res: android.content.res.Resources? = null): Verdict {
+        fun s2(id: Int, vararg args: Any): String =
+            res?.getString(id, *args) ?: resFallback(id, *args)
+        return when {
+            s == null -> Verdict(true, false, s2(R.string.resmon_idle))
+            s.rssMb >= RSS_WARN_MB -> Verdict(
+                true, true,
+                s2(R.string.resmon_rss_over, s.rssMb, RSS_WARN_MB, s.procs),
+            )
+            s.cpuPct >= CPU_WARN_PCT -> Verdict(
+                true, true,
+                s2(R.string.resmon_cpu_over, "%.1f".format(s.cpuPct), CPU_WARN_PCT.toInt()),
+            )
+            else -> Verdict(
+                true, false,
+                s2(R.string.resmon_normal, s.rssMb, "%.1f".format(s.cpuPct), s.procs),
+            )
+        }
+    }
+
+    /** JVM 单测的中文兜底（无 Android 运行时取不到资源；与 resmon_* 资源条目一一对应）。 */
+    private fun resFallback(id: Int, vararg args: Any): String {
+        val zh = mapOf(
+            R.string.resmon_idle to "太极与终端均未运行，无进程可采样",
+            R.string.resmon_rss_over to "⚠ 内存 %1\$d MB 超阈值 %2\$d MB（%3\$d 个进程）——关掉不用的会话，或重启太极",
+            R.string.resmon_cpu_over to "⚠ CPU %1\$s%% 超阈值 %2\$d%%——检查插件与会话规模",
+            R.string.resmon_normal to "RSS %1\$d MB · CPU %2\$s%% · %3\$d 个进程",
         )
-        s.cpuPct >= CPU_WARN_PCT -> Verdict(
-            true, true,
-            "⚠ CPU ${"%.1f".format(s.cpuPct)}% 超阈值 ${CPU_WARN_PCT.toInt()}%——检查插件与会话规模",
-        )
-        else -> Verdict(
-            true, false,
-            "RSS ${s.rssMb} MB · CPU ${"%.1f".format(s.cpuPct)}% · ${s.procs} 个进程",
-        )
+        var out = zh[id] ?: ""
+        args.forEachIndexed { i, a ->
+            out = out.replace("%${i + 1}\$d", a.toString()).replace("%${i + 1}\$s", a.toString())
+        }
+        return out
     }
 
     /**
@@ -113,10 +138,10 @@ object ResMonitor {
     internal fun excludeSelf(pids: List<Int>, selfPid: Int): List<Int> =
         pids.filter { it != selfPid }
 
-    /** 采样 + 告警落日志（超阈值时写一条 RunLog，便于事后查趋势）。 */
-    fun sampleWithLog(windowMs: Long = 700): Verdict {
+    /** 采样 + 告警落日志（超阈值时写一条 RunLog，便于事后查趋势）。[res] 供 verdict 随界面语言。 */
+    fun sampleWithLog(windowMs: Long = 700, res: android.content.res.Resources? = null): Verdict {
         val s = runCatching { measure(windowMs) }.getOrNull()
-        val v = verdict(s)
+        val v = verdict(s, res)
         if (v.warn) RunLog.log("资源告警: ${v.detail}")
         return v
     }

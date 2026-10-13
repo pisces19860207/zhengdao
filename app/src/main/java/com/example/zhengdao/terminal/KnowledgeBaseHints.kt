@@ -114,7 +114,20 @@ object KnowledgeBaseHints {
     private val CJK_RUN = Regex("[\\u3400-\\u4dbf\\u4e00-\\u9fff]+")
 
     // ── 运行时状态（行缓冲 / 单飞标记 / 后台线程）──────────────────────────────
+    /**
+     * 行缓冲。
+     *
+     * ⚠️ 必须由 [lineLock] 保护 —— 它**真的**会被多个线程同时碰：
+     * [onUserCodePoint] 从 Termux 引擎／IME 线程进来（本类文档明写「允许在任意线程调用」），
+     * [onUserText]（粘贴）与 [onUserBackspace]（快捷键条）从主线程进来，
+     * 而 `TerminalActivity.onSessionFinished` 又在**没切主线程**的地方调 [reset]
+     * （`app/src/main/java/com/example/zhengdao/TerminalActivity.kt:886-889`，
+     * 那里直到 `:890` 才 `runOnUiThread` 去弹 Toast）。
+     * `StringBuilder` 不是线程安全的：并发 `append` / `setLength` 会写出错乱内容，
+     * 运气差还会 index 越界（§B 顺序 16）。
+     */
     private val line = StringBuilder()
+    private val lineLock = Any()
     private val inflight = AtomicBoolean(false)
     private val worker = Executors.newSingleThreadExecutor { r ->
         Thread(r, "zd-kb-hints").apply { isDaemon = true }
@@ -130,8 +143,21 @@ object KnowledgeBaseHints {
 
     /** 会话结束／界面销毁时清缓冲，避免跨会话串味。 */
     fun reset() {
-        line.setLength(0)
+        clearLine()
     }
+
+    /** 清空行缓冲（带锁；[line] 会被多线程碰，见其 KDoc）。 */
+    private fun clearLine() = synchronized(lineLock) { line.setLength(0) }
+
+    /** 取出并清空行缓冲里的整句（带锁，避免"读到一半被别人 append"）。 */
+    private fun takeLine(): String = synchronized(lineLock) {
+        val s = line.toString().trim()
+        line.setLength(0)
+        s
+    }
+
+    /** 仅供单测：当前行缓冲内容（不清空）——并发护栏测试要用它看结果。 */
+    internal fun debugLineBuffer(): String = synchronized(lineLock) { line.toString() }
 
     /**
      * **主入口**：喂进一个"用户输入"的码点。
@@ -144,12 +170,11 @@ object KnowledgeBaseHints {
      */
     fun onUserCodePoint(ctx: Context, codePoint: Int, ctrlDown: Boolean, write: (String) -> Unit): Boolean {
         if (!isEnabled(ctx)) {
-            if (line.isNotEmpty()) line.setLength(0)
+            clearLine()
             return false
         }
         if (isEnter(codePoint, ctrlDown)) {
-            val question = line.toString().trim()
-            line.setLength(0)
+            val question = takeLine()
             // 空行放行；斜杠命令放行（`/help`、`/clear` 这类不是提问，别插嘴）
             if (question.isEmpty() || question.startsWith("/")) return false
             // 上一轮还在搜：吞掉这次回车。否则会"先裸提交一次、块再单独提交一条"
@@ -160,8 +185,14 @@ object KnowledgeBaseHints {
             return true
         }
         when (codePoint) {
-            8, 127 -> if (line.isNotEmpty()) line.setLength(line.length - 1)
-            else -> if (codePoint >= 32 && line.length < MAX_LINE_CHARS) line.appendCodePoint(codePoint)
+            8, 127 -> synchronized(lineLock) {
+                if (line.isNotEmpty()) line.setLength(line.length - 1)
+            }
+            else -> if (codePoint >= 32) {
+                synchronized(lineLock) {
+                    if (line.length < MAX_LINE_CHARS) line.appendCodePoint(codePoint)
+                }
+            }
         }
         return false
     }
@@ -181,17 +212,21 @@ object KnowledgeBaseHints {
     /** 粘贴也算"用户的话"（否则粘完再回车，缓冲是空的，就白粘了）。 */
     fun onUserText(text: String) {
         if (text.isEmpty()) return
-        // 多行粘贴不是"一个提问"；超长粘贴（多半是整篇文档）也不该被当作检索词
-        if (text.contains('\n') || line.length + text.length > MAX_LINE_CHARS) {
-            line.setLength(0)
-            return
+        synchronized(lineLock) {
+            // 多行粘贴不是"一个提问"；超长粘贴（多半是整篇文档）也不该被当作检索词
+            if (text.contains('\n') || line.length + text.length > MAX_LINE_CHARS) {
+                line.setLength(0)
+                return
+            }
+            line.append(text)
         }
-        line.append(text)
     }
 
     /** 退格／删除：缓冲跟着退（快捷键条的退格是直写 pty 的，得单独喂一口）。 */
     fun onUserBackspace() {
-        if (line.isNotEmpty()) line.setLength(line.length - 1)
+        synchronized(lineLock) {
+            if (line.isNotEmpty()) line.setLength(line.length - 1)
+        }
     }
 
     // ── 执行（后台线程）──────────────────────────────────────────────────────

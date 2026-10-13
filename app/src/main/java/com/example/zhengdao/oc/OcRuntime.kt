@@ -51,13 +51,19 @@ object OcRuntime {
     @Volatile
     private var repo: OcRepository? = null
 
-    /** 取（或首次创建）全局唯一的 repository。 */
-    fun repository(): OcRepository {
-        repo?.let { return it }
+    /**
+     * 取（或首次创建）全局唯一的 repository。[res] 首次创建时注入（UI 语言）；
+     * 单例已存在时更新注入——语言切换后 Activity 重建会带着新语言的 Resources 再进来。
+     */
+    fun repository(res: android.content.res.Resources? = null): OcRepository {
+        repo?.let {
+            it.attachResources(res)
+            return it
+        }
         return synchronized(this) {
             repo ?: run {
                 val client = OcClient(passwordProvider = { OcManager.servePassword })
-                OcRepository(client, SseClient(client.sseClient)).also { repo = it }
+                OcRepository(client, SseClient(client.sseClient), res).also { repo = it }
             }
         }
     }

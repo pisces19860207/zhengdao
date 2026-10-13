@@ -9,6 +9,7 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import com.example.zhengdao.core.IssueCenter
+import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.io.IOException
@@ -67,7 +68,21 @@ object ProotLauncher {
      *  - 已安装 Debian 13.7 环境（rootfs 目录存在且带完成标记）→ 经 proot 启动 guest bash；
      *  - 未安装 → 回退到系统自带 shell，App 端行为完全一致，用户无感降级。
      */
-    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan {
+    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan =
+        RootfsInstaller.withPrepareLock("准备会话") { buildLaunchPlanLocked(context, tmuxSession) }
+
+    /**
+     * [buildLaunchPlan] 的实现（**调用方必须已持有会话准备锁**，见 [RootfsInstaller.withPrepareLock]）。
+     *
+     * 为什么必须持锁：这一整段都会往 guest rootfs 里写东西 —— `etc/resolv.conf` / `etc/hosts`
+     * （[EnvSelfHeal.ensureDnsFiles]）、`/etc/localtime` 与时区、`etc/profile.d/zz-*.sh`、
+     * `usr/local/bin/zzclean`、`usr/local/bin/hermes` 软链、挂载落点 `opt/zhengdao`、
+     * `tmp/.zhengdao-banner-pending` 等。原先只在启动前"看一眼"
+     * [RootfsInstaller.isInstalling]，那是 TOCTOU：查完到写之间安装可能刚好置位，
+     * 而安装最后会**把整棵 rootfs 改名搬走再放新的**（[RootfsInstaller.swapIntoPlace]）
+     * ⇒ 刚写的配置落进被丢弃的旧树，或写进正在被搬走的目录（§B 顺序 18，2026-10-12）。
+     */
+    private fun buildLaunchPlanLocked(context: Context, tmuxSession: String): LaunchPlan {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
 
@@ -373,31 +388,18 @@ object ProotLauncher {
         runCatching { KnowledgeBase.refresh(context) }
             .onFailure { RunLog.log("资料库刷新失败：${it.message}") }
 
-        // tmux 预置（2026-10-05 补）：开启鼠标支持，使**触摸滑动能滚动历史**。
-        // 背景见 TerminalView.onScroll 的定制注释：tmux 采用全屏重绘，不产生本地回滚
-        // 缓冲（实测 histRows=0），必须把触摸滑动转成滚轮事件、且 tmux 端开启 mouse，
-        // 才能滚动 pane 自己的历史。已有配置时按需追加，不覆盖用户自有设置。
+        // tmux 预置（2026-10-05 补 / 2026-10-12 抽成纯函数 + 补第三条）：
+        // 需要追加什么由 `tmuxConfAppend()` 决定（纯函数，单测覆盖幂等性）。
+        // 已有配置时按需追加，不覆盖用户自有设置。
         runCatching {
             val f = File(homeDir, ".tmux.conf")
             val cur = if (f.isFile) f.readText() else ""
-            val add = buildString {
-                if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
-                    append("set -g mouse on\n")
-                    RunLog.log("tmux 配置已补：set -g mouse on（触摸滑动可滚动历史）")
-                }
-                // 剪贴板预置（2026-10-08 真机实测补）：三档负载（100 / 9000 / 12345 字符）
-                // 端到端验证「终端内的 OSC 52 → 手机剪贴板」这条链。
-                // tmux 的 set-clipboard 默认是 external —— 实测这种模式下**pane 里应用发出的
-                // OSC 52 不会被转发给外层终端**（App 收不到、剪贴板不变、也没有「已复制」提示）；
-                // 只有在 on 模式下 tmux 才会既存自己的 buffer、又把 OSC 52 透传给 App。
-                // 因此这里必须显式开 on，否则 TerminalEmulator 里那套 OSC 52 处理（含 100 KiB
-                // 上限修复）在 tmux 里等于白做。
-                if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+set-clipboard\\b").containsMatchIn(cur)) {
-                    append("set -g set-clipboard on\n")
-                    RunLog.log("tmux 配置已补：set -g set-clipboard on（终端内 OSC 52 才能写进手机剪贴板）")
-                }
+            val add = tmuxConfAppend(cur)
+            if (add.isNotEmpty()) {
+                f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + add)
+                add.lineSequence().filter { it.isNotBlank() }
+                    .forEach { RunLog.log("tmux 配置已补：$it") }
             }
-            if (add.isNotEmpty()) f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + add)
         }
 
         // TZ（双保险的第二层）：tmux server / date / Node 等都读它。带 zoneinfo 的
@@ -650,6 +652,82 @@ object ProotLauncher {
      * uv 要锁 `sdists-v9/editable/<hash>/.lock`）。两条都直接让 `uv sync` 退出 1，
      * hermes 的依赖就装不上。npm / pip 的缓存里没有软链、也不 flock，可以照挂。
      */
+    /**
+     * 计算需要往 `~/.tmux.conf` 追加的内容（纯函数；返回空串 = 什么都不用加）。
+     *
+     * 三条设置各自独立判重（用 `(?m)` 行首锚点），**不覆盖用户自有配置** —— 用户已经写过
+     * 其中任何一条时，那一行不会再被追加。可重复调用（幂等）：把返回值追加到原文后，
+     * 再调用一次必定返回空串。
+     *
+     * 1. **`set -g mouse on`**（2026-10-05 补）—— 触摸滑动能滚动历史。背景见
+     *    `TerminalView.onScroll` 的定制注释：tmux 采用全屏重绘，不产生本地回滚缓冲
+     *    （实测 `histRows=0`），必须把触摸滑动转成滚轮事件、且 tmux 端开启 mouse，
+     *    才能滚动 pane 自己的历史。
+     * 2. **`set -g set-clipboard on`**（2026-10-08 真机实测补）—— 三档负载
+     *    （100 / 9000 / 12345 字符）端到端验证「终端内的 OSC 52 → 手机剪贴板」这条链。
+     *    tmux 的 `set-clipboard` 默认是 `external`：实测这种模式下**pane 里应用发出的
+     *    OSC 52 不会被转发给外层终端**（App 收不到、剪贴板不变、也没有「已复制」提示）；
+     *    只有 `on` 模式下 tmux 才会既存自己的 buffer、又把 OSC 52 透传给 App。
+     *    因此必须显式开 `on`，否则 `TerminalEmulator` 里那套 OSC 52 处理（含 100 KiB
+     *    上限修复）在 tmux 里等于白做。
+     * 3. **`bind-key x kill-pane`**（2026-10-12 补 · §B 顺序 22 ②）—— tmux 默认的
+     *    `C-b x` 是 `confirm-before -p "kill-pane #P? (y/n)" kill-pane`，**要先答一次 y**。
+     *    客户端原先的处理是「发完 `C-b x` 再延迟 250 ms 盲发一个 y」：那条 `y` 没有任何
+     *    依据能保证此刻屏幕上是等待确认的提示符 —— 会话未启用 tmux、pane 数判断漂移、
+     *    或确认框还没起来时，这个 `y` 会**直接打进 pane 里前台程序的 stdin**（在跑 agent
+     *    TUI 时就是乱打字，审计报告 A4）。这里用一次绑定覆盖，把确认整段去掉：
+     *    客户端只发 `C-b x`，没有任何盲发按键，也没有时序竞态。
+     *    ⚠️ 生效范围：主会话每次启动都会先 `tmux kill-server`（见 [buildLaunchPlan]），
+     *    因此**主会话一进终端就吃到新绑定**；已经跑着的旧 server 要等它下次被重启
+     *    （副会话只是 attach 上现有 server，不负责读新配置）。
+     * 4. **copy-mode 的滚轮绑定改成 1 行/次**（2026-10-12 补 · 真机实测）—— tmux 默认
+     *    `WheelUpPane`/`WheelDownPane` 是每次滚 5 行，而客户端每滑过**一行**就发一个滚轮
+     *    事件（`TerminalGestureController.onScroll` 的 `rowsToScroll` 累加循环，实测
+     *    600 px 手指 = 9 次 `onScroll`）。两者相乘就是当年那句"滑动一顿一顿、不跟手"的
+     *    来源：**手指走 1 行，内容跳 5 行**（真机实测：两次 600 px 拖动让 tmux 的
+     *    `[位置/总行数]` 从 0 → 55 → 115，每次约 6 行/事件 = 5 行绑定 + 惯性补发）。
+     *    绑定成 `send -N1 -X scroll-up` 之后，手指 1 行 = 内容 1 行，且每次只跳一行 ——
+     *    与终端自己的本地回滚缓冲（也是 1 行 = 1 行）口径一致。
+     */
+    internal fun tmuxConfAppend(cur: String): String = buildString {
+        if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
+            append("set -g mouse on\n")
+        }
+        if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+set-clipboard\\b").containsMatchIn(cur)) {
+            append("set -g set-clipboard on\n")
+        }
+        if (!Regex("(?m)^\\s*bind(-key)?\\s+x\\s+kill-pane\\b").containsMatchIn(cur)) {
+            append("bind-key x kill-pane\n")
+        }
+        // 四条各自判重（与上面三条同一原则：用户自己写过该表的滚轮绑定就不动它）。
+        appendWheelBindIfMissing(cur, "copy-mode", "WheelUpPane", "scroll-up")
+        appendWheelBindIfMissing(cur, "copy-mode", "WheelDownPane", "scroll-down")
+        appendWheelBindIfMissing(cur, "copy-mode-vi", "WheelUpPane", "scroll-up")
+        appendWheelBindIfMissing(cur, "copy-mode-vi", "WheelDownPane", "scroll-down")
+    }
+
+    /**
+     * 追加一条"滚轮 = 1 行"的 copy-mode 绑定。
+     *
+     * **只在完全没有该表该键的绑定时才补** —— 与 [tmuxConfAppend] 前三条同一原则：
+     * 用户自己写过（哪怕行数不是 1）就说明他有意见，我们不覆盖。想改回去的人，
+     * 自己写一条 `bind -T copy-mode WheelUpPane …` 即可让这四条全部让位。
+     */
+    private fun StringBuilder.appendWheelBindIfMissing(
+        cur: String,
+        table: String,
+        pane: String,
+        action: String,
+    ) {
+        val re = Regex(
+            "(?m)^\\s*bind(-key)?\\s+-T\\s+" + Regex.escape(table) +
+                "\\s+" + Regex.escape(pane) + "\\b"
+        )
+        if (!re.containsMatchIn(cur)) {
+            append("bind -T $table $pane send -N1 -X $action\n")
+        }
+    }
+
     internal fun sharedCacheBindings(): List<Pair<String, String>> = listOf(
         "npm" to ".npm",
         "pip" to ".cache/pip",

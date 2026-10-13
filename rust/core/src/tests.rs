@@ -347,3 +347,61 @@ fn 绝对形式的软链按解压根解释() {
     ));
     assert!(!link_stays_inside(root, &link, Path::new("/../../etc/passwd")));
 }
+
+/// §B 顺序 20（2026-10-12）：`EntryType::Link` 的**源路径**也必须落在解压根内。
+///
+/// 成员名一直有 `check_path_inside`（见 `路径穿越_拒绝`），但硬链接的 `linkName` 没有；
+/// 而落盘走的是 `fs::copy`（不是真硬链）⇒ 越界的源 = 「把树外文件的内容复制进环境目录」。
+/// 与 Kotlin 版 `RootfsInstaller` 同一判据、同一用例（两版必须一起漂）。
+#[test]
+fn 硬链接源越界_不落盘() {
+    // 手工构造 USTAR 头：tar crate 在 append 阶段会自己拒绝含 `..` 的 linkname，
+    // 必须绕过它才能测到管线的防御（同 `路径穿越_拒绝`）。
+    fn entry(name: &str, typeflag: u8, linkname: &str, content: &[u8]) -> Vec<u8> {
+        let mut hdr = [0u8; 512];
+        hdr[..name.len()].copy_from_slice(name.as_bytes());
+        hdr[100..108].copy_from_slice(b"0000644\0"); // mode
+        hdr[108..116].copy_from_slice(b"0000000\0"); // uid
+        hdr[116..124].copy_from_slice(b"0000000\0"); // gid
+        hdr[124..136].copy_from_slice(format!("{:011o}\0", content.len()).as_bytes());
+        hdr[136..148].copy_from_slice(b"00000000000\0"); // mtime
+        hdr[148..156].copy_from_slice(b"        "); // chksum 占位
+        hdr[156] = typeflag;
+        hdr[157..157 + linkname.len()].copy_from_slice(linkname.as_bytes());
+        hdr[257..263].copy_from_slice(b"ustar\0");
+        hdr[263..265].copy_from_slice(b"00");
+        let sum: u32 = hdr.iter().map(|&b| b as u32).sum();
+        hdr[148..156].copy_from_slice(format!("{:06o}\0 ", sum).as_bytes());
+        let mut out = hdr.to_vec();
+        out.extend_from_slice(content);
+        let pad = (512 - content.len() % 512) % 512;
+        out.extend(std::iter::repeat(0u8).take(pad));
+        out
+    }
+
+    let dir = std::env::temp_dir().join(format!("zext_hardlink_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    // 解压根**之外**的"机密"：data/leak.txt 的 `../../../secret.txt` 正好翻到它
+    fs::write(dir.join("secret.txt"), b"TOP-SECRET").unwrap();
+
+    let zst = dir.join("hl.tar.zst");
+    let mut raw = Vec::new();
+    raw.extend(entry("data/ok.txt", b'0', "", b"ok"));
+    raw.extend(entry("data/leak.txt", b'1', "../../../secret.txt", b""));
+    raw.extend(std::iter::repeat(0u8).take(1024)); // 归档结束块
+    let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
+    let mut enc = enc.auto_finish();
+    io::copy(&mut raw.as_slice(), &mut enc).unwrap();
+    drop(enc);
+
+    let out = dir.join("out");
+    extract_pipeline(&zst, &out, None, &mut |_| {}).unwrap();
+
+    assert!(out.join("data/ok.txt").is_file(), "正常成员应照常解出");
+    assert!(
+        !out.join("data/leak.txt").exists(),
+        "硬链接源越界，却把树外内容复制了进来"
+    );
+    assert!(!out.join("secret.txt").exists(), "树外机密不得进入解压根");
+    fs::remove_dir_all(&dir).ok();
+}

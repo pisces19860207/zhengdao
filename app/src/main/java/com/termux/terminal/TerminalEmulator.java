@@ -1669,6 +1669,10 @@ public final class TerminalEmulator {
                 break;
             case 'L': // "${CSI}{N}L" - insert ${N} lines (IL).
             {
+                // 证道修复（2026-10-12，§B-补-49 🟡7）：兄弟分支 EL / ICH / DL / DCH 都清了这个
+                // 标志，唯独 IL 漏 ⇒ 打满一行后 `printf '\033[2L'` 再敲字符会**凭空跳行**，
+                // 并给该行盖上假的 wrap 标志（正好喂给 🟡6 的"两行粘一行"）。
+                mAboutToAutoWrap = false;
                 int linesAfterCursor = mBottomMargin - mCursorRow;
                 int linesToInsert = Math.min(getArg0(1), linesAfterCursor);
                 int linesToMove = linesAfterCursor - linesToInsert;
