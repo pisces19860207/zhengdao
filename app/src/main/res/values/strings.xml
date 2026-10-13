@@ -815,6 +815,7 @@
     <string name="term_clear_failed">清屏失败：%1$s</string>
     <string name="term_reset_done">终端已重置</string>
     <string name="term_browser_failed">打开浏览器失败：%1$s</string>
+    <string name="term_link_blocked">为了安全，这个链接不允许在 App 内打开</string>
 
     <!-- 玄览（浏览器 Tab，阶段 1 用户模式） -->
     <string name="browser_url_hint">输入网址或搜索</string>

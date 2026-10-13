@@ -26,6 +26,16 @@ object BrowserHolder {
     var engine: WebViewEngine? = null
         private set
 
+    /**
+     * 外部打开入口（§4.6）：终端链接点击等把待加载 URL 写在这里；
+     * 玄览组合时由 [consumePendingUrl] 一次性取出（防重复加载）。
+     */
+    @Volatile
+    var pendingUrl: String? = null
+
+    /** 切 Tab 请求（一次性）：终端在独立 Activity 点链接 → 回主页 → MainActivity ON_RESUME 消费。 */
+    private val tabRequested = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /** 取（或首建）全局引擎实例。 */
     fun obtain(context: Context): WebViewEngine {
         engine?.let { return it }
@@ -43,4 +53,19 @@ object BrowserHolder {
 
     /** 当前 WebView 实例（AndroidView factory 用；未初始化时为 null）。 */
     fun view(): WebView? = webView
+
+    /** 请求主页切到玄览 Tab（TerminalActivity 点链接时调；MainActivity ON_RESUME 消费）。 */
+    fun requestBrowserTab() {
+        tabRequested.set(true)
+    }
+
+    /** 消费切 Tab 请求（一次性）；有待处理请求时返回 true。 */
+    fun consumeTabRequest(): Boolean = tabRequested.compareAndSet(true, false)
+
+    /** 玄览侧消费 pendingUrl（取出并清空）。 */
+    fun consumePendingUrl(): String? {
+        val url = pendingUrl
+        pendingUrl = null
+        return url
+    }
 }
