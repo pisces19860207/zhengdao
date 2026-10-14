@@ -72,8 +72,10 @@ class SettingsStorageMainThreadIoGateTest {
     @Test
     fun `R-25 存储页剥注释后不得再有裸 Thread 与 Handler`() {
         val s = code(file)
-        val threads = Regex("""\bThread\s*\(""").findAll(s).count()
-        val handlers = Regex("""\bHandler\s*\(""").findAll(s).count()
+        // 注意：必须同时抓 `Thread(` 与**尾随 lambda 形态** `Thread {` —— 本文件回潮前用的正是
+        // `Thread { … }.apply { … }.start()`（无括号），只写 `Thread\s*\(` 会漏掉整个回归形态。
+        val threads = Regex("""\bThread\s*[({]""").findAll(s).count()
+        val handlers = Regex("""\bHandler\s*[({]""").findAll(s).count()
         assertTrue(
             "$file：剥注释后仍发现 $handlers 处 Handler( —— 状态回主线程应走 scope 协程，" +
                 "不得再走 Handler(mainLooper).post（R-25 回潮）",
