@@ -133,6 +133,61 @@ class AgentCatalogTest {
         assertFalse(existsInHost(ctx, "home/.local/bin/not-there"))
     }
 
+    /**
+     * §B 顺序 26（2026-10-14）：**两跳**软链 —— 真机实测 Codex CLI 正是这条链。
+     *
+     * guest 视角：
+     *   `~/.local/bin/codex` → `~/.codex/packages/standalone/current/bin/codex`
+     *                        → `releases/&lt;ver&gt;/bin/codex`
+     *
+     * 旧实现只把第一跳的 `/root/` 前缀映射成 `files/home` ⇒ 第二跳（`current`）仍然悬空
+     * ⇒ 明明装好了却判「没装」。本刀改成**按路径分量逐段解析**后应当认出。
+     *
+     * 附带修掉一处跨平台缺陷：Windows 上 `readSymbolicLink().toString()` 给的是
+     * `\root\...`（反斜杠），旧代码只判 `startsWith("/root/")` ⇒ 在"能建软链的 Windows
+     * 机器"上这条链与上面那条一跳链用例都会真红（Linux/Android 上才是 `/root/...`）。
+     *
+     * Windows 上建软链要特权；建不出来就 `assumeTrue` 跳过（与上面那条同一约定）。
+     */
+    @Test
+    fun `两跳软链_Codex 那条链现在能认出来`() {
+        val files = tmp.newFolder()
+        val home = File(files, "home").apply { mkdirs() }
+
+        // 真身：home/.codex/packages/standalone/releases/0.162.1/bin/codex
+        val real = File(home, ".codex/packages/standalone/releases/0.162.1/bin/codex")
+        real.parentFile!!.mkdirs()
+        real.writeText("#!/bin/sh\n", Charsets.UTF_8)
+
+        // 第二跳：current → releases/0.162.1（guest 视角的绝对路径）
+        val current = File(home, ".codex/packages/standalone/current")
+        val hop2 = runCatching {
+            java.nio.file.Files.createSymbolicLink(
+                current.toPath(),
+                java.nio.file.Paths.get("/root/.codex/packages/standalone/releases/0.162.1")
+            )
+        }.isSuccess
+        org.junit.Assume.assumeTrue("本机/本用户不允许建软链，跳过", hop2)
+
+        // 第一跳：~/.local/bin/codex → ~/.codex/packages/standalone/current/bin/codex
+        val bin = File(home, ".local/bin/codex").apply { parentFile!!.mkdirs() }
+        val hop1 = runCatching {
+            java.nio.file.Files.createSymbolicLink(
+                bin.toPath(),
+                java.nio.file.Paths.get("/root/.codex/packages/standalone/current/bin/codex")
+            )
+        }.isSuccess
+        org.junit.Assume.assumeTrue("本机/本用户不允许建软链，跳过", hop1)
+
+        val ctx = FakeFilesContext(files)
+        assertTrue(
+            "两跳链必须被认出来（旧实现只解一跳 ⇒ 这里会红）",
+            existsInHost(ctx, "home/.local/bin/codex")
+        )
+        // 反例：解到底也到不了的，仍判「没装」
+        assertFalse(existsInHost(ctx, "home/.local/bin/not-there"))
+    }
+
     /** `existsInHost` 是 private —— 用反射调，刻意不为测试放宽生产代码可见性。 */
     private fun existsInHost(ctx: Context, relative: String): Boolean {
         val m = AppState::class.java.getDeclaredMethod(
