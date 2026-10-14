@@ -42,7 +42,11 @@ import kotlin.text.Charsets
  * - 2026-10-14（审计第 2 期配套 / 第⑩批A）：`SettingsStorageActivity.kt`（B-3 加 2 行说明）与
  *   `TerminalActivity.kt`（N-2 原子拷贝 +15 行）平移 ⇒ 回填 4 个行号；
  * - 2026-10-14（第⑨刀 B）：ZhengdaoApp.kt 插入 `initWebViewDataDirectory()`（+30 行）
- *   ⇒ 两条创建点 47→77 / 97→127，本次回填。
+ *   ⇒ 两条创建点 47→77 / 97→127，本次回填；
+ * - 2026-10-14（第⑯刀 R-25/R-29）：`SettingsStorageActivity.kt` 三处裸 Thread 改协程
+ *   （zd-cache-reload / zd-cache-clean / zd-rollback **消除**，28→25）；
+ *   `SettingsEnvActivity.kt`（R-29 +4 行）557→561 / 652→656；
+ *   `TerminalActivity.kt`（R-29 +12 行）1550→1562 / 1610→1622 / 1696→1708。本次回填。
  */
 class BareThreadGuardTest {
 
@@ -77,7 +81,7 @@ class BareThreadGuardTest {
     }
 
     @Test
-    fun `对账单_2026-10-14_实测 28 处创建点`() {
+    fun `对账单_2026-10-14_实测 25 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -97,17 +101,14 @@ class BareThreadGuardTest {
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:207",           // zd-hermes-repair
             "SettingsEnvActivity.kt:261",           // zd-env-check
-            "SettingsEnvActivity.kt:557",           // zd-env-repair（R-20 删死 LaunchedEffect 后 -7，合并日回填）
-            "SettingsEnvActivity.kt:652",           // zd-env-update（同上 -7）
-            "SettingsStorageActivity.kt:600",       // zd-cache-reload
-            "SettingsStorageActivity.kt:665",       // zd-cache-clean（2026-10-14 B-3 加 2 行说明后 +2）
-            "SettingsStorageActivity.kt:717",       // zd-rollback（同上 +2）
+            "SettingsEnvActivity.kt:561",           // zd-env-repair（第⑯刀 R-29 +4，本次回填）
+            "SettingsEnvActivity.kt:656",           // zd-env-update（同上 +4）
             "TerminalActivity.kt:79",               // zd-paste
             "TerminalActivity.kt:596",              // zd-session-start（本刀补 daemon）
             "TerminalActivity.kt:811",              // zd-net-probe
-            "TerminalActivity.kt:1550",             // zd-install-saf
-            "TerminalActivity.kt:1610",             // zd-install-cache（2026-10-14 N-2 原子拷贝后 +15）
-            "TerminalActivity.kt:1696",             // zd-install-download（同上 +15）
+            "TerminalActivity.kt:1562",             // zd-install-saf（第⑯刀 R-29 +12）
+            "TerminalActivity.kt:1622",             // zd-install-cache（同上 +12）
+            "TerminalActivity.kt:1708",             // zd-install-download（同上 +12）
             "ZhengdaoApp.kt:77",                    // zhengdao-keepalive-archive
             "ZhengdaoApp.kt:127",                   // zd-auto-clean
         )
