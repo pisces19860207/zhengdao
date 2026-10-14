@@ -337,6 +337,9 @@
     <string name="storage_installer_item">· %1$s（%2$d MB）</string>
     <string name="storage_installer_cleaned">已清理 %1$d 个旧版本文件</string>
     <string name="storage_installer_clean_btn">清理旧版本缓存（保留当前版本）</string>
+    <string name="storage_installer_clean_title">永久删除旧版本安装包？</string>
+    <string name="storage_installer_clean_desc">这会永久删除除当前版本外的全部安装包缓存（含没下完的残片），只保留当前版本。</string>
+    <string name="storage_installer_clean_warn">删了就找不回来了，没有回收站，也不能撤销；以后要回退到这些版本只能重新下载。</string>
     <string name="storage_rollback_list">能回到的旧版本（只留最近 2 个安装包）</string>
     <string name="storage_rollback_to">回退到 %1$s</string>
     <string name="storage_rollback_title">回退环境版本</string>
@@ -366,6 +369,9 @@
     <string name="help_log_view_prev">查看上次日志</string>
     <string name="help_log_prune_btn">只留最近 3 份</string>
     <string name="help_log_pruned">已删掉 %1$d 份旧日志，保留最近 3 份</string>
+    <string name="help_log_prune_title">永久删除旧日志归档？</string>
+    <string name="help_log_prune_desc">这会永久删除 %1$d 份旧日志归档，只留下最近 3 份。</string>
+    <string name="help_log_prune_warn">删了就找不回来了，没有回收站，也不能撤销。</string>
 
     <!-- ── 共享组件（顶栏 / 日志弹窗 / 文件夹选择 / 资料库说明）── -->
     <string name="help_log_title">运行日志</string>
@@ -577,6 +583,9 @@
     <string name="keepalive_log_export">导出到 Download/证道/logs</string>
     <string name="keepalive_log_cleared">已清空 %1$d 份留档</string>
     <string name="keepalive_log_clear">清空记录</string>
+    <string name="keepalive_log_clear_title">永久清空保活留档？</string>
+    <string name="keepalive_log_clear_desc">这会永久清空全部保活留档：最近退出、最近心跳，以及 %1$d 份 logcat 片段。</string>
+    <string name="keepalive_log_clear_warn">清空后这些记录就永久没了，找不回来，也不能撤销。</string>
 
     <!-- ── 插件页（PluginsScreen）── -->
     <string name="plugins_card_enabled">已启用</string>
