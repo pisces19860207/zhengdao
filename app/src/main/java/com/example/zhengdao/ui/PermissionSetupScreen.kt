@@ -145,8 +145,57 @@ object PermissionSetup {
      *
      * 引导过（含「稍后再说」）就不再自动出现——反复弹正是用户反馈要摆脱的东西；
      * 之后要改权限走设置页「权限」卡（那份按用户要求保持原样）。
+     *
+     * ⚠️ 对账留痕（§B 顺序 15，2026-10-14）：审计报告写的是「写过 `KEY_GUIDED` 后
+     * `shouldGuide` **恒 false**」——那是**旧文件 `ui/PermissionUi.kt` 的实现**；本实现
+     * （v2.0.14 `084c811` 起）已经是「按当前缺哪些权限」判断的，**不再恒 false**。
+     * 本刀真正要修的是**另一条通道**（[shouldAutoRequest] 与 MainActivity 里
+     * 「已引导过就逐个补请求缺的权限」那段）——那里才是"每次都弹"的来源。
      */
     fun shouldGuide(ctx: Context): Boolean = !guided(ctx) && missingRequired(ctx)
+
+    // ── 「本项权限已自动请求过一次」标记（§B 顺序 15，2026-10-14） ────────────────
+    //
+    // 为什么需要：MainActivity 冷启动那段在「已引导过」时会逐个补请求缺的权限。
+    // 只判"缺不缺"的话，用户**拒绝过**（或系统永远不给，如 targetSdk=28 在部分 ROM 上）
+    // 就会**每次冷启动再弹一次**系统框 —— 这正是用户反馈的"每次都申请权限 + 弹通知框"。
+    //
+    // 为什么不用系统的 `shouldShowRequestPermissionRationale()`：它返回 false 有两种含义
+    // （从没问过 / 勾了"不再询问"），无法区分 ⇒ 不可靠。改用自己的一次性标记：
+    // **每项权限最多自动请求一次**；之后要补权限走权限页 / 设置页「权限」卡（用户主动点，
+    // 不受本判据限制）。
+
+    private const val KEY_STORAGE_ASKED = "perm_storage_asked"
+    private const val KEY_NOTIFY_ASKED = "perm_notify_asked"
+
+    /** 共享存储权限是否已经**自动**请求过一次。 */
+    fun storageAsked(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_STORAGE_ASKED, false)
+
+    /** 记下「共享存储权限已自动请求过一次」。**必须在发起请求之前写**（请求中途被杀也不会重问）。 */
+    fun markStorageAsked(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_STORAGE_ASKED, true)
+            .apply()
+    }
+
+    /** 通知权限是否已经**自动**请求过一次。 */
+    fun notifyAsked(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_NOTIFY_ASKED, false)
+
+    /** 记下「通知权限已自动请求过一次」。 */
+    fun markNotifyAsked(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_NOTIFY_ASKED, true)
+            .apply()
+    }
+
+    /**
+     * 冷启动是否还该**自动**弹这一次系统权限框：**缺权限** 且 **本项从没自动问过**。
+     *
+     * 抽成纯函数是为了能 JVM 单测（本类别的判定都要 Context，测不了）。真机读数归蓝总管采。
+     */
+    fun shouldAutoRequest(asked: Boolean, missing: Boolean): Boolean = missing && !asked
 }
 
 /**
@@ -170,8 +219,11 @@ object PermissionSetup {
  *   「稍后再说」（未就绪也能进）。两个文案做的事相同（记已引导 + 进主界面），
  *   区别只在显示的那句话是否与当前状态相符——**不拦人**是这个 App 一以贯之的做法
  *   （与首启权限「拒绝不打断使用」同一立场）。
- * - 硬件返回键不拦：按返回就退回起始页，且**不写**已引导标记（用户并没有选择「稍后」），
- *   下次冷启动会再出现一次。这是刻意的：要消灭的是「对话框串」，不是这一页。
+ * - 硬件返回键**也写**已引导标记（§B 顺序 15，2026-10-14 改口径）：按返回退回起始页，但标记
+ *   照写。历史口径是「返回不写标记 ⇒ 下次冷启动再出现一次，这是刻意的」，**本刀以验收判据
+ *   为准**（判据 = 连续冷启动不得自动弹框；按返回不写标记就必然再弹一次，与判据冲突）。
+ *   要主动补权限仍走设置页「权限」卡 —— 首启那个「开启完整存储访问」AlertDialog 已撤
+ *   （见 MainActivity 的说明），设置页是唯一的"随时可达"权限入口。
  *
  * 系统栏由本页自行避让（edge-to-edge 下的既有约定，各页面各自补偿，见 MainActivity 的入口注释）；
  * 返回前台（从系统授权页回来）时重读一次状态，见下面的 ON_RESUME 观察者。
@@ -179,6 +231,15 @@ object PermissionSetup {
 @Composable
 fun PermissionSetupScreen(onDone: () -> Unit) {
     val ctx = LocalContext.current
+
+    // §B 顺序 15（2026-10-14）：硬件返回键**也写已引导标记**。
+    // 原口径是「返回不写标记 ⇒ 下次冷启动再出现一次」（历史留痕见本页 KDoc），但它与验收
+    // 判据「连续冷启动不得自动弹框」直接冲突——按返回的人下次一开机又会见到这一页。
+    // 处置：以判据为准 —— 返回等同「稍后再说」（两者都写标记）；要主动补权限走设置页「权限」卡。
+    androidx.activity.compose.BackHandler {
+        PermissionSetup.markGuided(ctx)
+        onDone()
+    }
 
     // 这三项由三个不同的系统页/对话框改变，且返回顺序不可预期，
     // 统一在 ON_RESUME 与每个 launcher 的回执里重读（不用单一 tick——各自重读更抗"只变了一项"）。

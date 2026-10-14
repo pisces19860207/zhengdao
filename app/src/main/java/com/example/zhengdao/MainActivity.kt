@@ -106,8 +106,7 @@ class MainActivity : ComponentActivity() {
         // 但用户有权知道手里这个包是不是作者发的。常驻显示在设置页「关于」。
         warnIfUnofficialSignature()
 
-        // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户
-        checkAppUpdateInBackground()
+        // App 自更新：调用点**下移**到权限判定之后（§B 顺序 15 的「与权限框互斥」，见下面那段）。
 
         // 首启权限引导（2026-10-11，用户反馈「新安装的时候申请各种权限的那个页面……单个卡片
         // 有点晃眼也不符合使用习惯」）：首次安装且缺必需权限时，下面那些**逐个弹的系统对话框
@@ -117,6 +116,14 @@ class MainActivity : ComponentActivity() {
         val permissionSetupPending = PermissionSetup.shouldGuide(this)
 
         if (!permissionSetupPending) {
+            // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户。
+            //
+            // §B 顺序 15（2026-10-14）：**与权限引导互斥** —— 权限是门槛，先过门槛再谈更新。
+            // 原先是无条件发起，更新 AlertDialog 会叠在权限页（甚至系统权限框）之上；
+            // 原代码只在 UI 线程里守 isFinishing/isDestroyed，管不了「同时有两个框」这件事。
+            // 跳过一次不影响功能：下个冷启动照常查（本就是"启动后台查一次、失败静默"）。
+            checkAppUpdateInBackground()
+
             // 存储运行时权限（第 0 步修复，2026-10-06）：此前全 App 没有任何请求代码，
             // WRITE 靠用户手点设置授予、READ 因 manifest maxSdkVersion=32 帽子从未可授，
             // Android 16 上共享存储读写全被 FUSE 拒——hermes"只能写不能读"的根因。
@@ -131,7 +138,11 @@ class MainActivity : ComponentActivity() {
                     androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
                         android.content.pm.PackageManager.PERMISSION_GRANTED
                 }
-                if (needed.isNotEmpty()) {
+                // §B 顺序 15（2026-10-14）：**每项最多自动问一次** —— 原代码只判"缺不缺"，
+                // 用户拒绝过（或系统永远不给：targetSdk=28 在部分 ROM 上拿不到共享存储）
+                // 就会**每次冷启动再弹一次**。改用一次性标记；之后补权限走权限页 / 设置页。
+                if (PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this), needed.isNotEmpty())) {
+                    PermissionSetup.markStorageAsked(this) // 先写标记再请求：请求中途被杀也不会重问
                     androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
                 }
             }
@@ -143,10 +154,14 @@ class MainActivity : ComponentActivity() {
             // 不影响任何功能（清理照跑、日志照写）。
             runCatching {
                 if (android.os.Build.VERSION.SDK_INT >= 33) {
-                    val perm = "android.permission.POST_NOTIFICATIONS"
-                    if (androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
+                    // 字面量收敛到 PermissionSetup.NOTIFICATIONS_PERMISSION（那边的 KDoc 本来
+                    // 就写着「全文件只此一处」，原先这里是硬编码的重复一份）
+                    val perm = PermissionSetup.NOTIFICATIONS_PERMISSION
+                    val missing = androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
                         android.content.pm.PackageManager.PERMISSION_GRANTED
-                    ) {
+                    // §B 顺序 15：同样"每项最多自动问一次"（理由见上面存储那段）。
+                    if (PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this), missing)) {
+                        PermissionSetup.markNotifyAsked(this)
                         androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
                     }
                 }
