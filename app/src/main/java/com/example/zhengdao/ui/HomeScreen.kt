@@ -201,7 +201,10 @@ fun HomeScreen(
         }.apply { isDaemon = true; name = "zd-taiji-retry" }.start()
     }
 
-    var agents by remember { mutableStateOf(AppState.agents(context)) }
+    // R-27（第⑪批 B-1）：AppState.agents 是查盘（rootfsInstalled/factoryAgents 走
+    // File.exists + 逐段解软链 readSymbolicLink，AppState.kt:140），不能在组合期同步跑。
+    // 初值给空列表（首帧无 Agent 卡），下面的 LaunchedEffect(Unit) 在 IO 加载完就地出现。
+    var agents by remember { mutableStateOf(emptyList<AppState.AgentInfo>()) }
     var statusExpanded by remember { mutableStateOf(false) }
     // 环境体检（P7）：状态卡展开时展示逐项勾叉，红项可定向修复。
     // 2026-10-12 无感化（走查报告 §5.4）：**打开即显上次缓存值**（旧值），
@@ -250,11 +253,22 @@ fun HomeScreen(
         sysInfoProcessCache = sysInfo
     }
     // 每次回到本页（从终端返回）刷新安装状态
+    val reloadScope = rememberCoroutineScope { CoroutineCrashHandler }
     LaunchedEffect(Unit) {
-        agents = AppState.agents(context)
+        // R-27（第⑪批 B-1）：查盘挪 IO（LaunchedEffect 默认调度器是主线程，
+        // 原先这行在主线程同步查盘）。同时它也承担 agents 的首次加载（:204 初值已改空）。
+        agents = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            AppState.agents(context)
+        }
         // M3：Agent 清单免发版更新（6h TTL，静默失败；拉到新清单后刷新卡片）
         AgentManifest.refresh(context, force = false) {
-            agents = AppState.agents(context)
+            // 回调可能在缓存新鲜的同步路径（主线程）或清单刷新线程上跑（AgentManifest.refresh
+            // 两条路径都有）——统一投递回组合作用域，把查盘放进 IO（R-27）。
+            reloadScope.launch {
+                agents = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    AppState.agents(context)
+                }
+            }
         }
     }
 
@@ -309,7 +323,12 @@ fun HomeScreen(
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                agents = AppState.agents(context)
+                // R-27（第⑪批 B-1）：查盘挪 IO，结果回主线程写状态（状态必须在主线程改）
+                reloadScope.launch {
+                    agents = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        AppState.agents(context)
+                    }
+                }
                 // 立刻重灌一次安装状态镜像：常驻轮询最快也要等 2 秒，而从终端返回时
                 // 用户第一眼就看卡片——"点过安装没有"必须有即时答案（别让他等）。
                 stateTick++
@@ -820,14 +839,22 @@ checks.forEachIndexed { index, c ->
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    // 读镜像（第一次组合时镜像还没灌，退回实时查一次）——
-                    // 这一读同时把本卡片挂到 installStates 上，状态一变就重组。
+                    // 读镜像（第一次组合时镜像还没灌）——
+                    // R-21（第⑪批 B-1）：兜底查盘挪出组合期。原先 `?:` 右侧在主线程同步跑
+                    // AgentRepository.stateOf（SharedPreferences + File.exists，安装中还要
+                    // 逐目录扫 /proc，AgentRepository.kt:131-140）；现在 miss 时按「未知」
+                    // 渲染（既非安装中也非失败），下面的 LaunchedEffect 在 IO 算完写回镜像
+                    // 触发重组。常驻 2 秒轮询（本文件 LaunchedEffect(agents, stateTick)）
+                    // 与 ON_RESUME 重灌逻辑不变。
                     val installState = installStates[agent.id]
-                        // §B 顺序 6 / P1-5（2026-10-14）：兜底那次查盘的**结果写回缓存** ——
-                        // 否则每次重组（滚动、主题变化、任何 state 变化）都会在主线程重查一遍
-                        // SharedPreferences + /proc。写回后每张卡最多查一次，之后由上面那个
-                        // 2 秒轮询刷新。**行为不变**：首帧仍显示真实状态。
-                        ?: AgentRepository.stateOf(context, agent).also { installStates[agent.id] = it }
+                    LaunchedEffect(agent.id) {
+                        if (installStates[agent.id] == null) {
+                            installStates[agent.id] =
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    AgentRepository.stateOf(context, agent)
+                                }
+                        }
+                    }
                     val installing = installState == AgentRepository.State.Installing
                     val failedInstall = installState == AgentRepository.State.Failed
                     // 一键安装（本地化脚本 + 清锁 + 装完自动启动）：失败重试、首次安装、

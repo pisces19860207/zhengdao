@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -152,6 +154,10 @@ private fun KeepaliveLogScreen() {
     var tick by remember { mutableStateOf(0) }
     // §B 顺序 2 · P2-5：清空留档是**永久删除**，先弹确认框再执行。
     var clearConfirm by remember { mutableStateOf(false) }
+    // R-22（第⑪批 B-1）：导出/清空都是整目录拷贝或删除（最多 ~1MB+），
+    // 点按钮的 onClick 在主线程 —— 挪进协程作用域里 withContext(Dispatchers.IO)，
+    // Toast/状态更新回到主线程（协程恢复即主线程）。
+    val actionScope = rememberCoroutineScope()
     LaunchedEffect(tick) {
         // 读私有目录 → 必须 IO 线程（主线程读盘在本项目是明确禁止的）。
         // KeepaliveArchive 内部全是 runCatching 兜底，读不到就返回空表，这里不必再包一层。
@@ -231,13 +237,15 @@ private fun KeepaliveLogScreen() {
             )
             Row {
                 OutlinedButton(onClick = {
-                    val dst = KeepaliveArchive.export(ctx)
-                    Toast.makeText(
-                        ctx,
-                        dst?.let { ctx.getString(R.string.keepalive_log_exported, it.absolutePath) }
-                            ?: ctx.getString(R.string.keepalive_log_export_failed),
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    actionScope.launch {
+                        val dst = withContext(Dispatchers.IO) { KeepaliveArchive.export(ctx) }
+                        Toast.makeText(
+                            ctx,
+                            dst?.let { ctx.getString(R.string.keepalive_log_exported, it.absolutePath) }
+                                ?: ctx.getString(R.string.keepalive_log_export_failed),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
                 }) { Text(stringResource(R.string.keepalive_log_export)) }
                 // §B 顺序 2 · P2-5：按钮只负责弹确认框，KeepaliveArchive.clear 搬进 confirmButton。
                 TextButton(onClick = { clearConfirm = true }) { Text(stringResource(R.string.keepalive_log_clear), color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -267,13 +275,15 @@ private fun KeepaliveLogScreen() {
                     confirmButton = {
                         TextButton(onClick = {
                             clearConfirm = false
-                            val n = KeepaliveArchive.clear(ctx)
-                            tick++
-                            Toast.makeText(
-                                ctx,
-                                ctx.getString(R.string.keepalive_log_cleared, n),
-                                Toast.LENGTH_SHORT,
-                            ).show()
+                            actionScope.launch {
+                                val n = withContext(Dispatchers.IO) { KeepaliveArchive.clear(ctx) }
+                                tick++
+                                Toast.makeText(
+                                    ctx,
+                                    ctx.getString(R.string.keepalive_log_cleared, n),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
                         }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                     },
                     dismissButton = {
