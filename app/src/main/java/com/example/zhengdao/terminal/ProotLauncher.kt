@@ -168,7 +168,8 @@ object ProotLauncher {
             try {
                 android.system.Os.chmod(dst.absolutePath, mode)
             } catch (t: Throwable) {
-                RunLog.log("警告: chmod 失败（$target → mode=$mode）：${t.message}")            }
+                RunLog.log("chmod 失败（$target → mode=$mode）：${t.message}")
+            }
             stamps[target] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
             stampsChanged = true
             RunLog.log("已释放: $target（SHA256 校验通过）")
