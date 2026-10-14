@@ -10,8 +10,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
-import android.os.Looper
 import android.os.PowerManager
 import com.example.zhengdao.MainActivity
 import com.example.zhengdao.R
@@ -119,12 +119,21 @@ class SessionService : Service() {
             .apply { setReferenceCounted(false) }
     }
 
+    /** 保活开关：主线程写（设置里拨动）、巡检线程读（D-3 挪线程后跨线程）。 */
+    @Volatile
     private var keepAlive = true
     /** E-054：只在**首次**成功持锁时记一行，避免把"补取成功"也刷成噪声。 */
     private var loggedWakeLockHeld = false
     /** E-054：丢锁累计次数（首次与每 10 次各记一条，见 [renewWakeLockIfLost]）。 */
     private var lostWakeLockCount = 0
-    private val handler = Handler(Looper.getMainLooper())
+    // D-3（第⑪批 B-1）：30 秒巡检挪到专用 HandlerThread。
+    // 为什么：monitorTick 每轮经 applyIdlePolicy → GuestCpuCounter.read 逐 pid 读
+    // /proc/<pid>/stat 与 status（几十项小读），原先跑在主线程 Handler 上——
+    // 30 秒一次的固定卡顿源。挪到后台线程后：WakeLock 的 acquire/release/isHeld
+    // 与 NotificationManager.notify 都是线程安全的；keepAlive 与 idlePolicy 的
+    // 跨线程访问见各字段上的注记。**30 秒节奏（TICK_MS）与判定逻辑一行未动**。
+    private val monitorThread = HandlerThread("zd-session-monitor").apply { isDaemon = true; start() }
+    private val handler = Handler(monitorThread.looper)
     private var lastRssMb = 0L
 
     /** 空闲检测策略（纯逻辑，JVM 可测；判据与阈值见 [WakeLockIdlePolicy] 的 KDoc）。 */
@@ -199,6 +208,7 @@ class SessionService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(monitorTick)
+        monitorThread.quitSafely()
         releaseWakeLock()
         running = false
         RunLog.log("前台服务已停止")
@@ -437,9 +447,13 @@ internal class WakeLockIdlePolicy(
     private var idle = false
 
     /** 当前是否处于"刻意释放"状态（monitorTick 据此暂停补取、通知据此换文案）。 */
+    // D-3：monitorTick 挪到巡检线程后，本状态被主线程（通知/开关拨动）与巡检线程
+    // 双方读写 ⇒ 三个入口全部同步（逻辑不变，只是跨线程可见性）。
+    @get:Synchronized
     val isDeliberatelyIdle: Boolean get() = idle
 
     /** 回到初始判定态（保活开关被用户拨动、会话不存在时调用）。 */
+    @Synchronized
     fun reset() {
         lastCpu = -1L
         idleTicks = 0
@@ -452,6 +466,7 @@ internal class WakeLockIdlePolicy(
      * @param totalCpu 本 App 全部进程的 jiffies 总读数；null = 读不到（按活动处理）
      * @param held 当前锁的真实持有状态
      */
+    @Synchronized
     fun onTick(totalCpu: Long?, held: Boolean): IdleDecision {
         val active = when {
             totalCpu == null -> true               // 读不到 ⇒ 保守
