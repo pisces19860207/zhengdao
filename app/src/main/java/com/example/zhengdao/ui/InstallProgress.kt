@@ -37,14 +37,25 @@ object InstallProgress {
     /** 供 Compose 读取；没有安装进行中时为 null。 */
     val state: State<Status?> get() = _state
 
-    @Volatile
-    private var busy = false
+    /**
+     * 是否正在安装——**可观察状态**（R-26，审计第⑮刀，2026-10-14）。
+     *
+     * 原实现是 `@Volatile var busy` + `isRunning(): Boolean = busy`：读的是一个普通布尔，
+     * Composable 里写 `enabled = !InstallFlow.isRunning()` 时**不会**因为它变化而重组 ⇒
+     * 按钮「时灵时不灵」（要等下一次无关重组才刷新）。改成 snapshot state 之后，组合期
+     * 读到的就是被订阅的值：安装开始/结束会自己刷新那 6 处 `enabled`。
+     * 对外 API 语义不变（[isRunning] 仍是非 Compose 调用方能用的一行读法，只是它现在读 State）。
+     */
+    private val _running = mutableStateOf(false)
+
+    /** 供 Compose 绑定 `enabled` 用（读它 = 订阅它的变化）。 */
+    val running: State<Boolean> get() = _running
 
     /** 是否正在安装（设置页据此禁用「检查环境更新」，避免重复点击）。 */
-    fun isRunning(): Boolean = busy
+    fun isRunning(): Boolean = _running.value
 
     fun start(text: String, fromLocal: Boolean = false) {
-        busy = true
+        _running.value = true
         _state.value = Status(Phase.Running, text, fromLocal)
     }
 
@@ -54,7 +65,7 @@ object InstallProgress {
     }
 
     fun finish(text: String, failed: Boolean = false) {
-        busy = false
+        _running.value = false
         val cur = _state.value
         _state.value = Status(
             if (failed) Phase.Failed else Phase.Done,
@@ -65,7 +76,7 @@ object InstallProgress {
 
     /** 用户离开终端页 / 安装结果被看到之后清掉（可重入）。 */
     fun clear() {
-        busy = false
+        _running.value = false
         _state.value = null
     }
 

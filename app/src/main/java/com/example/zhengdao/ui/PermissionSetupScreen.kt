@@ -94,9 +94,14 @@ object PermissionSetup {
      * 用户要摆脱的就是反复弹，标记只在用户选择过之后才写，见 [shouldGuide] 的说明。
      */
     fun markGuided(ctx: Context) {
+        // R-23（审计第⑮刀，2026-10-14）：**必须同步写盘（commit）**，不能用 apply()。
+        // 这个标记决定"下次冷启动还叠不叠这一页"，而它是在用户点过底部按钮之后立刻写的：
+        // apply() 只把改动排进内存、异步落盘，进程若在这之后被杀（用户点完就杀后台是常态），
+        // 标记就丢了 ⇒ 下次冷启动又叠一次引导页 —— 正是要消灭的"反复弹"。
+        // 全仓另一处同步写盘的口径见 ui/AgentManifest.kt 的清单缓存（先验签后持久化）。
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_GUIDED, true)
-            .apply()
+            .commit()
     }
 
     /**
@@ -175,9 +180,12 @@ object PermissionSetup {
 
     /** 记下「共享存储权限已自动请求过一次」。**必须在发起请求之前写**（请求中途被杀也不会重问）。 */
     fun markStorageAsked(ctx: Context) {
+        // R-23（审计第⑮刀，2026-10-14）：上面这行 KDoc 就是判据——"在**发起请求之前**写"，
+        // 而 apply() 是异步落盘：请求刚发出、系统框还在屏上时进程被杀，标记没落地 ⇒ 下次冷启动
+        // 又请求一次。改 commit() 与 KDoc 对齐（本文件 3 处标记统一走同步写盘）。
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_STORAGE_ASKED, true)
-            .apply()
+            .commit()
     }
 
     /** 通知权限是否已经**自动**请求过一次。 */
@@ -186,9 +194,11 @@ object PermissionSetup {
 
     /** 记下「通知权限已自动请求过一次」。 */
     fun markNotifyAsked(ctx: Context) {
+        // R-23（审计第⑮刀，2026-10-14）：与 [markStorageAsked] 同一理由——"已问过"标记必须在
+        // 发起请求之前真正落盘，否则请求过程中被杀就会再问一次。改 commit()（同步写盘）。
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_NOTIFY_ASKED, true)
-            .apply()
+            .commit()
     }
 
     /**
