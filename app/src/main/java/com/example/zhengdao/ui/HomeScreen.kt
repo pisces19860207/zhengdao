@@ -288,13 +288,22 @@ fun HomeScreen(
     //    才多扫一次 /proc。半赫兹，且只在丹房 tab 组合，可忽略。
     androidx.compose.runtime.LaunchedEffect(agents, stateTick) {
         while (true) {
-            agents.forEach { a -> installStates[a.id] = AgentRepository.stateOf(context, a) }
-            // 账本同步（幂等、内容变了才落盘）：把"文件探测到已装"的收编成 installed，
-            // 顺手算一遍「恢复全部」候选。放在这个 2 秒轮询里，是为了"在终端里手动装好
-            // 再切回来"也能立刻反映到卡片上，而不必等下一次冷启动。
-            runCatching { AgentLedger.syncFrom(context, agents) }
-            restoreList = runCatching { AgentLedger.restoreCandidates(context, agents) }
-                .getOrDefault(emptyList())
+            // §B 顺序 6 / P1-4（2026-10-14）：这几行是**真 I/O** —— SharedPreferences +
+            // 几个 File.exists()（"安装中"时还扫 /proc），账本那两步要读写 JSON。
+            // 原先直接跑在 LaunchedEffect 的默认调度器上，那是**主线程**，且每 2 秒一次。
+            // 现在挪到 IO 线程算，只把结果回主线程写进 Compose 状态（状态必须在主线程改）。
+            val (states, restore) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val s = agents.map { a -> a.id to AgentRepository.stateOf(context, a) }
+                // 账本同步（幂等、内容变了才落盘）：把"文件探测到已装"的收编成 installed，
+                // 顺手算一遍「恢复全部」候选。放在这个 2 秒轮询里，是为了"在终端里手动装好
+                // 再切回来"也能立刻反映到卡片上，而不必等下一次冷启动。
+                runCatching { AgentLedger.syncFrom(context, agents) }
+                val r = runCatching { AgentLedger.restoreCandidates(context, agents) }
+                    .getOrDefault(emptyList())
+                s to r
+            }
+            states.forEach { (id, st) -> installStates[id] = st }
+            restoreList = restore
             kotlinx.coroutines.delay(2000)
         }
     }
@@ -849,7 +858,11 @@ checks.forEachIndexed { index, c ->
                     // 读镜像（第一次组合时镜像还没灌，退回实时查一次）——
                     // 这一读同时把本卡片挂到 installStates 上，状态一变就重组。
                     val installState = installStates[agent.id]
-                        ?: AgentRepository.stateOf(context, agent)
+                        // §B 顺序 6 / P1-5（2026-10-14）：兜底那次查盘的**结果写回缓存** ——
+                        // 否则每次重组（滚动、主题变化、任何 state 变化）都会在主线程重查一遍
+                        // SharedPreferences + /proc。写回后每张卡最多查一次，之后由上面那个
+                        // 2 秒轮询刷新。**行为不变**：首帧仍显示真实状态。
+                        ?: AgentRepository.stateOf(context, agent).also { installStates[agent.id] = it }
                     val installing = installState == AgentRepository.State.Installing
                     val failedInstall = installState == AgentRepository.State.Failed
                     // 一键安装（本地化脚本 + 清锁 + 装完自动启动）：失败重试、首次安装、
