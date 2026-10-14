@@ -237,6 +237,11 @@ pub fn extract_pipeline_skip(
                     fs::create_dir_all(parent).map_err(ExtractError::Io)?;
                 }
                 if src.is_file() {
+                    // R-02（第⑬刀）：写前先删目标 —— 与软链分支的 `let _ = fs::remove_file`
+                    // 同一写法。不删的话 `fs::copy` 走"写穿"语义：目标若已是硬链接（与宿主
+                    // 文件/旧树共享 inode，proot 布局下真实存在），改的是共享 inode 本身，
+                    // 等于把树外文件也改了。
+                    let _ = fs::remove_file(&target);
                     bytes_written += fs::copy(&src, &target).map_err(ExtractError::Io)?;
                     written += 1;
                 } else {
@@ -251,6 +256,9 @@ pub fn extract_pipeline_skip(
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(ExtractError::Io)?;
                 }
+                // R-02（第⑬刀）：写前先删目标 —— `File::create` 对已存在的目标是截断写，
+                // 目标若已是硬链接（与树外文件共享 inode），就把树外文件一起改了。
+                let _ = fs::remove_file(&target);
                 let mut out = fs::File::create(&target).map_err(ExtractError::Io)?;
                 let n = std::io::copy(&mut entry, &mut out).map_err(ExtractError::Io)?;
                 bytes_written += n;
@@ -269,6 +277,8 @@ pub fn extract_pipeline_skip(
             continue;
         }
         if src.is_file() {
+            // R-02（第⑬刀）：同主循环，写前先删目标防写穿
+            let _ = fs::remove_file(&dst);
             fs::copy(&src, &dst).map_err(ExtractError::Io)?;
             written += 1;
         }

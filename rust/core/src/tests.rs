@@ -436,3 +436,43 @@ fn 越界硬链不算写出_空归档兜底不失效() {
     assert!(!out.join("data/leak.txt").exists(), "越界硬链不得落盘");
     fs::remove_dir_all(&dir).ok();
 }
+
+/// 第⑬刀 R-02：写前先删目标 —— 目标若已是硬链接（与树外原件共享 inode），
+/// `File::create`/`fs::copy` 是"写穿"语义，改的是共享 inode，树外原件跟着被改。
+/// 用真硬链复现：预置 out/victim.txt 与树外原件同 inode，再解包同名成员。
+#[test]
+fn 同名覆写_不写穿已有的硬链接目标() {
+    let dir = std::env::temp_dir().join(format!("zext_r02_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let outside = dir.join("outside_original.txt");
+    fs::write(&outside, b"OUTSIDE-ORIGINAL").unwrap();
+
+    let out = dir.join("out");
+    fs::create_dir_all(&out).unwrap();
+    // 预置：out/victim.txt 与树外原件是同一 inode（真硬链，NTFS/ext4 都支持）
+    fs::hard_link(&outside, out.join("victim.txt")).unwrap();
+
+    // 构造 tar：一个普通成员 victim.txt（覆盖写），内容 NEW-CONTENT
+    let zst = dir.join("r02.tar.zst");
+    let mut raw = Vec::new();
+    raw.extend(ustar_entry("victim.txt", b'0', "", b"NEW-CONTENT"));
+    raw.extend(std::iter::repeat(0u8).take(1024)); // 归档结束块
+    let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
+    let mut enc = enc.auto_finish();
+    io::copy(&mut raw.as_slice(), &mut enc).unwrap();
+    drop(enc);
+
+    extract_pipeline(&zst, &out, None, &mut |_| {}).unwrap();
+
+    assert_eq!(
+        fs::read(out.join("victim.txt")).unwrap(),
+        b"NEW-CONTENT",
+        "同名成员应正常覆写"
+    );
+    assert_eq!(
+        fs::read(&outside).unwrap(),
+        b"OUTSIDE-ORIGINAL",
+        "树外原件被写穿 —— 与 victim.txt 共享的 inode 被改了"
+    );
+    fs::remove_dir_all(&dir).ok();
+}
