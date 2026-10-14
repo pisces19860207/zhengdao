@@ -42,6 +42,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -275,6 +276,9 @@ fun HomeScreen(
     val installStates = remember { androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>() }
     // 刷新节拍：改 stateTick 能让下面那个 effect 立刻重灌一遍镜像（不等 2 秒）。
     var stateTick by remember { mutableIntStateOf(0) }
+    // P2-12（issue #17）：下拉刷新。转圈只做**反馈**——真正的扫描在 stateTick++ 之后
+    // 由上面的常驻轮询立刻跑掉（IO 毫秒级）；350ms 是最短可见时长，防"闪一下"。
+    var ptrRefreshing by remember { mutableStateOf(false) }
     // ⚠️ 这里必须是**常驻循环**，不能写成"还有 Agent 在装才继续查下一轮"（2026-10-07 二次真机实测）：
     //    条件式轮询有个致命缺口——**它需要有东西先把它叫醒**。而"点了「安装」"这件事在
     //    Compose 眼里什么都没发生：没有 state 变化 ⇒ 不重组 ⇒ effect 的 key 不变 ⇒
@@ -346,11 +350,27 @@ fun HomeScreen(
             }
         }
 
+        // P2-12（issue #17）：下拉刷新包住列表（material3 1.4 的 PullToRefreshBox）。
+        // 刷新的实质 = stateTick++ ⇒ 常驻轮询的 effect 立刻重跑一遍（不等 2 秒），
+        // 与 ON_RESUME 那条路径同一个机制（见 :311 附近）。
+        PullToRefreshBox(
+            isRefreshing = ptrRefreshing,
+            onRefresh = {
+                ptrRefreshing = true
+                stateTick++
+                snackbarScope.launch {
+                    kotlinx.coroutines.delay(350)
+                    ptrRefreshing = false
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
         LazyColumn(
             state = listState, // K2：外部注入的 state
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 16.dp),
@@ -989,6 +1009,7 @@ checks.forEachIndexed { index, c ->
             )
         }
         } // LazyColumn 结束
+        } // PullToRefreshBox 结束
     } // 外层 Column（固定顶栏 + 列表）结束
 
     // Snackbar 宿主（2026-10-12）：挂在页面最底层，错误提示从 Toast 迁到此处
