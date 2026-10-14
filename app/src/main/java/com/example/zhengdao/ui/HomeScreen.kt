@@ -73,6 +73,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -114,7 +115,7 @@ fun HomeScreen(
     // 与页面内容脱节；Snackbar 挂在本页底部，可读、可跟随、不打断。
     // 定义在使用点之前（Kotlin 局部函数作用域从声明处开始）。
     val snackbarHostState = remember { SnackbarHostState() }
-    val snackbarScope = rememberCoroutineScope()
+    val snackbarScope = rememberCoroutineScope { CoroutineCrashHandler }
     fun snack(msg: String) {
         snackbarScope.launch { snackbarHostState.showSnackbar(msg) }
     }

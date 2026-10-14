@@ -58,6 +58,7 @@ import com.example.zhengdao.oc.OcSessionSummary
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.ui.PluginManager
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -99,7 +100,7 @@ fun TaijiScreen(
         androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(null) },
 ) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     // ⚠️ 网络层用 remember 而非 rememberSaveable：连接不应在配置变更（旋转）时重建。
     //    Compose state 是唯一真相；进程被杀后由 open() 从 serve 恢复。
@@ -726,7 +727,7 @@ private fun FailedPane(message: String, onRetry: () -> Unit) {
 @Composable
 private fun OcVersionFooter() {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
     var checking by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<OcManager.UpdateInfo?>(null) }
     var installed by remember { mutableStateOf(OcManager.installedVersion(ctx)) }

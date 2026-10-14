@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoBlueText
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -58,7 +59,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun PluginsScreen() {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     var tick by remember { mutableStateOf(0) }
     var specs by remember { mutableStateOf<List<String>>(emptyList()) }

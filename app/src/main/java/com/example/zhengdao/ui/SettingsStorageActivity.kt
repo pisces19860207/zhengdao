@@ -97,6 +97,7 @@ import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.CoroutineScope
 
 /** 二级页：存储与缓存（逐字搬自原设置页的「存储占用 / 缓存清理 / 安装包缓存」三张卡）。 */
@@ -117,7 +118,7 @@ class SettingsStorageActivity : ComponentActivity() {
 @Composable
 private fun SettingsStoragePage(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
     val snackbarHostState = remember { SnackbarHostState() }
     var storageTick by remember { mutableStateOf(0) }
     // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖。
@@ -743,7 +744,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     // 用户看的用人话，进 Snackbar 后点 action 由 openLogFromSnackbar()
                                     // 现场取日志并弹窗（缺日志时给指向目录的 Toast，不静默）。
                                     // 必须在主线程弹——scope 是 Composable 的 CoroutineScope，
-                                    // 但 rememberCoroutineScope() 默认走 Dispatchers.Main.immediate。
+                                    // 但 rememberCoroutineScope { CoroutineCrashHandler } 默认走 Dispatchers.Main.immediate。
                                     scope.launch {
                                         val r = snackbarHostState.showSnackbar(
                                             message = ctx.getString(

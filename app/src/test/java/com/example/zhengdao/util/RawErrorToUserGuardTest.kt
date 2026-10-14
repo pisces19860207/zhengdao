@@ -32,7 +32,9 @@ class RawErrorToUserGuardTest {
     fun `门禁_用户可见通道不许插异常原文`() {
         val root = File("src/main/java")
         val offenders = root.walkTopDown()
-            .filter { it.isFile && it.extension == "kt" && !it.path.contains("/oc/") }
+            .filter { it.isFile && it.extension == "kt" }
+            // ⚠️ 路径归一化：Windows 上 walk 出来是反斜杠，contains("/oc/") 永不命中
+            .filter { !it.path.replace('\\', '/').contains("/oc/") }
             .flatMap { f ->
                 f.readLines().mapIndexedNotNull { i, line ->
                     if (userVisible.containsMatchIn(line) && rawMsg.containsMatchIn(line)) {
