@@ -22,7 +22,11 @@ import java.io.File
  * 给第一个 UI 测试加依赖、定规则不该塞进本刀（与 `StateLifetimeGateTest` 同一判断）。
  * 门禁证明的是"没人把二次确认退回去"，**不是**"弹窗点下去一定跑对"——后者归真机复验。
  *
- * 文字写法同目录 `StateLifetimeGateTest.kt`：读源码文本做断言。
+ * R-24 余项（第⑯刀 #4）升级：原版读**原文**做结构判定 —— 注释里写一句 `cleanupNonCurrent(`
+ * 或 `…Confirm = true` 也能骗过它。现改为**先剥注释再结构判定**（范式同
+ * `InstallerCleanBusyGateTest.stripComments`：剥 `//` 与块注释、保留字符串字面量）；
+ * 结构判据本身不变：调用点被夹在「确认框的 confirmButton」与「dismissButton」之间，
+ * 触发按钮的 onClick 里只有 `…Confirm = true`。
  */
 class SettingsDestructiveConfirmGateTest {
 
@@ -31,6 +35,50 @@ class SettingsDestructiveConfirmGateTest {
         val f = File(rel).let { if (it.exists()) it else File("app/$rel") }
         assertTrue("找不到 $rel：${f.path}", f.isFile)
         return f.readText()
+    }
+
+    /** R-24 余项：结构判定一律走**剥注释后**的代码（保留字符串字面量）。 */
+    private fun code(rel: String): String = stripComments(src(rel))
+
+    /** 只剥 `//` 与块注释（保留字符串字面量、保留换行以稳住定位逻辑）。 */
+    private fun stripComments(text: String): String {
+        val out = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c == '/' && i + 1 < text.length && text[i + 1] == '/' -> {
+                    while (i < text.length && text[i] != '\n') i++
+                }
+                c == '/' && i + 1 < text.length && text[i + 1] == '*' -> {
+                    i += 2
+                    while (i + 1 < text.length && !(text[i] == '*' && text[i + 1] == '/')) i++
+                    i = (i + 2).coerceAtMost(text.length)
+                }
+                c == '"' && text.startsWith("\"\"\"", i) -> {
+                    val end = text.indexOf("\"\"\"", i + 3).let { if (it < 0) text.length else it + 3 }
+                    out.append(text, i, end)
+                    i = end
+                }
+                c == '"' || c == '\'' -> {
+                    val quote = c
+                    out.append(c)
+                    i++
+                    while (i < text.length) {
+                        val d = text[i]
+                        out.append(d)
+                        i++
+                        if (d == '\\' && i < text.length) { out.append(text[i]); i++; continue }
+                        if (d == quote) break
+                    }
+                }
+                else -> {
+                    out.append(c)
+                    i++
+                }
+            }
+        }
+        return out.toString()
     }
 
     private fun keyOf(name: String) = "name=\"$name\">"
@@ -53,7 +101,8 @@ class SettingsDestructiveConfirmGateTest {
         destructiveCall: String,
         confirmOffLiteral: String,
     ) {
-        val s = src(file)
+        // R-24 余项：剥注释后再做结构判定（注释里的字面量不算数）
+        val s = code(file)
 
         val occurrences = Regex(Regex.escape(confirmOffLiteral)).findAll(s).count()
         assertEquals(
@@ -129,7 +178,8 @@ class SettingsDestructiveConfirmGateTest {
         confirmOnLiteral: String,
         destructiveCall: String,
     ) {
-        val s = src(file)
+        // R-24 余项：剥注释后再做结构判定（注释里的字面量不算数）
+        val s = code(file)
         val triggerIdx = s.indexOf(confirmOnLiteral)
         assertTrue("$file 里找不到 `$confirmOnLiteral`", triggerIdx >= 0)
 
