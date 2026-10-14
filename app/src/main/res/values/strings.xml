@@ -485,6 +485,7 @@
     <string name="taiji_conn_connected">● 已连接</string>
     <string name="taiji_conn_connecting">○ 连接中…</string>
     <string name="taiji_conn_reconnecting">○ 已断开，正在重连（第 %1$d 次）</string>
+    <string name="oc_give_up_reconnecting">连接已中断（连续 %1$d 次失败），已停止自动重连——点重试可恢复</string>
     <string name="taiji_banner_connecting">正在连接…</string>
     <string name="taiji_banner_idle">未连接</string>
     <string name="taiji_banner_reconnecting">连接已断开，正在重连…</string>

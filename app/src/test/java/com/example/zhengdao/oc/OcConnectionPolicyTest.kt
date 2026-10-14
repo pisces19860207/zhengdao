@@ -166,4 +166,30 @@ class OcConnectionPolicyTest {
             )
         )
     }
+
+    // ── 第⑭刀 #2 / P2-15②：轮询熔断（重连到顶放弃并置 Failed）──────────────
+
+    @Test
+    fun `熔断阈值表 —— 连续失败 0到7 次不放弃，8 次起放弃`() {
+        // 阶梯 1+2+4+8+15×4 ≈ 75s 内触达第 8 次；再等下去用户只会以为卡死
+        (0 until RECONNECT_GIVE_UP).forEach { n ->
+            assertFalse("连续失败 $n 次不应放弃", shouldGiveUpReconnecting(n))
+        }
+        listOf(RECONNECT_GIVE_UP, RECONNECT_GIVE_UP + 1, RECONNECT_GIVE_UP + 50).forEach { n ->
+            assertTrue("连续失败 $n 次应放弃", shouldGiveUpReconnecting(n))
+        }
+    }
+
+    @Test
+    fun `熔断后的恢复路径 —— Failed 态下 open() 必须重开（重试按钮靠这条）`() {
+        // 放弃自动重连置 TaijiPhase.Failed(retryable=true)；此后用户点 FailedPane「重试」
+        // → open() → shouldReopenConnection 第 1 条（isFailed）判真。这条把"熔断后不会
+        // 被复用分支拦住"钉死。
+        assertTrue(
+            shouldReopenConnection(
+                requested = null, current = "s1",
+                pollAlive = false, sseAlive = false, isFailed = true,
+            )
+        )
+    }
 }

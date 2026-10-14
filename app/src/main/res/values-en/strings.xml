@@ -485,6 +485,7 @@
     <string name="taiji_conn_connected">● Connected</string>
     <string name="taiji_conn_connecting">○ Connecting…</string>
     <string name="taiji_conn_reconnecting">○ Disconnected, reconnecting (attempt %1$d)</string>
+    <string name="oc_give_up_reconnecting">Connection lost (%1$d consecutive failures); automatic reconnection stopped — tap retry to recover</string>
     <string name="taiji_banner_connecting">Connecting…</string>
     <string name="taiji_banner_idle">Not connected</string>
     <string name="taiji_banner_reconnecting">Disconnected, reconnecting…</string>
