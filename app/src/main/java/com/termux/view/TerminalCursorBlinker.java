@@ -204,11 +204,26 @@ final class TerminalCursorBlinker {
         final float baseline = mView.mRenderer.mFontLineSpacingAndAscent + (screenRow + 1) * (float) lineSpacing;
         // 横向取到 (cursorCol .. cursorCol + 2) 两格：覆盖宽字符（CJK）与 BLOCK 反色块；
         // 纵向一整行上下各留 2 px，避免抗锯齿边缘残留。
-        final int left = (int) Math.floor(cursorCol * fontWidth) - 1;
+        // 证道修复（2026-10-14，§B-补-49 🟡3）：脏区左边界要覆盖"光标停在宽字符第二格"的
+        // 反色块——TerminalRenderer 在那种情况下从 startColumn = cursorCol - 1 起画
+        // （Renderer:226），旧式从 cursorCol 起算会把左半格漏在脏区外 ⇒ 关光标那帧留残影。
+        final int left = dirtyLeftForCursor(cursorCol, fontWidth);
         final int right = (int) Math.ceil((cursorCol + 2) * fontWidth) + 1;
         final int top = (int) Math.floor(baseline - lineSpacing) - 2;
         final int bottom = (int) Math.ceil(baseline) + 2;
         mView.invalidate(left, top, right, bottom);
+    }
+
+    /**
+     * 光标脏区左边界（纯函数，2026-10-14 §B-补-49 🟡3，供 JVM 单测钉住）。
+     *
+     * 与 TerminalRenderer 的宽字符分支对齐：光标停在宽字符第二格时反色块从
+     * cursorCol - 1 起画，脏区必须跟着左移一格；cursorCol == 0 时钳到 0
+     * （不依赖 invalidate 对负坐标的隐式夹取，行为与旧式一致）。
+     */
+    static int dirtyLeftForCursor(int cursorCol, float fontWidth) {
+        final int startColumn = Math.max(cursorCol - 1, 0);
+        return (int) Math.floor(startColumn * fontWidth) - 1;
     }
 
     private final class BlinkerRunnable implements Runnable {
