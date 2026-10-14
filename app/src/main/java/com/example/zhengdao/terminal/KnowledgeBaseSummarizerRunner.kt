@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * | 约束 | 做法 |
  * |---|---|
- * | **绝不干扰用户正在看的太极会话** | **自己 new 一个 OkHttpClient**，直接用 [OcManager.servePassword] 鉴权打 REST，**不走 `OcRepository` 那个全局单例**（它的 `_state` 只有一个活动会话，切进去会把用户的界面切走） |
+ * | **绝不干扰用户正在看的太极会话** | **自己一套 REST 调用**（进程级共享一个 OkHttpClient，见 [httpClientFor]），直接用 [OcManager.servePassword] 鉴权，**不走 `OcRepository` 那个全局单例**（它的 `_state` 只有一个活动会话，切进去会把用户的界面切走） |
  * | **绝不挂死** | 全程总超时 [TOTAL_TIMEOUT_MS]；**权限请求一律自动拒绝**（[KnowledgeBaseSummarizer.denyReplyBody]）—— 沉默会让 agent 永远等下去 |
  * | **绝不让摘要失败拖垮清单** | 摘要只是往 `整理/00-目录.md` **追加一节**；失败就保持原样，清单照旧可用 |
  * | **绝不碰 `原始/`** | 落盘点只有 [KnowledgeBase.writeSummaries]（写 `整理/`） |
@@ -157,7 +157,7 @@ object KnowledgeBaseSummarizerRunner {
         KnowledgeBase.markBusy(ctx)
         RunLog.log("资料库摘要：开始（${payload.size} 个文件，借太极的模型）")
 
-        val http = newClient(pw)
+        val http = httpClientFor(pw)
         var sid: String? = null
         return try {
             sid = createSession(http)
@@ -196,25 +196,61 @@ object KnowledgeBaseSummarizerRunner {
 
     // ── HTTP（自己一套，绝不复用 OcRepository 的单例）───────────────────────
 
-    private fun newClient(password: String): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .addInterceptor { chain ->
-            // 与 OcClient.AuthInterceptor 同款：Basic base64(opencode:<pw>)
-            val cred = android.util.Base64.encodeToString(
-                "opencode:$password".toByteArray(Charsets.UTF_8),
-                android.util.Base64.NO_WRAP,
-            )
-            chain.proceed(
-                chain.request().newBuilder()
-                    .header("Authorization", "Basic $cred")
-                    .header("Content-Type", "application/json")
-                    .build()
-            )
-        }
-        .build()
+    /**
+     * 鉴权头里的**当前**口令。
+     *
+     * 为什么不写死在构造里：serve 重启会换一把新口令（见 [OcManager.servePassword]），
+     * 而客户端是**进程级共享**的 —— 写死就会拿旧口令去敲门。
+     */
+    @Volatile
+    private var authPassword: String = ""
+
+    /**
+     * 进程级唯一的 HTTP 客户端。
+     *
+     * 2026-10-14（§B 顺序 4 · P1-7）：原来每次摘要任务都 `new OkHttpClient()`。
+     * `OkHttpClient` 自带连接池 + Dispatcher 线程池 ⇒ 每次新建等于**资源不回收**
+     * （跑 N 次就留 N 套闲置线程与连接），而摘要任务是"每次整理都跑一遍"的。
+     * 改成懒建的进程级单例，口令按次注入（[httpClientFor]）。
+     */
+    private val sharedClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("Authorization", basicAuthHeader(authPassword))
+                        .header("Content-Type", "application/json")
+                        .build()
+                )
+            }
+            .build()
+    }
+
+    /**
+     * 取共享客户端，并把口令更新成本次任务用的那把（新增调用点请一律走这里）。
+     *
+     * 为什么"按次注入"是安全的：同一时刻只允许一个摘要任务（见 [running] 的单飞闸门），
+     * 所以不会出现两次任务互相改口令的串味；而客户端共享的是连接池与线程池 —— 那部分
+     * 与口令无关。
+     */
+    internal fun httpClientFor(password: String): OkHttpClient {
+        authPassword = password
+        return sharedClient
+    }
+
+    /**
+     * 与 `OcClient.AuthInterceptor` 同款：`Basic base64(opencode:<pw>)`。
+     *
+     * 用 `java.util.Base64` 而不是 `android.util.Base64`：口径等价（都不折行），
+     * 但纯 JVM 可测（这条判据本来就该有单测，之前因为依赖 Android API 而没法钉）。
+     */
+    internal fun basicAuthHeader(password: String): String =
+        "Basic " + java.util.Base64.getEncoder()
+            .encodeToString("opencode:$password".toByteArray(Charsets.UTF_8))
 
     private fun url(path: String) = "http://127.0.0.1:${OcManager.PORT}$path"
 
