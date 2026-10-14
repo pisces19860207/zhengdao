@@ -6523,3 +6523,46 @@ E-116 修完后我拿正式签名包上真机（PGT-AN10 / MagicOS / Android 16 
 - **故障指示必须是活体的**：只探一次的状态灯，一旦环境自我恢复就变成假报警；周期探测 ＋ 只在翻转时记日志（不刷屏）才是正解。
 - **别用 `settings put global http_proxy 127.0.0.1:9` 这类黑洞代理去造「网络不通」**：App 侧 `HttpURLConnection` 不读全局 http_proxy，探针照常成功（本次实测失败的路子）；真机唯一可靠的是 `adb shell svc wifi disable` ＋ `svc data disable`。
 - 想用 `adb shell am start -n com.example.zhengdao/.TerminalActivity` 直接进终端页也不成：该 Activity 在 manifest 里 `android:exported="false"`（`SecurityException: Permission Denial`）—— 这是**设计正确**，别再试。
+
+---
+
+## E-125 · 2026-10-14 · hermes 依赖体检的「一键修复」在无网环境下必然失败：脚本第②步会因 `resolved_lock` 缺失先删掉好记录，把第④步的「venv 还在就跳过联网重建」直接废掉
+
+**现场（她 2026-10-14 报设置页红叉）**：hermes 自更新被中断 ⇒ `git -C /root/.hermes/hermes-agent status --short` = ` D flake.lock` / ` D pm/uv.lock` / ` D uv.lock`；App 侧 `app/src/main/java/com/example/zhengdao/terminal/HermesEnv.kt:171-172` 判 `sourceLockMissing = true` ⇒ `:205 ok = anyRecord && !brokenRecord && !sourceLockMissing` = false ⇒ 红叉「源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回」。
+
+**三个缺口（①② 由 workbuddy `d670dd8` 补；③ 是我复核时发现、`fb743e0` 补）**：
+
+1. `app/src/main/res/raw/hermes_env_repair.sh` 第①步原只 `git checkout -- uv.lock flake.lock`，**漏 `pm/uv.lock`**（真机实测被删的是三个）。
+2. 第④步原**无条件**跑 `hermes pm repair`（要联网解析 `uv.lock`）⇒ 她代理没勾证道、App 无网时，锁补好了也会 `exit 1` **假报失败**（已条件化：`installs/*/facts.json` 的 `packages.venv.environment` 有可读 `pyvenv.cfg` ⇒ 打印「依赖环境本身还在…跳过联网重建」）。
+3. ⚠️ **改完 ② 仍然修不了**：第②步判据是 `bad = (env and not isfile(env/pyvenv.cfg)) or (lock and not isfile(lock))`，其中 `lock = packages.venv.resolved_lock`。真机只读诊断（`sh zd-probe.sh`）逐字：
+   ```
+   environment : /root/.hermes/installs/8a4017c4cabfe15f/environments/ef92eb0a28654a90b1e64899d3c3bbf9/venv
+   env 存在    : True  pyvenv: True
+   resolved_lock: /root/.hermes/installs/8a4017c4cabfe15f/environments/ef92eb0a28654a90b1e64899d3c3bbf9/workspace/uv.lock
+   lock 存在   : False
+   ```
+   那份 `resolved_lock` 是**环境代次目录里的文件、不受 git 管理**，第①步补不回、`git checkout` 也管不到 ⇒ `bad = True` ⇒ 第②步 `shutil.copy2` 备份后 `os.remove(facts.json)` **把好记录删掉** ⇒ 第④步再扫 `installs/*/facts.json` 已无记录 ⇒ `VENV_OK=0` ⇒ 依旧去跑联网的 `pm repair`。**两处修改被第②步自相抵消。**
+
+**修法（`fb743e0`，1 file ＋13 −5）**：第②步判据与第④步**同口径** —— 只看 venv 本体是否可用，不再因 `resolved_lock` 缺失删记录：
+
+```python
+bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
+```
+
+（原两行 `if not bad and lock: bad = not os.path.isfile(lock)` 删除；头部注释改「改三处」并写明真机读数。）判据支撑：`app/src/main/java/com/example/zhengdao/terminal/HermesEnv.kt:348-354 venvUsable` 早已不要求 `resolved_lock`，故「只缺源码锁」这条路本来就不该联网。
+
+**真机端到端验收（2026-10-14，设备 `AD3J023824001723`，release 包覆盖安装；真离线 = 她手机没挂代理）**：
+
+| 步骤 | 读数 |
+|---|---|
+| 制造故障（guest 里 `rm` 掉三个源码锁） | 设置 → 环境与更新：「Hermes 依赖环境」红叉「依赖环境记录失效了，敲 hermes 会直接报错。点上面的按钮修一下即可。」；RunLog 逐字 `HermesEnv 诊断 ok=false anyRecord=true brokenRecord=false hostViewRecord=false sourceLockMissing=true stale=0 completeGens=0 … detail=源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回` |
+| 点「在终端里修复」 | 终端逐字 `bash /root/.zhengdao/scripts/hermes-env-repair.sh` → `[证道] 已恢复源码锁 uv.lock` / `flake.lock` / `pm/uv.lock` → `[证道] 依赖环境本身还在（venv/pyvenv.cfg 可读）——本轮只补源码锁，跳过联网重建` → `Hermes Agent v0.21.6+675.g79b45d1 … Python: 3.14.7 / OpenAI SDK: 2.24.0` → `[证道] 修复完成：直接敲 hermes 即可使用`（包装器记 `EXIT=0`） |
+| 复验 | 页面回到「依赖环境记录有效」✓；`installs/*/facts.json` 仍在（未被第②步删）✓；全程零联网 |
+
+**教训**：
+
+- **一条流水线上前后两步用了不同判据，等于后一步撤销前一步** —— 第②步「记录里的锁不在就作废」与第④步「venv 在就别联网」必须同口径，否则「跳过联网」永远走不到。
+- **修完要按用户的真实状态跑一遍**：他交回时明说「Windows 上验不了『venv 在 ⇒ 跳过重建』这条分支」（宿主 python 读 `USERPROFILE`、够不到 MSYS `/tmp`）—— 这条分支恰恰是唯一重要的一条，只能真机验；我按真机读数才发现第②步把路堵死。
+- **只读诊断放在变更动作之前**：先用 `sh zd-probe.sh`（把 `facts.json` 记的路径与实际 `isfile` 一起打出来）看到 `lock 存在: False`，才判断出「直接点修复会先删记录」；否则会先手跑脚本、把她的好记录删掉再修。
+- **给 guest 用的 `.sh` 必须 LF 且无 BOM**：`Set-Content -Encoding UTF8` 在 Windows PowerShell 5.1 上带 BOM ＋ CRLF ⇒ 真机上报 `#!/bin/sh: not found` 与 `Syntax error: Bad fd number`（CR 被当成 `1\r`）；改用 `[IO.File]::WriteAllText($p, $s, (New-Object System.Text.UTF8Encoding($false)))` 并先 `-replace "\`r\`n", "\`n"`。
+- **故障注入、修复、复验拆成三个小脚本**（`zd-break.sh` / `zd-repair-fixed.sh` ＋ `zd-run-repair.sh` 只做重定向与记 `EXIT=$?`）：真机终端里敲的命令越短越稳，输出落 `/storage/emulated/0/Download/*.out` 再用 `adb shell cat` 读，比靠截图认字可靠。

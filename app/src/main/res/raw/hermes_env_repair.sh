@@ -17,9 +17,13 @@
 #
 # 修法与 2026-10-08 真机手工修复完全一致（当时就是这么修好的）。
 #
-# 2026-10-14 改两处（真机复验后）：
+# 2026-10-14 改三处（真机复验后）：
 #   ① 第①步补 pm/uv.lock —— 自我更新被中断时**三个**源码锁都被删，原脚本只列两个；
-#   ② 第④步条件化 —— venv 还在就跳过联网的 pm repair，不再"锁补好了仍 exit 1 假报失败"。
+#   ② 第④步条件化 —— venv 还在就跳过联网的 pm repair，不再"锁补好了仍 exit 1 假报失败"；
+#   ③ 第②步判据只看 venv 本体 —— 原来还要求 resolved_lock 存在（那份锁在环境代次目录里，
+#      不受 git 管理、第①步补不回），它缺失时会先删掉记录，而第④步正是靠这条记录判断
+#      "venv 还在、跳过联网重建" ⇒ 自相矛盾：venv 好端端的却被删记录 + 仍去跑联网的
+#      pm repair（真机实测：用户没开代理时必失败）。
 
 set -u
 H="${HOME:-/root}/.hermes"
@@ -40,6 +44,11 @@ fi
 
 # ② 指向不存在环境的依赖环境记录：备份后删掉，让 pm repair 能重新登记
 #    （记录还在时 pm repair 会以 "recorded dependency lock is missing" 拒绝重建）
+#    ⚠️ 2026-10-14（第三处）：判据**只看 venv 本体**。原判据还要求 resolved_lock 存在，
+#    但那份锁在环境代次目录里（environments/<id>/workspace/uv.lock），不受 git 管理、
+#    第①步也补不回；它缺失时这里会删掉记录，第④步随后判"venv 不在"⇒ 仍去联网重建。
+#    真机实测（2026-10-14，AD3J023824001723）：env 目录存在 + pyvenv.cfg 可读 + resolved_lock
+#    缺失 ⇒ 环境本身是好的，不该删记录（hermes --version 正常）。
 PY=$(command -v python3 || true)
 if [ -n "$PY" ]; then
     "$PY" - <<'PYEOF'
@@ -55,10 +64,9 @@ for facts in sorted(glob.glob(os.path.join(H, "installs", "*", "facts.json"))):
         continue
     venv = ((data.get("packages") or {}).get("venv") or {})
     env = venv.get("environment")
-    lock = venv.get("resolved_lock")
+    # 判据只看 venv 本体（2026-10-14 第三处，与第④步同一口径）：
+    # 记录里记的 venv 目录存在、pyvenv.cfg 可读 ⇒ 环境是好的，保留记录、不删。
     bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
-    if not bad and lock:
-        bad = not os.path.isfile(lock)
     if bad:
         bak = facts + ".bak-修复"
         shutil.copy2(facts, bak)
