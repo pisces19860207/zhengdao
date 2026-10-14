@@ -286,11 +286,22 @@ public final class TerminalView extends View {
      */
     public int[] getColumnAndRow(MotionEvent event, boolean relativeToScroll) {
         int column = (int) (event.getX() / mRenderer.mFontWidth);
-        int row = (int) ((event.getY() - mRenderer.mFontLineSpacingAndAscent) / mRenderer.mFontLineSpacing);
-        if (relativeToScroll) {
-            row += mTopRow;
-        }
+        // 证道修复（2026-10-14，§B-补-49 🟡4）：纵向换算收敛到 [rowForY]——本处与
+        // getCursorY（选词手柄）原先是同一像素的两套算法，同一 y 会判成不同行。
+        int row = rowForY(event.getY(), mRenderer.mFontLineSpacingAndAscent,
+            mRenderer.mFontLineSpacing, relativeToScroll ? mTopRow : 0);
         return new int[] { column, row };
+    }
+
+    /**
+     * 纵向像素 → 行（纯函数，2026-10-14 §B-补-49 🟡4，供 JVM 单测钉住）。
+     * 长按/选词/手柄三条路径共用；原 getCursorY 硬编码 -40（上游常量，
+     * 2026-10-11 行高 1.15× 改动没同步），比 {@code mFontLineSpacingAndAscent}
+     * 小约 0.5–0.7 个行盒 ⇒ 同一 y 两处判成不同行。
+     * 不做夹取（负行值由调用方按各自语义处理，与上游一致）。
+     */
+    static int rowForY(float y, int lineSpacingAndAscent, int lineSpacing, int topRow) {
+        return (int) ((y - lineSpacingAndAscent) / lineSpacing) + topRow;
     }
 
     /*
@@ -535,7 +546,9 @@ public final class TerminalView extends View {
     }
 
     public int getCursorY(float y) {
-        return (int) (((y - 40) / mRenderer.mFontLineSpacing) + mTopRow);
+        // 证道修复（2026-10-14，§B-补-49 🟡4）：-40 → mFontLineSpacingAndAscent，
+        // 并与 getColumnAndRow 收敛到同一纯函数（rowForY），两处永远一致。
+        return rowForY(y, mRenderer.mFontLineSpacingAndAscent, mRenderer.mFontLineSpacing, mTopRow);
     }
 
     public int getPointX(int cx) {
