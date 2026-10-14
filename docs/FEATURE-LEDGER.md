@@ -229,7 +229,7 @@
 | R-10 | 真（后果比报告更重） | `app/src/main/java/com/termux/terminal/TerminalEmulator.java:2101-2118`、`TerminalBuffer.java:205`/`:210`：OSC 8 未闭合时不是标一行，而是把 [起点行, 光标行]**整段区间** linkify 成同一个 URI | ⏳ 未立账（触发面受 tmux ≥3.4 成对闭合限制） |
 | R-11 | 真 | `terminal/ProotLauncher.kt:163`（`chmod` 空 `catch (_: Throwable) {}`）＋ `:168`（写戳记 `runCatching` 无失败分支）⇒ `:176 canExecute()` 判假、静默降级到安卓自带 shell | ✅ 已修 `2a76e1f`（§A #88） |
 | R-12 | 真（触发需真机） | `oc/SseClient.kt:134`（`JSONObject(ev.data)` 无 try/catch）＋ `oc/OcRepository.kt:170`/`:247`；全仓**无 `CoroutineExceptionHandler`** ⇒ 非 JSON 帧 = `FATAL EXCEPTION` 且 SSE 永久停 | ⏳ **禁区，等放行** |
-| R-13 | 真（安全） | `oc/OcRepository.kt:443`：**口令明文写进 `files/oc/serve.log`**，全仓无删除/截断/轮转；`:289`/`:199` 同病 | ⏳ 禁区 |
+| R-13 | 真（安全） | `oc/OcManager.kt:443-445`（`redirectOutput(appendTo(File(filesDir,"oc/serve.log")))`）：**口令明文写进 `files/oc/serve.log`**，全仓无删除/截断/轮转（第 2 期审计 **C-1** 更正：原指针 `oc/OcRepository.kt:443` 实为 SSE `PartRemoved` 的 `s.copy(...)`，该文件 grep `password|口令|serve\.log` 零命中） | ⏳ 禁区 |
 | R-14 | 真 | `oc/OcRepository.kt:312`/`:316`/`:324`：20 轮 ×（150ms ＋ 最多 3×700ms 探测）≈ **45s**，而注释自写「最多 3 秒」 | ⏳ 禁区 |
 | R-15 | 真 | `oc/SseClient.kt:163-164`/`:197-203`、`oc/OcRepository.kt:247`：失败计数只在成功时清零、`delay` 封顶 15s 但无上限 | 已立 §B P2-15（补记：两个循环都不置 `TaijiPhase.Failed`） |
 | R-16 | 部分 | `oc/OcRepository.kt:247`/`:260`/`:792`：「不停 + 只递增」属实，但 `:262` 有 `state == null` 启动闸 ⇒ 代价是「1s 无谓请求」而非「无谓重试」 | ⏳ 禁区 |
@@ -316,7 +316,7 @@
 - **P4-7** `LocalLifecycleOwner` 废弃 3 处：`ui/HomeScreen.kt:228`、`ui/SettingsScreen.kt:241`、`MainActivity.kt:300`
 
 **issue #19（备份范围）**
-- **P3-3** `res/xml/backup_rules.xml`、`res/xml/data_extraction_rules.xml` 至今 0 `exclude`
+~~**P3-3** `res/xml/backup_rules.xml`、`res/xml/data_extraction_rules.xml` 至今 0 `exclude`~~ ⇒ **已结（§A #61，2026-10-12）**：cloud-backup 六条 ＋ device-transfer 三条已排 ＋ 门禁 `app/src/test/java/com/example/zhengdao/BackupRulesGuardTest.kt` 4 条；device-transfer 未排 `home`/`oc` 是当时刻意（第 2 期审计 **N-3** 复提凭据外流，待用户拍板，见 §A-审）
 
 **没有任何 issue 认领的 3 条（本次新立）**
 - **B-补-8** **P2-9 写死尺寸只修了一半**：`ui/HomeScreen.kt:66 BUTTON_MIN_WIDTH_DP = 108` 那六处已改（§A #21/#19），**48dp 顶栏 + 360 / 280 / 300dp 弹层宽度没改**
@@ -416,7 +416,7 @@
 ### C. 已经拍板「不做」，别复活
 
 - **优化-1**（`ProotLauncher` 公共区缓存落点每次 `adoptDir`）与 **优化-3**（`.profile` / `zz-cursor-bar.sh` 只判存在）—— E-085 写明理由，判定不做。
-- **P3-3 曾一度是「本次不做」**（E-082，2026-10-10 用户选「只做最要紧的三条」）—— 现已单独立账 **issue #19**，别再说「它已经做过了」。
+- **P3-3 曾一度是「本次不做」**（E-082，2026-10-10 用户选「只做最要紧的三条」）—— 现已单独立账 **issue #19**，别再说「它已经做过了」。~~（**2026-10-14 更正：P3-3 已于 2026-10-12 结（§A #61）**，本句仅存档「曾列为不做」的历史。）~~
 - §3 里那些被拍板删除的功能，要复活必须先问用户。
 - **给太极「配个简单的文件工具（查找 / 读写，不影响上游 bionic 版）」—— 2026-10-11 用户当场撤回**（原话：「那算了，还是这样吧。」）⇒ **不做，别复活**。留档：技术上可行（`opencode.json` 的 `plugin` 数组 + 本地 `.js` 插件跑在 opencode 自带 Bun 里；或 App 侧 mksh 小工具），当时给了三条选项、用户一条没选。
 
@@ -489,6 +489,7 @@
 
   - **2026-10-14 玄览设计定稿：v1.1 主稿 ＋ 探索稿 B（带收窄要求）** —— 用户逐字：「定1.1主稿吧。探索稿B吧。只是地址栏和这一栏稍微近点，别占用屏幕太多。」⇒ ① **定稿 = v1.1 主稿**（`证道设计报告\证道-玄览UI设计稿-2026-10-14-v1.1.html`；我实测六条全部落地：命中区 36→**48×48**、圆角 12px、可用墨 `#38566A` 对页面底 `#F2F2F7` **6.95:1**、禁用墨 `#6E6E73`（v1.0 是 `#9A9AA0` 仅 1.27:1）→ **4.54:1** ＋ 描边降到 1.4 做副线、主页键独占玄青雾底 **6.61:1**、加载态刷新↔停止同位且红字 **4.87:1**、四键 `aria-label` ＝ 后退 / 前进 / 刷新 / 主页）；② **导航条形态定为探索稿 B（浮动胶囊）**，但**要收窄**：现状（`…-v1.1-explore.html` 第二节模拟屏实测）地址栏胶囊底 → 浮动胶囊顶 **12px**、`div.navB` 高 **64px**、地址栏 zone 高 **58px**，合计 **122px**（占 300×497 屏高 **24.5%**）⇒ 收窄要求：间距 **12→6px**、`navB` **64→56px**（48dp 键上下各留 4px）、地址栏 zone **58→50px**（上下 padding 10/6 → 6/4）、合计 **≤106px**；**只改稿子**，不许动仓库 `app/src/main/java/com/example/zhengdao/ui/browser/**`；③ **落码前置**：先修审计 **R-10**（OSC 8 未闭合链接会把整段文字都变成可点链接），否则「点链接进玄览」这条路会把普通文字也变成入口。
   - **2026-10-14 Rust 重编一刀后移 ＋ 第⑨刀未开工** —— 用户逐字：「rust的那个再说吧。今天的第九刀阶跃还没弄呢。」⇒ P2-18（预编译 `.so` 仍旧件 ⇒ 真机无效）与审计 R-02 / R-03 / R-04 一起**挂起**，等她放行再并成一刀（重编 ＋ `tools/check-native-so.py` ＋ 真机复验）；**第⑨刀（玄览阶段 2 多标签）尚未开工**。
+  - **2026-10-14 第⑨刀派工单已发**（用户逐字：「行，让workbuddy把第9刀剩下的做完。」）—— ⑨刀 = 玄览阶段 2 多标签隔离，并按用户拍板**并进两件事**：① 前置必修审计 **R-10**（OSC 8 未闭合时把 [起点行,光标行] 整段区间 linkify；落点 `app/src/main/java/com/termux/terminal/TerminalBuffer.java:205-224` ＋ TerminalRow / TerminalRenderer / TerminalView；改 Termux 衍生文件须按 Apache-2.0 §4(b) 补 PROVENANCE.md 修改通知）；② **底栏按 v1.1 主稿 ＋ 探索稿 B（浮动胶囊）收窄数字落码**（命中区 48×48、圆角 12px、胶囊栏 56px、地址栏带 50px、间距 6px、合计 ≤106px；可用墨 `#38566A` 对 `#F2F2F7` 6.95:1、禁用 `#6E6E73` 4.54:1、主页玄青雾底 6.61:1、加载态红 `#C0392B` 4.87:1、四键 contentDescription 中英对称）。阶段 2 待办 TODO 落点：rowser/EngineSecurityConfig.kt:37-38、rowser/WebViewEngine.kt:221-223/:174-176、ui/browser/BrowserHolder.kt:20、ui/browser/BrowserScreen.kt:67；接线点 MainActivity.kt:576-581/:706/:768。分支 eat/xuanlan-multitab，纪律照旧（干完不合并不 push，交编译 ＋ 串行单测 ＋ diff --stat ＋ 验不了的部分）。
 
 ## 0. 开工前必读
 
