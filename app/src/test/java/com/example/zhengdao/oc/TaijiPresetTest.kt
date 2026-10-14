@@ -37,8 +37,11 @@ class TaijiPresetTest {
         assertTrue(t.contains("没有 python / pip / node / npm / git"))
         // 事实二：工作区就是 App 私有目录（v3 的核心）
         assertTrue(t.contains(ws))
-        // 指路：Linux 的活去终端
-        assertTrue(t.contains("「终端」Tab"))
+        // 指路：Linux 的活去逍遥（Tab 改名后是「逍遥」，功能指代仍叫「终端」，见 strings.xml:45）
+        assertTrue(t.contains("「逍遥」Tab"))
+        // §B 顺序 28（2026-10-14）：人设自称随 Tab 改名 —— 自称「抱朴」，且再不许自称「太极」
+        assertTrue(t.contains("「抱朴」"))
+        assertFalse(t.contains("太极"))
     }
 
     @Test
