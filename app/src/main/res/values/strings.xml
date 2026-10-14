@@ -111,7 +111,7 @@
     <string name="home_env_install_desc">安装 Agent 前需要先装好 Debian 环境（约 3 分钟，只需一次）。</string>
     <string name="home_install_env">安装运行环境</string>
     <string name="home_recent_issues">最近问题（%1$d）</string>
-    <string name="home_issues_note">后台失败的痕迹以前只写日志、界面上看不见；这里列出来，每条能处理就点按钮。完整原文仍在 Download/证道/logs/zhengdao-log.txt</string>
+    <string name="home_issues_note">后台失败的痕迹以前只写日志、界面上看不见；这里列出来，每条能处理就点按钮。完整原文在应用私有日志里，需要时可到「设置 → 帮助」导出</string>
     <string name="home_agent_reinstall">重新安装</string>
     <string name="home_agent_uninstall">卸载</string>
     <string name="home_agent_retry_install">重试安装</string>
