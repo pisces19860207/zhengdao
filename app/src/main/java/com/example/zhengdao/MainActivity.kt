@@ -498,13 +498,41 @@ fun ZhengdaoApp(
     }
 }
 
+/**
+ * 底栏四个 Tab 的索引 —— **唯一真相源**（§B 顺序 33，2026-10-14）。
+ *
+ * 顺序：抱朴 / 逍遥 / 玄览 / 怡然。用户要求「玄览排到逍遥之后」⇒ 与怡然交换了 2/3。
+ *
+ * 为什么要抽常量：这次交换暴露了隐患 —— 全文件原有 **20 处硬编码索引**
+ * （`when (tab)` 分支、底栏 selected/onClick/图标、`animateToTop`、ON_RESUME 切 Tab、
+ * TaijiScreen 的 onExit），漏改任何一处都会**静默错位**。最隐蔽的一处是初始值
+ * `mutableIntStateOf(2)`：2 原本是怡然、交换后变成玄览，不跟着换常量的话，
+ * 启动页会无声无息地从"怡然"漂到"玄览"。改顺序时只动这里。
+ */
+internal object TabIndex {
+    /** 抱朴（真实）：Compose 原生对话（内嵌 OpenCode）。 */
+    const val TAJI = 0
+
+    /** 逍遥（自由）：终端（独立整屏 Activity；本 Tab 本身只是回程落点）。 */
+    const val TERMINAL = 1
+
+    /** 玄览（期望）：浏览器（阶段 1 新增）。 */
+    const val BROWSER = 2
+
+    /** 怡然（幸福）：Agent 管理。 */
+    const val AGENTS = 3
+}
+
 /** 首页骨架：Agent Tab（卡片列表）/ 终端 Tab（进入全屏终端）。 */
 @Composable
 fun HomeTabs(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
-    var tab by remember { mutableIntStateOf(2) }
+    // 默认落怡然 —— 与原字面 `2` 的**语义**一致（不是字面一致）：索引交换后 2 已是玄览，
+    // 所以这里必须写常量，否则启动页会静默漂到玄览（见 [TabIndex] 的说明）。
+    // 注：转屏后跳回本页的寿命问题（P2-1）不属本刀，仍旧是 remember。
+    var tab by remember { mutableIntStateOf(TabIndex.AGENTS) }
 
     // 切 Tab 保留滚动位置（K2）——把两个 tab 的 LazyListState 提到 HomeTabs 顶层。
     //
@@ -531,7 +559,7 @@ fun HomeTabs(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME &&
                 com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
             ) {
-                tab = 3
+                tab = TabIndex.BROWSER
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -569,9 +597,10 @@ fun HomeTabs(
 
     fun animateToTop(target: Int) {
         when (target) {
-            0 -> scope.launch { taijiListState.animateScrollToItem(0) }
-            2 -> scope.launch { homeListState.animateScrollToItem(0) }
-            // 1 = 终端：点了就跳 TerminalActivity，不存在"滚顶"概念，no-op
+            TabIndex.TAJI -> scope.launch { taijiListState.animateScrollToItem(0) }
+            TabIndex.AGENTS -> scope.launch { homeListState.animateScrollToItem(0) }
+            // 逍遥（终端）：点了就跳 TerminalActivity，不存在"滚顶"概念，no-op；
+            // 玄览：页面区不是列表，同样 no-op。
         }
     }
 
@@ -586,10 +615,10 @@ fun HomeTabs(
         }
         lastTabClickAt.longValue = now()
         when (target) {
-            0 -> { tab = 0 }
-            1 -> { tab = 1; onTerminalClicked() }
-            2 -> { tab = 2 }
-            3 -> { tab = 3 }
+            TabIndex.TAJI -> { tab = TabIndex.TAJI }
+            TabIndex.TERMINAL -> { tab = TabIndex.TERMINAL; onTerminalClicked() }
+            TabIndex.BROWSER -> { tab = TabIndex.BROWSER }
+            TabIndex.AGENTS -> { tab = TabIndex.AGENTS }
         }
     }
 
@@ -617,27 +646,27 @@ fun HomeTabs(
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     NavigationBarItem(
-                        selected = tab == 0,
+                        selected = tab == TabIndex.TAJI,
                         // 抱朴 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
                         //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
-                        onClick = { onTabClicked(0) {} },
-                        icon = { TaijiIcon(tab == 0) },
+                        onClick = { onTabClicked(TabIndex.TAJI) {} },
+                        icon = { TaijiIcon(tab == TabIndex.TAJI) },
                         label = { Text(stringResource(R.string.nav_taiji), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
-                        selected = tab == 1,
+                        selected = tab == TabIndex.TERMINAL,
                         // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
                         //
-                        // ⚠️ `tab = 1` 不能省（2026-10-07 用户报「红点返回回的不是主界面，
+                        // ⚠️ `tab = TabIndex.TERMINAL` 不能省（2026-10-07 用户报「红点返回回的不是主界面，
                         //    是抱朴 tab」）：人在抱朴页（tab=0）点逍遥进终端时若不改选中态，
                         //    终端一整页盖在上面时看不出问题，等红点关掉终端就露馅了——
                         //    底部高亮还停在抱朴，用户以为“返回到了 opencode”。
                         //    逍遥是进终端的那个 tab，用过终端就该停在逍遥。
                         // K1：终端 tab 双击不滚顶（点了就跳 Activity，列表根本不存在）。
-                        onClick = { onTabClicked(1) { onOpenTerminal(null, null) } },
-                        icon = { CaveIcon(tab == 1) },
+                        onClick = { onTabClicked(TabIndex.TERMINAL) { onOpenTerminal(null, null) } },
+                        icon = { CaveIcon(tab == TabIndex.TERMINAL) },
                         // 改名链（留痕）：2026-10-08「洞天」→「终端」（与全站功能文案统一）；
                         // 2026-10-14 派工单「终端」→「逍遥」（四 Tab 祝福命名定稿：
                         // 抱朴/逍遥/怡然/玄览 = 真实/自由/幸福/期望）。Tab 名走资源
@@ -648,20 +677,21 @@ fun HomeTabs(
                         colors = tabColors,
                     )
                     NavigationBarItem(
-                        selected = tab == 2,
-                        // K1：双击 = 滚到怡然 Agent 列表顶。
-                        onClick = { onTabClicked(2) {} },
-                        icon = { DingIcon(tab == 2) },
-                        label = { Text(stringResource(R.string.nav_agents), style = tabLabelStyle) },
+                        selected = tab == TabIndex.BROWSER,
+                        // 玄览（期望）：浏览器。**排在逍遥之后**（§B 顺序 33，2026-10-14
+                        // 用户要求：抱朴 / 逍遥 / 玄览 / 怡然）。
+                        // 页面区不是列表，双击滚顶 no-op（animateToTop 的 when 不含它）。
+                        onClick = { onTabClicked(TabIndex.BROWSER) {} },
+                        icon = { XuanLanIcon(tab == TabIndex.BROWSER) },
+                        label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
-                        selected = tab == 3,
-                        // 玄览：浏览器（阶段 1 新增）。页面区不是列表，双击滚顶 no-op
-                        // （animateToTop 的 when 不含 3）。
-                        onClick = { onTabClicked(3) {} },
-                        icon = { XuanLanIcon(tab == 3) },
-                        label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
+                        selected = tab == TabIndex.AGENTS,
+                        // K1：双击 = 滚到怡然 Agent 列表顶。
+                        onClick = { onTabClicked(TabIndex.AGENTS) {} },
+                        icon = { DingIcon(tab == TabIndex.AGENTS) },
+                        label = { Text(stringResource(R.string.nav_agents), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                 }
@@ -682,26 +712,27 @@ fun HomeTabs(
                 .consumeWindowInsets(padding),
             color = MaterialTheme.colorScheme.background,
         ) {
+            // 分支沿用原物理顺序（语义见 [TabIndex]）：抱朴 → 怡然 → 逍遥 → 玄览。
             when (tab) {
                 // 抱朴：Compose 原生 UI（直连 opencode serve 的 HTTP + SSE）。
                 // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
                 //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
                 //    真坏了就修，不藏一条会腐烂的备用路。
-                0 -> com.example.zhengdao.ui.taiji.TaijiScreen(
+                TabIndex.TAJI -> com.example.zhengdao.ui.taiji.TaijiScreen(
                     // 2026-10-10 UIUX 审计 B1 修：此前**没传 onExit**，它默认是空实现
                     // ⇒ 两处"点了没反应"：① 没装 OpenCode 时引导页的「返回」按钮；
                     // ② 抽屉里的「结束本次会话并退出太极」（会话被关掉了，人却还站在太极页，
                     //    界面上既没了聊天区也没了任何提示，像是卡住）。
-                    // 落点选**怡然**（tab=2）：抱朴的实例已经关了，留在原地没有意义；
+                    // 落点选**怡然**（TabIndex.AGENTS）：抱朴的实例已经关了，留在原地没有意义；
                     // 怡然是另一个有真实内容的 Tab，用户能继续做事。
                     // （不改 TaijiScreen 的默认值为妙——那会让"漏传"继续沉默。）
-                    onExit = { tab = 2 },
+                    onExit = { tab = TabIndex.AGENTS },
                     listState = taijiListState,
                     followState = taijiFollow,
                     positionedSession = taijiPositionedSession,
                 )
-                // 怡然：Agent 管理（OpenCode 已内置为抱朴，不在怡然展示）
-                2 -> HomeScreen(
+                // 怡然（幸福）：Agent 管理（OpenCode 已内置为抱朴，不在怡然展示）
+                TabIndex.AGENTS -> HomeScreen(
                     onOpenTerminal = onOpenTerminal,
                     onOpenSettings = onOpenSettings,
                     listState = homeListState,
@@ -709,11 +740,11 @@ fun HomeTabs(
                 // 逍遥：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在逍遥会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
-                1 -> TerminalTabEmptyState(onOpenTerminal = { onOpenTerminal(null, null) })
+                TabIndex.TERMINAL -> TerminalTabEmptyState(onOpenTerminal = { onOpenTerminal(null, null) })
                 // 玄览：浏览器（用户模式 MVP，阶段 1）。WebView 实例由 BrowserHolder
                 // 跨 Tab 保活；外部打开入口（终端链接点击等）走 BrowserHolder.pendingUrl
                 // + 上面 ON_RESUME 的切 Tab 消费（§4.6，第 ② 刀接线）。
-                3 -> com.example.zhengdao.ui.browser.BrowserScreen()
+                TabIndex.BROWSER -> com.example.zhengdao.ui.browser.BrowserScreen()
                 else -> {}
             }
         }
