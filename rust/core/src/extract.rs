@@ -147,6 +147,10 @@ pub fn extract_pipeline_skip(
     let mut entries = 0u64;
     let mut skipped = 0u64;
     let mut bytes_written = 0u64;
+    // R-04（第⑬刀）：「实际写出的成员数」。entries 统计的是解析到的成员（进度条口径），
+    // 但成员可能最终没落盘（越界硬链被拒、前向硬链二阶段没补上）——空归档兜底若只看
+    // entries，这些形状会被当成"装好了"，兜底失效。
+    let mut written = 0u64;
     let mut pending_hardlinks: Vec<(String, String)> = Vec::new(); // (link_path, target_in_archive)
 
     for entry in tar.entries().map_err(|e| ExtractError::BadArchive(format!("tar: {e}")))? {
@@ -180,6 +184,7 @@ pub fn extract_pipeline_skip(
             tar::EntryType::Directory => {
                 fs::create_dir_all(&target).map_err(ExtractError::Io)?;
                 set_mode(&target, entry.header().mode().unwrap_or(0o755));
+                written += 1;
             }
             tar::EntryType::Symlink => {
                 if let Some(parent) = target.parent() {
@@ -206,6 +211,8 @@ pub fn extract_pipeline_skip(
                     // host 侧（Windows）不做符号链接：空文件占位，语义与 Kotlin 版回退一致
                     fs::write(&target, b"").map_err(ExtractError::Io)?;
                 }
+                // 软链分支的每条退路（真软链 / 空文件占位）都算实际写出
+                written += 1;
             }
             tar::EntryType::Link => {
                 // 硬链接 → 与 Kotlin 版对齐：复制内容落地；前向引用登记二阶段
@@ -225,14 +232,25 @@ pub fn extract_pipeline_skip(
                 if !link_stays_inside(target_dir, &target, Path::new(&link_target)) {
                     continue;
                 }
-                let src = target_dir.join(&link_target);
+                // R-03（第⑬刀）：绝对 linkname 按 guest 根（= 解压根）解释 —— link_stays_inside
+                // 已用绝对形式判过界，但 join 前必须剥掉开头的 '/'：`target_dir.join("/etc/x")`
+                // 会把基底整个换掉（Unix 上变成真的宿主 /etc/x；Windows 上落到当前盘符根），
+                // 旧代码就这样把宿主文件的内容复制进环境目录。
+                let link_rel = link_target.trim_start_matches('/').to_string();
+                let src = target_dir.join(&link_rel);
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(ExtractError::Io)?;
                 }
                 if src.is_file() {
+                    // R-02（第⑬刀）：写前先删目标 —— 与软链分支的 `let _ = fs::remove_file`
+                    // 同一写法。不删的话 `fs::copy` 走"写穿"语义：目标若已是硬链接（与宿主
+                    // 文件/旧树共享 inode，proot 布局下真实存在），改的是共享 inode 本身，
+                    // 等于把树外文件也改了。
+                    let _ = fs::remove_file(&target);
                     bytes_written += fs::copy(&src, &target).map_err(ExtractError::Io)?;
+                    written += 1;
                 } else {
-                    pending_hardlinks.push((name.clone(), link_target));
+                    pending_hardlinks.push((name.clone(), link_rel));
                 }
             }
             tar::EntryType::Fifo | tar::EntryType::Char | tar::EntryType::Block => {
@@ -243,10 +261,14 @@ pub fn extract_pipeline_skip(
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(ExtractError::Io)?;
                 }
+                // R-02（第⑬刀）：写前先删目标 —— `File::create` 对已存在的目标是截断写，
+                // 目标若已是硬链接（与树外文件共享 inode），就把树外文件一起改了。
+                let _ = fs::remove_file(&target);
                 let mut out = fs::File::create(&target).map_err(ExtractError::Io)?;
                 let n = std::io::copy(&mut entry, &mut out).map_err(ExtractError::Io)?;
                 bytes_written += n;
                 set_mode(&target, entry.header().mode().unwrap_or(0o644));
+                written += 1;
             }
         }
     }
@@ -260,7 +282,10 @@ pub fn extract_pipeline_skip(
             continue;
         }
         if src.is_file() {
+            // R-02（第⑬刀）：同主循环，写前先删目标防写穿
+            let _ = fs::remove_file(&dst);
             fs::copy(&src, &dst).map_err(ExtractError::Io)?;
+            written += 1;
         }
     }
 
@@ -268,9 +293,11 @@ pub fn extract_pipeline_skip(
     //    「一条都没解出来」对齐（`if (extracted == 0) throw InstallFailed(...)`）。
     //    为什么必须挡在这里：0 条目原本会被当成安装成功，上层接着写
     //    `.zhengdao-rootfs-ok` 并换树 —— 用户得到一个"装好了"的空环境。
-    //    为什么用 `entries`（不含 skipped）：Java 侧的计数器同样不计被跳过的成员，
-    //    所以"补丁包只含元数据成员"这种形状两条路径都会拒（语义一致，好对拍）。
-    if entries == 0 {
+    //    为什么用 `written`（R-04，第⑬刀）而不是 `entries`：entries 是「解析到的
+    //    成员数」，成员可能最终没落盘（越界硬链被拒、前向硬链二阶段没补上）——
+    //    这种形状 entries>0 而 written=0，用 entries 判就兜不住。skipped 的口径
+    //    不变：不计入两者，与 Java 侧计数器对拍。
+    if written == 0 {
         return Err(ExtractError::EmptyArchive { skipped });
     }
 
@@ -377,7 +404,16 @@ fn check_path_inside(root: &Path, name: &Path) -> Result<(), ExtractError> {
 #[cfg(unix)]
 fn set_mode(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt;
-    let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode & 0o7777));
+    // R-03（第⑬刀）：`fs::set_permissions` 会**跟随符号链接** —— 目标若是软链（同名
+    // 软链可能先于目录/文件成员解出来），这里改的将是链接所指文件的权限，还可能
+    // 借它把 mode 应用到树外文件。tar 的 mode 位对软链本身没有意义，一律跳过。
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {}
+        Ok(_) => {
+            let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode & 0o7777));
+        }
+        Err(_) => {}
+    }
 }
 
 #[cfg(not(unix))]
