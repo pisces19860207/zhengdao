@@ -110,7 +110,7 @@
     <string name="home_env_install_desc">You need the Debian environment before installing agents (about 3 minutes, one time).</string>
     <string name="home_install_env">Install environment</string>
     <string name="home_recent_issues">Recent problems (%1$d)</string>
-    <string name="home_issues_note">Background failures used to go to the log only, invisible in the UI. They are listed here — tap a button when one can be handled. The full text lives in the app's private log; use Settings → Help to export it</string>
+    <string name="home_issues_note">Background failures used to go to the log only, invisible in the UI. They are listed here — tap a button when one can be handled. The full text lives in the app\'s private log; use Settings → Help to export it</string>
     <string name="home_agent_reinstall">Reinstall</string>
     <string name="home_agent_uninstall">Uninstall</string>
     <string name="home_agent_retry_install">Retry install</string>
