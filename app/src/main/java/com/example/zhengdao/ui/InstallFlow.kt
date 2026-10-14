@@ -83,8 +83,14 @@ object InstallFlow {
      * [RootfsInstaller.isInstalling] 是**进程级的真锁**——设置页四条长流程只能进 [InstallProgress]，
      * 而终端页三处安装、增量更新、启动修复走的是别的路径。只看看前者，按钮就会在
      * "终端页正在装环境"时仍然可点。
+     *
+     * ## R-26（审计第⑮刀，2026-10-14）：读的必须是**可观察状态**
+     *
+     * 两处来源都从 snapshot state 读（[InstallProgress.running] / [RootfsInstaller.installing]），
+     * 不再是普通布尔（`@Volatile busy` / `AtomicBoolean.get()`）——后者在组合期读**不会订阅**，
+     * 于是 6 处 `enabled = !InstallFlow.isRunning()` 会"时灵时不灵"。语义不变：安装中 = 都禁。
      */
-    fun isRunning(): Boolean = InstallProgress.isRunning() || RootfsInstaller.isInstalling()
+    fun isRunning(): Boolean = InstallProgress.running.value || RootfsInstaller.installing.value
 
     /**
      * 写 `files/install-notice.txt`：终端是原生 TerminalView，App 不能往里注入文本，
