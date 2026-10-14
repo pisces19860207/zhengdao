@@ -148,6 +148,28 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
         }
     }
 
+    // ── N-4 A 案：导出日志（SAF，用户选目标；导出内容过 redact） ──
+    // 私有目录用户打不开 ⇒ 对外出口只有这一条：用户按下导出 = 一次知情动作。
+    // 作用域装 CoroutineCrashHandler（P4-4 纪律：UI 作用域协程崩溃要带协程名/Job 线索）。
+    val exportScope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
+    var exportPendingName by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        val name = exportPendingName
+        exportPendingName = null
+        if (uri != null && name != null) {
+            exportScope.launch {
+                val ok = withContext(Dispatchers.IO) { writeLogExport(ctx, uri) }
+                Toast.makeText(
+                    ctx,
+                    ctx.getString(if (ok) R.string.help_log_export_ok else R.string.help_log_export_fail),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
     SettingsSubPage(title = stringResource(R.string.settings_help), onBack = onBack, scrollToEnd = scrollToEnd) {
         // ── 新手指南（第三批）──
         SectionCard(stringResource(R.string.help_guide_title)) {
@@ -168,15 +190,16 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
             FaqLine(stringResource(R.string.help_faq_q3), stringResource(R.string.help_faq_a3))
         }
         SectionCard(stringResource(R.string.help_log_title)) {
-            // 用户 2026-10-08：日志要和下载物一样"看得见、找得到"——不再藏在私有 cache 里。
+            // N-4 A 案（2026-10-14）：日志落点从公共区改回私有 filesDir/logs（隐私），
+            // 「用文件管理器直接打开」的口径随之作废——对外出口改为下面的「导出日志」。
             Text(
-                stringResource(R.string.help_log_location, com.example.zhengdao.rootfs.RunLog.dirPath(ctx)),
+                stringResource(R.string.help_log_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
             // 解释性长句 ⇒ 默认只显第一句（走查报告 §5.6）
-            ExpandableHint(stringResource(R.string.help_log_desc))
+            ExpandableHint(stringResource(R.string.help_log_export_hint))
             if (archiveCount > 0) {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -197,6 +220,18 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                 OutlinedButton(onClick = { logDialogText = prev }) {
                     Text(stringResource(R.string.help_log_view_prev))
                 }
+            }
+            // N-4 A 案：导出日志（与剪枝并列——一个对外、一个对内）
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = {
+                    val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US)
+                        .format(java.util.Date())
+                    exportPendingName = "证道日志-$stamp.txt"
+                    exportLauncher.launch(exportPendingName!!)
+                },
+            ) {
+                Text(stringResource(R.string.help_log_export_btn))
             }
             if (archiveCount > 3) {
                 // §B 顺序 2 · P2-5：按钮只负责弹确认框，破坏性动作搬进 confirmButton。
@@ -248,3 +283,30 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     SettingsLogDialog(log = logDialogText, onDismiss = { logDialogText = null })
 }
 
+
+/**
+ * N-4 A 案：把私有目录里的全部日志导出到用户选定的 SAF 目标（[SettingsHelpPage] 的
+ * 「导出日志」按钮回调后半段，跑在 IO 线程）。
+ *
+ * 内容 = 本轮 + 历史归档 + 错误汇总 + 旧版遗留，按段拼一份；**整篇过 [RunLog.redact]**
+ * （私有绝对路径/口令脱敏）之后才写出——导出的文件是要流转给开发者的，脱敏标准与
+ * 落盘一致。返回是否成功（调用方弹 Toast）。
+ */
+private fun writeLogExport(ctx: android.content.Context, uri: android.net.Uri): Boolean {
+    return try {
+        val entries = com.example.zhengdao.rootfs.RunLog.exportEntries(ctx)
+        val sb = StringBuilder()
+        sb.append("证道运行日志导出\n")
+        for ((label, f) in entries) {
+            sb.append("\n===== $label =====\n")
+            sb.append(runCatching { f.readText() }.getOrElse { "（读取失败：${it.message}）\n" })
+        }
+        val text = com.example.zhengdao.rootfs.RunLog.redact(sb.toString(), ctx.filesDir.absolutePath)
+        val out = ctx.contentResolver.openOutputStream(uri) ?: return false
+        out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        true
+    } catch (t: Throwable) {
+        android.util.Log.w("zhengdao/SettingsHelp", "导出日志失败：${t.message}")
+        false
+    }
+}
