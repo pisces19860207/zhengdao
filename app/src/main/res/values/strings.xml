@@ -791,7 +791,7 @@
 
     <!-- ── 终端页子集（TerminalActivity：安装引导 + 长按菜单 + 复制粘贴）── -->
     <!-- 其余 Toast（分屏 / 圆点说明 / 安装过程细节）按用户拍板登记豁免：终端画面本身是英文输出 -->
-    <string name="term_no_network">网络不通：请确认代理已开启，并在代理 App 的「分应用代理」里勾选「证道」</string>
+    <string name="term_no_network">网络不通：多半是代理 App 被系统后台杀掉了 —— 把它拉起来即可；不开代理、让「证道」直连手机网络也能通</string>
     <string name="term_nothing_to_copy">没有可复制的内容</string>
     <string name="term_copied_screen">已复制屏幕内容（%1$d 字）</string>
     <string name="term_clipboard_empty">剪贴板为空</string>

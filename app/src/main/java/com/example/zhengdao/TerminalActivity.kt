@@ -28,6 +28,7 @@ import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.browser.BrowserHolder
 import com.example.zhengdao.terminal.KnowledgeBaseHints
+import com.example.zhengdao.terminal.NetWatch
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
 import com.example.zhengdao.terminal.TerminalLinkPolicy
@@ -242,13 +243,20 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private var fallbackActive = false
 
     /**
-     * 网络预检是否已在本 Activity 生命周期内探过（2026-10-14 去重）。
+     * 网络探针状态（2026-10-14 第二版：改成"活体指示"）。判定逻辑在 [NetWatch]（纯逻辑、可单测），
+     * 本类只管调度与横幅。
      *
-     * 一轮启动里 [onEmulatorSet] 会被调用多次（pane 重建 / attach 重排 / 尺寸就绪），
-     * 原先每次都探一遍 ⇒ RunLog 里同一条「网络预检：…不通」出现好几条、横幅被反复刷。
-     * 只认"探过没探过"：**失败不自动重探**（重试周期与网络恢复无关，只会制造重复日志）。
+     * 为什么不再"一次会话只探一次"：用户实测这条横幅的价值正是**发现代理 App 被系统后台杀掉了**
+     * ——只探一次的话，会话中途代理被杀就再也报不出来，而"探通即收起"也永远等不到第二次观测。
+     * 现在：周期探 + **只在状态翻转时**写日志（既不丢报警，也不刷 RunLog）。
      */
-    private var networkCheckStarted = false
+    private val netWatch = NetWatch()
+    private var netProbeScheduled = false
+    private val netProbeRunnable = Runnable {
+        netProbeScheduled = false
+        probeNetwork()
+        scheduleNetProbe()
+    }
 
     // 字号与配色已移到 TerminalPrefs（设置页可配），此处不再硬编码。
 
@@ -389,10 +397,18 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     override fun onResume() {
         super.onResume()
         ensureStartedAndAttach()
+        // 网络探针：终端页可见时跑（周期性，见 startNetWatch / NetWatch）
+        startNetWatch()
         // 首次进入弹一次三点说明（等终端画面先出来，别挡在黑屏上）
         if (!dotsHintShownThisRun && !TerminalPrefs.dotsHintShown(this)) {
             mainHandler.post { showTrafficLightsHelp() }
         }
+    }
+
+    override fun onPause() {
+        // 页面不可见就停探针（省电；回到页面时 onResume 会重新起）
+        stopNetWatch()
+        super.onPause()
     }
 
     /**
@@ -743,7 +759,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     // injectPendingAutocmd 改成 `C-b c`，分屏却还留在老路上。删掉它，免得以后被重新用上。
 
     /**
-     * 轻量网络预检（异步，不阻塞）：npmjs ping 不通 → **终端页顶部横幅**提示。
+     * 网络探针（异步，不阻塞）：npmjs ping 不通 → **终端页顶部横幅**提示；恢复即自动收起。
      *
      * B-补-2 修正（2026-10-11）：这里原先用 `SessionManager.write("echo '…'\n")` 把一整行
      * **打进会话**。本方法由 [onEmulatorSet]（每次会话 spawn 完成）触发、5–10 秒后才回来，
@@ -752,18 +768,42 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
      * 点一下收起、一个字节都不进会话——也正是 2026-10-05 那次改动的原始意图
      * （"非 2xx / 超时 → 横幅代理提示，不阻塞会话"）。见 ERRATA E-095。
      *
-     * 2026-10-14 两处修正（用户报"横幅一直挂着"）：
-     * 1. **一次会话只探一次**：onEmulatorSet 会在一轮启动里被调用多次（pane 重建 / attach 重排
-     *    / 尺寸就绪都要走它），于是同一条「网络预检：…不通」在 RunLog 里一次启动出现好几条，
-     *    横幅也会被反复刷。用 [networkCheckStarted] 去重——只认"探过没探过"，**失败不自动重试**
-     *    （重试周期与网络恢复时机无关，只会制造重复日志）。
-     * 2. **探通即收起**：原先只在失败分支写横幅，探通后什么都不做；而上一次探测留下的横幅会
-     *    一直挂着（用户看到的就是"网络早就好了，横幅还在"）。现在探通后主动收起——但只收
-     *    自己写的那一条（比对 [R.string.term_no_network]），不碰安装进度 / 失败结论横幅。
+     * 2026-10-14 第二版（用户逐字：「那个网络不通其实功能还是很好用的，能证明 VPN 之类的
+     * APP 在后台被手机系统杀掉了」）—— 从"开卡时探一次"改成**活体指示**：
+     * 1. **周期性重探**：终端页可见时每 [NetWatch.PROBE_INTERVAL_MS] 探一次（`onResume` 起、
+     *    `onPause` 停）。
+     * 2. **判定交给 [NetWatch]**：首次观测立刻定状态（不让用户等两轮）；之后连续两次失败才判
+     *    "不通"（一次抖动不闪横幅），一次成功立刻判"通"（恢复要快）。**只在状态翻转时写日志**。
+     * 3. **探通即收起**（沿用）：只收自己写的那一条（比对 [R.string.term_no_network]），
+     *    不碰安装进度 / 失败结论横幅。
+     *
+     * 真机依据（2026-10-14，用户提醒"不走代理直连也该通"之后实测）：代理 App 未运行、系统里
+     * 没有任何 VPN 网络时，App 内 WebView 直连 `https://www.baidu.com` 正常、
+     * `https://registry.npmjs.org/-/ping` 返回 `{}` ⇒ **不开代理直连也能通**；横幅原文案
+     * （"去代理 App 的『分应用代理』里勾选证道"）方向是错的，已改。
      */
-    private fun networkPreCheck() {
-        if (networkCheckStarted) return
-        networkCheckStarted = true
+    private fun startNetWatch() {
+        if (fallbackActive) return
+        if (netProbeScheduled) return
+        netProbeScheduled = true
+        // 先立刻探一次（真机实测：只挂周期任务的话，用户要等满一个周期才看得到报警），
+        // 之后由 [netProbeRunnable] 每 [NetWatch.PROBE_INTERVAL_MS] 续一次。
+        mainHandler.post(netProbeRunnable)
+    }
+
+    /** 停用探针（终端页不可见时调用）：撤掉排队的下一次探测。 */
+    private fun stopNetWatch() {
+        netProbeScheduled = false
+        mainHandler.removeCallbacks(netProbeRunnable)
+    }
+
+    private fun scheduleNetProbe() {
+        if (netProbeScheduled) return
+        netProbeScheduled = true
+        mainHandler.postDelayed(netProbeRunnable, NetWatch.PROBE_INTERVAL_MS)
+    }
+
+    private fun probeNetwork() {
         Thread {
             val ok = try {
                 val c = java.net.URL("https://registry.npmjs.org/-/ping").openConnection()
@@ -773,19 +813,32 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 runCatching { c.inputStream.close() }
                 r
             } catch (_: Throwable) { false }
-            if (!ok) {
-                RunLog.log("网络预检：registry.npmjs.org 不通 —— 终端页横幅提示（不往会话里打字）")
-                runOnUiThread {
-                    // 正在装东西时别把安装进度横幅刷掉：安装流程自己会报网络失败（E-095 附带守卫）。
-                    if (com.example.zhengdao.ui.InstallProgress.state.value == null) {
-                        showBanner(getString(R.string.term_no_network))
-                    }
-                }
-            } else {
-                // 探通：把上一次探测留下的"网络不通"横幅收掉（用户报的那个毛病）。
-                dismissNetworkBanner()
-            }
+            runOnUiThread { applyNetProbe(ok) }
         }.start()
+    }
+
+    /** 一次观测落地：状态翻转才写日志 + 换横幅（同状态重复探测不留痕迹）。 */
+    private fun applyNetProbe(ok: Boolean) {
+        val flipped = netWatch.observe(ok)
+        if (netWatch.observations == 1) {
+            RunLog.log(
+                "网络探针：registry.npmjs.org ${if (ok) "可达（直连可用）" else "不通"} —— " +
+                    "此后每 ${NetWatch.PROBE_INTERVAL_MS / 1000} 秒探一次，只在状态翻转时记一行"
+            )
+        } else if (flipped) {
+            RunLog.log(
+                if (ok) "网络探针：恢复连通 —— 收起顶部网络横幅"
+                else "网络探针：registry.npmjs.org 不通（多半是代理 App 被系统杀掉）—— 顶部横幅提示"
+            )
+        }
+        if (!netWatch.online) {
+            // 正在装东西时别把安装进度横幅刷掉：安装流程自己会报网络失败（E-095 附带守卫）。
+            if (com.example.zhengdao.ui.InstallProgress.state.value == null) {
+                showBanner(getString(R.string.term_no_network))
+            }
+        } else {
+            dismissNetworkBanner()
+        }
     }
 
     /**
@@ -1161,9 +1214,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             termView.setTerminalCursorBlinkerState(true, false)
         }.onFailure { RunLog.log("光标闪烁启动失败: ${it.message}") }
 
-        // 进程 spawn 完成（新会话）：注入一键安装/启动命令 + 网络预检
+        // 进程 spawn 完成（新会话）：注入一键安装/启动命令 + 起网络探针（活体指示）
         mainHandler.post {
-            if (!fallbackActive) networkPreCheck()
+            if (!fallbackActive) startNetWatch()
             injectPendingAutocmd()
         }
     }
