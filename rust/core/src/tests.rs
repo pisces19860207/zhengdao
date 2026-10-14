@@ -419,7 +419,7 @@ fn 越界硬链不算写出_空归档兜底不失效() {
     let mut raw = Vec::new();
     // 唯一成员：硬链，linkname 越界（data/ 下翻 3 层出根）⇒ 主循环 continue
     raw.extend(ustar_entry("data/leak.txt", b'1', "../../../secret.txt", b""));
-    raw.extend(std::iter::repeat(0u8).take(1024)); // 归档结束块
+    raw.extend(std::iter::repeat_n(0u8, 1024)); // 归档结束块
     let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
     let mut enc = enc.auto_finish();
     io::copy(&mut raw.as_slice(), &mut enc).unwrap();
@@ -456,7 +456,7 @@ fn 同名覆写_不写穿已有的硬链接目标() {
     let zst = dir.join("r02.tar.zst");
     let mut raw = Vec::new();
     raw.extend(ustar_entry("victim.txt", b'0', "", b"NEW-CONTENT"));
-    raw.extend(std::iter::repeat(0u8).take(1024)); // 归档结束块
+    raw.extend(std::iter::repeat_n(0u8, 1024)); // 归档结束块
     let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
     let mut enc = enc.auto_finish();
     io::copy(&mut raw.as_slice(), &mut enc).unwrap();
@@ -473,6 +473,89 @@ fn 同名覆写_不写穿已有的硬链接目标() {
         fs::read(&outside).unwrap(),
         b"OUTSIDE-ORIGINAL",
         "树外原件被写穿 —— 与 victim.txt 共享的 inode 被改了"
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
+/// 第⑬刀 R-03 端到端：绝对 linkname 的硬链必须按 guest 根（= 解压根）解释。
+///
+/// 为什么必须走完整通路：谓词用例（`link_stays_inside` 判据）绿了不等于通路绿 ——
+/// 判据过了之后 join 一步照样能把基底换掉、读到宿主文件（E-128 同款"谓词绿通路红"坑）。
+/// 这里造一个含「绝对 linkname 硬链」的真 tar 跑完整 extract，断言：
+///   1. 树内绝对 linkname 按解压根解释（内容来自树内文件）—— 旧代码 join 换基底
+///      后取不到，本断言在 Windows/Unix 上都红；
+///   2. 指向树外的绝对 linkname 读不到树外内容 —— unix 上旧代码 join 后正好
+///      命中宿主哨兵、必红；Windows 上 join 落到盘符根通常命中不了（平台差异，
+///      此条在 Windows 允许通过，真机 Android 是 unix 语义）；
+///   3. 树外哨兵原封不动、解压根外无任何新增文件。
+#[test]
+fn 端到端_绝对linkname硬链_按解压根解释且不出树() {
+    let dir = std::env::temp_dir().join(format!("zext_r03_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    // 树外哨兵：旧代码会把绝对 linkname join 成宿主路径、把它的内容读进树里
+    let outside = dir.join("outside_secret.txt");
+    fs::write(&outside, b"OUTSIDE-SECRET-CONTENT").unwrap();
+
+    let zst = dir.join("r03.tar.zst");
+    let mut raw = Vec::new();
+    raw.extend(ustar_entry("inner.txt", b'0', "", b"inner-bytes"));
+    // 绝对 linkname、树内合法：按 guest 根（= 解压根）解释 → out/inner.txt
+    raw.extend(ustar_entry("abs_link", b'1', "/inner.txt", b""));
+    // 绝对 linkname 指向树外哨兵（绝对路径写成 tar 里的 posix 形状）
+    let outside_linkname = {
+        #[cfg(unix)]
+        {
+            format!("/{}", outside.to_string_lossy())
+        }
+        #[cfg(not(unix))]
+        {
+            format!("/{}", outside.to_string_lossy().replace('\\', "/"))
+        }
+    };
+    raw.extend(ustar_entry("leak", b'1', &outside_linkname, b""));
+    raw.extend(std::iter::repeat_n(0u8, 1024)); // 归档结束块
+    let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
+    let mut enc = enc.auto_finish();
+    io::copy(&mut raw.as_slice(), &mut enc).unwrap();
+    drop(enc);
+
+    let out = dir.join("out");
+    let report = extract_pipeline(&zst, &out, None, &mut |_| {}).unwrap();
+    assert_eq!(report.entries, 3);
+
+    assert_eq!(
+        fs::read(out.join("inner.txt")).unwrap(),
+        b"inner-bytes",
+        "普通成员应照常解出"
+    );
+    assert_eq!(
+        fs::read(out.join("abs_link")).unwrap(),
+        b"inner-bytes",
+        "绝对 linkname 应按解压根解释、从树内 inner.txt 取内容"
+    );
+    let leak = fs::read(out.join("leak")).unwrap_or_default();
+    assert!(
+        !leak.windows(21).any(|w| w == b"OUTSIDE-SECRET-CONTENT"),
+        "树外哨兵内容被复制进了解压根（绝对 linkname 读到了宿主文件）"
+    );
+    assert_eq!(
+        fs::read(&outside).unwrap(),
+        b"OUTSIDE-SECRET-CONTENT",
+        "树外哨兵被改动"
+    );
+    let mut names: Vec<String> = fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        vec![
+            "out".to_string(),
+            "outside_secret.txt".to_string(),
+            "r03.tar.zst".to_string()
+        ],
+        "解压根之外出现了新文件"
     );
     fs::remove_dir_all(&dir).ok();
 }
