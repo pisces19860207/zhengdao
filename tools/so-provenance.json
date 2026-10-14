@@ -1,19 +1,19 @@
 {
   "version": 1,
   "comment": "libzhengdao_core.so 与 rust/core/src 的同源基线；只允许在确认重编后用 --write 刷新",
-  "generated_at": "2026-10-14T21:02:39",
+  "generated_at": "2026-10-14T21:24:23",
   "so": {
-    "app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": "c36d2e39cc7f6560b38031b749c1ad97058a3d7300f33660f379e75445af0330"
+    "app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": "ffad1eba232b860b3df0d86aefdfe8f70cd27132fda50f6d2d061deb7280808a"
   },
   "source_files": {
     "rust/core/src/dirsize.rs": "2243253e027067f5647f2ae271cd34f6c3c0683437a1ffb346854e9c381378bb",
     "rust/core/src/ed25519.rs": "3997ece8a38ffd3cad571ff54513cb533a8a7749aa8fc6bf36624dc6a39bd39a",
-    "rust/core/src/extract.rs": "c0673de8250932e99ca4a273b090569909874bce6cf66169f0e424c4ce48a9ba",
+    "rust/core/src/extract.rs": "32b884d7d4d6730b426d77b5b0ef1de5fe91014c914875035f4298c178774541",
     "rust/core/src/jni_bridge.rs": "2ec3a0ac2d765b0c67739c3e66c0b57f81dae909fb73944ecc6a318b7147c127",
     "rust/core/src/json.rs": "c0062fe564097b0346b5450a35fe0a2bec243d91b691bceaeb1faf3544d6bde0",
     "rust/core/src/lib.rs": "5893621f0c049732839fc2d526db1cc54a8dd2edf0a87a41b76e49f9f74390d0",
     "rust/core/src/sha256.rs": "225a48598e0b6d64d83892dba1ac7d390268b7c666151bc6edfb200ac7a9242a",
-    "rust/core/src/tests.rs": "5b1dfbfdc054f269153ed1d6dd50c356f0b04a387ef72843c8224bc16d451e68"
+    "rust/core/src/tests.rs": "6cb352effb34952b58e52bb8347414f93c63c4a414437595dbd4fd3dc98f922d"
   },
-  "source_tree_fingerprint": "eb95caca419136bb3f1381df4adf3810fef2ffe845967a87fcbe3dcd666e9e91"
+  "source_tree_fingerprint": "b8c1bc799143b641fa983cd608504f394979d80eb89ca8ab1caab96432240f40"
 }
