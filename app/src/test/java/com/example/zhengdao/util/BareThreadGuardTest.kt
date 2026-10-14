@@ -37,9 +37,12 @@ import kotlin.text.Charsets
  * 对账单冻结 2026-10-14 的 28 个创建点（`Thread` 关键字行号）。将来文件拆分/移动
  * 会让它失败——那是提醒回来更新对账单，不是 bug。
  *
- * 2026-10-14（审计第 2 期配套）：本批在 `SettingsStorageActivity.kt`（B-3 加了 2 行说明）
- * 与 `TerminalActivity.kt`（N-2 原子拷贝 +15 行）里改了代码，行号随之平移。数量仍是 28、
- * 纪律门禁仍绿，只按本文件自己的规矩回填这 4 个行号（不是新增线程）。
+ * 行号回填记录（本文件自己的规矩：平移就回填，不是新增线程）：
+ * - 2026-10-14（第⑧刀 P4-1 太极拆分后）：SettingsStorageActivity / TerminalActivity 等平移，已回填；
+ * - 2026-10-14（审计第 2 期配套 / 第⑩批A）：`SettingsStorageActivity.kt`（B-3 加 2 行说明）与
+ *   `TerminalActivity.kt`（N-2 原子拷贝 +15 行）平移 ⇒ 回填 4 个行号；
+ * - 2026-10-14（第⑨刀 B）：ZhengdaoApp.kt 插入 `initWebViewDataDirectory()`（+30 行）
+ *   ⇒ 两条创建点 47→77 / 97→127，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -105,8 +108,8 @@ class BareThreadGuardTest {
             "TerminalActivity.kt:1550",             // zd-install-saf
             "TerminalActivity.kt:1610",             // zd-install-cache（2026-10-14 N-2 原子拷贝后 +15）
             "TerminalActivity.kt:1696",             // zd-install-download（同上 +15）
-            "ZhengdaoApp.kt:47",                    // zhengdao-keepalive-archive
-            "ZhengdaoApp.kt:97",                    // zd-auto-clean
+            "ZhengdaoApp.kt:77",                    // zhengdao-keepalive-archive
+            "ZhengdaoApp.kt:127",                   // zd-auto-clean
         )
         assertEquals(
             "裸 Thread 创建点与 2026-10-14 对账单不符——新增/移动了线程？" +

@@ -34,7 +34,18 @@ data class EngineSecurityConfig(
      * 未来页面侧需求预留，默认空；非空时只暴露列名（红线④：agent 不得重绑，§4.3）。
      */
     val allowedJsInterfaces: Set<String> = emptySet(),
-    /** 多标签数据目录隔离后缀（§4.2：setDataDirectorySuffix，阶段 2 启用）。 */
+    /**
+     * 多标签数据目录后缀（§4.2）。
+     *
+     * 第⑨刀 B 查证（② AOSP `WebView.java` 原文）：`setDataDirectorySuffix` 是**静态、
+     * 每进程一次性**（须在首个 WebView 创建前调），设计意图是**多进程间**隔离——
+     * "Each directory can be used by only one process… different processes in the same
+     * application cannot directly share WebView-related data"。⇒ **单进程内的多个标签
+     * 不可能各有数据目录**（cookie/localStorage/cache 在同进程所有标签间共享，与桌面
+     * 浏览器普通标签一致）；进程级 suffix 在 `ZhengdaoApp.onCreate` 统一设。
+     *
+     * 本字段保留 null（引擎不再尝试 per-tab 后缀），仅作文档位。
+     */
     val dataDirectorySuffix: String? = null,
 ) {
     companion object {
