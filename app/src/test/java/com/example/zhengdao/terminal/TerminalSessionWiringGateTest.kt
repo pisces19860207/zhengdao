@@ -36,4 +36,39 @@ class TerminalSessionWiringGateTest {
             sessionManager.contains("getTerminalCursorStyle(): Int = 2")
         )
     }
+
+    @Test
+    fun `行缓冲必须跟着改行键失效`() {
+        // §B-补-49 🟢5（2026-10-14）：^C 与 ↑/↓/ESC 按下后必须清行缓冲，
+        // 否则回车时用旧内容检索资料库（附上的线索与当下这句话无关）。
+        val activity = read("src/main/java/com/example/zhengdao/TerminalActivity.kt")
+        assertTrue(
+            "方向/ESC 键集合必须存在（↑/↓ 历史召回、ESC 取消编辑会改写行内容）",
+            activity.contains("val lineChangingKeys = setOf(R.id.key_up, R.id.key_down, R.id.key_esc)")
+        )
+        assertTrue(
+            "改行键与 ^C 之后必须调 KnowledgeBaseHints.clearLine()",
+            activity.contains("KnowledgeBaseHints.clearLine()")
+        )
+    }
+
+    @Test
+    fun `注入启动命令必须先判就绪且失败保留`() {
+        // §B-补-49 🟢3(b)（2026-10-14）：原实现先清 pendingAutocmd 再写 ⇒ 失败即永久丢失。
+        val activity = read("src/main/java/com/example/zhengdao/TerminalActivity.kt")
+        assertTrue(
+            "injectPendingAutocmd 必须在会话未就绪/写入失败时保留命令待重试（日志含「保留待重试」）",
+            activity.contains("保留待重试")
+        )
+    }
+
+    @Test
+    fun `线索写回优先当前会话`() {
+        // §B-补-49 🟢3(c)（2026-10-14）：传参是按键时捕获的旧对象，1.5 秒后可能已退出。
+        val activity = read("src/main/java/com/example/zhengdao/TerminalActivity.kt")
+        assertTrue(
+            "writeToSession 必须优先 SessionManager.session（当前会话），旧对象仅作兜底",
+            activity.contains("val s = SessionManager.session ?: session")
+        )
+    }
 }
