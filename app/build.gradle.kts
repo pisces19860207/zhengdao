@@ -445,7 +445,7 @@ dependencies {
 
     // Markdown 渲染（v1.1 第四阶段）：纯 Compose 实现，覆盖最终回答的 Markdown 排版 +
     // 代码块独立背景/等宽/横向滚动/复制按钮/语法高亮。锁 0.38.1（Kotlin 同线，见 libs.versions.toml）。
-    // 仅用于渲染层（TaijiComponents.FinalAnswerText），不触碰会话/网络层（架构冻结红线）。
+    // 仅用于渲染层（TaijiMessageList.FinalAnswerText），不触碰会话/网络层（架构冻结红线）。
     implementation(libs.mikepenz.markdown)
     implementation(libs.mikepenz.markdown.m3)
     implementation(libs.mikepenz.markdown.code)
