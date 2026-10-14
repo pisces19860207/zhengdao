@@ -4725,8 +4725,7 @@ P3-6 把 `pickExpectedSha` 的 `rememberedSha` 参数与那处 fail-open 改回�
 
 **未取证部分（如实记录）**：BUG-1 的**设备端触发**本次没做——造一份「sha 合法或压根没 sha 的 0 条目归档」再走一次真装机会把用户环境搅乱，而这条逻辑的入口是纯函数级的（Rust 两例单测 + Kotlin 分流代码复核）。增量路径（`RootfsDelta` 的 skipNames）同理只有代码复核。**BUG-1 的修复因此按「单测 + 代码复核」记录，不当作真机验证。**
 
-> **补记（2026-10-10 晚，E-085）**：本条 Rust 那半的**二进制**直到 E-085 重编 pp/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 时才进包（入库的 .so 是人工产物，CI 只验对齐/符号、不重编，见 E-085）。在此期间「0 条目」全靠 Kotlin 侧那道 
-eport.first <= 0L ⇒ throw InstallFailed(...) 兜住 —— 行为正确，只是 Rust 那半没在包里。
+> **补记（2026-10-10 晚，E-085）**：本条 Rust 那半的**二进制**直到 E-085 重编 `app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 时才进包（入库的 .so 是人工产物，CI 只验对齐/符号、不重编，见 E-085）。在此期间「0 条目」全靠 Kotlin 侧那道 `report.first <= 0L ⇒ throw InstallFailed(...) 兜住 —— 行为正确，只是 Rust 那半没在包里。
 
 **后果**：① 空包/全被跳过的包不再能装成"成功"，用户不会再拿到一个空 Debian 还被报"装好了"；② 正常开会话省掉 313,648 B 的 SHA-256（首启与文件被改写后仍会算）；③ 离线纯 tar 包照旧可装（`BadArchive` 仍在回退里）；④ 戳文件是纯优化：删掉、损坏、或格式升级读不动，都只是退回"每次都算"，不影响正确性；⑤ RunLog 多一行每次会话的校验摘要——用户报「终端开得慢」时可据此判断是不是又退回了全量重算。
 
