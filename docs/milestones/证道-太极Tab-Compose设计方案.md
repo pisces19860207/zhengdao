@@ -1,9 +1,13 @@
 # 太极 Tab · Compose 原生 UI 设计方案
 
-> **版本**：v1.0（2026-10-06）>   
-> **定位**：OpenCode 的原生客户端。替代 WebView / TerminalView，直连 `opencode serve` 的 HTTP + SSE API。>   
-> **前置裁定**：`证道-太极Tab技术选型裁定.md`（为什么做）、`证道-WebView卡慢根因诊断.md`（为什么必须换掉 LocalProxy）>   
-> **技术栈**：Kotlin + Jetpack Compose（Material 3）+ OkHttp 4.12（已有）+ kotlinx.serialization>   
+> **版本**：v1.0（2026-10-06）
+>   
+> **定位**：OpenCode 的原生客户端。替代 WebView / TerminalView，直连 `opencode serve` 的 HTTP + SSE API。
+>   
+> **前置裁定**：`证道-太极Tab技术选型裁定.md`（为什么做）、`证道-WebView卡慢根因诊断.md`（为什么必须换掉 LocalProxy）
+>   
+> **技术栈**：Kotlin + Jetpack Compose（Material 3）+ OkHttp 4.12（已有）+ kotlinx.serialization
+>   
 > **不引入**：WebView、TerminalView、本地代理层、官方 JS SDK
 
 ---
