@@ -99,4 +99,21 @@ class TerminalGestureGateTest {
         val end = source.indexOf("\n    @Override", start + 10) // 顶层方法（4 空格缩进）
         return source.substring(start, if (end > 0) end else source.length)
     }
+
+    @Test
+    fun `滚轮封顶口径必须与实现一致（每次回调，非一次手势）`() {
+        // 2026-10-14 追加（§B-补-49 🟢1）：实现是"每次 onScroll 回调各自封顶"，
+        // KDoc 若再写回「一次手势最多」就是口径又漂了（P1-d 的原始论证也就跟着失真）。
+        val idx = source.indexOf("MAX_WHEEL_ROWS = 10")
+        assertTrue("源码里找不到 MAX_WHEEL_ROWS", idx > 0)
+        val kdoc = source.substring(0, idx)
+        assertFalse(
+            "KDoc 又写成「一次手势最多」了——实现是每次回调封顶，手势级无硬上限",
+            kdoc.contains("一次手势**最多向 guest 转发")
+        )
+        assertTrue(
+            "KDoc 必须写明「每次 onScroll 回调」",
+            kdoc.contains("每次 onScroll 回调")
+        )
+    }
 }
