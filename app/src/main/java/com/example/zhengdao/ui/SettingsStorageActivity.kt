@@ -597,36 +597,41 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             // §B 顺序 2 · P2-5：删掉非当前版本的安装包缓存是**永久删除**，先弹确认框再执行。
             var installerCleanConfirm by remember { mutableStateOf(false) }
             fun reloadCache() {
-                Thread {
-                    val archives = com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx)
-                    val dir = com.example.zhengdao.rootfs.RootfsCache.dir(ctx)
-                    val current = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
-                    val lines = buildString {
-                        appendLine(ctx.getString(R.string.storage_installer_dir, dir.path))
-                        appendLine(
-                            ctx.getString(
-                                R.string.storage_installer_count,
-                                archives.size,
-                                current ?: ctx.getString(R.string.settings_status_not_installed),
-                            )
-                        )
-                        archives.forEach {
+                // R-25（第⑯刀）：裸 Thread{} + Handler(mainLooper).post 改为本文件既有 scope +
+                // withContext(Dispatchers.IO)——盘 IO（列目录/量大小/落 LastValues）全在 IO，
+                // 回主线程只做状态赋值（scope 默认 Main.immediate，withContext 返回即在主线程）。
+                scope.launch {
+                    val (lines, rb) = withContext(Dispatchers.IO) {
+                        val archives = com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx)
+                        val dir = com.example.zhengdao.rootfs.RootfsCache.dir(ctx)
+                        val current = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
+                        val text = buildString {
+                            appendLine(ctx.getString(R.string.storage_installer_dir, dir.path))
                             appendLine(
                                 ctx.getString(
-                                    R.string.storage_installer_item,
-                                    it.name,
-                                    it.length() / (1024 * 1024),
+                                    R.string.storage_installer_count,
+                                    archives.size,
+                                    current ?: ctx.getString(R.string.settings_status_not_installed),
                                 )
                             )
+                            archives.forEach {
+                                appendLine(
+                                    ctx.getString(
+                                        R.string.storage_installer_item,
+                                        it.name,
+                                        it.length() / (1024 * 1024),
+                                    )
+                                )
+                            }
                         }
+                        val candidates = com.example.zhengdao.rootfs.RootfsCache.rollbackCandidates(ctx)
+                        // 原写法这条落盘在 Handler.post（主线程）里做 —— 正是主线程 IO 缺陷的一部分
+                        LastValues.saveText(ctx, "installer_cache_text", text)
+                        text to candidates
                     }
-                    val rb = com.example.zhengdao.rootfs.RootfsCache.rollbackCandidates(ctx)
-                    android.os.Handler(ctx.mainLooper).post {
-                        cacheText = lines
-                        rollbacks = rb
-                        LastValues.saveText(ctx, "installer_cache_text", lines)
-                    }
-                }.apply { isDaemon = true; name = "zd-cache-reload" }.start()
+                    cacheText = lines
+                    rollbacks = rb
+                }
             }
             LaunchedEffect(Unit) { reloadCache() }
             Text(cacheText, style = MaterialTheme.typography.bodySmall)
@@ -662,17 +667,18 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                     confirmButton = {
                         TextButton(enabled = !InstallFlow.isRunning(), onClick = {
                             installerCleanConfirm = false
-                            Thread {
-                                val n = com.example.zhengdao.rootfs.RootfsCache.cleanupNonCurrent(ctx)
-                                android.os.Handler(ctx.mainLooper).post {
-                                    Toast.makeText(
-                                        ctx,
-                                        ctx.getString(R.string.storage_installer_cleaned, n),
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                    reloadCache()
+                            // R-25（第⑯刀）：裸 Thread{} + Handler.post 改 scope + withContext(IO)
+                            scope.launch {
+                                val n = withContext(Dispatchers.IO) {
+                                    com.example.zhengdao.rootfs.RootfsCache.cleanupNonCurrent(ctx)
                                 }
-                            }.apply { isDaemon = true; name = "zd-cache-clean" }.start()
+                                Toast.makeText(
+                                    ctx,
+                                    ctx.getString(R.string.storage_installer_cleaned, n),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                reloadCache()
+                            }
                         }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                     },
                     dismissButton = {
@@ -714,28 +720,34 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
                             onClick = {
                             rollbackConfirm = null
-                            Thread {
-                                // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）
-                                InstallFlow.start(
-                                    ctx,
-                                    ctx.getString(R.string.storage_rollback_start, target.name),
-                                    fromLocal = true,
-                                )
+                            // R-25（第⑯刀）：裸 Thread{} 改 scope + withContext(Dispatchers.IO)；
+                            // 盘 IO（sha256/解压/安装）全在 IO 线程，回主线程只做状态赋值与 Snackbar。
+                            scope.launch {
                                 try {
-                                    InstallFlow.update(ctx, ctx.getString(R.string.storage_unpacking))
-                                    RootfsInstaller.ensureFreeSpace(ctx, target.length())
-                                    // 回退到"与当前环境同源的那个包"（例如刚回退过又点了一次同一个版本）时
-                                    // 保留环境指纹；换成别的版本必然对不上 ⇒ null，照装不写 env。
-                                    // 判定与理由同修复路径：RootfsInstaller.envForReinstall 的 KDoc。
-                                    val rollSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(target)
-                                    val rollEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
-                                        File(ctx.filesDir, "rootfs"),
-                                        rollSha,
-                                    )
-                                    com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, target, rollEnv, rollSha) { }
-                                    com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
-                                    InstallFlow.finish(ctx, ctx.getString(R.string.storage_rollback_done, target.name))
-                                    android.os.Handler(ctx.mainLooper).post { storageTick++ }
+                                    withContext(Dispatchers.IO) {
+                                        // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）
+                                        InstallFlow.start(
+                                            ctx,
+                                            ctx.getString(R.string.storage_rollback_start, target.name),
+                                            fromLocal = true,
+                                        )
+                                        InstallFlow.update(ctx, ctx.getString(R.string.storage_unpacking))
+                                        RootfsInstaller.ensureFreeSpace(ctx, target.length())
+                                        // 回退到"与当前环境同源的那个包"（例如刚回退过又点了一次同一个版本）时
+                                        // 保留环境指纹；换成别的版本必然对不上 ⇒ null，照装不写 env。
+                                        // 判定与理由同修复路径：RootfsInstaller.envForReinstall 的 KDoc。
+                                        val rollSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(target)
+                                        val rollEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
+                                            File(ctx.filesDir, "rootfs"),
+                                            rollSha,
+                                        )
+                                        com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, target, rollEnv, rollSha) { }
+                                        com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
+                                        InstallFlow.finish(ctx, ctx.getString(R.string.storage_rollback_done, target.name))
+                                    }
+                                    // 原 Handler(mainLooper).post { storageTick++ }：
+                                    // withContext 正常返回即在主线程，直接赋值（仅成功路径）
+                                    storageTick++
                                 } catch (t: Throwable) {
                                     InstallFlow.fail(
                                         ctx,
@@ -745,24 +757,21 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
                                     // 用户看的用人话，进 Snackbar 后点 action 由 openLogFromSnackbar()
                                     // 现场取日志并弹窗（缺日志时给指向目录的 Toast，不静默）。
-                                    // 必须在主线程弹——scope 是 Composable 的 CoroutineScope，
-                                    // 但 rememberCoroutineScope { CoroutineCrashHandler } 默认走 Dispatchers.Main.immediate。
-                                    scope.launch {
-                                        val r = snackbarHostState.showSnackbar(
-                                            message = ctx.getString(
-                                                R.string.storage_rollback_failed,
-                                                HumanizeError.title(t, ctx.resources),
-                                            ),
-                                            actionLabel = ctx.getString(R.string.common_view_log),
-                                            duration = SnackbarDuration.Indefinite,
-                                        )
-                                        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                                            // 现场取日志再弹窗（直接置弹窗状态会因文本仍是 null 而静默无操作）
-                                            openLogFromSnackbar()
-                                        }
+                                    // scope 默认走 Dispatchers.Main.immediate —— 这里已在主线程，直接挂起弹。
+                                    val r = snackbarHostState.showSnackbar(
+                                        message = ctx.getString(
+                                            R.string.storage_rollback_failed,
+                                            HumanizeError.title(t, ctx.resources),
+                                        ),
+                                        actionLabel = ctx.getString(R.string.common_view_log),
+                                        duration = SnackbarDuration.Indefinite,
+                                    )
+                                    if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                        // 现场取日志再弹窗（直接置弹窗状态会因文本仍是 null 而静默无操作）
+                                        openLogFromSnackbar()
                                     }
                                 }
-                            }.apply { isDaemon = true; name = "zd-rollback" }.start()
+                            }
                         }) { Text(stringResource(R.string.storage_rollback_btn)) }
                     },
                     dismissButton = { TextButton(onClick = { rollbackConfirm = null }) { Text(stringResource(R.string.common_cancel)) } },
