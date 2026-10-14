@@ -290,6 +290,15 @@ object RootfsInstaller {
      * @param archiveSha256 本次装入的那个**全量包**的 sha256（写进标记，供下次重装做"同源"判定）；
      *   增量安装、用户自选文件等说不清来源的路径传 null。
      * @param onEntry 每处理一个条目回调一次其路径（调用方自行节流展示）
+     *
+     * ## R-07（审计第⑮刀，2026-10-14）：失败路径必须干净
+     *
+     * 此前本函数是「直筒式」：清 tmp → `mkdirs()`（不看返回值）→ 解包 → 写标记 → 替换。
+     * 中间任何一步失败都会把**半截 tmp 树**留在盘上（既白占 1–2GB，下次启动才由
+     * [cleanupPartial] 收拾），而且**没有空间预检**、`mkdirs` 失败也当没看见。现在拆出
+     * [installInto]（与 Context 解耦）：空间不足在动盘**之前**就拒（[ensureFreeSpace] 给人话文案）、
+     * `mkdirs` 失败当失败处理、任何异常都在 `catch` 里清掉 tmp 再抛——**不吞异常**，
+     * 原因原样给到用户。
      */
     fun install(
         context: Context,
@@ -299,28 +308,70 @@ object RootfsInstaller {
         onEntry: (String) -> Unit,
     ) = withInstallLock("安装环境") {
         val files = context.filesDir
-        val rootfsDir = File(files, "rootfs")
-        val tmpDir = File(files, TMP_NAME)
-        tmpDir.deleteRecursively()
-        tmpDir.mkdirs()
-
-        // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
-        // 回退纪律（规范 #2）：任何失败 → 落回 commons-compress Java 路径；
-        // 唯一例外是**完整性失败**（见 extractArchive），它必须硬失败。
-        // 把"这份包应当是什么 sha256"交给 Rust 对账：信任锚落在**恰好被解压的那些字节**上，
-        // 而不是另一次遍历的结果；没有独立期望值的路径（用户自选文件等）传 null = 只算不校验。
-        val usedRust = extractArchive(archive, tmpDir, expectedSha256 = archiveSha256, onEntry = onEntry)
-
-        // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
-        RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
-
-        // 锁已在手（#11）：走无锁的替换内核，别用自带锁的 [swapIntoPlace] 自锁自己
-        swapLocked(tmpDir, rootfsDir)
-        Log.i(
-            TAG,
-            if (usedRust) "RootFS 安装完成（Rust 路径）：${rootfsDir.path}"
-            else "RootFS 安装完成：${rootfsDir.path}",
+        installInto(
+            rootfsDir = File(files, "rootfs"),
+            tmpDir = File(files, TMP_NAME),
+            archive = archive,
+            env = env,
+            archiveSha256 = archiveSha256,
+            // R-07：空间预检下沉进内核，保证「先查空间、再动盘」——磁盘不够时一个字节都不写。
+            ensureSpace = { ensureFreeSpace(context, archive.length()) },
+            onEntry = onEntry,
         )
+    }
+
+    /**
+     * [install] 的内核（与 Context 解耦，只吃目录 `File` ⇒ JVM 单测能直接注入失败）。
+     *
+     * 顺序（R-07 定的）：① 清上次残局 → ② **空间预检**（不足即在动盘前抛出）→
+     * ③ 建临时树（`mkdirs` 失败即失败）→ ④ 解包 + 写标记 + 原子替换。
+     * ④ 里任何异常都会在 `catch` 中清掉 tmp 再原样抛出——盘上不留半截树。
+     *
+     * @param ensureSpace 空间预检（生产路径传 [ensureFreeSpace] 的闭包；单测注入"必抛"以模拟空间不足）
+     */
+    internal fun installInto(
+        rootfsDir: File,
+        tmpDir: File,
+        archive: File,
+        env: String?,
+        archiveSha256: String?,
+        ensureSpace: () -> Unit = {},
+        onEntry: (String) -> Unit,
+    ) {
+        // ① 清掉上次中断留下的 tmp 残局（[cleanupPartial] 之外的第二道保险；持锁期间它一定是陈的）。
+        tmpDir.deleteRecursively()
+        // ② 空间预检：不足时抛出（人话文案由 [ensureSpace] 给），此刻盘上还没动。
+        ensureSpace()
+        // ③ 建临时树：mkdirs 说了算，不能"建不出来也照解包"——那会在 [extractArchive] 里
+        //    以更难懂的方式炸（NoSuchFile / 只读父目录），文案也指不回来。
+        if (!tmpDir.mkdirs() && !tmpDir.isDirectory) {
+            throw InstallFailed("无法创建临时解包目录，安装未开始（存储不可写或空间不足）：${tmpDir.path}")
+        }
+        try {
+            // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
+            // 回退纪律（规范 #2）：任何失败 → 落回 commons-compress Java 路径；
+            // 唯一例外是**完整性失败**（见 extractArchive），它必须硬失败。
+            // 把"这份包应当是什么 sha256"交给 Rust 对账：信任锚落在**恰好被解压的那些字节**上，
+            // 而不是另一次遍历的结果；没有独立期望值的路径（用户自选文件等）传 null = 只算不校验。
+            val usedRust = extractArchive(archive, tmpDir, expectedSha256 = archiveSha256, onEntry = onEntry)
+
+            // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
+            RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
+
+            // 锁已在手（#11）：走无锁的替换内核，别用自带锁的 [swapIntoPlace] 自锁自己
+            swapLocked(tmpDir, rootfsDir)
+            Log.i(
+                TAG,
+                if (usedRust) "RootFS 安装完成（Rust 路径）：${rootfsDir.path}"
+                else "RootFS 安装完成：${rootfsDir.path}",
+            )
+        } catch (t: Throwable) {
+            // ④ 失败路径必须清干净：半截 tmp 树既白占 1–2GB，又会被下次启动的 [cleanupPartial]
+            //    多清一遍；更糟的是它看起来像"有环境"（rootfs.tmp 里是半个完整的树）。
+            //    替换成功时 [swapLocked] 已自行删掉 tmp，所以这里清的是"还没换上去"的残树。
+            runCatching { tmpDir.deleteRecursively() }
+            throw t
+        }
     }
 
     /**
