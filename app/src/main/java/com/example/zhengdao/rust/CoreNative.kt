@@ -3,6 +3,7 @@
 package com.example.zhengdao.rust
 
 import android.util.Log
+import com.example.zhengdao.rootfs.RunLog
 
 /**
  * Rust Core 统一 JNI 桥（v2.0 R1 收编）：
@@ -22,9 +23,29 @@ object CoreNative {
 
     private const val TAG = "CoreNative"
 
-    /** 一次类初始化探测；加载失败即永久标记（不反复尝试拖慢调用）。 */
+    /**
+     * 第⑭刀 #6（审计：静默吞错）：.so 加载失败是否落 RunLog，**可开关**，默认开。
+     * 加载只发生一次（类初始化时），故开关联动的是「失败那一刻」是否留痕。
+     * ⚠️ 本类不在 oc/ 目录内，改动依据＝第⑭刀派工单 #6 的显式指令；
+     * external fun 的名字与签名一律未动（红线 2）。
+     */
+    @Volatile
+    internal var logLoadFailure: Boolean = true
+
+    /** 一次类初始化探测；加载失败即永久标记（不反复尝试拖慢调用）。失败原因落 RunLog（不吞）。 */
     private val rustAvailable: Boolean = runCatching {
         System.loadLibrary("zhengdao_core")
+    }.onFailure { t ->
+        if (logLoadFailure) {
+            // runCatching 包住整条记录：JVM 单测环境里 RunLog 的 logcat 兜底路径可能未 mock，
+            // 不能让「记日志」把类初始化本身炸掉；回退语义（isSuccess）不受影响。
+            runCatching {
+                RunLog.log(
+                    "CoreNative: libzhengdao_core.so 加载失败，回退平台实现 — " +
+                        "${t.javaClass.simpleName}: ${t.message}"
+                )
+            }
+        }
     }.isSuccess
 
     /** Rust 链路是否可用（供测试与体检展示）。 */

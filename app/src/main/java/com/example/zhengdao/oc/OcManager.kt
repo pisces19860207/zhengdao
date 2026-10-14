@@ -249,6 +249,31 @@ object OcManager {
     /** C 步：测试接缝 —— 非空时替代真实 HTTP 探测；生产路径永远为 null。 */
     internal var serveProbeForTest: ((String) -> Boolean)? = null
 
+    /**
+     * 第⑭刀 #4：serve.log 轮转参数 —— 单份上限 1MB，保留「当前 + 上一份」两份。
+     *
+     * serve.log 里含 serve 打进 stdout 的**明文口令**（见 [parseServePassword] 的日志形态），
+     * 此前只追加、永不轮转，历史口令会无限累积（audit：全仓 9 处引用、除写入外全是读）。
+     * 轮转只做在**启动新 serve 之前**（[startServe] 里、`pb.start()` 之前）：此刻旧 serve
+     * 要么已退出、要么走孤儿分支在更早处 return 了 —— 不存在「旧进程 fd 还指着改名后
+     * 的 inode 继续写」的错位，新口令必然落在新 serve.log 里（孤儿场景的口令解析不受影响）。
+     */
+    private const val SERVE_LOG_MAX_BYTES = 1024L * 1024L
+
+    /**
+     * 第⑭刀 #4：serve.log 轮转核心 —— 超限 ⇒ `serve.log → serve.log.1`（旧的 `.1` 先删）。
+     * 不超限 / 文件不存在 / 改名失败一律返回 false 且**保持现状**（失败只影响本轮轮转，
+     * 绝不阻断 serve 启动）。文件由调用方注入，纯函数可单测。
+     */
+    internal fun rotateServeLog(log: File, maxBytes: Long = SERVE_LOG_MAX_BYTES): Boolean {
+        if (!log.isFile || log.length() <= maxBytes) return false
+        return runCatching {
+            val prev = File(log.parentFile, "${log.name}.1")
+            if (prev.isFile) prev.delete()
+            log.renameTo(prev)
+        }.getOrDefault(false)
+    }
+
     /** serve 的 HTTP Basic 密码（启动后从日志解析；OcClient 直连鉴权用）。 */
     @Volatile
     var servePassword: String? = null
@@ -441,6 +466,10 @@ object OcManager {
             // 说明：这里**故意不注入任何 API Key**。用户已拍板「凭据类信息不落 App」
             // （见 commit e882050），由用户在自己终端里 export，App 不代管、不持久化。
             val log = File(ctx.filesDir, "oc/serve.log")
+            // 第⑭刀 #4：启动前轮转（只在这里转 —— 安全性论证见 [rotateServeLog] KDoc）
+            if (rotateServeLog(log)) {
+                RunLog.log("太极: serve.log 超 1MB，已轮转为 serve.log.1（明文口令只随日志保留最近两份）")
+            }
             pb.redirectErrorStream(true)
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log))
             serveProcess = pb.start()
@@ -451,9 +480,11 @@ object OcManager {
                     repeat(10) {
                         parseServePassword(ctx)
                         if (servePassword != null) {
-                            // 起来了就撤下"上次留下的问题"（#4：report / resolve 语义配对）
+                            // 起来了就撤下"上次留下的问题"（#4：report / resolve 语义配对；
+                            // 第⑭刀 #5：三条 issue 在**任何**终态都要配对清账，不许悬挂）
                             IssueCenter.resolve("oc-serve-timeout")
                             IssueCenter.resolve("oc-serve-password")
+                            IssueCenter.resolve("oc-serve-start")
                             return null
                         }
                         Thread.sleep(500)
@@ -464,6 +495,9 @@ object OcManager {
                     //   「最近问题」，并给一条去路（重启 serve 会重新打印并重读密码）。
                     val msg = "太极: serve 就绪但密码未解析到（UI 将无法通过 API 鉴权）"
                     RunLog.log(msg)
+                    // 第⑭刀 #5：本轮 serve 已就绪 ⇒ 超时/启动失败两条旧账一并清掉
+                    IssueCenter.resolve("oc-serve-timeout")
+                    IssueCenter.resolve("oc-serve-start")
                     IssueCenter.report(
                         id = "oc-serve-password",
                         title = ctx.getString(R.string.oc_serve_no_password_title),
@@ -476,6 +510,9 @@ object OcManager {
                 Thread.sleep(500)
             }
             serveProcess?.destroy()
+            // 第⑭刀 #5：本轮根本没就绪 ⇒ 密码/启动失败两条旧账清掉（本条终态报的是超时）
+            IssueCenter.resolve("oc-serve-password")
+            IssueCenter.resolve("oc-serve-start")
             IssueCenter.report(
                 id = "oc-serve-timeout",
                 title = ctx.getString(R.string.oc_serve_timeout_title),
@@ -490,6 +527,9 @@ object OcManager {
             // 「网络超时 / 存储空间不足 / 没有写入权限」等。TaijiScreen:539/590 透传此 msg
             // 给用户；此处换为 HumanizeError.title 即可让用户读懂。
             val human = HumanizeError.title(t, ctx.resources)
+            // 第⑭刀 #5：本条终态报的是启动异常，超时/密码两条旧账一并清掉
+            IssueCenter.resolve("oc-serve-timeout")
+            IssueCenter.resolve("oc-serve-password")
             // #4：太极页会显示这句，但用户可能正在主页/丹房 —— 同步报一条到「最近问题」。
             IssueCenter.report(
                 id = "oc-serve-start",
@@ -811,19 +851,33 @@ object OcManager {
         val body = conn.inputStream.bufferedReader().readText()
         conn.inputStream.close()
         val arr = org.json.JSONObject(body).getJSONArray("assets")
-        val re = Regex("^opencode-([\\d.]+)-\\d+-aarch64\\.pkg\\.tar\\.xz$")
+        // P2-17①（第⑭刀 #7）：资产名正则收紧 `[\d.]+` → `\d+(\.\d+)*` —— 源头排除
+        // `2..0` / `2.0.` / `.2` 这类空段畸形串（原正则允许，后面 toInt 就抛）。
+        val re = Regex("^opencode-(\\d+(?:\\.\\d+)*)-\\d+-aarch64\\.pkg\\.tar\\.xz$")
         var latest: Triple<List<Int>, String, String?>? = null // (版本段, 下载URL, digest SHA)
         for (i in 0 until arr.length()) {
             val a = arr.getJSONObject(i)
             val m = re.find(a.optString("name")) ?: continue
-            val ver = m.groupValues[1].split('.').map { it.toInt() }
+            // P2-17②：解析失败 ⇒ **跳过该 asset、继续扫描**（原先 `it.toInt()` 抛
+            // NumberFormatException 会中断整个 for 循环——丢掉同批其它合法 asset，
+            // 且被最外层 catch 吞成「检查更新失败」）。
+            val ver = parseVersionSegments(m.groupValues[1])
+            if (ver == null) {
+                RunLog.log("太极: 跳过版本号无法解析的 asset：${a.optString("name")}")
+                continue
+            }
             if (latest == null || verNewer(ver, latest.first)) {
                 val digest = a.optString("digest")
                     .takeIf { it.startsWith("sha256:") }?.substringAfter(':')
                 latest = Triple(ver, a.optString("browser_download_url"), digest)
             }
         }
-        val cur = (installedVersion(ctx) ?: VERSION).split('.').map { it.toInt() }
+        // P2-17②：已装版本解析失败 ⇒ 回退出厂版本比较并留痕（原先抛 NFE ⇒ 检查更新整体失败）。
+        val curRaw = installedVersion(ctx) ?: VERSION
+        val cur = parseVersionSegments(curRaw) ?: run {
+            RunLog.log("太极: 已装版本号「$curRaw」无法解析，按出厂版本 $VERSION 比较")
+            parseVersionSegments(VERSION) ?: emptyList()
+        }
         if (latest != null && verNewer(latest.first, cur)) {
             UpdateCheck.Available(UpdateInfo(latest.first.joinToString("."), latest.second, latest.third))
         } else UpdateCheck.UpToDate
@@ -842,14 +896,34 @@ object OcManager {
     fun checkUpdate(ctx: Context): UpdateInfo? =
         (checkUpdateDetailed(ctx) as? UpdateCheck.Available)?.info
 
-    /** 版本段逐位比较（List<Int> 无运算符比较）。 */
-    private fun verNewer(a: List<Int>, b: List<Int>): Boolean {
+    /** 版本段逐位比较（List<Int> 无运算符比较）。internal：OcVersionParseTest 钉语义用，行为未变。 */
+    internal fun verNewer(a: List<Int>, b: List<Int>): Boolean {
         for (i in 0 until maxOf(a.size, b.size)) {
             val x = a.getOrElse(i) { 0 }
             val y = b.getOrElse(i) { 0 }
             if (x != y) return x > y
         }
         return false
+    }
+
+    /**
+     * P2-17②（第⑭刀 #7）：版本号原文 → 段列表；**失败返回 null，绝不抛**。
+     *
+     * 替代原先两处 `split('.').map { it.toInt() }`（畸形段抛 NumberFormatException）。
+     * 规则：
+     * - 任何一段为空 / 非数字 / 超 Int 范围 ⇒ 整体 null（`toIntOrNull`，不抛）；
+     * - 段数 > 4 ⇒ null（拒绝并留痕优于静默截断——截断会让 `2.0.22.999` 与 `2.0.22`
+     *   比出可疑的新旧关系）；
+     * - 调用方策略（见 [checkUpdateDetailed]）：asset 版本失败 ⇒ 跳过该 asset 继续扫描；
+     *   已装版本失败 ⇒ 回退出厂版本 [VERSION]。
+     * 纯函数，表驱动单测见 OcVersionParseTest。
+     */
+    internal fun parseVersionSegments(raw: String): List<Int>? {
+        // ⚠️ Kotlin split 默认去掉尾部空串："." 会得到空列表 —— 空列表也必须判 null。
+        val segs = raw.split('.')
+        if (segs.isEmpty() || segs.size > 4) return null
+        if (segs.any { it.isEmpty() }) return null
+        return segs.map { it.toIntOrNull() ?: return null }
     }
 
     /** 隔离命名空间：避免与 Settings 混淆的轻量偏好入口。 */
