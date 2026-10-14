@@ -43,6 +43,10 @@
 | 空 WebView 内存基线 | ✅ 日志 `[10-14 10:16:05] XuanLanMem before-webview pss=114405KB rss=156596KB` → `after-webview pss=145395KB rss=195900KB` ⇒ 建一个空 WebView ≈ **+31 MB PSS / +39 MB RSS** | `browser/BrowserMemoryProbe` |
 | `shouldInterceptRequest` 拦非白名单 scheme | ⚠️ **未真机验**（未构造 `intent://` 样本） | `browser/WebViewEngine.kt`（非 http/https 返回空响应） |
 
+![真机拦截现场：地址栏 `https://testsafebrowsing.appspot.com/s/malware.html`，页面被拦、界面逐字「这个网址有安全风险，已被拦下」](assets/xuanlan-slice123-2026-10-14/02-safe-browsing-blocked.png)
+
+> 这一项读了两遍（10:16 一次、重装后二次复核一次），两次结果一致；二次复核时**空态文案与拦截提示同时在场** ⇒ 空态判据只是「有没有当前 URL」，被拦的加载从未产生 URL。
+
 ## 五、B 路径（终端里点裸 URL）—— 真机端到端 ✅
 
 探针（guest 内 `printf`，脚本见第九节）：同一行同时含 `AAA-OSC8-AAA`（OSC 8 包裹）与 `BBB-BARE https://example.com/bare-B`（裸 URL）。
@@ -55,6 +59,8 @@
 
 **已知缺口（见 §B 顺序 30）**：`TerminalLinkScanner` 的排除集不含 ASCII `,` —— 真机输出 `see https://example.com/trailing-test, and stop.` 时，点开的地址栏**带上尾逗号**。
 
+![同行 A/B 判别现场（终端像素 ×3 最近邻）：第一行 `AAA-OSC8-AAA`（OSC 8 包裹）**没有下划线**，同一行后半 `BBB-BARE https://example.com/…`（裸 URL）可点；点 x=800 落在裸 URL 上 ⇒ 打开成功](assets/xuanlan-slice123-2026-10-14/01-terminal-ab-row.png)
+
 ## 六、A 路径（OSC 8 超链接）—— 真机 ❌，根因 = tmux 没声明 `hyperlinks`
 
 | 动作 | `topResumedActivity` | 结果 |
@@ -63,6 +69,8 @@
 | 收键盘后再点（`input keyevent 4` → tap） | 键盘重新弹出 | ⇒ 证明 `onSingleTapUp` **确实进了**、只是 `findBareUrlAt` 没命中 ⇒ 不是「点击没送达」 |
 
 排除 App 侧实现：`TerminalEmulator.java:2101-2118 handleOsc8Hyperlink`（解析 `ESC ] 8 ; params ; URI ST`）→ `TerminalBuffer.setLink/getLinkAt` → `TerminalRow` 链接区间 → `TerminalRenderer.java:134 insideLink`（下划线分支）→ `TerminalGestureController.java:103-108`（`getLinkAt` → `onLinkOpen`）逐段核过，无低级错误。
+
+![运行时加了 `hyperlinks` 能力 + `refresh-client` 之后重放同一探针：`OSC8-FIXED-TEST` / `FIXED-LINK-CLICK-ME`（OSC 8 包裹）仍**不画下划线**，而下一行的裸 URL 照常可点 ⇒ 运行时改能力无效](assets/xuanlan-slice123-2026-10-14/03-osc8-after-runtime-feature-flag.png)
 
 **根因判据（guest 实查）**：
 
@@ -104,6 +112,7 @@ tmux display-message -p '#{client_termfeatures}'     # 仍无 hyperlinks；OSC 8
 - 地址栏搜索路径（Bing）未点。
 - OSC 8 修完后的**复验**（要一次 attach 周期）。
 - 阶段 2 三条 TODO（`dataDirectorySuffix` 静态 / `thirdPartyCookies` / `addJavascriptInterface`）未开工。
+- **切 Tab 返回玄览不恢复上一页** —— 二次复核时从终端切回玄览，地址栏已清空、显示空态（上次加载的 `https://example.com/bare-B` 不再显示）。WebView 实例在 `BrowserHolder` 里，但「切回来要不要恢复上一页」是设计取向，**本次不下结论**，留给用户拍板/交回处理。
 
 ## 九、探针（可复用）
 
