@@ -112,7 +112,7 @@ tmux display-message -p '#{client_termfeatures}'     # 仍无 hyperlinks；OSC 8
 - 地址栏搜索路径（Bing）未点。
 - OSC 8 修完后的**复验**（要一次 attach 周期）。
 - 阶段 2 三条 TODO（`dataDirectorySuffix` 静态 / `thirdPartyCookies` / `addJavascriptInterface`）未开工。
-- **切 Tab 返回玄览不恢复上一页** —— 二次复核时从终端切回玄览，地址栏已清空、显示空态（上次加载的 `https://example.com/bare-B` 不再显示）。WebView 实例在 `BrowserHolder` 里，但「切回来要不要恢复上一页」是设计取向，**本次不下结论**，留给用户拍板/交回处理。
+- **切 Tab 返回玄览不恢复上一页** —— 二次复核时从终端切回玄览，地址栏已清空、显示空态（上次加载的 `https://example.com/bare-B` 不再显示）。WebView 实例在 `BrowserHolder` 里，但「切回来要不要恢复上一页」是设计取向，**本次不下结论**。**2026-10-14 用户拍板：要恢复** ⇒ 已立 **§B 顺序 32**（根因：`BrowserScreen.kt:74-79` 的 UI 状态是普通 `remember`，离开组合即丢；改法 = 入场回填或把「上次 URL / everLoaded」搬进 `BrowserHolder`）。
 
 ## 九、探针（可复用）
 
