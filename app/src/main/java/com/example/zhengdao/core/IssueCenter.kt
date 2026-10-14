@@ -13,7 +13,8 @@ import com.example.zhengdao.rootfs.RunLog
  *
  * 走查发现同一个毛病反复出现：**失败只写 `RunLog`，界面上什么都没有**。
  * 用户看到的往往是"点了没反应"或"功能不对"，而日志躺在
- * `/sdcard/Download/证道/logs/zhengdao-log.txt` 里——出了问题没人会去看，
+ * 应用私有日志 `filesDir/logs/zhengdao-log.txt` 里（2026-10-14 N-4 A 案起；
+ * 此前在 `/sdcard/Download/证道/logs/`）——出了问题没人会去看，
  * 也不该要求用户去看。
  *
  * 这个类的定位是**唯一的那一个出口**：任何后台/静默失败都往这里报一条，

@@ -28,7 +28,6 @@
     <string name="common_cleaning">清理中…</string>
     <string name="common_loading">加载中…</string>
     <string name="common_done">完成</string>
-    <string name="common_read_failed">读取失败</string>
     <string name="common_view_log">查看日志</string>
     <string name="common_clear">清空</string>
     <string name="common_feedback">反馈</string>
@@ -112,7 +111,7 @@
     <string name="home_env_install_desc">安装 Agent 前需要先装好 Debian 环境（约 3 分钟，只需一次）。</string>
     <string name="home_install_env">安装运行环境</string>
     <string name="home_recent_issues">最近问题（%1$d）</string>
-    <string name="home_issues_note">后台失败的痕迹以前只写日志、界面上看不见；这里列出来，每条能处理就点按钮。完整原文仍在 Download/证道/logs/zhengdao-log.txt</string>
+    <string name="home_issues_note">后台失败的痕迹以前只写日志、界面上看不见；这里列出来，每条能处理就点按钮。完整原文在应用私有日志里，需要时可到「设置 → 帮助」导出</string>
     <string name="home_agent_reinstall">重新安装</string>
     <string name="home_agent_uninstall">卸载</string>
     <string name="home_agent_retry_install">重试安装</string>
@@ -362,8 +361,11 @@
     <string name="help_faq_a2">在终端里重跑一遍安装命令；更新系统用「检查环境更新」。</string>
     <string name="help_faq_q3">我的文件在哪？</string>
     <string name="help_faq_a3">产物都在工作区文件夹里（默认是手机的 Download/证道）。</string>
-    <string name="help_log_location">位置：%1$s</string>
-    <string name="help_log_desc">zhengdao-log.txt 是本次运行；带时间的存档最多留 20 份 / 20 MB，从最旧的开始删（不会因为「这轮没出错」就删）；errors.log 只记错误行。可以用文件管理器直接打开，也可以丢给我们查问题。</string>
+    <string name="help_log_desc">zhengdao-log.txt 是本次运行；带时间的存档最多留 20 份 / 20 MB，从最旧的开始删（不会因为「这轮没出错」就删）；errors.log 只记错误行。日志写在应用私有目录，其他程序读不到。</string>
+    <string name="help_log_export_btn">导出日志</string>
+    <string name="help_log_export_hint">日志存在应用私有目录；需要给开发者看时点「导出日志」，选个位置保存（导出内容会自动去掉私有路径与口令）。</string>
+    <string name="help_log_export_ok">已导出</string>
+    <string name="help_log_export_fail">导出失败</string>
     <string name="help_log_archive_count">已有 %1$d 份历史日志。</string>
     <string name="help_log_prev_error">上次运行检测到错误，日志已保留（可直接复制反馈）。</string>
     <string name="help_log_view_prev">查看上次日志</string>
