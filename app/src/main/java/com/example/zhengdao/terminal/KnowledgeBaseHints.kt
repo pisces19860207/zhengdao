@@ -147,7 +147,11 @@ object KnowledgeBaseHints {
     }
 
     /** 清空行缓冲（带锁；[line] 会被多线程碰，见其 KDoc）。 */
-    private fun clearLine() = synchronized(lineLock) { line.setLength(0) }
+    /**
+     * 清空行缓冲（§B-补-49 🟢5，2026-10-14 放开可见性）：TerminalActivity 在
+     * ^C 与 ↑/↓/ESC（会改写 shell 当前行）之后调用——旧内容不该在下次回车时被当成提问。
+     */
+    fun clearLine() = synchronized(lineLock) { line.setLength(0) }
 
     /** 取出并清空行缓冲里的整句（带锁，避免"读到一半被别人 append"）。 */
     private fun takeLine(): String = synchronized(lineLock) {

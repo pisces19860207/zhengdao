@@ -607,8 +607,19 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private fun injectPendingAutocmd() {
         if (fallbackActive) return
         val cmd = pendingAutocmd ?: return
+        // §B-补-49 🟢3(b)（2026-10-14）：先判就绪、先写，成功再清——原实现 `pendingAutocmd = null`
+        // 在写入**之前**，而写入失败（含"会话未就绪时静默丢字节"）既不重试也不留痕，
+        // 命令永久丢失且零日志；onEmulatorSet 的下一轮重试拿到的是 null。
+        val session = SessionManager.session
+        if (session == null || !session.isRunning) {
+            RunLog.log("注入启动命令：会话未就绪，保留待重试")
+            return
+        }
+        val ok = runCatching { SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8)) }
+            .onFailure { RunLog.log("注入启动命令失败，保留待重试：${it.message}") }
+            .isSuccess
+        if (!ok) return
         pendingAutocmd = null
-        runCatching { SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8)) }
 
         // ⚠️ 只有**安装**才登记「安装中」：启动也登记的话，卡片会在 Agent 明明好好跑着的
         //    时候显示"正在安装"、并在 90 秒宽限期后翻成「上次安装未完成」——
@@ -676,8 +687,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             R.id.key_home to "\u001b[H",
             R.id.key_end to "\u001b[F",
         )
+        // §B-补-49 🟢5（2026-10-14）：会改写/清空 shell 当前行的键按下后，资料库行缓冲
+        // 必须跟着失效——否则回车时拿的是**旧内容**去检索（附上的线索与用户当下这句话无关）。
+        // 判据取"是否改变行内容"：↑/↓（历史召回，整行换内容）、ESC（取消当前行编辑）；
+        // ←/→/HOME/END 只移动光标、行内容不变，**不清**（清了反而丢线索）。
+        val lineChangingKeys = setOf(R.id.key_up, R.id.key_down, R.id.key_esc)
         for ((id, seq) in sequences) {
-            findViewById<TextView>(id)?.setOnClickListener { sendKey(seq) }
+            findViewById<TextView>(id)?.setOnClickListener {
+                sendKey(seq)
+                if (id in lineChangingKeys) KnowledgeBaseHints.clearLine()
+            }
         }
         // 复制：把当前屏幕可见内容送剪贴板。
         // 想要复制「选定区域」请用**长按终端**唤起选择手柄 + 系统工具栏的复制
@@ -703,6 +722,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 .onFailure {
                     Toast.makeText(this, "发送中断失败：${it.message}", Toast.LENGTH_SHORT).show()
                 }
+            // §B-补-49 🟢5：^C 把当前行整行作废（readline 语义），行缓冲必须清——
+            // 否则被中断那半句还会在下次回车时被当成提问内容。
+            KnowledgeBaseHints.clearLine()
         }
         // 粘贴：顶部工具栏入口（快捷键条末位让给更常用的退格）
         findViewById<TextView>(R.id.btn_paste_top)?.setOnClickListener { doPaste() }
@@ -977,7 +999,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private fun writeToSession(session: TerminalSession?, payload: String) {
         mainHandler.post {
             runCatching {
-                val s = session ?: SessionManager.session
+                // §B-补-49 🟢3(c)（2026-10-14）：优先**当前会话**——传进来的 `session` 是
+                // 按键那一刻捕获的对象，1.5 秒后才写，期间它可能已退出（写入静默丢失、
+                // onFailure 永不触发，回车与提示块一起蒸发）。用户就是对着当前会话按的回车。
+                val s = SessionManager.session ?: session
                 if (s != null) {
                     val bytes = payload.toByteArray(Charsets.UTF_8)
                     s.write(bytes, 0, bytes.size)
