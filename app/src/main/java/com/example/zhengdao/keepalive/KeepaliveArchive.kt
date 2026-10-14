@@ -171,12 +171,25 @@ object KeepaliveArchive {
     internal fun fresh(existing: Set<String>, all: List<ExitRecord>): List<ExitRecord> =
         all.filter { key(it) !in existing }
 
-    /** 追加 + 超限轮转（保留后半段）。 */
+    /**
+     * 追加 + 超限轮转（D-1，第⑪批 B-1 改追加式）。
+     *
+     * 旧实现超限时「整读整写」：把 512KB 全文读进内存、再整份写回 —— 而 appendCapped
+     * 挂在心跳链上（onTrimMemory 也走它），主线程调用时就是一次 512KB 的同步阻塞。
+     * 现在：超限时把当前文件**整体 rename 成 `<name>.1`**（同目录 rename 是 O(1)，
+     * 不复制内容），活动文件从空重新开始追加；被顶掉的旧 `.1` 直接删除
+     * （旧档最多留一份，总占用仍有硬上限：2 × maxBytes）。
+     * rename 失败（文件被占用/跨设备等）才退回旧的整读整写方案 —— 至少不丢记录。
+     */
     internal fun appendCapped(f: File, text: String, maxBytes: Long) {
         f.parentFile?.let { if (!it.isDirectory) it.mkdirs() }
         if (f.length() > maxBytes) {
-            val keep = f.readText().takeLast((maxBytes / 2).toInt())
-            f.writeText("…（旧记录已截断）…\n$keep")
+            val rolled = File(f.parentFile, f.name + ".1")
+            if (rolled.exists()) rolled.delete()
+            if (!f.renameTo(rolled)) {
+                val keep = f.readText().takeLast((maxBytes / 2).toInt())
+                f.writeText("…（旧记录已截断）…\n$keep")
+            }
         }
         f.appendText(text)
     }

@@ -359,13 +359,21 @@ internal fun FaqLine(question: String, answer: String) {
 fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
     val sharedRoot = "/storage/emulated/0"
     var current by remember { mutableStateOf(sharedRoot) }
-    val entries = remember(current) {
-        runCatching {
-            File(current).listFiles { f -> f.isDirectory }
-                ?.sortedBy { it.name.lowercase() }
-                ?.map { it.name }
-                ?: emptyList()
-        }.getOrDefault(emptyList())
+    // D-2（第⑪批 B-1）：列子目录是磁盘 IO（listFiles），原先在 remember(current) 里
+    // **组合期同步**跑 —— key 是 current，每进一级目录都在主线程读一次共享存储
+    // （FUSE 慢路径上能感知卡顿）。照 SettingsStorageActivity 的 StorageAudit 同款改法：
+    // LaunchedEffect(current) + withContext(Dispatchers.IO)，行为不变（进目录列子目录），
+    // 只是列表变成「先短暂空白 → IO 完成就地出现」。
+    var entries by remember { mutableStateOf(emptyList<String>()) }
+    LaunchedEffect(current) {
+        entries = withContext(Dispatchers.IO) {
+            runCatching {
+                File(current).listFiles { f -> f.isDirectory }
+                    ?.sortedBy { it.name.lowercase() }
+                    ?.map { it.name }
+                    ?: emptyList()
+            }.getOrDefault(emptyList())
+        }
     }
     AlertDialog(
         onDismissRequest = onDismiss,

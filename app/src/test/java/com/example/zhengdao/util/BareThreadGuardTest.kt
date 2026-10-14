@@ -34,8 +34,8 @@ import kotlin.text.Charsets
  * 线程（:139/:156/:172）——按本批红线不碰 termux，留待单独评估。Kotlin 标准库
  * 小写 `thread { }`（默认非 daemon）同样纳入纪律；当前全仓零使用（证据②）。
  *
- * 对账单冻结 2026-10-14 的 28 个创建点（`Thread` 关键字行号）。将来文件拆分/移动
- * 会让它失败——那是提醒回来更新对账单，不是 bug。
+ * 对账单冻结 2026-10-14 的创建点（`Thread` 关键字行号；第⑪批 D-1 新增心跳执行器后 29 个）。
+ * 将来文件拆分/移动会让它失败——那是提醒回来更新对账单，不是 bug。
  *
  * 行号回填记录（本文件自己的规矩：平移就回填，不是新增线程）：
  * - 2026-10-14（第⑧刀 P4-1 太极拆分后）：SettingsStorageActivity / TerminalActivity 等平移，已回填；
@@ -43,6 +43,8 @@ import kotlin.text.Charsets
  *   `TerminalActivity.kt`（N-2 原子拷贝 +15 行）平移 ⇒ 回填 4 个行号；
  * - 2026-10-14（第⑨刀 B）：ZhengdaoApp.kt 插入 `initWebViewDataDirectory()`（+30 行）
  *   ⇒ 两条创建点 47→77 / 97→127，本次回填。
+ * - 2026-10-14（第⑪批 D-1）：KeepaliveWatcher.kt 新增心跳执行器 zd-keepalive-io（:66，
+ *   有名+daemon）⇒ 对账单 28→29 处；巡检线程平移 187→230 一并回填。
  */
 class BareThreadGuardTest {
 
@@ -77,7 +79,7 @@ class BareThreadGuardTest {
     }
 
     @Test
-    fun `对账单_2026-10-14_实测 28 处创建点`() {
+    fun `对账单_2026-10-14_实测 29 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -85,8 +87,9 @@ class BareThreadGuardTest {
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
             "HomeScreen.kt:177",                    // zd-taiji-retry
-            "HomeScreen.kt:560",                    // zd-health-fix
-            "KeepaliveWatcher.kt:187",              // zhengdao-keepalive-patrol
+            "HomeScreen.kt:579",                    // zd-health-fix（R-21/R-27 编辑后自 :560 平移）
+            "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
+            "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）
             "KnowledgeBase.kt:153",                 // zd-knowledge-base-rebuild
             "KnowledgeBase.kt:176",                 // zd-knowledge-base-index
             "KnowledgeBase.kt:200",                 // zd-knowledge-base-auto

@@ -101,14 +101,40 @@ class KeepaliveArchiveTest {
     }
 
     @Test
-    fun `超限只留后半段`() {
+    fun `超限轮转_追加式_总占用有上限`() {
+        // D-1（第⑪批 B-1）：轮转从「整读整写 + 截断说明」改为「整体 rename 成 .1」，
+        // 本用例随判据更新（旧用例钉的是旧语义，见工单 D-1 要求）。
         val f = File(tmp, KeepaliveArchive.HEARTBEAT)
         repeat(40) { KeepaliveArchive.appendCapped(f, "[时间] 心跳第 $it 条\n", 256L) }
+        val rolled = File(tmp, KeepaliveArchive.HEARTBEAT + ".1")
         val text = f.readText()
-        assertTrue(f.length() <= 256 + 200) // 允许"截断说明"与最后一条的余量
+        assertTrue(f.length() <= 256 + 200) // 活动文件不超上限（轮转在 append 前判定）
+        assertTrue("超限后必须有一份 .1 旧档", rolled.isFile)
+        assertTrue("旧档里应是历史心跳", rolled.readText().contains("心跳第"))
+        assertFalse("最新的记录应在活动文件里", rolled.readText().contains("第 39 条"))
         assertTrue(text.contains("第 39 条")) // 最新那条必须在
-        assertTrue(text.contains("已截断"))
-        assertFalse(text.contains("第 0 条"))
+        assertFalse(text.contains("已截断")) // 追加式轮转不再整读整写，没有截断说明
+        assertTrue(
+            "旧档也应在上限量级（整体 rename，不增长）",
+            rolled.length() <= 256 + 200,
+        )
+    }
+
+    @Test
+    fun `超限后旧内容整体留在点一份_活动文件从新内容开始`() {
+        val f = File(tmp, "hb.log")
+        KeepaliveArchive.appendCapped(f, "OLD-1\n", 8L) // 6B，未超
+        KeepaliveArchive.appendCapped(f, "OLD-2\n", 8L) // 12B，未超
+        KeepaliveArchive.appendCapped(f, "OLD-3\n", 8L) // 12B > 8 ⇒ 本条写入前先轮转
+        val rolled = File(tmp, "hb.log.1")
+        assertTrue("超限后必须有一份 .1 旧档", rolled.isFile)
+        assertEquals("旧内容应原样整体迁移（不截断不重写）", "OLD-1\nOLD-2\n", rolled.readText())
+        assertEquals("活动文件只装轮转之后的新内容", "OLD-3\n", f.readText())
+        // 再超限：.1 被最新一份旧档顶掉（旧档最多留一份）
+        KeepaliveArchive.appendCapped(f, "OLD-4\nOLD-5\nOLD-6\n", 8L) // 6B 未超 → 24B
+        KeepaliveArchive.appendCapped(f, "OLD-7\n", 8L) // 24B > 8 ⇒ 轮转，.1 被顶掉
+        assertEquals("OLD-3\nOLD-4\nOLD-5\nOLD-6\n", rolled.readText())
+        assertEquals("OLD-7\n", f.readText())
     }
 
     @Test
