@@ -19,6 +19,7 @@
 pub mod dirsize;
 pub mod ed25519;
 pub mod extract;
+pub mod json;
 pub mod sha256;
 
 #[cfg(target_os = "android")]

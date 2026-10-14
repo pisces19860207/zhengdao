@@ -46,6 +46,7 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -439,7 +440,7 @@ private fun ImeRegressionScreen(
 ) {
     var selfCheck by remember { mutableStateOf<ImeProbe.Verdict?>(null) }
     var selfCheckRunning by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
     Column(
         modifier = Modifier
             .fillMaxSize()

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.example.zhengdao.BackChevron
 import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -247,19 +248,19 @@ private fun KeepaliveLogScreen() {
                     title = {
                         Text(
                             stringResource(R.string.keepalive_log_clear_title),
-                            color = MaterialTheme.colorScheme.error,
+                            color = zhengdaoErrorText(),
                         )
                     },
                     text = {
                         Column {
                             Text(
                                 stringResource(R.string.keepalive_log_clear_desc, snippetCount),
-                                color = MaterialTheme.colorScheme.error,
+                                color = zhengdaoErrorText(),
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 stringResource(R.string.keepalive_log_clear_warn),
-                                color = MaterialTheme.colorScheme.error,
+                                color = zhengdaoErrorText(),
                             )
                         }
                     },
@@ -273,7 +274,7 @@ private fun KeepaliveLogScreen() {
                                 ctx.getString(R.string.keepalive_log_cleared, n),
                                 Toast.LENGTH_SHORT,
                             ).show()
-                        }) { Text(stringResource(R.string.common_clean), color = MaterialTheme.colorScheme.error) }
+                        }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                     },
                     dismissButton = {
                         TextButton(onClick = { clearConfirm = false }) { Text(stringResource(R.string.common_cancel)) }

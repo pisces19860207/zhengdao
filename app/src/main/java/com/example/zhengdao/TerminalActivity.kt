@@ -24,6 +24,7 @@ import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.browser.BrowserHolder
@@ -662,6 +663,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 attachViewToSession()
             }
         }, "zd-session-start")
+        // P4-2：一次性启动 worker，必须 daemon——非 daemon 线程挂着会让整个进程
+        // 退不干净（项目其余 27 处裸 Thread 一律 isDaemon=true，本条补对齐）。
+        worker.isDaemon = true
         worker.start()
     }
 
@@ -814,7 +818,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 r
             } catch (_: Throwable) { false }
             runOnUiThread { applyNetProbe(ok) }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-net-probe" }.start()
     }
 
     /** 一次观测落地：状态翻转才写日志 + 换横幅（同状态重复探测不留痕迹）。 */
@@ -913,7 +917,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         findViewById<TextView>(R.id.key_interrupt)?.setOnClickListener {
             runCatching { SessionManager.write(byteArrayOf(0x03)) }
                 .onFailure {
-                    Toast.makeText(this, "发送中断失败：${it.message}", Toast.LENGTH_SHORT).show()
+                    // P2-6（issue #17）：用户看到的必须是"人话"（HumanizeError），
+                    // 异常原文进 RunLog 供排查——设计文档原则 3/5：正文不透露路径与 errno。
+                    RunLog.log("发送中断失败：${it.javaClass.simpleName}: ${it.message}")
+                    Toast.makeText(
+                        this,
+                        "发送中断失败：${HumanizeError.title(it, resources)}",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
             // §B-补-49 🟢5：^C 把当前行整行作废（readline 语义），行缓冲必须清——
             // 否则被中断那半句还会在下次回车时被当成提问内容。
@@ -961,7 +972,15 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             } else {
                 SessionManager.write(seq)
             }
-        }.onFailure { Toast.makeText(this, "发送失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        }.onFailure {
+            // P2-6：同 ^C——人话给用户，原文进 RunLog。
+            RunLog.log("发送失败：${it.javaClass.simpleName}: ${it.message}")
+            Toast.makeText(
+                this,
+                "发送失败：${HumanizeError.title(it, resources)}",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
 
     /** 粘贴：读系统剪贴板后交给后台通道（顶部工具栏按钮与快捷键条按钮共用）。 */
@@ -1421,7 +1440,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                                 type = "*/*"
                             }, 2001
                         )
-                    } catch (_: Throwable) {
+                    } catch (t: Throwable) {
+                        // P2-7：文件选择器起不来不能静默——用户点了"选择文件"却毫无反应，
+                        // 是最难排查的一类"没反应"。这仍是 best-effort（不中断对话框），
+                        // 但必须留一句可查的。
+                        RunLog.log("打开文件选择器失败（忽略）：${t.message}")
                     }
                 }
                 .setNegativeButton(getString(R.string.common_later), null)
@@ -1437,7 +1460,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 contentResolver.takePersistableUriPermission(
                     uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                // P2-7：权限持久化失败不中断安装（本次进程内仍可用），但要留痕——
+                // 它意味着重启后这个目录可能读不到，是"装到一半回来又要重新选"的根因。
+                RunLog.log("持久化 URI 权限失败（忽略，本次安装继续）：${t.message}")
             }
             installFromSafUri(uri)
         }
@@ -1466,6 +1492,18 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         com.example.zhengdao.ui.InstallFlow.fail(this, text)
         showBanner(text)
         runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
+    }
+
+    /**
+     * P2-6（issue #17）：安装失败的**异常**入口——原文落 RunLog，用户看到人话。
+     *
+     * 旧写法：三处调用点各自把 t.message 拼进 installFailed 的文案——Java 异常原文
+     * （"Permission denied" / errno / 绝对路径）直接弹到用户脸上。HumanizeError 的
+     * 设计原则 3/5：正文不透露敏感诊断、原始 message 仍可经 RunLog 查。
+     */
+    private fun installFailed(t: Throwable) {
+        RunLog.log("安装失败（原文）：${t.javaClass.simpleName}: ${t.message}")
+        installFailed("安装失败：${HumanizeError.title(t, resources)}（重进 App 可再试）")
     }
 
     /** 写终端页顶部常驻横幅（用户可点它收起）。 */
@@ -1533,11 +1571,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 finishInstall("安装完成！安装包已保留在缓存（重装免下载，本次未联网下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installFailed("安装失败：${t.message}（重进 App 可再试）")
+                installFailed(t)
             } finally {
                 installing.set(false)
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-install-saf" }.start()
     }
 
     /**
@@ -1629,11 +1667,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 finishInstall("安装完成！安装包已保留在缓存（重装免下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installFailed("安装失败：${t.message}（重进 App 可再试）")
+                installFailed(t)
             } finally {
                 installing.set(false)
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-install-cache" }.start()
     }
 
     /** 下载 → SHA256 校验 → 解压（原子）→ 切 Debian。压缩包落公共缓存并保留。 */
@@ -1713,11 +1751,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 finishInstall("安装完成！安装包已保留在缓存（重装免下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installFailed("安装失败：${t.message}（重进 App 可再试）")
+                installFailed(t)
             } finally {
                 installing.set(false)
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-install-download" }.start()
     }
 
     /** 安装完成后切换到 Debian：杀旧会话（含回退 shell）→ 重开（自动 spawn 新 Debian）。 */

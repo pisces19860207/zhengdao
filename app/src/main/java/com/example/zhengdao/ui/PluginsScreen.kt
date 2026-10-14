@@ -18,6 +18,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoBlueText
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -57,7 +59,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun PluginsScreen() {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     var tick by remember { mutableStateOf(0) }
     var specs by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -248,7 +250,8 @@ fun PluginsScreen() {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
+                    // P2-11：错误正文 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                    color = zhengdaoErrorText(),
                 )
             }
             Spacer(Modifier.height(8.dp))

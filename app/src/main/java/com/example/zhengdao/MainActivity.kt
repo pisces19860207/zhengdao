@@ -57,6 +57,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.PermissionSetup
@@ -259,7 +260,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: Throwable) {
                 // 静默：更新检查失败绝不打扰用户
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-update-check" }.start()
     }
 
     /** 语义化版本比较：remote 严格大于 local 才算有更新（v 前缀与缺失段容错）。 */
@@ -321,7 +322,7 @@ fun ZhengdaoApp(
 
     // 回到前台就重读一次：装在终端里完成（RootfsInstaller 写完成标记）后返回主页，
     // 欢迎页与主页的环境状态必须立刻跟上，不能等杀进程重进。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -573,7 +574,7 @@ fun HomeTabs(
     // 玄览：外部打开请求的切 Tab 消费（§4.6，2026-10-14 第 ② 刀接线）。
     // TerminalActivity 点链接时置请求 + finish() 回主页；这里 ON_RESUME 时切到玄览，
     // pendingUrl 由 BrowserHolder 持有、BrowserScreen 组合时消费（不经过此层状态）。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME &&
@@ -593,7 +594,7 @@ fun HomeTabs(
     val taijiFollow = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
     val taijiPositionedSession =
         androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = androidx.compose.runtime.rememberCoroutineScope { CoroutineCrashHandler }
 
     // K1（双击 Tab 滚顶）：在 HomeTabs 顶层记"上一次点同一个 Tab 的时间"。
     // 300ms 内再次点同一 Tab → 视为双击 → animateScrollToItem(0)。

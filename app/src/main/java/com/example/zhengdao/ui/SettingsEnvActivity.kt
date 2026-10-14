@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -96,6 +97,7 @@ import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.CoroutineScope
 
 /** 二级页：环境与更新（逐字搬自「修复环境 / Hermes 依赖环境 / 环境更新 / 运行内存上限」四张卡）。 */
@@ -116,7 +118,7 @@ class SettingsEnvActivity : ComponentActivity() {
 @Composable
 private fun SettingsEnvPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
     val snackbarHostState = remember { SnackbarHostState() }
     var storageTick by remember { mutableStateOf(0) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
@@ -192,7 +194,8 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
             Text(
                 text = st?.detail ?: stringResource(R.string.env_hermes_checking),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (st != null && !st.ok) MaterialTheme.colorScheme.error
+                // P2-11：体检不通过的详情是正文，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                color = if (st != null && !st.ok) zhengdaoErrorText()
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(6.dp))
@@ -206,7 +209,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             com.example.zhengdao.terminal.HermesEnv.repairOnHost(home)
                             android.os.Handler(android.os.Looper.getMainLooper())
                                 .post { storageTick++ }
-                        }.start()
+                        }.apply { isDaemon = true; name = "zd-hermes-repair" }.start()
                     }) {
                         Text(
                             if (!st.ok) stringResource(R.string.env_hermes_fix_record)
@@ -398,7 +401,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 Toast.makeText(ctx, result, Toast.LENGTH_LONG).show()
                             }
                         }
-                    }.start()
+                    }.apply { isDaemon = true; name = "zd-env-check" }.start()
                 },
             ) {
                 Text(
@@ -612,7 +615,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     }
                                 }
                             }
-                        }.start()
+                        }.apply { isDaemon = true; name = "zd-env-repair" }.start()
                     }
                 }) { Text(stringResource(R.string.env_repair_action)) }
             },
@@ -772,7 +775,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             InstallFlow.fail(ctx, ctx.getString(R.string.env_update_failed, why))
                             toastOnMain(ctx.getString(R.string.env_update_failed, why), long = true)
                         }
-                    }.start()
+                    }.apply { isDaemon = true; name = "zd-env-update" }.start()
                 }) {
                     Text(stringResource(R.string.env_install_download_btn))
                 }
