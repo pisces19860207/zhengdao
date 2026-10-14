@@ -348,6 +348,30 @@ fn 绝对形式的软链按解压根解释() {
     assert!(!link_stays_inside(root, &link, Path::new("/../../etc/passwd")));
 }
 
+/// 手工构造 USTAR 头：tar crate 在 append 阶段会自己拒绝含 `..` 或绝对路径的
+/// linkname，必须绕过它才能测到管线的防御（同 `路径穿越_拒绝` 的做法）。
+fn ustar_entry(name: &str, typeflag: u8, linkname: &str, content: &[u8]) -> Vec<u8> {
+    let mut hdr = [0u8; 512];
+    hdr[..name.len()].copy_from_slice(name.as_bytes());
+    hdr[100..108].copy_from_slice(b"0000644\0"); // mode
+    hdr[108..116].copy_from_slice(b"0000000\0"); // uid
+    hdr[116..124].copy_from_slice(b"0000000\0"); // gid
+    hdr[124..136].copy_from_slice(format!("{:011o}\0", content.len()).as_bytes());
+    hdr[136..148].copy_from_slice(b"00000000000\0"); // mtime
+    hdr[148..156].copy_from_slice(b"        "); // chksum 占位
+    hdr[156] = typeflag;
+    hdr[157..157 + linkname.len()].copy_from_slice(linkname.as_bytes());
+    hdr[257..263].copy_from_slice(b"ustar\0");
+    hdr[263..265].copy_from_slice(b"00");
+    let sum: u32 = hdr.iter().map(|&b| b as u32).sum();
+    hdr[148..156].copy_from_slice(format!("{:06o}\0 ", sum).as_bytes());
+    let mut out = hdr.to_vec();
+    out.extend_from_slice(content);
+    let pad = (512 - content.len() % 512) % 512;
+    out.extend(std::iter::repeat(0u8).take(pad));
+    out
+}
+
 /// §B 顺序 20（2026-10-12）：`EntryType::Link` 的**源路径**也必须落在解压根内。
 ///
 /// 成员名一直有 `check_path_inside`（见 `路径穿越_拒绝`），但硬链接的 `linkName` 没有；
@@ -355,30 +379,6 @@ fn 绝对形式的软链按解压根解释() {
 /// 与 Kotlin 版 `RootfsInstaller` 同一判据、同一用例（两版必须一起漂）。
 #[test]
 fn 硬链接源越界_不落盘() {
-    // 手工构造 USTAR 头：tar crate 在 append 阶段会自己拒绝含 `..` 的 linkname，
-    // 必须绕过它才能测到管线的防御（同 `路径穿越_拒绝`）。
-    fn entry(name: &str, typeflag: u8, linkname: &str, content: &[u8]) -> Vec<u8> {
-        let mut hdr = [0u8; 512];
-        hdr[..name.len()].copy_from_slice(name.as_bytes());
-        hdr[100..108].copy_from_slice(b"0000644\0"); // mode
-        hdr[108..116].copy_from_slice(b"0000000\0"); // uid
-        hdr[116..124].copy_from_slice(b"0000000\0"); // gid
-        hdr[124..136].copy_from_slice(format!("{:011o}\0", content.len()).as_bytes());
-        hdr[136..148].copy_from_slice(b"00000000000\0"); // mtime
-        hdr[148..156].copy_from_slice(b"        "); // chksum 占位
-        hdr[156] = typeflag;
-        hdr[157..157 + linkname.len()].copy_from_slice(linkname.as_bytes());
-        hdr[257..263].copy_from_slice(b"ustar\0");
-        hdr[263..265].copy_from_slice(b"00");
-        let sum: u32 = hdr.iter().map(|&b| b as u32).sum();
-        hdr[148..156].copy_from_slice(format!("{:06o}\0 ", sum).as_bytes());
-        let mut out = hdr.to_vec();
-        out.extend_from_slice(content);
-        let pad = (512 - content.len() % 512) % 512;
-        out.extend(std::iter::repeat(0u8).take(pad));
-        out
-    }
-
     let dir = std::env::temp_dir().join(format!("zext_hardlink_{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     // 解压根**之外**的"机密"：data/leak.txt 的 `../../../secret.txt` 正好翻到它
@@ -386,8 +386,8 @@ fn 硬链接源越界_不落盘() {
 
     let zst = dir.join("hl.tar.zst");
     let mut raw = Vec::new();
-    raw.extend(entry("data/ok.txt", b'0', "", b"ok"));
-    raw.extend(entry("data/leak.txt", b'1', "../../../secret.txt", b""));
+    raw.extend(ustar_entry("data/ok.txt", b'0', "", b"ok"));
+    raw.extend(ustar_entry("data/leak.txt", b'1', "../../../secret.txt", b""));
     raw.extend(std::iter::repeat(0u8).take(1024)); // 归档结束块
     let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
     let mut enc = enc.auto_finish();
@@ -403,5 +403,159 @@ fn 硬链接源越界_不落盘() {
         "硬链接源越界，却把树外内容复制了进来"
     );
     assert!(!out.join("secret.txt").exists(), "树外机密不得进入解压根");
+    fs::remove_dir_all(&dir).ok();
+}
+
+/// 第⑬刀 R-04：EmptyArchive 兜底必须按「实际写出的成员数」判，不能按「解析到的成员数」。
+///
+/// 归档里唯一成员是被拒的越界硬链时：entries=1（解析到了）但 written=0（什么都没落盘）。
+/// 旧代码用 entries 判 ⇒ 兜底失效，空环境被当成"装好了"。这正是 BUG-1/E-083 想拦的事。
+#[test]
+fn 越界硬链不算写出_空归档兜底不失效() {
+    let dir = std::env::temp_dir().join(format!("zext_r04_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+
+    let zst = dir.join("r04.tar.zst");
+    let mut raw = Vec::new();
+    // 唯一成员：硬链，linkname 越界（data/ 下翻 3 层出根）⇒ 主循环 continue
+    raw.extend(ustar_entry("data/leak.txt", b'1', "../../../secret.txt", b""));
+    raw.extend(std::iter::repeat_n(0u8, 1024)); // 归档结束块
+    let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
+    let mut enc = enc.auto_finish();
+    io::copy(&mut raw.as_slice(), &mut enc).unwrap();
+    drop(enc);
+
+    let out = dir.join("out");
+    let result = extract_pipeline(&zst, &out, None, &mut |_| {});
+
+    assert!(
+        matches!(result, Err(ExtractError::EmptyArchive { .. })),
+        "只含被拒硬链的归档应报 EmptyArchive，实际: {:?}",
+        result
+    );
+    assert!(!out.join("data/leak.txt").exists(), "越界硬链不得落盘");
+    fs::remove_dir_all(&dir).ok();
+}
+
+/// 第⑬刀 R-02：写前先删目标 —— 目标若已是硬链接（与树外原件共享 inode），
+/// `File::create`/`fs::copy` 是"写穿"语义，改的是共享 inode，树外原件跟着被改。
+/// 用真硬链复现：预置 out/victim.txt 与树外原件同 inode，再解包同名成员。
+#[test]
+fn 同名覆写_不写穿已有的硬链接目标() {
+    let dir = std::env::temp_dir().join(format!("zext_r02_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let outside = dir.join("outside_original.txt");
+    fs::write(&outside, b"OUTSIDE-ORIGINAL").unwrap();
+
+    let out = dir.join("out");
+    fs::create_dir_all(&out).unwrap();
+    // 预置：out/victim.txt 与树外原件是同一 inode（真硬链，NTFS/ext4 都支持）
+    fs::hard_link(&outside, out.join("victim.txt")).unwrap();
+
+    // 构造 tar：一个普通成员 victim.txt（覆盖写），内容 NEW-CONTENT
+    let zst = dir.join("r02.tar.zst");
+    let mut raw = Vec::new();
+    raw.extend(ustar_entry("victim.txt", b'0', "", b"NEW-CONTENT"));
+    raw.extend(std::iter::repeat_n(0u8, 1024)); // 归档结束块
+    let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
+    let mut enc = enc.auto_finish();
+    io::copy(&mut raw.as_slice(), &mut enc).unwrap();
+    drop(enc);
+
+    extract_pipeline(&zst, &out, None, &mut |_| {}).unwrap();
+
+    assert_eq!(
+        fs::read(out.join("victim.txt")).unwrap(),
+        b"NEW-CONTENT",
+        "同名成员应正常覆写"
+    );
+    assert_eq!(
+        fs::read(&outside).unwrap(),
+        b"OUTSIDE-ORIGINAL",
+        "树外原件被写穿 —— 与 victim.txt 共享的 inode 被改了"
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
+/// 第⑬刀 R-03 端到端：绝对 linkname 的硬链必须按 guest 根（= 解压根）解释。
+///
+/// 为什么必须走完整通路：谓词用例（`link_stays_inside` 判据）绿了不等于通路绿 ——
+/// 判据过了之后 join 一步照样能把基底换掉、读到宿主文件（E-128 同款"谓词绿通路红"坑）。
+/// 这里造一个含「绝对 linkname 硬链」的真 tar 跑完整 extract，断言：
+///   1. 树内绝对 linkname 按解压根解释（内容来自树内文件）—— 旧代码 join 换基底
+///      后取不到，本断言在 Windows/Unix 上都红；
+///   2. 指向树外的绝对 linkname 读不到树外内容 —— unix 上旧代码 join 后正好
+///      命中宿主哨兵、必红；Windows 上 join 落到盘符根通常命中不了（平台差异，
+///      此条在 Windows 允许通过，真机 Android 是 unix 语义）；
+///   3. 树外哨兵原封不动、解压根外无任何新增文件。
+#[test]
+fn 端到端_绝对linkname硬链_按解压根解释且不出树() {
+    let dir = std::env::temp_dir().join(format!("zext_r03_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    // 树外哨兵：旧代码会把绝对 linkname join 成宿主路径、把它的内容读进树里
+    let outside = dir.join("outside_secret.txt");
+    fs::write(&outside, b"OUTSIDE-SECRET-CONTENT").unwrap();
+
+    let zst = dir.join("r03.tar.zst");
+    let mut raw = Vec::new();
+    raw.extend(ustar_entry("inner.txt", b'0', "", b"inner-bytes"));
+    // 绝对 linkname、树内合法：按 guest 根（= 解压根）解释 → out/inner.txt
+    raw.extend(ustar_entry("abs_link", b'1', "/inner.txt", b""));
+    // 绝对 linkname 指向树外哨兵（绝对路径写成 tar 里的 posix 形状）
+    let outside_linkname = {
+        #[cfg(unix)]
+        {
+            format!("/{}", outside.to_string_lossy())
+        }
+        #[cfg(not(unix))]
+        {
+            format!("/{}", outside.to_string_lossy().replace('\\', "/"))
+        }
+    };
+    raw.extend(ustar_entry("leak", b'1', &outside_linkname, b""));
+    raw.extend(std::iter::repeat_n(0u8, 1024)); // 归档结束块
+    let enc = zstd::stream::write::Encoder::new(fs::File::create(&zst).unwrap(), 3).unwrap();
+    let mut enc = enc.auto_finish();
+    io::copy(&mut raw.as_slice(), &mut enc).unwrap();
+    drop(enc);
+
+    let out = dir.join("out");
+    let report = extract_pipeline(&zst, &out, None, &mut |_| {}).unwrap();
+    assert_eq!(report.entries, 3);
+
+    assert_eq!(
+        fs::read(out.join("inner.txt")).unwrap(),
+        b"inner-bytes",
+        "普通成员应照常解出"
+    );
+    assert_eq!(
+        fs::read(out.join("abs_link")).unwrap(),
+        b"inner-bytes",
+        "绝对 linkname 应按解压根解释、从树内 inner.txt 取内容"
+    );
+    let leak = fs::read(out.join("leak")).unwrap_or_default();
+    assert!(
+        !leak.windows(21).any(|w| w == b"OUTSIDE-SECRET-CONTENT"),
+        "树外哨兵内容被复制进了解压根（绝对 linkname 读到了宿主文件）"
+    );
+    assert_eq!(
+        fs::read(&outside).unwrap(),
+        b"OUTSIDE-SECRET-CONTENT",
+        "树外哨兵被改动"
+    );
+    let mut names: Vec<String> = fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        vec![
+            "out".to_string(),
+            "outside_secret.txt".to_string(),
+            "r03.tar.zst".to_string()
+        ],
+        "解压根之外出现了新文件"
+    );
     fs::remove_dir_all(&dir).ok();
 }
