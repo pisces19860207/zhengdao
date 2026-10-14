@@ -321,7 +321,7 @@ fun ZhengdaoApp(
 
     // 回到前台就重读一次：装在终端里完成（RootfsInstaller 写完成标记）后返回主页，
     // 欢迎页与主页的环境状态必须立刻跟上，不能等杀进程重进。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -573,7 +573,7 @@ fun HomeTabs(
     // 玄览：外部打开请求的切 Tab 消费（§4.6，2026-10-14 第 ② 刀接线）。
     // TerminalActivity 点链接时置请求 + finish() 回主页；这里 ON_RESUME 时切到玄览，
     // pendingUrl 由 BrowserHolder 持有、BrowserScreen 组合时消费（不经过此层状态）。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME &&
