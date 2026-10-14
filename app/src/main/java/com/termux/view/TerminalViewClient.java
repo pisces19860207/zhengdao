@@ -1,3 +1,9 @@
+/*
+ * 本文件是 Termux terminal-emulator / terminal-view（Apache-2.0，上游 v0.119.0-beta.3）的衍生文件，
+ * 已由证道项目修改。逐文件修改点见仓库根目录 PROVENANCE.md「Apache-2.0 修改通知」一节。
+ * This file is a derivative of an Apache-2.0 work by the Termux project and has been modified.
+ */
+
 package com.termux.view;
 
 import android.view.KeyEvent;
@@ -27,6 +33,15 @@ public interface TerminalViewClient {
      * On a single tap on the terminal if terminal mouse reporting not enabled.
      */
     void onSingleTapUp(MotionEvent e);
+
+    /**
+     * 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 链接被点按。
+     * 返回 true = 已处理（手势控制器不再把该次 tap 当普通点击转发）。
+     * default 空实现：其他客户端不受影响；证道在 TerminalActivity 接入。
+     */
+    default boolean onLinkOpen(String uri) {
+        return false;
+    }
 
     boolean shouldBackButtonBeMappedToEscape();
 

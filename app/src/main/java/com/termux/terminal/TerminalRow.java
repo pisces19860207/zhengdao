@@ -53,6 +53,15 @@ public final class TerminalRow {
     boolean mLineWrap;
     /** The style bits of each cell in the row. See {@link TextStyle}. */
     final long[] mStyle;
+    /**
+     * 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 超链接区间——与 mStyle
+     * 平行的**稀疏表**（mStyle 位布局只剩 bit 11–15，塞不下链接 id，故用平行数组）。
+     * 懒建：绝大多数行没有链接，三个数组为 null = 此行无链接。
+     */
+    private int[] mLinkStarts = null;   // 每条的起始列（含）
+    private int[] mLinkEnds = null;     // 每条的结束列（不含）
+    private String[] mLinkUris = null;  // 每条的 URI
+    private int mLinkCount = 0;
     /** If this row might contain chars with width != 1, used for deactivating fast path */
     boolean mHasNonOneWidthOrSurrogateChars;
 
@@ -88,6 +97,16 @@ public final class TerminalRow {
             }
             setChar(destinationX, codePoint, line.getStyle(sourceX1));
         }
+        // 证道追加（2026-10-14，§B-12）：块拷贝（IL/DL/选区路径）要带上链接区间，
+        // 按列偏移平移到目标行；自拷贝（this == line）无意义，跳过。
+        if (this != line && line.mLinkCount > 0) {
+            int width = sourceX2 - sourceX1;
+            for (int i = 0; i < line.mLinkCount; i++) {
+                int ns = Math.max(line.mLinkStarts[i] - sourceX1, 0);
+                int ne = Math.min(line.mLinkEnds[i] - sourceX1, width);
+                if (ns < ne) setLink(destinationX + ns, destinationX + ne, line.mLinkUris[i]);
+            }
+        }
     }
 
     public int getSpaceUsed() {
@@ -96,7 +115,12 @@ public final class TerminalRow {
 
     /** Note that the column may end of second half of wide character. */
     public int findStartOfColumn(int column) {
-        if (column == mColumns) return getSpaceUsed();
+        // 证道修复（2026-10-14，§B-补-49 🟡9）：column == mColumns 改 >=。
+        // 上游只拦"恰好等于列数"，但调用方 TerminalBuffer.getSelectedText() 的
+        // `x2Index == x1Index` 分支会传 mColumns + 1（x2 已被夹到 mColumns 再 +1）
+        // ⇒ 越界列号进主循环：扩容区是 \0、WcWidth.width(0)==0 列号不推进，
+        // 读到数组尾 ArrayIndexOutOfBoundsException（主线程 Handler 冒顶）。
+        if (column >= mColumns) return getSpaceUsed();
 
         int currentColumn = 0;
         int currentCharIndex = 0;
@@ -152,6 +176,10 @@ public final class TerminalRow {
         Arrays.fill(mStyle, style);
         mSpaceUsed = mColumns;
         mHasNonOneWidthOrSurrogateChars = false;
+        // 证道追加（2026-10-14，§B-12）：行复用（滚动 / IL / DL 都走 clear()）必须把链接
+        // 区间一起清掉——与 mLineWrap 同类的坑（2026-10-12 踩过），否则复用行带上一行的
+        // 链接区间，点空格都会打开过期 URI。
+        mLinkCount = 0;
         // 证道修复（2026-10-12，§B-补-49 🟡6）：行复用（滚动 / IL / DL 都走 clear()）必须把
         // 换行标志一起清掉。上游只在少数路径清它，于是复用后的行带着上一行的 mLineWrap
         // ⇒ TerminalBuffer.getSelectedText() 会把两行粘成一行、或凭空多出一整行空格。
@@ -288,6 +316,45 @@ public final class TerminalRow {
 
     public final long getStyle(int column) {
         return mStyle[column];
+    }
+
+    // ── 证道追加（2026-10-14，§B-12）：OSC 8 超链接区间 ──
+
+    /** 记录一段链接区间（列区间 [startColumn, endColumn)，同一行可多条）。 */
+    public void setLink(int startColumn, int endColumn, String uri) {
+        if (uri == null || uri.isEmpty()) return;
+        if (startColumn < 0) startColumn = 0;
+        if (endColumn > mColumns) endColumn = mColumns;
+        if (startColumn >= endColumn) return;
+        if (mLinkUris == null) {
+            mLinkStarts = new int[4];
+            mLinkEnds = new int[4];
+            mLinkUris = new String[4];
+            mLinkCount = 0;
+        } else if (mLinkCount == mLinkUris.length) {
+            int n = mLinkCount * 2;
+            mLinkStarts = Arrays.copyOf(mLinkStarts, n);
+            mLinkEnds = Arrays.copyOf(mLinkEnds, n);
+            mLinkUris = Arrays.copyOf(mLinkUris, n);
+        }
+        mLinkStarts[mLinkCount] = startColumn;
+        mLinkEnds[mLinkCount] = endColumn;
+        mLinkUris[mLinkCount] = uri;
+        mLinkCount++;
+    }
+
+    /** 查某列是否落在链接区间内；命中返回 URI，否则 null。 */
+    public String getLinkAt(int column) {
+        if (mLinkCount == 0 || column < 0 || column >= mColumns) return null;
+        for (int i = 0; i < mLinkCount; i++) {
+            if (column >= mLinkStarts[i] && column < mLinkEnds[i]) return mLinkUris[i];
+        }
+        return null;
+    }
+
+    /** 此行是否有链接（渲染层快速路径用）。 */
+    public boolean hasLinks() {
+        return mLinkCount > 0;
     }
 
 }

@@ -198,6 +198,31 @@ public final class TerminalBuffer {
         mLines[externalToInternalRow(row)].mLineWrap = false;
     }
 
+    // ── 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 超链接区间 ──
+    // 行号用 internal index（= 行对象在 mLines 里的物理位置）：滚动只改 mScreenFirstRow、
+    // 行对象不动 ⇒ 记录不随滚动漂移；折行的长 URI 由调用方按跨行分段灌入。
+
+    public void setLink(int startInternalRow, int startColumn, int endInternalRow, int endColumn, String uri) {
+        if (uri == null || uri.isEmpty()) return;
+        if (startInternalRow < 0) startInternalRow = 0;
+        if (endInternalRow >= mTotalRows) endInternalRow = mTotalRows - 1;
+        if (startInternalRow > endInternalRow) return;
+        for (int r = startInternalRow; r <= endInternalRow; r++) {
+            TerminalRow line = mLines[r];
+            if (line == null) continue;
+            int s = (r == startInternalRow) ? startColumn : 0;
+            int e = (r == endInternalRow) ? endColumn : mColumns;
+            line.setLink(s, e, uri);
+        }
+    }
+
+    /** 查（屏幕行, 列）的链接；无则 null。 */
+    public String getLinkAt(int screenRow, int column) {
+        if (screenRow < 0 || screenRow >= mScreenRows) return null;
+        TerminalRow line = mLines[externalToInternalRow(screenRow)];
+        return line == null ? null : line.getLinkAt(column);
+    }
+
     /**
      * Resize the screen which this transcript backs. Currently, this only works if the number of columns does not
      * change or the rows expand (that is, it only works when shrinking the number of rows).

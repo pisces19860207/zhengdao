@@ -186,6 +186,11 @@ public final class TerminalEmulator {
     final TerminalBuffer mAltBuffer;
     /** The current screen buffer, pointing at either {@link #mMainBuffer} or {@link #mAltBuffer}. */
     private TerminalBuffer mScreen;
+    // 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 超链接——打开中的链接。
+    // 行号记 buffer 内部位置（行对象物理索引），滚动不漂移；落点见 TerminalBuffer.setLink。
+    private String mOpenLinkUri = null;
+    private int mLinkStartRow = -1;
+    private int mLinkStartCol = -1;
 
     /** The terminal session this emulator is bound to. */
     private final TerminalOutput mSession;
@@ -212,6 +217,14 @@ public final class TerminalEmulator {
     private boolean mOscArgsDropped;
     /** 已丢弃的字节数（仅在 {@link #mOscArgsDropped} 为真时累计）。 */
     private int mOscArgsDiscarded;
+
+    /**
+     * 证道本地补丁（2026-10-14，§B-补-49 🟡8，第 ③ 刀）：DCS 载荷超限后置位。
+     * 与 {@link #mOscArgsDropped} 同构——上游在 {@link #doDeviceControl} 的 default
+     * 分支超限时 setLength(0) + finishSequence，余下载荷被当正文打印、载荷里的
+     * ESC[ / ESC] 还会被当真转义序列执行；这里改为整条作废、继续吞到 ST。
+     */
+    private boolean mDcsArgsDropped;
 
     /** 超限后最多再丢弃这么多字节去找终结符，超过就放弃这条序列（绝对上限）。 */
     private static final int MAX_OSC_DISCARD_LENGTH = 1024 * 1024;
@@ -959,6 +972,14 @@ public final class TerminalEmulator {
         switch (b) {
             case (byte) '\\': // End of ESC \ string Terminator
             {
+                // 证道追加（2026-10-14，§B-补-49 🟡8）：超限作废的 DCS 整条丢弃，
+                // 不拿截断的前缀去解参数（与 doOscSetTextParameters 的 mOscArgsDropped 同构）。
+                if (mDcsArgsDropped) {
+                    mDcsArgsDropped = false;
+                    mOscArgsDiscarded = 0;
+                    finishSequence();
+                    return;
+                }
                 String dcs = mOSCOrDeviceControlArgs.toString();
                 // DCS $ q P t ST. Request Status String (DECRQSS)
                 if (dcs.startsWith("$q")) {
@@ -1067,9 +1088,21 @@ public final class TerminalEmulator {
             break;
             default:
                 if (mOSCOrDeviceControlArgs.length() > MAX_OSC_STRING_LENGTH) {
-                    // Too long.
-                    mOSCOrDeviceControlArgs.setLength(0);
-                    finishSequence();
+                    // 证道修复（2026-10-14，§B-补-49 🟡8）：DCS 收集超限。
+                    // 上游在此 setLength(0) + finishSequence ⇒ 后续载荷字节走 ESC_NONE
+                    // 被当正文打印，载荷里的 ESC[ / ESC] 还会被当**真转义序列执行**。
+                    // 改为：整条作废、继续吞到 ST（与 mOscArgsDropped 补丁同构），
+                    // 丢弃量超 MAX_OSC_DISCARD_LENGTH 才彻底放弃（防永远等不到终结符）。
+                    mDcsArgsDropped = true;
+                    if (++mOscArgsDiscarded > MAX_OSC_DISCARD_LENGTH) {
+                        logError("DCS string exceeded limits, giving up");
+                        mOSCOrDeviceControlArgs.setLength(0);
+                        finishSequence();
+                    } else {
+                        // 显式保持 ESC_P 序列状态（与 else 的 append 分支同构）：
+                        // 只置标志不 continueSequence 时，后续字节可能从隐式路径掉状态。
+                        continueSequence(mEscapeState);
+                    }
                 } else {
                     mOSCOrDeviceControlArgs.appendCodePoint(b);
                     continueSequence(mEscapeState);
@@ -2058,6 +2091,32 @@ public final class TerminalEmulator {
         }
     }
 
+    /**
+     * 证道追加（2026-10-14，§B-12）：OSC 8 超链接开关。
+     *
+     * textParameter 已由 tokenizer 去掉开头的 "8;"，形如 "params;URI"（开）或 ";"（闭）。
+     * 区间按 [起点, 当前光标) 登记到行（可跨行——折行长 URI 由 TerminalBuffer.setLink 分段灌）。
+     * 程序忘发关闭序列时，下一条开链接会先把上一条落掉（防御）。
+     */
+    private void handleOsc8Hyperlink(String textParameter) {
+        int sep = textParameter.indexOf(';');
+        String uri = (sep < 0) ? "" : textParameter.substring(sep + 1);
+        if (mOpenLinkUri != null) {
+            // 先落掉上一条（闭链接，或忘闭时的防御性落点 = 当前光标处）
+            mScreen.setLink(mLinkStartRow, mLinkStartCol,
+                mScreen.externalToInternalRow(mCursorRow), mCursorCol, mOpenLinkUri);
+        }
+        if (!uri.isEmpty()) {
+            mOpenLinkUri = uri;
+            mLinkStartRow = mScreen.externalToInternalRow(mCursorRow);
+            mLinkStartCol = mCursorCol;
+        } else {
+            mOpenLinkUri = null;
+            mLinkStartRow = -1;
+            mLinkStartCol = -1;
+        }
+    }
+
     /** An Operating System Controls (OSC) Set Text Parameters. May come here from BEL or ST. */
     private void doOscSetTextParameters(String bellOrStringTerminator) {
         if (mOscArgsDropped) {
@@ -2084,6 +2143,12 @@ public final class TerminalEmulator {
         }
 
         switch (value) {
+            case 8:
+                // 证道追加（2026-10-14，§B-12）：OSC 8 hyperlink。
+                // 开：ESC ] 8 ; params ; URI ST（URI 非空）／闭：ESC ] 8 ; ; ST（URI 空）。
+                // 上游整段丢弃 OSC 8，agent 打出的链接只能手抄；本刀补解析 + 行区间登记。
+                handleOsc8Hyperlink(textParameter);
+                break;
             case 0: // Change icon name and window title to T.
             case 1: // Change icon name to T.
             case 2: // Change window title to T.
@@ -2160,12 +2225,12 @@ public final class TerminalEmulator {
                 }
                 break;
             case 52: // Manipulate Selection Data. Skip the optional first selection parameter(s).
-                // 限制 base64 文本长度 ~100KB，避免 binder TransactionTooLargeException
-                // （Android 对跨进程 String 的 binder 限制 ~100KB UTF-16，见 d8d6b02）
-                if (textParameter.length() > (100 * 1024) + /* `52;Pc;` */ 10) {
-                    Logger.logError(mClient, LOG_TAG, "OSC 52 text too long, dropping (" + textParameter.length() + " chars)");
-                    break;
-                }
+                // 2026-10-14（§B-补-49 🟢2）：此处原有的「textParameter.length() > 100KB+10」
+                // 判断已删——它是**死判据**：oscArgsMaxLength() 对 OSC 52 返回
+                // MAX_OSC52_STRING_LENGTH（= 100KB+10），collectOSCArgs() 在整条缓冲达到该
+                // 上限后不再 append ⇒ textParameter 恒 ≤ 上限-3 < 上限，判断恒假。
+                // binder TransactionTooLargeException 的实际防护由 collectOSCArgs() 承担
+                // （超限整条丢弃，见该类 KDoc 与 MAX_OSC52_STRING_LENGTH 的注释）。
                 int startIndex = textParameter.indexOf(";") + 1;
                 try {
                     String clipboardText = new String(Base64.decode(textParameter.substring(startIndex), Base64.DEFAULT), StandardCharsets.UTF_8);
@@ -2659,6 +2724,11 @@ public final class TerminalEmulator {
         mBottomMargin = mRows;
         mRightMargin = mColumns;
         mAboutToAutoWrap = false;
+        // 证道追加（2026-10-14，§B-12）：reset 要清掉打开中的 OSC 8 链接态，
+        // 否则 reset 后第一条关闭序列会把区间标到错误位置。
+        mOpenLinkUri = null;
+        mLinkStartRow = -1;
+        mLinkStartCol = -1;
         mForeColor = mSavedStateMain.mSavedForeColor = mSavedStateAlt.mSavedForeColor = TextStyle.COLOR_INDEX_FOREGROUND;
         mBackColor = mSavedStateMain.mSavedBackColor = mSavedStateAlt.mSavedBackColor = TextStyle.COLOR_INDEX_BACKGROUND;
         setDefaultTabStops();

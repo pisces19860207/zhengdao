@@ -85,6 +85,12 @@ object SessionManager {
     @Volatile
     var isFallback: Boolean = false
 
+    /**
+     * 会话结束回调（§B-补-49 🟢4/🟢6，2026-10-14 接线）：由 [client] 的 onSessionFinished
+     * 在引擎回调线程 invoke；TerminalActivity 在 onCreate 里赋值（走本钩子通道而非注册
+     * TerminalSessionClient——理由见其接线注释）。**勿再让它变成无赋值点的死钩子**，
+     * 文本门禁见 TerminalSessionWiringGateTest。
+     */
     var onSessionDied: ((Int) -> Unit)? = null
     /** 视图刷新回调（TerminalActivity 设置：termView.onScreenUpdated()） */
     var onViewUpdate: (() -> Unit)? = null
@@ -122,7 +128,10 @@ object SessionManager {
     /**
      * 会话对象还在（进程已 spawn，或刚创建、即将在首次 updateSize 时 spawn）。
      *
-     * 比 [isAlive] 宽一格，因为 Termux 引擎的 isRunning 在 spawn 之前是 false：
+     * 比 [isAlive] 宽一格，因为 Termux 引擎的 isRunning 在 spawn 之前是 false
+     * （2026-10-14 复核：该前提现已成立——2026-10-12 §A #58 把引擎 `isRunning()` 改为
+     * `mShellPid > 0`，spawn 前 mShellPid=0 ⇒ false；本条 KDoc 与实现一致，
+     * 台账 §B-补-49 🟢6 对此「前提是错的」的质疑已随那次修复消解）：
      * onNewIntent（复用实例，会立刻走一遍 attach）紧接着 onResume 又走一遍时，
      * 只认 isAlive 会把刚建好的会话当成"没有会话"，于是 kill 掉重来一次——
      * 同一句启动命令被注入两遍、正要启动的 Agent 被自己的第二次启动顶掉。
@@ -211,7 +220,9 @@ object SessionManager {
      * 时，[session] 往往已经是那条**新**会话——而新会话在首次 updateSize（spawn）之前
      * isRunning 也是 false（见 [hasSession] 的注释）。旧写法 `session?.isRunning == false`
      * 于是会把"刚要启动的新会话"当成"刚结束的旧会话"清掉：Agent 记录被抹（下次进终端
-     * 接不回来）、前台服务被停（退到后台就可能被杀）、视图收到 [onSessionDied] 并关页。
+     * 接不回来）、前台服务被停（退到后台就可能被杀）、视图收到 [onSessionDied] 做结束处理
+     * （重置行缓冲 + 中文结束提示；2026-10-14 🟢4 接线时核对——**本类不关页**，
+     * 页面去留由用户自己决定，原文"并关页"是过度承诺）。
      * 加身份比对后，凡是"结束的不是当前这条"一律丢弃，清理只可能发生在当前会话身上。
      */
     private fun onFinished(finished: TerminalSession, code: Int) {
@@ -254,7 +265,10 @@ object SessionManager {
         override fun onColorsChanged(session: TerminalSession) {}
         override fun onTerminalCursorStateChange(state: Boolean) {}
         override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
-        override fun getTerminalCursorStyle(): Int = 0
+        // §B-补-49 🟢4（2026-10-14）：改传 BAR（细竖线，值 2）——用户明确要求"光标细一点"。
+        // 原传 0（BLOCK 方块），而 TerminalActivity 的 getTerminalCursorStyle 传 BAR；
+        // 但 Activity 的 client 从未注册（见 🟢4 对账）⇒ 实际一直是方块。
+        override fun getTerminalCursorStyle(): Int = 2
         override fun logError(tag: String, message: String) { RunLog.log("E: $message") }
         override fun logWarn(tag: String, message: String) { RunLog.log("W: $message") }
         override fun logInfo(tag: String, message: String) {}

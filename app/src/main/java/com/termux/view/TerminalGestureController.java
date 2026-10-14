@@ -47,14 +47,18 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
     private boolean mScrolledWithFinger;
 
     /**
-     * 证道 P1-d 🟡-6（2026-10-10）：**一次手势**最多向 guest 转发多少行滚轮事件。
+     * 证道 P1-d 🟡-6（2026-10-10）：**每次 onScroll 回调**最多向 guest 转发多少行滚轮事件。
+     *
+     * <p>口径修正（2026-10-14，§B-补-49 🟢1）：原文写「**一次手势**最多」，而实现是每次
+     * 回调各自封顶——长甩会被系统拆成多帧、每帧一次回调，手势级总量并无硬上限。
+     * 这正是 P1-d 的设计意图（单帧瞬时批量可控即可）；此处只对齐措辞，不改行为。</p>
      *
      * <p>上限取 10 的理由（不是 5，也不是 20）：</p>
      * <ol>
      *   <li>真机一次全屏甩动最多折算约 50–60 行（屏高 2848 px ÷ 行高 ≈45 px），不设上限时
      *       一次手势就会向 guest 连发上百条滚轮事件（每行 = 按下 + 抬起两条），每条都要走
      *       pty 写入 → tmux 处理 → 回显渲染；</li>
-     *   <li>10 行 = 每次手势最多 20 条事件，属于「一帧内的瞬时批量」，而不是持续洪峰；</li>
+     *   <li>10 行 = 每次回调最多 20 条事件，属于「一帧内的瞬时批量」，而不是持续洪峰；</li>
      *   <li>取 5 会把中等力度的正常滑动也截断（手感上像"滚不动"），取 20 则只砍掉极端长甩、
      *       对最坏情况几乎没有约束 —— 而极端长甩正是这里要防的。</li>
      * </ol>
@@ -92,6 +96,16 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
         if (mView.isSelectingText()) {
             mView.stopTextSelectionMode();
             return true;
+        }
+        // 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 链接命中 →
+        // 交客户端打开（落点是 App 内玄览，不新开 Activity）；客户端返回 true = 已处理，
+        // 该次 tap 不再当普通点击（不进焦点逻辑）。未命中/未处理则走原有路径。
+        int[] colRow = mView.getColumnAndRow(event, false);
+        if (colRow != null) {
+            String uri = mView.mEmulator.getScreen().getLinkAt(colRow[1], colRow[0]);
+            if (uri != null && mView.mClient.onLinkOpen(uri)) {
+                return true;
+            }
         }
         mView.requestFocus();
         mView.mClient.onSingleTapUp(event);
@@ -201,6 +215,15 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
 
             @Override
             public void run() {
+                // 证道修复（2026-10-14，§B-补-49 🟡5）：本 Runnable 是唯一不判 emulator 空的入口。
+                // TerminalView.attachSession() 会把 mEmulator 置 null（随后 updateSize() 在
+                // 尺寸为 0 时直接 return，不再重建），此后这条已 post 的动画帧触发
+                // mView.mEmulator.isMouseTrackingActive() ⇒ NPE。各入口方法
+                // （onDown/onScroll/onScale/onFling/onTouchEvent）开头都判了空，独它漏。
+                if (mView.mEmulator == null) {
+                    mScroller.abortAnimation();
+                    return;
+                }
                 if (mouseTrackingAtStartOfFling != mView.mEmulator.isMouseTrackingActive()) {
                     mScroller.abortAnimation();
                     return;

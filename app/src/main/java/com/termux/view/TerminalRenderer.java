@@ -28,6 +28,9 @@ public final class TerminalRenderer {
     final int mTextSize;
     final Typeface mTypeface;
     private final Paint mTextPaint = new Paint();
+    // 证道追加（2026-10-14，§B-12）：OSC 8 链接色。硬编码亮蓝——渲染器拿不到 Compose
+    // 主题色；深浅主题适配留二期（一期先保证"可见、可认"）。
+    private static final int LINK_COLOR = 0xFF8AB4F8;
 
     /** The width of a single mono spaced character obtained by {@link Paint#measureText(String)} on a single 'X'. */
     final float mFontWidth;
@@ -110,6 +113,8 @@ public final class TerminalRenderer {
             long lastRunStyle = 0;
             boolean lastRunInsideCursor = false;
             boolean lastRunInsideSelection = false;
+            // 证道追加（2026-10-14，§B-12）：OSC 8 链接也作为 run 断点——链接边界精确的下划线/链接色
+            boolean lastRunInsideLink = false;
             int lastRunStartColumn = -1;
             int lastRunStartIndex = 0;
             boolean lastRunFontWidthMismatch = false;
@@ -125,6 +130,8 @@ public final class TerminalRenderer {
                 final boolean insideCursor = (cursorX == column || (codePointWcWidth == 2 && cursorX == column + 1));
                 final boolean insideSelection = column >= selx1 && column <= selx2;
                 final long style = lineObject.getStyle(column);
+                // 证道追加（2026-10-14，§B-12）：本列是否落在 OSC 8 链接区间内
+                final boolean insideLink = lineObject.getLinkAt(column) != null;
 
                 // Check if the measured text width for this code point is not the same as that expected by wcwidth().
                 // This could happen for some fonts which are not truly monospace, or for more exotic characters such as
@@ -134,7 +141,7 @@ public final class TerminalRenderer {
                     currentCharIndex, charsForCodePoint);
                 final boolean fontWidthMismatch = Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
 
-                if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch || lastRunFontWidthMismatch) {
+                if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || insideLink != lastRunInsideLink || fontWidthMismatch || lastRunFontWidthMismatch) {
                     if (column == 0) {
                         // Skip first column as there is nothing to draw, just record the current style.
                     } else {
@@ -147,12 +154,13 @@ public final class TerminalRenderer {
                         }
                         drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun,
                             lastRunStartIndex, charsSinceLastRun, measuredWidthForRun,
-                            cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor, lastRunInsideSelection);
+                            cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor, lastRunInsideSelection, lastRunInsideLink);
                     }
                     measuredWidthForRun = 0.f;
                     lastRunStyle = style;
                     lastRunInsideCursor = insideCursor;
                     lastRunInsideSelection = insideSelection;
+                    lastRunInsideLink = insideLink;
                     lastRunStartColumn = column;
                     lastRunStartIndex = currentCharIndex;
                     lastRunFontWidthMismatch = fontWidthMismatch;
@@ -175,18 +183,19 @@ public final class TerminalRenderer {
                 invertCursorTextColor = true;
             }
             drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun, lastRunStartIndex, charsSinceLastRun,
-                measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor, lastRunInsideSelection);
+                measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor, lastRunInsideSelection, lastRunInsideLink);
         }
     }
 
     private void drawTextRun(Canvas canvas, char[] text, int[] palette, float y, int startColumn, int runWidthColumns,
                              int startCharIndex, int runWidthChars, float mes, int cursor, int cursorStyle,
-                             long textStyle, boolean reverseVideo, boolean insideSelection) {
+                             long textStyle, boolean reverseVideo, boolean insideSelection, boolean insideLink) {
         int foreColor = TextStyle.decodeForeColor(textStyle);
         final int effect = TextStyle.decodeEffect(textStyle);
         int backColor = TextStyle.decodeBackColor(textStyle);
         final boolean bold = (effect & (TextStyle.CHARACTER_ATTRIBUTE_BOLD | TextStyle.CHARACTER_ATTRIBUTE_BLINK)) != 0;
-        final boolean underline = (effect & TextStyle.CHARACTER_ATTRIBUTE_UNDERLINE) != 0;
+        // 证道追加（2026-10-14，§B-12）：OSC 8 链接格强制下划线（即使序列没带 underline 属性）
+        final boolean underline = (effect & TextStyle.CHARACTER_ATTRIBUTE_UNDERLINE) != 0 || insideLink;
         final boolean italic = (effect & TextStyle.CHARACTER_ATTRIBUTE_ITALIC) != 0;
         final boolean strikeThrough = (effect & TextStyle.CHARACTER_ATTRIBUTE_STRIKETHROUGH) != 0;
         final boolean dim = (effect & TextStyle.CHARACTER_ATTRIBUTE_DIM) != 0;
@@ -221,6 +230,11 @@ public final class TerminalRenderer {
                 foreColor = backColor;
                 backColor = tmp;
             }
+        }
+
+        // 证道追加（2026-10-14，§B-12）：链接色放在选区之后——选区里也保持链接色可认
+        if (insideLink) {
+            foreColor = LINK_COLOR;
         }
 
         float left = startColumn * mFontWidth;
