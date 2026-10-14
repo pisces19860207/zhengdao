@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -260,11 +261,19 @@ private fun ModelChip(text: String, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // 2026-10-08 走查：上下内边距 2dp → 12dp。原来 labelSmall 行高约 16dp，
-            // 加 4dp 只有 **20dp 高**——这是全 App 最小的交互控件，而它是改模型的唯一
-            // 入口，非技术用户会反复点不中、然后以为 App 坏了。现在约 40dp。
-            // 未一步到 48dp：顶栏高度受限，胶囊再厚会把会话标题挤掉。
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            // P2-10（issue #17）：补齐 M3 最小触摸目标 48dp。
+            // 2026-10-08 走查：上下内边距 2dp → 12dp（原来整枚只有约 20dp 高）。本轮再抬一档：
+            // labelSmall 行高约 16dp，竖内边距 12 → 16dp 后整枚正好 48dp；外层
+            // defaultMinSize 兜底——字体行高若实测大于 16dp，总高只会更高不会更低
+            // （padding 会把约束里的 minHeight 一并扣减、再用外层约束回夹，故
+            //  defaultMinSize 必须放在 padding 外层；顺序反了 minHeight 会先被 padding
+            //  吃掉，兜底失效、极端情况整块还会涨到 48+32=80dp）。
+            // 旧注释「未一步到 48dp：顶栏高度受限，胶囊再厚会把会话标题挤掉」的前提已作废：
+            // 同一顶栏里的 ＋ 钮（见 [SessionBar]）本就是 48dp，顶栏总高由它决定；
+            // 标题在主行、胶囊在副行，本来就不互相挤压。
+            modifier = Modifier
+                .defaultMinSize(minHeight = 48.dp)
+                .padding(horizontal = 12.dp, vertical = 16.dp),
         )
     }
 }
@@ -839,6 +848,11 @@ fun ToolCallCard(part: OcPart.Tool, onLongPress: (() -> Unit)? = null) {
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier
             .fillMaxWidth()
+            // P2-10（issue #17）：整张卡就是点击区（见下方 combinedClickable）。折叠态
+            // 且无入参摘要时，10dp×2 + 标题行约 20dp ≈ 40dp，够不上 M3 最小触摸目标。
+            // defaultMinSize 对 Card 生效：M3 Surface 是 propagateMinConstraints = true 的
+            // Box，会把 minHeight 透给内容（展开态本就远超 48dp，不受影响）。
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(12.dp))
             // 单击＝展开/收起（原行为）；长按＝交给外部弹「复制」面板。
             // 卡片自带点击手势，长按若不在这里接住，会被孩子的 clickable 吃掉（Compose 手势
@@ -961,6 +975,11 @@ private fun ReasoningBlock(parts: List<OcPart.Reasoning>, onLongPress: (() -> Un
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth()
+                // P2-10（issue #17）：2026-10-08 走查把竖内边距 2dp → 12dp 后整行约 44dp，
+                // 仍差 M3 最小触摸目标 48dp 一截。补 defaultMinSize（放 padding 外层，
+                //  Row 的 crossAxisLayoutSize 会吃这个 minHeight，内容由
+                //  verticalAlignment 居中，视觉不变、热区达标）。
+                .defaultMinSize(minHeight = 48.dp)
                 .combinedClickable(
                     onClick = { expanded = !expanded },
                     onLongClick = onLongPress,
@@ -1026,8 +1045,12 @@ private fun CollapsibleBlock(
             title,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
-            // 2026-10-08 走查：2dp → 12dp（同上方折叠头，原高约 20dp）
+            // P2-10（issue #17）：与 [ReasoningBlock] 折叠头同款形态——2026-10-08 走查
+            // 只把竖内边距 2dp → 12dp（约 40dp 高），仍不到 M3 最小触摸目标 48dp。
+            // defaultMinSize 放在 clickable/padding 外层：padding 会连 minHeight 一起扣减，
+            // 顺序反了（放 padding 内层）会按 48+24 计算、整块涨到 72dp。
             modifier = Modifier
+                .defaultMinSize(minHeight = 48.dp)
                 .combinedClickable(
                     onClick = { expanded = !expanded },
                     onLongClick = onLongPress,
@@ -1749,13 +1772,17 @@ private fun SessionRow(
             // 此前删除**只**能长按触发，界面没有任何提示 —— 新用户第一反应是"这是个死列表"，
             // 根本不知道还能删（用户反馈佐证）。这里补一个 trailing 垃圾桶按钮作为**可见路径**，
             // 长按保留作辅助（双通道）。图标用中性色 onSurfaceVariant，不喧宾夺主。
-            // 40dp 热区：与全仓其它次级图标按钮（如顶栏 ＋）同档；点击由子节点消费，
+            // P2-10（issue #17）：40dp → 48dp。原注释「与顶栏＋同档」写于 ＋ 还是 40dp 的
+            // 年代；＋ 自 2026-10-08 起就是 48dp（见 SessionBar），40dp 反而比它小一档。
+            // 且 M3 的 minimumInteractiveComponentSize 按官方要求必须排在 size 修饰符
+            // **之前**才生效——这里显式 size(40.dp) 恰好把 48dp 布局保留抵掉了，只能自己给足。
+            // 字形 TrashGlyph 仍是固定 18dp，按钮放大不会把图标撑大。点击由子节点消费，
             // 不会误触整行的"恢复会话"。
             Spacer(Modifier.width(4.dp))
             IconButton(
                 onClick = onDelete,
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(48.dp)
                     .semantics { contentDescription = deleteDesc },
             ) {
                 TrashGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1828,6 +1855,11 @@ private fun DrawerActionRow(label: String, value: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // P2-10（issue #17）：竖内边距 8dp + bodyMedium 行高约 20dp ≈ 36dp，是全 App
+            // 最矮的可点击行。补 defaultMinSize 到 M3 最小触摸目标 48dp（Row 吃
+            // crossAxisMin，内容仍由 verticalAlignment 居中）。KDoc 里「形态与设置页
+            // SettingRow 一致、刻意不复用」的判断不变——改的只是高度下限，不是样式来源。
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(8.dp))
             .pressClickable(onClick = onClick)
             .padding(vertical = 8.dp),
