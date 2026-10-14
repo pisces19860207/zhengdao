@@ -114,7 +114,10 @@ object RootfsCache {
                 }
             }
             if (legacy.listFiles()?.isEmpty() == true) legacy.delete()
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：旧缓存目录并入是 best-effort（失败下次再试），但不能静默——
+            // 搬失败意味着用户以为删掉了的旧包还占着空间。
+            RunLog.log("旧缓存目录并入失败（忽略）：${t.message}")
         }
         return moved
     }
@@ -336,7 +339,10 @@ object RootfsCache {
                         if (f.delete()) deleted++
                 }
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：旧安装包清理是 best-effort，但静默失败会让"清理了"的显示与
+            // 实际磁盘占用长期不符——用户按显示去判断空间就会误判。
+            RunLog.log("旧安装包清理失败（忽略）：${t.message}")
         }
         return deleted
     }
@@ -352,7 +358,9 @@ object RootfsCache {
     fun pruneKeep(ctx: Context, keep: Int = 2) {
         try {
             listArchives(ctx).drop(keep).forEach { it.delete() }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：裁剪失败多卖几个包的空间，不能静默——空间账实亏。
+            RunLog.log("安装包保留数裁剪失败（忽略）：${t.message}")
         }
     }
 }

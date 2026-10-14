@@ -1421,7 +1421,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                                 type = "*/*"
                             }, 2001
                         )
-                    } catch (_: Throwable) {
+                    } catch (t: Throwable) {
+                        // P2-7：文件选择器起不来不能静默——用户点了"选择文件"却毫无反应，
+                        // 是最难排查的一类"没反应"。这仍是 best-effort（不中断对话框），
+                        // 但必须留一句可查的。
+                        RunLog.log("打开文件选择器失败（忽略）：${t.message}")
                     }
                 }
                 .setNegativeButton(getString(R.string.common_later), null)
@@ -1437,7 +1441,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 contentResolver.takePersistableUriPermission(
                     uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                // P2-7：权限持久化失败不中断安装（本次进程内仍可用），但要留痕——
+                // 它意味着重启后这个目录可能读不到，是"装到一半回来又要重新选"的根因。
+                RunLog.log("持久化 URI 权限失败（忽略，本次安装继续）：${t.message}")
             }
             installFromSafUri(uri)
         }

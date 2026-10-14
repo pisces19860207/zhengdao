@@ -126,10 +126,22 @@ object RootfsDownloader {
     /**
      * 内存看护（onTrimMemory 退后台时调用）：清掉空闲 TCP 连接与缓冲。
      * WebView/Chromium 的内存由系统回调自动管理，不在此处理。
+     *
+     * P2-7（issue #17）：连接池清空是 best-effort（失败不影响正确性，下一轮自然重建），
+     * 但不能空 catch 静默——evictAll 抛异常意味着底层 socket 有问题，而那正是排查
+     * "下载偶发失败"时要看的线索。降级为 debug 日志：不刷屏、可查。
      */
     fun releaseIdleResources() {
-        try { sharedClient.connectionPool.evictAll() } catch (_: Throwable) {}
-        try { downloadClient.connectionPool.evictAll() } catch (_: Throwable) {}
+        try {
+            sharedClient.connectionPool.evictAll()
+        } catch (t: Throwable) {
+            Log.d(TAG, "sharedClient 连接池清空失败（best-effort，忽略）", t)
+        }
+        try {
+            downloadClient.connectionPool.evictAll()
+        } catch (t: Throwable) {
+            Log.d(TAG, "downloadClient 连接池清空失败（best-effort，忽略）", t)
+        }
     }
 
     /**
