@@ -184,15 +184,61 @@ object Store {
         return moved
     }
 
-    /** 单文件版搬家（目标已存在则不动）。 */
+    /**
+     * 单文件版搬家（目标已存在**且完整**则不动）。
+     *
+     * 2026-10-14（审计第 2 期 B-4）：旧写法 `target.exists() → return false` 把**半截目标**也当成
+     * "已搬过"。`legacy.copyTo(target)` 中途抛异常（存储写满 / 权限 / 被杀）会在目标名留下源的
+     * **前 N 字节**，下一轮 `exists()` 直接放行 ⇒ **永不重拷**（与 [adoptDir] 的 🟡-1 同病，
+     * `RootfsCache.migrateLegacy` 也有一处）。
+     *
+     * 判据（[isHalfCopy]）：目标**严格短于**源、且字节逐位等于源的前缀 ⇒ 判定为"上次没搬完的残片"，
+     * 清掉重拷；否则（不短于源＝完整，或内容对不上＝用户自己放的另一个同名文件）一律不覆盖 ——
+     * 与 [adoptDir]「宁可留着旧源，也不能弄坏新数据」同一条纪律。
+     * 复制若再次失败，也把半截目标清掉，让下一轮能自愈重试。
+     */
     fun adoptFile(target: File, legacy: File): Boolean {
-        if (!legacy.isFile || target.exists()) return false
+        if (!legacy.isFile) return false
+        if (target.exists() && !isHalfCopy(target, legacy)) return false
+        // 半截残片先清掉：复制若再次失败，也不会把它留在公共区冒充成品
+        runCatching { if (target.exists()) target.delete() }
         target.parentFile?.let { if (!it.isDirectory) it.mkdirs() }
         return runCatching { legacy.renameTo(target) }.getOrDefault(false) ||
             runCatching {
-                legacy.copyTo(target, overwrite = false)
+                legacy.copyTo(target, overwrite = true)
                 legacy.delete()
                 true
-            }.getOrDefault(false)
+            }.getOrElse {
+                // 失败留可重试状态：清掉半截目标，下一轮 target.exists() 为假 ⇒ 自愈重拷
+                runCatching { target.delete() }
+                false
+            }
+    }
+
+    /**
+     * [adoptFile] 的判据：目标是否是源的**半截残片**（严格更短，且字节逐位等于源的前缀）。
+     *
+     * 只有"内容就是源的开头一段"才算没搬完 —— 于是既不会把用户手动放在公共区的**另一个**
+     * 同名文件（内容对不上）误清掉，也能把任何长度的截断副本救回来。0 字节目标按残片处理
+     * （复制夭折在第一步的极端情形）。
+     */
+    private fun isHalfCopy(target: File, legacy: File): Boolean {
+        if (!target.isFile) return false
+        val n = target.length()
+        if (n >= legacy.length()) return false
+        if (n == 0L) return true
+        return runCatching {
+            val head = target.readBytes()
+            val prefix = ByteArray(head.size)
+            legacy.inputStream().use { input ->
+                var off = 0
+                while (off < prefix.size) {
+                    val r = input.read(prefix, off, prefix.size - off)
+                    if (r < 0) break
+                    off += r
+                }
+            }
+            prefix.contentEquals(head)
+        }.getOrDefault(false)
     }
 }

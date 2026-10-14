@@ -111,6 +111,12 @@ object RootfsCache {
                     // 极少数文件系统上 rename 会失败：复制后删源（残片也照此对待，保住续传进度）
                     runCatching { f.copyTo(target, overwrite = true); f.delete() }
                         .onSuccess { moved++ }
+                        .onFailure {
+                            // B-4 同病（审计第 2 期）：复制中途失败会留下半截目标，而下一轮开头
+                            // `if (target.exists()) return@forEach` 会把它当成"已搬过"⇒ 永不重拷。
+                            // 清掉让下一轮自愈（源还在，"残片也搬"的续传进度不丢）。
+                            runCatching { target.delete() }
+                        }
                 }
             }
             if (legacy.listFiles()?.isEmpty() == true) legacy.delete()
@@ -318,7 +324,12 @@ object RootfsCache {
             runCatching { cands += File(dir(ctx), preferredName) }
         }
         cands += listArchives(ctx)
-        return cands.firstOrNull { it.isFile && !isDeltaName(it.name) && it.length() >= minBytes }
+        // N-2（审计第 2 期）：光看字节数会把「顶着正式名字的半截包」或 `.part` 残片当成可装的包
+        // （默认 minBytes=100MB，一个下了一半的 150MB 文件照样过）。补两道判据：
+        //  ① 必须是**真归档名**（`.tar.zst` / `.tar.gz`；[isArchiveName] 已内含补丁前缀排除）
+        //     —— 把 `.part`、`debian-x.tar`、以及其它杂名一并挡掉；
+        //  ② 字节数仍要够 [minBytes]（半截包几乎必然远小于它）。
+        return cands.firstOrNull { it.isFile && isArchiveName(it.name) && it.length() >= minBytes }
     }
 
     /**
