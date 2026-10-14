@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -96,6 +97,7 @@ import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.CoroutineScope
 
 /** 二级页：存储与缓存（逐字搬自原设置页的「存储占用 / 缓存清理 / 安装包缓存」三张卡）。 */
@@ -116,7 +118,7 @@ class SettingsStorageActivity : ComponentActivity() {
 @Composable
 private fun SettingsStoragePage(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
     val snackbarHostState = remember { SnackbarHostState() }
     var storageTick by remember { mutableStateOf(0) }
     // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖。
@@ -136,7 +138,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
     }
 
     // 回来时重量一次（清理、装包、修复环境都会改数字）。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) storageTick++
@@ -624,7 +626,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         rollbacks = rb
                         LastValues.saveText(ctx, "installer_cache_text", lines)
                     }
-                }.start()
+                }.apply { isDaemon = true; name = "zd-cache-reload" }.start()
             }
             LaunchedEffect(Unit) { reloadCache() }
             Text(cacheText, style = MaterialTheme.typography.bodySmall)
@@ -639,19 +641,19 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                     title = {
                         Text(
                             stringResource(R.string.storage_installer_clean_title),
-                            color = MaterialTheme.colorScheme.error,
+                            color = zhengdaoErrorText(),
                         )
                     },
                     text = {
                         Column {
                             Text(
                                 stringResource(R.string.storage_installer_clean_desc),
-                                color = MaterialTheme.colorScheme.error,
+                                color = zhengdaoErrorText(),
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 stringResource(R.string.storage_installer_clean_warn),
-                                color = MaterialTheme.colorScheme.error,
+                                color = zhengdaoErrorText(),
                             )
                         }
                     },
@@ -668,8 +670,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     ).show()
                                     reloadCache()
                                 }
-                            }.start()
-                        }) { Text(stringResource(R.string.common_clean), color = MaterialTheme.colorScheme.error) }
+                            }.apply { isDaemon = true; name = "zd-cache-clean" }.start()
+                        }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                     },
                     dismissButton = {
                         TextButton(onClick = { installerCleanConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
@@ -742,7 +744,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     // 用户看的用人话，进 Snackbar 后点 action 由 openLogFromSnackbar()
                                     // 现场取日志并弹窗（缺日志时给指向目录的 Toast，不静默）。
                                     // 必须在主线程弹——scope 是 Composable 的 CoroutineScope，
-                                    // 但 rememberCoroutineScope() 默认走 Dispatchers.Main.immediate。
+                                    // 但 rememberCoroutineScope { CoroutineCrashHandler } 默认走 Dispatchers.Main.immediate。
                                     scope.launch {
                                         val r = snackbarHostState.showSnackbar(
                                             message = ctx.getString(
@@ -758,7 +760,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                         }
                                     }
                                 }
-                            }.start()
+                            }.apply { isDaemon = true; name = "zd-rollback" }.start()
                         }) { Text(stringResource(R.string.storage_rollback_btn)) }
                     },
                     dismissButton = { TextButton(onClick = { rollbackConfirm = null }) { Text(stringResource(R.string.common_cancel)) } },

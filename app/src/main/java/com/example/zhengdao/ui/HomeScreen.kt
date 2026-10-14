@@ -3,6 +3,7 @@
 package com.example.zhengdao.ui
 
 import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -41,6 +42,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -72,6 +74,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -113,7 +116,7 @@ fun HomeScreen(
     // 与页面内容脱节；Snackbar 挂在本页底部，可读、可跟随、不打断。
     // 定义在使用点之前（Kotlin 局部函数作用域从声明处开始）。
     val snackbarHostState = remember { SnackbarHostState() }
-    val snackbarScope = rememberCoroutineScope()
+    val snackbarScope = rememberCoroutineScope { CoroutineCrashHandler }
     fun snack(msg: String) {
         snackbarScope.launch { snackbarHostState.showSnackbar(msg) }
     }
@@ -195,7 +198,7 @@ fun HomeScreen(
                     snack(err)
                 }
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-taiji-retry" }.start()
     }
 
     var agents by remember { mutableStateOf(AppState.agents(context)) }
@@ -273,6 +276,9 @@ fun HomeScreen(
     val installStates = remember { androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>() }
     // 刷新节拍：改 stateTick 能让下面那个 effect 立刻重灌一遍镜像（不等 2 秒）。
     var stateTick by remember { mutableIntStateOf(0) }
+    // P2-12（issue #17）：下拉刷新。转圈只做**反馈**——真正的扫描在 stateTick++ 之后
+    // 由上面的常驻轮询立刻跑掉（IO 毫秒级）；350ms 是最短可见时长，防"闪一下"。
+    var ptrRefreshing by remember { mutableStateOf(false) }
     // ⚠️ 这里必须是**常驻循环**，不能写成"还有 Agent 在装才继续查下一轮"（2026-10-07 二次真机实测）：
     //    条件式轮询有个致命缺口——**它需要有东西先把它叫醒**。而"点了「安装」"这件事在
     //    Compose 眼里什么都没发生：没有 state 变化 ⇒ 不重组 ⇒ effect 的 key 不变 ⇒
@@ -299,7 +305,7 @@ fun HomeScreen(
     }
 
     // 设置页/终端返回后刷新（工作区 / 修复环境可能已变更）
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -344,11 +350,27 @@ fun HomeScreen(
             }
         }
 
+        // P2-12（issue #17）：下拉刷新包住列表（material3 1.4 的 PullToRefreshBox）。
+        // 刷新的实质 = stateTick++ ⇒ 常驻轮询的 effect 立刻重跑一遍（不等 2 秒），
+        // 与 ON_RESUME 那条路径同一个机制（见 :311 附近）。
+        PullToRefreshBox(
+            isRefreshing = ptrRefreshing,
+            onRefresh = {
+                ptrRefreshing = true
+                stateTick++
+                snackbarScope.launch {
+                    kotlinx.coroutines.delay(350)
+                    ptrRefreshing = false
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
         LazyColumn(
             state = listState, // K2：外部注入的 state
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 16.dp),
@@ -507,7 +529,7 @@ checks.forEachIndexed { index, c ->
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = when {
-                                                !c.ok -> MaterialTheme.colorScheme.error
+                                                !c.ok -> zhengdaoErrorText() // P2-11：error 色 3.55:1 不达正文 AA
                                                 // 黄：Material3 无 amber 语义色，用 tertiary 兜底
                                                 c.warn -> MaterialTheme.colorScheme.tertiary
                                                 else -> MaterialTheme.colorScheme.primary
@@ -587,7 +609,7 @@ checks.forEachIndexed { index, c ->
                                                             android.os.Handler(context.mainLooper)
                                                                 .post { healthEpoch++ }
                                                         }
-                                                    }.start()
+                                                    }.apply { isDaemon = true; name = "zd-health-fix" }.start()
                                                 }) { Text(stringResource(R.string.common_repair)) }
 
                                                 tcmd != null -> TextButton(onClick = {
@@ -937,7 +959,7 @@ checks.forEachIndexed { index, c ->
                         // 而不是一句笼统的「未完成」——用户 2026-10-07 要求失败可见且可行动。
                         StatusNote(
                             text = AgentRepository.failureReason(context, agent.id),
-                            tone = MaterialTheme.colorScheme.error,
+                            tone = zhengdaoErrorText(), // P2-11：tone 即文字色（见 StatusNote）
                         )
                     } else if (installing) {
                         // E-060：安装的最后一步是 Agent **自己的交互式配置向导**（hermes 实测：
@@ -987,6 +1009,7 @@ checks.forEachIndexed { index, c ->
             )
         }
         } // LazyColumn 结束
+        } // PullToRefreshBox 结束
     } // 外层 Column（固定顶栏 + 列表）结束
 
     // Snackbar 宿主（2026-10-12）：挂在页面最底层，错误提示从 Toast 迁到此处
@@ -1051,7 +1074,8 @@ checks.forEachIndexed { index, c ->
                         }) {
                             Text(
                                 stringResource(R.string.home_purge_action),
-                                color = MaterialTheme.colorScheme.error,
+                                // P2-11：破坏性按钮的文字也要 4.5:1（error 色只有 3.55:1）
+                                color = zhengdaoErrorText(),
                             )
                         }
                     }

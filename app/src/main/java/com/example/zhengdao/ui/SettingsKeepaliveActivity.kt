@@ -120,7 +120,7 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
 
     // 「保活记录」卡里那一行用 storageTick 当键：在新页面点完「清空记录」返回时，它要自己刷空。
     // 原来的自增点是设置页的 ON_RESUME 观察者，这里照搬一个只做自增的。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) storageTick++

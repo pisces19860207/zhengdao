@@ -49,6 +49,7 @@ import com.example.zhengdao.R
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.ui.theme.AppearancePrefs
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -103,7 +104,7 @@ fun SettingsScreen(
     val appearTick = AppearancePrefs.changeTick.value
     val appearPref = remember(appearTick) { AppearancePrefs.get(ctx) }
 
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -172,7 +173,8 @@ fun SettingsScreen(
                     label = stringResource(R.string.settings_terminal_workspace),
                     value = if (storageOk && manageOk) Workspace.hostDir(ctx).name
                     else stringResource(R.string.settings_status_perm_pending),
-                    valueColor = if (storageOk && manageOk) Color.Unspecified else MaterialTheme.colorScheme.error,
+                    // P2-11：待处理状态是文字，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                    valueColor = if (storageOk && manageOk) Color.Unspecified else zhengdaoErrorText(),
                 ) { open(SettingsDataActivity::class.java) }
                 SettingsDivider()
                 SettingRow(

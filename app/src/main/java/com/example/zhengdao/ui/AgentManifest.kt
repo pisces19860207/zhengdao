@@ -160,7 +160,7 @@ object AgentManifest {
             }
             if (!applied) RunLogCompat.log("Agent 清单刷新失败，沿用现有清单")
             onDone?.invoke(applied)
-        }.start()
+        }.apply { isDaemon = true; name = "zd-manifest-refresh" }.start()
     }
 
     /**

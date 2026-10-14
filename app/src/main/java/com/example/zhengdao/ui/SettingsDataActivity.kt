@@ -75,6 +75,7 @@ import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.ui.theme.zhengdaoReadyGreen
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -96,6 +97,7 @@ import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.CoroutineScope
 
 /** 二级页：终端与资料（逐字搬自「资料库 / 权限 / 终端外观 / 工作区 / 输入回归页」五张卡）。 */
@@ -122,7 +124,7 @@ class SettingsDataActivity : ComponentActivity() {
 @Composable
 private fun SettingsDataPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     var kbStatus by remember { mutableStateOf<com.example.zhengdao.terminal.KnowledgeBase.Status?>(null) }
     var kbEnabled by remember { mutableStateOf(com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)) }
@@ -170,7 +172,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
     }
 
     var storageTick by remember { mutableStateOf(0) }
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -524,7 +526,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 label = stringResource(R.string.data_perm_storage),
                 value = if (storageOk) stringResource(R.string.data_perm_granted)
                 else stringResource(R.string.data_perm_not_granted),
-                valueColor = if (storageOk) zhengdaoReadyGreen() else MaterialTheme.colorScheme.error,
+                // P2-11：未授予是状态文字，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                valueColor = if (storageOk) zhengdaoReadyGreen() else zhengdaoErrorText(),
                 onClick = {
                     if (storageOk) {
                         openAppDetails()
@@ -546,7 +549,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             if (!storageOk) {
                 Spacer(Modifier.height(6.dp))
                 permHint?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    // P2-11：提示正文 zhengdaoErrorText()
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = zhengdaoErrorText())
                     Spacer(Modifier.height(6.dp))
                 }
             }
@@ -586,7 +590,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                         val update = NetSelfCheck.probeIndex(res = ctx.resources)
                         netMsg = NetSelfCheck.summary(cn, update, ctx.resources)
                         netChecking = false
-                    }.start()
+                    }.apply { isDaemon = true; name = "zd-net-check" }.start()
                     }
                 },
             )

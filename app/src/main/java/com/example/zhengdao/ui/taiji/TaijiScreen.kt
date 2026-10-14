@@ -48,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.oc.OcModel
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.oc.ConnectionState
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart
@@ -57,6 +58,7 @@ import com.example.zhengdao.oc.OcSessionSummary
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.ui.PluginManager
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,7 +74,10 @@ import kotlinx.coroutines.withContext
  * ## 骨架状态（2026-10-06）
  *
  * ✅ 已就绪：网络层（[OcClient] / [SseClient]）、状态归约（[OcRepository]）、
- *   全部 UI 组件（[TaijiComponents.kt]）。
+ *   全部 UI 组件（P4-1 2026-10-14 起按内聚性拆为六份，同包内直接互调、无跨文件 import：
+ *   [TaijiSessionBar] 顶栏与连接横幅 / [TaijiMessageList] 消息流 / [TaijiPartCards] 部件卡 /
+ *   [TaijiComposer] 输入区 / [TaijiSheets] 底部抽屉 / [TaijiHistoryDrawer] 历史抽屉；
+ *   拆分前是单文件 TaijiComponents.kt，1929 行）。
  * ⚠️ **端点与字段待实测**：跑的是社区 bionic 版（binary surgery 移植产物），
  *   API 覆盖面与事件字段须按实际打包版本核实（阶段 0-4）。若某端点缺失，
  *   对应功能降级但**不崩溃**（[OcRepository] 内均runCatching 包裹）。
@@ -98,7 +103,7 @@ fun TaijiScreen(
         androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(null) },
 ) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     // ⚠️ 网络层用 remember 而非 rememberSaveable：连接不应在配置变更（旋转）时重建。
     //    Compose state 是唯一真相；进程被杀后由 open() 从 serve 恢复。
@@ -655,7 +660,8 @@ private fun NotInstalledPane(
                 if (installing || failed) progress
                 else stringResource(R.string.taiji_oc_install_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (failed) MaterialTheme.colorScheme.error
+                // P2-11：失败原因是正文，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                color = if (failed) zhengdaoErrorText()
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp),
@@ -694,7 +700,8 @@ private fun FailedPane(message: String, onRetry: () -> Unit) {
             Text(
                 message,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                // P2-11：启动失败详情是正文，走 zhengdaoErrorText()
+                color = zhengdaoErrorText(),
                 modifier = Modifier.padding(top = 8.dp),
             )
             Text(
@@ -723,7 +730,7 @@ private fun FailedPane(message: String, onRetry: () -> Unit) {
 @Composable
 private fun OcVersionFooter() {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
     var checking by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<OcManager.UpdateInfo?>(null) }
     var installed by remember { mutableStateOf(OcManager.installedVersion(ctx)) }

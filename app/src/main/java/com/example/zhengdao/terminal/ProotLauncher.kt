@@ -160,15 +160,15 @@ object ProotLauncher {
                 continue
             }
             val mode = if (target == "proot" || target == "loader") 493 else 420 // 0755 / 0644
+            // P2-7（issue #17）+ 第⑩刀审计 R-11：chmod 失败不能静默——proot/loader 少了
+            // 执行位，后面 exec 会以一个"看不懂的错"崩（用户看到的是环境起不来）；
+            // 且 rootfsReady.canExecute() 会判假 ⇒ 直接降级到安卓自带 shell，而现场
+            // （IssueCenter detail）只记 proot/loader 是否 isFile，看不出真因。
+            // 这仍是 best-effort（不因它中断整批释放），但必须留一句可查的日志。
             try {
                 android.system.Os.chmod(dst.absolutePath, mode)
             } catch (t: Throwable) {
-                // 第⑩刀审计 R-11：这里以前是空 catch。chmod 失败会让下面的
-                // rootfsReady.canExecute() 判假 ⇒ 直接降级到安卓自带 shell，
-                // 而现场（IssueCenter detail）只记 proot/loader 是否 isFile，
-                // 看不出真因。留着这条痕，才能事后追。
-                RunLog.log("警告: chmod 失败 $target（mode=$mode）：${t.message}")
-            }
+                RunLog.log("警告: chmod 失败（$target → mode=$mode）：${t.message}")            }
             stamps[target] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
             stampsChanged = true
             RunLog.log("已释放: $target（SHA256 校验通过）")
@@ -491,7 +491,10 @@ object ProotLauncher {
                     link.delete()
                     android.system.Os.symlink(target, link.absolutePath)
                 }
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                // P2-7：工作区软链刷新失败不能静默——它直接决定 guest 里
+                // 「工作区」目录指向哪里，失败时用户看到的是"文件写进去不见了"。
+                RunLog.log("工作区软链刷新失败（忽略）：${t.message}")
             }
         }
         RunLog.log(

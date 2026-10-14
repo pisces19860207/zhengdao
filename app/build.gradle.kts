@@ -431,6 +431,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // P4-7（issue #17）：LocalLifecycleOwner 官方迁移载体（见 libs.versions.toml 注释）
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     // ⚠️ 仅 benchmark 变体（绝不进 release）：Macrobenchmark 在每轮之间要广播
     //    DROP_SHADER_CACHE 清掉 GPU shader 缓存，否则第一轮之后的启动数据会被缓存"美化"，
@@ -443,7 +445,7 @@ dependencies {
 
     // Markdown 渲染（v1.1 第四阶段）：纯 Compose 实现，覆盖最终回答的 Markdown 排版 +
     // 代码块独立背景/等宽/横向滚动/复制按钮/语法高亮。锁 0.38.1（Kotlin 同线，见 libs.versions.toml）。
-    // 仅用于渲染层（TaijiComponents.FinalAnswerText），不触碰会话/网络层（架构冻结红线）。
+    // 仅用于渲染层（TaijiMessageList.FinalAnswerText），不触碰会话/网络层（架构冻结红线）。
     implementation(libs.mikepenz.markdown)
     implementation(libs.mikepenz.markdown.m3)
     implementation(libs.mikepenz.markdown.code)

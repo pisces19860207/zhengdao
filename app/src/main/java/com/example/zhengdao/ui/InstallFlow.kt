@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.core.IssueCenter
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.InstallNotifier
@@ -113,7 +114,8 @@ object InstallFlow {
         Text(
             text = "$mark ${st.text}",
             style = MaterialTheme.typography.bodySmall,
-            color = if (st.phase == InstallProgress.Phase.Failed) MaterialTheme.colorScheme.error
+            // P2-11：失败正文走 zhengdaoErrorText()（error 色 3.55:1 不达 AA 4.5:1）
+            color = if (st.phase == InstallProgress.Phase.Failed) zhengdaoErrorText()
             else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

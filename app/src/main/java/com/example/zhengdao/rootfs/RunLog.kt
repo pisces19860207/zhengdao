@@ -65,6 +65,14 @@ object RunLog {
     @Volatile
     private var settled = false
 
+    /**
+     * 写文件专用锁（P2-13）。
+     *
+     * 为什么不用类监视器（`synchronized(RunLog)`）：那是公开的，任何持 RunLog 引用的代码
+     * 都能拿它做同步，锁意图会被外部代码意外耦合。专用锁对象把临界区收窄到本文件。
+     */
+    private val lock = Any()
+
     fun init(context: Context) {
         appContext = context.applicationContext
         val ctx = appContext ?: return
@@ -94,7 +102,10 @@ object RunLog {
         try {
             Store.adoptDir(pub, File(context.cacheDir, "runlog"))
             Store.adoptFile(File(pub, PREV_NAME), File(context.filesDir, NAME))
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：best-effort，但静默会让"日志怎么少了"无线索。走 logcat 直连——
+            // 这里正处在 RunLog 自己的初始化路径上，不能再调 log()（自递归）。
+            android.util.Log.w("zhengdao/RunLog", "历史日志并入公共区失败（忽略）：${t.message}")
         }
     }
 
@@ -125,7 +136,10 @@ object RunLog {
                 current.delete()
             }
             pruneArchivesIn(d)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：归档失败会直接丢掉上一轮的日志（"死前那几十行"正是它负责保住的），
+            // 必须留痕。走 logcat 直连（同 adoptPrivate：不调 log() 防自递归）。
+            android.util.Log.w("zhengdao/RunLog", "上轮日志归档失败（忽略）：${t.message}")
         }
     }
 
@@ -229,14 +243,37 @@ object RunLog {
         }
     }
 
-    /** 追加 + 超限轮转（保留后半段）。 */
+    /**
+     * 追加 + 超限轮转（保留后半段）。
+     *
+     * ⚠️ 必须持 [lock]：三个步骤（量长度 → 轮换重写 → 追加）不是一个原子操作。
+     *    RunLog 的调用方跨多个线程（保活线程 / proot 输出线程 / UI 线程 / 下载线程），
+     *    无锁时两类事故都会真实发生：① 两个线程同时发现超限 ⇒ 各读一份、各写一份，
+     *    后写的把前一份截断结果整个覆盖（日志整段丢失）；② 线程 A 正在追加时线程 B
+     *    轮换重写 ⇒ A 那行被 B 的 writeText 抹掉。
+     *
+     * 判定用字节数（`length()` 是 stat，便宜）；只有真的超限才读整份文件——
+     * 与改动前的 I/O 模式一致（不把读文件放进每行日志的热路径）。
+     */
     private fun appendRotated(f: File, text: String, max: Long = MAX_BYTES) {
-        if (f.length() > max) {
-            val keep = f.readText().takeLast((max / 2).toInt())
-            f.writeText("…（旧日志已截断）…\n$keep")
+        synchronized(lock) {
+            if (f.length() > max) {
+                val current = runCatching { f.readText() }.getOrNull().orEmpty()
+                f.writeText(rotateContent(current, max))
+            }
+            f.appendText(text)
         }
-        f.appendText(text)
     }
+
+    /**
+     * 轮换后的内容（纯函数，供 JVM 单测钉住）：截断标记 + 原内容后半段。
+     *
+     * 取后半段按**字符数**（`max / 2`）：日志以中文为主，UTF-8 一字 3 字节，
+     * 触发判定用的却是字节数 ⇒ 轮换后文件实际约占 1.5×max 字节。这是改动前就有的
+     * 近似（上限是 MB 量级、日志又是低频，这点误差不值得上字节数组）。
+     */
+    internal fun rotateContent(current: String, max: Long): String =
+        "…（旧日志已截断）…\n" + current.takeLast((max / 2).toInt())
 
     fun file(): File? = appContext?.let { File(dir(it), NAME) }?.takeIf { it.isFile }
 
@@ -250,7 +287,10 @@ object RunLog {
         try {
             val target = File(d, PREV_NAME)
             Store.adoptFile(target, File(context.filesDir, NAME))
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：老用户的旧日志搬失败 = 那批记录事实上丢了，不能静默。
+            // 走 logcat 直连（migrateLegacy 可能在 init 早期被调，log() 未必就绪）。
+            android.util.Log.w("zhengdao/RunLog", "旧位置日志迁移失败（忽略）：${t.message}")
         }
     }
 }

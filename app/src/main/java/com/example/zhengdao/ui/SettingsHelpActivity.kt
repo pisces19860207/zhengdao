@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -189,7 +190,8 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                 Text(
                     stringResource(R.string.help_log_prev_error),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    // P2-11：错误正文 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                    color = zhengdaoErrorText(),
                 )
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(onClick = { logDialogText = prev }) {
@@ -210,19 +212,19 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                         title = {
                             Text(
                                 stringResource(R.string.help_log_prune_title),
-                                color = MaterialTheme.colorScheme.error,
+                                color = zhengdaoErrorText(),
                             )
                         },
                         text = {
                             Column {
                                 Text(
                                     stringResource(R.string.help_log_prune_desc, archiveCount - 3),
-                                    color = MaterialTheme.colorScheme.error,
+                                    color = zhengdaoErrorText(),
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
                                     stringResource(R.string.help_log_prune_warn),
-                                    color = MaterialTheme.colorScheme.error,
+                                    color = zhengdaoErrorText(),
                                 )
                             }
                         },
@@ -232,7 +234,7 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                                 val n = com.example.zhengdao.rootfs.RunLog.pruneArchivesKeep(ctx, keep = 3)
                                 archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
                                 Toast.makeText(ctx, ctx.getString(R.string.help_log_pruned, n), Toast.LENGTH_SHORT).show()
-                            }) { Text(stringResource(R.string.common_clean), color = MaterialTheme.colorScheme.error) }
+                            }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                         },
                         dismissButton = {
                             TextButton(onClick = { pruneConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
