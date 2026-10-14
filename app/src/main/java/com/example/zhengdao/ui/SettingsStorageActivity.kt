@@ -137,7 +137,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
     }
 
     // 回来时重量一次（清理、装包、修复环境都会改数字）。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) storageTick++

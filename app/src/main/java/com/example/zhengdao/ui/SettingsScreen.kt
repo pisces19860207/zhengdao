@@ -104,7 +104,7 @@ fun SettingsScreen(
     val appearTick = AppearancePrefs.changeTick.value
     val appearPref = remember(appearTick) { AppearancePrefs.get(ctx) }
 
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {

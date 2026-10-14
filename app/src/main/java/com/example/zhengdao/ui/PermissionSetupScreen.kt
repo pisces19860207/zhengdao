@@ -284,7 +284,7 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
 
     // 从系统页回来（「所有文件访问」设置页、应用详情页）重读状态：
     // 这些页面没有回执回调，只能靠 ON_RESUME（与 SettingsScreen 权限卡里的重读同款做法）。
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val obs = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) refresh()
