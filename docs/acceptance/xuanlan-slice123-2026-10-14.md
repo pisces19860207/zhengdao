@@ -43,7 +43,7 @@
 | 空 WebView 内存基线 | ✅ 日志 `[10-14 10:16:05] XuanLanMem before-webview pss=114405KB rss=156596KB` → `after-webview pss=145395KB rss=195900KB` ⇒ 建一个空 WebView ≈ **+31 MB PSS / +39 MB RSS** | `browser/BrowserMemoryProbe` |
 | `shouldInterceptRequest` 拦非白名单 scheme | ⚠️ **未真机验**（未构造 `intent://` 样本） | `browser/WebViewEngine.kt`（非 http/https 返回空响应） |
 
-![真机拦截现场：地址栏 `https://testsafebrowsing.appspot.com/s/malware.html`，页面被拦、界面逐字「这个网址有安全风险，已被拦下」](assets/xuanlan-slice123-2026-10-14/02-safe-browsing-blocked.png)
+![真机拦截现场：地址栏 `https://testsafebrowsing.appspot.com/s/malware.html`，页面被拦、界面逐字「这个网址有安全风险，已被拦下」](assets/xuanlan-slice123-2026-10-14/02-safe-browsing-blocked.webp)
 
 > 这一项读了两遍（10:16 一次、重装后二次复核一次），两次结果一致；二次复核时**空态文案与拦截提示同时在场** ⇒ 空态判据只是「有没有当前 URL」，被拦的加载从未产生 URL。
 
@@ -59,7 +59,7 @@
 
 **已知缺口（见 §B 顺序 30）**：`TerminalLinkScanner` 的排除集不含 ASCII `,` —— 真机输出 `see https://example.com/trailing-test, and stop.` 时，点开的地址栏**带上尾逗号**。
 
-![同行 A/B 判别现场（终端像素 ×3 最近邻）：第一行 `AAA-OSC8-AAA`（OSC 8 包裹）**没有下划线**，同一行后半 `BBB-BARE https://example.com/…`（裸 URL）可点；点 x=800 落在裸 URL 上 ⇒ 打开成功](assets/xuanlan-slice123-2026-10-14/01-terminal-ab-row.png)
+![同行 A/B 判别现场（终端像素 ×3 最近邻）：第一行 `AAA-OSC8-AAA`（OSC 8 包裹）**没有下划线**，同一行后半 `BBB-BARE https://example.com/…`（裸 URL）可点；点 x=800 落在裸 URL 上 ⇒ 打开成功](assets/xuanlan-slice123-2026-10-14/01-zoom-terminal-ab-row.png)
 
 ## 六、A 路径（OSC 8 超链接）—— 真机 ❌，根因 = tmux 没声明 `hyperlinks`
 
@@ -70,7 +70,7 @@
 
 排除 App 侧实现：`TerminalEmulator.java:2101-2118 handleOsc8Hyperlink`（解析 `ESC ] 8 ; params ; URI ST`）→ `TerminalBuffer.setLink/getLinkAt` → `TerminalRow` 链接区间 → `TerminalRenderer.java:134 insideLink`（下划线分支）→ `TerminalGestureController.java:103-108`（`getLinkAt` → `onLinkOpen`）逐段核过，无低级错误。
 
-![运行时加了 `hyperlinks` 能力 + `refresh-client` 之后重放同一探针：`OSC8-FIXED-TEST` / `FIXED-LINK-CLICK-ME`（OSC 8 包裹）仍**不画下划线**，而下一行的裸 URL 照常可点 ⇒ 运行时改能力无效](assets/xuanlan-slice123-2026-10-14/03-osc8-after-runtime-feature-flag.png)
+![运行时加了 `hyperlinks` 能力 + `refresh-client` 之后重放同一探针：`OSC8-FIXED-TEST` / `FIXED-LINK-CLICK-ME`（OSC 8 包裹）仍**不画下划线**，而下一行的裸 URL 照常可点 ⇒ 运行时改能力无效](assets/xuanlan-slice123-2026-10-14/03-zoom-osc8-after-feature-flag.png)
 
 **根因判据（guest 实查）**：
 
@@ -130,3 +130,12 @@ host `%TEMP%` 里的脚本推到共享目录 `/sdcard/Download/证道/`（guest 
 - 软键盘弹起时底部导航栏被顶掉，点到的是键盘 ⇒ 先 `input keyevent 4` 收键盘再切 Tab。
 - `uiautomator` 读不到 `TerminalView` 的文本 ⇒ 终端画面只能截图；**坐标即设备像素**。
 - 终端字符宽 ≈ 25–26 px、行高 ≈ 52 px，文本区左起 ≈ x=32；点必须落在**链接文字本身**上（点到标签/表头一律不命中）。
+- 切 Tab 的 tap 有时会在页面切换动画里被吞掉 ⇒ tap 完必须 `dumpsys activity activities | grep topResumedActivity` + `uiautomator dump` 复核一次，别凭一次 tap 下结论。
+
+**本页图片遵循仓库 `.gitignore` 的约定**（`*.png` 全局忽略，只豁免 `app/src/main/res/**` 与 `docs/acceptance/assets/**/*-zoom-*.png`）：
+
+| 文件 | 形态 | 为什么是这种形态 |
+| --- | --- | --- |
+| `01-zoom-terminal-ab-row.png` | PNG（终端像素 ×3 最近邻） | 「OSC 8 文本有没有下划线」要靠**逐像素**判 ⇒ 走「放大判据图」豁免，文件名带 `-zoom-` |
+| `03-zoom-osc8-after-feature-flag.png` | PNG（同上） | 同上（运行时改能力无效的证据） |
+| `02-safe-browsing-blocked.webp` | WebP q90（整屏裁切） | 整屏截图**不进库为 PNG**，按约定转 WebP：`ffmpeg -i in.png -c:v libwebp -quality 90 -compression_level 6 out.webp` |
