@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoBlueText
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -248,7 +249,8 @@ fun PluginsScreen() {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
+                    // P2-11：错误正文 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                    color = zhengdaoErrorText(),
                 )
             }
             Spacer(Modifier.height(8.dp))

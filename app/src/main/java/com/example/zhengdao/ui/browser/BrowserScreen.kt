@@ -45,6 +45,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.example.zhengdao.BackChevron
 import com.example.zhengdao.R
 import com.example.zhengdao.browser.BrowserEngine
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.browser.EngineSecurityConfig
 import com.example.zhengdao.browser.NavigationDelegate
 
@@ -233,7 +234,9 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 Text(
                     text = msg,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    // P2-11：提示正文走 zhengdaoErrorText()（左边的警告图标是图形，
+                    // 3:1 即过，保留 error 色）
+                    color = zhengdaoErrorText(),
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { blockedMsg = null }) {

@@ -45,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.ui.theme.zhengdaoReadyGreen
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 
@@ -415,7 +416,8 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    // P2-11：错误正文 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                    color = zhengdaoErrorText(),
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -483,7 +485,8 @@ private fun PermissionRow(
             Text(
                 text = status,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (granted) zhengdaoReadyGreen() else MaterialTheme.colorScheme.error,
+                // P2-11：绿侧早已用语义色，红侧对齐（error 色 3.55:1 不达 AA）
+                color = if (granted) zhengdaoReadyGreen() else zhengdaoErrorText(),
             )
             if (onClick != null) {
                 Spacer(Modifier.width(6.dp))

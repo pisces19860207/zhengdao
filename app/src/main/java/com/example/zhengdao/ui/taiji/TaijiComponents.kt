@@ -103,6 +103,7 @@ import com.example.zhengdao.oc.OcRepository
 import com.example.zhengdao.oc.OcTodo
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.oc.TaijiState
 import com.example.zhengdao.oc.ToolState
 import com.example.zhengdao.ui.AttachmentGlyph
@@ -289,7 +290,9 @@ private fun ConnectionLabel(
         ConnectionState.Connecting ->
             stringResource(R.string.taiji_conn_connecting) to MaterialTheme.colorScheme.onSurfaceVariant
         ConnectionState.Reconnecting ->
-            stringResource(R.string.taiji_conn_reconnecting, attempt) to MaterialTheme.colorScheme.error
+            // P2-11（issue #17）：错误正文走 zhengdaoErrorText()——colorScheme.error
+            // （#FF3B30）白底只有 3.55:1，够不上 WCAG AA 正文 4.5:1。
+            stringResource(R.string.taiji_conn_reconnecting, attempt) to zhengdaoErrorText()
         ConnectionState.Idle -> "" to MaterialTheme.colorScheme.onSurface
     }
     if (text.isNotEmpty()) {
@@ -822,7 +825,9 @@ fun ToolCallCard(part: OcPart.Tool, onLongPress: (() -> Unit)? = null) {
             "✓", MaterialTheme.colorScheme.primary, stringResource(R.string.taiji_state_done),
         )
         ToolState.Error -> Triple(
-            "✗", MaterialTheme.colorScheme.error, stringResource(R.string.taiji_state_failed),
+            // P2-11：tint 同时给 ✗ 图标和「失败」状态文字——文字那半要 4.5:1，
+            // 走 zhengdaoErrorText()（C0392B 对白底 5.4:1，也顺带满足图标 3:1）。
+            "✗", zhengdaoErrorText(), stringResource(R.string.taiji_state_failed),
         )
         ToolState.Unknown -> Triple("•", MaterialTheme.colorScheme.onSurfaceVariant, "")
     }
@@ -1616,11 +1621,12 @@ private fun DeleteSessionDialog(
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },   // 删除中不许点外面关掉
         // 2026-10-10 UIUX 审计 P0-2：标题整行标红 + 加"永久"，与上面的"关闭"形成视觉对立。
-        // 颜色取 error（C0392B，5.4:1 满足 AA），不需要等到用户点完确认才知道后果。
+        // 颜色取 zhengdaoErrorText()（浅色 C0392B 5.4:1 满足 AA；P2-11：原 colorScheme.error
+        // 只有 3.55:1），不需要等到用户点完确认才知道后果。
         title = {
             Text(
                 stringResource(R.string.taiji_delete_session_title),
-                color = MaterialTheme.colorScheme.error,
+                color = zhengdaoErrorText(),
                 style = MaterialTheme.typography.titleLarge,
             )
         },
@@ -1634,7 +1640,8 @@ private fun DeleteSessionDialog(
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        // P2-11：错误正文同上——colorScheme.error 3.55:1 不达 AA。
+                        color = zhengdaoErrorText(),
                     )
                 }
             }

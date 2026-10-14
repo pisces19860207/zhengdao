@@ -48,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.oc.OcModel
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.oc.ConnectionState
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart
@@ -655,7 +656,8 @@ private fun NotInstalledPane(
                 if (installing || failed) progress
                 else stringResource(R.string.taiji_oc_install_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (failed) MaterialTheme.colorScheme.error
+                // P2-11：失败原因是正文，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                color = if (failed) zhengdaoErrorText()
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp),
@@ -694,7 +696,8 @@ private fun FailedPane(message: String, onRetry: () -> Unit) {
             Text(
                 message,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                // P2-11：启动失败详情是正文，走 zhengdaoErrorText()
+                color = zhengdaoErrorText(),
                 modifier = Modifier.padding(top = 8.dp),
             )
             Text(
