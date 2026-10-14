@@ -6633,3 +6633,12 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 - **处置**：`tools/check-so-provenance.py` 新增 `sha256_source()` —— 源码读入后 **CRLF → LF 归一**再算 sha256（`.so` 仍按原始字节），基线重刷并写入 `hash_mode: "so=raw-bytes; src=text-crlf-to-lf"`；提交 `a59f2f5`（⇒ 合并 `d095c23`）。
 - **验证**：main（CRLF 检出）实测绿（指纹 `b9040844…`）→ 往 `rust/core/src/json.rs` 加一行注释 ⇒ 红、指名该文件、退出码 1 → 还原回绿；`.so` 哈希仍为 `ffad1eba…`。
 - **教训**：**凡对文本源码算指纹/哈希的门禁，都要先声明并落实行尾口径**（归一化，或 `.gitattributes` 钉 `eol=lf`）；跨平台项目里「本地红 CI 绿」几乎总是行尾/编码，而不是真的不一致。
+
+## E-132 · 2026-10-15 · `values-en/strings.xml` 里一个未转义的撇号 ⇒ aapt2 报「Can not extract resource」，报错不指行号、还会留下残缺的测试 XML 读数
+
+- **事实**：第⑰刀验收合并（`cb29a45`）后我在 main 跑全量单测，构建在资源编译阶段失败：
+  `A failure occurred while executing com.android.build.gradle.internal.res.ResourceCompilerRunnable > Resource compilation failed (Failed to compile values resource file …\incremental\debug\mergeDebugResources\merged.dir\values-en\values-en.xml. Cause: java.lang.IllegalStateException: Can not extract resource from com.android.aaptcompiler.ParsedResource@12827b9c.)`
+  真因不是资源文件本身，而是**我在 `values-en/strings.xml` 的 `home_issues_note` 里写了一个未转义的撇号**（`app's`）。Android 字符串资源里 `'` 必须写成 `\'` —— 该文件别处本来就是 `app\'s` 的写法，我改这条时漏了；中文侧同一条没有撇号，所以只在 en 炸。
+- **症状为什么难认**：① 报错只说「无法从 ParsedResource 抽取资源」，**不指行号、不点字符串名**（`aapt2` 的典型无信息量报错）；② 构建失败会让 `app/build/test-results/testDebugUnitTest/*.xml` 留成**残缺/上一轮**的内容，我的第一版计数脚本因此读出假的 `134 suites / 567 tests` —— 数量骤降的真因是构建没跑完，而不是测试被删。
+- **处置**：`app's` → `app\'s`；全文件裸撇号扫描（`(?<!\\)'`）= **0**；重跑全量。**取数规范**：先看构建是否 SUCCESSFUL 再读 `test-results/*.xml`，并且用 `Get-Content -Raw` 再 `[xml]`（逐行读会在 XML 含多行/特殊字符时抛 `无法将值"System.Object[]"转换为 XmlDocument` 并**静默少算**）。
+- **教训**：① **中英字符串成对改动时，英文侧才是「撇号/与号/百分号」的地雷区** —— 中文写法天然不带这些字符，所以 zh 永远绿、en 单独炸；改完 en 先扫一遍裸 `'` 再编译。② **测试读数的前提是构建成功**：构建失败时留下的 XML 是骗人的，「用例数变少」的第一嫌疑是构建中断，不是测试被删。
