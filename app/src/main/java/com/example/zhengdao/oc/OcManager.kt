@@ -17,6 +17,7 @@ import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.net.URL
+import java.util.concurrent.TimeUnit
 
 /**
  * 太极的 OpenCode（bionic 宿主版）管理器（批次 3，2026-10-06）。
@@ -248,6 +249,36 @@ object OcManager {
 
     /** C 步：测试接缝 —— 非空时替代真实 HTTP 探测；生产路径永远为 null。 */
     internal var serveProbeForTest: ((String) -> Boolean)? = null
+
+    /**
+     * R-17（第⑯刀 #3）：serve 进程收尾四步 —— `destroy()` → 短等待 → `destroyForcibly()`
+     * → 再短等待。返回是否走到强制升级（单测断言用）。
+     *
+     * 原先超时路径只 `destroy()` 一声就走：不等 `waitFor`（进程可能还活着，继续写
+     * serve.log / 占着 14000 端口）、不 `destroyForcibly`（卡死的 serve 杀不掉）、
+     * 不置空句柄。收尾过程每步落 ocLog（经注入的 log，单测可断言）。
+     * 纯函数（进程由调用方注入），单测见 OcProcessShutdownTest。
+     */
+    internal fun shutdownProcess(
+        p: Process,
+        waitMs: Long = 2_000,
+        log: (String) -> Unit = { RunLog.log(it) },
+    ): Boolean {
+        p.destroy()
+        log("太极: serve 收尾：destroy() 已发出，等 ${waitMs}ms")
+        val exited = runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+        if (exited) {
+            val code = runCatching { p.exitValue().toString() }.getOrDefault("?")
+            log("太极: serve 收尾完成（exit=$code）")
+            return false
+        }
+        log("太极: serve ${waitMs}ms 未退，升级 destroyForcibly()")
+        p.destroyForcibly()
+        runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }
+        val code = runCatching { p.exitValue().toString() }.getOrDefault("仍存活")
+        log("太极: serve 强制收尾完成（exit=$code）")
+        return true
+    }
 
     /**
      * 第⑭刀 #4：serve.log 轮转参数 —— 单份上限 1MB，保留「当前 + 上一份」两份。
@@ -509,7 +540,16 @@ object OcManager {
                 }
                 Thread.sleep(500)
             }
-            serveProcess?.destroy()
+            // R-17（第⑯刀 #3）：超时路径的进程收尾 —— **先置空句柄**（后续路径与下一次
+            // startServe/stopServe 都不会拿到死引用），再走四步收尾（destroy → 等 →
+            // destroyForcibly → 再等）。原先只 destroy() 一声就走，见 [shutdownProcess] KDoc。
+            val doomed = serveProcess
+            serveProcess = null
+            if (doomed != null) {
+                shutdownProcess(doomed)
+            } else {
+                RunLog.log("太极: serve 15s 未就绪（进程句柄为空，无需收尾）")
+            }
             // 第⑭刀 #5：本轮根本没就绪 ⇒ 密码/启动失败两条旧账清掉（本条终态报的是超时）
             IssueCenter.resolve("oc-serve-password")
             IssueCenter.resolve("oc-serve-start")
