@@ -24,6 +24,7 @@ import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.browser.BrowserHolder
@@ -913,7 +914,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         findViewById<TextView>(R.id.key_interrupt)?.setOnClickListener {
             runCatching { SessionManager.write(byteArrayOf(0x03)) }
                 .onFailure {
-                    Toast.makeText(this, "发送中断失败：${it.message}", Toast.LENGTH_SHORT).show()
+                    // P2-6（issue #17）：用户看到的必须是"人话"（HumanizeError），
+                    // 异常原文进 RunLog 供排查——设计文档原则 3/5：正文不透露路径与 errno。
+                    RunLog.log("发送中断失败：${it.javaClass.simpleName}: ${it.message}")
+                    Toast.makeText(
+                        this,
+                        "发送中断失败：${HumanizeError.title(it, resources)}",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
             // §B-补-49 🟢5：^C 把当前行整行作废（readline 语义），行缓冲必须清——
             // 否则被中断那半句还会在下次回车时被当成提问内容。
@@ -961,7 +969,15 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             } else {
                 SessionManager.write(seq)
             }
-        }.onFailure { Toast.makeText(this, "发送失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        }.onFailure {
+            // P2-6：同 ^C——人话给用户，原文进 RunLog。
+            RunLog.log("发送失败：${it.javaClass.simpleName}: ${it.message}")
+            Toast.makeText(
+                this,
+                "发送失败：${HumanizeError.title(it, resources)}",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
 
     /** 粘贴：读系统剪贴板后交给后台通道（顶部工具栏按钮与快捷键条按钮共用）。 */
@@ -1475,6 +1491,18 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
     }
 
+    /**
+     * P2-6（issue #17）：安装失败的**异常**入口——原文落 RunLog，用户看到人话。
+     *
+     * 旧写法：三处调用点各自把 t.message 拼进 installFailed 的文案——Java 异常原文
+     * （"Permission denied" / errno / 绝对路径）直接弹到用户脸上。HumanizeError 的
+     * 设计原则 3/5：正文不透露敏感诊断、原始 message 仍可经 RunLog 查。
+     */
+    private fun installFailed(t: Throwable) {
+        RunLog.log("安装失败（原文）：${t.javaClass.simpleName}: ${t.message}")
+        installFailed("安装失败：${HumanizeError.title(t, resources)}（重进 App 可再试）")
+    }
+
     /** 写终端页顶部常驻横幅（用户可点它收起）。 */
     private fun showBanner(text: String) {
         runOnUiThread {
@@ -1540,7 +1568,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 finishInstall("安装完成！安装包已保留在缓存（重装免下载，本次未联网下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installFailed("安装失败：${t.message}（重进 App 可再试）")
+                installFailed(t)
             } finally {
                 installing.set(false)
             }
@@ -1636,7 +1664,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 finishInstall("安装完成！安装包已保留在缓存（重装免下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installFailed("安装失败：${t.message}（重进 App 可再试）")
+                installFailed(t)
             } finally {
                 installing.set(false)
             }
@@ -1720,7 +1748,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 finishInstall("安装完成！安装包已保留在缓存（重装免下载）")
                 relaunchDebian()
             } catch (t: Throwable) {
-                installFailed("安装失败：${t.message}（重进 App 可再试）")
+                installFailed(t)
             } finally {
                 installing.set(false)
             }
