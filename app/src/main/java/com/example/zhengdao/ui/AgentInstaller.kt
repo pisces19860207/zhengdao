@@ -148,7 +148,15 @@ object AgentInstaller {
         val dir = Store.hostPrivateScriptsDir(ctx)
         if (!dir.isDirectory && !dir.mkdirs()) throw IllegalStateException("私有脚本目录建不出来：$dir")
         val dst = File(dir, "${agentId}-install.sh")
-        source.copyTo(dst, overwrite = true)
+        // R-28（审计第 2 期）：这里原先直接 copyTo 到**执行副本的正式名** —— 中途被杀 / 写满
+        // 会在正式名下留半截，而 buildCommand 随后就用 `bash <该副本>` 执行它。改成与本文件
+        // 下载脚本那段（tmp `.part` → renameTo）同一范式：正式名只有"完整副本"或"旧副本"两态。
+        val tmp = File(dir, "${agentId}-install.sh.part")
+        source.copyTo(tmp, overwrite = true)
+        if (!tmp.renameTo(dst)) {
+            tmp.copyTo(dst, overwrite = true)
+            tmp.delete()
+        }
         if (fingerprintOf(dst) != fingerprintOf(source)) throw IllegalStateException("私有副本与源不一致")
         dst
     }.onFailure {

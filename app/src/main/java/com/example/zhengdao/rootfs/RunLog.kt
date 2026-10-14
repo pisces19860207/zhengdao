@@ -128,8 +128,12 @@ object RunLog {
             }
             val at = current.lastModified().takeIf { it > 0L } ?: System.currentTimeMillis()
             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date(at))
-            val dest = File(d, "$ARCHIVE_PREFIX$stamp$ARCHIVE_SUFFIX")
-            if (dest.exists()) dest.delete()
+            // B-2（审计第 2 期）：归档名原先只精确到秒，且紧接着 `if (dest.exists()) dest.delete()`
+            // 会在同一秒内重启时**无条件删掉上一次的归档** —— 既丢日志，又绕过了 [pruneArchivesIn]
+            // 的"从最旧删、最新那份永不删"策略。改成撞名就加唯一后缀（两份都留着），
+            // 是否丢弃一律交给 [pruneArchivesIn] 按份数/总量统一裁决。
+            val taken = d.listFiles()?.mapTo(HashSet()) { it.name } ?: HashSet()
+            val dest = File(d, archiveNameFor(stamp, taken))
             if (!current.renameTo(dest)) {
                 // 跨文件系统 / 被占用时退回复制（宁可多一份，也别把日志丢了）
                 current.copyTo(dest, overwrite = true)
@@ -162,6 +166,24 @@ object RunLog {
         name.startsWith(ARCHIVE_PREFIX) && name.endsWith(ARCHIVE_SUFFIX) &&
             name != NAME && name != PREV_NAME && name != ERRORS_NAME &&
             name.length > ARCHIVE_PREFIX.length + ARCHIVE_SUFFIX.length
+
+    /**
+     * 归档文件名：`zhengdao-log.<stamp>.txt`；同秒撞名时退化为 `…-1` / `…-2` …（B-2）。
+     *
+     * 纯函数（单测直接调）：只在 [taken]（目录里已有的文件名）里查重，不碰文件系统。
+     * 生成的名字仍满足 [isArchiveName] ⇒ 照样进 [pruneArchivesIn] 的保留策略，
+     * 不会变成"没人管的孤儿文件"。
+     */
+    internal fun archiveNameFor(stamp: String, taken: Set<String>): String {
+        val base = "$ARCHIVE_PREFIX$stamp$ARCHIVE_SUFFIX"
+        if (base !in taken) return base
+        var n = 1
+        while (true) {
+            val cand = "$ARCHIVE_PREFIX$stamp-$n$ARCHIVE_SUFFIX"
+            if (cand !in taken) return cand
+            n++
+        }
+    }
 
     /**
      * 保留策略（纯文件操作，单测直接调）：最多 [keep] 份、总量不超过 [maxBytes]，

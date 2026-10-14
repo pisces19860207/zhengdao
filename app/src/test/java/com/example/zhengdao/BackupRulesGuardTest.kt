@@ -1,10 +1,14 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao
 
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
+import org.w3c.dom.Document
+import org.w3c.dom.Element
 
 /**
  * 备份范围门禁（§B 顺序 1 / issue #19 / P3-3，2026-10-12）。
@@ -15,9 +19,16 @@ import java.io.File
  * 为什么值得单独钉：这两份文件出厂就是 AGP 模板（`allowBackup="true"` ＋ 零 `<exclude>`），
  * 一旦有人「顺手回滚模板」或把 manifest 那两行删掉，后果都不会在编译期暴露 ——
  * 而是变成「备份一直失败」或「用户的 rootfs / agent 数据被传上 Google Drive」，
- * 两者都要等到发布后才发现。用真实路径读文件断言，比注释里写一句可靠。
+ * 两者都要等到发布后才发现。
  *
- * 注意：这是**文本门禁**（保证规则还在），不是对 Android 备份框架行为的验证 ——
+ * **2026-10-14（审计第 2 期 R-24）改判据：真解析 XML，不再 grep 文本。**
+ * 旧写法 `backupRules.contains("<exclude domain=\"file\" path=\"rootfs\"")` 有两条硬伤：
+ * ① 把 `<exclude …/>` 用 `<!-- -->` 包掉（元素其实没了）仍然过 —— 正是"门禁绿、功能死"；
+ * ② 它假定属性顺序恰好是 `domain` 在前、`path` 在后，属性换个序就误报。
+ * 现在用 DOM 取 `<exclude>` 节点、按 `getAttribute("domain")/("path")` 判存在，
+ * 两个问题一并消失（顺带把嵌套位置也钉住：cloud-backup 与 device-transfer 各查各自那份）。
+ *
+ * 注意：这仍是**源码级门禁**（保证规则还在），不是对 Android 备份框架行为的验证 ——
  * 真机上的备份行为无法在 JVM 单测里观察（`adb shell bmgr` 那套要设备）。
  */
 class BackupRulesGuardTest {
@@ -25,86 +36,125 @@ class BackupRulesGuardTest {
     private fun appFile(rel: String): File =
         File(rel).let { if (it.exists()) it else File("app/$rel") }
 
-    private val backupRules: String by lazy {
-        appFile("src/main/res/xml/backup_rules.xml").readText()
-    }
-
-    private val extractionRules: String by lazy {
-        appFile("src/main/res/xml/data_extraction_rules.xml").readText()
-    }
+    /** 原始文本（只用于"模板残留"这类**注释内容**的检查：那本来就是文字问题）。 */
+    private val backupRulesRaw: String by lazy { appFile("src/main/res/xml/backup_rules.xml").readText() }
+    private val extractionRulesRaw: String by lazy { appFile("src/main/res/xml/data_extraction_rules.xml").readText() }
 
     private val manifest: String by lazy { appFile("src/main/AndroidManifest.xml").readText() }
 
-    /** 取两个标签之间的片段（XML 里的小工具，够用就行）。 */
-    private fun section(text: String, tag: String): String {
-        val open = "<$tag>"
-        val close = "</$tag>"
-        val i = text.indexOf(open)
-        assertTrue("找不到 <$tag> 段", i >= 0)
-        val j = text.indexOf(close, i)
-        assertTrue("找不到 </$tag>", j > i)
-        return text.substring(i, j)
+    // ── 真解析（R-24）────────────────────────────────────────────────────────
+
+    private fun parseRules(rel: String): Document {
+        val f = appFile(rel)
+        assertTrue("找不到 $rel：${f.path}", f.isFile)
+        val factory = DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = false
+            // 本地工程文件，不需要 DTD / 外部实体；不支持该 feature 的解析器也不该因此失败
+            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+        }
+        return factory.newDocumentBuilder().parse(f)
+    }
+
+    /** 取 [parent] 下**直接子**元素里 tagName == [tag] 的那些（跳过文本/注释节点）。 */
+    private fun children(parent: Element, tag: String): List<Element> {
+        val out = ArrayList<Element>()
+        val nl = parent.childNodes
+        for (i in 0 until nl.length) {
+            val n = nl.item(i)
+            if (n is Element && n.tagName == tag) out += n
+        }
+        return out
+    }
+
+    private fun uniqueChild(parent: Element, tag: String, where: String): Element {
+        val hits = children(parent, tag)
+        assertEquals("$where：<$tag> 必须恰好有一个（实际 ${hits.size} 个）", 1, hits.size)
+        return hits[0]
+    }
+
+    /** 断言 [parent] 下真的有一个 domain/path 都对的 `<exclude>` 元素。 */
+    private fun assertHasExclude(parent: Element, where: String, domain: String, path: String) {
+        val hit = children(parent, "exclude").any {
+            it.getAttribute("domain") == domain && it.getAttribute("path") == path
+        }
+        assertTrue(
+            "$where：缺少**真实的** <exclude domain=\"$domain\" path=\"$path\" /> 节点" +
+                "（把元素用注释包掉、或把 domain/path 写错写反，这条都会红）",
+            hit,
+        )
     }
 
     /** 云备份/全量备份必须排除的六条（大目录与运行时）。 */
     private val mustExcludeEverywhere = listOf(
-        """domain="file" path="rootfs"""",
-        """domain="file" path="termux-proot"""",
-        """domain="file" path="proot-tmp"""",
-        """domain="file" path="home"""",
-        """domain="file" path="oc"""",
-        """domain="external" path="workspace"""",
+        "file" to "rootfs",
+        "file" to "termux-proot",
+        "file" to "proot-tmp",
+        "file" to "home",
+        "file" to "oc",
+        "external" to "workspace",
     )
 
     @Test
     fun `全量备份规则逐条排除了大目录`() {
-        for (rule in mustExcludeEverywhere) {
-            assertTrue(
-                "backup_rules.xml 少了排除：$rule（这就是 issue #19：rootfs/home/oc 会被传上云）",
-                backupRules.contains("<exclude $rule")
-            )
+        val root = parseRules("src/main/res/xml/backup_rules.xml").documentElement
+        assertEquals(
+            "backup_rules.xml 的根节点应是 <full-backup-content>（换了根，这份规则就不生效了）",
+            "full-backup-content",
+            root.tagName,
+        )
+        for ((domain, path) in mustExcludeEverywhere) {
+            assertHasExclude(root, "backup_rules.xml", domain, path)
         }
-        assertFalse("模板里的 uncomment 提示还留着，说明这份根本没配", backupRules.contains("uncomment"))
-        assertFalse("模板里的 TODO 还留着", backupRules.contains("TODO"))
+        // 这两条查的是**注释内容**（模板残留提示），本来就该按文本查
+        assertFalse("模板里的 uncomment 提示还留着，说明这份根本没配", backupRulesRaw.contains("uncomment"))
+        assertFalse("模板里的 TODO 还留着", backupRulesRaw.contains("TODO"))
     }
 
     @Test
     fun `云备份规则逐条排除了大目录`() {
-        val cloud = section(extractionRules, "cloud-backup")
-        for (rule in mustExcludeEverywhere) {
-            assertTrue(
-                "data_extraction_rules.xml 的 <cloud-backup> 少了排除：$rule",
-                cloud.contains("<exclude $rule")
-            )
+        val root = parseRules("src/main/res/xml/data_extraction_rules.xml").documentElement
+        assertEquals(
+            "data_extraction_rules.xml 的根节点应是 <data-extraction-rules>",
+            "data-extraction-rules",
+            root.tagName,
+        )
+        val cloud = uniqueChild(root, "cloud-backup", "data_extraction_rules.xml")
+        for ((domain, path) in mustExcludeEverywhere) {
+            assertHasExclude(cloud, "data_extraction_rules.xml 的 <cloud-backup>", domain, path)
         }
-        assertFalse("模板里的 TODO 还留着", extractionRules.contains("TODO"))
+        assertFalse("模板里的 TODO 还留着", extractionRulesRaw.contains("TODO"))
     }
 
     @Test
     fun `设备迁移挡系统层与凭据 用户数据留着`() {
-        val transfer = section(extractionRules, "device-transfer")
-        for (rule in listOf(
-            """domain="file" path="rootfs"""",
-            """domain="file" path="termux-proot"""",
-            """domain="file" path="proot-tmp"""",
+        val root = parseRules("src/main/res/xml/data_extraction_rules.xml").documentElement
+        val transfer = uniqueChild(root, "device-transfer", "data_extraction_rules.xml")
+
+        for ((domain, path) in listOf(
+            "file" to "rootfs",
+            "file" to "termux-proot",
+            "file" to "proot-tmp",
         )) {
-            assertTrue("设备迁移必须排除系统层：$rule", transfer.contains("<exclude $rule"))
+            assertHasExclude(transfer, "设备迁移（系统层）", domain, path)
         }
         // 2026-10-14（第 2 期审计 N-3）：凭据不跟着近场迁移走 —— 迁出去不可撤销，
         // 且 D2D 传输不加密。这三条谁删谁负责：删了等于把 API key 与
         // oc/serve.log 的明文口令送到新机器上。
-        for (rule in listOf(
-            """domain="file" path="home/.claude"""",
-            """domain="file" path="home/.hermes"""",
-            """domain="file" path="oc"""",
+        for ((domain, path) in listOf(
+            "file" to "home/.claude",
+            "file" to "home/.hermes",
+            "file" to "oc",
         )) {
-            assertTrue("设备迁移必须排除凭据：$rule", transfer.contains("<exclude $rule"))
+            assertHasExclude(transfer, "设备迁移（凭据）", domain, path)
         }
         // 用户数据**本体**在设备迁移里仍故意不排除（同机到同机的近场传输，不经云）。
-        // 注意这里用带尾引号的整目录写法：`home/.claude` 这类子路径排除不会误命中它。
+        // 判据必须是**精确** path="home"：`home/.claude` 这类子路径不算命中它。
+        val homeWholeExcluded = children(transfer, "exclude").any {
+            it.getAttribute("domain") == "file" && it.getAttribute("path") == "home"
+        }
         assertFalse(
             "home 整个目录不该在 device-transfer 里被排除（那会把用户数据也挡在迁移之外）",
-            transfer.contains("""<exclude domain="file" path="home"""")
+            homeWholeExcluded,
         )
     }
 
@@ -112,15 +162,15 @@ class BackupRulesGuardTest {
     fun `两份规则都还挂在 manifest 上`() {
         assertTrue(
             "AndroidManifest 少了 android:fullBackupContent=@xml/backup_rules",
-            manifest.contains("""android:fullBackupContent="@xml/backup_rules"""")
+            manifest.contains("""android:fullBackupContent="@xml/backup_rules""""),
         )
         assertTrue(
             "AndroidManifest 少了 android:dataExtractionRules=@xml/data_extraction_rules",
-            manifest.contains("""android:dataExtractionRules="@xml/data_extraction_rules"""")
+            manifest.contains("""android:dataExtractionRules="@xml/data_extraction_rules""""),
         )
         assertTrue(
             "allowBackup 被关掉的话，这两份规则就成了摆设，门禁的前提变了 —— 请连同注释一起改",
-            manifest.contains("""android:allowBackup="true"""")
+            manifest.contains("""android:allowBackup="true""""),
         )
     }
 }
