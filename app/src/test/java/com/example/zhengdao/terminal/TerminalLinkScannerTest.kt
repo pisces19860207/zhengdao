@@ -100,12 +100,29 @@ class TerminalLinkScannerTest {
     }
 
     @Test
-    fun `闭合符之后的标点不裁_按后随非空白口径`() {
-        // `)` 在排除集里，URL 到它之前就止；`(url,)` 的逗号后随 `)`（非空白）⇒ 按
-        // 「后一字符是空白或行尾才裁」的口径原样保留。有意的最小改动，边界写进交付说明。
+    fun `闭合符之后的标点也要裁_§B 顺序 30 收紧`() {
+        // 2026-10-14 真机复验：`(https://example.com/a,)` 会把逗号带进地址栏。
+        // 收紧后口径 = 尾标点后随「空白 / 行尾 / 闭合符 )]}」都算句读。
         assertEquals(
-            "https://example.com/a,",
+            "https://example.com/a",
             TerminalLinkScanner.findLinks("(https://example.com/a,)").single().url,
+        )
+        assertEquals(
+            "https://example.com/a",
+            TerminalLinkScanner.findLinks("见 [https://example.com/a]").single().url,
+        )
+        assertEquals(
+            "https://example.com/a",
+            TerminalLinkScanner.findLinks("(https://example.com/a.)").single().url,
+        )
+    }
+
+    @Test
+    fun `闭合符之后但不是尾标点的字符照旧保留`() {
+        // 反例：URL 以正常字符收尾时，闭合符前面那段不该被误伤
+        assertEquals(
+            "https://example.com/a/b",
+            TerminalLinkScanner.findLinks("(https://example.com/a/b)").single().url,
         )
     }
 
