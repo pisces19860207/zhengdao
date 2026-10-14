@@ -6566,3 +6566,28 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 - **只读诊断放在变更动作之前**：先用 `sh zd-probe.sh`（把 `facts.json` 记的路径与实际 `isfile` 一起打出来）看到 `lock 存在: False`，才判断出「直接点修复会先删记录」；否则会先手跑脚本、把她的好记录删掉再修。
 - **给 guest 用的 `.sh` 必须 LF 且无 BOM**：`Set-Content -Encoding UTF8` 在 Windows PowerShell 5.1 上带 BOM ＋ CRLF ⇒ 真机上报 `#!/bin/sh: not found` 与 `Syntax error: Bad fd number`（CR 被当成 `1\r`）；改用 `[IO.File]::WriteAllText($p, $s, (New-Object System.Text.UTF8Encoding($false)))` 并先 `-replace "\`r\`n", "\`n"`。
 - **故障注入、修复、复验拆成三个小脚本**（`zd-break.sh` / `zd-repair-fixed.sh` ＋ `zd-run-repair.sh` 只做重定向与记 `EXIT=$?`）：真机终端里敲的命令越短越稳，输出落 `/storage/emulated/0/Download/*.out` 再用 `adb shell cat` 读，比靠截图认字可靠。
+
+---
+
+## E-126 · 2026-10-14 · 换环境的「复原失败」会把用户唯一的环境删掉（R-01）；装环境时的清理线程会删活跃临时树（R-05）
+
+**来源**：外部第⑩刀全仓只读审计（基线 `88c9a2a`）＋ 我的独立复核（四路只读，逐条核到 `file:line`）。
+
+**现象**
+- **R-01**（`app/src/main/java/com/example/zhengdao/rootfs/RootfsInstaller.kt` `swapLocked`）：换 rootfs 时先把旧环境 `renameTo(rootfs.old)`，新环境 `renameTo(rootfs)` 失败再尝试复原 `rootfs.old`；**复原也失败时，代码继续走收尾逻辑把 `rootfs.old` 当垃圾删掉** ⇒ 旧环境与新环境同时消失，用户手上唯一那份环境没了。
+- **R-05**（同文件 `cleanupPartial`）：清理函数与安装**没有互斥** ⇒ 安装进行中可能删掉正在解压/搬运的 tmp 树；报错现场还会被 `deleteRecursively` 抹掉，事后查不出原因。
+
+**根因**：「复原失败」被当成可忽略的收尾失败（只记日志），而它是**唯一**的救命路径；`cleanupPartial` 是纯清理函数，历史上被当成「任何时候都能安全跑」。
+
+**修法**（提交 `2a76e1f`，分支 `fix/audit10-r01-r05-r11-r20`）
+- R-01：复原 `renameTo` 失败 ⇒ 抛 `InstallFailed`，文案里带上 `rootfs.old` 路径（重启 App 会再试复原），**绝不删备份**。
+- R-05：`cleanupPartial` 加 `tryLock`（`AtomicBoolean.compareAndSet`），拿不到锁直接返回，`finally` 释放。
+
+**教训**
+1. 收尾/清理路径必须区分「可忽略」与「唯一救命路径」——后者失败只能抛错，不能继续删东西。
+2. 清理函数也要有互斥：它删的是别人正在写的数据。
+3. 只有真机才可能触发的路径（中断、并发窗口）必须靠**读代码**兜住，别指望测试或真机自然撞上；审计报告里的「🔴 数据安全」优先于一切手感项。
+
+**同批**：R-11（`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` 两处空吞异常 ⇒ 补 RunLog）、R-20（帮助页日志管理死功能，见 `docs/FEATURE-LEDGER.md` §A #88）。
+
+**真机复核**：未做（需制造中断：装到一半强杀 App，再看 `rootfs.old` 是否还在）。
