@@ -1554,10 +1554,25 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             try {
                 installStatus("从本地文件安装…")
                 val archive = File(com.example.zhengdao.rootfs.RootfsCache.dir(appContext), "debian-13.7-base-arm64.tar.zst")
-                archive.delete()
-                contentResolver.openInputStream(uri)?.use { input ->
-                    archive.outputStream().use { input.copyTo(it) }
-                } ?: throw IllegalStateException("无法读取所选文件")
+                // N-2（审计第 2 期）：原先是「先 delete 最终名，再把所选文件直拷进最终名」——
+                // 拷贝中途失败/被杀会在缓存里留下一个顶着正式名字的半截包（findLocalArchive 只看
+                // 字节数，够大就当"已有安装包"），而原来那份好包已经被 delete 掉了。
+                // 改成与 RootfsDownloader.downloadOne 同一范式：先写 .part 临时名，收尾 rename 到
+                // 最终名（rename 失败退回复制）——正式名要么是完整的包、要么不存在，没有半截态。
+                val staging = File(archive.parentFile, archive.name + ".part")
+                staging.delete()
+                try {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        staging.outputStream().use { input.copyTo(it) }
+                    } ?: throw IllegalStateException("无法读取所选文件")
+                    if (!staging.renameTo(archive)) {
+                        staging.copyTo(archive, overwrite = true)
+                        staging.delete()
+                    }
+                } catch (t: Throwable) {
+                    staging.delete() // 半截只可能留在 .part 上，正式名不受污染
+                    throw t
+                }
                 installStatus("本地包读取完成（${archive.length() / (1024 * 1024)} MB），开始解压")
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 // 用户自选文件没有任何校验值可比对 ⇒ 按"不确定就传 null"：装完不写 env 行，
