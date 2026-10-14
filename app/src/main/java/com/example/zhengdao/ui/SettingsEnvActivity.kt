@@ -385,7 +385,11 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 }
                             }
                         } catch (t: Throwable) {
-                            ctx.getString(R.string.env_check_failed, t.message ?: "")
+                            // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
+                            com.example.zhengdao.rootfs.RunLog.log(
+                                "环境检查失败（原文）：${t.javaClass.simpleName}: ${t.message}"
+                            )
+                            ctx.getString(R.string.env_check_failed, HumanizeError.title(t, ctx.resources))
                         }
                         android.os.Handler(ctx.mainLooper).post {
                             updateMsg = result; checking = false
@@ -718,9 +722,11 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 } catch (t: Throwable) {
                                     // 增量路径的任何失败（含基线不符 BaseMismatch）都回退全量：
                                     // applyTo 是原子的——此时 rootfs 要么没动，要么已完整换成新环境
-                                    val why = t.message ?: ""
-                                    fallbackNote = ctx.getString(R.string.env_patch_fallback, why)
+                                    // R-29（第⑯刀）：fallbackNote 会进 InstallFlow.finish 的用户可见文案，
+                                    // 原文只落 RunLog（下一行），UI 拿人话
+                                    val why = HumanizeError.title(t, ctx.resources)
                                     com.example.zhengdao.rootfs.RunLog.log("小更新失败，改为完整下载：${t.message}")
+                                    fallbackNote = ctx.getString(R.string.env_patch_fallback, why)
                                 } finally {
                                     RootfsCache.cleanupDelta(ctx, deltaFile)
                                 }
@@ -771,7 +777,11 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             InstallFlow.finish(ctx, fallbackNote + ctx.getString(R.string.env_update_done))
                             android.os.Handler(ctx.mainLooper).post { storageTick++ }
                         } catch (t: Throwable) {
-                            val why = t.message ?: ""
+                            // R-29（第⑯刀）：why 进 InstallFlow.fail + Toast（用户可见），原文只落 RunLog
+                            com.example.zhengdao.rootfs.RunLog.log(
+                                "环境更新失败（原文）：${t.javaClass.simpleName}: ${t.message}"
+                            )
+                            val why = HumanizeError.title(t, ctx.resources)
                             InstallFlow.fail(ctx, ctx.getString(R.string.env_update_failed, why))
                             toastOnMain(ctx.getString(R.string.env_update_failed, why), long = true)
                         }
