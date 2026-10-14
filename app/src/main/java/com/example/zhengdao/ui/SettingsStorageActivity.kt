@@ -632,7 +632,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             Text(cacheText, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
             // §B 顺序 2 · P2-5：按钮只负责弹确认框，Thread{} 那段破坏性动作原封不动搬进 confirmButton。
-            OutlinedButton(onClick = { installerCleanConfirm = true }) {
+            // B-3（审计第 2 期）：下载/安装进行中点它会删掉正在下载的 .part
+            // （RootfsCache.cleanupNonCurrent 删 .part）⇒ 传输出错白跑。与 :691 / :712 同口径共用 busy。
+            OutlinedButton(enabled = !InstallFlow.isRunning(), onClick = { installerCleanConfirm = true }) {
                 Text(stringResource(R.string.storage_installer_clean_btn))
             }
             if (installerCleanConfirm) {
@@ -658,7 +660,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = {
+                        TextButton(enabled = !InstallFlow.isRunning(), onClick = {
                             installerCleanConfirm = false
                             Thread {
                                 val n = com.example.zhengdao.rootfs.RootfsCache.cleanupNonCurrent(ctx)
