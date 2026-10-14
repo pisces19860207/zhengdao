@@ -335,9 +335,24 @@ object KeepaliveArchive {
     }.getOrDefault(emptyList())
 
     /** 最近 [limit] 条心跳（新 → 旧）。 */
-    fun heartbeatTail(ctx: Context, limit: Int = 6): List<String> = runCatching {
-        File(dir(ctx), HEARTBEAT).useLines { it.toList() }
-            .filter { it.startsWith("[") }
+    fun heartbeatTail(ctx: Context, limit: Int = 6): List<String> =
+        heartbeatTailIn(dir(ctx), limit)
+
+    /**
+     * 最近 [limit] 条心跳（新 → 旧），按目录读（便于 JVM 单测：Context 无法实例化）。
+     *
+     * 收尾补充（第⑪批 B-1 / D-1）：轮转改成「整体 rename 成 `.1`」之后，活动文件在轮转
+     * 那一刻是空的 —— 读端若只看活动文件，保活页会出现「刚轮转过 ⇒ 一条心跳都不显示」
+     * 的假空窗（最多持续到下一次心跳）。这里把至多一份旧档 `.1` 拼在活动文件之前，
+     * 取尾后语义与轮转前一致。
+     */
+    internal fun heartbeatTailIn(d: File, limit: Int = 6): List<String> = runCatching {
+        val lines = ArrayList<String>()
+        val rolled = File(d, HEARTBEAT + ".1")
+        if (rolled.isFile) rolled.useLines { lines.addAll(it) }
+        val active = File(d, HEARTBEAT)
+        if (active.isFile) active.useLines { lines.addAll(it) }
+        lines.filter { it.startsWith("[") }
             .takeLast(limit.coerceAtLeast(1))
             .reversed()
     }.getOrDefault(emptyList())
