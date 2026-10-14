@@ -93,6 +93,32 @@ class TmuxConfAppendTest {
         assertTrue("另一张表 copy-mode-vi 也仍该补：\n$add", add.contains("bind -T copy-mode-vi WheelUpPane send -N1 -X scroll-up\n"))
     }
 
+    // ── §B 顺序 29：OSC 8 超链接能力声明（2026-10-14 真机验收立账） ──────────
+
+    @Test
+    fun `空配置时补上 server option 的 OSC 8 能力声明`() {
+        val add = ProotLauncher.tmuxConfAppend("")
+        assertTrue(
+            "缺 `set -as terminal-features 'xterm*:hyperlinks'`（A 路径下划线 + 可点就靠它）：\n$add",
+            add.contains("set -as terminal-features 'xterm*:hyperlinks'\n")
+        )
+    }
+
+    @Test
+    fun `用户自己声明过 terminal-features 就不插手_三种写法都算`() {
+        for (cur in listOf(
+            "set -s terminal-features 'xterm*:hyperlinks'\n",
+            "set -as terminal-features 'screen*:hyperlinks'\n",
+            "set-option -as terminal-features 'xterm*:hyperlinks'\n",
+        )) {
+            val add = ProotLauncher.tmuxConfAppend(cur)
+            assertFalse(
+                "用户已自己管过 terminal-features（$cur），不该重复追加：\n$add",
+                add.contains("terminal-features")
+            )
+        }
+    }
+
     // ── 第二半：客户端侧（文本门禁） ──────────────────────────────────────
 
     private fun yellowDotBlock(): String {
