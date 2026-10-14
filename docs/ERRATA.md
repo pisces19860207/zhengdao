@@ -6603,3 +6603,12 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 - **权衡 / 故意没做的**：**没排整个 `home`**（那会把用户的工作数据也挡在迁移之外，正是门禁那条会红的断言钉着的）；`home/.claude` 里除凭据还可能有 Claude Code 的会话历史，因此新机上这些历史不会跟着走 —— 需要就重新登录；`res/xml/backup_rules.xml`（API ≤30，因 `minSdk=36` 实际是死规则）本来就整目录排了 `home` / `oc`，未动。
 - **验证**：`:app:testDebugUnitTest --offline --max-workers=1 --rerun-tasks` = **119 套件 / 868 例 / 0 失败 / 0 错误 / 3 跳过**（其中 `BackupRulesGuardTest` 4 例全绿）。
 - **教训**：**「凭据」不是「用户数据」**。写排除规则时按用途分类（系统层 / 凭据 / 用户数据 / 可重建缓存），别按目录归属分类 —— 否则一句「用户数据该跟着走」就会把 API key 一起放行。另外：门禁里 `assertFalse(... path="home"")` 用的是**带尾引号的整目录**写法，所以子路径排除能落地而不误伤；将来改门禁要看清它断言的到底是「整目录不许排」还是「任何子路径都不许排」。
+
+## E-128 · 2026-10-14 · 改了 Rust 源码却没重编入库的 `.so`，而现有门禁**查不出来**（`.so` 是「人工构建入库」的产物）
+
+- **事实**（我用 git 核过）：`app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` 最后一次入库 = **2026-10-12 17:41**（`2b8507e`）；Rust 源码最后一次变更 = **2026-10-14 17:18**（`7eb394d`，第⑧刀 **P2-18**：改了 `rust/core/src/jni_bridge.rs` / `json.rs` / `lib.rs`）⇒ **入库二进制落后源码两天**，真机跑的还是旧逻辑，P2-18 等于没生效。
+- **当前入库件** `sha256 = 91443065974DDAC929B849DE9D2A4E5BBEAD33AA6280408C80CEAABD1C4BE664`（我算的）；**全仓没有任何地方记录这个值** —— 所以「入库的到底是哪次构建」无法追溯。
+- **现有门禁为什么抓不到**：`tools/check-native-so.py` 只验两件事 —— ① 每个 PT_LOAD 段 `p_align >= 0x4000`（16KB 页设备可加载）② `libzhengdao_core.so` 导出 `CoreNative.kt` 里每个 `external fun` 的 JNI 符号。**它不比对源码**，所以「源码改了、`.so` 没重编」在 CI 上一路绿灯（`ci.yml:64` / `build.yml:245` 那两个「入库 .so 门禁」步骤都是这一支）。
+- **用户规矩**（2026-10-14 逐字）：「绝对不允许改了 Rust 源码却不重编 .so 就提交。改完必须过 SHA256 门禁才算数。」
+- **待办（并入第⑬刀，不单独开刀）**：① 装编译环境（本机已有 `rustc` / `cargo` 1.99.0 与 NDK **27.2.12479018**，缺 `cargo-ndk` 与 `ANDROID_NDK_HOME`；`.so` 需要 `-Wl,-z,max-page-size=16384`）② 改 R-02 / R-03 / R-04 ③ 重编 ＋ `llvm-strip` ＋ 拷入 `jniLibs/arm64-v8a/` ④ **新建「同源门禁」**：把 `.so` 的 sha256 与 `rust/core/src/**` 的树指纹一起记进一份清单，脚本比对，两者不同步就红；接进 `ci.yml` / `build.yml` 与本地钩子 ⑤ 真机复验。**环境搭不起来就把这一刀标成「因缺少编译环境而阻塞」，不许只改源码。**
+- **教训**：**「人工构建入库」的产物必须和它的源码绑在同一个可校验的指纹里**。只验产物自身的性质（页对齐、符号齐不齐）是「性质门禁」，不是「同源门禁」—— 前者永远抓不到「忘了重编」，而「悄悄退回 Java 实现」正是这条路的默认结局（`CoreNative.isRustAvailable() = false`）。
