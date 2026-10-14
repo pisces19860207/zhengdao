@@ -1825,6 +1825,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             com.example.zhengdao.rootfs.RootfsDownloader.releaseIdleResources()
         }
+        // D-4（第⑱刀）：内存压力下回收玄览 WebView（仅 COMPLETE 档且玄览离线时才真回收）。
+        com.example.zhengdao.ui.browser.BrowserHolder.onTrimMemory(level)
     }
 
     companion object {
