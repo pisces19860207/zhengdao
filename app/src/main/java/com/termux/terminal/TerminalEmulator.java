@@ -2225,12 +2225,12 @@ public final class TerminalEmulator {
                 }
                 break;
             case 52: // Manipulate Selection Data. Skip the optional first selection parameter(s).
-                // 限制 base64 文本长度 ~100KB，避免 binder TransactionTooLargeException
-                // （Android 对跨进程 String 的 binder 限制 ~100KB UTF-16，见 d8d6b02）
-                if (textParameter.length() > (100 * 1024) + /* `52;Pc;` */ 10) {
-                    Logger.logError(mClient, LOG_TAG, "OSC 52 text too long, dropping (" + textParameter.length() + " chars)");
-                    break;
-                }
+                // 2026-10-14（§B-补-49 🟢2）：此处原有的「textParameter.length() > 100KB+10」
+                // 判断已删——它是**死判据**：oscArgsMaxLength() 对 OSC 52 返回
+                // MAX_OSC52_STRING_LENGTH（= 100KB+10），collectOSCArgs() 在整条缓冲达到该
+                // 上限后不再 append ⇒ textParameter 恒 ≤ 上限-3 < 上限，判断恒假。
+                // binder TransactionTooLargeException 的实际防护由 collectOSCArgs() 承担
+                // （超限整条丢弃，见该类 KDoc 与 MAX_OSC52_STRING_LENGTH 的注释）。
                 int startIndex = textParameter.indexOf(";") + 1;
                 try {
                     String clipboardText = new String(Base64.decode(textParameter.substring(startIndex), Base64.DEFAULT), StandardCharsets.UTF_8);
