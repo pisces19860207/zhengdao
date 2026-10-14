@@ -59,7 +59,7 @@
         <item name="android:paddingStart">2dp</item>
         <item name="android:paddingEnd">2dp</item>
         <item name="android:background">@drawable/key_button_bg</item>
-        <item name="android:textColor">#FFE5E5EA</item>
+        <item name="android:textColor">#FF191919</item>
         <item name="android:maxLines">1</item>
         <!-- 宽窄自适应字号：按键等宽均分后，"PGUP/HOME/END" 这类长标签在窄屏
              会被截断成 "PG"/"HO"（2026-10-05 真机实测）。改为按可用宽度自动
