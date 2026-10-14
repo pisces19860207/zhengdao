@@ -209,6 +209,49 @@
 > - **被否掉／夸大的（不要再照报告改）**：①「切 Tab 丢会话」不成立（`app/src/main/java/com/example/zhengdao/oc/OcRepository.kt:101-105` 的 `shouldReopenConnection` 判 `pollJob`/`sseJob`，而这两个 job 挂在进程级 `OcRuntime.scope`）；②「工具卡日志刷屏」不成立（助手工具卡走 `app/src/main/java/com/example/zhengdao/ui/taiji/TaijiComponents.kt:649` 直连 `ToolCallCard`，从不经过 `:766` 那个 `LaunchedEffect`）；③「提示显示 null」不成立（`app/src/main/java/com/example/zhengdao/oc/OcManager.kt:481` 的 `message` 是非空 `String`）；④「尺寸下拉 `-1` 未防」不成立（基线 `adb9118:761` 就已防）；⑤「缓存前缀误判」不成立（`app/src/main/java/com/example/zhengdao/rootfs/RootfsCache.kt:266` 两侧都 `canonicalFile` 且带 `File.separator`）；⑥ 设置页未用 import「536 行」**高估 12~15%**（实测 458~469 行）；⑦ 报告 2.5 的 `shouldUseCtrlSpaceWorkaround` 行号写错（实际在 `app/src/main/java/com/example/zhengdao/TerminalActivity.kt:790`），且「删接口」不可执行（声明在 `app/src/main/java/com/termux/view/TerminalViewClient.java:35`、被 `app/src/main/java/com/termux/view/TerminalImeBridge.java:226` 调用）。
 > - **联动提醒**：顺序 22 与 `docs/archive/terminal-view-2026-10-12/`（GPT-luna 终端 View 原型，2026-10-12 已封档）**成对处理** —— 新终端代码落地后一次性复核，别两边各改一遍。
 
+### A-审. 审计⑩刀逐条判定（2026-10-14，原件已按用户要求删除 —— 以本节为准）
+
+**来源**：外部两份只读全仓审计报告（大报告 759 行 = R-01~R-30，小报告 11.2 KB = 九刀对账 + C/N 清单），基线 `88c9a2a`；我用四路只读子代理逐条核到 `file:line`，判定分「真 / 部分 / 否（误报）」。**用户 2026-10-14 拍板把报告原件删掉（「你立了账就行」）⇒ 本节是唯一账**；原件里「我验不了的」9 条与「账实冲突」清单的验法也一并留在本节。
+
+| 条 | 判定 | 落点 | 状态 |
+| --- | --- | --- | --- |
+| R-01 | 真 | `rootfs/RootfsInstaller.kt:471-477`（复原 `renameTo` 失败后仍无条件删 `rootfs.old`，连日志都没有） | ✅ 已修 `2a76e1f`（§A #88）＋ ERRATA E-126 |
+| R-02 | 部分（代码真·触发需真机） | `rust/core/src/extract.rs:246`（`:233`/`:263` 同病）：落盘前无 `remove_file`，硬链克隆会写穿旧树 —— 前提是真机上 `Files.createLink` 真的成功（SELinux 常拒） | ⏳ 待做（③ Rust 批） |
+| R-03 | 真 | `rust/core/src/extract.rs:228`（二阶段 `:258`）：`link_stays_inside` 放行绝对 guest 路径，`Path::join` 遇绝对值直接替换 ⇒ 取到宿主同名文件 | ⏳ 待做（③） |
+| R-04 | 真 | `rust/core/src/extract.rs:172` ＋ `rootfs/RootfsInstaller.kt:401-402`：越界判定前 `entries += 1`，`continue` 不减计数 ⇒ `EmptyArchive` 兜底失效 | ⏳ 待做（③） |
+| R-05 | 真 | `rootfs/RootfsInstaller.kt:201-216`（调用点 `TerminalActivity.kt:116`）：删 tmp / 复原备份既不持 `withInstallLock` 也无 `isInstalling()` 闸 | ✅ 已修 `2a76e1f` ＋ ERRATA E-126 |
+| R-06 | 真 | `ui/EnvHealth.kt:239-249`（对照 `terminal/ProotLauncher.kt:72`）：体检修复直写 rootfs，不参与 `withPrepareLock`；§A #61 只盖 `buildLaunchPlan` | ⏳ 待做（②） |
+| R-07 | 真 | `rootfs/RootfsInstaller.kt:283-313`（`ui/SettingsEnvActivity.kt:574-575`）：`install()` 无 try/catch 清 tmp、无 `ensureFreeSpace`、`mkdirs()` 不查返回值 | ⏳ 待做（②） |
+| R-08 | 部分（现象真·后果假） | `RootfsInstaller.kt:334-369` ＋ `rust/CoreNative.kt:100-104`：Rust 分支确实不回调 `onEntry`，但**6 个调用点全传空 lambda** ⇒ 「用户以为卡死」不成立 | 已立 `ERRATA §7-1`（不是漏实现，不改） |
+| R-09 | 真（审计写「未立账」是错的） | `rootfs/RunLog.kt:233-239`：三步非原子无锁，与类注释自相矛盾 | 已立 §B-补 ③ / P2-13 |
+| R-10 | 真（后果比报告更重） | `app/src/main/java/com/termux/terminal/TerminalEmulator.java:2101-2118`、`TerminalBuffer.java:205`/`:210`：OSC 8 未闭合时不是标一行，而是把 [起点行, 光标行]**整段区间** linkify 成同一个 URI | ⏳ 未立账（触发面受 tmux ≥3.4 成对闭合限制） |
+| R-11 | 真 | `terminal/ProotLauncher.kt:163`（`chmod` 空 `catch (_: Throwable) {}`）＋ `:168`（写戳记 `runCatching` 无失败分支）⇒ `:176 canExecute()` 判假、静默降级到安卓自带 shell | ✅ 已修 `2a76e1f`（§A #88） |
+| R-12 | 真（触发需真机） | `oc/SseClient.kt:134`（`JSONObject(ev.data)` 无 try/catch）＋ `oc/OcRepository.kt:170`/`:247`；全仓**无 `CoroutineExceptionHandler`** ⇒ 非 JSON 帧 = `FATAL EXCEPTION` 且 SSE 永久停 | ⏳ **禁区，等放行** |
+| R-13 | 真（安全） | `oc/OcRepository.kt:443`：**口令明文写进 `files/oc/serve.log`**，全仓无删除/截断/轮转；`:289`/`:199` 同病 | ⏳ 禁区 |
+| R-14 | 真 | `oc/OcRepository.kt:312`/`:316`/`:324`：20 轮 ×（150ms ＋ 最多 3×700ms 探测）≈ **45s**，而注释自写「最多 3 秒」 | ⏳ 禁区 |
+| R-15 | 真 | `oc/SseClient.kt:163-164`/`:197-203`、`oc/OcRepository.kt:247`：失败计数只在成功时清零、`delay` 封顶 15s 但无上限 | 已立 §B P2-15（补记：两个循环都不置 `TaijiPhase.Failed`） |
+| R-16 | 部分 | `oc/OcRepository.kt:247`/`:260`/`:792`：「不停 + 只递增」属实，但 `:262` 有 `state == null` 启动闸 ⇒ 代价是「1s 无谓请求」而非「无谓重试」 | ⏳ 禁区 |
+| R-17 | 部分 | `oc/OcRepository.kt:453`/`:466-470`：超时后不等 `waitFor`、不置空、无 `process.destroy` 兜底（「僵尸进程」措辞不准） | ⏳ 禁区 |
+| R-18 | 真 | `oc/OcRepository.kt:455-456`/`:495`：成功路径只 resolve `timeout`/`password`，`oc-serve-start` 全仓唯一出现处从不 resolve | ⏳ 禁区 |
+| R-19 | 真 | `rust/CoreNative.kt:26-28`：`runCatching` 静默吞 `.so` 加载失败、无 `Log.w`（同文件 `:103` 却在用 `Log.i`） | 已立 §B P2-3 |
+| R-20 | 真 | `ui/SettingsHelpActivity.kt:132`/`:185`/`:219` ＋ 孤儿加载在 `ui/SettingsEnvActivity.kt:528-536`；门禁 `ui/SettingsDestructiveConfirmGateTest.kt:30-34` 只做纯文本断言 | ✅ 已修 `2a76e1f`（§A #88，并修正 §A #87 的假账） |
+| R-21 | 真 | `ui/HomeScreen.kt:808`（组合期就 `agents()`，`AgentRepository.kt:131-140` 逐目录读 `/proc`） | ⏳ 待做（②） |
+| R-22 | 真 | `ui/KeepaliveLogActivity.kt:233`/`:269`：onClick 直跑主线程（同页 `:157` 已用 `withContext(IO)`） | ⏳ 待做（②） |
+| R-23 | 真 | `ui/PermissionSetupScreen.kt:179` 用 `.apply()`，违自身 KDoc `:175`「必须在发请求之前写」；三处 `:98`/`:179`/`:190` 应改 `.commit()`（全仓 `.commit()` 现仅 `ui/AgentManifest.kt:152`） | ⏳ 待做（②） |
+| R-24 | 真 | 门禁全是文本断言：`ReleaseSigningGateTest.kt:35-51`、`StateLifetimeGateTest.kt:32-39`、`BackupRulesGuardTest.kt:64`/`:77`/`:91`（把 `<exclude` 用注释包掉仍然过） | ⏳ 待做（④ 单独一刀） |
+| R-25 | 真 | `ui/SettingsStorageActivity.kt:598`/`:713`（裸 `Thread{}`）＋ `:622`/`:734`（`Handler(mainLooper).post` 写 `cacheText`/`rollbacks`/`storageTick`）；`:119` 已有 scope | ⏳ 待做（②） |
+| R-26 | 部分 | `ui/InstallProgress.kt:40-44`（`@Volatile busy` 与 `isRunning()` 不是可观察状态）＋ 6 处 `enabled` ⇒ 同屏其它可观察 state 会顺带重算 ⇒「时灵时不灵」 | ⏳ 待真机（点安装后立刻连点那 6 个按钮） |
+| R-27 | 真 | `ui/HomeScreen.kt:201`/`:306`：主线程 `AppState.agents()` ＋ `Files.readSymbolicLink`（`AppState.kt:140`） | ⏳ 待做（②） |
+| R-28 | 真 | `ui/AgentInstaller.kt:151` `copyTo` 非原子（对照 `:93-94` 的 tmp+rename 正确范式），`:129` 随后 bash 执行该副本 | ⏳ 待做（②） |
+| R-29 | 真 | `TerminalActivity.kt:1536`/`:1632`/`:1716` ＋ `ui/SettingsEnvActivity.kt:725-726`：内部异常原文进用户文案（正确范式 `:604`/`:611` `HumanizeError.title`） | ⏳ 待做（②） |
+| R-30 | 真 | `res/values/strings.xml:31`/`:826-828`：4 条 key 零引用，删时两个 strings.xml 必须同步（否则撞 `:177-198` 的 key 对称门禁） | ⏳ 待做（②） |
+
+**「我验不了的」9 条（原件 §4，验法存档）**：V-1 R-02 硬链接写穿（真机跑增量更新，`stat` 比 `rootfs/bin/bash` 与 `rootfs.tmp/bin/bash` 的 inode/link count）；V-2 R-10 OSC 8 跨滚动（JVM 单测把回滚设 10 行 / 真机 agent 长输出）；V-3 R-12 非 JSON 帧（JVM 单测直调 `handle(...)` / 真机 `nc -l 14000` 伪造 SSE）；V-4 R-21/R-27 卡顿量（真机 StrictMode `detectDiskReads()` ＋ 冷启动抓 ANR 栈）；V-5 R-20（真机放 ≥4 份归档后进「帮助」页）；V-6 全部 Rust（需 `cargo test` ＋ 真机解压实测）；V-7 玄览 ①②③ 真机功能（OSC 8 点击 / Safe Browsing / WebView 内存）；V-8 proot/guest 运行时（tmux、hermes、zzsvc，需设备）；V-9 单测总数与门禁是否全绿（需跑 gradle）。
+
+**账实冲突（原件 §3，C-1~C-7）**：与我复核重叠的核心一条 =「帮助页日志管理被 §A #87 判 ✓ 而实际不可达」，已在 §A #88 修正；其余各条分别落到 §B / §B-补（P2-13 / P2-15 / P4-4 等）。**下一期审计的 E 轴（账实核对第 2 期）会重新覆盖这一面**，如有遗漏届时再补。
+
+**两条误报（已剔）**：小报告把 **P4-1** 判「未做」、把 **P2-13 / P2-16 / P2-18** 判「仍在」—— 它只看了 main 静态快照，**没看在途分支**（`fix/batch8-errors-debt`）。教训：审计基线要写清「只看 main」还是「含在途分支」。
+
 ### B-补. 未立账的开放项（2026-10-11 对账补记）
 
 > **为什么有这一节**：这些条目原本只写在**工作区根 `证道设计报告\` 的外部报告**里（2026-10-11 已整体删除，见 §A #26）。删之前先把它们抄进台账 —— 否则「未落地、又没有任何 issue / ERRATA 认得它」的条目就再无据可查。原报告名保留在每组的标题里以便追溯（原文已不在磁盘，可从 §A #26 的备份 zip 取回）。
