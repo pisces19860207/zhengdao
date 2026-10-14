@@ -12,6 +12,9 @@ import android.os.Process
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.SessionService
 import java.io.File
+import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * 保活心跳 + 崩溃留档（#5，2026-10-09）。
@@ -46,6 +49,30 @@ object KeepaliveWatcher {
     @Volatile
     private var lastActivity = "（还没进过界面）"
 
+    /**
+     * 心跳落盘的单线程 daemon 执行器（D-1，第⑪批 B-1）。
+     *
+     * 为什么必须有它：heartbeat 整条链是「memoryText → 读 /proc/self/statm + ActivityManager」
+     * ＋「appendCapped → 读盘轮转 + 追加写」，而三个 ActivityLifecycleCallbacks（onStarted/
+     * Stopped/Destroyed）与 onTrimMemory 都在**主线程**同步调它 —— 用户在保活页反复进出时
+     * 每次进出都是两次同步磁盘 IO，且轮转触发时是 512KB 整读整写，属于「高频 × 阻塞 ×
+     * 无上限增长」三重叠加。
+     *
+     * 范式照 TerminalActivity.pasteExecutor：单线程保证心跳行**按发生顺序**落盘；
+     * daemon 保证进程退出不被它挂住；线程**首次提交任务才创建**，字段本身零开销。
+     */
+    private val defaultHeartbeatExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor { r ->
+            Thread(r, "zd-keepalive-io").apply { isDaemon = true }
+        }
+
+    /**
+     * 心跳执行器注入点（单测用）：换成"只记录不执行"的 Executor，
+     * 即可断言「主线程调 [heartbeat] 时本线程零磁盘 IO」。
+     */
+    @Volatile
+    internal var ioExecutor: Executor = defaultHeartbeatExecutor
+
     fun install(app: Application) {
         if (installed) return
         installed = true
@@ -73,23 +100,39 @@ object KeepaliveWatcher {
     ): String = "[${KeepaliveArchive.timeText(now)}] $event | 服务=${if (serviceRunning) "运行中" else "未运行"}" +
         " | $memory | 线程=$threads | 界面=$activity\n"
 
-    /** 写一行心跳（任何线程可调）。 */
-    fun heartbeat(ctx: Context, event: String, now: Long = System.currentTimeMillis()) {
-        runCatching {
-            val line = heartbeatLine(
-                now = now,
-                event = event,
-                serviceRunning = sessionServiceRunning(),
-                memory = memoryText(ctx),
-                threads = Thread.activeCount(),
-                activity = lastActivity,
-            )
-            KeepaliveArchive.appendCapped(
-                File(KeepaliveArchive.dir(ctx), KeepaliveArchive.HEARTBEAT),
-                line,
-                KeepaliveArchive.HEARTBEAT_MAX_BYTES,
-            )
+    /**
+     * 写一行心跳（任何线程可调）。
+     *
+     * D-1（第⑪批 B-1）：调用线程**只入队**（时间戳在这里取，保证行序=事件序），
+     * 组行、读 /proc、落盘全部在 [ioExecutor] 上串行执行 —— 主线程零磁盘 IO。
+     *
+     * `ctx` 可空只为单测：Context 在 JVM 单测里无法实例化（stub 构造抛 Stub!），
+     * 注入「只记录不执行」的 [ioExecutor] 后传 null 即可断言「只入队、零磁盘 IO」；
+     * 任务体判空跳过，生产路径永远传非空。
+     */
+    fun heartbeat(ctx: Context?, event: String, now: Long = System.currentTimeMillis()) {
+        ioExecutor.execute {
+            runCatching {
+                if (ctx != null) writeHeartbeat(ctx, event, now)
+            }
         }
+    }
+
+    /** 心跳的真正落盘（只在 [ioExecutor] 线程上跑；内容与 D-1 改造前逐字一致）。 */
+    internal fun writeHeartbeat(ctx: Context, event: String, now: Long) {
+        val line = heartbeatLine(
+            now = now,
+            event = event,
+            serviceRunning = sessionServiceRunning(),
+            memory = memoryText(ctx),
+            threads = Thread.activeCount(),
+            activity = lastActivity,
+        )
+        KeepaliveArchive.appendCapped(
+            File(KeepaliveArchive.dir(ctx), KeepaliveArchive.HEARTBEAT),
+            line,
+            KeepaliveArchive.HEARTBEAT_MAX_BYTES,
+        )
     }
 
     /**

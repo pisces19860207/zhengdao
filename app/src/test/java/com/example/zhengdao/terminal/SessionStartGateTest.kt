@@ -130,9 +130,18 @@ class SessionStartGateTest {
             "P1-4：2 秒轮询里的查盘必须挪到 IO 线程",
             s.contains("kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO)")
         )
+        // 第⑪批 R-21 更新判据形态：兜底查盘从「组合期 ?: 内联同步查 + 写回」改为
+        // 「miss 时不渲染、LaunchedEffect(agent.id) 在 IO 查完写回」——写回缓存这条
+        // 意图不变（每张卡最多查一次，之后由 2 秒轮询刷新），故门禁改为钉
+        // 「LaunchedEffect 写回 installStates + stateOf 调用仍在」这两个事实。
         assertTrue(
-            "P1-5：兜底那次 stateOf 的结果必须写回 installStates 缓存（否则每次重组都重查）",
-            s.contains("?: AgentRepository.stateOf(context, agent).also { installStates[agent.id] = it }")
+            "R-21：兜底查盘必须写回 installStates 缓存（否则每次重组都重查）",
+            s.contains("installStates[agent.id] =") &&
+                s.contains("AgentRepository.stateOf(context, agent)")
+        )
+        assertTrue(
+            "R-21：兜底查盘必须在 LaunchedEffect（组合期不许同步查盘）",
+            Regex("""LaunchedEffect\(agent\.id\)""").containsMatchIn(s)
         )
     }
 }
