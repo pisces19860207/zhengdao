@@ -201,19 +201,37 @@ public final class TerminalBuffer {
     // ── 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：OSC 8 超链接区间 ──
     // 行号用 internal index（= 行对象在 mLines 里的物理位置）：滚动只改 mScreenFirstRow、
     // 行对象不动 ⇒ 记录不随滚动漂移；折行的长 URI 由调用方按跨行分段灌入。
+    // 第⑨刀 R-10：setLink 补循环缓冲语义（起点行可能在终点行之后——绕回）；调用方
+    // （TerminalEmulator）保证真实跨度 < mTotalRows，故 mod 出的跨度无歧义。
 
+    /**
+     * 登记一条 OSC 8 链接区间（可跨行、可绕回）。
+     *
+     * <p>第⑨刀 R-10：上游/第②刀版本是 {@code start > end 直接 return} + 线性循环——缓冲区
+     * 绕回时（起点内部行号大于终点）会把合法区间 silent 丢掉、或只染到绕回前的那几行。
+     * 现按循环语义迭代 {@code span+1} 行；调用方已保证 {@code span < mTotalRows}
+     * （起点行未被卷出回收），因此 {@code (end - start + mTotalRows) % mTotalRows} 无歧义。
+     */
     public void setLink(int startInternalRow, int startColumn, int endInternalRow, int endColumn, String uri) {
         if (uri == null || uri.isEmpty()) return;
         if (startInternalRow < 0) startInternalRow = 0;
+        if (startInternalRow >= mTotalRows) startInternalRow = mTotalRows - 1;
+        if (endInternalRow < 0) endInternalRow = 0;
         if (endInternalRow >= mTotalRows) endInternalRow = mTotalRows - 1;
-        if (startInternalRow > endInternalRow) return;
-        for (int r = startInternalRow; r <= endInternalRow; r++) {
+        int span = (endInternalRow - startInternalRow + mTotalRows) % mTotalRows;
+        for (int i = 0; i <= span; i++) {
+            int r = (startInternalRow + i) % mTotalRows;
             TerminalRow line = mLines[r];
             if (line == null) continue;
-            int s = (r == startInternalRow) ? startColumn : 0;
-            int e = (r == endInternalRow) ? endColumn : mColumns;
+            int s = (i == 0) ? startColumn : 0;
+            int e = (i == span) ? endColumn : mColumns;
             line.setLink(s, e, uri);
         }
+    }
+
+    /** 回滚容量（行数）。OSC 8 链接跨度上限：起点行被卷出后不登记（第⑨刀 R-10）。 */
+    public int getTotalRows() {
+        return mTotalRows;
     }
 
     /** 查（屏幕行, 列）的链接；无则 null。 */
