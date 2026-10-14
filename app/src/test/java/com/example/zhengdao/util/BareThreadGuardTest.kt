@@ -90,8 +90,8 @@ class BareThreadGuardTest {
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:207",           // zd-hermes-repair
             "SettingsEnvActivity.kt:261",           // zd-env-check
-            "SettingsEnvActivity.kt:564",           // zd-env-repair
-            "SettingsEnvActivity.kt:659",           // zd-env-update
+            "SettingsEnvActivity.kt:557",           // zd-env-repair（R-20 删死 LaunchedEffect 后 -7，合并日回填）
+            "SettingsEnvActivity.kt:652",           // zd-env-update（同上 -7）
             "SettingsStorageActivity.kt:600",       // zd-cache-reload
             "SettingsStorageActivity.kt:663",       // zd-cache-clean
             "SettingsStorageActivity.kt:715",       // zd-rollback
