@@ -193,6 +193,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
         termView = findViewById(R.id.terminal_native)
         termView.mClient = this
+        // §B-补-49 🟢4/🟢6（2026-10-14）：会话结束通道接线。
+        // 原设计：本 Activity 实现 TerminalSessionClient 并期望被注册——但全仓无人调用
+        // updateTerminalSessionClient()，会话真正注册的是 SessionManager 的匿名 client
+        // ⇒ 本类的 onSessionFinished 永不触发、SessionManager.onSessionDied 无赋值点（死钩子）。
+        // 修法：走 SessionManager 已暴露的钩子通道（与 onCopyText/onPasteRequest 同模式）。
+        // ⚠️ 不替换 client：替换会连带丢掉 SessionManager 的 onTextChanged→onViewUpdate 视图刷新。
+        SessionManager.onSessionDied = { code -> handleSessionFinished(code) }
         // 文字选择菜单的复制/粘贴落地（SessionManager 转发到本 Activity 实现）
         SessionManager.onCopyText = { text ->
             val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
@@ -1011,15 +1018,24 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
     override fun onTitleChanged(changedSession: TerminalSession) {}
     override fun onSessionFinished(finishedSession: TerminalSession) {
-        val code = runCatching { finishedSession.getExitStatus() }.getOrDefault(-1)
+        // 兜底路径：当前实际触发的是 SessionManager.onSessionDied 通道（见 onCreate 的接线）——
+        // 本 override 保留是因为接口要求实现、且将来若改用 client 注册仍能生效。
+        handleSessionFinished(runCatching { finishedSession.getExitStatus() }.getOrDefault(-1))
+    }
+
+    /**
+     * 会话结束的公共处理（§B-补-49 🟢4，2026-10-14）：onSessionDied 通道与
+     * [onSessionFinished] 兜底共用，避免两处逻辑漂移。
+     * 由 pty 读线程回调（onSessionDied 在 SessionManager 的引擎回调里 invoke）⇒ 必须切主线程。
+     */
+    private fun handleSessionFinished(code: Int) {
         // FIX-F：会话没了，行缓冲里那半句也就不该存在（避免下次进来串味）。
         KnowledgeBaseHints.reset()
         runOnUiThread {
             // 2026-10-10 UIUX 审计 P1-4 修：原 Toast 带 "code=$code" 是开发术语，对非技术用户
             // 没有任何信息量（甚至会让人以为"出错了"）。改成中文大白话：会话**已经**结束
             // 是事实陈述；exit status 仍可在日志里查，但不必每次都弹到用户脸上。
-            // code 这个变量保留在 logcat 中给后续调试用。
-            android.util.Log.i("TerminalSession", "onSessionFinished code=$code")
+            android.util.Log.i("TerminalSession", "session finished code=$code")
             Toast.makeText(
                 this,
                 "这一屏的会话已经结束了。命令在后台跑完了，下次进来就是新的一屏。",
