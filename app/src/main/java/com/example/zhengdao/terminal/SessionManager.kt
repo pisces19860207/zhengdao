@@ -254,7 +254,10 @@ object SessionManager {
         override fun onColorsChanged(session: TerminalSession) {}
         override fun onTerminalCursorStateChange(state: Boolean) {}
         override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
-        override fun getTerminalCursorStyle(): Int = 0
+        // §B-补-49 🟢4（2026-10-14）：改传 BAR（细竖线，值 2）——用户明确要求"光标细一点"。
+        // 原传 0（BLOCK 方块），而 TerminalActivity 的 getTerminalCursorStyle 传 BAR；
+        // 但 Activity 的 client 从未注册（见 🟢4 对账）⇒ 实际一直是方块。
+        override fun getTerminalCursorStyle(): Int = 2
         override fun logError(tag: String, message: String) { RunLog.log("E: $message") }
         override fun logWarn(tag: String, message: String) { RunLog.log("W: $message") }
         override fun logInfo(tag: String, message: String) {}
