@@ -3,6 +3,7 @@
 package com.example.zhengdao.ui
 
 import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -507,7 +508,7 @@ checks.forEachIndexed { index, c ->
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = when {
-                                                !c.ok -> MaterialTheme.colorScheme.error
+                                                !c.ok -> zhengdaoErrorText() // P2-11：error 色 3.55:1 不达正文 AA
                                                 // 黄：Material3 无 amber 语义色，用 tertiary 兜底
                                                 c.warn -> MaterialTheme.colorScheme.tertiary
                                                 else -> MaterialTheme.colorScheme.primary
@@ -937,7 +938,7 @@ checks.forEachIndexed { index, c ->
                         // 而不是一句笼统的「未完成」——用户 2026-10-07 要求失败可见且可行动。
                         StatusNote(
                             text = AgentRepository.failureReason(context, agent.id),
-                            tone = MaterialTheme.colorScheme.error,
+                            tone = zhengdaoErrorText(), // P2-11：tone 即文字色（见 StatusNote）
                         )
                     } else if (installing) {
                         // E-060：安装的最后一步是 Agent **自己的交互式配置向导**（hermes 实测：
@@ -1051,7 +1052,8 @@ checks.forEachIndexed { index, c ->
                         }) {
                             Text(
                                 stringResource(R.string.home_purge_action),
-                                color = MaterialTheme.colorScheme.error,
+                                // P2-11：破坏性按钮的文字也要 4.5:1（error 色只有 3.55:1）
+                                color = zhengdaoErrorText(),
                             )
                         }
                     }

@@ -75,6 +75,7 @@ import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.ui.theme.zhengdaoReadyGreen
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -524,7 +525,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 label = stringResource(R.string.data_perm_storage),
                 value = if (storageOk) stringResource(R.string.data_perm_granted)
                 else stringResource(R.string.data_perm_not_granted),
-                valueColor = if (storageOk) zhengdaoReadyGreen() else MaterialTheme.colorScheme.error,
+                // P2-11：未授予是状态文字，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                valueColor = if (storageOk) zhengdaoReadyGreen() else zhengdaoErrorText(),
                 onClick = {
                     if (storageOk) {
                         openAppDetails()
@@ -546,7 +548,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             if (!storageOk) {
                 Spacer(Modifier.height(6.dp))
                 permHint?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    // P2-11：提示正文 zhengdaoErrorText()
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = zhengdaoErrorText())
                     Spacer(Modifier.height(6.dp))
                 }
             }

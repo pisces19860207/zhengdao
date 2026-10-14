@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcModel
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.ui.util.pressClickable
 
 /**
@@ -99,7 +100,8 @@ fun ModelSheet(
                 Text(
                     stringResource(R.string.taiji_model_refresh_failed, error),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    // P2-11：错误正文 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                    color = zhengdaoErrorText(),
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }

@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -639,19 +640,19 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                     title = {
                         Text(
                             stringResource(R.string.storage_installer_clean_title),
-                            color = MaterialTheme.colorScheme.error,
+                            color = zhengdaoErrorText(),
                         )
                     },
                     text = {
                         Column {
                             Text(
                                 stringResource(R.string.storage_installer_clean_desc),
-                                color = MaterialTheme.colorScheme.error,
+                                color = zhengdaoErrorText(),
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 stringResource(R.string.storage_installer_clean_warn),
-                                color = MaterialTheme.colorScheme.error,
+                                color = zhengdaoErrorText(),
                             )
                         }
                     },
@@ -669,7 +670,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     reloadCache()
                                 }
                             }.start()
-                        }) { Text(stringResource(R.string.common_clean), color = MaterialTheme.colorScheme.error) }
+                        }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                     },
                     dismissButton = {
                         TextButton(onClick = { installerCleanConfirm = false }) { Text(stringResource(R.string.common_cancel)) }

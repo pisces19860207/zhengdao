@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zhengdao.BackChevron
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -311,7 +312,8 @@ private fun LicenseDetail(entry: LicenseEntry) {
             Text(
                 "读不到随包正文（assets/${entry.asset}）：$failure",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                // P2-11：错误正文 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                color = zhengdaoErrorText(),
             )
         }
 
