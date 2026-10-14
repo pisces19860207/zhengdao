@@ -522,6 +522,22 @@ fun HomeTabs(
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val taijiListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
+    // 玄览：外部打开请求的切 Tab 消费（§4.6，2026-10-14 第 ② 刀接线）。
+    // TerminalActivity 点链接时置请求 + finish() 回主页；这里 ON_RESUME 时切到玄览，
+    // pendingUrl 由 BrowserHolder 持有、BrowserScreen 组合时消费（不经过此层状态）。
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME &&
+                com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
+            ) {
+                tab = 3
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // K2 配套（2026-10-08 审查）：太极消息列表的「是否跟随最新」与「已经定位过哪个会话」
     // 也必须跟 listState 同寿命。切 Tab 时 TaijiScreen 退出 Composition，这两个值若留在
     // 页面内部用 remember，切回来就重新初始化成"刚进入会话"，LaunchedEffect 立刻把保留的
@@ -573,6 +589,7 @@ fun HomeTabs(
             0 -> { tab = 0 }
             1 -> { tab = 1; onTerminalClicked() }
             2 -> { tab = 2 }
+            3 -> { tab = 3 }
         }
     }
 
@@ -601,7 +618,7 @@ fun HomeTabs(
                     )
                     NavigationBarItem(
                         selected = tab == 0,
-                        // 太极 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
+                        // 抱朴 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
                         //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
                         onClick = { onTabClicked(0) {} },
@@ -614,29 +631,37 @@ fun HomeTabs(
                         // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
                         //
                         // ⚠️ `tab = 1` 不能省（2026-10-07 用户报「红点返回回的不是主界面，
-                        //    是太极 tab」）：人在太极页（tab=0）点洞天进终端时若不改选中态，
+                        //    是抱朴 tab」）：人在抱朴页（tab=0）点逍遥进终端时若不改选中态，
                         //    终端一整页盖在上面时看不出问题，等红点关掉终端就露馅了——
-                        //    底部高亮还停在太极，用户以为"返回到了 opencode"。
-                        //    洞天是进终端的那个 tab，用过终端就该停在洞天。
+                        //    底部高亮还停在抱朴，用户以为“返回到了 opencode”。
+                        //    逍遥是进终端的那个 tab，用过终端就该停在逍遥。
                         // K1：终端 tab 双击不滚顶（点了就跳 Activity，列表根本不存在）。
                         onClick = { onTabClicked(1) { onOpenTerminal(null, null) } },
                         icon = { CaveIcon(tab == 1) },
-                        // 2026-10-08：文案由「洞天」改为「终端」。
-                        // 理由：这个 Tab 的功能是打开终端，而全项目 30+ 处文案都写「终端」，
-                        // 只有底栏与空态写「洞天」——用户在首次启动那一屏就会同时看到两个词
-                        // （WelcomeScreen 原句："运行环境用于「洞天」终端与 Agent"），
-                        // 却找不到叫「洞天」的地方。「终端」是用户已有的通用认知，无需学。
+                        // 改名链（留痕）：2026-10-08「洞天」→「终端」（与全站功能文案统一）；
+                        // 2026-10-14 派工单「终端」→「逍遥」（四 Tab 祝福命名定稿：
+                        // 抱朴/逍遥/怡然/玄览 = 真实/自由/幸福/期望）。Tab 名走资源
+                        // （nav_terminal），底栏/空态/WelcomeScreen 同源，不会再分裂。
                         // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
-                        // 见 :624 的设计说明），此处只改用户可见文案。
+                        // 见 CaveIcon 的设计说明），此处只改用户可见文案。
                         label = { Text(stringResource(R.string.nav_terminal), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                     NavigationBarItem(
                         selected = tab == 2,
-                        // K1：双击 = 滚到丹房 Agent 列表顶。
+                        // K1：双击 = 滚到怡然 Agent 列表顶。
                         onClick = { onTabClicked(2) {} },
                         icon = { DingIcon(tab == 2) },
                         label = { Text(stringResource(R.string.nav_agents), style = tabLabelStyle) },
+                        colors = tabColors,
+                    )
+                    NavigationBarItem(
+                        selected = tab == 3,
+                        // 玄览：浏览器（阶段 1 新增）。页面区不是列表，双击滚顶 no-op
+                        // （animateToTop 的 when 不含 3）。
+                        onClick = { onTabClicked(3) {} },
+                        icon = { XuanLanIcon(tab == 3) },
+                        label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                 }
@@ -658,7 +683,7 @@ fun HomeTabs(
             color = MaterialTheme.colorScheme.background,
         ) {
             when (tab) {
-                // 太极：Compose 原生 UI（直连 opencode serve 的 HTTP + SSE）。
+                // 抱朴：Compose 原生 UI（直连 opencode serve 的 HTTP + SSE）。
                 // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
                 //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
                 //    真坏了就修，不藏一条会腐烂的备用路。
@@ -667,24 +692,28 @@ fun HomeTabs(
                     // ⇒ 两处"点了没反应"：① 没装 OpenCode 时引导页的「返回」按钮；
                     // ② 抽屉里的「结束本次会话并退出太极」（会话被关掉了，人却还站在太极页，
                     //    界面上既没了聊天区也没了任何提示，像是卡住）。
-                    // 落点选**丹房**（tab=2）：太极的实例已经关了，留在原地没有意义；
-                    // 丹房是另一个有真实内容的 Tab，用户能继续做事。
+                    // 落点选**怡然**（tab=2）：抱朴的实例已经关了，留在原地没有意义；
+                    // 怡然是另一个有真实内容的 Tab，用户能继续做事。
                     // （不改 TaijiScreen 的默认值为妙——那会让"漏传"继续沉默。）
                     onExit = { tab = 2 },
                     listState = taijiListState,
                     followState = taijiFollow,
                     positionedSession = taijiPositionedSession,
                 )
-                // 丹房：Agent 管理（OpenCode 已内置为太极，不在丹房展示）
+                // 怡然：Agent 管理（OpenCode 已内置为抱朴，不在怡然展示）
                 2 -> HomeScreen(
                     onOpenTerminal = onOpenTerminal,
                     onOpenSettings = onOpenSettings,
                     listState = homeListState,
                 )
-                // 洞天：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
-                // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在洞天会看到一片空白，
+                // 逍遥：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
+                // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在逍遥会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
                 1 -> TerminalTabEmptyState(onOpenTerminal = { onOpenTerminal(null, null) })
+                // 玄览：浏览器（用户模式 MVP，阶段 1）。WebView 实例由 BrowserHolder
+                // 跨 Tab 保活；外部打开入口（终端链接点击等）走 BrowserHolder.pendingUrl
+                // + 上面 ON_RESUME 的切 Tab 消费（§4.6，第 ② 刀接线）。
+                3 -> com.example.zhengdao.ui.browser.BrowserScreen()
                 else -> {}
             }
         }
@@ -692,10 +721,10 @@ fun HomeTabs(
 }
 
 /**
- * 洞天 Tab 的空态 —— 只是"从终端回来的落点"。
+ * 逍遥 Tab 的空态 —— 只是"从终端回来的落点"。
  *
  * 为什么需要：终端是**独立的整屏 Activity**（不在 Tab 里内嵌，见 TerminalActivity），
- * 所以洞天这个 Tab 本身没有内容。红点 / 左边缘右滑关掉终端后落在这里，
+ * 所以逍遥这个 Tab 本身没有内容。红点 / 左边缘右滑关掉终端后落在这里，
  * 以前是一片全白（`else -> {}`），用户看到空白只会以为 App 坏了。
  * 空态里把"终端是个独立页面"说明白，并留一个再进去的入口。
  */
@@ -709,8 +738,8 @@ private fun TerminalTabEmptyState(onOpenTerminal: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            // 与底栏 Tab 文案保持一致：同一个 Tab，同一个名字（见 :470 的改名说明）
-            text = "终端",
+            // 与底栏 Tab 文案保持一致：同一个 Tab，同一个名字（走 nav_terminal 资源，同源不再分裂）
+            text = stringResource(R.string.nav_terminal),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
@@ -903,6 +932,36 @@ fun DingIcon(selected: Boolean) {
 
         // 炉中之丹（点睛）
         drawCircle(color = color, radius = w * 0.055f, center = Offset(w * 0.50f, h * 0.50f))
+    }
+}
+
+/**
+ * 玄览图标：一只杏眼。
+ *
+ * 定名意象（用户 2026-10-13 定调）：玄览 =《道德经》"涤除玄览"，深观明察，承载「期望」；
+ * 产品定位是"给终端配一双眼睛"（终端有手、玄览有眼）——眼睛即这个 Tab 的直白象征。
+ * 与 TaijiIcon / CaveIcon / DingIcon 同一套笔（圆头描边 + 选中缩放）。
+ */
+@Composable
+fun XuanLanIcon(selected: Boolean) {
+    val color = tabIconColor(selected)
+    val scale = tabIconScale(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
+        val stroke = tabStroke()
+        val w = size.width
+        val h = size.height
+        val cy = h * 0.50f
+
+        // 眼廓（上下两弧成杏眼）
+        val eye = Path().apply {
+            moveTo(w * 0.08f, cy)
+            cubicTo(w * 0.28f, h * 0.20f, w * 0.72f, h * 0.20f, w * 0.92f, cy)
+            cubicTo(w * 0.72f, h * 0.80f, w * 0.28f, h * 0.80f, w * 0.08f, cy)
+        }
+        drawPath(eye, color, style = stroke)
+
+        // 瞳（点睛）
+        drawCircle(color = color, radius = w * 0.11f, center = Offset(w * 0.50f, cy))
     }
 }
 

@@ -26,9 +26,12 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
+import com.example.zhengdao.ui.browser.BrowserHolder
 import com.example.zhengdao.terminal.KnowledgeBaseHints
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
+import com.example.zhengdao.terminal.TerminalLinkPolicy
+import com.example.zhengdao.terminal.TerminalLinkScanner
 import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.terminal.TerminalPasteWriter
 import com.example.zhengdao.terminal.SessionService
@@ -190,6 +193,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
         termView = findViewById(R.id.terminal_native)
         termView.mClient = this
+        // §B-补-49 🟢4/🟢6（2026-10-14）：会话结束通道接线。
+        // 原设计：本 Activity 实现 TerminalSessionClient 并期望被注册——但全仓无人调用
+        // updateTerminalSessionClient()，会话真正注册的是 SessionManager 的匿名 client
+        // ⇒ 本类的 onSessionFinished 永不触发、SessionManager.onSessionDied 无赋值点（死钩子）。
+        // 修法：走 SessionManager 已暴露的钩子通道（与 onCopyText/onPasteRequest 同模式）。
+        // ⚠️ 不替换 client：替换会连带丢掉 SessionManager 的 onTextChanged→onViewUpdate 视图刷新。
+        SessionManager.onSessionDied = { code -> handleSessionFinished(code) }
         // 文字选择菜单的复制/粘贴落地（SessionManager 转发到本 Activity 实现）
         SessionManager.onCopyText = { text ->
             val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
@@ -597,8 +607,19 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private fun injectPendingAutocmd() {
         if (fallbackActive) return
         val cmd = pendingAutocmd ?: return
+        // §B-补-49 🟢3(b)（2026-10-14）：先判就绪、先写，成功再清——原实现 `pendingAutocmd = null`
+        // 在写入**之前**，而写入失败（含"会话未就绪时静默丢字节"）既不重试也不留痕，
+        // 命令永久丢失且零日志；onEmulatorSet 的下一轮重试拿到的是 null。
+        val session = SessionManager.session
+        if (session == null || !session.isRunning) {
+            RunLog.log("注入启动命令：会话未就绪，保留待重试")
+            return
+        }
+        val ok = runCatching { SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8)) }
+            .onFailure { RunLog.log("注入启动命令失败，保留待重试：${it.message}") }
+            .isSuccess
+        if (!ok) return
         pendingAutocmd = null
-        runCatching { SessionManager.write("$cmd\n".toByteArray(Charsets.UTF_8)) }
 
         // ⚠️ 只有**安装**才登记「安装中」：启动也登记的话，卡片会在 Agent 明明好好跑着的
         //    时候显示"正在安装"、并在 90 秒宽限期后翻成「上次安装未完成」——
@@ -666,8 +687,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             R.id.key_home to "\u001b[H",
             R.id.key_end to "\u001b[F",
         )
+        // §B-补-49 🟢5（2026-10-14）：会改写/清空 shell 当前行的键按下后，资料库行缓冲
+        // 必须跟着失效——否则回车时拿的是**旧内容**去检索（附上的线索与用户当下这句话无关）。
+        // 判据取"是否改变行内容"：↑/↓（历史召回，整行换内容）、ESC（取消当前行编辑）；
+        // ←/→/HOME/END 只移动光标、行内容不变，**不清**（清了反而丢线索）。
+        val lineChangingKeys = setOf(R.id.key_up, R.id.key_down, R.id.key_esc)
         for ((id, seq) in sequences) {
-            findViewById<TextView>(id)?.setOnClickListener { sendKey(seq) }
+            findViewById<TextView>(id)?.setOnClickListener {
+                sendKey(seq)
+                if (id in lineChangingKeys) KnowledgeBaseHints.clearLine()
+            }
         }
         // 复制：把当前屏幕可见内容送剪贴板。
         // 想要复制「选定区域」请用**长按终端**唤起选择手柄 + 系统工具栏的复制
@@ -693,6 +722,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 .onFailure {
                     Toast.makeText(this, "发送中断失败：${it.message}", Toast.LENGTH_SHORT).show()
                 }
+            // §B-补-49 🟢5：^C 把当前行整行作废（readline 语义），行缓冲必须清——
+            // 否则被中断那半句还会在下次回车时被当成提问内容。
+            KnowledgeBaseHints.clearLine()
         }
         // 粘贴：顶部工具栏入口（快捷键条末位让给更常用的退格）
         findViewById<TextView>(R.id.btn_paste_top)?.setOnClickListener { doPaste() }
@@ -832,11 +864,70 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         return scale
     }
     override fun onSingleTapUp(e: android.view.MotionEvent) {
+        // 证道追加（2026-10-14，台账 §B-12 / 派工单第 ② 刀）：B 路径——非 OSC 8 的裸 URL 文本。
+        // OSC 8 链接已在手势层命中并短路（TerminalGestureController.onSingleTapUp 调
+        // onLinkOpen 返回 true 就不来这里），走到这里说明该格无 OSC 8 链接；
+        // 再扫所在行找覆盖该列的 URL，命中走同一套策略 + 打开链。
+        val bareUrl = findBareUrlAt(e)
+        if (bareUrl != null) {
+            onLinkOpen(bareUrl)
+            return
+        }
         // 点击终端即弹软键盘（TerminalView 不是 EditText，不会自动弹）
         termView.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE)
             as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(termView, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    /**
+     * OSC 8 链接 / B 路径 URL 的统一打开策略（证道 2026-10-14，§B-12）。
+     *
+     * 落点（派工单）：解析结果走 TerminalLinkPolicy，**打开交玄览的 B 路径**——
+     * App 内打开不新开 Activity：写 BrowserHolder.pendingUrl + 请求主页切 Tab + finish()
+     * 回主页，由 MainActivity ON_RESUME 消费切 Tab 请求落到玄览。
+     */
+    override fun onLinkOpen(uri: String): Boolean {
+        return when (TerminalLinkPolicy.classify(uri)) {
+            TerminalLinkPolicy.Verdict.OPEN_IN_APP -> {
+                BrowserHolder.pendingUrl = uri
+                BrowserHolder.requestBrowserTab()
+                finish() // 回主页（主页 ON_RESUME 消费切 Tab 请求）
+                true
+            }
+            TerminalLinkPolicy.Verdict.OPEN_SYSTEM -> {
+                val ok = runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)))
+                }.isSuccess
+                if (!ok) {
+                    Toast.makeText(this, getString(R.string.term_browser_failed, ""), Toast.LENGTH_SHORT).show()
+                }
+                true
+            }
+            TerminalLinkPolicy.Verdict.REJECT -> {
+                Toast.makeText(this, getString(R.string.term_link_blocked), Toast.LENGTH_SHORT).show()
+                true
+            }
+            TerminalLinkPolicy.Verdict.CONFIRM -> {
+                // 一期不产生该判定（needsConfirm 恒 false，"已知域名簿"留二期）——
+                // 真出现时按最严处理：不打开。
+                Toast.makeText(this, getString(R.string.term_link_blocked), Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+    }
+
+    /** B 路径：tap 列所在行的裸 URL 命中（OSC 8 未覆盖时）。 */
+    private fun findBareUrlAt(e: android.view.MotionEvent): String? {
+        val em = SessionManager.session?.emulator ?: return null
+        val colRow = termView.getColumnAndRow(e, false) ?: return null
+        val col = colRow[0]
+        val row = colRow[1]
+        val screen = em.screen
+        val line = screen.allocateFullLineIfNecessary(screen.externalToInternalRow(row))
+        val text = String(line.mText, 0, line.spaceUsed)
+        val charIndex = line.findStartOfColumn(col)
+        return TerminalLinkScanner.findLinkCovering(text, charIndex)
     }
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
     override fun shouldEnforceCharBasedInput(): Boolean = true  // 中文 IME 组合输入需要
@@ -908,7 +999,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private fun writeToSession(session: TerminalSession?, payload: String) {
         mainHandler.post {
             runCatching {
-                val s = session ?: SessionManager.session
+                // §B-补-49 🟢3(c)（2026-10-14）：优先**当前会话**——传进来的 `session` 是
+                // 按键那一刻捕获的对象，1.5 秒后才写，期间它可能已退出（写入静默丢失、
+                // onFailure 永不触发，回车与提示块一起蒸发）。用户就是对着当前会话按的回车。
+                val s = SessionManager.session ?: session
                 if (s != null) {
                     val bytes = payload.toByteArray(Charsets.UTF_8)
                     s.write(bytes, 0, bytes.size)
@@ -949,15 +1043,24 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
     override fun onTitleChanged(changedSession: TerminalSession) {}
     override fun onSessionFinished(finishedSession: TerminalSession) {
-        val code = runCatching { finishedSession.getExitStatus() }.getOrDefault(-1)
+        // 兜底路径：当前实际触发的是 SessionManager.onSessionDied 通道（见 onCreate 的接线）——
+        // 本 override 保留是因为接口要求实现、且将来若改用 client 注册仍能生效。
+        handleSessionFinished(runCatching { finishedSession.getExitStatus() }.getOrDefault(-1))
+    }
+
+    /**
+     * 会话结束的公共处理（§B-补-49 🟢4，2026-10-14）：onSessionDied 通道与
+     * [onSessionFinished] 兜底共用，避免两处逻辑漂移。
+     * 由 pty 读线程回调（onSessionDied 在 SessionManager 的引擎回调里 invoke）⇒ 必须切主线程。
+     */
+    private fun handleSessionFinished(code: Int) {
         // FIX-F：会话没了，行缓冲里那半句也就不该存在（避免下次进来串味）。
         KnowledgeBaseHints.reset()
         runOnUiThread {
             // 2026-10-10 UIUX 审计 P1-4 修：原 Toast 带 "code=$code" 是开发术语，对非技术用户
             // 没有任何信息量（甚至会让人以为"出错了"）。改成中文大白话：会话**已经**结束
             // 是事实陈述；exit status 仍可在日志里查，但不必每次都弹到用户脸上。
-            // code 这个变量保留在 logcat 中给后续调试用。
-            android.util.Log.i("TerminalSession", "onSessionFinished code=$code")
+            android.util.Log.i("TerminalSession", "session finished code=$code")
             Toast.makeText(
                 this,
                 "这一屏的会话已经结束了。命令在后台跑完了，下次进来就是新的一屏。",

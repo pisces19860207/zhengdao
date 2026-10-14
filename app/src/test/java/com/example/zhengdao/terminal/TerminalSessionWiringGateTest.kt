@@ -1,0 +1,74 @@
+package com.example.zhengdao.terminal
+
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+
+/**
+ * 终端会话结束通道接线的**文本门禁**（台账 §B-补-49 🟢4 / 🟢6，2026-10-14）。
+ *
+ * 为什么是文本断言：涉及 `TerminalActivity`（要 Context/View）与 `SessionManager`（要
+ * pty 会话）的 Android 链路，JVM 里造不出这套依赖；真机「会话结束看到 Toast / 光标是
+ * 细竖线」两条读数由蓝总管采。这里只断言**接线与取值还在源码里**，防被悄悄删回去。
+ */
+class TerminalSessionWiringGateTest {
+
+    /** Gradle 单测的工作目录是模块目录 `app/`（同 TerminalGestureGateTest 的约定）。 */
+    private fun read(rel: String): String =
+        File(rel).let { if (it.exists()) it else File("app/$rel") }.readText()
+
+    @Test
+    fun `onSessionDied 必须有赋值点（死钩子不得复活）`() {
+        val activity = read("src/main/java/com/example/zhengdao/TerminalActivity.kt")
+        assertTrue(
+            "TerminalActivity 必须给 SessionManager.onSessionDied 赋值——否则会话结束通道" +
+                "（重置行缓冲 + 结束提示）永远不触发（§B-补-49 🟢4/🟢6 的死钩子）",
+            activity.contains("SessionManager.onSessionDied = ")
+        )
+    }
+
+    @Test
+    fun `引擎侧光标样式必须是 BAR`() {
+        val sessionManager = read("src/main/java/com/example/zhengdao/terminal/SessionManager.kt")
+        assertTrue(
+            "SessionManager 匿名 client 的 getTerminalCursorStyle 必须传 2（BAR）——" +
+                "用户明确要求光标细一点；传 0 是方块，且 Activity 的 override 从未注册（§B-补-49 🟢4）",
+            sessionManager.contains("getTerminalCursorStyle(): Int = 2")
+        )
+    }
+
+    @Test
+    fun `行缓冲必须跟着改行键失效`() {
+        // §B-补-49 🟢5（2026-10-14）：^C 与 ↑/↓/ESC 按下后必须清行缓冲，
+        // 否则回车时用旧内容检索资料库（附上的线索与当下这句话无关）。
+        val activity = read("src/main/java/com/example/zhengdao/TerminalActivity.kt")
+        assertTrue(
+            "方向/ESC 键集合必须存在（↑/↓ 历史召回、ESC 取消编辑会改写行内容）",
+            activity.contains("val lineChangingKeys = setOf(R.id.key_up, R.id.key_down, R.id.key_esc)")
+        )
+        assertTrue(
+            "改行键与 ^C 之后必须调 KnowledgeBaseHints.clearLine()",
+            activity.contains("KnowledgeBaseHints.clearLine()")
+        )
+    }
+
+    @Test
+    fun `注入启动命令必须先判就绪且失败保留`() {
+        // §B-补-49 🟢3(b)（2026-10-14）：原实现先清 pendingAutocmd 再写 ⇒ 失败即永久丢失。
+        val activity = read("src/main/java/com/example/zhengdao/TerminalActivity.kt")
+        assertTrue(
+            "injectPendingAutocmd 必须在会话未就绪/写入失败时保留命令待重试（日志含「保留待重试」）",
+            activity.contains("保留待重试")
+        )
+    }
+
+    @Test
+    fun `线索写回优先当前会话`() {
+        // §B-补-49 🟢3(c)（2026-10-14）：传参是按键时捕获的旧对象，1.5 秒后可能已退出。
+        val activity = read("src/main/java/com/example/zhengdao/TerminalActivity.kt")
+        assertTrue(
+            "writeToSession 必须优先 SessionManager.session（当前会话），旧对象仅作兜底",
+            activity.contains("val s = SessionManager.session ?: session")
+        )
+    }
+}
