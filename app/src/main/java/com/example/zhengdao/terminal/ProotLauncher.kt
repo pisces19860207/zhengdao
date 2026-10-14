@@ -68,8 +68,25 @@ object ProotLauncher {
      *  - 已安装 Debian 13.7 环境（rootfs 目录存在且带完成标记）→ 经 proot 启动 guest bash；
      *  - 未安装 → 回退到系统自带 shell，App 端行为完全一致，用户无感降级。
      */
-    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan =
-        RootfsInstaller.withPrepareLock("准备会话") { buildLaunchPlanLocked(context, tmuxSession) }
+    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan {
+        // N-5（审计第 2 期）：会话名会原样拼进交给 `bash -lc` 的命令串（见下方 tmux 分支）。
+        // 当前唯一调用方传的是常量，所以不可达；但这是 public API，一旦有人传外部字符串
+        // （工作区名 / 用户输入）而未加引号，就是一条 shell 注入。入口先按白名单封死。
+        require(isLegalSessionName(tmuxSession)) {
+            "非法 tmux 会话名（只允许 [A-Za-z0-9_-]）：$tmuxSession"
+        }
+        return RootfsInstaller.withPrepareLock("准备会话") { buildLaunchPlanLocked(context, tmuxSession) }
+    }
+
+    /**
+     * tmux 会话名的白名单（纯函数，可单测）：只允许 ASCII 字母数字与 `-` `_`。
+     *
+     * 口径同 [com.example.zhengdao.terminal.Store.isLegalKind]：刻意不用 `Char.isLetterOrDigit()`
+     * —— 它是 Unicode 语义，会把中文放进来，而这个名字要进 guest 内 bash 的命令行。
+     */
+    internal fun isLegalSessionName(name: String): Boolean = name.isNotEmpty() && name.all {
+        it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_'
+    }
 
     /**
      * [buildLaunchPlan] 的实现（**调用方必须已持有会话准备锁**，见 [RootfsInstaller.withPrepareLock]）。
@@ -579,7 +596,7 @@ object ProotLauncher {
                     arrayOf(
                         "/bin/bash",
                         "-lc",
-                        "${memPrefix}exec tmux new-session -A -s $tmuxSession $paneCmd",
+                        "${memPrefix}exec tmux new-session -A -s '$tmuxSession' $paneCmd",
                     )
                 )
             }
