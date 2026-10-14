@@ -249,6 +249,31 @@ object OcManager {
     /** C 步：测试接缝 —— 非空时替代真实 HTTP 探测；生产路径永远为 null。 */
     internal var serveProbeForTest: ((String) -> Boolean)? = null
 
+    /**
+     * 第⑭刀 #4：serve.log 轮转参数 —— 单份上限 1MB，保留「当前 + 上一份」两份。
+     *
+     * serve.log 里含 serve 打进 stdout 的**明文口令**（见 [parseServePassword] 的日志形态），
+     * 此前只追加、永不轮转，历史口令会无限累积（audit：全仓 9 处引用、除写入外全是读）。
+     * 轮转只做在**启动新 serve 之前**（[startServe] 里、`pb.start()` 之前）：此刻旧 serve
+     * 要么已退出、要么走孤儿分支在更早处 return 了 —— 不存在「旧进程 fd 还指着改名后
+     * 的 inode 继续写」的错位，新口令必然落在新 serve.log 里（孤儿场景的口令解析不受影响）。
+     */
+    private const val SERVE_LOG_MAX_BYTES = 1024L * 1024L
+
+    /**
+     * 第⑭刀 #4：serve.log 轮转核心 —— 超限 ⇒ `serve.log → serve.log.1`（旧的 `.1` 先删）。
+     * 不超限 / 文件不存在 / 改名失败一律返回 false 且**保持现状**（失败只影响本轮轮转，
+     * 绝不阻断 serve 启动）。文件由调用方注入，纯函数可单测。
+     */
+    internal fun rotateServeLog(log: File, maxBytes: Long = SERVE_LOG_MAX_BYTES): Boolean {
+        if (!log.isFile || log.length() <= maxBytes) return false
+        return runCatching {
+            val prev = File(log.parentFile, "${log.name}.1")
+            if (prev.isFile) prev.delete()
+            log.renameTo(prev)
+        }.getOrDefault(false)
+    }
+
     /** serve 的 HTTP Basic 密码（启动后从日志解析；OcClient 直连鉴权用）。 */
     @Volatile
     var servePassword: String? = null
@@ -441,6 +466,10 @@ object OcManager {
             // 说明：这里**故意不注入任何 API Key**。用户已拍板「凭据类信息不落 App」
             // （见 commit e882050），由用户在自己终端里 export，App 不代管、不持久化。
             val log = File(ctx.filesDir, "oc/serve.log")
+            // 第⑭刀 #4：启动前轮转（只在这里转 —— 安全性论证见 [rotateServeLog] KDoc）
+            if (rotateServeLog(log)) {
+                RunLog.log("太极: serve.log 超 1MB，已轮转为 serve.log.1（明文口令只随日志保留最近两份）")
+            }
             pb.redirectErrorStream(true)
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log))
             serveProcess = pb.start()
@@ -451,9 +480,11 @@ object OcManager {
                     repeat(10) {
                         parseServePassword(ctx)
                         if (servePassword != null) {
-                            // 起来了就撤下"上次留下的问题"（#4：report / resolve 语义配对）
+                            // 起来了就撤下"上次留下的问题"（#4：report / resolve 语义配对；
+                            // 第⑭刀 #5：三条 issue 在**任何**终态都要配对清账，不许悬挂）
                             IssueCenter.resolve("oc-serve-timeout")
                             IssueCenter.resolve("oc-serve-password")
+                            IssueCenter.resolve("oc-serve-start")
                             return null
                         }
                         Thread.sleep(500)
@@ -464,6 +495,9 @@ object OcManager {
                     //   「最近问题」，并给一条去路（重启 serve 会重新打印并重读密码）。
                     val msg = "太极: serve 就绪但密码未解析到（UI 将无法通过 API 鉴权）"
                     RunLog.log(msg)
+                    // 第⑭刀 #5：本轮 serve 已就绪 ⇒ 超时/启动失败两条旧账一并清掉
+                    IssueCenter.resolve("oc-serve-timeout")
+                    IssueCenter.resolve("oc-serve-start")
                     IssueCenter.report(
                         id = "oc-serve-password",
                         title = ctx.getString(R.string.oc_serve_no_password_title),
@@ -476,6 +510,9 @@ object OcManager {
                 Thread.sleep(500)
             }
             serveProcess?.destroy()
+            // 第⑭刀 #5：本轮根本没就绪 ⇒ 密码/启动失败两条旧账清掉（本条终态报的是超时）
+            IssueCenter.resolve("oc-serve-password")
+            IssueCenter.resolve("oc-serve-start")
             IssueCenter.report(
                 id = "oc-serve-timeout",
                 title = ctx.getString(R.string.oc_serve_timeout_title),
@@ -490,6 +527,9 @@ object OcManager {
             // 「网络超时 / 存储空间不足 / 没有写入权限」等。TaijiScreen:539/590 透传此 msg
             // 给用户；此处换为 HumanizeError.title 即可让用户读懂。
             val human = HumanizeError.title(t, ctx.resources)
+            // 第⑭刀 #5：本条终态报的是启动异常，超时/密码两条旧账一并清掉
+            IssueCenter.resolve("oc-serve-timeout")
+            IssueCenter.resolve("oc-serve-password")
             // #4：太极页会显示这句，但用户可能正在主页/丹房 —— 同步报一条到「最近问题」。
             IssueCenter.report(
                 id = "oc-serve-start",
