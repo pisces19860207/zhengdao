@@ -113,9 +113,6 @@
     <string name="home_install_env">安装运行环境</string>
     <string name="home_recent_issues">最近问题（%1$d）</string>
     <string name="home_issues_note">后台失败的痕迹以前只写日志、界面上看不见；这里列出来，每条能处理就点按钮。完整原文仍在 Download/证道/logs/zhengdao-log.txt</string>
-    <string name="home_restore_title">恢复上次装过的 %1$d 个 Agent</string>
-    <string name="home_restore_desc">这些 Agent 没装完（或程序已不在本地），但安装脚本与包缓存还在 Download/证道/agents 与 cache 里 —— 恢复时能走本地的就不联网：</string>
-    <string name="home_restore_all">恢复全部（%1$d 个）</string>
     <string name="home_agent_reinstall">重新安装</string>
     <string name="home_agent_uninstall">卸载</string>
     <string name="home_agent_retry_install">重试安装</string>
@@ -240,12 +237,12 @@
     <string name="env_checking">检查中…</string>
     <string name="env_check_btn">检查环境更新</string>
     <string name="env_version_unknown">未知版本</string>
-    <string name="env_local_env_missing_cached">已装 %1$s，但少了环境记录。本地有现成的安装包（%2$s），直接重装补上就行，不用下载。</string>
-    <string name="env_local_cached">本地有现成的安装包（%1$s），直接用它装，不用下载。</string>
+    <string name="env_local_env_missing_cached">已装 %1$s，但少了环境记录。这次重新下载安装包补上；本地那份缓存包（%2$s）不再复用。</string>
+    <string name="env_local_cached">本地那份缓存包（%1$s）不再复用，这次重新下载安装。</string>
     <string name="env_local_env_missing_full">已装 %1$s，但少了环境记录：这次会用完整包（%2$s）重装一次补上，之后「检查环境更新」才能判断新旧。</string>
     <string name="env_new_version_no_local_record">发现新版本 %1$s（本地没记录版本，这次要重新下载完整包，%2$s）</string>
     <string name="env_up_to_date">已是最新版本（%1$s，环境 %2$s）</string>
-    <string name="env_new_version_cached">发现新版本 %1$s（本地有现成的安装包（%2$s），直接用它装，不用下载）</string>
+    <string name="env_new_version_cached">发现新版本 %1$s（本地那份缓存包 %2$s 不再复用，这次重新下载安装）</string>
     <string name="env_new_version_patch">发现新版本 %1$s，可以小更新（只下 %2$s，不用重下完整包）</string>
     <string name="env_new_version_full">发现新版本 %1$s（当前环境 %2$s，没有对应的更新补丁），要重新下载完整包，%3$s</string>
     <string name="env_feed_unreadable">更新信息读不出来，拿不到版本号</string>
@@ -273,8 +270,6 @@
     <string name="env_preparing">正在准备安装包：%1$s</string>
     <string name="env_unpacking_long">正在解压（没有详细进度，约 30 秒到几分钟）…</string>
     <string name="env_unpacking_here">正在解压（没有详细进度，请留在本页）…</string>
-    <string name="env_update_local_cached">检查环境更新：本地有现成安装包（%1$d MB），直接重解压，不用下载</string>
-    <string name="env_update_done_local">环境更新完成（用本地安装包，没联网），重进终端生效</string>
     <string name="env_update_start_download">检查环境更新：开始下载新版本</string>
     <string name="env_patch_downloading">正在下载更新补丁（%1$s）…</string>
     <string name="env_patch_progress">更新补丁下载中 %1$d%%（%2$d/%3$d MB）</string>
@@ -284,7 +279,6 @@
     <string name="env_full_downloading">正在下载环境包 %1$d%%（%2$d/%3$d MB，可以离开本页）</string>
     <string name="env_update_done">环境更新完成，重进终端生效</string>
     <string name="env_update_failed">更新失败：%1$s</string>
-    <string name="env_install_local_btn">用本地包安装</string>
     <string name="env_install_download_btn">下载并安装</string>
 
     <!-- ── 存储与缓存页 ── -->
@@ -307,7 +301,7 @@
     <string name="storage_script_title">清理安装时下载的脚本？</string>
     <string name="storage_script_desc1">会删掉公共区 agents/scripts 里缓存的安装脚本、App 自己记的校验值、以及终端里的执行副本。</string>
     <string name="storage_script_desc2">脚本只有几十 KB——这一步不是为了腾地方，而是让下次安装重新下载一份干净的（重装被同一个失败卡住时，先点这里）。</string>
-    <string name="storage_script_keeps">不会删：Agent 账本 installed.json、装好的 Agent 本体与工具链、日志、资料库。</string>
+    <string name="storage_script_keeps">不会删：装好的 Agent 本体与工具链、日志、资料库。</string>
     <string name="storage_script_cleared">已清 %1$d 个脚本缓存文件（释放 %2$d MB），下次安装会重新下载</string>
     <string name="storage_script_none">没有脚本缓存可清</string>
     <string name="storage_cache_title">缓存清理</string>

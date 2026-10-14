@@ -271,10 +271,6 @@ fun HomeScreen(
     //   map，镜像层等于没接上，又退回到 :421 每次重组现算一次的老路。显示结果不会错，只是"卡片
     //   要手抖一下才刷新"那个老毛病会悄悄回来。加上 `remember` 才真正接上。
     val installStates = remember { androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>() }
-    // 「恢复全部」候选（2026-10-08）：账本里记着装过、但当前探测不到的那些 Agent。
-    // 重装 App 会带走 ~/.claude、~/.hermes、~/.local/bin，文件探测必然全落空——
-    // 账本（Download/证道/agents/installed.json）是唯一还记得用户装过什么的地方。
-    var restoreList by remember { mutableStateOf<List<AppState.AgentInfo>>(emptyList()) }
     // 刷新节拍：改 stateTick 能让下面那个 effect 立刻重灌一遍镜像（不等 2 秒）。
     var stateTick by remember { mutableIntStateOf(0) }
     // ⚠️ 这里必须是**常驻循环**，不能写成"还有 Agent 在装才继续查下一轮"（2026-10-07 二次真机实测）：
@@ -288,13 +284,16 @@ fun HomeScreen(
     //    才多扫一次 /proc。半赫兹，且只在丹房 tab 组合，可忽略。
     androidx.compose.runtime.LaunchedEffect(agents, stateTick) {
         while (true) {
-            agents.forEach { a -> installStates[a.id] = AgentRepository.stateOf(context, a) }
-            // 账本同步（幂等、内容变了才落盘）：把"文件探测到已装"的收编成 installed，
-            // 顺手算一遍「恢复全部」候选。放在这个 2 秒轮询里，是为了"在终端里手动装好
-            // 再切回来"也能立刻反映到卡片上，而不必等下一次冷启动。
-            runCatching { AgentLedger.syncFrom(context, agents) }
-            restoreList = runCatching { AgentLedger.restoreCandidates(context, agents) }
-                .getOrDefault(emptyList())
+            // §B 顺序 6 / P1-4（2026-10-14）：这几行是**真 I/O** —— SharedPreferences +
+            // 几个 File.exists()（"安装中"时还扫 /proc）。原先直接跑在 LaunchedEffect 的
+            // 默认调度器上，那是**主线程**，且每 2 秒一次。现在挪到 IO 线程算，只把结果
+            // 回主线程写进 Compose 状态（状态必须在主线程改）。
+            // 2026-10-14 冲突处置：原先这里还顺手同步「恢复全部」账本（AgentLedger）——
+            // 那条功能已按用户拍板整条删除，故只保留 IO 化这件事。
+            val states = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                agents.map { a -> a.id to AgentRepository.stateOf(context, a) }
+            }
+            states.forEach { (id, st) -> installStates[id] = st }
             kotlinx.coroutines.delay(2000)
         }
     }
@@ -788,53 +787,6 @@ checks.forEachIndexed { index, c ->
                 }
             }
         }
-        // ── 「恢复全部」横幅（2026-10-08）：重装 App 后，把账本里记着的 Agent 一次装回来 ──
-        // 用户原话：「重新装 APP 的话也要像装环境一样的，自己就瞬间装好了」。环境那一半
-        // 已经做到了（本地有包就免下载）；这一条补上 Agent 那一半——装了什么是记在
-        // Download/证道/agents/installed.json 里的，卸载 App 也带不走。
-        // 文案（2026-10-08 用户拍板，见 ERRATA E-040）：旧文案写死「程序已随上次卸载消失」，
-        // 而账本里更常见的是「上次装到一半失败」（state=installing）——改成两种情形都盖住。
-        if (restoreList.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = stringResource(R.string.home_restore_title, restoreList.size),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.home_restore_desc) +
-                                restoreList.joinToString("、") { it.name },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Button(
-                            onClick = {
-                                // 串成一条命令在同一个终端会话里顺序跑：每步都写自己的
-                                // rc 文件，前一个失败不影响后一个（见 AgentInstaller）
-                                AgentInstaller.prepareRestoreAll(context, restoreList) { cmd ->
-                                    onOpenTerminal(cmd, null)
-                                }
-                            },
-                            shape = RoundedCornerShape(50),
-                        ) {
-                            Text(stringResource(R.string.home_restore_all, restoreList.size))
-                        }
-                    }
-                }
-            }
-        }
         // ── Agent 卡片（OpenCode 已内置为太极，不在丹房展示——用户定稿）──
         items(agents.filter { it.id != "opencode" }, key = { it.id }) { agent ->
             Card(
@@ -849,7 +801,11 @@ checks.forEachIndexed { index, c ->
                     // 读镜像（第一次组合时镜像还没灌，退回实时查一次）——
                     // 这一读同时把本卡片挂到 installStates 上，状态一变就重组。
                     val installState = installStates[agent.id]
-                        ?: AgentRepository.stateOf(context, agent)
+                        // §B 顺序 6 / P1-5（2026-10-14）：兜底那次查盘的**结果写回缓存** ——
+                        // 否则每次重组（滚动、主题变化、任何 state 变化）都会在主线程重查一遍
+                        // SharedPreferences + /proc。写回后每张卡最多查一次，之后由上面那个
+                        // 2 秒轮询刷新。**行为不变**：首帧仍显示真实状态。
+                        ?: AgentRepository.stateOf(context, agent).also { installStates[agent.id] = it }
                     val installing = installState == AgentRepository.State.Installing
                     val failedInstall = installState == AgentRepository.State.Failed
                     // 一键安装（本地化脚本 + 清锁 + 装完自动启动）：失败重试、首次安装、

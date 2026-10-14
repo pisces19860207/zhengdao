@@ -208,12 +208,11 @@ object StorageAudit {
     /**
      * 清理公共区那份**安装脚本缓存**（连同宿主侧指纹记录与 guest 私有副本），返回 `项数 to 字节数`。
      *
-     * 为什么要有这个入口（用户 2026-10-11）：「重试免下载」让一份脚本被**每次重装原样复用**
-     * （用户当初指定，见 AgentInstaller）。可一旦这份缓存本身有问题——上游改了脚本格式、
+     * 为什么要有这个入口（用户 2026-10-11）：这份缓存在公共区共享存储里，一旦它本身有问题——上游改了脚本格式、
      * 代理塞了拦截页、写到一半被杀——用户看到的就是**永远同一个失败**，而且没有任何自救手段
      * （公共区 App 卸载也清不掉）。清掉它，下次安装就会重新下载一份干净的。
      *
-     * 账本 `installed.json` **不动**：那是"装过什么"（重装 App 后一键恢复的依据），不是缓存。
+     * 账本 `installed.json` **不动**：那是"装过什么"的记录，不是缓存。
      */
     fun cleanAgentScriptCache(ctx: Context): Pair<Int, Long> {
         var count = 0
@@ -231,8 +230,8 @@ object StorageAudit {
         runCatching { wipeFiles(Store.agentScriptsDir(ctx)) }
         // guest 私有执行副本（/root/.zhengdao/scripts ← filesDir/home/.zhengdao/scripts）
         runCatching { wipeFiles(Store.hostPrivateScriptsDir(ctx)) }
-        // 宿主侧指纹记录目录：filesDir/agents/script-sha（路径由 Store 自己算，这里不重复拼）
-        runCatching { wipeFiles(Store.scriptRecordFile(ctx, "hermes").parentFile) }
+        // （原先这里还清宿主侧指纹记录目录 filesDir/agents/script-sha —— 2026-10-14 取消
+        //   本地缓存复用后不再产生该目录。）
         if (count > 0) {
             RunLog.log(
                 "清理安装脚本缓存: 删除 $count 个文件，释放 ${CacheCleaner.bytesToMb(freed)}MB" +
@@ -321,10 +320,10 @@ object StorageAudit {
                     note = "删了下次安装会重新下载（脚本本身出问题时清它）",
                 )
             }
-            val ledger = File(agents, Store.LEDGER_NAME)
+            val ledger = File(agents, "installed.json")
             if (ledger.isFile) {
                 out += Item(
-                    "公共区工作区", "Agent 账本 ${Store.LEDGER_NAME}",
+                    "公共区工作区", "Agent 账本 installed.json",
                     CacheCleaner.bytesToMb(ledger.length()), removable = false,
                     note = "用户数据：不清",
                 )
