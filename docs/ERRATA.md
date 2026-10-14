@@ -6618,3 +6618,18 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 - **风险**：`BridgeToken.kt:24-28` 用 `java.util.UUID.randomUUID().toString()` 明文存 token 到 `SharedPreferences`（`:38-41` 自带 `TODO(阶段3)`）；而 `AndroidManifest.xml:52` 是 `allowBackup="true"`，`res/xml/backup_rules.xml` 与 `res/xml/data_extraction_rules.xml` **都没排 `domain="sharedpref"`** ⇒ 这个 prefs 会进云备份。
 - **处置**（用户 2026-10-14 逐字：「N-6 死代码 BrowserAgentBridge 删」）：四个文件整体删除，`browser/BrowserEngine.kt:24` 的 KDoc 链接同步改掉；删除清单即本条记录，`git` 历史随时可取回。**需求不丢**：§4.5 的 11 命令 allowlist、红线拦截（无「问用户」档）、token 随机口令与下发 UX 仍在 `docs/玄览-代码骨架说明-2026-10-13.md` 与设计文档 §4.5，阶段 3 按文档重建 —— 重建时 token 必须用 `SecureRandom`，并且落 `sharedpref` 前先确认备份规则已排（或直接改用 `EncryptedSharedPreferences`）。
 - **教训**：**「先落骨架、以后再填肉」的骨架只要带状态（token / 配置 / 注册项），它就会立刻进入备份、导出、体积与隐私审计这些既有链路**。空接口可以留；带副作用的实现类要么落完就接上，要么别入库。判据：`git grep` 该类的实例化点 —— 为零、且不是测试夹具，就是死代码。
+## E-130 · 2026-10-14 · Rust 宿主单测依赖 `TEMP` 可写：本机 `%LOCALAPPDATA%\Temp` 对孙进程不可写 ⇒ 18/34 用例假红
+
+- **事实**：第⑬刀验收时在 `wt-nativeso` 跑 `cargo test -p zhengdao_core`，**18 个用例失败**、全是同一形态 —— `rust/core/src/dirsize.rs:112` `fs::create_dir_all(&p).unwrap()` 报 `Os { code: 5, kind: PermissionDenied, message: "拒绝访问。" }`；把 `TEMP`/`TMP` 指到工作树内目录（`wt-nativeso\.tmp-rust-test`）后同一份代码 **34 passed / 0 failed**。
+- **风险**：这会**掩盖真问题的方向** —— 假红让人怀疑「他改坏了」，真因却是测试自己建临时目录的位置不可写；反过来，如果 CI 只在 Linux 跑，这条依赖永远不暴露，交付者本地若也用同一环境就会一直「跑不起来」。
+- **处置**：本机跑 Rust 测试统一把 `TEMP`/`TMP` 指到工作树内目录（不要用它建的默认 `%LOCALAPPDATA%\Temp`）；这属于环境事实，不改源码（改源码去迁就一台机器的 TEMP 反而会污染交付）。
+- **验证**：`TEMP` 指向工作树内 ⇒ 34 passed / 0 failed；把 `rust/core/src/extract.rs` 换回 `9bfb61b` 版 ⇒ 31 passed / 3 failed（红的正是 R-02/R-03/R-04 三条新测试）⇒ 测试真能钉住 bug。
+- **教训**：**凡「测试内自己建临时目录」的用例，先确认 `TEMP`/`TMP` 在目标环境可写或改在仓内建**；「测试跑不起来」的第一嫌疑是环境而不是被测代码，先把失败形态归类再怀疑改动。
+
+## E-131 · 2026-10-14 · 门禁对「工作树原始字节」算哈希 ⇒ 同一提交在 Windows 检出必红、CI（Linux）仍绿
+
+- **事实**：第⑬刀新交付的 `tools/check-so-provenance.py` 把 `rust/core/src/**` 逐文件 sha256 记进基线，但基线是**作者工作树的混合行尾**（`tests.rs` 记 LF `6cb352ef…` 25289B、其余 7 个文件记 CRLF）；合并后在 Windows 检出（`core.autocrlf=true`）`tests.rs` 变成 CRLF 25850B / `6557e0a5…` ⇒ 门禁红，而 CI（Linux，LF）绿。`--write` 的差异清单精确显示「只有 7 个 CRLF 文件换了哈希、`tests.rs` 没动」——正好是行尾差。
+- **风险**：门禁变成在量「你盘上是什么行尾」而不是「源码内容变没变」⇒ 本机与 CI 结论不一致，开发者会学会「忽略这条红」，同源门禁（E-128 的补救）就白做了。
+- **处置**：`tools/check-so-provenance.py` 新增 `sha256_source()` —— 源码读入后 **CRLF → LF 归一**再算 sha256（`.so` 仍按原始字节），基线重刷并写入 `hash_mode: "so=raw-bytes; src=text-crlf-to-lf"`；提交 `a59f2f5`（⇒ 合并 `d095c23`）。
+- **验证**：main（CRLF 检出）实测绿（指纹 `b9040844…`）→ 往 `rust/core/src/json.rs` 加一行注释 ⇒ 红、指名该文件、退出码 1 → 还原回绿；`.so` 哈希仍为 `ffad1eba…`。
+- **教训**：**凡对文本源码算指纹/哈希的门禁，都要先声明并落实行尾口径**（归一化，或 `.gitattributes` 钉 `eol=lf`）；跨平台项目里「本地红 CI 绿」几乎总是行尾/编码，而不是真的不一致。
