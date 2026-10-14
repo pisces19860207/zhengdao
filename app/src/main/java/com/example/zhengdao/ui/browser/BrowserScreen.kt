@@ -81,6 +81,14 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     val tabs = BrowserTabManager.tabs()
     val active = BrowserTabManager.activeTab()
 
+    // 内存回收守卫（第⑱刀 · D-4）：把"玄览正显示在屏幕上"告诉回收出口 —— 只有本界面
+    // 离开组合（切到别的底栏 Tab）之后，WebView 才允许被 destroy（挂载中的实例不可销毁，
+    // 见 BrowserHolder.releaseIfIdle）。非视觉改动，不碰底栏/胶囊几何。
+    DisposableEffect(Unit) {
+        BrowserHolder.onBrowserShown()
+        onDispose { BrowserHolder.onBrowserHidden() }
+    }
+
     // 地址栏输入：跟随活跃标签（切 Tab 时换成那个标签的地址）
     var urlInput by remember { mutableStateOf(active?.state?.url ?: "") }
     // UI 层一次性提示（如"标签数已达上限"），与本标签安提示条共用一行样式

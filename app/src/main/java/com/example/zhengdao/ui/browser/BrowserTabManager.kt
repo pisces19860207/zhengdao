@@ -164,6 +164,21 @@ object BrowserTabManager {
         }
     }
 
+    /**
+     * 回收用（第⑱刀 · D-4）：把**全部**标签从管理器摘下并返回它们的 WebView，交给
+     * [BrowserHolder.releaseIfIdle] 统一销毁。
+     *
+     * **只摘不销毁**：销毁必须由持有回收出口的 [BrowserHolder] 单独做（单一 destroy 出口，
+     * 门禁可钉）；本方法只把管理器的"活引用"清干净，避免留下已销毁实例的引用。
+     * 调用方须先确认 [BrowserHolder.isIdle]（没有标签显示在界面上）。
+     */
+    internal fun detachAllForRelease(): List<WebView> {
+        val detached = tabs.map { it.webView }
+        tabs.clear()
+        activeId = null
+        return detached
+    }
+
     /** 仅单测用：清空全部标签态（object 单例会跨用例串味）。WebView 销毁不在此路径（单测无 WebView）。 */
     internal fun resetForTest() {
         tabs.clear()
