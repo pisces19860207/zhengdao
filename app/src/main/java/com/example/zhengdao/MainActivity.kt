@@ -57,6 +57,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
 import com.example.zhengdao.ui.PermissionSetup
@@ -593,7 +594,7 @@ fun HomeTabs(
     val taijiFollow = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
     val taijiPositionedSession =
         androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = androidx.compose.runtime.rememberCoroutineScope { CoroutineCrashHandler }
 
     // K1（双击 Tab 滚顶）：在 HomeTabs 顶层记"上一次点同一个 Tab 的时间"。
     // 300ms 内再次点同一 Tab → 视为双击 → animateScrollToItem(0)。

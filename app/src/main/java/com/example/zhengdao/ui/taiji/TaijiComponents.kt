@@ -111,6 +111,7 @@ import com.example.zhengdao.ui.PluginsScreen
 import com.example.zhengdao.ui.ThinkGlyph
 import com.example.zhengdao.ui.ToolGlyph
 import com.example.zhengdao.ui.TrashGlyph
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 // Markdown 渲染（v1.1 第四阶段）：仅最终回答使用
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
@@ -1611,7 +1612,7 @@ private fun DeleteSessionDialog(
     onConfirm: suspend () -> Boolean,
     onDismiss: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // scope.launch 内不是 @Composable 上下文，失败文案先取出来
