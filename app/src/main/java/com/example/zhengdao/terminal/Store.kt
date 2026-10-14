@@ -18,7 +18,7 @@ import java.io.File
  * |---|---|---|
  * | `logs/`   | 运行日志、错误日志 | [com.example.zhengdao.rootfs.RunLog] |
  * | `cache/`  | `npm` / `uv` / `pip` 的**包缓存**（Agent 重装时的真正大头） | guest 内进程，经 proot bind 落在公共区 |
- * | `agents/` | Agent 安装脚本（`scripts/`）+ 装过哪些 Agent 的账本（`installed.json`） | AgentInstaller / AgentLedger |
+ * | `agents/` | Agent 安装脚本（`scripts/`） | AgentInstaller |
  *
  * 三条边界（用户已拍板）：
  * 1. **只搬缓存与安装包**：`~/.claude`、`~/.hermes` 里的 API key / 配置**留在私有 home**，
@@ -71,7 +71,7 @@ object Store {
     /**
      * 安装脚本的**执行副本**目录（P3-2，2026-10-10）——guest 侧路径 `~/.zhengdao/scripts`。
      *
-     * 装 Agent 时由宿主侧把**已核对过指纹**的字节复制到这里（宿主侧 = [hostPrivateScriptsDir]），
+     * 装 Agent 时由宿主侧把**刚下载并核对过字节**的脚本复制到这里（宿主侧 = [hostPrivateScriptsDir]），
      * 终端里执行的是这一份：App 私有目录别的 App 读不到也写不到，改一行共享存储里的脚本
      * 不再等于任意代码执行。
      *
@@ -84,18 +84,6 @@ object Store {
     /** [GUEST_PRIVATE_SCRIPTS_DIR] 的宿主侧对应目录（App 私有；建不出来时返回未创建的路径）。 */
     fun hostPrivateScriptsDir(ctx: Context): File =
         File(ctx.filesDir, "home/.zhengdao/$SUB_SCRIPTS").apply { runCatching { mkdirs() } }
-
-    /**
-     * 脚本**指纹记录**文件（宿主侧、App 私有）：`filesDir/agents/script-sha/<id>-install.sh.sha256`。
-     *
-     * 里面是"宿主侧最后认下的那份安装脚本的 sha256"。公共区那份只有与它逐字符相等时才被
-     * 复用——没有记录（重装 App 之后）就当"来路不明"，宁可重新下载也不执行。
-     */
-    fun scriptRecordFile(ctx: Context, agentId: String): File =
-        File(File(ctx.filesDir, "$DIR_AGENTS/script-sha"), "$agentId-install.sh.sha256")
-
-    /** 账本文件名（装过哪些 Agent —— 重装 App 后"一键恢复"的依据）。 */
-    const val LEDGER_NAME = "installed.json"
 
     /** 公共区根目录（保证目录存在；没存储权限 / 仅私有模式时返回私有兜底，功能不断）。 */
     fun root(ctx: Context): File {
@@ -125,9 +113,6 @@ object Store {
 
     /** Agent 安装脚本目录：`Download/证道/agents/scripts/`。 */
     fun agentScriptsDir(ctx: Context): File = File(agentsDir(ctx), SUB_SCRIPTS).apply { runCatching { mkdirs() } }
-
-    /** Agent 账本文件：`Download/证道/agents/installed.json`。 */
-    fun ledgerFile(ctx: Context): File = File(agentsDir(ctx), LEDGER_NAME)
 
     /** 缓存根：`Download/证道/cache/`。 */
     fun cacheRoot(ctx: Context): File = dir(ctx, DIR_CACHE)

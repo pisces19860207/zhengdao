@@ -53,7 +53,6 @@ class StoreTest {
         assertEquals("/opt/zhengdao/agents/scripts", Store.GUEST_SCRIPTS_DIR)
         assertEquals("/opt/zhengdao", Store.GUEST_ROOT)
         assertEquals("/storage/emulated/0/Download/证道", Store.PUBLIC_ROOT)
-        assertEquals("installed.json", Store.LEDGER_NAME)
         assertEquals("logs", Store.DIR_LOGS)
         assertEquals("cache", Store.DIR_CACHE)
         assertEquals("agents", Store.DIR_AGENTS)
