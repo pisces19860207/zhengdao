@@ -191,6 +191,14 @@ public final class TerminalEmulator {
     private String mOpenLinkUri = null;
     private int mLinkStartRow = -1;
     private int mLinkStartCol = -1;
+    // 证道追加（2026-10-14，第⑨刀 R-10）：链接起点的**绝对行号**（= mLinesScrolled + 当时的光标行）。
+    // buffer 内部行号是 mod 回滚容量的循环量：「600 行前绕回」与「10600 行前绕回」在内部索引上
+    // 同形，只有绝对行号差能判断起点行是否已被卷出回收 ⇒ 跨度 ≥ 容量的链接不登记。
+    private long mLinkStartAbsRow = -1;
+    // 证道追加（2026-10-14，第⑨刀 R-10）：已卷进回滚区的行数（只增不减）。
+    // 光标绝对行号 = mLinesScrolled + mCursorRow（整屏滚动分支才 +1；左右边距分支只做
+    // 屏内 blockCopy、没有行进历史，绝对坐标不变）。
+    private long mLinesScrolled = 0;
 
     /** The terminal session this emulator is bound to. */
     private final TerminalOutput mSession;
@@ -2096,25 +2104,37 @@ public final class TerminalEmulator {
      *
      * textParameter 已由 tokenizer 去掉开头的 "8;"，形如 "params;URI"（开）或 ";"（闭）。
      * 区间按 [起点, 当前光标) 登记到行（可跨行——折行长 URI 由 TerminalBuffer.setLink 分段灌）。
-     * 程序忘发关闭序列时，下一条开链接会先把上一条落掉（防御）。
+     *
+     * 第⑨刀 R-10 修（审计原判：未闭合时不是标一行，而是把 [起点行, 光标行] 整段区间
+     * linkify 成同一个 URI——tmux ≥3.4 成对闭合限制下，agent 忘发闭序列是常态）：
+     * ① **只有显式闭序列才登记区间**。开链接时若上一条还没闭，直接丢弃旧 pending——
+     *    不再「把上一条在当前光标处落掉」，那正是把期间所有文字整段染色的病灶；
+     * ② **跨度超限不登记**：闭序列到来时若 [起点, 光标] 跨越行数已达回滚容量
+     *    （{@link TerminalBuffer#getTotalRows()}，默认 2000 / 上限 50000），起点行早已被
+     *    卷出回收（行对象 clear 过，链接数据随之消失），登记出来的区间会落在不相干的新文字上。
      */
     private void handleOsc8Hyperlink(String textParameter) {
         int sep = textParameter.indexOf(';');
         String uri = (sep < 0) ? "" : textParameter.substring(sep + 1);
-        if (mOpenLinkUri != null) {
-            // 先落掉上一条（闭链接，或忘闭时的防御性落点 = 当前光标处）
-            mScreen.setLink(mLinkStartRow, mLinkStartCol,
-                mScreen.externalToInternalRow(mCursorRow), mCursorCol, mOpenLinkUri);
-        }
         if (!uri.isEmpty()) {
+            // 开：无论上一条闭合与否，旧 pending 直接丢弃（R-10①：不落账、不整段 linkify）
             mOpenLinkUri = uri;
             mLinkStartRow = mScreen.externalToInternalRow(mCursorRow);
             mLinkStartCol = mCursorCol;
-        } else {
-            mOpenLinkUri = null;
-            mLinkStartRow = -1;
-            mLinkStartCol = -1;
+            mLinkStartAbsRow = mLinesScrolled + mCursorRow;
+            return;
         }
+        // 闭：成对闭合才登记（R-10①）；跨度超限丢弃（R-10②）
+        if (mOpenLinkUri == null) return;
+        long span = (mLinesScrolled + mCursorRow) - mLinkStartAbsRow;
+        if (span >= 0 && span < mScreen.getTotalRows()) {
+            mScreen.setLink(mLinkStartRow, mLinkStartCol,
+                mScreen.externalToInternalRow(mCursorRow), mCursorCol, mOpenLinkUri);
+        }
+        mOpenLinkUri = null;
+        mLinkStartRow = -1;
+        mLinkStartCol = -1;
+        mLinkStartAbsRow = -1;
     }
 
     /** An Operating System Controls (OSC) Set Text Parameters. May come here from BEL or ST. */
@@ -2338,6 +2358,9 @@ public final class TerminalEmulator {
             // .. and blank bottom row between margins:
             mScreen.blockSet(mLeftMargin, mBottomMargin - 1, mRightMargin - mLeftMargin, 1, ' ', currentStyle);
         } else {
+            // 证道追加（2026-10-14，第⑨刀 R-10）：整屏滚动 = 有一行进历史 ⇒ 绝对行号 +1。
+            // 边距分支不走这里（没有行进历史，光标绝对坐标不变）。
+            mLinesScrolled++;
             mScreen.scrollDownOneLine(mTopMargin, mBottomMargin, currentStyle);
         }
     }
@@ -2726,9 +2749,11 @@ public final class TerminalEmulator {
         mAboutToAutoWrap = false;
         // 证道追加（2026-10-14，§B-12）：reset 要清掉打开中的 OSC 8 链接态，
         // 否则 reset 后第一条关闭序列会把区间标到错误位置。
+        // 第⑨刀 R-10：绝对行号一并清（与 mOpenLinkUri 配对，空 URI 即"未开"）。
         mOpenLinkUri = null;
         mLinkStartRow = -1;
         mLinkStartCol = -1;
+        mLinkStartAbsRow = -1;
         mForeColor = mSavedStateMain.mSavedForeColor = mSavedStateAlt.mSavedForeColor = TextStyle.COLOR_INDEX_FOREGROUND;
         mBackColor = mSavedStateMain.mSavedBackColor = mSavedStateAlt.mSavedBackColor = TextStyle.COLOR_INDEX_BACKGROUND;
         setDefaultTabStops();

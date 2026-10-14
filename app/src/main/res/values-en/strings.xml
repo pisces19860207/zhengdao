@@ -827,6 +827,12 @@
     <string name="browser_back">Back</string>
     <string name="browser_forward">Forward</string>
     <string name="browser_reload">Reload</string>
+    <string name="browser_home">Home</string>
+    <string name="browser_stop">Stop</string>
+    <string name="browser_new_tab">New tab</string>
+    <string name="browser_close_tab">Close tab</string>
+    <string name="browser_tabs_full">Tab limit reached (20)</string>
+    <string name="browser_js_dialog_title">Web page dialog</string>
     <string name="browser_dismiss">Dismiss</string>
     <string name="browser_blocked_scheme">For safety, this kind of link can\'t be opened inside the app</string>
     <string name="browser_ssl_error">This site has a certificate problem — loading stopped</string>
