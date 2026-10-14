@@ -50,7 +50,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.example.zhengdao.R
 import com.example.zhengdao.browser.BrowserEngine
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.util.HumanizeError
 import kotlinx.coroutines.launch
 
 /**
@@ -140,7 +142,20 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                     exporting = false
                     uiMsg = result.fold(
                         onSuccess = { context.getString(R.string.browser_export_done, it.nodes) },
-                        onFailure = { context.getString(R.string.browser_export_failed, it.message.orEmpty()) },
+                        onFailure = { e ->
+                            // 用户文案只说人话（⑯刀 R-29 口径）：异常原文只进日志。
+                            // 本刀自己抛的 IllegalStateException 带的就是写给人看的句子
+                            // （如「页面还没加载出来」「网页可能禁止了脚本」），照用；其余
+                            // （IO / 未知异常）一律过 HumanizeError —— 免得把
+                            // 「/storage/emulated/0/…: open failed: EACCES」这类原文喂给用户。
+                            RunLog.log("玄览导出失败（原文）：${e.javaClass.simpleName}: ${e.message}")
+                            val why = if (e is IllegalStateException) {
+                                e.message.orEmpty().ifBlank { HumanizeError.title(e, context.resources) }
+                            } else {
+                                HumanizeError.title(e, context.resources)
+                            }
+                            context.getString(R.string.browser_export_failed, why)
+                        },
                     )
                 }
             }
