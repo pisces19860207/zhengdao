@@ -223,35 +223,35 @@
 | 条 | 判定 | 落点 | 状态 |
 | --- | --- | --- | --- |
 | R-01 | 真 | `rootfs/RootfsInstaller.kt:471-477`（复原 `renameTo` 失败后仍无条件删 `rootfs.old`，连日志都没有） | ✅ 已修 `2a76e1f`（§A #88）＋ ERRATA E-126 |
-| R-02 | 部分（代码真·触发需真机） | `rust/core/src/extract.rs:246`（`:233`/`:263` 同病）：落盘前无 `remove_file`，硬链克隆会写穿旧树 —— 前提是真机上 `Files.createLink` 真的成功（SELinux 常拒） | ⏳ 待做（③ Rust 批） |
-| R-03 | 真 | `rust/core/src/extract.rs:228`（二阶段 `:258`）：`link_stays_inside` 放行绝对 guest 路径，`Path::join` 遇绝对值直接替换 ⇒ 取到宿主同名文件 | ⏳ 待做（③） |
-| R-04 | 真 | `rust/core/src/extract.rs:172` ＋ `rootfs/RootfsInstaller.kt:401-402`：越界判定前 `entries += 1`，`continue` 不减计数 ⇒ `EmptyArchive` 兜底失效 | ⏳ 待做（③） |
+| R-02 | 部分（代码真·触发需真机） | `rust/core/src/extract.rs:246`（`:233`/`:263` 同病）：落盘前无 `remove_file`，硬链克隆会写穿旧树 —— 前提是真机上 `Files.createLink` 真的成功（SELinux 常拒） | ✅ 已修 `ac4de2d`（⑬刀，合并 `ec55b4b`，见 §A #90） |
+| R-03 | 真 | `rust/core/src/extract.rs:228`（二阶段 `:258`）：`link_stays_inside` 放行绝对 guest 路径，`Path::join` 遇绝对值直接替换 ⇒ 取到宿主同名文件 | ✅ 已修 `8e3e4ae`（⑬刀，见 §A #90） |
+| R-04 | 真 | `rust/core/src/extract.rs:172` ＋ `rootfs/RootfsInstaller.kt:401-402`：越界判定前 `entries += 1`，`continue` 不减计数 ⇒ `EmptyArchive` 兜底失效 | ✅ 已修 `10f5675`（⑬刀，见 §A #90） |
 | R-05 | 真 | `rootfs/RootfsInstaller.kt:201-216`（调用点 `TerminalActivity.kt:116`）：删 tmp / 复原备份既不持 `withInstallLock` 也无 `isInstalling()` 闸 | ✅ 已修 `2a76e1f` ＋ ERRATA E-126 |
-| R-06 | 真 | `ui/EnvHealth.kt:239-249`（对照 `terminal/ProotLauncher.kt:72`）：体检修复直写 rootfs，不参与 `withPrepareLock`；§A #61 只盖 `buildLaunchPlan` | ⏳ 待做（②） |
-| R-07 | 真 | `rootfs/RootfsInstaller.kt:283-313`（`ui/SettingsEnvActivity.kt:574-575`）：`install()` 无 try/catch 清 tmp、无 `ensureFreeSpace`、`mkdirs()` 不查返回值 | ⏳ 待做（②） |
+| R-06 | 真 | `ui/EnvHealth.kt:239-249`（对照 `terminal/ProotLauncher.kt:72`）：体检修复直写 rootfs，不参与 `withPrepareLock`；§A #61 只盖 `buildLaunchPlan` | ✅ 已修 `6f5ad44`（⑮刀，合并 `5894eb5`，见 §A #93） |
+| R-07 | 真 | `rootfs/RootfsInstaller.kt:283-313`（`ui/SettingsEnvActivity.kt:574-575`）：`install()` 无 try/catch 清 tmp、无 `ensureFreeSpace`、`mkdirs()` 不查返回值 | ✅ 已修 `6c99401`（⑮刀，见 §A #93） |
 | R-08 | 部分（现象真·后果假） | `RootfsInstaller.kt:334-369` ＋ `rust/CoreNative.kt:100-104`：Rust 分支确实不回调 `onEntry`，但**6 个调用点全传空 lambda** ⇒ 「用户以为卡死」不成立 | 已立 `ERRATA §7-1`（不是漏实现，不改） |
 | R-09 | 真（审计写「未立账」是错的） | `rootfs/RunLog.kt:233-239`：三步非原子无锁，与类注释自相矛盾 | 已立 §B-补 ③ / P2-13 |
-| R-10 | 真（后果比报告更重） | `app/src/main/java/com/termux/terminal/TerminalEmulator.java:2101-2118`、`TerminalBuffer.java:205`/`:210`：OSC 8 未闭合时不是标一行，而是把 [起点行, 光标行]**整段区间** linkify 成同一个 URI | ⏳ 未立账（触发面受 tmux ≥3.4 成对闭合限制） |
+| R-10 | 真（后果比报告更重） | `app/src/main/java/com/termux/terminal/TerminalEmulator.java:2101-2118`、`TerminalBuffer.java:205`/`:210`：OSC 8 未闭合时不是标一行，而是把 [起点行, 光标行]**整段区间** linkify 成同一个 URI | ✅ 已修 `07b3d58`（⑨刀，合并 `d1d6cc4`，见 §A #94） |
 | R-11 | 真 | `terminal/ProotLauncher.kt:163`（`chmod` 空 `catch (_: Throwable) {}`）＋ `:168`（写戳记 `runCatching` 无失败分支）⇒ `:176 canExecute()` 判假、静默降级到安卓自带 shell | ✅ 已修 `2a76e1f`（§A #88） |
 | R-12 | 真（触发需真机）→ ✅ **已修 `26eb438`（§A #91）** | `oc/SseClient.kt:134`（`JSONObject(ev.data)` 无 try/catch）＋ `oc/OcRepository.kt:170`/`:247`；全仓**无 `CoroutineExceptionHandler`** ⇒ 非 JSON 帧 = `FATAL EXCEPTION` 且 SSE 永久停 | ✅ 已修 `26eb438`（⑭刀，见 §A #91） |
 | R-13 | 真（安全）→ ✅ **已修 `e149369`（§A #91）** | `oc/OcManager.kt:443-445`（`redirectOutput(appendTo(File(filesDir,"oc/serve.log")))`）：**口令明文写进 `files/oc/serve.log`**，全仓无删除/截断/轮转（第 2 期审计 **C-1** 更正：原指针 `oc/OcRepository.kt:443` 实为 SSE `PartRemoved` 的 `s.copy(...)`，该文件 grep `password|口令|serve\.log` 零命中） | ✅ 已修 `e149369`（⑭刀，见 §A #91） |
 | R-14 | 部分（**张冠李戴**，见 §A #91） | `oc/OcRepository.kt:312`/`:316`/`:324`：20 轮 ×（150ms ＋ 最多 3×700ms 探测）≈ **45s** 的算术成立，但「注释自写最多 3 秒」**不在这个文件** —— 全仓 `3 秒` 只命中 `oc/OcManager.kt:407`「最多 3 秒，每 150ms 重解析一次」，说的是口令重解析轮询（20×150ms=3s，与实现一致）⇒ 审计把两处混成一处；⑭刀已把「单次请求 ≈40s（connect 10s ＋ read 30s）／整体不设」写进 `oc/OcClient.kt` KDoc | ✅ 口径已写明 `04b5635`（⑭刀，见 §A #91） |
 | R-15 | 真 → ✅ **已修 `26eb438`（§A #91）** | `oc/SseClient.kt:163-164`/`:197-203`、`oc/OcRepository.kt:247`：失败计数只在成功时清零、`delay` 封顶 15s 但无上限 | ✅ 已修 `26eb438`（⑭刀，见 §A #91） |
 | R-16 | 部分 → **部分已修 `26eb438`（§A #91）** | `oc/OcRepository.kt:247`/`:260`/`:792`：「不停 + 只递增」属实，但 `:262` 有 `state == null` 启动闸 ⇒ 代价是「1s 无谓请求」而非「无谓重试」 | 部分已修 `26eb438`（⑭刀，见 §A #91） |
-| R-17 | 部分 | `oc/OcRepository.kt:453`/`:466-470`：超时后不等 `waitFor`、不置空、无 `process.destroy` 兜底（「僵尸进程」措辞不准） | ⏳ 禁区 |
+| R-17 | 部分 | `oc/OcRepository.kt:453`/`:466-470`：超时后不等 `waitFor`、不置空、无 `process.destroy` 兜底（「僵尸进程」措辞不准） | ⏳ 已派 ⑯刀（`fix/audit2-batch-c`，在跑） |
 | R-18 | 真 → ✅ **已修 `e149369`（§A #91）** | `oc/OcRepository.kt:455-456`/`:495`：成功路径只 resolve `timeout`/`password`，`oc-serve-start` 全仓唯一出现处从不 resolve | ✅ 已修 `e149369`（⑭刀，见 §A #91） |
 | R-19 | 真 → ✅ **已修 `04b5635`（§A #91）** | `rust/CoreNative.kt:26-28`：`runCatching` 静默吞 `.so` 加载失败、无 `Log.w`（同文件 `:103` 却在用 `Log.i`） | ✅ 已修 `04b5635`（⑭刀，见 §A #91） |
 | R-20 | 真 | `ui/SettingsHelpActivity.kt:132`/`:185`/`:219` ＋ 孤儿加载在 `ui/SettingsEnvActivity.kt:528-536`；门禁 `ui/SettingsDestructiveConfirmGateTest.kt:30-34` 只做纯文本断言 | ✅ 已修 `2a76e1f`（§A #88，并修正 §A #87 的假账） |
-| R-21 | 真 | `ui/HomeScreen.kt:808`（组合期就 `agents()`，`AgentRepository.kt:131-140` 逐目录读 `/proc`） | ⏳ 待做（②） |
-| R-22 | 真 | `ui/KeepaliveLogActivity.kt:233`/`:269`：onClick 直跑主线程（同页 `:157` 已用 `withContext(IO)`） | ⏳ 待做（②） |
-| R-23 | 真 | `ui/PermissionSetupScreen.kt:179` 用 `.apply()`，违自身 KDoc `:175`「必须在发请求之前写」；三处 `:98`/`:179`/`:190` 应改 `.commit()`（全仓 `.commit()` 现仅 `ui/AgentManifest.kt:152`） | ⏳ 待做（②） |
-| R-24 | 真 | 门禁全是文本断言：`ReleaseSigningGateTest.kt:35-51`、`StateLifetimeGateTest.kt:32-39`、`BackupRulesGuardTest.kt:64`/`:77`/`:91`（把 `<exclude` 用注释包掉仍然过） | ⏳ 待做（④ 单独一刀） |
-| R-25 | 真 | `ui/SettingsStorageActivity.kt:598`/`:713`（裸 `Thread{}`）＋ `:622`/`:734`（`Handler(mainLooper).post` 写 `cacheText`/`rollbacks`/`storageTick`）；`:119` 已有 scope | ⏳ 待做（②） |
-| R-26 | 部分 | `ui/InstallProgress.kt:40-44`（`@Volatile busy` 与 `isRunning()` 不是可观察状态）＋ 6 处 `enabled` ⇒ 同屏其它可观察 state 会顺带重算 ⇒「时灵时不灵」 | ⏳ 待真机（点安装后立刻连点那 6 个按钮） |
-| R-27 | 真 | `ui/HomeScreen.kt:201`/`:306`：主线程 `AppState.agents()` ＋ `Files.readSymbolicLink`（`AppState.kt:140`） | ⏳ 待做（②） |
-| R-28 | 真 | `ui/AgentInstaller.kt:151` `copyTo` 非原子（对照 `:93-94` 的 tmp+rename 正确范式），`:129` 随后 bash 执行该副本 | ⏳ 待做（②） |
-| R-29 | 真 | `TerminalActivity.kt:1536`/`:1632`/`:1716` ＋ `ui/SettingsEnvActivity.kt:725-726`：内部异常原文进用户文案（正确范式 `:604`/`:611` `HumanizeError.title`） | ⏳ 待做（②） |
-| R-30 | 真 | `res/values/strings.xml:31`/`:826-828`：4 条 key 零引用，删时两个 strings.xml 必须同步（否则撞 `:177-198` 的 key 对称门禁） | ⏳ 待做（②） |
+| R-21 | 真 | `ui/HomeScreen.kt:808`（组合期就 `agents()`，`AgentRepository.kt:131-140` 逐目录读 `/proc`） | ⏳ 已派 ⑪批 B-1（`fix/audit2-batch-b1`，在跑） |
+| R-22 | 真 | `ui/KeepaliveLogActivity.kt:233`/`:269`：onClick 直跑主线程（同页 `:157` 已用 `withContext(IO)`） | ⏳ 已派 ⑪批 B-1（`fix/audit2-batch-b1`，在跑） |
+| R-23 | 真 | `ui/PermissionSetupScreen.kt:179` 用 `.apply()`，违自身 KDoc `:175`「必须在发请求之前写」；三处 `:98`/`:179`/`:190` 应改 `.commit()`（全仓 `.commit()` 现仅 `ui/AgentManifest.kt:152`） | ✅ 已修 `6ea95db`（⑮刀，见 §A #93） |
+| R-24 | 真 | 门禁全是文本断言：`ReleaseSigningGateTest.kt:35-51`、`StateLifetimeGateTest.kt:32-39`、`BackupRulesGuardTest.kt:64`/`:77`/`:91`（把 `<exclude` 用注释包掉仍然过） | 部分：4 处已换真判据 `7557c0d`（⑩批A，见 §A #92）；余项在 ⑯刀（`fix/audit2-batch-c`） |
+| R-25 | 真 | `ui/SettingsStorageActivity.kt:598`/`:713`（裸 `Thread{}`）＋ `:622`/`:734`（`Handler(mainLooper).post` 写 `cacheText`/`rollbacks`/`storageTick`）；`:119` 已有 scope | ⏳ 已派 ⑯刀（`fix/audit2-batch-c`，在跑） |
+| R-26 | 部分 | `ui/InstallProgress.kt:40-44`（`@Volatile busy` 与 `isRunning()` 不是可观察状态）＋ 6 处 `enabled` ⇒ 同屏其它可观察 state 会顺带重算 ⇒「时灵时不灵」 | ✅ 已修 `2f8f3fa`（⑮刀，见 §A #93）；真机观感（点安装后连点那 6 个按钮）仍待手机 |
+| R-27 | 真 | `ui/HomeScreen.kt:201`/`:306`：主线程 `AppState.agents()` ＋ `Files.readSymbolicLink`（`AppState.kt:140`） | ⏳ 已派 ⑪批 B-1（`fix/audit2-batch-b1`，在跑） |
+| R-28 | 真 | `ui/AgentInstaller.kt:151` `copyTo` 非原子（对照 `:93-94` 的 tmp+rename 正确范式），`:129` 随后 bash 执行该副本 | ✅ 已修 `d0fa62c`（⑩批A，见 §A #92） |
+| R-29 | 真 | `TerminalActivity.kt:1536`/`:1632`/`:1716` ＋ `ui/SettingsEnvActivity.kt:725-726`：内部异常原文进用户文案（正确范式 `:604`/`:611` `HumanizeError.title`） | ⏳ 已派 ⑯刀（`fix/audit2-batch-c`，在跑） |
+| R-30 | 真 | `res/values/strings.xml:31`/`:826-828`：4 条 key 零引用，删时两个 strings.xml 必须同步（否则撞 `:177-198` 的 key 对称门禁） | ⏳ 待派（并入第⑰刀，与 N-4 同刀处理：两处 strings 面只许一个人动） |
 
 **「我验不了的」9 条（原件 §4，验法存档）**：V-1 R-02 硬链接写穿（真机跑增量更新，`stat` 比 `rootfs/bin/bash` 与 `rootfs.tmp/bin/bash` 的 inode/link count）；V-2 R-10 OSC 8 跨滚动（JVM 单测把回滚设 10 行 / 真机 agent 长输出）；V-3 R-12 非 JSON 帧（JVM 单测直调 `handle(...)` / 真机 `nc -l 14000` 伪造 SSE）；V-4 R-21/R-27 卡顿量（真机 StrictMode `detectDiskReads()` ＋ 冷启动抓 ANR 栈）；V-5 R-20（真机放 ≥4 份归档后进「帮助」页）；V-6 全部 Rust（需 `cargo test` ＋ 真机解压实测）；V-7 玄览 ①②③ 真机功能（OSC 8 点击 / Safe Browsing / WebView 内存）；V-8 proot/guest 运行时（tmux、hermes、zzsvc，需设备）；V-9 单测总数与门禁是否全绿（需跑 gradle）。
 
