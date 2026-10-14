@@ -130,6 +130,8 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
     var prevLogText by remember { mutableStateOf<String?>(null) }
     var archiveCount by remember { mutableStateOf(0) }
+    // §B 顺序 2 · P2-5：剪掉旧日志归档是**永久删除**，先弹确认框再执行。
+    var pruneConfirm by remember { mutableStateOf(false) }
 
     SettingsSubPage(title = stringResource(R.string.settings_help), onBack = onBack, scrollToEnd = scrollToEnd) {
         // ── 新手指南（第三批）──
@@ -181,14 +183,46 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                 }
             }
             if (archiveCount > 3) {
-                TextButton(onClick = {
-                    val n = com.example.zhengdao.rootfs.RunLog.pruneArchivesKeep(ctx, keep = 3)
-                    archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
-                    Toast.makeText(ctx, ctx.getString(R.string.help_log_pruned, n), Toast.LENGTH_SHORT).show()
-                }) {
+                // §B 顺序 2 · P2-5：按钮只负责弹确认框，破坏性动作搬进 confirmButton。
+                TextButton(onClick = { pruneConfirm = true }) {
                     Text(
                         stringResource(R.string.help_log_prune_btn),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (pruneConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { pruneConfirm = false },
+                        title = {
+                            Text(
+                                stringResource(R.string.help_log_prune_title),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        text = {
+                            Column {
+                                Text(
+                                    stringResource(R.string.help_log_prune_desc, archiveCount - 3),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    stringResource(R.string.help_log_prune_warn),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                pruneConfirm = false
+                                val n = com.example.zhengdao.rootfs.RunLog.pruneArchivesKeep(ctx, keep = 3)
+                                archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
+                                Toast.makeText(ctx, ctx.getString(R.string.help_log_pruned, n), Toast.LENGTH_SHORT).show()
+                            }) { Text(stringResource(R.string.common_clean), color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { pruneConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+                        },
                     )
                 }
             }

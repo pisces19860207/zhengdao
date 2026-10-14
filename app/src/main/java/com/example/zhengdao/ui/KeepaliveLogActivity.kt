@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -148,6 +149,8 @@ private fun KeepaliveLogScreen() {
     var snippetCount by remember { mutableStateOf(0) }
     // tick 只被「清空记录」自增：清空后重新读一遍，列表当场变空态。
     var tick by remember { mutableStateOf(0) }
+    // §B 顺序 2 · P2-5：清空留档是**永久删除**，先弹确认框再执行。
+    var clearConfirm by remember { mutableStateOf(false) }
     LaunchedEffect(tick) {
         // 读私有目录 → 必须 IO 线程（主线程读盘在本项目是明确禁止的）。
         // KeepaliveArchive 内部全是 runCatching 兜底，读不到就返回空表，这里不必再包一层。
@@ -235,15 +238,47 @@ private fun KeepaliveLogScreen() {
                         Toast.LENGTH_LONG,
                     ).show()
                 }) { Text(stringResource(R.string.keepalive_log_export)) }
-                TextButton(onClick = {
-                    val n = KeepaliveArchive.clear(ctx)
-                    tick++
-                    Toast.makeText(
-                        ctx,
-                        ctx.getString(R.string.keepalive_log_cleared, n),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }) { Text(stringResource(R.string.keepalive_log_clear), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                // §B 顺序 2 · P2-5：按钮只负责弹确认框，KeepaliveArchive.clear 搬进 confirmButton。
+                TextButton(onClick = { clearConfirm = true }) { Text(stringResource(R.string.keepalive_log_clear), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (clearConfirm) {
+                AlertDialog(
+                    onDismissRequest = { clearConfirm = false },
+                    title = {
+                        Text(
+                            stringResource(R.string.keepalive_log_clear_title),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    text = {
+                        Column {
+                            Text(
+                                stringResource(R.string.keepalive_log_clear_desc, snippetCount),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                stringResource(R.string.keepalive_log_clear_warn),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            clearConfirm = false
+                            val n = KeepaliveArchive.clear(ctx)
+                            tick++
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(R.string.keepalive_log_cleared, n),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }) { Text(stringResource(R.string.common_clean), color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { clearConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+                    },
+                )
             }
         }
     }
