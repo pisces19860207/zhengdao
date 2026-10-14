@@ -87,7 +87,7 @@ class BareThreadGuardTest {
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
             "HomeScreen.kt:177",                    // zd-taiji-retry
-            "HomeScreen.kt:560",                    // zd-health-fix
+            "HomeScreen.kt:579",                    // zd-health-fix（R-21/R-27 编辑后自 :560 平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
             "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）
             "KnowledgeBase.kt:153",                 // zd-knowledge-base-rebuild
