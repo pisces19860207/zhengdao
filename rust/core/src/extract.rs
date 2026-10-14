@@ -232,7 +232,12 @@ pub fn extract_pipeline_skip(
                 if !link_stays_inside(target_dir, &target, Path::new(&link_target)) {
                     continue;
                 }
-                let src = target_dir.join(&link_target);
+                // R-03（第⑬刀）：绝对 linkname 按 guest 根（= 解压根）解释 —— link_stays_inside
+                // 已用绝对形式判过界，但 join 前必须剥掉开头的 '/'：`target_dir.join("/etc/x")`
+                // 会把基底整个换掉（Unix 上变成真的宿主 /etc/x；Windows 上落到当前盘符根），
+                // 旧代码就这样把宿主文件的内容复制进环境目录。
+                let link_rel = link_target.trim_start_matches('/').to_string();
+                let src = target_dir.join(&link_rel);
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(ExtractError::Io)?;
                 }
@@ -245,7 +250,7 @@ pub fn extract_pipeline_skip(
                     bytes_written += fs::copy(&src, &target).map_err(ExtractError::Io)?;
                     written += 1;
                 } else {
-                    pending_hardlinks.push((name.clone(), link_target));
+                    pending_hardlinks.push((name.clone(), link_rel));
                 }
             }
             tar::EntryType::Fifo | tar::EntryType::Char | tar::EntryType::Block => {
@@ -399,7 +404,16 @@ fn check_path_inside(root: &Path, name: &Path) -> Result<(), ExtractError> {
 #[cfg(unix)]
 fn set_mode(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt;
-    let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode & 0o7777));
+    // R-03（第⑬刀）：`fs::set_permissions` 会**跟随符号链接** —— 目标若是软链（同名
+    // 软链可能先于目录/文件成员解出来），这里改的将是链接所指文件的权限，还可能
+    // 借它把 mode 应用到树外文件。tar 的 mode 位对软链本身没有意义，一律跳过。
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {}
+        Ok(_) => {
+            let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode & 0o7777));
+        }
+        Err(_) => {}
+    }
 }
 
 #[cfg(not(unix))]
