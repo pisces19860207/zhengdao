@@ -19,6 +19,12 @@ interface NavigationDelegate {
 
     fun onPageFinished(url: String) {}
 
+    /**
+     * 页面标题到达（第⑨刀 B 多标签：标签条显示标题用）。
+     * 注意：标题可能后于 onPageFinished 到，也可能为空（部分页不发 title）。
+     */
+    fun onReceivedTitle(title: String) {}
+
     /** SSL 错误：实现层一律 handler.cancel()（§4.4，生产不 proceed）。 */
     fun onSslError(url: String) {}
 

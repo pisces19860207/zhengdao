@@ -63,4 +63,12 @@ interface BrowserEngine {
 
     /** 是否可前进。 */
     fun canGoForward(): Boolean
+
+    // ── 刷新 / 停止（第⑨刀 C：v1.1 设计稿「刷新键加载中变身红色 ⨯ 停止键」）──
+
+    /** 重新加载当前页。 */
+    fun reload()
+
+    /** 停止当前加载（加载中刷新键的第二形态，§4.4 不收口、纯浏览器能力）。 */
+    fun stopLoading()
 }

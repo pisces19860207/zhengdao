@@ -44,6 +44,18 @@ class WebViewEngine(
 
     private var delegate: NavigationDelegate? = null
 
+    /**
+     * JS alert/confirm 出口（第⑨刀 B 落地 §4.4「JS 弹窗收口」）。
+     * null = 一律 cancel（安全默认）；UI 层（BrowserScreen）组合时注入、离场摘除——
+     * 对话框要 Activity/Compose 宿主，而引擎只持 applicationContext 的 WebView。
+     * 回调参数：页面消息 + 结果回调（true=确认/false=取消）。实现必须**最终**调用一次
+     * 结果回调，否则页面 JS 会一直阻塞等答案。
+     */
+    var jsConfirmHandler: ((message: String, onResult: (Boolean) -> Unit) -> Unit)? = null
+
+    /** JS prompt 出口：同上，结果回调传输入文本（null=取消）。 */
+    var jsPromptHandler: ((message: String, defaultValue: String, onResult: (String?) -> Unit) -> Unit)? = null
+
     /** scheme 白名单（白名单外一律拒——"浏览器本身"红线，§4.4 导航拦截）。 */
     private val allowedSchemes = setOf("http", "https")
 
@@ -65,6 +77,14 @@ class WebViewEngine(
     override fun canGoBack(): Boolean = webView.canGoBack()
 
     override fun canGoForward(): Boolean = webView.canGoForward()
+
+    override fun reload() {
+        webView.post { webView.reload() }
+    }
+
+    override fun stopLoading() {
+        webView.post { webView.stopLoading() }
+    }
 
     override fun evaluateJavascript(script: String, callback: (String?) -> Unit) {
         webView.post {
@@ -170,17 +190,30 @@ class WebViewEngine(
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
-            // JS 弹窗（alert/confirm/prompt）：阶段 1 一律 cancel（不卡页面、不弹系统框）。
-            // §4.4「JS 弹窗收口」完整形态（App 对话框 + agent 模式路由 Policy）阶段 2/3 做——
-            // 弹对话框要 Activity 上下文，而引擎只持 applicationContext 的 WebView，
-            // 届时由 UI 层注入 jsDialogHandler lambda（TODO 阶段2）。
+            // 第⑨刀 B：页面标题来源（标签条显示用）。空标题也转发（标签条自行回退显示 URL）。
+            override fun onReceivedTitle(view: WebView?, title: String?) {
+                delegate?.onReceivedTitle(title.orEmpty())
+            }
+
+            // JS 弹窗（alert/confirm/prompt）：第⑨刀 B 落地 §4.4「JS 弹窗收口」完整形态。
+            // 引擎只持 applicationContext 的 WebView、弹不了对话框（TODO 阶段2 的原委）⇒
+            // 由 UI 层注入 jsConfirmHandler / jsPromptHandler（BrowserScreen 组合时注入、
+            // 离场摘除）。未注入时保持 cancel 安全默认（不卡页面、不弹系统框）。
             override fun onJsAlert(
                 view: WebView?,
                 url: String?,
                 message: String?,
                 result: JsResult?,
             ): Boolean {
-                result?.cancel()
+                val handler = jsConfirmHandler
+                if (handler == null) {
+                    result?.cancel()
+                    return true
+                }
+                handler.invoke(message.orEmpty()) { ok ->
+                    // alert 只有"知道了"：确认/取消都放行页面继续
+                    if (ok) result?.confirm() else result?.cancel()
+                }
                 return true
             }
 
@@ -190,7 +223,14 @@ class WebViewEngine(
                 message: String?,
                 result: JsResult?,
             ): Boolean {
-                result?.cancel()
+                val handler = jsConfirmHandler
+                if (handler == null) {
+                    result?.cancel()
+                    return true
+                }
+                handler.invoke(message.orEmpty()) { ok ->
+                    if (ok) result?.confirm() else result?.cancel()
+                }
                 return true
             }
 
@@ -201,7 +241,14 @@ class WebViewEngine(
                 defaultValue: String?,
                 result: JsPromptResult?,
             ): Boolean {
-                result?.cancel()
+                val handler = jsPromptHandler
+                if (handler == null) {
+                    result?.cancel()
+                    return true
+                }
+                handler.invoke(message.orEmpty(), defaultValue.orEmpty()) { text ->
+                    if (text != null) result?.confirm(text) else result?.cancel()
+                }
                 return true
             }
         }
@@ -218,11 +265,24 @@ class WebViewEngine(
             allowUniversalAccessFromFileURLs = config.allowUniversalAccessFromFileUrls
             databaseEnabled = config.databaseEnabled
             safeBrowsingEnabled = config.safeBrowsingEnabled
-            // TODO(阶段2)：dataDirectorySuffix 是 WebView **静态**方法（setDataDirectorySuffix），
-            //   只能在 WebView 首次使用前调一次——多标签隔离时在 App 进程初始化处统一设，不在这里。
-            // TODO(阶段2)：thirdPartyCookies / allowedJsInterfaces 落地
-            //   （桥不用 addJavascriptInterface，走 postWebMessage/WebMessagePort，§4.4）。
         }
+        // 第三方 cookie：CookieManager 的**按 WebView 实例**开关（第⑨刀 B 落地 TODO 阶段2）。
+        // 默认 false（隐私取向，与配置默认值一致）。
+        runCatching {
+            android.webkit.CookieManager.getInstance()
+                .setAcceptThirdPartyCookies(webView, config.thirdPartyCookiesEnabled)
+        }
+        // JS 接口白名单（红线④）：默认空 = 一个都不暴露。桥不用 addJavascriptInterface
+        // （走 postWebMessage/WebMessagePort，§4.4）；非空时只暴露列名，且只挂一个
+        // 零能力诊断桩（真正桥对象属阶段 3）。
+        if (config.allowedJsInterfaces.isNotEmpty()) {
+            config.allowedJsInterfaces.forEach { name ->
+                runCatching { webView.addJavascriptInterface(JsInterfaceStub(name), name) }
+            }
+        }
+        // dataDirectorySuffix 是 WebView **静态**方法（setDataDirectorySuffix），每进程只能在
+        // 首个 WebView 创建前调一次 ⇒ 多标签隔离时在 App 进程初始化处统一设（ZhengdaoApp），
+        // 不在这里（第⑨刀 B 落地 TODO 阶段2：单进程内多标签无法各有数据目录，见交付报告）。
     }
 
     private fun isAllowedUrl(url: String): Boolean {
@@ -238,4 +298,14 @@ class WebViewEngine(
 
         private fun logWarning(msg: String) = android.util.Log.w(TAG, msg)
     }
+}
+
+/**
+ * JS 接口诊断桩（第⑨刀 B）——[EngineSecurityConfig.allowedJsInterfaces] 非空时挂上去的
+ * **零能力**对象：只有一个 `ping()` 返回自己的名字，供页面侧确认"接口已挂"。
+ * 红线④（agent 不得重绑）：真正的桥对象属阶段 3，且明确不走 addJavascriptInterface。
+ */
+class JsInterfaceStub(private val name: String) {
+    @android.webkit.JavascriptInterface
+    fun ping(): String = name
 }
