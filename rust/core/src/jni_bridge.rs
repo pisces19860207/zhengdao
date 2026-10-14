@@ -235,12 +235,14 @@ fn extract_impl(
 }
 
 /// 统一把结果封成 JSON 字符串交给 Kotlin（失败也绝不 panic 跨 FFI）。
+///
+/// 失败分支走 [`crate::json::error_json`]（P2-18：消息必须转义，否则 Kotlin 侧
+/// JSONObject 解析崩，真正的错误原因反而丢了）；纯逻辑与单测都在 json.rs
+/// （PC 上 `cargo test` 直接跑——JNI 薄层只在 android 目标编译，跑不了测试）。
 fn to_json(env: &mut JNIEnv, result: Result<String, String>) -> jni::sys::jstring {
     let json = match result {
         Ok(json) => json,
-        Err(msg) => {
-            format!("{{\"ok\":false,\"error\":\"{}\"}}", msg)
-        }
+        Err(msg) => crate::json::error_json(&msg),
     };
     match env.new_string(json) {
         Ok(s) => s.into_raw(),
