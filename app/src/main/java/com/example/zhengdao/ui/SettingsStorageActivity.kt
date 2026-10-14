@@ -592,6 +592,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             }
             var rollbacks by remember { mutableStateOf<List<File>>(emptyList()) }
             var rollbackConfirm by remember { mutableStateOf<File?>(null) }
+            // §B 顺序 2 · P2-5：删掉非当前版本的安装包缓存是**永久删除**，先弹确认框再执行。
+            var installerCleanConfirm by remember { mutableStateOf(false) }
             fun reloadCache() {
                 Thread {
                     val archives = com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx)
@@ -627,19 +629,53 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             LaunchedEffect(Unit) { reloadCache() }
             Text(cacheText, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(onClick = {
-                Thread {
-                    val n = com.example.zhengdao.rootfs.RootfsCache.cleanupNonCurrent(ctx)
-                    android.os.Handler(ctx.mainLooper).post {
-                        Toast.makeText(
-                            ctx,
-                            ctx.getString(R.string.storage_installer_cleaned, n),
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                        reloadCache()
-                    }
-                }.start()
-            }) { Text(stringResource(R.string.storage_installer_clean_btn)) }
+            // §B 顺序 2 · P2-5：按钮只负责弹确认框，Thread{} 那段破坏性动作原封不动搬进 confirmButton。
+            OutlinedButton(onClick = { installerCleanConfirm = true }) {
+                Text(stringResource(R.string.storage_installer_clean_btn))
+            }
+            if (installerCleanConfirm) {
+                AlertDialog(
+                    onDismissRequest = { installerCleanConfirm = false },
+                    title = {
+                        Text(
+                            stringResource(R.string.storage_installer_clean_title),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    text = {
+                        Column {
+                            Text(
+                                stringResource(R.string.storage_installer_clean_desc),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                stringResource(R.string.storage_installer_clean_warn),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            installerCleanConfirm = false
+                            Thread {
+                                val n = com.example.zhengdao.rootfs.RootfsCache.cleanupNonCurrent(ctx)
+                                android.os.Handler(ctx.mainLooper).post {
+                                    Toast.makeText(
+                                        ctx,
+                                        ctx.getString(R.string.storage_installer_cleaned, n),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                    reloadCache()
+                                }
+                            }.start()
+                        }) { Text(stringResource(R.string.common_clean), color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { installerCleanConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+                    },
+                )
+            }
             if (rollbacks.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(

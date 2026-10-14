@@ -336,6 +336,9 @@
     <string name="storage_installer_item">· %1$s (%2$d MB)</string>
     <string name="storage_installer_cleaned">Cleaned %1$d old version files</string>
     <string name="storage_installer_clean_btn">Clean old version cache (keeps the current version)</string>
+    <string name="storage_installer_clean_title">Permanently delete old installer packages?</string>
+    <string name="storage_installer_clean_desc">This permanently deletes every cached installer package except the current one (partially downloaded fragments included); only the current version is kept.</string>
+    <string name="storage_installer_clean_warn">Once deleted they are gone for good — no recycle bin, no undo; rolling back to them later means downloading again.</string>
     <string name="storage_rollback_list">Old versions you can go back to (only the latest 2 installers are kept)</string>
     <string name="storage_rollback_to">Roll back to %1$s</string>
     <string name="storage_rollback_title">Roll back environment</string>
@@ -365,6 +368,9 @@
     <string name="help_log_view_prev">View last log</string>
     <string name="help_log_prune_btn">Keep only the latest 3</string>
     <string name="help_log_pruned">Deleted %1$d old logs, kept the latest 3</string>
+    <string name="help_log_prune_title">Permanently delete old log archives?</string>
+    <string name="help_log_prune_desc">This permanently deletes %1$d old log archives and keeps only the latest 3.</string>
+    <string name="help_log_prune_warn">Once deleted they are gone for good — there is no recycle bin and no undo.</string>
 
     <!-- ── Shared components (top bar / log dialog / folder picker / KB help) ── -->
     <string name="help_log_title">Run log</string>
@@ -577,6 +583,9 @@
     <string name="keepalive_log_export">Export to Download/证道/logs</string>
     <string name="keepalive_log_cleared">Cleared %1$d records</string>
     <string name="keepalive_log_clear">Clear records</string>
+    <string name="keepalive_log_clear_title">Permanently clear keepalive records?</string>
+    <string name="keepalive_log_clear_desc">This permanently clears every keepalive record: recent exits, recent heartbeats, and %1$d logcat snapshots.</string>
+    <string name="keepalive_log_clear_warn">Once cleared the records are gone for good — they cannot be recovered or undone.</string>
 
     <!-- ── Plugins page (PluginsScreen) ── -->
     <string name="plugins_card_enabled">Enabled</string>
