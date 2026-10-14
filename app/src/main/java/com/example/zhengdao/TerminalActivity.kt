@@ -1027,7 +1027,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                         Toast.makeText(this, getString(R.string.term_pasted, it), Toast.LENGTH_SHORT).show()
                     }
                     .onFailure {
-                        Toast.makeText(this, getString(R.string.term_paste_failed, it.message), Toast.LENGTH_SHORT).show()
+                        // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
+                        com.example.zhengdao.rootfs.RunLog.log(
+                            "粘贴失败（原文）：${it.javaClass.simpleName}: ${it.message}"
+                        )
+                        Toast.makeText(this, getString(R.string.term_paste_failed, HumanizeError.title(it, resources)), Toast.LENGTH_SHORT).show()
                     }
             }
         }
@@ -1344,7 +1348,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 runCatching { SessionManager.write(byteArrayOf(0x0C)) }
                     .onSuccess { Toast.makeText(this, getString(R.string.term_cleared), Toast.LENGTH_SHORT).show() }
                     .onFailure {
-                        Toast.makeText(this, getString(R.string.term_clear_failed, it.message), Toast.LENGTH_SHORT).show()
+                        // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
+                        com.example.zhengdao.rootfs.RunLog.log(
+                            "清屏写入失败（原文）：${it.javaClass.simpleName}: ${it.message}"
+                        )
+                        Toast.makeText(this, getString(R.string.term_clear_failed, HumanizeError.title(it, resources)), Toast.LENGTH_SHORT).show()
                     }
                 return true
             }
@@ -1376,7 +1384,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             val url = "https://www.bing.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
             startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
         }.onFailure {
-            Toast.makeText(this, getString(R.string.term_browser_failed, it.message), Toast.LENGTH_SHORT).show()
+            // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
+            com.example.zhengdao.rootfs.RunLog.log(
+                "唤起搜索失败（原文）：${it.javaClass.simpleName}: ${it.message}"
+            )
+            Toast.makeText(this, getString(R.string.term_browser_failed, HumanizeError.title(it, resources)), Toast.LENGTH_SHORT).show()
         }
     }
 

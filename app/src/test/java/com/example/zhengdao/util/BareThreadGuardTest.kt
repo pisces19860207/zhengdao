@@ -34,7 +34,8 @@ import kotlin.text.Charsets
  * 线程（:139/:156/:172）——按本批红线不碰 termux，留待单独评估。Kotlin 标准库
  * 小写 `thread { }`（默认非 daemon）同样纳入纪律；当前全仓零使用（证据②）。
  *
- * 对账单冻结 2026-10-14 的创建点（`Thread` 关键字行号；第⑪批 D-1 新增心跳执行器后 29 个）。
+ * 对账单冻结 2026-10-14 的创建点（`Thread` 关键字行号；第⑪批 D-1 新增心跳执行器
+ * 与第⑯刀 R-25 消除存储页三处裸 Thread 后，26 个）。
  * 将来文件拆分/移动会让它失败——那是提醒回来更新对账单，不是 bug。
  *
  * 行号回填记录（本文件自己的规矩：平移就回填，不是新增线程）：
@@ -42,9 +43,13 @@ import kotlin.text.Charsets
  * - 2026-10-14（审计第 2 期配套 / 第⑩批A）：`SettingsStorageActivity.kt`（B-3 加 2 行说明）与
  *   `TerminalActivity.kt`（N-2 原子拷贝 +15 行）平移 ⇒ 回填 4 个行号；
  * - 2026-10-14（第⑨刀 B）：ZhengdaoApp.kt 插入 `initWebViewDataDirectory()`（+30 行）
- *   ⇒ 两条创建点 47→77 / 97→127，本次回填。
+ *   ⇒ 两条创建点 47→77 / 97→127，本次回填；
  * - 2026-10-14（第⑪批 D-1）：KeepaliveWatcher.kt 新增心跳执行器 zd-keepalive-io（:66，
- *   有名+daemon）⇒ 对账单 28→29 处；巡检线程平移 187→230 一并回填。
+ *   有名+daemon）⇒ 对账单 28→29 处；巡检线程平移 187→230 一并回填；
+ * - 2026-10-14（第⑯刀 R-25/R-29，合并第⑪批后重算）：`SettingsStorageActivity.kt` 三处裸
+ *   Thread 改协程（zd-cache-reload / zd-cache-clean / zd-rollback **消除**）⇒ 29→26 处；
+ *   `SettingsEnvActivity.kt`（R-29 +4 行）557→561 / 652→656；
+ *   `TerminalActivity.kt`（R-29 +12 行）1550→1562 / 1610→1622 / 1696→1708。本次回填。
  */
 class BareThreadGuardTest {
 
@@ -73,13 +78,13 @@ class BareThreadGuardTest {
     @Test
     fun `门禁_创建点数量收敛在红线以内`() {
         val total = scanAppSources().size
-        // 2026-10-14 实测 28 处；红线 32——允许零星新增，但谁把数量拉回审计原文
-        // （35 处）那种状态，必须先在账本上说清楚。
+        // 2026-10-14 实测 26 处（第⑯刀 R-25 消除存储页三处后）；红线 32——允许零星新增，
+        // 但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
 
     @Test
-    fun `对账单_2026-10-14_实测 29 处创建点`() {
+    fun `对账单_2026-10-14_实测 26 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -100,17 +105,14 @@ class BareThreadGuardTest {
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:207",           // zd-hermes-repair
             "SettingsEnvActivity.kt:261",           // zd-env-check
-            "SettingsEnvActivity.kt:557",           // zd-env-repair（R-20 删死 LaunchedEffect 后 -7，合并日回填）
-            "SettingsEnvActivity.kt:652",           // zd-env-update（同上 -7）
-            "SettingsStorageActivity.kt:600",       // zd-cache-reload
-            "SettingsStorageActivity.kt:665",       // zd-cache-clean（2026-10-14 B-3 加 2 行说明后 +2）
-            "SettingsStorageActivity.kt:717",       // zd-rollback（同上 +2）
+            "SettingsEnvActivity.kt:561",           // zd-env-repair（第⑯刀 R-29 +4，本次回填）
+            "SettingsEnvActivity.kt:656",           // zd-env-update（同上 +4）
             "TerminalActivity.kt:79",               // zd-paste
             "TerminalActivity.kt:596",              // zd-session-start（本刀补 daemon）
             "TerminalActivity.kt:811",              // zd-net-probe
-            "TerminalActivity.kt:1550",             // zd-install-saf
-            "TerminalActivity.kt:1610",             // zd-install-cache（2026-10-14 N-2 原子拷贝后 +15）
-            "TerminalActivity.kt:1696",             // zd-install-download（同上 +15）
+            "TerminalActivity.kt:1562",             // zd-install-saf（第⑯刀 R-29 +12）
+            "TerminalActivity.kt:1622",             // zd-install-cache（同上 +12）
+            "TerminalActivity.kt:1708",             // zd-install-download（同上 +12）
             "ZhengdaoApp.kt:77",                    // zhengdao-keepalive-archive
             "ZhengdaoApp.kt:127",                   // zd-auto-clean
         )
