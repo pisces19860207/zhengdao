@@ -841,6 +841,11 @@
     <string name="browser_safe_browsing_hit">This site looks unsafe — it was blocked</string>
     <string name="browser_page_error">Something went wrong loading the page</string>
     <string name="browser_empty_hint">Enter a URL above, or tap a link from the terminal</string>
+    <string name="browser_export">Export for agent</string>
+    <string name="browser_export_running">Exporting the current page…</string>
+    <string name="browser_export_done">Exported for your agent: %1$d interactive field(s); run cat /opt/zhengdao/tab.txt in the terminal</string>
+    <string name="browser_export_failed">Export failed: %1$s</string>
+    <string name="browser_export_no_tab">No page is open yet — open a page first</string>
     <string name="term_local_cache_installing">Using a locally cached package (%1$d MB, no download) — verifying and extracting…</string>
     <string name="term_first_run_need_grant">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nTap \"Grant storage\" first — after granting, put the installer into the Download/证道 folder and reinstalling the app won\'t need another download.</string>
     <string name="term_first_run">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nWi-Fi recommended; resumable, so an interruption can be retried.\nTip: you can also place the installer into the Download/证道 folder manually and restart the app to install without downloading.</string>
