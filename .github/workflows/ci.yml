@@ -64,6 +64,11 @@ jobs:
       - name: 入库 .so 门禁（16KB 页对齐 + JNI 入口符号）
         run: python3 tools/check-native-so.py
 
+      # E-128：上面的门禁查不出「.so 是不是这份源码编的」；这里比对
+      # tools/so-provenance.json 里的 .so sha256 + 源码树指纹基线。
+      - name: 入库 .so 同源门禁（so 与 rust/core/src 同源基线）
+        run: python3 tools/check-so-provenance.py
+
       - name: 编译 Debug APK（含 .so 打包验证）
         run: ./gradlew :app:assembleDebug --console=plain
 
