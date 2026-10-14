@@ -6591,3 +6591,15 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **同批**：R-11（`app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt` 两处空吞异常 ⇒ 补 RunLog）、R-20（帮助页日志管理死功能，见 `docs/FEATURE-LEDGER.md` §A #88）。
 
 **真机复核**：未做（需制造中断：装到一半强杀 App，再看 `rootfs.old` 是否还在）。
+
+## E-127 · 2026-10-14 · 设备迁移会把 API key 与 opencode 的明文口令搬到新手机 —— `device-transfer` 当时只排了「系统层」，把「凭据」和「用户数据」当成了一类
+
+- **发现**（外部只读审计第 2 期 **N-3**，基线 `d6f7336`）：`app/src/main/res/xml/data_extraction_rules.xml` 的 `<device-transfer>` 只排 `rootfs` / `termux-proot` / `proot-tmp`，**没排** `home/.claude`、`home/.hermes`（API key 与 agent 配置，见 `terminal/Store.kt:24`、`terminal/HermesEnv.kt:76`）与 `oc`（`oc/serve.log` 里有 opencode 自己打的 serve 口令，写盘点 `oc/OcManager.kt:443-445`）。
+  文件头注释当时自述的理由是「近距离传输，不经云」——**这条理由对云备份成立，对凭据不成立**：D2D 迁移**不加密、不看内容**，一旦迁出去不可撤销，而且技术上没有第二道防线（只有那两行制度注释）。
+- **用户拍板**（2026-10-14 逐字）：「排。」
+- **改动**：
+  1. `app/src/main/res/xml/data_extraction_rules.xml` 的 `<device-transfer>` 增三条 `<exclude domain="file" path="home/.claude" />`、`path="home/.hermes"`、`path="oc"`；文件头注释改准（原句「用户数据（home / oc / workspace）留给本地迁移通道」后半句已不成立）。
+  2. 门禁 `app/src/test/java/com/example/zhengdao/BackupRulesGuardTest.kt` 加 3 条 `assertTrue`（凭据必须排），并**保留** `home` 整目录的 `assertFalse`（用户数据本体仍要能迁移）；测试名改为 `设备迁移挡系统层与凭据 用户数据留着`。
+- **权衡 / 故意没做的**：**没排整个 `home`**（那会把用户的工作数据也挡在迁移之外，正是门禁那条会红的断言钉着的）；`home/.claude` 里除凭据还可能有 Claude Code 的会话历史，因此新机上这些历史不会跟着走 —— 需要就重新登录；`res/xml/backup_rules.xml`（API ≤30，因 `minSdk=36` 实际是死规则）本来就整目录排了 `home` / `oc`，未动。
+- **验证**：`:app:testDebugUnitTest --offline --max-workers=1 --rerun-tasks` = **119 套件 / 868 例 / 0 失败 / 0 错误 / 3 跳过**（其中 `BackupRulesGuardTest` 4 例全绿）。
+- **教训**：**「凭据」不是「用户数据」**。写排除规则时按用途分类（系统层 / 凭据 / 用户数据 / 可重建缓存），别按目录归属分类 —— 否则一句「用户数据该跟着走」就会把 API key 一起放行。另外：门禁里 `assertFalse(... path="home"")` 用的是**带尾引号的整目录**写法，所以子路径排除能落地而不误伤；将来改门禁要看清它断言的到底是「整目录不许排」还是「任何子路径都不许排」。

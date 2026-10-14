@@ -81,7 +81,7 @@ class BackupRulesGuardTest {
     }
 
     @Test
-    fun `设备迁移只挡系统层 用户数据留着`() {
+    fun `设备迁移挡系统层与凭据 用户数据留着`() {
         val transfer = section(extractionRules, "device-transfer")
         for (rule in listOf(
             """domain="file" path="rootfs"""",
@@ -90,9 +90,20 @@ class BackupRulesGuardTest {
         )) {
             assertTrue("设备迁移必须排除系统层：$rule", transfer.contains("<exclude $rule"))
         }
-        // 用户数据在设备迁移里**故意不排除**（同机到同机的近场传输，不经云）
+        // 2026-10-14（第 2 期审计 N-3）：凭据不跟着近场迁移走 —— 迁出去不可撤销，
+        // 且 D2D 传输不加密。这三条谁删谁负责：删了等于把 API key 与
+        // oc/serve.log 的明文口令送到新机器上。
+        for (rule in listOf(
+            """domain="file" path="home/.claude"""",
+            """domain="file" path="home/.hermes"""",
+            """domain="file" path="oc"""",
+        )) {
+            assertTrue("设备迁移必须排除凭据：$rule", transfer.contains("<exclude $rule"))
+        }
+        // 用户数据**本体**在设备迁移里仍故意不排除（同机到同机的近场传输，不经云）。
+        // 注意这里用带尾引号的整目录写法：`home/.claude` 这类子路径排除不会误命中它。
         assertFalse(
-            "home 不该在 device-transfer 里被排除（那会把用户数据也挡在迁移之外）",
+            "home 整个目录不该在 device-transfer 里被排除（那会把用户数据也挡在迁移之外）",
             transfer.contains("""<exclude domain="file" path="home"""")
         )
     }
