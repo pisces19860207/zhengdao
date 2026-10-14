@@ -160,12 +160,25 @@ object ProotLauncher {
                 continue
             }
             val mode = if (target == "proot" || target == "loader") 493 else 420 // 0755 / 0644
-            try { android.system.Os.chmod(dst.absolutePath, mode) } catch (_: Throwable) {}
+            try {
+                android.system.Os.chmod(dst.absolutePath, mode)
+            } catch (t: Throwable) {
+                // 第⑩刀审计 R-11：这里以前是空 catch。chmod 失败会让下面的
+                // rootfsReady.canExecute() 判假 ⇒ 直接降级到安卓自带 shell，
+                // 而现场（IssueCenter detail）只记 proot/loader 是否 isFile，
+                // 看不出真因。留着这条痕，才能事后追。
+                RunLog.log("警告: chmod 失败 $target（mode=$mode）：${t.message}")
+            }
             stamps[target] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
             stampsChanged = true
             RunLog.log("已释放: $target（SHA256 校验通过）")
         }
-        if (stampsChanged) runCatching { stampFile.writeText(PinnedAssets.format(stamps)) }
+        if (stampsChanged) {
+            // 第⑩刀审计 R-11：以前是 `runCatching { … }` 后什么都不做，戳记写失败的后果
+            // 是下次启动重算 SHA256（慢），但现场无痕。补一行失败日志（行为不变，仍不致命）。
+            runCatching { stampFile.writeText(PinnedAssets.format(stamps)) }
+                .onFailure { RunLog.log("警告: 戳记文件写失败 ${stampFile.name}：${it.message}") }
+        }
         RunLog.log("termux-proot 版本固定校验: 跳过重算 $skippedByStamp 项 / 实算 $reverified 项")
         RunLog.log(
             "启动决策: proot=" + prootBin.isFile + " loader=" + loaderBin.isFile +

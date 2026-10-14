@@ -199,7 +199,15 @@ object RootfsInstaller {
      *   必须改名复原，绝不能跟着 tmp 一起删。
      */
     fun cleanupPartial(context: Context) {
+        // 第⑩刀审计 R-05（2026-10-14）：本函数会删 tmp 树与替换备份，原先既不持安装锁、
+        // 也没查 isInstalling() ⇒ 与正在解包的安装并发时会删掉活跃的 tmp 树。
+        // 改用 tryLock 语义（不能阻塞启动）：拿不到锁就放弃这次清理，下次启动再试。
+        if (!lock.compareAndSet(false, true)) {
+            Log.w(TAG, "安装进行中，跳过残局清理（下次启动再试）")
+            return
+        }
         try {
+            _installing.value = true
             File(context.filesDir, TMP_NAME).deleteRecursively()
             val rootfs = File(context.filesDir, "rootfs")
             val backup = File(context.filesDir, OLD_NAME)
@@ -212,6 +220,9 @@ object RootfsInstaller {
             }
         } catch (t: Throwable) {
             Log.w(TAG, "清理残局失败（忽略）", t)
+        } finally {
+            _installing.value = false
+            lock.set(false)
         }
     }
 
@@ -472,6 +483,15 @@ object RootfsInstaller {
         if (!rootfsDir.exists() && backup.exists()) {
             if (backup.renameTo(rootfsDir)) {
                 Log.w(TAG, "发现上次替换留下的旧环境，已复原：${rootfsDir.path}")
+            } else {
+                // 第⑩刀审计 R-01（2026-10-14）：复原失败时 rootfs 仍缺失 ⇒ 这一份就是用户
+                // 唯一的环境，紧接着的 backup.deleteRecursively() 会把它当垃圾删掉，而新树
+                // 一旦就位失败（见下面 :487 起）就真的"什么都没有"了。就地停下、什么都不动，
+                // 并把备份路径写进文案（重启 App 会再试复原）。
+                throw InstallFailed(
+                    "上次替换中断，旧环境复原失败，已原样保留在 ${backup.path}" +
+                        "（重启 App 会自动重试复原；请不要手动删除该目录）"
+                )
             }
         }
         if (backup.exists()) backup.deleteRecursively()
