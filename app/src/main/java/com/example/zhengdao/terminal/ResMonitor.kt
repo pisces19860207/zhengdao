@@ -117,8 +117,8 @@ object ResMonitor {
     /** JVM 单测的中文兜底（无 Android 运行时取不到资源；与 resmon_* 资源条目一一对应）。 */
     private fun resFallback(id: Int, vararg args: Any): String {
         val zh = mapOf(
-            R.string.resmon_idle to "太极与终端均未运行，无进程可采样",
-            R.string.resmon_rss_over to "⚠ 内存 %1\$d MB 超阈值 %2\$d MB（%3\$d 个进程）——关掉不用的会话，或重启太极",
+            R.string.resmon_idle to "抱朴与终端均未运行，无进程可采样",
+            R.string.resmon_rss_over to "⚠ 内存 %1\$d MB 超阈值 %2\$d MB（%3\$d 个进程）——关掉不用的会话，或重启抱朴",
             R.string.resmon_cpu_over to "⚠ CPU %1\$s%% 超阈值 %2\$d%%——检查插件与会话规模",
             R.string.resmon_normal to "RSS %1\$d MB · CPU %2\$s%% · %3\$d 个进程",
         )
