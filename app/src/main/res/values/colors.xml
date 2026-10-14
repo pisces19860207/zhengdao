@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  独立开发声明：本文件为本项目维护，未参考任何第三方同类应用的代码。
+
+  2026-10-14（§B 顺序 7 / issue #17 P4-6）：删掉 Android Studio 新建工程自带的
+  8 个模板色（purple_200/500/700、teal_200/700、black、white）——全仓零引用
+  （grep 实证：layout / manifest / mipmap / Kotlin 一律没处引），留着只会让
+  下一个改配色的人以为"项目还有个紫青配色系统"。窗口背景 layout/window_bg.xml
+  早已不在（模板残留的最后一环），此处同步收口。
+
+  保留的 3 个是**真在被引用**的：
+  - ic_launcher_background：启动图标背景（mipmap-anydpi/ic_launcher*.xml）
+  - term_key_active / term_key_idle：终端功能键状态色（TerminalActivity 读取）
+-->
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
     <color name="ic_launcher_background">#FFFFFFFF</color>
-    <color name="white">#FFFFFFFF</color>
     <color name="term_key_active">#FF18A018</color>
     <color name="term_key_idle">#FF222222</color>
 </resources>
