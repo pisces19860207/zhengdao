@@ -111,6 +111,12 @@ object RootfsCache {
                     // 极少数文件系统上 rename 会失败：复制后删源（残片也照此对待，保住续传进度）
                     runCatching { f.copyTo(target, overwrite = true); f.delete() }
                         .onSuccess { moved++ }
+                        .onFailure {
+                            // B-4 同病（审计第 2 期）：复制中途失败会留下半截目标，而下一轮开头
+                            // `if (target.exists()) return@forEach` 会把它当成"已搬过"⇒ 永不重拷。
+                            // 清掉让下一轮自愈（源还在，"残片也搬"的续传进度不丢）。
+                            runCatching { target.delete() }
+                        }
                 }
             }
             if (legacy.listFiles()?.isEmpty() == true) legacy.delete()
