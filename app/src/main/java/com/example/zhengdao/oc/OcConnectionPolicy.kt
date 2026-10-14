@@ -72,3 +72,20 @@ internal fun TaijiState.afterSessionSwitchStarted(): TaijiState = copy(
     pendingPermission = null,
     phase = TaijiPhase.Loading,
 )
+
+/**
+ * 第⑭刀 #2 / P2-15②：REST 轮询**连续失败**多少次后放弃自动重连。
+ *
+ * ## 为什么是 8
+ *
+ * 退避阶梯 1s/2s/4s/8s/15s（封顶 15s）：第 8 次失败时累计等待约 1+2+4+8+15×4 ≈ 75s，
+ * 再等下去用户只会以为界面卡死。放弃后置 `TaijiPhase.Failed(retryable = true)`，
+ * 恢复路径复用既有机制 —— FailedPane「重试」→ `open()`（[shouldReopenConnection] 第 1 条）。
+ *
+ * 熔断是「**连续**失败」语义：一次成功即清零（由调用方 [com.example.zhengdao.oc.OcRepository]
+ * 的 pollOnce 成功路径保证）。纯函数，表驱动单测见 OcConnectionPolicyTest。
+ */
+internal const val RECONNECT_GIVE_UP = 8
+
+internal fun shouldGiveUpReconnecting(consecutiveFailures: Int): Boolean =
+    consecutiveFailures >= RECONNECT_GIVE_UP

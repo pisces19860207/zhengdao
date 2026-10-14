@@ -89,6 +89,9 @@ class SseClient(private val http: OkHttpClient) {
         // 连续"连上即关、0 字节"的次数（OpenCode /api/event 已知缺陷，Issue #38458）。
         // ⚠️ 不能用"连上就重置退避"——那会让每轮都回到 1s，退化成每秒重连刷屏。
         var defectStreak = 0
+        // 第⑭刀 #2 / P2-15①：连续「连上即关」场次的独立计数（defectStreak 在阶梯末位
+        // 就不再增长，没法表达真实场次；熔断看的是这个）。
+        var defectRuns = 0
 
         while (currentCoroutineContext().isActive) {
             var lines = 0
@@ -161,6 +164,24 @@ class SseClient(private val http: OkHttpClient) {
             // ⚠️ 退避：只有"真正读到过事件"才算健康连接并重置；否则（连上即关、0 字节）
             //    按缺陷累计，指数退避（1s→2s→4s→8s→15s 封顶），不再每秒一轮刷屏。
             defectStreak = if (lines > 0) 0 else minOf(defectStreak + 1, BACKOFF_MS.lastIndex)
+            // 第⑭刀 #2 / P2-15①：缺陷熔断 —— 连续 10 场「连上即关、0 字节」（约 1+2+4+
+            // 8+15×6 ≈ 96s）就**正常结束 flow**：不发错误、不改连接状态。该端点在服务器
+            // 完全健康时也是这个形态（Issue #38458），置失败态会对健康服务误报；失败可见性
+            // 由 REST 轮询的熔断（shouldGiveUpReconnecting → TaijiPhase.Failed）负责。
+            // 恢复零成本：flow 正常结束 ⇒ sseJob 完结 ⇒ shouldReopenConnection 第 3 条
+            // （!sseAlive）判「重开」⇒ 下次 open()（换会话/重进页面/点重试）自然再试。
+            if (lines == 0) {
+                defectRuns += 1
+                if (defectRuns >= SSE_DEFECT_GIVE_UP) {
+                    ocLog(
+                        "SSE 端点连续 $defectRuns 场连上即关（Issue #38458），停止 SSE 重连；" +
+                            "数据以 REST 轮询为准"
+                    )
+                    break
+                }
+            } else {
+                defectRuns = 0
+            }
             delay(BACKOFF_MS[defectStreak])
         }
     }
@@ -195,6 +216,12 @@ class SseClient(private val http: OkHttpClient) {
     companion object {
         /** 重连退避阶梯（毫秒）。上限 15s，避免低端机/省电 ROM 上疯狂重连耗电。 */
         private val BACKOFF_MS = longArrayOf(1_000, 2_000, 4_000, 8_000, 15_000)
+
+        /**
+         * 第⑭刀 #2 / P2-15①：连续「连上即关、0 字节」场次的熔断阈值（约 96s 内触达）。
+         * 触达后 flow 正常结束 —— 见 [connect] 循环尾部的注释。
+         */
+        private const val SSE_DEFECT_GIVE_UP = 10
 
         private val REGEX_TYPE = Regex("\"(?:event|type|name)\"\\s*:\\s*\"([^\"]+)\"")
         private val REGEX_DELTA = Regex("\"delta\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
