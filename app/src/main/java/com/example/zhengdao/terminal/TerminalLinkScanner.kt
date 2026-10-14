@@ -21,16 +21,36 @@ object TerminalLinkScanner {
 
     /**
      * http(s) URL 模式：遇空白/常见闭合符即止。
-     * TODO(阶段1.5 之后)：真机样本校准误报（源码行/路径）与尾部标点误吞。
+     * TODO(阶段1.5 之后)：真机样本校准误报（源码行/路径）；尾部标点已由 §B 顺序 30 处理。
      */
     private val URL_PATTERN = Regex("""https?://[^\s<>"'`)\]}，。；！""]+""")
+
+    /**
+     * 尾部句读标点（ASCII）——**只在它后面是空白或行尾时才裁**（§B 顺序 30，2026-10-14 真机：
+     * `https://example.com/trailing-test,` 被连逗号一起打开；ASCII 标点原不在排除集里）。
+     *
+     * 为什么不把 `,.;:!?` 塞进 [URL_PATTERN] 的排除集一律剥：`.` 与 `:` 是 URL 的合法字符
+     * （`https://` 的冒号、`example.com` / `v1.2` 的点），句中逗号也可能是 URL 的一部分
+     * （`/a,b`）——一律剥会把好 URL 也切坏。所以只处理**尾部连续标点段**，且该段之后
+     * 必须是空白或行尾；后随其它非空白字符（如 `/a,b` 的 `b`）时原样保留。
+     */
+    private const val TRAILING_PUNCT = ",.;:!?"
 
     /** 扫一行终端文本，返回全部链接命中（按出现顺序）。 */
     fun findLinks(line: String): List<LinkMatch> {
         if (line.isEmpty()) return emptyList()
-        return URL_PATTERN.findAll(line)
-            .map { LinkMatch(it.range.first, it.range.last + 1, it.value) }
-            .toList()
+        return URL_PATTERN.findAll(line).mapNotNull { m ->
+            val start = m.range.first
+            val rawEnd = m.range.last + 1
+            var end = rawEnd
+            while (end > start && line[end - 1] in TRAILING_PUNCT) end--
+            if (end < rawEnd) {
+                // 尾标点之后若还有非空白字符，说明它们是 URL 的一部分（`/a,b`），保留。
+                val next = line.getOrNull(rawEnd)
+                if (next != null && !next.isWhitespace()) end = rawEnd
+            }
+            if (end <= start) null else LinkMatch(start, end, line.substring(start, end))
+        }.toList()
     }
 
     /**
