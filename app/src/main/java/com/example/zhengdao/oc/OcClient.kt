@@ -106,6 +106,16 @@ class OcClient(
 
     companion object {
         const val CONNECT_TIMEOUT_SEC = 10L
+
+        /**
+         * 普通 API 单次请求的读/写超时。第⑭刀 #3：把「单次请求超时」与「整体超时」的
+         * 关系写清（口径对齐，行为未改）：
+         * - **单次请求**最坏 ≈ connect 10s + read 30s = 40s 上下（connect 与 read/write 各自计时）；
+         * - **整体超时刻意不设**（callTimeout 默认 0 = 不限）：SSE 长连接绝不能有整体上限；
+         *   普通 API 的整体时长由调用方协程的取消语义兜底；
+         * - [retryOnConnectionFailure] 为 true 时，连接复用失败还会重试一轮 —— 极端情况
+         *   单次调用可逼近 2×40s，这是设计内行为，不是漏配。
+         */
         const val NORMAL_TIMEOUT_SEC = 30L
 
         /**
