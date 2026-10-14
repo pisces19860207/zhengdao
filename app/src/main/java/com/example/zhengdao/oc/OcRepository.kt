@@ -5,6 +5,7 @@ package com.example.zhengdao.oc
 
 import com.example.zhengdao.R
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,6 +89,7 @@ class OcRepository(
             R.string.oc_nothing_to_retry to "没有可重试的内容",
             R.string.oc_list_sessions_failed to "拉取会话列表失败：%1\$s",
             R.string.oc_delete_session_failed to "删除会话失败（id=%1\$s）：%2\$s",
+            R.string.oc_give_up_reconnecting to "连接已中断（连续 %1\$d 次失败），已停止自动重连——点重试可恢复",
         )
         var out = zh[id] ?: ""
         args.forEachIndexed { i, a ->
@@ -117,6 +119,25 @@ class OcRepository(
      * 失败行**。事件照旧保留（不丢数据，只是不逐条记），首次与每 100 次各记一行。
      */
     private val unknownSse = UnknownSseLog()
+
+    /**
+     * 第⑭刀 #1：轮询 / SSE 两条长循环的兜底 [CoroutineExceptionHandler]。
+     *
+     * 原先全仓没有给这两条 `launch` 配任何 handler：协程未捕获异常 = FATAL（进程崩溃）。
+     * 两条循环体内已各自 try/catch（网络异常走退避），本 handler 只兜「代码 bug」：
+     * 落 RunLog、循环体结束（Job 复活交给 `open()` 的 [shouldReopenConnection] 第 3 条
+     * 「Job 没在跑 → 重开」），**不崩 App** —— 一条坏帧崩掉整个应用，比循环停了但
+     * App 活着糟得多。
+     * ⚠️ 不复用 keepalive 的 CoroutineCrashHandler：那个会把异常交回线程未捕获处理器（崩）。
+     * SupervisorJob 已在进程级 scope 上（OcRuntime.kt:49 `SupervisorJob() + Dispatchers.IO`），
+     * 单个循环失败不会连带取消兄弟任务。
+     */
+    private val loopGuard = CoroutineExceptionHandler { _, e ->
+        ocLog(
+            "太极长循环未捕获异常（已拦截不崩 App，Job 将结束等待重开）：" +
+                "${e.javaClass.simpleName}: ${e.message}"
+        )
+    }
 
     // ── 生命周期 ──────────────────────────────────────────────────────
 
@@ -241,8 +262,11 @@ class OcRepository(
      */
     private fun startPolling(scope: CoroutineScope, sessionId: String) {
         pollJob?.cancel()
-        pollJob = scope.launch {
+        pollJob = scope.launch(loopGuard) {
             var idleStreak = 0
+            // 第⑭刀 #2 / P2-15③：这里存的是**真实连续失败次数**（不封顶，进 reconnectAttempt
+            // 给 UI 显示）。原先与退避档位混用一个变量且封顶在阶梯末位——UI 的「第 N 次」
+            // 其实是档位索引（第 50 次和第 500 次不可区分）。退避档位另算（delay 那行的 minOf）。
             var errStreak = 0
             while (isActive) {
                 val changed = try {
@@ -255,7 +279,7 @@ class OcRepository(
                     throw e
                 } catch (e: Exception) {
                     // 失败必须可见：退避并告知 UI「正在重连」
-                    errStreak = minOf(errStreak + 1, POLL_ERR_BACKOFF_MS.lastIndex)
+                    errStreak += 1
                     _state.update {
                         it.copy(
                             connection = ConnectionState.Reconnecting,
@@ -263,7 +287,21 @@ class OcRepository(
                             reconnectAttempt = errStreak,
                         )
                     }
-                    delay(POLL_ERR_BACKOFF_MS[errStreak])
+                    // 第⑭刀 #2 / P2-15②：连续失败到顶 ⇒ 放弃自动重连，置失败态。
+                    // 恢复路径现成：FailedPane「重试」→ open()（shouldReopenConnection 第 1 条）。
+                    if (shouldGiveUpReconnecting(errStreak)) {
+                        ocLog("轮询连续失败 $errStreak 次，停止自动重连（P2-15②）")
+                        _state.update {
+                            it.copy(
+                                phase = TaijiPhase.Failed(
+                                    s(R.string.oc_give_up_reconnecting, errStreak),
+                                    retryable = true,
+                                ),
+                            )
+                        }
+                        return@launch
+                    }
+                    delay(POLL_ERR_BACKOFF_MS[minOf(errStreak, POLL_ERR_BACKOFF_MS.lastIndex)])
                     continue
                 }
                 val waitMs = if (changed) {
@@ -404,16 +442,51 @@ class OcRepository(
 
     private fun connectSse(scope: CoroutineScope, sessionId: String) {
         sseJob?.cancel()
-        // 🔴 必须显式指定 Dispatchers.IO。
+        // 第⑭刀 #1：launch 带 loopGuard（未捕获异常落日志不崩 App）+ Dispatchers.IO。
         //    调用方是 UI 的 rememberCoroutineScope（= Main）。SSE 是**阻塞长连接**：
         //    在 Main 线程 execute() 会被框架直接拒绝（NetworkOnMainThreadException），
         //    请求根本发不出去 → 服务端零记录 → 每次重连都失败 → 无限「正在重连」。
         //    这正是本轮「第 10 次重连、服务端零请求」的成因。
-        sseJob = scope.launch(Dispatchers.IO) {
+        sseJob = scope.launch(loopGuard + Dispatchers.IO) {
             val req = http.sseRequest("/api/event")
             sse.connect("/api/event", req) { raw ->
                 runCatching { JSONObject(raw).optString("sessionID").takeIf { it.isNotEmpty() } }.getOrNull()
-            }.collect { ev -> handle(ev) }
+            }.collect { ev ->
+                handleFrameSafely(ev)
+            }
+        }
+    }
+
+    /**
+     * 第⑭刀 #1：单帧处理的安全包装 —— **坏帧跳过并留痕（帧长 + 前 80 字符），绝不冲出 collect**。
+     *
+     * 原先 [handle] 里的 JSON 解析（如 reduceMessageUpdated 的 `JSONObject(raw)`）没有
+     * try/catch，一条坏帧的异常会冲出 collect ⇒ SSE 协程死亡；跑在进程级 scope 上且无
+     * CoroutineExceptionHandler 时 = FATAL，SSE 从此永久停。现在每帧兜一层，
+     * 单帧失败不带走整条流。CancellationException 照常上抛（取消语义不能吞）。
+     * ⚠️ 日志只记帧长与前 80 字符，**不写口令/凭据**（凭据只存在于 Authorization 头与 serve.log）。
+     * internal：OcRepositoryFrameTest 需直接驱动坏帧 / 好帧序列。
+     */
+    internal fun handleFrameSafely(ev: SseClient.Event) {
+        try {
+            handle(ev)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            val raw = when (ev) {
+                is SseClient.Event.MessageUpdated -> ev.raw
+                is SseClient.Event.PartUpdated -> ev.raw
+                is SseClient.Event.PartRemoved -> ev.raw
+                is SseClient.Event.PermissionAsked -> ev.raw
+                is SseClient.Event.SessionIdle -> ev.raw
+                is SseClient.Event.TodoUpdated -> ev.raw
+                is SseClient.Event.Unknown -> ev.raw
+                else -> ""
+            }
+            ocLog(
+                "SSE 坏帧已跳过（${e.javaClass.simpleName}: ${e.message}）；" +
+                    "帧长 ${raw.length}，前 80 字符：${raw.take(80)}"
+            )
         }
     }
 
