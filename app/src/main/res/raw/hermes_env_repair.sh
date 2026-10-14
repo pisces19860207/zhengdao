@@ -16,15 +16,21 @@
 #   `hermes update` 也救不了——非 pm 子命令在 bootstrap 阶段就退出。能用的只有 pm 系列。
 #
 # 修法与 2026-10-08 真机手工修复完全一致（当时就是这么修好的）。
+#
+# 2026-10-14 改两处（真机复验后）：
+#   ① 第①步补 pm/uv.lock —— 自我更新被中断时**三个**源码锁都被删，原脚本只列两个；
+#   ② 第④步条件化 —— venv 还在就跳过联网的 pm repair，不再"锁补好了仍 exit 1 假报失败"。
 
 set -u
 H="${HOME:-/root}/.hermes"
 echo "[证道] 修复 Hermes 依赖环境 …"
 
-# ① 补回被中断的自我更新删掉的源码锁（uv.lock / flake.lock 都受 git 管理）
+# ① 补回被中断的自我更新删掉的源码锁（uv.lock / flake.lock / pm/uv.lock 都受 git 管理）
+#    ⚠️ 2026-10-14 补 pm/uv.lock（真机实测：自我更新被中断时**三个**都被删，
+#    原脚本只列两个 ⇒ 只缺源码锁那条路修一半，体检仍红叉）
 if [ -d "$H/hermes-agent/.git" ]; then
     cd "$H/hermes-agent" || exit 1
-    for f in uv.lock flake.lock; do
+    for f in uv.lock flake.lock pm/uv.lock; do
         if [ ! -f "$f" ] && git checkout -- "$f" 2>/dev/null; then
             echo "[证道] 已恢复源码锁 $f"
         fi
@@ -67,15 +73,44 @@ fi
 rm -f "$H"/installs/*/.recovery.lock "$H"/installs/*/.repair-incomplete \
       "$H"/.recovery.lock "$H"/.repair-incomplete "$H"/.hermes-update-in-progress.lock 2>/dev/null
 
-# ④ 重建并登记依赖环境（会真的装 Python 依赖，耗时几分钟，输出很长，属正常）
-export UV_LINK_MODE=copy
-mkdir -p /root/tmp
-export TMPDIR=/root/tmp
-if hermes pm repair; then
-    echo "[证道] 依赖环境已重建"
+# ④ 重建并登记依赖环境 —— **只有 venv 真缺了才跑 pm repair**（它要联网解析 uv.lock）
+#
+#    为什么加这个判断（2026-10-14 真机复验）：hermes 自更新被中断时，被删的三个源码锁
+#    在第①步已补回，而 venv 本身往往还在 —— 此时环境其实是好的。老脚本**无条件**跑
+#    `hermes pm repair`，用户代理没勾证道时 App 没网 ⇒ 锁补好了也会 exit 1 **假报失败**。
+#    判据（与第②步同一口径）：installs/*/facts.json 里记的 venv 目录存在、其 pyvenv.cfg
+#    可读 ⇒ 环境是好的，跳过联网重建，直接进第⑤步复验。
+VENV_OK=0
+if [ -n "${PY:-}" ]; then
+    # ⚠️ 用 `-c` 传代码而**不是** heredoc：heredoc 放在命令替换 `$(...)` 里 bash 解析不了
+    #    （2026-10-14 实测：报 "command substitution: 1 unterminated here-document"）。
+    #    代码里只用单引号，避免被外层双引号展开。
+    VENV_OK=$("$PY" -c "
+import glob, json, os
+H = os.path.expanduser('~/.hermes')
+for facts in sorted(glob.glob(os.path.join(H, 'installs', '*', 'facts.json'))):
+    try:
+        with open(facts) as fh: data = json.load(fh)
+    except Exception: continue
+    env = ((data.get('packages') or {}).get('venv') or {}).get('environment')
+    if env and os.path.isfile(os.path.join(env, 'pyvenv.cfg')):
+        print(1); break
+else: print(0)
+" 2>/dev/null)
+fi
+if [ "$VENV_OK" = "1" ]; then
+    echo "[证道] 依赖环境本身还在（venv/pyvenv.cfg 可读）——本轮只补源码锁，跳过联网重建"
 else
-    echo "[证道] pm repair 失败——把上面的输出发我，别急着重装"
-    exit 1
+    # venv 真的缺了：重建并登记（会真的装 Python 依赖，耗时几分钟，输出很大，属正常）
+    export UV_LINK_MODE=copy
+    mkdir -p /root/tmp
+    export TMPDIR=/root/tmp
+    if hermes pm repair; then
+        echo "[证道] 依赖环境已重建"
+    else
+        echo "[证道] pm repair 失败——把上面的输出发我，别急着重装"
+        exit 1
+    fi
 fi
 
 # ⑤ 复验
