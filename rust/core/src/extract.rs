@@ -147,6 +147,10 @@ pub fn extract_pipeline_skip(
     let mut entries = 0u64;
     let mut skipped = 0u64;
     let mut bytes_written = 0u64;
+    // R-04（第⑬刀）：「实际写出的成员数」。entries 统计的是解析到的成员（进度条口径），
+    // 但成员可能最终没落盘（越界硬链被拒、前向硬链二阶段没补上）——空归档兜底若只看
+    // entries，这些形状会被当成"装好了"，兜底失效。
+    let mut written = 0u64;
     let mut pending_hardlinks: Vec<(String, String)> = Vec::new(); // (link_path, target_in_archive)
 
     for entry in tar.entries().map_err(|e| ExtractError::BadArchive(format!("tar: {e}")))? {
@@ -180,6 +184,7 @@ pub fn extract_pipeline_skip(
             tar::EntryType::Directory => {
                 fs::create_dir_all(&target).map_err(ExtractError::Io)?;
                 set_mode(&target, entry.header().mode().unwrap_or(0o755));
+                written += 1;
             }
             tar::EntryType::Symlink => {
                 if let Some(parent) = target.parent() {
@@ -206,6 +211,8 @@ pub fn extract_pipeline_skip(
                     // host 侧（Windows）不做符号链接：空文件占位，语义与 Kotlin 版回退一致
                     fs::write(&target, b"").map_err(ExtractError::Io)?;
                 }
+                // 软链分支的每条退路（真软链 / 空文件占位）都算实际写出
+                written += 1;
             }
             tar::EntryType::Link => {
                 // 硬链接 → 与 Kotlin 版对齐：复制内容落地；前向引用登记二阶段
@@ -231,6 +238,7 @@ pub fn extract_pipeline_skip(
                 }
                 if src.is_file() {
                     bytes_written += fs::copy(&src, &target).map_err(ExtractError::Io)?;
+                    written += 1;
                 } else {
                     pending_hardlinks.push((name.clone(), link_target));
                 }
@@ -247,6 +255,7 @@ pub fn extract_pipeline_skip(
                 let n = std::io::copy(&mut entry, &mut out).map_err(ExtractError::Io)?;
                 bytes_written += n;
                 set_mode(&target, entry.header().mode().unwrap_or(0o644));
+                written += 1;
             }
         }
     }
@@ -261,6 +270,7 @@ pub fn extract_pipeline_skip(
         }
         if src.is_file() {
             fs::copy(&src, &dst).map_err(ExtractError::Io)?;
+            written += 1;
         }
     }
 
@@ -268,9 +278,11 @@ pub fn extract_pipeline_skip(
     //    「一条都没解出来」对齐（`if (extracted == 0) throw InstallFailed(...)`）。
     //    为什么必须挡在这里：0 条目原本会被当成安装成功，上层接着写
     //    `.zhengdao-rootfs-ok` 并换树 —— 用户得到一个"装好了"的空环境。
-    //    为什么用 `entries`（不含 skipped）：Java 侧的计数器同样不计被跳过的成员，
-    //    所以"补丁包只含元数据成员"这种形状两条路径都会拒（语义一致，好对拍）。
-    if entries == 0 {
+    //    为什么用 `written`（R-04，第⑬刀）而不是 `entries`：entries 是「解析到的
+    //    成员数」，成员可能最终没落盘（越界硬链被拒、前向硬链二阶段没补上）——
+    //    这种形状 entries>0 而 written=0，用 entries 判就兜不住。skipped 的口径
+    //    不变：不计入两者，与 Java 侧计数器对拍。
+    if written == 0 {
         return Err(ExtractError::EmptyArchive { skipped });
     }
 
