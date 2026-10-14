@@ -811,19 +811,33 @@ object OcManager {
         val body = conn.inputStream.bufferedReader().readText()
         conn.inputStream.close()
         val arr = org.json.JSONObject(body).getJSONArray("assets")
-        val re = Regex("^opencode-([\\d.]+)-\\d+-aarch64\\.pkg\\.tar\\.xz$")
+        // P2-17①（第⑭刀 #7）：资产名正则收紧 `[\d.]+` → `\d+(\.\d+)*` —— 源头排除
+        // `2..0` / `2.0.` / `.2` 这类空段畸形串（原正则允许，后面 toInt 就抛）。
+        val re = Regex("^opencode-(\\d+(?:\\.\\d+)*)-\\d+-aarch64\\.pkg\\.tar\\.xz$")
         var latest: Triple<List<Int>, String, String?>? = null // (版本段, 下载URL, digest SHA)
         for (i in 0 until arr.length()) {
             val a = arr.getJSONObject(i)
             val m = re.find(a.optString("name")) ?: continue
-            val ver = m.groupValues[1].split('.').map { it.toInt() }
+            // P2-17②：解析失败 ⇒ **跳过该 asset、继续扫描**（原先 `it.toInt()` 抛
+            // NumberFormatException 会中断整个 for 循环——丢掉同批其它合法 asset，
+            // 且被最外层 catch 吞成「检查更新失败」）。
+            val ver = parseVersionSegments(m.groupValues[1])
+            if (ver == null) {
+                RunLog.log("太极: 跳过版本号无法解析的 asset：${a.optString("name")}")
+                continue
+            }
             if (latest == null || verNewer(ver, latest.first)) {
                 val digest = a.optString("digest")
                     .takeIf { it.startsWith("sha256:") }?.substringAfter(':')
                 latest = Triple(ver, a.optString("browser_download_url"), digest)
             }
         }
-        val cur = (installedVersion(ctx) ?: VERSION).split('.').map { it.toInt() }
+        // P2-17②：已装版本解析失败 ⇒ 回退出厂版本比较并留痕（原先抛 NFE ⇒ 检查更新整体失败）。
+        val curRaw = installedVersion(ctx) ?: VERSION
+        val cur = parseVersionSegments(curRaw) ?: run {
+            RunLog.log("太极: 已装版本号「$curRaw」无法解析，按出厂版本 $VERSION 比较")
+            parseVersionSegments(VERSION) ?: emptyList()
+        }
         if (latest != null && verNewer(latest.first, cur)) {
             UpdateCheck.Available(UpdateInfo(latest.first.joinToString("."), latest.second, latest.third))
         } else UpdateCheck.UpToDate
@@ -842,14 +856,34 @@ object OcManager {
     fun checkUpdate(ctx: Context): UpdateInfo? =
         (checkUpdateDetailed(ctx) as? UpdateCheck.Available)?.info
 
-    /** 版本段逐位比较（List<Int> 无运算符比较）。 */
-    private fun verNewer(a: List<Int>, b: List<Int>): Boolean {
+    /** 版本段逐位比较（List<Int> 无运算符比较）。internal：OcVersionParseTest 钉语义用，行为未变。 */
+    internal fun verNewer(a: List<Int>, b: List<Int>): Boolean {
         for (i in 0 until maxOf(a.size, b.size)) {
             val x = a.getOrElse(i) { 0 }
             val y = b.getOrElse(i) { 0 }
             if (x != y) return x > y
         }
         return false
+    }
+
+    /**
+     * P2-17②（第⑭刀 #7）：版本号原文 → 段列表；**失败返回 null，绝不抛**。
+     *
+     * 替代原先两处 `split('.').map { it.toInt() }`（畸形段抛 NumberFormatException）。
+     * 规则：
+     * - 任何一段为空 / 非数字 / 超 Int 范围 ⇒ 整体 null（`toIntOrNull`，不抛）；
+     * - 段数 > 4 ⇒ null（拒绝并留痕优于静默截断——截断会让 `2.0.22.999` 与 `2.0.22`
+     *   比出可疑的新旧关系）；
+     * - 调用方策略（见 [checkUpdateDetailed]）：asset 版本失败 ⇒ 跳过该 asset 继续扫描；
+     *   已装版本失败 ⇒ 回退出厂版本 [VERSION]。
+     * 纯函数，表驱动单测见 OcVersionParseTest。
+     */
+    internal fun parseVersionSegments(raw: String): List<Int>? {
+        // ⚠️ Kotlin split 默认去掉尾部空串："." 会得到空列表 —— 空列表也必须判 null。
+        val segs = raw.split('.')
+        if (segs.isEmpty() || segs.size > 4) return null
+        if (segs.any { it.isEmpty() }) return null
+        return segs.map { it.toIntOrNull() ?: return null }
     }
 
     /** 隔离命名空间：避免与 Settings 混淆的轻量偏好入口。 */
