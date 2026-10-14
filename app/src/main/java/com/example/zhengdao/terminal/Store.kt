@@ -105,7 +105,12 @@ object Store {
     /** 公共区下的一个子目录（保证存在；建不出来返回未创建的对象，调用方按需兜底）。 */
     fun dir(ctx: Context, name: String): File = File(root(ctx), name).apply { runCatching { mkdirs() } }
 
-    /** 日志目录：`Download/证道/logs/`。 */
+    /**
+     * 日志目录：`Download/证道/logs/`。
+     *
+     * ⚠️ 2026-10-14 N-4 A 案起 `RunLog` **不再往这里写**（改私有 `filesDir/logs`）；
+     * 本目录现只剩两个用途：保活记录导出（`KeepaliveArchive.export`）与旧日志一次性复制。
+     */
     fun logsDir(ctx: Context): File = dir(ctx, DIR_LOGS)
 
     /** Agent 目录：`Download/证道/agents/`。 */

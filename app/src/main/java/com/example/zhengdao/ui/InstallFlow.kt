@@ -28,7 +28,7 @@ import java.io.File
  * - 「回退环境版本」（对话框自己写着"约几分钟"）：同样只有结束一条 Toast。
  *
  * 这里把四处落点收成一份实现：`InstallProgress`（Compose 单一状态）+ `InstallNotifier`
- * （通知栏常驻进度，离开 App 也看得见）+ `RunLog`（落 `Download/证道/logs/`）+ 成功结论写
+ * （通知栏常驻进度，离开 App 也看得见）+ `RunLog`（私有 `filesDir/logs/`，N-4 A 案）+ 成功结论写
  * `files/install-notice.txt`（由 [com.example.zhengdao.terminal.ProotLauncher] 带进终端横幅）。
  */
 object InstallFlow {

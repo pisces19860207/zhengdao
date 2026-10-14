@@ -19,7 +19,7 @@ import androidx.compose.runtime.mutableStateOf
  *    横幅承载"），但**代码里从来没有引用过它**——横幅是死的。于是"终端里没有显示"。
  *
  * 本对象是"当前进度"的唯一真相源：终端页写、主页与设置页读（Compose 状态，天然驱动重组）。
- * 它只存一行字和阶段，不存历史——历史在 `Download/证道/logs/`。
+ * 它只存一行字和阶段，不存历史——历史在私有 `filesDir/logs/`（N-4 A 案）。
  */
 object InstallProgress {
 
