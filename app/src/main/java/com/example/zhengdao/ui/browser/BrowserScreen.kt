@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.zhengdao.R
 import com.example.zhengdao.browser.BrowserEngine
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import kotlinx.coroutines.launch
 
 /**
  * 玄览主界面 —— 用户模式（第⑨刀 B 多标签 + C 底栏改版）。
@@ -69,6 +72,12 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
  *   危险 scheme 由引擎 + 委托双重拦截并给用户提示；
  * - JS 弹窗收口（§4.4）：引擎回调 → 本界面 Compose 对话框；
  * - WebView 实例经 [BrowserTabManager] 跨 Tab 保活（applicationContext 创建防泄漏）。
+ *
+ * 第⑲刀追加（**只读**）：标签条末位一枚「眼睛」＝ [exportPage]，把眼前这页导出成
+ * `tab.txt` / `tab.html` / `meta.json` 落到共享目录（guest 里 `/opt/zhengdao/`），
+ * 给 guest 里的 agent 当"眼睛"。一次一导、用户显式点；不做后台自动导出、不做浏览自治。
+ * 按钮放**标签条**而非底栏：底栏 106dp 几何（地址栏带 50dp + 浮动胶囊 56dp）是刚拍板的方案，
+ * 一个像素都不许动（红线①）。
  *
  * 图标说明：本项目图标一律 Canvas 自绘（Tab 图标 / BackChevron 同款笔法），不引
  * material-icons 库——视觉统一 + 零额外依赖。胶囊四键 glyph 见 [BrowserNavCapsule]。
@@ -101,6 +110,40 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     val navigate: () -> Unit = {
         if (!tryNavigate(engine, urlInput)) {
             active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
+        }
+    }
+
+    // ── 第⑲刀「导出给 agent」（D-4 之外的「眼睛」第一版）──
+    // 一次一导：用户在标签条点眼睛才导，导完就落三个文件（tab.txt / tab.html / meta.json）到共享目录。
+    // ❌ 不做后台自动持续导出；❌ 不做 agent 自行导航/切标签（浏览自治不在本刀）。
+    // 结果复用既有的提示条那一行（`uiMsg`），不新增任何布局——底栏 106dp 几何不动（红线①）。
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
+    var exporting by remember { mutableStateOf(false) }
+    val exportPage: () -> Unit = {
+        val tab = BrowserTabManager.activeTab()
+        val tabIndex = BrowserTabManager.tabs().indexOfFirst { it.id == tab?.id } + 1
+        when {
+            tab == null -> uiMsg = context.getString(R.string.browser_export_no_tab)
+            exporting -> Unit // 连点保护：一次一导，重复点不排队
+            else -> {
+                exporting = true
+                uiMsg = context.getString(R.string.browser_export_running)
+                scope.launch {
+                    val result = runCatching {
+                        BrowserPageExporter.export(
+                            context = context,
+                            tab = tab,
+                            tabIndex = tabIndex,
+                            tabCount = BrowserTabManager.count(),
+                        )
+                    }
+                    exporting = false
+                    uiMsg = result.fold(
+                        onSuccess = { context.getString(R.string.browser_export_done, it.nodes) },
+                        onFailure = { context.getString(R.string.browser_export_failed, it.message.orEmpty()) },
+                    )
+                }
+            }
         }
     }
 
@@ -145,6 +188,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                     uiMsg = context.getString(R.string.browser_tabs_full)
                 }
             },
+            onExport = exportPage,
         )
 
         // ── 地址栏带（C：高 50dp = 上 padding 6 + 38dp 地址胶囊 + 下 padding 6＝与胶囊间距） ──
