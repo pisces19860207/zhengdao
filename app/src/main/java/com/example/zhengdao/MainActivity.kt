@@ -544,10 +544,15 @@ fun HomeTabs(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
-    // 默认落怡然 —— 与原字面 `2` 的**语义**一致（不是字面一致）：索引交换后 2 已是玄览，
-    // 所以这里必须写常量，否则启动页会静默漂到玄览（见 [TabIndex] 的说明）。
-    // 注：转屏后跳回本页的寿命问题（P2-1）不属本刀，仍旧是 remember。
-    var tab by remember { mutableIntStateOf(TabIndex.AGENTS) }
+    // P2-1（§B 顺序 2，2026-10-14）：必须是 **rememberSaveable**，不能是 remember。
+    // `remember` 不跨**配置变更**（旋转屏幕 / 切深浅色 / 改字体大小）保留 ⇒ 转一次屏，
+    // tab 就被打回初始值——人正停在逍遥（终端）或玄览，一转屏被甩回怡然。
+    // rememberSaveable 把值写进 Bundle，配置变更后原样恢复（同文件下面两个
+    // listState 走 rememberSaveable 也是这个道理，见 :559 那段注释）。
+    // 初始值语义不变：首次进 App 落怡然（与原字面 2 一致）。
+    var tab by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableIntStateOf(TabIndex.AGENTS)
+    }
 
     // 切 Tab 保留滚动位置（K2）——把两个 tab 的 LazyListState 提到 HomeTabs 顶层。
     //
