@@ -250,7 +250,11 @@ class SessionService : Service() {
      */
     private fun renewWakeLockIfLost() {
         if (!keepAlive || !SessionManager.isAlive()) return
-        if (runCatching { wakeLock.isHeld }.getOrDefault(true)) return
+        // P2-16（issue #17）：读不到持有状态时**保守地当"没持有"**（兜底值取 false）。
+        // 原写法兜底取 true 是乐观默认——isHeld 抛异常就假装持锁、直接 return，
+        // 结果是锁真丢了也不再补（保活静默失效）。补取本身幂等（锁不 setReferenceCounted，
+        // 见 [wakeLock]），重复 acquire 不会累积，所以"多补一次"远比"漏补"安全。
+        if (runCatching { wakeLock.isHeld }.getOrDefault(false)) return
         lostWakeLockCount++
         if (lostWakeLockCount == 1 || lostWakeLockCount % 10 == 0) {
             RunLog.log(
@@ -274,7 +278,9 @@ class SessionService : Service() {
             myUid = android.os.Process.myUid(),
             myPid = android.os.Process.myPid(),
         )
-        val held = runCatching { wakeLock.isHeld }.getOrDefault(true)
+        // P2-16（issue #17）：同 renewWakeLockIfLost——isHeld 读不到时保守当"没持有"，
+        // 让策略走 ACQUIRE 补取（幂等），而不是兜底 true 让补取门控永远跳过。
+        val held = runCatching { wakeLock.isHeld }.getOrDefault(false)
         return when (val decision = idlePolicy.onTick(cpu, held)) {
             IdleDecision.ACQUIRE -> {
                 RunLog.log("检测到终端活动（CPU 回升），重新获取保活锁")
