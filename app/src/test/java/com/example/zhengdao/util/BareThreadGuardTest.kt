@@ -36,6 +36,10 @@ import kotlin.text.Charsets
  *
  * 对账单冻结 2026-10-14 的 28 个创建点（`Thread` 关键字行号）。将来文件拆分/移动
  * 会让它失败——那是提醒回来更新对账单，不是 bug。
+ *
+ * 2026-10-14（审计第 2 期配套）：本批在 `SettingsStorageActivity.kt`（B-3 加了 2 行说明）
+ * 与 `TerminalActivity.kt`（N-2 原子拷贝 +15 行）里改了代码，行号随之平移。数量仍是 28、
+ * 纪律门禁仍绿，只按本文件自己的规矩回填这 4 个行号（不是新增线程）。
  */
 class BareThreadGuardTest {
 
@@ -93,14 +97,14 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:557",           // zd-env-repair（R-20 删死 LaunchedEffect 后 -7，合并日回填）
             "SettingsEnvActivity.kt:652",           // zd-env-update（同上 -7）
             "SettingsStorageActivity.kt:600",       // zd-cache-reload
-            "SettingsStorageActivity.kt:663",       // zd-cache-clean
-            "SettingsStorageActivity.kt:715",       // zd-rollback
+            "SettingsStorageActivity.kt:665",       // zd-cache-clean（2026-10-14 B-3 加 2 行说明后 +2）
+            "SettingsStorageActivity.kt:717",       // zd-rollback（同上 +2）
             "TerminalActivity.kt:79",               // zd-paste
             "TerminalActivity.kt:596",              // zd-session-start（本刀补 daemon）
             "TerminalActivity.kt:811",              // zd-net-probe
             "TerminalActivity.kt:1550",             // zd-install-saf
-            "TerminalActivity.kt:1595",             // zd-install-cache
-            "TerminalActivity.kt:1681",             // zd-install-download
+            "TerminalActivity.kt:1610",             // zd-install-cache（2026-10-14 N-2 原子拷贝后 +15）
+            "TerminalActivity.kt:1696",             // zd-install-download（同上 +15）
             "ZhengdaoApp.kt:47",                    // zhengdao-keepalive-archive
             "ZhengdaoApp.kt:97",                    // zd-auto-clean
         )
