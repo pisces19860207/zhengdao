@@ -211,6 +211,15 @@ final class TerminalGestureController implements GestureAndScaleRecognizer.Liste
 
             @Override
             public void run() {
+                // 证道修复（2026-10-14，§B-补-49 🟡5）：本 Runnable 是唯一不判 emulator 空的入口。
+                // TerminalView.attachSession() 会把 mEmulator 置 null（随后 updateSize() 在
+                // 尺寸为 0 时直接 return，不再重建），此后这条已 post 的动画帧触发
+                // mView.mEmulator.isMouseTrackingActive() ⇒ NPE。各入口方法
+                // （onDown/onScroll/onScale/onFling/onTouchEvent）开头都判了空，独它漏。
+                if (mView.mEmulator == null) {
+                    mScroller.abortAnimation();
+                    return;
+                }
                 if (mouseTrackingAtStartOfFling != mView.mEmulator.isMouseTrackingActive()) {
                     mScroller.abortAnimation();
                     return;

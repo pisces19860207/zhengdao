@@ -113,7 +113,7 @@ tarball SHA256 `484A114A19187084156AF0F9A00EF7386112E4C5E9F62BF9D20C13A91C2C20D6
 
 另有 **6 个纯第一方**文件沿用 `com.termux.view` 包名（合计 1,501 行，非上游作品；
 上游 `terminal-view` 里**不存在同名文件**，2026-10-11 逐文件核对）——
-`TerminalImeBridge` 442、`TerminalGestureController` 320、`TerminalCursorBlinker` 250、
+`TerminalImeBridge` 442、`TerminalGestureController` 353、`TerminalCursorBlinker` 250、
 `TerminalA11yDelegate` 206、`TerminalSelectionController` 194、`TerminalSizeResolver` 101 ——
 行数为**含声明头的现状行数**（各含本文件「代码文件头」一节规定的**独立开发声明** 4 行）。
 

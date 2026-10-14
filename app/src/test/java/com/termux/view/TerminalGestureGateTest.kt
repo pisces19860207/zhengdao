@@ -73,4 +73,30 @@ class TerminalGestureGateTest {
             source.contains("只有这里漏判")
         )
     }
+
+    @Test
+    fun `onFling 的异步 Runnable 必须判 emulator 空`() {
+        // 2026-10-14 追加（§B-补-49 🟡5）：run() 里那条 mEmulator 空判得在
+        // attachSession 置空之后还能拦住 ⇒ 必须出现在 onFling 区间（含内嵌 Runnable）。
+        val onFling = onFlingWithRunnable()
+        assertTrue(
+            "onFling 的 post Runnable 没判 mEmulator == null ⇒ attachSession 置空后触发 NPE",
+            onFling.contains("if (mView.mEmulator == null)")
+        )
+        assertTrue(
+            "空判分支必须 abortAnimation 并返回（否则 Scroller 继续跑、后续帧还会进来）",
+            onFling.contains("mScroller.abortAnimation()")
+        )
+    }
+
+    /**
+     * 截 onFling 到下一个**顶层**方法：不能复用 [methodBody]——它遇到任意 `@Override`
+     * 就停，而 onFling 里的匿名 Runnable 自带 `@Override run()`，会把要检查的区间截掉。
+     */
+    private fun onFlingWithRunnable(): String {
+        val start = source.indexOf("public boolean onFling(")
+        assertTrue("源码里找不到 onFling（文件：${sourceFile().path}）", start >= 0)
+        val end = source.indexOf("\n    @Override", start + 10) // 顶层方法（4 空格缩进）
+        return source.substring(start, if (end > 0) end else source.length)
+    }
 }
