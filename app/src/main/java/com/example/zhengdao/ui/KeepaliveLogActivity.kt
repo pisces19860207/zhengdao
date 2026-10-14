@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.BackChevron
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
@@ -156,8 +157,9 @@ private fun KeepaliveLogScreen() {
     var clearConfirm by remember { mutableStateOf(false) }
     // R-22（第⑪批 B-1）：导出/清空都是整目录拷贝或删除（最多 ~1MB+），
     // 点按钮的 onClick 在主线程 —— 挪进协程作用域里 withContext(Dispatchers.IO)，
-    // Toast/状态更新回到主线程（协程恢复即主线程）。
-    val actionScope = rememberCoroutineScope()
+    // Toast/状态更新回到主线程（协程恢复即主线程）。handler 按 CoroutineCrashHandler
+    // 门禁纪律装配（CoroutineCrashHandlerTest）。
+    val actionScope = rememberCoroutineScope { CoroutineCrashHandler }
     LaunchedEffect(tick) {
         // 读私有目录 → 必须 IO 线程（主线程读盘在本项目是明确禁止的）。
         // KeepaliveArchive 内部全是 runCatching 兜底，读不到就返回空表，这里不必再包一层。
