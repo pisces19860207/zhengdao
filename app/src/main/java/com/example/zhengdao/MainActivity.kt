@@ -577,10 +577,20 @@ fun HomeTabs(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME &&
-                com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
-            ) {
-                tab = TabIndex.BROWSER
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    // 玄览多标签（第⑨刀 B）：回前台恢复活跃标签（onResume + 渲染优先级升回 IMPORTANT）
+                    com.example.zhengdao.ui.browser.BrowserTabManager.resumeActive()
+                    if (com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
+                    ) {
+                        tab = TabIndex.BROWSER
+                    }
+                }
+                // 退后台（切别的 App、或跳终端独立 Activity）：全部标签 onPause + 降 WAIVED
+                // （§4.2「后台标签降优先级」的进程级落实；回前台由上面 ON_RESUME 恢复）。
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE ->
+                    com.example.zhengdao.ui.browser.BrowserTabManager.pauseAll()
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

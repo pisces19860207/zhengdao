@@ -25,9 +25,39 @@ class ZhengdaoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         RunLog.init(this)
+        initWebViewDataDirectory()
         logSignature()
         keepalive()
         autoCleanJunk()
+    }
+
+    /**
+     * WebView 数据目录后缀（第⑨刀 B · 玄览阶段 2）——**进程初始化处统一设**。
+     *
+     * 为什么在这里：`WebView.setDataDirectorySuffix` 是**静态、每进程一次性**，必须在
+     * 任何 WebView 创建前调用（② AOSP `WebView.java`："This API must be called before any
+     * instances of WebView are created in this process and before any other methods in the
+     * android.webkit package are called by this process"，迟了抛 IllegalStateException）。
+     * `Application.onCreate` 是全进程最早的代码点。
+     *
+     * 后缀取值 `xuanlan`：把玄览的 WebView 数据（cookie/cache/localStorage）收进
+     * `app_webview_xuanlan/` 独立目录——命名归属清晰，且将来若有第二个用 WebView 的
+     * 进程不会撞默认目录。
+     *
+     * ⚠️ **单进程内多标签不可能各有数据目录**（同 API 的进程级语义决定）：标签间
+     * cookie/storage 共享，与桌面浏览器普通标签一致；每标签隔离的是 WebView 实例本身
+     * （历史栈/页面状态/JS 上下文/渲染优先级），见 BrowserTabManager 的 KDoc。
+     *
+     * 失败不致命：个别 WebView provider 不支持时 runCatching 兜住（日志留痕），
+     * 浏览器功能本身不依赖这个后缀。
+     */
+    private fun initWebViewDataDirectory() {
+        runCatching {
+            android.webkit.WebView.setDataDirectorySuffix("xuanlan")
+            RunLog.log("WebView 数据目录后缀 = xuanlan（进程级，玄览阶段 2）")
+        }.onFailure { e ->
+            RunLog.log("⚠️ WebView setDataDirectorySuffix 失败（不影响浏览器功能）：${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     /**

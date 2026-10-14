@@ -827,6 +827,10 @@
     <string name="browser_back">返回</string>
     <string name="browser_forward">前进</string>
     <string name="browser_reload">刷新</string>
+    <string name="browser_new_tab">新标签</string>
+    <string name="browser_close_tab">关闭标签</string>
+    <string name="browser_tabs_full">标签数已达上限（20 个）</string>
+    <string name="browser_js_dialog_title">网页对话框</string>
     <string name="browser_dismiss">关闭</string>
     <string name="browser_blocked_scheme">为了安全，这种链接不允许在 App 内打开</string>
     <string name="browser_ssl_error">这个网址的安全证书有问题，已停止加载</string>
