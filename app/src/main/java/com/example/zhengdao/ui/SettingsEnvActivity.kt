@@ -142,9 +142,9 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
     /** 索引给的增量补丁（基线与本机相符时才会被赋上）；非 null = 弹窗确认后先试增量。 */
     var pendingPatch by remember { mutableStateOf<PatchRef?>(null) }
 
-    /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
-    var prevLogText by remember { mutableStateOf<String?>(null) }
-    var archiveCount by remember { mutableStateOf(0) }
+    // 第⑩刀审计 R-20（2026-10-14）：原先这里还声明了 prevLogText / archiveCount —— 那是
+    // P4-1 拆页前的遗留，两张日志卡已搬到 ui/SettingsHelpActivity.kt，本文件只赋值不读取
+    // （连加载那段 LaunchedEffect 一起是孤儿）。两个死 state 已删，加载逻辑搬回帮助页。
 
     fun openLogFromSnackbar() {
         openLogDialog(scope, ctx) { logDialogText = it }
@@ -522,18 +522,11 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
             }
         }
 
-        // ── 运行日志（2026-10-08：搬到 Download/证道/logs/，卸载 App 也不丢；
-        //    用户 m08482：「那些日志都是方便给你们这些 agent 看查哪里有问题的，所以要留着」
-        //    ⇒ RunLog 不再"没出错就删掉上一轮"，改成每轮归档一份，只受份数/体积上限约束）──
-        LaunchedEffect(Unit) {
-            withContext(Dispatchers.IO) {
-                archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
-                prevLogText = if (com.example.zhengdao.rootfs.RunLog.lastRunHadErrors(ctx))
-                    (com.example.zhengdao.rootfs.RunLog.latestArchive()
-                        ?: com.example.zhengdao.rootfs.RunLog.prevFile())?.readText()
-                else null
-            }
-        }
+        // ── 运行日志 ──
+        // 第⑩刀审计 R-20（2026-10-14）：这段加载副作用是 P4-1 拆页留下的孤儿 —— 它写的
+        // archiveCount / prevLogText 在**本文件里再没有读取点**（两张日志卡已搬到
+        // ui/SettingsHelpActivity.kt），于是帮助页的归档份数与「上一轮出错」提示永远是空的。
+        // 逻辑已原样搬回帮助页，这里连同两个死 state 一起删掉。
     }
 
     if (repairConfirm) {
