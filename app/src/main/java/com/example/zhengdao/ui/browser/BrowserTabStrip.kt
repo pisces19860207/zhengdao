@@ -42,6 +42,11 @@ import com.example.zhengdao.R
  *
  * 超出上限（20）时 [onAdd] 仍会被调用——由调用方决定提示（BrowserScreen 给一条可关消息），
  * 组件本身不吞。
+ *
+ * 第⑲刀追加 [onExport]「导出给 agent」：沿用本条的同一个 IconButton 房型，做**纯粹**的
+ * 「把点击事件交回去」——导出判据、落盘、文案全在 [BrowserScreen] 与 [BrowserPageExporter]，
+ * 组件不碰任何 I/O。**刻意只加在标签条（屏幕顶部）**：底栏 106dp 几何（地址栏带 50dp +
+ * 浮动胶囊 56dp）是刚拍板的方案，一个像素都不许动。
  */
 @Composable
 fun BrowserTabStrip(
@@ -50,6 +55,7 @@ fun BrowserTabStrip(
     onSelect: (Int) -> Unit,
     onClose: (Int) -> Unit,
     onAdd: () -> Unit,
+    onExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = xuanLanPalette()
@@ -76,6 +82,13 @@ fun BrowserTabStrip(
         item {
             IconButton(onClick = onAdd) {
                 PlusGlyph(tint = palette.ink, contentDescription = stringResource(R.string.browser_new_tab))
+            }
+        }
+        item {
+            // 第⑲刀：导出眼前这页给 guest 里的 agent（一次一导，用户显式点）。位置与「+」并列
+            // ——同属浏览器 chrome 的操作区，不进底栏（红线①）。
+            IconButton(onClick = onExport) {
+                EyeGlyph(tint = palette.ink, contentDescription = stringResource(R.string.browser_export))
             }
         }
     }
@@ -139,6 +152,28 @@ private fun PlusGlyph(tint: Color, contentDescription: String?, side: androidx.c
         val m = w * 0.30f
         drawLine(tint, androidx.compose.ui.geometry.Offset(m, h / 2), androidx.compose.ui.geometry.Offset(w - m, h / 2), 1.9.dp.toPx(), StrokeCap.Round)
         drawLine(tint, androidx.compose.ui.geometry.Offset(w / 2, m), androidx.compose.ui.geometry.Offset(w / 2, h - m), 1.9.dp.toPx(), StrokeCap.Round)
+    }
+}
+
+/**
+ * 「眼睛」glyph（第⑲刀「导出给 agent」）：一枚眼眶 + 瞳孔。
+ *
+ * 与项目自绘图标同笔（圆头 1.9f 描边）；眼眶用两段二次贝塞尔拼成杏仁形，瞳孔是实心圆点。
+ * 不引 material-icons —— 与 [PlusGlyph] / [CloseGlyph] 同理（视觉统一 + 零额外依赖）。
+ */
+@Composable
+private fun EyeGlyph(tint: Color, contentDescription: String?, side: androidx.compose.ui.unit.Dp = 22.dp) {
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(side)) {
+        val w = size.width
+        val h = size.height
+        val lid = Path().apply {
+            moveTo(w * 0.06f, h * 0.5f)
+            quadraticTo(w * 0.5f, h * 0.10f, w * 0.94f, h * 0.5f)
+            quadraticTo(w * 0.5f, h * 0.90f, w * 0.06f, h * 0.5f)
+            close()
+        }
+        drawPath(lid, tint, style = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawCircle(tint, radius = w * 0.135f, center = androidx.compose.ui.geometry.Offset(w * 0.50f, h * 0.50f))
     }
 }
 
