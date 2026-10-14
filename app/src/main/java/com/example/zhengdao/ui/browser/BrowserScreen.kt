@@ -10,16 +10,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -43,30 +46,32 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.example.zhengdao.BackChevron
 import com.example.zhengdao.R
 import com.example.zhengdao.browser.BrowserEngine
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /**
- * 玄览主界面 —— 用户模式（第⑨刀 B：多标签版）。
+ * 玄览主界面 —— 用户模式（第⑨刀 B 多标签 + C 底栏改版）。
  *
- * 设计依据：《证道-浏览器Tab技术选型与架构草案-2026-10-13》v1.1 §4.1 / §4.2 / §4.4。
+ * 设计依据：《证道-浏览器Tab技术选型与架构草案-2026-10-13》v1.1 §4.1/§4.2/§4.4 ＋
+ * `证道-玄览UI设计稿-2026-10-14-v1.1.html`（v1.1 主稿 + 探索稿 B 收窄定稿）。
  *
  * 已落地（② 文档定稿项）：
  * - 多标签（§4.2）：标签条 + 上限 20 + 每标签独立 WebView/历史栈 + 后台 onPause+WAIVED；
- *   标签状态（地址/标题/加载/提示）每标签一份，切走再切回各归各（§B 顺序 32）；
+ *   标签状态每标签一份，切走再切回各归各（§B 顺序 32）；
+ * - 底栏改版（C，v1.1 收窄数）：地址栏带 **50dp**（上 padding 6dp + 38dp 地址胶囊 +
+ *   下 padding 6dp＝与导航栏间距）+ 浮动胶囊栏 **56dp**（48 键上下各 4dp，布局承载不靠
+ *   padding）⇒ 底栏合计 **106dp**；胶囊 = 左簇（后退/前进，半透明细描边）+ 1×20dp 分隔线
+ *   + 右簇（刷新/主页，实白略粗描边 + 1dp 阴影），主页键整栏唯一填充（玄青雾）；
+ *   刷新键加载中同位变身红色 ⨯「停止」；四键 contentDescription 后退/前进/刷新/主页；
  * - 地址栏：URL 校验 + http→https 自动升级 + 非 URL 输入走搜索引擎；
- * - 导航按钮（返回/前进/刷新）+ 系统返回键先走 WebView 历史栈；
  * - 安全：启动即 applySecurityConfig(EngineSecurityConfig())（默认加固值，§4.4）；
  *   危险 scheme 由引擎 + 委托双重拦截并给用户提示；
- * - JS 弹窗收口（§4.4，第⑨刀 B 落地）：引擎回调 → 本界面 Compose 对话框；
+ * - JS 弹窗收口（§4.4）：引擎回调 → 本界面 Compose 对话框；
  * - WebView 实例经 [BrowserTabManager] 跨 Tab 保活（applicationContext 创建防泄漏）。
  *
  * 图标说明：本项目图标一律 Canvas 自绘（Tab 图标 / BackChevron 同款笔法），不引
- * material-icons 库——视觉统一 + 零额外依赖。工具行小 glyph 见文件末尾私有组件。
- *
- * 阶段 C（第⑨刀底栏改版）再做：v1.1 浮动胶囊导航条（替换下方工具行）+ 地址栏带 50dp。
+ * material-icons 库——视觉统一 + 零额外依赖。胶囊四键 glyph 见 [BrowserNavCapsule]。
  */
 @Composable
 fun BrowserScreen(modifier: Modifier = Modifier) {
@@ -83,6 +88,12 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(active?.id) {
         urlInput = active?.state?.url ?: ""
+    }
+
+    val navigate: () -> Unit = {
+        if (!tryNavigate(engine, urlInput)) {
+            active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
+        }
     }
 
     // ── JS 弹窗收口（§4.4）：引擎（applicationContext 的 WebView，弹不了框）→ 本界面对话框 ──
@@ -128,77 +139,65 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             },
         )
 
-        // ── 地址栏 ──
+        // ── 地址栏带（C：高 50dp = 上 padding 6 + 38dp 地址胶囊 + 下 padding 6＝与胶囊间距） ──
+        val palette = xuanLanPalette()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .height(50.dp)
+                .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
-                value = urlInput,
-                onValueChange = { urlInput = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                placeholder = { Text(stringResource(R.string.browser_url_hint)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                keyboardActions = KeyboardActions(
-                    onGo = {
-                        if (!tryNavigate(engine, urlInput)) {
-                            active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
-                        }
-                    },
-                ),
-            )
-            Spacer(Modifier.width(8.dp))
-            TextButton(
-                onClick = {
-                    if (!tryNavigate(engine, urlInput)) {
-                        active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
-                    }
-                },
+            // 地址胶囊（主稿「地址栏胶囊」：圆角全圆、白底、发丝描边）
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp),
+                shape = RoundedCornerShape(19.dp),
+                color = palette.clusterPrimaryBg,
+                border = androidx.compose.foundation.BorderStroke(1.dp, palette.stripStroke),
             ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    BasicTextField(
+                        value = urlInput,
+                        onValueChange = { urlInput = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.ink),
+                        cursorBrush = SolidColor(palette.ink),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { navigate() }),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (urlInput.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.browser_url_hint),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = palette.inkDisabled,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = navigate) {
                 Text(stringResource(R.string.browser_go))
             }
         }
 
-        // ── 工具行：返回 / 前进 / 刷新 + 加载指示（阶段 C 换成 v1.1 浮动胶囊） ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val canBack = engine.canGoBack()
-            val canFwd = engine.canGoForward()
-            IconButton(onClick = { engine.goBack() }, enabled = canBack) {
-                BackChevron(
-                    tint = if (canBack) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outlineVariant,
-                    side = 20.dp,
-                )
-            }
-            IconButton(onClick = { engine.goForward() }, enabled = canFwd) {
-                ForwardGlyph(
-                    tint = if (canFwd) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outlineVariant,
-                )
-            }
-            IconButton(
-                onClick = {
-                    if (!tryNavigate(engine, urlInput)) {
-                        active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
-                    }
-                },
-            ) {
-                RefreshGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (active?.state?.loading == true) {
-                Spacer(Modifier.width(12.dp))
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                )
-            }
-        }
+        // ── 浮动胶囊导航条（C：56dp = 48 键 + 上下各 4dp） ──
+        BrowserNavCapsule(
+            canBack = engine.canGoBack(),
+            canForward = engine.canGoForward(),
+            loading = active?.state?.loading == true,
+            onBack = { engine.goBack() },
+            onForward = { engine.goForward() },
+            onRefreshOrStop = {
+                if (active?.state?.loading == true) engine.stopLoading() else engine.reload()
+            },
+            onHome = { engine.loadUrl(HOME_URL) },
+        )
 
         // ── 安全提示条（可关闭）：本标签安提示优先，其次 UI 层一次性提示 ──
         val msg = active?.state?.blockedMsg ?: uiMsg
@@ -267,6 +266,12 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * 主页键落点（C）：设计稿起始页「当前引擎：必应国内版 · 免翻墙」——
+ * 主页键 = 回引擎首页。新标签的空态引导（玄览 branding）仍由 everLoaded=false 呈现。
+ */
+private const val HOME_URL = "https://cn.bing.com"
+
 /** JS 弹窗的两种形态（alert/confirm 同一形态；prompt 多一个输入框）。 */
 private sealed class JsDialog {
     /** 页面消息（对话框正文）。 */
@@ -304,14 +309,16 @@ private fun JsDialogUi(dialog: JsDialog, onDismiss: () -> Unit) {
         onDismissRequest = { answer(false, null) },
         title = { Text(stringResource(R.string.browser_js_dialog_title)) },
         text = {
-            androidx.compose.foundation.layout.Column {
+            Column {
                 Text(dialog.message)
                 if (dialog is JsDialog.Prompt) {
                     Spacer(Modifier.padding(top = 8.dp))
-                    OutlinedTextField(
+                    BasicTextField(
                         value = promptText,
                         onValueChange = { promptText = it },
                         singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -365,49 +372,9 @@ private fun normalizeInput(input: String): String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 自绘工具行小图标（与项目 Tab 图标 / BackChevron 同一套笔：圆头 1.9f 描边）。
-// 刻意不引 material-icons 库：视觉统一 + 零额外依赖（项目既有做法）。
+// 提示条自绘小图标（与项目 Tab 图标 / BackChevron 同一套笔：圆头 1.9f 描边）。
+// 胶囊四键 glyph 在 BrowserNavCapsule.kt（描边宽度可配，禁用态 1.4）。
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** 前进箭头（›）：返回箭头的镜像。 */
-@Composable
-private fun ForwardGlyph(tint: Color, side: androidx.compose.ui.unit.Dp = 20.dp) {
-    Canvas(modifier = Modifier.size(side)) {
-        val w = size.width
-        val h = size.height
-        val path = Path().apply {
-            moveTo(w * 0.34f, h * 0.12f)
-            lineTo(w * 0.72f, h * 0.50f)
-            lineTo(w * 0.34f, h * 0.88f)
-        }
-        drawPath(
-            path,
-            tint,
-            style = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-    }
-}
-
-/** 刷新：圆环 + 环右上折角箭头（"↻"意象）。 */
-@Composable
-private fun RefreshGlyph(tint: Color, side: androidx.compose.ui.unit.Dp = 20.dp) {
-    Canvas(modifier = Modifier.size(side)) {
-        val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
-        val w = size.width
-        val h = size.height
-        val r = w * 0.34f
-        val cx = w * 0.5f
-        val cy = h * 0.5f
-        drawCircle(color = tint, radius = r, center = Offset(cx, cy), style = stroke)
-        // 折角箭头（环右上的"刷新头"）
-        val p = Path().apply {
-            moveTo(cx + r * 0.55f, cy - r * 1.15f)
-            lineTo(cx + r * 1.05f, cy - r * 0.70f)
-            lineTo(cx + r * 0.50f, cy - r * 0.25f)
-        }
-        drawPath(p, tint, style = stroke)
-    }
-}
 
 /** 警告：三角 + 感叹号。 */
 @Composable

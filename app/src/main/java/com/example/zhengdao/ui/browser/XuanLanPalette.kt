@@ -34,8 +34,10 @@ data class XuanLanPalette(
     val clusterSecondaryBg: Color,
     /** 右簇底（当前页，主要）：浅 = 实白；深 = 深卡片。 */
     val clusterPrimaryBg: Color,
-    /** 簇描边（浅 12%~20% 玄青 / 深 分隔线）。 */
-    val clusterStroke: Color,
+    /** 左簇描边（历史栈，次要）：浅 12% 玄青 / 深 分隔线。 */
+    val clusterStrokeSecondary: Color,
+    /** 右簇描边（当前页，主要）：浅 20% 玄青 / 深 分隔线。 */
+    val clusterStrokePrimary: Color,
     /** 中间分隔线 1×20dp（浅 #E5E9EA / 深 #48484A）。 */
     val divider: Color,
     /** 加载中停止键红（浅 4.87:1 / 深 5.11:1）。 */
@@ -51,13 +53,14 @@ data class XuanLanPalette(
 )
 
 /** 浅色档 = 设计稿原值（像素级照搬）。 */
-private val LightPalette = XuanLanPalette(
+internal val LightPalette = XuanLanPalette(
     ink = Color(0xFF38566A),
     inkDisabled = Color(0xFF6E6E73),
     homeFill = Color(0xFFE7EEF0),
     clusterSecondaryBg = Color(0xAAFFFFFF), // rgba(255,255,255,.65) 半透明白（主稿左簇）
     clusterPrimaryBg = Color(0xFFFFFFFF),
-    clusterStroke = Color(0x1F38566A), // 20% 玄青（主稿右簇）
+    clusterStrokeSecondary = Color(0x1F38566A), // 12% 玄青（0x1F=31/255=12.2%）
+    clusterStrokePrimary = Color(0x3338566A), // 20% 玄青（0x33=51/255=20.0%）
     divider = Color(0xFFE5E9EA),
     stopRed = Color(0xFFC0392B),
     focusRing = Color(0xFF007AFF),
@@ -67,13 +70,14 @@ private val LightPalette = XuanLanPalette(
 )
 
 /** 深色档 = 镜像配对（③ 设计稿未覆盖，按同比例对比度补齐，见类 KDoc 实算值）。 */
-private val DarkPalette = XuanLanPalette(
+internal val DarkPalette = XuanLanPalette(
     ink = Color(0xFFE7EEF0),
     inkDisabled = Color(0xFFA6A6AB),
     homeFill = Color(0xFF38566A), // 深档让玄青沉下去当填充，雾白墨上来
     clusterSecondaryBg = Color(0xFF2C2C2E),
     clusterPrimaryBg = Color(0xFF2C2C2E),
-    clusterStroke = Color(0xFF48484A),
+    clusterStrokeSecondary = Color(0xFF48484A),
+    clusterStrokePrimary = Color(0xFF48484A),
     divider = Color(0xFF48484A),
     stopRed = Color(0xFFFF6F61),
     focusRing = Color(0xFF007AFF),

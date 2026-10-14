@@ -824,9 +824,11 @@
     <!-- 玄览（浏览器 Tab，阶段 1 用户模式） -->
     <string name="browser_url_hint">输入网址或搜索</string>
     <string name="browser_go">前往</string>
-    <string name="browser_back">返回</string>
+    <string name="browser_back">后退</string>
     <string name="browser_forward">前进</string>
     <string name="browser_reload">刷新</string>
+    <string name="browser_home">主页</string>
+    <string name="browser_stop">停止</string>
     <string name="browser_new_tab">新标签</string>
     <string name="browser_close_tab">关闭标签</string>
     <string name="browser_tabs_full">标签数已达上限（20 个）</string>
