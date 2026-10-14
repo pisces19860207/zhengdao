@@ -791,7 +791,7 @@
 
     <!-- ── Terminal page subset (TerminalActivity: install guide + long-press menu + copy/paste) ── -->
     <!-- Remaining toasts (split panes / dot help / install progress details) are exempt by user decision: the terminal screen itself prints in English -->
-    <string name="term_no_network">No network: make sure your proxy is on, and enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="term_no_network">No network: the proxy app was probably killed in the background. Restart it, or let Zhengdao go direct over the phone network (no proxy) — that works too</string>
     <string name="term_nothing_to_copy">Nothing to copy</string>
     <string name="term_copied_screen">Copied the screen content (%1$d characters)</string>
     <string name="term_clipboard_empty">Clipboard is empty</string>
