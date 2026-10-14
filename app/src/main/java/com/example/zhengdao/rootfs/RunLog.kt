@@ -2,6 +2,7 @@
 package com.example.zhengdao.rootfs
 
 import android.content.Context
+import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.terminal.Store
 import java.io.File
 import java.text.SimpleDateFormat
@@ -9,21 +10,35 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 运行日志（用户第三批调整；**2026-10-08 搬到公共区**）。
+ * 运行日志（**2026-10-14 N-4 A 案：落点改回私有区**）。
  *
- * 用户原话（2026-10-08）：
- * 「还有运行日志，错误日志，下载的东西都放到 download 证道 文件夹里……」
- *
- * 位置：**`Download/证道/logs/`**（`Store.logsDir`），四类文件：
+ * 位置：**`filesDir/logs/`**（应用私有目录），四类文件：
  * - `zhengdao-log.txt`：**本轮运行**的日志（App 每次启动时，上一轮的会被**归档**，见下）；
  * - `zhengdao-log.<yyyyMMdd-HHmmss>.txt`：**历次运行的存档**（每次启动归档一份，保留最近
  *   `KEEP_ARCHIVES` 份、总量不超过 `ARCHIVE_TOTAL_MAX`，超了从最旧的删）；
  * - `zhengdao-log.prev.txt`：**旧版**"只留一代错误日志"的产物（仍会被读取，不再新写）；
  * - `errors.log`：跨轮次的**错误汇总**（只追加含错误标记的行，用户不用在几千行里翻）。
  *
- * 为什么从 `cacheDir/runlog` 搬出来：那在应用私有目录里，用户**根本打不开**——
- * 报障时只能靠截图，而截图里没有日志。搬进公共区之后，用户/Agent 都能直接读，
- * 也能在我们说"往上翻"的时候真的翻到。
+ * ## 位置沿革（两次搬迁，别搞混）
+ * - **2026-10-08**：按用户要求「运行日志放到 download 证道 文件夹里」从私有 cache 搬进
+ *   **公共区** `Download/证道/logs/`（`Store.logsDir`）——当时要的是"打不开、只能截图报障"。
+ * - **2026-10-14（N-4 A 案，用户拍板）**：日志内容含**私有绝对路径与异常原文**，放在公共区
+ *   ⇒ 任何拿到存储权限的程序都能读，不用 USB 调试。改回**私有 `filesDir/logs/`**；
+ *   对外出口改为设置页「导出日志」（SAF，用户按下 = 一次知情动作）。
+ *   - 旧公共区里的历史日志**不删、不改写、不迁移覆盖**（是用户数据；`migrateLegacy` 只做
+ *     **复制**一份进私有区，源文件保持原样）；
+ *   - `KeepaliveArchive` 的 logcat-boot 落点仍在公共区（`keepalive/` 目录归 ⑪批 B-1，不归本类）。
+ *
+ * ## 脱敏（N-4 A 案）
+ * 落盘前每一行过 [redact]：`/data/user/0/<包名>`、`/data/data/<包名>`、filesDir 绝对路径
+ * ⇒ `<私有目录>`；`Authorization: Basic …` / `server password…` / `passwd=…` / `token=…`
+ * ⇒ `****`。**保留** `/storage/emulated/0/Download/证道/…`（用户可见路径，不属隐私且排障要它）。
+ *
+ * ## logcat 镜像（#5 的历史设计，N-4 收窄）
+ * 进程被杀时文件里最后一行往往是"正常跑着"，而 logcat 环形缓冲里还留着死前那几十行 ⇒
+ * 原设计把每一行镜像进 logcat（tag `zhengdao`）。release 包里这就是把日志内容送给任何
+ * 能读 logcat 的人，**N-4 起只在 `BuildConfig.DEBUG` 下镜像**；「拿不到 context 时进 logcat」
+ * 与「落盘失败进 logcat」两条保留（失败可见优先，且都不落盘、不构成外送面）。
  *
  * 保留规则（**2026-10-08 用户拍板后改过语义**）：
  * 用户原话（2026-10-08）：「那些日志都是方便给你们这些 agent 看查哪里有问题的，所以要留着」。
@@ -35,9 +50,6 @@ import java.util.Locale
  *   刚开始写的日志**当成上一轮的、发现它还没错误就删掉——正是"日志动不动就没了"的
  *   隐藏原因。现在用一个进程内标志兜住。
  * - 错误标记：行内含「错误 / 失败 / 异常 / FATAL / Exception / error」。
- *
- * 私有兜底：公共目录不可用（没存储权限 / 仅私有模式）时退回 `cacheDir/runlog`，
- * 功能不断；一旦公共目录可用，下次 init 会把私有那份**搬过去**（幂等，不丢老日志）。
  */
 object RunLog {
 
@@ -57,7 +69,10 @@ object RunLog {
 
     private var appContext: Context? = null
 
-    /** 已解析的日志目录（只在公共目录可用时缓存——不可用时每次重试，拿到权限就切过去）。 */
+    /**
+     * 已解析的日志目录（N-4 A 案起恒为私有 `filesDir/logs`——私有目录永远可用，
+     * 解析一次即可；旧的"公共区不可用就每次重试"缓存语义随公共区落点一起取消）。
+     */
     @Volatile
     private var resolvedDir: File? = null
 
@@ -85,27 +100,67 @@ object RunLog {
     }
 
     /**
-     * 日志目录：公共区优先（`Download/证道/logs`），不可用时私有 `cacheDir/runlog`。
-     * 切到公共区时把私有那份老日志搬过来（幂等）。
+     * 日志目录：**私有 `filesDir/logs`**（N-4 A 案；原公共区 `Download/证道/logs` 落点取消）。
+     *
+     * 私有目录不需要任何权限、随 App 卸载一起消失，任何外部程序读不到 ⇒ 日志里的
+     * 私有路径/异常原文不再构成外送面。对外出口见设置页「导出日志」（SAF 显式导出）。
+     *
+     * 判据抽成纯函数 [dirFor]：JVM 单测直接断言"不在 /storage/emulated/0 下、在 filesDir 下"，
+     * 不靠 grep 文本（真门禁，见 `RunLogPrivacyGateTest`）。
      */
     private fun dir(context: Context): File {
         resolvedDir?.let { if (it.isDirectory) return it }
-        val pub = runCatching { Store.logsDir(context) }.getOrNull()?.takeIf { it.isDirectory }
-        if (pub == null) return File(context.cacheDir, "runlog").apply { mkdirs() }
-        adoptPrivate(context, pub)
-        resolvedDir = pub
-        return pub
+        val d = dirFor(context.filesDir).apply { mkdirs() }
+        resolvedDir = d
+        return d
     }
 
-    /** 把私有目录里的历史日志搬进公共区（一次成功即完成；失败下次再试）。 */
-    private fun adoptPrivate(context: Context, pub: File) {
+    /** 私有日志目录判据（纯函数，单测直接调）：恒为 `filesDir/logs`。 */
+    internal fun dirFor(filesDir: File): File = File(filesDir, "logs")
+
+    /**
+     * 迁移旧位置（N-4 A 案）：
+     * ① `files/zhengdao-log.txt`（旧版"只留一代"的产物）→ `logs/zhengdao-log.prev.txt`；
+     * ② **公共区老日志复制一份进私有区**（`Store.logsDir` 下的四类文件）——源文件
+     *    **不删、不改写**（是用户数据，且可能正被用户/Agent 看着）；复制失败不影响主流程。
+     */
+    fun migrateLegacy(context: Context, d: File = dir(context)) {
         try {
-            Store.adoptDir(pub, File(context.cacheDir, "runlog"))
-            Store.adoptFile(File(pub, PREV_NAME), File(context.filesDir, NAME))
+            val target = File(d, PREV_NAME)
+            Store.adoptFile(target, File(context.filesDir, NAME))
         } catch (t: Throwable) {
-            // P2-7：best-effort，但静默会让"日志怎么少了"无线索。走 logcat 直连——
-            // 这里正处在 RunLog 自己的初始化路径上，不能再调 log()（自递归）。
-            android.util.Log.w("zhengdao/RunLog", "历史日志并入公共区失败（忽略）：${t.message}")
+            // P2-7：老用户的旧日志搬失败 = 那批记录事实上丢了，不能静默。
+            // 走 logcat 直连（migrateLegacy 可能在 init 早期被调，log() 未必就绪）。
+            android.util.Log.w("zhengdao/RunLog", "旧位置日志迁移失败（忽略）：${t.message}")
+        }
+        copyLegacyFromPublic(context, d)
+    }
+
+    /**
+     * 公共区老日志 → 私有区**复制**（N-4 A 案；一次性，幂等）。
+     *
+     * 只复制不删除：源在 `Download/证道/logs/`，是用户 2026-10-08 明确要求"留在那"的数据；
+     * 新日志从此只进私有区，公共区自然不再增长。目标已存在（非空）就跳过——私有区这份
+     * 更新，不拿公共区的旧内容覆盖。
+     */
+    private fun copyLegacyFromPublic(context: Context, d: File) {
+        try {
+            val pub = runCatching { Store.logsDir(context) }.getOrNull() ?: return
+            if (!pub.isDirectory) return
+            val names = mutableListOf(NAME)
+            pub.listFiles { f -> f.isFile && isArchiveName(f.name) }?.forEach { names += it.name }
+            names += ERRORS_NAME
+            names += PREV_NAME
+            for (name in names) {
+                val src = File(pub, name)
+                if (!src.isFile) continue
+                val dst = File(d, name)
+                if (dst.isFile && dst.length() > 0L) continue
+                runCatching { src.copyTo(dst, overwrite = false) }
+            }
+        } catch (t: Throwable) {
+            // 复制失败 = 老日志在私有区看不到而已（源还在公共区），不致命
+            android.util.Log.w("zhengdao/RunLog", "公共区老日志复制进私有区失败（忽略）：${t.message}")
         }
     }
 
@@ -245,24 +300,56 @@ object RunLog {
             android.util.Log.w("zhengdao/RunLog", "[未落盘] $line")
             return
         }
+        // N-4 A 案：落盘前统一脱敏——私有绝对路径与口令不进任何持久化出口
+        // （logcat 镜像那行也走脱敏后的文本：KeepaliveArchive 会把它抓成 logcat-boot-*.txt）。
+        val safe = redact(line, ctx.filesDir.absolutePath)
         try {
             val d = dir(ctx)
             val ts = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date())
-            appendRotated(File(d, NAME), "[$ts] $line\n")
-            // #5（2026-10-09）：**同步镜像一份进 logcat**。
-            // 为什么：进程被杀时文件里最后一行往往是"正常跑着"，而 logcat 环形缓冲里
-            // 还留着死前那几十行。App 没有 READ_LOGS，只能读自己 UID 的日志——但只要
-            // 我们把每一行都镜像进去，"自己那份"就是完整的。下一轮启动时
-            // KeepaliveArchive.onStartup 会把这段抓成 logcat-boot-*.txt 存下来。
-            android.util.Log.i("zhengdao", line)
+            appendRotated(File(d, NAME), "[$ts] $safe\n")
+            // #5（2026-10-09）：**debug 构建才镜像进 logcat**（N-4 A 案收窄）。
+            // 为什么原来是每一行都镜像：进程被杀时文件里最后一行往往是"正常跑着"，而 logcat
+            // 环形缓冲里还留着死前那几十行；下一轮启动时 KeepaliveArchive.onStartup 会把这段
+            // 抓成 logcat-boot-*.txt 存下来。为什么收窄：release 包里这就是把每一行业务行
+            // （含私有路径/异常原文）送给任何能读 logcat 的程序 ⇒ 只在 BuildConfig.DEBUG 下做。
+            if (BuildConfig.DEBUG) {
+                android.util.Log.i("zhengdao", safe)
+            }
             // 错误汇总：跨轮次保留，用户在设置页点开就能看到"最近出过什么事"
-            if (ERROR_MARKERS.any { line.contains(it, ignoreCase = true) }) {
-                appendRotated(File(d, ERRORS_NAME), "[$ts] $line\n", ERRORS_MAX_BYTES)
+            if (ERROR_MARKERS.any { safe.contains(it, ignoreCase = true) }) {
+                appendRotated(File(d, ERRORS_NAME), "[$ts] $safe\n", ERRORS_MAX_BYTES)
             }
         } catch (e: Throwable) {
             // 落盘失败同样不能静默——否则又是一个黑洞
-            android.util.Log.w("zhengdao/RunLog", "[落盘失败] $line | ${e.message}")
+            android.util.Log.w("zhengdao/RunLog", "[落盘失败] $safe | ${e.message}")
         }
+    }
+
+    /**
+     * 脱敏（N-4 A 案，纯函数 ⇒ JVM 单测直接调，不需要 Android）。
+     *
+     * 规则（与 `docs/N-4-日志落点改造方案-A案-2026-10-14.md` §2.2 逐条对应）：
+     * 1. `/data/user/0/<包名>/…` 与 `/data/data/<包名>/…` ⇒ `<私有目录>`；
+     * 2. [filesDirPath]（`context.filesDir.absolutePath`，传入时）⇒ `<私有目录>`
+     *    （精确路径优先，防第 1 条的字符类没圈到的形态）；
+     * 3. `Authorization: Basic <值>` / `server password…` / `passwd=…` / `token=…` ⇒ 值替 `****`；
+     * 4. **不动** `/storage/emulated/0/Download/证道/…`（用户可见路径，不属隐私且排障要它）；
+     * 5. 不碰时间戳/错误标记词（本函数只替换上述形态，其余逐字保留）。
+     *
+     * ⚠️ 与 ⑯刀的边界：**不过滤 Exception / java.* 堆栈**——那归 ⑯刀，别撞车。
+     */
+    internal fun redact(line: String, filesDirPath: String? = null): String {
+        var s = line
+        if (!filesDirPath.isNullOrEmpty()) s = s.replace(filesDirPath, "<私有目录>")
+        // 私有绝对路径两类形态（包名段一整段替掉，含后面的全部子路径）
+        s = s.replace(Regex("/data/user/0/[^\\s:;,'\")]+"), "<私有目录>")
+        s = s.replace(Regex("/data/data/[^\\s:;,'\")]+"), "<私有目录>")
+        // 口令类（值一律 ****；分隔符宽松匹配 = : 空格）
+        s = s.replace(Regex("(Authorization:\\s*Basic\\s+)\\S+", RegexOption.IGNORE_CASE), "$1****")
+        s = s.replace(Regex("(server password[=:\\s]+)\\S+", RegexOption.IGNORE_CASE), "$1****")
+        s = s.replace(Regex("(passwd[=:\\s]+)\\S+", RegexOption.IGNORE_CASE), "$1****")
+        s = s.replace(Regex("(token[=:\\s]+)\\S+", RegexOption.IGNORE_CASE), "$1****")
+        return s
     }
 
     /**
@@ -304,15 +391,19 @@ object RunLog {
     /** 日志目录的真实路径（设置页展示用：告诉用户"东西在哪"，而不是让他去猜）。 */
     fun dirPath(context: Context): String = dir(context).absolutePath
 
-    /** 迁移旧位置（`files/zhengdao-log.txt`）到新家：老用户升级后旧错误日志不丢。 */
-    fun migrateLegacy(context: Context, d: File = dir(context)) {
-        try {
-            val target = File(d, PREV_NAME)
-            Store.adoptFile(target, File(context.filesDir, NAME))
-        } catch (t: Throwable) {
-            // P2-7：老用户的旧日志搬失败 = 那批记录事实上丢了，不能静默。
-            // 走 logcat 直连（migrateLegacy 可能在 init 早期被调，log() 未必就绪）。
-            android.util.Log.w("zhengdao/RunLog", "旧位置日志迁移失败（忽略）：${t.message}")
-        }
+    /**
+     * 导出用：全部日志文件（**新 → 旧**，带人类可读标签）。
+     *
+     * N-4 A 案的对外出口配套：私有目录用户打不开，设置页「导出日志」经 SAF 让用户选目标，
+     * 内容过 [redact] 后写出（见 `SettingsHelpActivity`）。
+     */
+    fun exportEntries(context: Context): List<Pair<String, File>> {
+        val d = dir(context)
+        val out = ArrayList<Pair<String, File>>()
+        File(d, NAME).takeIf { it.isFile }?.let { out += "本次运行" to it }
+        listArchives(d).forEach { out += "历史归档 ${it.name}" to it }
+        File(d, ERRORS_NAME).takeIf { it.isFile }?.let { out += "错误汇总" to it }
+        File(d, PREV_NAME).takeIf { it.isFile }?.let { out += "旧版遗留" to it }
+        return out
     }
 }
