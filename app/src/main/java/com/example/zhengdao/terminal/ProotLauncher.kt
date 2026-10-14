@@ -696,6 +696,19 @@ object ProotLauncher {
         if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+set-clipboard\\b").containsMatchIn(cur)) {
             append("set -g set-clipboard on\n")
         }
+        // 5. **OSC 8 超链接能力声明**（§B 顺序 29 · 2026-10-14 真机验收立账）——
+        //    tmux 默认不把 `hyperlinks` 当作本客户端的能力转发：guest 实测
+        //    `#{client_termfeatures}` = `bpaste,ccolour,clipboard,cstyle,focus,margins,title`，
+        //    没有 hyperlinks（tmux 3.5a / TERM=xterm-256color）⇒ A 路径（OSC 8）在终端里
+        //    既不画下划线、点了也没反应。**运行期**补 `set -as …` + `refresh-client` 实测无效
+        //    （能力在 attach 时定下），所以必须 attach 前就位。主会话每次启动都先
+        //    `tmux kill-server`（见 [buildLaunchPlan]），因此一进终端的新客户端就吃到。
+        //    判重口径比上面两条略宽：`terminal-features` 是 **server option**（`-s`），
+        //    用户写法可能是 `set -s` / `set -as` / `set-option -as` —— 只要该选项名出现过，
+        //    就算他自己管了这条能力，我们不插手（与「用户写过就不覆盖」同一原则）。
+        if (!Regex("(?m)^\\s*set(-option)?\\s+-[a-zA-Z]+\\s+terminal-features\\b").containsMatchIn(cur)) {
+            append("set -as terminal-features 'xterm*:hyperlinks'\n")
+        }
         if (!Regex("(?m)^\\s*bind(-key)?\\s+x\\s+kill-pane\\b").containsMatchIn(cur)) {
             append("bind-key x kill-pane\n")
         }
