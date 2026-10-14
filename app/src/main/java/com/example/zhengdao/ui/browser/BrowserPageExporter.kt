@@ -139,14 +139,20 @@ object BrowserPageExporter {
         val summary = PageSnapshot.summarize(html)
 
         val exportedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        val title = jsTitle.ifBlank { summary.title }
+        // ⚠️ URL 与标题是**独立于 HTML 的第二条数据**：`location.href` / `document.title` 不经过
+        //    HTML 过滤（scrubSecrets 只吃 html 字符串），因此必须单独走同一条口径 ——
+        //    先摘凭据参数（PageSnapshot.scrubUrl），再按用户 2026-10-13 的定调打 PII。
+        //    不加这一步，`…#access_token=…` / `?session=…` 会原样写进 tab.txt 与 meta.json。
+        val redactor = SensitiveRedactor()
+        val safeUrl = redactor.redactText(PageSnapshot.scrubUrl(url))
+        val title = redactor.redactText(jsTitle.ifBlank { summary.title })
         val htmlBytes = html.toByteArray(Charsets.UTF_8).size
         // JS 侧按字符预截过（fullLen 是截断前的真实长度），Kotlin 侧再按字节卡一次
         val htmlTruncated = byteCut || fullLen > rawHtml.length
 
-        val txt = PageSnapshot.renderTxt(summary, url, exportedAt, tabIndex, tabCount)
+        val txt = PageSnapshot.renderTxt(summary, safeUrl, exportedAt, tabIndex, tabCount)
         val metaJson = PageSnapshot.renderMetaJson(
-            url = url,
+            url = safeUrl,
             title = title,
             exportedAt = exportedAt,
             tabIndex = tabIndex,

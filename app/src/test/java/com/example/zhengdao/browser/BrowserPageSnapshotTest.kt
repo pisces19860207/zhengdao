@@ -430,4 +430,82 @@ class BrowserPageSnapshotTest {
         assertFalse("导出按钮不许塞进底栏地址带", screen.contains("stringResource(R.string.browser_export)"))
         assertFalse("导出按钮不许塞进浮动胶囊", capsule.contains("browser_export"))
     }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // 四、验收补丁（2026-10-15 · 蓝总管收尾）：URL 这条独立数据线的明文禁项
+    // ═════════════════════════════════════════════════════════════════════
+
+    @Test
+    fun `明文禁项_URL_里的凭据参数也必须打码`() {
+        // OAuth 回调的两种典型写法：query 里的 access_token、fragment 里的 refresh_token
+        val url = "https://a.example/callback?code=abc123&access_token=ACCESS_LIVE_1&lang=zh" +
+            "#refresh_token=REFRESH_LIVE_2&state=xyz"
+        val clean = PageSnapshot.scrubUrl(url)
+
+        assertFalse("query 里的 access_token 值泄漏了：$clean", clean.contains("ACCESS_LIVE_1"))
+        assertFalse("fragment 里的 refresh_token 值泄漏了：$clean", clean.contains("REFRESH_LIVE_2"))
+        assertTrue("参数名要留着（agent 才知道这里有什么）", clean.contains("access_token="))
+        assertTrue("打码口径一致", clean.contains(PageSnapshot.MASK))
+        // 非凭据参数一字不动 —— 摘要是给 agent 读的，不能把可用信息也糊掉
+        assertTrue("普通参数不许被误伤", clean.contains("lang=zh") && clean.contains("state=xyz"))
+        assertTrue("scheme/host/path 必须原样保留", clean.startsWith("https://a.example/callback?code=abc123"))
+    }
+
+    @Test
+    fun `明文禁项_URL_常见会话与签名参数也要认`() {
+        // session / auth / sig / ticket 是**只在 URL 里**才认的补充词表（见 URL_EXTRA_SENSITIVE）
+        listOf(
+            "https://x.example/s?session=S1" to "S1",
+            "https://x.example/s?auth=A1" to "A1",
+            "https://x.example/s?X-Amz-Signature=G1" to "G1",
+            "https://x.example/s?ticket=T1" to "T1",
+            "https://x.example/s?sso=SS1" to "SS1",
+        ).forEach { (url, secret) ->
+            val clean = PageSnapshot.scrubUrl(url)
+            assertFalse("凭据参数值泄漏：$url ⇒ $clean", clean.contains(secret))
+        }
+    }
+
+    @Test
+    fun `明文禁项_URL_没有凭据时原样返回`() {
+        listOf(
+            "",
+            "https://ai-xan.xyz/zh",
+            "https://ai-xan.xyz/zh/explore?page=2&sort=hot",
+            "https://ai-xan.xyz/zh#top",
+        ).forEach { url ->
+            assertEquals("无需打码的 URL 必须逐字不变：$url", url, PageSnapshot.scrubUrl(url))
+        }
+    }
+
+    @Test
+    fun `接线_URL_与标题也走同一条脱敏口径`() {
+        val code = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserPageExporter.kt"))
+        assertTrue("URL 必须先摘凭据参数（scrubUrl）", code.contains("PageSnapshot.scrubUrl("))
+        assertTrue(
+            "URL 与标题还要过 PII 打码（与页面正文同口径）",
+            code.contains("redactText(PageSnapshot.scrubUrl("),
+        )
+        assertTrue("渲染 tab.txt 用的必须是脱敏后的 URL", code.contains("renderTxt(summary, safeUrl"))
+        assertTrue("meta.json 的 url 字段也必须是脱敏后的", code.contains("url = safeUrl"))
+    }
+
+    @Test
+    fun `接线_导出失败文案不许直喂异常原文`() {
+        val screen = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt"))
+        // 判据要钉在**实质**上：任何把异常自身渲染成字符串的写法都不许进用户文案
+        // （`it.message` / `e.message.orEmpty()` / `t.toString()` …）。
+        // ⚠️ 不能只写死 `browser_export_failed, it.message` —— 2026-10-15 负例自证发现：
+        //    把变量名换个字母（`e.message`）就能绕过，那条门禁等于没盖住。
+        val rawLeak = Regex(
+            """browser_export_failed,\s*(?:[A-Za-z_][A-Za-z0-9_]*\.)?(?:message|localizedMessage|toString\(\))""",
+        )
+        assertFalse(
+            "用户可见文案不许直接把异常原文塞进去（⑯刀 R-29 口径）：会出现 " +
+                "/storage/…: open failed: EACCES 这类内部细节。命中：${rawLeak.find(screen)?.value}",
+            rawLeak.containsMatchIn(screen),
+        )
+        assertTrue("失败分支必须把人话交给 HumanizeError", screen.contains("HumanizeError.title("))
+        assertTrue("异常原文只许进日志", screen.contains("RunLog.log("))
+    }
 }
