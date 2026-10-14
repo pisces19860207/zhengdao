@@ -186,6 +186,69 @@ object PageSnapshot {
         return SENSITIVE_WORDS.any { t.contains(it) }
     }
 
+    /**
+     * URL 里**额外**要认的凭据参数名（只在 [scrubUrl] 生效，不进 [SENSITIVE_WORDS]）。
+     *
+     * 为什么单独一张表：`session` / `auth` / `sig` 这些词当**属性名**匹配时会误伤常见表单字段
+     * （`name="author"`、`id="authorname"`），进了 [SENSITIVE_WORDS] 会把整页普通字段的值打码、
+     * 把摘要读坏；而它们出现在 **URL 参数名**上时几乎一定是凭据（`?session=…` / `?auth=…` /
+     * `X-Amz-Signature=…` / `?ticket=…`）。所以按"在哪出现"分表，而不是放宽全局词表。
+     */
+    private val URL_EXTRA_SENSITIVE = listOf(
+        "session", "auth", "oauth", "signature", "sig", "ticket", "sso", "saml",
+    )
+
+    /**
+     * URL 里的凭据参数值打码 —— [scrubSecrets] 的**第五条漏网路**。
+     *
+     * `location.href` 是与页面 HTML **完全独立**的一条数据：OAuth 回调常见的
+     * `…#access_token=…`、`?session=…`、`?signature=…` 全在 URL 里，不经过 HTML 过滤，
+     * 却会原样写进 `tab.txt`（`URL:` 行）与 `meta.json`（`"url"` 字段）——那是明文泄到共享目录。
+     *
+     * 口径：**保留** scheme / host / path 与参数名（agent 仍知道"这是哪个页面、带什么参数"），
+     * 只把**名字像凭据**的参数值换成 [MASK]。非凭据参数（`?page=2`、`?lang=zh`）一字不动。
+     *
+     * ⚠️ query 与 fragment 要**分开过**（2026-10-15 蓝总管验收补丁）：URL 可以两者都有 ——
+     * `…?code=a&lang=zh#refresh_token=X`。若不切开 `#`，整个 fragment 会被粘在最后一个 query
+     * 参数的值里（key 仍是 `lang` ⇒ 判为不敏感 ⇒ **原样输出**），fragment 里的凭据就漏了。
+     */
+    fun scrubUrl(url: String): String {
+        if (url.isEmpty()) return url
+        val qMark = url.indexOf('?')
+        val hash = url.indexOf('#')
+        if (qMark < 0 && hash < 0) return url
+        // 第一段（scheme/host/path）在 `?` 或 `#` 里**先出现**的那个之前结束
+        val headEnd = when {
+            qMark >= 0 && (hash < 0 || qMark < hash) -> qMark
+            else -> hash
+        }
+        val queryEnd = if (hash >= 0) hash else url.length
+        val query = if (qMark in 0 until queryEnd) url.substring(qMark + 1, queryEnd) else null
+        val fragment = if (hash >= 0) url.substring(hash + 1) else null
+        return buildString(url.length) {
+            append(url, 0, headEnd)
+            if (query != null) append('?').append(scrubParams(query))
+            if (fragment != null) append('#').append(scrubParams(fragment))
+        }
+    }
+
+    /** 把 `a=1&b=2` 里名字像凭据的参数值换成 [MASK]；非凭据参数一字不动（[scrubUrl] 的两段共用）。 */
+    private fun scrubParams(params: String): String {
+        if (params.isEmpty()) return params
+        return params.split('&').joinToString("&") { part ->
+            val eq = part.indexOf('=')
+            if (eq <= 0) {
+                part
+            } else {
+                val key = part.substring(0, eq)
+                val bare = key.trimStart('/', '?', '#')
+                val sensitive = containsSensitiveWord(bare) ||
+                    URL_EXTRA_SENSITIVE.any { bare.lowercase().contains(it) }
+                if (sensitive) "$key=$MASK" else part
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // 3. tab.html 上限
     // ─────────────────────────────────────────────────────────────────────
