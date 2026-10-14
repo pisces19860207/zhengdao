@@ -21,7 +21,7 @@ interface BrowserEngine {
     /**
      * 加载 URL。
      * 边界：调用方须先过 scheme allowlist 预检（浏览器地址栏 / 终端链接见
-     * [com.example.zhengdao.terminal.TerminalLinkPolicy] / 桥见 [com.example.zhengdao.bridge.BridgePolicy]）；
+     * [com.example.zhengdao.terminal.TerminalLinkPolicy]）；
      * 实现层仍须硬拦 file:// / intent:// / tel:// / content://（属"浏览器本身"红线，§4.4 导航拦截行）。
      */
     fun loadUrl(url: String)

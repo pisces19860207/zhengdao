@@ -6611,3 +6611,10 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 - **用户规矩**（2026-10-14 逐字）：「绝对不允许改了 Rust 源码却不重编 .so 就提交。改完必须过 SHA256 门禁才算数。」
 - **待办（并入第⑬刀，不单独开刀）**：① 装编译环境（本机已有 `rustc` / `cargo` 1.99.0 与 NDK **27.2.12479018**，缺 `cargo-ndk` 与 `ANDROID_NDK_HOME`；`.so` 需要 `-Wl,-z,max-page-size=16384`）② 改 R-02 / R-03 / R-04 ③ 重编 ＋ `llvm-strip` ＋ 拷入 `jniLibs/arm64-v8a/` ④ **新建「同源门禁」**：把 `.so` 的 sha256 与 `rust/core/src/**` 的树指纹一起记进一份清单，脚本比对，两者不同步就红；接进 `ci.yml` / `build.yml` 与本地钩子 ⑤ 真机复验。**环境搭不起来就把这一刀标成「因缺少编译环境而阻塞」，不许只改源码。**
 - **教训**：**「人工构建入库」的产物必须和它的源码绑在同一个可校验的指纹里**。只验产物自身的性质（页对齐、符号齐不齐）是「性质门禁」，不是「同源门禁」—— 前者永远抓不到「忘了重编」，而「悄悄退回 Java 实现」正是这条路的默认结局（`CoreNative.isRustAvailable() = false`）。
+
+## E-129 · 2026-10-14 · 环回桥的四个骨架文件是死代码，其中 `BridgeToken` 还把明文 token 存进会跟着云备份走的 `sharedpref`
+
+- **事实**（`git grep` 核过）：`app/src/main/java/com/example/zhengdao/bridge/**` 四个文件（`BrowserAgentBridge.kt` / `BridgeCommands.kt` / `BridgePolicy.kt` / `BridgeToken.kt`）**没有任何生产调用点** —— 全仓对它们的引用只有 `bridge/` 目录内部彼此，外加 `browser/BrowserEngine.kt:24` 一句 KDoc 链接；`BrowserAgentBridge.start()` / `stop()` 都是 `TODO("阶段3")`（`:48` / `:53`），`AndroidManifest.xml` 里没有对应声明，`app/src/test` 下也没有它们的测试。
+- **风险**：`BridgeToken.kt:24-28` 用 `java.util.UUID.randomUUID().toString()` 明文存 token 到 `SharedPreferences`（`:38-41` 自带 `TODO(阶段3)`）；而 `AndroidManifest.xml:52` 是 `allowBackup="true"`，`res/xml/backup_rules.xml` 与 `res/xml/data_extraction_rules.xml` **都没排 `domain="sharedpref"`** ⇒ 这个 prefs 会进云备份。
+- **处置**（用户 2026-10-14 逐字：「N-6 死代码 BrowserAgentBridge 删」）：四个文件整体删除，`browser/BrowserEngine.kt:24` 的 KDoc 链接同步改掉；删除清单即本条记录，`git` 历史随时可取回。**需求不丢**：§4.5 的 11 命令 allowlist、红线拦截（无「问用户」档）、token 随机口令与下发 UX 仍在 `docs/玄览-代码骨架说明-2026-10-13.md` 与设计文档 §4.5，阶段 3 按文档重建 —— 重建时 token 必须用 `SecureRandom`，并且落 `sharedpref` 前先确认备份规则已排（或直接改用 `EncryptedSharedPreferences`）。
+- **教训**：**「先落骨架、以后再填肉」的骨架只要带状态（token / 配置 / 注册项），它就会立刻进入备份、导出、体积与隐私审计这些既有链路**。空接口可以留；带副作用的实现类要么落完就接上，要么别入库。判据：`git grep` 该类的实例化点 —— 为零、且不是测试夹具，就是死代码。
