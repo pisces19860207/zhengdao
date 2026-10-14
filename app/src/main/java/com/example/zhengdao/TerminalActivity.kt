@@ -241,6 +241,15 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     /** 回退 shell 活跃标记：fallback 下不注入 autocmd（命令会打进系统 sh） */
     private var fallbackActive = false
 
+    /**
+     * 网络预检是否已在本 Activity 生命周期内探过（2026-10-14 去重）。
+     *
+     * 一轮启动里 [onEmulatorSet] 会被调用多次（pane 重建 / attach 重排 / 尺寸就绪），
+     * 原先每次都探一遍 ⇒ RunLog 里同一条「网络预检：…不通」出现好几条、横幅被反复刷。
+     * 只认"探过没探过"：**失败不自动重探**（重试周期与网络恢复无关，只会制造重复日志）。
+     */
+    private var networkCheckStarted = false
+
     // 字号与配色已移到 TerminalPrefs（设置页可配），此处不再硬编码。
 
     /** 三点说明是否已在本 Activity 生命周期内弹过（防旋转/多次 resume 重复弹） */
@@ -643,8 +652,19 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
      * "用户输入"（对 Agent 会话就是**凭空发一条消息**）。改成 App 侧横幅：用户看得见、
      * 点一下收起、一个字节都不进会话——也正是 2026-10-05 那次改动的原始意图
      * （"非 2xx / 超时 → 横幅代理提示，不阻塞会话"）。见 ERRATA E-095。
+     *
+     * 2026-10-14 两处修正（用户报"横幅一直挂着"）：
+     * 1. **一次会话只探一次**：onEmulatorSet 会在一轮启动里被调用多次（pane 重建 / attach 重排
+     *    / 尺寸就绪都要走它），于是同一条「网络预检：…不通」在 RunLog 里一次启动出现好几条，
+     *    横幅也会被反复刷。用 [networkCheckStarted] 去重——只认"探过没探过"，**失败不自动重试**
+     *    （重试周期与网络恢复时机无关，只会制造重复日志）。
+     * 2. **探通即收起**：原先只在失败分支写横幅，探通后什么都不做；而上一次探测留下的横幅会
+     *    一直挂着（用户看到的就是"网络早就好了，横幅还在"）。现在探通后主动收起——但只收
+     *    自己写的那一条（比对 [R.string.term_no_network]），不碰安装进度 / 失败结论横幅。
      */
     private fun networkPreCheck() {
+        if (networkCheckStarted) return
+        networkCheckStarted = true
         Thread {
             val ok = try {
                 val c = java.net.URL("https://registry.npmjs.org/-/ping").openConnection()
@@ -662,8 +682,29 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                         showBanner(getString(R.string.term_no_network))
                     }
                 }
+            } else {
+                // 探通：把上一次探测留下的"网络不通"横幅收掉（用户报的那个毛病）。
+                dismissNetworkBanner()
             }
         }.start()
+    }
+
+    /**
+     * 收起**本方法自己写的**那条网络横幅。
+     *
+     * 只认 `term_no_network` 这条文案：横幅是安装进度与失败结论共用的同一个
+     * `@+id/status_banner`（见 [showBanner]），不能把"环境更新完成"之类的结论一起抹掉。
+     */
+    private fun dismissNetworkBanner() {
+        runOnUiThread {
+            findViewById<android.widget.TextView>(R.id.status_banner)?.let { b ->
+                if (b.visibility == android.view.View.VISIBLE &&
+                    b.text?.toString() == getString(R.string.term_no_network)
+                ) {
+                    b.visibility = android.view.View.GONE
+                }
+            }
+        }
     }
 
     /** 快捷键条：固定序列直发；CTRL/SHIFT 为粘滞键，修饰下一次输入（设计文档 §7）。 */

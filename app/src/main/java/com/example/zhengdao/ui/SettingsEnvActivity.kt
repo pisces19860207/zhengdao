@@ -132,13 +132,6 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
     var pendingUpdateSha by remember { mutableStateOf<String?>(null) }
 
     /**
-     * 缓存里"字节数正好等于索引那个包"的本地文件。非 null ⇒ 弹窗确认后**先**逐字节验它：
-     * sha 与索引一致就直接本地重解压，不再下 192 MB（2026-10-08 真机：一次「补指纹」白下了 192 MB）。
-     * 注意这里只按**大小**定位候选，sha 由安装线程在动手前验（[RootfsCache.localCandidateFor]）。
-     */
-    var pendingLocalArchive by remember { mutableStateOf<File?>(null) }
-
-    /**
      * 检查更新时拿到的**整条索引**（而不是只留 env）：全量装完后要按"信任锚"规则决定写不写
      * `env=` 行 —— 只有索引 sha256 与实际校验通过的 sha256 一致才写
      * （见 [RootfsInstaller.envForMarker]，理由：索引可能因 CI 半途失败而陈旧）。
@@ -268,9 +261,6 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                         var pendingSha: String? = null
                         var pendingIdx: RootfsIndex? = null
                         var pendingPatchRef: PatchRef? = null
-                        // 缓存里可能就是索引那个包（只按大小定位，sha 在安装前才验）。
-                        // 2026-10-08 用户拍板：本地已有就别再下 192 MB。
-                        var pendingLocal: File? = null
                         val result = try {
                             // ① 增量协议：`rootfs-index.json` 是唯一事实来源，版本按 **env 内容指纹**比对。
                             //    老逻辑拿恒定的发行版号（13.7）比，于是永远判"已是最新"——本次修掉的正是它。
@@ -290,11 +280,10 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         pendingIdx = idx
                                         val localVer = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx).orEmpty()
                                         // 2026-10-08：缓存里若已躺着索引那个包（下过一次没装成、或上次重装留下的），
-                                        // 就别再让用户下 192 MB——真机上这一次白下了整包。只按大小定位，
-                                        // sha 在确认后、动手前由安装线程验（对不上照旧下载）。
+                                        // 就有一条"本地已有"的提示可按；只按大小定位，不据此改走本地安装。
+                                        // （2026-10-14 用户拍板：环境更新**不再用本地包**，一律重新下载。）
                                         val cached = com.example.zhengdao.rootfs.RootfsCache
                                             .localCandidateFor(ctx, idx.url, idx.size)
-                                        pendingLocal = cached
                                         val sameVer = localVer.isNotBlank() && localVer.equals(ver, ignoreCase = true)
                                         when {
                                             cached != null && sameVer ->
@@ -328,10 +317,9 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         pendingUrl = idx.url; pendingSha = idx.sha256
                                         pendingIdx = idx
                                         val p = idx.patch
-                                        // 本地已有索引那个整包时**优先本地**：0 下载优于几十 MB 的补丁。
+                                        // 本地已有索引那个整包：只影响下面给出的提示文案，不改更新路径。
                                         val cached = com.example.zhengdao.rootfs.RootfsCache
                                             .localCandidateFor(ctx, idx.url, idx.size)
-                                        pendingLocal = cached
                                         when {
                                             cached != null ->
                                                 ctx.getString(
@@ -402,7 +390,6 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             pendingUpdateSha = pendingSha
                             pendingIndex = pendingIdx
                             pendingPatch = pendingPatchRef
-                            pendingLocalArchive = pendingLocal
                             // 有可下载目标 → 交给下面的弹窗（用户点「下载并安装」）；
                             // 没有目标（已是最新 / 只能手动去下载） → 用 Toast 说清楚。
                             // 判据是 pendingUrl 而不是文案前缀：同版本补指纹的文案不以"发现新版本"开头，
@@ -666,53 +653,13 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     val expectedSha = pendingUpdateSha
                     val patchRef = pendingPatch
                     val index = pendingIndex
-                    val localCandidate = pendingLocalArchive
-                    pendingLocalArchive = null
                     Thread {
                         // 增量失败会写这里的原因，随最终结论一起告诉用户（"回退全量"必须可见）
                         var fallbackNote = ""
                         try {
-                            // ── ⓪ 本地已有与索引逐字节相同的整包 → 直接本地重解压，不下载 ──
-                            // 2026-10-08 用户拍板：一次「补指纹」不该再下 192 MB（真机上白下过一次）。
-                            // 只有 sha 与索引一致才敢把索引的 env 写进标记——信任锚规则与全量路径同一条
-                            // （见 RootfsInstaller.envForMarker）；对不上就照旧走下载。
-                            if (localCandidate != null && localCandidate.isFile) {
-                                val localSha = RootfsDownloader.sha256Of(localCandidate)
-                                if (expectedSha.isNullOrBlank() || localSha.equals(expectedSha, ignoreCase = true)) {
-                                    InstallFlow.start(
-                                        ctx,
-                                        ctx.getString(
-                                            R.string.env_update_local_cached,
-                                            localCandidate.length() / (1024 * 1024),
-                                        ),
-                                        fromLocal = true,
-                                    )
-                                    InstallFlow.update(ctx, ctx.getString(R.string.env_preparing, localCandidate.name))
-                                    val archive = File(ctx.cacheDir, localCandidate.name)
-                                    if (archive.absolutePath != localCandidate.absolutePath) {
-                                        localCandidate.copyTo(archive, true)
-                                    }
-                                    val envToWrite = RootfsInstaller.envForMarker(index?.env, index?.sha256, localSha)
-                                    if (index != null && envToWrite == null) {
-                                        com.example.zhengdao.rootfs.RunLog.log(
-                                            "本地包校验值与更新信息对不上，这次不写环境记录"
-                                        )
-                                    }
-                                    com.example.zhengdao.rootfs.RunLog.log(
-                                        "环境更新：用本地安装包重解压，这次没联网"
-                                    )
-                                    InstallFlow.update(ctx, ctx.getString(R.string.env_unpacking_here))
-                                    RootfsInstaller.ensureFreeSpace(ctx, archive.length())
-                                    RootfsInstaller.install(ctx, archive, envToWrite, localSha) { }
-                                    RootfsCache.pruneKeep(ctx)
-                                    InstallFlow.finish(ctx, ctx.getString(R.string.env_update_done_local))
-                                    android.os.Handler(ctx.mainLooper).post { storageTick++ }
-                                    return@Thread
-                                }
-                                com.example.zhengdao.rootfs.RunLog.log(
-                                    "本地缓存包校验值对不上，改为下载"
-                                )
-                            }
+                            // 2026-10-14 用户拍板：**本地已有整包也不再直接重解压**，一律重新下载
+                            // （原先这条 ⓪ 分支见 git 历史；保留它的收益是省一次下载，代价是"本地
+                            // 缓存复用"这条便利本身要取消）。
                             // 进度走 InstallFlow：通知栏常驻进度条 + 设置页状态行 + RunLog。
                             // 此前是每 20% 闪一条 Toast（"下载中 20%"），正是用户说的
                             // "提示时间有点短……我以为要重新下载呢"（E-036 §7）。
@@ -834,11 +781,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                         }
                     }.start()
                 }) {
-                    // 本地已有索引那个包时不再说"下载"：按钮文案与实际动作一致（2026-10-08）
-                    Text(
-                        if (pendingLocalArchive != null) stringResource(R.string.env_install_local_btn)
-                        else stringResource(R.string.env_install_download_btn)
-                    )
+                    Text(stringResource(R.string.env_install_download_btn))
                 }
             },
             dismissButton = {

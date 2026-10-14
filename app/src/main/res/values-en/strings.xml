@@ -112,9 +112,6 @@
     <string name="home_install_env">Install environment</string>
     <string name="home_recent_issues">Recent problems (%1$d)</string>
     <string name="home_issues_note">Background failures used to go to the log only, invisible in the UI. They are listed here — tap a button when one can be handled. The full text is still in Download/证道/logs/zhengdao-log.txt</string>
-    <string name="home_restore_title">Restore the %1$d agents installed before</string>
-    <string name="home_restore_desc">These agents didn\'t finish installing (or are no longer on the device), but their install scripts and package cache are still in Download/证道/agents and cache — restoring uses local copies where possible:</string>
-    <string name="home_restore_all">Restore all (%1$d)</string>
     <string name="home_agent_reinstall">Reinstall</string>
     <string name="home_agent_uninstall">Uninstall</string>
     <string name="home_agent_retry_install">Retry install</string>
@@ -239,12 +236,12 @@
     <string name="env_checking">Checking…</string>
     <string name="env_check_btn">Check for updates</string>
     <string name="env_version_unknown">Unknown version</string>
-    <string name="env_local_env_missing_cached">%1$s is installed but the environment record is missing. A local installer is available (%2$s) — just reinstall from it, no download needed.</string>
-    <string name="env_local_cached">A local installer is available (%1$s) — install from it, no download needed.</string>
+    <string name="env_local_env_missing_cached">%1$s is installed but the environment record is missing. This time the installer is downloaded again; the local cached copy (%2$s) is no longer reused.</string>
+    <string name="env_local_cached">The local cached copy (%1$s) is no longer reused; this time the installer is downloaded again.</string>
     <string name="env_local_env_missing_full">%1$s is installed but the environment record is missing: this time it will reinstall from the full package (%2$s) so later checks can tell old from new.</string>
     <string name="env_new_version_no_local_record">New version %1$s (no local record, so this time it downloads the full package, %2$s)</string>
     <string name="env_up_to_date">Up to date (%1$s, environment %2$s)</string>
-    <string name="env_new_version_cached">New version %1$s (local installer available (%2$s) — install from it, no download)</string>
+    <string name="env_new_version_cached">New version %1$s (the local cached copy %2$s is no longer reused; this time the installer is downloaded again)</string>
     <string name="env_new_version_patch">New version %1$s — a small update is enough (only %2$s, no full download)</string>
     <string name="env_new_version_full">New version %1$s (current environment %2$s, no matching patch) — full download required, %3$s</string>
     <string name="env_feed_unreadable">Couldn\'t read the update info — no version number</string>
@@ -272,8 +269,6 @@
     <string name="env_preparing">Preparing the installer: %1$s</string>
     <string name="env_unpacking_long">Unpacking (no detailed progress, about 30 seconds to a few minutes)…</string>
     <string name="env_unpacking_here">Unpacking (no detailed progress — stay on this page)…</string>
-    <string name="env_update_local_cached">Checking for updates: a local installer is available (%1$d MB) — unpacking again, no download</string>
-    <string name="env_update_done_local">Update done (from the local installer, no download) — takes effect after reopening the terminal</string>
     <string name="env_update_start_download">Checking for updates: downloading the new version</string>
     <string name="env_patch_downloading">Downloading the update patch (%1$s)…</string>
     <string name="env_patch_progress">Downloading patch %1$d%% (%2$d/%3$d MB)</string>
@@ -283,7 +278,6 @@
     <string name="env_full_downloading">Downloading the environment %1$d%% (%2$d/%3$d MB — you can leave this page)</string>
     <string name="env_update_done">Update done — takes effect after reopening the terminal</string>
     <string name="env_update_failed">Update failed: %1$s</string>
-    <string name="env_install_local_btn">Install from local package</string>
     <string name="env_install_download_btn">Download &amp; install</string>
 
     <!-- ── Storage & cache page ── -->
@@ -306,7 +300,7 @@
     <string name="storage_script_title">Clean installer script cache?</string>
     <string name="storage_script_desc1">This deletes the cached installer scripts in the shared agents/scripts folder, the checksums the app keeps, and the copy in the terminal.</string>
     <string name="storage_script_desc2">The scripts are only tens of KB — this isn\'t about freeing space, it\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
-    <string name="storage_script_keeps">Not removed: the agent ledger installed.json, installed agents and toolchains, logs, or the knowledge base.</string>
+    <string name="storage_script_keeps">Not removed: installed agents and toolchains, logs, or the knowledge base.</string>
     <string name="storage_script_cleared">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</string>
     <string name="storage_script_none">No script cache to clean</string>
     <string name="storage_cache_title">Cache cleanup</string>
