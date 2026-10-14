@@ -92,27 +92,89 @@ object AppState {
         relative.any { existsInHost(ctx, it) }
 
     /**
-     * 宿主视角下"这条路径是不是一个可执行文件"。
+     * 宿主视角下"这条路径是不是一个可执行文件" —— **逐段解析软链**（§B 顺序 26，2026-10-14）。
      *
-     * ⚠️ 为什么要多这一步（2026-10-07 真机实测）：Agent 安装脚本**在 guest 里**创建命令软链，
-     *    目标是 guest 的绝对路径，例如
-     *        /root/.local/bin/claude -> /root/.local/share/claude/versions/2.1.292
-     *    而 guest 的 /root 是 App 端 `files/home` bind 进去的（设计文档 §8）。
-     *    App 在**宿主**侧用 File.isFile() 读这条软链时，目标 `/root/...` 不存在 ⇒ 判定悬空
-     *    ⇒ 明明装好了却显示「安装」而不是「启动」。实测对照：agy 是真实文件（能识别），
-     *    claude 是这种软链（识别不到）。
-     *    修法：读不到时若是软链且目标以 /root/ 开头，映射回 files/home 再判一次。
+     * ## 为什么不能只解开一跳
+     * Agent 安装脚本**在 guest 里**创建命令软链，目标是 guest 的绝对路径，例如
+     *     /root/.local/bin/claude -> /root/.local/share/claude/versions/2.1.292
+     * 而 guest 的 /root 是 App 端 `files/home` bind 进去的（设计文档 §8）。App 在**宿主**侧
+     * 用 File.isFile() 读它是悬空的 ⇒ 明明装好了却显示「安装」。更要紧的是**两跳**链（真机实测，
+     * Codex CLI 正是这条）：
+     *     ~/.local/bin/codex -> ~/.codex/packages/standalone/current/bin/codex
+     *                        -> releases/<ver>/bin/codex
+     * 旧实现只把 /root/ 映射一跳 ⇒ 第二跳仍然悬空 ⇒ 判定失败。这也解释了为什么旧实现下
+     * agy（真身文件）能认出、claude（一跳链）能认出、**codex（两跳链）认不出**。
+     *
+     * ## 算法：按**路径分量**逐段走（不是"循环 readSymbolicLink N 次"）
+     * 从 filesDir 起、按相对路径的分量一段段前进；遇到**在宿主上到不了**的软链，就把它的目标里
+     * 的 /root/ 前缀重写成 home/（guest 的 /root == App 的 files/home），再与**剩余分量**重拼，
+     * 从起点重走一遍。跳数封顶 [MAX_LINK_HOPS]（防自指/环），超限即判「没装」。
+     *
+     * ⚠️ 上一版试过"循环 readSymbolicLink 直到不抛异常"——真机已回退：那样每次只解开**整条
+     * 路径的最后一段**，中间分量若是链就永远走不过去。逐段走才对。
+     *
+     * ⚠️ 跨平台：判 /root 前缀时两种分隔符都认 —— Windows 上 `readSymbolicLink().toString()`
+     * 给的是 `\root\...`（反斜杠），只判 `/root/` 会漏（AgentCatalogTest 那条软链用例在"能建
+     * 软链的 Windows 机器"上真红就是这个原因，本刀一并修掉）。
      */
     private fun existsInHost(ctx: Context, relative: String): Boolean {
-        val f = File(ctx.filesDir, relative)
-        if (f.isFile) return true
-        // 软链解析需要 Java 7 NIO（minSdk 36，无门槛）
-        return runCatching {
-            val target = java.nio.file.Files.readSymbolicLink(f.toPath()).toString()
-            if (target.startsWith("/root/")) {
-                File(ctx.filesDir, "home/${target.removePrefix("/root/")}").isFile
-            } else false
-        }.getOrDefault(false)
+        val base = ctx.filesDir
+        var rest = relative.replace('\\', '/').trim('/')
+        repeat(MAX_LINK_HOPS + 1) { hop ->
+            if (File(base, rest).isFile) return true
+            if (hop == MAX_LINK_HOPS) return false
+            rest = resolveFirstDanglingLink(base, rest) ?: return false
+        }
+        return false
+    }
+
+    /** 宿主侧软链最多解几跳（防自指/环）。Codex 那条链是两跳，留一倍余量。 */
+    private const val MAX_LINK_HOPS = 4
+
+    /**
+     * 从 [base] 起逐分量走 [rest]，把**第一条宿主上到不了的软链**换成宿主可解的相对路径并返回；
+     * 走完全程都没遇到这种链则返回 null（= 这条路径在宿主上到不了 ⇒ 判「没装」）。
+     *
+     * 只解"到不了的"链：宿主上本来就能正常解析的链（比如将来某条链指向宿主真路径）保持原样，
+     * 不必也不该改写。
+     */
+    private fun resolveFirstDanglingLink(base: File, rest: String): String? {
+        val parts = rest.split('/').filter { it.isNotEmpty() }
+        var acc = ""
+        for (i in parts.indices) {
+            acc = if (acc.isEmpty()) parts[i] else "$acc/${parts[i]}"
+            val cur = File(base, acc)
+            if (cur.exists()) continue // 真实存在（含能正常解析的链）⇒ 继续往下走
+            if (!isSymbolicLink(cur)) return null // 真实分量就缺了 ⇒ 这条路径到此为止
+            val target = readLinkOrNull(cur) ?: return null
+            val mapped = mapGuestRootToHome(target) ?: return null
+            val remainder = parts.drop(i + 1).joinToString("/")
+            return if (remainder.isEmpty()) mapped else "$mapped/$remainder"
+        }
+        return null
+    }
+
+    private fun isSymbolicLink(f: File): Boolean =
+        runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
+
+    private fun readLinkOrNull(f: File): String? =
+        runCatching { java.nio.file.Files.readSymbolicLink(f.toPath()).toString() }.getOrNull()
+
+    /**
+     * guest 视角的绝对路径 → 宿主相对路径（相对 filesDir）。
+     *
+     * guest 的 `/root` 就是 App 的 `files/home`（设计文档 §8）⇒ `/root/x` → `home/x`。
+     * 两种分隔符都认（Windows 的 readSymbolicLink 会给 `\root\...`）。
+     * 其它绝对路径（如 guest 的 `/usr/...`，对应宿主 `files/rootfs/usr/...`）**不映射** ——
+     * 与改动前口径一致（判「没装」），不猜根。
+     */
+    private fun mapGuestRootToHome(target: String): String? {
+        val t = target.replace('\\', '/')
+        return when {
+            t == "/root" -> "home"
+            t.startsWith("/root/") -> "home/" + t.removePrefix("/root/")
+            else -> null
+        }
     }
 
     /**
