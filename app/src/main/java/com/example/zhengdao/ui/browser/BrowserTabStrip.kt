@@ -92,7 +92,7 @@ private fun BrowserTabChip(
 ) {
     val shape = RoundedCornerShape(12.dp)
     val bg = if (active) palette.homeFill else palette.clusterPrimaryBg
-    val stroke = if (active) palette.clusterStroke else palette.stripStroke
+    val stroke = if (active) palette.clusterStrokePrimary else palette.stripStroke
     Row(
         modifier = Modifier
             .height(40.dp)
