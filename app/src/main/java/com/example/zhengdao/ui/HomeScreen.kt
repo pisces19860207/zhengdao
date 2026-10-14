@@ -198,7 +198,7 @@ fun HomeScreen(
                     snack(err)
                 }
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-taiji-retry" }.start()
     }
 
     var agents by remember { mutableStateOf(AppState.agents(context)) }
@@ -609,7 +609,7 @@ checks.forEachIndexed { index, c ->
                                                             android.os.Handler(context.mainLooper)
                                                                 .post { healthEpoch++ }
                                                         }
-                                                    }.start()
+                                                    }.apply { isDaemon = true; name = "zd-health-fix" }.start()
                                                 }) { Text(stringResource(R.string.common_repair)) }
 
                                                 tcmd != null -> TextButton(onClick = {

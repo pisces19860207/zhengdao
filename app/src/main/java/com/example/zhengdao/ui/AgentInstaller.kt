@@ -54,7 +54,7 @@ object AgentInstaller {
         Thread {
             val cmd = installCommand(ctx, agent)
             mainHandler.post { onReady(cmd) }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-agent-install" }.start()
     }
 
     /**

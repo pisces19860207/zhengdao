@@ -260,7 +260,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: Throwable) {
                 // 静默：更新检查失败绝不打扰用户
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-update-check" }.start()
     }
 
     /** 语义化版本比较：remote 严格大于 local 才算有更新（v 前缀与缺失段容错）。 */

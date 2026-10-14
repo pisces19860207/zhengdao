@@ -663,6 +663,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 attachViewToSession()
             }
         }, "zd-session-start")
+        // P4-2：一次性启动 worker，必须 daemon——非 daemon 线程挂着会让整个进程
+        // 退不干净（项目其余 27 处裸 Thread 一律 isDaemon=true，本条补对齐）。
+        worker.isDaemon = true
         worker.start()
     }
 
@@ -815,7 +818,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 r
             } catch (_: Throwable) { false }
             runOnUiThread { applyNetProbe(ok) }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-net-probe" }.start()
     }
 
     /** 一次观测落地：状态翻转才写日志 + 换横幅（同状态重复探测不留痕迹）。 */
@@ -1572,7 +1575,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             } finally {
                 installing.set(false)
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-install-saf" }.start()
     }
 
     /**
@@ -1668,7 +1671,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             } finally {
                 installing.set(false)
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-install-cache" }.start()
     }
 
     /** 下载 → SHA256 校验 → 解压（原子）→ 切 Debian。压缩包落公共缓存并保留。 */
@@ -1752,7 +1755,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             } finally {
                 installing.set(false)
             }
-        }.start()
+        }.apply { isDaemon = true; name = "zd-install-download" }.start()
     }
 
     /** 安装完成后切换到 Debian：杀旧会话（含回退 shell）→ 重开（自动 spawn 新 Debian）。 */

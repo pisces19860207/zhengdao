@@ -103,7 +103,7 @@ class ZhengdaoApp : Application() {
                         )
                     }
                 }
-            }.start()
+            }.apply { isDaemon = true; name = "zd-auto-clean" }.start()
         }
     }
 }
