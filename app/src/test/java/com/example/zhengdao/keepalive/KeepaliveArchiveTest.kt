@@ -138,6 +138,31 @@ class KeepaliveArchiveTest {
     }
 
     @Test
+    fun `轮转后读端_旧档并入_不出现假空窗`() {
+        // 收尾补充（第⑪批 B-1 / D-1）：轮转把活动文件整体改名成 `.1` 后它是空的，
+        // 读端必须把 `.1` 并进来，否则保活页在轮转瞬间显示「一条心跳都没有」。
+        val f = File(tmp, KeepaliveArchive.HEARTBEAT)
+        KeepaliveArchive.appendCapped(f, "[a1]\n", 10L) // 5B
+        KeepaliveArchive.appendCapped(f, "[b2]\n", 10L) // 10B
+        KeepaliveArchive.appendCapped(f, "[c3]\n", 10L) // 10B 未超 ⇒ 15B
+        KeepaliveArchive.appendCapped(f, "[d4]\n", 10L) // 15B > 10 ⇒ 轮转后再写
+        assertTrue("前提：确实发生了一次轮转", File(tmp, KeepaliveArchive.HEARTBEAT + ".1").isFile)
+        assertEquals(
+            "读端应把旧档拼在活动文件之前（新 → 旧）",
+            listOf("[d4]", "[c3]", "[b2]", "[a1]"),
+            KeepaliveArchive.heartbeatTailIn(tmp, 6),
+        )
+        assertEquals("只要最新 2 条", listOf("[d4]", "[c3]"), KeepaliveArchive.heartbeatTailIn(tmp, 2))
+        val clean = File(tmp, "clean").apply { mkdirs() }
+        File(clean, KeepaliveArchive.HEARTBEAT).writeText("[x1]\n[y2]\n")
+        assertEquals(
+            "没有 .1 时行为与改造前一致",
+            listOf("[y2]", "[x1]"),
+            KeepaliveArchive.heartbeatTailIn(clean, 6),
+        )
+    }
+
+    @Test
     fun `截断保留尾部并说明`() {
         val text = "A".repeat(100) + "尾巴"
         val out = KeepaliveArchive.truncate(text, 10)
