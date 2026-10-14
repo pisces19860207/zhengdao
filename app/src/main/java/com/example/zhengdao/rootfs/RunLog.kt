@@ -102,7 +102,10 @@ object RunLog {
         try {
             Store.adoptDir(pub, File(context.cacheDir, "runlog"))
             Store.adoptFile(File(pub, PREV_NAME), File(context.filesDir, NAME))
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：best-effort，但静默会让"日志怎么少了"无线索。走 logcat 直连——
+            // 这里正处在 RunLog 自己的初始化路径上，不能再调 log()（自递归）。
+            android.util.Log.w("zhengdao/RunLog", "历史日志并入公共区失败（忽略）：${t.message}")
         }
     }
 
@@ -133,7 +136,10 @@ object RunLog {
                 current.delete()
             }
             pruneArchivesIn(d)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：归档失败会直接丢掉上一轮的日志（"死前那几十行"正是它负责保住的），
+            // 必须留痕。走 logcat 直连（同 adoptPrivate：不调 log() 防自递归）。
+            android.util.Log.w("zhengdao/RunLog", "上轮日志归档失败（忽略）：${t.message}")
         }
     }
 
@@ -281,7 +287,10 @@ object RunLog {
         try {
             val target = File(d, PREV_NAME)
             Store.adoptFile(target, File(context.filesDir, NAME))
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // P2-7：老用户的旧日志搬失败 = 那批记录事实上丢了，不能静默。
+            // 走 logcat 直连（migrateLegacy 可能在 init 早期被调，log() 未必就绪）。
+            android.util.Log.w("zhengdao/RunLog", "旧位置日志迁移失败（忽略）：${t.message}")
         }
     }
 }
