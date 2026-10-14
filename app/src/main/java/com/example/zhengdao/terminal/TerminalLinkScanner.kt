@@ -26,15 +26,25 @@ object TerminalLinkScanner {
     private val URL_PATTERN = Regex("""https?://[^\s<>"'`)\]}，。；！""]+""")
 
     /**
-     * 尾部句读标点（ASCII）——**只在它后面是空白或行尾时才裁**（§B 顺序 30，2026-10-14 真机：
-     * `https://example.com/trailing-test,` 被连逗号一起打开；ASCII 标点原不在排除集里）。
+     * 尾部句读标点（ASCII）——**只在它后面是空白、行尾或闭合符时才裁**（§B 顺序 30，
+     * 2026-10-14 真机：`https://example.com/trailing-test,` 被连逗号一起打开；
+     * ASCII 标点原不在排除集里）。
      *
      * 为什么不把 `,.;:!?` 塞进 [URL_PATTERN] 的排除集一律剥：`.` 与 `:` 是 URL 的合法字符
      * （`https://` 的冒号、`example.com` / `v1.2` 的点），句中逗号也可能是 URL 的一部分
      * （`/a,b`）——一律剥会把好 URL 也切坏。所以只处理**尾部连续标点段**，且该段之后
-     * 必须是空白或行尾；后随其它非空白字符（如 `/a,b` 的 `b`）时原样保留。
+     * 必须是空白 / 行尾 / [CLOSING_PUNCT]；后随其它非空白字符（如 `/a,b` 的 `b`）时原样保留。
      */
     private const val TRAILING_PUNCT = ",.;:!?"
+
+    /**
+     * 闭合符：尾标点**后随**它们时也算句读（§B 顺序 30 收紧 · 2026-10-14 真机复验：
+     * `(https://example.com/a,)` 会把逗号带进地址栏）。
+     *
+     * 与 [URL_PATTERN] 排除集里的那组闭合符一致 —— 排除集负责"链接在闭合符前就结束"，
+     * 本常量负责"链接若以句读标点收尾、而标点后紧跟闭合符，那个标点也该去掉"。
+     */
+    private const val CLOSING_PUNCT = ")]}"
 
     /** 扫一行终端文本，返回全部链接命中（按出现顺序）。 */
     fun findLinks(line: String): List<LinkMatch> {
@@ -45,9 +55,10 @@ object TerminalLinkScanner {
             var end = rawEnd
             while (end > start && line[end - 1] in TRAILING_PUNCT) end--
             if (end < rawEnd) {
-                // 尾标点之后若还有非空白字符，说明它们是 URL 的一部分（`/a,b`），保留。
+                // 尾标点之后若是空白 / 行尾 / 闭合符 —— 那是句读，裁掉；
+                // 若是其它非空白字符（如 `/a,b` 的 `b`），标点属 URL 的一部分，保留。
                 val next = line.getOrNull(rawEnd)
-                if (next != null && !next.isWhitespace()) end = rawEnd
+                if (next != null && !next.isWhitespace() && next !in CLOSING_PUNCT) end = rawEnd
             }
             if (end <= start) null else LinkMatch(start, end, line.substring(start, end))
         }.toList()
