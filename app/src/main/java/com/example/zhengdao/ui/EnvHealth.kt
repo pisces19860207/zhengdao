@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
 import com.example.zhengdao.R
+import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rust.CoreNative
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.EnvSelfHeal
@@ -228,8 +229,32 @@ object EnvHealth {
     /**
      * 定向自愈（#10 起**绝不外抛**）：抛异常时把原因放进 [FixResult.error]，
      * 由调用方展示（主页会把原因写进「最近问题」卡片）。rootfs/proot 类不在一键范围（重解压兜底）。
+     *
+     * ## R-06（审计第⑮刀，2026-10-14）：修复必须与会话准备/安装互斥
+     *
+     * 修复动作里有三条直接往**已装的 rootfs** 里写东西（DNS `etc/resolv.conf`、时区
+     * `etc/localtime`、uv `etc/uv/uv.toml`），而安装在最后会把**整棵 rootfs 改名搬走再放新的**
+     * （[RootfsInstaller.swapLocked]）。此前修复这条通道**不参与** [RootfsInstaller.withPrepareLock]，
+     * 于是「体检报红 → 点修复」与「正在装环境」可以同时在动同一棵树：轻则刚写的配置落进被丢弃的
+     * 旧树（修了等于没修），重则写进正在被搬走的目录（§B 顺序 18 的同一类 TOCTOU）。
+     *
+     * 处理方式（在审计给的两条路里选了**前者**）：**走同一把锁**。语义沿用锁自带的「拒绝不排队」——
+     * 安装进行中时 [RootfsInstaller.withPrepareLock] 直接抛 [RootfsInstaller.InstallFailed]，
+     * 被下面的 [guardFix] 接住，转成一条「正在安装，本次未执行」的结论。选它而不是「发现被占用就
+     * 静默跳过」，是因为后者会让用户点了修复却看不出为什么没反应，与 #10 以来「每个结果都要有去向」
+     * 的口径不符；而排队又要用户干等一个完整安装周期，与 [RootfsInstaller.withPrepareLock] 当初
+     * 定下的语义不一致。
      */
-    fun fixDetailed(ctx: Context, fixId: String): FixResult = guardFix { fixAction(ctx, fixId) }
+    fun fixDetailed(ctx: Context, fixId: String): FixResult = fixGuarded { fixAction(ctx, fixId) }
+
+    /**
+     * [fixDetailed] 的求值壳（纯函数，便于单测）：把修复动作放进「会话准备锁」再跑。
+     *
+     * 抽出来是为了让「锁被占时体检修复一个字节都不写」这条不变量能在 JVM 单测里直接钉住
+     * （[fixDetailed] 需要 Context，单测给不出来）；求值语义与 [fixDetailed] 完全一致。
+     */
+    internal fun fixGuarded(body: () -> Boolean): FixResult =
+        guardFix { RootfsInstaller.withPrepareLock("体检修复") { body() } }
 
     /** [fixDetailed] 的兜底壳（纯函数，便于单测：传一个必抛的动作即可验）。 */
     internal fun guardFix(body: () -> Boolean): FixResult =
