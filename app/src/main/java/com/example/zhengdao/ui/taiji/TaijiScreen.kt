@@ -37,7 +37,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -122,11 +121,19 @@ fun TaijiScreen(
     // "重试"是个有后续动作的入口，不是通知。
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // 🔺 会话 id 必须跨配置变更保存。
-    //    转屏 / 切 Tab 回来时 Activity 重建、Repository 也重建；若每次都传 null 就会
-    //    **新建一个会话**，历史消息全丢（表现："转一下屏聊天记录没了"）。
+    // 🔺 会话 id 必须跨「配置变更 + Tab 切换 + 终端往返」都保住。
+    //    P2-3（§B 顺序 2，2026-10-14）：原先是 rememberSaveable —— 那只跨**转屏**；
+    //    切到底栏别的 Tab 时 TaijiScreen 离开组合、id 一丢，回来就 repo.open(scope, null)
+    //    ⇒ **新建一个会话**，历史消息全丢。现在存进进程级的 [TaijiStateHolder]
+    //    （与 ui/browser/BrowserHolder 同口径），本地 savedSession 只是它的可变镜像。
     //    Repository 重建后会自动全量拉取，所以只要 id 保住，内容就能完整恢复。
-    var savedSession by rememberSaveable { mutableStateOf<String?>(null) }
+    var savedSession by remember { mutableStateOf(TaijiStateHolder.sessionId) }
+
+    /** 统一的会话 id 写入点：同时更新本地镜像与 holder（漏写 holder 它就白建）。 */
+    fun syncSession(id: String?) {
+        savedSession = id
+        TaijiStateHolder.setSession(id)
+    }
 
     // ── v1.1 第一阶段：会话完整化 ─────────────────────────────────────
     // 历史列表内容 + 左侧抽屉的开合。刻意留在 UI 层局部状态，不进 Repository
@@ -263,7 +270,11 @@ fun TaijiScreen(
         // ⚠️ 用 OcRuntime.scope（进程级）而不是页面自己的 scope：轮询 / SSE 必须比
         //    Composition 活得久，否则切一次 Tab 就把连接拆了（见上面 repo 的注释）。
         repo.open(OcRuntime.scope, savedSession)
-        savedSession = repo.state.value.sessionId ?: savedSession
+        syncSession(repo.state.value.sessionId ?: savedSession)
+        // P2-2：切回来把该会话的草稿灌回输入框。本 effect 的 key 含 savedSession，
+        // 而它切回时从 holder 恢复 ⇒ 这段会重跑，天然就是灌回点。
+        // ⚠️ 只能回文本：repo.setInput(text: String) 不收光标（见 [TaijiStateHolder] KDoc）。
+        TaijiStateHolder.draft(savedSession)?.let { repo.setInput(it) }
         // 重启后重放模型覆盖：复用的会话重新 POST 一次（幂等，仅影响当前会话）
         modelOverride?.let { m ->
             repo.state.value.sessionId?.let { repo.setSessionModel(m) }
@@ -339,12 +350,12 @@ fun TaijiScreen(
                                 // 点击条目：关抽屉 → 保住 id（防转屏/切 Tab 丢会话）→ 切换会话
                                 onPick = { id ->
                                     scope.launch { drawerState.close() }
-                                    savedSession = id
+                                    syncSession(id)
                                     scope.launch { repo.switchSession(OcRuntime.scope, id) }
                                 },
                                 onNew = {
                                     scope.launch { drawerState.close() }
-                                    scope.launch { repo.startNewSession(OcRuntime.scope)?.let { savedSession = it } }
+                                    scope.launch { repo.startNewSession(OcRuntime.scope)?.let { syncSession(it) } }
                                 },
                                 onRefresh = { scope.launch { refreshSessions() } },
                                 // 长按删除：二次确认在 HistoryDrawer 内部完成，这里只执行 + 同步列表
@@ -356,8 +367,8 @@ fun TaijiScreen(
                                         // ② 删掉的正是当前会话 → 立刻另起一个新会话，
                                         //    否则 UI 会停在"一个已不在服务端的会话"上（再发消息必错）
                                         if (target.id == state.sessionId) {
-                                            savedSession = null
-                                            repo.startNewSession(OcRuntime.scope)?.let { savedSession = it }
+                                            syncSession(null)
+                                            repo.startNewSession(OcRuntime.scope)?.let { syncSession(it) }
                                         }
                                         // ③ 再回源对齐（含刚建的新会话）。只做 ① 会留下缺口：
                                         //    "删当前会话 → 另起新会话"时新会话不在列表里、当前徽章消失
@@ -406,7 +417,7 @@ fun TaijiScreen(
                         // ＋ 新会话：创建后切入，并同步 savedSession（防转屏/切 Tab 丢会话）
                         onNew = {
                             scope.launch {
-                                repo.startNewSession(OcRuntime.scope)?.let { savedSession = it }
+                                repo.startNewSession(OcRuntime.scope)?.let { syncSession(it) }
                             }
                         },
                         currentModelText = modelOverride?.let { it.providerID + "/" + it.id }
@@ -462,7 +473,13 @@ fun TaijiScreen(
                         input = state.input,
                         isStreaming = state.isStreaming,
                         enabled = state.sessionId != null,
-                        onInputChange = repo::setInput,
+                        // P2-2（§B 顺序 2）：草稿按会话存进 holder —— 切走再切回时灌回
+                        //（见下面 LaunchedEffect(savedSession)）。repo 是进程级单例，草稿本该
+                        // 一直在；但会话被换掉时它会被清空，所以这里自己留一份。
+                        onInputChange = { t ->
+                            repo.setInput(t)
+                            TaijiStateHolder.saveDraft(savedSession, t)
+                        },
                         onSend = {
                             // 失败必须看得见（C2 2026-10-08 升级）：失败时给"重试"入口，
                             // 让用户 1-tap 重新发同样内容。input 文字由 prompt 失败路径自然
