@@ -29,7 +29,6 @@
     <string name="common_cleaning">Cleaning…</string>
     <string name="common_loading">Loading…</string>
     <string name="common_done">Done</string>
-    <string name="common_read_failed">Couldn\'t read</string>
     <string name="common_view_log">View log</string>
     <string name="common_clear">Clear</string>
     <string name="common_feedback">Feedback</string>
@@ -361,8 +360,11 @@
     <string name="help_faq_a2">Re-run the install command in the terminal. To update the system, use \"Check for updates\".</string>
     <string name="help_faq_q3">Where are my files?</string>
     <string name="help_faq_a3">Output goes into the workspace folder (by default Download/证道 on your phone).</string>
-    <string name="help_log_location">Location: %1$s</string>
-    <string name="help_log_desc">zhengdao-log.txt is this run; timestamped archives keep at most 20 files / 20 MB, oldest deleted first (a clean run is never deleted); errors.log records error lines only. Open them with a file manager, or send them to us to look into a problem.</string>
+    <string name="help_log_desc">zhengdao-log.txt is this run; timestamped archives keep at most 20 files / 20 MB, oldest deleted first (a clean run is never deleted); errors.log records error lines only. Logs live in the app\'s private storage, unreadable by other apps.</string>
+    <string name="help_log_export_btn">Export log</string>
+    <string name="help_log_export_hint">Logs live in the app\'s private storage; tap "Export log" when you need to show a developer — pick where to save it (private paths and passwords are stripped automatically).</string>
+    <string name="help_log_export_ok">Exported</string>
+    <string name="help_log_export_fail">Export failed</string>
     <string name="help_log_archive_count">%1$d archived logs.</string>
     <string name="help_log_prev_error">The last run hit an error; the log was kept (copy it and send it to us).</string>
     <string name="help_log_view_prev">View last log</string>
