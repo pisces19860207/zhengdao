@@ -124,7 +124,6 @@ class SettingsHelpActivity : ComponentActivity() {
 @Composable
 private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     val ctx = LocalContext.current
-    var storageTick by remember { mutableStateOf(0) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
 
     /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
@@ -132,6 +131,21 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     var archiveCount by remember { mutableStateOf(0) }
     // §B 顺序 2 · P2-5：剪掉旧日志归档是**永久删除**，先弹确认框再执行。
     var pruneConfirm by remember { mutableStateOf(false) }
+
+    // 第⑩刀审计 R-20（2026-10-14）：本页原先**没有任何加载副作用** —— `archiveCount` 只在本页
+    // 剪枝确认里被赋值，而那个按钮又在 `archiveCount > 3` 守卫内 ⇒ 计数行 / 剪枝按钮 / 上一轮
+    // 日志提示永远渲染不出来（整块日志管理不可达，只有门禁的文本断言在替它背书）。
+    // P4-1 拆页时这段加载被留在了设置首页（ui/SettingsEnvActivity.kt 的孤儿 LaunchedEffect），
+    // 那里写的两个 state 已无人读取；这里原样补回来。
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
+            prevLogText = if (com.example.zhengdao.rootfs.RunLog.lastRunHadErrors(ctx))
+                (com.example.zhengdao.rootfs.RunLog.latestArchive()
+                    ?: com.example.zhengdao.rootfs.RunLog.prevFile())?.readText()
+            else null
+        }
+    }
 
     SettingsSubPage(title = stringResource(R.string.settings_help), onBack = onBack, scrollToEnd = scrollToEnd) {
         // ── 新手指南（第三批）──
