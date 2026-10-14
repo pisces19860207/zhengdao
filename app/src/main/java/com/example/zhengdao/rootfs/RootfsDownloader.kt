@@ -31,6 +31,28 @@ object RootfsDownloader {
     private const val PART_SUFFIX = ".part"
     private const val MAX_ATTEMPTS_PER_URL = 3
 
+    /** 重试退避基数（毫秒）：第 1 次重试等这么久，之后翻倍。 */
+    private const val RETRY_BASE_DELAY_MS = 800L
+
+    /** 重试退避上限（毫秒）：翻到这么大就不再涨（rootfs 326MB，等太久用户会以为卡死）。 */
+    private const val RETRY_MAX_DELAY_MS = 8_000L
+
+    /**
+     * 第 [retryIndex] 次重试前要睡多久（0 起算；纯函数，JVM 单测钉住）。
+     *
+     * 为什么必须有（台账 issue #17 P2-14）：原实现同一 URL 失败后**立即**重试，
+     * 3 连击在几百毫秒内打完——对端（github / 镜像）正在抖的时候，这等于帮着砸，
+     * 且第 2、3 次几乎必然同样失败，白耗一次完整超时周期。
+     * 指数退避把"立即重试"变成"让对端喘口气"，Generic Exception / ShaMismatch /
+     * 末源超时这三条会重试同一 URL 的路径都走它。
+     */
+    internal fun backoffDelayMs(retryIndex: Int): Long {
+        if (retryIndex < 0) return 0L
+        var delay = RETRY_BASE_DELAY_MS
+        repeat(retryIndex) { delay = minOf(delay * 2, RETRY_MAX_DELAY_MS) }
+        return minOf(delay, RETRY_MAX_DELAY_MS)
+    }
+
     class DownloadFailed(message: String) : IOException(message)
 
     /** 下载内容与校验值不符（多为发布资产在下载途中被更新）——残件作废、重取校验值、从头再来 */
@@ -171,6 +193,13 @@ object RootfsDownloader {
         urls.forEachIndexed { index, url ->
             val hasFallback = index < urls.size - 1
             for (attempt in 0 until MAX_ATTEMPTS_PER_URL) {
+                // P2-14：同一 URL 的重试之间指数退避（首次尝试不睡）。
+                // 换源的 break 路径在睡之前就退出循环，不会白等。
+                if (attempt > 0) {
+                    val waitMs = backoffDelayMs(attempt - 1)
+                    Log.i(TAG, "第 ${attempt + 1} 次尝试前退避 ${waitMs}ms（$url）")
+                    Thread.sleep(waitMs)
+                }
                 try {
                     Log.i(
                         TAG,
