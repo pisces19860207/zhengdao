@@ -6486,3 +6486,40 @@ E-116 修完后我拿正式签名包上真机（PGT-AN10 / MagicOS / Android 16 
 全程 `logs/errors.log` **零新增行**；对照修前（v2.1.0，22:54:04 / 22:54:09）同样操作只打 `open 复用现有连接：会话 …`、**没有一行「全量加载」**。
 
 **未量到的一截（照实记）**：用户体感的「切换好慢」这轮**没量到干净耗时** —— 会话列表那几行（y≈700–1150）落在第三方悬浮窗 `com.phoenix.read`（`TYPE_APPLICATION_OVERLAY`、`mAttrs={(35,713)(1243x699)}`、`touchableRegion=SkRegion((0,0,1243,699))`）的遮挡区里，合成点击被吞、触发时刻不可采信。已拿到的半截理由：`新建会话`→`全量加载`同秒完成、`全量加载 22 条消息`与紧随的 `SSE 信号通道就绪`也在同一秒内 ⇒ **宿主侧 `loadAll` + SSE 重连本身不慢**，「慢」更可能出在服务侧（opencode 现拉会话）或渲染。下一步量法（选一）：① 先关掉那个悬浮窗再测；② 在 `ui/taiji/TaijiScreen.kt` 的 `onPick` → `oc/OcRepository.kt` 的 `open()` 之间加两行 `ocLog` 打点（「用户点选」与「开始 loadAll」两个时刻）再测。
+
+---
+
+## E-124 · 2026-10-14 · 「网络不通」横幅的文案把用户指错了下一步（叫她去代理 App 里勾选「证道」），而真机实测**直连本来就通**；顺带把「一次会话只探一次」改成活体探针
+
+**用户报告（2026-10-14，逐字）**：「那个网络不通其实功能还是很好用的，能证明VPN之类的APP在后台被手机系统杀掉了。转用手机的网络，不再经过VPN类的APP应该也可以连通网络才对啊」
+⇒ 两条要求：**报警要留**（它就是「代理被杀」的证据）、**网络恢复后横幅要自己消失**（她此前抱怨过「网络早就好了横幅还挂着」）。
+
+**旧实现错在哪**：`app/src/main/java/com/example/zhengdao/TerminalActivity.kt` 的 `private fun networkPreCheck()`（改动前 `L764-789`）只探一次（`private var networkCheckStarted` 去重），失败即 `showBanner(getString(R.string.term_no_network))`；而 `term_no_network` 原文案是「网络不通：请确认代理已开启，并在代理 App 的「分应用代理」里勾选「证道」」——
+
+1. **指错了下一步**：真机实测（2026-10-14 14:27–14:28，玄览 WebView 直连）`https://www.baidu.com/` 整页渲染、`https://registry.npmjs.org/-/ping` 返回 `{}`；系统侧 `dumpsys connectivity` 活动默认网 = WiFi（`ChinaNet-…`）且**全部 `NOT_VPN`、无 VPN NetworkAgent**，`settings get global http_proxy` = `null` ⇒ **不挂任何代理、直连手机网络本来就通**。让用户去代理 App 里翻「分应用代理」，方向就是错的。
+2. **只探一次 ＋ 只报不消**：探针失败后横幅永久挂着，中途网络恢复（她把代理拉起来、或干脆切直连）页面也不会变 ⇒ 制造「网络早就好了还挂个红条」的假象。
+3. 旧探针没有节流概念，只因「只探一次」才没刷屏；一旦改成周期探测，就必须按「只在状态翻转时记一行」来写。
+
+**修法**：
+
+- 新增 `app/src/main/java/com/example/zhengdao/terminal/NetWatch.kt`（纯逻辑、可单测）：首次观测**立刻定状态**（不给用户 40 秒「未知」）、之后**连续 2 次失败**才判不通（抵一次抖动）、**一次成功立刻**判通；`observe(ok)` 只在翻转时返 true；`PROBE_INTERVAL_MS = 20_000L`。
+- `app/src/main/java/com/example/zhengdao/TerminalActivity.kt`：`onResume()`（`L397-401`）起探针、**新增 `onPause()`**（`L408-410`）停探针 ⇒ 只在终端页可见时跑（省电）；`applyNetProbe()`（`L821`）只在翻转时写 RunLog 并刷/收横幅，插横幅仍守 `InstallProgress.state.value == null`，恢复时 `dismissNetworkBanner()`（只收自己写的那条）。
+- 文案改口径（`app/src/main/res/values/strings.xml:794` / `app/src/main/res/values-en/strings.xml:794`）：新中文「网络不通：多半是代理 App 被系统后台杀掉了 —— 把它拉起来即可；不开代理、让「证道」直连手机网络也能通」。
+
+**真机双向验收（2026-10-14，设备 `AD3J023824001723`，release 包覆盖安装）**：
+
+| 时刻 | RunLog 逐字 | 界面 |
+|---|---|---|
+| `[14:42:52]` | `冷启动打点：prepareLaunchPlan 26ms（含 SHA256 / 拷 assets / 缓存搬家）` | 终端页正常起来（第⑥刀仍 ✓） |
+| `[14:42:55]` | `网络探针：registry.npmjs.org 可达（直连可用） —— 此后每 20 秒探一次，只在状态翻转时记一行` | 无横幅 |
+| `[14:45:32]` | `网络探针：registry.npmjs.org 不通（多半是代理 App 被系统杀掉）—— 顶部横幅提示` | **横幅出现**（`svc wifi disable` ＋ `svc data disable` 之后） |
+| `[14:45:53]` | `网络探针：恢复连通 —— 收起顶部网络横幅` | **横幅自动消失**（恢复网络后 21 秒） |
+
+全程约 3 分钟只 3 行探针日志（无刷屏）。
+
+**教训**：
+
+- **面向用户的报错文案，要写「此刻该做什么」，而不是写「我猜你哪儿没配」** —— 这条横幅原文案暗示「你没勾分应用代理」，而真机证明直连也行；错误的下一步比不报更耗人。
+- **故障指示必须是活体的**：只探一次的状态灯，一旦环境自我恢复就变成假报警；周期探测 ＋ 只在翻转时记日志（不刷屏）才是正解。
+- **别用 `settings put global http_proxy 127.0.0.1:9` 这类黑洞代理去造「网络不通」**：App 侧 `HttpURLConnection` 不读全局 http_proxy，探针照常成功（本次实测失败的路子）；真机唯一可靠的是 `adb shell svc wifi disable` ＋ `svc data disable`。
+- 想用 `adb shell am start -n com.example.zhengdao/.TerminalActivity` 直接进终端页也不成：该 Activity 在 manifest 里 `android:exported="false"`（`SecurityException: Permission Denial`）—— 这是**设计正确**，别再试。
