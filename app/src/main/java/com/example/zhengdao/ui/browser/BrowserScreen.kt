@@ -71,11 +71,17 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val engine = remember { BrowserHolder.obtain(context) }
 
-    var urlInput by remember { mutableStateOf("") }
+    // §B 顺序 32（2026-10-14）：这几个状态必须挺过「切走再切回」。
+    // WebView 由 BrowserHolder 保活（页面内容还在），但 `remember` 会随离开组合丢失
+    // ⇒ 切回来地址栏空白、空态重现，看着像"页面没了"。
+    //  - urlInput / everLoaded：从 holder 回填（与 pendingUrl 同处，跨 Tab/跨 Activity 都在）；
+    //  - canBack / canFwd：入场直接问引擎（历史栈本就在 WebView 里活着）；
+    //  - loading / blockedMsg 是**瞬态**：重进时页面已加载完、提示条本也该消失，留 remember。
+    var urlInput by remember { mutableStateOf(BrowserHolder.lastUrl()) }
+    var everLoaded by remember { mutableStateOf(BrowserHolder.everLoaded()) }
+    var canBack by remember { mutableStateOf(engine.canGoBack()) }
+    var canFwd by remember { mutableStateOf(engine.canGoForward()) }
     var loading by remember { mutableStateOf(false) }
-    var canBack by remember { mutableStateOf(false) }
-    var canFwd by remember { mutableStateOf(false) }
-    var everLoaded by remember { mutableStateOf(false) }
     var blockedMsg by remember { mutableStateOf<String?>(null) }
 
     val enabledTint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -99,12 +105,15 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 urlInput = url
                 canBack = engine.canGoBack()
                 canFwd = engine.canGoForward()
+                // 记进 holder：切走再切回时靠它把地址栏还原（§B 顺序 32）
+                BrowserHolder.rememberPage(url, true)
             }
 
             override fun onPageFinished(url: String) {
                 loading = false
                 canBack = engine.canGoBack()
                 canFwd = engine.canGoForward()
+                BrowserHolder.rememberPage(url, true)
             }
 
             override fun onSslError(url: String) {
@@ -133,6 +142,8 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         BrowserHolder.consumePendingUrl()?.let { target ->
             urlInput = target
+            everLoaded = true
+            BrowserHolder.rememberPage(target, true)
             engine.loadUrl(target)
         }
     }

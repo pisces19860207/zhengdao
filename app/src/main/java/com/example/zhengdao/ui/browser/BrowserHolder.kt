@@ -68,4 +68,38 @@ object BrowserHolder {
         pendingUrl = null
         return url
     }
+
+    // ── 跨 Tab 保留的界面状态（§B 顺序 32，2026-10-14 真机验收立账） ──────────────
+    //
+    // 现象：切走再切回玄览 ⇒ 空态重现、地址栏被清空（看着像"页面没了"，其实 WebView
+    // 由本类保活、页面内容还在）。
+    // 根因：丢的是 **Compose 侧**状态——BrowserScreen 里那几个 `remember { mutableStateOf }`
+    // 随离开组合一起没了。
+    // 修法：把「上次 URL」与「是否成功加载过」搬到这里（与 [pendingUrl] 同处：跨 Tab、
+    // 跨 Activity 都活得下来），BrowserScreen 入场时回填。前进/后退能力不用另存 ——
+    // 它本就活在 WebView 的历史栈里，入场直接问引擎。
+
+    @Volatile
+    private var lastUrl: String = ""
+
+    @Volatile
+    private var everLoadedFlag: Boolean = false
+
+    /** 记下当前页面（onPageStarted / 外部打开入口调用）。空 URL 不覆盖上次记录。 */
+    fun rememberPage(url: String, loaded: Boolean) {
+        if (url.isNotEmpty()) lastUrl = url
+        if (loaded) everLoadedFlag = true
+    }
+
+    /** 上次加载过的 URL（空串 = 从未打开过页面）。 */
+    fun lastUrl(): String = lastUrl
+
+    /** 是否成功加载过页面（决定入场要不要显示空态引导）。只涨不落。 */
+    fun everLoaded(): Boolean = everLoadedFlag
+
+    /** 仅单测用：清空界面状态（object 单例会跨用例串味）。 */
+    internal fun resetUiStateForTest() {
+        lastUrl = ""
+        everLoadedFlag = false
+    }
 }
