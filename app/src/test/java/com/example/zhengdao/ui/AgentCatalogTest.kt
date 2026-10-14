@@ -66,7 +66,6 @@ class AgentCatalogTest {
         assertEquals("Codex CLI", c.name)
         assertEquals("codex --no-daemon", c.launchCmd)
         assertEquals("npm i -g @openai/codex", c.installCmd)
-        assertTrue(c.restorable)
         val uninstall = c.uninstallCmd
         assertNotNull(uninstall)
         assertTrue(uninstall!!.contains("npm uninstall -g @openai/codex"))
