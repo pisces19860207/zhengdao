@@ -209,7 +209,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             com.example.zhengdao.terminal.HermesEnv.repairOnHost(home)
                             android.os.Handler(android.os.Looper.getMainLooper())
                                 .post { storageTick++ }
-                        }.start()
+                        }.apply { isDaemon = true; name = "zd-hermes-repair" }.start()
                     }) {
                         Text(
                             if (!st.ok) stringResource(R.string.env_hermes_fix_record)
@@ -401,7 +401,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 Toast.makeText(ctx, result, Toast.LENGTH_LONG).show()
                             }
                         }
-                    }.start()
+                    }.apply { isDaemon = true; name = "zd-env-check" }.start()
                 },
             ) {
                 Text(
@@ -622,7 +622,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     }
                                 }
                             }
-                        }.start()
+                        }.apply { isDaemon = true; name = "zd-env-repair" }.start()
                     }
                 }) { Text(stringResource(R.string.env_repair_action)) }
             },
@@ -782,7 +782,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             InstallFlow.fail(ctx, ctx.getString(R.string.env_update_failed, why))
                             toastOnMain(ctx.getString(R.string.env_update_failed, why), long = true)
                         }
-                    }.start()
+                    }.apply { isDaemon = true; name = "zd-env-update" }.start()
                 }) {
                     Text(stringResource(R.string.env_install_download_btn))
                 }

@@ -590,7 +590,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                         val update = NetSelfCheck.probeIndex(res = ctx.resources)
                         netMsg = NetSelfCheck.summary(cn, update, ctx.resources)
                         netChecking = false
-                    }.start()
+                    }.apply { isDaemon = true; name = "zd-net-check" }.start()
                     }
                 },
             )

@@ -626,7 +626,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         rollbacks = rb
                         LastValues.saveText(ctx, "installer_cache_text", lines)
                     }
-                }.start()
+                }.apply { isDaemon = true; name = "zd-cache-reload" }.start()
             }
             LaunchedEffect(Unit) { reloadCache() }
             Text(cacheText, style = MaterialTheme.typography.bodySmall)
@@ -670,7 +670,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     ).show()
                                     reloadCache()
                                 }
-                            }.start()
+                            }.apply { isDaemon = true; name = "zd-cache-clean" }.start()
                         }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                     },
                     dismissButton = {
@@ -760,7 +760,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                         }
                                     }
                                 }
-                            }.start()
+                            }.apply { isDaemon = true; name = "zd-rollback" }.start()
                         }) { Text(stringResource(R.string.storage_rollback_btn)) }
                     },
                     dismissButton = { TextButton(onClick = { rollbackConfirm = null }) { Text(stringResource(R.string.common_cancel)) } },
