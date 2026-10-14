@@ -514,48 +514,147 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             //   ② 运行日志把这条裸 shell 记成 agent=hermes，事后查现场会被自己误导。
             // 放在 start() 之前就是为了 ② —— start() 里那行「会话启动…」直接读这个字段。
             if (pendingAutocmd == null) SessionManager.setCurrentAgent(null)
-            val plan = SessionManager.start(this)
-            usesTmux = plan.usesTmux
-            SessionManager.usesTmux = plan.usesTmux
-            fallbackActive = plan.isFallback
-            // 全新会话只有一块窗格（attach 到旧会话时 paneCount 保持 -1 = 未知，
-            // 见 paneCount 注释：服务端有几块我们问不到，不去猜）
-            paneCount = 1
-            // 2026-10-11 用户反馈「后面遮挡的有点多了」：原串 `证道 — Debian 13.7 · bash`
-            // 在 17sp 粗体下要 ~190dp，而 375dp 屏的顶栏给标题只剩 ~150dp
-            //（三个圆点热区占 104dp + 复制/粘贴占 ~92dp）⇒「· bash」整段被省略号吃掉、
-            // `13.7` 也只剩半截。改成短标题，并由 activity_main.xml 里 toolbar_title 的
-            // autoSize 在更窄的屏上自动降号兜底（宁可小一号，不再截断）。
-            // ⚠️ 回退态那条 `证道 — 系统 shell（环境未安装）` 同样偏长，本次未动。
-            toolbarTitle?.text = if (plan.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 - Debian 13.7"
-            // 环境未装：给安装引导（本地有归档则零交互自动装）。
-            // ⚠️ v1.1 重写 TerminalActivity 时此调用曾丢失——新用户装完 App 卡在
-            // fallback shell、没有任何安装入口（2026-10-07 恢复数据时实测发现）。
-            if (fallbackActive) promptInstallOnce()
-            // 全新会话且本次没带命令 ⇒ 什么都不跑，落在一个**干净的 shell** 上。
+
+            // §B 顺序 6 / P1-3（2026-10-14）：把 SessionManager.start() 挪出主线程。
             //
-            // ⚠️ 这里原先是 `restoreLastAgentIfAny()`：把上次那个 Agent 的启动命令重放一遍
-            //    （E-018 的"杀 App 再开还是它"）。用户 2026-10-11 真机反馈推翻了它——
-            //    「进入环境或者终端不应该默认某个 agent」：一进终端就自动跑 `hermes`、
-            //    直接进它的 TUI，看着像 App 自己替他做了决定（2026-10-11 日志实测：
-            //    每次冷启动进终端都记一行「恢复：上次会话里是 hermes…」）。
-            //    要跑 Agent 就点丹房的启动卡片（那条**带命令**，走 [routeSessionIfNeeded]）；
-            //    进程**还活着**时进终端仍是真正的 attach，现场照旧保留。
-            //    台账：ERRATA E-113、FEATURE-LEDGER §A #52。
+            // 它内部依次做：killInternal → **ProotLauncher.buildLaunchPlan**（重活：算
+            // SHA256、拷 assets、`Store.adoptDir` 搬 JM 级共享缓存）→ 建 TerminalSession
+            // → 起前台服务。而本函数的三个调用点（onResume / onNewIntent /
+            // relaunchDebian 的 runOnUiThread）**全在主线程** ⇒ 冷启动必卡主线程。
             //
-            // ⚠️ 同时必须把「这条会话里是谁」的记录清掉。记录是**上一条会话**的遗留
-            //    （prefs 里的 `current_agent`，进程被杀时它照样留着），而眼前这条会话
-            //    是个裸 shell：留着它，用户去点丹房的「Hermes」启动卡时会被路由判成
-            //    ATTACH_CURRENT（"Hermes 已在运行，已切回原来那个"）⇒ **点了没反应**。
-            //    只有本次**没带命令**时才清：带命令时记录已由路由层登记成正确的那个。
-            //    （清除动作在 `SessionManager.start()` **之前**，见上面那处。）
-        } else {
-            usesTmux = SessionManager.usesTmux
-            fallbackActive = false
-            // 同一串短标题：attach 到已有会话也走这条（理由见上面新会话那处的注释）
-            toolbarTitle?.text = "证道 - Debian 13.7"
+            // 改法：重活丢后台线程，UI 赋值与 attach 回主线程（对外行为不变 ——
+            // 仍是「起会话 → 更新顶栏 → attach」这一串，只是中间让出主线程一次）。
+            startSessionOffMainThread()
+            return
         }
-        // 视尺寸就绪后 attach：首次 attach 触发进程 spawn（新会话）或重排恢复（旧会话）
+        // 全新会话且本次没带命令 ⇒ 什么都不跑，落在一个**干净的 shell** 上。
+        //
+        // ⚠️ 这里原先是 `restoreLastAgentIfAny()`：把上次那个 Agent 的启动命令重放一遍
+        //    （E-018 的"杀 App 再开还是它"）。用户 2026-10-11 真机反馈推翻了它——
+        //    「进入环境或者终端不应该默认某个 agent」：一进终端就自动跑 `hermes`、
+        //    直接进它的 TUI，看着像 App 自己替他做了决定（2026-10-11 日志实测：
+        //    每次冷启动进终端都记一行「恢复：上次会话里是 hermes…」）。
+        //    要跑 Agent 就点丹房的启动卡片（那条**带命令**，走 [routeSessionIfNeeded]）；
+        //    进程**还活着**时进终端仍是真正的 attach，现场照旧保留。
+        //    台账：ERRATA E-113、FEATURE-LEDGER §A #52。
+        //
+        // ⚠️ 同时必须把「这条会话里是谁」的记录清掉。记录是**上一条会话**的遗留
+        //    （prefs 里的 `current_agent`，进程被杀时它照样留着），而眼前这条会话
+        //    是个裸 shell：留着它，用户去点丹房的「Hermes」启动卡时会被路由判成
+        //    ATTACH_CURRENT（"Hermes 已在运行，已切回原来那个"）⇒ **点了没反应**。
+        //    只有本次**没带命令**时才清：带命令时记录已由路由层登记成正确的那个。
+        //    （清除动作在 `SessionManager.start()` **之前**，见上面那处。）
+        // 注：本分支的执行已挪进 [startSessionOffMainThread]（§B 顺序 6 / P1-3），
+        //    上面这段决策的说明留在入口处，读代码时不必跳进后台线程才发现口径。
+        usesTmux = SessionManager.usesTmux
+        fallbackActive = false
+        // 同一串短标题：attach 到已有会话也走这条（理由见上面新会话那处的注释）
+        toolbarTitle?.text = "证道 - Debian 13.7"
+        attachViewToSession()
+    }
+
+    /**
+     * 起会话的防重入闸门（§B 顺序 6 / P1-3）。
+     *
+     * 语义与"为什么必须有"写在 [com.example.zhengdao.terminal.SessionStartGate] 的 KDoc 里
+     * —— 抽成独立类是为了能 JVM 单测（本刀判据要求初始化**幂等/可重入**）。
+     */
+    private val sessionStartGate = com.example.zhengdao.terminal.SessionStartGate()
+
+    /**
+     * §B 顺序 6 / P1-3：把**重活**（`SessionManager.prepareLaunchPlan`：SHA256 / 拷 assets /
+     * `Store.adoptDir` 搬 JM 级缓存）丢后台线程；**起会话本身回主线程做**。
+     *
+     * ⚠️ 为什么只挪一半（2026-10-14 真机退回的教训）：`SessionManager.start()` 里的
+     * `new TerminalSession(...)` 会创建 `TerminalSession$MainThreadHandler`（**无参** Handler
+     * 构造，vendored `com/termux/terminal/TerminalSession.java`），要求所在线程已
+     * `Looper.prepare()`。上一版把整段 start() 丢后台 ⇒ 真机抛
+     * `Can't create handler inside thread Thread[zd-session-start…]`，终端直接起不来
+     * （黑屏、无 proot 进程）。所以分工是：**重活后台、起会话主线程**。
+     */
+    private fun startSessionOffMainThread() {
+        // 已在启动中 ⇒ 这一次忽略（否则会起两条会话；语义见 SessionStartGate）
+        if (!sessionStartGate.tryEnter()) return
+        val t0 = android.os.SystemClock.uptimeMillis()
+        val worker = Thread({
+            // 只在这里做重活。失败**不许吞**（真机退回的教训）：落 RunLog + Log.e，
+            // 回主线程后明确告诉用户，而不是静默黑屏。
+            val plan = try {
+                SessionManager.prepareLaunchPlan(this)
+            } catch (t: Throwable) {
+                val msg = "冷启动：buildLaunchPlan 失败 ${t.javaClass.simpleName}: ${t.message}"
+                com.example.zhengdao.rootfs.RunLog.log(msg)
+                android.util.Log.e("ZhengdaoColdStart", msg, t)
+                null
+            }
+            val cost = android.os.SystemClock.uptimeMillis() - t0
+            // 打点（判据：冷启动期间主线程不得出现 >16ms 的长任务；真机读数归蓝总管采）
+            android.util.Log.i("ZhengdaoColdStart", "prepareLaunchPlan cost=${cost}ms")
+            com.example.zhengdao.rootfs.RunLog.log(
+                "冷启动打点：prepareLaunchPlan ${cost}ms（含 SHA256 / 拷 assets / 缓存搬家）"
+            )
+            runOnUiThread {
+                sessionStartGate.exit()
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (plan == null) {
+                    // 重活失败：说人话 + 落日志（不再静默黑屏）
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "冷启动：启动计划没算出来，放弃起会话（失败原因见上一条）"
+                    )
+                    android.widget.Toast.makeText(
+                        this,
+                        "启动失败：环境准备没完成（详情见 设置 → 运行日志）",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    return@runOnUiThread
+                }
+                // 起会话**必须在主线程**（MainThreadHandler 的 Looper 约束，见本方法 KDoc）
+                val started = try {
+                    SessionManager.start(this, plan)
+                } catch (t: Throwable) {
+                    val msg = "冷启动：SessionManager.start 失败 ${t.javaClass.simpleName}: ${t.message}"
+                    com.example.zhengdao.rootfs.RunLog.log(msg)
+                    android.util.Log.e("ZhengdaoColdStart", msg, t)
+                    null
+                }
+                if (started == null) {
+                    android.widget.Toast.makeText(
+                        this,
+                        "启动失败：会话没起来（详情见 设置 → 运行日志）",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    return@runOnUiThread
+                }
+                usesTmux = started.usesTmux
+                SessionManager.usesTmux = started.usesTmux
+                fallbackActive = started.isFallback
+                // 全新会话只有一块窗格（attach 到旧会话时 paneCount 保持 -1 = 未知，
+                // 见 paneCount 注释：服务端有几块我们问不到，不去猜）
+                paneCount = 1
+                // 2026-10-11 用户反馈「后面遮挡的有点多了」：原串 `证道 — Debian 13.7 · bash`
+                // 在 17sp 粗体下要 ~190dp，而 375dp 屏的顶栏给标题只剩 ~150dp
+                //（三个圆点热区占 104dp + 复制/粘贴占 ~92dp）⇒「· bash」整段被省略号吃掉、
+                // `13.7` 也只剩半截。改成短标题，并由 activity_main.xml 里 toolbar_title 的
+                // autoSize 在更窄的屏上自动降号兜底（宁可小一号，不再截断）。
+                // ⚠️ 回退态那条 `证道 — 系统 shell（环境未安装）` 同样偏长，本次未动。
+                toolbarTitle?.text =
+                    if (started.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 - Debian 13.7"
+                // 环境未装：给安装引导（本地有归档则零交互自动装）。
+                // ⚠️ v1.1 重写 TerminalActivity 时此调用曾丢失——新用户装完 App 卡在
+                // fallback shell、没有任何安装入口（2026-10-07 恢复数据时实测发现）。
+                if (fallbackActive) promptInstallOnce()
+                attachViewToSession()
+            }
+        }, "zd-session-start")
+        worker.start()
+    }
+
+    /**
+     * attach 视图 + 尺寸兜底 + 待注入命令（原 ensureStartedAndAttach 尾部，两条分支共用）。
+     *
+     * 视尺寸就绪后 attach：首次 attach 触发进程 spawn（新会话）或重排恢复（旧会话）。
+     */
+    private fun attachViewToSession() {
         termView.post {
             SessionManager.session?.let { if (termView.mTermSession !== it) termView.attachSession(it) }
             // 兜底：attach 时若视图尚未完成测量，updateSize 会因宽高为 0 早退，且此后

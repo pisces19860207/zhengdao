@@ -138,31 +138,56 @@ object SessionManager {
      */
     fun hasSession(): Boolean = session != null
 
-    fun start(context: Context): ProotLauncher.LaunchPlan {
+    /**
+     * **只算**启动计划 —— 重活：SHA256 + 拷 assets + `Store.adoptDir` 搬 JM 级缓存。
+     *
+     * §B 顺序 6 / P1-3（2026-10-14）：它原先藏在 [start] 里、随 start 在主线程跑，
+     * 冷启动必卡。拆出来是为了让调用方（`TerminalActivity`）能把它丢到**后台线程**。
+     *
+     * ⚠️ **只有这一段能后台跑**：[start] 里的 `new TerminalSession(...)` 会创建
+     * `TerminalSession.MainThreadHandler`（**无参** `Handler` 构造，见 vendored
+     * `com/termux/terminal/TerminalSession.java` 的字段），它要求所在线程已
+     * `Looper.prepare()`。**2026-10-14 真机实测**：在后台线程调 [start] 会抛
+     * `RuntimeException: Can't create handler inside thread Thread[zd-session-start…]
+     * that has not called Looper.prepare()` ⇒ **起会话必须回主线程**。
+     *
+     * 顺序说明：这里算 plan 发生在 [start] 的 `killInternal` **之前**（原先在之后）。
+     * 两者互不依赖（plan 只读文件系统状态、kill 只动进程）⇒ 交换无副作用。
+     */
+    fun prepareLaunchPlan(context: Context): ProotLauncher.LaunchPlan =
+        ProotLauncher.buildLaunchPlan(context, TMUX_SESSION)
+
+    /**
+     * 起会话。**必须在有 Looper 的线程上（主线程）调用** —— 原因见 [prepareLaunchPlan] 的警告。
+     *
+     * @param plan 已由 [prepareLaunchPlan] 算好的启动计划（调用方在后台算、本线程用）。
+     *   null 则本线程现算（老路径，行为与改动前一致）。
+     */
+    fun start(context: Context, plan: ProotLauncher.LaunchPlan? = null): ProotLauncher.LaunchPlan {
         // ⚠️ clearAgent=false：start() 的语义是"给**当前** Agent 起一条干净会话"，
         //    调用方（TerminalActivity 的路由）已经把它登记好了，这里不能抹掉。
         killInternal(context, clearAgent = false)
-        val plan = ProotLauncher.buildLaunchPlan(context, TMUX_SESSION)
+        val p = plan ?: ProotLauncher.buildLaunchPlan(context, TMUX_SESSION)
         val s = TerminalSession(
-            plan.cmd,                       // 宿主侧 execve 目标（proot / 回退 shell）
+            p.cmd,                       // 宿主侧 execve 目标（proot / 回退 shell）
             context.filesDir.absolutePath,  // 宿主侧 cwd
-            plan.args, plan.env,
+            p.args, p.env,
             1000,                           // 回滚行数
             client,
         )
         session = s
         startedAtMs = System.currentTimeMillis()
-        isFallback = plan.isFallback
+        isFallback = p.isFallback
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong("started_at", startedAtMs).apply()
         // #10：日志**排在**前台服务之前——startForegroundService 抛异常时，
         // 「会话启动」这条必须已经落盘（以前它排在后面，抛了就什么都没有）。
         RunLog.log(
             "会话启动（Termux 引擎）tmux=$TMUX_SESSION agent=${currentAgentId ?: "-"} " +
-                "isFallback=$isFallback usesTmux=${plan.usesTmux}"
+                "isFallback=${p.isFallback} usesTmux=${p.usesTmux}"
         )
         SessionService.start(context)
-        return plan
+        return p
     }
 
     fun write(text: String) {

@@ -284,7 +284,16 @@ fun HomeScreen(
     //    才多扫一次 /proc。半赫兹，且只在丹房 tab 组合，可忽略。
     androidx.compose.runtime.LaunchedEffect(agents, stateTick) {
         while (true) {
-            agents.forEach { a -> installStates[a.id] = AgentRepository.stateOf(context, a) }
+            // §B 顺序 6 / P1-4（2026-10-14）：这几行是**真 I/O** —— SharedPreferences +
+            // 几个 File.exists()（"安装中"时还扫 /proc）。原先直接跑在 LaunchedEffect 的
+            // 默认调度器上，那是**主线程**，且每 2 秒一次。现在挪到 IO 线程算，只把结果
+            // 回主线程写进 Compose 状态（状态必须在主线程改）。
+            // 2026-10-14 冲突处置：原先这里还顺手同步「恢复全部」账本（AgentLedger）——
+            // 那条功能已按用户拍板整条删除，故只保留 IO 化这件事。
+            val states = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                agents.map { a -> a.id to AgentRepository.stateOf(context, a) }
+            }
+            states.forEach { (id, st) -> installStates[id] = st }
             kotlinx.coroutines.delay(2000)
         }
     }
@@ -792,7 +801,11 @@ checks.forEachIndexed { index, c ->
                     // 读镜像（第一次组合时镜像还没灌，退回实时查一次）——
                     // 这一读同时把本卡片挂到 installStates 上，状态一变就重组。
                     val installState = installStates[agent.id]
-                        ?: AgentRepository.stateOf(context, agent)
+                        // §B 顺序 6 / P1-5（2026-10-14）：兜底那次查盘的**结果写回缓存** ——
+                        // 否则每次重组（滚动、主题变化、任何 state 变化）都会在主线程重查一遍
+                        // SharedPreferences + /proc。写回后每张卡最多查一次，之后由上面那个
+                        // 2 秒轮询刷新。**行为不变**：首帧仍显示真实状态。
+                        ?: AgentRepository.stateOf(context, agent).also { installStates[agent.id] = it }
                     val installing = installState == AgentRepository.State.Installing
                     val failedInstall = installState == AgentRepository.State.Failed
                     // 一键安装（本地化脚本 + 清锁 + 装完自动启动）：失败重试、首次安装、

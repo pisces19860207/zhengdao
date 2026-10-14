@@ -2,8 +2,6 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
-import java.io.File
-
 /**
  * 安装前的两道准备（都是纯函数，JVM 可测）：
  * ① **脚本内容粗判**（[looksUsableScript]）、② **上一轮残留的清理命令**（[staleLockCleanup]）。
