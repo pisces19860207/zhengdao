@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,9 +42,13 @@ fun WelcomeScreen(
     onStart: (installed: Boolean) -> Unit,
     onSkip: () -> Unit = {},
 ) {
+    // P2-4（§B 顺序 2，2026-10-14）：加 verticalScroll —— 原先是 fillMaxSize + 居中，
+    // 内容比屏幕高时（小屏 / 大字号的第三方三步卡）**直接裁掉**，用户看不到开始按钮。
+    // 加滚动后内容少时仍居中（Arrangement.Center 照旧），内容多时可滚到底。
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
