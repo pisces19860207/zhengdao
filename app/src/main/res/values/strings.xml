@@ -81,7 +81,7 @@
     <string name="home_grant_page_failed">打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启</string>
     <string name="home_no_browser">没有可用的浏览器</string>
     <string name="home_start_error">启动异常：%1$s</string>
-    <string name="home_taiji_not_up">太极（OpenCode）仍没起来</string>
+    <string name="home_taiji_not_up">抱朴（OpenCode）仍没起来</string>
     <string name="home_env_ready">环境就绪</string>
     <string name="home_env_missing">环境未安装</string>
     <string name="home_agent_count">%1$d 个 Agent</string>
@@ -206,7 +206,7 @@
     <string name="data_ws_restore">恢复默认</string>
     <string name="data_ws_private_done">已切换仅私有，下次启动会话生效</string>
     <string name="data_ws_private">仅私有</string>
-    <string name="data_ws_rule">约定：终端里的 AI 能读整个 /sdcard 找资料，但产出只写进工作区（这条已写进它的人设）。太极的产出在 App 内部目录，跟这里无关。</string>
+    <string name="data_ws_rule">约定：终端里的 AI 能读整个 /sdcard 找资料，但产出只写进工作区（这条已写进它的人设）。抱朴的产出在 App 内部目录，跟这里无关。</string>
     <string name="data_ws_invalid">该位置不可用，请选择内部存储中的文件夹</string>
     <string name="data_ws_set">工作区已设为 %1$s，下次启动会话生效</string>
     <string name="data_ws_change_title">换工作区后，资料库也跟着换</string>
@@ -435,7 +435,7 @@
     <string name="main_update_ignore">忽略</string>
     <string name="main_unofficial_build">这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。</string>
 
-    <!-- ── 太极 Tab（TaijiScreen：安装 / 连接 / 版本）── -->
+    <!-- ── 抱朴 Tab（TaijiScreen：安装 / 连接 / 版本）── -->
     <string name="taiji_connecting">正在连接 OpenCode…</string>
     <string name="taiji_refresh_failed">刷新会话失败：%1$s</string>
     <string name="taiji_send_failed">发送失败：%1$s</string>
@@ -463,7 +463,7 @@
     <string name="taiji_oc_no_digest">当前 %1$s → %2$s。该 release 未提供 SHA256 digest，为安全起见不提供 App 内直装 —— 可到 GitHub 手动下载。</string>
     <string name="taiji_oc_digest_ok">当前 %1$s → %2$s。将从 GitHub 下载约 65MB 并校验 digest，通过后覆盖安装。安装完成后重启 App 生效。</string>
 
-    <!-- ── 太极 Tab：模型池（ModelSheet）── -->
+    <!-- ── 抱朴 Tab：模型池（ModelSheet）── -->
     <string name="taiji_model_pool">模型池</string>
     <string name="taiji_fetching">拉取中…</string>
     <string name="taiji_refresh_action">⟳ 刷新</string>
@@ -478,7 +478,7 @@
     <string name="taiji_default_clear_override">默认（清除本会话覆盖）</string>
     <string name="taiji_free">免费</string>
 
-    <!-- ── 太极 Tab：会话顶栏 / 连接 / 工具卡（TaijiComponents）── -->
+    <!-- ── 抱朴 Tab：会话顶栏 / 连接 / 工具卡（TaijiComponents）── -->
     <string name="taiji_session_history">会话历史</string>
     <string name="taiji_new_session">新会话</string>
     <string name="taiji_new_session_plus">＋  新会话</string>
@@ -525,9 +525,9 @@
     <string name="taiji_plugins">插件</string>
     <string name="taiji_plugins_enabled">%1$d 个已启用</string>
     <string name="taiji_plugins_none">未启用</string>
-    <string name="taiji_close_session">关闭太极并退出</string>
+    <string name="taiji_close_session">关闭抱朴并退出</string>
     <string name="taiji_close_session_hint">记录还在，下次接着聊</string>
-    <string name="taiji_close_session_title">关闭太极并退出？</string>
+    <string name="taiji_close_session_title">关闭抱朴并退出？</string>
     <string name="taiji_close_session_msg">关闭后聊天列表里还能看到这次对话，点进去会重新打开。</string>
     <string name="taiji_delete_session_title">永久删除这个会话</string>
     <string name="taiji_delete_session_msg">「%1$s」将在服务端被永久删除，无法恢复。</string>
@@ -588,20 +588,20 @@
     <string name="plugins_card_enabled">已启用</string>
     <string name="plugins_state_enabled">已启用</string>
     <string name="plugins_empty_enabled">还没有启用任何插件。可到下面「推荐」里一键添加。</string>
-    <string name="plugins_empty_no_env">太极的 OpenCode 尚未初始化——先到「太极」启动一次，插件配置会自动生成。</string>
+    <string name="plugins_empty_no_env">抱朴的 OpenCode 尚未初始化——先到「抱朴」启动一次，插件配置会自动生成。</string>
     <string name="plugins_card_recommended">推荐插件</string>
     <string name="plugins_legacy">⚠️ 已废弃插件（曾装上但不工作），建议停用</string>
     <string name="plugins_cached_ver">已缓存 v%1$s</string>
     <string name="plugins_not_downloaded">尚未下载（首次启动 Agent 时联网安装）</string>
     <string name="plugins_enabled_toast">已启用：%1$s（下次启动 Agent 时生效）</string>
     <string name="plugins_disabled_toast">已停用：%1$s</string>
-    <string name="plugins_oc_not_ready">太极的 OpenCode 尚未初始化，先到「太极」启动一次</string>
+    <string name="plugins_oc_not_ready">抱朴的 OpenCode 尚未初始化，先到「抱朴」启动一次</string>
     <string name="plugins_no_change">状态无变化</string>
     <string name="plugins_card_add">添加插件（npm 包名）</string>
     <string name="plugins_add_hint">"例如 @scope/opencode-plugin-xxx"</string>
     <string name="plugins_bad_spec">"这不像一个 npm 包名：应形如 my-plugin 或 @scope/my-plugin，且不含空格"</string>
     <string name="plugins_not_written">未写入配置：%1$s（可能已在插件列表中）</string>
-    <string name="plugins_not_added">未添加：%1$s —— 太极的 OpenCode 尚未初始化，先到「太极」启动一次</string>
+    <string name="plugins_not_added">未添加：%1$s —— 抱朴的 OpenCode 尚未初始化，先到「抱朴」启动一次</string>
     <string name="plugins_add_enable">添加并启用</string>
     <string name="plugins_add_note">包名从插件的 npm / GitHub 页面复制。添加后由 opencode 内置的 Bun 在下次启动 Agent 时从 npm 下载（首次需要联网）。插件会执行第三方代码——只添加你信任的包。</string>
     <string name="plugins_cache_card">插件包缓存（共 %1$d MB）</string>
@@ -609,7 +609,7 @@
     <string name="plugins_cache_clean">清理插件包缓存</string>
     <string name="plugins_cache_clean_note">清理不会停用插件——下次启动 Agent 时会重新联网下载。</string>
     <string name="plugins_card_about">关于插件</string>
-    <string name="plugins_about_note">插件从 npm 下载，会执行第三方代码——只启用你信任的。\n\n这里的「插件」指在配置里写了包名、启动时自动下载的那种；本地 .js 文件不归这里管。\n\n本页只管「太极」里的 OpenCode；终端里自己装的 opencode 不在这里管。</string>
+    <string name="plugins_about_note">插件从 npm 下载，会执行第三方代码——只启用你信任的。\n\n这里的「插件」指在配置里写了包名、启动时自动下载的那种；本地 .js 文件不归这里管。\n\n本页只管「抱朴」里的 OpenCode；终端里自己装的 opencode 不在这里管。</string>
     <string name="plugins_clean_confirm_title">清理插件包缓存？</string>
     <string name="plugins_clean_confirm_msg">将删除已下载的插件包（约 %1$d MB）。插件本身保持启用，下次启动会重新下载。</string>
     <string name="plugins_cleaned_toast">已清理，回收约 %1$d MB</string>
@@ -732,15 +732,15 @@
     <string name="sys_none">无</string>
     <string name="sys_uv_embedded">%1$s（hermes 内嵌）</string>
 
-    <!-- ── 太极 OpenCode（OcManager：启动 / 安装 / 更新）── -->
+    <!-- ── 抱朴 OpenCode（OcManager：启动 / 安装 / 更新）── -->
     <string name="oc_not_installed">OpenCode 尚未安装</string>
-    <string name="oc_serve_no_password_title">太极连上了、但没拿到访问密码</string>
+    <string name="oc_serve_no_password_title">抱朴连上了、但没拿到访问密码</string>
     <string name="oc_serve_no_password_detail">serve 在 14000 端口活着，serve.log 里没有可用的 server password 行（旧场次的密码不能复用）⇒ 之后每个请求都会 401，界面看着像卡住。</string>
-    <string name="oc_restart_taiji">重启太极</string>
-    <string name="oc_serve_timeout_title">太极（OpenCode）启动超时</string>
+    <string name="oc_restart_taiji">重启抱朴</string>
+    <string name="oc_serve_timeout_title">抱朴（OpenCode）启动超时</string>
     <string name="oc_serve_timeout_detail">15 秒内 serve 没就绪（端口 14000 无响应）。常见原因：上一场 serve 僵着、端口被占、或内置二进制被杀软拦下。</string>
     <string name="oc_serve_timeout_short">启动超时：serve 未在 15 秒内就绪（详见运行日志）</string>
-    <string name="oc_serve_start_failed_title">太极（OpenCode）启动失败</string>
+    <string name="oc_serve_start_failed_title">抱朴（OpenCode）启动失败</string>
     <string name="oc_serve_start_failed_short">启动失败：%1$s</string>
     <string name="oc_cached_verifying">检测到已下载的安装包，校验中…</string>
     <string name="oc_cached_verified">安装包校验通过，释放中…</string>
@@ -756,7 +756,7 @@
     <string name="oc_binary_missing">释放后二进制缺失（包不完整？）</string>
     <string name="oc_install_done">OpenCode %1$s 安装完成</string>
 
-    <!-- ── 太极连接层（OcRepository：横幅 / 发送 / 模型池的错误）── -->
+    <!-- ── 抱朴连接层（OcRepository：横幅 / 发送 / 模型池的错误）── -->
     <string name="oc_create_session_failed">无法创建会话</string>
     <string name="oc_polling_retry">轮询失败，正在重试</string>
     <string name="oc_empty_response">空响应 %1$s</string>
@@ -790,8 +790,8 @@
     <string name="hermes_ok">依赖环境记录有效</string>
 
     <!-- ── 资源占用体检（ResMonitor）── -->
-    <string name="resmon_idle">太极与终端均未运行，无进程可采样</string>
-    <string name="resmon_rss_over">⚠ 内存 %1$d MB 超阈值 %2$d MB（%3$d 个进程）——关掉不用的会话，或重启太极</string>
+    <string name="resmon_idle">抱朴与终端均未运行，无进程可采样</string>
+    <string name="resmon_rss_over">⚠ 内存 %1$d MB 超阈值 %2$d MB（%3$d 个进程）——关掉不用的会话，或重启抱朴</string>
     <string name="resmon_cpu_over">⚠ CPU %1$s%% 超阈值 %2$d%%——检查插件与会话规模</string>
     <string name="resmon_normal">RSS %1$d MB · CPU %2$s%% · %3$d 个进程</string>
 

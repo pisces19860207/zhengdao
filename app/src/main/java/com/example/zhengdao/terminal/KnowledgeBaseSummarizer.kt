@@ -296,7 +296,7 @@ object KnowledgeBaseSummarizer {
 
     /** 摘要小节的说明行（[renderInto] 与 [carryOverSummary] 共用，避免两处写成不同的字）。 */
     internal const val SUMMARY_NOTE: String =
-        "> 由证道借太极的免费模型生成 · 仅供快速定位，**细节请读原文件**。"
+        "> 由证道借抱朴的免费模型生成 · 仅供快速定位，**细节请读原文件**。"
 
     /** 摘要行的形态：`- **文件名** — 摘要`。 */
     private val SUMMARY_LINE = Regex("""^- \*\*(.+?)\*\* — """)

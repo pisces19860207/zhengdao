@@ -42,9 +42,10 @@
     <string name="common_mb">%1$d MB</string>
 
     <!-- ── Bottom navigation ── -->
-    <string name="nav_taiji">Taiji</string>
-    <string name="nav_terminal">Terminal</string>
-    <string name="nav_agents">Agents</string>
+    <string name="nav_taiji">Baopu</string>
+    <string name="nav_terminal">Xiaoyao</string>
+    <string name="nav_agents">Yiran</string>
+    <string name="nav_browser">Xuanlan</string>
 
     <!-- ── Settings hub: groups ── -->
     <string name="settings_group_env">Environment</string>
@@ -79,7 +80,7 @@
     <string name="home_grant_page_failed">Couldn\'t open the settings page — go to Settings → Apps → Zhengdao → All files access and enable it manually</string>
     <string name="home_no_browser">No browser available</string>
     <string name="home_start_error">Failed to start: %1$s</string>
-    <string name="home_taiji_not_up">Taiji (OpenCode) still isn\'t up</string>
+    <string name="home_taiji_not_up">Baopu (OpenCode) still isn\'t up</string>
     <string name="home_env_ready">Environment ready</string>
     <string name="home_env_missing">Environment not installed</string>
     <string name="home_agent_count">%1$d agents</string>
@@ -204,7 +205,7 @@
     <string name="data_ws_restore">Restore default</string>
     <string name="data_ws_private_done">Switched to private-only — takes effect next session</string>
     <string name="data_ws_private">Private only</string>
-    <string name="data_ws_rule">Rule: the terminal AI can read all of /sdcard to find material, but output only goes into the workspace (this is written into its persona). Taiji\'s output lives in an app-internal folder and is unrelated.</string>
+    <string name="data_ws_rule">Rule: the terminal AI can read all of /sdcard to find material, but output only goes into the workspace (this is written into its persona). Baopu\'s output lives in an app-internal folder and is unrelated.</string>
     <string name="data_ws_invalid">That location isn\'t usable — pick a folder in internal storage</string>
     <string name="data_ws_set">Workspace set to %1$s — takes effect next session</string>
     <string name="data_ws_change_title">Switching workspace also switches the knowledge base</string>
@@ -355,7 +356,7 @@
     <string name="help_guide_title">Getting started</string>
     <string name="help_guide_1">Tap \"Install environment\" on the home screen to set up Debian; then tap \"Install\" on any agent you want.</string>
     <string name="help_guide_2">Sign in inside each agent (it keeps its own credentials), and it is ready to use.</string>
-    <string name="help_guide_3">Open the \"Terminal\" tab and type an agent command (claude / hermes / agy). OpenCode is built into \"Taiji\" and works out of the box. A separate opencode you install in the terminal is a different copy — the two do not interfere.</string>
+    <string name="help_guide_3">Open the \"Xiaoyao\" tab and type an agent command (claude / hermes / agy). OpenCode is built into \"Baopu\" and works out of the box. A separate opencode you install in the terminal is a different copy — the two do not interfere.</string>
     <string name="help_faq_title">Common questions</string>
     <string name="help_faq_q1">Environment won\'t open / download fails?</string>
     <string name="help_faq_a1">Use \"Repair environment\" above to unpack it again — your logins are kept.</string>
@@ -433,7 +434,7 @@
     <string name="main_update_ignore">Ignore</string>
     <string name="main_unofficial_build">This build was not signed by the original author. Please download the official release from GitHub.</string>
 
-    <!-- ── Taiji tab (TaijiScreen: install / connection / version) ── -->
+    <!-- ── Baopu tab (TaijiScreen: install / connection / version) ── -->
     <string name="taiji_connecting">Connecting to OpenCode…</string>
     <string name="taiji_refresh_failed">Couldn\'t refresh sessions: %1$s</string>
     <string name="taiji_send_failed">Couldn\'t send: %1$s</string>
@@ -461,7 +462,7 @@
     <string name="taiji_oc_no_digest">Current %1$s → %2$s. This release provides no SHA256 digest, so in-app install is disabled for safety — download it manually from GitHub.</string>
     <string name="taiji_oc_digest_ok">Current %1$s → %2$s. About 65 MB will be downloaded from GitHub and verified against the digest, then installed over the current version. Restart the app afterwards for it to take effect.</string>
 
-    <!-- ── Taiji tab: model pool (ModelSheet) ── -->
+    <!-- ── Baopu tab: model pool (ModelSheet) ── -->
     <string name="taiji_model_pool">Models</string>
     <string name="taiji_fetching">Loading…</string>
     <string name="taiji_refresh_action">⟳ Refresh</string>
@@ -477,7 +478,7 @@
     <string name="taiji_default_clear_override">Default (clear this session\'s override)</string>
     <string name="taiji_free">Free</string>
 
-    <!-- ── Taiji tab: session bar / connection / tool cards (TaijiComponents) ── -->
+    <!-- ── Baopu tab: session bar / connection / tool cards (TaijiComponents) ── -->
     <string name="taiji_session_history">Session history</string>
     <string name="taiji_new_session">New session</string>
     <string name="taiji_new_session_plus">"＋  New session"</string>
@@ -524,9 +525,9 @@
     <string name="taiji_plugins">Plugins</string>
     <string name="taiji_plugins_enabled">%1$d enabled</string>
     <string name="taiji_plugins_none">None enabled</string>
-    <string name="taiji_close_session">Close Taiji and exit</string>
+    <string name="taiji_close_session">Close Baopu and exit</string>
     <string name="taiji_close_session_hint">Chat is saved — pick it up later</string>
-    <string name="taiji_close_session_title">Close Taiji and exit?</string>
+    <string name="taiji_close_session_title">Close Baopu and exit?</string>
     <string name="taiji_close_session_msg">This conversation stays in the list — tap it to open it again.</string>
     <string name="taiji_delete_session_title">Permanently delete this conversation</string>
     <string name="taiji_delete_session_msg">\"%1$s\" will be permanently deleted on the server. This can\'t be undone.</string>
@@ -559,13 +560,13 @@
     <!-- ── First-run welcome screen (WelcomeScreen) ── -->
     <string name="welcome_tagline">Run your own AI agents on your phone</string>
     <string name="welcome_step1">Add a model API key in Settings (only the one you\'ll use)</string>
-    <string name="welcome_step2">Open Taiji and start chatting — no need to wait for the runtime</string>
+    <string name="welcome_step2">Open Baopu and start chatting — no need to wait for the runtime</string>
     <string name="welcome_step3">Come back and install the runtime when you want a shell or other agents</string>
     <string name="welcome_enter">Enter</string>
     <string name="welcome_install_env">Install the runtime</string>
-    <string name="welcome_skip">Try Taiji first (skip the runtime)</string>
+    <string name="welcome_skip">Try Baopu first (skip the runtime)</string>
     <string name="welcome_ready">Runtime ready</string>
-    <string name="welcome_env_note">The runtime powers Terminal and other agents; Taiji doesn\'t need it</string>
+    <string name="welcome_env_note">The runtime powers Xiaoyao and other agents; Baopu doesn\'t need it</string>
 
     <!-- ── Keep-alive log page (KeepaliveLogActivity) ── -->
     <string name="keepalive_log_title">Keep-alive log</string>
@@ -587,20 +588,20 @@
     <string name="plugins_card_enabled">Enabled</string>
     <string name="plugins_state_enabled">Enabled</string>
     <string name="plugins_empty_enabled">No plugins enabled yet. Add one from \"Recommended\" below.</string>
-    <string name="plugins_empty_no_env">Taiji\'s OpenCode isn\'t initialized — open Taiji once and the plugin config will be generated automatically.</string>
+    <string name="plugins_empty_no_env">Baopu\'s OpenCode isn\'t initialized — open Baopu once and the plugin config will be generated automatically.</string>
     <string name="plugins_card_recommended">Recommended</string>
     <string name="plugins_legacy">⚠️ Deprecated plugin (installed before but no longer working) — turning it off is recommended</string>
     <string name="plugins_cached_ver">v%1$s cached</string>
     <string name="plugins_not_downloaded">Not downloaded yet (installed over the network the first time an agent starts)</string>
     <string name="plugins_enabled_toast">Enabled: %1$s (takes effect the next time an agent starts)</string>
     <string name="plugins_disabled_toast">Disabled: %1$s</string>
-    <string name="plugins_oc_not_ready">Taiji\'s OpenCode isn\'t initialized — open Taiji once first</string>
+    <string name="plugins_oc_not_ready">Baopu\'s OpenCode isn\'t initialized — open Baopu once first</string>
     <string name="plugins_no_change">No change</string>
     <string name="plugins_card_add">Add a plugin (npm package name)</string>
     <string name="plugins_add_hint">"e.g. @scope/opencode-plugin-xxx"</string>
     <string name="plugins_bad_spec">"That doesn\'t look like an npm package name: it should look like my-plugin or @scope/my-plugin, with no spaces"</string>
     <string name="plugins_not_written">Not written to the config: %1$s (it may already be in the plugin list)</string>
-    <string name="plugins_not_added">Not added: %1$s — Taiji\'s OpenCode isn\'t initialized, open Taiji once first</string>
+    <string name="plugins_not_added">Not added: %1$s — Baopu\'s OpenCode isn\'t initialized, open Baopu once first</string>
     <string name="plugins_add_enable">Add and enable</string>
     <string name="plugins_add_note">Copy the package name from the plugin\'s npm / GitHub page. Once added, opencode\'s bundled Bun downloads it from npm the next time an agent starts (the first time needs a network connection). Plugins run third-party code — only add packages you trust.</string>
     <string name="plugins_cache_card">Plugin package cache (%1$d MB)</string>
@@ -608,7 +609,7 @@
     <string name="plugins_cache_clean">Clear plugin package cache</string>
     <string name="plugins_cache_clean_note">Clearing doesn\'t disable the plugin — it\'s re-downloaded the next time an agent starts.</string>
     <string name="plugins_card_about">About plugins</string>
-    <string name="plugins_about_note">Plugins are downloaded from npm and run third-party code — only enable ones you trust.\n\n\"Plugins\" here means the kind declared by package name in the config and downloaded automatically at startup; local .js files aren\'t handled here.\n\nThis page only covers OpenCode inside Taiji; an opencode you installed yourself in the terminal isn\'t managed here.</string>
+    <string name="plugins_about_note">Plugins are downloaded from npm and run third-party code — only enable ones you trust.\n\n\"Plugins\" here means the kind declared by package name in the config and downloaded automatically at startup; local .js files aren\'t handled here.\n\nThis page only covers OpenCode inside Baopu; an opencode you installed yourself in the terminal isn\'t managed here.</string>
     <string name="plugins_clean_confirm_title">Clear the plugin package cache?</string>
     <string name="plugins_clean_confirm_msg">This deletes the downloaded plugin packages (about %1$d MB). The plugins stay enabled and will be re-downloaded next time.</string>
     <string name="plugins_cleaned_toast">Cleared, reclaimed about %1$d MB</string>
@@ -731,15 +732,15 @@
     <string name="sys_none">None</string>
     <string name="sys_uv_embedded">%1$s (bundled with hermes)</string>
 
-    <!-- ── Taiji OpenCode (OcManager: serve / install / update) ── -->
+    <!-- ── Baopu OpenCode (OcManager: serve / install / update) ── -->
     <string name="oc_not_installed">OpenCode is not installed</string>
-    <string name="oc_serve_no_password_title">Taiji connected but didn\'t get the access password</string>
+    <string name="oc_serve_no_password_title">Baopu connected but didn\'t get the access password</string>
     <string name="oc_serve_no_password_detail">The serve process is alive on port 14000, but serve.log contains no usable server password line (a password from a previous session can\'t be reused) ⇒ every request from now on gets a 401 and the UI looks stuck.</string>
-    <string name="oc_restart_taiji">Restart Taiji</string>
-    <string name="oc_serve_timeout_title">Taiji (OpenCode) start timed out</string>
+    <string name="oc_restart_taiji">Restart Baopu</string>
+    <string name="oc_serve_timeout_title">Baopu (OpenCode) start timed out</string>
     <string name="oc_serve_timeout_detail">serve wasn\'t ready within 15 seconds (port 14000 unresponsive). Common causes: a previous serve still hanging around, the port being taken, or the bundled binary blocked by security software.</string>
     <string name="oc_serve_timeout_short">Start timed out: serve wasn\'t ready within 15 seconds (see the run log)</string>
-    <string name="oc_serve_start_failed_title">Taiji (OpenCode) failed to start</string>
+    <string name="oc_serve_start_failed_title">Baopu (OpenCode) failed to start</string>
     <string name="oc_serve_start_failed_short">Start failed: %1$s</string>
     <string name="oc_cached_verifying">Found a downloaded installer — verifying…</string>
     <string name="oc_cached_verified">Installer verified — extracting…</string>
@@ -755,7 +756,7 @@
     <string name="oc_binary_missing">Binary missing after extraction (incomplete package?)</string>
     <string name="oc_install_done">OpenCode %1$s installed</string>
 
-    <!-- ── Taiji connection layer (OcRepository: banner / send / model-pool errors) ── -->
+    <!-- ── Baopu connection layer (OcRepository: banner / send / model-pool errors) ── -->
     <string name="oc_create_session_failed">Couldn\'t create a session</string>
     <string name="oc_polling_retry">Polling failed, retrying</string>
     <string name="oc_empty_response">Empty response from %1$s</string>
@@ -789,8 +790,8 @@
     <string name="hermes_ok">Dependency environment record is valid</string>
 
     <!-- ── Resource usage health (ResMonitor) ── -->
-    <string name="resmon_idle">Neither Taiji nor the terminal is running — nothing to sample</string>
-    <string name="resmon_rss_over">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Taiji</string>
+    <string name="resmon_idle">Neither Baopu nor the terminal is running — nothing to sample</string>
+    <string name="resmon_rss_over">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Baopu</string>
     <string name="resmon_cpu_over">⚠ CPU %1$s%% over the %2$d%% threshold — check plugins and session count</string>
     <string name="resmon_normal">RSS %1$d MB · CPU %2$s%% · %3$d processes</string>
 
@@ -814,6 +815,20 @@
     <string name="term_clear_failed">Clear failed: %1$s</string>
     <string name="term_reset_done">Terminal reset</string>
     <string name="term_browser_failed">Couldn\'t open a browser: %1$s</string>
+    <string name="term_link_blocked">For safety, this link can\'t be opened inside the app</string>
+
+    <!-- Browser tab (Xuanlan, phase 1 user mode) -->
+    <string name="browser_url_hint">Enter a URL or search</string>
+    <string name="browser_go">Go</string>
+    <string name="browser_back">Back</string>
+    <string name="browser_forward">Forward</string>
+    <string name="browser_reload">Reload</string>
+    <string name="browser_dismiss">Dismiss</string>
+    <string name="browser_blocked_scheme">For safety, this kind of link can\'t be opened inside the app</string>
+    <string name="browser_ssl_error">This site has a certificate problem — loading stopped</string>
+    <string name="browser_safe_browsing_hit">This site looks unsafe — it was blocked</string>
+    <string name="browser_page_error">Something went wrong loading the page</string>
+    <string name="browser_empty_hint">Enter a URL above, or tap a link from the terminal</string>
     <string name="term_local_cache_installing">Using a locally cached package (%1$d MB, no download) — verifying and extracting…</string>
     <string name="term_first_run_need_grant">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nTap \"Grant storage\" first — after granting, put the installer into the Download/证道 folder and reinstalling the app won\'t need another download.</string>
     <string name="term_first_run">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nWi-Fi recommended; resumable, so an interruption can be retried.\nTip: you can also place the installer into the Download/证道 folder manually and restart the app to install without downloading.</string>

@@ -403,7 +403,7 @@ esac
         // hermes 把 uv 缓存重定位到这儿（真机 253 MB 的大头）
         "hermes 运行留下的缓存" to File(filesDir, "home/.hermes/cache"),
         // 太极（App 内置 OpenCode）自己的 XDG cache
-        "太极对话运行缓存" to File(filesDir, "oc/xdg/cache"),
+        "抱朴对话运行缓存" to File(filesDir, "oc/xdg/cache"),
     )
 
     private fun agentCacheTargetsFor(ctx: Context): List<Pair<String, File>> = runCatching {

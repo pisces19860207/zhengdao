@@ -622,7 +622,7 @@ object ProotLauncher {
             File(rootfsDir, "tmp/.zhengdao-banner-pending").writeText(
                 "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\n" +
                     "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\n" +
-                    "[提示] OpenCode 在「太极」Tab 里（App 内置版，开箱即用）\n" +
+                    "[提示] OpenCode 在「抱朴」Tab 里（App 内置版，开箱即用）\n" +
                     if (installNotice.isNotBlank()) "[环境] $installNotice\n" else ""
             )
         } // 写不进去不阻断启动（横幅只是提示）
