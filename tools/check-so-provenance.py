@@ -22,6 +22,13 @@
     绿 = 当前 .so 与当前源码树**都**与基线一致；
     红 = 任一不一致，逐条打印哪个文件变了 / 加了 / 删了。
 
+行尾归一（重要）
+    rust/core/src/** 的源码按「git 归一后的内容」哈希：读入后先把 CRLF 换成 LF，再算 sha256。
+    本机 core.autocrlf=true（Windows 检出 = CRLF），CI 是 Linux（LF）；若对工作树原始字节算
+    哈希，同一提交会「本机红、CI 绿」（第⑬刀实测：tests.rs 基线记的是作者工作树的 LF
+    25289B，合并后 Windows 检出 25850B/CRLF ⇒ 门禁红）。门禁判的是「源码内容变没变」，
+    不是「你盘上是什么行尾」。入库 .so 是二进制，按原始字节哈希，不归一。
+
 用法
     python tools/check-so-provenance.py [仓库根]     # 校验（CI 用）
     python tools/check-so-provenance.py --write [仓库根]  # 仅用于「确认重编后」刷新基线
@@ -60,6 +67,17 @@ def sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
+def sha256_source(p: Path) -> str:
+    """源码文件按「git 归一后的内容」哈希：CRLF → LF 之后再算 sha256。
+
+    为什么必须归一：core.autocrlf=true 的 Windows 检出是 CRLF、CI（Linux）是 LF。
+    对工作树原始字节算哈希 ⇒ 同一个提交「本机红、CI 绿」，门禁变成在量行尾而不是量内容
+    （第⑬刀实测：tests.rs 基线 25289B/LF，合并后检出 25850B/CRLF）。只归一 CRLF，
+    不动单独出现的 CR（那不是行尾，是内容）。.so 走 sha256_file，不归一。
+    """
+    return hashlib.sha256(p.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def collect_state(repo: Path) -> tuple[dict[str, str], dict[str, str], str]:
     """返回 (当前 .so 哈希表, 当前源码逐文件哈希表, 当前树汇总指纹)。"""
     so_map: dict[str, str] = {}
@@ -72,7 +90,7 @@ def collect_state(repo: Path) -> tuple[dict[str, str], dict[str, str], str]:
         raise SystemExit(f"[环境错误] 找不到源码目录: {SRC_DIR}")
     for p in sorted(src_root.rglob("*")):
         if p.is_file() and "target" not in p.parts:
-            src_map[p.relative_to(repo).as_posix()] = sha256_file(p)
+            src_map[p.relative_to(repo).as_posix()] = sha256_source(p)
 
     h = hashlib.sha256()
     for rel, digest in sorted(src_map.items()):
@@ -127,6 +145,7 @@ def main() -> int:
         baseline = {
             "version": 1,
             "comment": "libzhengdao_core.so 与 rust/core/src 的同源基线；只允许在确认重编后用 --write 刷新",
+            "hash_mode": "so=raw-bytes; src=text-crlf-to-lf",
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "so": cur_so,
             "source_files": cur_src,
