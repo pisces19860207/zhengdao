@@ -43,9 +43,6 @@ import kotlin.text.Charsets
  * - 2026-10-14（审计第 2 期配套 / 第⑩批A）：`SettingsStorageActivity.kt`（B-3 加 2 行说明）与
  *   `TerminalActivity.kt`（N-2 原子拷贝 +15 行）平移 ⇒ 回填 4 个行号；
  * - 2026-10-14（第⑨刀 B）：ZhengdaoApp.kt 插入 `initWebViewDataDirectory()`（+30 行）
- * - 2026-10-15（第㉚刀）：TerminalActivity 的 ComponentCaller import（+1）与 onNewIntent
- *   平台签名适配（+2）⇒ 六个创建点 79→80 / 596→599 / 811→814 / 1562→1565 / 1622→1625 /
- *   1708→1711，无新增线程，本次回填。
  *   ⇒ 两条创建点 47→77 / 97→127，本次回填；
  * - 2026-10-14（第⑪批 D-1）：KeepaliveWatcher.kt 新增心跳执行器 zd-keepalive-io（:66，
  *   有名+daemon）⇒ 对账单 28→29 处；巡检线程平移 187→230 一并回填；
@@ -55,6 +52,9 @@ import kotlin.text.Charsets
  *   `TerminalActivity.kt`（R-29 +12 行）1550→1562 / 1610→1622 / 1696→1708。本次回填。
  * - 2026-10-15（第⑲刀 OC 关停策略）：ZhengdaoApp.kt 插入 `registerOcShutdownOnFinish()`（+2 import
  *   ＋ onCreate 一行调用，共 +3 行）⇒ 两条创建点 77→80 / 127→130，本次回填。
+ * - 2026-10-15（第㉚刀）：TerminalActivity 的 ComponentCaller import（+1）与 onNewIntent
+ *   平台签名适配（+2）⇒ 六个创建点 79→80 / 596→599 / 811→814 / 1562→1565 / 1622→1625 /
+ *   1708→1711，无新增线程，本次回填。
  */
 class BareThreadGuardTest {
 
