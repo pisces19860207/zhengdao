@@ -9,6 +9,7 @@
 package com.example.zhengdao
 
 import android.app.AlertDialog
+import android.app.ComponentCaller
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -426,8 +427,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
      *    否则「在 claude 的终端里点 agy」会变成"attach 回 claude"——
      *    用户点了 agy 却看到 claude，是本模型下最坏的一种错。
      */
-    override fun onNewIntent(intent: Intent?) {
-        super.onNewIntent(intent)
+    // 第㉚刀：activity-compose 1.13 起平台签名带 ComponentCaller（API 36+），旧单参
+    // `Intent?` 覆写不再是 open 面。行为零变化：caller 不参与路由逻辑。
+    override fun onNewIntent(intent: Intent, caller: ComponentCaller) {
+        super.onNewIntent(intent, caller)
         setIntent(intent)   // 后续 getIntent() 也要拿到新参数
         readRequestFromIntent(intent)
         routed = false
