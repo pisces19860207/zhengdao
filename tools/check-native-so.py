@@ -126,6 +126,31 @@ class Elf:
                 out.append((p_align, p_filesz, p_flags))
         return out
 
+    def loads_full(self):
+        """返回 [(p_align, p_offset, p_vaddr, p_filesz, p_flags)]（顺序 58 的同余判据要用）。
+
+        与 loads() 分开而不是改它：loads() 的返回值顺序被既有 16KB 判据（`for align,
+        filesz, _flags in loads`）依赖，改签名会牵动那条判据——顺序 58 的要求是
+        「既有判据一字不动」，所以这里新增一个方法，两条判据各取所需。
+        """
+        out = []
+        for i in range(self.phnum):
+            off = self.phoff + i * self.phentsize
+            if self.cls == 2:
+                p_type, p_flags = struct.unpack_from("<II", self.data, off)
+                (p_offset, p_vaddr) = struct.unpack_from("<QQ", self.data, off + 8)
+                (p_filesz,) = struct.unpack_from("<Q", self.data, off + 32)
+                (p_align,) = struct.unpack_from("<Q", self.data, off + 48)
+            else:
+                (p_type, p_offset, p_vaddr, _p_paddr, p_filesz) = struct.unpack_from(
+                    "<IIIII", self.data, off
+                )
+                (p_align,) = struct.unpack_from("<I", self.data, off + 28)
+                p_flags = 0
+            if p_type == PT_LOAD:
+                out.append((p_align, p_offset, p_vaddr, p_filesz, p_flags))
+        return out
+
     def sections(self):
         """返回 [(name_off, sh_type, sh_offset, sh_size, sh_link, sh_entsize)]。"""
         out = []
@@ -261,6 +286,46 @@ def main(argv):
                 )
         aligs = ",".join(f"0x{a:x}" for a, _s, _f in loads)
         info(f"{rel}: {len(loads)} 个 PT_LOAD，p_align = {aligs}；体积 {so.stat().st_size} B")
+
+        # ── 顺序 58（第㉗②-A）：PT_LOAD 的 16KB **偏移同余**判据 ──
+        # 为什么单独判：上面那条只判「p_align >= 0x4000」，它说的是「段声明了自己
+        # 按 16KB 对齐」，**不保证**内核按 16KB 页装载时段的文件偏移与虚拟地址落在
+        # 同一页内边界。同余 (p_offset ≡ p_vaddr mod 16KB) 被破坏的 .so 在 4KB 页
+        # 设备上照样能跑、在 16KB 页设备上 loadLibrary 失败 —— 又是一次「静默降级」
+        # （与 E-128 同类：门禁全绿、真机废）。本块是**叠加**判据，上面那条既有判据
+        # 一行未动；PROOT_PINNED 四件套是被 execve 的独立程序（E-137 登记例外），
+        # 不参与本判据。
+        if is_proot_pinned:
+            info(
+                f"{rel}: 跳过 PT_LOAD 同余判据（PROOT_PINNED 登记例外，exec 型程序；"
+                "见 E-137）"
+            )
+        else:
+            segs = elf.loads_full()
+            if not segs:
+                blocker(f"{rel}: loads_full() 读不到任何 PT_LOAD 段（解析异常）")
+            seg_bad = 0
+            for idx, (seg_align, seg_off, seg_vaddr, _fsz, _fl) in enumerate(segs):
+                if seg_align % PAGE_16K != 0:
+                    seg_bad += 1
+                    blocker(
+                        f"{rel}: PT_LOAD[{idx}] p_align=0x{seg_align:x}（{seg_align}）不是 "
+                        "0x4000 的整数倍 —— 16KB 页设备按 16KB 装载时该段无法对齐"
+                    )
+                if (seg_off - seg_vaddr) % PAGE_16K != 0:
+                    seg_bad += 1
+                    blocker(
+                        f"{rel}: PT_LOAD[{idx}] 偏移同余被破坏 —— p_offset=0x{seg_off:x}"
+                        f"（{seg_off}）、p_vaddr=0x{seg_vaddr:x}（{seg_vaddr}），"
+                        f"(p_offset - p_vaddr) mod 0x4000 = "
+                        f"{(seg_off - seg_vaddr) % PAGE_16K} ≠ 0 —— 16KB 页设备上 "
+                        "loadLibrary 会失败并静默退回 Java"
+                    )
+            if seg_bad == 0:
+                info(
+                    f"{rel}: PT_LOAD 同余判据通过（{len(segs)} 段：每段 p_align 是 0x4000 "
+                    "的整数倍，且 p_offset ≡ p_vaddr (mod 0x4000)）"
+                )
 
         if is_proot_pinned:
             # 完整性基线（第⑳刀）：四个 proot .so 的 sha256 必须等于登记值——
