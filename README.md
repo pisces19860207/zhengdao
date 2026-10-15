@@ -8,9 +8,10 @@
 
 > ⚠️ **门槛（先看这个）：需要 Android 16（API 36）或更高 ＋ arm64 手机 —— 不符合就别下了，装了也跑不起来。**（详见下方「系统要求」）
 
-> **Agent 支持状态（2026-10-11，荣耀 Magic 5 Pro 真机验收）**：**OpenCode 内置**（太极 Tab 直达对话界面，bionic 宿主版零 PRoot 开销，按需下载约 65MB）；**Hermes Agent 支持**（一键安装 → 启动 → TUI，`hermes update` 可用；它自带一套 Python 工具链，安装阶段需要联网，依赖环境损坏可在丹房一键修复）；Claude Code 与 AGY CLI（Antigravity）在终端自由安装（走各自官方脚本）。
+> **Agent 支持状态（2026-10-11，荣耀 Magic 5 Pro 真机验收）**：**OpenCode 内置**（抱朴 Tab 直达对话界面，bionic 宿主版零 PRoot 开销，按需下载约 65MB）；**Hermes Agent 支持**（一键安装 → 启动 → TUI，`hermes update` 可用；它自带一套 Python 工具链，安装阶段需要联网，依赖环境损坏可在怡然一键修复）；Claude Code 与 AGY CLI（Antigravity）在终端自由安装（走各自官方脚本）。
 
-> **界面结构**：底部三 Tab——**太极**（OpenCode 对话）/ **终端** / **丹房**（Agent 管理）；设置从右上角齿轮进入。
+> **界面结构**（四 Tab，`main` 上，2026-10-14 起）：底部 **抱朴**（OpenCode 对话，真实）/ **逍遥**（终端，自由）/ **玄览**（浏览器，期望）/ **怡然**（Agent 管理，幸福）；设置从右上角齿轮进入，首次进入落在怡然。
+> ⚠️ **v2.1.1 及更早的发布版仍是三 Tab——太极 / 终端 / 丹房**：改名与玄览批次都攒在 `main` 上、**尚未发版**，随下一版一起出去。下文历史版本条目里的「太极」「丹房」，就是现在的抱朴 / 怡然。
 > **文件边界**：Agent 产出统一放工作区（默认手机 `Download/证道`，可在设置页更换），手机文件管理器直接可见、卸载证道后仍保留。
 
 ## 系统要求
@@ -24,10 +25,13 @@
 > 如果你在非 Android 16 设备上尝试安装，请自行评估风险并测试，**不保证能正常运行**。
 > 由于是个人业余项目，精力实在有限，无法对所有 Android 版本提供适配支持，**请多多包涵**。
 
-> **🔒 关于 targetSdk 28（长期说明）**
-> 证道**刻意钉死 targetSdk 28**，这是架构级约束，不是版本落后：
-> - **为什么**：Android 10 起系统禁止 targetSdk ≥ 29 的应用从「自己的可写数据目录」执行文件（W^X）。证道的整套 Linux 环境（rootfs 里成千上万个程序）恰恰放在这个目录里，只有 targetSdk 28 能豁免，proot 才能正常运行。**抬高 targetSdk = 整个 Linux 环境变成无法执行的死文件。** Termux（GitHub/F-Droid 版）、太墟均采用同一策略。
+> **🔒 关于 targetSdk 28（2026-10-15 重大更正）**
+> 证道**当前仍以 targetSdk 28 打包**，但这**已不是「必须 ≤ 28」的生死线**——该必然性已于 2026-10-15 被真机原型**证伪**（`docs/ERRATA.md` **E-134**）：
+> - **现行理由（口径已改）**：targetSdk 28 是证道**现行打包方式**的前提——Termux 四件套打进 `jniLibs`（安装时落进只读可执行的 `nativeLibraryDir`）、rootfs 走 `assets/` → `files/`。它是**当下的做法**，不是「只能这样」的架构铁律。
+> - **被证伪的旧说法**：~~「Android 10 起系统禁止 targetSdk ≥ 29 的应用从自己的可写数据目录执行文件（W^X），只有 targetSdk 28 能豁免 ⇒ 抬高 targetSdk = 整个 Linux 环境变成无法执行的死文件」~~。原型 `proot-jnilib-proto` 在与真机**同型号**（荣耀 PGT-AN10 / Android 16）上以 **targetSdk 36** 跑通四件套（`PROOT_LOADER` 显式指向 `nativeLibraryDir`），四判据全过：环境自检 / 解压 rootfs / `echo` + `uname` / `apt-get update` 联网（`Hit:1..3 deb.debian.org`）。四件套 SHA256 与 `terminal/ProotLauncher.kt:123-127` 里 pin 的值**逐字节一致**。
+> - **后续**：抬 targetSdk 36 **已排进待办**（MagicOS 11 必升级，已拍板「肯定要做」），在执行链迁移之后落地。
 > - **代价**：Android 16 上，targetSdk 28 应用读写 `/sdcard` 共享存储**需要 `READ`/`WRITE` 运行时授权**（且 Android 13+ 须摘掉 manifest 的 `READ` 帽子才能持有 `READ`——详见 `d414dca`）。经 App 真身实测，`/sdcard` 直连**读写均可用**（文件管理器可见），这是**唯一主路径**。~~早期设计的「SAF 镜像同步到 Linux 环境内 `~/mnt/phone/`」兜底已整体删除~~（`4bbfd21`，连同 `mirror/PhoneMirror.kt` 与 FD 代理一并移除）；如今仅剩的 SAF 用途是**用户主动挑 rootfs 安装包**（`ACTION_OPEN_DOCUMENT`），与目录同步无关。
+> - **长期风险**：若 Android 未来上调最低安装 targetSdk 门槛、或收紧 untrusted_app 域策略，证道需要迁移（抬 targetSdk 36 的排期正是在做这件事；更远则考虑 `system_linker_exec` 灰区或云机瘦客户端形态）。该风险每季度在真机核对一次，详见 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md)。
 > - **长期风险**：若 Android 未来上调最低安装 targetSdk 门槛，或收紧 untrusted_app 域策略，证道需要迁移到 `system_linker_exec` 灰区或云机瘦客户端形态。该风险每季度在真机核对一次，详见 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md)。
 
 ## 网络要求
@@ -37,7 +41,7 @@
 | 阶段 | 是否需要网络 | 说明 |
 |---|---|---|
 | **首次安装环境** | **必需** | 下载约 200MB 的 Debian RootFS 压缩包（构建期已剔除 GPU 渲染栈等死重，见「当前状态」） |
-| **安装 Agent** | **必需** | 从官方源下载 Claude Code / Hermes 等安装包（OpenCode 由太极 Tab 内置下载） |
+| **安装 Agent** | **必需** | 从官方源下载 Claude Code / Hermes 等安装包（OpenCode 由抱朴 Tab 内置下载） |
 | **日常使用 Agent** | **必需** | Agent 调用的是云端 API（GLM / DeepSeek / Claude 等），无网则 Agent 无法工作 |
 | **纯终端使用** | **可选** | 环境安装完成后，离线也能使用 bash、git、python、npm 等本地工具 |
 
@@ -87,7 +91,9 @@
 
 **当前版本：v2.1.1**（`versionCode 36`，2026-10-13）。功能面在 v1.1 定型、v2.0.12 起收口——**之后以修 BUG、跟上游变化为主，不再按批次改结构**。仍未关的账（含已知的性能与体验条目）见 [Issues](https://github.com/pisces19860207/zhengdao/issues)。
 
-单测 **739 例 / 91 个 suite 全绿**（`app\build\test-results\testDebugUnitTest`，2026-10-13 实测 0 失败 0 错误、2 例按环境条件跳过；v2.1.0 批次分支 `fix/batch-v2.1.0`、v2.1.1 的修复分支 `fix/session-switch-e123` 的合并提交见 `docs/FEATURE-LEDGER.md` §A #73 / #74）。
+> **`main` 上已攒、尚未发版**（2026-10-14 起的新一轮批次）：**四 Tab 改名**（抱朴 / 逍遥 / 怡然 / 玄览，中英双 locale）与 **玄览（浏览器 Tab）**——多标签、地址栏搜索、Safe Browsing 拦截、终端里点链接转 App 内打开、页面摘要导出给 agent。按 2026-10-14 的决定「**先不出**」，版本号一律不动、**不 tag、不建 Release**，随下一版一起发布；下文「当前版本」与「界面结构」以已发布的 **v2.1.1** 为准，功能面一节则含 `main` 现状。
+
+单测 **986 例 / 139 个 suite 全绿**（`app\build\test-results\testDebugUnitTest`，2026-10-15 在 `main` 实测 0 失败 0 错误、3 例按环境条件跳过；v2.1.0 批次分支 `fix/batch-v2.1.0`、v2.1.1 的修复分支 `fix/session-switch-e123` 的合并提交见 `docs/FEATURE-LEDGER.md` §A #73 / #74，其后各批次见 §A #76 起）。
 
 ### 近期版本
 
@@ -124,23 +130,24 @@
 
 功能面（v1.1 起定型；v2.0.12 换了一套 **iOS 化界面皮肤**，功能未增减）：
 
-- **太极 Tab**：OpenCode 原生 Compose 客户端——Markdown 渲染、思考折叠、工具卡、
+- **抱朴 Tab**（原「太极」，真实）：OpenCode 原生 Compose 客户端——Markdown 渲染、思考折叠、工具卡、
   会话历史/新建/恢复、模型池选择器（免费模型标注、会话级切换、重启保持）
 - **终端**：Debian 13.7 真实环境（PRoot），tmux 会话保持；分屏/关屏一键化，
   首次进入有三点功能说明，「更多」菜单含清屏 / 重置终端、选中文字可直接交给手机的默认搜索或浏览器（v2.0.14 起去掉「重载字号」）
-- **丹房**：Agent 一键安装/启动/卸载（二次确认、真实 du 尺寸、用户数据保留）、环境体检自愈
-- **插件管理**（设置 → 插件）：管理**太极**内置 OpenCode 的插件（启停 / 缓存清理）
+- **怡然**（原「丹房」，幸福）：Agent 一键安装/启动/卸载（二次确认、真实 du 尺寸、用户数据保留）、环境体检自愈
+- **玄览**（浏览器，期望）：App 内多标签浏览器——地址栏输网址或搜索、Safe Browsing 风险拦截、终端里点链接直接转 App 内打开；「导出给 agent」把当前页面摘要落成 guest 能读的文件（`main` 上，待发版）
+- **插件管理**（设置 → 插件）：管理**抱朴**内置 OpenCode 的插件（启停 / 缓存清理）
 - **资料库**（设置 → 资料库）：把手机上的资料挂进终端 Agent 的视野；「提问时自动附上资料库线索」**默认关闭**，开启后由 App 在**本机**按子串匹配，只把「文件名＋行号」压成一行附在你这句话后面送出——内容不出本机（E-080 / E-084）
 - **OpenCode 内置支持**、**Hermes Agent 支持**（真机全链路验收）；Claude Code / AGY CLI 走各自官方脚本
 - 存储策略定稿：MANAGE 主路径 + /sdcard 直连；通知 4 渠道；缓存清理**分档显示**——hermes **必需包**（如 `ffmpeg`）与自己装的**扩展**（浏览器 `chromium` / `agent-browser`、桌面自动化 `cua-driver`，用户点名保留）一律只报不可清（v2.0.17 起工具组已无可清项）、公共区「安装脚本」可清而「工作区」是你的数据不清
 
-> **⚠️ 关于 OpenCode 跑在哪（v1.2 起）**：「太极」Tab 用的是 App **内置**的宿主版
+> **⚠️ 关于 OpenCode 跑在哪（v1.2 起）**：「抱朴」Tab 用的是 App **内置**的宿主版
 > （开箱即用，跑在**宿主 bionic**、不经 PRoot），配置文件在
 > `files/oc/xdg/config/opencode/`；插件管理页只作用于这一份。
 > **v1.2 起 App 不再在终端里预装/保留另一份 OpenCode**（终端若要自建 CLI 由用户自己在终端里
 > `npm install -g` 决定，App 不为它管配置与插件）。
 > ⚠️ 因为两者不在同一个网络栈，**改 rootfs 里的 `/etc/hosts` / `/etc/resolv.conf`
-> 不会影响太极**，反之亦然。详见《故障排查手册》**坑 #0（置顶）**。
+> 不会影响抱朴**，反之亦然。详见《故障排查手册》**坑 #0（置顶）**。
 
 CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)，
 正式版见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)。
@@ -151,7 +158,7 @@ CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisce
 
 | 层级 | 位置 | 作用 |
 |---|---|---|
-| **① 总设计** | [`docs/milestones/安卓AgentApp-设计方案-v3.md`](docs/milestones/安卓AgentApp-设计方案-v3.md) | 整体架构、技术选型与架构级红线（如 targetSdk 28 钉死、单会话模型、proot 分发方式）。所有分期规范的依据。 |
+| **① 总设计** | [`docs/milestones/安卓AgentApp-设计方案-v3.md`](docs/milestones/安卓AgentApp-设计方案-v3.md) | 整体架构、技术选型与架构级红线（如单会话模型、proot 分发方式）。所有分期规范的依据。⚠️ 该文档里「targetSdk 28 钉死」的旧表述已被证伪（见 **E-134**），改口径以 README 上述说明为准。 |
 | **② 分期规范** | [`docs/milestones/`](docs/milestones/)（M1.1 ~ M5） | 每个里程碑的**工程约束与验收标准**。原则：**实现以代码为准，约束与红线以本文档为准**。 |
 | **③ 合规底线** | [`PROVENANCE.md`](PROVENANCE.md) | 第三方组件的来源、许可证与不可踩的红线（例如 proot 只能 exec、绝不能 `loadLibrary`）。逐组件的许可义务与许可证正文见 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) 与 [`licenses/`](licenses/)。 |
 
