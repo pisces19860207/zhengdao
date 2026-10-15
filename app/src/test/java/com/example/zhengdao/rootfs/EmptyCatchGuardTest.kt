@@ -11,6 +11,9 @@ import java.io.File
  * "一个都不许有"写，而不是钉死数字）：
  * - `rootfs/RootfsDownloader.kt` releaseIdleResources 两处（连接池 evictAll）
  * - `terminal/ProotLauncher.kt` proot/loader 释放后的 chmod 一处
+ *   （第⑳刀注：该 chmod 随 assets→jniLibs 迁移**整体删除**——四件套由安装器落盘、
+ *   App 无需也无法 chmod。best-effort 失败落日志的纪律由新的「戳记文件写失败」
+ *   继承，见下方断言。）
  *
  * 立场：best-effort 的操作**可以**失败后继续，但不能**静默**——项目踩过太多
  * "吞掉异常 ⇒ 现场只剩一个看不懂的下游错误"的坑（E-054 保活锁、第⑥刀 Looper 崩）。
@@ -47,8 +50,8 @@ class EmptyCatchGuardTest {
         )
         val launcher = File("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt").readText()
         assertTrue(
-            "chmod 失败必须落 RunLog（少了执行位，下游 exec 会以看不懂的错崩）",
-            launcher.contains("chmod 失败（") && launcher.contains("RunLog.log(\"chmod 失败"),
+            "best-effort 失败必须落日志（第⑳刀起：chmod 已删，由「戳记文件写失败」继承该纪律）",
+            launcher.contains("戳记文件写失败") && launcher.contains("RunLog.log(\"警告: 戳记文件写失败"),
         )
     }
 }
