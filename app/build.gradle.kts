@@ -274,10 +274,14 @@ android {
         // 不是架构铁律。谁把四件套改回「释放到可写目录再 exec」的老路，29+ 确实过不去，
         // 必须重新评估此值 —— 别以为抬过一次就能永远抬着。
         //
-        // ⚠️⚠️ 抬 36 的已知代价（第㉕刀真机回归实证）：oc 的 opencode 是
-        // ProcessBuilder(filesDir/oc/usr/bin/opencode) **直接 execve**（不经 loader），
-        // 36 下被 W^X 拦 ⇒ 太极 serve 起不来。要修得给它也做一次「⑳ 刀式」迁移或走
-        // proot loader 加载 —— 属 oc 业务代码，第㉕刀红线不碰，详见该刀交付报告。
+        // ⚠️⚠️ oc 直启 opencode（ProcessBuilder(filesDir/oc/usr/bin/opencode)，不经 loader）
+        // 的真机实测（第㉕刀，荣耀 PGT-AN10 / Android 16）：抬 36 后**首次启动**曾
+        // 「error=13, Permission denied」⇒ 太极 serve 起不来；但杀进程重启 / App 重启后
+        // **两次复验均成功**（/proc/<pid>/exe 实证数据目录二进制在跑、SSE 正常）。
+        // ⇒ 「36 必被 W^X 拦」的预告在本机**未复现**，error=13 属偶发（疑安装后首启的
+        // 厂商 freezer 瞬态，与「上次退出：厂商后台清理」同源）。单设备实证，别当普适
+        // 结论：换机 / 换 ROM 必须重验；若真遇必拦，修法 = 给 opencode 也做「⑳刀式」
+        // jniLibs 迁移或走 proot loader 加载（属 oc 业务代码，红线不碰）。
         targetSdk = 36
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro
         // （PGT-AN10 / MagicOS 10.0.0.175 CHNC00E175R208P6 / Android 16）；
