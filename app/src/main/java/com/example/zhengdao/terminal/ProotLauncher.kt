@@ -103,97 +103,99 @@ object ProotLauncher {
         val files = context.filesDir
         val rootfsDir = File(files, "rootfs")
 
-        // 2026-10-04 实测定论：自编译上游 proot 缺少 Android 适配（App 域内加载
-        // guest 时静默退出 255，见设计文档 §4），本机实测只有带 Android 补丁的
-        // Termux proot fork（GPL）能在 App 域内正常工作。基线切换为该 fork 的
-        // 官方发行二进制（聚合分发，GPL 合规；PROVENANCE.md 有登记），随 APK
-        // assets 内置，启动时释放到 files/termux-proot/ 并补执行位。
-        // files/ 下的可执行文件 App 域可直接 execve（jnilLibs 方案留档不再使用）。
-        val tpDir = File(files, "termux-proot").apply { mkdirs() }
-        val prootBin = File(tpDir, "proot")
-        val loaderBin = File(tpDir, "loader")
-        // （2026-10-05）旧自编译 proot 的 jniLibs 方案（libproot.so 入 nativeLibraryDir）
-        // 已随基线切换废弃并删除：本机实测它在 App 域内加载 guest 静默退出 255，
-        // 现只走 assets/proot 的 Termux 官方发行二进制（files/termux-proot/proot）。
-        // 该 .so 同时是 GPL 传染隐患（形似库、易被误 loadLibrary），故彻底移除。
-        // 版本固定清单（asset 名 → 释放文件名 → SHA256；来源与版本见 PROVENANCE.md /
-        // THIRD-PARTY-LICENSES.md，Termux proot 5.1.107.96 aarch64 官方构建产物）。
-        // 兜底路径：已释放且 SHA256 校验通过 → 跳过（修环境/重装不重复释放）；
-        // 缺失或损坏 → 从 assets 重新释放并补权限。
-        val pinned = listOf(
-            Triple("tproot", "proot", "1545b85b312505db6eb6908ff8b2ded0a77a3bd689c50ae85aa7c1d8445dd717"),
-            Triple("tloader", "loader", "cbdef0e652c2b78af25d867e1719fdebbb0915e25aae2dd35b3b5c1835f6b551"),
-            Triple("libtalloc.so", "libtalloc.so.2", "742b438c4d09e276985a61d44164c9de207b6d8cc268f3018cb3001961bcb309"),
-            Triple("libandroid-shmem.so", "libandroid-shmem.so", "84475798e07c8174dbbfaec70a827fdb02f19ffa69a589380c13e7507fd0e731"),
-        )
-        // BUG-2（2026-10-10 / E-083）：核对通过的资产记一条「戳」，下次开会话免重算那 313,648 B
-        // 的 SHA-256。戳落在 App 私有目录（别的 App 写不进来），判定规则与不变量见 PinnedAssets。
-        val stampFile = File(tpDir, PinnedAssets.FILE_NAME)
+        // 第⑳刀（2026-10-15）：执行链迁移 assets → jniLibs（E-134）。四件套（proot/
+        // loader/talloc/shmem）以 lib*.so 形态打进 APK jniLibs/arm64-v8a/，安装时由系统
+        // 解压到 nativeLibraryDir（天然带执行位——W^X 规则下唯一放行 exec 的位置），
+        // 为第㉑刀抬 targetSdk 铺路。assets/proot 随本刀删除。
+        // 2026-10-04 实测定论依然有效：自编译上游 proot 缺 Android 适配（App 域内加载
+        // guest 静默退出 255），基线必须是带 Android 补丁的 Termux 官方发行二进制
+        // （聚合分发，GPL 合规；PROVENANCE.md 有登记）。2026-10-05 废弃的那版 jniLibs
+        // 方案死因是**自编译二进制**，不是打包位置——E-134 已澄清。
+        // 路径/文件名/SHA256 的单一真相源＝[ProotBinaries]（EnvHealth、SystemInfoProvider
+        // 共用，防三处各写一份漂移）。
+        val nativeDir = ProotBinaries.nativeLibDir(context)
+        val prootBin = ProotBinaries.prootSo(context)
+        val loaderBin = ProotBinaries.loaderSo(context)
+
+        // 第⑳刀升级清理：旧方案（assets 释放）的 files/termux-proot/ 整目录删除
+        //（含旧四件套与旧戳文件）。幂等；失败只记日志（残留无功能影响，下次再删）。
+        ProotBinaries.cleanupLegacyTermuxProot(files)
+
+        // 运行期库目录：libtalloc.so → libtalloc.so.2（bionic 按 DT_NEEDED 文件名精确
+        // 查找，jniLibs 只认 *.so 结尾；复制改名是 Termux 生态通行做法）。PinnedAssets
+        // 戳文件也落这里（nativeLibraryDir 只读，戳只能放可写处）。
+        // fail-closed：libtalloc 缺失 ⇒ proot 起不来（CANNOT LINK EXECUTABLE），
+        // 与四件套缺失同等对待——报问题并降级，绝不带病硬起。
+        val rtDir = ProotBinaries.runtimeDir(context)
+        if (!ProotBinaries.ensureRuntimeLibs(context)) {
+            IssueCenter.report(
+                id = "proot-asset-sha",
+                title = "proot 运行库准备失败",
+                detail = "libtalloc.so.2 复制失败（$rtDir）⇒ proot 起不来 ⇒ " +
+                    "命令退回安卓自带 shell（不再是 Debian）。",
+                actionLabel = "修复环境",
+                actionId = IssueCenter.ACTION_REPAIR_ENV,
+            )
+            return fallbackPlan(files, context.cacheDir)
+        }
+
+        // 版本固定校验（与旧方案同款戳记机制，BUG-2 / E-083）：nativeLibraryDir 由
+        // 安装器写入、App 不可改，常态靠戳零重算。与旧方案的关键差别：jniLibs 里的
+        // 文件**无法在 App 内重放**（来源就是 APK 本身）——校验失败＝APK 损坏/被篡改，
+        // 只能引导修复环境/重装，不再有"从 assets 重新释放"的自愈路径。
+        val stampFile = File(rtDir, PinnedAssets.FILE_NAME)
         val stamps = PinnedAssets.parse(runCatching { stampFile.readText() }.getOrDefault("")).toMutableMap()
         var stampsChanged = false
-        val staleNames = stamps.keys - pinned.map { it.second }.toSet()
+        val staleNames = stamps.keys - ProotBinaries.PINNED.keys
         if (staleNames.isNotEmpty()) {
             staleNames.forEach { stamps.remove(it) } // 清单换过的旧条目：清掉，别留在文件里骗人
             stampsChanged = true
         }
         var reverified = 0
         var skippedByStamp = 0
-        for ((asset, target, expectedSha) in pinned) {
-            val dst = File(tpDir, target)
+        for ((name, expectedSha) in ProotBinaries.PINNED) {
+            val dst = File(nativeDir, name)
             if (dst.isFile && !PinnedAssets.needsReverify(
-                    dst.length(), dst.lastModified(), expectedSha, stamps[target]
+                    dst.length(), dst.lastModified(), expectedSha, stamps[name]
                 )
             ) {
                 skippedByStamp++ // 戳一致：自那次核对后没被动过
                 continue
             }
-            if (dst.isFile) {
-                reverified++
-                val actual = sha256Of(dst)
-                if (actual.equals(expectedSha, ignoreCase = true)) {
-                    stamps[target] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
-                    stampsChanged = true
-                    continue // 已就位（戳缺失/失效，重算一遍通过）
-                }
-            }
-            context.assets.open("proot/$asset").use { input ->
-                dst.outputStream().use { input.copyTo(it) }
-            }
             reverified++
-            val actual = sha256Of(dst)
-            if (!actual.equals(expectedSha, ignoreCase = true)) {
-                RunLog.log("严重: $target SHA256 不匹配（actual=$actual），已删除损坏副本")
-                dst.delete()
-                // #4：这条以前只写日志，而它的后果是「整台设备的命令退回 /system/bin/sh」，
-                // 用户只会觉得"环境怎么不对了"。报一条带去路的（修复环境 = 重解压系统层）。
+            if (!dst.isFile) {
+                RunLog.log("严重: $name 不存在（nativeLibraryDir=$nativeDir）——APK 损坏或安装异常")
                 IssueCenter.report(
                     id = "proot-asset-sha",
-                    title = "内置 proot 释放后校验失败",
-                    detail = "$target 的 SHA256 与内置清单不符（actual=${actual.take(12)}…），" +
-                        "损坏副本已删；proot 起不来 ⇒ 命令退回安卓自带 shell（不再是 Debian）。",
+                    title = "内置 proot 缺失",
+                    detail = "$name 不在原生库目录（$nativeDir）⇒ proot 起不来 ⇒ " +
+                        "命令退回安卓自带 shell（不再是 Debian）。请用「修复环境」排查或重装 App。",
                     actionLabel = "修复环境",
                     actionId = IssueCenter.ACTION_REPAIR_ENV,
                 )
                 continue
             }
-            val mode = if (target == "proot" || target == "loader") 493 else 420 // 0755 / 0644
-            // P2-7（issue #17）+ 第⑩刀审计 R-11：chmod 失败不能静默——proot/loader 少了
-            // 执行位，后面 exec 会以一个"看不懂的错"崩（用户看到的是环境起不来）；
-            // 且 rootfsReady.canExecute() 会判假 ⇒ 直接降级到安卓自带 shell，而现场
-            // （IssueCenter detail）只记 proot/loader 是否 isFile，看不出真因。
-            // 这仍是 best-effort（不因它中断整批释放），但必须留一句可查的日志。
-            try {
-                android.system.Os.chmod(dst.absolutePath, mode)
-            } catch (t: Throwable) {
-                RunLog.log("chmod 失败（$target → mode=$mode）：${t.message}")
+            val actual = sha256Of(dst)
+            if (!actual.equals(expectedSha, ignoreCase = true)) {
+                RunLog.log("严重: $name SHA256 不匹配（actual=$actual）——APK 被篡改或损坏")
+                // #4 的口径不变：后果是「整台设备的命令退回 /system/bin/sh」，必须报
+                // 一条带去路的（与旧方案差别：没有重放自愈，只能修复环境/重装）。
+                IssueCenter.report(
+                    id = "proot-asset-sha",
+                    title = "内置 proot 校验失败",
+                    detail = "$name 的 SHA256 与内置清单不符（actual=${actual.take(12)}…），" +
+                        "无法确认是登记过的 Termux 官方构建；proot 起不来 ⇒ " +
+                        "命令退回安卓自带 shell（不再是 Debian）。请重装 App。",
+                    actionLabel = "修复环境",
+                    actionId = IssueCenter.ACTION_REPAIR_ENV,
+                )
+                continue
             }
-            stamps[target] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
+            stamps[name] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
             stampsChanged = true
-            RunLog.log("已释放: $target（SHA256 校验通过）")
         }
         if (stampsChanged) {
-            // 第⑩刀审计 R-11：以前是 `runCatching { … }` 后什么都不做，戳记写失败的后果
-            // 是下次启动重算 SHA256（慢），但现场无痕。补一行失败日志（行为不变，仍不致命）。
+            // 第⑩刀审计 R-11 口径不变：戳记写失败要留一行可查的日志（不致命）。
             runCatching { stampFile.writeText(PinnedAssets.format(stamps)) }
                 .onFailure { RunLog.log("警告: 戳记文件写失败 ${stampFile.name}：${it.message}") }
         }
@@ -458,9 +460,13 @@ object ProotLauncher {
             "UV_LINK_MODE=copy",
             // 明确告知 uv 系统解释器位置（Debian 13.7 自带 Python 3.13，不做版本管理）
             "UV_PYTHON=/usr/bin/python3",
-            // Termux proot 的依赖库与外部 loader 定位（其 fork 的 loader 为独立文件）
-            "LD_LIBRARY_PATH=${tpDir.absolutePath}", // libtalloc.so.2 / libandroid-shmem.so 在此目录
-            "PROOT_LOADER=${File(files, "termux-proot/loader").absolutePath}",
+            // Termux proot 的依赖库与 loader 定位（第⑳刀 jniLibs 化）：
+            // libtalloc.so.2 在运行期目录（复制改名，bionic 按 DT_NEEDED 文件名精确查找）；
+            // libandroid-shmem.so 文件名恰与 DT_NEEDED 一致，留在 nativeLibraryDir 直接命中
+            "LD_LIBRARY_PATH=${rtDir.absolutePath}:${nativeDir.absolutePath}",
+            // ⚠️ 必须显式指 jniLibs 里的 loader：不设的话 proot 自抽取 loader 落临时
+            // 目录 ⇒ EACCES，且失败是静默的（原型真机实录，见 ProotBinaries KDoc）
+            "PROOT_LOADER=${loaderBin.absolutePath}",
             // ── 网络优化（v1.2）─────────────────────────────────────────────────
             // 禁 IPv6（P0）：Bun 在"DNS 返回全局 IPv6 但接口只有链路本地地址"的网络下会
             //   优先连 IPv6 并**一直挂到超时**（oven-sh/bun#25619）。本 flag 在 Bun 源码
@@ -483,7 +489,7 @@ object ProotLauncher {
         )
 
         val args = mutableListOf(
-            prootBin.absolutePath,   // 宿主侧 execve 的目标：Termux fork 的 proot（files/ 下可执行）
+            prootBin.absolutePath,   // 宿主侧 execve 的目标：Termux fork 的 proot（nativeLibraryDir，安装器自带执行位）
             "--kill-on-exit",        // proot 退出时清掉 guest 内的全部进程，防孤儿
             "--link2symlink",        // 硬链接失败自动降级为符号链接（实测坑 #4：SELinux 拒绝非 root 硬链接）
             "-r", rootfsDir.absolutePath,          // guest 根目录

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import com.example.zhengdao.R
+import com.example.zhengdao.terminal.ProotBinaries
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import java.io.File
 
@@ -185,7 +186,8 @@ object SystemInfoProvider {
             ?.let { "Debian $it" }
             ?: (res?.getString(R.string.sys_not_installed) ?: "未安装"),
         proot = safe(res) {
-            val p = File(ctx.filesDir, "termux-proot/proot")
+            // 第⑳刀：四件套随 APK jniLibs 内置（nativeLibraryDir），不再看数据目录
+            val p = ProotBinaries.prootSo(ctx)
             if (p.isFile && p.canExecute()) res?.getString(R.string.sys_proot_ready)
                 ?: "就绪（Termux fork）"
             else res?.getString(R.string.sys_not_installed) ?: "未安装"
