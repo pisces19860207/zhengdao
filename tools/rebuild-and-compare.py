@@ -128,6 +128,95 @@ def sha256_text_crlf_to_lf(path):
     return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
+# ── ELF 分段读数（跨主机整体哈希不一致时，用来定位差异落在哪几段）──────
+
+SHT_NOBITS = 8
+
+
+def read_elf_sections(path):
+    """极简 ELF64-LE 节头表读取：返回 [{name,type,size,sha256}]；.bss 无字节 ⇒ sha256=None。
+
+    纯标准库、只读字节；解析不出来返回 None（不因此判红）。
+    """
+    try:
+        data = Path(path).read_bytes()
+        if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
+            return None
+        e_shoff = int.from_bytes(data[0x28:0x30], "little")
+        e_shentsize = int.from_bytes(data[0x3A:0x3C], "little")
+        e_shnum = int.from_bytes(data[0x3C:0x3E], "little")
+        e_shstrndx = int.from_bytes(data[0x3E:0x40], "little")
+        if not e_shoff or not e_shnum or e_shentsize < 64:
+            return None
+
+        def sh(i):
+            off = e_shoff + i * e_shentsize
+            return {
+                "name_off": int.from_bytes(data[off:off + 4], "little"),
+                "type": int.from_bytes(data[off + 4:off + 8], "little"),
+                "offset": int.from_bytes(data[off + 0x18:off + 0x20], "little"),
+                "size": int.from_bytes(data[off + 0x20:off + 0x28], "little"),
+            }
+
+        strtab = sh(e_shstrndx)
+        names = data[strtab["offset"]:strtab["offset"] + strtab["size"]]
+        out = []
+        for i in range(e_shnum):
+            s = sh(i)
+            no = s["name_off"]
+            end = names.find(b"\x00", no)
+            name = names[no:end if end >= 0 else len(names)].decode("utf-8", "replace")
+            if s["type"] == SHT_NOBITS:
+                body = None
+            else:
+                body = data[s["offset"]:s["offset"] + s["size"]]
+            out.append({
+                "name": name,
+                "type": s["type"],
+                "size": s["size"],
+                "sha256": None if body is None else hashlib.sha256(body).hexdigest(),
+            })
+        return out
+    except Exception:
+        return None
+
+
+def report_section_diff(mine, theirs, max_ann=8):
+    """把「本次构建 vs 基线」的分段差异打印并打成 annotation（有界）。
+
+    返回差异处数。GitHub 每步 warning 配额 10 条 ⇒ 默认最多逐条 8 条 ＋ 1 条汇总。
+    """
+    if not mine or not theirs:
+        annotate("warning", "重编比对·分段差异（观察期）",
+                 "基线里没有分段表（旧格式，或 ELF 解析失败）⇒ 只能给整体哈希；"
+                 "跑一次 --update 会把分段表写进基线")
+        return 0
+    mine_by = {s["name"]: s for s in mine}
+    theirs_by = {s["name"]: s for s in theirs}
+    diffs, same = [], 0
+    for name in sorted(set(mine_by) | set(theirs_by)):
+        a, b = mine_by.get(name), theirs_by.get(name)
+        if a is None:
+            diffs.append("%s：新增 %d B" % (name, b["size"]))
+        elif b is None:
+            diffs.append("%s：消失（基线 %d B）" % (name, a["size"]))
+        elif a["size"] != b["size"] or a["sha256"] != b["sha256"]:
+            diffs.append("%s：%d → %d B（%+d）%s"
+                         % (name, b["size"], a["size"], a["size"] - b["size"],
+                            "" if a["sha256"] == b["sha256"] else " 内容不同"))
+        else:
+            same += 1
+    print("[diff] 分段：相同 %d 处，差异 %d 处" % (same, len(diffs)))
+    for line in diffs:
+        print("[diff]   " + line)
+    for line in diffs[:max_ann]:
+        annotate("warning", "重编比对·分段差异（观察期）", line)
+    if len(diffs) > max_ann:
+        annotate("warning", "重编比对·分段差异（观察期）",
+                 "另有 %d 处差异未逐条列出（逐条上限 %d）" % (len(diffs) - max_ann, max_ann))
+    return len(diffs)
+
+
 def read_ndk_version(repo):
     """NDK 版本单一真源 = app/build.gradle.kts 的 ndkVersion（§B 57 第③条）。"""
     path = repo / "app" / "build.gradle.kts"
@@ -304,6 +393,10 @@ def build_and_strip(repo, workdir, offline, keep, no_remap=False):
         fail_env("llvm-strip 失败（退出码 %d）" % strip_proc.returncode, strip_proc.stderr.strip())
 
     norm = {"size": stripped.stat().st_size, "sha256": sha256_file(stripped)}
+    sections = read_elf_sections(stripped)
+    if sections is not None:
+        # 分段表进基线：跨主机整体哈希不同时，CI 那侧才能报出「差在哪几段」
+        norm["sections"] = sections
     raw = {"size": raw_size, "sha256": raw_sha}
 
     inputs = {
@@ -443,6 +536,7 @@ def main():
                     inputs["rustc"]["version"], inputs["rustc"]["commit_hash"], host))
         print("[diff] size 相差 %+d B；sha256 %s"
               % (norm["size"] - exp_size, "一致" if same_hash else "不一致"))
+        report_section_diff(norm.get("sections"), expect.get("sections"))
         return EXIT_MISMATCH
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
