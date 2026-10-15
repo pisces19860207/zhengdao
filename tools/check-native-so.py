@@ -22,6 +22,12 @@
     2. libzhengdao_core.so 必须导出 CoreNative.kt 里每个 `external fun` 的 JNI 符号
        （符号名现读 CoreNative.kt 推导，将来加 native 方法会自动纳入门禁）
     3. 仅供信息：.symtab 是否存在及大小（影响入库体积，不影响 APK —— 见 E-045）
+    4. **PROOT_PINNED 的四件套必须都在**（顺序 38，第㉗刀）：上面 1 里的 16KB 判据与 sha256
+       完整性基线都是 **glob 驱动**的 —— 只在文件**存在**时才跑那一段 ⇒ 删掉/改名四件套里
+       任一个，两条判据双双失效而 CI 不红（静默漂移窗口）。这里补一条「四个名字必须都出现在
+       扫描结果里」，缺失即 BLOCKER。（`libzhengdao_core.so` 的缺席不在这里补：它已被
+       `tools/check-so-provenance.py` 的基线 diff 拦住 —— 基线里记着它那条 sha256，文件一没
+       就报 `[so] 删除` 并返回 1。）
 
 用法
     python tools/check-native-so.py [仓库根]     # 默认取本脚本上一级目录
@@ -190,6 +196,32 @@ def main(argv):
     if not libs:
         print("[错误] app/src/main/jniLibs 下没有任何 .so —— 门禁失去意义，视为失败")
         return 1
+
+    # ── 顺序 38（第㉗刀）：PROOT_PINNED 四件套**必须在场** ──
+    #
+    # 为什么必须单独判：下面那个 `for so in libs` 循环是 **glob 驱动**的 —— 16KB 判据与
+    # sha256 完整性基线都只在「文件存在」时才执行。所以删掉（或改名、挪出 jniLibs）四件套
+    # 里任一个，那一段根本不跑：既不会因为"缺件"红，也不会因为"哈希对不上"红 —— CI 全绿，
+    # 而 App 在真机上 execve/mmap proot 时才炸（或静默退回 Java 路径）。
+    #
+    # 为什么只补这四个、不补 `libzhengdao_core.so`：**它的缺席已被同源门禁拦住** ——
+    # `tools/check-so-provenance.py` 的基线里记着它那条 sha256，文件一没了 diff 就报
+    # `[so] 删除: …libzhengdao_core.so` 并返回 1（第㉗刀实测：EXIT=1）。四件套则**没有任何
+    # 门禁管**（同源门禁只 glob CORE_SO）—— 这正是本条的缺口。
+    #
+    # 只判「名字出现在扫描结果里」，不改也不代替 1 里的 16KB 判据与 sha256 基线（那两条一行未动）。
+    present_names = {so.name for so in libs}
+    missing_pinned = [name for name in PROOT_PINNED if name not in present_names]
+    if missing_pinned:
+        for name in missing_pinned:
+            blocker(
+                f"PROOT_PINNED 四件套缺件：{name} 不在 app/src/main/jniLibs/**/*.so 的扫描结果里 —— "
+                "16KB 判据与 sha256 完整性基线都是 glob 驱动的（文件不在就不跑）⇒ 缺件会静默绕过"
+                "两条判据（顺序 38）。修法：把该 .so 放回 jniLibs/<abi>/（工序见 rust/README.md "
+                "与 PROVENANCE.md），或同步三处登记（ProotBinaries.kt / PROVENANCE.md / 本脚本）"
+            )
+    else:
+        info(f"PROOT_PINNED 四件套齐备（{', '.join(sorted(PROOT_PINNED))}）")
 
     funs, kt = native_methods(repo)
     if funs is None:
