@@ -18,6 +18,12 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.net.URL
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 太极的 OpenCode（bionic 宿主版）管理器（批次 3，2026-10-06）。
@@ -271,20 +277,10 @@ object OcManager {
         // 取 pid 走反射（方法 pid() 优先，字段 pid 兜底）：Kotlin 直调 p.pid() 在本仓
         // 编译配置下报 Unresolved（java.lang.Process 的解析来源问题），不值得为一条
         // 取证日志去动编译配置。
-        val pidText = runCatching {
-            p.javaClass.getMethod("pid").invoke(p)?.toString()
-        }.recoverCatching {
-            var c: Class<*> = p.javaClass
-            var found: String? = null
-            while (c != Any::class.java && found == null) {
-                found = runCatching {
-                    c.getDeclaredField("pid").apply { isAccessible = true }.get(p)?.toString()
-                }.getOrNull()
-                c = c.superclass ?: break
-            }
-            found ?: "?"
-        }.getOrDefault("?")
-        log("太极: serve 收尾目标 pid=$pidText")
+        // 第㉖刀顺序 42：pid 升级为结构化返回（[processPidOf] → Int?），日志与
+        // 升级档补刀（killProcess）共用同一份 pid，不再各算各的。
+        val pid = processPidOf(p)
+        log("太极: serve 收尾目标 pid=${pid ?: "?"}")
         p.destroy()
         log("太极: serve 收尾：destroy() 已发出，等 ${waitMs}ms")
         val exited = runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }.getOrDefault(false)
@@ -296,10 +292,48 @@ object OcManager {
         log("太极: serve ${waitMs}ms 未退，升级 destroyForcibly()")
         p.destroyForcibly()
         runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }
-        val code = runCatching { p.exitValue().toString() }.getOrDefault("仍存活")
+        var code = runCatching { p.exitValue().toString() }.getOrDefault("仍存活")
+        if (code == "仍存活") {
+            // 第㉖刀（顺序 42，E-136 第㉒刀-B 取证定案）：本机 ART 上 destroyForcibly()
+            // 对被外部 SIGSTOP 冻成 T 态的 serve **不产生 SIGKILL 效果**（三件证据：
+            // 收尾 pid 与 T 态逐一相同 / 外部 run-as kill -9 秒杀 / kill -CONT 判别实验
+            // 证明排队的只是 TERM）。补一发 android.os.Process.killProcess(pid)——
+            // 公开 API、真 SIGKILL；serve 是 App 直启子进程（PPID=App、无包装层）、
+            // 同 uid，收得掉（取证已实证同路径有效）。/proc 扫描兜底（[stopServe]）不变。
+            if (pid != null) {
+                log("太极: destroyForcibly 后仍存活，补发 killProcess(pid=$pid)（E-136：ART 不给 SIGKILL）")
+                runCatching { killProcessForTest?.invoke(pid) ?: android.os.Process.killProcess(pid) }
+                    .onFailure { log("太极: killProcess(pid=$pid) 调用失败: ${it.message}") }
+            } else {
+                log("太极: destroyForcibly 后仍存活，pid 不可得，跳过 killProcess 补刀")
+            }
+            runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }
+            code = runCatching { p.exitValue().toString() }.getOrDefault("仍存活")
+        }
         log("太极: serve 强制收尾完成（exit=$code）")
         return true
     }
+
+    /**
+     * 第㉖刀顺序 42：从 [p] 提取 pid（原 shutdownProcess 内联反射块抽出）——
+     * 方法 `pid()` 优先，字段 `pid` 兜底，都拿不到返回 null（调用方按"不可得"降级）。
+     * Kotlin 直调 p.pid() 在本仓编译配置下报 Unresolved（java.lang.Process 的解析
+     * 来源问题），故走反射。
+     */
+    internal fun processPidOf(p: Process): Int? =
+        runCatching {
+            p.javaClass.getMethod("pid").invoke(p) as? Int
+        }.recoverCatching {
+            var c: Class<*> = p.javaClass
+            var found: Int? = null
+            while (c != Any::class.java && found == null) {
+                found = runCatching {
+                    c.getDeclaredField("pid").apply { isAccessible = true }.get(p) as? Int
+                }.getOrNull()
+                c = c.superclass ?: break
+            }
+            found
+        }.getOrNull()
 
     /**
      * 第⑭刀 #4：serve.log 轮转参数 —— 单份上限 1MB，保留「当前 + 上一份」两份。
@@ -635,16 +669,53 @@ object OcManager {
         //    现在只匹配**本 App 装的那一份**：`filesDir/oc/usr/bin/opencode`
         //    （见 [binaryFile] 与 `ProcessBuilder(bin.absolutePath, "serve", …)`，:332），
         //    它的路径里带 `/oc/usr/bin/opencode`，而 guest 的那份在 `.../files/rootfs/...` 之下 —— 前缀不同，不会误杀。
+        //
+        // 第㉖刀（顺序 37）：这段扫描是阻塞 IO（listFiles + 逐个 readText），而两个调用点
+        // （ZhengdaoApp.onActivityDestroyed / SessionService.onDestroy|onTaskRemoved）都在
+        // **主线程** ⇒ 执行体抽成 [sweepOrphanServe]，从协程异步跑：stopServe 立即返回、
+        // 调用点零改动、匹配串与 kill 语义一个不改（A1 口径原样保留）。App 真死时扫描
+        // 可能没跑完——「进程死亡子进程随之消亡」本就是第一层兜底，这里只是孤儿清理的第二层。
+        val root = sweepProcRootForTest ?: File("/proc")
+        val kill = sweepKillForTest ?: { pid: Int -> android.os.Process.killProcess(pid) }
+        CoroutineScope(SupervisorJob() + (cleanupDispatcherForTest ?: Dispatchers.IO)).launch {
+            runCatching { sweepOrphanServe(root, kill) }
+                .onFailure { RunLog.log("太极: 孤儿 serve 清理失败: ${it.message}") }
+        }
+    }
+
+    // ── 第㉖刀顺序 37：孤儿清理异步化（测试注入点，范式同 serveProbeForTest）──
+    internal var cleanupDispatcherForTest: CoroutineDispatcher? = null
+    internal var sweepProcRootForTest: File? = null
+    internal var sweepKillForTest: ((Int) -> Unit)? = null
+
+    // ── 第㉖刀顺序 42：升级档补刀注入（JVM 单测无 android.os.Process）──
+    internal var killProcessForTest: ((Int) -> Unit)? = null
+
+    /**
+     * 孤儿 serve 扫描执行体（第㉖刀顺序 37 从 [stopServe] 抽出）：listFiles + 逐个
+     * readText 是阻塞 IO，挂起切到 [Dispatchers.IO]，**绝不跑在调用线程上**。
+     * procRoot / kill 注入（JVM 单测扫不了真 /proc）；匹配串 `/oc/usr/bin/opencode`
+     * 与审计 A1 修正口径**原样保留**（防误杀 guest 里的 opencode）。
+     * 返回实际 kill 过的 pid（新增观测面，供测试断言；不改变任何既有行为）。
+     */
+    internal suspend fun sweepOrphanServe(
+        procRoot: File,
+        kill: (Int) -> Unit,
+    ): List<Int> = withContext(Dispatchers.IO) {
+        val killed = mutableListOf<Int>()
         runCatching {
-            File("/proc").listFiles { f -> f.name.all { it.isDigit() } }?.forEach { p ->
+            procRoot.listFiles { f -> f.name.all { it.isDigit() } }?.forEach { p ->
                 runCatching {
                     val cmd = p.resolve("cmdline").readText()
                     if (cmd.contains("/oc/usr/bin/opencode")) {
-                        android.os.Process.killProcess(p.name.toInt())
+                        val pid = p.name.toInt()
+                        kill(pid)
+                        killed.add(pid)
                     }
                 }
             }
         }
+        killed
     }
 
     class DownloadResult(val ok: Boolean, val message: String)
