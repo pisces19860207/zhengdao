@@ -201,6 +201,13 @@ fun TaijiScreen(
         )
     }
 
+    // 第㉙刀（§B 顺序 5 / issue #9）：SSE 报「会话集合变了」（session.created）⇒ 抽屉列表
+    // 就地重拉 —— 原来只有「打开抽屉 / 手动下拉 / 删除后」三个触发点，别处新建的会话要等
+    // 用户自己刷新才出现。>0 守卫：首次组合不重复拉（抽屉打开时本来就拉一次）。
+    LaunchedEffect(state.sessionsRevision) {
+        if (state.sessionsRevision > 0) refreshSessions()
+    }
+
     // 🔺 返回键兜底：抽屉打开时按 BACK 必须**先关抽屉**，不能直接退出 App。
     //   material3 的 ModalNavigationDrawer 内置了 predictive back，但在本工程
     //   （targetSdk 28、未声明 android:enableOnBackInvokedCallback）的真机上**不生效**——
@@ -222,6 +229,17 @@ fun TaijiScreen(
     // ── 模型池（v1.0 任务一）──
     var showModelSheet by remember { mutableStateOf(false) }
     var modelsLoading by remember { mutableStateOf(false) }
+
+    // 第㉙刀（§B 顺序 5 / issue #9）：SSE 报「模型目录变了」（model.updated / provider.updated /
+    // models-dev.refreshed）⇒ 若模型抽屉正开着就就地重拉。目录来自 models.dev，改动与
+    // App 无关；原先只有「点开抽屉」那一刻拉一次，开着抽屉时目录变了就一直显示旧表。
+    LaunchedEffect(state.modelsRevision) {
+        if (state.modelsRevision > 0 && showModelSheet) {
+            modelsLoading = true
+            repo.fetchModels(com.example.zhengdao.terminal.Workspace.hostDir(ctx).absolutePath)
+            modelsLoading = false
+        }
+    }
     // 覆盖持久化：重启 App 后重放（复用最近会话时再次 POST，仅影响当前会话）。
     // 用项目统一的 SharedPreferences——DataStore 未在项目引入，为单个键值新增依赖不值。
     val modelPrefs = remember { ctx.getSharedPreferences("zhengdao-taiji", android.content.Context.MODE_PRIVATE) }

@@ -118,4 +118,20 @@ data class TaijiState(
 
     /** 是否已完成过一次全量加载。false 时显示 loading 而非空列表。 */
     val loadedOnce: Boolean = false,
+
+    // ── 第㉙刀（§B 顺序 5 / issue #9）：4 类 SSE 事件的「过期信号」──────────────
+    //
+    // 语义刻意做成**单调自增的版本号**，不是布尔「脏」位：消费方（TaijiScreen 的
+    // LaunchedEffect）以它为 key 重跑一次拉取；只用布尔位的话「置脏→拉取→清脏」会在
+    // 同一次组合里来回抖，且连续两条同类事件会被合并成一次。自增号让每次事件都算数。
+    //
+    // 为什么是「信号」而不是「数据」：SSE 在本项目只是信号通道（数据以 REST 轮询为准，
+    // ERRATA E-008 —— `/api/event` 连上即关）。所以这里只表达「某样东西变了」，
+    // 真数据仍旧走 REST 拉取，不在 SSE 里搬内容。
+
+    /** 会话集合变化（`session.created`）后自增 ⇒ 抽屉里的会话列表重拉。 */
+    val sessionsRevision: Int = 0,
+
+    /** 模型目录变化（`model.updated` / `provider.updated` / `models-dev.refreshed`）后自增。 */
+    val modelsRevision: Int = 0,
 )
