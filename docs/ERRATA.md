@@ -6750,3 +6750,17 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **记账口径（用户 2026-10-15 拍板）**：软链相关验证一律按「环境失败」记账，不计入任何刀的验收失败，也不作为改代码 / 降级依赖的理由 ⇒ 已登记 `docs/FEATURE-LEDGER.md` §C；测试卫生问题另立 §B 顺序 62。
 
 **恢复路径**：以管理员开启「开发者模式」（或写入 `AppModelUnlock\AllowDevelopmentWithoutDevLicense = 1`）后无需重启，两个用例应自愈（届时会真正跑起来）。**改 HKLM 需要管理员权限、超出 agent 权限**，要动先问用户。
+
+## E-139 · 2026-10-15 · 「targetSdk 36 下 App 直启数据目录里的 opencode 必被 W^X 拦」在真机上未复现（单设备实证，换机必须重验）
+
+**原判断（交接单与派工单口径）**：`E-134` 证伪了「targetSdk ≤ 28 是 proot 生死线」（四件套走 `jniLibs` 时 36 也能跑），但它留下一条**推论式**边界 —— 「App 从 `files/` 数据目录**直启** `oc/usr/bin/opencode` 这条路径，在 targetSdk 36 下会被 Android 10+ 的 W^X 拦死」；第㉕刀据此预告「抬 36 后太极/抱朴必死，需另开一刀做执行链改造」。
+
+**真机实测（PGT-AN10 / Android 16 / targetSdk 36 / versionCode 36）**：
+- 16:44 抬 36 后**首次**进抱朴：`太极 serve 启动失败: Cannot run program ".../oc/usr/bin/opencode": error=13, Permission denied` ⇒ 与原判断一致（**但仅此一次**）；
+- 16:50 App 重启后 serve **连上**（鉴权通过、SSE 就绪、复用会话）；16:57 杀掉 serve 后重启，**再次成功起**；
+- 两次复验的铁证都是 `/proc/<pid>/exe`：该进程的 exe **直指应用数据目录里的 opencode**（`serve --port=14000`，289 MB），父进程即 App 进程、同 uid ⇒ **「36 必拦」在本机不成立**。
+- 16:44 那次 `error=13` 判为**偶发**；**推断**（未取证、仅记推断）疑为安装后首启时厂商 freezer / 瞬态导致的 execve 失败。
+
+**口径与落点**：`app/build.gradle.kts` 的相关注释与新增 `app/src/test/java/com/example/zhengdao/TargetSdkGateTest.kt` 的判据已按实测改写（不再断言「36 必被拦」）。**本条是单设备实证** —— 换机型或换系统版本必须重验，不得据此宣称「任意设备都能直启数据目录二进制」。台账落点：`docs/FEATURE-LEDGER.md` §A #114、§B 顺序 45。
+
+**顺带记录的真机取证噪声（工具层，不是应用缺陷）**：① `adb shell input text` 的空格会被吞（须写 `%s`）；② **Tab 切换后 IME 注入会串行**（终端 MOTD 提示文本被当成命令执行），改逐字符 `input keyevent` 可绕开；③ 终端里的 URL 会被链接识别接管焦点 ⇒ **自动跳到浏览器 Tab**（判据④ 中途跳页的真因）。
