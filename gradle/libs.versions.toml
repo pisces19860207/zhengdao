@@ -10,7 +10,7 @@ lifecycleRuntimeKtx = "2.11.0"
 # P4-7（issue #17）：compose.ui.platform.LocalLifecycleOwner 自 Compose UI 1.7 起废弃，
 # 官方迁移目标 androidx.lifecycle.compose.LocalLifecycleOwner 由本 artifact 提供。
 lifecycleRuntimeCompose = "2.11.0"
-activityCompose = "1.8.0"
+activityCompose = "1.13.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
 
