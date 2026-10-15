@@ -258,19 +258,27 @@ android {
 
     defaultConfig {
         applicationId = "com.example.zhengdao"
-        // 架构生死线（设计文档 v3「架构前提」）：
-        // targetSdk 必须钉死 28 —— Android 10 起，targetSdk ≥ 29 的应用会被 SELinux
-        // 禁止从可写数据目录执行文件（W^X 限制），而本 App 的核心能力恰恰是在数据
-        // 目录里运行下载来的 Linux 环境（proot + rootfs）。targetSdk 28 是合法的
-        // 旧规则选择，同类免 root Linux 环境产品均采用同一策略。
-        // 🚫 未经架构前提重新评估，任何人不得上调此值。
-        // ⚠️ 2026-10-15 重大更正（docs/ERRATA.md E-134）：上面「必须 ≤ 28」的必然性已被真机原型证伪 ——
-        //    原型 proot-jnilib-proto 在真机同型号（荣耀 PGT-AN10 / Android 16）上以 targetSdk 36
-        //    跑通 Termux 四件套（jniLibs → 只读可执行 nativeLibraryDir ＋ PROOT_LOADER 显式指向），
-        //    四判据全过（自检 / 解压 rootfs / echo+uname / apt-get update 联网）。
-        //    ⇒ 28 仍是**现行打包方式**（jniLibs + assets→files/）的前提，不再是「生死线」；
-        //      抬 36 已排进待办（台账 §B，先做执行链迁移再抬），届时按派工单改此值。
-        targetSdk = 28
+        // 打包口径（2026-10-15 第㉕刀，依据 docs/ERRATA.md E-134）：
+        //
+        // 旧口径（已废）：「targetSdk 必须钉死 28 —— Android 10 起 W^X 禁止 targetSdk≥29 的
+        // 应用从可写数据目录 exec，而 rootfs 跑在数据目录里 ⇒ 不可上调的架构级禁令」。
+        //
+        // E-134 证伪的是「**必须 ≤28**」这条必然性：真机原型（荣耀 PGT-AN10 / Android 16 /
+        // targetSdk 36）把 Termux 四件套打进 jniLibs（nativeLibraryDir 只读且可执行）＋
+        // PROOT_LOADER 显式指向后四判据全过。关键机制：guest 二进制由 proot loader **mmap
+        // 进内存**加载（原型 ProotRunner.kt 原话「Android 从不直接 execve rootfs 里的任何
+        // 文件」）⇒ 数据目录不可 exec 的限制根本不作用到它们。第⑳刀已把四件套全量迁入
+        // jniLibs，故本刀抬到 36。
+        //
+        // ⚠️ 28 是**旧打包方式**（assets → files/termux-proot/ 可写目录再 exec）的前提，
+        // 不是架构铁律。谁把四件套改回「释放到可写目录再 exec」的老路，29+ 确实过不去，
+        // 必须重新评估此值 —— 别以为抬过一次就能永远抬着。
+        //
+        // ⚠️⚠️ 抬 36 的已知代价（第㉕刀真机回归实证）：oc 的 opencode 是
+        // ProcessBuilder(filesDir/oc/usr/bin/opencode) **直接 execve**（不经 loader），
+        // 36 下被 W^X 拦 ⇒ 太极 serve 起不来。要修得给它也做一次「⑳ 刀式」迁移或走
+        // proot loader 加载 —— 属 oc 业务代码，第㉕刀红线不碰，详见该刀交付报告。
+        targetSdk = 36
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro
         // （PGT-AN10 / MagicOS 10.0.0.175 CHNC00E175R208P6 / Android 16）；
         // Android 15 及以下未适配未验证（README 有明确声明），直接拒绝安装。
@@ -363,11 +371,10 @@ android {
         }
     }
 
-    // lint 检查：ExpiredTargetSdkVersion 是 Google Play 上架要求（targetSdk≥33），
-    // 但本项目 targetSdk=28 是架构生死线（proot 需要从可写目录 exec），不可上调。
-    // 本项目不走 Google Play，走 GitHub Releases 直发，故禁用该检查。
-    // ⚠️ 2026-10-15 更正（E-134）：「28 是生死线、不可上调」的说法已被真机原型证伪（见 :267 上方注释）。
-    //    禁用该 lint 检查的决定**仍然有效**（本版仍以 28 打包、仍不走 Play）；抬到 36 时再一并复核。
+    // lint 检查：ExpiredTargetSdkVersion 是 Google Play 的上架要求（targetSdk≥33）。
+    // 第㉕刀（2026-10-15）targetSdk 已抬到 36（依据 ERRATA E-134，见上面 targetSdk 处注释），
+    // 该检查的触发条件（targetSdk<33）已不成立；且本项目走 GitHub Releases 直发、从不上 Play。
+    // disable 项**保留不删**：谁把 targetSdk 调回 <33，它会立刻重新生效 —— 那正是想要的。
     testOptions {
         // EnvSelfHeal 等纯逻辑单测会触达 android.util.Log——未 mock 的调用返回默认值
         // （仅 unit test 生效；真机行为不变）

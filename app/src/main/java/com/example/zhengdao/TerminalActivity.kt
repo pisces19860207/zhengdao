@@ -20,6 +20,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
@@ -122,6 +125,26 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             readRequestFromIntent(intent)
         }
         setContentView(R.layout.activity_main)
+
+        // 边到边（第㉕刀，targetSdk 28 → 36）：Android 15+ 对 targetSdk 35+ 的应用**强制**
+        // 边到边（窗口不再自动给系统栏留位；36 起 windowOptOutEdgeToEdgeEnforcement 也被忽略，
+        // 无 opt-out）。本页是全仓唯一的经典 View 布局页，做法 = 关掉 decor 的自动适配 ＋ 在
+        // 根 View 上显式吃 insets：系统栏与输入法的高度叠加成根布局 padding —— 与 target 28
+        // 时代「内容夹在两根栏之间」的视觉一致（顶栏不被状态栏压、底部键栏不被导航栏/键盘压）。
+        // 其余各页（Compose）走的是同款 setDecorFitsSystemWindows(false) + insets 修饰符。
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val terminalRoot = findViewById<android.view.View>(R.id.terminal_root)
+        val baseL = terminalRoot.paddingLeft
+        val baseT = terminalRoot.paddingTop
+        val baseR = terminalRoot.paddingRight
+        val baseB = terminalRoot.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(terminalRoot) { v, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()
+            )
+            v.setPadding(baseL + bars.left, baseT + bars.top, baseR + bars.right, baseB + bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
 
         // 顶部安装进度横幅（2026-10-08）：点一下收起。此前它是**死控件**——布局里存在、
         // 注释还写着进度都靠它，但代码从未引用（用户"终端里也没有显示"的根因之一）。

@@ -108,21 +108,23 @@ object PermissionSetup {
      * 共享存储（必需项）是否已授权。
      *
      * 判据：**不做 READ+WRITE 双查**，直接委托 [ProotLauncher.storageGranted] 这个单一判定源。
-     * 该实现查的是 WRITE_EXTERNAL_STORAGE：targetSdk=28（app/build.gradle.kts:163）在 Android 11+
-     * 上自动保持 legacy 存储视图，拿到 WRITE 即可读写共享存储；且本项目设了
-     * `requestLegacyExternalStorage`（AndroidManifest.xml:47）。若本页自己另查一份 READ+WRITE，
-     * 用户只授了其中一个时，本页与设置页会给出不同结论（v1.3 E2 修的就是这个）。
+     * 该实现是**双通道**（第㉕刀，targetSdk 28 → 36）：
+     * - targetSdk 36（现行）：查「所有文件访问」（READ/WRITE 运行时权限在 API 30+ 已 inert）；
+     * - targetSdk 28（旧口径）：查 WRITE_EXTERNAL_STORAGE（Android 11+ 对 target≤29 保持
+     *   legacy 存储视图，授权即可读写共享存储；manifest 另有 requestLegacyExternalStorage）。
+     * 若本页自己另查一份 READ+WRITE，用户只授了其中一个时，本页与设置页会给出不同结论
+     * （v1.3 E2 修的就是这个）。
      */
     fun storageGranted(ctx: Context): Boolean = ProotLauncher.storageGranted(ctx)
 
     /**
      * 「所有文件访问」（MANAGE_EXTERNAL_STORAGE）是否已开启。
      *
-     * ⚠️ 真话，必须写进文案：本 App 的 targetSdk=28，该开关**只对 target≥30 的 App 存在**，
-     * 系统对证道永远返回 false（ProotLauncher.kt:40-49 记录的 2026-10-04 修复：此前用它做
-     * 存储判定，恒 false，导致判定永远失败）。所以这一行只作**可选增强**展示，
-     * **绝不参与「必需项就绪」判定**——否则底部主按钮永远只能显示「稍后再说」，
-     * 用户看到的是一个永远不会变成「完成」的页面。
+     * 第㉕刀（2026-10-15）起真话变了：targetSdk 28 时代该开关**只对 target≥30 的 App 存在**、
+     * 系统对证道永远返回 false（2026-10-04 修复记录：此前用它做存储判定，恒 false），所以
+     * 这一行当时只作**可选增强**展示、绝不参与「必需项就绪」判定。抬到 36 后开关**可达**，
+     * 且它就是共享存储的唯一通道 ⇒ 必需项判定已经 [storageGranted] 路由到它（双通道的
+     * 前者），本行从"装饰"变成"用户要真去点的那个"。
      */
     fun manageAllFilesGranted(): Boolean =
         runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
@@ -141,8 +143,9 @@ object PermissionSetup {
      * 必需项是否有缺。
      *
      * 当前**只有共享存储一项**是必需的：通知缺失只是收不到「装完清理」等提示
-     * （真机验收结论记在 MainActivity 首启通知请求上方那段注释里：拒绝不影响任何功能），
-     * 「所有文件访问」在本机系统上拿不到（见 [manageAllFilesGranted]）⇒ 二者都不算必需。
+     * （真机验收结论记在 MainActivity 首启通知请求上方那段注释里：拒绝不影响任何功能）。
+     * 第㉕刀（targetSdk 36）起「所有文件访问」可达，它就是共享存储的唯一通道 ——
+     * [storageGranted] 的双通道判定已经把它算进必需项（见该函数 KDoc），无需在此另列。
      */
     fun missingRequired(ctx: Context): Boolean = !storageGranted(ctx)
 
@@ -375,6 +378,11 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                     onClick = {
                         if (storageOk) {
                             openAppDetails()
+                        } else if (android.os.Build.VERSION.SDK_INT >= 30) {
+                            // 第㉕刀（targetSdk 36）：READ/WRITE 运行时权限在 30+ 已 inert，
+                            // 点下去只会被静默拒绝、用户看到"点了没反应" ⇒ 直接送他去
+                            // 「所有文件访问」系统页（共享存储 36 上的唯一通道）。
+                            openManageAllFiles()
                         } else {
                             permLauncher.launch(
                                 arrayOf(
