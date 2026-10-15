@@ -24,6 +24,9 @@
         <exclude domain="file" path="oc" />
         <!-- 「仅私有模式」的工作区（App 外部私有目录） -->
         <exclude domain="external" path="workspace" />
+        <!-- 浏览器桥 token（2026-10-15，ERRATA E-129）：独立 prefs 文件，按名排除。
+             云备份与近场迁移两条路都排 —— 后者不加密、不可撤销。 -->
+        <exclude domain="sharedpref" path="bridge_token.xml" />
     </cloud-backup>
     <device-transfer>
         <!-- 只挡系统层：rootfs 与 proot 二进制在新机上重装一份更干净 -->
@@ -36,5 +39,8 @@
         <exclude domain="file" path="home/.claude" />
         <exclude domain="file" path="home/.hermes" />
         <exclude domain="file" path="oc" />
+        <!-- 浏览器桥 token（2026-10-15，ERRATA E-129）：近场迁移不加密、不可撤销，
+             随机口令不该跟着换机走（新机上重新生成更安全）。 -->
+        <exclude domain="sharedpref" path="bridge_token.xml" />
     </device-transfer>
 </data-extraction-rules>

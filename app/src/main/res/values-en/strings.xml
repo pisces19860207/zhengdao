@@ -852,4 +852,23 @@
     <string name="term_install_title">Install the runtime (Debian 13.7)</string>
     <string name="term_start_download">Start download</string>
     <string name="term_pick_file">Pick from files</string>
+    <string name="settings_bridge">Browser bridge</string>
+    <string name="settings_value_bridge">For agents inside the terminal</string>
+    <string name="bridge_title">Browser bridge</string>
+    <string name="bridge_switch_group">Switch &amp; listen address</string>
+    <string name="bridge_switch_label">Enable the browser bridge</string>
+    <string name="bridge_status_on">On: reachable over loopback only, never from outside</string>
+    <string name="bridge_status_off">Off: the port is not listening</string>
+    <string name="bridge_started">Browser bridge is on</string>
+    <string name="bridge_stopped">Browser bridge is off</string>
+    <string name="bridge_port_label">Listen address</string>
+    <string name="bridge_token_group">Passphrase (token)</string>
+    <string name="bridge_token_label">Current passphrase</string>
+    <string name="bridge_token_hint">Only the first and last 4 characters are shown. Tap “Copy passphrase” when you actually need it — copying is an explicit action, not the default view. Resetting invalidates the old one immediately.</string>
+    <string name="bridge_copy">Copy passphrase</string>
+    <string name="bridge_copied">Passphrase copied to the clipboard</string>
+    <string name="bridge_reset">Reset passphrase</string>
+    <string name="bridge_reset_done">Reset done — the old passphrase no longer works</string>
+    <string name="bridge_howto_group">How to use it (for terminal agents)</string>
+    <string name="bridge_howto">In the terminal, note the passphrase first: export BRIDGE_TOKEN=&lt;the string you just copied&gt;. After that your agent can drive the browser tab over loopback, e.g.:\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\nCommands: status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS.\nNote: an agent can do a lot on a page (including typing into password fields), but it cannot touch app-private data, change browser security settings, or switch privacy redaction off.\nTaiji (the built-in OpenCode) is not wired to this bridge — it gets its browser ability from its own plugins.</string>
 </resources>
