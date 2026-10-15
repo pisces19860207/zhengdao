@@ -6676,3 +6676,11 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 - **台账落点**：`docs/FEATURE-LEDGER.md` §B 新增待派两刀（第⑳刀「执行链迁移」/ 第㉑刀「抬 targetSdk 36」）；§C 与 `docs/知识库-收工条件.md` 的「生死线」措辞同步更正；
   方案与交接全文见 `证道设计报告\证道-交接-高targetSdk下proot执行链-2026-10-15.md`（含：系统 `linker_exec` 无效、rootfs 分发方式不变、已论证 GPL 不触发、工程量 1–2 人周 ＋ 2–3 人周、风险清单）。
 - **规矩**：架构级「生死线」这类**不可谈判**结论，落账时要么给出实测证据、要么显式标「未实测·推断」—— 本条被推翻的根源就是当时只凭机制推演、没做真机原型。
+
+## E-135 · 2026-10-15 · `open(path,'wb')` 在写入前就把原文件截成 0 字节 —— 一个失败的分支让 616 KB 台账被清空并推上 main
+
+**现象**：给 `docs/FEATURE-LEDGER.md` 追加一条 bullet 的 Python 脚本里，`open(P,"wb").write(sep.join(...))` 的 `sep` 误用 `str`、被 join 的元素却是 `bytes` ⇒ 抛 `TypeError`。但 `open(P,"wb")` **已经先执行了**：原文件在异常发生前就被截成 **0 字节**；紧接着的 `git add / commit / merge / push` 把「删掉整份台账」当成一次正常改动推了上去（`7881faa..76e99b0`，`docs/FEATURE-LEDGER.md | 1280 deletions(-)`）。
+
+**恢复路径（已验证）**：① `git checkout 7881faa -- docs/FEATURE-LEDGER.md` 还原成 616666 B / 1280 行 CRLF；② 在**临时文件**里重建内容并自检（字节数必须变大、锚点计数正确、「用户三答」计数为 2），再 `shutil.move` 覆盖；③ 提交推送（`76e99b0..4821712`）；④ 核对远端（`git show origin/main:docs/FEATURE-LEDGER.md`）确认两条 bullet 都在、文件非空。
+
+**此后一律照做的规矩**：① 任何「读—改—写回同一文件」的脚本，**先写临时文件，自检通过再替换原文件**；② `open(...,'w')` / `open(...,'wb')` 是**截断式**打开，绝不能在可能抛错的表达式之前对目标文件调用；③ 写入前后各核一次**字节数/行数** —— 比「锚点断言成功」更容易发现截断；④ 破坏性推送**先核对远端内容**再继续下一步；⑤ 行尾同族坑见 E-133（文本模式会把 CRLF 读成 LF）。
