@@ -50,6 +50,9 @@
     ⇒「跨主机逐字节比对」这条门禁不成立，改成**每台主机钉自己那份基线**：
        CI 上重编必须与 `tools/so-repro-baseline-ci.json` 一致（能挡住偷换 .so / 工具链漂移）。
     某台主机第一次跑（还没有它那份基线）**不会判红**：它把整份基线以 base64 打进 annotation 并退出 2。
+    ⚠️ 单条 annotation 的 message 会被 GitHub **截断**（2026-10-15 实测：约 2.8 KB 处断开，
+    取数方 json.loads 报 `Unterminated string`）⇒ base64 必须**分块**发（每块 1500 字符，
+    标题带 `part k/n`，按 k 拼接后再 base64 解码；`tools/zd_ci_anno.py --save-baseline` 已按此取数）。
     证据：证道设计报告/证道-第41刀-CI重编比对lane-2026-10-15.md ＋ 台账 §B-交付记录 124/125。
 
 退出码
@@ -582,18 +585,28 @@ def write_baseline(path, norm, raw, inputs, host):
 
 
 def emit_baseline(doc, rel, host, why):
-    """把整份基线打成一条 annotation（base64：annotation 会把连续空白折成一个空格，base64 不受影响）。
+    """把整份基线打进 annotation（base64，**分块**）——B3+ 的取证通道。
 
     用途＝让另一台主机（CI / 本机）先把自己的基线交出来，再落地成 `rel` 这个文件。
+    为什么分块：GitHub 对单条 annotation 的 message 有截断（2026-10-15 首跑实测约 2.8 KB
+    处断开 ⇒ 取数方 `json.loads` 报 `Unterminated string`）。整份基线 base64 有 6 KB+，
+    一条必被截断 ⇒ 改成每块 [CHUNK] 字符、标题带 `part k/n`，取数方按 k 顺序拼回。
     """
     blob = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     b64 = base64.b64encode(blob).decode("ascii")
     digest = hashlib.sha256(blob).hexdigest()
+    chunk = 1500
+    parts = [b64[i:i + chunk] for i in range(0, len(b64), chunk)] or [""]
     annotate("notice", "重编比对·待建基线（%s）" % rel,
-             "%s；host=%s；normalized=%d B/%s；json=%d B sha256 %s；base64(%d)=%s"
+             "%s；host=%s；normalized=%d B/%s；json=%d B sha256 %s；"
+             "base64 %d 字符分 %d 块，见本步 notice `part k/%d`（按 k 顺序拼接再 base64 解码）"
              % (why, host, doc["normalized"]["size"], doc["normalized"]["sha256"],
-                len(blob), digest, len(b64), b64))
-    print("[info] base64 基线（%d 字符，解码后写入 %s）：\n%s" % (len(b64), rel, b64))
+                len(blob), digest, len(b64), len(parts), len(parts)))
+    for i, piece in enumerate(parts, 1):
+        annotate("notice", "重编比对·基线块 %d/%d（%s）" % (i, len(parts), rel),
+                 "part %d/%d %s" % (i, len(parts), piece))
+    print("[info] base64 基线（%d 字符，%d 块，解码后写入 %s）：\n%s"
+          % (len(b64), len(parts), rel, b64))
     return digest
 
 
