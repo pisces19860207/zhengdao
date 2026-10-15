@@ -6658,3 +6658,21 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
   2. **每加一条门禁都要做一次负例自证**（把病灶改回去必须变红，再还原并核对文件哈希）。
      **正例绿不能证明门禁有效** —— 本条就是「正例绿、病灶在、门禁照样绿」的活例。
   3. 同族教训见 E-131（门禁对原始字节算哈希）——都属于「门禁自己写飘了，测的不是它声称测的东西」。
+## E-134 · 2026-10-15 · 「targetSdk=28 是 proot 生死线」被真机原型证伪（四件套走 jniLibs 时 targetSdk 36 也能跑）
+
+- **旧结论（本条更正的对象）**：本文件早期段与 `docs/知识库-收工条件.md:21`/`:56-58`、`docs/milestones/已知限制.md` §2 写的是
+  「Android 10 起 W^X 禁止 targetSdk ≥ 29 的应用从**可写数据目录** exec，而整棵 rootfs（`/usr/bin` 下成千上万个二进制）就跑在那里 ⇒ **`targetSdk = 28` 是架构生死线**」。
+- **证伪（真机，2026-10-15）**：独立原型 `C:\Users\guoli\AndroidStudioProjects\proot-jnilib-proto`（`b9fd538` → `c8aefe4`，真机 Honor PGT-AN10 / Android 16 / **targetSdk 36**）
+  把 Termux 官方四件套**打进 jniLibs**（`nativeLibraryDir` = `/data/app/…/lib/arm64`，只读且可执行）＋ `PROOT_LOADER` 显式指向该目录，四判据全过（自检 / 解压 rootfs / `echo`+`uname` / **`apt-get update` 联网**）。
+- **独立核验（不只信报告）**：① 原型 `app/src/main/jniLibs/arm64-v8a/` 四件套 SHA256 与证道 `app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt:123-127` 的 pin **逐字节一致**
+  （`libproot.so` `1545b85b…` / `libproot-loader.so` `cbdef0e6…` / `libtalloc.so` `742b438c…` / `libandroid-shmem.so` `84475798…`）；② 真机截屏 `C:\Users\guoli\proto_screen4.png` 实见
+  `Hit:1 http://deb.debian.org/debian trixie InRelease` ＋ `Hit:2 … trixie-updates` ＋ `Hit:3 … trixie-security` ＋ `Reading package lists...` 与「✅ 判据④通过（exit=0）」。
+- **关键区分（别误读成「targetSdk 随便抬」）**：被证伪的是「**必须 ≤28**」这条**必然性**；`targetSdk 28` 仍是**现行打包方式**的前提 ——
+  证道现在把四件套从 `assets` 释放到 `files/termux-proot/`（可写目录）再 exec，那条路确实只能在 ≤28 下走；换 jniLibs 打包后才可抬。
+- **附带澄清（2026-10-05 旧结论）**：「App 域内 jniLibs 静默 255」是**自编译二进制**的问题（工具链 / ABI），**不是打包位置的问题** —— 官方预编译件放进 jniLibs 能正常 exec。
+  `app/src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt:115-118` 那段「jniLibs 方案已废弃」的注释，在第⑳刀落地时一并更正。
+- **原型实测的四个坑（第⑳/㉑刀要看）**：① `libandroid-shmem.so` 是 proot 的 `DT_NEEDED` 硬依赖，缺它报 `CANNOT LINK EXECUTABLE`；② `libtalloc.so` 需在运行时复制成 `libtalloc.so.2`（soname 要求）；
+  ③ LXC/Debian rootfs 里没有 `resolv.conf`，DNS 必须注入；④ guest `/bin/sh` 是 dash，`${PIPESTATUS[0]}` 会 `Bad substitution`（判断子命令退出码要改写法）。
+- **台账落点**：`docs/FEATURE-LEDGER.md` §B 新增待派两刀（第⑳刀「执行链迁移」/ 第㉑刀「抬 targetSdk 36」）；§C 与 `docs/知识库-收工条件.md` 的「生死线」措辞同步更正；
+  方案与交接全文见 `证道设计报告\证道-交接-高targetSdk下proot执行链-2026-10-15.md`（含：系统 `linker_exec` 无效、rootfs 分发方式不变、已论证 GPL 不触发、工程量 1–2 人周 ＋ 2–3 人周、风险清单）。
+- **规矩**：架构级「生死线」这类**不可谈判**结论，落账时要么给出实测证据、要么显式标「未实测·推断」—— 本条被推翻的根源就是当时只凭机制推演、没做真机原型。
