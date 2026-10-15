@@ -6752,6 +6752,7 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **恢复路径**：以管理员开启「开发者模式」（或写入 `AppModelUnlock\AllowDevelopmentWithoutDevLicense = 1`）后无需重启，两个用例应自愈（届时会真正跑起来）。**改 HKLM 需要管理员权限、超出 agent 权限**，要动先问用户。
 
 ## E-139 · 2026-10-15 · 「targetSdk 36 下 App 直启数据目录里的 opencode 必被 W^X 拦」在真机上未复现（单设备实证，换机必须重验）
+> **2026-10-15 晚勘误：本条结论已被 `E-140` 推翻** —— 当时那两次「成功」跑在 16:50 换装的 `targetSdk=28` 旧包上，证据基础不成立；`targetSdk 36` 一落机即 `error=13, Permission denied`。正文保留作追溯。
 
 **原判断（交接单与派工单口径）**：`E-134` 证伪了「targetSdk ≤ 28 是 proot 生死线」（四件套走 `jniLibs` 时 36 也能跑），但它留下一条**推论式**边界 —— 「App 从 `files/` 数据目录**直启** `oc/usr/bin/opencode` 这条路径，在 targetSdk 36 下会被 Android 10+ 的 W^X 拦死」；第㉕刀据此预告「抬 36 后太极/抱朴必死，需另开一刀做执行链改造」。
 
@@ -6764,3 +6765,30 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **口径与落点**：`app/build.gradle.kts` 的相关注释与新增 `app/src/test/java/com/example/zhengdao/TargetSdkGateTest.kt` 的判据已按实测改写（不再断言「36 必被拦」）。**本条是单设备实证** —— 换机型或换系统版本必须重验，不得据此宣称「任意设备都能直启数据目录二进制」。台账落点：`docs/FEATURE-LEDGER.md` §A #114、§B 顺序 45。
 
 **顺带记录的真机取证噪声（工具层，不是应用缺陷）**：① `adb shell input text` 的空格会被吞（须写 `%s`）；② **Tab 切换后 IME 注入会串行**（终端 MOTD 提示文本被当成命令执行），改逐字符 `input keyevent` 可绕开；③ 终端里的 URL 会被链接识别接管焦点 ⇒ **自动跳到浏览器 Tab**（判据④ 中途跳页的真因）。
+
+## E-140 · 2026-10-15 · 「`targetSdk 36` 下 App 直启数据目录里的 opencode 被 W^X 拦」**已复现** —— 推翻 E-139 的「未复现」结论
+
+**现象**：`targetSdk 36` 的包一装上设备（`versionCode=36 / minSdk=36 / targetSdk=36`，荣耀 PGT-AN10 · Android 16），抱朴（OpenCode，走 App 直启 `files/oc/usr/bin/opencode`）立刻起不来。应用私有日志 `files/logs/errors.log` 自 `17:46:08` 起连续出现：
+
+```
+[10-15 17:46:08] 太极 serve 启动失败: Cannot run program "<私有目录>/oc/usr/bin/opencode" (in directory "<私有目录>/oc/workspace"): error=13, Permission denied
+[10-15 17:46:08] 问题[oc-serve-start]: 抱朴（OpenCode）启动失败 — 没有写入权限
+[10-15 17:46:08] 太极: 取最近会话失败（将新建）：Failed to connect to /127.0.0.1:14000
+```
+
+时间分布：`error=13` 在 `16:xx` 出现 **1 次**（16:44）、在 `17:xx` 出现 **9 次**（17:46–17:52，每次 serve 重启一记）。
+
+**排除项（都已实测）**：
+- 二进制完好：`files/oc/usr/bin/opencode` **289,207,968 B**、权限 `-rwxr-xr-x`，目录 `drwx------` 属主 `u0_a418`，不缺执行位、不缺目录搜索位。
+- 同一二进制在**同 uid、不同 SELinux 域**下能跑：`adb shell run-as com.example.zhengdao …/files/oc/usr/bin/opencode --version` ⇒ `opencode v2.0.22`；先 `cd files/oc/workspace` 再起的形态也通过（域为 `u:r:runas_app:s0:c…`）。
+- App 自身域为 **`u:r:untrusted_app:s0:c162,c257,c512,c768`**；`getenforce` = `Enforcing`；`extractNativeLibs=true`；`legacyNativeLibraryDir=/data/app/~~…/lib`。
+
+**判据**：Android 10（API 29）起，`targetSdk ≥ 29` 的应用**不得 exec 自身数据目录内的文件**（W^X，落在 `untrusted_app` 域的 `execute_no_trans` 上）；同族旁证＝Termux 长期把 `targetSdk` 钉在 28 就是为了这条。`runas_app` 域不受此限，所以「`run-as` 能跑」**不能**用来证明 App 自己能跑。
+
+**为什么 E-139 会判「未复现」**：它依据的三次现场是 `16:44 error=13`（当时设备上是 `targetSdk 36` 的㉕刀测试包 —— 与本次现象一致）与 `16:50`/`16:57` 两次「成功」；但 **16:50:00 设备被换装回 `targetSdk=28` 的桥 QA 包**（`dumpsys package` 实测 `targetSdk=28`、`lastUpdateTime 2026-10-15 16:50:00`），那两次「成功」跑在 **targetSdk 28** 上，因此**证据基础是旧包**，结论作废。E-139 原文保留（不删），仅此勘误。
+
+**影响面**：不只是 oc —— 凡是「App 直启数据目录内可执行文件」的路径都被拦；`proot` 四件套本身走 `jniLibs`（`nativeLibraryDir`）不受影响，但 proot 去 `execve` rootfs 里的 guest 二进制同样落在这条限制下（**本机未及实测**：17:52 后用户叫停设备操作）。
+
+**规避/修法（待拍板，两条）**：① **回退 `targetSdk` 到 28**（立刻恢复；代价＝放弃 ㉕ 的现代化收益）；② **改走 `nativeLibraryDir` 直启**（oc 以 `lib*.so` 进 `jniLibs`，从 `applicationInfo.nativeLibraryDir` 启动；代价＝289 MB 进 APK，包体 45 MB → ~330 MB）。
+
+**台账落点**：`docs/FEATURE-LEDGER.md` §A #115 ③、§B 顺序 64。
