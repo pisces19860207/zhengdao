@@ -6732,3 +6732,6 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 
 **规矩**：CI 门禁的"全量 glob"在引入**性质不同**的文件（库 vs 被执行程序）时必然误伤——引入新类别的二进制前，先想清楚
 它该判哪条规则、例外怎么钉死、谁来防例外被滥用（本条：sha 基线 + 三处同源）。
+
+
+**2026-10-15 第㉘刀取证勘误（结论：本条的「按 4KB 页构建」不成立，四件套本来就是 16KB 构建）** —— 第㉘刀按「取证优先、不盲改」实测（**零提交**，分支 `chore/16kb-alignment` 停在基线 `6b0ace1`）：① **入库四件套每个 `PT_LOAD` 段 `p_align = 0x4000`（16KB），且 `p_offset ≡ p_vaddr (mod 16384)` 全部成立**（我独立复现：`libandroid-shmem.so` 3 段 / `libproot-loader.so` 2 段 / `libproot.so` 3 段 / `libtalloc.so` 3 段，`min_align` 全为 `0x4000`、同余全 PASS；`libzhengdao_core.so` 4 段同样 PASS，`libzstd-jni` 2 段为 `0x10000`）⇒ 本条登记时依据的「交接单说按 4KB 构建」是**未经验证的断言**（当时没有 16KB 设备可证），`tools/check-native-so.py` 里的 `PROOT_PINNED` 4KB 例外分支因此成为**死代码**（在 main 实跑仍 `[通过]`、退出码 0，四件套同时满足「豁免」与「16KB 正常」两条判据）；② Termux 官方 16KB 迁移在 2025-08 由 fornwall 逐批重编完成、2025-09-02 关单（termux-packages#21688），第⑳刀取的版本晚于迁移点 ⇒ **需要自己重编的数量为零**；③ 本条站得住的产物是「sha256 完整性基线 ＋ 门禁按文件收窄」这套机制（保留），但**判据仍有缺口**：现行脚本只查 `p_align`、未查同余 `p_offset ≡ p_vaddr (mod 16384)`（已立 §B 顺序 58）。rootfs 侧（§B-补-29）另测：抽样 4 件（`ld.so`/`libc.so.6`/`ls`/`dpkg`）`p_align = 0x10000`（64KB）、同余成立 ⇒ 天然兼容 4K/16K/64K 内核，门禁落点应为 `rootfs/build-rootfs.sh` 产出侧（已立 §B 顺序 59；原指向 `cpp/CMakeLists.txt` 的表述已勘误）。
