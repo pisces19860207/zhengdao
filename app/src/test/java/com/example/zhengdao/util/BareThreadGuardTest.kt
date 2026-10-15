@@ -43,6 +43,9 @@ import kotlin.text.Charsets
  * - 2026-10-14（审计第 2 期配套 / 第⑩批A）：`SettingsStorageActivity.kt`（B-3 加 2 行说明）与
  *   `TerminalActivity.kt`（N-2 原子拷贝 +15 行）平移 ⇒ 回填 4 个行号；
  * - 2026-10-14（第⑨刀 B）：ZhengdaoApp.kt 插入 `initWebViewDataDirectory()`（+30 行）
+ * - 2026-10-15（第㉚刀）：TerminalActivity 的 ComponentCaller import（+1）与 onNewIntent
+ *   平台签名适配（+2）⇒ 六个创建点 79→80 / 596→599 / 811→814 / 1562→1565 / 1622→1625 /
+ *   1708→1711，无新增线程，本次回填。
  *   ⇒ 两条创建点 47→77 / 97→127，本次回填；
  * - 2026-10-14（第⑪批 D-1）：KeepaliveWatcher.kt 新增心跳执行器 zd-keepalive-io（:66，
  *   有名+daemon）⇒ 对账单 28→29 处；巡检线程平移 187→230 一并回填；
@@ -110,12 +113,12 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:261",           // zd-env-check
             "SettingsEnvActivity.kt:561",           // zd-env-repair（第⑯刀 R-29 +4，本次回填）
             "SettingsEnvActivity.kt:656",           // zd-env-update（同上 +4）
-            "TerminalActivity.kt:79",               // zd-paste
-            "TerminalActivity.kt:596",              // zd-session-start（本刀补 daemon）
-            "TerminalActivity.kt:811",              // zd-net-probe
-            "TerminalActivity.kt:1562",             // zd-install-saf（第⑯刀 R-29 +12）
-            "TerminalActivity.kt:1622",             // zd-install-cache（同上 +12）
-            "TerminalActivity.kt:1708",             // zd-install-download（同上 +12）
+            "TerminalActivity.kt:80",               // zd-paste（第㉚刀 +1：ComponentCaller import）
+            "TerminalActivity.kt:599",              // zd-session-start（第㉚刀 +3：onNewIntent 签名适配）
+            "TerminalActivity.kt:814",              // zd-net-probe（第㉚刀 +3）
+            "TerminalActivity.kt:1565",             // zd-install-saf（⑯ +12 / ㉚ +3）
+            "TerminalActivity.kt:1625",             // zd-install-cache（同上 +3）
+            "TerminalActivity.kt:1711",             // zd-install-download（同上 +3）
             "ZhengdaoApp.kt:80",                    // zhengdao-keepalive-archive（第⑲刀 +3 行后平移）
             "ZhengdaoApp.kt:130",                   // zd-auto-clean（同上）
         )
