@@ -1,12 +1,164 @@
 {
   "version": 1,
-  "generated_at": "2026-10-15T13:32:51Z",
+  "generated_at": "2026-10-15T13:50:40Z",
   "generator": "tools/rebuild-and-compare.py --update（第㊶刀 · 观察期）",
   "generated_on_host": "x86_64-pc-windows-gnu",
   "hash_mode": "so=raw-bytes-after-llvm-strip --strip-unneeded（remap 归一后）",
   "normalized": {
     "size": 961960,
-    "sha256": "3e5f400813d06794c49b8590d09be7578a34095a590394ee90a2c0fd48bf5559"
+    "sha256": "3e5f400813d06794c49b8590d09be7578a34095a590394ee90a2c0fd48bf5559",
+    "sections": [
+      {
+        "name": "",
+        "type": 0,
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": ".note.android.ident",
+        "type": 7,
+        "size": 152,
+        "sha256": "a94d4f84e212e4515417cf611f4ed1eb5cd42862d6c4f73fd222a6d82356fe90"
+      },
+      {
+        "name": ".dynsym",
+        "type": 11,
+        "size": 1704,
+        "sha256": "4c0e15c2d324291850035e64bb203ede4bca939b20bce8226b1a3f6674b9c031"
+      },
+      {
+        "name": ".gnu.version",
+        "type": 1879048191,
+        "size": 142,
+        "sha256": "3c5d9dbae581d279175729adf5308dfde09ec92c7fff794fc3320a3451240388"
+      },
+      {
+        "name": ".gnu.version_r",
+        "type": 1879048190,
+        "size": 112,
+        "sha256": "98a4ce8d0850e9444acfcc5782b8a423136e09f908409ca52aea6810f89a809e"
+      },
+      {
+        "name": ".gnu.hash",
+        "type": 1879048182,
+        "size": 60,
+        "sha256": "3351267265d7cde1e44f0a4759d44ee53f566c7f6db14ddedfff0dc4dd26d7eb"
+      },
+      {
+        "name": ".dynstr",
+        "type": 3,
+        "size": 1044,
+        "sha256": "1380defaae9327fdf6164251cc556ecff7e0f3a255b11593e368e52b4c153ebe"
+      },
+      {
+        "name": ".rela.dyn",
+        "type": 4,
+        "size": 18960,
+        "sha256": "4571458da3fcd8097189946e8ecb30a91b510894695ca056970903afb3472662"
+      },
+      {
+        "name": ".rela.plt",
+        "type": 4,
+        "size": 1512,
+        "sha256": "18c2e3e47a7a537e706cd23d3ad3342a5b2199bb83cf694efaaa9041bc7ad7fe"
+      },
+      {
+        "name": ".rodata",
+        "type": 1,
+        "size": 75800,
+        "sha256": "9cb925a1637c7511a63d939b3d57746aaf286566fd2fa8bb9a3bfbbbfaba2d2c"
+      },
+      {
+        "name": ".gcc_except_table",
+        "type": 1,
+        "size": 29948,
+        "sha256": "af37349bcb369e74dd45cfe3f07df09c0dc9c87df96679fd075f927379f0e2b4"
+      },
+      {
+        "name": ".eh_frame_hdr",
+        "type": 1,
+        "size": 11004,
+        "sha256": "4ed499d1f490c4366e79a0e9c883b168b3053f5f45b9966c8d7850bfc8019c7c"
+      },
+      {
+        "name": ".eh_frame",
+        "type": 1,
+        "size": 73620,
+        "sha256": "1097b041c322e8344c4f076c0e87ff9ad0bfeb96b2fce240e7bd543d3910ef86"
+      },
+      {
+        "name": ".text",
+        "type": 1,
+        "size": 726164,
+        "sha256": "54ea3c596eddccf952b222b278b0761a428145a77afb4744636ab450e2bb694b"
+      },
+      {
+        "name": ".plt",
+        "type": 1,
+        "size": 1040,
+        "sha256": "c98cbba5291eb2392d7350916d9fbfca6a559fd28d093677bf076e211ce66649"
+      },
+      {
+        "name": ".data.rel.ro",
+        "type": 1,
+        "size": 13624,
+        "sha256": "1055c49655b312e504128524518c22adda66c05d198c985469ed95494e21a24b"
+      },
+      {
+        "name": ".fini_array",
+        "type": 15,
+        "size": 16,
+        "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+      },
+      {
+        "name": ".dynamic",
+        "type": 6,
+        "size": 384,
+        "sha256": "2ff5366eddc9a7474c7f05c85f72927a705dab9530e33a2051fa6c7a1593444d"
+      },
+      {
+        "name": ".got",
+        "type": 1,
+        "size": 392,
+        "sha256": "3eefc4790b52024832ea4c03c6e7a781f3ef9416866a959b2777fce101ad9d61"
+      },
+      {
+        "name": ".got.plt",
+        "type": 1,
+        "size": 528,
+        "sha256": "defc44453d52d38b03c6a7af4076d0fdc2826f14fbafdbce59df7680901a81d3"
+      },
+      {
+        "name": ".relro_padding",
+        "type": 8,
+        "size": 9808,
+        "sha256": null
+      },
+      {
+        "name": ".data",
+        "type": 1,
+        "size": 2856,
+        "sha256": "c7765220ed737f35ed4d78cc78a521a9e3585b3519405bc7cf756447919b6a94"
+      },
+      {
+        "name": ".bss",
+        "type": 8,
+        "size": 2320,
+        "sha256": null
+      },
+      {
+        "name": ".comment",
+        "type": 1,
+        "size": 406,
+        "sha256": "bb73bf7fe1ffebd4127adc3457538b3cd66fdc123c05d009f25633017a861998"
+      },
+      {
+        "name": ".shstrtab",
+        "type": 3,
+        "size": 244,
+        "sha256": "f3f4583568a38db2cc38907966a6e3967dfb4d681ea8c5d22f8aeab725e3bc9d"
+      }
+    ]
   },
   "raw": {
     "size": 1284176,
