@@ -36,18 +36,35 @@
     必须在这里显式再给一遍（漏了不会报错，只会静默丢掉 16KB 对齐，真机上 loadLibrary 失败）。
 
 用法
-    python3 tools/rebuild-and-compare.py [仓库根]              # 重编并比对（CI / 本机）
-    python3 tools/rebuild-and-compare.py --offline [仓库根]     # 离线构建（本机常用）
-    python3 tools/rebuild-and-compare.py --update [仓库根]      # 刷新归一化基线（慎用，须连同提交）
-    python3 tools/rebuild-and-compare.py --keep [仓库根]        # 保留临时 target 目录（排障）
+    python3 tools/rebuild-and-compare.py [仓库根]                  # 重编并与**本主机**基线比对（CI / 本机）
+    python3 tools/rebuild-and-compare.py --offline [仓库根]         # 离线构建（本机常用）
+    python3 tools/rebuild-and-compare.py --update [仓库根]          # 刷新本主机的归一化基线（慎用，须连同提交）
+    python3 tools/rebuild-and-compare.py --emit-baseline [仓库根]   # 只构建，把本主机基线整份打出来（annotation 里 base64）
+    python3 tools/rebuild-and-compare.py --keep [仓库根]            # 保留临时 target 目录（排障）
+
+基线按主机分开（B3+，2026-10-15 用户拍板）
+    tools/so-repro-baseline.json       ← Windows 本机（x86_64-pc-windows-gnu）
+    tools/so-repro-baseline-ci.json    ← CI（x86_64-unknown-linux-gnu）
+    **实测：同一份源码在每台主机上各自逐字节可复现（各自多次构建完全相同），但两台主机之间差 160 B**
+    （.text / .rodata / .rela.dyn / .eh_frame* / .dynsym 内容不同；补全 remap 也不变）
+    ⇒「跨主机逐字节比对」这条门禁不成立，改成**每台主机钉自己那份基线**：
+       CI 上重编必须与 `tools/so-repro-baseline-ci.json` 一致（能挡住偷换 .so / 工具链漂移）。
+    某台主机第一次跑（还没有它那份基线）**不会判红**：它把整份基线以 base64 打进 annotation 并退出 2。
+    证据：证道设计报告/证道-第41刀-CI重编比对lane-2026-10-15.md ＋ 台账 §B-交付记录 124/125。
 
 退出码
-    0 = 一致（或 --update 成功） ；1 = 不一致 ；2 = 环境/用法错（**fail-closed**：探测不到的输入一律 2，绝不静默跳过）
+    0 = 与**本主机**基线一致（或 --update / --emit-baseline 成功）
+    1 = 与本主机基线不一致
+    2 = 环境/用法错，或本主机还没有基线（已把待建基线打进 annotation）——**fail-closed**：探测不到的输入一律 2
+
+环境变量
+    REBUILD_TARGET_DIR = <目录>    # 构建用的临时 target 目录放这里（缺省用系统临时目录；C 盘紧张时指到别的盘）
 
 只依赖标准库。**绝不写 app/src/main/jniLibs/**（入库 .so 由人工工序维护，见 rust/README.md）。
 """
 
 import argparse
+import base64
 import glob
 import hashlib
 import json
@@ -63,6 +80,8 @@ from pathlib import Path
 TARGET_TRIPLE = "aarch64-linux-android"
 LIB_FILE = "libzhengdao_core.so"
 BASELINE_REL = os.path.join("tools", "so-repro-baseline.json")
+# 跨主机字节级不同 ⇒ 一主机一份基线（B3+）。CI（Linux）单独一份，Windows 本机用上面那份。
+BASELINE_CI_REL = os.path.join("tools", "so-repro-baseline-ci.json")
 PAGE_SIZE_FLAGS = [
     "-C",
     "link-arg=-Wl,-z,max-page-size=16384",
@@ -378,7 +397,11 @@ def build_and_strip(repo, workdir, offline, keep, no_remap=False):
     rustc = rustc_fingerprint()
     ensure_target_installed()
 
-    target_dir = Path(tempfile.mkdtemp(prefix="zd-repro-", dir=str(workdir)))
+    tdir_base = os.environ.get("REBUILD_TARGET_DIR") or str(workdir)
+    if tdir_base != str(workdir):
+        Path(tdir_base).mkdir(parents=True, exist_ok=True)
+        print("[info] REBUILD_TARGET_DIR=%s（构建产物不落系统盘）" % tdir_base)
+    target_dir = Path(tempfile.mkdtemp(prefix="zd-repro-", dir=tdir_base))
     log_path = target_dir / "build.log"
 
     rustflags = list(PAGE_SIZE_FLAGS)
@@ -485,19 +508,26 @@ def build_and_strip(repo, workdir, offline, keep, no_remap=False):
 
 # ────────────────────────────── 基线比对 ──────────────────────────────
 
+def host_baseline_rel(host):
+    """主机 → 它自己那份基线文件（跨主机字节级不同 ⇒ 一主机一份，见文件头 B3+ 说明）。"""
+    if "linux" in (host or ""):
+        return BASELINE_CI_REL
+    return BASELINE_REL
+
+
 def load_baseline(path):
     if not path.is_file():
-        fail_env("归一化基线不存在（先跑一次 --update 生成并提交）", str(path))
+        fail_env("本主机的归一化基线不存在（先跑一次 --update 生成并提交）", str(path))
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def check_inputs(baseline, inputs):
+def check_inputs(baseline, inputs, label=BASELINE_REL):
     """构建输入锁必须逐项对得上；缺键/不一致一律 fail-closed。"""
     bad = []
     bi = baseline.get("build_inputs")
     if not isinstance(bi, dict):
-        fail_env("基线里没有 build_inputs 段（旧格式？）", str(BASELINE_REL))
+        fail_env("基线里没有 build_inputs 段（旧格式？）", str(label))
     for key in ("target_triple", "ndk_version", "cargo_lock_sha256"):
         if key not in bi:
             bad.append("基线缺 build_inputs.%s" % key)
@@ -520,11 +550,11 @@ def check_inputs(baseline, inputs):
     print("[info] 构建输入锁：全部一致 ✔")
 
 
-def write_baseline(path, norm, raw, inputs, host):
-    data = {
+def baseline_doc(norm, raw, inputs, host):
+    return {
         "version": 1,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "generator": "tools/rebuild-and-compare.py --update（第㊶刀 · 观察期）",
+        "generator": "tools/rebuild-and-compare.py --update（第㊶刀 · B3+ 按主机基线）",
         "generated_on_host": host,
         "hash_mode": "so=raw-bytes-after-llvm-strip --strip-unneeded（remap 归一后）",
         "normalized": norm,
@@ -534,13 +564,37 @@ def write_baseline(path, norm, raw, inputs, host):
                  "cargo home → /cargo、仓库根 → /src、临时 target 目录 → /target；"
                  "未归一化的产物含 27 处本机绝对路径，跨主机不可比"
                  "（见 证道设计报告/证道-第27刀②-重编逐字节比对可行性-2026-10-15.md）。"
+                 "**本文件只对 generated_on_host 这台主机有效**：实测同一份源码在 Windows 与 ubuntu 上"
+                 "各自逐字节可复现、但两者相差 160 B（.text/.rodata/.rela.dyn/.eh_frame*/.dynsym 内容不同）"
+                 "⇒ 门禁按主机各自钉基线（B3+）；CI 用 tools/so-repro-baseline-ci.json。"
                  "判据：整体哈希一致 ⇒ notice；整体不同但 normalized.fingerprint（节表指纹，"
-                 "忽略 .comment 这个工具链标识段）一致 ⇒ 仍算通过（notice）；否则 warning ⇒ 退出码 1。"
-                 "观察期：ci.yml 里这一步 continue-on-error，只报数不卡 CI。"),
+                 "忽略 .comment 这个工具链标识段）一致 ⇒ 仍算通过（notice）；否则 warning ⇒ 退出码 1。"),
     }
+
+
+def write_baseline(path, norm, raw, inputs, host):
+    doc = baseline_doc(norm, raw, inputs, host)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=False)
+        json.dump(doc, f, ensure_ascii=False, indent=2, sort_keys=False)
         f.write("\n")
+    return doc
+
+
+def emit_baseline(doc, rel, host, why):
+    """把整份基线打成一条 annotation（base64：annotation 会把连续空白折成一个空格，base64 不受影响）。
+
+    用途＝让另一台主机（CI / 本机）先把自己的基线交出来，再落地成 `rel` 这个文件。
+    """
+    blob = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    b64 = base64.b64encode(blob).decode("ascii")
+    digest = hashlib.sha256(blob).hexdigest()
+    annotate("notice", "重编比对·待建基线（%s）" % rel,
+             "%s；host=%s；normalized=%d B/%s；json=%d B sha256 %s；base64(%d)=%s"
+             % (why, host, doc["normalized"]["size"], doc["normalized"]["sha256"],
+                len(blob), digest, len(b64), b64))
+    print("[info] base64 基线（%d 字符，解码后写入 %s）：\n%s" % (len(b64), rel, b64))
+    return digest
 
 
 # ────────────────────────────── 主流程 ──────────────────────────────
@@ -554,27 +608,48 @@ def main():
     ap.add_argument("--keep", action="store_true", help="保留临时 target 目录（排障）")
     ap.add_argument("--no-remap", action="store_true",
                     help="负例自证用：故意不做路径归一（产物必然与基线不同 ⇒ 应判红）")
+    ap.add_argument("--emit-baseline", action="store_true",
+                    help="只构建，把本主机的基线整份打成 annotation（base64），供另一台主机落地")
     args = ap.parse_args()
 
     repo = Path(args.repo).resolve() if args.repo else Path(__file__).resolve().parent.parent
     if not (repo / "rust" / "Cargo.toml").is_file():
         fail_env("这不像证道仓库根（缺 rust/Cargo.toml）", str(repo))
 
-    baseline_path = repo / BASELINE_REL
+    baseline_rel = BASELINE_REL
     workdir = Path(tempfile.mkdtemp(prefix="zd-repro-work-"))
     try:
         norm, raw, inputs, host = build_and_strip(repo, workdir, args.offline, args.keep, args.no_remap)
         print("[info] 归一化产物：%d B / sha256 %s" % (norm["size"], norm["sha256"]))
         print("[info] 未归一化  ：%d B / sha256 %s" % (raw["size"], raw["sha256"]))
 
-        if args.update:
-            write_baseline(baseline_path, norm, raw, inputs, host)
-            annotate("notice", "重编比对·基线已刷新",
-                     "%s ← %d B / %s" % (BASELINE_REL, norm["size"], norm["sha256"]))
+        # 本主机自己那份基线（跨主机字节级不同 ⇒ 一主机一份，见文件头 B3+）
+        baseline_rel = host_baseline_rel(host)
+        baseline_path = repo / baseline_rel
+        doc = baseline_doc(norm, raw, inputs, host)
+        print("[info] 本主机基线：%s（host=%s）" % (baseline_rel, host))
+
+        if args.emit_baseline:
+            emit_baseline(doc, baseline_rel, host, "--emit-baseline：本主机基线整份输出")
             return EXIT_OK
 
+        if args.update:
+            write_baseline(baseline_path, norm, raw, inputs, host)
+            annotate("notice", "重编比对·基线已刷新（%s）" % baseline_rel,
+                     "%s ← %d B / %s（host=%s）"
+                     % (baseline_rel, norm["size"], norm["sha256"], host))
+            return EXIT_OK
+
+        if not baseline_path.is_file():
+            # 这台主机第一次跑：不判红，先把「待建基线」整份交出来（B3+ 的取证通道）
+            annotate("notice", "重编比对·本主机还没有基线（%s）" % baseline_rel,
+                     "host=%s 第一次跑；本次退出码 2（不判红），基线见本步 annotation（base64），"
+                     "落地后下一次即按主机基线严格比对" % host)
+            emit_baseline(doc, baseline_rel, host, "待建基线（%s 不存在）" % baseline_rel)
+            return EXIT_ENV
+
         baseline = load_baseline(baseline_path)
-        check_inputs(baseline, inputs)
+        check_inputs(baseline, inputs, baseline_rel)
 
         expect = baseline.get("normalized") or {}
         exp_size, exp_sha = expect.get("size"), expect.get("sha256")
@@ -588,14 +663,14 @@ def main():
         fp_same = bool(exp_fp) and fp == exp_fp
 
         if same_size and same_hash:
-            annotate("notice", "重编比对（观察期）",
-                     "与归一化基线逐字节一致 ✔ rustc=%s(%s) 产物=%d B/%s"
-                     % (inputs["rustc"]["version"], host,
+            annotate("notice", "重编比对（按主机基线）",
+                     "与 %s 逐字节一致 ✔ rustc=%s(%s) 产物=%d B/%s"
+                     % (baseline_rel, inputs["rustc"]["version"], host,
                         norm["size"], norm["sha256"]))
             return EXIT_OK
 
         if fp_same:
-            annotate("notice", "重编比对（观察期）·段指纹一致",
+            annotate("notice", "重编比对（按主机基线）·段指纹一致",
                      "整体哈希不同（%d B/%s ≠ 基线 %d B/%s），但**除 %s 外的节表指纹逐段一致** "
                      "⇒ 差异只在工具链标识段；rustc=%s host=%s"
                      % (norm["size"], norm["sha256"], exp_size, exp_sha,
@@ -604,9 +679,9 @@ def main():
             report_section_diff(norm.get("sections"), expect.get("sections"))
             return EXIT_OK
 
-        annotate("warning", "重编比对（观察期）·不一致",
-                 "归一化产物 %d B/%s ≠ 基线 %d B/%s；段指纹 %s；rustc=%s(%s) host=%s"
-                 % (norm["size"], norm["sha256"], exp_size, exp_sha,
+        annotate("warning", "重编比对（按主机基线）·不一致",
+                 "归一化产物 %d B/%s ≠ %s 的 %d B/%s；段指纹 %s；rustc=%s(%s) host=%s"
+                 % (norm["size"], norm["sha256"], baseline_rel, exp_size, exp_sha,
                     "一致" if fp_same else "不一致",
                     inputs["rustc"]["version"], inputs["rustc"]["commit_hash"], host))
         print("[diff] size 相差 %+d B；sha256 %s"

@@ -133,18 +133,21 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
-      # 第㊶刀（2026-10-15；㉗② 方案 A′，观察期）：从当前源码**重新编一遍** .so，与
-      #   tools/so-repro-baseline.json 的归一化基线逐字节比对 —— 补上「基线可自刷」之外
-      #   最后一环：产物必须真能从这份源码编出来（既有三道门禁都只验「库里的东西对不对」，
-      #   没有一道验「这份源码能不能编出这个库」）。
-      #   ⚠️ 观察期纪律：continue-on-error —— 只报数、不卡 CI；拿 2–3 次读数后再决定
-      #   「转硬门禁」还是「退案 B（只做本机发布前脚本）」。用户 2026-10-15 拍板。
+      # 第㊶刀（2026-10-15；㉗② 方案 A′ → **B3+ 按主机基线**）：从当前源码**重新编一遍** .so，与
+      #   本主机那份归一化基线逐字节比对（ubuntu ⇒ tools/so-repro-baseline-ci.json）
+      #   —— 补上「基线可自刷」之外最后一环：产物必须真能从这份源码编出来（既有三道门禁都只验
+      #   「库里的东西对不对」，没有一道验「这份源码能不能编出这个库」）。
+      #   ⚠️ 实测**跨主机不可逐字节复现**（Windows 与 ubuntu 差 160 B：.text/.rodata/.rela.dyn/
+      #   .eh_frame*/.dynsym 内容不同，补全 sysroot/rustup/临时 target 的 remap 也不变）
+      #   ⇒ 门禁按主机各自钉基线；用户 2026-10-15 拍板 B3+（证据：证道设计报告/证道-第41刀…md）。
+      #   本主机第一次跑（还没有它那份基线）**不判红**：脚本把整份基线以 base64 打进 ::notice 再退出 2。
+      #   ⚠️ 观察期纪律仍在：continue-on-error —— 拿到「与 CI 基线逐字节一致」的 notice 之前不卡 CI。
       #   读数走 ::notice / ::warning annotation：本仓库 Actions 日志未登录读不到，而
       #   check-runs annotations 接口**匿名可读**（同 Rust 单测段的处置，见 ERRATA E-028）。
       #   本机（Windows）与 CI（ubuntu）的差异由脚本自己注入：NDK 的 linker / CC / AR 路径
       #   按本机 SDK 现拼（rust/.cargo/config.toml 里那些是 Windows 绝对路径），
-      #   归一化前缀 cargo home → /cargo、仓库根 → /src。
-      - name: 重编比对 lane（第㊶刀 · 观察期：只报数，不卡 CI）
+      #   归一化前缀＝sysroot / rustup home / cargo home / 仓库根 / 临时 target 目录。
+      - name: 重编比对 lane（第㊶刀 · B3+ 按主机基线：只报数，不卡 CI）
         continue-on-error: true
         run: |
           python3 tools/rebuild-and-compare.py
