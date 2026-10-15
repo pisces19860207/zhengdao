@@ -6659,6 +6659,7 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
      **正例绿不能证明门禁有效** —— 本条就是「正例绿、病灶在、门禁照样绿」的活例。
   3. 同族教训见 E-131（门禁对原始字节算哈希）——都属于「门禁自己写飘了，测的不是它声称测的东西」。
 ## E-134 · 2026-10-15 · 「targetSdk=28 是 proot 生死线」被真机原型证伪（四件套走 jniLibs 时 targetSdk 36 也能跑）
+> **2026-10-15 晚补记（E-140 之后）：本条「证伪」的适用范围必须收窄** —— 它证的只是**「proot 四件套本身放在 `jniLibs`/`nativeLibraryDir` 时，`targetSdk 36` 下仍能被 exec」**，**不含**「App 直启数据目录内的二进制」。后者已被 **E-140** 实测证伪（`error=13, Permission denied`，抱朴/oc 直启当场死）。所以 `docs/milestones/已知限制.md`「targetSdk 钉死 28」对 **App 直启数据目录** 这条路径仍然成立，不能凭本条把它划掉。
 
 - **旧结论（本条更正的对象）**：本文件早期段与 `docs/知识库-收工条件.md:21`/`:56-58`、`docs/milestones/已知限制.md` §2 写的是
   「Android 10 起 W^X 禁止 targetSdk ≥ 29 的应用从**可写数据目录** exec，而整棵 rootfs（`/usr/bin` 下成千上万个二进制）就跑在那里 ⇒ **`targetSdk = 28` 是架构生死线**」。

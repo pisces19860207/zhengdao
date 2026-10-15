@@ -6,6 +6,7 @@
 > （见 docs/milestones/已知限制.md §1-2），因此"以 targetSdk 为触发条件"的变更多数不适用。
 >
 > ⚠️ **2026-10-15 重大更正（`docs/ERRATA.md` E-134）：上面「targetSdk=28 为 W^X 铁律不可升」的必然性已被真机原型证伪。**
+> ⚠️ **2026-10-15 晚再更正（`docs/ERRATA.md` E-140）：上一条更正只覆盖 proot 四件套走 `jniLibs` 的情形，范围有限。****「App 直启数据目录内的可执行文件」在 `targetSdk 36` 下确实被 W^X 拦**（抱朴/oc 直启实测 `error=13, Permission denied`，见 E-140）；`E-139` 的「未复现」已作废（当时设备上跑的是 `targetSdk=28` 的旧包）。⇒ 本文开头那句「targetSdk=28 为 W^X 铁律不可升」**对本 App 的 oc 直启路径仍然有效**，「可升到 36」只对 **proot 四件套（nativeLibraryDir）** 成立，且 proot 去 exec rootfs 内 guest 二进制的那一步**尚未实测**。
 > 原型 `proot-jnilib-proto` 在真机同型号（荣耀 PGT-AN10 / Android 16）上以 **targetSdk 36** 跑通 Termux 四件套（`jniLibs` → 只读可执行 `nativeLibraryDir` ＋ `PROOT_LOADER` 显式指向），四判据全过。**现行仍以 28 打包**（它是现打包方式的前提，不是架构铁律）；抬 targetSdk 36 已排进待办，在执行链迁移（第⑳刀）之后落地。
 > 本报告正文与下方「不变式」按**历史记录**保留不改；但「以 targetSdk 为触发条件 → N/A」的判定需在**抬到 36 之后重新逐项复核**（尤其 #6 预测性返回、#7 边到边 opt-out、#8 cleartext/`usesCleartextTraffic`、FGS 类型与 6 小时限制）。
 
