@@ -103,19 +103,19 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:200",                 // zd-knowledge-base-auto
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "KnowledgeBaseSummarizerRunner.kt:110", // zd-kb-summarize
-            "MainActivity.kt:235",                  // zd-update-check（2026-10-15 浏览器桥加 7 行 import 后 +7）
+            "MainActivity.kt:242",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:207",           // zd-hermes-repair
             "SettingsEnvActivity.kt:261",           // zd-env-check
             "SettingsEnvActivity.kt:561",           // zd-env-repair（第⑯刀 R-29 +4，本次回填）
             "SettingsEnvActivity.kt:656",           // zd-env-update（同上 +4）
-            "TerminalActivity.kt:79",               // zd-paste
-            "TerminalActivity.kt:596",              // zd-session-start（本刀补 daemon）
-            "TerminalActivity.kt:811",              // zd-net-probe
-            "TerminalActivity.kt:1562",             // zd-install-saf（第⑯刀 R-29 +12）
-            "TerminalActivity.kt:1622",             // zd-install-cache（同上 +12）
-            "TerminalActivity.kt:1708",             // zd-install-download（同上 +12）
+            "TerminalActivity.kt:82",               // zd-paste（第㉕刀 insets import +3）
+            "TerminalActivity.kt:619",              // zd-session-start（第㉕刀边到边代码 +23）
+            "TerminalActivity.kt:834",              // zd-net-probe（同上 +23）
+            "TerminalActivity.kt:1585",             // zd-install-saf（第㉕刀边到边代码 +23）
+            "TerminalActivity.kt:1645",             // zd-install-cache（同上 +23）
+            "TerminalActivity.kt:1731",             // zd-install-download（同上 +23）
             "ZhengdaoApp.kt:80",                    // zhengdao-keepalive-archive（第⑲刀 +3 行后平移）
             "ZhengdaoApp.kt:130",                   // zd-auto-clean（同上）
         )
