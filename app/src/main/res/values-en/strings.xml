@@ -841,6 +841,12 @@
     <string name="browser_safe_browsing_hit">This site looks unsafe — it was blocked</string>
     <string name="browser_page_error">Something went wrong loading the page</string>
     <string name="browser_empty_hint">Enter a URL above, or tap a link from the terminal</string>
+    <string name="browser_start_title">Xuanlan</string>
+    <string name="browser_start_hint">Enter a URL or search terms, or tap a shortcut</string>
+    <string name="browser_start_search_hint">Search or enter URL</string>
+    <string name="browser_start_shortcut_bing">Bing</string>
+    <string name="browser_start_shortcut_debian">Debian docs</string>
+    <string name="browser_start_shortcut_repo">Project repo</string>
     <string name="browser_export">Export for agent</string>
     <string name="browser_export_running">Exporting the current page…</string>
     <string name="browser_export_done">Exported for your agent: %1$d interactive field(s); run cat /opt/zhengdao/tab.txt in the terminal</string>
