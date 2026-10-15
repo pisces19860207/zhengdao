@@ -6735,3 +6735,18 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 
 
 **2026-10-15 第㉘刀取证勘误（结论：本条的「按 4KB 页构建」不成立，四件套本来就是 16KB 构建）** —— 第㉘刀按「取证优先、不盲改」实测（**零提交**，分支 `chore/16kb-alignment` 停在基线 `6b0ace1`）：① **入库四件套每个 `PT_LOAD` 段 `p_align = 0x4000`（16KB），且 `p_offset ≡ p_vaddr (mod 16384)` 全部成立**（我独立复现：`libandroid-shmem.so` 3 段 / `libproot-loader.so` 2 段 / `libproot.so` 3 段 / `libtalloc.so` 3 段，`min_align` 全为 `0x4000`、同余全 PASS；`libzhengdao_core.so` 4 段同样 PASS，`libzstd-jni` 2 段为 `0x10000`）⇒ 本条登记时依据的「交接单说按 4KB 构建」是**未经验证的断言**（当时没有 16KB 设备可证），`tools/check-native-so.py` 里的 `PROOT_PINNED` 4KB 例外分支因此成为**死代码**（在 main 实跑仍 `[通过]`、退出码 0，四件套同时满足「豁免」与「16KB 正常」两条判据）；② Termux 官方 16KB 迁移在 2025-08 由 fornwall 逐批重编完成、2025-09-02 关单（termux-packages#21688），第⑳刀取的版本晚于迁移点 ⇒ **需要自己重编的数量为零**；③ 本条站得住的产物是「sha256 完整性基线 ＋ 门禁按文件收窄」这套机制（保留），但**判据仍有缺口**：现行脚本只查 `p_align`、未查同余 `p_offset ≡ p_vaddr (mod 16384)`（已立 §B 顺序 58）。rootfs 侧（§B-补-29）另测：抽样 4 件（`ld.so`/`libc.so.6`/`ls`/`dpkg`）`p_align = 0x10000`（64KB）、同余成立 ⇒ 天然兼容 4K/16K/64K 内核，门禁落点应为 `rootfs/build-rootfs.sh` 产出侧（已立 §B 顺序 59；原指向 `cpp/CMakeLists.txt` 的表述已勘误）。
+
+## E-138 · 2026-10-15 · 本机不再允许无特权建符号链接（开发者模式关闭）—— 两个软链用例「报绿但零覆盖」，第㉚刀验收时以「环境失败」口径记账
+
+**现象**（本机实测，2026-10-15 第㉚刀验收期间；`sys.getwindowsversion()` = 10.0.26300，`CurrentVersion` = `Windows 10 Home China` / `DisplayVersion 26H2` / `UBR 9711`）：非沙盒 Python 探针 `os.symlink(target, link)` **直接抛** `OSError: [WinError 1314] 客户端没有所需的特权。`（`os.path.lexists(link)` = False）；注册表 `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock` **整个键不存在** ⇒ 开发者模式关闭。对照：第⑲刀（2026-10-14）的同一探针结论是「不在 OS 策略、能建真链」——**本机行为已变**。
+
+**与第㉚刀（依赖版本升级）的关系：无。** workbuddy 交付时报「2 个软链环境失败（纯净 `origin/main` 上同样红）」；我在合并后的 main 上独立跑全量得到 **150 suites / 1058 例 / 0 失败 / 0 错误 / 3 skipped**，那 2 例**没红** —— 不是修好了，而是两个用例的守卫在这种环境下提前 return：
+
+- `app/src/test/java/com/example/zhengdao/oc/OcExtractPathTest.kt:103-104` —— `val created = runCatching { Files.createSymbolicLink(link.toPath(), outside.toPath()) }.isSuccess` ／ `if (!created) return // 无权限建符号链接（常见于 Windows）：这条只能靠 extract() 的链接判据`
+- `app/src/test/java/com/example/zhengdao/terminal/KnowledgeBaseTest.kt:77,83` —— 同款 `runCatching { … }.isSuccess` ／ `if (!created) return // Windows 非开发者模式建不了软链，Linux CI 上会跑`
+
+⇒ **报绿但零覆盖**（JUnit XML 里既无 `failure` 也无 `skipped` 标记）。他当时见到的「返回成功但落盘 0 字节普通文件、无 reparse 点」是同一件事的另一层表现（拦截层吞掉错误而不是抛出），**本轮不可复现**；记录时须区分「我实测的 `WinError 1314`」与「他转述的 0 字节形态」。
+
+**记账口径（用户 2026-10-15 拍板）**：软链相关验证一律按「环境失败」记账，不计入任何刀的验收失败，也不作为改代码 / 降级依赖的理由 ⇒ 已登记 `docs/FEATURE-LEDGER.md` §C；测试卫生问题另立 §B 顺序 62。
+
+**恢复路径**：以管理员开启「开发者模式」（或写入 `AppModelUnlock\AllowDevelopmentWithoutDevLicense = 1`）后无需重启，两个用例应自愈（届时会真正跑起来）。**改 HKLM 需要管理员权限、超出 agent 权限**，要动先问用户。
