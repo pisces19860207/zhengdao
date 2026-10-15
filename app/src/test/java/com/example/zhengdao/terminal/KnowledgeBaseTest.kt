@@ -80,7 +80,9 @@ class KnowledgeBaseTest {
                 real.toPath(),
             )
         }.isSuccess
-        if (!created) return // Windows 非开发者模式建不了软链，Linux CI 上会跑
+        // E-138：本机（Windows 非开发者模式）建不了软链。以前静默 return ＝假绿，
+        // 改成显式跳过（Linux CI 上仍会真跑）。
+        org.junit.Assume.assumeTrue("本机不允许无特权建符号链接（E-138）：本用例未覆盖", created)
         assertEquals(1, KnowledgeBase.countRawIn(raw))
     }
 
