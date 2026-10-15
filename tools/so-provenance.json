@@ -2,7 +2,7 @@
   "version": 1,
   "comment": "libzhengdao_core.so 与 rust/core/src 的同源基线；只允许在确认重编后用 --write 刷新",
   "hash_mode": "so=raw-bytes; src=text-crlf-to-lf",
-  "generated_at": "2026-10-14T21:47:39",
+  "generated_at": "2026-10-15T20:18:42",
   "so": {
     "app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": "ffad1eba232b860b3df0d86aefdfe8f70cd27132fda50f6d2d061deb7280808a"
   },
@@ -16,5 +16,29 @@
     "rust/core/src/sha256.rs": "558b42af2ae8e516077b338ae8086dbd4a0f03497937a536b9f8cca7274f2fd4",
     "rust/core/src/tests.rs": "6cb352effb34952b58e52bb8347414f93c63c4a414437595dbd4fd3dc98f922d"
   },
-  "source_tree_fingerprint": "b9040844a498746fe3a4306f4cb10a81b1b2b091dc4cfbc544df77c267409993"
+  "source_tree_fingerprint": "b9040844a498746fe3a4306f4cb10a81b1b2b091dc4cfbc544df77c267409993",
+  "build_inputs": {
+    "comment": "第㉗②-A 构建输入锁：这些输入决定入库 .so 里的机器码。rustc.* / clang / linker 全部取自 .so 自身内嵌的编译器指纹（产物自证：换一把 rustc/NDK 编出来的 .so，即使源码一字未改，这里也会红）；ndk.version 取自 app/build.gradle.kts（单一真源，ci.yml 从同一行读）；cargo_lock_sha256 按 CRLF→LF 归一；page_size_link_flags 是 16KB 对齐的输入。探测不到的键写 null，校验时按 fail-closed 处理。",
+    "target_triple": "aarch64-linux-android",
+    "rustc": {
+      "version": "1.99.0",
+      "release_date": "2026-09-28",
+      "commit_hash": "b940084d7eb6a299eb4bfeb8e34901bc051e7ac4"
+    },
+    "ndk": {
+      "version": "27.2.12479018"
+    },
+    "cargo_lock_sha256": "87091e249947c2a6d94872408563669421cabb71a8a17b367f3ec324307cfe57",
+    "page_size_link_flags": [
+      "-Wl,-z,common-page-size=16384",
+      "-Wl,-z,max-page-size=16384"
+    ],
+    "artifact_fingerprints": {
+      "app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": {
+        "elf_machine": "aarch64",
+        "clang": "Android (12470979, based on r522817c) clang version 18.0.3 (https://android.googlesource.com/toolchain/llvm-project d8003a456d14a3deb8054cdaa529ffbf02d9b262)",
+        "linker": "Linker: LLD 18.0.3"
+      }
+    }
+  }
 }

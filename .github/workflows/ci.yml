@@ -32,6 +32,10 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # fetch-depth: 2 —— 「刷基线收窄门禁」（第㉗②-A 加分项）要能解析 HEAD~1；
+          # 解析不到时那个脚本会自己「跳过」，不会把 CI 卡死。
+          fetch-depth: 2
 
       - name: 安装 JDK 21
         uses: actions/setup-java@v4
@@ -52,10 +56,26 @@ jobs:
           restore-keys: |
             gradle-ci-${{ runner.os }}-
 
-      - name: 安装 NDK r27.2（externalNativeBuild 需要 termux JNI）
+      # §B 57 第③条（第㉗②-A）：NDK 版本**单一真源 = app/build.gradle.kts 的 ndkVersion**。
+      # 在这之前这里和 gradle 各写一遍 "27.2.12479018"：AGP 用 gradle 里那个编 native、
+      # CI 装的是本文件里那个，两边可以各改各的而 CI 全绿 —— 版本一漂移就是
+      # 「本机能编、CI 编不出」或反过来。现在两个消费者（本文件装 NDK、
+      # tools/check-so-provenance.py 校验基线）都从 gradle 的同一行读。
+      - name: 读取 NDK 版本（单一真源 = app/build.gradle.kts）
+        run: |
+          set -euo pipefail
+          NDK_VERSION="$(sed -n 's/^[[:space:]]*ndkVersion[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          if [ -z "$NDK_VERSION" ]; then
+            echo "::error title=NDK 版本读取失败::app/build.gradle.kts 里找不到 ndkVersion = \"…\"（§B 57 第③条的单一真源）"
+            exit 1
+          fi
+          echo "NDK_VERSION=$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "NDK 版本（来自 app/build.gradle.kts）= $NDK_VERSION"
+
+      - name: 安装 NDK（版本由 app/build.gradle.kts 决定）
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
 
       # E-048：入库的 libzhengdao_core.so 是**人工** cargo build + llvm-strip 后拷进来的，
       # 两条 workflow 都不构建它；而 16KB 对齐漏掉、JNI 入口被 strip 掉都不会编译失败，
@@ -68,6 +88,15 @@ jobs:
       # tools/so-provenance.json 里的 .so sha256 + 源码树指纹基线。
       - name: 入库 .so 同源门禁（so 与 rust/core/src 同源基线）
         run: python3 tools/check-so-provenance.py
+
+      # 第㉗②-A 加分项：同源门禁是**基线驱动**的，所以「只改 tools/so-provenance.json
+      # 把哈希刷成当前值」能让它变绿而产物根本没重编。这一步把这条捷径堵上：
+      # 基线动了，就必须同时有 .so 或 rust/core/src/** 跟着动。
+      - name: 刷基线收窄门禁（改基线必须连带改 .so 或 rust/core/src）
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ]; then BASE="HEAD~1"; fi
+          python3 tools/check-baseline-refresh.py --base "$BASE"
 
       - name: 编译 Debug APK（含 .so 打包验证）
         run: ./gradlew :app:assembleDebug --console=plain
