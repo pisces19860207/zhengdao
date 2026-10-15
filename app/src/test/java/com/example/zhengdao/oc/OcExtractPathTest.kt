@@ -101,7 +101,12 @@ class OcExtractPathTest {
         val outside = Files.createTempDirectory("zd-oc-outside-").toFile()
         val link = File(root, "escape")
         val created = runCatching { Files.createSymbolicLink(link.toPath(), outside.toPath()) }.isSuccess
-        if (!created) return // 无权限建符号链接（常见于 Windows）：这条只能靠 extract() 的链接判据
+        // E-138：本机（Windows，开发者模式关闭）不允许无特权建软链。以前这里静默 return，
+        // 报告上记成「通过」＝假绿；改成显式跳过，缺口在测试报告里可见。
+        org.junit.Assume.assumeTrue(
+            "本机不允许无特权建符号链接（E-138）：本用例未覆盖，替代判据见 extract() 跳过链接条目",
+            created,
+        )
         val f = resolve("escape/evil.sh")
         assertNull("链接指向根外 ⇒ 不许顺着它写", f)
         assertFalse(File(outside, "evil.sh").exists())
