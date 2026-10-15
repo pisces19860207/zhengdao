@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "generated_at": "2026-10-15T14:50:12Z",
+  "generator": "tools/rebuild-and-compare.py --update（第㊶刀 · B3+ 按主机基线）",
+  "generated_on_host": "x86_64-unknown-linux-gnu",
+  "hash_mode": "so=raw-bytes-after-llvm-strip --strip-unneeded（remap 归一后）",
+  "normalized": {
+    "size": 961800,
+    "sha256": "9a3d12b4ed30cc3b91905b2b7a708a2dcc8d3dcb1f07444b7bf65c7599edc4d4",
+    "sections": [
+      {
+        "name": "",
+        "type": 0,
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": ".note.android.ident",
+        "type": 7,
+        "size": 152,
+        "sha256": "a94d4f84e212e4515417cf611f4ed1eb5cd42862d6c4f73fd222a6d82356fe90"
+      },
+      {
+        "name": ".dynsym",
+        "type": 11,
+        "size": 1704,
+        "sha256": "659355de0790e7686ec38e69dcc1ba3ba20e6c7400593497823c8abb3a281b8c"
+      },
+      {
+        "name": ".gnu.version",
+        "type": 1879048191,
+        "size": 142,
+        "sha256": "3c5d9dbae581d279175729adf5308dfde09ec92c7fff794fc3320a3451240388"
+      },
+      {
+        "name": ".gnu.version_r",
+        "type": 1879048190,
+        "size": 112,
+        "sha256": "98a4ce8d0850e9444acfcc5782b8a423136e09f908409ca52aea6810f89a809e"
+      },
+      {
+        "name": ".gnu.hash",
+        "type": 1879048182,
+        "size": 60,
+        "sha256": "3351267265d7cde1e44f0a4759d44ee53f566c7f6db14ddedfff0dc4dd26d7eb"
+      },
+      {
+        "name": ".dynstr",
+        "type": 3,
+        "size": 1044,
+        "sha256": "1380defaae9327fdf6164251cc556ecff7e0f3a255b11593e368e52b4c153ebe"
+      },
+      {
+        "name": ".rela.dyn",
+        "type": 4,
+        "size": 18960,
+        "sha256": "ff2a5722acd02951bfeb095d46b9ea746475f25c5d291d6a57de719dc8be7775"
+      },
+      {
+        "name": ".rela.plt",
+        "type": 4,
+        "size": 1512,
+        "sha256": "18c2e3e47a7a537e706cd23d3ad3342a5b2199bb83cf694efaaa9041bc7ad7fe"
+      },
+      {
+        "name": ".rodata",
+        "type": 1,
+        "size": 75800,
+        "sha256": "cbfeb29b1273d17c43388d38574654e5aeb8a3b3af3815db6bfe4459d847a02b"
+      },
+      {
+        "name": ".gcc_except_table",
+        "type": 1,
+        "size": 29948,
+        "sha256": "af37349bcb369e74dd45cfe3f07df09c0dc9c87df96679fd075f927379f0e2b4"
+      },
+      {
+        "name": ".eh_frame_hdr",
+        "type": 1,
+        "size": 11004,
+        "sha256": "32e2ee411a455959817eaea2497ae614d7d72bc9fef1ace2f51f0809fc2c9d88"
+      },
+      {
+        "name": ".eh_frame",
+        "type": 1,
+        "size": 73624,
+        "sha256": "b7f9056c0dca58d274d2423bb83ab929141b43a40f38c845caf026d790a7ce43"
+      },
+      {
+        "name": ".text",
+        "type": 1,
+        "size": 726164,
+        "sha256": "186c9eb2aad4304e1130eb3ed235616a6e5d2daa02fbaa55b8e1c0e38fcaf9e1"
+      },
+      {
+        "name": ".plt",
+        "type": 1,
+        "size": 1040,
+        "sha256": "c98cbba5291eb2392d7350916d9fbfca6a559fd28d093677bf076e211ce66649"
+      },
+      {
+        "name": ".data.rel.ro",
+        "type": 1,
+        "size": 13624,
+        "sha256": "1055c49655b312e504128524518c22adda66c05d198c985469ed95494e21a24b"
+      },
+      {
+        "name": ".fini_array",
+        "type": 15,
+        "size": 16,
+        "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+      },
+      {
+        "name": ".dynamic",
+        "type": 6,
+        "size": 384,
+        "sha256": "2ff5366eddc9a7474c7f05c85f72927a705dab9530e33a2051fa6c7a1593444d"
+      },
+      {
+        "name": ".got",
+        "type": 1,
+        "size": 392,
+        "sha256": "3eefc4790b52024832ea4c03c6e7a781f3ef9416866a959b2777fce101ad9d61"
+      },
+      {
+        "name": ".got.plt",
+        "type": 1,
+        "size": 528,
+        "sha256": "defc44453d52d38b03c6a7af4076d0fdc2826f14fbafdbce59df7680901a81d3"
+      },
+      {
+        "name": ".relro_padding",
+        "type": 8,
+        "size": 9808,
+        "sha256": null
+      },
+      {
+        "name": ".data",
+        "type": 1,
+        "size": 2856,
+        "sha256": "c7765220ed737f35ed4d78cc78a521a9e3585b3519405bc7cf756447919b6a94"
+      },
+      {
+        "name": ".bss",
+        "type": 8,
+        "size": 2320,
+        "sha256": null
+      },
+      {
+        "name": ".comment",
+        "type": 1,
+        "size": 248,
+        "sha256": "400bf5db04962931a70b49bd4c83b4bc501ba03d2b4e9cff20255a8fcf73f6ca"
+      },
+      {
+        "name": ".shstrtab",
+        "type": 3,
+        "size": 244,
+        "sha256": "f3f4583568a38db2cc38907966a6e3967dfb4d681ea8c5d22f8aeab725e3bc9d"
+      }
+    ],
+    "fingerprint": "3d9675c2f862c7f26c5640c1fbb3e56ad52b2d6230ab17f557c1ce006e80ebc2",
+    "fingerprint_ignores": [
+      ".comment"
+    ]
+  },
+  "raw": {
+    "size": 1283936,
+    "sha256": "47e1ca4913e838cfc480786316bd5e7e184a3d57e327e3b8e532a13c856be1a7"
+  },
+  "build_inputs": {
+    "target_triple": "aarch64-linux-android",
+    "rustc": {
+      "version": "1.99.0",
+      "commit_hash": "b940084d7eb6a299eb4bfeb8e34901bc051e7ac4"
+    },
+    "ndk_version": "27.2.12479018",
+    "page_size_link_flags": [
+      "-C",
+      "link-arg=-Wl,-z,max-page-size=16384",
+      "-C",
+      "link-arg=-Wl,-z,common-page-size=16384"
+    ],
+    "remap": {
+      "cargo_home": "/cargo",
+      "repo_root": "/src",
+      "rustup_home": "/rustup",
+      "sysroot": "/rustup/toolchains/toolchain",
+      "target_dir": "/target",
+      "ignored_sections": [
+        ".comment"
+      ]
+    },
+    "cargo_lock_sha256": "87091e249947c2a6d94872408563669421cabb71a8a17b367f3ec324307cfe57"
+  },
+  "note": "归一化 = sysroot → /rustup/toolchains/toolchain、rustup home → /rustup、cargo home → /cargo、仓库根 → /src、临时 target 目录 → /target；未归一化的产物含 27 处本机绝对路径，跨主机不可比（见 证道设计报告/证道-第27刀②-重编逐字节比对可行性-2026-10-15.md）。**本文件只对 generated_on_host 这台主机有效**：实测同一份源码在 Windows 与 ubuntu 上各自逐字节可复现、但两者相差 160 B（.text/.rodata/.rela.dyn/.eh_frame*/.dynsym 内容不同）⇒ 门禁按主机各自钉基线（B3+）；CI 用 tools/so-repro-baseline-ci.json。判据：整体哈希一致 ⇒ notice；整体不同但 normalized.fingerprint（节表指纹，忽略 .comment 这个工具链标识段）一致 ⇒ 仍算通过（notice）；否则 warning ⇒ 退出码 1。"
+}
