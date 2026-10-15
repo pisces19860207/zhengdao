@@ -264,6 +264,27 @@ object OcManager {
         waitMs: Long = 2_000,
         log: (String) -> Unit = { RunLog.log(it) },
     ): Boolean {
+        // 第㉒刀-B（取证，只加日志不改行为）：留痕「收尾到底在打哪个 pid」。
+        // destroyForcibly 不收尸（SIGSTOP 冻结态）的首要怀疑是**打错目标**——
+        // serve 句柄若是包装进程而非 serve 真身，四步收尾就一直打偏。
+        // 把这里的 pid 与 ps 里的 T 态 pid 对照即可定案（真机证据，见取证报告）。
+        // 取 pid 走反射（方法 pid() 优先，字段 pid 兜底）：Kotlin 直调 p.pid() 在本仓
+        // 编译配置下报 Unresolved（java.lang.Process 的解析来源问题），不值得为一条
+        // 取证日志去动编译配置。
+        val pidText = runCatching {
+            p.javaClass.getMethod("pid").invoke(p)?.toString()
+        }.recoverCatching {
+            var c: Class<*> = p.javaClass
+            var found: String? = null
+            while (c != Any::class.java && found == null) {
+                found = runCatching {
+                    c.getDeclaredField("pid").apply { isAccessible = true }.get(p)?.toString()
+                }.getOrNull()
+                c = c.superclass ?: break
+            }
+            found ?: "?"
+        }.getOrDefault("?")
+        log("太极: serve 收尾目标 pid=$pidText")
         p.destroy()
         log("太极: serve 收尾：destroy() 已发出，等 ${waitMs}ms")
         val exited = runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }.getOrDefault(false)
