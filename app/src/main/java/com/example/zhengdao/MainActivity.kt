@@ -45,6 +45,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -52,6 +58,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -423,7 +430,47 @@ fun ZhengdaoApp(
         }
     }
 
-    NavHost(navController = nav, startDestination = startRoute) {
+    // ── 全图转场（B-补-26，2026-10-15）────────────────────────────────────
+    // Compose Navigation 默认是**瞬间切换**：点「设置」整页凭空换成设置页、返回又凭空换回来。
+    // 本项目是 iOS 浅色主题、层级约定（根页大标题 / 二级页导航栏标题）也是照 iOS 的分层抄的，
+    // 分层却没有过渡动画＝"页面是贴上去的"。这里给全图统一补上 iOS push/pop 那套转场：
+    //   推入（enter/exit）  ：新页从右滑入 25% ＋ 淡入，旧页向左退 25% ＋ 淡出
+    //   返回（popEnter/popExit）：整套反向
+    // 25% 而非 100%：100% 是全屏平移，长页面（设置页 2000+ 行）滑起来像拉帘；25% 是
+    // iOS `UINavigationController` 的实际取值量级，配 220ms 手感最接近"推入"而非"滑动"。
+    // 时长取 220ms 的依据：iOS push 约 300ms，但 Compose 的 AnimatedContent 起停各有一帧
+    // 开销，220ms 实测既不拖沓也不会让人看不清过渡。
+    //
+    // ⚠️ 不覆盖每个 composable 自己的转场：这里设的是**全图默认值**，个别页若要特殊转场
+    // （如欢迎页首次安装想用纯淡入）可在 composable(...) 里单独覆盖，不必回来改这里。
+    //
+    // ⚠️ 本刀只做 **NavHost 内**的 Compose 转场。派工单原文同时提了 `overridePendingTransition`
+    // （Activity 级转场，如 TerminalActivity 整屏推入），那要动两个 Activity 的启动处，
+    // 而 TerminalActivity 属在跑区域（第⑯刀占着错误文案区）⇒ 本刀不碰，留给独立一刀。
+    // 注意 slide 系的 animationSpec 是 IntOffset 型、fade 系是 Float 型 —— 两个不能共用
+    // 一个 spec（Kotlin 泛型不匹配，编译期就报错），故分别建。
+    val navSlideSpec = tween<IntOffset>(durationMillis = 220, easing = FastOutSlowInEasing)
+    val navFadeSpec = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
+    NavHost(
+        navController = nav,
+        startDestination = startRoute,
+        enterTransition = {
+            slideInHorizontally(initialOffsetX = { it / 4 }, animationSpec = navSlideSpec) +
+                fadeIn(animationSpec = navFadeSpec)
+        },
+        exitTransition = {
+            slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = navSlideSpec) +
+                fadeOut(animationSpec = navFadeSpec)
+        },
+        popEnterTransition = {
+            slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = navSlideSpec) +
+                fadeIn(animationSpec = navFadeSpec)
+        },
+        popExitTransition = {
+            slideOutHorizontally(targetOffsetX = { it / 4 }, animationSpec = navSlideSpec) +
+                fadeOut(animationSpec = navFadeSpec)
+        },
+    ) {
         composable("welcome") {
             WelcomeScreen(
                 environmentInstalled = installed,
