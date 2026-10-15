@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
         //    「失败可见」的前提是日志能落盘，故必须在 App 入口无条件初始化。
         RunLog.init(applicationContext)
 
-        // 系统版本兜底门槛（用户第四批）：minSdk=35 已拦住安装，这里双保险
+        // 系统版本兜底门槛（用户第四批）：minSdk=36 已拦住安装，这里双保险
         // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
         if (android.os.Build.VERSION.SDK_INT < 36) {
             android.app.AlertDialog.Builder(this)
@@ -185,7 +185,7 @@ class MainActivity : ComponentActivity() {
         // 存储主路径引导（E-005 修订 / P1，2026-10-06）：MANAGE_EXTERNAL_STORAGE 升为正式主路径。
         // **2026-10-11 起这里那个「开启完整存储访问」AlertDialog 撤掉**，由权限页的
         // 「所有文件访问」行替代（同一件事、同一个系统页，只是不再单独弹窗抢在前面）；
-        // 设置页入口照旧保留。连带效果：prefs 键 `manage_prompted` 不再写入、也不再有人读。
+        // 设置页入口照旧保留。连带效果：prefs 键 `manage_prompted` 全仓只剩这条注释，不再写也不再读（老装机残留，无代码读取）。
         // ⚠️ 第㉕刀（2026-10-15，targetSdk 28 → 36）：旧注释说「该开关只对 target≥30 的 App
         // 存在、本 App 恒为 false」—— 抬到 36 后该前提消失，开关现在**可达且就是共享存储的
         // 唯一通道**（READ/WRITE 运行时权限在 30+ 已 inert）。权限页的「共享存储」必需项已
