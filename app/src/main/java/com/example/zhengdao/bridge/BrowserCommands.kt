@@ -129,15 +129,27 @@ object BrowserCommands {
      * 在主线程跑 `evaluateJavascript` 并同步拿**字符串化后的**结果。
      *
      * 归一化：JS 返回的字符串带一层引号（`"abc"`）、`null`/未回调都归一成 null。
+     *
+     * 第㊵刀（P1 修复）：**闩等待在调用线程，主线程只负责发起**。旧写法把
+     * `latch.await` 放在 [onMain] 投到主线程的块内——`evaluateJavascript` 的结果
+     * 回调必须由主线程执行，而主线程被 `await` 占着 ⇒ 自己等自己，8 秒必超时
+     * （真机实证：execJS 连 `1+1` 都超时、snapshot 报「取不到页面 DOM」、
+     * click/type/scroll 全废）。现在：主线程块只调 `evaluateJavascript` 注册回调
+     * （不阻塞、立即返回），调用线程（HTTP 工作线程）`latch.await` 等回调写结果。
+     * 超时/误用（主线程内调本类）仍归一到 null ⇒ 调用方既有文案「执行超时或失败」
+     * 不变，「超时也回 JSON 不断连」的契约不回退。
      */
-    private fun evalJs(webView: WebView, script: String): String? =
-        onMain {
-            val latch = CountDownLatch(1)
-            val box = arrayOfNulls<String>(1)
+    private fun evalJs(webView: WebView, script: String): String? {
+        val latch = CountDownLatch(1)
+        val box = arrayOfNulls<String>(1)
+        // 主线程只发起；onMain 的失败（主线程内误用 / 主线程繁忙未执行）按超时归一
+        val started = onMain {
             webView.evaluateJavascript(script) { box[0] = it; latch.countDown() }
-            runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
-            normalizeJsResult(box[0])
-        }.value // 失败/超时 ⇒ null，调用方维持既有文案「执行超时或失败」；不再有 CCE 风险
+        }
+        if (started.failure != null) return null
+        val done = runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+        return if (done) normalizeJsResult(box[0]) else null
+    }
 
     private fun normalizeJsResult(raw: String?): String? {
         if (raw.isNullOrEmpty() || raw == "null") return null
@@ -171,8 +183,10 @@ object BrowserCommands {
     fun status(): String {
         val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
         val st = tab.state
+        // 第㊵刀（P2）：url 过 redactUrl——真机实证过 query 里的 PII（email/phone/id/card）
+        // 曾被原样带回 agent。title 不脱敏（页面标题非 URL 载体，边界见报告）。
         return ok(
-            "url" to st.url,
+            "url" to SensitiveRedactor().redactUrl(st.url),
             "title" to st.title,
             "loading" to st.loading.toString(),
             "tabId" to tab.id.toString(),
@@ -224,13 +238,15 @@ object BrowserCommands {
      * `execJS`：页面内 JS 自由执行（高权限区，含读 cookie/localStorage）。
      *
      * 返回值**必须**过 [SensitiveRedactor]（红线⑦）：agent 不能用它读原始隐私值绕过脱敏。
+     * 第㊵刀（P3）：管线补 [SensitiveRedactor.redactPairs]——`document.cookie` 这类
+     * `sessionid=…` 键值对返回，redactText 的模式（号码类）不命中，靠本步打码。
      */
     fun execJs(code: String?): String {
         if (code.isNullOrBlank()) return err("execJS 缺 code")
         val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
         val script = "(function(){try{return String(eval(${PageSnapshot.jsonEscape(code)}))}catch(e){return 'ERR:'+e}})()"
         val result = evalJs(tab.webView, script) ?: return err("JS 执行超时或失败")
-        val redacted = SensitiveRedactor().redactText(result)
+        val redacted = SensitiveRedactor().run { redactPairs(redactText(result)) }
         return okRaw("\"result\":\"${PageSnapshot.jsonEscape(clamp(redacted))}\"")
     }
 
@@ -309,7 +325,8 @@ object BrowserCommands {
         val r = onMain {
             val tab = BrowserTabManager.activeTab() ?: return@onMain err("没有活跃标签")
             tab.engine.loadUrl(u)
-            ok("navigating" to url)
+            // 第㊵刀（P2）：回执的 url 与 status 同口径过 redactUrl
+            ok("navigating" to SensitiveRedactor().redactUrl(url))
         }
         return r.value
             ?: r.failure?.let { err("navigate 执行失败：${it.message}") }
