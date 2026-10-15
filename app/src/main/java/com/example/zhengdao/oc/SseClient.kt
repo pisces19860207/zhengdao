@@ -65,6 +65,30 @@ class SseClient(private val http: OkHttpClient) {
 
         data class TodoUpdated(val raw: String) : Event
 
+        // ── 第㉙刀（§B 顺序 5 / issue #9）：4 类「原来进 Unknown、其实对用户有用」的事件 ──
+        // 选它们的判据（取证见 `docs/` 与交付报告）：**REST 轮询盖不到 + 本 App 有对应 UI 面**
+        // —— 消息/权限/待办由轮询与既有分支覆盖，这四类只有 SSE 会告诉客户端「变了」。
+
+        /** 会话集合变化（`session.created`）⇒ 抽屉里的会话列表该刷新。 */
+        data class SessionsChanged(val raw: String) : Event
+
+        /** 会话的当前模型被切换（`session.model.selected`）⇒ 顶栏模型胶囊该跟上。 */
+        data class SessionModelSelected(val raw: String) : Event
+
+        /**
+         * 模型目录变化（`model.updated` / `provider.updated` / `models-dev.refreshed`）
+         * ⇒ 模型抽屉的列表该重新拉。
+         */
+        data class ModelCatalogChanged(val raw: String) : Event
+
+        /**
+         * 消息被删除（`message.removed`）⇒ 从消息列表里移除。
+         *
+         * 对称缺口：`part.removed` / `message.part.removed` 早已归一，唯独整条消息的删除漏了
+         * ⇒ 删掉的消息要等下一次轮询才消失。价值是「更早生效」而不是「轮询盖不到」。
+         */
+        data class MessageRemoved(val raw: String) : Event
+
         /** 未知类型 —— 记录但不丢弃。 */
         data class Unknown(val type: String, val raw: String) : Event
 
@@ -186,32 +210,15 @@ class SseClient(private val http: OkHttpClient) {
         }
     }
 
-    /** 把 "event 名 + data 原文" 归一为 [Event]。未知类型不丢，归 [Event.Unknown]。 */
-    private fun parse(name: String?, data: String, sessionIdOf: (String) -> String?): Event {
-        val type = name ?: extractType(data) ?: "unknown"
-        return when (type) {
-            "server.connected" -> Event.Connected(sessionIdOf(data))
-            "message.updated", "message.part.updated" -> Event.MessageUpdated(data)
-            "part.updated" -> Event.PartUpdated(data, extractDelta(data))
-            "part.removed", "message.part.removed" -> Event.PartRemoved(data)
-            "session.idle" -> Event.SessionIdle(data)
-            // v2 事件名 permission.asked；旧版叫 permission.updated，一并兼容（避免版本差异漏事件）
-            "permission.asked", "permission.updated" -> Event.PermissionAsked(data)
-            "todo.updated" -> Event.TodoUpdated(data)
-            else -> Event.Unknown(type, data)
-        }
-    }
-
-    /** 部分服务端把事件名放在 payload.type 而非 SSE event: 行里。 */
-    private fun extractType(data: String): String? =
-        REGEX_TYPE.find(data)?.groupValues?.getOrNull(1)
-
-    /** 提取增量文本；无 delta 字段则返回 null（调用方按全量覆盖处理）。 */
-    private fun extractDelta(data: String): String? {
-        // 注意：JSON 内转义（\n 等）需由调用方的 JSON 解析器还原，此处不手工反转义。
-        val m = REGEX_DELTA.find(data) ?: return null
-        return m.groupValues.getOrNull(1)
-    }
+    /**
+     * 把 event 名 + data 原文归一为 [Event]。
+     *
+     * 第㉙刀：实现整体搬到 [SseEventParser]（**纯函数、不依赖 OkHttp/Android**），这里只留
+     * 一行转发 —— 目的就是让「类型 → 语义」这张表能在 JVM 单测里逐格钉死（含「未知类型
+     * 不崩、不丢」两条）。搬动前后取值语义逐字一致。
+     */
+    private fun parse(name: String?, data: String, sessionIdOf: (String) -> String?): Event =
+        SseEventParser.parse(name, data, sessionIdOf)
 
     companion object {
         /** 重连退避阶梯（毫秒）。上限 15s，避免低端机/省电 ROM 上疯狂重连耗电。 */
@@ -222,8 +229,57 @@ class SseClient(private val http: OkHttpClient) {
          * 触达后 flow 正常结束 —— 见 [connect] 循环尾部的注释。
          */
         private const val SSE_DEFECT_GIVE_UP = 10
-
-        private val REGEX_TYPE = Regex("\"(?:event|type|name)\"\\s*:\\s*\"([^\"]+)\"")
-        private val REGEX_DELTA = Regex("\"delta\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
     }
+}
+
+/**
+ * SSE 事件「类型 → 语义」的**纯函数**（第㉙刀 · §B 顺序 5 / issue #9）。
+ *
+ * 为什么单独抽出来：[SseClient] 握着 OkHttp 客户端、进不了 JVM 单测，而这张表是
+ * 「上游新增/改名事件时会不会静默不同步」的唯一判据。抽成不依赖 Android/OkHttp 的
+ * object 之后，正例（已知类型各归各位）与负例（未知类型不崩、不丢）都能在单测里钉死。
+ *
+ * **三条不可动摇的语义**（后两条就是既有设计约束③，本刀不许改）：
+ * 1. 已知类型按表归一（含本刀新接入的 4 类）；
+ * 2. **未知类型不丢**：落到 [SseClient.Event.Unknown]，把**类型名与原文都带出去**
+ *    —— 静默不同步比多显示一条糟糕得多（E-054 就是「把失败事件当噪声」的真实教训）；
+ * 3. **不因解析失败而崩**：类型名取不到时兜底 `"unknown"`；data 是坏 JSON 也照样返回一个
+ *    Event（原文原样保留），绝不抛。
+ *
+ * 类型名两个来源都认：SSE `event:` 行（`name` 参数）优先；没有则从 payload 的
+ * `event` / `type` / `name` 字段里摸（真机抓包实测：服务端是把类型放在 JSON 的 `type` 里）。
+ */
+internal object SseEventParser {
+
+    private val REGEX_TYPE = Regex("\"(?:event|type|name)\"\\s*:\\s*\"([^\"]+)\"")
+    private val REGEX_DELTA = Regex("\"delta\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
+
+    fun parse(name: String?, data: String, sessionIdOf: (String) -> String?): SseClient.Event {
+        val type = name ?: extractType(data) ?: "unknown"
+        return when (type) {
+            "server.connected" -> SseClient.Event.Connected(sessionIdOf(data))
+            "message.updated", "message.part.updated" -> SseClient.Event.MessageUpdated(data)
+            "part.updated" -> SseClient.Event.PartUpdated(data, extractDelta(data))
+            "part.removed", "message.part.removed" -> SseClient.Event.PartRemoved(data)
+            "session.idle" -> SseClient.Event.SessionIdle(data)
+            // v2 事件名 permission.asked；旧版叫 permission.updated，一并兼容（避免版本差异漏事件）
+            "permission.asked", "permission.updated" -> SseClient.Event.PermissionAsked(data)
+            "todo.updated" -> SseClient.Event.TodoUpdated(data)
+            // ── 第㉙刀：4 类新接入（真机都到达过，见本 object 的 KDoc / 交付报告） ──
+            "session.created" -> SseClient.Event.SessionsChanged(data)
+            "session.model.selected" -> SseClient.Event.SessionModelSelected(data)
+            "model.updated", "provider.updated", "models-dev.refreshed" ->
+                SseClient.Event.ModelCatalogChanged(data)
+            "message.removed" -> SseClient.Event.MessageRemoved(data)
+            else -> SseClient.Event.Unknown(type, data)
+        }
+    }
+
+    /** 部分服务端把事件名放在 payload.type 而非 SSE event: 行里。 */
+    fun extractType(data: String): String? =
+        runCatching { REGEX_TYPE.find(data)?.groupValues?.getOrNull(1) }.getOrNull()
+
+    /** 提取增量文本；无 delta 字段则返回 null（调用方按全量覆盖处理）。 */
+    fun extractDelta(data: String): String? =
+        runCatching { REGEX_DELTA.find(data)?.groupValues?.getOrNull(1) }.getOrNull()
 }
