@@ -192,4 +192,24 @@ class OcConnectionPolicyTest {
             )
         )
     }
+
+    // ── 第㉒刀-A：失败态重试前是否必须先拉 serve（真值表全枚举）──────────────
+
+    @Test
+    fun `㉒A serve 死了且停在失败态 —— 重试必须先拉 serve`() {
+        // 2026-10-15 真机复现的场景：serve 被杀 → FailedPane → 只调 open() 永远失败
+        assertTrue(failedRetryNeedsStartServe(isFailed = true, serveRunning = false))
+    }
+
+    @Test
+    fun `㉒A serve 活着 —— 直接重开连接，不做多余探测拉起`() {
+        // startServe 幂等但探测是阻塞 HTTP（800ms 超时），serve 活着时不该绕这一圈
+        assertFalse(failedRetryNeedsStartServe(isFailed = true, serveRunning = true))
+    }
+
+    @Test
+    fun `㉒A 不在失败态 —— 不走这条路（防误用第二道闸）`() {
+        assertFalse(failedRetryNeedsStartServe(isFailed = false, serveRunning = false))
+        assertFalse(failedRetryNeedsStartServe(isFailed = false, serveRunning = true))
+    }
 }
