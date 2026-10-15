@@ -6697,6 +6697,17 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 
 **取证踩过的两个坑（复现脚本勿重犯）**：① 在工具会话里用 `&` 起的后台盯梢器会随会话被回收 ⇒ 必须 `nohup` 落设备侧脚本；② 脚本内用 shell uid 调 `kill` 会被拒（`Operation not permitted`，实测），必须走 `run-as`。
 
+**2026-10-15 第㉒刀-B 取证定案（结论 (a)：平台/JVM 语义如此，「打错目标」被实证否决）** —— 真机两轮复现（荣耀 PGT-AN10 / Android 16，同签名 debuggable 包），四件证据：
+
+1. **目标正确（否掉第一怀疑）**：`oc/OcManager.kt` 的 `shutdownProcess` 新增一行留痕「`太极: serve 收尾目标 pid=N`」（提交 `6ea5fbe`，只加日志、行为零改动）⇒ 两轮 RunLog 的 `pid=23704` / `pid=31168` 与 `ps` 里 T 态进程 **逐一相同**；serve 由 `ProcessBuilder(filesDir/oc/usr/bin/opencode, "serve")` **直启**（`PPID` ＝ App 自身，盘上 ELF 魔数 run-as 实读）⇒ 没有 proot / 脚本包装层，句柄就是 serve 本进程。
+2. **平台侧未拦信号**：`dumpsys` 现场显示 App 本体 `isFrozen=false`（荣耀 freezer 并未冻它）；外部 `run-as` 对同一冻结任务 `kill -9` **秒杀**（第二次即 `No such process`）⇒ 内核能收、权限够、目标对。
+3. **真机制**：冻结态下四步收尾实际只有排队的 `SIGTERM` —— `destroyForcibly()` 在本机 ART 上**没有产生 SIGKILL 效果**。判别实验：对冻结中的 pid 发 `kill -CONT` 解冻 ⇒ 排队的 TERM 立即送达、serve 随即自行退出（`PROCESS_GONE`）。Android 官方文档自认 *destroyForcibly 的默认实现只是再调一次 destroy，可能并不强制终止*。
+4. **台账口径更正**：原判「疑厂家 freezer 语义」**更正为**「ART `destroyForcibly` 未产生 SIGKILL」；现象①（收尾日志命中但进程仍 T 态存活）与现象②（躲过 `force-stop`、新 serve 并存、僵尸无自动清理）均不变。
+
+**取证踩过的第三个坑（存档）**：`SIGTERM` 发给 T 态任务后，`/proc/<pid>/status` 的 `SigPnd` **看不见**它 —— `kill(tgid)` 的信号进**共享挂起队列**（要看同一行的 `ShdPnd`，或 `/proc/<pid>/signal`）⇒ 只看 `SigPnd=0` 会误判成「信号根本没发」。本次是靠「guest 终端同 uid/domain 发 TERM（调用成功、无 EPERM）＋ `kill -CONT` 判别实验」才把「信号送没送」钉死。
+
+**后续刀候选（仅登记、未实施）**：收尾升级档除 `destroyForcibly()` 外再调 `android.os.Process.killProcess(pid)`（公开 API，真 SIGKILL；本次已实证同路径有效）⇒ 见 `docs/FEATURE-LEDGER.md` **§B 顺序 42**。取证报告双份：`证道设计报告/证道-真机取证-㉒刀B-SIGSTOP收尾失效-2026-10-15.{md,html}`；可复跑脚本（`nohup` 盯梢器 + `run-as` SIGSTOP）原文存报告内。
+
 ## E-137 · 2026-10-15 · CI 门禁「全量 .so 判 16KB 对齐」会拦下按 4KB 构建的 proot 四件套 —— 门禁按文件收窄 + 完整性基线作交换
 
 **现象**：第⑳刀把 proot 四件套（`libproot.so` / `libproot-loader.so` / `libtalloc.so` / `libandroid-shmem.so`）以
