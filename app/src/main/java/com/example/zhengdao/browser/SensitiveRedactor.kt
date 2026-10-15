@@ -16,7 +16,9 @@ package com.example.zhengdao.browser
  *    不能借其他命令偷读。
  * 4. 仅人类所有者可在 App「浏览器桥」设置里手动、知情风险后关闭（用户自主权，非 agent 能力）。
  *
- * 状态：骨架（未实现）。正则模式为 ③ 初版，实施时需真机样本校准（误报/漏报率）。
+ * 状态：第㊵刀起 URL/键值对出口齐备——[redactUrl]（status/navigate 的 url）、
+ * [redactPairs]（execJS 的 cookie/localStorage 返回）均为真实调用点；正文 email
+ * 模式仍缺（有意，见 [redactUrl] KDoc），其余模式 ③ 初版待真机样本校准。
  */
 class SensitiveRedactor(
 
@@ -57,10 +59,40 @@ class SensitiveRedactor(
         return redactText(maskedInputs)
     }
 
-    /** 敏感键的值置 MASK（cookie/localStorage 键值对，§4.5 snapshot 边界）。 */
-    fun redactKeyValues(kvs: String): String {
-        if (!enabled || kvs.isEmpty()) return kvs
-        return SENSITIVE_KEY.replace(kvs) { m -> m.groupValues[1] + "=" + MASK }
+    /**
+     * 脱敏键值对串（cookie / localStorage 形态：`k=v; k2=v2`）——第㊵刀新增，
+     * 承接原 `redactKeyValues` 的 [SENSITIVE_KEY] 模式。原函数全仓零生产调用点
+     * （死代码造成"cookie 已脱敏"的虚假安全感，第㊵刀删除之），其能力改由两个
+     * **真实出口**承担：本函数（execJS 的 cookie/localStorage 返回值）与 [redactUrl]
+     * （URL query 的敏感键名）。命中键名一律值打码、键名保留。
+     */
+    fun redactPairs(text: String): String {
+        if (!enabled || text.isEmpty()) return text
+        return SENSITIVE_KEY.replace(text) { m -> m.groupValues[1] + "=" + MASK }
+    }
+
+    /**
+     * URL 脱敏（第㊵刀新增）：**凡把 tab url 写进桥响应体的命令都必须过这里**
+     * （status / navigate 回执——真机实证过：URL query 里的 PII 曾被原样带回）。
+     *
+     * 两段式：
+     * ① query 的**敏感键名**（[SENSITIVE_QUERY_KEY]：session/token/auth/cookie/jwt/
+     *    secret/api-key/password/sign/email/tel/phone/mobile/id/idcard/card/bankcard
+     *    ＋ `[\w-]*` 后缀如 sessionid / csrf_token / api-key / user_token）值打码；
+     * ② 剩余部分整体过 [redactText]——兜底 query/路径里明文的号码类 PII。
+     *
+     * 已知边界（有意为之，报告留痕）：**正文/路径里的 email 不加全局 EMAIL 模式**——
+     * email 正则误报面大（任何 `a@b.c` 都中，含文档示例与错误信息），需真机样本
+     * 校准率；URL query 的 `email=` 键已由①覆盖，正文 email 模式单独立项。
+     */
+    fun redactUrl(url: String): String {
+        if (!enabled || url.isEmpty()) return url
+        val q = url.indexOf('?')
+        if (q < 0) return redactText(url)
+        val head = url.substring(0, q + 1)
+        val query = url.substring(q + 1)
+        val masked = SENSITIVE_QUERY_KEY.replace(query) { m -> m.groupValues[1] + "=" + MASK }
+        return redactText(head + masked)
     }
 
     companion object {
@@ -87,6 +119,16 @@ class SensitiveRedactor(
          */
         val SENSITIVE_KEY = Regex(
             """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|passwd|password)[\w-]*)["']?\s*[:=]\s*["']?[^\s"',;}]+"""
+        )
+
+        /**
+         * URL query 的敏感键名（第㊵刀 [redactUrl] 用）——比 [SENSITIVE_KEY] 宽：
+         * 加 sign/signature（签名参数）、email/tel/phone/mobile（联系信息）、
+         * id/idcard/card/bankcard（证件卡号）；值取到 `&` 或串尾（query 标准形态）。
+         * 已知误报（可接受，隐私优先）：`?id=42` 这类普通文章 id 也会打码。
+         */
+        val SENSITIVE_QUERY_KEY = Regex(
+            """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|password|passwd|pwd|sign|signature|email|tel|phone|mobile|idcard|id|card|bankcard)[\w-]*)=([^&]*)"""
         )
     }
 }

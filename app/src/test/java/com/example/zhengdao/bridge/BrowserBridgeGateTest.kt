@@ -158,9 +158,17 @@ class BrowserBridgeGateTest {
 
     @Test
     fun `离开桥的数据一律过脱敏_execJS 与 snapshot 都拦`() {
+        // 第㊵刀：判据从字面串升级为语义——execJs 函数体内必须同时过 redactText
+        // （号码/PII 值）与 redactPairs（cookie/localStorage 键值对，P3 接线），
+        // 少任何一个都算"agent 能读原始隐私值绕过脱敏"。
+        val execJsBody = commands.substringAfter("fun execJs(").substringBefore("\n    fun ")
         assertTrue(
-            "execJS 的返回值必须过 SensitiveRedactor —— 否则 agent 用它读原始隐私值绕过脱敏",
-            commands.contains("SensitiveRedactor().redactText(result)"),
+            "execJS 的返回值必须过 SensitiveRedactor.redactText —— 否则 agent 用它读原始隐私值绕过脱敏",
+            execJsBody.contains("redactText("),
+        )
+        assertTrue(
+            "execJS 的返回值必须过 SensitiveRedactor.redactPairs —— document.cookie 的键值对否则明文（第㊵刀 P3）",
+            execJsBody.contains("redactPairs("),
         )
         assertTrue(
             "snapshot 的 DOM 必须过 redactDom",
