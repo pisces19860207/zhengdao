@@ -13,9 +13,9 @@
 
 检查项
     1. jniLibs/<abi>/*.so 的每个 PT_LOAD 段 p_align >= 0x4000（16KB 页设备可加载）
-       —— 例外：PROOT_PINNED 里的 proot 四件套（第⑳刀，E-136）。它们是**被 execve
+       —— 例外：PROOT_PINNED 里的 proot 四件套（第⑳刀，E-137）。它们是**被 execve
        的独立 ELF 程序**、不是被 loadLibrary 的库，且当前 Termux 官方发行二进制按
-       4KB 页构建（换 16KB 对齐构建属产品化待办，见 docs/ERRATA.md E-136）。作为
+       4KB 页构建（换 16KB 对齐构建属产品化待办，见 docs/ERRATA.md E-137）。作为
        交换，四件套每个文件在这里做 **sha256 完整性基线**（值与
        terminal/ProotBinaries.kt / PROVENANCE.md 三处同源一致）——换版本/被篡改
        立刻红。清单之外新增 .so 一律仍按 16KB 硬判（fail-closed）。
@@ -51,7 +51,7 @@ CORE_KT_REL = "app/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
 JNI_CLASS = "Java_com_example_zhengdao_rust_CoreNative_"
 CORE_SO = "libzhengdao_core.so"
 
-# 第⑳刀（E-136）：proot 四件套的 4KB 对齐例外 + 完整性基线。
+# 第⑳刀（E-137）：proot 四件套的 4KB 对齐例外 + 完整性基线。
 # 这四个 .so 是 Termux 官方发行二进制（原样聚合分发，GPL 合规口径见 PROVENANCE.md），
 # 由 proot 以 PROOT_LOADER 方式装载/被宿主 execve，**不走 bionic loadLibrary**；
 # 当前官方构建按 4KB 页对齐 ⇒ 在 16KB 页设备上不可用（记录为产品化待办，与交接单
@@ -215,12 +215,12 @@ def main(argv):
         for align, filesz, _flags in loads:
             if align < PAGE_16K:
                 if is_proot_pinned:
-                    # E-136 例外（登记在案）：proot 四件套按 4KB 页构建，是被 execve/mmap
+                    # E-137 例外（登记在案）：proot 四件套按 4KB 页构建，是被 execve/mmap
                     # 的独立程序而非 loadLibrary 的库；16KB 页设备风险见 docs/ERRATA.md
-                    # E-136。交换条件 = 下面的 sha256 完整性基线（换版本必红）。
+                    # E-137。交换条件 = 下面的 sha256 完整性基线（换版本必红）。
                     info(
                         f"{rel}: PT_LOAD p_align=0x{align:x}（4KB）—— PROOT_PINNED 登记例外"
-                        "（exec 型程序，非 loadLibrary；16KB 页设备风险见 E-136）"
+                        "（exec 型程序，非 loadLibrary；16KB 页设备风险见 E-137）"
                     )
                     continue
                 blocker(
@@ -245,7 +245,7 @@ def main(argv):
                     "PROVENANCE.md / 本脚本三处）"
                 )
             else:
-                info(f"{rel}: sha256 与登记值一致（E-136 完整性基线）")
+                info(f"{rel}: sha256 与登记值一致（E-137 完整性基线）")
 
         symtab = elf.has_symtab()
         if symtab:

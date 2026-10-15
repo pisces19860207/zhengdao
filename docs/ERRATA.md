@@ -6685,7 +6685,7 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 
 **此后一律照做的规矩**：① 任何「读—改—写回同一文件」的脚本，**先写临时文件，自检通过再替换原文件**；② `open(...,'w')` / `open(...,'wb')` 是**截断式**打开，绝不能在可能抛错的表达式之前对目标文件调用；③ 写入前后各核一次**字节数/行数** —— 比「锚点断言成功」更容易发现截断；④ 破坏性推送**先核对远端内容**再继续下一步；⑤ 行尾同族坑见 E-133（文本模式会把 CRLF 读成 LF）。
 
-## E-136 · 2026-10-15 · CI 门禁「全量 .so 判 16KB 对齐」会拦下按 4KB 构建的 proot 四件套 —— 门禁按文件收窄 + 完整性基线作交换
+## E-137 · 2026-10-15 · CI 门禁「全量 .so 判 16KB 对齐」会拦下按 4KB 构建的 proot 四件套 —— 门禁按文件收窄 + 完整性基线作交换
 
 **现象**：第⑳刀把 proot 四件套（`libproot.so` / `libproot-loader.so` / `libtalloc.so` / `libandroid-shmem.so`）以
 `lib*.so` 形态打进 `app/src/main/jniLibs/arm64-v8a/` 后，`tools/check-native-so.py` 的全量 glob（`:168`，CI 在

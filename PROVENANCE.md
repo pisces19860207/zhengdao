@@ -70,7 +70,7 @@
 > 安装器解压」。**合规定性不变**：仍是独立可执行文件的聚合分发（只 exec，绝不
 > dlopen/loadLibrary——已由 `LoadLibraryGuardTest` 白名单门禁技术化）；新增的
 > `libandroid-shmem.so`（libandroid-shmem 0.7，BSD-3-Clause）是 proot 的 DT_NEEDED
-> 硬依赖，登记于「版本固定」节。详见 docs/ERRATA.md E-134 / E-136。
+> 硬依赖，登记于「版本固定」节。详见 docs/ERRATA.md E-134 / E-137。
 
 | 组件 | 许可证 | 使用方式 |
 |---|---|---|
