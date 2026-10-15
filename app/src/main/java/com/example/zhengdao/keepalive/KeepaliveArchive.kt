@@ -316,9 +316,9 @@ object KeepaliveArchive {
             IssueCenter.report(
                 id = ISSUE_LAST_EXIT,
                 title = "上次运行不是正常结束：${reasonText(latest.reason, latest.description)}",
-                detail = "${timeText(latest.timestamp)} · $mem。留档在设置页「保活记录」里" +
-                    "（可导出给作者分析清理策略）。",
-                actionLabel = "去设置看记录",
+                detail = "${timeText(latest.timestamp)} · $mem。留档在「保活记录」页里" +
+                    "（设置页也有一行入口；可导出给作者分析清理策略）。",
+                actionLabel = "看记录",
                 actionId = IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS,
             )
         } else {

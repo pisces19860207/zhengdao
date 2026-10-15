@@ -76,8 +76,12 @@ object IssueCenter {
      * 打开「保活记录（被杀留档）」页（台账 §B 顺序 11 / 原 §B-补-42）。
      *
      * 与 [ACTION_VIEW_LOGS] 分开是**刻意的**：两者原先共用同一个 actionId，
-     * 而首页的 `when(aid)` 既没有这个分支、也无法区分「去设置看记录」与「看日志」，
+     * 而首页的 `when(aid)` 既没有这个分支、也无法区分「看记录」与「看日志」，
      * 于是两处都只落到「打开设置首页」。文案不同 ⇒ 目的地不同 ⇒ 标识必须不同。
+     *
+     * 2026-10-15 文案校准（原 §B-补-42 销账）：按钮 label 从「去设置看记录」改成
+     * 「看记录」—— 它**直达** [com.example.zhengdao.ui.KeepaliveLogActivity] 这个二级页，
+     * 并不经过设置页；旧 label 让用户以为要先进设置再自己找。
      */
     const val ACTION_VIEW_KEEPALIVE_LOGS = "view-keepalive-logs"
 
