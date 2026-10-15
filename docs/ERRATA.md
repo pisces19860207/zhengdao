@@ -6684,3 +6684,15 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **恢复路径（已验证）**：① `git checkout 7881faa -- docs/FEATURE-LEDGER.md` 还原成 616666 B / 1280 行 CRLF；② 在**临时文件**里重建内容并自检（字节数必须变大、锚点计数正确、「用户三答」计数为 2），再 `shutil.move` 覆盖；③ 提交推送（`76e99b0..4821712`）；④ 核对远端（`git show origin/main:docs/FEATURE-LEDGER.md`）确认两条 bullet 都在、文件非空。
 
 **此后一律照做的规矩**：① 任何「读—改—写回同一文件」的脚本，**先写临时文件，自检通过再替换原文件**；② `open(...,'w')` / `open(...,'wb')` 是**截断式**打开，绝不能在可能抛错的表达式之前对目标文件调用；③ 写入前后各核一次**字节数/行数** —— 比「锚点断言成功」更容易发现截断；④ 破坏性推送**先核对远端内容**再继续下一步；⑤ 行尾同族坑见 E-133（文本模式会把 CRLF 读成 LF）。
+
+## E-136 · 2026-10-15 · `SIGSTOP` 冻结的 oc serve 收尾失效 ＋ 新 serve 可与其并存、僵尸无自动清理（真机观察，正常用户不可达）
+
+**现象**（真机实测，荣耀 PGT-AN10 / Android 16，同签名 debuggable QA 包，2026-10-15）：把 `oc serve` 进程 `SIGSTOP` 成 T 态之后 —— ① 第⑯刀 R-17 四步收尾（`app/src/main/java/com/example/zhengdao/oc/OcManager.kt:543-552` → `shutdownProcess`：`destroy()` → 等 2000ms → `destroyForcibly()` → 再等）**日志逐行命中**（`destroy() 已发出` / `2000ms 未退，升级 destroyForcibly()` / `强制收尾完成`），但 `ps` 里进程**仍是 T 态存活**；随后**外部 `kill -9` 立即收掉**（`ps` count=0）。② 该 T 态进程**躲过了 `force-stop`**，且新起的 serve 与之**并存**（疑 `REUSEPORT` 双绑），僵尸无自动清理路径。
+
+**为什么够不上用户缺陷**：进入该状态需要外部执行 `SIGSTOP`（ADB 或终端里手敲），App 自身任何路径都不会把 serve 冻成 T 态 ⇒ 正常使用不可达。
+
+**处置**：① 发现②（收尾打不到冻结进程）**已于 2026-10-15 派工第㉒刀-B 取证**（先查 `destroyForcibly()` 的目标 pid 与 `ps` 里 T 态 pid 是否同一个 —— proot 链会 fork/exec loader，句柄可能只是包装进程；若是，则 R-17 一直在打错目标，属真缺陷），**结论出来前不改代码**；②「躲过 force-stop ＋ 双绑并存 ＋ 无自动清理」不单独派码，仅立账备查。
+
+**为什么不进 `docs/milestones/已知限制.md`**：该文件整篇是 **targetSdk 28 结构性边界**（架构级、用户可见、不可改）；本条是运行期边缘态、需外部信号才可达，混进去会稀释那份文档的判据。
+
+**取证踩过的两个坑（复现脚本勿重犯）**：① 在工具会话里用 `&` 起的后台盯梢器会随会话被回收 ⇒ 必须 `nohup` 落设备侧脚本；② 脚本内用 shell uid 调 `kill` 会被拒（`Operation not permitted`，实测），必须走 `run-as`。

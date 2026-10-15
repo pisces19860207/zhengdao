@@ -43,6 +43,9 @@
 
 > ⚠️ **架构前提（生死线，2026-10 经 Termux/太墟事实核验后写入）**：Android 10 起 SELinux 禁止 targetSdk ≥ 29 的应用从**可写数据目录**执行文件（W^X），而本方案的整个 rootfs（/usr/bin 下成千上万个二进制）都在数据目录里。因此：
 > - **targetSdkVersion 钉死 28**（Termux GitHub/F-Droid 版、太墟均为此策略）——这是本架构成立的前提，不是可选项；
+>   - ⚠️ **2026-10-15 重大更正（`docs/ERRATA.md` E-134）**：上面这条「**必须 ≤ 28**」的**必然性已被真机原型证伪**——原型 `proot-jnilib-proto` 在**真机同型号**（荣耀 PGT-AN10 / Android 16）上以 **targetSdk 36**、把 Termux 四件套经 `jniLibs` 落进只读可执行的 `nativeLibraryDir`（`PROOT_LOADER` 显式指向），四判据全过（自检 / 解压 rootfs / `echo`+`uname` / `apt-get update` 联网）；四件套 SHA256 与 `terminal/ProotLauncher.kt:123-127` 的 pin 逐字节一致。
+>   - **现行口径**：证道**仍以 targetSdk 28 打包** —— 它是**现行打包方式**（`jniLibs` + `assets/` → `files/`）的前提，**不是不可修改的架构铁律**；抬 targetSdk 36 已排进待办（台账 §B；MagicOS 11 必升级），在执行链迁移（第⑳刀）之后落地。
+>   - 本框其余内容（只走 GitHub 直发、风险登记、大白话版）**保留原样**，其中「改成新版 SDK 就全变死文件」的说法以本条更正为准。
 > - **只走 GitHub 直发**，永不上架 Google Play（Play 强制 targetSdk 34+，上架即死；Termux 2024-06 的"回归 Play"是原作者非官方分支，靠 `system_linker_exec` 灰区方案，官方自述违反 Play 政策可能下架，不走这条路）；
 > - 连锁影响：targetSdk 28 下无需声明 FGS 类型（类型机制 API 29 才引入），也天然豁免 Android 15 的 dataSync 前台服务 6 小时限制（仅约束 targetSdk 35+）；targetSdk 34+ 的"动态加载文件须只读"限制同样不适用；
 > - 风险登记（**每月跟踪**，v3.4 升级）：① 最低安装门槛是否上调（Android 14+ 仅禁止安装 targetSdk < 23 的应用，28 有安全边际）；② Play 侧 2026-08-31 起新应用/更新强制 target API 36（Android 16）——只约束 Play 上架，与 GitHub 直发无关，但为门槛上抬信号；③ 无线调试 / Phantom 相关系统开关是否有变；④ AOSP 对 untrusted_app 域的策略动向。备选：`system_linker_exec` 灰区方案（只做技术储备评估，不实现）；~~云机瘦客户端（§10 v2 路线）~~ **❌ 2026-10-10 排除——云机不做（没那个条件），将来另找更好的方案**。（太墟 Android 10+ arm64-only 同策略，作为持续参照物）

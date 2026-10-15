@@ -16,15 +16,21 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 > not match, do not download; it will not run.** (See [Requirements](#requirements).)
 
 > **Agent support status (2026-10-11, verified on a real Honor Magic 5 Pro)**: **OpenCode is built
-> in** (the Taiji tab is a ready-to-use chat client; the bionic host build avoids PRoot overhead and
+> in** (the Baopu tab is a ready-to-use chat client; the bionic host build avoids PRoot overhead and
 > is downloaded on demand, ~65 MB); **Hermes Agent is supported** (one-tap install → launch → TUI,
 > `hermes update` works; it ships its own pinned Python toolchain, so the install step needs a
-> network, and a broken dependency environment can be repaired in one tap from the Danfang tab);
+> network, and a broken dependency environment can be repaired in one tap from the Yiran tab);
 > **Claude Code** and **AGY CLI (Antigravity)** install freely in the terminal from their own
 > official scripts.
 
-> **Layout**: three bottom tabs — **Taiji** (OpenCode chat) / **Terminal** / **Danfang** (agent
-> management); settings live behind the gear icon.
+> **Layout** (four tabs on `main` since 2026-10-14): **Baopu 抱朴** (OpenCode chat, *reality*) /
+> **Xiaoyao 逍遥** (terminal, *freedom*) / **Xuanlan 玄览** (browser, *expectation*) /
+> **Yiran 怡然** (agent management, *happiness*); settings live behind the gear icon, and the app
+> opens on Yiran.
+> ⚠️ **v2.1.1 and earlier releases still have three tabs — Taiji / Terminal / Danfang**: the renaming
+> and the Xuanlan (browser) batch sit on `main`, **not released yet** (no tag, no Release), and will
+> go out with the next version. Historical entries further down that say "Taiji" or "Danfang" mean
+> today's Baopu / Yiran.
 > **File boundary**: agent output goes to one shared workspace (default `Download/证道` on the
 > phone, changeable in settings) — visible in any file manager, and kept after Zhengdao is
 > uninstalled.
@@ -43,14 +49,25 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 > capacity, so there is no support for adapting to every Android version — **thank you for
 > understanding**.
 
-> **🔒 Why `targetSdk` is pinned to 28 (long-term note)**
-> Zhengdao **deliberately pins `targetSdk` to 28**. This is an architectural constraint, not a
-> stale version:
-> - **Why**: since Android 10, apps with `targetSdk` ≥ 29 are forbidden from executing files that
->   live in their own writable data directory (W^X). Zhengdao's entire Linux environment —
->   thousands of executables — lives exactly there, and only `targetSdk 28` is exempt, which is what
->   lets PRoot run. **Raising `targetSdk` would turn the whole Linux environment into
->   non-executable dead files.** Termux (GitHub/F-Droid builds) and Taixu take the same approach.
+> **🔒 Why `targetSdk` is 28 today (major correction, 2026-10-15)**
+> Zhengdao **still ships with `targetSdk` 28**, but this is **no longer the "must be ≤ 28" life-or-death
+> line** — that necessity was **falsified** on 2026-10-15 by an on-device prototype
+> (`docs/ERRATA.md` **E-134**):
+> - **The current reason (narrowed)**: `targetSdk 28` is what today's *packaging* relies on — the four
+>   Termux binaries go into `jniLibs` (installed into the read-only, executable `nativeLibraryDir`)
+>   and the rootfs travels via `assets/` → `files/`. It is **the present arrangement, not an
+>   architectural law**.
+> - **The old claim that was falsified**: ~~"since Android 10, apps with `targetSdk` ≥ 29 cannot
+>   execute files in their own writable data directory (W^X), and only `targetSdk 28` is exempt, so
+>   raising `targetSdk` turns the whole Linux environment into non-executable dead files"~~. The
+>   prototype `proot-jnilib-proto` ran the four binaries on the **same device model** (Honor PGT-AN10
+>   / Android 16) at **`targetSdk` 36** (with `PROOT_LOADER` pointing explicitly at
+>   `nativeLibraryDir`) and passed all four criteria: environment self-check / rootfs extraction /
+>   `echo` + `uname` / `apt-get update` over the network (`Hit:1..3 deb.debian.org`). The four
+>   binaries' SHA256 match the values pinned in `terminal/ProotLauncher.kt:123-127`
+>   **byte for byte**.
+> - **What happens next**: raising `targetSdk` to 36 is **already queued** (MagicOS 11 will require
+>   it; decided as "definitely doing this"), to land after the execution-chain migration.
 > - **The cost**: on Android 16, a `targetSdk 28` app needs **runtime `READ`/`WRITE` permission** to
 >   reach shared `/sdcard` storage (and on Android 13+ the manifest `READ` declaration must be
 >   dropped before `READ` can be held at all — see commit `d414dca`). Measured on the real device,
@@ -61,9 +78,10 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 >   **pick a rootfs package by hand** (`ACTION_OPEN_DOCUMENT`), which has nothing to do with
 >   directory syncing.
 > - **Long-term risk**: if Android raises the minimum installable `targetSdk`, or tightens the
->   `untrusted_app` domain policy, Zhengdao would have to migrate to the `system_linker_exec` grey
->   area or become a thin client to a cloud phone. This risk is re-checked on real hardware every
->   quarter — see [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md).
+>   `untrusted_app` domain policy, Zhengdao would have to migrate (raising `targetSdk` to 36 is
+>   exactly that work; further out, the `system_linker_exec` grey area or a thin client to a cloud
+>   phone). This risk is re-checked on real hardware every quarter — see
+>   [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md).
 
 ## Network
 
@@ -72,7 +90,7 @@ Zhengdao is designed as "local environment + cloud agents", so its network needs
 | Stage | Network needed? | Notes |
 |---|---|---|
 | **First environment install** | **Required** | Downloads the ~200 MB Debian rootfs archive (dead weight such as the GPU rendering stack is stripped at build time — see [Status](#status-2026-10-11)) |
-| **Installing an agent** | **Required** | Downloads Claude Code / Hermes and friends from their official sources (OpenCode is downloaded by the Taiji tab itself) |
+| **Installing an agent** | **Required** | Downloads Claude Code / Hermes and friends from their official sources (OpenCode is downloaded by the Baopu tab itself) |
 | **Using an agent day to day** | **Required** | Agents call cloud APIs (GLM / DeepSeek / Claude …); no network means no agent |
 | **Terminal only** | **Optional** | Once the environment is installed, bash / git / python / npm and friends work offline |
 
@@ -132,9 +150,18 @@ v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven
 keeping up with upstream, not further restructuring. Remaining items (including known
 performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
 
+> **Accumulated on `main`, not released yet** (a new batch since 2026-10-14): the **four-tab rename**
+> (Baopu / Xiaoyao / Yiran / Xuanlan, both locales) and **Xuanlan (the browser tab)** — multiple
+> tabs, an address bar with search, Safe Browsing blocking, terminal links opening inside the app,
+> and page-summary export for agents. Per the 2026-10-14 decision to **not ship yet**, the version
+> number stays put and there is **no tag and no Release**; all of it goes out with the next version.
+> Below, "Current release" and the tab layout describe the shipped **v2.1.1**, while the feature
+> list reflects `main`.
+
 The v2.1.0 batch branch (`fix/batch-v2.1.0`) and the v2.1.1 fix branch (`fix/session-switch-e123`)
-run **739 unit tests across 91 suites, all green**
-(2026-10-13: 0 failures, 0 errors, 2 skipped by environment).
+run **986 unit tests across 139 suites, all green**
+(2026-10-15 on `main`: 0 failures, 0 errors, 3 skipped by environment; the later batches merged after
+v2.1.1 are logged in `docs/FEATURE-LEDGER.md` §A from #76 on).
 
 ### Recent releases
 
@@ -188,16 +215,20 @@ Release notes for every version are on the [Releases page](https://github.com/pi
 **Feature surface** (frozen since v1.1; v2.0.12 swapped in an **iOS-style UI skin** with no change
 in features):
 
-- **Taiji tab**: a native Compose client for OpenCode — Markdown rendering, collapsible thinking,
-  tool cards, session history / new / resume, and a model-pool picker (free models labelled,
-  switchable per session, kept across restarts)
+- **Baopu tab** (formerly "Taiji", *reality*): a native Compose client for OpenCode — Markdown
+  rendering, collapsible thinking, tool cards, session history / new / resume, and a model-pool
+  picker (free models labelled, switchable per session, kept across restarts)
 - **Terminal**: a real Debian 13.7 environment (PRoot) with tmux session persistence; one-tap
   split-screen and screen-off; three orientation notes on first entry; the "More" menu has clear
   screen and reload font size
-- **Danfang**: one-tap agent install / launch / uninstall (double confirmation, real `du` sizes,
-  user data preserved) plus environment self-check and self-healing
+- **Yiran** (formerly "Danfang", *happiness*): one-tap agent install / launch / uninstall (double
+  confirmation, real `du` sizes, user data preserved) plus environment self-check and self-healing
+- **Xuanlan** (browser, *expectation*): an in-app multi-tab browser — type a URL or a search in the
+  address bar, Safe Browsing blocks risky sites, and a link tapped in the terminal opens inside the
+  app; "export for agent" drops a summary of the current page into files the guest can read
+  (on `main`, not released yet)
 - **Plugin management** (settings → Plugins): manages the plugins of the **built-in** OpenCode that
-  Taiji runs (enable/disable, cache cleanup)
+  Baopu runs (enable/disable, cache cleanup)
 - **Library** (settings → Library): puts material on your phone within reach of the terminal
   agents; "attach library hints when asking" is **off by default** — when enabled, the app matches
   substrings **on-device** and appends just "filename + line number" to your message, so the
@@ -211,14 +242,14 @@ in features):
   request, so since v2.0.17 the tools group has no clearable entry) are reported but never clearable; and in
   the public area "install scripts" can be cleared while the "workspace" is your data and is not
 
-> **⚠️ Where OpenCode runs (since v1.2)**: the "Taiji" tab uses the **built-in** host build
+> **⚠️ Where OpenCode runs (since v1.2)**: the "Baopu" tab uses the **built-in** host build
 > (ready out of the box, running on the **host bionic**, not through PRoot); its config lives in
 > `files/oc/xdg/config/opencode/`, and the plugin page only affects this one.
 > **Since v1.2 the app neither pre-installs nor keeps a second OpenCode in the terminal** (if you
 > want your own CLI there, `npm install -g` inside the terminal is your call; the app does not
 > manage its config or plugins).
 > ⚠️ Because the two are not on the same network stack, **editing `/etc/hosts` or
-> `/etc/resolv.conf` inside the rootfs does not affect Taiji**, and vice versa. See pit #0 (pinned)
+> `/etc/resolv.conf` inside the rootfs does not affect Baopu**, and vice versa. See pit #0 (pinned)
 > in the troubleshooting manual.
 
 CI artefacts (APK / rootfs / PRoot) are on the [Actions page](https://github.com/pisces19860207/zhengdao/actions);
@@ -231,7 +262,7 @@ code**, so you do not follow an out-of-date description:
 
 | Layer | Where | What it is for |
 |---|---|---|
-| **① Overall design** | [`docs/milestones/安卓AgentApp-设计方案-v3.md`](docs/milestones/安卓AgentApp-设计方案-v3.md) | Architecture, technology choices and architectural red lines (e.g. `targetSdk 28` pinned, the single-session model, how PRoot is distributed). Every phase spec derives from it. |
+| **① Overall design** | [`docs/milestones/安卓AgentApp-设计方案-v3.md`](docs/milestones/安卓AgentApp-设计方案-v3.md) | Architecture, technology choices and architectural red lines (the single-session model, how PRoot is distributed). Every phase spec derives from it. ⚠️ Its old "`targetSdk 28` pinned" wording has been falsified (see **E-134**); the note above is the current wording. |
 | **② Phase specs** | [`docs/milestones/`](docs/milestones/) (M1.1 – M5) | The **engineering constraints and acceptance criteria** of each milestone. The rule: **implementation follows the code; constraints and red lines follow this document.** |
 | **③ Compliance floor** | [`PROVENANCE.md`](PROVENANCE.md) | Where third-party components come from, their licences, and the lines that must not be crossed (e.g. PRoot may only `exec`, never `loadLibrary`). |
 
