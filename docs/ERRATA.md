@@ -6805,3 +6805,20 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **记账口径**：① 单次 RC=52 **不作为 App 侧缺陷的证据**，除非同一时刻 App 侧 RunLog 里没有「请求行／完成／异常」三种记录之一；② 第㊲刀之后 App 侧已能区分三种情形（未回包／回包后链路丢字节／EOF 无响应），下次复现按 RunLog 三者对照落新条目或收口；③ 设备矩阵结果只在**确认无并发线**的窗口内计数。
 
 **影响面**：㉔ 第①轮的「间歇性卡死」结论**未被推翻**（那次的 RunLog 确实只有 `before-webview#tabN`、永无 `after`），但「RC=52 ⇒ App 侧异常被吞」这一条**只能算其中一种来源**。
+
+## E-142 · 2026-10-15 · 玄览「起始页」守卫让**首次加载永久死锁** —— `webView.post` 在未 attach 的 View 上被压队，四条导航路径全死（第㊱刀回归，真机抓出）
+
+**现象**：玄览标签下任何页面都打不开。四条独立路径同形：桥 `navigate` 回 `ok` 但页面不动（假成功）、UI 主页键、地址栏「前往」、起始页「必应」chip。全程无 WebView 沙箱渲染进程；`execJS`/`snapshot`/`click`/`type`/`scroll` 全部 8 秒超时；`screenshot` 只产出 97 字节空白 1×1 PNG。设备：荣耀 PGT-AN10 / Android 16，包 `com.example.zhengdao` 2.1.1 (36)，基线 `6a00014`。
+
+**机制（代码级闭环）**：
+1. `app/src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt:312` —— 只有 `activeId != null && !(active == null || !active.state.everLoaded)` 时才组合 `AndroidView(factory = { BrowserTabManager.view() … })`，即**首次加载前 WebView 从不挂进窗口**。
+2. `app/src/main/java/com/example/zhengdao/browser/WebViewEngine.kt:62-66` —— `loadUrl` 的实现是 `webView.post { … webView.loadUrl(url) }`（该文件所有外部调用都走 `webView.post`，注释见 `:30`「所有外部调用经 webView.post 包 UI 线程」）。
+3. Android 语义：`View.post` 在 `mAttachInfo == null`（未 attach）时**不**投给主线程 Handler，而是压进该 View 的 `HandlerActionQueue`，等 `dispatchAttachedToWindow()` 才执行。
+4. `everLoaded` 只由 `BrowserTabState.markLoaded()` 往 true 推（`app/src/main/java/com/example/zhengdao/ui/browser/BrowserTabState.kt:32/41/45`），唯一触发源是 `onPageFinished`。
+⇒ 未 attach 的 WebView 永远不执行 `loadUrl` → 永远没有 `onPageStarted/onPageFinished` → `everLoaded` 永远 false → WebView 永远不挂载。**鸡生蛋死锁**。
+
+**为什么第㊱刀自己没抓到**：该守卫（`if (activeId != null && !everLoaded)`）是 ㊱ 为修「深色模式起始页对比度 ~1.06:1」在真机上后加的；提交信息里「必应 chip 直开 / example.com 直开」的验证发生在**加守卫之前**，加完后只回看了起始页渲染、没再做「点进去」的端到端点击。**这条同时记我自己的验收缺口**：㊱ 验收我只跑了 `BrowserStartPageGateTest` 7 例 ＋ 装机实拍起始页，未做「起始页 → 页面加载」的端到端链路。
+
+**影响面**：玄览浏览器在新标签、新进程、新装包（`everLoaded` 初值 false）下**完全不可用**；渲染类能力（screenshot/snapshot/execJS/type/click/scroll）连带失效；桥的通道层与安全层不受影响（㉔ 第②轮其余项全部合格）。
+
+**修法候选（见台账 `§B 顺序 66`）**：① `WebViewEngine` 所有外部调用改走 `Handler(Looper.getMainLooper())`（不依赖 attach、最小改动、保留 ㊱ 的视觉修复）；② 回退 ㊱ 守卫（对比度问题回归）；③ 挂载 WebView 但透明/置于起始页之下。**建议 ①**；判据：新装包首次进玄览，四条路径任一条能加载并翻转 `everLoaded`，另加一条源码门禁（首载路径不得再靠 `webView.post`）。
