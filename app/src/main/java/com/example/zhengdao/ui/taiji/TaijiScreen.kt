@@ -57,6 +57,7 @@ import com.example.zhengdao.oc.OcRuntime
 import com.example.zhengdao.oc.OcSessionSummary
 import com.example.zhengdao.oc.TaijiPhase
 import com.example.zhengdao.oc.TaijiState
+import com.example.zhengdao.oc.failedRetryNeedsStartServe
 import com.example.zhengdao.ui.PluginManager
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.Dispatchers
@@ -325,7 +326,23 @@ fun TaijiScreen(
             // 启动失败：明确原因 + 重试。**不静默失败**（项目原则）
             state.phase is TaijiPhase.Failed ->
                 FailedPane((state.phase as TaijiPhase.Failed).message) {
-                    scope.launch { repo.open(OcRuntime.scope, sessionId = null) }
+                    scope.launch {
+                        // 第㉒刀-A：serve 进程死了时只调 open() 点多少次都失败（2026-10-15
+                        // 真机实测）——重试必须先确保 serve 在跑（判据见
+                        // failedRetryNeedsStartServe）。serveRunning() 探测与 startServe
+                        // 都是阻塞调用（裸 HttpURLConnection + 起进程），必须在 IO 上，
+                        // 与页面入口 :263 的 withContext(Dispatchers.IO) { startServe } 同款。
+                        val needServe = withContext(Dispatchers.IO) {
+                            failedRetryNeedsStartServe(
+                                isFailed = state.phase is TaijiPhase.Failed,
+                                serveRunning = OcManager.serveRunning(),
+                            )
+                        }
+                        if (needServe) {
+                            withContext(Dispatchers.IO) { OcManager.startServe(ctx) }
+                        }
+                        repo.open(OcRuntime.scope, sessionId = null)
+                    }
                 }
 
             // ★ 主界面：**左侧抽屉 + 固定顶栏** 结构。
