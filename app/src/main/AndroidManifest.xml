@@ -15,7 +15,10 @@
          该帽子导致 App 只有 WRITE 没有 READ，共享存储"能写（私有目录）不能读"，
          hermes 找不到用户文件的根因。 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <!-- target 28 的共享存储写通道：运行时请求，Android 11+ 对 target≤29 保持 legacy 视图 -->
+    <!-- 共享存储写通道（历史遗留，第㉕刀起已 inert）：targetSdk≤29 时运行时授予 WRITE 即可
+         读写共享存储（legacy 视图）。抬到 36 后该权限**不再授予任何共享存储访问**（API 30+
+         起系统对请求直接静默拒绝）——声明保留只为不动 StoragePermissionGuardTest 钉住的清单
+         形态与历史口径；真实通道已切到「所有文件访问」，见 ProotLauncher.storageGranted。 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
@@ -30,8 +33,14 @@
          冷启动时在 MainActivity 里按需请求（requestCode 101）。 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- M2 前台服务：targetSdk 28 起即需声明（API 34+ 才另需 foregroundServiceType） -->
+    <!-- M2 前台服务：FOREGROUND_SERVICE 自 API 28 起即需声明；API 34+ 另需
+         foregroundServiceType 与类型专属权限（第㉕刀抬 targetSdk 36 后两条都成了硬要求，
+         见 SessionService 处的类型声明） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- specialUse 类型的专属权限（API 34+ 与 FOREGROUND_SERVICE_SPECIAL_USE 类型配对；
+         安装时授予的 normal 权限）。选 specialUse 而不选 dataSync 的理由写在 SessionService
+         注释里——dataSync 在 Android 15+ 有每天 6 小时累计上限，长会话会被系统掐断。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- 唤醒锁（E-054，2026-10-09 补）：SessionService 全程 `PowerManager.newWakeLock(
          PARTIAL_WAKE_LOCK, "zhengdao:session")` 并 acquire()，但**这条权限一直没声明**
          ⇒ acquire() 抛 SecurityException → 被 `runCatching { … }` 静默吞掉 → 保活锁
@@ -176,10 +185,23 @@
             android:theme="@style/Theme.Zhengdao"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
 
-        <!-- M2 保活锚点：targetSdk 28 无需 foregroundServiceType -->
+        <!-- M2 保活锚点：Debian 会话的前台服务（前台通知 + WakeLock + 30 秒软监控）。
+             foregroundServiceType（API 34+ 起；targetSdk 34+ 不声明就抛
+             MissingForegroundServiceTypeException）= **specialUse**：
+             · 不选 dataSync —— Android 15+ 起该类型每天累计 6 小时后系统会 onTimeout 停掉
+               服务，长会话必死（本服务的用户场景恰恰是几小时到几天的终端会话）；
+             · 也不属 connectedDevice / mediaProcessing 等任何既有类型 ⇒ 落在「其他类型
+               覆盖不到」的 specialUse（同类免 root Linux 环境产品的同一选择）。
+             subtype 属性是 API 34+ 对 specialUse 的强制项（Play 政策要求说明为何其他类型
+               不合适；本项目走 GitHub 直发不受政策约束，但仍按规范写全）。 -->
         <service
             android:name=".terminal.SessionService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Long-running terminal session keepalive: a user-driven Debian shell session must survive leaving the terminal UI, and no other FGS type covers a long shell session" />
+        </service>
     </application>
 
 </manifest>

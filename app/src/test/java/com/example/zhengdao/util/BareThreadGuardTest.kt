@@ -106,19 +106,19 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:200",                 // zd-knowledge-base-auto
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "KnowledgeBaseSummarizerRunner.kt:110", // zd-kb-summarize
-            "MainActivity.kt:235",                  // zd-update-check（2026-10-15 浏览器桥加 7 行 import 后 +7）
+            "MainActivity.kt:242",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:207",           // zd-hermes-repair
             "SettingsEnvActivity.kt:261",           // zd-env-check
             "SettingsEnvActivity.kt:561",           // zd-env-repair（第⑯刀 R-29 +4，本次回填）
             "SettingsEnvActivity.kt:656",           // zd-env-update（同上 +4）
-            "TerminalActivity.kt:80",               // zd-paste（第㉚刀 +1：ComponentCaller import）
-            "TerminalActivity.kt:599",              // zd-session-start（第㉚刀 +3：onNewIntent 签名适配）
-            "TerminalActivity.kt:814",              // zd-net-probe（第㉚刀 +3）
-            "TerminalActivity.kt:1565",             // zd-install-saf（⑯ +12 / ㉚ +3）
-            "TerminalActivity.kt:1625",             // zd-install-cache（同上 +3）
-            "TerminalActivity.kt:1711",             // zd-install-download（同上 +3）
+            "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
+            "TerminalActivity.kt:622",              // zd-session-start（㉕ 边到边 +23 / ㉚ onNewIntent +3）
+            "TerminalActivity.kt:837",              // zd-net-probe（同上，㉕ +23 / ㉚ +3）
+            "TerminalActivity.kt:1588",             // zd-install-saf（同上）
+            "TerminalActivity.kt:1648",             // zd-install-cache（同上）
+            "TerminalActivity.kt:1734",             // zd-install-download（同上）
             "ZhengdaoApp.kt:80",                    // zhengdao-keepalive-archive（第⑲刀 +3 行后平移）
             "ZhengdaoApp.kt:130",                   // zd-auto-clean（同上）
         )
