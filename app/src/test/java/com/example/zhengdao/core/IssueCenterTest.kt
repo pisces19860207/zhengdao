@@ -3,6 +3,7 @@ package com.example.zhengdao.core
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -25,6 +26,16 @@ class IssueCenterTest {
 
     @After
     fun tearDown() = IssueCenter.clear()
+
+    /** 读仓库里的源码文件（相对 app/ 或仓库根，两处都试）——给源码形态门禁用。 */
+    private fun source(rel: String): String {
+        val roots = listOf(
+            java.io.File("app/src/main/$rel"),
+            java.io.File("src/main/$rel"),
+        )
+        val f = roots.firstOrNull { it.isFile } ?: error("找不到源码：$rel（cwd=${java.io.File("").absolutePath}）")
+        return f.readText()
+    }
 
     @Test
     fun `上报的问题带时间戳进快照`() {
@@ -135,8 +146,34 @@ class IssueCenterTest {
         )
         assertEquals("去路标识必须唯一：重复 = 首页 when 分支必然走错一条", all.size, all.toSet().size)
         assertTrue(
-            "「去设置看记录」与「看日志」是两条不同的去路，不能共用标识",
+            "「看记录」与「看日志」是两条不同的去路，不能共用标识",
             IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS != IssueCenter.ACTION_VIEW_LOGS,
+        )
+    }
+
+    /**
+     * 2026-10-15 文案校准（原 §B-补-42 销账）：按钮 label 说「看记录」，
+     * 而它**直达** `KeepaliveLogActivity` 这个二级页 —— 不许再叫「去设置看记录」。
+     *
+     * 为什么值得钉：旧 label 让用户以为要先进设置页再自己找，而实际是一步到位；
+     * 这类「文案与行为不一致」不会让任何测试变红，只会让用户多点一次、多点一次困惑。
+     * 判据钉**实质**（label 字面 + 首页必须有对应分支），不钉局部变量名（见 ERRATA E-133）。
+     */
+    @Test
+    fun `保活记录按钮文案与直达行为一致_不冒充设置页去路`() {
+        val archive = source("java/com/example/zhengdao/keepalive/KeepaliveArchive.kt")
+        assertTrue(
+            "actionLabel 必须是「看记录」（一步直达二级页，不经设置页）",
+            archive.contains("actionLabel = \"看记录\""),
+        )
+        assertTrue(
+            "detail 不许再说「留档在设置页」——它直达「保活记录」页",
+            !archive.contains("留档在设置页"),
+        )
+        val home = source("java/com/example/zhengdao/ui/HomeScreen.kt")
+        assertTrue(
+            "首页 when 分支必须接住这条 actionId，否则按钮一点就落进 else=打开设置首页",
+            home.contains("IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS -> openKeepaliveLogs()"),
         )
     }
 }

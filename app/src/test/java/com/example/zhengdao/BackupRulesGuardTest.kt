@@ -158,9 +158,47 @@ class BackupRulesGuardTest {
         )
     }
 
+    /**
+     * 浏览器桥 token 不许跟着备份/迁移走（ERRATA E-129 的坑，2026-10-15 补钉）。
+     *
+     * 上一个骨架（`bridge/BridgeToken.kt` 的前身）把随机口令明文存进 sharedpref，
+     * 而两份备份规则都没排 `domain="sharedpref"` ⇒ 口令跟着云备份与近场迁移走。
+     * 现在 token 用独立 prefs 文件 `bridge_token.xml`，三条路（全量备份 / 云备份 /
+     * 设备迁移）都按**文件名**排除。
+     *
+     * 为什么同时钉"不许排掉整个 sharedpref domain"：真有人图省事写
+     * `<exclude domain="sharedpref" />`，token 是挡住了，但用户的全部设置项
+     * （工作区模式、主题、各类开关）也一起不进备份了 —— 那是拿一个缺陷换另一个缺陷。
+     * 判据：**必须有精确 path 的那条**，且**不能有没有 path 的整域排除**。
+     */
     @Test
-    fun `两份规则都还挂在 manifest 上`() {
-        assertTrue(
+    fun `桥 token 三条路都按名排除_且不许顺手排掉整个 sharedpref 域`() {
+        val tokenPath = "bridge_token.xml"
+
+        val full = parseRules("src/main/res/xml/backup_rules.xml").documentElement
+        assertHasExclude(full, "全量备份（backup_rules.xml）", "sharedpref", tokenPath)
+
+        val root = parseRules("src/main/res/xml/data_extraction_rules.xml").documentElement
+        val cloud = uniqueChild(root, "cloud-backup", "data_extraction_rules.xml")
+        assertHasExclude(cloud, "云备份（data_extraction_rules.xml）", "sharedpref", tokenPath)
+        val transfer = uniqueChild(root, "device-transfer", "data_extraction_rules.xml")
+        assertHasExclude(transfer, "设备迁移（data_extraction_rules.xml）", "sharedpref", tokenPath)
+
+        // 三处都不许出现"没有 path 的整域排除"（会把设置项一起挡掉）
+        listOf(full, cloud, transfer).forEach { parent ->
+            val whole = children(parent, "exclude").any {
+                it.getAttribute("domain") == "sharedpref" && it.getAttribute("path").isBlank()
+            }
+            assertFalse(
+                "出现了没有 path 的 <exclude domain=\"sharedpref\" /> —— 那会把用户设置项" +
+                    "一起挡在备份之外（用一个缺陷换另一个缺陷）。只按文件名排 bridge_token.xml。",
+                whole,
+            )
+        }
+    }
+
+    @Test
+    fun `两份规则都还挂在 manifest 上`() {        assertTrue(
             "AndroidManifest 少了 android:fullBackupContent=@xml/backup_rules",
             manifest.contains("""android:fullBackupContent="@xml/backup_rules""""),
         )

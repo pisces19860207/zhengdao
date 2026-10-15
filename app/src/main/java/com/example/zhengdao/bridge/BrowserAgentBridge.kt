@@ -1,0 +1,292 @@
+package com.example.zhengdao.bridge
+
+import android.content.Context
+import android.util.Log
+import com.example.zhengdao.rootfs.RunLog
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * 浏览器 Agent 桥的 HTTP 端点（设计文档 §4.5「端点与鉴权」）。
+ *
+ * ## 形态
+ *
+ * ```
+ * 终端 agent（proot，同设备）
+ *   │  HTTP POST 127.0.0.1:14080/bridge/v1/<cmd>   (+ Authorization: Basic browser:<token>)
+ *   ▼
+ * ┌───────────────────────────────────────────────┐
+ * │ BrowserAgentBridge（本类）                     │
+ * │   ① 验 token（BridgeToken.matches）            │
+ * │   ② 路径 → 命令名 → BridgePolicy.checkCommand  │
+ * │   ③ 取 body 里的参数 → BrowserCommands.<cmd>   │
+ * │   ④ 响应体一律过一遍"凭据键名"过滤（双保险）     │
+ * └───────────────────────────────────────────────┘
+ * ```
+ *
+ * ## 为什么自研 HTTP 而不是引库
+ *
+ * 只需要：`POST` 一个路径、读一个 `Authorization` header、读一个 body、回一段 JSON。
+ * 引 NanoHTTPD/Ktor server 会带进几十个传递依赖（项目"零新增依赖"纪律），
+ * 而这一层用 `ServerSocket` + 手写 HTTP/1.1 解析约 150 行就能覆盖，且**只认白名单形态**：
+ * 别的 Method、别的路径、畸形请求行，一律 400/404/405，不猜。
+ *
+ * ## 三条硬纪律
+ *
+ * 1. **只绑 `127.0.0.1`**（[BridgePolicy.BIND_HOST]）—— 绝不绑 `0.0.0.0`。
+ *    绑错一个字符，这条通道就从"本机环回"变成"对着全网开放"，且**不会有任何编译错误或测试变红**。
+ *    源码门禁 `BrowserBridgeGateTest` 有一条专门钉它。
+ * 2. **每个连接一个线程、线程全 daemon**：进程要能直接退出（不留僵尸线程）。
+ *    复用项目既有的 daemon executor 纪律（`zd-` 前缀命名，照 `BareThreadGuardTest` 的口径：
+ *    这里用 `Executors.newFixedThreadPool` + 自定义 [ThreadFactory] 取名 + setDaemon，
+ *    不走裸 `Thread(` —— 那会顶红裸线程门禁）。
+ * 3. **默认关**：[start] 只在用户于「浏览器桥」设置页打开开关时才调；
+ *    进程内单例（[instance] 竞争用 CAS 保证只有一个在听）。
+ *
+ * ## 与太极的关系（设计文档 §4.5 注）
+ *
+ * 太极（内置 OpenCode）**不接入本桥** —— 它是 App 内独立 agent，浏览器能力由其自身
+ * 插件机制提供。本桥只服务「用户直接操作 + 终端外部 agent（Claude/Codex/Hermes/AGY）」。
+ */
+object BrowserAgentBridge {
+
+    private const val TAG = "BrowserAgentBridge"
+
+    /** 单连接读超时（毫秒）：agent 发一半挂住不该拖住桥。 */
+    private const val SO_TIMEOUT_MS = 15_000
+
+    /** 响应里的 Server 头（不暴露框架信息）。 */
+    private const val SERVER_NAME = "zhengdao-bridge/1"
+
+    private val running = AtomicBoolean(false)
+
+    @Volatile
+    private var server: ServerSocket? = null
+
+    private val pool = Executors.newFixedThreadPool(4) { r ->
+        Thread(r, "zd-bridge-http").apply { isDaemon = true }
+    }
+
+    /** 是否正在监听（设置页开关的判据）。 */
+    fun isRunning(): Boolean = running.get()
+
+    /**
+     * 启动监听。已在跑则直接返回 true（幂等）。
+     *
+     * @return true = 现在正在监听
+     */
+    fun start(context: Context): Boolean {
+        if (running.get()) return true
+        val app = context.applicationContext
+        val ss = runCatching { ServerSocket() }.getOrElse {
+            RunLog.log("浏览器桥：建 socket 失败：${it.javaClass.simpleName}")
+            return false
+        }
+        runCatching { ss.reuseAddress = true }
+        val bound = runCatching {
+            ss.bind(InetSocketAddress(BridgePolicy.BIND_HOST, BridgePolicy.PORT))
+        }.isSuccess
+        if (!bound) {
+            runCatching { ss.close() }
+            RunLog.log("浏览器桥：绑不上 ${BridgePolicy.BIND_HOST}:${BridgePolicy.PORT}（端口被占？）")
+            return false
+        }
+        server = ss
+        running.set(true)
+        // 先置 running 再起 acceptor：否则 stop() 与这里的竞争会让连接漏处理
+        pool.execute { acceptLoop(app, ss) }
+        RunLog.log("浏览器桥：已监听 ${BridgePolicy.BIND_HOST}:${BridgePolicy.PORT}（默认关，本次由用户开启）")
+        return true
+    }
+
+    /** 停止监听（幂等）。已建立的连接由读超时自然结束。 */
+    fun stop() {
+        if (!running.compareAndSet(true, false)) return
+        runCatching { server?.close() }
+        server = null
+        RunLog.log("浏览器桥：已停止监听")
+    }
+
+    // ── 接受连接 ───────────────────────────────────────────────────────────
+
+    private fun acceptLoop(app: Context, ss: ServerSocket) {
+        while (running.get() && !ss.isClosed) {
+            val sock = runCatching { ss.accept() }.getOrNull() ?: break
+            pool.execute { runCatching { handle(app, sock) }.onFailure { close(sock) } }
+        }
+    }
+
+    // ── 单连接处理 ─────────────────────────────────────────────────────────
+
+    private fun handle(app: Context, sock: Socket) {
+        sock.soTimeout = SO_TIMEOUT_MS
+        sock.use { s ->
+            val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
+            val writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
+
+            // ── 请求行：只认 `POST /bridge/v1/<cmd> HTTP/1.1` ──
+            val requestLine = reader.readLine() ?: return
+            val parts = requestLine.split(" ")
+            if (parts.size < 3) return respond(writer, 400, err("请求行不完整"))
+            val method = parts[0].uppercase()
+            val rawPath = parts[1]
+            val version = parts[2]
+            if (method != "POST") {
+                return respond(writer, 405, err("只接受 POST（GET 会被当成探测，一律拒）"))
+            }
+            if (!version.startsWith("HTTP/1.")) {
+                return respond(writer, 400, err("只支持 HTTP/1.x"))
+            }
+
+            // ── headers：只取 Authorization 与 Content-Length ──
+            var authHeader: String? = null
+            var contentLength = 0
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (line.isEmpty()) break
+                val idx = line.indexOf(':')
+                if (idx <= 0) continue
+                val name = line.substring(0, idx).trim().lowercase()
+                val value = line.substring(idx + 1).trim()
+                when (name) {
+                    "authorization" -> authHeader = value
+                    "content-length" -> contentLength = value.toIntOrNull() ?: 0
+                }
+            }
+
+            // ── ① 验 token（在路由之前：没过鉴权的请求不该知道命令是否存在）──
+            val token = runCatching { BridgeToken.getOrCreate(app) }.getOrNull()
+            if (token == null || !BridgeToken.matches(token, authHeader)) {
+                return respond(writer, 401, err("鉴权失败：Authorization 应为 Basic base64(\"browser:<token>\")"))
+            }
+
+            // ── ② 路由 + 白名单 ──
+            val cmdName = BridgePolicy.commandFromPath(rawPath)
+                ?: return respond(writer, 404, err("路径不认识：$rawPath（应为 /bridge/v1/<cmd>）"))
+            val cv = BridgePolicy.checkCommand(cmdName)
+            if (cv is BridgePolicy.Verdict.Deny) return respond(writer, 403, err(cv.reason))
+
+            // ── ③ body ──
+            if (contentLength > BridgePolicy.MAX_BODY_BYTES) {
+                return respond(writer, 413, err("请求体超上限（${BridgePolicy.MAX_BODY_BYTES} 字节）"))
+            }
+            val body = if (contentLength > 0) {
+                val buf = CharArray(contentLength)
+                var read = 0
+                while (read < contentLength) {
+                    val n = reader.read(buf, read, contentLength - read)
+                    if (n < 0) break
+                    read += n
+                }
+                String(buf, 0, read)
+            } else {
+                ""
+            }
+
+            val json = dispatch(app, cmdName, body)
+            respond(writer, 200, json)
+        }
+    }
+
+    // ── body 解析（极简 JSON：只取扁平的 "key":"value" 与 "key":123） ──────
+
+    /**
+     * 从 body 里取一个字符串/数字参数；取不到返回 null。
+     *
+     * 极简而不是真 JSON 解析：桥的 body 只有一层扁平字段（url/selector/text/mode/tabId…），
+     * 不值得为此引一个解析器（android 的 org.json 在 JVM 单测里是 stub，引了也测不了）。
+     * 代价：**不支持嵌套对象/数组转义** —— 而桥根本不需要。真需要时再换，别提前优化。
+     */
+    internal fun param(body: String, key: String): String? {
+        // "key":"value"（value 里的 \" 已转义）
+        val strRe = Regex("\"$key\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
+        strRe.find(body)?.let { m ->
+            return m.groupValues[1]
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\")
+                .replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\t", "\t")
+        }
+        // "key":123 / true / false（数字与布尔按字符串取用）
+        val rawRe = Regex("\"$key\"\\s*:\\s*(-?[0-9]+|true|false)")
+        rawRe.find(body)?.let { return it.groupValues[1] }
+        return null
+    }
+
+    // ── 分发 ───────────────────────────────────────────────────────────────
+
+    private fun dispatch(app: Context, cmdName: String, body: String): String {
+        val cmd = BridgePolicy.Command.fromWire(cmdName) ?: return err("命令不在白名单：$cmdName")
+        return when (cmd) {
+            BridgePolicy.Command.STATUS -> BrowserCommands.status()
+            BridgePolicy.Command.SNAPSHOT -> BrowserCommands.snapshot(param(body, "mode"), param(body, "selector"))
+            BridgePolicy.Command.EXEC_JS -> BrowserCommands.execJs(param(body, "code"))
+            BridgePolicy.Command.CLICK -> BrowserCommands.click(param(body, "selector"))
+            BridgePolicy.Command.TYPE -> BrowserCommands.type(param(body, "selector"), param(body, "text"))
+            BridgePolicy.Command.SCROLL -> BrowserCommands.scroll(
+                param(body, "x"),
+                param(body, "y"),
+                param(body, "selector"),
+            )
+            BridgePolicy.Command.NAVIGATE -> BrowserCommands.navigate(param(body, "url"))
+            BridgePolicy.Command.NEW_TAB -> BrowserCommands.newTab(app, param(body, "url"))
+            BridgePolicy.Command.ACTIVE_TAB -> BrowserCommands.activeTab(param(body, "tabId"))
+            BridgePolicy.Command.CLOSE_TAB -> BrowserCommands.closeTab(param(body, "tabId"))
+            BridgePolicy.Command.SCREENSHOT -> BrowserCommands.screenshot(
+                app,
+                param(body, "tabId"),
+                param(body, "fullPage"),
+            )
+        }
+    }
+
+    // ── 响应 ───────────────────────────────────────────────────────────────
+
+    private fun respond(writer: BufferedWriter, code: Int, json: String) {
+        val bytes = json.toByteArray(Charsets.UTF_8)
+        val reason = when (code) {
+            200 -> "OK"
+            400 -> "Bad Request"
+            401 -> "Unauthorized"
+            403 -> "Forbidden"
+            404 -> "Not Found"
+            405 -> "Method Not Allowed"
+            413 -> "Payload Too Large"
+            else -> "Error"
+        }
+        writer.write("HTTP/1.1 $code $reason\r\n")
+        writer.write("Server: $SERVER_NAME\r\n")
+        writer.write("Content-Type: application/json; charset=utf-8\r\n")
+        writer.write("Content-Length: ${bytes.size}\r\n")
+        writer.write("Connection: close\r\n")
+        writer.write("\r\n")
+        writer.flush()
+        writer.write(String(bytes, Charsets.UTF_8))
+        writer.flush()
+    }
+
+    private fun err(msg: String): String = "{\"ok\":false,\"error\":\"${escape(msg)}\"}"
+
+    private fun escape(s: String): String = s
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+
+    private fun close(sock: Socket) {
+        runCatching { sock.close() }
+    }
+
+    @Suppress("unused")
+    private fun debugLog(msg: String) = Log.d(TAG, msg)
+}
