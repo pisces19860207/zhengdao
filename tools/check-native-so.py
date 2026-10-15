@@ -13,6 +13,12 @@
 
 检查项
     1. jniLibs/<abi>/*.so 的每个 PT_LOAD 段 p_align >= 0x4000（16KB 页设备可加载）
+       —— 例外：PROOT_PINNED 里的 proot 四件套（第⑳刀，E-136）。它们是**被 execve
+       的独立 ELF 程序**、不是被 loadLibrary 的库，且当前 Termux 官方发行二进制按
+       4KB 页构建（换 16KB 对齐构建属产品化待办，见 docs/ERRATA.md E-136）。作为
+       交换，四件套每个文件在这里做 **sha256 完整性基线**（值与
+       terminal/ProotBinaries.kt / PROVENANCE.md 三处同源一致）——换版本/被篡改
+       立刻红。清单之外新增 .so 一律仍按 16KB 硬判（fail-closed）。
     2. libzhengdao_core.so 必须导出 CoreNative.kt 里每个 `external fun` 的 JNI 符号
        （符号名现读 CoreNative.kt 推导，将来加 native 方法会自动纳入门禁）
     3. 仅供信息：.symtab 是否存在及大小（影响入库体积，不影响 APK —— 见 E-045）
@@ -26,6 +32,7 @@
 只依赖标准库（ELF 头自己解析）。CI 里由 .github/workflows/ci.yml 调用，失败即红。
 """
 
+import hashlib
 import re
 import struct
 import sys
@@ -43,6 +50,20 @@ SHT_DYNSYM = 11
 CORE_KT_REL = "app/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
 JNI_CLASS = "Java_com_example_zhengdao_rust_CoreNative_"
 CORE_SO = "libzhengdao_core.so"
+
+# 第⑳刀（E-136）：proot 四件套的 4KB 对齐例外 + 完整性基线。
+# 这四个 .so 是 Termux 官方发行二进制（原样聚合分发，GPL 合规口径见 PROVENANCE.md），
+# 由 proot 以 PROOT_LOADER 方式装载/被宿主 execve，**不走 bionic loadLibrary**；
+# 当前官方构建按 4KB 页对齐 ⇒ 在 16KB 页设备上不可用（记录为产品化待办，与交接单
+# §七同口径：我们手上没有 16KB 页设备，证不了；换 Termux 16KB 构建前先钉死哈希）。
+# 哈希值与 terminal/ProotBinaries.kt、PROVENANCE.md 三处同源一致；任何一处换版本
+# 都必须三处同步 + 重新登记。
+PROOT_PINNED = {
+    "libproot.so": "1545b85b312505db6eb6908ff8b2ded0a77a3bd689c50ae85aa7c1d8445dd717",
+    "libproot-loader.so": "cbdef0e652c2b78af25d867e1719fdebbb0915e25aae2dd35b3b5c1835f6b551",
+    "libtalloc.so": "742b438c4d09e276985a61d44164c9de207b6d8cc268f3018cb3001961bcb309",
+    "libandroid-shmem.so": "84475798e07c8174dbbfaec70a827fdb02f19ffa69a589380c13e7507fd0e731",
+}
 
 blockers = []
 infos = []
@@ -189,14 +210,42 @@ def main(argv):
         loads = elf.loads()
         if not loads:
             blocker(f"{rel}: 没有 PT_LOAD 段？")
+
+        is_proot_pinned = so.name in PROOT_PINNED
         for align, filesz, _flags in loads:
             if align < PAGE_16K:
+                if is_proot_pinned:
+                    # E-136 例外（登记在案）：proot 四件套按 4KB 页构建，是被 execve/mmap
+                    # 的独立程序而非 loadLibrary 的库；16KB 页设备风险见 docs/ERRATA.md
+                    # E-136。交换条件 = 下面的 sha256 完整性基线（换版本必红）。
+                    info(
+                        f"{rel}: PT_LOAD p_align=0x{align:x}（4KB）—— PROOT_PINNED 登记例外"
+                        "（exec 型程序，非 loadLibrary；16KB 页设备风险见 E-136）"
+                    )
+                    continue
                 blocker(
                     f"{rel}: 有 PT_LOAD 段 p_align=0x{align:x}（{align}）< 0x4000 —— "
                     "16KB 页设备上 loadLibrary 会失败并静默退回 Java"
                 )
         aligs = ",".join(f"0x{a:x}" for a, _s, _f in loads)
         info(f"{rel}: {len(loads)} 个 PT_LOAD，p_align = {aligs}；体积 {so.stat().st_size} B")
+
+        if is_proot_pinned:
+            # 完整性基线（第⑳刀）：四个 proot .so 的 sha256 必须等于登记值——
+            # 换 Termux 版本/镜像投毒/手滑拷错文件，这里立刻红。
+            h = hashlib.sha256()
+            with open(so, "rb") as f:
+                for chunk in iter(lambda: f.read(256 * 1024), b""):
+                    h.update(chunk)
+            actual = h.hexdigest()
+            if actual != PROOT_PINNED[so.name]:
+                blocker(
+                    f"{rel}: sha256 不匹配登记值 —— 实际 {actual}，"
+                    f"应为 {PROOT_PINNED[so.name]}（换版本需同步 ProotBinaries.kt / "
+                    "PROVENANCE.md / 本脚本三处）"
+                )
+            else:
+                info(f"{rel}: sha256 与登记值一致（E-136 完整性基线）")
 
         symtab = elf.has_symtab()
         if symtab:
