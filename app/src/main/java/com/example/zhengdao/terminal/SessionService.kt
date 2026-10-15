@@ -122,6 +122,12 @@ class SessionService : Service() {
     /** 保活开关：主线程写（设置里拨动）、巡检线程读（D-3 挪线程后跨线程）。 */
     @Volatile
     private var keepAlive = true
+
+    /**
+     * 第⑲刀（issue #14 P1-6，方案③）：任务是否被划过。
+     * 只服务 [onDestroy] 的兜底判断 —— 见 [onTaskRemoved] 与 [stopOcServe]。
+     */
+    private var taskRemoved = false
     /** E-054：只在**首次**成功持锁时记一行，避免把"补取成功"也刷成噪声。 */
     private var loggedWakeLockHeld = false
     /** E-054：丢锁累计次数（首次与每 10 次各记一条，见 [renewWakeLockIfLost]）。 */
@@ -211,8 +217,41 @@ class SessionService : Service() {
         monitorThread.quitSafely()
         releaseWakeLock()
         running = false
+        // 第⑲刀（issue #14 P1-6，方案③）：兜一层 —— 只在「任务被划掉」这条销毁原因下收
+        // OC serve。用户主动「停止会话」（ACTION_STOP_SESSION → stopSelf、SessionManager.kill
+        // → SessionService.stop）同样会走到 onDestroy，那时 taskRemoved=false ⇒ 不动 serve
+        //（否则就违反了方案③的「结束会话不关」）。见 stopOcServe()。
+        if (taskRemoved) stopOcServe("服务销毁（任务已划掉）")
         RunLog.log("前台服务已停止")
         super.onDestroy()
+    }
+
+    /**
+     * 第⑲刀（issue #14 P1-6，方案③）：**任务被划掉 ⇒ App 真的走了 ⇒ 收 OC serve**。
+     *
+     * 为什么这里也要收：本服务是前台服务 + `START_STICKY`，manifest 未设 `stopWithTask`，
+     * 所以从最近任务划掉后**服务自身仍会存活**（保活锚点还在）；但划掉任务正是用户
+     * 「不要了」的最可靠信号，必须显式收 serve，否则 serve 会跟着服务一直挂。
+     *
+     * 与 [onDestroy] 的守卫**互为兜底**：个别 ROM 只给 onDestroy、不给本回调。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        taskRemoved = true
+        stopOcServe("任务被划掉")
+        super.onTaskRemoved(rootIntent)
+    }
+
+    /**
+     * 收 OC serve（`oc/` 目录是禁区 ⇒ 只调它的公开出口 `OcManager.stopServe()`，不改它）。
+     * 幂等：serve 没在跑时是空操作（`serveProcess?.destroy()` 空安全 + `/proc` 扫描命中不到
+     * 即无操作），所以本回调重复触发无害。失败留痕不抛（服务销毁路径上不能再崩）。
+     */
+    private fun stopOcServe(reason: String) {
+        runCatching { com.example.zhengdao.oc.OcManager.stopServe() }
+            .onSuccess { RunLog.log("太极: serve 已停（$reason）") }
+            .onFailure {
+                RunLog.log("太极: serve 停机失败（$reason）：${it.javaClass.simpleName}: ${it.message}")
+            }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
