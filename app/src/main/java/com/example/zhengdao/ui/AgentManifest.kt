@@ -2,7 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 //
 // 依据的公开标准：Ed25519 签名（RFC 8032，java.security.Signature "Ed25519"，
-// Android API 33+ Conscrypt 内置；本项目 minSdk 35）。
+// Android API 33+ Conscrypt 内置；本项目 minSdk 36）。
 package com.example.zhengdao.ui
 
 import android.content.Context
