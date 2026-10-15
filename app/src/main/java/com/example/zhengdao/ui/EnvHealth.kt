@@ -13,6 +13,7 @@ import com.example.zhengdao.rust.CoreNative
 import com.example.zhengdao.terminal.CacheCleaner
 import com.example.zhengdao.terminal.EnvSelfHeal
 import com.example.zhengdao.terminal.HermesEnv
+import com.example.zhengdao.terminal.ProotBinaries
 import com.example.zhengdao.terminal.ResMonitor
 import com.example.zhengdao.terminal.StorageAudit
 import kotlinx.coroutines.Dispatchers
@@ -279,17 +280,19 @@ object EnvHealth {
     // ── 各项判定（条件与 EnvSelfHeal 的重写条件同源，红=可修绿）──
 
     private fun prootCheck(ctx: Context, res: Resources?): Check {
-        val proot = File(ctx.filesDir, "termux-proot/proot")
-        val loader = File(ctx.filesDir, "termux-proot/loader")
+        // 第⑳刀：四件套随 APK jniLibs 内置（nativeLibraryDir），不再释放到数据目录
+        val proot = ProotBinaries.prootSo(ctx)
+        val loader = ProotBinaries.loaderSo(ctx)
         val ok = proot.isFile && proot.canExecute() && loader.isFile
         return Check(
             id = "proot", label = "proot 就绪", ok = ok,
             detail = when {
                 ok -> res?.getString(R.string.health_proot_ok) ?: "proot + loader 就位"
-                // 每次启动都会按 SHA256 从内置资源重放（[ProotLauncher]），所以这里还缺
-                // 说明连重放都没成功——去路给「修复环境」，别再让用户自己找。
+                // 每次启动都会按 SHA256 核验 jniLibs 里的四件套（[ProotLauncher]），
+                // 所以这里还缺说明 APK/安装本身有问题——去路给「修复环境」+ 重装，
+                // 别再让用户自己找。
                 else -> res?.getString(R.string.health_proot_missing)
-                    ?: "proot 或 loader 缺失（启动时会自动重放，仍缺就用「修复环境」重解压）"
+                    ?: "proot 或 loader 缺失（随 APK 内置；缺失属安装异常，可用「修复环境」排查或重装 App）"
             },
             route = if (ok) null else GUIDED_ROUTES["proot"],
         )

@@ -654,7 +654,7 @@
     <string name="health_label_native">Native acceleration</string>
     <string name="health_label_resource">Resource usage</string>
     <string name="health_proot_ok">proot + loader in place</string>
-    <string name="health_proot_missing">proot or loader missing (it\'s replayed automatically on each launch; if still missing, use \"Repair environment\" to re-extract)</string>
+    <string name="health_proot_missing">proot or loader missing (bundled in the APK; missing means a broken install - try \"Repair environment\" or reinstall)</string>
     <string name="health_rootfs_ok">Debian system layer intact</string>
     <string name="health_rootfs_broken">System layer files missing — use \"Repair environment\" to re-extract (about 30 seconds)</string>
     <string name="health_rootfs_missing">Runtime not installed or installation incomplete</string>
