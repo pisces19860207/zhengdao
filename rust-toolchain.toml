@@ -1,0 +1,17 @@
+# rustup 工具链钉版（第㊶刀，2026-10-15；㉗② 方案 A′ 第 1 步）
+#
+# 为什么要有这个文件：
+#   tools/so-provenance.json 的 build_inputs 里记着「入库 .so 是被哪把 rustc 编出来的」
+#   （rustc 1.99.0 / commit b940084d7eb6a299eb4bfeb8e34901bc051e7ac4），但**只记录、不强制**：
+#   runner 上装的是哪把就用哪把，换了编译器的提交照样全绿。
+#   加了这个文件，rustup 会在本目录下自动切到/安装 1.99.0，并把 Android 目标一并装上
+#   （targets 里的项 = `rustup target add`，CI 上就不必再单独装 aarch64-linux-android）。
+#
+# 值一律取自 tools/so-provenance.json 的 build_inputs（单一真源）：
+#   channel = build_inputs.rustc.version
+#   targets = [build_inputs.target_triple]
+# 换版本时两处一起改，并由 tools/rebuild-and-compare.py 的 fail-closed 校验盯着。
+
+[toolchain]
+channel = "1.99.0"
+targets = ["aarch64-linux-android"]
