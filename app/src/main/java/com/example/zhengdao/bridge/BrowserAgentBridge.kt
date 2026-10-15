@@ -120,8 +120,58 @@ object BrowserAgentBridge {
     private fun acceptLoop(app: Context, ss: ServerSocket) {
         while (running.get() && !ss.isClosed) {
             val sock = runCatching { ss.accept() }.getOrNull() ?: break
-            pool.execute { runCatching { handle(app, sock) }.onFailure { close(sock) } }
+            // §B 61（2026-10-15）：handle 抛任何异常都不许只 close(sock) —— 那是观测黑洞，
+            // agent 只看到 TCP 零字节关闭（curl RC=52），连异常类型都没留下。
+            // 契约（第㉓刀）：每条命令必须回 JSON，失败也要回。见 serveConnection。
+            pool.execute { serveConnection(app, sock) }
         }
+    }
+
+    /**
+     * 每条连接的**契约外壳**（§B 61）：[handle] 正常返回 = 响应已写出；
+     * 抛任何异常 = 尽力回一条 500 JSON 错误再关 socket，并把异常类型/消息记入 RunLog。
+     *
+     * 为什么拆出 [serveGuarded]：JVM 单测没有 Context，契约测试直接喂 [serveGuarded]
+     * 一个会抛异常的假 handle（负例自证：必须收到 JSON 而非断连）。
+     */
+    internal fun serveConnection(app: Context, sock: Socket) {
+        serveGuarded(sock) { handle(app, sock) }
+    }
+
+    /** [serveConnection] 的无 Context 内核（单测入口）。无论成败，收尾必关 socket。 */
+    internal fun serveGuarded(sock: Socket, block: () -> Unit) {
+        val t0 = System.nanoTime()
+        try {
+            block()
+            logSafely("浏览器桥：连接处理完成（${elapsedMs(t0)}ms，thread=${Thread.currentThread().name}）")
+        } catch (t: Throwable) {
+            // RunLog 落日志必须先于回错误响应：日志是最后防线（连 JSON 都写不出去时也得有它）
+            logSafely(
+                "浏览器桥：连接处理异常（${t.javaClass.name}：${t.message}，" +
+                    "thread=${Thread.currentThread().name}，${elapsedMs(t0)}ms）——尽力回 JSON 错误再关闭",
+            )
+            runCatching {
+                respondOn(sock, 500, err("桥内部错误：${t.javaClass.simpleName}：${t.message ?: "无消息"}"))
+            }.onFailure { writeFailure ->
+                logSafely(
+                    "浏览器桥：错误响应也写不出去（${writeFailure.javaClass.name}：${writeFailure.message}）" +
+                        "——对端大概率已断开，仅留本日志",
+                )
+            }
+        } finally {
+            close(sock)
+        }
+    }
+
+    /** 从 accept 起算的已耗毫秒（JVM/真机通用，不用 SystemClock）。 */
+    private fun elapsedMs(t0Nanos: Long): Long = (System.nanoTime() - t0Nanos) / 1_000_000
+
+    /**
+     * 日志兜底：[RunLog.log] 自身永不抛（生产），但 JVM 单测里未初始化的 RunLog 会走到
+     * android.util.Log 桩——契约外壳的**任何一步都不许因日志而二次炸**，包一层 runCatching。
+     */
+    private fun logSafely(line: String) {
+        runCatching { RunLog.log(line) }
     }
 
     // ── 单连接处理 ─────────────────────────────────────────────────────────
@@ -133,7 +183,13 @@ object BrowserAgentBridge {
             val writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
 
             // ── 请求行：只认 `POST /bridge/v1/<cmd> HTTP/1.1` ──
-            val requestLine = reader.readLine() ?: return
+            val requestLine = reader.readLine()
+            if (requestLine == null) {
+                // §B 61：对端没发请求行就断了——这是一条「不回包就关闭」的合法路径，
+                // 但必须留痕，否则它和「异常吞掉」在观测上无法区分。
+                logSafely("浏览器桥：agent 在请求行前就断开（EOF，无响应关闭）")
+                return
+            }
             val parts = requestLine.split(" ")
             if (parts.size < 3) return respond(writer, 400, err("请求行不完整"))
             val method = parts[0].uppercase()
@@ -145,6 +201,10 @@ object BrowserAgentBridge {
             if (!version.startsWith("HTTP/1.")) {
                 return respond(writer, 400, err("只支持 HTTP/1.x"))
             }
+            // §B 61：每条请求落一行（含线程名），与 serveGuarded 的完成/异常行、
+            // BrowserTabManager 的 before/after-webview 探针按时间轴对齐——
+            // 上次 newTab 偶发零字节断连（RC=52）就是因为没有这条链路日志。
+            logSafely("浏览器桥：<- ${requestLine.take(120)}（thread=${Thread.currentThread().name}）")
 
             // ── headers：只取 Authorization 与 Content-Length ──
             var authHeader: String? = null
@@ -251,6 +311,12 @@ object BrowserAgentBridge {
 
     // ── 响应 ───────────────────────────────────────────────────────────────
 
+    /** 直接对 socket 写响应（serveGuarded 的错误兜底用；internal 供契约单测复用）。 */
+    internal fun respondOn(sock: Socket, code: Int, json: String) {
+        val writer = BufferedWriter(OutputStreamWriter(sock.getOutputStream(), Charsets.UTF_8))
+        respond(writer, code, json)
+    }
+
     private fun respond(writer: BufferedWriter, code: Int, json: String) {
         val bytes = json.toByteArray(Charsets.UTF_8)
         val reason = when (code) {
@@ -261,6 +327,7 @@ object BrowserAgentBridge {
             404 -> "Not Found"
             405 -> "Method Not Allowed"
             413 -> "Payload Too Large"
+            500 -> "Internal Server Error"
             else -> "Error"
         }
         writer.write("HTTP/1.1 $code $reason\r\n")
