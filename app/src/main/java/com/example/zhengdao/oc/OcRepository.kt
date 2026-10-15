@@ -480,6 +480,11 @@ class OcRepository(
                 is SseClient.Event.PermissionAsked -> ev.raw
                 is SseClient.Event.SessionIdle -> ev.raw
                 is SseClient.Event.TodoUpdated -> ev.raw
+                // 第㉙刀：新接入的 4 类也要能把原文带进坏帧日志（否则这几类出问题会"看不见"）
+                is SseClient.Event.SessionsChanged -> ev.raw
+                is SseClient.Event.SessionModelSelected -> ev.raw
+                is SseClient.Event.ModelCatalogChanged -> ev.raw
+                is SseClient.Event.MessageRemoved -> ev.raw
                 is SseClient.Event.Unknown -> ev.raw
                 else -> ""
             }
@@ -531,6 +536,49 @@ class OcRepository(
 
             is SseClient.Event.SessionIdle -> _state.update {
                 it.copy(isStreaming = false, pendingPermission = null)
+            }
+
+            // ── 第㉙刀（§B 顺序 5 / issue #9）：4 类新接入的事件 ────────────────────
+            // 统一只做「信号 → 触发重拉 / 就地更新」，**不在 SSE 里搬内容**（ERRATA E-008：
+            // SSE 只是信号通道，数据一律走 REST）。每条都落一行日志，故障可查。
+            // 认不出字段时也**照样留痕**（事件不丢，原文另有 handleFrameSafely 兜底）。
+
+            is SseClient.Event.SessionsChanged -> {
+                ocLog("SSE: 会话集合变化（session.created）⇒ 会话列表将重拉")
+                _state.update { it.copy(sessionsRevision = it.sessionsRevision + 1) }
+            }
+
+            is SseClient.Event.ModelCatalogChanged -> {
+                ocLog("SSE: 模型目录变化（model/provider/models-dev）⇒ 模型表将重拉")
+                _state.update { it.copy(modelsRevision = it.modelsRevision + 1) }
+            }
+
+            is SseClient.Event.SessionModelSelected -> {
+                val m = SseEventPayload.modelOf(ev.raw)
+                if (m == null) {
+                    ocLog("SSE: session.model.selected 到达但没解析出模型字段；前 80 字符：${ev.raw.take(80)}")
+                } else {
+                    // 与 session.step.started 同一条口径：有本地 override 时不覆盖用户的选择
+                    ocLog("SSE: 会话模型已切换 model=$m（session.model.selected）")
+                    _state.update { s -> if (s.modelOverride == null) s.copy(currentModel = m) else s }
+                }
+            }
+
+            is SseClient.Event.MessageRemoved -> {
+                val id = SseEventPayload.messageIdOf(ev.raw)
+                if (id == null) {
+                    ocLog("SSE: message.removed 到达但没解析出消息 id；前 80 字符：${ev.raw.take(80)}")
+                } else {
+                    _state.update { s ->
+                        val left = s.messages.filterNot { it.id == id }
+                        if (left.size == s.messages.size) {
+                            s   // 本会话里没这条（多半是别的会话的删除）—— 不动状态
+                        } else {
+                            s.copy(messages = left, parts = left.flatMap { m -> m.parts }.associateBy { p -> p.id })
+                        }
+                    }
+                    ocLog("SSE: 消息已删除 id=$id（message.removed）")
+                }
             }
 
             is SseClient.Event.Unknown -> {
