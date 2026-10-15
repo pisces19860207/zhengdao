@@ -139,19 +139,25 @@ class MainActivity : ComponentActivity() {
             // 首次安装由权限页接管；这段保留给"已引导过却依然缺权限"的冷启动补漏
             // （否则用户一旦点过「稍后再说」，后来想补权限就只剩设置页一条路）。
             runCatching {
-                val needed = arrayOf(
-                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                ).filter {
-                    androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
-                        android.content.pm.PackageManager.PERMISSION_GRANTED
-                }
-                // §B 顺序 15（2026-10-14）：**每项最多自动问一次** —— 原代码只判"缺不缺"，
-                // 用户拒绝过（或系统永远不给：targetSdk=28 在部分 ROM 上拿不到共享存储）
-                // 就会**每次冷启动再弹一次**。改用一次性标记；之后补权限走权限页 / 设置页。
-                if (PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this), needed.isNotEmpty())) {
-                    PermissionSetup.markStorageAsked(this) // 先写标记再请求：请求中途被杀也不会重问
-                    androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
+                // 第㉕刀（2026-10-15，targetSdk 28 → 36）：READ/WRITE_EXTERNAL_STORAGE 在
+                // API 30+ 已 inert —— 请求只会被系统**静默拒绝**（不弹任何框），问了也白问，
+                // 共享存储的唯一通道是「所有文件访问」（见 ProotLauncher.storageGranted 与
+                // 权限页那两行）。故 30+ 干脆不问，免得每次冷启动都白跑一轮 requestPermissions。
+                if (android.os.Build.VERSION.SDK_INT < 30) {
+                    val needed = arrayOf(
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    ).filter {
+                        androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                    }
+                    // §B 顺序 15（2026-10-14）：**每项最多自动问一次** —— 原代码只判"缺不缺"，
+                    // 用户拒绝过（或系统永远不给）就会**每次冷启动再弹一次**。改用一次性标记；
+                    // 之后补权限走权限页 / 设置页。
+                    if (PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this), needed.isNotEmpty())) {
+                        PermissionSetup.markStorageAsked(this) // 先写标记再请求：请求中途被杀也不会重问
+                        androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
+                    }
                 }
             }
 
@@ -180,9 +186,10 @@ class MainActivity : ComponentActivity() {
         // **2026-10-11 起这里那个「开启完整存储访问」AlertDialog 撤掉**，由权限页的
         // 「所有文件访问」行替代（同一件事、同一个系统页，只是不再单独弹窗抢在前面）；
         // 设置页入口照旧保留。连带效果：prefs 键 `manage_prompted` 不再写入、也不再有人读。
-        // ⚠️ 该开关在本机对证道**恒为 false**（targetSdk=28 拿不到这个开关，见
-        // ProotLauncher.kt:40-49 的 2026-10-04 修复记录），所以它在权限页里只是"可选增强"，
-        // 不参与"必需项是否就绪"的判定——不然后果是主按钮永远不会变成「完成，进入证道」。
+        // ⚠️ 第㉕刀（2026-10-15，targetSdk 28 → 36）：旧注释说「该开关只对 target≥30 的 App
+        // 存在、本 App 恒为 false」—— 抬到 36 后该前提消失，开关现在**可达且就是共享存储的
+        // 唯一通道**（READ/WRITE 运行时权限在 30+ 已 inert）。权限页的「共享存储」必需项已
+        // 经 ProotLauncher.storageGranted 双通道判定路由到它，不再有"永远完不成"的页面。
 
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true

@@ -21,6 +21,11 @@ import java.io.File
  * 所以"接进 CI"落在这一份 JVM 单测上：它守的是**那次事故的真正成因**（清单属性 + legacy 视图 +
  * 冷启动补授权），跟着 `:app:testDebugUnitTest` 每次提交都跑。真机用例守住"真的能读写"，
  * 静态守卫守住"配置别再被改回去"，两者缺一不可。
+ *
+ * ⚠️ **第㉕刀（2026-10-15）更新**：targetSdk 28 → 36 后 legacy 视图消失、WRITE 权限 inert，
+ * 存储判定改为双通道（见 `targetSdk 已抬 36_且存储判定走双通道`）。原先那条
+ * 「targetSdk 还是 28」的断言是本刀**故意改掉**的判据 —— 它自己的失败信息就预告了这次重验。
+ * 冷启动补授权那条仍然有效（30+ 上有 SDK_INT < 30 守卫，请求代码只为 target 28 设备保留）。
  */
 class StoragePermissionGuardTest {
 
@@ -61,18 +66,33 @@ class StoragePermissionGuardTest {
     }
 
     @Test
-    fun `应用仍走 legacy 存储视图且 targetSdk 还是 28`() {
-        // 这两个是一对：target 28 + requestLegacyExternalStorage 才让 MANAGE 之外的基础
-        // /sdcard 读写保持老视图。改动它们属于"上架前才谈"的决定（docs/知识库-收工条件.md C1），
-        // 不该在维护里悄悄发生。
-        assertTrue(
-            "application 少了 android:requestLegacyExternalStorage=\"true\"",
-            Regex("requestLegacyExternalStorage\\s*=\\s*\"true\"").containsMatchIn(manifestXml()),
-        )
+    fun `targetSdk 已抬 36_且存储判定走双通道`() {
+        // 第㉕刀（2026-10-15）：targetSdk 28 → 36（依据 docs/ERRATA.md E-134：执行链迁
+        // jniLibs 后，W^X 数据目录限制不再作用到 guest 二进制，真机四判据全过）。
+        // 旧断言「targetSdk 还是 28」正是本刀要改掉的判据 —— 它自己的失败信息就写着
+        // 「不再是 28 时必须连同 #1 的冒烟用例一起重新验证」，那次验证 = 第㉕刀真机回归
+        // （共享存储在「所有文件访问」授权下的冒烟，见交付报告）。
         val gradle = src("build.gradle.kts").readText()
         assertTrue(
-            "targetSdk 不再是 28 —— 共享存储视图会变，必须连同 #1 的冒烟用例一起重新验证",
-            Regex("targetSdk\\s*=\\s*28\\b").containsMatchIn(gradle),
+            "targetSdk 不是 36 —— 第㉕刀被回退了？",
+            Regex("targetSdk\\s*=\\s*36\\b").containsMatchIn(gradle),
+        )
+        // requestLegacyExternalStorage 在 36 上已 inert（框架只对 target≤29 生效），
+        // 但**刻意保留**：删它零收益，留着可防谁把 targetSdk 调回 <30 时视图悄悄变。
+        assertTrue(
+            "application 少了 android:requestLegacyExternalStorage=\"true\"（36 上 inert，但刻意保留）",
+            Regex("requestLegacyExternalStorage\\s*=\\s*\"true\"").containsMatchIn(manifestXml()),
+        )
+        // 存储判定必须双通道：36 走「所有文件访问」、28 走 WRITE 权限。少前者 ⇒ 36 上共享
+        // 存储全灭；少后者 ⇒ target 28 设备的 legacy 视图通道被删。
+        val launcher = src("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt").readText()
+        assertTrue(
+            "storageGranted 不查 isExternalStorageManager —— 36 上 WRITE 权限已 inert",
+            launcher.contains("isExternalStorageManager"),
+        )
+        assertTrue(
+            "storageGranted 不认 WRITE_EXTERNAL_STORAGE —— target 28 设备的 legacy 通道被删",
+            launcher.contains("WRITE_EXTERNAL_STORAGE"),
         )
     }
 

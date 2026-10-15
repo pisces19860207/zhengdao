@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -70,6 +73,9 @@ class ImeRegressionActivity : ComponentActivity(), TerminalViewClient, TerminalS
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 边到边（第㉕刀，targetSdk 28 → 36）：Android 15+ 对 targetSdk 35+ 强制边到边、
+        // 36 起无 opt-out ⇒ 本页也改为显式声明 ＋ 根 Column 吃 insets（见下方修饰符）。
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             MaterialTheme {
                 val ready = remember { mutableStateOf(0) }
@@ -444,6 +450,12 @@ private fun ImeRegressionScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // 边到边（第㉕刀，targetSdk 36）：Android 15+ 强制边到边，本页与其余 Compose 页
+            // 同款——setDecorFitsSystemWindows(false)（见 onCreate）＋ 这里显式吃三根 inset。
+            // imePadding 保住 target 28 时代的 adjustResize 效果：键盘弹起时内容整体让位。
+            .imePadding()
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),

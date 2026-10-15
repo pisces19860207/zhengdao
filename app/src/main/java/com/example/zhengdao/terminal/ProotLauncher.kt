@@ -39,15 +39,24 @@ object ProotLauncher {
     )
 
     /**
-     * 手机存储可直通判定。⚠️ targetSdk 28 走 WRITE_EXTERNAL_STORAGE 运行时权限
-     * （Android 11+ 对 target≤29 的 App 自动保持 legacy 存储视图，授权即可写共享
-     * 存储）；「所有文件访问」开关只对 target≥30 的 App 存在，本 App 永远拿不到，
-     * 不能用作判定（2026-10-04 修复：此前用 isExternalStorageManager 恒 false）。
+     * 手机存储可直通判定（第㉕刀抬 targetSdk 36 后改为**双通道**，依据 ERRATA E-134 与
+     * 派工单第㉕刀）：
+     *
+     * - **targetSdk 36（现行）**：READ/WRITE_EXTERNAL_STORAGE 运行时权限在 API 30+ 已
+     *   inert（不再授予共享存储访问，系统对请求直接静默拒绝）⇒ 唯一通道是「所有文件访问」
+     *   （[android.os.Environment.isExternalStorageManager]）。
+     * - **targetSdk 28（旧口径，分支保留）**：Android 11+ 对 target≤29 的 App 自动保持
+     *   legacy 存储视图，拿到 WRITE_EXTERNAL_STORAGE 即可读写共享存储。
+     *
+     * 历史：2026-10-04 曾因「targetSdk=28 拿不到所有文件访问开关」把判定钉死在 WRITE
+     * 权限上（isExternalStorageManager 恒 false）；抬 36 后那个前提消失、开关可达 ⇒
+     * 两条都查，任一条真即算通（target 28 设备走后者、target 36 走前者）。
      */
     fun storageGranted(context: Context): Boolean =
-        androidx.core.content.ContextCompat.checkSelfPermission(
-            context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false) ||
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     /** 流式计算文件 SHA-256（版本固定校验用）。 */
     private fun sha256Of(file: File): String {
