@@ -71,6 +71,13 @@ PAGE_SIZE_FLAGS = [
 ]
 REMAP_CARGO_HOME = "/cargo"
 REMAP_REPO_ROOT = "/src"
+REMAP_RUSTUP_HOME = "/rustup"
+REMAP_SYSROOT = "/rustup/toolchains/toolchain"
+REMAP_TARGET_DIR = "/target"
+
+# 归一化时**忽略**的节：工具链指纹段。同一个 NDK 在两个宿主上往 .comment 里写的字符串
+# 长度都不同（Windows 406 B / ubuntu 248 B），那是「谁是编译器」的标识，不是代码内容。
+IGNORED_SECTIONS = {".comment"}
 
 EXIT_OK = 0
 EXIT_MISMATCH = 1
@@ -181,6 +188,19 @@ def read_elf_sections(path):
         return None
 
 
+def sections_fingerprint(sections, ignore=IGNORED_SECTIONS):
+    """只对「归一化节表」取指纹（忽略 IGNORED_SECTIONS 里的工具链标识段）。
+
+    跨宿主整体哈希几乎注定不同（.comment 长度都不一致）；句节指纹一致 ⇒ 代码与数据逐段相同，
+    差异只剩「谁是编译器」。观察期用它当判据，比整体哈希更有意义。
+    """
+    if not sections:
+        return None
+    parts = ["%s|%d|%s" % (s["name"], s["size"], s["sha256"])
+             for s in sections if s["name"] not in ignore]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
 def report_section_diff(mine, theirs, max_ann=8):
     """把「本次构建 vs 基线」的分段差异打印并打成 annotation（有界）。
 
@@ -275,6 +295,24 @@ def cargo_home():
     return default
 
 
+def rustc_sysroot():
+    """`rustc --print sysroot`：各主机的 toolchain 目录名不同（stable-x86_64-pc-windows-gnu
+    vs 1.99.0-x86_64-unknown-linux-gnu），必须单独归一，否则路径串残留在 .text/.rodata 里。"""
+    try:
+        out = subprocess.run(["rustc", "--print", "sysroot"], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def rustup_home():
+    env = os.environ.get("RUSTUP_HOME")
+    if env and Path(env).is_dir():
+        return Path(env)
+    default = Path.home() / ".rustup"
+    return default if default.is_dir() else None
+
+
 def rustc_fingerprint():
     try:
         out = subprocess.run(["rustc", "-vV"], capture_output=True, text=True, timeout=120)
@@ -344,13 +382,21 @@ def build_and_strip(repo, workdir, offline, keep, no_remap=False):
     log_path = target_dir / "build.log"
 
     rustflags = list(PAGE_SIZE_FLAGS)
+    remap_pairs = []
     if no_remap:
         print("[warn] --no-remap：本次**不**做路径归一（只给页对齐 flag）——仅供负例自证，产物不可作为基线")
     else:
-        rustflags += [
-            "--remap-path-prefix=%s=%s" % (ch, REMAP_CARGO_HOME),
-            "--remap-path-prefix=%s=%s" % (repo, REMAP_REPO_ROOT),
+        # 顺序＝先具体后概括：toolchain 目录（各主机名不同）→ rustup home → cargo home
+        # → 仓库根 → 临时 target 目录。少一条，宿主路径就会残留在 .text/.rodata 里。
+        cand = [
+            (rustc_sysroot(), REMAP_SYSROOT),
+            (rustup_home(), REMAP_RUSTUP_HOME),
+            (ch, REMAP_CARGO_HOME),
+            (repo, REMAP_REPO_ROOT),
+            (target_dir, REMAP_TARGET_DIR),
         ]
+        remap_pairs = [(str(a), b) for a, b in cand if a]
+        rustflags += ["--remap-path-prefix=%s=%s" % p for p in remap_pairs]
     env = os.environ.copy()
     env["RUSTFLAGS"] = " ".join(rustflags)
     env["CARGO_TARGET_%s_LINKER" % TARGET_TRIPLE.upper().replace("-", "_")] = str(clang)
@@ -397,6 +443,10 @@ def build_and_strip(repo, workdir, offline, keep, no_remap=False):
     if sections is not None:
         # 分段表进基线：跨主机整体哈希不同时，CI 那侧才能报出「差在哪几段」
         norm["sections"] = sections
+        fp = sections_fingerprint(sections)
+        if fp:
+            norm["fingerprint"] = fp
+            norm["fingerprint_ignores"] = sorted(IGNORED_SECTIONS)
     raw = {"size": raw_size, "sha256": raw_sha}
 
     inputs = {
@@ -406,7 +456,14 @@ def build_and_strip(repo, workdir, offline, keep, no_remap=False):
         "rustc": {"version": rustc["version"], "commit_hash": rustc["commit_hash"]},
         "ndk_version": ndk_version,
         "page_size_link_flags": PAGE_SIZE_FLAGS,
-        "remap": {"cargo_home": REMAP_CARGO_HOME, "repo_root": REMAP_REPO_ROOT},
+        "remap": {
+            "cargo_home": REMAP_CARGO_HOME,
+            "repo_root": REMAP_REPO_ROOT,
+            "rustup_home": REMAP_RUSTUP_HOME,
+            "sysroot": REMAP_SYSROOT,
+            "target_dir": REMAP_TARGET_DIR,
+            "ignored_sections": sorted(IGNORED_SECTIONS),
+        },
         "cargo_lock_sha256": sha256_text_crlf_to_lf(repo / "rust" / "Cargo.lock"),
     }
     host = rustc["host"]
@@ -473,8 +530,12 @@ def write_baseline(path, norm, raw, inputs, host):
         "normalized": norm,
         "raw": raw,
         "build_inputs": inputs,
-        "note": ("归一化 = cargo home → /cargo、仓库根 → /src；未归一化的产物含 27 处本机绝对路径，"
-                 "跨主机不可比（见 证道设计报告/证道-第27刀②-重编逐字节比对可行性-2026-10-15.md）。"
+        "note": ("归一化 = sysroot → /rustup/toolchains/toolchain、rustup home → /rustup、"
+                 "cargo home → /cargo、仓库根 → /src、临时 target 目录 → /target；"
+                 "未归一化的产物含 27 处本机绝对路径，跨主机不可比"
+                 "（见 证道设计报告/证道-第27刀②-重编逐字节比对可行性-2026-10-15.md）。"
+                 "判据：整体哈希一致 ⇒ notice；整体不同但 normalized.fingerprint（节表指纹，"
+                 "忽略 .comment 这个工具链标识段）一致 ⇒ 仍算通过（notice）；否则 warning ⇒ 退出码 1。"
                  "观察期：ci.yml 里这一步 continue-on-error，只报数不卡 CI。"),
     }
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -522,6 +583,9 @@ def main():
 
         same_size = norm["size"] == exp_size
         same_hash = norm["sha256"] == exp_sha
+        exp_fp = expect.get("fingerprint")
+        fp = norm.get("fingerprint")
+        fp_same = bool(exp_fp) and fp == exp_fp
 
         if same_size and same_hash:
             annotate("notice", "重编比对（观察期）",
@@ -530,9 +594,20 @@ def main():
                         norm["size"], norm["sha256"]))
             return EXIT_OK
 
+        if fp_same:
+            annotate("notice", "重编比对（观察期）·段指纹一致",
+                     "整体哈希不同（%d B/%s ≠ 基线 %d B/%s），但**除 %s 外的节表指纹逐段一致** "
+                     "⇒ 差异只在工具链标识段；rustc=%s host=%s"
+                     % (norm["size"], norm["sha256"], exp_size, exp_sha,
+                        "、".join(sorted(IGNORED_SECTIONS)),
+                        inputs["rustc"]["version"], host))
+            report_section_diff(norm.get("sections"), expect.get("sections"))
+            return EXIT_OK
+
         annotate("warning", "重编比对（观察期）·不一致",
-                 "归一化产物 %d B/%s ≠ 基线 %d B/%s；rustc=%s(%s) host=%s"
+                 "归一化产物 %d B/%s ≠ 基线 %d B/%s；段指纹 %s；rustc=%s(%s) host=%s"
                  % (norm["size"], norm["sha256"], exp_size, exp_sha,
+                    "一致" if fp_same else "不一致",
                     inputs["rustc"]["version"], inputs["rustc"]["commit_hash"], host))
         print("[diff] size 相差 %+d B；sha256 %s"
               % (norm["size"] - exp_size, "一致" if same_hash else "不一致"))
