@@ -241,4 +241,88 @@ class BrowserBridgeGateTest {
         assertNull(BrowserAgentBridge.param("{\"dataUrl\":\"https://x\"}", "url"))
         assertNotNull(BrowserAgentBridge.param("{\"url\":\"https://x\",\"dataUrl\":\"https://y\"}", "url"))
     }
+
+    // ── ⑩ 主线程亲和（第㉓刀） ─────────────────────────────────────────────
+
+    /**
+     * 判别器：在（已剥注释的）BrowserCommands 源码里，找出「绕过 [onMain] 直调
+     * UI 线程限定 API」的调用点，返回违例描述（空 = 合规）。
+     *
+     * 做法：先收集所有 `onMain { … }` 块（花括号配平），再逐个找四条控制命令对
+     * BrowserTabManager / WebViewEngine 的直调字样，落在块外即违例。
+     * 纯函数（吃源码字符串）⇒ 正例（真实源码必须零违例）与负例（合成/变异的
+     * 坏形状必须被识别）用同一个判别器自证，见下面两个测试。
+     */
+    private fun directUiCalls(src: String): List<String> {
+        val violations = mutableListOf<String>()
+        val onMainRanges = mutableListOf<IntRange>()
+        Regex("\\bonMain\\b").findAll(src).forEach { m ->
+            val open = src.indexOf('{', m.range.last)
+            if (open == -1) return@forEach
+            var depth = 0
+            var i = open
+            while (i < src.length) {
+                when (src[i]) {
+                    '{' -> depth++
+                    '}' -> {
+                        depth--
+                        if (depth == 0) {
+                            onMainRanges.add(open..i)
+                            break
+                        }
+                    }
+                }
+                i++
+            }
+        }
+        val needles = mapOf(
+            "BrowserTabManager.newTab(" to "newTab（WebView 创建必须主线程，否则必抛 Looper 崩溃）",
+            "BrowserTabManager.selectTab(" to "selectTab（Compose snapshot 状态写入限主线程）",
+            "BrowserTabManager.closeTab(" to "closeTab（WebView.destroy 限主线程）",
+            ".engine.loadUrl(" to "navigate→loadUrl（WebView 操作限主线程）",
+        )
+        needles.forEach { (needle, why) ->
+            var from = 0
+            while (true) {
+                val at = src.indexOf(needle, from)
+                if (at == -1) break
+                from = at + needle.length
+                if (onMainRanges.none { it.contains(at) }) {
+                    violations.add("$why —— $needle 出现在 onMain 块之外 @offset $at")
+                }
+            }
+        }
+        return violations
+    }
+
+    @Test
+    fun `门禁_四条控制命令必须经主线程 onMain`() {
+        val violations = directUiCalls(commands)
+        assertTrue(
+            "navigate/newTab/activeTab/closeTab 四条控制命令必须经 onMain 落主线程" +
+                "（BrowserTabManager 全部公开方法限定 UI 线程，BrowserTabManager KDoc 原文）；" +
+                "以下调用点绕过了 onMain（HTTP 工作线程直调）——第㉓刀修的正是这个：\n" +
+                violations.joinToString("\n"),
+            violations.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `门禁_主线程亲和负例自证_剥掉 onMain 包装必全数报警`() {
+        // 负例一（合成）：往真实源码追加一个"改回直调"的形状，判别器必须抓到。
+        val synthetic = commands + "\nfun fakeRegression(){ BrowserTabManager.selectTab(3) }"
+        assertTrue(
+            "负例自证失败：直调 selectTab 的形状判别器没抓到 —— 门禁自己失效了",
+            directUiCalls(synthetic).isNotEmpty(),
+        )
+        // 负例二（变异）：把真实源码里所有 onMain 包装剥掉（模拟回归"顺手改回直调"），
+        // 四条命令的直调必须全部被识别。
+        val mutated = commands.replace("onMain {", "listOf<Unit>().let {")
+        val violations = directUiCalls(mutated)
+        assertTrue(
+            "负例自证失败：剥掉 onMain 包装后判别器只报了 ${violations.size} 条（应 ≥ 4 条）——" +
+                "门禁对四条命令的覆盖有缺口\n${violations.joinToString("\n")}",
+            violations.size >= 4,
+        )
+    }
 }

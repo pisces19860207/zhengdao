@@ -54,6 +54,13 @@ import java.util.concurrent.TimeUnit
  * 不把桥的线程永久拖住）。
  * ⚠️ **不要在主线程内调本类**——那会自己等自己（死锁）。生产里调用方是 HTTP 线程。
  *
+ * 第㉓刀修正：navigate / newTab / activeTab / closeTab 四条控制命令原先在 HTTP
+ * 工作线程**直调** [BrowserTabManager] / WebViewEngine（其 KDoc 明写全部公开方法
+ * 限定 UI 线程）——newTab 建 WebView 必抛 Looper 崩溃、closeTab 的 destroy 被
+ * checkThread 拦下再被吞（静默泄漏）。现已与读命令同轨：manager/engine 交互全部
+ * 经 [onMain] 落主线程，主线程异常以 JSON 错误回给 agent（不再有 ClassCastException
+ * 被 socket 静默吞掉的路径）。形态门禁见 BrowserBridgeGateTest 的「主线程亲和」。
+ *
  * ## 一处对设计文档的有意偏离（截图落点）
  *
  * 设计文档 §4.5 写"输出 PNG 写入系统截图目录 `Pictures/Screenshots`"。
@@ -71,18 +78,42 @@ object BrowserCommands {
 
     // ── 线程桥接 ───────────────────────────────────────────────────────────
 
-    /** 在主线程跑 [block]，阻塞等它返回（超时/异常 ⇒ null）。 */
-    private fun <T> onMain(block: () -> T): T? {
-        if (Looper.myLooper() == Looper.getMainLooper()) return null // 自己等自己会死锁，见类 KDoc
+    /**
+     * 主线程执行结果（第㉓刀：类型安全出口）。
+     *
+     * 旧实现的返回值是 `box[0] as T?` —— 主线程操作抛异常时 box 里装的是 Throwable，
+     * 调用方按 T 取就吃 ClassCastException，agent 侧只看到 socket 静默关闭。
+     * 现在 value / failure 恰好一个非空，调用方必须显式处理失败（4 条控制命令
+     * 把它转成 JSON 错误回给 agent）。
+     */
+    private class MainResult<out T> private constructor(val value: T?, val failure: Throwable?) {
+        companion object {
+            fun <T> of(value: T?): MainResult<T> = MainResult(value, null)
+            fun failed(t: Throwable): MainResult<Nothing> = MainResult(null, t)
+        }
+    }
+
+    /** 在主线程跑 [block]，阻塞等它返回；超时/异常/误用都以 [MainResult.failure] 回报。 */
+    private fun <T> onMain(block: () -> T): MainResult<T> {
+        // 自己等自己会死锁，见类 KDoc —— 旧实现静默返回 null，现在当失败显式回报
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return MainResult.failed(IllegalStateException("onMain 不能在主线程内调用（会自己等自己，死锁）"))
+        }
         val box = arrayOfNulls<Any>(1)
         val latch = CountDownLatch(1)
         main.post {
-            runCatching { box[0] = block() }.onFailure { box[0] = it }
+            runCatching { block() }.fold(
+                onSuccess = { box[0] = MainResult.of(it) },
+                onFailure = { box[0] = MainResult.failed(it) },
+            )
             latch.countDown()
         }
-        runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
+        val done = runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+        if (!done) {
+            return MainResult.failed(java.util.concurrent.TimeoutException("主线程执行超过 ${EVAL_TIMEOUT_MS}ms 未返回"))
+        }
         @Suppress("UNCHECKED_CAST")
-        return box[0] as T?
+        return box[0] as MainResult<T>
     }
 
     /**
@@ -90,13 +121,14 @@ object BrowserCommands {
      *
      * 归一化：JS 返回的字符串带一层引号（`"abc"`）、`null`/未回调都归一成 null。
      */
-    private fun evalJs(webView: WebView, script: String): String? = onMain {
-        val latch = CountDownLatch(1)
-        val box = arrayOfNulls<String>(1)
-        webView.evaluateJavascript(script) { box[0] = it; latch.countDown() }
-        runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
-        normalizeJsResult(box[0])
-    }
+    private fun evalJs(webView: WebView, script: String): String? =
+        onMain {
+            val latch = CountDownLatch(1)
+            val box = arrayOfNulls<String>(1)
+            webView.evaluateJavascript(script) { box[0] = it; latch.countDown() }
+            runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
+            normalizeJsResult(box[0])
+        }.value // 失败/超时 ⇒ null，调用方维持既有文案「执行超时或失败」；不再有 CCE 风险
 
     private fun normalizeJsResult(raw: String?): String? {
         if (raw.isNullOrEmpty() || raw == "null") return null
@@ -262,9 +294,17 @@ object BrowserCommands {
     fun navigate(url: String?): String {
         val v = BridgePolicy.checkNavigateUrl(url)
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
-        val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
-        tab.engine.loadUrl(url!!.trim())
-        return ok("navigating" to url)
+        val u = url!!.trim()
+        // 第㉓刀：manager/engine 全部限定 UI 线程（BrowserTabManager KDoc 原文），
+        // 原先在 HTTP 工作线程直调 —— 现经 onMain 落主线程，失败回 JSON 错误。
+        val r = onMain {
+            val tab = BrowserTabManager.activeTab() ?: return@onMain err("没有活跃标签")
+            tab.engine.loadUrl(u)
+            ok("navigating" to url)
+        }
+        return r.value
+            ?: r.failure?.let { err("navigate 执行失败：${it.message}") }
+            ?: err("执行超时或失败")
     }
 
     /** `newTab`：开标签（url 可省＝空标签）；返回新标签 id。 */
@@ -273,26 +313,55 @@ object BrowserCommands {
             val v = BridgePolicy.checkNavigateUrl(it)
             if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
         }
-        val id = BrowserTabManager.newTab(context, url?.trim())
-            ?: return err("开标签失败（可能已达上限 ${com.example.zhengdao.browser.BrowserTabPolicy.MAX_TABS}）")
-        return ok("tabId" to id.toString(), "tabCount" to BrowserTabManager.count().toString())
+        // 第㉓刀：newTab 会在主线程创建 WebView —— 原先在无 Looper 的工作线程直调，
+        // 必抛「Can't create handler inside thread that has not called Looper.prepare()」。
+        val r = onMain {
+            val id = BrowserTabManager.newTab(context, url?.trim())
+            if (id == null) {
+                err("开标签失败（可能已达上限 ${com.example.zhengdao.browser.BrowserTabPolicy.MAX_TABS}）")
+            } else {
+                ok("tabId" to id.toString(), "tabCount" to BrowserTabManager.count().toString())
+            }
+        }
+        return r.value
+            ?: r.failure?.let { err("newTab 执行失败：${it.message}") }
+            ?: err("执行超时或失败")
     }
 
     /** `activeTab`：切换 agent 操作的活跃标签。 */
     fun activeTab(tabId: String?): String {
         val id = tabId?.trim()?.toIntOrNull() ?: return err("activeTab 缺 tabId（数字）")
-        if (BrowserTabManager.tabs().none { it.id == id }) return err("没有这个标签：$id")
-        BrowserTabManager.selectTab(id)
-        return ok("tabId" to id.toString(), "tabCount" to BrowserTabManager.count().toString())
+        // 第㉓刀：tabs() 读与 selectTab 写都是 Compose snapshot 状态（限主线程），
+        // 查找与切换一并搬进 onMain，语义与原「none → 报没有这个标签」一致。
+        val r = onMain {
+            if (BrowserTabManager.tabs().none { it.id == id }) return@onMain err("没有这个标签：$id")
+            BrowserTabManager.selectTab(id)
+            ok("tabId" to id.toString(), "tabCount" to BrowserTabManager.count().toString())
+        }
+        return r.value
+            ?: r.failure?.let { err("activeTab 执行失败：${it.message}") }
+            ?: err("执行超时或失败")
     }
 
     /** `closeTab`：关标签（最后一个标签关不掉——WebView 宿主至少要有一个）。 */
     fun closeTab(tabId: String?): String {
         val id = tabId?.trim()?.toIntOrNull() ?: return err("closeTab 缺 tabId（数字）")
-        if (BrowserTabManager.tabs().none { it.id == id }) return err("没有这个标签：$id")
-        if (BrowserTabManager.count() <= 1) return err("只剩一个标签，不能关（WebView 宿主至少要有一个）")
-        BrowserTabManager.closeTab(id)
-        return ok("closed" to id.toString(), "tabCount" to BrowserTabManager.count().toString())
+        // 第㉓刀：closeTab 里的 WebView.destroy 限主线程 —— 原先在工作线程直调被
+        // checkThread 拦下再被 runCatching 吞掉（静默泄漏）。查找、上限校验与关闭
+        // 一并搬进 onMain，三条业务错误文案逐字保持。
+        val r = onMain {
+            if (BrowserTabManager.tabs().none { it.id == id }) {
+                return@onMain err("没有这个标签：$id")
+            }
+            if (BrowserTabManager.count() <= 1) {
+                return@onMain err("只剩一个标签，不能关（WebView 宿主至少要有一个）")
+            }
+            BrowserTabManager.closeTab(id)
+            ok("closed" to id.toString(), "tabCount" to BrowserTabManager.count().toString())
+        }
+        return r.value
+            ?: r.failure?.let { err("closeTab 执行失败：${it.message}") }
+            ?: err("执行超时或失败")
     }
 
     /**
@@ -336,5 +405,5 @@ object BrowserCommands {
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         bitmap.recycle()
         out.toByteArray()
-    }
+    }.value // 失败/超时 ⇒ null，调用方维持既有文案「截屏失败」
 }
