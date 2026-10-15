@@ -169,16 +169,17 @@ class TargetSdkGateTest {
     // ── ⑥ 已知代价必须写在码边（oc 的 W^X 回归） ──────────────────────
 
     @Test
-    fun `targetSdk 注释写明 oc 直启的已知代价`() {
-        // 真机回归实证：opencode 是 ProcessBuilder 直启 filesDir 里的 ELF，36 下被 W^X 拦。
-        // 这条钉的是「后人改这个文件时必须看见这件事」，不是钉 oc 代码本身（红线不碰）。
+    fun `targetSdk 注释写明 oc 直启的真机实测结论`() {
+        // 真机实测（第㉕刀）：抬 36 后首启曾 error=13，但重启后两次复验均成功——
+        // 「36 必被 W^X 拦」未复现。这条钉的是「后人改这个文件时必须看见这段实测 +
+        // 单设备边界」，不是钉 oc 代码本身（红线不碰）。
         // 负例教训：本文件 changelog 头本来就有多处 "opencode"，只断言 contains("opencode")
-        // 在基线上也绿（漏红）——必须同时钉本刀注释特有的「W^X 拦」措辞才算有效判据。
+        // 在基线上也绿（漏红）——必须同时钉本刀注释特有的「error=13」+「未复现」措辞。
         val raw = read("build.gradle.kts")
         assertTrue(
-            "targetSdk 注释没提 opencode 直启在 36 下被 W^X 拦 —— 后来人只会看到 " +
-                "「36 抬成功了」，不知道太极在这条口径下是坏的",
-            raw.contains("opencode") && raw.contains("W^X 拦"),
+            "targetSdk 注释没写 oc 直启的真机实测结论（error=13 偶发 / 重启后成功 / " +
+                "W^X 必拦未复现）—— 后来人要么以为 36 下太极必死，要么忘了换机要重验",
+            raw.contains("opencode") && raw.contains("error=13") && raw.contains("未复现"),
         )
     }
 }
