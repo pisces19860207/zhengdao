@@ -14,6 +14,7 @@ import com.example.zhengdao.browser.BrowserTabPolicy
 import com.example.zhengdao.browser.EngineSecurityConfig
 import com.example.zhengdao.browser.NavigationDelegate
 import com.example.zhengdao.browser.WebViewEngine
+import com.example.zhengdao.rootfs.RunLog
 
 /**
  * 玄览多标签管理器（第⑨刀 B · 阶段 2 §4.2）——按 tabId 管多个 Engine + 渲染优先级 + 生命周期。
@@ -91,7 +92,16 @@ object BrowserTabManager {
         val id = nextId++
         // 空 WebView 内存基线（阶段 0 三条之一）：每个标签首建前后各采一次，差值进 RunLog
         BrowserMemoryProbe.log("before-webview#tab$id")
+        // §B 61（2026-10-15）：WebView 构造是本类唯一已知会间歇卡死（≥100s）的点，
+        // 且卡点在 Chromium 内部（App 侧修不了）⇒ 只能加细观测：构造前后各落一行
+        // 带线程名与耗时的日志，把「构造真卡」与「探针/日志自身卡」区分开。
+        RunLog.log("玄览 newTab#tab$id：主线程开始构造 WebView（thread=${Thread.currentThread().name}）")
+        val ctorBeginNanos = System.nanoTime()
         val wv = WebView(app)
+        val ctorMs = (System.nanoTime() - ctorBeginNanos) / 1_000_000
+        RunLog.log(
+            "玄览 newTab#tab$id：WebView 构造返回（${ctorMs}ms${if (ctorMs > 2000) "，异常缓慢" else ""}）",
+        )
         BrowserMemoryProbe.log("after-webview#tab$id")
         val eng = WebViewEngine(wv)
         val tab = Tab(id, wv, eng)
