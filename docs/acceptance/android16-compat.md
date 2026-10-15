@@ -4,6 +4,10 @@
 > 基本盘：**minSdk=36**——本 App 只安装在 Android 16 设备上；真机（Honor Magic 5 Pro /
 > PGT-AN10 / Android 16）日常使用即持续实证。**targetSdk=28 为 W^X 铁律不可升**
 > （见 docs/milestones/已知限制.md §1-2），因此"以 targetSdk 为触发条件"的变更多数不适用。
+>
+> ⚠️ **2026-10-15 重大更正（`docs/ERRATA.md` E-134）：上面「targetSdk=28 为 W^X 铁律不可升」的必然性已被真机原型证伪。**
+> 原型 `proot-jnilib-proto` 在真机同型号（荣耀 PGT-AN10 / Android 16）上以 **targetSdk 36** 跑通 Termux 四件套（`jniLibs` → 只读可执行 `nativeLibraryDir` ＋ `PROOT_LOADER` 显式指向），四判据全过。**现行仍以 28 打包**（它是现打包方式的前提，不是架构铁律）；抬 targetSdk 36 已排进待办，在执行链迁移（第⑳刀）之后落地。
+> 本报告正文与下方「不变式」按**历史记录**保留不改；但「以 targetSdk 为触发条件 → N/A」的判定需在**抬到 36 之后重新逐项复核**（尤其 #6 预测性返回、#7 边到边 opt-out、#8 cleartext/`usesCleartextTraffic`、FGS 类型与 6 小时限制）。
 
 ## 逐项判定表
 

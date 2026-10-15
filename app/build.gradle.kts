@@ -264,6 +264,12 @@ android {
         // 目录里运行下载来的 Linux 环境（proot + rootfs）。targetSdk 28 是合法的
         // 旧规则选择，同类免 root Linux 环境产品均采用同一策略。
         // 🚫 未经架构前提重新评估，任何人不得上调此值。
+        // ⚠️ 2026-10-15 重大更正（docs/ERRATA.md E-134）：上面「必须 ≤ 28」的必然性已被真机原型证伪 ——
+        //    原型 proot-jnilib-proto 在真机同型号（荣耀 PGT-AN10 / Android 16）上以 targetSdk 36
+        //    跑通 Termux 四件套（jniLibs → 只读可执行 nativeLibraryDir ＋ PROOT_LOADER 显式指向），
+        //    四判据全过（自检 / 解压 rootfs / echo+uname / apt-get update 联网）。
+        //    ⇒ 28 仍是**现行打包方式**（jniLibs + assets→files/）的前提，不再是「生死线」；
+        //      抬 36 已排进待办（台账 §B，先做执行链迁移再抬），届时按派工单改此值。
         targetSdk = 28
         // 最低安装门槛：安卓 16（API 36）。实测环境为荣耀 Magic 5 Pro
         // （PGT-AN10 / MagicOS 10.0.0.175 CHNC00E175R208P6 / Android 16）；
@@ -360,6 +366,8 @@ android {
     // lint 检查：ExpiredTargetSdkVersion 是 Google Play 上架要求（targetSdk≥33），
     // 但本项目 targetSdk=28 是架构生死线（proot 需要从可写目录 exec），不可上调。
     // 本项目不走 Google Play，走 GitHub Releases 直发，故禁用该检查。
+    // ⚠️ 2026-10-15 更正（E-134）：「28 是生死线、不可上调」的说法已被真机原型证伪（见 :267 上方注释）。
+    //    禁用该 lint 检查的决定**仍然有效**（本版仍以 28 打包、仍不走 Play）；抬到 36 时再一并复核。
     testOptions {
         // EnvSelfHeal 等纯逻辑单测会触达 android.util.Log——未 mock 的调用返回默认值
         // （仅 unit test 生效；真机行为不变）
