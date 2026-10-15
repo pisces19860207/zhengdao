@@ -269,8 +269,9 @@ class CacheCleanerTest {
                 real.toPath(),
             )
         }.isSuccess
-        // 建不了软链就跳过（Windows 非开发者模式；Linux CI 上会真跑）
-        if (!created) return
+        // E-138：本机（Windows 非开发者模式）建不了软链。以前静默 return ＝假绿，
+        // 改成显式跳过（Linux CI 上仍会真跑）。
+        org.junit.Assume.assumeTrue("本机不支持建软链（E-138）：本用例未覆盖", created)
 
         val st = CacheCleaner.deleteTreeCounted(root)
 
@@ -312,8 +313,9 @@ class CacheCleanerTest {
                 link.toPath(), real.toPath(),
             )
         }.isSuccess
-        // Windows 上建软链要特权/开发者模式，建不出来就跳过这条（Linux CI 上会跑）
-        if (!created) return
+        // E-138：Windows 上建软链要特权/开发者模式。以前静默 return ＝假绿，
+        // 改成显式跳过（Linux CI 上仍会真跑）。
+        org.junit.Assume.assumeTrue("本机不支持建软链（E-138）：本用例未覆盖", created)
         assertEquals(
             "软链被跟进就会把同一份数据数两遍",
             500_000L,
@@ -335,7 +337,8 @@ class CacheCleanerTest {
                 File(wheels, "wheel.bin").toPath(),
             )
         }.isSuccess
-        if (!created) return
+        // E-138：本机不允许无特权建软链。以前静默 return ＝假绿，改成显式跳过。
+        org.junit.Assume.assumeTrue("本机不支持建软链（E-138）：本用例未覆盖", created)
         assertEquals(900_000L, CacheCleaner.fileLengths(root))
     }
 

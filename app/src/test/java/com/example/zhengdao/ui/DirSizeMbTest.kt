@@ -79,7 +79,7 @@ class DirSizeMbTest {
      * 这是与 Rust 侧 `dirsize.rs` 的 `软链不跟随` 用例**成对**的回归锁。
      *
      * JVM 上造软链需要 `Files.createSymbolicLink`；无权限的环境（非管理员 Windows）
-     * 建不出软链时跳过断言——不让平台限制把这条测试变成假红。
+     * 建不出软链时**显式跳过**（E-138）——不让平台限制把这条测试变成假绿，也不变成假红。
      */
     @Test
     fun `软链不跟随`() {
@@ -95,10 +95,15 @@ class DirSizeMbTest {
             )
         }.isSuccess
 
-        if (linkOk) {
-            // 只应算到 keep.bin 的 1 MiB，不把 outside 的 5 MiB 带进来
-            assertEquals(1L, SystemInfoProvider.dirSizeMb(d))
-        }
+        // E-138：本机（Windows 非开发者模式）建不了软链。以前整段不跑却记成「通过」＝假绿，
+        // 改成显式跳过，让这条与 Rust 侧成对的回归锁的缺口在报告里可见。
+        org.junit.Assume.assumeTrue(
+            "本机不允许无特权建符号链接（E-138）：软链不跟随这条未覆盖",
+            linkOk,
+        )
+
+        // 只应算到 keep.bin 的 1 MiB，不把 outside 的 5 MiB 带进来
+        assertEquals(1L, SystemInfoProvider.dirSizeMb(d))
 
         d.deleteRecursively()
         outside.deleteRecursively()
