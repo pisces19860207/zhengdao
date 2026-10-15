@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
 import android.net.http.SslError
+import android.os.Handler
+import android.os.Looper
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.SslErrorHandler
@@ -27,7 +29,9 @@ import java.io.ByteArrayOutputStream
  *   （64KB，§4.5 防 OOM）——agent 无法借 execJS 读原始隐私值绕过。
  * - 截图：WebView.draw → PNG 字节。agent 模式落盘位置由上层定
  *   （MediaStore → Pictures/Screenshots，§4.4）。
- * - 所有外部调用经 webView.post 包 UI 线程（桥从 HTTP 线程调也安全）。
+ * - 所有外部调用经 [main]（主 Looper 的 Handler）包 UI 线程（桥从 HTTP 线程调也安全）。
+ *   ⚠️ 不用 View 自身的 post（`webView.post { }` 形态）—— 未 attach 的 View 其 post 被压进
+ *   HandlerActionQueue、attach 时才执行，会让首次加载无限期死锁（第㊳刀，见 [main] 的 KDoc）。
  *
  * 已知限制（③ 待实测，真机阶段 1 验收时核）：
  * - 截图走 software canvas，硬件加速下视频/WebGL 区域可能空白；质量不足再评估 TextureView。
@@ -41,6 +45,19 @@ class WebViewEngine(
 ) : BrowserEngine {
 
     override val engineId: String = "webview-system"
+
+    /**
+     * 主线程 Handler（第㉕刀之后的第㊳刀）：本类所有外部调用经这里投主线程。
+     *
+     * ⚠️ 为什么不能图省事用 View 自身的 post（`webView.post { }` 形态）：**未 attach 的 View**，
+     * `View.post` 不投主线程 Handler、而是把 Runnable 压进 View 自己的 HandlerActionQueue，
+     * 等 attach 到窗口才执行。
+     * 第㊱刀起始页「空态不挂 WebView」的守卫下，首次 loadUrl 会被无限期推迟 ⇒ onPageStarted
+     * 永不回调 ⇒ everLoaded 永不翻转 ⇒ WebView 永不挂载（鸡生蛋死锁，§B 顺序 66 /
+     * ERRATA E-142，四条导航路径全死即此因）。进程级主 Looper Handler 与 View 挂载状态
+     * 无关；已 attach 时与旧行为逐字节等价（同一个主 looper、同一份消息队列）。
+     */
+    private val main = Handler(Looper.getMainLooper())
 
     private var delegate: NavigationDelegate? = null
 
@@ -60,18 +77,18 @@ class WebViewEngine(
     private val allowedSchemes = setOf("http", "https")
 
     override fun loadUrl(url: String) {
-        webView.post {
+        main.post {
             if (!isAllowedUrl(url)) return@post
             webView.loadUrl(url)
         }
     }
 
     override fun goBack() {
-        webView.post { if (webView.canGoBack()) webView.goBack() }
+        main.post { if (webView.canGoBack()) webView.goBack() }
     }
 
     override fun goForward() {
-        webView.post { if (webView.canGoForward()) webView.goForward() }
+        main.post { if (webView.canGoForward()) webView.goForward() }
     }
 
     override fun canGoBack(): Boolean = webView.canGoBack()
@@ -79,15 +96,15 @@ class WebViewEngine(
     override fun canGoForward(): Boolean = webView.canGoForward()
 
     override fun reload() {
-        webView.post { webView.reload() }
+        main.post { webView.reload() }
     }
 
     override fun stopLoading() {
-        webView.post { webView.stopLoading() }
+        main.post { webView.stopLoading() }
     }
 
     override fun evaluateJavascript(script: String, callback: (String?) -> Unit) {
-        webView.post {
+        main.post {
             webView.evaluateJavascript(script) { value ->
                 // ① 脱敏（强制红线，agent 不可绕，§4.4）② 限长（§4.5，防 OOM）
                 val masked = redactor.redactText(value.orEmpty())
@@ -102,7 +119,7 @@ class WebViewEngine(
     }
 
     override fun captureScreenshot(callback: (ByteArray?) -> Unit) {
-        webView.post {
+        main.post {
             try {
                 val w = webView.width.coerceAtLeast(1)
                 val h = webView.height.coerceAtLeast(1)
