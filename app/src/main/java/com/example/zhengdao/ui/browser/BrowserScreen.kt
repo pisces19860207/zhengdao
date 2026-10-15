@@ -306,7 +306,10 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 .fillMaxWidth(),
         ) {
             val activeId = active?.id
-            if (activeId != null) {
+            // 第㊱刀：空态不挂 WebView —— 共享 WebView 默认白底，深色模式下会把
+            // 起始页的雾白图腾/标题压成 ~1:1（实测截图不可见）；空态时页面区就是
+            // 起始页（背景走主题色），everLoaded 翻转后照常挂回，状态机零改动。
+            if (activeId != null && !(active == null || !active.state.everLoaded)) {
                 key(activeId) {
                     AndroidView(
                         factory = { BrowserTabManager.view() ?: WebView(it) },
@@ -315,13 +318,17 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 }
             }
             if (active == null || !active.state.everLoaded) {
-                Text(
-                    text = stringResource(R.string.browser_empty_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(32.dp),
+                // 第㊱刀：空态 = 浏览器式起始页（居中搜索框 + 快捷入口），替代原裸 Text。
+                // 提交仍走 tryNavigate（既有归一化路径，禁第二套解析）；scheme 预检失败
+                // 沿用既有 browser_blocked_scheme 提示；空态判据一字未动
+                // （everLoaded 只涨不落，不新增状态、不改 BrowserTabState）。
+                BrowserStartPage(
+                    onSearch = { input ->
+                        if (!tryNavigate(engine, input)) {
+                            active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -335,7 +342,8 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
 
 /**
  * 主页键落点（C）：设计稿起始页「当前引擎：必应国内版 · 免翻墙」——
- * 主页键 = 回引擎首页。新标签的空态引导（玄览 branding）仍由 everLoaded=false 呈现。
+ * 主页键 = 回引擎首页。新标签的空态引导（第㊱刀起始页：居中搜索框 + 快捷入口）
+ * 仍由 everLoaded=false 呈现，见 [BrowserStartPage]。
  */
 private const val HOME_URL = "https://cn.bing.com"
 
