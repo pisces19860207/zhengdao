@@ -841,6 +841,12 @@
     <string name="browser_safe_browsing_hit">这个网址有安全风险，已被拦下</string>
     <string name="browser_page_error">页面加载出了点问题</string>
     <string name="browser_empty_hint">在上方输入网址，或从终端里点一条链接进来</string>
+    <string name="browser_start_title">玄 览</string>
+    <string name="browser_start_hint">输入网址或搜索词，或点一个快捷入口</string>
+    <string name="browser_start_search_hint">搜索或输入网址</string>
+    <string name="browser_start_shortcut_bing">必应</string>
+    <string name="browser_start_shortcut_debian">Debian 文档</string>
+    <string name="browser_start_shortcut_repo">项目仓库</string>
     <string name="browser_export">导出给 agent</string>
     <string name="browser_export_running">正在导出当前页面…</string>
     <string name="browser_export_done">已导出给 agent：%1$d 个可交互字段；终端里执行 cat /opt/zhengdao/tab.txt</string>
