@@ -6696,3 +6696,28 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **为什么不进 `docs/milestones/已知限制.md`**：该文件整篇是 **targetSdk 28 结构性边界**（架构级、用户可见、不可改）；本条是运行期边缘态、需外部信号才可达，混进去会稀释那份文档的判据。
 
 **取证踩过的两个坑（复现脚本勿重犯）**：① 在工具会话里用 `&` 起的后台盯梢器会随会话被回收 ⇒ 必须 `nohup` 落设备侧脚本；② 脚本内用 shell uid 调 `kill` 会被拒（`Operation not permitted`，实测），必须走 `run-as`。
+
+## E-137 · 2026-10-15 · CI 门禁「全量 .so 判 16KB 对齐」会拦下按 4KB 构建的 proot 四件套 —— 门禁按文件收窄 + 完整性基线作交换
+
+**现象**：第⑳刀把 proot 四件套（`libproot.so` / `libproot-loader.so` / `libtalloc.so` / `libandroid-shmem.so`）以
+`lib*.so` 形态打进 `app/src/main/jniLibs/arm64-v8a/` 后，`tools/check-native-so.py` 的全量 glob（`:168`，CI 在
+`.github/workflows/ci.yml:65` 调用）会命中它们——而交接单（证道-交接-高targetSdk下proot执行链-2026-10-15.md §七）
+明写该版 Termux 官方构建按 **4KB 页**对齐 ⇒ 门禁极可能直接红。
+
+**处置（项目所有者拍板二选一，选 b）**：
+- **(b) 现在做**：`check-native-so.py` 的 16KB 判据**按文件收窄**——`libzhengdao_core.so` / `libzstd-jni` 等照旧硬判
+  （它们是被 `loadLibrary` 的库，16KB 对齐缺失是"静默降级"型故障）；proot 四件套改判「**已登记的 4KB 例外** +
+  sha256 完整性基线」——它们是被 execve/mmap 的独立 ELF 程序，不走 bionic `loadLibrary`。例外不是白给的：
+  四个文件的 sha256 与 `terminal/ProotBinaries.kt` / `PROVENANCE.md` **三处同源钉死**，换版本/镜像投毒/手滑拷错必红。
+- **(a) 记成待办、产品化前必办**：换 Termux 的 **16KB 对齐构建**（改取数脚本版本 + 更新 pin 的四条 sha256 + 三处同步）。
+  手上没有 16KB 页设备（荣耀 PGT-AN10 为 4KB 页），风险证不了 ⇒ 只登记、不冒进。
+
+**16KB 页设备的真实影响面（记录在案，证据③）**：proot 四件套在 16KB 页设备上无法被 exec/mmap 装载 ⇒ 终端整体降级
+到安卓自带 shell（与"proot 坏了"同一条降级路径，IssueCenter 已有报障出口）。**不是**崩溃/数据损坏型故障。
+
+**顺手登记（第④项）**：proot 四件套的完整性基线并入本门禁（PROOT_PINNED），PROVENANCE.md「第三方组件使用方式」
+补第⑳刀打包变更说明（assets → jniLibs，合规定性不变：聚合分发、只 exec、绝不 loadLibrary——由 `LoadLibraryGuardTest`
+白名单门禁技术化，白名单 = `zhengdao_core` + `termux`）。
+
+**规矩**：CI 门禁的"全量 glob"在引入**性质不同**的文件（库 vs 被执行程序）时必然误伤——引入新类别的二进制前，先想清楚
+它该判哪条规则、例外怎么钉死、谁来防例外被滥用（本条：sha 基线 + 三处同源）。

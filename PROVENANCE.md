@@ -63,13 +63,21 @@
 > 分发义务（见 THIRD-PARTY-LICENSES.md）。
 > 允许：使用其编译产物、注明"参考了 Termux 的 Android 适配思路"。
 > 绝对禁止：把 Termux（或任何 GPL 项目）的 C/C++/汇编代码复制进本项目源码。
+>
+> **第⑳刀打包变更（2026-10-15）**：proot 四件套（`libproot.so` / `libproot-loader.so` /
+> `libtalloc.so` / `libandroid-shmem.so`，均为 Termux 官方发行二进制，SHA256 与历史
+> pin 逐字节一致）的携带方式由「assets 内置 + 运行时释放」改为「jniLibs 内置 +
+> 安装器解压」。**合规定性不变**：仍是独立可执行文件的聚合分发（只 exec，绝不
+> dlopen/loadLibrary——已由 `LoadLibraryGuardTest` 白名单门禁技术化）；新增的
+> `libandroid-shmem.so`（libandroid-shmem 0.7，BSD-3-Clause）是 proot 的 DT_NEEDED
+> 硬依赖，登记于「版本固定」节。详见 docs/ERRATA.md E-134 / E-137。
 
 | 组件 | 许可证 | 使用方式 |
 |---|---|---|
 | ~~xterm.js~~ （**v3.9 已移除**） | MIT | 曾作为 WebView 终端渲染层；2026-10-05 随终端渲染层切换为原生 TerminalView 而删除，历史实现保留在 git 中 |
 | **Termux `terminal-emulator`**（v3.9 新增） | **Apache-2.0** | 以源码形式集成（`app/src/main/java/com/termux/terminal/`），作为独立库聚合，未修改其许可证头（上游这些文件原本就没有许可证头）；本项目**在其基础上做过修改** ⇒ 2026-10-11 起在文件头加 Apache-2.0 第 4(b) 条要求的修改通知，逐文件见下节「Apache-2.0 修改通知」 |
 | **Termux `terminal-view`**（v3.9 新增） | **Apache-2.0** | 同上（`app/src/main/java/com/termux/view/`）；其 native 半边由 `app/src/main/cpp/termux/` 编译为 `libtermux.so`。本项目在其上**改过 2 个文件、另新写 6 个第一方类**（沿用 `com.termux.view` 包名），见下节「Apache-2.0 修改通知」 |
-| proot（**Termux fork 发行版**，2026-10-04 基线切换） | **GPL-2.0-or-later** | 官方发行二进制，assets 内置、运行时释放为**独立可执行文件**调用（聚合分发，不链接不混源）；**正文随仓库分发** = `licenses/GPL-2.0.txt`，官方 `.deb` 摘要见「版本固定」节 |
+| proot（**Termux fork 发行版**，2026-10-04 基线切换） | **GPL-2.0-or-later** | 官方发行二进制；**第⑳刀（2026-10-15）起改为随 APK `jniLibs/arm64-v8a/` 内置**（安装时由系统解压到 `nativeLibraryDir`，天然带执行位），仍是**独立可执行文件**调用（聚合分发，不链接不混源），运行方式与旧方案唯一的差别是"文件住哪、谁解压"——调用关系（execve 独立进程）一个字没变；**正文随仓库分发** = `licenses/GPL-2.0.txt`，官方 `.deb` 摘要见「版本固定」节 |
 | libtalloc / libandroid-shmem | **LGPL-3.0-or-later** / **BSD-3-Clause**（2026-10-11 钉死，此前只写「LGPL / 宽松许可」） | 同上，作为 proot 的运行时依赖随包分发；**两者都是被 proot 进程在进程内动态加载的 ELF 动态库** ⇒ 不受「聚合不传染」判据保护，随附义务必须履行：正文 = `licenses/LGPL-3.0.txt` ＋ `licenses/GPL-3.0.txt`（GPL-3.0 全文，LGPL-3.0 第 2 条并入；2026-10-11 前它放在仓库根 `LICENSE`）、`licenses/BSD-3-Clause.txt`；源码可得性与使用形态见 `THIRD-PARTY-LICENSES.md` §2 / §3 |
 | **hermes pinned uv 0.12.3**（astral-sh/uv，运行时下载） | MIT OR Apache-2.0 | **不随包分发**。hermes 只认它自装的 pinned uv（剥离一切环境变量与配置），证道的包装器（`ProotLauncher.HERMES_UV_WRAPPER_B64`，源文件 `build/hermes-uv-wrapper.sh`）按 hermes install.sh 同源 URL 下载该工件并做 SHA256 校验（`bb66cb52…68dcca2`）后 exec；包装器同时强制 `UV_LINK_MODE=copy`（Android/proot 无可用硬链接） |
 | OkHttp / Compose 等 | Apache-2.0 | Maven 依赖，按官方文档使用 |

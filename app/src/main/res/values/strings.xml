@@ -654,7 +654,7 @@
     <string name="health_label_native">native 加速层</string>
     <string name="health_label_resource">资源占用</string>
     <string name="health_proot_ok">proot + loader 就位</string>
-    <string name="health_proot_missing">proot 或 loader 缺失（启动时会自动重放，仍缺就用「修复环境」重解压）</string>
+    <string name="health_proot_missing">proot 或 loader 缺失（随 APK 内置，缺失属安装异常；可用「修复环境」排查或重装 App）</string>
     <string name="health_rootfs_ok">Debian 系统层完整</string>
     <string name="health_rootfs_broken">系统层文件缺失，需「修复环境」重解压（约 30 秒）</string>
     <string name="health_rootfs_missing">环境未安装或安装未完成</string>
