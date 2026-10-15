@@ -9,6 +9,7 @@ import android.webkit.WebView
 import com.example.zhengdao.browser.PageSnapshot
 import com.example.zhengdao.browser.SensitiveRedactor
 import com.example.zhengdao.browser.WebViewEngine
+import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Store
 import com.example.zhengdao.ui.browser.BrowserTabManager
 import java.io.ByteArrayOutputStream
@@ -110,6 +111,14 @@ object BrowserCommands {
         }
         val done = runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }.getOrDefault(false)
         if (!done) {
+            // §B 61：超时必须落日志——此前超时只对 agent 回 JSON，RunLog 里无痕，
+            // 「主线程卡在 WebView 构造」只能靠 before/after 探针间接推。
+            runCatching {
+                RunLog.log(
+                    "浏览器桥：主线程执行超时（>${EVAL_TIMEOUT_MS}ms 未返回，" +
+                        "thread=${Thread.currentThread().name}）——按契约回超时错误 JSON",
+                )
+            }
             return MainResult.failed(java.util.concurrent.TimeoutException("主线程执行超过 ${EVAL_TIMEOUT_MS}ms 未返回"))
         }
         @Suppress("UNCHECKED_CAST")
