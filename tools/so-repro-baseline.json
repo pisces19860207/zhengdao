@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "generated_at": "2026-10-15T13:32:51Z",
+  "generator": "tools/rebuild-and-compare.py --update（第㊶刀 · 观察期）",
+  "generated_on_host": "x86_64-pc-windows-gnu",
+  "hash_mode": "so=raw-bytes-after-llvm-strip --strip-unneeded（remap 归一后）",
+  "normalized": {
+    "size": 961960,
+    "sha256": "3e5f400813d06794c49b8590d09be7578a34095a590394ee90a2c0fd48bf5559"
+  },
+  "raw": {
+    "size": 1284176,
+    "sha256": "2243f080918b7ff5a34d204dd7b8ed0a76873f64f8689c1cbf5d2ea9eff7f6ea"
+  },
+  "build_inputs": {
+    "target_triple": "aarch64-linux-android",
+    "rustc": {
+      "version": "1.99.0",
+      "commit_hash": "b940084d7eb6a299eb4bfeb8e34901bc051e7ac4"
+    },
+    "ndk_version": "27.2.12479018",
+    "page_size_link_flags": [
+      "-C",
+      "link-arg=-Wl,-z,max-page-size=16384",
+      "-C",
+      "link-arg=-Wl,-z,common-page-size=16384"
+    ],
+    "remap": {
+      "cargo_home": "/cargo",
+      "repo_root": "/src"
+    },
+    "cargo_lock_sha256": "87091e249947c2a6d94872408563669421cabb71a8a17b367f3ec324307cfe57"
+  },
+  "note": "归一化 = cargo home → /cargo、仓库根 → /src；未归一化的产物含 27 处本机绝对路径，跨主机不可比（见 证道设计报告/证道-第27刀②-重编逐字节比对可行性-2026-10-15.md）。观察期：ci.yml 里这一步 continue-on-error，只报数不卡 CI。"
+}
