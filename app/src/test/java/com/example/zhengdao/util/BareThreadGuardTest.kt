@@ -50,6 +50,8 @@ import kotlin.text.Charsets
  *   Thread 改协程（zd-cache-reload / zd-cache-clean / zd-rollback **消除**）⇒ 29→26 处；
  *   `SettingsEnvActivity.kt`（R-29 +4 行）557→561 / 652→656；
  *   `TerminalActivity.kt`（R-29 +12 行）1550→1562 / 1610→1622 / 1696→1708。本次回填。
+ * - 2026-10-15（第⑲刀 OC 关停策略）：ZhengdaoApp.kt 插入 `registerOcShutdownOnFinish()`（+2 import
+ *   ＋ onCreate 一行调用，共 +3 行）⇒ 两条创建点 77→80 / 127→130，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -113,8 +115,8 @@ class BareThreadGuardTest {
             "TerminalActivity.kt:1562",             // zd-install-saf（第⑯刀 R-29 +12）
             "TerminalActivity.kt:1622",             // zd-install-cache（同上 +12）
             "TerminalActivity.kt:1708",             // zd-install-download（同上 +12）
-            "ZhengdaoApp.kt:77",                    // zhengdao-keepalive-archive
-            "ZhengdaoApp.kt:127",                   // zd-auto-clean
+            "ZhengdaoApp.kt:80",                    // zhengdao-keepalive-archive（第⑲刀 +3 行后平移）
+            "ZhengdaoApp.kt:130",                   // zd-auto-clean（同上）
         )
         assertEquals(
             "裸 Thread 创建点与 2026-10-14 对账单不符——新增/移动了线程？" +
