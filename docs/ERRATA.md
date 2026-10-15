@@ -6793,3 +6793,15 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **规避/修法（待拍板，两条）**：① **回退 `targetSdk` 到 28**（立刻恢复；代价＝放弃 ㉕ 的现代化收益）；② **改走 `nativeLibraryDir` 直启**（oc 以 `lib*.so` 进 `jniLibs`，从 `applicationInfo.nativeLibraryDir` 启动；代价＝289 MB 进 APK，包体 45 MB → ~330 MB）。
 
 **台账落点**：`docs/FEATURE-LEDGER.md` §A #115 ③、§B 顺序 64。
+
+## E-141 · 2026-10-15 · 桥 `newTab` 偶发「TCP 零字节关闭（RC=52）」**不能独占归因于 App 侧** —— App 侧 RunLog 抓到「响应已写出、宿主仍收到零字节」的完整现场
+
+**背景**：第㉔刀第①轮真机报告把 RC=52 归到 App 侧（`app/src/main/java/com/example/zhengdao/ui/browser/BrowserTabManager.kt:94 WebView(app)` 构造卡死 ⇒ 主线程不返回 ⇒ 异常被 `app/src/main/java/com/example/zhengdao/bridge/BrowserAgentBridge.kt:123` 的 `onFailure { close(sock) }` 吞掉 ⇒ agent 只看到断连）。第㊲刀真机复验时抓到**与之相反的一次现场**。
+
+**现象（第㊲刀实测）**：宿主侧 `curl` 报 RC=52（零字节），而设备侧 RunLog 对同一请求明确记录「收到请求行 → 连接处理完成（18ms）」——**App 把响应写完了**；该请求还带着长度错误的 token（131 字符，本应回 401），说明 App 侧已走到鉴权并回了 JSON。⇒ 字节丢在 App 之后的链路（`adb forward`／连接复位），不是 App 没回。
+
+**同时观测到的污染源**：复现窗口内有三条非本线所做的桥开关启停（18:04:27／18:06:05／18:07:21）与前台切换 ⇒ **该窗口存在并发验证线**；而在安静窗口（18:15:54 之后）跑的 28 个用例全部 JSON 回包、零 RC=52。
+
+**记账口径**：① 单次 RC=52 **不作为 App 侧缺陷的证据**，除非同一时刻 App 侧 RunLog 里没有「请求行／完成／异常」三种记录之一；② 第㊲刀之后 App 侧已能区分三种情形（未回包／回包后链路丢字节／EOF 无响应），下次复现按 RunLog 三者对照落新条目或收口；③ 设备矩阵结果只在**确认无并发线**的窗口内计数。
+
+**影响面**：㉔ 第①轮的「间歇性卡死」结论**未被推翻**（那次的 RunLog 确实只有 `before-webview#tabN`、永无 `after`），但「RC=52 ⇒ App 侧异常被吞」这一条**只能算其中一种来源**。
