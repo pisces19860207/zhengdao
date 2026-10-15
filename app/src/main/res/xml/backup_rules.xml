@@ -22,4 +22,9 @@
     <exclude domain="file" path="oc" />
     <!-- 「仅私有模式」的工作区落在 App 的外部私有目录，同样不进云备份 -->
     <exclude domain="external" path="workspace" />
+    <!-- 浏览器桥 token（2026-10-15，ERRATA E-129 的坑）：上一个骨架把随机口令明文存进
+         sharedpref，而两份备份规则都没排这个 domain ⇒ 口令跟着云备份走。
+         现在只按文件名排这一个文件（独立 prefs，见 bridge/BridgeToken.kt），
+         不影响设置项等其他 sharedpref。 -->
+    <exclude domain="sharedpref" path="bridge_token.xml" />
 </full-backup-content>
