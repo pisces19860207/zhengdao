@@ -156,6 +156,13 @@
             android:label="后台与保活"
             android:theme="@style/Theme.Zhengdao"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+        <!-- 浏览器桥（2026-10-15，设计文档 §4.5）：给终端里的 agent 用；默认关，页面里拨开关才 bind 127.0.0.1:14080 -->
+        <activity
+            android:name=".ui.SettingsBridgeActivity"
+            android:exported="false"
+            android:label="浏览器桥"
+            android:theme="@style/Theme.Zhengdao"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
         <activity
             android:name=".ui.SettingsHelpActivity"
             android:exported="false"

@@ -193,6 +193,14 @@ fun SettingsScreen(
                     label = stringResource(R.string.settings_keepalive),
                     value = stringResource(R.string.settings_status_guide),
                 ) { open(SettingsKeepaliveActivity::class.java) }
+                SettingsDivider()
+                // 浏览器桥（2026-10-15，设计文档 §4.5）：给终端里的 agent 用。
+                // 放「后台」组 —— 它与保活同属"进程活着期间对外提供服务"的一类；
+                // 默认关，入口只是让人知道有这条路。
+                SettingRow(
+                    label = stringResource(R.string.settings_bridge),
+                    value = stringResource(R.string.settings_value_bridge),
+                ) { open(SettingsBridgeActivity::class.java) }
             }
 
             SectionCard(stringResource(R.string.settings_group_interface)) {

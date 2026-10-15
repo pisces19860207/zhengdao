@@ -852,4 +852,23 @@
     <string name="term_install_title">安装运行环境（Debian 13.7）</string>
     <string name="term_start_download">开始下载</string>
     <string name="term_pick_file">从文件选择</string>
+    <string name="settings_bridge">浏览器桥</string>
+    <string name="settings_value_bridge">给终端里的 agent 用</string>
+    <string name="bridge_title">浏览器桥</string>
+    <string name="bridge_switch_group">开关与监听地址</string>
+    <string name="bridge_switch_label">启用浏览器桥</string>
+    <string name="bridge_status_on">已开启：本机环回可连，外网够不着</string>
+    <string name="bridge_status_off">已关闭：端口未监听</string>
+    <string name="bridge_started">浏览器桥已开启</string>
+    <string name="bridge_stopped">浏览器桥已关闭</string>
+    <string name="bridge_port_label">监听地址</string>
+    <string name="bridge_token_group">口令（token）</string>
+    <string name="bridge_token_label">当前口令</string>
+    <string name="bridge_token_hint">只显示前后各 4 位。要复制请点下面「复制口令」——复制是显式动作，不默认摊开。重置后旧口令立即失效。</string>
+    <string name="bridge_copy">复制口令</string>
+    <string name="bridge_copied">口令已复制到剪贴板</string>
+    <string name="bridge_reset">重置口令</string>
+    <string name="bridge_reset_done">已重置，旧口令立即失效</string>
+    <string name="bridge_howto_group">怎么用（给终端里的 agent）</string>
+    <string name="bridge_howto">终端里先记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让 agent 走本机环回操作玄览页面，例如：\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\n可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。\n注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。\n太极（内置 OpenCode）不接这条桥，它的浏览器能力由自身插件提供。</string>
 </resources>

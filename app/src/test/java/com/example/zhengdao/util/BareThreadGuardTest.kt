@@ -78,13 +78,13 @@ class BareThreadGuardTest {
     @Test
     fun `门禁_创建点数量收敛在红线以内`() {
         val total = scanAppSources().size
-        // 2026-10-14 实测 26 处（第⑯刀 R-25 消除存储页三处后）；红线 32——允许零星新增，
-        // 但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
+        // 2026-10-15 实测 27 处（第⑯刀 R-25 消除存储页三处后 26；浏览器桥 acceptor +1）；
+        // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
 
     @Test
-    fun `对账单_2026-10-14_实测 26 处创建点`() {
+    fun `对账单_2026-10-15_实测 27 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -93,6 +93,7 @@ class BareThreadGuardTest {
             "AgentManifest.kt:136",                 // zd-manifest-refresh
             "HomeScreen.kt:177",                    // zd-taiji-retry
             "HomeScreen.kt:579",                    // zd-health-fix（R-21/R-27 编辑后自 :560 平移）
+            "BrowserAgentBridge.kt:75",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
             "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）
             "KnowledgeBase.kt:153",                 // zd-knowledge-base-rebuild
@@ -100,7 +101,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:200",                 // zd-knowledge-base-auto
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "KnowledgeBaseSummarizerRunner.kt:110", // zd-kb-summarize
-            "MainActivity.kt:228",                  // zd-update-check
+            "MainActivity.kt:235",                  // zd-update-check（2026-10-15 浏览器桥加 7 行 import 后 +7）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:207",           // zd-hermes-repair
@@ -117,7 +118,7 @@ class BareThreadGuardTest {
             "ZhengdaoApp.kt:127",                   // zd-auto-clean
         )
         assertEquals(
-            "裸 Thread 创建点与 2026-10-14 对账单不符——新增/移动了线程？" +
+            "裸 Thread 创建点与 2026-10-15 对账单不符——新增/移动了线程？" +
                 "按纪律补 有名+daemon 后回来更新对账单（它不是 bug，是提醒）",
             expected.sorted(),
             got,
