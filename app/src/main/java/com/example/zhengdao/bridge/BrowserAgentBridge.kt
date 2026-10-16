@@ -323,18 +323,39 @@ object BrowserAgentBridge {
 
     private fun dispatch(app: Context, cmdName: String, body: String): String {
         val cmd = BridgePolicy.Command.fromWire(cmdName) ?: return err("命令不在白名单：$cmdName")
+        // ㊽-C（§B 78，2026-10-16）：七条「操作标签」的命令统一透传 body 里的 tabId ——
+        // 给了就按 id 路由（BrowserCommands.target），缺省/空白仍落活跃标签（老调用方零改动）。
+        // 此前这七条只走活跃标签，body 里的 tabId 被静默吞掉（真机实证 N4）。
         return when (cmd) {
-            BridgePolicy.Command.STATUS -> BrowserCommands.status()
-            BridgePolicy.Command.SNAPSHOT -> BrowserCommands.snapshot(param(body, "mode"), param(body, "selector"))
-            BridgePolicy.Command.EXEC_JS -> BrowserCommands.execJs(param(body, "code"))
-            BridgePolicy.Command.CLICK -> BrowserCommands.click(param(body, "selector"))
-            BridgePolicy.Command.TYPE -> BrowserCommands.type(param(body, "selector"), param(body, "text"))
+            BridgePolicy.Command.STATUS -> BrowserCommands.status(param(body, "tabId"))
+            BridgePolicy.Command.SNAPSHOT -> BrowserCommands.snapshot(
+                param(body, "mode"),
+                param(body, "selector"),
+                param(body, "tabId"),
+            )
+            BridgePolicy.Command.EXEC_JS -> BrowserCommands.execJs(
+                param(body, "code"),
+                param(body, "tabId"),
+            )
+            BridgePolicy.Command.CLICK -> BrowserCommands.click(
+                param(body, "selector"),
+                param(body, "tabId"),
+            )
+            BridgePolicy.Command.TYPE -> BrowserCommands.type(
+                param(body, "selector"),
+                param(body, "text"),
+                param(body, "tabId"),
+            )
             BridgePolicy.Command.SCROLL -> BrowserCommands.scroll(
                 param(body, "x"),
                 param(body, "y"),
                 param(body, "selector"),
+                param(body, "tabId"),
             )
-            BridgePolicy.Command.NAVIGATE -> BrowserCommands.navigate(param(body, "url"))
+            BridgePolicy.Command.NAVIGATE -> BrowserCommands.navigate(
+                param(body, "url"),
+                param(body, "tabId"),
+            )
             BridgePolicy.Command.NEW_TAB -> BrowserCommands.newTab(app, param(body, "url"))
             BridgePolicy.Command.ACTIVE_TAB -> BrowserCommands.activeTab(param(body, "tabId"))
             BridgePolicy.Command.CLOSE_TAB -> BrowserCommands.closeTab(param(body, "tabId"))

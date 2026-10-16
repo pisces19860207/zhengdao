@@ -72,7 +72,9 @@ class BrowserBridgeGateTest {
         // 每条命令都要有对应的执行函数（BrowserCommands 里出现同名 fun）
         BridgePolicy.ALL.forEach { cmd ->
             val fn = when (cmd) {
-                BridgePolicy.Command.STATUS -> "fun status()"
+                // ㊽-C（§B 78，2026-10-16）：status 加了末位默认参数 tabId，判据跟着放宽到「函数名 + 左括号」
+                // （与其余十条一致）—— 只认 `fun status()` 会让「给 status 加可选路由参数」这种合法改动误红。
+                BridgePolicy.Command.STATUS -> "fun status("
                 BridgePolicy.Command.SNAPSHOT -> "fun snapshot("
                 BridgePolicy.Command.EXEC_JS -> "fun execJs("
                 BridgePolicy.Command.CLICK -> "fun click("
