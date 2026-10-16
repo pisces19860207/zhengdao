@@ -63,6 +63,15 @@ object BrowserTabManager {
     /** 当前活跃标签（null = 空态）。 */
     fun activeTab(): Tab? = activeId?.let { id -> tabs.firstOrNull { it.id == id } }
 
+    /**
+     * 按 id 取标签；不存在返回 null（㊽-C ＝ §B 78，2026-10-16）。
+     *
+     * 供桥命令**按 tabId 精确路由**用：2026-10-16 前 `status/snapshot/execJS/click/type/scroll/navigate`
+     * 一律操作活跃标签，body 里的 `tabId` 被静默忽略（真机实证 N4：`tabId=1` 的 click 点在了 tab2）。
+     * 与 [activeTab] 的区别只有一处：本函数不碰活跃态，纯查询。
+     */
+    fun tabById(id: Int): Tab? = tabs.firstOrNull { it.id == id }
+
     /** 当前活跃引擎（null = 空态）。 */
     fun activeEngine(): WebViewEngine? = activeTab()?.engine
 

@@ -1,5 +1,6 @@
 package com.example.zhengdao.ui.browser
 
+import android.content.Context
 import android.net.Uri
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
@@ -48,7 +49,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.zhengdao.R
-import com.example.zhengdao.browser.BrowserEngine
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
@@ -109,10 +109,18 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         urlInput = active?.state?.url ?: ""
     }
 
+    // ㊽-D（§B 79，2026-10-16）：0 标签空态下提交不再「点了没反应」。
+    // 原先三条提交路径（地址栏「前往」/ 地址栏 IME Go / 起始页搜索框）都把 URL 交给 remember
+    // 下来的 engine —— 用户关掉最后一个标签后 active == null，那个 engine 属于已销毁的标签，
+    // loadUrl 落进没人承载的 WebView；提示又写进 active?.state，而 active 也是 null ⇒ 连
+    // 「被拦」的提示都发不出来（真机实证 N5）。现在统一走 [tryNavigate]，由它保证有承载。
+    val reportBlocked: () -> Unit = {
+        val msg = context.getString(R.string.browser_blocked_scheme)
+        val tab = BrowserTabManager.activeTab()
+        if (tab != null) tab.state.onBlocked(msg) else uiMsg = msg
+    }
     val navigate: () -> Unit = {
-        if (!tryNavigate(engine, urlInput)) {
-            active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
-        }
+        if (!tryNavigate(context, urlInput)) reportBlocked()
     }
 
     // ── 第⑲刀「导出给 agent」（D-4 之外的「眼睛」第一版）──
@@ -322,11 +330,11 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 // 提交仍走 tryNavigate（既有归一化路径，禁第二套解析）；scheme 预检失败
                 // 沿用既有 browser_blocked_scheme 提示；空态判据一字未动
                 // （everLoaded 只涨不落，不新增状态、不改 BrowserTabState）。
+                // ㊽-D（§B 79，2026-10-16）：空态正是「0 标签」这一支 —— tryNavigate 现在会
+                // 先保证有承载引擎（建标签后加载），提示也不再写向 null 的 active。
                 BrowserStartPage(
                     onSearch = { input ->
-                        if (!tryNavigate(engine, input)) {
-                            active?.state?.onBlocked(context.getString(R.string.browser_blocked_scheme))
-                        }
+                        if (!tryNavigate(context, input)) reportBlocked()
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -413,14 +421,29 @@ private fun JsDialogUi(dialog: JsDialog, onDismiss: () -> Unit) {
 }
 
 /**
- * 地址栏导航：归一化 URL 后加载；scheme 不在白名单返回 false（调用方给提示）。
- * 白名单与引擎内拦截一致（http/https）——这里是用户输入预检，引擎是兜底。
+ * 地址栏 / 起始页提交的**唯一入口**（㊽-D ＝ §B 79，2026-10-16 起）：归一化 URL → scheme 预检 →
+ * 确保有承载的引擎 → 加载。
+ *
+ * 为什么"确保承载"也放在这里：提交路径共有三条（地址栏「前往」、地址栏 IME Go、起始页搜索框），
+ * 三条都调本函数 —— 判据只放一处，才不会出现"某一条记得建标签、另一条忘了"。
+ * 0 标签时建标签走 [BrowserTabManager.obtain]（= 建标签 + 取活跃引擎），与标签条「＋」同一入口。
+ *
+ * 背景（真机实证 N5）：2026-10-16 前三条路径都把 URL 交给 remember 下来的 engine。用户关掉
+ * 最后一个标签后 active == null，那个 engine 属于**已销毁**的标签 ⇒ loadUrl 落进没人承载的
+ * WebView，界面仍停在起始页，表现为"点了没反应"；且提示写进 `active?.state`，active 为 null
+ * 时连"被拦"的提示都发不出来。
+ *
+ * scheme 白名单与引擎内拦截一致（http/https）——这里是用户输入预检，引擎是兜底。
+ *
+ * @return false = scheme 不在白名单（调用方给提示）；true = 已加载，或空输入（无动作）。
  */
-private fun tryNavigate(engine: BrowserEngine, input: String): Boolean {
+private fun tryNavigate(context: Context, input: String): Boolean {
     val url = normalizeInput(input)
     if (url.isEmpty()) return true
     val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
     if (scheme !in setOf("http", "https")) return false
+    // ㊽-D：0 标签空态（用户关掉最后一个标签）时先建一个，否则这次提交没有承载者。
+    val engine = BrowserTabManager.activeEngine() ?: BrowserTabManager.obtain(context)
     engine.loadUrl(url)
     return true
 }
