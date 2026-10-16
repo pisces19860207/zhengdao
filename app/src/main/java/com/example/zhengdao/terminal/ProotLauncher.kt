@@ -421,7 +421,7 @@ object ProotLauncher {
             .onFailure { RunLog.log("git 加速配置失败：${it.message}") }
         // ── 抱朴实例的预置（人设 + opencode.json 性能/插件字段）已搬走 ──────────────
         // 2026-10-09（ERRATA E-069）：那些内容是**抱朴的**，不该由"用户开终端"来触发，
-        // 也不该和终端耦合。现唯一入口 oc/BaopuPreset.ensure(ctx)，由 ui/baopu/BaopuScreen
+        // 也不该和终端耦合。现唯一入口曾是 oc/BaopuPreset.ensure(ctx)，由 ui/baopu/BaopuScreen（2026-10-16 两处均整批删除）
         // 在拉 serve 之前调用。终端启动这条路径从此不再碰抱朴的任何配置。
         // 资料库（P0）：预置骨架 ＋ 分发指路到 guest /root（供终端各类 agent 读取）。
         // 与上面抱朴那份**完全分开**：抱朴读 <XDG_CONFIG_HOME>/opencode/AGENTS.md；

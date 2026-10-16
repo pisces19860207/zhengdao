@@ -1,7 +1,6 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.terminal
 
-import com.example.zhengdao.oc.OcPart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -62,64 +61,10 @@ class KnowledgeBaseSummarizerTest {
     }
 
     @Test
-    fun `只取助手正文 不混入工具与推理`() {
-        val parts = listOf(
-            OcPart.Reasoning("r1", "我想想"),
-            OcPart.Tool("t1", toolName = "bash", state = com.example.zhengdao.oc.ToolState.Success),
-            OcPart.Text("x1", "第一段"),
-            OcPart.Text("x2", "第二段"),
-        )
-        assertEquals("第一段\n第二段", KnowledgeBaseSummarizer.assistantText(parts))
-    }
-
-    @Test
-    fun `从消息响应里取最后一条助手正文`() {
-        // ⚠️ 真实线格式：`{info:{id,type}, content:[…]}` —— content 与 **info 平级**，
-        //    不在 info 里面（真机实测，也是 parseMessages 为什么要单独读外层 parts 的原因）。
-        val json = """
-            {"data":[
-              {"info":{"id":"m1","type":"user"},"content":[{"type":"text","text":"用户的话"}]},
-              {"info":{"id":"m2","type":"assistant"},"content":[{"type":"text","text":"助手的话"}]},
-              {"info":{"id":"m3","type":"assistant"},"content":[{"type":"text","text":"最后一条"}]}
-            ]}
-        """.trimIndent()
-        assertEquals("最后一条", KnowledgeBaseSummarizer.assistantTextFromMessages(json))
-    }
-
-    @Test
-    fun `绝不把用户自己说的话当成模型回答`() {
-        // 回归：曾经只按"外层 content 优先"取文本、忘了先看角色 ⇒ 摘要会变成用户的原话，
-        // 而且"有内容"、不报错（本项目最怕的静默错）。
-        val onlyUser = """
-            {"data":[{"info":{"id":"m1","type":"user"},"content":[{"type":"text","text":"帮我改文件"}]}]}
-        """.trimIndent()
-        assertNull("只有用户消息时必须返回 null", KnowledgeBaseSummarizer.assistantTextFromMessages(onlyUser))
-
-        val mixed = """
-            {"data":[
-              {"info":{"id":"m1","type":"user"},"content":[{"type":"text","text":"帮我改文件"}]},
-              {"info":{"id":"m2","type":"assistant"},"content":[{"type":"text","text":"好的，改好了"}]}
-            ]}
-        """.trimIndent()
-        assertEquals("好的，改好了", KnowledgeBaseSummarizer.assistantTextFromMessages(mixed))
-    }
-
-    @Test
-    fun `只有在 parts 里时才读外层 parts`() {
-        val json = """
-            {"data":[
-              {"info":{"id":"m1","type":"assistant"},"parts":[{"type":"text","text":"走了 parts"}]}
-            ]}
-        """.trimIndent()
-        assertEquals("走了 parts", KnowledgeBaseSummarizer.assistantTextFromMessages(json))
-    }
-
-    @Test
-    fun `响应无信封或解析不了时返回 null 而不是乱猜`() {
+    fun `响应无信封或解析不了时返回 null 而不是乱猜`() {  // 原还含一条 assistantTextFromMessages 断言，2026-10-16 随旧线删除
         assertNull("空串", KnowledgeBaseSummarizer.unwrapArray(""))
         assertNull("不是 JSON", KnowledgeBaseSummarizer.unwrapArray("这是一个错误页"))
         assertNull("对象但没有 data 数组", KnowledgeBaseSummarizer.unwrapArray("""{"ok":true}"""))
-        assertNull("消息解析不出助手文本时", KnowledgeBaseSummarizer.assistantTextFromMessages("""{"data":[]}"""))
     }
 
     // ── ③ 解析摘要 ──────────────────────────────────────────────────────────

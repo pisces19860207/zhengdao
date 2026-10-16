@@ -15,7 +15,8 @@ import java.io.File
  *  终端红点 30dp、res/layout/term_keys.xml 第二行 12 键在 360dp 屏每键约 28dp`
  *
  * 2026-10-16 逐条按当前代码复核（文件已随 P4-1 拆分，行号全部失效）：
- * - 模型胶囊、`DrawerActionRow`、`SheetActionRow`、`BaopuPartCards` 的两处 —— **都已达标**（各自带 48dp 注释）；
+ * - 模型胶囊、`DrawerActionRow`、`SheetActionRow`、`BaopuPartCards` 的两处 —— **都已达标**（各自带 48dp 注释；
+ *   `BaopuPartCards` 2026-10-16 清场已删，刀 1 重做时按同样判据补）；
  * - **终端三个流量灯 30dp** ⇒ 本刀修（热区 48dp，inset 同步改 18.5dp 保持 11dp 视觉）；
  * - **抽屉「新会话」入口 14dp 竖内边距 ≈ 44dp** ⇒ 本刀修（16dp ≈ 48dp）；
  * - **权限批准抽屉的「记住选择」：裸 Checkbox ＋ 兄弟 Text，文字不可点** ⇒ 本刀修（整行 toggleable）；
@@ -96,34 +97,9 @@ class TouchTargetGuardTest {
         }
     }
 
-    @Test
-    fun `门禁_B补20_抽屉新会话入口竖内边距16dp`() {
-        val kt = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuHistoryDrawer.kt").readText()
-        val start = kt.indexOf("stringResource(R.string.taiji_new_session_plus)")
-        assertTrue("找不到新会话入口", start >= 0)
-        val tail = kt.substring(start, (start + 1400).coerceAtMost(kt.length))
-        assertTrue(
-            "B-补-20：抽屉「新会话」入口应补到 vertical = 16.dp（≈48dp），当前找不到",
-            tail.contains("padding(horizontal = 16.dp, vertical = 16.dp)"),
-        )
-    }
-
-    @Test
-    fun `门禁_B补20_权限记住选择整行可点而不是只有方框`() {
-        val kt = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSheets.kt").readText()
-        assertTrue(
-            "B-补-20：权限抽屉的「记住选择」必须整行 toggleable（role = Checkbox）",
-            kt.contains("role = Role.Checkbox") && kt.contains("onValueChange = { remember = it }"),
-        )
-        assertTrue(
-            "B-补-20：整行 toggleable 后 Checkbox 自身必须传 onCheckedChange = null（否则语义重复播报）",
-            kt.contains("Checkbox(checked = remember, onCheckedChange = null)"),
-        )
-        assertTrue(
-            "B-补-20：该行要有 48dp 最小高度",
-            kt.contains(".defaultMinSize(minHeight = 48.dp)"),
-        )
-    }
+    // 2026-10-16 清场：原「门禁_B补20_抽屉新会话入口竖内边距16dp」与
+    // 「门禁_B补20_权限记住选择整行可点而不是只有方框」随 ui/baopu/**（BaopuHistoryDrawer /
+    // BaopuSheets）删除而移除。抱朴线刀 1 重做抽屉与权限 sheet 时按同样判据补回。
 
     @Test
     fun `门禁_B补20_快捷键条按键高度仍是48dp`() {

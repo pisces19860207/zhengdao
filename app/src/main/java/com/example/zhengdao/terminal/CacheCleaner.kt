@@ -410,7 +410,7 @@ esac
         "装工具时下载的文件缓存（pip）" to File(publicCacheRoot, "pip"),
         // 抱朴的安装包下载缓存：v2.0.7 起落在 App 私有 files/oc/pkg（删了下次安装会重下）
         "OpenCode 安装包（删了下次重新下载）" to File(filesDir, "oc/pkg"),
-        // 旧位置（公共区 Download/证道/opencode，v2.0.6 及以前）：本该由 BaopuPreset 的
+        // 旧位置（公共区 Download/证道/opencode，v2.0.6 及以前）：本该由 BaopuPreset（2026-10-16 已删）的
         // 一次性搬家收掉；万一用户装完后一直没进过抱朴，点这个按钮也能把公共区清干净。
         "OpenCode 安装包（旧版残留）" to File(publicRoot, "opencode"),
         // 私有 home：没启动过终端、或只用私有模式时，缓存落在这里

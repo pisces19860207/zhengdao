@@ -34,8 +34,8 @@ import kotlin.text.Charsets
  * 线程（:139/:156/:172）——按本批红线不碰 termux，留待单独评估。Kotlin 标准库
  * 小写 `thread { }`（默认非 daemon）同样纳入纪律；当前全仓零使用（证据②）。
  *
- * 对账单冻结 2026-10-14 的创建点（`Thread` 关键字行号；第⑪批 D-1 新增心跳执行器
- * 与第⑯刀 R-25 消除存储页三处裸 Thread 后，26 个）。
+ * 对账单冻结创建点（`Thread` 关键字行号；第⑪批 D-1 新增心跳执行器与第⑯刀 R-25 消除
+ * 存储页三处裸 Thread 后 26 个；2026-10-16 旧抱朴线清场消除 2 个后 **24 个**）。
  * 将来文件拆分/移动会让它失败——那是提醒回来更新对账单，不是 bug。
  *
  * 行号回填记录（本文件自己的规矩：平移就回填，不是新增线程）：
@@ -73,6 +73,13 @@ import kotlin.text.Charsets
  * - 2026-10-16（B-补-17）：`HomeScreen.kt` 大标题改随滚动收缩（import +3、阈值常量 KDoc +8、
  *   展开/收起状态与插值 +23、顶栏注释 +2）⇒ 两个创建点 177→189 / 579→620，
  *   **无新增线程**（逐行核过 `:189` / `:620` 仍是同一段 `Thread {`），本次回填。
+ * - 2026-10-16（旧抱朴线清场 · 台账 §A #99）：**消除 2 条创建点**——
+ *   `HomeScreen.kt` 的 `zd-taiji-retry`（serve 重试流删除，-1）、
+ *   `KnowledgeBaseSummarizerRunner.kt` 的 `zd-kb-summarize`（整文件删除，-1）⇒ 26→24 处；
+ *   `HomeScreen.kt` 另一条 620→599（删掉 28 行的重试流又补回 7 行）；
+ *   `ZhengdaoApp.kt` 两条 80→82 / 130→132（删 `registerOcShutdownOnFinish()` 及其 import
+ *   共 -3，补「启动即自愈」说明 +5）；清场批注（`SettingsDataActivity.kt` / `SettingsEnvActivity.kt`
+ *   各 +1 行）⇒ 后者两条 572→573 / 667→668 再平移。本次回填。
  */
 class BareThreadGuardTest {
 
@@ -107,15 +114,14 @@ class BareThreadGuardTest {
     }
 
     @Test
-    fun `对账单_2026-10-15_实测 27 处创建点`() {
+    fun `对账单_2026-10-16_实测 24 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
         val expected = listOf(
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
-            "HomeScreen.kt:189",                    // zd-taiji-retry（B-补-17 标题随滚动收缩 +12 后平移）
-            "HomeScreen.kt:620",                    // zd-health-fix（R-21/R-27 编辑后自 :560 平移；B-补-17 再 +41）
+            "HomeScreen.kt:599",                    // zd-health-fix（清场删掉 zd-taiji-retry 后自 :620 平移 -21）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
             "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）
@@ -123,22 +129,21 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:175",                 // zd-knowledge-base-index（同上 -1）
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
-            "KnowledgeBaseSummarizerRunner.kt:109", // zd-kb-summarize
             "MainActivity.kt:281",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17 / B-补-19 冷启动弹框收敛 +21 / B-补-8 顶栏 +1）
             "NetSelfCheck.kt:94",                   // net-self-check-index
-            "SettingsDataActivity.kt:588",          // zd-net-check
+            "SettingsDataActivity.kt:589",          // zd-net-check（清场批注 +1）
             "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）
             "SettingsEnvActivity.kt:268",           // zd-env-check（同上 +7）
-            "SettingsEnvActivity.kt:572",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11）
-            "SettingsEnvActivity.kt:667",           // zd-env-update（同上 +11）
+            "SettingsEnvActivity.kt:573",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1）
+            "SettingsEnvActivity.kt:668",           // zd-env-update（同上 +11 / +1）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
             "TerminalActivity.kt:633",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11）
             "TerminalActivity.kt:848",              // zd-net-probe（同上）
             "TerminalActivity.kt:1610",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22）
             "TerminalActivity.kt:1670",             // zd-install-cache（同上）
             "TerminalActivity.kt:1756",             // zd-install-download（同上）
-            "ZhengdaoApp.kt:80",                    // zhengdao-keepalive-archive（第⑲刀 +3 行后平移）
-            "ZhengdaoApp.kt:130",                   // zd-auto-clean（同上）
+            "ZhengdaoApp.kt:82",                    // zhengdao-keepalive-archive（第⑲刀 +3；清场删两 import −2、删 onCreate 调用 −1、补说明 +2 ⇒ +2）
+            "ZhengdaoApp.kt:132",                   // zd-auto-clean（同上）
         )
         assertEquals(
             "裸 Thread 创建点与 2026-10-15 对账单不符——新增/移动了线程？" +
