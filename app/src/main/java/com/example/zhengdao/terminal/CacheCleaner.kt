@@ -131,27 +131,44 @@ object CacheCleaner {
     fun cleanableMb(ctx: Context): Long = bytesToMb(cleanableBytes(ctx))
 
     private fun cleanableBytes(ctx: Context): Long {
-        val caches = runCatching {
+        val caches = measureOrZero("Agent 包缓存") {
             agentCacheTargetsFor(ctx).sumOf { fileLengths(it.second) }
-        }.getOrDefault(0L)
-        val pkgs = runCatching { prunableRootfsBytes(ctx) }.getOrDefault(0L)
-        val gens = runCatching { deadGenerationBytes(ctx) }.getOrDefault(0L)
-        val temp = runCatching {
+        }
+        val pkgs = measureOrZero("旧版安装包") { prunableRootfsBytes(ctx) }
+        val gens = measureOrZero("旧依赖代次") { deadGenerationBytes(ctx) }
+        val temp = measureOrZero("临时残留") {
             staleTempBytes(ctx.filesDir, System.currentTimeMillis())
-        }.getOrDefault(0L)
+        }
         return caches + pkgs + gens + temp
     }
 
+    /**
+     * 量不到就**留痕**再按 0 计（B-补-5，2026-10-16）。
+     *
+     * 原先四处是 `runCatching { … }.getOrDefault(0L)`：统计一炸就静默变成 0，用户看到的是
+     * 「没得清」，而面板与自动清理阈值判定都跟着偏低，日志里一个字都没有 —— 与 2026-10-09
+     * 那次真机教训（"明明堆了 550MB、日志里一个字都没有"）同型：**失败必须可见**。
+     * 行为不变（仍然按 0 计、仍然不抛给调用方），只补一行日志。
+     */
+    internal fun measureOrZero(what: String, block: () -> Long): Long = try {
+        block()
+    } catch (t: Throwable) {
+        RunLog.log(
+            "缓存体量统计失败（$what）：${t.javaClass.simpleName}: ${t.message}" +
+                " —— 本次按 0 计，面板与自动清理阈值会偏低"
+        )
+        0L
+    }
+
     /** 安装包里超出"最新 2 个"的那部分（与 [com.example.zhengdao.rootfs.RootfsCache.pruneKeep] 同口径）。 */
-    private fun prunableRootfsBytes(ctx: Context): Long = runCatching {
+    private fun prunableRootfsBytes(ctx: Context): Long =
         com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx).drop(2).sumOf { it.length() }
-    }.getOrDefault(0L)
 
     /** hermes 旧依赖代的体量（与 [HermesEnv.prunableGenerations] 同口径）。 */
-    private fun deadGenerationBytes(ctx: Context): Long = runCatching {
+    private fun deadGenerationBytes(ctx: Context): Long {
         val home = HermesEnv.hermesHome(ctx)
-        if (!home.isDirectory) 0L else HermesEnv.prunableGenerations(home).sumOf { fileLengths(it) }
-    }.getOrDefault(0L)
+        return if (!home.isDirectory) 0L else HermesEnv.prunableGenerations(home).sumOf { fileLengths(it) }
+    }
 
     /**
      * 自动清理判定（会话启动时后台调用）：总量超阈值且无活动会话才清。

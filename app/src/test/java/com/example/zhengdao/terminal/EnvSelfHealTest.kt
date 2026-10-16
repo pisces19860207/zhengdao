@@ -87,4 +87,70 @@ class EnvSelfHealTest {
         assertFalse(out.contains("172.65.90.21"))
         assertTrue(out.contains("telemetry.opencode.ai"))
     }
+
+    // ── B-补-4（2026-10-16）：注释行不算「钉住项已在」 ──────────────────────────────
+
+    @Test
+    fun `B_补_4_注释行里的词元不算已在`() {
+        val text = "# 0.0.0.0 opencode.ai\n127.0.0.1 localhost\n"
+
+        val tokens = EnvSelfHeal.hostsTokens(text)
+
+        assertTrue("生效行里的词元要在集合里", "localhost" in tokens)
+        assertFalse("注释行里的钉住域名不能算「已在」（否则永远补不上）", "opencode.ai" in tokens)
+    }
+
+    @Test
+    fun `B_补_4_生效行与行尾注释都正确切分`() {
+        val text = "0.0.0.0 statsig.com # 行尾注释\n\t172.65.90.21\topencode.ai\n\n"
+
+        val tokens = EnvSelfHeal.hostsTokens(text)
+
+        assertTrue(
+            "生效行的地址与域名都要在集合里",
+            tokens.containsAll(setOf("0.0.0.0", "statsig.com", "172.65.90.21", "opencode.ai"))
+        )
+        assertFalse("行尾注释里的词不能混进来", tokens.any { it.contains("注释") })
+    }
+
+    // ── 源码级门禁：这两条债不许悄悄回归 ─────────────────────────────────────────
+
+    @Test
+    fun `门禁_B_补_3_resolv_只读一次`() {
+        val src = terminalSource("EnvSelfHeal.kt")
+        // 只看代码行：注释里会出现 `readText()` 这个词（本债的说明就在注释里），别把它算进去。
+        val codeLines = src.lines().filterNot { line ->
+            val t = line.trimStart()
+            t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")
+        }
+
+        assertEquals(
+            "resolv.readText() 在代码里只允许出现一次（B-补-3；连读两次会得到半新半旧的判定）",
+            1,
+            codeLines.sumOf { Regex("resolv\\.readText\\(\\)").findAll(it).count() }
+        )
+        assertTrue(
+            "应当先读进局部变量再判定",
+            src.contains("val resolvText = if (resolv.isFile) resolv.readText() else \"\"")
+        )
+    }
+
+    @Test
+    fun `门禁_B_补_4_hosts_已存在集合走 hostsTokens`() {
+        val src = terminalSource("EnvSelfHeal.kt")
+
+        assertTrue("ensureHosts 必须用 hostsTokens 判定「已在」", src.contains("val present = hostsTokens(cur)"))
+        assertFalse("不能再用整段 split 当集合（注释行会被算进去）", src.contains("val present = cur.split("))
+    }
+
+    /** 双路径找源码（Gradle 工作目录可能是仓库根，也可能是 `app/`）。 */
+    private fun terminalSource(name: String): String {
+        val candidates = listOf(
+            java.io.File("src/main/java/com/example/zhengdao/terminal/$name"),
+            java.io.File("app/src/main/java/com/example/zhengdao/terminal/$name"),
+        )
+        val file = candidates.firstOrNull { it.isFile }
+            ?: error("找不到源码 $name，试过：${candidates.joinToString { it.path }}")
+        return file.readText()
+    }
 }
