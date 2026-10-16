@@ -118,7 +118,7 @@ fun HomeScreen(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
     // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
-    // 走外部 state 让"切到太极再切回"时仍记得位置；
+    // 走外部 state 让"切到抱朴再切回"时仍记得位置；
     // 不传时退化到内部新建（保持向后兼容，例如设置页内嵌的 HomeScreen 预览）。
     listState: androidx.compose.foundation.lazy.LazyListState =
         androidx.compose.foundation.lazy.rememberLazyListState(),
@@ -184,7 +184,7 @@ fun HomeScreen(
             snack(context.getString(R.string.home_no_browser))
         }
     }
-    // 太极 serve 的重试 / 重启：动作在后台线程跑，结果回主线程汇报（成功撤下问题，失败留在卡上）
+    // 抱朴 serve 的重试 / 重启：动作在后台线程跑，结果回主线程汇报（成功撤下问题，失败留在卡上）
     val retryServe: (restart: Boolean, issueId: String) -> Unit = { restart, issueId ->
         Thread {
             val err = runCatching {
@@ -290,7 +290,7 @@ fun HomeScreen(
     //   而卡片的按钮形态（安装 / 安装中 / 启动）和失败提示全靠它。
     //   旧写法是轮询时重新赋值 `agents`，指望它带出重组：**没用**，因为 AgentInfo 是
     //   data class，前后两次内容相等 ⇒ mutableStateOf 判定"没变" ⇒ 不重组 ⇒
-    //   卡片永远停在旧状态。真机症状：在丹房点「安装」→ 进终端 → 点红点回来，
+    //   卡片永远停在旧状态。真机症状：在怡然点「安装」→ 进终端 → 点红点回来，
     //   卡片仍写着「安装」；**切一下 tab 才变成「安装中」**。那种"要手抖一下才刷新"
     //   的状态比没有状态更糟——用户没法判断自己到底点到没有。
     //   故：把 stateOf 的结果灌进一个 snapshot 状态容器，让重组由它驱动。
@@ -313,7 +313,7 @@ fun HomeScreen(
     //    这正是用户那句"要手抖一下才刷新"的病因。改成常驻循环后，进页面先读一次、
     //    此后每 2 秒重读一次，直到离开该页（effect 随组合销毁自动取消）。
     //    开销：一次读 = SharedPreferences（内存缓存）+ 几个 File.exists()，只有"安装中"
-    //    才多扫一次 /proc。半赫兹，且只在丹房 tab 组合，可忽略。
+    //    才多扫一次 /proc。半赫兹，且只在怡然 tab 组合，可忽略。
     androidx.compose.runtime.LaunchedEffect(agents, stateTick) {
         while (true) {
             // §B 顺序 6 / P1-4（2026-10-14）：这几行是**真 I/O** —— SharedPreferences +
@@ -384,7 +384,7 @@ fun HomeScreen(
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         // ── 固定顶栏（不随内容滚出屏幕，但会收缩）──
-        // 与太极页一致：标题挂在顶栏、内容在下方自滚。原先把标题塞进 LazyColumn 的第一项，
+        // 与抱朴页一致：标题挂在顶栏、内容在下方自滚。原先把标题塞进 LazyColumn 的第一项，
         // 往下滚标题就滚没了——两个根页同一层级，行为却不一样。
         // B-补-17（2026-10-16）起首页多了一层：标题不再「常驻 22sp 一动不动」，而是随滚动
         // 收缩成紧凑标题（见上面 `titleStyle` 的插值），滚回顶部再长回来。
@@ -883,7 +883,7 @@ checks.forEachIndexed { index, c ->
                 }
             }
         }
-        // ── Agent 卡片（OpenCode 已内置为太极，不在丹房展示——用户定稿）──
+        // ── Agent 卡片（OpenCode 已内置为抱朴，不在怡然展示——用户定稿）──
         items(agents.filter { it.id != "opencode" }, key = { it.id }) { agent ->
             Card(
                 modifier = Modifier.fillMaxWidth(),

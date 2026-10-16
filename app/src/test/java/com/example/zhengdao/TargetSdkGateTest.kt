@@ -53,7 +53,7 @@ class TargetSdkGateTest {
             Regex("targetSdk\\s*=\\s*36\\b").containsMatchIn(gradleCode),
         )
         assertFalse(
-            "代码里还写着 targetSdk = 28 —— 抬回去意味着太极/终端至少一条链会按旧口径行事",
+            "代码里还写着 targetSdk = 28 —— 抬回去意味着抱朴/终端至少一条链会按旧口径行事",
             Regex("targetSdk\\s*=\\s*28\\b").containsMatchIn(gradleCode),
         )
     }
@@ -178,7 +178,7 @@ class TargetSdkGateTest {
         val raw = read("build.gradle.kts")
         assertTrue(
             "targetSdk 注释没写 oc 直启的真机实测结论（error=13 偶发 / 重启后成功 / " +
-                "W^X 必拦未复现）—— 后来人要么以为 36 下太极必死，要么忘了换机要重验",
+                "W^X 必拦未复现）—— 后来人要么以为 36 下抱朴必死，要么忘了换机要重验",
             raw.contains("opencode") && raw.contains("error=13") && raw.contains("未复现"),
         )
     }

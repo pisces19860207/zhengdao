@@ -7,9 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 「重进太极要不要重新建连」判据（[shouldReopenConnection]）的边界单测。
+ * 「重进抱朴要不要重新建连」判据（[shouldReopenConnection]）的边界单测。
  *
- * 背景（2026-10-11 用户报「每次重进太极都会重新连接」）：repository 现在挂在 [OcRuntime]
+ * 背景（2026-10-11 用户报「每次重进抱朴都会重新连接」）：repository 现在挂在 [OcRuntime]
  * 上（进程级，切 Tab 不拆连接），于是**每次重进页面都会调一次 `open()`**。这几条把
  * "什么时候该沉默地复用、什么时候必须重开"钉死——写松了会退化成原来那样每次重连，
  * 写紧了会在真断线/切会话/失败重试时卡住不动。
@@ -120,12 +120,12 @@ class OcConnectionPolicyTest {
         )
     }
 
-    // ── E-123 回归（2026-10-13 真机：太极页切会话后页面停在空列表、轮询还挂在旧会话上，
+    // ── E-123 回归（2026-10-13 真机：抱朴页切会话后页面停在空列表、轮询还挂在旧会话上，
     //    杀掉 App 重进才能恢复）────────────────────────────────────────────────
 
     @Test
     fun `切会话的预置状态只清残留，绝不动 sessionId`() {
-        val current = TaijiState(
+        val current = BaopuState(
             sessionId = "s1",
             loadedOnce = true,
             input = "半句话",
@@ -140,14 +140,14 @@ class OcConnectionPolicyTest {
         assertFalse(preset.loadedOnce)
         assertEquals("", preset.input)
         assertFalse(preset.isStreaming)
-        assertEquals(TaijiPhase.Loading, preset.phase)
+        assertEquals(BaopuPhase.Loading, preset.phase)
         assertTrue(preset.messages.isEmpty())
         assertTrue(preset.parts.isEmpty())
     }
 
     @Test
     fun `切会话预置后 + 判据 ⇒ 必须重开（E-123 的真正断点）`() {
-        val preset = TaijiState(sessionId = "s1", loadedOnce = true).afterSessionSwitchStarted()
+        val preset = BaopuState(sessionId = "s1", loadedOnce = true).afterSessionSwitchStarted()
 
         // 正确写法：预置不动 sessionId ⇒ requested(s2) != current(s1) ⇒ 重开
         assertTrue(
@@ -182,7 +182,7 @@ class OcConnectionPolicyTest {
 
     @Test
     fun `熔断后的恢复路径 —— Failed 态下 open() 必须重开（重试按钮靠这条）`() {
-        // 放弃自动重连置 TaijiPhase.Failed(retryable=true)；此后用户点 FailedPane「重试」
+        // 放弃自动重连置 BaopuPhase.Failed(retryable=true)；此后用户点 FailedPane「重试」
         // → open() → shouldReopenConnection 第 1 条（isFailed）判真。这条把"熔断后不会
         // 被复用分支拦住"钉死。
         assertTrue(

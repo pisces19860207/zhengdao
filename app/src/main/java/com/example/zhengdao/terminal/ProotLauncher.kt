@@ -419,12 +419,12 @@ object ProotLauncher {
         runCatching { GitAccel.apply(rootfsDir, homeDir) }
             .onSuccess { actions -> actions.forEach { RunLog.log(it) } }
             .onFailure { RunLog.log("git 加速配置失败：${it.message}") }
-        // ── 太极实例的预置（人设 + opencode.json 性能/插件字段）已搬走 ──────────────
-        // 2026-10-09（ERRATA E-069）：那些内容是**太极的**，不该由"用户开终端"来触发，
-        // 也不该和终端耦合。现唯一入口 oc/TaijiPreset.ensure(ctx)，由 ui/taiji/TaijiScreen
-        // 在拉 serve 之前调用。终端启动这条路径从此不再碰太极的任何配置。
+        // ── 抱朴实例的预置（人设 + opencode.json 性能/插件字段）已搬走 ──────────────
+        // 2026-10-09（ERRATA E-069）：那些内容是**抱朴的**，不该由"用户开终端"来触发，
+        // 也不该和终端耦合。现唯一入口 oc/BaopuPreset.ensure(ctx)，由 ui/baopu/BaopuScreen
+        // 在拉 serve 之前调用。终端启动这条路径从此不再碰抱朴的任何配置。
         // 资料库（P0）：预置骨架 ＋ 分发指路到 guest /root（供终端各类 agent 读取）。
-        // 与上面太极那份**完全分开**：太极读 <XDG_CONFIG_HOME>/opencode/AGENTS.md；
+        // 与上面抱朴那份**完全分开**：抱朴读 <XDG_CONFIG_HOME>/opencode/AGENTS.md；
         // 本份写 guest /root/AGENTS.md —— AGENTS.md 是跨 agent 开放标准（25+ 工具通用），
         // 另补一份只含 @AGENTS.md 的 CLAUDE.md 给 Claude Code。
         // 同步部分只写小文件（毫秒级）；扫描与清单生成在后台线程。失败不影响启动。
@@ -655,7 +655,7 @@ object ProotLauncher {
             }
             File(rootfsDir, "tmp").mkdirs()
             // 横幅文案（v1.2 改写）：原先那条「两个 opencode、不必卸载任何一个」的说明已作废——
-            // 终端里的 npm 版 opencode 随 v1.2 主线一卸载了。现在 App 里只有太极 Tab 那一份
+            // 终端里的 npm 版 opencode 随 v1.2 主线一卸载了。现在 App 里只有抱朴 Tab 那一份
             // OpenCode，这里改为直接告诉用户它在哪，避免"我终端里的 opencode 怎么没了"。
             //
             // 2026-10-08 追加：安装结论横幅。App 侧是原生 TerminalView，**不能往里注入文本**

@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 太极的 OpenCode（bionic 宿主版）管理器（批次 3，2026-10-06）。
+ * 抱朴的 OpenCode（bionic 宿主版）管理器（批次 3，2026-10-06）。
  *
  * 来源：Hope2333/opencode-termux（native bionic 构建，NDK r27c，Android 28 linker，
  * 与本项目 targetSdk 28 的 App 域 exec 机制同源——proot 二进制同款先例）。
@@ -87,10 +87,10 @@ object OcManager {
     /** XDG 四目录（data/cache/config/state）宿主路径。对外可见：插件管理要按同一套路径定位缓存。 */
     fun xdgDir(ctx: Context, kind: String): File = File(ctx.filesDir, "oc/xdg/$kind")
 
-    /** 太极实例的 opencode 配置目录（= serve 的 `XDG_CONFIG_HOME/opencode`）。 */
+    /** 抱朴实例的 opencode 配置目录（= serve 的 `XDG_CONFIG_HOME/opencode`）。 */
     fun configDir(ctx: Context): File = File(xdgDir(ctx, "config"), "opencode")
 
-    /** 太极实例的 opencode.json —— **App 侧唯一真相源**。
+    /** 抱朴实例的 opencode.json —— **App 侧唯一真相源**。
      *
      * ⚠️ v1.2 阶段 2.0 前的历史坑：`PluginManager` 曾指向 `files/home/.zhengdao/taiji/...`
      * （那是终端 taiji 脚本的 XDG 目录，随 v1.2 卸载终端 opencode 后已成死路径），
@@ -99,7 +99,7 @@ object OcManager {
     fun configFile(ctx: Context): File = File(configDir(ctx), "opencode.json")
 
     /**
-     * 太极 opencode.json 的**唯一写入口**（v1.2 阶段 2.0）：读-改-写。
+     * 抱朴 opencode.json 的**唯一写入口**（v1.2 阶段 2.0）：读-改-写。
      *
      * 只更新 [mutate] 动过的字段，其余（`plugin` 数组、`snapshot`、`watcher`、
      * 用户手写项……）**原样保留**。此前 `ensurePermissionPolicy()` 是整文件覆盖写，
@@ -125,7 +125,7 @@ object OcManager {
             val obj = if (file.isFile) runCatching {
                 org.json.JSONObject(file.readText())
             }.getOrElse {
-                RunLog.log("太极: opencode.json 解析失败，按空配置重建（原内容已损坏）")
+                RunLog.log("抱朴: opencode.json 解析失败，按空配置重建（原内容已损坏）")
                 org.json.JSONObject()
             } else org.json.JSONObject()
             var changed = !file.isFile
@@ -135,14 +135,14 @@ object OcManager {
             }
             if (mutate(obj)) changed = true
             if (changed) file.writeText(obj.toString(2))
-        }.onFailure { RunLog.log("太极: 写 opencode.json 失败 ${it.message}") }
+        }.onFailure { RunLog.log("抱朴: 写 opencode.json 失败 ${it.message}") }
     }
 
     /**
-     * 太极自己的工作区（**App 私有**：`files/oc/workspace/`，2026-10-09 从公共区迁出）。
+     * 抱朴自己的工作区（**App 私有**：`files/oc/workspace/`，2026-10-09 从公共区迁出）。
      *
-     * 迁移动机（用户原话）：「把太极的所有工作区什么的和 APP 归置到一起……彻底把
-     * opencode 和终端的分开」。太极的 HOME / XDG 四目录 / 人设 / 工作区现在全在
+     * 迁移动机（用户原话）：「把抱朴的所有工作区什么的和 APP 归置到一起……彻底把
+     * opencode 和终端的分开」。抱朴的 HOME / XDG 四目录 / 人设 / 工作区现在全在
      * `files/oc/` 这一棵私有树下，卸载 App 一起清掉；终端的公共区工作区
      * （`Download/证道`、资料库、logs）完全不受影响。
      *
@@ -151,7 +151,7 @@ object OcManager {
     fun workspaceDir(ctx: Context): File = File(ctx.filesDir, "oc/workspace")
 
     /**
-     * 太极的安装包下载缓存（**App 私有**：`files/oc/pkg/`）。
+     * 抱朴的安装包下载缓存（**App 私有**：`files/oc/pkg/`）。
      *
      * 历史：v2.0.6 及以前放在公共区 `Download/证道/opencode/`，当初的理由是
      * 「卸载重装不丢，省一次 68MB 下载」；2026-10-09 用户裁决跟工作区一起搬进 App
@@ -167,7 +167,7 @@ object OcManager {
      * 整体挪进 App 私有的 [cacheDir]。
      *
      * 为什么搬而不是直接删：那里面通常躺着一个 68MB 的 `.pkg.tar.xz`，删了下次安装要重下；
-     * 搬完把旧目录删掉——**太极在公共区不该有任何痕迹**（用户要求）。
+     * 搬完把旧目录删掉——**抱朴在公共区不该有任何痕迹**（用户要求）。
      *
      * @return 是否真的动了东西（供日志与单测断言）。
      */
@@ -180,7 +180,7 @@ object OcManager {
             legacy.delete()
             moved
         }.getOrElse {
-            RunLog.log("太极: 旧安装包缓存搬家失败 ${it.message}（下轮启动重试）")
+            RunLog.log("抱朴: 旧安装包缓存搬家失败 ${it.message}（下轮启动重试）")
             false
         }
     }
@@ -189,7 +189,7 @@ object OcManager {
      * [migrateLegacyCache] 的可测核心（不依赖 Context）：把 [legacy] 下的文件挪进 [target]。
      *
      * 语义：同名的**不覆盖**（新位置更权威，旧的那份直接丢弃——反正是可再下载的安装包缓存）；
-     * 处理完把 [legacy] 整个删掉（太极不该在公共区留任何痕迹）；一次都没搬成返回 false（调用方可留痕）。
+     * 处理完把 [legacy] 整个删掉（抱朴不该在公共区留任何痕迹）；一次都没搬成返回 false（调用方可留痕）。
      */
     internal fun migrateLegacyCacheDir(legacy: File, target: File): Boolean {
         val files = legacy.listFiles() ?: return false
@@ -280,16 +280,16 @@ object OcManager {
         // 第㉖刀顺序 42：pid 升级为结构化返回（[processPidOf] → Int?），日志与
         // 升级档补刀（killProcess）共用同一份 pid，不再各算各的。
         val pid = processPidOf(p)
-        log("太极: serve 收尾目标 pid=${pid ?: "?"}")
+        log("抱朴: serve 收尾目标 pid=${pid ?: "?"}")
         p.destroy()
-        log("太极: serve 收尾：destroy() 已发出，等 ${waitMs}ms")
+        log("抱朴: serve 收尾：destroy() 已发出，等 ${waitMs}ms")
         val exited = runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }.getOrDefault(false)
         if (exited) {
             val code = runCatching { p.exitValue().toString() }.getOrDefault("?")
-            log("太极: serve 收尾完成（exit=$code）")
+            log("抱朴: serve 收尾完成（exit=$code）")
             return false
         }
-        log("太极: serve ${waitMs}ms 未退，升级 destroyForcibly()")
+        log("抱朴: serve ${waitMs}ms 未退，升级 destroyForcibly()")
         p.destroyForcibly()
         runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }
         var code = runCatching { p.exitValue().toString() }.getOrDefault("仍存活")
@@ -301,16 +301,16 @@ object OcManager {
             // 公开 API、真 SIGKILL；serve 是 App 直启子进程（PPID=App、无包装层）、
             // 同 uid，收得掉（取证已实证同路径有效）。/proc 扫描兜底（[stopServe]）不变。
             if (pid != null) {
-                log("太极: destroyForcibly 后仍存活，补发 killProcess(pid=$pid)（E-136：ART 不给 SIGKILL）")
+                log("抱朴: destroyForcibly 后仍存活，补发 killProcess(pid=$pid)（E-136：ART 不给 SIGKILL）")
                 runCatching { killProcessForTest?.invoke(pid) ?: android.os.Process.killProcess(pid) }
-                    .onFailure { log("太极: killProcess(pid=$pid) 调用失败: ${it.message}") }
+                    .onFailure { log("抱朴: killProcess(pid=$pid) 调用失败: ${it.message}") }
             } else {
-                log("太极: destroyForcibly 后仍存活，pid 不可得，跳过 killProcess 补刀")
+                log("抱朴: destroyForcibly 后仍存活，pid 不可得，跳过 killProcess 补刀")
             }
             runCatching { p.waitFor(waitMs, TimeUnit.MILLISECONDS) }
             code = runCatching { p.exitValue().toString() }.getOrDefault("仍存活")
         }
-        log("太极: serve 强制收尾完成（exit=$code）")
+        log("抱朴: serve 强制收尾完成（exit=$code）")
         return true
     }
 
@@ -405,9 +405,9 @@ object OcManager {
         if (picked != servePassword) {
             RunLog.log(
                 when {
-                    candidates.isEmpty() -> "太极: serve.log 里还没有口令"
-                    picked != null -> "太极: 用第 ${candidates.indexOf(picked) + 1} 个候选口令过了 /api/session 鉴权（共 ${candidates.size} 个）"
-                    else -> "太极: ${candidates.size} 个候选口令都没过 /api/session 鉴权，按未就绪处理（E-093）"
+                    candidates.isEmpty() -> "抱朴: serve.log 里还没有口令"
+                    picked != null -> "抱朴: 用第 ${candidates.indexOf(picked) + 1} 个候选口令过了 /api/session 鉴权（共 ${candidates.size} 个）"
+                    else -> "抱朴: ${candidates.size} 个候选口令都没过 /api/session 鉴权，按未就绪处理（E-093）"
                 }
             )
         }
@@ -470,7 +470,7 @@ object OcManager {
 
     /**
      * 拉起 serve（宿主进程，不经 PRoot）。已在运行返回 null；失败返回错误消息。
-     * 工作目录 = 太极自己的工作区（[workspaceDir]，App 私有；2026-10-09 与终端分开）。
+     * 工作目录 = 抱朴自己的工作区（[workspaceDir]，App 私有；2026-10-09 与终端分开）。
      */
     fun startServe(ctx: Context): String? {
         // serve 可能是孤儿（上一轮 App 被杀、子进程存活监听 14000——App 重启后
@@ -485,11 +485,11 @@ object OcManager {
             //   孤儿 serve 这条路径**没有**下面那次"轮询等 password 落盘"的兜底，而 serve 的日志
             //   顺序是「listening 先、password 后」（见 parseServePassword 的注释）。恰好卡在两次
             //   落盘之间解析，就会拿到 null ⇒ 客户端不带 Authorization ⇒ `/api/*` 全程 401。
-            //   真机现象：刚 `adb install -r` 完第一次进太极报
-            //   `太极: 创建会话失败：HTTP 401 …Authentication required`，退出来再进一次就好了
+            //   真机现象：刚 `adb install -r` 完第一次进抱朴报
+            //   `抱朴: 创建会话失败：HTTP 401 …Authentication required`，退出来再进一次就好了
             //   （那时 password 已落盘）。**未实测**这条竞态是否就是那次 401 的唯一成因
             //   （另一种可能是取到了过期场次的密码），但"孤儿分支缺轮询"是实打实的缺口，
-            //   而它恰好落在"更新完 App 第一次进太极"这条必经路径上，故补一段**有界等待**：
+            //   而它恰好落在"更新完 App 第一次进抱朴"这条必经路径上，故补一段**有界等待**：
             //   最多 3 秒，每 150ms 重解析一次；仍拿不到就照旧返回 null，由 UI 报"鉴权未就绪"。
             if (servePassword == null) {
                 for (i in 0 until 20) {
@@ -512,7 +512,7 @@ object OcManager {
             // 下面 exec 若仍失败会带真因上报。
             runCatching { android.system.Os.chmod(bin.absolutePath, 493) } // 0755
             val pb = ProcessBuilder(bin.absolutePath, "serve", "--port=$PORT")
-            pb.directory(workspaceDir(ctx)) // 项目 = 太极自己的私有工作区（2026-10-09 起，不再是终端共享工作区）
+            pb.directory(workspaceDir(ctx)) // 项目 = 抱朴自己的私有工作区（2026-10-09 起，不再是终端共享工作区）
             val env = pb.environment()
             env["HOME"] = homeDir(ctx).absolutePath
             env["XDG_DATA_HOME"] = xdgDir(ctx, "data").absolutePath
@@ -521,11 +521,11 @@ object OcManager {
             env["XDG_STATE_HOME"] = xdgDir(ctx, "state").absolutePath
             env["PATH"] = "/system/bin"
             // 本机环回**不走代理**（v1.2 网络优化 P0）：代理 App 若注入 HTTP_PROXY，
-            // 太极 UI 打 127.0.0.1:14000 的请求会被错误地送进代理、形成路由回环
-            // （现象：CPU 飙升 + 发热 + 太极连不上）。大小写两种写法都设，兼容不同读取方。
+            // 抱朴 UI 打 127.0.0.1:14000 的请求会被错误地送进代理、形成路由回环
+            // （现象：CPU 飙升 + 发热 + 抱朴连不上）。大小写两种写法都设，兼容不同读取方。
             env["NO_PROXY"] = "localhost,127.0.0.1,::1"
             env["no_proxy"] = "localhost,127.0.0.1,::1"
-            // 禁 IPv6（P0）：太极是 Bun 编译的原生二进制，禁掉 IPv6 避免在 IPv6 黑洞网络下
+            // 禁 IPv6（P0）：抱朴是 Bun 编译的原生二进制，禁掉 IPv6 避免在 IPv6 黑洞网络下
             // 先去连不可达地址、挂到长超时才回落 IPv4（Bun 源码 src/env_var.zig 已核对存在）。
             env["BUN_FEATURE_FLAG_DISABLE_IPV6"] = "1"
             // 🔧 输出预算修复（2026-10-06，用户定稿）：
@@ -554,7 +554,7 @@ object OcManager {
             val log = File(ctx.filesDir, "oc/serve.log")
             // 第⑭刀 #4：启动前轮转（只在这里转 —— 安全性论证见 [rotateServeLog] KDoc）
             if (rotateServeLog(log)) {
-                RunLog.log("太极: serve.log 超 1MB，已轮转为 serve.log.1（明文口令只随日志保留最近两份）")
+                RunLog.log("抱朴: serve.log 超 1MB，已轮转为 serve.log.1（明文口令只随日志保留最近两份）")
             }
             pb.redirectErrorStream(true)
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(log))
@@ -577,9 +577,9 @@ object OcManager {
                     }
                     // ⚠️ 这条分支以前**只写日志**：serve 在跑、但密码没读到，调用方拿到
                     //   null（= 成功），而接下来每个 /api/* 请求都 401 —— 用户侧表现为
-                    //   「太极连上了但什么都不工作」，界面上一个字都没有。现在同时报进
+                    //   「抱朴连上了但什么都不工作」，界面上一个字都没有。现在同时报进
                     //   「最近问题」，并给一条去路（重启 serve 会重新打印并重读密码）。
-                    val msg = "太极: serve 就绪但密码未解析到（UI 将无法通过 API 鉴权）"
+                    val msg = "抱朴: serve 就绪但密码未解析到（UI 将无法通过 API 鉴权）"
                     RunLog.log(msg)
                     // 第⑭刀 #5：本轮 serve 已就绪 ⇒ 超时/启动失败两条旧账一并清掉
                     IssueCenter.resolve("oc-serve-timeout")
@@ -603,7 +603,7 @@ object OcManager {
             if (doomed != null) {
                 shutdownProcess(doomed)
             } else {
-                RunLog.log("太极: serve 15s 未就绪（进程句柄为空，无需收尾）")
+                RunLog.log("抱朴: serve 15s 未就绪（进程句柄为空，无需收尾）")
             }
             // 第⑭刀 #5：本轮根本没就绪 ⇒ 密码/启动失败两条旧账清掉（本条终态报的是超时）
             IssueCenter.resolve("oc-serve-password")
@@ -617,15 +617,15 @@ object OcManager {
             )
             ctx.getString(R.string.oc_serve_timeout_short)
         } catch (t: Throwable) {
-            RunLog.log("太极 serve 启动失败: ${t.message}")
+            RunLog.log("抱朴 serve 启动失败: ${t.message}")
             // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文仍落 RunLog，UI 看到的是
-            // 「网络超时 / 存储空间不足 / 没有写入权限」等。TaijiScreen:539/590 透传此 msg
+            // 「网络超时 / 存储空间不足 / 没有写入权限」等。BaopuScreen:539/590 透传此 msg
             // 给用户；此处换为 HumanizeError.title 即可让用户读懂。
             val human = HumanizeError.title(t, ctx.resources)
             // 第⑭刀 #5：本条终态报的是启动异常，超时/密码两条旧账一并清掉
             IssueCenter.resolve("oc-serve-timeout")
             IssueCenter.resolve("oc-serve-password")
-            // #4：太极页会显示这句，但用户可能正在主页/丹房 —— 同步报一条到「最近问题」。
+            // #4：抱朴页会显示这句，但用户可能正在主页/怡然 —— 同步报一条到「最近问题」。
             IssueCenter.report(
                 id = "oc-serve-start",
                 title = ctx.getString(R.string.oc_serve_start_failed_title),
@@ -638,7 +638,7 @@ object OcManager {
     }
 
     /**
-     * 写入**保守权限策略**到太极的 opencode.json（经 [updateConfig] 做字段级 merge）。
+     * 写入**保守权限策略**到抱朴的 opencode.json（经 [updateConfig] 做字段级 merge）。
      *
      * ⚠️ 为什么用文件而不是环境变量：实测本版（bionic 2.0.22）`OPENCODE_PERMISSION`
      * 环境变量**不生效** —— 只设 env 时 shell 工具仍被静默放行。写这个文件才真正生效。
@@ -665,7 +665,7 @@ object OcManager {
         //    那会把**用户自己在终端 Debian 里装的 opencode** 一起杀掉 —— proot 里的 guest 进程
         //    在宿主 /proc 里就是真实进程，其 cmdline 形如
         //    `/data/.../files/rootfs/usr/bin/opencode`（同 uid），同样命中那个宽泛子串。
-        //    症状：关一下太极 serve，终端里正跑着的 agent 莫名其妙死掉。
+        //    症状：关一下抱朴 serve，终端里正跑着的 agent 莫名其妙死掉。
         //    现在只匹配**本 App 装的那一份**：`filesDir/oc/usr/bin/opencode`
         //    （见 [binaryFile] 与 `ProcessBuilder(bin.absolutePath, "serve", …)`，:332），
         //    它的路径里带 `/oc/usr/bin/opencode`，而 guest 的那份在 `.../files/rootfs/...` 之下 —— 前缀不同，不会误杀。
@@ -679,7 +679,7 @@ object OcManager {
         val kill = sweepKillForTest ?: { pid: Int -> android.os.Process.killProcess(pid) }
         CoroutineScope(SupervisorJob() + (cleanupDispatcherForTest ?: Dispatchers.IO)).launch {
             runCatching { sweepOrphanServe(root, kill) }
-                .onFailure { RunLog.log("太极: 孤儿 serve 清理失败: ${it.message}") }
+                .onFailure { RunLog.log("抱朴: 孤儿 serve 清理失败: ${it.message}") }
         }
     }
 
@@ -761,7 +761,7 @@ object OcManager {
             onProgress(ctx.getString(R.string.oc_verified_extracting))
             extract(ctx, dest, onProgress, VERSION)
         } catch (t: Throwable) {
-            RunLog.log("太极: OpenCode 下载失败 ${t.message}")
+            RunLog.log("抱朴: OpenCode 下载失败 ${t.message}")
             // 2026-10-08：见 [HumanizeError] 设计
             DownloadResult(false, ctx.getString(R.string.oc_download_failed, HumanizeError.title(t, ctx.resources)))
         }
@@ -796,7 +796,7 @@ object OcManager {
             onProgress(ctx.getString(R.string.oc_verified_extracting))
             extract(ctx, dest, onProgress, update.version)
         } catch (t: Throwable) {
-            RunLog.log("太极: OpenCode ${update.version} 更新失败 ${t.message}")
+            RunLog.log("抱朴: OpenCode ${update.version} 更新失败 ${t.message}")
             // 2026-10-08：见 [HumanizeError] 设计
             DownloadResult(false, ctx.getString(R.string.oc_update_failed, HumanizeError.title(t, ctx.resources)))
         }
@@ -875,7 +875,7 @@ object OcManager {
             if (ghost.isDirectory) {
                 val freed = ghost.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
                 ghost.deleteRecursively()
-                RunLog.log("太极: 清理旧版错位释放残留（约 ${freed / 1048576} MB，E-090）")
+                RunLog.log("抱朴: 清理旧版错位释放残留（约 ${freed / 1048576} MB，E-090）")
             }
         }
         try {
@@ -896,13 +896,13 @@ object OcManager {
                         // 链接条目：名字可能不越界，但它**指向**哪儿就管不着了——后续条目
                         // 可能顺着链接写出去。证道的 tar 里不需要链接，直接跳过。
                         skipped++
-                        RunLog.log("太极: 跳过链接条目 $rel（P3-5）")
+                        RunLog.log("抱朴: 跳过链接条目 $rel（P3-5）")
                         entry = tar.nextTarEntry; continue
                     }
                     val target = resolveExtractTarget(File(ocRoot, "usr"), rel)
                     if (target == null) {
                         skipped++
-                        RunLog.log("太极: 跳过越界条目 $name（P3-5）")
+                        RunLog.log("抱朴: 跳过越界条目 $name（P3-5）")
                         entry = tar.nextTarEntry; continue
                     }
                     target.parentFile?.mkdirs()
@@ -916,7 +916,7 @@ object OcManager {
                     if (part.length() != entry.size) {
                         val got = part.length()
                         part.delete()
-                        RunLog.log("太极: 释放不完整 $rel（$got/${entry.size} 字节）——存储不足或进程被中断")
+                        RunLog.log("抱朴: 释放不完整 $rel（$got/${entry.size} 字节）——存储不足或进程被中断")
                         return DownloadResult(false, ctx.getString(R.string.oc_extract_incomplete, rel, got, entry.size))
                     }
                     // §B 顺序 17：chmod 必须在**最终路径**上补（copyTo 分支不保留执行位）。
@@ -926,7 +926,7 @@ object OcManager {
                             android.system.Os.chmod(final.absolutePath, 493) // 0755
                         }
                         if (chmod.isFailure) {
-                            RunLog.log("太极: chmod 0755 失败 $rel: ${chmod.exceptionOrNull()?.message}")
+                            RunLog.log("抱朴: chmod 0755 失败 $rel: ${chmod.exceptionOrNull()?.message}")
                         }
                     }
                     count++
@@ -935,26 +935,26 @@ object OcManager {
                 }
             }
         } catch (t: Throwable) {
-            RunLog.log("太极: 释放失败 ${t.message}")
+            RunLog.log("抱朴: 释放失败 ${t.message}")
             // 2026-10-08：见 [HumanizeError] 设计
             return DownloadResult(false, ctx.getString(R.string.oc_extract_failed, HumanizeError.title(t, ctx.resources)))
         }
         if (skipped > 0) {
-            RunLog.log("太极: 释放时跳过了 $skipped 个可疑条目（越界路径/链接，P3-5）——若 serve 报缺文件，多半是它")
+            RunLog.log("抱朴: 释放时跳过了 $skipped 个可疑条目（越界路径/链接，P3-5）——若 serve 报缺文件，多半是它")
         }
         if (!installed(ctx)) {
             // E-090（2026-10-11）：这条失败以前**一行日志都不写**——用户报「装不上」时，
             // 日志里查不到任何痕迹（本次查证就卡在这里）。失败可见原则要求它留痕。
             val bin = binaryFile(ctx)
             RunLog.log(
-                "太极: 释放后二进制缺失——预期 ${bin.absolutePath}（>100MB），实际 " +
+                "抱朴: 释放后二进制缺失——预期 ${bin.absolutePath}（>100MB），实际 " +
                     (if (bin.isFile) "${bin.length()} 字节" else "不存在") +
                     "；本轮写入 $count 个文件、跳过 $skipped 个（E-090）",
             )
             return DownloadResult(false, ctx.getString(R.string.oc_binary_missing))
         }
         Settings2.prefs(ctx).edit().putString(VERSION_KEY, version).apply()
-        RunLog.log("太极: OpenCode $version 释放完成（$count 个文件）")
+        RunLog.log("抱朴: OpenCode $version 释放完成（$count 个文件）")
         return DownloadResult(true, ctx.getString(R.string.oc_install_done, version))
     }
 
@@ -995,7 +995,7 @@ object OcManager {
             // 且被最外层 catch 吞成「检查更新失败」）。
             val ver = parseVersionSegments(m.groupValues[1])
             if (ver == null) {
-                RunLog.log("太极: 跳过版本号无法解析的 asset：${a.optString("name")}")
+                RunLog.log("抱朴: 跳过版本号无法解析的 asset：${a.optString("name")}")
                 continue
             }
             if (latest == null || verNewer(ver, latest.first)) {
@@ -1007,18 +1007,18 @@ object OcManager {
         // P2-17②：已装版本解析失败 ⇒ 回退出厂版本比较并留痕（原先抛 NFE ⇒ 检查更新整体失败）。
         val curRaw = installedVersion(ctx) ?: VERSION
         val cur = parseVersionSegments(curRaw) ?: run {
-            RunLog.log("太极: 已装版本号「$curRaw」无法解析，按出厂版本 $VERSION 比较")
+            RunLog.log("抱朴: 已装版本号「$curRaw」无法解析，按出厂版本 $VERSION 比较")
             parseVersionSegments(VERSION) ?: emptyList()
         }
         if (latest != null && verNewer(latest.first, cur)) {
             UpdateCheck.Available(UpdateInfo(latest.first.joinToString("."), latest.second, latest.third))
         } else UpdateCheck.UpToDate
     } catch (t: Throwable) {
-        // 2026-10-08：异常原文 → 人话。reason 字段经 TaijiScreen:551 Toast 弹给用户。
+        // 2026-10-08：异常原文 → 人话。reason 字段经 BaopuScreen:551 Toast 弹给用户。
         // ⚠️ 人话只给 UI，原文必须留在 RunLog —— 与本文件 OcManager:300 同一条约定。
         //    审查（同日）发现这里把原文整个吞了：检查更新失败时用户只看到"出错了"，
         //    日志里也搜不到任何线索 ⇒ 不可诊断。原文 + 异常类名一律落 RunLog。
-        RunLog.log("太极: 检查更新失败 ${t.javaClass.simpleName}: ${t.message}")
+        RunLog.log("抱朴: 检查更新失败 ${t.javaClass.simpleName}: ${t.message}")
         UpdateCheck.Failed(HumanizeError.title(t))
     }
 

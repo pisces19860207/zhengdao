@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 /**
  * 欢迎页：品牌 + 一句话简介 + 三步上手 + 状态感知的开始按钮。
  *
- * @param onSkip 「先去太极看看」——**太极不依赖 Debian 环境**（宿主 bionic 原生 serve，
+ * @param onSkip 「先去抱朴看看」——**抱朴不依赖 Debian 环境**（宿主 bionic 原生 serve，
  *   从不进 PRoot，见故障排查手册坑 #0），所以新用户不必等 326MB 装完就能用主打功能。
  *   环境没装时才给这个入口；装过之后没有意义。
  */
@@ -91,8 +91,8 @@ fun WelcomeScreen(
                 style = MaterialTheme.typography.titleMedium,
             )
         }
-        // 跳过入口：太极不依赖 Debian，先给核心功能，环境可以以后再装。
-        // 做成次级文字按钮——主路径仍是装环境（洞天与 Agent 离不开它）。
+        // 跳过入口：抱朴不依赖 Debian，先给核心功能，环境可以以后再装。
+        // 做成次级文字按钮——主路径仍是装环境（逍遥与 Agent 离不开它）。
         if (!environmentInstalled) {
             TextButton(onClick = onSkip, modifier = Modifier.padding(top = 8.dp)) {
                 Text(stringResource(R.string.welcome_skip))

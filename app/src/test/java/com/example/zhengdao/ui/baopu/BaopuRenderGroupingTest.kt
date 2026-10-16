@@ -1,5 +1,5 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.oc.OcPart
 import com.example.zhengdao.oc.ToolState
@@ -13,7 +13,7 @@ import org.junit.Test
  * 这是第二阶段唯一可脱离真机自动验证的部分——渲染外观需真机看，但"哪些 part 归为一组、
  * 哪段 reasoning 该合并"是可断言的逻辑，必须在 JVM 侧锁死。
  */
-class TaijiRenderGroupingTest {
+class BaopuRenderGroupingTest {
 
     private fun text(id: String, s: String) = OcPart.Text(id = id, text = s)
     private fun reason(id: String, s: String) = OcPart.Reasoning(id = id, text = s)

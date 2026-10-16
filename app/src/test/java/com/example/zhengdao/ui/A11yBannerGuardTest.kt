@@ -99,15 +99,15 @@ class A11yBannerGuardTest {
 
     @Test
     fun `门禁_B补21_装饰符号与对勾不朗读`() {
-        val cards = repoFile("app/src/main/java/com/example/zhengdao/ui/taiji/TaijiPartCards.kt").readText()
+        val cards = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuPartCards.kt").readText()
         assertTrue(
             "工具卡状态徽标的 ●/✓/✗ 是装饰（旁边就有「运行中/已完成/失败」文字）",
             cards.contains("clearAndSetSemantics"),
         )
-        val screen = repoFile("app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt").readText()
+        val screen = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
         assertTrue("空会话提示里的 ☯ 是纯装饰", screen.contains("clearAndSetSemantics"))
 
-        val sheet = repoFile("app/src/main/java/com/example/zhengdao/ui/taiji/ModelSheet.kt").readText()
+        val sheet = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/ModelSheet.kt").readText()
         assertTrue("模型行的 ✓ 不朗读（视觉重复）", sheet.contains("clearAndSetSemantics"))
         assertTrue(
             "但选中态必须改由语义播报：多选一行 = 单选按钮",

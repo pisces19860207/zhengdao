@@ -49,9 +49,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 3. **默认关**：[start] 只在用户于「浏览器桥」设置页打开开关时才调；
  *    进程内单例（[instance] 竞争用 CAS 保证只有一个在听）。
  *
- * ## 与太极的关系（设计文档 §4.5 注）
+ * ## 与抱朴的关系（设计文档 §4.5 注）
  *
- * 太极（内置 OpenCode）**不接入本桥** —— 它是 App 内独立 agent，浏览器能力由其自身
+ * 抱朴（内置 OpenCode）**不接入本桥** —— 它是 App 内独立 agent，浏览器能力由其自身
  * 插件机制提供。本桥只服务「用户直接操作 + 终端外部 agent（Claude/Codex/Hermes/AGY）」。
  */
 object BrowserAgentBridge {

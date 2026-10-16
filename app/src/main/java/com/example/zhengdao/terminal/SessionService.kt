@@ -248,9 +248,9 @@ class SessionService : Service() {
      */
     private fun stopOcServe(reason: String) {
         runCatching { com.example.zhengdao.oc.OcManager.stopServe() }
-            .onSuccess { RunLog.log("太极: serve 已停（$reason）") }
+            .onSuccess { RunLog.log("抱朴: serve 已停（$reason）") }
             .onFailure {
-                RunLog.log("太极: serve 停机失败（$reason）：${it.javaClass.simpleName}: ${it.message}")
+                RunLog.log("抱朴: serve 停机失败（$reason）：${it.javaClass.simpleName}: ${it.message}")
             }
     }
 

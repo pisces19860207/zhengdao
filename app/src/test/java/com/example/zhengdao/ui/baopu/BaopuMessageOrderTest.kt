@@ -1,5 +1,5 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.oc.OcMessage
 import org.junit.Assert.assertEquals
@@ -12,7 +12,7 @@ import org.junit.Test
  * 滚动跟随、浮标外观需真机看；但"顺序对不对"是可断言的逻辑，必须在 JVM 侧锁死——
  * 顺序错了是灾难性的（对话读起来是倒的），且极容易被后续重构悄悄改坏。
  */
-class TaijiMessageOrderTest {
+class BaopuMessageOrderTest {
 
     private fun msg(id: String, t: Long?) =
         OcMessage(id = id, role = OcMessage.Role.USER, timeCreated = t)

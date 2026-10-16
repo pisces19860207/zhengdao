@@ -544,11 +544,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     // 被删的理由（用户原话）：「进入环境或者终端不应该默认某个 agent 啊，我一进去就是
     // hermes 的命令然后就进入 hermes 的 tui 了……那个默认才是要命的」。
     // 也就是这条兜底把"我想回到刚才那个 Agent"办成了"App 替我决定跑哪个 Agent"：
-    // 冷启动后**任何**一次进终端（洞天 tab、丹房点「安装中」看进度、通知栏）都会重放，
+    // 冷启动后**任何**一次进终端（逍遥 tab、怡然点「安装中」看进度、通知栏）都会重放，
     // 用户没有机会得到一个干净的 shell。
     //
     // 代价说明（写清楚，免得以后又被当成 bug 修回来）：进程被系统/用户杀掉后，重进终端
-    // **不会**再自动回到那个 Agent，落点是裸 shell，用户自己敲 `hermes` 或点丹房的启动卡。
+    // **不会**再自动回到那个 Agent，落点是裸 shell，用户自己敲 `hermes` 或点怡然的启动卡。
     // 进程还活着（切后台、关页面）时本来就是真正的 attach，那条路径没动。
 
     /** 会话存活 → 仅 attach（引擎自动重排恢复画面）；否则启动新会话。安装后复用。 */
@@ -563,7 +563,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             // 全新会话 + 本次没带命令 ⇒ 「这条会话里是谁」的记录要一起清掉：
             // 它是上一条会话的遗留（进程被杀时 prefs 里的 `current_agent` 照样留着），
             // 而眼前这条会话是个裸 shell。留着它会**两处出错**：
-            //   ① 丹房的启动卡片被路由判成 ATTACH_CURRENT（"Hermes 已在运行，已切回原来那个"）
+            //   ① 怡然的启动卡片被路由判成 ATTACH_CURRENT（"Hermes 已在运行，已切回原来那个"）
             //      ⇒ 用户点了启动却什么都没发生；
             //   ② 运行日志把这条裸 shell 记成 agent=hermes，事后查现场会被自己误导。
             // 放在 start() 之前就是为了 ② —— start() 里那行「会话启动…」直接读这个字段。
@@ -588,13 +588,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         //    「进入环境或者终端不应该默认某个 agent」：一进终端就自动跑 `hermes`、
         //    直接进它的 TUI，看着像 App 自己替他做了决定（2026-10-11 日志实测：
         //    每次冷启动进终端都记一行「恢复：上次会话里是 hermes…」）。
-        //    要跑 Agent 就点丹房的启动卡片（那条**带命令**，走 [routeSessionIfNeeded]）；
+        //    要跑 Agent 就点怡然的启动卡片（那条**带命令**，走 [routeSessionIfNeeded]）；
         //    进程**还活着**时进终端仍是真正的 attach，现场照旧保留。
         //    台账：ERRATA E-113、FEATURE-LEDGER §A #52。
         //
         // ⚠️ 同时必须把「这条会话里是谁」的记录清掉。记录是**上一条会话**的遗留
         //    （prefs 里的 `current_agent`，进程被杀时它照样留着），而眼前这条会话
-        //    是个裸 shell：留着它，用户去点丹房的「Hermes」启动卡时会被路由判成
+        //    是个裸 shell：留着它，用户去点怡然的「Hermes」启动卡时会被路由判成
         //    ATTACH_CURRENT（"Hermes 已在运行，已切回原来那个"）⇒ **点了没反应**。
         //    只有本次**没带命令**时才清：带命令时记录已由路由层登记成正确的那个。
         //    （清除动作在 `SessionManager.start()` **之前**，见上面那处。）

@@ -99,7 +99,7 @@ object AgentInstaller {
             "AgentInstaller: ${agent.id} 安装脚本下载失败（${why ?: "未知原因"}），退回 curl|bash 通道"
         )
         // E-057：上游脚本的最后一步（gateway 服务）在 proot 里注定失败并把 rc 顶成 1，
-        // 丹房于是永远显示「安装失败（退出码 1）」，而 hermes 本体早就装好了。执行前打一行
+        // 怡然于是永远显示「安装失败（退出码 1）」，而 hermes 本体早就装好了。执行前打一行
         // 本地补丁，让它只告警（锚点不在就原样放过，绝不乱改别人的脚本）。
         if (ok && script.isFile && agent.id == "hermes") {
             val outcome = runCatching { HermesInstallScript.ensurePatched(script) }
@@ -216,7 +216,7 @@ object AgentInstaller {
             }
             append("if [ \$__zd_rc -eq 0 ]; then ")
             append("echo \"[证道] 安装完成，正在启动 $launch（首次启动需初始化，请稍候）…\"; $launch; ")
-            append("else echo \"[证道] 安装失败（退出码 \$__zd_rc）。原因就在上面几行；修好后回丹房点「安装」重试。\"; fi")
+            append("else echo \"[证道] 安装失败（退出码 \$__zd_rc）。原因就在上面几行；修好后回怡然点「安装」重试。\"; fi")
         }
     }
 

@@ -1,7 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
 // 依据的公开接口：本项目自己的数据模型（OcMessage / OcPart）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import android.content.res.Resources
 import com.example.zhengdao.R

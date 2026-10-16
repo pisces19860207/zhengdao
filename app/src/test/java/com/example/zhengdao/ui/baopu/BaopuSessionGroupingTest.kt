@@ -2,16 +2,16 @@
 //
 // v1.1 第一阶段「会话完整化」的纯逻辑验证。
 //
-// 为什么只测这一层：太极的会话新建/恢复要连真机上的 opencode serve，无法在 JVM 单测里跑；
+// 为什么只测这一层：抱朴的会话新建/恢复要连真机上的 opencode serve，无法在 JVM 单测里跑；
 // 但「历史列表按 今天/昨天/更早 分组」是**纯函数**（只依赖系统时钟），可以脱离真机自动验证。
 // 其余（新建 / 切换 / 拉取）以真机验收为准，见《v1.1 计划》第一阶段。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.oc.OcSessionSummary
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class TaijiSessionGroupingTest {
+class BaopuSessionGroupingTest {
 
     /** 以「现在」为锚，构造相对时间戳，保证用例在任何时刻运行都稳定。 */
     private val now = System.currentTimeMillis()

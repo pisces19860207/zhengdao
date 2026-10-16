@@ -50,7 +50,7 @@ object EnvSelfHeal {
      * **已撤除的钉住项**（2026-10-07 用户拍板）：见到就从 hosts 里删掉。
      *
      * 原条目：`172.65.90.21 opencode.ai`（P0，规避 IPv6 黑洞下的长超时）。撤除理由：
-     * 1. **收益 ≈ 0**——太极 serve 跑在**宿主 bionic**，不读 rootfs 的 `/etc/hosts`，
+     * 1. **收益 ≈ 0**——抱朴 serve 跑在**宿主 bionic**，不读 rootfs 的 `/etc/hosts`，
      *    对主产品完全无效；终端里的 opencode 已于 v1.2 阶段 1 卸载；guest 内即便还有进程，
      *    也只省**首次请求 8–25 ms**（连接复用后 DNS 成本归零）。端到端由 TLS + 跨境
      *    RTT（~1.7 s）主导，DNS 只占 ~1%。

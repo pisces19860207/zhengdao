@@ -30,7 +30,7 @@ import androidx.core.content.getSystemService
  * 终端里装的外部 agent（Claude Code / Codex / Hermes / AGY）自己没有浏览器，
  * 而 App 的 WebView 走手机全网络。浏览器桥 = 在 `127.0.0.1:14080` 开一个环回端点，
  * agent 用 Basic 鉴权调 11 条命令（navigate / click / type / snapshot / execJS / …）
- * 操作玄览的页面。**太极（内置 OpenCode）不接入本桥** —— 它的浏览器能力由自身插件提供。
+ * 操作玄览的页面。**抱朴（内置 OpenCode）不接入本桥** —— 它的浏览器能力由自身插件提供。
  *
  * ## 三条 UX 纪律
  *

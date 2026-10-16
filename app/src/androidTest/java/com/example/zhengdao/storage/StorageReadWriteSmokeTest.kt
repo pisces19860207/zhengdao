@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit
  *
  * ⚠️ **务必带上 `leaveApksInstalledAfterRun=true`**（2026-10-09 真机事故）：AGP 默认在跑完
  * connectedAndroidTest 后**卸载 App**，而 `files/` 里装着整台"手机上的 Linux"（rootfs 201MB +
- * hermes 4.4G + 太极 opencode 289MB）——一次跑测就能把用户的运行环境清空。加上那个 flag，
+ * hermes 4.4G + 抱朴 opencode 289MB）——一次跑测就能把用户的运行环境清空。加上那个 flag，
  * AGP 跑完保留已安装的 APK（数据自然保住）。真被清了也能救：公共区
  * `Download/证道/{rootfs,agents,cache}` 不受卸载影响，重装后首页会给「恢复上次装过的 N 个 Agent」。
  *

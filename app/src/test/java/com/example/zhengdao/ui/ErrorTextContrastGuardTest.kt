@@ -7,7 +7,7 @@ import java.io.File
 /**
  * P2-11（issue #17）：错误色当正文用的对比度守卫。
  *
- * 审计原文：「红字对比度 3.55:1：`ui/taiji/TaijiComponents.kt:281`」——实测复现：
+ * 审计原文：「红字对比度 3.55:1：`ui/baopu/BaopuComponents.kt:281`」——实测复现：
  * 浅色主题的 `colorScheme.error` = IOSRed #FF3B30，白底对比度正好 **3.55:1**，
  * 够不上 WCAG AA 正文的 4.5:1（图形/图标只要 3:1，那个槽位本是给它们用的）。
  *

@@ -13,7 +13,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * B 步（2026-10-13，太极 401 自治愈）+ C 步（2026-10-13，改由 `/api/session` 探针定案）：
+ * B 步（2026-10-13，抱朴 401 自治愈）+ C 步（2026-10-13，改由 `/api/session` 探针定案）：
  * 用**合成 serve.log** + **假的鉴权探针**钉住密码解析这条路径。
  *
  * 为什么必须有接缝 [OcManager.serveProbeForTest]：C 步之后解析不再"看顺序猜"，而是拿每个

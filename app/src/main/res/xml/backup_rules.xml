@@ -3,7 +3,7 @@
   两个入口都在 AndroidManifest.xml：android:fullBackupContent / android:dataExtractionRules）。
 
   为什么这份不能是模板：App 私有目录里放着整棵 Debian rootfs（几百 MB 到数 GB）、
-  guest home（agent 工具链与缓存）、太极 opencode 运行时、proot 二进制与临时树；
+  guest home（agent 工具链与缓存）、抱朴 opencode 运行时、proot 二进制与临时树；
   Auto Backup 默认把它们全算进备份 —— Google Drive 配额只有 25 MB，结果只有两种：
   「备份一直失败」或「备份到一半把用户的工作内容传上云」。设计文档 §8 的口径是
   「系统层可重建、用户数据不进云备份」。

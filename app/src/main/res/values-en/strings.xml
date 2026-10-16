@@ -439,7 +439,7 @@
     <string name="main_update_ignore">Ignore</string>
     <string name="main_unofficial_build">This build was not signed by the original author. Please download the official release from GitHub.</string>
 
-    <!-- ── Baopu tab (TaijiScreen: install / connection / version) ── -->
+    <!-- ── Baopu tab (BaopuScreen: install / connection / version) ── -->
     <string name="taiji_connecting">Connecting to OpenCode…</string>
     <string name="taiji_refresh_failed">Couldn\'t refresh sessions: %1$s</string>
     <string name="taiji_send_failed">Couldn\'t send: %1$s</string>
@@ -483,7 +483,7 @@
     <string name="taiji_default_clear_override">Default (clear this session\'s override)</string>
     <string name="taiji_free">Free</string>
 
-    <!-- ── Baopu tab: session bar / connection / tool cards (TaijiComponents) ── -->
+    <!-- ── Baopu tab: session bar / connection / tool cards (BaopuPartCards / BaopuSessionBar) ── -->
     <string name="taiji_session_history">Session history</string>
     <string name="taiji_new_session">New session</string>
     <string name="taiji_new_session_plus">"＋  New session"</string>
@@ -879,5 +879,5 @@
     <string name="bridge_reset">Reset passphrase</string>
     <string name="bridge_reset_done">Reset done — the old passphrase no longer works</string>
     <string name="bridge_howto_group">How to use it (for terminal agents)</string>
-    <string name="bridge_howto">In the terminal, note the passphrase first: export BRIDGE_TOKEN=&lt;the string you just copied&gt;. After that your agent can drive the browser tab over loopback, e.g.:\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\nCommands: status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS.\nNote: an agent can do a lot on a page (including typing into password fields), but it cannot touch app-private data, change browser security settings, or switch privacy redaction off.\nTaiji (the built-in OpenCode) is not wired to this bridge — it gets its browser ability from its own plugins.</string>
+    <string name="bridge_howto">In the terminal, note the passphrase first: export BRIDGE_TOKEN=&lt;the string you just copied&gt;. After that your agent can drive the browser tab over loopback, e.g.:\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\nCommands: status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS.\nNote: an agent can do a lot on a page (including typing into password fields), but it cannot touch app-private data, change browser security settings, or switch privacy redaction off.\nBaopu (the built-in OpenCode) is not wired to this bridge — it gets its browser ability from its own plugins.</string>
 </resources>
