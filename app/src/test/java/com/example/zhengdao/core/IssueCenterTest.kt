@@ -17,6 +17,10 @@ import org.junit.Test
  * clear 清空。这几条都是被真机形态逼出来的——例如 serve 每次拉起都会超时，
  * 不去重的话主页那张卡会变成一屏一模一样的"启动超时"。
  *
+ * 2026-10-16 追加（台账 §B 顺序 54／§B-补-51，改法②）：**次数**也是语义的一部分 ——
+ * 同 id 反复报到只留一条，但每次都要把 `count` 顶上去（用户原话「它不掩盖事实（次数还在），
+ * 又把噪音压成一条」）；跨进程的累计次数由调用方指定（见 `report(issue, count)`）。
+ *
  * ⚠️ [IssueCenter] 是 object（跨用例共享状态），所以每个用例前后都要 [IssueCenter.clear]。
  */
 class IssueCenterTest {
@@ -175,5 +179,52 @@ class IssueCenterTest {
             "首页 when 分支必须接住这条 actionId，否则按钮一点就落进 else=打开设置首页",
             home.contains("IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS -> openKeepaliveLogs()"),
         )
+    }
+
+    /**
+     * 台账 §B 顺序 54／§B-补-51（改法②，用户 2026-10-15 拍板）：
+     * 同一个毛病反复出现时，卡片**只留一条**，但**次数不能丢**。
+     *
+     * 为什么单独立一条：改法①（只在非用户主动停止时记）会**丢掉事实**，
+     * 改法③（保持现状）让噪音继续稀释信噪比；② 的全部价值就在"一条行 + 一个次数"上，
+     * 次数掉了这条改动就等于没做。
+     */
+    @Test
+    fun `同一个 id 反复报到只留一条但次数累加`() {
+        IssueCenter.report("last-exit", "上次运行不是正常结束：其它", "第一次")
+        IssueCenter.report("last-exit", "上次运行不是正常结束：其它", "第二次")
+        IssueCenter.report("last-exit", "上次运行不是正常结束：其它", "第三次")
+        val all = IssueCenter.snapshot()
+        assertEquals("同 id 只留一条，不许长成三行", 1, all.size)
+        assertEquals("次数必须累加（不掩盖事实）", 3, all[0].count)
+        assertEquals("正文仍是最近一次", "第三次", all[0].detail)
+    }
+
+    /**
+     * 跨进程的累计次数：`last-exit` 这类问题**天然跨进程**（上一次进程已经死了），
+     * 而 [IssueCenter] 是进程内的 ⇒ 次数只能从持久留档里数出来、由调用方指定。
+     */
+    @Test
+    fun `跨进程的累计次数可以指定且不因重复上报而膨胀`() {
+        val one = IssueCenter.Issue("last-exit", "上次运行不是正常结束", "第 7 次")
+        IssueCenter.report(one, 7)
+        assertEquals(7, IssueCenter.snapshot().single().count)
+        // 同一份留档又数了一遍（巡检重复走）：指定值是**下限**，不许涨成 8
+        IssueCenter.report(one, 7)
+        assertEquals("指定次数不是增量", 7, IssueCenter.snapshot().single().count)
+        // 真的又死了一次（默认增量语义）⇒ 8
+        IssueCenter.report("last-exit", "上次运行不是正常结束", "第 8 次")
+        assertEquals(8, IssueCenter.snapshot().single().count)
+    }
+
+    /** `resolve` 撤下之后，同 id 再报就是**新的一件事**，次数从 1 起（不继承上一件）。 */
+    @Test
+    fun `撤下之后再报次数从一次重新开始`() {
+        IssueCenter.report("last-exit", "标题", "说明")
+        IssueCenter.report("last-exit", "标题", "说明")
+        assertEquals(2, IssueCenter.snapshot().single().count)
+        IssueCenter.resolve("last-exit")
+        IssueCenter.report("last-exit", "标题", "说明")
+        assertEquals(1, IssueCenter.snapshot().single().count)
     }
 }
