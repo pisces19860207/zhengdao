@@ -7,10 +7,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 第㊸刀形态门禁（Qoder 审查 🟡-3，台账 §B 顺序 24）：**terminal（底层）不得依赖 ui**。
+ * 第㉛刀形态门禁（Qoder 审查 🟡-3，台账 §B 顺序 24）：**terminal（底层）不得依赖 ui**。
  *
  * 背景：terminal 目录下的 5 个文件曾反向 `import com.example.zhengdao.ui.Settings`（19 处
- * 调用）拿 App 设置 prefs——编译期无碍但依赖方向反了。第㊸刀把存储访问器下沉到
+ * 调用）拿 App 设置 prefs——编译期无碍但依赖方向反了。第㉛刀把存储访问器下沉到
  * [com.example.zhengdao.core.AppPrefs]（`ui.Settings.prefs` 保留同名 API 委托，
  * 行为零变化），本门禁把「terminal 不 import ui」钉成形态纪律，防回潮。
  *
