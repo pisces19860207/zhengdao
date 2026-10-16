@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -335,43 +336,72 @@ internal fun SectionCard(title: String, content: @Composable () -> Unit) {
     }
 }
 
+/** 「大字体」分界（B-补-22）：系统字号 ≥ 1.3× 时，设置页的「标签—数值」两列改上下堆叠。
+ *
+ *  为什么用字号阈值、而不是去量文字宽度：360dp 屏上卡片内可用宽度 ≈ 296dp（页面 16×2 ＋ 卡片 16×2）。
+ *  1.0× 时中文标签 6 字 ≈ 84dp，数值列还剩 ~200dp — 两列并排省高度又好扫（旧版就是按这个定的，
+ *  见 `InfoRow` 里 2026-10-11 那段注释）；但 1.3× 之后标签按固有宽度一行排完就要 110dp＋，
+ *  1.5× / 2.0× 直接吃满整行，两列只能靠 `maxLines = 1` 硬截断标签、把状态文字变省略号 ——
+ *  这正是 B-补-22 报的「大字体不换行」。系统字号档位是离散的（1.0 / 1.15 / 1.3 / 1.5 / 2.0），
+ *  取第一档明显放大的 1.3× 做分界：它以下维持两列（零视觉变化），以上堆叠（谁也不截断）。 */
+private const val LARGE_FONT_SCALE = 1.3f
+
 /** 名称—数值行：数值右对齐成一列，扫一眼就能比大小（旧版固定 150dp 标签宽 + 左对齐，读着像表格）。
- *  [onClick] 非空时整行可点（用于「关于」页版本行连点进隐藏入口）。 */
+ *  [onClick] 非空时整行可点（用于「关于」页版本行连点进隐藏入口）。
+ *  **大字体（≥ 1.3×）改上下堆叠**：标签一行、数值一行右对齐。 */
 @Composable
 internal fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.pressClickable(onClick = onClick) else Modifier)
-            .padding(vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 2026-10-11 修：**标签先按固有宽度排，数值吃剩余宽度并右对齐**。
-        // 旧写法是 `label` 带 `weight(1f)`、`value` 不带权重 —— Row 里无权重子项先按固有宽度量，
-        // 长数值（如「rootfs 768 MB · home 3530 MB · cache 6 MB」实测占 1060px）会把
-        // 带权重标签分到的剩余宽度压到接近 0，中文标签于是**逐字换行成竖排**（用户 2026-10-11 报：
-        // 「存储与缓存这几个字是竖着的」）。现在长数值自己换行，标签永不被挤。
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            softWrap = false,
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f),
-        )
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .then(if (onClick != null) Modifier.pressClickable(onClick = onClick) else Modifier)
+        .padding(vertical = 5.dp)
+    if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+        // 大字体：两行都占满整行宽度 ⇒ 标签与数值都按需要换行，没有任何 maxLines 截断。
+        Column(modifier = rowModifier) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    } else {
+        Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
+            // 2026-10-11 修：**标签先按固有宽度排，数值吃剩余宽度并右对齐**。
+            // 旧写法是 `label` 带 `weight(1f)`、`value` 不带权重 —— Row 里无权重子项先按固有宽度量，
+            // 长数值（如「rootfs 768 MB · home 3530 MB · cache 6 MB」实测占 1060px）会把
+            // 带权重标签分到的剩余宽度压到接近 0，中文标签于是**逐字换行成竖排**（用户 2026-10-11 报：
+            // 「存储与缓存这几个字是竖着的」）。现在长数值自己换行，标签永不被挤。
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
 /**
  * 设置页统一的可点行：主标签 + 右侧状态文字 + "›"，整行可点、行高一致。
  * 旧版三行权限各有各的写法（行尾有的挂按钮、有的挂 ✅ emoji、有的挂 ›），一页凑出三套交互视觉。
+ * **大字体（≥ 1.3×）改上下堆叠**（同 `InfoRow`）：标签一行，状态文字 ＋ "›" 一行 —— 原来状态文字是
+ * `maxLines = 1` + 省略号，大字体下用户读不到完整状态（如「未授予」被截成「未…」）。
  */
 @Composable
 internal fun SettingRow(
@@ -380,38 +410,61 @@ internal fun SettingRow(
     valueColor: Color = Color.Unspecified,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .pressClickable(onClick = onClick)
-            // 2026-10-08 走查：12dp → 14dp。bodyMedium 行高 24dp + 24dp = 48dp
-            // 刚好不达标（差 4dp），这是设置页几乎所有行的交互热区。
-            .padding(vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 2026-10-11 修（同 `InfoRow`）：标签按固有宽度一行显示，数值吃剩余宽度右对齐。
-        // 2026-10-12 走查（报告 §3.2）：主次对调——设置名是主角（16sp 主文字色），
-        // 状态退后（13sp 次要色 + 省略号）；旧版两者同为 14sp 次要灰且状态加粗，眼睛先读到状态。
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            softWrap = false,
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (valueColor == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant
-            else valueColor,
-            textAlign = TextAlign.End,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(6.dp))
-        ChevronRight(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .pressClickable(onClick = onClick)
+        // 2026-10-08 走查：12dp → 14dp。bodyMedium 行高 24dp + 24dp = 48dp
+        // 刚好不达标（差 4dp），这是设置页几乎所有行的交互热区。
+        .padding(vertical = 14.dp)
+    val valueText = if (valueColor == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant
+    else valueColor
+    if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+        Column(modifier = rowModifier) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // 不给 maxLines：大字体下状态文字整句换行显示，不再被省略号吃掉。
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = valueText,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(6.dp))
+                ChevronRight(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    } else {
+        Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
+            // 2026-10-11 修（同 `InfoRow`）：标签按固有宽度一行显示，数值吃剩余宽度右对齐。
+            // 2026-10-12 走查（报告 §3.2）：主次对调——设置名是主角（16sp 主文字色），
+            // 状态退后（13sp 次要色 + 省略号）；旧版两者同为 14sp 次要灰且状态加粗，眼睛先读到状态。
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                color = valueText,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(6.dp))
+            ChevronRight(tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

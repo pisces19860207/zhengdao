@@ -61,6 +61,9 @@ import kotlin.text.Charsets
  *   **无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
  * - 2026-10-16（B-补-15）：`MainActivity.kt` 加 `RESTORABLE_ROUTES` 白名单 KDoc（+17 行）
  *   ⇒ `MainActivity.kt` 的唯一创建点 242→259，**无新增线程**，本次回填。
+ * - 2026-10-16（B-补-22）：`SettingsEnvActivity.kt` 顶部 import +2 与 `@OptIn` KDoc +5（共 +7 行）、
+ *   运行内存上限卡的三个芯片由裸 `Row` 改 `FlowRow`（+11 行）⇒ 四个创建点
+ *   207→214 / 261→268 / 561→572 / 656→667，**无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
  */
 class BareThreadGuardTest {
 
@@ -115,10 +118,10 @@ class BareThreadGuardTest {
             "MainActivity.kt:259",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check
-            "SettingsEnvActivity.kt:207",           // zd-hermes-repair
-            "SettingsEnvActivity.kt:261",           // zd-env-check
-            "SettingsEnvActivity.kt:561",           // zd-env-repair（第⑯刀 R-29 +4，本次回填）
-            "SettingsEnvActivity.kt:656",           // zd-env-update（同上 +4）
+            "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）
+            "SettingsEnvActivity.kt:268",           // zd-env-check（同上 +7）
+            "SettingsEnvActivity.kt:572",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11）
+            "SettingsEnvActivity.kt:667",           // zd-env-update（同上 +11）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
             "TerminalActivity.kt:633",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11）
             "TerminalActivity.kt:848",              // zd-net-probe（同上）
