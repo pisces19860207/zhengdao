@@ -14,6 +14,16 @@
 -->
 <resources>
     <color name="ic_launcher_background">#FFFFFFFF</color>
-    <color name="term_key_active">#FF18A018</color>
+    <!--
+      term_key_active：终端粘滞键（CTRL/SHIFT）**按下态**的字色 —— 字贴在键栏底
+      （`res/layout/term_keys.xml` 的 `@+id/key_bar`，#FFF5F5F7）上。
+
+      B-补-25（2026-10-16）：原值 #FF18A018 在键栏底上只有 **3.17:1**（白底 3.45:1），
+      低于 WCAG AA 正文线 4.5:1 —— 按下 CTRL 反而更难看清。改成同色相的深绿
+      **#FF0F7A0F**：键栏底 5.06:1 / 白底 5.51:1 / 页面灰底 4.94:1，全部达 AA。
+      判据钉在 `app/src/test/java/com/example/zhengdao/ui/theme/ContrastGuardTest.kt`
+      （从本文件与布局取值、当场按 WCAG 公式复算），改色会红。
+    -->
+    <color name="term_key_active">#FF0F7A0F</color>
     <color name="term_key_idle">#FF222222</color>
 </resources>

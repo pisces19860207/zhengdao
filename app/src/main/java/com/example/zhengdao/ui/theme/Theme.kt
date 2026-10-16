@@ -128,7 +128,16 @@ fun isZhengdaoDark(): Boolean = MaterialTheme.colorScheme.background.luminance()
 @Composable
 fun zhengdaoReadyGreen(): Color = if (isZhengdaoDark()) IOSDarkReadyGreen else IOSReadyGreen
 
-/** 语义色「蓝色小字」（链接/强调文字）：浅色 #0058B0（5.1:1）/ 深色 #64B5F6（6.9:1）。 */
+/**
+ * 语义色「蓝色小字」（链接/强调文字）：浅色 #0058B0 / 深色 #64B5F6。
+ *
+ * 对比度（2026-10-16 按源码取值、用 WCAG 公式复算；`ContrastGuardTest` 会重算一遍）：
+ * 浅色 #0058B0 —— 白底 **6.95:1** / 页面灰底 #F2F2F7 6.23:1 / 选中 chip 底 #E1ECFF 5.84:1；
+ * 深色 #64B5F6 —— 卡片底 #1C1C1E 7.68:1。全部达 AA 正文线 4.5:1。
+ *
+ * ⚠️ 这里曾经写「浅色 5.1:1」，台账 B-补-25 也曾记「在选中 chip 底上 3.38:1」——
+ * 两个数字都**没复算过**，实测都不成立（见上）。数字以本注释为准。
+ */
 @Composable
 fun zhengdaoBlueText(): Color = if (isZhengdaoDark()) IOSDarkBlueText else IOSBlueText
 

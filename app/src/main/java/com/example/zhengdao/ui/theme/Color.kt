@@ -12,8 +12,11 @@ import androidx.compose.ui.graphics.Color
 val IOSBlue = Color(0xFF007AFF)           // systemBlue：主色（按钮/链接/选中态）
 // 2026-10-10 加：主蓝小字变体，给"小字 + 蓝"场景用。
 // 原 #007AFF 在 14sp bodyMedium 白底仅 4.02:1，略低于 WCAG AA 4.5:1。
-// 灰底/低对比场景下用此值 5.07:1，达 AA。配套 onPrimaryContainer (#003E7E) 用在
+// 灰底/低对比场景下用此值：白底 6.95:1 / 页面灰底 #F2F2F7 6.23:1 / 状态卡填充 #E9E9EB 5.73:1 /
+// 选中 chip 底 #E1ECFF 5.84:1，全部达 AA。配套 onPrimaryContainer (#003E7E) 用在
 // primaryContainer (IOSTintedBlue) 底上的"再深一层"——那一处不靠本常量。
+// ⚠️ 2026-10-16（B-补-25）：上一版这里写的是"5.07:1"——那是 #6E6E73 白底的比值，张冠李戴；
+// 复算后的四个底见上一行。判据钉在 ui/theme/ContrastGuardTest.kt（从本文件取值当场复算，改色会红）。
 val IOSBlueText = Color(0xFF0058B0)
 // 2026-10-08 删除主蓝的小字变体（原 #0A63C9）：全库 grep 零引用 ⇒ 死常量。当时加它是
 // 给主蓝的小字准备的，实际没有一处小字用主蓝；将来真需要，再按上面的规则补加深值。
