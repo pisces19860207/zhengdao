@@ -105,7 +105,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:176",                 // zd-knowledge-base-index
             "KnowledgeBase.kt:200",                 // zd-knowledge-base-auto
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
-            "KnowledgeBaseSummarizerRunner.kt:110", // zd-kb-summarize
+            "KnowledgeBaseSummarizerRunner.kt:109", // zd-kb-summarize
             "MainActivity.kt:242",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check

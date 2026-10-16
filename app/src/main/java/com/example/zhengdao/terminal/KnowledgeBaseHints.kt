@@ -4,7 +4,7 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.ui.Settings
+import com.example.zhengdao.core.AppPrefs
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -134,10 +134,10 @@ object KnowledgeBaseHints {
     }
 
     fun isEnabled(ctx: Context): Boolean =
-        Settings.prefs(ctx).getBoolean(KEY_ENABLED, false)
+        AppPrefs.prefs(ctx).getBoolean(KEY_ENABLED, false)
 
     fun setEnabled(ctx: Context, on: Boolean) {
-        Settings.prefs(ctx).edit().putBoolean(KEY_ENABLED, on).apply()
+        AppPrefs.prefs(ctx).edit().putBoolean(KEY_ENABLED, on).apply()
         if (!on) reset()
     }
 
