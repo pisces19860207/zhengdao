@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+     造型＝两条圆头斜线交叉成「✕」，无第三方图标路径数据。
+
+     B-补-13（2026-10-16）：终端页顶部状态横幅原本是「无形交互」——点一下会消失，
+     但界面上没有任何提示说它可点。本图标作为 `drawableEnd` 挂在横幅上，充当
+     「可关闭」的视觉线索（文字语义另由 `contentDescription` 补，见 TerminalActivity）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp"
+    android:height="12dp"
+    android:viewportWidth="12"
+    android:viewportHeight="12">
+    <path
+        android:pathData="M1,1 L11,11"
+        android:strokeColor="#FF5C4300"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M11,1 L1,11"
+        android:strokeColor="#FF5C4300"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round" />
+</vector>

@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -169,7 +170,14 @@ private fun ToolStatusBadge(icon: String, text: String, tint: Color) {
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(icon, style = MaterialTheme.typography.labelSmall, color = tint)
+            // B-补-21②（2026-10-16）：●/✓/✗ 是**装饰**——紧挨着的状态文字已经把意思
+            // 说全了（「运行中 / 已完成 / 失败」），读屏不该再多念一个符号。
+            Text(
+                icon,
+                style = MaterialTheme.typography.labelSmall,
+                color = tint,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
             Spacer(Modifier.width(3.dp))
             Text(text, style = MaterialTheme.typography.labelSmall, color = tint)
         }

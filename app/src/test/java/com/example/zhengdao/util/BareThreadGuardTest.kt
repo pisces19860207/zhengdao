@@ -55,6 +55,10 @@ import kotlin.text.Charsets
  * - 2026-10-15（第㉚刀）：TerminalActivity 的 ComponentCaller import（+1）与 onNewIntent
  *   平台签名适配（+2）⇒ 六个创建点 79→80 / 596→599 / 811→814 / 1562→1565 / 1622→1625 /
  *   1708→1711，无新增线程，本次回填。
+ * - 2026-10-16（B-补-13 ＋ B-补-21）：`TerminalActivity.kt` 横幅加「可点」线索与
+ *   `liveRegion`（前半 +11 行）、`showBanner` 加读屏提示 ＋ `bannerSpoken()`（后半 +22 行）
+ *   ⇒ 五个创建点 622→633 / 837→848 / 1588→1610 / 1648→1670 / 1734→1756，
+ *   **无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
  */
 class BareThreadGuardTest {
 
@@ -114,11 +118,11 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:561",           // zd-env-repair（第⑯刀 R-29 +4，本次回填）
             "SettingsEnvActivity.kt:656",           // zd-env-update（同上 +4）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
-            "TerminalActivity.kt:622",              // zd-session-start（㉕ 边到边 +23 / ㉚ onNewIntent +3）
-            "TerminalActivity.kt:837",              // zd-net-probe（同上，㉕ +23 / ㉚ +3）
-            "TerminalActivity.kt:1588",             // zd-install-saf（同上）
-            "TerminalActivity.kt:1648",             // zd-install-cache（同上）
-            "TerminalActivity.kt:1734",             // zd-install-download（同上）
+            "TerminalActivity.kt:633",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11）
+            "TerminalActivity.kt:848",              // zd-net-probe（同上）
+            "TerminalActivity.kt:1610",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22）
+            "TerminalActivity.kt:1670",             // zd-install-cache（同上）
+            "TerminalActivity.kt:1756",             // zd-install-download（同上）
             "ZhengdaoApp.kt:80",                    // zhengdao-keepalive-archive（第⑲刀 +3 行后平移）
             "ZhengdaoApp.kt:130",                   // zd-auto-clean（同上）
         )

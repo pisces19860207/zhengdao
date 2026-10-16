@@ -148,6 +148,11 @@
              「安装失败：… 校验不通过（重进 App 可再试）」）——单行 + 省略号会把最关键
              的那半句截掉，用户只能干瞪眼。上限 3 行：进度短句仍是 1 行、不占地方，
              失败长句能说完，也不至于把终端区挤没。 -->
+        <!-- B-补-13（2026-10-16）：本横幅曾是「无形交互」——点一下会消失，界面却不说
+             它可点。现在挂一个 ✕ 图标（`drawableEnd`，12dp，颜色同正文）+ `clickable`
+             + `focusable`；读屏侧的「（点一下收起）」由 TerminalActivity 写
+             `contentDescription` 时补，**正文一字不动**（`dismissNetworkBanner` 按文案
+             精确比对「网络不通」那条，见其 KDoc）。 -->
         <TextView
             android:id="@+id/status_banner"
             android:layout_width="match_parent"
@@ -161,6 +166,10 @@
             android:textSize="12sp"
             android:maxLines="3"
             android:ellipsize="end"
+            android:drawableEnd="@drawable/ic_banner_dismiss"
+            android:drawablePadding="6dp"
+            android:clickable="true"
+            android:focusable="true"
             android:visibility="gone" />
 
         <!-- 画布留白（2026-10-08）：这层容器是**留白的承载者**，不是装饰。
