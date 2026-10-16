@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import com.example.zhengdao.R
@@ -658,10 +659,13 @@ private fun LoadingPane() {
 private fun EmptyConversationHint() {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // B-补-21②（2026-10-16）：☯ 是纯装饰（下面的标题已经把话说完了），
+            // 读屏不该念一个「太极」符号。
             Text(
                 "☯",
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clearAndSetSemantics {},
             )
             Text(
                 stringResource(R.string.taiji_start_new),
