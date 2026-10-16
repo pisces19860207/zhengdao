@@ -63,6 +63,14 @@
 环境变量
     REBUILD_TARGET_DIR = <目录>    # 构建用的临时 target 目录放这里（缺省用系统临时目录；C 盘紧张时指到别的盘）
 
+SDK 根与 host 工具链从哪来（2026-10-16 补）
+    ① 环境变量 `ANDROID_HOME` / `ANDROID_SDK_ROOT`（CI 上由 setup-android 预装提供）；
+    ② 回退读仓库根 `local.properties` 的 `sdk.dir`（Android Studio 生成、已 gitignore）——
+       本机因此不必手动 export 就能跑同一条 lane。
+    ⚠️ 本机 host 构建还要求 w64devkit 在 PATH（`C:/Users/guoli/w64devkit/w64devkit/bin`），
+       否则真实报错是 `dlltool.exe: program not found`（README.md §Rust / ERRATA E-027）；
+       脚本会在构建失败时把这条提示一并打进错误信息。
+
 只依赖标准库。**绝不写 app/src/main/jniLibs/**（入库 .so 由人工工序维护，见 rust/README.md）。
 """
 
@@ -271,12 +279,31 @@ def read_ndk_version(repo):
     return m.group(1)
 
 
-def find_sdk_root():
+def find_sdk_root(repo=None):
+    """SDK 根：先环境变量（CI 上由 setup-android 预装提供），再回退 `local.properties` 的 `sdk.dir`。
+
+    回退这一层是给**本机**跑的：gradle 一直认 `local.properties`（Android Studio 生成、已 gitignore），
+    而这个脚本原先只认环境变量 ⇒ 本机要跑同一条 lane 得先手动 export（2026-10-16 实测：不设就退出 2）。
+    """
     for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
         val = os.environ.get(key)
         if val and os.path.isdir(val):
             return Path(val)
-    fail_env("ANDROID_HOME / ANDROID_SDK_ROOT 都没设或不存在", "CI 上由 setup-android 预装提供")
+    if repo is not None:
+        local = Path(repo) / "local.properties"
+        if local.is_file():
+            for line in local.read_text(encoding="utf-8", errors="replace").splitlines():
+                m = re.match(r"\s*sdk\.dir\s*=\s*(.+?)\s*$", line)
+                if not m:
+                    continue
+                # .properties 转义：`\:` → `:`、`\\` → `\`（Windows 路径常写成 C\:\\Users\\…）
+                raw = re.sub(r"\\(.)", r"\1", m.group(1))
+                if os.path.isdir(raw):
+                    print("[info] SDK 取自 local.properties 的 sdk.dir：%s" % raw)
+                    return Path(raw)
+                print("[warn] local.properties 的 sdk.dir 不是目录，忽略：%s" % raw)
+    fail_env("ANDROID_HOME / ANDROID_SDK_ROOT 都没设或不存在",
+             "CI 上由 setup-android 预装提供；本机可在 local.properties 写 sdk.dir（gradle 那份即可）")
 
 
 def _rank_ndk_tool(path, prefer_api):
@@ -387,7 +414,7 @@ def ensure_target_installed():
 def build_and_strip(repo, workdir, offline, keep, no_remap=False):
     """返回 (归一化后 .so 的 (size, sha256), 未 strip 的 (size, sha256), 环境信息 dict)。"""
     ndk_version = read_ndk_version(repo)
-    sdk = find_sdk_root()
+    sdk = find_sdk_root(repo)
     ndk_dir = sdk / "ndk" / ndk_version
     if not ndk_dir.is_dir():
         fail_env("NDK %s 不在 SDK 里（CI 上由 ci.yml 的 sdkmanager 装）" % ndk_version, str(ndk_dir))
@@ -448,7 +475,17 @@ def build_and_strip(repo, workdir, offline, keep, no_remap=False):
     if proc.returncode != 0:
         print(tail_of(log_path))
         preserve_log(log_path)
-        fail_env("cargo build 失败（退出码 %d）" % proc.returncode, "完整日志 %s" % log_path)
+        hint = ""
+        try:
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            log_text = ""
+        if "dlltool" in log_text and "not found" in log_text:
+            hint = ("；日志里有 dlltool.exe: program not found ⇒ host 构建缺 w64devkit 在 PATH"
+                    "（README.md §Rust / ERRATA E-027）："
+                    " $env:PATH = 'C:\\Users\\guoli\\w64devkit\\w64devkit\\bin;' + $env:PATH")
+        fail_env("cargo build 失败（退出码 %d）" % proc.returncode,
+                 "完整日志 %s%s" % (log_path, hint))
 
     built = target_dir / TARGET_TRIPLE / "release" / LIB_FILE
     if not built.is_file():
