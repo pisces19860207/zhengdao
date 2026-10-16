@@ -257,10 +257,10 @@ class JsEmbedTest {
     /**
      * 把一串 JS 源文本交给 node 求值；返回源码与合并输出（含非 0 退出的错误文本）。
      *
-     * 探针形态与 `WebView.evaluateJavascript` 同构：**脚本以自身完成值为结果**
-     * （node 把 `-e` / 文件里的顶层脚本也按完成值处理；实测 `node -e '1+1'` 无输出、
-     * `new Function` 与 IIFE 里的语句完成值为 undefined，故这里用 `String(<脚本>)`
-     * 而不是包一层函数——包了就等于换一种求值语义）。
+     * 探针形态与 `WebView.evaluateJavascript` 同构：**脚本以自身完成值为结果**。
+     * 被测脚本原样写进 `case.js`，探针只用 `vm.runInThisContext` 读它并取完成值——
+     * 与 Chromium 执行一份经典脚本同语义；**不包函数、不包 `String(…)`**（包了就是
+     * 换一种求值语义：实测 `(function(){1+1})()` 与 `String(1+1; 2)` 都会失真）。
      */
     private fun probeWithNode(scriptText: String, preamble: String = ""): JsProbe {
         val exe = nodeExecutable() ?: run {
