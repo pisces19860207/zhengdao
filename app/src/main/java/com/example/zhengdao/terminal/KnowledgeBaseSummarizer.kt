@@ -1,11 +1,9 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
-// 依据的公开接口：OpenCode 官方 serve 模式 HTTP API（/api/session、…/message、…/interrupt、
-//   …/permission/{id}/reply，均为本项目已实测的端点，见 oc/OcRepository.kt 与
-//   docs/知识库-P2设计方案.md 第三节）；RFC 4180 的 CSV 引号转义语义。
+// 依据的公开接口：RFC 4180 的 CSV 引号转义语义。
+//   （原还列了 OpenCode serve 的 HTTP 端点与 oc/OcRepository.kt —— 那条线 2026-10-16 已随旧
+//    抱朴线清场删除，见 docs/ERRATA.md E-140；本文件保留的纯逻辑不依赖任何网络格式。）
 package com.example.zhengdao.terminal
 
-import com.example.zhengdao.oc.OcPart
-import com.example.zhengdao.oc.parseMessage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -20,8 +18,8 @@ import org.json.JSONObject
  * 变换，**完全不需要设备**，用 JVM 单测就能守住。
  *
  * 于是本文件的每一个 `fun` 都不碰 `Context`、不碰网络、不碰文件。
- * 真正的调用编排在 [KnowledgeBaseSummarizerRunner]（见 `terminal/` 同包另一处）里，
- * 那部分按项目纪律标为「待真机验证」。
+ * 真正的调用编排原先在 `terminal/KnowledgeBaseSummarizerRunner.kt`（旧抱朴线的 HTTP 编排），
+ * 那份 2026-10-16 已随旧线清场删除（见 docs/ERRATA.md E-140）。
  *
  * ## 三个已知坑的对应设计（都来自 P2 方案第六节）
  *
@@ -99,7 +97,7 @@ object KnowledgeBaseSummarizer {
      * 稳定性收敛：连续两次取样**文本完全相同且非空** ⇒ 视为答完。
      *
      * 为什么不看去 `time.completed` 之类的标志位：本项目反复吃过"猜服务端字段路径"的亏
-     * （`OcRepository.parseMessage` 的注释里记着：真实消息用 `type` 而不是 `role`，
+     * （旧线 `oc/OcRepository.parseMessage` 的注释里记着，该文件 2026-10-16 已删：真实消息用 `type` 而不是 `role`，
      *  `parts` 实际叫 `content[]`，工具名在顶层 `name` 而不是 `tool`）。
      * 字段一旦猜错，失败形态是"永远等不到 ⇒ 空转到超时"，**没有报错**。
      * 稳定性收敛只依赖"文本变了没有"，这个语义不会因上游改名而失效。
@@ -110,53 +108,16 @@ object KnowledgeBaseSummarizer {
     fun isSettled(prev: String?, curr: String?): Boolean =
         !curr.isNullOrBlank() && prev == curr
 
-    /**
-     * 从一轮消息里抽出**助手说的全部正文**。
-     *
-     * 只取 `ASSISTANT` 的 `Text` 段 —— 排除工具调用、推理段、用户自己的话。
-     * 多条助手消息按出现顺序拼接（模型可能分几条回）。
-     */
-    fun assistantText(parts: List<OcPart>): String =
-        parts.filterIsInstance<OcPart.Text>().joinToString("\n") { it.text }.trim()
+    // 2026-10-16 清场：原先这里还有 assistantText(List<OcPart>) 与
+    // assistantTextFromMessages(rawJson) 两个「从 opencode 消息里抽助手正文」的函数。
+    // 它们的入参类型与解析口径全来自已删除的 `oc/`（OcPart / parseMessage / parsePart），
+    // 且**全仓已无调用点**（唯一的编排者 KnowledgeBaseSummarizerRunner 同期删除）⇒ 一并删除。
+    // 将来抱朴线要接「本地摘要」，按新协议重写这两个函数即可 —— 本文件其余纯逻辑不受影响。
 
     /**
-     * 从 `GET /api/session/{id}/message` 的响应体里取**最后一条助手**的话（无则 null）。
+     * 剥掉旧线响应里的 `{"data": …}` **响应信封**。
      *
-     * ⚠️ 必须**先按角色筛掉用户消息**。踩过的坑：外层 `parts[]` 里用户那条消息也带
-     * `{"type":"text","text":"用户自己输入的话"}`，如果只按"外层 parts 优先"取文本、
-     * 忘了先看角色，就会把**用户的问题**当成模型的回答（摘要会变成用户自己的原话，
-     * 而且看起来"有内容"、不报错 —— 这正是本项目最怕的静默错）。
-     */
-    fun assistantTextFromMessages(rawJson: String): String? {
-        val arr = unwrapArray(rawJson) ?: return null
-        var last: String? = null
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val info = o.optJSONObject("info") ?: o
-            val msg = parseMessage(info) ?: continue
-            // 🔴 只要助手的。用户消息的正文同样在 content/text 里，混进来就是灾难。
-            if (msg.role != com.example.zhengdao.oc.OcMessage.Role.ASSISTANT) continue
-            // ⚠️ 真实线格式：`{info:{id,type}, content:[…]}` —— content 与 **info 平级**。
-            //    parseMessage 收的是 info 对象，所以它那份 content 读不到；正文必须从**外层**取。
-            //    `parts[]` 是 v2 的另一种写法，两种都兼容（沿用 OcRepository.parseMessages 的口径）。
-            //    取值顺序：外层 content → 外层 parts → parseMessage 从 info 里解析出来的（兜底）。
-            val outerArr = o.optJSONArray("content") ?: o.optJSONArray("parts")
-            val outer = outerArr?.let { p ->
-                (0 until p.length()).mapNotNull { j ->
-                    p.optJSONObject(j)?.let { com.example.zhengdao.oc.parsePart(it, "$msg.id:$j") }
-                }
-            }
-            val parts = if (outer.isNullOrEmpty()) msg.parts else outer
-            val text = assistantText(parts).takeIf { it.isNotEmpty() }
-            if (text != null) last = text
-        }
-        return last
-    }
-
-    /**
-     * 剥掉 OpenCode 的 `{"data": …}` **响应信封**。
-     *
-     * ⚠️ 这是本项目最难定位的一类坑（`OcRepository.unwrapArray` 的注释）：
+     * ⚠️ 这是本项目最难定位的一类坑（旧线 `oc/OcRepository.unwrapArray` 的注释，该文件已删）：
      * 不剥壳不会抛异常，只会静默拿到空数组 —— 表现为"什么都没发生、日志一行都没有"。
      * 此处**不模仿**那个"有 data 取 data、否则原文"的宽松策略：拿到看不懂的东西就回 null。
      *
@@ -367,6 +328,6 @@ object KnowledgeBaseSummarizer {
         return true
     }
 
-    /** 生成回执用的请求体（三态之一，见 OcRepository.respondPermission 的实测注释）。 */
+    /** 生成回执用的请求体（三态之一，见旧线 OcRepository.respondPermission 的实测注释（该文件 2026-10-16 已删））。 */
     fun denyReplyBody(): String = JSONObject().apply { put("decision", AUTO_DENY_DECISION) }.toString()
 }

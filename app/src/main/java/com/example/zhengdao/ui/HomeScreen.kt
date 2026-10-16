@@ -184,33 +184,12 @@ fun HomeScreen(
             snack(context.getString(R.string.home_no_browser))
         }
     }
-    // 抱朴 serve 的重试 / 重启：动作在后台线程跑，结果回主线程汇报（成功撤下问题，失败留在卡上）
-    val retryServe: (restart: Boolean, issueId: String) -> Unit = { restart, issueId ->
-        Thread {
-            val err = runCatching {
-                if (restart) com.example.zhengdao.oc.OcManager.stopServe()
-                com.example.zhengdao.oc.OcManager.startServe(context)
-            }.getOrElse {
-                context.getString(
-                    R.string.home_start_error,
-                    it.message ?: it.javaClass.simpleName,
-                )
-            }
-            android.os.Handler(context.mainLooper).post {
-                if (err == null) {
-                    IssueCenter.resolve(issueId)
-                } else {
-                    IssueCenter.report(
-                        id = issueId,
-                        title = context.getString(R.string.home_taiji_not_up),
-                        detail = err,
-                        actionLabel = context.getString(R.string.common_retry),
-                        actionId = IssueCenter.ACTION_RETRY_SERVE,
-                    )
-                    snack(err)
-                }
-            }
-        }.apply { isDaemon = true; name = "zd-taiji-retry" }.start()
+    // 2026-10-16 旧抱朴线清场：这里原先是「重启 serve」的后台线程（`zd-taiji-retry`），
+    // serve（宿主 bionic 版 opencode）已整条删除（根因 docs/ERRATA.md E-140）⇒ 卡上这两个
+    // 动作改为**如实收尾**：撤下卡片并说明一句。不再起线程，也不再碰任何 oc 类型。
+    val retireServeIssue: (issueId: String) -> Unit = { issueId ->
+        IssueCenter.resolve(issueId)
+        snack(context.getString(R.string.home_baopu_retired))
     }
 
     // R-27（第⑪批 B-1）：AppState.agents 是查盘（rootfsInstalled/factoryAgents 走
@@ -864,8 +843,8 @@ checks.forEachIndexed { index, c ->
                                 if (label != null && aid != null) {
                                     TextButton(onClick = {
                                         when (aid) {
-                                            IssueCenter.ACTION_RETRY_SERVE -> retryServe(false, issue.id)
-                                            IssueCenter.ACTION_RESTART_SERVE -> retryServe(true, issue.id)
+                                            IssueCenter.ACTION_RETRY_SERVE -> retireServeIssue(issue.id)
+                                            IssueCenter.ACTION_RESTART_SERVE -> retireServeIssue(issue.id)
                                             IssueCenter.ACTION_GRANT_STORAGE -> openStorageGrant()
                                             IssueCenter.ACTION_FEEDBACK -> openFeedback()
                                             // 台账 §B 顺序 11（原 §B-补-42）：这两条以前和「修复环境」一起

@@ -2,9 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao
 
-import android.app.Activity
 import android.app.Application
-import android.os.Bundle
 import com.example.zhengdao.rootfs.RunLog
 
 /**
@@ -28,11 +26,15 @@ class ZhengdaoApp : Application() {
         super.onCreate()
         RunLog.init(this)
         initWebViewDataDirectory()
-        registerOcShutdownOnFinish()
         logSignature()
         keepalive()
         autoCleanJunk()
     }
+
+    // 2026-10-16 旧抱朴线清场：原先这里还有 registerOcShutdownOnFinish()
+    // （第⑲刀 issue #14 P1-6 方案③：主页 Activity 结束时收 oc serve）。serve 本身已整条删除
+    // （docs/ERRATA.md E-140），收它自然无从谈起 ⇒ 回调一并删除。这里留一行说明，免得以后
+    // 有人翻到「App 退出要收什么」时重新发明一遍。
 
     /**
      * WebView 数据目录后缀（第⑨刀 B · 玄览阶段 2）——**进程初始化处统一设**。
@@ -138,50 +140,5 @@ class ZhengdaoApp : Application() {
                 }
             }.apply { isDaemon = true; name = "zd-auto-clean" }.start()
         }
-    }
-
-    /**
-     * OC serve 的**受控回收出口**（第⑲刀 · issue #14 的 P1-6，用户拍板的**方案③**）。
-     *
-     * 问题：`opencode serve`（抱朴宿主进程）此前**没有任何显式停机** —— 全仓唯一调用点是
-     * `ui/HomeScreen.kt` 的「重启 serve」流；App 退出 / 任务划掉时只靠「进程死 ⇒ 子进程
-     * 随之消亡」兜着（见 [com.example.zhengdao.oc.OcManager.stopServe] 的 KDoc）。
-     *
-     * 策略③（台账 §D「用户三答」①）：**只在「App 真的走了」时收**。
-     * - **收**：主页 Activity「正在结束」（`isFinishing`）—— 用户按返回 / 从最近任务划掉，
-     *   把主页 finish 掉，App 真的走了；
-     * - **不收**：切走 / 切回抱朴 Tab、结束本次会话、通知栏「停止会话」、转屏 / 配置变更、
-     *   单纯退到后台（Home 键）—— 这些场景 App 都还在，serve 留着供下次重挂
-     *   （`OcManager.startServe()` 的「孤儿 serve 分支」能重挂已存在的 serve）。
-     *
-     * 为什么落在 Application 而不是 `MainActivity.onDestroy()`：`MainActivity.kt` 本批被别的
-     * 批次占用（用户单 A 补充）；且「哪些 Activity 的结束算『App 走了』」本就是 Application 级
-     * 的判断，集中注册一处比散在各 Activity 的 `onDestroy` 更可控。
-     *
-     * 配置变更（转屏）**天然排除**：那时 `isFinishing == false`，回调进来也不收。
-     * 与第⑱刀 `BrowserHolder.releaseIfIdle()` 同型：**有守卫、单出口、只在特定时机真回收**。
-     */
-    private fun registerOcShutdownOnFinish() {
-        registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityDestroyed(activity: Activity) {
-                if (activity is MainActivity && activity.isFinishing) {
-                    runCatching { com.example.zhengdao.oc.OcManager.stopServe() }
-                        .onSuccess { RunLog.log("抱朴: serve 已停（主页结束，App 退出）") }
-                        .onFailure {
-                            RunLog.log(
-                                "抱朴: serve 停机失败（主页结束）：" +
-                                    "${it.javaClass.simpleName}: ${it.message}"
-                            )
-                        }
-                }
-            }
-
-            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-            override fun onActivityStarted(activity: Activity) = Unit
-            override fun onActivityResumed(activity: Activity) = Unit
-            override fun onActivityPaused(activity: Activity) = Unit
-            override fun onActivityStopped(activity: Activity) = Unit
-            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-        })
     }
 }

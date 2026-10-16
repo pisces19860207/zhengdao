@@ -6,7 +6,7 @@ package com.example.zhengdao.rootfs
  * GitHub 加速镜像策略（2026-10-11 新增）——**全项目唯一的镜像表**。
  *
  * 为什么要有这个对象：镜像地址此前散在三处（[RootfsDownloader.withMirrorFallback] 里的
- * gh-proxy.com、`oc/OcManager` 两处硬编码的 gh-proxy.com、`terminal/ProotLauncher` 写进
+ * gh-proxy.com、`oc/OcManager`（2026-10-16 已删）两处硬编码的 gh-proxy.com、`terminal/ProotLauncher` 写进
  * `/root/.gitconfig` 的 gh-proxy.com），换一次源要改四个地方，且**从没人做过跨源实测**。
  *
  * 实测（2026-10-11，本机 Windows，`curl --ssl-no-revoke`，同一时刻同一网络，8 MB 真资产 =

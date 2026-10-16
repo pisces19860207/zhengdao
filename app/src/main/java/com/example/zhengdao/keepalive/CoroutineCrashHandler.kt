@@ -32,10 +32,10 @@ import kotlinx.coroutines.Job
  * ## 装在哪
  *
  * - **UI 侧所有 `rememberCoroutineScope`**（9 处：MainActivity / HomeScreen /
- *   PluginsScreen / BaopuComponents / BaopuScreen×2 / SettingsData / SettingsEnv /
+ *   PluginsScreen / SettingsData / SettingsEnv /        // 原名单里的 BaopuComponents 与 BaopuScreen×2 随旧抱朴线 2026-10-16 清场移除
  *   SettingsStorage / ImeRegressionActivity）：一行 `rememberCoroutineScope { CoroutineCrashHandler }`，
  *   失败路径与装之前逐字相同（日志 + 崩溃），白得协程上下文线索。
- * - **`oc/` 目录里的进程级作用域**（OcRuntime 的 `CoroutineScope(SupervisorJob() + Dispatchers.IO)`，
+ * - **`oc/` 目录里的进程级作用域**（该目录 2026-10-16 已整批删除，本条为历史说明）（OcRuntime 的 `CoroutineScope(SupervisorJob() + Dispatchers.IO)`，
  *   SSE / 轮询引擎）**没装**——那是用户划的禁区，本刀不碰；要装得她解禁
  *   （该作用域是唯一长生命周期的，协程名线索价值最高，解禁后优先装它）。
  * - **`lifecycleScope`** 不装：同样跑 Main 派发器，与上述口径相同；要装也是同一行改法。

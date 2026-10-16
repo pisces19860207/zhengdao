@@ -87,8 +87,8 @@ private const val APP_RELEASES_API = "https://api.github.com/repos/pisces1986020
  *  - `settings`：用户会主动离开、又期望回来还在原处的二级页 ⇒ **唯一值得恢复的**。
  *
  * ⚠️ 故意写成「白名单 + 兜底判空」，而不是 `nav.navigate(lastRoute)`：prefs 里可能残留
- * **老版本**的路由字符串 —— 例：插件页 2026-10-08 已搬进抱朴抽屉（`ui/baopu/BaopuSheets.kt`
- * 的插件面板复用 `ui/PluginsScreen.kt`），`plugins` 路由随之删除，但老装机的
+ * **老版本**的路由字符串 —— 例：插件页 2026-10-08 曾搬进抱朴抽屉（该抽屉的插件面板
+ * 复用 `ui/PluginsScreen.kt`；抽屉本身 2026-10-16 随旧抱朴线清场删除），`plugins` 路由随之删除，但老装机的
  * `last_route` 里仍可能留着 "plugins"。直接 navigate 会抛
  * `IllegalArgumentException` 崩在冷启动，白名单把这类死值一律当「没有可恢复的页面」。
  */
@@ -620,7 +620,8 @@ fun ZhengdaoApp(
  *
  * 为什么要抽常量：这次交换暴露了隐患 —— 全文件原有 **20 处硬编码索引**
  * （`when (tab)` 分支、底栏 selected/onClick/图标、`animateToTop`、ON_RESUME 切 Tab、
- * BaopuScreen 的 onExit），漏改任何一处都会**静默错位**。最隐蔽的一处是初始值
+ * 抱朴页的 onExit —— 清场前是 `BaopuScreen`，现为占位页 `BaopuRebuilding`），
+ * 漏改任何一处都会**静默错位**。最隐蔽的一处是初始值
  * `mutableIntStateOf(2)`：2 原本是怡然、交换后变成玄览，不跟着换常量的话，
  * 启动页会无声无息地从"怡然"漂到"玄览"。改顺序时只动这里。
  */
@@ -696,13 +697,8 @@ fun HomeTabs(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // K2 配套（2026-10-08 审查）：抱朴消息列表的「是否跟随最新」与「已经定位过哪个会话」
-    // 也必须跟 listState 同寿命。切 Tab 时 BaopuScreen 退出 Composition，这两个值若留在
-    // 页面内部用 remember，切回来就重新初始化成"刚进入会话"，LaunchedEffect 立刻把保留的
-    // 滚动位置一脚踢回底部 —— 上面辛苦提出来的 listState 等于白提（K2 在抱朴页失效，怡然正常）。
-    val baopuFollow = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
-    val baopuPositionedSession =
-        androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    // K2 的另外两个伴随量（baopuFollow / baopuPositionedSession）2026-10-16 随旧抱朴页
+    // 一并退役：旧 UI 壳已删，刀 1 的新页面自己管「是否跟随最新」与「定位过哪个会话」。
     val scope = androidx.compose.runtime.rememberCoroutineScope { CoroutineCrashHandler }
 
     // K1（双击 Tab 滚顶）：在 HomeTabs 顶层记"上一次点同一个 Tab 的时间"。
@@ -844,22 +840,12 @@ fun HomeTabs(
         ) {
             // 分支沿用原物理顺序（语义见 [TabIndex]）：抱朴 → 怡然 → 逍遥 → 玄览。
             when (tab) {
-                // 抱朴：Compose 原生 UI（直连 opencode serve 的 HTTP + SSE）。
-                // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
-                //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
-                //    真坏了就修，不藏一条会腐烂的备用路。
-                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
-                    // 2026-10-10 UIUX 审计 B1 修：此前**没传 onExit**，它默认是空实现
-                    // ⇒ 两处"点了没反应"：① 没装 OpenCode 时引导页的「返回」按钮；
-                    // ② 抽屉里的「结束本次会话并退出抱朴」（会话被关掉了，人却还站在抱朴页，
-                    //    界面上既没了聊天区也没了任何提示，像是卡住）。
-                    // 落点选**怡然**（TabIndex.AGENTS）：抱朴的实例已经关了，留在原地没有意义；
-                    // 怡然是另一个有真实内容的 Tab，用户能继续做事。
-                    // （不改 BaopuScreen 的默认值为妙——那会让"漏传"继续沉默。）
+                // 抱朴：2026-10-16 清场后是占位页。旧 Compose 原生 UI ＋ opencode serve
+                // 那条线整条退役，根因见 docs/ERRATA.md E-140（targetSdk 36 的 W^X 让 App
+                // 直接启动数据目录里的可执行文件报 error=13，它在真机上根本起不来）。
+                // 真实页面归抱朴线刀 1；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
+                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuRebuilding(
                     onExit = { tab = TabIndex.AGENTS },
-                    listState = baopuListState,
-                    followState = baopuFollow,
-                    positionedSession = baopuPositionedSession,
                 )
                 // 怡然（幸福）：Agent 管理（OpenCode 已内置为抱朴，不在怡然展示）
                 TabIndex.AGENTS -> HomeScreen(
@@ -962,8 +948,8 @@ private fun tabIconColor(selected: Boolean) =
  *   （呼吸留白等比缩放，视觉上仍是同一套设计语言）。
  *
  * ⚠️ 为什么不做「页面内容 Crossfade 转场」：
- *   淡出需要新旧两页在过渡期**同时存在**，而 tab=0 的 BaopuScreen 会
- *   在 LaunchedEffect 里开一条 SSE 长连接 —— 重叠 160ms 就是**同时两条连接**，
+ *   淡出需要新旧两页在过渡期**同时存在**，而 tab=0 的抱朴页（清场前是 `BaopuScreen`）
+ *   会在 LaunchedEffect 里开一条 SSE 长连接 —— 重叠 160ms 就是**同时两条连接**，
  *   且滚动/会话定位状态在过渡中途会被读两次。图标动效没有这个副作用。
  */
 @Composable

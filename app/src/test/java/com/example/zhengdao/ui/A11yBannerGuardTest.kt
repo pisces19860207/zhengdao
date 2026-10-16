@@ -97,22 +97,7 @@ class A11yBannerGuardTest {
         assertTrue("参数要真的传给 clickable，不能只声明", src.contains("role = role,"))
     }
 
-    @Test
-    fun `门禁_B补21_装饰符号与对勾不朗读`() {
-        val cards = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuPartCards.kt").readText()
-        assertTrue(
-            "工具卡状态徽标的 ●/✓/✗ 是装饰（旁边就有「运行中/已完成/失败」文字）",
-            cards.contains("clearAndSetSemantics"),
-        )
-        val screen = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
-        assertTrue("空会话提示里的 ☯ 是纯装饰", screen.contains("clearAndSetSemantics"))
-
-        val sheet = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/ModelSheet.kt").readText()
-        assertTrue("模型行的 ✓ 不朗读（视觉重复）", sheet.contains("clearAndSetSemantics"))
-        assertTrue(
-            "但选中态必须改由语义播报：多选一行 = 单选按钮",
-            sheet.contains("pressClickable(role = Role.RadioButton)"),
-        )
-        assertTrue("选中态要显式声明，否则读屏不知道哪一行被选中", sheet.contains("this.selected = selected"))
-    }
+    // 2026-10-16 清场：原「门禁_B补21_装饰符号与对勾不朗读」随 `ui/baopu/**`（BaopuPartCards /
+    // BaopuScreen / ModelSheet）整批删除而移除。抱朴线刀 1 重做 UI 时按同样判据补回：
+    // 装饰符号 clearAndSetSemantics、选中态显式语义声明。
 }
