@@ -150,10 +150,21 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 顶部安装进度横幅（2026-10-08）：点一下收起。此前它是**死控件**——布局里存在、
         // 注释还写着进度都靠它，但代码从未引用（用户"终端里也没有显示"的根因之一）。
         // 若正在安装 / 刚装完，重进本页也要把结论带回来，不能只活在这一屏的生命周期里。
+        //
+        // B-补-13 / B-补-21③（2026-10-16）：
+        // - 「无形交互」：布局侧已加 ✕ 图标（`drawableEnd`）+ `clickable`/`focusable`，
+        //   读屏侧在写 `contentDescription` 时补「（点一下收起）」——**正文一字不动**，
+        //   因为 [dismissNetworkBanner] 按文案精确比对（见其 KDoc）；
+        // - 横幅挂 `accessibilityLiveRegion = POLITE`：安装进度/失败是**异步冒出来的
+        //   状态**，不挂 liveRegion 读屏用户根本不会被通知（全仓此前 liveRegion 命中 0）。
         findViewById<android.widget.TextView>(R.id.status_banner)?.apply {
+            isClickable = true
+            isFocusable = true
+            accessibilityLiveRegion = android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE
             setOnClickListener { visibility = android.view.View.GONE }
             com.example.zhengdao.ui.InstallProgress.state.value?.let { st ->
                 text = st.text
+                contentDescription = bannerSpoken(st.text)
                 visibility = android.view.View.VISIBLE
             }
         }
@@ -1544,11 +1555,22 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         installFailed("安装失败：${HumanizeError.title(t, resources)}（重进 App 可再试）")
     }
 
+    /**
+     * B-补-13（2026-10-16）：横幅的**读屏文案** = 正文 + 「（点一下收起）」。
+     *
+     * 只动 `contentDescription`，**一个字都不动 `text`**：`dismissNetworkBanner()` 靠
+     * `b.text?.toString() == getString(R.string.term_no_network)` 精确比对来决定能不能
+     * 收起「网络不通」那条（它的 KDoc 解释了为什么不能连带抹掉别的结论）。
+     */
+    private fun bannerSpoken(text: String): String = "$text（点一下收起）"
+
     /** 写终端页顶部常驻横幅（用户可点它收起）。 */
     private fun showBanner(text: String) {
         runOnUiThread {
             findViewById<android.widget.TextView>(R.id.status_banner)?.apply {
                 this.text = text
+                // B-补-13：正文不动，只补读屏提示（见 bannerSpoken 的注释）。
+                contentDescription = bannerSpoken(text)
                 visibility = android.view.View.VISIBLE
             }
         }

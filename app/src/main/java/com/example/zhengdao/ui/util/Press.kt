@@ -17,6 +17,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
 
 /**
  * 2026-10-10 加：iOS 风按压反馈 + 触感 = [Modifier.pressClickable]。
@@ -29,6 +30,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
  * 用法：把 `Modifier.clickable { ... }` 换成 `Modifier.pressClickable { ... }`，
  * import 路径：`com.example.zhengdao.ui.util.pressClickable`。
  *
+ * 默认带 `role = Role.Button`（B-补-21①，2026-10-16）：读屏会念「按钮」而不是干巴巴的「可点」。
+ * 纯装饰性的整块点击区若不想被念成按钮，显式传 `role = null`。
+ *
  * ⚠️ 必须放在 `clip(...)` 之后（缩放围绕外接矩形轴，clip 后圆角不变形）。
  * ⚠️ 当前实现走 `composed`（M3 标 deprecated 但 BOM 2026.02 仍可用），
  *    待 Compose 内核升级后改 Node API。
@@ -40,6 +44,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 fun Modifier.pressClickable(
     enabled: Boolean = true,
     onClickLabel: String? = null,
+    role: Role? = Role.Button,
     onClick: () -> Unit,
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
@@ -60,6 +65,7 @@ fun Modifier.pressClickable(
             indication = ripple(),
             enabled = enabled,
             onClickLabel = onClickLabel,
+            role = role,
             onClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onClick()

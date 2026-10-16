@@ -20,6 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.oc.OcModel
@@ -178,7 +182,10 @@ fun ModelSheet(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .pressClickable { onSelect(m) }
+                                    // B-补-21①（2026-10-16）：这是「多选一」的列表行 ⇒ 读屏
+                                    // 该念「单选按钮，已选中 / 未选中」，而不是干巴巴的「可点」。
+                                    .pressClickable(role = Role.RadioButton) { onSelect(m) }
+                                    .semantics { this.selected = selected }
                                     .padding(vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -203,10 +210,14 @@ fun ModelSheet(
                                     )
                                 }
                                 if (selected) {
+                                    // B-补-21②（2026-10-16）：✓ 只是「选中」的视觉重复——
+                                    // 选中态已经由本行的 `Role.RadioButton` + `selected`
+                                    // 语义播报，读屏不必再念一个对勾。
                                     Text(
                                         "  ✓",
                                         style = MaterialTheme.typography.labelLarge,
                                         color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.clearAndSetSemantics {},
                                     )
                                 }
                             }
