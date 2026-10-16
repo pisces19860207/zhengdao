@@ -4,7 +4,7 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.ui.Settings
+import com.example.zhengdao.core.AppPrefs
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,10 +82,10 @@ object KnowledgeBase {
     private fun guestHome(ctx: Context): File = File(ctx.filesDir, "home")
 
     /** 总开关（默认开）。 */
-    fun isEnabled(ctx: Context): Boolean = Settings.prefs(ctx).getBoolean(KEY_ENABLED, true)
+    fun isEnabled(ctx: Context): Boolean = AppPrefs.prefs(ctx).getBoolean(KEY_ENABLED, true)
 
     fun setEnabled(ctx: Context, on: Boolean) {
-        Settings.prefs(ctx).edit().putBoolean(KEY_ENABLED, on).apply()
+        AppPrefs.prefs(ctx).edit().putBoolean(KEY_ENABLED, on).apply()
     }
 
     /**
@@ -289,7 +289,7 @@ object KnowledgeBase {
      * @return true = 资料库可用（后续扫描/分发照常）；false = 不该用（仅私有模式 / 用户已删除）
      */
     fun ensureScaffold(ctx: Context, forced: Boolean = false): Boolean {
-        val prefs = Settings.prefs(ctx)
+        val prefs = AppPrefs.prefs(ctx)
         val r = root(ctx)
 
         // 仅私有模式：不主动预置（那是"在意痕迹"的场景，不该凭空塞东西）；
@@ -428,7 +428,7 @@ object KnowledgeBase {
         for (it in items) sb.append('|').append(it.rel).append(':').append(it.size).append(':').append(it.mtime)
         val sig = sb.toString().hashCode().toString()
 
-        val prefs = Settings.prefs(ctx)
+        val prefs = AppPrefs.prefs(ctx)
         // 指纹没变**且清单文件还在**才跳过：资料库被整个删掉再重建时，指纹可能恰好没变
         // （比如 `原始/` 本来就是空的），只比指纹会让 `整理/00-目录.md` 永远不再生成（E-061）。
         val idx = indexFile(ctx)
@@ -479,19 +479,19 @@ object KnowledgeBase {
      * [BUSY_STALE_MS] 就当作已经不在跑，避免状态永远卡在「整理中」）。
      */
     fun markBusy(ctx: Context) {
-        Settings.prefs(ctx).edit()
+        AppPrefs.prefs(ctx).edit()
             .putBoolean(KEY_BUSY, true)
             .putLong(KEY_BUSY_AT, System.currentTimeMillis())
             .apply()
     }
 
     fun clearBusy(ctx: Context) {
-        Settings.prefs(ctx).edit().putBoolean(KEY_BUSY, false).apply()
+        AppPrefs.prefs(ctx).edit().putBoolean(KEY_BUSY, false).apply()
     }
 
     /** 是否正在整理（含"僵尸标记"自愈：超过 [BUSY_STALE_MS] 视为没在跑）。 */
     fun isBusy(ctx: Context): Boolean {
-        val p = Settings.prefs(ctx)
+        val p = AppPrefs.prefs(ctx)
         if (!p.getBoolean(KEY_BUSY, false)) return false
         val at = p.getLong(KEY_BUSY_AT, 0L)
         if (at > 0 && System.currentTimeMillis() - at > BUSY_STALE_MS) {

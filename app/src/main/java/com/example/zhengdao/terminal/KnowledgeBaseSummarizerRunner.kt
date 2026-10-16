@@ -6,7 +6,6 @@ package com.example.zhengdao.terminal
 import android.content.Context
 import com.example.zhengdao.oc.OcManager
 import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.ui.Settings
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
