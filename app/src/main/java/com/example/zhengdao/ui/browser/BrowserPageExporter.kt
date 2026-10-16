@@ -5,15 +5,13 @@ import android.webkit.WebView
 import com.example.zhengdao.browser.PageSnapshot
 import com.example.zhengdao.browser.SensitiveRedactor
 import com.example.zhengdao.terminal.Store
+import com.example.zhengdao.util.TimeFormats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
-import java.text.SimpleDateFormat
 import java.util.Base64
-import java.util.Date
-import java.util.Locale
 import kotlin.coroutines.resume
 
 /**
@@ -138,7 +136,8 @@ object BrowserPageExporter {
         val (html, byteCut) = PageSnapshot.clampHtmlBytes(clean)
         val summary = PageSnapshot.summarize(html)
 
-        val exportedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        // B-补-24（2026-10-16）：共享 formatter（旧写法每次导出都新建 SimpleDateFormat）
+        val exportedAt = TimeFormats.isoSeconds()
         // ⚠️ URL 与标题是**独立于 HTML 的第二条数据**：`location.href` / `document.title` 不经过
         //    HTML 过滤（scrubSecrets 只吃 html 字符串），因此必须单独走同一条口径 ——
         //    先摘凭据参数（PageSnapshot.scrubUrl），再按用户 2026-10-13 的定调打 PII。

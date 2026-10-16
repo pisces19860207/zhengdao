@@ -101,9 +101,9 @@ class BareThreadGuardTest {
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
             "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）
-            "KnowledgeBase.kt:153",                 // zd-knowledge-base-rebuild
-            "KnowledgeBase.kt:176",                 // zd-knowledge-base-index
-            "KnowledgeBase.kt:200",                 // zd-knowledge-base-auto
+            "KnowledgeBase.kt:152",                 // zd-knowledge-base-rebuild（B-补-24 换共享 formatter，import 少一行 ⇒ -1）
+            "KnowledgeBase.kt:175",                 // zd-knowledge-base-index（同上 -1）
+            "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "KnowledgeBaseSummarizerRunner.kt:109", // zd-kb-summarize
             "MainActivity.kt:242",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7）

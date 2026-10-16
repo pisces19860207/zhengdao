@@ -2,9 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.zhengdao.util.TimeFormats
 
 /**
  * 输入回归页的**纯逻辑**（不依赖 Android，可单测）。
@@ -58,13 +56,13 @@ object ImeProbe {
     const val MAX_EVENTS = 240
 
     private val events = ArrayDeque<String>()
-    private val clock = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
     /** 记录一条 IME 事件（由 `TerminalView.mImeProbeObserver` 回调，可能在任意线程）。 */
     @Synchronized
     fun record(kind: String, text: String) {
         val safe = text.replace("\n", "\\n").replace("\r", "\\r")
-        events.addLast("${clock.format(Date())} $kind ${safe.take(120)}")
+        // B-补-24（2026-10-16）：时间戳走共享 formatter（旧写法持有一个 SimpleDateFormat 字段）
+        events.addLast("${TimeFormats.clockMillis()} $kind ${safe.take(120)}")
         while (events.size > MAX_EVENTS) events.removeFirst()
     }
 
