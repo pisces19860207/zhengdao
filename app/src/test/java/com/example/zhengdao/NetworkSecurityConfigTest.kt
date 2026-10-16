@@ -96,7 +96,7 @@ class NetworkSecurityConfigTest {
         val unexpected = domains.filter { it != "127.0.0.1" && it != "localhost" }
         assertTrue(
             "白名单里出现了非环回主机：${unexpected.joinToString("；")}。本 App 第一方代码只用环回明文" +
-                "（OcClient.kt:45 / OcManager.kt:218 / KnowledgeBaseSummarizerRunner.kt:219）；" +
+                "（旧抱朴线那三处调用者已于 2026-10-16 删除，改由「预览槽」等本地服务；" +
                 "外部主机要么改成 https，要么先想清楚" +
                 "「这条明文是哪个第一方组件在用、为什么不能上 https」再动这条断言",
             unexpected.isEmpty()
@@ -107,7 +107,7 @@ class NetworkSecurityConfigTest {
     fun `环回在白名单里`() {
         val loopback = domainConfigs(nsc).firstOrNull { it.contains("<domain includeSubdomains=\"false\">127.0.0.1</domain>") }
         assertNotNull(
-            "127.0.0.1 必须有一段明文放行 —— oc serve（OcClient.kt:45 / OcManager.kt:218 / KnowledgeBaseSummarizerRunner.kt:219）全走它",
+            "127.0.0.1 必须有一段明文放行 —— App 自己的本地服务（旧 oc serve 已删，后续预览槽仍走它）",
             loopback
         )
         assertTrue(

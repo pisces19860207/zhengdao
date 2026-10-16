@@ -23,8 +23,10 @@ import java.io.File
  *   `KeepaliveLogTopBar`、`ui/OpenSourceLicensesActivity.kt` 的 `LicensesTopBar`；
  * - 「280dp」＝`ui/SettingsCommon.kt` 工作区文件夹选择弹窗里的可滚动列表
  *   （`Column(Modifier.height(280.dp).verticalScroll(…))`）；
- * - 「360dp」＝`ui/baopu/ModelSheet.kt` 模型池列表（`LazyColumn(Modifier.height(360.dp))`）；
- * - 「300dp」＝`ui/baopu/BaopuScreen.kt` 历史抽屉（`ModalDrawerSheet(Modifier.width(300.dp))`）。
+ * - 「360dp」＝`ui/baopu/ModelSheet.kt` 模型池列表（`LazyColumn(Modifier.height(360.dp))`，该文件已删）；
+ * - 「300dp」＝`ui/baopu/BaopuScreen.kt` 历史抽屉（`ModalDrawerSheet(Modifier.width(300.dp))`，该文件已删）。
+ *   2026-10-16 清场：这两个文件随旧抱朴线整批删除 ⇒ 对应两条用例一并移除；
+ *   抱朴线刀 1 重做模型池/历史抽屉时按同样判据（上限而非定值）补回。
  *
  * 为什么这是缺陷：`height(48.dp)` 把**触摸目标下限**当成了**高度上限** —— 系统字号 ≥1.3× 时
  * 标题会被裁掉半行（B-补-22 同款病根）；`height(280/360.dp)`、`width(300.dp)` 写死值时，
@@ -40,8 +42,6 @@ class HardcodedSizeGuardTest {
     private val mainRel = "app/src/main/java/com/example/zhengdao/MainActivity.kt"
     private val keepaliveRel = "app/src/main/java/com/example/zhengdao/ui/KeepaliveLogActivity.kt"
     private val licensesRel = "app/src/main/java/com/example/zhengdao/ui/OpenSourceLicensesActivity.kt"
-    private val modelSheetRel = "app/src/main/java/com/example/zhengdao/ui/baopu/ModelSheet.kt"
-    private val baopuRel = "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt"
 
     /** 单测的工作目录是模块目录（`app/`），也可能是仓库根。 */
     private fun repoFile(rel: String): File {
@@ -65,8 +65,6 @@ class HardcodedSizeGuardTest {
     private val main by lazy { code(mainRel) }
     private val keepalive by lazy { code(keepaliveRel) }
     private val licenses by lazy { code(licensesRel) }
-    private val modelSheet by lazy { code(modelSheetRel) }
-    private val baopu by lazy { code(baopuRel) }
 
     @Test
     fun `门禁_B补8_四个顶栏改用最小高度_不再写死48dp`() {
@@ -109,34 +107,13 @@ class HardcodedSizeGuardTest {
             settings.contains("import androidx.compose.foundation.layout.heightIn"))
     }
 
-    @Test
-    fun `门禁_B补8_模型池列表用上限_不再写死360dp`() {
-        assertTrue(
-            "模型池列表必须用 LazyColumn(Modifier.heightIn(max = 360.dp))",
-            modelSheet.contains("LazyColumn(Modifier.heightIn(max = 360.dp))")
-        )
-        assertFalse("ModelSheet.kt 仍写死 Modifier.height(360.dp)",
-            modelSheet.contains("Modifier.height(360.dp)"))
-        assertTrue("ModelSheet.kt 缺 heightIn 的 import",
-            modelSheet.contains("import androidx.compose.foundation.layout.heightIn"))
-    }
-
-    @Test
-    fun `门禁_B补8_历史抽屉宽度用上限_不再写死300dp`() {
-        assertTrue(
-            "历史抽屉必须用 Modifier.widthIn(max = 300.dp)（比 300dp 还窄的窗口不该被顶出去）",
-            baopu.contains("Modifier.widthIn(max = 300.dp)")
-        )
-        assertFalse("BaopuScreen.kt 仍写死 Modifier.width(300.dp)",
-            baopu.contains("Modifier.width(300.dp)"))
-        assertTrue("BaopuScreen.kt 缺 widthIn 的 import",
-            baopu.contains("import androidx.compose.foundation.layout.widthIn"))
-    }
+    // 2026-10-16 清场：`门禁_B补8_模型池列表用上限_不再写死360dp` 与
+    // `门禁_B补8_历史抽屉宽度用上限_不再写死300dp` 随 ui/baopu/** 删除而移除。
 
     @Test
     fun `门禁_B补8_台账点名的三类尺寸都留下可追溯的注释`() {
         // 注释是原始文档，不能剥 —— 这里专门读原文，确认每处改动都写清了「为什么改」
-        val raw = listOf(settingsRel, mainRel, keepaliveRel, licensesRel, modelSheetRel, baopuRel)
+        val raw = listOf(settingsRel, mainRel, keepaliveRel, licensesRel)
             .joinToString("\n") { repoFile(it).readText() }
         assertTrue("改动处必须留下 B-补-8 的日期与理由注释（否则后人不知道 48dp 是下限而非上限）",
             raw.contains("B-补-8（2026-10-16）"))

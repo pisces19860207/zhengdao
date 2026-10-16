@@ -439,7 +439,7 @@
     <string name="main_update_ignore">忽略</string>
     <string name="main_unofficial_build">这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。</string>
 
-    <!-- ── 抱朴 Tab（BaopuScreen：安装 / 连接 / 版本）── -->
+    <!-- ── 抱朴 Tab（原 BaopuScreen：安装 / 连接 / 版本 —— 该文件 2026-10-16 清场已删，文案留待刀 1 对齐）── -->
     <string name="taiji_connecting">正在连接 OpenCode…</string>
     <string name="taiji_refresh_failed">刷新会话失败：%1$s</string>
     <string name="taiji_send_failed">发送失败：%1$s</string>
@@ -467,7 +467,7 @@
     <string name="taiji_oc_no_digest">当前 %1$s → %2$s。该 release 未提供 SHA256 digest，为安全起见不提供 App 内直装 —— 可到 GitHub 手动下载。</string>
     <string name="taiji_oc_digest_ok">当前 %1$s → %2$s。将从 GitHub 下载约 65MB 并校验 digest，通过后覆盖安装。安装完成后重启 App 生效。</string>
 
-    <!-- ── 抱朴 Tab：模型池（ModelSheet）── -->
+    <!-- ── 抱朴 Tab：模型池（原 ModelSheet，2026-10-16 清场已删）── -->
     <string name="taiji_model_pool">模型池</string>
     <string name="taiji_fetching">拉取中…</string>
     <string name="taiji_refresh_action">⟳ 刷新</string>
@@ -482,7 +482,7 @@
     <string name="taiji_default_clear_override">默认（清除本会话覆盖）</string>
     <string name="taiji_free">免费</string>
 
-    <!-- ── 抱朴 Tab：会话顶栏 / 连接 / 工具卡（BaopuSessionBar / BaopuPartCards）── -->
+    <!-- ── 抱朴 Tab：会话顶栏 / 连接 / 工具卡（原 BaopuSessionBar / BaopuPartCards，2026-10-16 清场已删）── -->
     <string name="taiji_session_history">会话历史</string>
     <string name="taiji_new_session">新会话</string>
     <string name="taiji_new_session_plus">＋  新会话</string>
@@ -547,7 +547,7 @@
     <string name="taiji_day_yesterday">昨天</string>
     <string name="taiji_day_earlier">更早</string>
 
-    <!-- ── 复制到剪贴板的文本（MessageCopy，随界面语言）── -->
+    <!-- ── 复制到剪贴板的文本（原 MessageCopy，2026-10-16 清场已删；样板留档见报告仓「参考-旧线样板-2026-10-16」）── -->
     <string name="copy_role_separator">：</string>
     <string name="copy_role_user">我</string>
     <string name="copy_role_assistant">助手</string>
@@ -740,7 +740,9 @@
     <string name="sys_none">无</string>
     <string name="sys_uv_embedded">%1$s（hermes 内嵌）</string>
 
-    <!-- ── 抱朴 OpenCode（OcManager：启动 / 安装 / 更新）── -->
+    <!-- ── 抱朴 OpenCode（OcManager：启动 / 安装 / 更新）──
+         2026-10-16：OcManager 与整条旧抱朴线已删除，本节文案暂时无人引用；
+         保留给抱朴线刀 1 复用（避免一次性删掉几十条中英对照）。 -->
     <string name="oc_not_installed">OpenCode 尚未安装</string>
     <string name="oc_serve_no_password_title">抱朴连上了、但没拿到访问密码</string>
     <string name="oc_serve_no_password_detail">serve 在 14000 端口活着，serve.log 里没有可用的 server password 行（旧场次的密码不能复用）⇒ 之后每个请求都会 401，界面看着像卡住。</string>
@@ -764,7 +766,8 @@
     <string name="oc_binary_missing">释放后二进制缺失（包不完整？）</string>
     <string name="oc_install_done">OpenCode %1$s 安装完成</string>
 
-    <!-- ── 抱朴连接层（OcRepository：横幅 / 发送 / 模型池的错误）── -->
+    <!-- ── 抱朴连接层（OcRepository：横幅 / 发送 / 模型池的错误）──
+         2026-10-16：OcRepository 已删除，同上。 -->
     <string name="oc_create_session_failed">无法创建会话</string>
     <string name="oc_polling_retry">轮询失败，正在重试</string>
     <string name="oc_empty_response">空响应 %1$s</string>
@@ -879,4 +882,9 @@
     <string name="bridge_reset_done">已重置，旧口令立即失效</string>
     <string name="bridge_howto_group">怎么用（给终端里的 agent）</string>
     <string name="bridge_howto">终端里先记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让 agent 走本机环回操作玄览页面，例如：\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\n可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。\n注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。\n抱朴（内置 OpenCode）不接这条桥，它的浏览器能力由自身插件提供。</string>
+    <!-- ── 抱朴页占位（2026-10-16 旧抱朴线清场；真实页面归抱朴线刀 1）── -->
+    <string name="home_baopu_retired">旧抱朴（内置 OpenCode）已经下线了 —— 它在 Android 16 上起不来，代码已清出仓库。新抱朴正在重做，做好后回来。</string>
+    <string name="baopu_rebuilding_title">抱朴正在重建</string>
+    <string name="baopu_rebuilding_body">旧抱朴（内置 OpenCode）那条线已经下线：它在 Android 16 上起不来，代码已整条清出仓库。新抱朴正按刀次重做，做好后这里就是它的页面。</string>
+    <string name="baopu_rebuilding_go">先去怡然</string>
 </resources>

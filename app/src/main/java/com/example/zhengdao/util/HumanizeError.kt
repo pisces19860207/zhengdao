@@ -40,7 +40,7 @@ import javax.net.ssl.SSLException
  *
  * 本对象曾提供 `hint(t)`（"下一步"建议）与 `full(t)`（`title：hint` 拼接）。走查时全库 grep
  * 确认**只有单测在调用、生产代码一律只用 `title()`**；而能接线的入口（MainActivity、
- * OcManager）不在本次改动范围内。于是按"最小且诚实"删掉这层死 API，而不是为了留住测试
+ * OcManager —— 2026-10-16 已整批删除）不在本次改动范围内。于是按"最小且诚实"删掉这层死 API，而不是为了留住测试
  * 把一串没人要的建议硬塞进生产文案。
  *
  * ## 何时用
@@ -54,7 +54,7 @@ import javax.net.ssl.SSLException
  * ## 包位置
  *
  * 放在 `com.example.zhengdao.util`（顶层）而非 `ui.util`——
- * [com.example.zhengdao.oc.OcManager] 这种非 UI 业务模块也要用，
+ * `oc/OcManager`（2026-10-16 已删）这种非 UI 业务模块也要用，
  * ui→oc 反向依赖会破坏分层。
  */
 object HumanizeError {

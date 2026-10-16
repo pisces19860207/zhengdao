@@ -257,7 +257,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         // ── 资料库（2026-10-09 新增）──
         // 定位：用户把手里的资料丢进工作区后，**终端里的各类 AI 自动能读到**。
         // 机械层（预置骨架／扫描／写清单／分发指路）由 App 完成；内容理解交给 AI。
-        // ⚠️ 与「抱朴」无关：OpenCode 插件入口在抱朴页抽屉里（BaopuScreen 的 HistoryDrawer）；
+        // ⚠️ 与「抱朴」无关：OpenCode 插件入口原先在抱朴页抽屉里（BaopuScreen 的 HistoryDrawer，
+        //    该抽屉随旧抱朴线 2026-10-16 整批删除，抱朴线刀 1 重做抽屉后再定入口）；
         //    本项服务的是**终端**里的 agent（Claude Code／Hermes／AGY／用户自装的其他 agent）。
         SectionCard(stringResource(R.string.data_kb_card)) {
             val st = kbStatus
@@ -394,7 +395,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 TextButton(onClick = {
                     com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
                     // ── FIX-A（2026-10-10，E-080）：此处原先顺带调
-                    //    KnowledgeBaseSummarizerRunner.requestSummaries() —— 由抱朴的云端免费模型
+                    //    KnowledgeBaseSummarizerRunner.requestSummaries()（该 Runner 2026-10-16 已删）—— 由抱朴的云端免费模型
                     //    把每个文件开头（≤1200 字，.docx 先抽正文）读走、写进清单的「文件摘要」节。
                     //    ⚠️ 那一步会把文件内容发到设备之外，与上方「证道本身不会把它发出去」直接矛盾；
                     //    且用户 2026-10-10 已拍板：不再让抱朴承担该职责（它一更新就变、非自有组件）。

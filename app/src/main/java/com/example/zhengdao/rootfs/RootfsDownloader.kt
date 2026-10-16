@@ -178,7 +178,7 @@ object RootfsDownloader {
      * 依次尝试所有 URL，把文件下载到 dest（先写 dest.part，完成后改名）。
      *
      * @param shaUrls 校验值边车的**候选源列表**（github 优先、镜像兜底）。
-     *   传空列表 = 调用方明确不校验（OcManager 走这条路：它用 release digest 或定版 SHA 自行校验）。
+     *   传空列表 = 调用方明确不校验（OcManager 走这条路 —— 该类 2026-10-16 已删：它用 release digest 或定版 SHA 自行校验）。
      * @return **本次实际校验通过的那个 SHA256**（无校验值时 null）。
      *   返回值是给"信任锚"用的（用户 2026-10-08 追加规则）：只有它与索引里的 sha256
      *   一致时，才允许把索引的 env 写进环境标记——见 [RootfsInstaller.envForMarker]。
