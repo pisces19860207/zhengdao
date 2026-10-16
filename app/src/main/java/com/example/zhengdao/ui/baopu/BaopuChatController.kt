@@ -28,7 +28,7 @@ data class BaopuUiMessage(
 
 /** 一个 part 的 UI 形状（text 直显；tool 显示调用名 + 结果摘要，可展开全文）。 */
 data class BaopuUiPart(
-    val kind: String, // "text" | "tool"
+    val kind: String, // 库里 part.kind 原值："text" | "tool" | （将来的）"compressed" 等
     val text: String,
     val tool: String = "",
 )
@@ -177,7 +177,9 @@ internal class BaopuChatController(context: Context) {
                         text = json?.optString("result") ?: payload,
                     )
                 } else {
-                    BaopuUiPart(kind = "text", text = payload)
+                    // 保留库里的原始 kind（不硬归一成 "text"）：part.kind 是自由文本，
+                    // 未来新增 kind（如压缩标记）不该在列表层被静默吞掉。本刀实际只会有 text。
+                    BaopuUiPart(kind = kind, text = payload)
                 }
             }
             flush()
