@@ -75,7 +75,7 @@ class StateLifetimeGateTest {
         return out.toString()
     }
 
-    /** P2-1：转屏跳回丹房 —— tab 状态必须跨配置变更存活。 */
+    /** P2-1：转屏跳回怡然 —— tab 状态必须跨配置变更存活。 */
     @Test
     fun `MainActivity_tab 状态必须 rememberSaveable`() {
         val s = code("src/main/java/com/example/zhengdao/MainActivity.kt")

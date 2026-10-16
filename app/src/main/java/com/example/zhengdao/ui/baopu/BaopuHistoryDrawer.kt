@@ -2,9 +2,9 @@
 //
 // 依据的公开接口：Jetpack Compose（Material 3）官方 API。
 //
-// P4-1（2026-10-14）：自 TaijiComponents.kt（拆分前 1929 行）按内聚性拆出——
+// P4-1（2026-10-14）：自 BaopuComponents.kt（拆分前 1929 行）按内聚性拆出——
 // **只搬不改**，代码逐行原样（含已提交的 P2-10 48dp 触摸目标修复）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import android.content.res.Resources
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -73,10 +73,10 @@ import kotlinx.coroutines.launch
  * - 按 **今天 / 昨天 / 更早** 分组（[groupSessionsByDay]）；每条显示标题 + 时间 + 条数。
  * - 点击任一条 → 恢复该会话（[onPick]），当前会话高亮。
  * - **点尾部垃圾桶 / 长按任一条 → 删除**（二次确认，见 [DeleteSessionDialog]）。
- * - 顶部「＋ 新会话」[onNew]、「⟳」[onRefresh]（每次打开抽屉都会重拉，见 TaijiScreen）。
+ * - 顶部「＋ 新会话」[onNew]、「⟳」[onRefresh]（每次打开抽屉都会重拉，见 BaopuScreen）。
  *
  * @param onDelete 真正执行删除，返回 true 表示服务端已确认；**列表刷新由调用方负责**
- *   （会话数据所有权在 TaijiScreen，本组件不持有）。
+ *   （会话数据所有权在 BaopuScreen，本组件不持有）。
  */
 @Composable
 fun HistoryDrawer(
@@ -91,7 +91,7 @@ fun HistoryDrawer(
     pluginCount: Int = 0,
     /** 打开插件面板。 */
     onPlugins: () -> Unit = {},
-    /** 结束本次会话（关 OpenCode 实例 + 退出太极）。顶栏原「◼」的动作，见 [SessionBar] KDoc。 */
+    /** 结束本次会话（关 OpenCode 实例 + 退出抱朴）。顶栏原「◼」的动作，见 [SessionBar] KDoc。 */
     onCloseSession: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -199,11 +199,11 @@ fun HistoryDrawer(
 
         // ── 底部固定区（2026-10-08）：插件入口 + 结束会话 ──
         // 为什么放这里：
-        //  ① 用户反馈「太极页找不到插件入口」——入口原只在「设置」页，而插件本来就是
-        //     **太极的能力**（PluginManager 只读写太极实例的 opencode.json）。抽屉底部
-        //     本来就摆着 OpenCode 版本条，两者同属"太极的环境"。
+        //  ① 用户反馈「抱朴页找不到插件入口」——入口原只在「设置」页，而插件本来就是
+        //     **抱朴的能力**（PluginManager 只读写抱朴实例的 opencode.json）。抽屉底部
+        //     本来就摆着 OpenCode 版本条，两者同属"抱朴的环境"。
         //  ② 用户反馈「停止键应该和发送键在一起」——顶栏原来的 ◼ 不是"停止生成"，而是
-        //     "结束本次会话（关掉 OpenCode 实例）并退出太极"。语义比"停止"重，外形却像
+        //     "结束本次会话（关掉 OpenCode 实例）并退出抱朴"。语义比"停止"重，外形却像
         //     一个停止键。移进抽屉并把后果写在确认框里，误会就没有来源了。
         HorizontalDivider()
         Column(
@@ -444,7 +444,7 @@ private fun sessionTitle(s: OcSessionSummary, res: Resources? = null): String =
 /**
  * 按天分组：今天 / 昨天 / 更早。保持输入顺序（服务端已按时间倒序）。时间缺失归「更早」。
  *
- * `internal` 而非 `private`：供 JVM 单元测试（TaijiSessionGroupingTest）直接验证分组
+ * `internal` 而非 `private`：供 JVM 单元测试（BaopuSessionGroupingTest）直接验证分组
  * —— 这是 v1.1 第一阶段唯一可脱离真机自动验证的核心逻辑。同模块可见，不扩大外部 API。
  */
 internal fun groupSessionsByDay(
@@ -486,7 +486,7 @@ private fun formatClock(ts: Long): String = com.example.zhengdao.util.TimeFormat
  * 抽屉底部的动作行（标签 + 右侧说明 + `›`）。
  *
  * 形态与设置页的 `SettingRow` 一致，但**刻意不复用**：那一份的竖向内边距（12dp）是按
- * 设置页的长列表调的，放进 300dp 宽的抽屉会显得过松，且它在 `ui` 包、这里是 `ui.taiji`，
+ * 设置页的长列表调的，放进 300dp 宽的抽屉会显得过松，且它在 `ui` 包、这里是 `ui.baopu`，
  * 复用会把抽屉的观感绑在另一个页面的样式上。
  */
 @Composable

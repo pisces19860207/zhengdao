@@ -16,7 +16,7 @@ import java.io.File
  * 后**非零退出** ⇒ `fail` ⇒ 整个安装脚本 exit 1。
  *
  * 而 App 侧（[AgentInstaller]）把「脚本退出码」当作「安装成功与否」写进
- * `~/.zhengdao/install-hermes.rc`，丹房据此显示「安装失败（退出码 1）」——**尽管 hermes 本体
+ * `~/.zhengdao/install-hermes.rc`，怡然据此显示「安装失败（退出码 1）」——**尽管 hermes 本体
  * 已经装好、配置也已完成**（真机截图：`✓ Install complete!` 之后就这一条红叉）。用户因此
  * 反复点「安装」，每次都白等一遍全量安装。
  *

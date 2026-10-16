@@ -68,10 +68,10 @@ object IssueCenter {
     /** 设置页「修复环境」：重解压系统层（rootfs / proot 损坏的兜底）。 */
     const val ACTION_REPAIR_ENV = "repair-env"
 
-    /** 重新拉起太极 serve（进程还在但没就绪 / 上次启动超时）。 */
+    /** 重新拉起抱朴 serve（进程还在但没就绪 / 上次启动超时）。 */
     const val ACTION_RETRY_SERVE = "retry-serve"
 
-    /** 杀掉再拉起太极 serve（密码没解析到 ⇒ 后续请求全程 401 时用）。 */
+    /** 杀掉再拉起抱朴 serve（密码没解析到 ⇒ 后续请求全程 401 时用）。 */
     const val ACTION_RESTART_SERVE = "restart-serve"
 
     /** 打开设置页（通用去路：修复、检查更新、看占用都在这儿）。 */

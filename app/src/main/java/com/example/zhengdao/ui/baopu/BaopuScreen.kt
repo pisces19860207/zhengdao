@@ -1,7 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
 // 依据的公开接口：Jetpack Compose 官方 API、OpenCode 官方 serve 模式。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -57,8 +57,8 @@ import com.example.zhengdao.oc.OcPart
 import com.example.zhengdao.oc.OcRepository
 import com.example.zhengdao.oc.OcRuntime
 import com.example.zhengdao.oc.OcSessionSummary
-import com.example.zhengdao.oc.TaijiPhase
-import com.example.zhengdao.oc.TaijiState
+import com.example.zhengdao.oc.BaopuPhase
+import com.example.zhengdao.oc.BaopuState
 import com.example.zhengdao.oc.failedRetryNeedsStartServe
 import com.example.zhengdao.ui.PluginManager
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
@@ -67,29 +67,29 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 太极 Tab —— OpenCode 的 Compose 原生客户端。
+ * 抱朴 Tab —— OpenCode 的 Compose 原生客户端。
  *
  * ## 定位
  *
  * 直连 `opencode serve` 的 HTTP + SSE API，不经WebView、不经 TerminalView。
- * 完整设计见 docs/milestones/证道-太极Tab-Compose设计方案.md。
+ * 完整设计见 docs/milestones/证道-抱朴Tab-Compose设计方案.md。
  *
  * ## 骨架状态（2026-10-06）
  *
  * ✅ 已就绪：网络层（[OcClient] / [SseClient]）、状态归约（[OcRepository]）、
  *   全部 UI 组件（P4-1 2026-10-14 起按内聚性拆为六份，同包内直接互调、无跨文件 import：
- *   [TaijiSessionBar] 顶栏与连接横幅 / [TaijiMessageList] 消息流 / [TaijiPartCards] 部件卡 /
- *   [TaijiComposer] 输入区 / [TaijiSheets] 底部抽屉 / [TaijiHistoryDrawer] 历史抽屉；
- *   拆分前是单文件 TaijiComponents.kt，1929 行）。
+ *   [BaopuSessionBar] 顶栏与连接横幅 / [BaopuMessageList] 消息流 / [BaopuPartCards] 部件卡 /
+ *   [BaopuComposer] 输入区 / [BaopuSheets] 底部抽屉 / [BaopuHistoryDrawer] 历史抽屉；
+ *   拆分前是单文件 BaopuComponents.kt，1929 行）。
  * ⚠️ **端点与字段待实测**：跑的是社区 bionic 版（binary surgery 移植产物），
  *   API 覆盖面与事件字段须按实际打包版本核实（阶段 0-4）。若某端点缺失，
  *   对应功能降级但**不崩溃**（[OcRepository] 内均runCatching 包裹）。
  * ⚠️ **鉴权未验证**：阶段 0-1 若过不了，本界面会停在"启动失败"并显示明确原因。
  *
- * @param onExit 退出太极 Tab（回洞天/丹房）。
+ * @param onExit 退出抱朴 Tab（回逍遥/怡然）。
  */
 @Composable
-fun TaijiScreen(
+fun BaopuScreen(
     onExit: () -> Unit = {},
     // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。
     // 不传时退化到内部新建。**注意**：切会话的逻辑（LaunchedEffect(sessionId) 滚到底）
@@ -98,7 +98,7 @@ fun TaijiScreen(
         androidx.compose.foundation.lazy.rememberLazyListState(),
     // K2 配套（2026-10-08 审查）：只提 listState 不够 ——「是否跟随最新」和「已定位过哪个会话」
     // 同样要跨 Tab 存活，否则切回来时 follow 重新初始化成 true、positionedSession 变 null，
-    // 两个 LaunchedEffect 立刻把保留的滚动位置踢回底部，K2 在太极页等于没做。默认值只服务
+    // 两个 LaunchedEffect 立刻把保留的滚动位置踢回底部，K2 在抱朴页等于没做。默认值只服务
     // "调用方没注入"的旧用法，HomeTabs 里两个都注入（见 MainActivity 的 K2 配套注释）。
     followState: androidx.compose.runtime.MutableState<Boolean> =
         androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) },
@@ -111,11 +111,11 @@ fun TaijiScreen(
     // ⚠️ 网络层用 remember 而非 rememberSaveable：连接不应在配置变更（旋转）时重建。
     //    Compose state 是唯一真相；进程被杀后由 open() 从 serve 恢复。
     //
-    // 2026-10-11（用户报「每次重进太极都会重新连接」）：实例改从 OcRuntime 取。
+    // 2026-10-11（用户报「每次重进抱朴都会重新连接」）：实例改从 OcRuntime 取。
     //   原先 `remember { OcRepository(…) }` 只活在**本页面的 Composition** 里，而 HomeTabs
-    //   切 Tab 用的是 `when (tab)`（切走的页面直接退出 Composition）⇒ "切去丹房再切回来"
+    //   切 Tab 用的是 `when (tab)`（切走的页面直接退出 Composition）⇒ "切去怡然再切回来"
     //   会把 repository 与它的轮询/SSE 任务一起拆掉重建。现在连接挂在进程上，切 Tab、
-    //   转屏、退到后台都不再重连；只有「关闭太极并退出」或进程被杀才结束（见 OcRuntime）。
+    //   转屏、退到后台都不再重连；只有「关闭抱朴并退出」或进程被杀才结束（见 OcRuntime）。
     val repo = remember { OcRuntime.repository(ctx.resources) }
     // 用项目已有的 collectAsState，避免为collectAsStateWithLifecycle 引入 lifecycle-runtime-compose
     val state by repo.state.collectAsState()
@@ -131,16 +131,16 @@ fun TaijiScreen(
 
     // 🔺 会话 id 必须跨「配置变更 + Tab 切换 + 终端往返」都保住。
     //    P2-3（§B 顺序 2，2026-10-14）：原先是 rememberSaveable —— 那只跨**转屏**；
-    //    切到底栏别的 Tab 时 TaijiScreen 离开组合、id 一丢，回来就 repo.open(scope, null)
-    //    ⇒ **新建一个会话**，历史消息全丢。现在存进进程级的 [TaijiStateHolder]
+    //    切到底栏别的 Tab 时 BaopuScreen 离开组合、id 一丢，回来就 repo.open(scope, null)
+    //    ⇒ **新建一个会话**，历史消息全丢。现在存进进程级的 [BaopuStateHolder]
     //    （与 ui/browser/BrowserHolder 同口径），本地 savedSession 只是它的可变镜像。
     //    Repository 重建后会自动全量拉取，所以只要 id 保住，内容就能完整恢复。
-    var savedSession by remember { mutableStateOf(TaijiStateHolder.sessionId) }
+    var savedSession by remember { mutableStateOf(BaopuStateHolder.sessionId) }
 
     /** 统一的会话 id 写入点：同时更新本地镜像与 holder（漏写 holder 它就白建）。 */
     fun syncSession(id: String?) {
         savedSession = id
-        TaijiStateHolder.setSession(id)
+        BaopuStateHolder.setSession(id)
     }
 
     // ── v1.1 第一阶段：会话完整化 ─────────────────────────────────────
@@ -148,8 +148,8 @@ fun TaijiScreen(
     // —— 「会话数据」才是 Repository 的职责，「抽屉开没开」是纯 UI 关注点。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
 
-    // ── 插件入口（2026-10-08）：从「设置」页搬进太极 ──
-    // 用户反馈「太极页找不到插件入口」——插件是太极的能力（PluginManager 只读写太极实例的
+    // ── 插件入口（2026-10-08）：从「设置」页搬进抱朴 ──
+    // 用户反馈「抱朴页找不到插件入口」——插件是抱朴的能力（PluginManager 只读写抱朴实例的
     // opencode.json），入口却在设置页，用的时候要跨页找。现放进抽屉底部（见 HistoryDrawer），
     // 面板内容复用设置页那一份 PluginsScreen，避免两份 UI 各自变。
     var showPlugins by remember { mutableStateOf(false) }
@@ -161,7 +161,7 @@ fun TaijiScreen(
     // 开抽屉 / 面板开合都重算一次：插件是在面板里改的，回到抽屉必须看到新数字。
     LaunchedEffect(drawerState.isOpen, showPlugins) {
         pluginCount = withContext(Dispatchers.IO) {
-            PluginManager.readSpecs(PluginManager.taijiConfig(ctx)).size
+            PluginManager.readSpecs(PluginManager.baopuConfig(ctx)).size
         }
     }
     var sessions by remember { mutableStateOf<List<OcSessionSummary>>(emptyList()) }
@@ -263,7 +263,7 @@ fun TaijiScreen(
         modelOverride = m
     }
 
-    // ── 太极就地安装的进度（v1.2 新用户排查所得）──
+    // ── 抱朴就地安装的进度（v1.2 新用户排查所得）──
     // 原实现只有一条 Toast「后台安装中…完成后重进本页」：新用户不知道装到哪、
     // 也不知道装完没有，且装完必须手动退出再进（serve 没人拉起）。
     var ocInstalling by remember { mutableStateOf(false) }
@@ -282,10 +282,10 @@ fun TaijiScreen(
         if (!OcManager.installed(ctx)) return@LaunchedEffect      // 未装：显示引导
         // serveRunning()/startServe() 都是阻塞的（裸 HttpURLConnection + 起进程），必须切 IO
         withContext(Dispatchers.IO) {
-            // 太极自己的预置（人设 AGENTS.md + opencode.json 性能/插件字段 + 旧缓存搬家）：
-            // 2026-10-09 从 ProotLauncher 搬来（ERRATA E-069）——它**必须由太极这条路径触发**，
-            // 否则"只用太极、从不进终端"的用户拿不到人设；同时在起 serve 前把工作区建好。
-            com.example.zhengdao.oc.TaijiPreset.ensure(ctx)
+            // 抱朴自己的预置（人设 AGENTS.md + opencode.json 性能/插件字段 + 旧缓存搬家）：
+            // 2026-10-09 从 ProotLauncher 搬来（ERRATA E-069）——它**必须由抱朴这条路径触发**，
+            // 否则"只用抱朴、从不进终端"的用户拿不到人设；同时在起 serve 前把工作区建好。
+            com.example.zhengdao.oc.BaopuPreset.ensure(ctx)
             // ⚠️ 竞态修复：**总是**调 startServe(ctx)，不再用 `if (!serveRunning())` 前置拦截。
             //    startServe 本身幂等：serve 已在运行（典型：重装/重启后上一进程的孤儿仍在
             //    监听）时，它会解析密码并写入 OcManager.servePassword 后返回。
@@ -299,8 +299,8 @@ fun TaijiScreen(
         syncSession(repo.state.value.sessionId ?: savedSession)
         // P2-2：切回来把该会话的草稿灌回输入框。本 effect 的 key 含 savedSession，
         // 而它切回时从 holder 恢复 ⇒ 这段会重跑，天然就是灌回点。
-        // ⚠️ 只能回文本：repo.setInput(text: String) 不收光标（见 [TaijiStateHolder] KDoc）。
-        TaijiStateHolder.draft(savedSession)?.let { repo.setInput(it) }
+        // ⚠️ 只能回文本：repo.setInput(text: String) 不收光标（见 [BaopuStateHolder] KDoc）。
+        BaopuStateHolder.draft(savedSession)?.let { repo.setInput(it) }
         // 重启后重放模型覆盖：复用的会话重新 POST 一次（幂等，仅影响当前会话）
         modelOverride?.let { m ->
             repo.state.value.sessionId?.let { repo.setSessionModel(m) }
@@ -310,7 +310,7 @@ fun TaijiScreen(
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             when {
-            // 未安装：给就地安装入口（丹房过滤了 OpenCode，v1.1.1 起这里是唯一入口——
+            // 未安装：给就地安装入口（怡然过滤了 OpenCode，v1.1.1 起这里是唯一入口——
             // 原文案"去丹房安装"是死循环回归）。缓存命中时约 1 分钟（含校验+解压）
             !OcManager.installed(ctx) -> NotInstalledPane(
                 onExit = onExit,
@@ -344,8 +344,8 @@ fun TaijiScreen(
             )
 
             // 启动失败：明确原因 + 重试。**不静默失败**（项目原则）
-            state.phase is TaijiPhase.Failed ->
-                FailedPane((state.phase as TaijiPhase.Failed).message) {
+            state.phase is BaopuPhase.Failed ->
+                FailedPane((state.phase as BaopuPhase.Failed).message) {
                     scope.launch {
                         // 第㉒刀-A：serve 进程死了时只调 open() 点多少次都失败（2026-10-15
                         // 真机实测）——重试必须先确保 serve 在跑（判据见
@@ -354,7 +354,7 @@ fun TaijiScreen(
                         // 与页面入口 :263 的 withContext(Dispatchers.IO) { startServe } 同款。
                         val needServe = withContext(Dispatchers.IO) {
                             failedRetryNeedsStartServe(
-                                isFailed = state.phase is TaijiPhase.Failed,
+                                isFailed = state.phase is BaopuPhase.Failed,
                                 serveRunning = OcManager.serveRunning(),
                             )
                         }
@@ -379,7 +379,7 @@ fun TaijiScreen(
                     ) {
                         // 抽屉 = 上（可滚动的）会话列表 + 下（固定）OpenCode 版本条。
                         // 2026-10-08 用户反馈「opencode bionic 版没有更新入口」：入口原本只在
-                        // 设置 → 环境更新 里，而太极是天天开的页面，所以抽屉底部也放一个。
+                        // 设置 → 环境更新 里，而抱朴是天天开的页面，所以抽屉底部也放一个。
                         // HistoryDrawer 内部是 Column(fillMaxSize)，故用 weight(1f) 让它只占
                         // 上半部，版本条固定在底部。
                         //
@@ -426,7 +426,7 @@ fun TaijiScreen(
                                     scope.launch { drawerState.close() }
                                     showPlugins = true
                                 },
-                                // 顶栏原「◼」的动作：结束本次会话（关 OpenCode 实例）+ 退出太极。
+                                // 顶栏原「◼」的动作：结束本次会话（关 OpenCode 实例）+ 退出抱朴。
                                 // 它和「停止生成」不是一回事，见 SessionBar KDoc。
                                 onCloseSession = {
                                     // 收抽屉 → 关实例 → 退出，三件事在**同一个协程里顺序执行**：
@@ -435,7 +435,7 @@ fun TaijiScreen(
                                     scope.launch {
                                         drawerState.close()
                                         repo.close()
-                                        // 连单例一起丢掉：否则下次进太极会拿到"关过但还活着"的
+                                        // 连单例一起丢掉：否则下次进抱朴会拿到"关过但还活着"的
                                         // 实例，open() 的判据会以为连接仍在（见 OcRuntime.shutdown）。
                                         OcRuntime.shutdown()
                                         onExit()
@@ -522,7 +522,7 @@ fun TaijiScreen(
                         // 一直在；但会话被换掉时它会被清空，所以这里自己留一份。
                         onInputChange = { t ->
                             repo.setInput(t)
-                            TaijiStateHolder.saveDraft(savedSession, t)
+                            BaopuStateHolder.saveDraft(savedSession, t)
                         },
                         onSend = {
                             // 失败必须看得见（C2 2026-10-08 升级）：失败时给"重试"入口，
@@ -560,7 +560,7 @@ fun TaijiScreen(
                 override = modelOverride,
                 currentModel = state.currentModel,
                 isLoading = modelsLoading,
-                // 失败原因（来自 OcRepository.fetchModels → TaijiState.lastModelFetchError）：
+                // 失败原因（来自 OcRepository.fetchModels → BaopuState.lastModelFetchError）：
                 // 必传，不给默认值——漏传就等于把「拉取失败」又变回静默，编译期拦下比运行时才发现强。
                 error = state.lastModelFetchError,
                 onSelectDefault = {
@@ -655,7 +655,7 @@ private fun LoadingPane() {
 /**
  * 空会话引导（v1.1 第一阶段 P1-1「首次进入显示引导文案」）。
  *
- * 用户第一次进太极、或点「＋ 新会话」后的界面 —— 告诉一个完全不懂终端的人
+ * 用户第一次进抱朴、或点「＋ 新会话」后的界面 —— 告诉一个完全不懂终端的人
  * "从哪开始"。这正是 v1.1「从能用升级为好用」的关键：不能只丢一个空白框。
  */
 @Composable
@@ -663,7 +663,7 @@ private fun EmptyConversationHint() {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             // B-补-21②（2026-10-16）：☯ 是纯装饰（下面的标题已经把话说完了），
-            // 读屏不该念一个「太极」符号。
+            // 读屏不该念一个「抱朴」符号。
             Text(
                 "☯",
                 style = MaterialTheme.typography.displaySmall,
@@ -763,7 +763,7 @@ private fun FailedPane(message: String, onRetry: () -> Unit) {
  * 抽屉底部：OpenCode 内置版版本 + 检查更新入口（2026-10-08）。
  *
  * 为什么放在这里：用户反馈「opencode bionic 版没有更新入口」——入口原本只在
- * 设置 → 环境更新 里，而太极是天天开的页面。
+ * 设置 → 环境更新 里，而抱朴是天天开的页面。
  *
  * 为什么不用 [OcManager.checkUpdate]：旧实现把「网络不通 / 接口报错」和「已是最新」
  * 都返回 null，UI 只能一律显示"已是最新"（**假好消息**，用户点一下什么都不发生）。

@@ -58,7 +58,7 @@ class IssueCenterTest {
     fun `便捷重载能把去路一起带上`() {
         IssueCenter.report(
             id = "oc-serve-timeout",
-            title = "太极启动超时",
+            title = "抱朴启动超时",
             detail = "serve 未在 15 秒内就绪",
             actionLabel = "重试",
             actionId = IssueCenter.ACTION_RETRY_SERVE,

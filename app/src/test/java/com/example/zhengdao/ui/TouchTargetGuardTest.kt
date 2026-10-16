@@ -10,12 +10,12 @@ import java.io.File
  * B-补-20（2026-10-16）：触摸目标守卫 —— 把「M3/Google 无障碍最小触摸目标 48dp」钉成可执行判据。
  *
  * 台账原条目（`docs/FEATURE-LEDGER.md` §B-补 ④）：
- * `- **B-补-20**（R5 / P3-6）触摸目标偏小：模型胶囊约 40dp（TaijiComponents.kt:227-250）、
+ * `- **B-补-20**（R5 / P3-6）触摸目标偏小：模型胶囊约 40dp（BaopuComponents.kt:227-250）、
  *  抽屉插件行与结束会话行约 36dp（:1676-1682）、权限 Checkbox 文字 24dp 不可点（:1194）、
  *  终端红点 30dp、res/layout/term_keys.xml 第二行 12 键在 360dp 屏每键约 28dp`
  *
  * 2026-10-16 逐条按当前代码复核（文件已随 P4-1 拆分，行号全部失效）：
- * - 模型胶囊、`DrawerActionRow`、`SheetActionRow`、`TaijiPartCards` 的两处 —— **都已达标**（各自带 48dp 注释）；
+ * - 模型胶囊、`DrawerActionRow`、`SheetActionRow`、`BaopuPartCards` 的两处 —— **都已达标**（各自带 48dp 注释）；
  * - **终端三个流量灯 30dp** ⇒ 本刀修（热区 48dp，inset 同步改 18.5dp 保持 11dp 视觉）；
  * - **抽屉「新会话」入口 14dp 竖内边距 ≈ 44dp** ⇒ 本刀修（16dp ≈ 48dp）；
  * - **权限批准抽屉的「记住选择」：裸 Checkbox ＋ 兄弟 Text，文字不可点** ⇒ 本刀修（整行 toggleable）；
@@ -98,7 +98,7 @@ class TouchTargetGuardTest {
 
     @Test
     fun `门禁_B补20_抽屉新会话入口竖内边距16dp`() {
-        val kt = repoFile("app/src/main/java/com/example/zhengdao/ui/taiji/TaijiHistoryDrawer.kt").readText()
+        val kt = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuHistoryDrawer.kt").readText()
         val start = kt.indexOf("stringResource(R.string.taiji_new_session_plus)")
         assertTrue("找不到新会话入口", start >= 0)
         val tail = kt.substring(start, (start + 1400).coerceAtMost(kt.length))
@@ -110,7 +110,7 @@ class TouchTargetGuardTest {
 
     @Test
     fun `门禁_B补20_权限记住选择整行可点而不是只有方框`() {
-        val kt = repoFile("app/src/main/java/com/example/zhengdao/ui/taiji/TaijiSheets.kt").readText()
+        val kt = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSheets.kt").readText()
         assertTrue(
             "B-补-20：权限抽屉的「记住选择」必须整行 toggleable（role = Checkbox）",
             kt.contains("role = Role.Checkbox") && kt.contains("onValueChange = { remember = it }"),

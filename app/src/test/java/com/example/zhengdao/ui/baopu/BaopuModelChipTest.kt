@@ -1,5 +1,5 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -11,7 +11,7 @@ import org.junit.Test
  * 这类长名把标题列挤到 0 宽 → 标题消失、「已连接」被折成竖排。修复方案之一是胶囊里
  * 只显示 model 段。这里的边界必须锁死，否则重构时很容易把长名又漏回去。
  */
-class TaijiModelChipTest {
+class BaopuModelChipTest {
 
     @Test
     fun `provider-slash-model 只保留 model 段`() {

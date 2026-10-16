@@ -2,9 +2,9 @@
 //
 // 依据的公开接口：Jetpack Compose（Material 3）官方 API。
 //
-// P4-1（2026-10-14）：自 TaijiComponents.kt（拆分前 1929 行）按内聚性拆出——
+// P4-1（2026-10-14）：自 BaopuComponents.kt（拆分前 1929 行）按内聚性拆出——
 // **只搬不改**，代码逐行原样（含已提交的 P2-10 48dp 触摸目标修复）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -102,7 +102,7 @@ fun MessageList(
     followState: MutableState<Boolean> = remember { mutableStateOf(true) },
     positionedSession: MutableState<String?> = remember { mutableStateOf(null) },
     // 长按某条消息（2026-10-09 用户需求「对话那里能长按复制」）。
-    // 默认空实现：老调用方（含仪器/单测里的直接调用）不改也能编译；真正的入口在 TaijiScreen。
+    // 默认空实现：老调用方（含仪器/单测里的直接调用）不改也能编译；真正的入口在 BaopuScreen。
     onLongPressMessage: (OcMessage) -> Unit = {},
 ) {
     // ❌ 原本 `val listState = rememberLazyListState()` 已被 K2 提到入参。
@@ -244,7 +244,7 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
  * - **有任一缺失时间戳** → 原样返回。此时排序会把消息打乱成"看起来随机"，比不排更糟。
  *
  * 纯展示层行为，[com.example.zhengdao.oc.OcRepository] 不受影响。
- * `internal` 供 JVM 单测（`TaijiMessageOrderTest`）验证。
+ * `internal` 供 JVM 单测（`BaopuMessageOrderTest`）验证。
  */
 internal fun orderChronologically(messages: List<OcMessage>): List<OcMessage> {
     if (messages.size < 2) return messages
@@ -271,8 +271,8 @@ internal fun orderChronologically(messages: List<OcMessage>): List<OcMessage> {
 @Composable
 fun MessageBubble(msg: OcMessage, onLongPress: () -> Unit = {}) {
     // 长按手势（2026-10-09）：移动端没有文本选择，长按是"我想对这条消息做点什么"的通用手势。
-    // 这里只负责**触发**（回调给 TaijiScreen 弹操作面板），不做任何复制动作本身——
-    // 组件不碰 Context/剪贴板，逻辑全在 [MessageCopy] + TaijiScreen，便于 JVM 单测。
+    // 这里只负责**触发**（回调给 BaopuScreen 弹操作面板），不做任何复制动作本身——
+    // 组件不碰 Context/剪贴板，逻辑全在 [MessageCopy] + BaopuScreen，便于 JVM 单测。
     //
     // 刻意不用 `indication = null`：用户气泡本来就有点击语义（将来可加"引用"），
     // 长按时的涟漪是"手势被识别了"的第一反馈（真机上长按无反馈等于没按）。
@@ -396,7 +396,7 @@ internal sealed interface RenderItem {
  *
  * 只合并**相邻**的 reasoning —— 它们被文本/工具分隔时属于不同的思考阶段，不应跨段合并。
  *
- * `internal` 而非 `private`：供 JVM 单测（TaijiRenderGroupingTest）验证合并边界。
+ * `internal` 而非 `private`：供 JVM 单测（BaopuRenderGroupingTest）验证合并边界。
  */
 internal fun groupParts(parts: List<OcPart>): List<RenderItem> {
     val out = mutableListOf<RenderItem>()

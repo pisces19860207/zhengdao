@@ -191,7 +191,7 @@ class SseClient(private val http: OkHttpClient) {
             // 第⑭刀 #2 / P2-15①：缺陷熔断 —— 连续 10 场「连上即关、0 字节」（约 1+2+4+
             // 8+15×6 ≈ 96s）就**正常结束 flow**：不发错误、不改连接状态。该端点在服务器
             // 完全健康时也是这个形态（Issue #38458），置失败态会对健康服务误报；失败可见性
-            // 由 REST 轮询的熔断（shouldGiveUpReconnecting → TaijiPhase.Failed）负责。
+            // 由 REST 轮询的熔断（shouldGiveUpReconnecting → BaopuPhase.Failed）负责。
             // 恢复零成本：flow 正常结束 ⇒ sseJob 完结 ⇒ shouldReopenConnection 第 3 条
             // （!sseAlive）判「重开」⇒ 下次 open()（换会话/重进页面/点重试）自然再试。
             if (lines == 0) {

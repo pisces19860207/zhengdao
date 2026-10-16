@@ -17,13 +17,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 资料库 **P2 · 摘要** 的调用编排（借太极的免费模型给 `原始/` 里的文件补摘要）。
+ * 资料库 **P2 · 摘要** 的调用编排（借抱朴的免费模型给 `原始/` 里的文件补摘要）。
  *
  * ## 设计要点（每一条都对应一个真实约束）
  *
  * | 约束 | 做法 |
  * |---|---|
- * | **绝不干扰用户正在看的太极会话** | **自己一套 REST 调用**（进程级共享一个 OkHttpClient，见 [httpClientFor]），直接用 [OcManager.servePassword] 鉴权，**不走 `OcRepository` 那个全局单例**（它的 `_state` 只有一个活动会话，切进去会把用户的界面切走） |
+ * | **绝不干扰用户正在看的抱朴会话** | **自己一套 REST 调用**（进程级共享一个 OkHttpClient，见 [httpClientFor]），直接用 [OcManager.servePassword] 鉴权，**不走 `OcRepository` 那个全局单例**（它的 `_state` 只有一个活动会话，切进去会把用户的界面切走） |
  * | **绝不挂死** | 全程总超时 [TOTAL_TIMEOUT_MS]；**权限请求一律自动拒绝**（[KnowledgeBaseSummarizer.denyReplyBody]）—— 沉默会让 agent 永远等下去 |
  * | **绝不让摘要失败拖垮清单** | 摘要只是往 `整理/00-目录.md` **追加一节**；失败就保持原样，清单照旧可用 |
  * | **绝不碰 `原始/`** | 落盘点只有 [KnowledgeBase.writeSummaries]（写 `整理/`） |
@@ -55,7 +55,7 @@ object KnowledgeBaseSummarizerRunner {
     /**
      * 整个任务的总上限（含排队与生成）。超了就放弃，绝不无限等。
      *
-     * ⚠️ 2026-10-09 真机收紧：180s → 60s。太极**没有保活**（用户切到别的 App 或锁屏，
+     * ⚠️ 2026-10-09 真机收紧：180s → 60s。抱朴**没有保活**（用户切到别的 App 或锁屏，
      * serve 随时可能被系统收走），等 180 秒的唯一结果是"用户盯着「整理中」三分钟，最后什么都没有"。
      * 真机实测肯给正文的模型 15~35 秒就答完，60 秒足够且不折磨人。
      */
@@ -66,10 +66,10 @@ object KnowledgeBaseSummarizerRunner {
      *
      * 为什么必须显式：真机实测 `POST /api/session {}` 建出来的会话**没有 `model` 字段**
      * （`GET /api/session/{id}` 也没有），此时 serve 用"上一个会话用过的模型"顶上 ——
-     * 那可能是用户在太极里随便试过的任何一个免费模型，其中有的（`step-5-preview-free`、
+     * 那可能是用户在抱朴里随便试过的任何一个免费模型，其中有的（`step-5-preview-free`、
      * `nemotron-3.5-lightning-free`）压根不吐正文，表现就是"等到超时、一条摘要都没有"。
      *
-     * 选它的理由：太极里默认就是它（用户不用额外挑）；真机实测同一条提示词，
+     * 选它的理由：抱朴里默认就是它（用户不用额外挑）；真机实测同一条提示词，
      * 5/7 个免费模型能给正文，它 25 秒给出 401 字结构化摘要，是最快的一档。
      */
     private const val MODEL_ID = "mimo-v2.6-flash-free"
@@ -124,14 +124,14 @@ object KnowledgeBaseSummarizerRunner {
     // ── 主流程 ──────────────────────────────────────────────────────────────
 
     private fun runOnce(ctx: Context): Int {
-        // 1) 前置：太极在不在
+        // 1) 前置：抱朴在不在
         if (!OcManager.serveRunning()) {
-            RunLog.log("资料库摘要：已跳过（太极没在运行 —— 到太极页开一次即可）")
+            RunLog.log("资料库摘要：已跳过（抱朴没在运行 —— 到抱朴页开一次即可）")
             return 0
         }
         val pw = OcManager.servePassword
         if (pw.isNullOrBlank()) {
-            RunLog.log("资料库摘要：已跳过（拿不到太极的访问密码）")
+            RunLog.log("资料库摘要：已跳过（拿不到抱朴的访问密码）")
             return 0
         }
 
@@ -154,7 +154,7 @@ object KnowledgeBaseSummarizerRunner {
         }
 
         KnowledgeBase.markBusy(ctx)
-        RunLog.log("资料库摘要：开始（${payload.size} 个文件，借太极的模型）")
+        RunLog.log("资料库摘要：开始（${payload.size} 个文件，借抱朴的模型）")
 
         val http = httpClientFor(pw)
         var sid: String? = null
@@ -277,7 +277,7 @@ object KnowledgeBaseSummarizerRunner {
      * `POST /api/session` → `{"data":{"id":"ses_…"}}`（⚠️ 必须剥信封，否则静默拿到空串）。
      *
      * ⚠️ **必须带上 [MODEL_ID]**：不带的话 serve 拿"上一个会话用过的模型"兜底，
-     * 用户上次在太极里挑的是什么就用什么 —— 挑到不吐正文的模型时，这里一切正常，
+     * 用户上次在抱朴里挑的是什么就用什么 —— 挑到不吐正文的模型时，这里一切正常，
      * 失败现象出现在 60 秒后的"等不到正文"上，极难排查（真机踩过）。
      */
     private fun createSession(client: OkHttpClient): String? {

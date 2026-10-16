@@ -147,7 +147,7 @@ fun zhengdaoBlueText(): Color = if (isZhengdaoDark()) IOSDarkBlueText else IOSBl
  *
  * 为什么不用 `colorScheme.error`：那个槽位是给**色块/图标**用的——浅色值 IOSRed
  * #FF3B30 在白底只有 3.55:1，够不上 WCAG AA 正文的 4.5:1。审计（P2-11）抓到的
- * 正是太极顶栏「重连中」红字用了它。深色值直接复用 onErrorContainer 的
+ * 正是抱朴顶栏「重连中」红字用了它。深色值直接复用 onErrorContainer 的
  * [IOSDarkOnTintedRed]——同为"深底上的红字"，不必另起变量。
  */
 @Composable

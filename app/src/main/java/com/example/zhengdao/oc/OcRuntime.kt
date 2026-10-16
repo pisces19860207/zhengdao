@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 /**
- * 太极网络层的**进程级持有者**（2026-10-11 用户报「每次重进太极都会重新连接」）。
+ * 抱朴网络层的**进程级持有者**（2026-10-11 用户报「每次重进抱朴都会重新连接」）。
  *
  * > 名字说明：本想叫 `OcSession`，但 `oc/OcDto.kt:26` 已有 `data class OcSession`（服务端会话
  * > DTO），重名会把它顶掉（实测编译报 `Unresolved reference 'id' / 'title'`）。这里的
@@ -20,24 +20,24 @@ import kotlinx.coroutines.SupervisorJob
  *
  * | 层 | 原先 | 后果 |
  * |---|---|---|
- * | repository 的寿命 | `TaijiScreen` 内 `remember { }` | 切 Tab（`when (tab)` 让页面退出 Composition）即销毁 |
+ * | repository 的寿命 | `BaopuScreen` 内 `remember { }` | 切 Tab（`when (tab)` 让页面退出 Composition）即销毁 |
  * | 轮询 / SSE 任务的寿命 | 跑在 `rememberCoroutineScope()` 上 | 跟着页面一起被取消 |
  * | 重进页面的动作 | `LaunchedEffect` 每次调 `open()` | 重新握手 + 重新全量拉取 |
  *
  * ## 现在
  *
  * repository 与它的作用域都挂在**进程**上：切 Tab、转屏、退到后台都不再断连；
- * 只有三种情况会结束连接 —— 用户主动「关闭太极并退出」（`repo.close()` + [shutdown]）、
+ * 只有三种情况会结束连接 —— 用户主动「关闭抱朴并退出」（`repo.close()` + [shutdown]）、
  * 进程被杀、或真的断线（由 `SseClient` 的退避重连接管）。
  *
  * ## 边界（刻意的）
  *
- * - **不自动起服务**：`opencode serve` 仍由 `TaijiScreen` 首次进入时
+ * - **不自动起服务**：`opencode serve` 仍由 `BaopuScreen` 首次进入时
  *   `OcManager.startServe()` 拉起。[scope] 只保证**一旦连上就不再断**，
- *   不会让"从不用太极的人"在开机时多一个常驻进程。
+ *   不会让"从不用抱朴的人"在开机时多一个常驻进程。
  * - **单例只持有一个 repository**：与「单会话模型」一致（见 `OcRepository` 设计 §3.4）。
  * - 纯 REST 的旁路任务（如 `KnowledgeBaseSummarizerRunner`）**仍然自己 new 一套**，
- *   不共用这里——它那条注释写着"绝不干扰用户正在看的太极会话"。
+ *   不共用这里——它那条注释写着"绝不干扰用户正在看的抱朴会话"。
  */
 object OcRuntime {
 
@@ -72,10 +72,10 @@ object OcRuntime {
     }
 
     /**
-     * 结束并丢弃单例 —— 用户点「关闭太极并退出」时调用（与 `repo.close()` 成对）。
+     * 结束并丢弃单例 —— 用户点「关闭抱朴并退出」时调用（与 `repo.close()` 成对）。
      *
      * 之所以要丢引用：`OcRepository.close()` 只取消两个 Job，实例本身仍可用；若留在单例里，
-     * 下次进太极拿到的就是"一个关过但还活着的壳"，`open()` 的判据会以为连接仍在。
+     * 下次进抱朴拿到的就是"一个关过但还活着的壳"，`open()` 的判据会以为连接仍在。
      */
     fun shutdown() {
         synchronized(this) {

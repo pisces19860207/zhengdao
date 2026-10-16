@@ -119,7 +119,7 @@ class SettingsEnvActivity : ComponentActivity() {
 
 /**
  * `FlowRow`（运行内存上限那张卡的三个芯片要能折行）在 `foundation` 里仍是 `@ExperimentalLayoutApi`，
- * 必须显式 OptIn —— 同 [com.example.zhengdao.ui.taiji.TaijiSheets] 对 `ModalBottomSheet` 的处理。
+ * 必须显式 OptIn —— 同 [com.example.zhengdao.ui.baopu.BaopuSheets] 对 `ModalBottomSheet` 的处理。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -489,8 +489,8 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             // ── OpenCode 内置版更新入口已从这里移走（用户 2026-10-08：主打不是 OpenCode）──
-            //   现在只有「太极」抽屉底部那一处（TaijiScreen 的 OcVersionFooter）。
-            //   OpenCode 随 APK 内置、开箱即用；真要重装/升级去太极抽屉。
+            //   现在只有「抱朴」抽屉底部那一处（BaopuScreen 的 OcVersionFooter）。
+            //   OpenCode 随 APK 内置、开箱即用；真要重装/升级去抱朴抽屉。
         }
         // ── 运行内存上限（用户第四批）：ulimit -v 防单个任务膨胀拖垮整机 ──
         SectionCard(stringResource(R.string.env_memlimit_card)) {
