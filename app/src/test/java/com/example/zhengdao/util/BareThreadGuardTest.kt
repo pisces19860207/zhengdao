@@ -64,6 +64,8 @@ import kotlin.text.Charsets
  * - 2026-10-16（B-补-22）：`SettingsEnvActivity.kt` 顶部 import +2 与 `@OptIn` KDoc +5（共 +7 行）、
  *   运行内存上限卡的三个芯片由裸 `Row` 改 `FlowRow`（+11 行）⇒ 四个创建点
  *   207→214 / 261→268 / 561→572 / 656→667，**无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
+ * - 2026-10-16（B-补-19）：`MainActivity.kt` 冷启动权限块加「本次冷启动最多一个系统框」标记
+ *   与 KDoc（+21 行）⇒ 唯一创建点 259→280，**无新增线程**（仍是 `zd-update-check` 那一个），本次回填。
  */
 class BareThreadGuardTest {
 
@@ -115,7 +117,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "KnowledgeBaseSummarizerRunner.kt:109", // zd-kb-summarize
-            "MainActivity.kt:259",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17）
+            "MainActivity.kt:280",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17 / B-补-19 冷启动弹框收敛 +21）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）
