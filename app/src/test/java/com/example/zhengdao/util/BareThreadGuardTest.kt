@@ -59,6 +59,8 @@ import kotlin.text.Charsets
  *   `liveRegion`（前半 +11 行）、`showBanner` 加读屏提示 ＋ `bannerSpoken()`（后半 +22 行）
  *   ⇒ 五个创建点 622→633 / 837→848 / 1588→1610 / 1648→1670 / 1734→1756，
  *   **无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
+ * - 2026-10-16（B-补-15）：`MainActivity.kt` 加 `RESTORABLE_ROUTES` 白名单 KDoc（+17 行）
+ *   ⇒ `MainActivity.kt` 的唯一创建点 242→259，**无新增线程**，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -110,7 +112,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "KnowledgeBaseSummarizerRunner.kt:109", // zd-kb-summarize
-            "MainActivity.kt:242",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7）
+            "MainActivity.kt:259",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:207",           // zd-hermes-repair
