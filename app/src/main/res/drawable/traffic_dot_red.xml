@@ -2,11 +2,14 @@
 <!-- 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
      圆点造型引自 macOS/Safari 公开的设计惯例。
      红色＝关闭终端（整页唯一的关闭出口）。 -->
+<!-- B-补-20（2026-10-16）：热区 30dp → 48dp（工具条 44 → 48dp），inset 同步
+     9.5 → 18.5dp，让**视觉圆点仍是 11dp**（48 − 18.5×2 = 11）——只有指尖够得到的
+     面积变大，界面看起来没变。 -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:insetLeft="9.5dp"
-    android:insetRight="9.5dp"
-    android:insetTop="9.5dp"
-    android:insetBottom="9.5dp">
+    android:insetLeft="18.5dp"
+    android:insetRight="18.5dp"
+    android:insetTop="18.5dp"
+    android:insetBottom="18.5dp">
     <shape android:shape="oval">
         <solid android:color="#FFFF5F57" />
     </shape>

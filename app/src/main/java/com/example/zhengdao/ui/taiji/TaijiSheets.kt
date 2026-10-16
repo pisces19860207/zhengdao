@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -105,8 +108,29 @@ fun PermissionSheet(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            androidx.compose.material3.Checkbox(remember, onCheckedChange = { remember = it })
-            Text(stringResource(R.string.taiji_perm_remember), style = MaterialTheme.typography.bodyMedium)
+            // B-补-20（2026-10-16）：原来是「裸 Checkbox ＋ 兄弟 Text」——**只有 24dp 见方的
+            // 方框可点，文字点了没反应**（台账 B-补-20 那条「权限 Checkbox 文字 24dp 不可点」）。
+            // 改成整行可切换（Compose 官方推荐写法）：Row 挂 toggleable(value, role = Checkbox,
+            // onValueChange)，Checkbox 的 onCheckedChange 传 null —— 语义只报一次、读屏念
+            // 「记住选择，复选框，已选中/未选中」，整行 ≥ 48dp 都是热区。
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .toggleable(
+                        value = remember,
+                        role = Role.Checkbox,
+                        onValueChange = { remember = it },
+                    )
+                    .defaultMinSize(minHeight = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Checkbox(checked = remember, onCheckedChange = null)
+                Text(
+                    stringResource(R.string.taiji_perm_remember),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
