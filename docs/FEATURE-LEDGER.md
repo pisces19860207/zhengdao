@@ -398,40 +398,42 @@
 
 > 全 43 条（作者自废 P2-8 / P4-8、降级 P3-1 ⇒ 有效 40 条）：**9 已落地 / 9 部分 / 22 未落地**。销账文档声称销掉的 P0×4 经逐条复核**全部属实**，没有一条「说已做但仓库查不到」；9 条已落地的证据在 ERRATA **E-077 / E-078 / E-082** 与 §A #7 / #25。下面按**已认领它的 issue** 分组 —— 那些 issue 只写了批次名，没写逐条位置，位置在此留档。
 
+> ⚠️ **2026-10-16 对账复核（DSH）**：本清单是 **2026-10-09 审计时的快照**，不是活账 —— 其中相当一部分此后已由**第八批（第⑧刀）**（§A #89，合并 `3238b6f`；§B-归档 `| 7 |` 同批：P2-6 / P2-7 / P2-10 / P2-11 / P2-12 / P2-13 / P2-14 / P2-16 / P2-18 ＋ P4-1 / P4-2 / P4-4 / P4-6 / P4-7）、**第⑭刀**、**§B 顺序批（2026-10-14）**与 **§A #47** 落地。今天按代码逐条复核，**已确认落地的在条目前加 ✅ 并附证据行号**；**未加标注的不代表仍开放**（本段只是快照，活账请看 §B-待做 / §B-顺序 / §B-归档）。下面「未落地 22 条 + 部分 9 条」的计数**也是快照数字**，不代表今日状态。
+
 **issue #13（第四批 · 冷启动主线程 IO）**
-- **P1-3** 冷启动在主线程算 SHA256 + 拷 assets：`terminal/SessionManager.kt:122 start(context)`（非 `suspend`）→ `:126 buildLaunchPlan`
-- **P1-4** 丹房每 2 秒在主线程扫盘 / 查进程：`ui/HomeScreen.kt:214 LaunchedEffect` + `:223 delay(2000)`（无 `withContext(IO)` / `repeatOnLifecycle`）
-- **P1-5** 列表每格实时查盘：`ui/HomeScreen.kt` 卡片仍走 `installStates[…] ?: AgentRepository.stateOf(…)`
+- **P1-3** ✅ **2026-10-16 复核：核心已拆（部分）** —— 启动计划的**计算**已抽成可离主线程的 `terminal/SessionManager.kt:157 fun prepareLaunchPlan(context: Context): ProotLauncher.LaunchPlan`（`:163` KDoc 注明「调用方在后台算、本线程用」），`start()` 只保留「必须在有 Looper 的线程上调用」这一条 —— 那是 Android 硬约束不是缺陷（`:150-152` 记 2026-10-14 真机实测：后台线程调 `start` 抛 `RuntimeException: Can't create handler inside thread Thread[zd-session-start…] that has not called Looper.prepare()`）。**原记** 冷启动在主线程算 SHA256 + 拷 assets：`terminal/SessionManager.kt:122 start(context)`（非 `suspend`）→ `:126 buildLaunchPlan`
+- **P1-4** ✅ **2026-10-16 复核：已修** —— `ui/HomeScreen.kt` 的采集全部进了 IO 线程：`:250`/`:260`/`:268`/`:313`/`:328` 均为 `kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { … }`，2 秒节奏在 `:317 kotlinx.coroutines.delay(2000)`（同一协程内，不再占主线程）。**原记** 丹房每 2 秒在主线程扫盘 / 查进程：`ui/HomeScreen.kt:214 LaunchedEffect` + `:223 delay(2000)`（无 `withContext(IO)` / `repeatOnLifecycle`）
+- **P1-5** ✅ **2026-10-16 复核：已修（离主线程）** —— `ui/HomeScreen.kt:313-316` 的 `withContext(Dispatchers.IO)` 内做 `val states = agents.map { a -> a.id to AgentRepository.stateOf(context, a) }` 再回填 `installStates[id]`；卡片读的是预取结果，不在组合期查盘。**原记** 列表每格实时查盘：`ui/HomeScreen.kt` 卡片仍走 `installStates[…] ?: AgentRepository.stateOf(…)`
 - **补正文（这条 issue #13 正文没有）**：主线程 `Store.adoptDir` 搬 JM 级缓存 —— `terminal/ProotLauncher.kt:527 bindSharedCache` → `:682 Store.adoptDir` 仍在 `buildLaunchPlan` 主路径上（`ProotLauncher` 内 `Dispatchers` / `withContext` / `Thread` 零命中）
 
 **issue #15（第六批 · 状态寿命与手感）**
-- **P2-1** 转屏跳回丹房：`MainActivity.kt:501 var tab by remember { mutableIntStateOf(2) }`
+- **P2-1** ✅ **2026-10-16 复核：已修** —— `MainActivity.kt:610 var tab by androidx.compose.runtime.saveable.rememberSaveable {`（`:606` 注释逐字记旧症「tab 就被打回初始值——人正停在逍遥（终端）或玄览，一转屏被甩回怡然」）。**原记** 转屏跳回丹房：`MainActivity.kt:501 var tab by remember { mutableIntStateOf(2) }`
 - **P2-2** 切走丢输入草稿（全仓无 `SaveableStateHolder`）
 - **P2-3** 切 Tab 会话被换（`ui/taiji/TaijiScreen.kt:127 rememberSaveable` 只保住转屏）
-- **P2-4** 欢迎页不能滚：`ui/WelcomeScreen.kt:43 .fillMaxSize()`
+- **P2-4** ✅ **2026-10-16 复核：已修** —— `ui/WelcomeScreen.kt:18 import androidx.compose.foundation.verticalScroll`；`:45` 注释自记「P2-4（§B 顺序 2，2026-10-14）：加 verticalScroll —— 原先是 fillMaxSize + 居中」。**原记** 欢迎页不能滚：`ui/WelcomeScreen.kt:43 .fillMaxSize()`
 - **P2-5** 删除无二次确认：`ui/SettingsScreen.kt:1263` / `:1425` / `:1597`
 
 **issue #14（第五批 · 资源不回收）**
 - **P1-6** `serve` 进程没人关：全仓唯一调用点 `ui/HomeScreen.kt:119 if (restart) OcManager.stopServe()`，`ui/taiji/TaijiScreen.kt` 内 0 命中 —— ✅ **2026-10-15 已收口（方案③，合并 `81e9abc`，见 §A #101）**；此行为当时的快照，保留
-- **P1-7** `terminal/KnowledgeBaseSummarizerRunner.kt:199` 仍每次 `new OkHttpClient`（headline 已被 `oc/OcRuntime.kt` 的进程级单例消解）
+- **P1-7** ✅ **2026-10-16 复核：已修** —— `terminal/KnowledgeBaseSummarizerRunner.kt:211-212` 的 KDoc 自记「2026-10-14（§B 顺序 4 · P1-7）：原来每次摘要任务都 `new OkHttpClient()`……自带连接池 + Dispatcher 线程池 ⇒ 每次新建等于**资源不回收**」，现走进程级共享（`httpClientFor`）。**原记** `terminal/KnowledgeBaseSummarizerRunner.kt:199` 仍每次 `new OkHttpClient`
 
 **issue #17（第八批 · 错误原文与技术债）**
-- **P2-6** 报错原文弹给用户：`失败：${` 命中 55 行、`util/HumanizeError.kt` 31 行 / 7 文件
-- **P2-7** 空 catch 只剩 2 处
-- **P2-10** 4 处点击区 < 48dp：`ui/taiji/TaijiComponents.kt` 内 `defaultMinSize` 0 命中
-- **P2-11** 红字对比度 3.55:1：`ui/taiji/TaijiComponents.kt:281`
-- **P2-12** 无下拉刷新（全仓 `PullToRefresh` / `SwipeRefresh` 0 命中）
-- **P2-13** `rootfs/RunLog.kt:233 appendRotated` 三步无锁（`:236 writeText` + `:238 appendText`）
-- **P2-14** `rootfs/RootfsDownloader.kt:32 MAX_ATTEMPTS_PER_URL=3`、`:112` 无退避
-- **P2-15** SSE 无限重连：`oc/OcRepository.kt:195 while (isActive)`；`oc/SseClient.kt:197/:203` 封顶 15s 但无上限
-- **P2-16** 保活锁乐观默认：`terminal/SessionService.kt:202 runCatching{wakeLock.isHeld}.getOrDefault(true)`
+- **P2-6** ✅ **2026-10-16 复核：已修** —— 今日全仓 `app/src/main/java/**/*.kt` 搜字面量 `失败：$` ⇒ **0 命中**（第八批 `9de3b39` 系列；§A #89 / §B-归档 `| 7 |`）。**原记** 报错原文弹给用户：`失败：${` 命中 55 行
+- **P2-7** ✅ **2026-10-16 复核：已修** —— 全仓空 `catch (…) { }` **0 命中**（第八批 `f09e3c6` 给 12 处 best-effort catch 补了可查日志；与 §B-补 段末「审计基线只看 main」那条教训同源）。**原记** 空 catch 只剩 2 处
+- **P2-10** ✅ **2026-10-16 复核：已修** —— 组件已从 `TaijiComponents.kt` 拆出，四处均在：`ui/taiji/TaijiSessionBar.kt:196 .defaultMinSize(minHeight = 48.dp)`（`:188-190` 注明顺序须在 padding 外层）、`ui/taiji/TaijiHistoryDrawer.kt:497`（`:494` 注明「补 defaultMinSize 到 M3 最小触摸目标 48dp」）、`ui/taiji/TaijiPartCards.kt:85` 与 `:214`。**原记** 4 处点击区 < 48dp：`ui/taiji/TaijiComponents.kt` 内 `defaultMinSize` 0 命中
+- **P2-11** ✅ **2026-10-16 复核：已修** —— `ui/taiji/TaijiSessionBar.kt:224` 注释「P2-11（issue #17）：错误正文走 `zhengdaoErrorText()`——`colorScheme.error`」（第八批 `2e0cdc6`；**落点文件已随拆分迁移**，`TaijiComponents.kt` 今日已不存在）。**原记** 红字对比度 3.55:1：`ui/taiji/TaijiComponents.kt:281`
+- **P2-12** ✅ **2026-10-16 复核：已修** —— `ui/HomeScreen.kt:45 import androidx.compose.material3.pulltorefresh.PullToRefreshBox`，`:372-376` 注释逐字「P2-12（issue #17）：下拉刷新包住列表（material3 1.4 的 PullToRefreshBox）」＋ `PullToRefreshBox(isRefreshing = ptrRefreshing, …)`（`:1039` 结束），门禁测试 `app/src/test/java/com/example/zhengdao/ui/PullToRefreshGuardTest.kt`。**原记** 无下拉刷新
+- **P2-13** ✅ **2026-10-16 复核：已修** —— `rootfs/RunLog.kt:368 synchronized(lock) {`（第八批 `9de3b39`；`:355-366` KDoc 记两类真实事故：同时超限各读各写互相截断、A 追加时 B 用 `writeText` 抹掉 A 那行），锁对象 `:89 private val lock = Any()`（`:86` 说明为何不用类监视器）。**原记** `rootfs/RunLog.kt:233 appendRotated` 三步无锁
+- **P2-14** ✅ **2026-10-16 复核：已修** —— `rootfs/RootfsDownloader.kt:49 internal fun backoffDelayMs(retryIndex: Int): Long`，使用点 `:207 for (attempt in 0 until MAX_ATTEMPTS_PER_URL)` → `:211 val waitMs = backoffDelayMs(attempt - 1)` → `:213 Thread.sleep(waitMs)`（第八批 `f2e31fb`）。**原记** `:112` 无退避
+- **P2-15** ✅ **2026-10-16 复核：已修** —— 代码自带刀号：`oc/OcRepository.kt:290-297`（`// 第⑭刀 #2 / P2-15②：连续失败到顶 ⇒ 放弃自动重连，置失败态。`、`ocLog("轮询连续失败 $errStreak 次，停止自动重连（P2-15②）")`、文案 `R.string.oc_give_up_reconnecting`「连接已中断（连续 %1$d 次失败），已停止自动重连——点重试可恢复」），`oc/SseClient.kt:224` 退避阶梯上限 15s（`:38` 说明为何封顶）。**原记** SSE 无限重连
+- **P2-16** ✅ **2026-10-16 复核：已修** —— `terminal/SessionService.kt:306 if (runCatching { wakeLock.isHeld }.getOrDefault(false)) return`（`:303` 注释「原写法兜底取 true 是乐观默认——isHeld 抛异常就假装持锁」）、`:330-332 val held = runCatching { wakeLock.isHeld }.getOrDefault(false)`（`:330` 标 P2-16 / issue #17）。**原记** 乐观默认 `getOrDefault(true)`
 - **P2-17** 版本号 `toInt()`：`oc/OcManager.kt:724/:731` —— ✅ **已修 `04b5635`（第⑭刀，见 §A #91）**：正则收紧 ＋ `parseVersionSegments()`（`toIntOrNull`、空段/超 4 段判 null、资产失败跳过、已装版本失败回退出厂版本）
-- **P2-18** JNI 错误串未转义：`rust/core/src/jni_bridge.rs:239`
+- **P2-18** ✅ **2026-10-16 复核：已修** —— `rust/core/src/jni_bridge.rs:239-241` 注释「失败分支走 `crate::json::error_json`（**P2-18**：消息必须转义，否则 Kotlin 侧 `JSONObject` 解析崩，真正的错误原因反而丢了）；纯逻辑与单测都在 `json.rs`」，实现见 `:243-246 Err(msg) => crate::json::error_json(&msg)`。**原记** JNI 错误串未转义
 - **P4-1** 巨型文件：SettingsScreen 2242 / TaijiComponents 1796 / TerminalActivity 1404 / OcRepository 1022 / HomeScreen 1028 / MainActivity 956 行
 - **P4-2** 裸 Thread 35 处｜**P4-3** 并发原语 0（`Mutex` / `AtomicFile` / `Semaphore` / `ReentrantLock` 全仓 0）
-- **P4-4** 有 `keepalive/KeepaliveWatcher.kt:218 setDefaultUncaughtExceptionHandler`，`CoroutineExceptionHandler` 仍 0
-- **P4-5** Compose UI 测试 0｜**P4-6** `res/values/colors.xml` 模板 8 色仍在（`res/layout/window_bg.xml` 已不存在）
-- **P4-7** `LocalLifecycleOwner` 废弃 3 处：`ui/HomeScreen.kt:228`、`ui/SettingsScreen.kt:241`、`MainActivity.kt:300`
+- **P4-4** ✅ **2026-10-16 复核：已做** —— `keepalive/CoroutineCrashHandler.kt:43 val CoroutineCrashHandler = CoroutineExceptionHandler { ctx, error -> … }`（`:13` 注释直接引用审计原文「仍 0」），门禁 `app/src/test/java/com/example/zhengdao/keepalive/CoroutineCrashHandlerTest.kt`；另有使用者 `oc/OcRepository.kt`。**原记** `CoroutineExceptionHandler` 仍 0
+- **P4-5** ✅ **2026-10-16 复核：部分已做（设备侧插桩测试已建）** —— `app/src/androidTest/` 今日在册 10+ 个插桩用例（`OcInstallFromCacheTest`、`StartServeSmokeTest`、`RootfsDeltaInstrumentedTest`、`RootfsIndexSignatureInstrumentedTest`、`RootfsSidecarShaInstrumentedTest`、`CoreNativeExtractInstrumentedTest`、`CoreNativeSha256InstrumentedTest`、`CoreNativeSymlinkGuardInstrumentedTest`、`ExtractBaselineTest`、`ExampleInstrumentedTest`）；**Compose UI 测试**是否仍 0 未复核。｜**P4-6** `res/values/colors.xml` 模板 8 色仍在（`res/layout/window_bg.xml` 已不存在）
+- **P4-7** ✅ **2026-10-16 复核：已迁移（零残留）** —— 门禁 `app/src/test/java/com/example/zhengdao/util/LocalLifecycleOwnerGuardTest.kt` 的 `门禁_废弃 FQN 零残留` 扫 `src/main/java/**/*.kt` 找 `androidx.compose.ui.platform.LocalLifecycleOwner`；测试 KDoc 记「开工实测已是 **8 处**（设置页拆分又带进两个新文件）」「迁移路径 → `androidx.lifecycle.compose.LocalLifecycleOwner`，本刀加入 `lifecycle-runtime-compose` 2.8.7」。⚠️ 今日粗 grep 仍报 7 个 main 文件含 `LocalLifecycleOwner` —— 那是**新包名的合法引用**，判据以守卫测试为准。**原记** 废弃 3 处：`ui/HomeScreen.kt:228`、`ui/SettingsScreen.kt:241`、`MainActivity.kt:300`
 
 **issue #19（备份范围）**
 ~~**P3-3** `res/xml/backup_rules.xml`、`res/xml/data_extraction_rules.xml` 至今 0 `exclude`~~ ⇒ **已结（§A #61，2026-10-12）**：cloud-backup 六条 ＋ device-transfer 三条已排 ＋ 门禁 `app/src/test/java/com/example/zhengdao/BackupRulesGuardTest.kt` 4 条；device-transfer 未排 `home`/`oc` 是当时刻意（第 2 期审计 **N-3** 复提凭据外流，待用户拍板，见 §A-审）
@@ -444,6 +446,8 @@
 #### ④ UIUX 审计（原报告 `证道-UIUX审计-2026-10-10.md`）—— 17 条
 
 > B1 / B2 / B3 / B4 / B5 / B6 / B7、P0-1 / P0-2、P1-4 / P1-5 已由 §A #21（合并 `9f1f68f`）落地；下面这些**没账**。
+
+> ⚠️ **2026-10-16 对账复核（DSH）**：本清单同为 **2026-10-10 审计快照**，非活账。其中 B-补-12 / B-补-16 / B-补-23 已就地标注 ✅（§A #47）；今日抽查：**B-补-11 仍开**（`ui/SettingsCommon.kt:281` 的 `Text(text.takeLast(6000))` 仍无 `verticalScroll`）、**B-补-17 仍开**（`ui/HomeScreen.kt:359` 仍是 `MaterialTheme.typography.titleLarge`）、**B-补-18 仍开**（`ui/theme/Type.kt` 仍只 16 / 22 / 11sp 三档）。其余未逐条复核。
 
 - **B-补-11**（B9 / P1-2）运行日志无滚动：`ui/SettingsScreen.kt:1793 Text(log.takeLast(6000))` 没加 `verticalScroll`（**行号已随 §A #47 拆分迁移**：运行日志弹窗现在是共享件 `ui/SettingsCommon.kt:205 SettingsLogDialog`，`:211 = text = { Text(text.takeLast(6000), style = MaterialTheme.typography.bodySmall) }` —— 该缺陷仍然存在，位置换了）
 - **B-补-12** ~~（B8 / P1-3）Root 开关永远关不上：`ui/SettingsScreen.kt:1460 Switch(checked = false, enabled = hasSu, onCheckedChange = { Toast("即将在 v1.x 版本推出（chroot 后端）") })`~~ → **2026-10-11 已做（§A #47）**：入口页「后台与保活」卡改为只读 `InfoRow("Root 增强模式", if (hasSu) "未实现 · 设备已 Root" else "未实现 · 计划 v1.x")` ＋ 一行说明（现状 = PRoot 免 Root 跑 Debian；Root / chroot 后端未实现）；那个 `checked = false` 永远关不上、点了只弹「即将推出」的 `Switch` 与那句死 `Toast` 已删。
