@@ -169,6 +169,24 @@ object KeepaliveArchive {
         all.filter { key(it) !in existing }
 
     /**
+     * `exits.log` 原文里「不正常退出」的**累计条数**（2026-10-16，台账 §B 顺序 54 改法②）。
+     *
+     * 为什么必须从**盘上**数：这类问题天然跨进程 —— 上一次进程已经死了，而
+     * [IssueCenter] 是进程内的，本进程永远只能数出 1 次。次数只有这份留档知道。
+     *
+     * 口径与 [isUnclean] 是同一把尺子（描述里带 `KILL BACKGROUND` 的那种也计入）；
+     * 正常退出（自退 / 用户主动结束 / 被更新…）一行都不算。
+     */
+    internal fun uncleanCount(text: String): Int = text.lineSequence().count { line ->
+        if (!line.startsWith("[")) return@count false
+        val reason = REASON_KV.find(line)?.groupValues?.get(1)?.toIntOrNull() ?: return@count false
+        isUnclean(reason, DESC_KV.find(line)?.groupValues?.get(1))
+    }
+
+    private val REASON_KV = Regex("""\breason=(\d+)\b""")
+    private val DESC_KV = Regex("描述=(.+)$")
+
+    /**
      * 追加 + 超限轮转（D-1，第⑪批 B-1 改追加式）。
      *
      * 旧实现超限时「整读整写」：把 512KB 全文读进内存、再整份写回 —— 而 appendCapped
@@ -310,13 +328,22 @@ object KeepaliveArchive {
                 (latest.description?.takeIf { it.isNotBlank() }?.let { "，描述=$it" } ?: "")
         )
         if (isUnclean(latest.reason, latest.description)) {
+            // 改法②（台账 §B 顺序 54／§B-补-51）：次数从**盘上**数 —— 这类问题跨进程，
+            // 本进程内的 IssueCenter 永远只数得出 1 次；数不出来时退回 1（至少不谎报 0）。
+            val uncleanTotal = runCatching { uncleanCount(exits.readText()) }.getOrDefault(1)
+                .coerceAtLeast(1)
             IssueCenter.report(
-                id = ISSUE_LAST_EXIT,
-                title = "上次运行不是正常结束：${reasonText(latest.reason, latest.description)}",
-                detail = "${timeText(latest.timestamp)} · $mem。留档在「保活记录」页里" +
-                    "（设置页也有一行入口；可导出给作者分析清理策略）。",
-                actionLabel = "看记录",
-                actionId = IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS,
+                IssueCenter.Issue(
+                    id = ISSUE_LAST_EXIT,
+                    title = "上次运行不是正常结束：${reasonText(latest.reason, latest.description)}",
+                    detail = "${timeText(latest.timestamp)} · $mem。" +
+                        (if (uncleanTotal > 1) "这类退出累计 $uncleanTotal 次。" else "") +
+                        "留档在「保活记录」页里" +
+                        "（设置页也有一行入口；可导出给作者分析清理策略）。",
+                    actionLabel = "看记录",
+                    actionId = IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS,
+                ),
+                count = uncleanTotal,
             )
         } else {
             IssueCenter.resolve(ISSUE_LAST_EXIT)

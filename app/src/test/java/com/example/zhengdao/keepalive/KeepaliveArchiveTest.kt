@@ -216,4 +216,53 @@ class KeepaliveArchiveTest {
         assertTrue(line.contains("线程=12"))
         assertTrue(line.contains("界面=MainActivity"))
     }
+
+    /**
+     * 台账 §B 顺序 54／§B-补-51（改法②）：改动前那张卡每次冷启动都从「第 1 次」说起 ——
+     * 因为 [com.example.zhengdao.core.IssueCenter] 是**进程内**的，而这种退出**天然跨进程**
+     * （上一次进程已经死了）。累计次数只能从 `exits.log` 这份持久留档里数出来。
+     *
+     * 判据钉**行为**：数得对不对（正常退出不能算进去、`KILL BACKGROUND` 必须算进去），
+     * 不钉实现里有没有某个常量名。
+     */
+    @Test
+    fun `异常退出的累计次数从归档原文里数得出_正常退出不计`() {
+        val text = buildString {
+            // 两次「其它（厂商后台清理最常见）」＝真机上最常见的那种
+            append(KeepaliveArchive.recordLine(KeepaliveArchive.ExitRecord(11, ApplicationExitInfo.REASON_OTHER, 1_700_000_001_000L, 400, 0, 0)))
+            append(KeepaliveArchive.recordLine(KeepaliveArchive.ExitRecord(12, ApplicationExitInfo.REASON_OTHER, 1_700_000_002_000L, 400, 0, 0)))
+            // 用户自己划掉 / 我们自退：不算异常，不能进计数
+            append(KeepaliveArchive.recordLine(KeepaliveArchive.ExitRecord(13, ApplicationExitInfo.REASON_USER_STOPPED, 1_700_000_003_000L, 400, 0, 0)))
+            append(KeepaliveArchive.recordLine(KeepaliveArchive.ExitRecord(14, ApplicationExitInfo.REASON_EXIT_SELF, 1_700_000_004_000L, 400, 0, 0)))
+            // 真机实测：reason=10 + 描述里带 KILL BACKGROUND ⇒ 正是要抓的后台清理，必须算
+            append(
+                KeepaliveArchive.recordLine(
+                    KeepaliveArchive.ExitRecord(
+                        15, ApplicationExitInfo.REASON_USER_REQUESTED, 1_700_000_005_000L, 400, 0, 0,
+                        description = "[KILL BACKGROUND] kill background",
+                    )
+                )
+            )
+        }
+        assertEquals(3, KeepaliveArchive.uncleanCount(text))
+        assertEquals("空档 = 0 次，不许当成未知", 0, KeepaliveArchive.uncleanCount(""))
+        assertEquals("不是记录行就不算", 0, KeepaliveArchive.uncleanCount("启动自检：一切正常\n"))
+        // 数出来的次数与逐条判定的口径必须一致（同一个 isUnclean 说话）
+        assertTrue(
+            "reason=10 但描述带 KILL BACKGROUND 的那种死法必须计入",
+            KeepaliveArchive.isUnclean(ApplicationExitInfo.REASON_USER_REQUESTED, "[KILL BACKGROUND] kill background"),
+        )
+        assertEquals(
+            "只留 KILL BACKGROUND 那一行时，计数应为 1",
+            1,
+            KeepaliveArchive.uncleanCount(
+                KeepaliveArchive.recordLine(
+                    KeepaliveArchive.ExitRecord(
+                        15, ApplicationExitInfo.REASON_USER_REQUESTED, 1_700_000_005_000L, 400, 0, 0,
+                        description = "[KILL BACKGROUND] kill background",
+                    )
+                )
+            ),
+        )
+    }
 }
