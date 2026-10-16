@@ -2,6 +2,10 @@
 
 **English** ｜ [简体中文](README.md)
 
+[![Latest release](https://img.shields.io/github/v/release/pisces19860207/zhengdao?label=release&color=blue&sort=semver)](https://github.com/pisces19860207/zhengdao/releases)
+[![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)](LICENSE)
+[![Platform](https://img.shields.io/badge/Android-16%2B%20%C2%B7%20arm64-brightgreen)](#requirements)
+
 > This is the **English version of [`README.md`](README.md)**. The two are kept in step; where they
 > disagree, the Chinese one wins. The detailed engineering records (errata, feature ledger,
 > milestones, acceptance pages) are Chinese-only under [`docs/`](docs).
@@ -15,15 +19,15 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 > ⚠️ **Check this first: it requires Android 16 (API 36)+ and an arm64 phone — if your device does
 > not match, do not download; it will not run.** (See [Requirements](#requirements).)
 
-> **Agent support status (2026-10-11, verified on a real Honor Magic 5 Pro)**: **OpenCode is built
-> in** (the Baopu tab is a ready-to-use chat client; the bionic host build avoids PRoot overhead and
-> is downloaded on demand, ~65 MB); **Hermes Agent is supported** (one-tap install → launch → TUI,
+> **Agent support status (2026-10-11, verified on a real Honor Magic 5 Pro)**: **OpenCode is no longer built in** (the Baopu tab's bionic host build was killed by W^X once `targetSdk` went to 36; abandoned outright on 2026-10-15 and the tab's replacement is still being researched — see "Where Baopu's built-in OpenCode went" below); install the official CLI yourself with `npm install -g` inside the terminal; **Hermes Agent is supported** (one-tap install → launch → TUI,
 > `hermes update` works; it ships its own pinned Python toolchain, so the install step needs a
 > network, and a broken dependency environment can be repaired in one tap from the Yiran tab);
 > **Claude Code** and **AGY CLI (Antigravity)** install freely in the terminal from their own
 > official scripts.
 
-> **Layout** (four tabs on `main` since 2026-10-14): **Baopu 抱朴** (OpenCode chat, *reality*) /
+> **Trademarks**: names such as Claude Code, OpenCode, Hermes and AGY CLI belong to their respective owners. This project has **no affiliation with, authorisation from, or partnership with** those vendors; they are mentioned only to state the fact that their official clients can be run.
+
+> **Layout** (four tabs on `main` since 2026-10-14): **Baopu 抱朴** (agent chat, **being reworked**) /
 > **Xiaoyao 逍遥** (terminal, *freedom*) / **Xuanlan 玄览** (browser, *expectation*) /
 > **Yiran 怡然** (agent management, *happiness*); settings live behind the gear icon, and the app
 > opens on Yiran.
@@ -34,6 +38,23 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 > **File boundary**: agent output goes to one shared workspace (default `Download/证道` on the
 > phone, changeable in settings) — visible in any file manager, and kept after Zhengdao is
 > uninstalled.
+
+## Contents
+
+- [Requirements](#requirements)
+- [Download and install](#download-and-install)
+- [Network](#network)
+- [Honor / MagicOS keep-alive guide](#honor--magicos-keep-alive-guide)
+- [FAQ](#faq)
+- [Privacy](#privacy)
+- [Status](#status-2026-10-13)
+- [Recent releases](#recent-releases)
+- [Environment trust chain](#environment-trust-chain-established-in-v200-unchanged-since)
+- [Documentation layout](#documentation-layout)
+- [Independent development](#independent-development)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+- [Redistribution, repackaging and the name "Zhengdao"](#redistribution-repackaging-and-the-name-zhengdao)
 
 ## Requirements
 
@@ -49,39 +70,34 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 > capacity, so there is no support for adapting to every Android version — **thank you for
 > understanding**.
 
-> **🔒 Why `targetSdk` is 28 today (major correction, 2026-10-15)**
-> Zhengdao **still ships with `targetSdk` 28**, but this is **no longer the "must be ≤ 28" life-or-death
-> line** — that necessity was **falsified** on 2026-10-15 by an on-device prototype
-> (`docs/ERRATA.md` **E-134**):
-> - **The current reason (narrowed)**: `targetSdk 28` is what today's *packaging* relies on — the four
->   Termux binaries go into `jniLibs` (installed into the read-only, executable `nativeLibraryDir`)
->   and the rootfs travels via `assets/` → `files/`. It is **the present arrangement, not an
->   architectural law**.
-> - **The old claim that was falsified**: ~~"since Android 10, apps with `targetSdk` ≥ 29 cannot
->   execute files in their own writable data directory (W^X), and only `targetSdk 28` is exempt, so
->   raising `targetSdk` turns the whole Linux environment into non-executable dead files"~~. The
->   prototype `proot-jnilib-proto` ran the four binaries on the **same device model** (Honor PGT-AN10
->   / Android 16) at **`targetSdk` 36** (with `PROOT_LOADER` pointing explicitly at
->   `nativeLibraryDir`) and passed all four criteria: environment self-check / rootfs extraction /
->   `echo` + `uname` / `apt-get update` over the network (`Hit:1..3 deb.debian.org`). The four
->   binaries' SHA256 match the values pinned in `terminal/ProotLauncher.kt:123-127`
->   **byte for byte**.
-> - **What happens next**: raising `targetSdk` to 36 is **already queued** (MagicOS 11 will require
->   it; decided as "definitely doing this"), to land after the execution-chain migration.
-> - **The cost**: on Android 16, a `targetSdk 28` app needs **runtime `READ`/`WRITE` permission** to
->   reach shared `/sdcard` storage (and on Android 13+ the manifest `READ` declaration must be
->   dropped before `READ` can be held at all — see commit `d414dca`). Measured on the real device,
->   direct `/sdcard` **read and write both work** (and the files are visible in a file manager);
->   this is the **only main path**. ~~The early fallback that mirrored `/sdcard` into the Linux
->   environment at `~/mnt/phone/` via SAF has been removed entirely~~ (`4bbfd21`, together with
->   `mirror/PhoneMirror.kt` and the FD proxy); the only remaining use of SAF is letting the user
->   **pick a rootfs package by hand** (`ACTION_OPEN_DOCUMENT`), which has nothing to do with
->   directory syncing.
-> - **Long-term risk**: if Android raises the minimum installable `targetSdk`, or tightens the
->   `untrusted_app` domain policy, Zhengdao would have to migrate (raising `targetSdk` to 36 is
->   exactly that work; further out, the `system_linker_exec` grey area or a thin client to a cloud
->   phone). This risk is re-checked on real hardware every quarter — see
->   [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md).
+> **🔒 About `targetSdk` (raised from 28 to 36 on 2026-10-15)**
+> Zhengdao now ships with **`targetSdk 36`** (knife ㉕, `954bf87`, on the real-device evidence in
+> [`docs/ERRATA.md`](docs/ERRATA.md) **E-134**), and `minSdk` is 36 as well — so the bar is Android 16.
+> - **Why it can go up**: the Termux quartet moved into `jniLibs` (`nativeLibraryDir` is read-only and
+>   executable) with an explicit `PROOT_LOADER`, and guest binaries are **mmap'ed into memory** by the
+>   proot loader (Android never `execve`s anything inside the rootfs) — so "no exec from the data
+>   directory" never reaches them. The old "must stay ≤ 28" absoluteness is disproved.
+> - **The cost (reproduced on hardware)**: an app with `targetSdk ≥ 29` **cannot launch a binary from its
+>   own data directory** — Baopu's built-in opencode (`ProcessBuilder(filesDir/oc/usr/bin/opencode)`,
+>   bypassing the loader) fails the moment a 36 build lands, with **`error=13, Permission denied`**
+>   ([`docs/ERRATA.md`](docs/ERRATA.md) **E-140**, which overturned the earlier "not reproduced" E-139).
+>   That is exactly why the built-in bionic build was **abandoned outright**.
+> - **Storage**: the main path is "all files access" (`MANAGE_EXTERNAL_STORAGE`) plus direct `/sdcard`;
+>   none of it depends on `targetSdk`. The old trick of dropping the manifest `READ` hat for targetSdk 28
+>   (`d414dca`) is history.
+> - **Long-term risk**: if Android tightens the `untrusted_app` domain policy further or raises the
+>   minimum installable `targetSdk`, Zhengdao will have to migrate again; this is re-checked on real
+>   hardware every quarter — see [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md).
+
+## Download and install
+
+1. **Download**: official APKs are on the [Releases page](https://github.com/pisces19860207/zhengdao/releases) (install directly); CI artefacts (APK / rootfs / PRoot) are on the [Actions page](https://github.com/pisces19860207/zhengdao/actions).
+2. **Check the requirements first**: you need an **Android 16 (API 36) + arm64** phone — if your device does not match, do not download; it will not run (see [Requirements](#requirements)).
+3. **Check the signature**: every package is signed, and the in-app "About" page shows **official release ✓ / ⚠️ unofficial (repackaged)**; an unofficial build warns you again at startup (`docs/ERRATA.md` E-065).
+4. **First run**: grant the permissions item by item on the single first-run page, download the ~200 MB Debian rootfs, then install an agent in one tap from the Yiran tab (OpenCode is no longer bundled — install it in the terminal).
+5. **Updates**: the app can check for app and component updates; environment updates download **differential patches only** (see "Environment trust chain" below).
+
+> On Honor / MagicOS phones, set the background permissions from the keep-alive guide below first, or the system may reap the app.
 
 ## Network
 
@@ -90,7 +106,7 @@ Zhengdao is designed as "local environment + cloud agents", so its network needs
 | Stage | Network needed? | Notes |
 |---|---|---|
 | **First environment install** | **Required** | Downloads the ~200 MB Debian rootfs archive (dead weight such as the GPU rendering stack is stripped at build time — see [Status](#status-2026-10-11)) |
-| **Installing an agent** | **Required** | Downloads Claude Code / Hermes and friends from their official sources (OpenCode is downloaded by the Baopu tab itself) |
+| **Installing an agent** | **Required** | Downloads Claude Code / Hermes and friends from their official sources (OpenCode is no longer bundled — install it in the terminal) |
 | **Using an agent day to day** | **Required** | Agents call cloud APIs (GLM / DeepSeek / Claude …); no network means no agent |
 | **Terminal only** | **Optional** | Once the environment is installed, bash / git / python / npm and friends work offline |
 
@@ -127,6 +143,25 @@ reaped in the background:
 > system does reap it, the built-in tmux session recovery re-attaches to the old scene
 > automatically the next time you open the app.
 
+## FAQ
+
+**It will not open / says unsupported** — the bar is hard: **Android 16 (API 36) + arm64**. A build repackaged by someone else also shows a one-time warning at launch (E-065).
+
+**The agent spins forever and cannot connect** — the usual cause is the proxy not covering Zhengdao: the proxy app must run in **VPN (system-wide) mode**, and if it has a **per-app proxy** list, Zhengdao has to be ticked in it (see "Network" above). Still stuck? Set the proxy by hand under Settings → Advanced.
+
+**The app keeps getting killed mid-run** — work through the "Honor / MagicOS keep-alive guide" (auto-launch, secondary launch, background activity, battery optimisation, locking it in recents). Even if the system does reap it, reopening Zhengdao **re-attaches to the existing tmux session**, so the work is not lost.
+
+**What is `targetSdk`, and why did it go to 36** — it is **36** now (knife ㉕, `954bf87`, on real-device evidence in `docs/ERRATA.md` E-134), and `minSdk` is 36 too, which is why the bar is Android 16. The cost is that the app **can no longer launch a binary from its own data directory** (E-140) — which is why Baopu's built-in OpenCode was dropped in favour of installing the CLI in the terminal.
+
+**If I uninstall, do I lose my files? Must I re-download the environment** — agent output lives in the workspace (default `Download/证道`) and **survives uninstall**; the Debian environment inside the app's private storage goes away with the app and is downloaded again (~200 MB) after reinstalling. Environment **updates** download delta patches only, never the whole package.
+
+**Can it run a local LLM** — No. Zhengdao is a runtime *for* cloud agents: the local side provides a real Linux environment and toolchain, the intelligence comes from cloud APIs (GLM / DeepSeek / Claude and others).
+
+**Does it need root** — No; the whole Linux environment runs under PRoot. But it shares the app's **Android UID**, so run only commands you trust (see "Privacy").
+
+**What should a bug report include** — version (Settings → About), device model and Android version, and the steps to reproduce; the log entry points are the "keep-alive record" and "run log" pages under Settings (their buttons land on the right page since v2.0.16).
+
+
 ## Privacy
 
 Zhengdao does not upload user data. Network access is used only to:
@@ -159,11 +194,14 @@ performance and UX entries) are tracked in [Issues](https://github.com/pisces198
 > list reflects `main`.
 
 The v2.1.0 batch branch (`fix/batch-v2.1.0`) and the v2.1.1 fix branch (`fix/session-switch-e123`)
-run **986 unit tests across 139 suites, all green**
-(2026-10-15 on `main`: 0 failures, 0 errors, 3 skipped by environment; the later batches merged after
+run **1189 unit tests across 170 suites, all green**
+(2026-10-16 on `main` (`e4a33c3`): 0 failures, 0 errors, 9 skipped by environment; the later batches merged after
 v2.1.1 are logged in `docs/FEATURE-LEDGER.md` §A from #76 on).
 
 ### Recent releases
+
+<details>
+<summary>Show the last 14 releases (v2.0.0 → v2.1.1)</summary>
 
 | Version | Date | In one line |
 |---|---|---|
@@ -182,6 +220,8 @@ v2.1.1 are logged in `docs/FEATURE-LEDGER.md` §A from #76 on).
 | v2.0.0 | 2026-10-09 | Engine consolidation and the signed **environment trust chain** (below). |
 
 Release notes for every version are on the [Releases page](https://github.com/pisces19860207/zhengdao/releases).
+
+</details>
 
 ### Environment trust chain (established in v2.0.0, unchanged since)
 
@@ -215,7 +255,7 @@ Release notes for every version are on the [Releases page](https://github.com/pi
 **Feature surface** (frozen since v1.1; v2.0.12 swapped in an **iOS-style UI skin** with no change
 in features):
 
-- **Baopu tab** (formerly "Taiji", *reality*): a native Compose client for OpenCode — Markdown
+- **Baopu tab** (formerly "Taiji", *reality*): a native Compose client for OpenCode (the built-in host build was abandoned on 2026-10-15; this tab is being reworked) — Markdown
   rendering, collapsible thinking, tool cards, session history / new / resume, and a model-pool
   picker (free models labelled, switchable per session, kept across restarts)
 - **Terminal**: a real Debian 13.7 environment (PRoot) with tmux session persistence; one-tap
@@ -227,13 +267,13 @@ in features):
   address bar, Safe Browsing blocks risky sites, and a link tapped in the terminal opens inside the
   app; "export for agent" drops a summary of the current page into files the guest can read
   (on `main`, not released yet)
-- **Plugin management** (settings → Plugins): manages the plugins of the **built-in** OpenCode that
+- **Plugin management** (settings → Plugins): manages the plugins of the former **built-in** OpenCode that
   Baopu runs (enable/disable, cache cleanup)
 - **Library** (settings → Library): puts material on your phone within reach of the terminal
   agents; "attach library hints when asking" is **off by default** — when enabled, the app matches
   substrings **on-device** and appends just "filename + line number" to your message, so the
   content never leaves the phone (E-080 / E-084)
-- **OpenCode built in**, **Hermes Agent supported** (both verified end-to-end on real hardware);
+- **OpenCode** (the built-in bionic build is abandoned — install the CLI in the terminal), **Hermes Agent supported** (the latter verified end-to-end on real hardware);
   Claude Code / AGY CLI use their own official scripts
 - Storage policy, settled: MANAGE as the main path plus direct `/sdcard`; 4 notification channels;
   cache cleanup is **shown in tiers** — nothing under `~/.hermes/tools` is clearable: Hermes
@@ -242,18 +282,21 @@ in features):
   request, so since v2.0.17 the tools group has no clearable entry) are reported but never clearable; and in
   the public area "install scripts" can be cleared while the "workspace" is your data and is not
 
-> **⚠️ Where OpenCode runs (since v1.2)**: the "Baopu" tab uses the **built-in** host build
-> (ready out of the box, running on the **host bionic**, not through PRoot); its config lives in
-> `files/oc/xdg/config/opencode/`, and the plugin page only affects this one.
-> **Since v1.2 the app neither pre-installs nor keeps a second OpenCode in the terminal** (if you
-> want your own CLI there, `npm install -g` inside the terminal is your call; the app does not
-> manage its config or plugins).
-> ⚠️ Because the two are not on the same network stack, **editing `/etc/hosts` or
-> `/etc/resolv.conf` inside the rootfs does not affect Baopu**, and vice versa. See pit #0 (pinned)
-> in the troubleshooting manual.
-
-CI artefacts (APK / rootfs / PRoot) are on the [Actions page](https://github.com/pisces19860207/zhengdao/actions);
-official releases are on the [Releases page](https://github.com/pisces19860207/zhengdao/releases).
+> **⚠️ Where Baopu's built-in OpenCode went (abandoned on 2026-10-15)**: the "Baopu" tab used to run the
+> app's **built-in** host build (ready out of the box, running on the **host bionic**, not through PRoot;
+> ~65 MB downloaded, ~289 MB on disk; its config lives in `files/oc/xdg/config/opencode/`).
+> **That route is abandoned for good**: once `targetSdk` went to 36, launching a binary from the app's data
+> directory is blocked by W^X (see [`docs/ERRATA.md`](docs/ERRATA.md) **E-140**). What Baopu becomes instead
+> (the official CLI inside PRoot, or a different built-in chat surface) **still needs research before a decision** —
+> option ② (moving oc into `jniLibs`) is ruled out on APK-size grounds (~289 MB, ledger `§B` item 64), and the
+> oc binary route is **closed for good as of 2026-10-16**;
+> until then the tab keeps only the minimal "install / update if missing" placeholder, and the plugin page
+> still applies to the old built-in copy alone.
+> **Since v1.2 the app does not pre-install an OpenCode in the terminal either**: if you want the official
+> CLI there, `npm install -g` is your call.
+> ⚠️ The old built-in copy and the terminal do not share a network stack, so **editing `/etc/hosts` or
+> `/etc/resolv.conf` inside the rootfs does not affect Baopu**, and vice versa (pit #0 in the
+> troubleshooting manual).
 
 ## Documentation layout
 
