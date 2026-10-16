@@ -26,7 +26,7 @@
         <LinearLayout
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:orientation="horizontal"
             android:background="#FFFFFFFF"
             android:gravity="center_vertical"
@@ -39,11 +39,16 @@
                     —— 红点是整页唯一的关闭出口，11dp 拇指够不到；
                  2) 加 foreground 涟漪 —— 原来按下去与松开**完全同色**，
                     加上无反馈的纯色圆点会被当成装饰。
-                 取舍：热区占位变多 49dp，标题会被挤窄（已同时给标题加 ellipsize）。 -->
+                 取舍：热区占位变多 49dp，标题会被挤窄（已同时给标题加 ellipsize）。
+
+                 B-补-20（2026-10-16）：热区 30dp → **48dp**（M3/Google 无障碍最小触摸目标），
+                 工具条随之 44dp → 48dp。红点是整页唯一出口（左边缘右滑是它的等价物），
+                 30dp 仍然偏小、拇指在移动中容易点空；圆点是 inset 居中的 drawable，
+                 所以放大 View 只扩大热区、视觉尺寸不变。标题空间由 autoSize 兜底。 -->
             <View
                 android:id="@+id/btn_close"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_marginEnd="3dp"
                 android:background="@drawable/traffic_dot_red"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
@@ -53,8 +58,8 @@
 
             <View
                 android:id="@+id/btn_yellow"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_marginEnd="3dp"
                 android:background="@drawable/traffic_dot_yellow"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
@@ -64,8 +69,8 @@
 
             <View
                 android:id="@+id/btn_split"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/traffic_dot_green"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
@@ -81,7 +86,12 @@
                  1) 文案缩成 `证道 - Debian 13.7`（TerminalActivity 两处赋值同步改）；
                  2) 加 autoSize —— 更窄的屏上自动降号（12sp 起）也不截断；
                     ellipsize 只作极端窄屏的最后兜底。
-                 注：回退态那条 `证道 — 系统 shell（环境未安装）` 更长，本次未动。 -->
+                 注：回退态那条 `证道 — 系统 shell（环境未安装）` 更长，本次未动。
+                 （B-补-20 后圆点热区 104 → 158dp、工具条 44 → 48dp，标题可用宽度再少 ~54dp；
+                  autoSize 的下限 12sp 与 ellipsize 兜底不变，真机若见截断按本条口径再收。）
+
+                 B-补-20（2026-10-16）：三个圆点热区 30 → **48dp**、工具条 44 → 48dp。
+                 圆点是 inset 居中的 drawable（inset 同步 9.5 → 18.5dp），视觉仍是 11dp。 -->
             <TextView
                 android:id="@+id/toolbar_title"
                 android:layout_width="0dp"

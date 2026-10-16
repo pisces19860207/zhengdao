@@ -146,8 +146,12 @@ fun HistoryDrawer(
                 // 而它是**会话列表抽屉的正面入口**（打开抽屉第一眼就在这里），
                 // 点不中会让用户以为"新会话按钮没出来"——再加垂直 14dp ≈ 44dp 高达标。
                 // 未一步到 48dp：抽屉宽度有限，再厚会使文字与圆角挤得难看。
+                //
+                // B-补-20（2026-10-16）：14 → 16dp，整行 ≈ 48dp（M3/Google 无障碍最小触摸目标）。
+                // 补一句此前那半句顾虑的实测口径：**高度**不占抽屉宽度（宽度是文字与圆角说了算），
+                // 16dp 竖内边距只是把可点区域抬到达标，视觉上文字与圆角比例不变。
                 modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
                     // 同上：纯文字 Surface，读屏需要明示这是按钮 + 它的含义
                     .semantics { contentDescription = newSessionDesc },
             )
