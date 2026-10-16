@@ -473,8 +473,8 @@ internal fun dayLabel(ts: Long?, res: Resources? = null): String {
     }
 }
 
-private fun formatClock(ts: Long): String =
-    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
+// B-补-24（2026-10-16）：会话行每次重组都调它 —— 旧写法每次都新建 SimpleDateFormat
+private fun formatClock(ts: Long): String = com.example.zhengdao.util.TimeFormats.hourMinute(ts)
 
 // ── 抽屉底部动作行 ─────────────────────────────────────────────────────
 

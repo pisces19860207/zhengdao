@@ -225,8 +225,8 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
             Spacer(Modifier.height(6.dp))
             OutlinedButton(
                 onClick = {
-                    val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US)
-                        .format(java.util.Date())
+                    // B-补-24（2026-10-16）：共享 formatter（旧写法每次点导出都新建 SimpleDateFormat）
+                    val stamp = com.example.zhengdao.util.TimeFormats.fileStampMinute()
                     exportPendingName = "证道日志-$stamp.txt"
                     exportLauncher.launch(exportPendingName!!)
                 },

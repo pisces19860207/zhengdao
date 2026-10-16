@@ -7,10 +7,8 @@ import android.content.Context
 import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Store
+import com.example.zhengdao.util.TimeFormats
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * 「被杀留档」（#5 后台被杀日志留档，2026-10-09）。
@@ -86,11 +84,10 @@ object KeepaliveArchive {
 
     // ── 纯函数（单测直接调）──
 
-    internal fun timeText(ts: Long): String =
-        SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date(ts))
+    // B-补-24（2026-10-16）：改成共享的 java.time formatter（旧写法每次新建 SimpleDateFormat）。
+    internal fun timeText(ts: Long): String = TimeFormats.logStamp(ts)
 
-    internal fun stamp(ts: Long): String =
-        SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date(ts))
+    internal fun stamp(ts: Long): String = TimeFormats.fileStamp(ts)
 
     /**
      * 原因码 → 人话。
