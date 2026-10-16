@@ -834,12 +834,26 @@ checks.forEachIndexed { index, c ->
                         )
                         issues.forEach { issue ->
                             Column(modifier = Modifier.padding(top = 10.dp)) {
-                                Text(
-                                    text = issue.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = issue.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    // 改法②（台账 §B 顺序 54／§B-补-51，2026-10-16）：同一件事发生了
+                                    // N 次 ⇒ 「×N」角标。去重压掉的是"行"，不是"次数" —— 用户拍板
+                                    // 原话「它不掩盖事实（次数还在），又把噪音压成一条」。
+                                    if (issue.count > 1) {
+                                        Text(
+                                            text = stringResource(R.string.home_issue_count, issue.count),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                            modifier = Modifier.padding(start = 8.dp),
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = issue.detail,
                                     style = MaterialTheme.typography.bodySmall,
