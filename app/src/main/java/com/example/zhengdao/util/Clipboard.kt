@@ -25,7 +25,7 @@ import android.content.Context
  * 不为了省两行代码引入第二种复制路径。
  *
  * Android 13+ 系统自己会弹「已复制」浮层，本函数**不做**任何提示 ——
- * 提示由调用方按自己的语义决定（Taiji 页用 Snackbar）。
+ * 提示由调用方按自己的语义决定（Baopu 页用 Snackbar）。
  */
 fun copyPlainText(context: Context, label: String, text: String): Boolean {
     if (text.isEmpty()) return false

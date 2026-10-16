@@ -12,7 +12,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * B 步（2026-10-13，太极 401 自治愈）：钉住 A 步新增的 [OcAuthenticator] 的**判定分支**。
+ * B 步（2026-10-13，抱朴 401 自治愈）：钉住 A 步新增的 [OcAuthenticator] 的**判定分支**。
  *
  * 为什么直接构造 OkHttp 的 Request/Response：Authenticator 是纯判定
  * ——「收到 401 → 给不给重试请求」不需要真起服务，快且无网络。

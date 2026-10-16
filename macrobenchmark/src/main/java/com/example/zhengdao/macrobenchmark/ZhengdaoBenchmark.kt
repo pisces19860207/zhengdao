@@ -96,7 +96,7 @@ class ZhengdaoBenchmark {
     // 测的是「切页 + 太极页首屏渲染」的帧耗时：太极页要先起 opencode serve 才能进
     // 对话态，等待锚点覆盖三种稳态（已就绪 / 未安装 / 启动失败），任一出现即算渲染完成。
     @Test
-    fun taijiTabLoad() = benchmarkRule.measureRepeated(
+    fun baopuTabLoad() = benchmarkRule.measureRepeated(
         packageName = PKG,
         metrics = listOf(FrameTimingMetric()),
         iterations = ITERATIONS,

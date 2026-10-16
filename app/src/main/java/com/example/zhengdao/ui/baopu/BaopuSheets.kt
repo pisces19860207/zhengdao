@@ -2,9 +2,9 @@
 //
 // 依据的公开接口：Jetpack Compose（Material 3）官方 API。
 //
-// P4-1（2026-10-14）：自 TaijiComponents.kt（拆分前 1929 行）按内聚性拆出——
+// P4-1（2026-10-14）：自 BaopuComponents.kt（拆分前 1929 行）按内聚性拆出——
 // **只搬不改**，代码逐行原样（含已提交的 P2-10 48dp 触摸目标修复）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

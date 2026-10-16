@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 // 可参考的公开资料：本项目自己的数据模型（OcMessage / OcPart）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.oc.OcMessage
 import com.example.zhengdao.oc.OcPart

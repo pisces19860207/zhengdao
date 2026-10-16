@@ -18,7 +18,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * OpenCode HTTP 客户端 —— 太极 Tab（Compose 原生 UI）的唯一网络出入口。
+ * OpenCode HTTP 客户端 —— 抱朴 Tab（Compose 原生 UI）的唯一网络出入口。
  *
  * ## 为什么是 OkHttp 直连，而不是沿用 LocalProxy（已删，v1.1.1 阶段 3）
  *
@@ -44,7 +44,7 @@ class OcClient(
     private val passwordProvider: () -> String?,
 
     /**
-     * A 步（2026-10-13，太极 401 自治愈）：收到 401 时重新解析 `oc/serve.log` 并返回新密码。
+     * A 步（2026-10-13，抱朴 401 自治愈）：收到 401 时重新解析 `oc/serve.log` 并返回新密码。
      * 返回 null / 空串 = 放弃重试。默认 null ⇒ 不传就是今天的行为（API 向后兼容）。
      */
     private val passwordRefresher: (() -> String?)? = null,
@@ -126,7 +126,7 @@ class OcClient(
          */
         const val SSE_READ_TIMEOUT_SEC = 60L
 
-        /** 太极 Tab 固定绑定的工作区。不做目录选择器（会话/文件/权限三类接口全带此参数）。 */
+        /** 抱朴 Tab 固定绑定的工作区。不做目录选择器（会话/文件/权限三类接口全带此参数）。 */
         const val WORKSPACE_DIR = "/workspace"
     }
 }
@@ -176,14 +176,14 @@ private class AuthInterceptor(
             )
             builder.header("Authorization", "Basic $creds")
         } else {
-            RunLog.log("太极: serve 密码未就绪，请求将返回 401")
+            RunLog.log("抱朴: serve 密码未就绪，请求将返回 401")
         }
         return chain.proceed(builder.build())
     }
 }
 
 /**
- * A 步（2026-10-13，太极 401 自治愈）：OkHttp 原生的 401 处理器。
+ * A 步（2026-10-13，抱朴 401 自治愈）：OkHttp 原生的 401 处理器。
  *
  * 为什么是 Authenticator 而不是在 [AuthInterceptor] 里再 proceed 一次：它是 OkHttp 为
  * **凭据过期**准备的正规入口 —— 只在收到 401 时被调用，返回新请求即自动重试、返回 null
@@ -211,7 +211,7 @@ internal class OcAuthenticator(
         )
         val header = "Basic $creds"
         if (header == response.request.header("Authorization")) return null
-        RunLog.log("太极: 收到 401，用重新解析到的密码重试一次")
+        RunLog.log("抱朴: 收到 401，用重新解析到的密码重试一次")
         return response.request.newBuilder().header("Authorization", header).build()
     }
 
@@ -224,7 +224,7 @@ internal class OcAuthenticator(
 }
 
 /** 轻量日志封装，与项目其他模块一致的失败可见原则。 */
-internal fun ocLog(message: String) = RunLog.log("太极: $message")
+internal fun ocLog(message: String) = RunLog.log("抱朴: $message")
 
 /** 网络异常统一包装，便于 UI 层区分"连不上"与"服务端拒绝"。 */
 class OcHttpException(val code: Int, message: String) : IOException(message)

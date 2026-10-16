@@ -2,9 +2,9 @@
 //
 // 依据的公开接口：Jetpack Compose（Material 3）官方 API。
 //
-// P4-1（2026-10-14）：自 TaijiComponents.kt（拆分前 1929 行）按内聚性拆出——
+// P4-1（2026-10-14）：自 BaopuComponents.kt（拆分前 1929 行）按内聚性拆出——
 // **只搬不改**，代码逐行原样（含已提交的 P2-10 48dp 触摸目标修复）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
@@ -198,7 +198,7 @@ private fun ToolStatusBadge(icon: String, text: String, tint: Color) {
  * 「正文看起来属于思考过程」的层级错位。
  */
 @Composable
-// P4-1（2026-10-14）拆分机械必需：原 private 仅同文件可见，拆出后 [TaijiMessageList]
+// P4-1（2026-10-14）拆分机械必需：原 private 仅同文件可见，拆出后 [BaopuMessageList]
 // 的 PartRow / MessageList 要调用 ⇒ 放宽为 internal（模块内可见，不扩公网 API）。
 internal fun ReasoningBlock(parts: List<OcPart.Reasoning>, onLongPress: (() -> Unit)? = null) {
     var expanded by remember { mutableStateOf(false) }

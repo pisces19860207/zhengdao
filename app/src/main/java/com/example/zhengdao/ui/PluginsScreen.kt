@@ -49,11 +49,11 @@ import kotlinx.coroutines.withContext
  * 插件页（2026-10-07 新增）：把 OpenCode 插件从"藏在配置文件里"改为**显性可管**。
  *
  * 三块内容：
- *  1. **已启用** —— 从太极实例 `opencode.json` 的 `plugin` 数组实时读出，逐项可开关；
+ *  1. **已启用** —— 从抱朴实例 `opencode.json` 的 `plugin` 数组实时读出，逐项可开关；
  *  2. **推荐** —— 轻量免模型的记忆方案，一键启用（不自动写入，避免再出现"装了不工作"）；
  *  3. **插件包缓存** —— Bun 从 npm 装下来的包，可看体积、可一键清理。
  *
- * ⚠️ 作用域（用户 2026-10-07 裁决 ①②）：插件是 OpenCode 的能力，本页**只管太极实例**。
+ * ⚠️ 作用域（用户 2026-10-07 裁决 ①②）：插件是 OpenCode 的能力，本页**只管抱朴实例**。
  * 终端里那份自装的 npm 版 opencode 由用户自己负责，App 不为它读写插件配置。
  */
 @Composable
@@ -76,7 +76,7 @@ fun PluginsScreen() {
 
     LaunchedEffect(tick) {
         val data = withContext(Dispatchers.IO) {
-            val cfg = PluginManager.taijiConfig(ctx)
+            val cfg = PluginManager.baopuConfig(ctx)
             val list = PluginManager.readSpecs(cfg)
             val cache = PluginManager.scanCaches(ctx)
             val vs = HashMap<String, String?>()

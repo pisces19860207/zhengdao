@@ -10,7 +10,7 @@ package com.example.zhengdao.terminal
  * （见 `app/src/test/java/com/example/zhengdao/terminal/SessionRouterTest.kt`）。
  *
  * 规则一句话：**同一个 Agent 就 attach 回去，别的（换 Agent / 安装 / 别的命令）
- * 就把这条会话整条换掉，不带命令的（点洞天、点"安装中"去看进度）什么都不动。**
+ * 就把这条会话整条换掉，不带命令的（点逍遥、点"安装中"去看进度）什么都不动。**
  *
  * 与旧实现的区别（方向纠正）：旧代码是"多窗口并存"——每次点启动就 `C-b c` 开一个
  * **新窗口**再注入，靠"扫 /proc 数同名进程 + 20 秒窗口守卫"来避免重复实例。
@@ -43,7 +43,7 @@ object SessionRouter {
         currentAgentId: String?,
         hasSession: Boolean,
     ): Action = when {
-        // 1. 只是"打开终端"（洞天 tab / 通知栏 / 丹房点「安装中」去看进度）
+        // 1. 只是"打开终端"（逍遥 tab / 通知栏 / 怡然点「安装中」去看进度）
         //    —— 用户要的是**看现在这一屏**，任何重启都会毁掉他正要看的东西。
         !requestHasCommand -> Action.KEEP_SESSION
 

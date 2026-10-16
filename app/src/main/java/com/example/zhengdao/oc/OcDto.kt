@@ -9,7 +9,7 @@ package com.example.zhengdao.oc
  *
  * ## ⚠️ 字段名的确定方法（不要照抄官方主站文档）
  *
- * 太极 Tab 跑的是 **社区 bionic 版**（`Hope2333/opencode-termux`，v2.0.x），
+ * 抱朴 Tab 跑的是 **社区 bionic 版**（`Hope2333/opencode-termux`，v2.0.x），
  * 由 binary surgery 移植而来（Bun 官方不支持 Android 交叉编译）。API 层理论上
  * 与上游一致，但**官方文档横跨 v1/v2/v3 三代，字段名会变**（如 v2 命名空间下
  * 事件叫 `EventSessionCreated`，v1 是 `session.created`）。

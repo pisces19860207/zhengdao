@@ -33,8 +33,8 @@ class RssThresholdsTest {
     }
 
     @Test
-    fun `体检卡阈值必须高于太极空闲基线 否则一开太极就告警`() {
-        // 真机基线（2026-10-07）：太极 serve 空闲 RSS 375–468 MB。
+    fun `体检卡阈值必须高于抱朴空闲基线 否则一开抱朴就告警`() {
+        // 真机基线（2026-10-07）：抱朴 serve 空闲 RSS 375–468 MB。
         assertTrue(ResMonitor.RSS_WARN_MB > 468)
     }
 }

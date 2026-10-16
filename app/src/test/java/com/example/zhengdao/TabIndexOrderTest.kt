@@ -12,7 +12,7 @@ import java.io.File
  * 目标顺序：抱朴 0 / 逍遥 1 / **玄览 2** / **怡然 3**（玄览与怡然交换）。
  *
  * 为什么值得钉一条测试：这次交换暴露了**20 处硬编码索引**（when(tab) 分支、底栏
- * selected/onClick/图标、animateToTop、ON_RESUME 切 Tab、TaijiScreen 的 onExit）。
+ * selected/onClick/图标、animateToTop、ON_RESUME 切 Tab、BaopuScreen 的 onExit）。
  * 漏改任何一处都不会编译报错，只会**静默错位** —— 最隐蔽的是初始值
  * `mutableIntStateOf(2)`：2 原本是怡然，交换后变成玄览，启动页会无声无息地漂走。
  * 所以这里钉两半：① 顺序契约（常量值）② 源码里不再出现裸索引字面量。
@@ -32,7 +32,7 @@ class TabIndexOrderTest {
 
     @Test
     fun `顺序契约_抱朴0_逍遥1_玄览2_怡然3`() {
-        assertEquals("抱朴（真实）", 0, TabIndex.TAJI)
+        assertEquals("抱朴（真实）", 0, TabIndex.BAOPU)
         assertEquals("逍遥（自由）", 1, TabIndex.TERMINAL)
         assertEquals("玄览（期望）", 2, TabIndex.BROWSER)
         assertEquals("怡然（幸福）", 3, TabIndex.AGENTS)
@@ -74,7 +74,7 @@ class TabIndexOrderTest {
     @Test
     fun `when_tab 的每个分支都走常量`() {
         val src = mainActivitySource()
-        for (name in listOf("TAJI", "TERMINAL", "BROWSER", "AGENTS")) {
+        for (name in listOf("BAOPU", "TERMINAL", "BROWSER", "AGENTS")) {
             assertTrue(
                 "when (tab) 里应有一条 `TabIndex.$name ->` 分支（缺了就会有 Tab 白屏）",
                 src.contains("TabIndex.$name ->")

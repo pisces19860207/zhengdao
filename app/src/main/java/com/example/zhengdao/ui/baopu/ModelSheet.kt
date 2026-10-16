@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -37,7 +37,7 @@ import com.example.zhengdao.ui.util.pressClickable
  * 空态如实呈现：模型目录来自 models.dev，设备网络不可达时服务端返回空数组
  * （本机实测）——显示原因与自救提示，不装作"没有模型"。
  *
- * [error] 是**拉取失败**的原因（来自 [com.example.zhengdao.oc.TaijiState.lastModelFetchError]）：
+ * [error] 是**拉取失败**的原因（来自 [com.example.zhengdao.oc.BaopuState.lastModelFetchError]）：
  * 空表有两种含义（目录真的为空 / 这次没拉到），只有它能区分，必传不许省略。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,7 +63,7 @@ fun ModelSheet(
                 )
                 // 常驻刷新入口（2026-10-08）：此前「重新加载」只写在**空列表**分支里，
                 // 列表有内容时反而没有任何刷新入口——想换一批模型只能关掉抽屉、再点一次
-                // 顶部胶囊（而那条路径本身要先联网拉完才弹，见 TaijiScreen 的注释）。
+                // 顶部胶囊（而那条路径本身要先联网拉完才弹，见 BaopuScreen 的注释）。
                 // 列表在拉取中时同一个位置显示状态，避免"按了没反应"。
                 if (isLoading) {
                     Text(

@@ -17,9 +17,9 @@ import java.io.File
  * 复核结论（2026-10-16，以代码为准）：
  * ① NavHost 只有四个目的地 —— `welcome` / `home` / `permission_setup` / `settings`
  *    （`MainActivity.kt` 里四处 `composable(...)`；`permission_setup` 走 `PermissionSetup.ROUTE` 常量）。
- * ② 当年点名的 `plugins` **已经不是路由**：插件页 2026-10-08 搬进太极抽屉
- *    （`ui/taiji/TaijiScreen.kt:585` 的 `PluginsSheet` 复用 `ui/PluginsScreen.kt`，
- *    见 `ui/taiji/TaijiSheets.kt:236-277`）⇒ 台账那句「plugins 不恢复」已失效。
+ * ② 当年点名的 `plugins` **已经不是路由**：插件页 2026-10-08 搬进抱朴抽屉
+ *    （`ui/baopu/BaopuScreen.kt:585` 的 `PluginsSheet` 复用 `ui/PluginsScreen.kt`，
+ *    见 `ui/baopu/BaopuSheets.kt:236-277`）⇒ 台账那句「plugins 不恢复」已失效。
  * ③ 剩下三条不吃亏：`welcome` 由 `startRoute` 决定、`home` 本身是兜底、
  *    `permission_setup` 由 `guidePermissions` 效果按需叠回 ⇒ **`settings` 是唯一值得恢复的**。
  * ④ 真正要钉住的是另一件事：白名单必须与 NavHost 保持一致 —— 否则老装机 prefs 里
@@ -125,10 +125,10 @@ class RouteRestoreGuardTest {
     }
 
     @Test
-    fun `门禁_B补15_插件面板确实已改成太极抽屉里的 sheet`() {
+    fun `门禁_B补15_插件面板确实已改成抱朴抽屉里的 sheet`() {
         // 这条是「B-补-15 里 plugins 不恢复」失效的直接证据：插件页不再是路由。
-        val taiji = repoFile("app/src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt").readText()
-        assertTrue("太极页应引用 PluginsSheet（插件面板）", taiji.contains("PluginsSheet("))
+        val baopu = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
+        assertTrue("抱朴页应引用 PluginsSheet（插件面板）", baopu.contains("PluginsSheet("))
         val src = mainActivity()
         assertEquals(
             "MainActivity 里不应再注册 plugins 路由",

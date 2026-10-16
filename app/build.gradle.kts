@@ -12,13 +12,13 @@ plugins {
 //   环境包索引 Ed25519 签名上线（先验签后解析，Rust 与平台实现对拍，不一致按拒绝处理）；
 //   增量更新（差分补丁）落地；环境包瘦身（剔除 GPU 软件渲染栈，落盘 −118 MB）；
 //   本地包校验值改为**以签名索引为准** + 过期 `.sha256` 边车自愈（E-053）；
-//   入库 `.so` 门禁（16 KB 页对齐 + JNI 入口符号）；太极 Tab 可用性三修。
+//   入库 `.so` 门禁（16 KB 页对齐 + JNI 入口符号）；抱朴 Tab 可用性三修。
 // v1.3.0（2026-10-07）：**可靠性清债 + CI 止血**——无新增功能面。
 //   启动链路三修（~/.local/bin 进 PATH / 启动幂等 / 已装误判成未装）；opencode 启动事故
 //   （截断文件冒充已安装）+「进终端唯一入口静默失败」；终端页唯一化；E2 storageGranted
 //   单一判定源；B2 移除终端 npm 版 opencode；CI 补 assembleRelease + 统一签名密钥。
 // v1.2.0（2026-10-07）：**终端环境优化**——不修 UI、不加功能，只动终端里的环境本身。
-//   卸载终端 npm 版 opencode；修复太极配置路径（v1.1.1 曾误指终端 taiji 的 guest 死路径）；
+//   卸载终端 npm 版 opencode；修复抱朴配置路径（v1.1.1 曾误指终端 taiji 的 guest 死路径）；
 //   网络四项与 IP 钉住的尝试及撤除；工作区 .ignore；资源监控与体检三态。
 // 版本序列：v1.0.0(12) → v1.1 → v1.1.1(13) → v1.2.0(14) → v1.3.0(15) → v2.0.0(16)
 // ⚠️ v2.0.0 是**主版本**：换的是引擎与信任根（解压/校验/验签主路径进 Rust、索引签名成为
@@ -39,30 +39,30 @@ plugins {
 //    仍无新功能面，故继续进 patch 级。
 // ⚠️ 2.0.3（2026-10-09，ERRATA E-061 / E-062 / E-063 / E-064）：第一个**带新功能面**的 2.0.x ——
 //    「资料库」（知识库集成）：把资料丢进 `/sdcard/Download/证道/资料库/原始/`，App 自动生成
-//    `整理/00-目录.md` 并给终端里的 AI 指路（`/root/AGENTS.md`）；P2 借太极的免费模型给长文档补摘要
+//    `整理/00-目录.md` 并给终端里的 AI 指路（`/root/AGENTS.md`）；P2 借抱朴的免费模型给长文档补摘要
 //    （`.docx` 也能读，P3a）。只加功能、不动既有链路，故仍进 patch 级。
 // ⚠️ 2.0.4（2026-10-09，ERRATA E-065）：用户问「会不会被别人拿去卖」之后的**署名与出处** ——
 //    关于页写清作者（小信多多）/ 版本来源（官方发布 ✓ / ⚠️ 非官方（被重新打包过））/ 许可证 GPL-3.0 /
 //    联系作者；安装包签名自检（官方证书 SHA-256 与运行时装包签名对比，**只提醒不拦功能** ——
 //    GPL 明确允许别人改代码自己签名，拦了会误伤自己编译自己用的用户）；README 写明转载与
 //    二次打包的态度。仍无破坏性改动，故进 patch 级。
-// ⚠️ 2.0.5（2026-10-09，ERRATA E-058）：太极与设置页的提示条（「已复制到剪贴板」等）从**屏幕顶部**
+// ⚠️ 2.0.5（2026-10-09，ERRATA E-058）：抱朴与设置页的提示条（「已复制到剪贴板」等）从**屏幕顶部**
 //    搬回屏幕底部 —— 根因是宿主节点写在 `Modifier.fillMaxSize()` 里的 Box 中，fillMaxSize 会把固定
 //    最小约束一起传给子节点，SnackbarHost 因此被量成整屏（实测 1312×2425），`align(BottomCenter)`
 //    只管摆放、救不回被撑大的宿主，于是落到了宿主左上角；修法是给宿主加
-//    `wrapContentHeight(Alignment.Bottom)`（太极页与设置页各一处）。另附开放 Issue #6 的存储结论
+//    `wrapContentHeight(Alignment.Bottom)`（抱朴页与设置页各一处）。另附开放 Issue #6 的存储结论
 //    （hermes 是 git 安装 ⇒ `.git` 不能剥离，改做 cache/installs 清理），不改任何逻辑，故进 patch 级。
-// ⚠️ 2.0.6（2026-10-09，ERRATA E-066 ~ E-068）：三件事一起进 —— ①「丹房两个红叉」的真因修复
+// ⚠️ 2.0.6（2026-10-09，ERRATA E-066 ~ E-068）：三件事一起进 —— ①「怡然两个红叉」的真因修复
 //    （hermes 的 `facts.json` 记录的依赖环境是 **guest 视角**路径，App 却按宿主视角判读写 ⇒
 //    既误报 ✗、又会把记录改写成 hermes 找不到的路径；E-066）；②缓存清理新增「清理 Agent
-//    缓存包」按钮（真机一次释放 437MB，不碰 `tools`/`installs`/`uv.lock`）+ 太极人设 v2
+//    缓存包」按钮（真机一次释放 437MB，不碰 `tools`/`installs`/`uv.lock`）+ 抱朴人设 v2
 //    （不再谎称自己跑在 Debian 里 —— 它的 shell 就是安卓宿主 mksh；E-067）；③Release 正文
 //    机制修正（`body_path` 此前钉死 `release-notes.md`，导致 v2.0.1~v2.0.5 五份正文一模一样；
 //    E-068）。仍无破坏性改动，故进 patch 级。
-// ⚠️ 2.0.7（2026-10-09，ERRATA E-069）：太极与终端**彻底分开**（用户拍板）—— 太极的工作区从
+// ⚠️ 2.0.7（2026-10-09，ERRATA E-069）：抱朴与终端**彻底分开**（用户拍板）—— 抱朴的工作区从
 //    共享的 `Download/证道` 换成 App 私有的 `files/oc/workspace`，安装包缓存从
-//    `Download/证道/opencode` 搬到 `files/oc/pkg`（旧的自动搬家并清掉），太极的预置（人设 +
-//    `opencode.json` 字段）从「终端启动」这条路径搬进太极自己拉 serve 之前，人设升 v3。
+//    `Download/证道/opencode` 搬到 `files/oc/pkg`（旧的自动搬家并清掉），抱朴的预置（人设 +
+//    `opencode.json` 字段）从「终端启动」这条路径搬进抱朴自己拉 serve 之前，人设升 v3。
 //    终端的共享工作区 / 资料库 / 日志一律不动。旧装机升级即自动搬家，无需用户操作。
 // ⚠️ 2.0.8（2026-10-09，ERRATA E-072~E-076）：一轮「维护与优化」批次，六件事：
 //    ①#1 存储读取回归——真机读写 `/sdcard` 的仪器冒烟用例 5 例（`StorageReadWriteSmokeTest`）
@@ -105,7 +105,7 @@ plugins {
 //      `installed()` 判否 ⇒ 报「释放后二进制缺失（包不完整？）」。现改为前缀常量
 //      `PKG_ENTRY_PREFIX` + `relPathOf()`（准入判断与剥前缀共用同一前缀），并顺手清掉旧版
 //      错位残留（真机回收 275 MB）、给这条失败补一行日志。真机验收：清理 275 MB 残留 →
-//      `OpenCode 2.0.22 释放完成（2 个文件）` → 太极 ● 已连接（SSE HTTP 200）；
+//      `OpenCode 2.0.22 释放完成（2 个文件）` → 抱朴 ● 已连接（SSE HTTP 200）；
 //      `OcExtractPathTest` 13 例全绿（全套 63 suite / 563 例 / 0 失败）。
 //    ②E-089 资料库扫描不再静默截断：清单自己写一行「只列了前 2000 个」，设置页状态带
 //      「（已达扫描上限，可能未列全）」；`资料库/说明.md`「各种格式都行」改准。
@@ -113,11 +113,11 @@ plugins {
 //    ③README / README.en 把系统要求（Android 16+ / arm64）提到第一屏。
 //    仍无破坏性改动，故进 patch 级。
 // ⚠️ 2.0.12（2026-10-11）：三批修复攒在一起发，均无破坏性改动：
-//    ①太极连接保活（用户报「每次重进太极都会重新连接」）：网络实例与轮询/SSE 改挂进程级
+//    ①抱朴连接保活（用户报「每次重进抱朴都会重新连接」）：网络实例与轮询/SSE 改挂进程级
 //      `OcRuntime`（原先挂在页面上，切 Tab 即销毁），`OcRepository.open()` 按纯函数
-//      `shouldReopenConnection()` 判断"连接还活着就复用"。真机验收：切到终端再回太极，
+//      `shouldReopenConnection()` 判断"连接还活着就复用"。真机验收：切到终端再回抱朴，
 //      日志为 `open 复用现有连接：会话 ses_…（切 Tab / 返回不重连）`，期间 SSE 事件照收
-//      （docs/acceptance/taiji-keepalive-2026-10-11.md）。附 E-093：换包后首次进太极可能
+//      （docs/acceptance/taiji-keepalive-2026-10-11.md）。附 E-093：换包后首次进抱朴可能
 //      因 serve.log「listening 先、password 后」的落盘竞态拿到 null 密码 → 401，
 //      已给孤儿 serve 分支补有界等待。
 //    ②E-092 缓存口径：ffmpeg 是 hermes **必需**包（`pm/install.py` 的 drift 里 optional
@@ -125,7 +125,7 @@ plugins {
 //      `install out of sync (ffmpeg: …)` 且不会自愈；现归入保留，并新增「hermes 自检」组
 //      列出「已注册但目录不在」的包。另：终端外观卡的 字号/画布留白/配色 改为只读默认
 //      （只有行距可选）、快捷键条 `⌫` 改发 Delete（CSI `3~`）、公共区安装脚本可单独清。
-//    ③UI/UX 审计 10 条 P0/P1（台账 §A #21）：首页按钮折行、顶栏副行溢出、太极关闭/删除
+//    ③UI/UX 审计 10 条 P0/P1（台账 §A #21）：首页按钮折行、顶栏副行溢出、抱朴关闭/删除
 //      防误触与文案、终端选词时左缘右滑不再误关、权限抽屉 remember 跨请求残留、
 //      抽屉底部被键盘/手势条遮挡、存储卡「统计中…」等。
 //    仍无破坏性改动，故进 patch 级。
@@ -189,13 +189,13 @@ plugins {
 //      直接失败（见下方发版签名断言）；CI 增加许可证正文门禁 `tools/check-licenses.py`
 //      （E-105 实测过 AGP 会剥掉构件里的 `META-INF/LICENSE*`，所以「随构件分发」不能当承诺）。
 //    仍无破坏性改动，故进 patch 级。
-// ⚠️ 2.1.1（2026-10-13）：patch 级 —— 修 **E-123「太极页切到历史会话后页面不重载」**。
-//    现象（用户 2026-10-13 真机报障，逐字：「我刚刚在太极页切换会话的时候就有个出错，然后关闭 APP
+// ⚠️ 2.1.1（2026-10-13）：patch 级 —— 修 **E-123「抱朴页切到历史会话后页面不重载」**。
+//    现象（用户 2026-10-13 真机报障，逐字：「我刚刚在抱朴页切换会话的时候就有个出错，然后关闭 APP
 //    重进了才没问题的。是那种切换回旧聊天会话的时候」）：切会话后页面停在空列表、看着像卡死/出错，
 //    杀进程重进才恢复。根因：`OcRepository.switchSession()` 先把 `sessionId` 预置成目标 id，再去调
 //    `open()`；而 `open()` 的连接复用判据（v2.0.12 / §A #22 引入）看到 `requested == current` 就
 //    整段 `return`（只打「open 复用现有连接」，不 `loadAll`、不重建轮询与 SSE）⇒ 换会话等于没换。
-//    修法：把「清残留状态」抽成 `TaijiState.afterSessionSwitchStarted()`，**刻意不动 sessionId**，
+//    修法：把「清残留状态」抽成 `BaopuState.afterSessionSwitchStarted()`，**刻意不动 sessionId**，
 //    让判据照旧判「换会话」；`switchSession()` 只负责清状态 + 调 `open()`。两条 JVM 回归用例钉住
 //    （`OcConnectionPolicyTest`：「预置状态绝不动 sessionId」「预置后 + 判据 ⇒ 必须重开」）。
 //    另附一处顺带澄清：`startNewSession()` 走同一条路，一并修好。
@@ -210,7 +210,7 @@ plugins {
 //      每 30s 汇总本 UID 全部进程的 CPU jiffies，连续 20 轮（10 分钟）单轮 < 2 jiffy 且累计
 //      < 15 jiffy 才释放；释放期间活动回来立即重取；通知文案两态（会话运行中 ⇄ 空闲休眠）。
 //      判据一律偏保守：**宁可多持锁，不误判为空闲**（用户逐字）。
-//    ③太极 **401 自治愈**（E-093 的另一半）：收到 401 就用**重新解析到**的 serve 密码重试一次
+//    ③抱朴 **401 自治愈**（E-093 的另一半）：收到 401 就用**重新解析到**的 serve 密码重试一次
 //      （OkHttp 原生 `Authenticator`，最多重试一次、SSE 不碰）；密码解析改为「收集候选口令
 //      （最多 3 个、新→旧）+ `GET /api/session` 探针定案」，不再只看日志最后一行。
 //    三处都无破坏性改动：与 v2.0.13~v2.0.18 同一把发布钥匙，**直接覆盖安装、数据全在**。
@@ -276,7 +276,7 @@ android {
         //
         // ⚠️⚠️ oc 直启 opencode（ProcessBuilder(filesDir/oc/usr/bin/opencode)，不经 loader）
         // 的真机实测（第㉕刀，荣耀 PGT-AN10 / Android 16）：抬 36 后**首次启动**曾
-        // 「error=13, Permission denied」⇒ 太极 serve 起不来；但杀进程重启 / App 重启后
+        // 「error=13, Permission denied」⇒ 抱朴 serve 起不来；但杀进程重启 / App 重启后
         // **两次复验均成功**（/proc/<pid>/exe 实证数据目录二进制在跑、SSE 正常）。
         // ⇒ 「36 必被 W^X 拦」的预告在本机**未复现**，error=13 属偶发（疑安装后首启的
         // 厂商 freezer 瞬态，与「上次退出：厂商后台清理」同源）。单设备实证，别当普适
@@ -438,7 +438,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
 
-    // xz 解压（太极 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
+    // xz 解压（抱朴 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
     implementation("org.tukaani:xz:1.9")
 
     implementation("androidx.navigation:navigation-compose:2.8.5")
@@ -464,7 +464,7 @@ dependencies {
 
     // Markdown 渲染（v1.1 第四阶段）：纯 Compose 实现，覆盖最终回答的 Markdown 排版 +
     // 代码块独立背景/等宽/横向滚动/复制按钮/语法高亮。锁 0.38.1（Kotlin 同线，见 libs.versions.toml）。
-    // 仅用于渲染层（TaijiMessageList.FinalAnswerText），不触碰会话/网络层（架构冻结红线）。
+    // 仅用于渲染层（BaopuMessageList.FinalAnswerText），不触碰会话/网络层（架构冻结红线）。
     implementation(libs.mikepenz.markdown)
     implementation(libs.mikepenz.markdown.m3)
     implementation(libs.mikepenz.markdown.code)

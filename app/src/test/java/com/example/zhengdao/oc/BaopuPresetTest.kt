@@ -10,7 +10,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 太极预置单测（[TaijiPreset]，2026-10-09 从 terminal/ProotLauncher 搬来，见 ERRATA E-069）。
+ * 抱朴预置单测（[BaopuPreset]，2026-10-09 从 terminal/ProotLauncher 搬来，见 ERRATA E-069）。
  *
  * 三组断言，各自锁一个"曾经真错过"的点：
  *  1. **人设文案**：v2 治的是"谎称自己在 Debian 里"（真机证据：`ls /` 被拒、`PATH` 空）；
@@ -20,7 +20,7 @@ import java.io.File
  *  3. **旧缓存搬家**：公共区 `Download/证道/opencode/` 里的安装包搬进私有 `files/oc/pkg/`，
  *     同名不覆盖，搬完删旧目录。
  */
-class TaijiPresetTest {
+class BaopuPresetTest {
 
     // ── 人设文案 ────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ class TaijiPresetTest {
 
     @Test
     fun `人设说清自己在哪、工作区在哪`() {
-        val t = TaijiPreset.personaText(ws)
+        val t = BaopuPreset.personaText(ws)
         // 事实一：App 内置、宿主进程，不是 Debian/远程机
         assertTrue(t.contains("安卓手机上"))
         assertTrue(t.contains("不在 Debian 里"))
@@ -46,7 +46,7 @@ class TaijiPresetTest {
 
     @Test
     fun `人设里不许再出现旧谎话与旧工作区`() {
-        val t = TaijiPreset.personaText(ws)
+        val t = BaopuPreset.personaText(ws)
         // v1 的谎：说自己在 proot Debian 13.7 里（真机实测推翻）
         assertFalse(t.contains("通过 proot 运行"))
         assertFalse(t.contains("你运行在用户的安卓手机上——一个由证道"))
@@ -59,7 +59,7 @@ class TaijiPresetTest {
 
     @Test
     fun `工作区路径变了文案就跟着变`() {
-        assertTrue(TaijiPreset.personaText("/tmp/other-ws").contains("/tmp/other-ws"))
+        assertTrue(BaopuPreset.personaText("/tmp/other-ws").contains("/tmp/other-ws"))
     }
 
     // ── 插件数组搬运 ────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ class TaijiPresetTest {
             """{"plugin":["opencode-mem@latest","@scope/keep-me",
                ["@chncaesar/opencode-plugin-memory",{"opt":1}]]}"""
         )
-        assertTrue(TaijiPreset.stripLegacyMemPlugin(obj))
+        assertTrue(BaopuPreset.stripLegacyMemPlugin(obj))
         val arr = obj.getJSONArray("plugin")
         assertEquals(2, arr.length())
         assertEquals("@scope/keep-me", arr.get(0))
@@ -82,32 +82,32 @@ class TaijiPresetTest {
     @Test
     fun `没有遗留插件时不动配置`() {
         val obj = JSONObject("""{"plugin":["@scope/keep-me"]}""")
-        assertFalse(TaijiPreset.stripLegacyMemPlugin(obj))
+        assertFalse(BaopuPreset.stripLegacyMemPlugin(obj))
         // plugin 键不存在时同样不动（也不该凭空造一个空数组）
         val empty = JSONObject("{}")
-        assertFalse(TaijiPreset.stripLegacyMemPlugin(empty))
+        assertFalse(BaopuPreset.stripLegacyMemPlugin(empty))
         assertFalse(empty.has("plugin"))
     }
 
     @Test
     fun `清空后连键一起删`() {
         val obj = JSONObject("""{"plugin":["opencode-mem"]}""")
-        assertTrue(TaijiPreset.stripLegacyMemPlugin(obj))
+        assertTrue(BaopuPreset.stripLegacyMemPlugin(obj))
         assertFalse(obj.has("plugin"))
     }
 
     @Test
     fun `推荐插件幂等预置_同包不同版本段视为已有`() {
         val obj = JSONObject("{}")
-        assertTrue(TaijiPreset.ensurePluginEnabled(obj, "@chncaesar/opencode-plugin-memory"))
-        assertFalse(TaijiPreset.ensurePluginEnabled(obj, "@chncaesar/opencode-plugin-memory@latest"))
-        assertFalse(TaijiPreset.ensurePluginEnabled(obj, "@chncaesar/opencode-plugin-memory"))
+        assertTrue(BaopuPreset.ensurePluginEnabled(obj, "@chncaesar/opencode-plugin-memory"))
+        assertFalse(BaopuPreset.ensurePluginEnabled(obj, "@chncaesar/opencode-plugin-memory@latest"))
+        assertFalse(BaopuPreset.ensurePluginEnabled(obj, "@chncaesar/opencode-plugin-memory"))
         assertEquals(1, obj.getJSONArray("plugin").length())
     }
 
     // ── 旧缓存搬家 ──────────────────────────────────────────────────────────
 
-    private fun tmpDir(): File = File.createTempFile("taiji-preset", "").let {
+    private fun tmpDir(): File = File.createTempFile("baopu-preset", "").let {
         it.delete(); it.mkdirs(); it
     }
 
@@ -121,7 +121,7 @@ class TaijiPresetTest {
         assertTrue(OcManager.migrateLegacyCacheDir(legacy, target))
         assertTrue(File(target, "opencode-2.0.22-1-aarch64.pkg.tar.xz").isFile)
         assertEquals(2048L, File(target, "opencode-2.0.22-1-aarch64.pkg.tar.xz").length())
-        assertFalse("旧目录必须被删掉（太极不该在公共区留痕迹）", legacy.exists())
+        assertFalse("旧目录必须被删掉（抱朴不该在公共区留痕迹）", legacy.exists())
     }
 
     @Test

@@ -439,7 +439,7 @@
     <string name="main_update_ignore">忽略</string>
     <string name="main_unofficial_build">这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。</string>
 
-    <!-- ── 抱朴 Tab（TaijiScreen：安装 / 连接 / 版本）── -->
+    <!-- ── 抱朴 Tab（BaopuScreen：安装 / 连接 / 版本）── -->
     <string name="taiji_connecting">正在连接 OpenCode…</string>
     <string name="taiji_refresh_failed">刷新会话失败：%1$s</string>
     <string name="taiji_send_failed">发送失败：%1$s</string>
@@ -482,7 +482,7 @@
     <string name="taiji_default_clear_override">默认（清除本会话覆盖）</string>
     <string name="taiji_free">免费</string>
 
-    <!-- ── 抱朴 Tab：会话顶栏 / 连接 / 工具卡（TaijiComponents）── -->
+    <!-- ── 抱朴 Tab：会话顶栏 / 连接 / 工具卡（BaopuSessionBar / BaopuPartCards）── -->
     <string name="taiji_session_history">会话历史</string>
     <string name="taiji_new_session">新会话</string>
     <string name="taiji_new_session_plus">＋  新会话</string>
@@ -878,5 +878,5 @@
     <string name="bridge_reset">重置口令</string>
     <string name="bridge_reset_done">已重置，旧口令立即失效</string>
     <string name="bridge_howto_group">怎么用（给终端里的 agent）</string>
-    <string name="bridge_howto">终端里先记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让 agent 走本机环回操作玄览页面，例如：\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\n可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。\n注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。\n太极（内置 OpenCode）不接这条桥，它的浏览器能力由自身插件提供。</string>
+    <string name="bridge_howto">终端里先记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让 agent 走本机环回操作玄览页面，例如：\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\n可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。\n注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。\n抱朴（内置 OpenCode）不接这条桥，它的浏览器能力由自身插件提供。</string>
 </resources>

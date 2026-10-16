@@ -2,9 +2,9 @@
 //
 // 依据的公开接口：Jetpack Compose（Material 3）官方 API。
 //
-// P4-1（2026-10-14）：自 TaijiComponents.kt（拆分前 1929 行）按内聚性拆出——
+// P4-1（2026-10-14）：自 BaopuComponents.kt（拆分前 1929 行）按内聚性拆出——
 // **只搬不改**，代码逐行原样（含已提交的 P2-10 48dp 触摸目标修复）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
@@ -40,14 +40,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.oc.ConnectionState
-import com.example.zhengdao.oc.TaijiState
+import com.example.zhengdao.oc.BaopuState
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.ui.util.pressClickable
 
 // ── 顶部栏 ────────────────────────────────────────────────────────────
 
 /**
- * 会话状态栏（**固定不滚**：由 TaijiScreen 放在滚动区之外，见那里的 Column/weight 结构）。
+ * 会话状态栏（**固定不滚**：由 BaopuScreen 放在滚动区之外，见那里的 Column/weight 结构）。
  *
  * [connection]非[ConnectionState.Connected] 时显示状态——**失败必须可见**，
  * 不静默（与项目"M2 内存治理不假装成功"同一原则）。
@@ -58,7 +58,7 @@ import com.example.zhengdao.ui.util.pressClickable
  * ① 「那个＋号太小」——原实现是 `IconButton` 里放一个字符「＋」，字形约 16dp 且无底色，
  *    在相邻的 ☰ 旁边显得更小、手指也难瞄。现改为 **40dp 实心 tonal 圆钮 + 自绘加号**。
  * ② 原来的第四个按钮「◼（退出）」已**移入左侧抽屉**（见 [HistoryDrawer]）：它做的事是
- *    `repo.close() + onExit()`，即**结束本次会话（关掉 OpenCode 实例）并退出太极**，
+ *    `repo.close() + onExit()`，即**结束本次会话（关掉 OpenCode 实例）并退出抱朴**，
  *    与「停止生成」（[ComposerBar] 里随流式状态出现的停止钮）**不是同一件事**。
  *    两者都以「停止」的形态出现，是误解的源头；现在「停止」只剩输入框旁那一处。
  *
@@ -255,13 +255,13 @@ private fun ConnectionLabel(
  * - **[ConnectionState.Connecting]**（首次连接中）：中性色 `tertiaryContainer` + 文案
  *   「正在连接…」，**不给「知道了」**——用户不能忽略还没连上这个事实，否则会以为 UI 卡死。
  * - **[ConnectionState.Reconnecting]** / **[ConnectionState.Idle]**：红色 `errorContainer`
- *   + 文案「连接已断开，正在重连…」（或 [TaijiState.lastError]），**给「知道了」**允许用户
+ *   + 文案「连接已断开，正在重连…」（或 [BaopuState.lastError]），**给「知道了」**允许用户
  *   主动消除错误提示。
  *
  * [ConnectionState.Connected] 直接返回 → 不渲染。
  */
 @Composable
-fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
+fun ConnectionBanner(state: BaopuState, onDismiss: () -> Unit) {
     val isVisible = state.connection != ConnectionState.Connected
     AnimatedVisibility(visible = isVisible) {
         val isConnecting = state.connection == ConnectionState.Connecting
@@ -313,7 +313,7 @@ fun ConnectionBanner(state: TaijiState, onDismiss: () -> Unit) {
  */
 @Composable
 fun RunFailureBanner(
-    state: TaijiState,
+    state: BaopuState,
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
 ) {
