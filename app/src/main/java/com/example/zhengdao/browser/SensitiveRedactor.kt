@@ -108,11 +108,12 @@ class SensitiveRedactor(
      * ② 再 [TITLE_KV]——title 是**无 `?` 的裸键值对**时（`token=abc`），redactUrl 整条
      *    走 redactText、不命中键值，由本步补（键名表与 [SENSITIVE_KEY] 同族）。
      *
-     * 为什么单开 [TITLE_KV] 而不直接复用 [redactPairs]：**title 可能形如 URL**，
-     * `?a=1&token=x&b=2` 形态下 [SENSITIVE_KEY] 的值类不认 `&` ⇒ 会把 `&b=2` 一起吞掉
-     * （第48刀A 单测实测抓到：`?sessionid=zzz&email=…` 的尾段被吃）——脱敏不许吃数据，
-     * 吃尾比漏报更糟。execJS 的 cookie/localStorage 返回是 `;` 分隔（第㊵刀口径），
-     * 不受该坑影响 ⇒ **不动 [SENSITIVE_KEY] 本体**，title 专用模式值类加 `&` 终止。
+     * 为什么单开 [TITLE_KV] 而不直接复用 [redactPairs]：这是第48刀A（§B 76）当时的**临时**理由 ——
+     * [SENSITIVE_KEY] 的值类那时不认 `&`，`?a=1&token=x&b=2` 形态会把 `&b=2` 一起吞掉
+     * （第48刀A 单测实测抓到）。**第51刀（§B 82 的 N6）已把 [SENSITIVE_KEY] 的值类一并改为 `&`
+     * 终止**：真机在 execJS 返回上复现了同一坑（`x=1&sessionid=…&b=2` 只回 `x=1&sessionid=`），
+     * 两条管线的「不吃数据」口径自此一致。[TITLE_KV] 仍保留：title 先过 [redactUrl]，其 query
+     * 键名表比 [SENSITIVE_KEY] 宽（email/tel/phone/id/card/sign…），title 取两者并集。
      *
      * 两段对无命中文本都是恒等变换 ⇒ 普通标题（「百度一下」）零误改（负例自证）。
      */
@@ -132,8 +133,13 @@ class SensitiveRedactor(
         /** 银行卡号（16-19 位；初版不校验 Luhn，TODO(阶段1) 降低误报）。 */
         val BANK_CARD = Regex("""(?<!\d)\d{16,19}(?!\d)""")
 
-        /** 密码类键值（password/passwd/pwd = 值）。 */
-        val PASSWORD_KV = Regex("""(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?[^\s"',;]+""")
+        /**
+         * 密码类键值（password/passwd/pwd = 值）。
+         *
+         * 值类含 `&` 终止（第51刀，与 N6 同一口径）：`password=x&next=1` 不许把 `&next=1` 吞掉。
+         * 本模式用于 [redactText]，而 redactText 的出口包括 execJS 返回与页面正文——同一坑。
+         */
+        val PASSWORD_KV = Regex("""(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?[^\s"',;&]+""")
 
         /** 身份证号（18 位，末位可 X）。 */
         val ID_CARD = Regex("""(?<![0-9Xx])\d{17}[\dXx](?![0-9Xx])""")
@@ -142,9 +148,14 @@ class SensitiveRedactor(
          * 敏感键的值置 MASK（cookie/localStorage/session）：命中则值置 MASK，完整键名保留。
          * 键名后允许 [\w-]* 后缀（sessionid / csrf_token / api-key 都算）。
          * 已知误报（可接受，隐私优先）：author= 也会被当敏感键打码。
+         *
+         * **值类含 `&` 终止（第51刀 ＝ §B 82 的 N6 修复，2026-10-16）**：旧口径 `[^\s"',;}]+`
+         * 不认 `&`，在 `x=1&sessionid=SECRET&b=2` 这类串上会从键名一路吞到串尾（真机实测：
+         * execJS 回包只剩 `x=1&sessionid=`）——吃尾比漏报更糟，调用方会以为拿到了完整返回。
+         * `;` 终止保留（cookie 口径）；`&` 与 `;` 同为「键值对分隔符」，都必须在值边界上。
          */
         val SENSITIVE_KEY = Regex(
-            """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|passwd|password)[\w-]*)["']?\s*[:=]\s*["']?[^\s"',;}]+"""
+            """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|passwd|password)[\w-]*)["']?\s*[:=]\s*["']?[^\s"',;&}]+"""
         )
 
         /**

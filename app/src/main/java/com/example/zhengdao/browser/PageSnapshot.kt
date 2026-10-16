@@ -119,9 +119,14 @@ object PageSnapshot {
     /**
      * 属性名本身就像凭据的（`data-token="…"` / `authorization="…"` / `csrf_token="…"`）：
      * 把它的值换成 [MASK]。
+     *
+     * 无引号那一支的边界含 `&` / `"` / `'`（第51刀 ＝ §B 82 的 N6）：本模式不解析 HTML，
+     * `href="?sessionid=SECRET&page=2"` 里的 `sessionid=` 会被当成"无引号属性"，
+     * 旧边界 `[^\s<>]+` 会一路吃到 `>` ⇒ 把 `&page=2"` 连同标签一起吞掉（真机导出里
+     * 表现为 `&` 之后整段消失）。真实属性（有引号）走前两支，值仍被整体打码，不受影响。
      */
     private val SENSITIVE_ATTR = Regex(
-        "(?is)\\b([a-z0-9_:-]*(?:$SENSITIVE_ALT)[a-z0-9_:-]*)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s<>]+)"
+        "(?is)\\b([a-z0-9_:-]*(?:$SENSITIVE_ALT)[a-z0-9_:-]*)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s<>&\"']+)"
     )
 
     /** 一个完整的标签（用来查"名字字段是凭据 → 它携带的值也要打码"）。 */
@@ -139,9 +144,13 @@ object PageSnapshot {
      * 正文/脚本里的 `key=值` 或 `key: 值`（`cookie=…` / `Authorization: Bearer …`）。
      * 键后允许一个**认证方案词**（Bearer / Basic / Digest / Token）——否则
      * `Authorization: Bearer <真值>` 会只吃掉 "Bearer" 而把真值留在原地。
+     *
+     * 值类含 `&` 终止（第51刀 ＝ §B 82 的 N6 修复，2026-10-16）：旧口径不含 `&`，
+     * `?sessionid=SECRET&page=2` 这类串会从键名一路吞到串尾，转义形态（`&amp;`）同理
+     * ——真机实证：导出内容里 `&` 之后整段消失。`&` 与 `;`/`,` 一样是值边界。
      */
     private val SECRET_KV = Regex(
-        "(?i)\\b($SENSITIVE_ALT)\\b\\s*[:=][\\s\"']*(?:(?:bearer|basic|digest)\\s+)?([^\\s\"',;<>{}\\[\\]]+)[\"']?"
+        "(?i)\\b($SENSITIVE_ALT)\\b\\s*[:=][\\s\"']*(?:(?:bearer|basic|digest)\\s+)?([^\\s\"',;&<>{}\\[\\]]+)[\"']?"
     )
 
     /**

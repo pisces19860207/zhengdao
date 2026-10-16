@@ -421,8 +421,8 @@ private fun JsDialogUi(dialog: JsDialog, onDismiss: () -> Unit) {
 }
 
 /**
- * 地址栏 / 起始页提交的**唯一入口**（㊽-D ＝ §B 79，2026-10-16 起）：归一化 URL → scheme 预检 →
- * 确保有承载的引擎 → 加载。
+ * 地址栏 / 起始页提交的**唯一入口**（㊽-D ＝ §B 79，2026-10-16 起）：scheme 预检 →
+ * 归一化 URL → 确保有承载的引擎 → 加载。（第51刀把前两步的顺序改正，见下方"顺序"。）
  *
  * 为什么"确保承载"也放在这里：提交路径共有三条（地址栏「前往」、地址栏 IME Go、起始页搜索框），
  * 三条都调本函数 —— 判据只放一处，才不会出现"某一条记得建标签、另一条忘了"。
@@ -435,9 +435,15 @@ private fun JsDialogUi(dialog: JsDialog, onDismiss: () -> Unit) {
  *
  * scheme 白名单与引擎内拦截一致（http/https）——这里是用户输入预检，引擎是兜底。
  *
+ * **顺序（第51刀 ＝ §B 82 的 N7 修复，2026-10-16）**：预检必须早于归一化。旧顺序先归一化，
+ * 而归一化对"不像 URL"的输入一律当搜索词包成 bing 查询 ⇒ `intent://x` 被洗成 `https://…`，
+ * 预检永远看到 https，`return false` 这条分支在真实输入上不可达（真机：提示一次没出现，
+ * 输入被当搜索词提交）。判据本身搬进 [BrowserUrlPolicy]（纯函数，可被单测直接打到）。
+ *
  * @return false = scheme 不在白名单（调用方给提示）；true = 已加载，或空输入（无动作）。
  */
 private fun tryNavigate(context: Context, input: String): Boolean {
+    if (BrowserUrlPolicy.shouldReject(input)) return false
     val url = normalizeInput(input)
     if (url.isEmpty()) return true
     val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
@@ -449,25 +455,15 @@ private fun tryNavigate(context: Context, input: String): Boolean {
 }
 
 /**
- * 输入归一化（§4.2 用户模式要点）：
+ * 输入归一化（§4.2 用户模式要点；实现已搬进 [BrowserUrlPolicy.normalize]，此处只做
+ * `Uri.encode` 注入 —— 判据留在纯函数里，才能被普通 JVM 单测打到真行为）：
  * - 空串 → 空（调用方无动作）；
  * - 不含点号或含空格 → 当搜索词走 bing（与 openWebSearch 兜底一致，② `TerminalActivity.kt:1061` 先例）；
  * - http:// → https://（外部明文被网络策略拦，升级避免加载失败）；
  * - 其他 → 补 https://。
  */
-private fun normalizeInput(input: String): String {
-    val t = input.trim()
-    if (t.isEmpty()) return ""
-    val looksLikeUrl = t.contains(".") && !t.contains(" ")
-    if (!looksLikeUrl) {
-        return "https://www.bing.com/search?q=" + Uri.encode(t)
-    }
-    return when {
-        t.startsWith("http://", ignoreCase = true) -> "https://" + t.substring("http://".length)
-        t.startsWith("https://", ignoreCase = true) -> t
-        else -> "https://$t"
-    }
-}
+private fun normalizeInput(input: String): String =
+    BrowserUrlPolicy.normalize(input) { Uri.encode(it) }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 提示条自绘小图标（与项目 Tab 图标 / BackChevron 同一套笔：圆头 1.9f 描边）。
