@@ -60,7 +60,9 @@ internal fun jsStringLiteral(s: String): String = "\"" + PageSnapshot.jsonEscape
  * - code 末尾追加的换行，是让 code 自己以 `//` 行注释结尾时不会吃掉收尾的 `}`；
  * - 作用域：脚本级代码里 `var` 与函数声明落在**页面全局**（与浏览器执行一份脚本一致，
  *   也和第㊷刀及更早的函数体包装**不同**——旧包装把它们关在 IIFE 的局部作用域里）；
- *   `let`/`const` 留在本次脚本作用域内。
+ *   `let`/`const` 关在 `try` 块里（块级作用域）：不落页面全局，且同一页面反复
+ *   执行同一段 code 不会「重复声明」报错（实测同一 context 连跑两次 `try{let b=1}`
+ *   均为 undefined，无 SyntaxError）。
  * - **不支持的形态**（解析期错误，包装无解，旧写法同样挂，已在报告记档）：
  *   `return <值>`（`Illegal return statement`）、顶层 `await`（`await is only valid in
  *   async functions…`）。需要 `return` 包 `(function(){ … })()`；需要 `await` 包
