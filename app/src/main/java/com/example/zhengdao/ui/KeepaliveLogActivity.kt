@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -113,10 +114,11 @@ class KeepaliveLogActivity : ComponentActivity() {
  */
 @Composable
 private fun KeepaliveLogTopBar(onBack: () -> Unit) {
+    // B-补-8（2026-10-16）：顶栏不再是写死高度，理由见 SettingsCommon.SettingsTopBar。
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .defaultMinSize(minHeight = 48.dp),
     ) {
         TextButton(
             onClick = onBack,
