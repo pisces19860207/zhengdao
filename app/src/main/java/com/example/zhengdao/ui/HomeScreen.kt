@@ -52,6 +52,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -70,8 +71,10 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
@@ -96,6 +99,15 @@ private const val BUTTON_MIN_WIDTH_DP = 108
  * 让「加载中…」只出现在本进程第一次采集时。仅作展示兜底，不参与任何判定。
  */
 private var sysInfoProcessCache: SystemInfoProvider.Info? = null
+
+/**
+ * B-补-17（2026-10-16）：首页大标题「滚多远才收起」的阈值。
+ *
+ * 取 24dp ≈ 一行多文字的高度：手指刚推一点点时标题不动（避免轻微回弹就闪一下），
+ * 真开始读列表时才收起。判据同时看 `firstVisibleItemIndex`（整项已滚出）
+ * 与 `firstVisibleItemScrollOffset`（同一项内已滚的像素）。
+ */
+private val HOME_TITLE_COLLAPSE_DISTANCE = 24.dp
 
 /**
  * 首页：顶部可折叠系统状态卡 + Agent 卡片列表；底部 Tab 的「终端」页由
@@ -343,11 +355,39 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
+    // ── B-补-17（2026-10-16）：首页大标题随滚动收缩（iOS large title 的做法）──
+    // 原先是常驻 22sp（`titleLarge`）：往下滚标题一个字不变，白占一行最贵的屏。
+    // 现在分两档并按滚动量插值：
+    //   展开 = `typography.titleLarge`（列表在顶部时与改前**逐像素一致**，零视觉变化）
+    //   收起 = `typography.titleMedium`（滚过 [HOME_TITLE_COLLAPSE_DISTANCE] 之后）
+    // 两个字号都**从主题槽位取**、不写死 sp —— 将来调 `ui/theme/Type.kt` 的字号阶梯
+    // （B-补-18）时这里跟着变，不会再出现「一处改了、另一处写死」。
+    val titleDensity = LocalDensity.current
+    val titleCollapseDistancePx = with(titleDensity) { HOME_TITLE_COLLAPSE_DISTANCE.toPx() }
+    val titleScrolled by remember(listState) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 ||
+                listState.firstVisibleItemScrollOffset > titleCollapseDistancePx
+        }
+    }
+    val titleCollapse by animateFloatAsState(
+        targetValue = if (titleScrolled) 1f else 0f,
+        label = "homeTitleCollapse",
+    )
+    val expandedTitle = MaterialTheme.typography.titleLarge
+    val collapsedTitle = MaterialTheme.typography.titleMedium
+    val titleStyle = expandedTitle.copy(
+        fontSize = lerp(expandedTitle.fontSize, collapsedTitle.fontSize, titleCollapse),
+        lineHeight = lerp(expandedTitle.lineHeight, collapsedTitle.lineHeight, titleCollapse),
+    )
+
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // ── 固定顶栏（不随内容滚动）──
-        // 与太极页一致：标题常驻、内容在下方自滚。原先把标题塞进 LazyColumn 的第一项，
+        // ── 固定顶栏（不随内容滚出屏幕，但会收缩）──
+        // 与太极页一致：标题挂在顶栏、内容在下方自滚。原先把标题塞进 LazyColumn 的第一项，
         // 往下滚标题就滚没了——两个根页同一层级，行为却不一样。
+        // B-补-17（2026-10-16）起首页多了一层：标题不再「常驻 22sp 一动不动」，而是随滚动
+        // 收缩成紧凑标题（见上面 `titleStyle` 的插值），滚回顶部再长回来。
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -356,7 +396,8 @@ fun HomeScreen(
         ) {
             Text(
                 text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
+                // B-补-17：随滚动在 `titleLarge` → `titleMedium` 之间插值（列表在顶部时＝原标题Large）
+                style = titleStyle,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
