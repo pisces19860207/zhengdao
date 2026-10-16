@@ -31,13 +31,39 @@ data class LlmMessage(val role: String, val content: String) {
     }
 }
 
+/**
+ * 流式累积中的原始工具调用（arguments 还是 JSON **字符串**——parse 与校验归
+ * `agent/ToolCallCodec`，坏 JSON 在那里转"错误原文回灌"，不在网络层崩）。
+ * 定义在 baopu 包：LlmSse（本文件）产、ToolCallCodec（agent 包）消费 ⇒ 依赖单向。
+ */
+data class RawToolCall(
+    val id: String,
+    val name: String,
+    val argumentsJson: String,
+)
+
+/** 一帧里的 tool_call 增量（id/name 一般首帧给，arguments 分多帧到货）。 */
+data class ToolCallDelta(
+    val index: Int,
+    val id: String? = null,
+    val name: String? = null,
+    val argumentsDelta: String? = null,
+)
+
 /** 流式事件（给调用方的唯一出口）。 */
 sealed interface LlmEvent {
     /** 一段增量文本。 */
     data class Delta(val text: String) : LlmEvent
 
-    /** 正常结束（携带 finish reason；拿不到为 null）。 */
-    data class Finished(val reason: String?) : LlmEvent
+    /**
+     * 正常结束（携带 finish reason；拿不到为 null）。
+     * [toolCalls] = 本轮累积出的原始工具调用（协议 A；没有则为空表）——
+     * 流式期间内存累积、结束一次性交出（程枢版 §9 施工细节第 1 条）。
+     */
+    data class Finished(
+        val reason: String?,
+        val toolCalls: List<RawToolCall> = emptyList(),
+    ) : LlmEvent
 
     /**
      * 失败。异常**原文只进这里与 RunLog**，给用户看的文案由调用方人话化
@@ -99,8 +125,16 @@ internal object LlmWire {
      * 请求体。Anthropic 的两个特殊处理：
      * 1. `system` 角色**不是消息**，要提到顶层 `system` 字段（多条合并）；
      * 2. `max_tokens` 必填（拿不到用户设置时的默认值）。
+     *
+     * [tools] = 协议 A 的工具数组（`ToolRegistry.toolsJsonOpenAi/Anthropic` 产出）。
+     * null/空 = 不带字段（**向后兼容刀 0b 的 15 条单测**：老调用点不传 tools）。
      */
-    fun bodyOf(p: Provider, messages: List<LlmMessage>, stream: Boolean = true): String =
+    fun bodyOf(
+        p: Provider,
+        messages: List<LlmMessage>,
+        stream: Boolean = true,
+        tools: JSONArray? = null,
+    ): String =
         when (p.protocol) {
             LlmProtocol.OPENAI_COMPAT -> JSONObject()
                 .put("model", p.model)
@@ -110,6 +144,7 @@ internal object LlmWire {
                         arr.put(JSONObject().put("role", m.role).put("content", m.content))
                     }
                 })
+                .apply { if (tools != null && tools.length() > 0) put("tools", tools) }
                 .toString()
 
             LlmProtocol.ANTHROPIC -> {
@@ -126,6 +161,7 @@ internal object LlmWire {
                             arr.put(JSONObject().put("role", m.role).put("content", m.content))
                         }
                     })
+                    .apply { if (tools != null && tools.length() > 0) put("tools", tools) }
                     .toString()
             }
         }
@@ -209,6 +245,93 @@ internal object LlmSse {
             }
         }
     }.getOrNull()
+
+    /**
+     * 取一帧里的 tool_call 增量（协议 A；坏 JSON 不抛，返回空表）。
+     * OpenAI 兼容：`choices[0].delta.tool_calls[]`（index/id/function.name/function.arguments）；
+     * Anthropic：`content_block_start`（tool_use 的 id/name）＋ `content_block_delta`
+     * （input_json_delta 的 partial_json）。
+     */
+    fun toolCallDeltas(protocol: LlmProtocol, payload: String): List<ToolCallDelta> = runCatching {
+        val json = JSONObject(payload)
+        when (protocol) {
+            LlmProtocol.OPENAI_COMPAT -> {
+                val arr = json.optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("delta")?.optJSONArray("tool_calls")
+                if (arr == null) {
+                    emptyList()
+                } else {
+                    (0 until arr.length()).mapNotNull { i ->
+                        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val fn = o.optJSONObject("function")
+                        ToolCallDelta(
+                            index = o.optInt("index", i),
+                            id = o.optString("id").takeIf { it.isNotEmpty() && it != "null" },
+                            name = fn?.optString("name")?.takeIf { it.isNotEmpty() && it != "null" },
+                            argumentsDelta = fn?.optString("arguments")?.takeIf { it.isNotEmpty() && it != "null" },
+                        )
+                    }
+                }
+            }
+
+            LlmProtocol.ANTHROPIC -> when (json.optString("type")) {
+                "content_block_start" -> {
+                    val b = json.optJSONObject("content_block") ?: return@runCatching emptyList()
+                    if (b.optString("type") != "tool_use") emptyList()
+                    else listOf(
+                        ToolCallDelta(
+                            index = json.optInt("index", 0),
+                            id = b.optString("id").takeIf { it.isNotEmpty() && it != "null" },
+                            name = b.optString("name").takeIf { it.isNotEmpty() && it != "null" },
+                        ),
+                    )
+                }
+
+                "content_block_delta" -> {
+                    val d = json.optJSONObject("delta") ?: return@runCatching emptyList()
+                    if (d.optString("type") != "input_json_delta") emptyList()
+                    else listOf(
+                        ToolCallDelta(
+                            index = json.optInt("index", 0),
+                            argumentsDelta = d.optString("partial_json").takeIf { it.isNotEmpty() && it != "null" },
+                        ),
+                    )
+                }
+
+                else -> emptyList()
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    /**
+     * tool_call 累积器（流式）：按 index 把多帧增量合并，结束时 [finish] 出原始调用。
+     * arguments 是 JSON 字符串分片拼接，**结束后才 parse**（流式不能逐片 parse）。
+     */
+    class ToolCallAccumulator {
+        private data class Slot(
+            var id: String = "",
+            var name: String = "",
+            val args: StringBuilder = StringBuilder(),
+        )
+
+        private val slots = HashMap<Int, Slot>()
+
+        fun accept(deltas: List<ToolCallDelta>) {
+            for (d in deltas) {
+                val slot = slots.getOrPut(d.index) { Slot() }
+                d.id?.let { slot.id = it }
+                d.name?.let { slot.name = it }
+                d.argumentsDelta?.let { slot.args.append(it) }
+            }
+        }
+
+        fun isEmpty(): Boolean = slots.isEmpty()
+
+        /** 结束累积，产出按 index 排序的原始调用。 */
+        fun finish(): List<RawToolCall> = slots.entries
+            .sortedBy { it.key }
+            .map { (_, s) -> RawToolCall(id = s.id, name = s.name, argumentsJson = s.args.toString()) }
+    }
 }
 
 /**
@@ -228,9 +351,9 @@ class LlmClient(private val provider: Provider) {
 
     private val http: OkHttpClient = defaultHttp()
 
-    /** 构造请求（纯形状，不执行）。 */
-    fun chatRequest(messages: List<LlmMessage>): Request {
-        val body = LlmWire.bodyOf(provider, messages).toRequestBody(LlmWire.JSON_MEDIA_TYPE)
+    /** 构造请求（纯形状，不执行）。[tools] 为 null/空时不带字段（向后兼容）。 */
+    fun chatRequest(messages: List<LlmMessage>, tools: JSONArray? = null): Request {
+        val body = LlmWire.bodyOf(provider, messages, tools = tools).toRequestBody(LlmWire.JSON_MEDIA_TYPE)
         return Request.Builder()
             .url(LlmWire.endpoint(provider.protocol, provider.baseUrl))
             .apply {
@@ -242,8 +365,8 @@ class LlmClient(private val provider: Provider) {
     }
 
     /** 异步流式：把阻塞解析丢到 [netExecutor]，事件回 [sink]。 */
-    fun streamAsync(messages: List<LlmMessage>, sink: (LlmEvent) -> Unit) {
-        val call = http.newCall(chatRequest(messages))
+    fun streamAsync(messages: List<LlmMessage>, tools: JSONArray? = null, sink: (LlmEvent) -> Unit) {
+        val call = http.newCall(chatRequest(messages, tools))
         netExecutor.execute { stream(call, sink) }
     }
 
@@ -252,6 +375,9 @@ class LlmClient(private val provider: Provider) {
      *
      * 失败一律转 [LlmEvent.Failed]，**不抛**——抛异常会让调用方在两处处理
      * （try/catch + sink），转事件只有一条出口。协程取消除外：那是取消不是失败。
+     *
+     * tool_calls 在流内按 index 累积（[LlmSse.ToolCallAccumulator]），
+     * [LlmEvent.Finished] 一次性带出（判据：流式期间内存累积，不每帧落库）。
      */
     fun stream(call: Call, sink: (LlmEvent) -> Unit) {
         try {
@@ -272,20 +398,22 @@ class LlmClient(private val provider: Provider) {
                     return
                 }
                 val frames = LlmSse.FrameBuffer()
+                val toolCalls = LlmSse.ToolCallAccumulator()
                 val source = body.source()
                 var finished = false
                 while (!finished) {
                     val line = source.readUtf8Line() ?: break
                     val payload = frames.line(line) ?: continue
                     if (LlmSse.isTerminator(payload)) {
-                        sink(LlmEvent.Finished("stop"))
+                        sink(LlmEvent.Finished("stop", toolCalls.finish()))
                         finished = true
                         break
                     }
                     LlmSse.deltaText(provider.protocol, payload)?.let { sink(LlmEvent.Delta(it)) }
+                    toolCalls.accept(LlmSse.toolCallDeltas(provider.protocol, payload))
                     val reason = LlmSse.finishReason(provider.protocol, payload)
                     if (reason != null) {
-                        sink(LlmEvent.Finished(reason))
+                        sink(LlmEvent.Finished(reason, toolCalls.finish()))
                         finished = true
                     }
                 }
