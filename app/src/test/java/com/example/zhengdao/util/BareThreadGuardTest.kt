@@ -85,6 +85,8 @@ import kotlin.text.Charsets
  *   两条都有名 + daemon（`Thread(r, "…").apply { isDaemon = true }` 房型），本次登记。
  *   zd-baopu-tool（工具单线程）**未创建**：刀 0 不带工具集，归刀 1 的 ToolRegistry，
  *   到时随工具线程一起登记，不预先占位。
+ * - 2026-10-16（抱朴刀 0b）：**无新增线程**；BaopuDb.kt 因加 memory 表 ＋ v1→v2 迁移 ＋ 缓存两列，
+ *   单写者创建点 258→366→393 两次平移，本次回填（逐处核过仍是同一段 Thread(r, …)）。
  */
 class BareThreadGuardTest {
 
@@ -126,7 +128,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
-            "BaopuDb.kt:258",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者）
+            "BaopuDb.kt:393",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移）
             "HomeScreen.kt:599",                    // zd-health-fix（清场删掉 zd-taiji-retry 后自 :620 平移 -21）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）

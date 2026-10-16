@@ -46,6 +46,17 @@ data class Provider(
     val headers: Map<String, String> = emptyMap(),
     /** 是否内置免费通道预设。 */
     val builtinFree: Boolean = false,
+    /**
+     * 上下文窗口（token 数，**可空**）。来自 provider 元数据的 ctx；
+     * null = 没拿到元数据 ⇒ 上层按 [ContextAssembler.DEFAULT_WINDOW_TOKENS]（128k）回退。
+     * （追加二第 1 条新增；刀 0 无此字段，老构造点不受影响。）
+     */
+    val contextWindow: Int? = null,
+    /**
+     * 输出上限（token 数，**可空**）。来自 provider 元数据；null ⇒ 回退 32k。
+     * 单轮预算 = min(窗口 × 0.6, 输出上限 × 0.9)（程枢版 §7）。
+     */
+    val maxOutput: Int? = null,
 ) {
     init {
         require(isPermittedBaseUrl(baseUrl)) {
