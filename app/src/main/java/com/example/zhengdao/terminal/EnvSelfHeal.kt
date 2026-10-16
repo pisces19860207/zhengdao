@@ -77,6 +77,20 @@ object EnvSelfHeal {
         return kept.joinToString("\n") to (lines.size - kept.size)
     }
 
+    /**
+     * hosts 文本 ⇒「已存在的词元」集合（B-补-4，2026-10-16）。
+     *
+     * **必须先剥掉 `#` 之后的内容**：原先这里直接把整段 `split(Regex("\\s+"))` 收成集合，
+     * 于是 `# 1.2.3.4 opencode.ai` 这种**注释行**也会让「钉住项已在」成立 ⇒ 该补的钉住项
+     * 永远补不上，而 hosts 里其实一行生效的都没有。判定只看生效行。
+     */
+    internal fun hostsTokens(text: String): Set<String> =
+        text.lines()
+            .map { it.substringBefore('#') }
+            .filter { it.isNotBlank() }
+            .flatMap { it.trim().split(Regex("\\s+")) }
+            .toSet()
+
     /** DNS 兜底（设计文档 §4）：proot 内没有 systemd-resolved，缺 resolv.conf 就是
      * "下载得动、上不了网"的第一大故障。多路 DNS：国内源在前（快且稳），国际源兜底
      * （走 VPN 时由其接管）。options 行（2026-10-06，用户路上移动网络 DNS 超时反馈）：
@@ -87,8 +101,11 @@ object EnvSelfHeal {
         IssueCenter.resolve("selfheal-dns")
         var changed = false
         // 旧版 resolv 只有国际源或无 options：升级后补齐国内源 + 重试参数
-        val stale = resolv.isFile && (!resolv.readText().contains("223.5.5.5") ||
-            !resolv.readText().contains("options timeout"))
+        // B-补-3（2026-10-16）：**只读一次** —— 原先连写两次 `resolv.readText()`，两次之间
+        // guest 内进程改了文件就会得到「半新半旧」的判定（还白多一次 IO）。
+        val resolvText = if (resolv.isFile) resolv.readText() else ""
+        val stale = resolv.isFile && (!resolvText.contains("223.5.5.5") ||
+            !resolvText.contains("options timeout"))
         if (!resolv.isFile || resolv.length() == 0L || stale) {
             resolv.parentFile?.mkdirs()
             // ⚠️ v1.2 网络优化把 resolv.conf 锁成了 0444（防被覆盖）。但这个文件在
@@ -153,7 +170,8 @@ object EnvSelfHeal {
                 changed = true
                 RunLog.log("/etc/hosts 已撤除 $removed 条作废钉住项（opencode.ai 钉 IP：收益≈0、IP 轮换即硬故障）")
             }
-            val present = cur.split(Regex("\\s+")).toSet()
+            // B-补-4：只看生效行（注释行里的词不算「已在」）
+            val present = hostsTokens(cur)
             val missing = HOSTS_PINS.filter { pin -> pin.substringAfter(' ') !in present }
             if (missing.isEmpty()) {
                 if (changed) hosts.writeText(cur + (if (cur.endsWith("\n")) "" else "\n"))

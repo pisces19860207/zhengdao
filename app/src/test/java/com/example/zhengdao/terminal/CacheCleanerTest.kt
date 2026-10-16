@@ -446,6 +446,41 @@ class CacheCleanerTest {
         assertEquals(1L, CacheCleaner.bytesToMb(1048576L))
         assertEquals(437L, CacheCleaner.bytesToMb(437L * 1048576L + 512L))
     }
+
+    // ── B-补-5（2026-10-16）：量不到时**留痕**再按 0 计，不再静默 ──────────────────────
+
+    @Test
+    fun `B_补_5_统计失败退化成 0 而不是抛出`() {
+        val got = CacheCleaner.measureOrZero("测试项") { error("设备上读不到这个目录") }
+
+        assertEquals("失败必须退化成 0（面板口径不变）", 0L, got)
+    }
+
+    @Test
+    fun `B_补_5_统计成功原样返回`() {
+        assertEquals(4096L, CacheCleaner.measureOrZero("测试项") { 4096L })
+    }
+
+    @Test
+    fun `门禁_B_补_5_cleanableBytes 里不再有静默兜底`() {
+        val src = terminalSource("CacheCleaner.kt")
+        val body = src.substringAfter("private fun cleanableBytes(ctx: Context): Long {")
+            .substringBefore("\n    }")
+
+        assertFalse("cleanableBytes 里不许再有 runCatching…getOrDefault(0L)", body.contains("runCatching"))
+        assertTrue("四条统计都要走 measureOrZero（失败会落 RunLog）", body.contains("measureOrZero("))
+    }
+
+    /** 双路径找源码（Gradle 工作目录可能是仓库根，也可能是 `app/`）。 */
+    private fun terminalSource(name: String): String {
+        val candidates = listOf(
+            java.io.File("src/main/java/com/example/zhengdao/terminal/$name"),
+            java.io.File("app/src/main/java/com/example/zhengdao/terminal/$name"),
+        )
+        val file = candidates.firstOrNull { it.isFile }
+            ?: error("找不到源码 $name，试过：${candidates.joinToString { it.path }}")
+        return file.readText()
+    }
 }
 
 /** 与 [CacheCleaner.staleTempBytes] 同义，只是作用在给定目录上（便于单测）。 */
