@@ -3,7 +3,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
-import com.example.zhengdao.ui.Settings
+import com.example.zhengdao.core.AppPrefs
 import java.io.File
 
 /**
@@ -40,7 +40,7 @@ object Workspace {
     /** 宿主侧工作区目录（bind / 软链 / 脚本落点的唯一来源）。保证目录存在。 */
     fun hostDir(ctx: Context): File {
         migrate(ctx)
-        val prefs = Settings.prefs(ctx)
+        val prefs = AppPrefs.prefs(ctx)
         val mode = prefs.getString(KEY_MODE, "default") ?: "default"
         val resolved = when {
             !storageGranted(ctx) -> privateDir(ctx)
@@ -83,7 +83,7 @@ object Workspace {
     fun privateDir(ctx: Context): File = File(ctx.getExternalFilesDir(null), "workspace")
 
     private fun customDir(ctx: Context): File? =
-        Settings.prefs(ctx).getString(KEY_PATH, null)
+        AppPrefs.prefs(ctx).getString(KEY_PATH, null)
             ?.takeIf { it.startsWith(SHARED_ROOT) }
             ?.let { File(it) }
             ?.takeIf { it.isDirectory || it.mkdirs() }
@@ -101,7 +101,7 @@ object Workspace {
      * 只读用途：不要把本值喂回 [hostDir] 的解析（那是 [KEY_MODE]/[KEY_PATH] 的事）。
      */
     fun prevHostDir(ctx: Context): File? =
-        Settings.prefs(ctx).getString(KEY_PREV, null)
+        AppPrefs.prefs(ctx).getString(KEY_PREV, null)
             ?.takeIf { it.isNotBlank() }
             ?.takeIf { it.trimEnd('/') != hostDir(ctx).absolutePath.trimEnd('/') }
             ?.let { File(it) }
@@ -110,21 +110,21 @@ object Workspace {
     private fun rememberCurrent(ctx: Context) {
         runCatching {
             val cur = hostDir(ctx).absolutePath
-            Settings.prefs(ctx).edit().putString(KEY_PREV, cur).apply()
+            AppPrefs.prefs(ctx).edit().putString(KEY_PREV, cur).apply()
         }
     }
 
     /** 设置为默认工作区（Download/证道）。 */
     fun setDefault(ctx: Context) {
         rememberCurrent(ctx)
-        Settings.prefs(ctx).edit().putString(KEY_MODE, "default").apply()
+        AppPrefs.prefs(ctx).edit().putString(KEY_MODE, "default").apply()
     }
 
     /** 设置为自定义工作区（任意共享存储路径；非法路径拒绝）。 */
     fun setCustom(ctx: Context, path: String): Boolean {
         if (!path.startsWith(SHARED_ROOT)) return false
         rememberCurrent(ctx)
-        Settings.prefs(ctx).edit()
+        AppPrefs.prefs(ctx).edit()
             .putString(KEY_MODE, "custom")
             .putString(KEY_PATH, path.trimEnd('/'))
             .apply()
@@ -134,12 +134,12 @@ object Workspace {
     /** 设置为仅私有。 */
     fun setPrivate(ctx: Context) {
         rememberCurrent(ctx)
-        Settings.prefs(ctx).edit().putString(KEY_MODE, "private").apply()
+        AppPrefs.prefs(ctx).edit().putString(KEY_MODE, "private").apply()
     }
 
     /** 一次性迁移：旧 workspace_custom 的有效路径转存新键，无效值清除。 */
     private fun migrate(ctx: Context) {
-        val prefs = Settings.prefs(ctx)
+        val prefs = AppPrefs.prefs(ctx)
         if (prefs.getBoolean(KEY_MIGRATED, false)) return
         val legacy = prefs.getString("workspace_custom", null)
         if (!legacy.isNullOrBlank()) {
