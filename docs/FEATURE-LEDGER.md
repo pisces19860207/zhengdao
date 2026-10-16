@@ -717,7 +717,7 @@
 
 #### E.1 命名对齐（并进刀 1，一次性改完，以后不再改）
 
-- 用户 2026-10-16 拍板逐字：「taiji→baopu 改名时机 同意你的，而且**其他的也要改成和现在的tab同名，以后就不改名字了**。」⇒ 目标名 **抱朴 / 遥遨 / 怡然 / 玄览**。
+- 用户 2026-10-16 拍板逐字：「taiji→baopu 改名时机 同意你的，而且**其他的也要改成和现在的tab同名，以后就不改名字了**。」⇒ 目标名 **抱朴 / 逍遥 / 怡然 / 玄览**。
 - **改范围＝显示名＋符号名，不是数据键**。禁改两类：
   1. **持久化 key**：`oc/OcManager.kt:1064` `getSharedPreferences("zhengdao-taiji")`、`oc/TaijiPreset.kt:38` `KEY_PERSONA_WS = "agents_md_ws_taiji"`、`:41` `KEY_PERSONA_VER = "agents_md_ver_taiji"`（改了会重置人设版本、重写 guest 的 `AGENTS.md`）。
   2. **跨包符号**：`oc/TaijiState.kt` 的 `TaijiPhase`（`:12`）／`TaijiState`（`:53`）被 `oc/OcRepository.kt`、`oc/OcConnectionPolicy.kt` 引用 —— 随本刀统一走一遍。
