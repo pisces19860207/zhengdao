@@ -3,6 +3,7 @@ package com.example.zhengdao.baopu
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,10 +26,69 @@ class BaopuDbTest {
         BaopuSql.DDL.first { it.contains("CREATE TABLE IF NOT EXISTS $name (") }
 
     @Test
-    fun `五张表齐全`() {
+    fun `v1 五张表齐全`() {
         listOf("session", "message", "part", "run_log", "plan_batch").forEach { name ->
             assertTrue("缺表 $name", BaopuSql.DDL.any { it.contains("CREATE TABLE IF NOT EXISTS $name (") })
         }
+    }
+
+    // ── v2（刀 0b）：memory 表 ＋ interrupted_step 迁移 ────────────────────
+
+    @Test
+    fun `v2 memory表字段与索引齐备`() {
+        val ddl = BaopuSql.MEMORY_DDL.first { it.contains("CREATE TABLE IF NOT EXISTS memory (") }
+        listOf(
+            "id TEXT PRIMARY KEY",
+            "scope TEXT NOT NULL",
+            "kind TEXT NOT NULL",
+            "title TEXT NOT NULL",
+            "body TEXT NOT NULL",
+            "tags TEXT NOT NULL DEFAULT ''",
+            "source_session TEXT NOT NULL DEFAULT ''",
+            "source_file TEXT NOT NULL DEFAULT ''",
+            "status TEXT NOT NULL DEFAULT 'candidate'",
+            "created_at INTEGER NOT NULL",
+            "updated_at INTEGER NOT NULL",
+            "use_count INTEGER NOT NULL DEFAULT 0",
+            "last_used_at INTEGER NOT NULL DEFAULT 0",
+        ).forEach { col -> assertTrue("memory 缺列：$col", ddl.contains(col)) }
+        assertTrue(
+            BaopuSql.MEMORY_DDL.any { it.contains("idx_memory_scope_kind ON memory (scope, kind)") },
+        )
+    }
+
+    @Test
+    fun `v2 迁移_缺列才给加列语句_有列不给`() {
+        // v1 旧库：session 没有 interrupted_step ⇒ 必须给一条 ALTER
+        val stmts = BaopuSql.sessionInterruptedStepStmt(listOf("id", "title", "model"))
+        assertEquals(1, stmts.size)
+        assertEquals("ALTER TABLE session ADD COLUMN interrupted_step INTEGER", stmts[0].sql)
+        // 已有列（新库 / 重跑迁移）⇒ 一条都不给（幂等）
+        assertTrue(BaopuSql.sessionInterruptedStepStmt(listOf("id", "interrupted_step")).isEmpty())
+        assertTrue(
+            BaopuSql.sessionInterruptedStepStmt(listOf("id", "INTERRUPTED_STEP")).isEmpty(),
+        ) // 大小写不敏感
+    }
+
+    @Test
+    fun `v2 迁移语句全部幂等形态`() {
+        // 建表走 IF NOT EXISTS；加列不走 DDL 常量（壳层按 table_info 列况执行 sessionInterruptedStepStmt）
+        // ⇒ 同一份迁移跑两遍不炸，v1 库为空也不丢表（只加不删）
+        BaopuSql.MEMORY_DDL.forEach {
+            assertTrue("迁移 DDL 必须 IF NOT EXISTS：$it", it.contains("IF NOT EXISTS"))
+        }
+        assertEquals(2, BaopuSql.MEMORY_DDL.size)
+        assertTrue("DDL 常量里不许有裸 ALTER（加列必须看列况）", BaopuSql.DDL.none { it.contains("ALTER TABLE") })
+    }
+
+    @Test
+    fun `v2 版本号与库路径纯函数`() {
+        assertEquals(2, BaopuDb.VERSION)
+        val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
+        val db = BaopuDb.dbPathUnder(filesDir)
+        assertEquals("baopu", db.parentFile?.name)
+        assertEquals("baopu.db", db.name)
+        assertEquals("/data/user/0/com.example.zhengdao/files/baopu/baopu.db", db.path.replace('\\', '/'))
     }
 
     @Test
@@ -106,8 +166,93 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(1, BaopuDb.VERSION)
+        assertEquals(2, BaopuDb.VERSION) // v2 = 刀 0b（memory 表 ＋ interrupted_step）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
+        assertEquals("baopu", BaopuDb.DIR_BAOPU)
+    }
+
+    // ── memory 表语句（v2 · 刀 0b） ───────────────────────────────────────
+
+    @Test
+    fun `upsertMemory十三个参数全绑定`() {
+        val e = MemoryEntry(
+            id = "1729000000000-称呼偏好", scope = MemoryScope.PROJECT, kind = MemoryKind.PREFERENCE,
+            title = "称呼偏好", body = "用户希望被称呼为老师", tags = listOf("称呼", "用户"),
+            sourceSession = "s7", sourceFile = "资料库/原始/设定.md", status = MemoryStatus.CONFIRMED,
+            createdAt = 100L, updatedAt = 200L, useCount = 3, lastUsedAt = 300L,
+        )
+        val s = BaopuSql.upsertMemory(e)
+        assertTrue(s.sql.startsWith("INSERT OR REPLACE INTO memory"))
+        assertEquals(13, s.args.size)
+        assertEquals("1729000000000-称呼偏好", s.args[0])
+        assertEquals("project", s.args[1])
+        assertEquals("preference", s.args[2])
+        assertEquals("称呼,用户", s.args[5]) // tags 逗号拼接
+        assertEquals("s7", s.args[6])
+        assertEquals("confirmed", s.args[8])
+        assertEquals("100", s.args[9])
+        assertEquals("3", s.args[11])
+        assertEquals("300", s.args[12])
+    }
+
+    @Test
+    fun `memory删清查与touch语句`() {
+        assertEquals("DELETE FROM memory WHERE id = ?", BaopuSql.deleteMemory("x").sql)
+        assertEquals(listOf("x"), BaopuSql.deleteMemory("x").args.toList())
+        assertEquals("DELETE FROM memory", BaopuSql.clearMemories().sql)
+        assertTrue(BaopuSql.allMemories().sql.contains("ORDER BY created_at"))
+        val t = BaopuSql.touchMemoryUse("x", 999L)
+        assertTrue(t.sql.contains("use_count = use_count + 1"))
+        assertEquals(listOf("999", "x"), t.args.toList())
+    }
+
+    // ── v2 追加三：run_log 缓存口径两列 ───────────────────────────────────
+
+    @Test
+    fun `run_log缓存列_缺列才给ALTER_幂等`() {
+        val both = BaopuSql.runLogCacheColumnsStmt(emptyList())
+        assertEquals(2, both.size)
+        assertTrue(both[0].sql.contains("ALTER TABLE run_log ADD COLUMN cache_hit_tokens INTEGER"))
+        assertTrue(both[1].sql.contains("ALTER TABLE run_log ADD COLUMN cache_miss_tokens INTEGER"))
+        // 已有其一 ⇒ 只补缺的那条
+        val one = BaopuSql.runLogCacheColumnsStmt(listOf("cache_hit_tokens"))
+        assertEquals(1, one.size)
+        assertTrue(one[0].sql.contains("cache_miss_tokens"))
+        // 两列都有 ⇒ 一条不给（重跑迁移安全）
+        assertTrue(BaopuSql.runLogCacheColumnsStmt(listOf("cache_hit_tokens", "cache_miss_tokens")).isEmpty())
+    }
+
+    @Test
+    fun `insertRunLog_缓存两列可取到才绑_取不到留空不填0`() {
+        val withCache = BaopuSql.insertRunLog(
+            sessionId = 1L, step = 1, state = "thinking", model = "m",
+            tokensIn = 100, tokensOut = 50, tokensInEst = 98, tokensOutEst = 49,
+            tool = "", ok = true, latencyMs = 10L, err = "", createdAt = 5L,
+            cacheHitTokens = 640, cacheMissTokens = 360,
+        )
+        assertEquals(15, withCache.args.size)
+        assertEquals("640", withCache.args[13])
+        assertEquals("360", withCache.args[14])
+        assertTrue(withCache.sql.contains("cache_hit_tokens, cache_miss_tokens"))
+
+        val noCache = BaopuSql.insertRunLog(
+            sessionId = 1L, step = 1, state = "thinking", model = "m",
+            tokensIn = 100, tokensOut = 50, tokensInEst = 98, tokensOutEst = 49,
+            tool = "", ok = true, latencyMs = 10L, err = "", createdAt = 5L,
+        )
+        // 取不到 ⇒ SQL NULL（留空）——不是 "0"（0 = 确定没命中，与没测到是两件事）
+        assertEquals(15, noCache.args.size)
+        assertNull(noCache.args[13])
+        assertNull(noCache.args[14])
+    }
+
+    @Test
+    fun `缓存命中率_命中除以总和_都没测到返回null`() {
+        assertEquals(0.64, RunLogMetrics.cacheHitRate(640, 360)!!, 1e-9)
+        assertNull(RunLogMetrics.cacheHitRate(null, null)) // 没测到不编数
+        assertEquals(1.0, RunLogMetrics.cacheHitRate(500, null)!!, 1e-9) // 一边有一边没有按有的算
+        assertEquals(0.0, RunLogMetrics.cacheHitRate(null, 500)!!, 1e-9)
+        assertNull(RunLogMetrics.cacheHitRate(0, 0)) // 都读到 0：总数 0，无从谈比率
     }
 
     // ── 语句绑定 ──────────────────────────────────────────────────────────
@@ -136,13 +281,13 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `insertRunLog十三个参数全绑定`() {
+    fun `insertRunLog十五个参数全绑定`() {
         val s = BaopuSql.insertRunLog(
             sessionId = 1L, step = 2, state = "thinking", model = "m",
             tokensIn = 100, tokensOut = 50, tokensInEst = 98, tokensOutEst = 49,
             tool = "read_file", ok = false, latencyMs = 1234L, err = "boom", createdAt = 999L,
         )
-        assertEquals(13, s.args.size)
+        assertEquals(15, s.args.size) // v2 增加 cache_hit / cache_miss 两个可空列
         assertEquals("1", s.args[0])
         assertEquals("2", s.args[1])
         assertEquals("read_file", s.args[8])
@@ -150,6 +295,9 @@ class BaopuDbTest {
         assertEquals("1234", s.args[10])
         assertEquals("boom", s.args[11])
         assertEquals("999", s.args[12])
+        // 缓存两列默认不给 ⇒ null（SQL 留空，不瞎填 0）
+        assertNull(s.args[13])
+        assertNull(s.args[14])
     }
 
     @Test
