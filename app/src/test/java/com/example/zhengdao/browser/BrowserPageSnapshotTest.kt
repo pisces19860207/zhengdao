@@ -281,6 +281,28 @@ class BrowserPageSnapshotTest {
     }
 
     @Test
+    fun `明文禁项_N6_值里的与号不再吞掉后续内容`() {
+        // 第㊾刀真机抓到（§B 82 的 N6，P2）：SECRET_KV 的值类不认 `&` ⇒ 从键名一路吞到下一个
+        // 终止符，后面的参数/正文整段消失（吃尾比漏报更糟——调用方以为拿到了完整内容）。
+        // 这里钉两条最短复现：HTML 原文形态与实体转义形态。
+        val plain = PageSnapshot.scrubSecrets("""<a href="?sessionid=SECRET999&page=2">下一页</a>""")
+        assertFalse("凭据值仍必须打码：$plain", plain.contains("SECRET999"))
+        assertTrue("键名要留着（agent 才知道这里有凭据）", plain.contains("sessionid="))
+        assertTrue("`&` 之后的参数不许被吞：$plain", plain.contains("page=2"))
+        assertTrue("标签外的正文也不许被吞：$plain", plain.contains("下一页"))
+
+        val escaped = PageSnapshot.scrubSecrets(
+            """<p>https://example.com/x?a=1&amp;sessionid=SECRET999&amp;b=2</p>""",
+        )
+        assertFalse("凭据值仍必须打码：$escaped", escaped.contains("SECRET999"))
+        assertTrue("实体转义形态下 `&amp;b=2` 要在：$escaped", escaped.contains("b=2"))
+
+        // 反向护栏：有引号的真实属性不受这次收窄影响 —— 值里的 `&` 也要被整体打码
+        val quoted = PageSnapshot.scrubSecrets("""<div data-token="AA&BB_LIVE">x</div>""")
+        assertFalse("带引号的敏感属性值必须整体打码：$quoted", quoted.contains("BB_LIVE"))
+    }
+
+    @Test
     fun `明文禁项_script_与_style_正文被掏空`() {
         val clean = PageSnapshot.scrubSecrets(dirtyPage)
         assertFalse("脚本正文里最可能藏凭据读取，必须掏空", clean.contains("localStorage.getItem"))
