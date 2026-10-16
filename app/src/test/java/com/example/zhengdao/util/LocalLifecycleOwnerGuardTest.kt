@@ -55,9 +55,22 @@ class LocalLifecycleOwnerGuardTest {
 
     @Test
     fun `门禁_版本号没被碰（红线）`() {
+        // 旧口径（钉死 2.1.1 / 36）在 v2.1.2 发版时变成假警报 —— 已改判为发版口径：
+        // 版本号可以随发版前进，但 gradle ／ release note ／ README 中英必须四处一致
+        // （同判据详见 `TargetSdkGateTest > 版本号红线未动`）。
         val gradle = File("build.gradle.kts").readText()
-        // versionName 走 val appVersionName = "2.1.1"（:217），versionCode = 36（:274）
-        assertTrue("versionName 必须仍是 2.1.1", gradle.contains("val appVersionName = \"2.1.1\""))
-        assertTrue("versionCode 必须仍是 36", gradle.contains("versionCode = 36"))
+        val version = Regex("appVersionName\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)\"")
+            .find(gradle)?.groupValues?.get(1) ?: error("找不到 appVersionName")
+        val code = Regex("versionCode\\s*=\\s*(\\d+)").find(gradle)?.groupValues?.get(1)
+            ?: error("找不到 versionCode")
+        assertTrue(
+            "release note `../.github/release-notes/v$version.md` 不在 —— 发版正文没跟上版本号",
+            File("../.github/release-notes/v$version.md").isFile,
+        )
+        val cn = File("../README.md").readText()
+        assertTrue(
+            "README.md 与 gradle 版本号不一致（应为 v$version / versionCode $code）",
+            cn.contains("当前版本：v$version") && cn.contains("versionCode $code"),
+        )
     }
 }

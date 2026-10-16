@@ -79,17 +79,55 @@ class TargetSdkGateTest {
         )
     }
 
-    // ── ② 版本号红线（派工单：versionName 2.1.1 / versionCode 36 保持） ──
+    // ── ② 版本号三处一致（发版口径，自动跟随） ──────────────
+    //
+    // 旧口径（第、刀：把 versionName / versionCode 钉死在 2.1.1 / 36）在 v2.1.2 发版时必然变红：
+    // 它把「本刀不许动版本号」这条**一次性**纪律写成了**永久**断言。
+    // 现在改成发版口径的自动跟随 —— 版本号可以在发版时前进，
+    // 但必须**三处同时跟上**（gradle ／ release note ／ README 中英两份），少一处就红。
+    // 这样既抓得住「偷偷改版本号」，也不会在下次发版时变成假警报。
+
+    /** 从当前工作目录向上找到仓库根（含 .github 的那一级），再拼相对路径。 */
+    private fun repo(relative: String): File {
+        var dir: File? = File(".").absoluteFile
+        while (dir != null) {
+            val candidate = File(dir, relative)
+            if (candidate.exists()) return candidate
+            if (File(dir, ".github").isDirectory) return candidate
+            dir = dir.parentFile
+        }
+        error("找不到仓库根（从 ${File(".").absolutePath} 向上）")
+    }
 
     @Test
     fun `版本号红线未动`() {
+        val version = Regex("appVersionName\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)\"")
+            .find(gradleCode)?.groupValues?.get(1)
+            ?: error("app/build.gradle.kts 里找不到 appVersionName")
+        val code = Regex("versionCode\\s*=\\s*(\\d+)").find(gradleCode)?.groupValues?.get(1)
+            ?: error("app/build.gradle.kts 里找不到 versionCode")
+
         assertTrue(
-            "versionCode 不再是 36 —— 本刀不许动版本号",
-            Regex("versionCode\\s*=\\s*36\\b").containsMatchIn(gradleCode),
+            "release note `.github/release-notes/v$version.md` 不在 —— 版本号前进了，发布正文没跟上",
+            repo(".github/release-notes/v$version.md").isFile,
+        )
+        val cn = repo("README.md").readText()
+        assertTrue(
+            "README.md 没写「当前版本：v$version」—— 三处一致里中文那份没跟上",
+            cn.contains("当前版本：v$version"),
         )
         assertTrue(
-            "appVersionName 不再是 \"2.1.1\" —— 本刀不许动版本号",
-            Regex("appVersionName\\s*=\\s*\"2\\.1\\.1\"").containsMatchIn(gradleCode),
+            "README.md 没写「versionCode $code」—— 版本号与版本码必须一起前进",
+            cn.contains("versionCode $code"),
+        )
+        val en = repo("README.en.md").readText()
+        assertTrue(
+            "README.en.md 没写「Current release: v$version」—— 英文那份没跟上",
+            en.contains("Current release: v$version"),
+        )
+        assertTrue(
+            "README.en.md 没写「versionCode $code」—— 英文那份的版本码没跟上",
+            en.contains("versionCode $code"),
         )
     }
 
