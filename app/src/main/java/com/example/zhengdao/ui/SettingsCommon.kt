@@ -278,7 +278,16 @@ internal fun SettingsLogDialog(log: String?, onDismiss: () -> Unit) {
         AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text(stringResource(R.string.help_log_title)) },
-            text = { Text(text.takeLast(6000), style = MaterialTheme.typography.bodySmall) },
+            text = {
+                // B-补-11（2026-10-16 修）：原先这里的 Text 没有滚动，长日志（最多 6000 字）
+                // 被 AlertDialog 的可用高度裁掉且**滑不动** ⇒ 补 verticalScroll，
+                // 与设置页正文（见本文件 SettingsScaffold 的 Column）同一套写法。
+                Text(
+                    text = text.takeLast(6000),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
