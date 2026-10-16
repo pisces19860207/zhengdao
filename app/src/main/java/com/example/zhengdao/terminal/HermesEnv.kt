@@ -5,11 +5,9 @@ package com.example.zhengdao.terminal
 import android.content.Context
 import com.example.zhengdao.R
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.util.TimeFormats
 import org.json.JSONObject
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Hermes 依赖环境（ERRATA E-025，2026-10-08 真机事故驱动）。
@@ -252,7 +250,8 @@ object HermesEnv {
         var changed = false
         val installs = File(root, "installs")
         val complete = completeGenerations(installs)
-        val ts = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        // B-补-24（2026-10-16）：共享 formatter（旧写法每次新建 SimpleDateFormat）
+        val ts = TimeFormats.fileStamp()
 
         installDirs(installs).forEach { dir ->
             val facts = File(dir, "facts.json")
