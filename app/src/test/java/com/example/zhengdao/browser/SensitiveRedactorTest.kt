@@ -101,6 +101,56 @@ class SensitiveRedactorTest {
         assertEquals("token=***'", redactor.redactPairs("token: 'abc123'"))
     }
 
+    // ── N6 吃尾修复（第㊾刀真机抓到，第51刀修；§B 82） ──
+    //
+    // 真机现象：execJS 返回 `x=1&sessionid=SECRET999&email=…&b=2` 时，回包里 **`&` 之后整段消失**
+    // （只剩 `x=1&sessionid=`）。根因＝ SENSITIVE_KEY 的值类 `[^\s"',;}]+` 不认 `&` ⇒ 从键名一路
+    // 吞到串尾。吃尾比漏报更糟：调用方以为拿到了完整返回。
+
+    @Test
+    fun `N6_键值对不吃尾_后续参数保留`() {
+        assertEquals(
+            "x=1&sessionid=***&b=2",
+            redactor.redactPairs("x=1&sessionid=SECRET999&b=2"),
+        )
+    }
+
+    @Test
+    fun `N6_冒号引号形态仍打码_且不吃尾`() {
+        // 引号残留是第㊵刀既有口径（开引号被消费、尾引号留），本刀只修 `&` 终止
+        assertEquals("token=***'&b=2", redactor.redactPairs("token: 'abc123'&b=2"))
+    }
+
+    @Test
+    fun `N6_分号分隔的 cookie 口径不回归`() {
+        assertEquals(
+            "sessionid=***; theme=dark",
+            redactor.redactPairs("sessionid=SID_LIVE_0p1q; theme=dark"),
+        )
+    }
+
+    @Test
+    fun `N6_JSON 形态的引号终止口径不回归`() {
+        assertEquals(
+            """{"sessionid=***","b":2}""",
+            redactor.redactPairs("""{"sessionid":"SECRET999","b":2}"""),
+        )
+    }
+
+    @Test
+    fun `N6_两个敏感键连排都要打码且都不吃尾`() {
+        assertEquals(
+            "sessionid=***&token=***&b=2",
+            redactor.redactPairs("sessionid=SECRET999&token=TOKEN888&b=2"),
+        )
+    }
+
+    @Test
+    fun `N6_redactText 的密码键值也不吃尾`() {
+        // PASSWORD_KV 走 redactText，出口包括 execJS 返回与页面正文 ⇒ 同一坑同修
+        assertEquals("password=***&next=1", redactor.redactText("password=hunter2&next=1"))
+    }
+
     // ── redactUrl（第㊵刀 P2：status/navigate 的 url 出口） ──
 
     @Test
