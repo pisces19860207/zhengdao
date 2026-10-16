@@ -4,7 +4,7 @@
 
   快捷键条 · 窄屏 / 竖屏（< 600dp）：**两行固定布局**
     第一行：ESC / TAB / CTRL / SHIFT / ^C（红色中断键，最右）
-    第二行：↑ / ↓ / ← / → / PGUP / PGDN / HOME / END / | / - / / / 粘贴
+    第二行：↑ / ↓ / ← / → / PGUP / PGDN / HOME / END / | / - / / / DEL（前向删除）
 
   所有按键用 weight 等宽均分（@style/TermKeyFlex），因此一屏内全部可见，
   **不需要横向滚动**——原先单行 + 横向滚动时，常用键要滑动才够得到。
@@ -57,7 +57,9 @@
             android:text="^C" />
     </LinearLayout>
 
-    <!-- 第二行：导航 + 符号 + 粘贴 -->
+    <!-- 第二行：导航 + 符号 + DEL（前向删除，发 CSI 3~，见下方 key_backspace）
+         ⚠️ B-补-14（2026-10-16 修注释）：末位**不是**「粘贴」——粘贴入口在顶部工具栏
+         （TerminalActivity.kt 的 pasteFromClipboard，快捷键条末位让给更常用的退格/DEL）。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
