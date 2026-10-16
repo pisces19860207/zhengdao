@@ -80,6 +80,11 @@ import kotlin.text.Charsets
  *   `ZhengdaoApp.kt` 两条 80→82 / 130→132（删 `registerOcShutdownOnFinish()` 及其 import
  *   共 -3，补「启动即自愈」说明 +5）；清场批注（`SettingsDataActivity.kt` / `SettingsEnvActivity.kt`
  *   各 +1 行）⇒ 后者两条 572→573 / 667→668 再平移。本次回填。
+ * - 2026-10-16（抱朴刀 0）：新建 `baopu/BaopuDb.kt` 单写者线程 zd-baopu-db（:258）与
+ *   `baopu/LlmClient.kt` 网络 lane zd-baopu-net（:315）⇒ 对账单 25→27 处（上游清场注记 24 差一，实为 25），
+ *   两条都有名 + daemon（`Thread(r, "…").apply { isDaemon = true }` 房型），本次登记。
+ *   zd-baopu-tool（工具单线程）**未创建**：刀 0 不带工具集，归刀 1 的 ToolRegistry，
+ *   到时随工具线程一起登记，不预先占位。
  */
 class BareThreadGuardTest {
 
@@ -108,19 +113,20 @@ class BareThreadGuardTest {
     @Test
     fun `门禁_创建点数量收敛在红线以内`() {
         val total = scanAppSources().size
-        // 2026-10-15 实测 27 处（第⑯刀 R-25 消除存储页三处后 26；浏览器桥 acceptor +1）；
+        // 2026-10-16 实测 27 处（旧抱朴线清场后上游清单实为 25 条，其注记写 24 差一；抱朴刀 0 新增 2 条 => 27）；
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
 
     @Test
-    fun `对账单_2026-10-16_实测 24 处创建点`() {
+    fun `对账单_2026-10-16_实测 27 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
         val expected = listOf(
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
+            "BaopuDb.kt:258",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者）
             "HomeScreen.kt:599",                    // zd-health-fix（清场删掉 zd-taiji-retry 后自 :620 平移 -21）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
@@ -129,6 +135,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:175",                 // zd-knowledge-base-index（同上 -1）
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
+            "LlmClient.kt:315",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane）
             "MainActivity.kt:281",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17 / B-补-19 冷启动弹框收敛 +21 / B-补-8 顶栏 +1）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:589",          // zd-net-check（清场批注 +1）
