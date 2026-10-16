@@ -87,6 +87,9 @@ import kotlin.text.Charsets
  *   到时随工具线程一起登记，不预先占位。
  * - 2026-10-16（抱朴刀 0b）：**无新增线程**；BaopuDb.kt 因加 memory 表 ＋ v1→v2 迁移 ＋ 缓存两列，
  *   单写者创建点 258→366→393 两次平移，本次回填（逐处核过仍是同一段 Thread(r, …)）。
+ * - 2026-10-16（抱朴刀 1）：**新增 2 条**——`agent/RunEngine.kt` 引擎循环 zd-baopu-run（:161）、
+ *   `agent/GuardPipeline.kt` 工具执行 zd-baopu-tool（:63，即刀 0 预告"到时随工具线程
+ *   一起登记"的那条），都有名 ＋ daemon ⇒ 对账单 27→29 处（红线 32 内）。
  */
 class BareThreadGuardTest {
 
@@ -115,13 +118,13 @@ class BareThreadGuardTest {
     @Test
     fun `门禁_创建点数量收敛在红线以内`() {
         val total = scanAppSources().size
-        // 2026-10-16 实测 27 处（旧抱朴线清场后上游清单实为 25 条，其注记写 24 差一；抱朴刀 0 新增 2 条 => 27）；
+        // 2026-10-16 实测 29 处（刀 0b 后 27；抱朴刀 1 新增 zd-baopu-run / zd-baopu-tool 两条 => 29）；
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
 
     @Test
-    fun `对账单_2026-10-16_实测 27 处创建点`() {
+    fun `对账单_2026-10-16_实测 29 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -137,9 +140,11 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:175",                 // zd-knowledge-base-index（同上 -1）
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
-            "LlmClient.kt:315",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane）
+            "GuardPipeline.kt:63",                  // zd-baopu-tool（抱朴刀 1：工具执行单线程，串行+超时）
+            "LlmClient.kt:443",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移）
             "MainActivity.kt:281",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17 / B-补-19 冷启动弹框收敛 +21 / B-补-8 顶栏 +1）
             "NetSelfCheck.kt:94",                   // net-self-check-index
+            "RunEngine.kt:161",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃）
             "SettingsDataActivity.kt:589",          // zd-net-check（清场批注 +1）
             "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）
             "SettingsEnvActivity.kt:268",           // zd-env-check（同上 +7）
