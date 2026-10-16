@@ -306,7 +306,9 @@ object BrowserCommands {
     /**
      * `execJS`：页面内 JS 自由执行（高权限区，含读 cookie/localStorage）。
      *
-     * 第㊷刀：脚本由 [execJsScript] 构造——code 直接作为表达式嵌入，**不再 eval**。
+     * 第㊷刀：脚本由 [execJsScript] 构造——**不再 eval**（第㊽刀 B，§B 77：code
+     * **原样作为脚本**嵌进脚本级 `try`，表达式与含分号的语句序列同一包装通吃；
+     * 旧写法 `return ( … )` 只容得下单个表达式，多语句是解析期语法错误）。
      * 旧写法 `String(eval(<code>))` 把返回字符串的 code 结果当源码二次求值，且
      * eval 被站点 CSP `unsafe-eval` 拦成 EvalError（真机实证，台账 §B 73）。
      *
