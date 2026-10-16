@@ -5,9 +5,8 @@ package com.example.zhengdao.terminal
 import android.content.Context
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.core.AppPrefs
+import com.example.zhengdao.util.TimeFormats
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /**
@@ -503,7 +502,8 @@ object KnowledgeBase {
 
     private fun indexText(items: List<Item>, truncated: Boolean = false): String {
         val sb = StringBuilder()
-        val ts = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date())
+        // B-补-24（2026-10-16）：共享 formatter（旧写法每次新建 SimpleDateFormat）
+        val ts = TimeFormats.minuteStamp()
         sb.append("# 资料库目录\n\n")
         sb.append("> 由证道自动生成 · 更新于 ").append(ts).append("  \n")
         sb.append("> 原始文件在 `原始/` 里（**只读**）。本文件只是索引。\n\n")

@@ -4,10 +4,8 @@ package com.example.zhengdao.rootfs
 import android.content.Context
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.terminal.Store
+import com.example.zhengdao.util.TimeFormats
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * 运行日志（**2026-10-14 N-4 A 案：落点改回私有区**）。
@@ -182,7 +180,8 @@ object RunLog {
                 return
             }
             val at = current.lastModified().takeIf { it > 0L } ?: System.currentTimeMillis()
-            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date(at))
+            // B-补-24（2026-10-16）：时间戳走共享 formatter（旧写法每次新建 SimpleDateFormat）
+            val stamp = TimeFormats.fileStamp(at)
             // B-2（审计第 2 期）：归档名原先只精确到秒，且紧接着 `if (dest.exists()) dest.delete()`
             // 会在同一秒内重启时**无条件删掉上一次的归档** —— 既丢日志，又绕过了 [pruneArchivesIn]
             // 的"从最旧删、最新那份永不删"策略。改成撞名就加唯一后缀（两份都留着），
@@ -305,7 +304,8 @@ object RunLog {
         val safe = redact(line, ctx.filesDir.absolutePath)
         try {
             val d = dir(ctx)
-            val ts = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date())
+            // B-补-24（2026-10-16）：这是**每行日志**的热路径，原来每次都新建 SimpleDateFormat
+            val ts = TimeFormats.logStamp(System.currentTimeMillis())
             appendRotated(File(d, NAME), "[$ts] $safe\n")
             // #5（2026-10-09）：**debug 构建才镜像进 logcat**（N-4 A 案收窄）。
             // 为什么原来是每一行都镜像：进程被杀时文件里最后一行往往是"正常跑着"，而 logcat
