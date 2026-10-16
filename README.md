@@ -2,17 +2,40 @@
 
 **简体中文** ｜ [English](README.en.md)
 
+[![Latest release](https://img.shields.io/github/v/release/pisces19860207/zhengdao?label=release&color=blue&sort=semver)](https://github.com/pisces19860207/zhengdao/releases)
+[![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)](LICENSE)
+[![Platform](https://img.shields.io/badge/Android-16%2B%20%C2%B7%20arm64-brightgreen)](#系统要求)
+
 安卓上的轻量级 AI Agent 运行环境——免 root、零命令、一键安装你自己的 Agent。
 
 让普通用户在 Android 手机上拥有一套真实的 Linux 环境（Debian 13.7），并在其中一键运行 Claude Code、Hermes Agent、OpenCode 等官方 CLI Agent。
 
 > ⚠️ **门槛（先看这个）：需要 Android 16（API 36）或更高 ＋ arm64 手机 —— 不符合就别下了，装了也跑不起来。**（详见下方「系统要求」）
 
-> **Agent 支持状态（2026-10-11，荣耀 Magic 5 Pro 真机验收）**：**OpenCode 内置**（抱朴 Tab 直达对话界面，bionic 宿主版零 PRoot 开销，按需下载约 65MB）；**Hermes Agent 支持**（一键安装 → 启动 → TUI，`hermes update` 可用；它自带一套 Python 工具链，安装阶段需要联网，依赖环境损坏可在怡然一键修复）；Claude Code 与 AGY CLI（Antigravity）在终端自由安装（走各自官方脚本）。
+> **Agent 支持状态（2026-10-11，荣耀 Magic 5 Pro 真机验收）**：**OpenCode 已无内置版**（原抱朴 Tab 的 bionic 宿主版因 `targetSdk` 抬到 36 被 W^X 拦死，2026-10-15 拍板彻底放弃，抱朴改造方案调研中——见下方「关于抱朴 Tab 的内置 OpenCode」）；OpenCode 现在只能在终端里自行 `npm install -g` 装官方 CLI；**Hermes Agent 支持**（一键安装 → 启动 → TUI，`hermes update` 可用；它自带一套 Python 工具链，安装阶段需要联网，依赖环境损坏可在怡然一键修复）；Claude Code 与 AGY CLI（Antigravity）在终端自由安装（走各自官方脚本）。
 
-> **界面结构**（四 Tab，`main` 上，2026-10-14 起）：底部 **抱朴**（OpenCode 对话，真实）/ **逍遥**（终端，自由）/ **玄览**（浏览器，期望）/ **怡然**（Agent 管理，幸福）；设置从右上角齿轮进入，首次进入落在怡然。
+> **名称归属**：Claude Code、OpenCode、Hermes、AGY CLI 等名称归各自权利人所有；本项目与上述厂商**无隶属、无授权、无合作关系**，只是在「可运行其官方客户端」这一事实意义上提及。
+
+> **界面结构**（四 Tab，`main` 上，2026-10-14 起）：底部 **抱朴**（Agent 对话页，**改造调研中**）/ **逍遥**（终端，自由）/ **玄览**（浏览器，期望）/ **怡然**（Agent 管理，幸福）；设置从右上角齿轮进入，首次进入落在怡然。
 > ⚠️ **v2.1.1 及更早的发布版仍是三 Tab——太极 / 终端 / 丹房**：改名与玄览批次都攒在 `main` 上、**尚未发版**，随下一版一起出去。下文历史版本条目里的「太极」「丹房」，就是现在的抱朴 / 怡然。
 > **文件边界**：Agent 产出统一放工作区（默认手机 `Download/证道`，可在设置页更换），手机文件管理器直接可见、卸载证道后仍保留。
+
+## 目录
+
+- [系统要求](#系统要求)
+- [下载与安装](#下载与安装)
+- [网络要求](#网络要求)
+- [荣耀 / MagicOS 保活指南](#荣耀--magicos-保活指南)
+- [常见问题](#常见问题)
+- [隐私声明](#隐私声明)
+- [当前状态](#当前状态)
+- [近期版本](#近期版本)
+- [环境信任链](#环境信任链v200-建立此后未改)
+- [文档结构说明](#文档结构说明)
+- [独立开发声明](#独立开发声明)
+- [致谢](#致谢)
+- [许可](#许可)
+- [转载、二次打包与「证道」这个名字](#转载二次打包与证道这个名字)
 
 ## 系统要求
 
@@ -25,14 +48,22 @@
 > 如果你在非 Android 16 设备上尝试安装，请自行评估风险并测试，**不保证能正常运行**。
 > 由于是个人业余项目，精力实在有限，无法对所有 Android 版本提供适配支持，**请多多包涵**。
 
-> **🔒 关于 targetSdk 28（2026-10-15 重大更正）**
-> 证道**当前仍以 targetSdk 28 打包**，但这**已不是「必须 ≤ 28」的生死线**——该必然性已于 2026-10-15 被真机原型**证伪**（`docs/ERRATA.md` **E-134**）：
-> - **现行理由（口径已改）**：targetSdk 28 是证道**现行打包方式**的前提——Termux 四件套打进 `jniLibs`（安装时落进只读可执行的 `nativeLibraryDir`）、rootfs 走 `assets/` → `files/`。它是**当下的做法**，不是「只能这样」的架构铁律。
-> - **被证伪的旧说法**：~~「Android 10 起系统禁止 targetSdk ≥ 29 的应用从自己的可写数据目录执行文件（W^X），只有 targetSdk 28 能豁免 ⇒ 抬高 targetSdk = 整个 Linux 环境变成无法执行的死文件」~~。原型 `proot-jnilib-proto` 在与真机**同型号**（荣耀 PGT-AN10 / Android 16）上以 **targetSdk 36** 跑通四件套（`PROOT_LOADER` 显式指向 `nativeLibraryDir`），四判据全过：环境自检 / 解压 rootfs / `echo` + `uname` / `apt-get update` 联网（`Hit:1..3 deb.debian.org`）。四件套 SHA256 与 `terminal/ProotLauncher.kt:123-127` 里 pin 的值**逐字节一致**。
-> - **后续**：抬 targetSdk 36 **已排进待办**（MagicOS 11 必升级，已拍板「肯定要做」），在执行链迁移之后落地。
-> - **代价**：Android 16 上，targetSdk 28 应用读写 `/sdcard` 共享存储**需要 `READ`/`WRITE` 运行时授权**（且 Android 13+ 须摘掉 manifest 的 `READ` 帽子才能持有 `READ`——详见 `d414dca`）。经 App 真身实测，`/sdcard` 直连**读写均可用**（文件管理器可见），这是**唯一主路径**。~~早期设计的「SAF 镜像同步到 Linux 环境内 `~/mnt/phone/`」兜底已整体删除~~（`4bbfd21`，连同 `mirror/PhoneMirror.kt` 与 FD 代理一并移除）；如今仅剩的 SAF 用途是**用户主动挑 rootfs 安装包**（`ACTION_OPEN_DOCUMENT`），与目录同步无关。
-> - **长期风险**：若 Android 未来上调最低安装 targetSdk 门槛、或收紧 untrusted_app 域策略，证道需要迁移（抬 targetSdk 36 的排期正是在做这件事；更远则考虑 `system_linker_exec` 灰区或云机瘦客户端形态）。该风险每季度在真机核对一次，详见 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md)。
-> - **长期风险**：若 Android 未来上调最低安装 targetSdk 门槛，或收紧 untrusted_app 域策略，证道需要迁移到 `system_linker_exec` 灰区或云机瘦客户端形态。该风险每季度在真机核对一次，详见 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md)。
+> **🔒 关于 targetSdk（2026-10-15：已从 28 抬到 36）**
+> 证道**已以 `targetSdk 36` 打包**（第㉕刀 `954bf87`，依据真机原型取证 [`docs/ERRATA.md`](docs/ERRATA.md) **E-134**），`minSdk` 同步为 36 ⇒ **安装门槛就是 Android 16**。
+> - **为什么能抬**：第⑳刀把 Termux 四件套全量迁进 `jniLibs`（`nativeLibraryDir` 只读且可执行）＋ `PROOT_LOADER` 显式指向；rootfs 里的二进制由 proot loader **mmap 进内存**加载（Android 从不 `execve` rootfs 里的文件）⇒「数据目录不可 exec」的限制不作用于它们。「targetSdk 必须 ≤ 28」的旧必然性已被证伪。
+> - **代价（真机复现）**：`targetSdk ≥ 29` 的应用**不能从自身数据目录直启任何二进制** —— 抱朴的内置 opencode（`ProcessBuilder(filesDir/oc/usr/bin/opencode)`，不经 loader）在 36 的包上一装即 **`error=13, Permission denied`**（[`docs/ERRATA.md`](docs/ERRATA.md) **E-140**，它推翻了早先「未复现」的 E-139）。这正是**内置 bionic 版被彻底放弃**的原因。
+> - **存储**：主路径是「所有文件访问」（`MANAGE_EXTERNAL_STORAGE`）＋ `/sdcard` 直连，与 `targetSdk` 无关；旧口径里「为 targetSdk 28 摘掉 manifest 的 `READ` 帽子」（`d414dca`）已属历史。
+> - **长期风险**：若 Android 进一步收紧 `untrusted_app` 域策略或抬高最低安装门槛，证道仍要迁移；该风险每季度在真机核对一次，详见 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md)。
+
+## 下载与安装
+
+1. **下载**：正式版 APK 见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)（直接装）；CI 构建产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)。
+2. **先核对门槛**：必须是 **Android 16（API 36）＋ arm64** 手机 —— 不符合就别下了，装了也跑不起来（见上「系统要求」）。
+3. **认签名**：每个安装包都带签名，App 内「关于」页会显示 **官方发布 ✓ / ⚠️ 非官方（被重新打包过）**，非官方包启动时还会再提示一次（`docs/ERRATA.md` E-065）。
+4. **首次使用**：首启把权限在一页里逐项授完 → 下载约 200 MB 的 Debian RootFS → 在「怡然」页一键装 Agent（OpenCode 已无内置版，需在终端自行安装）。
+5. **更新**：App 内可检查 App 与组件更新；环境包更新只下**差分补丁**（见下「环境信任链」）。
+
+> 荣耀 / MagicOS 手机建议先按下面「荣耀 / MagicOS 保活指南」设好后台权限，否则容易被系统清掉。
 
 ## 网络要求
 
@@ -41,7 +72,7 @@
 | 阶段 | 是否需要网络 | 说明 |
 |---|---|---|
 | **首次安装环境** | **必需** | 下载约 200MB 的 Debian RootFS 压缩包（构建期已剔除 GPU 渲染栈等死重，见「当前状态」） |
-| **安装 Agent** | **必需** | 从官方源下载 Claude Code / Hermes 等安装包（OpenCode 由抱朴 Tab 内置下载） |
+| **安装 Agent** | **必需** | 从官方源下载 Claude Code / Hermes 等安装包（OpenCode 现在需在终端自行安装） |
 | **日常使用 Agent** | **必需** | Agent 调用的是云端 API（GLM / DeepSeek / Claude 等），无网则 Agent 无法工作 |
 | **纯终端使用** | **可选** | 环境安装完成后，离线也能使用 bash、git、python、npm 等本地工具 |
 
@@ -76,6 +107,25 @@
 
 > 荣耀系统对前台服务较为尊重。只要证道显示了「前台服务通知」，并在多任务界面上了锁，通常可以在后台稳定存活。若仍被系统清理，证道内置的 tmux 会话恢复机制会在重新打开 App 时自动 attach 回原来的现场。
 
+## 常见问题
+
+**装完打不开 / 提示不支持** —— 门槛是硬性的：**Android 16（API 36）＋ arm64**；另外被别人重新打包过的包，启动时会弹一次警告（E-065）。
+
+**Agent 一直转圈、连不上** —— 最常见的原因是代理没勾上证道：代理 App 要工作在 **VPN（系统级）模式**，**开了「分应用代理」就必须把证道勾进去**（见下方「网络代理提示」）；仍不行可在 设置 →「高级」里手填代理地址。
+
+**后台老是被杀，跑一半就断了** —— 先按「荣耀 / MagicOS 保活指南」把自启动、关联启动、后台活动、电池优化、多任务上锁都做掉；即使真被系统清理，重新打开证道会**自动 attach 回 tmux 现场**，会话不丢。
+
+**`targetSdk` 是多少？为什么抬到 36** —— 现在是 **36**（第㉕刀 `954bf87`，依据真机取证 [`docs/ERRATA.md`](docs/ERRATA.md) E-134），`minSdk` 同为 36，所以门槛就是 Android 16。抬升的代价是**不能再从 App 数据目录直启二进制**（E-140）——抱朴的内置 OpenCode 正是因此被放弃，改为在终端自装。
+
+**卸载证道后我的文件还在吗？环境要重下吗** —— Agent 产出统一放工作区（默认 `Download/证道`），卸载后**仍保留**；App 私有目录里的 Debian 环境会随卸载消失，重装后重新下（约 200 MB）；环境**更新**只下差分补丁，不用重下整包。
+
+**能跑本地大模型吗** —— 不能。证道是「云端 Agent 的运行环境」：本地给的是真实 Linux 与工具链，智能来自云端 API（GLM / DeepSeek / Claude 等）。
+
+**手机需要 root 吗** —— 不需要，整套 Linux 环境走 PRoot；但它和 App **同一个 Android UID**，所以「只运行你信任的命令」（见下方「隐私声明」）。
+
+**报 BUG 需要提供什么** —— 版本号（设置 → 关于）、机型与 Android 版本、复现步骤；日志出口在 设置页的「保活记录（被杀留档）」与「运行日志」两处（v2.0.16 起按钮落到正确页面）。
+
+
 ## 隐私声明
 
 证道不上传用户数据。网络访问仅用于：
@@ -93,9 +143,12 @@
 
 > **`main` 上已攒、尚未发版**（2026-10-14 起的新一轮批次）：**四 Tab 改名**（抱朴 / 逍遥 / 怡然 / 玄览，中英双 locale）与 **玄览（浏览器 Tab）**——多标签、地址栏搜索、Safe Browsing 拦截、终端里点链接转 App 内打开、页面摘要导出给 agent。按 2026-10-14 的决定「**先不出**」，版本号一律不动、**不 tag、不建 Release**，随下一版一起发布；下文「当前版本」与「界面结构」以已发布的 **v2.1.1** 为准，功能面一节则含 `main` 现状。
 
-单测 **986 例 / 139 个 suite 全绿**（`app\build\test-results\testDebugUnitTest`，2026-10-15 在 `main` 实测 0 失败 0 错误、3 例按环境条件跳过；v2.1.0 批次分支 `fix/batch-v2.1.0`、v2.1.1 的修复分支 `fix/session-switch-e123` 的合并提交见 `docs/FEATURE-LEDGER.md` §A #73 / #74，其后各批次见 §A #76 起）。
+单测 **1189 例 / 170 个 suite 全绿**（`app\build\test-results\testDebugUnitTest`，2026-10-16 在 `main`（`e4a33c3`）实测 0 失败 0 错误、9 例按环境条件跳过；v2.1.0 批次分支 `fix/batch-v2.1.0`、v2.1.1 的修复分支 `fix/session-switch-e123` 的合并提交见 `docs/FEATURE-LEDGER.md` §A #73 / #74，其后各批次见 §A #76 起）。
 
 ### 近期版本
+
+<details>
+<summary>点开看最近 14 个版本（v2.0.0 → v2.1.1）</summary>
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
@@ -114,6 +167,8 @@
 | v2.0.0 | 2026-10-09 | 里子工程 + **环境信任链**（见下节） |
 
 每版正文见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)；更早的历史变更记录见 [`release-notes.md`](release-notes.md)。
+
+</details>
 
 ### 环境信任链（v2.0.0 建立，此后未改）
 
@@ -136,21 +191,19 @@
   首次进入有三点功能说明，「更多」菜单含清屏 / 重置终端、选中文字可直接交给手机的默认搜索或浏览器（v2.0.14 起去掉「重载字号」）
 - **怡然**（原「丹房」，幸福）：Agent 一键安装/启动/卸载（二次确认、真实 du 尺寸、用户数据保留）、环境体检自愈
 - **玄览**（浏览器，期望）：App 内多标签浏览器——地址栏输网址或搜索、Safe Browsing 风险拦截、终端里点链接直接转 App 内打开；「导出给 agent」把当前页面摘要落成 guest 能读的文件（`main` 上，待发版）
-- **插件管理**（设置 → 插件）：管理**抱朴**内置 OpenCode 的插件（启停 / 缓存清理）
+- **插件管理**（设置 → 插件）：管理**抱朴**原内置 OpenCode 的插件（启停 / 缓存清理；随内置版弃用已停用）
 - **资料库**（设置 → 资料库）：把手机上的资料挂进终端 Agent 的视野；「提问时自动附上资料库线索」**默认关闭**，开启后由 App 在**本机**按子串匹配，只把「文件名＋行号」压成一行附在你这句话后面送出——内容不出本机（E-080 / E-084）
-- **OpenCode 内置支持**、**Hermes Agent 支持**（真机全链路验收）；Claude Code / AGY CLI 走各自官方脚本
+- **OpenCode**（原内置 bionic 版已弃用，改为终端自装）、**Hermes Agent 支持**（真机全链路验收）；Claude Code / AGY CLI 走各自官方脚本
 - 存储策略定稿：MANAGE 主路径 + /sdcard 直连；通知 4 渠道；缓存清理**分档显示**——hermes **必需包**（如 `ffmpeg`）与自己装的**扩展**（浏览器 `chromium` / `agent-browser`、桌面自动化 `cua-driver`，用户点名保留）一律只报不可清（v2.0.17 起工具组已无可清项）、公共区「安装脚本」可清而「工作区」是你的数据不清
 
-> **⚠️ 关于 OpenCode 跑在哪（v1.2 起）**：「抱朴」Tab 用的是 App **内置**的宿主版
-> （开箱即用，跑在**宿主 bionic**、不经 PRoot），配置文件在
-> `files/oc/xdg/config/opencode/`；插件管理页只作用于这一份。
-> **v1.2 起 App 不再在终端里预装/保留另一份 OpenCode**（终端若要自建 CLI 由用户自己在终端里
-> `npm install -g` 决定，App 不为它管配置与插件）。
-> ⚠️ 因为两者不在同一个网络栈，**改 rootfs 里的 `/etc/hosts` / `/etc/resolv.conf`
-> 不会影响抱朴**，反之亦然。详见《故障排查手册》**坑 #0（置顶）**。
-
-CI 产物（APK / RootFS / proot）见 [Actions 页面](https://github.com/pisces19860207/zhengdao/actions)，
-正式版见 [Releases 页面](https://github.com/pisces19860207/zhengdao/releases)。
+> **⚠️ 关于抱朴 Tab 的内置 OpenCode（2026-10-15：已弃用）**：「抱朴」Tab 原来跑的是 App **内置**的宿主版
+> （开箱即用、跑在**宿主 bionic**、不经 PRoot；包内下载约 65 MB、落盘约 289 MB，配置在
+> `files/oc/xdg/config/opencode/`）——**该路线已彻底放弃**：`targetSdk` 抬到 36 后，App 直启数据目录里的
+> 二进制会被 W^X 拦死（`error=13, Permission denied`，见 [`docs/ERRATA.md`](docs/ERRATA.md) **E-140**）。
+> 抱朴改成什么形态（走 PRoot 里的官方 CLI，还是换别的内置对话形态）**待调研后拍板**——候选②「把 oc 迁进 `jniLibs`」已因 289 MB 包体代价排除（台账 `§B 顺序 64`）；**oc 二进制版本体自 2026-10-16 起不再查、不再复验**；在那之前，
+> 抱朴页只保留「未安装则提示安装 / 更新」的最小占位，插件管理页仍只作用于旧内置那一份。
+> **v1.2 起 App 也不在终端里预装 OpenCode**：想在终端用官方 CLI，请自行 `npm install -g`。
+> ⚠️ 旧内置版与终端跑在不同的网络栈，**改 rootfs 里的 `/etc/hosts` / `/etc/resolv.conf` 不影响抱朴**，反之亦然（《故障排查手册》坑 #0）。
 
 ## 文档结构说明
 
