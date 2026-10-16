@@ -81,6 +81,7 @@ private fun BaopuMessageRow(msg: BaopuUiMessage) {
                     msg.parts.forEachIndexed { i, part ->
                         when (part.kind) {
                             "tool" -> BaopuToolPart(part, key = "${msg.id}-$i")
+                            "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
                             else -> BaopuTextPart(part, key = "${msg.id}-$i")
                         }
                     }
@@ -98,6 +99,35 @@ private fun BaopuTextPart(part: BaopuUiPart, key: String) {
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.padding(top = 4.dp),
     )
+}
+
+/**
+ * 压缩点 part：**可见可展开**（派工单 §4.3）。
+ *
+ * 数据来源说明：本刀（刀 1）引擎只落 `text` / `tool` 两种 part，压缩执行与
+ * 「压缩标记 part」的落库归后续刀——所以真机上暂时**看不到**这张卡，不是缺陷、
+ * 也不是没做：这是渲染口，等 `kind = "compressed"` 的 part 一落库就自动亮。
+ * 留这个分支而不是留个死键：库里的 part.kind 是自由文本，未来任何一种新 kind
+ * 都不该在列表层被静默吞掉（下面 else 分支同理兜底成文本）。
+ */
+@Composable
+private fun BaopuCompressedPart(part: BaopuUiPart, key: String) {
+    var expanded by remember(key) { mutableStateOf(false) }
+    Column(Modifier.padding(top = 6.dp).clickable { expanded = !expanded }) {
+        Text(
+            text = stringResource(R.string.baopu_compressed_marker),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (expanded && part.text.isNotBlank()) {
+            Text(
+                text = part.text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
 }
 
 /** 工具 part：默认只显示调用名 ＋ 摘要；点开看全文（围栏原文，含 offset/limit 提示）。 */
