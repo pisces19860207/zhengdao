@@ -140,8 +140,10 @@ class BridgeEvalAndUrlGateTest {
 
     @Test
     fun `负例_url 出口绕开 redactUrl 必须不过判据B`() {
+        // 第48刀A 起 status 的 ok(...) 组装搬进 statusJson（参数名 st.url → url），
+        // 夹具跟着换字面量；判据意图不变：url 出口绕开 redactUrl ⇒ 门禁必不过。
         val regressed = stripped(commandsSource())
-            .replaceFirst(Regex("\"url\" to SensitiveRedactor\\(\\)\\.redactUrl\\(st\\.url\\)"), "\"url\" to st.url")
+            .replaceFirst(Regex("\"url\" to SensitiveRedactor\\(\\)\\.redactUrl\\(url\\)"), "\"url\" to url")
         assertFalse(urlExportsRedacted(regressed))
     }
 }
