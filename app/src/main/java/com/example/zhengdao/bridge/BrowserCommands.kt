@@ -169,11 +169,44 @@ object BrowserCommands {
         if (s.length <= BridgePolicy.MAX_RESULT_CHARS) s
         else s.take(BridgePolicy.MAX_RESULT_CHARS) + "…[截断，原长 ${s.length} 字符，上限 ${BridgePolicy.MAX_RESULT_CHARS}]"
 
+    /**
+     * [target] 的解析结果：要么拿到标签（[tab] 非空），要么带一条错误 JSON 文案（[error] 非空）。
+     * 两者必有一个非空 —— 调用方用 `t.tab ?: return err(t.error ?: "没有活跃标签")` 取值。
+     */
+    private class TabTarget(val tab: BrowserTabManager.Tab?, val error: String?)
+
+    /**
+     * 解析命令的目标标签（㊽-C ＝ §B 78，2026-10-16）。
+     *
+     * 背景（真机实证 N4）：2026-10-16 前 `status` / `snapshot` / `execJS` / `click` / `type` /
+     * `scroll` / `navigate` 七条命令**一律操作活跃标签** —— body 里带的 `tabId` 被静默忽略，
+     * `tabId=1` 的 `click` 实际点在了 tab2，agent 无从察觉（回执里也没有任何异常）。
+     * 现在：
+     * - `tabId` 缺省 / 空白 → 活跃标签（与既有行为一致，老调用方零改动）；
+     * - 给了 `tabId` → **按 id 精确路由**（[BrowserTabManager.tabById]）；不是数字、或找不到
+     *   该标签 → 明确回错误 JSON，文案口径沿用 `activeTab` / `closeTab` 的「没有这个标签：$id」。
+     */
+    private fun target(tabId: String?): TabTarget {
+        if (tabId.isNullOrBlank()) {
+            val t = BrowserTabManager.activeTab() ?: return TabTarget(null, "没有活跃标签")
+            return TabTarget(t, null)
+        }
+        val id = tabId.trim().toIntOrNull()
+            ?: return TabTarget(null, "tabId 不是数字：${tabId.trim()}")
+        val t = BrowserTabManager.tabById(id)
+            ?: return TabTarget(null, "没有这个标签：$id（当前 ${BrowserTabManager.count()} 个）")
+        return TabTarget(t, null)
+    }
+
     // ── 命令 ───────────────────────────────────────────────────────────────
 
-    /** `status`：活跃标签的 url/title/loading + 标签总数。 */
-    fun status(): String {
-        val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
+    /**
+     * `status`：活跃（或 `tabId` 指定）标签的 url/title/loading + 标签总数。
+     * ㊽-C（§B 78）：`tabId` 给了就按 id 路由，不再静默落到活跃标签。
+     */
+    fun status(tabId: String? = null): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val st = tab.state
         // 第㊵刀（P2）：url 过 redactUrl——真机实证过 query 里的 PII（email/phone/id/card）
         // 曾被原样带回 agent。title 不脱敏（页面标题非 URL 载体，边界见报告）。
@@ -194,15 +227,18 @@ object BrowserCommands {
      * （用户点眼睛手动导出 / agent 经桥拉取），不必写第二遍。
      *
      * selector 参数**预留**（将来"按元素取快照"用），当前忽略但校验其合法性。
+     *
+     * ㊽-C（§B 78）：`tabId` 给了就按 id 路由（快照只读，路由错标签同样属于"静默答非所问"）。
      */
-    fun snapshot(mode: String?, selector: String?): String {
+    fun snapshot(mode: String?, selector: String?, tabId: String? = null): String {
         val v = BridgePolicy.checkSnapshotMode(mode)
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
         selector?.let { s ->
             val sv = BridgePolicy.checkSelector(s)
             if (sv is BridgePolicy.Verdict.Deny) return err(sv.reason)
         }
-        val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val m = mode?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "text"
         val html = fetchOuterHtml(tab.webView) ?: return err("取不到页面 DOM（页面可能还在加载）")
         // 管线与第⑲刀落盘侧一致：先摘凭据 → 再打 PII
@@ -236,21 +272,26 @@ object BrowserCommands {
      * 返回值**必须**过 [SensitiveRedactor]（红线⑦）：agent 不能用它读原始隐私值绕过脱敏。
      * 第㊵刀（P3）：管线补 [SensitiveRedactor.redactPairs]——`document.cookie` 这类
      * `sessionid=…` 键值对返回，redactText 的模式（号码类）不命中，靠本步打码。
+     *
+     * ㊽-C（§B 78）：`tabId` 给了就按 id 路由 —— 在错误的标签上执行 JS 是最危险的一种
+     * 「静默答非所问」（agent 会拿错页面的结果继续推理）。
      */
-    fun execJs(code: String?): String {
+    fun execJs(code: String?, tabId: String? = null): String {
         if (code.isNullOrBlank()) return err("execJS 缺 code")
-        val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val script = execJsScript(code)
         val result = evalJs(tab.webView, script) ?: return err("JS 执行超时或失败")
         val redacted = SensitiveRedactor().run { redactPairs(redactText(result)) }
         return okRaw("\"result\":\"${PageSnapshot.jsonEscape(clamp(redacted))}\"")
     }
 
-    /** `click`：点一个元素（selector 已被 [BridgePolicy.checkSelector] 拦过引号/反斜杠）。 */
-    fun click(selector: String?): String {
+    /** `click`：点一个元素（selector 已被 [BridgePolicy.checkSelector] 拦过引号/反斜杠）。㊽-C（§B 78）：`tabId` 可路由。 */
+    fun click(selector: String?, tabId: String? = null): String {
         val v = BridgePolicy.checkSelector(selector)
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
-        val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         // 第㊷刀：selector 经 jsStringLiteral 带引号嵌入——旧写法裸拼 ⇒
         // document.querySelector(#btn) 语法错误，click 23ms「假超时」（真机实证）。
         val js = clickJsScript(selector!!)
@@ -272,11 +313,12 @@ object BrowserCommands {
      * 走原生 value setter 而不是 `el.value=`：React/Vue 受控组件监听的是原型链上的
      * setter，直接赋值不触发它们的 onChange（页面就像没收到输入）。
      */
-    fun type(selector: String?, text: String?): String {
+    fun type(selector: String?, text: String?, tabId: String? = null): String {
         val v = BridgePolicy.checkSelector(selector)
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
         if (text == null) return err("type 缺 text")
-        val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val js = typeJsScript(selector!!, text)
         return when (val r = evalJs(tab.webView, js)) {
             "OK" -> ok("typed" to selector)
@@ -286,9 +328,10 @@ object BrowserCommands {
         }
     }
 
-    /** `scroll`：按坐标（x,y）或按元素（selector 滚进视口）。 */
-    fun scroll(x: String?, y: String?, selector: String?): String {
-        val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
+    /** `scroll`：按坐标（x,y）或按元素（selector 滚进视口）。㊽-C（§B 78）：`tabId` 可路由。 */
+    fun scroll(x: String?, y: String?, selector: String?, tabId: String? = null): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val js = if (!selector.isNullOrBlank()) {
             val v = BridgePolicy.checkSelector(selector)
             if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
@@ -306,18 +349,26 @@ object BrowserCommands {
         }
     }
 
-    /** `navigate`：加载任意 http/https（危险 scheme 由浏览器本身拦；桥这侧也显式拒）。 */
-    fun navigate(url: String?): String {
+    /**
+     * `navigate`：加载任意 http/https（危险 scheme 由浏览器本身拦；桥这侧也显式拒）。
+     * ㊽-C（§B 78）：`tabId` 给了就把 URL 加载进**那个**标签，不再静默落到活跃标签。
+     */
+    fun navigate(url: String?, tabId: String? = null): String {
         val v = BridgePolicy.checkNavigateUrl(url)
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
         val u = url!!.trim()
         // 第㉓刀：manager/engine 全部限定 UI 线程（BrowserTabManager KDoc 原文），
         // 原先在 HTTP 工作线程直调 —— 现经 onMain 落主线程，失败回 JSON 错误。
         val r = onMain {
-            val tab = BrowserTabManager.activeTab() ?: return@onMain err("没有活跃标签")
-            tab.engine.loadUrl(u)
-            // 第㊵刀（P2）：回执的 url 与 status 同口径过 redactUrl
-            ok("navigating" to SensitiveRedactor().redactUrl(url))
+            val t = target(tabId)
+            val tab = t.tab
+            if (tab == null) {
+                err(t.error ?: "没有活跃标签")
+            } else {
+                tab.engine.loadUrl(u)
+                // 第㊵刀（P2）：回执的 url 与 status 同口径过 redactUrl
+                ok("navigating" to SensitiveRedactor().redactUrl(url))
+            }
         }
         return r.value
             ?: r.failure?.let { err("navigate 执行失败：${it.message}") }
