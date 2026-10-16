@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -371,7 +372,9 @@ fun TaijiScreen(
                 drawerState = drawerState,
                 drawerContent = {
                     ModalDrawerSheet(
-                        modifier = Modifier.width(300.dp),
+                        // B-补-8（2026-10-16）：原来写死 width(300.dp)，比 300dp 还窄的屏幕
+                        // （小屏 / 分屏 / 横屏窄窗）会被顶出屏幕；改成 widthIn(max = 300.dp)。
+                        modifier = Modifier.widthIn(max = 300.dp),
                         drawerContainerColor = MaterialTheme.colorScheme.surface,
                     ) {
                         // 抽屉 = 上（可滚动的）会话列表 + 下（固定）OpenCode 版本条。

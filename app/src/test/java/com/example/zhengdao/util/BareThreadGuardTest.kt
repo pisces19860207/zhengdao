@@ -66,6 +66,10 @@ import kotlin.text.Charsets
  *   207→214 / 261→268 / 561→572 / 656→667，**无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
  * - 2026-10-16（B-补-19）：`MainActivity.kt` 冷启动权限块加「本次冷启动最多一个系统框」标记
  *   与 KDoc（+21 行）⇒ 唯一创建点 259→280，**无新增线程**（仍是 `zd-update-check` 那一个），本次回填。
+ * - 2026-10-16（B-补-8）：`MainActivity.kt` 设置页顶栏 `height(48.dp)` 改
+ *   `defaultMinSize(minHeight = 48.dp)`，顶部新增 `defaultMinSize` import（+1 行；顶栏那行注释
+ *   在 `Thread {` 之后，不影响行号）⇒ 唯一创建点 280→281，
+ *   **无新增线程**（逐行核过仍是同一段 `Thread {`），本次回填。
  */
 class BareThreadGuardTest {
 
@@ -117,7 +121,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "KnowledgeBaseSummarizerRunner.kt:109", // zd-kb-summarize
-            "MainActivity.kt:280",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17 / B-补-19 冷启动弹框收敛 +21）
+            "MainActivity.kt:281",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17 / B-补-19 冷启动弹框收敛 +21 / B-补-8 顶栏 +1）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "SettingsDataActivity.kt:588",          // zd-net-check
             "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）

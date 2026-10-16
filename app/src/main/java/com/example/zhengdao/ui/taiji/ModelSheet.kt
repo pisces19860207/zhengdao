@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -162,7 +163,9 @@ fun ModelSheet(
                     )
                 }
                 HorizontalDivider()
-                LazyColumn(Modifier.height(360.dp)) {
+                // B-补-8（2026-10-16）：原来写死 height(360.dp)，模型少时抽屉底部留一大块空白；
+                // 改成 heightIn(max = 360.dp) —— 上限不变，内容少时贴内容、内容多时照旧滚动。
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
                     val groups = models.groupBy { it.providerID }
                         .toSortedMap(compareBy({ it != "opencode" }, { it }))
                     groups.forEach { (provider, list) ->
