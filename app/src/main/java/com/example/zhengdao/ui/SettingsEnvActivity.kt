@@ -9,6 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -115,6 +117,11 @@ class SettingsEnvActivity : ComponentActivity() {
     }
 }
 
+/**
+ * `FlowRow`（运行内存上限那张卡的三个芯片要能折行）在 `foundation` 里仍是 `@ExperimentalLayoutApi`，
+ * 必须显式 OptIn —— 同 [com.example.zhengdao.ui.taiji.TaijiSheets] 对 `ModalBottomSheet` 的处理。
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SettingsEnvPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
@@ -496,7 +503,13 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
             var memLimit by remember {
                 mutableStateOf(Settings.prefs(ctx).getString("guest_mem_limit_mb", "0") ?: "0")
             }
-            Row {
+            // B-补-22（2026-10-16）：这三个芯片原来挤在一个裸 `Row` 里 —— 正常字号刚好一行三个，
+            // 但系统字号放到 1.3× 以上时第三个（4GB）会被挤出卡片右沿**裁掉**（不是换行，用户看不到它）。
+            // `FlowRow`：装得下时与原来完全同形（一行三个、间距 6dp），装不下就自动折到第二行。
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 FilterChip2(stringResource(R.string.env_memlimit_off), memLimit == "0") {
                     memLimit = "0"
                     Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "0").apply()
@@ -506,7 +519,6 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
-                Spacer(Modifier.width(6.dp))
                 FilterChip2("3GB", memLimit == "3072") {
                     memLimit = "3072"
                     Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "3072").apply()
@@ -516,7 +528,6 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
-                Spacer(Modifier.width(6.dp))
                 FilterChip2("4GB", memLimit == "4096") {
                     memLimit = "4096"
                     Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "4096").apply()
