@@ -7,7 +7,7 @@ import android.content.SharedPreferences
 /**
  * App 设置存储的唯一真源（文件 `zhengdao-settings`）。
  *
- * 第㊸刀（Qoder 审查 🟡-3，台账 §B 顺序 24）：terminal（底层）原来反向
+ * 第㉛刀（Qoder 审查 🟡-3，台账 §B 顺序 24）：terminal（底层）原来反向
  * `import com.example.zhengdao.ui.Settings` 拿这份 prefs——依赖方向反了。
  * 把访问器下沉到 core（低层共享包，terminal 已有 import core 的先例），
  * `ui.Settings.prefs` 保留同名 API 委托到这里：ui 侧调用点零改动，
