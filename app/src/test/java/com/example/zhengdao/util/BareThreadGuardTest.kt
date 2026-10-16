@@ -70,6 +70,9 @@ import kotlin.text.Charsets
  *   `defaultMinSize(minHeight = 48.dp)`，顶部新增 `defaultMinSize` import（+1 行；顶栏那行注释
  *   在 `Thread {` 之后，不影响行号）⇒ 唯一创建点 280→281，
  *   **无新增线程**（逐行核过仍是同一段 `Thread {`），本次回填。
+ * - 2026-10-16（B-补-17）：`HomeScreen.kt` 大标题改随滚动收缩（import +3、阈值常量 KDoc +8、
+ *   展开/收起状态与插值 +23、顶栏注释 +2）⇒ 两个创建点 177→189 / 579→620，
+ *   **无新增线程**（逐行核过 `:189` / `:620` 仍是同一段 `Thread {`），本次回填。
  */
 class BareThreadGuardTest {
 
@@ -111,8 +114,8 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
-            "HomeScreen.kt:177",                    // zd-taiji-retry
-            "HomeScreen.kt:579",                    // zd-health-fix（R-21/R-27 编辑后自 :560 平移）
+            "HomeScreen.kt:189",                    // zd-taiji-retry（B-补-17 标题随滚动收缩 +12 后平移）
+            "HomeScreen.kt:620",                    // zd-health-fix（R-21/R-27 编辑后自 :560 平移；B-补-17 再 +41）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
             "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）
