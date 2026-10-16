@@ -77,6 +77,23 @@ import com.example.zhengdao.ui.WelcomeScreen
 private const val APP_RELEASES_API = "https://api.github.com/repos/pisces19860207/zhengdao/releases/latest"
 
 /**
+ * 冷启动可恢复的 Compose 路由白名单（B-补-15 复核，2026-10-16）。
+ *
+ * NavHost 只有四个目的地：`welcome` / `home` / `permission_setup` / `settings`。
+ *  - `welcome`：首次安装的入口，由 `startRoute` 决定，谈不上「恢复」；
+ *  - `home`：默认落点，本身就是兜底；
+ *  - `permission_setup`：权限门槛，由 `guidePermissions` 那个效果按需重新叠加（见 `onCreate` 里的注释）；
+ *  - `settings`：用户会主动离开、又期望回来还在原处的二级页 ⇒ **唯一值得恢复的**。
+ *
+ * ⚠️ 故意写成「白名单 + 兜底判空」，而不是 `nav.navigate(lastRoute)`：prefs 里可能残留
+ * **老版本**的路由字符串 —— 例：插件页 2026-10-08 已搬进太极抽屉（`ui/taiji/TaijiSheets.kt`
+ * 的插件面板复用 `ui/PluginsScreen.kt`），`plugins` 路由随之删除，但老装机的
+ * `last_route` 里仍可能留着 "plugins"。直接 navigate 会抛
+ * `IllegalArgumentException` 崩在冷启动，白名单把这类死值一律当「没有可恢复的页面」。
+ */
+private val RESTORABLE_ROUTES = setOf("settings")
+
+/**
  * 应用入口：Compose Navigation 承载 欢迎页 → 首页（Agent/终端 双 Tab）。
  * 终端本体是独立 Activity（TerminalActivity，零改动复用），从首页 Tab 启动。
  */
@@ -387,8 +404,11 @@ fun ZhengdaoApp(
     // 万一再复现，日志里至少能看到最后到达/来自哪个页面、栈是不是退空了。
     androidx.compose.runtime.LaunchedEffect(lastRoute) {
         val cur = nav.currentBackStackEntry?.destination?.route
-        if (!startInTerminal && lastRoute == "settings" && (cur == "home" || cur == "welcome")) {
-            nav.navigate("settings") { launchSingleTop = true }
+        // B-补-15（2026-10-16）：白名单化 —— 只有确实还在 NavHost 里的路由才恢复，
+        // 老版本残留的死值（如已删除的 "plugins"）按「无可恢复页面」处理，见 RESTORABLE_ROUTES。
+        val restore = lastRoute?.takeIf { it in RESTORABLE_ROUTES }
+        if (!startInTerminal && restore != null && (cur == "home" || cur == "welcome")) {
+            nav.navigate(restore) { launchSingleTop = true }
         }
     }
 
