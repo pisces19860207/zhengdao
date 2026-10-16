@@ -141,13 +141,17 @@ class MainActivity : ComponentActivity() {
         val permissionSetupPending = PermissionSetup.shouldGuide(this)
 
         if (!permissionSetupPending) {
-            // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户。
+            // B-补-19 立账（2026-10-16，用户拍板「立账，并做了」）：**一次冷启动最多一个系统框**。
             //
-            // §B 顺序 15（2026-10-14）：**与权限引导互斥** —— 权限是门槛，先过门槛再谈更新。
-            // 原先是无条件发起，更新 AlertDialog 会叠在权限页（甚至系统权限框）之上；
-            // 原代码只在 UI 线程里守 isFinishing/isDestroyed，管不了「同时有两个框」这件事。
-            // 跳过一次不影响功能：下个冷启动照常查（本就是"启动后台查一次、失败静默"）。
-            checkAppUpdateInBackground()
+            // 原先存储(100)与通知(101)是两段互不相干的 runCatching：已引导过的冷启动（例如在
+            // 权限页点了「稍后再说」）会把两个系统框连着排出去；而自更新 AlertDialog 是同一
+            // 次冷启动里第 3 个可能出现的框 —— 更新检查是网络后台线程，返回通常晚于系统框弹出，
+            // 结果是「系统权限框刚点掉、更新框又贴上来」。用「本次冷启动」的局部标记收敛：
+            //   ① 已经排过一个系统框，就不再排第二个（没排的那项下个冷启动照常补 —— 一次性标记
+            //      保证"问过就不再问"，见 PermissionSetup.shouldAutoRequest 的 KDoc）；
+            //   ② 本次排了系统框，就不发起自更新检查（与「更新框不与权限框抢同一屏」同一口径）。
+            // 权限页那段互斥（2026-10-11）在下面照旧：pending 时两个请求都不排。
+            var permDialogThisLaunch = false
 
             // 存储运行时权限（第 0 步修复，2026-10-06）：此前全 App 没有任何请求代码，
             // WRITE 靠用户手点设置授予、READ 因 manifest maxSdkVersion=32 帽子从未可授，
@@ -174,6 +178,7 @@ class MainActivity : ComponentActivity() {
                     if (PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this), needed.isNotEmpty())) {
                         PermissionSetup.markStorageAsked(this) // 先写标记再请求：请求中途被杀也不会重问
                         androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
+                        permDialogThisLaunch = true // B-补-19：本次冷启动的系统框名额已用掉
                     }
                 }
             }
@@ -183,7 +188,9 @@ class MainActivity : ComponentActivity() {
             // `POST_NOTIFICATIONS: granted=false`、`AppSettings importance=NONE`、通知列表为空，
             // 而代码这边"发了通知"看起来一切正常）。冷启动缺就补一次；拒绝只是没有通知，
             // 不影响任何功能（清理照跑、日志照写）。
-            runCatching {
+            // B-补-19：同一次冷启动不排第二个系统框 —— 存储是必需项，先排它；通知只是可选
+            // （拒绝仅影响装完清理的提示），让到下次冷启动，不跟存储框抢同一屏。
+            if (!permDialogThisLaunch) runCatching {
                 if (android.os.Build.VERSION.SDK_INT >= 33) {
                     // 字面量收敛到 PermissionSetup.NOTIFICATIONS_PERMISSION（那边的 KDoc 本来
                     // 就写着「全文件只此一处」，原先这里是硬编码的重复一份）
@@ -194,9 +201,23 @@ class MainActivity : ComponentActivity() {
                     if (PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this), missing)) {
                         PermissionSetup.markNotifyAsked(this)
                         androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
+                        permDialogThisLaunch = true // B-补-19：同上（此处也守住"只排一个"）
                     }
                 }
             }
+
+            // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户。
+            //
+            // §B 顺序 15（2026-10-14）：**与权限引导互斥** —— 权限是门槛，先过门槛再谈更新。
+            // 原先是无条件发起，更新 AlertDialog 会叠在权限页（甚至系统权限框）之上；
+            // 原代码只在 UI 线程里守 isFinishing/isDestroyed，管不了「同时有两个框」这件事。
+            // 跳过一次不影响功能：下个冷启动照常查（本就是"启动后台查一次、失败静默"）。
+            //
+            // B-补-19（2026-10-16）加一层：**本次冷启动排过系统权限框时也不查**。上面那条只
+            // 保证"不叠在权限页上"，管不了"不叠在系统权限框上" —— 系统框是系统的独立窗口，
+            // 应用内的 AlertDialog 拦不住它，只能自己不发起。系统框每项权限一辈子只排一次，
+            // 因此最多跳过一个冷启动（标记一次性，见 PermissionSetup）。
+            if (!permDialogThisLaunch) checkAppUpdateInBackground()
         }
 
         // 存储主路径引导（E-005 修订 / P1，2026-10-06）：MANAGE_EXTERNAL_STORAGE 升为正式主路径。

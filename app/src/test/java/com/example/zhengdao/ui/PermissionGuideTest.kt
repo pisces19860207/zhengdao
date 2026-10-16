@@ -85,12 +85,29 @@ class PermissionGuideTest {
     @Test
     fun `更新检查被权限判定挡住_不再无条件发起`() {
         val s = src("src/main/java/com/example/zhengdao/MainActivity.kt")
-        val callIdx = s.indexOf("\n            checkAppUpdateInBackground()")
-        assertTrue("找不到 checkAppUpdateInBackground 的调用点（缩进变了就更新本测试）", callIdx > 0)
+        // B-补-19（2026-10-16）起调用点前面多了「本次冷启动没排过系统权限框」这一层守卫
+        // （`if (!permDialogThisLaunch) `），因此本测试不再匹配"行首缩进 + 调用"的裸调用形态：
+        // 那条形态现在**必须在源码里不存在**（无守卫的调用正是要防的回归）。
+        val guarded = "if (!permDialogThisLaunch) checkAppUpdateInBackground()"
+        val callIdx = s.indexOf(guarded)
+        assertTrue("找不到 checkAppUpdateInBackground 的调用点（必须写成 `$guarded`）", callIdx > 0)
+        assertFalse(
+            "不许出现无守卫的调用点（那会让更新框与系统权限框抢同一屏）",
+            s.contains("\n            checkAppUpdateInBackground()")
+        )
         val before = s.substring(0, callIdx)
         val lastIf = before.lastIndexOf("if (!permissionSetupPending)")
         assertTrue("更新检查必须写在 `if (!permissionSetupPending)` 块内（与权限框互斥）", lastIf > 0)
-        assertTrue("调用点应紧跟权限判定（中间不该隔着另一段逻辑）", callIdx - lastIf < 600)
+        // 位置判据（B-补-19 升级）：原先要求"紧跟权限判定、中间不隔别的逻辑"；现在判据反过来 ——
+        // 必须排在**两个权限请求之后**，因为守卫要读到那两段是否已经排了系统框。
+        assertTrue(
+            "更新检查必须排在存储权限请求（100）之后",
+            before.lastIndexOf("requestPermissions(this, needed.toTypedArray(), 100)") > lastIf
+        )
+        assertTrue(
+            "更新检查必须排在通知权限请求（101）之后",
+            before.lastIndexOf("requestPermissions(this, arrayOf(perm), 101)") > lastIf
+        )
     }
 
     @Test
