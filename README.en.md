@@ -27,14 +27,11 @@ official CLI agents inside it — Claude Code, Hermes Agent, OpenCode and others
 
 > **Trademarks**: names such as Claude Code, OpenCode, Hermes and AGY CLI belong to their respective owners. This project has **no affiliation with, authorisation from, or partnership with** those vendors; they are mentioned only to state the fact that their official clients can be run.
 
-> **Layout** (four tabs on `main` since 2026-10-14): **Baopu 抱朴** (agent chat, **being reworked**) /
+> **Layout** (four tabs, shipped since v2.1.2): **Baopu 抱朴** (agent chat, **being reworked**) /
 > **Xiaoyao 逍遥** (terminal, *freedom*) / **Xuanlan 玄览** (browser, *expectation*) /
 > **Yiran 怡然** (agent management, *happiness*); settings live behind the gear icon, and the app
 > opens on Yiran.
-> ⚠️ **v2.1.1 and earlier releases still have three tabs — Taiji / Terminal / Danfang**: the renaming
-> and the Xuanlan (browser) batch sit on `main`, **not released yet** (no tag, no Release), and will
-> go out with the next version. Historical entries further down that say "Taiji" or "Danfang" mean
-> today's Baopu / Yiran.
+> ✅ **From v2.1.2 (2026-10-16) the shipped app has these four tabs**: the rename (Taiji → Baopu, Terminal → Xiaoyao, Danfang → Yiran) plus Xuanlan and the browser bridge all went out with that release. Historical entries below that say "Taiji", "Terminal" or "Danfang" mean today's Baopu / Xiaoyao / Yiran.
 > **File boundary**: agent output goes to one shared workspace (default `Download/证道` on the
 > phone, changeable in settings) — visible in any file manager, and kept after Zhengdao is
 > uninstalled.
@@ -178,34 +175,30 @@ as the app, on the same kernel and network stack, and can read and write any fil
 *tampered distribution*, not against *code you execute inside the terminal yourself*. See
 [`docs/milestones/已知限制.md`](docs/milestones/已知限制.md) §10 (Chinese).
 
-## Status (2026-10-13)
+## Status (2026-10-16)
 
-**Current release: v2.1.1** (`versionCode 36`, 2026-10-13). The feature surface was frozen at
+**Current release: v2.1.2** (`versionCode 37`, 2026-10-16). The feature surface was frozen at
 v1.1 and closed out at v2.0.12 — from here the project is **maintenance-driven**: bug fixes and
 keeping up with upstream, not further restructuring. Remaining items (including known
 performance and UX entries) are tracked in [Issues](https://github.com/pisces19860207/zhengdao/issues).
 
-> **Accumulated on `main`, not released yet** (a new batch since 2026-10-14): the **four-tab rename**
-> (Baopu / Xiaoyao / Yiran / Xuanlan, both locales) and **Xuanlan (the browser tab)** — multiple
-> tabs, an address bar with search, Safe Browsing blocking, terminal links opening inside the app,
-> and page-summary export for agents. Per the 2026-10-14 decision to **not ship yet**, the version
-> number stays put and there is **no tag and no Release**; all of it goes out with the next version.
-> Below, "Current release" and the tab layout describe the shipped **v2.1.1**, while the feature
-> list reflects `main`.
+> **What v2.1.2 ships**: the four tabs renamed with four new icons; **Xuanlan (the browser) went from a skeleton to a usable page** (start page, multiple tabs, address bar with search, terminal links opening inside the app, page-snapshot export for agents); a **browser bridge** in Settings (off by default, 11 commands, loopback only); the **Baopu page is deliberately non-functional** — the built-in OpenCode line is closed (E-140) and Baopu is being rebuilt as our own agent, with the failure card left in place until then; a batch of UX, accessibility and privacy fixes (type scale, 48dp touch targets, at most one system dialog on cold start, run logs moved to private storage with an export, redaction no longer eating trailing content, blocked-scheme notice now reachable); `targetSdk` 28 → 36.
+> **The next big change is the Baopu line** — our own agent (never crosses the rootfs, spawns no child processes, works inside the workspace only, exchanges files with others). Parts first, assembly later, each segment verified on a real device and shipped as it lands; the boundaries and cadence are in the "What's next · Baopu" section of the v2.1.2 release notes.
 
 The v2.1.0 batch branch (`fix/batch-v2.1.0`) and the v2.1.1 fix branch (`fix/session-switch-e123`)
-run **1189 unit tests across 170 suites, all green**
-(2026-10-16 on `main` (`e4a33c3`): 0 failures, 0 errors, 9 skipped by environment; the later batches merged after
+run **1244 unit tests across 173 suites, all green**
+(2026-10-16 on `main` (`fec1159`): 0 failures, 0 errors, 9 skipped by environment; the later batches merged after
 v2.1.1 are logged in `docs/FEATURE-LEDGER.md` §A from #76 on).
 
 ### Recent releases
 
 <details>
-<summary>Show the last 14 releases (v2.0.0 → v2.1.1)</summary>
+<summary>Show the last 13 releases (v2.0.9 → v2.1.2)</summary>
 
 | Version | Date | In one line |
 |---|---|---|
-| **v2.1.1** (current) | 2026-10-13 | Fixes **E-123: Taiji did not reload when you switched back to a historical session** (the switch pre-set "current session" to the target before asking whether the connection must be reopened, so the reuse rule read it as a tab switch and returned early — no message reload, no rebuilt polling or SSE, leaving an empty list until the app was killed and restarted; a latent regression introduced with the reuse rule in v2.0.12); two JVM regression tests pin it down ("clearing residue must never touch sessionId", "clearing residue must force a reopen"). |
+| **v2.1.2** (current) | 2026-10-16 | The four tabs got their real names and icons (Baopu / Xiaoyao / Xuanlan / Yiran); **Xuanlan (the browser) went from a skeleton to a usable page** — start page, multiple tabs, address bar with search, terminal links opening inside the app, and a page-snapshot export for agents; a **browser bridge** in Settings (off by default, 11 commands, loopback only) so agents in the terminal can drive the page; the **Baopu page is deliberately non-functional** — the built-in OpenCode line is closed (E-140) and Baopu is being rebuilt as our own agent (see the "What's next" section in the release notes); a batch of UX, accessibility and privacy fixes (type scale, 48dp touch targets, at most one system dialog on cold start, run logs moved to private storage with an export, redaction no longer eating trailing content, blocked-scheme notice now reachable); `targetSdk` 28 → 36. |
+| **v2.1.1** | 2026-10-13 | Fixes **E-123: Taiji did not reload when you switched back to a historical session** (the switch pre-set "current session" to the target before asking whether the connection must be reopened, so the reuse rule read it as a tab switch and returned early — no message reload, no rebuilt polling or SSE, leaving an empty list until the app was killed and restarted; a latent regression introduced with the reuse rule in v2.0.12); two JVM regression tests pin it down ("clearing residue must never touch sessionId", "clearing residue must force a reopen"). |
 | **v2.1.0** | 2026-10-13 | A **Codex CLI** card on the Agents page (npm global install, launched as `codex --no-daemon` so the top-level flag cannot be misordered, uninstall keeps `~/.codex`; install/launch/uninstall only — no preset config, no key input, bring your own setup inside the terminal); the keep-alive wake lock now follows **terminal activity** instead of holding forever (all of this app's processes are sampled every 30s and the lock is released only after 10 idle minutes, with the notification flipping between "session running" and "idle sleep" and a deliberately conservative rule: hold too long rather than misjudge a busy terminal as idle); Taiji **self-heals a 401** (the other half of E-093 — it retries once with the freshly re-parsed password and never touches the streaming channel) and the serve password is now resolved by collecting up to three recent candidates and probing `GET /api/session` for the one that actually authenticates. |
 | v2.0.18 | 2026-10-13 | English UI plus a dark theme (743 strings localised end to end, Appearance can follow the system or pin light/dark, the environment check now streams results in parallel); cleartext traffic narrowed from a global switch to a `network_security_config` that allows loopback only; E-097 closed out — the copyright texts of all 348 Debian packages now ship with the image (a `zstd` archive inside the rootfs, also published as a standalone Release asset); a "bugs and dead code" sweep (install lock now covers session startup, backup rules exclude path by path, the serve-stop matcher was narrowed, a main-thread assertion, one shared path-containment rule, backspace still mirrors the line buffer under sticky Ctrl); two new gates — building a release locally without the signing key now fails, and CI verifies the licence texts byte-for-byte. |
 | v2.0.17 | 2026-10-11 | Cache-cleanup policy closed out (E-115): Hermes' own browser tool and `cua-driver` are now **named-keep** items — the tools group has **zero clearable entries** and the cleanup entry is no longer rendered, following the rule set in v2.0.12 (never treat Agent-required packages as optional; that incident was `ffmpeg`). |
@@ -217,7 +210,6 @@ v2.1.1 are logged in `docs/FEATURE-LEDGER.md` §A from #76 on).
 | v2.0.11 | 2026-10-11 | Fixed the built-in opencode (bionic host build) failing to install (E-090); library scanning no longer truncates silently (E-089); requirements moved to the first screen. |
 | v2.0.10 | 2026-10-10 | Terminal visual upgrade: **Catppuccin Mocha** as the factory palette, a GB2312-subset font (APK 13.53 → **7.82 MB**), and a "comfortable" line-spacing default. |
 | v2.0.9 | 2026-10-10 | Install-path hardening (scripts in the public area are fingerprinted before they are ever executed); two real rootfs bugs plus five audit items; library summaries became local-only. |
-| v2.0.0 | 2026-10-09 | Engine consolidation and the signed **environment trust chain** (below). |
 
 Release notes for every version are on the [Releases page](https://github.com/pisces19860207/zhengdao/releases).
 
