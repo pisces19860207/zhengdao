@@ -49,6 +49,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import com.example.zhengdao.R
+import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
@@ -113,8 +114,12 @@ internal fun bytesMbText(bytes: Long, res: android.content.res.Resources? = null
     }
 /** 设置偏好（工作区模式 / 已安装环境版本登记）。 */
 object Settings {
-    fun prefs(ctx: android.content.Context) =
-        ctx.getSharedPreferences("zhengdao-settings", android.content.Context.MODE_PRIVATE)
+    /**
+     * 第㊸刀（Qoder 🟡-3）：存储真源下沉到 [AppPrefs]——terminal（底层）原来
+     * 反向 import 本类拿 prefs，依赖方向反了。这里保留同名 API 委托过去，
+     * ui 侧调用点零改动；文件名与键一字不变 ⇒ 行为零变化。
+     */
+    fun prefs(ctx: android.content.Context) = AppPrefs.prefs(ctx)
 }
 
 /**

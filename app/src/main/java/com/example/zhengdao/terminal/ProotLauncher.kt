@@ -8,6 +8,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
@@ -582,7 +583,7 @@ object ProotLauncher {
         // ⚠️ M2 骨架结论（2026-10-04）：虚拟地址空间≠物理内存，Node/V8 真实负载下虚拟
         // 占用远超物理，硬限可能"正常用也崩"——因此默认关闭，交由 M2 的软监控
         // （读 /proc VmRSS + 通知栏警告）负责内存治理。设置页「运行内存上限」可手动开启。
-        val memLimitMb = com.example.zhengdao.ui.Settings.prefs(context)
+        val memLimitMb = AppPrefs.prefs(context)
             .getString("guest_mem_limit_mb", "0")?.toIntOrNull() ?: 0
         val memPrefix = if (memLimitMb > 0) "ulimit -v ${memLimitMb * 1024}; " else ""
         // 会话保持（用户第三批）：tmux new-session -A = 有名为 zhengdao 的会话则 attach，
