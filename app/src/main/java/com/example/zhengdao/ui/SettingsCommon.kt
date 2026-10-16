@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -142,10 +144,17 @@ internal fun openTerminal(context: android.content.Context, autocmd: String?, ag
     )
 }
 
-/** 二级设置页统一顶栏：左「‹ 返回」+ 居中标题（与保活记录页同款）。 */
+/**
+ * 二级设置页统一顶栏：左「‹ 返回」+ 居中标题（与保活记录页同款）。
+ *
+ * B-补-8（2026-10-16）：原来是写死的 `height(48.dp)` —— 48dp 是**触摸目标下限**，不是高度上限；
+ * 系统字号放大（≥1.3×）时标题会被这个硬高度裁掉半行。改用 `defaultMinSize(minHeight = 48.dp)`：
+ * 常规字号下视觉高度仍是 48dp，大字号下随内容自然长高。四个顶栏同改（本文件 ＋ `MainActivity`
+ * 设置路由 ＋ `KeepaliveLogActivity` ＋ `OpenSourceLicensesActivity`）。
+ */
 @Composable
 internal fun SettingsTopBar(title: String, onBack: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(48.dp)) {
+    Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
         TextButton(
             onClick = onBack,
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
@@ -406,7 +415,9 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                         Text(stringResource(R.string.ws_picker_up))
                     }
                 }
-                Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
+                // B-补-8（2026-10-16）：原来写死 height(280.dp)，文件夹少时也撑出一大块空白；
+                // 改成 heightIn(max = 280.dp) —— 上限不变，内容少时对话框自然变矮、内容多时照旧滚动。
+                Column(modifier = Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
                     if (entries.isEmpty()) {
                         Text(stringResource(R.string.ws_picker_empty), style = MaterialTheme.typography.bodySmall)
                     }
