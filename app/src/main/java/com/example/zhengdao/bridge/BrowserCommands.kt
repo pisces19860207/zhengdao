@@ -128,7 +128,9 @@ object BrowserCommands {
     /**
      * 在主线程跑 `evaluateJavascript` 并同步拿**字符串化后的**结果。
      *
-     * 归一化：JS 返回的字符串带一层引号（`"abc"`）、`null`/未回调都归一成 null。
+     * 归一化（第㊷刀）：回调值本身就是 JSON 字面量——字符串结果带引号且内部已转义，
+     * 由 [jsResultToString] 去引号并**还原转义**（旧写法只剥引号，标题里的引号、
+     * outerHTML 里的换行会带着反斜杠漏出去）；`null`/未回调归一成 null。
      *
      * 第㊵刀（P1 修复）：**闩等待在调用线程，主线程只负责发起**。旧写法把
      * `latch.await` 放在 [onMain] 投到主线程的块内——`evaluateJavascript` 的结果
@@ -148,17 +150,7 @@ object BrowserCommands {
         }
         if (started.failure != null) return null
         val done = runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }.getOrDefault(false)
-        return if (done) normalizeJsResult(box[0]) else null
-    }
-
-    private fun normalizeJsResult(raw: String?): String? {
-        if (raw.isNullOrEmpty() || raw == "null") return null
-        // evaluateJavascript 对字符串结果会包一层双引号（且内部引号已转义）
-        return if (raw.length >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) {
-            raw.substring(1, raw.length - 1)
-        } else {
-            raw
-        }
+        return if (done) jsResultToString(box[0]) else null
     }
 
     // ── JSON 小工具 ────────────────────────────────────────────────────────
@@ -237,6 +229,10 @@ object BrowserCommands {
     /**
      * `execJS`：页面内 JS 自由执行（高权限区，含读 cookie/localStorage）。
      *
+     * 第㊷刀：脚本由 [execJsScript] 构造——code 直接作为表达式嵌入，**不再 eval**。
+     * 旧写法 `String(eval(<code>))` 把返回字符串的 code 结果当源码二次求值，且
+     * eval 被站点 CSP `unsafe-eval` 拦成 EvalError（真机实证，台账 §B 73）。
+     *
      * 返回值**必须**过 [SensitiveRedactor]（红线⑦）：agent 不能用它读原始隐私值绕过脱敏。
      * 第㊵刀（P3）：管线补 [SensitiveRedactor.redactPairs]——`document.cookie` 这类
      * `sessionid=…` 键值对返回，redactText 的模式（号码类）不命中，靠本步打码。
@@ -244,7 +240,7 @@ object BrowserCommands {
     fun execJs(code: String?): String {
         if (code.isNullOrBlank()) return err("execJS 缺 code")
         val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
-        val script = "(function(){try{return String(eval(${PageSnapshot.jsonEscape(code)}))}catch(e){return 'ERR:'+e}})()"
+        val script = execJsScript(code)
         val result = evalJs(tab.webView, script) ?: return err("JS 执行超时或失败")
         val redacted = SensitiveRedactor().run { redactPairs(redactText(result)) }
         return okRaw("\"result\":\"${PageSnapshot.jsonEscape(clamp(redacted))}\"")
@@ -255,8 +251,9 @@ object BrowserCommands {
         val v = BridgePolicy.checkSelector(selector)
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
         val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
-        val js = "(function(){var el=document.querySelector(${PageSnapshot.jsonEscape(selector!!)});" +
-            "if(!el)return 'NOT_FOUND';el.click();return 'OK'})()"
+        // 第㊷刀：selector 经 jsStringLiteral 带引号嵌入——旧写法裸拼 ⇒
+        // document.querySelector(#btn) 语法错误，click 23ms「假超时」（真机实证）。
+        val js = clickJsScript(selector!!)
         return when (val r = evalJs(tab.webView, js)) {
             "OK" -> ok("clicked" to selector)
             "NOT_FOUND" -> err("找不到元素：$selector")
@@ -268,8 +265,10 @@ object BrowserCommands {
     /**
      * `type`：往任意输入框写文本（**含密码框** —— 高权限区，设计文档明确放开）。
      *
-     * text 经 [PageSnapshot.jsonEscape] 变成 JS 字符串字面量再嵌入 ⇒ 引号/换行/反斜杠
-     * 都不会逃逸（这是"任意文本能安全进 JS"的正路，别用字符串拼接）。
+     * text 经 [jsStringLiteral]（第㊷刀：双引号 + jsonEscape 转义 + 双引号）变成
+     * 真正的 JS 字符串字面量再嵌入 ⇒ 引号/换行/反斜杠都不会逃逸（这是"任意文本
+     * 能安全进 JS"的正路，别用字符串拼接）。旧写法少了引号包裹——selector 与
+     * text 拼出来都是裸标识符/裸值，语法错误 ⇒ type 15s 断连（真机实证）。
      * 走原生 value setter 而不是 `el.value=`：React/Vue 受控组件监听的是原型链上的
      * setter，直接赋值不触发它们的 onChange（页面就像没收到输入）。
      */
@@ -278,14 +277,7 @@ object BrowserCommands {
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
         if (text == null) return err("type 缺 text")
         val tab = BrowserTabManager.activeTab() ?: return err("没有活跃标签")
-        val js = "(function(){var el=document.querySelector(${PageSnapshot.jsonEscape(selector!!)});" +
-            "if(!el)return 'NOT_FOUND';" +
-            "var desc=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),'value');" +
-            "if(desc&&desc.set)desc.set.call(el,${PageSnapshot.jsonEscape(text)});" +
-            "else el.value=${PageSnapshot.jsonEscape(text)};" +
-            "el.dispatchEvent(new Event('input',{bubbles:true}));" +
-            "el.dispatchEvent(new Event('change',{bubbles:true}));" +
-            "return 'OK'})()"
+        val js = typeJsScript(selector!!, text)
         return when (val r = evalJs(tab.webView, js)) {
             "OK" -> ok("typed" to selector)
             "NOT_FOUND" -> err("找不到元素：$selector")
@@ -300,8 +292,7 @@ object BrowserCommands {
         val js = if (!selector.isNullOrBlank()) {
             val v = BridgePolicy.checkSelector(selector)
             if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
-            "(function(){var el=document.querySelector(${PageSnapshot.jsonEscape(selector)});" +
-                "if(!el)return 'NOT_FOUND';el.scrollIntoView({behavior:'instant',block:'center'});return 'OK'})()"
+            scrollElementJsScript(selector)
         } else {
             val xi = x?.trim()?.toIntOrNull() ?: 0
             val yi = y?.trim()?.toIntOrNull() ?: 0

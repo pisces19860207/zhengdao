@@ -98,7 +98,7 @@ class BareThreadGuardTest {
             "AgentManifest.kt:136",                 // zd-manifest-refresh
             "HomeScreen.kt:177",                    // zd-taiji-retry
             "HomeScreen.kt:579",                    // zd-health-fix（R-21/R-27 编辑后自 :560 平移）
-            "BrowserAgentBridge.kt:75",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池）
+            "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
             "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）
             "KnowledgeBase.kt:153",                 // zd-knowledge-base-rebuild
