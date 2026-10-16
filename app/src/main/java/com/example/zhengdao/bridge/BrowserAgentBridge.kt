@@ -3,9 +3,7 @@ package com.example.zhengdao.bridge
 import android.content.Context
 import android.util.Log
 import com.example.zhengdao.rootfs.RunLog
-import java.io.BufferedReader
 import java.io.BufferedWriter
-import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -179,11 +177,16 @@ object BrowserAgentBridge {
     private fun handle(app: Context, sock: Socket) {
         sock.soTimeout = SO_TIMEOUT_MS
         sock.use { s ->
-            val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
+            // 第㊷刀扩围：请求解析改**字节级**。原来整条请求走 UTF-8 Reader、body 按
+            // Content-Length 个**字符**读——但 Content-Length 是**字节数**，中文一字
+            // 3 字节 ⇒ 非 ASCII 请求体必错位（实测 type 带中文 ⇒ 空回 RC=52；
+            // ASCII 碰巧一字一字节所以此前没暴露）。头是 ASCII，按 ISO-8859-1 逐行；
+            // body 按字节数读全再整体 UTF-8 解码（readRequestBody）。
+            val input = java.io.BufferedInputStream(s.getInputStream())
             val writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
 
             // ── 请求行：只认 `POST /bridge/v1/<cmd> HTTP/1.1` ──
-            val requestLine = reader.readLine()
+            val requestLine = readByteLine(input)
             if (requestLine == null) {
                 // §B 61：对端没发请求行就断了——这是一条「不回包就关闭」的合法路径，
                 // 但必须留痕，否则它和「异常吞掉」在观测上无法区分。
@@ -210,7 +213,7 @@ object BrowserAgentBridge {
             var authHeader: String? = null
             var contentLength = 0
             while (true) {
-                val line = reader.readLine() ?: break
+                val line = readByteLine(input) ?: break
                 if (line.isEmpty()) break
                 val idx = line.indexOf(':')
                 if (idx <= 0) continue
@@ -234,25 +237,59 @@ object BrowserAgentBridge {
             val cv = BridgePolicy.checkCommand(cmdName)
             if (cv is BridgePolicy.Verdict.Deny) return respond(writer, 403, err(cv.reason))
 
-            // ── ③ body ──
+            // ── ③ body：按 Content-Length 的**字节数**读全，再整体 UTF-8 解码 ──
             if (contentLength > BridgePolicy.MAX_BODY_BYTES) {
                 return respond(writer, 413, err("请求体超上限（${BridgePolicy.MAX_BODY_BYTES} 字节）"))
             }
             val body = if (contentLength > 0) {
-                val buf = CharArray(contentLength)
-                var read = 0
-                while (read < contentLength) {
-                    val n = reader.read(buf, read, contentLength - read)
-                    if (n < 0) break
-                    read += n
-                }
-                String(buf, 0, read)
+                readRequestBody(input, contentLength)
+                    ?: return respond(writer, 400, err("请求体没读全（对端提前断开）"))
             } else {
                 ""
             }
 
             val json = dispatch(app, cmdName, body)
             respond(writer, 200, json)
+        }
+    }
+
+    // ── 字节级请求解析（第㊷刀扩围，纯函数可单测） ──────────────────────────
+
+    /**
+     * 按 HTTP 契约读请求体：Content-Length 是**字节数**，所以这里读满
+     * [contentLength] 个**字节**再整体按 UTF-8 解码。绝不能用 Reader 按「字符数」
+     * 读——中文一字 3 字节，字符数 ≠ 字节数（本刀实测：按字符读 ⇒ type 带中文
+     * 必空回 RC=52）。读不满（对端提前断开）返回 null，由调用方回 400。
+     */
+    internal fun readRequestBody(input: java.io.InputStream, contentLength: Int): String? {
+        val bytes = ByteArray(contentLength)
+        var read = 0
+        while (read < contentLength) {
+            val n = input.read(bytes, read, contentLength - read)
+            if (n < 0) return null
+            read += n
+        }
+        return String(bytes, Charsets.UTF_8)
+    }
+
+    /**
+     * 读一行字节（到 `\n` 为止，容忍 `\r\n`），按 ISO-8859-1 解码——请求行与
+     * 头部按规约是 ASCII/字节安全字段，不按 UTF-8 猜。流末尾且一行都没读时返回
+     * null（对齐旧 `BufferedReader.readLine` 的 EOF 语义）。
+     */
+    internal fun readByteLine(input: java.io.InputStream): String? {
+        val buf = java.io.ByteArrayOutputStream()
+        while (true) {
+            val b = input.read()
+            if (b < 0) {
+                return if (buf.size() == 0) null else buf.toString(Charsets.ISO_8859_1)
+            }
+            if (b == '\n'.code) {
+                val arr = buf.toByteArray()
+                val end = if (arr.isNotEmpty() && arr[arr.size - 1] == '\r'.code.toByte()) arr.size - 1 else arr.size
+                return String(arr, 0, end, Charsets.ISO_8859_1)
+            }
+            buf.write(b)
         }
     }
 
