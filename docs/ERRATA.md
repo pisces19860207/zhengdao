@@ -6826,3 +6826,27 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **修法候选（见台账 `§B 顺序 66`）**：① `WebViewEngine` 所有外部调用改走 `Handler(Looper.getMainLooper())`（不依赖 attach、最小改动、保留 ㊱ 的视觉修复）；② 回退 ㊱ 守卫（对比度问题回归）；③ 挂载 WebView 但透明/置于起始页之下。**建议 ①**；判据：新装包首次进玄览，四条路径任一条能加载并翻转 `everLoaded`，另加一条源码门禁（首载路径不得再靠 `webView.post`）。
 
 **已修（2026-10-15 第㊳刀 `b6e0c80` ⇒ 合并 `33d4da3`）**：修法 ① 落地 —— `app/src/main/java/com/example/zhengdao/browser/WebViewEngine.kt` 新增 `private val main = Handler(Looper.getMainLooper())`，七处外部调用（`loadUrl`／`goBack`／`goForward`／`reload`／`stopLoading`／`evaluateJavascript`／`captureScreenshot`）改走 `main.post`；㊱ 的起始页视觉与 `everLoaded` 守卫一行未动。新增源码门禁 `app/src/test/java/com/example/zhengdao/browser/WebViewEnginePostGateTest.kt`（8 例＝4 正 ＋ 4 负自证；判据 A＝剥注释后禁 `webView.post`，B＝主 Looper Handler 在场，C＝七方法逐一 `main.post`，D＝`BrowserScreen.kt` 的 `AndroidView(` 之前仍引用 `everLoaded`），修复方并做真源码级负例演练（改回 `webView.post` ⇒ A、C 双红，还原复绿）。**验收（我独立复验）**：全量 **153 套件 / 1077 例 / 0 失败 / 0 错误 / 3 跳过**；release 8,942,195 B、签名证书 SHA-256 `b93169f211c6b3d9fdae36b2c614c23bef28eae3582e4d8bca0657c27ac86ec2`；真机四路径全过（修复方证据：必应 chip／地址栏 example.com／主页键／桥 navigate，截图 315,719 B 真实页面）。**本条闭合**；残余未验（深色视觉回归／多标签与回收真机路径／桥 PII 脱敏端到端／换机重验）记在台账 `§A #118`。
+
+## E-143 · 2026-10-16 · v2.1.2 发版后 main 上 2 例红 —— 两条「版本号红线」门禁把一次性纪律写成了永久断言（已改判为「发版口径三处一致」）
+
+**现象**：v2.1.2 发版（`appVersionName` 2.1.1 → 2.1.2、`versionCode` 36 → 37）合并进 main 后，全量单测从 **173 套件 / 1244 例 / 0 失败 / 0 错误** 变成 **2 例失败**：
+- `app/src/test/java/com/example/zhengdao/TargetSdkGateTest.kt:85` `版本号红线未动` —— 断言 `versionCode = 36` 逐字在场；
+- `app/src/test/java/com/example/zhengdao/util/LocalLifecycleOwnerGuardTest.kt:57` `门禁_版本号没被碰（红线）` —— 断言 `val appVersionName = "2.1.1"` 逐字在场。
+
+**根因**：这两条是**第㉕刀**（抬 `targetSdk` 28 → 36）时的一次性纪律 ——「本刀不允许动版本号」，写成源码形态门禁后被当成**永久**断言使用。发版本来就是要动版本号 ⇒ 每次发版必然踩红，属**门禁语义错配**，不是发版操作错。
+（**同时记我的流程缺口**：v2.1.2 发版时只跑了 `assembleDebug` 与 tag 推送，没在 bump 后跑全量单测；CI `ci.yml` 在 main 上跑单测，因此该窗口 main 是红的。）
+
+**改判（修法）**：把「钉死具体版本号」换成**发版口径的三处一致** —— 版本号可以随发版前进，但必须同时满足：
+1. `app/build.gradle.kts` 的 `appVersionName` / `versionCode` 是版本真源（正则抽取）；
+2. `.github/release-notes/v<版本>.md` 必须存在（发布正文跟上了）；
+3. `README.md` 含「当前版本：v<版本>」与「`versionCode <码>`」；`README.en.md` 含「Current release: v<版本>」与「`versionCode <码>`」。
+少一处即红；偷偷改版本号（不写正文/不同步 README）同样红。
+- `TargetSdkGateTest` 新增私有 `repo(relative: String)`：从单测 CWD（`app/`）向上找到含 `.github` 的仓库根再拼路径（不再假设 CWD）。
+- `LocalLifecycleOwnerGuardTest` 同名判据同步改（它本来已用 `File("../gradle/libs.versions.toml")` 的 CWD 口径）。
+
+**验证**：改后跑 `--tests "*TargetSdkGateTest*" --tests "*LocalLifecycleOwnerGuardTest*"` ⇒ `BUILD SUCCESSFUL in 11s`（无 FAILED）；全量 `--offline --max-workers=1 --rerun-tasks :app:testDebugUnitTest` ⇒ **173 套件 / 1244 例 / 0 失败 / 0 错误 / 9 跳过**（与发版前同数）。
+**负例自证（实做）**：把 `README.md` 的「当前版本：v2.1.2」改回 `v2.1.1` ⇒ `10 tests completed, 2 failed`（`TargetSdkGateTest > 版本号红线未动 FAILED`、`LocalLifecycleOwnerGuardTest > 门禁_版本号没被碰（红线）FAILED`）；还原后复绿（`BUILD SUCCESSFUL in 8s`）。演练脚本 `D:\zd-tools\zd_v212_gatedrill.py`（`--break` / `--restore`，备份 `D:\zd-tools\bak\readme-drill.bak`，用完即删）。
+
+**影响面**：仅测试门禁（两个测试文件）；`app/src/main` **零改动**，APK 与已发的 v2.1.2 产物不受影响（该红不影响打包，只影响 CI 的单测窗口）。
+**台账落点**：`docs/FEATURE-LEDGER.md` §A #97、§0 结账基准（三十七次修账）。
+
