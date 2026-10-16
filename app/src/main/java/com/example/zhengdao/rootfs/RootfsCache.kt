@@ -10,7 +10,7 @@ import java.io.File
  * 安装包缓存（用户第三批；2026-10-08 与 OpenCode 包并到同一个父目录）。
  *
  * - **位置 `/storage/emulated/0/Download/证道/rootfs/`**：与 OpenCode 的包
- *   （`Download/证道/opencode/`，见 OcManager）同一个父目录、彼此并列。
+ *   （`Download/证道/opencode/`，见 OcManager —— 2026-10-16 已删）同一个父目录、彼此并列。
  *   重装 App 后缓存仍在，免重新下载（legacy 存储视图下应用自身可读写，
  *   2026-10-04 实测：target 28 + WRITE 权限的应用进程可直接读写 Download；
  *   不可 bind 的是 proot——两回事）。

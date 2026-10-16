@@ -3,7 +3,6 @@
 package com.example.zhengdao.ui
 
 import android.content.Context
-import com.example.zhengdao.oc.OcManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -23,25 +22,26 @@ import java.io.File
  *
  * 只读写 opencode 自身的配置文件与缓存目录，**不碰** PRoot 启动 / SSE / REST 任何既有链路。
  *
- * ⚠️ **作用域（用户 2026-10-07 裁决 ①）**：插件是 OpenCode 的能力，本 App 里只有
- * **抱朴**跑 OpenCode（宿主 bionic 版，XDG 隔离目录）。
- * （裁决 ② 已于 v1.2 反转：终端里的 npm 版 opencode **已卸载**，不再存在"两份 opencode"。）
- *
- * ⚠️ **v1.2 阶段 2.0 路径修复**：本类此前指向 `files/home/.zhengdao/taiji/config/opencode/`
- * （终端 taiji 脚本的 XDG 目录），与抱朴 serve 真正读取的 `files/oc/xdg/config/opencode/`
- * **不是同一个文件** ⇒ 插件页的开关一直写在没人读的地方。现统一取 [OcManager.configFile]，
- * 与权限策略、性能调优共用同一个 merge 写入口。
+ * ⚠️ **2026-10-16 清场后本页进入休眠**：旧抱朴线（宿主 bionic 版 opencode）已整条删除
+ * （根因 `docs/ERRATA.md` E-140，`oc/` 全目录与旧 UI 壳同期清出仓库），插件列表与包缓存的
+ * **真正读写方已不存在**。本类现在只把路径指向 App 私有目录 `filesDir/baopu/`
+ * （与刀 0 的 `filesDir/baopu/baopu.db` 同目录）：文件不存在 ⇒ 列表为空、开关写下去也无人读。
+ * **落点最终由抱朴线刀 1／刀 2 定**，定了只改下面两处路径；这个页面本身留不留，也归刀 1／刀 2
+ * （见台账 §E 分刀表）。
  */
 object PluginManager {
 
     // ── 路径 ────────────────────────────────────────────────────────────────
 
-    /** 抱朴实例（OpenCode，XDG 四目录隔离）的 opencode.json —— 与 serve 读取的是同一个。 */
-    fun baopuConfig(ctx: Context): File = OcManager.configFile(ctx)
+    /** 抱朴的 App 私有目录（休眠中：旧线的 XDG 目录随 `oc/` 一起删除，见类注释）。 */
+    private fun baopuHome(ctx: Context): File = File(ctx.filesDir, "baopu")
 
-    /** 抱朴实例的插件包缓存（XDG_CACHE_HOME 被隔离到 files/oc/xdg/cache）。 */
+    /** 抱朴实例的 opencode.json（休眠：新抱朴是自研 agent，没有这个文件，读出来必为空）。 */
+    fun baopuConfig(ctx: Context): File = File(baopuHome(ctx), "opencode.json")
+
+    /** 抱朴实例的插件包缓存（休眠：同上）。 */
     fun baopuPackagesDir(ctx: Context): File =
-        File(OcManager.xdgDir(ctx, "cache"), "opencode/packages")
+        File(baopuHome(ctx), "cache/opencode/packages")
 
     /** 缓存目录（扫描 / 清理的作用对象）。 */
     fun allPackagesDirs(ctx: Context): List<File> =

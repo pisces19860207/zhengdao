@@ -19,7 +19,8 @@ import java.io.File
  *    （`MainActivity.kt` 里四处 `composable(...)`；`permission_setup` 走 `PermissionSetup.ROUTE` 常量）。
  * ② 当年点名的 `plugins` **已经不是路由**：插件页 2026-10-08 搬进抱朴抽屉
  *    （`ui/baopu/BaopuScreen.kt:585` 的 `PluginsSheet` 复用 `ui/PluginsScreen.kt`，
- *    见 `ui/baopu/BaopuSheets.kt:236-277`）⇒ 台账那句「plugins 不恢复」已失效。
+ *    见 `ui/baopu/BaopuSheets.kt:236-277`；**这两个文件 2026-10-16 随旧抱朴线清场删除**，
+ *    上述行号为历史记录）⇒ 台账那句「plugins 不恢复」已失效。
  * ③ 剩下三条不吃亏：`welcome` 由 `startRoute` 决定、`home` 本身是兜底、
  *    `permission_setup` 由 `guidePermissions` 效果按需叠回 ⇒ **`settings` 是唯一值得恢复的**。
  * ④ 真正要钉住的是另一件事：白名单必须与 NavHost 保持一致 —— 否则老装机 prefs 里
@@ -125,10 +126,11 @@ class RouteRestoreGuardTest {
     }
 
     @Test
-    fun `门禁_B补15_插件面板确实已改成抱朴抽屉里的 sheet`() {
+    fun `门禁_B补15_插件面板确实已不是路由`() {
         // 这条是「B-补-15 里 plugins 不恢复」失效的直接证据：插件页不再是路由。
-        val baopu = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
-        assertTrue("抱朴页应引用 PluginsSheet（插件面板）", baopu.contains("PluginsSheet("))
+        // 2026-10-16 清场：原先还断言「抱朴页引用 PluginsSheet」——旧抱朴 UI 已整批删除，
+        // 那条证据暂缺；插件面板本身（ui/PluginsScreen.kt + ui/PluginManager.kt）仍在仓库里，
+        // 抱朴线刀 1 重建入口后按同样判据补回断言。
         val src = mainActivity()
         assertEquals(
             "MainActivity 里不应再注册 plugins 路由",

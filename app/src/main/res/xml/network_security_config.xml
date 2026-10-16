@@ -3,10 +3,11 @@
      改前 = application 上的 android:usesCleartextTraffic="true"（全局放行）——
      它允许 App 进程内的**任何** http 明文，与"本 App 只用环回"的实情不符。
 
-     实测（全仓 grep `"http://`）：第一方代码里需要明文的地方**只有环回**三处 ——
-       app/src/main/java/com/example/zhengdao/oc/OcClient.kt:45
-       app/src/main/java/com/example/zhengdao/oc/OcManager.kt:218
-       app/src/main/java/com/example/zhengdao/terminal/KnowledgeBaseSummarizerRunner.kt:219
+     实测（全仓 grep `"http://`）：第一方代码里需要明文的地方**只有环回**。
+     ⚠️ 2026-10-16 清场：原先点名的三处调用者（`oc/OcClient.kt:45`、
+     `oc/OcManager.kt:218`、`terminal/KnowledgeBaseSummarizerRunner.kt:219`）已随旧抱朴线
+     **整批删除**，本文件目前没有调用者 —— 保留环回放行，是因为抱朴线后续的「预览槽」
+     仍会绑 127.0.0.1 起本地服务（台账 §A #99）。
      其余（GitHub 镜像下载、依赖源、release 回读）一律 https，不受影响。
 
      ⚠️ 常见误解（写下来免得后人再纠结）：**guest 里 apt 的 http 源不需要在这里放行。**
@@ -26,7 +27,7 @@
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
 
-    <!-- 唯一放行：环回 —— App 自己的本地服务（oc serve 的 REST + SSE） -->
+    <!-- 唯一放行：环回 —— App 自己的本地服务（旧 oc serve 已删；后续「预览槽」仍走 127.0.0.1） -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>
