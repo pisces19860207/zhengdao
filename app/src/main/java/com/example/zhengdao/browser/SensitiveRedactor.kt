@@ -17,7 +17,8 @@ package com.example.zhengdao.browser
  * 4. 仅人类所有者可在 App「浏览器桥」设置里手动、知情风险后关闭（用户自主权，非 agent 能力）。
  *
  * 状态：第㊵刀起 URL/键值对出口齐备——[redactUrl]（status/navigate 的 url）、
- * [redactPairs]（execJS 的 cookie/localStorage 返回）均为真实调用点；正文 email
+ * [redactPairs]（execJS 的 cookie/localStorage 返回）均为真实调用点；第48刀A 起
+ * [redactTabTitle]（status/snapshot 的 tab 标题）同上。正文 email
  * 模式仍缺（有意，见 [redactUrl] KDoc），其余模式 ③ 初版待真机样本校准。
  */
 class SensitiveRedactor(
@@ -95,6 +96,31 @@ class SensitiveRedactor(
         return redactText(head + masked)
     }
 
+    /**
+     * tab 标题脱敏（第48刀A，台账 §B 76 / 派工单 ㊽-A）：
+     * **凡把 tab 标题写进桥响应体的出口都必须过这里**（status / snapshot 标题位；
+     * `tabs` 列表命令若将来新增，同样适用——门禁 BridgeTitleRedactTest 判据 C 兜着）。
+     *
+     * 两段式（判据，报告里同一份）：
+     * ① 先 [redactUrl]——title 可能**形如 URL**（`https://…?token=…`），其内部已含
+     *    query 敏感键名（session/token/email/tel/phone/id/card/sign…）＋ [redactText]
+     *    的 PII 兜底（手机号/身份证/银行卡号）；
+     * ② 再 [TITLE_KV]——title 是**无 `?` 的裸键值对**时（`token=abc`），redactUrl 整条
+     *    走 redactText、不命中键值，由本步补（键名表与 [SENSITIVE_KEY] 同族）。
+     *
+     * 为什么单开 [TITLE_KV] 而不直接复用 [redactPairs]：**title 可能形如 URL**，
+     * `?a=1&token=x&b=2` 形态下 [SENSITIVE_KEY] 的值类不认 `&` ⇒ 会把 `&b=2` 一起吞掉
+     * （第48刀A 单测实测抓到：`?sessionid=zzz&email=…` 的尾段被吃）——脱敏不许吃数据，
+     * 吃尾比漏报更糟。execJS 的 cookie/localStorage 返回是 `;` 分隔（第㊵刀口径），
+     * 不受该坑影响 ⇒ **不动 [SENSITIVE_KEY] 本体**，title 专用模式值类加 `&` 终止。
+     *
+     * 两段对无命中文本都是恒等变换 ⇒ 普通标题（「百度一下」）零误改（负例自证）。
+     */
+    fun redactTabTitle(input: String): String {
+        if (!enabled || input.isEmpty()) return input
+        return TITLE_KV.replace(redactUrl(input)) { m -> m.groupValues[1] + "=" + MASK }
+    }
+
     companion object {
         /** 脱敏替换符（§4.3：一律脱敏为 ***）。 */
         const val MASK = "***"
@@ -119,6 +145,15 @@ class SensitiveRedactor(
          */
         val SENSITIVE_KEY = Regex(
             """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|passwd|password)[\w-]*)["']?\s*[:=]\s*["']?[^\s"',;}]+"""
+        )
+
+        /**
+         * [redactTabTitle] 专用的键值模式：键名表与 [SENSITIVE_KEY] 同族，值类多加
+         * `&` 终止（`[^\s"',;&}]`）——title 可能形如 URL，`?a=1&token=x&b=2` 下若值类
+         * 不认 `&`，`&b=2` 会被整段吞掉（第48刀A 实测踩到，见 [redactTabTitle] KDoc）。
+         */
+        val TITLE_KV = Regex(
+            """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|passwd|password)[\w-]*)["']?\s*[:=]\s*["']?[^\s"',;&}]+"""
         )
 
         /**

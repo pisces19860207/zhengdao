@@ -44,9 +44,32 @@ import java.util.concurrent.TimeUnit
  * ## 两条安全纪律（红线⑦，agent 不可绕）
  *
  * 1. **离开桥的数据一律过 [SensitiveRedactor]**：`execJS` 的返回值、`snapshot` 的正文与
- *    DOM 都要过一遍才进响应体。PII（手机号/卡号/身份证/密码框）被打成星号 ——
- *    agent 权限再高也拿不到原始隐私值（设计文档 §4.5 硬红线⑦）。
+ *    DOM、`status`/`navigate` 的 url、`status`/`snapshot` 的 title 都要过一遍才进响应体。
+ *    PII（手机号/卡号/身份证/密码框/敏感键值）被打成星号 —— agent 权限再高也拿不到
+ *    原始隐私值（设计文档 §4.5 硬红线⑦）。
  * 2. **超长必截**：结果串截到 [BridgePolicy.MAX_RESULT_CHARS]，防 agent 一次拉爆内存。
+ *
+ * ## 脱敏边界（第48刀A 逐字段核定，2026-10-16）
+ *
+ * 判据＝「这个字段是不是页面/标签元数据」：**是 ⇒ 必须过脱敏管线；不是 ⇒ 刻意不过**
+ * （下文两张清单）。旧版曾把「title 不过管线」写成一句已声明边界，结果后来读代码的人
+ * 看见「已声明」就不再核（第48刀A 的教训）⇒ 边界必须**逐字段列全**，不许一句带过。
+ *
+ * | 响应体字段 | 出口 | 管线 |
+ * |---|---|---|
+ * | `url` | `status` / `navigate` 回执 | [SensitiveRedactor.redactUrl] |
+ * | `title` | `status` / `snapshot` 标题位 | [SensitiveRedactor.redactTabTitle]（redactUrl 两段式 ＋ & 终止键值模式） |
+ * | snapshot 正文 | `text` / `nodes` / `dom` | `scrubSecrets`→[SensitiveRedactor.redactDom] |
+ * | execJS 返回值 | `result` | `redactText`→[SensitiveRedactor.redactPairs] |
+ *
+ * **刻意不进脱敏管线的字段（判据＝非页面/标签元数据，PII 无处栖身）**：
+ * `loading`（布尔）/ `tabId` / `tabCount`（整数）/ `screenshot` 的 `file`·`bytes`·`guestPath`
+ * （本机路径与字节数）/ `click`·`type`·`scroll` 回执里的 `selector`（agent 自带参数的原样
+ * 回声，脱了反而破坏与请求的对应关系）。
+ * 全类扫描结论（第48刀A 任务③）：BrowserTabState 其余字段（`blockedMsg` / `everLoaded`）
+ * 没有任何一条进桥的响应体。**若将来新增出口（如 `tabs` 列表命令）带 tab 元数据，
+ * 必须补进上表** —— 门禁 `BridgeTitleRedactTest` 判据 C 按行扫响应体里的
+ * `"title" to` / `summary.title`，漏脱敏直接红。
  *
  * ## 线程约定
  *
@@ -208,16 +231,32 @@ object BrowserCommands {
         val t = target(tabId)
         val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val st = tab.state
-        // 第㊵刀（P2）：url 过 redactUrl——真机实证过 query 里的 PII（email/phone/id/card）
-        // 曾被原样带回 agent。title 不脱敏（页面标题非 URL 载体，边界见报告）。
-        return ok(
-            "url" to SensitiveRedactor().redactUrl(st.url),
-            "title" to st.title,
-            "loading" to st.loading.toString(),
-            "tabId" to tab.id.toString(),
-            "tabCount" to BrowserTabManager.count().toString(),
-        )
+        return statusJson(tab.id, st.url, st.title, st.loading, BrowserTabManager.count())
     }
+
+    /**
+     * `status` 的响应体组装（第48刀A 抽出的无 Android 内核：JVM 单测直接喂值断言回包，
+     * 不必为 WebView 起真机；脱敏口径与 [status] 逐字一致）。
+     *
+     * 字段级脱敏边界全表见类 KDoc「脱敏边界」段 —— **新增字段先进表再落码**。
+     */
+    internal fun statusJson(
+        tabId: Int,
+        url: String,
+        title: String,
+        loading: Boolean,
+        tabCount: Int,
+    ): String = ok(
+        // 第㊵刀（P2）：url 过 redactUrl——真机实证过 query 里的 PII（email/phone/id/card）
+        // 曾被原样带回 agent。title 过 [SensitiveRedactor.redactTabTitle]（第48刀A 扩边界：
+        // 标题既是自由文本、又可能形如 URL 或裸键值对，真机实证过手机号从 title 明文带出；
+        // 管线判据见该函数 KDoc）。
+        "url" to SensitiveRedactor().redactUrl(url),
+        "title" to SensitiveRedactor().redactTabTitle(title),
+        "loading" to loading.toString(),
+        "tabId" to tabId.toString(),
+        "tabCount" to tabCount.toString(),
+    )
 
     /**
      * `snapshot`：mode=text → 可访问性摘要（复用第⑲刀 [PageSnapshot.summarize]）；
@@ -244,7 +283,9 @@ object BrowserCommands {
         // 管线与第⑲刀落盘侧一致：先摘凭据 → 再打 PII
         val clean = SensitiveRedactor().redactDom(PageSnapshot.scrubSecrets(html))
         val summary = PageSnapshot.summarize(clean)
-        val head = "\"title\":\"${PageSnapshot.jsonEscape(summary.title)}\"," +
+        // 标题位显式兜底 redactTabTitle：正文已过 redactDom（title 在 DOM 里顺带打码），
+        // 这里按「桥边界」再统一一遍——幂等，且将来 summarize 的取法变了也不漏。
+        val head = "\"title\":\"${PageSnapshot.jsonEscape(SensitiveRedactor().redactTabTitle(summary.title))}\"," +
             "\"text\":\"${PageSnapshot.jsonEscape(clamp(summary.text))}\"," +
             "\"nodes\":${renderNodes(summary)}"
         return when (m) {
