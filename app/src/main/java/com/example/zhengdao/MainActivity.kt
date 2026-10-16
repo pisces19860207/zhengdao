@@ -87,7 +87,7 @@ private const val APP_RELEASES_API = "https://api.github.com/repos/pisces1986020
  *  - `settings`：用户会主动离开、又期望回来还在原处的二级页 ⇒ **唯一值得恢复的**。
  *
  * ⚠️ 故意写成「白名单 + 兜底判空」，而不是 `nav.navigate(lastRoute)`：prefs 里可能残留
- * **老版本**的路由字符串 —— 例：插件页 2026-10-08 已搬进太极抽屉（`ui/taiji/TaijiSheets.kt`
+ * **老版本**的路由字符串 —— 例：插件页 2026-10-08 已搬进抱朴抽屉（`ui/baopu/BaopuSheets.kt`
  * 的插件面板复用 `ui/PluginsScreen.kt`），`plugins` 路由随之删除，但老装机的
  * `last_route` 里仍可能留着 "plugins"。直接 navigate 会抛
  * `IllegalArgumentException` 崩在冷启动，白名单把这类死值一律当「没有可恢复的页面」。
@@ -343,7 +343,7 @@ class MainActivity : ComponentActivity() {
  * 进终端的唯一 Intent 构造器（2026-10-07：任务栈曾叠到 10 个终端页）。
  *
  * 为什么必须统一在这里加 flag：
- *   默认 standard 下每次 startActivity 都新建实例。五个入口（丹房安装/启动、洞天 Tab、
+ *   默认 standard 下每次 startActivity 都新建实例。五个入口（怡然安装/启动、逍遥 Tab、
  *   设置页清理缓存、通知栏回到终端、欢迎页装环境）各自 `Intent(ctx, TerminalActivity)`，
  *   来回几次就叠出一串——而 SessionManager.onViewUpdate 是**全局单例回调**，只指向最后
  *   建的实例，先前的全部变成死画面（pty 照常输出但永不重绘），且每个新实例还会重复
@@ -448,7 +448,7 @@ fun ZhengdaoApp(
         }
     }
 
-    // 跳终端（带可选自动命令）：洞天入口与设置页「在终端中清理缓存」共用同一实现，
+    // 跳终端（带可选自动命令）：逍遥入口与设置页「在终端中清理缓存」共用同一实现，
     // 两处必须同一行为——此前 settings 路由没传参，onOpenTerminal 落到默认 no-op，
     // 「在终端中清理缓存」点了零反应（连 Toast 都没有）。
     //
@@ -531,7 +531,7 @@ fun ZhengdaoApp(
                         context.startActivity(terminalIntent(context, null, null))
                     }
                 },
-                // 跳过环境安装直进主界面：**太极不依赖 Debian**（宿主 bionic serve，
+                // 跳过环境安装直进主界面：**抱朴不依赖 Debian**（宿主 bionic serve，
                 // 从不进 PRoot），新用户可以先体验主打功能，想要终端再回来装。
                 onSkip = { nav.navigate("home") { launchSingleTop = true } },
             )
@@ -561,7 +561,7 @@ fun ZhengdaoApp(
         composable("settings") {
             // 设置页（二级页）：顶栏＝「‹ 返回 + 居中标题」，内容区不再重复写一遍标题
             //（旧版外层"设置"与页内大字"设置"上下叠着，是最扎眼的重复）。
-            // 层级约定：根页（丹房）用大标题，二级页用导航栏标题——与 iOS 的分层一致。
+            // 层级约定：根页（怡然）用大标题，二级页用导航栏标题——与 iOS 的分层一致。
             // edge-to-edge 下必须自行避让系统栏，否则返回栏会被状态栏压住、末项被导航栏遮挡。
             Column(Modifier.statusBarsPadding().navigationBarsPadding()) {
                 // B-补-8（2026-10-16）：顶栏不再是写死高度，理由见 SettingsCommon.SettingsTopBar。
@@ -620,13 +620,13 @@ fun ZhengdaoApp(
  *
  * 为什么要抽常量：这次交换暴露了隐患 —— 全文件原有 **20 处硬编码索引**
  * （`when (tab)` 分支、底栏 selected/onClick/图标、`animateToTop`、ON_RESUME 切 Tab、
- * TaijiScreen 的 onExit），漏改任何一处都会**静默错位**。最隐蔽的一处是初始值
+ * BaopuScreen 的 onExit），漏改任何一处都会**静默错位**。最隐蔽的一处是初始值
  * `mutableIntStateOf(2)`：2 原本是怡然、交换后变成玄览，不跟着换常量的话，
  * 启动页会无声无息地从"怡然"漂到"玄览"。改顺序时只动这里。
  */
 internal object TabIndex {
     /** 抱朴（真实）：Compose 原生对话（内嵌 OpenCode）。 */
-    const val TAJI = 0
+    const val BAOPU = 0
 
     /** 逍遥（自由）：终端（独立整屏 Activity；本 Tab 本身只是回程落点）。 */
     const val TERMINAL = 1
@@ -658,7 +658,7 @@ fun HomeTabs(
     //
     // 之前 listState 在各 tab 内部用 rememberLazyListState() 创建：切走 tab 时整个 tab
     // 的 Composable 退出 Composition，state 跟着 destroy；切回时拿到的是"出厂态"。
-    // 用户实感：丹房翻到第 8 个 Agent，切太极再切回，又被甩到顶。
+    // 用户实感：怡然翻到第 8 个 Agent，切抱朴再切回，又被甩到顶。
     //
     // 提到外层后 state 跟 HomeTabs 同寿命；rememberLazyListState() 内部用 saver 走
     // rememberSaveable，顺带覆盖了"配置变更（旋转、深浅色）"也要保留位置。
@@ -668,7 +668,7 @@ fun HomeTabs(
     // [lastTabClickAt] 与下面 NavigationBarItem 的 onClick），所以**只有点当前 Tab
     // 才会滚顶**；点别的 Tab 只是切 Tab，不动列表。
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val taijiListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val baopuListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     // 玄览：外部打开请求的切 Tab 消费（§4.6，2026-10-14 第 ② 刀接线）。
     // TerminalActivity 点链接时置请求 + finish() 回主页；这里 ON_RESUME 时切到玄览，
@@ -696,12 +696,12 @@ fun HomeTabs(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // K2 配套（2026-10-08 审查）：太极消息列表的「是否跟随最新」与「已经定位过哪个会话」
-    // 也必须跟 listState 同寿命。切 Tab 时 TaijiScreen 退出 Composition，这两个值若留在
+    // K2 配套（2026-10-08 审查）：抱朴消息列表的「是否跟随最新」与「已经定位过哪个会话」
+    // 也必须跟 listState 同寿命。切 Tab 时 BaopuScreen 退出 Composition，这两个值若留在
     // 页面内部用 remember，切回来就重新初始化成"刚进入会话"，LaunchedEffect 立刻把保留的
-    // 滚动位置一脚踢回底部 —— 上面辛苦提出来的 listState 等于白提（K2 在太极页失效，丹房正常）。
-    val taijiFollow = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
-    val taijiPositionedSession =
+    // 滚动位置一脚踢回底部 —— 上面辛苦提出来的 listState 等于白提（K2 在抱朴页失效，怡然正常）。
+    val baopuFollow = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    val baopuPositionedSession =
         androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope { CoroutineCrashHandler }
 
@@ -727,7 +727,7 @@ fun HomeTabs(
 
     fun animateToTop(target: Int) {
         when (target) {
-            TabIndex.TAJI -> scope.launch { taijiListState.animateScrollToItem(0) }
+            TabIndex.BAOPU -> scope.launch { baopuListState.animateScrollToItem(0) }
             TabIndex.AGENTS -> scope.launch { homeListState.animateScrollToItem(0) }
             // 逍遥（终端）：点了就跳 TerminalActivity，不存在"滚顶"概念，no-op；
             // 玄览：页面区不是列表，同样 no-op。
@@ -745,7 +745,7 @@ fun HomeTabs(
         }
         lastTabClickAt.longValue = now()
         when (target) {
-            TabIndex.TAJI -> { tab = TabIndex.TAJI }
+            TabIndex.BAOPU -> { tab = TabIndex.BAOPU }
             TabIndex.TERMINAL -> { tab = TabIndex.TERMINAL; onTerminalClicked() }
             TabIndex.BROWSER -> { tab = TabIndex.BROWSER }
             TabIndex.AGENTS -> { tab = TabIndex.AGENTS }
@@ -756,7 +756,7 @@ fun HomeTabs(
         bottomBar = {
             // 底栏走 iOS 语言：与页面同为白底、靠一条 0.5dp 发丝线分隔。
             // 刻意不用 M3 默认的 tonalElevation 阴影——浅色主题下那会压出一条灰带，
-            // 与全局"白卡片 + 发丝描边"的语言冲突（同一处理见丹房卡片）。
+            // 与全局"白卡片 + 发丝描边"的语言冲突（同一处理见怡然卡片）。
             Column {
                 HorizontalDivider(
                     thickness = 0.5.dp,
@@ -776,12 +776,12 @@ fun HomeTabs(
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     NavigationBarItem(
-                        selected = tab == TabIndex.TAJI,
+                        selected = tab == TabIndex.BAOPU,
                         // 抱朴 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
                         //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
-                        onClick = { onTabClicked(TabIndex.TAJI) {} },
-                        icon = { TaijiIcon(tab == TabIndex.TAJI) },
+                        onClick = { onTabClicked(TabIndex.BAOPU) {} },
+                        icon = { BaoPuIcon(tab == TabIndex.BAOPU) },
                         label = { Text(stringResource(R.string.nav_taiji), style = tabLabelStyle) },
                         colors = tabColors,
                     )
@@ -796,13 +796,13 @@ fun HomeTabs(
                         //    逍遥是进终端的那个 tab，用过终端就该停在逍遥。
                         // K1：终端 tab 双击不滚顶（点了就跳 Activity，列表根本不存在）。
                         onClick = { onTabClicked(TabIndex.TERMINAL) { onOpenTerminal(null, null) } },
-                        icon = { CaveIcon(tab == TabIndex.TERMINAL) },
+                        icon = { XiaoYaoIcon(tab == TabIndex.TERMINAL) },
                         // 改名链（留痕）：2026-10-08「洞天」→「终端」（与全站功能文案统一）；
                         // 2026-10-14 派工单「终端」→「逍遥」（四 Tab 祝福命名定稿：
                         // 抱朴/逍遥/怡然/玄览 = 真实/自由/幸福/期望）。Tab 名走资源
                         // （nav_terminal），底栏/空态/WelcomeScreen 同源，不会再分裂。
-                        // 注意：**代码与图标设计里仍称「洞天」**（CaveIcon 是月洞门，
-                        // 见 CaveIcon 的设计说明），此处只改用户可见文案。
+                        // 注意：2026-10-16 起**代码与图标名已与 Tab 名同一口径**（XiaoYaoIcon ⇒ XiaoYaoIcon、
+                        // 图形换成流云「逍遥」），本段只讲文案沿革；再没有"代码里仍称逍遥"这回事。
                         label = { Text(stringResource(R.string.nav_terminal), style = tabLabelStyle) },
                         colors = tabColors,
                     )
@@ -820,7 +820,7 @@ fun HomeTabs(
                         selected = tab == TabIndex.AGENTS,
                         // K1：双击 = 滚到怡然 Agent 列表顶。
                         onClick = { onTabClicked(TabIndex.AGENTS) {} },
-                        icon = { DingIcon(tab == TabIndex.AGENTS) },
+                        icon = { YiRanIcon(tab == TabIndex.AGENTS) },
                         label = { Text(stringResource(R.string.nav_agents), style = tabLabelStyle) },
                         colors = tabColors,
                     )
@@ -837,7 +837,7 @@ fun HomeTabs(
                 //    via Modifier.padding and Modifier.consumeWindowInsets"。
                 // 只 padding 不 consume 的后果：内部任何 statusBarsPadding() / navigationBarsPadding()
                 // 都会把状态栏 / 导航条再垫一次（顶层内容整体下移、底部多出一条空档）。
-                // 太极 Tab 的固定顶栏与输入框正是这种情况，故在此声明「系统栏内边距已由本层应用」。
+                // 抱朴 Tab 的固定顶栏与输入框正是这种情况，故在此声明「系统栏内边距已由本层应用」。
                 // ⚠️ IME inset 不在 contentWindowInsets 内，imePadding() 不受影响，键盘避让照常。
                 .consumeWindowInsets(padding),
             color = MaterialTheme.colorScheme.background,
@@ -848,18 +848,18 @@ fun HomeTabs(
                 // ⚠️ 旧 WebView + LocalProxy 回退路径已删（v1.1.1 阶段 3）——
                 //    原生 UI 已过真机验收（v1.1 四阶段 + v1.1.1 阶段 0），退路失去存在意义；
                 //    真坏了就修，不藏一条会腐烂的备用路。
-                TabIndex.TAJI -> com.example.zhengdao.ui.taiji.TaijiScreen(
+                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
                     // 2026-10-10 UIUX 审计 B1 修：此前**没传 onExit**，它默认是空实现
                     // ⇒ 两处"点了没反应"：① 没装 OpenCode 时引导页的「返回」按钮；
-                    // ② 抽屉里的「结束本次会话并退出太极」（会话被关掉了，人却还站在太极页，
+                    // ② 抽屉里的「结束本次会话并退出抱朴」（会话被关掉了，人却还站在抱朴页，
                     //    界面上既没了聊天区也没了任何提示，像是卡住）。
                     // 落点选**怡然**（TabIndex.AGENTS）：抱朴的实例已经关了，留在原地没有意义；
                     // 怡然是另一个有真实内容的 Tab，用户能继续做事。
-                    // （不改 TaijiScreen 的默认值为妙——那会让"漏传"继续沉默。）
+                    // （不改 BaopuScreen 的默认值为妙——那会让"漏传"继续沉默。）
                     onExit = { tab = TabIndex.AGENTS },
-                    listState = taijiListState,
-                    followState = taijiFollow,
-                    positionedSession = taijiPositionedSession,
+                    listState = baopuListState,
+                    followState = baopuFollow,
+                    positionedSession = baopuPositionedSession,
                 )
                 // 怡然（幸福）：Agent 管理（OpenCode 已内置为抱朴，不在怡然展示）
                 TabIndex.AGENTS -> HomeScreen(
@@ -923,20 +923,22 @@ private fun TerminalTabEmptyState(onOpenTerminal: () -> Unit) {
     }
 }
 
-// ── 底部 Tab 自绘图标：道家体系三件套（Compose Path，零第三方素材）──
+// ── 底部 Tab 自绘图标：四枚一套（Compose Path，零第三方素材）──
 //
-// 为什么重绘（2026-10-07，真机截图驱动）：
-//   旧太极图标在真机上是一片"叶子/旗子"，不是阴阳鱼。根因在几何：
-//   两段 arcTo 画完 S 之后用 close() 收尾，close() 是**从底点直线拉回顶点**，
-//   填出的是一个由 S 与直径围成的月牙——正确做法是沿**外圆左半**绕回顶点。
-//   顺手把三个图标收敛成一套统一的设计语言（下面这些常量就是"一套"的契约）。
+// 为什么整组重绘（2026-10-16，与四 Tab 改名同批）：
+//   旧四枚是给旧 Tab 名画的（抱朴 / 逍遥 / 怡然 / 玄览），Tab 名已定稿为祝福名
+//   （抱朴 / 逍遥 / 玄览 / 怡然），图形跟着改名，一套旧稿整组退役：
+//   · 旧抱朴在真机上是一片"叶子/旗子"——根因是 S 分界用 close() 直线拉回形成月牙；
+//   · 旧月洞门（逍遥）、圆腹鼎（怡然）随旧 Tab 名退出；
+//   · 旧杏眼在 26dp 下读成"鱼"（上下弧太尖），换成明潭（环 + 偏心瞳）。
+//   旧稿全文留痕在 `证道设计报告/`（三件：AI 提示词 / 新设计.kt / 新设计稿.html）。
 //
-// 统一设计语言（三个必须像同一个人画的）：
+// 四枚的剪影分工（一眼分得开，才有资格占底栏）：竖（芽）/ 横（流云）/ 圆（明潭）/ 舟（扁舟）。
+// 全套设计语言（四枚必须像同一个人画的）：
 //   · 画布 26dp，光学框 20dp（四边各留 ~3dp 呼吸，Tab 图标不做满框）
-//   · 描边 1.9f + 圆头 + 圆角连接（StrokeCap.Round / StrokeJoin.Round）
-//   · 圆形母题贯穿：太极＝整圆、洞天＝半圆月洞门、丹房＝圆腹鼎
-//   · 只在"点睛"处用实心（太极双鱼眼、炉中之丹），其余一律描边——26dp 下不糊
-
+//   · 描边 1.9f + 圆头 + 圆角连接（StrokeCap.Round / StrokeJoin.Round），四枚共用 tabStroke()
+//   · 每枚 ≤ 3 笔（旧版 4~7 笔，26dp 里挤成一团）
+//   · 只在"点睛"处用实心（芽的叶、明潭的瞳），其余一律描边——26dp 下不糊
 /** 图标画布边长（dp）。 */
 private const val TAB_ICON_DP = 26
 
@@ -956,11 +958,11 @@ private fun tabIconColor(selected: Boolean) =
  *
  * ⚠️ 为什么改 scale 而不是改 Canvas 内的几何：
  *   26dp 图标里任何几何改动都要重算 Path；scale 是**整块缩放**，
- *   三个图标的绘制代码一行不动，也不破坏 TAB_ICON_DP 的光学框契约
+ *   四个图标的绘制代码一行不动，也不破坏 TAB_ICON_DP 的光学框契约
  *   （呼吸留白等比缩放，视觉上仍是同一套设计语言）。
  *
  * ⚠️ 为什么不做「页面内容 Crossfade 转场」：
- *   淡出需要新旧两页在过渡期**同时存在**，而 tab=0 的 TaijiScreen 会
+ *   淡出需要新旧两页在过渡期**同时存在**，而 tab=0 的 BaopuScreen 会
  *   在 LaunchedEffect 里开一条 SSE 长连接 —— 重叠 160ms 就是**同时两条连接**，
  *   且滚动/会话定位状态在过渡中途会被读两次。图标动效没有这个副作用。
  */
@@ -977,7 +979,7 @@ private fun tabIconScale(selected: Boolean): Float {
     return scale
 }
 
-/** 统一描边样式（圆头圆角）——三个图标共用，保证线感一致。 */
+/** 统一描边样式（圆头圆角）——四个图标共用，保证线感一致。 */
 private fun tabStroke() = Stroke(
     width = TAB_STROKE,
     cap = StrokeCap.Round,
@@ -985,144 +987,157 @@ private fun tabStroke() = Stroke(
 )
 
 /**
- * 太极：外圆 + 阴阳鱼 S 分界 + 双鱼眼。
+ * 一片叶子（实心梭形）：叶柄在 [ax, ay]，叶尖在 [tx, ty]，[b] 是鼓度（法向偏移，符号决定往哪边鼓）。
  *
- * S 分界 = 上半圆向右鼓（半径 r/2，圆心在 (cx, cy-r/2)）+ 下半圆向左鼓
- * （半径 r/2，圆心在 (cx, cy+r/2)）首尾相接；两只鱼眼就落在两个半圆的圆心上，
- * 这是太极图的标准作图法。
+ * 两段三次贝塞尔首尾相接：去程往 +法向鼓 b，回程往 −法向鼓 b，闭合后是一条对称梭形。
+ * 控制点取在 0.33 / 0.67 —— 根部钝、尖端利，比正圆更像叶子（26dp 下这一口气很关键）。
+ * 法向 = 叶轴转 90°，所以同一组参数翻个符号就是镜像叶。
  */
-@Composable
-fun TaijiIcon(selected: Boolean) {
-    val color = tabIconColor(selected)
-    val scale = tabIconScale(selected)
-    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
-        val stroke = tabStroke()
-        val r = (size.minDimension - TAB_STROKE) / 2f
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-
-        // 外圆
-        drawCircle(color = color, radius = r, center = Offset(cx, cy), style = stroke)
-
-        // 阴阳鱼 S 分界（⚠️ 不要 close()：那会直线拉回形成月牙，即旧版的畸形根因）
-        val s = Path().apply {
-            moveTo(cx, cy - r)
-            arcTo(Rect(cx - r / 2f, cy - r, cx + r / 2f, cy), -90f, 180f, false)   // 上半圆，向右鼓
-            arcTo(Rect(cx - r / 2f, cy, cx + r / 2f, cy + r), -90f, -180f, false)  // 下半圆，向左鼓
-        }
-        drawPath(s, color, style = stroke)
-
-        // 双鱼眼（实心点，落在两个半圆圆心）
-        drawCircle(color = color, radius = r * 0.15f, center = Offset(cx, cy - r / 2f))
-        drawCircle(color = color, radius = r * 0.15f, center = Offset(cx, cy + r / 2f))
+private fun leafPath(w: Float, h: Float, ax: Float, ay: Float, tx: Float, ty: Float, b: Float): Path {
+    val dx = tx - ax
+    val dy = ty - ay
+    val len = kotlin.math.sqrt(dx * dx + dy * dy)
+    val nx = -dy / len
+    val ny = dx / len
+    val off = b * w
+    return Path().apply {
+        moveTo(w * ax, h * ay)
+        cubicTo(
+            w * (ax + dx * 0.33f) + nx * off, h * (ay + dy * 0.33f) + ny * off,
+            w * (ax + dx * 0.67f) + nx * off, h * (ay + dy * 0.67f) + ny * off,
+            w * tx, h * ty,
+        )
+        cubicTo(
+            w * (ax + dx * 0.67f) - nx * off, h * (ay + dy * 0.67f) - ny * off,
+            w * (ax + dx * 0.33f) - nx * off, h * (ay + dy * 0.33f) - ny * off,
+            w * ax, h * ay,
+        )
+        close()
     }
 }
 
 /**
- * 洞天：月洞门（外拱 + 内门洞 + 地平线）——道家「洞天福地」的门阙意象。
+ * 抱朴：一株破土的芽（茎 = 生长，两片实心叶 = 未雕之朴）。
  *
- * 加一条地平线是有意为之：只有拱就会读成"山洞/隧道"，有了门前地面才成"门"，
- * 也与另外两个图标一样在底部有一条稳定的横向基线。
+ * 2026-10-16 定稿（用户逐枚拍板，S1「错开」）：四枚图标里唯一的**竖向**剪影 ——
+ * 与逍遥的横流云、玄览的圆、怡然的舟互不撞车。叶走**实心**（26dp 下描边叶
+ * 会读成蜻蜓），茎仍用统一描边 tabStroke()，与其余三枚是同一支笔。
  */
 @Composable
-fun CaveIcon(selected: Boolean) {
-    val color = tabIconColor(selected)
-    val scale = tabIconScale(selected)
-    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
-        val stroke = tabStroke()
-        val w = size.width
-        val h = size.height
-        val baseY = h * 0.86f
-
-        // 地平线（门前的台阶 / 地面）
-        drawLine(color, Offset(w * 0.10f, baseY), Offset(w * 0.90f, baseY), stroke.width, StrokeCap.Round)
-
-        // 门框（外拱）：直壁 → 半圆顶 → 直壁
-        val outer = Path().apply {
-            moveTo(w * 0.22f, baseY)
-            lineTo(w * 0.22f, h * 0.44f)
-            arcTo(Rect(w * 0.22f, h * 0.16f, w * 0.78f, h * 0.72f), 180f, 180f, false)
-            lineTo(w * 0.78f, baseY)
-        }
-        drawPath(outer, color, style = stroke)
-
-        // 门洞（内拱）：与外拱同心同法，只缩放
-        val inner = Path().apply {
-            moveTo(w * 0.40f, baseY)
-            lineTo(w * 0.40f, h * 0.50f)
-            arcTo(Rect(w * 0.40f, h * 0.40f, w * 0.60f, h * 0.60f), 180f, 180f, false)
-            lineTo(w * 0.60f, baseY)
-        }
-        drawPath(inner, color, style = stroke)
-    }
-}
-
-/**
- * 丹房：圆腹鼎（口沿 + 双耳 + 圆腹 + 双足）+ 炉中之丹。
- *
- * 旧版腹部是梯形、耳是外撇的斜线，整体读成"提篮"。改为圆腹（两段三次贝塞尔）
- * + 竖直双耳 + 外撇双足，腹心点一颗实心"丹"——落在名字上（丹房＝炼丹之所）。
- */
-@Composable
-fun DingIcon(selected: Boolean) {
+fun BaoPuIcon(selected: Boolean) {
     val color = tabIconColor(selected)
     val scale = tabIconScale(selected)
     Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
         val stroke = tabStroke()
         val w = size.width
         val h = size.height
-        val rimY = h * 0.30f
 
-        // 口沿
-        drawLine(color, Offset(w * 0.07f, rimY), Offset(w * 0.93f, rimY), stroke.width, StrokeCap.Round)
-        // 双耳（竖直短柱——比外撇斜线更像鼎耳）
-        drawLine(color, Offset(w * 0.22f, rimY), Offset(w * 0.22f, h * 0.14f), stroke.width, StrokeCap.Round)
-        drawLine(color, Offset(w * 0.78f, rimY), Offset(w * 0.78f, h * 0.14f), stroke.width, StrokeCap.Round)
+        // 叶先画（茎随后压上去，接缝干净）
+        drawPath(leafPath(w, h, 0.50f, 0.62f, 0.18f, 0.32f, 0.095f), color)
+        drawPath(leafPath(w, h, 0.50f, 0.46f, 0.82f, 0.16f, -0.095f), color)
 
-        // 圆腹
-        val belly = Path().apply {
-            moveTo(w * 0.07f, rimY)
-            cubicTo(w * 0.09f, h * 0.60f, w * 0.26f, h * 0.76f, w * 0.50f, h * 0.76f)
-            cubicTo(w * 0.74f, h * 0.76f, w * 0.91f, h * 0.60f, w * 0.93f, rimY)
+        // 茎：一道微弯的有机曲线（先左倾再回正，避免读成"旗杆"）
+        val stem = Path().apply {
+            moveTo(w * 0.50f, h * 0.95f)
+            cubicTo(w * 0.44f, h * 0.74f, w * 0.56f, h * 0.56f, w * 0.50f, h * 0.30f)
         }
-        drawPath(belly, color, style = stroke)
-
-        // 双足
-        drawLine(color, Offset(w * 0.32f, h * 0.72f), Offset(w * 0.29f, h * 0.90f), stroke.width, StrokeCap.Round)
-        drawLine(color, Offset(w * 0.68f, h * 0.72f), Offset(w * 0.71f, h * 0.90f), stroke.width, StrokeCap.Round)
-
-        // 炉中之丹（点睛）
-        drawCircle(color = color, radius = w * 0.055f, center = Offset(w * 0.50f, h * 0.50f))
+        drawPath(stem, color, style = stroke)
     }
 }
 
 /**
- * 玄览图标：一只杏眼。
+ * 逍遥：一笔流云（主流云 + 上方一短横远云）。
  *
- * 定名意象（用户 2026-10-13 定调）：玄览 =《道德经》"涤除玄览"，深观明察，承载「期望」；
- * 产品定位是"给终端配一双眼睛"（终端有手、玄览有眼）——眼睛即这个 Tab 的直白象征。
- * 与 TaijiIcon / CaveIcon / DingIcon 同一套笔（圆头描边 + 选中缩放）。
+ * 《逍遥游》"乘云气，御飞龙"。长身微弧一笔，右端向上卷成云头；
+ * 全套图标里唯一的**横向流动**形，与抱朴的"竖静"相对。2 笔。
+ * 云头 = 圆心 (0.78, 0.48)、r 0.13 的圆弧，从下端起逆时针 300°，
+ * 开口朝左下 —— 缺口的角度是这朵云好不好认的关键，别随手改。
+ */
+@Composable
+fun XiaoYaoIcon(selected: Boolean) {
+    val color = tabIconColor(selected)
+    val scale = tabIconScale(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
+        val stroke = tabStroke()
+        val w = size.width
+        val h = size.height
+
+        val cloud = Path().apply {
+            moveTo(w * 0.12f, h * 0.64f)
+            cubicTo(w * 0.32f, h * 0.59f, w * 0.56f, h * 0.67f, w * 0.78f, h * 0.61f)
+            arcTo(
+                Rect(w * 0.65f, h * 0.35f, w * 0.91f, h * 0.61f),
+                startAngleDegrees = 90f,
+                sweepAngleDegrees = -300f,
+                forceMoveTo = false,
+            )
+        }
+        drawPath(cloud, color, style = stroke)
+
+        // 远云（一短横，拉开层次）
+        drawLine(color, Offset(w * 0.26f, h * 0.34f), Offset(w * 0.54f, h * 0.34f), stroke.width, StrokeCap.Round)
+    }
+}
+
+/**
+ * 怡然：一叶扁舟（船体一笔 + 桅杆 + 三角帆）。
+ *
+ * 《赤壁赋》"驾一叶之扁舟，举匏樽以相属"——怡然自得之形。
+ * 船底一笔（左舷起、底部鼓、右舷收、回起点闭合＝甲板一条直线），
+ * 桅杆穿过帆压到船体，帆是三角（竖直左缘与桅杆同线）。3 笔，
+ * 四枚里唯一的"载具"剪影。用户 2026-10-16 定稿（Y2 一叶扁舟）。
+ */
+@Composable
+fun YiRanIcon(selected: Boolean) {
+    val color = tabIconColor(selected)
+    val scale = tabIconScale(selected)
+    Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
+        val stroke = tabStroke()
+        val w = size.width
+        val h = size.height
+
+        // 船体（闭合 = 甲板）
+        val hull = Path().apply {
+            moveTo(w * 0.08f, h * 0.64f)
+            cubicTo(w * 0.26f, h * 0.90f, w * 0.74f, h * 0.90f, w * 0.92f, h * 0.64f)
+            close()
+        }
+        drawPath(hull, color, style = stroke)
+
+        // 桅杆（从帆顶压进船体）
+        drawLine(color, Offset(w * 0.33f, h * 0.12f), Offset(w * 0.33f, h * 0.78f), stroke.width, StrokeCap.Round)
+
+        // 帆（三角）
+        val sail = Path().apply {
+            moveTo(w * 0.33f, h * 0.14f)
+            lineTo(w * 0.76f, h * 0.58f)
+            lineTo(w * 0.33f, h * 0.58f)
+            close()
+        }
+        drawPath(sail, color, style = stroke)
+    }
+}
+
+/**
+ * 玄览：明潭（描边环 + 偏心实心瞳）。
+ *
+ * "涤除玄览"——玄览即深观。旧的杏眼在 26dp 下读成"鱼"（上下弧太尖）；
+ * 改为偏心瞳落在环里：偏心给出"注视的方向"，环给出"潭"的静。2 笔。
+ * 用户 2026-10-16 在 6 个候选里拍板本方案（团镜/提梁镜/竖瞳均因小尺寸
+ * 误读被否，见设计报告）。函数名未变，是"换体不换名"。
  */
 @Composable
 fun XuanLanIcon(selected: Boolean) {
     val color = tabIconColor(selected)
     val scale = tabIconScale(selected)
     Canvas(modifier = Modifier.size(TAB_ICON_DP.dp).graphicsLayer { this.scaleX = scale; scaleY = scale }) {
-        val stroke = tabStroke()
         val w = size.width
         val h = size.height
-        val cy = h * 0.50f
 
-        // 眼廓（上下两弧成杏眼）
-        val eye = Path().apply {
-            moveTo(w * 0.08f, cy)
-            cubicTo(w * 0.28f, h * 0.20f, w * 0.72f, h * 0.20f, w * 0.92f, cy)
-            cubicTo(w * 0.72f, h * 0.80f, w * 0.28f, h * 0.80f, w * 0.08f, cy)
-        }
-        drawPath(eye, color, style = stroke)
-
-        // 瞳（点睛）
-        drawCircle(color = color, radius = w * 0.11f, center = Offset(w * 0.50f, cy))
+        // 环（潭）
+        drawCircle(color = color, radius = w * 0.335f, center = Offset(w * 0.50f, h * 0.50f), style = tabStroke())
+        // 瞳（偏心 = 有神）
+        drawCircle(color = color, radius = w * 0.115f, center = Offset(w * 0.44f, h * 0.44f))
     }
 }
 

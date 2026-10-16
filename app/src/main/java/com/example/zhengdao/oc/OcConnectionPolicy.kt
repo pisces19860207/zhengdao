@@ -5,10 +5,10 @@ package com.example.zhengdao.oc
 /**
  * `OcRepository.open()` 的判据：**这次调用还要不要重新建连**。
  *
- * ## 为什么要有它（2026-10-11 用户报「每次重进太极都会重新连接」）
+ * ## 为什么要有它（2026-10-11 用户报「每次重进抱朴都会重新连接」）
  *
  * `HomeTabs` 切 Tab 用的是 `when (tab)`（`MainActivity.kt:654`）——切走的 Tab **直接退出
- * Composition**。原先 `OcRepository` 是在 `TaijiScreen` 里 `remember { }` 建的、轮询与 SSE
+ * Composition**。原先 `OcRepository` 是在 `BaopuScreen` 里 `remember { }` 建的、轮询与 SSE
  * 又跑在 `rememberCoroutineScope()` 上，于是"切走 Tab"等于把连接整套拆掉，切回来自然重新
  * 握手 + 重新全量拉取。
  *
@@ -27,13 +27,13 @@ package com.example.zhengdao.oc
  * 5. 其余（同会话 + 两条 Job 都活）→ **不重开**，直接复用现有连接
  *
  * 判据抽成纯函数是为了能在 JVM 上把 5 种组合都钉住——Job 的存活与否没法在真机上反复复现
- * （同一套教训见 `TaijiSessionGrouping` / `MessageCopy` / `AgentInstallPrep`）。
+ * （同一套教训见 `BaopuSessionGrouping` / `MessageCopy` / `AgentInstallPrep`）。
  *
  * @param requested 调用方传入的会话 id（`null` = 「不指定，沿用当前/最近那个」）
  * @param current repository 此刻持有的会话 id
  * @param pollAlive REST 轮询任务是否还在跑（**主数据源**，见 ERRATA E-008）
  * @param sseAlive SSE 信号通道是否还在跑
- * @param isFailed 当前是否停在 [TaijiPhase.Failed]
+ * @param isFailed 当前是否停在 [BaopuPhase.Failed]
  */
 internal fun shouldReopenConnection(
     requested: String?,
@@ -50,7 +50,7 @@ internal fun shouldReopenConnection(
 
 /**
  * 切会话（`switchSession` / `startNewSession`）时写进 state 的**预置状态**：
- * 只清掉上一场的残留，**绝不改 [TaijiState.sessionId]**。
+ * 只清掉上一场的残留，**绝不改 [BaopuState.sessionId]**。
  *
  * ## 为什么专门抽成函数（2026-10-13 真机，ERRATA E-123）
  *
@@ -61,19 +61,19 @@ internal fun shouldReopenConnection(
  * ⇒ **切到历史会话后页面停在空列表、轮询还挂在旧会话上**；杀掉 App 重进
  * （repository 重建、`current` 为 null）才恢复。
  *
- * 用户原话（2026-10-13）：「我刚刚在太极页切换会话的时候就有个出错，然后关闭APP重进了
+ * 用户原话（2026-10-13）：「我刚刚在抱朴页切换会话的时候就有个出错，然后关闭APP重进了
  * 才没问题的 —— 那种切换回旧聊天会话的时候」。
  *
  * 目标 id 由 `OcRepository.open` 自己在 Loading 那次 update 里写进 state —— 那里是唯一写点。
  */
-internal fun TaijiState.afterSessionSwitchStarted(): TaijiState = copy(
+internal fun BaopuState.afterSessionSwitchStarted(): BaopuState = copy(
     messages = emptyList(),
     parts = emptyMap(),
     loadedOnce = false,
     input = "",
     isStreaming = false,
     pendingPermission = null,
-    phase = TaijiPhase.Loading,
+    phase = BaopuPhase.Loading,
 )
 
 /**
@@ -82,7 +82,7 @@ internal fun TaijiState.afterSessionSwitchStarted(): TaijiState = copy(
  * ## 为什么是 8
  *
  * 退避阶梯 1s/2s/4s/8s/15s（封顶 15s）：第 8 次失败时累计等待约 1+2+4+8+15×4 ≈ 75s，
- * 再等下去用户只会以为界面卡死。放弃后置 `TaijiPhase.Failed(retryable = true)`，
+ * 再等下去用户只会以为界面卡死。放弃后置 `BaopuPhase.Failed(retryable = true)`，
  * 恢复路径复用既有机制 —— FailedPane「重试」→（serve 不在时先 `startServe`，
  * 见 [failedRetryNeedsStartServe]）→ `open()`（[shouldReopenConnection] 第 1 条）。
  *
@@ -101,7 +101,7 @@ internal fun shouldGiveUpReconnecting(consecutiveFailures: Int): Boolean =
  *
  * serve 进程死亡后，FailedPane「重试」原先只调 `repo.open()`：open 走 REST 全失败、
  * FailedPane 换一条错误文案继续挂着 —— 点多少次都失败，用户必须重进页面
- * （TaijiScreen 入口会 `startServe`）或重启 App 才能恢复。根因是「失败态 → 重试 →
+ * （BaopuScreen 入口会 `startServe`）或重启 App 才能恢复。根因是「失败态 → 重试 →
  * `open()` 就够了」的假设漏了「**serve 进程本身已经死了**」这条分支 —— `open()` 的
  * 四条判据管的全是连接层，serve 进程层不在它管辖内。
  *
@@ -112,7 +112,7 @@ internal fun shouldGiveUpReconnecting(consecutiveFailures: Int): Boolean =
  *   口令 —— 能省则省，语义照实钉住；
  * - 不在失败态不走这条路（重试按钮只在 FailedPane 出现，这里是防误用的第二道闸）。
  *
- * 调用方（TaijiScreen FailedPane 的重试）：判据的 `serveRunning()` 探测与需要时的
+ * 调用方（BaopuScreen FailedPane 的重试）：判据的 `serveRunning()` 探测与需要时的
  * `OcManager.startServe(ctx)`（阻塞：裸 HttpURLConnection 探测 + 起进程）都必须在
  * **Dispatchers.IO** 上执行，然后才 `repo.open(...)`。
  */

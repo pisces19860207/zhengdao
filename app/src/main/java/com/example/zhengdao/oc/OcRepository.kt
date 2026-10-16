@@ -29,7 +29,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 太极 Tab 的状态归约层 —— **UI 与网络之间的唯一真相源**。
+ * 抱朴 Tab 的状态归约层 —— **UI 与网络之间的唯一真相源**。
  *
  * ## 归约为什么集中在这里
  *
@@ -52,7 +52,7 @@ class OcRepository(
     res: android.content.res.Resources? = null,
 ) {
 
-    /** 可更新：单例寿命跨语言切换，每次进太极由调用方重新注入当前语言的 Resources。 */
+    /** 可更新：单例寿命跨语言切换，每次进抱朴由调用方重新注入当前语言的 Resources。 */
     @Volatile
     private var res: android.content.res.Resources? = res
 
@@ -98,8 +98,8 @@ class OcRepository(
         return out
     }
 
-    private val _state = MutableStateFlow(TaijiState())
-    val state: StateFlow<TaijiState> = _state.asStateFlow()
+    private val _state = MutableStateFlow(BaopuState())
+    val state: StateFlow<BaopuState> = _state.asStateFlow()
 
     private var sseJob: Job? = null
 
@@ -134,7 +134,7 @@ class OcRepository(
      */
     private val loopGuard = CoroutineExceptionHandler { _, e ->
         ocLog(
-            "太极长循环未捕获异常（已拦截不崩 App，Job 将结束等待重开）：" +
+            "抱朴长循环未捕获异常（已拦截不崩 App，Job 将结束等待重开）：" +
                 "${e.javaClass.simpleName}: ${e.message}"
         )
     }
@@ -147,7 +147,7 @@ class OcRepository(
      * @param sessionId 为空时自动新建会话（单会话模型，见设计文档 §3.4）。
      */
     suspend fun open(scope: CoroutineScope, sessionId: String?) {
-        // 🔺 连接还活着就什么都不做（2026-10-11 用户报「每次重进太极都会重新连接」）。
+        // 🔺 连接还活着就什么都不做（2026-10-11 用户报「每次重进抱朴都会重新连接」）。
         //    repository 现在挂在 OcRuntime 上（进程级），切 Tab 不再拆连接；但页面每次重进
         //    仍会调一次 open()，所以这里必须能识别"同会话 + 轮询/SSE 都还在跑"⇒ 直接复用。
         //    判据是纯函数（shouldReopenConnection），5 种组合都有 JVM 单测。
@@ -157,7 +157,7 @@ class OcRepository(
             current = cur.sessionId,
             pollAlive = pollJob?.isActive == true,
             sseAlive = sseJob?.isActive == true,
-            isFailed = cur.phase is TaijiPhase.Failed,
+            isFailed = cur.phase is BaopuPhase.Failed,
         )
         if (!reopen) {
             ocLog("open 复用现有连接：会话 ${cur.sessionId}（切 Tab / 返回不重连）")
@@ -166,18 +166,18 @@ class OcRepository(
 
         // 单会话模型下的会话选择优先级：
         //   ① 转屏/配置变更保留下来的 id（savedSession）
-        //   ② **服务端最近的会话** —— 否则每进一次太极就新建一个空会话
-        //      （实测服务端已累积 7 个），用户在太极 Tab 看到的历史也会每次归零
+        //   ② **服务端最近的会话** —— 否则每进一次抱朴就新建一个空会话
+        //      （实测服务端已累积 7 个），用户在抱朴 Tab 看到的历史也会每次归零
         //   ③ 都没有才新建
         val id = sessionId
             ?: latestSessionId()?.also { ocLog("复用服务端最近会话 id=$it") }
             ?: createSession()?.also { logSession(it) }
         if (id == null) {
-            _state.update { it.copy(phase = TaijiPhase.Failed(s(R.string.oc_create_session_failed), retryable = true)) }
+            _state.update { it.copy(phase = BaopuPhase.Failed(s(R.string.oc_create_session_failed), retryable = true)) }
             return
         }
         _state.update {
-            it.copy(phase = TaijiPhase.Loading, sessionId = id, connection = ConnectionState.Connecting)
+            it.copy(phase = BaopuPhase.Loading, sessionId = id, connection = ConnectionState.Connecting)
         }
 
         // ① 全量（失败不阻断——SSE 仍可能补上后续消息）
@@ -206,7 +206,7 @@ class OcRepository(
      *
      * `GET /api/session` 返回 `{"data":[…]}`（**信封数组**），且按时间倒序——
      * 实测最新创建的排在最前，取第 0 个即可。
-     * 拿不到就返回 null，由调用方降级为新建会话（失败不得阻断进入太极）。
+     * 拿不到就返回 null，由调用方降级为新建会话（失败不得阻断进入抱朴）。
      */
     private suspend fun latestSessionId(): String? = withContext(Dispatchers.IO) {
         runCatching {
@@ -293,7 +293,7 @@ class OcRepository(
                         ocLog("轮询连续失败 $errStreak 次，停止自动重连（P2-15②）")
                         _state.update {
                             it.copy(
-                                phase = TaijiPhase.Failed(
+                                phase = BaopuPhase.Failed(
                                     s(R.string.oc_give_up_reconnecting, errStreak),
                                     retryable = true,
                                 ),
@@ -367,7 +367,7 @@ class OcRepository(
      * 拉一次待处理权限并同步到 UI。
      *
      * `GET /api/permission/request` → `{"location":{…},"data":[Permission.Request]}`
-     * 取第一条未响应的挂到 [TaijiState.pendingPermission]（UI 弹抽屉）；无则清空。
+     * 取第一条未响应的挂到 [BaopuState.pendingPermission]（UI 弹抽屉）；无则清空。
      */
     private suspend fun pollPermissions() {
         val pending = runCatching { fetchPermissionRequests() }.getOrNull() ?: return
@@ -696,7 +696,7 @@ class OcRepository(
      * 只有一行没人会看的日志，于是「这次没拉到」与「目录本就为空」在界面上**不可区分**，
      * 用户点刷新只看到「⟳ 刷新 → 拉取中… → ⟳ 刷新」闪一下，以为按钮坏了。
      * 现在失败会：① 把异常原文落 RunLog（「不静默失败」是项目原则）；
-     * ② 把一句话原因写进 [TaijiState.lastModelFetchError]，由 ModelSheet 显式显示。
+     * ② 把一句话原因写进 [BaopuState.lastModelFetchError]，由 ModelSheet 显式显示。
      * 返回值仍是 [List]（失败 = 空表），**签名不变**，调用点无需改动。
      */
     suspend fun fetchModels(directory: String): List<OcModel> = withContext(Dispatchers.IO) {
@@ -722,7 +722,7 @@ class OcRepository(
                 models
             },
             onFailure = { t ->
-                // 失败可见：原文落日志（ocLog 自带「太极: 」前缀，见 OcClient.kt:145），
+                // 失败可见：原文落日志（ocLog 自带「抱朴: 」前缀，见 OcClient.kt:145），
                 // 一句话原因进 state 供 UI 显示。列表保持原样（不动 models）——
                 // 弱网下拉取失败不该把已缓存的可用列表擦掉。
                 ocLog("拉取模型目录失败 ${t.javaClass.simpleName}: ${t.message}")
@@ -834,7 +834,7 @@ class OcRepository(
     /**
      * 原样重发最近一次提示词（失败横幅上的「重试」）。
      *
-     * 为什么用**存下来的** [TaijiState.lastPrompt] 而不是当前输入框：失败横幅出现的时刻，
+     * 为什么用**存下来的** [BaopuState.lastPrompt] 而不是当前输入框：失败横幅出现的时刻，
      * 输入框是空的（[prompt] 成功才清空、失败保留原设计仍成立，但 SSE 失败发生在
      * "发送已成功"之后，此时输入框早被清空）。没有可重试内容时如实返回失败，不假装发出。
      */
@@ -903,13 +903,13 @@ class OcRepository(
     /**
      * 新建会话并切入。
      *
-     * @return 新会话 id；失败返回 null，并把 [TaijiState.phase] 置为失败态
+     * @return 新会话 id；失败返回 null，并把 [BaopuState.phase] 置为失败态
      *   （项目原则「失败必须可见」，绝不静默）。
      */
     suspend fun startNewSession(scope: CoroutineScope): String? {
         val id = createSession()
         if (id == null) {
-            _state.update { it.copy(phase = TaijiPhase.Failed(s(R.string.oc_create_session_failed), retryable = true)) }
+            _state.update { it.copy(phase = BaopuPhase.Failed(s(R.string.oc_create_session_failed), retryable = true)) }
             return null
         }
         ocLog("新建会话 id=$id")
@@ -923,7 +923,7 @@ class OcRepository(
      * 先清空消息并置 Loading —— 否则旧会话内容会在新会话加载完成前"闪现"，
      * 用户会以为切错了。之后复用 [open]（全量拉取 + 轮询 + SSE）。
      *
-     * ⚠️ 预置状态**不得顺手把 [TaijiState.sessionId] 改成目标 id**（2026-10-13，ERRATA E-123）：
+     * ⚠️ 预置状态**不得顺手把 [BaopuState.sessionId] 改成目标 id**（2026-10-13，ERRATA E-123）：
      * 改了会让 [open] 的复用判据（[shouldReopenConnection] 第 4 条 `requested != current`）
      * 把「切会话」误判成「同会话」，直接走复用分支返回 —— 既不 loadAll、也不重建
      * 轮询/SSE，页面停在空列表上，只有杀掉 App 重进才能恢复。清残留这件事由
@@ -940,7 +940,7 @@ class OcRepository(
      * ⚠️ **不可撤销**：服务端连消息一起删。二次确认由 UI 负责（历史抽屉长按 → 确认弹窗），
      * 本方法只发请求并**如实返回结果**——绝不静默失败、绝不假装成功（项目原则）。
      *
-     * 刻意**不碰** [TaijiState.sessionId]：删掉别的会话不该把当前会话切走；
+     * 刻意**不碰** [BaopuState.sessionId]：删掉别的会话不该把当前会话切走；
      * 若删的正是当前会话，由调用方决定后续（UI 选择另起新会话）。
      *
      * @return true = 服务端已确认删除；false = 网络异常或服务端拒绝（原因已写日志）。

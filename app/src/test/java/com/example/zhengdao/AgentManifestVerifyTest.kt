@@ -60,7 +60,7 @@ class AgentManifestVerifyTest {
     fun `解析 - 提取全部字段`() {
         val text = String(realBody(), Charsets.UTF_8)
         val entries = AgentManifest.parse(text)
-        // v1.3 B2：终端 npm 版 opencode 条目已随重签删除（太极 serve 版走 OcManager，
+        // v1.3 B2：终端 npm 版 opencode 条目已随重签删除（抱朴 serve 版走 OcManager，
         // 从来不在 agents 之列）；样例条目换 claude-code
         assertTrue(entries.size >= 3)
         val cc = entries.first { it.id == "claude-code" }

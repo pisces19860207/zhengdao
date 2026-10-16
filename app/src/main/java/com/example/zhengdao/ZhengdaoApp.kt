@@ -143,14 +143,14 @@ class ZhengdaoApp : Application() {
     /**
      * OC serve 的**受控回收出口**（第⑲刀 · issue #14 的 P1-6，用户拍板的**方案③**）。
      *
-     * 问题：`opencode serve`（太极宿主进程）此前**没有任何显式停机** —— 全仓唯一调用点是
+     * 问题：`opencode serve`（抱朴宿主进程）此前**没有任何显式停机** —— 全仓唯一调用点是
      * `ui/HomeScreen.kt` 的「重启 serve」流；App 退出 / 任务划掉时只靠「进程死 ⇒ 子进程
      * 随之消亡」兜着（见 [com.example.zhengdao.oc.OcManager.stopServe] 的 KDoc）。
      *
      * 策略③（台账 §D「用户三答」①）：**只在「App 真的走了」时收**。
      * - **收**：主页 Activity「正在结束」（`isFinishing`）—— 用户按返回 / 从最近任务划掉，
      *   把主页 finish 掉，App 真的走了；
-     * - **不收**：切走 / 切回太极 Tab、结束本次会话、通知栏「停止会话」、转屏 / 配置变更、
+     * - **不收**：切走 / 切回抱朴 Tab、结束本次会话、通知栏「停止会话」、转屏 / 配置变更、
      *   单纯退到后台（Home 键）—— 这些场景 App 都还在，serve 留着供下次重挂
      *   （`OcManager.startServe()` 的「孤儿 serve 分支」能重挂已存在的 serve）。
      *
@@ -166,10 +166,10 @@ class ZhengdaoApp : Application() {
             override fun onActivityDestroyed(activity: Activity) {
                 if (activity is MainActivity && activity.isFinishing) {
                     runCatching { com.example.zhengdao.oc.OcManager.stopServe() }
-                        .onSuccess { RunLog.log("太极: serve 已停（主页结束，App 退出）") }
+                        .onSuccess { RunLog.log("抱朴: serve 已停（主页结束，App 退出）") }
                         .onFailure {
                             RunLog.log(
-                                "太极: serve 停机失败（主页结束）：" +
+                                "抱朴: serve 停机失败（主页结束）：" +
                                     "${it.javaClass.simpleName}: ${it.message}"
                             )
                         }

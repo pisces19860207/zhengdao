@@ -10,12 +10,12 @@ package com.example.zhengdao.terminal
  *
  * | 常量 | 口径 | 量的是什么 | 高了会怎样 |
  * |---|---|---|---|
- * | [HEALTH_CARD_MB] | 体检卡（`ResMonitor.verdict()`） | 本 UID **除 App 自身**的全部进程（太极 serve ＋ PRoot guest ＋ 子进程）聚合 RSS | 卡片显黄色 ⚠ |
+ * | [HEALTH_CARD_MB] | 体检卡（`ResMonitor.verdict()`） | 本 UID **除 App 自身**的全部进程（抱朴 serve ＋ PRoot guest ＋ 子进程）聚合 RSS | 卡片显黄色 ⚠ |
  * | [NOTIFY_MB] | 通知栏（`SessionService.buildNotification()`） | 只量**会话 shell 那一个进程**的 `VmRSS` | 通知里多一句「内存偏高」 |
  *
  * 取值依据（都不是拍的）：
- * - 体检卡的 800 MB：真机基线（2026-10-07）太极 serve 空闲 375–468 MB ⇒ 阈值须明显高于基线，
- *   否则一开太极就告警 = 狼来了。
+ * - 体检卡的 800 MB：真机基线（2026-10-07）抱朴 serve 空闲 375–468 MB ⇒ 阈值须明显高于基线，
+ *   否则一开抱朴就告警 = 狼来了。
  * - 通知栏的 3072 MB：只量一个 shell 进程，可它下面挂着 agent（node/python/tmux），
  *   正常跑起来就能上 GB ⇒ 用 800 会在通知栏每 30 秒刷一次假警报。
  *

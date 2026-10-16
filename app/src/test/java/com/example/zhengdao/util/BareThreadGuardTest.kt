@@ -39,7 +39,7 @@ import kotlin.text.Charsets
  * 将来文件拆分/移动会让它失败——那是提醒回来更新对账单，不是 bug。
  *
  * 行号回填记录（本文件自己的规矩：平移就回填，不是新增线程）：
- * - 2026-10-14（第⑧刀 P4-1 太极拆分后）：SettingsStorageActivity / TerminalActivity 等平移，已回填；
+ * - 2026-10-14（第⑧刀 P4-1 抱朴拆分后）：SettingsStorageActivity / TerminalActivity 等平移，已回填；
  * - 2026-10-14（审计第 2 期配套 / 第⑩批A）：`SettingsStorageActivity.kt`（B-3 加 2 行说明）与
  *   `TerminalActivity.kt`（N-2 原子拷贝 +15 行）平移 ⇒ 回填 4 个行号；
  * - 2026-10-14（第⑨刀 B）：ZhengdaoApp.kt 插入 `initWebViewDataDirectory()`（+30 行）

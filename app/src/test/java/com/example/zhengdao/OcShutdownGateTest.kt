@@ -23,7 +23,7 @@ import java.io.File
  * 真正的行为读数（切 Tab 后 `ps -A | grep -i serve` 仍在 / 划掉任务后消失）**归真机**，
  * 见交付四件套的「验不了的照实说」。
  *
- * **负例自证**（本门禁敢红）：临时在结束会话处（`TaijiScreen.onCloseSession`）插一行
+ * **负例自证**（本门禁敢红）：临时在结束会话处（`BaopuScreen.onCloseSession`）插一行
  * `OcManager.stopServe()`，G3 必红；删掉即复绿。读数记在交付里。
  */
 class OcShutdownGateTest {
@@ -179,7 +179,7 @@ class OcShutdownGateTest {
         // 显式点名两条「尤其要能红」的负例路径（失败信息比上面的集合比较更直白）
         for (rel in listOf(
             "src/main/java/com/example/zhengdao/MainActivity.kt",
-            "src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt",
+            "src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt",
         )) {
             assertFalse(
                 "$rel 里出现了 stopServe —— 这是「切 Tab / 结束会话会收 serve」的直接反证，" +

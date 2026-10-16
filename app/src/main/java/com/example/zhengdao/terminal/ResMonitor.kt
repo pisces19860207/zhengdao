@@ -7,11 +7,11 @@ import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
 /**
- * 资源监控（v1.2 阶段 3.2）：量太极 serve + PRoot guest 的内存与 CPU，超阈值告警。
+ * 资源监控（v1.2 阶段 3.2）：量抱朴 serve + PRoot guest 的内存与 CPU，超阈值告警。
  *
  * ### 为什么只量自己 UID 的进程
  * Android 的 `/proc` 对**其他应用**的进程不可读（Android 10+ 限制了 /proc 可见性），
- * 但**自己 UID** 的进程完整可读。太极的 opencode serve 是 App 自己 fork 的（宿主
+ * 但**自己 UID** 的进程完整可读。抱朴的 opencode serve 是 App 自己 fork 的（宿主
  * bionic，见故障排查手册坑 #0），PRoot guest 及其子进程（bash / tmux / node…）也都在
  * 同一 UID 下 ⇒ 按 UID 聚合就是"证道占了多少"，既不漏也不越界。
  *
@@ -24,9 +24,9 @@ import java.io.File
  * 采样是**按需**触发的——用户展开体检卡时量一次。而这时 `EnvHealth.inspect()` 自己
  * 正在做密集工作（扫 rootfs 文件、DNS 探测）+ Compose 重排，全都算在本 UID 头上。
  * 实测：本 UID 只有 App 一个进程、`top` 显示 **0.0%**，体检卡却稳定报 **80–90%**。
- * 也就是说，量到的是"体检自己"，不是"太极/终端吃了多少" ⇒ 阈值形同虚设（真出问题
+ * 也就是说，量到的是"体检自己"，不是"抱朴/终端吃了多少" ⇒ 阈值形同虚设（真出问题
  * 的 30% 淹在体检噪声的 80% 里）。
- * ⇒ 聚合时**剔除 `myPid()`**，只量太极 serve 与 PRoot guest 及其子进程。
+ * ⇒ 聚合时**剔除 `myPid()`**，只量抱朴 serve 与 PRoot guest 及其子进程。
  * 副作用正好是对的：只有 App 在跑时无进程可采 → 走"未运行"结论，不告警。
  *
  * ### 不做常驻轮询
@@ -46,8 +46,8 @@ object ResMonitor {
     )
 
     /** 体检卡口径的内存告警阈值；取值依据与"为什么与通知栏那个阈值不同"见 [RssThresholds]。
-     *  真机基线（2026-10-07）太极 serve 空闲 RSS 375–468 MB、CPU 5.6–7.4%；
-     *  阈值须明显高于基线，否则一开太极就告警 = 狼来了。 */
+     *  真机基线（2026-10-07）抱朴 serve 空闲 RSS 375–468 MB、CPU 5.6–7.4%；
+     *  阈值须明显高于基线，否则一开抱朴就告警 = 狼来了。 */
     const val RSS_WARN_MB = RssThresholds.HEALTH_CARD_MB
     const val CPU_WARN_PCT = 25f
 
@@ -58,7 +58,7 @@ object ResMonitor {
      * 采样。IO 线程调用。
      *
      * @param windowMs 两次读数的间隔；越长越准，但也越慢。
-     * @return 聚合结果；无进程可采（太极与终端都没开）时返回 null。
+     * @return 聚合结果；无进程可采（抱朴与终端都没开）时返回 null。
      */
     fun measure(windowMs: Long = 700): Sample? {
         // 硬约束（审计 B4）：本函数 sleep + 全量扫 /proc，在主线程调用会掉帧甚至 ANR。
@@ -88,7 +88,7 @@ object ResMonitor {
     /**
      * 纯函数（可单测）：把采样值翻译成体检结论。
      *
-     * **无进程可采不算故障**——太极和终端都没开时占用本来就是 0，报红会违反
+     * **无进程可采不算故障**——抱朴和终端都没开时占用本来就是 0，报红会违反
      * 体检卡「红 = 修得了」的不变量（资源占用没有一键修复）。
      * 超阈值走 **warn**（黄色 ⚠），不是红叉。
      *
@@ -133,7 +133,7 @@ object ResMonitor {
      * 可测核心：从 UID 进程表里剔除 App 自身 pid。
      *
      * 不剔除的话，采样窗口正好覆盖 `EnvHealth.inspect()` 自己的密集工作，
-     * 量出来的是"体检的开销"而非"太极/终端的占用"（真机：top 0.0% 但报 80–90%）。
+     * 量出来的是"体检的开销"而非"抱朴/终端的占用"（真机：top 0.0% 但报 80–90%）。
      */
     internal fun excludeSelf(pids: List<Int>, selfPid: Int): List<Int> =
         pids.filter { it != selfPid }

@@ -24,11 +24,11 @@ import java.io.File
  * 只读写 opencode 自身的配置文件与缓存目录，**不碰** PRoot 启动 / SSE / REST 任何既有链路。
  *
  * ⚠️ **作用域（用户 2026-10-07 裁决 ①）**：插件是 OpenCode 的能力，本 App 里只有
- * **太极**跑 OpenCode（宿主 bionic 版，XDG 隔离目录）。
+ * **抱朴**跑 OpenCode（宿主 bionic 版，XDG 隔离目录）。
  * （裁决 ② 已于 v1.2 反转：终端里的 npm 版 opencode **已卸载**，不再存在"两份 opencode"。）
  *
  * ⚠️ **v1.2 阶段 2.0 路径修复**：本类此前指向 `files/home/.zhengdao/taiji/config/opencode/`
- * （终端 taiji 脚本的 XDG 目录），与太极 serve 真正读取的 `files/oc/xdg/config/opencode/`
+ * （终端 taiji 脚本的 XDG 目录），与抱朴 serve 真正读取的 `files/oc/xdg/config/opencode/`
  * **不是同一个文件** ⇒ 插件页的开关一直写在没人读的地方。现统一取 [OcManager.configFile]，
  * 与权限策略、性能调优共用同一个 merge 写入口。
  */
@@ -36,16 +36,16 @@ object PluginManager {
 
     // ── 路径 ────────────────────────────────────────────────────────────────
 
-    /** 太极实例（OpenCode，XDG 四目录隔离）的 opencode.json —— 与 serve 读取的是同一个。 */
-    fun taijiConfig(ctx: Context): File = OcManager.configFile(ctx)
+    /** 抱朴实例（OpenCode，XDG 四目录隔离）的 opencode.json —— 与 serve 读取的是同一个。 */
+    fun baopuConfig(ctx: Context): File = OcManager.configFile(ctx)
 
-    /** 太极实例的插件包缓存（XDG_CACHE_HOME 被隔离到 files/oc/xdg/cache）。 */
-    fun taijiPackagesDir(ctx: Context): File =
+    /** 抱朴实例的插件包缓存（XDG_CACHE_HOME 被隔离到 files/oc/xdg/cache）。 */
+    fun baopuPackagesDir(ctx: Context): File =
         File(OcManager.xdgDir(ctx, "cache"), "opencode/packages")
 
     /** 缓存目录（扫描 / 清理的作用对象）。 */
     fun allPackagesDirs(ctx: Context): List<File> =
-        listOf(taijiPackagesDir(ctx))
+        listOf(baopuPackagesDir(ctx))
 
     // ── 数据模型 ─────────────────────────────────────────────────────────────
 
@@ -123,15 +123,15 @@ object PluginManager {
     fun isEnabled(file: File, spec: String): Boolean = readSpecs(file).any { samePackage(it, spec) }
 
     /**
-     * 启用 / 停用一个插件（**只作用于太极的 OpenCode 实例**，见类注释的作用域裁决）。
+     * 启用 / 停用一个插件（**只作用于抱朴的 OpenCode 实例**，见类注释的作用域裁决）。
      *
      * 写入时保留数组里其它插件的**原始形态**（字符串或 `[spec, opts]` 皆原样保留），
      * 只在末尾追加新项，或移除匹配项；数组清空时连 `plugin` 键一起删（避免留下空数组）。
      *
-     * @return 实际发生变更的文件数（0 表示已是目标状态，或太极配置尚未生成）。
+     * @return 实际发生变更的文件数（0 表示已是目标状态，或抱朴配置尚未生成）。
      */
     fun setEnabled(ctx: Context, spec: String, on: Boolean): Int =
-        if (applyToFile(taijiConfig(ctx), spec, on)) 1 else 0
+        if (applyToFile(baopuConfig(ctx), spec, on)) 1 else 0
 
     /** 对单个文件执行启用/停用，返回是否真的改了文件。 */
     internal fun applyToFile(file: File, spec: String, on: Boolean): Boolean {

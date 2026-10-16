@@ -14,7 +14,7 @@ import java.nio.file.Files
  *
  * 背景：脚本最后一步 `stage_gateway()` 要在系统里装 systemd 服务，proot 里没有 init ⇒
  * `hermes gateway install` 非零退出 ⇒ `fail "gateway installation failed"` ⇒ 整个脚本 exit 1
- * ⇒ 丹房显示「安装失败（退出码 1）」，**尽管 hermes 本体已装好、配置已完成**（真机截图：
+ * ⇒ 怡然显示「安装失败（退出码 1）」，**尽管 hermes 本体已装好、配置已完成**（真机截图：
  * `✓ Install complete!` 后面就这一条红叉）。补丁把那一句的失败尾巴换成只告警。
  *
  * 这里钉三件事：补丁真的只动那一处；幂等；锚点不在（上游改版）时**原样放过**而不是乱改。

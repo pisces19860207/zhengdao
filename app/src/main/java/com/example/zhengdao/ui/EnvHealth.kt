@@ -564,7 +564,7 @@ object EnvHealth {
     }
 
     /**
-     * 资源占用（v1.2 阶段 3.2）：太极 serve + PRoot guest 的 RSS 与 CPU。
+     * 资源占用（v1.2 阶段 3.2）：抱朴 serve + PRoot guest 的 RSS 与 CPU。
      *
      * 按 UID 聚合本 App 的全部进程（含 PRoot 里的 bash / tmux / node 子进程），
      * 超阈值走 **warn（黄色 ⚠）**——内存/CPU 没有一键修复，报红会违反

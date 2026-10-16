@@ -9,30 +9,30 @@ import com.example.zhengdao.ui.PluginManager
 import java.io.File
 
 /**
- * 太极实例的**预置**：人设（AGENTS.md）＋ `opencode.json` 的性能/插件字段。
+ * 抱朴实例的**预置**：人设（AGENTS.md）＋ `opencode.json` 的性能/插件字段。
  *
  * ## 为什么从 terminal/ProotLauncher 搬到这里（2026-10-09，ERRATA E-069）
  *
- * 这块内容**全是太极的**，原先却写在 [com.example.zhengdao.terminal.ProotLauncher] 里，
+ * 这块内容**全是抱朴的**，原先却写在 [com.example.zhengdao.terminal.ProotLauncher] 里，
  * 于是有两个毛病：
- *  1. **由不相关的路径触发**：只有"用户开了一次终端"才写。只用太极、从不进终端的用户
+ *  1. **由不相关的路径触发**：只有"用户开了一次终端"才写。只用抱朴、从不进终端的用户
  *     永远拿不到新人设（v2.0.6 装机验证时，正是"开一次终端"才让人设落盘的）。
- *  2. **概念串味**：用户 2026-10-09 定稿「彻底把 opencode 和终端分开」，太极的预置就该在
- *     太极自己的启动路径上做。
+ *  2. **概念串味**：用户 2026-10-09 定稿「彻底把 opencode 和终端分开」，抱朴的预置就该在
+ *     抱朴自己的启动路径上做。
  *
- * 现在唯一调用点是 `ui/taiji/TaijiScreen` 拉 serve 之前（与终端启动完全解耦）。
+ * 现在唯一调用点是 `ui/baopu/BaopuScreen` 拉 serve 之前（与终端启动完全解耦）。
  *
  * ## 人设版本
  * - **v2**（2026-10-09，E-067）治的是"谎称自己在 Debian 里"。
- * - **v3**（2026-10-09，E-069）把**工作区**也钉死：太极的工作区已从终端的共享工作区
+ * - **v3**（2026-10-09，E-069）把**工作区**也钉死：抱朴的工作区已从终端的共享工作区
  *   （`Download/证道`）搬到 App 私有的 `files/oc/workspace`，人设里写清"能读写的就这一处、
- *   别再满手机找活干"。版本号一变，老装机下次进太极就会重写。
+ *   别再满手机找活干"。版本号一变，老装机下次进抱朴就会重写。
  * - **v4**（2026-10-14，台账 §B 顺序 28）**Tab 改名随动**：人设自称「太极」→「抱朴」，
  *   指路文案由「终端」Tab →「逍遥」Tab。口径照抄 `app/src/main/res/values/strings.xml:45`
  *   的既有约定——改的只是 Tab 名，"终端里…"这类**功能指代**仍叫「终端」，不改。
  *   版本号一变，老装机下次进「抱朴」就会重写人设。
  */
-object TaijiPreset {
+object BaopuPreset {
 
     /** 人设文件（AGENTS.md）上一次写入时对应的工作区路径。沿用旧键名，避免换键触发无谓重写。 */
     private const val KEY_PERSONA_WS = "agents_md_ws_taiji"
@@ -68,13 +68,13 @@ object TaijiPreset {
         )
 
     /**
-     * 太极启动前调用（幂等，可重复调）：
+     * 抱朴启动前调用（幂等，可重复调）：
      *  1. 把公共区遗留的安装包缓存搬进 App 私有目录（[OcManager.migrateLegacyCache]）；
      *  2. 确保私有工作区/配置目录存在；
      *  3. 按版本号决定是否重写人设；
      *  4. `opencode.json` 做字段级 merge（性能字段 + 遗留插件清理 + 首装预置）。
      *
-     * 任何一步失败都只留日志、不抛——**不能因为预置失败就让太极起不来**。
+     * 任何一步失败都只留日志、不抛——**不能因为预置失败就让抱朴起不来**。
      */
     fun ensure(ctx: Context) {
         runCatching {
@@ -83,7 +83,7 @@ object TaijiPreset {
             OcManager.configDir(ctx).let { if (!it.isDirectory) it.mkdirs() }
             writePersonaIfNeeded(ctx, ws)
             applyConfigPreset(ctx)
-        }.onFailure { RunLog.log("太极: 预置失败 ${it.message}") }
+        }.onFailure { RunLog.log("抱朴: 预置失败 ${it.message}") }
     }
 
     /** 人设文案（纯函数，便于单测锁住"不许再出现 Debian / 共享工作区"这类事实错误）。 */
@@ -127,7 +127,7 @@ object TaijiPreset {
             agents.writeText(personaText(wsPath))
             prefs.edit().putString(KEY_PERSONA_WS, wsPath)
                 .putInt(KEY_PERSONA_VER, PERSONA_VERSION).apply()
-            RunLog.log("太极 AGENTS.md 已写入（工作区: $wsPath，人设 v$PERSONA_VERSION）")
+            RunLog.log("抱朴 AGENTS.md 已写入（工作区: $wsPath，人设 v$PERSONA_VERSION）")
         }
     }
 

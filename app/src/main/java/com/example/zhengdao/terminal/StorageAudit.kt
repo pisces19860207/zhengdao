@@ -250,7 +250,7 @@ object StorageAudit {
     fun items(ctx: Context): List<Item> {
         val out = mutableListOf<Item>()
 
-        // A. Agent 包缓存（npm/uv/pip/opencode 包缓存/hermes 缓存/太极缓存）
+        // A. Agent 包缓存（npm/uv/pip/opencode 包缓存/hermes 缓存/抱朴缓存）
         runCatching { CacheCleaner.agentCacheMeasure(ctx) }.getOrDefault(emptyList())
             .forEach { (name, mb) ->
                 out += Item("Agent 包缓存", name, mb, removable = true, note = "删了下次安装会重下")

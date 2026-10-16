@@ -9,7 +9,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 太极 opencode.json 写入口单测（v1.2 阶段 2.0 的验收项）。
+ * 抱朴 opencode.json 写入口单测（v1.2 阶段 2.0 的验收项）。
  *
  * **要防的事故**：`ensurePermissionPolicy()` 原来是**整文件覆盖写**——
  * 它只认识 `$schema` 和 `permissions`，于是冷启动一次就把 `plugin` 数组、

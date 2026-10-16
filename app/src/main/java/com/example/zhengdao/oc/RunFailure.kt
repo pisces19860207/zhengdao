@@ -9,7 +9,7 @@ import org.json.JSONObject
  *
  * ## 为什么单独成文件（E-054）
  *
- * 2026-10-09 真机 smoke（2.0.0）：在太极页发一句「run ls -a …」，服务端随后回
+ * 2026-10-09 真机 smoke（2.0.0）：在抱朴页发一句「run ls -a …」，服务端随后回
  * `session.inbox.enqueued` → `session.execution.started` → `session.step.started` →
  * `session.step.failed` → `session.execution.failed`，而 App 把这几个事件全部当
  * 「未知 SSE 事件，已忽略但保留原文」**记一行日志了事**：界面上既不报错、也不给重试，

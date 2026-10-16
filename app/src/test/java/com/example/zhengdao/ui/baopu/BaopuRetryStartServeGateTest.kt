@@ -1,5 +1,5 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import java.io.File
 import org.junit.Assert.assertTrue
@@ -12,7 +12,7 @@ import org.junit.Test
  * `repo.open()` —— open() 四条判据全是连接层，serve 进程死了点多少次都失败。
  *
  * 判据（先剥注释再结构判定，范式同 InstallerCleanBusyGateTest / UserFacingTextGateTest）：
- * 以 `state.phase is TaijiPhase.Failed ->`（when 分支条件）为锚、到 FailedPane 私有
+ * 以 `state.phase is BaopuPhase.Failed ->`（when 分支条件）为锚、到 FailedPane 私有
  * Composable 定义处为界，这段**重试接线窗口**里必须同时出现：
  * ① `failedRetryNeedsStartServe(` —— 判据走纯函数，不是裸 if；
  * ② `OcManager.startServe(` —— 拉起复用现成幂等入口，不许另写一套；
@@ -22,9 +22,9 @@ import org.junit.Test
  * 「重试窗口里的三个**调用形态**」——改成等价助手函数会被 ②/① 的缺席抓红并提示
  * 「锚点/结构变了就更新本测试」；这是有意的响亮失败，不是静默放行。
  */
-class TaijiRetryStartServeGateTest {
+class BaopuRetryStartServeGateTest {
 
-    private val file = "src/main/java/com/example/zhengdao/ui/taiji/TaijiScreen.kt"
+    private val file = "src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt"
 
     private fun code(rel: String): String {
         val f = File(rel).let { if (it.exists()) it else File("app/$rel") }
@@ -75,9 +75,9 @@ class TaijiRetryStartServeGateTest {
 
     /** 重试接线窗口：when 分支条件 → FailedPane 私有定义（窗口内是重试的全部接线）。 */
     private fun retryWindow(s: String): String {
-        val anchor = "state.phase is TaijiPhase.Failed ->"
+        val anchor = "state.phase is BaopuPhase.Failed ->"
         val start = s.indexOf(anchor)
-        assertTrue("TaijiScreen.kt 里找不到重试分支锚点 `$anchor`（锚点变了就更新本测试）", start >= 0)
+        assertTrue("BaopuScreen.kt 里找不到重试分支锚点 `$anchor`（锚点变了就更新本测试）", start >= 0)
         val end = s.indexOf("private fun FailedPane(", start)
         assertTrue("重试分支之后找不到 FailedPane 定义（文件结构变了就更新本测试）", end > start)
         return s.substring(start, end)

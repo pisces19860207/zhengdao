@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
  * 内联 Icon Glyph（A12：替换 emoji 为自绘）。
  *
  * 项目自始至终不用 material-icons，全部用 Compose Canvas 自绘——与底部 Tab
- * 的 TaijiIcon / CaveIcon / DingIcon / BackChevron / SettingsIcon 同一套笔法：
+ * 的 BaoPuIcon / XiaoYaoIcon / YiRanIcon / BackChevron / SettingsIcon 同一套笔法：
  * 圆头圆角、描边 1.5-1.9f、不填实色。Tab 那套在 26dp / 1.9f，这里是「消息流内联
  * 图标」专版：16-18dp 画布配 1.5f 描边，比 Tab 小一号。
  *

@@ -32,7 +32,7 @@ import kotlinx.coroutines.Job
  * ## 装在哪
  *
  * - **UI 侧所有 `rememberCoroutineScope`**（9 处：MainActivity / HomeScreen /
- *   PluginsScreen / TaijiComponents / TaijiScreen×2 / SettingsData / SettingsEnv /
+ *   PluginsScreen / BaopuComponents / BaopuScreen×2 / SettingsData / SettingsEnv /
  *   SettingsStorage / ImeRegressionActivity）：一行 `rememberCoroutineScope { CoroutineCrashHandler }`，
  *   失败路径与装之前逐字相同（日志 + 崩溃），白得协程上下文线索。
  * - **`oc/` 目录里的进程级作用域**（OcRuntime 的 `CoroutineScope(SupervisorJob() + Dispatchers.IO)`，

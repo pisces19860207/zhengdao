@@ -2,9 +2,9 @@
 //
 // 依据的公开接口：Jetpack Compose（Material 3）官方 API。
 //
-// P4-1（2026-10-14）：自 TaijiComponents.kt（拆分前 1929 行）按内聚性拆出——
+// P4-1（2026-10-14）：自 BaopuComponents.kt（拆分前 1929 行）按内聚性拆出——
 // **只搬不改**，代码逐行原样（含已提交的 P2-10 48dp 触摸目标修复）。
-package com.example.zhengdao.ui.taiji
+package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
@@ -58,7 +58,7 @@ import com.example.zhengdao.R
  * 箭头与停止方块都是 Canvas 自绘——本工程不使用任何第三方图标素材。
  *
  * @param isStreaming 流式输出中：发送键变为「■ 停止」，不让用户干等。
- *   生成中/可发送由 [TaijiState.isStreaming] 驱动（`prompt` 置真、SSE `session.idle` 置假，
+ *   生成中/可发送由 [BaopuState.isStreaming] 驱动（`prompt` 置真、SSE `session.idle` 置假，
  *   另有轮询「内容稳定即视为结束」兜底，防事件漏接）。
  */
 @Composable
