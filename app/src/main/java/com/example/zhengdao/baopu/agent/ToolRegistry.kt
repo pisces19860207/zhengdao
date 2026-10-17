@@ -305,6 +305,13 @@ internal object BaopuToolCatalog {
         "edit_file",
         "move_path",
         "convert_encoding",
+        // 浏览器六件（玄览）：读类免确认、写类 CONFIRM；网关没注入时统一回「玄览还没打开」
+        "browser_open",
+        "browser_snapshot",
+        "browser_click",
+        "browser_type",
+        "browser_scroll",
+        "browser_screenshot",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -319,6 +326,13 @@ internal object BaopuToolCatalog {
         Entry("edit_file") { EditFileTool.spec(it) },
         Entry("move_path") { MovePathTool.spec(it) },
         Entry("convert_encoding") { ConvertEncodingTool.spec(it) },
+        // 浏览器六件不需要 workspaceRoot（守卫走 URL/scheme，不走路径）
+        Entry("browser_open") { BrowserTools.openSpec() },
+        Entry("browser_snapshot") { BrowserTools.snapshotSpec() },
+        Entry("browser_click") { BrowserTools.clickSpec() },
+        Entry("browser_type") { BrowserTools.typeSpec() },
+        Entry("browser_scroll") { BrowserTools.scrollSpec() },
+        Entry("browser_screenshot") { BrowserTools.screenshotSpec() },
     )
 
     /**
