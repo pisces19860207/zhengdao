@@ -981,6 +981,12 @@
     <string name="baopu_params_window">上下文窗口</string>
     <string name="baopu_params_max_output">输出上限</string>
     <string name="baopu_params_undeclared">未声明</string>
+    <string name="baopu_tool_find_files">找文件</string>
+    <string name="baopu_tool_find_files_desc">按文件名片段在目录里逐层找（大小写不敏感，也能找没有扩展名的书），比列目录省事。默认往下找 6 层。</string>
+    <string name="baopu_tool_book_outline">看目录</string>
+    <string name="baopu_tool_book_outline_desc">先看一本书的章节目录（章名、起止行、字数、首句），再决定读哪几章；拿到起始行直接当 read_file 的 offset 用。</string>
+    <string name="baopu_tool_convert_encoding">转编码</string>
+    <string name="baopu_tool_convert_encoding_desc">把 GBK / UTF-16 的老 txt 转成 UTF-8 写回原文件；转之前先把原文件备份到 .baopu-bak。本来就是 UTF-8 就不动。</string>
     <!-- ── 静态快捷方式（刀 2 · D 段第 1 条；标签 ≤10 字）── -->
     <string name="baopu_shortcut_backup">备份原件</string>
     <string name="baopu_shortcut_backup_long">备份抱朴库里的原件</string>
