@@ -287,13 +287,18 @@ internal object BaopuToolCatalog {
         val factory: (workspaceRoot: () -> File) -> ToolSpec,
     )
 
-    /** 默认启用集合（派工单：read_file / list_dir / search_in_files / file_info / write_file 全默认开）。 */
+    /**
+     * 默认启用集合（read_file / list_dir / search_in_files / file_info / write_file 全默认开；
+     * 工具补强刀加 edit_file / move_path，同样默认开——两者都是 CONFIRM，够不着「静默动手」）。
+     */
     val DEFAULT_ENABLED: Set<String> = setOf(
         "read_file",
         "list_dir",
         "search_in_files",
         "file_info",
         "write_file",
+        "edit_file",
+        "move_path",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好）。 */
@@ -303,6 +308,8 @@ internal object BaopuToolCatalog {
         Entry("search_in_files") { SearchInFilesTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },
+        Entry("edit_file") { EditFileTool.spec(it) },
+        Entry("move_path") { MovePathTool.spec(it) },
     )
 
     /**

@@ -42,13 +42,16 @@ class ToolRegistrySwitchTest {
     // ── 表 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `一张表_默认五个全启用`() {
+    fun `一张表_默认七个全启用`() {
         setup()
         val reg = registry()
 
         assertEquals(BaopuToolCatalog.DEFAULT_ENABLED.size, BaopuToolCatalog.ENTRIES.size)
         assertEquals(
-            listOf("read_file", "list_dir", "search_in_files", "file_info", "write_file"),
+            listOf(
+                "read_file", "list_dir", "search_in_files", "file_info",
+                "write_file", "edit_file", "move_path",
+            ),
             reg.names(),
         )
         BaopuToolCatalog.ENTRIES.forEach { e ->
@@ -79,8 +82,10 @@ class ToolRegistrySwitchTest {
             assertTrue(spec.inputSchema.has("properties"))
             assertFalse(spec.inputSchema.optBoolean("additionalProperties"))
         }
-        // write_file 是唯一的 CONFIRM（每次写都要用户确认）
-        assertEquals(ToolPermission.CONFIRM, reg.find("write_file")!!.permission)
+        // 三个 CONFIRM：write_file / edit_file / move_path（都会改盘上文件，每次都要用户点头）
+        listOf("write_file", "edit_file", "move_path").forEach {
+            assertEquals("$it 必须 CONFIRM", ToolPermission.CONFIRM, reg.find(it)!!.permission)
+        }
         listOf("read_file", "list_dir", "search_in_files", "file_info").forEach {
             assertEquals(ToolPermission.FREE, reg.find(it)!!.permission)
         }
@@ -159,14 +164,14 @@ class ToolRegistrySwitchTest {
     }
 
     @Test
-    fun `关五个_全关时tools数组为空`() {
+    fun `关七个_全关时tools数组为空`() {
         setup()
         val prefs = InMemoryToolPrefs(BaopuToolCatalog.DEFAULT_ENABLED)
         val reg = registry(prefs)
         assertEquals(0, reg.toolsJsonOpenAi().length())
         assertEquals(0, reg.toolsJsonAnthropic().length())
-        // 注册表仍有五条（都能拿到「已被关闭」）
-        assertEquals(5, reg.names().size)
+        // 注册表仍有七条（都能拿到「已被关闭」）
+        assertEquals(7, reg.names().size)
     }
 
     @Test
