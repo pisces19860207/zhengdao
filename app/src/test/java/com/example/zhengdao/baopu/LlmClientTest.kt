@@ -7,6 +7,7 @@ package com.example.zhengdao.baopu
 
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -189,6 +190,46 @@ class LlmClientTest {
         val messagesPart = body.substring(messagesStart)
         assertTrue(messagesPart.contains("\"role\":\"user\""))
         assertFalse(messagesPart.contains("\"role\":\"system\""))
+    }
+
+    // ── max_tokens 进请求体（刀 3 B 段 · 第十四批 J3/J4/J11） ──────────────
+    // 病灶：OpenAI 分支根本不发 max_tokens、Anthropic 写死 4096，
+    // Provider.maxOutput 只用于内部预算（派工单 §1.2 逐行核过）。
+
+    private fun providerWith(
+        protocol: LlmProtocol,
+        maxOutput: Int? = null,
+    ) = Provider(
+        id = "t", label = "t", protocol = protocol,
+        baseUrl = "http://127.0.0.1:1/v1", model = "test-model", apiKey = "k",
+        maxOutput = maxOutput,
+    )
+
+    private fun bodyJson(p: Provider): JSONObject =
+        JSONObject(LlmWire.bodyOf(p, listOf(LlmMessage(LlmMessage.ROLE_USER, "hi"))))
+
+    @Test
+    fun `J3_显式maxOutput_OpenAI请求体max_tokens等于它`() {
+        val body = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT, maxOutput = 393_216))
+        assertEquals(393_216, body.getInt("max_tokens"))
+    }
+
+    @Test
+    fun `J4_maxOutput缺失_OpenAI回落8192`() {
+        val body = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT))
+        assertEquals(8192, body.getInt("max_tokens"))
+    }
+
+    @Test
+    fun `J11_Anthropic分支也取maxOutput_缺失才回落4096`() {
+        assertEquals(
+            393_216,
+            bodyJson(providerWith(LlmProtocol.ANTHROPIC, maxOutput = 393_216)).getInt("max_tokens"),
+        )
+        assertEquals(
+            4096,
+            bodyJson(providerWith(LlmProtocol.ANTHROPIC)).getInt("max_tokens"),
+        )
     }
 
     // ── 失败路径 ──────────────────────────────────────────────────────────

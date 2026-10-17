@@ -103,13 +103,15 @@ internal object ContextAssembler {
     const val RECALL_TOKEN_BUDGET = MemoryRules.RECALL_TOKEN_BUDGET
 
     /**
-     * 窗口默认值（程枢版 §7 修正）：优先用元数据里的 ctx，**拿不到才回退 128k**
-     * （原定 32k 太保守已作废——41 个免费模型 ctx 最小就是 131,072）。
+     * 窗口默认值（刀 3 B 段 · 2026-10-17 改）：优先用元数据里的 ctx，**拿不到才回退 1M**
+     * （原 128k 是「老模型时代」的假设——deepseek-flash 实测 context_window=1048576，
+     * 见 Provider.DEEPSEEK 的取证注记；用户口径「现在的模型大都 1M 了」。
+     * 按 128k 配会把 1M 的模型当小模型用：压缩来得早、白压）。
      *
      * 阈值推导见 [ContextBudgets]：窗口值从 [Provider.contextWindow] /
      * [Provider.maxOutput] 两个可空字段算，**不写死常量**（追加二第 1 条）。
      */
-    const val DEFAULT_WINDOW_TOKENS = 128_000
+    const val DEFAULT_WINDOW_TOKENS = 1_048_576
 
     /**
      * token 估算器（程枢版 §7 定版）：**中文按字符数 × 1.0，ASCII 按字节 ÷ 4，
@@ -136,8 +138,8 @@ internal object ContextAssembler {
      * 窗口与预算推导（追加二第 1 条 · 2026-10-16）。
      *
      * 全部从 [Provider] 的两个可空字段算：
-     * - 窗口：`contextWindow`（元数据 ctx）优先，**拿不到回退 128k**
-     *   （原定 32k 已作废——免费模型 ctx 实测最小 131,072）；
+     * - 窗口：`contextWindow`（元数据 ctx）优先，**拿不到回退 1M**
+     *   （刀 3 B 段：128k 旧假设已废，deepseek-flash 实测 1048576）；
      * - 输出上限：`maxOutput` 优先，拿不到回退 **32k**；
      * - 单轮预算：`min(窗口 × 0.6, 输出上限 × 0.9)`（只按窗口算会撞输出上限被截断）；
      * - 触发线：`窗口 × 0.85`（[compressionThreshold]）。
