@@ -7,16 +7,22 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
+import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
+import com.example.zhengdao.baopu.agent.ToolPrefs
 import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolRunner
 import com.example.zhengdao.baopu.agent.ToolSpec
 import com.example.zhengdao.baopu.agent.ListDirTool
 import com.example.zhengdao.baopu.agent.ReadFileTool
 import com.example.zhengdao.baopu.agent.jsonObjectOf
+import com.example.zhengdao.baopu.library.LibraryImport
+import com.example.zhengdao.baopu.library.LibraryPaths
+import com.example.zhengdao.baopu.library.LibraryPipeline
+import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Workspace
 import org.json.JSONObject
@@ -73,6 +79,30 @@ internal object BaopuRuntime {
         )
     }
 
+    // ── 资料库（刀 2 A/B/D 段；路径只在这一处拼，别处不自己 File(…)） ──────────
+
+    /** 收料（投递 → 私有 `原始/`）：扫描、提问卡、执行、待删除清单。 */
+    fun libraryImport(context: Context): LibraryImport {
+        val appCtx = context.applicationContext
+        return LibraryImport(
+            deliverDir = LibraryPaths.deliverDir(appCtx),
+            doneDir = LibraryPaths.doneDir(appCtx),
+            rawPrivateDir = LibraryPaths.rawPrivateDir(appCtx),
+        )
+    }
+
+    /** 五步流水线（认脸/去重/归一/副本进 `整理/`/写索引）＋ 原件导出。 */
+    fun libraryPipeline(context: Context): LibraryPipeline {
+        val appCtx = context.applicationContext
+        return LibraryPipeline(
+            rawPrivateDir = LibraryPaths.rawPrivateDir(appCtx),
+            doneDir = LibraryPaths.doneDir(appCtx),
+        )
+    }
+
+    /** 认脸索引的库内镜像（`library_item` / `library_move_log` 两表；文件索引仍是真相）。 */
+    fun libraryStore(context: Context): LibraryStore = LibraryStore(db(context))
+
     /** 记忆存储壳（文件即真相；global 跟 App、project 跟工作区）。 */
     fun memoryStore(context: Context): MemoryStore {
         val appCtx = context.applicationContext
@@ -83,24 +113,47 @@ internal object BaopuRuntime {
     }
 
     /**
-     * 工具注册表（本刀只有两个读工具；写工具归刀 2）。
+     * 工具注册表（刀 2 追加包：从 [BaopuToolCatalog] 一张表加载，开关走
+     * [BaopuToolPrefs]——引擎不再写死工具清单）。
+     *
      * 免费通道另补 read/bash 两个兼容条目——② 台账取证：免费档要求 tools 数组里
-     * 含这两个名字，否则服务端 403 FreeTierError。read 映射到 read_file 执行器；
+     * 含这两个名字，否则服务端 403 FreeTierError。read 映射到 read_file 执行器
+     * （**read_file 被用户关掉时，read 同样拒**——别名不许当成绕开开关的洞）；
      * bash 没有对应能力，执行器**明确拒绝并说明**（不静默、不假装）。
+     *
+     * 开关是热的：注册表持 [BaopuToolPrefs] 单例，设置页改开关后下一轮请求的
+     * tools 数组就变（被关的模型看不见；幻觉调用拿到「已被用户关闭」的拒绝）。
      */
-    fun registry(provider: Provider): ToolRegistry = ToolRegistry().apply {
-        register(ReadFileTool.spec())
-        register(ListDirTool.spec())
+    fun registry(context: Context, provider: Provider): ToolRegistry {
+        val appCtx = context.applicationContext
+        val reg = ToolRegistry(toolPrefs(appCtx))
+        BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
         if (provider.builtinFree) {
-            register(
-                ToolSpec(
-                    name = "read",
-                    description = "免费网关兼容占位：等价于 read_file（路径相对工作区根）。",
-                    inputSchema = ReadFileTool.spec().inputSchema,
-                    permission = ToolPermission.FREE,
-                ) { args -> ReadFileTool.spec().executor(args) },
+            val readSchema = ReadFileTool.spec().inputSchema
+            reg.register(
+                if (reg.isEnabled("read_file")) {
+                    ToolSpec(
+                        name = "read",
+                        description = "免费网关兼容占位：等价于 read_file（路径相对工作区根）。",
+                        inputSchema = readSchema,
+                        permission = ToolPermission.FREE,
+                    ) { args -> ReadFileTool.spec().executor(args) }
+                } else {
+                    // read_file 被关 ⇒ 别名同样拒绝（否则设置页的开关就白设了）
+                    ToolSpec(
+                        name = "read",
+                        description = "免费网关兼容占位：read_file 已被用户关闭，本别名同样不可用。",
+                        inputSchema = readSchema,
+                        permission = ToolPermission.FREE,
+                    ) { _ ->
+                        ToolOutcome.Rejected(
+                            "read_file 已被用户关闭（在 设置 → 终端与资料 → 抱朴工具 里打开）。" +
+                                "本 App 不提供别的读取通道，也不会替你打开它。",
+                        )
+                    }
+                },
             )
-            register(
+            reg.register(
                 ToolSpec(
                     name = "bash",
                     description = "免费网关兼容占位：本 App 不提供 shell 执行（安全边界，不跨 rootfs）。",
@@ -112,6 +165,49 @@ internal object BaopuRuntime {
                 },
             )
         }
+        return reg
+    }
+
+    /**
+     * 工具开关存储（SharedPreferences 持久；进程级单例，注册表与设置页共用它）。
+     *
+     * 放在 [BaopuRuntime]（装配层）而不是 agent 包：注册表要零 Android 依赖
+     * （JVM 直测），Context 只能出现在这一层。
+     */
+    internal object BaopuToolPrefs : ToolPrefs {
+        private const val FILE = "baopu_tools"
+        private const val KEY_DISABLED = "disabled"
+
+        @Volatile
+        private var appCtx: Context? = null
+
+        /** 装配期注入（进程级一次；UI 侧经 [toolPrefs] 进来也会先 init）。 */
+        fun init(context: Context) {
+            appCtx = context.applicationContext
+        }
+
+        private fun sp(): android.content.SharedPreferences? =
+            appCtx?.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+
+        override fun isDisabled(name: String): Boolean =
+            sp()?.getStringSet(KEY_DISABLED, emptySet())?.contains(name) == true
+
+        override fun setDisabled(name: String, disabled: Boolean) {
+            val p = sp() ?: return
+            // getStringSet 返回的实例不许原地改（Android 文档）⇒ 拷贝再写回
+            val cur = p.getStringSet(KEY_DISABLED, emptySet())?.toMutableSet() ?: mutableSetOf()
+            if (disabled) cur.add(name) else cur.remove(name)
+            p.edit().putStringSet(KEY_DISABLED, cur).apply()
+        }
+
+        override fun disabledNames(): Set<String> =
+            sp()?.getStringSet(KEY_DISABLED, mutableSetOf()) ?: emptySet()
+    }
+
+    /** 设置页用：拿开关存储（顺带保证已 init）。 */
+    fun toolPrefs(context: Context): ToolPrefs {
+        BaopuToolPrefs.init(context)
+        return BaopuToolPrefs
     }
 
     /**
@@ -128,7 +224,7 @@ internal object BaopuRuntime {
 
     private fun build(appCtx: Context): RunEngine {
         val provider = provider(appCtx)
-        val reg = registry(provider)
+        val reg = registry(appCtx, provider)
         val pipeline = GuardPipeline(reg, { workspaceRoot(appCtx) })
         val db = db(appCtx)
         return RunEngine(
