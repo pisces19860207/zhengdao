@@ -219,6 +219,48 @@ internal object BaopuSql {
         return listOf(Stmt("ALTER TABLE session ADD COLUMN interrupted_step INTEGER", emptyArray()))
     }
 
+    // ── session pending 三列（v5 · 刀 3 A 段：确认制跨进程必须能续）─────────
+
+    /**
+     * session 表 v5 新增三列（派工单 §3.3）：`pending_tool` / `pending_args` / `pending_at`
+     * ——「哪张确认卡还在等」的**跨进程真相**（内存态会被杀丢，T3 判据靠它）。
+     *
+     * 为什么 nullable 而不是 NOT NULL DEFAULT ''：没 pending 是**正常大多数时刻**，
+     * 空串要跟「有 pending 但工具名为空」区分开（后者不可能出现，但 NULL 一眼可判）。
+     */
+    val SESSION_PENDING_COLUMNS: List<Pair<String, String>> = listOf(
+        "pending_tool" to "TEXT",
+        "pending_args" to "TEXT",
+        "pending_at" to "INTEGER",
+    )
+
+    /**
+     * session pending 三列的加列语句（**纯函数**：缺哪列给哪条 ALTER，幂等）。
+     * 与 [sessionInterruptedStepStmt] 同一房型——SQLite 没有 ADD COLUMN IF NOT EXISTS。
+     */
+    fun sessionPendingColumnsStmt(existingColumns: List<String>): List<Stmt> =
+        SESSION_PENDING_COLUMNS
+            .filterNot { (col, _) -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { (col, type) -> Stmt("ALTER TABLE session ADD COLUMN $col $type", emptyArray()) }
+
+    /** 进 AWAIT_CONFIRM 时写 pending 三列（与 run_log 的 AwaitConfirm 行同事务——引擎侧拼）。 */
+    fun savePending(sessionId: Long, tool: String, argsJson: String, at: Long): Stmt = Stmt(
+        "UPDATE session SET pending_tool = ?, pending_args = ?, pending_at = ? WHERE id = ?",
+        arrayOf<String?>(tool, argsJson, at.toString(), sessionId.toString()),
+    )
+
+    /** 批准/拒绝/超时后清空（绑 SQL NULL，不是空串——「没有」与「空工具名」两回事）。 */
+    fun clearPending(sessionId: Long): Stmt = Stmt(
+        "UPDATE session SET pending_tool = NULL, pending_args = NULL, pending_at = NULL WHERE id = ?",
+        arrayOf<String?>(sessionId.toString()),
+    )
+
+    /** 读 pending（控制器重建确认卡 / 引擎恢复执行；工具名为空或 NULL ⇒ 没有 pending）。 */
+    fun loadPending(sessionId: Long): Stmt = Stmt(
+        "SELECT pending_tool, pending_args, pending_at FROM session WHERE id = ?",
+        arrayOf<String?>(sessionId.toString()),
+    )
+
     // ── 语句拼装（返回 sql + 绑定参数，顺序即调用方实参顺序）──
 
     fun insertSession(title: String, model: String, provider: String, now: Long): Stmt =
@@ -477,7 +519,8 @@ internal object BaopuSql {
 }
 
 /**
- * 抱朴数据库（刀 0 骨架 · 刀 0b v2 迁移 · 刀 2 v3 迁移 · 刀 3 B 段 v4 迁移）。
+ * 抱朴数据库（刀 0 骨架 · 刀 0b v2 迁移 · 刀 2 v3 迁移 · 刀 3 B 段 v4 迁移 ·
+ * 刀 3 A 段 v5 迁移）。
  *
  * ## 三个不可动摇的点
  * 1. **单写者线程**（[writer]，`zd-baopu-db`，daemon）：一切写走 [write] 的 Future，
@@ -488,7 +531,8 @@ internal object BaopuSql {
  *    这是 SQLite 最经典的坑之一。
  * 3. **迁移必须真迁移**：v1→v2 建 memory 表 ＋ 给 session 加 `interrupted_step` 列，
  *    v2→v3 建资料库两表（`library_item`/`library_move_log`），v3→v4 给 run_log 加
- *    `reasoning_tokens` 列，全部幂等（`IF NOT EXISTS` / 先看列再加）；v1 库为空也不丢表。
+ *    `reasoning_tokens` 列，v4→v5 给 session 加 pending 三列（确认制跨进程续），
+ *    全部幂等（`IF NOT EXISTS` / 先看列再加）；v1 库为空也不丢表。
  *    **没有路径的迁移必须炸**——静默按新 schema 跑在旧库上比崩掉糟糕得多。
  *
  * ## 文件落点（刀 0b 按派工单 §4.3 对齐设计）
@@ -526,6 +570,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV2Migration(db)
         applyV3Migration(db)
         applyV4Migration(db)
+        applyV5Migration(db)
     }
 
     /**
@@ -548,6 +593,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 2) applyV2Migration(db)
         if (oldVersion < 3) applyV3Migration(db)
         if (oldVersion < 4) applyV4Migration(db)
+        if (oldVersion < 5) applyV5Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -585,6 +631,19 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /**
+     * v4 → v5 迁移体（刀 3 A 段）：session 加 pending 三列（确认制跨进程续——
+     * 进程被杀后卡还在、批准仍有效，全靠这三列；只存内存态 T3 必红）。
+     * 加列走「先看列况再动」的纯函数 ⇒ 幂等，重复跑不炸；v4 库升级与新安装
+     * 走同一条路径（onCreate 也调它）。
+     */
+    private fun applyV5Migration(db: SQLiteDatabase) {
+        val sessionCols = tableColumns(db, "session")
+        BaopuSql.sessionPendingColumnsStmt(sessionCols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -608,8 +667,8 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     companion object {
         const val DB_NAME = "baopu.db"
 
-        /** v4（刀 3 B 段）：run_log 加 `reasoning_tokens` 列（思考用量）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。 */
-        const val VERSION = 4
+        /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。 */
+        const val VERSION = 5
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
@@ -643,5 +702,59 @@ internal object RunLogMetrics {
         val miss = missTokens ?: 0
         val total = hit + miss
         return if (total <= 0) null else hit.toDouble() / total
+    }
+}
+
+/**
+ * 确认制 pending 的存取（刀 3 A 段）。
+ *
+ * 为什么抽接口：引擎的 `ConfirmFlow` 要 JVM 直测（判据 J1–J5 全压它），而
+ * SQLiteOpenHelper 进不了 JVM ⇒ 接口留在这里（baopu 包），Android 侧实现
+ * [SessionPendingStore]，单测用内存假件。
+ *
+ * **没有 save**：进 AWAIT_CONFIRM 的写必须与 run_log 的 AwaitConfirm 行**同事务**
+ * （派工单 §3.3「同事务写」）——那是引擎的 [com.example.zhengdao.baopu.agent.RunEngine]
+ * 事务，不是这里能代劳的单列 UPDATE。本接口只管事务外的两件事：清与读。
+ */
+internal interface PendingStore {
+    /** 批准/拒绝/超时后清空（脱离引擎事务的单列更新；执行后立刻清，窗口毫秒级）。 */
+    fun clear(sessionId: Long)
+
+    /** 读 pending（没有 ⇒ null）。 */
+    fun load(sessionId: Long): PendingRow?
+}
+
+/** pending 一行（[PendingRow.tool] 空 = 没有 pending）。 */
+internal data class PendingRow(val tool: String, val argsJson: String, val at: Long)
+
+/**
+ * [PendingStore] 的 BaopuDb 实现（薄壳：清走 [BaopuDb.write] 的 Future 并 .get()
+ * 等真落库；读走调用方线程，WAL 下不挡写）。
+ */
+internal class SessionPendingStore(private val db: BaopuDb) : PendingStore {
+
+    override fun clear(sessionId: Long) {
+        val stmt = BaopuSql.clearPending(sessionId)
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+            .onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "抱朴 pending：清空失败 ${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+    }
+
+    override fun load(sessionId: Long): PendingRow? = db.read { d ->
+        val stmt = BaopuSql.loadPending(sessionId)
+        d.rawQuery(stmt.sql, stmt.args).use { c ->
+            if (c.moveToFirst() && !c.isNull(0) && c.getString(0).isNotBlank()) {
+                PendingRow(
+                    tool = c.getString(0),
+                    argsJson = if (c.isNull(1)) "" else c.getString(1),
+                    at = if (c.isNull(2)) 0L else c.getLong(2),
+                )
+            } else {
+                null
+            }
+        }
     }
 }

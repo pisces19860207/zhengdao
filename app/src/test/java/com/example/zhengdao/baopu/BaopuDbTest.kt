@@ -89,8 +89,8 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `v4 版本号与库路径纯函数`() {
-        assertEquals(4, BaopuDb.VERSION) // v4 = 刀 3 B 段（run_log 加 reasoning_tokens）
+    fun `v5 版本号与库路径纯函数`() {
+        assertEquals(5, BaopuDb.VERSION) // v5 = 刀 3 A 段（session 加 pending 三列）
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -173,9 +173,38 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(4, BaopuDb.VERSION) // v4 = 刀 3 B 段（run_log 加 reasoning_tokens）
+        assertEquals(5, BaopuDb.VERSION) // v5 = 刀 3 A 段（session 加 pending 三列）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
+    }
+
+    // ── session pending 三列（v5 · 刀 3 A 段：确认制跨进程续） ────────────
+
+    @Test
+    fun `v5 迁移_session加pending三列_缺列才给ALTER_幂等`() {
+        val none = BaopuSql.sessionPendingColumnsStmt(listOf("id", "title", "preview"))
+        assertEquals("三列全缺 ⇒ 三条 ALTER", 3, none.size)
+        assertTrue(none[0].sql.contains("ALTER TABLE session ADD COLUMN pending_tool TEXT"))
+        assertTrue(none[1].sql.contains("ALTER TABLE session ADD COLUMN pending_args TEXT"))
+        assertTrue(none[2].sql.contains("ALTER TABLE session ADD COLUMN pending_at INTEGER"))
+        // 全有 ⇒ 一条不给（重复迁移不炸——J10 幂等）
+        assertTrue(BaopuSql.sessionPendingColumnsStmt(listOf("pending_tool", "pending_args", "pending_at")).isEmpty())
+        // 只缺一列 ⇒ 只给一条
+        val partial = BaopuSql.sessionPendingColumnsStmt(listOf("pending_tool", "pending_args"))
+        assertEquals(1, partial.size)
+        assertTrue(partial[0].sql.contains("pending_at"))
+    }
+
+    @Test
+    fun `pending三列的写清读语句`() {
+        val save = BaopuSql.savePending(7L, "write_file", "{\"path\":\"a.txt\"}", 123L)
+        assertTrue(save.sql.startsWith("UPDATE session SET pending_tool = ?, pending_args = ?, pending_at = ?"))
+        assertEquals(listOf("write_file", "{\"path\":\"a.txt\"}", "123", "7"), save.args.toList())
+        val clear = BaopuSql.clearPending(7L)
+        assertTrue("清空绑 NULL 不是空串", clear.sql.contains("pending_tool = NULL"))
+        assertEquals(listOf("7"), clear.args.toList())
+        val load = BaopuSql.loadPending(7L)
+        assertTrue(load.sql.startsWith("SELECT pending_tool, pending_args, pending_at FROM session WHERE id = ?"))
     }
 
     // ── memory 表语句（v2 · 刀 0b） ───────────────────────────────────────

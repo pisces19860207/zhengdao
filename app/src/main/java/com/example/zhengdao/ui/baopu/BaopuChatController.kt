@@ -18,7 +18,11 @@ import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
 import com.example.zhengdao.baopu.MemoryStore
+import com.example.zhengdao.baopu.PendingStore
+import com.example.zhengdao.baopu.SessionPendingStore
+import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.EngineEvent
+import com.example.zhengdao.baopu.agent.RunRules
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.LibraryItem
 import com.example.zhengdao.baopu.library.LibraryKind
@@ -58,6 +62,9 @@ internal class BaopuChatController(context: Context) {
     private val db = BaopuRuntime.db(appCtx)
     private val engine = BaopuRuntime.engine(appCtx)
     private val store: MemoryStore = BaopuRuntime.memoryStore(appCtx)
+
+    /** pending 三列的存取（控制器重建确认卡与销卡都经它；清库由引擎负责）。 */
+    private val pendingStore: PendingStore = SessionPendingStore(db)
 
     /** UI 线程 Handler：引擎事件从后台线程来，统一 post 回主线程再刷（见 [onEngineEvent]）。 */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -109,6 +116,22 @@ internal class BaopuChatController(context: Context) {
     /** 动作结果的一句话（确认失败/重复等；给 UI 显示，5 秒后由 UI 清）。 */
     var pendingNote by mutableStateOf<String?>(null)
         private set
+
+    // ── 确认制（刀 3 A 段） ──────────────────────────────────────────────
+
+    /**
+     * 文件改动确认卡（要动文件时出；批准/拒绝后清）。
+     *
+     * 两个来源：① 引擎的 [ConfirmRequest] 事件（在线挂起——活的卡）；
+     * ② 构造时从 session 的 pending 三列重建（进程被杀后重进——恢复的卡，
+     * 见 [restoreConfirmCard]）。[confirmRestored] 记是哪一种，批准/拒绝
+     * 据此走不同的引擎入口（活的等挂起苏醒；恢复的直接执行）。
+     */
+    var confirmCard by mutableStateOf<ConfirmRequest?>(null)
+        private set
+
+    /** 当前卡是重启重建的（没有活的挂起可苏醒）⇒ 批准/拒绝走恢复路径。 */
+    private var confirmRestored = false
 
     // ── 资料库（A 段收料提问卡 / D 段导出 / 顶条统计）─────────────────────────
 
@@ -175,10 +198,62 @@ internal class BaopuChatController(context: Context) {
     init {
         engine.onEvent = { ev -> onEngineEvent(ev) }
         refresh()
+        // 进程重启后重建确认卡（派工单 §3.3：pending_tool 非空 ⇒ 卡还在）
+        restoreConfirmCard()
         // 进页面先看投递有没有料（A 段：扫投递 → 一次 ask_user）与顶条的两个数
         checkDeliver()
         refreshBackupStats()
     }
+
+    /**
+     * 进程重启后重建确认卡（T3 的第一半）：session 的 pending 三列非空 ⇒ 造一张卡。
+     *
+     * summary 由工具名＋参数**重新生成**（[RunRules.confirmSummary]——与在线
+     * 出卡同一个函数，不落库；callId 合成 `restored-<pending_at>`，稳定）。
+     * 参数坏 JSON ⇒ 摘要照给（路径那行显示工具名），批准时引擎侧同样兜底。
+     */
+    private fun restoreConfirmCard() {
+        val sid = sessionId ?: return
+        val row = pendingStore.load(sid) ?: return
+        val args = runCatching { JSONObject(row.argsJson) }.getOrNull() ?: JSONObject()
+        confirmCard = ConfirmRequest(
+            callId = "restored-${row.at}",
+            tool = row.tool,
+            summary = RunRules.confirmSummary(row.tool, args),
+            argsJson = row.argsJson,
+        )
+        confirmRestored = true
+    }
+
+    /** 确认卡：批准（恢复卡走引擎的恢复执行；活卡走挂起苏醒）。 */
+    fun approveConfirm() {
+        val card = confirmCard ?: return
+        val sid = sessionId
+        confirmCard = null
+        if (confirmRestored && sid != null) {
+            engine.approveRestoredPending(sid)
+        } else {
+            engine.resumeWithApproval(card.callId, approved = true, note = null)
+        }
+    }
+
+    /** 确认卡：拒绝（不执行；回灌「用户拒绝」，对话继续）。 */
+    fun rejectConfirm() {
+        val card = confirmCard ?: return
+        val sid = sessionId
+        confirmCard = null
+        if (confirmRestored && sid != null) {
+            engine.rejectRestoredPending(sid, card.summary)
+        } else {
+            engine.resumeWithApproval(card.callId, approved = false, note = null)
+        }
+    }
+
+    /** 确认等待期间App进后台（屏幕生命周期报给引擎：前台计时暂停）。 */
+    fun onScreenPause() = engine.noteConfirmBackground()
+
+    /** 确认等待期间App回前台（前台计时继续）。 */
+    fun onScreenResume() = engine.noteConfirmForeground()
 
     /** 发送（首次自动建会话）。 */
     fun send(text: String) {
@@ -208,6 +283,8 @@ internal class BaopuChatController(context: Context) {
         introspectionNote = null
         refineMarkSession = -1L
         refineMarkUserCount = -1
+        confirmCard = null
+        confirmRestored = false
     }
 
     /** 记忆候选：确认（落盘 CONFIRMED）。 */
@@ -458,18 +535,24 @@ internal class BaopuChatController(context: Context) {
      * 主线程里读库 + 写状态才稳定（同第㊳刀「View.post 对未 attach 的 View 无限期推迟」的教训：
      * 跨线程的界面更新要显式回到主线程，别指望别人替你切）。
      */
-    private fun onEngineEvent(@Suppress("UNUSED_PARAMETER") ev: EngineEvent) {
+    private fun onEngineEvent(ev: EngineEvent) {
         // `Settled` 是"本轮彻底结束"的权威信号（引擎在释放单活跃门之后才发）⇒ 强制重算中断标记，
         // 不再靠 `runningNow()` 去猜（真机上猜错过一次：正常完成的会话红字挂着不下来）。
-        val force = ev is EngineEvent.Settled
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+        // 引擎事件一律**回到主线程**再写状态（2026-10-17 真机两次实测：后台线程直写
+        // Compose 状态会时灵时不灵）。
+        val apply: () -> Unit = {
+            if (ev is ConfirmRequest) {
+                confirmCard = ev
+                confirmRestored = false
+            }
+            val force = ev is EngineEvent.Settled
             refresh(force)
             if (force) refineOnSettle()
+        }
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            apply()
         } else {
-            main.post {
-                refresh(force)
-                if (force) refineOnSettle()
-            }
+            main.post { apply() }
         }
     }
 
@@ -555,6 +638,12 @@ internal class BaopuChatController(context: Context) {
         // "跑完了红字还不下来"这种情况不可能再出现（不依赖上面那个判据的对错）。
         if (force || !runningNow()) {
             interruptedStep = if (sid == null) -1 else BaopuRuntime.interruptedStep(db, sid)
+        }
+        // 确认卡的生命周期跟 DB 的 pending 行走（派工单 §3.3）：活的卡在等 ⇒ 库里
+        // 有行；引擎超时/处理完清行 ⇒ 卡跟着消失（不等用户手动关——T4 的「卡消失」）。
+        if (confirmCard != null && sid != null && pendingStore.load(sid) == null) {
+            confirmCard = null
+            confirmRestored = false
         }
         refreshMemory()
     }
