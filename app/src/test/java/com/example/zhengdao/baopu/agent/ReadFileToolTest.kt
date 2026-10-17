@@ -96,6 +96,18 @@ class ReadFileToolTest {
     }
 
     @Test
+    fun `路径不存在_说「不存在」而不是「不是文件」`() {
+        // 2026-10-17 真机实测：把不存在的路径报成「不是一个文件」，模型会以为路径对、只改类型
+        val ghost = File(Files.createTempDirectory("baopu-readfile-ghost").toFile(), "根本没有.md")
+        val out = ReadFileTool.read(ghost, 0, 100)
+        assertTrue(out is ToolOutcome.Failed)
+        val err = (out as ToolOutcome.Failed).error
+        assertTrue("必须明说「不存在」：$err", err.contains("不存在"))
+        assertTrue("不许混成「不是文件」：$err", !err.contains("不是一个文件"))
+        assertTrue("要指路到 list_dir：$err", err.contains("list_dir"))
+    }
+
+    @Test
     fun `超大文件_拒绝整读_说清大小`() {
         val dir = Files.createTempDirectory("baopu-readfile-big").toFile()
         val f = File(dir, "big.bin")

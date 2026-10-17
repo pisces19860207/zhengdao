@@ -909,4 +909,5 @@
     <string name="baopu_memory_confirm">记住</string>
     <string name="baopu_memory_forget">不记</string>
     <string name="baopu_compressed_marker">此处已压缩：旧消息压成了摘要，原文还在记录里，可展开看。</string>
+  <string name="baopu_channel_button">换通道</string>
 </resources>

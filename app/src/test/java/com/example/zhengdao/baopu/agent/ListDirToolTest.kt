@@ -44,6 +44,17 @@ class ListDirToolTest {
     }
 
     @Test
+    fun `目录不存在_说「不存在」而不是「不是目录」`() {
+        // 与 ReadFileTool 同款：不存在的路径不许报成类型错误，否则模型会原地重试
+        val ghost = File(tmp("ghost-parent"), "根本没有这个目录")
+        val out = ListDirTool.list(ghost, 1, 100)
+        assertTrue(out is ToolOutcome.Failed)
+        val err = (out as ToolOutcome.Failed).error
+        assertTrue("必须明说「不存在」：$err", err.contains("不存在"))
+        assertTrue("不许混成「不是目录」：$err", !err.contains("不是一个目录"))
+    }
+
+    @Test
     fun `软链_不跟随不列出_即使指向目录`() {
         val root = tmp("symlink")
         File(root, "inside").mkdirs()

@@ -69,7 +69,12 @@ sealed interface LlmEvent {
      * 失败。异常**原文只进这里与 RunLog**，给用户看的文案由调用方人话化
      * （与 RawErrorToUserGuardTest 钉的口径一致）。
      */
-    data class Failed(val error: Throwable) : LlmEvent
+    /**
+     * @param raw 服务端原文片段（≤300 字，只给 run_log.err 落库用；UI 拿的仍是
+     *            humanize 后的人话——原文不进界面，这是「HTTP错误转Failed且原文只进日志」
+     *            判据的延续：判据管的是 UI 文案，err 列是工程取证，两者不冲突）。
+     */
+    data class Failed(val error: Throwable, val raw: String? = null) : LlmEvent
 }
 
 /**
@@ -390,7 +395,9 @@ class LlmClient(private val provider: Provider) {
                         "抱朴 LLM：HTTP ${resp.code} ${resp.message}" +
                             if (snippet.isNullOrBlank()) "" else " body=${snippet.replace('\n', ' ')}"
                     )
-                    sink(LlmEvent.Failed(IOException("HTTP ${resp.code}")))
+                    // 原文跟事件走（不进异常 message——那条判据钉死了 UI 文案不带原文），
+                    // 引擎把它落 run_log.err，蓝总管侧才拿得到第一手错因（刀 1 补丁硬要求）。
+                    sink(LlmEvent.Failed(IOException("HTTP ${resp.code}"), raw = snippet))
                     return
                 }
                 val body = resp.body ?: run {

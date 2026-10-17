@@ -910,4 +910,5 @@
     <string name="baopu_memory_confirm">Remember</string>
     <string name="baopu_memory_forget">Don’t</string>
     <string name="baopu_compressed_marker">Compressed here: older messages were summarized; the originals are still in the log — tap to expand.</string>
+  <string name="baopu_channel_button">Channel</string>
 </resources>

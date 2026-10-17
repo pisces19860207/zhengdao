@@ -48,6 +48,15 @@ internal object RunRules {
     /** 确认超时：默认 15 分钟，且**仅 App 前台计时**（§2 补录）。 */
     const val CONFIRM_TIMEOUT_MS = 15 * 60 * 1000L
 
+    /**
+     * 一轮之内自动换通道的上限（刀 1 补丁）。
+     *
+     * 为什么要有：换通道是 `continue` 重跑**同一步**（不涨步数），若两个通道都坏，
+     * 熔断→切换→再失败会无限循环烧 token，`MAX_STEPS` 拦不住（步数没涨）。
+     * 到顶后把候选置空 ⇒ `channelDecision` 只好走 `BrokenAskUser`，停下来问人。
+     */
+    const val MAX_CHANNEL_SWITCHES = 2
+
     /** 一步 = 一次模型轮次 ⇒ 步数从 1 起；满 16 必停。 */
     fun isStepExhausted(steps: Int): Boolean = steps >= MAX_STEPS
 
@@ -58,6 +67,29 @@ internal object RunRules {
     /** 通道熔断判据。 */
     fun shouldBreakChannel(consecutiveChannelFailures: Int): Boolean =
         consecutiveChannelFailures >= CHANNEL_BREAK_THRESHOLD
+
+    /**
+     * 熔断后怎么处置（纯判据，JVM 直测；真正的"切"在引擎里做）。
+     *
+     * 三条出路：没到线就留在原通道；到线且有候选就切过去；到线且没候选就停下问人
+     * （**不抛异常**——"可报告地失败"是设计口径）。
+     */
+    sealed interface ChannelDecision {
+        /** 还没到熔断线：留在原通道（重试由上层决定）。 */
+        data object KeepCurrent : ChannelDecision
+
+        /** 到线且 [fallback] 给了候选：自动切过去。 */
+        data class SwitchTo(val next: Provider) : ChannelDecision
+
+        /** 到线且没有候选（或换够次数了）：停下问人。 */
+        data object BrokenAskUser : ChannelDecision
+    }
+
+    fun channelDecision(consecutiveChannelFailures: Int, fallback: Provider?): ChannelDecision = when {
+        !shouldBreakChannel(consecutiveChannelFailures) -> ChannelDecision.KeepCurrent
+        fallback != null -> ChannelDecision.SwitchTo(fallback)
+        else -> ChannelDecision.BrokenAskUser
+    }
 
     /**
      * 确认超时判据（**仅前台计时**：后台期间不计时，回前台才继续计）。
@@ -137,13 +169,25 @@ sealed interface EngineEvent {
  * [state]/[step] 是 `mutableStateOf` + [State]，**不裸 @Volatile**。
  */
 internal class RunEngine(
-    private val provider: Provider,
+    /**
+     * 当前通道（刀 1 补丁：熔断后会被换成候选通道）。
+     * 构造期仍由 [com.example.zhengdao.baopu.BaopuRuntime.build] 注入**一份**，
+     * 之后只在熔断降级时改写，别处不换。
+     */
+    private var provider: Provider,
     private val db: BaopuDb,
     private val registry: ToolRegistry,
     private val pipeline: GuardPipeline,
     private val personaFiles: PersonaFiles? = null,
     private val memoryStore: MemoryStore? = null,
     private val spillRoot: () -> File,
+    /**
+     * 熔断后的候选通道（刀 1 补丁）：入参是当前通道，返回下一个或 null。
+     *
+     * 为什么不给引擎一个"通道列表"：Key 只该在 ProviderPrefs 手里，引擎拿到的
+     * 已经是拼好的 [Provider]（含 Key），它不需要知道 Key 从哪来。
+     */
+    private val channelFallback: (Provider) -> Provider? = { null },
     private val log: (String) -> Unit = { RunLog.log(it) },
 ) {
 
@@ -182,6 +226,9 @@ internal class RunEngine(
 
     @Volatile
     private var channelBroken = false
+
+    /** 本次运行里自动换过几次通道（到 [RunRules.MAX_CHANNEL_SWITCHES] 就把候选关掉）。 */
+    private var channelSwitches = 0
 
     // ── 对外动作 ──────────────────────────────────────────────────────────
 
@@ -423,18 +470,52 @@ internal class RunEngine(
 
                 is RoundOutcome.Failed -> {
                     consecutiveChannelFailures++
-                    // 人话已在 humanizeNetFailure 里拼好（含「原文已记日志」），这里不再套一层
-                    // —— 原先写成"模型调用失败：${userFacing}（原文已记日志）"，
-                    // 真机实测显示成「模型调用失败：模型调用失败（原文已记日志）（原文已记日志）」。
-                    _notice.value = outcome.userFacing
-                    if (RunRules.shouldBreakChannel(consecutiveChannelFailures)) {
-                        channelBroken = true
-                        _notice.value = "当前通道连续失败 ${consecutiveChannelFailures} 次，已熔断：" +
-                            "换一个 provider 再试（不是每次错误各自退避）。"
+                    // 原文只进 run_log.err（≤300 字）；界面拿的仍是 humanize 后的人话。
+                    val errText = outcome.raw.take(300)
+                    // 换够次数就把候选关掉（防「两个坏通道来回切」的死循环，见 MAX_CHANNEL_SWITCHES）
+                    val fallback = if (channelSwitches < RunRules.MAX_CHANNEL_SWITCHES) {
+                        channelFallback(provider)
+                    } else {
+                        null
                     }
-                    settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
-                    onEvent?.invoke(EngineEvent.AskUser(_notice.value!!))
-                    return
+                    when (val d = RunRules.channelDecision(consecutiveChannelFailures, fallback)) {
+                        is RunRules.ChannelDecision.SwitchTo -> {
+                            val next = d.next
+                            channelSwitches++
+                            consecutiveChannelFailures = 0
+                            log(
+                                "抱朴引擎：通道 ${provider.id}/${provider.model} 熔断，自动切到 " +
+                                    "${next.id}/${next.model}（第 $channelSwitches 次）",
+                            )
+                            _notice.value = "当前通道不通，已自动切到 ${next.model} 重试"
+                            provider = next
+                            persistStep(sessionId, stepCount, "Switched", err = errText)
+                            continue // 重跑同一步，不涨步数
+                        }
+
+                        RunRules.ChannelDecision.BrokenAskUser -> {
+                            channelBroken = true
+                            val msg = if (channelSwitches >= RunRules.MAX_CHANNEL_SWITCHES) {
+                                "同一轮已自动换过 ${RunRules.MAX_CHANNEL_SWITCHES} 次通道都不通：" +
+                                    "换个通道或稍后再试（已停在第 $stepCount 步）"
+                            } else {
+                                "当前通道连续失败 ${consecutiveChannelFailures} 次（已熔断）：" +
+                                    "换个通道或稍后再试"
+                            }
+                            _notice.value = msg
+                            settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = errText)
+                            onEvent?.invoke(EngineEvent.AskUser(msg))
+                            return
+                        }
+
+                        RunRules.ChannelDecision.KeepCurrent -> {
+                            // 没到熔断线：本轮失败即停（不硬重试，与 0b 口径一致）
+                            _notice.value = outcome.userFacing
+                            settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = errText)
+                            onEvent?.invoke(EngineEvent.AskUser(_notice.value!!))
+                            return
+                        }
+                    }
                 }
             }
 
@@ -481,7 +562,12 @@ internal class RunEngine(
     private sealed interface RoundOutcome {
         data class Text(val text: String) : RoundOutcome
         data class ToolCalls(val text: String, val calls: List<ToolCall>) : RoundOutcome
-        data class Failed(val userFacing: String) : RoundOutcome
+
+        /**
+         * @param userFacing 给人看的人话（UI 只显示这个）
+         * @param raw 服务端原文（只落 `run_log.err`；空串 = 没有原文可取）
+         */
+        data class Failed(val userFacing: String, val raw: String = "") : RoundOutcome
     }
 
     /**
@@ -493,18 +579,23 @@ internal class RunEngine(
         val textBuf = StringBuilder()
         val latch = CountDownLatch(1)
         var failure: String? = null
+        var failureRaw: String? = null
         var rawCalls: List<com.example.zhengdao.baopu.RawToolCall> = emptyList()
         val client = LlmClient(provider)
         client.streamAsync(messages, tools) { ev ->
             when (ev) {
                 is LlmEvent.Delta -> textBuf.append(ev.text)
                 is LlmEvent.Finished -> rawCalls = ev.toolCalls
-                is LlmEvent.Failed -> failure = ev.error.message ?: ev.error.javaClass.simpleName
+                is LlmEvent.Failed -> {
+                    failure = ev.error.message ?: ev.error.javaClass.simpleName
+                    failureRaw = ev.raw
+                }
             }
             if (ev is LlmEvent.Finished || ev is LlmEvent.Failed) latch.countDown()
         }
         latch.await()
-        failure?.let { return RoundOutcome.Failed(humanizeNetFailure(it)) }
+        // 原文取不到时退回异常 message（至少 err 列不为空，能看出是哪一类失败）
+        failure?.let { return RoundOutcome.Failed(humanizeNetFailure(it), failureRaw ?: it) }
         if (rawCalls.isNotEmpty()) {
             val decoded = ToolCallCodec.decode(rawCalls, registry)
             return when (decoded) {
@@ -518,6 +609,8 @@ internal class RunEngine(
 
     /** 网络失败人话化（错误号口径：英文原文只进日志，UI 拿人话）。 */
     private fun humanizeNetFailure(raw: String): String = when {
+        raw.contains("403") -> "该通道拒绝访问（403）：Key 不对、没权限，或这条通道在你的网络里不通——换通道"
+        raw.contains("401") -> "该通道不认这把 Key（401）：检查 Key 是否填对，或换通道"
         raw.contains("429") -> "模型端限流（429）：稍等再试，或换一个 provider"
         raw.contains("HTTP 5") -> "模型端服务错误（5xx）：稍等再试"
         raw.contains("截断") -> "响应流中断：该轮作废重发（已花的 token 记在账里）"
@@ -546,13 +639,22 @@ internal class RunEngine(
      *
      * 反过来被杀时走不到这里 ⇒ `run_log` 最后一条停在 Thinking/Acting ⇒ 判为中断（判据 6）。
      */
-    private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String) {
-        persistStep(sessionId, step, runLogState)
+    private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String, err: String = "") {
+        // **必须等落库真的完成**：db.write 返回的是 Future（单写者线程 submit 排队），
+        // 只调用不 get 就等于"先切状态、收尾行稍后才落"。2026-10-17 真机复现：
+        // 一轮 3 步正常完成后显示「上次中断于第 3 步」——就是这一瞬被 UI 读到了。
+        runCatching { persistStep(sessionId, step, runLogState, err).get() }
+            .onFailure { log("抱朴引擎：收尾落库失败 ${it.javaClass.simpleName}: ${it.message}") }
         _state.value = state
     }
 
-    /** 步迁移 = 一次事务（session.interrupted_step + updated_at + run_log）。 */
-    private fun persistStep(sessionId: Long, step: Int, state: String) {
+    /** 步迁移 = 一次事务（session.interrupted_step + updated_at + run_log）。返回落库 Future。 */
+    private fun persistStep(
+        sessionId: Long,
+        step: Int,
+        state: String,
+        err: String = "",
+    ): java.util.concurrent.Future<Unit> {
         val rl = BaopuSql.insertRunLog(
             sessionId = sessionId,
             step = step,
@@ -563,12 +665,13 @@ internal class RunEngine(
             tokensInEst = 0,
             tokensOutEst = 0,
             tool = "",
-            ok = true,
+            // 有原文 = 这次失败（ok=0）；收尾成功行 ok=1 ⇒ 运维侧能直接按 ok 过滤失败
+            ok = err.isEmpty(),
             latencyMs = 0,
-            err = "",
+            err = err,
             createdAt = System.currentTimeMillis(),
         )
-        db.write { d ->
+        return db.write { d ->
             d.beginTransaction()
             try {
                 val now = System.currentTimeMillis()
