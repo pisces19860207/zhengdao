@@ -1022,3 +1022,16 @@
     <string name="baopu_drawer_channel_desc">换模型通道（会重建引擎，跑到一半不能换）</string>
     <string name="baopu_drawer_settings">抱朴设置</string>
     <string name="baopu_drawer_settings_desc">工具开关、资料库位置、终端外观</string></resources>
+      <string name="baopu_tool_browser_open">打开网页</string>
+    <string name="baopu_tool_browser_open_desc">在玄览里打开网址（只认 http/https）。会弹确认卡；打开是异步的，内容随后再看。</string>
+    <string name="baopu_tool_browser_snapshot">看网页</string>
+    <string name="baopu_tool_browser_snapshot_desc">取当前页的可交互元素与可见文字（不含像素、不含整页 HTML），超长会截断并明说。</string>
+    <string name="baopu_tool_browser_click">点网页</string>
+    <string name="baopu_tool_browser_click_desc">按 CSS 选择器点一个元素。会弹确认卡。</string>
+    <string name="baopu_tool_browser_type">写网页</string>
+    <string name="baopu_tool_browser_type_desc">往输入框写文字（会触发页面的输入事件）。会弹确认卡。</string>
+    <string name="baopu_tool_browser_scroll">滚网页</string>
+    <string name="baopu_tool_browser_scroll_desc">上下左右滚一段，方便把下面的内容拉进视口。</string>
+    <string name="baopu_tool_browser_screenshot">截网页</string>
+    <string name="baopu_tool_browser_screenshot_desc">给当前页截一张图，只回文件路径（像素不进对话）。</string>
+</resources>
