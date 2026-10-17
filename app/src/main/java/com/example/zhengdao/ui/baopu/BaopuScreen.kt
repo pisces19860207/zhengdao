@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -71,6 +72,21 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             showBackup = true
             BaopuIntents.consumeBackup()
         }
+    }
+
+    // 确认等待的**前台计时**（刀 3 A 段）：页面不可见时上报引擎——超时 15 分钟
+    // 只算前台时间（派工单 §3.2/§2 补录），用户放下手机去干别的，回来卡还在。
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> controller.onScreenPause()
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> controller.onScreenResume()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val state = controller.engineState.value
@@ -187,6 +203,16 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         card = card,
                         onPick = { controller.answerAskCard(it) },
                         onFreeText = { controller.answerAskCardFree(it) },
+                    )
+                }
+            }
+            // 文件改动确认卡（刀 3 A 段：要动文件 → 出卡 → 批准/拒绝）
+            controller.confirmCard?.let { card ->
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    BaopuConfirmCard(
+                        request = card,
+                        onApprove = { controller.approveConfirm() },
+                        onReject = { controller.rejectConfirm() },
                     )
                 }
             }

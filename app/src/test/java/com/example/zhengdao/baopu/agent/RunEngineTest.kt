@@ -9,12 +9,15 @@
 // SQLite + 网络，本仓无 Robolectric ⇒ 归真机，见交付报告挂账清单）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.HistoryMessage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
+import java.io.File
 
 class RunEngineTest {
 
@@ -137,9 +140,92 @@ class RunEngineTest {
     // ── 引擎事件形状（UI 契约） ─────────────────────────────────────────
 
     @Test
-    fun `引擎事件_三种齐`() {
+    fun `引擎事件_四种齐`() {
         assertNotNull(EngineEvent.MessagePersisted(1L, "user"))
         assertNotNull(EngineEvent.ToolCallVisible("read_file", "摘要", true))
         assertNotNull(EngineEvent.AskUser("停下问人"))
+        // 刀 3 A 段：确认制事件（callId/tool/summary/argsJson 四件齐）
+        val req = ConfirmRequest("call-1", "write_file", "覆盖 x.txt（2 行）", "{\"path\":\"x.txt\"}")
+        assertEquals("call-1", req.callId)
+        assertEquals("write_file", req.tool)
+        assertTrue(req is EngineEvent)
+    }
+
+    // ── J9 续跑回灌工具结果（C 段） ─────────────────────────────────────
+
+    @Test
+    fun `J9_续跑回灌_工具结果同形且顺序在发起轮之后`() {
+        val rows = listOf(
+            HistoryRow("db-0", HistoryMessage.ROLE_USER, "text", "把第一行改成 X"),
+            HistoryRow("db-1", HistoryMessage.ROLE_ASSISTANT, "text", "好，我来改"),
+            // Done 行：落库时存的就是围栏后的文本
+            HistoryRow(
+                "db-2", HistoryMessage.ROLE_ASSISTANT, "tool",
+                JSONObject().put("tool", "write_file").put("step", 1)
+                    .put("result", DataFence.wrap("write_file", 123L, "已覆盖 x.txt（2 行）")).toString(),
+            ),
+            // 失败行：在线时是 wrap("失败：…") 进历史；落库存的是裸文本 ⇒ 解码补包
+            HistoryRow(
+                "db-3", HistoryMessage.ROLE_ASSISTANT, "tool",
+                JSONObject().put("tool", "read_file").put("result", "失败：文件不存在").toString(),
+            ),
+        )
+        val out = HistoryCodec.decode(rows)
+
+        assertEquals("一条不少", 4, out.size)
+        assertEquals("文本原样", "把第一行改成 X", out[0].text)
+        // 同形：已带围栏的原样取出（不二次包）
+        assertTrue(out[2].text.startsWith("<tool_result name=\"write_file\""))
+        assertTrue(out[2].text.contains("已覆盖 x.txt"))
+        assertTrue(out[2].text.endsWith("</tool_result>"))
+        // 没带围栏的（失败行）补包——与在线路径同形
+        assertTrue(out[3].text.startsWith("<tool_result name=\"read_file\""))
+        assertTrue(out[3].text.contains("失败：文件不存在"))
+        // 顺序：工具结果紧跟发起它的那轮之后
+        val userIdx = out.indexOfFirst { it.text.contains("把第一行") }
+        val toolIdx = out.indexOfFirst { it.text.contains("tool_result") }
+        assertTrue("顺序与在线一致", userIdx < toolIdx)
+        // 全部是 assistant 视角回灌（在线路径就这么落的）
+        assertEquals(HistoryMessage.ROLE_ASSISTANT, out[2].role)
+    }
+
+    // ── 确认制纯判据（刀 3 A 段） ───────────────────────────────────────
+
+    @Test
+    fun `确认摘要_按工具给人话_不声称不知道的行数`() {
+        val write = JSONObject().put("path", "资料库/整理/x.txt").put("content", "X\n二")
+        assertTrue(RunRules.confirmSummary("write_file", write).contains("新建 资料库/整理/x.txt（2 行）"))
+        val over = JSONObject().put("path", "a.txt").put("content", "x").put("overwrite", true)
+        assertTrue(RunRules.confirmSummary("write_file", over).startsWith("覆盖 a.txt"))
+        assertTrue(RunRules.confirmSummary("edit_file", JSONObject().put("path", "b.txt")).contains("编辑 b.txt"))
+        assertTrue(
+            RunRules.confirmSummary("move_path", JSONObject().put("from", "a").put("to", "b")).contains("a → b"),
+        )
+    }
+
+    @Test
+    fun `argsJson截断_超8KB截断并标注_不超原样`() {
+        val small = JSONObject().put("path", "a.txt").toString()
+        assertEquals("不超限原样", small, RunRules.capArgsJson(small))
+        val big = "x".repeat(9_000)
+        val capped = RunRules.capArgsJson(big)
+        assertTrue("截断并标注（不静默）", capped.length < big.length && capped.contains("已截断"))
+    }
+
+    @Test
+    fun `拒绝回灌_备注可选`() {
+        assertEquals("用户拒绝：覆盖 a.txt（1 行）", RunRules.rejectNote("覆盖 a.txt（1 行）", null))
+        assertTrue(RunRules.rejectNote("s", "路径不对").contains("备注：路径不对"))
+    }
+
+    @Test
+    fun `相对路径_工作区内剥根_不在原样`() {
+        // 平台无关写法（Windows 上 File("/tmp/ws") 的 absolutePath 是 C:\tmp\ws，
+        // 分隔符也是反斜杠 ⇒ 期望值用 File(...).path 归一，不手写斜杠）
+        val root = File("/tmp/ws")
+        val inside = File(root, "a/b.txt").absolutePath
+        assertEquals(File("a/b.txt").path, RunRules.relativizePath(inside, root))
+        val outside = File(root.parentFile ?: root, "elsewhere/passwd").absolutePath
+        assertEquals("不在工作区 ⇒ 原样", outside, RunRules.relativizePath(outside, root))
     }
 }
