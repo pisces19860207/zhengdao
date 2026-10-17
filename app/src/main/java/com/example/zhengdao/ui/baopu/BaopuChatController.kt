@@ -11,12 +11,25 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.zhengdao.baopu.AskUserCard
+import com.example.zhengdao.baopu.AskUserOption
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
 import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.agent.EngineEvent
 import com.example.zhengdao.baopu.agent.RunState
+import com.example.zhengdao.baopu.library.LibraryItem
+import com.example.zhengdao.baopu.library.LibraryKind
+import com.example.zhengdao.baopu.library.LibrarySource
+import com.example.zhengdao.baopu.library.MoveChoice
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /** 一条消息的 UI 形状（role 分组由列表层做）。 */
@@ -49,6 +62,20 @@ internal class BaopuChatController(context: Context) {
     /** UI 线程 Handler：引擎事件从后台线程来，统一 post 回主线程再刷（见 [onEngineEvent]）。 */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /**
+     * 壳层自己的协程 scope（资料库收料/导出是 IO 活，压主线程会 ANR）。
+     *
+     * 房型与 `oc/` 曾经的进程级作用域同款：Main 派发（状态写回天然在主线程）＋
+     * SupervisorJob（一个活失败不连坐）＋ 协程名 ＋ [CoroutineCrashHandler]
+     * （未捕获异常照旧交系统处理器，只多一行带协程名的日志）。
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() +
+            Dispatchers.Main +
+            CoroutineName("zd-baopu-shell") +
+            com.example.zhengdao.keepalive.CoroutineCrashHandler,
+    )
+
     /** 当前会话（null = 还没有；首次发送时建）。 */
     var sessionId by mutableStateOf(BaopuRuntime.latestSessionId(db))
         private set
@@ -65,6 +92,62 @@ internal class BaopuChatController(context: Context) {
     var memoryCandidates by mutableStateOf(listOf<com.example.zhengdao.baopu.MemoryEntry>())
         private set
 
+    /**
+     * C 段提炼出的候选记忆（[com.example.zhengdao.baopu.MemoryStatus.PENDING]、**未落盘**）。
+     *
+     * 为什么单独一份而不是并进 [memoryCandidates]：那边是库里已存在的 CANDIDATE
+     * （刀 0b 的老机制），这边是本刀新产的、**还没资格落盘**的候选（派工单 C 段：
+     * 确认前一律 PENDING）。两条通道的确认动作也不同（老通道 update、新通道 write）。
+     */
+    var pendingMemories by mutableStateOf(listOf<com.example.zhengdao.baopu.MemoryEntry>())
+        private set
+
+    /** C 段自省便签（**恰好一条**；本轮结束时刷新，新会话清空）。 */
+    var introspectionNote by mutableStateOf<String?>(null)
+        private set
+
+    /** 动作结果的一句话（确认失败/重复等；给 UI 显示，5 秒后由 UI 清）。 */
+    var pendingNote by mutableStateOf<String?>(null)
+        private set
+
+    // ── 资料库（A 段收料提问卡 / D 段导出 / 顶条统计）─────────────────────────
+
+    /**
+     * 收料提问卡（投递里有料时出；答完即清）。
+     *
+     * 卡由 [com.example.zhengdao.baopu.library.LibraryImport.card] 造（纯函数），
+     * 壳层只负责出示与回收——**形状判据全在数据层**（AskUserCardRules），
+     * UI 不自己发明选项（判据 §5.7）。
+     */
+    var askCard by mutableStateOf<AskUserCard?>(null)
+        private set
+
+    /** 资料库动作的一句话结果（收料/导出；成功失败都明说，不静默）。 */
+    var libraryNote by mutableStateOf<String?>(null)
+        private set
+
+    /** 顶条防丢提醒要的两个数（[BackupStats.lastExportAt] ≤0 = 从没导出过）。 */
+    data class BackupStats(val lastExportAt: Long, val unexported: Int, val total: Int)
+
+    var backupStats by mutableStateOf(BackupStats(0L, 0, 0))
+        private set
+
+    /** 导出是否在跑（备份对话框按钮的禁用态；顶条「去导出」也看它）。 */
+    var exportBusy by mutableStateOf(false)
+        private set
+
+    /**
+     * 已出过卡（或已答过）的投递签名——防同一批料反复问。
+     *
+     * 签名 = 件数:文本字节:mtime 之和。用户答完（含「先不搬」）后签名不变就不再问；
+     * 真往投递里丢了新文件 ⇒ 签名变 ⇒ 再问。没有签名机制，搬完那一刻投递还在
+     * （搬＝复制进私有＋列待删除清单，不删源），卡会立刻重新弹出来。
+     */
+    private var deliverSignature: String? = null
+
+    /** 首次搬原件进私有的一次性提示Flag（D 段第 2 条；记在库里，同一件事只提示一次）。 */
+    private val noticeFirstMove = "first-move"
+
     /** 引擎可观察状态（直接透出 Compose State）。 */
     val engineState: androidx.compose.runtime.State<RunState> get() = engine.state
     val engineStep: androidx.compose.runtime.State<Int> get() = engine.step
@@ -76,9 +159,25 @@ internal class BaopuChatController(context: Context) {
             RunState.THINKING, RunState.ACTING, RunState.COMPRESSING, RunState.AWAIT_CONFIRM,
         )
 
+    /**
+     * 提炼游标（防同一轮双提炼）：记下「哪个会话、已经提炼到第几条用户消息」。
+     *
+     * 为什么需要：[EngineEvent.Settled] 每轮发一次，但同一会话里用户会连发多轮；
+     * 没有游标就会把老用户的原话反复提炼（候选 id 含时间戳，body 去重能挡住一部分，
+     * 但「这次学到什么」的自省会重复刷）。游标只认**新增**的用户消息。
+     */
+    private var refineMarkSession = -1L
+    private var refineMarkUserCount = -1
+
+    /** 待过目候选的进程内上限（UI 同屏放得下 3 张；超了先到先得，截断记日志）。 */
+    private val maxPending = 6
+
     init {
         engine.onEvent = { ev -> onEngineEvent(ev) }
         refresh()
+        // 进页面先看投递有没有料（A 段：扫投递 → 一次 ask_user）与顶条的两个数
+        checkDeliver()
+        refreshBackupStats()
     }
 
     /** 发送（首次自动建会话）。 */
@@ -105,6 +204,10 @@ internal class BaopuChatController(context: Context) {
         sessionId = null
         interruptedStep = -1
         messages = emptyList()
+        pendingMemories = emptyList()
+        introspectionNote = null
+        refineMarkSession = -1L
+        refineMarkUserCount = -1
     }
 
     /** 记忆候选：确认（落盘 CONFIRMED）。 */
@@ -126,6 +229,224 @@ internal class BaopuChatController(context: Context) {
         refreshMemory()
     }
 
+    // ── C 段：会话结束提炼（候选未落盘，等用户过目）─────────────────────────
+
+    /**
+     * 提炼候选：确认 ⇒ 转 CONFIRMED 落盘（[com.example.zhengdao.baopu.MemoryStore.write]
+     * 只收 CONFIRMED，且自己过校验＋去重）⇒ 从待过目列表移除。
+     *
+     * 失败不静默：重复/不合格都会在 [pendingNote] 里说出来（条目留在列表里，
+     * 用户可以改天再试或点「不记」）——**绝不自动落盘**（派工单 C 段红线）。
+     */
+    fun confirmPendingMemory(id: String) {
+        val e = pendingMemories.firstOrNull { it.id == id } ?: return
+        val confirmed = e.copy(status = MemoryStatus.CONFIRMED, updatedAt = System.currentTimeMillis())
+        val r = store.write(confirmed)
+        if (!r.ok) {
+            pendingNote = r.reason
+            return
+        }
+        syncIndex(confirmed)
+        pendingMemories = pendingMemories.filterNot { it.id == id }
+    }
+
+    /** 提炼候选：不记（只从进程里的待过目列表扔——它本来就没落盘，没有可删的文件）。 */
+    fun forgetPendingMemory(id: String) {
+        pendingMemories = pendingMemories.filterNot { it.id == id }
+    }
+
+    /** 清掉动作结果那句话（UI 显示几秒后调）。 */
+    fun clearPendingNote() {
+        pendingNote = null
+    }
+
+    /** 清掉资料库动作结果那句话。 */
+    fun clearLibraryNote() {
+        libraryNote = null
+    }
+
+    // ── 资料库动作（A 段收料 / D 段导出；全部 IO 线程，状态回主线程） ───────────
+
+    /**
+     * 扫 `投递/`：有料就出一次提问卡（没料什么都不做——不打扰）。
+     *
+     * 进页面与每轮引擎 Settled 时由 UI 调；重复调无副作用（签名机制挡着）。
+     */
+    fun checkDeliver() {
+        if (askCard != null) return
+        scope.launch {
+            val imp = BaopuRuntime.libraryImport(appCtx)
+            val scan = withContext(Dispatchers.IO) { imp.scan() }
+            if (scan.files.isEmpty()) {
+                deliverSignature = null // 料被清空了 ⇒ 下次有新料要能再问
+                return@launch
+            }
+            val sig = "${scan.files.size}:${scan.textBytes}:${scan.files.sumOf { it.mtime }}"
+            if (sig == deliverSignature) return@launch
+            deliverSignature = sig
+            askCard = imp.card(scan)
+        }
+    }
+
+    /** 提问卡：点选项（[AskUserOption.id] 就是档位名字，见 [MoveChoice]）。 */
+    fun answerAskCard(option: AskUserOption) {
+        val choice = runCatching { MoveChoice.valueOf(option.id.uppercase()) }.getOrNull()
+        if (choice == null) {
+            libraryNote = "没能对上选项（${option.id}）——没有执行任何动作"
+            return
+        }
+        runImport(choice)
+    }
+
+    /**
+     * 提问卡：自由输入（**永远留的那一行空白**）⇒ 档位。
+     *
+     * 解释是纯函数（[com.example.zhengdao.baopu.library.LibraryImport.parseChoice]），
+     * 对不上就说对不上——**不猜、不静默按某个档执行**（那是替用户做决定）。
+     */
+    fun answerAskCardFree(text: String) {
+        val imp = BaopuRuntime.libraryImport(appCtx)
+        val choice = imp.parseChoice(text)
+        if (choice == null) {
+            libraryNote = "没能对上选项，请直接点上面的按钮（不猜、不静默执行）"
+            return
+        }
+        runImport(choice)
+    }
+
+    /**
+     * 执行收料（A 段第 3/4 步）：私有复制 ＋ 两份清单 ＋ 索引镜像 ＋ 五步流水线。
+     *
+     * 顺序（派工单 A 段原话「每次收料，顺序不许改」）：先搬（含 `isolated` 标注与
+     * 待删除清单），再跑流水线出 `整理/` 产出与 `_认脸索引.json`，最后首次提示一次。
+     * **不删投递里的任何文件**（§2.8）。
+     */
+    private fun runImport(choice: MoveChoice) {
+        askCard = null
+        libraryNote = "收料处理中…"
+        scope.launch {
+            val imp = BaopuRuntime.libraryImport(appCtx)
+            val store = BaopuRuntime.libraryStore(appCtx)
+            val pipeline = BaopuRuntime.libraryPipeline(appCtx)
+            val out = withContext(Dispatchers.IO) { imp.execute(choice, System.currentTimeMillis()) }
+            // ① 索引镜像（library_item）：复制档当场标 isolated=0（A 段第 3 步）
+            withContext(Dispatchers.IO) {
+                out.copied.forEach { c ->
+                    runCatching {
+                        store.insertItemIfAbsent(
+                            LibraryItem(
+                                sha256 = c.sha256,
+                                name = c.relPath,
+                                size = c.size,
+                                mtime = System.currentTimeMillis(),
+                                source = LibrarySource.DELIVER,
+                                isolated = c.isolated,
+                                kind = LibraryKind.TEXT,
+                                privatePath = c.privateRelPath,
+                                createdAt = System.currentTimeMillis(),
+                            ),
+                        ).get()
+                    }
+                    if (!c.isolated) runCatching { store.markNotIsolated(c.sha256).get() }
+                }
+            }
+            // ② 五步流水线（私有 → 整理/ ＋ _认脸索引.json）；同批跑两遍第二遍全记 duplicate
+            val report = withContext(Dispatchers.IO) {
+                pipeline.run(
+                    source = LibrarySource.DELIVER,
+                    isolatedBySha = out.copied.associate { it.sha256 to it.isolated },
+                    onItem = { item ->
+                        // 镜像写失败不该炸掉整趟收料（文件侧产出已经是真的）⇒ 单独兜住
+                        runCatching {
+                            store.insertItemIfAbsent(
+                                LibraryItem(
+                                    sha256 = item.sha256,
+                                    name = item.name,
+                                    size = item.size,
+                                    mtime = item.mtime,
+                                    source = item.source,
+                                    isolated = item.isolated,
+                                    kind = item.kind,
+                                    createdAt = System.currentTimeMillis(),
+                                ),
+                            ).get()
+                        }
+                    },
+                )
+            }
+            // ③ 首次搬原件提示一次（D 段第 2 条；记在 library_move_log，行在即提示过）
+            val firstMove = withContext(Dispatchers.IO) {
+                out.copied.isNotEmpty() && !store.hasNotice(noticeFirstMove)
+            }
+            if (firstMove) withContext(Dispatchers.IO) { runCatching { store.markNoticed(noticeFirstMove).get() } }
+
+            val parts = mutableListOf<String>()
+            when (choice) {
+                MoveChoice.SKIP -> parts += "先不搬——投递里的件原样没动。"
+                else -> {
+                    val moved = out.copied.count { !it.alreadyThere }
+                    parts += "收料完成：$moved 件进私有" +
+                        if (out.copied.any { it.alreadyThere }) "（${out.copied.count { it.alreadyThere }} 件本来就在）" else ""
+                    // 派工单 A 段第 3 步原话：选「复制」必须在 UI 上写明「这批没隔离」
+                    if (choice == MoveChoice.COPY) {
+                        parts += "；注意：选的是复制，共享区里还留着原件，这批没有隔离"
+                    }
+                    if (out.leftBehind.isNotEmpty()) parts += "；仍在投递 ${out.leftBehind.size} 件"
+                    if (out.pendingDelete.isNotEmpty()) parts += "；待删除清单 ${out.pendingDelete.size} 件（在 整理/_待删除清单.json，删不删你定）"
+                    if (out.rejected.isNotEmpty()) parts += "；被拒 ${out.rejected.size} 件"
+                    parts += "；整理产出 ${report.processed.size} 件"
+                }
+            }
+            if (firstMove) parts += "（首次搬原件：以后在 设置 → 终端与资料 → 抱朴 里能一键导出备份）"
+            libraryNote = parts.joinToString("")
+            refreshBackupStats()
+        }
+    }
+
+    /** 导出原件（D 段第 1/3 条）：`textOnly` = 只导文本件那一档。 */
+    fun exportOriginals(textOnly: Boolean) {
+        exportBusy = true
+        libraryNote = "导出中…"
+        scope.launch {
+            try {
+                val pipeline = BaopuRuntime.libraryPipeline(appCtx)
+                val store = BaopuRuntime.libraryStore(appCtx)
+                val report = withContext(Dispatchers.IO) {
+                    val onExported: (String, Long) -> Unit = { sha, at ->
+                        runCatching { store.markExported(sha, at).get() }
+                    }
+                    if (textOnly) {
+                        pipeline.exportKind(LibraryKind.TEXT, System.currentTimeMillis(), onExported)
+                    } else {
+                        pipeline.exportAll(System.currentTimeMillis(), onExported)
+                    }
+                }
+                libraryNote = when {
+                    report.exported.isEmpty() -> "没有可导出的原件（索引是空的）。" +
+                        (report.notes.firstOrNull()?.let { "（$it）" } ?: "")
+                    else -> buildString {
+                        append("导出完成：${report.exported.size} 件（在 整理/原件导出-<时间戳>/）")
+                        if (report.notes.isNotEmpty()) append("；另有 ${report.notes.size} 条备注（跳过/撞名/失败）")
+                    }
+                }
+                refreshBackupStats()
+            } finally {
+                exportBusy = false
+            }
+        }
+    }
+
+    /** 读顶条要的两个数（db 读，走 IO；进页面与导出/收料后调）。 */
+    fun refreshBackupStats() {
+        scope.launch {
+            val store = BaopuRuntime.libraryStore(appCtx)
+            val s = withContext(Dispatchers.IO) {
+                BackupStats(store.lastExportAt(), store.unexportedCount(), store.totalCount())
+            }
+            backupStats = s
+        }
+    }
+
     // ── 内部 ──────────────────────────────────────────────────────────────
 
     /**
@@ -143,9 +464,76 @@ internal class BaopuChatController(context: Context) {
         val force = ev is EngineEvent.Settled
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
             refresh(force)
+            if (force) refineOnSettle()
         } else {
-            main.post { refresh(force) }
+            main.post {
+                refresh(force)
+                if (force) refineOnSettle()
+            }
         }
+    }
+
+    // ── C 段提炼（本刀不跑模型：纯确定性推导，见 MemoryRefine 的 KDoc）────────
+
+    /**
+     * 一轮结束 ⇒ 提炼一次（派工单 C 段：Done/Aborted 时提炼，候选一律 PENDING、
+     * 顺带恰好一条自省、**不额外多跑一轮模型**）。
+     *
+     * 触发点选在这里而不是 BaopuScreen 观察状态：`Settled` 由引擎在单活跃门**释放后**
+     * 发，是「本轮彻底结束」的权威信号；[refresh] 刚在同一次主线程块里重读过 messages，
+     * 这里拿到的就是刚落库的最终消息集。
+     *
+     * 事实三查（都不出进程、不联网）：用户原话（[readMessages] 已读出的 text part）、
+     * 用过的工具（本轮消息里 tool part 的名字，去重保序）、步数与结束状态（run_log）。
+     */
+    private fun refineOnSettle() {
+        val sid = sessionId ?: return
+        val userTexts = messages
+            .filter { it.role == "user" }
+            .flatMap { m -> m.parts.filter { it.kind == "text" }.map { it.text } }
+        val already = if (refineMarkSession == sid) refineMarkUserCount.coerceAtLeast(0) else 0
+        val fresh = userTexts.drop(already)
+        if (fresh.isEmpty()) return // 没有新用户输入（空跑/纯恢复）不提炼
+        refineMarkSession = sid
+        refineMarkUserCount = userTexts.size
+
+        // 本轮的消息范围：从第一条新用户消息开始（工具统计只算本轮的）
+        val firstFreshId = messages.filter { it.role == "user" }
+            .let { users -> if (users.isEmpty()) null else users[users.size - fresh.size].id }
+        val roundMsgs = messages.filter { it.id >= (firstFreshId ?: Long.MAX_VALUE) }
+        val toolsUsed = roundMsgs
+            .flatMap { m -> m.parts.filter { it.kind == "tool" }.map { it.tool } }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        val facts = MemoryRefine.SessionFacts(
+            sessionId = sid,
+            userTexts = fresh,
+            toolsUsed = toolsUsed,
+            steps = db.read { d ->
+                d.rawQuery(
+                    "SELECT COALESCE(MAX(step), 0) FROM run_log WHERE session_id = ?",
+                    arrayOf(sid.toString()),
+                ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+            },
+            endState = db.read { d ->
+                d.rawQuery(
+                    "SELECT state FROM run_log WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+                    arrayOf(sid.toString()),
+                ).use { c -> if (c.moveToFirst()) c.getString(0) ?: "Done" else "Done" }
+            },
+            now = System.currentTimeMillis(),
+        )
+        val r = MemoryRefine.refine(facts)
+        // 追加（不冲掉用户还没过目的老候选）＋ 同正文去重 ＋ 上限截断（先到先得）
+        val merged = (pendingMemories + r.candidates).distinctBy { it.body }
+        if (merged.size > maxPending) {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "[baopu-refine] 待过目候选超过 $maxPending 条，截断 ${merged.size - maxPending} 条（body 去重后仍超限）",
+            )
+        }
+        pendingMemories = merged.take(maxPending)
+        introspectionNote = r.introspection.text
     }
 
     /**

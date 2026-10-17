@@ -910,4 +910,69 @@
     <string name="baopu_memory_forget">不记</string>
     <string name="baopu_compressed_marker">此处已压缩：旧消息压成了摘要，原文还在记录里，可展开看。</string>
   <string name="baopu_channel_button">换通道</string>
-</resources>
+    <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
+    <string name="baopu_ask_recommended">推荐选项</string>
+    <string name="baopu_ask_free_submit">按这个回答</string>
+    <!-- ── 抱朴备份原件对话框（刀 2 · D 段第 1 条；长按图标快捷方式进来）── -->
+    <string name="baopu_backup_title">备份原件</string>
+    <string name="baopu_backup_body">原件在 App 私有目录里，卸载 App 会连它一起没。导出会在工作区的「整理/原件导出-&lt;时间戳&gt;/」放一份副本——用系统文件管理进工作区就能看到、也能拷去别处。原件本身不动，这里只做副本。</string>
+    <string name="baopu_backup_private_hint">注意：现在工作区是 App 私有的（仅私有模式），导出仍在 App 里，卸载照样丢。要真防丢，先去设置把工作区切到共享存储。</string>
+    <string name="baopu_backup_export_all">导出全部原件</string>
+    <string name="baopu_backup_export_text">只导出文本件</string>
+    <string name="baopu_backup_cancel">以后再说</string>
+    <string name="baopu_backup_never">还从未导出过</string>
+    <string name="baopu_backup_last">上次导出：%1$s</string>
+    <string name="baopu_backup_unexported">还有 %1$d 件没导出</string>
+    <!-- ── 抱朴章节抽取（刀 2 追加包；切章预览 → 一次 ask_user）── -->
+    <string name="baopu_extract_title">章节抽取</string>
+    <string name="baopu_extract_desc">选一本书，先看切分结果（章数和前几章的标题），再决定怎么办：逐章生成摘要、只要索引、还是精读其中几章。</string>
+    <string name="baopu_extract_empty">「整理」里还没有能抽取的书（txt / md / markdown）。先搬一些书进来。</string>
+    <string name="baopu_extract_preview">共 %1$d 章。前几章：%2$s</string>
+    <string name="baopu_extract_mode_digest">逐章摘要</string>
+    <string name="baopu_extract_free_prompt">或者直接输入：摘要 / 索引 / 章号（如 3,5,8）</string>
+    <string name="baopu_extract_mode_index">只要索引</string>
+    <string name="baopu_extract_mode_deep">精读某几章</string>
+    <string name="baopu_extract_deep_hint">填章号，逗号分隔，例如 3,5,8</string>
+    <string name="baopu_extract_deep_go">开始精读</string>
+    <string name="baopu_extract_busy">处理中…</string>
+    <string name="baopu_extract_none">这一轮没有可写入的章节</string>
+    <string name="baopu_extract_result_written">已写入 %1$d 章索引</string>
+    <string name="baopu_extract_result_remaining">还剩 %1$d 章没处理（单次上限 %2$d 章，再跑一次就接着走）</string>
+    <string name="baopu_extract_result_skipped">另有 %1$d 章这次没选</string>
+    <string name="baopu_extract_again">再抽一本</string>
+    <string name="baopu_extract_done">完成</string>
+    <string name="baopu_extract_close">关闭</string>
+    <!-- ── 抱朴工具开关（刀 2 追加包；设置 → 终端与资料）── -->
+    <string name="baopu_tools_card">抱朴工具</string>
+    <string name="baopu_tools_desc">抱朴能用的工具。关掉的工具不会发给模型，它看不到也就不会调用；它硬要调用时只会收到「该工具已被用户关闭」，不会自动打开。</string>
+    <string name="baopu_tool_read_file">读文件</string>
+    <string name="baopu_tool_read_file_desc">读工作区里的文本文件，可指定从第几行开始、读多少行。</string>
+    <string name="baopu_tool_list_dir">列目录</string>
+    <string name="baopu_tool_list_dir_desc">看某个目录下有什么（名字、大小、类型）。</string>
+    <string name="baopu_tool_search_in_files">搜关键词</string>
+    <string name="baopu_tool_search_in_files_desc">在目录里搜一个词，回「文件:行号:那一行」并带上下文。超大文件和二进制自动跳过。</string>
+    <string name="baopu_tool_file_info">文件信息</string>
+    <string name="baopu_tool_file_info_desc">看大小、行数、编码猜测（UTF-8 / UTF-16 / GBK）、是不是二进制。</string>
+    <string name="baopu_tool_write_file">写文件</string>
+    <string name="baopu_tool_write_file_desc">往工作区写文本文件，每次都要你确认；覆盖旧文件会先自动备份到 .baopu-bak。没有删除能力。</string>
+    <!-- ── 静态快捷方式（刀 2 · D 段第 1 条；标签 ≤10 字）── -->
+    <string name="baopu_shortcut_backup">备份原件</string>
+    <string name="baopu_shortcut_backup_long">备份抱朴库里的原件</string>
+    <!-- ── 抱朴页新增入口与提示（刀 2 · C/D 段 ＋ 追加包）── -->
+    <string name="baopu_pending_card_title">这次想记住的（还没落盘）</string>
+    <string name="baopu_introspection_label">这次学到</string>
+    <string name="baopu_backup_stale_never">原件还从没导出过，去导一份？</string>
+    <string name="baopu_backup_stale_days">原件 %1$d 天没导出了，去导一份？</string>
+    <string name="baopu_backup_go">去导出</string>
+    <string name="baopu_ask_unmatched">没能对上选项，请直接点上面的按钮（不猜、不静默执行）</string>
+    <string name="baopu_import_running">收料处理中…</string>
+    <string name="baopu_import_done">收料完成：%1$d 件进私有（%2$s）</string>
+    <string name="baopu_import_left">；仍在投递 %1$d 件</string>
+    <string name="baopu_import_pending_delete">；待删除清单 %1$d 件（在 整理/_待删除清单.json，删不删你定）</string>
+    <string name="baopu_import_rejected">；被拒 %1$d 件</string>
+    <string name="baopu_import_skip">先不搬——投递里的件原样没动。</string>
+    <string name="baopu_export_running">导出中…</string>
+    <string name="baopu_export_done">导出完成：%1$d 件（在 整理/原件导出-&lt;时间戳&gt;/）</string>
+    <string name="baopu_export_none">没有可导出的原件（索引是空的）。</string>
+    <string name="baopu_export_notes">另有 %1$d 条备注（跳过/撞名/失败）。</string>
+  </resources>

@@ -911,4 +911,69 @@
     <string name="baopu_memory_forget">Don’t</string>
     <string name="baopu_compressed_marker">Compressed here: older messages were summarized; the originals are still in the log — tap to expand.</string>
   <string name="baopu_channel_button">Channel</string>
-</resources>
+    <!-- ── Baopu ask_user card (task 2, part C) ── -->
+    <string name="baopu_ask_recommended">Suggested options</string>
+    <string name="baopu_ask_free_submit">Answer with this</string>
+    <!-- ── Baopu backup dialog (task 2, part D-1) ── -->
+    <string name="baopu_backup_title">Back up originals</string>
+    <string name="baopu_backup_body">The originals live in the app\'s private storage and vanish if you uninstall. Exporting drops a copy into the workspace at “整理/原件导出-&lt;timestamp&gt;/” — open the workspace with your file manager to see it and copy it anywhere. The originals themselves are never touched; this only makes copies.</string>
+    <string name="baopu_backup_private_hint">Note: the workspace is currently app-private (private-only mode), so the export stays inside the app and still disappears on uninstall. For real protection, switch the workspace to shared storage in Settings first.</string>
+    <string name="baopu_backup_export_all">Export all originals</string>
+    <string name="baopu_backup_export_text">Export text files only</string>
+    <string name="baopu_backup_cancel">Later</string>
+    <string name="baopu_backup_never">Never exported yet</string>
+    <string name="baopu_backup_last">Last export: %1$s</string>
+    <string name="baopu_backup_unexported">%1$d items not exported yet</string>
+    <!-- ── Baopu chapter extraction (task 2 addendum) ── -->
+    <string name="baopu_extract_title">Chapter extraction</string>
+    <string name="baopu_extract_desc">Pick a book, review the split (chapter count and the first few titles), then choose: digest every chapter, index only, or read a few chapters closely.</string>
+    <string name="baopu_extract_empty">No extractable books (txt / md / markdown) in “整理” yet. Move some books in first.</string>
+    <string name="baopu_extract_preview">%1$d chapters. First few: %2$s</string>
+    <string name="baopu_extract_mode_digest">Digest each chapter</string>
+    <string name="baopu_extract_free_prompt">Or type: digest / index / chapter numbers (e.g. 3,5,8)</string>
+    <string name="baopu_extract_mode_index">Index only</string>
+    <string name="baopu_extract_mode_deep">Read selected chapters</string>
+    <string name="baopu_extract_deep_hint">Chapter numbers, comma separated, e.g. 3,5,8</string>
+    <string name="baopu_extract_deep_go">Start reading</string>
+    <string name="baopu_extract_busy">Working…</string>
+    <string name="baopu_extract_none">Nothing to write this round</string>
+    <string name="baopu_extract_result_written">Wrote %1$d chapter index entries</string>
+    <string name="baopu_extract_result_remaining">%1$d chapters left (limit is %2$d per run — run again to continue)</string>
+    <string name="baopu_extract_result_skipped">%1$d chapters not selected this time</string>
+    <string name="baopu_extract_again">Extract another</string>
+    <string name="baopu_extract_done">Done</string>
+    <string name="baopu_extract_close">Close</string>
+    <!-- ── Baopu tool switches (task 2 addendum; Settings → Terminal & library) ── -->
+    <string name="baopu_tools_card">Baopu tools</string>
+    <string name="baopu_tools_desc">Tools Baopu can use. A switched-off tool is never sent to the model, so it cannot see or call it; if it calls anyway it only gets “this tool was switched off by the user” — nothing is switched back on automatically.</string>
+    <string name="baopu_tool_read_file">Read file</string>
+    <string name="baopu_tool_read_file_desc">Read a text file in the workspace, from a given line, for a given number of lines.</string>
+    <string name="baopu_tool_list_dir">List directory</string>
+    <string name="baopu_tool_list_dir_desc">See what is inside a directory (name, size, type).</string>
+    <string name="baopu_tool_search_in_files">Search keywords</string>
+    <string name="baopu_tool_search_in_files_desc">Search a word across a directory; returns “file:line:that line” with context. Huge and binary files are skipped automatically.</string>
+    <string name="baopu_tool_file_info">File info</string>
+    <string name="baopu_tool_file_info_desc">Size, line count, encoding guess (UTF-8 / UTF-16 / GBK), binary or not.</string>
+    <string name="baopu_tool_write_file">Write file</string>
+    <string name="baopu_tool_write_file_desc">Write a text file into the workspace; every write needs your confirmation. Overwriting backs the old file up to .baopu-bak first. No delete ability.</string>
+    <!-- ── Static shortcut (task 2, part D-1; label ≤10 chars) ── -->
+    <string name="baopu_shortcut_backup">Back up</string>
+    <string name="baopu_shortcut_backup_long">Back up Baopu library originals</string>
+    <!-- ── New Baopu screen entries & hints (task 2 parts C/D + addendum) ── -->
+    <string name="baopu_pending_card_title">Worth remembering this time (not saved yet)</string>
+    <string name="baopu_introspection_label">Learned this time</string>
+    <string name="baopu_backup_stale_never">Originals have never been exported — back them up?</string>
+    <string name="baopu_backup_stale_days">Originals not exported for %1$d days — back them up?</string>
+    <string name="baopu_backup_go">Export</string>
+    <string name="baopu_ask_unmatched">That didn\'t match any option — please tap a button above (no guessing, no silent execution)</string>
+    <string name="baopu_import_running">Working on intake…</string>
+    <string name="baopu_import_done">Intake done: %1$d files moved into private storage (%2$s)</string>
+    <string name="baopu_import_left">; %1$d still in 投递</string>
+    <string name="baopu_import_pending_delete">; %1$d in the delete list (整理/_待删除清单.json — you decide what to delete)</string>
+    <string name="baopu_import_rejected">; %1$d rejected</string>
+    <string name="baopu_import_skip">Not moving anything — the files in 投递 are untouched.</string>
+    <string name="baopu_export_running">Exporting…</string>
+    <string name="baopu_export_done">Export done: %1$d files (in 整理/原件导出-&lt;timestamp&gt;/)</string>
+    <string name="baopu_export_none">Nothing to export (the index is empty).</string>
+    <string name="baopu_export_notes">%1$d extra notes (skipped / name clash / failure).</string>
+  </resources>

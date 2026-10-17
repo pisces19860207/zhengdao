@@ -446,6 +446,59 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             ExpandableHint(stringResource(R.string.data_hints_desc))
         }
 
+        // ── 抱朴工具（刀 2 追加包：工具集「表＋开关」的开关侧）──
+        // 定位：抱朴页里那个 agent 能用哪些工具，由用户在这里逐项决定。
+        // 三条口径（派工单原话级）：
+        // 1. 关掉的工具**不进发给模型的 tools 数组**——模型根本看不见；
+        // 2. 模型若仍幻觉调用被关的工具，回一条工具结果「该工具已被用户关闭」，
+        //    **不许自动打开**；
+        // 3. 默认五个全启用（read_file / list_dir / search_in_files / file_info / write_file）。
+        var toolTick by remember { mutableStateOf(0) }
+        SectionCard(stringResource(R.string.baopu_tools_card)) {
+            Text(
+                text = stringResource(R.string.baopu_tools_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            // 注册表持 ToolPrefs 单例（开关是热的：改完下一轮请求的 tools 数组就变）。
+            // isEnabled/setDisabled 都现读 SP ⇒ 这里不必 remember(toolTick)，
+            // tick 只负责在切完那一击触发重组（进程级单例的状态 Compose 本来就看不见）。
+            val toolRegistry = remember {
+                com.example.zhengdao.baopu.BaopuRuntime.registry(
+                    ctx,
+                    com.example.zhengdao.baopu.BaopuRuntime.provider(ctx),
+                )
+            }
+            com.example.zhengdao.baopu.agent.BaopuToolCatalog.ENTRIES.forEach { entry ->
+                val on = toolTick.let { toolRegistry.isEnabled(entry.name) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(baopuToolLabel(entry.name)),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = stringResource(baopuToolDesc(entry.name)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = on,
+                        onCheckedChange = { want ->
+                            toolRegistry.setDisabled(entry.name, !want)
+                            toolTick++
+                        },
+                        colors = iosSwitchColors(),
+                    )
+                }
+            }
+        }
+
         if (kbHelpOpen) {
             KnowledgeBaseHelpDialog(ctx) { kbHelpOpen = false }
         }
@@ -749,4 +802,30 @@ private fun SettingsDataPage(onBack: () -> Unit) {
 }
 
 // (KnowledgeBaseHelpDialog / WorkspaceFolderPicker 已移入 SettingsCommon.kt，见 tools/_settings-apply.ps1)
+
+/**
+ * 抱朴工具的开关标签（刀 2 追加包）。
+ *
+ * 为什么用 when 而不是从 catalog 里带名字：agent 包零 Android 依赖，R 引用
+ * 不能进那里；标签是纯展示层的事，留在本文件、走 strings.xml 双语。
+ * catalog 加新工具时这里同步加一行——漏了会直接抛 IllegalArgumentException（ fail-fast ）。
+ */
+private fun baopuToolLabel(name: String): Int = when (name) {
+    "read_file" -> R.string.baopu_tool_read_file
+    "list_dir" -> R.string.baopu_tool_list_dir
+    "search_in_files" -> R.string.baopu_tool_search_in_files
+    "file_info" -> R.string.baopu_tool_file_info
+    "write_file" -> R.string.baopu_tool_write_file
+    else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
+}
+
+/** 抱朴工具的开关副标题（同上，双语走 strings.xml）。 */
+private fun baopuToolDesc(name: String): Int = when (name) {
+    "read_file" -> R.string.baopu_tool_read_file_desc
+    "list_dir" -> R.string.baopu_tool_list_dir_desc
+    "search_in_files" -> R.string.baopu_tool_search_in_files_desc
+    "file_info" -> R.string.baopu_tool_file_info_desc
+    "write_file" -> R.string.baopu_tool_write_file_desc
+    else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
+}
 
