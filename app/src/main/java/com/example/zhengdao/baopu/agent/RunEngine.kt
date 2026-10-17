@@ -18,6 +18,9 @@ import com.example.zhengdao.baopu.Compressor
 import com.example.zhengdao.baopu.ContextAssembler
 import com.example.zhengdao.baopu.HardFacts
 import com.example.zhengdao.baopu.HistoryMessage
+import com.example.zhengdao.baopu.verify.ArtifactVerifier
+import com.example.zhengdao.baopu.verify.Finding
+import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.LlmClient
 import com.example.zhengdao.baopu.LlmEvent
 import com.example.zhengdao.baopu.LlmMessage
@@ -140,6 +143,19 @@ internal class RunEngine(
     /** 当前会话的 interrupted_step（-1 = 未中断；UI 标「中断于第 N 步」）。 */
     private val _interruptedStep = mutableStateOf(RunRules.NOT_INTERRUPTED)
     val interruptedStep: State<Int> get() = _interruptedStep
+
+    /**
+     * 收尾闸（2026-10-17）：本轮写过的相对路径。
+     *
+     * 为什么记在内存而不是查库：要验的是「这一轮到底落了什么盘」，重进 App 后
+     * 该轮已经结束、也没有「继续验收」的义务；查库里 800 行 run_log 反而会把
+     * 上一轮的文件算进来（假红比不验更坏）。
+     */
+    private val verifyTouched = LinkedHashSet<String>()
+
+    /** 已经让模型「按自检报告修过一次」的次数（只给一次机会，修不好就如实说没通过）。 */
+    private var verifyRepairs = 0
+
 
     /** 给人看的一句话（错误号口径：不直出英文 err）。 */
     private val _notice = mutableStateOf<String?>(null)
@@ -395,6 +411,10 @@ internal class RunEngine(
         }
         var compressionSummary: String? = null
 
+        // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
+        verifyTouched.clear()
+        verifyRepairs = 0
+
         while (!stopRequested) {
             // ── Thinking 前：预算检查（> 窗口×0.85 ⇒ 先 Compressing）──
             val probe = assemble(persona, facts, history, "", windowTokens, compressionSummary)
@@ -428,6 +448,35 @@ internal class RunEngine(
                     // usage 接线（J13）：此刻该 step 的最新一行还是 Thinking 行
                     //（settle 的 Done 行还没落）⇒ 更到的就是它
                     persistUsage(sessionId, stepCount, outcome.usage)
+                    // ── 收尾闸：模型说完了，机器先核对这一轮写过的产物 ──
+                    // 过了 ⇒ 正常收尾；没过 ⇒ 给一次「按清单修」的机会，再不过就如实说没通过。
+                    val findings = if (verifyTouched.isEmpty()) {
+                        emptyList()
+                    } else {
+                        ArtifactVerifier.check(spillRoot(), verifyTouched)
+                    }
+                    if (findings.isNotEmpty() && verifyRepairs < RunRules.MAX_VERIFY_REPAIRS) {
+                        verifyRepairs++
+                        persistAssistantMessage(sessionId, outcome.text)
+                        history += HistoryMessage(
+                            "local-a-${System.nanoTime()}",
+                            HistoryMessage.ROLE_ASSISTANT,
+                            outcome.text,
+                        )
+                        val report = ArtifactVerifier.render(findings)
+                        _notice.value = "自检发现 ${findings.size} 项未过，已让抱朴修一轮"
+                        history += HistoryMessage(
+                            "local-verify-${System.nanoTime()}",
+                            HistoryMessage.ROLE_ASSISTANT,
+                            DataFence.wrap("verify_output", System.currentTimeMillis(), report),
+                        )
+                        continue
+                    }
+                    if (findings.isNotEmpty()) {
+                        _notice.value = ArtifactVerifier.summarize(findings)
+                        log("抱朴引擎：收尾闸未通过（已修过 ${verifyRepairs} 次），${findingBrief(findings)}")
+                    }
+
                     persistAssistantMessage(sessionId, outcome.text)
                     history += HistoryMessage(
                         "local-a-${System.nanoTime()}",
@@ -692,6 +741,9 @@ internal class RunEngine(
      *
      * 反过来被杀时走不到这里 ⇒ `run_log` 最后一条停在 Thinking/Acting ⇒ 判为中断（判据 6）。
      */
+    /** 收尾闸未通过时的 run_log 摘要（只写路径＋检查项名，绝不写文件内容）。 */
+    private fun findingBrief(findings: List<Finding>): String =
+        findings.take(10).joinToString("；") { f -> "${f.path}(${ArtifactVerifier.label(f.check)})" }
     private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String, err: String = "") {
         // **必须等落库真的完成**：db.write 返回的是 Future（单写者线程 submit 排队），
         // 只调用不 get 就等于"先切状态、收尾行稍后才落"。2026-10-17 真机复现：
@@ -832,6 +884,9 @@ internal class RunEngine(
     ): ToolResultFlow = when (result) {
         is GuardPipeline.Result.Done -> {
             consecutiveToolFailures = 0
+            // 收尾闸记账：只记真写成功的调用（失败/被拒不算产物）
+            VerifyTargets.pathsOf(result.call.name, result.call.arguments)
+                .forEach { verifyTouched += it }
             persistToolExchange(sessionId, step, result.call.name, result.wrapped)
             onEvent?.invoke(
                 EngineEvent.ToolCallVisible(result.call.name, toolSummary(result.call, result.wrapped), true),
