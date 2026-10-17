@@ -927,7 +927,8 @@
     <!-- ── Baopu chapter extraction (task 2 addendum) ── -->
     <string name="baopu_extract_title">Chapter extraction</string>
     <string name="baopu_extract_desc">Pick a book, review the split (chapter count and the first few titles), then choose: digest every chapter, index only, or read a few chapters closely.</string>
-    <string name="baopu_extract_empty">No extractable books (txt / md / markdown) in “整理” yet. Move some books in first.</string>
+    <string name="baopu_extract_scope">Lists only books imported through “move into library” (private originals). Files you drop into the “整理” folder by hand do not appear here — ask me to read those in the chat instead.</string>
+    <string name="baopu_extract_empty">No extractable books (txt / md / markdown) yet. Import some into the library first; files already sitting in the “整理” folder can just be read in the chat.</string>
     <string name="baopu_extract_preview">%1$d chapters. First few: %2$s</string>
     <string name="baopu_extract_mode_digest">Digest each chapter</string>
     <string name="baopu_extract_free_prompt">Or type: digest / index / chapter numbers (e.g. 3,5,8)</string>

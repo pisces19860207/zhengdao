@@ -926,7 +926,8 @@
     <!-- ── 抱朴章节抽取（刀 2 追加包；切章预览 → 一次 ask_user）── -->
     <string name="baopu_extract_title">章节抽取</string>
     <string name="baopu_extract_desc">选一本书，先看切分结果（章数和前几章的标题），再决定怎么办：逐章生成摘要、只要索引、还是精读其中几章。</string>
-    <string name="baopu_extract_empty">「整理」里还没有能抽取的书（txt / md / markdown）。先搬一些书进来。</string>
+    <string name="baopu_extract_scope">只列经「搬进资料库」入库的书（私有原件）。你手工放进「整理」目录的文件不会出现在这份书单里——那种直接在会话里让我读。</string>
+    <string name="baopu_extract_empty">还没有能抽取的书（txt / md / markdown）。先搬一些书进资料库；已经躺在「整理」目录里的文件，直接在会话里让我读就行。</string>
     <string name="baopu_extract_preview">共 %1$d 章。前几章：%2$s</string>
     <string name="baopu_extract_mode_digest">逐章摘要</string>
     <string name="baopu_extract_free_prompt">或者直接输入：摘要 / 索引 / 章号（如 3,5,8）</string>
