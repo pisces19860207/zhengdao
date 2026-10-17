@@ -96,6 +96,11 @@ import kotlin.text.Charsets
  *   `MainActivity.kt` 281→308（接静态快捷方式：handleBaopuShortcut + isTaskRoot 收栈 + onNewIntent）、
  *   `BaopuDb.kt` 393→460（加资料库两表 + 章节索引表）、
  *   `SettingsDataActivity.kt` 589→642（加「抱朴工具」开关卡）。逐处核过仍是同一段 Thread。
+ * - 2026-10-17（抱朴刀 3 · B 段模型参数）：**无新增线程**；三处行号平移，本次回填：
+ *   `BaopuDb.kt` 460→510（run_log 加 reasoning_tokens 列 ＋ updateRunLogUsage 语句 ＋ v4 迁移）、
+ *   `LlmClient.kt` 450→658（usage/reasoning 解析、stream 循环重构、effort 进请求体）、
+ *   `SettingsDataActivity.kt` 642→699（「模型参数」只读卡 ＋「思考深度」四档卡）。
+ *   逐处核过仍是同一段 Thread(r, "…").apply { isDaemon = true }，有名 + daemon 都没变。
  */
 class BareThreadGuardTest {
 
@@ -137,7 +142,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
-            "BaopuDb.kt:460",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移；刀 2 加资料库两表+章节索引表 +67 ⇒ 393→460）
+            "BaopuDb.kt:510",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移；刀 2 加资料库两表+章节索引表 +67 ⇒ 393→460；刀 3 B 段 v4 迁移+usage 语句 +50 ⇒ 460→510）
             "HomeScreen.kt:599",                    // zd-health-fix（清场删掉 zd-taiji-retry 后自 :620 平移 -21）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
@@ -147,11 +152,11 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "GuardPipeline.kt:63",                  // zd-baopu-tool（抱朴刀 1：工具执行单线程，串行+超时）
-            "LlmClient.kt:450",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7）
+            "LlmClient.kt:658",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658）
             "MainActivity.kt:308",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "RunEngine.kt:215",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复 161→171；刀 1 补丁换通道 +34 ⇒ 205→215）
-            "SettingsDataActivity.kt:642",          // zd-net-check（清场批注 +1；抱朴刀 2 加「抱朴工具」开关卡 +53 ⇒ 589→642）
+            "SettingsDataActivity.kt:699",          // zd-net-check（清场批注 +1；抱朴刀 2 加「抱朴工具」开关卡 +53 ⇒ 589→642；刀 3 B 段模型参数+思考深度两卡 +57 ⇒ 642→699）
             "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）
             "SettingsEnvActivity.kt:268",           // zd-env-check（同上 +7）
             "SettingsEnvActivity.kt:573",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1）
