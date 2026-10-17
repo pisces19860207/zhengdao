@@ -620,7 +620,7 @@ fun ZhengdaoApp(
  *
  * 为什么要抽常量：这次交换暴露了隐患 —— 全文件原有 **20 处硬编码索引**
  * （`when (tab)` 分支、底栏 selected/onClick/图标、`animateToTop`、ON_RESUME 切 Tab、
- * 抱朴页的 onExit —— 清场前是 `BaopuScreen`，现为占位页 `BaopuRebuilding`），
+ * 抱朴页的 onExit —— 清场后一度是占位页 BaopuRebuilding，刀 1 起又是真页面 BaopuScreen），
  * 漏改任何一处都会**静默错位**。最隐蔽的一处是初始值
  * `mutableIntStateOf(2)`：2 原本是怡然、交换后变成玄览，不跟着换常量的话，
  * 启动页会无声无息地从"怡然"漂到"玄览"。改顺序时只动这里。
@@ -840,11 +840,10 @@ fun HomeTabs(
         ) {
             // 分支沿用原物理顺序（语义见 [TabIndex]）：抱朴 → 怡然 → 逍遥 → 玄览。
             when (tab) {
-                // 抱朴：2026-10-16 清场后是占位页。旧 Compose 原生 UI ＋ opencode serve
-                // 那条线整条退役，根因见 docs/ERRATA.md E-140（targetSdk 36 的 W^X 让 App
-                // 直接启动数据目录里的可执行文件报 error=13，它在真机上根本起不来）。
-                // 真实页面归抱朴线刀 1；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
-                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuRebuilding(
+                // 抱朴：刀 1 起是真页面（自研 agent：状态机 + 守卫管线 + 两个读工具）。
+                // 旧线（opencode serve）与占位页的历史见 docs/ERRATA.md E-140 与
+                // ui/baopu/BaopuRebuilding.kt 的 KDoc；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
+                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
                     onExit = { tab = TabIndex.AGENTS },
                 )
                 // 怡然（幸福）：Agent 管理（OpenCode 已内置为抱朴，不在怡然展示）

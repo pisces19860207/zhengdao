@@ -887,4 +887,27 @@
     <string name="baopu_rebuilding_title">抱朴正在重建</string>
     <string name="baopu_rebuilding_body">旧抱朴（内置 OpenCode）那条线已经下线：它在 Android 16 上起不来，代码已整条清出仓库。新抱朴正按刀次重做，做好后这里就是它的页面。</string>
     <string name="baopu_rebuilding_go">先去怡然</string>
+    <!-- ── 抱朴页（刀 1 · 2026-10-16；键一律 baopu_ 前缀）── -->
+    <string name="baopu_input_hint">说说要做什么…</string>
+    <string name="baopu_send">发送</string>
+    <string name="baopu_stop">停止</string>
+    <string name="baopu_state_idle">待命中</string>
+    <string name="baopu_state_thinking">思考中…</string>
+    <string name="baopu_state_acting">执行工具中…</string>
+    <string name="baopu_state_compressing">压缩上下文中…</string>
+    <string name="baopu_state_await_confirm">等你确认</string>
+    <string name="baopu_state_aborted">已停止</string>
+    <string name="baopu_state_done">已完成</string>
+    <string name="baopu_interrupted_at">上次中断于第 %1$d 步（进程当时被杀了）</string>
+    <string name="baopu_resume">续跑</string>
+    <string name="baopu_new_session">新会话</string>
+    <string name="baopu_empty">还没有对话。素材放在工作区的「资料库/原始」，然后让抱朴先看看那里有什么。</string>
+    <string name="baopu_tool_label">工具调用</string>
+    <string name="baopu_role_user">你</string>
+    <string name="baopu_role_assistant">抱朴</string>
+    <string name="baopu_memory_card_title">记性（候选）</string>
+    <string name="baopu_memory_confirm">记住</string>
+    <string name="baopu_memory_forget">不记</string>
+    <string name="baopu_compressed_marker">此处已压缩：旧消息压成了摘要，原文还在记录里，可展开看。</string>
+  <string name="baopu_channel_button">换通道</string>
 </resources>
