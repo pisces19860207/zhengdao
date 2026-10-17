@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+
+  依据：派工单第十批 §1 D 段第 1 条（长按图标 → 静态快捷方式「备份原件」）＋
+  §5 判据 9（条数 ≤4、标签 ≤10 字）。
+
+  房型说明：
+  - **静态**快捷方式（manifest 不引 meta-data 也生效的那类）：写在 res/xml 里、
+    launch 时由系统读，不跑代码。本 App 的入口只有一个（备份原件），一条即够，
+    条数远低于 ≤4 的上限——不凑数。
+  - intent 用**显式**（targetPackage + targetClass + action）：不需要在
+    AndroidManifest 里加 intent-filter，权限段与组件声明零改动。action 字面值
+    与 ui/baopu/BaopuBackupScreen.kt 的 BaopuIntents.ACTION_BACKUP 共认。
+  - 标签走字符串资源（values/values-en 各一份），中文在 values 里、英文在
+    values-en 里——shortcuts.xml 自己不写死任何自然语言。
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="baopu_backup_originals"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/baopu_shortcut_backup"
+        android:shortcutLongLabel="@string/baopu_shortcut_backup_long">
+        <intent
+            android:action="com.example.zhengdao.action.BAOPU_BACKUP"
+            android:targetClass="com.example.zhengdao.MainActivity"
+            android:targetPackage="com.example.zhengdao" />
+    </shortcut>
+
+</shortcuts>

@@ -99,6 +99,21 @@ private val RESTORABLE_ROUTES = setOf("settings")
  * 终端本体是独立 Activity（TerminalActivity，零改动复用），从首页 Tab 启动。
  */
 class MainActivity : ComponentActivity() {
+
+    /**
+     * 长按图标快捷方式（刀 2 D 段第 1 条）的 intent 分发。
+     *
+     * 为什么走进程级单例（[com.example.zhengdao.ui.baopu.BaopuIntents]）而不是在这里
+     * 直接开对话框：对话框画在抱朴页里，而入口可能落在「App 已经在跑、终端页压在
+     * 主页之上」的场景——那时候连主页都没在前台，直接开对话框会开在错误的栈顶上。
+     * 请求挂单例、由抱朴页组合时消费，冷/热启动与收栈三条路都通。
+     */
+    private fun handleBaopuShortcut(intent: android.content.Intent?) {
+        if (intent?.action == com.example.zhengdao.ui.baopu.BaopuIntents.ACTION_BACKUP) {
+            com.example.zhengdao.ui.baopu.BaopuIntents.requestBackup()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -233,6 +248,18 @@ class MainActivity : ComponentActivity() {
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
 
+        // 快捷方式收栈（刀 2 D 段）：本 Activity 不是 task 根 ⇒ 栈里已经有一份主页
+        // （典型：终端独立 Activity 压在主页之上时，快捷方式又拉起一个主页副本）。
+        // 副本直接收掉，请求挂进程级单例后由既有主页在 ON_RESUME 时切 Tab 消费——
+        // 不让用户面对「备份页 → 返回 → 又回终端」这种错乱栈。
+        if (!isTaskRoot) {
+            handleBaopuShortcut(intent)
+            finish()
+            return
+        }
+        // 正常路径：把快捷方式请求挂上（抱朴页组合时消费，见 BaopuIntents）
+        handleBaopuShortcut(intent)
+
         // 记住上次页面（用户反馈：上滑切走再回来不该回首页）。
         // 欢迎页只在首次安装展示；之后冷启动直达上次位置。
         val prefs = getSharedPreferences("zhengdao-ui", MODE_PRIVATE)
@@ -329,6 +356,19 @@ class MainActivity : ComponentActivity() {
     }
 
     /** 内存看护（用户指定）：退后台时释放空闲连接等非必要资源，降低被系统清理的概率。 */
+    /**
+     * 热启动的快捷方式 intent（App 已在栈里，singleTop 语义下走到这里）。
+     *
+     * 不 `setIntent` 也无妨——请求只认 action 一次，挂进 [com.example.zhengdao.ui.baopu.BaopuIntents]
+     * 就由抱朴页消费；这里重复设一次 intent 是为了让后续 `intent?.getBooleanExtra("open_terminal")`
+     * 之类的读取不被旧 intent 误导（本类目前只有 onCreate 读它，保守起见照样同步）。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleBaopuShortcut(intent)
+    }
+
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
@@ -684,6 +724,12 @@ fun HomeTabs(
                     if (com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
                     ) {
                         tab = TabIndex.BROWSER
+                    }
+                    // 抱朴快捷方式（刀 2 D 段第 1 条）：长按图标「备份原件」⇒ 回前台切到抱朴，
+                    // 对话框由抱朴页组合时消费（请求是进程级的，冷/热启动都丢不了）。
+                    // 这里只**看**不消费——真消费在 BaopuScreen（它才知道对话框该不该弹）。
+                    if (com.example.zhengdao.ui.baopu.BaopuIntents.peekBackup()) {
+                        tab = TabIndex.BAOPU
                     }
                 }
                 // 退后台（切别的 App、或跳终端独立 Activity）：全部标签 onPause + 降 WAIVED
