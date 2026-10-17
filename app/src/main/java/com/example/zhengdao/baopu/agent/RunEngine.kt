@@ -425,6 +425,9 @@ internal class RunEngine(
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──
             when (val outcome = streamRound(sessionId, messages, tools)) {
                 is RoundOutcome.Text -> {
+                    // usage 接线（J13）：此刻该 step 的最新一行还是 Thinking 行
+                    //（settle 的 Done 行还没落）⇒ 更到的就是它
+                    persistUsage(sessionId, stepCount, outcome.usage)
                     persistAssistantMessage(sessionId, outcome.text)
                     history += HistoryMessage(
                         "local-a-${System.nanoTime()}",
@@ -436,6 +439,10 @@ internal class RunEngine(
                 }
 
                 is RoundOutcome.ToolCalls -> {
+                    // usage 接线（J13；派工单 12.2 第 1 条）：**必须在本 step 的
+                    // Acting 行插入之前**调——updateRunLogUsage 取该 (session, step)
+                    // 最新一行做 UPDATE，Acting 行后落就更到它头上（时序硬约束）。
+                    persistUsage(sessionId, stepCount, outcome.usage)
                     if (outcome.text.isNotBlank()) {
                         persistAssistantMessage(sessionId, outcome.text)
                         history += HistoryMessage(
@@ -598,8 +605,12 @@ internal class RunEngine(
     // ── 流式一轮 ──────────────────────────────────────────────────────────
 
     private sealed interface RoundOutcome {
-        data class Text(val text: String) : RoundOutcome
-        data class ToolCalls(val text: String, val calls: List<ToolCall>) : RoundOutcome
+        data class Text(val text: String, val usage: LlmUsage? = null) : RoundOutcome
+        data class ToolCalls(
+            val text: String,
+            val calls: List<ToolCall>,
+            val usage: LlmUsage? = null,
+        ) : RoundOutcome
 
         /**
          * @param userFacing 给人看的人话（UI 只显示这个）
@@ -610,7 +621,7 @@ internal class RunEngine(
 
     /**
      * 跑一轮流式调用。
-     * 内存累积（文本 + tool_calls 都在 LlmClient 内累积），流结束一次性给结果；
+     * 内存累积（文本 + tool_calls + usage 都在 LlmClient 内累积），流结束一次性给结果；
      * 流中断该轮作废（[RoundOutcome.Failed]——"看着成功其实没有"不接受）。
      */
     private fun streamRound(sessionId: Long, messages: List<LlmMessage>, tools: org.json.JSONArray): RoundOutcome {
@@ -619,11 +630,15 @@ internal class RunEngine(
         var failure: String? = null
         var failureRaw: String? = null
         var rawCalls: List<com.example.zhengdao.baopu.RawToolCall> = emptyList()
+        var finishedUsage: LlmUsage? = null
         val client = LlmClient(provider)
         client.streamAsync(messages, tools) { ev ->
             when (ev) {
                 is LlmEvent.Delta -> textBuf.append(ev.text)
-                is LlmEvent.Finished -> rawCalls = ev.toolCalls
+                is LlmEvent.Finished -> {
+                    rawCalls = ev.toolCalls
+                    finishedUsage = ev.usage
+                }
                 is LlmEvent.Failed -> {
                     failure = ev.error.message ?: ev.error.javaClass.simpleName
                     failureRaw = ev.raw
@@ -637,12 +652,12 @@ internal class RunEngine(
         if (rawCalls.isNotEmpty()) {
             val decoded = ToolCallCodec.decode(rawCalls, registry)
             return when (decoded) {
-                is ToolCallCodec.DecodeResult.Ok -> RoundOutcome.ToolCalls(textBuf.toString(), decoded.calls)
+                is ToolCallCodec.DecodeResult.Ok -> RoundOutcome.ToolCalls(textBuf.toString(), decoded.calls, finishedUsage)
                 // 坏 JSON/坏参数：错误原文已在 decode 里备好 ⇒ 回灌走 Failed 通道（引擎只给一次重试）
                 is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.Failed(decoded.error)
             }
         }
-        return RoundOutcome.Text(textBuf.toString())
+        return RoundOutcome.Text(textBuf.toString(), finishedUsage)
     }
 
     /** 网络失败人话化（错误号口径：英文原文只进日志，UI 拿人话）。 */
@@ -783,6 +798,19 @@ internal class RunEngine(
         ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
     }
 
+    /**
+     * 把一轮的用量读数更新进 run_log（J13；派工单 12.2 第 1 条，B 段交接项）。
+     *
+     * **时序硬约束**：必须在本 step 的 Acting 行插入**之前**调——
+     * [BaopuSql.updateRunLogUsage] 取该 (session, step) 最新一行做 UPDATE。
+     * usage = null（服务端没给）⇒ 直接跳过：不写半行空话（「没测到不编数」），
+     * 也**不会**往 `tokens_in/out` 这些 NOT NULL 列绑 null（SQL 层只 SET 有读数的列）。
+     */
+    private fun persistUsage(sessionId: Long, step: Int, usage: LlmUsage?) {
+        val stmt = BaopuSql.updateRunLogUsage(sessionId, step, usage) ?: return
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+            .onFailure { log("抱朴引擎：usage 落库失败 ${it.javaClass.simpleName}: ${it.message}") }
+    }
 
     // ── 工具结果处理（在线路径与批准路径共用：回灌、历史、可见卡同形） ──────
 
