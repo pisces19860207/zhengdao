@@ -888,4 +888,27 @@
     <string name="baopu_rebuilding_title">Baopu is being rebuilt</string>
     <string name="baopu_rebuilding_body">The old Baopu line (built-in OpenCode) is gone: it could not start on Android 16, and its code has been removed from the repo. The new Baopu is being rebuilt cut by cut — this page will become its UI.</string>
     <string name="baopu_rebuilding_go">Go to Yiran</string>
+    <!-- ── Baopu screen (cut 1, 2026-10-16; keys use the baopu_ prefix) ── -->
+    <string name="baopu_input_hint">Tell Baopu what to do…</string>
+    <string name="baopu_send">Send</string>
+    <string name="baopu_stop">Stop</string>
+    <string name="baopu_state_idle">Idle</string>
+    <string name="baopu_state_thinking">Thinking…</string>
+    <string name="baopu_state_acting">Running tools…</string>
+    <string name="baopu_state_compressing">Compressing context…</string>
+    <string name="baopu_state_await_confirm">Waiting for your confirmation</string>
+    <string name="baopu_state_aborted">Stopped</string>
+    <string name="baopu_state_done">Done</string>
+    <string name="baopu_interrupted_at">Last interrupted at step %1$d (the process was killed)</string>
+    <string name="baopu_resume">Resume</string>
+    <string name="baopu_new_session">New session</string>
+    <string name="baopu_empty">No conversation yet. Put material in the workspace under “资料库/原始”, then ask Baopu to take a look.</string>
+    <string name="baopu_tool_label">Tool call</string>
+    <string name="baopu_role_user">You</string>
+    <string name="baopu_role_assistant">Baopu</string>
+    <string name="baopu_memory_card_title">Memory (candidate)</string>
+    <string name="baopu_memory_confirm">Remember</string>
+    <string name="baopu_memory_forget">Don’t</string>
+    <string name="baopu_compressed_marker">Compressed here: older messages were summarized; the originals are still in the log — tap to expand.</string>
+  <string name="baopu_channel_button">Channel</string>
 </resources>
