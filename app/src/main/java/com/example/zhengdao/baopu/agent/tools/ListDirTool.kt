@@ -71,6 +71,11 @@ internal object ListDirTool {
      * @param target 目标目录（绝对路径；调用方保证已在工作区内）
      */
     fun list(target: File, depth: Int, limit: Int): ToolOutcome {
+        if (!target.exists()) {
+            return ToolOutcome.Failed(
+                "不存在：${target.name}（工作区里没有这个目录；用 list_dir 从根开始逐层看）"
+            )
+        }
         if (!target.isDirectory) {
             return ToolOutcome.Failed("不是一个目录：${target.name}（list_dir 只能列目录；读文件用 read_file）")
         }

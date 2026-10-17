@@ -73,6 +73,13 @@ internal object ReadFileTool {
      * @param file 目标文件（绝对路径；调用方保证已在工作区内）
      */
     fun read(file: File, offset: Int, limit: Int): ToolOutcome {
+        // 「不存在」与「不是文件」要分开说：真机实测把不存在的路径报成「不是一个文件」，
+        // 模型会以为路径对、只是类型不对，于是原地反复重试（2026-10-17）。
+        if (!file.exists()) {
+            return ToolOutcome.Failed(
+                "不存在：${file.name}（工作区里没有这个文件；先用 list_dir 看结构再决定读哪个）"
+            )
+        }
         if (!file.isFile) {
             return ToolOutcome.Failed("不是一个文件：${file.name}（read_file 只读文件；列目录用 list_dir）")
         }

@@ -43,8 +43,23 @@ internal object BaopuRuntime {
             dbInstance ?: BaopuDb(context.applicationContext).also { dbInstance = it }
         }
 
-    /** 当前 provider（本刀固定内置免费通道预设；设置页/换通道归后续刀）。 */
-    fun provider(): Provider = Providers.BUILTIN_FREE
+    /**
+     * 当前 provider（刀 1 补丁：从 ProviderPrefs 读——抱朴页「换通道」选的通道 + 用户 Key）。
+     * 这仍是 provider 的**唯一入口**：RunEngine / BaopuChatController 都不绕过它。
+     * 默认值仍是内置免费通道（第一次装起来就有个能点的默认）。
+     */
+    fun provider(context: Context): Provider = ProviderPrefs.current(context)
+
+    /**
+     * 换通道（UI「启用此通道」落点）：存 SP + 重建引擎。
+     * 引擎一份的来历见 [engine]——换通道必须换引擎（provider 是构造期注入的），
+     * 重建由下次 [engine] 调用完成；旧引擎的 daemon 线程闲着无害（换通道是低频动作）。
+     */
+    fun switchChannel(context: Context, channelId: String, apiKey: String, baseUrl: String? = null, model: String? = null) {
+        val appCtx = context.applicationContext
+        ProviderPrefs.save(appCtx, channelId, apiKey, baseUrl, model)
+        synchronized(this) { engineInstance = null }
+    }
 
     /** 工作区根（唯一真相源 Workspace.hostDir；守卫与 spill 都以它为根）。 */
     fun workspaceRoot(context: Context): File = Workspace.hostDir(context.applicationContext)
@@ -102,8 +117,9 @@ internal object BaopuRuntime {
     /**
      * 运行引擎（进程级一份；double-check lazy）。
      *
-     * 注意：provider 目前**固定**内置免费通道 ⇒ 引擎也一份。将来设置页可换通道时，
-     * 换通道 = 停当前会话 + 重建引擎（ActiveSessionGate 释放后新引擎可抢锁）。
+     * 刀 1 补丁：provider 从 ProviderPrefs 读（可换通道）。换通道 = [switchChannel]
+     * 存 SP + 置空引擎实例 ⇒ 下次 [engine] 用新通道重建（ActiveSessionGate 是进程级的，
+     * 与引擎实例无关，重建不影响它的互斥语义）。
      */
     fun engine(context: Context): RunEngine =
         engineInstance ?: synchronized(this) {
@@ -111,7 +127,7 @@ internal object BaopuRuntime {
         }
 
     private fun build(appCtx: Context): RunEngine {
-        val provider = provider()
+        val provider = provider(appCtx)
         val reg = registry(provider)
         val pipeline = GuardPipeline(reg, { workspaceRoot(appCtx) })
         val db = db(appCtx)
@@ -124,6 +140,16 @@ internal object BaopuRuntime {
             memoryStore = memoryStore(appCtx),
             spillRoot = { workspaceRoot(appCtx) },
             log = { RunLog.log(it) },
+            // 熔断自动降级：引擎只问"下一个是谁"，怎么挑在 ProviderPrefs（Key 不进引擎）。
+            channelFallback = { cur ->
+                val (cb, cm) = ProviderPrefs.storedCustom(appCtx)
+                ProviderPrefs.fallbackFrom(
+                    currentId = cur.id,
+                    keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
+                    customBase = cb,
+                    customModel = cm,
+                )
+            },
         )
     }
 
