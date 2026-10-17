@@ -25,6 +25,9 @@ import java.util.concurrent.TimeoutException
  */
 internal object DataFence {
 
+    /** 围栏开头（[HistoryCodec] 判「这行回灌有没有带围栏」用；改这里要同步它）。 */
+    const val FENCE_OPEN = "<tool_result"
+
     /** 围栏包裹（纯函数：同样输入永远同样字节——缓存友好不破坏）。 */
     fun wrap(name: String, ts: Long, text: String): String = buildString {
         append("<tool_result name=\"").append(name).append("\" ts=\"").append(ts).append("\">\n")
@@ -77,7 +80,8 @@ data class SpillResult(val file: File, val chars: Int)
  * 2. （②）路径守卫：arguments 里的 `path` 相对工作区根解析，[BaopuGuardCore.checkPath]
  *    （按路径组件比较，同前缀兄弟目录过不来）——越界即拒并 RunLog；
  * 3. （③）权限判定：[ToolPermission.FREE] 直行；[ToolPermission.CONFIRM] ⇒
- *    [Result.NeedsConfirm]（PCE 三段式归刀 2，本刀只把状态与迁移骨架留好）；
+ *    [Result.NeedsConfirm]（刀 3 A 段起通电：引擎挂起等用户点批准，批了走
+ *    [executeApproved]——只跳这一段，其余四段原样）；
  * 4. （④）执行：[ToolRunner] 带超时；**串行**（引擎单线程循环顺序调）；
  * 5. （⑤）输出处理：超 [SPILL_THRESHOLD_CHARS] ⇒ spill 落盘只回摘要；回灌必经
  *    [DataFence.wrap]（围栏统一，没有第二个出口）。
@@ -103,7 +107,10 @@ internal class GuardPipeline(
         /** 越界/权限被拒 ⇒ **终止本轮**（程枢版 §8）并 RunLog。 */
         data class Rejected(val call: ToolCall?, val reason: String) : Result
 
-        /** 需确认（本刀最小骨架：状态与迁移在，PCE 三段式归刀 2）。 */
+        /**
+         * 需确认（刀 3 A 段通电）：引擎收到它就挂起出卡，用户点批准后走
+         * [executeApproved]（只跳第 ③ 段）；点拒绝不执行，对话继续。
+         */
         data class NeedsConfirm(val call: ToolCall) : Result
     }
 
@@ -145,36 +152,91 @@ internal class GuardPipeline(
         }
 
         // ⑤ 输出处理：spill + 围栏（围栏统一出口）
-        val wrapped: String
-        val spilled: Boolean
-        if (text.length > SPILL_THRESHOLD_CHARS) {
-            val fileName = "spill-${spec.name}-${System.currentTimeMillis()}.txt"
-            val spill = spillWriter(fileName, text)
-            wrapped = if (spill != null) {
-                spilled = true
-                DataFence.wrap(
-                    spec.name,
-                    System.currentTimeMillis(),
-                    "（输出过长：共 ${text.length} 字符，已存到 ${spill.file.name}。" +
-                        "用 read_file 带 offset/limit 读回需要的段；limit 最大 " +
-                        "${ReadFileTool.MAX_LIMIT} 行，分批读）",
-                )
-            } else {
-                // spill 失败 ⇒ 截断回灌 + 明说（不静默丢内容）
-                spilled = false
-                DataFence.wrap(
-                    spec.name,
-                    System.currentTimeMillis(),
-                    "（输出过长且落盘失败：共 ${text.length} 字符。以下只给前 " +
-                        "$SPILL_SNIPPET_CHARS 字符，剩下的用 read_file 带 offset/limit " +
-                        "直接读原文件）\n" + text.take(SPILL_SNIPPET_CHARS),
-                )
-            }
-        } else {
-            spilled = false
-            wrapped = DataFence.wrap(spec.name, System.currentTimeMillis(), text)
-        }
+        val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
         return Result.Done(effectiveCall, wrapped, spilled)
+    }
+
+    /**
+     * 批准后的执行路径（刀 3 A 段）——五段里**只跳过第 ③ 段权限判定**，
+     * ① Schema 校验、② 路径守卫、④ 超时执行、⑤ spill＋围栏与 [execute] 原样一致
+     * （派工单 §3.2 原话：「跳过权限判定那一段，其余五段原样保留」）。
+     *
+     * 为什么不给调用方一个"已经批了，直接跑"的捷径：批准 ≠ 绕过护栏
+     * （§3.5 红线 1）——越界路径批准后必须仍是 [Result.Rejected]（判据 J5），
+     * Schema 坏、执行崩也都还得各走各的结局。
+     *
+     * 为什么不再调 [execute]：execute 的第 ③ 段会把 CONFIRM 工具**再判一次**
+     * NeedsConfirm ⇒ 批准后原地打转（负例演练①的靶心，J1 必红）。
+     */
+    fun executeApproved(
+        call: ToolCall,
+        spillWriter: (fileName: String, text: String) -> SpillResult?,
+    ): Result {
+        // ① 注册表校验（含 Schema）
+        val spec = registry.find(call.name)
+            ?: return Result.Rejected(
+                call,
+                "未知工具「${call.name}」（已注册：${registry.names().joinToString("、")}）",
+            )
+        registry.validateCall(call.name, call.arguments)?.let { err ->
+            return Result.Failed(call, err) // Schema 错是可重试（回灌原文）
+        }
+
+        // ② 路径守卫（不跳过：批准后越界仍须 Rejected——J5）
+        val guarded = guardPath(call, spec.name)
+        if (guarded is Guarded.No) return Result.Rejected(call, guarded.reason)
+        val effectiveCall = (guarded as Guarded.Yes).call
+
+        // ③ 权限判定：本方法跳过（用户已批准；再判一次就是死循环）
+
+        // ④ 执行（带超时；串行由调用方结构保证）
+        val outcome = runner.run(spec, effectiveCall.arguments)
+        val text = when (outcome) {
+            is ToolOutcome.Ok -> outcome.text
+            is ToolOutcome.Failed -> return Result.Failed(effectiveCall, outcome.error)
+            is ToolOutcome.Rejected -> return Result.Rejected(effectiveCall, outcome.reason)
+        }
+
+        // ⑤ 输出处理（与 execute 同一出口：同一函数，不第二份实现）
+        val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
+        return Result.Done(effectiveCall, wrapped, spilled)
+    }
+
+    /**
+     * 第 ⑤ 段的唯一实现（[execute] 与 [executeApproved] 共用）：
+     * 超 [SPILL_THRESHOLD_CHARS] ⇒ spill 落盘只回摘要；回灌必经
+     * [DataFence.wrap]（围栏统一，没有第二个出口）。
+     *
+     * @return wrapped = 回灌文本；spilled = 是否走了 spill 摘要
+     */
+    private fun fenceOutput(
+        spec: ToolSpec,
+        text: String,
+        spillWriter: (fileName: String, text: String) -> SpillResult?,
+    ): Pair<String, Boolean> {
+        if (text.length <= SPILL_THRESHOLD_CHARS) {
+            return DataFence.wrap(spec.name, System.currentTimeMillis(), text) to false
+        }
+        val fileName = "spill-${spec.name}-${System.currentTimeMillis()}.txt"
+        val spill = spillWriter(fileName, text)
+        return if (spill != null) {
+            DataFence.wrap(
+                spec.name,
+                System.currentTimeMillis(),
+                "（输出过长：共 ${text.length} 字符，已存到 ${spill.file.name}。" +
+                    "用 read_file 带 offset/limit 读回需要的段；limit 最大 " +
+                    "${ReadFileTool.MAX_LIMIT} 行，分批读）",
+            ) to true
+        } else {
+            // spill 失败 ⇒ 截断回灌 + 明说（不静默丢内容）
+            DataFence.wrap(
+                spec.name,
+                System.currentTimeMillis(),
+                "（输出过长且落盘失败：共 ${text.length} 字符。以下只给前 " +
+                    "$SPILL_SNIPPET_CHARS 字符，剩下的用 read_file 带 offset/limit " +
+                    "直接读原文件）\n" + text.take(SPILL_SNIPPET_CHARS),
+            ) to false
+        }
     }
 
     // ── ② 路径守卫 ────────────────────────────────────────────────────────
