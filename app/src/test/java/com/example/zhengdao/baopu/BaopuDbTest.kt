@@ -89,8 +89,8 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `v3 版本号与库路径纯函数`() {
-        assertEquals(3, BaopuDb.VERSION)
+    fun `v4 版本号与库路径纯函数`() {
+        assertEquals(4, BaopuDb.VERSION) // v4 = 刀 3 B 段（run_log 加 reasoning_tokens）
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -173,7 +173,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(3, BaopuDb.VERSION) // v3 = 刀 2（资料库两表 ＋ 章节索引表）
+        assertEquals(4, BaopuDb.VERSION) // v4 = 刀 3 B 段（run_log 加 reasoning_tokens）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -260,6 +260,43 @@ class BaopuDbTest {
         assertEquals(1.0, RunLogMetrics.cacheHitRate(500, null)!!, 1e-9) // 一边有一边没有按有的算
         assertEquals(0.0, RunLogMetrics.cacheHitRate(null, 500)!!, 1e-9)
         assertNull(RunLogMetrics.cacheHitRate(0, 0)) // 都读到 0：总数 0，无从谈比率
+    }
+
+    // ── v4（刀 3 B 段）：run_log 思考列 ＋ 用量回写语句 ─────────────────────
+
+    @Test
+    fun `v4 迁移_run_log加reasoning_tokens列_缺列才给ALTER_幂等`() {
+        val none = BaopuSql.runLogReasoningColumnsStmt(emptyList())
+        assertEquals(1, none.size)
+        assertEquals("ALTER TABLE run_log ADD COLUMN reasoning_tokens INTEGER", none[0].sql)
+        // 已有列（新库 / 重跑迁移）⇒ 一条不给（幂等）
+        assertTrue(BaopuSql.runLogReasoningColumnsStmt(listOf("reasoning_tokens")).isEmpty())
+        assertTrue(BaopuSql.runLogReasoningColumnsStmt(listOf("REASONING_TOKENS")).isEmpty()) // 大小写不敏感
+    }
+
+    @Test
+    fun `updateRunLogUsage_只SET有读数的列_目标行是该step最新一行`() {
+        val s = BaopuSql.updateRunLogUsage(
+            sessionId = 7L, step = 2,
+            usage = LlmUsage(
+                promptTokens = 36, completionTokens = 64, reasoningTokens = 61,
+                cacheHitTokens = 0, cacheMissTokens = 36,
+            ),
+        )!!
+        assertTrue(s.sql.startsWith("UPDATE run_log SET tokens_in = ?, tokens_out = ?, reasoning_tokens = ?"))
+        assertTrue(s.sql.contains("cache_hit_tokens = ?, cache_miss_tokens = ?"))
+        assertTrue(s.sql.contains("WHERE id = (SELECT MAX(id) FROM run_log WHERE session_id = ? AND step = ?)"))
+        // cacheHitTokens = 0 是真读数（确实没命中）⇒ 绑 "0"，不是 null
+        assertEquals(listOf("36", "64", "61", "0", "36", "7", "2"), s.args.toList())
+
+        // 只有部分读数 ⇒ 只 SET 那几列（tokens_in/out 是 NOT NULL 列，绑 NULL 会炸约束）
+        val partial = BaopuSql.updateRunLogUsage(1L, 1, LlmUsage(reasoningTokens = 5))!!
+        assertEquals("UPDATE run_log SET reasoning_tokens = ? WHERE id = (SELECT MAX(id) FROM run_log WHERE session_id = ? AND step = ?)", partial.sql)
+        assertEquals(listOf("5", "1", "1"), partial.args.toList())
+
+        // 没读数 / 五列全空 ⇒ null（调用方跳过，不写半行空话）
+        assertNull(BaopuSql.updateRunLogUsage(1L, 1, null))
+        assertNull(BaopuSql.updateRunLogUsage(1L, 1, LlmUsage()))
     }
 
     // ── 语句绑定 ──────────────────────────────────────────────────────────
