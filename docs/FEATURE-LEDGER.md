@@ -1984,3 +1984,5 @@ tag `wip-snapshot-2026-10-07-2258` 仍保留（它指向的 `dd70bf3` 是 WorkBu
 >   ③ **真机中文输入被系统命令卡死**：本机 Android 16 上 `adb shell input text 中文` 直接 `NullPointerException`（`InputShellCommand.sendText`），`cmd clipboard` 也没有实现 ⇒ 真机用例的提示词写英文、路径用 ASCII，中文路径/中文确认摘要的判据放 JVM（J1 用的就是 `资料库/整理/x.txt`）。别在这上面耗时间。
 >
 > - **2026-10-18 全局单活跃门的可疑读数（待查，不挡 A 段）**：T1 那轮跑完（`run_log` 已有 `Done`）后约 1–2 分钟内，在**新会话**里点发送被回「已有另一个会话在跑（全局单活跃）：先等它结束或停止它」，`force-stop` 重启后恢复。可能是 `ActiveSessionGate` 未释放，也可能是 UI 侧 `_notice` 残留或二次 `send`；**未定论**，下一刀顺手查（复现路径：一轮带两次确认的批准流程跑完，立刻新建会话发送）。
+
+> - **2026-10-18 第十三批（抱朴压缩桩通电）正式开单并派发**：用户「HY4 不是全模态，验不了机。你把后面的派出来吧，我让他先干活，我好睡觉了」⇒ ① 先把刀 3·A 段（含我补的超时修正）合进 main（`8f8c2396`），再把第十三批基线从 `21e895c` 更新到 `8f8c2396`，追加一写在 `docs/派工单-2026-10-17-第十三批-抱朴压缩桩通电.md`；② 追加一改的四件事：RunEngine 已拆文件（旧行号全作废，压缩桩改到搜 `compressWithFallback`）、确认制与 B 段参数**禁改**、JVM J1–J9 归施工者而**真机 T1/T2 归蓝总管**（本机 adb 与数据侧探针在我手里）、门禁基线改成 **186 套件 / 1583 例**；③ 白名单比立单更紧（`ConfirmFlow.kt`／`GuardPipeline.kt`／`ModelParams.kt`／`Provider.kt`／`BaopuPreset.kt`／`eval/**` 全禁改）；④ 省额度五条照《第十二批·追加三》。落点分支 `feat/baopu-13-compress`、工作树自建 `wt-baopu13`。
