@@ -2,6 +2,10 @@
 //
 // 依据：抱朴-Agent设计-程枢版 §2 状态机（每步迁移一次 SQLite 事务；max_steps=16；
 // 一步 = 一次模型轮次；确认批不计步；全局单活跃会话；通道熔断）+ §8 错误矩阵。
+//
+// 2026-10-17（抱朴刀 3）：纯判据拆去 `RunRules.kt`、历史编解码拆去 `HistoryCodec.kt`、
+// 确认制内核拆去 `ConfirmFlow.kt`——派工单 §9 行数纪律「单文件新增 ≤400 行；
+// 超了拆文件」。本文件只剩引擎壳（状态机 + 接线 + 落库）。
 package com.example.zhengdao.baopu.agent
 
 import androidx.compose.runtime.State
@@ -17,90 +21,22 @@ import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.LlmClient
 import com.example.zhengdao.baopu.LlmEvent
 import com.example.zhengdao.baopu.LlmMessage
+import com.example.zhengdao.baopu.LlmUsage
 import com.example.zhengdao.baopu.MemoryRules
 import com.example.zhengdao.baopu.MemoryStore
+import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.Provider
+import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import kotlinx.coroutines.runBlocking
 
 /** 引擎状态（程枢版 §2 状态表；UI 只读这些）。 */
 enum class RunState { IDLE, THINKING, ACTING, AWAIT_CONFIRM, COMPRESSING, ABORTED, DONE }
-
-/**
- * 引擎的**纯判据内核**（无 Android/Compose/SQLite，JVM 直测）——
- * 刹车数值、熔断判据、确认超时判据全在这里。
- */
-internal object RunRules {
-
-    /** max_steps = 16（8–32 可调；程枢版 §2 刹车数值，写死默认值）。 */
-    const val MAX_STEPS = 16
-
-    /** 连续 3 次工具失败 ⇒ 停下 ask_user，禁止硬试（§2）。 */
-    const val MAX_TOOL_FAILURES = 3
-
-    /** 通道熔断阈值：当前通道连续 N 次失败 ⇒ 标记不可用 + 提示切通道（§2 补录）。 */
-    const val CHANNEL_BREAK_THRESHOLD = 3
-
-    /** 确认超时：默认 15 分钟，且**仅 App 前台计时**（§2 补录）。 */
-    const val CONFIRM_TIMEOUT_MS = 15 * 60 * 1000L
-
-    /**
-     * 一轮之内自动换通道的上限（刀 1 补丁）。
-     *
-     * 为什么要有：换通道是 `continue` 重跑**同一步**（不涨步数），若两个通道都坏，
-     * 熔断→切换→再失败会无限循环烧 token，`MAX_STEPS` 拦不住（步数没涨）。
-     * 到顶后把候选置空 ⇒ `channelDecision` 只好走 `BrokenAskUser`，停下来问人。
-     */
-    const val MAX_CHANNEL_SWITCHES = 2
-
-    /** 一步 = 一次模型轮次 ⇒ 步数从 1 起；满 16 必停。 */
-    fun isStepExhausted(steps: Int): Boolean = steps >= MAX_STEPS
-
-    /** 连续工具失败到线 ⇒ 停下问人。 */
-    fun shouldAskUser(consecutiveToolFailures: Int): Boolean =
-        consecutiveToolFailures >= MAX_TOOL_FAILURES
-
-    /** 通道熔断判据。 */
-    fun shouldBreakChannel(consecutiveChannelFailures: Int): Boolean =
-        consecutiveChannelFailures >= CHANNEL_BREAK_THRESHOLD
-
-    /**
-     * 熔断后怎么处置（纯判据，JVM 直测；真正的"切"在引擎里做）。
-     *
-     * 三条出路：没到线就留在原通道；到线且有候选就切过去；到线且没候选就停下问人
-     * （**不抛异常**——"可报告地失败"是设计口径）。
-     */
-    sealed interface ChannelDecision {
-        /** 还没到熔断线：留在原通道（重试由上层决定）。 */
-        data object KeepCurrent : ChannelDecision
-
-        /** 到线且 [fallback] 给了候选：自动切过去。 */
-        data class SwitchTo(val next: Provider) : ChannelDecision
-
-        /** 到线且没有候选（或换够次数了）：停下问人。 */
-        data object BrokenAskUser : ChannelDecision
-    }
-
-    fun channelDecision(consecutiveChannelFailures: Int, fallback: Provider?): ChannelDecision = when {
-        !shouldBreakChannel(consecutiveChannelFailures) -> ChannelDecision.KeepCurrent
-        fallback != null -> ChannelDecision.SwitchTo(fallback)
-        else -> ChannelDecision.BrokenAskUser
-    }
-
-    /**
-     * 确认超时判据（**仅前台计时**：后台期间不计时，回前台才继续计）。
-     * @param foregroundElapsedMs 前台累计毫秒（后台时间由调用方剔除）
-     * @return true = 已超时（按拒绝处理）
-     */
-    fun confirmExpired(foregroundElapsedMs: Long): Boolean = foregroundElapsedMs >= CONFIRM_TIMEOUT_MS
-
-    /** 中断标记值：会话被标「中断于第 N 步」时落这个数；-1 = 未中断。 */
-    const val NOT_INTERRUPTED = -1
-}
 
 /**
  * 全局单活跃会话门（程枢版 §2 补录：一次只允许一个活跃会话；
@@ -230,6 +166,37 @@ internal class RunEngine(
     /** 本次运行里自动换过几次通道（到 [RunRules.MAX_CHANNEL_SWITCHES] 就把候选关掉）。 */
     private var channelSwitches = 0
 
+    // ── 确认制（刀 3 A 段） ──────────────────────────────────────────────
+
+    /** pending 三列的存取（清与读；"进 AWAIT_CONFIRM"的写在引擎事务里，见 [enterAwaitConfirm]）。 */
+    private val pendingStore: PendingStore = SessionPendingStore(db)
+
+    /**
+     * 确认制内核。回调全是引擎侧接线：
+     * - [enterAwaitConfirm]：run_log 的 AwaitConfirm 行 + session pending 三列**同事务**；
+     * - 出卡事件直接转 [onEvent]（UI 从事件拿卡，不轮询）；
+     * - 前台计时见 [confirmForegroundMs]（屏幕生命周期经 [noteConfirmBackground] 喂）。
+     */
+    private val confirmFlow = ConfirmFlow(
+        pipeline = pipeline,
+        store = pendingStore,
+        foregroundElapsedMs = { RunRules.confirmElapsedMs(confirmForegroundMs, confirmResumeAt, System.currentTimeMillis()) },
+        onPersistPending = { sid, step, tool, argsJson, at ->
+            enterAwaitConfirm(sid, step, tool, argsJson, at)
+            // 前台计时从进确认这一刻起算（进后台再由 noteConfirmBackground 暂停累计）
+            confirmForegroundMs = 0L
+            confirmResumeAt = at
+        },
+        onRequestCard = { req -> onEvent?.invoke(req) },
+        log = log,
+    )
+
+    /** 确认等待的**前台累计毫秒**（后台不计时——切后台时 [noteConfirmBackground] 结账）。 */
+    private var confirmForegroundMs = 0L
+
+    /** 本次进前台的时刻（null = 当前在后台或没有确认在等）。 */
+    private var confirmResumeAt: Long? = null
+
     // ── 对外动作 ──────────────────────────────────────────────────────────
 
     /**
@@ -258,6 +225,8 @@ internal class RunEngine(
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
     fun stop() {
         stopRequested = true
+        // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
+        confirmFlow.abandon()
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")
     }
 
@@ -291,6 +260,88 @@ internal class RunEngine(
         }
         _sessionKey.value = "id:$sessionId"
         return Unit
+    }
+
+    // ── 确认制对外动作（UI 线程调） ───────────────────────────────────────
+
+    /**
+     * 用户点批准/拒绝（派工单 §3.2 公开方法）。
+     * callId 不匹配 = 陈旧点击 ⇒ 内核丢弃（J4）；匹配 ⇒ 挂起的等待苏醒。
+     */
+    fun resumeWithApproval(callId: String, approved: Boolean, note: String?) {
+        confirmFlow.resumeWithApproval(callId, approved, note)
+    }
+
+    /** 确认等待期间App进后台：前台计时暂停（累计到现在的段落，回前台再续）。 */
+    fun noteConfirmBackground() {
+        val since = confirmResumeAt ?: return
+        confirmForegroundMs += (System.currentTimeMillis() - since).coerceAtLeast(0L)
+        confirmResumeAt = null
+    }
+
+    /** 确认等待期间App回前台：前台计时继续。 */
+    fun noteConfirmForeground() {
+        if (confirmResumeAt == null) confirmResumeAt = System.currentTimeMillis()
+    }
+
+    /**
+     * 重启后批准落库的 pending（T3）：进程被杀过 ⇒ 内存里没有挂起，
+     * 从库里恢复参数直接执行；执行完**把这一轮继续跑完**（同 [resume]——
+     * 模型要看见工具结果才接着往下说，C 段回灌保证它看得见）。
+     */
+    fun approveRestoredPending(sessionId: Long) {
+        acquireOrNotice(sessionId) ?: return
+        stopRequested = false
+        runExecutor.execute {
+            try {
+                val row = pendingStore.load(sessionId)
+                if (row == null) {
+                    _notice.value = "这条确认已经处理过了（没有待确认的动作）"
+                    return@execute
+                }
+                val step = awaitConfirmStepOf(sessionId)
+                _state.value = RunState.ACTING
+                persistStep(sessionId, step, "Acting").get()
+                val result = confirmFlow.restoredExecute(sessionId, row) { name, text ->
+                    writeSpill(sessionId, name, text)
+                }
+                when (handleToolResult(sessionId, step, result, mutableListOf())) {
+                    ToolResultFlow.CONTINUE, ToolResultFlow.TERMINATE_ROUND -> Unit
+                    ToolResultFlow.STOP_RUN -> return@execute
+                }
+                // 继续这一轮（历史已含刚落的工具结果 ⇒ 模型接着往下说）
+                runLoop(sessionId, userText = null, resumed = true)
+            } catch (e: Exception) {
+                log("抱朴引擎：恢复确认执行崩了 ${e.javaClass.simpleName}: ${e.message}")
+                _state.value = RunState.ABORTED
+                _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
+            } finally {
+                ActiveSessionGate.release("id:$sessionId")
+                onEvent?.invoke(EngineEvent.Settled)
+            }
+        }
+    }
+
+    /**
+     * 重启后拒绝落库的 pending：清 pending ＋ 回灌「用户拒绝」＋ 把这一轮继续
+     * 跑完（与在线拒绝同口径：对话继续，模型知道这动作被拒了）。
+     */
+    fun rejectRestoredPending(sessionId: Long, summary: String) {
+        acquireOrNotice(sessionId) ?: return
+        runExecutor.execute {
+            try {
+                pendingStore.clear(sessionId)
+                persistAssistantMessage(sessionId, RunRules.rejectNote(summary, null))
+                runLoop(sessionId, userText = null, resumed = true)
+            } catch (e: Exception) {
+                log("抱朴引擎：恢复拒绝崩了 ${e.javaClass.simpleName}: ${e.message}")
+                _state.value = RunState.ABORTED
+                _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
+            } finally {
+                ActiveSessionGate.release("id:$sessionId")
+                onEvent?.invoke(EngineEvent.Settled)
+            }
+        }
     }
 
     /** 新建会话（返回 sessionId；UI 在首次发送时调）。write 回 Future ⇒ .get() 等结果。 */
@@ -335,8 +386,8 @@ internal class RunEngine(
             com.example.zhengdao.baopu.LlmProtocol.ANTHROPIC -> registry.toolsJsonAnthropic()
         }
 
-        // 历史（续跑 = 重建上下文：人设 + 硬事实 + 最近 N 轮原文）
-        var history = loadHistory(sessionId)
+        // 历史（续跑 = 重建上下文：人设 + 硬事实 + 最近 N 轮原文；C 段起含工具结果回灌）
+        var history = loadHistory(sessionId).toMutableList()
         var stepCount = if (resumed) stepOf(sessionId) else 0
         if (userText != null) {
             persistUserMessage(sessionId, userText)
@@ -374,6 +425,9 @@ internal class RunEngine(
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──
             when (val outcome = streamRound(sessionId, messages, tools)) {
                 is RoundOutcome.Text -> {
+                    // usage 接线（J13）：此刻该 step 的最新一行还是 Thinking 行
+                    //（settle 的 Done 行还没落）⇒ 更到的就是它
+                    persistUsage(sessionId, stepCount, outcome.usage)
                     persistAssistantMessage(sessionId, outcome.text)
                     history += HistoryMessage(
                         "local-a-${System.nanoTime()}",
@@ -385,6 +439,10 @@ internal class RunEngine(
                 }
 
                 is RoundOutcome.ToolCalls -> {
+                    // usage 接线（J13；派工单 12.2 第 1 条）：**必须在本 step 的
+                    // Acting 行插入之前**调——updateRunLogUsage 取该 (session, step)
+                    // 最新一行做 UPDATE，Acting 行后落就更到它头上（时序硬约束）。
+                    persistUsage(sessionId, stepCount, outcome.usage)
                     if (outcome.text.isNotBlank()) {
                         persistAssistantMessage(sessionId, outcome.text)
                         history += HistoryMessage(
@@ -404,64 +462,51 @@ internal class RunEngine(
                         val result = pipeline.execute(call) { name, text ->
                             writeSpill(sessionId, name, text)
                         }
-                        when (result) {
-                            is GuardPipeline.Result.Done -> {
-                                consecutiveToolFailures = 0
-                                persistToolExchange(sessionId, stepCount, call.name, result.wrapped)
-                                onEvent?.invoke(
-                                    EngineEvent.ToolCallVisible(call.name, toolSummary(call, result.wrapped), true),
-                                )
-                                history += HistoryMessage(
-                                    "local-tool-${System.nanoTime()}",
-                                    HistoryMessage.ROLE_ASSISTANT,
-                                    result.wrapped,
-                                )
-                            }
+                        if (result is GuardPipeline.Result.NeedsConfirm) {
+                            // 确认制（刀 3 A 段）：落 pending → 出卡 → 挂起等 → 执行/拒绝/超时。
+                            // runBlocking 桥：循环跑在裸线程 zd-baopu-run 上（本来就常驻阻塞
+                            // 等网络），这里等的是人点按钮——同一颗线程，等什么不是等。
+                            when (
+                                val oc = runBlocking {
+                                    confirmFlow.enter(sessionId, stepCount, result.call) { name, text ->
+                                        writeSpill(sessionId, name, text)
+                                    }
+                                }
+                            ) {
+                                is ConfirmFlow.Outcome.Approved -> {
+                                    // 批准后执行的结果与在线路径**同形**处理（回灌/历史/可见卡）
+                                    when (handleToolResult(sessionId, stepCount, oc.result, history)) {
+                                        ToolResultFlow.CONTINUE -> Unit
+                                        ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
+                                        ToolResultFlow.STOP_RUN -> return
+                                    }
+                                }
 
-                            is GuardPipeline.Result.Failed -> {
-                                consecutiveToolFailures++
-                                persistToolExchange(sessionId, stepCount, call.name, "失败：${result.error}")
-                                onEvent?.invoke(
-                                    EngineEvent.ToolCallVisible(call.name, result.error, false),
-                                )
-                                history += HistoryMessage(
-                                    "local-tool-${System.nanoTime()}",
-                                    HistoryMessage.ROLE_ASSISTANT,
-                                    DataFence.wrap(call.name, System.currentTimeMillis(), "失败：${result.error}"),
-                                )
-                                if (RunRules.shouldAskUser(consecutiveToolFailures)) {
-                                    val msg = "工具连续失败 ${consecutiveToolFailures} 次，已停下。" +
-                                        "换个说法或换个文件再试（不许硬试）。"
-                                    _notice.value = msg
+                                is ConfirmFlow.Outcome.Rejected -> {
+                                    // 拒绝不执行；回灌进历史（模型下一轮看得见）＋ 落库可见；对话继续
+                                    persistAssistantMessage(sessionId, oc.note)
+                                    history += HistoryMessage(
+                                        "local-note-${System.nanoTime()}",
+                                        HistoryMessage.ROLE_ASSISTANT,
+                                        oc.note,
+                                    )
+                                }
+
+                                is ConfirmFlow.Outcome.Abandoned -> Unit // 用户点了停止：循环头部收尾
+                                is ConfirmFlow.Outcome.TimedOut -> {
+                                    _notice.value = oc.note
+                                    persistAssistantMessage(sessionId, oc.note)
                                     settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
-                                    onEvent?.invoke(EngineEvent.AskUser(msg))
                                     return
                                 }
-                            }
 
-                            is GuardPipeline.Result.Rejected -> {
-                                // 越界/权限 ⇒ 终止本轮（§8）：回灌理由让模型知道边界，本轮到此
-                                persistToolExchange(sessionId, stepCount, call.name, "被拒：${result.reason}")
-                                onEvent?.invoke(
-                                    EngineEvent.ToolCallVisible(call.name, result.reason, false),
-                                )
-                                history += HistoryMessage(
-                                    "local-tool-${System.nanoTime()}",
-                                    HistoryMessage.ROLE_ASSISTANT,
-                                    DataFence.wrap(call.name, System.currentTimeMillis(), "被拒：${result.reason}"),
-                                )
-                                terminateRound = true
+                                is ConfirmFlow.Outcome.Ignored -> Unit // 双保险：不该发生，跳过这个调用
                             }
-
-                            is GuardPipeline.Result.NeedsConfirm -> {
-                                // AwaitConfirm 最小骨架（PCE 三段式归刀 2）：状态在、迁移在
-                                settle(sessionId, stepCount, RunState.AWAIT_CONFIRM, "AwaitConfirm")
-                                onEvent?.invoke(
-                                    EngineEvent.AskUser(
-                                        "有待确认的动作（${result.call.name}）：确认制归下一刀，本刀先停下。",
-                                    ),
-                                )
-                                return
+                        } else {
+                            when (handleToolResult(sessionId, stepCount, result, history)) {
+                                ToolResultFlow.CONTINUE -> Unit
+                                ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
+                                ToolResultFlow.STOP_RUN -> return
                             }
                         }
                         if (terminateRound) break
@@ -560,8 +605,12 @@ internal class RunEngine(
     // ── 流式一轮 ──────────────────────────────────────────────────────────
 
     private sealed interface RoundOutcome {
-        data class Text(val text: String) : RoundOutcome
-        data class ToolCalls(val text: String, val calls: List<ToolCall>) : RoundOutcome
+        data class Text(val text: String, val usage: LlmUsage? = null) : RoundOutcome
+        data class ToolCalls(
+            val text: String,
+            val calls: List<ToolCall>,
+            val usage: LlmUsage? = null,
+        ) : RoundOutcome
 
         /**
          * @param userFacing 给人看的人话（UI 只显示这个）
@@ -572,7 +621,7 @@ internal class RunEngine(
 
     /**
      * 跑一轮流式调用。
-     * 内存累积（文本 + tool_calls 都在 LlmClient 内累积），流结束一次性给结果；
+     * 内存累积（文本 + tool_calls + usage 都在 LlmClient 内累积），流结束一次性给结果；
      * 流中断该轮作废（[RoundOutcome.Failed]——"看着成功其实没有"不接受）。
      */
     private fun streamRound(sessionId: Long, messages: List<LlmMessage>, tools: org.json.JSONArray): RoundOutcome {
@@ -581,11 +630,15 @@ internal class RunEngine(
         var failure: String? = null
         var failureRaw: String? = null
         var rawCalls: List<com.example.zhengdao.baopu.RawToolCall> = emptyList()
+        var finishedUsage: LlmUsage? = null
         val client = LlmClient(provider)
         client.streamAsync(messages, tools) { ev ->
             when (ev) {
                 is LlmEvent.Delta -> textBuf.append(ev.text)
-                is LlmEvent.Finished -> rawCalls = ev.toolCalls
+                is LlmEvent.Finished -> {
+                    rawCalls = ev.toolCalls
+                    finishedUsage = ev.usage
+                }
                 is LlmEvent.Failed -> {
                     failure = ev.error.message ?: ev.error.javaClass.simpleName
                     failureRaw = ev.raw
@@ -599,12 +652,12 @@ internal class RunEngine(
         if (rawCalls.isNotEmpty()) {
             val decoded = ToolCallCodec.decode(rawCalls, registry)
             return when (decoded) {
-                is ToolCallCodec.DecodeResult.Ok -> RoundOutcome.ToolCalls(textBuf.toString(), decoded.calls)
+                is ToolCallCodec.DecodeResult.Ok -> RoundOutcome.ToolCalls(textBuf.toString(), decoded.calls, finishedUsage)
                 // 坏 JSON/坏参数：错误原文已在 decode 里备好 ⇒ 回灌走 Failed 通道（引擎只给一次重试）
                 is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.Failed(decoded.error)
             }
         }
-        return RoundOutcome.Text(textBuf.toString())
+        return RoundOutcome.Text(textBuf.toString(), finishedUsage)
     }
 
     /** 网络失败人话化（错误号口径：英文原文只进日志，UI 拿人话）。 */
@@ -684,6 +737,153 @@ internal class RunEngine(
             } finally {
                 d.endTransaction()
             }
+        }
+    }
+
+    // ── 确认制落库（刀 3 A 段；与 run_log 同事务） ────────────────────────
+
+    /**
+     * 进 AWAIT_CONFIRM：**一个事务**里写 run_log 的 AwaitConfirm 行 ＋ session 的
+     * pending 三列 ＋ interrupted_step（派工单 §3.3「同事务写」）。
+     *
+     * 为什么必须同事务：分成两次写，进程死在中间就会留下「run_log 说在等确认、
+     * 却没有 pending 行」的半边状态 ⇒ 重启后卡丢了，那一轮永远等不到人。
+     *
+     * 先落库、再切状态（[settle] 的同一条纪律：反了会让 UI 闪到旧状态）。
+     */
+    private fun enterAwaitConfirm(sessionId: Long, step: Int, tool: String, argsJson: String, at: Long) {
+        val rl = BaopuSql.insertRunLog(
+            sessionId = sessionId,
+            step = step,
+            state = "AwaitConfirm",
+            model = provider.model,
+            tokensIn = 0,
+            tokensOut = 0,
+            tokensInEst = 0,
+            tokensOutEst = 0,
+            tool = tool,
+            ok = true,
+            latencyMs = 0,
+            err = "",
+            createdAt = at,
+        )
+        val pend = BaopuSql.savePending(sessionId, tool, argsJson, at)
+        runCatching {
+            db.write { d ->
+                d.beginTransaction()
+                try {
+                    d.execSQL(
+                        "UPDATE session SET updated_at = ?, interrupted_step = ?, " +
+                            "pending_tool = ?, pending_args = ?, pending_at = ? WHERE id = ?",
+                        arrayOf<Any?>(
+                            at.toString(), step.toString(), tool, argsJson, at.toString(),
+                            sessionId.toString(),
+                        ),
+                    )
+                    d.execSQL(rl.sql, rl.args)
+                    d.setTransactionSuccessful()
+                } finally {
+                    d.endTransaction()
+                }
+            }.get() // 等真落库（与 settle 同纪律：Future 不 get 等于没写）
+        }.onFailure { log("抱朴引擎：AwaitConfirm 落库失败 ${it.javaClass.simpleName}: ${it.message}") }
+        _state.value = RunState.AWAIT_CONFIRM
+    }
+
+    /** 那张卡原本挂在第几步（恢复执行时接着这一步记；没有 AwaitConfirm 行 ⇒ 0）。 */
+    private fun awaitConfirmStepOf(sessionId: Long): Int = db.read { d ->
+        d.rawQuery(
+            "SELECT COALESCE(MAX(step), 0) FROM run_log WHERE session_id = ? AND state = 'AwaitConfirm'",
+            arrayOf(sessionId.toString()),
+        ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+    }
+
+    /**
+     * 把一轮的用量读数更新进 run_log（J13；派工单 12.2 第 1 条，B 段交接项）。
+     *
+     * **时序硬约束**：必须在本 step 的 Acting 行插入**之前**调——
+     * [BaopuSql.updateRunLogUsage] 取该 (session, step) 最新一行做 UPDATE。
+     * usage = null（服务端没给）⇒ 直接跳过：不写半行空话（「没测到不编数」），
+     * 也**不会**往 `tokens_in/out` 这些 NOT NULL 列绑 null（SQL 层只 SET 有读数的列）。
+     */
+    private fun persistUsage(sessionId: Long, step: Int, usage: LlmUsage?) {
+        val stmt = BaopuSql.updateRunLogUsage(sessionId, step, usage) ?: return
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+            .onFailure { log("抱朴引擎：usage 落库失败 ${it.javaClass.simpleName}: ${it.message}") }
+    }
+
+    // ── 工具结果处理（在线路径与批准路径共用：回灌、历史、可见卡同形） ──────
+
+    /** 一次工具结果的流向（调用方据此决定：继续 / 终止本轮 / 整轮停下）。 */
+    private enum class ToolResultFlow { CONTINUE, TERMINATE_ROUND, STOP_RUN }
+
+    /**
+     * 处理一个工具执行结果（在线直行 与 批准后执行 共用同一函数 ⇒ 两条路径
+     * 回灌给模型的东西**逐字节同形**——模型对不上账的根源就是两处写法漂移）。
+     *
+     * @param history 调用方的在途历史（就地追加；恢复路径传一次性空表）
+     * @return 见 [ToolResultFlow]
+     */
+    private fun handleToolResult(
+        sessionId: Long,
+        step: Int,
+        result: GuardPipeline.Result,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow = when (result) {
+        is GuardPipeline.Result.Done -> {
+            consecutiveToolFailures = 0
+            persistToolExchange(sessionId, step, result.call.name, result.wrapped)
+            onEvent?.invoke(
+                EngineEvent.ToolCallVisible(result.call.name, toolSummary(result.call, result.wrapped), true),
+            )
+            history += HistoryMessage(
+                "local-tool-${System.nanoTime()}",
+                HistoryMessage.ROLE_ASSISTANT,
+                result.wrapped,
+            )
+            ToolResultFlow.CONTINUE
+        }
+
+        is GuardPipeline.Result.Failed -> {
+            consecutiveToolFailures++
+            val name = result.call?.name ?: "tool"
+            persistToolExchange(sessionId, step, name, "失败：${result.error}")
+            onEvent?.invoke(EngineEvent.ToolCallVisible(name, result.error, false))
+            history += HistoryMessage(
+                "local-tool-${System.nanoTime()}",
+                HistoryMessage.ROLE_ASSISTANT,
+                DataFence.wrap(name, System.currentTimeMillis(), "失败：${result.error}"),
+            )
+            if (RunRules.shouldAskUser(consecutiveToolFailures)) {
+                val msg = "工具连续失败 ${consecutiveToolFailures} 次，已停下。" +
+                    "换个说法或换个文件再试（不许硬试）。"
+                _notice.value = msg
+                settle(sessionId, step, RunState.ABORTED, "Aborted")
+                onEvent?.invoke(EngineEvent.AskUser(msg))
+                ToolResultFlow.STOP_RUN
+            } else {
+                ToolResultFlow.CONTINUE
+            }
+        }
+
+        is GuardPipeline.Result.Rejected -> {
+            // 越界/权限 ⇒ 终止本轮（§8）：回灌理由让模型知道边界，本轮到此
+            val name = result.call?.name ?: "tool"
+            persistToolExchange(sessionId, step, name, "被拒：${result.reason}")
+            onEvent?.invoke(EngineEvent.ToolCallVisible(name, result.reason, false))
+            history += HistoryMessage(
+                "local-tool-${System.nanoTime()}",
+                HistoryMessage.ROLE_ASSISTANT,
+                DataFence.wrap(name, System.currentTimeMillis(), "被拒：${result.reason}"),
+            )
+            ToolResultFlow.TERMINATE_ROUND
+        }
+
+        is GuardPipeline.Result.NeedsConfirm -> {
+            // 在线路径的 NeedsConfirm 由调用方先处理（挂起出卡）；走到这里说明
+            // 有人拿未经批准的路径调了本函数（负例演练①的靶心）⇒ 记日志、不执行。
+            log("抱朴引擎：handleToolResult 收到未经批准的 NeedsConfirm（${result.call.name}），已拒")
+            ToolResultFlow.STOP_RUN
         }
     }
 
@@ -823,20 +1023,32 @@ internal class RunEngine(
 
     // ── db 小工具 ─────────────────────────────────────────────────────────
 
+    /**
+     * 读历史（C 段：**含工具结果回灌**——被杀续跑原来只取 `kind='text'`，
+     * 模型因此对不上账；判据 J9）。
+     *
+     * SQL 取全部 part（不再按 kind 过滤），映射判据全在纯函数 [HistoryCodec]
+     * （JVM 直测）；顺序 = `message.seq ASC, part.seq ASC` ⇒ 与在线时一致
+     * （工具结果紧跟发起它的那轮——落库时就这个顺序）。
+     */
     private fun loadHistory(sessionId: Long): List<HistoryMessage> = db.read { d ->
         d.rawQuery(
-            "SELECT role, part.payload FROM message " +
-                "LEFT JOIN part ON part.message_id = message.id AND part.kind = 'text' " +
+            "SELECT message.id, message.role, part.kind, part.payload FROM message " +
+                "LEFT JOIN part ON part.message_id = message.id " +
                 "WHERE message.session_id = ? ORDER BY message.seq ASC, part.seq ASC",
             arrayOf(sessionId.toString()),
         ).use { c ->
-            val out = mutableListOf<HistoryMessage>()
+            val rows = mutableListOf<HistoryRow>()
+            var n = 0
             while (c.moveToNext()) {
-                val role = c.getString(0)
-                val payload = if (c.isNull(1)) "" else c.getString(1)
-                out += HistoryMessage("db-${out.size}", role, payload)
+                rows += HistoryRow(
+                    id = "db-${n++}",
+                    role = c.getString(1),
+                    kind = if (c.isNull(2)) null else c.getString(2),
+                    payload = if (c.isNull(3)) "" else c.getString(3),
+                )
             }
-            out
+            HistoryCodec.decode(rows)
         }
     }
 
