@@ -78,6 +78,42 @@ class EditFileToolTest {
         assertFalse("备份名不许含冒号：${baks[0].name}", baks[0].name.contains(":"))
     }
 
+    // ── 编码（2026-10-17：以前硬读 UTF-8，GBK 老书会被改成乱码）────────────────
+
+    @Test
+    fun `改GBK老书_内容正确且按原编码写回`() {
+        setup()
+        val f = File(root, "老书.txt")
+        f.writeBytes("第一章\n主人公名叫王大锤，家住城西。\n".toByteArray(charset("GBK")))
+        val r = EditFileTool.edit(root, "老书.txt", EditFileTool.OP_REPLACE, 2, 2, "主人公改名叫王二锤。")
+        assertTrue("GBK 文件也要能按行改：$r", r is ToolOutcome.Ok)
+        val bytes = f.readBytes()
+        assertTrue("内容要按 GBK 解得出新句子", String(bytes, charset("GBK")).contains("王二锤"))
+        assertEquals(
+            "不许偷偷把整本转成 UTF-8",
+            FileInfoTool.Encodings.GBK,
+            FileInfoTool.guessEncoding(bytes, FileInfoTool.looksBinary(bytes)),
+        )
+    }
+
+    @Test
+    fun `改UTF16文件_保留BOM与原编码`() {
+        setup()
+        val f = File(root, "wide.txt")
+        f.writeBytes(
+            byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + "第一行\n第二行\n".toByteArray(charset("UTF-16LE")),
+        )
+        val r = EditFileTool.edit(root, "wide.txt", EditFileTool.OP_REPLACE, 2, 2, "第二行改过了")
+        assertTrue("UTF-16 文件也要能按行改：$r", r is ToolOutcome.Ok)
+        val bytes = f.readBytes()
+        assertTrue(
+            "BOM 必须仍在（丢了 BOM 等于把文件悄悄换成另一种编码）",
+            bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte(),
+        )
+        val text = String(bytes.copyOfRange(2, bytes.size), charset("UTF-16LE"))
+        assertTrue("内容要改对：$text", text.contains("第二行改过了") && text.contains("第一行"))
+    }
+
     // ── ② 只改目标行 ────────────────────────────────────────────────────
 
     @Test

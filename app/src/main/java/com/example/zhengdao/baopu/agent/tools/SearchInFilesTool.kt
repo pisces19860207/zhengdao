@@ -154,7 +154,12 @@ internal object SearchInFilesTool {
                     skippedBinary++
                     continue
                 }
-                val lines = runCatching { f.readLines(Charsets.UTF_8) }.getOrNull()
+                // 解码统一走 [TextDecode]（2026-10-17）：以前这里硬读 UTF-8，GBK 老书里的
+                // 关键词**静默搜不到**（不报错、只是假装没有），比读失败更坏。
+                val lines = runCatching {
+                    val bytes = f.readBytes()
+                    TextDecode.decode(f, bytes).text?.let { TextDecode.splitLines(it) }
+                }.getOrNull()
                 if (lines == null) {
                     skippedError++
                     continue

@@ -161,10 +161,18 @@ internal object EditFileTool {
                     "再决定是分块改还是整篇重写（write_file 有 200 行上限）。",
             )
         }
+        // 解码统一走 [TextDecode]（2026-10-17）：以前这里硬读 UTF-8，改 GBK 老书会把
+        // 乱码写回去——有备份也仍是数据损失。encoding 记下来，写回时按原编码写。
+        var encoding = FileInfoTool.Encodings.UTF8
         val original = if (exists) {
-            runCatching { target.readText(Charsets.UTF_8) }.getOrElse {
-                return ToolOutcome.Failed("读不出这个文件（编码或 IO 错误）：${target.name}")
+            val bytes = runCatching { target.readBytes() }.getOrElse {
+                return ToolOutcome.Failed("读不出这个文件（权限或 IO 错误）：${target.name}")
             }
+            val decoded = TextDecode.decode(target, bytes)
+            val text = decoded.text
+                ?: return ToolOutcome.Failed(decoded.error ?: "读不出这个文件（编码或 IO 错误）：${target.name}")
+            encoding = decoded.encoding
+            text
         } else {
             ""
         }
@@ -237,11 +245,13 @@ internal object EditFileTool {
             }
             backupNote = "；旧版本已备份到 $BACKUP_DIR_NAME/$backupName"
         }
-        // 原子写：先 .tmp 再 rename（半截文件比不写更坏）
+        // 原子写：先 .tmp 再 rename（半截文件比不写更坏）。
+        // 字节按**原编码**编码（GBK 老书改完还是 GBK；UTF-8 BOM / UTF-16 的 BOM 由
+        // TextDecode.encode 补回去）——否则「只改了一行」实际把整本换了编码。
         val tmp = File(target.parentFile, target.name + ".edit-tmp")
         val written = runCatching {
             target.parentFile?.mkdirs()
-            tmp.writeText(newText, Charsets.UTF_8)
+            tmp.writeBytes(TextDecode.encode(newText, encoding))
             if (!tmp.renameTo(target)) {
                 tmp.copyTo(target, overwrite = true)
                 tmp.delete()
@@ -251,9 +261,10 @@ internal object EditFileTool {
             runCatching { tmp.delete() }
             return ToolOutcome.Failed("写入失败（IO 错误）：${target.name}；请用 read_file 复核后再试")
         }
+        val encodingNote = if (encoding == FileInfoTool.Encodings.UTF8) "" else "；保持原编码 $encoding"
         return ToolOutcome.Ok(
             "已改 ${target.name}：$note；总行数 $total → ${lines.size}；" +
-                "${newText.length} 字符$backupNote",
+                "${newText.length} 字符$encodingNote$backupNote",
         )
     }
 

@@ -219,4 +219,18 @@ class SearchInFilesToolTest {
         // 触顶 40 条并明示（300 个文件全扫会超过 40 条命中）
         assertTrue(out.contains("命中 40 条"))
     }
+
+    // ── 编码（2026-10-17：以前硬读 UTF-8，GBK 老书里的词静默搜不到）────────────
+
+    @Test
+    fun `GBK文件里的词也搜得到`() {
+        setup()
+        val f = File(root, "老书.txt")
+        f.writeBytes("第一章\n主人公名叫王大锤，家住城西。\n".toByteArray(charset("GBK")))
+
+        val out = body(search(root, "王大锤"))
+
+        assertTrue("GBK 文件必须能命中，不能静默漏：$out", out.contains("老书.txt:2:主人公名叫王大锤"))
+        assertTrue("不许把它算成读失败：$out", !out.contains("读失败"))
+    }
 }
