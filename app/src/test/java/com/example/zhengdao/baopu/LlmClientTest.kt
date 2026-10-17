@@ -232,6 +232,140 @@ class LlmClientTest {
         )
     }
 
+    // ── stream_options 与 usage（刀 3 B 段 · 第十四批 J5/J6） ───────────────
+    // 病灶：全仓无 include_usage ⇒ 服务端流末不回 usage 帧 ⇒ run_log 五列永远是猜的。
+
+    @Test
+    fun `J5_OpenAI请求体带stream_options_include_usage_Anthropic不带`() {
+        val opts = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT)).getJSONObject("stream_options")
+        assertTrue(opts.getBoolean("include_usage"))
+        // 仅 OpenAI 兼容分支：Anthropic 的用量在 message_start/message_delta 事件里
+        // 天然带回，没有这个开关（③ 按公开文档）——给它反而多个未知字段
+        assertFalse(bodyJson(providerWith(LlmProtocol.ANTHROPIC)).has("stream_options"))
+    }
+
+    @Test
+    fun `J6a_SSE带usage帧_Finished带上五列读数`() {
+        server.enqueue(
+            sse(
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"好\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                    // 流末纯 usage 帧（OpenAI 官方形态：choices 为空数组）
+                    "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34," +
+                    "\"total_tokens\":46,\"completion_tokens_details\":{\"reasoning_tokens\":20}," +
+                    "\"prompt_cache_hit_tokens\":8,\"prompt_cache_miss_tokens\":4}}\n\n" +
+                    "data: [DONE]\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        val fin = events.last() as LlmEvent.Finished
+        assertEquals("stop", fin.reason)
+        assertEquals(
+            LlmUsage(
+                promptTokens = 12, completionTokens = 34, reasoningTokens = 20,
+                cacheHitTokens = 8, cacheMissTokens = 4,
+            ),
+            fin.usage,
+        )
+    }
+
+    @Test
+    fun `J6b_整条流没有usage_Finished的usage为null且不抛`() {
+        server.enqueue(
+            sse(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"好\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                    "data: [DONE]\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        val fin = events.last() as LlmEvent.Finished
+        assertNull("缺 usage 必须记 null 不报错（派工单 B 段第 6 条）", fin.usage)
+    }
+
+    @Test
+    fun `usage解析_DeepSeek实测原样形状_同帧带finish_reason`() {
+        // ① DeepSeek 官方通道实测 D:\zd-tools\ds-stream-probe.txt frame#65 的原样载荷：
+        // usage 与 finish_reason 同帧（不是流末单独帧）——两种形态都必须吃
+        val u = LlmSse.usageOf(
+            LlmProtocol.OPENAI_COMPAT,
+            "{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]," +
+                "\"usage\":{\"prompt_tokens\":36,\"completion_tokens\":64,\"total_tokens\":100," +
+                "\"prompt_tokens_details\":{\"cached_tokens\":0}," +
+                "\"completion_tokens_details\":{\"reasoning_tokens\":61}," +
+                "\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":36}}",
+        )
+        assertEquals(
+            LlmUsage(
+                promptTokens = 36, completionTokens = 64, reasoningTokens = 61,
+                cacheHitTokens = 0, cacheMissTokens = 36,
+            ),
+            u,
+        )
+    }
+
+    @Test
+    fun `usage解析_OpenAI官方cached_tokens回落_无usage与坏JSON返回null`() {
+        val u = LlmSse.usageOf(
+            LlmProtocol.OPENAI_COMPAT,
+            "{\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5," +
+                "\"prompt_tokens_details\":{\"cached_tokens\":6}}}",
+        )
+        // 没有 prompt_cache_hit_tokens ⇒ 回落 prompt_tokens_details.cached_tokens
+        assertEquals(LlmUsage(promptTokens = 10, completionTokens = 5, cacheHitTokens = 6), u)
+        assertNull(LlmSse.usageOf(LlmProtocol.OPENAI_COMPAT, "{\"choices\":[{\"delta\":{\"content\":\"x\"}}]}"))
+        assertNull(LlmSse.usageOf(LlmProtocol.OPENAI_COMPAT, "{\"usage\":null}"))
+        assertNull(LlmSse.usageOf(LlmProtocol.OPENAI_COMPAT, "{坏"))
+    }
+
+    @Test
+    fun `usage解析_Anthropic跨两帧合并_后到且非null的赢`() {
+        val start = LlmSse.usageOf(
+            LlmProtocol.ANTHROPIC,
+            "{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":25," +
+                "\"cache_read_input_tokens\":7,\"cache_creation_input_tokens\":3}}}",
+        )
+        assertEquals(LlmUsage(promptTokens = 25, cacheHitTokens = 7, cacheMissTokens = 3), start)
+        val delta = LlmSse.usageOf(
+            LlmProtocol.ANTHROPIC,
+            "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}," +
+                "\"usage\":{\"output_tokens\":12}}",
+        )
+        assertEquals(LlmUsage(completionTokens = 12), delta)
+        assertEquals(
+            LlmUsage(promptTokens = 25, completionTokens = 12, cacheHitTokens = 7, cacheMissTokens = 3),
+            LlmSse.mergeUsage(start, delta!!),
+        )
+        // null 字段不抹掉旧值（Anthropic 的 message_delta 只带 output_tokens）：
+        // 拿一帧全空的合进来，旧读数原样留着——不因为新帧没给就抹成 null
+        assertEquals(
+            LlmUsage(promptTokens = 25, cacheHitTokens = 7, cacheMissTokens = 3),
+            LlmSse.mergeUsage(start, LlmUsage()),
+        )
+        // 合并的起点可以是 null（首帧）
+        assertEquals(delta, LlmSse.mergeUsage(null, delta!!))
+    }
+
+    @Test
+    fun `anthropic_用量两帧合并进Finished_首个finish_reason赢`() {
+        server.enqueue(
+            sse(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":25,\"cache_read_input_tokens\":7,\"cache_creation_input_tokens\":3}}}\n\n" +
+                    "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n" +
+                    "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":12}}\n\n" +
+                    "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.ANTHROPIC), listOf(LlmMessage("user", "hi")))
+        val fin = events.last() as LlmEvent.Finished
+        // message_delta 的 end_turn 赢；message_stop 的 stop 不许覆盖（刀 0 口径）
+        assertEquals("end_turn", fin.reason)
+        assertEquals(
+            LlmUsage(promptTokens = 25, completionTokens = 12, cacheHitTokens = 7, cacheMissTokens = 3),
+            fin.usage,
+        )
+    }
+
     // ── 失败路径 ──────────────────────────────────────────────────────────
 
     @Test
