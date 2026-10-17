@@ -78,6 +78,22 @@ internal object RunRules {
      */
     fun confirmExpired(foregroundElapsedMs: Long): Boolean = foregroundElapsedMs >= CONFIRM_TIMEOUT_MS
 
+    /**
+     * 确认等待的**前台累计毫秒**（2026-10-18 真机 T4 修正）：
+     * 已结账的段落 ＋ **当前仍在计的前台段落**。
+     *
+     * 原接线只读已结账值（`confirmForegroundMs`），而结账发生在「切后台」那一刻——
+     * 于是一直观在前台不动的确认**永远不到线**（真机实测：15 分钟过去 `pending_tool`
+     * 还在库里，四步等待没人点就无限等）。当前段落必须按 `now - since` 现算。
+     *
+     * @param committed 已结账的前台毫秒（切后台时累加）
+     * @param since 本次回前台的时刻（null = 当前在后台，不累计）
+     * @param now 现时刻（单测注入，生产用 `System.currentTimeMillis()`）
+     */
+    fun confirmElapsedMs(committed: Long, since: Long?, now: Long): Long =
+        committed.coerceAtLeast(0L) +
+            (since?.let { (now - it).coerceAtLeast(0L) } ?: 0L)
+
     // ── 确认制纯判据（刀 3 A 段；JVM 直测） ──────────────────────────────
 
     /** 确认等待的轮询间隔（前台计时判据的检查粒度；100ms 对人眼/CPU 都无感）。 */

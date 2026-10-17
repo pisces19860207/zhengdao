@@ -180,7 +180,7 @@ internal class RunEngine(
     private val confirmFlow = ConfirmFlow(
         pipeline = pipeline,
         store = pendingStore,
-        foregroundElapsedMs = { confirmForegroundMs },
+        foregroundElapsedMs = { RunRules.confirmElapsedMs(confirmForegroundMs, confirmResumeAt, System.currentTimeMillis()) },
         onPersistPending = { sid, step, tool, argsJson, at ->
             enterAwaitConfirm(sid, step, tool, argsJson, at)
             // 前台计时从进确认这一刻起算（进后台再由 noteConfirmBackground 暂停累计）
