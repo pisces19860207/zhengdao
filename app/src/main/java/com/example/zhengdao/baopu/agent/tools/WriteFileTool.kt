@@ -42,7 +42,8 @@ internal object WriteFileTool {
         name = "write_file",
         description = "把文本写进工作区内的一个文件（不存在则新建，存在需 overwrite=true " +
             "且会把旧版本备份到 .baopu-bak/）。单次最多 $MAX_WRITE_LINES 行，超了请分次写。" +
-            "每次写都要用户确认；本工具没有任何删除能力。",
+            "确认由 App 弹确认卡完成（用户点头才落盘，不点作废）——直接调用即可，" +
+            "不要在回复里先问一句「要我写吗」。本工具没有任何删除能力。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -129,16 +130,15 @@ internal object WriteFileTool {
         // 覆盖前先备份（备份失败 ⇒ 拒绝写：宁可写不进去，也不能把旧内容弄丢）
         var backupNote = ""
         if (exists) {
-            val backupName = rel.replace('/', '_').replace('\\', '_') + "." + stamp + ".bak"
-            val backupFile = File(backupDir, backupName)
+            val backupName = EditFileTool.backupFileName(rel, stamp)
+            var cause = ""
             val ok = runCatching {
                 backupDir.mkdirs()
-                target.copyTo(backupFile, overwrite = true)
-            }.isSuccess
+                target.copyTo(File(backupDir, backupName), overwrite = true)
+            }.onFailure { cause = "：${it.javaClass.simpleName}: ${it.message}" }.isSuccess
             if (!ok) {
                 return ToolOutcome.Failed(
-                    "备份旧版本失败（${target.name} ⇒ $BACKUP_DIR_NAME/$backupName），已放弃本次写入。" +
-                        "旧文件原样未动。",
+                    "备份旧版本失败（${target.name}）$cause，已放弃本次写入。旧文件原样未动。",
                 )
             }
             backupNote = "；旧版本已备份到 $BACKUP_DIR_NAME/$backupName"

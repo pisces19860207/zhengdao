@@ -51,7 +51,7 @@ internal object MovePathTool {
         description = "在工作区内搬动或改名一个文件（from → to），也可以顺带建目标目录。" +
             "同分区用 rename（原子）；跨分区只复制、把源文件记进「资料库/整理/_待删除清单.md」，" +
             "不会自动删源。绝不覆盖：撞名不同内容自动加 sha 后缀让路，内容相同则视为已搬。" +
-            "只搬文件不搬目录；每次搬都要用户确认。",
+            "只搬文件不搬目录；确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

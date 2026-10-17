@@ -94,6 +94,21 @@ class FileInfoToolTest {
     }
 
     @Test
+    fun `多行UTF16_不判二进制_换行字节里有NUL`() {
+        // 2026-10-17 真缺陷：'\n' 的 UTF-16 字节是 0A 00，旧序「见 NUL 即二进制」
+        // 把所有多行 UTF-16 文本判成二进制 ⇒ read_file 拒读。
+        setup()
+        val f = file(
+            "multi.txt",
+            byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + "第一行\n第二行".toByteArray(Charsets.UTF_16LE),
+        )
+        val out = body(info(f))
+        assertTrue("要认出是 UTF-16LE：$out", out.contains("UTF-16LE"))
+        assertTrue("不许判成二进制：$out", out.contains("类型：文本"))
+        assertTrue("行数要能给：$out", out.contains("行数：2 行"))
+    }
+
+    @Test
     fun `二进制_NUL即判且行数不适用`() {
         setup()
         val f = file("b.bin", byteArrayOf(0x00, 0x01, 0x02, 0x00))
@@ -218,10 +233,14 @@ class FileInfoToolTest {
     }
 
     @Test
-    fun `编码优先级_BOM先于一切`() {
-        val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
-        assertEquals(FileInfoTool.Encodings.UTF8_BOM, FileInfoTool.guessEncoding(bom, binary = false))
-        // 二进制先于 BOM（BOM 字节流里也可能有 NUL）
-        assertEquals(FileInfoTool.Encodings.BINARY, FileInfoTool.guessEncoding(bom, binary = true))
+    fun `编码优先级_BOM压过二进制判定`() {
+        val utf8Bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        assertEquals(FileInfoTool.Encodings.UTF8_BOM, FileInfoTool.guessEncoding(utf8Bom, binary = false))
+        // 2026-10-17 改判：BOM 先于二进制。BOM 是文本的强证据，而 UTF-16 文本的
+        // 换行/ASCII 段字节里天然有 0x00——旧序会把每一个多行 UTF-16 文件判成二进制。
+        val utf16Le = byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0x0A, 0x00)
+        assertEquals(FileInfoTool.Encodings.UTF16_LE, FileInfoTool.guessEncoding(utf16Le, binary = true))
+        // 没有 BOM 的 NUL 文件照旧判二进制
+        assertEquals(FileInfoTool.Encodings.BINARY, FileInfoTool.guessEncoding(byteArrayOf(0x41, 0x00, 0x42), binary = true))
     }
 }
