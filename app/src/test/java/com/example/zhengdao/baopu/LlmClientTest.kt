@@ -246,17 +246,29 @@ class LlmClientTest {
 
     @Test
     fun `J6a_SSE带usage帧_Finished带上五列读数`() {
-        server.enqueue(
-            sse(
-                "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"好\"}}]}\n\n" +
-                    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
-                    // 流末纯 usage 帧（OpenAI 官方形态：choices 为空数组）
-                    "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34," +
-                    "\"total_tokens\":46,\"completion_tokens_details\":{\"reasoning_tokens\":20}," +
-                    "\"prompt_cache_hit_tokens\":8,\"prompt_cache_miss_tokens\":4}}\n\n" +
-                    "data: [DONE]\n\n",
-            ),
-        )
+        // 假服务器**按请求体决定回不回 usage**：请求带了 stream_options.include_usage
+        // 才回流末那帧纯 usage——负例 2（去掉 stream_options）下这条必须红
+        // （派工单 §5 原话：「J5 必须红、J6 必须失败（因为后端不会再回 usage）」）。
+        // 只喂固定 SSE 的话，负例只红 J5 不红 J6，那条负例就名不副实。
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
+                if (request.body.readUtf8().contains("include_usage")) {
+                    sse(
+                        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"好\"}}]}\n\n" +
+                            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34," +
+                            "\"total_tokens\":46,\"completion_tokens_details\":{\"reasoning_tokens\":20}," +
+                            "\"prompt_cache_hit_tokens\":8,\"prompt_cache_miss_tokens\":4}}\n\n" +
+                            "data: [DONE]\n\n",
+                    )
+                } else {
+                    sse(
+                        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"好\"}}]}\n\n" +
+                            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                            "data: [DONE]\n\n",
+                    )
+                }
+        }
         val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
         val fin = events.last() as LlmEvent.Finished
         assertEquals("stop", fin.reason)
