@@ -1001,4 +1001,18 @@
     <string name="baopu_export_done">导出完成：%1$d 件（在 整理/原件导出-&lt;时间戳&gt;/）</string>
     <string name="baopu_export_none">没有可导出的原件（索引是空的）。</string>
     <string name="baopu_export_notes">另有 %1$d 条备注（跳过/撞名/失败）。</string>
-  </resources>
+      <!-- 刀 3：抱朴抽屉。口径——低频入口收一层，首屏只留 ☰／状态／＋。 -->
+    <string name="baopu_drawer_open">打开侧栏</string>
+    <string name="baopu_drawer_title">抱朴</string>
+    <string name="baopu_drawer_subtitle">不常用的入口都收在这里。</string>
+    <string name="baopu_drawer_group_session">会话</string>
+    <string name="baopu_drawer_new_session_desc">清空当前上下文，记忆不动</string>
+    <string name="baopu_drawer_group_library">资料与书</string>
+    <string name="baopu_drawer_library">资料库</string>
+    <string name="baopu_drawer_library_desc">看搬进来的书、整理进度与导出记录</string>
+    <string name="baopu_drawer_extract_desc">选一本书，先看切章结果再决定怎么读</string>
+    <string name="baopu_drawer_backup_desc">把原件导出到手机上，防丢</string>
+    <string name="baopu_drawer_group_settings">设置</string>
+    <string name="baopu_drawer_channel_desc">换模型通道（会重建引擎，跑到一半不能换）</string>
+    <string name="baopu_drawer_settings">抱朴设置</string>
+    <string name="baopu_drawer_settings_desc">工具开关、资料库位置、终端外观</string></resources>
