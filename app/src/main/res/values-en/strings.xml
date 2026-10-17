@@ -957,6 +957,10 @@
     <string name="baopu_tool_file_info_desc">Size, line count, encoding guess (UTF-8 / UTF-16 / GBK), binary or not.</string>
     <string name="baopu_tool_write_file">Write file</string>
     <string name="baopu_tool_write_file_desc">Write a text file into the workspace; every write needs your confirmation. Overwriting backs the old file up to .baopu-bak first. No delete ability.</string>
+    <string name="baopu_tool_edit_file">Edit file</string>
+    <string name="baopu_tool_edit_file_desc">Change only a few lines (replace / insert / append) instead of rewriting the whole file; the old version is backed up to .baopu-bak first. No delete capability.</string>
+    <string name="baopu_tool_move_path">Move file</string>
+    <string name="baopu_tool_move_path_desc">Move or rename a file inside the library. Same volume moves directly; cross-volume copies only and records the source in “资料库/整理/_待删除清单.md” — never deletes it. Name clashes get a suffix instead of overwriting.</string>
     <!-- ── Static shortcut (task 2, part D-1; label ≤10 chars) ── -->
     <string name="baopu_shortcut_backup">Back up</string>
     <string name="baopu_shortcut_backup_long">Back up Baopu library originals</string>
