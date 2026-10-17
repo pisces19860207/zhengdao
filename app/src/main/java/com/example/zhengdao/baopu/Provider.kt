@@ -48,15 +48,31 @@ data class Provider(
     val builtinFree: Boolean = false,
     /**
      * 上下文窗口（token 数，**可空**）。来自 provider 元数据的 ctx；
-     * null = 没拿到元数据 ⇒ 上层按 [ContextAssembler.DEFAULT_WINDOW_TOKENS]（128k）回退。
+     * null = 没拿到元数据 ⇒ 上层按 [ContextAssembler.DEFAULT_WINDOW_TOKENS]（1M）回退。
      * （追加二第 1 条新增；刀 0 无此字段，老构造点不受影响。）
      */
     val contextWindow: Int? = null,
     /**
      * 输出上限（token 数，**可空**）。来自 provider 元数据；null ⇒ 回退 32k。
-     * 单轮预算 = min(窗口 × 0.6, 输出上限 × 0.9)（程枢版 §7）。
+     * 单轮预算 = min(窗口 × 0.6, 输出上限 × 0.9)（程枢版 §7）；
+     * 刀 3 B 段起它还进请求体 `max_tokens`（OpenAI 分支 null 回落 8192、
+     * Anthropic 分支 null 回落 4096——不再只是内部预算的数字）。
      */
     val maxOutput: Int? = null,
+    /**
+     * 模型侧思考深度（刀 3 B 段 · 可空）。取值见 [ModelParams.EFFORT_LEVELS]
+     * （none/low/high/max 四档；服务端另有 minimal/medium/xhigh/ultra，原样放行）。
+     *
+     * null = 没配 ⇒ 请求体不带该字段，服务端按自己的默认（DeepSeek 为 high）。
+     * 设置页的四档选择每轮盖到这个字段上（[ModelParams.liveOverlay]：LlmClient
+     * 发请求前最后一刻现读进程级缓存 ⇒ 改完下一轮生效，不用重建引擎）；
+     * 只盖**声明了** effort 的通道（见 [ModelParams] KDoc 三个默认 high 的分界）。
+     *
+     * ⚠️ 只发 `reasoning_effort` 这一个字段名：`effort` / `max_reasoning_effort`
+     * 是**假字段**（塞非法值仍返回 200，静默忽略——2026-10-17 蓝总管实测
+     * `D:\zd-tools\ds-effort-probe2.txt`），发了等于没发还会误导日志。
+     */
+    val reasoningEffort: String? = null,
 ) {
     init {
         require(isPermittedBaseUrl(baseUrl)) {
@@ -160,8 +176,36 @@ object Providers {
         builtinFree = true,
     )
 
+    /**
+     * DeepSeek 官方通道（刀 3 B 段新增；模型适配评估 §5 建议的那个预设）。
+     *
+     * 元数据全部来自**实测**（①，不是猜的）：
+     * - `GET /models`（2026-10-17，蓝总管探针 `D:\zd-tools\ds-probe.txt`）：
+     *   `deepseek-flash` = `DeepSeek-V4.1-Flash`，`context_window=1048576`、
+     *   `max_output_tokens=393216`、`input_modalities=["text","image"]`、
+     *   `effort.supported_levels=["low","high","max"]`、`default_level="high"`；
+     * - `POST /chat/completions` 带 `reasoning_effort`：非法值 422 并列枚举
+     *   （`none/minimal/low/medium/high/xhigh/ultra/max`），`effort` /
+     *   `max_reasoning_effort` 塞非法值仍 200（假字段，禁发）。
+     *
+     * baseUrl 带 `/v1`：派工单原文如此；两条路径本会话都用真 key 实测 200
+     * （`https://api.deepseek.com/models` 与 `/v1/models` 均 200）。
+     *
+     * **不带 key**：用户自己的 key 是一等公民（[withUserKey]），预设只给形状。
+     */
+    val DEEPSEEK = Provider(
+        id = "deepseek",
+        label = "DeepSeek",
+        protocol = LlmProtocol.OPENAI_COMPAT,
+        baseUrl = "https://api.deepseek.com/v1",
+        model = "deepseek-flash",
+        contextWindow = 1_048_576,
+        maxOutput = 393_216,
+        reasoningEffort = ModelParams.EFFORT_HIGH,
+    )
+
     /** 三个预设（顺序即 UI 上的展示序）。 */
-    fun all(): List<Provider> = listOf(BUILTIN_FREE, OPENAI_COMPAT, ANTHROPIC)
+    fun all(): List<Provider> = listOf(BUILTIN_FREE, OPENAI_COMPAT, ANTHROPIC, DEEPSEEK)
 
     fun of(id: String): Provider? = all().firstOrNull { it.id == id }
 

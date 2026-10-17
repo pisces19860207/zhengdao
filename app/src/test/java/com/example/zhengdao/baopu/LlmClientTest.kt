@@ -7,6 +7,7 @@ package com.example.zhengdao.baopu
 
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -189,6 +190,284 @@ class LlmClientTest {
         val messagesPart = body.substring(messagesStart)
         assertTrue(messagesPart.contains("\"role\":\"user\""))
         assertFalse(messagesPart.contains("\"role\":\"system\""))
+    }
+
+    // ── max_tokens 进请求体（刀 3 B 段 · 第十四批 J3/J4/J11） ──────────────
+    // 病灶：OpenAI 分支根本不发 max_tokens、Anthropic 写死 4096，
+    // Provider.maxOutput 只用于内部预算（派工单 §1.2 逐行核过）。
+
+    private fun providerWith(
+        protocol: LlmProtocol,
+        maxOutput: Int? = null,
+    ) = Provider(
+        id = "t", label = "t", protocol = protocol,
+        baseUrl = "http://127.0.0.1:1/v1", model = "test-model", apiKey = "k",
+        maxOutput = maxOutput,
+    )
+
+    private fun bodyJson(p: Provider): JSONObject =
+        JSONObject(LlmWire.bodyOf(p, listOf(LlmMessage(LlmMessage.ROLE_USER, "hi"))))
+
+    @Test
+    fun `J3_显式maxOutput_OpenAI请求体max_tokens等于它`() {
+        val body = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT, maxOutput = 393_216))
+        assertEquals(393_216, body.getInt("max_tokens"))
+    }
+
+    @Test
+    fun `J4_maxOutput缺失_OpenAI回落8192`() {
+        val body = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT))
+        assertEquals(8192, body.getInt("max_tokens"))
+    }
+
+    @Test
+    fun `J11_Anthropic分支也取maxOutput_缺失才回落4096`() {
+        assertEquals(
+            393_216,
+            bodyJson(providerWith(LlmProtocol.ANTHROPIC, maxOutput = 393_216)).getInt("max_tokens"),
+        )
+        assertEquals(
+            4096,
+            bodyJson(providerWith(LlmProtocol.ANTHROPIC)).getInt("max_tokens"),
+        )
+    }
+
+    // ── stream_options 与 usage（刀 3 B 段 · 第十四批 J5/J6） ───────────────
+    // 病灶：全仓无 include_usage ⇒ 服务端流末不回 usage 帧 ⇒ run_log 五列永远是猜的。
+
+    @Test
+    fun `J5_OpenAI请求体带stream_options_include_usage_Anthropic不带`() {
+        val opts = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT)).getJSONObject("stream_options")
+        assertTrue(opts.getBoolean("include_usage"))
+        // 仅 OpenAI 兼容分支：Anthropic 的用量在 message_start/message_delta 事件里
+        // 天然带回，没有这个开关（③ 按公开文档）——给它反而多个未知字段
+        assertFalse(bodyJson(providerWith(LlmProtocol.ANTHROPIC)).has("stream_options"))
+    }
+
+    @Test
+    fun `J6a_SSE带usage帧_Finished带上五列读数`() {
+        // 假服务器**按请求体决定回不回 usage**：请求带了 stream_options.include_usage
+        // 才回流末那帧纯 usage——负例 2（去掉 stream_options）下这条必须红
+        // （派工单 §5 原话：「J5 必须红、J6 必须失败（因为后端不会再回 usage）」）。
+        // 只喂固定 SSE 的话，负例只红 J5 不红 J6，那条负例就名不副实。
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
+                if (request.body.readUtf8().contains("include_usage")) {
+                    sse(
+                        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"好\"}}]}\n\n" +
+                            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34," +
+                            "\"total_tokens\":46,\"completion_tokens_details\":{\"reasoning_tokens\":20}," +
+                            "\"prompt_cache_hit_tokens\":8,\"prompt_cache_miss_tokens\":4}}\n\n" +
+                            "data: [DONE]\n\n",
+                    )
+                } else {
+                    sse(
+                        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"好\"}}]}\n\n" +
+                            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                            "data: [DONE]\n\n",
+                    )
+                }
+        }
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        val fin = events.last() as LlmEvent.Finished
+        assertEquals("stop", fin.reason)
+        assertEquals(
+            LlmUsage(
+                promptTokens = 12, completionTokens = 34, reasoningTokens = 20,
+                cacheHitTokens = 8, cacheMissTokens = 4,
+            ),
+            fin.usage,
+        )
+    }
+
+    @Test
+    fun `J6b_整条流没有usage_Finished的usage为null且不抛`() {
+        server.enqueue(
+            sse(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"好\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                    "data: [DONE]\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        val fin = events.last() as LlmEvent.Finished
+        assertNull("缺 usage 必须记 null 不报错（派工单 B 段第 6 条）", fin.usage)
+    }
+
+    @Test
+    fun `usage解析_DeepSeek实测原样形状_同帧带finish_reason`() {
+        // ① DeepSeek 官方通道实测 D:\zd-tools\ds-stream-probe.txt frame#65 的原样载荷：
+        // usage 与 finish_reason 同帧（不是流末单独帧）——两种形态都必须吃
+        val u = LlmSse.usageOf(
+            LlmProtocol.OPENAI_COMPAT,
+            "{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]," +
+                "\"usage\":{\"prompt_tokens\":36,\"completion_tokens\":64,\"total_tokens\":100," +
+                "\"prompt_tokens_details\":{\"cached_tokens\":0}," +
+                "\"completion_tokens_details\":{\"reasoning_tokens\":61}," +
+                "\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":36}}",
+        )
+        assertEquals(
+            LlmUsage(
+                promptTokens = 36, completionTokens = 64, reasoningTokens = 61,
+                cacheHitTokens = 0, cacheMissTokens = 36,
+            ),
+            u,
+        )
+    }
+
+    @Test
+    fun `usage解析_OpenAI官方cached_tokens回落_无usage与坏JSON返回null`() {
+        val u = LlmSse.usageOf(
+            LlmProtocol.OPENAI_COMPAT,
+            "{\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5," +
+                "\"prompt_tokens_details\":{\"cached_tokens\":6}}}",
+        )
+        // 没有 prompt_cache_hit_tokens ⇒ 回落 prompt_tokens_details.cached_tokens
+        assertEquals(LlmUsage(promptTokens = 10, completionTokens = 5, cacheHitTokens = 6), u)
+        assertNull(LlmSse.usageOf(LlmProtocol.OPENAI_COMPAT, "{\"choices\":[{\"delta\":{\"content\":\"x\"}}]}"))
+        assertNull(LlmSse.usageOf(LlmProtocol.OPENAI_COMPAT, "{\"usage\":null}"))
+        assertNull(LlmSse.usageOf(LlmProtocol.OPENAI_COMPAT, "{坏"))
+    }
+
+    @Test
+    fun `usage解析_Anthropic跨两帧合并_后到且非null的赢`() {
+        val start = LlmSse.usageOf(
+            LlmProtocol.ANTHROPIC,
+            "{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":25," +
+                "\"cache_read_input_tokens\":7,\"cache_creation_input_tokens\":3}}}",
+        )
+        assertEquals(LlmUsage(promptTokens = 25, cacheHitTokens = 7, cacheMissTokens = 3), start)
+        val delta = LlmSse.usageOf(
+            LlmProtocol.ANTHROPIC,
+            "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}," +
+                "\"usage\":{\"output_tokens\":12}}",
+        )
+        assertEquals(LlmUsage(completionTokens = 12), delta)
+        assertEquals(
+            LlmUsage(promptTokens = 25, completionTokens = 12, cacheHitTokens = 7, cacheMissTokens = 3),
+            LlmSse.mergeUsage(start, delta!!),
+        )
+        // null 字段不抹掉旧值（Anthropic 的 message_delta 只带 output_tokens）：
+        // 拿一帧全空的合进来，旧读数原样留着——不因为新帧没给就抹成 null
+        assertEquals(
+            LlmUsage(promptTokens = 25, cacheHitTokens = 7, cacheMissTokens = 3),
+            LlmSse.mergeUsage(start, LlmUsage()),
+        )
+        // 合并的起点可以是 null（首帧）
+        assertEquals(delta, LlmSse.mergeUsage(null, delta!!))
+    }
+
+    @Test
+    fun `anthropic_用量两帧合并进Finished_首个finish_reason赢`() {
+        server.enqueue(
+            sse(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":25,\"cache_read_input_tokens\":7,\"cache_creation_input_tokens\":3}}}\n\n" +
+                    "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n" +
+                    "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":12}}\n\n" +
+                    "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.ANTHROPIC), listOf(LlmMessage("user", "hi")))
+        val fin = events.last() as LlmEvent.Finished
+        // message_delta 的 end_turn 赢；message_stop 的 stop 不许覆盖（刀 0 口径）
+        assertEquals("end_turn", fin.reason)
+        assertEquals(
+            LlmUsage(promptTokens = 25, completionTokens = 12, cacheHitTokens = 7, cacheMissTokens = 3),
+            fin.usage,
+        )
+    }
+
+    // ── reasoning_effort 与 reasoning_content（刀 3 B 段 C 段 · J7/J8/J9） ──
+
+    @Test
+    fun `J7_四档effort按声明进请求体_没声明不带字段_脏值不发`() {
+        // 四档映射：界面值 = 服务端值，一字不差（① DeepSeek 实测 8 档枚举）
+        listOf("none", "low", "high", "max").forEach { level ->
+            val body = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT).copy(reasoningEffort = level))
+            assertEquals(level, body.getString("reasoning_effort"))
+        }
+        // DeepSeek 预设自带 high（服务端默认也是 high）
+        assertEquals("high", bodyJson(Providers.DEEPSEEK).getString("reasoning_effort"))
+        // 没声明 ⇒ 不带字段（不替不认这个字段的通道瞎发——ModelParams KDoc 分界）
+        assertFalse(bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT)).has("reasoning_effort"))
+        // Anthropic 的形状是 thinking 参数不是这个字段，且预设从不声明 ⇒ 不发
+        assertFalse(bodyJson(providerWith(LlmProtocol.ANTHROPIC)).has("reasoning_effort"))
+        // 脏值不发（服务端对非法值 422 并把枚举报回来）
+        assertFalse(
+            bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT).copy(reasoningEffort = "banana"))
+                .has("reasoning_effort"),
+        )
+    }
+
+    @Test
+    fun `J8_请求体不含effort与max_reasoning_effort两个假字段`() {
+        val body = bodyJson(Providers.DEEPSEEK)
+        assertFalse(body.has("effort"))
+        assertFalse(body.has("max_reasoning_effort"))
+        // 与 J7 互为一面：真的发了、假的没发（假字段塞 banana 也返回 200，静默忽略）
+        assertTrue(body.has("reasoning_effort"))
+    }
+
+    @Test
+    fun `J9_reasoning_content只累计字数_不进正文`() {
+        server.enqueue(
+            sse(
+                // ① DeepSeek 实测形状：content 与 reasoning_content 同帧、两个独立字段
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"答案是 42\",\"reasoning_content\":\"先想想\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"。\",\"reasoning_content\":\"再想想\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                    "data: [DONE]\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        val text = events.filterIsInstance<LlmEvent.Delta>().joinToString("") { it.text }
+        // 正文只有 content；思考原文一个字都不许进来（不进正文、不进历史）
+        assertEquals("答案是 42。", text)
+        assertFalse(text.contains("先想想"))
+        // 只累计字数：「先想想」3 + 「再想想」3 = 6
+        assertEquals(6, (events.last() as LlmEvent.Finished).reasoningChars)
+    }
+
+    @Test
+    fun `J9b_没有reasoning_content的流_reasoningChars为null`() {
+        server.enqueue(
+            sse(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"普通回复\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                    "data: [DONE]\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        assertNull((events.last() as LlmEvent.Finished).reasoningChars)
+    }
+
+    @Test
+    fun `reasoningText解析_两种协议_坏JSON不抛`() {
+        assertEquals(
+            "先想想",
+            LlmSse.reasoningText(
+                LlmProtocol.OPENAI_COMPAT,
+                "{\"choices\":[{\"delta\":{\"content\":\"x\",\"reasoning_content\":\"先想想\"}}]}",
+            ),
+        )
+        assertNull(LlmSse.reasoningText(LlmProtocol.OPENAI_COMPAT, "{\"choices\":[{\"delta\":{\"content\":\"x\"}}]}"))
+        assertNull(LlmSse.reasoningText(LlmProtocol.OPENAI_COMPAT, "{坏"))
+        // Anthropic 的思考在 thinking_delta 里（③ 按公开文档）
+        assertEquals(
+            "hmm",
+            LlmSse.reasoningText(
+                LlmProtocol.ANTHROPIC,
+                "{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"hmm\"}}",
+            ),
+        )
+        // text_delta 是正文不是思考（别把正文当思考数字数）
+        assertNull(
+            LlmSse.reasoningText(
+                LlmProtocol.ANTHROPIC,
+                "{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hmm\"}}",
+            ),
+        )
     }
 
     // ── 失败路径 ──────────────────────────────────────────────────────────

@@ -148,10 +148,12 @@ class ContextAssemblerTest {
     // ── 压缩触发边界（追加二第 1 条：从字段算，不写死） ────────────────────
 
     @Test
-    fun `窗口推导_元数据优先_拿不到回退128k`() {
-        assertEquals(128_000, ContextAssembler.ContextBudgets.windowOf(provider()))
+    fun `窗口推导_元数据优先_拿不到回退1M`() {
+        // 刀 3 B 段（第十四批 J1/J10）：128k 旧假设作废，回退值 = 1,048,576
+        assertEquals(1_048_576, ContextAssembler.DEFAULT_WINDOW_TOKENS)
+        assertEquals(1_048_576, ContextAssembler.ContextBudgets.windowOf(provider()))
         assertEquals(200_000, ContextAssembler.ContextBudgets.windowOf(provider(contextWindow = 200_000)))
-        assertEquals(128_000, ContextAssembler.ContextBudgets.windowOf(provider(contextWindow = 0))) // 非正数当没给
+        assertEquals(1_048_576, ContextAssembler.ContextBudgets.windowOf(provider(contextWindow = 0))) // 非正数当没给
         assertEquals(32_000, ContextAssembler.ContextBudgets.outputOf(provider()))
         assertEquals(8_000, ContextAssembler.ContextBudgets.outputOf(provider(maxOutput = 8_000)))
     }

@@ -961,6 +961,27 @@
     <string name="baopu_tool_edit_file_desc">Change only a few lines (replace / insert / append) instead of rewriting the whole file; the old version is backed up to .baopu-bak first. No delete capability.</string>
     <string name="baopu_tool_move_path">Move file</string>
     <string name="baopu_tool_move_path_desc">Move or rename a file inside the library. Same volume moves directly; cross-volume copies only and records the source in “资料库/整理/_待删除清单.md” — never deletes it. Name clashes get a suffix instead of overwriting.</string>
+    <!-- ── Baopu confirm card (knife 3, part A; the only way write tools get powered) ── -->
+    <string name="baopu_confirm_title">About to change a file: %1$s</string>
+    <string name="baopu_confirm_hint">Approving really changes the file (a backup is made first); rejecting skips this action and the conversation continues.</string>
+    <string name="baopu_confirm_approve">Approve</string>
+    <string name="baopu_confirm_reject">Reject</string>
+    <string name="baopu_confirm_running">Running…</string>
+    <string name="baopu_confirm_approve_desc">Approve this action and let Baopu change the file</string>
+    <string name="baopu_confirm_reject_desc">Reject this action; the file stays untouched</string>
+    <string name="baopu_confirm_timeout">No approval for 15 minutes — this round stops here</string>
+    <!-- ── Baopu thinking effort (knife 3, part B; Settings → Terminal & library) ── -->
+    <string name="baopu_effort_card">Thinking depth</string>
+    <string name="baopu_effort_desc">How deeply the model thinks each step. Low for mechanical work, Max for complex restructuring; Off saves tokens but complex tasks get dumber. Takes effect next round — nothing needs rebuilding.</string>
+    <string name="baopu_effort_none">Off</string>
+    <string name="baopu_effort_low">Low</string>
+    <string name="baopu_effort_high">High</string>
+    <string name="baopu_effort_max">Max</string>
+    <!-- ── Baopu model parameter read-only rows (knife 3, part B; criterion J12: never show 0 or 128000 when undeclared) ── -->
+    <string name="baopu_params_card">Model parameters</string>
+    <string name="baopu_params_window">Context window</string>
+    <string name="baopu_params_max_output">Output limit</string>
+    <string name="baopu_params_undeclared">Not declared</string>
     <!-- ── Static shortcut (task 2, part D-1; label ≤10 chars) ── -->
     <string name="baopu_shortcut_backup">Back up</string>
     <string name="baopu_shortcut_backup_long">Back up Baopu library originals</string>
