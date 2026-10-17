@@ -71,7 +71,7 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `v2 迁移语句全部幂等形态`() {
+    fun `v3 迁移语句全部幂等形态`() {
         // 建表走 IF NOT EXISTS；加列不走 DDL 常量（壳层按 table_info 列况执行 sessionInterruptedStepStmt）
         // ⇒ 同一份迁移跑两遍不炸，v1 库为空也不丢表（只加不删）
         BaopuSql.MEMORY_DDL.forEach {
@@ -79,11 +79,18 @@ class BaopuDbTest {
         }
         assertEquals(2, BaopuSql.MEMORY_DDL.size)
         assertTrue("DDL 常量里不许有裸 ALTER（加列必须看列况）", BaopuSql.DDL.none { it.contains("ALTER TABLE") })
+        // 刀 2 v3：资料库两表 + 章节索引表也全部 IF NOT EXISTS（幂等真迁移）
+        BaopuSql.LIBRARY_DDL.forEach {
+            assertTrue("v3 迁移 DDL 必须 IF NOT EXISTS：$it", it.contains("IF NOT EXISTS"))
+        }
+        BaopuSql.CHAPTER_INDEX_DDL.forEach {
+            assertTrue("v3 迁移 DDL 必须 IF NOT EXISTS：$it", it.contains("IF NOT EXISTS"))
+        }
     }
 
     @Test
-    fun `v2 版本号与库路径纯函数`() {
-        assertEquals(2, BaopuDb.VERSION)
+    fun `v3 版本号与库路径纯函数`() {
+        assertEquals(3, BaopuDb.VERSION)
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -166,7 +173,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(2, BaopuDb.VERSION) // v2 = 刀 0b（memory 表 ＋ interrupted_step）
+        assertEquals(3, BaopuDb.VERSION) // v3 = 刀 2（资料库两表 ＋ 章节索引表）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }

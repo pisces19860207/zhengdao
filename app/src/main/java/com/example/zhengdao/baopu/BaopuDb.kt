@@ -131,8 +131,74 @@ internal object BaopuSql {
         "CREATE INDEX IF NOT EXISTS idx_memory_scope_kind ON memory (scope, kind)",
     )
 
-    /** 全新安装（onCreate）跑全量：v1 五表 ＋ v2 memory。 */
-    val DDL: List<String> = DDL_V1 + MEMORY_DDL
+    /**
+     * v3 新增（刀 2）：资料库两张表 —— `library_item`（认脸索引的**库内镜像**，
+     * 真相是共享区 `整理/_认脸索引.json`）与 `library_move_log`（搬家/导出/一次性提示的流水账）。
+     *
+     * 两处按派工单 §4 A 段口径定的形：
+     * 1. `library_item.sha256 TEXT NOT NULL UNIQUE` —— 认脸幂等靠它：同内容同 sha
+     *    只一行（`ON CONFLICT(sha256)`）；`isolated` 记「这批有没有真隔离」（选复制 = 0）；
+     * 2. `library_move_log` **无外键** —— 它是流水账（op/path/sha256/status/created_at），
+     *    行数只增不减，不随任何表级联删；一次性提示（「首次搬原件提示一次」）也寄存在
+     *    这里（op = `notice:<key>`，行在即提示过）。
+     */
+    val LIBRARY_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS library_item (
+          sha256 TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          mtime INTEGER NOT NULL,
+          source TEXT NOT NULL DEFAULT 'deliver',
+          exported_at INTEGER NOT NULL DEFAULT 0,
+          isolated INTEGER NOT NULL DEFAULT 1,
+          kind TEXT NOT NULL DEFAULT 'text',
+          private_path TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS idx_library_item_isolated ON library_item (isolated)",
+        """
+        CREATE TABLE IF NOT EXISTS library_move_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          op TEXT NOT NULL,
+          path TEXT NOT NULL DEFAULT '',
+          sha256 TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS idx_library_move_log_sha ON library_move_log (sha256)",
+    )
+
+    /**
+     * v3 新增（刀 2 追加包）：`chapter_index` —— 章节级抽取流水线的落库表。
+     *
+     * 幂等判据是**三元组** `UNIQUE(book, chapter_no, sha256)`：同一本书的同一章、
+     * 章文本没变（sha 同）⇒ `INSERT OR IGNORE` 不产生重复行（追加包判据②
+     * 「ChapterDigest 同章重复跑不产生重复行」）；章文本变了 ⇒ 新行，
+     * 取「最新」时按 `MAX(id)`（见 BaopuSql.latestChapters）——改过的章不会被
+     * 旧摘要挡住。
+     */
+    val CHAPTER_INDEX_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS chapter_index (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          book TEXT NOT NULL,
+          chapter_no INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          sha256 TEXT NOT NULL,
+          digest TEXT NOT NULL,
+          chars INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          UNIQUE(book, chapter_no, sha256)
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS idx_chapter_index_book ON chapter_index (book, chapter_no)",
+    )
+
+    /** 全新安装（onCreate）跑全量：v1 五表 ＋ v2 memory ＋ v3 资料库两表 + 章节索引表。 */
+    val DDL: List<String> = DDL_V1 + MEMORY_DDL + LIBRARY_DDL + CHAPTER_INDEX_DDL
 
     /** session 表 v2 新增列（追加二第 3 条：中断于第 N 步——断点续跑的判据）。 */
     const val COL_SESSION_INTERRUPTED_STEP = "interrupted_step"
@@ -361,7 +427,7 @@ internal object BaopuSql {
 }
 
 /**
- * 抱朴数据库（刀 0 骨架 · 刀 0b v2 迁移）。
+ * 抱朴数据库（刀 0 骨架 · 刀 0b v2 迁移 · 刀 2 v3 迁移）。
  *
  * ## 三个不可动摇的点
  * 1. **单写者线程**（[writer]，`zd-baopu-db`，daemon）：一切写走 [write] 的 Future，
@@ -371,7 +437,8 @@ internal object BaopuSql {
  *    放 onCreate 只对建库那一个连接生效，之后的连接全是关的——级联删除会静默失效。
  *    这是 SQLite 最经典的坑之一。
  * 3. **迁移必须真迁移**：v1→v2 建 memory 表 ＋ 给 session 加 `interrupted_step` 列，
- *    全部幂等（`IF NOT EXISTS` / 先看列再加）；v1 库为空也不丢表。**没有路径的
+ *    v2→v3 建资料库两表（`library_item`/`library_move_log`），全部幂等
+ *    （`IF NOT EXISTS` / 先看列再加）；v1 库为空也不丢表。**没有路径的
  *    迁移必须炸**——静默按新 schema 跑在旧库上比崩掉糟糕得多。
  *
  * ## 文件落点（刀 0b 按派工单 §4.3 对齐设计）
@@ -407,6 +474,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     override fun onCreate(db: SQLiteDatabase) {
         BaopuSql.DDL_V1.forEach { db.execSQL(it) }
         applyV2Migration(db)
+        applyV3Migration(db)
     }
 
     /**
@@ -427,6 +495,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
             )
         }
         if (oldVersion < 2) applyV2Migration(db)
+        if (oldVersion < 3) applyV3Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -440,6 +509,16 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.runLogCacheColumnsStmt(runLogCols).forEach { stmt ->
             if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
         }
+    }
+
+    /**
+     * v2 → v3 迁移体（刀 2）：资料库两表 + 章节索引表 ＋ 索引，全部 `IF NOT EXISTS`
+     * ⇒ 幂等，重复跑不炸（派工单 §2.4 原话：「加列/加表都要幂等，重复跑不炸」）。
+     * v2 库升级与新安装走同一条路径（onCreate 也调它）。
+     */
+    private fun applyV3Migration(db: SQLiteDatabase) {
+        BaopuSql.LIBRARY_DDL.forEach { db.execSQL(it) }
+        BaopuSql.CHAPTER_INDEX_DDL.forEach { db.execSQL(it) }
     }
 
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
@@ -465,8 +544,8 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     companion object {
         const val DB_NAME = "baopu.db"
 
-        /** v2（刀 0b）：加 memory 表 ＋ session.interrupted_step。v1 = 刀 0 五表。 */
-        const val VERSION = 2
+        /** v3（刀 2）：加资料库两表 `library_item`/`library_move_log`。v2 = 刀 0b memory。 */
+        const val VERSION = 3
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

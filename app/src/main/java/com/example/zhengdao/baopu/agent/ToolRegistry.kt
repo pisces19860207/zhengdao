@@ -1,17 +1,21 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
 // 依据：抱朴-Agent设计-程枢版 §5（守卫管线：注册表是唯一真相；每个工具 = 名称 +
-// JSON Schema + 权限级 + 超时 + Kotlin 执行器）+ §9 模块划分（agent/ToolRegistry.kt）。
+// JSON Schema + 权限级 + 超时 + Kotlin 执行器）+ §9 模块划分（agent/ToolRegistry.kt）
+// ＋ 刀 2 追加包「工具集表＋开关」：表在 [BaopuToolCatalog]，开关在 [ToolPrefs]，
+// 引擎不再写死工具清单。
 package com.example.zhengdao.baopu.agent
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * 工具权限级（程枢版 §5 管线第 ③ 段）。
  *
- * 本刀只有读工具 ⇒ 两个内置工具都是 [FREE]；需确认的 [CONFIRM] 留给刀 2 的写工具
- * （`write_file` 覆盖已存在文件等，设计 §6 单步确认清单）。
+ * 刀 2 追加包起内置五个工具：read_file / list_dir / search_in_files / file_info
+ * 是 [FREE]；write_file 是 [CONFIRM]（每次写都走单步确认，RunEngine 现有
+ * AwaitConfirm 骨架；确认后的执行链归下一刀）。
  */
 enum class ToolPermission {
     /** 免确认直行。 */
@@ -149,12 +153,46 @@ internal object SchemaCheck {
 }
 
 /**
+ * 工具开关存储（刀 2 追加包：工具集「表＋开关」的存储侧）。
+ *
+ * 为什么抽接口：注册表本身零 Android 依赖（JVM 直测），SharedPreferences
+ * 不能进到这里 ⇒ 接口留在本文件，Android 侧实现（`BaopuToolPrefs`）在
+ * [com.example.zhengdao.baopu.BaopuRuntime]——装配层才有 Context。
+ *
+ * 语义：存的是「被用户关掉的工具名」集合（关是显式动作，开是默认）。
+ */
+internal interface ToolPrefs {
+    fun isDisabled(name: String): Boolean
+    fun setDisabled(name: String, disabled: Boolean)
+    fun disabledNames(): Set<String>
+}
+
+/** 内存实现（单测与无 Context 环境用；进程内生效，不持久）。 */
+internal class InMemoryToolPrefs(initial: Set<String> = emptySet()) : ToolPrefs {
+    private val disabled = initial.toMutableSet()
+    override fun isDisabled(name: String): Boolean = name in disabled
+    override fun setDisabled(name: String, disabled: Boolean) {
+        if (disabled) this.disabled.add(name) else this.disabled.remove(name)
+    }
+
+    override fun disabledNames(): Set<String> = disabled.toSet()
+}
+
+/**
  * 工具注册表（**唯一真相**，程枢版 §5）。
  *
  * 协议 A（原生 function calling）与协议 B（文本协议，刀 3–5 之间）都只是
  * 「把模型的话翻译成注册表条目」的解码器——执行永远走这里 + [GuardPipeline]。
+ *
+ * 刀 2 追加包（表＋开关）：本类只认「表里有什么、开关是什么」——
+ * 表由 [BaopuToolCatalog] 提供，开关由 [prefs] 持有。**被关掉的工具仍然注册**
+ * （[find] 取到时现换成桩形态：同 Schema、免确认、执行一律回「该工具已被用户关闭」），
+ * 但**不进 `tools` 数组**（模型根本看不见）；模型若幻觉调用，拿到的是
+ * 这条拒绝（不自动打开）。
  */
-internal class ToolRegistry {
+internal class ToolRegistry(
+    private val prefs: ToolPrefs = InMemoryToolPrefs(),
+) {
 
     private val specs = LinkedHashMap<String, ToolSpec>()
 
@@ -163,11 +201,33 @@ internal class ToolRegistry {
         specs[spec.name] = spec
     }
 
-    fun find(name: String): ToolSpec? = specs[name]
+    /**
+     * 取一个工具的**当前形态**（刀 2 追加包：开关是**调用时**判的，不是加载时）。
+     *
+     * 为什么不在 [loadInto] 时装桩：注册表是进程级单例，设置页改开关时它已经建好了——
+     * 加载时判定的话，加载后才被关的工具仍以真身注册着（CONFIRM 权限 + 真执行器），
+     * 模型幻觉调用它照样弹确认框、照样真写文件（2026-10-17 单测实测出来的洞）。
+     * 这里每次取都现查：被关 ⇒ 回桩（免确认 + 执行一律 Rejected）。
+     */
+    fun find(name: String): ToolSpec? {
+        val spec = specs[name] ?: return null
+        return if (isEnabled(name)) spec else BaopuToolCatalog.disabledStub(spec)
+    }
 
     fun names(): List<String> = specs.keys.toList()
 
     fun all(): List<ToolSpec> = specs.values.toList()
+
+    /** 该工具当前是否启用（开关热改：引擎/管线持同一实例，下一轮请求即生效）。 */
+    fun isEnabled(name: String): Boolean = !prefs.isDisabled(name)
+
+    /** 改开关（热改；设置页落点）。被关的工具保持已注册的桩，不进 tools 数组。 */
+    fun setDisabled(name: String, disabled: Boolean) {
+        prefs.setDisabled(name, disabled)
+    }
+
+    /** 启用中的工具名（设置页对照用）。 */
+    fun enabledNames(): List<String> = specs.keys.filter { isEnabled(it) }
 
     /**
      * 第 ① 段：注册表校验（名字存在？参数合 Schema？）。
@@ -178,9 +238,9 @@ internal class ToolRegistry {
         return SchemaCheck.validate(spec.inputSchema, args)
     }
 
-    /** OpenAI 兼容 `tools` 数组（协议 A 请求侧；空注册表给空数组，调用方据此决定不带字段）。 */
+    /** OpenAI 兼容 `tools` 数组（协议 A 请求侧；**只含启用的**——被关的模型看不见）。 */
     fun toolsJsonOpenAi(): JSONArray = JSONArray().also { arr ->
-        all().forEach { s ->
+        all().filter { isEnabled(it.name) }.forEach { s ->
             arr.put(
                 JSONObject()
                     .put("type", "function")
@@ -195,9 +255,9 @@ internal class ToolRegistry {
         }
     }
 
-    /** Anthropic `tools` 数组（形状不同：schema 直接铺平）。 */
+    /** Anthropic `tools` 数组（形状不同：schema 直接铺平；同样只含启用的）。 */
     fun toolsJsonAnthropic(): JSONArray = JSONArray().also { arr ->
-        all().forEach { s ->
+        all().filter { isEnabled(it.name) }.forEach { s ->
             arr.put(
                 JSONObject()
                     .put("name", s.name)
@@ -206,6 +266,72 @@ internal class ToolRegistry {
             )
         }
     }
+}
+
+/**
+ * 工具集**一张表**（刀 2 追加包：spec＋permission＋factory 全在这里，
+ * 不许再在引擎里写死哪几个工具）。
+ *
+ * factory 统一收 `workspaceRoot: () -> File`：大多数工具不需要根（守卫在
+ * 管线第 ② 段按 path 参数名做），但 write_file 的备份目录、search_in_files /
+ * file_info 的相对路径渲染都要它——签名统一，加工具时不用想「这个要不要根」。
+ *
+ * 零 Android 依赖：本文件与工具实现同在 `com.example.zhengdao.baopu.agent` 包，
+ * 不需要 import；JVM 单测可直接加载整张表。
+ */
+internal object BaopuToolCatalog {
+
+    /** 表的一条。 */
+    data class Entry(
+        val name: String,
+        val factory: (workspaceRoot: () -> File) -> ToolSpec,
+    )
+
+    /** 默认启用集合（派工单：read_file / list_dir / search_in_files / file_info / write_file 全默认开）。 */
+    val DEFAULT_ENABLED: Set<String> = setOf(
+        "read_file",
+        "list_dir",
+        "search_in_files",
+        "file_info",
+        "write_file",
+    )
+
+    /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好）。 */
+    val ENTRIES: List<Entry> = listOf(
+        Entry("read_file") { ReadFileTool.spec() },
+        Entry("list_dir") { ListDirTool.spec() },
+        Entry("search_in_files") { SearchInFilesTool.spec(it) },
+        Entry("file_info") { FileInfoTool.spec(it) },
+        Entry("write_file") { WriteFileTool.spec(it) },
+    )
+
+    /**
+     * 把整张表装进注册表（**只装真身**；被关的形态由 [ToolRegistry.find] 在调用时判）。
+     *
+     * 为什么不在加载时分流：见 [ToolRegistry.find] 的 KDoc——注册表进程级长寿，
+     * 开关随时会变，加载时判定等于把「当时的状态」钉死。
+     */
+    fun loadInto(registry: ToolRegistry, workspaceRoot: () -> File) {
+        ENTRIES.forEach { entry ->
+            registry.register(entry.factory(workspaceRoot))
+        }
+    }
+
+    /**
+     * 被关工具的桩（Schema 不变：幻觉调用也要先过 SchemaCheck，再拿这条拒绝）。
+     *
+     * 权限改 FREE 的理由：它根本不执行，没有「可确认的东西」——若保留 CONFIRM，
+     * 用户会先看到一个确认框，点完才被告知「这工具被关了」（确认框是纯骚扰）。
+     */
+    fun disabledStub(spec: ToolSpec): ToolSpec = spec.copy(
+        permission = ToolPermission.FREE, // 免确认——它根本不执行，没有可确认的东西
+        executor = { _ ->
+            ToolOutcome.Rejected(
+                "该工具已被用户关闭（在 设置 → 终端与资料 → 抱朴工具 里打开）。" +
+                    "本轮不自动打开，也不改写成别的工具。",
+            )
+        },
+    )
 }
 
 /** JSON 构造辅助（工具 Schema 的字面量写法用；org.json 无 Kotlin DSL，包一层少写 boilerplate）。 */
