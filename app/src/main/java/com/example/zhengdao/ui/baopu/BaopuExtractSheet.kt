@@ -134,6 +134,14 @@ internal fun BaopuExtractSheet(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )
+                // 真机读书踩到：书单只扫私有原件，手工丢进「整理」的书不出现 ⇒ 这里把来源说清楚，
+                // 不让用户以为书丢了（比改扫描范围安全：不动 LibraryPaths 的职责边界）。
+                Text(
+                    text = stringResource(R.string.baopu_extract_scope),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
                 Spacer(Modifier.height(10.dp))
                 when (step) {
                     0 -> Column(Modifier.verticalScroll(rememberScrollState())) {
