@@ -63,7 +63,8 @@ internal object EditFileTool {
         description = "按行改一个已有的文本文件：替换第 a–b 行、在某行后插入、或追加到末尾。" +
             "只提交要改的那几行（单次 ≤ $MAX_EDIT_LINES 行），不必整篇重写；" +
             "写前自动把旧版本备份到 .baopu-bak/。行号从 1 起（与 read_file 输出一致）。" +
-            "每次改都要用户确认；本工具没有删除能力。",
+            "确认由 App 弹确认卡完成（用户点头才落盘，不点作废）——直接调用即可，" +
+            "不要在回复里先问一句。本工具没有删除能力。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -222,15 +223,16 @@ internal object EditFileTool {
         // 备份旧版本（失败 ⇒ 放弃本次修改：宁可改不进去，也不能把旧内容弄丢）
         var backupNote = ""
         if (exists) {
-            val backupName = rel.replace('/', '_').replace('\\', '_') + "." + stamp + ".bak"
+            val backupName = backupFileName(rel, stamp)
+            var cause = ""
             val ok = runCatching {
                 val dir = File(root, BACKUP_DIR_NAME)
                 dir.mkdirs()
                 target.copyTo(File(dir, backupName), overwrite = true)
-            }.isSuccess
+            }.onFailure { cause = "：${it.javaClass.simpleName}: ${it.message}" }.isSuccess
             if (!ok) {
                 return ToolOutcome.Failed(
-                    "备份旧版本失败（${target.name}），已放弃本次修改。文件原样未动。",
+                    "备份旧版本失败（${target.name}）$cause，已放弃本次修改。文件原样未动。",
                 )
             }
             backupNote = "；旧版本已备份到 $BACKUP_DIR_NAME/$backupName"
@@ -254,6 +256,18 @@ internal object EditFileTool {
                 "${newText.length} 字符$backupNote",
         )
     }
+
+    /**
+     * 备份文件名：路径里的分隔符与**冒号**都换成下划线。
+     *
+     * 为什么连冒号也要换（2026-10-17 进化门禁抓到的真 bug）：path 参数在管线第 ② 段
+     * 会被改写成**绝对路径**再交给 executor，`C:\…\b.md` 直接拼进文件名就成了
+     * `C:_…_b.md.<stamp>.bak`；Windows 上冒号是非法文件名字符 ⇒ `copyTo` 抛异常
+     * ⇒ 被兜成「备份失败，已放弃」，而模型只能回一句「我不知道为什么」。
+     * Android 的 ext4 允许冒号，真机碰不到，但这类报错本来就该一次说清。
+     */
+    internal fun backupFileName(rel: String, stamp: String): String =
+        rel.replace('/', '_').replace('\\', '_').replace(':', '_') + "." + stamp + ".bak"
 
     /** executor：参数已过 SchemaCheck；行号缺省由 [edit] 自己判。 */
     private fun run(

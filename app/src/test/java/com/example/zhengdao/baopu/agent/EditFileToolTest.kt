@@ -61,6 +61,23 @@ class EditFileToolTest {
         assertTrue(r is ToolOutcome.Rejected)
     }
 
+    @Test
+    fun `绝对路径在工作区内_能改且备份名不带冒号`() {
+        // 2026-10-17 进化门禁抓到：path 参数在管线里会被改写成**绝对路径**，备份名原来
+        // 直接拼 rel ⇒ 文件名里带 `C:` 的冒号 ⇒ Windows 上 copyTo 抛异常 ⇒ 工具回一句
+        // 「备份旧版本失败，已放弃」（模型只能承认「我也不知道为什么」）。
+        setup()
+        val f = put("b.md", "第一行\n第二行是错的\n第三行\n")
+        val r = EditFileTool.edit(
+            root, f.absolutePath, EditFileTool.OP_REPLACE, 2, 2, "已修正", stamp = "s1",
+        )
+        assertTrue("绝对路径也要能改：$r", r is ToolOutcome.Ok)
+        assertTrue("改动要落盘", f.readText(Charsets.UTF_8).contains("已修正"))
+        val baks = File(root, EditFileTool.BACKUP_DIR_NAME).listFiles().orEmpty()
+        assertEquals("必须留下一个备份", 1, baks.size)
+        assertFalse("备份名不许含冒号：${baks[0].name}", baks[0].name.contains(":"))
+    }
+
     // ── ② 只改目标行 ────────────────────────────────────────────────────
 
     @Test

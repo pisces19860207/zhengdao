@@ -84,8 +84,10 @@ internal object FileInfoTool {
         val size = file.length()
         val head = runCatching { readHead(file, SNIFF_BYTES) }.getOrNull()
             ?: return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.name}")
-        val binary = looksBinary(head)
-        val encoding = guessEncoding(head, binary)
+        val encoding = guessEncoding(head, looksBinary(head))
+        // 「是不是二进制」以判定的编码为准（BOM 已经压过 NUL，见 guessEncoding 注释）：
+        // 否则同一份 UTF-16 文件会「编码：UTF-16LE」+「类型：二进制」自相矛盾。
+        val binary = encoding == Encodings.BINARY
         val lines = if (!binary && size <= LINE_COUNT_MAX_BYTES) countLines(file) else null
         val body = buildString {
             append("文件：${file.name}\n")
@@ -130,12 +132,17 @@ internal object FileInfoTool {
      * 按 RFC 3629 的合法序列扫一遍，非法即不是 UTF-8。
      */
     internal fun guessEncoding(head: ByteArray, binary: Boolean): String {
-        if (binary) return Encodings.BINARY
+        // BOM 先于二进制（2026-10-17 修正，进化门禁 UTF-16 用例逼出来的）：
+        // UTF-16 的换行与码点低位在字节层面天然带 0x00（'\n' ⇒ 0A 00，U+4E00 ⇒ 00 4E），
+        // 按「见 NUL 即二进制」的先序，**每一个多行 UTF-16 文本**都会被判成二进制
+        // ⇒ file_info 报「二进制」、read_file 直接拒读。BOM（FF FE / FE FF / EF BB BF）
+        // 是文本的强证据，让它压过 NUL；没有 BOM 的 NUL 文件照旧判二进制。
         if (head.size >= 3 && head[0] == 0xEF.toByte() && head[1] == 0xBB.toByte() && head[2] == 0xBF.toByte()) {
             return Encodings.UTF8_BOM
         }
         if (head.size >= 2 && head[0] == 0xFF.toByte() && head[1] == 0xFE.toByte()) return Encodings.UTF16_LE
         if (head.size >= 2 && head[0] == 0xFE.toByte() && head[1] == 0xFF.toByte()) return Encodings.UTF16_BE
+        if (binary) return Encodings.BINARY
         if (looksLikeUtf8(head)) return Encodings.UTF8
         if (looksLikeGbk(head)) return Encodings.GBK
         return Encodings.UNKNOWN

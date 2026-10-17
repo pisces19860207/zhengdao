@@ -120,4 +120,39 @@ class ReadFileToolTest {
         assertTrue(err.contains("太大"))
         assertTrue("提示改用 list_dir + 分段", err.contains("list_dir") && err.contains("offset"))
     }
+
+    // ── 读侧解码（刀 2 追加包欠的账；进化门禁 gbk-book 用例逼出来的，2026-10-17）──
+
+    @Test
+    fun `GBK文件_自动解码_不读成乱码`() {
+        val dir = Files.createTempDirectory("baopu-readfile-gbk").toFile()
+        val f = File(dir, "老书.txt")
+        f.writeBytes("第一章\n主人公名叫王大锤，家住城西。\n".toByteArray(charset("GBK")))
+        val text = (ReadFileTool.read(f, offset = 0, limit = 100) as ToolOutcome.Ok).text
+        assertTrue("GBK 必须解出汉字，不能是乱码：$text", text.contains("王大锤"))
+        assertTrue("要明说这是转码读的：$text", text.contains("GBK"))
+    }
+
+    @Test
+    fun `UTF16LE文件_能读且不留BOM`() {
+        val dir = Files.createTempDirectory("baopu-readfile-utf16").toFile()
+        val f = File(dir, "wide.txt")
+        val bom = byteArrayOf(0xFF.toByte(), 0xFE.toByte())
+        f.writeBytes(bom + "第一行\n第二行".toByteArray(charset("UTF-16LE")))
+        val text = (ReadFileTool.read(f, offset = 0, limit = 100) as ToolOutcome.Ok).text
+        assertTrue("UTF-16LE 要能读：$text", text.contains("第一行") && text.contains("第二行"))
+        assertFalse("BOM 不许污染第一行：$text", text.contains("\uFEFF"))
+    }
+
+    @Test
+    fun `二进制文件_拒绝读取_不往上下文灌乱码`() {
+        val dir = Files.createTempDirectory("baopu-readfile-bin").toFile()
+        val f = File(dir, "a.bin")
+        f.writeBytes(byteArrayOf(0x41, 0x00, 0x42, 0x00))
+        val out = ReadFileTool.read(f, offset = 0, limit = 100)
+        assertTrue(out is ToolOutcome.Failed)
+        val err = (out as ToolOutcome.Failed).error
+        assertTrue("要明说二进制不读：$err", err.contains("二进制"))
+        assertTrue("要指路到 file_info：$err", err.contains("file_info"))
+    }
 }
