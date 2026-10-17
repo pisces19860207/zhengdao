@@ -878,6 +878,12 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "edit_file" -> R.string.baopu_tool_edit_file
     "move_path" -> R.string.baopu_tool_move_path
     "convert_encoding" -> R.string.baopu_tool_convert_encoding
+    "browser_open" -> R.string.baopu_tool_browser_open
+    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot
+    "browser_click" -> R.string.baopu_tool_browser_click
+    "browser_type" -> R.string.baopu_tool_browser_type
+    "browser_scroll" -> R.string.baopu_tool_browser_scroll
+    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -905,6 +911,12 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "edit_file" -> R.string.baopu_tool_edit_file_desc
     "move_path" -> R.string.baopu_tool_move_path_desc
     "convert_encoding" -> R.string.baopu_tool_convert_encoding_desc
+    "browser_open" -> R.string.baopu_tool_browser_open_desc
+    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot_desc
+    "browser_click" -> R.string.baopu_tool_browser_click_desc
+    "browser_type" -> R.string.baopu_tool_browser_type_desc
+    "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc
+    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
 
