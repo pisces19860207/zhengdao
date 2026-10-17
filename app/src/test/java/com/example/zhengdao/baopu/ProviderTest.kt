@@ -4,6 +4,7 @@ package com.example.zhengdao.baopu
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,10 +18,13 @@ import org.junit.Test
 class ProviderTest {
 
     @Test
-    fun `三个预设都在且形状正确`() {
+    fun `四个预设都在且形状正确`() {
         val all = Providers.all()
-        assertEquals(3, all.size)
-        assertEquals(setOf("builtin-free", "openai-compat", "anthropic"), all.map { it.id }.toSet())
+        assertEquals(4, all.size)
+        assertEquals(
+            setOf("builtin-free", "openai-compat", "anthropic", "deepseek"),
+            all.map { it.id }.toSet(),
+        )
         all.forEach {
             assertTrue("预设 baseUrl 必须 https：${it.id}", it.baseUrl.startsWith("https://"))
             assertTrue("预设 model 不能空：${it.id}", it.model.isNotBlank())
@@ -29,9 +33,27 @@ class ProviderTest {
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("builtin-free")!!.protocol)
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("openai-compat")!!.protocol)
         assertEquals(LlmProtocol.ANTHROPIC, Providers.of("anthropic")!!.protocol)
+        assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("deepseek")!!.protocol)
         assertTrue(Providers.of("builtin-free")!!.builtinFree)
         assertFalse(Providers.of("openai-compat")!!.builtinFree)
         assertFalse(Providers.of("anthropic")!!.builtinFree)
+        assertFalse(Providers.of("deepseek")!!.builtinFree)
+    }
+
+    @Test
+    fun `DeepSeek预设四项元数据齐_且思考默认高`() {
+        // 第十四批 J2：baseUrl/model/contextWindow/maxOutput 四项；effort 默认 high
+        val d = Providers.of("deepseek")!!
+        assertEquals("https://api.deepseek.com/v1", d.baseUrl)
+        assertEquals("deepseek-flash", d.model)
+        assertEquals(1_048_576, d.contextWindow)
+        assertEquals(393_216, d.maxOutput)
+        assertEquals("high", d.reasoningEffort)
+        // 只加预设，不改任何现有预设的值（派工单 A 段第 2 条原话）
+        assertNull(Providers.OPENAI_COMPAT.contextWindow)
+        assertNull(Providers.OPENAI_COMPAT.maxOutput)
+        assertNull(Providers.ANTHROPIC.contextWindow)
+        assertNull(Providers.BUILTIN_FREE.contextWindow)
     }
 
     @Test

@@ -94,6 +94,12 @@ internal object LlmWire {
     const val ANTHROPIC_MAX_TOKENS = 4096
 
     /**
+     * OpenAI 兼容分支 `max_tokens` 的回落值（刀 3 B 段）：provider 没声明
+     * [Provider.maxOutput] 时用这个——不发送上限让服务端猜，是本批要修的病灶之一。
+     */
+    const val OPENAI_MAX_TOKENS_FALLBACK = 8192
+
+    /**
      * 端点路径：baseUrl 一律自带版本前缀（`/v1`、`/zen/v1`），这里只拼资源路径。
      * 尾部斜杠容忍——用户手填 baseUrl 带不带 `/` 都能用。
      */
@@ -127,9 +133,11 @@ internal object LlmWire {
     )
 
     /**
-     * 请求体。Anthropic 的两个特殊处理：
+     * 请求体。两个特殊处理：
      * 1. `system` 角色**不是消息**，要提到顶层 `system` 字段（多条合并）；
-     * 2. `max_tokens` 必填（拿不到用户设置时的默认值）。
+     * 2. `max_tokens` 取 [Provider.maxOutput]（刀 3 B 段：它以前只用于内部预算，
+     *    根本没进请求体——输出上限全靠服务端猜）；拿不到时 OpenAI 分支回落
+     *    [OPENAI_MAX_TOKENS_FALLBACK]、Anthropic 分支回落 [ANTHROPIC_MAX_TOKENS]。
      *
      * [tools] = 协议 A 的工具数组（`ToolRegistry.toolsJsonOpenAi/Anthropic` 产出）。
      * null/空 = 不带字段（**向后兼容刀 0b 的 15 条单测**：老调用点不传 tools）。
@@ -144,6 +152,7 @@ internal object LlmWire {
             LlmProtocol.OPENAI_COMPAT -> JSONObject()
                 .put("model", p.model)
                 .put("stream", stream)
+                .put("max_tokens", p.maxOutput ?: OPENAI_MAX_TOKENS_FALLBACK)
                 .put("messages", JSONArray().also { arr ->
                     messages.forEach { m ->
                         arr.put(JSONObject().put("role", m.role).put("content", m.content))
@@ -159,7 +168,7 @@ internal object LlmWire {
                 JSONObject()
                     .put("model", p.model)
                     .put("stream", stream)
-                    .put("max_tokens", ANTHROPIC_MAX_TOKENS)
+                    .put("max_tokens", p.maxOutput ?: ANTHROPIC_MAX_TOKENS)
                     .apply { if (system.isNotEmpty()) put("system", system) }
                     .put("messages", JSONArray().also { arr ->
                         rest.forEach { m ->
