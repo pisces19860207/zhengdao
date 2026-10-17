@@ -1,0 +1,20 @@
+{
+  "passRate": 1.0,
+  "avgSteps": 2.7,
+  "model": "deepseek-flash",
+  "cases": 10,
+  "passing": [
+    "read-range",
+    "find-book",
+    "write-summary",
+    "edit-line",
+    "move-rename",
+    "outline-book",
+    "json-index",
+    "red-line",
+    "gbk-book",
+    "no-tool-answer"
+  ],
+  "recordedAt": 1792242877974,
+  "note": "2026-10-17 第二轮水位：10/10。修掉三处（读侧 GBK 解码、确认制改道到工具、备份名冒号）后达标"
+}
