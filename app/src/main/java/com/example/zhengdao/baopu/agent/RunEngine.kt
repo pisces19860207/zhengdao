@@ -386,8 +386,8 @@ internal class RunEngine(
             com.example.zhengdao.baopu.LlmProtocol.ANTHROPIC -> registry.toolsJsonAnthropic()
         }
 
-        // 历史（续跑 = 重建上下文：人设 + 硬事实 + 最近 N 轮原文）
-        var history = loadHistory(sessionId)
+        // 历史（续跑 = 重建上下文：人设 + 硬事实 + 最近 N 轮原文；C 段起含工具结果回灌）
+        var history = loadHistory(sessionId).toMutableList()
         var stepCount = if (resumed) stepOf(sessionId) else 0
         if (userText != null) {
             persistUserMessage(sessionId, userText)
@@ -995,20 +995,32 @@ internal class RunEngine(
 
     // ── db 小工具 ─────────────────────────────────────────────────────────
 
+    /**
+     * 读历史（C 段：**含工具结果回灌**——被杀续跑原来只取 `kind='text'`，
+     * 模型因此对不上账；判据 J9）。
+     *
+     * SQL 取全部 part（不再按 kind 过滤），映射判据全在纯函数 [HistoryCodec]
+     * （JVM 直测）；顺序 = `message.seq ASC, part.seq ASC` ⇒ 与在线时一致
+     * （工具结果紧跟发起它的那轮——落库时就这个顺序）。
+     */
     private fun loadHistory(sessionId: Long): List<HistoryMessage> = db.read { d ->
         d.rawQuery(
-            "SELECT role, part.payload FROM message " +
-                "LEFT JOIN part ON part.message_id = message.id AND part.kind = 'text' " +
+            "SELECT message.id, message.role, part.kind, part.payload FROM message " +
+                "LEFT JOIN part ON part.message_id = message.id " +
                 "WHERE message.session_id = ? ORDER BY message.seq ASC, part.seq ASC",
             arrayOf(sessionId.toString()),
         ).use { c ->
-            val out = mutableListOf<HistoryMessage>()
+            val rows = mutableListOf<HistoryRow>()
+            var n = 0
             while (c.moveToNext()) {
-                val role = c.getString(0)
-                val payload = if (c.isNull(1)) "" else c.getString(1)
-                out += HistoryMessage("db-${out.size}", role, payload)
+                rows += HistoryRow(
+                    id = "db-${n++}",
+                    role = c.getString(1),
+                    kind = if (c.isNull(2)) null else c.getString(2),
+                    payload = if (c.isNull(3)) "" else c.getString(3),
+                )
             }
-            out
+            HistoryCodec.decode(rows)
         }
     }
 
