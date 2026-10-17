@@ -90,6 +90,8 @@ import kotlin.text.Charsets
  * - 2026-10-16（抱朴刀 1）：**新增 2 条**——`agent/RunEngine.kt` 引擎循环 zd-baopu-run（:161）、
  *   `agent/GuardPipeline.kt` 工具执行 zd-baopu-tool（:63，即刀 0 预告"到时随工具线程
  *   一起登记"的那条），都有名 ＋ daemon ⇒ 对账单 27→29 处（红线 32 内）。
+ * - 2026-10-17（抱朴刀 1 真机修）：**无新增线程**；RunEngine.kt 因加 `settle()` 与 `EngineEvent.Settled`
+ *   （收尾顺序 + UI 刷新信号），zd-baopu-run 创建点 161→171 平移，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -144,7 +146,7 @@ class BareThreadGuardTest {
             "LlmClient.kt:443",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移）
             "MainActivity.kt:281",                  // zd-update-check（第㉕刀存储 SDK<30 守卫 +7 / B-补-15 白名单 KDoc +17 / B-补-19 冷启动弹框收敛 +21 / B-补-8 顶栏 +1）
             "NetSelfCheck.kt:94",                   // net-self-check-index
-            "RunEngine.kt:161",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃）
+            "RunEngine.kt:171",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复后 161→171）
             "SettingsDataActivity.kt:589",          // zd-net-check（清场批注 +1）
             "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）
             "SettingsEnvActivity.kt:268",           // zd-env-check（同上 +7）

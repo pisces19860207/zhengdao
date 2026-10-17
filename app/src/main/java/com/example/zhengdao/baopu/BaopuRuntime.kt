@@ -127,19 +127,52 @@ internal object BaopuRuntime {
         )
     }
 
-    /** 最近一个未归档会话的 id（进页面恢复用；没有 ⇒ null）。 */
+    /**
+     * 最近一个**有内容**的未归档会话的 id（进页面恢复用；没有 ⇒ null）。
+     *
+     * 为什么要 `EXISTS(message)`（2026-10-17 真机实测）：新建会话是先落 `session` 行、
+     * 之后才落 user message。若用户在"刚发出去就被杀"的窗口里死掉，库里会留下一个
+     * **空壳会话**（有 session 行、没有任何 message），而它 `updated_at` 最新 ⇒
+     * 按 updated_at 取"最近一个"就会选中空壳，重进看到"还没有对话"，
+     * 上一轮真正的对话看起来像丢了。过滤掉没有消息的会话即可。
+     */
     fun latestSessionId(db: BaopuDb): Long? = db.read { d ->
         d.rawQuery(
-            "SELECT id FROM session WHERE archived = 0 ORDER BY updated_at DESC LIMIT 1",
+            "SELECT s.id FROM session s WHERE s.archived = 0 " +
+                "AND EXISTS (SELECT 1 FROM message m WHERE m.session_id = s.id) " +
+                "ORDER BY s.updated_at DESC LIMIT 1",
             emptyArray(),
         ).use { c -> if (c.moveToFirst()) c.getLong(0) else null }
     }
 
-    /** 会话的 interrupted_step（-1 = 未中断）。 */
+    /**
+     * 本会话「中断于第 N 步」（-1 = 未中断）。
+     *
+     * **判据是推导的，不读 `session.interrupted_step`**——那个列被 `RunEngine.persistStep`
+     * 当「进度」每步都写、正常结束时**不清零**，于是"没被杀也显示中断"（2026-10-17 真机
+     * 实测：403 失败收尾后 UI 仍写「上次中断于第 1 步（进程当时被杀了）」）。
+     *
+     * 改读 `run_log` 的最后一条：本引擎每步必落一条状态，正常收尾必写 `Done`/`Aborted`
+     * （`AwaitConfirm` 也算有收尾——它是"等你确认"，不是被杀了）。所以：
+     * - 最后一条是 `Thinking`/`Acting`/`Compressing` ⇒ 跑到这一步就没再往下 ⇒ 被杀；
+     * - 最后一条是 `Done`/`Aborted`/`AwaitConfirm` ⇒ 有收尾 ⇒ 不算中断。
+     *
+     * 这样引擎侧一行不用改（A 段状态机零风险），而且**杀进程留下的痕迹天然保留**：
+     * 被杀时来不及写收尾行，最后一条就停在 Thinking/Acting。
+     */
     fun interruptedStep(db: BaopuDb, sessionId: Long): Int = db.read { d ->
         d.rawQuery(
-            "SELECT COALESCE(interrupted_step, -1) FROM session WHERE id = ?",
+            "SELECT step, state FROM run_log WHERE session_id = ? ORDER BY id DESC LIMIT 1",
             arrayOf(sessionId.toString()),
-        ).use { c -> if (c.moveToFirst()) c.getInt(0) else -1 }
+        ).use { c ->
+            if (!c.moveToFirst()) {
+                -1
+            } else {
+                when (c.getString(1) ?: "") {
+                    "Thinking", "Acting", "Compressing" -> c.getInt(0)
+                    else -> -1
+                }
+            }
+        }
     }
 }
