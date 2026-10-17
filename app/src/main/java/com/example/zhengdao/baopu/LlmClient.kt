@@ -84,11 +84,16 @@ sealed interface LlmEvent {
      *
      * [usage] = 本轮用量读数（刀 3 B 段；请求体带 `stream_options.include_usage`
      * 时服务端在流末回一帧纯 usage；没回 ⇒ null，**不报错**——派工单 B 段第 6 条）。
+     *
+     * [reasoningChars] = 本轮思考内容的总字数（刀 3 B 段 C 段；服务端没回
+     * `reasoning_content` ⇒ null）。**只有字数**：思考原文不进正文、不进历史
+     * （派工单 C 段第 10 条，判据 J9）——这里故意不带原文，想让原文也出不去。
      */
     data class Finished(
         val reason: String?,
         val toolCalls: List<RawToolCall> = emptyList(),
         val usage: LlmUsage? = null,
+        val reasoningChars: Int? = null,
     ) : LlmEvent
 
     /**
@@ -159,14 +164,21 @@ internal object LlmWire {
     )
 
     /**
-     * 请求体。三个特殊处理：
+     * 请求体。四个特殊处理：
      * 1. `system` 角色**不是消息**，要提到顶层 `system` 字段（多条合并）；
      * 2. `max_tokens` 取 [Provider.maxOutput]（刀 3 B 段：它以前只用于内部预算，
      *    根本没进请求体——输出上限全靠服务端猜）；拿不到时 OpenAI 分支回落
      *    [OPENAI_MAX_TOKENS_FALLBACK]、Anthropic 分支回落 [ANTHROPIC_MAX_TOKENS]；
      * 3. 流式时 OpenAI 兼容分支带 `stream_options.include_usage = true`（刀 3 B 段）：
      *    向服务端要用量读数，否则流末那帧纯 usage 不回。Anthropic 的用量在
-     *    `message_start`/`message_delta` 事件里天然带回，没有这个开关（③按公开文档）。
+     *    `message_start`/`message_delta` 事件里天然带回，没有这个开关（③按公开文档）；
+     * 4. OpenAI 兼容分支按 [Provider.reasoningEffort] 发 `reasoning_effort`
+     *    （刀 3 B 段 C 段）。**只发这一个字段名**——`effort` / `max_reasoning_effort`
+     *    是假字段（塞非法值仍返回 200，静默忽略；① 蓝总管实测
+     *    `D:\zd-tools\ds-effort-probe2.txt`）。provider 没声明 ⇒ 不带字段
+     *    （不替不认这个字段的通道瞎发）；脏值 ⇒ 不发（服务端对非法值 422，
+     *    [ModelParams.normalizeEffort] 过一遍）。Anthropic 的形状是 `thinking`
+     *    参数不是这个字段，且它的预设从不声明 effort ⇒ 不加。
      *
      * [tools] = 协议 A 的工具数组（`ToolRegistry.toolsJsonOpenAi/Anthropic` 产出）。
      * null/空 = 不带字段（**向后兼容刀 0b 的 15 条单测**：老调用点不传 tools）。
@@ -182,10 +194,11 @@ internal object LlmWire {
                 .put("model", p.model)
                 .put("stream", stream)
                 .put("max_tokens", p.maxOutput ?: OPENAI_MAX_TOKENS_FALLBACK)
-                // 刀 3 B 段：向服务端要用量读数（流末回一帧纯 usage）。仅流式有意义，
-                // 且仅 OpenAI 兼容分支——Anthropic 用量在事件里天然带回，没这个开关。
                 .apply {
                     if (stream) put("stream_options", JSONObject().put("include_usage", true))
+                    // 模型侧思考深度：provider 显式声明了才发（派工单「按预设发」），
+                    // 且只发 reasoning_effort 这一个字段名（假字段禁发，见 KDoc 第 4 条）
+                    ModelParams.normalizeEffort(p.reasoningEffort)?.let { put("reasoning_effort", it) }
                 }
                 .put("messages", JSONArray().also { arr ->
                     messages.forEach { m ->
@@ -376,6 +389,38 @@ internal object LlmSse {
         if (has(key)) runCatching { getInt(key) }.getOrNull() else null
 
     /**
+     * 取一帧里的**思考内容**（刀 3 B 段 C 段；没有 ⇒ null，坏 JSON 不抛）。
+     *
+     * ① DeepSeek 官方通道实测（`D:\zd-tools\ds-stream-probe.txt`：每帧 delta 同时带
+     * `content` 与 `reasoning_content`，**两个独立字段**）：OpenAI 兼容取
+     * `choices[0].delta.reasoning_content`。
+     * Anthropic（③ 按公开文档）：`content_block_delta` 且 `delta.type ==
+     * "thinking_delta"` ⇒ 取 `delta.thinking`。
+     *
+     * ⚠️ 调用方只许拿它**累计字数**（见 [LlmEvent.Finished.reasoningChars]）：
+     * 不许拼进正文、不许进对话历史——派工单 C 段第 10 条，判据 J9。
+     */
+    fun reasoningText(protocol: LlmProtocol, payload: String): String? = runCatching {
+        val json = JSONObject(payload)
+        when (protocol) {
+            LlmProtocol.OPENAI_COMPAT ->
+                json.optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("delta")?.optString("reasoning_content")
+                    ?.takeIf { it.isNotEmpty() && it != "null" }
+
+            LlmProtocol.ANTHROPIC ->
+                if (json.optString("type") == "content_block_delta") {
+                    json.optJSONObject("delta")
+                        ?.takeIf { it.optString("type") == "thinking_delta" }
+                        ?.optString("thinking")
+                        ?.takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+        }
+    }.getOrNull()
+
+    /**
      * 取一帧里的 tool_call 增量（协议 A；坏 JSON 不抛，返回空表）。
      * OpenAI 兼容：`choices[0].delta.tool_calls[]`（index/id/function.name/function.arguments）；
      * Anthropic：`content_block_start`（tool_use 的 id/name）＋ `content_block_delta`
@@ -480,9 +525,20 @@ class LlmClient(private val provider: Provider) {
 
     private val http: OkHttpClient = defaultHttp()
 
-    /** 构造请求（纯形状，不执行）。[tools] 为 null/空时不带字段（向后兼容）。 */
+    /**
+     * 构造请求（纯形状，不执行）。[tools] 为 null/空时不带字段（向后兼容）。
+     *
+     * 刀 3 B 段 C 段：思考深度**每轮现读**用户档位（[ModelParams.liveOverlay]）——
+     * 设置页改完下一轮请求体就变，不用重建引擎（进程级缓存由装配期
+     * [ModelParams.initEffort] 与设置页落盘时各刷一次）。只盖通道显式声明了
+     * effort 的：不替不认这个字段的通道瞎发。
+     */
     fun chatRequest(messages: List<LlmMessage>, tools: JSONArray? = null): Request {
-        val body = LlmWire.bodyOf(provider, messages, tools = tools).toRequestBody(LlmWire.JSON_MEDIA_TYPE)
+        val body = LlmWire.bodyOf(
+            ModelParams.liveOverlay(provider),
+            messages,
+            tools = tools,
+        ).toRequestBody(LlmWire.JSON_MEDIA_TYPE)
         return Request.Builder()
             .url(LlmWire.endpoint(provider.protocol, provider.baseUrl))
             .apply {
@@ -543,6 +599,7 @@ class LlmClient(private val provider: Provider) {
                 var usage: LlmUsage? = null
                 var stopReason: String? = null
                 var sawTerminator = false
+                var reasoningChars = 0
                 while (true) {
                     val line = source.readUtf8Line() ?: break
                     val payload = frames.line(line) ?: continue
@@ -555,20 +612,25 @@ class LlmClient(private val provider: Provider) {
                     LlmSse.usageOf(provider.protocol, payload)?.let {
                         usage = LlmSse.mergeUsage(usage, it)
                     }
+                    // 思考内容只数字数（刀 3 B 段 C 段：不进正文不进历史，J9）。
+                    // 0 字（没回过 reasoning）⇒ 报 null 不报 0——「没想」与「想了 0 字」
+                    // 在这条读数上没有区别的必要，但 null 的语义更诚实。
+                    LlmSse.reasoningText(provider.protocol, payload)?.let { reasoningChars += it.length }
                     val reason = LlmSse.finishReason(provider.protocol, payload)
                     // 首个 finish_reason 赢：Anthropic 的 message_delta（end_turn）之后
                     // 还有 message_stop（stop），后者不许覆盖前者（刀 0 口径延续）。
                     if (reason != null && stopReason == null) stopReason = reason
                 }
+                val chars = reasoningChars.takeIf { it > 0 }
                 when {
                     // 见到过完成标记 ⇒ 正常结束（usage 有就带上；没有 ⇒ null，不报错）
                     stopReason != null ->
-                        sink(LlmEvent.Finished(stopReason, toolCalls.finish(), usage))
+                        sink(LlmEvent.Finished(stopReason, toolCalls.finish(), usage, chars))
 
                     // 只有 [DONE]、没有 finish_reason 帧 ⇒ 按老口径当 stop
                     // （部分兼容通道不发 finish_reason，刀 0 起就是这么容的）
                     sawTerminator ->
-                        sink(LlmEvent.Finished("stop", toolCalls.finish(), usage))
+                        sink(LlmEvent.Finished("stop", toolCalls.finish(), usage, chars))
 
                     // 流在完成标记前就结束了 = 截断。**不报告成功**——
                     // "看着成功其实没有"是本项目最反感的事故形态（E-020/E-045/E-054 同款）。

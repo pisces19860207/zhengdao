@@ -64,7 +64,9 @@ data class Provider(
      * （none/low/high/max 四档；服务端另有 minimal/medium/xhigh/ultra，原样放行）。
      *
      * null = 没配 ⇒ 请求体不带该字段，服务端按自己的默认（DeepSeek 为 high）。
-     * [BaopuRuntime] 装配时会把设置页的四档选择盖到这个字段上（每轮生效）。
+     * 设置页的四档选择每轮盖到这个字段上（[ModelParams.liveOverlay]：LlmClient
+     * 发请求前最后一刻现读进程级缓存 ⇒ 改完下一轮生效，不用重建引擎）；
+     * 只盖**声明了** effort 的通道（见 [ModelParams] KDoc 三个默认 high 的分界）。
      *
      * ⚠️ 只发 `reasoning_effort` 这一个字段名：`effort` / `max_reasoning_effort`
      * 是**假字段**（塞非法值仍返回 200，静默忽略——2026-10-17 蓝总管实测
