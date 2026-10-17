@@ -499,6 +499,63 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             }
         }
 
+        // ── 模型参数（刀 3 B 段 · 第十四批 J12：只读展示，不许编数）──
+        // 定位：当前通道向服务端声明的两个硬参数。没声明 ⇒ 「未声明」——
+        // **不许显示 0 或 128000**：0 是「确实是 0」、128000 是已作废的旧回退值，
+        // 两种都是编数（派工单 J12 原话级）。
+        SectionCard(stringResource(R.string.baopu_params_card)) {
+            val summary = remember {
+                com.example.zhengdao.baopu.ModelParams.summaryOf(
+                    com.example.zhengdao.baopu.BaopuRuntime.provider(ctx),
+                )
+            }
+            InfoRow(
+                stringResource(R.string.baopu_params_window),
+                summary.window ?: stringResource(R.string.baopu_params_undeclared),
+            )
+            InfoRow(
+                stringResource(R.string.baopu_params_max_output),
+                summary.maxOutput ?: stringResource(R.string.baopu_params_undeclared),
+            )
+        }
+
+        // ── 思考深度（刀 3 B 段 · 第十四批 C 段：关/低/高/最高 四档）──
+        // 两条口径（派工单原话级）：
+        // 1. 改完**下一轮**生效——LlmClient 每轮现读档位，不用重建任何东西；
+        // 2. 只对「声明了 effort」的通道有实效（DeepSeek 预设声明了；其余通道
+        //    不瞎发这个字段，选了也不发——见 ModelParams KDoc 的分界）。
+        SectionCard(stringResource(R.string.baopu_effort_card)) {
+            val provider = com.example.zhengdao.baopu.BaopuRuntime.provider(ctx)
+            var effortId by remember {
+                mutableStateOf(
+                    com.example.zhengdao.baopu.ModelParams.uiEffort(
+                        com.example.zhengdao.baopu.ModelParams.storedEffort(ctx),
+                        provider.reasoningEffort,
+                    ),
+                )
+            }
+            Text(
+                text = stringResource(R.string.baopu_effort_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                com.example.zhengdao.baopu.ModelParams.EFFORT_LEVELS.forEach { level ->
+                    FilterChip2(
+                        label = stringResource(effortLabel(level)),
+                        selected = level == effortId,
+                    ) {
+                        effortId = level
+                        com.example.zhengdao.baopu.ModelParams.saveEffort(ctx, level)
+                    }
+                }
+            }
+        }
+
         if (kbHelpOpen) {
             KnowledgeBaseHelpDialog(ctx) { kbHelpOpen = false }
         }
@@ -819,6 +876,18 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "edit_file" -> R.string.baopu_tool_edit_file
     "move_path" -> R.string.baopu_tool_move_path
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
+}
+
+/**
+ * 思考深度四档的标签（刀 3 B 段 C 段；与 [com.example.zhengdao.baopu.ModelParams.EFFORT_LEVELS] 一一对应）。
+ * 同 baopuToolLabel 的理由：ModelParams 在 baopu 包（零 Android 依赖），R 引用不能进那里。
+ */
+private fun effortLabel(level: String): Int = when (level) {
+    com.example.zhengdao.baopu.ModelParams.EFFORT_NONE -> R.string.baopu_effort_none
+    com.example.zhengdao.baopu.ModelParams.EFFORT_LOW -> R.string.baopu_effort_low
+    com.example.zhengdao.baopu.ModelParams.EFFORT_HIGH -> R.string.baopu_effort_high
+    com.example.zhengdao.baopu.ModelParams.EFFORT_MAX -> R.string.baopu_effort_max
+    else -> throw IllegalArgumentException("未知思考档位「$level」：四档映射漏了，请补 effortLabel")
 }
 
 /** 抱朴工具的开关副标题（同上，双语走 strings.xml）。 */

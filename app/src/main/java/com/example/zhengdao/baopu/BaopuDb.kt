@@ -311,6 +311,39 @@ internal object BaopuSql {
         ),
     )
 
+    /**
+     * 把一轮的用量读数更新进 run_log（刀 3 B 段；[usage] 为 null 或五列全空
+     * ⇒ 返回 null，调用方跳过——「没测到不编数」，不写半行空话）。
+     *
+     * 目标行 = 该 (session, step) 的**最新一行**（`MAX(id)`）：引擎的写入顺序是
+     * Thinking 行先落（模型轮次前）、Acting 行后落（工具执行前）⇒ 本语句必须在
+     * 同 step 的 Acting 行插入**之前**调，否则更到的是 Acting 行。这条调用时序
+     * SQL 自己看不出来，记在 KDoc 里（引擎侧接线归第十二批 A 段：第十四批
+     * 禁改 agent 包——工具与护栏本单零改动）。
+     *
+     * 「只 SET 有读数的列」是有意的：`tokens_in`/`tokens_out` 是 NOT NULL 列
+     * （insert 时写 0），绑 NULL 会炸约束；取不到就不动那一列。cache 两列与
+     * reasoning 列可空（绑 SQL NULL 也合法）——两种列型两种处理，不混。
+     */
+    fun updateRunLogUsage(sessionId: Long, step: Int, usage: LlmUsage?): Stmt? {
+        if (usage == null) return null
+        val sets = ArrayList<String>(5)
+        val args = ArrayList<String?>(7)
+        usage.promptTokens?.let { sets += "tokens_in = ?"; args += it.toString() }
+        usage.completionTokens?.let { sets += "tokens_out = ?"; args += it.toString() }
+        usage.reasoningTokens?.let { sets += "reasoning_tokens = ?"; args += it.toString() }
+        usage.cacheHitTokens?.let { sets += "cache_hit_tokens = ?"; args += it.toString() }
+        usage.cacheMissTokens?.let { sets += "cache_miss_tokens = ?"; args += it.toString() }
+        if (sets.isEmpty()) return null
+        args += sessionId.toString()
+        args += step.toString()
+        return Stmt(
+            "UPDATE run_log SET " + sets.joinToString(", ") +
+                " WHERE id = (SELECT MAX(id) FROM run_log WHERE session_id = ? AND step = ?)",
+            args.toTypedArray(),
+        )
+    }
+
     /** 提案批：proposalId 必须为 null（CHECK 约束会拦 ops 形态）。 */
     fun insertProposalBatch(sessionId: Long, opsJson: String, expiresAt: Long, createdAt: Long): Stmt =
         Stmt(
@@ -404,11 +437,28 @@ internal object BaopuSql {
     val RUN_LOG_CACHE_COLUMNS = listOf("cache_hit_tokens", "cache_miss_tokens")
 
     /**
+     * run_log v4 新增的思考用量列（刀 3 B 段 · 第十四批 B 段第 5 条）：
+     * `reasoning_tokens`——模型侧思考烧掉的 token（① DeepSeek 实测
+     * `completion_tokens_details.reasoning_tokens`）。可空：没读到就不写，
+     * 与 cache 两列同口径（0 = 确定没思考，null = 没测到，两回事）。
+     */
+    val RUN_LOG_REASONING_COLUMNS = listOf("reasoning_tokens")
+
+    /**
      * run_log 缓存列的加列语句（**纯函数**：缺哪列给哪条 ALTER，幂等）。
      * 与 [sessionInterruptedStepStmt] 同一房型——SQLite 没有 ADD COLUMN IF NOT EXISTS。
      */
     fun runLogCacheColumnsStmt(existingColumns: List<String>): List<Stmt> =
         RUN_LOG_CACHE_COLUMNS
+            .filterNot { col -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { col -> Stmt("ALTER TABLE run_log ADD COLUMN " + col + " INTEGER", emptyArray()) }
+
+    /**
+     * run_log 思考列的加列语句（v4 · 纯函数：缺列才给 ALTER，幂等）。
+     * 与 [runLogCacheColumnsStmt] 同一房型（先看列况再动，重跑迁移不炸）。
+     */
+    fun runLogReasoningColumnsStmt(existingColumns: List<String>): List<Stmt> =
+        RUN_LOG_REASONING_COLUMNS
             .filterNot { col -> existingColumns.any { it.equals(col, ignoreCase = true) } }
             .map { col -> Stmt("ALTER TABLE run_log ADD COLUMN " + col + " INTEGER", emptyArray()) }
 
@@ -427,7 +477,7 @@ internal object BaopuSql {
 }
 
 /**
- * 抱朴数据库（刀 0 骨架 · 刀 0b v2 迁移 · 刀 2 v3 迁移）。
+ * 抱朴数据库（刀 0 骨架 · 刀 0b v2 迁移 · 刀 2 v3 迁移 · 刀 3 B 段 v4 迁移）。
  *
  * ## 三个不可动摇的点
  * 1. **单写者线程**（[writer]，`zd-baopu-db`，daemon）：一切写走 [write] 的 Future，
@@ -437,9 +487,9 @@ internal object BaopuSql {
  *    放 onCreate 只对建库那一个连接生效，之后的连接全是关的——级联删除会静默失效。
  *    这是 SQLite 最经典的坑之一。
  * 3. **迁移必须真迁移**：v1→v2 建 memory 表 ＋ 给 session 加 `interrupted_step` 列，
- *    v2→v3 建资料库两表（`library_item`/`library_move_log`），全部幂等
- *    （`IF NOT EXISTS` / 先看列再加）；v1 库为空也不丢表。**没有路径的
- *    迁移必须炸**——静默按新 schema 跑在旧库上比崩掉糟糕得多。
+ *    v2→v3 建资料库两表（`library_item`/`library_move_log`），v3→v4 给 run_log 加
+ *    `reasoning_tokens` 列，全部幂等（`IF NOT EXISTS` / 先看列再加）；v1 库为空也不丢表。
+ *    **没有路径的迁移必须炸**——静默按新 schema 跑在旧库上比崩掉糟糕得多。
  *
  * ## 文件落点（刀 0b 按派工单 §4.3 对齐设计）
  * 落 `filesDir/baopu/baopu.db`（设计 §9 原文）：显式建父目录后传**绝对路径**。
@@ -475,6 +525,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.DDL_V1.forEach { db.execSQL(it) }
         applyV2Migration(db)
         applyV3Migration(db)
+        applyV4Migration(db)
     }
 
     /**
@@ -496,6 +547,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
         if (oldVersion < 2) applyV2Migration(db)
         if (oldVersion < 3) applyV3Migration(db)
+        if (oldVersion < 4) applyV4Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -521,6 +573,18 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.CHAPTER_INDEX_DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v3 → v4 迁移体（刀 3 B 段）：run_log 加 `reasoning_tokens` 列（思考用量）。
+     * 加列走「先看列况再动」的纯函数 ⇒ 幂等，重复跑不炸；v3 库升级与新安装
+     * 走同一条路径（onCreate 也调它）。
+     */
+    private fun applyV4Migration(db: SQLiteDatabase) {
+        val runLogCols = tableColumns(db, "run_log")
+        BaopuSql.runLogReasoningColumnsStmt(runLogCols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -544,8 +608,8 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     companion object {
         const val DB_NAME = "baopu.db"
 
-        /** v3（刀 2）：加资料库两表 `library_item`/`library_move_log`。v2 = 刀 0b memory。 */
-        const val VERSION = 3
+        /** v4（刀 3 B 段）：run_log 加 `reasoning_tokens` 列（思考用量）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。 */
+        const val VERSION = 4
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
