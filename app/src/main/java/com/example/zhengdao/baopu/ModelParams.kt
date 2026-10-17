@@ -25,7 +25,8 @@ import java.util.Locale
  * 2. DeepSeek 预设自带 `reasoningEffort = "high"`（服务端默认也是 high）；
  * 3. 请求体只在 provider **显式声明**了 effort 时才发 `reasoning_effort`
  *    （派工单原话「按预设发」）——不替不认这个字段的通道瞎发（OpenAI 的
- *    gpt-4o-mini 会 400），这是与「无脑永远发 high」的分界线。
+ *    gpt-4o-mini 会 400），这是与「无脑永远发 high」的分界线。用户选过的
+ *    档位经 [effortOverlay] 盖在声明之上（盖完才进请求体）。
  */
 internal object ModelParams {
 
@@ -63,6 +64,41 @@ internal object ModelParams {
     fun uiEffort(stored: String?, providerEffort: String?): String =
         normalizeEffort(stored) ?: normalizeEffort(providerEffort) ?: DEFAULT_EFFORT
 
+    // ── 用户档位盖到通道上（纯函数 + 进程级缓存壳） ─────────────────────────
+
+    /**
+     * 把用户选过的档位盖到 provider 上（**纯函数**，JVM 直测）。
+     *
+     * 两条闸门（与「无脑永远发」的分界线）：
+     * 1. 通道**显式声明了** effort 才盖（[Provider.reasoningEffort] 非 null）——
+     *    不替不认这个字段的通道瞎发（OpenAI 的 gpt-4o-mini 之流）；
+     * 2. 用户没选过（stored 为 null）⇒ 原样返回，用通道自己的声明。
+     */
+    fun effortOverlay(p: Provider, stored: String?): Provider {
+        if (p.reasoningEffort == null || stored == null) return p
+        val v = normalizeEffort(stored) ?: return p
+        return p.copy(reasoningEffort = v)
+    }
+
+    /**
+     * 进程级缓存（薄壳）：用户档位的**活的**一份——设置页落盘时同刷，
+     * 装配期（[BaopuRuntime.build] 首台引擎）从 SP 预热一次 ⇒ 跨会话也生效。
+     * 为什么要有它：RunEngine 的 provider 是构造期注入的（agent 包禁改），
+     * 档位要想「改完下一轮就生效、不用重建引擎」，只能在请求发出前最后一刻
+     * （[LlmClient.chatRequest]）现读——与工具开关「热的」同款思路
+     * （BaopuToolPrefs 单例先例）。
+     */
+    @Volatile
+    private var liveEffort: String? = null
+
+    /** 装配期预热（进程级一次；之后每次保存由 [saveEffort] 同刷）。 */
+    fun initEffort(context: Context) {
+        liveEffort = storedEffort(context)
+    }
+
+    /** 请求发出前的最后一盖（LlmClient 每轮调；JVM 单测里缓存为空 ⇒ 恒等，不扰测试）。 */
+    fun liveOverlay(p: Provider): Provider = effortOverlay(p, liveEffort)
+
     // ── SP 薄壳（用户选过的思考深度；没选过 = 没有这个键） ─────────────────
 
     private const val FILE = "zhengdao-baopu-model-params"
@@ -79,6 +115,8 @@ internal object ModelParams {
     fun saveEffort(context: Context, effort: String) {
         val v = normalizeEffort(effort) ?: DEFAULT_EFFORT
         prefs(context).edit().putString(KEY_EFFORT, v).apply()
+        // 进程级缓存同刷：下一轮请求体就变（不用重建引擎——派工单 C 段第 9 条）
+        liveEffort = v
     }
 
     // ── 参数摘要（第十二批追加一 §11.3 / 第十四批 J12：只读展示，不许编数） ──

@@ -366,6 +366,98 @@ class LlmClientTest {
         )
     }
 
+    // ── reasoning_effort 与 reasoning_content（刀 3 B 段 C 段 · J7/J8/J9） ──
+
+    @Test
+    fun `J7_四档effort按声明进请求体_没声明不带字段_脏值不发`() {
+        // 四档映射：界面值 = 服务端值，一字不差（① DeepSeek 实测 8 档枚举）
+        listOf("none", "low", "high", "max").forEach { level ->
+            val body = bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT).copy(reasoningEffort = level))
+            assertEquals(level, body.getString("reasoning_effort"))
+        }
+        // DeepSeek 预设自带 high（服务端默认也是 high）
+        assertEquals("high", bodyJson(Providers.DEEPSEEK).getString("reasoning_effort"))
+        // 没声明 ⇒ 不带字段（不替不认这个字段的通道瞎发——ModelParams KDoc 分界）
+        assertFalse(bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT)).has("reasoning_effort"))
+        // Anthropic 的形状是 thinking 参数不是这个字段，且预设从不声明 ⇒ 不发
+        assertFalse(bodyJson(providerWith(LlmProtocol.ANTHROPIC)).has("reasoning_effort"))
+        // 脏值不发（服务端对非法值 422 并把枚举报回来）
+        assertFalse(
+            bodyJson(providerWith(LlmProtocol.OPENAI_COMPAT).copy(reasoningEffort = "banana"))
+                .has("reasoning_effort"),
+        )
+    }
+
+    @Test
+    fun `J8_请求体不含effort与max_reasoning_effort两个假字段`() {
+        val body = bodyJson(Providers.DEEPSEEK)
+        assertFalse(body.has("effort"))
+        assertFalse(body.has("max_reasoning_effort"))
+        // 与 J7 互为一面：真的发了、假的没发（假字段塞 banana 也返回 200，静默忽略）
+        assertTrue(body.has("reasoning_effort"))
+    }
+
+    @Test
+    fun `J9_reasoning_content只累计字数_不进正文`() {
+        server.enqueue(
+            sse(
+                // ① DeepSeek 实测形状：content 与 reasoning_content 同帧、两个独立字段
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"答案是 42\",\"reasoning_content\":\"先想想\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"。\",\"reasoning_content\":\"再想想\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                    "data: [DONE]\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        val text = events.filterIsInstance<LlmEvent.Delta>().joinToString("") { it.text }
+        // 正文只有 content；思考原文一个字都不许进来（不进正文、不进历史）
+        assertEquals("答案是 42。", text)
+        assertFalse(text.contains("先想想"))
+        // 只累计字数：「先想想」3 + 「再想想」3 = 6
+        assertEquals(6, (events.last() as LlmEvent.Finished).reasoningChars)
+    }
+
+    @Test
+    fun `J9b_没有reasoning_content的流_reasoningChars为null`() {
+        server.enqueue(
+            sse(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"普通回复\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                    "data: [DONE]\n\n",
+            ),
+        )
+        val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
+        assertNull((events.last() as LlmEvent.Finished).reasoningChars)
+    }
+
+    @Test
+    fun `reasoningText解析_两种协议_坏JSON不抛`() {
+        assertEquals(
+            "先想想",
+            LlmSse.reasoningText(
+                LlmProtocol.OPENAI_COMPAT,
+                "{\"choices\":[{\"delta\":{\"content\":\"x\",\"reasoning_content\":\"先想想\"}}]}",
+            ),
+        )
+        assertNull(LlmSse.reasoningText(LlmProtocol.OPENAI_COMPAT, "{\"choices\":[{\"delta\":{\"content\":\"x\"}}]}"))
+        assertNull(LlmSse.reasoningText(LlmProtocol.OPENAI_COMPAT, "{坏"))
+        // Anthropic 的思考在 thinking_delta 里（③ 按公开文档）
+        assertEquals(
+            "hmm",
+            LlmSse.reasoningText(
+                LlmProtocol.ANTHROPIC,
+                "{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"hmm\"}}",
+            ),
+        )
+        // text_delta 是正文不是思考（别把正文当思考数字数）
+        assertNull(
+            LlmSse.reasoningText(
+                LlmProtocol.ANTHROPIC,
+                "{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hmm\"}}",
+            ),
+        )
+    }
+
     // ── 失败路径 ──────────────────────────────────────────────────────────
 
     @Test

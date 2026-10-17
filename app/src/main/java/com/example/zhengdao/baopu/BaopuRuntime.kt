@@ -223,6 +223,11 @@ internal object BaopuRuntime {
         }
 
     private fun build(appCtx: Context): RunEngine {
+        // 刀 3 B 段 C 段：预热思考深度的进程级缓存（SP ⇒ liveEffort）——
+        // 设置页落盘时也会同刷（ModelParams.saveEffort），这里管的是「跨会话」
+        // （上轮选过「低」，这轮直接进抱朴页也要生效，不必先去设置页逛一圈）。
+        // 档位真正盖到 provider 上是在 LlmClient 发请求前（每轮现读）。
+        ModelParams.initEffort(appCtx)
         val provider = provider(appCtx)
         val reg = registry(appCtx, provider)
         val pipeline = GuardPipeline(reg, { workspaceRoot(appCtx) })

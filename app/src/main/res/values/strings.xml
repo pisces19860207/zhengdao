@@ -960,6 +960,27 @@
     <string name="baopu_tool_edit_file_desc">只改文件的某几行（替换、插入、追加），不用整篇重写；写前自动备份到 .baopu-bak。没有删除能力。</string>
     <string name="baopu_tool_move_path">搬文件</string>
     <string name="baopu_tool_move_path_desc">在资料库里搬动或给文件改名；同盘直接搬，跨盘只复制、把源记进「资料库/整理/_待删除清单.md」，不自动删。撞名自动加后缀让路。</string>
+    <!-- ── 抱朴确认卡（刀 3 · A 段；写工具通电的唯一入口）── -->
+    <string name="baopu_confirm_title">要动文件：%1$s</string>
+    <string name="baopu_confirm_hint">批准后文件真的会被改动（写前会自动备份）；拒绝就跳过这个动作，对话继续。</string>
+    <string name="baopu_confirm_approve">批准</string>
+    <string name="baopu_confirm_reject">拒绝</string>
+    <string name="baopu_confirm_running">执行中…</string>
+    <string name="baopu_confirm_approve_desc">批准这个动作，允许抱朴改动文件</string>
+    <string name="baopu_confirm_reject_desc">拒绝这个动作，文件不会被改动</string>
+    <string name="baopu_confirm_timeout">等了 15 分钟没收到批准，本轮先停</string>
+    <!-- ── 抱朴思考深度（刀 3 · B 段；设置 → 终端与资料）── -->
+    <string name="baopu_effort_card">思考深度</string>
+    <string name="baopu_effort_desc">模型每一步想多深。机械活选低、复杂整理选最高；关掉省 token 但复杂任务会变笨。改完下一轮就生效，不用重建任何东西。</string>
+    <string name="baopu_effort_none">关</string>
+    <string name="baopu_effort_low">低</string>
+    <string name="baopu_effort_high">高</string>
+    <string name="baopu_effort_max">最高</string>
+    <!-- ── 抱朴模型参数只读行（刀 3 · B 段；第十四批 J12：没声明不许显示 0 或 128000）── -->
+    <string name="baopu_params_card">模型参数</string>
+    <string name="baopu_params_window">上下文窗口</string>
+    <string name="baopu_params_max_output">输出上限</string>
+    <string name="baopu_params_undeclared">未声明</string>
     <!-- ── 静态快捷方式（刀 2 · D 段第 1 条；标签 ≤10 字）── -->
     <string name="baopu_shortcut_backup">备份原件</string>
     <string name="baopu_shortcut_backup_long">备份抱朴库里的原件</string>
