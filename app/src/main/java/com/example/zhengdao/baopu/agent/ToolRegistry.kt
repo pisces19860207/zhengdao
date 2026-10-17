@@ -288,28 +288,37 @@ internal object BaopuToolCatalog {
     )
 
     /**
-     * 默认启用集合（read_file / list_dir / search_in_files / file_info / write_file 全默认开；
-     * 工具补强刀加 edit_file / move_path，同样默认开——两者都是 CONFIRM，够不着「静默动手」）。
+     * 默认启用集合。
+     *
+     * 全部默认开：读类（read_file / list_dir / search_in_files / find_files / book_outline /
+     * file_info）只读不改；写类（write_file / edit_file / move_path / convert_encoding）全是
+     * CONFIRM，够不着「静默动手」——真要防，用户自己在设置里关。
      */
     val DEFAULT_ENABLED: Set<String> = setOf(
         "read_file",
         "list_dir",
         "search_in_files",
+        "find_files",
+        "book_outline",
         "file_info",
         "write_file",
         "edit_file",
         "move_path",
+        "convert_encoding",
     )
 
-    /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好）。 */
+    /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
     val ENTRIES: List<Entry> = listOf(
         Entry("read_file") { ReadFileTool.spec() },
         Entry("list_dir") { ListDirTool.spec() },
         Entry("search_in_files") { SearchInFilesTool.spec(it) },
+        Entry("find_files") { FindFilesTool.spec(it) },
+        Entry("book_outline") { BookOutlineTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },
         Entry("edit_file") { EditFileTool.spec(it) },
         Entry("move_path") { MovePathTool.spec(it) },
+        Entry("convert_encoding") { ConvertEncodingTool.spec(it) },
     )
 
     /**
