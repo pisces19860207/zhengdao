@@ -46,6 +46,9 @@ internal class BaopuChatController(context: Context) {
     private val engine = BaopuRuntime.engine(appCtx)
     private val store: MemoryStore = BaopuRuntime.memoryStore(appCtx)
 
+    /** UI 线程 Handler：引擎事件从后台线程来，统一 post 回主线程再刷（见 [onEngineEvent]）。 */
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
     /** 当前会话（null = 还没有；首次发送时建）。 */
     var sessionId by mutableStateOf(BaopuRuntime.latestSessionId(db))
         private set
@@ -125,21 +128,52 @@ internal class BaopuChatController(context: Context) {
 
     // ── 内部 ──────────────────────────────────────────────────────────────
 
-    private fun onEngineEvent(ev: EngineEvent) {
-        when (ev) {
-            is EngineEvent.MessagePersisted -> refresh()
-            is EngineEvent.ToolCallVisible -> refresh()
-            is EngineEvent.AskUser -> refresh()
+    /**
+     * 引擎事件一律**回到主线程**再刷新。
+     *
+     * 为什么（2026-10-17 真机两次实测对比）：引擎事件是从 `zd-baopu-run` 后台线程发的，
+     * 在后台线程直接写 Compose 的 `mutableStateOf`（messages / interruptedStep）时，
+     * 界面**有时**跟着变、有时不变——"续跑完了中断红字还挂着"就是这么来的。
+     * 主线程里读库 + 写状态才稳定（同第㊳刀「View.post 对未 attach 的 View 无限期推迟」的教训：
+     * 跨线程的界面更新要显式回到主线程，别指望别人替你切）。
+     */
+    private fun onEngineEvent(@Suppress("UNUSED_PARAMETER") ev: EngineEvent) {
+        // `Settled` 是"本轮彻底结束"的权威信号（引擎在释放单活跃门之后才发）⇒ 强制重算中断标记，
+        // 不再靠 `runningNow()` 去猜（真机上猜错过一次：正常完成的会话红字挂着不下来）。
+        val force = ev is EngineEvent.Settled
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            refresh(force)
+        } else {
+            main.post { refresh(force) }
         }
     }
 
-    /** 重读消息列表 ＋ 中断标记 ＋ 记忆候选（一次 db 读，不逐事件逐表）。 */
-    fun refresh() {
+    /**
+     * 重读消息列表 ＋ 中断标记 ＋ 记忆候选（一次 db 读，不逐事件逐表）。
+     *
+     * @param force true = 不看"在不在跑"，直接重算中断标记（[EngineEvent.Settled] 专用）
+     */
+    fun refresh(force: Boolean = false) {
         val sid = sessionId
         messages = if (sid == null) emptyList() else readMessages(sid)
-        interruptedStep = if (sid == null) -1 else BaopuRuntime.interruptedStep(db, sid)
+        // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
+        // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
+        //    "正在思考"误读成"被杀了"——所以运行中跳过；
+        // ② 判"在不在跑"**不能看 `engine.state`**：那是后台线程写的 Compose State，
+        //    主线程读到的可能是旧值（本次实测读到过 DONE），于是运行中照样重算并误报。
+        //    改用 `ActiveSessionGate`（AtomicReference，跨线程立即可见）——它在整个
+        //    循环期间被持有，收尾 finally 里才释放，正是"本轮还没结束"的真值。
+        // 收尾那一下引擎会发 `EngineEvent.Settled`，带着 `force = true` 过来，因此
+        // "跑完了红字还不下来"这种情况不可能再出现（不依赖上面那个判据的对错）。
+        if (force || !runningNow()) {
+            interruptedStep = if (sid == null) -1 else BaopuRuntime.interruptedStep(db, sid)
+        }
         refreshMemory()
     }
+
+    /** 本轮是否还在跑（单活跃门的持有即"在跑"）。 */
+    private fun runningNow(): Boolean =
+        com.example.zhengdao.baopu.agent.ActiveSessionGate.current() != null
 
     private fun refreshMemory() {
         memoryCandidates = store.loadAll().filter { it.status == MemoryStatus.CANDIDATE }

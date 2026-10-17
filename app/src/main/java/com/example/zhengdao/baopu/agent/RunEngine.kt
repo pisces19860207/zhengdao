@@ -108,6 +108,16 @@ sealed interface EngineEvent {
 
     /** 需要人看一眼（停下问人 / 熔断 / 步数耗尽——都是"可报告地失败"）。 */
     data class AskUser(val message: String) : EngineEvent
+
+    /**
+     * 本轮彻底收尾（单活跃门**已释放**、`run_log` 收尾行**已落库**）：UI 该重读一次库。
+     *
+     * 为什么必须单独有这一条（2026-10-17 真机实测）：收尾那一下如果没人通知 UI，
+     * 界面就会一直停在"运行中最后一次刷新"的值上——正常完成的会话仍显示
+     * 「上次中断于第 N 步（进程当时被杀了）」。判据本身没错（`run_log` 最后一条是
+     * `Done` 就算没中断），错在**没人去重算**。
+     */
+    data object Settled : EngineEvent
 }
 
 /**
@@ -193,6 +203,7 @@ internal class RunEngine(
                 _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
             } finally {
                 ActiveSessionGate.release("id:$sessionId")
+                onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记（见 Settled 的说明）
             }
         }
     }
@@ -220,6 +231,7 @@ internal class RunEngine(
                 _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
             } finally {
                 ActiveSessionGate.release("id:$sessionId")
+                onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记
             }
         }
     }
@@ -321,8 +333,7 @@ internal class RunEngine(
                         HistoryMessage.ROLE_ASSISTANT,
                         outcome.text,
                     )
-                    _state.value = RunState.DONE
-                    persistStep(sessionId, stepCount, "Done")
+                    settle(sessionId, stepCount, RunState.DONE, "Done")
                     return
                 }
 
@@ -340,8 +351,7 @@ internal class RunEngine(
                     var terminateRound = false
                     for (call in outcome.calls) {
                         if (stopRequested) {
-                            _state.value = RunState.ABORTED
-                            persistStep(sessionId, stepCount, "Aborted")
+                            settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
                             return
                         }
                         val result = pipeline.execute(call) { name, text ->
@@ -375,9 +385,8 @@ internal class RunEngine(
                                 if (RunRules.shouldAskUser(consecutiveToolFailures)) {
                                     val msg = "工具连续失败 ${consecutiveToolFailures} 次，已停下。" +
                                         "换个说法或换个文件再试（不许硬试）。"
-                                    _state.value = RunState.ABORTED
                                     _notice.value = msg
-                                    persistStep(sessionId, stepCount, "Aborted")
+                                    settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
                                     onEvent?.invoke(EngineEvent.AskUser(msg))
                                     return
                                 }
@@ -399,8 +408,7 @@ internal class RunEngine(
 
                             is GuardPipeline.Result.NeedsConfirm -> {
                                 // AwaitConfirm 最小骨架（PCE 三段式归刀 2）：状态在、迁移在
-                                _state.value = RunState.AWAIT_CONFIRM
-                                persistStep(sessionId, stepCount, "AwaitConfirm")
+                                settle(sessionId, stepCount, RunState.AWAIT_CONFIRM, "AwaitConfirm")
                                 onEvent?.invoke(
                                     EngineEvent.AskUser(
                                         "有待确认的动作（${result.call.name}）：确认制归下一刀，本刀先停下。",
@@ -415,14 +423,16 @@ internal class RunEngine(
 
                 is RoundOutcome.Failed -> {
                     consecutiveChannelFailures++
-                    _notice.value = "模型调用失败：${outcome.userFacing}（原文已记日志）"
+                    // 人话已在 humanizeNetFailure 里拼好（含「原文已记日志」），这里不再套一层
+                    // —— 原先写成"模型调用失败：${userFacing}（原文已记日志）"，
+                    // 真机实测显示成「模型调用失败：模型调用失败（原文已记日志）（原文已记日志）」。
+                    _notice.value = outcome.userFacing
                     if (RunRules.shouldBreakChannel(consecutiveChannelFailures)) {
                         channelBroken = true
                         _notice.value = "当前通道连续失败 ${consecutiveChannelFailures} 次，已熔断：" +
                             "换一个 provider 再试（不是每次错误各自退避）。"
                     }
-                    _state.value = RunState.ABORTED
-                    persistStep(sessionId, stepCount, "Aborted")
+                    settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
                     onEvent?.invoke(EngineEvent.AskUser(_notice.value!!))
                     return
                 }
@@ -431,16 +441,14 @@ internal class RunEngine(
             // ── 步数刹车：16 步必停 ──
             if (RunRules.isStepExhausted(stepCount)) {
                 val msg = "已到 ${RunRules.MAX_STEPS} 步上限，停下。继续说「继续」会重新计步。"
-                _state.value = RunState.DONE
                 _notice.value = msg
-                persistStep(sessionId, stepCount, "Done")
+                settle(sessionId, stepCount, RunState.DONE, "Done")
                 onEvent?.invoke(EngineEvent.AskUser(msg))
                 return
             }
         }
         // 用户停止
-        _state.value = RunState.ABORTED
-        persistStep(sessionId, stepCount, "Aborted")
+        settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
     }
 
     /** 组装（薄封装：调 0b 的唯一出口；本引擎不私拼——判据 1）。 */
@@ -526,6 +534,22 @@ internal class RunEngine(
     }
 
     // ── 落库（每步一次事务） ──────────────────────────────────────────────
+
+    /**
+     * 收尾一步：**先落库、再切状态**（顺序不能反）。
+     *
+     * 为什么：UI 收到收尾事件时会重算「中断于第 N 步」，判据是 `run_log` 的最后一条
+     * （见 `BaopuRuntime.interruptedStep`）。若先把状态切成 DONE/ABORTED、再去落
+     * `Done`/`Aborted` 行，中间那一瞬 UI 会看到「状态已结束、最后一条还是 Acting」
+     * ⇒ 把一轮**正常完成**显示成「上次中断于第 N 步（进程当时被杀了）」。
+     * 2026-10-17 真机实测踩到（一轮 3 步正常完成后显示「中断于第 3 步」）。
+     *
+     * 反过来被杀时走不到这里 ⇒ `run_log` 最后一条停在 Thinking/Acting ⇒ 判为中断（判据 6）。
+     */
+    private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String) {
+        persistStep(sessionId, step, runLogState)
+        _state.value = state
+    }
 
     /** 步迁移 = 一次事务（session.interrupted_step + updated_at + run_log）。 */
     private fun persistStep(sessionId: Long, step: Int, state: String) {
@@ -645,14 +669,14 @@ internal class RunEngine(
         }
     }
 
-    /** 标「中断于第 N 步」（重进时；interrupted_step 落库，UI 与续跑共用这一个数）。 */
+    /**
+     * 标「中断于第 N 步」（续跑时）。
+     *
+     * **不再往 `notice` 里写一遍**：会话头已经有红字「上次中断于第 N 步（进程当时被杀了）」
+     * ＋「续跑」按钮，两条同时出现就是同一句话说两遍（2026-10-17 真机实测）。
+     */
     private fun markInterrupted(sessionId: Long, interruptedStepValue: Int) {
         _interruptedStep.value = interruptedStepValue
-        _notice.value = if (interruptedStepValue >= 0) {
-            "这个会话中断于第 $interruptedStepValue 步（进程当时被杀了）——点「续跑」从那里接着来。"
-        } else {
-            null
-        }
     }
 
     /** 续跑起点 = 落库的 interrupted_step（没有就从 0 起）。 */
