@@ -852,11 +852,6 @@
     <string name="browser_start_shortcut_bing">必应</string>
     <string name="browser_start_shortcut_debian">Debian 文档</string>
     <string name="browser_start_shortcut_repo">项目仓库</string>
-    <string name="browser_export">导出给 agent</string>
-    <string name="browser_export_running">正在导出当前页面…</string>
-    <string name="browser_export_done">已导出给 agent：%1$d 个可交互字段；终端里执行 cat /opt/zhengdao/tab.txt</string>
-    <string name="browser_export_failed">导出失败：%1$s</string>
-    <string name="browser_export_no_tab">还没有打开的页面，先打开一个网页再导出</string>
     <string name="term_local_cache_installing">使用本地缓存包（%1$d MB，不联网下载）—— 正在校验并解压…</string>
     <string name="term_first_run_need_grant">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议先点「授权存储」——授权后把安装包放进 Download/证道 文件夹，以后重装 App 无需重新下载。</string>
     <string name="term_first_run">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。\n提示：也可以手动把安装包放到 Download/证道 文件夹，重启 App 即可免下载安装。</string>
