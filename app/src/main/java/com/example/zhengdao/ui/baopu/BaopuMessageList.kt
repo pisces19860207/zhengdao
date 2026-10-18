@@ -10,16 +10,28 @@
 // J1–J7 JVM 直测）；Compose 层只做接线与渲染。
 package com.example.zhengdao.ui.baopu
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,14 +43,27 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.getSystemService
 import com.example.zhengdao.R
+import com.example.zhengdao.terminal.Workspace
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 // ── 纯数据与纯判据（JVM 直测：J1–J7） ─────────────────────────────────────
@@ -419,14 +444,30 @@ private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = 
                         else androidx.compose.ui.text.style.TextAlign.Start,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    androidx.compose.foundation.text.selection.SelectionContainer {
-                        Column {
-                            msg.parts.forEachIndexed { i, part ->
-                                when (part.kind) {
-                                    "tool" -> BaopuToolPart(part, key = "${msg.id}-$i")
-                                    "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
-                                    else -> BaopuTextPart(part, key = "${msg.id}-$i")
+                    // 文字类 part 走 SelectionContainer（长按可选中复制）。
+                    // 图片 part **移出**它：图片要的"长按＝复制路径"与"长按＝选字"
+                    // 是同一个手势，套在 SelectionContainer 里必然被抢走。
+                    val textParts = msg.parts.filter { it.kind != "image" }
+                    val imageParts = msg.parts.filter { it.kind == "image" }
+                    if (textParts.isNotEmpty()) {
+                        androidx.compose.foundation.text.selection.SelectionContainer {
+                            Column {
+                                textParts.forEachIndexed { i, part ->
+                                    when (part.kind) {
+                                        "tool" -> BaopuToolPart(part, key = "${msg.id}-$i")
+                                        "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
+                                        else -> BaopuTextPart(part, key = "${msg.id}-$i")
+                                    }
                                 }
+                            }
+                        }
+                    }
+                    // 图片（第二十四批 B 段）：96dp 缩略图 —— 点开全屏、长按复制相对路径。
+                    // "只有图片、没有文字"的消息（用户只丢一张图不打字）也只有这一段在渲染。
+                    if (imageParts.isNotEmpty()) {
+                        Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            imageParts.forEachIndexed { i, part ->
+                                BaopuImagePart(part, key = "${msg.id}-img-$i")
                             }
                         }
                     }
@@ -523,3 +564,140 @@ private fun BaopuToolPart(part: BaopuUiPart, key: String) {
         )
     }
 }
+
+// ── 图片 part（第二十四批 B 段）────────────────────────────────────────────
+
+/** 缩略图边长（dp）：派工单指定 96dp。 */
+private val IMAGE_THUMB_DP = 96.dp
+
+/**
+ * 缩略图解码的目标像素（按 3x 屏保守估）。解码时按这个值**采样**：一张 4000px 的
+ * 原图直接解要 60 MB 内存，而 96dp 缩略图在屏幕上根本用不到那个分辨率。
+ */
+private const val THUMB_TARGET_PX = 288
+
+/** 全屏看图的目标像素（同样采样，避免大图 OOM）。 */
+private const val FULL_TARGET_PX = 2048
+
+/**
+ * 图片 part —— 气泡里的 96dp 缩略图（第二十四批 B 段）。
+ *
+ * ## 三条纪律
+ *
+ * 1. **只读文件**：`File(工作区, relPath)` 直接读，**不复制、不新落盘**（派工单 §1-3）。
+ *    库里只存相对路径，图片本体一直待在工作区里。
+ * 2. **缺失要说**：文件不在就渲染一行「图片找不到了：<路径>」，**绝不画空白方块**
+ *    （空白方块＝用户以为在加载，实际永远加载不出来，是最坏的一种沉默）。
+ * 3. **解码在工作线程 + 采样**：主线程解大图既卡帧又可能 OOM。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BaopuImagePart(part: BaopuUiPart, key: String) {
+    val ctx = LocalContext.current
+    val relPath = part.text
+    // 工作区根 + 相对路径 = 真实文件。换工作区后老图找不到 ⇒ 走"缺失"分支，不崩。
+    val file = remember(relPath) { File(Workspace.hostDir(ctx), relPath) }
+    var fullScreen by remember(relPath) { mutableStateOf(false) }
+
+    // 文件是否真的在（一次判断，分支内不再 remember）
+    val exists = remember(relPath) { runCatching { file.isFile && file.length() > 0 }.getOrDefault(false) }
+
+    val thumb by produceState<Bitmap?>(initialValue = null, relPath) {
+        value = withContext(Dispatchers.IO) { decodeSampledImage(file, THUMB_TARGET_PX) }
+    }
+    val bmp = thumb
+
+    if (bmp == null) {
+        // 两种情况在这里合流：还没解完（短暂）与解码失败/文件不在（持久）。
+        // 用文件事实区分——文件不在就明说，否则给一个"正在加载"的浅色占位。
+        if (!exists) {
+            Text(
+                text = stringResource(R.string.baopu_image_missing, relPath),
+                style = MaterialTheme.typography.labelSmall,
+                color = zhengdaoErrorText(),
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        } else {
+            // 解码中/解码失败：占位但不是"空白方块"——有底色、有尺寸，看得出还在处理
+            Box(
+                Modifier
+                    .size(IMAGE_THUMB_DP)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        }
+        return
+    }
+
+    Image(
+        bitmap = bmp.asImageBitmap(),
+        contentDescription = stringResource(R.string.baopu_image_open),
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(IMAGE_THUMB_DP)
+            .clip(RoundedCornerShape(8.dp))
+            .combinedClickable(
+                onClick = { fullScreen = true },
+                onLongClick = {
+                    val cm = ctx.getSystemService<ClipboardManager>()
+                    cm?.setPrimaryClip(ClipData.newPlainText("baopu-image-path", relPath))
+                    Toast.makeText(
+                        ctx,
+                        ctx.getString(R.string.baopu_image_path_copied),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                },
+            ),
+    )
+
+    if (fullScreen) {
+        val big by produceState<Bitmap?>(initialValue = null, relPath) {
+            value = withContext(Dispatchers.IO) { decodeSampledImage(file, FULL_TARGET_PX) }
+        }
+        Dialog(
+            onDismissRequest = { fullScreen = false },
+            // 全屏：关掉 Dialog 的默认宽度上限（否则大图被挤成一个小窗）
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .clickable { fullScreen = false },
+                contentAlignment = Alignment.Center,
+            ) {
+                val shown = big ?: bmp
+                Image(
+                    bitmap = shown.asImageBitmap(),
+                    contentDescription = stringResource(R.string.baopu_image_open),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 按目标边长**采样**解码（纯 IO，调用方保证在 IO 线程）。
+ *
+ * 两遍解码是标准做法：第一遍只读尺寸（`inJustDecodeBounds`，不解像素），算出
+ * `inSampleSize` 再真解。这样 4000px 的原图只解出 ~288px 的位图。
+ *
+ * 文件不在 / 不是图片 / 解码失败 ⇒ null（调用方转成"缺失"文案，不抛）。
+ */
+private fun decodeSampledImage(file: File, targetPx: Int): Bitmap? = runCatching {
+    if (!file.isFile || file.length() == 0L) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= targetPx && bounds.outHeight / (sample * 2) >= targetPx) {
+        sample *= 2
+    }
+    BitmapFactory.decodeFile(
+        file.absolutePath,
+        BitmapFactory.Options().apply { inSampleSize = sample },
+    )
+}.getOrNull()
