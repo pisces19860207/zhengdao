@@ -18,6 +18,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -25,6 +27,10 @@ import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaProposal
+import com.example.zhengdao.baopu.SkillProposal
+import com.example.zhengdao.baopu.SkillScope
+import com.example.zhengdao.baopu.SkillStore
+import com.example.zhengdao.baopu.SkillWriteResult
 
 /**
  * 技能索引提案卡（第十九批 §2.2）：封卷提炼／启动补算产出的 PENDING 提案，
@@ -86,6 +92,124 @@ fun BaopuSkillProposalCard(
                         OutlinedButton(onClick = { onDiscard(p) }) {
                             Text(stringResource(R.string.skill_proposal_discard))
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 「新建技能」两屏对话框（第二十三批 A 段）。
+ *
+ * ## 为什么是两屏而不是一个表单直接写
+ *
+ * 铁律要求「**必过确认卡**」：卡上得看到 名字／落点／正文前 200 字／字数／备份文件名。
+ * 所以第一屏是编辑器（改），第二屏是确认（审），**审的那一屏不显示全正文**——
+ * 全正文会把卡撑爆，也不是这个卡要解决的问题（它要的是「你要写的确实是这个」）。
+ *
+ * 保存仍走 [SkillStore.apply]：备份 → 写正文 → （正式技能才）写索引。
+ * 草稿默认勾上：新技能先进试用期，**不进人设索引**，模型默认看不到它。
+ */
+@Composable
+internal fun SkillEditorDialog(
+    onDismiss: () -> Unit,
+    onSaved: (SkillWriteResult) -> Unit,
+    projectRoot: java.io.File,
+    globalRoot: java.io.File,
+    personaFiles: com.example.zhengdao.baopu.PersonaFiles,
+    backupStamp: String,
+) {
+    var name by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var body by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var scope by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(SkillScope.PROJECT) }
+    var draft by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    var reviewing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    val proposal = SkillProposal(scope = scope, name = name, body = body, reason = "用户手写", draft = draft)
+    // 索引条数由调用方在 apply 时再核一次；这里给 0 只为了把「是否超上限」的判据留在 apply 里。
+    val plan = SkillStore.plan(proposal, projectRoot, globalRoot, backupStamp, indexCountAfterAdd = 0)
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), tonalElevation = 6.dp) {
+            Column(Modifier.padding(20.dp)) {
+                if (!reviewing) {
+                    Text(stringResource(R.string.skill_new_title), style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(10.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text(stringResource(R.string.skill_new_name)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { scope = SkillScope.PROJECT }) {
+                            Text(
+                                stringResource(R.string.skill_new_scope_project),
+                                color = if (scope == SkillScope.PROJECT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        OutlinedButton(onClick = { scope = SkillScope.GLOBAL }) {
+                            Text(
+                                stringResource(R.string.skill_new_scope_global),
+                                color = if (scope == SkillScope.GLOBAL) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = body,
+                        onValueChange = { body = it },
+                        label = { Text(stringResource(R.string.skill_new_body)) },
+                        minLines = 5,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = draft, onCheckedChange = { draft = it })
+                        Text(stringResource(R.string.skill_new_draft), style = MaterialTheme.typography.bodySmall)
+                    }
+                } else {
+                    Text(stringResource(R.string.skill_confirm_title), style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.skill_confirm_name, plan.proposal.name))
+                    Text(
+                        stringResource(
+                            R.string.skill_confirm_scope,
+                            stringResource(
+                                if (scope == SkillScope.PROJECT) R.string.skill_new_scope_project else R.string.skill_new_scope_global,
+                            ),
+                        ),
+                    )
+                    Text(stringResource(R.string.skill_confirm_chars, plan.charCount))
+                    Text(stringResource(R.string.skill_confirm_backup, plan.backupName ?: "—"))
+                    Spacer(Modifier.height(8.dp))
+                    Text(plan.preview, style = MaterialTheme.typography.bodySmall)
+                    plan.blocked?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = com.example.zhengdao.ui.theme.zhengdaoErrorText())
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.skill_proposal_discard)) }
+                    Spacer(Modifier.width(8.dp))
+                    if (!reviewing) {
+                        TextButton(onClick = { reviewing = true }) { Text(stringResource(R.string.skill_new_review)) }
+                    } else {
+                        TextButton(
+                            enabled = plan.blocked == null,
+                            onClick = {
+                                val indexText = personaFiles.read(
+                                    if (scope == SkillScope.GLOBAL) PersonaLayer.B_GLOBAL else PersonaLayer.C_PROJECT,
+                                ).orEmpty()
+                                val result = SkillStore.apply(plan, personaFiles, indexText)
+                                onSaved(result)
+                                onDismiss()
+                            },
+                        ) { Text(stringResource(R.string.skill_proposal_accept)) }
                     }
                 }
             }
