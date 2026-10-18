@@ -58,6 +58,9 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
  * 3. **图片诚实说**：本批还没有视觉通道 ⇒ 图片只存不送，消息里明写「当前通道不能看图」，
  *    绝不假装模型看过了（视觉接线归后续批次）。
  */
+// 多选上限：9 个（够用，又不至于把消息刷成一长串）
+private const val MAX_ATTACH = 9
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BaopuComposer(
@@ -67,7 +70,8 @@ internal fun BaopuComposer(
     modifier: Modifier = Modifier,
 ) {
     var text by rememberSaveable { mutableStateOf("") }
-    var attach by remember { mutableStateOf<BaopuAttachments.Saved?>(null) }
+    // 多选（2026-10-18 用户）：最多 9 个
+    var attachList by remember { mutableStateOf<List<BaopuAttachments.Saved>>(emptyList()) }
     var sheetOpen by remember { mutableStateOf(false) }
     // 一句提示（没权限 / 保存失败）；下一次成功或再点一次就换掉
     var note by remember { mutableStateOf<String?>(null) }
@@ -77,13 +81,21 @@ internal fun BaopuComposer(
     // 相机要写入的那个临时 Uri（TakePicture 先给 Uri，回调时才知道成没成）
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
 
-    fun save(uri: Uri, fallback: String) {
-        val saved = BaopuAttachments.save(ctx, uri, fallback)
-        if (saved == null) {
-            note = ctx.getString(R.string.baopu_attach_failed)
-        } else {
-            attach = saved
-            note = null
+    /** 一次选中若干 Uri，能存几个存几个；有失败就报一句（不静默）。 */
+    fun saveAll(uris: List<Uri>, fallback: String) {
+        if (uris.isEmpty()) return
+        val saved = mutableListOf<BaopuAttachments.Saved>()
+        var failed = 0
+        for (uri in uris) {
+            if (attachList.size + saved.size >= MAX_ATTACH) break
+            val one = BaopuAttachments.save(ctx, uri, fallback)
+            if (one == null) failed++ else saved += one
+        }
+        if (saved.isNotEmpty()) attachList = attachList + saved
+        note = when {
+            failed > 0 -> ctx.getString(R.string.baopu_attach_failed)
+            uris.size > saved.size -> ctx.getString(R.string.baopu_attach_too_many, MAX_ATTACH)
+            else -> null
         }
     }
 
@@ -91,17 +103,21 @@ internal fun BaopuComposer(
         val uri = cameraUri
         cameraUri = null
         if (ok && uri != null) {
-            save(uri, ctx.getString(R.string.baopu_attach_photo_name))
+            saveAll(listOf(uri), ctx.getString(R.string.baopu_attach_photo_name))
         }
         // 用户取消：不提示、不报错（取消不是失败）
     }
-    val pickImage = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) save(uri, "image")
+    // 相册：系统照片选择器**多选**（不申请存储读权限）
+    val pickImages = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACH),
+    ) { uris ->
+        saveAll(uris, "image")
     }
-    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) save(uri, "file")
+    // 选文件：也支持多选
+    val pickFiles = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        saveAll(uris, "file")
     }
     val launchCamera = {
         val file = BaopuAttachments.newCameraFile(ctx)
@@ -118,7 +134,7 @@ internal fun BaopuComposer(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        attach?.let { a ->
+        attachList.forEachIndexed { idx, a ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -129,7 +145,7 @@ internal fun BaopuComposer(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { attach = null }) {
+                TextButton(onClick = { attachList = attachList.filterIndexed { i, _ -> i != idx } }) {
                     Text(stringResource(R.string.baopu_attach_remove))
                 }
             }
@@ -182,14 +198,14 @@ internal fun BaopuComposer(
                 Button(
                     onClick = {
                         val body = text
-                        val a = attach
-                        if (body.isNotBlank() || a != null) {
+                        val list = attachList
+                        if (body.isNotBlank() || list.isNotEmpty()) {
                             text = ""
-                            attach = null
-                            onSend(withAttachmentHint(ctx, body, a))
+                            attachList = emptyList()
+                            onSend(withAttachmentHint(ctx, body, list))
                         }
                     },
-                    enabled = text.isNotBlank() || attach != null,
+                    enabled = text.isNotBlank() || attachList.isNotEmpty(),
                     modifier = Modifier.padding(bottom = 8.dp),
                 ) {
                     Text(stringResource(R.string.baopu_send))
@@ -218,7 +234,7 @@ internal fun BaopuComposer(
                 TextButton(
                     onClick = {
                         sheetOpen = false
-                        pickImage.launch(
+                        pickImages.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                         )
                     },
@@ -230,7 +246,7 @@ internal fun BaopuComposer(
                     onClick = {
                         sheetOpen = false
                         // 文本/文档/压缩包都行：`*/*`，让用户自己挑
-                        pickFile.launch(arrayOf("*/*"))
+                        pickFiles.launch(arrayOf("*/*"))
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 ) {
@@ -299,12 +315,25 @@ private fun PaperclipGlyph(tint: androidx.compose.ui.graphics.Color, side: andro
  * 把「附件」并进要发出去的那句话。**图片与文件分开说**：本批没有视觉通道，
  * 图片只能进工作区、抱朴看不了 —— 这条必须写进消息里，不然后面它会自己编内容。
  */
-internal fun withAttachmentHint(ctx: Context, body: String, a: BaopuAttachments.Saved?): String {
-    if (a == null) return body
-    val hint = ctx.getString(
-        if (a.isImage) R.string.baopu_attach_hint_image else R.string.baopu_attach_hint_file,
-        a.relPath,
-        a.sizeBytes,
-    )
+internal fun withAttachmentHint(
+    ctx: Context,
+    body: String,
+    list: List<BaopuAttachments.Saved>,
+): String {
+    if (list.isEmpty()) return body
+    // 文件与图片分开说：图片本批看不了，必须明写（不许假装看过）
+    val files = list.filterNot { it.isImage }
+    val images = list.filter { it.isImage }
+    fun describe(items: List<BaopuAttachments.Saved>): String =
+        items.joinToString("；") { "${it.relPath}（${it.sizeBytes} B）" }
+    val hints = buildList {
+        if (files.isNotEmpty()) {
+            add(ctx.getString(R.string.baopu_attach_hint_files, files.size, describe(files)))
+        }
+        if (images.isNotEmpty()) {
+            add(ctx.getString(R.string.baopu_attach_hint_images, images.size, describe(images)))
+        }
+    }
+    val hint = hints.joinToString("\n")
     return if (body.isBlank()) hint else body + "\n\n" + hint
 }
