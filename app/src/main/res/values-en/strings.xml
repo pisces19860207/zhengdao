@@ -83,6 +83,9 @@
     <string name="home_env_ready">Environment ready</string>
     <string name="home_env_missing">Environment not installed</string>
     <string name="home_agent_count">%1$d agents</string>
+    <!-- Batch 18 B: detection slimming — healthy items hidden, missing merged into one red row -->
+    <string name="home_health_missing">%1$d missing</string>
+    <string name="home_agent_missing">%1$s not installed</string>
     <string name="home_abi_unknown">Unknown</string>
     <string name="home_debian_installed">Debian 13.7 installed</string>
     <string name="home_debian_missing">Debian not installed</string>
@@ -950,6 +953,8 @@
     <string name="baopu_effort_low">Low</string>
     <string name="baopu_effort_high">High</string>
     <string name="baopu_effort_max">Max</string>
+    <!-- Batch 18 A: reasoning effort only takes effect on the DeepSeek channel -->
+    <string name="baopu_effort_deepseek_hint">Only the DeepSeek channel sends this parameter; it has no effect on other channels.</string>
     <!-- ── Baopu model parameter read-only rows (knife 3, part B; criterion J12: never show 0 or 128000 when undeclared) ── -->
     <string name="baopu_params_card">Model parameters</string>
     <string name="baopu_params_window">Context window</string>
@@ -995,7 +1000,14 @@
     <string name="baopu_drawer_group_settings">Settings</string>
     <string name="baopu_drawer_channel_desc">Switch model channel (rebuilds the engine; not while running)</string>
     <string name="baopu_drawer_settings">Baopu settings</string>
-    <string name="baopu_drawer_settings_desc">Tool switches, library location, terminal look</string>
+    <string name="baopu_drawer_settings_desc">Tool switches, model parameters, reasoning effort</string>
+    <!-- ── Baopu takes the stage (batch 18): settings relocation + positioning copy ── -->
+    <string name="baopu_tools_alias_read">read (free-tier alias)</string>
+    <string name="baopu_tools_alias_read_desc">Equivalent to read_file and follows its switch above; the free tier requires this name in the tool list.</string>
+    <string name="baopu_tools_alias_bash">bash (free-tier placeholder)</string>
+    <string name="baopu_tools_alias_bash_desc">This app provides no shell execution and always rejects it; the free tier requires this name in the tool list.</string>
+    <string name="baopu_positioning_label">Positioning</string>
+    <string name="baopu_positioning_value">Self-built harness: built-in agent runtime, no external CLI required</string>
       <string name="baopu_tool_browser_open">Open page</string>
     <string name="baopu_tool_browser_open_desc">Open a URL in Xuanlan (http/https only). Asks for confirmation; loading is async, inspect afterwards.</string>
     <string name="baopu_tool_browser_snapshot">Read page</string>

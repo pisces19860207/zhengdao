@@ -84,6 +84,9 @@
     <string name="home_env_ready">环境就绪</string>
     <string name="home_env_missing">环境未安装</string>
     <string name="home_agent_count">%1$d 个 Agent</string>
+    <!-- 第十八批 B 段：检测瘦身——健康的不显示，缺失的合并成一行红叉 -->
+    <string name="home_health_missing">缺 %1$d 项</string>
+    <string name="home_agent_missing">%1$s 未安装</string>
     <string name="home_abi_unknown">未知</string>
     <string name="home_debian_installed">Debian 13.7 已安装</string>
     <string name="home_debian_missing">Debian 未安装</string>
@@ -949,6 +952,8 @@
     <string name="baopu_effort_low">低</string>
     <string name="baopu_effort_high">高</string>
     <string name="baopu_effort_max">最高</string>
+    <!-- 第十八批 A 段：思考深度只在 DeepSeek 通道生效，界面上要说清楚 -->
+    <string name="baopu_effort_deepseek_hint">只有 DeepSeek 通道会带上这个参数；其余通道选了也不生效。</string>
     <!-- ── 抱朴模型参数只读行（刀 3 · B 段；第十四批 J12：没声明不许显示 0 或 128000）── -->
     <string name="baopu_params_card">模型参数</string>
     <string name="baopu_params_window">上下文窗口</string>
@@ -994,7 +999,14 @@
     <string name="baopu_drawer_group_settings">设置</string>
     <string name="baopu_drawer_channel_desc">换模型通道（会重建引擎，跑到一半不能换）</string>
     <string name="baopu_drawer_settings">抱朴设置</string>
-    <string name="baopu_drawer_settings_desc">工具开关、资料库位置、终端外观</string>
+    <string name="baopu_drawer_settings_desc">工具开关、模型参数、思考深度</string>
+    <!-- ── 抱朴当家（第十八批）：设置归位 ＋ 定位文案 ── -->
+    <string name="baopu_tools_alias_read">read（免费通道别名）</string>
+    <string name="baopu_tools_alias_read_desc">等价于 read_file，随上面 read_file 的开关一起开与关；免费通道要求工具表里带这个名字。</string>
+    <string name="baopu_tools_alias_bash">bash（免费通道占位）</string>
+    <string name="baopu_tools_alias_bash_desc">本 App 不提供 shell 执行，调用一律拒绝；免费通道要求工具表里带这个名字。</string>
+    <string name="baopu_positioning_label">定位</string>
+    <string name="baopu_positioning_value">自研 harness：自带 agent 运行时，不依赖外部 CLI</string>
       <string name="baopu_tool_browser_open">打开网页</string>
     <string name="baopu_tool_browser_open_desc">在玄览里打开网址（只认 http/https）。会弹确认卡；打开是异步的，内容随后再看。</string>
     <string name="baopu_tool_browser_snapshot">看网页</string>
