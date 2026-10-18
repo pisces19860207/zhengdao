@@ -5,6 +5,7 @@
 // ＋ 派工单第十批 §1 C 段（提炼候选一律 PENDING 未落盘，等用户过目；顺带一条自省）。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -146,14 +147,15 @@ internal fun BaopuPendingMemoryCard(
 /**
  * 自省便签（刀 2 C 段）——**恰好一条**，短句，不占地方。
  *
- * 派工单原话：「顺带产出一条『这次学到什么』……一条，短句」。所以这里不做成
- * 卡片也不给按钮（它没有可点的动作——自省不是记忆，不能确认也不能删），
- * 就是一行带底色的便签，压在待过目卡上面。
+ * 派工单原话：「顺带产出一条『这次学到什么』……一条，短句」。
+ * 2026-10-18 用户：「已完成那个卡不会自己消失吗？做成动态卡，点击后就消失，表示用户知道了」
+ * ⇒ 整条可点掉（onDismiss 为空时保持只读，不显示 ×）。
  */
 @Composable
 internal fun BaopuIntrospectionNote(
     text: String,
     modifier: Modifier = Modifier,
+    onDismiss: (() -> Unit)? = null,
 ) {
     if (text.isBlank()) return
     Surface(
@@ -161,21 +163,32 @@ internal fun BaopuIntrospectionNote(
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp),
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text(
-                text = stringResource(R.string.baopu_introspection_label),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.baopu_introspection_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            if (onDismiss != null) {
+                Text(
+                    text = "\u00d7",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
     }
 }
