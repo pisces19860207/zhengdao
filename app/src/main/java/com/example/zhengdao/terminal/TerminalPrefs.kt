@@ -186,6 +186,15 @@ object TerminalPrefs {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_SIZE_DP, dp).apply()
     }
 
+    /**
+     * ⚠️ 待删（第二十七批清单，2026-10-18）：零调用，且**不该再接**。
+     *
+     * 用户 2026-10-11 定稿：「字号 / 画布留白 / 配色按 2026-10-10 定稿的那一套当默认展示，
+     * **不再给选项**」（见 `ui/SettingsDataActivity.kt:455-458`）。设置页现在只读
+     * [scheme] 显示当前值，没有任何写入入口 ⇒ 这个函数永远不会有调用者。
+     * 留着它只会让下一次接线审计再报一遍"死函数"。
+     * 删除需一并处理 `KEY_SCHEME`：删掉后 [scheme] 恒回 [DEFAULT_SCHEME]（当前就是如此）。
+     */
     fun saveScheme(ctx: Context, scheme: Scheme) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_SCHEME, scheme.id).apply()
     }
@@ -195,6 +204,12 @@ object TerminalPrefs {
             .getInt(KEY_INSET_DP, DEFAULT_INSET_DP)
             .coerceIn(INSET_OPTIONS.first(), INSET_OPTIONS.last())
 
+    /**
+     * ⚠️ 待删（第二十七批清单，2026-10-18）：零调用，且**不该再接**。
+     *
+     * 与 [saveScheme] 同一处定稿决定：画布留白只展示、不给选项（`SettingsDataActivity.kt:455-458`）。
+     * 删除需一并处理 `KEY_INSET_DP`：删掉后 [insetDp] 恒回 `DEFAULT_INSET_DP`（当前就是如此）。
+     */
     fun saveInset(ctx: Context, dp: Int) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_INSET_DP, dp).apply()
     }
