@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
-// 依据：派工单第九批 §4.2（RunEngineTest：状态迁移；步数刹车 16 步必停；「步＝一次
+// 依据：派工单第九批 §4.2（RunEngineTest：状态迁移；步数刹车（16→48，2026-10-19 用户口径）必停；「步＝一次
 // 模型轮次」且确认批不计步；连续 3 次工具失败停下；确认超时 15 分钟且仅前台计时；
 // 全局单活跃会话；被杀后 interrupted_step 可续跑；通道熔断）
 // + 负例演练③（拿掉 max_steps ⇒ 循环刹车用例必红——本文件是红的那批）。
@@ -24,15 +24,15 @@ class RunEngineTest {
     // ── 步数刹车（负例③靶心） ───────────────────────────────────────────
 
     @Test
-    fun `max_steps是16_写死默认值`() {
-        assertEquals(16, RunRules.MAX_STEPS)
+    fun `max_steps是48_写死默认值`() {
+        assertEquals(48, RunRules.MAX_STEPS)
     }
 
     @Test
     fun `步数刹车_16步必停_边界两侧`() {
-        assertFalse("15 步还能跑", RunRules.isStepExhausted(15))
-        assertTrue("16 步必停", RunRules.isStepExhausted(16))
-        assertTrue("17 步也停", RunRules.isStepExhausted(17))
+        assertFalse("47 步还能跑", RunRules.isStepExhausted(47))
+        assertTrue("48 步必停", RunRules.isStepExhausted(48))
+        assertTrue("49 步也停", RunRules.isStepExhausted(49))
     }
 
     @Test
