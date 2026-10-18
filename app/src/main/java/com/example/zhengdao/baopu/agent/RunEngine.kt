@@ -595,7 +595,17 @@ internal class RunEngine(
             val rest = rendered.removePrefix(prefix).removePrefix(AssembledPrompt.SEP)
             val messages = buildList {
                 if (prefix.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, prefix))
-                add(LlmMessage(LlmMessage.ROLE_USER, rest.ifBlank { "（继续）" }))
+                // 图片必须挂在这一条 user 上（第二十四批 A 段的本意）。
+                // 2026-10-18 真机事故：这里从前只传文本，`prompt.images` 算出来就没人用 ⇒
+                // 图一路缩好、选好、日志也写了「已发送」，请求体里却一个 image 块都没有，
+                // 模型于是老实回「我看不到」。这是整条视觉链上唯一没接上的一根线。
+                add(
+                    LlmMessage(
+                        role = LlmMessage.ROLE_USER,
+                        content = rest.ifBlank { "（继续）" },
+                        images = prompt.images,
+                    ),
+                )
             }
 
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──

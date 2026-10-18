@@ -50,9 +50,15 @@ class VisionWiringTest {
 
     @Test
     fun `C2_引擎真去读了_且读的根是工作区`() {
+        // 2026-10-18 改口径：读图入口从 payloadsOf 换成 load —— 前者会把「超 2 MB 跳过」
+        // 的原因吞掉，真机上表现为「一张 3 MB 照片 = 模型看不见图」。load 必须带缩图实现。
         assertTrue(
-            "引擎必须用 VisionFiles.payloadsOf(spillRoot(), …) 读图",
-            engine.contains("VisionFiles.payloadsOf(spillRoot(), paths)"),
+            "引擎必须用 VisionFiles.load(spillRoot(), paths, …) 读图",
+            engine.contains("VisionFiles.load(spillRoot(), paths"),
+        )
+        assertTrue(
+            "读图必须带上缩图实现（不带 ⇒ 超 2 MB 的图照旧全丢）",
+            engine.contains("shrink = shrinkImage"),
         )
         assertTrue(
             "读图失败不许让整轮崩（要有 runCatching 兜底）",
@@ -62,7 +68,7 @@ class VisionWiringTest {
         val sendBody = engine.substringAfter("fun send(").substringBefore("fun stop(")
         assertFalse(
             "send 里不许出现读盘（主线程不许读 2 MB 的图）",
-            sendBody.contains("payloadsOf("),
+            sendBody.contains("VisionFiles.load("),
         )
     }
 
