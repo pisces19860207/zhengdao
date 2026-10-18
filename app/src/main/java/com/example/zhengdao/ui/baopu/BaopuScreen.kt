@@ -156,6 +156,13 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             controller.clearPendingNote()
         }
     }
+    val skillNote = controller.skillNote
+    LaunchedEffect(skillNote) {
+        if (skillNote != null) {
+            delay(8_000)
+            controller.clearSkillNote()
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -304,7 +311,15 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
-            // 已压缩细条已搬进消息列表首项（2026-10-18：不占固定可视面积，随内容滚走）。
+            // 技能动作一句话（第十九批：上限拒绝／写盘失败；显示几秒就清）
+            controller.skillNote?.let { note ->
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
             libraryNote?.let { note ->
                 Text(
                     text = note,
@@ -361,6 +376,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 askCard = controller.askCard != null,
                 pendingMemory = controller.pendingMemories.isNotEmpty(),
                 memoryCandidate = controller.memoryCandidates.isNotEmpty(),
+                skillProposal = controller.pendingSkillProposals.isNotEmpty(),
             )
             var expandAllCards by remember { mutableStateOf(false) }
             val cardsView = bottomCards(bottomCardsInput, expandAllCards)
@@ -481,6 +497,13 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                 candidates = controller.memoryCandidates,
                                 onConfirm = { controller.confirmMemory(it) },
                                 onForget = { controller.forgetMemory(it) },
+                            )
+
+                            // 技能索引提案卡（第十九批 §2.2：采纳才写人设，丢弃只移除）
+                            BottomCardKind.SKILL -> BaopuSkillProposalCard(
+                                proposals = controller.pendingSkillProposals,
+                                onConfirm = { controller.confirmSkillProposal(it) },
+                                onDiscard = { controller.discardSkillProposal(it) },
                             )
                         }
                     }

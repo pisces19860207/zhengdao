@@ -1011,6 +1011,26 @@
     <string name="baopu_tools_alias_bash_desc">This app provides no shell execution and always rejects it; the free tier requires this name in the tool list.</string>
     <string name="baopu_positioning_label">Positioning</string>
     <string name="baopu_positioning_value">Self-built harness: built-in agent runtime, no external CLI required</string>
+    <!-- ── Skill distillation (batch 19): review + proposal card ── -->
+    <string name="skill_review_card">Skill index</string>
+    <string name="skill_review_desc">A skill = a SKILL.md file in the skill folder + one index line below (the index lives in the persona and travels with it). Deleting here removes the index, not the file — delete files yourself in a file manager. Stored %1$d/%2$d.</string>
+    <string name="skill_group_global">Global skills (follow the app, survive workspace switches)</string>
+    <string name="skill_group_project">Project skills (follow the workspace)</string>
+    <string name="skill_delete">Remove index</string>
+    <string name="skill_none">No skill index yet.</string>
+    <string name="skill_persona_b">Persona layer B (global · read-only)</string>
+    <string name="skill_persona_c">Persona layer C (project · read-only)</string>
+    <string name="skill_proposal_title">Skill index proposals (accepted ones are written into the persona)</string>
+    <string name="skill_layer_global">Global</string>
+    <string name="skill_layer_project">Project</string>
+    <string name="skill_proposal_accept">Accept</string>
+    <string name="skill_proposal_discard">Discard</string>
+    <string name="skill_reason_user">You asked for this</string>
+    <string name="skill_reason_refine">Distilled at session close</string>
+    <string name="skill_reason_manual">Manual removal</string>
+    <string name="skill_cap_reached">Skill index holds %1$d entries (cap %2$d): remove unused ones first under Baopu settings → Skill index, then retry.</string>
+    <string name="skill_apply_failed">Failed to write the persona (proposal state or layer not allowed)</string>
+    <string name="skill_refine_dropped">%1$d skill candidates were dropped this session (deduped or over limit).</string>
       <string name="baopu_tool_browser_open">Open page</string>
     <string name="baopu_tool_browser_open_desc">Open a URL in Xuanlan (http/https only). Asks for confirmation; loading is async, inspect afterwards.</string>
     <string name="baopu_tool_browser_snapshot">Read page</string>

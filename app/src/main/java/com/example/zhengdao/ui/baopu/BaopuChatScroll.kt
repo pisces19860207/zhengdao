@@ -6,12 +6,13 @@
 package com.example.zhengdao.ui.baopu
 
 /**
- * 底部操作卡种类（§2.1 四种「要用户动手」的卡）。
+ * 底部操作卡种类（§2.1 四种「要用户动手」的卡 ＋ 第十九批的技能索引提案卡）。
  *
  * enum 声明序＝展示优先级：确认卡堵着引擎运行，最急；问人卡同急；
- * 待过目卡是「不点就不落盘」的显式动作；候选卡最缓。
+ * 待过目卡是「不点就不落盘」的显式动作；候选卡与技能提案卡最缓
+ * （技能提案只在会话封卷/启动补算时出现，低频）。
  */
-internal enum class BottomCardKind { CONFIRM, ASK, PENDING, CANDIDATE }
+internal enum class BottomCardKind { CONFIRM, ASK, PENDING, CANDIDATE, SKILL }
 
 /**
  * 底部卡片区的输入（[com.example.zhengdao.ui.baopu.BaopuChatController] 状态的纯投影）。
@@ -24,6 +25,7 @@ internal data class BottomCardsInput(
     val askCard: Boolean,
     val pendingMemory: Boolean,
     val memoryCandidate: Boolean,
+    val skillProposal: Boolean = false, // 第十九批：技能索引提案卡（低频，默认无）
 )
 
 /**
@@ -54,6 +56,7 @@ internal fun bottomCards(input: BottomCardsInput, expandAll: Boolean = false): B
         if (input.askCard) add(BottomCardKind.ASK)
         if (input.pendingMemory) add(BottomCardKind.PENDING)
         if (input.memoryCandidate) add(BottomCardKind.CANDIDATE)
+        if (input.skillProposal) add(BottomCardKind.SKILL)
     }
     if (present.isEmpty()) return BottomCardsView(visible = emptyList(), hiddenCount = 0)
     return if (expandAll) {

@@ -22,8 +22,9 @@ class BaopuDbPlanTest {
             "不许为 plan 新造表",
             BaopuSql.DDL.any { it.contains("CREATE TABLE IF NOT EXISTS plan (") },
         )
-        // 版本号不动（没有迁移）；动版本必须写 onUpgrade
-        assertEquals("加一种 kind 不需要迁移", 6, BaopuDb.VERSION)
+        // 版本号：plan 批次本身没动表（加一种 kind 不需要迁移）；
+        // v7 是第十九批加的（session 封卷两列 closed_at / refined_at，有正式迁移）。
+        assertEquals("plan 批次不加表不加列；v7 归第十九批", 7, BaopuDb.VERSION)
     }
 
     // ── 写：消息行 ＋ plan part ────────────────────────────────────────

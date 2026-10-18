@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +44,11 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.rememberScrollState
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
+import com.example.zhengdao.baopu.PersonaLayer
+import com.example.zhengdao.baopu.PersonaRules
+import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.ui.FilterChip2
 import com.example.zhengdao.ui.InfoRow
@@ -202,6 +207,121 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                             ModelParams.saveEffort(ctx, level)
                         }
                     }
+                }
+            }
+
+            // ── 技能与索引审阅（第十九批 §2.5：第一版只做看和删）──
+            // 删索引＝用户本人操作即确认（确认制最高一级），但**仍走唯一合法写盘口**
+            // PersonaFiles.applyProposal（PENDING 提案），不另开写文件的路。
+            // 只删索引行，不删技能文件（§2.5：文件由用户在文件管理器自己删）。
+            SectionCard(stringResource(R.string.skill_review_card)) {
+                var skillReload by remember { mutableStateOf(0) }
+                val pf = remember { BaopuRuntime.personaFiles(ctx) }
+                val bText = remember(skillReload) { pf.read(PersonaLayer.B_GLOBAL) }
+                val cText = remember(skillReload) { pf.read(PersonaLayer.C_PROJECT) }
+                val globalLines = remember(skillReload) {
+                    SkillRules.parseIndexLines(bText, MemoryScope.GLOBAL)
+                }
+                val projectLines = remember(skillReload) {
+                    SkillRules.parseIndexLines(cText, MemoryScope.PROJECT)
+                }
+                Text(
+                    text = stringResource(
+                        R.string.skill_review_desc,
+                        globalLines.size + projectLines.size,
+                        SkillRules.INDEX_CAP,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                if (globalLines.isEmpty() && projectLines.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.skill_none),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                fun removeIndex(layer: PersonaLayer, name: String) {
+                    val current = pf.read(layer).orEmpty()
+                    val newText = (SkillRules.removeIndexLine(current, name) as? SkillRules.EditResult.Ok)
+                        ?.newText ?: return
+                    val p = PersonaRules.propose(
+                        layer, current, newText,
+                        ctx.getString(R.string.skill_reason_manual),
+                    ) ?: return
+                    pf.applyProposal(p)
+                    skillReload++
+                }
+
+                Text(
+                    text = stringResource(R.string.skill_group_global),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                globalLines.forEach { line ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(line.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                line.scenario,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = { removeIndex(PersonaLayer.B_GLOBAL, line.name) }) {
+                            Text(stringResource(R.string.skill_delete))
+                        }
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.skill_group_project),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                projectLines.forEach { line ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(line.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                line.scenario,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = { removeIndex(PersonaLayer.C_PROJECT, line.name) }) {
+                            Text(stringResource(R.string.skill_delete))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                // B/C 人设只读展示（§2.5：能看见；编辑留给后续批次）
+                Text(
+                    text = stringResource(R.string.skill_persona_b),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (!bText.isNullOrBlank()) {
+                    Text(
+                        text = bText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.skill_persona_c),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (!cText.isNullOrBlank()) {
+                    Text(
+                        text = cText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             }
