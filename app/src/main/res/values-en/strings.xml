@@ -1155,6 +1155,38 @@
     <string name="skill_edit_title">Edit skill</string>
     <string name="skill_name_locked_hint">Name locked: to rename, create a new skill and remove this one</string>
     <string name="skill_edit_saved">Saved (previous version backed up)</string>
+    <!-- 36 A: trash drawer entry + list（与中文同序同键）-->
+    <string name="trash_drawer_entry">Trash (%1$d)</string>
+    <string name="trash_drawer_desc">Deleted files land here: restore them or erase for good</string>
+    <string name="trash_dialog_title">Trash (%1$d)</string>
+    <string name="trash_none">Trash is empty</string>
+    <string name="trash_row_meta">%1$s / %2$s</string>
+    <string name="trash_restore">Restore</string>
+    <string name="trash_delete">Erase</string>
+    <string name="trash_empty">Empty trash</string>
+    <string name="trash_close">Close</string>
+    <string name="trash_confirm_one">Tap Erase once more and it is gone for good, unrecoverable: %1$s (%2$s)</string>
+    <string name="trash_confirm_empty">Tap Empty trash once more and all is gone: %1$d files, %2$s total, unrecoverable</string>
+    <string name="trash_restored">Restored to workspace root: %1$s</string>
+    <string name="trash_occupied">Target already taken, nothing moved: %1$s</string>
+    <string name="trash_deleted_one">Erased for good: %1$s</string>
+    <string name="trash_emptied">Trash emptied: %1$d files, %2$s total</string>
+    <string name="trash_emptied_partial">Trash emptied: %1$d files, %2$s total; %3$d could not be erased</string>
+    <string name="trash_rejected">Skipped: %1$s (%2$s)</string>
+    <string name="trash_io_failed">Disk operation failed: %1$s (%2$s)</string>
+    <!-- 36 B: skill category sidecar (_分类.json, SKILL.md untouched) -->
+    <string name="skill_cat_make_card">Cards</string>
+    <string name="skill_cat_lookup">Research</string>
+    <string name="skill_cat_read_image">Read image</string>
+    <string name="skill_cat_edit_image">Edit image</string>
+    <string name="skill_cat_other">Other</string>
+    <string name="skill_cat_unset">Uncategorized</string>
+    <string name="skill_cat_pick_title">Category for %1$s</string>
+    <string name="skill_cat_saved">Category saved: %1$s -> %2$s (skill body untouched)</string>
+    <string name="skill_cat_rejected">Skill not on disk, category not written: %1$s</string>
+    <string name="skill_cat_io_failed">Category write failed: %1$s (%2$s)</string>
+    <string name="skill_cat_corrupt">That _分类.json is unreadable, treated as no categories</string>
+    <string name="skill_cat_close">Close</string>
     <!-- ── Session library (batch 20): reopen or delete old chats + workspace surfaced ── -->
     <string name="baopu_drawer_history">History</string>
     <string name="baopu_drawer_history_desc">All sessions, as a flat list</string>
