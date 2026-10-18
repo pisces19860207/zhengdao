@@ -256,14 +256,17 @@ class SkillStoreTest {
 
     @Test
     fun `S15_人设里写明它会做卡_且点明三套格式`() {
-        val preset = File("src/main/java/com/example/zhengdao/baopu/BaopuPreset.kt")
-            .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/BaopuPreset.kt") }
-            .readText()
+        // 直接断言**生成出来的人设文本**（源码注释不算数）
+        val preset = BaopuPreset.personaText("/storage/emulated/0/Download/证道")
         // 用户实测的痛点：跟抱朴聊天，它没说自己会做酒馆/Tavo/平台的卡
         assertTrue("要有能力自述段", preset.contains("你会做什么"))
-        assertTrue("必须点名风月AI", preset.contains("风月AI"))
-        assertTrue("必须点名 SillyTavern", preset.contains("SillyTavern"))
-        assertTrue("必须点名 Tavo", preset.contains("Tavo"))
+        // 2026-10-18 用户口径：不点名具体平台，只写「网络平台」——
+        // 抱朴有浏览器工具、能看网站的真实情况，钉死一个平台名反而会让它照记忆编。
+        assertFalse("不许点名具体平台", preset.contains("风月AI"))
+        assertTrue("就写「网络平台」", preset.contains("网络平台"))
+        assertTrue("要强调它能看真实页面", preset.contains("能看网站的真实情况"))
+        assertTrue("要说明它会做角色卡与叙事游戏", preset.contains("角色卡"))
+        assertTrue("要提到世界书格式由平台定", preset.contains("世界书"))
         assertTrue("要讲先认脸", preset.contains("先认脸"))
         assertTrue("要提醒字段以实测为准", preset.contains("实测"))
         assertTrue("指向技能目录", preset.contains("技能/"))
