@@ -226,7 +226,7 @@ object SkillStore {
     const val PLATFORM_SKILL_TEMPLATE: String = """# 平台机制：<平台名>
 <!-- 由抱朴实测填写；没实测的段落留空并写明「未实测」，不许猜 -->
 
-## ① 平台 / 页面
+## ① 平台 / 页面（哪个网站、哪个页面）
 - URL：
 - 抓取时间：
 - 页面语言 / 面向群体（男性向 or 女性向，按题材定）：
@@ -237,7 +237,7 @@ object SkillStore {
 |  |  |  |  |  |
 
 ## ③ 格式认脸与差异
-- 风月AI：顶层 `world_book`；条目用 `value` / `enable` / `sort`
+- 顶层是 `world_book` 数组、条目用 `value` / `enable` / `sort` 的那类平台
 - SillyTavern：`entries` 是字典，键为 uid；用 `content` / `disable`（**反义**）/ `order`
 - Tavo：`entries` 是数组，元素含 `keywords` / `content`
 - 认脸顺序：先看顶层键 → 再看 `entries` 是数组还是字典 → 最后才看扩展名
