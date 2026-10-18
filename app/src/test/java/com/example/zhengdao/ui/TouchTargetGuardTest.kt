@@ -53,7 +53,11 @@ class TouchTargetGuardTest {
     }
 
     @Test
-    fun `门禁_B补20_终端三个流量灯热区不小于48dp`() {
+    fun `门禁_交通灯热区30dp_用户回退后不再套用48dp`() {
+        // 2026-10-18 用户回退（真机反馈）：2026-10-16 把热区 30→48dp 后，三个点占了 158dp，
+        // 标题「证道 - Debian 13.7」被挤成省略号；用户要求「交通灯再挤挤、标题要正中间」。
+        // 现口径：热区 30dp（视觉仍 11dp，inset 9.5dp）——**这不是回退到"无知觉"，
+        // 而是用户本人拍板的取舍**，所以判据改成钉新值，防止以后有人按 M3 又改回去。
         val xml = "app/src/main/res/layout/activity_main.xml"
         for ((id, what) in listOf(
             "btn_close" to "关闭终端（整页唯一的出口）",
@@ -63,7 +67,7 @@ class TouchTargetGuardTest {
             val block = viewBlock(xml, id)
             val w = dpAttr(block, "layout_width")
             val h = dpAttr(block, "layout_height")
-            assertTrue("B-补-20：$id（$what）热区 ${w}×${h}dp 小于 48dp", w >= 48 && h >= 48)
+            assertTrue("交通灯 $id（$what）热区应为 30dp，实际 ${w}×${h}dp", w == 30 && h == 30)
         }
     }
 
@@ -82,7 +86,7 @@ class TouchTargetGuardTest {
 
     @Test
     fun `门禁_B补20_圆点inset与热区配平视觉仍是11dp`() {
-        // 热区 48dp、inset 每边 18.5dp ⇒ 视觉圆点 48 − 18.5×2 = 11dp。
+        // 热区 30dp、inset 每边 9.5dp ⇒ 视觉圆点 30 − 9.5×2 = 11dp（2026-10-18 用户回退后的口径）。
         // 改热区却忘了改 inset，圆点就会跟着变大（=偷偷改了界面视觉）。
         for (name in listOf("red", "yellow", "green")) {
             val xml = repoFile("app/src/main/res/drawable/traffic_dot_$name.xml").readText()
@@ -90,8 +94,8 @@ class TouchTargetGuardTest {
                 val m = Regex("""android:inset$side="([\d.]+)dp"""").find(xml)
                 assertTrue("traffic_dot_$name.xml 找不到 inset$side", m != null)
                 assertTrue(
-                    "B-补-20：traffic_dot_$name.xml 的 inset$side=${m!!.groupValues[1]}dp，圆点视觉尺寸会偏离 11dp",
-                    m.groupValues[1].toDouble() == 18.5,
+                    "traffic_dot_$name.xml 的 inset$side=${m!!.groupValues[1]}dp，圆点视觉尺寸会偏离 11dp（30 − 9.5×2）",
+                    m.groupValues[1].toDouble() == 9.5,
                 )
             }
         }

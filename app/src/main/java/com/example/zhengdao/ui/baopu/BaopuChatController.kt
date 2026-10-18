@@ -69,6 +69,10 @@ data class BaopuUiPart(
 internal class BaopuChatController(context: Context) {
 
     private val appCtx = context.applicationContext
+    // 2026-10-18 真机：「这次学到怎么没有啊」——自省便签原来只在内存里，进程一重启就没了，
+    // 而「已压缩」是从库里恢复的 ⇒ 跑马灯只剩一条。这里按会话 id 落到 SP，重启后照旧可读。
+    private val notePrefs = context.applicationContext
+        .getSharedPreferences("baopu-introspection", android.content.Context.MODE_PRIVATE)
     private val db = BaopuRuntime.db(appCtx)
     private val engine = BaopuRuntime.engine(appCtx)
     private val store: MemoryStore = BaopuRuntime.memoryStore(appCtx)
@@ -676,6 +680,9 @@ internal class BaopuChatController(context: Context) {
         }
         pendingMemories = merged.take(maxPending)
         introspectionNote = r.introspection.text
+        runCatching {
+            notePrefs.edit().putString("note_$sid", r.introspection.text).apply()
+        }
     }
 
     /**
@@ -688,6 +695,9 @@ internal class BaopuChatController(context: Context) {
         messages = if (sid == null) emptyList() else readMessages(sid)
         // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
         stepRows = if (sid == null) emptyList() else readStepRows(sid)
+        if (introspectionNote == null && sid != null) {
+            introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
+        }
         // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
         // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
         //    "正在思考"误读成"被杀了"——所以运行中跳过；
