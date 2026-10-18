@@ -801,6 +801,8 @@
     <string name="term_reset_done">终端已重置</string>
     <string name="term_browser_failed">打开浏览器失败：%1$s</string>
     <string name="term_link_blocked">为了安全，这个链接不允许在 App 内打开</string>
+    <string name="term_link_confirm_title">要打开这个链接吗</string>
+    <string name="term_link_confirm_open">打开</string>
 
     <!-- 玄览（浏览器 Tab，阶段 1 用户模式） -->
     <string name="browser_url_hint">输入网址或搜索</string>
@@ -845,6 +847,8 @@
     <string name="bridge_started">浏览器桥已开启</string>
     <string name="bridge_stopped">浏览器桥已关闭</string>
     <string name="bridge_port_label">监听地址</string>
+    <string name="bridge_listen_title">监听地址</string>
+    <string name="bridge_listen_detail">只绑 %1$s（本机环回地址）。意思是：这个端口只有手机自己能连，外网连不上、局域网里别的设备连不上、手机上别的 App 也连不上。\n\n端口 %2$s 是固定值，改不了——端口、绑定地址和鉴权方式都是这座桥的硬底线，不开放从界面调整。\n\n口令存在本机应用私有空间里，这一页只显示前后各 4 位，要复制请用下面的「复制口令」。</string>
     <string name="bridge_token_group">口令（token）</string>
     <string name="bridge_token_label">当前口令</string>
     <string name="bridge_token_hint">只显示前后各 4 位。要复制请点下面「复制口令」——复制是显式动作，不默认摊开。重置后旧口令立即失效。</string>

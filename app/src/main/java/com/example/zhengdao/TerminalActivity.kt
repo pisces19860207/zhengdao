@@ -286,6 +286,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
      * ——只探一次的话，会话中途代理被杀就再也报不出来，而"探通即收起"也永远等不到第二次观测。
      * 现在：周期探 + **只在状态翻转时**写日志（既不丢报警，也不刷 RunLog）。
      */
+    /**
+     * 终端链接的**会话信任簿**（第二十一批 A 段）：确认过一次的 host 记在这里，
+     * 本 Activity 生命周期内直接开。**不落盘**——重启即忘是安全默认（钓鱼页
+     * 骗过一次确认不该换来永久信任）。
+     */
+    private val trustedLinkHosts = mutableSetOf<String>()
+
     private val netWatch = NetWatch()
     private var netProbeScheduled = false
     private val netProbeRunnable = Runnable {
@@ -435,6 +442,16 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         ensureStartedAndAttach()
         // 网络探针：终端页可见时跑（周期性，见 startNetWatch / NetWatch）
         startNetWatch()
+        // 第二十一批 D 段：接上 NetWatch.resetFailures——离开终端页（代理 App 被
+        // 系统杀掉、飞行模式晃了一下）攒下的失败计数，重新进入时清零，不许带着
+        // 旧账判定"离线"。选 onResume 而不是每帧/每次探测：探测失败是**当前**
+        // 的事实，该继续累计；只有"人回来了"才该给一次干净起点。
+        // 先取旧账再清零：反过来的话日志里永远是 0（清零后读＝读了个空）。
+        val staleFailures = netWatch.failureCount
+        if (staleFailures > 0) {
+            netWatch.resetFailures()
+            RunLog.log("终端：失败计数已清零（重新进入终端，旧账 $staleFailures 次）")
+        }
         // 首次进入弹一次三点说明（等终端画面先出来，别挡在黑屏上）
         if (!dotsHintShownThisRun && !TerminalPrefs.dotsHintShown(this)) {
             mainHandler.post { showTrafficLightsHelp() }
@@ -1141,11 +1158,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
      * 回主页，由 MainActivity ON_RESUME 消费切 Tab 请求落到玄览。
      */
     override fun onLinkOpen(uri: String): Boolean {
-        return when (TerminalLinkPolicy.classify(uri)) {
+        return when (TerminalLinkPolicy.classify(uri, trustedLinkHosts)) {
             TerminalLinkPolicy.Verdict.OPEN_IN_APP -> {
-                BrowserHolder.pendingUrl = uri
-                BrowserHolder.requestBrowserTab()
-                finish() // 回主页（主页 ON_RESUME 消费切 Tab 请求）
+                openInXuanlan(uri)
                 true
             }
             TerminalLinkPolicy.Verdict.OPEN_SYSTEM -> {
@@ -1162,12 +1177,60 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 true
             }
             TerminalLinkPolicy.Verdict.CONFIRM -> {
-                // 一期不产生该判定（needsConfirm 恒 false，"已知域名簿"留二期）——
-                // 真出现时按最严处理：不打开。
-                Toast.makeText(this, getString(R.string.term_link_blocked), Toast.LENGTH_SHORT).show()
+                // 第二十一批：真弹二次确认（旧版这里恒 false，"假安全"）。正文给
+                // **完整 URL**（防"显示 A 跳 B"钓鱼——这条判据存在的唯一理由）；
+                // 确认走的打开路径与 OPEN_IN_APP 完全相同（见 openInXuanlan）。
+                showLinkConfirmDialog(uri)
                 true
             }
         }
+    }
+
+    /**
+     * App 内玄览打开的**唯一路径**（B 路径：不新开 Activity——写 BrowserHolder
+     * .pendingUrl ＋ 请求主页切 Tab ＋ finish() 回主页，由 MainActivity ON_RESUME
+     * 消费）。OPEN_IN_APP 与确认后打开都走它 ⇒ 没有第二条打开路径（J4）。
+     */
+    private fun openInXuanlan(uri: String) {
+        BrowserHolder.pendingUrl = uri
+        BrowserHolder.requestBrowserTab()
+        finish() // 回主页（主页 ON_RESUME 消费切 Tab 请求）
+    }
+
+    /**
+     * 链接二次确认卡（第二十一批 A 段）：标题「要打开这个链接吗」＋ **完整 URL**
+     * 正文。「打开」⇒ 走 [openInXuanlan] 并把 host 记进会话信任簿（下次同 host
+     * 直接开）；「取消」⇒ 什么都不做，只记一条 RunLog。
+     */
+    private fun showLinkConfirmDialog(uri: String) {
+        val host = TerminalLinkPolicy.hostOf(uri)?.lowercase()
+        runCatching {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.term_link_confirm_title)
+                .setMessage(uri) // 完整 URL，不是 host——防钓鱼就靠这一条
+                .setPositiveButton(R.string.term_link_confirm_open) { _, _ ->
+                    trustLinkHost(uri)
+                    openInXuanlan(uri)
+                }
+                .setNegativeButton(R.string.common_cancel) { _, _ ->
+                    // 取消什么都不做；记一条日志（host 就够，不把完整 URL 写进日志）
+                    RunLog.log("终端链接：用户取消打开（host=$host）")
+                }
+                .show()
+        }.onFailure {
+            // 弹卡失败（窗口没了等）⇒ 最严处理：不打开，明说
+            Toast.makeText(this, getString(R.string.term_link_blocked), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** host 进会话信任簿（满额不记；日志一句）。簿不落盘——重启即忘，这是有意的。 */
+    private fun trustLinkHost(uri: String) {
+        val host = TerminalLinkPolicy.hostOf(uri)?.lowercase() ?: return
+        if (trustedLinkHosts.size >= TerminalLinkPolicy.MAX_TRUSTED) {
+            RunLog.log("终端链接信任簿已满（${TerminalLinkPolicy.MAX_TRUSTED} 条），$host 不记入")
+            return
+        }
+        trustedLinkHosts += host
     }
 
     /** B 路径：tap 列所在行的裸 URL 命中（OSC 8 未覆盖时）。 */
