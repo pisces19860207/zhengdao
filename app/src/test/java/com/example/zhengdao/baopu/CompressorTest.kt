@@ -134,6 +134,37 @@ class CompressorTest {
     }
 
     /**
+     * J1（第十三批 §6.1）：选区**不动最近 [Compressor.KEEP_RECENT] 条**，且**不含
+     * 永不压缩的段**（人设三层／硬事实／记忆）。
+     *
+     * 后半句怎么验：永压段根本不进 `history`（它们是前缀，由
+     * [com.example.zhengdao.baopu.AssembledPrompt.prefixText] 单独兜住），
+     * 所以这里钉两件事——① 选区里的每条都确实来自历史；② 永压段的文本
+     * 一条都混不进选区（真混进来说明选区接口被喂了不该喂的东西）。
+     */
+    @Test
+    fun `J1_选区_不动最近KEEP_RECENT条_且不含永压段内容`() {
+        val prefixTexts = setOf("A内核文本", "B全局文本", "C项目文本", "硬事实卡", "记忆条目")
+        val history = (1..8).map { msg("h$it", "第 $it 条历史正文") }
+        val range = Compressor.selectCompressionRange(history)
+
+        // ① 最近 4 条不动（h5–h8 必须原样留在上下文里）
+        assertEquals(listOf("h1", "h2", "h3", "h4"), range.map { it.id })
+        assertTrue("最近 ${Compressor.KEEP_RECENT} 条一条都不许进选区", range.none { it.id == "h8" })
+
+        // ② 永压段的内容不该出现在选区里
+        range.forEach { m ->
+            prefixTexts.forEach { p ->
+                assertFalse("永压段「$p」混进了选区", m.text.contains(p))
+            }
+        }
+        assertTrue(
+            "永压段集合里必须有记忆段（判据 3：人设与记忆永远不进压缩范围）",
+            Compressor.neverCompressible().contains(SegmentKind.MEMORY),
+        )
+    }
+
+    /**
      * 摘要里取一个字段的值（测试辅助）：从「字段：」行起，吃到下一个已知字段前。
      * 不能只取第一行——续行是拼回字段值的（模型爱把一条决定拆多行）。
      */

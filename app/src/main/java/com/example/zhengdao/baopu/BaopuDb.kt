@@ -7,6 +7,8 @@ package com.example.zhengdao.baopu
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.example.zhengdao.baopu.agent.CompressionRunner
+import com.example.zhengdao.baopu.agent.CompressionStore
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.ExecutorService
@@ -260,6 +262,85 @@ internal object BaopuSql {
         "SELECT pending_tool, pending_args, pending_at FROM session WHERE id = ?",
         arrayOf<String?>(sessionId.toString()),
     )
+
+    // ── compression 表（第十三批 v6：压过哪几条要留痕，摘要要能重启再拿到）──
+
+    /**
+     * 压缩记录表（派工单 §4.1 的建表语句，**全部 IF NOT EXISTS ⇒ 幂等**，照 v3 房型）。
+     *
+     * ⚠️ 与派工单的一处不同：`session_id` 用 **INTEGER**（派工单写的是 TEXT）。
+     * `session.id` 是 `INTEGER PRIMARY KEY AUTOINCREMENT`，全仓 `run_log` / `part`
+     * 等外键也都是 INTEGER；写成 TEXT 会让「按 session 查」走不上索引、且与
+     * 既有外键类型不一致（SQLite 不强制，但会埋类型隐式转换的坑）。已记入偏差清单。
+     */
+    val COMPRESSION_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS compression (
+          id TEXT PRIMARY KEY,
+          session_id INTEGER NOT NULL REFERENCES session(id),
+          summary TEXT NOT NULL,
+          compressed_ids TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          model TEXT NOT NULL,
+          source_tokens INTEGER NOT NULL DEFAULT 0,
+          summary_tokens INTEGER NOT NULL DEFAULT 0
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS idx_compression_session ON compression(session_id, created_at)",
+    )
+
+    /** 压缩记录的稳定 id（同一会话同一时刻只可能一条；恢复与去重都靠它）。 */
+    fun compressionId(sessionId: Long, createdAt: Long): String = "c-$sessionId-$createdAt"
+
+    fun insertCompression(
+        sessionId: Long,
+        record: CompressionRecord,
+        sourceTokens: Int,
+        summaryTokens: Int,
+    ): Stmt = Stmt(
+        "INSERT INTO compression (id, session_id, summary, compressed_ids, created_at, " +
+            "model, source_tokens, summary_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        arrayOf<String?>(
+            compressionId(sessionId, record.createdAt),
+            sessionId.toString(),
+            record.summary,
+            idsToJson(record.compressedIds),
+            record.createdAt.toString(),
+            record.model,
+            sourceTokens.toString(),
+            summaryTokens.toString(),
+        ),
+    )
+
+    /** 本会话最近一条压缩记录（没有 ⇒ 空结果）。 */
+    fun latestCompression(sessionId: Long): Stmt = Stmt(
+        "SELECT id, session_id, summary, compressed_ids, created_at, model, " +
+            "source_tokens, summary_tokens FROM compression " +
+            "WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        arrayOf<String?>(sessionId.toString()),
+    )
+
+    /**
+     * 最近一次**压缩失败**发生在第几步（冷却判据的锚）。
+     * 走 `tool` 列的原因码（引擎留痕时写 `compression_failed`），不新加状态。
+     */
+    fun lastCompressionFailedStep(sessionId: Long): Stmt = Stmt(
+        "SELECT COALESCE(MAX(step), -1) FROM run_log WHERE session_id = ? AND tool = ?",
+        arrayOf<String?>(sessionId.toString(), CompressionRunner.FAIL_REASON),
+    )
+
+    /** 被压消息 id 列表 → JSON 数组（**纯函数**：空表也给 `[]`，不给空串）。 */
+    fun idsToJson(ids: List<String>): String = org.json.JSONArray().also { arr ->
+        ids.forEach { arr.put(it) }
+    }.toString()
+
+    /** JSON 数组 → id 列表（**纯函数**：坏 JSON 返回空表，不抛——坏一行不该让恢复炸）。 */
+    fun idsFromJson(json: String?): List<String> = runCatching {
+        val arr = org.json.JSONArray(json ?: return emptyList())
+        buildList {
+            for (i in 0 until arr.length()) add(arr.getString(i))
+        }
+    }.getOrDefault(emptyList())
 
     // ── 语句拼装（返回 sql + 绑定参数，顺序即调用方实参顺序）──
 
@@ -571,6 +652,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV3Migration(db)
         applyV4Migration(db)
         applyV5Migration(db)
+        applyV6Migration(db)
     }
 
     /**
@@ -594,6 +676,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 3) applyV3Migration(db)
         if (oldVersion < 4) applyV4Migration(db)
         if (oldVersion < 5) applyV5Migration(db)
+        if (oldVersion < 6) applyV6Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -644,6 +727,14 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /**
+     * v5 → v6 迁移体（第十三批）：`compression` 表 ＋ 索引，**全是 IF NOT EXISTS**
+     * ⇒ 幂等（派工单 §4.1「照 BaopuDb 既有风格」；J9 钉的就是连开两次不炸）。
+     */
+    private fun applyV6Migration(db: SQLiteDatabase) {
+        BaopuSql.COMPRESSION_DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -668,7 +759,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         const val DB_NAME = "baopu.db"
 
         /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。 */
-        const val VERSION = 5
+        const val VERSION = 6
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
@@ -726,6 +817,98 @@ internal interface PendingStore {
 
 /** pending 一行（[PendingRow.tool] 空 = 没有 pending）。 */
 internal data class PendingRow(val tool: String, val argsJson: String, val at: Long)
+
+/**
+ * [CompressionStore] 的 BaopuDb 实现（第十三批 · 薄壳，照 [SessionPendingStore] 房型）。
+ *
+ * 写走 [BaopuDb.write] 的 Future 并 `.get()` 等真落库（与 pending 同纪律：
+ * Future 不 get 等于没写）；读走调用方线程（WAL 下不挡写）。
+ *
+ * 留痕两行都进 `run_log` 的 **tool 列**（`compression_failed` /
+ * `compression_skipped_degraded`）：不新增 state 枚举值，蓝总管按 tool 列就能筛出来。
+ */
+internal class SessionCompressionStore(private val db: BaopuDb) : CompressionStore {
+
+    override fun insert(
+        sessionId: Long,
+        record: CompressionRecord,
+        sourceTokens: Int,
+        summaryTokens: Int,
+    ) {
+        val stmt = BaopuSql.insertCompression(sessionId, record, sourceTokens, summaryTokens)
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+            .onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "抱朴压缩：落库失败 ${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+    }
+
+    override fun latest(sessionId: Long): CompressionRecord? = db.read { d ->
+        val stmt = BaopuSql.latestCompression(sessionId)
+        d.rawQuery(stmt.sql, stmt.args).use { c ->
+            if (!c.moveToFirst()) {
+                null
+            } else {
+                CompressionRecord(
+                    summary = c.getString(2),
+                    compressedIds = BaopuSql.idsFromJson(c.getString(3)),
+                    createdAt = c.getLong(4),
+                    model = c.getString(5),
+                )
+            }
+        }
+    }
+
+    override fun lastFailedStep(sessionId: Long): Int? = db.read { d ->
+        val stmt = BaopuSql.lastCompressionFailedStep(sessionId)
+        d.rawQuery(stmt.sql, stmt.args).use { c -> if (c.moveToFirst()) c.getInt(0) else -1 }
+    }.takeIf { it != null && it >= 0 }
+
+    override fun markFailed(sessionId: Long, step: Int, code: Int, message: String) {
+        appendCompressionLog(
+            sessionId, step, tool = CompressionRunner.FAIL_REASON,
+            ok = false, err = "code=$code $message",
+        )
+    }
+
+    override fun markSkipped(sessionId: Long, step: Int, reason: String) {
+        appendCompressionLog(
+            sessionId, step, tool = reason,
+            ok = true, err = "",
+        )
+    }
+
+    private fun appendCompressionLog(
+        sessionId: Long,
+        step: Int,
+        tool: String,
+        ok: Boolean,
+        err: String,
+    ) {
+        val stmt = BaopuSql.insertRunLog(
+            sessionId = sessionId,
+            step = step,
+            state = "Compressing",
+            model = "",
+            tokensIn = 0,
+            tokensOut = 0,
+            tokensInEst = 0,
+            tokensOutEst = 0,
+            tool = tool,
+            ok = ok,
+            latencyMs = 0,
+            err = err,
+            createdAt = System.currentTimeMillis(),
+        )
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+            .onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "抱朴压缩：留痕失败 ${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+    }
+}
 
 /**
  * [PendingStore] 的 BaopuDb 实现（薄壳：清走 [BaopuDb.write] 的 Future 并 .get()

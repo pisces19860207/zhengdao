@@ -183,6 +183,7 @@ internal object ContextAssembler {
      * @param current 本轮输入（空串 = 没有，段整体省略）
      * @param compressionSummary 压缩摘要替身（null = 还没压过）
      * @param compressedIds 被压进摘要的消息 id（留痕，判据 5）
+     * @param skipIds **不进 prompt** 的消息 id（第十三批 B 段：压过的旧消息由摘要代言）
      */
     @Suppress("LongParameterList")
     fun assemble(
@@ -195,6 +196,7 @@ internal object ContextAssembler {
         windowTokens: Int = DEFAULT_WINDOW_TOKENS,
         compressionSummary: String? = null,
         compressedIds: Set<String> = emptySet(),
+        skipIds: Set<String> = emptySet(),
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
     ): AssembledPrompt {
         // ── 记忆段：sticky 恒前，new 追加；预算 = 2k − sticky 已占 ──
@@ -239,8 +241,12 @@ internal object ContextAssembler {
             }
             segments += PromptSegment(SegmentKind.COMPRESSION, mark)
         }
-        if (history.isNotEmpty()) {
-            segments += PromptSegment(SegmentKind.HISTORY, renderHistory(history))
+        // 会话历史：**跳过** [skipIds]（第十三批 B 段）——被压进摘要的旧消息由摘要
+        // 代言，**不是删消息**：原文仍在 SQLite 里，用户点开「已压缩」标记能回看
+        // （派工单 §4.2「可追溯 + 不删」）。前缀段（NEVER_COMPRESS）压根不经过这里。
+        val visibleHistory = if (skipIds.isEmpty()) history else history.filterNot { it.id in skipIds }
+        if (visibleHistory.isNotEmpty()) {
+            segments += PromptSegment(SegmentKind.HISTORY, renderHistory(visibleHistory))
         }
         if (current.isNotBlank()) segments += PromptSegment(SegmentKind.CURRENT, current)
 
