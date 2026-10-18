@@ -207,7 +207,11 @@ internal class BaopuChatController(context: Context) {
      * 永远收不起来；卡片本体渲染在消息流之外，本就不受收纳影响。
      */
     val actionCardsPresent: Boolean
-        get() = confirmCard != null || askCard != null || pendingMemories.isNotEmpty()
+        // 2026-10-18 修：这里原来还带着 `|| pendingMemories.isNotEmpty()`，与上面自己写的
+        // 口径互相打架（候选卡渲染在消息流之外，钉住那一轮毫无意义），后果是**只要有一条
+        // 没点的记忆候选，最近一轮就永远收不起来**——用户点的正是这句「干了几步点开后
+        // 没法收回」。钉住只留给「跟当前 run 走」的两张卡。
+        get() = confirmCard != null || askCard != null
 
     /**
      * 提炼游标（防同一轮双提炼）：记下「哪个会话、已经提炼到第几条用户消息」。
