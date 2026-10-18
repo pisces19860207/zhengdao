@@ -30,9 +30,11 @@ import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaRules
+import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
+import com.example.zhengdao.baopu.SessionPlanStore
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -236,6 +238,32 @@ internal class RunEngine(
         compressedIds = ids
     }
 
+    // ── 工作计划（第十七批 A 段：update_plan 接线） ────────────────────────
+
+    /**
+     * 当前轮会话（[PlanController] 落库要知道落到哪；单活跃门保证同时只有一个）。
+     * runLoop 开头设，工具执行线程（submit）读 ⇒ [Volatile]。
+     */
+    @Volatile
+    private var planSessionId: Long = -1
+
+    /**
+     * update_plan 内核（第十七批 A+B 段）：校验归一化 ⇒ sticky done ⇒ 落库 ⇒ 回灌。
+     *
+     * 为什么内核单独一个类：它要 JVM 直测（派工单 §3「JVM，纯函数优先」）——
+     * 判据全压 [PlanController] ＋ 假 store；引擎壳只喂 sessionId 与轮次事件
+     * （照 [CompressionRunner] 的房型：内核零 Android、壳只接线）。
+     */
+    private val planController = PlanController(
+        sessionId = { planSessionId },
+        store = SessionPlanStore(db),
+        log = log,
+    )
+
+    init {
+        PlanTool.sink = planController
+    }
+
     /**
      * 确认制内核。回调全是引擎侧接线：
      * - [enterAwaitConfirm]：run_log 的 AwaitConfirm 行 + session pending 三列**同事务**；
@@ -435,6 +463,8 @@ internal class RunEngine(
             _state.value = RunState.ABORTED
             return
         }
+        // 工作计划（第十七批）：update_plan 落到哪个会话，由这里喂给 PlanController
+        planSessionId = sessionId
         val workspacePath = spillRoot().absolutePath
         val windowTokens = ContextAssembler.ContextBudgets.windowOf(provider)
         val persona = PersonaRules.assemble(
@@ -456,6 +486,8 @@ internal class RunEngine(
         var history = loadHistory(sessionId).toMutableList()
         var stepCount = if (resumed) stepOf(sessionId) else 0
         if (userText != null) {
+            // 新一轮 ⇒ 新计划：不继承上一轮的勾选状态（新任务不该因同名条目被钉 done）
+            planController.newRound()
             persistUserMessage(sessionId, userText)
             history += HistoryMessage("local-user-${System.nanoTime()}", HistoryMessage.ROLE_USER, userText)
         }
@@ -464,6 +496,11 @@ internal class RunEngine(
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
         verifyRepairs = 0
+
+        // 工作计划（第十七批）：续跑＝同一轮的继续 ⇒ 计划态从库回种。进程被杀过
+        // 内存是空的；不回种的话模型重发计划时 sticky done 失效，done 会被打回
+        // doing（用户看到「打完的勾又亮了」）。
+        if (resumed) planController.seedFromStore(sessionId)
 
         while (!stopRequested) {
             // ── Thinking 前：预算检查（第十五批口径：token 超触发线 **或** 可压旧
@@ -1189,12 +1226,17 @@ internal class RunEngine(
      * SQL 取全部 part（不再按 kind 过滤），映射判据全在纯函数 [HistoryCodec]
      * （JVM 直测）；顺序 = `message.seq ASC, part.seq ASC` ⇒ 与在线时一致
      * （工具结果紧跟发起它的那轮——落库时就这个顺序）。
+     *
+     * 第十七批例外：`kind='plan'` 的 part **不进历史**——计划是给用户看的
+     * （工作计划卡），模型侧的计划回灌是 update_plan 的 tool part（执行结果
+     * 已经含摘要）。放它进去等于让模型读一嘴裸 JSON，白白吃上下文。
      */
     private fun loadHistory(sessionId: Long): List<HistoryMessage> = db.read { d ->
         d.rawQuery(
             "SELECT message.id, message.role, part.kind, part.payload FROM message " +
                 "LEFT JOIN part ON part.message_id = message.id " +
-                "WHERE message.session_id = ? ORDER BY message.seq ASC, part.seq ASC",
+                "WHERE message.session_id = ? AND (part.kind IS NULL OR part.kind <> 'plan') " +
+                "ORDER BY message.seq ASC, part.seq ASC",
             arrayOf(sessionId.toString()),
         ).use { c ->
             val rows = mutableListOf<HistoryRow>()
