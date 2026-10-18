@@ -1172,6 +1172,8 @@
     <string name="baopu_tool_library_organize">Organize library</string>
     <string name="baopu_tool_library_organize_desc">Land the organizing result (a confirmation card pops up before each action): move a file from 投递/ to 整理/ (same-name is refused, never overwritten), rename within the same directory, or rebuild 资料库/索引.md. Only 投递/ and 整理/ are touched — never 原始/.</string>
     <string name="baopu_tool_delete_path">Delete file</string>
+    <string name="baopu_tool_ask_user">Choice card</string>
+    <string name="baopu_tool_ask_user_desc">Pops a choice card above the input bar when unsure: 2–4 options, the recommended one first with a one-line reason; the run continues after you pick. Touches no files.</string>
     <string name="baopu_tools_group_read">Read &amp; find</string>
     <string name="baopu_tools_group_write">Write &amp; change</string>
     <string name="baopu_tools_group_image">Images</string>
