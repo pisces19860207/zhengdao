@@ -114,6 +114,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var runHereNode by remember { mutableStateOf<DrawerWorkspaceNode?>(null) }
     // 「工作区」标题右侧的 ＋：选一个文件夹加进来（落点与设置页那张卡同一套选择器）。
     var addWorkspaceOpen by remember { mutableStateOf(false) }
+    // 长按会话行 ⇒ 删除确认（设置页那套平铺列表已删，删除只在这里）
+    var deleteRow by remember { mutableStateOf<DrawerSessionRow?>(null) }
     // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
@@ -258,6 +260,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     onOpenSession = { sid ->
                         scope.launch { drawerState.close() }
                         controller.requestOpenSession(sid)
+                    },
+                    // 长按＝删除：先关抽屉再问人，确认才真删（走修好 compression 的 deleteSession）
+                    onSessionLongPress = { row ->
+                        scope.launch { drawerState.close() }
+                        deleteRow = row
                     },
                     // 文件夹行右侧的「圆里加号」＝在这个工作区里干活（开新会话）。
                     onWorkspaceRunHere = { node ->
@@ -714,6 +721,25 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             // ── 「在这个工作区开新会话」（文件夹行右侧的圆里加号）──────────────
             // 切工作区是**全局**动作（全局只有一个 Workspace），所以别的文件夹必须先问人：
             // 默默把用户挪到另一个目录、还在那里发一条消息，是最不该有的惊喜。
+            deleteRow?.let { row ->
+                AlertDialog(
+                    onDismissRequest = { deleteRow = null },
+                    title = { Text(stringResource(R.string.baopu_delete_session_title)) },
+                    text = { Text(stringResource(R.string.baopu_delete_session_body, row.title)) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val id = row.id
+                            deleteRow = null
+                            if (!controller.deleteSession(id)) {
+                                Toast.makeText(context, context.getString(R.string.baopu_delete_session_failed), Toast.LENGTH_SHORT).show()
+                            }
+                        }) { Text(stringResource(R.string.baopu_delete_session_confirm)) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { deleteRow = null }) { Text(stringResource(R.string.baopu_delete_session_cancel)) }
+                    },
+                )
+            }
             runHereNode?.let { node ->
                 AlertDialog(
                     onDismissRequest = { runHereNode = null },
