@@ -15,10 +15,12 @@ r"""check-doc-ledger.py —— 文档账本一致性门禁（第三十三批）�
     D3  引用可查：全仓 docs/**/*.md 里出现的 `E-\d+` 引用都要能在 ERRATA
         找到对应标题（E 号按整数比对，E-16 与 E-016 视为同一号）；
     D4  commit 短号可达：docs/FEATURE-LEDGER.md 与 docs/派工单-*.md 里
-        反引号包裹的 7–40 位十六进制短号，`git cat-file --batch-check` 必须
-        认得过（只查本地对象库，不联网）。**要求完整历史**：浅克隆里历史对象
-        压根不在库里，全部短号都会被误判 missing（2026-10-19 实测 1774 条，
-        见 ERRATA E-162）⇒ 浅克隆直接报环境错误，不冒充业务发现；
+        反引号包裹的 7–40 位十六进制短号，必须**既在对象库里认得过、又能在
+        `refs/remotes/origin/*`（已推的 main＋支线）里走到**——只判「对象库里
+        有」会让本地绿、CI 红（本地躺着已删支线的悬空 commit；见 ERRATA E-162）；
+        只查本地对象库，不联网。**要求完整历史**：浅克隆里历史对象压根不在库里，
+        全部短号都会被误判 missing（实测 1774 条）⇒ 浅克隆直接报环境错误，
+        不冒充业务发现；
     D5  例外要留痕：已知不查的引用/短号一律写进 tools/doc-ledger-allowlist.txt
         （一行一条 `判据-值 # 理由`）；**allowlist 条目若已不再触发也要报**——
         否则烂账永远清不掉（修好了没人知道该删）。
@@ -231,9 +233,51 @@ def is_shallow_repo(repo: Path) -> bool:
     return proc.returncode == 0 and proc.stdout.strip() == "true"
 
 
+def reachable_commits(repo: Path):
+    """本仓库**能公开看见**的 commit 集合：优先 `refs/remotes/origin/*`（已推的支线＋main），
+    没有远端 ref 时退回全部本地 ref（离线仓库/单机仓库）。都没有 ⇒ 返回 None，
+    表示「可达性无法判定」，调用方退回「对象库里认得过」这一较弱的判据。
+    只读本地对象库，不联网。"""
+    proc = subprocess.run(
+        ["git", "for-each-ref", "--format=%(refname)", "refs/remotes/origin"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=str(repo),
+    )
+    refs = [r for r in proc.stdout.split() if r]
+    if not refs:
+        proc = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/tags"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(repo),
+        )
+        refs = [r for r in proc.stdout.split() if r]
+    if not refs:
+        return None
+    proc = subprocess.run(
+        ["git", "rev-list", *refs],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=str(repo),
+    )
+    if proc.returncode != 0:
+        return None
+    return set(proc.stdout.split())
+
+
 def check_d4(repo: Path) -> list[Finding]:
-    """D4 commit 短号可达：台账＋派工单里反引号包裹的 7–40 位十六进制，
-    git cat-file 必须认得过。一次 --batch-check 批量校验（不逐个起进程）。"""
+    """D4 commit 短号可达：台账＋派工单里反引号包裹的 7–40 位十六进制，必须
+    **既在对象库里认得过、又能在本仓库公开可见的 ref 里走到**（origin 支线 ⊆ 可以）。
+    只判「存在」是 33 批最初的写法，它在公开仓库面前不成立（E-162）：本地对象库里
+    躺着大量已删支线的悬空 commit，本地绿、CI 红，而且两边的 allowlist 语义互相打架。
+    一次 --batch-check 批量校验（不逐个起进程）。"""
     targets = [repo / LEDGER_REL] + sorted(repo.glob(WORKORDER_GLOB))
     hits: list[tuple[str, int, str, str]] = []  # (rel, lineno, sha, 上下文)
     shas: list[str] = []
@@ -251,6 +295,7 @@ def check_d4(repo: Path) -> list[Finding]:
     findings: list[Finding] = []
     if not hits:
         return findings
+    reach = reachable_commits(repo)
     proc = subprocess.run(
         ["git", "cat-file", "--batch-check=%(objectname) %(objecttype)"],
         input="\n".join(shas) + "\n",
@@ -274,6 +319,20 @@ def check_d4(repo: Path) -> list[Finding]:
                     lineno,
                     sha.lower(),
                     f"短号 {sha} 在 git 对象库里不存在（cat-file missing；"
+                    f"上下文「{ctx}」）",
+                )
+            )
+            continue
+        # 对象在库里，但还要能在**公开可见的 ref** 里走到：否则本地绿、CI 红（E-162）
+        if reach is not None and not any(c.startswith(sha.lower()) for c in reach):
+            findings.append(
+                Finding(
+                    "D4",
+                    rel,
+                    lineno,
+                    sha.lower(),
+                    f"短号 {sha} 在对象库里有，但 origin 远端分支里走不到它"
+                    f"（旧支线已删／从未推 origin ⇒ 公开仓库核验不到；"
                     f"上下文「{ctx}」）",
                 )
             )
