@@ -298,16 +298,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
-            // 提示词小框（右上角复制）：显示最近一条抱朴回复
-            if (lastAssistant.isNotBlank()) {
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    CopyBox(
-                        text = lastAssistant,
-                        label = stringResource(R.string.baopu_role_assistant),
-                        maxLines = 4,
-                    )
-                }
-            }
+            // 提示词小框（右上角复制）已搬进消息列表首项（2026-10-18）：默认一行、点开展开，
+            // 不再占据固定可视面积。
             // ── 贴底跟随＋「回到最新」浮标（第十八批-B §2.2）──────────────────
             // 滚动状态归屏幕层：判据是纯函数（BaopuChatScroll.shouldFollow /
             // shouldShowJump / jumpHasNewDot，JVM 直测），这里只接线。
@@ -365,6 +357,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     running = controller.busy,
                     pinLastRound = controller.actionCardsPresent,
                     listState = listState,
+                    lastAssistant = lastAssistant,
                     headerNote = if (noteDismissed) null else controller.introspectionNote,
                     onDismissHeaderNote = { noteDismissed = true },
                     compressedNote = controller.compressionNote,

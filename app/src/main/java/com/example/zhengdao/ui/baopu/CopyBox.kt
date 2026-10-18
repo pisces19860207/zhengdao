@@ -6,6 +6,7 @@
 // 纪律记录在此，不再指向仓库外文件名）。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,9 +55,13 @@ fun CopyBox(
     modifier: Modifier = Modifier,
     label: String = "证道",
     maxLines: Int = 6,
+    // 2026-10-18 用户：「已完成做成动态卡吧，点击后展开，再次点击就收回，只显示已完成和右边的复制按钮」
+    // ⇒ collapsible=true 时默认 1 行，点正文展开全文，再点收回（复制按钮不受影响）。
+    collapsible: Boolean = false,
 ) {
     val context = LocalContext.current
     var hint by remember { mutableStateOf<String?>(null) }
+    var expanded by remember(text) { mutableStateOf(false) }
 
     // 提示 1.6s 后自消退；hint 变化会重启这个 effect（每次复制都重新计时）。
     LaunchedEffect(hint) {
@@ -75,8 +80,13 @@ fun CopyBox(
             Column(modifier = Modifier.padding(top = 4.dp, end = 88.dp, bottom = 4.dp)) {
                 Text(
                     text = text,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    maxLines = maxLines,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (collapsible) Modifier.clickable { expanded = !expanded } else Modifier,
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    maxLines = if (collapsible && !expanded) 1 else maxLines,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
                 )
