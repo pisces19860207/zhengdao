@@ -486,7 +486,7 @@ internal class RunEngine(
                         "可压旧消息 $oldMessageCount 条 / 线 ${RunRules.COMPRESS_OLD_MESSAGE_MIN}）" +
                         "进 Compressing",
                 )
-                compressionSummary = runCompression(sessionId, stepCount, history, provider)
+                compressionSummary = runCompression(sessionId, stepCount, history, provider, compressionSummary)
                     ?: compressionSummary
             }
 
@@ -1140,9 +1140,20 @@ internal class RunEngine(
         step: Int,
         history: List<HistoryMessage>,
         provider: Provider,
-    ): String? = when (val outcome = compression.runOnce(sessionId, history, provider, step)) {
+        previousSummary: String?,
+    ): String? = when (
+        val outcome = compression.runOnce(
+            sessionId, history, provider, step,
+            // 第十六批：把 compressedIds 传给内核扣选区（「压过的不再重发」）——
+            // 组装跳过、条数判据、压缩选区三处从此同源，不再各算各的。
+            skipIds = compressedIds,
+            previousSummary = previousSummary,
+        )
+    ) {
         is CompressionRunner.Outcome.Ok -> {
+            val added = outcome.record.compressedIds.size
             compressedIds = compressedIds + outcome.record.compressedIds
+            log("抱朴引擎：压缩完成，累计已压 ${compressedIds.size} 条（本轮新增 $added 条）")
             outcome.record.summary
         }
 

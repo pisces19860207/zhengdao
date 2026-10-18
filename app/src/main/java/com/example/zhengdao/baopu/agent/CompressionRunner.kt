@@ -88,12 +88,19 @@ internal class CompressionRunner(
      * 跑一次压缩。
      *
      * @param step 当前步数（冷却判据用它跟上次失败的那一步比）
+     * @param skipIds 已压过的消息 id（第十六批：选区扣除它们——「压过的不再重发」）。
+     *   与 `ContextAssembler.pendingOldMessageCount` 同口径（同一个 compressedIds 集合，
+     *   不另写一套判定）；**不传（默认空集）⇒ 选区与请求体与第十三批逐字节一致**（J11）。
+     * @param previousSummary 上一版摘要（没压过 ⇒ null）。有则产出后按「旧 + 新」
+     *   拼接（乙案增量，[Compressor.mergeSummaries]），旧摘要的实质内容不丢（J10）。
      */
     fun runOnce(
         sessionId: Long,
         history: List<HistoryMessage>,
         provider: Provider,
         step: Int,
+        skipIds: Set<String> = emptySet(),
+        previousSummary: String? = null,
     ): Outcome {
         val lastFailed = store.lastFailedStep(sessionId)
         if (lastFailed != null && step - lastFailed < COOLDOWN_STEPS) {
@@ -101,9 +108,24 @@ internal class CompressionRunner(
             return Outcome.Cooling(lastFailed + COOLDOWN_STEPS)
         }
 
-        val range = Compressor.selectCompressionRange(history)
+        // 第十六批：按既有口径选区，**之后**扣除已压过的——「压过的不再重发」。
+        // 过滤放在选区之后（不动 selectCompressionRange）：不传 skipIds 时这里是
+        // 不动点，选区与请求体和改前逐字节一致（J11 的判据根基）。
+        var range = Compressor.selectCompressionRange(history).filter { it.id !in skipIds }
         if (range.isEmpty()) {
-            return Outcome.Skipped("选区为空：最近 ${Compressor.KEEP_RECENT} 条之外没有可压的历史")
+            return Outcome.Skipped("选区为空：最近 ${Compressor.KEEP_RECENT} 条之外没有未压过的旧消息")
+        }
+
+        // 第十六批：单次上限——超了只压**最旧的** 200 条，剩下的下轮再压。
+        // 不许整批拒绝：整批拒绝＝长会话永远压不动，等于把压缩锁死（派工单 §2B 第 3 条）。
+        // 选区是按时间正序的（旧在前），take(n) 恰是「最旧的 n 条」。
+        if (range.size > RunRules.COMPRESS_MAX_MESSAGES_PER_RUN) {
+            log(
+                "抱朴压缩：未压旧消息 ${range.size} 条超过单次上限 " +
+                    "${RunRules.COMPRESS_MAX_MESSAGES_PER_RUN}，本次只压最旧的 " +
+                    "${RunRules.COMPRESS_MAX_MESSAGES_PER_RUN} 条，其余下轮再压",
+            )
+            range = range.take(RunRules.COMPRESS_MAX_MESSAGES_PER_RUN)
         }
 
         val choice = Compressor.chooseChannel(provider, freeAvailable())
@@ -118,7 +140,13 @@ internal class CompressionRunner(
         return when (val r = complete(messages, MAX_TOKENS, TEMPERATURE)) {
             is CompletionResult.Ok -> {
                 val ids = range.map { it.id }
-                val record = Compressor.parseSummary(r.text, ids, now(), r.model)
+                val parsed = Compressor.parseSummary(r.text, ids, now(), r.model)
+                // 第十六批（乙案增量）：有上一版摘要 ⇒ 按「旧 + 新」拼接落库，
+                // 旧摘要的实质内容不丢；总长超限由 mergeSummaries 丢最旧段并记日志。
+                val merged = Compressor.mergeSummaries(
+                    previousSummary, parsed.summary, MAX_TOKENS, tokensOf, log,
+                )
+                val record = parsed.copy(summary = merged)
                 val sourceTokens = range.sumOf { tokensOf(it.text) }
                 store.insert(sessionId, record, sourceTokens, tokensOf(record.summary))
                 log("抱朴压缩：${ids.size} 条压成摘要（模型 ${r.model}），已落库")

@@ -160,7 +160,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
-            "BaopuDb.kt:635",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移；刀 2 加资料库两表+章节索引表 +67 ⇒ 393→460；刀 3 B 段 v4 迁移+usage 语句 +50 ⇒ 460→510；刀 3 A 段 pending 三列+v5 迁移+PendingStore +44 ⇒ 510→554；第十三批 v6 compression 表+迁移+CompressionStore +81 ⇒ 554→635）
+            "BaopuDb.kt:647",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移；刀 2 加资料库两表+章节索引表 +67 ⇒ 393→460；刀 3 B 段 v4 迁移+usage 语句 +50 ⇒ 460→510；刀 3 A 段 pending 三列+v5 迁移+PendingStore +44 ⇒ 510→554；第十三批 v6 compression 表+迁移+CompressionStore +81 ⇒ 554→635；第十六批第一件加 RUN_LOG_STEPS_SELECT 只读常量 +12 ⇒ 635→647）
             "HomeScreen.kt:599",                    // zd-health-fix（清场删掉 zd-taiji-retry 后自 :620 平移 -21）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）

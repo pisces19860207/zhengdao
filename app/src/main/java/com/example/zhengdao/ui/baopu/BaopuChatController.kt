@@ -42,6 +42,8 @@ data class BaopuUiMessage(
     val id: Long,
     val role: String,
     val parts: List<BaopuUiPart>,
+    /** 落库时间（十六批第一件：轮窗口与「消息时间差」兜底用时的数据源；只读透出）。 */
+    val createdAt: Long = 0L,
 )
 
 /** 一个 part 的 UI 形状（text 直显；tool 显示调用名 + 结果摘要，可展开全文）。 */
@@ -184,6 +186,18 @@ internal class BaopuChatController(context: Context) {
         )
 
     /**
+     * 有「要人动手」的卡在 ⇒ 最近一轮不许收（十六批第一件 C 段：确认卡/问人卡/
+     * 待过目候选卡都是要人点的东西，它们所在的轮收起来就是事故）。
+     *
+     * 口径说明：确认卡与问人卡跟着当前 run 走（[confirmCard] / [askCard]）；
+     * 待过目候选（[pendingMemories]）本轮刚产、等用户点。刀 0b 的老候选
+     * （[memoryCandidates]）可跨轮积压多日，**不**参与钉住——不然最近一轮
+     * 永远收不起来；卡片本体渲染在消息流之外，本就不受收纳影响。
+     */
+    val actionCardsPresent: Boolean
+        get() = confirmCard != null || askCard != null || pendingMemories.isNotEmpty()
+
+    /**
      * 提炼游标（防同一轮双提炼）：记下「哪个会话、已经提炼到第几条用户消息」。
      *
      * 为什么需要：[EngineEvent.Settled] 每轮发一次，但同一会话里用户会连发多轮；
@@ -206,6 +220,15 @@ internal class BaopuChatController(context: Context) {
 
     /** 界面细条的数据（条数 + 摘要全文）。 */
     data class CompressionNote(val count: Int, val summary: String)
+
+    /**
+     * 全会话的 run_log 活动行（十六批第一件 · 步骤卡汇总行的数据源）。
+     *
+     * 只读：引擎照旧自己写 run_log，壳层只 SELECT；轮窗口切片与汇总判据
+     * 全在 [BaopuMessageList.kt] 的纯函数里（J1–J7 JVM 直测）。
+     */
+    var stepRows by mutableStateOf<List<BaopuStepRow>>(emptyList())
+        private set
 
     init {
         engine.onEvent = { ev -> onEngineEvent(ev) }
@@ -656,6 +679,8 @@ internal class BaopuChatController(context: Context) {
     fun refresh(force: Boolean = false) {
         val sid = sessionId
         messages = if (sid == null) emptyList() else readMessages(sid)
+        // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
+        stepRows = if (sid == null) emptyList() else readStepRows(sid)
         // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
         // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
         //    "正在思考"误读成"被杀了"——所以运行中跳过；
@@ -684,13 +709,39 @@ internal class BaopuChatController(context: Context) {
     private fun runningNow(): Boolean =
         com.example.zhengdao.baopu.agent.ActiveSessionGate.current() != null
 
+    /**
+     * 读全会话 run_log 活动行（十六批第一件 · **只读**；SQL 是
+     * [com.example.zhengdao.baopu.BaopuSql.RUN_LOG_STEPS_SELECT] 那一条常量）。
+     * 汇总判据不在这里：窗口切片与步数/失败数/用时全在 UI 层纯函数（可 JVM 直测）。
+     */
+    private fun readStepRows(sessionId: Long): List<BaopuStepRow> = db.read { d ->
+        d.rawQuery(
+            com.example.zhengdao.baopu.BaopuSql.RUN_LOG_STEPS_SELECT,
+            arrayOf(sessionId.toString()),
+        ).use { c ->
+            buildList {
+                while (c.moveToNext()) {
+                    add(
+                        BaopuStepRow(
+                            tool = c.getString(0),
+                            ok = c.getInt(1) == 1,
+                            latencyMs = if (c.isNull(2)) 0L else c.getLong(2),
+                            err = if (c.isNull(3)) "" else c.getString(3),
+                            createdAt = c.getLong(4),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     private fun refreshMemory() {
         memoryCandidates = store.loadAll().filter { it.status == MemoryStatus.CANDIDATE }
     }
 
     private fun readMessages(sessionId: Long): List<BaopuUiMessage> = db.read { d ->
         d.rawQuery(
-            "SELECT message.id, message.role, part.kind, part.payload " +
+            "SELECT message.id, message.role, message.created_at, part.kind, part.payload " +
                 "FROM message LEFT JOIN part ON part.message_id = message.id " +
                 "WHERE message.session_id = ? ORDER BY message.seq ASC, part.seq ASC",
             arrayOf(sessionId.toString()),
@@ -698,9 +749,10 @@ internal class BaopuChatController(context: Context) {
             val out = mutableListOf<BaopuUiMessage>()
             var curId = -1L
             var curRole = ""
+            var curAt = 0L
             var parts = mutableListOf<BaopuUiPart>()
             fun flush() {
-                if (curId >= 0) out += BaopuUiMessage(curId, curRole, parts.toList())
+                if (curId >= 0) out += BaopuUiMessage(curId, curRole, parts.toList(), curAt)
             }
             while (c.moveToNext()) {
                 val id = c.getLong(0)
@@ -708,10 +760,11 @@ internal class BaopuChatController(context: Context) {
                     flush()
                     curId = id
                     curRole = c.getString(1)
+                    curAt = if (c.isNull(2)) 0L else c.getLong(2)
                     parts = mutableListOf()
                 }
-                val kind = if (c.isNull(2)) "text" else c.getString(2)
-                val payload = if (c.isNull(3)) "" else c.getString(3)
+                val kind = if (c.isNull(3)) "text" else c.getString(3)
+                val payload = if (c.isNull(4)) "" else c.getString(4)
                 parts += if (kind == "tool") {
                     val json = runCatching { JSONObject(payload) }.getOrNull()
                     BaopuUiPart(
