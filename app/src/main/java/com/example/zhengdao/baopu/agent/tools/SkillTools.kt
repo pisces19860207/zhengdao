@@ -16,6 +16,7 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.SkillProposal
+import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
@@ -44,14 +45,22 @@ internal object SkillTools {
                 "scope": {"type": "string", "enum": ["project", "global"], "description": "落点：project=跟工作区，global=跟 App"},
                 "body": {"type": "string", "description": "SKILL.md 正文（Markdown）"},
                 "reason": {"type": "string", "description": "为什么写/为什么改，一句话"},
-                "draft": {"type": "boolean", "description": "是否草稿（默认 true；草稿也会进索引但标未验证）"}
+                "draft": {"type": "boolean", "description": "是否草稿（默认 true；草稿也会进索引但标未验证）"},
+                "action": {"type": "string", "enum": ["write", "use", "promote"], "description": "write=写/改（默认）；use=这条技能刚用过一次（次数+1，用满 3 次可转正）；promote=把用满的草稿转正"}
               },
               "required": ["name", "body"]
             }
             """.trimIndent(),
         ),
         executor = { args ->
+            val action = args.optString("action").trim().lowercase().ifEmpty { "write" }
             val name = args.optString("name").trim()
+            val root0 = workspaceRoot()
+            val pf0 = personaFiles()
+            // use / promote：只动**项目技能**，且只碰已存在那一条（不新建、不改名）
+            if (action == "use" || action == "promote") {
+                return@ToolSpec lifecycle(action, name, root0, pf0)
+            }
             val body = args.optString("body")
             val scope = when (args.optString("scope").lowercase()) {
                 "global" -> SkillScope.GLOBAL
@@ -102,6 +111,100 @@ internal object SkillTools {
         timeoutMs = ToolTimeout.FILE_MS,
     )
 
+    /**
+     * 技能生命周期两步（2026-10-19 用户口径：像养孩子——不懂就查、查到就记、用多了转正）。
+     *
+     * - `use`：这条技能刚被用过一次 ⇒ 正文头 uses+1（仍是草稿）；
+     * - `promote`：用满 [SkillStore.PROMOTE_USES] 次 ⇒ 头改 status=active、索引换成正式行。
+     *
+     * 两条都只碰**项目技能**（全局技能抱朴不许改），且只碰已存在的那一条——
+     * 名字对不上就明说，不新建一个"看起来差不多"的。
+     */
+    private fun lifecycle(action: String, name: String, root: File, pf: PersonaFiles): ToolOutcome {
+        if (name.isEmpty()) return ToolOutcome.Failed("name 不能为空")
+        val file = File(SkillRules.projectSkillDir(root), "$name/${SkillRules.SKILL_FILE}")
+        if (!file.isFile) {
+            return ToolOutcome.Failed("没有这条项目技能：$name（先用 list_dir 看 技能/ 下有什么）")
+        }
+        val old = runCatching { file.readText(Charsets.UTF_8) }.getOrNull()
+            ?: return ToolOutcome.Failed("读不出技能正文：${file.absolutePath}")
+        val isDraft = SkillStore.statusOf(old) == "draft"
+        val uses = SkillStore.usesOf(old)
+        return when (action) {
+            "use" -> {
+                if (!isDraft) {
+                    return ToolOutcome.Failed("$name 已经是正式技能，不用再记次数")
+                }
+                val newBody = SkillStore.bumpUses(old)
+                val after = SkillStore.usesOf(newBody)
+                val msg = if (SkillStore.canPromote(newBody)) {
+                    "（已用 $after/${SkillStore.PROMOTE_USES} 次，够了）"
+                } else {
+                    "（已用 $after/${SkillStore.PROMOTE_USES} 次）"
+                }
+                writeViaStore(root, pf, name, newBody, reason = "用过一次：记次数", keepDraft = true)
+                    .let { r ->
+                        when (r) {
+                            is ToolOutcome.Ok -> ToolOutcome.Ok(r.text + "\n" + msg)
+                            else -> r
+                        }
+                    }
+            }
+            "promote" -> {
+                if (!isDraft) return ToolOutcome.Failed("$name 已经是正式技能了")
+                if (!SkillStore.canPromote(old)) {
+                    return ToolOutcome.Failed(
+                        "$name 才用了 $uses/${SkillStore.PROMOTE_USES} 次，先用满再转正（先用起来才知道它值不值）",
+                    )
+                }
+                val newBody = SkillStore.draftHeader(status = "active", uses = uses) +
+                    "\n" + stripHeader(old)
+                writeViaStore(root, pf, name, newBody, reason = "用满了：转正", keepDraft = false)
+            }
+            else -> ToolOutcome.Failed("不认识的动作：$action（只认 write / use / promote）")
+        }
+    }
+
+    /** 正文头单独一笔：plan 里 draft=true 会把 uses 重置成 0，所以正文要自己带好再写。 */
+    private fun writeViaStore(
+        root: File,
+        pf: PersonaFiles,
+        name: String,
+        newBody: String,
+        reason: String,
+        keepDraft: Boolean,
+    ): ToolOutcome {
+        val globalRoot = File(pf.globalFile().parentFile ?: root, "")
+        val base = SkillProposal(
+            scope = SkillScope.PROJECT,
+            name = name,
+            body = newBody,
+            reason = reason,
+            draft = false,
+        )
+        // 索引行仍按草稿算（草稿要一直带「未验证」标），但写进正文的用已经算好的 newBody
+        val planned = SkillStore.plan(
+            base.copy(draft = keepDraft),
+            root,
+            globalRoot,
+            stamp(),
+            indexCountAfterAdd = 0,
+        )
+        planned.blocked?.let { return ToolOutcome.Failed(it) }
+        return when (val r = SkillStore.apply(planned.copy(proposal = base), pf, pf.read(PersonaLayer.C_PROJECT).orEmpty())) {
+            is SkillWriteResult.Written -> ToolOutcome.Ok(
+                "已更新技能状态：${name}" + if (r.indexUpdated) "（索引已同步）" else "（索引没写上，见 App 提示）",
+            )
+            is SkillWriteResult.Rejected -> ToolOutcome.Failed(r.reason)
+        }
+    }
+
+    /** 剥掉第一行状态头（只认第一行、只认带 status= 的注释）。 */
+    private fun stripHeader(body: String): String {
+        val lines = body.lines()
+        val head = lines.firstOrNull()?.trim().orEmpty()
+        return if (head.startsWith("<!--") && head.contains("status=")) lines.drop(1).joinToString("\n") else body
+    }
     private fun stamp(): String = com.example.zhengdao.util.TimeFormats.fileStamp()
 }
 

@@ -175,4 +175,50 @@ class SkillLifecycleAcceptanceTest {
         val globalSkillDir = SkillRules.globalSkillDir(File(pf().globalFile().parentFile ?: projectRoot, ""))
         assertFalse("被拒时全局目录一个字节都不许写：${globalSkillDir.absolutePath}", globalSkillDir.exists())
     }
+    // ── write_skill 的生命周期两步（action=use / promote，2026-10-19「养孩子」口径）──
+
+    private fun specForTest() = com.example.zhengdao.baopu.agent.SkillTools.spec(
+        workspaceRoot = { projectRoot },
+        personaFiles = { pf() },
+    )
+
+    private fun putDraftSkill(name: String, uses: Int, status: String = "draft") {
+        val dir = File(projectRoot, "${SkillRules.SKILL_DIR}/$name")
+        dir.mkdirs()
+        File(dir, SkillRules.SKILL_FILE).writeText(
+            "<!-- status=$status uses=$uses -->" + System.lineSeparator() + "# $name" + System.lineSeparator() + "正文",
+            Charsets.UTF_8,
+        )
+    }
+
+    @Test
+    fun `L10_use记一次次数_仍草稿且正文不动`() {
+        putDraftSkill("probe-flow", uses = 0)
+        val out = specForTest().executor(org.json.JSONObject("""{"name":"probe-flow","action":"use"}"""))
+        assertTrue("记次数应当成功：$out", out is com.example.zhengdao.baopu.agent.ToolOutcome.Ok)
+        val body = File(projectRoot, "${SkillRules.SKILL_DIR}/probe-flow/${SkillRules.SKILL_FILE}").readText()
+        assertEquals("次数要加一", 1, SkillStore.usesOf(body))
+        assertEquals("还是草稿", "draft", SkillStore.statusOf(body))
+        assertTrue("正文内容不能丢", body.contains("正文"))
+    }
+
+    @Test
+    fun `L11_promote只在用满3次时放行_转正后头变active`() {
+        putDraftSkill("young-flow", uses = 2)
+        val tooEarly = specForTest().executor(org.json.JSONObject("""{"name":"young-flow","action":"promote"}"""))
+        assertTrue("没满 3 次不许转正：$tooEarly", tooEarly is com.example.zhengdao.baopu.agent.ToolOutcome.Failed)
+        putDraftSkill("young-flow", uses = 3)
+        val ok = specForTest().executor(org.json.JSONObject("""{"name":"young-flow","action":"promote"}"""))
+        assertTrue("用满了应当能转正：$ok", ok is com.example.zhengdao.baopu.agent.ToolOutcome.Ok)
+        val body = File(projectRoot, "${SkillRules.SKILL_DIR}/young-flow/${SkillRules.SKILL_FILE}").readText()
+        assertEquals("转正后头是 active", "active", SkillStore.statusOf(body))
+        assertEquals("次数保留", 3, SkillStore.usesOf(body))
+    }
+
+    @Test
+    fun `L12_use碰不到不存在的技能_也不越界`() {
+        val out = specForTest().executor(org.json.JSONObject("""{"name":"nope","action":"use"}"""))
+        assertTrue("不存在的技能要拒：$out", out is com.example.zhengdao.baopu.agent.ToolOutcome.Failed)
+        assertFalse("不该凭空建目录", File(projectRoot, "${SkillRules.SKILL_DIR}/nope").exists())
+    }
 }
