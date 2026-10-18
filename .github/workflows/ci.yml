@@ -96,6 +96,13 @@ jobs:
       - name: 入库 .so 同源门禁（so 与 rust/core/src 同源基线）
         run: python3 tools/check-so-provenance.py
 
+      # 补一步（E-162）：把**已经推上 origin 的全部支线**拉进对象库。
+      # 账本里大量短号指向「已合并/已删的施工支线」——其中有些在 origin 上还留着
+      # 分支（`refs/heads/*`），但 checkout 只保证 main 的历史在本地，于是 D4 会把
+      # 它们判成「公开仓库核验不到」。这一步只拉 commit 对象，几乎不花时间。
+      - name: 拉全部远端分支（账本门禁 D4 要能看到已推支线的提交）
+        run: git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
+
       # 第三十三批（派工单 §1-B）：文档账本一致性门禁。账是文档账（FEATURE-LEDGER + ERRATA + 派工单），
       # 编号重复/缺号/引用查不到/commit 短号不可达全靠人肉对账，漂移已真实发生过两次。
       # 这一步把那五条机器能判的做成会红的门禁；默认只报告，--strict 有发现即红。
