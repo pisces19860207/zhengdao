@@ -98,6 +98,17 @@ jobs:
           if [ -z "$BASE" ]; then BASE="HEAD~1"; fi
           python3 tools/check-baseline-refresh.py --base "$BASE"
 
+      # 第二十三批 B 段（派工单 §2.3）：进化门禁进 CI 的第二半——**跑测试之前**先确认
+      # 评测集与基线水位没被顺手放松（用例不许删；passRate/avgSteps/cases/passing 不许松）。
+      # 顺序写死：校验必须排在 testDebugUnitTest 之前，否则测试烧完分钟数才发现基线被改松。
+      # BASE 与上面「刷基线收窄门禁」同一变量、同一写法（PR 取 base.sha，否则 HEAD~1；
+      # checkout 的 fetch-depth: 2 保证这两个 rev 都在本地对象库里）。
+      - name: 评测基线不许放松门禁（cases 不许删、baseline 不许松）
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ]; then BASE="HEAD~1"; fi
+          python3 tools/check-eval-baseline.py --base "$BASE"
+
       - name: 编译 Debug APK（含 .so 打包验证）
         run: ./gradlew :app:assembleDebug --console=plain
 
