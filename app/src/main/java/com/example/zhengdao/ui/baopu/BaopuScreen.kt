@@ -102,6 +102,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // 引擎是异步就绪的，首次点击由 BaopuSpeaker 自己排队（见该类 KDoc 第 1 条）。
     val speaker = remember { BaopuSpeaker(context) }
     DisposableEffect(Unit) { onDispose { speaker.release() } }
+    // 第二十批 §2.1.1：历史会话浮层（同一模式；抽屉「历史会话」进）。
+    var showSessionLibrary by remember { mutableStateOf(false) }
 
     // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -111,6 +113,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
     BackHandler(enabled = showSettings) { showSettings = false }
+    // 会话库浮层同口径（第二十批）。
+    BackHandler(enabled = showSessionLibrary) { showSessionLibrary = false }
 
     // 引擎事件驱动刷新已由 controller 内部做；这里补一个前台可见时的兜底刷新
     // （进程被杀后重进：库里有中断标记，controller 构造时 refresh 已读一次）。
@@ -177,6 +181,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     onNewSession = {
                         scope.launch { drawerState.close() }
                         controller.newSession()
+                    },
+                    onHistorySessions = {
+                        scope.launch { drawerState.close() }
+                        showSessionLibrary = true
                     },
                     onLibrary = {
                         scope.launch { drawerState.close() }
@@ -579,6 +587,12 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
             if (showSettings) {
                 BaopuSettingsScreen(onDismiss = { showSettings = false })
+            }
+            if (showSessionLibrary) {
+                BaopuSessionLibraryScreen(
+                    controller = controller,
+                    onDismiss = { showSessionLibrary = false },
+                )
             }
         }
     }
