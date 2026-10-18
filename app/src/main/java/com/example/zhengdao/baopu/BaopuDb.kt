@@ -300,6 +300,43 @@ internal object BaopuSql {
         emptyArray(),
     )
 
+    // ── 会话记住自己的工作区（第二十批 §2.3：v8 加一列）──────────────────
+    //
+    // 「旧会话有明确的地方」的落库形态：新会话创建时把当时解析出的工作区绝对路径
+    // 写进 `session.workspace`。**老会话这一列为 NULL**——NULL 是「当时没记」这个
+    // 历史事实，不许用当前工作区回填（那是编造历史）；列表里呈现为「（工作区未记录）」，
+    // 分组排在最后。
+
+    /** session 表 v8 新增一列（会话记工作区；NULL = 老会话未记录，一眼可判）。 */
+    val SESSION_WORKSPACE_COLUMNS: List<Pair<String, String>> = listOf(
+        "workspace" to "TEXT",
+    )
+
+    /** workspace 列的加列语句（**纯函数**：缺列才给 ALTER，幂等；同 [sessionCloseColumnsStmt] 房型）。 */
+    fun sessionWorkspaceColumnStmt(existingColumns: List<String>): List<Stmt> =
+        SESSION_WORKSPACE_COLUMNS
+            .filterNot { (col, _) -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { (col, type) -> Stmt("ALTER TABLE session ADD COLUMN $col $type", emptyArray()) }
+
+    /** 新会话写入工作区绝对路径（[com.example.zhengdao.terminal.Workspace.hostDir] 的解析结果）。 */
+    fun setSessionWorkspace(sessionId: Long, path: String): Stmt = Stmt(
+        "UPDATE session SET workspace = ? WHERE id = ?",
+        arrayOf<String?>(path, sessionId.toString()),
+    )
+
+    /**
+     * 会话库列表（第二十批 §2.1：列表六要素 + 排序）。
+     *
+     * 读 `closed_at`（徽标「已封卷/可继续」）与 `workspace`（分组标题；NULL 组排最后），
+     * 按 `updated_at DESC`——最新聊过的排最前，跟「点一条接着聊」的使用顺序一致。
+     * 只列未归档（archived = 0）：归档语义归 [listSessions] 那条老账，本条不掺和。
+     */
+    fun sessionLibraryEntries(): Stmt = Stmt(
+        "SELECT id, title, msg_count, updated_at, closed_at, workspace FROM session " +
+            "WHERE archived = 0 ORDER BY updated_at DESC",
+        emptyArray(),
+    )
+
     // ── compression 表（第十三批 v6：压过哪几条要留痕，摘要要能重启再拿到）──
 
     /**
@@ -740,6 +777,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV5Migration(db)
         applyV6Migration(db)
         applyV7Migration(db)
+        applyV8Migration(db)
     }
 
     /**
@@ -765,6 +803,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 5) applyV5Migration(db)
         if (oldVersion < 6) applyV6Migration(db)
         if (oldVersion < 7) applyV7Migration(db)
+        if (oldVersion < 8) applyV8Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -836,6 +875,18 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /**
+     * v7 → v8 迁移体（第二十批）：session 加 `workspace` 列（会话记住自己在哪个
+     * 工作区里跑的）。加列走「先看列况再动」的纯函数 ⇒ 幂等，重复跑不炸；v7 库
+     * 升级与新安装走同一条路径（onCreate 也调它）。
+     */
+    private fun applyV8Migration(db: SQLiteDatabase) {
+        val sessionCols = tableColumns(db, "session")
+        BaopuSql.sessionWorkspaceColumnStmt(sessionCols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -860,7 +911,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         const val DB_NAME = "baopu.db"
 
         /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。 */
-        const val VERSION = 7
+        const val VERSION = 8
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

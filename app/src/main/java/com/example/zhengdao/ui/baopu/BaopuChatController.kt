@@ -38,7 +38,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** 一条消息的 UI 形状（role 分组由列表层做）。 */
+/**
+ * 会话库一行（第二十批 §2.1 浮层数据源；SQL 在
+ * [com.example.zhengdao.baopu.BaopuSql.sessionLibraryEntries]）。
+ *
+ * [closedAt] / [workspace] 可空都是**事实**不是缺省：closed_at 空 = 没封过卷（可继续），
+ * workspace 空 = 老会话当时没记（不许拿当前工作区补——K3）。
+ */
+data class BaopuSessionEntry(
+    val id: Long,
+    val title: String,
+    val msgCount: Int,
+    val updatedAt: Long,
+    val closedAt: Long?,
+    val workspace: String?,
+)
+
+/** 一个消息的 UI 形状（role 分组由列表层做）。 */
 data class BaopuUiMessage(
     val id: Long,
     val role: String,
@@ -344,8 +360,29 @@ internal class BaopuChatController(context: Context) {
         val sid = sessionId ?: engine.createSession(
             title = text.take(40),
             now = System.currentTimeMillis(),
-        ).also { sessionId = it }
+        ).also { created ->
+            sessionId = created
+            recordSessionWorkspace(created)
+        }
         engine.send(sid, text)
+    }
+
+    /**
+     * 新会话记下当时的工作区（第二十批 §2.3.2，K2）。
+     *
+     * 引擎的 createSession 不认识这列（agent 包本批禁改）⇒ 建完补一条 UPDATE；
+     * 写的是 [com.example.zhengdao.terminal.Workspace.hostDir] 的**解析结果**
+     * （含无权限回落私有等既有口径），跟终端/资料库看到的是同一个目录。
+     */
+    private fun recordSessionWorkspace(sid: Long) {
+        val path = com.example.zhengdao.terminal.Workspace.hostDir(appCtx).absolutePath
+        val stmt = com.example.zhengdao.baopu.BaopuSql.setSessionWorkspace(sid, path)
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+            .onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "抱朴会话：记工作区失败 ${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
     }
 
     /** 停止（半成品保留；本刀只读无写半成品）。 */
@@ -372,6 +409,124 @@ internal class BaopuChatController(context: Context) {
         confirmCard = null
         confirmRestored = false
         compressionNote = null // 新会话没压过，细条不许跟着上个会话走
+    }
+
+    // ── 会话库（第二十批 §2.1：旧会话能开能删）─────────────────────────────
+
+    /**
+     * 读会话库（**只读**；排序/徽标/分组的判据在浮层的纯函数里，这里只搬运库行）。
+     * 标题兜底（空标题取首条用户消息前 20 字）在这里一并做——一条补查，不进 SQL 主句。
+     */
+    fun loadSessionLibrary(): List<BaopuSessionEntry> {
+        val stmt = com.example.zhengdao.baopu.BaopuSql.sessionLibraryEntries()
+        val rows = db.read { d ->
+            d.rawQuery(stmt.sql, stmt.args).use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        add(
+                            BaopuSessionEntry(
+                                id = c.getLong(0),
+                                title = c.getString(1) ?: "",
+                                msgCount = c.getInt(2),
+                                updatedAt = c.getLong(3),
+                                closedAt = if (c.isNull(4)) null else c.getLong(4),
+                                workspace = if (c.isNull(5)) null else c.getString(5),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        val blankIds = rows.filter { it.title.isBlank() }.map { it.id }
+        if (blankIds.isEmpty()) return rows
+        val firstTexts = readFirstUserTexts(blankIds)
+        // 标题兜底（§2.1.2）：空标题取首条用户消息**前 20 字**；再空由 UI 显示「未命名会话」
+        return rows.map { e ->
+            if (e.title.isNotBlank()) {
+                e
+            } else {
+                e.copy(title = firstTexts[e.id].orEmpty().trim().take(20))
+            }
+        }
+    }
+
+    /** 空标题会话的首条用户消息正文（标题兜底的数据源；没有 ⇒ 不在该表里）。 */
+    private fun readFirstUserTexts(ids: List<Long>): Map<Long, String> = db.read { d ->
+        val out = mutableMapOf<Long, String>()
+        val marks = ids.joinToString(",") { "?" }
+        val args = ids.map { it.toString() }.toTypedArray()
+        d.rawQuery(
+            "SELECT message.session_id, part.payload FROM message " +
+                "JOIN part ON part.message_id = message.id " +
+                "WHERE message.session_id IN ($marks) AND message.role = 'user' AND part.kind = 'text' " +
+                "ORDER BY message.session_id ASC, message.seq ASC, part.seq ASC",
+            args,
+        ).use { c ->
+            while (c.moveToNext()) {
+                val sid = c.getLong(0)
+                if (!out.containsKey(sid)) {
+                    val t = c.getString(1)
+                    if (!t.isNullOrBlank()) out[sid] = t
+                }
+            }
+        }
+        out
+    }
+
+    /**
+     * 打开旧会话接着聊（第二十批 §2.1.3）。
+     *
+     * 三条口径：
+     * - **busy 拒切**：引擎单活跃门还挂在旧会话上，跑到一半切走现场必乱；
+     * - **不封卷当前会话**：切走不是定稿（「新会话」才是），再切回来还能接着聊；
+     * - **恢复卡由现有机制负责**（[refresh] ＋ [restoreConfirmCard]，别自己重造）：
+     *   中断可续照旧由 [interruptedStep] 与 BaopuSessionBar 承担；目标会话若挂着
+     *   pending 确认卡，进来就重建。
+     */
+    fun openSession(sid: Long) {
+        if (busy) return
+        if (sessionId == sid) return
+        sessionId = sid
+        interruptedStep = -1
+        messages = emptyList()
+        pendingMemories = emptyList()
+        introspectionNote = null
+        refineMarkSession = -1L
+        refineMarkUserCount = -1
+        confirmCard = null
+        confirmRestored = false
+        compressionNote = null
+        refresh()
+        restoreConfirmCard()
+    }
+
+    /**
+     * 永久删除一个会话（第二十批 §2.1.4；**唯一调用方是浮层删除确认框的确认按钮**）。
+     *
+     * 五步语句与顺序由 [com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements]
+     * 给定（ops 子批 → 提案批 → run_log → message → session 本体；part 靠外键级联），
+     * 同一个写事务里跑完——删一半断电等于没删（单写者线程串行，天然原子）。
+     * 删的是当前正开着的会话 ⇒ 清视图回空态（sessionId = null）。
+     */
+    fun deleteSession(sid: Long) {
+        if (busy) return // 在跑不许删：引擎还在往库里写
+        db.write { d ->
+            com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(sid).forEach { stmt ->
+                d.execSQL(stmt.sql, stmt.args)
+            }
+        }
+        if (sessionId == sid) {
+            sessionId = null
+            interruptedStep = -1
+            messages = emptyList()
+            pendingMemories = emptyList()
+            introspectionNote = null
+            refineMarkSession = -1L
+            refineMarkUserCount = -1
+            confirmCard = null
+            confirmRestored = false
+            compressionNote = null
+        }
     }
 
     /** 记忆候选：确认（落盘 CONFIRMED）。 */

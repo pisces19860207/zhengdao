@@ -87,6 +87,7 @@ private fun DrawerGroup(title: String) {
 internal fun BaopuDrawer(
     busy: Boolean,
     onNewSession: () -> Unit,
+    onHistorySessions: () -> Unit,
     onLibrary: () -> Unit,
     onExtract: () -> Unit,
     onBackup: () -> Unit,
@@ -114,6 +115,12 @@ internal fun BaopuDrawer(
             description = stringResource(R.string.baopu_drawer_new_session_desc),
             enabled = !busy,
             onClick = onNewSession,
+        )
+        // 第二十批 §2.1.1：历史会话入口，排在新会话后面——旧会话从这儿找回来。
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_history),
+            description = stringResource(R.string.baopu_drawer_history_desc),
+            onClick = onHistorySessions,
         )
 
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
