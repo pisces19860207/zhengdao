@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.baopu
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -444,20 +445,60 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `删会话五步_顺序即执行顺序`() {
+    fun `删会话六步_顺序即执行顺序_压缩摘要也必须显式删`() {
         val stmts = BaopuSql.deleteSessionStatements(42L)
-        assertEquals(5, stmts.size)
+        assertEquals("E-158：compression 那一步漏过一次，会话就永远删不掉", 6, stmts.size)
         // 1. ops 子批先删（plan_batch 自引用：子先父后）
         assertTrue(stmts[0].sql.contains("DELETE FROM plan_batch WHERE session_id = ? AND proposal_id IS NOT NULL"))
         // 2. 再删提案批
         assertEquals("DELETE FROM plan_batch WHERE session_id = ?", stmts[1].sql)
         // 3. run_log 无级联，必须显式删
         assertEquals("DELETE FROM run_log WHERE session_id = ?", stmts[2].sql)
-        // 4. message（part 靠 DDL 级联，不重复删）
-        assertEquals("DELETE FROM message WHERE session_id = ?", stmts[3].sql)
-        // 5. 会话本体最后
-        assertEquals("DELETE FROM session WHERE id = ?", stmts[4].sql)
+        // 4. compression 同样无级联（真机 bug 的真凶）
+        assertEquals("DELETE FROM compression WHERE session_id = ?", stmts[3].sql)
+        // 5. message（part 靠 DDL 级联，不重复删）
+        assertEquals("DELETE FROM message WHERE session_id = ?", stmts[4].sql)
+        // 6. 会话本体最后（必须在所有子表之后，否则外键当场红）
+        assertEquals("DELETE FROM session WHERE id = ?", stmts[5].sql)
         assertTrue(stmts.all { it.args.contentEquals(arrayOf("42")) })
+    }
+
+    /**
+     * **从 DDL 反推**的门禁（E-158 的教训）：凡是有 `REFERENCES session(id)` 的表，
+     * 删除语句里都必须显式出现（`message` 除外 —— 它有 `ON DELETE CASCADE`）。
+     *
+     * 为什么这么钉：单元测试原来只数「五步」，把漏表的 bug **当成了规格**。
+     * 数步数挡不住「以后再加一张表」；从 DDL 反推才挡得住。
+     */
+    @Test
+    fun `凡引用 session 的表都在删会话语句里`() {
+        // 逐行扫 DDL：见到 CREATE TABLE ... x ( 就记住表名，往后遇到 REFERENCES session(id)
+        // 就把 x 记成「引用 session」，并看同一行有没有 ON DELETE CASCADE。
+        val lines = repoFile("src/main/java/com/example/zhengdao/baopu/BaopuDb.kt").readText().lines()
+        val refs = LinkedHashMap<String, Boolean>()
+        var current: String? = null
+        for (line in lines) {
+            val create = Regex("CREATE TABLE IF NOT EXISTS (\\w+)").find(line)
+            if (create != null) {
+                current = create.groupValues[1]
+                continue
+            }
+            if (line.contains("REFERENCES session(id)")) {
+                current?.let { refs[it] = line.contains("ON DELETE CASCADE") }
+            }
+        }
+        assertEquals(
+            "DDL 里应当找到 message/run_log/plan_batch/compression 四张引用 session 的表，实际 $refs",
+            setOf("message", "run_log", "plan_batch", "compression"),
+            refs.keys,
+        )
+        val deleted = BaopuSql.deleteSessionStatements(1L).joinToString("\n") { it.sql }
+        refs.filterNot { it.value }.forEach { (table, _) ->
+            assertTrue(
+                "$table 引用 session 且没有级联 ⇒ 删会话语句里必须显式删它（E-158 就是这么漏的）",
+                deleted.contains("DELETE FROM $table WHERE session_id = ?"),
+            )
+        }
     }
 
     @Test
@@ -476,4 +517,7 @@ class BaopuDbTest {
         val c = BaopuSql.setMsgCount(5L, 9)
         assertEquals(listOf("9", "5"), c.args.toList())
     }
+    /** 仓库相对路径解析（单测工作目录是 app/，也可能是仓库根）。 */
+    private fun repoFile(rel: String): File =
+        File(rel).let { if (it.isFile) it else File("app/$rel") }
 }
