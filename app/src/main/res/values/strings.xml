@@ -1032,6 +1032,11 @@
     <string name="baopu_drawer_preview_last_desc">把最近一条回复做成网页卡片，切到玄览看</string>
     <string name="baopu_drawer_preview_clear">清空预览缓存</string>
     <string name="baopu_drawer_preview_clear_desc">删掉已经放进去的卡片（最多 8 张）</string>
+    <string name="baopu_switch_ws_title">切工作区并开新会话</string>
+    <string name="baopu_switch_ws_body">切到「%1$s」并在那里开一个新会话？当前会话不会关；这个选择对新会话生效。</string>
+    <string name="baopu_switch_ws_confirm">切过去</string>
+    <string name="baopu_switch_ws_cancel">取消</string>
+    <string name="baopu_switch_ws_failed">这个路径不能当工作区（只能是共享存储里的文件夹）</string>
     <string name="baopu_session_manage_card">会话记录</string>
     <string name="baopu_session_manage_desc">全部会话平铺看，也可以在这里删除（抽屉里不放了）</string>
     <string name="baopu_session_manage_open">打开全部会话</string>

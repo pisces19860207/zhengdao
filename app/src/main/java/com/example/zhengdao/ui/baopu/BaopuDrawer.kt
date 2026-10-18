@@ -22,8 +22,11 @@
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -43,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
 import com.example.zhengdao.R
 
 /** 抽屉里的一行：标题＋说明＋点击。说明写给"不常用的人"看，省得点进去才知道是什么。 */
@@ -77,9 +82,9 @@ private fun DrawerItem(
     }
 }
 
-/** 分组标题（会话／工作区／资料与书／设置）。右侧那段空白是给将来的搜索留的位——本批不做搜索（A6）。 */
+/** 分组标题（会话／工作区／资料与书／设置）。右侧可带一个入口（工作区组用它放「＋ 选文件夹」）。 */
 @Composable
-private fun DrawerGroup(title: String) {
+private fun DrawerGroup(title: String, trailing: (@Composable () -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -92,8 +97,8 @@ private fun DrawerGroup(title: String) {
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold,
         )
-        // 留白：将来这里放搜索／加文件夹，位置先占住，本批一个控件都不加。
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.weight(1f))
+        trailing?.invoke()
     }
 }
 
@@ -112,6 +117,7 @@ private fun WorkspaceRow(
     node: DrawerWorkspaceNode,
     onTap: (String) -> Unit,
     onHold: (String) -> Unit,
+    onRunHere: (DrawerWorkspaceNode) -> Unit,
 ) {
     val current = highlightOf(node) == Highlight.WORKSPACE_CURRENT
     Row(
@@ -149,6 +155,26 @@ private fun WorkspaceRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        // 「圆里一个加号」＝**在这个工作区里干活**（在这里开新会话）。
+        // 照 DSH 左侧栏：文件夹行右侧的 ⊕。只有文字符号，不自绘 glyph、不引图标库（A7）。
+        // 默认工作区（历史未记录）不给这个按钮 —— 它不是一个真文件夹，点了也没有"在那里干活"这回事。
+        if (!node.unknown) {
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                    .clickable { onRunHere(node) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "＋",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
     }
 }
 
@@ -216,6 +242,10 @@ internal fun BaopuDrawer(
     onOpenSession: (Long) -> Unit,
     onWorkspaceTap: (String) -> Unit,
     onWorkspaceHold: (String) -> Unit,
+    /** 文件夹行右侧的「圆里加号」：在这个工作区里开新会话（不是当前工作区时由页面先问人）。 */
+    onWorkspaceRunHere: (DrawerWorkspaceNode) -> Unit,
+    /** 「工作区」小节标题右侧的 ＋：选一个文件夹加进工作区。 */
+    onAddWorkspace: () -> Unit,
     onLibrary: () -> Unit,
     onExtract: () -> Unit,
     onBackup: () -> Unit,
@@ -256,9 +286,28 @@ internal fun BaopuDrawer(
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
         // ── 工作区树（A 段本体）──
-        DrawerGroup(stringResource(R.string.baopu_drawer_group_workspace))
+        DrawerGroup(
+            title = stringResource(R.string.baopu_drawer_group_workspace),
+            trailing = {
+                // 标题右侧的 ＋：选一个文件夹加进工作区（落点是设置页那张卡用的同一个选择器）。
+                Text(
+                    text = "＋",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable { onAddWorkspace() }
+                        .padding(4.dp),
+                )
+            },
+        )
         nodes.forEach { node ->
-            WorkspaceRow(node = node, onTap = onWorkspaceTap, onHold = onWorkspaceHold)
+            WorkspaceRow(
+                node = node,
+                onTap = onWorkspaceTap,
+                onHold = onWorkspaceHold,
+                onRunHere = onWorkspaceRunHere,
+            )
             node.rows.forEach { row ->
                 SessionRow(row = row, onOpen = onOpenSession)
             }

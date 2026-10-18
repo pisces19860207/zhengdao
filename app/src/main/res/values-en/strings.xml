@@ -1031,6 +1031,11 @@
     <string name="baopu_drawer_preview_last_desc">Turn the latest reply into a web card; switch to Xuanlan to view it</string>
     <string name="baopu_drawer_preview_clear">Clear preview cache</string>
     <string name="baopu_drawer_preview_clear_desc">Drop the cards already placed (up to 8)</string>
+    <string name="baopu_switch_ws_title">Switch workspace and start a session</string>
+    <string name="baopu_switch_ws_body">Switch to “%1$s” and start a new session there? The current session stays open; this applies to new sessions.</string>
+    <string name="baopu_switch_ws_confirm">Switch</string>
+    <string name="baopu_switch_ws_cancel">Cancel</string>
+    <string name="baopu_switch_ws_failed">That path cannot be a workspace (shared-storage folders only)</string>
     <string name="baopu_session_manage_card">Session records</string>
     <string name="baopu_session_manage_desc">All sessions in a flat list; delete them here (removed from the drawer)</string>
     <string name="baopu_session_manage_open">Open all sessions</string>
