@@ -17,7 +17,11 @@ import org.json.JSONObject
  */
 internal object RunRules {
 
-    /** max_steps = 16（8–32 可调；程枢版 §2 刹车数值，写死默认值）。 */
+    /**
+     * max_steps：v1 写 16（程枢版 §2 刹车数值）；2026-10-19 用户真机口径两次上调——
+     * 「好像 16 步不够啊」→ 48，「初次探索某个网络平台的制卡过程肯定很多步」→ **120**。
+     * 真源是 [com.example.zhengdao.baopu.kernel.BaopuKernel.Budget.MAX_STEPS]，这里只是转手。
+     */
     const val MAX_STEPS = BaopuKernel.Budget.MAX_STEPS
 
     /** 连续 3 次工具失败 ⇒ 停下 ask_user，禁止硬试（§2）。 */
