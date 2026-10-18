@@ -6,7 +6,6 @@ package com.example.zhengdao.ui.baopu
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -38,8 +37,7 @@ internal fun BaopuComposer(
     var text by rememberSaveable { mutableStateOf("") }
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .imePadding()
+            .fillMaxWidth() // imePadding 由 BaopuScreen 根 Column 统一消费（2026-10-18，避免双份）
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
