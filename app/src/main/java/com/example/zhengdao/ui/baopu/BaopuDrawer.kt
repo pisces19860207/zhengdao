@@ -1,7 +1,11 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
 // 依据：用户 2026-10-17 口述「不常用的设置什么的归到抱朴的设置抽屉里……满屏幕都是按钮和按键，
-// 手机本来屏幕就小」＋ 选定方案「全收进去，顶条只留 ☰／状态／🔊／＋」。
+// 手机本来屏幕就小」＋ 选定方案「全收进去，顶条只留 ☰／状态／🔊／＋」；
+// 第二十九批改派（2026-10-18）：用户「左侧栏就应该显示默认工作区、工作区了吧？」
+// 「我看这几个 harness 都是工作区旁边加一个文件夹符号，而不是显示完整的路径啊，
+// 工作区下面一个文件夹符号加当前项目文件夹的名字」⇒ 抽屉顶部从「三组七项菜单」改成
+// **按工作区归组的会话树**（DSH／workbuddy 那个形状）。
 //
 // 为什么要抽屉而不是再加一行按钮：
 //   抱朴页顶原本挂着「章节抽取」「备份原件」「换通道」三个文字按钮，下面还有一行状态＋新会话，
@@ -9,26 +13,35 @@
 //   首屏只留每次都用的四件。
 //
 // 口径：
-//   1. 抽屉只做**入口搬运**，不减任何功能（原来能点的，抽屉里都还能点）；
+//   1. 抽屉只做**入口搬运＋工作区可见**，不减任何功能（原来能点的，抽屉里都还能点）；
 //   2. ☰ 是唯一必须入口（窄屏）；宽屏把抽屉钉住常驻时不出 ☰；
-//   3. 关闭路径三条都要有：点遮罩、点返回键、点抽屉里的项（项点了先关再跳）。
+//   3. 关闭路径三条都要有：点遮罩、点返回键、点抽屉里的项（项点了先关再跳）；
+//   4. 树怎么分组、时间怎么写、文件夹行显示什么——**全在 BaopuSessionTree.kt 的纯函数里算**，
+//      本文件只负责把算好的结构画出来（判据能 JVM 直测，画出来的东西归真机）。
+//   5. 图标只有文字符号 📁／🔒／⚠️（A7：不许引图标库、不许新自绘 glyph）。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 
@@ -64,30 +77,146 @@ private fun DrawerItem(
     }
 }
 
-/** 分组标题（会话／资料与书／设置）。 */
+/** 分组标题（会话／工作区／资料与书／设置）。右侧那段空白是给将来的搜索留的位——本批不做搜索（A6）。 */
 @Composable
 private fun DrawerGroup(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+        )
+        // 留白：将来这里放搜索／加文件夹，位置先占住，本批一个控件都不加。
+        Spacer(Modifier.width(8.dp))
+    }
 }
 
 /**
- * 抱朴的设置抽屉。
+ * 工作区一行（文件夹行）。
+ *
+ * 显示什么由纯函数算好了交进来（W1：只有末级名，完整路径不进这一行）：
+ * - 点一下 ⇒ [onTap]（那句完整路径的临时提示＋落点设置页「工作区」卡，都在抱朴页里做）；
+ * - 长按 ⇒ [onHold]（**只**看路径，不跳页——派工单 §7「长按提示」那条口径）。
+ *
+ * 当前工作区整行**铺底色**（secondaryContainer）＝W6 里强度最高的那一档。
+ * 不许做展开／收起动画（A6）：这里就是一个静态行，组的内容永远全展开。
+ */
+@Composable
+private fun WorkspaceRow(
+    node: DrawerWorkspaceNode,
+    onTap: (String) -> Unit,
+    onHold: (String) -> Unit,
+) {
+    val current = highlightOf(node) == Highlight.WORKSPACE_CURRENT
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (current) {
+                    Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
+                } else {
+                    Modifier
+                },
+            )
+            .combinedClickable(
+                onClick = { onTap(node.fullPath) },
+                onLongClick = { onHold(node.fullPath) },
+            )
+            .padding(start = 20.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = folderIcon(node.state),
+            style = MaterialTheme.typography.labelMedium,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = node.label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (current) {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/**
+ * 会话一行：标题（超长省略，只一行）＋ 右侧相对时间。
+ *
+ * A2 段口径：**只有这两样**——不许把 preview 摘要塞进来，也不许塞轮数／徽标
+ * （那些归历史会话浮层，那一页是平铺列表）。
+ *
+ * 当前会话行的高亮是**另一种强度**（W6）：文字走主色＋加粗，不铺底色——
+ * 与工作区行的整行填充刻意不同，一眼分得清"你在哪个文件夹"和"你开着哪一条"。
+ */
+@Composable
+private fun SessionRow(
+    row: DrawerSessionRow,
+    onOpen: (Long) -> Unit,
+) {
+    val current = highlightOf(row) == Highlight.SESSION_CURRENT
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpen(row.id) }
+            .padding(start = 44.dp, end = 16.dp, top = 7.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = row.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
+            color = if (current) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = row.timeText,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * 抱朴的设置抽屉（顶部＝工作区树）。
  *
  * @param busy 引擎在跑：新会话与换通道都置灰。这是引擎层约束，不是 UI 洁癖——
  *             [com.example.zhengdao.baopu.BaopuChatController] 构造期就持引擎，
  *             换 provider 必须重建控制器，跑到一半换会丢现场。
+ *             会话行**不**跟着置灰：撞上单活跃门由 B 段的确认卡去问人（不许自动停）。
+ * @param nodes [buildWorkspaceTree] 算好的工作区树（顺序、名字、高亮都在纯函数里定了）。
+ * @param onWorkspaceTap 点文件夹行：交出这一行的完整路径（临时提示＋设置页「工作区」卡落点）。
+ * @param onWorkspaceHold 长按文件夹行：只给那句临时提示。
  */
 @Composable
 internal fun BaopuDrawer(
     busy: Boolean,
+    nodes: List<DrawerWorkspaceNode>,
     onNewSession: () -> Unit,
     onHistorySessions: () -> Unit,
+    onOpenSession: (Long) -> Unit,
+    onWorkspaceTap: (String) -> Unit,
+    onWorkspaceHold: (String) -> Unit,
     onLibrary: () -> Unit,
     onExtract: () -> Unit,
     onBackup: () -> Unit,
@@ -112,16 +241,29 @@ internal fun BaopuDrawer(
         DrawerGroup(stringResource(R.string.baopu_drawer_group_session))
         DrawerItem(
             title = stringResource(R.string.baopu_new_session),
+            // A2 段：文案要说实话——新会话落在**当前工作区**，记忆（那套跨会话的东西）不动。
             description = stringResource(R.string.baopu_drawer_new_session_desc),
             enabled = !busy,
             onClick = onNewSession,
         )
         // 第二十批 §2.1.1：历史会话入口，排在新会话后面——旧会话从这儿找回来。
+        // 第二十九批 A2 段：抽屉成了主入口，那一页留作**平铺列表**（不分组，全量看）。
         DrawerItem(
             title = stringResource(R.string.baopu_drawer_history),
             description = stringResource(R.string.baopu_drawer_history_desc),
             onClick = onHistorySessions,
         )
+
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+        // ── 工作区树（A 段本体）──
+        DrawerGroup(stringResource(R.string.baopu_drawer_group_workspace))
+        nodes.forEach { node ->
+            WorkspaceRow(node = node, onTap = onWorkspaceTap, onHold = onWorkspaceHold)
+            node.rows.forEach { row ->
+                SessionRow(row = row, onOpen = onOpenSession)
+            }
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
