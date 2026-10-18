@@ -31,6 +31,7 @@ import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.Provider
+import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
@@ -198,6 +199,42 @@ internal class RunEngine(
 
     /** pending 三列的存取（清与读；"进 AWAIT_CONFIRM"的写在引擎事务里，见 [enterAwaitConfirm]）。 */
     private val pendingStore: PendingStore = SessionPendingStore(db)
+
+    // ── 压缩（第十三批：桩换成真跑） ──────────────────────────────────────
+
+    /** 压缩落库与留痕（薄壳，照 [pendingStore] 房型）。 */
+    private val compressionStore: CompressionStore = SessionCompressionStore(db)
+
+    /** 本会话已压过的消息 id（摘要替身；**也是**组装时要跳过的 id——同一个集合两用）。 */
+    private var compressedIds: Set<String> = emptySet()
+
+    /** 压缩摘要替身（null = 还没压过；进程被杀后由 [restoreCompression] 塞回来）。 */
+    private var compressionSummary: String? = null
+
+    /**
+     * 压缩内核（真跑一次压缩；判据 J3/J6/J7 在内核层用假件验，引擎这里只接线）。
+     *
+     * `complete` 里每次 new 一个 [LlmClient]（与 [streamRound] 同款：压缩是低频动作，
+     * 不值得为它常驻一个客户端；provider 换了也会跟着换，不会压到旧通道上）。
+     */
+    private val compression = CompressionRunner(
+        complete = { messages, maxTokens, temperature ->
+            LlmClient(provider).completeOnce(messages, maxTokens, temperature)
+        },
+        store = compressionStore,
+        log = log,
+    )
+
+    /**
+     * 会话恢复时把压过的摘要与跳过列表塞回来（第十三批 C 段 · 派工单 §4.3）。
+     *
+     * 为什么需要：进程被杀重进，内存里的 [compressionSummary] 是空的 ⇒ 摘要丢了、
+     * 被压的旧消息又全量进 prompt，等于白压。控制器构造时从 `compression` 表读回来。
+     */
+    fun restoreCompression(summary: String?, ids: Set<String>) {
+        compressionSummary = summary
+        compressedIds = ids
+    }
 
     /**
      * 确认制内核。回调全是引擎侧接线：
@@ -430,12 +467,16 @@ internal class RunEngine(
 
         while (!stopRequested) {
             // ── Thinking 前：预算检查（> 窗口×0.85 ⇒ 先 Compressing）──
-            val probe = assemble(persona, facts, history, "", windowTokens, compressionSummary)
+            val probe = assemble(
+                persona, facts, history, "", windowTokens,
+                compressionSummary, compressedIds, compressedIds,
+            )
             if (probe.needsCompressing) {
                 _state.value = RunState.COMPRESSING
                 persistStep(sessionId, stepCount, "Compressing")
                 log("抱朴引擎：上下文估算 ${probe.estimatedTokens} > 触发线，进 Compressing")
-                compressionSummary = compressWithFallback(history, provider) ?: compressionSummary
+                compressionSummary = runCompression(sessionId, stepCount, history, provider)
+                    ?: compressionSummary
             }
 
             // ── 一步 = 一次模型轮次 ──
@@ -444,7 +485,10 @@ internal class RunEngine(
             _state.value = RunState.THINKING
             persistStep(sessionId, stepCount, "Thinking")
 
-            val prompt = assemble(persona, facts, history, "", windowTokens, compressionSummary)
+            val prompt = assemble(
+                persona, facts, history, "", windowTokens,
+                compressionSummary, compressedIds, compressedIds,
+            )
             // 唯一出口产出的渲染：前缀（人设+硬事实+记忆）作 system，其余作 user
             // （0b 的 renderHistory 已把角色写进文本 ⇒ 拆两半不改变模型看到的内容）
             val rendered = prompt.render()
@@ -647,6 +691,8 @@ internal class RunEngine(
         current: String,
         windowTokens: Int,
         compressionSummary: String?,
+        compressedIds: Set<String> = emptySet(),
+        skipIds: Set<String> = emptySet(),
     ) = ContextAssembler.assemble(
         persona = persona,
         facts = facts,
@@ -656,6 +702,8 @@ internal class RunEngine(
         current = current,
         windowTokens = windowTokens,
         compressionSummary = compressionSummary,
+        compressedIds = compressedIds,
+        skipIds = skipIds,
     )
 
     /** 本会话已注入的记忆（只增不改——0b 的 sticky 语义；候选确认后才进这里）。 */
@@ -1062,18 +1110,37 @@ internal class RunEngine(
     // ── 压缩（最小接线） ──────────────────────────────────────────────────
 
     /**
-     * 压缩摘要替身（最小接线）：通道降级留痕（Compressor.chooseChannel 的选择
-     * 记日志）；**真跑压缩请求归刀 2**（切片①用不到，接了反而多一条未验路径）。
+     * **真跑一次压缩**（第十三批 A 段 —— 替换刀 0b 留下的恒返回 null 的桩）。
+     *
+     * 桩的问题（派工单 §1 现状证据）：只选区 + 记日志，恒 null ⇒ 长会话反复进
+     * `COMPRESSING` 却什么都没压，最后靠 `MAX_STEPS=16` 硬刹车——用户看到的
+     * 「压缩中」一直是假的。
+     *
+     * 现在交给 [CompressionRunner]（内核：选区 → 判通道 → 一次非流式补全 → 解析 →
+     * 落库）。引擎这里只做两件事：
+     * 1. 成功 ⇒ 把被压的 id 并进 [compressedIds]（**组装时跳过它们**是压缩真正生效
+     *    的那一半——不跳过，光有摘要等于没压，旧消息照样占满窗口）；
+     * 2. 跳过/失败/冷却 ⇒ 返回 null，**本轮按没压继续跑**（压缩是优化，不配让整轮陪葬）。
      */
-    private fun compressWithFallback(
+    private fun runCompression(
+        sessionId: Long,
+        step: Int,
         history: List<HistoryMessage>,
         provider: Provider,
-    ): String? {
-        val choice = Compressor.chooseChannel(provider)
-        val range = Compressor.selectCompressionRange(history)
-        if (range.isEmpty()) return null
-        log("抱朴引擎：压缩通道选择——${Compressor.channelNote(choice)}（真跑归刀 2）")
-        return null
+    ): String? = when (val outcome = compression.runOnce(sessionId, history, provider, step)) {
+        is CompressionRunner.Outcome.Ok -> {
+            compressedIds = compressedIds + outcome.record.compressedIds
+            outcome.record.summary
+        }
+
+        is CompressionRunner.Outcome.Skipped -> {
+            log("抱朴引擎：本次不压——${outcome.reason}")
+            null
+        }
+
+        // 失败与冷却：内核已记 run_log，这里连日志都不重复打（避免两处各说一遍口径）
+        is CompressionRunner.Outcome.Failed -> null
+        is CompressionRunner.Outcome.Cooling -> null
     }
 
     // ── spill（第 ⑤ 段配套） ──────────────────────────────────────────────

@@ -55,6 +55,7 @@ class ContextAssemblerTest {
         windowTokens: Int = ContextAssembler.DEFAULT_WINDOW_TOKENS,
         compressionSummary: String? = null,
         compressedIds: Set<String> = emptySet(),
+        skipIds: Set<String> = emptySet(),
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
     ) = ContextAssembler.assemble(
         persona = persona(),
@@ -66,8 +67,70 @@ class ContextAssemblerTest {
         windowTokens = windowTokens,
         compressionSummary = compressionSummary,
         compressedIds = compressedIds,
+        skipIds = skipIds,
         tokensOf = tokensOf,
     )
+
+    // ── 第十三批：压缩跳过与前缀不动 ──────────────────────────────────────
+
+    /**
+     * J4（第十三批 §6.1）：同一批消息 + `skipIds` ⇒ 组装出的 prompt 里
+     * **不再出现**被压消息的原文。
+     *
+     * 这是压缩真正生效的那一半：光有摘要、旧消息照样进 prompt，等于没压
+     * （窗口还是被占满，下一步照样触发压缩 ⇒ 死循环）。
+     */
+    @Test
+    fun `J4_压缩跳过生效_被压消息原文不进prompt`() {
+        val history = (1..4).map { msg("h$it", "第 $it 条被压的原文内容") } +
+            listOf(msg("keep1", "这是最近的一条，不许被跳过"))
+        val skipped = setOf("h1", "h2", "h3", "h4")
+
+        val withSkip = assemble(
+            history = history,
+            compressionSummary = "【此处已压缩】摘要替身",
+            compressedIds = skipped,
+            skipIds = skipped,
+        )
+        val rendered = withSkip.render()
+
+        (1..4).forEach { i ->
+            assertFalse("被压的第 $i 条原文不该再进 prompt", rendered.contains("第 $i 条被压的原文内容"))
+        }
+        assertTrue("没被压的最新一条必须还在", rendered.contains("这是最近的一条，不许被跳过"))
+        assertTrue("摘要替身要在", rendered.contains("【此处已压缩】摘要替身"))
+
+        // 反向坐实：不给 skipIds 时原文确实在（否则上面那条断言可能是假绿）
+        val withoutSkip = assemble(history = history, compressionSummary = "摘要", compressedIds = skipped)
+        assertTrue("不跳过时原文应当在（对照）", withoutSkip.render().contains("第 1 条被压的原文内容"))
+    }
+
+    /**
+     * J5（第十三批 §6.1）：被压的会话里，**`NEVER_COMPRESS` 前缀段逐字仍在**。
+     *
+     * 判据的狠处在"逐字"：人设三层／硬事实／记忆是缓存友好前缀的前半截，
+     * 压一次把前缀改一个字，prompt 缓存就全废了（追加判据 3 的老账）。
+     */
+    @Test
+    fun `J5_前缀不动_压过之后NEVER_COMPRESS段逐字仍在`() {
+        val before = assemble(
+            history = listOf(msg("h1", "旧消息")),
+            sticky = listOf(mem("mem1", "记忆正文甲")),
+        ).prefixText()
+
+        val after = assemble(
+            history = (1..6).map { msg("h$it", "第 $it 条") },
+            sticky = listOf(mem("mem1", "记忆正文甲")),
+            compressionSummary = "摘要替身",
+            compressedIds = setOf("h1", "h2"),
+            skipIds = setOf("h1", "h2"),
+        ).prefixText()
+
+        assertEquals("前缀必须逐字节相同（缓存友好判据）", before, after)
+        assertTrue("人设 A 内核在前缀里", after.contains("A内核文本"))
+        assertTrue("记忆段在前缀里", after.contains("记忆正文甲"))
+        assertTrue("硬事实在前缀里", after.contains("三格式"))
+    }
 
     // ── 顺序 ──────────────────────────────────────────────────────────────
 

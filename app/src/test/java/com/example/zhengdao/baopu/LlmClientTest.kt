@@ -589,6 +589,36 @@ class LlmClientTest {
         )
     }
 
+    /**
+     * J2（第十三批 §6.1）：压缩请求体**不带 `tools`、不带流式**（派工单 §3.3 红线）。
+     *
+     * 为什么钉在 `completeBody` 上：它是 [LlmClient.completeOnce] 唯一的组包出口，
+     * 出口只有一个 ⇒ "压缩请求里混进 tools" 这种事只可能发生在这里，钉住它就够。
+     * `stream` 允许出现但必须是 false（显式关比省略更不容易被兼容通道私自流式化）。
+     */
+    @Test
+    fun `J2_压缩请求体_不带tools_不带流式`() {
+        val p = Provider(
+            id = "t", label = "t", protocol = LlmProtocol.OPENAI_COMPAT,
+            baseUrl = "https://x/v1", model = "m",
+        )
+        val body = LlmClient(p).completeBody(
+            messages = listOf(LlmMessage(LlmMessage.ROLE_SYSTEM, "系统"), LlmMessage(LlmMessage.ROLE_USER, "正文")),
+            maxTokens = 1024,
+            temperature = 0.2,
+        )
+        val json = org.json.JSONObject(body)
+
+        assertFalse("压缩请求不许带 tools", json.has("tools"))
+        assertFalse("压缩请求不许带 stream_options", json.has("stream_options"))
+        assertFalse(
+            "压缩请求不许开流式",
+            json.has("stream") && json.optBoolean("stream", false),
+        )
+        assertEquals("摘要上限 ≤1024", 1024, json.optInt("max_tokens"))
+        assertEquals("摘要要稳定：温度 0.2", 0.2, json.optDouble("temperature"), 1e-9)
+    }
+
     @Test
     fun `完成原因_两种协议`() {
         assertEquals(

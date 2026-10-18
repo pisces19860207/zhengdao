@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
@@ -195,15 +196,42 @@ internal class BaopuChatController(context: Context) {
     /** 待过目候选的进程内上限（UI 同屏放得下 3 张；超了先到先得，截断记日志）。 */
     private val maxPending = 6
 
+
+    // ⚠️ 这两行必须声明在 init **之前**：init 里的 refresh() → restoreCompression()
+    // 会写 compressionNote；Kotlin 按声明顺序初始化属性，声明在后面时委托对象还是 null
+    // ⇒ 进程重进时（库里有压缩记录）一开抱朴页就 NPE 崩（2026-10-18 真机 T2 抓出）。
+    /** 已压缩一条的展示数据（界面细条用；null = 还没压过，不显示）。 */
+    var compressionNote by mutableStateOf<CompressionNote?>(null)
+        private set
+
+    /** 界面细条的数据（条数 + 摘要全文）。 */
+    data class CompressionNote(val count: Int, val summary: String)
+
     init {
         engine.onEvent = { ev -> onEngineEvent(ev) }
         refresh()
         // 进程重启后重建确认卡（派工单 §3.3：pending_tool 非空 ⇒ 卡还在）
         restoreConfirmCard()
+        // 进程重启后把压过的摘要与跳过列表塞回引擎（第十三批 C 段：不然等于白压）
+        restoreCompression()
         // 进页面先看投递有没有料（A 段：扫投递 → 一次 ask_user）与顶条的两个数
         checkDeliver()
         refreshBackupStats()
     }
+
+    /**
+     * 进程重启后恢复压缩（第十三批 C 段 · 派工单 §4.3）：`compression` 表里有本会话
+     * 最近一条记录 ⇒ 摘要与跳过列表一起塞回引擎，界面细条也照这条渲染。
+     *
+     * **没有就什么都不做**（现状不变）——新会话本来就没压过，不许凭空显示「已压缩」。
+     */
+    private fun restoreCompression() {
+        val sid = sessionId ?: return
+        val rec = runCatching { SessionCompressionStore(db).latest(sid) }.getOrNull() ?: return
+        engine.restoreCompression(rec.summary, rec.compressedIds.toSet())
+        compressionNote = CompressionNote(count = rec.compressedIds.size, summary = rec.summary)
+    }
+
 
     /**
      * 进程重启后重建确认卡（T3 的第一半）：session 的 pending 三列非空 ⇒ 造一张卡。
@@ -285,6 +313,7 @@ internal class BaopuChatController(context: Context) {
         refineMarkUserCount = -1
         confirmCard = null
         confirmRestored = false
+        compressionNote = null // 新会话没压过，细条不许跟着上个会话走
     }
 
     /** 记忆候选：确认（落盘 CONFIRMED）。 */
@@ -645,6 +674,9 @@ internal class BaopuChatController(context: Context) {
             confirmCard = null
             confirmRestored = false
         }
+        // 压缩细条跟着库走：压成功那一刻库里才有行，细条才出现（失败/跳过 ⇒ 不出现，
+        // 不许凭空报「已压缩」）。一条主键查询，跟着 refresh 走最省心，也最不容易漂。
+        if (sid != null) restoreCompression()
         refreshMemory()
     }
 
