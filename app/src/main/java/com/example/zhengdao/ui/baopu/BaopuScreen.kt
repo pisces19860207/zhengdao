@@ -308,6 +308,17 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             val listState = rememberLazyListState()
             var autoScroll by remember { mutableStateOf(true) }
             var hasNewContent by remember { mutableStateOf(false) }
+            // 2026-10-18 真机：输入框被键盘顶上去了，但**正文没有跟着**——根布局让出键盘高度后
+            // 列表视口变矮、滚动位置不变 ⇒ 最下面那条被挡在键盘后面。
+            // 这里盯视口高度：一变矮（键盘弹出/旋转）且用户本来就贴着底部，就把列表重新贴回底部。
+            // 不依赖 WindowInsets.ime（该版本 Compose 里取不到这个扩展属性）。
+            val viewportH = listState.layoutInfo.viewportSize.height
+            LaunchedEffect(viewportH) {
+                if (autoScroll) {
+                    val last = listState.layoutInfo.totalItemsCount - 1
+                    if (last >= 0) listState.scrollToItem(last)
+                }
+            }
             LaunchedEffect(listState) {
                 listState.interactionSource.interactions.collect { interaction ->
                     if (interaction is DragInteraction.Stop) {
