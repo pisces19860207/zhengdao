@@ -96,7 +96,7 @@ internal object BookOutlineTool {
             .getOrElse { return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.name}") }
         val decoded = TextDecode.decode(file, bytes)
         val text = decoded.text
-            ?: return ToolOutcome.Rejected(decoded.error ?: "读不了：${file.name}")
+            ?: return ToolOutcome.Failed(decoded.error ?: "读不了：${file.name}")
         val lines = TextDecode.splitLines(text)
         if (lines.isEmpty() || text.isBlank()) {
             return ToolOutcome.Ok("（空文件，没有可列的章节）：${file.name}")
