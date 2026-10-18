@@ -1167,4 +1167,8 @@
     <string name="baopu_tool_write_skill_desc">把摸索到的流程写成 SKILL.md（写前备份、同名即改、写完进索引；会弹确认卡）</string>
 <string name="baopu_tool_update_plan">工作计划</string>
     <string name="baopu_tool_update_plan_desc">接到任务先列 3–8 条计划，每完成一条就把整张表重发一次并打勾；计划显示成对话顶部的计划卡，点开能看到做到哪儿了。只改自己的计划状态，不动你的文件，也不用确认。</string>
+    <string name="baopu_tool_library_list">资料库清单</string>
+    <string name="baopu_tool_library_list_desc">只读列资料库：投递/（你丢进来的原件）或整理/（抱朴的产出），每条给相对路径、字节数、扩展名、sha256 前 8 位（肉眼判断重复）。输出封顶，超了会写明还有多少条。一个字节都不动。</string>
+    <string name="baopu_tool_library_organize">整理资料库</string>
+    <string name="baopu_tool_library_organize_desc">把整理结果落地（每次执行前弹确认卡）：把投递里的文件移到整理（同名会拒绝，不覆盖）、同目录内改名、重建 资料库/索引.md。只动投递/与整理/，绝不动 原始/。</string>
 </resources>
