@@ -201,13 +201,21 @@ internal fun buildWorkspaceTree(
     fallbackTitle: String,
 ): List<DrawerWorkspaceNode> {
     val currentKey = groupKey(currentHostPath)
-    val known = entries.filter { !it.workspace.isNullOrBlank() }
-    val unknownEntries = entries.filter { it.workspace.isNullOrBlank() }
+    // 「默认工作区」就是 `Download/证道` 这个**真文件夹**（2026-10-18 用户口径）。
+    // 所以：跑在默认目录里的会话与 NULL（历史未记录）会话**归同一组**，
+    // 不能再并排列出「证道」与「默认工作区」两行——那是同一个目录的两张脸。
+    val defaultKey = groupKey(unknownPath)
+    fun isDefaultWs(ws: String?): Boolean = ws.isNullOrBlank() || groupKey(ws) == defaultKey
+    val known = entries.filter { !isDefaultWs(it.workspace) }
+    val unknownEntries = entries.filter { isDefaultWs(it.workspace) }
     val grouped = known.groupBy { groupKey(it.workspace!!) }
 
     // 组间序锚＝组内最新一条 updated_at；没会话的当前工作区取 -1 ⇒ 排在有会话的组之后
     fun anchor(key: String): Long = grouped[key]?.maxOfOrNull { it.updatedAt } ?: -1L
+    // 当前工作区即使是空的也一定出现（W5）——但它要是默认目录，就归默认组那一行，
+    // 不许在这里再冒出一个「证道」组（同一个目录两张脸）。
     val keys = (grouped.keys + currentKey).toList()
+        .filter { it != defaultKey }
         .sortedWith(compareByDescending { anchor(it) })
 
     fun rowsOf(list: List<BaopuSessionEntry>): List<DrawerSessionRow> = list
@@ -230,12 +238,14 @@ internal fun buildWorkspaceTree(
     // 「默认工作区」**永远在**（2026-10-18 用户口径，照 DSH 左侧栏）：它是历史会话的收容所，
     // 空着也要显示一行，让人知道「老会话归这里」，而不是让它一会儿有一会儿没有。
     // 有 NULL 老会话就挂在这一行下面；一行都没有也照样列出来。
+    // 抱朴此刻就在默认目录里干活 ⇒ 这一行就是**当前工作区**，要跟别的组一样被高亮成当前。
+    val defaultIsCurrent = currentKey == defaultKey
     val defaultNode = DrawerWorkspaceNode(
         key = null,
         label = unknownLabel,
         fullPath = unknownPath,
-        isCurrent = false,
-        state = WorkspaceState.UNRECORDED,
+        isCurrent = defaultIsCurrent,
+        state = if (defaultIsCurrent) currentState else WorkspaceState.UNRECORDED,
         unknown = true,
         rows = rowsOf(unknownEntries),
     )
