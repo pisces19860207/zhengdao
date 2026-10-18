@@ -17,6 +17,8 @@
 //    · 模型（运行时）：不改、也不可提案改 —— 见 `docs/KERNEL.md`
 package com.example.zhengdao.baopu.kernel
 
+import com.example.zhengdao.baopu.SegmentKind
+
 /**
  * 抱朴内核：**七条边界**的唯一真相源。
  *
@@ -48,6 +50,15 @@ object BaopuKernel {
 
         /** 工具结果回灌给模型时的单次上限（字符）。 */
         const val TOOL_RESULT_MAX_CHARS = 8 * 1024
+
+        /**
+         * 工具结果超过这个字符数就**落盘改写**（模型只看到摘要 ＋ 落盘提示）。
+         * 26-B 从 `baopu/agent/GuardPipeline.kt` 搬进来，那边保留同名委托。
+         */
+        const val SPILL_THRESHOLD_CHARS = 4_000
+
+        /** 落盘后回灌给模型的那截摘要有多长。 */
+        const val SPILL_SNIPPET_CHARS = 2_000
     }
 
     /** ④ 授权边界：确认制与超时。模型可以把动作**提案**给人，不能把 CONFIRM 改成 FREE。 */
@@ -94,8 +105,18 @@ object BaopuKernel {
         /** 单次压缩最多处理多少条。 */
         const val COMPRESS_MAX_MESSAGES_PER_RUN = 200
 
-        // 压缩永不动的前缀（NEVER_COMPRESS）现在还在 `baopu/ContextAssembler.kt`，
-        // 26-B 整块搬进来 —— **本批不许凭记忆抄一份**（抄错就是压缩红线被悄悄改掉）。
+        /**
+         * 压缩**永不触碰**的段（压缩红线）。26-B 从 `baopu/ContextAssembler.kt` 整块搬进来，
+         * 那边改成引用这里 —— **不许**在两处各写一份（抄错一个段名就是红线被悄悄改掉）。
+         *
+         * 为什么这个集合在内核里、而 [SegmentKind] 枚举不搬：枚举序本身就是拼装层的
+         * 「缓存前缀顺序」判据，动它要改整条组装链；内核只持有「哪些段不许压」这一条判据。
+         * 依赖方向：内核 → 纯枚举（无 Android、无 I/O），K1 仍然成立。
+         */
+        val NEVER_COMPRESS: Set<SegmentKind> = setOf(
+            SegmentKind.PERSONA_A, SegmentKind.PERSONA_B, SegmentKind.PERSONA_C,
+            SegmentKind.HARD_FACTS, SegmentKind.MEMORY,
+        )
     }
 
     /**

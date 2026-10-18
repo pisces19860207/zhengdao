@@ -50,6 +50,8 @@ import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
+import com.example.zhengdao.baopu.kernel.KernelAudit
+import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.FilterChip2
 import com.example.zhengdao.ui.InfoRow
 import com.example.zhengdao.ui.SectionCard
@@ -225,6 +227,12 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                 val hostPath = remember(wsTick) { Workspace.hostDir(ctx).absolutePath }
                 val curDefault = remember(wsTick) { Workspace.defaultDir(ctx).absolutePath }
                 val curPrivate = remember(wsTick) { Workspace.privateDir(ctx).absolutePath }
+                // 内核项留痕（第二十六批 §3.6）：**工作区是内核项**，改了要留一条 `[kernel] …`。
+                // 只在「真的变了」时写 —— 反复点同一个 chip 不该把日志刷满。
+                fun logWs(before: String) {
+                    val after = Workspace.hostDir(ctx).absolutePath
+                    if (after != before) RunLog.log(KernelAudit.workspace(after, before))
+                }
                 Text(
                     text = stringResource(R.string.baopu_ws_desc),
                     style = MaterialTheme.typography.bodySmall,
@@ -254,7 +262,9 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                         label = stringResource(R.string.baopu_ws_mode_default),
                         selected = hostPath == curDefault,
                     ) {
+                        val before = hostPath
                         Workspace.setDefault(ctx)
+                        logWs(before)
                         wsTick++
                     }
                     FilterChip2(
@@ -270,10 +280,17 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                         label = stringResource(R.string.baopu_ws_mode_private),
                         selected = storageOk && hostPath == curPrivate,
                     ) {
+                        val before = hostPath
                         Workspace.setPrivate(ctx)
+                        logWs(before)
                         wsTick++
                     }
                 }
+                Text(
+                    text = stringResource(R.string.baopu_ws_log_note),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 // 目录选择器**复用** SettingsDataActivity 那一套（§2.2.1：它怎么选你就怎么调），
                 // 不新写一套；非法路径 Workspace.setCustom 自己会拒（返回 false 时选中态不动）。
                 if (wsPickerOpen) {
@@ -281,7 +298,8 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                         onDismiss = { wsPickerOpen = false },
                         onPick = { path ->
                             wsPickerOpen = false
-                            Workspace.setCustom(ctx, path)
+                            val before = hostPath
+                            if (Workspace.setCustom(ctx, path)) logWs(before)
                             wsTick++
                         },
                     )

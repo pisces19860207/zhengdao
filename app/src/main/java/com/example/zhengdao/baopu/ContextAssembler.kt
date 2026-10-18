@@ -82,10 +82,11 @@ data class AssembledPrompt(
         .filter { it.kind in NEVER_COMPRESS }
         .joinToString(SEP) { it.text }
 
-    private val NEVER_COMPRESS = setOf(
-        SegmentKind.PERSONA_A, SegmentKind.PERSONA_B, SegmentKind.PERSONA_C,
-        SegmentKind.HARD_FACTS, SegmentKind.MEMORY,
-    )
+    /**
+     * 压缩红线：这些段永不进压缩范围（26-B 起**唯一来源在内核**，这里只做委托）。
+     * 别在本文件里再写一份集合 —— `KernelGuardTest` 的 K7 会红。
+     */
+    private val NEVER_COMPRESS: Set<SegmentKind> = BaopuKernel.Budget.NEVER_COMPRESS
 
     companion object {
         const val SEP = "\n\n"
