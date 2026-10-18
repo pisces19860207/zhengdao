@@ -118,10 +118,17 @@ class DeletePathToolTest {
         assertTrue(a is ToolOutcome.Failed)
         assertTrue(File(root, "${DeletePathTool.BACKUP_DIR_NAME}/旧版.txt").isFile)
 
+        // 回收站：默认（进回收站）不批——那是原地打转，且要引导用户带 permanent
         file("${DeletePathTool.TRASH_DIR}/已删.txt", "回收站里的")
         val b = DeletePathTool.run("${DeletePathTool.TRASH_DIR}/已删.txt", root = root)
         assertTrue(b is ToolOutcome.Failed)
+        assertTrue((b as ToolOutcome.Failed).error.contains("permanent"))
         assertTrue(File(root, "${DeletePathTool.TRASH_DIR}/已删.txt").isFile)
+
+        // 带 permanent 才真清（用户要能一句话清空回收站）
+        val c = DeletePathTool.run("${DeletePathTool.TRASH_DIR}/已删.txt", permanent = true, root = root)
+        assertTrue(c is ToolOutcome.Ok)
+        assertFalse(File(root, "${DeletePathTool.TRASH_DIR}/已删.txt").exists())
     }
 
     @Test

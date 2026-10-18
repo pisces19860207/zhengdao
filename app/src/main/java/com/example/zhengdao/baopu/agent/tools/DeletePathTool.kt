@@ -100,9 +100,12 @@ internal object DeletePathTool {
             return ToolOutcome.Failed("不许删工作区根目录本身：${root.absolutePath}")
         }
         val trashDir = File(root, TRASH_DIR)
-        if (PathGuard.isInside(trashDir, target)) {
+        // 回收站里的东西**可以清**（用户 2026-10-18 真机反馈：让抱朴清回收站被守卫拦下），
+        // 但只能 permanent —— 对回收站再做「移进回收站」没有任何意义，那是原地打转。
+        if (PathGuard.isInside(trashDir, target) && !permanent) {
             return ToolOutcome.Failed(
-                "不许删 $TRASH_DIR/ 里的东西——那是回收站，要彻底清就自己到文件管理器里删。",
+                "$rel 已经在 $TRASH_DIR/ 里了。要清空请带 permanent=true（这一步不可恢复）；" +
+                    "不带的默认行为是进回收站，对回收站里的东西等于原地打转。",
             )
         }
         if (PathGuard.isInside(File(root, BACKUP_DIR_NAME), target)) {
