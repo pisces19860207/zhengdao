@@ -128,6 +128,8 @@ object SkillStore {
             else -> null
         }
 
+        // 草稿也进索引（2026-10-18 用户口径）：不进索引 ⇒ 明天看不见 ⇒ 重新摸索＝白烧 token。
+        val draftMark = if (proposal.draft) "（草稿·未验证，用前先 read_file 核对）" else ""
         return SkillWritePlan(
             proposal = proposal.copy(name = name),
             file = file,
@@ -136,7 +138,7 @@ object SkillStore {
             charCount = proposal.body.length,
             indexEntry = SkillRules.IndexLine(
                 name = name,
-                scenario = firstSentence(proposal.body),
+                scenario = firstSentence(proposal.body) + draftMark,
                 scope = scopeOf(proposal.scope),
             ),
             blocked = blocked,
@@ -168,7 +170,8 @@ object SkillStore {
             // ② 正文（草稿要带 status 头，转正时再改）
             file.writeText(withDraftHeader(plan.proposal), Charsets.UTF_8)
             // ③ 索引（草稿不写；正式走人设层唯一写盘口）
-            val indexUpdated = if (plan.proposal.draft) {
+            // 草稿同样写索引（见 plan 里 draftMark 的理由）
+            val indexUpdated = if (false) {
                 false
             } else {
                 val edit = SkillRules.addIndexLine(currentIndexText, plan.indexEntry)
