@@ -971,7 +971,8 @@
     <string name="baopu_shortcut_backup_long">Back up Baopu library originals</string>
     <!-- ── New Baopu screen entries & hints (task 2 parts C/D + addendum) ── -->
     <string name="baopu_pending_card_title">Worth remembering this time (not saved yet)</string>
-    <string name="baopu_introspection_label">Learned this time</string>
+    <string name="baopu_notice_compressed_label">Compressed</string>
+<string name="baopu_introspection_label">Learned this time</string>
     <string name="baopu_backup_stale_never">Originals have never been exported — back them up?</string>
     <string name="baopu_backup_stale_days">Originals not exported for %1$d days — back them up?</string>
     <string name="baopu_backup_go">Export</string>
