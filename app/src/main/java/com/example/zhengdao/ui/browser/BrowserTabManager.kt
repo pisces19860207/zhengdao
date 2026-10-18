@@ -107,7 +107,7 @@ object BrowserTabManager {
         RunLog.log("玄览 newTab#tab$id：主线程开始构造 WebView（thread=${Thread.currentThread().name}）")
         val ctorBeginNanos = System.nanoTime()
         val wv = WebView(app)
-        // 玄览「100vh = 0」修法（2026-10-18 · 站点矩阵真机判决）：给 WebView 自带一份
+        // 玄览「100vh = 0」修法（2026-10-18 · 真机同包对照判决）：给 WebView 自带一份
         // MATCH_PARENT 的 LayoutParams。
         //
         // 机理：本类建好的 WebView 由 `BrowserScreen` 的 `AndroidView(factory = { … })` 挂上窗口，
