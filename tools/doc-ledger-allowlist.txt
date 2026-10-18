@@ -1,0 +1,39 @@
+# doc-ledger-allowlist.txt —— 账本一致性门禁（tools/check-doc-ledger.py）的已知例外
+# 第三十三批建立。首跑（无本文件）实测 30 条发现；下列存量逐条登记理由，未改任何账。
+# 行格式：一行一条「判据-值 # 理由」。
+#   D1/D2/D3 的值是 E 号整数（E-16 与 E-016 视为同一号）；D4 的值是十六进制短号（小写）；
+#   D2 的值可以是号段（如 200-205）。空行与整行注释（本文件格式）被忽略。
+# 规矩：条目对应的毛病被修掉后，门禁会报「该条已不再触发」——看到那条报警就删掉本行，
+#   别让烂账在 allowlist 里堆积（D5 的设计目的就是让烂账能清掉）。
+
+# ── D1：E 号唯一（ERRATA 主条与续记标题同号，是账式不是笔误）──
+D1:5 # E-005 主条目（ERRATA.md:110）与「E-005 修订」（:146）同号——续记归主条的账式，蓝总管认可
+D1:115 # E-115 主条目（ERRATA.md:6221）与「E-115 深夜补记」（:6249）同号——同上
+
+# ── D3：引用可查 ──
+D3:0 # ERRATA.md:4712「放弃 E-0xx 以来……」是 E-0 系列泛指，正则误抓成 E-000（该号不存在）
+D3:999 # 派工单-2026-10-19-第三十三批-账本一致性门禁.md:79 负例说明里的示例号（「见 E-999 ⇒ D3 红」）
+
+# ── D4：commit 短号可达（反引号里的 7–40 位 hex 不都是本仓 commit）──
+# 上游第三方仓库的 commit（本仓 git 对象库里当然没有）：
+D4:7fd1a60b01f91b314f59955a4e4d4e80d8edf11d # octocat/Hello-World 的 HEAD（终端 git 提速取证，LEDGER:53）
+D4:e634d8f9 # 上游 Termux v0.119.0-beta.3 commit（PROVENANCE.md 钉死项，LEDGER:64）
+D4:d8d6b02 # 上游 Termux commit（OSC 载荷防护移植来源，LEDGER:64/606）
+D4:440897beb2717fc334edd5ad2ab42bd63b504910 # proot 上游「构建 commit」回查（LEDGER:76）
+D4:de39661946f7e8175b5dd0755121fa28cb0aebd1 # proot 上游 commit（LEDGER:76）
+D4:a179d3e8a4e045aaa1fb8cc3284f23509d96d353 # proot 上游 commit（LEDGER:76）
+D4:b9fd538 # proot 原型仓第一代（targetSdk=28 证伪实验，LEDGER:383/714/1954）
+D4:c8aefe4 # proot 原型仓第二代（同上）
+D4:b940084d7eb6a299eb4bfeb8e34901bc051e7ac4 # rustc 1.99.0 的 commit 指纹（so-provenance 记录项，编译器版本不是本仓提交）
+# 非 commit 的十六进制值（CI run 号 / 时间戳 / 代号 / 位掩码 / 校验值）：
+D4:38146820548 # GitHub Actions tag run 号（LEDGER:358）
+D4:37647338521 # GitHub Actions run 号（LEDGER:1226）
+D4:1792312639875 # 时间戳（毫秒）值（LEDGER:812）
+D4:34aa9d1ad79c46e19c8222a032404c59 # hermes pm repair 重建新代号（LEDGER:1297）
+D4:e6059c6bd3ee309f # rootfs 索引 env 校验值（LEDGER:1500）
+D4:0b11111111111 # TextStyle.decodeEffect 的二进制位掩码字面量（LEDGER:586），不是短号
+# 本仓历史被重写 / squash 后不可达的旧 commit（账面记载与对象库不符，待蓝总管定账）：
+D4:793b1b4 # 2.0.12 之前的提交，历史重写后不可达（LEDGER:53）
+D4:b4cceed # 第㉙刀合并 commit，历史重写后不可达（LEDGER:389 + 派工单-2026-10-15-第二批-全部待派.md:19）
+# 派工单负例示例：
+D4:deadbee # 派工单-2026-10-19-第三十三批-账本一致性门禁.md:80 负例说明里的假短号
