@@ -11,6 +11,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
 import com.example.zhengdao.baopu.BaopuRuntime
@@ -221,6 +222,20 @@ internal class BaopuChatController(context: Context) {
     /** 待过目候选的进程内上限（UI 同屏放得下 3 张；超了先到先得，截断记日志）。 */
     private val maxPending = 6
 
+    // ── 技能沉淀（第十九批）：封卷提炼的提案，等用户在确认卡上拍板 ──────────
+
+    /**
+     * 技能索引提案（PersonaProposal，layer=B/C，PENDING）：封卷提炼与启动补算产出，
+     * 用户「采纳」⇒ 走 [PersonaFiles.applyProposal] 落盘（唯一合法写盘口，K4）；
+     * 「丢弃」⇒ 只从列表移除（本来就是内存态，没有文件可删）。
+     */
+    var pendingSkillProposals by mutableStateOf<List<com.example.zhengdao.baopu.PersonaProposal>>(emptyList())
+        private set
+
+    /** 技能动作的一句话结果（上限拒绝 / 写盘失败等；显示几秒就清）。 */
+    var skillNote by mutableStateOf<String?>(null)
+        private set
+
 
     // ⚠️ 这两行必须声明在 init **之前**：init 里的 refresh() → restoreCompression()
     // 会写 compressionNote；Kotlin 按声明顺序初始化属性，声明在后面时委托对象还是 null
@@ -248,6 +263,8 @@ internal class BaopuChatController(context: Context) {
         restoreConfirmCard()
         // 进程重启后把压过的摘要与跳过列表塞回引擎（第十三批 C 段：不然等于白压）
         restoreCompression()
+        // 第十九批：封卷自检补算（K6）——closed_at 有、refined_at 没有的会话补提炼一次
+        selfCheckUnclosedSessions()
         // 进页面先看投递有没有料（A 段：扫投递 → 一次 ask_user）与顶条的两个数
         checkDeliver()
         refreshBackupStats()
@@ -338,6 +355,9 @@ internal class BaopuChatController(context: Context) {
 
     /** 新会话：释放旧视图状态（库里的会话不删——账本只增）。 */
     fun newSession() {
+        // 第十九批 §2.4：点「新会话」＝旧会话**封卷**——先写 closed_at，提炼成功才写
+        // refined_at；没跑成留给下次启动自检补算（同一会话只补一次，见 selfCheckUnclosedSessions）。
+        closeCurrentSession()
         sessionId = null
         interruptedStep = -1
         messages = emptyList()
@@ -683,6 +703,182 @@ internal class BaopuChatController(context: Context) {
         runCatching {
             notePrefs.edit().putString("note_$sid", r.introspection.text).apply()
         }
+    }
+
+    // ── 技能沉淀（第十九批）：会话封卷 → 提炼 → 提案等确认 ──────────────────
+
+    /**
+     * 封卷当前会话（点「新会话」的第一步）：写 `closed_at` → 提炼一次 → **成功才写**
+     * `refined_at`。提炼抛异常 ⇒ refined_at 不写，留给下次启动自检补算（K6）。
+     */
+    private fun closeCurrentSession() {
+        // 触发点判据（K6）：技能提炼只挂在会话封卷，每轮结束留给记忆候选
+        if (com.example.zhengdao.baopu.SkillRefine.skillTriggerFor("new_session") == null) return
+        val sid = sessionId ?: return
+        val now = System.currentTimeMillis()
+        db.write { d ->
+            val stmt = com.example.zhengdao.baopu.BaopuSql.markSessionClosed(sid, now)
+            d.execSQL(stmt.sql, stmt.args)
+        }
+        val ok = runCatching { refineSkillsForSession(sid) }
+            .onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "[baopu-skill] 封卷提炼失败（${it.javaClass.simpleName}）：${it.message} ⇒ 留给下次启动补算",
+                )
+            }
+            .isSuccess
+        if (ok) markRefined(sid, now)
+    }
+
+    /** 启动自检补算（K6 的另一半）：封了卷没提炼成功的会话，每个只补一次。 */
+    private fun selfCheckUnclosedSessions() {
+        // 触发点判据（K6）：启动自检也是技能提炼的合法触发点
+        if (com.example.zhengdao.baopu.SkillRefine.skillTriggerFor("startup") == null) return
+        val ids = db.read { d ->
+            val out = mutableListOf<Long>()
+            val stmt = com.example.zhengdao.baopu.BaopuSql.listUnclosedRefinements()
+            d.rawQuery(stmt.sql, stmt.args).use { c ->
+                while (c.moveToNext()) out += c.getLong(0)
+            }
+            out
+        }
+        for (sid in ids) {
+            val ok = runCatching { refineSkillsForSession(sid) }
+                .onFailure {
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "[baopu-skill] 自检补算失败（${it.javaClass.simpleName}）：${it.message}",
+                    )
+                }
+                .isSuccess
+            if (ok) markRefined(sid, System.currentTimeMillis())
+        }
+    }
+
+    private fun markRefined(sid: Long, at: Long) {
+        db.write { d ->
+            val stmt = com.example.zhengdao.baopu.BaopuSql.markSessionRefined(sid, at)
+            d.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
+    /**
+     * 对一个会话跑技能提炼（封卷与补算共用）：从库里读该会话的用户原话（不依赖
+     * 当前视图——补算时 [messages] 是别的会话），产出 [PersonaProposal]（PENDING）
+     * 进 [pendingSkillProposals] 等用户拍板。**这里绝不写人设**（K4：未确认不落盘）。
+     *
+     * 索引总量两层合计超 20 ⇒ 拒绝并提示先删旧的（[skillNote]），**不许靠截断兜底**（K2）。
+     */
+    private fun refineSkillsForSession(sid: Long) {
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val bText = pf.read(com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL)
+        val cText = pf.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT)
+        val globalLines = com.example.zhengdao.baopu.SkillRules.parseIndexLines(
+            bText, com.example.zhengdao.baopu.MemoryScope.GLOBAL,
+        )
+        val projectLines = com.example.zhengdao.baopu.SkillRules.parseIndexLines(
+            cText, com.example.zhengdao.baopu.MemoryScope.PROJECT,
+        )
+        val facts = com.example.zhengdao.baopu.MemoryRefine.SessionFacts(
+            sessionId = sid,
+            userTexts = readUserTextsFor(sid),
+            now = System.currentTimeMillis(),
+        )
+        val r = com.example.zhengdao.baopu.SkillRefine.refine(facts, globalLines + projectLines)
+        if (r.candidates.isEmpty()) {
+            if (r.dropped > 0) {
+                skillNote = appCtx.getString(
+                    R.string.skill_refine_dropped, r.dropped,
+                )
+            }
+            return
+        }
+        val total = globalLines.size + projectLines.size
+        if (total + r.candidates.size > com.example.zhengdao.baopu.SkillRules.INDEX_CAP) {
+            // K2：超上限 ⇒ 拒绝并提示先删旧的（不是截断）
+            skillNote = appCtx.getString(
+                R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+            )
+            return
+        }
+        for (c in r.candidates) {
+            val layer = if (c.scope == com.example.zhengdao.baopu.MemoryScope.GLOBAL) {
+                com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL
+            } else {
+                com.example.zhengdao.baopu.PersonaLayer.C_PROJECT
+            }
+            val current = pf.read(layer).orEmpty()
+            val add = com.example.zhengdao.baopu.SkillRules.addIndexLine(
+                current,
+                com.example.zhengdao.baopu.SkillRules.IndexLine(c.scope, c.name, c.scenario),
+            )
+            val newText = (add as? com.example.zhengdao.baopu.SkillRules.EditResult.Ok)?.newText
+                ?: continue
+            if (newText == current) continue
+            val reason = appCtx.getString(
+                if (c.fromUser) R.string.skill_reason_user else R.string.skill_reason_refine,
+            )
+            val proposal = com.example.zhengdao.baopu.PersonaRules.propose(layer, current, newText, reason)
+                ?: continue // A 内核不可提案（K5）——B/C 不会走到这，防御性跳过
+            pendingSkillProposals = pendingSkillProposals + proposal
+        }
+    }
+
+    /** 从库里读一个会话的全部用户原话（text part 的 payload 就是正文，按序）。 */
+    private fun readUserTextsFor(sid: Long): List<String> = db.read { d ->
+        val out = mutableListOf<String>()
+        d.rawQuery(
+            "SELECT part.payload FROM message JOIN part ON part.message_id = message.id " +
+                "WHERE message.session_id = ? AND message.role = 'user' AND part.kind = 'text' " +
+                "ORDER BY message.seq ASC, part.seq ASC",
+            arrayOf(sid.toString()),
+        ).use { c ->
+            while (c.moveToNext()) {
+                val t = c.getString(0)
+                if (!t.isNullOrBlank()) out += t
+            }
+        }
+        out
+    }
+
+    /**
+     * 技能提案：采纳。落盘前**再查一次**两层合计上限（用户可能刚在设置页手动加过）；
+     * 走 [PersonaFiles.applyProposal]——它只收 PENDING 且可写层（K4 的执行面）。
+     */
+    fun confirmSkillProposal(p: com.example.zhengdao.baopu.PersonaProposal) {
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val total = com.example.zhengdao.baopu.SkillRules.totalIndexCount(
+            pf.read(com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL),
+            pf.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT),
+        )
+        val scope = if (p.layer == com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL) {
+            com.example.zhengdao.baopu.MemoryScope.GLOBAL
+        } else {
+            com.example.zhengdao.baopu.MemoryScope.PROJECT
+        }
+        val adding = com.example.zhengdao.baopu.SkillRules.parseIndexLines(p.proposed, scope).size -
+            com.example.zhengdao.baopu.SkillRules.parseIndexLines(p.current, scope).size
+        if (total + adding > com.example.zhengdao.baopu.SkillRules.INDEX_CAP) {
+            skillNote = appCtx.getString(
+                R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+            )
+            return
+        }
+        val ok = pf.applyProposal(p)
+        if (!ok) {
+            skillNote = appCtx.getString(R.string.skill_apply_failed)
+            return
+        }
+        pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
+    }
+
+    /** 技能提案：丢弃（只在内存列表里移除——PENDING 本来就没落盘，没有文件可删）。 */
+    fun discardSkillProposal(p: com.example.zhengdao.baopu.PersonaProposal) {
+        pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
+    }
+
+    /** 清掉技能动作那句话（UI 显示几秒后调）。 */
+    fun clearSkillNote() {
+        skillNote = null
     }
 
     /**
