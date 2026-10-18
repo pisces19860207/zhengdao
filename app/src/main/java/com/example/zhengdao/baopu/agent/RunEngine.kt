@@ -62,8 +62,20 @@ internal object ActiveSessionGate {
         }
     }
 
+    /**
+     * 释放（2026-10-18 真机修正）：**必须按值比较**再 CAS。
+     *
+     * 原来写的是 `active.compareAndSet(sessionKey, null)` —— `AtomicReference`
+     * 用的是**引用相等**，而 `"id:$sessionId"` 每次都是新字符串 ⇒ CAS 永远失败，
+     * 门放不掉。症状：跑完一轮后**换一个会话**发送被挡（「已有另一个会话在跑」），
+     * 同一会话重发却能过（[tryAcquire] 用的是 `==`）——真机排查了两次才定位。
+     */
     fun release(sessionKey: String) {
-        active.compareAndSet(sessionKey, null)
+        while (true) {
+            val cur = active.get() ?: return
+            if (cur != sessionKey) return
+            if (active.compareAndSet(cur, null)) return
+        }
     }
 
     fun current(): String? = active.get()
@@ -271,6 +283,7 @@ internal class RunEngine(
     /** 抢单活跃门；抢不到 ⇒ notice 说明原因并返回 null（调用方据此放弃）。 */
     private fun acquireOrNotice(sessionId: Long): Unit? {
         if (!ActiveSessionGate.tryAcquire("id:$sessionId")) {
+            log("抱朴引擎：单活跃门占用（当前=，要=id:）")
             _notice.value = "已有另一个会话在跑（全局单活跃）：先等它结束或停止它"
             return null
         }
