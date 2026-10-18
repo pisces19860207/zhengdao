@@ -962,6 +962,8 @@
     <string name="baopu_tool_move_path_desc">在资料库里搬动或给文件改名；同盘直接搬，跨盘只复制、把源记进「资料库/整理/_待删除清单.md」，不自动删。撞名自动加后缀让路。</string>
     <!-- ── 抱朴确认卡（刀 3 · A 段；写工具通电的唯一入口）── -->
     <string name="baopu_confirm_title">要动文件：%1$s</string>
+    <string name="baopu_confirm_title_action">要执行：%1</string>
+    <string name="baopu_confirm_hint_action">批准后这个动作会真的执行；拒绝就跳过，对话继续。</string>
     <string name="baopu_confirm_hint">批准后文件真的会被改动（写前会自动备份）；拒绝就跳过这个动作，对话继续。</string>
     <string name="baopu_confirm_approve">批准</string>
     <string name="baopu_confirm_reject">拒绝</string>
