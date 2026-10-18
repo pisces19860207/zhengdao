@@ -13,6 +13,7 @@ package com.example.zhengdao.ui.baopu
 import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.IconButton
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -302,6 +304,12 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     )
                 }
             }
+            // 已压缩细条（第十三批 §4.4：只加一条，不做美化；点开展摘要全文）
+            controller.compressionNote?.let { note ->
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    BaopuCompressedBar(note = note)
+                }
+            }
             libraryNote?.let { note ->
                 Text(
                     text = note,
@@ -362,5 +370,42 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
         }
     }
+    }
+}
+
+/**
+ * 「已压缩」细条（第十三批 §4.4）。
+ *
+ * 三条规定都在这一小块里：
+ * 1. 文案照派工单：`已压缩 M 条早期消息 · 摘要 x 字`（走 `strings.xml`，不拼中文）；
+ * 2. **点开才展开**摘要全文（`labelSmall`；[SelectionContainer] 让它可以长按选中复制——
+ *    派工单要的「可复制」不靠加按钮，不加按钮就不加按钮）；
+ * 3. **不给「取消压缩」「删除原始消息」**（本单不做回滚；原始消息仍在库里，
+ *    用户点开这里能回看的只是摘要）。
+ */
+@Composable
+internal fun BaopuCompressedBar(note: BaopuChatController.CompressionNote) {
+    var expanded by remember { mutableStateOf(false) }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(
+                text = stringResource(R.string.baopu_compressed_bar, note.count, note.summary.length),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (expanded) {
+                SelectionContainer {
+                    Text(
+                        text = note.summary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        }
     }
 }
