@@ -44,11 +44,13 @@ import org.json.JSONObject
  *
  * [closedAt] / [workspace] 可空都是**事实**不是缺省：closed_at 空 = 没封过卷（可继续），
  * workspace 空 = 老会话当时没记（不许拿当前工作区补——K3）。
+ * [rounds] = 真轮数（role='user' 消息条数，SQL 实时数出；第二十五批 A 段——
+ * 之前叫 msgCount 读 msg_count 列，那列没维护、真机全线 0）。
  */
 data class BaopuSessionEntry(
     val id: Long,
     val title: String,
-    val msgCount: Int,
+    val rounds: Int,
     val updatedAt: Long,
     val closedAt: Long?,
     val workspace: String?,
@@ -427,7 +429,7 @@ internal class BaopuChatController(context: Context) {
                             BaopuSessionEntry(
                                 id = c.getLong(0),
                                 title = c.getString(1) ?: "",
-                                msgCount = c.getInt(2),
+                                rounds = c.getInt(2),
                                 updatedAt = c.getLong(3),
                                 closedAt = if (c.isNull(4)) null else c.getLong(4),
                                 workspace = if (c.isNull(5)) null else c.getString(5),
@@ -501,12 +503,31 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 清空会话视图（第二十五批 C 段：删当前会话后的落点）——与「新会话」同样的清空动作，
+     * 但**不封卷**（会话行已经删了，没有可封的对象）。回空态「还没有对话」；
+     * **不许**自动跳到别的会话——用户没选，别替他选（P4）。
+     */
+    private fun clearSessionView() {
+        sessionId = null
+        interruptedStep = -1
+        messages = emptyList()
+        pendingMemories = emptyList()
+        introspectionNote = null
+        refineMarkSession = -1L
+        refineMarkUserCount = -1
+        confirmCard = null
+        confirmRestored = false
+        compressionNote = null
+    }
+
+    /**
      * 永久删除一个会话（第二十批 §2.1.4；**唯一调用方是浮层删除确认框的确认按钮**）。
      *
      * 五步语句与顺序由 [com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements]
      * 给定（ops 子批 → 提案批 → run_log → message → session 本体；part 靠外键级联），
      * 同一个写事务里跑完——删一半断电等于没删（单写者线程串行，天然原子）。
-     * 删的是当前正开着的会话 ⇒ 清视图回空态（sessionId = null）。
+     * 删的**不是**当前会话 ⇒ 只删库，当前会话不动（P5）；删的**正是**当前会话 ⇒
+     * [clearSessionView] 回空态（P4；提示由浮层负责）。
      */
     fun deleteSession(sid: Long) {
         if (busy) return // 在跑不许删：引擎还在往库里写
@@ -516,16 +537,7 @@ internal class BaopuChatController(context: Context) {
             }
         }
         if (sessionId == sid) {
-            sessionId = null
-            interruptedStep = -1
-            messages = emptyList()
-            pendingMemories = emptyList()
-            introspectionNote = null
-            refineMarkSession = -1L
-            refineMarkUserCount = -1
-            confirmCard = null
-            confirmRestored = false
-            compressionNote = null
+            clearSessionView()
         }
     }
 

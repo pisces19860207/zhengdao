@@ -1021,7 +1021,7 @@
     <string name="baopu_drawer_new_session_desc">清空当前上下文，记忆不动</string>
     <string name="baopu_drawer_group_library">资料与书</string>
     <string name="baopu_drawer_library">资料库</string>
-    <string name="baopu_drawer_library_desc">看搬进来的书、整理进度与导出记录</string>
+    <string name="baopu_drawer_library_desc">看资料库挂载状态与导出记录（在「终端与资料」页；书库页在做）</string>
     <string name="baopu_drawer_extract_desc">选一本书，先看切章结果再决定怎么读</string>
     <string name="baopu_drawer_backup_desc">把原件导出到手机上，防丢</string>
     <string name="baopu_drawer_group_settings">设置</string>
@@ -1071,6 +1071,7 @@
     <string name="baopu_session_delete_desc">「%1$s」· %2$d 轮，删了就找不回来了。</string>
     <string name="baopu_session_delete_confirm">永久删除</string>
     <string name="baopu_session_delete_cancel">先不删</string>
+    <string name="baopu_session_deleted_current">已删除，当前回到空态</string>
     <string name="baopu_ws_card">工作区</string>
     <string name="baopu_ws_desc">抱朴会话的工作地点，跟终端用的是同一份设置。产出与项目技能都跟着它走。</string>
     <string name="baopu_ws_current">当前位置</string>
