@@ -213,7 +213,6 @@ internal fun BaopuDrawer(
     busy: Boolean,
     nodes: List<DrawerWorkspaceNode>,
     onNewSession: () -> Unit,
-    onHistorySessions: () -> Unit,
     onOpenSession: (Long) -> Unit,
     onWorkspaceTap: (String) -> Unit,
     onWorkspaceHold: (String) -> Unit,
@@ -250,13 +249,9 @@ internal fun BaopuDrawer(
             enabled = !busy,
             onClick = onNewSession,
         )
-        // 第二十批 §2.1.1：历史会话入口，排在新会话后面——旧会话从这儿找回来。
-        // 第二十九批 A2 段：抽屉成了主入口，那一页留作**平铺列表**（不分组，全量看）。
-        DrawerItem(
-            title = stringResource(R.string.baopu_drawer_history),
-            description = stringResource(R.string.baopu_drawer_history_desc),
-            onClick = onHistorySessions,
-        )
+        // ⛔ 「历史会话」这一行**已删掉**（2026-10-18 用户口径：会话都归在各自工作区下面了，
+        // 再留一个「全部会话（平铺看）」就是同一批东西两个入口，抽屉还比 DSH 多一截）。
+        // 那一页没消失，只是挪成低频入口：抱朴设置 → 会话记录（删除仍在那儿做）。
 
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
 

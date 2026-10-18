@@ -63,7 +63,7 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
 @Composable
-internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
+internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: () -> Unit = {}) {
     val ctx = LocalContext.current
     // 承载方式（2026-10-18 真机修正）：必须用 **Dialog 全屏**，不能直接摆在 BaopuScreen 的
     // Column 里——实测那样只在对话与输入框之间挤出一条，聊天还露在外面上下两端。
@@ -303,6 +303,20 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                             wsTick++
                         },
                     )
+                }
+            }
+
+            // ── 会话记录（2026-10-18 用户口径：抽屉里那行「历史会话」删掉，会话归各工作区；
+            //    平铺列表连同「删除」挪到这里做低频入口）──
+            SectionCard(stringResource(R.string.baopu_session_manage_card)) {
+                Text(
+                    text = stringResource(R.string.baopu_session_manage_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onOpenSessionLibrary) {
+                    Text(stringResource(R.string.baopu_session_manage_open))
                 }
             }
 

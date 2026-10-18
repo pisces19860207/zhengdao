@@ -134,7 +134,7 @@ class BaopuSessionTreeTest {
             "未授权",
         ),
         currentState = currentState,
-        unknownLabel = "默认工作区 · 历史未记录",
+        unknownLabel = "默认工作区",
         unknownPath = "/storage/emulated/0/Download/证道",
         currentSessionId = currentSessionId,
         now = now,
@@ -173,7 +173,8 @@ class BaopuSessionTreeTest {
                 entry(2L, "旧活儿", now - day, "/storage/emulated/0/Download/AndroidStudioProjects"),
             ),
         )
-        assertEquals(2, nodes.size)
+        // 默认工作区永远在（2026-10-18 用户口径）⇒ 两个真工作区 + 一个默认工作区
+        assertEquals(3, nodes.size)
         nodes.forEach { node ->
             assertFalse("${node.label} 不许含斜杠（完整路径不上表）", node.label.contains("/"))
             assertTrue("完整路径留给点那一下：${node.fullPath}", node.fullPath.contains("/"))
@@ -371,7 +372,7 @@ class BaopuSessionTreeTest {
                 entry(2L, "当前组第一条", now - 2 * day, "/storage/emulated/0/Download/男性"),
             ),
         )
-        assertEquals(listOf("AndroidStudioProjects", "男性"), nodes.map { it.label })
+        assertEquals(listOf("AndroidStudioProjects", "男性", "默认工作区"), nodes.map { it.label })
     }
 
     @Test
@@ -386,7 +387,7 @@ class BaopuSessionTreeTest {
         )
         assertEquals(2, nodes.size)
         assertTrue("最后一组必须是未记录组", nodes.last().unknown)
-        assertEquals("默认工作区 · 历史未记录", nodes.last().label)
+        assertEquals("默认工作区", nodes.last().label)
         assertEquals(listOf(2L, 1L), nodes.last().rows.map { it.id })
         assertEquals("/storage/emulated/0/Download/证道", nodes.last().fullPath)
         assertFalse("未记录组不是当前工作区", nodes.last().isCurrent)
@@ -397,7 +398,7 @@ class BaopuSessionTreeTest {
         val nodes = tree(
             listOf(entry(1L, "别的文件夹里的会话", now - hour, "/storage/emulated/0/Download/AndroidStudioProjects")),
         )
-        assertEquals(2, nodes.size)
+        assertEquals(3, nodes.size)   // 别的文件夹 + 当前工作区 + 默认工作区
         val current = nodes.first { it.isCurrent }
         assertEquals("男性", current.label)
         assertTrue("它下面一条会话都没有，也照样占一行", current.rows.isEmpty())
@@ -408,8 +409,9 @@ class BaopuSessionTreeTest {
     @Test
     fun `W5_没有会话又没有当前身份的文件夹不出现`() {
         val nodes = tree(listOf(entry(1L, "一条", now - hour, "/storage/emulated/0/Download/男性")))
-        assertEquals("只有当前这一组", 1, nodes.size)
-        assertEquals(listOf("男性"), nodes.map { it.label })
+        // 「没有会话又不是当前」的文件夹不出现；但默认工作区常显 ⇒ 2 行
+        assertEquals(2, nodes.size)
+        assertEquals(listOf("男性", "默认工作区"), nodes.map { it.label })
     }
 
     @Test
@@ -428,7 +430,7 @@ class BaopuSessionTreeTest {
                 entry(2L, "不带斜杠", now - 2 * hour, "/storage/emulated/0/Download/男性"),
             ),
         )
-        assertEquals(1, nodes.size)
+        assertEquals(2, nodes.size)   // 男性一组 + 默认工作区常显
         assertEquals(2, nodes.first().rows.size)
     }
 
@@ -634,10 +636,11 @@ class BaopuSessionTreeTest {
     }
 
     @Test
-    fun `口径1_低频入口一个都不许少_原来七项都还在抽屉里`() {
+    fun `口径1_低频入口一个都不许少_历史会话已移出抽屉`() {
+        // 2026-10-18 用户口径改了：会话都归在各工作区下面 ⇒ 抽屉里**不再有**「历史会话」行。
+        // 但那一页（含删除）不能因此丢掉，挪成低频入口：抱朴设置 → 会话记录。
         listOf(
             "baopu_new_session",
-            "baopu_drawer_history",
             "baopu_drawer_library",
             "baopu_extract_title",
             "baopu_backup_title",
@@ -658,7 +661,6 @@ class BaopuSessionTreeTest {
     fun `口径3_点项先关抽屉再跳_会话行与文件夹行也不例外`() {
         listOf(
             "onNewSession = {",
-            "onHistorySessions = {",
             "onOpenSession = { sid ->",
             "onWorkspaceTap = { path ->",
             "onLibrary = {",
@@ -690,5 +692,32 @@ class BaopuSessionTreeTest {
         assertFalse(screen.contains("previewLastReply"))
         assertFalse(drawerCode.contains("previewLastReply"))
         assertFalse(drawerCode.contains("clearPreviewCache"))
+    }
+    @Test
+    fun `口径4_抽屉里没有历史会话行_平铺列表挪进设置页`() {
+        // 用户 2026-10-18：「历史会话不应该再出现了，而是归到各个工作区里」
+        assertFalse(
+            "抽屉里不许再有「历史会话」这一行（会话已归到各工作区下面）",
+            drawerCode.contains("R.string.baopu_drawer_history"),
+        )
+        assertFalse("抽屉的形参也不许再收 onHistorySessions", drawerCode.contains("onHistorySessions"))
+        // 但它不能凭空消失 —— 平铺列表（含删除）得在设置页有入口
+        val settings = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt").readText()
+        assertTrue("设置页要有「会话记录」卡", settings.contains("R.string.baopu_session_manage_card"))
+        assertTrue("设置页要能打开会话库", settings.contains("onOpenSessionLibrary"))
+        val screen = screenCode
+        assertTrue(
+            "设置页的入口要真的把会话库打开（先关设置页，别两个 Dialog 叠着）",
+            screen.contains("onOpenSessionLibrary = { showSettings = false; showSessionLibrary = true }"),
+        )
+    }
+
+    @Test
+    fun `口径5_默认工作区空着也要显示`() {
+        // 照 DSH 左侧栏：默认工作区是历史会话的收容所，空着也占一行，别一会儿有一会儿没有
+        val nodes = tree(listOf(entry(1L, "当前工作区里的一条", now - hour, "/storage/emulated/0/Download/男性")))
+        assertTrue("最后一行必须是默认工作区", nodes.last().unknown)
+        assertEquals("默认工作区", nodes.last().label)
+        assertTrue("它下面可以一条会话都没有", nodes.last().rows.isEmpty())
     }
 }
