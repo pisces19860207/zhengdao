@@ -118,16 +118,11 @@ class DeletePathToolTest {
         assertTrue(a is ToolOutcome.Failed)
         assertTrue(File(root, "${DeletePathTool.BACKUP_DIR_NAME}/旧版.txt").isFile)
 
-        // 回收站：默认（进回收站）不批——那是原地打转，且要引导用户带 permanent
+        // 回收站：**默认就彻底清**（用户两次反馈「清不掉」，对回收站再进回收站是原地打转）
         file("${DeletePathTool.TRASH_DIR}/已删.txt", "回收站里的")
         val b = DeletePathTool.run("${DeletePathTool.TRASH_DIR}/已删.txt", root = root)
-        assertTrue(b is ToolOutcome.Failed)
-        assertTrue((b as ToolOutcome.Failed).error.contains("permanent"))
-        assertTrue(File(root, "${DeletePathTool.TRASH_DIR}/已删.txt").isFile)
-
-        // 带 permanent 才真清（用户要能一句话清空回收站）
-        val c = DeletePathTool.run("${DeletePathTool.TRASH_DIR}/已删.txt", permanent = true, root = root)
-        assertTrue(c is ToolOutcome.Ok)
+        assertTrue("回收站里的东西应当直接清掉：$b", b is ToolOutcome.Ok)
+        assertTrue((b as ToolOutcome.Ok).text.contains("从回收站彻底删除"))
         assertFalse(File(root, "${DeletePathTool.TRASH_DIR}/已删.txt").exists())
     }
 

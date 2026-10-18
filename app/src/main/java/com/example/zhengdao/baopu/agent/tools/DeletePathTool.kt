@@ -100,14 +100,10 @@ internal object DeletePathTool {
             return ToolOutcome.Failed("不许删工作区根目录本身：${root.absolutePath}")
         }
         val trashDir = File(root, TRASH_DIR)
-        // 回收站里的东西**可以清**（用户 2026-10-18 真机反馈：让抱朴清回收站被守卫拦下），
-        // 但只能 permanent —— 对回收站再做「移进回收站」没有任何意义，那是原地打转。
-        if (PathGuard.isInside(trashDir, target) && !permanent) {
-            return ToolOutcome.Failed(
-                "$rel 已经在 $TRASH_DIR/ 里了。要清空请带 permanent=true（这一步不可恢复）；" +
-                    "不带的默认行为是进回收站，对回收站里的东西等于原地打转。",
-            )
-        }
+        // 回收站里的东西**直接彻底清**（用户 2026-10-18 两次真机反馈：让抱朴清回收站总被拦），
+        // 不再要求 permanent —— 对回收站再做「移进回收站」是原地打转，用户的本意就是清掉；
+        // 确认卡照样弹，卡上写的就是「从回收站彻底删除」，反悔窗口在回收站里而不是再套一层。
+        val insideTrash = PathGuard.isInside(trashDir, target)
         if (PathGuard.isInside(File(root, BACKUP_DIR_NAME), target)) {
             return ToolOutcome.Failed("不许删 $BACKUP_DIR_NAME/ 里的东西——那是旧版本备份区（回滚点）。")
         }
@@ -128,12 +124,15 @@ internal object DeletePathTool {
             )
         }
         val size = target.length()
-        if (permanent) {
+        if (permanent || insideTrash) {
             val deleted = runCatching { target.delete() }.getOrDefault(false)
             if (!deleted) {
                 return ToolOutcome.Failed("删不掉：$rel（权限或 IO 错误）。文件还在。")
             }
-            return ToolOutcome.Ok("已彻底删除：$rel（$size B）。这一步不可恢复。")
+            return ToolOutcome.Ok(
+                if (insideTrash) "已从回收站彻底删除：$rel（$size B）。这一步不可恢复。"
+                else "已彻底删除：$rel（$size B）。这一步不可恢复。",
+            )
         }
         // 默认：进回收站（同分区 rename 原子；失败退回复制+删除，两步都失败就如实说）
         val trashName = uniqueTrashName(trashDir, "$stamp-${target.name}")
