@@ -320,6 +320,9 @@ internal object BaopuToolCatalog {
         // 资料库两件套（第三十一批）：list 只读；organize 三个动作一律 CONFIRM，够不着「静默动手」
         "library_list",
         "library_organize",
+        // 删除（2026-10-18 用户点名「删除工具没加啊？」）：默认开，但**每次一张确认卡**，
+        // 且默认只进回收站（.回收站/），permanent=true 才是不可恢复的真删。
+        "delete_path",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -346,6 +349,8 @@ internal object BaopuToolCatalog {
         // 资料库两件套（第三十一批）：library_list 只读清单；library_organize 写落地（CONFIRM）
         Entry("library_list") { LibraryTools.listSpec(it) },
         Entry("library_organize") { LibraryTools.organizeSpec(it) },
+        // 删除（2026-10-18）：默认进回收站，permanent 才真删；禁区一律拒
+        Entry("delete_path") { DeletePathTool.spec(it) },
     )
 
     /**
