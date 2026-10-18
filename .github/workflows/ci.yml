@@ -33,9 +33,16 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          # fetch-depth: 2 —— 「刷基线收窄门禁」（第㉗②-A 加分项）要能解析 HEAD~1；
-          # 解析不到时那个脚本会自己「跳过」，不会把 CI 卡死。
-          fetch-depth: 2
+          # fetch-depth: 0 —— 两条硬需求，缺一条就红：
+          # ①「刷基线收窄门禁」（第㉗②-A 加分项）要能解析 HEAD~1；
+          # ② 第三十三批「账本一致性门禁」的 D4（commit 短号可达）要在**本地对象库里**
+          #    认得过台账/派工单引用到的每一个历史短号。
+          # 2026-10-19 实测（E-162）：fetch-depth: 2 时 D4 把 1774 条历史短号全判成
+          # `cat-file missing` —— 浅克隆里那些对象根本不存在，于是这道门禁量的是
+          # 「CI 拉了多少历史」，不是「账对不对」。全历史 ≈ 67 MiB / 1990 提交，
+          # 相对装 NDK + 跑 Gradle 是噪声；build.yml 一直用的就是 0。
+          # 脚本侧另有硬守卫：浅克隆直接 exit 2 并指名原因，不再刷 1774 行假发现。
+          fetch-depth: 0
 
       - name: 安装 JDK 21
         uses: actions/setup-java@v4
@@ -110,7 +117,7 @@ jobs:
       # 评测集与基线水位没被顺手放松（用例不许删；passRate/avgSteps/cases/passing 不许松）。
       # 顺序写死：校验必须排在 testDebugUnitTest 之前，否则测试烧完分钟数才发现基线被改松。
       # BASE 与上面「刷基线收窄门禁」同一变量、同一写法（PR 取 base.sha，否则 HEAD~1；
-      # checkout 的 fetch-depth: 2 保证这两个 rev 都在本地对象库里）。
+      # checkout 的 fetch-depth: 0（全历史）保证这两个 rev 都在本地对象库里）。
       - name: 评测基线不许放松门禁（cases 不许删、baseline 不许松）
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"

@@ -16,7 +16,9 @@ r"""check-doc-ledger.py —— 文档账本一致性门禁（第三十三批）�
         找到对应标题（E 号按整数比对，E-16 与 E-016 视为同一号）；
     D4  commit 短号可达：docs/FEATURE-LEDGER.md 与 docs/派工单-*.md 里
         反引号包裹的 7–40 位十六进制短号，`git cat-file --batch-check` 必须
-        认得过（只查本地对象库，不联网）；
+        认得过（只查本地对象库，不联网）。**要求完整历史**：浅克隆里历史对象
+        压根不在库里，全部短号都会被误判 missing（2026-10-19 实测 1774 条，
+        见 ERRATA E-162）⇒ 浅克隆直接报环境错误，不冒充业务发现；
     D5  例外要留痕：已知不查的引用/短号一律写进 tools/doc-ledger-allowlist.txt
         （一行一条 `判据-值 # 理由`）；**allowlist 条目若已不再触发也要报**——
         否则烂账永远清不掉（修好了没人知道该删）。
@@ -29,11 +31,13 @@ r"""check-doc-ledger.py —— 文档账本一致性门禁（第三十三批）�
 用法
     python3 tools/check-doc-ledger.py [仓库根]      # 默认模式：只报告，退出码恒 0
     python3 tools/check-doc-ledger.py --strict [仓库根]  # 有发现即退出码 1（CI 用）
+    python3 tools/check-doc-ledger.py --strict --allow-shallow [仓库根]
+        # 仓库是浅克隆时，只跑 D1–D3、D4 跳过并留一行说明（不--allow-shallow 则 exit 2）
 
 退出码
     0 = 无发现，或默认模式（CI 之外的人扫账不该失败）；
     1 = --strict 且有发现（含 allowlist 失效）；
-    2 = 用法/环境错误（不像仓库根、git 不可用等）。
+    2 = 用法/环境错误（不像仓库根、git 不可用、浅克隆无法判 D4 等）。
 
 输出
     每行发现固定前缀（方便 CI 摘）：`[doc-ledger] <判据> <文件>:<行> <原因>`；
@@ -212,6 +216,21 @@ def check_d3(repo: Path, numbers: set[int]) -> list[Finding]:
     return findings
 
 
+def is_shallow_repo(repo: Path) -> bool:
+    """仓库是不是浅克隆。D4 只查本地对象库，浅克隆下这条判据没有意义：
+    历史对象压根不在库里，全部短号都会被判 missing（E-162，实测 1774 条）。
+    判定不出来（git 太老 / 不是仓库）时按「非浅」处理，让后续 cat-file 自己报错。"""
+    proc = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=str(repo),
+    )
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
 def check_d4(repo: Path) -> list[Finding]:
     """D4 commit 短号可达：台账＋派工单里反引号包裹的 7–40 位十六进制，
     git cat-file 必须认得过。一次 --batch-check 批量校验（不逐个起进程）。"""
@@ -264,8 +283,9 @@ def check_d4(repo: Path) -> list[Finding]:
 def main() -> int:
     args = sys.argv[1:]
     strict = "--strict" in args
+    allow_shallow = "--allow-shallow" in args
     rest = [a for a in args if not a.startswith("--")]
-    if any(a.startswith("--") and a != "--strict" for a in args):
+    if any(a.startswith("--") and a not in ("--strict", "--allow-shallow") for a in args):
         print(__doc__)
         return 2
     repo = Path(rest[0]).resolve() if rest else Path(__file__).resolve().parent.parent
@@ -273,8 +293,26 @@ def main() -> int:
         print(f"[环境错误] 不像仓库根（找不到 {ERRATA_REL}）：{repo}")
         return 2
 
+    # D4 要完整历史（E-162）：浅克隆里历史对象不在对象库，判「短号可达」等于判「克隆深度」。
+    # 这里宁可大声报环境错误，也不许它伪装成 1774 条业务发现。
+    shallow = is_shallow_repo(repo)
+    if shallow and not allow_shallow:
+        print("[环境错误] 仓库是浅克隆：D4（commit 短号可达）无法判定——")
+        print("           浅克隆里历史对象不在对象库，全部历史短号都会被误判成 missing。")
+        print("           CI 请把 actions/checkout 的 fetch-depth 设为 0；")
+        print("           只想跑 D1–D3 请加 --allow-shallow（D4 跳过并留一行说明）。")
+        return 2
+    if shallow:
+        print("[doc-ledger] D4 跳过：仓库是浅克隆（--allow-shallow）——短号可达性无法判定")
+
     allow_path = repo / ALLOWLIST_REL
     allow, allow_bad = parse_allowlist(allow_path)
+    if shallow:  # D4 没跑：它的 allowlist 条目一律不参与「已失效」判定，否则全是假警告
+        dropped = [k for k in allow if k[0] == "D4"]
+        for k in dropped:
+            allow.pop(k, None)
+        if dropped:
+            print(f"[doc-ledger] D4 跳过期间不校验 {len(dropped)} 条 D4 allowlist 条目（浅克隆）")
     for bad in allow_bad:
         print(f"[doc-ledger] D5 {bad} allowlist 行格式不对（应为「判据-值 # 理由」）")
 
@@ -282,7 +320,8 @@ def main() -> int:
     d12, numbers = check_d1_d2(repo)
     findings += d12
     findings += check_d3(repo, numbers)
-    findings += check_d4(repo)
+    if not shallow:
+        findings += check_d4(repo)
 
     # allowlist 过滤：命中的抑制（不计发现）；没命中任何发现的 ⇒ D5 失效报警
     triggered = {f.match_key() for f in findings}
