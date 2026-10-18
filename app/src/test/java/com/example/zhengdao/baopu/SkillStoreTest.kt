@@ -233,8 +233,10 @@ class SkillStoreTest {
         val src = File("src/main/java/com/example/zhengdao/baopu/SkillStore.kt")
             .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/SkillStore.kt") }
             .readText()
-        assertFalse("删除永远手动（第十九批 §2.5）", src.contains("fun deleteSkill"))
-        assertFalse("不许偷偷删文件", src.contains("delete()"))
+        // 2026-10-18 改口径：技能要能删，但**不是硬删** —— 改名成 `.deleted-<stamp>` 留在原地，
+        // 原件一个字节不动，用户在文件管理器里自己清。硬红线只剩「资料库/原始/ 不许碰」。
+        assertTrue("要有归档式删除", src.contains("fun archive(file: File"))
+        assertFalse("不许直接 hard delete", src.contains("file.delete()"))
     }
     @Test
     fun `S14_设置页真接上了新建与回滚_不是只有底座`() {
