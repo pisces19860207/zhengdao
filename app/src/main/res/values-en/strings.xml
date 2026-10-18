@@ -1036,6 +1036,11 @@
     <string name="baopu_switch_ws_confirm">Switch</string>
     <string name="baopu_switch_ws_cancel">Cancel</string>
     <string name="baopu_switch_ws_failed">That path cannot be a workspace (shared-storage folders only)</string>
+    <string name="baopu_delete_session_title">Delete this session?</string>
+    <string name="baopu_delete_session_body">“%1$s” will be permanently deleted (messages, steps and compression summary too). This cannot be undone.</string>
+    <string name="baopu_delete_session_confirm">Delete</string>
+    <string name="baopu_delete_session_cancel">Keep</string>
+    <string name="baopu_delete_session_failed">Delete failed; try again or restart</string>
     <string name="baopu_session_manage_card">Session records</string>
     <string name="baopu_session_manage_desc">All sessions in a flat list; delete them here (removed from the drawer)</string>
     <string name="baopu_session_manage_open">Open all sessions</string>
