@@ -64,6 +64,14 @@ import kotlin.text.Charsets
  * - 2026-10-16（B-补-22）：`SettingsEnvActivity.kt` 顶部 import +2 与 `@OptIn` KDoc +5（共 +7 行）、
  *   运行内存上限卡的三个芯片由裸 `Row` 改 `FlowRow`（+11 行）⇒ 四个创建点
  *   207→214 / 261→268 / 561→572 / 656→667，**无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
+ * - 2026-10-18（第二十一批「真闸门与空壳」）：`TerminalActivity.kt` 加会话信任簿字段（+6）、
+ *   onResume 清失败计数（+8）、onLinkOpen 抽 `openInXuanlan` 与确认卡（+46 前后）⇒
+ *   五个创建点 633→650 / 848→865 / 1609→1672 / 1669→1732 / 1755→1818，
+ *   **无新增线程**（逐处核过仍是同一段 `Thread {`），本次回填。
+ *   ⚠️ 记账方法坑（留给下一次）：对账单扫的是 **`Thread(`／`Thread {` 那一行**，
+ *   不是线程**名字**所在行——`val worker = Thread({ … }, "zd-session-start")` 里名字在
+ *   结尾、两者差着 60 多行。我第一遍按名字行回填成 719/875/…，测试照红（这正是这条
+ *   对账单能抓错的价值）。以后数行号请用 `grep -nE "Thread *[({]"`，别按线程名 grep。
  * - 2026-10-16（B-补-19）：`MainActivity.kt` 冷启动权限块加「本次冷启动最多一个系统框」标记
  *   与 KDoc（+21 行）⇒ 唯一创建点 259→280，**无新增线程**（仍是 `zd-update-check` 那一个），本次回填。
  * - 2026-10-16（B-补-8）：`MainActivity.kt` 设置页顶栏 `height(48.dp)` 改
@@ -180,11 +188,11 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:578",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1；第十八批 B 段包裹 +5 ⇒ 573→578）
             "SettingsEnvActivity.kt:673",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5 ⇒ 668→673）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
-            "TerminalActivity.kt:633",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11）
-            "TerminalActivity.kt:848",              // zd-net-probe（同上）
-            "TerminalActivity.kt:1609",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1）
-            "TerminalActivity.kt:1669",             // zd-install-cache（同上）
-            "TerminalActivity.kt:1755",             // zd-install-download（同上）
+            "TerminalActivity.kt:650",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17）
+            "TerminalActivity.kt:865",              // zd-net-probe（同上；第二十一批 +17）
+            "TerminalActivity.kt:1672",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1；第二十一批 +63）
+            "TerminalActivity.kt:1732",             // zd-install-cache（同上；第二十一批 +63）
+            "TerminalActivity.kt:1818",             // zd-install-download（同上；第二十一批 +63）
             "ZhengdaoApp.kt:82",                    // zhengdao-keepalive-archive（第⑲刀 +3；清场删两 import −2、删 onCreate 调用 −1、补说明 +2 ⇒ +2）
             "ZhengdaoApp.kt:132",                   // zd-auto-clean（同上）
         )

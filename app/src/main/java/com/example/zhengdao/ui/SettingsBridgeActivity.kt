@@ -65,6 +65,10 @@ private fun SettingsBridgePage(onBack: () -> Unit) {
     // 重置口令后自增，逼 remember 重新取一次打码串
     var tokenTick by remember { mutableStateOf(0) }
     var toast by remember { mutableStateOf<String?>(null) }
+    // 第二十一批 B 段：监听地址行的只读说明卡（原来这行是空 lambda——看着能点、
+    // 点下去零反应，是最典型的「装样子」）。二选一里选「真做」：数据全部从
+    // BridgePolicy 现取，不新造字段（派工单 §2.2 推荐项）。
+    var showListenInfo by remember { mutableStateOf(false) }
     val tokenMasked = remember(tokenTick) { BridgeToken.maskedForDisplay(ctx) }
 
     SettingsSubPage(title = stringResource(R.string.bridge_title), onBack = onBack) {
@@ -107,11 +111,15 @@ private fun SettingsBridgePage(onBack: () -> Unit) {
                 )
             }
             SettingsDivider()
-            // 监听地址：把"只绑本机"这件事明写在界面上（用户该知道它够不着外网）
+            // 监听地址：把"只绑本机"这件事明写在界面上（用户该知道它够不着外网）。
+            // 第二十一批 B 段：这行原来挂的是**空 lambda**（能点、点了零反应）。
+            // 选「真做」而不是「改成不可点」的理由：端口与绑定地址是排查问题的
+            // 第一手信息（agent 连不上时先看这里），值得点开讲清「为什么外网连不上」；
+            // 数据全从 BridgePolicy 取，没有新造字段。
             SettingRow(
                 label = stringResource(R.string.bridge_port_label),
                 value = "${BridgePolicy.BIND_HOST}:${BridgePolicy.PORT}",
-            ) { }
+            ) { showListenInfo = true }
         }
 
         // ── 口令 ──
@@ -157,6 +165,29 @@ private fun SettingsBridgePage(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(8.dp))
+    }
+
+    // 监听地址的只读说明卡（第二十一批 B 段）。**纯说明**：没有任何可改项——
+    // 绑定地址/端口是本桥的硬红线（BridgePolicy 的 KDoc 明写不许从这里改）。
+    if (showListenInfo) {
+        AlertDialog(
+            onDismissRequest = { showListenInfo = false },
+            title = { Text(stringResource(R.string.bridge_listen_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.bridge_listen_detail,
+                        BridgePolicy.BIND_HOST,
+                        BridgePolicy.PORT.toString(),
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showListenInfo = false }) {
+                    Text(stringResource(R.string.common_close))
+                }
+            },
+        )
     }
 
     // 轻提示：不新开布局，用 Snackbar 的轻量替身——一个自动消失的浮字
