@@ -522,6 +522,7 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "library_list" -> R.string.baopu_tool_library_list
     "library_organize" -> R.string.baopu_tool_library_organize
     "delete_path" -> R.string.baopu_tool_delete_path
+    "image_ops" -> R.string.baopu_tool_image_ops
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -560,5 +561,6 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "library_list" -> R.string.baopu_tool_library_list_desc
     "library_organize" -> R.string.baopu_tool_library_organize_desc
     "delete_path" -> R.string.baopu_tool_delete_path_desc
+    "image_ops" -> R.string.baopu_tool_image_ops_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
