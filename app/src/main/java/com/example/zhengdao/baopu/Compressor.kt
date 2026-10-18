@@ -147,6 +147,39 @@ internal object Compressor {
     fun selectCompressionRange(history: List<HistoryMessage>, keepRecent: Int = KEEP_RECENT): List<HistoryMessage> =
         ContextAssembler.selectCompressionRange(history, keepRecent)
 
+    /**
+     * 摘要增量合并（第十六批第二件 · **乙案** · 纯函数）。
+     *
+     * 口径（派工单 §2B 第 4 条）：不把旧摘要拼进请求（请求体只含本轮新段——
+     * 与改前的请求构造逐字节同形，J11 靠这条），产出后按「旧 + 新」顺序拼接；
+     * 拼接天然保住旧摘要的实质内容（J10）。总长度受 [maxTokens]（即压缩的
+     * 1024 输出上限）约束：超限先丢**最旧的段**并记日志「摘要超限，丢弃最旧段」；
+     * 只剩一段时不再丢（丢光等于白压，最后一段必须留着）。
+     *
+     * 选乙案不选甲案的理由（交付报告同步）：甲案要改请求构造（旧摘要＋新对话一起
+     * 发给模型合并），输出质量略好，但请求体从此与改前不同形，J11（老调用字节
+     * 不变）得靠参数开关绕；乙案请求构造**零改动**，代价是摘要从「一张字段表」
+     * 变成「两张字段表叠放」——[parseSummary] 对叠放表同样宽容，消费侧（模型）
+     * 拿到的仍是完整字段文本。
+     */
+    fun mergeSummaries(
+        previous: String?,
+        fresh: String,
+        maxTokens: Int,
+        tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
+        log: (String) -> Unit = {},
+    ): String {
+        if (previous.isNullOrBlank()) return fresh
+        var segs = listOf(previous, fresh) // 旧在前、新在后
+        var merged = segs.joinToString("\n\n")
+        while (segs.size > 1 && tokensOf(merged) > maxTokens) {
+            segs = segs.drop(1) // 超限先丢最旧的段
+            merged = segs.joinToString("\n\n")
+            log("抱朴压缩：摘要超限，丢弃最旧段（剩 ${segs.size} 段）")
+        }
+        return merged
+    }
+
     /** 哪些段永不被压缩（追加判据 3：A/B/C 人设与记忆段永远不进压缩范围）。 */
     fun neverCompressible(): Set<SegmentKind> = setOf(
         SegmentKind.PERSONA_A, SegmentKind.PERSONA_B, SegmentKind.PERSONA_C,

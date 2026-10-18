@@ -197,4 +197,15 @@ internal object RunRules {
      * 都满足不了就一定不压（C 段反向保证）。
      */
     const val COMPRESS_OLD_MESSAGE_MIN = 60
+
+    /**
+     * 压缩**单次**处理的消息条数上限（第十六批第二件）。
+     *
+     * 为什么要有：`runOnce` 的选区扣掉已压消息（skipIds）之后仍可能很大（长会话
+     * 一次攒几百条），一次全塞给压缩模型必然撞它的窗口——压缩永久失败、失败后
+     * 按 10 步冷却反复重试白烧请求。上限之内一次压完；超了**只压最旧的 200 条**
+     * （不许整批拒绝——整批拒绝会让长会话永远压不动，等于把压缩锁死），剩下的
+     * 留给下一轮：条数触发线（[COMPRESS_OLD_MESSAGE_MIN]）仍满足，会接着压。
+     */
+    const val COMPRESS_MAX_MESSAGES_PER_RUN = 200
 }

@@ -329,6 +329,18 @@ internal object BaopuSql {
         arrayOf<String?>(sessionId.toString(), CompressionRunner.FAIL_REASON),
     )
 
+    /**
+     * 十六批第一件（步骤卡收纳）：全会话 run_log **活动行**的只读 SELECT 常量。
+     *
+     * 「活动行」= tool 列非空（Thinking/Done 这些状态行不进 UI）；compression 留痕行
+     * （`compression_failed` 等）不在这里滤——那是 UI 纯函数的判据（JVM 可测）。
+     * 派工单白名单限定 BaopuDb 只许加这一条 SELECT 常量：轮窗口切片在 UI 层做，
+     * 这里一次把全会话行读齐，不逐轮查询。
+     */
+    const val RUN_LOG_STEPS_SELECT: String =
+        "SELECT tool, ok, latency_ms, err, created_at FROM run_log " +
+            "WHERE session_id = ? AND tool != '' ORDER BY id ASC"
+
     /** 被压消息 id 列表 → JSON 数组（**纯函数**：空表也给 `[]`，不给空串）。 */
     fun idsToJson(ids: List<String>): String = org.json.JSONArray().also { arr ->
         ids.forEach { arr.put(it) }
