@@ -1155,4 +1155,8 @@
     <string name="baopu_tool_write_skill_desc">Record a discovered flow as SKILL.md (backs up first, same name = edit it, adds an index line; asks for confirmation)</string>
 <string name="baopu_tool_update_plan">Work plan</string>
     <string name="baopu_tool_update_plan_desc">List 3–8 plan items when a task arrives, and resend the whole list (with the finished one checked) each time an item is done. The plan shows as a card above the chat; tap it to see the progress. It only updates its own plan state — no file is touched and no confirmation is needed.</string>
+    <string name="baopu_tool_library_list">Library listing</string>
+    <string name="baopu_tool_library_list_desc">Read-only listing of the library: 投递/ (files you dropped in) or 整理/ (Baopu\'s output). Each row gives the relative path, size, extension and the first 8 hex chars of sha256 (for spotting duplicates by eye). Output is capped and says how many rows were left out. Nothing is modified.</string>
+    <string name="baopu_tool_library_organize">Organize library</string>
+    <string name="baopu_tool_library_organize_desc">Land the organizing result (a confirmation card pops up before each action): move a file from 投递/ to 整理/ (same-name is refused, never overwritten), rename within the same directory, or rebuild 资料库/索引.md. Only 投递/ and 整理/ are touched — never 原始/.</string>
 </resources>
