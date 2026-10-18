@@ -282,6 +282,10 @@ private fun BaopuRoundItem(
                     onToggle = { planOpened = !planOpened },
                 )
             }
+            // 2026-10-18 真机反馈：「工具调用我点了，展开后就收不回去了」——
+            // 原因是收起态才渲染那行摘要，展开后就没有任何可点的地方。
+            // 展开态末尾补一条同样的摘要行，点它即收回（文案/数字与收起态一致）。
+            BaopuRoundSummaryRow(round, steps) { userOpened = !userOpened }
         }
     }
 }
