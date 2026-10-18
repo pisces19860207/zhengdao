@@ -136,25 +136,31 @@ internal object ContextAssembler {
      */
 
     /**
-     * 触发线（第十五批 A 段：`min(窗口 × 0.85, 120k)`）。纯函数，便于把边界钉死在单测里。
+     * 触发线（2026-10-19 用户口径：**窗口的 70%**）。纯函数，便于把边界钉死在单测里。
      *
-     * 封顶的理由：第十三批真机 T1 实证 1M 窗口的触发线 891k 手机永远够不着；
-     * 8k 窗口按比例 6,963 不受封顶影响（min 取小者）。常量在
-     * [RunRules.COMPRESS_ABS_MAX_TOKENS]（判据数值统一放纯判据内核）。
+     * 演进：v1 是 `min(窗口 × 0.85, 120k)`（第十五批给"条数太多"兜底）——1M 窗口上
+     * 那条 120k 的封顶等于 **11% 就压**，用户 2026-10-19 真机反馈「压得太早」；
+     * 现在 = `min(窗口 × 0.70, 900k)`，1M 窗口 ⇒ 734,003 token 才压（约 70%）。
+     * 常量仍在 [RunRules.COMPRESS_ABS_MAX_TOKENS]（判据数值统一放纯判据内核）。
      */
     fun compressionThreshold(windowTokens: Int): Double =
         minOf(windowTokens * COMPRESS_THRESHOLD, RunRules.COMPRESS_ABS_MAX_TOKENS.toDouble())
 
     /**
-     * 是否需要先压缩（第十五批口径：**两条触发任一满足就压**）。
-     * ① 估算 token 严格大于触发线（[compressionThreshold]，恰好压线不触发）；
-     * ② 可压旧消息条数 ≥ [RunRules.COMPRESS_OLD_MESSAGE_MIN]（[pendingOldMessageCount]
-     *    的产出；默认 0 ⇒ 不传该参数时与旧口径完全一致）。
-     * 两条都满足不了 ⇒ false（C 段反向保证：不许出现「每轮都压」的抖动）。
+     * 是否需要先压缩（2026-10-19 口径：**只看 token 占窗口的比例**）。
+     *
+     * 🛑 旧口径里还有一条「可压旧消息 ≥ 60 条也压」，2026-10-19 撤掉：
+     * 用户在 1M 窗口下要求「到 70% 左右才压」，而 60 条消息在一万 token 时就到了 ⇒
+     * 一条条数线能把 70% 的口径彻底架空（真机上就是它提前压的）。
+     * 条数现在只决定「**能不能**压」（[pendingOldMessageCount] > 0），不再决定「该不该」。
+     *
+     * @param oldMessageCount 保留形参（调用方仍在传），**不再参与判定**——留着是为了
+     *   不惊动引擎接线，且以后若要恢复类似刹车有现成的读数。
      */
-    fun needsCompressing(estimatedTokens: Int, windowTokens: Int, oldMessageCount: Int = 0): Boolean =
-        estimatedTokens > compressionThreshold(windowTokens) ||
-            oldMessageCount >= RunRules.COMPRESS_OLD_MESSAGE_MIN
+    fun needsCompressing(estimatedTokens: Int, windowTokens: Int, oldMessageCount: Int = 0): Boolean {
+        @Suppress("UNUSED_VARIABLE") val ignored = oldMessageCount
+        return estimatedTokens > compressionThreshold(windowTokens)
+    }
 
     /**
      * 「可压旧消息」条数（第十五批 B 段）——**直接复用选区函数**，不另写口径：
@@ -176,7 +182,7 @@ internal object ContextAssembler {
      *   （刀 3 B 段：128k 旧假设已废，deepseek-flash 实测 1048576）；
      * - 输出上限：`maxOutput` 优先，拿不到回退 **32k**；
      * - 单轮预算：`min(窗口 × 0.6, 输出上限 × 0.9)`（只按窗口算会撞输出上限被截断）；
-     * - 触发线：`min(窗口 × 0.85, 120k)`（[compressionThreshold]；第十五批 A 段封顶）。
+     * - 触发线：`min(窗口 × 0.70, 900k)`（[compressionThreshold]；2026-10-19 用户口径）。
      */
     internal object ContextBudgets {
 
