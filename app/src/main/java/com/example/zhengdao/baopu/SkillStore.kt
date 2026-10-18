@@ -195,6 +195,22 @@ object SkillStore {
         }.getOrElse { SkillWriteResult.Rejected("写盘失败：${it.javaClass.simpleName}") }
     }
 
+    /**
+     * 删技能（2026-10-18 用户口径：技能也要能删）。
+     *
+     * ⚠️ 与「删除永远手动」的关系：这里**不是硬删** —— 把 `SKILL.md` 改名成
+     * `<名>.SKILL.md.deleted-<时间戳>` 留在原地（原件一个字节不动），索引行由调用方一并去掉。
+     * 真要彻底删，用户在文件管理器里删那个 `.deleted-*` 文件。
+     * 硬红线只有一条：**`资料库/原始/` 不许碰**（技能目录不在那儿）。
+     */
+    fun archive(file: File, stamp: String): SkillWriteResult {
+        if (!file.isFile) return SkillWriteResult.Rejected("这个技能没有正文文件，没什么可删的")
+        return runCatching {
+            val gone = File(file.parentFile, "${file.name}.deleted-$stamp")
+            file.renameTo(gone)
+            SkillWriteResult.Written(file = gone, backup = null, indexUpdated = false)
+        }.getOrElse { SkillWriteResult.Rejected("改名失败：${it.javaClass.simpleName}") }
+    }
     /** 某个技能目录下的备份（新→旧）。回滚按钮用它。 */
     fun backupsOf(file: File): List<File> {
         val dir = file.parentFile ?: return emptyList()
