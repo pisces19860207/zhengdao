@@ -220,6 +220,10 @@ internal fun BaopuDrawer(
     onLibrary: () -> Unit,
     onExtract: () -> Unit,
     onBackup: () -> Unit,
+    /** 预览这条回复（刀 4-B 的 `previewLastReply`；本页只负责转交，渲染在 BaopuScreen）。 */
+    onPreviewLastReply: () -> Unit,
+    /** 清空预览缓存（返回清掉的张数，由调用方说话）。 */
+    onPreviewClear: () -> Unit,
     onChannel: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -282,6 +286,23 @@ internal fun BaopuDrawer(
             title = stringResource(R.string.baopu_backup_title),
             description = stringResource(R.string.baopu_drawer_backup_desc),
             onClick = onBackup,
+        )
+
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+        // 预览两行（刀 4-B 的两个零件函数在这里终于有调用方；第二十九批追加）。
+        // 排序刻意放在「设置」之前：它读的是**当前这条回复**，属于会话动作，不属于配置。
+        DrawerGroup(stringResource(R.string.baopu_drawer_group_preview))
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_preview_last),
+            description = stringResource(R.string.baopu_drawer_preview_last_desc),
+            enabled = !busy,
+            onClick = onPreviewLastReply,
+        )
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_preview_clear),
+            description = stringResource(R.string.baopu_drawer_preview_clear_desc),
+            onClick = onPreviewClear,
         )
 
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
