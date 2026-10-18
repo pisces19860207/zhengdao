@@ -1020,7 +1020,7 @@
     <string name="baopu_drawer_title">Baopu</string>
     <string name="baopu_drawer_subtitle">Less-used entries live here.</string>
     <string name="baopu_drawer_group_session">Session</string>
-    <string name="baopu_drawer_new_session_desc">Clear this context; memories stay</string>
+    <string name="baopu_drawer_new_session_desc">Start a session in the current workspace; memories stay</string>
     <string name="baopu_drawer_group_library">Library</string>
     <string name="baopu_drawer_library">Library</string>
     <string name="baopu_drawer_library_desc">Library mount status and export log (in Terminal &amp; data; bookshelf page in the works)</string>
@@ -1030,6 +1030,22 @@
     <string name="baopu_drawer_channel_desc">Switch model channel (rebuilds the engine; not while running)</string>
     <string name="baopu_drawer_settings">Baopu settings</string>
     <string name="baopu_drawer_settings_desc">Tool switches, model parameters, reasoning effort</string>
+    <!-- Batch 29: drawer top = workspace tree (which folder are we working in). Folder rows show
+         the leaf name only; the full path is the one-line hint after tapping. Session rows show
+         title plus relative time. -->
+    <string name="baopu_drawer_group_workspace">Workspace</string>
+    <string name="baopu_drawer_ws_private">App-private</string>
+    <string name="baopu_drawer_ws_unauthorized">No permission</string>
+    <string name="baopu_drawer_ws_unknown">Default workspace · not recorded</string>
+    <string name="baopu_drawer_time_just_now">Just now</string>
+    <string name="baopu_drawer_time_minutes">%1$d min</string>
+    <string name="baopu_drawer_time_hours">%1$d h</string>
+    <string name="baopu_drawer_time_days">%1$d d</string>
+    <string name="baopu_drawer_time_months">%1$d mo</string>
+    <!-- Batch 29 part B: another session is running — ask first, never auto-stop -->
+    <string name="baopu_switch_title">Switch session</string>
+    <string name="baopu_switch_desc">“%1$s” is still running. Stop it and continue in “%2$s”?</string>
+    <string name="baopu_switch_confirm">Stop and switch</string>
     <!-- ── Baopu takes the stage (batch 18): settings relocation + positioning copy ── -->
     <string name="baopu_tools_alias_read">read (free-tier alias)</string>
     <string name="baopu_tools_alias_read_desc">Equivalent to read_file and follows its switch above; the free tier requires this name in the tool list.</string>
@@ -1059,7 +1075,7 @@
     <string name="skill_refine_dropped">%1$d skill candidates were dropped this session (deduped or over limit).</string>
     <!-- ── Session library (batch 20): reopen or delete old chats + workspace surfaced ── -->
     <string name="baopu_drawer_history">History</string>
-    <string name="baopu_drawer_history_desc">Past chats — tap one to continue</string>
+    <string name="baopu_drawer_history_desc">All sessions, as a flat list</string>
     <string name="baopu_session_library_title">History</string>
     <string name="baopu_session_empty">No conversations yet.</string>
     <string name="baopu_session_unnamed">Unnamed session</string>
