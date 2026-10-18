@@ -3,13 +3,13 @@
      圆点造型引自 macOS/Safari 公开的设计惯例。
      黄色＝收起分屏（注意：与 macOS 的"最小化"语义不同，页内长按说明里有解释）。 -->
 <!-- B-补-20（2026-10-16）：热区 30dp → 48dp（工具条 44 → 48dp），inset 同步
-     9.5 → 18.5dp，让**视觉圆点仍是 11dp**（48 − 18.5×2 = 11）——只有指尖够得到的
+     9.5 → 14.5dp，让**视觉圆点仍是 11dp**（40 − 14.5×2 = 11）——只有指尖够得到的
      面积变大，界面看起来没变。 -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:insetLeft="18.5dp"
-    android:insetRight="18.5dp"
-    android:insetTop="18.5dp"
-    android:insetBottom="18.5dp">
+    android:insetLeft="14.5dp"
+    android:insetRight="14.5dp"
+    android:insetTop="14.5dp"
+    android:insetBottom="14.5dp">
     <shape android:shape="oval">
         <solid android:color="#FFFFBC2E" />
     </shape>
