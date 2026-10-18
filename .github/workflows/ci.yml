@@ -89,6 +89,14 @@ jobs:
       - name: 入库 .so 同源门禁（so 与 rust/core/src 同源基线）
         run: python3 tools/check-so-provenance.py
 
+      # 第三十三批（派工单 §1-B）：文档账本一致性门禁。账是文档账（FEATURE-LEDGER + ERRATA + 派工单），
+      # 编号重复/缺号/引用查不到/commit 短号不可达全靠人肉对账，漂移已真实发生过两次。
+      # 这一步把那五条机器能判的做成会红的门禁；默认只报告，--strict 有发现即红。
+      # 已知存量（上游 commit、CI run 号、续记同号等）登记在 tools/doc-ledger-allowlist.txt，
+      # 条目不再触发时会报「可删除」——烂账要能清掉。不许 continue-on-error：这批就是为了拦事。
+      - name: 账本一致性门禁（第三十三批）
+        run: python3 tools/check-doc-ledger.py --strict
+
       # 第㉗②-A 加分项：同源门禁是**基线驱动**的，所以「只改 tools/so-provenance.json
       # 把哈希刷成当前值」能让它变绿而产物根本没重编。这一步把这条捷径堵上：
       # 基线动了，就必须同时有 .so 或 rust/core/src/** 跟着动。
