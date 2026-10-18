@@ -963,7 +963,7 @@
     <string name="baopu_tool_move_path_desc">Move or rename a file inside the library. Same volume moves directly; cross-volume copies only and records the source in “资料库/整理/_待删除清单.md” — never deletes it. Name clashes get a suffix instead of overwriting.</string>
     <!-- ── Baopu confirm card (knife 3, part A; the only way write tools get powered) ── -->
     <string name="baopu_confirm_title">About to change a file: %1$s</string>
-    <string name="baopu_confirm_title_action">Run: %1</string>
+    <string name="baopu_confirm_title_action">Run: %1$s</string>
     <string name="baopu_confirm_hint_action">Approving really runs this action; rejecting skips it and the conversation continues.</string>
     <string name="baopu_confirm_hint">Approving really changes the file (a backup is made first); rejecting skips this action and the conversation continues.</string>
     <string name="baopu_confirm_approve">Approve</string>
