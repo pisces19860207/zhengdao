@@ -226,6 +226,38 @@ internal object LlmWire {
                     .toString()
             }
         }
+
+        /**
+         * 非流式响应的正文（**纯函数**，坏 JSON 返回 null 不抛）。
+         *
+         * 压缩只吃这一条路径（[LlmClient.completeOnce] 用）；流式那边走
+         * [LlmSse.deltaText]，两条不混——非流式与流式的字段形状本来就不一样
+         * （`choices[0].message.content` vs `choices[0].delta.content`），
+         * 硬凑一个函数只会两边都将就。
+         */
+        fun plainTextOf(protocol: LlmProtocol, raw: String): String? = runCatching {
+            val json = JSONObject(raw)
+            when (protocol) {
+                LlmProtocol.OPENAI_COMPAT -> json.optJSONArray("choices")
+                    ?.optJSONObject(0)
+                    ?.optJSONObject("message")
+                    ?.optString("content")
+
+                LlmProtocol.ANTHROPIC -> {
+                    val arr = json.optJSONArray("content")
+                    if (arr == null) {
+                        null
+                    } else {
+                        buildString {
+                            for (i in 0 until arr.length()) {
+                                val b = arr.optJSONObject(i) ?: continue
+                                if (b.optString("type") == "text") append(b.optString("text"))
+                            }
+                        }.takeIf { it.isNotEmpty() }
+                    }
+                }
+            }
+        }.getOrNull()
 }
 
 /**
@@ -521,6 +553,22 @@ internal object LlmSse {
  * callTimeout 绝不设（默认 0）——它限制整个长连接寿命，对流式致命。
  * （原参照件 oc/OcClient.kt 已随 oc/ 清场删除，口径不再指向仓库外文件名。）
  */
+/**
+ * 一次性补全的结果（第十三批 A 段 · 压缩专用）。
+ *
+ * 为什么**不复用** [LlmEvent]：那条是流式的（Delta/Finished/Failed 三态、带 usage
+ * 与 tool_calls 累积）；压缩只要「整段文本 / 失败原因」两态，塞进流式事件会让
+ * 调用方为每个字段写一坨无关分支。
+ *
+ * [Ok.model] 必须回传（落 `compression.model` 列——压过之后要能追溯是谁压的）。
+ */
+sealed interface CompletionResult {
+    data class Ok(val text: String, val model: String) : CompletionResult
+
+    /** [code] = HTTP 状态码；-1 = 响应里没文本；-2 = 传输层异常（超时/断连）。 */
+    data class Failed(val code: Int, val message: String) : CompletionResult
+}
+
 class LlmClient(private val provider: Provider) {
 
     private val http: OkHttpClient = defaultHttp()
@@ -645,9 +693,95 @@ class LlmClient(private val provider: Provider) {
         }
     }
 
+    /**
+     * 压缩请求的请求体（**纯函数**，给 J2 当靶子）。
+     *
+     * 两条红线在这里钉死（派工单 §3.3）：**不带 `tools`**（压缩不许触发工具调用）、
+     * **不带 `stream`**（压缩要一次拿到整段文本）。做法是直接复用
+     * [LlmWire.bodyOf] 的 `stream = false` 分支——它顺带也不加 `stream_options`，
+     * 两条红线都由既有纯函数兜住，不另写一份 body 拼装（两份必漂移）。
+     *
+     * `max_tokens` 盖成压缩上限（≤ [COMPLETE_MAX_TOKENS]，摘要不该长篇），
+     * `temperature` 压到 0.2（摘要要稳定，不要每次压出不同版本）。
+     */
+    fun completeBody(messages: List<LlmMessage>, maxTokens: Int, temperature: Double): String =
+        JSONObject(LlmWire.bodyOf(provider, messages, stream = false))
+            .put("max_tokens", maxTokens.coerceAtMost(COMPLETE_MAX_TOKENS))
+            .put("temperature", temperature)
+            .toString()
+
+    /**
+     * 一次请求、拿整段文本（第十三批 A 段 · 压缩用；**不动**流式路径）。
+     *
+     * 与 [streamAsync] 的三处不同，都是压缩这个场景要的：
+     * 1. **非流式**：一次 `execute()` 拿完整 body，不进 `zd-baopu-net` 线程、
+     *    不产生用户可见气泡（派工单红线：压缩不许进对话气泡）；
+     * 2. **带 `callTimeout`**：流式那边绝不设（会砍长连接寿命，见类 KDoc），
+     *    这里是一次请求，超时必须真的能砍 ⇒ 单独 clone 一份 client；
+     * 3. **失败一律转 [CompletionResult.Failed]，不抛**——与 [stream] 同口径
+     *    （"不把异常抛给整轮"是本项目的一贯要求：抛上去整轮就炸了，J6 钉的就是这条）。
+     */
+    fun completeOnce(
+        messages: List<LlmMessage>,
+        maxTokens: Int = COMPLETE_MAX_TOKENS,
+        temperature: Double = COMPLETE_TEMPERATURE,
+        timeoutMs: Long = COMPLETE_TIMEOUT_MS,
+    ): CompletionResult {
+        val body = completeBody(messages, maxTokens, temperature)
+            .toRequestBody(LlmWire.JSON_MEDIA_TYPE)
+        val req = Request.Builder()
+            .url(LlmWire.endpoint(provider.protocol, provider.baseUrl))
+            .apply {
+                post(body)
+                LlmWire.headersOf(provider).forEach { (k, v) -> header(k, v) }
+            }
+            .build()
+        val http = defaultHttp().newBuilder()
+            .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+            .build()
+        return try {
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    val snippet = runCatching {
+                        resp.body?.string()?.take(ERROR_BODY_SNIPPET)
+                    }.getOrNull()
+                    RunLog.log(
+                        "抱朴 LLM（压缩）：HTTP ${resp.code} ${resp.message}" +
+                            if (snippet.isNullOrBlank()) "" else " body=${snippet.replace('\n', ' ')}",
+                    )
+                    return CompletionResult.Failed(resp.code, "HTTP ${resp.code} ${resp.message}")
+                }
+                val raw = resp.body?.string().orEmpty()
+                val text = LlmWire.plainTextOf(provider.protocol, raw)
+                if (text.isNullOrBlank()) {
+                    CompletionResult.Failed(NO_TEXT_CODE, "响应里没有可用文本（长度 ${raw.length}）")
+                } else {
+                    CompletionResult.Ok(text, provider.model)
+                }
+            }
+        } catch (e: Exception) {
+            CompletionResult.Failed(TRANSPORT_CODE, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
     companion object {
         /** HTTP 错误体记日志时的截断长度（只取开头，够定位）。 */
         private const val ERROR_BODY_SNIPPET = 300
+
+        /** 压缩摘要的 token 上限（派工单 §3.3：≤ 1024，摘要不需要长篇）。 */
+        const val COMPLETE_MAX_TOKENS = 1024
+
+        /** 压缩温度（摘要要稳定，压两次不该压出两个版本）。 */
+        const val COMPLETE_TEMPERATURE = 0.2
+
+        /** 压缩请求默认超时（60s，与流式 readTimeout 同量级，靠 callTimeout 真的砍）。 */
+        const val COMPLETE_TIMEOUT_MS = 60_000L
+
+        /** [CompletionResult.Failed.code]：响应里没有文本。 */
+        const val NO_TEXT_CODE = -1
+
+        /** [CompletionResult.Failed.code]：传输层异常（超时/断连，没有 HTTP 状态码）。 */
+        const val TRANSPORT_CODE = -2
 
         /**
          * 进程级单线程网络 lane（`zd-baopu-net`，daemon）。

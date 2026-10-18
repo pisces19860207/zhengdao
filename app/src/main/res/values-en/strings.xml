@@ -965,6 +965,7 @@
     <string name="baopu_confirm_title">About to change a file: %1$s</string>
     <string name="baopu_confirm_title_action">Run: %1$s</string>
     <string name="baopu_confirm_hint_action">Approving really runs this action; rejecting skips it and the conversation continues.</string>
+    <string name="baopu_compressed_bar">Compressed %1$d earlier messages · summary %2$d chars</string>
     <string name="baopu_confirm_hint">Approving really changes the file (a backup is made first); rejecting skips this action and the conversation continues.</string>
     <string name="baopu_confirm_approve">Approve</string>
     <string name="baopu_confirm_reject">Reject</string>

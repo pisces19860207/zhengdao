@@ -90,7 +90,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(5, BaopuDb.VERSION) // v5 = 刀 3 A 段（session 加 pending 三列）
+        assertEquals(6, BaopuDb.VERSION) // v6 = 第十三批（compression 表；v5 是刀 3 A 段的 pending 三列）
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -173,7 +173,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(5, BaopuDb.VERSION) // v5 = 刀 3 A 段（session 加 pending 三列）
+        assertEquals(6, BaopuDb.VERSION) // v6 = 第十三批（compression 表；v5 是刀 3 A 段的 pending 三列）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -193,6 +193,57 @@ class BaopuDbTest {
         val partial = BaopuSql.sessionPendingColumnsStmt(listOf("pending_tool", "pending_args"))
         assertEquals(1, partial.size)
         assertTrue(partial[0].sql.contains("pending_at"))
+    }
+
+    /**
+     * J9（第十三批 §6.1）：`compression` 表的迁移**幂等**——旧库连开两次不报错、
+     * 旧数据不丢。
+     *
+     * 怎么在 JVM 上验（本仓无 Robolectric，真 SQLite 起不来）：钉**语句层**——
+     * ① 建表/建索引全是 `IF NOT EXISTS`（重跑不炸的唯一写法，照 v3 房型）；
+     * ② 语句跑两遍得到的是同一串 SQL（没有第二次才生效的隐藏步骤）；
+     * ③ 顺带钉 `session_id` 与 `session.id` 同型（INTEGER），外键才对得上。
+     * 「真的连开两次库」那部分归真机（真机 T1/T2 在蓝总管手里）。
+     */
+    @Test
+    fun `J9_v6迁移幂等_compression表与索引全IF_NOT_EXISTS`() {
+        val ddl = BaopuSql.COMPRESSION_DDL
+        assertEquals("建表 + 建索引两条", 2, ddl.size)
+        ddl.forEach { sql ->
+            assertTrue("每条迁移语句都必须 IF NOT EXISTS（否则重跑必炸）：$sql", sql.contains("IF NOT EXISTS"))
+        }
+        assertTrue(ddl[0].contains("CREATE TABLE IF NOT EXISTS compression"))
+        assertTrue(ddl[1].contains("idx_compression_session"))
+        // 跑两遍是同一串 SQL ⇒ 第二次什么都不会做（幂等的文本层证据）
+        assertEquals("第二次开库拿到的是同一份语句", ddl, BaopuSql.COMPRESSION_DDL)
+        // session_id 与 session.id 同型（INTEGER）：派工单写的是 TEXT，已按既有外键改正
+        assertTrue("session_id 必须是 INTEGER（与 session.id 同型）", ddl[0].contains("session_id INTEGER NOT NULL"))
+        assertTrue("要能追溯是谁压的 ⇒ 记 model", ddl[0].contains("model TEXT NOT NULL"))
+    }
+
+    @Test
+    fun `压缩记录_落库与读取语句_ids往返不丢`() {
+        val rec = com.example.zhengdao.baopu.CompressionRecord(
+            summary = "目标：整理资料",
+            compressedIds = listOf("h1", "h2"),
+            createdAt = 1_700_000_000_000L,
+            model = "test-model",
+        )
+        val insert = BaopuSql.insertCompression(7L, rec, 1200, 300)
+        assertTrue(insert.sql.contains("INSERT INTO compression"))
+        assertEquals("主键稳定（同会话同时刻只可能一条）", "c-7-1700000000000", insert.args[0])
+        assertEquals("摘要原样", "目标：整理资料", insert.args[2])
+        assertEquals("被压 ids 落 JSON 数组", "[\"h1\",\"h2\"]", insert.args[3])
+
+        // ids 往返（坏 JSON 给空表，不抛——坏一行不该让会话恢复炸）
+        assertEquals(listOf("h1", "h2"), BaopuSql.idsFromJson("[\"h1\",\"h2\"]"))
+        assertTrue(BaopuSql.idsFromJson("坏JSON").isEmpty())
+        assertTrue(BaopuSql.idsFromJson(null).isEmpty())
+
+        val latest = BaopuSql.latestCompression(7L)
+        assertTrue(latest.sql.contains("ORDER BY created_at DESC"))
+        val failStep = BaopuSql.lastCompressionFailedStep(7L)
+        assertEquals("按 tool 列的原因码找冷却锚", "compression_failed", failStep.args[1])
     }
 
     @Test
