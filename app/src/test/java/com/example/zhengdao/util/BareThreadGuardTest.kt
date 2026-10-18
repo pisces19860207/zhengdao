@@ -160,7 +160,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
-            "BaopuDb.kt:647",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移；刀 2 加资料库两表+章节索引表 +67 ⇒ 393→460；刀 3 B 段 v4 迁移+usage 语句 +50 ⇒ 460→510；刀 3 A 段 pending 三列+v5 迁移+PendingStore +44 ⇒ 510→554；第十三批 v6 compression 表+迁移+CompressionStore +81 ⇒ 554→635；第十六批第一件加 RUN_LOG_STEPS_SELECT 只读常量 +12 ⇒ 635→647）
+            "BaopuDb.kt:684",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移；刀 2 加资料库两表+章节索引表 +67 ⇒ 393→460；刀 3 B 段 v4 迁移+usage 语句 +50 ⇒ 460→510；刀 3 A 段 pending 三列+v5 迁移+PendingStore +44 ⇒ 510→554；第十三批 v6 compression 表+迁移+CompressionStore +81 ⇒ 554→635；第十六批第一件 RUN_LOG_STEPS_SELECT +12 ⇒ 635→647；第十七批 plan part 读写 SQL +37 ⇒ 647→684）
             "HomeScreen.kt:599",                    // zd-health-fix（清场删掉 zd-taiji-retry 后自 :620 平移 -21）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
@@ -173,7 +173,7 @@ class BareThreadGuardTest {
             "LlmClient.kt:792",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658；第十三批加 completeOnce/completeBody/plainTextOf +134 ⇒ 658→792）
             "MainActivity.kt:316",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308；2026-10-18 加屏幕常亮标志 +8 ⇒ 308→316）
             "NetSelfCheck.kt:94",                   // net-self-check-index
-            "RunEngine.kt:180",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复 161→171；刀 1 补丁换通道 +34 ⇒ 205→215；刀 3 A 段确认制（ConfirmFlow/HistoryCodec/接线）+293 ⇒ 215→508；刀 3 A 段拆文件（RunRules/HistoryCodec/ConfirmFlow 出笼 + import 清理 -357）⇒ 508→151；工具补强二收尾闸字段/闸口 +16 ⇒ 151→167；真机修正单活跃门 release 的 KDoc +12 ⇒ 167→179）
+            "RunEngine.kt:182",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复 161→171；刀 1 补丁换通道 +34 ⇒ 205→215；刀 3 A 段确认制（ConfirmFlow/HistoryCodec/接线）+293 ⇒ 215→508；刀 3 A 段拆文件（RunRules/HistoryCodec/ConfirmFlow 出笼 + import 清理 -357）⇒ 508→151；工具补强二收尾闸字段/闸口 +16 ⇒ 151→167；真机修正单活跃门 release 的 KDoc +12 ⇒ 167→179）；第十七批工作计划卡接线（imports +2 ⇒ 180→182）
             "SettingsDataActivity.kt:699",          // zd-net-check（清场批注 +1；抱朴刀 2 加「抱朴工具」开关卡 +53 ⇒ 589→642；刀 3 B 段模型参数+思考深度两卡 +57 ⇒ 642→699；工具补强二三开关加在它之后 ⇒ 行号不动）
             "SettingsEnvActivity.kt:214",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5）
             "SettingsEnvActivity.kt:268",           // zd-env-check（同上 +7）
