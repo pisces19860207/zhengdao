@@ -73,6 +73,17 @@ data class Provider(
      * `D:\zd-tools\ds-effort-probe2.txt`），发了等于没发还会误导日志。
      */
     val reasoningEffort: String? = null,
+    /**
+     * 这条通道**能不能看图**（第二十四批 A 段）。
+     *
+     * 默认 `false`，且**不许猜**：每加一个 `true` 都要在注释里写清依据（哪个模型的
+     * `input_modalities`／哪次实测／哪份公开文档），否则宁可 false。
+     *
+     * 为什么这么严：`true` 会把图片真的塞进请求体。塞错通道轻则 400，重则模型把
+     * base64 当正文瞎编——用户以为它看过图，这才是最危险的失败。
+     * 判据的消费方是 [VisionRules.select]（组装层只读这个字段，不许自己猜模型名，V5）。
+     */
+    val vision: Boolean = false,
 ) {
     init {
         require(isPermittedBaseUrl(baseUrl)) {
@@ -109,6 +120,11 @@ object Providers {
         protocol = LlmProtocol.OPENAI_COMPAT,
         baseUrl = "https://api.openai.com/v1",
         model = "gpt-4o-mini",
+        // vision = false（默认值，显式写出以免被当成"漏配就默认支持"）：
+        // gpt-4o 系列按 OpenAI 公开文档支持 image_url 块，但**本仓库没有实测过**
+        // （无 key、无真机验证）。按派工单「不许猜 true」⇒ 先关。
+        // 要开它：先用真 key 发一张图、确认服务端 200 且模型描述得对，再改成 true。
+        vision = false,
     )
 
     /** Anthropic 官方。 */
@@ -118,6 +134,10 @@ object Providers {
         protocol = LlmProtocol.ANTHROPIC,
         baseUrl = "https://api.anthropic.com/v1",
         model = "claude-sonnet-4-5",
+        // vision = false（同上）：Claude 3/4 系列按公开文档支持 image 块，
+        // 但本仓库未实测。代码路径已按 Anthropic 形状实现（base64 source），
+        // 只差一次真机/真 key 验证就能打开。
+        vision = false,
     )
 
     /**
@@ -174,6 +194,10 @@ object Providers {
         apiKey = FREE_PLACEHOLDER_KEY,
         headers = FREE_HEADERS,
         builtinFree = true,
+        // vision = false：**未实测**。该车道整条 403 RegionError（2026-10-17 真机），
+        // 连文本都不通，更没法验图片。FREE_MODELS 里确实有名字带 `-vl-` 的模型
+        // （nemotron-3.5-super-vl-free），但"名字像支持视觉"不是依据 ⇒ 不许猜 true。
+        vision = false,
     )
 
     /**
@@ -202,6 +226,18 @@ object Providers {
         contextWindow = 1_048_576,
         maxOutput = 393_216,
         reasoningEffort = ModelParams.EFFORT_HIGH,
+        // vision = false —— 这里有一处**必须写清的矛盾**（不要「顺手改成 true」）：
+        // 元数据说支持，接口实际不吃：
+        //   ① `GET /models`（2026-10-17 蓝总管探针 D://zd-tools//ds-probe.txt）返回
+        //      `input_modalities=["text","image"]` —— 字面上是支持图片输入的；
+        //   ② 但派工单（第二十四批 §2.1，蓝总管口径）明确：**DeepSeek 的 chat 接口
+        //      不吃图片块**，要求写死 false。
+        // 处理原则：元数据 ≠ 实测。`/models` 的声明可能来自模型家族配置而非这条
+        // chat 端点，也可能尚未对公开放。在**真发一张图拿到 200 且模型描述正确**
+        // 之前，发图就是赌博 ⇒ 按 ② 写 false。
+        // 打开条件：用真 key 发一条带 image_url 的消息，确认 200 且回答里出现了
+        // 图片内容（不是"我看不到图"），把这一行改成 true 并在报告里记下日期。
+        vision = false,
     )
 
     /** 三个预设（顺序即 UI 上的展示序）。 */
