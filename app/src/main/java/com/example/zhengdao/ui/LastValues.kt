@@ -133,29 +133,6 @@ internal object LastValues {
         }
     }
 
-    // ── 插件包缓存（名字 → MB）───────────────────────────────────────────────
-
-    fun loadPluginCache(ctx: Context): List<Pair<String, Long>>? {
-        val raw = get(ctx, "plugin_cache") ?: return null
-        return runCatching {
-            val arr = JSONArray(raw)
-            (0 until arr.length()).map { i ->
-                val o = arr.getJSONObject(i)
-                o.getString("name") to o.getLong("mb")
-            }
-        }.getOrNull()
-    }
-
-    fun savePluginCache(ctx: Context, list: List<Pair<String, Long>>) {
-        runCatching {
-            val arr = JSONArray()
-            list.forEach { (name, mb) ->
-                arr.put(JSONObject().apply { put("name", name); put("mb", mb) })
-            }
-            put(ctx, "plugin_cache", arr.toString())
-        }
-    }
-
     // ── 通用文本快照（安装包缓存卡的多行快照等）──────────────────────────────
 
     fun loadText(ctx: Context, key: String): String? = get(ctx, key)
