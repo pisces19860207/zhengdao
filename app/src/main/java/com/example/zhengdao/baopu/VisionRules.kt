@@ -24,14 +24,28 @@ package com.example.zhengdao.baopu
  */
 object VisionRules {
 
-    /** 单图上限（**原始文件字节**，不是 base64 长度）：2 MB。 */
-    const val MAX_IMAGE_BYTES: Int = 2 * 1024 * 1024
+    /**
+     * 单图上限（**原始文件字节**，不是 base64 长度）：12 MB。
+     *
+     * 🛑 2026-10-18 用户口径（她逐字：「deepseek APP，其他的 APP 都是可以直接发原图的」）：
+     * **2 MB 这条线是我们自己拍的，不是接口的**。官方 App 发图从不让用户先压——
+     * 手机照片 3–8 MB 是常态，卡在 2 MB 等于把"正常发一张照片"变成"必须缩"，
+     * 既损画质又让用户觉得功能残废。
+     * ⇒ 上限抬到 12 MB：这个量级原图照发（base64 膨胀 4/3 ⇒ 约 16 MB 请求体，手机网络能扛），
+     * 只有超过 12 MB 的巨图才重编码一次（见 `VisionFit`）。
+     */
+    const val MAX_IMAGE_BYTES: Int = 12 * 1024 * 1024
 
     /** 一轮最多几张：4 张。 */
     const val MAX_IMAGES: Int = 4
 
-    /** 一轮合计原始字节上限：6 MB（4 张 2 MB 理论上 8 MB，所以总量是独立的第二道闸）。 */
-    const val MAX_TOTAL_BYTES: Int = 6 * 1024 * 1024
+    /**
+     * 一轮合计原始字节上限：36 MB（＝3 张满额 12 MB）。
+     *
+     * 为什么要小于「4 × 单图上限」：否则这条闸永远打不到（每张都能过单图闸 ⇒ 总量必 ＜ 4×12），
+     * 等于写了个永不触发的判据。36 MB 让「一次塞四张满额原图」被挡在第 4 张，理由也说得清。
+     */
+    const val MAX_TOTAL_BYTES: Int = 36 * 1024 * 1024
 
     /** 可发送形态的 data URL 前缀（OpenAI 与 Anthropic 都吃这个形状）。 */
     const val DATA_URL_PREFIX: String = "data:image/"
@@ -126,9 +140,11 @@ object VisionRules {
     /** 省略说明（空串 = 全发了，不需要解释）。 */
     private fun noteOf(tooLarge: Int, overLimit: Int, invalid: Int): String {
         if (tooLarge == 0 && overLimit == 0 && invalid == 0) return ""
+        val capMb = MAX_IMAGE_BYTES / 1024 / 1024
+        val totalMb = MAX_TOTAL_BYTES / 1024 / 1024
         val reasons = mutableListOf<String>()
-        if (tooLarge > 0) reasons += "$tooLarge 张超过单张 2 MB 上限"
-        if (overLimit > 0) reasons += "$overLimit 张超出数量上限（最多 $MAX_IMAGES 张、合计 6 MB）"
+        if (tooLarge > 0) reasons += "$tooLarge 张超过单张 $capMb MB 上限"
+        if (overLimit > 0) reasons += "$overLimit 张超出数量上限（最多 $MAX_IMAGES 张、合计 $totalMb MB）"
         if (invalid > 0) reasons += "$invalid 张无法读取"
         return "（已省略 ${tooLarge + overLimit + invalid} 张图片：" + reasons.joinToString("；") + "）"
     }

@@ -15,7 +15,8 @@
 //   4. **跳过的必须能说出来**（2026-10-18 真机教训）：从前超 2 MB 的图**直接丢**，
 //      `VisionRules.select` 收到空列表连说明都没有 ⇒ 用户发 3 MB 照片，模型只看到
 //      「用户附了 1 张图片」，于是回「我看不到」，用户以为视觉被关了。
-//      ⇒ 现在：超限先交给 `ImageShrink` 缩，缩不成也**逐张记原因**，由调用方拼进本轮输入。
+//      ⇒ 现在：12 MB 以内**原图直发**；超过的、以及 HEIC 这类接口不吃的格式，交给 `ImageShrink`
+//      重编码一次；缩不成也**逐张记原因**，由调用方拼进本轮输入。
 package com.example.zhengdao.baopu
 
 import java.io.File
@@ -87,7 +88,7 @@ object VisionFiles {
      * - 解析后不在 [root] 里（越界）
      * - 不是普通文件 / 空文件
      * - 扩展名认不出
-     * - 超过 [cap]：先交给 [shrink] 缩；没有 shrink 或缩不成 ⇒ 记原因
+     * - 超过 [cap] 或格式接口不吃（HEIC/BMP）：先交给 [shrink] 重编码；没有 shrink 或失败 ⇒ 记原因
      * - 读盘失败
      *
      * @param shrink 缩图实现（真机传 `ImageShrink::toJpeg`，JVM 测试传假的）
@@ -129,12 +130,14 @@ object VisionFiles {
                 skipped += Skipped(rel, "是空文件")
                 continue
             }
-            val mime = mimeOf(file.name)
-            if (mime == null) {
+            val declared = mimeOf(file.name)
+            // HEIC/BMP 这类系统能解码、接口不吃的格式：走重编码转 JPEG（不丢图）
+            val convertible = declared == null && isConvertible(file.name)
+            if (declared == null && !convertible) {
                 skipped += Skipped(rel, "扩展名认不出，不当图片发")
                 continue
             }
-            if (len > cap) {
+            if (len > cap || convertible) {
                 // 超限不丢：先缩（手机照片动辄 3 MB，2 MB 硬线会把它们全部吞掉）
                 if (shrink == null) {
                     skipped += Skipped(rel, "超过单张 ${cap / 1024 / 1024} MB 上限，且没有缩图实现")
@@ -147,7 +150,7 @@ object VisionFiles {
                             continue
                         }
                         shrunk += rel
-                        out.add(payloadOf(mime, r.bytes))
+                        out.add(payloadOf(if (convertible) "image/jpeg" else declared!!, r.bytes))
                     }
                     is ShrinkOutcome.Failed -> skipped += Skipped(rel, r.reason)
                     null -> skipped += Skipped(rel, "缩图时抛异常")
@@ -159,7 +162,7 @@ object VisionFiles {
                 skipped += Skipped(rel, "读盘失败")
                 continue
             }
-            out.add(payloadOf(mime, bytes))
+            out.add(payloadOf(declared!!, bytes))
         }
         return Loaded(payloads = out, skipped = skipped, shrunk = shrunk)
     }
@@ -178,6 +181,15 @@ object VisionFiles {
             dataUrl = VisionRules.DATA_URL_PREFIX + mime.removePrefix("image/") + ";base64," + b64,
             bytes = bytes.size,
         )
+    }
+
+    /** 系统能解码、接口不吃的格式（HEIC/HEIF 手机默认拍照格式；BMP 少见但也能解）。 */
+    private val CONVERT_EXTS: Set<String> = setOf("heic", "heif", "bmp")
+
+    /** 要不要走「重编码成 JPEG」这条路（格式不支持，或文件超过上限）。 */
+    internal fun isConvertible(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in CONVERT_EXTS
     }
 
     /** 扩展名 ⇒ MIME；认不出回 null。 */
