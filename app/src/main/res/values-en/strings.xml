@@ -890,6 +890,18 @@
     <string name="baopu_speak">Read aloud</string>
     <string name="baopu_speak_failed">System speech engine unavailable</string>
     <string name="baopu_speak_no_language">System speech lacks this language pack</string>
+    <!-- Attachments (batch 22 A, 2026-10-18): one "+" opens three entries; always saved into the workspace first -->
+    <string name="baopu_attach_title">Add attachment</string>
+    <string name="baopu_attach_camera">Camera</string>
+    <string name="baopu_attach_gallery">Gallery</string>
+    <string name="baopu_attach_file">File</string>
+    <string name="baopu_attach_photo_name">photo</string>
+    <string name="baopu_attach_chip">Attachment: %1$s (%2$d B)</string>
+    <string name="baopu_attach_remove">Remove</string>
+    <string name="baopu_attach_failed">Could not save the attachment (no storage permission or unreadable file)</string>
+    <string name="baopu_attach_camera_denied">No camera permission, cannot take a photo</string>
+    <string name="baopu_attach_hint_file">(The user attached a file; it is saved in the workspace: %1$s, %2$d B. Use read_file if you need its content.)</string>
+    <string name="baopu_attach_hint_image">(The user attached an image; it is saved in the workspace: %1$s, %2$d B. This channel cannot see images — do not pretend you did; ask the user to describe the key content in words.)</string>
     <string name="baopu_plan_summary">Plan %1$d/%2$d done</string>
   <string name="baopu_channel_button">Channel</string>
     <!-- ── Baopu ask_user card (task 2, part C) ── -->

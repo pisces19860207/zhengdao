@@ -891,6 +891,18 @@
     <string name="baopu_speak">朗读</string>
     <string name="baopu_speak_failed">系统朗读引擎不可用</string>
     <string name="baopu_speak_no_language">系统朗读缺少这个语言包</string>
+    <!-- 附件（第二十二批 A 段，2026-10-18）：一个「＋」开三个口；先落工作区再交给抱朴 -->
+    <string name="baopu_attach_title">添加附件</string>
+    <string name="baopu_attach_camera">拍照</string>
+    <string name="baopu_attach_gallery">相册</string>
+    <string name="baopu_attach_file">选文件</string>
+    <string name="baopu_attach_photo_name">照片</string>
+    <string name="baopu_attach_chip">附件：%1$s（%2$d B）</string>
+    <string name="baopu_attach_remove">移除</string>
+    <string name="baopu_attach_failed">附件保存失败（没存储权限或读不到文件）</string>
+    <string name="baopu_attach_camera_denied">没给相机权限，拍不了照</string>
+    <string name="baopu_attach_hint_file">（用户附了一个文件，已存进工作区：%1$s，%2$d B。需要内容就用 read_file 读它。）</string>
+    <string name="baopu_attach_hint_image">（用户附了一张图片，已存进工作区：%1$s，%2$d B。当前通道不能看图——不要假装看过它；需要时请让用户把关键内容用文字说一遍。）</string>
     <string name="baopu_plan_summary">计划 %1$d/%2$d 完成</string>
   <string name="baopu_channel_button">换通道</string>
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 抱朴附件（第二十二批 A 段）：**只**暴露相机临时目录，别的路径一律不给。
+     相机要一个可写 Uri（ACTION_IMAGE_CAPTURE / TakePicture），安卓 7+ 必须用
+     content://（file:// 会 FileUriExposedException）⇒ 用 FileProvider 最小暴露。 -->
+<paths>
+    <cache-path name="baopu_camera" path="baopu-camera/" />
+</paths>
