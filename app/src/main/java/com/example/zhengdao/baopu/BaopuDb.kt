@@ -263,6 +263,43 @@ internal object BaopuSql {
         arrayOf<String?>(sessionId.toString()),
     )
 
+    // ── 会话封卷两列（第十九批 §2.4：closed_at / refined_at）──────────────
+    //
+    // 现状缺口（调研稿 Q5-B）：代码里没有「会话级收敛信号」，技能提炼只能靠
+    // 「每轮结束」猜——太吵。定稿口径：**点「新会话」＝旧会话封卷**，先写
+    // closed_at，提炼成功才写 refined_at；进程被杀没跑成 ⇒ 下次启动按
+    // 「closed_at 有、refined_at 没有」自检补算，同一会话永不重复弹卡。
+
+    /** session 表 v7 新增两列（封卷信号；NULL = 未封卷 / 未提炼，一眼可判）。 */
+    val SESSION_CLOSE_COLUMNS: List<Pair<String, String>> = listOf(
+        "closed_at" to "INTEGER",
+        "refined_at" to "INTEGER",
+    )
+
+    /** 封卷两列的加列语句（**纯函数**：缺哪列给哪条 ALTER，幂等；同 [sessionPendingColumnsStmt] 房型）。 */
+    fun sessionCloseColumnsStmt(existingColumns: List<String>): List<Stmt> =
+        SESSION_CLOSE_COLUMNS
+            .filterNot { (col, _) -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { (col, type) -> Stmt("ALTER TABLE session ADD COLUMN $col $type", emptyArray()) }
+
+    /** 封卷：写 closed_at（幂等——已封过的不改时间；WHERE closed_at IS NULL）。 */
+    fun markSessionClosed(sessionId: Long, at: Long): Stmt = Stmt(
+        "UPDATE session SET closed_at = ? WHERE id = ? AND closed_at IS NULL",
+        arrayOf<String?>(at.toString(), sessionId.toString()),
+    )
+
+    /** 提炼成功：写 refined_at（补算幂等的锚——写过的不再出现在自检清单里）。 */
+    fun markSessionRefined(sessionId: Long, at: Long): Stmt = Stmt(
+        "UPDATE session SET refined_at = ? WHERE id = ? AND refined_at IS NULL",
+        arrayOf<String?>(at.toString(), sessionId.toString()),
+    )
+
+    /** 启动自检：封了卷但没提炼成功的会话（同一会话只补一次的关键筛选）。 */
+    fun listUnclosedRefinements(): Stmt = Stmt(
+        "SELECT id FROM session WHERE closed_at IS NOT NULL AND refined_at IS NULL ORDER BY id ASC",
+        emptyArray(),
+    )
+
     // ── compression 表（第十三批 v6：压过哪几条要留痕，摘要要能重启再拿到）──
 
     /**
@@ -702,6 +739,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV4Migration(db)
         applyV5Migration(db)
         applyV6Migration(db)
+        applyV7Migration(db)
     }
 
     /**
@@ -726,6 +764,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 4) applyV4Migration(db)
         if (oldVersion < 5) applyV5Migration(db)
         if (oldVersion < 6) applyV6Migration(db)
+        if (oldVersion < 7) applyV7Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -784,6 +823,19 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.COMPRESSION_DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v6 → v7 迁移体（第十九批）：session 加封卷两列 `closed_at` / `refined_at`
+     * （会话级收敛信号——点「新会话」封卷提炼，进程被杀没跑成 ⇒ 下次启动自检补算）。
+     * 加列走「先看列况再动」的纯函数 ⇒ 幂等，重复跑不炸；v6 库升级与新安装
+     * 走同一条路径（onCreate 也调它）。
+     */
+    private fun applyV7Migration(db: SQLiteDatabase) {
+        val sessionCols = tableColumns(db, "session")
+        BaopuSql.sessionCloseColumnsStmt(sessionCols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -808,7 +860,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         const val DB_NAME = "baopu.db"
 
         /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。 */
-        const val VERSION = 6
+        const val VERSION = 7
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
