@@ -314,6 +314,8 @@ internal object BaopuToolCatalog {
         "browser_screenshot",
         // 工作计划卡（第十七批）：默认开——关了它，抱朴就不再「先列计划再干活」
         "update_plan",
+        // 技能自写（第二十三批 A 段追加）：默认开，但写盘走 CONFIRM ⇒ 不会静默动手
+        "write_skill",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */

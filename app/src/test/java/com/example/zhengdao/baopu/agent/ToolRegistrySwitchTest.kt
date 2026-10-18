@@ -46,7 +46,8 @@ class ToolRegistrySwitchTest {
         setup()
         val reg = registry()
 
-        assertEquals(BaopuToolCatalog.DEFAULT_ENABLED.size, BaopuToolCatalog.ENTRIES.size)
+        // write_skill 由 BaopuRuntime 单独注册（它要 personaFiles，ENTRIES 的工厂只吃 workspaceRoot）
+        assertEquals(BaopuToolCatalog.ENTRIES.size + 1, BaopuToolCatalog.DEFAULT_ENABLED.size)
         assertEquals(
             listOf(
                 "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
@@ -59,7 +60,7 @@ class ToolRegistrySwitchTest {
         BaopuToolCatalog.ENTRIES.forEach { e ->
             assertTrue("${e.name} 默认必须启用", reg.isEnabled(e.name))
         }
-        assertEquals(BaopuToolCatalog.DEFAULT_ENABLED, reg.enabledNames().toSet())
+        assertEquals(BaopuToolCatalog.ENTRIES.map { it.name }.toSet(), reg.enabledNames().toSet())
     }
 
     @Test

@@ -528,6 +528,7 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     // （IllegalArgumentException: 未知抱朴工具「update_plan」）。回归网见 BaopuSettingsGuardTest 的
     // 「catalog 每个工具都有标签/副标题」那条。
     "update_plan" -> R.string.baopu_tool_update_plan
+    "write_skill" -> R.string.baopu_tool_write_skill
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -561,6 +562,7 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "browser_type" -> R.string.baopu_tool_browser_type_desc
     "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc
     "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
-    "update_plan" -> R.string.baopu_tool_update_plan_desc
+    "update_plan" -> R.string.baopu_tool_update_plan
+    "write_skill" -> R.string.baopu_tool_write_skill_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
