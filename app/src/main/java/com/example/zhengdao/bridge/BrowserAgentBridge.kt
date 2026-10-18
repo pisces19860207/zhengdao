@@ -363,6 +363,9 @@ object BrowserAgentBridge {
                 app,
                 param(body, "tabId"),
                 param(body, "fullPage"),
+                // 刀 4 §2.3（蓝总管裁决追加，限本支）：只搬运 selector，校验仍在 BrowserCommands 里走
+                // BridgePolicy.checkSelector——其余 10 条命令、param() 解析器、鉴权/监听一律不动。
+                param(body, "selector"),
             )
         }
     }
