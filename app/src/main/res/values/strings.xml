@@ -1172,6 +1172,8 @@
     <string name="baopu_tool_library_organize">整理资料库</string>
     <string name="baopu_tool_library_organize_desc">把整理结果落地（每次执行前弹确认卡）：把投递里的文件移到整理（同名会拒绝，不覆盖）、同目录内改名、重建 资料库/索引.md。只动投递/与整理/，绝不动 原始/。</string>
     <string name="baopu_tool_delete_path">删除文件</string>
+    <string name="baopu_tool_ask_user">选项卡（问人）</string>
+    <string name="baopu_tool_ask_user_desc">拿不准时弹一张选项卡（出现在输入栏上方）：2–4 个选项、推荐项排第一并带一句理由，用户点完继续干。不写盘、不改文件。</string>
     <string name="baopu_tools_group_read">读与找</string>
     <string name="baopu_tools_group_write">写与改</string>
     <string name="baopu_tools_group_image">图片</string>

@@ -213,6 +213,12 @@ internal class BaopuChatController(context: Context) {
     val engineStep: androidx.compose.runtime.State<Int> get() = engine.step
     val engineNotice: androidx.compose.runtime.State<String?> get() = engine.notice
 
+    /** `ask_user` 的选项卡（输入栏上方那张卡）；null = 没有卡。 */
+    val pendingChoice: com.example.zhengdao.baopu.agent.AskUserRequest? get() = engine.choice.value
+
+    /** 用户点了一个选项。 */
+    fun answerChoice(id: String) = engine.answerChoice(id)
+
     /** 会话中（可停止）。 */
     val busy: Boolean
         get() = engineState.value in setOf(

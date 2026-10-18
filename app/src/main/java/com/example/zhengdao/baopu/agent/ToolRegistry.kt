@@ -325,6 +325,8 @@ internal object BaopuToolCatalog {
         "delete_path",
         // 图片处理（2026-10-18 用户逐字「落」）：默认开，但**每次一张确认卡**，且永不覆盖原图
         "image_ops",
+        // 选项卡（2026-10-19）：不写盘、只问人，默认开；没有界面时回人话而不是干等
+        "ask_user",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -355,7 +357,8 @@ internal object BaopuToolCatalog {
         Entry("delete_path") { DeletePathTool.spec(it) },
         // 图片处理（2026-10-18）：缩放/裁剪/转格式/取主色/生成图标各档
         Entry("image_ops") { ImageOpsTool.spec(it) },
-    )
+        // 选项卡（2026-10-19）：落点在引擎（AskUserTool.sink），表里只放 spec
+        Entry("ask_user") { AskUserTool.spec() },    )
 
     /**
      * 把整张表装进注册表（**只装真身**；被关的形态由 [ToolRegistry.find] 在调用时判）。
