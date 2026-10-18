@@ -275,4 +275,100 @@ class BaopuSessionLibraryTest {
         assertTrue("zh 的 baopu_* 键不该为空（扫描器自己失效了？）", zh.isNotEmpty())
         assertEquals("zh/en 的 baopu_* 键集合必须对称", zh, en)
     }
+
+    // ── 第二十五批（会话库小修）判据 P1–P6 ──────────────────────────────
+
+    @Test
+    fun `P1_轮数实时数role_user条数_不读msg_count列`() {
+        val sql = BaopuSql.sessionLibraryEntries().sql
+        assertTrue(
+            "会话库必须 LEFT JOIN 数出真轮数（第二十五批 A 段）：$sql",
+            sql.contains("LEFT JOIN") && sql.contains("COUNT(*)") &&
+                sql.contains("role = 'user'") && sql.contains("COALESCE"),
+        )
+        assertFalse(
+            "不许再读没维护的 msg_count 列（真机全线 0 的根源）",
+            sql.contains("msg_count"),
+        )
+    }
+
+    @Test
+    fun `P2_不改表结构_VERSION仍是8_无新加列`() {
+        assertEquals("第二十五批不动表结构", 8, com.example.zhengdao.baopu.BaopuDb.VERSION)
+        assertTrue(
+            "workspace 列（v8）保持原样",
+            BaopuSql.SESSION_WORKSPACE_COLUMNS == listOf("workspace" to "TEXT"),
+        )
+        assertTrue("DDL 常量不许有裸 ALTER", BaopuSql.DDL.none { it.contains("ALTER TABLE") })
+    }
+
+    @Test
+    fun `P3_抽屉资料库desc与落点一致_源码级`() {
+        // desc 只说落点页里真实存在的东西（挂载状态/导出记录），不许再承诺没有的
+        val zh = File("src/main/res/values/strings.xml").readText()
+        val desc = Regex("name=\"baopu_drawer_library_desc\">([^<]*)<").find(zh)?.groupValues?.get(1)
+            ?: error("找不到 baopu_drawer_library_desc")
+        assertFalse("不许再承诺「搬进来的书」（真资料库页是刀 2）：$desc", desc.contains("搬进来的书"))
+        assertFalse("不许再承诺「整理进度」：$desc", desc.contains("整理进度"))
+        assertTrue("desc 要说清落点（终端与资料页）：$desc", desc.contains("终端与资料"))
+        // 落点确实开「终端与资料」页（SettingsDataActivity）——desc 与落点一致
+        val drawer = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
+        assertTrue(
+            "抽屉资料库落点必须是 openSettings（= SettingsDataActivity，即「终端与资料」页）",
+            drawer.contains("openSettings(context)"),
+        )
+        val openSettings = Regex(
+            "private fun openSettings\\(context: Context\\)[\\s\\S]*?SettingsDataActivity::class\\.java",
+        ).containsMatchIn(drawer)
+        assertTrue("openSettings 必须落 SettingsDataActivity", openSettings)
+    }
+
+    @Test
+    fun `P4_删当前会话只回空态_不许自动跳别的会话_源码级`() {
+        val src = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt")
+            .readText()
+        val funStart = src.indexOf("fun deleteSession(")
+        assertTrue("找不到 deleteSession()", funStart >= 0)
+        val funEnd = src.indexOf("\n    fun ", funStart + 1).let { next ->
+            if (next < 0) src.length else next
+        }
+        val body = src.substring(funStart, funEnd)
+        // (?!=) 排除 `==` 比较（if (sessionId == sid) 不是赋值）
+        val assigns = Regex("sessionId\\s*=(?!=)\\s*(?!null)").findAll(body).toList()
+        assertTrue(
+            "deleteSession 里 sessionId 只许赋 null（回空态）——不许自动选别的会话（用户没选，别替他选）：" +
+                assigns.joinToString("；") { it.value },
+            assigns.isEmpty(),
+        )
+        assertTrue("删当前会话必须清视图（clearSessionView）", body.contains("clearSessionView()"))
+    }
+
+    @Test
+    fun `P5_删非当前会话不动当前会话_源码级`() {
+        val src = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt")
+            .readText()
+        val funStart = src.indexOf("fun deleteSession(")
+        val funEnd = src.indexOf("\n    fun ", funStart + 1).let { next ->
+            if (next < 0) src.length else next
+        }
+        val body = src.substring(funStart, funEnd)
+        assertTrue(
+            "删除必须带「是不是当前会话」的守卫：删非当前 ⇒ 当前会话不动（P5）",
+            body.contains("if (sessionId == sid)"),
+        )
+    }
+
+    @Test
+    fun `P4_删当前会话有提示_浮层确认按钮里接Toast`() {
+        val src = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSessionLibraryScreen.kt")
+            .readText()
+        assertTrue(
+            "删除当前会话后必须说一声（baopu_session_deleted_current）",
+            src.contains("R.string.baopu_session_deleted_current"),
+        )
+        assertTrue(
+            "提示的判定要在删除前取（wasCurrent）",
+            src.contains("val wasCurrent = row.id == controller.sessionId"),
+        )
+    }
 }

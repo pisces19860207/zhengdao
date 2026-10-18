@@ -325,15 +325,21 @@ internal object BaopuSql {
     )
 
     /**
-     * 会话库列表（第二十批 §2.1：列表六要素 + 排序）。
+     * 会话库列表（第二十批 §2.1：列表六要素 + 排序；第二十五批 A 段：轮数要真）。
      *
-     * 读 `closed_at`（徽标「已封卷/可继续」）与 `workspace`（分组标题；NULL 组排最后），
-     * 按 `updated_at DESC`——最新聊过的排最前，跟「点一条接着聊」的使用顺序一致。
-     * 只列未归档（archived = 0）：归档语义归 [listSessions] 那条老账，本条不掺和。
+     * 轮数 = 该会话 `message.role='user'` 的条数（「一轮」＝用户一次发话），**实时数出来**，
+     * 不读 `msg_count` 列——那列没被维护，真机全线显示 0（第二十五批 §1-A）。
+     * 计数方式选 **LEFT JOIN 子查询一条 SQL**（另一选项是列表逐条 COUNT 的 N+1）：
+     * 一条语句一次游标拿全六要素，没有 N+1 次查询往返；LEFT JOIN 数不到自动 NULL，
+     * `COALESCE` 落 0——「0 轮真为 0」不需要代码分支兜底。不改表结构（msg_count 列留着）。
+     * 只列未归档（archived = 0），按 `updated_at DESC`。
      */
     fun sessionLibraryEntries(): Stmt = Stmt(
-        "SELECT id, title, msg_count, updated_at, closed_at, workspace FROM session " +
-            "WHERE archived = 0 ORDER BY updated_at DESC",
+        "SELECT s.id, s.title, COALESCE(u.n, 0) AS rounds, s.updated_at, s.closed_at, s.workspace " +
+            "FROM session s " +
+            "LEFT JOIN (SELECT session_id, COUNT(*) AS n FROM message " +
+            "WHERE role = 'user' GROUP BY session_id) u ON u.session_id = s.id " +
+            "WHERE s.archived = 0 ORDER BY s.updated_at DESC",
         emptyArray(),
     )
 
