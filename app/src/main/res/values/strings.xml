@@ -804,7 +804,10 @@
 
     <!-- 玄览（浏览器 Tab，阶段 1 用户模式） -->
     <string name="browser_url_hint">输入网址或搜索</string>
-    <string name="browser_go">前往</string>
+    <!-- 底栏改版（2026-10-18 定稿）：「前往」browser_go 随按钮删除（与键盘 Go 键同义，
+         一条带子不该有两个提交按钮）；新增 browser_menu = 底栏 ⋯ 键的 contentDescription。
+         zh/en 必须双侧对称，由 BrowserBottomBarGuardTest 钉住。 -->
+    <string name="browser_menu">更多</string>
     <string name="browser_back">后退</string>
     <string name="browser_forward">前进</string>
     <string name="browser_reload">刷新</string>

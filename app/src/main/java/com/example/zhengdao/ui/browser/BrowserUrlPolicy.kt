@@ -81,4 +81,122 @@ internal object BrowserUrlPolicy {
             else -> "https://$t"
         }
     }
+
+    // ── 地址胶囊的「两态」显示判据（底栏改版 2026-10-18 · 定稿 §6） ───────────────
+    //
+    // 为什么单独成三个纯函数：底栏只有一条 56dp 带子，地址胶囊常态宽 **195dp**、有前进历史时
+    // **143dp**（374.9dp 直板实测数）。143dp 那一档放不下 `https://www.example.com/a/b/c?q=1`
+    // 这种整串，但必须读得出「我在哪个站」⇒ 常态只展示 host（＋次级色 path），点开编辑态才
+    // 铺完整 URL。展示层一旦在 Compose 里拼字符串，就再也进不了 JVM 单测 —— 所以判据住这里。
+    //
+    // 三条口径与 Chrome/Safari 一致：剥 scheme、剥 `www.`、默认端口不显示；
+    // **不做 punycode 反解**（仓库没有这个依赖，不为一个显示细节引库）⇒ `xn--…` 原样显示。
+
+    /** host 段最长展示数（超出走 [ellipsisMiddle]，保住尾部的注册域）。 */
+    private const val HOST_MAX = 26
+
+    /** path 段最长展示数（超出尾部省略）。 */
+    private const val PATH_MAX = 24
+
+    /**
+     * 常态胶囊第一段 = 主机名（含**非默认**端口）。
+     *
+     * - `https://www.Example.COM/x` → `example.com`（剥 scheme、剥 `www.`、host 小写）；
+     * - `http://example.com:8080/x` → `example.com:8080`（非默认端口保留），
+     *   `https://example.com:443` → `example.com`、`http://example.com:80` → `example.com`；
+     * - `https://user:pass@secret.example.com/x` → `secret.example.com`（**userinfo 一律不显示**，
+     *   免得把 `user:pass@` 当域名铺在界面上）；
+     * - 无 authority 的 URL（`about:blank`、`data:…`）⇒ 原样展示（仍截到 [HOST_MAX]）；
+     * - 空串 → 空串。
+     */
+    fun displayHost(url: String): String {
+        val raw = url.trim()
+        if (raw.isEmpty()) return ""
+        val p = parse(raw)
+        val host = if (p.authority.isEmpty()) raw else hostLabel(p.scheme, p.authority)
+        return ellipsisMiddle(if (host.isEmpty()) raw else host, HOST_MAX)
+    }
+
+    /**
+     * 常态胶囊第二段 = 路径（次级色）。根路径与无路径返回**空串**（调用方据此不占位）；
+     * 查询串与片段不参与展示（`?a=1`、`#x` 全剥）；超 [PATH_MAX] 尾部省略。
+     * 无 authority 的 URL 不拆 path（整串已在 [displayHost] 里显示，别重复）。
+     */
+    fun displayPath(url: String): String {
+        val raw = url.trim()
+        if (raw.isEmpty()) return ""
+        val p = parse(raw)
+        if (p.authority.isEmpty()) return ""
+        val path = p.path
+        if (path.isEmpty() || path == "/") return ""
+        return if (path.length > PATH_MAX) path.take(PATH_MAX - 1) + "…" else path
+    }
+
+    /** 是否 https（胶囊上的锁形图标：锁 vs 划掉的锁）。 */
+    fun isSecure(url: String): Boolean = parse(url.trim()).scheme == "https"
+
+    /**
+     * 拆 URL（不用 `android.net.Uri` —— 本类要能在普通 JVM 单测里跑）。
+     *
+     * @param authority `//` 之后、第一个 `/ ? #` 之前的整段（含 userinfo 与端口）；
+     *                  没有 `//`（`about:blank`、`data:…`）时为空串，调用方据此走「原样展示」。
+     * @param path authority 之后到第一个 `?`/`#` 之前，含前导 `/`；无则为空串。
+     */
+    private fun parse(url: String): ParsedUrl {
+        val m = SCHEME.find(url)
+        val scheme = m?.groupValues?.get(1)?.lowercase().orEmpty()
+        val rest = if (m != null) m.groupValues[2] else url
+        if (!rest.startsWith("//")) return ParsedUrl(scheme, "", "")
+        val body = rest.substring(2)
+        val cut = body.indexOfFirst { it == '/' || it == '?' || it == '#' }
+        val authority = if (cut < 0) body else body.substring(0, cut)
+        val tail = if (cut < 0) "" else body.substring(cut)
+        return ParsedUrl(scheme, authority, tail.substringBefore('?').substringBefore('#'))
+    }
+
+    /** [parse] 的结果。 */
+    private data class ParsedUrl(val scheme: String, val authority: String, val path: String)
+
+    /** authority → 展示用 host。 */
+    private fun hostLabel(scheme: String, authority: String): String {
+        // userinfo 不显示（取最后一个 @ 之后）
+        val noUser = authority.substringAfterLast('@')
+        var host = noUser
+        var port = ""
+        when {
+            // IPv6 字面量：`[::1]:8080` —— 方括号内的冒号不是端口分隔符
+            noUser.startsWith("[") -> {
+                val end = noUser.indexOf(']')
+                if (end >= 0) {
+                    host = noUser.substring(0, end + 1)
+                    val after = noUser.substring(end + 1)
+                    if (after.startsWith(":") && after.length > 1 &&
+                        after.substring(1).all { it.isDigit() }
+                    ) {
+                        port = after.substring(1)
+                    }
+                }
+            }
+            else -> {
+                val colon = noUser.lastIndexOf(':')
+                val tail = if (colon >= 0) noUser.substring(colon + 1) else ""
+                if (colon > 0 && tail.isNotEmpty() && tail.all { it.isDigit() }) {
+                    host = noUser.substring(0, colon)
+                    port = tail
+                }
+            }
+        }
+        host = host.lowercase()
+        if (host.length > 4 && host.startsWith("www.")) host = host.substring(4)
+        val keepPort = port.isNotEmpty() &&
+            !(scheme == "https" && port == "443") &&
+            !(scheme == "http" && port == "80")
+        return if (keepPort) "$host:$port" else host
+    }
+
+    /** 中段省略：留头 12 ＋ `…` ＋ 留尾 11（尾部的注册域必须看得见，否则「我在哪个站」读不出）。 */
+    private fun ellipsisMiddle(s: String, max: Int): String {
+        if (s.length <= max) return s
+        return s.take(12) + "…" + s.takeLast(11)
+    }
 }
