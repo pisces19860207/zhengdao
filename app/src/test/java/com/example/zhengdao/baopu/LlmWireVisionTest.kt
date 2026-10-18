@@ -201,8 +201,12 @@ class LlmWireVisionTest {
         // 这条会挡住「顺手给别的通道也开 true」——开之前必须真发一张图验证。
         val all = Providers.all()
         assertEquals("预设数量变了就要重看这条", 4, all.size)
-        val visionOn = all.filter { it.vision }.map { it.id }
-        assertEquals("只许 DeepSeek 开（用户给的模型事实）", listOf("deepseek"), visionOn)
+        val visionOn = all.filter { it.vision }.map { it.id }.sorted()
+        // 2026-10-18 用户口径：「除非是文本模型，不然肯定要打开」⇒ 三个多模态预设全开；
+        // 只有 builtin-free 留着 false（整条车道 403 未实测）。
+        // 2026-10-18 用户口径再进一步：「**纯文本模型自己就会说看不见**」——
+        // 所以不要在本地替模型判断能不能看：图照发，端上认不认由它自己回答。
+        assertEquals("四个预设全开（图照发，不让本地替模型判）", 4, visionOn.size)
     }
 
     @Test
