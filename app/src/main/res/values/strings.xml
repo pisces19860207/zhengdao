@@ -1074,7 +1074,7 @@
     <string name="skill_new_body">SKILL.md 正文</string>
     <string name="skill_new_scope_project">项目（跟工作区）</string>
     <string name="skill_new_scope_global">全局（跟 App）</string>
-    <string name="skill_new_draft">先当草稿（试用 3 次后再转正；草稿不进索引）</string>
+    <string name="skill_new_draft">先当草稿（试用 3 次后可转正；草稿会进索引，但标「未验证」）</string>
     <string name="skill_new_review">下一步：确认</string>
     <string name="skill_confirm_title">确认写入</string>
     <string name="skill_confirm_name">技能名：%1$s</string>
@@ -1085,7 +1085,7 @@
     <string name="skill_restore_done">已恢复到上一版；恢复前那版也留了备份</string>
     <string name="skill_restore_none">这个技能还没有备份，没有可恢复的版本</string>
     <string name="skill_review_card">技能索引</string>
-    <string name="skill_review_desc">技能＝技能目录里的 SKILL.md 文件＋下面一句索引（索引进人设，人设带着走）。这里删索引不删文件；要删文件请去文件管理器。已存 %1$d/%2$d 条。</string>
+    <string name="skill_review_desc">技能＝技能目录里的 SKILL.md 文件＋下面一句索引（索引进人设，人设带着走）。这里删除会同时把技能正文**归档**（改名为 .deleted-*，不硬删）；要彻底删清，去文件管理器删那个 .deleted-* 文件。已存 %1$d/%2$d 条。</string>
     <string name="skill_group_global">全局技能（跟 App，换工作区不丢）</string>
     <string name="skill_group_project">项目技能（跟工作区）</string>
     <string name="skill_delete">删索引</string>
