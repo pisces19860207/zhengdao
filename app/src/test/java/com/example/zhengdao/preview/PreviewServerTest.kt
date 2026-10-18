@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
 import java.io.File
@@ -223,6 +224,41 @@ class PreviewServerTest {
 
     // ── J5：端口顺延与全占失败 ──────────────────────────────────────────────
 
+    /**
+     * 用一个「占位 socket」把候选端口占住（J5 两条用例的地基）。
+     *
+     * ## 为什么这里必须 `reuseAddress = true`，而产品代码必须 `false`
+     *
+     * 产品侧（`PreviewServer.start`）用 `false` 是判据本身：**被占就顺延**。
+     * 占位器用 `true` 只影响「我能不能抢到这个口」，**废不掉判据** ——
+     * 有人在 LISTEN 时，另一个 `reuseAddress=false` 的 socket 照样绑不上
+     * （SO_REUSEADDR 不许两个 LISTENING 抢同一个 addr:port）。
+     *
+     * ## 为什么要有界重试
+     *
+     * CI 红（run 39120611540：J5 两条都 `BindException` at .kt:238/:262）真因在**测试侧**：
+     * 前面的用例连过这个端口，Linux 上服务端连接会留在 `TIME_WAIT`，此刻
+     * `reuseAddress = false` 直接绑不上。Windows 上不复现 —— 同一份代码两种读数。
+     *
+     * 重试上界 3 秒；仍占不上就返回 null，由调用方 `Assume` **跳过并写明「本次 J5 未实测」**，
+     * 绝不当成绿过、也绝不改成「假装被占」。
+     */
+    private fun bindBlocker(port: Int, budgetMs: Long = 3_000): ServerSocket? {
+        val deadline = System.currentTimeMillis() + budgetMs
+        while (true) {
+            val s = ServerSocket()
+            try {
+                s.reuseAddress = true
+                s.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 4)
+                return s
+            } catch (e: java.net.BindException) {
+                runCatching { s.close() }
+                if (System.currentTimeMillis() >= deadline) return null
+                Thread.sleep(50)
+            }
+        }
+    }
+
     @Test
     fun `J5_候选端口恰好十个且是 7 到 9 百段`() {
         assertEquals(10, PreviewServer.PORT_CANDIDATES.size)
@@ -233,9 +269,12 @@ class PreviewServerTest {
     @Test
     fun `J5_第一个候选被占_自动顺延到下一个`() {
         PreviewServer.stop()
-        val blocker = ServerSocket()
-        blocker.reuseAddress = false
-        blocker.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PreviewServer.PORT_CANDIDATES.first()), 4)
+        val blocker = bindBlocker(PreviewServer.PORT_CANDIDATES.first())
+        Assume.assumeTrue(
+            "本次 J5（顺延）未实测：候选端口 ${PreviewServer.PORT_CANDIDATES.first()} 3 秒内占不上" +
+                "（多半是并行的别的用例还拿着它）",
+            blocker != null,
+        )
         try {
             val r = PreviewServer.start()
             assertTrue("顺延失败：$r", r is PreviewServer.StartResult.Bound)
@@ -247,7 +286,7 @@ class PreviewServerTest {
             val id = (PreviewSlots.put("<p>顺延后还能放</p>") as PreviewSlots.PutResult.Placed).id
             assertEquals(200, get(r.port, "/p/$id").status)
         } finally {
-            runCatching { blocker.close() }
+            runCatching { blocker?.close() }
         }
     }
 
@@ -257,11 +296,14 @@ class PreviewServerTest {
         val blockers = mutableListOf<ServerSocket>()
         try {
             PreviewServer.PORT_CANDIDATES.forEach { p ->
-                val s = ServerSocket()
-                s.reuseAddress = false
-                s.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), p), 4)
+                val s = bindBlocker(p) ?: return@forEach
                 blockers.add(s)
             }
+            Assume.assumeTrue(
+                "本次 J5（全占）未实测：只占到 ${blockers.size}/10 个候选端口" +
+                    "（多半是并行的别的用例还拿着剩下的）",
+                blockers.size == PreviewServer.PORT_CANDIDATES.size,
+            )
             val r = PreviewServer.start()
             assertTrue("全占时不许假装起来：$r", r is PreviewServer.StartResult.Failed)
             val reason = (r as PreviewServer.StartResult.Failed).reason
