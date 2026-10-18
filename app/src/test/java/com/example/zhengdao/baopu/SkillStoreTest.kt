@@ -134,8 +134,12 @@ class SkillStoreTest {
             currentIndexText = "",
         )
         assertTrue(r is SkillWriteResult.Written)
-        assertFalse("草稿不许进索引（模型默认看不到它）", (r as SkillWriteResult.Written).indexUpdated)
-        assertEquals("", files().read(PersonaLayer.C_PROJECT).orEmpty())
+        // 2026-10-18 改口径：草稿**也要进索引**（否则下次看不见，只能重新摸索＝白烧 token），
+        // 但索引行要标明「草稿·未验证」，让人和模型都知道它还没验过。
+        assertTrue("草稿也要写索引", (r as SkillWriteResult.Written).indexUpdated)
+        val idx = files().read(PersonaLayer.C_PROJECT).orEmpty()
+        assertTrue("索引里要能看见它", idx.contains("风月AI填卡"))
+        assertTrue("索引要标明未验证", idx.contains("草稿·未验证"))
         assertTrue("草稿头要在第一行", r.file.readText().startsWith("<!-- status=draft uses=0 -->"))
     }
 
