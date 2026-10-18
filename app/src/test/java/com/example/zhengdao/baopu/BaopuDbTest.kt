@@ -90,7 +90,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(7, BaopuDb.VERSION) // v7 = 第十九批（session 封卷两列；v6 是第十三批 compression 表）
+        assertEquals(8, BaopuDb.VERSION) // v8 = 第二十批（session 工作区列；v7 是第十九批封卷两列）
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -173,7 +173,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(7, BaopuDb.VERSION) // v7 = 第十九批（session 封卷两列；v6 是第十三批 compression 表）
+        assertEquals(8, BaopuDb.VERSION) // v8 = 第二十批（session 工作区列；v7 是第十九批封卷两列）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
