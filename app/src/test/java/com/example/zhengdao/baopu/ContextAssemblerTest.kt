@@ -12,7 +12,7 @@ import org.junit.Test
  * 覆盖派工单 §4.2 与追加一/追加二：
  * - 人设三层拼接顺序 A→B→C；
  * - 记忆召回 ≤ 2k tokens、超限明说；
- * - **超窗口 ×0.85 触发边界（0.849 / 0.850 / 0.851 三点）——三点从
+ * - **超窗口 ×0.70 触发边界（0.699 / 0.700 / 0.701 三点；2026-10-19 由 0.85 改 0.70）——三点从
  *   [Provider.contextWindow] 字段算出的阈值推导，不写死常量**（追加二第 1 条）；
  * - **缓存友好性**：同会话尾部新增一条消息 ⇒ 组装结果前缀字节级相同（追加一第 4 条）。
  */
@@ -234,17 +234,17 @@ class ContextAssemblerTest {
         val p = provider(contextWindow = 1000)
         val w = ContextAssembler.ContextBudgets.windowOf(p)
         val threshold = ContextAssembler.ContextBudgets.thresholdOf(p)
-        assertEquals(850.0, threshold, 1e-9)
-        // 0.849 / 0.850 / 0.851 —— 都由 w 与 threshold 推导，无一处写死 850
-        val below = Math.round(w * 0.849).toInt()   // 849
-        val atLine = Math.round(w * 0.850).toInt()  // 850
-        val above = Math.round(w * 0.851).toInt()   // 851
-        assertEquals(849, below)
-        assertEquals(850, atLine)
-        assertEquals(851, above)
-        assertFalse("0.849 倍窗口不触发", ContextAssembler.needsCompressing(below, w))
+        // 2026-10-19：比例由 0.85 改 0.70（窗口 1000 ⇒ 触发线 700）
+        assertEquals(700.0, threshold, 1e-9)
+        val below = Math.round(w * 0.699).toInt()   // 699
+        val atLine = Math.round(w * 0.700).toInt()  // 700
+        val above = Math.round(w * 0.701).toInt()   // 701
+        assertEquals(699, below)
+        assertEquals(700, atLine)
+        assertEquals(701, above)
+        assertFalse("0.699 倍窗口不触发", ContextAssembler.needsCompressing(below, w))
         assertFalse("恰好压线不触发（严格大于）", ContextAssembler.needsCompressing(atLine, w))
-        assertTrue("0.851 倍窗口触发", ContextAssembler.needsCompressing(above, w))
+        assertTrue("0.701 倍窗口触发", ContextAssembler.needsCompressing(above, w))
     }
 
     @Test
