@@ -210,6 +210,12 @@ class BaopuSkillTrialUiTest {
         assertEquals("statusOf 也认它已正式", "active", SkillStore.statusOf(file.readText()))
         assertTrue("索引多一行", pf().read(PersonaLayer.C_PROJECT).orEmpty().contains(SkillRules.INDEX_MARK))
         assertTrue("索引里有它的名字", pf().read(PersonaLayer.C_PROJECT).orEmpty().contains("trial-a"))
+        // 数据层 132 行：`draftMark = if (proposal.draft) … else ""`——转正走 draft=false 的提案，
+        // 所以索引行不该再挂「未验证」。这条把「移到索引区」说圆：不只是多一行，还是**正式**的一行。
+        assertTrue(
+            "转正后的索引行不带未验证标（草稿期才有的那个提醒要摘掉）",
+            !pf().read(PersonaLayer.C_PROJECT).orEmpty().contains("未验证"),
+        )
         assertTrue("索引写成功要如实回报", written.indexUpdated)
         assertEquals("转正后它从草稿区消失（移到上面的索引区）", emptyList<SkillDraftRow>(), draftSkillRows(projectRoot, globalRoot))
     }
