@@ -8,6 +8,9 @@
 // 自己收回去了」「手机上用的时候是默认关闭的」。
 // 判据纪律：分组/收起/汇总/用时全部是**本文件里的纯函数**（无 Compose 依赖，
 // J1–J7 JVM 直测）；Compose 层只做接线与渲染。
+// 第三十批 A 段（2026-10-18 用户「传的图片排的好乱啊，并排不好吗？」）：图片区从
+// "一张一行竖着堆"改成**并排网格**——边长与每行个数由 imageGridLayout/imageRows
+// 两个纯函数算（G1/G3/G4/G5/G6 都钉在纯函数＋源码级判据上），渲染层只有 Row/Column。
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.BaopuWorkspace
@@ -26,9 +29,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -56,7 +61,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -463,14 +471,11 @@ private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = 
                             }
                         }
                     }
-                    // 图片（第二十四批 B 段）：96dp 缩略图 —— 点开全屏、长按复制相对路径。
+                    // 图片（第三十批 A 段）：**并排**——放得下就一排放满，放不下换行，
+                    // 每行同样数量；点开＝该张、长按＝该张的相对路径。
                     // "只有图片、没有文字"的消息（用户只丢一张图不打字）也只有这一段在渲染。
                     if (imageParts.isNotEmpty()) {
-                        Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            imageParts.forEachIndexed { i, part ->
-                                BaopuImagePart(part, key = "${msg.id}-img-$i")
-                            }
-                        }
+                        BaopuImageBlock(imageParts, msgId = msg.id)
                     }
                     // 朗读（2026-10-18）：只用系统 TTS 读**助手的气泡正文**（工具卡/压缩卡不读）。
                     // 放在 SelectionContainer 之外——长按选字的菜单与朗读按钮各管各的。
@@ -566,10 +571,106 @@ private fun BaopuToolPart(part: BaopuUiPart, key: String) {
     }
 }
 
-// ── 图片 part（第二十四批 B 段）────────────────────────────────────────────
+// ── 图片区（第二十四批 B 段落地，第三十批 A 段改成并排）────────────────────
 
-/** 缩略图边长（dp）：派工单指定 96dp。 */
+/** 缩略图边长（dp）：派工单指定 96dp（单图、以及并排的"装得下"档）。判据 G4。 */
 private val IMAGE_THUMB_DP = 96.dp
+
+/**
+ * 格子间距（dp）——**唯一真源**（判据 G3）。渲染处一律写 `IMAGE_GAP_DP.dp`，
+ * 不许再散落 `4.dp` 字面量（改间距只动这一行，行距与列距必然一致）。
+ */
+internal const val IMAGE_GAP_DP = 4
+
+/** 图片区与上面那段文字（含附件 hint）之间的距离（派工单指定 6dp）。 */
+internal const val IMAGE_TEXT_GAP_DP = 6
+
+/**
+ * 并排的两档边长：96（与 [IMAGE_THUMB_DP] 同一个数，判据 G4 钉着）与降级档 84。
+ * 96 档排不满 3 列而 84 档排得下 ⇒ 退 84；**不许超过 96**（派工单「别超」）。
+ */
+internal const val IMAGE_SIDE_FULL_DP = 96
+internal const val IMAGE_SIDE_SMALL_DP = 84
+
+/** 极窄窗（分屏/折叠屏小窗）单列时的下限：再窄就看不出是图了。 */
+internal const val IMAGE_SIDE_MIN_DP = 64
+
+/**
+ * 一格图片（第三十批 A 段）。
+ *
+ * `present` 是**落点判据**（G6）：文件不在 ⇒ 这一格渲染「图片找不到了」，
+ * 位置跟第几张对应（不是整块塌成一个空白方块，也不是把缺的那张悄悄跳过）。
+ */
+internal data class ImageCell(val relPath: String, val present: Boolean)
+
+/**
+ * 文件在不在（B4 的判据本体；**唯一实现**，图片区与缩略图都走它）。
+ *
+ * `length() > 0` 是必要的：0 字节的同名文件在（拍照中断/复制失败），
+ * 当"在"处理就永远转圈，当"不在"处理才会说出「图片找不到了」。
+ */
+internal fun imageFilePresent(file: File): Boolean = file.isFile && file.length() > 0
+
+/**
+ * 「哪张缺」按顺序算出来（**纯函数**，判据 G6）。
+ *
+ * 顺序必须保住：第 i 个入参对应第 i 格。缺图不能靠"少一项"表达——
+ * 那样后面的图会集体往前挪一格，用户点第 2 张打开的是第 3 张。
+ */
+internal fun imageCells(relPaths: List<String>, rootDir: File): List<ImageCell> =
+    relPaths.map { rel ->
+        val f = File(rootDir, rel)
+        ImageCell(relPath = rel, present = imageFilePresent(f))
+    }
+
+/**
+ * 索引 → 该格（**纯函数**，判据 G5）。
+ *
+ * 越界、负数、null 一律给 null（**不许崩**）：全屏层拿 null 就不渲染 Dialog，
+ * 而不是抓第一张或抛 IndexOutOfBounds（组合状态在消息重排后可能短暂错位）。
+ */
+internal fun imageCellAt(cells: List<ImageCell>, index: Int?): ImageCell? =
+    index?.let { cells.getOrNull(it) }
+
+/** 一排放几个格子（含间距）。装不下一个 ⇒ 0。 */
+internal fun imageColumnsOf(sideDp: Int, availDp: Int): Int =
+    if (availDp < sideDp) 0 else (availDp + IMAGE_GAP_DP) / (sideDp + IMAGE_GAP_DP)
+
+/** 图片区几何：格子边长（dp）＋每行几个。 */
+internal data class ImageGrid(val sideDp: Int, val perLine: Int)
+
+/**
+ * 多图排布（**纯函数**，判据 G1/A1/A4）。
+ *
+ * 取档顺序（派工单口径「96dp＋4dp 间距，手机上至少挤得下 3 张，不够缩到 84，别超」）：
+ * 1. 单图恒 96（A4：不因为改版把单图缩小）；
+ * 2. 96 档能排的列数 **≥** 84 档能排的列数时优先 96（同列数取大边长）；
+ * 3. 只有当 84 档多出一列（＝多摆一张）才退到 84；
+ * 4. 两档都排不下任何一格（极窄窗）⇒ 单列，边长收到可用宽，下限 [IMAGE_SIDE_MIN_DP]。
+ *
+ * `perLine` 再按张数收口（3 张不许排成每行 6 个——多出来的列数是浪费的换行机会）。
+ */
+internal fun imageGridLayout(count: Int, availDp: Int): ImageGrid {
+    if (count <= 0) return ImageGrid(sideDp = IMAGE_SIDE_FULL_DP, perLine = 1)
+    if (count == 1) return ImageGrid(sideDp = IMAGE_SIDE_FULL_DP, perLine = 1)
+    val cols96 = imageColumnsOf(IMAGE_SIDE_FULL_DP, availDp)
+    val cols84 = imageColumnsOf(IMAGE_SIDE_SMALL_DP, availDp)
+    if (cols96 == 0 && cols84 == 0) {
+        // 一格都放不下：宽度取可用宽（不超 96），列数 1 —— 宁可单列也不让图溢出气泡
+        return ImageGrid(sideDp = availDp.coerceIn(IMAGE_SIDE_MIN_DP, IMAGE_SIDE_FULL_DP), perLine = 1)
+    }
+    val (side, cols) = if (cols84 > cols96) IMAGE_SIDE_SMALL_DP to cols84 else IMAGE_SIDE_FULL_DP to cols96
+    return ImageGrid(sideDp = side, perLine = cols.coerceIn(1, count))
+}
+
+/**
+ * 按行切片（**纯函数**，判据 A1「每行同样数量」）。
+ *
+ * 满行优先：前 n−1 行都排满 [perLine]，只有末行可能少几个；少的这几个**留在开头**
+ * （行是左对齐的，末行不足不会把唯一那张甩到中间——居中才是派工单点名的反例）。
+ */
+internal fun imageRows(count: Int, perLine: Int): List<List<Int>> =
+    (0 until count).chunked(perLine.coerceAtLeast(1)).map { it.toList() }
 
 /**
  * 缩略图解码的目标像素（按 3x 屏保守估）。解码时按这个值**采样**：一张 4000px 的
@@ -581,52 +682,109 @@ private const val THUMB_TARGET_PX = 288
 private const val FULL_TARGET_PX = 2048
 
 /**
- * 图片 part —— 气泡里的 96dp 缩略图（第二十四批 B 段）。
+ * 图片区 —— 多图**并排**（第三十批 A 段）。
  *
- * ## 三条纪律
+ * ## 四条口径
  *
- * 1. **只读文件**：`File(工作区, relPath)` 直接读，**不复制、不新落盘**（派工单 §1-3）。
- *    库里只存相对路径，图片本体一直待在工作区里。
- * 2. **缺失要说**：文件不在就渲染一行「图片找不到了：<路径>」，**绝不画空白方块**
- *    （空白方块＝用户以为在加载，实际永远加载不出来，是最坏的一种沉默）。
- * 3. **解码在工作线程 + 采样**：主线程解大图既卡帧又可能 OOM。
+ * 1. **并排**：先用 [BoxWithConstraints] 量出气泡内容宽（气泡是 85% 宽、内含 12dp 边距，
+ *    所以必须量、不能按屏宽硬算），再由 [imageGridLayout] 定边长与每行个数，
+ *    最后 [imageRows] 切片渲染成"若干横排 Row"——放得下就一排放满，放不下换行；
+ * 2. **每格同尺寸正方形**：[Modifier.aspectRatio] 1f ＋ `ContentScale.Crop`（判据 G2），
+ *    竖图横图都裁成方格，不许按原始比例把一行顶得高低不齐；
+ * 3. **点第 N 张＝打开第 N 张**（判据 G5）：全屏层归本区块唯一，靠 `openIndex`
+ *    经 [imageCellAt] 取**该张**路径；长按复制的是**该张**相对路径；
+ * 4. **缺图在原位说话**（判据 G6）：[imageCells] 按顺序算出哪格缺，缺的那格渲染
+ *    一格宽的「图片找不到了」，位置跟张数一一对应。
+ */
+@Composable
+private fun BaopuImageBlock(imageParts: List<BaopuUiPart>, msgId: Long) {
+    val ctx = LocalContext.current
+    val relPaths = remember(imageParts, msgId) { imageParts.map { it.text } }
+    val cells = remember(relPaths) { imageCells(relPaths, BaopuWorkspace.hostDir(ctx)) }
+    // 全屏打开的是第几格（null＝没开）。只有一份 Dialog ⇒ 必须靠索引取路径（G5）
+    var openIndex by remember(msgId) { mutableStateOf<Int?>(null) }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = IMAGE_TEXT_GAP_DP.dp),
+    ) {
+        // maxWidth 已是"气泡内容宽"（外层 Column 的 12dp 边距扣完了）
+        val availDp = maxWidth.value.toInt()
+        val grid = imageGridLayout(cells.size, availDp)
+        // 单图显式用 IMAGE_THUMB_DP（判据 G4 的字面量落点），多图用算出来的档
+        val side = if (cells.size == 1) IMAGE_THUMB_DP else grid.sideDp.dp
+        Column(verticalArrangement = Arrangement.spacedBy(IMAGE_GAP_DP.dp)) {
+            imageRows(cells.size, grid.perLine).forEachIndexed { r, rowIdx ->
+                Row(horizontalArrangement = Arrangement.spacedBy(IMAGE_GAP_DP.dp)) {
+                    rowIdx.forEach { i ->
+                        BaopuImageCell(
+                            cell = cells[i],
+                            side = side,
+                            key = "$msgId-img-$r-$i",
+                            onOpen = { openIndex = i },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    imageCellAt(cells, openIndex)?.let { opened ->
+        BaopuImageFullScreen(relPath = opened.relPath, onDismiss = { openIndex = null })
+    }
+}
+
+/**
+ * 一格图片（边长由图片区统一给 ⇒ 同行必然同尺寸）。
+ *
+ * 三条纪律没变（第二十四批 B 段）：只读工作区文件不复制、缺失要说、解码在 IO 线程采样。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BaopuImagePart(part: BaopuUiPart, key: String) {
+private fun BaopuImageCell(cell: ImageCell, side: Dp, key: String, onOpen: () -> Unit) {
     val ctx = LocalContext.current
-    val relPath = part.text
+    val relPath = cell.relPath
     // 工作区根 + 相对路径 = 真实文件。换工作区后老图找不到 ⇒ 走"缺失"分支，不崩。
+    // 第三十一批口径（E-159）：抱朴的根从 `BaopuWorkspace` 取，不再蹭终端那套。
     val file = remember(relPath) { File(BaopuWorkspace.hostDir(ctx), relPath) }
-    var fullScreen by remember(relPath) { mutableStateOf(false) }
+    // 缺不缺由图片区一次算好传进来（G6：哪一格缺，就得在那一格说话）
+    val exists = cell.present
 
-    // 文件是否真的在（一次判断，分支内不再 remember）
-    val exists = remember(relPath) { runCatching { file.isFile && file.length() > 0 }.getOrDefault(false) }
-
-    val thumb by produceState<Bitmap?>(initialValue = null, relPath) {
-        value = withContext(Dispatchers.IO) { decodeSampledImage(file, THUMB_TARGET_PX) }
+    val thumb by produceState<Bitmap?>(initialValue = null, key) {
+        value = if (exists) withContext(Dispatchers.IO) { decodeSampledImage(file, THUMB_TARGET_PX) } else null
     }
     val bmp = thumb
 
     if (bmp == null) {
-        // 两种情况在这里合流：还没解完（短暂）与解码失败/文件不在（持久）。
-        // 用文件事实区分——文件不在就明说，否则给一个"正在加载"的浅色占位。
         if (!exists) {
-            Text(
-                text = stringResource(R.string.baopu_image_missing, relPath),
-                style = MaterialTheme.typography.labelSmall,
-                color = zhengdaoErrorText(),
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
-        } else {
-            // 解码中/解码失败：占位但不是"空白方块"——有底色、有尺寸，看得出还在处理
+            // G6：缺图渲染**在这一格**——方格宽、可见文字、底色说得清"这里有一张没了的图"
             Box(
-                Modifier
-                    .size(IMAGE_THUMB_DP)
+                modifier = Modifier
+                    .size(side)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    // 读屏把这格念成带路径的完整一句话（可见文字太短，不足以定位是哪张）
+                    .semantics { contentDescription = ctx.getString(R.string.baopu_image_missing, relPath) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.baopu_image_missing_short),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(IMAGE_GAP_DP.dp),
+                )
+            }
+            return
         }
+        // 解码中/解码失败：占位但不是"空白方块"——有底色、有格子尺寸，看得出还在处理
+        Box(
+            Modifier
+                .size(side)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
         return
     }
 
@@ -635,10 +793,13 @@ private fun BaopuImagePart(part: BaopuUiPart, key: String) {
         contentDescription = stringResource(R.string.baopu_image_open),
         contentScale = ContentScale.Crop,
         modifier = Modifier
-            .size(IMAGE_THUMB_DP)
+            .size(side)
+            // G2：强制正方形（不跟随原图比例），Crop 把多出来的部分裁掉
+            .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
             .combinedClickable(
-                onClick = { fullScreen = true },
+                // G5：点这一格＝打开**这一格**（索引由图片区拿着）
+                onClick = onOpen,
                 onLongClick = {
                     val cm = ctx.getSystemService<ClipboardManager>()
                     cm?.setPrimaryClip(ClipData.newPlainText("baopu-image-path", relPath))
@@ -650,26 +811,38 @@ private fun BaopuImagePart(part: BaopuUiPart, key: String) {
                 },
             ),
     )
+}
 
-    if (fullScreen) {
-        val big by produceState<Bitmap?>(initialValue = null, relPath) {
-            value = withContext(Dispatchers.IO) { decodeSampledImage(file, FULL_TARGET_PX) }
-        }
-        Dialog(
-            onDismissRequest = { fullScreen = false },
-            // 全屏：关掉 Dialog 的默认宽度上限（否则大图被挤成一个小窗）
-            properties = DialogProperties(usePlatformDefaultWidth = false),
+/**
+ * 全屏看**指定那一张**（图片区只有这一份 Dialog；由 openIndex 决定看谁）。
+ *
+ * 首帧是黑底：大图在 IO 线程采样解码（2048px），解完才画上。
+ * 改版前是"先垫缩略图再换大图"，但那份缩略归各格子持有——为了判据 G5
+ * （点第 N 张＝打开第 N 张，路径必须经索引→[imageCellAt] 这一条真源）把
+ * Dialog 提到区块层，代价就是这一瞬的黑底。列进真机手感项。
+ */
+@Composable
+private fun BaopuImageFullScreen(relPath: String, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val file = remember(relPath) { File(BaopuWorkspace.hostDir(ctx), relPath) }
+    val big by produceState<Bitmap?>(initialValue = null, relPath) {
+        value = withContext(Dispatchers.IO) { decodeSampledImage(file, FULL_TARGET_PX) }
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        // 全屏：关掉 Dialog 的默认宽度上限（否则大图被挤成一个小窗）
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-                    .clickable { fullScreen = false },
-                contentAlignment = Alignment.Center,
-            ) {
-                val shown = big ?: bmp
+            big?.let {
                 Image(
-                    bitmap = shown.asImageBitmap(),
+                    bitmap = it.asImageBitmap(),
                     contentDescription = stringResource(R.string.baopu_image_open),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxWidth(),
@@ -686,8 +859,11 @@ private fun BaopuImagePart(part: BaopuUiPart, key: String) {
  * `inSampleSize` 再真解。这样 4000px 的原图只解出 ~288px 的位图。
  *
  * 文件不在 / 不是图片 / 解码失败 ⇒ null（调用方转成"缺失"文案，不抛）。
+ *
+ * 第三十批 B 段改 `internal`：输入框的附件缩略图（56dp chip）**复用这一个实现**，
+ * 不另写一份解码——两份采样逻辑迟早漂开。
  */
-private fun decodeSampledImage(file: File, targetPx: Int): Bitmap? = runCatching {
+internal fun decodeSampledImage(file: File, targetPx: Int): Bitmap? = runCatching {
     if (!file.isFile || file.length() == 0L) return null
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.absolutePath, bounds)
