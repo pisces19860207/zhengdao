@@ -628,8 +628,13 @@ internal object BaopuSql {
      * 1. 先删 ops 子批（plan_batch 自引用，子先父后）；
      * 2. 再删提案批；
      * 3. run_log（规格里它没有 ON DELETE CASCADE，必须显式删）；
-     * 4. message（part 靠 DDL 的 ON DELETE CASCADE 级联，不重复删）；
-     * 5. 最后才是 session 本体。
+     * 4. **compression**（压缩摘要替身。同样没有级联 —— E-158：漏了这条，
+     *    凡是被压缩过一次的会话就**永远删不掉**，真机上表现为 Toast「删除失败」）；
+     * 5. message（part 靠 DDL 的 ON DELETE CASCADE 级联，不重复删）；
+     * 6. 最后才是 session 本体。
+     *
+     * ⚠️ 以后给任何表加 `REFERENCES session(id)` 都**必须**在这里补一条
+     * （`BaopuDbTest` 有一条从 DDL 反推的门禁，漏了会红）。
      */
     fun deleteSessionStatements(sessionId: Long): List<Stmt> = listOf(
         Stmt(
@@ -638,6 +643,7 @@ internal object BaopuSql {
         ),
         Stmt("DELETE FROM plan_batch WHERE session_id = ?", arrayOf<String?>(sessionId.toString())),
         Stmt("DELETE FROM run_log WHERE session_id = ?", arrayOf<String?>(sessionId.toString())),
+        Stmt("DELETE FROM compression WHERE session_id = ?", arrayOf<String?>(sessionId.toString())),
         Stmt("DELETE FROM message WHERE session_id = ?", arrayOf<String?>(sessionId.toString())),
         Stmt("DELETE FROM session WHERE id = ?", arrayOf<String?>(sessionId.toString())),
     )
