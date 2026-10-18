@@ -80,15 +80,16 @@ class PlanControllerTest {
     }
 
     @Test
-    fun `超8条_截断到8_落库的就是8条`() {
+    fun `超12条_截断到12_落库的就是12条`() {
         val r = rig()
-        val nine = (1..9).map { "条目$it" to "todo" }.toTypedArray()
-        val out = r.controller.submit(planArgs(*nine))
+        // 2026-10-19：上限 8 → 12
+        val thirteen = (1..13).map { "条目$it" to "todo" }.toTypedArray()
+        val out = r.controller.submit(planArgs(*thirteen))
         assertTrue("截断不是拒绝：$out", out is ToolOutcome.Ok)
         val stored = r.store.lastPlan()
         assertNotNull(stored)
-        assertEquals(8, stored!!.size)
-        assertTrue("回灌要说明截断", (out as ToolOutcome.Ok).text.contains("8"))
+        assertEquals(12, stored!!.size)
+        assertTrue("回灌要说明截断", (out as ToolOutcome.Ok).text.contains("12"))
     }
 
     @Test
