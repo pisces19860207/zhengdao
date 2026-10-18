@@ -74,6 +74,15 @@ internal class PlanController(
      * 为什么不从库继承上一轮的计划：轮是「一个用户请求」的单位，新请求的计划
      * 是新任务；继承会让上一轮打过的勾把这一轮的同名条目提前钉成 done。
      */
+    /**
+     * 还剩几条没勾（DONE 之外都算）。
+     *
+     * 用途：跑完一轮时给用户一句实话——「计划里还有 N 条没勾」。
+     * 2026-10-19 用户真机：「完成了没有把计划里的全部勾完，就像是没有按计划走」——
+     * 不许把没做完的装成做完了，也不许静默。
+     */
+    fun unfinishedCount(): Int = current.count { it.status != PlanRules.STATUS_DONE }
+
     fun newRound() {
         current = emptyList()
     }
