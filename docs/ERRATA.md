@@ -7205,3 +7205,45 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 2. Kotlin 块注释**会嵌套**：KDoc 里写 `baopu/**` 那个 `/**` 被当成嵌套注释开头 ⇒ 编译报 `Unclosed comment`。写路径通配时别在注释里留下 `/*`。
 
 **影响面**：抱朴的工作区从此**独立**；用户在抱朴里换目录不再影响终端；两边都设成同一目录时行为与从前一致（默认就都是 `Download/证道`）。
+
+
+## E-160 · 2026-10-18 · 视觉「假通」：图缩好了、日志写了「已发送」，请求体里却一个 image 块都没有
+
+**现象**：用户连着三次发截图（2.7 MB / 3.6 MB / 6.6 MB），抱朴三次都回「这张我看不到」，并主动建议「给我网址或文字说一遍」。用户于是问「是不是把模型的能力关了」。
+
+**先排除的（都不是原因）**：
+- 四个 `Provider` 预设 `vision = true`（`fb3fd234`，装的就是这版）；
+- 真机日志 `files/logs/zhengdao-log.txt` 写着「抱朴引擎：1 张图超限已缩图后发送」；
+- `baopu.db` 里 `part` 表确有 `kind = image` 一行（`附件/20261018-233217-1000170299.jpg`）；
+- 直连 API 探针：`POST /v1/chat/completions` 带 `image_url` 块 ⇒ 200，模型在 `reasoning_content` 里正确答出「纯红色」⇒ 服务端吃图。
+
+**真因（三处叠加）**：
+1. `VisionFiles.payloadsOf` 对 `> VisionRules.MAX_IMAGE_BYTES`（2 MB）的图**直接跳过**——手机照片 2.7/3.6/6.6 MB 全部命中，一张都读不出来；
+2. 因为跳过了，`VisionRules.select` 收到空列表 ⇒ 连「（已省略 N 张）」都不会生成，**全程零说明**；
+3. **断线的最后一根**：`RunEngine` 组装请求体时只建 `LlmMessage(ROLE_USER, text)`，`prompt.images` 算出来没人消费 ⇒ 请求里根本没有 image 块。
+
+⇒ 三层都"看起来像在工作"（缩图日志、image part、vision=true），只有最终请求体是空的。用户观感＝「视觉被关了」，而**没有任何开关被关过**。
+
+**修法**（`3f9d106f`）：
+- 新增 `VisionFit`（纯判据：长边 1568、质量阶梯 85/75/65/55、`inSampleSize` 取 2 的幂、等比缩放四舍五入）与 `ImageShrink`（真解码/重编码）；
+- `VisionFiles.load(...)` 取代 `payloadsOf`：返回 `payloads ＋ skipped(逐张原因) ＋ shrunk`，**任何一张没发出去都必须有原因**；
+- `ContextAssembler.extraNotes` ＋ `RunEngine.turnNotes`：把原因拼在本轮输入末尾（模型能看见、用户也能看见）；
+- `RunEngine` 那条 user 消息补 `images = prompt.images`。
+
+**门禁**：`VisionShrinkTest` 15 例（含源码级 G1「引擎不许再用 payloadsOf」/ G2「装配层必须注入 ImageShrink」/ G3「组装层必须拼 extraNotes」）；`VisionWiringTest.C2` 改口径。**负例实做**：`note()` 置空 ⇒ 4 红；不注入 `shrinkImage` ⇒ G2 红。
+
+**教训（写下来免得再犯）**：一条链路上「日志说做了」「库里有记录」「配置说支持」三样都真，**也不等于东西发出去了**——判据要落在**最终那个请求体/最终那个字节**上，中间层全部只能当线索。
+
+
+## E-161 · 2026-10-18 · 负例演练用 `git checkout --` 把**未提交的改动**一起抹了
+
+**怎么发生的**：做负例演练时，先改一行（把 `Loaded.note()` 直接 return 空串）跑红，再 `git checkout -- <file>` 还原。但那次的改动**还没提交**——`git checkout --` 还原的是 HEAD，于是把整份重写过的 `VisionFiles.kt`（新写的 `load/skipped/shrunk` 全在里面）一起回滚成了旧的 81 行版本，肉眼只在 `git status` 少了一行时才看得出来。
+
+**代价**：重写一遍 `VisionFiles.kt`；`BaopuRuntime` 的 `shrinkImage` 注入同样被抹掉过一次（第二次 `git checkout --` 又中）。
+
+**纪律**：负例演练只许在**已提交**的状态上做——
+1. 先把功能改动 `git commit`（哪怕在支线上、哪怕后面还要 amend）；
+2. 再做「改坏 ⇒ 跑红 ⇒ 还原」；
+3. 还原后必须核 `git status --porcelain` **为空**，而不是只看测试变绿。
+
+同一类错误的旧账：E-156（`git add -A` 吞掉别人的 WIP）。两次都是"以为 git 只动我改的那一行"。
