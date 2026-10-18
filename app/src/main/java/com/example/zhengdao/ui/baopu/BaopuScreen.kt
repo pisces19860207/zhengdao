@@ -278,9 +278,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 onResume = { controller.resume() },
             )
             // 自省便签（C 段：恰好一条；新会话清空）
-            // 自省便签（2026-10-18）：搬进消息列表首项（随内容滚走，不占固定可视面积）；
-            // 点一下即消失（表示用户知道了）。
-            var noteDismissed by remember(controller.introspectionNote) { mutableStateOf(false) }
             controller.pendingNote?.let { note ->
                 Text(
                     text = note,
@@ -298,8 +295,34 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
-            // 提示词小框（右上角复制）已搬进消息列表首项（2026-10-18）：默认一行、点开展开，
-            // 不再占据固定可视面积。
+            // 提示词小框（右上角复制）：显示最近一条抱朴回复。2026-10-18 用户定稿
+            // 「已完成还是固定到现在这个位置，不用跟着正文框跑，现在的形态很好了」
+            // ⇒ 固定在「待命中」下面，保持可折叠形态（默认一行，点开展开，再点收回）。
+            if (lastAssistant.isNotBlank()) {
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    CopyBox(
+                        text = lastAssistant,
+                        label = stringResource(R.string.baopu_role_assistant),
+                        collapsible = true,
+                    )
+                }
+            }
+            // 「这次学到 / 已压缩」轮播框（2026-10-18 用户：放到待命中的下面，循环播放，
+            // 点到哪条就展开哪条）。只占一行高度，不跟着正文滚。
+            val noticeItems = buildList {
+                controller.introspectionNote?.takeIf { it.isNotBlank() }?.let {
+                    add(NoticeItem(stringResource(R.string.baopu_introspection_label), it))
+                }
+                controller.compressionNote?.let {
+                    add(
+                        NoticeItem(
+                            stringResource(R.string.baopu_compressed_bar, it.count, it.summary.length),
+                            it.summary,
+                        ),
+                    )
+                }
+            }
+            BaopuNoticeTicker(items = noticeItems)
             // ── 贴底跟随＋「回到最新」浮标（第十八批-B §2.2）──────────────────
             // 滚动状态归屏幕层：判据是纯函数（BaopuChatScroll.shouldFollow /
             // shouldShowJump / jumpHasNewDot，JVM 直测），这里只接线。
@@ -368,10 +391,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     running = controller.busy,
                     pinLastRound = controller.actionCardsPresent,
                     listState = listState,
-                    lastAssistant = lastAssistant,
-                    headerNote = if (noteDismissed) null else controller.introspectionNote,
-                    onDismissHeaderNote = { noteDismissed = true },
-                    compressedNote = controller.compressionNote,
                     modifier = Modifier.fillMaxSize(),
                 )
                 // 「⬇ 回到最新」浮标（主单 §2.4.1）：不在底部才出现，有新内容带

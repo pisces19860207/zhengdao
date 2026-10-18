@@ -186,11 +186,6 @@ internal fun BaopuMessageList(
     listState: LazyListState = rememberLazyListState(),
     // 2026-10-18 用户：「这次学到和已压缩这类可以放到已完成下面滚动播放吗？不占用正文框，
     // 很影响手机的可视面积」⇒ 两条便签从固定头区搬进列表首项，随内容一起滚走。
-    // 2026-10-18 用户：最近一条回复的「复制」框做成动态卡、放正文顶部（默认一行，点开展开）。
-    lastAssistant: String? = null,
-    headerNote: String? = null,
-    onDismissHeaderNote: (() -> Unit)? = null,
-    compressedNote: com.example.zhengdao.ui.baopu.BaopuChatController.CompressionNote? = null,
     modifier: Modifier = Modifier,
 ) {
     if (messages.isEmpty()) {
@@ -209,27 +204,6 @@ internal fun BaopuMessageList(
     val lastUserId = messages.lastOrNull { it.role == "user" }?.id
     val pinned = if (pinLastRound && lastUserId != null) setOf(lastUserId) else emptySet<Long>()
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
-        if (!lastAssistant.isNullOrBlank()) {
-            item(key = "header-last-assistant") {
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    CopyBox(
-                        text = lastAssistant,
-                        label = stringResource(R.string.baopu_role_assistant),
-                        collapsible = true,
-                    )
-                }
-            }
-        }
-        if (headerNote != null) {
-            item(key = "header-introspection") {
-                BaopuIntrospectionNote(text = headerNote, onDismiss = onDismissHeaderNote)
-            }
-        }
-        if (compressedNote != null) {
-            item(key = "header-compressed") {
-                BaopuCompressedBar(note = compressedNote)
-            }
-        }
         rounds.forEach { round ->
             if (round.toolPartCount == 0) {
                 items(round.messages, key = { it.id }) { msg ->
