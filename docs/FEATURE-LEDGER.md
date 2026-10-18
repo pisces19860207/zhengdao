@@ -2087,3 +2087,13 @@ unLoop），**不算 bug**。
 > - **2026-10-18 24-B／24-C／25追一 真机验收（一轮设备）**：① **24-B**：相册**多选 3 张**一次入队（面板显示「添加 (3)」），composer 逐条列出「相对路径 ＋ 字节数」；发送后**气泡渲出缩略图**、**点开全屏 Dialog**（`usePlatformDefaultWidth=false`，左右露暗底）；长按复制路径只做到**源码级**（Android 16 无 `cmd clipboard`，剪贴板取不出来，不硬说验过）；缺图文案 B4 **未验**（改名模拟后没走到那一步就还原了）。② **24-C 硬证据**：三张图送进去，抱朴原话「三张图我都拿到了文件信息，但**我看不到图** —— 这个通道把图片省略了（回灌里明确写着**「当前通道不能看图，已省略 3 张图片」**）」⇒ `VisionRules.select` 真跑到了（3 条 payload 进组装器、`visionSupported=false` 如实报数）；`RunLog` 另有 `file_info 路径放行 …/附件/*.png` 三条；**视觉通道分支未验**（手上没有带视觉的通道）。③ **25 追一**：会话库分组头「默认工作区 · …」、每行「N 轮 · 时间 · 已封卷/可继续 · 历史未记录」、二次确认框正常弹出（真因修复有效）—— 但**删除失败**，见 E-158；修完重装复验：同一会话**删掉且不复活**。
 
 > - **2026-10-18 修「删不掉会话」（E-158）合并 `8565a4cd`**：`deleteSessionStatements` 补 `DELETE FROM compression`（漏这张表 ⇒ 被压缩过的会话外键永远拦着）；判据从「数五步」改成**从 DDL 反推**（凡 `REFERENCES session(id)` 且非 CASCADE 的表必须在删除语句里），负例两条同红。全量 **225/1999/0/0/13**，真机删除成功。
+> - **2026-10-18 第二十六批 A 段 · 收口单列（补干净账）** —— 为什么单列：26-A 的**代码**不是一笔独立施工提交进主干，而是被我 `git add -A` 卷进 docs 提交 `91c2a68c`（见 E-156），随后 `c80c270d` 修了行尾；`git log` 里**搜不到「26-A」这个名字** ⇒ 后来人（包括用户）会以为「26-A 没做，只做了 26-B」。实际情况如下，逐项可查。
+>   - **交付物四件，全在 main**：① `app/src/main/java/.../baopu/kernel/BaopuKernel.kt`（七组 `Data/Exec/Tools/Auth/Budget/Egress/Gate`）② `app/src/main/java/.../baopu/kernel/KernelAudit.kt`（`[kernel]` 留痕纯函数，26-B 加）③ `app/src/test/.../baopu/kernel/KernelGuardTest.kt`（**K1–K6 是 26-A 的判据**，K7–K9 是 26-B 追加）④ `docs/KERNEL.md`（26-A 交付物表第 2 条，`14e34e4c` 才补上）。
+>   - **门禁读数（2026-10-18 21:0x 在 main 上重跑，`--rerun-tasks`）**：`KernelGuardTest` **9 例 / 0 失败 / 0 错误 / 0 跳过**。
+>   - **K4 实测委托处数 = 11（RunRules）＋ 2（ContextAssembler）＝ 13 处**，逐条可核：
+>     `RunRules`：`MAX_STEPS`／`MAX_TOOL_FAILURES`／`MAX_VERIFY_REPAIRS`／`CHANNEL_BREAK_THRESHOLD`／`MAX_CHANNEL_SWITCHES`／`CONFIRM_TIMEOUT_MS`／`CONFIRM_POLL_MS`／`CONFIRM_ARGS_MAX_CHARS`／`COMPRESS_ABS_MAX_TOKENS`／`COMPRESS_OLD_MESSAGE_MIN`／`COMPRESS_MAX_MESSAGES_PER_RUN`（全部 `const val X = BaopuKernel.G.X`）；
+>     `ContextAssembler`：`COMPRESS_THRESHOLD`（A 段）／`NEVER_COMPRESS`（B 段搬进来后改成委托）。
+>   - **K1–K6 各自钉什么**：K1 内核包**每个文件**不带 `android./androidx./java.io./java.net.`（26-B 起扫全包，新加文件自动被管）；K2 七组都在且 Budget／Auth 有真常量；K3 被搬走的常量在主源码里不许再有字面量定义；K4 委托存在且 ≥11 处；K5 值没变（16／3／1／3／15min／0.85／120k／60／200）；K6 停止权那一族六个数齐全。
+>   - **负例三条（派工单 §5，均已造红并还原）**：§5.1 `ContextAssembler.COMPRESS_THRESHOLD` 写回字面量 `0.85` ⇒ **K3＋K4 红**；§5.2 内核 `MAX_STEPS` 的 `const val` 改成 `var` ⇒ **编译期就红**（`RunRules.kt:21 Const 'val' initializer must be a constant value`）；§5.3 `RunRules.MAX_STEPS` 去掉委托自己再写 `16` ⇒ **K3＋K4 红**。
+>   - **未并项（当时就写明）**：`browser/WebViewEngine.allowedSchemes`（等刀 4 稳定后并入 `Egress.ALLOWED_SCHEMES`）；`rootfs/RootfsDelta` 复审后确认**没有数值型边界判据**，不需要搬。
+>   - **一句话定论**：**26-A 已完成、已验、已在主干**；它的问题只是**history 不干净**（缺一笔独立施工提交），不是活没干。
