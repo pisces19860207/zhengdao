@@ -2,21 +2,40 @@
 //
 // 依据：派工单第九批 §4.3（BaopuComposer：输入框 ＋ 发送/停止按钮）；
 // 第二十二批 A 段（2026-10-18 用户「＋附件（曲别针）、相机权限」）：
-// **一个「＋」＝ 拍照／相册／选文件三个入口**，拿到的东西先落进工作区再交给抱朴。
+// **一个「＋」＝ 拍照／相册／选文件三个入口**，拿到的东西先落进工作区再交给抱朴；
+// 第三十批 B 段（2026-10-18 用户「传的图片排的好乱啊，并排不好吗？」＋「三行纯文字
+// 跟『图片』这件事完全不搭」）：附件条改成**横排缩略图 chip ＋ 一行放不下就横向滚动**。
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.baopu.BaopuWorkspace
+
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -24,29 +43,40 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.core.content.getSystemService
 import com.example.zhengdao.R
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 输入区：＋（附件）／输入框／发送（busy 时变停止）。busy 由调用方给（引擎状态）。
@@ -141,19 +171,23 @@ internal fun BaopuComposer(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        attachList.forEachIndexed { idx, a ->
+        // 附件条（第三十批 B 段）：**横排** chip，一行放不下就**横向滚动**。
+        // 不许换行——换行会把输入区顶高，键盘一弹就吃掉正文（派工单点名）。
+        if (attachList.isNotEmpty()) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 先裁边界再滚动：chip 越界时不许糊到屏幕边外
+                    .clip(RectangleShape)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(ATTACH_GAP_DP.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = stringResource(R.string.baopu_attach_chip, a.relPath, a.sizeBytes),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { attachList = attachList.filterIndexed { i, _ -> i != idx } }) {
-                    Text(stringResource(R.string.baopu_attach_remove))
+                attachList.forEachIndexed { idx, a ->
+                    val remove = { attachList = attachList.filterIndexed { i, _ -> i != idx } }
+                    // 图片 = 缩略图方块；文件 = 一条文字 chip（文件名＋移除），两者视觉分开
+                    if (a.isImage) AttachThumbChip(a, remove) else AttachFileChip(a, remove)
                 }
             }
         }
@@ -263,6 +297,145 @@ internal fun BaopuComposer(
             }
         }
     }
+}
+
+/** 附件 chip 之间的间距（唯一真源，与图片区的 `IMAGE_GAP_DP` 同一口径：改一处全改）。 */
+private const val ATTACH_GAP_DP = 8
+
+/** 图片 chip 的方块边长（派工单指定 56dp）。 */
+private val ATTACH_THUMB_DP = 56.dp
+
+/** chip 圆角（8dp，与气泡里图片格同一档）。 */
+private val ATTACH_CHIP_RADIUS_DP = 8.dp
+
+/**
+ * 右上角「×」的热区。
+ *
+ * 28dp —— **明知低于 M3 的 48dp 触摸目标**：56dp 的方块上再套 48dp 的移除区，
+ * × 会盖掉半张图。派工单要的是「右上角小 × 移除」，所以按"看得清"取舍，
+ * 并把这条列进报告的真机手感项（蓝总管摸完再决定要不要把 chip 放大）。
+ */
+private val ATTACH_REMOVE_DP = 28.dp
+
+/**
+ * 56dp chip 的采样目标像素：56 × 3.5（真机 HONOR PGT-AN10 实测 density 3.5）= 196。
+ * 复用图片区那份 [decodeSampledImage]，不另写解码。
+ */
+private const val CHIP_TARGET_PX = 196
+
+/**
+ * 图片附件 chip：56dp 方块缩略图 ＋ 右上角小 ×。
+ *
+ * 三条口径：
+ * 1. **缩略图只读工作区文件**（同一份 [decodeSampledImage]，不复制、不落盘）；
+ * 2. **路径不常驻显示**：点一下才弹「附件：相对路径（字节数）」、长按复制相对路径
+ *    ——语义仍是**相对路径**（判据 B1 那条过滤一个字没动）；
+ * 3. **图没了要说**：选完又被删掉的图，这一格显示「图片找不到了」，不留空白方块。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AttachThumbChip(a: BaopuAttachments.Saved, onRemove: () -> Unit) {
+    val ctx = LocalContext.current
+    val relPath = a.relPath
+    val removeDesc = stringResource(R.string.baopu_attach_remove)
+    val file = remember(relPath) { File(BaopuWorkspace.hostDir(ctx), relPath) }
+    val bmp by produceState<Bitmap?>(initialValue = null, relPath) {
+        value = withContext(Dispatchers.IO) { decodeSampledImage(file, CHIP_TARGET_PX) }
+    }
+    Box(
+        modifier = Modifier
+            .size(ATTACH_THUMB_DP)
+            .clip(RoundedCornerShape(ATTACH_CHIP_RADIUS_DP))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .combinedClickable(
+                onClick = { showAttachmentPath(ctx, a) },
+                onLongClick = { copyRelPath(ctx, relPath) },
+            ),
+    ) {
+        val shown = bmp
+        when {
+            shown != null -> Image(
+                bitmap = shown.asImageBitmap(),
+                contentDescription = stringResource(R.string.baopu_attach_thumb_desc, relPath),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // 还没解完 ⇒ 留底色（短暂）；文件确实不在 ⇒ 明说（持久）
+            !imageFilePresent(file) -> Text(
+                text = stringResource(R.string.baopu_image_missing_short),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.align(Alignment.Center).padding(4.dp),
+            )
+        }
+        // 移除：文字符号 ×（不引图标库、不新自绘 glyph）
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(ATTACH_REMOVE_DP)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f))
+                .clickable(onClick = onRemove)
+                .semantics { contentDescription = removeDesc },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "×",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+/**
+ * 非图片附件 chip（txt/pdf/…）：一条**文字** chip，只显示文件名 ＋「移除」。
+ *
+ * 与图片 chip 分开：方块＝图、条＝文件，一眼能数清"我传了几张图"。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AttachFileChip(a: BaopuAttachments.Saved, onRemove: () -> Unit) {
+    val ctx = LocalContext.current
+    Surface(
+        shape = RoundedCornerShape(ATTACH_CHIP_RADIUS_DP),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = a.displayName,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                modifier = Modifier
+                    .padding(start = 10.dp, end = 4.dp)
+                    .combinedClickable(
+                        onClick = { showAttachmentPath(ctx, a) },
+                        onLongClick = { copyRelPath(ctx, a.relPath) },
+                    ),
+            )
+            TextButton(onClick = onRemove) {
+                Text(stringResource(R.string.baopu_attach_remove))
+            }
+        }
+    }
+}
+
+/** 点一下 chip 才说「路径（字节数）」——原来这三行常驻，把输入区顶成一屏字。 */
+private fun showAttachmentPath(ctx: Context, a: BaopuAttachments.Saved) {
+    Toast.makeText(
+        ctx,
+        ctx.getString(R.string.baopu_attach_chip, a.relPath, a.sizeBytes),
+        Toast.LENGTH_SHORT,
+    ).show()
+}
+
+/** 长按复制**相对路径**（跟气泡里的图片格同一语义：剪贴板里不许出现本机绝对路径）。 */
+private fun copyRelPath(ctx: Context, relPath: String) {
+    val cm = ctx.getSystemService<ClipboardManager>()
+    cm?.setPrimaryClip(ClipData.newPlainText("baopu-attach-path", relPath))
+    Toast.makeText(ctx, ctx.getString(R.string.baopu_attach_path_copied), Toast.LENGTH_SHORT).show()
 }
 
 /**
