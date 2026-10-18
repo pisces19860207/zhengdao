@@ -9,6 +9,7 @@
 // 删除只在确认框的 confirmButton 里调 controller.deleteSession ＝K5（源码级断言）。
 package com.example.zhengdao.ui.baopu
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,7 +103,7 @@ internal fun buildSessionRows(
             id = e.id,
             title = displayTitle(e.title, fallbackTitle),
             timeText = formatSessionTime(e.updatedAt, now, datePattern),
-            roundCount = e.msgCount,
+            roundCount = e.rounds,
             sealed = e.closedAt != null,
             workspace = e.workspace,
         )
@@ -151,6 +153,7 @@ internal fun BaopuSessionLibraryScreen(
     onDismiss: () -> Unit,
 ) {
     var tick by remember { mutableStateOf(0) }
+    val ctx = LocalContext.current
     val entries = remember(tick) { controller.loadSessionLibrary() }
     val busy = controller.busy
     val now = System.currentTimeMillis()
@@ -237,8 +240,18 @@ internal fun BaopuSessionLibraryScreen(
                 TextButton(
                     enabled = !busy,
                     onClick = {
+                        // 第二十五批 C 段：删的是当前正开着的会话 ⇒ 主界面回空态，
+                        // 这里说一声（Toast 飘在浮层之上）；**不许**自动跳到别的会话。
+                        val wasCurrent = row.id == controller.sessionId
                         askDelete = null
                         controller.deleteSession(row.id)
+                        if (wasCurrent) {
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(R.string.baopu_session_deleted_current),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                         tick++
                     },
                 ) {
