@@ -70,6 +70,9 @@ import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.BackupRules
 import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.baopu.kernel.KernelAudit
+import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.ui.WorkspaceFolderPicker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -107,7 +110,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     DisposableEffect(Unit) { onDispose { speaker.release() } }
     // 第二十批 §2.1.1：历史会话浮层（同一模式；抽屉「历史会话」进）。
     var showSessionLibrary by remember { mutableStateOf(false) }
-
+    // 「在这个工作区开新会话」：当前工作区直接开；别的文件夹要先问人（切工作区是全局动作）。
+    var runHereNode by remember { mutableStateOf<DrawerWorkspaceNode?>(null) }
+    // 「工作区」标题右侧的 ＋：选一个文件夹加进来（落点与设置页那张卡同一套选择器）。
+    var addWorkspaceOpen by remember { mutableStateOf(false) }
     // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
@@ -252,6 +258,20 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     onOpenSession = { sid ->
                         scope.launch { drawerState.close() }
                         controller.requestOpenSession(sid)
+                    },
+                    // 文件夹行右侧的「圆里加号」＝在这个工作区里干活（开新会话）。
+                    onWorkspaceRunHere = { node ->
+                        scope.launch { drawerState.close() }
+                        if (node.isCurrent) {
+                            controller.newSession()
+                        } else {
+                            runHereNode = node   // 别的文件夹：先问人，别默默把人挪到别处
+                        }
+                    },
+                    // 标题右侧的 ＋＝选文件夹加进工作区。
+                    onAddWorkspace = {
+                        scope.launch { drawerState.close() }
+                        addWorkspaceOpen = true
                     },
                     // 点文件夹行＝临时提示完整路径 ＋ 落点抱朴设置页（那张「工作区」卡在这一页里）。
                     onWorkspaceTap = { path ->
@@ -689,6 +709,56 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuSessionLibraryScreen(
                     controller = controller,
                     onDismiss = { showSessionLibrary = false },
+                )
+            }
+            // ── 「在这个工作区开新会话」（文件夹行右侧的圆里加号）──────────────
+            // 切工作区是**全局**动作（全局只有一个 Workspace），所以别的文件夹必须先问人：
+            // 默默把用户挪到另一个目录、还在那里发一条消息，是最不该有的惊喜。
+            runHereNode?.let { node ->
+                AlertDialog(
+                    onDismissRequest = { runHereNode = null },
+                    title = { Text(stringResource(R.string.baopu_switch_ws_title)) },
+                    text = { Text(stringResource(R.string.baopu_switch_ws_body, node.label)) },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                runHereNode = null
+                                val before = Workspace.hostDir(context).absolutePath
+                                if (Workspace.setCustom(context, node.fullPath)) {
+                                    val after = Workspace.hostDir(context).absolutePath
+                                    // 内核项（工作区）变更要留痕——与设置页同一条规则（26-B）
+                                    if (after != before) RunLog.log(KernelAudit.workspace(after, before))
+                                    controller.newSession()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.baopu_switch_ws_failed),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            },
+                        ) { Text(stringResource(R.string.baopu_switch_ws_confirm)) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { runHereNode = null }) {
+                            Text(stringResource(R.string.baopu_switch_ws_cancel))
+                        }
+                    },
+                )
+            }
+            // ── 「工作区」标题右侧的 ＋：选一个文件夹加进工作区 ──────────────
+            if (addWorkspaceOpen) {
+                WorkspaceFolderPicker(
+                    onDismiss = { addWorkspaceOpen = false },
+                    onPick = { path ->
+                        addWorkspaceOpen = false
+                        val before = Workspace.hostDir(context).absolutePath
+                        if (Workspace.setCustom(context, path)) {
+                            val after = Workspace.hostDir(context).absolutePath
+                            if (after != before) RunLog.log(KernelAudit.workspace(after, before))
+                            controller.newSession()
+                        }
+                    },
                 )
             }
             // ── 单活跃门的确认卡（第二十九批 B 段）────────────────────────
