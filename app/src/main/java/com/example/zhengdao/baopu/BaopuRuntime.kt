@@ -248,6 +248,9 @@ internal object BaopuRuntime {
             personaFiles = personaFiles(appCtx),
             memoryStore = memoryStore(appCtx),
             spillRoot = { workspaceRoot(appCtx) },
+            // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，
+            // 不缩等于每张都发不出去——2026-10-18 真机「看不见图」就是这个原因。
+            shrinkImage = { file -> ImageShrink.toJpeg(file) },
             log = { RunLog.log(it) },
             // 熔断自动降级：引擎只问"下一个是谁"，怎么挑在 ProviderPrefs（Key 不进引擎）。
             channelFallback = { cur ->
