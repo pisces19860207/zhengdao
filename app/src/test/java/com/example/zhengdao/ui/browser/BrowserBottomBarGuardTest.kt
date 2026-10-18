@@ -175,7 +175,12 @@ class BrowserBottomBarGuardTest {
         listOf("Uri.parse", "loadUrl(", "normalizeInput", "BrowserTabManager", "engine.").forEach {
             assertFalse("底栏不该出现 $it（动作本体归 BrowserScreen）", bar.contains(it))
         }
-        assertTrue("编辑态关掉必须回 BrowserScreen 管（共 2 处：切 Tab ＋ 提交）", Regex("addressEditing = false").findAll(src).count() == 2)
+        // 2026-10-18 收尾（§B 顺序 75）：编辑态开关**只能在 BrowserScreen**里改 —— 底栏只收
+        // `isEditing` 入参与回调。原先这里钉「`addressEditing = false` 恰好出现 2 处」，补了两条
+        // 取消出口后变成 3 处 ⇒ 计数本身就脆，改成钉**归属**（谁有权改）而不是钉数量。
+        assertFalse("底栏不许自己碰编辑态（isEditing 是入参，动作靠回调发出去）", bar.contains("addressEditing"))
+        assertTrue("切 Tab 必须关掉编辑态", src.contains("addressEditing = false"))
+        assertTrue("取消出口必须是唯一实现并被复用", src.contains("val exitAddressEditing: () -> Unit = {"))
     }
 
     @Test
