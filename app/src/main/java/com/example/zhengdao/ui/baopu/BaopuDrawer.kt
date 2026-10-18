@@ -191,12 +191,17 @@ private fun WorkspaceRow(
 private fun SessionRow(
     row: DrawerSessionRow,
     onOpen: (Long) -> Unit,
+    /** 长按＝删除这个会话（2026-10-18：设置页那张「会话记录」并联列表删掉了，删除改在这里）。 */
+    onLongPress: (DrawerSessionRow) -> Unit,
 ) {
     val current = highlightOf(row) == Highlight.SESSION_CURRENT
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onOpen(row.id) }
+            .combinedClickable(
+                onClick = { onOpen(row.id) },
+                onLongClick = { onLongPress(row) },
+            )
             .padding(start = 44.dp, end = 16.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -240,6 +245,8 @@ internal fun BaopuDrawer(
     nodes: List<DrawerWorkspaceNode>,
     onNewSession: () -> Unit,
     onOpenSession: (Long) -> Unit,
+    /** 长按会话行：删除确认（不再有设置页那套平铺列表）。 */
+    onSessionLongPress: (DrawerSessionRow) -> Unit,
     onWorkspaceTap: (String) -> Unit,
     onWorkspaceHold: (String) -> Unit,
     /** 文件夹行右侧的「圆里加号」：在这个工作区里开新会话（不是当前工作区时由页面先问人）。 */
@@ -309,7 +316,7 @@ internal fun BaopuDrawer(
                 onRunHere = onWorkspaceRunHere,
             )
             node.rows.forEach { row ->
-                SessionRow(row = row, onOpen = onOpenSession)
+                SessionRow(row = row, onOpen = onOpenSession, onLongPress = onSessionLongPress)
             }
         }
 
