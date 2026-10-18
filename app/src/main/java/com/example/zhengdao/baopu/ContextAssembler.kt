@@ -49,6 +49,14 @@ data class AssembledPrompt(
     val recallTruncated: Boolean,
     val recallNote: String,
     val compressedIds: Set<String> = emptySet(),
+    /**
+     * 本轮要随这条消息一起发出去的图片（data URL 列表，第二十四批 A 段）。
+     *
+     * 空 = 不发图（纯文本通道、或本轮没有图片、或全被裁掉了）。
+     * **这里永远是 data URL，不会是路径**——路径只活到调用方读文件那一刻（V6）。
+     * 谁填的：[VisionRules.select] 的产出，依据 `Provider.vision`（V5）。
+     */
+    val images: List<String> = emptyList(),
 ) {
     /**
      * 渲染成最终提示词文本。
@@ -224,6 +232,14 @@ internal object ContextAssembler {
         compressedIds: Set<String> = emptySet(),
         skipIds: Set<String> = emptySet(),
         oldMessageCount: Int = 0,
+        // ── 视觉通道（第二十四批 A 段）──
+        /** 本轮附件里**是图片**的那些（已由调用方读成 data URL；[VisionRules.ImagePayload] 不含路径）。 */
+        images: List<VisionRules.ImagePayload> = emptyList(),
+        /**
+         * 当前通道能不能看图——**必须来自 `Provider.vision`**（V5：这里不许自己判断
+         * 模型名，否则"哪个模型能看图"就有第二份真相，且必然漂移）。
+         */
+        visionSupported: Boolean = false,
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
     ): AssembledPrompt {
         // ── 记忆段：sticky 恒前，new 追加；预算 = 2k − sticky 已占 ──
@@ -275,7 +291,20 @@ internal object ContextAssembler {
         if (visibleHistory.isNotEmpty()) {
             segments += PromptSegment(SegmentKind.HISTORY, renderHistory(visibleHistory))
         }
-        if (current.isNotBlank()) segments += PromptSegment(SegmentKind.CURRENT, current)
+        // ── 本轮输入 ＋ 图片（第二十四批 A 段）──
+        // 裁图判据全在 VisionRules.select（纯函数）：能力不够就一张不发、超限就截断，
+        // 两种情况都会给一句 note。note **拼在本轮输入末尾**而不是单独开一段：
+        // 开新段会让 SegmentKind 枚举顺序里多一个位置，压缩与前缀判据都要跟着改；
+        // 而这句话本来就是"关于本轮输入"的，跟在后面最自然。
+        val vision = VisionRules.select(images, visionSupported)
+        val currentText = when {
+            vision.note.isEmpty() -> current
+            current.isBlank() -> vision.note          // 只有图、没打字（也可能一张没发）
+            else -> current + "\n" + vision.note
+        }
+        if (currentText.isNotBlank()) {
+            segments += PromptSegment(SegmentKind.CURRENT, currentText)
+        }
 
         val prompt = AssembledPrompt(
             segments = segments,
@@ -285,6 +314,7 @@ internal object ContextAssembler {
             recallTruncated = recallTruncated,
             recallNote = recallNote,
             compressedIds = compressedIds,
+            images = vision.images,
         )
         val estimated = tokensOf(prompt.render())
         return prompt.copy(
