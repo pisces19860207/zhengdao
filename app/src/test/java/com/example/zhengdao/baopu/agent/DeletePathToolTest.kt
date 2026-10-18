@@ -174,4 +174,26 @@ class DeletePathToolTest {
             assertTrue("英文缺 $key", en.contains("name=\"$key\""))
         }
     }
+    @Test
+    fun `D10_清空回收站一张卡干完_子目录留着`() {
+        // 2026-10-19 用户真机：回收站 14 个文件逐个删 = 14 步 14 张卡，撞步数上限
+        file("${DeletePathTool.TRASH_DIR}/a.txt", "a")
+        file("${DeletePathTool.TRASH_DIR}/b.txt", "bb")
+        File(root, "${DeletePathTool.TRASH_DIR}/子目录").mkdirs()
+        file("${DeletePathTool.TRASH_DIR}/子目录/keep.txt", "keep")
+        val out = DeletePathTool.emptyTrash(root)
+        assertTrue("应当成功：$out", out is ToolOutcome.Ok)
+        val text = (out as ToolOutcome.Ok).text
+        assertTrue("回执要说删了几个：$text", text.contains("删掉 2 个"))
+        assertFalse(File(root, "${DeletePathTool.TRASH_DIR}/a.txt").exists())
+        assertFalse(File(root, "${DeletePathTool.TRASH_DIR}/b.txt").exists())
+        assertTrue("子目录里的东西要留着（逐层删才有反悔余地）", File(root, "${DeletePathTool.TRASH_DIR}/子目录/keep.txt").isFile)
+    }
+
+    @Test
+    fun `D11_回收站本来就空时说话不抛`() {
+        val out = DeletePathTool.emptyTrash(root)
+        assertTrue(out is ToolOutcome.Ok)
+        assertTrue((out as ToolOutcome.Ok).text.contains("空的"))
+    }
 }

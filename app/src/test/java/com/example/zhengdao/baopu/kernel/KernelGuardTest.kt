@@ -16,7 +16,7 @@ import java.io.File
  * ② **七条边界都在**（Data／Exec／Tools／Auth／Budget／Egress／Gate）；
  * ③ **唯一来源**：被搬进内核的常量，主源码里不许再出现「字面量定义」；
  * ④ **委托存在**：`RunRules` 与 `ContextAssembler` 的常量是引用内核，不是各写一份；
- * ⑤ **值没变**（纯重构）：几个关键数逐一对齐（16 步／3 次失败／15 分钟／0.85／120k）；
+ * ⑤ **值没变**（纯重构）：几个关键数逐一对齐（48 步／3 次失败／15 分钟／0.70／900k）；
  * ⑥ **停止权那一族六个数齐全**（用户补的第 4 条边界）；
  * ⑦ **压缩红线只有一处来源**（26-B 把 `NEVER_COMPRESS` 整块搬进内核）；
  * ⑧ **spill 阈值也搬进内核**（工具边界那一族）；
@@ -64,11 +64,11 @@ class KernelGuardTest {
     @Test
     fun `K3_唯一来源_主源码不许再写字面量定义`() {
         val duplicates = listOf(
-            "const val MAX_STEPS = 16",
+            "const val MAX_STEPS = 48",
             "const val MAX_TOOL_FAILURES = 3",
             "const val CONFIRM_TIMEOUT_MS = 15 * 60 * 1000L",
-            "const val COMPRESS_ABS_MAX_TOKENS = 120_000",
-            "const val COMPRESS_THRESHOLD = 0.85",
+            "const val COMPRESS_ABS_MAX_TOKENS = 900_000",
+            "const val COMPRESS_THRESHOLD = 0.70",
         )
         val rulesSrc = rules()
         val asmSrc = asm()
@@ -91,13 +91,15 @@ class KernelGuardTest {
 
     @Test
     fun `K5_值没变_纯重构`() {
-        assertEquals("16 步刹车", 16, BaopuKernel.Budget.MAX_STEPS)
+        // 2026-10-19 用户真机口径「好像 16 步不够啊」⇒ 48（仍是硬刹车）
+        assertEquals("48 步刹车", 48, BaopuKernel.Budget.MAX_STEPS)
         assertEquals("3 次工具失败", 3, BaopuKernel.Budget.MAX_TOOL_FAILURES)
         assertEquals("自修 1 次", 1, BaopuKernel.Budget.MAX_VERIFY_REPAIRS)
         assertEquals("熔断 3 次", 3, BaopuKernel.Budget.CHANNEL_BREAK_THRESHOLD)
         assertEquals("确认超时 15 分钟", 15 * 60 * 1000L, BaopuKernel.Auth.CONFIRM_TIMEOUT_MS)
-        assertEquals("压缩阈值 0.85", 0.85, BaopuKernel.Budget.COMPRESS_THRESHOLD, 1e-9)
-        assertEquals("压缩绝对上限 120k", 120_000, BaopuKernel.Budget.COMPRESS_ABS_MAX_TOKENS)
+        // 2026-10-19 用户口径「压得太早，1M 上下文到 70% 左右才压」⇒ 0.70 / 900k
+        assertEquals("压缩阈值 0.70", 0.70, BaopuKernel.Budget.COMPRESS_THRESHOLD, 1e-9)
+        assertEquals("压缩绝对上限 900k（只当护栏）", 900_000, BaopuKernel.Budget.COMPRESS_ABS_MAX_TOKENS)
         assertEquals("可压条数下限 60", 60, BaopuKernel.Budget.COMPRESS_OLD_MESSAGE_MIN)
         assertEquals("单次压缩上限 200", 200, BaopuKernel.Budget.COMPRESS_MAX_MESSAGES_PER_RUN)
     }

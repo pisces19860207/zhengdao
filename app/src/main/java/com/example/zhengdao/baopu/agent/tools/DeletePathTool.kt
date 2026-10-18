@@ -33,6 +33,8 @@ internal object DeletePathTool {
 
     const val ARG_PATH = "path"
     const val ARG_PERMANENT = "permanent"
+    /** 一次清空整个回收站（一个确认卡干完，省得十几个文件点十几次）。 */
+    const val ARG_EMPTY_TRASH = "empty_trash"
 
     /** 回收站目录名（工作区根下**不带点的可见目录**，用户自己看得见、能清）。 */
     const val TRASH_DIR = "回收站"
@@ -48,6 +50,7 @@ internal object DeletePathTool {
         description = "删工作区里的一个文件。**默认进回收站**（工作区/.回收站/时间戳-原名），" +
             "说一声就能捞回来；permanent=true 才是彻底删（确认卡上会写明「删了就没了」）。" +
             "只删单个文件：目录、备份区 .baopu-bak/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
+            "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡，不用逐个删）。" +
             "确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -60,17 +63,26 @@ internal object DeletePathTool {
                     "type" to "boolean",
                     "description" to "true = 彻底删（不进回收站，不可恢复）；默认 false = 进回收站",
                 ),
+                ARG_EMPTY_TRASH to jsonObjectOf(
+                    "type" to "boolean",
+                    "description" to "true = 一次清空整个回收站（不需要 path；只清文件，子目录留着）",
+                ),
             ),
-            "required" to jsonArrayOf(ARG_PATH),
+            // path 不是必填：empty_trash=true 时不需要（清空整个回收站）
+            "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.CONFIRM,
         timeoutMs = ToolTimeout.FILE_MS,
     ) { args ->
+        val root = workspaceRoot()
+        if (args.optBoolean(ARG_EMPTY_TRASH, false)) {
+            return@ToolSpec emptyTrash(root)
+        }
         run(
             path = args.optString(ARG_PATH).trim(),
             permanent = args.optBoolean(ARG_PERMANENT, false),
-            root = workspaceRoot(),
+            root = root,
         )
     }
 
@@ -158,6 +170,40 @@ internal object DeletePathTool {
         )
     }
 
+    /**
+     * 清空回收站（**一张确认卡干完**）。
+     *
+     * 为什么单开这一条：2026-10-19 用户真机「清空回收站」，里面 14 个文件 ⇒ 逐个删要 14 步、
+     * 14 次确认卡，撞上步数上限还停在一半。批量清理是这件活的本意，不该按单个文件计价。
+     *
+     * 边界：只删 `回收站/` 下的**文件**（子目录留着，逐层删才有反悔余地）；
+     * 一个也删不掉就如实报哪几个删不动，不假装清空。
+     */
+    fun emptyTrash(root: File): ToolOutcome {
+        if (!PathGuard.isInside(root, root)) return ToolOutcome.Rejected("路径越界被拒")
+        val trashDir = File(root, TRASH_DIR)
+        if (!trashDir.isDirectory) return ToolOutcome.Ok("回收站是空的（还没有东西进来），不用清。")
+        val files = trashDir.listFiles()?.filter { it.isFile }.orEmpty()
+        if (files.isEmpty()) return ToolOutcome.Ok("回收站里没有文件（只有子目录或本来就是空的）。")
+        var deleted = 0
+        var bytes = 0L
+        val failed = mutableListOf<String>()
+        for (f in files) {
+            val len = f.length()
+            if (runCatching { f.delete() }.getOrDefault(false)) {
+                deleted++
+                bytes += len
+            } else {
+                failed += f.name
+            }
+        }
+        val head = "已清空回收站：删掉 $deleted 个文件（${bytes / 1024} KB）。这一步不可恢复。"
+        return if (failed.isEmpty()) {
+            ToolOutcome.Ok(head)
+        } else {
+            ToolOutcome.Ok(head + " 另有 ${failed.size} 个删不动：" + failed.take(3).joinToString("、"))
+        }
+    }
     /** 回收站里撞名就让路：`x-2`、`x-3`……（同秒删两个同名文件时不覆盖前一个）。 */
     private fun uniqueTrashName(dir: File, name: String): String {
         if (!File(dir, name).exists()) return name
