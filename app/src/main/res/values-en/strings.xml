@@ -1106,7 +1106,7 @@
     <string name="baopu_session_delete_failed">Delete failed — try again, or restart and retry</string>
     <string name="baopu_session_ws_unknown_header">Default workspace · %1$s</string>
     <string name="baopu_ws_card">Workspace</string>
-    <string name="baopu_ws_desc">Where Baopu sessions work — the same setting the terminal uses. Outputs and project skills follow it.</string>
+    <string name="baopu_ws_desc">Where Baopu works (set separately from the terminal; neither affects the other). Default: Download/证道. Outputs, attachments and project skills follow it.</string>
     <string name="baopu_ws_current">Current location</string>
     <string name="baopu_ws_mode_default">Default (Zhengdao folder)</string>
     <string name="baopu_ws_mode_custom">Custom</string>

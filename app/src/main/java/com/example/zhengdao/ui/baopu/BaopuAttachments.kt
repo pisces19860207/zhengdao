@@ -4,11 +4,12 @@
 // 一个「＋」＝ 拍照／相册／选文件三个入口，拿到的东西**一律先落进工作区**再交给抱朴。
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.baopu.BaopuWorkspace
+
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
 import java.util.Locale
@@ -57,7 +58,7 @@ internal object BaopuAttachments {
         val safe = sanitize(name)
         // 时间戳走统一的 TimeFormats（B-补-24 门禁：主源码里不许逐次新建 SimpleDateFormat）
         val stamp = TimeFormats.fileStamp()
-        val target = File(File(Workspace.hostDir(ctx), DIR).apply { mkdirs() }, "$stamp-$safe")
+        val target = File(File(BaopuWorkspace.hostDir(ctx), DIR).apply { mkdirs() }, "$stamp-$safe")
         val copied = ctx.contentResolver.openInputStream(uri)?.use { input ->
             target.outputStream().use { out -> input.copyTo(out) }
             true

@@ -167,7 +167,7 @@ internal fun BaopuSessionLibraryScreen(
     // 组标题里的路径取 Workspace.defaultDir 的缩略；组里每行另标「历史未记录」小字。
     val unknownHeader = stringResource(
         R.string.baopu_session_ws_unknown_header,
-        shortenPath(com.example.zhengdao.terminal.Workspace.defaultDir(ctx).absolutePath),
+        shortenPath(com.example.zhengdao.baopu.BaopuWorkspace.defaultDir().absolutePath),
     )
     val unknownWs = stringResource(R.string.baopu_session_ws_unknown)
     // 二次确认（K5/D1）：删除动作只能从确认框的确认按钮进 controller.deleteSession——
