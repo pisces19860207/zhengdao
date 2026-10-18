@@ -1172,5 +1172,7 @@
     <string name="baopu_tool_library_organize">Organize library</string>
     <string name="baopu_tool_library_organize_desc">Land the organizing result (a confirmation card pops up before each action): move a file from 投递/ to 整理/ (same-name is refused, never overwritten), rename within the same directory, or rebuild 资料库/索引.md. Only 投递/ and 整理/ are touched — never 原始/.</string>
     <string name="baopu_tool_delete_path">Delete file</string>
+    <string name="baopu_tool_image_ops">Image tools</string>
+    <string name="baopu_tool_image_ops_desc">Edit images (a confirmation card pops up before each run): resize to a max edge, crop by rectangle, convert to png/jpg/webp, extract the dominant palette (text only), or generate 48/72/96/144/192 square icon PNGs. The original is never overwritten — output goes to &lt;name&gt;-&lt;action&gt;.&lt;ext&gt; and an existing target is refused.</string>
     <string name="baopu_tool_delete_path_desc">Delete one file in the workspace (a confirmation card pops up before each run): by default it is **moved to the recycle bin** (workspace/.回收站/&lt;stamp&gt;-&lt;name&gt;), so it can be moved back; only with \"permanent\" ticked is it unrecoverable. Files only — directories are always refused; the backup area .baopu-bak/, the recycle bin itself and 资料库/原始/ are off limits.</string>
 </resources>

@@ -323,6 +323,8 @@ internal object BaopuToolCatalog {
         // 删除（2026-10-18 用户点名「删除工具没加啊？」）：默认开，但**每次一张确认卡**，
         // 且默认只进回收站（.回收站/），permanent=true 才是不可恢复的真删。
         "delete_path",
+        // 图片处理（2026-10-18 用户逐字「落」）：默认开，但**每次一张确认卡**，且永不覆盖原图
+        "image_ops",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -351,6 +353,8 @@ internal object BaopuToolCatalog {
         Entry("library_organize") { LibraryTools.organizeSpec(it) },
         // 删除（2026-10-18）：默认进回收站，permanent 才真删；禁区一律拒
         Entry("delete_path") { DeletePathTool.spec(it) },
+        // 图片处理（2026-10-18）：缩放/裁剪/转格式/取主色/生成图标各档
+        Entry("image_ops") { ImageOpsTool.spec(it) },
     )
 
     /**
