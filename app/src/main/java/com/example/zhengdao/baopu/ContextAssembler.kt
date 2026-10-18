@@ -242,6 +242,14 @@ internal object ContextAssembler {
          * 模型名，否则"哪个模型能看图"就有第二份真相，且必然漂移）。
          */
         visionSupported: Boolean = false,
+        /**
+         * 调用方要拼在本轮输入末尾的额外说明（第二十四批 C 段追加）。
+         *
+         * 第一个用处：图片**没发出去**时的逐张原因（`VisionFiles.Loaded.note()`）。
+         * 为什么要一路传到这里：说明必须跟在「用户这条消息」后面才有意义，
+         * 而 `current` 是每步重算的（工具循环里会变），不能在引擎侧一次性拼死。
+         */
+        extraNotes: List<String> = emptyList(),
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
     ): AssembledPrompt {
         // ── 记忆段：sticky 恒前，new 追加；预算 = 2k − sticky 已占 ──
@@ -299,10 +307,16 @@ internal object ContextAssembler {
         // 开新段会让 SegmentKind 枚举顺序里多一个位置，压缩与前缀判据都要跟着改；
         // 而这句话本来就是"关于本轮输入"的，跟在后面最自然。
         val vision = VisionRules.select(images, visionSupported)
-        val currentText = when {
-            vision.note.isEmpty() -> current
-            current.isBlank() -> vision.note          // 只有图、没打字（也可能一张没发）
-            else -> current + "\n" + vision.note
+        val notes = buildList {
+            if (vision.note.isNotEmpty()) add(vision.note)
+            extraNotes.forEach { if (it.isNotBlank()) add(it) }
+        }
+        val currentText = if (notes.isEmpty()) {
+            current
+        } else if (current.isBlank()) {
+            notes.joinToString("\n")          // 只有图、没打字（也可能一张没发）
+        } else {
+            current + "\n" + notes.joinToString("\n")
         }
         if (currentText.isNotBlank()) {
             segments += PromptSegment(SegmentKind.CURRENT, currentText)

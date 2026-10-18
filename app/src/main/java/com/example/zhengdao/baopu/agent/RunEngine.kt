@@ -137,6 +137,13 @@ internal class RunEngine(
     private val memoryStore: MemoryStore? = null,
     private val spillRoot: () -> File,
     /**
+     * 缩图实现（第二十四批 C 段追加）：手机照片普遍 3 MB 上下，超过单张 2 MB 的图上送前先缩。
+     *
+     * 为什么由外部注入：解码/重编码要 Android `Bitmap`，引擎自己要能在 JVM 里跑
+     * （单测喂假实现就能验「超限先缩、缩不成必须报原因」两条）；真实现是 `ImageShrink`。
+     */
+    private val shrinkImage: ((File) -> com.example.zhengdao.baopu.VisionFiles.ShrinkOutcome)? = null,
+    /**
      * 熔断后的候选通道（刀 1 补丁）：入参是当前通道，返回下一个或 null。
      *
      * 为什么不给引擎一个"通道列表"：Key 只该在 ProviderPrefs 手里，引擎拿到的
@@ -317,8 +324,9 @@ internal class RunEngine(
                 _state.value = RunState.ABORTED
                 _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
             } finally {
-                // 本轮图片不外溢：下一次 resume 若不清，会把上一轮的图再发一遍
+                // 本轮图片与说明都不外溢：下一次 resume 若不清，会把上一轮的图和说明再发一遍
                 turnImages = emptyList()
+                turnNotes = emptyList()
                 pendingImageRelPaths = emptyList()
                 ActiveSessionGate.release("id:$sessionId")
                 onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记（见 Settled 的说明）
@@ -499,6 +507,7 @@ internal class RunEngine(
 
         // 第二十四批 C 段：本轮图片在**引擎线程**上读好一次，全程复用。
         // 续跑不带图（上一轮的图已经跟着那一轮发出去了，重发等于给模型看第二遍）。
+        turnNotes = emptyList()
         turnImages = if (resumed) {
             emptyList()
         } else {
@@ -507,9 +516,24 @@ internal class RunEngine(
             if (paths.isEmpty()) {
                 emptyList()
             } else {
-                runCatching { VisionFiles.payloadsOf(spillRoot(), paths) }
+                val loaded = runCatching { VisionFiles.load(spillRoot(), paths, shrink = shrinkImage) }
                     .onFailure { log("抱朴引擎：读图失败（本轮按纯文本走）${it.javaClass.simpleName}") }
-                    .getOrDefault(emptyList())
+                    .getOrNull()
+                if (loaded == null) {
+                    // 连 load 都炸了：那就**明说**这一轮没图，不留一句「用户附了 1 张图片」误导模型
+                    turnNotes = listOf("（图片没读出来：本轮按纯文本处理，请让用户用文字说一遍图里内容）")
+                    emptyList()
+                } else {
+                    if (loaded.shrunk.isNotEmpty()) {
+                        log("抱朴引擎：${loaded.shrunk.size} 张图超限已缩图后发送")
+                    }        // 逐张跳过的原因必须跟着本轮输入走——静默丢图正是 2026-10-18 的病
+                    val note = loaded.note()
+                    if (note.isNotEmpty()) {
+                        log("抱朴引擎：${loaded.skipped.size} 张图没能发出去（原因已写进本轮输入）")
+                        turnNotes = listOf(note)
+                    }
+                    loaded.payloads
+                }
             }
         }
         if (userText != null) {
@@ -777,6 +801,8 @@ internal class RunEngine(
          * 省 token 的正确做法是 `VisionRules` 的 4 张/6 MB 上限，不是「第二轮就不给看」。
          */
         images: List<com.example.zhengdao.baopu.VisionRules.ImagePayload> = turnImages,
+        /** 本轮额外说明（图没发出去的原因等）；默认取 [turnNotes]。 */
+        extraNotes: List<String> = turnNotes,
     ) = ContextAssembler.assemble(
         persona = persona,
         facts = facts,
@@ -790,6 +816,7 @@ internal class RunEngine(
         skipIds = skipIds,
         oldMessageCount = oldMessageCount,
         images = images,
+        extraNotes = extraNotes,
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
         visionSupported = provider.vision,
     )
@@ -801,6 +828,15 @@ internal class RunEngine(
      * 调用点（那是本批不想要的风险）；字段只有「本轮开跑时赋值、本轮结束时清空」两个触点。
      */
     private var turnImages: List<com.example.zhengdao.baopu.VisionRules.ImagePayload> = emptyList()
+
+    /**
+     * 本轮要拼进输入末尾的说明（第二十四批 C 段追加）。
+     *
+     * 目前只有一个来源：图片没发出去的逐张原因（[com.example.zhengdao.baopu.VisionFiles.Loaded.note]）。
+     * 与 [turnImages] 同寿命：本轮开跑时赋值、本轮结束时清空——否则上一轮丢图的说明会跟着
+     * 下一轮的话重复出现，模型会以为用户这次也发了图。
+     */
+    private var turnNotes: List<String> = emptyList()
 
     /** 本轮附件里图片的**相对路径**（[send] 写入，[runLoop] 开跑时消费并清空）。 */
     private var pendingImageRelPaths: List<String> = emptyList()
