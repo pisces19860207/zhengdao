@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -178,6 +180,9 @@ internal fun BaopuMessageList(
     steps: List<BaopuStepRow> = emptyList(),
     running: Boolean = false,
     pinLastRound: Boolean = false,
+    // 第十八批-B：滚动状态归 BaopuScreen（贴底跟随＋「回到最新」浮标在屏幕层
+    // 接线，列表只管用它渲染）——调用方不传就自持（预览/单测场景）。
+    listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
     if (messages.isEmpty()) {
@@ -195,7 +200,7 @@ internal fun BaopuMessageList(
     // 最后一条 user 消息 id）。卡本体渲染在消息流之外，这里保证它背后的明细也不收。
     val lastUserId = messages.lastOrNull { it.role == "user" }?.id
     val pinned = if (pinLastRound && lastUserId != null) setOf(lastUserId) else emptySet<Long>()
-    LazyColumn(modifier = modifier.fillMaxWidth()) {
+    LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
         rounds.forEach { round ->
             if (round.toolPartCount == 0) {
                 items(round.messages, key = { it.id }) { msg ->

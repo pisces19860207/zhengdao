@@ -13,7 +13,9 @@ package com.example.zhengdao.ui.baopu
 import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.IconButton
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -72,9 +77,11 @@ private fun openSettings(context: Context) {
 /**
  * 抱朴页（刀 1 · B 段）：占位页 [BaopuRebuilding] 的真身。
  *
- * 结构（上→下）：入口行（换通道／章节抽取／备份原件）→ 防丢顶条 → 会话头（状态/中断/续跑）
- * → 自省便签 → 提炼待过目卡 → 记忆候选卡 → 收料提问卡 → 资料库结果一行 → 提示词小框（可复制）
- * → 消息流 → 输入区。
+ * 结构（上→下）：☰ 顶条 → 防丢顶条 → 会话头（状态/中断/续跑）→ 自省便签 → 待办提示行
+ * → 资料库结果一行 → 提示词小框（可复制）→ 消息流（贴底跟随＋「⬇ 回到最新」浮标）→
+ * **底部操作卡区（确认卡/问人卡/待过目记忆卡/记忆候选卡，第十八批-B 从列表上方挪来）**
+ * → 输入区（composer）。纯展示类（压缩条/资料库提示/提示词小框/自省便签）留在原处；
+ * 卡片区与输入框之间还夹着抽屉/各类 Sheet（ModalNavigationDrawer 与弹层）。
  * 「提示词小框」的落地：展示**最近一条抱朴回复**的可复制小框（CopyBox）——
  * 用户把回复复制到别处用，是这一行设计的实际用途场景（报告里写明解释）。
  */
@@ -270,12 +277,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             controller.introspectionNote?.let { note ->
                 BaopuIntrospectionNote(text = note)
             }
-            // 提炼待过目卡（C 段：PENDING 未落盘，用户过目后才写盘）
-            BaopuPendingMemoryCard(
-                pending = controller.pendingMemories,
-                onConfirm = { controller.confirmPendingMemory(it) },
-                onForget = { controller.forgetPendingMemory(it) },
-            )
             controller.pendingNote?.let { note ->
                 Text(
                     text = note,
@@ -283,31 +284,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     color = zhengdaoErrorText(), // P2-11：error 色 3.55:1 不达正文 AA 4.5:1
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
-            }
-            BaopuMemoryCard(
-                candidates = controller.memoryCandidates,
-                onConfirm = { controller.confirmMemory(it) },
-                onForget = { controller.forgetMemory(it) },
-            )
-            // 收料提问卡（A 段：扫投递 → 一次 ask_user；形状判据全在 AskUserCardRules）
-            controller.askCard?.let { card ->
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    BaopuAskUserCard(
-                        card = card,
-                        onPick = { controller.answerAskCard(it) },
-                        onFreeText = { controller.answerAskCardFree(it) },
-                    )
-                }
-            }
-            // 文件改动确认卡（刀 3 A 段：要动文件 → 出卡 → 批准/拒绝）
-            controller.confirmCard?.let { card ->
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    BaopuConfirmCard(
-                        request = card,
-                        onApprove = { controller.approveConfirm() },
-                        onReject = { controller.rejectConfirm() },
-                    )
-                }
             }
             // 已压缩细条（第十三批 §4.4：只加一条，不做美化；点开展摘要全文）
             controller.compressionNote?.let { note ->
@@ -333,6 +309,53 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     )
                 }
             }
+            // ── 贴底跟随＋「回到最新」浮标（第十八批-B §2.2）──────────────────
+            // 滚动状态归屏幕层：判据是纯函数（BaopuChatScroll.shouldFollow /
+            // shouldShowJump / jumpHasNewDot，JVM 直测），这里只接线。
+            // 跟随态 autoScroll 只在**用户拖动松手**时按当时是否贴底刷新——
+            // 程序化滚动不产生拖动交互 ⇒ 不会把跟随态误清（负例 2 的靶心）。
+            val listState = rememberLazyListState()
+            var autoScroll by remember { mutableStateOf(true) }
+            var hasNewContent by remember { mutableStateOf(false) }
+            LaunchedEffect(listState) {
+                listState.interactionSource.interactions.collect { interaction ->
+                    if (interaction is DragInteraction.Stop) {
+                        val atBottom = listState.isAtBottom()
+                        autoScroll = atBottom
+                        if (atBottom) hasNewContent = false
+                    }
+                }
+            }
+            // 内容签名变化（新消息/新步骤行/忙态/操作卡增减）⇒ 贴着底部就滚到最新
+            // （最新内容紧贴输入框上方）；上翻读历史时不抢，只记「有新内容」。
+            val bottomCardsInput = BottomCardsInput(
+                confirmCard = controller.confirmCard != null,
+                askCard = controller.askCard != null,
+                pendingMemory = controller.pendingMemories.isNotEmpty(),
+                memoryCandidate = controller.memoryCandidates.isNotEmpty(),
+            )
+            var expandAllCards by remember { mutableStateOf(false) }
+            val cardsView = bottomCards(bottomCardsInput, expandAllCards)
+            // 没有可折的卡了 ⇒ 收起「全部展开」态（卡全被处理后自然清）。
+            LaunchedEffect(cardsView.hiddenCount) {
+                if (cardsView.hiddenCount == 0) expandAllCards = false
+            }
+            LaunchedEffect(
+                controller.messages,
+                controller.stepRows,
+                controller.busy,
+                cardsView.visible.size,
+                cardsView.hiddenCount,
+            ) {
+                val total = listState.layoutInfo.totalItemsCount
+                if (total == 0) return@LaunchedEffect
+                if (shouldFollow(autoScroll)) {
+                    listState.scrollToItem(total - 1)
+                    hasNewContent = false
+                } else {
+                    hasNewContent = true
+                }
+            }
             Box(Modifier.weight(1f)) {
                 // LazyColumn 自带滚动（不能再套 verticalScroll——嵌套滚动会崩）。
                 // 十六批第一件：传入 run_log 活动行/在跑态/钉住态——已完成的历史轮
@@ -342,8 +365,128 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     steps = controller.stepRows,
                     running = controller.busy,
                     pinLastRound = controller.actionCardsPresent,
+                    listState = listState,
                     modifier = Modifier.fillMaxSize(),
                 )
+                // 「⬇ 回到最新」浮标（主单 §2.4.1）：不在底部才出现，有新内容带
+                // 小圆点；点一下回底并清标记。文案复用旧键 taiji_back_to_latest
+                // （重建抱朴页时丢了的那个「贴心小设计」）。
+                if (shouldShowJump(autoScroll, hasNewContent)) {
+                    val jumpLabel = stringResource(R.string.taiji_back_to_latest)
+                    val jumpDesc = stringResource(R.string.taiji_back_to_latest_desc)
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = CircleShape,
+                        tonalElevation = 3.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(12.dp)
+                            .clickable {
+                                val last = listState.layoutInfo.totalItemsCount - 1
+                                if (last >= 0) {
+                                    scope.launch { listState.animateScrollToItem(last) }
+                                }
+                                autoScroll = true
+                                hasNewContent = false
+                            }
+                            .semantics { contentDescription = jumpDesc },
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (jumpHasNewDot(autoScroll, hasNewContent)) {
+                                Box(
+                                    Modifier
+                                        .size(6.dp)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = jumpLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
+                }
+            }
+            // ── 底部操作卡区（第十八批-B §2.1）────────────────────────────
+            // 「要用户动手」的卡（确认/问人/待过目记忆/记忆候选）紧贴输入框上方：
+            // 翻消息不跟着滚走（在 LazyColumn 外的 Column 里）；键盘弹出时随
+            // composer 的 imePadding 一起顶上，卡片仍在输入框上方可见（J10）。
+            // 多卡只展开最上面一张，其余折成「展开 ▼ ＋ N」一行，点开才全展开（J9）。
+            if (cardsView.hasAny) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    cardsView.visible.forEach { kind ->
+                        when (kind) {
+                            BottomCardKind.CONFIRM -> controller.confirmCard?.let { card ->
+                                BaopuConfirmCard(
+                                    request = card,
+                                    onApprove = { controller.approveConfirm() },
+                                    onReject = { controller.rejectConfirm() },
+                                )
+                            }
+
+                            BottomCardKind.ASK -> controller.askCard?.let { card ->
+                                BaopuAskUserCard(
+                                    card = card,
+                                    onPick = { controller.answerAskCard(it) },
+                                    onFreeText = { controller.answerAskCardFree(it) },
+                                )
+                            }
+
+                            BottomCardKind.PENDING -> BaopuPendingMemoryCard(
+                                pending = controller.pendingMemories,
+                                onConfirm = { controller.confirmPendingMemory(it) },
+                                onForget = { controller.forgetPendingMemory(it) },
+                            )
+
+                            BottomCardKind.CANDIDATE -> BaopuMemoryCard(
+                                candidates = controller.memoryCandidates,
+                                onConfirm = { controller.confirmMemory(it) },
+                                onForget = { controller.forgetMemory(it) },
+                            )
+                        }
+                    }
+                    if (cardsView.hiddenCount > 0) {
+                        // 「还有 N 张」一行：展开箭头复用旧键 common_expand_arrow，
+                        // 数字角标是数据不是文案——本单 strings 零新增（§3）。
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { expandAllCards = true }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_expand_arrow),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Box(
+                                Modifier
+                                    .size(16.dp)
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = cardsView.hiddenCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                )
+                            }
+                        }
+                    }
+                }
             }
             BaopuComposer(
                 busy = controller.busy,
@@ -384,6 +527,19 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
     }
+}
+
+/**
+ * 列表是否贴底（第十八批-B）：**最后一项可见即算贴底**——露个头也算贴着，
+ * 手机上好点（差一像素不算「划上去」就不弹浮标，太神经刀）。
+ *
+ * 读的是 Compose 布局状态 ⇒ 不是纯函数；纯判据在
+ * [com.example.zhengdao.ui.baopu.BaopuChatScroll.shouldFollow]。
+ */
+private fun LazyListState.isAtBottom(): Boolean {
+    val layout = layoutInfo
+    val items = layout.visibleItemsInfo
+    return items.isNotEmpty() && items.last().index >= layout.totalItemsCount - 1
 }
 
 /**
