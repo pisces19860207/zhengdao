@@ -2098,3 +2098,6 @@ unLoop），**不算 bug**。
 >   - **负例三条（派工单 §5，均已造红并还原）**：§5.1 `ContextAssembler.COMPRESS_THRESHOLD` 写回字面量 `0.85` ⇒ **K3＋K4 红**；§5.2 内核 `MAX_STEPS` 的 `const val` 改成 `var` ⇒ **编译期就红**（`RunRules.kt:21 Const 'val' initializer must be a constant value`）；§5.3 `RunRules.MAX_STEPS` 去掉委托自己再写 `16` ⇒ **K3＋K4 红**。
 >   - **未并项（当时就写明）**：`browser/WebViewEngine.allowedSchemes`（等刀 4 稳定后并入 `Egress.ALLOWED_SCHEMES`）；`rootfs/RootfsDelta` 复审后确认**没有数值型边界判据**，不需要搬。
 >   - **一句话定论**：**26-A 已完成、已验、已在主干**；它的问题只是**history 不干净**（缺一笔独立施工提交），不是活没干。
+> - **2026-10-18 刀 4-B 的两个零件函数终于有调用方（`205d1852`）**：查账发现 `previewLastReply`／`clearPreviewCache` 在 `app/src/main` 里**零调用方** —— 不是没做，是**我漏派**了接线的活：刀 4-B 只交零件，抽屉入口按设计归 29 批，而 29 批判据里明写「不许提前加预览入口」（`C7`），30 批 §2.3 我又写成「等 29 批合入后再另派」，29 批合入了却**没跟上派**。补法：抽屉新增「预览」组两行（`预览这条回复`／`清空预览缓存`）＋ `BaopuScreen` 真接线；新增纯函数 `lastAssistantReply`（挑**最近一条有正文**的回复：纯工具轮与只有图片的消息都要跳过）与 `previewToastText`；`PreviewNotice` 增 `NO_REPLY_YET` 与 `opened(evicted)`（**必须说清「切到玄览」**——同页里点不会自动切 Tab，是刀 4-B 已写明的时序）。**门禁**：**227 套件 / 2056 例 / 0 失败 / 0 错误 / 13 跳过**；新增 11 例；负例：抽屉那行不接回调（`onClick = {}`）⇒ `P9_抽屉里真有两行_且都有回调` 红。**真机**：抽屉里「工作区／📁 男性（高亮）」＋「预览」组两行都在；点「预览这条回复」⇒ Toast「还没有可预览的回复——先让抱朴答一轮」；点「清空预览缓存」⇒ Toast「已清空 0 张预览（槽里本来就没有）」。
+
+> - **2026-10-18 26-A 收口单列**：见上方同日晚的「第二十六批 A 段 · 收口单列」条 —— 交付物四件、K1–K6 读数 9/0/0、13 处委托逐条、三条负例、未并项，均可在 main 上逐项复核。
