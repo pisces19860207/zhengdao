@@ -1063,7 +1063,7 @@
     <string name="baopu_session_rounds">%1$d rounds</string>
     <string name="baopu_session_sealed">Sealed</string>
     <string name="baopu_session_continuable">Resumable</string>
-    <string name="baopu_session_ws_unknown">(workspace not recorded)</string>
+    <string name="baopu_session_ws_unknown">not recorded</string>
     <string name="baopu_session_date_fmt">MMM d</string>
     <string name="baopu_session_delete">Delete</string>
     <string name="baopu_session_delete_title">Delete this session permanently</string>
@@ -1071,6 +1071,8 @@
     <string name="baopu_session_delete_confirm">Delete forever</string>
     <string name="baopu_session_delete_cancel">Not now</string>
     <string name="baopu_session_deleted_current">Deleted — back to an empty session</string>
+    <string name="baopu_session_delete_failed">Delete failed — try again, or restart and retry</string>
+    <string name="baopu_session_ws_unknown_header">Default workspace · %1$s</string>
     <string name="baopu_ws_card">Workspace</string>
     <string name="baopu_ws_desc">Where Baopu sessions work — the same setting the terminal uses. Outputs and project skills follow it.</string>
     <string name="baopu_ws_current">Current location</string>
