@@ -12,7 +12,7 @@ import org.json.JSONObject
  * 工作计划（计划卡）的**纯判据层**（第十七批 · 抱朴「工作计划卡」A/B 段）。
  *
  * 三条硬语义（派工单 §3 判据 J1–J3 的落地处）：
- * 1. **最多 8 条、每条 ≤60 字**（[MAX_ITEMS] / [MAX_TEXT_CHARS]）：超了**截断并记
+ * 1. **最多 12 条、每条 ≤60 字**（[MAX_ITEMS] / [MAX_TEXT_CHARS]）：超了**截断并记
  *    notice**（不拒绝——模型多发几条不该让整轮白跑）；`items` 为空才拒绝。
  * 2. **每次调用全量覆盖**（[applyOverwrite]）：先 5 条再 3 条 ⇒ 计划表就是 3 条，
  *    不是「合并成 8 条」。模型每完成一条就重发整张表，简单可靠、不用增量补丁。
@@ -26,7 +26,13 @@ import org.json.JSONObject
 internal object PlanRules {
 
     /** 计划条数上限（派工单 §1.1）。 */
-    const val MAX_ITEMS = 8
+    /**
+     * 一次计划最多几条。
+     *
+     * v1 写 8（程枢版 §2）；2026-10-19 用户真机「计划只有三步的话会不会有点不够」——
+     * 探一个平台的制卡流程本来就十几步，8 条装满也很正常 ⇒ 抬到 **12**。
+     */
+    const val MAX_ITEMS = 12
 
     /** 单条 text 字数上限（派工单 §1.1）。 */
     const val MAX_TEXT_CHARS = 60
