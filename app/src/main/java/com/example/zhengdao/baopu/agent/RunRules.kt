@@ -22,6 +22,15 @@ internal object RunRules {
     /** 连续 3 次工具失败 ⇒ 停下 ask_user，禁止硬试（§2）。 */
     const val MAX_TOOL_FAILURES = 3
 
+    /**
+     * 收尾闸给模型的自修次数（2026-10-17，工具补强第二刀；从旧内嵌版搬来）。
+     *
+     * 为什么只给 1 次：一次 run 里「写完说完了但产物不对」多半是漏了某步；
+     * 给两三轮它会开始瞎改别的文件。修一次仍不过 ⇒ 如实报「未通过」让人看，
+     * 而不是继续烧 token 假装在修。
+     */
+    const val MAX_VERIFY_REPAIRS = 1
+
     /** 通道熔断阈值：当前通道连续 N 次失败 ⇒ 标记不可用 + 提示切通道（§2 补录）。 */
     const val CHANNEL_BREAK_THRESHOLD = 3
 

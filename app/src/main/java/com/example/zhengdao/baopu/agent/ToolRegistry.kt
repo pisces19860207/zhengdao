@@ -288,28 +288,51 @@ internal object BaopuToolCatalog {
     )
 
     /**
-     * 默认启用集合（read_file / list_dir / search_in_files / file_info / write_file 全默认开；
-     * 工具补强刀加 edit_file / move_path，同样默认开——两者都是 CONFIRM，够不着「静默动手」）。
+     * 默认启用集合。
+     *
+     * 全部默认开：读类（read_file / list_dir / search_in_files / find_files / book_outline /
+     * file_info）只读不改；写类（write_file / edit_file / move_path / convert_encoding）全是
+     * CONFIRM，够不着「静默动手」——真要防，用户自己在设置里关。
      */
     val DEFAULT_ENABLED: Set<String> = setOf(
         "read_file",
         "list_dir",
         "search_in_files",
+        "find_files",
+        "book_outline",
         "file_info",
         "write_file",
         "edit_file",
         "move_path",
+        "convert_encoding",
+        // 浏览器六件（玄览）：读类免确认、写类 CONFIRM；网关没注入时统一回「玄览还没打开」
+        "browser_open",
+        "browser_snapshot",
+        "browser_click",
+        "browser_type",
+        "browser_scroll",
+        "browser_screenshot",
     )
 
-    /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好）。 */
+    /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
     val ENTRIES: List<Entry> = listOf(
         Entry("read_file") { ReadFileTool.spec() },
         Entry("list_dir") { ListDirTool.spec() },
         Entry("search_in_files") { SearchInFilesTool.spec(it) },
+        Entry("find_files") { FindFilesTool.spec(it) },
+        Entry("book_outline") { BookOutlineTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },
         Entry("edit_file") { EditFileTool.spec(it) },
         Entry("move_path") { MovePathTool.spec(it) },
+        Entry("convert_encoding") { ConvertEncodingTool.spec(it) },
+        // 浏览器六件不需要 workspaceRoot（守卫走 URL/scheme，不走路径）
+        Entry("browser_open") { BrowserTools.openSpec() },
+        Entry("browser_snapshot") { BrowserTools.snapshotSpec() },
+        Entry("browser_click") { BrowserTools.clickSpec() },
+        Entry("browser_type") { BrowserTools.typeSpec() },
+        Entry("browser_scroll") { BrowserTools.scrollSpec() },
+        Entry("browser_screenshot") { BrowserTools.screenshotSpec() },
     )
 
     /**

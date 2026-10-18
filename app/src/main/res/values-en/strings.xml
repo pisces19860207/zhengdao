@@ -963,6 +963,8 @@
     <string name="baopu_tool_move_path_desc">Move or rename a file inside the library. Same volume moves directly; cross-volume copies only and records the source in “资料库/整理/_待删除清单.md” — never deletes it. Name clashes get a suffix instead of overwriting.</string>
     <!-- ── Baopu confirm card (knife 3, part A; the only way write tools get powered) ── -->
     <string name="baopu_confirm_title">About to change a file: %1$s</string>
+    <string name="baopu_confirm_title_action">Run: %1$s</string>
+    <string name="baopu_confirm_hint_action">Approving really runs this action; rejecting skips it and the conversation continues.</string>
     <string name="baopu_confirm_hint">Approving really changes the file (a backup is made first); rejecting skips this action and the conversation continues.</string>
     <string name="baopu_confirm_approve">Approve</string>
     <string name="baopu_confirm_reject">Reject</string>
@@ -982,6 +984,12 @@
     <string name="baopu_params_window">Context window</string>
     <string name="baopu_params_max_output">Output limit</string>
     <string name="baopu_params_undeclared">Not declared</string>
+    <string name="baopu_tool_find_files">Find files</string>
+    <string name="baopu_tool_find_files_desc">Find files by a name fragment, walking down the tree (case-insensitive; also finds books without an extension). Cheaper than listing directories. 6 levels deep by default.</string>
+    <string name="baopu_tool_book_outline">Book outline</string>
+    <string name="baopu_tool_book_outline_desc">See a book’s chapter list first (title, line range, length, first line), then read just the chapters you need; the start line is the read_file offset as-is.</string>
+    <string name="baopu_tool_convert_encoding">Convert encoding</string>
+    <string name="baopu_tool_convert_encoding_desc">Convert an old GBK / UTF-16 txt into UTF-8 in place; the original file is backed up to .baopu-bak first. A file that is already UTF-8 is left untouched.</string>
     <!-- ── Static shortcut (task 2, part D-1; label ≤10 chars) ── -->
     <string name="baopu_shortcut_backup">Back up</string>
     <string name="baopu_shortcut_backup_long">Back up Baopu library originals</string>
@@ -1016,4 +1024,17 @@
     <string name="baopu_drawer_group_settings">Settings</string>
     <string name="baopu_drawer_channel_desc">Switch model channel (rebuilds the engine; not while running)</string>
     <string name="baopu_drawer_settings">Baopu settings</string>
-    <string name="baopu_drawer_settings_desc">Tool switches, library location, terminal look</string></resources>
+    <string name="baopu_drawer_settings_desc">Tool switches, library location, terminal look</string>
+      <string name="baopu_tool_browser_open">Open page</string>
+    <string name="baopu_tool_browser_open_desc">Open a URL in Xuanlan (http/https only). Asks for confirmation; loading is async, inspect afterwards.</string>
+    <string name="baopu_tool_browser_snapshot">Read page</string>
+    <string name="baopu_tool_browser_snapshot_desc">Interactive elements and visible text of the current page (no pixels, no full HTML). Truncated with a note when long.</string>
+    <string name="baopu_tool_browser_click">Click page</string>
+    <string name="baopu_tool_browser_click_desc">Click an element by CSS selector. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_type">Type page</string>
+    <string name="baopu_tool_browser_type_desc">Write text into an input (fires the page input events). Asks for confirmation.</string>
+    <string name="baopu_tool_browser_scroll">Scroll page</string>
+    <string name="baopu_tool_browser_scroll_desc">Scroll up/down/left/right to bring content into view.</string>
+    <string name="baopu_tool_browser_screenshot">Capture page</string>
+    <string name="baopu_tool_browser_screenshot_desc">Capture the current page to a file and return only the path.</string>
+</resources>

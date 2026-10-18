@@ -126,6 +126,8 @@ internal object BaopuRuntime {
      */
     fun registry(context: Context, provider: Provider): ToolRegistry {
         val appCtx = context.applicationContext
+        // 浏览器六件的网关（进程内直调玄览；幂等，重复注入只换同一份）
+        BaopuBrowserWiring.install(appCtx)
         val reg = ToolRegistry(toolPrefs(appCtx))
         BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
         if (provider.builtinFree) {
