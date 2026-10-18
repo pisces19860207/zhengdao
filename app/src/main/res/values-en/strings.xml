@@ -1036,4 +1036,6 @@
     <string name="baopu_tool_browser_scroll_desc">Scroll up/down/left/right to bring content into view.</string>
     <string name="baopu_tool_browser_screenshot">Capture page</string>
     <string name="baopu_tool_browser_screenshot_desc">Capture the current page to a file and return only the path.</string>
+    <string name="baopu_tool_update_plan">Work plan</string>
+    <string name="baopu_tool_update_plan_desc">List 3–8 plan items when a task arrives, and resend the whole list (with the finished one checked) each time an item is done. The plan shows as a card above the chat; tap it to see the progress. It only updates its own plan state — no file is touched and no confirmation is needed.</string>
 </resources>
