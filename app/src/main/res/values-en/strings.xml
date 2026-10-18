@@ -805,7 +805,9 @@
 
     <!-- Browser tab (Xuanlan, phase 1 user mode) -->
     <string name="browser_url_hint">Enter a URL or search</string>
-    <string name="browser_go">Go</string>
+    <!-- Bottom bar redesign (2026-10-18): browser_go removed with the button; browser_menu
+         is the contentDescription of the new overflow key. Keep symmetric with zh side. -->
+    <string name="browser_menu">More</string>
     <string name="browser_back">Back</string>
     <string name="browser_forward">Forward</string>
     <string name="browser_reload">Reload</string>

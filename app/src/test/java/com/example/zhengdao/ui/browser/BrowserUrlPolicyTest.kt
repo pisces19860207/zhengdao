@@ -14,6 +14,11 @@ import java.io.File
  * ② **接线门禁**：`BrowserScreen.tryNavigate` 必须在归一化**之前**调 [BrowserUrlPolicy.shouldReject]
  *    —— N7 的本质是"顺序错 ⇒ 分支不可达"，只测纯函数测不出来。
  *
+ * 底栏改版（2026-10-18 定稿 §6）加第三半：③ **展示判据** [BrowserUrlPolicy.displayHost] /
+ * [displayPath] / [isSecure] —— 一条 56dp 底栏里地址胶囊常态只有 **195dp**、有前进历史时
+ * **143dp**（374.9dp 直板实算），放不下整条 URL，只能展示 host ＋ 次级色 path；这条展示线
+ * 一旦写进 Compose 就进不了 JVM 单测，所以和归一化一样住在本类。
+ *
  * 与既有门禁的分工：`BrowserEmptyStateSubmitGuardTest` 管"唯一入口 + 0 标签兜底"（㊽-D），
  * 本文件管"顺序 + scheme 判据"（N7），两者都不许被后人改回去。
  */
@@ -160,5 +165,111 @@ class BrowserUrlPolicyTest {
             "BrowserScreen 必须把归一化委托给策略",
             screen.contains("BrowserUrlPolicy.normalize(input)"),
         )
+    }
+
+    // ── ③ 展示判据：地址胶囊常态（底栏改版 2026-10-18 定稿 §6） ──
+
+    @Test
+    fun `展示_常态只给域名_剥_scheme_与_www_与小写`() {
+        assertEquals("example.com", BrowserUrlPolicy.displayHost("https://www.Example.COM/path"))
+        assertEquals("example.com", BrowserUrlPolicy.displayHost("https://example.com/"))
+        assertEquals("example.com", BrowserUrlPolicy.displayHost("http://example.com"))
+        assertEquals("/path", BrowserUrlPolicy.displayPath("https://www.example.com/path"))
+        // 展示串里永远不许再出现 scheme（143dp 那一档一个字都要省）
+        listOf(
+            "https://www.example.com/a",
+            "http://example.com:8080/a",
+            "about:blank",
+        ).forEach { assertFalse("$it 的展示串不该带 ://", BrowserUrlPolicy.displayHost(it).contains("://")) }
+    }
+
+    @Test
+    fun `展示_端口_默认剥_非默认留`() {
+        assertEquals("example.com:8080", BrowserUrlPolicy.displayHost("http://example.com:8080/x"))
+        assertEquals("example.com:14080", BrowserUrlPolicy.displayHost("https://example.com:14080"))
+        assertEquals("example.com", BrowserUrlPolicy.displayHost("https://example.com:443/"))
+        assertEquals("example.com", BrowserUrlPolicy.displayHost("http://example.com:80"))
+    }
+
+    @Test
+    fun `展示_userinfo_一律不显示`() {
+        // 凭据不能铺在界面上（这是安全口径，不是美化）
+        assertEquals(
+            "secret.example.com",
+            BrowserUrlPolicy.displayHost("https://user:pass@secret.example.com/x"),
+        )
+        assertFalse(
+            "展示串里不许残留凭据",
+            BrowserUrlPolicy.displayHost("https://user:pass@secret.example.com/x").contains("pass"),
+        )
+    }
+
+    @Test
+    fun `展示_超长_host_中段省略_保住尾域`() {
+        val got = BrowserUrlPolicy.displayHost("https://abcdefghij-klmnopqrstuv.example.com/x")
+        assertEquals("abcdefghij-k…example.com", got)
+        assertTrue("省略后仍要 26 字符以内：$got", got.length <= 26)
+        assertTrue("尾域（注册域）必须看得见", got.endsWith("example.com"))
+    }
+
+    @Test
+    fun `展示_无_authority_原样给_不拆路径`() {
+        // about:blank / data:… 这类没有 `//`，硬拆会把 "blank" 当域名
+        assertEquals("about:blank", BrowserUrlPolicy.displayHost("about:blank"))
+        assertEquals("", BrowserUrlPolicy.displayPath("about:blank"))
+        assertEquals("", BrowserUrlPolicy.displayHost(""))
+        assertEquals("", BrowserUrlPolicy.displayPath(""))
+        assertEquals("", BrowserUrlPolicy.displayHost("   "))
+    }
+
+    @Test
+    fun `展示_IDN_与_punycode_原样显示_不做反解`() {
+        // 仓库没有 punycode 依赖，不为一个显示细节引库 ⇒ xn-- 原样给（读得出"是个域名"即可）
+        assertEquals("例え.テスト", BrowserUrlPolicy.displayHost("https://例え.テスト/x"))
+        assertEquals("xn--r8jz45g.xn--zckzah", BrowserUrlPolicy.displayHost("https://xn--r8jz45g.xn--zckzah/x"))
+        assertFalse(BrowserUrlPolicy.displayHost("https://xn--r8jz45g.xn--zckzah/x").contains("www."))
+    }
+
+    @Test
+    fun `展示_IPV6_字面量的冒号不当端口`() {
+        assertEquals("[::1]:3000", BrowserUrlPolicy.displayHost("http://[::1]:3000/x"))
+        assertEquals("[::1]", BrowserUrlPolicy.displayHost("http://[::1]:80/x"))
+        assertEquals("127.0.0.1:14080", BrowserUrlPolicy.displayHost("http://127.0.0.1:14080/bridge/v1/status"))
+    }
+
+    @Test
+    fun `展示_path_根路径空_查询与片段全剥_超长尾省略`() {
+        assertEquals("", BrowserUrlPolicy.displayPath("https://example.com/"))
+        assertEquals("", BrowserUrlPolicy.displayPath("https://example.com"))
+        assertEquals("", BrowserUrlPolicy.displayPath("https://example.com?x=1"))
+        assertEquals("/rank/today", BrowserUrlPolicy.displayPath("https://example.com/rank/today?q=1#frag"))
+        val long = BrowserUrlPolicy.displayPath("https://example.com/" + "a".repeat(30))
+        assertEquals("path 必须截到 24 字符（含省略号）：$long", 24, long.length)
+        assertTrue("截断必须带省略号收尾", long.endsWith("…"))
+        assertTrue("根斜杠要留着（读得出是路径）", long.startsWith("/"))
+    }
+
+    @Test
+    fun `展示_isSecure_只看_scheme_大小写无关`() {
+        assertTrue(BrowserUrlPolicy.isSecure("https://example.com"))
+        assertFalse(BrowserUrlPolicy.isSecure("http://example.com"))
+        assertTrue(BrowserUrlPolicy.isSecure("HTTPS://Example.COM")) // 引擎回写的 URL 可能带大写
+        assertFalse(BrowserUrlPolicy.isSecure(""))
+        assertFalse(BrowserUrlPolicy.isSecure("about:blank"))
+    }
+
+    @Test
+    fun `展示_归一化之后一定能被展示判据读回`() {
+        // 两条线是接力的：normalize 补 scheme → 展示判据剥 scheme。顺序反了或口径不一致就红。
+        val identity: (String) -> String = { it }
+        assertEquals(
+            "example.com",
+            BrowserUrlPolicy.displayHost(BrowserUrlPolicy.normalize("example.com/x", identity)),
+        )
+        // 搜索词走 bing：胶囊要读得出"我在必应搜索"
+        val searched = BrowserUrlPolicy.normalize("证道 是什么", identity)
+        assertEquals("bing.com", BrowserUrlPolicy.displayHost(searched))
+        assertEquals("/search", BrowserUrlPolicy.displayPath(searched))
+        assertTrue("搜索态也算 https（升级过）", BrowserUrlPolicy.isSecure(searched))
     }
 }
