@@ -107,6 +107,29 @@ object BrowserTabManager {
         RunLog.log("玄览 newTab#tab$id：主线程开始构造 WebView（thread=${Thread.currentThread().name}）")
         val ctorBeginNanos = System.nanoTime()
         val wv = WebView(app)
+        // 玄览「100vh = 0」修法（2026-10-18 · 真机同包对照判决）：给 WebView 自带一份
+        // MATCH_PARENT 的 LayoutParams。
+        //
+        // 机理：本类建好的 WebView 由 `BrowserScreen` 的 `AndroidView(factory = { … })` 挂上窗口，
+        // 宿主是 Compose 的 `ViewFactoryHolder`（`FrameLayout` 子类）。它 `addView(child)` 时不传
+        // params ⇒ 走 `generateDefaultLayoutParams()` = **WRAP_CONTENT** ⇒ WebView.onMeasure 收到
+        // 的 heightMeasureSpec 模式是 AT_MOST/UNSPECIFIED 而**不是 EXACTLY** ⇒ Chromium 改走
+        // 「按网页内容高度给自己定尺寸」的分支，而内容高度正是由这个已经塌成 0 的视口算出来的
+        // ⇒ 自锁：`100vh/100dvh/100svh`、`min-height` 媒体查询恒为 0（宽度通道不受影响）。
+        // 用 `height:100vh + overflow:hidden` 把首屏裁死的站点（必应首页）正文整层消失、搜索框
+        // 跑到屏外；正文本身高于一屏的站点（长文页）会被自己的内容高度拽出来 ⇒ 表现为「看站点的时好时坏」。
+        //
+        // 为什么这一行就够：`FrameLayout.checkLayoutParams` 认子 View **自己带的** params ⇒
+        // WebView 拿到 EXACTLY 的测量模式，视口通道恢复；`useWideViewPort`／`loadWithOverviewMode`
+        // 两个开关单独开、一起开都**不改变** vh=0（同包各测一版已排除），它们只管桌面版式（980px 窄屏
+        // 缩放），与本病无因果。
+        //
+        // 同实例读数（lp 字段与 vh100 取自同一个 WebView 对象）：`lp=-2x-2`（WRAP_CONTENT）⇒ vh100=0；
+        // `lp=-1x-1`（MATCH_PARENT）⇒ vh100 = innerHeight。
+        wv.layoutParams = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+        )
         val ctorMs = (System.nanoTime() - ctorBeginNanos) / 1_000_000
         RunLog.log(
             "玄览 newTab#tab$id：WebView 构造返回（${ctorMs}ms${if (ctorMs > 2000) "，异常缓慢" else ""}）",
