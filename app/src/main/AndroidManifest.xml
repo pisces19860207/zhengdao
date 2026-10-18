@@ -49,6 +49,12 @@
          正是 E-020 一类的静默降级）。合并清单（debug/release/benchmark）实测均无此权限。 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- 相机（第二十二批 A 段，2026-10-18 用户拍板「相机权限」）：抱朴输入框的「＋ →
+         拍照」。**只有拍照这一条路用它**，不申请任何存储新权限（附件落进工作区，
+         工作区已由 MANAGE_EXTERNAL_STORAGE 覆盖）。运行时在 MainActivity/BaopuScreen
+         里按需请求（见 BaopuComposer 的 RequestPermission）。 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!-- 明文（cleartext）放行范围收窄（2026-10-12，用户交办）：
          改前这里是 android:usesCleartextTraffic="true" —— 全局放行，等于允许 App 与
          guest 内任何程序对任意域名发明文 HTTP。实际只用到两处（本机 oc serve 环回
@@ -202,6 +208,20 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Long-running terminal session keepalive: a user-driven Debian shell session must survive leaving the terminal UI, and no other FGS type covers a long shell session" />
         </service>
+
+        <!-- 抱朴附件（第二十二批 A 段）：相机要一个可写 Uri，安卓 7+ 只能是 content://，
+             故用 FileProvider **只**暴露缓存里的 `baopu-camera/`（见 res/xml/baopu_file_paths.xml）。
+             exported=false + grantUriPermissions=true：只有我们临时授权的那个 Uri 能被相机写，
+             别的 App 拿不到任何路径。authority 用 ${applicationId} 前缀，debug/release 不撞。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.baopu.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/baopu_file_paths" />
+        </provider>
     </application>
 
 </manifest>
