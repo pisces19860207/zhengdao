@@ -255,6 +255,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 val projectLines = remember(skillReload) {
                     SkillRules.parseIndexLines(cText, MemoryScope.PROJECT)
                 }
+                // ── 第三十六批 B 段 · 技能分类（旁挂 `_分类.json`，SKILL.md 一个字不动）──
+                // 分类**只影响显示**：它不改索引行文本、不改正文、不改人设（判据 T5）。
+                // 两层各一份表（全局那份在 App 私有、项目那份在工作区），互不串。
+                // 坏 JSON 由纯函数当空表（corrupt=true），这里只补一句红字，页面不许崩。
+                var catTick by remember { mutableStateOf(0) }
+                var picking by remember { mutableStateOf<Pair<SkillScope, String>?>(null) }
+                val globalCats = remember(catTick) { readCategories(SkillRules.globalSkillDir(globalRoot)) }
+                val projectCats = remember(catTick) { readCategories(SkillRules.projectSkillDir(projectRoot)) }
                 Text(
                     text = stringResource(
                         R.string.skill_review_desc,
@@ -371,7 +379,19 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     text = stringResource(R.string.skill_group_global),
                     style = MaterialTheme.typography.labelLarge,
                 )
-                globalLines.forEach { line ->
+                // 三十六批 B 段：这一段**按分类分组**（组标题只在换档时补一行，行本身一个字不改）。
+                // `sortByCategory` 是稳定排序 ⇒ 同一档里仍是人设里那个顺序。
+                var globalLastCat: SkillCategory? = null
+                sortByCategory(globalLines, { it.name }, globalCats).forEach { line ->
+                    val lineCat = globalCats.of(line.name)
+                    if (lineCat != globalLastCat) {
+                        Text(
+                            text = stringResource(lineCat.labelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        globalLastCat = lineCat
+                    }
                     Row(
                         // A 段（判据 U1/U5）：**整行可点** ⇒ 详情对话框，正文按盘上原文逐字显示。
                         // 行上的「恢复到上一版／删索引」两个按钮照旧（点击不冲突：子按钮先吃掉这一击）。
@@ -389,6 +409,16 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        // 右侧当前分类（点一下弹六档小选单改）。不用 TextButton：那玩意儿最小宽度
+                        // 会把这一行挤到 360dp 窄屏上换行。
+                        Text(
+                            text = stringResource(lineCat.labelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { picking = SkillScope.GLOBAL to line.name }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
                         if (SkillStore.backupsOf(skillFileOf(PersonaLayer.B_GLOBAL, line.name)).isNotEmpty()) {
                             TextButton(onClick = { restoreLast(PersonaLayer.B_GLOBAL, line.name) }) {
                                 Text(stringResource(R.string.skill_restore_last))
@@ -403,7 +433,17 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     text = stringResource(R.string.skill_group_project),
                     style = MaterialTheme.typography.labelLarge,
                 )
-                projectLines.forEach { line ->
+                var projectLastCat: SkillCategory? = null
+                sortByCategory(projectLines, { it.name }, projectCats).forEach { line ->
+                    val lineCat = projectCats.of(line.name)
+                    if (lineCat != projectLastCat) {
+                        Text(
+                            text = stringResource(lineCat.labelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        projectLastCat = lineCat
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clickable {
@@ -419,6 +459,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        Text(
+                            text = stringResource(lineCat.labelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { picking = SkillScope.PROJECT to line.name }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
                         if (SkillStore.backupsOf(skillFileOf(PersonaLayer.C_PROJECT, line.name)).isNotEmpty()) {
                             TextButton(onClick = { restoreLast(PersonaLayer.C_PROJECT, line.name) }) {
                                 Text(stringResource(R.string.skill_restore_last))
@@ -428,6 +476,38 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             Text(stringResource(R.string.skill_delete))
                         }
                     }
+                }
+                // 三十六批 B 段：分类表读不通 ⇒ 当「没有分类」用（判据 T4：不许抛、不许崩页面），
+                // 但得**说一句**——悄悄当空表是第二种骗人（红字，沿用 34 批那套 zhengdaoErrorText）。
+                if (globalCats.corrupt || projectCats.corrupt) {
+                    Text(
+                        text = stringResource(R.string.skill_cat_corrupt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = zhengdaoErrorText(),
+                    )
+                }
+                // 六档小选单（点行右侧那枚分类标签进来）。写盘只有 [setCategory] 一条口，
+                // 它只写 `_分类.json`——正文、索引行、人设一概不碰（判据 T5）。
+                picking?.let { (pickScope, pickName) ->
+                    val pickDir = skillDirOf(globalRoot, projectRoot, pickScope == SkillScope.GLOBAL)
+                    val pickTable = if (pickScope == SkillScope.GLOBAL) globalCats else projectCats
+                    SkillCategoryDialog(
+                        name = pickName,
+                        current = pickTable.of(pickName),
+                        onDismiss = { picking = null },
+                        onPick = { cat ->
+                            val msg = when (val o = setCategory(pickDir, pickName, cat)) {
+                                is CategoryOutcome.Saved ->
+                                    ctx.getString(R.string.skill_cat_saved, o.name, ctx.getString(o.category.labelRes))
+                                is CategoryOutcome.Rejected -> ctx.getString(R.string.skill_cat_rejected, o.name)
+                                is CategoryOutcome.IoFailed ->
+                                    ctx.getString(R.string.skill_cat_io_failed, o.name, o.why)
+                            }
+                            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                            picking = null
+                            catTick++
+                        },
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 // ── 第三十二批 A 段 · 草稿（试用中）──────────────────────────────
