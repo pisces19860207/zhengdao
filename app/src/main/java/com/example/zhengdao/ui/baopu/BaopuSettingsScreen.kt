@@ -405,6 +405,12 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 }
 
                 fun removeIndex(layer: PersonaLayer, name: String) {
+                    // 第二十三批 A 段追加：删索引行时把技能正文也**归档**（改名 .deleted-*，不硬删）
+                    val archived = SkillStore.archive(skillFileOf(layer, name), com.example.zhengdao.util.TimeFormats.fileStamp())
+                    if (archived is com.example.zhengdao.baopu.SkillWriteResult.Rejected) {
+                        Toast.makeText(ctx, archived.reason, Toast.LENGTH_SHORT).show()
+                        return
+                    }
                     val current = pf.read(layer).orEmpty()
                     val newText = (SkillRules.removeIndexLine(current, name) as? SkillRules.EditResult.Ok)
                         ?.newText ?: return
