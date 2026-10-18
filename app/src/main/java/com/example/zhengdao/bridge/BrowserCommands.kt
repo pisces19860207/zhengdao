@@ -16,6 +16,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * 11 条命令的执行层（设计文档 §4.5「命令清单」）。
@@ -66,6 +68,14 @@ import java.util.concurrent.TimeUnit
  * `loading`（布尔）/ `tabId` / `tabCount`（整数）/ `screenshot` 的 `file`·`bytes`·`guestPath`
  * （本机路径与字节数）/ `click`·`type`·`scroll` 回执里的 `selector`（agent 自带参数的原样
  * 回声，脱了反而破坏与请求的对应关系）。
+ *
+ * 刀 4（2026-10-18）给 `screenshot` 新增的字段同批核定，判据不变（都不是页面/标签元数据）：
+ * `hostPath`（宿主绝对路径，§2.3b(b) 补的）、`guestPathScope`（固定一句说明文案）、
+ * `mode`（`viewport`/`fullpage`/`element` 三个定值）、`width`·`height`·`scale`（整数与比例）、
+ * `note`（**本刀自己写的降级说明**，内容受控、不含页面文本）。
+ * ⚠️ 其中 `hostPath` 带的是**本机绝对路径**（`/storage/emulated/0/Download/证道/...`）——
+ * 它是设备路径不是用户隐私值，但**别学它**：路径里唯一可能带隐私的是用户名，而本 App 的
+ * 共享目录名由 [Store.root] 固定拼，不含用户名。
  * 全类扫描结论（第48刀A 任务③）：BrowserTabState 其余字段（`blockedMsg` / `everLoaded`）
  * 没有任何一条进桥的响应体。**若将来新增出口（如 `tabs` 列表命令）带 tab 元数据，
  * 必须补进上表** —— 门禁 `BridgeTitleRedactTest` 判据 C 按行扫响应体里的
@@ -265,21 +275,37 @@ object BrowserCommands {
      * 第⑲刀做的"眼睛"（只读导出）在这里直接复用 —— 同一份代码服务两个入口
      * （用户点眼睛手动导出 / agent 经桥拉取），不必写第二遍。
      *
-     * selector 参数**预留**（将来"按元素取快照"用），当前忽略但校验其合法性。
+     * **刀 4 §2.4：`selector` 不再静默。** 给了 selector 就只取**那个元素子树**
+     * （页面侧 `document.querySelector(sel).outerHTML`），取完仍走下面同一条
+     * `scrubSecrets` → `redactDom` → `summarize` 管线（脱敏口径与整页逐字一致）；
+     * 元素不存在 ⇒ 明确回「找不到元素：<selector>」（文案与 `click`/`type` 同一口径），
+     * **绝不**退化成整页 DOM。旧写法只把 selector 过一遍 `checkSelector` 就丢掉、
+     * 回包却是整页 —— 那是接线审计 §2 点名的「假过滤」（派工单 §1 事实 B）。
      *
      * ㊽-C（§B 78）：`tabId` 给了就按 id 路由（快照只读，路由错标签同样属于"静默答非所问"）。
      */
     fun snapshot(mode: String?, selector: String?, tabId: String? = null): String {
         val v = BridgePolicy.checkSnapshotMode(mode)
         if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
-        selector?.let { s ->
-            val sv = BridgePolicy.checkSelector(s)
+        // 空白 selector 视同"没给"（与 screenshot 同口径），非空白必须先过 checkSelector
+        val sel = selector?.trim()?.takeIf { it.isNotEmpty() }
+        sel?.let {
+            val sv = BridgePolicy.checkSelector(it)
             if (sv is BridgePolicy.Verdict.Deny) return err(sv.reason)
         }
         val t = target(tabId)
         val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val m = mode?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "text"
-        val html = fetchOuterHtml(tab.webView) ?: return err("取不到页面 DOM（页面可能还在加载）")
+        // 刀 4 §2.4：selector 决定取整页还是取子树，两条路共用下面同一条脱敏管线
+        val html = if (sel == null) {
+            fetchOuterHtml(tab.webView) ?: return err("取不到页面 DOM（页面可能还在加载）")
+        } else {
+            when (val sub = evalJs(tab.webView, subtreeJsScript(sel))) {
+                null -> return err("执行超时或失败")
+                "NOT_FOUND" -> return err("找不到元素：$sel")
+                else -> sub
+            }
+        }
         // 管线与第⑲刀落盘侧一致：先摘凭据 → 再打 PII
         val clean = SensitiveRedactor().redactDom(PageSnapshot.scrubSecrets(html))
         val summary = PageSnapshot.summarize(clean)
@@ -476,25 +502,88 @@ object BrowserCommands {
     }
 
     /**
-     * `screenshot`：对活跃（或指定）标签截屏，PNG 落**共享目录**（见类 KDoc 的偏离说明），
-     * 返回相对路径（agent 从 guest `/opt/zhengdao/screenshots/<file>` 读）。
+     * `screenshot`：对活跃（或指定）标签截屏，PNG 落**共享目录**（见类 KDoc 的偏离说明）。
+     *
+     * ## 刀 4 三条规格一次做完（§2.2 / §2.3 / §2.3b）
+     *
+     * | 参数 | 行为 | 回执 |
+     * |---|---|---|
+     * | 都不给 | **可视区**：整页位图按页面自己的滚动量裁出视口那一块 | `mode":"viewport"` |
+     * | `fullPage ∈ {"1","true"}` | **整页**：`capturePicture()` 路线（不依赖台前）；超出 [MAX_SHOT_WIDTH]/[MAX_SHOT_HEIGHT] 按比例缩 | `mode":"fullpage"` ＋ `width`/`height`/`scale` |
+     * | `selector` 非空白 | **只截那个元素**（与 fullPage 同时给时元素优先——范围更窄的那个才是调用方要的）；矩形＝`getBoundingClientRect()` ＋ 滚动补偿 | `mode":"element"` ＋ 元素尺寸 |
+     *
+     * 三条共同守住的底线（台账 §E「浏览器截图的两处缺陷」**第 (a) 条**，本刀销）：
+     * 旧实现用 `webView.width/height` ＋ `webView.draw(Canvas)`，页面**不在台前/未布局**时
+     * 宽高为 0，被 `coerceAtLeast(1)` 兜成一张 **1×1（99 B）的"成功"回执**；硬件加速的
+     * WebView 用软件 Canvas `draw()` 也常画出空白。现在：几何问页面（CSS px）、像素走
+     * 整页 Picture，两条路都取不到就**如实报失败**，**绝不**再拿 1×1 冒充成功（J11a）。
+     *
+     * **第 (b) 条（回执只给 guest 路径）本刀只销桥路这一半**：回执同时给
+     * `file`（相对共享目录）与 `hostPath`（宿主绝对路径），`guestPath` 保留但用
+     * `guestPathScope` 注明只给终端 guest。抱朴工具读哪个字段在 `BrowserTools.kt` /
+     * `BaopuBrowserWiring.kt`（红线）⇒ **抱朴侧真修好没有，留 4-B 接线时验**。
+     *
+     * 元素不存在 ⇒ `NOT_FOUND` 口径报错（**不许**回一张整页图充数）；元素宽或高为 0 ⇒
+     * 明说「元素没有尺寸」。
      */
-    fun screenshot(context: Context, tabId: String?, fullPage: String?): String {
+    fun screenshot(context: Context, tabId: String?, fullPage: String?, selector: String? = null): String {
+        val sel = selector?.trim()?.takeIf { it.isNotEmpty() }
+        sel?.let {
+            val v = BridgePolicy.checkSelector(it)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
         val tab = if (tabId.isNullOrBlank()) {
             BrowserTabManager.activeTab()
         } else {
             val id = tabId.trim().toIntOrNull() ?: return err("screenshot 的 tabId 不是数字")
             BrowserTabManager.tabs().firstOrNull { it.id == id }
         } ?: return err("没有这个标签")
-        val bytes = captureScreenshot(tab.webView) ?: return err("截屏失败（页面可能还没绘制）")
+        val mode = shotMode(fullPage, sel)
+        // 几何问页面（CSS px）：页面不在台前也有数——这是 §2.3b(a) 的关键一步
+        val bounds: ShotBounds? = when (mode) {
+            ShotMode.FULL_PAGE -> null
+            ShotMode.VIEWPORT -> ShotBounds.parse(evalJs(tab.webView, viewportBoundsJsScript()))
+            ShotMode.ELEMENT -> {
+                val s = sel ?: return err("screenshot 缺 selector")
+                when (val raw = evalJs(tab.webView, elementBoundsJsScript(s))) {
+                    null -> return err("执行超时或失败")
+                    "NOT_FOUND" -> return err("找不到元素：$s")
+                    else -> ShotBounds.parse(raw)
+                }
+            }
+        }
+        if (mode == ShotMode.ELEMENT && bounds != null && (bounds.w <= 0.0 || bounds.h <= 0.0)) {
+            return err("元素没有尺寸：$sel（${whole(bounds.w)}×${whole(bounds.h)} CSS px）")
+        }
+        if (mode != ShotMode.FULL_PAGE && bounds == null) {
+            return err("取不到页面几何（页面可能还没绘制）")
+        }
+        var note: String? = null
+        val shot = captureShot(tab.webView, bounds)
+            ?: captureViewportDraw(tab.webView)?.also {
+                note = if (mode == ShotMode.FULL_PAGE) {
+                    "页面过高/未取到整页布局，已退化为可视区"
+                } else {
+                    "整页位图未取到（capturePicture 返回空），已退化为未裁剪的可视区"
+                }
+            }
+            ?: return err("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
+        // 退化到可视区时，mode 要如实改成 viewport（不许挂着 element/fullpage 的名义回一张别的图）
+        val effectiveMode = if (note == null) mode else ShotMode.VIEWPORT
         val dir = File(Store.root(context), "screenshots").apply { mkdirs() }
         val name = "bridge-${System.currentTimeMillis()}.png"
-        return runCatching { File(dir, name).writeBytes(bytes) }.fold(
+        return runCatching { File(dir, name).writeBytes(shot.bytes) }.fold(
             onSuccess = {
-                ok(
-                    "file" to "screenshots/$name",
-                    "bytes" to bytes.size.toString(),
-                    "guestPath" to "/opt/zhengdao/screenshots/$name",
+                screenshotJson(
+                    file = "screenshots/$name",
+                    hostPath = File(dir, name).absolutePath,
+                    guestPath = "/opt/zhengdao/screenshots/$name",
+                    bytes = shot.bytes.size,
+                    mode = effectiveMode.wire,
+                    width = shot.width,
+                    height = shot.height,
+                    scale = shot.scale,
+                    note = note,
                 )
             },
             onFailure = { err("写截图失败：${it.message}") },
@@ -507,14 +596,263 @@ object BrowserCommands {
     private fun fetchOuterHtml(webView: WebView): String? =
         evalJs(webView, "document.documentElement.outerHTML")
 
-    private fun captureScreenshot(webView: WebView): ByteArray? = onMain {
-        val w = webView.width.coerceAtLeast(1)
-        val h = webView.height.coerceAtLeast(1)
+    /**
+     * `snapshot(selector)` 的子树脚本（刀 4 §2.4）：命中回 `outerHTML`，未命中回
+     * `NOT_FOUND`（与 `click`/`type` 同一哨兵）。selector 必须走 [jsStringLiteral]——
+     * 第㊷刀的教训：裸拼会让 `input[name=q]` 变成 JS 语法错误。
+     */
+    private fun subtreeJsScript(selector: String): String =
+        "(function(){var el=document.querySelector(" + jsStringLiteral(selector) + ");" +
+            "if(!el)return 'NOT_FOUND';return el.outerHTML})()"
+
+    /**
+     * 可视区几何脚本：`scrollX|scrollY|clientWidth|clientHeight|scrollWidth|scrollHeight`。
+     * 用页面自己的滚动量与布局视口尺寸，不看 `webView.width/height` ⇒ 页面不在台前也有数。
+     */
+    private fun viewportBoundsJsScript(): String =
+        "(function(){var d=document.documentElement;" +
+            "var sx=window.scrollX||window.pageXOffset||0,sy=window.scrollY||window.pageYOffset||0;" +
+            "return [sx,sy,d.clientWidth,d.clientHeight,d.scrollWidth,d.scrollHeight].join('|')})()"
+
+    /**
+     * 元素几何脚本（§2.3；判据 J12 钉这条）：`getBoundingClientRect()` **＋ `scrollX`/`scrollY`
+     * 滚动补偿**（rect 是视口坐标，加上滚动量才落到文档坐标），后附页面内容尺寸，
+     * 未命中回 `NOT_FOUND`（**不许**退化成整页）。
+     *
+     * 已知局限（写进报告，不当"已验"）：`position:fixed` 的元素在滚动补偿下会落到
+     * 「当前滚动位置对应的文档坐标」，与它在纸面上的固定位置不同——本刀不做特判。
+     */
+    private fun elementBoundsJsScript(selector: String): String =
+        "(function(){var d=document.documentElement;" +
+            "var e=document.querySelector(" + jsStringLiteral(selector) + ");" +
+            "if(!e)return 'NOT_FOUND';" +
+            "var r=e.getBoundingClientRect();" +
+            "var sx=window.scrollX||window.pageXOffset||0,sy=window.scrollY||window.pageYOffset||0;" +
+            "return [r.left+sx,r.top+sy,r.width,r.height,d.scrollWidth,d.scrollHeight].join('|')})()"
+
+    // ── 截图的纯判据层（internal ⇒ JVM 单测直接钉，不必为 WebView 起真机） ────
+
+    /** 截图模式（回执里 `mode` 的三取值）。 */
+    internal enum class ShotMode(val wire: String) {
+        VIEWPORT("viewport"),
+        FULL_PAGE("fullpage"),
+        ELEMENT("element"),
+    }
+
+    /**
+     * 模式判定（J6 的行为面）：`selector` 非空白 ⇒ [ShotMode.ELEMENT]（**元素优先**）；
+     * 否则 `fullPage` 去空白转小写后 ∈ {"1","true"} ⇒ [ShotMode.FULL_PAGE]；其余 ⇒
+     * [ShotMode.VIEWPORT]。`param()` 把 JSON 的 `true` 取出来就是字符串 `"true"` ⇒ 两种写法都认。
+     */
+    internal fun shotMode(fullPage: String?, selector: String?): ShotMode {
+        if (!selector.isNullOrBlank()) return ShotMode.ELEMENT
+        val f = fullPage?.trim()?.lowercase()
+        return if (f == "1" || f == "true") ShotMode.FULL_PAGE else ShotMode.VIEWPORT
+    }
+
+    /**
+     * 一次截图的像素读数。[viaPicture] 只在日志/排查里有意义（回执走 `mode`＋`note`）。
+     */
+    internal class Shot(
+        val bytes: ByteArray,
+        val width: Int,
+        val height: Int,
+        val scale: Float,
+        val viaPicture: Boolean,
+    )
+
+    /** 页面几何（CSS px）：`x|y|w|h|contentWidth|contentHeight`。 */
+    internal class ShotBounds(
+        val x: Double,
+        val y: Double,
+        val w: Double,
+        val h: Double,
+        val contentWidth: Double,
+        val contentHeight: Double,
+    ) {
+        companion object {
+            /** 六个数一段都不能缺、不能不是数 ⇒ 宁缺勿猜（返回 null 让调用方如实报错）。 */
+            fun parse(raw: String?): ShotBounds? {
+                val parts = raw?.split('|') ?: return null
+                if (parts.size != 6) return null
+                val nums = DoubleArray(6)
+                for (i in 0 until 6) {
+                    val v = parts[i].trim().toDoubleOrNull() ?: return null
+                    if (v.isNaN() || v.isInfinite()) return null
+                    nums[i] = v
+                }
+                return ShotBounds(nums[0], nums[1], nums[2], nums[3], nums[4], nums[5])
+            }
+        }
+    }
+
+    /** 裁剪框（已在输出位图像素系里）。 */
+    internal class CropBox(val left: Int, val top: Int, val width: Int, val height: Int)
+
+    /** 整页位图上限（§2.2 原文：高 ≤ 20000、宽 ≤ 4096）。 */
+    internal const val MAX_SHOT_HEIGHT = 20_000
+    internal const val MAX_SHOT_WIDTH = 4_096
+
+    /**
+     * **本刀加的一条**（对派工单的偏离，写进报告）：总像素 ≤ 1200 万。
+     * 理由：20000×4096 的 ARGB_8888 位图是 327 MB，真机上必 OOM 把整个 App 打挂——
+     * 崩掉比"多缩一点"糟得多。超这条时同样按比例缩，并在回执里如实报实际尺寸与缩放比。
+     */
+    internal const val MAX_SHOT_PIXELS = 12_000_000
+
+    /**
+     * 按比例缩到三条上限之内，返回缩放比（1f＝不用缩）。
+     * 面积约束开平方（宽高各缩 √ 倍正好把面积缩到位）。
+     */
+    internal fun fitScale(w: Int, h: Int): Float {
+        if (w <= 0 || h <= 0) return 1f
+        var s = 1.0
+        if (w > MAX_SHOT_WIDTH) s = minOf(s, MAX_SHOT_WIDTH.toDouble() / w)
+        if (h > MAX_SHOT_HEIGHT) s = minOf(s, MAX_SHOT_HEIGHT.toDouble() / h)
+        val pixels = w.toDouble() * h.toDouble()
+        if (pixels > MAX_SHOT_PIXELS) s = minOf(s, sqrt(MAX_SHOT_PIXELS / pixels))
+        return s.toFloat()
+    }
+
+    /**
+     * 把「CSS px 的矩形」映射进「输出位图像素」并裁到位图边界内（J7/J12 的算术面）。
+     *
+     * 映射比 = 位图尺寸 / 页面内容尺寸——两边量的是**同一份内容**，所以这个比值把
+     * devicePixelRatio 与页面缩放一并吃掉，Kotlin 侧不必猜密度。
+     * 返回 null ⇒ 与内容区无交集（或内容尺寸缺失）：调用方如实报错，**不许**拿整页图充数。
+     */
+    internal fun cropOf(b: ShotBounds, picWidth: Int, picHeight: Int, scale: Float): CropBox? {
+        if (picWidth <= 0 || picHeight <= 0) return null
+        if (b.contentWidth <= 0.0 || b.contentHeight <= 0.0) return null
+        val outW = maxOf(1, (picWidth * scale).roundToInt())
+        val outH = maxOf(1, (picHeight * scale).roundToInt())
+        val sx = picWidth.toDouble() / b.contentWidth
+        val sy = picHeight.toDouble() / b.contentHeight
+        val rawLeft = (b.x * sx * scale).roundToInt()
+        val rawTop = (b.y * sy * scale).roundToInt()
+        val rawW = (b.w * sx * scale).roundToInt()
+        val rawH = (b.h * sy * scale).roundToInt()
+        if (rawW <= 0 || rawH <= 0) return null
+        // 交集算法（不是"夹住"算法）：越界的那一侧直接砍掉，两轴都砍没了就是 null。
+        // 先把矩形夹进边界再算尺寸会让一个完全跑到位图外的元素压成边角上一像素的框——
+        // 那等于 §2.3b(a) 骂的「拿一张假图冒充成功」的算术版本，宁可报错。
+        val left = maxOf(0, rawLeft)
+        val top = maxOf(0, rawTop)
+        val right = minOf(outW, rawLeft + rawW)
+        val bottom = minOf(outH, rawTop + rawH)
+        if (right <= left || bottom <= top) return null
+        return CropBox(left, top, right - left, bottom - top)
+    }
+
+    /** `guestPath` 的用途限定语（§2.3b(b)：留着，但要说明它只给谁）。 */
+    internal const val GUEST_PATH_SCOPE =
+        "guestPath 只给终端 guest（proot bind 的 /opt/zhengdao）；本机与抱朴请用 hostPath"
+
+    /**
+     * `screenshot` 的回执组装（**无 Android 内核**，与第48刀A 的 [statusJson] 同款做法
+     * ⇒ JVM 单测直接喂值断言）。字段级脱敏边界见类 KDoc 的表（本函数所有字段都刻意不过管线）。
+     */
+    internal fun screenshotJson(
+        file: String,
+        hostPath: String,
+        guestPath: String,
+        bytes: Int,
+        mode: String,
+        width: Int,
+        height: Int,
+        scale: Float,
+        note: String?,
+    ): String {
+        val kv = mutableListOf(
+            "file" to file,
+            "hostPath" to hostPath,
+            "guestPath" to guestPath,
+            "guestPathScope" to GUEST_PATH_SCOPE,
+            "bytes" to bytes.toString(),
+            "mode" to mode,
+            "width" to width.toString(),
+            "height" to height.toString(),
+            "scale" to scaleText(scale),
+        )
+        if (note != null) kv.add("note" to note)
+        return ok(*kv.toTypedArray())
+    }
+
+    /** 缩放比文案：三位小数定宽（不用 `String.format` —— 避免跟着设备 locale 换数字字形）。 */
+    private fun scaleText(scale: Float): String {
+        val thousandths = (scale * 1000f).roundToInt().coerceIn(0, 1000)
+        return buildString {
+            append(thousandths / 1000)
+            append('.')
+            append((thousandths % 1000).toString().padStart(3, '0'))
+        }
+    }
+
+    /** CSS px 读数打进文案（去小数，报错文案里够用）。 */
+    private fun whole(v: Double): String = v.roundToInt().toString()
+
+    // ── 取像素（两条路线：整页 Picture 优先，可视区 draw 只当降级） ──────────
+
+    /**
+     * 整页 Picture 路线（§2.2 ＋ §2.3b(a)）：`capturePicture()` 取整页（**不依赖台前**），
+     * 按 [fitScale] 缩，给了 [bounds]（视口或元素）就只画那个框。
+     *
+     * 画框的做法是「建目标尺寸的位图 ＋ 平移缩放过画布 ＋ `picture.draw`」，
+     * 不是「先整页位图再 createBitmap 裁」——局部截图时前者少一次全页内存分配（327 MB
+     * 那种量级）。`Picture` 是 display list，跟着画布变换走，所以平移量要除以缩放比。
+     *
+     * 拿不到（Picture 空 / 尺寸 0 / 框算不出来 / 抛异常）⇒ null，由调用方走降级或如实报错。
+     */
+    @Suppress("DEPRECATION")
+    private fun captureShot(webView: WebView, bounds: ShotBounds?): Shot? = onMain {
+        val picture = runCatching { webView.capturePicture() }.getOrNull()
+        val picW = picture?.width ?: 0
+        val picH = picture?.height ?: 0
+        if (picture == null || picW <= 0 || picH <= 0) {
+            return@onMain null
+        }
+        val scale = fitScale(picW, picH)
+        val box = if (bounds == null) null else cropOf(bounds, picW, picH, scale)
+        if (bounds != null && box == null) return@onMain null
+        val outW = maxOf(1, (picW * scale).roundToInt())
+        val outH = maxOf(1, (picH * scale).roundToInt())
+        val w = box?.width ?: outW
+        val h = box?.height ?: outH
+        if (w <= 0 || h <= 0) return@onMain null
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.save()
+        canvas.scale(scale, scale)
+        if (box != null) canvas.translate(-box.left.toFloat() / scale, -box.top.toFloat() / scale)
+        picture.draw(canvas)
+        canvas.restore()
+        Shot(encodePng(bitmap), w, h, scale, viaPicture = true)
+    }.value
+
+    /**
+     * 可视区降级路线（`webView.draw(Canvas)`）。**只在页面已布局**（宽高都 > 0）时才走。
+     *
+     * §2.3b(a) 点名的 1×1 假成功就出在旧写法这里：`webView.width.coerceAtLeast(1)` 把
+     * 「没布局」兜成「1×1 的成功回执」。现在未布局直接 null ⇒ 调用方如实报失败。
+     * 硬件加速的 WebView 用软件 Canvas `draw()` 仍可能画出空白，所以这条**只当降级**，
+     * 回执里 `mode` 改回 viewport、`note` 写明退化的原因。
+     */
+    private fun captureViewportDraw(webView: WebView): Shot? = onMain {
+        val w = webView.width
+        val h = webView.height
+        if (w <= 0 || h <= 0) {
+            return@onMain null
+        }
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         webView.draw(Canvas(bitmap))
+        Shot(encodePng(bitmap), w, h, 1f, viaPicture = false)
+    }.value
+
+    /** 位图 → PNG 字节，顺手 recycle（调用方都在主线程块里，位图用完即弃）。 */
+    private fun encodePng(bitmap: Bitmap): ByteArray {
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         bitmap.recycle()
-        out.toByteArray()
-    }.value // 失败/超时 ⇒ null，调用方维持既有文案「截屏失败」
+        return out.toByteArray()
+    }
 }
