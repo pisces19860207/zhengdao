@@ -629,10 +629,56 @@ class BaopuSessionTreeTest {
     }
 
     @Test
-    fun `A6_小节标题右侧留位但这一批一个控件都不放`() {
-        val group = bodyOf(drawerCode, "private fun DrawerGroup(title: String) {")
-        assertTrue("留的是空白（将来放搜索／加文件夹）", group.contains("Spacer(Modifier.width(8.dp))"))
-        assertFalse("不许提前放按钮", group.contains("IconButton"))
+    fun `A6_小节标题右侧留给入口_A7_只用文字符号`() {
+        // 2026-10-18 用户口径（照 DSH 左侧栏）：「工作区」标题右侧要能选文件夹。
+        // 29 批当初写的是「本批一个控件都不放」——现在放开，但仍然**只许文字符号 ＋**，
+        // 不许引图标库、不许自绘 glyph（A7 不变）。
+        val group = bodyOf(drawerCode, "private fun DrawerGroup(title: String, trailing: (@Composable () -> Unit)? = null) {")
+        assertTrue("标题右侧要能挂入口", group.contains("trailing?.invoke()"))
+        assertTrue("工作区组要真挂上 ＋", drawerCode.contains("onAddWorkspace"))
+        assertFalse("不许改成 IconButton/图标库", group.contains("IconButton"))
+        assertFalse("不许自绘 glyph", group.contains("Canvas("))
+    }
+
+    @Test
+    fun `A8_文件夹行右侧的圆里加号_只给真文件夹`() {
+        // DSH：文件夹行右边一个「圆里加号」＝在这个文件夹里干活。
+        // 默认工作区（历史未记录）不是真文件夹 ⇒ 不给这个按钮。
+        assertTrue("要有这个按钮", drawerCode.contains("onRunHere = onWorkspaceRunHere"))
+        assertTrue("圆形描边＋文字加号，不自绘", drawerCode.contains(".border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)"))
+        assertTrue("加号是文字", drawerCode.contains("text = \"＋\""))
+        assertTrue("默认工作区不给", drawerCode.contains("if (!node.unknown)"))
+        // 页面：当前工作区直接开；别的文件夹**必须先问人**（切工作区是全局动作）
+        val runHere = bodyOf(screenCode, "onWorkspaceRunHere = { node ->")
+        assertTrue("当前工作区直接开新会话", runHere.contains("controller.newSession()"))
+        assertTrue("别的文件夹先挂起问人", runHere.contains("runHereNode = node"))
+        assertFalse("不许在这一支里直接改工作区", runHere.contains("Workspace.setCustom"))
+    }
+
+    @Test
+    fun `A9_切工作区要确认_并且留痕`() {
+        val confirm = bodyOf(screenCode, "runHereNode?.let { node ->")
+        assertTrue("确认后才切", confirm.contains("Workspace.setCustom(context, node.fullPath)"))
+        assertTrue("内核项变更要留痕（26-B）", confirm.contains("RunLog.log(KernelAudit.workspace(after, before))"))
+        assertTrue("切完才开新会话", confirm.contains("controller.newSession()"))
+        assertTrue("失败要说", confirm.contains("baopu_switch_ws_failed"))
+        // 选文件夹那条路同样：切 ＋ 留痕 ＋ 开新会话
+        val picker = bodyOf(screenCode, "if (addWorkspaceOpen) {")
+        assertTrue("选择器要接上", picker.contains("WorkspaceFolderPicker("))
+        assertTrue("选中后要留痕", picker.contains("RunLog.log(KernelAudit.workspace(after, before))"))
+    }
+
+    @Test
+    fun `A10_切工作区与加工作区的键中英对称`() {
+        val zh = repoFile("src/main/res/values/strings.xml").readText()
+        val en = repoFile("src/main/res/values-en/strings.xml").readText()
+        listOf(
+            "baopu_switch_ws_title", "baopu_switch_ws_body", "baopu_switch_ws_confirm",
+            "baopu_switch_ws_cancel", "baopu_switch_ws_failed",
+        ).forEach { key ->
+            assertTrue("中文缺 $key", zh.contains("name=\"$key\""))
+            assertTrue("英文缺 $key", en.contains("name=\"$key\""))
+        }
     }
 
     @Test
