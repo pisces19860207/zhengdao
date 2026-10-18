@@ -129,6 +129,13 @@ internal object BaopuRuntime {
         BaopuBrowserWiring.install(appCtx)
         val reg = ToolRegistry(toolPrefs(appCtx))
         BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
+        // 2026-10-18：抱朴自己写技能（确认制；写前备份、同名即改、写完进索引）
+        reg.register(
+            com.example.zhengdao.baopu.agent.SkillTools.spec(
+                workspaceRoot = { workspaceRoot(appCtx) },
+                personaFiles = { personaFiles(appCtx) },
+            ),
+        )
         if (provider.builtinFree) {
             val readSchema = ReadFileTool.spec().inputSchema
             reg.register(
