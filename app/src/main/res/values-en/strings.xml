@@ -1074,7 +1074,7 @@
     <string name="skill_new_body">SKILL.md body</string>
     <string name="skill_new_scope_project">Project (follows workspace)</string>
     <string name="skill_new_scope_global">Global (follows app)</string>
-    <string name="skill_new_draft">Start as draft (promote after 3 uses; drafts stay out of the index)</string>
+    <string name="skill_new_draft">Start as draft (promote after 3 uses; drafts still get an index line, marked unverified)</string>
     <string name="skill_new_review">Next: confirm</string>
     <string name="skill_confirm_title">Confirm writing</string>
     <string name="skill_confirm_name">Name: %1$s</string>
