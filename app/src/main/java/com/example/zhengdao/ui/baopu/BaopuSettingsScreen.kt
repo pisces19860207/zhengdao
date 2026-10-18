@@ -15,7 +15,6 @@
 // 不新建 Activity：AndroidManifest.xml 本批禁改，新增 Activity 必须动清单。
 package com.example.zhengdao.ui.baopu
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.rememberScrollState
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
@@ -54,9 +55,15 @@ import com.example.zhengdao.ui.theme.iosSwitchColors
 @Composable
 internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
     val ctx = LocalContext.current
-    BackHandler { onDismiss() }
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        SettingsSubPage(title = stringResource(R.string.baopu_drawer_settings), onBack = onDismiss) {
+    // 承载方式（2026-10-18 真机修正）：必须用 **Dialog 全屏**，不能直接摆在 BaopuScreen 的
+    // Column 里——实测那样只在对话与输入框之间挤出一条，聊天还露在外面上下两端。
+    // 与 BaopuExtractSheet 同一条路子（Dialog 是真窗口），宽度默认受限故关掉 usePlatformDefaultWidth。
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = true),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            SettingsSubPage(title = stringResource(R.string.baopu_drawer_settings), onBack = onDismiss) {
 
             // ── 抱朴工具（刀 2 追加包：工具集「表＋开关」的开关侧）──（自 SettingsDataActivity 原样搬入）
             // 定位：抱朴页里那个 agent 能用哪些工具，由用户在这里逐项决定。
@@ -197,6 +204,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                     }
                 }
             }
+            }
         }
     }
 }
@@ -225,6 +233,10 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "browser_type" -> R.string.baopu_tool_browser_type
     "browser_scroll" -> R.string.baopu_tool_browser_scroll
     "browser_screenshot" -> R.string.baopu_tool_browser_screenshot
+    // 第十七批 A+B 段加的 update_plan：当时没同步这张表 ⇒ 2026-10-18 真机开本页直接崩
+    // （IllegalArgumentException: 未知抱朴工具「update_plan」）。回归网见 BaopuSettingsGuardTest 的
+    // 「catalog 每个工具都有标签/副标题」那条。
+    "update_plan" -> R.string.baopu_tool_update_plan
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -258,5 +270,6 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "browser_type" -> R.string.baopu_tool_browser_type_desc
     "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc
     "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
+    "update_plan" -> R.string.baopu_tool_update_plan_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
