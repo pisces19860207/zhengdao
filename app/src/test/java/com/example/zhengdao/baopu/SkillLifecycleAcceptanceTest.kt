@@ -121,4 +121,40 @@ class SkillLifecycleAcceptanceTest {
         assertTrue(r is SkillWriteResult.Rejected)
         assertFalse("技能目录一个都不许建", File(projectRoot, SkillRules.SKILL_DIR).exists())
     }
+    // ── write_skill 工具的门禁（第二十三批追加） ─────────────────────────────
+
+    @Test
+    fun `L7_write_skill必须是确认制_且默认启用`() {
+        val spec = com.example.zhengdao.baopu.agent.SkillTools.spec(
+            workspaceRoot = { projectRoot },
+            personaFiles = { pf() },
+        )
+        assertEquals("write_skill", spec.name)
+        assertEquals(
+            "写技能会改用户文件，必须是 CONFIRM（不许 FREE 一键落盘）",
+            com.example.zhengdao.baopu.agent.ToolPermission.CONFIRM,
+            spec.permission,
+        )
+        val reg = File("src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt")
+            .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt") }
+            .readText()
+        assertTrue("要进默认启用集", reg.contains("\"write_skill\""))
+        val rt = File("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt")
+            .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt") }
+            .readText()
+        assertTrue("要真的注册进注册表", rt.contains("SkillTools.spec("))
+    }
+
+    @Test
+    fun `L8_名字为空或正文为空时工具拒绝_不落盘`() {
+        val spec = com.example.zhengdao.baopu.agent.SkillTools.spec(
+            workspaceRoot = { projectRoot },
+            personaFiles = { pf() },
+        )
+        val noName = spec.executor(org.json.JSONObject("""{"name":"","body":"x"}"""))
+        assertTrue("空名字要拒：$noName", noName is com.example.zhengdao.baopu.agent.ToolOutcome.Failed)
+        val noBody = spec.executor(org.json.JSONObject("""{"name":"ok-name","body":"   "}"""))
+        assertTrue("空正文要拒：$noBody", noBody is com.example.zhengdao.baopu.agent.ToolOutcome.Failed)
+        assertFalse("被拒时不许建目录", File(projectRoot, SkillRules.SKILL_DIR).exists())
+    }
 }
