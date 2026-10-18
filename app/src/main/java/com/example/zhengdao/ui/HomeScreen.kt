@@ -388,6 +388,14 @@ fun HomeScreen(
                 Text(stringResource(R.string.common_settings), color = MaterialTheme.colorScheme.primary)
             }
         }
+        // 定位文案（第十八批 C 段）：顶栏标题下的一行小字——只增一行文本，
+        // 不加卡片、不动 tab、不重排（§2.3 红线）。
+        Text(
+            text = stringResource(R.string.baopu_positioning_value),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
+        )
 
         // P2-12（issue #17）：下拉刷新包住列表（material3 1.4 的 PullToRefreshBox）。
         // 刷新的实质 = stateTick++ ⇒ 常驻轮询的 effect 立刻重跑一遍（不等 2 秒），
@@ -527,27 +535,87 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.outlineVariant,
                             )
                             Spacer(Modifier.height(12.dp))
-                            // 环境体检（P7）：逐项勾叉 + 定向修复；先于系统信息展示
+                            // 环境体检（P7 → 第十八批 B 段瘦身）：健康的不显示、缺失的合并成
+                            // 一行红叉（点开看明细与修复），全绿 ⇒ 整块不出现。
+                            // 展示口径唯一出口 visibleRows（本文件尾部，J4-J6 的靶子）；
+                            // 修复动作（宿主侧自愈 / 终端脚本 / 引导去路）原样保留在明细里。
                             val checks = healthChecks
-                            Text(
-                                text = if (checks == null) stringResource(R.string.home_health_checking)
-                                else {
-                                    // 告警（warn）不计入"通过"：否则会出现"8/8 通过"却带 ⚠ 的自相矛盾
-                                    val pass = checks.count { it.ok && !it.warn }
-                                    stringResource(R.string.home_health_pass, pass, checks.size)
-                                },
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
                             if (checks == null) {
+                                Text(
+                                    text = stringResource(R.string.home_health_checking),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = stringResource(R.string.home_health_scanning),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             } else {
-checks.forEachIndexed { index, c ->
+                                val failedChecks = checks.filter { !it.ok }
+                                if (failedChecks.isNotEmpty()) {
+                                    // 缺失合并行：红叉 ✗ + 「缺 N 项」（口径在 visibleRows，J5/J6 的靶子）
+                                    var issuesExpanded by remember { mutableStateOf(false) }
+                                    val missingFmt = context.getString(R.string.home_health_missing)
+                                    val agentMissingFmt = context.getString(R.string.home_agent_missing)
+                                    val headline = visibleRows(
+                                        checks, agents,
+                                        summarize = { n -> String.format(missingFmt, n) },
+                                        missingAgent = { name -> String.format(agentMissingFmt, name) },
+                                    ).firstOrNull()?.headline.orEmpty()
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .pressClickable { issuesExpanded = !issuesExpanded }
+                                            .padding(vertical = 6.dp),
+                                    ) {
+                                        Text(
+                                            text = "✗",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = zhengdaoErrorText(),
+                                            modifier = Modifier.width(22.dp),
+                                        )
+                                        Text(
+                                            text = headline,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        val chevronRotation by animateFloatAsState(
+                                            targetValue = if (issuesExpanded) 180f else 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium,
+                                            ),
+                                            label = "issuesChevron",
+                                        )
+                                        ExpandChevron(
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.rotate(chevronRotation),
+                                        )
+                                    }
+                                    AnimatedVisibility(
+                                        visible = issuesExpanded,
+                                        enter = expandVertically(
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                                stiffness = Spring.StiffnessMediumLow,
+                                            ),
+                                            expandFrom = Alignment.Top,
+                                        ) + fadeIn(tween(180)),
+                                        exit = shrinkVertically(
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow,
+                                            ),
+                                            shrinkTowards = Alignment.Top,
+                                        ) + fadeOut(tween(140)),
+                                    ) {
+                                        Column {
+                                            failedChecks.forEachIndexed { index, c ->
                                     // 每项延迟 index*50ms 淡入+上移：体检结果"飘进来"而不是"砸进来"
                                     // （2026-10-12 用户：「说是动态卡一点也不动态」）。remember 不带 key：
                                     // 流式新项出现在新组合位置 ⇒ 各自播入场；复检更新同位置 ⇒ 不重播。
@@ -704,8 +772,12 @@ checks.forEachIndexed { index, c ->
                                         }
                                     }
                                     } // StaggeredAppear 收尾
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                        }
+                                    }
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
+                                // 全绿 ⇒ 整个体检区块不出现（§2.2-4：不显示「一切正常」，不留空壳）
                             }
                             sysInfo?.let { info ->
                                 // 系统信息是一段多行长文本，裸排会和体检项混成一片；
@@ -862,8 +934,9 @@ checks.forEachIndexed { index, c ->
                 }
             }
         }
-        // ── Agent 卡片（OpenCode 已内置为抱朴，不在怡然展示——用户定稿）──
-        items(agents.filter { it.id != "opencode" }, key = { it.id }) { agent ->
+        // ── Agent 卡片（第十八批 B 段：只保留 Hermes——Claude Code / AGY / Codex
+        // 不再出现状态行（§2.2-1）；OpenCode 已内置为抱朴，原本就不展示——用户定稿）──
+        items(agents.filter { it.id == "hermes" }, key = { it.id }) { agent ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -1270,4 +1343,35 @@ private fun ExpandChevron(tint: Color, modifier: Modifier = Modifier) {
             style = Stroke(width = 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
     }
+}
+
+// ═══ 检测瘦身（第十八批 B 段）的展示口径 ═══
+
+/** 一条要显示的检测行。[error] = true ⇒ 红叉 ✗；[details] 是点开后的逐项明细。 */
+internal data class DetectionRow(val headline: String, val error: Boolean, val details: List<String>)
+
+/**
+ * 检测瘦身（派工单 §2.2）的**唯一展示口径**——首页状态卡体检区从这里取行（J4-J6 的靶子）。
+ *
+ * 四条口径：
+ * 1. 其它 agent（Claude Code / AGY / Codex…）一律不出现——本函数只认 id=="hermes"（J4）；
+ * 2. 检测通过（Check.ok）的不显示；
+ * 3. 失败的合并成**一行**，headline 由 [summarize] 生成（「缺 N 项」），明细逐项列在
+ *    [DetectionRow.details]（J6）；Hermes 本体缺失也算一项（[missingAgent] 生成文案）；
+ * 4. 全绿 ⇒ 空列表——调用方整个区块不渲染（J5）。
+ *
+ * 纯函数（输入输出全是纯数据），JVM 直测；用户可见文案由调用方经 [summarize] /
+ * [missingAgent] 注入（strings.xml 双语），函数自身不拼文案。
+ * 默认的中文串只给单测当固定 fixture 用，生产路径一律传资源串。
+ */
+internal fun visibleRows(
+    checks: List<EnvHealth.Check>,
+    agents: List<AppState.AgentInfo>,
+    summarize: (Int) -> String = { n -> "缺 $n 项" },
+    missingAgent: (String) -> String = { name -> "$name 未安装" },
+): List<DetectionRow> {
+    val details = checks.filter { !it.ok }.map { "${it.label}：${it.detail}" } +
+        agents.filter { it.id == "hermes" && !it.installed }.map { missingAgent(it.name) }
+    if (details.isEmpty()) return emptyList()
+    return listOf(DetectionRow(headline = summarize(details.size), error = true, details = details))
 }

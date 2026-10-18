@@ -136,6 +136,13 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 },
             )
             Spacer(Modifier.height(4.dp))
+            // 定位文案（第十八批 C 段）：抱朴 = 自研 harness。中英走 strings.xml（baopu_positioning_*），
+            // 与首页顶栏那句同一对字符串。
+            InfoRow(
+                stringResource(R.string.baopu_positioning_label),
+                stringResource(R.string.baopu_positioning_value),
+            )
+            Spacer(Modifier.height(4.dp))
             InfoRow(stringResource(R.string.about_author), "小信多多")
             Spacer(Modifier.height(4.dp))
             // Root 增强模式（2026-10-12 从设置 Hub 移来）：未实现项不再占设置页的行，

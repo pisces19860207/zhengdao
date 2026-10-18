@@ -196,8 +196,12 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 com.example.zhengdao.terminal.HermesEnv.inspect(ctx, ctx.resources)
             }
         }
+        // 第十八批 B 段（§2.2-2/4）：检测通过且没有要清理的东西 ⇒ 整卡不出现
+        // （不显示「一切正常」，不留空壳）；检测中 / 未通过 / 有中断标记要清理才显示。
+        val hermesSt = hermesEnv
+        if (hermesSt == null || !hermesSt.ok || hermesSt.canRepairOnHost) {
         SectionCard(stringResource(R.string.env_hermes_card)) {
-            val st = hermesEnv
+            val st = hermesSt
             Text(
                 text = st?.detail ?: stringResource(R.string.env_hermes_checking),
                 style = MaterialTheme.typography.bodySmall,
@@ -244,6 +248,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
             }
         }
         // ── 检查环境更新（第三批：manifest 对比 + 应用内下载安装，不自动检查）──
