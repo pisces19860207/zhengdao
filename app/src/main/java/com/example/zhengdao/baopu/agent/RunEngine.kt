@@ -649,6 +649,11 @@ internal class RunEngine(
                         HistoryMessage.ROLE_ASSISTANT,
                         outcome.text,
                     )
+                    // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）
+                    val left = planController.unfinishedCount()
+                    if (left > 0) {
+                        _notice.value = "计划里还有 $left 条没勾（进度看顶部计划卡）"
+                    }
                     settle(sessionId, stepCount, RunState.DONE, "Done")
                     return
                 }

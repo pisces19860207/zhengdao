@@ -106,12 +106,13 @@ class PlanRulesTest {
     }
 
     @Test
-    fun `超8条_截断到8并记notice`() {
-        val nine = (1..9).map { "条目$it" to "todo" }.toTypedArray()
-        val r = parseOk(*nine)
-        assertEquals(8, r.items.size)
-        assertEquals("条目8", r.items[7].text)
-        assertTrue("截断要有 notice：${r.notices}", r.notices.any { it.contains("8") && it.contains("9") })
+    fun `超12条_截断到12并记notice`() {
+        // 2026-10-19：上限 8 → 12（用户口径「计划只有三步会不会不够」）
+        val fifteen = (1..15).map { "条目$it" to "todo" }.toTypedArray()
+        val r = parseOk(*fifteen)
+        assertEquals("上限就是 12", 12, r.items.size)
+        assertEquals("条目12", r.items[11].text)
+        assertTrue("截断要有 notice：${r.notices}", r.notices.any { it.contains("12") && it.contains("15") })
     }
 
     @Test

@@ -187,17 +187,17 @@ class PlanToolTest {
         PlanTool.sink = PlanController(sessionId = { 99L }, store = store)
         val reg = catalogRegistry()
         val pipeline = GuardPipeline(reg, { File(".") })
-        val nine = (1..9).map { "条目$it" to "todo" }.toTypedArray()
-        val result = pipeline.execute(ToolCall("c1", PlanTool.NAME, planArgs(*nine))) { _, _ -> null }
+        val thirteen = (1..13).map { "条目$it" to "todo" }.toTypedArray()
+        val result = pipeline.execute(ToolCall("c1", PlanTool.NAME, planArgs(*thirteen))) { _, _ -> null }
         assertTrue(result is GuardPipeline.Result.Done)
         val wrapped = (result as GuardPipeline.Result.Done).wrapped
         assertTrue("回灌带围栏（唯一出口）", wrapped.startsWith(DataFence.FENCE_OPEN))
-        assertTrue("回灌带进度", wrapped.contains("0/8"))
-        assertEquals("落库一条，截断到 8", 1, store.inserts.size)
+        assertTrue("回灌带进度（分母是 12 条上限）", wrapped.contains("0/12"))
+        assertEquals("落库一条，截断到 12", 1, store.inserts.size)
         assertEquals(99L, store.inserts.single().first)
         val payload = store.inserts.single().second
         val parsed = PlanRules.fromJson(payload)
-        assertEquals(8, parsed.size)
+        assertEquals("截断到 12 条", 12, parsed.size)
         assertEquals("读回逐字一致", payload, PlanRules.toJson(parsed))
     }
 
