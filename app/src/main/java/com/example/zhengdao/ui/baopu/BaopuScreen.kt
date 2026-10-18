@@ -5,21 +5,33 @@
 // （MainActivity 的 TabIndex.BAOPU 支由占位页改指本页）。
 // 刀 1 补丁：页顶加「换通道」入口（弹 BaopuChannelSheet）；保存后重建控制器
 // （控制器构造期持引擎，而 provider 是引擎的构造期注入 ⇒ 换通道必须换引擎）。
-// 刀 2：页顶补「章节抽取」「备份原件」两个入口 ＋ 防丢顶条（超 N 天没导出就提醒、
-// 一键导出）＋ 收料提问卡 ＋ 提炼待过目卡与自省便签 ＋ 长按图标快捷方式落地。
+// 刀 3（2026-10-17）：顶条瘦身——「章节抽取／备份原件／换通道」三个文字按钮收进左侧抽屉
+// （BaopuDrawer），首屏只留 ☰／状态／＋ 四件。口径来自用户：「不常用的设置归到抱朴的设置抽屉里，
+// 满屏幕都是按钮和按键，手机本来屏幕就小」。
 package com.example.zhengdao.ui.baopu
 
+import android.content.Context
+import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -27,19 +39,33 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.ui.SettingsDataActivity
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.BackupRules
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+/** 抽屉入口统一跳「终端与资料」页（工具开关、资料库都在那儿）。 */
+private fun openSettings(context: Context) {
+    context.startActivity(Intent(context, SettingsDataActivity::class.java))
+}
 
 /**
  * 抱朴页（刀 1 · B 段）：占位页 [BaopuRebuilding] 的真身。
@@ -59,6 +85,13 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var showChannel by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
+
+    // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val drawerWidth = if (screenWidthDp * 0.8f > 300f) 300.dp else (screenWidthDp * 0.8f).dp
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
     // 引擎事件驱动刷新已由 controller 内部做；这里补一个前台可见时的兜底刷新
     // （进程被杀后重进：库里有中断标记，controller 构造时 refresh 已读一次）。
@@ -109,21 +142,76 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(modifier = Modifier.width(drawerWidth)) {
+                BaopuDrawer(
+                    busy = controller.busy,
+                    onNewSession = {
+                        scope.launch { drawerState.close() }
+                        controller.newSession()
+                    },
+                    onLibrary = {
+                        scope.launch { drawerState.close() }
+                        openSettings(context)
+                    },
+                    onExtract = {
+                        scope.launch { drawerState.close() }
+                        showExtract = true
+                    },
+                    onBackup = {
+                        scope.launch { drawerState.close() }
+                        showBackup = true
+                    },
+                    onChannel = {
+                        scope.launch { drawerState.close() }
+                        showChannel = true
+                    },
+                    onSettings = {
+                        scope.launch { drawerState.close() }
+                        openSettings(context)
+                    },
+                )
+            }
+        },
+    ) {
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = { showExtract = true }) {
-                    Text(stringResource(R.string.baopu_extract_title))
-                }
-                TextButton(onClick = { showBackup = true }) {
-                    Text(stringResource(R.string.baopu_backup_title))
-                }
-                TextButton(onClick = { showChannel = true }) {
-                    Text(stringResource(R.string.baopu_channel_button))
+            // 顶条（刀 3 瘦身）：☰ 开抽屉 · 状态 · ＋新会话。
+            // 「章节抽取／备份原件／换通道」已进抽屉；中断提示与续跑仍由 BaopuSessionBar 承担。
+            Surface(tonalElevation = 1.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val openLabel = stringResource(R.string.baopu_drawer_open)
+                    val newSessionLabel = stringResource(R.string.baopu_new_session)
+                    IconButton(
+                        onClick = { scope.launch { drawerState.open() } },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics { contentDescription = openLabel },
+                    ) {
+                        // 本项目没引 material-icons 依赖，用字形够了（☰），不为一个图标多打一个包。
+                        Text(text = "☰", style = MaterialTheme.typography.titleMedium)
+                    }
+                    Text(
+                        text = stringResource(stateLabel(state)) +
+                            if (controller.engineStep.value > 0) " · ${controller.engineStep.value}" else "",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    IconButton(
+                        onClick = { controller.newSession() },
+                        enabled = !controller.busy,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics { contentDescription = newSessionLabel },
+                    ) {
+                        Text(text = "＋", style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
             // 防丢顶条（D 段第 3 条）：原件超 N 天没导出就提醒 ＋ 一键导出。
@@ -166,12 +254,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
             BaopuSessionBar(
                 state = state,
-                step = controller.engineStep.value,
                 interruptedStep = controller.interruptedStep,
                 notice = controller.engineNotice.value,
                 hasSession = controller.sessionId != null,
                 onResume = { controller.resume() },
-                onNewSession = { controller.newSession() },
             )
             // 自省便签（C 段：恰好一条；新会话清空）
             controller.introspectionNote?.let { note ->
@@ -275,5 +361,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuExtractSheet(onDismiss = { showExtract = false })
             }
         }
+    }
     }
 }
