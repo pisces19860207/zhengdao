@@ -593,36 +593,7 @@
     <string name="keepalive_log_clear_desc">This permanently clears every keepalive record: recent exits, recent heartbeats, and %1$d logcat snapshots.</string>
     <string name="keepalive_log_clear_warn">Once cleared the records are gone for good — they cannot be recovered or undone.</string>
 
-    <!-- ── Plugins page (PluginsScreen) ── -->
-    <string name="plugins_card_enabled">Enabled</string>
-    <string name="plugins_state_enabled">Enabled</string>
-    <string name="plugins_empty_enabled">No plugins enabled yet. Add one from \"Recommended\" below.</string>
-    <string name="plugins_empty_no_env">Baopu\'s OpenCode isn\'t initialized — open Baopu once and the plugin config will be generated automatically.</string>
-    <string name="plugins_card_recommended">Recommended</string>
-    <string name="plugins_legacy">⚠️ Deprecated plugin (installed before but no longer working) — turning it off is recommended</string>
-    <string name="plugins_cached_ver">v%1$s cached</string>
-    <string name="plugins_not_downloaded">Not downloaded yet (installed over the network the first time an agent starts)</string>
-    <string name="plugins_enabled_toast">Enabled: %1$s (takes effect the next time an agent starts)</string>
-    <string name="plugins_disabled_toast">Disabled: %1$s</string>
-    <string name="plugins_oc_not_ready">Baopu\'s OpenCode isn\'t initialized — open Baopu once first</string>
-    <string name="plugins_no_change">No change</string>
-    <string name="plugins_card_add">Add a plugin (npm package name)</string>
-    <string name="plugins_add_hint">"e.g. @scope/opencode-plugin-xxx"</string>
-    <string name="plugins_bad_spec">"That doesn\'t look like an npm package name: it should look like my-plugin or @scope/my-plugin, with no spaces"</string>
-    <string name="plugins_not_written">Not written to the config: %1$s (it may already be in the plugin list)</string>
-    <string name="plugins_not_added">Not added: %1$s — Baopu\'s OpenCode isn\'t initialized, open Baopu once first</string>
-    <string name="plugins_add_enable">Add and enable</string>
-    <string name="plugins_add_note">Copy the package name from the plugin\'s npm / GitHub page. Once added, opencode\'s bundled Bun downloads it from npm the next time an agent starts (the first time needs a network connection). Plugins run third-party code — only add packages you trust.</string>
-    <string name="plugins_cache_card">Plugin package cache (%1$d MB)</string>
-    <string name="plugins_cache_empty">No cache yet. On a plugin\'s first start, opencode\'s bundled Bun downloads it here from npm; after that it works offline.</string>
-    <string name="plugins_cache_clean">Clear plugin package cache</string>
-    <string name="plugins_cache_clean_note">Clearing doesn\'t disable the plugin — it\'s re-downloaded the next time an agent starts.</string>
-    <string name="plugins_card_about">About plugins</string>
-    <string name="plugins_about_note">Plugins are downloaded from npm and run third-party code — only enable ones you trust.\n\n\"Plugins\" here means the kind declared by package name in the config and downloaded automatically at startup; local .js files aren\'t handled here.\n\nThis page only covers OpenCode inside Baopu; an opencode you installed yourself in the terminal isn\'t managed here.</string>
-    <string name="plugins_clean_confirm_title">Clear the plugin package cache?</string>
-    <string name="plugins_clean_confirm_msg">This deletes the downloaded plugin packages (about %1$d MB). The plugins stay enabled and will be re-downloaded next time.</string>
-    <string name="plugins_cleaned_toast">Cleared, reclaimed about %1$d MB</string>
-
+    
     <!-- ── First-run permissions screen (PermissionSetupScreen) ── -->
     <string name="perm_title">Permissions</string>
     <string name="perm_intro">Zhengdao needs to read and write your files, and to notify you when a cleanup finishes. It needs the permissions below. You can grant them one by one, or set them up later (Settings → Permissions, any time).</string>
