@@ -252,4 +252,31 @@ class SkillStoreTest {
             "skill_confirm_name", "skill_confirm_scope", "skill_confirm_chars", "skill_confirm_backup",
         ).forEach { assertTrue("确认卡缺 $it", settings.contains(it) || File("src/main/res/values/strings.xml").let { s -> val ff = if (s.exists()) s else File("app/src/main/res/values/strings.xml"); ff.readText().contains("name=\"$it\"") }) }
     }
+    // ── C 段：抱朴得知道自己会做卡 ─────────────────────────────────────────
+
+    @Test
+    fun `S15_人设里写明它会做卡_且点明三套格式`() {
+        val preset = File("src/main/java/com/example/zhengdao/baopu/BaopuPreset.kt")
+            .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/BaopuPreset.kt") }
+            .readText()
+        // 用户实测的痛点：跟抱朴聊天，它没说自己会做酒馆/Tavo/平台的卡
+        assertTrue("要有能力自述段", preset.contains("你会做什么"))
+        assertTrue("必须点名风月AI", preset.contains("风月AI"))
+        assertTrue("必须点名 SillyTavern", preset.contains("SillyTavern"))
+        assertTrue("必须点名 Tavo", preset.contains("Tavo"))
+        assertTrue("要讲先认脸", preset.contains("先认脸"))
+        assertTrue("要提醒字段以实测为准", preset.contains("实测"))
+        assertTrue("指向技能目录", preset.contains("技能/"))
+    }
+
+    @Test
+    fun `S16_平台机制技能模板是固定四段`() {
+        val t = SkillStore.PLATFORM_SKILL_TEMPLATE
+        listOf("① 平台 / 页面", "② 字段清单", "③ 格式认脸与差异", "④ 已知坑").forEach {
+            assertTrue("模板缺段：$it", t.contains(it))
+        }
+        assertTrue("未实测要写明", t.contains("未实测"))
+        assertTrue("三套格式都要提", t.contains("world_book") && t.contains("SillyTavern") && t.contains("Tavo"))
+        assertTrue("ST 的 disable 是反义，这条最容易错", t.contains("反义"))
+    }
 }
