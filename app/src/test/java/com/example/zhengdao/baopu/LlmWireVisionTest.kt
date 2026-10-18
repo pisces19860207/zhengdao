@@ -195,17 +195,14 @@ class LlmWireVisionTest {
     // ── V5：视觉判据来自 Provider，不硬编码模型名 ───────────────────────────
 
     @Test
-    fun `V5_预设的vision都是false且显式声明`() {
-        // 本批一个 true 都不许开（没有实测依据）——这条会在有人"顺手开一个"时提醒
+    fun `V5_只有DeepSeek声明vision_其余仍为false`() {
+        // 2026-10-18 口径变更：用户明确 deepseek v4.1 flash（1017）是**全模态**模型，
+        // 图片要发得出去 ⇒ DEEPSEEK 预设 vision=true。其余预设（没有依据）一律仍 false。
+        // 这条会挡住「顺手给别的通道也开 true」——开之前必须真发一张图验证。
         val all = Providers.all()
         assertEquals("预设数量变了就要重看这条", 4, all.size)
-        all.forEach { p ->
-            assertFalse(
-                "${p.id} 声明了 vision=true，但本批没有任何视觉通道的实测依据；" +
-                    "要开请先真发一张图验证并把依据写进 Provider 注释",
-                p.vision,
-            )
-        }
+        val visionOn = all.filter { it.vision }.map { it.id }
+        assertEquals("只许 DeepSeek 开（用户给的模型事实）", listOf("deepseek"), visionOn)
     }
 
     @Test
