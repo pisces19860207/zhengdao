@@ -557,6 +557,94 @@ internal class BaopuChatController(context: Context) {
         restoreConfirmCard()
     }
 
+    // ── 单活跃门的「先问人」（第二十九批 B 段）─────────────────────────────
+    //
+    // 引擎那一侧一个字没改（`baopu/agent/**` 本批禁改，[com.example.zhengdao.baopu.agent.ActiveSessionGate]
+    // 本身也不动）：门照旧挡第二个 run，`已有另一个会话在跑（全局单活跃）` 那句照旧是它的。
+    // 这一批改的是**壳层怎么把这件事交给人**：以前抽屉/会话库点一条在跑的别的会话，
+    // [openSession] 第一行 `if (busy) return` 就哑了——用户看到的是"点了没反应"。
+    // 现在点它 ⇒ 出确认卡：「X 还在跑。要停掉它，并切到 Y 继续吗？」
+    // ⛔ 不许自动停：用户没点就停别人的会话是事故（派工单 §2 B 段红字）。
+
+    /** 确认卡的数据（两句标题都是**给用户看的名字**，不是内部 id）。 */
+    data class SessionSwitchAsk(
+        val targetSessionId: Long,
+        val targetTitle: String,
+        val runningSessionId: Long?,
+        val runningTitle: String,
+    )
+
+    /** 等用户拍板的那张卡（null = 没在问）。只有 [requestOpenSession] 撞门时会立起来。 */
+    var sessionSwitchAsk by mutableStateOf<SessionSwitchAsk?>(null)
+        private set
+
+    /**
+     * 用户已拍板"停掉并切过去"、但那个 run 还没收尾时记的目标会话。
+     *
+     * 为什么需要这一格：`engine.stop()` 只是把停止意图立起来，循环在**工具调用中间**
+     * 不回来看这个标志——要等手头那步跑完才收尾并释放单活跃门。所以"停"和"切"天然不在
+     * 同一毫秒：切过去的动作必须等 [EngineEvent.Settled]（引擎在放门之后才发它）。
+     * 这一格只由用户点击产生，[dismissSessionSwitch]（取消）与切成功都会清掉。
+     */
+    private var pendingSwitchTo: Long? = null
+
+    /**
+     * 抽屉里点一条会话（A5／B 段入口）。
+     *
+     * 三条分支：① 点的就是当前会话 ⇒ 什么都不做；② 门是空的 ⇒ 直接 [openSession]；
+     * ③ 别的会话在跑 ⇒ **只出卡，不停任何东西**。
+     */
+    fun requestOpenSession(sid: Long) {
+        if (sessionId == sid) return
+        if (!busy && !runningNow()) {
+            openSession(sid)
+            return
+        }
+        val running = runningSessionId()
+        sessionSwitchAsk = SessionSwitchAsk(
+            targetSessionId = sid,
+            targetTitle = sessionTitleOf(sid),
+            runningSessionId = running,
+            runningTitle = sessionTitleOf(running),
+        )
+    }
+
+    /** 取消：卡收起来，**什么都不做**（在跑的那个会话继续跑，不许被这次点击停掉）。 */
+    fun dismissSessionSwitch() {
+        sessionSwitchAsk = null
+    }
+
+    /** 「停掉并切过来」：走既有停止路径（[stop] = `engine.stop()`），不新造任何停止状态。 */
+    fun acceptSessionSwitch() {
+        val ask = sessionSwitchAsk ?: return
+        sessionSwitchAsk = null
+        pendingSwitchTo = ask.targetSessionId
+        stop()
+        // 那个 run 其实已经收尾了（点击与收尾撞在一起）⇒ 门已经空了，立刻切，不必等下一次事件。
+        if (!runningNow()) consumePendingSwitch()
+    }
+
+    /** 本轮彻底结束（[EngineEvent.Settled]）时兑现用户已经拍板的切换；没拍板就什么都不做。 */
+    private fun consumePendingSwitch() {
+        val target = pendingSwitchTo ?: return
+        if (runningNow() || busy) return // 还没停干净：等下一次 Settled（不硬切，见上面那一格的理由）
+        pendingSwitchTo = null
+        openSession(target)
+    }
+
+    /** 单活跃门现在挂在哪个会话上（只读 [com.example.zhengdao.baopu.agent.ActiveSessionGate]；没有 ⇒ null）。 */
+    private fun runningSessionId(): Long? =
+        com.example.zhengdao.baopu.agent.ActiveSessionGate.current()
+            ?.removePrefix("id:")
+            ?.toLongOrNull()
+
+    /** 会话标题（确认卡那句话要用）：库里读一条，兜底口径与会话库浮层同一个 [displayTitle]。 */
+    private fun sessionTitleOf(sid: Long?): String {
+        if (sid == null) return appCtx.getString(R.string.baopu_session_unnamed)
+        val row = runCatching { loadSessionLibrary().firstOrNull { it.id == sid } }.getOrNull()
+        return displayTitle(row?.title.orEmpty(), appCtx.getString(R.string.baopu_session_unnamed))
+    }
+
     /**
      * 清空会话视图（第二十五批 C 段：删当前会话后的落点）——与「新会话」同样的清空动作，
      * 但**不封卷**（会话行已经删了，没有可封的对象）。回空态「还没有对话」；
@@ -873,7 +961,13 @@ internal class BaopuChatController(context: Context) {
             }
             val force = ev is EngineEvent.Settled
             refresh(force)
-            if (force) refineOnSettle()
+            if (force) {
+                refineOnSettle()
+                // 第二十九批 B 段：用户在确认卡上拍过「停掉并切过来」⇒ 门一放就兑现那一下切换。
+                // 放在这里而不是 acceptSessionSwitch 里死等：Settled 由引擎在释放单活跃门之后才发，
+                // 是"这个 run 真结束了"的唯一权威信号（同上面对 interruptedStep 的那条口径）。
+                consumePendingSwitch()
+            }
         }
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
             apply()

@@ -12,6 +12,7 @@ package com.example.zhengdao.ui.baopu
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -67,6 +69,7 @@ import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.BackupRules
+import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -115,6 +118,66 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     BackHandler(enabled = showSettings) { showSettings = false }
     // 会话库浮层同口径（第二十批）。
     BackHandler(enabled = showSessionLibrary) { showSessionLibrary = false }
+
+    // ── 第二十九批：抽屉顶部＝工作区树 ────────────────────────────────────
+    // 判据（分组、末级名、相对时间、高亮）全在 BaopuSessionTree 的纯函数里，这里只做四件事：
+    // ① 开抽屉那一刻读一次会话库（与会话库浮层同一个 loadSessionLibrary，不另开口径）；
+    // ② 把当前工作区（Workspace.hostDir）与它的状态（正常／私有／未授权）交进纯函数；
+    // ③ 点文件夹行的两个落点接上：临时提示（Toast，飘完就没＝A5 的"不许常驻"）＋设置页「工作区」卡；
+    // ④ 点会话行走 controller.requestOpenSession——撞上单活跃门由下面那张确认卡问人（不许自动停）。
+    var drawerTick by remember { mutableStateOf(0) }
+    LaunchedEffect(drawerState.isOpen) { if (drawerState.isOpen) drawerTick++ }
+    val wsPrivateLabel = stringResource(R.string.baopu_drawer_ws_private)
+    val wsUnauthorizedLabel = stringResource(R.string.baopu_drawer_ws_unauthorized)
+    val wsUnknownLabel = stringResource(R.string.baopu_drawer_ws_unknown)
+    val unnamedSessionLabel = stringResource(R.string.baopu_session_unnamed)
+    val timeTemplates = RelativeTemplates(
+        justNow = stringResource(R.string.baopu_drawer_time_just_now),
+        minutes = stringResource(R.string.baopu_drawer_time_minutes),
+        hours = stringResource(R.string.baopu_drawer_time_hours),
+        days = stringResource(R.string.baopu_drawer_time_days),
+        months = stringResource(R.string.baopu_drawer_time_months),
+    )
+    // drawerTick==0 ⇒ 一颗都没读：没开过抽屉就不该为它跑一条 SELECT。
+    val drawerNodes = remember(
+        drawerTick,
+        controller.sessionId,
+        timeTemplates,
+        wsPrivateLabel,
+        wsUnauthorizedLabel,
+        wsUnknownLabel,
+        unnamedSessionLabel,
+    ) {
+        if (drawerTick == 0) {
+            emptyList()
+        } else {
+            val host = Workspace.hostDir(context)
+            val wsState = workspaceStateOf(
+                Workspace.storageGranted(context),
+                Workspace.isPrivate(context),
+            )
+            buildWorkspaceTree(
+                entries = controller.loadSessionLibrary(),
+                currentHostPath = host.absolutePath,
+                currentLabel = workspaceFolderLabel(
+                    host.absolutePath,
+                    wsState,
+                    wsPrivateLabel,
+                    wsUnauthorizedLabel,
+                ),
+                currentState = wsState,
+                unknownLabel = wsUnknownLabel,
+                unknownPath = Workspace.defaultDir(context).absolutePath,
+                currentSessionId = controller.sessionId,
+                now = System.currentTimeMillis(),
+                templates = timeTemplates,
+                fallbackTitle = unnamedSessionLabel,
+            )
+        }
+    }
+    val showWorkspacePath: (String) -> Unit = { path ->
+        Toast.makeText(context, path, Toast.LENGTH_SHORT).show()
+    }
 
     // 引擎事件驱动刷新已由 controller 内部做；这里补一个前台可见时的兜底刷新
     // （进程被杀后重进：库里有中断标记，controller 构造时 refresh 已读一次）。
@@ -178,6 +241,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             ModalDrawerSheet(modifier = Modifier.width(drawerWidth)) {
                 BaopuDrawer(
                     busy = controller.busy,
+                    nodes = drawerNodes,
                     onNewSession = {
                         scope.launch { drawerState.close() }
                         controller.newSession()
@@ -186,6 +250,19 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         showSessionLibrary = true
                     },
+                    // 点会话行：先关抽屉再交给控制器（控制器决定"直接切"还是"出确认卡问人"）。
+                    onOpenSession = { sid ->
+                        scope.launch { drawerState.close() }
+                        controller.requestOpenSession(sid)
+                    },
+                    // 点文件夹行＝临时提示完整路径 ＋ 落点抱朴设置页（那张「工作区」卡在这一页里）。
+                    onWorkspaceTap = { path ->
+                        scope.launch { drawerState.close() }
+                        showWorkspacePath(path)
+                        showSettings = true
+                    },
+                    // 长按文件夹行＝只看路径，不跳页（派工单 §7 的「长按提示」）。
+                    onWorkspaceHold = showWorkspacePath,
                     onLibrary = {
                         scope.launch { drawerState.close() }
                         openSettings(context)
@@ -593,6 +670,36 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuSessionLibraryScreen(
                     controller = controller,
                     onDismiss = { showSessionLibrary = false },
+                )
+            }
+            // ── 单活跃门的确认卡（第二十九批 B 段）────────────────────────
+            // 另一个会话在跑时点它的会话行 ⇒ 只出这张卡，**绝不停任何东西**：
+            // engine.stop() 只在 confirmButton（用户点「停掉并切过来」）里调；
+            // 点「取消」或直接关掉（onDismissRequest）都只收卡。
+            // 为什么用 AlertDialog 而不是底部卡：底部卡片区（BaopuConfirmCard）跟着引擎的
+            // run 走，这张是壳层自己的一次性问答，不占操作卡队列、也不进 actionCardsPresent。
+            controller.sessionSwitchAsk?.let { ask ->
+                AlertDialog(
+                    onDismissRequest = { controller.dismissSessionSwitch() },
+                    title = { Text(stringResource(R.string.baopu_switch_title)) },
+                    text = {
+                        Text(stringResource(R.string.baopu_switch_desc, ask.runningTitle, ask.targetTitle))
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { controller.acceptSessionSwitch() }) {
+                            // 「停掉」是破坏性动作 ⇒ 语义红走仓库唯一口径（ErrorTextContrastGuardTest：
+                            // 文字不许直接吃 colorScheme.error，3.55:1 不达正文 AA 4.5:1）。
+                            Text(
+                                stringResource(R.string.baopu_switch_confirm),
+                                color = zhengdaoErrorText(),
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { controller.dismissSessionSwitch() }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    },
                 )
             }
         }
