@@ -11,7 +11,7 @@ import android.content.Context
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.KnowledgeBase
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.baopu.BaopuWorkspace
 import java.io.File
 import java.nio.file.Files
 
@@ -240,7 +240,7 @@ internal class BaopuGuards(
 ) {
 
     /** 当前工作区根（唯一真相源；共享 / 仅私有两种模式都由它解析）。 */
-    private val workspace: File get() = Workspace.hostDir(context)
+    private val workspace: File get() = BaopuWorkspace.hostDir(context)
 
     /** 资料库/原始（开工闸门的判据落点）。 */
     private val rawDir: File get() = KnowledgeBase.rawDir(context)
