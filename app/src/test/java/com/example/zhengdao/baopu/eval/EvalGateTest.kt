@@ -40,7 +40,7 @@ class EvalGateTest {
     fun `回放评测集_不退化才允许合入`() {
         val key = System.getenv("ZHENGDAO_EVAL_KEY").orEmpty().trim()
         Assume.assumeTrue(
-            "没有 ZHENGDAO_EVAL_KEY ⇒ 跳过进化门禁（这不是失败）",
+            "未跑：缺 ZHENGDAO_EVAL_KEY —— 进化门禁本次未实测（这不是失败）",
             key.isNotBlank(),
         )
 
