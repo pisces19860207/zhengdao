@@ -901,8 +901,9 @@
     <string name="baopu_attach_remove">移除</string>
     <string name="baopu_attach_failed">附件保存失败（没存储权限或读不到文件）</string>
     <string name="baopu_attach_camera_denied">没给相机权限，拍不了照</string>
-    <string name="baopu_attach_hint_file">（用户附了一个文件，已存进工作区：%1$s，%2$d B。需要内容就用 read_file 读它。）</string>
-    <string name="baopu_attach_hint_image">（用户附了一张图片，已存进工作区：%1$s，%2$d B。当前通道不能看图——不要假装看过它；需要时请让用户把关键内容用文字说一遍。）</string>
+    <string name="baopu_attach_too_many">最多 %1$d 个附件</string>
+    <string name="baopu_attach_hint_files">（用户附了 %1$d 个文件，已存进工作区：%2$s。需要内容就用 read_file 读它们。）</string>
+    <string name="baopu_attach_hint_images">（用户附了 %1$d 张图片，已存进工作区：%2$s。当前通道不能看图——不要假装看过它们；需要时请让用户把关键内容用文字说一遍。）</string>
     <string name="baopu_plan_summary">计划 %1$d/%2$d 完成</string>
   <string name="baopu_channel_button">换通道</string>
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
