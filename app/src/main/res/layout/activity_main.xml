@@ -50,8 +50,8 @@
                   的"偏小"口径，视觉圆点尺寸不变（inset 居中）。这条是用户观感优先于 M3 48dp 的取舍。
             <View
                 android:id="@+id/btn_close"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_marginEnd="2dp"
                 android:background="@drawable/traffic_dot_red"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
@@ -61,8 +61,8 @@
 
             <View
                 android:id="@+id/btn_yellow"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_marginEnd="2dp"
                 android:background="@drawable/traffic_dot_yellow"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
@@ -72,8 +72,8 @@
 
             <View
                 android:id="@+id/btn_split"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/traffic_dot_green"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
@@ -101,6 +101,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center"
+                android:paddingEnd="32dp"
                 android:text="证道"
                 android:textColor="#FF1C1C1E"
                 android:textSize="17sp"
