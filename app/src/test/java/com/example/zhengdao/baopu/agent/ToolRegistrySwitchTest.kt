@@ -237,4 +237,24 @@ class ToolRegistrySwitchTest {
         assertTrue("delete_path 必须支持默认进回收站", src.contains("TRASH_DIR"))
         assertTrue("默认值必须是「不彻底删」", src.contains("optBoolean(ARG_PERMANENT, false)"))
     }
+    @Test
+    fun `分组覆盖全部工具_文案两种语言都齐`() {
+        // 2026-10-19「落 A」：设置页按类分组。分组是纯展示，但**不许漏工具**（漏了就点不到开关）。
+        val screen = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
+            .let { if (it.isFile) it else File("app/$it") }
+            .readText()
+        val start = screen.indexOf("val GROUPS")
+        assertTrue("设置页里没有 BaopuToolGroups.GROUPS", start > 0)
+        val groupsBlock = screen.substring(start)
+        BaopuToolCatalog.ENTRIES.forEach { e ->
+            assertTrue("分组漏了工具：${e.name}", groupsBlock.contains("\"${e.name}\""))
+        }
+        val zh = File("src/main/res/values/strings.xml").let { if (it.isFile) it else File("app/$it") }.readText()
+        val en = File("src/main/res/values-en/strings.xml").let { if (it.isFile) it else File("app/$it") }.readText()
+        listOf("read", "write", "image", "browser", "library", "plan").forEach { k ->
+            val key = "baopu_tools_group_$k"
+            assertTrue("中文缺 $key", zh.contains("name=\"$key\""))
+            assertTrue("英文缺 $key", en.contains("name=\"$key\""))
+        }
+    }
 }

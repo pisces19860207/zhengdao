@@ -57,6 +57,15 @@ internal object SkillTools {
                 "global" -> SkillScope.GLOBAL
                 else -> SkillScope.PROJECT
             }
+            // 🛑 2026-10-19 用户口径（逐字：「全局技能不能让他随便改」）：
+            // 全局技能是所有项目共用的人设底座，抱朴一旦能自写，等于它可以悄悄改自己的规矩；
+            // 项目技能仍可自写（草稿＋确认卡＋写前备份），全局只能由用户在本机设置页里改。
+            if (scope == SkillScope.GLOBAL) {
+                return@ToolSpec ToolOutcome.Rejected(
+                    "全局技能不许我自己改：那是所有项目共用的底座。要动全局技能，请你在设置页里改，" +
+                        "或者改成项目技能（scope=project）。",
+                )
+            }
             val draft = if (args.has("draft")) args.optBoolean("draft") else true
             if (name.isEmpty()) {
                 ToolOutcome.Failed("name 不能为空")
