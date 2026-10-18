@@ -5,6 +5,8 @@
 // 压缩不动前缀、前缀字节级相同可断言）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.agent.RunRules
+
 /** 一条会话历史消息（id 用于压缩留痕：哪几条被压成摘要）。 */
 data class HistoryMessage(val id: String, val role: String, val text: String) {
     companion object {
@@ -123,16 +125,38 @@ internal object ContextAssembler {
      * Memory 的 ≤ 2k 裁剪与本处的窗口判定共用它。
      */
 
-    /** 触发线（窗口 × 0.85）。纯函数，便于把边界三点钉死在单测里。 */
-    fun compressionThreshold(windowTokens: Int): Double = windowTokens * COMPRESS_THRESHOLD
+    /**
+     * 触发线（第十五批 A 段：`min(窗口 × 0.85, 120k)`）。纯函数，便于把边界钉死在单测里。
+     *
+     * 封顶的理由：第十三批真机 T1 实证 1M 窗口的触发线 891k 手机永远够不着；
+     * 8k 窗口按比例 6,963 不受封顶影响（min 取小者）。常量在
+     * [RunRules.COMPRESS_ABS_MAX_TOKENS]（判据数值统一放纯判据内核）。
+     */
+    fun compressionThreshold(windowTokens: Int): Double =
+        minOf(windowTokens * COMPRESS_THRESHOLD, RunRules.COMPRESS_ABS_MAX_TOKENS.toDouble())
 
     /**
-     * 是否需要先压缩。**严格大于**：恰好压线（== 阈值）不触发。
-     * 边界三点（0.849 / 0.850 / 0.851）由 [ContextAssemblerTest] 钉死，
-     * 且三点必须从 [ContextBudgets.windowOf] 算出的窗口推导，不许写死常量。
+     * 是否需要先压缩（第十五批口径：**两条触发任一满足就压**）。
+     * ① 估算 token 严格大于触发线（[compressionThreshold]，恰好压线不触发）；
+     * ② 可压旧消息条数 ≥ [RunRules.COMPRESS_OLD_MESSAGE_MIN]（[pendingOldMessageCount]
+     *    的产出；默认 0 ⇒ 不传该参数时与旧口径完全一致）。
+     * 两条都满足不了 ⇒ false（C 段反向保证：不许出现「每轮都压」的抖动）。
      */
-    fun needsCompressing(estimatedTokens: Int, windowTokens: Int): Boolean =
-        estimatedTokens > compressionThreshold(windowTokens)
+    fun needsCompressing(estimatedTokens: Int, windowTokens: Int, oldMessageCount: Int = 0): Boolean =
+        estimatedTokens > compressionThreshold(windowTokens) ||
+            oldMessageCount >= RunRules.COMPRESS_OLD_MESSAGE_MIN
+
+    /**
+     * 「可压旧消息」条数（第十五批 B 段）——**直接复用选区函数**，不另写口径：
+     * `selectCompressionRange` 保留的最近 KEEP_RECENT 条之外全是候选，
+     * 再扣除已压进摘要的消息（compressedIds）——它们已由摘要代言，再算成
+     * 「可压」会让条数触发线压完仍满足 ⇒ 每轮重压（C 段明令禁止的抖动）。
+     */
+    fun pendingOldMessageCount(
+        history: List<HistoryMessage>,
+        compressedIds: Set<String> = emptySet(),
+    ): Int = selectCompressionRange(history, keepRecent = Compressor.KEEP_RECENT)
+        .count { it.id !in compressedIds }
 
     /**
      * 窗口与预算推导（追加二第 1 条 · 2026-10-16）。
@@ -142,7 +166,7 @@ internal object ContextAssembler {
      *   （刀 3 B 段：128k 旧假设已废，deepseek-flash 实测 1048576）；
      * - 输出上限：`maxOutput` 优先，拿不到回退 **32k**；
      * - 单轮预算：`min(窗口 × 0.6, 输出上限 × 0.9)`（只按窗口算会撞输出上限被截断）；
-     * - 触发线：`窗口 × 0.85`（[compressionThreshold]）。
+     * - 触发线：`min(窗口 × 0.85, 120k)`（[compressionThreshold]；第十五批 A 段封顶）。
      */
     internal object ContextBudgets {
 
@@ -169,8 +193,8 @@ internal object ContextAssembler {
             Math.floor(outputOf(p) * OUTPUT_BUDGET_RATIO).toInt(),
         )
 
-        /** 压缩触发线（窗口 × 0.85）。 */
-        fun thresholdOf(p: Provider): Double = windowOf(p) * COMPRESS_THRESHOLD
+        /** 压缩触发线（min(窗口 × 0.85, 120k)——第十五批 A 段封顶）。 */
+        fun thresholdOf(p: Provider): Double = compressionThreshold(windowOf(p))
     }
 
     /**
@@ -184,6 +208,8 @@ internal object ContextAssembler {
      * @param compressionSummary 压缩摘要替身（null = 还没压过）
      * @param compressedIds 被压进摘要的消息 id（留痕，判据 5）
      * @param skipIds **不进 prompt** 的消息 id（第十三批 B 段：压过的旧消息由摘要代言）
+     * @param oldMessageCount 可压旧消息条数（第十五批 B 段：[pendingOldMessageCount]
+     *   的产出，由调用方传；默认 0 ⇒ 老调用行为不变）
      */
     @Suppress("LongParameterList")
     fun assemble(
@@ -197,6 +223,7 @@ internal object ContextAssembler {
         compressionSummary: String? = null,
         compressedIds: Set<String> = emptySet(),
         skipIds: Set<String> = emptySet(),
+        oldMessageCount: Int = 0,
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
     ): AssembledPrompt {
         // ── 记忆段：sticky 恒前，new 追加；预算 = 2k − sticky 已占 ──
@@ -261,7 +288,7 @@ internal object ContextAssembler {
         )
         val estimated = tokensOf(prompt.render())
         return prompt.copy(
-            needsCompressing = needsCompressing(estimated, windowTokens),
+            needsCompressing = needsCompressing(estimated, windowTokens, oldMessageCount),
             estimatedTokens = estimated,
         )
     }
