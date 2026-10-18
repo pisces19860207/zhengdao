@@ -15,6 +15,7 @@
 // 不新建 Activity：AndroidManifest.xml 本批禁改，新增 Activity 必须动清单。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.kernel.KernelAudit
@@ -235,6 +237,16 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             SectionCard(stringResource(R.string.skill_review_card)) {
                 var skillReload by remember { mutableStateOf(0) }
                 val pf = remember { BaopuRuntime.personaFiles(ctx) }
+                // 第三十四批：两层根目录上移到卡片开头。A 段的详情、B 段的归档列表都要按这两个根
+                // **现读盘**，而入口在下面的索引行上（原来这两行到草稿段才声明，够不着）。
+                // 落点口径一个字没改：全局＝App 私有的「抱朴记忆」，项目＝BaopuRuntime.workspaceRoot。
+                val globalRoot = File(ctx.filesDir, "抱朴记忆")
+                val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+                var detail by remember { mutableStateOf<SkillDetailRow?>(null) }
+                var editing by remember { mutableStateOf<SkillDetailRow?>(null) }
+                var archivedOpen by remember { mutableStateOf(false) }
+                // B 段：点过一次「彻底删除」的那一条（第二击才带 confirmed=true；闸在 deleteArchived 里）
+                var confirmingDelete by remember { mutableStateOf<File?>(null) }
                 val bText = remember(skillReload) { pf.read(PersonaLayer.B_GLOBAL) }
                 val cText = remember(skillReload) { pf.read(PersonaLayer.C_PROJECT) }
                 val globalLines = remember(skillReload) {
@@ -327,13 +339,46 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     skillReload++
                 }
 
+                /** 作用域 → 人设层（A/B 段共用，与上面 `skillFileOf` 同一口径）。 */
+                fun layerOf(scope: SkillScope): PersonaLayer = when (scope) {
+                    SkillScope.GLOBAL -> PersonaLayer.B_GLOBAL
+                    SkillScope.PROJECT -> PersonaLayer.C_PROJECT
+                }
+
+                /**
+                 * B 段：归档的每一种结果都要**说话**（判据 U3＋U5 的第二、三处）。
+                 *
+                 * `ArchivedOutcome` 只带盘上路径，句子全在这里查 strings.xml 的键——
+                 * 撞名（Occupied）要指名占位者、没二次确认（NeedsConfirm）不许装作删了、
+                 * 盘上没做成（IoFailed）要带上是哪个文件与原因，一条都不许静默。
+                 */
+                fun sayArchived(o: ArchivedOutcome) {
+                    val msg = when (o) {
+                        is ArchivedOutcome.Restored -> when (o.index) {
+                            RestoredIndex.Added -> ctx.getString(R.string.skill_archived_restored, o.name)
+                            RestoredIndex.OverCap -> ctx.getString(R.string.skill_archived_index_full, SkillRules.INDEX_CAP)
+                            RestoredIndex.BadName -> ctx.getString(R.string.skill_archived_index_skipped, o.name)
+                        }
+                        is ArchivedOutcome.Occupied -> ctx.getString(R.string.skill_archived_occupied, o.target)
+                        is ArchivedOutcome.IoFailed -> ctx.getString(R.string.skill_archived_io_failed, o.target, o.why)
+                        is ArchivedOutcome.NeedsConfirm -> ctx.getString(R.string.skill_archived_confirm, o.target)
+                        is ArchivedOutcome.Deleted -> ctx.getString(R.string.skill_archived_deleted, o.target)
+                    }
+                    Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                }
+
                 Text(
                     text = stringResource(R.string.skill_group_global),
                     style = MaterialTheme.typography.labelLarge,
                 )
                 globalLines.forEach { line ->
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        // A 段（判据 U1/U5）：**整行可点** ⇒ 详情对话框，正文按盘上原文逐字显示。
+                        // 行上的「恢复到上一版／删索引」两个按钮照旧（点击不冲突：子按钮先吃掉这一击）。
+                        modifier = Modifier.fillMaxWidth()
+                            .clickable {
+                                detail = skillDetailRow(line.name, SkillScope.GLOBAL, projectRoot, globalRoot)
+                            },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
@@ -360,7 +405,10 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 )
                 projectLines.forEach { line ->
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth()
+                            .clickable {
+                                detail = skillDetailRow(line.name, SkillScope.PROJECT, projectRoot, globalRoot)
+                            },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
@@ -385,8 +433,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 // ── 第三十二批 A 段 · 草稿（试用中）──────────────────────────────
                 // 23A 把 status／uses／canPromote 全算完了，界面上一个都没露（派工单 §0）。
                 // 这一段只**读**数据层算好的数；写盘只有 commitSkillDraft → SkillStore.apply 一条路（T4）。
-                val globalRoot = File(ctx.filesDir, "抱朴记忆")
-                val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+                // （两层根目录 globalRoot／projectRoot 已在卡片开头声明，34 批上移——详情与归档共用。）
                 val draftRows = remember(skillReload) { draftSkillRows(projectRoot, globalRoot) }
 
                 /** 「用一次」：uses+1 写回，仍是草稿（能不能转正继续由数据层判）。 */
@@ -470,6 +517,83 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         }
                     }
                 }
+                Spacer(Modifier.height(6.dp))
+                // ── 第三十四批 B 段 · 已归档入口 ────────────────────────────────
+                // 删过的技能都躺在 `<名>/SKILL.md.deleted-<时间戳>`（23A 的归档口径：改名不硬删），
+                // 但界面上**从来没有入口** ⇒ 用户以为删了就真没了，抱朴自己也找不回来。
+                // 派工单原话：这一行「N=0 时灰掉但不许消失」——所以它是常驻的 TextButton，只把 enabled 关掉。
+                val archivedRows = remember(skillReload) { archivedSkillRows(projectRoot, globalRoot) }
+                TextButton(enabled = archivedRows.isNotEmpty(), onClick = { archivedOpen = true }) {
+                    Text(stringResource(R.string.skill_archived_group, archivedRows.size))
+                }
+                if (archivedOpen) {
+                    SkillArchivedDialog(
+                        rows = archivedRows,
+                        confirming = confirmingDelete,
+                        onDismiss = {
+                            archivedOpen = false
+                            confirmingDelete = null // 关掉面板就把「等第二击」的状态清掉，下次进来重新确认
+                        },
+                        onRestore = { row ->
+                            sayArchived(restoreArchived(row, projectRoot, globalRoot, pf))
+                            skillReload++
+                        },
+                        onDelete = { row ->
+                            val o = deleteArchived(row, confirmingDelete?.absolutePath == row.file.absolutePath)
+                            when (o) {
+                                is ArchivedOutcome.NeedsConfirm -> confirmingDelete = row.file
+                                is ArchivedOutcome.Deleted -> confirmingDelete = null
+                                else -> Unit
+                            }
+                            sayArchived(o)
+                            skillReload++
+                        },
+                    )
+                }
+
+                // ── 第三十四批 A 段 · 详情对话框（整行可点的落点）────────────────
+                detail?.let { d ->
+                    SkillDetailDialog(
+                        detail = d,
+                        onDismiss = { detail = null },
+                        onRestoreBackup = {
+                            // 写盘仍然只有 SkillStore.restore 那一条（它自己先备份当前正文再覆盖）
+                            restoreLast(layerOf(d.scope), d.name)
+                            detail = skillDetailRow(d.name, d.scope, projectRoot, globalRoot)
+                        },
+                        onEdit = {
+                            // 进编辑前**现读一次**：详情那屏可能是几分钟前打开的，中间「用一次」动过正文
+                            editing = skillDetailRow(d.name, d.scope, projectRoot, globalRoot)
+                            detail = null
+                        },
+                    )
+                }
+
+                // ── 第三十四批 C 段 · 编辑（复用 SkillEditorDialog，名字锁定）──────
+                editing?.let { d ->
+                    SkillEditorDialog(
+                        onDismiss = { editing = null },
+                        onSaved = { result ->
+                            val msg = when (result) {
+                                is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                                    ctx.getString(R.string.skill_edit_saved)
+                                is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> result.reason
+                            }
+                            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                            skillReload++
+                        },
+                        projectRoot = projectRoot,
+                        globalRoot = globalRoot,
+                        personaFiles = pf,
+                        backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                        lockedName = d.name,
+                        initialBody = stripStatusHeader(d.body),
+                        initialScope = d.scope,
+                        initialDraft = d.isDraft,
+                        originalBody = d.body,
+                    )
+                }
+
                 Spacer(Modifier.height(6.dp))
                 // B/C 人设只读展示（§2.5：能看见；编辑留给后续批次）
                 Text(
