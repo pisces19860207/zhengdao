@@ -679,10 +679,10 @@ internal class BaopuChatController(context: Context) {
             )
         }
         pendingMemories = merged.take(maxPending)
-        introspectionNote = r.introspection.text
-        runCatching {
-            notePrefs.edit().putString("note_$sid", r.introspection.text).apply()
-        }
+        introspectionNote = r.introspection.text
+        runCatching {
+            notePrefs.edit().putString("note_$sid", r.introspection.text).apply()
+        }
     }
 
     /**
@@ -694,10 +694,10 @@ internal class BaopuChatController(context: Context) {
         val sid = sessionId
         messages = if (sid == null) emptyList() else readMessages(sid)
         // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
-        stepRows = if (sid == null) emptyList() else readStepRows(sid)
-        if (introspectionNote == null && sid != null) {
-            introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
-        }
+        stepRows = if (sid == null) emptyList() else readStepRows(sid)
+        if (introspectionNote == null && sid != null) {
+            introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
+        }
         // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
         // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
         //    "正在思考"误读成"被杀了"——所以运行中跳过；
