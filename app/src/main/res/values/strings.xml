@@ -973,7 +973,8 @@
     <string name="baopu_shortcut_backup_long">备份抱朴库里的原件</string>
     <!-- ── 抱朴页新增入口与提示（刀 2 · C/D 段 ＋ 追加包）── -->
     <string name="baopu_pending_card_title">这次想记住的（还没落盘）</string>
-    <string name="baopu_introspection_label">这次学到</string>
+    <string name="baopu_notice_compressed_label">已压缩</string>
+<string name="baopu_introspection_label">这次学到</string>
     <string name="baopu_backup_stale_never">原件还从没导出过，去导一份？</string>
     <string name="baopu_backup_stale_days">原件 %1$d 天没导出了，去导一份？</string>
     <string name="baopu_backup_go">去导出</string>

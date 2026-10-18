@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -191,7 +192,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         },
     ) {
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+        // 键盘遮挡（2026-10-18 真机：输入框没被键盘顶上去）：edge-to-edge 下
+        // （MainActivity setDecorFitsSystemWindows(false)）窗口不 resize，必须自己消费 ime insets。
+        // 放在根 Column：卡片区与输入框一起上移，卡片仍压在输入框上方（J10）。
+        Column(Modifier.fillMaxSize().imePadding()) {
             // 顶条（刀 3 瘦身）：☰ 开抽屉 · 状态 · ＋新会话。
             // 「章节抽取／备份原件／换通道」已进抽屉；中断提示与续跑仍由 BaopuSessionBar 承担。
             Surface(tonalElevation = 1.dp) {
@@ -216,7 +220,25 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium,
                     )
-                    Spacer(Modifier.weight(1f))
+                    // 「这次学到 / 已压缩」竖向跑马灯（2026-10-18 用户：位置在「待命中」和「＋」
+                    // 那一栏里）——顶栏中间剩余宽度全给它，只占一行高。
+                    val noticeItems = buildList {
+                        controller.introspectionNote?.takeIf { it.isNotBlank() }?.let {
+                            add(NoticeItem(stringResource(R.string.baopu_introspection_label), it))
+                        }
+                        controller.compressionNote?.let {
+                            add(
+                                NoticeItem(
+                                    stringResource(R.string.baopu_notice_compressed_label),
+                                    stringResource(R.string.baopu_compressed_bar, it.count, it.summary.length) +
+                                        "\n" + it.summary,
+                                ),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    BaopuNoticeTicker(items = noticeItems, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(4.dp))
                     IconButton(
                         onClick = { controller.newSession() },
                         enabled = !controller.busy,
@@ -274,9 +296,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 onResume = { controller.resume() },
             )
             // 自省便签（C 段：恰好一条；新会话清空）
-            controller.introspectionNote?.let { note ->
-                BaopuIntrospectionNote(text = note)
-            }
             controller.pendingNote?.let { note ->
                 Text(
                     text = note,
@@ -285,12 +304,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
-            // 已压缩细条（第十三批 §4.4：只加一条，不做美化；点开展摘要全文）
-            controller.compressionNote?.let { note ->
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    BaopuCompressedBar(note = note)
-                }
-            }
+            // 已压缩细条已搬进消息列表首项（2026-10-18：不占固定可视面积，随内容滚走）。
             libraryNote?.let { note ->
                 Text(
                     text = note,
@@ -299,16 +313,19 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
-            // 提示词小框（右上角复制）：显示最近一条抱朴回复
+            // 提示词小框（右上角复制）：显示最近一条抱朴回复。2026-10-18 用户定稿
+            // 「已完成还是固定到现在这个位置，不用跟着正文框跑，现在的形态很好了」
+            // ⇒ 固定在「待命中」下面，保持可折叠形态（默认一行，点开展开，再点收回）。
             if (lastAssistant.isNotBlank()) {
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     CopyBox(
                         text = lastAssistant,
                         label = stringResource(R.string.baopu_role_assistant),
-                        maxLines = 4,
+                        collapsible = true,
                     )
                 }
             }
+            // （跑马灯已移进顶栏那一行，见上）
             // ── 贴底跟随＋「回到最新」浮标（第十八批-B §2.2）──────────────────
             // 滚动状态归屏幕层：判据是纯函数（BaopuChatScroll.shouldFollow /
             // shouldShowJump / jumpHasNewDot，JVM 直测），这里只接线。
@@ -317,6 +334,17 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             val listState = rememberLazyListState()
             var autoScroll by remember { mutableStateOf(true) }
             var hasNewContent by remember { mutableStateOf(false) }
+            // 2026-10-18 真机：输入框被键盘顶上去了，但**正文没有跟着**——根布局让出键盘高度后
+            // 列表视口变矮、滚动位置不变 ⇒ 最下面那条被挡在键盘后面。
+            // 这里盯视口高度：一变矮（键盘弹出/旋转）且用户本来就贴着底部，就把列表重新贴回底部。
+            // 不依赖 WindowInsets.ime（该版本 Compose 里取不到这个扩展属性）。
+            val viewportH = listState.layoutInfo.viewportSize.height
+            LaunchedEffect(viewportH) {
+                if (autoScroll) {
+                    val last = listState.layoutInfo.totalItemsCount - 1
+                    if (last >= 0) listState.scrollToItem(last)
+                }
+            }
             LaunchedEffect(listState) {
                 listState.interactionSource.interactions.collect { interaction ->
                     if (interaction is DragInteraction.Stop) {
@@ -537,9 +565,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
  * [com.example.zhengdao.ui.baopu.BaopuChatScroll.shouldFollow]。
  */
 private fun LazyListState.isAtBottom(): Boolean {
-    val layout = layoutInfo
-    val items = layout.visibleItemsInfo
-    return items.isNotEmpty() && items.last().index >= layout.totalItemsCount - 1
+    // 2026-10-18 真机修正：原口径「最后可见项 index == 总数-1」，而抱朴的「一轮」是
+    // 一条很高的 item ⇒ 用户往上翻时最后那项**仍然可见**（只是顶部露一角）⇒ 判定恒为
+    // "在底部"，autoScroll 永远 true、「⬇ 回到最新」永远不出现（用户实测：上滑也没有）。
+    // 改用 Compose 官方口径：还能不能继续往下滚。
+    return !canScrollForward
 }
 
 /**
