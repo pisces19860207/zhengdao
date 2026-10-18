@@ -1111,6 +1111,18 @@
     <string name="skill_cap_reached">Skill index holds %1$d entries (cap %2$d): remove unused ones first under Baopu settings → Skill index, then retry.</string>
     <string name="skill_apply_failed">Failed to write the persona (proposal state or layer not allowed)</string>
     <string name="skill_refine_dropped">%1$d skill candidates were dropped this session (deduped or over limit).</string>
+    <!-- ── Skill trial UI (batch 32): list drafts, count a use, promote, template prefill ──
+         Counting and the promote decision live in SkillStore; these strings only read its numbers out. -->
+    <string name="skill_draft_group">Drafts (in trial)</string>
+    <string name="skill_draft_none">No drafts yet. Tick the draft option when creating a skill and it queues up here.</string>
+    <string name="skill_draft_uses">Draft · used %1$d/%2$d</string>
+    <string name="skill_draft_use_once">Count a use</string>
+    <string name="skill_draft_promote">Promote</string>
+    <string name="skill_draft_used">Counted one use for %1$s</string>
+    <string name="skill_draft_promoted">%1$s promoted; the index gained a line</string>
+    <string name="skill_draft_index_full">Body promoted, but the index is full (cap %1$d): no index line added, remove a few first</string>
+    <string name="skill_use_platform_template">Use platform template</string>
+    <string name="skill_use_platform_template_hint">Prefill only edits the box, nothing hits the disk; saving still goes through the confirmation card.</string>
     <!-- ── Session library (batch 20): reopen or delete old chats + workspace surfaced ── -->
     <string name="baopu_drawer_history">History</string>
     <string name="baopu_drawer_history_desc">All sessions, as a flat list</string>
