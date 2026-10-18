@@ -1026,6 +1026,11 @@
     <string name="baopu_drawer_library_desc">Library mount status and export log (in Terminal &amp; data; bookshelf page in the works)</string>
     <string name="baopu_drawer_extract_desc">Pick a book, see chapter splits, then decide</string>
     <string name="baopu_drawer_backup_desc">Export originals to the phone against loss</string>
+    <string name="baopu_drawer_group_preview">Preview</string>
+    <string name="baopu_drawer_preview_last">Preview this reply</string>
+    <string name="baopu_drawer_preview_last_desc">Turn the latest reply into a web card; switch to Xuanlan to view it</string>
+    <string name="baopu_drawer_preview_clear">Clear preview cache</string>
+    <string name="baopu_drawer_preview_clear_desc">Drop the cards already placed (up to 8)</string>
     <string name="baopu_drawer_group_settings">Settings</string>
     <string name="baopu_drawer_channel_desc">Switch model channel (rebuilds the engine; not while running)</string>
     <string name="baopu_drawer_settings">Baopu settings</string>

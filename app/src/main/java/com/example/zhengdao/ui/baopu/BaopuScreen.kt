@@ -275,6 +275,24 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         showBackup = true
                     },
+                    // 预览这条回复（刀 4-B 的零件函数在这里第一次有调用方）。
+                    // 没有可预览的回复 ⇒ 明说「还没有」，不装作放好了。
+                    onPreviewLastReply = {
+                        scope.launch { drawerState.close() }
+                        val reply = lastAssistantReply(controller.messages)
+                        val text = if (reply == null) {
+                            PreviewNotice.NO_REPLY_YET
+                        } else {
+                            previewToastText(previewLastReply(reply))
+                        }
+                        Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+                    },
+                    // 清空：张数由 PreviewNotice.cleared 说话（0 张也要说，R7）。
+                    onPreviewClear = {
+                        scope.launch { drawerState.close() }
+                        val n = clearPreviewCache()
+                        Toast.makeText(context, PreviewNotice.cleared(n), Toast.LENGTH_SHORT).show()
+                    },
                     onChannel = {
                         scope.launch { drawerState.close() }
                         showChannel = true
