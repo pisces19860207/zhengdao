@@ -49,7 +49,7 @@ object ArtifactVerifier {
         val out = ArrayList<Finding>()
         val seen = LinkedHashSet<String>()
         for (raw in touched) {
-            val rel = normalize(raw)
+            val rel = resolve(root, raw)
             if (rel == null) {
                 out += Finding(raw.trim(), CHECK_ESCAPE, "路径越界或不可解析，已拒绝")
                 continue
@@ -57,6 +57,27 @@ object ArtifactVerifier {
             if (seen.add(rel)) out += checkOne(root, rel)
         }
         return out
+    }
+
+    /**
+     * 先把调用方给的路径收成「工作区内相对路径」。
+     *
+     * 为什么要认绝对路径：确认制的批准路径执行后 `GuardPipeline` 会把 arguments 里的
+     * `path`/`to` **写回绝对路径**（第 ② 段解析的结果），引擎记账拿到的就是绝对路径。
+     * 只认相对路径时，每次批准过的写入都会被判成「路径越界」——真机实测：
+     * 写 `inbox/rep.md` 再搬走，收尾闸报「路径越界 1」而不是「文件不存在」。
+     * 绝对路径**落在工作区内**才收（越界仍拒）。
+     */
+    fun resolve(root: File, raw: String): String? {
+        val t = raw.trim().replace('\\', '/')
+        // Android 上绝对路径以 / 起；Windows（JVM 单测）上是 C:/ ——两种都按绝对路径处理
+        val isAbs = t.startsWith("/") || (t.length >= 2 && t[1] == ':')
+        if (!isAbs) return normalize(t)
+        val rootPath = root.absoluteFile.toPath().normalize()
+        val p = runCatching { File(t).absoluteFile.toPath().normalize() }.getOrNull() ?: return null
+        if (!p.startsWith(rootPath)) return null
+        val rel = runCatching { rootPath.relativize(p).toString() }.getOrNull() ?: return null
+        return normalize(rel)
     }
 
     /** 规范成工作区内的相对路径；越界/空/绝对路径/带盘符/带 scheme ⇒ null。 */

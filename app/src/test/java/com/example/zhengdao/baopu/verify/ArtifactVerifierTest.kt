@@ -119,6 +119,28 @@ class ArtifactVerifierTest {
     }
 
     @Test
+    fun `工作区内的绝对路径_按相对路径验_不再误报越界`() {
+        // 确认制批准后 GuardPipeline 会把参数写回绝对路径 ⇒ 引擎记账拿到的是绝对路径。
+        // 真机实测过的那个坑：写 inbox/rep.md 再搬走，收尾闸报「路径越界」而不是「文件不存在」。
+        write("inbox/rep.md", "x")
+        val abs = java.io.File(root, "inbox/rep.md").absolutePath
+        assertTrue(ArtifactVerifier.check(root, listOf(abs)).isEmpty())
+
+        val goneAbs = java.io.File(root, "inbox/搬走了.md").absolutePath
+        val found = ArtifactVerifier.check(root, listOf(goneAbs))
+        assertEquals(1, found.size)
+        assertEquals(ArtifactVerifier.CHECK_MISSING, found[0].check)
+    }
+
+    @Test
+    fun `工作区外的绝对路径_仍报越界`() {
+        val found = ArtifactVerifier.check(root, listOf("/etc/passwd"))
+        assertEquals(1, found.size)
+        assertEquals(ArtifactVerifier.CHECK_ESCAPE, found[0].check)
+        assertNull(ArtifactVerifier.resolve(root, "/etc/passwd"))
+    }
+
+    @Test
     fun `normalize_合法与非法`() {
         assertEquals("整理/书.txt", ArtifactVerifier.normalize("整理/书.txt"))
         assertEquals("整理/书.txt", ArtifactVerifier.normalize(".\\整理\\书.txt"))
