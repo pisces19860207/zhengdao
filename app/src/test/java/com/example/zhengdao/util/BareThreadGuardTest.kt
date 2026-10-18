@@ -133,6 +133,11 @@ import kotlin.text.Charsets
  *   （逐处核过仍是同一段 Thread(r, "zd-baopu-db")）。`BaopuChatController.kt` 新增
  *   会话库三函数与 send 接线（+130 行）不影响任何创建点——zd-baopu-shell 是协程
  *   CoroutineName，不是裸 Thread。
+ * - 2026-10-18（刀 4 预览槽）：**新增 1 条**——`preview/PreviewServer.kt` 的 acceptor
+ *   `zd-preview-http`（:112，`Thread({ acceptLoop() }, "zd-preview-http").apply { isDaemon = true }`
+ *   房型；名字必须写字符串字面量——本扫描器判「有名」认的是构造函数里的字面量，传常量判不出）
+ *   ⇒ 对账单 29→30 处（红线 32 内）。派工单 §2.1 明写「线程名登记 `zd-preview-*`（必须在
+ *   `util/BareThreadGuardTest.kt` 里加登记，否则门禁红）」，本条即那次登记；其余 29 条创建点未动。
  */
 class BareThreadGuardTest {
 
@@ -162,6 +167,7 @@ class BareThreadGuardTest {
     fun `门禁_创建点数量收敛在红线以内`() {
         val total = scanAppSources().size
         // 2026-10-16 实测 29 处（刀 0b 后 27；抱朴刀 1 新增 zd-baopu-run / zd-baopu-tool 两条 => 29）；
+        // 2026-10-18 刀 4 新增 zd-preview-http（预览服务 acceptor）=> 30；
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
@@ -187,6 +193,7 @@ class BareThreadGuardTest {
             "LlmClient.kt:862",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658；第十三批加 completeOnce/completeBody/plainTextOf +134 ⇒ 658→792；第二十四批加 LlmMessage.images 与 contentBlocks +70 ⇒ 792→862）
             "MainActivity.kt:316",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308；2026-10-18 加屏幕常亮标志 +8 ⇒ 308→316）
             "NetSelfCheck.kt:94",                   // net-self-check-index
+            "PreviewServer.kt:112",                 // zd-preview-http（刀 4 预览服务 acceptor：一条串行线程，有名 + daemon；登记于 2026-10-18）
             "RunEngine.kt:182",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复 161→171；刀 1 补丁换通道 +34 ⇒ 205→215；刀 3 A 段确认制（ConfirmFlow/HistoryCodec/接线）+293 ⇒ 215→508；刀 3 A 段拆文件（RunRules/HistoryCodec/ConfirmFlow 出笼 + import 清理 -357）⇒ 508→151；工具补强二收尾闸字段/闸口 +16 ⇒ 151→167；真机修正单活跃门 release 的 KDoc +12 ⇒ 167→179）；第十七批工作计划卡接线（imports +2 ⇒ 180→182）
             "SettingsDataActivity.kt:592",          // zd-net-check（清场批注 +1；抱朴刀 2 加「抱朴工具」开关卡 +53 ⇒ 589→642；刀 3 B 段模型参数+思考深度两卡 +57 ⇒ 642→699；工具补强二三开关加在它之后 ⇒ 行号不动；第十八批 A 段抱朴三块整搬进 BaopuSettingsScreen（-106 行）+ 搬迁批注 +3 ⇒ 699→592）
             "SettingsEnvActivity.kt:218",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5；第十八批 B 段 Hermes 卡条件化包裹 +4 ⇒ 214→218）
