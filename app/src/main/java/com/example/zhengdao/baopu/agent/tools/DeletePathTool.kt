@@ -15,6 +15,7 @@
 // 5. 权限 CONFIRM——每次删都要用户看一眼「删哪个、进回收站还是真删」。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -102,6 +103,8 @@ internal object DeletePathTool {
     ): ToolOutcome {
         val rel = path.trim()
         if (rel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        // 第三十七批 A 段：删掉人设＝让人设静默消失，同样不许（回收站那套逻辑原样保留）
+        PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
         val target = resolve(root, rel)
         if (!PathGuard.isInside(root, target)) {
             return ToolOutcome.Rejected(

@@ -11,6 +11,7 @@
 // 4. 单次提交 ≤ 200 行、只改文本、**无删除能力**（不提供 delete 参数，也不删行以外的任何东西）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -124,6 +125,8 @@ internal object EditFileTool {
     ): ToolOutcome {
         val rel = path.trim()
         if (rel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        // 第三十七批 A 段：同上（edit_file 改的也是那两个文件）
+        PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
         if (op !in OPS) {
             return ToolOutcome.Failed("参数「$ARG_OP」只能是 ${OPS.joinToString("／")}，收到的是「$op」")
         }
