@@ -158,12 +158,18 @@ class KernelGuardTest {
         assertEquals("[kernel] 工作区改为 /storage/a/证道（原 /storage/a/旧）", line)
         assertTrue("必须以 [kernel] 开头（grep 锚）", line.startsWith(KernelAudit.TAG))
         assertEquals("`[kernel] 通道改为 x（原 y）`", "[kernel] 通道改为 x（原 y）", KernelAudit.channel("x", "y"))
-        // 值里带换行不许把一条留痕劈成两行
         assertFalse("留痕必须单行", KernelAudit.workspace("a\nb", "c").contains("\n"))
-        // ② 接线：设置页改工作区时必须写这一行
-        val ui = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt").readText()
-        assertTrue("设置页要调 RunLog.log(KernelAudit.…)", ui.contains("RunLog.log(KernelAudit.workspace(after, before))"))
-        assertTrue("设置页要有「改这里会记日志」的小字", ui.contains("R.string.baopu_ws_log_note"))
-        assertTrue("三个入口都要留痕", Regex("logWs\\(before\\)").findAll(ui).count() >= 3)
+        // ② 接线：**抽屉里**切工作区（＋ 选文件夹 / ⊕ 在这里干）时必须写这一行。
+        // 2026-10-18：设置页那张「工作区」卡已删（与左侧栏重复），留痕落点随迁到 BaopuScreen。
+        val ui = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
+        assertTrue(
+            "抽屉切工作区要留痕",
+            ui.contains("RunLog.log(KernelAudit.workspace(after, before))"),
+        )
+        assertFalse(
+            "设置页里那张重复的工作区卡已经删掉（留痕不再走那儿）",
+            repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt").readText()
+                .contains("BaopuWorkspace.setDefault(ctx)"),
+        )
     }
 }
