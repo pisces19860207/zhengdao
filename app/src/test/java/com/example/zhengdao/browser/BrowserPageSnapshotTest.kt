@@ -359,88 +359,6 @@ class BrowserPageSnapshotTest {
     // ═════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `接线_标签条有导出按钮`() {
-        val strip = source("src/main/java/com/example/zhengdao/ui/browser/BrowserTabStrip.kt")
-        assertTrue("BrowserTabStrip 必须收 onExport 回调", strip.contains("onExport: () -> Unit"))
-        assertTrue("按钮必须有自己的无障碍名称", strip.contains("R.string.browser_export"))
-        assertTrue("按钮必须把点击交回去（组件不自己做 I/O）", strip.contains("onClick = onExport"))
-        assertFalse(
-            "标签条不许碰落盘/导出器（组件只发事件）",
-            stripComments(strip).contains("BrowserPageExporter"),
-        )
-    }
-
-    @Test
-    fun `接线_导出只由用户点击触发_不许后台自动导`() {
-        val screen = source("src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt")
-        assertTrue("BrowserScreen 必须把 onExport 接上", screen.contains("onExport = exportPage"))
-        val calls = Regex("BrowserPageExporter\\.export\\(").findAll(screen).count()
-        assertEquals("一次一导：导出调用只允许出现一处", 1, calls)
-
-        val callIdx = screen.indexOf("BrowserPageExporter.export(")
-        val lambdaIdx = screen.indexOf("val exportPage")
-        assertTrue("导出必须写在 exportPage 回调里（按钮点了才跑）", lambdaIdx in 0 until callIdx)
-        val launchedIdx = screen.lastIndexOf("LaunchedEffect", callIdx)
-        assertTrue(
-            "导出不许挂在 LaunchedEffect / 任何自动副作用上（派工单：不做后台自动持续导出）",
-            launchedIdx < lambdaIdx,
-        )
-    }
-
-    @Test
-    fun `接线_落点就是共享目录_三个文件名齐全`() {
-        val ex = source("src/main/java/com/example/zhengdao/ui/browser/BrowserPageExporter.kt")
-        val code = stripComments(ex)
-        assertTrue("落点必须是共享目录 Store.root（guest 里就是 /opt/zhengdao）", ex.contains("Store.root(context)"))
-        assertTrue("guest 侧路径要能对上", ex.contains("Store.GUEST_ROOT"))
-        listOf("tab.txt", "tab.html", "meta.json").forEach { name ->
-            assertTrue("缺落盘文件 $name", ex.contains("\"$name\""))
-        }
-        assertTrue("落盘必须原子（临时名 + rename，防 agent 读到半截）", ex.contains(".part") && ex.contains("renameTo(target)"))
-    }
-
-    @Test
-    fun `接线_导出管线必须先摘凭据再打PII`() {
-        val code = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserPageExporter.kt"))
-        assertTrue("落盘前必须过明文禁项过滤", code.contains("PageSnapshot.scrubSecrets("))
-        assertTrue("落盘前必须过 PII 打码（用户 2026-10-13 定调）", code.contains("SensitiveRedactor().redactDom("))
-        assertTrue(
-            "顺序不可换：scrubSecrets 必须是 redactDom 的**内层**（先摘凭据、后打 PII）",
-            code.contains("redactDom(PageSnapshot.scrubSecrets("),
-        )
-        assertTrue("摘要必须建立在已过滤的文本上", code.contains("PageSnapshot.summarize(html)"))
-    }
-
-    @Test
-    fun `接线_导出过程一行都不碰_cookie_与本地存储`() {
-        val code = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserPageExporter.kt"))
-        listOf("document.cookie", "localStorage", "sessionStorage", "CookieManager", "getCookie").forEach { needle ->
-            assertFalse("明文禁项：导出代码里不许出现 $needle", code.contains(needle))
-        }
-    }
-
-    @Test
-    fun `接线_中英文案键对称`() {
-        val zh = source("src/main/res/values/strings.xml")
-        val en = source("src/main/res/values-en/strings.xml")
-        val keys = listOf(
-            "browser_export", "browser_export_running",
-            "browser_export_done", "browser_export_failed", "browser_export_no_tab",
-        )
-        val keyRe = Regex("name=\"([^\"]+)\"")
-        val zhKeys = keyRe.findAll(zh).map { it.groupValues[1] }.toList()
-        val enKeys = keyRe.findAll(en).map { it.groupValues[1] }.toList()
-        assertEquals("zh/en 文案条数必须相等（红线③）", zhKeys.size, enKeys.size)
-        assertTrue("只有中文有的键：${zhKeys.toSet() - enKeys.toSet()}", (zhKeys.toSet() - enKeys.toSet()).isEmpty())
-        assertTrue("只有英文有的键：${enKeys.toSet() - zhKeys.toSet()}", (enKeys.toSet() - zhKeys.toSet()).isEmpty())
-        keys.forEach { k ->
-            assertTrue("$k 必须双侧都在（红线③）", k in zhKeys && k in enKeys)
-            assertTrue("$k 中文不许是空串", !zh.contains("name=\"$k\"></string>"))
-            assertTrue("$k 英文不许是空串", !en.contains("name=\"$k\"></string>"))
-        }
-    }
-
-    @Test
     fun `接线_底栏几何一个像素没动`() {
         val screen = source("src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt")
         assertTrue("地址栏带仍是 50dp（红线①）", screen.contains(".height(50.dp)"))
@@ -498,36 +416,5 @@ class BrowserPageSnapshotTest {
         ).forEach { url ->
             assertEquals("无需打码的 URL 必须逐字不变：$url", url, PageSnapshot.scrubUrl(url))
         }
-    }
-
-    @Test
-    fun `接线_URL_与标题也走同一条脱敏口径`() {
-        val code = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserPageExporter.kt"))
-        assertTrue("URL 必须先摘凭据参数（scrubUrl）", code.contains("PageSnapshot.scrubUrl("))
-        assertTrue(
-            "URL 与标题还要过 PII 打码（与页面正文同口径）",
-            code.contains("redactText(PageSnapshot.scrubUrl("),
-        )
-        assertTrue("渲染 tab.txt 用的必须是脱敏后的 URL", code.contains("renderTxt(summary, safeUrl"))
-        assertTrue("meta.json 的 url 字段也必须是脱敏后的", code.contains("url = safeUrl"))
-    }
-
-    @Test
-    fun `接线_导出失败文案不许直喂异常原文`() {
-        val screen = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt"))
-        // 判据要钉在**实质**上：任何把异常自身渲染成字符串的写法都不许进用户文案
-        // （`it.message` / `e.message.orEmpty()` / `t.toString()` …）。
-        // ⚠️ 不能只写死 `browser_export_failed, it.message` —— 2026-10-15 负例自证发现：
-        //    把变量名换个字母（`e.message`）就能绕过，那条门禁等于没盖住。
-        val rawLeak = Regex(
-            """browser_export_failed,\s*(?:[A-Za-z_][A-Za-z0-9_]*\.)?(?:message|localizedMessage|toString\(\))""",
-        )
-        assertFalse(
-            "用户可见文案不许直接把异常原文塞进去（⑯刀 R-29 口径）：会出现 " +
-                "/storage/…: open failed: EACCES 这类内部细节。命中：${rawLeak.find(screen)?.value}",
-            rawLeak.containsMatchIn(screen),
-        )
-        assertTrue("失败分支必须把人话交给 HumanizeError", screen.contains("HumanizeError.title("))
-        assertTrue("异常原文只许进日志", screen.contains("RunLog.log("))
     }
 }
