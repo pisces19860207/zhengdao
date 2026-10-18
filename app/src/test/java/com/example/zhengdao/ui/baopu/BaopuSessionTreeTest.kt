@@ -748,9 +748,10 @@ class BaopuSessionTreeTest {
             drawerCode.contains("R.string.baopu_drawer_history"),
         )
         assertFalse("抽屉的形参也不许再收 onHistorySessions", drawerCode.contains("onHistorySessions"))
-        // 但它不能凭空消失 —— 平铺列表（含删除）得在设置页有入口
+        // 2026-10-18 用户口径再改：设置页那张「会话记录」卡也删了（一条条删太累），
         val settings = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt").readText()
-        assertTrue("设置页要有「会话记录」卡", settings.contains("R.string.baopu_session_manage_card"))
+        // 那张卡已删：删除改到抽屉里长按会话行做（下一步），设置页不再重复列一遍
+        assertFalse("设置页不该再有会话记录卡", settings.contains("R.string.baopu_session_manage_card"))
         assertTrue("设置页要能打开会话库", settings.contains("onOpenSessionLibrary"))
         val screen = screenCode
         assertTrue(
