@@ -5,7 +5,8 @@
 // 「单文件新增 ≤ 400 行；超了拆文件」，且派工单 §6/§12.5 白名单本就按
 // `agent/RunRules.kt` 独立文件列过（拆后与白名单对齐）。
 package com.example.zhengdao.baopu.agent
-
+
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.Provider
 import java.io.File
 import org.json.JSONObject
@@ -17,10 +18,10 @@ import org.json.JSONObject
 internal object RunRules {
 
     /** max_steps = 16（8–32 可调；程枢版 §2 刹车数值，写死默认值）。 */
-    const val MAX_STEPS = 16
+    const val MAX_STEPS = BaopuKernel.Budget.MAX_STEPS
 
     /** 连续 3 次工具失败 ⇒ 停下 ask_user，禁止硬试（§2）。 */
-    const val MAX_TOOL_FAILURES = 3
+    const val MAX_TOOL_FAILURES = BaopuKernel.Budget.MAX_TOOL_FAILURES
 
     /**
      * 收尾闸给模型的自修次数（2026-10-17，工具补强第二刀；从旧内嵌版搬来）。
@@ -29,13 +30,13 @@ internal object RunRules {
      * 给两三轮它会开始瞎改别的文件。修一次仍不过 ⇒ 如实报「未通过」让人看，
      * 而不是继续烧 token 假装在修。
      */
-    const val MAX_VERIFY_REPAIRS = 1
+    const val MAX_VERIFY_REPAIRS = BaopuKernel.Budget.MAX_VERIFY_REPAIRS
 
     /** 通道熔断阈值：当前通道连续 N 次失败 ⇒ 标记不可用 + 提示切通道（§2 补录）。 */
-    const val CHANNEL_BREAK_THRESHOLD = 3
+    const val CHANNEL_BREAK_THRESHOLD = BaopuKernel.Budget.CHANNEL_BREAK_THRESHOLD
 
     /** 确认超时：默认 15 分钟，且**仅 App 前台计时**（§2 补录）。 */
-    const val CONFIRM_TIMEOUT_MS = 15 * 60 * 1000L
+    const val CONFIRM_TIMEOUT_MS = BaopuKernel.Auth.CONFIRM_TIMEOUT_MS
 
     /**
      * 一轮之内自动换通道的上限（刀 1 补丁）。
@@ -44,7 +45,7 @@ internal object RunRules {
      * 熔断→切换→再失败会无限循环烧 token，`MAX_STEPS` 拦不住（步数没涨）。
      * 到顶后把候选置空 ⇒ `channelDecision` 只好走 `BrokenAskUser`，停下来问人。
      */
-    const val MAX_CHANNEL_SWITCHES = 2
+    const val MAX_CHANNEL_SWITCHES = BaopuKernel.Budget.MAX_CHANNEL_SWITCHES
 
     /** 一步 = 一次模型轮次 ⇒ 步数从 1 起；满 16 必停。 */
     fun isStepExhausted(steps: Int): Boolean = steps >= MAX_STEPS
@@ -106,10 +107,10 @@ internal object RunRules {
     // ── 确认制纯判据（刀 3 A 段；JVM 直测） ──────────────────────────────
 
     /** 确认等待的轮询间隔（前台计时判据的检查粒度；100ms 对人眼/CPU 都无感）。 */
-    const val CONFIRM_POLL_MS = 100L
+    const val CONFIRM_POLL_MS = BaopuKernel.Auth.CONFIRM_POLL_MS
 
     /** argsJson 落库上限（派工单 §3.5 红线 4：超了截断并标注，防大参数撑爆表）。 */
-    const val CONFIRM_ARGS_MAX_CHARS = 8 * 1024
+    const val CONFIRM_ARGS_MAX_CHARS = BaopuKernel.Auth.CONFIRM_ARGS_MAX_CHARS
 
     /**
      * 超时回灌的人话（与 strings 的 `baopu_confirm_timeout` 同文）。
@@ -186,7 +187,7 @@ internal object RunRules {
      * 不改 [com.example.zhengdao.baopu.ContextAssembler.COMPRESS_THRESHOLD] 的
      * 语义与取值——只加一道封顶。
      */
-    const val COMPRESS_ABS_MAX_TOKENS = 120_000
+    const val COMPRESS_ABS_MAX_TOKENS = BaopuKernel.Budget.COMPRESS_ABS_MAX_TOKENS
 
     /**
      * 第二条触发线：**可压旧消息条数下限**（第十五批 B 段）。
@@ -196,7 +197,7 @@ internal object RunRules {
      * 再扣除已压进摘要的消息，**不另写一套口径**。两条触发任一满足就压；
      * 都满足不了就一定不压（C 段反向保证）。
      */
-    const val COMPRESS_OLD_MESSAGE_MIN = 60
+    const val COMPRESS_OLD_MESSAGE_MIN = BaopuKernel.Budget.COMPRESS_OLD_MESSAGE_MIN
 
     /**
      * 压缩**单次**处理的消息条数上限（第十六批第二件）。
@@ -207,5 +208,5 @@ internal object RunRules {
      * （不许整批拒绝——整批拒绝会让长会话永远压不动，等于把压缩锁死），剩下的
      * 留给下一轮：条数触发线（[COMPRESS_OLD_MESSAGE_MIN]）仍满足，会接着压。
      */
-    const val COMPRESS_MAX_MESSAGES_PER_RUN = 200
+    const val COMPRESS_MAX_MESSAGES_PER_RUN = BaopuKernel.Budget.COMPRESS_MAX_MESSAGES_PER_RUN
 }
