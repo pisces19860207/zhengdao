@@ -6,6 +6,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.BaopuGuardCore
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.rootfs.RunLog
 import org.json.JSONObject
 import java.io.File
@@ -280,10 +281,10 @@ internal class GuardPipeline(
     }
 
     companion object {
-        /** 输出超此字符数 ⇒ spill 落盘只回摘要（第 ⑤ 段阈值）。 */
-        const val SPILL_THRESHOLD_CHARS = 4_000
+        /** 输出超此字符数 ⇒ spill 落盘只回摘要（第 ⑤ 段阈值）。26-B 起唯一来源在内核。 */
+        const val SPILL_THRESHOLD_CHARS = BaopuKernel.Tools.SPILL_THRESHOLD_CHARS
 
         /** spill 失败时的回灌截断长度（仍然 ≤ 阈值，不给上下文第二次暴击）。 */
-        const val SPILL_SNIPPET_CHARS = 2_000
+        const val SPILL_SNIPPET_CHARS = BaopuKernel.Tools.SPILL_SNIPPET_CHARS
     }
 }
