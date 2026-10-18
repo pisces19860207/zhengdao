@@ -1123,6 +1123,38 @@
     <string name="skill_draft_index_full">Body promoted, but the index is full (cap %1$d): no index line added, remove a few first</string>
     <string name="skill_use_platform_template">Use platform template</string>
     <string name="skill_use_platform_template_hint">Prefill only edits the box, nothing hits the disk; saving still goes through the confirmation card.</string>
+    <!-- ── Batch 34: skills become **visible** (detail), **recoverable** (archived), **editable** ──
+         The UI only reports the data layer's readings: status / use count come from SkillStore, and the
+         backup plus archive timestamps are taken from the **file name itself**, never from "now"
+         (otherwise "when was that previous version actually saved" could never be answered). -->
+    <string name="skill_detail_title">Skill detail</string>
+    <string name="skill_detail_scope">Scope: %1$s</string>
+    <string name="skill_detail_status">Status: %1$s</string>
+    <string name="skill_detail_status_draft">Draft</string>
+    <string name="skill_detail_status_active">Active</string>
+    <string name="skill_detail_uses">Used %1$d/%2$d</string>
+    <string name="skill_detail_file">File: %1$s</string>
+    <string name="skill_missing_file">File is missing: %1$s</string>
+    <string name="skill_copy_all">Copy all</string>
+    <string name="skill_copied_chars">Copied %1$d characters</string>
+    <string name="skill_close">Close</string>
+    <string name="skill_detail_edit">Edit</string>
+    <string name="skill_restore_backup_at">Restore previous (backup %1$s)</string>
+    <string name="skill_archived_group">Archived (%1$d)</string>
+    <string name="skill_archived_none">Nothing archived</string>
+    <string name="skill_archived_at">Archived %1$s</string>
+    <string name="skill_archived_restore">Restore</string>
+    <string name="skill_archived_delete">Delete for good</string>
+    <string name="skill_archived_restored">Restored: %1$s</string>
+    <string name="skill_archived_occupied">Target already exists, nothing overwritten: %1$s</string>
+    <string name="skill_archived_io_failed">Not done: %1$s (%2$s)</string>
+    <string name="skill_archived_index_full">Body restored, but the index is full (cap %1$d): no index line added, remove a few first</string>
+    <string name="skill_archived_index_skipped">Body restored, but the folder name %1$s is not a usable skill name: no index line added, rename it by hand first</string>
+    <string name="skill_archived_confirm">Tap again to delete for good, unrecoverable: %1$s</string>
+    <string name="skill_archived_deleted">Deleted for good: %1$s</string>
+    <string name="skill_edit_title">Edit skill</string>
+    <string name="skill_name_locked_hint">Name locked: to rename, create a new skill and remove this one</string>
+    <string name="skill_edit_saved">Saved (previous version backed up)</string>
     <!-- ── Session library (batch 20): reopen or delete old chats + workspace surfaced ── -->
     <string name="baopu_drawer_history">History</string>
     <string name="baopu_drawer_history_desc">All sessions, as a flat list</string>

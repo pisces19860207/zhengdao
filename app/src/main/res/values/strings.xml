@@ -1123,6 +1123,37 @@
     <string name="skill_draft_index_full">正文已转正，但索引已满（上限 %1$d 条）：索引行没加上，先去删几条</string>
     <string name="skill_use_platform_template">用平台机制模板</string>
     <string name="skill_use_platform_template_hint">预填只改输入框，不写盘；保存仍要过确认卡。</string>
+    <!-- ── 第三十四批：技能**能看见**（详情）·**能找回**（已归档）·**能改**（编辑）──
+         界面只报数据层的读数：状态／次数取自 SkillStore，备份与归档时间取自**文件名里那串真实时间戳**，
+         不现取 now（否则「上一版到底是何时备份的」这件事就永远说不清）。 -->
+    <string name="skill_detail_title">技能详情</string>
+    <string name="skill_detail_scope">作用域：%1$s</string>
+    <string name="skill_detail_status">状态：%1$s</string>
+    <string name="skill_detail_status_draft">草稿</string>
+    <string name="skill_detail_status_active">正式</string>
+    <string name="skill_detail_uses">已用 %1$d/%2$d</string>
+    <string name="skill_detail_file">文件：%1$s</string>
+    <string name="skill_missing_file">文件不在了：%1$s</string>
+    <string name="skill_copy_all">复制全文</string>
+    <string name="skill_copied_chars">已复制 %1$d 字</string>
+    <string name="skill_close">关闭</string>
+    <string name="skill_detail_edit">编辑</string>
+    <string name="skill_restore_backup_at">恢复到上一版（备份于 %1$s）</string>
+    <string name="skill_archived_group">已归档（%1$d）</string>
+    <string name="skill_archived_none">没有已归档的技能</string>
+    <string name="skill_archived_at">归档于 %1$s</string>
+    <string name="skill_archived_restore">恢复</string>
+    <string name="skill_archived_delete">彻底删除</string>
+    <string name="skill_archived_restored">已恢复：%1$s</string>
+    <string name="skill_archived_occupied">目标已经存在，没有覆盖：%1$s</string>
+    <string name="skill_archived_io_failed">没能做成：%1$s（%2$s）</string>
+    <string name="skill_archived_index_full">正文已放回原位，但索引已满（上限 %1$d 条）：索引行没加上，先去删几条</string>
+    <string name="skill_archived_index_skipped">正文已放回原位，但目录名「%1$s」不是可用的技能名：索引行没加上，先手动改名</string>
+    <string name="skill_archived_confirm">再点一次就真删了，删掉找不回来：%1$s</string>
+    <string name="skill_archived_deleted">已彻底删除：%1$s</string>
+    <string name="skill_edit_title">编辑技能</string>
+    <string name="skill_name_locked_hint">技能名锁定：要改名请新建一个，再删掉这个</string>
+    <string name="skill_edit_saved">已保存（旧版已备份）</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->
     <string name="baopu_drawer_history">历史会话</string>
     <string name="baopu_drawer_history_desc">全部会话，平铺看</string>
