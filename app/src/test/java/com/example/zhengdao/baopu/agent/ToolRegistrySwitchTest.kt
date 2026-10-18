@@ -43,7 +43,7 @@ class ToolRegistrySwitchTest {
     // ── 表 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `一张表_默认十九个全启用`() {
+    fun `一张表_默认二十个全启用`() {
         setup()
         val reg = registry()
 
@@ -55,7 +55,7 @@ class ToolRegistrySwitchTest {
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 "browser_open", "browser_snapshot", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot", "update_plan",
-                "library_list", "library_organize",
+                "library_list", "library_organize", "delete_path",
             ),
             reg.names(),
         )
@@ -175,14 +175,14 @@ class ToolRegistrySwitchTest {
     }
 
     @Test
-    fun `关十九个_全关时tools数组为空`() {
+    fun `关二十个_全关时tools数组为空`() {
         setup()
         val prefs = InMemoryToolPrefs(BaopuToolCatalog.DEFAULT_ENABLED)
         val reg = registry(prefs)
         assertEquals(0, reg.toolsJsonOpenAi().length())
         assertEquals(0, reg.toolsJsonAnthropic().length())
-        // 注册表仍有十九条（都能拿到「已被关闭」）
-        assertEquals(19, reg.names().size)
+        // 注册表仍有二十条（都能拿到「已被关闭」）
+        assertEquals(20, reg.names().size)
     }
 
     @Test
@@ -208,10 +208,33 @@ class ToolRegistrySwitchTest {
     }
 
     @Test
-    fun `表里不许出现删除类工具`() {
-        // 纪律：本刀工具集没有任何删除能力（写操作只到 write_file 为止）
-        BaopuToolCatalog.ENTRIES.forEach { e ->
-            assertFalse("不许有删除类工具：${e.name}", e.name.contains("delete") || e.name.contains("remove"))
+    fun `删除类工具只许delete_path一个_且只删文件不递归`() {
+        // 🛑 口径变更（2026-10-18 用户逐字「删除工具没加啊？」）：
+        // 刀 2 时代写的是「工具集没有任何删除能力」，那是因为当时连确认卡都没做稳；
+        // 现在用户明确要抱朴能删（唯一红线是 资料库/原始/，而它本来就在工作区外）。
+        // 所以这条门禁反过来钉**收口**：删除类工具只许这一个，且必须满足三条硬约束。
+        val deleteish = BaopuToolCatalog.ENTRIES.filter {
+            it.name.contains("delete") || it.name.contains("remove")
+        }.map { it.name }
+        assertEquals("删除类工具只许 delete_path 一个：$deleteish", listOf("delete_path"), deleteish)
+
+        // 硬约束一：必须是 CONFIRM（每次一张确认卡，不许静默动手）
+        val spec = BaopuToolCatalog.ENTRIES.first { it.name == "delete_path" }.factory { File(".") }
+        assertEquals("delete_path 必须 CONFIRM", ToolPermission.CONFIRM, spec.permission)
+
+        // 硬约束二：只删单个文件——源码里不许出现递归删除
+        val src = File("src/main/java/com/example/zhengdao/baopu/agent/tools/DeletePathTool.kt")
+            .let { if (it.isFile) it else File("app/$it") }
+            .readText()
+            .replace("\r\n", "\n")
+            .replace(Regex("(?s)/\\*.*?\\*/"), "")
+            .replace(Regex("(?m)^[ \\t]*//.*$"), "")
+        listOf("deleteRecursively", "deleteOnExit").forEach { dangerous ->
+            assertFalse("delete_path 不许出现 $dangerous（只删单个文件）", src.contains(dangerous))
         }
+
+        // 硬约束三：默认进回收站（能反悔），`permanent` 才真删
+        assertTrue("delete_path 必须支持默认进回收站", src.contains("TRASH_DIR"))
+        assertTrue("默认值必须是「不彻底删」", src.contains("optBoolean(ARG_PERMANENT, false)"))
     }
 }
