@@ -157,8 +157,8 @@ private fun WorkspaceRow(
         )
         // 「圆里一个加号」＝**在这个工作区里干活**（在这里开新会话）。
         // 照 DSH 左侧栏：文件夹行右侧的 ⊕。只有文字符号，不自绘 glyph、不引图标库（A7）。
-        // 默认工作区（历史未记录）不给这个按钮 —— 它不是一个真文件夹，点了也没有"在那里干活"这回事。
-        if (!node.unknown) {
+        // 默认工作区（Download/证道）**也给**这个＋：它是真文件夹，用户 2026-10-18 明说了。
+        run {
             Spacer(Modifier.width(8.dp))
             Box(
                 modifier = Modifier

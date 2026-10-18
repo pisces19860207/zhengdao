@@ -57,7 +57,7 @@ import com.example.zhengdao.ui.InfoRow
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.SettingsSubPage
 import com.example.zhengdao.ui.WorkspaceFolderPicker
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
@@ -218,19 +218,19 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             // ── 工作区（第二十批 §2.2：把已有的工作区设置摆出来给人看和改）──
             // 铁律「同一件事只有一个盒子」：真源是 terminal/Workspace（workspace_mode/
             // workspace_path），这里**只调** setDefault/setCustom/setPrivate，不自己再存
-            // 一份到别的 prefs（K6：全仓 workspace_mode/workspace_path 只许命中 Workspace.kt）。
+            // 一份到别的 prefs（K6：全仓 workspace_mode/workspace_path 只许命中 BaopuWorkspace.kt）。
             // 选中态不读 raw 键（那会引入第二份字面量）——从解析结果 hostDir 推导。
             SectionCard(stringResource(R.string.baopu_ws_card)) {
                 var wsTick by remember { mutableStateOf(0) }
                 var wsPickerOpen by remember { mutableStateOf(false) }
-                val storageOk = remember(wsTick) { Workspace.storageGranted(ctx) }
-                val hostPath = remember(wsTick) { Workspace.hostDir(ctx).absolutePath }
-                val curDefault = remember(wsTick) { Workspace.defaultDir(ctx).absolutePath }
-                val curPrivate = remember(wsTick) { Workspace.privateDir(ctx).absolutePath }
+                val storageOk = remember(wsTick) { BaopuWorkspace.storageGranted(ctx) }
+                val hostPath = remember(wsTick) { BaopuWorkspace.hostDir(ctx).absolutePath }
+                val curDefault = remember(wsTick) { BaopuWorkspace.defaultDir().absolutePath }
+                val curPrivate = remember(wsTick) { BaopuWorkspace.privateDir(ctx).absolutePath }
                 // 内核项留痕（第二十六批 §3.6）：**工作区是内核项**，改了要留一条 `[kernel] …`。
                 // 只在「真的变了」时写 —— 反复点同一个 chip 不该把日志刷满。
                 fun logWs(before: String) {
-                    val after = Workspace.hostDir(ctx).absolutePath
+                    val after = BaopuWorkspace.hostDir(ctx).absolutePath
                     if (after != before) RunLog.log(KernelAudit.workspace(after, before))
                 }
                 Text(
@@ -263,7 +263,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         selected = hostPath == curDefault,
                     ) {
                         val before = hostPath
-                        Workspace.setDefault(ctx)
+                        BaopuWorkspace.setDefault(ctx)
                         logWs(before)
                         wsTick++
                     }
@@ -281,7 +281,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         selected = storageOk && hostPath == curPrivate,
                     ) {
                         val before = hostPath
-                        Workspace.setPrivate(ctx)
+                        BaopuWorkspace.setPrivate(ctx)
                         logWs(before)
                         wsTick++
                     }
@@ -292,14 +292,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 // 目录选择器**复用** SettingsDataActivity 那一套（§2.2.1：它怎么选你就怎么调），
-                // 不新写一套；非法路径 Workspace.setCustom 自己会拒（返回 false 时选中态不动）。
+                // 不新写一套；非法路径 BaopuWorkspace.setCustom 自己会拒（返回 false 时选中态不动）。
                 if (wsPickerOpen) {
                     WorkspaceFolderPicker(
                         onDismiss = { wsPickerOpen = false },
                         onPick = { path ->
                             wsPickerOpen = false
                             val before = hostPath
-                            if (Workspace.setCustom(ctx, path)) logWs(before)
+                            if (BaopuWorkspace.setCustom(ctx, path)) logWs(before)
                             wsTick++
                         },
                     )

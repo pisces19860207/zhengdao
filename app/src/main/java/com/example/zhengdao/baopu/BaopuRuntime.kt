@@ -24,7 +24,6 @@ import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
 import org.json.JSONObject
 import java.io.File
 
@@ -68,7 +67,7 @@ internal object BaopuRuntime {
     }
 
     /** 工作区根（唯一真相源 Workspace.hostDir；守卫与 spill 都以它为根）。 */
-    fun workspaceRoot(context: Context): File = Workspace.hostDir(context.applicationContext)
+    fun workspaceRoot(context: Context): File = BaopuWorkspace.hostDir(context.applicationContext)
 
     /** 人设文件读写壳（B 跟 App、C 跟工作区）。 */
     fun personaFiles(context: Context): PersonaFiles {

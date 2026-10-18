@@ -6,7 +6,7 @@ package com.example.zhengdao.baopu.library
 
 import android.content.Context
 import com.example.zhengdao.rootfs.PathGuard
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.baopu.BaopuWorkspace
 import java.io.File
 
 /**
@@ -58,7 +58,7 @@ internal object LibraryPaths {
     // ── Context 壳（薄：只负责把 Context 变成 File） ──────────────────────────
 
     /** 工作区根（唯一真相源 [Workspace.hostDir]；共享/仅私有两种模式都成立）。 */
-    fun workspaceRoot(ctx: Context): File = Workspace.hostDir(ctx)
+    fun workspaceRoot(ctx: Context): File = BaopuWorkspace.hostDir(ctx)
 
     /** 共享区 `投递/`。 */
     fun deliverDir(ctx: Context): File = deliverDirUnder(workspaceRoot(ctx))

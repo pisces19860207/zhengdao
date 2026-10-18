@@ -10,6 +10,8 @@
 // J1–J7 JVM 直测）；Compose 层只做接线与渲染。
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.baopu.BaopuWorkspace
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.graphics.Bitmap
@@ -60,7 +62,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.getSystemService
 import com.example.zhengdao.R
-import com.example.zhengdao.terminal.Workspace
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -596,7 +597,7 @@ private fun BaopuImagePart(part: BaopuUiPart, key: String) {
     val ctx = LocalContext.current
     val relPath = part.text
     // 工作区根 + 相对路径 = 真实文件。换工作区后老图找不到 ⇒ 走"缺失"分支，不崩。
-    val file = remember(relPath) { File(Workspace.hostDir(ctx), relPath) }
+    val file = remember(relPath) { File(BaopuWorkspace.hostDir(ctx), relPath) }
     var fullScreen by remember(relPath) { mutableStateOf(false) }
 
     // 文件是否真的在（一次判断，分支内不再 remember）
