@@ -4,7 +4,8 @@
 // 预算判据 窗口×0.85）+ 派工单第八批追加节（面向提示词缓存：顺序固定、记忆只增不改、
 // 压缩不动前缀、前缀字节级相同可断言）。
 package com.example.zhengdao.baopu
-
+
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.agent.RunRules
 
 /** 一条会话历史消息（id 用于压缩留痕：哪几条被压成摘要）。 */
@@ -107,7 +108,7 @@ data class AssembledPrompt(
 internal object ContextAssembler {
 
     /** 压缩触发阈值（程枢版 §7：组装后 > 窗口 × 0.85 ⇒ 先 Compressing 再 Thinking）。 */
-    const val COMPRESS_THRESHOLD = 0.85
+    const val COMPRESS_THRESHOLD = BaopuKernel.Budget.COMPRESS_THRESHOLD
 
     /** 记忆召回 token 上界（程枢版 §7：≤ 2k，不是全量灌）。 */
     const val RECALL_TOKEN_BUDGET = MemoryRules.RECALL_TOKEN_BUDGET
