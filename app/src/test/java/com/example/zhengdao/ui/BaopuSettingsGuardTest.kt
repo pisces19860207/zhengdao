@@ -187,4 +187,20 @@ class BaopuSettingsGuardTest {
             assertTrue("缺英文字符串：$key", en.contains(key))
         }
     }
+
+    // ── J8 回归网：catalog 里每个工具都必须有标签/副标题映射 ───────────────
+    // 事故背景（2026-10-18 真机上机）：第十七批 A+B 段给 BaopuToolCatalog 加了 update_plan，
+    // 但设置页的 when 映射没同步 ⇒ 打开「抱朴设置」直接抛 IllegalArgumentException 崩溃。
+    // J1-J7 全是「搬没搬」，没有一条盯「catalog 长新工具时映射表跟没跟」，故补此条。
+    @Test
+    fun `J8_catalog每个工具都有标签与副标题映射`() {
+        val page = src("ui/baopu/BaopuSettingsScreen.kt")
+        val labels = com.example.zhengdao.baopu.agent.BaopuToolCatalog.ENTRIES
+        assertTrue("catalog 不该是空的", labels.isNotEmpty())
+        for (e in labels) {
+            val needle = "\"" + e.name + "\" ->"
+            val hits = page.split(needle).size - 1
+            assertEquals("工具「${e.name}」的 when 分支数（标签＋副标题应为 2）", 2, hits)
+        }
+    }
 }
