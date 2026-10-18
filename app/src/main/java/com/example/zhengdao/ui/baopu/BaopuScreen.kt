@@ -87,6 +87,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var showChannel by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
+    // 第十八批 A 段：抽屉「抱朴设置」直达抱朴自己的设置页（页内全屏浮层，
+    // 与章节抽取／备份／换通道同一模式）——不再去「终端与资料」大杂烩页。
+    var showSettings by remember { mutableStateOf(false) }
 
     // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -94,6 +97,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val drawerWidth = if (screenWidthDp * 0.8f > 300f) 300.dp else (screenWidthDp * 0.8f).dp
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+    // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
+    BackHandler(enabled = showSettings) { showSettings = false }
 
     // 引擎事件驱动刷新已由 controller 内部做；这里补一个前台可见时的兜底刷新
     // （进程被杀后重进：库里有中断标记，controller 构造时 refresh 已读一次）。
@@ -172,7 +177,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                     onSettings = {
                         scope.launch { drawerState.close() }
-                        openSettings(context)
+                        showSettings = true
                     },
                 )
             }
@@ -372,6 +377,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
             if (showExtract) {
                 BaopuExtractSheet(onDismiss = { showExtract = false })
+            }
+            if (showSettings) {
+                BaopuSettingsScreen(onDismiss = { showSettings = false })
             }
         }
     }
