@@ -22,8 +22,22 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
-/** 一条对话消息（刀 0 只要纯文本；多模态 part 归后续刀）。 */
-data class LlmMessage(val role: String, val content: String) {
+/**
+ * 一条对话消息。
+ *
+ * [images]（第二十四批 A 段）：本轮随消息一起发的图片，每项是 **data URL**
+ * （`data:image/jpeg;base64,...`）。空 = 纯文本（**走原来的字符串 content，逐字节等价**，
+ * 判据 V1）。
+ *
+ * 为什么是 data URL 而不是本机路径：路径发到模型侧就是泄漏（V6）。data URL 自带
+ * MIME，OpenAI 与 Anthropic 两种形状都能从它拆出来，不需要额外字段。
+ * 谁决定发哪几张、发多大：只有 [VisionRules.select]（`Provider.vision` 说了算，V5）。
+ */
+data class LlmMessage(
+    val role: String,
+    val content: String,
+    val images: List<String> = emptyList(),
+) {
     companion object {
         const val ROLE_SYSTEM = "system"
         const val ROLE_USER = "user"
@@ -202,7 +216,15 @@ internal object LlmWire {
                 }
                 .put("messages", JSONArray().also { arr ->
                     messages.forEach { m ->
-                        arr.put(JSONObject().put("role", m.role).put("content", m.content))
+                        val obj = JSONObject().put("role", m.role)
+                        if (m.images.isEmpty()) {
+                            // V1：纯文本走**原来的**写法，一个字节都不多——这是防回归的
+                            // 全部意义（15 条历史单测与真机日志都按这个形状对账）
+                            obj.put("content", m.content)
+                        } else {
+                            obj.put("content", contentBlocks(m, LlmProtocol.OPENAI_COMPAT))
+                        }
+                        arr.put(obj)
                     }
                 })
                 .apply { if (tools != null && tools.length() > 0) put("tools", tools) }
@@ -219,12 +241,60 @@ internal object LlmWire {
                     .apply { if (system.isNotEmpty()) put("system", system) }
                     .put("messages", JSONArray().also { arr ->
                         rest.forEach { m ->
-                            arr.put(JSONObject().put("role", m.role).put("content", m.content))
+                            val obj = JSONObject().put("role", m.role)
+                            if (m.images.isEmpty()) {
+                                obj.put("content", m.content) // V1：同上，逐字节等价
+                            } else {
+                                obj.put("content", contentBlocks(m, LlmProtocol.ANTHROPIC))
+                            }
+                            arr.put(obj)
                         }
                     })
                     .apply { if (tools != null && tools.length() > 0) put("tools", tools) }
                     .toString()
             }
+        }
+
+        /**
+         * 多段 content（判据 V2）：`[{type:text}, {type:image…}…]`。
+         *
+         * **text 段在前、图片段在后**——不只是审美：image 夹在 text 中间时部分端点
+         * 会拒（公开文档都把图放在最后），而且 text 在前对人类可读的日志更友好。
+         * `content` 为空则不造空 text 段（空串的 text 块有的端点会 400）。
+         *
+         * 两种协议形状不同，故按 protocol 分派：
+         * - OpenAI 兼容：`{"type":"image_url","image_url":{"url":"data:…"}}`（公开文档形态）
+         * - Anthropic：`{"type":"image","source":{"type":"base64","media_type":…,"data":…}}`
+         */
+        private fun contentBlocks(m: LlmMessage, protocol: LlmProtocol): JSONArray {
+            val blocks = JSONArray()
+            if (m.content.isNotEmpty()) {
+                blocks.put(JSONObject().put("type", "text").put("text", m.content))
+            }
+            for (url in m.images) {
+                when (protocol) {
+                    LlmProtocol.OPENAI_COMPAT -> blocks.put(
+                        JSONObject()
+                            .put("type", "image_url")
+                            .put("image_url", JSONObject().put("url", url)),
+                    )
+                    LlmProtocol.ANTHROPIC -> {
+                        val parts = VisionRules.splitDataUrl(url) ?: continue
+                        blocks.put(
+                            JSONObject()
+                                .put("type", "image")
+                                .put(
+                                    "source",
+                                    JSONObject()
+                                        .put("type", "base64")
+                                        .put("media_type", parts.first)
+                                        .put("data", parts.second),
+                                ),
+                        )
+                    }
+                }
+            }
+            return blocks
         }
 
         /**
