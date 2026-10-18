@@ -18,6 +18,7 @@ import com.example.zhengdao.baopu.Compressor
 import com.example.zhengdao.baopu.ContextAssembler
 import com.example.zhengdao.baopu.HardFacts
 import com.example.zhengdao.baopu.HistoryMessage
+import com.example.zhengdao.baopu.VisionFiles
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.Finding
 import com.example.zhengdao.baopu.verify.VerifyTargets
@@ -296,11 +297,18 @@ internal class RunEngine(
      * 用户发一条消息（会话不存在则由调用方先 [createSession]）。
      * 前台入口：UI 线程调，循环丢 [runExecutor]。
      */
-    fun send(sessionId: Long, text: String) {
+    fun send(
+        sessionId: Long,
+        text: String,
+        imageRelPaths: List<String> = emptyList(),
+    ) {
         if (text.isBlank()) return
         acquireOrNotice(sessionId) ?: return
         stopRequested = false
         _notice.value = null
+        // 第二十四批 C 段：本轮要随请求发出去的图片。**只收相对路径**，读盘在引擎线程里做
+        // （调用方是主线程，不许在那里读 2 MB 文件）。
+        pendingImageRelPaths = imageRelPaths
         runExecutor.execute {
             try {
                 runLoop(sessionId, userText = text, resumed = false)
@@ -309,6 +317,9 @@ internal class RunEngine(
                 _state.value = RunState.ABORTED
                 _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
             } finally {
+                // 本轮图片不外溢：下一次 resume 若不清，会把上一轮的图再发一遍
+                turnImages = emptyList()
+                pendingImageRelPaths = emptyList()
                 ActiveSessionGate.release("id:$sessionId")
                 onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记（见 Settled 的说明）
             }
@@ -485,6 +496,22 @@ internal class RunEngine(
         // 历史（续跑 = 重建上下文：人设 + 硬事实 + 最近 N 轮原文；C 段起含工具结果回灌）
         var history = loadHistory(sessionId).toMutableList()
         var stepCount = if (resumed) stepOf(sessionId) else 0
+
+        // 第二十四批 C 段：本轮图片在**引擎线程**上读好一次，全程复用。
+        // 续跑不带图（上一轮的图已经跟着那一轮发出去了，重发等于给模型看第二遍）。
+        turnImages = if (resumed) {
+            emptyList()
+        } else {
+            val paths = pendingImageRelPaths
+            pendingImageRelPaths = emptyList()
+            if (paths.isEmpty()) {
+                emptyList()
+            } else {
+                runCatching { VisionFiles.payloadsOf(spillRoot(), paths) }
+                    .onFailure { log("抱朴引擎：读图失败（本轮按纯文本走）${it.javaClass.simpleName}") }
+                    .getOrDefault(emptyList())
+            }
+        }
         if (userText != null) {
             // 新一轮 ⇒ 新计划：不继承上一轮的勾选状态（新任务不该因同名条目被钉 done）
             planController.newRound()
@@ -742,6 +769,14 @@ internal class RunEngine(
         compressedIds: Set<String> = emptySet(),
         skipIds: Set<String> = emptySet(),
         oldMessageCount: Int = 0,
+        /**
+         * 本轮要随请求发出去的图片（第二十四批 C 段）。
+         *
+         * 默认取 [turnImages]：本轮开跑那一刻读好的一批。**每一步都发同一批**是刻意的——
+         * 用户这一轮的内容里就包含那几张图，工具循环的后续步骤仍在回答同一个请求；
+         * 省 token 的正确做法是 `VisionRules` 的 4 张/6 MB 上限，不是「第二轮就不给看」。
+         */
+        images: List<com.example.zhengdao.baopu.VisionRules.ImagePayload> = turnImages,
     ) = ContextAssembler.assemble(
         persona = persona,
         facts = facts,
@@ -754,7 +789,21 @@ internal class RunEngine(
         compressedIds = compressedIds,
         skipIds = skipIds,
         oldMessageCount = oldMessageCount,
+        images = images,
+        // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
+        visionSupported = provider.vision,
     )
+
+    /**
+     * 本轮已读好的图片（第二十四批 C 段）。
+     *
+     * 为什么是字段而不是参数：`assemble` 在工具循环里被调用多次，参数一路传下去要改十几处
+     * 调用点（那是本批不想要的风险）；字段只有「本轮开跑时赋值、本轮结束时清空」两个触点。
+     */
+    private var turnImages: List<com.example.zhengdao.baopu.VisionRules.ImagePayload> = emptyList()
+
+    /** 本轮附件里图片的**相对路径**（[send] 写入，[runLoop] 开跑时消费并清空）。 */
+    private var pendingImageRelPaths: List<String> = emptyList()
 
     /** 本会话已注入的记忆（只增不改——0b 的 sticky 语义；候选确认后才进这里）。 */
     private val stickyMemories = mutableListOf<com.example.zhengdao.baopu.MemoryEntry>()

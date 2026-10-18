@@ -95,7 +95,7 @@ class BaopuAttachWiringTest {
     }
 
     @Test
-    fun `图片与文件分开说_图片明说看不了`() {
+    fun `图片与文件分开说_图片提示不许自我矛盾`() {
         val zh = repoFile("src/main/res/values/strings.xml").readText()
         val en = repoFile("src/main/res/values-en/strings.xml").readText()
         listOf(
@@ -106,7 +106,14 @@ class BaopuAttachWiringTest {
             assertTrue("中文缺 $key", zh.contains("name=\"$key\""))
             assertTrue("英文缺 $key", en.contains("name=\"$key\""))
         }
-        assertTrue("图片提示必须写明「不能看图」", zh.contains("不能看图"))
+        // 第二十四批 C 段改了这条口径（原文断言「图片提示必须写明不能看图」）：
+        // 图片现在**真的可能随请求发出去**（Engine 读工作区文件 → VisionRules 裁图），
+        // 通道支不支持看图取决于 provider.vision。此时还硬写「当前通道不能看图」，
+        // 就是让提示词跟同一份请求里的 image 块自相矛盾。
+        // 保留下来的是**诚实要求**：看不见就说看不见，不许假装看过。
+        assertTrue("图片提示必须写明「看不见就明说、别假装看过」", zh.contains("别假装看过"))
+        assertFalse("图片提示不许再硬写「当前通道不能看图」", zh.contains("当前通道不能看图"))
+        assertFalse("英文提示同样不许硬写", en.contains("cannot see images"))
         assertTrue("文件提示要指向 read_file", zh.contains("read_file"))
     }
 }

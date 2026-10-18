@@ -909,7 +909,7 @@
     <string name="baopu_attach_camera_denied">No camera permission, cannot take a photo</string>
     <string name="baopu_attach_too_many">At most %1$d attachments</string>
     <string name="baopu_attach_hint_files">(The user attached %1$d file(s); they are saved in the workspace: %2$s. Use read_file if you need their content.)</string>
-    <string name="baopu_attach_hint_images">(The user attached %1$d image(s); they are saved in the workspace: %2$s. This channel cannot see images — do not pretend you did; ask the user to describe the key content in words.)</string>
+    <string name="baopu_attach_hint_images">(The user attached %1$d image(s); they are saved in the workspace: %2$s. If you can see images, answer from them; if not, say so plainly — never pretend you saw them. Ask the user to describe the key content in words if needed.)</string>
     <string name="baopu_plan_summary">Plan %1$d/%2$d done</string>
   <string name="baopu_channel_button">Channel</string>
     <!-- ── Baopu ask_user card (task 2, part C) ── -->
