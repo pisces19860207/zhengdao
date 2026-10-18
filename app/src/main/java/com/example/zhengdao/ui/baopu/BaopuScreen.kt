@@ -554,7 +554,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
             BaopuComposer(
                 busy = controller.busy,
-                onSend = { controller.send(it) },
+                // 第二十四批 B 段：附件随文本一起交出去（图片要落 image part）
+                onSend = { text, attachments -> controller.send(text, attachments) },
                 onStop = { controller.stop() },
             )
             if (showChannel) {
