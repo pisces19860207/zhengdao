@@ -17,7 +17,7 @@ import org.junit.Test
  * 所以这里钉三件事：
  *
  * - **V3**：没视觉能力 ⇒ 一张不发，且在文本里**明写省了几张**（静默丢图是假成功）；
- * - **V4**：单图 ≤2 MB、最多 4 张、合计 ≤6 MB，超了截断并明说；
+ * - **V4**：单图 ≤12 MB、最多 4 张、合计 ≤48 MB，超了截断并明说（2026-10-18 抬线：原图可直接发）；
  * - **V6**：发出去的东西里**不许有本机绝对路径**——`ImagePayload` 这个类型连
  *   装路径的字段都没有（结构性保证），另外 select 只认 `data:image/…;base64,`。
  */
@@ -68,19 +68,22 @@ class VisionRulesTest {
     // ── V4：三道上限 ─────────────────────────────────────────────────────────
 
     @Test
-    fun `V4_单图超过2MB被裁`() {
+    fun `V4_单图超过上限被裁`() {
+        // 2026-10-18 用户口径：「其他 APP 都是可以直接发原图的」⇒ 上限已抬到 12 MB，
+        // 这条用例改成「比上限多 1 字节才裁」，并把读数从常量算，避免下次调线又漏改。
+        val cap = VisionRules.MAX_IMAGE_BYTES
         val r = VisionRules.select(
-            listOf(payload(1000), payload(2 * mb + 1), payload(2000)),
+            listOf(payload(1000), payload(cap + 1), payload(2000)),
             visionSupported = true,
         )
-        assertEquals("2 MB 零 1 字节就该裁（剩两张）", 2, r.images.size)
+        assertEquals("比上限多 1 字节就该裁（剩两张）", 2, r.images.size)
         assertEquals(1, r.omittedTooLarge)
-        assertTrue("裁了要明说：${r.note}", r.note.contains("2 MB"))
+        assertTrue("裁了要明说：${r.note}", r.note.contains("${cap / 1024 / 1024} MB"))
     }
 
     @Test
-    fun `V4_恰好2MB不裁`() {
-        val r = VisionRules.select(listOf(payload(2 * mb)), visionSupported = true)
+    fun `V4_恰好等于上限不裁`() {
+        val r = VisionRules.select(listOf(payload(VisionRules.MAX_IMAGE_BYTES)), visionSupported = true)
         assertEquals("等于上限是允许的（只要不超过）", 1, r.images.size)
         assertEquals(0, r.omittedTooLarge)
     }
@@ -97,10 +100,11 @@ class VisionRulesTest {
     }
 
     @Test
-    fun `V4_合计超过6MB截断`() {
-        // 4 张 1.9 MB = 7.6 MB > 6 MB：第 4 张会被总量闸挡住
+    fun `V4_合计超过总量上限截断`() {
+        // 四张都正好等于单图上限 12 MB ⇒ 前三张进、第四张被总量闸（36 MB）挡住
+        val each = VisionRules.MAX_IMAGE_BYTES
         val r = VisionRules.select(
-            (1..4).map { payload((1.9 * mb).toInt()) },
+            (1..4).map { payload(each) },
             visionSupported = true,
         )
         assertEquals("总量闸必须独立于张数闸", 3, r.images.size)
@@ -110,10 +114,10 @@ class VisionRulesTest {
     @Test
     fun `V4_数量与过大同时命中时两条原因都写`() {
         val r = VisionRules.select(
-            listOf(payload(3 * mb)) + (1..5).map { payload(1000) },
+            listOf(payload(VisionRules.MAX_IMAGE_BYTES + 1)) + (1..5).map { payload(1000) },
             visionSupported = true,
         )
-        assertTrue(r.note.contains("2 MB"))
+        assertTrue(r.note.contains("${VisionRules.MAX_IMAGE_BYTES / 1024 / 1024} MB"))
         assertTrue(r.note.contains("超出数量上限"))
     }
 
