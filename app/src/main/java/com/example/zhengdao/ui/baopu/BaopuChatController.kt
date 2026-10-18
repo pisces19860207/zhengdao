@@ -526,19 +526,27 @@ internal class BaopuChatController(context: Context) {
      * 五步语句与顺序由 [com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements]
      * 给定（ops 子批 → 提案批 → run_log → message → session 本体；part 靠外键级联），
      * 同一个写事务里跑完——删一半断电等于没删（单写者线程串行，天然原子）。
+     *
+     * 第二十五批追加一 A/D4：**Future 必须 .get() 等真落库再返回**——之前不 get，
+     * 删除排队异步跑，浮层 tick++ 重读列表可能抢在事务前 ⇒ 会话还在 ⇒ 真机「删不掉」
+     * 的另一半真因；且异常吞在 Future 里 ⇒ 失败静默。现在同步等结果，成败返回给
+     * 浮层（失败 Toast「删除失败」，不许静默）。
      * 删的**不是**当前会话 ⇒ 只删库，当前会话不动（P5）；删的**正是**当前会话 ⇒
      * [clearSessionView] 回空态（P4；提示由浮层负责）。
      */
-    fun deleteSession(sid: Long) {
-        if (busy) return // 在跑不许删：引擎还在往库里写
-        db.write { d ->
-            com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(sid).forEach { stmt ->
-                d.execSQL(stmt.sql, stmt.args)
-            }
-        }
-        if (sessionId == sid) {
+    fun deleteSession(sid: Long): Boolean {
+        if (busy) return false // 在跑不许删：引擎还在往库里写
+        val ok = runCatching {
+            db.write { d ->
+                com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(sid).forEach { stmt ->
+                    d.execSQL(stmt.sql, stmt.args)
+                }
+            }.get()
+        }.isSuccess
+        if (ok && sessionId == sid) {
             clearSessionView()
         }
+        return ok
     }
 
     /** 记忆候选：确认（落盘 CONFIRMED）。 */
