@@ -887,6 +887,10 @@
     <!-- 2026-10-18 真机第二次反馈：一轮展开后有十几张工具卡，上下两条摘要行都滚出屏幕。
          改成屏幕上常驻一颗浮标 —— 文案就是「收起详情」。 -->
     <string name="baopu_collapse_detail">收起详情</string>
+    <!-- 朗读（2026-10-18）：只用系统 TTS，不联网、不引库；失败必须说出来（不静默） -->
+    <string name="baopu_speak">朗读</string>
+    <string name="baopu_speak_failed">系统朗读引擎不可用</string>
+    <string name="baopu_speak_no_language">系统朗读缺少这个语言包</string>
     <string name="baopu_plan_summary">计划 %1$d/%2$d 完成</string>
   <string name="baopu_channel_button">换通道</string>
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
