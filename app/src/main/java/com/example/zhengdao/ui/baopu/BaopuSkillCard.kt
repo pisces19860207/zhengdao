@@ -2,6 +2,11 @@
 //
 // 依据：派工单第十九批 §2.2（写索引三路全过确认）与 §2.5（审阅第一版只做看和删）。
 // 房型照 BaopuPendingMemoryCard：候选未落盘，用户拍板才走 applyProposal。
+//
+// 第三十二批（2026-10-18 派工单）在本文件里加了**试用期界面的消费点**：草稿读盘
+// `draftSkillRows`、「用一次／转正」的唯一写口 `commitSkillDraft`、新建框的
+// 「用平台机制模板」`platformTemplateBody`。数据层（SkillStore／SkillRules）本批一个字没动，
+// 这里只做「已经能算出来的事，界面上终于露出来」——派工单 §0 原话。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.layout.Arrangement
@@ -28,9 +33,11 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaProposal
 import com.example.zhengdao.baopu.SkillProposal
+import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
+import java.io.File
 
 /**
  * 技能索引提案卡（第十九批 §2.2）：封卷提炼／启动补算产出的 PENDING 提案，
@@ -167,6 +174,17 @@ internal fun SkillEditorDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(8.dp))
+                    // 第三十二批 B 段：平台机制模板**预填**。点了只往正文框里灌文本，
+                    // 技能名留空由用户填；写盘仍然只有「下一步：确认 → 保存」那一条路（判据 T5）。
+                    OutlinedButton(onClick = { body = platformTemplateBody() }) {
+                        Text(stringResource(R.string.skill_use_platform_template))
+                    }
+                    Text(
+                        text = stringResource(R.string.skill_use_platform_template_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         androidx.compose.material3.Checkbox(checked = draft, onCheckedChange = { draft = it })
                         Text(stringResource(R.string.skill_new_draft), style = MaterialTheme.typography.bodySmall)
@@ -216,3 +234,139 @@ internal fun SkillEditorDialog(
         }
     }
 }
+
+// ── 第三十二批 A/B 段 · 试用期的**界面消费点**（纯函数＋一个写盘口）────────────
+//
+// 为什么这些函数放这儿而不是 BaopuSettingsScreen.kt：那个文件是「一页的排版」，
+// 本批的判据 T1/T2/T3/T5 全都能在不启动 Compose 的情况下断言，就得让算式待在一个
+// 能被 JVM 直接 import 的文件里。写盘口也只有 [commitSkillDraft] 一个，好取证。
+
+/**
+ * 一条**草稿（试用中）**技能在界面上的读数：名字、落点、文件、正文、已用次数、能不能转正。
+ *
+ * 三个数全来自数据层（判据 T2）：[uses] ＝ `SkillStore.usesOf(body)`、
+ * [canPromote] ＝ `SkillStore.canPromote(body)`——UI **不许自己数**用的次数，
+ * 也不许自己定「几次算够」（那个常量是 `SkillStore.PROMOTE_USES`）。
+ */
+internal data class SkillDraftRow(
+    val name: String,
+    val scope: SkillScope,
+    val file: File,
+    val body: String,
+    val uses: Int,
+    val canPromote: Boolean,
+)
+
+/**
+ * 扫两层技能目录，**只收 status=draft 的**（判据 T1：正式技能不许混进草稿区）。
+ *
+ * 目录仍然取自 `SkillRules.projectSkillDir` / `SkillRules.globalSkillDir` 这两个唯一真源，
+ * 本批不在 UI 里另起一套落点；两边同名各算各的行（两层本来就有同名两回事的先例，
+ * 查找优先级是数据层的事，这里只做列表）。目录读不到／正文读不出 ⇒ 当没有，不抛。
+ */
+internal fun draftSkillRows(projectRoot: File, globalRoot: File): List<SkillDraftRow> {
+    val out = mutableListOf<SkillDraftRow>()
+    listOf(
+        SkillScope.PROJECT to SkillRules.projectSkillDir(projectRoot),
+        SkillScope.GLOBAL to SkillRules.globalSkillDir(globalRoot),
+    ).forEach { (scope, dir) ->
+        val subDirs = dir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }.orEmpty()
+        subDirs.forEach { sub ->
+            val file = File(sub, SkillRules.SKILL_FILE)
+            if (!file.isFile) return@forEach
+            val body = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return@forEach
+            if (SkillStore.statusOf(body) != "draft") return@forEach // T1：正式技能不进这一段
+            out += SkillDraftRow(
+                name = sub.name,
+                scope = scope,
+                file = file,
+                body = body,
+                uses = SkillStore.usesOf(body),
+                canPromote = SkillStore.canPromote(body),
+            )
+        }
+    }
+    return out
+}
+
+/**
+ * 剥掉**第一行**的状态头（`<!-- status=… uses=… -->`），其余一字不动。
+ *
+ * 只认第一行、只认带 `status=` 的注释行：正文中段自己写了个 HTML 注释不该被吃掉。
+ */
+internal fun stripStatusHeader(body: String): String {
+    val lines = body.lines()
+    val head = lines.firstOrNull()?.trim().orEmpty()
+    return if (head.startsWith("<!--") && head.contains("status=")) lines.drop(1).joinToString("\n") else body
+}
+
+/** 「用一次」要写回的新正文：uses+1、status 仍是 draft（算式在数据层，这里只转手）。 */
+internal fun useOnceBody(body: String): String = SkillStore.bumpUses(body)
+
+/** 「转正」要写回的新正文：头改成 status=active、uses 原样保留（判据 T3 的正文那一半）。 */
+internal fun promoteBody(body: String): String =
+    SkillStore.draftHeader(status = "active", uses = SkillStore.usesOf(body)) + "\n" + stripStatusHeader(body)
+
+/**
+ * 「用一次」／「转正」的**唯一写盘口**（判据 T4：正文只能经 `SkillStore.apply` 落地）。
+ *
+ * ## 为什么绕一圈 `plan(...)` 再 `copy(proposal = …)`
+ *
+ * `SkillStore.apply` 是全局唯一能写 SKILL.md 的地方（它还管写前备份），但它写正文时走
+ * `withDraftHeader(提案)`：提案 `draft=true` 会把头**重置**成 `uses=0`——「用一次」的计数白加；
+ * `draft=false` 才是「正文原样写」。而索引行那句「（草稿·未验证，用前先 read_file 核对）」
+ * 又只有 `draft=true` 的 plan 才算得出来。
+ *
+ * 所以：索引行**问 draft=true 的 plan 要**（还是数据层算的，UI 一个字不拼，C 段口径），
+ * 只把「要写出去的正文」换成已经算好新头的 [newBody]。两头都不作弊，也不重写它的判据。
+ *
+ * @param stillDraft true ⇒「用一次」（还是草稿，索引行继续带未验证标）；false ⇒「转正」
+ */
+internal fun commitSkillDraft(
+    row: SkillDraftRow,
+    newBody: String,
+    stillDraft: Boolean,
+    projectRoot: File,
+    globalRoot: File,
+    personaFiles: com.example.zhengdao.baopu.PersonaFiles,
+    backupStamp: String,
+): SkillWriteResult {
+    val proposal = SkillProposal(
+        scope = row.scope,
+        name = row.name,
+        body = newBody,
+        reason = if (stillDraft) "草稿试用：记一次" else "草稿转正：正式进索引",
+        draft = false, // ⇒ withDraftHeader 原样写 newBody（头已由 SkillStore 的纯函数算好）
+    )
+    val planned = SkillStore.plan(
+        if (stillDraft) proposal.copy(draft = true) else proposal,
+        projectRoot,
+        globalRoot,
+        backupStamp,
+        indexCountAfterAdd = 0, // 同 23A 的口径：超上限的判据留在 addIndexLine 里
+    )
+    // 名字安全化之后落点变了 ⇒ 盘上那个目录名不是数据层认可的写法。
+    // 硬写会在旁边**另建一份**、原件还在原地用，那是最坏的结果；宁可拒绝并说清楚。
+    if (planned.file.absolutePath != row.file.absolutePath) {
+        return SkillWriteResult.Rejected(
+            "技能目录名「${row.name}」不是可用的技能名，先手动改名再点这个按钮",
+        )
+    }
+    val layer = when (row.scope) {
+        SkillScope.GLOBAL -> PersonaLayer.B_GLOBAL
+        SkillScope.PROJECT -> PersonaLayer.C_PROJECT
+    }
+    return SkillStore.apply(
+        planned.copy(proposal = proposal),
+        personaFiles,
+        personaFiles.read(layer).orEmpty(),
+    )
+}
+
+/**
+ * 「用平台机制模板」按钮要灌进正文框的文本（判据 T5：**只是文本，不碰盘**）。
+ *
+ * 单独抽一个函数不是为了套壳，是为了让「点之前点之后盘上什么都没有」这条
+ * 能在 JVM 里用临时目录直接断言，而不是靠读注释相信它。
+ */
+internal fun platformTemplateBody(): String = SkillStore.PLATFORM_SKILL_TEMPLATE
