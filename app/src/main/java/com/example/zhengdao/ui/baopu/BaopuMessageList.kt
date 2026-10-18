@@ -219,21 +219,61 @@ private fun BaopuRoundItem(
     pinned: Set<Long>,
 ) {
     var userOpened by remember(round.userMessageId) { mutableStateOf(false) }
+    var planOpened by remember(round.userMessageId) { mutableStateOf(false) }
     val collapsed = roundCollapsed(
         round = round,
         running = running,
         pinnedUserIds = pinned,
         userExpandedIds = if (userOpened) setOf(round.userMessageId) else emptySet(),
     )
+    // 工作计划卡（第十七批 C 段）：与轮收起**各自独立**——轮收起也露那一行（J15），
+    // 点计划卡只翻计划卡（J5）。计划取自轮里最后一条 plan（多次 update_plan 取最后）。
+    val plan = round.planOrNull()
+    val planVisible = shouldShowPlanCard(round, plan, collapsed)
+    val planExpanded = planCardExpanded(
+        round = round,
+        running = running,
+        userPlanExpandedIds = if (planOpened) setOf(round.userMessageId) else emptySet(),
+    )
     Column(Modifier.fillMaxWidth()) {
         if (collapsed) {
-            // 收起：user 消息（问题常显）＋ 摘要一行（可点开）＋ 最终回答（照旧常显）
+            // 收起：user 消息（问题常显）＋ 摘要一行（可点开）＋ **计划卡收起态那一行**
+            // （不许被轮收纳吃掉——J15）＋ 最终回答（照旧常显）
             round.messages.filter { it.role == "user" }.forEach { BaopuMessageRow(it) }
             BaopuRoundSummaryRow(round, steps) { userOpened = !userOpened }
+            if (planVisible) {
+                BaopuPlanCard(
+                    plan = plan!!,
+                    expanded = planExpanded,
+                    onToggle = { planOpened = !planOpened },
+                )
+            }
             round.finalAnswerMessage()?.let { BaopuMessageRow(it) }
         } else {
-            // 展开：该轮全部消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
-            round.messages.forEach { BaopuMessageRow(it) }
+            // 展开：user 消息在最前，计划卡紧随其后（＝该轮顶部、工具卡之上），
+            // 其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
+            var planMounted = false
+            round.messages.forEach { msg ->
+                BaopuMessageRow(msg)
+                if (!planMounted && msg.role == "user") {
+                    planMounted = true
+                    if (planVisible) {
+                        BaopuPlanCard(
+                            plan = plan!!,
+                            expanded = planExpanded,
+                            onToggle = { planOpened = !planOpened },
+                        )
+                    }
+                }
+            }
+            // 防御：轮里没有 user 消息（assistant 开头，理论不该有）⇒ 计划卡挂最前
+            if (!planMounted && planVisible) {
+                BaopuPlanCard(
+                    plan = plan!!,
+                    expanded = planExpanded,
+                    onToggle = { planOpened = !planOpened },
+                )
+            }
         }
     }
 }
@@ -283,6 +323,9 @@ private fun BaopuRoundSummaryRow(
 
 @Composable
 private fun BaopuMessageRow(msg: BaopuUiMessage) {
+    // 只有 plan part 的消息（第十七批 C 段：计划已解析进 msg.plan 由计划卡渲染）⇒
+    // 不建空气泡（角色标签下一片空白比不渲染更怪）。
+    if (msg.parts.isEmpty()) return
     val isUser = msg.role == "user"
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth()) {
