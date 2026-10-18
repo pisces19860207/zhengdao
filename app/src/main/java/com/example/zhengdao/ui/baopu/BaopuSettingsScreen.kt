@@ -102,31 +102,41 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         BaopuRuntime.provider(ctx),
                     )
                 }
-                BaopuToolCatalog.ENTRIES.forEach { entry ->
-                    val on = toolTick.let { toolRegistry.isEnabled(entry.name) }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(baopuToolLabel(entry.name)),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                text = stringResource(baopuToolDesc(entry.name)),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // 2026-10-19 用户拍板「落 A」：21 个开关平铺太长 ⇒ 按用途分组（纯界面，不动任何数据）
+                BaopuToolGroups.GROUPS.forEachIndexed { gi, group ->
+                    if (gi > 0) Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(group.titleRes),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    group.names.forEach { name ->
+                        val entry = BaopuToolCatalog.ENTRIES.firstOrNull { it.name == name } ?: return@forEach
+                        val on = toolTick.let { toolRegistry.isEnabled(entry.name) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(baopuToolLabel(entry.name)),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    text = stringResource(baopuToolDesc(entry.name)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = on,
+                                onCheckedChange = { want ->
+                                    toolRegistry.setDisabled(entry.name, !want)
+                                    toolTick++
+                                },
+                                colors = iosSwitchColors(),
                             )
                         }
-                        Switch(
-                            checked = on,
-                            onCheckedChange = { want ->
-                                toolRegistry.setDisabled(entry.name, !want)
-                                toolTick++
-                            },
-                            colors = iosSwitchColors(),
-                        )
                     }
                 }
                 // ── read / bash（第十八批 §2.1-4：只读展示「由通道决定」）──
@@ -497,6 +507,44 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
  * 不能进那里；标签是纯展示层的事，走 strings.xml 双语。
  * catalog 加新工具时这里同步加一行——漏了会直接抛 IllegalArgumentException（fail-fast）。
  */
+/**
+ * 工具开关的分组（2026-10-19「落 A」）。
+ *
+ * 三条口径：
+ * 1. **纯展示**：分组不影响启用逻辑（`DEFAULT_ENABLED` 与开关仍是唯一真相）；
+ * 2. 每个 `ENTRIES` 里的工具**必须**落进某一组——漏了就跑不出来（`ImageOpsTest` 有一条门禁盯着）；
+ * 3. 「看图」不是工具，是模型能力（`Provider.vision`），所以这里没有「看图类」。
+ */
+internal object BaopuToolGroups {
+    internal data class Group(val titleRes: Int, val names: List<String>)
+
+    val GROUPS: List<Group> = listOf(
+        Group(
+            R.string.baopu_tools_group_read,
+            listOf("read_file", "list_dir", "search_in_files", "find_files", "book_outline", "file_info"),
+        ),
+        Group(
+            R.string.baopu_tools_group_write,
+            listOf("write_file", "edit_file", "move_path", "delete_path", "convert_encoding"),
+        ),
+        Group(
+            R.string.baopu_tools_group_image,
+            listOf("image_ops"),
+        ),
+        Group(
+            R.string.baopu_tools_group_browser,
+            listOf("browser_open", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_screenshot"),
+        ),
+        Group(
+            R.string.baopu_tools_group_library,
+            listOf("library_list", "library_organize"),
+        ),
+        Group(
+            R.string.baopu_tools_group_plan,
+            listOf("update_plan", "write_skill"),
+        ),
+    )
+}
 private fun baopuToolLabel(name: String): Int = when (name) {
     "read_file" -> R.string.baopu_tool_read_file
     "list_dir" -> R.string.baopu_tool_list_dir

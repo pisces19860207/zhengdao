@@ -1172,6 +1172,12 @@
     <string name="baopu_tool_library_organize">整理资料库</string>
     <string name="baopu_tool_library_organize_desc">把整理结果落地（每次执行前弹确认卡）：把投递里的文件移到整理（同名会拒绝，不覆盖）、同目录内改名、重建 资料库/索引.md。只动投递/与整理/，绝不动 原始/。</string>
     <string name="baopu_tool_delete_path">删除文件</string>
+    <string name="baopu_tools_group_read">读与找</string>
+    <string name="baopu_tools_group_write">写与改</string>
+    <string name="baopu_tools_group_image">图片</string>
+    <string name="baopu_tools_group_browser">网页</string>
+    <string name="baopu_tools_group_library">资料库</string>
+    <string name="baopu_tools_group_plan">计划与技能</string>
     <string name="baopu_tool_image_ops">图片处理</string>
     <string name="baopu_tool_image_ops_desc">改图（每次执行前弹确认卡）：等比缩到长边、按矩形裁剪、转 png/jpg/webp、取主色（只回文本）、生成 48/72/96/144/192 五档方图标。原图永不覆盖——默认另存 &lt;名&gt;-&lt;动作&gt;.&lt;ext&gt;，目标已存在就拒绝。</string>
     <string name="baopu_tool_delete_path_desc">删工作区里的一个文件（每次执行前弹确认卡）：默认**移进回收站**（工作区/.回收站/时间戳-原名），说一声就能搬回来；勾了「彻底删」才是不可恢复的删除。只删单个文件，目录一律拒；备份区 .baopu-bak/、回收站本身、资料库/原始/ 都不许碰。</string>

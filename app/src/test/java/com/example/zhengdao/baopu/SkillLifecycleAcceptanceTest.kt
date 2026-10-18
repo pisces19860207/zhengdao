@@ -157,4 +157,22 @@ class SkillLifecycleAcceptanceTest {
         assertTrue("空正文要拒：$noBody", noBody is com.example.zhengdao.baopu.agent.ToolOutcome.Failed)
         assertFalse("被拒时不许建目录", File(projectRoot, SkillRules.SKILL_DIR).exists())
     }
+
+    @Test
+    fun `L9_全局技能不许抱朴自己写`() {
+        // 2026-10-19 用户逐字：「全局技能不能让他随便改」。
+        // 项目技能仍可自写（草稿＋确认卡＋写前备份）；全局是共用底座，只有用户在本机设置页能改。
+        val spec = com.example.zhengdao.baopu.agent.SkillTools.spec(
+            workspaceRoot = { projectRoot },
+            personaFiles = { pf() },
+        )
+        val out = spec.executor(
+            org.json.JSONObject("""{"name":"global-thing","body":"正文","scope":"global"}"""),
+        )
+        assertTrue("写全局必须被拒：$out", out is com.example.zhengdao.baopu.agent.ToolOutcome.Rejected)
+        val reason = (out as com.example.zhengdao.baopu.agent.ToolOutcome.Rejected).reason
+        assertTrue("拒绝理由要点明全局是共用底座：$reason", reason.contains("全局技能"))
+        val globalSkillDir = SkillRules.globalSkillDir(File(pf().globalFile().parentFile ?: projectRoot, ""))
+        assertFalse("被拒时全局目录一个字节都不许写：${globalSkillDir.absolutePath}", globalSkillDir.exists())
+    }
 }
