@@ -111,7 +111,7 @@ internal object FaceIndex {
         val existingBySha = existing.associateBy { it.sha256 }
         val kept = LinkedHashMap<String, Item>()
         val duplicates = mutableListOf<Pair<Item, Item>>()
-        val ordered = candidates.sortedWith(compareBy({ it.name }, { it.sha256 }))
+        val ordered = candidates.sortedWith(sortKey)
         for (c in ordered) {
             val seen = existingBySha[c.sha256]
             if (seen != null) {
@@ -137,7 +137,7 @@ internal object FaceIndex {
      * **无生成时间戳**。布尔渲染 `true`/`false`，source 渲染 `投递`/`导入`（人看的口径）。
      */
     fun render(doc: Doc): String {
-        val sorted = doc.items.sortedWith(compareBy({ it.name }, { it.sha256 }))
+        val sorted = doc.items.sortedWith(sortKey)
         val sb = StringBuilder()
         sb.append("{\n")
         sb.append("  \"version\": ").append(doc.version).append(",\n")
@@ -355,6 +355,14 @@ internal object FaceIndex {
         return sb.toString()
     }
 
-    /** 排序键：索引与库查询共用同一把尺子（`(name, sha256)`，显式、稳定）。 */
-    fun sortKey(item: Item): Comparator<Item> = compareBy({ it.name }, { it.sha256 })
+    /**
+     * 排序键：索引与库查询共用**同一把尺子**（`(name, sha256)`，显式、稳定）。
+     *
+     * 第二十七批（死函数清理）把它从死函数变成唯一来源：
+     * 原来这里是 `fun sortKey(item: Item)` —— 参数 `item` 从头到尾没被用过（写错了），
+     * 而 [dedup] 与 [render] 各自**内联复制**了一遍同样的表达式。三处同源是"改一处忘两处"
+     * 的经典土壤（排序规则一改，索引字节就与去重顺序不一致，而且是静默的）。
+     * 现在只留这一处，两处调用点都改用它。
+     */
+    val sortKey: Comparator<Item> = compareBy({ it.name }, { it.sha256 })
 }
