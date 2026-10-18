@@ -16,7 +16,7 @@ import java.io.File
  *
  * 钉死追加包原话级口径：
  * - 一张表加载（spec＋permission＋factory），**引擎不写死工具清单**；
- * - 默认五个全启用；
+ * - 默认十六个全启用；
  * - 关掉的工具**不进 tools 数组**（模型看不见）⇒ 判据③「模型看不到该工具」的构造成立；
  * - 被关工具仍是注册形态（同 Schema），模型幻觉调用拿到「该工具已被用户关闭」，
  *   **不自动打开**；
@@ -42,15 +42,17 @@ class ToolRegistrySwitchTest {
     // ── 表 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `一张表_默认七个全启用`() {
+    fun `一张表_默认十六个全启用`() {
         setup()
         val reg = registry()
 
         assertEquals(BaopuToolCatalog.DEFAULT_ENABLED.size, BaopuToolCatalog.ENTRIES.size)
         assertEquals(
             listOf(
-                "read_file", "list_dir", "search_in_files", "file_info",
-                "write_file", "edit_file", "move_path",
+                "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
+                "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
+                "browser_open", "browser_snapshot", "browser_click",
+                "browser_type", "browser_scroll", "browser_screenshot",
             ),
             reg.names(),
         )
@@ -82,11 +84,17 @@ class ToolRegistrySwitchTest {
             assertTrue(spec.inputSchema.has("properties"))
             assertFalse(spec.inputSchema.optBoolean("additionalProperties"))
         }
-        // 三个 CONFIRM：write_file / edit_file / move_path（都会改盘上文件，每次都要用户点头）
-        listOf("write_file", "edit_file", "move_path").forEach {
+        // 七个 CONFIRM：四个改盘上文件 ＋ open/click/type 会改页面状态
+        listOf(
+            "write_file", "edit_file", "move_path", "convert_encoding",
+            "browser_open", "browser_click", "browser_type",
+        ).forEach {
             assertEquals("$it 必须 CONFIRM", ToolPermission.CONFIRM, reg.find(it)!!.permission)
         }
-        listOf("read_file", "list_dir", "search_in_files", "file_info").forEach {
+        listOf(
+            "read_file", "list_dir", "search_in_files", "find_files", "book_outline", "file_info",
+            "browser_snapshot", "browser_scroll", "browser_screenshot",
+        ).forEach {
             assertEquals(ToolPermission.FREE, reg.find(it)!!.permission)
         }
     }
@@ -164,14 +172,14 @@ class ToolRegistrySwitchTest {
     }
 
     @Test
-    fun `关七个_全关时tools数组为空`() {
+    fun `关十六个_全关时tools数组为空`() {
         setup()
         val prefs = InMemoryToolPrefs(BaopuToolCatalog.DEFAULT_ENABLED)
         val reg = registry(prefs)
         assertEquals(0, reg.toolsJsonOpenAi().length())
         assertEquals(0, reg.toolsJsonAnthropic().length())
-        // 注册表仍有七条（都能拿到「已被关闭」）
-        assertEquals(7, reg.names().size)
+        // 注册表仍有十条（都能拿到「已被关闭」）
+        assertEquals(16, reg.names().size)
     }
 
     @Test

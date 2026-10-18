@@ -61,9 +61,14 @@ internal fun BaopuConfirmCard(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp)) {
-            // 标题：要动文件：<路径>（取不到 path ⇒ 退化成工具名，不显示空标题）
+            // 标题：要动文件：<路径>（取不到 path ⇒ 换成「要执行：<工具名>」——
+            // 浏览器/搬文件这类动作没有 path 参数，硬套「要动文件」会说假话）
             Text(
-                text = stringResource(R.string.baopu_confirm_title, path ?: request.tool),
+                text = if (path != null) {
+                    stringResource(R.string.baopu_confirm_title, path)
+                } else {
+                    stringResource(R.string.baopu_confirm_title_action, request.tool)
+                },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -75,7 +80,11 @@ internal fun BaopuConfirmCard(
             )
             // 提示：批准真的会改（写前自动备份）；拒绝就跳过
             Text(
-                text = stringResource(R.string.baopu_confirm_hint),
+                text = if (path != null) {
+                    stringResource(R.string.baopu_confirm_hint)
+                } else {
+                    stringResource(R.string.baopu_confirm_hint_action)
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),

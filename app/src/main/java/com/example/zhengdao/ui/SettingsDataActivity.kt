@@ -871,10 +871,19 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "read_file" -> R.string.baopu_tool_read_file
     "list_dir" -> R.string.baopu_tool_list_dir
     "search_in_files" -> R.string.baopu_tool_search_in_files
+    "find_files" -> R.string.baopu_tool_find_files
+    "book_outline" -> R.string.baopu_tool_book_outline
     "file_info" -> R.string.baopu_tool_file_info
     "write_file" -> R.string.baopu_tool_write_file
     "edit_file" -> R.string.baopu_tool_edit_file
     "move_path" -> R.string.baopu_tool_move_path
+    "convert_encoding" -> R.string.baopu_tool_convert_encoding
+    "browser_open" -> R.string.baopu_tool_browser_open
+    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot
+    "browser_click" -> R.string.baopu_tool_browser_click
+    "browser_type" -> R.string.baopu_tool_browser_type
+    "browser_scroll" -> R.string.baopu_tool_browser_scroll
+    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -895,10 +904,19 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "read_file" -> R.string.baopu_tool_read_file_desc
     "list_dir" -> R.string.baopu_tool_list_dir_desc
     "search_in_files" -> R.string.baopu_tool_search_in_files_desc
+    "find_files" -> R.string.baopu_tool_find_files_desc
+    "book_outline" -> R.string.baopu_tool_book_outline_desc
     "file_info" -> R.string.baopu_tool_file_info_desc
     "write_file" -> R.string.baopu_tool_write_file_desc
     "edit_file" -> R.string.baopu_tool_edit_file_desc
     "move_path" -> R.string.baopu_tool_move_path_desc
+    "convert_encoding" -> R.string.baopu_tool_convert_encoding_desc
+    "browser_open" -> R.string.baopu_tool_browser_open_desc
+    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot_desc
+    "browser_click" -> R.string.baopu_tool_browser_click_desc
+    "browser_type" -> R.string.baopu_tool_browser_type_desc
+    "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc
+    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
 

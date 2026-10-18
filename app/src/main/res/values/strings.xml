@@ -962,6 +962,8 @@
     <string name="baopu_tool_move_path_desc">在资料库里搬动或给文件改名；同盘直接搬，跨盘只复制、把源记进「资料库/整理/_待删除清单.md」，不自动删。撞名自动加后缀让路。</string>
     <!-- ── 抱朴确认卡（刀 3 · A 段；写工具通电的唯一入口）── -->
     <string name="baopu_confirm_title">要动文件：%1$s</string>
+    <string name="baopu_confirm_title_action">要执行：%1$s</string>
+    <string name="baopu_confirm_hint_action">批准后这个动作会真的执行；拒绝就跳过，对话继续。</string>
     <string name="baopu_confirm_hint">批准后文件真的会被改动（写前会自动备份）；拒绝就跳过这个动作，对话继续。</string>
     <string name="baopu_confirm_approve">批准</string>
     <string name="baopu_confirm_reject">拒绝</string>
@@ -981,6 +983,12 @@
     <string name="baopu_params_window">上下文窗口</string>
     <string name="baopu_params_max_output">输出上限</string>
     <string name="baopu_params_undeclared">未声明</string>
+    <string name="baopu_tool_find_files">找文件</string>
+    <string name="baopu_tool_find_files_desc">按文件名片段在目录里逐层找（大小写不敏感，也能找没有扩展名的书），比列目录省事。默认往下找 6 层。</string>
+    <string name="baopu_tool_book_outline">看目录</string>
+    <string name="baopu_tool_book_outline_desc">先看一本书的章节目录（章名、起止行、字数、首句），再决定读哪几章；拿到起始行直接当 read_file 的 offset 用。</string>
+    <string name="baopu_tool_convert_encoding">转编码</string>
+    <string name="baopu_tool_convert_encoding_desc">把 GBK / UTF-16 的老 txt 转成 UTF-8 写回原文件；转之前先把原文件备份到 .baopu-bak。本来就是 UTF-8 就不动。</string>
     <!-- ── 静态快捷方式（刀 2 · D 段第 1 条；标签 ≤10 字）── -->
     <string name="baopu_shortcut_backup">备份原件</string>
     <string name="baopu_shortcut_backup_long">备份抱朴库里的原件</string>
@@ -1015,4 +1023,17 @@
     <string name="baopu_drawer_group_settings">设置</string>
     <string name="baopu_drawer_channel_desc">换模型通道（会重建引擎，跑到一半不能换）</string>
     <string name="baopu_drawer_settings">抱朴设置</string>
-    <string name="baopu_drawer_settings_desc">工具开关、资料库位置、终端外观</string></resources>
+    <string name="baopu_drawer_settings_desc">工具开关、资料库位置、终端外观</string>
+      <string name="baopu_tool_browser_open">打开网页</string>
+    <string name="baopu_tool_browser_open_desc">在玄览里打开网址（只认 http/https）。会弹确认卡；打开是异步的，内容随后再看。</string>
+    <string name="baopu_tool_browser_snapshot">看网页</string>
+    <string name="baopu_tool_browser_snapshot_desc">取当前页的可交互元素与可见文字（不含像素、不含整页 HTML），超长会截断并明说。</string>
+    <string name="baopu_tool_browser_click">点网页</string>
+    <string name="baopu_tool_browser_click_desc">按 CSS 选择器点一个元素。会弹确认卡。</string>
+    <string name="baopu_tool_browser_type">写网页</string>
+    <string name="baopu_tool_browser_type_desc">往输入框写文字（会触发页面的输入事件）。会弹确认卡。</string>
+    <string name="baopu_tool_browser_scroll">滚网页</string>
+    <string name="baopu_tool_browser_scroll_desc">上下左右滚一段，方便把下面的内容拉进视口。</string>
+    <string name="baopu_tool_browser_screenshot">截网页</string>
+    <string name="baopu_tool_browser_screenshot_desc">给当前页截一张图，只回文件路径（像素不进对话）。</string>
+</resources>
