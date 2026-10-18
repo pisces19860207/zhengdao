@@ -182,9 +182,9 @@ class BareThreadGuardTest {
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
             "TerminalActivity.kt:633",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11）
             "TerminalActivity.kt:848",              // zd-net-probe（同上）
-            "TerminalActivity.kt:1610",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22）
-            "TerminalActivity.kt:1670",             // zd-install-cache（同上）
-            "TerminalActivity.kt:1756",             // zd-install-download（同上）
+            "TerminalActivity.kt:1609",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22）
+            "TerminalActivity.kt:1669",             // zd-install-cache（同上）
+            "TerminalActivity.kt:1755",             // zd-install-download（同上）
             "ZhengdaoApp.kt:82",                    // zhengdao-keepalive-archive（第⑲刀 +3；清场删两 import −2、删 onCreate 调用 −1、补说明 +2 ⇒ +2）
             "ZhengdaoApp.kt:132",                   // zd-auto-clean（同上）
         )
