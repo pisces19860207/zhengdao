@@ -7154,3 +7154,33 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 3. **接手别人的半成品前先 `git branch -a` 看一眼有没有同名分支**（这次 `bak/` 支就在那儿，我没看）。
 
 **影响面**：多写了一份测试（无产品风险），但浪费了一个 agent 的工时，也差点让两份并存。
+---
+
+## E-158 · 2026-10-18 · 删会话永远失败：漏删 `compression` 表，外键当场拦下
+
+**现象（真机，不是 CI）**：会话库点「删除」→ 确认框正常 → 点「永久删除」→ Toast **「删除失败，再试一次或重启后重试」**，行还在。重启、重进会话库都不行。
+
+**取证过程**（这次是硬证据，不是猜）：
+1. `runCatching` 把异常吞了，`logcat` 与 `RunLog` **一条错误都没有** ⇒ 只能进库看；
+2. `adb exec-out run-as … cat files/baopu/baopu.db{,-wal,-shm}`（走 `cmd /c` 重定向，字节安全）拉出库；
+3. Python `sqlite3` 查 `pragma foreign_key_list` ⇒ 四张表 `REFERENCES session(id)`：
+   `message`（CASCADE）、`run_log`、`plan_batch`、**`compression`（NO ACTION）**；
+4. 在拉下来的库上**原样跑**那五条删除语句 ⇒ `IntegrityError: FOREIGN KEY constraint failed`，
+   session 31 仍在。查计数：该会话 `compression = 3` 行 ⇒ 撞在最后那句 `DELETE FROM session`。
+
+**根因**：`BaopuSql.deleteSessionStatements` 只删了 plan_batch／run_log／message，**漏了 compression**。
+`foreign_keys=ON` ⇒ 只要会话被压缩过一次（长会话必然被压），就永远删不掉。
+单元测试原来断言「**五步**」，等于**把 bug 当成了规格** —— 数步数挡不住漏表。
+
+**修法**：
+1. 语句加一条 `DELETE FROM compression WHERE session_id = ?`（在 session 本体之前）；
+2. 判据换成**从 DDL 反推**：扫 `BaopuDb.kt` 里所有 `CREATE TABLE … REFERENCES session(id)` 的表，
+   凡没有 `ON DELETE CASCADE` 的，删除语句里必须显式出现（新加表漏删会自动红）；
+3. 负例：把 compression 那条拿掉 ⇒ 两条用例同时红（六步 ＋ DDL 反推）。
+
+**验证**：全量 **225 套件 / 1999 例 / 0 失败 / 0 错误 / 13 跳过**；重装真机后同一会话删除成功、行消失、重进不复活。
+
+**纪律**：
+1. **「删不掉」这类问题必须先看库**，不要靠读代码猜 —— `runCatching` 会把真因吞干净；
+2. **删主表要按外键图删**，并且让门禁**从 DDL 反推**，别把「几步」写成判据；
+3. `RunLog` 里应该有一条失败留痕（本轮为避开 qoder 在改的 `BaopuChatController.kt` 没加），记为下批小项。
