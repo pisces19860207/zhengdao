@@ -902,6 +902,9 @@
     <string name="baopu_attach_photo_name">photo</string>
     <string name="baopu_attach_chip">Attachment: %1$s (%2$d B)</string>
     <string name="baopu_attach_remove">Remove</string>
+    <string name="baopu_image_missing">Image not found: %1$s</string>
+    <string name="baopu_image_open">Open image</string>
+    <string name="baopu_image_path_copied">Image path copied</string>
     <string name="baopu_attach_failed">Could not save the attachment (no storage permission or unreadable file)</string>
     <string name="baopu_attach_camera_denied">No camera permission, cannot take a photo</string>
     <string name="baopu_attach_too_many">At most %1$d attachments</string>

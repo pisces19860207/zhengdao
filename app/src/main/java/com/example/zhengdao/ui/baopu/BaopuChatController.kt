@@ -15,6 +15,8 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.BaopuSql
+import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
@@ -72,8 +74,9 @@ data class BaopuUiMessage(
 
 /** 一个 part 的 UI 形状（text 直显；tool 显示调用名 + 结果摘要，可展开全文）。 */
 data class BaopuUiPart(
-    // 库里 part.kind 原值："text" | "tool" | "compressed"（第十七批的 "plan" 在
-    // readMessages 里解析进 BaopuUiMessage.plan，不进这里——见该函数 KDoc）
+    // 库里 part.kind 原值："text" | "tool" | "compressed" | "image"
+    // （第十七批的 "plan" 在 readMessages 里解析进 BaopuUiMessage.plan，不进这里——见该函数 KDoc；
+    //  第二十四批 B 段的 "image" 直接进这里：text 字段装的**就是相对路径**，由列表层渲染缩略图）
     val kind: String,
     val text: String,
     val tool: String = "",
@@ -356,9 +359,27 @@ internal class BaopuChatController(context: Context) {
     /** 确认等待期间App回前台（前台计时继续）。 */
     fun onScreenResume() = engine.noteConfirmForeground()
 
-    /** 发送（首次自动建会话）。 */
-    fun send(text: String) {
+    /**
+     * 本轮要挂到用户消息上的图片（**相对工作区路径**，第二十四批 B 段）。
+     *
+     * 为什么在这里暂存、不在 send 里直接写库：用户消息的 messageId 由**引擎**在
+     * 落库那一刻才产生（`RunEngine.persistUserMessage`），而 agent 包本单禁改。
+     * 所以顺序是：send 时存下附件 → 引擎落完消息发 [EngineEvent.MessagePersisted] →
+     * 在事件处理里按那个 messageId 补写 image part。写库发生在主线程（见
+     * [onEngineEvent] 的线程纪律），此时 `zd-baopu-db` 单写者已空闲，不会自锁。
+     */
+    private var pendingImagePaths: List<String> = emptyList()
+
+    /**
+     * 发送（首次自动建会话）。
+     *
+     * @param attachments 本轮附件（Composer 传来）。**只挑 `isImage` 的落 image part**；
+     *   非图片附件仍只出现在文本 hint 里（本轮不做文件块）。
+     */
+    fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()) {
         if (text.isBlank() || busy) return
+        // 先记附件再发：引擎可能在 send 返回后就落库并发事件
+        pendingImagePaths = AttachmentParts.imageRelPaths(attachments)
         val sid = sessionId ?: engine.createSession(
             title = text.take(40),
             now = System.currentTimeMillis(),
@@ -367,6 +388,38 @@ internal class BaopuChatController(context: Context) {
             recordSessionWorkspace(created)
         }
         engine.send(sid, text)
+    }
+
+    /**
+     * 把本轮附件按**相对路径**补写成用户消息的 `part.kind='image'`（B1）。
+     *
+     * seq 从 1 起：0 是引擎落的 `text` part。写入是**事务**（要么整批在、要么都不在），
+     * 避免"三张图只落了两张"这种半边状态。
+     *
+     * 只存相对路径：不存 base64（库会被撑爆）、不存绝对路径（换工作区就全废，且是
+     * 本机路径该待的地方之外）。
+     */
+    private fun attachImageParts(messageId: Long, relPaths: List<String>) {
+        if (relPaths.isEmpty()) return
+        runCatching {
+            val now = System.currentTimeMillis()
+            db.write { d ->
+                d.beginTransaction()
+                try {
+                    relPaths.forEachIndexed { i, rel ->
+                        val stmt = BaopuSql.insertPart(messageId, i + 1, "image", rel, now)
+                        d.execSQL(stmt.sql, stmt.args)
+                    }
+                    d.setTransactionSuccessful()
+                } finally {
+                    d.endTransaction()
+                }
+            }.get()
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴附件：写 image part 失败 ${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
     }
 
     /**
@@ -806,6 +859,15 @@ internal class BaopuChatController(context: Context) {
             if (ev is ConfirmRequest) {
                 confirmCard = ev
                 confirmRestored = false
+            }
+            // 第二十四批 B 段：用户消息刚落库 ⇒ 把本轮附件补成 image part（B1）。
+            // 必须在 refresh **之前**写：refresh 会重读 db，晚一步就要等下一次刷新才看得见图。
+            // 线程纪律：apply 恒在主线程（上面那层判断保证），所以这里 db.write{}.get()
+            // 只是等单写者把活干完，不会与引擎自己的写事务互相等待。
+            if (ev is EngineEvent.MessagePersisted && ev.role == HistoryMessage.ROLE_USER) {
+                val paths = pendingImagePaths
+                pendingImagePaths = emptyList()
+                attachImageParts(ev.messageId, paths)
             }
             val force = ev is EngineEvent.Settled
             refresh(force)
