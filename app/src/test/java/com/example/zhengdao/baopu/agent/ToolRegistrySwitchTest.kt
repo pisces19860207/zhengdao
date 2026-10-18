@@ -17,7 +17,7 @@ import java.io.File
  * 钉死追加包原话级口径：
  * - 一张表加载（spec＋permission＋factory），**引擎不写死工具清单**；
  * - 默认全启用：ENTRIES 十九个全开（第十七批 update_plan、第三十一批资料库两件套）；
- *   `write_skill` 由 BaopuRuntime 单独注册（要 personaFiles）⇒ DEFAULT_ENABLED 二十个；
+ *   `write_skill` 由 BaopuRuntime 单独注册（要 personaFiles）⇒ DEFAULT_ENABLED 二十一个；
  * - 关掉的工具**不进 tools 数组**（模型看不见）⇒ 判据③「模型看不到该工具」的构造成立；
  * - 被关工具仍是注册形态（同 Schema），模型幻觉调用拿到「该工具已被用户关闭」，
  *   **不自动打开**；
@@ -43,7 +43,7 @@ class ToolRegistrySwitchTest {
     // ── 表 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `一张表_默认二十个全启用`() {
+    fun `一张表_默认二十一个全启用`() {
         setup()
         val reg = registry()
 
@@ -55,7 +55,7 @@ class ToolRegistrySwitchTest {
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 "browser_open", "browser_snapshot", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot", "update_plan",
-                "library_list", "library_organize", "delete_path",
+                "library_list", "library_organize", "delete_path", "image_ops",
             ),
             reg.names(),
         )
@@ -175,14 +175,14 @@ class ToolRegistrySwitchTest {
     }
 
     @Test
-    fun `关二十个_全关时tools数组为空`() {
+    fun `关二十一个_全关时tools数组为空`() {
         setup()
         val prefs = InMemoryToolPrefs(BaopuToolCatalog.DEFAULT_ENABLED)
         val reg = registry(prefs)
         assertEquals(0, reg.toolsJsonOpenAi().length())
         assertEquals(0, reg.toolsJsonAnthropic().length())
-        // 注册表仍有二十条（都能拿到「已被关闭」）
-        assertEquals(20, reg.names().size)
+        // 注册表仍有二十一条（都能拿到「已被关闭」）
+        assertEquals(21, reg.names().size)
     }
 
     @Test
