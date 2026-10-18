@@ -387,7 +387,9 @@ internal class BaopuChatController(context: Context) {
             sessionId = created
             recordSessionWorkspace(created)
         }
-        engine.send(sid, text)
+        // 第二十四批 C 段：同一批判据喂给引擎——**只传相对路径**，读盘在引擎线程里做
+        // （这里是主线程，不许在这儿读 2 MB 的图）。B 段的落库路径仍走 pendingImagePaths。
+        engine.send(sid, text, pendingImagePaths)
     }
 
     /**
