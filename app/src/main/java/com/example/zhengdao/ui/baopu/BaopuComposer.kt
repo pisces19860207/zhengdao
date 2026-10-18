@@ -65,7 +65,14 @@ private const val MAX_ATTACH = 9
 @Composable
 internal fun BaopuComposer(
     busy: Boolean,
-    onSend: (String) -> Unit,
+    /**
+     * 发送回调：`(要发出去的文本, 本轮附件)`。
+     *
+     * 第二十四批 B 段把签名从 `(String)` 扩成两参：图片要**随消息落成
+     * `part.kind='image'`**（气泡里渲缩略图），而文本里那句 hint **照样保留**
+     * （判据 B2——有了图片块不等于模型一定看得到，接线没通之前那句提示仍然是真的）。
+     */
+    onSend: (String, List<BaopuAttachments.Saved>) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -202,7 +209,8 @@ internal fun BaopuComposer(
                         if (body.isNotBlank() || list.isNotEmpty()) {
                             text = ""
                             attachList = emptyList()
-                            onSend(withAttachmentHint(ctx, body, list))
+                            // hint 照旧拼进文本（B2：不许因为有了 image part 就删提示）
+                            onSend(withAttachmentHint(ctx, body, list), list)
                         }
                     },
                     enabled = text.isNotBlank() || attachList.isNotEmpty(),
@@ -312,8 +320,57 @@ private fun PaperclipGlyph(tint: androidx.compose.ui.graphics.Color, side: andro
 }
 
 /**
+ * 附件 → `part.kind='image'` 的相对路径（第二十四批 B 段，**纯函数**、JVM 直测）。
+ *
+ * ## 只收相对路径（判据 B1）
+ *
+ * 落库的 payload 只能是**相对工作区**的路径：
+ * - 存绝对路径 ⇒ 用户换工作区/换机型后全部失效，而且本机路径不该进数据库（会被
+ *   导出、被备份、被别的进程读到）；
+ * - 存 `data:` base64 ⇒ 一张 2 MB 图变 2.7 MB 文本，库会被撑爆，且同一张图被存两遍
+ *   （文件在工作区、副本在库里）。
+ *
+ * 所以这里做一道**过滤**而不是"信任调用方"：`/` 开头、`data:`、`file:`、`content:`、
+ * 含 `/storage/`、含盘符的一律丢。丢的时候不留半条脏数据。
+ */
+internal object AttachmentParts {
+
+    /** 取本轮该落成 image part 的相对路径（保持原顺序）。 */
+    fun imageRelPaths(list: List<BaopuAttachments.Saved>): List<String> =
+        list.asSequence()
+            .filter { it.isImage }
+            .map { it.relPath.trim() }
+            .filter { it.isNotEmpty() }
+            .filter { isRelativeSafe(it) }
+            .toList()
+
+    /**
+     * 这条路径能不能当 payload（B1 的守门员）。
+     *
+     * 只认"相对路径"这四个字的本义：不以 `/` 开头、不带 scheme、不含挂载点、
+     * 不是 Windows 盘符。`..` 也不收 —— 相对路径里的上跳会把读图动作带出工作区。
+     */
+    fun isRelativeSafe(rel: String): Boolean {
+        if (rel.isBlank()) return false
+        if (rel.startsWith("/")) return false
+        if (rel.contains("..")) return false
+        if (rel.contains("\\")) return false
+        listOf("data:", "file:", "content:", "http:", "https:").forEach {
+            if (rel.startsWith(it, ignoreCase = true)) return false
+        }
+        if (rel.contains("/storage/")) return false
+        if (Regex("""^[A-Za-z]:""").containsMatchIn(rel)) return false
+        return true
+    }
+}
+
+/**
  * 把「附件」并进要发出去的那句话。**图片与文件分开说**：本批没有视觉通道，
  * 图片只能进工作区、抱朴看不了 —— 这条必须写进消息里，不然后面它会自己编内容。
+ *
+ * 第二十四批 B 段：图片现在**同时**落成 image part（气泡里能看缩略图），但这句
+ * hint **不删**（判据 B2）。理由：图片落库 ≠ 模型看得到 —— 组装侧（ContextAssembler
+ * 按视觉能力裁图）归内核批次接线；在那之前"看不见图"仍然是事实，删了提示就是骗人。
  */
 internal fun withAttachmentHint(
     ctx: Context,
