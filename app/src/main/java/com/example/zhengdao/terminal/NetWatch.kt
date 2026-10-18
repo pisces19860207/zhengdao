@@ -57,6 +57,9 @@ class NetWatch(private val failThreshold: Int = 2) {
         return online != before
     }
 
+    /** 累计失败次数（只读；第二十一批 D 段：「真有账可清」判据，日志不刷屏）。 */
+    val failureCount: Int get() = failures
+
     /** 清掉累计的失败次数（终端页离开/回来时调用）；**不改变**当前判定。 */
     fun resetFailures() {
         failures = 0
