@@ -52,6 +52,23 @@ object PreviewNotice {
     /** 没有正文可渲（空回复 / 只有空白）。 */
     const val EMPTY_REPLY = "这条回复没有正文，渲不出卡片"
 
+    /** 会话里还没有任何一条助手回复（不是失败，是「还没到时候」）。 */
+    const val NO_REPLY_YET = "还没有可预览的回复——先让抱朴答一轮"
+
+    /**
+     * 放好了要说的那句话。
+     *
+     * **必须带上「切到玄览」这一步**：抱朴是主页里的一个 Tab，`requestBrowserTab()` 的请求由
+     * MainActivity 的 ON_RESUME 消费 —— 同页里点**不会**自动切过去（刀 4-B 已写明这个时序）。
+     * 不写这句，用户会以为「点了没反应」。
+     */
+    fun opened(evicted: String?): String =
+        if (evicted == null) {
+            "已放进预览——切到「玄览」就能看"
+        } else {
+            "已放进预览（槽满，挤掉了最早的一张）——切到「玄览」就能看"
+        }
+
     /** 槽那边给的其它原因（没绑定端口等）原样带出，只加一个前缀，不改写。 */
     fun putFailed(detail: String): String = "预览没放进去：$detail"
 
@@ -59,6 +76,32 @@ object PreviewNotice {
     fun cleared(n: Int): String =
         if (n > 0) "已清空 $n 张预览" else "已清空 0 张预览（槽里本来就没有）"
 }
+
+/**
+ * 一次预览动作 ⇒ 一句可以直接给用户看的话（第二十九批接线用；纯函数，JVM 可测）。
+ *
+ * 失败一律照搬 [PreviewResult.Failed] 里那句话（那里已经写得能读懂），**不改写、不吞**。
+ */
+fun previewToastText(result: PreviewResult): String = when (result) {
+    is PreviewResult.Opened -> PreviewNotice.opened(result.evicted)
+    is PreviewResult.Failed -> result.reason
+}
+
+/**
+ * 从消息列表里挑出**最近一条有正文的助手回复**（纯函数）。
+ *
+ * 为什么必须挑「有正文」的：纯工具轮（只调了工具、还没说话）也会落一条 assistant 消息，
+ * 拿它去渲卡片只会得到一张空卡。`kind == "image"` 的 part 里装的是**路径**，不算正文。
+ */
+internal fun lastAssistantReply(messages: List<BaopuUiMessage>): String? =
+    messages.asReversed()
+        .firstOrNull { msg ->
+            msg.role == "assistant" && msg.parts.any { it.kind == "text" && it.text.isNotBlank() }
+        }
+        ?.parts
+        ?.filter { it.kind == "text" && it.text.isNotBlank() }
+        ?.joinToString("\n\n") { it.text }
+        ?.takeIf { it.isNotBlank() }
 
 /**
  * 把**最近一条回复**渲成卡片、放进预览槽、交给玄览打开（整条链路一个调用，R3/R4/R5）。
