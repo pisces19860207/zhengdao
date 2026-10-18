@@ -87,11 +87,14 @@ class BaopuSessionLibraryTest {
             fallbackTitle = "未命名会话",
         )
         assertEquals(1, rows.size)
+        // 追加一 B 段（D5）：库里没记就是没记——展示行上 workspace 仍为 null，不许回填
         assertEquals(null, rows[0].workspace)
-        // 分组后落进「未记录」组，组标题是未知标签，**不是**当前工作区
-        val groups = groupByWorkspace(rows, "（工作区未记录）")
+        // 分组后进「默认工作区」组（追加一 B 段），组标题是调用方拼好的透传值，
+        // **不是**当前工作区路径本身
+        val header = "默认工作区 · …/Download/证道"
+        val groups = groupByWorkspace(rows, header)
         assertEquals(1, groups.size)
-        assertEquals("（工作区未记录）", groups[0].header)
+        assertEquals(header, groups[0].header)
         assertFalse(groups[0].header.contains(currentWs))
     }
 
@@ -129,7 +132,7 @@ class BaopuSessionLibraryTest {
     }
 
     @Test
-    fun `K4_分组工作区组按最新排_NULL组垫底`() {
+    fun `D5_分组_NULL组归默认工作区排最前_组内保序`() {
         val t0 = 1_700_000_000_000L
         val rows = buildSessionRows(
             listOf(
@@ -142,11 +145,15 @@ class BaopuSessionLibraryTest {
             datePattern = "M月d日",
             fallbackTitle = "未命名会话",
         )
-        val groups = groupByWorkspace(rows, "（工作区未记录）")
-        assertEquals(listOf("/ws/新", "/ws/旧", "（工作区未记录）"), groups.map { it.header })
+        val groups = groupByWorkspace(rows, "默认工作区 · …/Download/证道")
+        // 追加一 B 段改口径：NULL 组（旧会话的家）改排**最前**——存量老会话是
+        // 「旧会话没了」焦虑的主体，垫底等于继续看不见；组标题标明是归口不是史实。
+        assertEquals("默认工作区 · …/Download/证道", groups[0].header)
+        assertEquals(listOf("/ws/新", "/ws/旧"), groups.drop(1).map { it.header })
         // 组内保序：仍是 updated_at DESC
-        assertEquals(listOf(2L), groups[0].rows.map { it.id })
-        assertEquals(listOf(3L, 1L), groups[1].rows.map { it.id })
+        assertEquals(listOf(4L), groups[0].rows.map { it.id })
+        assertEquals(listOf(2L), groups[1].rows.map { it.id })
+        assertEquals(listOf(3L, 1L), groups[2].rows.map { it.id })
     }
 
     @Test
@@ -354,7 +361,8 @@ class BaopuSessionLibraryTest {
         val body = src.substring(funStart, funEnd)
         assertTrue(
             "删除必须带「是不是当前会话」的守卫：删非当前 ⇒ 当前会话不动（P5）",
-            body.contains("if (sessionId == sid)"),
+            // 追加一后守卫是 `if (ok && sessionId == sid)`（先看删除成没成）；只要守卫存在即可
+            body.contains("sessionId == sid"),
         )
     }
 
@@ -370,5 +378,79 @@ class BaopuSessionLibraryTest {
             "提示的判定要在删除前取（wasCurrent）",
             src.contains("val wasCurrent = row.id == controller.sessionId"),
         )
+    }
+
+    // ── 第二十五批追加一（删除与归属）判据 D1–D6 ────────────────────────
+
+    @Test
+    fun `D1_确认框必须组合在浮层Dialog内容之内_源码级`() {
+        // 追加一 A 段真因：确认框原来与 Dialog 平级（函数体顶层），挂在主窗口组合树里，
+        // 弹出的窗口 z 序在全屏浮层之下 ⇒ 真机「点删除没反应」。
+        // 钉法：askDelete?.let（确认框）必须出现在 Dialog( 的 content 之内——
+        // 即它的行首缩进深于 Dialog( 行（本仓 4 空格制：content 内 ≥ 8 空格）。
+        val lines = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSessionLibraryScreen.kt")
+            .readText().lines()
+        // 认「浮层 Dialog 的开头」：只认 Dialog( 本身——onDismissRequest 可能在下一行
+        val dialogLine = lines.indexOfFirst { it.contains("Dialog(") }
+        val askLine = lines.indexOfFirst { it.contains("askDelete?.let") }
+        assertTrue("找不到浮层 Dialog", dialogLine >= 0)
+        assertTrue("找不到确认框组合（askDelete?.let）", askLine >= 0)
+        assertTrue(
+            "确认框必须出现在浮层 Dialog 之后（在 content 内组合），当前在第 ${askLine + 1} 行",
+            askLine > dialogLine,
+        )
+        val indent = lines[askLine].takeWhile { it == ' ' }.length
+        assertTrue(
+            "确认框必须嵌在 Dialog content 内（缩进 ≥ 8 空格），当前缩进 $indent ——顶层平级就是真机「确认框被盖住」的根源",
+            indent >= 8,
+        )
+    }
+
+    @Test
+    fun `D2_删除语句三张表按序_message在session前`() {
+        val stmts = com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(1L)
+        val messageIdx = stmts.indexOfFirst { it.sql.contains("DELETE FROM message") }
+        val sessionIdx = stmts.indexOfFirst { it.sql.contains("DELETE FROM session") }
+        assertTrue("必须删 message", messageIdx >= 0)
+        assertTrue("必须删 session 本体", sessionIdx >= 0)
+        assertTrue("message 必须先于 session（part 靠外键级联一起走）", messageIdx < sessionIdx)
+    }
+
+    @Test
+    fun `D4_删除同步等结果且失败不静默`() {
+        val src = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt").readText()
+        val funStart = src.indexOf("fun deleteSession(")
+        val funEnd = src.indexOf("\n    fun ", funStart + 1).let { next ->
+            if (next < 0) src.length else next
+        }
+        val body = src.substring(funStart, funEnd)
+        assertTrue(
+            "db.write 的 Future 必须 .get() 等真落库（异步跑完前刷新列表＝删不掉的另一半真因）",
+            body.contains(".get()"),
+        )
+        assertTrue("返回成败给浮层（失败要提示）", body.contains(": Boolean"))
+        val ui = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSessionLibraryScreen.kt").readText()
+        assertTrue(
+            "删除失败必须有提示（baopu_session_delete_failed，不许静默）",
+            ui.contains("R.string.baopu_session_delete_failed"),
+        )
+    }
+
+    @Test
+    fun `D5_库里不回填workspace_NULL仍是NULL`() {
+        // 追加一 B 段红线：归口只在展示层，不许把 NULL 洗成默认路径写进库
+        val src = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt").readText()
+        val funStart = src.indexOf("fun loadSessionLibrary(")
+        val funEnd = src.indexOf("\n    fun ", funStart + 1).let { next ->
+            if (next < 0) src.length else next
+        }
+        val body = src.substring(funStart, funEnd)
+        assertFalse(
+            "loadSessionLibrary 不许把 workspace 回填成默认路径（copy(workspace =）",
+            body.contains("copy(workspace ="),
+        )
+        val sql = BaopuSql.sessionLibraryEntries().sql
+        assertTrue("会话库查询是只读 SELECT", sql.contains("SELECT"))
+        assertFalse("会话库查询不许写 workspace 列", sql.contains("UPDATE"))
     }
 }

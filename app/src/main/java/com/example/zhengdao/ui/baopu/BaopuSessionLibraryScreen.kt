@@ -119,13 +119,17 @@ internal fun shortenPath(path: String): String {
 }
 
 /**
- * 按工作区分组（§2.3.4）：组内保持 updated_at DESC；组间按「组内最新一条」的位置排
- * （rows 已按 updated_at DESC，下标越小越新）；workspace 为 NULL 的组**排最后**——
- * 「没记」是老账，不冒充新事。
+ * 按工作区分组（第二十批 §2.3.4；第二十五批追加一 B 段改 NULL 组的归属）：
+ * 组内保持 updated_at DESC；组间按「组内最新一条」的位置排（rows 已按 updated_at DESC，
+ * 下标越小越新）；**workspace 为 NULL 的组排最前**、标题用 [unknownHeader]
+ * （「默认工作区 · …/Download/证道」）——追加一 B 段口径：旧会话别再挂在孤儿组垫底，
+ * 归到「默认工作区」名下但**不假装它们当时真在那个目录跑过**（组里每行另标「历史未记录」；
+ * 库里 workspace 仍是 NULL，不回填）。放最前的理由：这批「没记工作区」的存量老会话正是
+ * 用户「旧会话没了」焦虑的主体，垫底等于继续看不见。
  */
 internal fun groupByWorkspace(
     rows: List<SessionLibraryRow>,
-    unknownLabel: String,
+    unknownHeader: String,
 ): List<SessionLibraryGroup> {
     val known = rows.filter { !it.workspace.isNullOrBlank() }
     // 组间序锚：组内最新一行在 rows（updated_at DESC）里的下标——下标越小越新
@@ -138,7 +142,7 @@ internal fun groupByWorkspace(
         SessionLibraryGroup(shortenPath(ws), known.filter { it.workspace == ws })
     }
     val unknown = rows.filter { it.workspace.isNullOrBlank() }
-    return if (unknown.isEmpty()) sortedGroups else sortedGroups + SessionLibraryGroup(unknownLabel, unknown)
+    return if (unknown.isEmpty()) sortedGroups else listOf(SessionLibraryGroup(unknownHeader, unknown)) + sortedGroups
 }
 
 /**
@@ -159,8 +163,14 @@ internal fun BaopuSessionLibraryScreen(
     val now = System.currentTimeMillis()
     val datePattern = stringResource(R.string.baopu_session_date_fmt)
     val fallbackTitle = stringResource(R.string.baopu_session_unnamed)
+    // 追加一 B 段：NULL 工作区组归「默认工作区」（不回填库，只改展示层标题），
+    // 组标题里的路径取 Workspace.defaultDir 的缩略；组里每行另标「历史未记录」小字。
+    val unknownHeader = stringResource(
+        R.string.baopu_session_ws_unknown_header,
+        shortenPath(com.example.zhengdao.terminal.Workspace.defaultDir(ctx).absolutePath),
+    )
     val unknownWs = stringResource(R.string.baopu_session_ws_unknown)
-    // 二次确认（K5）：删除动作只能从确认框的确认按钮进 controller.deleteSession——
+    // 二次确认（K5/D1）：删除动作只能从确认框的确认按钮进 controller.deleteSession——
     // 行尾按钮只置 askDelete，不直接删。
     var askDelete by remember { mutableStateOf<SessionLibraryRow?>(null) }
 
@@ -179,10 +189,10 @@ internal fun BaopuSessionLibraryScreen(
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
                     )
                 } else {
-                    val groups = remember(tick, datePattern, fallbackTitle, unknownWs) {
+                    val groups = remember(tick, datePattern, fallbackTitle, unknownHeader) {
                         groupByWorkspace(
                             buildSessionRows(entries, now, datePattern, fallbackTitle),
-                            unknownWs,
+                            unknownHeader,
                         )
                     }
                     LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -204,6 +214,7 @@ internal fun BaopuSessionLibraryScreen(
                                 SessionLibraryRowItem(
                                     row = row,
                                     enabled = !busy,
+                                    showUnknownMark = row.workspace.isNullOrBlank(),
                                     onOpen = {
                                         controller.openSession(row.id)
                                         onDismiss()
@@ -219,56 +230,67 @@ internal fun BaopuSessionLibraryScreen(
                         item { Spacer(Modifier.height(24.dp)) }
                     }
                 }
-            }
-        }
-    }
 
-    askDelete?.let { row ->
-        AlertDialog(
-            onDismissRequest = { askDelete = null },
-            title = { Text(stringResource(R.string.baopu_session_delete_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.baopu_session_delete_desc,
-                        row.title,
-                        row.roundCount,
-                    ),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !busy,
-                    onClick = {
-                        // 第二十五批 C 段：删的是当前正开着的会话 ⇒ 主界面回空态，
-                        // 这里说一声（Toast 飘在浮层之上）；**不许**自动跳到别的会话。
-                        val wasCurrent = row.id == controller.sessionId
-                        askDelete = null
-                        controller.deleteSession(row.id)
-                        if (wasCurrent) {
-                            Toast.makeText(
-                                ctx,
-                                ctx.getString(R.string.baopu_session_deleted_current),
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                        tick++
-                    },
-                ) {
-                    Text(
-                        stringResource(R.string.baopu_session_delete_confirm),
-                        // 派工单 §2.1.4 要红色删除键；仓库对比度守卫（ErrorTextContrastGuardTest）
-                        // 规定文字不许用 colorScheme.error（3.55:1 不达 AA）⇒ 走语义红 zhengdaoErrorText()
-                        color = zhengdaoErrorText(),
+                // ⚠️ 确认框必须组合在**浮层 Dialog 的 content 内**（追加一 A 段真因）：
+                // 之前放在本函数体顶层（与 Dialog 平级），它挂在主窗口的组合树里，
+                // 弹出的窗口 z 序在全屏浮层**之下**——真机上确认框被浮层整个盖住，
+                // 表现就是「点删除没反应」。挪进来才能叠在浮层之上。
+                askDelete?.let { row ->
+                    AlertDialog(
+                        onDismissRequest = { askDelete = null },
+                        title = { Text(stringResource(R.string.baopu_session_delete_title)) },
+                        text = {
+                            Text(
+                                stringResource(
+                                    R.string.baopu_session_delete_desc,
+                                    row.title,
+                                    row.roundCount,
+                                ),
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = !busy,
+                                onClick = {
+                                    // 第二十五批 C 段：删的是当前正开着的会话 ⇒ 主界面回空态，
+                                    // 这里说一声（Toast 飘在浮层之上）；**不许**自动跳到别的会话。
+                                    val wasCurrent = row.id == controller.sessionId
+                                    askDelete = null
+                                    val ok = controller.deleteSession(row.id)
+                                    if (!ok) {
+                                        // 追加一 D4：删除失败必须说出来，不许静默
+                                        Toast.makeText(
+                                            ctx,
+                                            ctx.getString(R.string.baopu_session_delete_failed),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    } else if (wasCurrent) {
+                                        Toast.makeText(
+                                            ctx,
+                                            ctx.getString(R.string.baopu_session_deleted_current),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                    tick++
+                                },
+                            ) {
+                                Text(
+                                    stringResource(R.string.baopu_session_delete_confirm),
+                                    // 派工单 §2.1.4 要红色删除键；仓库对比度守卫（ErrorTextContrastGuardTest）
+                                    // 规定文字不许用 colorScheme.error（3.55:1 不达 AA）⇒ 走语义红 zhengdaoErrorText()
+                                    color = zhengdaoErrorText(),
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { askDelete = null }) {
+                                Text(stringResource(R.string.baopu_session_delete_cancel))
+                            }
+                        },
                     )
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { askDelete = null }) {
-                    Text(stringResource(R.string.baopu_session_delete_cancel))
-                }
-            },
-        )
+            }
+        }
     }
 }
 
@@ -276,6 +298,9 @@ internal fun BaopuSessionLibraryScreen(
 private fun SessionLibraryRowItem(
     row: SessionLibraryRow,
     enabled: Boolean,
+    // 追加一 B 段：旧会话（workspace 没记）在这行补一枚「历史未记录」小字——
+    // 组标题归了「默认工作区」，行内这句是把「没假装它当时真在那儿跑」落到行上。
+    showUnknownMark: Boolean,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -299,7 +324,12 @@ private fun SessionLibraryRowItem(
                     text = stringResource(R.string.baopu_session_rounds, row.roundCount) +
                         " · " + row.timeText + " · " + stringResource(
                         if (row.sealed) R.string.baopu_session_sealed else R.string.baopu_session_continuable,
-                    ),
+                    ) +
+                        if (showUnknownMark) {
+                            " · " + stringResource(R.string.baopu_session_ws_unknown)
+                        } else {
+                            ""
+                        },
                     style = MaterialTheme.typography.labelSmall,
                     color = if (row.sealed) {
                         MaterialTheme.colorScheme.onSurfaceVariant
