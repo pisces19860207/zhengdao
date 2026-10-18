@@ -466,15 +466,26 @@ internal class RunEngine(
         verifyRepairs = 0
 
         while (!stopRequested) {
-            // ── Thinking 前：预算检查（> 窗口×0.85 ⇒ 先 Compressing）──
+            // ── Thinking 前：预算检查（第十五批口径：token 超触发线 **或** 可压旧
+            //    消息 ≥ 60 条，任一满足 ⇒ 先 Compressing；都不满足 ⇒ 一定不压）──
+            // 条数复用选区函数算（pendingOldMessageCount），并扣除已压进摘要的
+            // 消息——否则压完条数线仍满足，每轮重压（C 段明令禁止的抖动）。
+            val oldMessageCount = ContextAssembler.pendingOldMessageCount(history, compressedIds)
             val probe = assemble(
                 persona, facts, history, "", windowTokens,
                 compressionSummary, compressedIds, compressedIds,
+                oldMessageCount = oldMessageCount,
             )
             if (probe.needsCompressing) {
                 _state.value = RunState.COMPRESSING
                 persistStep(sessionId, stepCount, "Compressing")
-                log("抱朴引擎：上下文估算 ${probe.estimatedTokens} > 触发线，进 Compressing")
+                // 双读数落一行：估算/触发线 ＋ 可压条数/条数线，T1 一眼看出是哪条触发
+                log(
+                    "抱朴引擎：压缩触发（估算 ${probe.estimatedTokens} tokens / 触发线 " +
+                        "${ContextAssembler.compressionThreshold(windowTokens).toInt()}；" +
+                        "可压旧消息 $oldMessageCount 条 / 线 ${RunRules.COMPRESS_OLD_MESSAGE_MIN}）" +
+                        "进 Compressing",
+                )
                 compressionSummary = runCompression(sessionId, stepCount, history, provider)
                     ?: compressionSummary
             }
@@ -693,6 +704,7 @@ internal class RunEngine(
         compressionSummary: String?,
         compressedIds: Set<String> = emptySet(),
         skipIds: Set<String> = emptySet(),
+        oldMessageCount: Int = 0,
     ) = ContextAssembler.assemble(
         persona = persona,
         facts = facts,
@@ -704,6 +716,7 @@ internal class RunEngine(
         compressionSummary = compressionSummary,
         compressedIds = compressedIds,
         skipIds = skipIds,
+        oldMessageCount = oldMessageCount,
     )
 
     /** 本会话已注入的记忆（只增不改——0b 的 sticky 语义；候选确认后才进这里）。 */
