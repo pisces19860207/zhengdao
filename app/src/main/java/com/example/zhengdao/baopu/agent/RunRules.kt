@@ -173,4 +173,28 @@ internal object RunRules {
 
     /** 中断标记值：会话被标「中断于第 N 步」时落这个数；-1 = 未中断。 */
     const val NOT_INTERRUPTED = -1
+
+    // ── 压缩触发口径（第十五批 · 2026-10-18） ─────────────────────────────
+
+    /**
+     * 压缩触发的**绝对 token 上限**（第十五批 A 段）。
+     *
+     * 为什么要有：第十三批真机 T1 实证——触发线＝窗口×0.85，deepseek 窗口 1M ⇒
+     * 触发线 891,289 token，手机会话永远够不着，「压不动的压缩」。改后触发线＝
+     * min(窗口×0.85, 本值)：1M 窗口 ⇒ 120k（原来 891k）；8k 窗口 ⇒ 仍按比例
+     * 6,963（不变）；未声明窗口（回落 1M）⇒ 同 1M。
+     * 不改 [com.example.zhengdao.baopu.ContextAssembler.COMPRESS_THRESHOLD] 的
+     * 语义与取值——只加一道封顶。
+     */
+    const val COMPRESS_ABS_MAX_TOKENS = 120_000
+
+    /**
+     * 第二条触发线：**可压旧消息条数下限**（第十五批 B 段）。
+     *
+     * 「可压旧消息」条数由 `ContextAssembler.pendingOldMessageCount` 算——
+     * 直接复用 `Compressor.selectCompressionRange` 的选区（最近 KEEP_RECENT 条不动）
+     * 再扣除已压进摘要的消息，**不另写一套口径**。两条触发任一满足就压；
+     * 都满足不了就一定不压（C 段反向保证）。
+     */
+    const val COMPRESS_OLD_MESSAGE_MIN = 60
 }
