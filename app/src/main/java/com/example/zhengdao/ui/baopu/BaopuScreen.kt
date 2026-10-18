@@ -69,7 +69,7 @@ import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.BackupRules
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.WorkspaceFolderPicker
@@ -128,7 +128,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // ── 第二十九批：抽屉顶部＝工作区树 ────────────────────────────────────
     // 判据（分组、末级名、相对时间、高亮）全在 BaopuSessionTree 的纯函数里，这里只做四件事：
     // ① 开抽屉那一刻读一次会话库（与会话库浮层同一个 loadSessionLibrary，不另开口径）；
-    // ② 把当前工作区（Workspace.hostDir）与它的状态（正常／私有／未授权）交进纯函数；
+    // ② 把当前工作区（BaopuWorkspace.hostDir）与它的状态（正常／私有／未授权）交进纯函数；
     // ③ 点文件夹行的两个落点接上：临时提示（Toast，飘完就没＝A5 的"不许常驻"）＋设置页「工作区」卡；
     // ④ 点会话行走 controller.requestOpenSession——撞上单活跃门由下面那张确认卡问人（不许自动停）。
     var drawerTick by remember { mutableStateOf(0) }
@@ -157,10 +157,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         if (drawerTick == 0) {
             emptyList()
         } else {
-            val host = Workspace.hostDir(context)
+            val host = BaopuWorkspace.hostDir(context)
             val wsState = workspaceStateOf(
-                Workspace.storageGranted(context),
-                Workspace.isPrivate(context),
+                BaopuWorkspace.storageGranted(context),
+                BaopuWorkspace.isPrivate(context),
             )
             buildWorkspaceTree(
                 entries = controller.loadSessionLibrary(),
@@ -173,7 +173,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 ),
                 currentState = wsState,
                 unknownLabel = wsUnknownLabel,
-                unknownPath = Workspace.defaultDir(context).absolutePath,
+                unknownPath = BaopuWorkspace.defaultDir().absolutePath,
                 currentSessionId = controller.sessionId,
                 now = System.currentTimeMillis(),
                 templates = timeTemplates,
@@ -723,9 +723,17 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         TextButton(
                             onClick = {
                                 runHereNode = null
-                                val before = Workspace.hostDir(context).absolutePath
-                                if (Workspace.setCustom(context, node.fullPath)) {
-                                    val after = Workspace.hostDir(context).absolutePath
+                                val before = BaopuWorkspace.hostDir(context).absolutePath
+                                // 默认工作区那一行不是「自定义路径」，走 setDefault（mode=default）；
+                                // 其余文件夹走 setCustom。两条都要留痕。
+                                val switched = if (node.unknown) {
+                                    BaopuWorkspace.setDefault(context)
+                                    true
+                                } else {
+                                    BaopuWorkspace.setCustom(context, node.fullPath)
+                                }
+                                if (switched) {
+                                    val after = BaopuWorkspace.hostDir(context).absolutePath
                                     // 内核项（工作区）变更要留痕——与设置页同一条规则（26-B）
                                     if (after != before) RunLog.log(KernelAudit.workspace(after, before))
                                     controller.newSession()
@@ -752,9 +760,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     onDismiss = { addWorkspaceOpen = false },
                     onPick = { path ->
                         addWorkspaceOpen = false
-                        val before = Workspace.hostDir(context).absolutePath
-                        if (Workspace.setCustom(context, path)) {
-                            val after = Workspace.hostDir(context).absolutePath
+                        val before = BaopuWorkspace.hostDir(context).absolutePath
+                        if (BaopuWorkspace.setCustom(context, path)) {
+                            val after = BaopuWorkspace.hostDir(context).absolutePath
                             if (after != before) RunLog.log(KernelAudit.workspace(after, before))
                             controller.newSession()
                         }

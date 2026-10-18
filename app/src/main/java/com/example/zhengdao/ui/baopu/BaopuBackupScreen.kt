@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.util.TimeFormats
 
 /**
@@ -115,7 +115,7 @@ internal fun BaopuBackupDialog(
                 )
                 // 工作区是 App 私有时，导出仍在 App 里——防丢目的达不到，必须说在明处
                 // （不然用户以为导完了，卸载照样丢，比不导更糟）。
-                if (Workspace.isPrivate(LocalContext.current)) {
+                if (BaopuWorkspace.isPrivate(LocalContext.current)) {
                     Text(
                         text = stringResource(R.string.baopu_backup_private_hint),
                         style = MaterialTheme.typography.bodySmall,

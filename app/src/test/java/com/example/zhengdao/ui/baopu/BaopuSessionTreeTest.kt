@@ -647,7 +647,8 @@ class BaopuSessionTreeTest {
         assertTrue("要有这个按钮", drawerCode.contains("onRunHere = onWorkspaceRunHere"))
         assertTrue("圆形描边＋文字加号，不自绘", drawerCode.contains(".border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)"))
         assertTrue("加号是文字", drawerCode.contains("text = \"＋\""))
-        assertTrue("默认工作区不给", drawerCode.contains("if (!node.unknown)"))
+        // 2026-10-18 用户口径：默认工作区就是 Download/证道 那个真文件夹 ⇒ 它也有这个＋。
+        assertTrue("默认工作区也有", drawerCode.contains("run {"))
         // 页面：当前工作区直接开；别的文件夹**必须先问人**（切工作区是全局动作）
         val runHere = bodyOf(screenCode, "onWorkspaceRunHere = { node ->")
         assertTrue("当前工作区直接开新会话", runHere.contains("controller.newSession()"))

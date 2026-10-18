@@ -167,7 +167,7 @@ class BaopuAttachmentPartsTest {
     @Test
     fun `B3_只读文件_不复制不新落盘`() {
         // 图从工作区直读；代码里不许出现任何"往别处写一份"的动作
-        assertTrue("读的是工作区根 + 相对路径", list.contains("File(Workspace.hostDir(ctx), relPath)"))
+        assertTrue("读的是工作区根 + 相对路径", list.contains("File(BaopuWorkspace.hostDir(ctx), relPath)"))
         listOf("copyTo(", "copyRecursively(", "FileOutputStream(").forEach { writeApi ->
             assertFalse("渲染缩略图不该写盘：出现了 $writeApi", list.contains(writeApi))
         }

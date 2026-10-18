@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuSql
 import com.example.zhengdao.baopu.HistoryMessage
@@ -432,7 +433,7 @@ internal class BaopuChatController(context: Context) {
      * （含无权限回落私有等既有口径），跟终端/资料库看到的是同一个目录。
      */
     private fun recordSessionWorkspace(sid: Long) {
-        val path = com.example.zhengdao.terminal.Workspace.hostDir(appCtx).absolutePath
+        val path = com.example.zhengdao.baopu.BaopuWorkspace.hostDir(appCtx).absolutePath
         val stmt = com.example.zhengdao.baopu.BaopuSql.setSessionWorkspace(sid, path)
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
             .onFailure {

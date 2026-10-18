@@ -1106,7 +1106,7 @@
     <string name="baopu_session_delete_failed">删除失败，再试一次或重启后重试</string>
     <string name="baopu_session_ws_unknown_header">默认工作区 · %1$s</string>
     <string name="baopu_ws_card">工作区</string>
-    <string name="baopu_ws_desc">抱朴会话的工作地点，跟终端用的是同一份设置。产出与项目技能都跟着它走。</string>
+    <string name="baopu_ws_desc">抱朴自己的工作地点（和终端**分开**设置，互不影响）。默认是 Download/证道；产出、附件与项目技能都跟着它走。</string>
     <string name="baopu_ws_current">当前位置</string>
     <string name="baopu_ws_mode_default">默认（证道文件夹）</string>
     <string name="baopu_ws_mode_custom">自定义</string>
