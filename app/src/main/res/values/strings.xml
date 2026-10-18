@@ -907,6 +907,7 @@
     <!-- ── 抱朴步骤卡收纳（第十六批第一件；一轮收成一行，点开看每一步）── -->
     <string name="baopu_round_summary">干了 %1$d 步 · 用时 %2$s · 失败 %3$d</string>
     <string name="baopu_round_summary_nodur">干了 %1$d 步 · 失败 %2$d</string>
+    <string name="baopu_plan_summary">计划 %1$d/%2$d 完成</string>
   <string name="baopu_channel_button">换通道</string>
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
     <string name="baopu_ask_recommended">推荐选项</string>
