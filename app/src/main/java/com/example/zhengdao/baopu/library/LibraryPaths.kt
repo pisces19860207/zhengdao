@@ -188,6 +188,46 @@ internal object LibraryPaths {
         return ScanResult(collected.take(MAX_SCAN), truncated)
     }
 
+    // ── 扫描门槛（第三十一批 C 段：按需，不启动全量） ───────────────────────────
+
+    /**
+     * 顶层条目数（文件＋目录，**不递归**；跳软链）——扫描门槛用，成本 O(一层)。
+     *
+     * 为什么需要它：导入扫描挂在「进页面＋每轮 Settled」上（见 LibraryImport.scan 的调用方），
+     * 料少时无所谓，料多时每轮都在整树爬。先花一次 listFiles 数顶层，超过 [MAX_SCAN]
+     * 就**不再全量扫**，只列顶层并明说「太多了，先收窄到某个子目录」。
+     */
+    fun countTopLevel(dir: File): Int {
+        if (!dir.isDirectory) return 0
+        val children = dir.listFiles() ?: return 0
+        return children.count { !isSymlink(it) }
+    }
+
+    /**
+     * 只列**顶层文件**（不递归；跳软链与垃圾名；按名排序保证确定性）——
+     * 门槛触发时的降级形态：告诉模型「这层有什么」，不假装看全了整棵树。
+     */
+    fun listTopLevelFiles(dir: File): List<ScannedFile> {
+        if (!dir.isDirectory) return emptyList()
+        val out = ArrayList<ScannedFile>()
+        for (f in dir.listFiles() ?: return emptyList()) {
+            if (isSymlink(f) || !f.isFile) continue
+            if (isJunkName(f.name)) continue
+            if (!PathGuard.isInside(dir, f)) continue
+            val (kind, reason) = classify(f.name)
+            out += ScannedFile(
+                relPath = f.name,
+                name = f.name,
+                size = f.length(),
+                mtime = f.lastModified(),
+                kind = kind,
+                reason = reason,
+            )
+        }
+        out.sortBy { it.relPath }
+        return out
+    }
+
     /**
      * 按扩展名分类（**只认已知文本格式**；未知一律不认领——不猜编码、不引解析库）。
      * 纯函数，单测直接打。

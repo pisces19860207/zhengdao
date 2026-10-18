@@ -19,7 +19,10 @@ import java.io.File
  * 1. **只扫投递**——整理/、工作区根一律不进；
  * 2. **一次 ask_user**——四档选项，复制档 `isolated=false`；
  * 3. **不删任何文件**——「搬」= 复制进私有 ＋ 只列待删除清单；
- * 4. **不认领格式只列清单**——`_待外部转换.json` 有它、私有目录没有它。
+ * 4. **不认领格式不进私有**——只留在投递（第三十一批 C 段起 `_待外部转换.json` 已停写：
+ *    全仓没有读方，抱朴用 library_list 直接看投递目录即可判断）。
+ *
+ * 另覆盖 C 段扫描门槛：投递顶层条目超过 MAX_SCAN ⇒ 只列顶层 ＋ overLimit，不再全量递归。
  */
 class LibraryImportTest {
 
@@ -58,6 +61,39 @@ class LibraryImportTest {
         val scan = imp.scan()
 
         assertEquals(listOf("a.txt"), scan.files.map { it.relPath })
+    }
+
+    @Test
+    fun `扫描_条目超过上限_只列顶层并不再全量递归`() {
+        // 第三十一批 C 段：启动/每轮 Settled 都会调 scan ⇒ 料多时不许再无脑全树爬
+        setup()
+        repeat(LibraryPaths.MAX_SCAN + 1) { File(deliver, "顶层面$it.txt").writeText("x") }
+        File(deliver, "深层/里面.txt").apply { parentFile?.mkdirs() }.writeText("x")
+
+        val scan = imp.scan()
+
+        assertTrue("超过上限必须置 overLimit", scan.overLimit)
+        assertTrue("必须告知顶层条数", scan.topLevelCount > LibraryPaths.MAX_SCAN)
+        assertTrue("必须标记截断", scan.truncated)
+        assertTrue("只列顶层：\n${scan.files.map { it.relPath }}", scan.files.none { it.relPath.contains("/") })
+        assertEquals(LibraryPaths.MAX_SCAN + 1, scan.files.size)
+        // 提问卡要把「没有逐个细扫」说死，不许假装看全了
+        val card = imp.card(scan)
+        assertTrue("卡上要明说没细扫：${card.question}", card.question.contains("没有逐个细扫"))
+        assertTrue("卡上要教收窄：${card.question}", card.question.contains("子目录"))
+    }
+
+    @Test
+    fun `扫描_条目没超上限_照旧全量`() {
+        setup()
+        repeat(50) { File(deliver, "f$it.txt").writeText("x") }
+        File(deliver, "深层/里面.txt").apply { parentFile?.mkdirs() }.writeText("x")
+
+        val scan = imp.scan()
+
+        assertFalse(scan.overLimit)
+        assertEquals(51, scan.files.size)
+        assertTrue(scan.files.any { it.relPath == "深层/里面.txt" })
     }
 
     @Test
@@ -142,7 +178,8 @@ class LibraryImportTest {
     }
 
     @Test
-    fun `不认领格式_只列清单不进私有`() {
+    fun `不认领格式_不进私有且清单已停写`() {
+        // 第三十一批 C 段：_待外部转换.json 全仓没有读方 ⇒ 停写；件本身仍留在投递
         setup()
         deliverFile("a.pdf")
         deliverFile("b.png")
@@ -150,10 +187,10 @@ class LibraryImportTest {
 
         assertTrue(out.copied.isEmpty())
         assertEquals(listOf("a.pdf", "b.png"), out.leftBehind.map { it.relPath }.sorted())
-        val listText = out.externalListFile.readText()
-        assertTrue(listText.contains("\"a.pdf\""))
-        assertTrue(listText.contains("外部转换"))
+        assertFalse("_待外部转换.json 已停写，不许再落文件", out.externalListFile.exists())
         assertFalse(File(raw, "a.pdf").exists())
+        // 投递里的件原样还在
+        assertTrue(File(deliver, "a.pdf").isFile)
     }
 
     @Test
@@ -204,12 +241,11 @@ class LibraryImportTest {
 
     @Test
     fun `待外部转换清单_三批合并不丢中间那批`() {
-        // 同上：外部清单也曾有「整文档当一条」的吞条目 bug
+        // 第三十一批 C 段起 execute 不再写这份清单（停写）；函数保留备查，
+        // 这里直接驱动 appendExternalList 验它的合并不丢条目（真恢复时靠这条兜底）。
         setup()
-        deliverFile("a.pdf")
-        imp.execute(MoveChoice.MOVE, now = 1000L)
-        deliverFile("b.png")
-        imp.execute(MoveChoice.MOVE, now = 2000L)
+        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("a.pdf", "Office/PDF 文档（.pdf），需外部转换")))
+        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("b.png", "图片（.png），需外部转换")))
         imp.appendExternalList(listOf(LibraryImport.ExternalEntry("c.zip", "压缩包（.zip），需外部转换")))
 
         val text = File(done, LibraryImport.FILE_EXTERNAL).readText()
@@ -233,14 +269,14 @@ class LibraryImportTest {
 
     @Test
     fun `待外部转换清单_可合并追加`() {
+        // 函数保留备查（execute 已停写）：同 rel_path 后写赢，不同条目都在
         setup()
-        deliverFile("a.pdf")
-        deliverFile("b.png")
-        imp.execute(MoveChoice.MOVE, now = 1000L)
+        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("a.pdf", "Office/PDF 文档（.pdf），需外部转换")))
+        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("b.png", "图片（.png），需外部转换")))
         imp.appendExternalList(listOf(LibraryImport.ExternalEntry("a.pdf", "不是 UTF-8 编码")))
 
         val text = File(done, LibraryImport.FILE_EXTERNAL).readText()
-        // 两条都还在（b.png 是第一次执行写的）；a.pdf 同 rel_path 只一条，理由被后写的覆盖
+        // 两条都还在（a.pdf 同 rel_path 只一条，理由被后写的覆盖）
         assertEquals(2, text.lines().count { it.contains("\"rel_path\"") })
         assertTrue(text.contains("不是 UTF-8 编码"))
         assertTrue(text.contains("b.png"))
