@@ -886,6 +886,10 @@
     <string name="baopu_round_summary_nodur">%1$d steps · %2$d failed</string>
     <!-- Persistent "collapse" chip: an expanded round is taller than the screen, both summary rows scroll away -->
     <string name="baopu_collapse_detail">Hide details</string>
+    <!-- Read aloud (2026-10-18): system TTS only, no network, no library; failures must be spoken out -->
+    <string name="baopu_speak">Read aloud</string>
+    <string name="baopu_speak_failed">System speech engine unavailable</string>
+    <string name="baopu_speak_no_language">System speech lacks this language pack</string>
     <string name="baopu_plan_summary">Plan %1$d/%2$d done</string>
   <string name="baopu_channel_button">Channel</string>
     <!-- ── Baopu ask_user card (task 2, part C) ── -->
