@@ -802,6 +802,8 @@
     <string name="term_reset_done">Terminal reset</string>
     <string name="term_browser_failed">Couldn\'t open a browser: %1$s</string>
     <string name="term_link_blocked">For safety, this link can\'t be opened inside the app</string>
+    <string name="term_link_confirm_title">Open this link?</string>
+    <string name="term_link_confirm_open">Open</string>
 
     <!-- Browser tab (Xuanlan, phase 1 user mode) -->
     <string name="browser_url_hint">Enter a URL or search</string>
@@ -845,6 +847,8 @@
     <string name="bridge_started">Browser bridge is on</string>
     <string name="bridge_stopped">Browser bridge is off</string>
     <string name="bridge_port_label">Listen address</string>
+    <string name="bridge_listen_title">Listen address</string>
+    <string name="bridge_listen_detail">Bound to %1$s only (loopback). That means this port is reachable only from the phone itself — not from the internet, not from other devices on your network, and not from other apps on this phone.\n\nPort %2$s is fixed and cannot be changed: the port, bind address and auth scheme are hard limits of this bridge and are deliberately not adjustable from the UI.\n\nThe token lives in private storage of the app. This page shows only the first and last 4 characters; use \"Copy token\" below to copy it.</string>
     <string name="bridge_token_group">Passphrase (token)</string>
     <string name="bridge_token_label">Current passphrase</string>
     <string name="bridge_token_hint">Only the first and last 4 characters are shown. Tap “Copy passphrase” when you actually need it — copying is an explicit action, not the default view. Resetting invalidates the old one immediately.</string>
