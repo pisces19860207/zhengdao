@@ -1111,6 +1111,18 @@
     <string name="skill_cap_reached">技能索引已存 %1$d 条（上限 %2$d）：先去 抱朴设置 → 技能索引 删掉不用的，再试。</string>
     <string name="skill_apply_failed">写入人设失败（提案状态或层不允许）</string>
     <string name="skill_refine_dropped">这次收尾有 %1$d 条技能候选被去重/超限丢弃。</string>
+    <!-- ── 技能试用期界面（第三十二批）：草稿列出来 ＋ 用一次 ＋ 转正 ＋ 模板预填 ──
+         计数与「能不能转正」的口径全在 SkillStore，这里的数字只是把它的读数说出来。 -->
+    <string name="skill_draft_group">草稿（试用中）</string>
+    <string name="skill_draft_none">没有草稿。新建技能时勾上「先当草稿」，它就会在这里排队。</string>
+    <string name="skill_draft_uses">草稿 · 已用 %1$d/%2$d</string>
+    <string name="skill_draft_use_once">用一次</string>
+    <string name="skill_draft_promote">转正</string>
+    <string name="skill_draft_used">已给「%1$s」记一次</string>
+    <string name="skill_draft_promoted">「%1$s」已转正，索引里多了一行</string>
+    <string name="skill_draft_index_full">正文已转正，但索引已满（上限 %1$d 条）：索引行没加上，先去删几条</string>
+    <string name="skill_use_platform_template">用平台机制模板</string>
+    <string name="skill_use_platform_template_hint">预填只改输入框，不写盘；保存仍要过确认卡。</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->
     <string name="baopu_drawer_history">历史会话</string>
     <string name="baopu_drawer_history_desc">全部会话，平铺看</string>

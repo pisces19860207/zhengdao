@@ -372,6 +372,95 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     }
                 }
                 Spacer(Modifier.height(6.dp))
+                // ── 第三十二批 A 段 · 草稿（试用中）──────────────────────────────
+                // 23A 把 status／uses／canPromote 全算完了，界面上一个都没露（派工单 §0）。
+                // 这一段只**读**数据层算好的数；写盘只有 commitSkillDraft → SkillStore.apply 一条路（T4）。
+                val globalRoot = File(ctx.filesDir, "抱朴记忆")
+                val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+                val draftRows = remember(skillReload) { draftSkillRows(projectRoot, globalRoot) }
+
+                /** 「用一次」：uses+1 写回，仍是草稿（能不能转正继续由数据层判）。 */
+                fun useOnce(row: SkillDraftRow) {
+                    val msg = when (
+                        val r = commitSkillDraft(
+                            row = row,
+                            newBody = useOnceBody(row.body),
+                            stillDraft = true,
+                            projectRoot = projectRoot,
+                            globalRoot = globalRoot,
+                            personaFiles = pf,
+                            backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                        )
+                    ) {
+                        is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                            ctx.getString(R.string.skill_draft_used, row.name)
+                        is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
+                    }
+                    Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+                    skillReload++
+                }
+
+                /** 「转正」：正文头改 status=active ＋ 索引多一行（走 addIndexLine／applyProposal）。 */
+                fun promote(row: SkillDraftRow) {
+                    val msg = when (
+                        val r = commitSkillDraft(
+                            row = row,
+                            newBody = promoteBody(row.body),
+                            stillDraft = false,
+                            projectRoot = projectRoot,
+                            globalRoot = globalRoot,
+                            personaFiles = pf,
+                            backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                        )
+                    ) {
+                        // 索引没加上（上限挡着）时必须明说——正文已转正但模型还看不见它。
+                        is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                            if (r.indexUpdated) ctx.getString(R.string.skill_draft_promoted, row.name)
+                            else ctx.getString(R.string.skill_draft_index_full, SkillRules.INDEX_CAP)
+                        is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
+                    }
+                    Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                    skillReload++
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.skill_draft_group),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (draftRows.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.skill_draft_none),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                draftRows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(row.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                // T2：N 就是 SkillStore.usesOf 的读数，分母是 PROMOTE_USES——这里不自己数
+                                text = stringResource(R.string.skill_draft_uses, row.uses, SkillStore.PROMOTE_USES),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = { useOnce(row) }) {
+                            Text(stringResource(R.string.skill_draft_use_once))
+                        }
+                        // T3：「转正」只在 canPromote 为真时出现（够不够次数不由 UI 判）
+                        if (row.canPromote) {
+                            TextButton(onClick = { promote(row) }) {
+                                Text(stringResource(R.string.skill_draft_promote))
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
                 // B/C 人设只读展示（§2.5：能看见；编辑留给后续批次）
                 Text(
                     text = stringResource(R.string.skill_persona_b),
