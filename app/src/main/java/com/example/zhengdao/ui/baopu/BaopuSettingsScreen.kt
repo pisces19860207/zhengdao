@@ -54,7 +54,10 @@ import com.example.zhengdao.ui.FilterChip2
 import com.example.zhengdao.ui.InfoRow
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.SettingsSubPage
+import com.example.zhengdao.ui.WorkspaceFolderPicker
+import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
 @Composable
@@ -207,6 +210,81 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
                             ModelParams.saveEffort(ctx, level)
                         }
                     }
+                }
+            }
+
+            // ── 工作区（第二十批 §2.2：把已有的工作区设置摆出来给人看和改）──
+            // 铁律「同一件事只有一个盒子」：真源是 terminal/Workspace（workspace_mode/
+            // workspace_path），这里**只调** setDefault/setCustom/setPrivate，不自己再存
+            // 一份到别的 prefs（K6：全仓 workspace_mode/workspace_path 只许命中 Workspace.kt）。
+            // 选中态不读 raw 键（那会引入第二份字面量）——从解析结果 hostDir 推导。
+            SectionCard(stringResource(R.string.baopu_ws_card)) {
+                var wsTick by remember { mutableStateOf(0) }
+                var wsPickerOpen by remember { mutableStateOf(false) }
+                val storageOk = remember(wsTick) { Workspace.storageGranted(ctx) }
+                val hostPath = remember(wsTick) { Workspace.hostDir(ctx).absolutePath }
+                val curDefault = remember(wsTick) { Workspace.defaultDir(ctx).absolutePath }
+                val curPrivate = remember(wsTick) { Workspace.privateDir(ctx).absolutePath }
+                Text(
+                    text = stringResource(R.string.baopu_ws_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!storageOk) {
+                    Text(
+                        text = stringResource(R.string.baopu_ws_no_storage),
+                        style = MaterialTheme.typography.labelSmall,
+                        // 文字用语义红（ErrorTextContrastGuardTest：colorScheme.error 当正文 3.55:1 不达 AA）
+                        color = zhengdaoErrorText(),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                InfoRow(stringResource(R.string.baopu_ws_current), hostPath)
+                Text(
+                    text = stringResource(R.string.baopu_ws_new_session_note),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip2(
+                        label = stringResource(R.string.baopu_ws_mode_default),
+                        selected = hostPath == curDefault,
+                    ) {
+                        Workspace.setDefault(ctx)
+                        wsTick++
+                    }
+                    FilterChip2(
+                        label = stringResource(R.string.baopu_ws_mode_custom),
+                        // 无存储权限时 hostDir 回落私有 ⇒ 三个都不会亮，别把「回落」说成「选中」
+                        selected = storageOk &&
+                            hostPath != curDefault &&
+                            hostPath != curPrivate,
+                    ) {
+                        wsPickerOpen = true
+                    }
+                    FilterChip2(
+                        label = stringResource(R.string.baopu_ws_mode_private),
+                        selected = storageOk && hostPath == curPrivate,
+                    ) {
+                        Workspace.setPrivate(ctx)
+                        wsTick++
+                    }
+                }
+                // 目录选择器**复用** SettingsDataActivity 那一套（§2.2.1：它怎么选你就怎么调），
+                // 不新写一套；非法路径 Workspace.setCustom 自己会拒（返回 false 时选中态不动）。
+                if (wsPickerOpen) {
+                    WorkspaceFolderPicker(
+                        onDismiss = { wsPickerOpen = false },
+                        onPick = { path ->
+                            wsPickerOpen = false
+                            Workspace.setCustom(ctx, path)
+                            wsTick++
+                        },
+                    )
                 }
             }
 
