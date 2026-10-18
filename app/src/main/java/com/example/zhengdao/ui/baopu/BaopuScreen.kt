@@ -329,9 +329,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 }
             }
             Box(Modifier.weight(1f)) {
-                // LazyColumn 自带滚动（不能再套 verticalScroll——嵌套滚动会崩）
+                // LazyColumn 自带滚动（不能再套 verticalScroll——嵌套滚动会崩）。
+                // 十六批第一件：传入 run_log 活动行/在跑态/钉住态——已完成的历史轮
+                // 收成一行摘要，点开看每一步；口径全在 BaopuMessageList 的纯函数里。
                 BaopuMessageList(
                     messages = controller.messages,
+                    steps = controller.stepRows,
+                    running = controller.busy,
+                    pinLastRound = controller.actionCardsPresent,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
