@@ -4,6 +4,7 @@ package com.example.zhengdao
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
@@ -116,6 +117,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 主界面全程保持屏幕常亮（2026-10-18 用户逐字：「打开APP手机应该是常亮的才对啊，
+        // 昨天我看好像跟着手机设置的熄屏时间差不多，手机就熄屏了」）。
+        // 口径：**只要主界面在前台就常亮**（四个 Tab 都算），退出/进后台时窗口标志随 Activity
+        // 生命周期自然失效，不需要手动清——`FLAG_KEEP_SCREEN_ON` 是窗口级标志，不是 WakeLock。
+        // 与 TerminalActivity 同一行写法（终端页早就加了，主界面一直漏着）。
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // 边到边渲染（v1.1 第三阶段「输入框与手机体验」）：
         // 必须与 ComposerBar 的 Modifier.imePadding() 配套，键盘弹出时输入框才不被顶掉
