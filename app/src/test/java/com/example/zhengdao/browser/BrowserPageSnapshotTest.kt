@@ -17,7 +17,7 @@ import java.io.File
  *
  * 分两段，理由与既有门禁同：
  * - **前半段是真判据**：直接调纯函数 [PageSnapshot.summarize] / [scrubSecrets]，喂真 HTML、断言真结果；
- * - **后半段是文本门禁**（写法照 `ui/SettingsDestructiveConfirmGateTest` / `BrowserNavCapsuleGuardTest`）：
+ * - **后半段是文本门禁**（写法照 `ui/SettingsDestructiveConfirmGateTest` / `BrowserBottomBarGuardTest`）：
  *   钉"接线还在不在"——按钮有没有、导出是不是**只有用户点才会跑**、落点是不是共享目录。
  *   文本门禁的已知局限照旧：它证明"没人把结构改回去"，不证明"点下去一定对"，后者归真机。
  *
@@ -34,6 +34,9 @@ class BrowserPageSnapshotTest {
         assertTrue("找不到 $rel：${f.path}", f.isFile)
         return f.readText()
     }
+
+    /** 文件在不在（模块目录 `app/` 与仓库根两种工作目录都试）。 */
+    private fun exists(rel: String): Boolean = File(rel).isFile || File("app/$rel").isFile
 
     /** 去注释（文本门禁用）：注释里写着同名字面量不该算数。 */
     private fun stripComments(s: String): String = s
@@ -360,15 +363,24 @@ class BrowserPageSnapshotTest {
 
     @Test
     fun `接线_底栏几何一个像素没动`() {
-        val screen = source("src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt")
-        assertTrue("地址栏带仍是 50dp（红线①）", screen.contains(".height(50.dp)"))
-        assertTrue("地址栏上下 padding 仍是 6dp（红线①）", screen.contains("top = 6.dp, bottom = 6.dp"))
-        val capsule = source("src/main/java/com/example/zhengdao/ui/browser/BrowserNavCapsule.kt")
-        assertTrue("浮动胶囊仍是 56dp（红线①）", capsule.contains(".height(56.dp)"))
-        assertTrue("键命中区仍是 48dp（红线①）", capsule.contains(".size(48.dp)"))
-        // 导出按钮不许出现在底栏两个文件里（它住在标签条）
-        assertFalse("导出按钮不许塞进底栏地址带", screen.contains("stringResource(R.string.browser_export)"))
-        assertFalse("导出按钮不许塞进浮动胶囊", capsule.contains("browser_export"))
+        // 2026-10-18 底栏改版（两条带子 106dp → 一条 56dp，用户拍板作废旧定稿）：这条红线的
+        // **数跟着重拍**，但牙口没换 —— 谁借改版或借收尾偷偷动几何，这里当场红。
+        // 键位/顺序/对称等其余判据归 ui/browser/BrowserBottomBarGuardTest，两边不重复钉。
+        val screen = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt"))
+        val bar = stripComments(source("src/main/java/com/example/zhengdao/ui/browser/BrowserBottomBar.kt"))
+        assertTrue("底栏必须仍是 56dp（改版定稿数）", bar.contains(".height(56.dp)"))
+        assertTrue("键命中区必须仍是 48dp", bar.contains(".size(48.dp)"))
+        assertTrue("地址胶囊必须仍是 40dp", bar.contains(".height(40.dp)"))
+        // 旧两条带子不许回潮（地址栏带整体并进底栏）
+        assertFalse("50dp 地址栏带不许回来", screen.contains(".height(50.dp)"))
+        assertFalse("地址栏带的 6dp 上下 padding 不许回来", screen.contains("top = 6.dp, bottom = 6.dp"))
+        // 导出按钮（第⑧刀撤眼睛）不许出现在底栏两个文件里，组件本体也不许复活
+        assertFalse("导出按钮不许塞进 BrowserScreen", screen.contains("browser_export"))
+        assertFalse("导出按钮不许塞进底栏", bar.contains("browser_export"))
+        assertFalse(
+            "导出组件不许复活（台账拍板删除：只写不读，还占手机存储）",
+            exists("src/main/java/com/example/zhengdao/ui/browser/BrowserPageExporter.kt"),
+        )
     }
 
     // ═════════════════════════════════════════════════════════════════════

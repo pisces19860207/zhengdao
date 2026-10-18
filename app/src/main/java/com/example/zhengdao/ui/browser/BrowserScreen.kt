@@ -11,18 +11,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,7 +39,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.zhengdao.R
@@ -61,19 +55,24 @@ import kotlinx.coroutines.launch
  * 已落地（② 文档定稿项）：
  * - 多标签（§4.2）：标签条 + 上限 20 + 每标签独立 WebView/历史栈 + 后台 onPause+WAIVED；
  *   标签状态每标签一份，切走再切回各归各（§B 顺序 32）；
- * - 底栏改版（C，v1.1 收窄数）：地址栏带 **50dp**（上 padding 6dp + 38dp 地址胶囊 +
- *   下 padding 6dp＝与导航栏间距）+ 浮动胶囊栏 **56dp**（48 键上下各 4dp，布局承载不靠
- *   padding）⇒ 底栏合计 **106dp**；胶囊 = 左簇（后退/前进，半透明细描边）+ 1×20dp 分隔线
- *   + 右簇（刷新/主页，实白略粗描边 + 1dp 阴影），主页键整栏唯一填充（玄青雾）；
- *   刷新键加载中同位变身红色 ⨯「停止」；四键 contentDescription 后退/前进/刷新/主页；
- * - 地址栏：URL 校验 + http→https 自动升级 + 非 URL 输入走搜索引擎；
+ * - **底栏改版（2026-10-18 定稿）：两条带子合成一条**。原第⑨刀 C 的地址栏带 50dp ＋ 浮动
+ *   胶囊栏 56dp（合计 **106dp**，2026-10-14 定稿）**作废**，改成一条 **56dp** 底栏：
+ *   `‹〔›〕[地址胶囊] ↻/⨯ ⋯` ⇒ 壳子 158dp（52＋50＋56）→ **108dp**（52＋56），直板
+ *   374.9×813.7dp 的页面可视 554dp/68% → **604dp/74%**，地址焦点从屏幕 15% 高度挪到 90%。
+ *   件数：删除「前往」（与键盘 Go 同义）；前进改按需出现（`engine.canGoForward()`）；
+ *   主页收进 ⋯ 菜单第一项（落点 `HOME_URL` 不变，动作本体仍写在本文件）；⋯ 菜单只放
+ *   代码里已有的三个动作（主页 / 新标签 / 关闭当前标签）。刷新键加载中同位变红色 ⨯「停止」；
+ *   键位与几何定稿见 `证道设计报告/玄览-底栏改版-定稿与施工单-2026-10-18.md`；
+ * - 提示条落点随之搬家：底栏之上、页面区下沿（离出错那一页更近，不再把页面顶下一截）；
+ * - 地址栏：URL 校验 + http→https 自动升级 + 非 URL 输入走搜索引擎；胶囊两态（常态只显示
+ *   host ＋ 次级色 path，点开编辑态铺完整 URL），判据在 [BrowserUrlPolicy]；
  * - 安全：启动即 applySecurityConfig(EngineSecurityConfig())（默认加固值，§4.4）；
  *   危险 scheme 由引擎 + 委托双重拦截并给用户提示；
  * - JS 弹窗收口（§4.4）：引擎回调 → 本界面 Compose 对话框；
  * - WebView 实例经 [BrowserTabManager] 跨 Tab 保活（applicationContext 创建防泄漏）。
  *
  * 图标说明：本项目图标一律 Canvas 自绘（Tab 图标 / BackChevron 同款笔法），不引
- * material-icons 库——视觉统一 + 零额外依赖。胶囊四键 glyph 见 [BrowserNavCapsule]。
+ * material-icons 库——视觉统一 + 零额外依赖。底栏键位 glyph 见 [BrowserBottomBar]。
  */
 @Composable
 fun BrowserScreen(modifier: Modifier = Modifier) {
@@ -93,11 +92,16 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
 
     // 地址栏输入：跟随活跃标签（切 Tab 时换成那个标签的地址）
     var urlInput by remember { mutableStateOf(active?.state?.url ?: "") }
+    // 底栏改版（2026-10-18）：地址胶囊两态由本界面持有 —— 展示态读**页面真实 URL**
+    // （`active?.state?.url`，由引擎的 onPageStarted/Finished 写进每标签状态），编辑态才吃
+    // urlInput。放在这里而不是底栏内部：切标签要能把编辑态关掉（见下面的 LaunchedEffect）。
+    var addressEditing by remember { mutableStateOf(false) }
     // UI 层一次性提示（如"标签数已达上限"），与本标签安提示条共用一行样式
     var uiMsg by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(active?.id) {
         urlInput = active?.state?.url ?: ""
+        addressEditing = false
     }
 
     // ㊽-D（§B 79，2026-10-16）：0 标签空态下提交不再「点了没反应」。
@@ -157,100 +161,8 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             },
         )
 
-        // ── 地址栏带（C：高 50dp = 上 padding 6 + 38dp 地址胶囊 + 下 padding 6＝与胶囊间距） ──
-        val palette = xuanLanPalette()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // 地址胶囊（主稿「地址栏胶囊」：圆角全圆、白底、发丝描边）
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(38.dp),
-                shape = RoundedCornerShape(19.dp),
-                color = palette.clusterPrimaryBg,
-                border = androidx.compose.foundation.BorderStroke(1.dp, palette.stripStroke),
-            ) {
-                Box(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    BasicTextField(
-                        value = urlInput,
-                        onValueChange = { urlInput = it },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.ink),
-                        cursorBrush = SolidColor(palette.ink),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { navigate() }),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (urlInput.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.browser_url_hint),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = palette.inkDisabled,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            TextButton(onClick = navigate) {
-                Text(stringResource(R.string.browser_go))
-            }
-        }
-
-        // ── 浮动胶囊导航条（C：56dp = 48 键 + 上下各 4dp） ──
-        BrowserNavCapsule(
-            canBack = engine.canGoBack(),
-            canForward = engine.canGoForward(),
-            loading = active?.state?.loading == true,
-            onBack = { engine.goBack() },
-            onForward = { engine.goForward() },
-            onRefreshOrStop = {
-                if (active?.state?.loading == true) engine.stopLoading() else engine.reload()
-            },
-            onHome = { engine.loadUrl(HOME_URL) },
-        )
-
-        // ── 安全提示条（可关闭）：本标签安提示优先，其次 UI 层一次性提示 ──
-        val msg = active?.state?.blockedMsg ?: uiMsg
-        msg?.let { text ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                WarningGlyph(tint = MaterialTheme.colorScheme.error, side = 16.dp)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.bodySmall,
-                    // P2-11：提示正文走 zhengdaoErrorText()（左边的警告图标是图形，
-                    // 3:1 即过，保留 error 色）
-                    color = zhengdaoErrorText(),
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(
-                    onClick = {
-                        active?.state?.blockedMsg = null
-                        uiMsg = null
-                    },
-                ) {
-                    CloseGlyph(
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        contentDescription = stringResource(R.string.browser_dismiss),
-                    )
-                }
-            }
-        }
-
-        // ── 页面区：key(活跃标签) ⇒ 切 Tab 时旧 WebView 摘挂载、新的挂上 ──
+        // ── 页面区（底栏改版 2026-10-18：紧跟标签条，壳子只剩 52＋56） ──
+        // key(活跃标签) ⇒ 切 Tab 时旧 WebView 摘挂载、新的挂上
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -283,6 +195,74 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 )
             }
         }
+
+        // ── 安全提示条（可关闭）：本标签安提示优先，其次 UI 层一次性提示 ──
+        // 底栏改版（2026-10-18）落点搬家：**底栏之上、页面区下沿** —— 离出错那一页更近，
+        // 且不再把页面顶下一截（原来它夹在胶囊与页面之间）。样式一字未改。
+        val msg = active?.state?.blockedMsg ?: uiMsg
+        msg?.let { text ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WarningGlyph(tint = MaterialTheme.colorScheme.error, side = 16.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    // P2-11：提示正文走 zhengdaoErrorText()（左边的警告图标是图形，
+                    // 3:1 即过，保留 error 色）
+                    color = zhengdaoErrorText(),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = {
+                        active?.state?.blockedMsg = null
+                        uiMsg = null
+                    },
+                ) {
+                    CloseGlyph(
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        contentDescription = stringResource(R.string.browser_dismiss),
+                    )
+                }
+            }
+        }
+
+        // ── 底栏（一条 56dp · 2026-10-18 定稿）：`‹〔›〕[地址胶囊] ↻/⨯ ⋯` ──
+        // 动作本体仍写在本文件（门禁要求）：主页 = HOME_URL、刷新/停止 = reload/stopLoading、
+        // 提交 = 唯一入口 tryNavigate；切 Tab 时展示态跟着换（读活跃标签 state.url）。
+        BrowserBottomBar(
+            displayUrl = active?.state?.url ?: "",
+            editValue = urlInput,
+            isEditing = addressEditing,
+            canBack = engine.canGoBack(),
+            canForward = engine.canGoForward(),
+            loading = active?.state?.loading == true,
+            canCloseTab = active != null,
+            onEditStart = {
+                // 进编辑态先把当前页的真实 URL 灌进输入框（否则改的是上次提交的残留）
+                urlInput = active?.state?.url ?: ""
+                addressEditing = true
+            },
+            onEditEnd = { addressEditing = false },
+            onValueChange = { urlInput = it },
+            onSubmit = navigate,
+            onBack = { engine.goBack() },
+            onForward = { engine.goForward() },
+            onRefreshOrStop = {
+                if (active?.state?.loading == true) engine.stopLoading() else engine.reload()
+            },
+            onHome = { engine.loadUrl(HOME_URL) },
+            onNewTab = {
+                if (BrowserTabManager.newTab(context) == null) {
+                    uiMsg = context.getString(R.string.browser_tabs_full)
+                }
+            },
+            onCloseTab = { active?.let { BrowserTabManager.closeTab(it.id) } },
+        )
     }
 
     // ── JS 弹窗对话框 ──
@@ -292,9 +272,11 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
 }
 
 /**
- * 主页键落点（C）：设计稿起始页「当前引擎：必应国内版 · 免翻墙」——
- * 主页键 = 回引擎首页。新标签的空态引导（第㊱刀起始页：居中搜索框 + 快捷入口）
- * 仍由 everLoaded=false 呈现，见 [BrowserStartPage]。
+ * 主页落点（C）：设计稿起始页「当前引擎：必应国内版 · 免翻墙」——
+ * 主页 = 回引擎首页。底栏改版（2026-10-18）后**主页键不再是常驻件**，收进 ⋯ 菜单第一项，
+ * 但动作本体仍留在本文件（[BrowserBottomBar] 只发一个"回主页"回调），落点值一字未改。
+ * 新标签的空态引导（第㊱刀起始页：居中搜索框 + 快捷入口）仍由 everLoaded=false 呈现，
+ * 见 [BrowserStartPage]。
  */
 private const val HOME_URL = "https://cn.bing.com"
 
@@ -410,7 +392,7 @@ private fun normalizeInput(input: String): String =
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 提示条自绘小图标（与项目 Tab 图标 / BackChevron 同一套笔：圆头 1.9f 描边）。
-// 胶囊四键 glyph 在 BrowserNavCapsule.kt（描边宽度可配，禁用态 1.4）。
+// 底栏键位 glyph 在 BrowserBottomBar.kt（描边宽度可配，禁用态 1.4）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 警告：三角 + 感叹号。 */
