@@ -40,8 +40,8 @@ class BaopuAttachWiringTest {
         val src = composer()
         assertTrue("拍照入口", src.contains("pickImage.launch") || src.contains("requestCamera.launch"))
         assertTrue("相机权限走后 RequestPermission", src.contains("ActivityResultContracts.RequestPermission()"))
-        assertTrue("相册走系统照片选择器（不申请存储读权限）", src.contains("ActivityResultContracts.PickVisualMedia()"))
-        assertTrue("选文件走 OpenDocument", src.contains("ActivityResultContracts.OpenDocument()"))
+        assertTrue("相册走系统照片选择器多选（不申请存储读权限）", src.contains("PickMultipleVisualMedia(MAX_ATTACH)"))
+        assertTrue("选文件走 OpenMultipleDocuments（多选）", src.contains("ActivityResultContracts.OpenMultipleDocuments()"))
         assertTrue("三个入口在同一个 sheet 里", src.contains("ModalBottomSheet"))
         // 入口图标：2026-10-18 用户「+号太大了，做个小回形针」⇒ 自绘回形针、无边框小键
         assertTrue("入口应是自绘回形针", src.contains("PaperclipGlyph"))
@@ -101,7 +101,7 @@ class BaopuAttachWiringTest {
         listOf(
             "baopu_attach_title", "baopu_attach_camera", "baopu_attach_gallery", "baopu_attach_file",
             "baopu_attach_chip", "baopu_attach_failed", "baopu_attach_camera_denied",
-            "baopu_attach_hint_file", "baopu_attach_hint_image",
+            "baopu_attach_hint_files", "baopu_attach_hint_images", "baopu_attach_too_many",
         ).forEach { key ->
             assertTrue("中文缺 $key", zh.contains("name=\"$key\""))
             assertTrue("英文缺 $key", en.contains("name=\"$key\""))
