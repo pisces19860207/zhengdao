@@ -40,35 +40,14 @@ internal fun stateLabel(state: RunState): Int = when (state) {
 @Composable
 internal fun BaopuSessionBar(
     state: RunState,
-    step: Int,
     interruptedStep: Int,
     notice: String?,
     hasSession: Boolean,
     onResume: () -> Unit,
-    onNewSession: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(tonalElevation = 1.dp, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = stringResource(stateLabel(state)) +
-                        if (step > 0) " · $step" else "",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
-                )
-                Row {
-                    if (!busyState(state) && hasSession) {
-                        TextButton(onClick = onNewSession) {
-                            Text(stringResource(R.string.baopu_new_session))
-                        }
-                    }
-                }
-            }
             // 中断提示（可续跑）
             if (interruptedStep >= 0 && !busyState(state) && hasSession) {
                 Row(
