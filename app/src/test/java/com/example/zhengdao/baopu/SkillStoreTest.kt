@@ -232,4 +232,24 @@ class SkillStoreTest {
         assertFalse("删除永远手动（第十九批 §2.5）", src.contains("fun deleteSkill"))
         assertFalse("不许偷偷删文件", src.contains("delete()"))
     }
+    @Test
+    fun `S14_设置页真接上了新建与回滚_不是只有底座`() {
+        val settings = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
+            .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt") }
+            .readText()
+        assertTrue("要有「新建技能」入口", settings.contains("R.string.skill_new_button"))
+        assertTrue("要弹编辑器", settings.contains("SkillEditorDialog("))
+        // 对话框在 BaopuSkillCard.kt 里（设置页只负责弹它）——两处合起来看
+        val uiText = settings + "\n" + File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSkillCard.kt")
+            .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSkillCard.kt") }
+            .readText()
+        assertTrue("保存走 SkillStore.apply（不是自己写文件）", uiText.contains("SkillStore.apply(plan, personaFiles, indexText)"))
+        assertTrue("每行要有「恢复到上一版」", settings.contains("R.string.skill_restore_last"))
+        assertTrue("回滚要真调 SkillStore.restore", settings.contains("SkillStore.restore(file,"))
+        assertTrue("没有备份时不出按钮", settings.contains("SkillStore.backupsOf(skillFileOf("))
+        // 确认卡五项都在文案里
+        listOf(
+            "skill_confirm_name", "skill_confirm_scope", "skill_confirm_chars", "skill_confirm_backup",
+        ).forEach { assertTrue("确认卡缺 $it", settings.contains(it) || File("src/main/res/values/strings.xml").let { s -> val ff = if (s.exists()) s else File("app/src/main/res/values/strings.xml"); ff.readText().contains("name=\"$it\"") }) }
+    }
 }

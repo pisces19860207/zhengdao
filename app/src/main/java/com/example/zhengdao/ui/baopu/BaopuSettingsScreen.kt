@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import android.widget.Toast
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import java.io.File
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.rememberScrollState
@@ -49,6 +51,7 @@ import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
@@ -345,12 +348,60 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
+                // 第二十三批 A 段：技能现在能自己写了（写前备份、必过确认卡、草稿 3 次转正）
+                var newSkillOpen by remember { mutableStateOf(false) }
+                TextButton(onClick = { newSkillOpen = true }) {
+                    Text(stringResource(R.string.skill_new_button))
+                }
+                if (newSkillOpen) {
+                    SkillEditorDialog(
+                        onDismiss = { newSkillOpen = false },
+                        onSaved = { result ->
+                            val msg = when (result) {
+                                is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                                    ctx.getString(R.string.skill_new_saved, result.file.parentFile?.name ?: "")
+                                is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> result.reason
+                            }
+                            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                            skillReload++
+                        },
+                        projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx),
+                        globalRoot = File(ctx.filesDir, "抱朴记忆"),
+                        personaFiles = pf,
+                        backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                    )
+                }
                 if (globalLines.isEmpty() && projectLines.isEmpty()) {
                     Text(
                         text = stringResource(R.string.skill_none),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+
+                /** 索引行 → 技能正文文件（回滚按钮要按文件找 `.bak-*`）。落点与 SkillRules 同一口径。 */
+                fun skillFileOf(layer: PersonaLayer, name: String): File {
+                    val root = when (layer) {
+                        PersonaLayer.B_GLOBAL -> File(ctx.filesDir, "抱朴记忆")
+                        else -> com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+                    }
+                    val dir = when (layer) {
+                        PersonaLayer.B_GLOBAL -> SkillRules.globalSkillDir(root)
+                        else -> SkillRules.projectSkillDir(root)
+                    }
+                    return File(File(dir, name), SkillRules.SKILL_FILE)
+                }
+
+                /** 恢复到上一版（第二十三批 A 段）。没有备份就不出这个按钮，点了也没有意义。 */
+                fun restoreLast(layer: PersonaLayer, name: String) {
+                    val file = skillFileOf(layer, name)
+                    val msg = when (val r = SkillStore.restore(file, com.example.zhengdao.util.TimeFormats.fileStamp())) {
+                        is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                            ctx.getString(R.string.skill_restore_done)
+                        is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
+                    }
+                    Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                    skillReload++
                 }
 
                 fun removeIndex(layer: PersonaLayer, name: String) {
@@ -382,6 +433,11 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        if (SkillStore.backupsOf(skillFileOf(PersonaLayer.B_GLOBAL, line.name)).isNotEmpty()) {
+                            TextButton(onClick = { restoreLast(PersonaLayer.B_GLOBAL, line.name) }) {
+                                Text(stringResource(R.string.skill_restore_last))
+                            }
+                        }
                         TextButton(onClick = { removeIndex(PersonaLayer.B_GLOBAL, line.name) }) {
                             Text(stringResource(R.string.skill_delete))
                         }
@@ -403,6 +459,11 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        if (SkillStore.backupsOf(skillFileOf(PersonaLayer.C_PROJECT, line.name)).isNotEmpty()) {
+                            TextButton(onClick = { restoreLast(PersonaLayer.C_PROJECT, line.name) }) {
+                                Text(stringResource(R.string.skill_restore_last))
+                            }
                         }
                         TextButton(onClick = { removeIndex(PersonaLayer.C_PROJECT, line.name) }) {
                             Text(stringResource(R.string.skill_delete))

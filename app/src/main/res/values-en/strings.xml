@@ -1067,6 +1067,23 @@
     <string name="baopu_positioning_label">Positioning</string>
     <string name="baopu_positioning_value">Self-built harness: built-in agent runtime, no external CLI required</string>
     <!-- ── Skill distillation (batch 19): review + proposal card ── -->
+    <string name="skill_new_button">New skill</string>
+    <string name="skill_new_saved">Skill “%1$s” written (body and backup are on disk)</string>
+    <string name="skill_new_title">New skill</string>
+    <string name="skill_new_name">Skill name (becomes the folder name)</string>
+    <string name="skill_new_body">SKILL.md body</string>
+    <string name="skill_new_scope_project">Project (follows workspace)</string>
+    <string name="skill_new_scope_global">Global (follows app)</string>
+    <string name="skill_new_draft">Start as draft (promote after 3 uses; drafts stay out of the index)</string>
+    <string name="skill_new_review">Next: confirm</string>
+    <string name="skill_confirm_title">Confirm writing</string>
+    <string name="skill_confirm_name">Name: %1$s</string>
+    <string name="skill_confirm_scope">Location: %1$s</string>
+    <string name="skill_confirm_chars">Characters: %1$d</string>
+    <string name="skill_confirm_backup">Backup file: %1$s</string>
+    <string name="skill_restore_last">Restore previous</string>
+    <string name="skill_restore_done">Restored the previous version; the one replaced was backed up too</string>
+    <string name="skill_restore_none">No backup yet — nothing to restore</string>
     <string name="skill_review_card">Skill index</string>
     <string name="skill_review_desc">A skill = a SKILL.md file in the skill folder + one index line below (the index lives in the persona and travels with it). Deleting here removes the index, not the file — delete files yourself in a file manager. Stored %1$d/%2$d.</string>
     <string name="skill_group_global">Global skills (follow the app, survive workspace switches)</string>
