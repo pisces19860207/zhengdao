@@ -196,6 +196,17 @@ internal class BaopuChatController(context: Context) {
     /** 待过目候选的进程内上限（UI 同屏放得下 3 张；超了先到先得，截断记日志）。 */
     private val maxPending = 6
 
+
+    // ⚠️ 这两行必须声明在 init **之前**：init 里的 refresh() → restoreCompression()
+    // 会写 compressionNote；Kotlin 按声明顺序初始化属性，声明在后面时委托对象还是 null
+    // ⇒ 进程重进时（库里有压缩记录）一开抱朴页就 NPE 崩（2026-10-18 真机 T2 抓出）。
+    /** 已压缩一条的展示数据（界面细条用；null = 还没压过，不显示）。 */
+    var compressionNote by mutableStateOf<CompressionNote?>(null)
+        private set
+
+    /** 界面细条的数据（条数 + 摘要全文）。 */
+    data class CompressionNote(val count: Int, val summary: String)
+
     init {
         engine.onEvent = { ev -> onEngineEvent(ev) }
         refresh()
@@ -221,12 +232,6 @@ internal class BaopuChatController(context: Context) {
         compressionNote = CompressionNote(count = rec.compressedIds.size, summary = rec.summary)
     }
 
-    /** 已压缩一条的展示数据（界面细条用；null = 还没压过，不显示）。 */
-    var compressionNote by mutableStateOf<CompressionNote?>(null)
-        private set
-
-    /** 界面细条的数据（条数 + 摘要全文）。 */
-    data class CompressionNote(val count: Int, val summary: String)
 
     /**
      * 进程重启后重建确认卡（T3 的第一半）：session 的 pending 三列非空 ⇒ 造一张卡。
