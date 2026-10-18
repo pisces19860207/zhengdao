@@ -11,8 +11,9 @@
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -204,16 +206,52 @@ internal fun BaopuMessageList(
     // 最后一条 user 消息 id）。卡本体渲染在消息流之外，这里保证它背后的明细也不收。
     val lastUserId = messages.lastOrNull { it.role == "user" }?.id
     val pinned = if (pinLastRound && lastUserId != null) setOf(lastUserId) else emptySet<Long>()
-    LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
-        rounds.forEach { round ->
-            if (round.toolPartCount == 0) {
-                items(round.messages, key = { it.id }) { msg ->
-                    BaopuMessageRow(msg)
+    // 2026-10-18 真机第二次反馈：「干了几步点开后没法收回」。真因不是没有收起入口 ——
+    // 展开态的摘要行上下各有一条，但**一轮展开后有十几张工具卡、两条都滚出屏幕**，
+    // 用户找不到。⇒ 展开状态提到列表层，屏幕上常驻一颗「收起详情」浮标（不随内容滚走）。
+    var expandedRoundId by remember { mutableStateOf<Long?>(null) }
+    Box(modifier.fillMaxWidth()) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+            rounds.forEach { round ->
+                if (round.toolPartCount == 0) {
+                    items(round.messages, key = { it.id }) { msg ->
+                        BaopuMessageRow(msg)
+                    }
+                } else {
+                    item(key = round.userMessageId) {
+                        BaopuRoundItem(
+                            round = round,
+                            steps = steps,
+                            running = running,
+                            pinned = pinned,
+                            userOpened = expandedRoundId == round.userMessageId,
+                            onUserToggle = {
+                                expandedRoundId =
+                                    if (expandedRoundId == round.userMessageId) null
+                                    else round.userMessageId
+                            },
+                        )
+                    }
                 }
-            } else {
-                item(key = round.userMessageId) {
-                    BaopuRoundItem(round, steps, running, pinned)
-                }
+            }
+        }
+        if (expandedRoundId != null) {
+            // 上移 56dp 让开「⬇ 回到最新」浮标（它在 BottomEnd + 12dp）；两个都可能在。
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = CircleShape,
+                tonalElevation = 3.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 56.dp)
+                    .clickable { expandedRoundId = null },
+            ) {
+                Text(
+                    text = stringResource(R.string.baopu_collapse_detail),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
             }
         }
     }
@@ -226,8 +264,9 @@ private fun BaopuRoundItem(
     steps: List<BaopuStepRow>,
     running: Boolean,
     pinned: Set<Long>,
+    userOpened: Boolean,
+    onUserToggle: () -> Unit,
 ) {
-    var userOpened by remember(round.userMessageId) { mutableStateOf(false) }
     var planOpened by remember(round.userMessageId) { mutableStateOf(false) }
     val collapsed = roundCollapsed(
         round = round,
@@ -249,7 +288,7 @@ private fun BaopuRoundItem(
             // 收起：user 消息（问题常显）＋ 摘要一行（可点开）＋ **计划卡收起态那一行**
             // （不许被轮收纳吃掉——J15）＋ 最终回答（照旧常显）
             round.messages.filter { it.role == "user" }.forEach { BaopuMessageRow(it) }
-            BaopuRoundSummaryRow(round, steps) { userOpened = !userOpened }
+            BaopuRoundSummaryRow(round, steps, onUserToggle)
             if (planVisible) {
                 BaopuPlanCard(
                     plan = plan!!,
@@ -261,7 +300,7 @@ private fun BaopuRoundItem(
         } else {
             // 展开：**先给一条可点的摘要行**（2026-10-18 真机：底那条在长内容里找不到，
             // 用户以为"收不回去"）——点顶部这一行即收回；底部再留一条，两头都能收。
-            BaopuRoundSummaryRow(round, steps) { userOpened = !userOpened }
+            BaopuRoundSummaryRow(round, steps, onUserToggle)
             // user 消息在最前，计划卡紧随其后（＝该轮顶部、工具卡之上），
             // 其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
             var planMounted = false
@@ -289,7 +328,7 @@ private fun BaopuRoundItem(
             // 2026-10-18 真机反馈：「工具调用我点了，展开后就收不回去了」——
             // 原因是收起态才渲染那行摘要，展开后就没有任何可点的地方。
             // 展开态末尾补一条同样的摘要行，点它即收回（文案/数字与收起态一致）。
-            BaopuRoundSummaryRow(round, steps) { userOpened = !userOpened }
+            BaopuRoundSummaryRow(round, steps, onUserToggle)
         }
     }
 }
