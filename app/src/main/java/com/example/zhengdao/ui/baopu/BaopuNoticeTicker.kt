@@ -1,18 +1,18 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
-// 依据：用户 2026-10-18 逐字「这次学到和已压缩放到待命中的下面，在待命中的下面做一个
-// 循环播放的那种框，点到哪条，就展开哪条信息。」
+// 依据：用户 2026-10-18 逐字「这次学到和已压缩放到待命中和＋那一栏里，开一个滚动循环播放的小口子，
+// 就像财经里面那种」「不滚动详情，只滚动标题这几个字，点到哪条就展开那条的详情」。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -22,28 +22,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-/** 轮播框里的一条：标题（短）× 正文（点开才看）。 */
+/** 跑马灯里的一条：标题（短）× 详情（点标题才看）。 */
 internal data class NoticeItem(val label: String, val body: String)
 
-/** 每条轮播停留时长（毫秒）。3 秒够读完一行标题，又不至于翻得太快。 */
-private const val TICKER_INTERVAL_MS = 3_000L
+/** 跑马灯窗口高度（一行文字）。 */
+private val TICKER_HEIGHT = 16.dp
+
+/** 每帧滚 0.3px（≈18px/秒），慢到能看清、快过"卡住"的错觉。 */
+private const val SCROLL_STEP_PX = 0.3f
 
 /**
- * 「这次学到 / 已压缩」轮播框（2026-10-18 用户定稿）。
+ * 「这次学到 / 已压缩」**标题竖向跑马灯**（2026-10-18 用户定稿，第四版）。
  *
- * 口径：
- * 1. 固定在「待命中」那行下面（**不跟着正文滚**），只占一行高度；
- * 2. 多条时**循环播放**，每条停 [TICKER_INTERVAL_MS]；
- * 3. **点到哪条就展开哪条**：点当前这条 → 展开正文；再点 → 收回并继续轮播；
- * 4. 展开期间**不轮播**（正在读的东西不许被换走）；
- * 5. 只有一条时不轮播（没什么可轮的），但照样可点开。
+ * 口径（用户逐条给的原话）：
+ * 1. 位置＝顶栏那一行（「待命中」与「＋」之间），不另占一行；
+ * 2. **只滚标题**（「这次学到」「已压缩」这种短标签），**详情不滚**；
+ * 3. 标题首尾相接循环（复制两份，滚过半程瞬回起点，肉眼看是无限循环）；
+ * 4. **点哪个标题就展开哪条的详情**（详情限高 180dp、内部可滚）；再点同一个收回。
  */
 @Composable
 internal fun BaopuNoticeTicker(
@@ -51,63 +51,53 @@ internal fun BaopuNoticeTicker(
     modifier: Modifier = Modifier,
 ) {
     if (items.isEmpty()) return
-    var index by remember(items.size) { mutableStateOf(0) }
-    var expanded by remember(items.size) { mutableStateOf(false) }
-    // 条目减少时把下标拉回合法范围（避免越界闪一下空白）。
-    if (index > items.lastIndex) index = items.lastIndex
-    val current = items[index]
+    var selected by remember(items) { mutableStateOf(-1) }
+    val scroll = rememberScrollState()
 
-    // 展开时不轮播；只有一条也不必轮播。
-    LaunchedEffect(index, expanded, items.size) {
-        if (!expanded && items.size > 1) {
-            delay(TICKER_INTERVAL_MS)
-            index = (index + 1) % items.size
+    // 只滚标题：两份首尾相接实现无缝循环。
+    val doubled = remember(items) { items + items }
+
+    LaunchedEffect(doubled, selected) {
+        if (selected >= 0) return@LaunchedEffect // 展开详情时不滚（正在读的不许被滚走）
+        while (true) {
+            val half = scroll.maxValue / 2
+            if (half > 0) {
+                scroll.scrollBy(SCROLL_STEP_PX)
+                if (scroll.value >= half) scroll.scrollTo(0)
+            }
+            delay(16)
         }
     }
 
     Surface(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp)
-            .clickable {
-                if (expanded) {
-                    expanded = false
-                } else {
-                    expanded = true
-                }
-            },
+        modifier = modifier,
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = current.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (!expanded) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+            Column(Modifier.height(TICKER_HEIGHT).verticalScroll(scroll)) {
+                doubled.forEachIndexed { i, item ->
+                    val idx = i % items.size
                     Text(
-                        text = current.body,
+                        text = item.label,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = if (selected == idx) -1 else idx },
                     )
                 }
             }
-            if (expanded) {
-                // 展开态**限高 + 内部可滚**：便签正文可能很长（压缩摘要有几千字），
-                // 而这块是固定区——不限高会把整屏顶飞（2026-10-18 真机实测后补）。
+            if (selected >= 0 && selected < items.size) {
                 Text(
-                    text = current.body,
+                    text = items[selected].body,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .padding(top = 4.dp)
-                        .heightIn(max = 160.dp)
+                        .heightIn(max = 180.dp)
                         .verticalScroll(rememberScrollState()),
                 )
             }

@@ -220,7 +220,25 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium,
                     )
-                    Spacer(Modifier.weight(1f))
+                    // 「这次学到 / 已压缩」竖向跑马灯（2026-10-18 用户：位置在「待命中」和「＋」
+                    // 那一栏里）——顶栏中间剩余宽度全给它，只占一行高。
+                    val noticeItems = buildList {
+                        controller.introspectionNote?.takeIf { it.isNotBlank() }?.let {
+                            add(NoticeItem(stringResource(R.string.baopu_introspection_label), it))
+                        }
+                        controller.compressionNote?.let {
+                            add(
+                                NoticeItem(
+                                    stringResource(R.string.baopu_notice_compressed_label),
+                                    stringResource(R.string.baopu_compressed_bar, it.count, it.summary.length) +
+                                        "\n" + it.summary,
+                                ),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    BaopuNoticeTicker(items = noticeItems, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(4.dp))
                     IconButton(
                         onClick = { controller.newSession() },
                         enabled = !controller.busy,
@@ -307,22 +325,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     )
                 }
             }
-            // 「这次学到 / 已压缩」轮播框（2026-10-18 用户：放到待命中的下面，循环播放，
-            // 点到哪条就展开哪条）。只占一行高度，不跟着正文滚。
-            val noticeItems = buildList {
-                controller.introspectionNote?.takeIf { it.isNotBlank() }?.let {
-                    add(NoticeItem(stringResource(R.string.baopu_introspection_label), it))
-                }
-                controller.compressionNote?.let {
-                    add(
-                        NoticeItem(
-                            stringResource(R.string.baopu_compressed_bar, it.count, it.summary.length),
-                            it.summary,
-                        ),
-                    )
-                }
-            }
-            BaopuNoticeTicker(items = noticeItems)
+            // （跑马灯已移进顶栏那一行，见上）
             // ── 贴底跟随＋「回到最新」浮标（第十八批-B §2.2）──────────────────
             // 滚动状态归屏幕层：判据是纯函数（BaopuChatScroll.shouldFollow /
             // shouldShowJump / jumpHasNewDot，JVM 直测），这里只接线。
