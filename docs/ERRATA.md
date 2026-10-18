@@ -7184,3 +7184,24 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 1. **「删不掉」这类问题必须先看库**，不要靠读代码猜 —— `runCatching` 会把真因吞干净；
 2. **删主表要按外键图删**，并且让门禁**从 DDL 反推**，别把「几步」写成判据；
 3. `RunLog` 里应该有一条失败留痕（本轮为避开 qoder 在改的 `BaopuChatController.kt` 没加），记为下批小项。
+---
+
+## E-159 · 2026-10-18 · 抱朴与终端的工作区「口径反转」——从共用一份改成两套
+
+**口径变更（用户逐字）**：「设置页里的文件夹和抱朴分开设置的意思，**再也不共用了**（当然用户要设置成一样也是可以的，等于就是终端里 agent 和抱朴都在一个地方工作）」＋「**默认工作区就是跟着 APP 一起的那个 download/证道 文件夹啊**」。
+
+**变更前**：抱朴与终端**共用** `terminal/Workspace`（`workspace_mode`／`workspace_path`）。当时的理由是「同一件事只有一个盒子」，还配了一条门禁（`BaopuSessionLibraryTest > K6`）钉「`workspace_mode` 字面量只许出现在 `Workspace.kt`」。**那条理由今天被用户否掉了**：抱朴要能自己换地方干活，而终端里 agent 的项目目录不该跟着动。
+
+**变更后**：
+- 新增 `baopu/BaopuWorkspace.kt`（键 `baopu_ws_mode`／`baopu_ws_path`），默认目录 `Download/证道` —— **不读也不写终端那两个键**；
+- 抱朴侧四处取根统一走它：引擎/工具边界根（`BaopuRuntime.workspaceRoot`）、路径守卫（`Guard.workspace`）、附件落盘（`BaopuAttachments`）、资料库路径（`LibraryPaths.workspaceRoot`），另加气泡缩略图读图与备份页的私有判定；
+- 终端 `terminal/Workspace.kt` **一个字没改**；
+- 唯一还借终端的是「共享存储是否已授权」这一**事实判定**，委托 `ProotLauncher.storageGranted`（与 `Workspace` 用同一实现）——**不是设置**，复制一份就成了 E-005 那种双判。
+
+**门禁（新增 `BaopuWorkspaceTest`，6 例）**：B1 默认目录就是 `Download/证道`；B2 自定义路径只收共享存储绝对路径（拒空/私有目录/相对/上跳/Windows 残留）；B3 解析四分支；**B4 `baopu/` 与 `ui/baopu/` 下不许再出现 `terminal.Workspace`**（这条是本次的口径锁）；B5 授权委托同一实现且不许出现终端的键名；B6 三处取根都走 `BaopuWorkspace`。**负例**：让 `BaopuRuntime.workspaceRoot` 蹭回 `terminal.Workspace.hostDir` ⇒ **B4＋B6 同时红**。
+
+**踩到的两个坑（记下来）**：
+1. 我自己写的 B4 第一版**空跑通过** —— 助手 `appFile` 只判 `isFile`，传进去的是**目录**，于是扫的是不存在的 `app/app/...` 路径，`walkTopDown` 静默返回空。「门禁通过」不等于「门禁有效」，**必须用负例证明它会红**；这次正是负例把它抓出来的。
+2. Kotlin 块注释**会嵌套**：KDoc 里写 `baopu/**` 那个 `/**` 被当成嵌套注释开头 ⇒ 编译报 `Unclosed comment`。写路径通配时别在注释里留下 `/*`。
+
+**影响面**：抱朴的工作区从此**独立**；用户在抱朴里换目录不再影响终端；两边都设成同一目录时行为与从前一致（默认就都是 `Download/证道`）。
