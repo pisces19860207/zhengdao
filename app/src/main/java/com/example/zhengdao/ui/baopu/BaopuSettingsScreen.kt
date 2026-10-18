@@ -1,0 +1,262 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+//
+// 依据：派工单第十八批 §2.1（A 段：抱朴设置归位）。
+// 三块（工具开关 / 模型参数 / 思考深度）从 ui/SettingsDataActivity.kt **原样搬入**
+// （含状态读取、保存、提示文案——派工单明令「不要只搬 UI」），另加两处本批新增：
+// 1. 工具卡尾部两行**只读**说明（read / bash 免费通道兼容别名，§2.1-4 选「只读展示
+//    『由通道决定』」——理由：别名归引擎管（BaopuRuntime，本批禁改），read 跟随
+//    read_file 的开关（独立开关＝给「绕开开关」开洞，引擎注释明令禁止）、bash 恒拒
+//    （本 App 不提供 shell），给它们做开关都是假开关；
+// 2. 思考深度卡加一句提示：只有 DeepSeek 通道会带上这个参数（§2.1-5，此前「选了不
+//    生效」这件事模型知道、用户不知道）。
+//
+// 承载方式：BaopuScreen 抽屉「抱朴设置」**直达本页**——页内全屏浮层，与章节抽取 /
+// 备份原件 / 换通道同一模式（BaopuScreen 的 showExtract/showBackup/showChannel）。
+// 不新建 Activity：AndroidManifest.xml 本批禁改，新增 Activity 必须动清单。
+package com.example.zhengdao.ui.baopu
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.rememberScrollState
+import com.example.zhengdao.R
+import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.ModelParams
+import com.example.zhengdao.baopu.agent.BaopuToolCatalog
+import com.example.zhengdao.ui.FilterChip2
+import com.example.zhengdao.ui.InfoRow
+import com.example.zhengdao.ui.SectionCard
+import com.example.zhengdao.ui.SettingsSubPage
+import com.example.zhengdao.ui.theme.iosSwitchColors
+
+/** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
+@Composable
+internal fun BaopuSettingsScreen(onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    BackHandler { onDismiss() }
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        SettingsSubPage(title = stringResource(R.string.baopu_drawer_settings), onBack = onDismiss) {
+
+            // ── 抱朴工具（刀 2 追加包：工具集「表＋开关」的开关侧）──（自 SettingsDataActivity 原样搬入）
+            // 定位：抱朴页里那个 agent 能用哪些工具，由用户在这里逐项决定。
+            // 三条口径（派工单原话级）：
+            // 1. 关掉的工具**不进发给模型的 tools 数组**——模型根本看不见；
+            // 2. 模型若仍幻觉调用被关的工具，回一条工具结果「该工具已被用户关闭」，
+            //    **不许自动打开**；
+            // 3. 默认五个全启用（read_file / list_dir / search_in_files / file_info / write_file）。
+            var toolTick by remember { mutableStateOf(0) }
+            SectionCard(stringResource(R.string.baopu_tools_card)) {
+                Text(
+                    text = stringResource(R.string.baopu_tools_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                // 注册表持 ToolPrefs 单例（开关是热的：改完下一轮请求的 tools 数组就变）。
+                // isEnabled/setDisabled 都现读 SP ⇒ 这里不必 remember(toolTick)，
+                // tick 只负责在切完那一击触发重组（进程级单例的状态 Compose 本来就看不见）。
+                val toolRegistry = remember {
+                    BaopuRuntime.registry(
+                        ctx,
+                        BaopuRuntime.provider(ctx),
+                    )
+                }
+                BaopuToolCatalog.ENTRIES.forEach { entry ->
+                    val on = toolTick.let { toolRegistry.isEnabled(entry.name) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(baopuToolLabel(entry.name)),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = stringResource(baopuToolDesc(entry.name)),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = on,
+                            onCheckedChange = { want ->
+                                toolRegistry.setDisabled(entry.name, !want)
+                                toolTick++
+                            },
+                            colors = iosSwitchColors(),
+                        )
+                    }
+                }
+                // ── read / bash（第十八批 §2.1-4：只读展示「由通道决定」）──
+                // 这两个名字不在 [BaopuToolCatalog.ENTRIES] 里（那是引擎侧的免费通道兼容
+                // 别名：read 跟随 read_file 的开关，bash 恒拒），所以没有开关可给——
+                // 在此明说，不再「模型看得见、用户管不着」。
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.baopu_tools_alias_read),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.baopu_tools_alias_read_desc),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.baopu_tools_alias_bash),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.baopu_tools_alias_bash_desc),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // ── 模型参数（刀 3 B 段 · 第十四批 J12：只读展示，不许编数）──（原样搬入）
+            // 定位：当前通道向服务端声明的两个硬参数。没声明 ⇒ 「未声明」——
+            // **不许显示 0 或 128000**：0 是「确实是 0」、128000 是已作废的旧回退值，
+            // 两种都是编数（派工单 J12 原话级）。
+            SectionCard(stringResource(R.string.baopu_params_card)) {
+                val summary = remember {
+                    ModelParams.summaryOf(
+                        BaopuRuntime.provider(ctx),
+                    )
+                }
+                InfoRow(
+                    stringResource(R.string.baopu_params_window),
+                    summary.window ?: stringResource(R.string.baopu_params_undeclared),
+                )
+                InfoRow(
+                    stringResource(R.string.baopu_params_max_output),
+                    summary.maxOutput ?: stringResource(R.string.baopu_params_undeclared),
+                )
+            }
+
+            // ── 思考深度（刀 3 B 段 · 第十四批 C 段：关/低/高/最高 四档）──（原样搬入 ＋ 提示）
+            // 两条口径（派工单原话级）：
+            // 1. 改完**下一轮**生效——LlmClient 每轮现读档位，不用重建任何东西；
+            // 2. 只对「声明了 effort」的通道有实效（DeepSeek 预设声明了；其余通道
+            //    不瞎发这个字段，选了也不发——见 ModelParams KDoc 的分界）。
+            // 第十八批 §2.1-5：第 2 条此前只写在代码注释里，界面上补一句（J7）。
+            SectionCard(stringResource(R.string.baopu_effort_card)) {
+                val provider = BaopuRuntime.provider(ctx)
+                var effortId by remember {
+                    mutableStateOf(
+                        ModelParams.uiEffort(
+                            ModelParams.storedEffort(ctx),
+                            provider.reasoningEffort,
+                        ),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.baopu_effort_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(R.string.baopu_effort_deepseek_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ModelParams.EFFORT_LEVELS.forEach { level ->
+                        FilterChip2(
+                            label = stringResource(effortLabel(level)),
+                            selected = level == effortId,
+                        ) {
+                            effortId = level
+                            ModelParams.saveEffort(ctx, level)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 抱朴工具的开关标签（自 SettingsDataActivity 原样搬入——本页是这些卡唯一的家）。
+ *
+ * 为什么用 when 而不是从 catalog 里带名字：agent 包零 Android 依赖，R 引用
+ * 不能进那里；标签是纯展示层的事，走 strings.xml 双语。
+ * catalog 加新工具时这里同步加一行——漏了会直接抛 IllegalArgumentException（fail-fast）。
+ */
+private fun baopuToolLabel(name: String): Int = when (name) {
+    "read_file" -> R.string.baopu_tool_read_file
+    "list_dir" -> R.string.baopu_tool_list_dir
+    "search_in_files" -> R.string.baopu_tool_search_in_files
+    "find_files" -> R.string.baopu_tool_find_files
+    "book_outline" -> R.string.baopu_tool_book_outline
+    "file_info" -> R.string.baopu_tool_file_info
+    "write_file" -> R.string.baopu_tool_write_file
+    "edit_file" -> R.string.baopu_tool_edit_file
+    "move_path" -> R.string.baopu_tool_move_path
+    "convert_encoding" -> R.string.baopu_tool_convert_encoding
+    "browser_open" -> R.string.baopu_tool_browser_open
+    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot
+    "browser_click" -> R.string.baopu_tool_browser_click
+    "browser_type" -> R.string.baopu_tool_browser_type
+    "browser_scroll" -> R.string.baopu_tool_browser_scroll
+    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot
+    else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
+}
+
+/**
+ * 思考深度四档的标签（自 SettingsDataActivity 原样搬入；与 ModelParams.EFFORT_LEVELS 一一对应）。
+ * 同 baopuToolLabel 的理由：ModelParams 在 baopu 包（零 Android 依赖），R 引用不能进那里。
+ */
+private fun effortLabel(level: String): Int = when (level) {
+    ModelParams.EFFORT_NONE -> R.string.baopu_effort_none
+    ModelParams.EFFORT_LOW -> R.string.baopu_effort_low
+    ModelParams.EFFORT_HIGH -> R.string.baopu_effort_high
+    ModelParams.EFFORT_MAX -> R.string.baopu_effort_max
+    else -> throw IllegalArgumentException("未知思考档位「$level」：四档映射漏了，请补 effortLabel")
+}
+
+/** 抱朴工具的开关副标题（同上，双语走 strings.xml）。 */
+private fun baopuToolDesc(name: String): Int = when (name) {
+    "read_file" -> R.string.baopu_tool_read_file_desc
+    "list_dir" -> R.string.baopu_tool_list_dir_desc
+    "search_in_files" -> R.string.baopu_tool_search_in_files_desc
+    "find_files" -> R.string.baopu_tool_find_files_desc
+    "book_outline" -> R.string.baopu_tool_book_outline_desc
+    "file_info" -> R.string.baopu_tool_file_info_desc
+    "write_file" -> R.string.baopu_tool_write_file_desc
+    "edit_file" -> R.string.baopu_tool_edit_file_desc
+    "move_path" -> R.string.baopu_tool_move_path_desc
+    "convert_encoding" -> R.string.baopu_tool_convert_encoding_desc
+    "browser_open" -> R.string.baopu_tool_browser_open_desc
+    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot_desc
+    "browser_click" -> R.string.baopu_tool_browser_click_desc
+    "browser_type" -> R.string.baopu_tool_browser_type_desc
+    "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc
+    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
+    else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
+}
