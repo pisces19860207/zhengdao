@@ -412,7 +412,18 @@ object KnowledgeBase {
     private fun isSymlink(f: File): Boolean =
         runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
 
-    /** 供 P2 摘要流程使用：列出 `原始/` 里的文件（相对路径 + 大小 + 修改时间）。 */
+    /**
+     * 供 P2 摘要流程使用：列出 `原始/` 里的文件（相对路径 + 大小 + 修改时间）。
+     *
+     * 保留原因（第二十七批审计，2026-10-18）：**P2 摘要链未接线，本函数是链头**。
+     * 现状：`git grep -w listRaw` 只命中本处定义（零调用）。但它不是"写完忘了删"——
+     * 摘要链三件（[listRaw] 取输入 → [writeSummaries] 落盘 → [markBusy] 标记进行中）
+     * 都齐了，缺的是**触发者**（要调 LLM 逐文件生成摘要，属独立功能，未立单）。
+     * 单独接上它没有场景（唯一消费者就是那条链）；删它则要连 `KnowledgeBaseSummarizer`
+     * 的写入侧一起删（那是把半个功能删掉，不是清理死代码）。
+     * **一同存亡条件**：P2 摘要立单时一并接上；若决定不做摘要功能，应连同
+     * `KnowledgeBaseSummarizer.renderInto` 与 [writeSummaries] 整条链一起删。
+     */
     fun listRaw(ctx: Context): List<Pair<String, Long>> =
         scanRaw(ctx).map { it.rel to it.size }
 
@@ -460,6 +471,12 @@ object KnowledgeBase {
      * ⚠️ 写入后**故意不更新** [KEY_SIG]：摘要不是"原始文件变了"，更新指纹会让下一次
      * 真该重算清单的改动被跳过。代价只是"有摘要时清单会多渲染一次"，无害。
      *
+     * 保留原因（第二十七批审计，2026-10-18）：**P2 摘要链的落盘点，链未接线**。
+     * `git grep -w writeSummaries` 只命中本处定义；但它是 P2 唯一的写盘口（"[P2] 唯一的
+     * 落盘点"就在上一段），删了等于宣布"摘要永不落盘"。它的三个前置守则都还活着
+     * （`carryOverSummary` 被 [rebuildIndex] 调用），说明这条链不是全死、只是缺触发者。
+     * **一同存亡条件**：同 [listRaw]——P2 立单时接上；不做就整条链一起删。
+     *
      * @return true = 确实写入了
      */
     fun writeSummaries(ctx: Context, summaries: Map<String, String>): Boolean {
@@ -476,6 +493,16 @@ object KnowledgeBase {
      * 与 [KEY_BUSY] 配套：这是**进程内的即时状态**，App 被杀掉后不会残留 ——
      * 用一个启动时的时间戳来判断"这个标记是不是上一轮回来的僵尸"（超过
      * [BUSY_STALE_MS] 就当作已经不在跑，避免状态永远卡在「整理中」）。
+     *
+     * 保留原因（第二十七批审计，2026-10-18）：**状态机的输入端，标记者整条缺失**。
+     * `git grep -w markBusy` 只命中本处定义；而读端 [isBusy] 活着（[status] `:113`
+     * 用它产出 `State.BUSY`），清端 [clearBusy] 也活着（[isBusy] 的僵尸自愈里调用）。
+     * 也就是说 `status()` 的 BUSY 分支**永远走不到**——这是个真缺口，但补它的位置
+     * 不在"清理批"里能定的：真正该标 busy 的是 P2 摘要（调 LLM，几分钟级）；
+     * [rebuildIndex] 是毫秒到秒级的同步重渲染，标了也几乎看不到中间态（装样子）。
+     * **一同存亡条件**：P2 立单时接进摘要流程；若不做摘要，则连同 [status] 的
+     * `State.BUSY` 分支与 `KEY_BUSY`/`KEY_BUSY_AT` 一起删（那是 10 行的连带改动，
+     * 超出"1 小时清理"的边界）。
      */
     fun markBusy(ctx: Context) {
         AppPrefs.prefs(ctx).edit()
