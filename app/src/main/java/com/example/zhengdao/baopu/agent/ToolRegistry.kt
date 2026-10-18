@@ -312,6 +312,8 @@ internal object BaopuToolCatalog {
         "browser_type",
         "browser_scroll",
         "browser_screenshot",
+        // 工作计划卡（第十七批）：默认开——关了它，抱朴就不再「先列计划再干活」
+        "update_plan",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -333,6 +335,8 @@ internal object BaopuToolCatalog {
         Entry("browser_type") { BrowserTools.typeSpec() },
         Entry("browser_scroll") { BrowserTools.scrollSpec() },
         Entry("browser_screenshot") { BrowserTools.screenshotSpec() },
+        // 工作计划卡（第十七批）：落点在引擎（PlanTool.sink），表里只放 spec
+        Entry("update_plan") { PlanTool.spec() },
     )
 
     /**

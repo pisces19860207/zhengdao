@@ -44,11 +44,18 @@ data class BaopuUiMessage(
     val parts: List<BaopuUiPart>,
     /** 落库时间（十六批第一件：轮窗口与「消息时间差」兜底用时的数据源；只读透出）。 */
     val createdAt: Long = 0L,
+    /**
+     * 第十七批 C 段：本条消息挂的计划（`part(kind='plan')` 解析而来；没有 ⇒ null）。
+     * 计划**只走这个字段**——parts 里永远不出现 kind='plan'（J16：payload 不当正文）。
+     */
+    val plan: BaopuUiPlan? = null,
 )
 
 /** 一个 part 的 UI 形状（text 直显；tool 显示调用名 + 结果摘要，可展开全文）。 */
 data class BaopuUiPart(
-    val kind: String, // 库里 part.kind 原值："text" | "tool" | （将来的）"compressed" 等
+    // 库里 part.kind 原值："text" | "tool" | "compressed"（第十七批的 "plan" 在
+    // readMessages 里解析进 BaopuUiMessage.plan，不进这里——见该函数 KDoc）
+    val kind: String,
     val text: String,
     val tool: String = "",
 )
@@ -751,8 +758,14 @@ internal class BaopuChatController(context: Context) {
             var curRole = ""
             var curAt = 0L
             var parts = mutableListOf<BaopuUiPart>()
+            var curPlan: BaopuUiPlan? = null
             fun flush() {
-                if (curId >= 0) out += BaopuUiMessage(curId, curRole, parts.toList(), curAt)
+                // 计划 part（第十七批 C 段）：解析进 msg.plan，**不进 parts**（payload
+                // 原文不当正文渲染——J16）。只有 plan part 的消息 parts 为空、plan 非空，
+                // 照样建消息（计划卡挂在轮上，气泡本身由列表层跳过）。
+                if (curId >= 0 && (parts.isNotEmpty() || curPlan != null)) {
+                    out += BaopuUiMessage(curId, curRole, parts.toList(), curAt, curPlan)
+                }
             }
             while (c.moveToNext()) {
                 val id = c.getLong(0)
@@ -762,9 +775,15 @@ internal class BaopuChatController(context: Context) {
                     curRole = c.getString(1)
                     curAt = if (c.isNull(2)) 0L else c.getLong(2)
                     parts = mutableListOf()
+                    curPlan = null
                 }
                 val kind = if (c.isNull(3)) "text" else c.getString(3)
                 val payload = if (c.isNull(4)) "" else c.getString(4)
+                if (kind == "plan") {
+                    // 同消息多条 plan（理论不会）⇒ 后一条赢；解析不出条目 ⇒ 当作没有
+                    BaopuUiPlan.fromPayload(payload)?.let { curPlan = it }
+                    continue
+                }
                 parts += if (kind == "tool") {
                     val json = runCatching { JSONObject(payload) }.getOrNull()
                     BaopuUiPart(

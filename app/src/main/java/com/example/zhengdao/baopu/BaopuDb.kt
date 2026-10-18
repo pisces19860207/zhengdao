@@ -406,6 +406,43 @@ internal object BaopuSql {
         )
 
     /**
+     * 计划快照的消息行（第十七批 B 段）：assistant 消息＋一条 `kind='plan'` part。
+     *
+     * seq 用 `MAX(seq)+1` 子查询**在一条 INSERT 里算**——与引擎 `nextSeq` 同口径
+     * （新会话从 0 起）。拆成先查后插会露出「两条消息同 seq」的窗口；单写者线程
+     * 内虽无并发，SQL 自己算更稳。
+     *
+     * 约束绑定顺序：[sessionId, sessionId, createdAt]（WHERE 子查询里还有一个
+     * sessionId，别数错）。
+     */
+    fun insertPlanMessage(sessionId: Long, createdAt: Long): Stmt = Stmt(
+        "INSERT INTO message (session_id, seq, role, created_at, status) " +
+            "VALUES (?, (SELECT COALESCE(MAX(seq), -1) + 1 FROM message WHERE session_id = ?), " +
+            "'assistant', ?, 'done')",
+        arrayOf<String?>(sessionId.toString(), sessionId.toString(), createdAt.toString()),
+    )
+
+    /**
+     * 某会话全部 `kind='plan'` part 的 payload（按消息序正序；**最后一条＝当前计划**）。
+     *
+     * 第十七批（工作计划卡 B 段）：`part.kind` 是自由文本列，加一种 kind
+     * **不动表结构**（派工单 §1.2 首选方案；没有迁移、没有幂等负担）。
+     * 写入沿用 [insertPart]（kind="plan"），这里只补读。
+     *
+     * 「同一轮多次 update_plan」的处理口径：**全部保留**，取用方取最后一条
+     * （与 tool part 一条调用一条的追加形态一致；删旧行反而丢了「计划怎么变的」）。
+     * 按 sessionId 读 ⇒ 天然与「会话的某一轮」对上：轮是 UI 侧按 user 消息切的，
+     * 计划 part 的消息序落在哪两条 user 消息之间，它就属于哪一轮。
+     */
+    fun planPayloadsBySession(sessionId: Long): Stmt = Stmt(
+        "SELECT part.payload FROM part " +
+            "JOIN message ON part.message_id = message.id " +
+            "WHERE message.session_id = ? AND part.kind = 'plan' " +
+            "ORDER BY message.seq ASC, part.seq ASC",
+        arrayOf<String?>(sessionId.toString()),
+    )
+
+    /**
      * run_log 插入（v2 增加两个缓存口径列，追加三）。
      *
      * [cacheHitTokens] / [cacheMissTokens] **可空 ⇒ 取不到就绑 SQL NULL（留空），
