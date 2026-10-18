@@ -45,11 +45,14 @@
                  工具条随之 44dp → 48dp。红点是整页唯一出口（左边缘右滑是它的等价物），
                  30dp 仍然偏小、拇指在移动中容易点空；圆点是 inset 居中的 drawable，
                  所以放大 View 只扩大热区、视觉尺寸不变。标题空间由 autoSize 兜底。 -->
+                  2026-10-18 真机回退（用户：三个点把「证道 - Debian 13.7」挤得没位置）：
+                  热区 48 → **40dp**、间距 3/3/8 → 2/2/6（省 28dp 给标题）。40dp 仍大于原先 30dp
+                  的"偏小"口径，视觉圆点尺寸不变（inset 居中）。这条是用户观感优先于 M3 48dp 的取舍。
             <View
                 android:id="@+id/btn_close"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="3dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="2dp"
                 android:background="@drawable/traffic_dot_red"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭终端"
@@ -58,9 +61,9 @@
 
             <View
                 android:id="@+id/btn_yellow"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="3dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="2dp"
                 android:background="@drawable/traffic_dot_yellow"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭分屏"
@@ -69,9 +72,9 @@
 
             <View
                 android:id="@+id/btn_split"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="8dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="6dp"
                 android:background="@drawable/traffic_dot_green"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="tmux 上下分屏"
