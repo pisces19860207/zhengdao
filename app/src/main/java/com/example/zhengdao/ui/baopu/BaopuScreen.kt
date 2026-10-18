@@ -246,10 +246,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         controller.newSession()
                     },
-                    onHistorySessions = {
-                        scope.launch { drawerState.close() }
-                        showSessionLibrary = true
-                    },
+                    // 抽屉里**不再有**「历史会话」行（会话已归到各工作区下面）；
+                    // 平铺列表（含删除）改成低频入口：抱朴设置 → 会话记录。
                     // 点会话行：先关抽屉再交给控制器（控制器决定"直接切"还是"出确认卡问人"）。
                     onOpenSession = { sid ->
                         scope.launch { drawerState.close() }
@@ -682,7 +680,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuExtractSheet(onDismiss = { showExtract = false })
             }
             if (showSettings) {
-                BaopuSettingsScreen(onDismiss = { showSettings = false })
+                BaopuSettingsScreen(
+                    onDismiss = { showSettings = false },
+                    onOpenSessionLibrary = { showSettings = false; showSessionLibrary = true },
+                )
             }
             if (showSessionLibrary) {
                 BaopuSessionLibraryScreen(

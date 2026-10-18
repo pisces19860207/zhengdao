@@ -227,22 +227,19 @@ internal fun buildWorkspaceTree(
         )
     }
 
-    val unknownNodes = if (unknownEntries.isEmpty()) {
-        emptyList()
-    } else {
-        listOf(
-            DrawerWorkspaceNode(
-                key = null,
-                label = unknownLabel,
-                fullPath = unknownPath,
-                isCurrent = false,
-                state = WorkspaceState.UNRECORDED,
-                unknown = true,
-                rows = rowsOf(unknownEntries),
-            ),
-        )
-    }
-    return nodes + unknownNodes
+    // 「默认工作区」**永远在**（2026-10-18 用户口径，照 DSH 左侧栏）：它是历史会话的收容所，
+    // 空着也要显示一行，让人知道「老会话归这里」，而不是让它一会儿有一会儿没有。
+    // 有 NULL 老会话就挂在这一行下面；一行都没有也照样列出来。
+    val defaultNode = DrawerWorkspaceNode(
+        key = null,
+        label = unknownLabel,
+        fullPath = unknownPath,
+        isCurrent = false,
+        state = WorkspaceState.UNRECORDED,
+        unknown = true,
+        rows = rowsOf(unknownEntries),
+    )
+    return nodes + listOf(defaultNode)
 }
 
 private fun rowOf(

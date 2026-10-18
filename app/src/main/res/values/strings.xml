@@ -1032,6 +1032,9 @@
     <string name="baopu_drawer_preview_last_desc">把最近一条回复做成网页卡片，切到玄览看</string>
     <string name="baopu_drawer_preview_clear">清空预览缓存</string>
     <string name="baopu_drawer_preview_clear_desc">删掉已经放进去的卡片（最多 8 张）</string>
+    <string name="baopu_session_manage_card">会话记录</string>
+    <string name="baopu_session_manage_desc">全部会话平铺看，也可以在这里删除（抽屉里不放了）</string>
+    <string name="baopu_session_manage_open">打开全部会话</string>
     <string name="baopu_drawer_group_settings">设置</string>
     <string name="baopu_drawer_channel_desc">换模型通道（会重建引擎，跑到一半不能换）</string>
     <string name="baopu_drawer_settings">抱朴设置</string>
@@ -1041,7 +1044,7 @@
     <string name="baopu_drawer_group_workspace">工作区</string>
     <string name="baopu_drawer_ws_private">App 私有</string>
     <string name="baopu_drawer_ws_unauthorized">未授权</string>
-    <string name="baopu_drawer_ws_unknown">默认工作区 · 历史未记录</string>
+    <string name="baopu_drawer_ws_unknown">默认工作区</string>
     <string name="baopu_drawer_time_just_now">刚刚</string>
     <string name="baopu_drawer_time_minutes">%1$d 分钟</string>
     <string name="baopu_drawer_time_hours">%1$d 小时</string>

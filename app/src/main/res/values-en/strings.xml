@@ -1031,6 +1031,9 @@
     <string name="baopu_drawer_preview_last_desc">Turn the latest reply into a web card; switch to Xuanlan to view it</string>
     <string name="baopu_drawer_preview_clear">Clear preview cache</string>
     <string name="baopu_drawer_preview_clear_desc">Drop the cards already placed (up to 8)</string>
+    <string name="baopu_session_manage_card">Session records</string>
+    <string name="baopu_session_manage_desc">All sessions in a flat list; delete them here (removed from the drawer)</string>
+    <string name="baopu_session_manage_open">Open all sessions</string>
     <string name="baopu_drawer_group_settings">Settings</string>
     <string name="baopu_drawer_channel_desc">Switch model channel (rebuilds the engine; not while running)</string>
     <string name="baopu_drawer_settings">Baopu settings</string>
@@ -1041,7 +1044,7 @@
     <string name="baopu_drawer_group_workspace">Workspace</string>
     <string name="baopu_drawer_ws_private">App-private</string>
     <string name="baopu_drawer_ws_unauthorized">No permission</string>
-    <string name="baopu_drawer_ws_unknown">Default workspace · not recorded</string>
+    <string name="baopu_drawer_ws_unknown">Default workspace</string>
     <string name="baopu_drawer_time_just_now">Just now</string>
     <string name="baopu_drawer_time_minutes">%1$d min</string>
     <string name="baopu_drawer_time_hours">%1$d h</string>
