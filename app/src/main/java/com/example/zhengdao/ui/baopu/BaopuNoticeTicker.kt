@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,7 +61,7 @@ internal fun BaopuNoticeTicker(
     val doubled = remember(items) { items + items }
 
     LaunchedEffect(doubled, selected) {
-        if (selected >= 0) return@LaunchedEffect // 展开详情时不滚（正在读的不许被滚走）
+        if (selected >= 0) return@LaunchedEffect // 详情弹窗开着时不滚（正在读的不许被滚走）
         while (true) {
             val half = scroll.maxValue / 2
             if (half > 0) {
@@ -90,16 +93,33 @@ internal fun BaopuNoticeTicker(
                     )
                 }
             }
-            if (selected >= 0 && selected < items.size) {
-                Text(
-                    text = items[selected].body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .heightIn(max = 180.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
+            // 详情改**弹窗**（2026-10-18 用户：「点了过后能弹出来吗？再点就收回去」）：
+            // 浮在内容上面，不撑开顶栏、不推正文；点外面空白处即收回。
+            androidx.compose.material3.DropdownMenu(
+                expanded = selected >= 0 && selected < items.size,
+                onDismissRequest = { selected = -1 },
+            ) {
+                androidx.compose.foundation.layout.Column(
+                    Modifier
+                        .widthIn(max = 320.dp)
+                        .heightIn(max = 280.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    if (selected >= 0 && selected < items.size) {
+                        Text(
+                            text = items[selected].label,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = items[selected].body,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
             }
         }
     }
