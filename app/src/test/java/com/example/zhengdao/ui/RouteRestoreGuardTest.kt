@@ -129,8 +129,9 @@ class RouteRestoreGuardTest {
     fun `门禁_B补15_插件面板确实已不是路由`() {
         // 这条是「B-补-15 里 plugins 不恢复」失效的直接证据：插件页不再是路由。
         // 2026-10-16 清场：原先还断言「抱朴页引用 PluginsSheet」——旧抱朴 UI 已整批删除，
-        // 那条证据暂缺；插件面板本身（ui/PluginsScreen.kt + ui/PluginManager.kt）仍在仓库里，
-        // 抱朴线刀 1 重建入口后按同样判据补回断言。
+        // 那条证据暂缺；2026-10-18 用户拍板「把那个代码也不留」，插件面板本体
+        // （ui/PluginsScreen.kt + ui/PluginManager.kt）**已删除**（刀 5②「插件页换内核」划掉），
+        // 故本条判据从此只剩"路由不存在"这一半，代码侧再无插件面可复用。
         val src = mainActivity()
         assertEquals(
             "MainActivity 里不应再注册 plugins 路由",
