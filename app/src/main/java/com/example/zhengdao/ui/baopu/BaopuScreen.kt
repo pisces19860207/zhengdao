@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -671,6 +672,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         }
                     }
                 }
+            }
+            // ask_user 的选项卡：就在输入栏上方（用户 2026-10-19 点名位置）
+            controller.pendingChoice?.let { req ->
+                BaopuChoiceCard(request = req, onPick = { option -> controller.answerChoice(option.id) })
+                Spacer(Modifier.height(8.dp))
             }
             BaopuComposer(
                 busy = controller.busy,

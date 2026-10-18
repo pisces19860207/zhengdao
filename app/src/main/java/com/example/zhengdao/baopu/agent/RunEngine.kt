@@ -334,6 +334,46 @@ internal class RunEngine(
         }
     }
 
+    /**
+     * `ask_user` 的选项卡状态（UI 拿它在输入栏上方渲染）。
+     *
+     * null = 现在没有卡。UI 只读；清空是引擎收到答案后自己做的。
+     */
+    private val _choice = mutableStateOf<AskUserRequest?>(null)
+    val choice: State<AskUserRequest?> get() = _choice
+
+    private val choiceLock = Object()
+    private var choiceResult: AskUserOption? = null
+
+    /**
+     * 弹卡并**阻塞**等用户点（`ask_user` 的执行体在工具线程上调它）。
+     *
+     * 为什么阻塞：选项是**同一步**里的决定，拆成两轮等于让模型带着半截上下文重来。
+     * 阻塞有界（与确认卡同一超时），超时返回 null，由工具如实说「没人回答」。
+     */
+    fun askUser(req: AskUserRequest): AskUserOption? {
+        synchronized(choiceLock) {
+            _choice.value = req
+            choiceResult = null
+            val deadline = System.currentTimeMillis() + RunRules.CONFIRM_TIMEOUT_MS
+            while (choiceResult == null && System.currentTimeMillis() < deadline) {
+                runCatching { choiceLock.wait(RunRules.CONFIRM_POLL_MS) }
+            }
+            val picked = choiceResult
+            _choice.value = null
+            choiceResult = null
+            return picked
+        }
+    }
+
+    /** UI 点了一个选项（主线程调）。 */
+    fun answerChoice(id: String) {
+        synchronized(choiceLock) {
+            choiceResult = _choice.value?.options?.firstOrNull { it.id == id }
+            runCatching { choiceLock.notifyAll() }
+        }
+    }
+
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
     fun stop() {
         stopRequested = true

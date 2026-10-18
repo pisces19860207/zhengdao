@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu
 import android.content.Context
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
+import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.ToolOutcome
@@ -240,7 +241,8 @@ internal object BaopuRuntime {
         val reg = registry(appCtx, provider)
         val pipeline = GuardPipeline(reg, { workspaceRoot(appCtx) })
         val db = db(appCtx)
-        return RunEngine(
+        // 选项卡的落点：引擎负责弹、等、收答案
+        val engine = RunEngine(
             provider = provider,
             db = db,
             registry = reg,
@@ -263,6 +265,9 @@ internal object BaopuRuntime {
                 )
             },
         )
+        // ask_user：工具线程阻塞在 engine.askUser 上，UI 点一下即回（有界，与确认卡同超时）
+        AskUserTool.sink = { req -> engine.askUser(req) }
+        return engine
     }
 
     /**
