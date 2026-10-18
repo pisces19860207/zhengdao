@@ -60,6 +60,22 @@ internal object PlanRules {
      * @return Ok = 归一化后的条目（≤8 条、每条 ≤60 字）＋ 截断/丢弃 notice；
      *   Error = 错误原文（回灌给模型，下一步它自己改）
      */
+    /**
+     * 状态别名 ⇒ 本仓三个规范值；认不出回 null。
+     *
+     * 为什么认别名：2026-10-19 真机，模型把「正在做」写成 `in_progress`，整张计划被拒 ⇒
+     * 用户看到的是"第一步就被挡住"。各家 agent 惯例不同（in_progress / pending / completed…），
+     * 让它多跑一轮去改一个词，成本远高于这里认一下。
+     */
+    fun normalizeStatus(raw: String): String? {
+        val s = raw.trim().lowercase().replace('-', '_').replace(' ', '_')
+        return when (s) {
+            STATUS_TODO, "pending", "not_started", "waiting", "todo_", "待做", "未开始" -> STATUS_TODO
+            STATUS_DOING, "in_progress", "inprogress", "active", "running", "doing_", "进行中", "正在做" -> STATUS_DOING
+            STATUS_DONE, "completed", "complete", "finished", "done_", "完成", "已完成" -> STATUS_DONE
+            else -> null
+        }
+    }
     fun parseItems(args: JSONObject): Parse {
         val raw = args.optJSONArray("items")
             ?: return Parse.Error(
@@ -83,10 +99,12 @@ internal object PlanRules {
                 notices += "第 ${i + 1} 条 text 是空的，已丢弃。"
                 continue
             }
-            val status = obj.optString("status")
-            if (status !in STATUSES) {
+            // 别名归一（2026-10-19 真机：模型写 `in_progress` ⇒ 整步报废，用户看到的是"第一步就被挡住"）
+            // 模型不是故意的，是各家习惯不同；认几个常见写法比让它重试一次便宜得多。
+            val status = normalizeStatus(obj.optString("status"))
+            if (status == null) {
                 return Parse.Error(
-                    "第 ${i + 1} 条 status「$status」不在允许范围（todo / doing / done）。",
+                    "第 ${i + 1} 条 status「${obj.optString("status")}」不在允许范围（todo / doing / done）。",
                 )
             }
             val cut = if (text.length > MAX_TEXT_CHARS) {
