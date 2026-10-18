@@ -37,7 +37,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -144,8 +147,20 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // 系统返回键先走 WebView 历史栈（§4.2 导航语义）；无历史才让系统处理
-    BackHandler(enabled = engine.canGoBack()) { engine.goBack() }
+    // 地址胶囊编辑态的「退出」通道（2026-10-18 收尾，§B 顺序 75 落地）：
+    // 定稿 §6 只写了「点胶囊进编辑态 + 键盘 Go 提交」，没写怎么取消。旧设计地址栏永远是输入框，
+    // 所以这不算回归；但两态设计里「点开却退不出去」是硬伤 —— 退出只能靠提交或切标签。
+    // 现在补两条出口，**都不导航、不退出 App**：① 系统返回键；② 点页面区（旁听，不消费事件）。
+    val focusManager = LocalFocusManager.current
+    val exitAddressEditing: () -> Unit = {
+        addressEditing = false
+        focusManager.clearFocus(force = true) // 收键盘（BACK 键收键盘是禁手，见交付报告纪律）
+    }
+
+    // 系统返回键优先级：① 编辑态 ⇒ 先退出编辑 ② 有历史 ⇒ 走 WebView 历史栈（§4.2 导航语义）
+    // ③ 都没有 ⇒ 交给系统。两条 BackHandler 的 enabled **互斥**，谁在栈顶都不抢对方。
+    BackHandler(enabled = addressEditing) { exitAddressEditing() }
+    BackHandler(enabled = !addressEditing && engine.canGoBack()) { engine.goBack() }
 
     Column(modifier = modifier.fillMaxSize()) {
         // ── 标签条（第⑨刀 B） ──
@@ -166,7 +181,16 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                // 编辑态下点页面区只负责「退出编辑」，**旁听不消费**（Initial pass 观察一次就退出
+                // 监听）—— 页面的链接、滚动照旧收到这一下，别为了退出编辑把整个 WebView 变成死屏。
+                .pointerInput(addressEditing) {
+                    if (!addressEditing) return@pointerInput
+                    awaitPointerEventScope {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                        exitAddressEditing()
+                    }
+                },
         ) {
             val activeId = active?.id
             // 第㊱刀：空态不挂 WebView —— 共享 WebView 默认白底，深色模式下会把
