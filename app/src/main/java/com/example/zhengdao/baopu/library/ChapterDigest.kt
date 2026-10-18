@@ -203,7 +203,16 @@ internal class ChapterIndexStore(private val db: com.example.zhengdao.baopu.Baop
         }
     }
 
-    /** 某书已入索引的章数。 */
+    /**
+     * 某书已入索引的章数。
+     *
+     * ⚠️ 待删（第二十七批清单，2026-10-18）：`git grep -w indexedCount` 只命中本处定义。
+     * 同族的 [insertAll] 活着（`ui/baopu/BaopuExtractSheet.kt:113` 抽完就落库），
+     * 但"读回来"这条路（本函数与 [latest]）没有任何调用者——抽取页显示结果用的是
+     * 内存里刚生成的 `entries`，不查库。
+     * 删除需一并处理 [Sql.indexedChapterCount]（只被本函数引用，删了它就是死 SQL）。
+     * **若将来要做"这本书抽过 N 章"的提示**，应改用它而不是再写一条 SQL——本条留作提醒。
+     */
     fun indexedCount(book: String): Int = db.read { d ->
         val stmt = ChapterDigest.Sql.indexedChapterCount(book)
         d.rawQuery(stmt.sql, stmt.args).use { c ->
