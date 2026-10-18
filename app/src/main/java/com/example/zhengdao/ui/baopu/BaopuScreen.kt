@@ -98,6 +98,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // 第十八批 A 段：抽屉「抱朴设置」直达抱朴自己的设置页（页内全屏浮层，
     // 与章节抽取／备份／换通道同一模式）——不再去「终端与资料」大杂烩页。
     var showSettings by remember { mutableStateOf(false) }
+    // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
+    // 引擎是异步就绪的，首次点击由 BaopuSpeaker 自己排队（见该类 KDoc 第 1 条）。
+    val speaker = remember { BaopuSpeaker(context) }
+    DisposableEffect(Unit) { onDispose { speaker.release() } }
 
     // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -410,6 +414,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     running = controller.busy,
                     pinLastRound = controller.actionCardsPresent,
                     listState = listState,
+                    onSpeak = { speaker.speak(it) },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // 「⬇ 回到最新」浮标（主单 §2.4.1）：不在底部才出现，有新内容带

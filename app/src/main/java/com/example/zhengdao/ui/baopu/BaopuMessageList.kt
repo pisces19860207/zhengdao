@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -25,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -187,6 +190,8 @@ internal fun BaopuMessageList(
     // 第十八批-B：滚动状态归 BaopuScreen（贴底跟随＋「回到最新」浮标在屏幕层
     // 接线，列表只管用它渲染）——调用方不传就自持（预览/单测场景）。
     listState: LazyListState = rememberLazyListState(),
+    // 朗读（2026-10-18）：null ⇒ 不出「朗读」按钮（单测/预览场景不必造 TTS）。
+    onSpeak: ((String) -> Unit)? = null,
     // 2026-10-18 用户：「这次学到和已压缩这类可以放到已完成下面滚动播放吗？不占用正文框，
     // 很影响手机的可视面积」⇒ 两条便签从固定头区搬进列表首项，随内容一起滚走。
     modifier: Modifier = Modifier,
@@ -215,7 +220,7 @@ internal fun BaopuMessageList(
             rounds.forEach { round ->
                 if (round.toolPartCount == 0) {
                     items(round.messages, key = { it.id }) { msg ->
-                        BaopuMessageRow(msg)
+                        BaopuMessageRow(msg, onSpeak)
                     }
                 } else {
                     item(key = round.userMessageId) {
@@ -224,6 +229,7 @@ internal fun BaopuMessageList(
                             steps = steps,
                             running = running,
                             pinned = pinned,
+                            onSpeak = onSpeak,
                             userOpened = expandedRoundId == round.userMessageId,
                             onUserToggle = {
                                 expandedRoundId =
@@ -266,6 +272,7 @@ private fun BaopuRoundItem(
     pinned: Set<Long>,
     userOpened: Boolean,
     onUserToggle: () -> Unit,
+    onSpeak: ((String) -> Unit)? = null,
 ) {
     var planOpened by remember(round.userMessageId) { mutableStateOf(false) }
     val collapsed = roundCollapsed(
@@ -296,7 +303,7 @@ private fun BaopuRoundItem(
                     onToggle = { planOpened = !planOpened },
                 )
             }
-            round.finalAnswerMessage()?.let { BaopuMessageRow(it) }
+            round.finalAnswerMessage()?.let { BaopuMessageRow(it, onSpeak) }
         } else {
             // 展开：**先给一条可点的摘要行**（2026-10-18 真机：底那条在长内容里找不到，
             // 用户以为"收不回去"）——点顶部这一行即收回；底部再留一条，两头都能收。
@@ -305,7 +312,7 @@ private fun BaopuRoundItem(
             // 其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
             var planMounted = false
             round.messages.forEach { msg ->
-                BaopuMessageRow(msg)
+                BaopuMessageRow(msg, onSpeak)
                 if (!planMounted && msg.role == "user") {
                     planMounted = true
                     if (planVisible) {
@@ -377,7 +384,7 @@ private fun BaopuRoundSummaryRow(
 }
 
 @Composable
-private fun BaopuMessageRow(msg: BaopuUiMessage) {
+private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = null) {
     // 只有 plan part 的消息（第十七批 C 段：计划已解析进 msg.plan 由计划卡渲染）⇒
     // 不建空气泡（角色标签下一片空白比不渲染更怪）。
     if (msg.parts.isEmpty()) return
@@ -420,6 +427,26 @@ private fun BaopuMessageRow(msg: BaopuUiMessage) {
                                     "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
                                     else -> BaopuTextPart(part, key = "${msg.id}-$i")
                                 }
+                            }
+                        }
+                    }
+                    // 朗读（2026-10-18）：只用系统 TTS 读**助手的气泡正文**（工具卡/压缩卡不读）。
+                    // 放在 SelectionContainer 之外——长按选字的菜单与朗读按钮各管各的。
+                    if (!isUser && onSpeak != null) {
+                        val speakable = msg.parts
+                            .filter { it.kind == "text" }
+                            .joinToString("\n") { it.text }
+                            .trim()
+                        if (speakable.isNotEmpty()) {
+                            TextButton(
+                                onClick = { onSpeak(speakable) },
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.padding(top = 2.dp).height(28.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.baopu_speak),
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
                             }
                         }
                     }
