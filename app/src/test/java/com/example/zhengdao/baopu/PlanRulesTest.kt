@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -254,4 +255,17 @@ class PlanRulesTest {
         // （跨文件的同源断言在 PlanToolTest，这里只钉集合本身）
         assertEquals(listOf("todo", "doing", "done"), PlanRules.STATUSES)
     }
+
+    @Test
+    fun `J1_状态别名归一_in_progress不算错`() {
+        // 2026-10-19 真机：模型把「正在做」写成 in_progress ⇒ 整张计划被拒，用户看到「第一步就被挡住」
+        assertEquals(PlanRules.STATUS_DOING, PlanRules.normalizeStatus("in_progress"))
+        assertEquals(PlanRules.STATUS_DOING, PlanRules.normalizeStatus("In-Progress"))
+        assertEquals(PlanRules.STATUS_TODO, PlanRules.normalizeStatus("pending"))
+        assertEquals(PlanRules.STATUS_DONE, PlanRules.normalizeStatus("completed"))
+        assertNull("认不出的就该拒，不许瞎猜", PlanRules.normalizeStatus("瞎写"))
+        val ok = parseOk("读目录" to "in_progress", "写文件" to "todo")
+        assertEquals(PlanRules.STATUS_DOING, ok.items[0].status)
+    }
+
 }
