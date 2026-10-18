@@ -42,11 +42,6 @@ import com.example.zhengdao.R
  *
  * 超出上限（20）时 [onAdd] 仍会被调用——由调用方决定提示（BrowserScreen 给一条可关消息），
  * 组件本身不吞。
- *
- * 第⑲刀追加 [onExport]「导出给 agent」：沿用本条的同一个 IconButton 房型，做**纯粹**的
- * 「把点击事件交回去」——导出判据、落盘、文案全在 [BrowserScreen] 与 [BrowserPageExporter]，
- * 组件不碰任何 I/O。**刻意只加在标签条（屏幕顶部）**：底栏 106dp 几何（地址栏带 50dp +
- * 浮动胶囊 56dp）是刚拍板的方案，一个像素都不许动。
  */
 @Composable
 fun BrowserTabStrip(
@@ -55,7 +50,6 @@ fun BrowserTabStrip(
     onSelect: (Int) -> Unit,
     onClose: (Int) -> Unit,
     onAdd: () -> Unit,
-    onExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = xuanLanPalette()
@@ -82,13 +76,6 @@ fun BrowserTabStrip(
         item {
             IconButton(onClick = onAdd) {
                 PlusGlyph(tint = palette.ink, contentDescription = stringResource(R.string.browser_new_tab))
-            }
-        }
-        item {
-            // 第⑲刀：导出眼前这页给 guest 里的 agent（一次一导，用户显式点）。位置与「+」并列
-            // ——同属浏览器 chrome 的操作区，不进底栏（红线①）。
-            IconButton(onClick = onExport) {
-                EyeGlyph(tint = palette.ink, contentDescription = stringResource(R.string.browser_export))
             }
         }
     }

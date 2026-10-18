@@ -404,7 +404,7 @@ object PageSnapshot {
         "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
     )
 
-    private const val HTML_LIMIT_CHARS = 512 * 1024 // JS 侧同值（见 BrowserPageExporter）
+    private const val HTML_LIMIT_CHARS = 512 * 1024 // JS 侧同值（玄览导出已撤，保留此口径给 PageSnapshot 测试）
 
     /** 解析 HTML 成树；容错（畸形输入不抛）。 */
     private fun parse(html: String): Doc {
