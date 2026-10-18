@@ -12,6 +12,7 @@ package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -258,7 +259,10 @@ private fun BaopuRoundItem(
             }
             round.finalAnswerMessage()?.let { BaopuMessageRow(it) }
         } else {
-            // 展开：user 消息在最前，计划卡紧随其后（＝该轮顶部、工具卡之上），
+            // 展开：**先给一条可点的摘要行**（2026-10-18 真机：底那条在长内容里找不到，
+            // 用户以为"收不回去"）——点顶部这一行即收回；底部再留一条，两头都能收。
+            BaopuRoundSummaryRow(round, steps) { userOpened = !userOpened }
+            // user 消息在最前，计划卡紧随其后（＝该轮顶部、工具卡之上），
             // 其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
             var planMounted = false
             round.messages.forEach { msg ->
@@ -282,6 +286,10 @@ private fun BaopuRoundItem(
                     onToggle = { planOpened = !planOpened },
                 )
             }
+            // 2026-10-18 真机反馈：「工具调用我点了，展开后就收不回去了」——
+            // 原因是收起态才渲染那行摘要，展开后就没有任何可点的地方。
+            // 展开态末尾补一条同样的摘要行，点它即收回（文案/数字与收起态一致）。
+            BaopuRoundSummaryRow(round, steps) { userOpened = !userOpened }
         }
     }
 }
@@ -336,7 +344,12 @@ private fun BaopuMessageRow(msg: BaopuUiMessage) {
     if (msg.parts.isEmpty()) return
     val isUser = msg.role == "user"
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Row(Modifier.fillMaxWidth()) {
+        // 2026-10-18 用户：「抱朴在左，用户在右才对啊」⇒ 用户气泡靠右、助手靠左；
+        // 「长按都没有复制功能哦」⇒ 气泡正文套 SelectionContainer（长按可选、系统菜单可复制）。
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        ) {
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = if (isUser) {
@@ -345,11 +358,10 @@ private fun BaopuMessageRow(msg: BaopuUiMessage) {
                     MaterialTheme.colorScheme.surfaceVariant
                 },
                 tonalElevation = if (isUser) 0.dp else 1.dp,
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .fillMaxWidth(if (isUser) 0.85f else 1f),
+                modifier = Modifier.fillMaxWidth(if (isUser) 0.85f else 1f),
             ) {
                 Column(Modifier.padding(12.dp)) {
+                    // 2026-10-18 用户：「那个『你』字也应该在右啊」⇒ 用户气泡里的角色标签右对齐。
                     Text(
                         text = stringResource(
                             if (isUser) R.string.baopu_role_user else R.string.baopu_role_assistant,
@@ -357,12 +369,19 @@ private fun BaopuMessageRow(msg: BaopuUiMessage) {
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = if (isUser) androidx.compose.ui.text.style.TextAlign.End
+                        else androidx.compose.ui.text.style.TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    msg.parts.forEachIndexed { i, part ->
-                        when (part.kind) {
-                            "tool" -> BaopuToolPart(part, key = "${msg.id}-$i")
-                            "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
-                            else -> BaopuTextPart(part, key = "${msg.id}-$i")
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Column {
+                            msg.parts.forEachIndexed { i, part ->
+                                when (part.kind) {
+                                    "tool" -> BaopuToolPart(part, key = "${msg.id}-$i")
+                                    "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
+                                    else -> BaopuTextPart(part, key = "${msg.id}-$i")
+                                }
+                            }
                         }
                     }
                 }
