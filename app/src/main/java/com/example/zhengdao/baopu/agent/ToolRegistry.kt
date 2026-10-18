@@ -315,7 +315,11 @@ internal object BaopuToolCatalog {
         // 工作计划卡（第十七批）：默认开——关了它，抱朴就不再「先列计划再干活」
         "update_plan",
         // 技能自写（第二十三批 A 段追加）：默认开，但写盘走 CONFIRM ⇒ 不会静默动手
+        // （它由 BaopuRuntime 单独注册——要 personaFiles，ENTRIES 的工厂只吃 workspaceRoot）
         "write_skill",
+        // 资料库两件套（第三十一批）：list 只读；organize 三个动作一律 CONFIRM，够不着「静默动手」
+        "library_list",
+        "library_organize",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -339,6 +343,9 @@ internal object BaopuToolCatalog {
         Entry("browser_screenshot") { BrowserTools.screenshotSpec() },
         // 工作计划卡（第十七批）：落点在引擎（PlanTool.sink），表里只放 spec
         Entry("update_plan") { PlanTool.spec() },
+        // 资料库两件套（第三十一批）：library_list 只读清单；library_organize 写落地（CONFIRM）
+        Entry("library_list") { LibraryTools.listSpec(it) },
+        Entry("library_organize") { LibraryTools.organizeSpec(it) },
     )
 
     /**
