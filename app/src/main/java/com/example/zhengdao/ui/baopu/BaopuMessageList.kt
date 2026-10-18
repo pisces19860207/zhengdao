@@ -361,6 +361,7 @@ private fun BaopuMessageRow(msg: BaopuUiMessage) {
                 modifier = Modifier.fillMaxWidth(if (isUser) 0.85f else 1f),
             ) {
                 Column(Modifier.padding(12.dp)) {
+                    // 2026-10-18 用户：「那个『你』字也应该在右啊」⇒ 用户气泡里的角色标签右对齐。
                     Text(
                         text = stringResource(
                             if (isUser) R.string.baopu_role_user else R.string.baopu_role_assistant,
@@ -368,6 +369,9 @@ private fun BaopuMessageRow(msg: BaopuUiMessage) {
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = if (isUser) androidx.compose.ui.text.style.TextAlign.End
+                        else androidx.compose.ui.text.style.TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     androidx.compose.foundation.text.selection.SelectionContainer {
                         Column {
