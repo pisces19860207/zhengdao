@@ -30,10 +30,15 @@ internal enum class MoveChoice {
     val isMove: Boolean get() = this == MOVE || this == MOVE_DOCS_ONLY
 }
 
-/** 一次收料的扫描报告（给 UI 出清单用：件数/体积/重复件）。 */
+/** 一次收料的扫描报告（给 UI 出清单用：件数/体积/重复件）。
+ *
+ * 第三十一批 C 段加两个字段：[overLimit] = 投递顶层条目超过 [LibraryPaths.MAX_SCAN]，
+ * 这次**没有全量细扫**（只列了顶层）——UI 要明说「太多了，先收窄」，不许当看全了。 */
 internal data class ImportScan(
     val files: List<LibraryPaths.ScannedFile>,
     val truncated: Boolean,
+    val overLimit: Boolean = false,
+    val topLevelCount: Int = 0,
 ) {
     val textFiles: List<LibraryPaths.ScannedFile> get() = files.filter { it.kind == LibraryPaths.FileKind.TEXT }
     val unclaimedFiles: List<LibraryPaths.ScannedFile> get() = files.filter { it.kind == LibraryPaths.FileKind.UNCLAIMED }
@@ -106,8 +111,24 @@ internal class LibraryImport(
         val DOC_EXTS: Set<String> = setOf("txt", "md", "markdown")
     }
 
-    /** 扫 `投递/`（只扫这里——工作区根的 `_索引.md`、`素材库/` 一律不进，判据 §5.3）。 */
+    /**
+     * 扫 `投递/`（只扫这里——工作区根的 `_索引.md`、`素材库/` 一律不进，判据 §5.3）。
+     *
+     * 第三十一批 C 段：**上限门槛**。这个 scan 挂在「进页面＋每轮引擎 Settled」上
+     * （调用方 BaopuChatController.checkDeliver），料多时每轮全树爬就是固定成本。
+     * 顶层条目超过 [LibraryPaths.MAX_SCAN] ⇒ 不再全量扫，只列顶层 ＋
+     * [ImportScan.overLimit] 让 UI 明说「太多了，先收窄到某个子目录」。
+     */
     fun scan(): ImportScan {
+        val top = LibraryPaths.countTopLevel(deliverDir)
+        if (top > LibraryPaths.MAX_SCAN) {
+            return ImportScan(
+                files = LibraryPaths.listTopLevelFiles(deliverDir),
+                truncated = true,
+                overLimit = true,
+                topLevelCount = top,
+            )
+        }
         val r = LibraryPaths.scanDeliver(deliverDir)
         return ImportScan(files = r.files, truncated = r.truncated)
     }
@@ -117,7 +138,13 @@ internal class LibraryImport(
      * 四档选择正好是派工单 §1 A 段点名的四种：搬／复制／只挑某些格式／先不搬。
      */
     fun card(scan: ImportScan): AskUserCard = AskUserCard(
-        question = "投递里有 ${scan.textCount} 个文本件（${humanSize(scan.textBytes)}），怎么处理？",
+        question = if (scan.overLimit) {
+            // 第三十一批 C 段：条目太多，这次只看了顶层——把「先收窄」说死，不假装看全了
+            "投递里条目超过 ${LibraryPaths.MAX_SCAN} 个（光顶层就 ${scan.topLevelCount} 条），" +
+                "这次没有逐个细扫。请先把要收的件归到某个子目录（或清掉不要的），再触发收料。"
+        } else {
+            "投递里有 ${scan.textCount} 个文本件（${humanSize(scan.textBytes)}），怎么处理？"
+        },
         options = listOf(
             AskUserOption(id = MoveChoice.MOVE.name.lowercase(), label = "搬进 App 私有（推荐）", recommended = true),
             AskUserOption(id = MoveChoice.COPY.name.lowercase(), label = "复制一份，共享区留底（不作隔离）"),
@@ -151,7 +178,7 @@ internal class LibraryImport(
     }
 
     /**
-     * 按选择执行（写盘：私有复制 ＋ 两份清单 JSON）。**不删投递里的任何文件。**
+     * 按选择执行（写盘：私有复制 ＋ 待删除清单 JSON；`_待外部转换.json` 已停写见 C 段）。**不删投递里的任何文件。**
      *
      * 每一步的失败都进 [ImportOutcome.rejected]（越界即拒，判据 §5.4），
      * 不让异常把半趟执行吞掉。
@@ -239,12 +266,15 @@ internal class LibraryImport(
             }
         }
 
-        // 目录首建（投递/整理/私有原始 都可能还不存在）——建失败也要让清单写不进去时报出来
+        // 目录首建（投递/整理/私有原始 都可能还不存在）
         runCatching { doneDir.mkdirs() }
         runCatching { rawPrivateDir.mkdirs() }
 
+        // 第三十一批 C 段（给 App 减负）：`_待外部转换.json` **已停写**。
+        // 停写理由（判据 L7）：全仓没有任何读方——App 自己不解析它，UX 文案也不指路；
+        // 不认领的件抱朴用 library_list 看投递目录（带扩展名与 sha 前 8 位）就能判断，
+        // 要转换还有 convert_encoding。函数保留（见 writeExternalList KDoc），调用点已删。
         val externalFile = File(doneDir, FILE_EXTERNAL)
-        writeExternalList(externalFile, scan.files.filter { it.kind == LibraryPaths.FileKind.UNCLAIMED })
 
         val pendingDeleteFile = File(doneDir, FILE_PENDING_DELETE)
         if (pending.isNotEmpty()) {
@@ -284,6 +314,10 @@ internal class LibraryImport(
     // ── 两份清单 JSON（原子写：先 .tmp 再 rename，绝不产生半个文件） ──────────
 
     private fun writeExternalList(file: File, unclaimed: List<LibraryPaths.ScannedFile>) {
+        // **已停写**（第三十一批 C 段，2026-10-18）：`_待外部转换.json` 全仓没有读方——
+        // App 不解析、UX 文案不指路；不认领件抱朴用 library_list（带扩展名/sha 前 8 位）
+        // 直接看投递目录即可判断，转换走 convert_encoding。函数保留备查，调用点已删；
+        // 要恢复请连读方一起恢复（只写不读＝往磁盘里堆垃圾）。
         val sorted = unclaimed.sortedBy { it.relPath }
         val sb = StringBuilder()
         sb.append("{\n  \"items\": [\n")
@@ -440,6 +474,9 @@ internal class LibraryImport(
      * 单测实测：distinctBy 保留旧理由，用户看到的是过时的原因）。
      */
     fun appendExternalList(entries: List<ExternalEntry>) {
+        // **已停写**（第三十一批 C 段）：本函数自建成起就没有生产调用方（壳层从未把流水线的
+        // rejected 并进来），`_待外部转换.json` 也没有读方。保留函数与单测备查，不再启用；
+        // 要恢复请连读方一起恢复。
         if (entries.isEmpty()) return
         val file = File(doneDir, FILE_EXTERNAL)
         val existing = runCatching { if (file.isFile) parseExternalList(file.readText()) else emptyList() }
