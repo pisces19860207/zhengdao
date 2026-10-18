@@ -793,7 +793,7 @@
     <string name="term_paste_failed">Paste didn\'t finish: %1$s</string>
     <string name="term_copied_chars">Copied %1$d characters</string>
     <string name="term_menu_title">Terminal actions</string>
-    <string name="term_menu_web_search">Search selected text</string>
+    <string name="term_menu_web_search">Search selected text in Xuanlan</string>
     <string name="term_menu_clear">Clear screen</string>
     <string name="term_menu_reset">Reset terminal</string>
     <string name="term_no_selection">No text selected</string>

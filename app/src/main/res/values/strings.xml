@@ -792,7 +792,7 @@
     <string name="term_paste_failed">粘贴未完成：%1$s</string>
     <string name="term_copied_chars">已复制 %1$d 个字符</string>
     <string name="term_menu_title">终端操作</string>
-    <string name="term_menu_web_search">搜索选中文字</string>
+    <string name="term_menu_web_search">在玄览里搜索选中文字</string>
     <string name="term_menu_clear">清屏</string>
     <string name="term_menu_reset">重置终端</string>
     <string name="term_no_selection">没有选中的文字</string>

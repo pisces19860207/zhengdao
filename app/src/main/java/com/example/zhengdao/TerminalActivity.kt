@@ -1405,25 +1405,24 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
 
     /**
-     * 选中文字 → 交给**手机自己的默认搜索 / 浏览器**（用户 2026-10-11 要求）。
+     * 选中文字 → **直接落玄览**（用户 2026-10-18：「长按更多里面的搜索是不是可以直接跳转到
+     * 玄览了啊？不用外部浏览器了」）。
      *
-     * 判据：旧实现把搜索引擎写死成 bing 的 URL —— 等于我们替用户选好了搜索引擎。
-     * `ACTION_WEB_SEARCH`（系统「网页搜索」动作）由系统里设的默认搜索 App 处理：
-     * 用户装什么、设什么就用什么（Chrome / 夸克 / 各家自带浏览器都认这个动作）。
-     * 只有设备上**没有**任何 App 能处理该动作时（极罕见），才回落到「用浏览器打开一个
-     * 搜索 URL」——这条兜底路径沿用原来的 bing 地址，保证功能不至于完全没有。
+     * 历史：2026-10-11 曾改为交给系统默认搜索（ACTION_WEB_SEARCH）—— 那是当时的口径，已被本次覆盖。
+     * 现在与 OSC 8 链接走**同一条 B 路径**：写 BrowserHolder.pendingUrl ＋ 请求切 Tab ＋ finish() 回主页，
+     * 由 MainActivity ON_RESUME 消费请求落到玄览，全程不离开 App。
+     * 引擎仍用 bing（与玄览主页一致），查询串做 URL 编码。
      */
     private fun openWebSearch(query: String) {
-        val viaSystem = Intent(Intent.ACTION_WEB_SEARCH)
-            .putExtra(android.app.SearchManager.QUERY, query)
-        if (runCatching { startActivity(viaSystem) }.isSuccess) return
+        val url = "https://www.bing.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
         runCatching {
-            val url = "https://www.bing.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
-            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+            com.example.zhengdao.ui.browser.BrowserHolder.pendingUrl = url
+            com.example.zhengdao.ui.browser.BrowserHolder.requestBrowserTab()
+            finish()
         }.onFailure {
             // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
             com.example.zhengdao.rootfs.RunLog.log(
-                "唤起搜索失败（原文）：${it.javaClass.simpleName}: ${it.message}"
+                "唤起玄览搜索失败（原文）：${it.javaClass.simpleName}: ${it.message}"
             )
             Toast.makeText(this, getString(R.string.term_browser_failed, HumanizeError.title(it, resources)), Toast.LENGTH_SHORT).show()
         }
