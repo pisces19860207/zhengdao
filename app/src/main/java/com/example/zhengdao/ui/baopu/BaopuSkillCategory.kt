@@ -7,8 +7,9 @@
 //
 // 三条硬口径（都是判据）：
 //   1. **只影响显示**（T5）：`SKILL.md` 一个字节都不动、索引行 `【技能】…` 那行的格式一个字不改、
-//      人设里那套索引提案（PersonaRules/SkillStore）一概不碰。本文件唯一的写出口是 `_分类.json`
-//      （由 `BaopuSkillCategoryTest` 按源码钉住「`writeText` 只出现一次且写的是分类文件」）。
+//      人设里那套索引提案（PersonaRules/SkillStore）一概不碰。本文件的写出口只有两份旁挂文件：
+//      `_分类.json` 与 `_重验.json`（第五十七批 §1.2，由 `BaopuSkillCategoryTest` 按源码钉住
+//      「`writeText` 只出现两次且分别写的是分类文件、重验文件」）。
 //   2. **幂等**（T4）：编码按技能名**排序**输出，同一状态写两次字节必须一致——
 //      所以这里不用 `HashMap` 的迭代顺序，也不塞时间戳。
 //   3. **坏 JSON 当空表，不许抛**（T4 后半）：解析器只认「扁平 string→string 对象」这一种形状，
