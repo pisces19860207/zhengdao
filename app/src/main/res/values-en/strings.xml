@@ -1256,4 +1256,5 @@
     <string name="learn_suggest_formal">Promote to a formal skill</string>
     <string name="learn_adopt">Adopt</string>
     <string name="learn_dismiss">Skip</string>
+    <string name="learn_gate_blocked">Cannot adopt this one: %1$s</string>
 </resources>

@@ -87,6 +87,27 @@ class BaopuLearnCardGuardTest {
 
     private fun countOf(src: String, token: String): Int = src.split(token).size - 1
 
+    // ── C 段：门禁接线（卡上标红禁用 + 落盘前再查一次）─────────────────────
+
+    @Test
+    fun `卡片_门禁不过就禁用采纳并显示原因`() {
+        val card = raw("src/main/java/com/example/zhengdao/ui/baopu/BaopuLearnCard.kt")
+        assertTrue("卡上要过门禁：\n$card", card.contains("SkillRefine.reviewLearn"))
+        assertTrue("门禁不过要禁掉采纳按钮", card.contains("enabled = review.ok"))
+        assertTrue("要用红字说清哪条不过", card.contains("learn_gate_blocked"))
+        val screenSrc = screen
+        assertTrue("屏幕要把已有技能名交给卡片", screenSrc.contains("existingNames = controller.learnExistingNames"))
+    }
+
+    @Test
+    fun `控制器_落盘前也过门禁_不是只把按钮变灰`() {
+        assertTrue("控制器要有门禁入口", controller.contains("reviewBeforeWrite("))
+        val write = block(controller, "private fun writeLearnedSkill(", limit = 30)
+        assertTrue("写之前必须查门禁：\n$write", write.contains("review.ok"))
+        assertTrue("门禁不过要直接返回原因，不许继续走到 plan/apply：\n$write",
+            write.indexOf("review.ok") < write.indexOf("SkillStore.plan("))
+    }
+
     @Test
     fun `卡片插在输入栏上方_Composer之前`() {
         val iCard = screen.indexOf("BaopuLearnCard(")
