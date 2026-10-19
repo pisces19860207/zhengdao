@@ -2,10 +2,10 @@ package com.example.zhengdao.baopu.eval
 
 import com.example.zhengdao.baopu.LlmProtocol
 import com.example.zhengdao.baopu.Provider
+import com.example.zhengdao.testkit.TestAssume
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
-import org.junit.Assume
 import org.junit.Test
 import java.io.File
 
@@ -39,9 +39,9 @@ class EvalGateTest {
     @Test
     fun `回放评测集_不退化才允许合入`() {
         val key = System.getenv("ZHENGDAO_EVAL_KEY").orEmpty().trim()
-        Assume.assumeTrue(
-            "未跑：缺 ZHENGDAO_EVAL_KEY —— 进化门禁本次未实测（这不是失败）",
-            key.isNotBlank(),
+        TestAssume.assume(
+            condition = key.isNotBlank(),
+            reason = "未跑：缺 ZHENGDAO_EVAL_KEY —— 进化门禁本次未实测（这不是失败）",
         )
 
         val root = repoRoot()

@@ -19,6 +19,9 @@ composeBom = "2026.09.00"
 benchmarkMacro = "1.5.0"
 # UiAutomator：基准里跨进程点按（底部 Tab、设置入口）靠它，Compose 语义节点同样可见。
 uiautomator = "2.4.0"
+# Detekt（P1-3，2026-10-19）：先只开 LongMethod / CyclomaticComplexity 两条、report-only。
+# 1.23.8 = Maven Central 上的最新稳定版（无 2.x）。
+detekt = "1.23.8"
 
 # Markdown 渲染（v1.1 第四阶段）。锁 0.38.1 —— 该版本用 Kotlin 2.2.21 编译，
 # 与本项目 2.2.10 同线（metadata 可读）；更新版本用 Kotlin 2.3/2.4，升库=升 Kotlin，
@@ -47,6 +50,9 @@ androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomato
 mikepenz-markdown = { group = "com.mikepenz", name = "multiplatform-markdown-renderer", version.ref = "markdownRenderer" }
 mikepenz-markdown-m3 = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
 mikepenz-markdown-code = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-code", version.ref = "markdownRenderer" }
+# Detekt CLI（P1-3）：不经 Gradle 插件，避免插件与 Gradle 9 / JDK 25 的兼容问题；
+# 由 app/build.gradle.kts 的 detektReport / detektBaselineUpdate 两个 JavaExec 任务调用。
+detekt-cli = { group = "io.gitlab.arturbosch.detekt", name = "detekt-cli", version.ref = "detekt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

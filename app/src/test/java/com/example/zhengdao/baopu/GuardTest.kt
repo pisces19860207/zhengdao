@@ -1,10 +1,10 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.testkit.TestAssume
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -18,7 +18,7 @@ import java.nio.file.Files
  * 两种工作区模式、没素材拒绝开工、没归档拒绝写。
  *
  * 环境说明（证据等级②，实测于本机沙盒）：沙盒里 `Files.createSymbolicLink`
- * 不抛异常但造不出真链 ⇒ 两处软链用例用 `assumeTrue` 显式跳过，
+ * 不抛异常但造不出真链 ⇒ 两处软链用例用 `TestAssume.symlinkUnsupported` 显式跳过，
  * **真实开发机上会真跑**（跳过错不在用例，在环境）。
  */
 class GuardTest {
@@ -85,10 +85,7 @@ class GuardTest {
         val secret = File(outside, "secret.txt").apply { writeText("s") }
         val link = File(ws, "link.txt")
         runCatching { Files.createSymbolicLink(link.toPath(), secret.toPath()) }
-        assumeTrue(
-            "沙盒造不出真软链（已知环境限制，证据等级②）——真实开发机上本用例真跑",
-            Files.isSymbolicLink(link.toPath()),
-        )
+        TestAssume.symlinkUnsupported(Files.isSymbolicLink(link.toPath()))
         val v = BaopuGuardCore.checkPath(ws, link)
         assertTrue("指向区外的软链必须拒绝：$v", v is BaopuGuardCore.PathVerdict.Outside)
     }
@@ -168,7 +165,7 @@ class GuardTest {
         val outside = tmp.newFolder("outside")
         val secret = File(outside, "secret.txt").apply { writeText("s") }
         runCatching { Files.createSymbolicLink(File(raw, "链.txt").toPath(), secret.toPath()) }
-        assumeTrue("沙盒造不出真软链（已知环境限制）", Files.isSymbolicLink(File(raw, "链.txt").toPath()))
+        TestAssume.symlinkUnsupported(Files.isSymbolicLink(File(raw, "链.txt").toPath()))
         val v = BaopuGuardCore.checkMaterial(raw)
         assertTrue("软链不应算素材：$v", v is BaopuGuardCore.MaterialVerdict.Empty)
     }
@@ -243,7 +240,7 @@ class GuardTest {
         val secret = File(outside, "secret.txt").apply { writeText("s") }
         val link = File(ws, "link.md")
         runCatching { Files.createSymbolicLink(link.toPath(), secret.toPath()) }
-        assumeTrue("沙盒造不出真软链（已知环境限制）", Files.isSymbolicLink(link.toPath()))
+        TestAssume.symlinkUnsupported(Files.isSymbolicLink(link.toPath()))
         val v = BaopuGuardCore.ensureArchived(raw, link, "link.md")
         assertTrue("软链原件应拒绝：$v", v is BaopuGuardCore.ArchiveVerdict.Refused)
     }
