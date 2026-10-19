@@ -49,6 +49,8 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
+import com.example.zhengdao.baopu.PersonaBackup
+import com.example.zhengdao.baopu.PersonaBackupResult
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
@@ -225,6 +227,67 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         ) {
                             effortId = level
                             ModelParams.saveEffort(ctx, level)
+                        }
+                    }
+                }
+            }
+
+            // ── 第三十七批 D 段 · 人设回滚（B 全局 / C 本项目各一行）──
+            // 写入前的备份已经在唯一写盘口做完（PersonaFiles.applyProposal），
+            // 这里只负责「滚回去」：点了先备份当前版，再覆盖 —— 可反悔。
+            // 没有备份时**按钮灰掉但这一行不消失**（判据 L6 最后一句：灰掉≠假装没这功能）。
+            SectionCard(stringResource(R.string.persona_rollback_card)) {
+                var rollbackTick by remember { mutableStateOf(0) }
+                val pfr = remember { BaopuRuntime.personaFiles(ctx) }
+                Text(
+                    text = stringResource(R.string.persona_rollback_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                listOf(
+                    PersonaLayer.C_PROJECT to R.string.persona_rollback_project,
+                    PersonaLayer.B_GLOBAL to R.string.persona_rollback_global,
+                ).forEach { (layer, labelRes) ->
+                    val pfile = pfr.fileOf(layer)
+                    val latest = remember(rollbackTick) { PersonaBackup.latestOf(pfile) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(labelRes),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            val stamp = latest?.let { PersonaBackup.stampOf(it.name, pfile.name) }
+                            Text(
+                                text = if (stamp != null) {
+                                    stringResource(
+                                        R.string.persona_rollback_last,
+                                        PersonaBackup.displayStamp(stamp),
+                                    )
+                                } else {
+                                    stringResource(R.string.persona_rollback_none)
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            enabled = latest != null,
+                            onClick = {
+                                val msg = when (
+                                    val r = PersonaBackup.restore(pfile, PersonaBackup.nowStamp())
+                                ) {
+                                    is PersonaBackupResult.Done -> ctx.getString(
+                                        R.string.persona_rollback_done,
+                                        r.backup.name,
+                                    )
+                                    is PersonaBackupResult.Rejected -> r.reason
+                                }
+                                Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                                rollbackTick++
+                            },
+                        ) {
+                            Text(stringResource(R.string.persona_rollback_action))
                         }
                     }
                 }
