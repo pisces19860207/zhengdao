@@ -22,6 +22,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,7 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import com.example.zhengdao.baopu.LlmProtocol
+import com.example.zhengdao.baopu.ModelCatalog
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.Providers
@@ -56,10 +61,34 @@ internal fun BaopuChannelSheet(
     var keyText by remember { mutableStateOf(storedKeyOf(currentChannelId)) }
     var baseUrlText by remember { mutableStateOf(customBaseUrl.orEmpty()) }
     var modelText by remember { mutableStateOf(customModel.orEmpty()) }
+    // 2026-10-19：填好 baseUrl＋Key 就自动拉 `{base}/v1/models`，列出可选的模型
+    var models by remember { mutableStateOf(emptyList<String>()) }
+    var fetching by remember { mutableStateOf(false) }
+    var fetchError by remember { mutableStateOf<String?>(null) }
 
     val candidates = remember { Providers.all() }
     val customValid = selected != ProviderPrefs.CHANNEL_CUSTOM ||
         (baseUrlText.trim().startsWith("https://") && modelText.isNotBlank())
+
+    LaunchedEffect(selected, baseUrlText, keyText) {
+        if (selected != ProviderPrefs.CHANNEL_CUSTOM) {
+            models = emptyList(); fetchError = null; fetching = false
+            return@LaunchedEffect
+        }
+        val base = baseUrlText.trim()
+        val key = keyText.trim()
+        if (!base.startsWith("https://") || key.isBlank()) {
+            models = emptyList(); fetchError = null; fetching = false
+            return@LaunchedEffect
+        }
+        delay(600) // 边打边拉：停手 0.6 秒再发，别每敲一个字符打一次
+        fetching = true
+        fetchError = null
+        val (ids, err) = withContext(Dispatchers.IO) { ModelCatalog.fetch(base, key) }
+        models = ids
+        fetchError = err
+        fetching = false
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -114,6 +143,40 @@ internal fun BaopuChannelSheet(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                // 自动拉到的模型清单：点一个就填进上面；拉不到就照旧手填
+                when {
+                    fetching -> Text(
+                        "正在拉取模型列表…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    fetchError != null -> Text(
+                        "没拉到模型列表（$fetchError）——可以继续手填模型名",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = com.example.zhengdao.ui.theme.zhengdaoErrorText(),
+                    )
+                    models.isNotEmpty() -> Column(Modifier.fillMaxWidth()) {
+                        Text(
+                            "这个地址可用模型（${models.size}）",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        models.forEach { id ->
+                            Text(
+                                text = (if (id == modelText) "✓ " else "· ") + id,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (id == modelText) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { modelText = id }
+                                    .padding(vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
             }
             if (selected != Providers.BUILTIN_FREE.id) {
                 OutlinedTextField(
