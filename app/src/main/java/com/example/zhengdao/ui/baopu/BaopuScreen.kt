@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -102,6 +103,7 @@ private fun openSettings(context: Context) {
 @Composable
 fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val res = LocalResources.current
     // 换通道 = 换引擎：控制器构造期持引擎（BaopuChatController），改 epoch 让它重建。
     var channelEpoch by remember { mutableIntStateOf(0) }
     val controller = remember(channelEpoch) { BaopuChatController(context) }
@@ -410,7 +412,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         val usage = controller.roundUsage
                         if (shouldShowUsageNotice(usage)) {
                             val usageCopy = UsageCopy(
-                                stepLabel = { step -> context.getString(R.string.baopu_usage_step, step) },
+                                stepLabel = { step -> res.getString(R.string.baopu_usage_step, step) },
                                 inLabel = stringResource(R.string.baopu_usage_in),
                                 outLabel = stringResource(R.string.baopu_usage_out),
                                 cacheHitLabel = stringResource(R.string.baopu_usage_cache_hit),
