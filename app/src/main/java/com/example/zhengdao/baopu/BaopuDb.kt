@@ -339,7 +339,7 @@ internal object BaopuSql {
             "FROM session s " +
             "LEFT JOIN (SELECT session_id, COUNT(*) AS n FROM message " +
             "WHERE role = 'user' GROUP BY session_id) u ON u.session_id = s.id " +
-            "WHERE s.archived = 0 ORDER BY s.updated_at DESC",
+            "WHERE s.archived = 0 AND s.deleted_at IS NULL ORDER BY s.updated_at DESC",
         emptyArray(),
     )
 

@@ -753,7 +753,8 @@ class BaopuSessionTreeTest {
         // 那张卡已删：删除改到抽屉里长按会话行做（下一步），设置页不再重复列一遍
         assertFalse("设置页不该再有会话记录卡", settings.contains("R.string.baopu_session_manage_card"))
         // 删除入口搬到抽屉：长按会话行 ⇒ 确认卡 ⇒ controller.deleteSession（走修好 compression 的那个）
-        assertTrue("会话行要支持长按", drawerCode.contains("onLongClick = { onLongPress(row) }"))
+        // 2026-10-19：回调多带一个工作区名（确认框要写清删的是哪一行），形状随之变了
+        assertTrue("会话行要支持长按", drawerCode.contains("onLongClick = { onLongPress(row, workspaceLabel) }"))
         assertTrue("抽屉要收长按回调", drawerCode.contains("onSessionLongPress"))
         assertTrue("页面要有删除确认卡", screenCode.contains("R.string.baopu_delete_session_title"))
         assertTrue("确认后真删", screenCode.contains("controller.deleteSession(id)"))
