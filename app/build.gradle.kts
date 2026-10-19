@@ -518,6 +518,10 @@ dependencies {
     // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.apache.commons:commons-compress:1.26.2")
+    // 供应链（第四十三批 OSV，2026-10-19）：commons-compress 传递进来的
+    // commons-lang3 3.14.0 命中 CVE-2025-48924（GHSA-j288-q9x7-2f5v，中危）。
+    // 显式抬到修复版 3.18.0，不动 commons-compress 主版本（升级 compress 单开一批）。
+    implementation("org.apache.commons:commons-lang3:3.18.0")
     androidTestImplementation("org.apache.commons:commons-compress:1.26.2")
     // 多源回退逻辑测试：本地环回假服务器，真实走 OkHttp 栈（零外网依赖）
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

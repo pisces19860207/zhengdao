@@ -61,3 +61,9 @@ python tools/check-doc-ledger.py --strict
 ```
 
 全绿即可提；有任何一项红，先修或按 §4 走流程。
+
+## 7. 供应链已知处置（2026-10-19）
+
+- `commons-compress 1.26.2` 传递进来的 `commons-lang3 3.14.0` 命中 **CVE-2025-48924**（GHSA-j288-q9x7-2f5v，中危）；已显式锁定 **3.18.0**（该 CVE 修复版），不动 commons-compress 主版本。
+- 复核方式：`python3 tools/sbom.py && python3 tools/osv-scan.py --sbom <新 sbom>` —— 应为 **0 条发现**。
+- 下次升级 commons-compress 时，这条显式锁定可以删掉（新版本已带修复版 lang3 就不用再钉）。
