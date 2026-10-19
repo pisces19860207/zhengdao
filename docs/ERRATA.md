@@ -7393,3 +7393,21 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 
 **教训**：「只改目标行」不只是**内容**层面，还包括**行尾与结尾换行**这类不可见字节。凡是「读→切→拼→写」的文本工具，先问一句：原文的换行风格，我在哪一步把它丢了？
 
+---
+
+## E-169 · 2026-10-19 · 会话软删后抽屉里还挂着、恢复后不回来（49 批 B/C 真机抓到的两个洞）
+
+**怎么发现的**：49 批真机复验「移入回收站后回收站显示慢」。删掉会话 33 后：库里 `deleted_at` 已写、回收站面板也数到 1，但抽屉列表里那条还在；恢复后面板归 0，抽屉列表却要重启才回来。
+
+**两个根因（都不是性能慢）**：
+1. **查询漏过滤**：47 批给 `listSessions` / `latestSessionId` 加了 `deleted_at IS NULL`，但抽屉用的 `BaopuSql.sessionLibraryEntries()` **没加**——所以会话删了仍会被列出来。
+2. **没有刷新信号**：抽屉的会话库按 `drawerTick` 重算，而 `drawerTick` 只在「抽屉从关到开」时 +1；在回收站面板里恢复/彻底删除时抽屉一直开着 ⇒ 永远不重算。之前文件侧有 `onChanged` 的 tick，会话侧漏了。
+
+**修法**：
+- `sessionLibraryEntries()` 加 `AND s.deleted_at IS NULL`（回归断言进 `SessionTrashTest`）；
+- 抽屉回收站那一行的 **N 改为「文件 + 已删会话」**（会话删了 N 也会动，不再像没生效）；
+- `TrashDialog` 恢复/彻底删除后回调 `onSessionsChanged` ⇒ 页面 `drawerTick++`（会话库立刻重读）；
+- 长按确认框补**工作区名 + 相对时间**（回调多带一个 `workspaceLabel`；`DrawerSessionRow` 仍不带分组键，守住 W4）。
+
+**教训**：给表加一列软删标记，**所有读这张表的查询都要过一遍**（47 批只改了两条，第三条漏了）。另外「面板里改了数据、背后的列表不刷新」这类问题，别急着归因成"IO 慢"——先看有没有刷新信号。
+
