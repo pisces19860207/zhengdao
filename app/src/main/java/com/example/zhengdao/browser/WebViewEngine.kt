@@ -2,7 +2,6 @@ package com.example.zhengdao.browser
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.net.Uri
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
@@ -73,13 +72,62 @@ class WebViewEngine(
     /** JS prompt 出口：同上，结果回调传输入文本（null=取消）。 */
     var jsPromptHandler: ((message: String, defaultValue: String, onResult: (String?) -> Unit) -> Unit)? = null
 
-    /** scheme 白名单（白名单外一律拒——"浏览器本身"红线，§4.4 导航拦截）。 */
-    private val allowedSchemes = setOf("http", "https")
+    // scheme 白名单（白名单外一律拒——"浏览器本身"红线，§4.4 导航拦截）：
+    // 这份判据现在住在 [LocalPreviewPolicy]（[LocalPreviewPolicy.isNetwork] = 原
+    // `setOf("http", "https")`，`[LocalPreviewPolicy.allowsNavigation]` = 原 allowedSchemes 判定）。
+    // 搬家不是因为浏览器线要改语义——是第五十九批 §5.2 要在这个判定上**再叠一层**"断网档"，
+    // 而引擎侧的判定在 JVM 单测里打不到（android.net.Uri 是桩）。判据挪到零 Android 的文件，
+    // 本类只剩"照它说的执行"，正常上网页签的档（blockAllNetwork=false）逐字不变。
+    // （BaopuKernel.kt:152 那句 TODO 说的"WebViewEngine 里那份 allowedSchemes"如今在这里。）
+
+    /**
+     * 当前生效的安全配置（第五十九批 §5.2 新增的**读取**需求）。
+     *
+     * 为什么要把配置留下来：`blockAllNetwork`（断网档）不只是一个 WebSettings 开关——
+     * 它要改**导航与资源两条拦截路径的判据**，而这两条路径在 `applySecurityConfig`
+     * 之后很久还在跑（每次点击、每个子资源）。只 apply 不记，引擎就不知道自己该不该断网。
+     *
+     * 默认值 = [EngineSecurityConfig] 零参构造的加固默认 ⇒ `applySecurityConfig` 之前
+     * （理论上不该发生：建标签即装配置）与上网页签（`blockAllNetwork=false`）
+     * **行为逐字节不变**。写入只在 UI 线程（applySecurityConfig 由 BrowserTabManager
+     * 在建标签时调），读在 WebView 回调（同 UI 线程），@Volatile 只防装配期的旁路读。
+     */
+    @Volatile
+    private var config = EngineSecurityConfig()
 
     override fun loadUrl(url: String) {
         main.post {
             if (!isAllowedUrl(url)) return@post
             webView.loadUrl(url)
+        }
+    }
+
+    /**
+     * 本地预览的**注入**通道（第五十九批 §5.2）。
+     *
+     * 为什么不走 [loadUrl]：预览内容来自工作区文件，而 `file://` 是 §4.4 早就定死的红线
+     * （`allowFileAccess=false`，[EngineSecurityConfigDefaultsTest] 钉着）——为了预览去开它
+     * = 拿放宽安全默认值换一个显示通道，方向反了。所以内容整段交 `loadDataWithBaseURL`。
+     *
+     * 为什么不走 `evaluateJavascript(document.write)`：那要求 JS 开着，而预览**默认禁 JS**
+     * （§5.2），等于让"看内容"这件事反过来要求"能跑脚本"。
+     *
+     * `baseUrl = "about:blank"`：页面里的相对资源（`./a.css`、`<img src="x.png">`）因此
+     * 解析不到东西——**本地预览是单文件预览**，这个取舍在
+     * [LocalPreviewPolicy] 文件头写明，不假装能看整站。
+     * 预览页签显示的"地址"不是这里来的，是 [com.example.zhengdao.ui.browser.BrowserTabManager]
+     * 直接写进该页签状态的假地址（`local-preview://…`），与"能不能导航"彻底分开。
+     *
+     * ⚠️ 与第㊳刀同规：投递走进程级主 Looper 的 [main]，不许 `webView.post`
+     * （未 attach 的 View 把 Runnable 压进自己的队列 ⇒ 首载死锁）。
+     */
+    fun loadLocalDocument(html: String) {
+        main.post {
+            runCatching {
+                webView.loadDataWithBaseURL("about:blank", html, "text/html", "utf-8", null)
+            }.onFailure {
+                logWarning("loadLocalDocument failed: ${it.javaClass.simpleName}")
+            }
         }
     }
 
@@ -182,9 +230,15 @@ class WebViewEngine(
                 // 阶段 0 三条之一（2026-10-14 派工单并入本刀）：**资源加载级**拦截。
                 // shouldOverrideUrlLoading 拦的是"点击导航"，本方法拦的是页面内嵌资源
                 // （iframe/img/script src="intent://…" 之类）——点击级放过的漏网资源在这里兜底。
+                // 第五十九批 §5.2 在同一处再叠一档：本地预览页签 blockAllNetwork=true ⇒
+                // 只放过 about:/data:（内容在 URL 自己肚子里），其余一律空响应——
+                // 比「拦掉 http/https」更严（ws://、ftp://、file:// 也算出站），
+                // "只显示"不靠用户别点链接。判据在 [LocalPreviewPolicy.blocksResource]。
+                // 正常上网页签（false）判的是 `!isNetwork(url)`，与改前那句
+                // `scheme in setOf("http","https")` 的反面逐字等价 ⇒ 行为一个字节没变。
                 val url = request.url?.toString() ?: return super.shouldInterceptRequest(view, request)
-                if (!isAllowedUrl(url)) {
-                    logWarning("blocked resource scheme: $url")
+                if (LocalPreviewPolicy.blocksResource(url, config.blockAllNetwork)) {
+                    logWarning("blocked resource: $url")
                     // 返回空响应 = 阻断加载（不给页面任何内容）
                     return android.webkit.WebResourceResponse(
                         "text/plain",
@@ -272,6 +326,10 @@ class WebViewEngine(
     }
 
     override fun applySecurityConfig(config: EngineSecurityConfig) {
+        // 先记账再 apply：断网档要改的是**拦截判据**（导航 + 资源两条路径），
+        // 不是 WebSettings 里的某个开关；不记这份 config，isAllowedUrl 就无从知道
+        // 本引擎是不是"只显示"的那一档（第五十九批 §5.2）。
+        this.config = config
         webView.settings.apply {
             javaScriptEnabled = config.javaScriptEnabled
             javaScriptCanOpenWindowsAutomatically = config.javaScriptCanOpenWindowsAutomatically
@@ -302,10 +360,8 @@ class WebViewEngine(
         // 不在这里（第⑨刀 B 落地 TODO 阶段2：单进程内多标签无法各有数据目录，见交付报告）。
     }
 
-    private fun isAllowedUrl(url: String): Boolean {
-        val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
-        return scheme in allowedSchemes
-    }
+    private fun isAllowedUrl(url: String): Boolean =
+        LocalPreviewPolicy.allowsNavigation(url, config.blockAllNetwork)
 
     companion object {
         /** execJS 返回值限长（§4.5：如 64KB，防 OOM）。 */

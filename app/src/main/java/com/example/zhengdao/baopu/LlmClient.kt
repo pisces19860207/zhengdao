@@ -641,7 +641,14 @@ sealed interface CompletionResult {
 
 class LlmClient(private val provider: Provider) {
 
-    private val http: OkHttpClient = defaultHttp()
+    /**
+     * P2-4（第五十六批）：**进程级共享**的 OkHttp。
+     *
+     * 旧实现每个 `LlmClient` 新建一个（`defaultHttp()` 每次 new）——每轮对话、每个客户端
+     * 都建一套连接池与线程池，手机上白占资源不说，连接还无法复用。改共享后流式/非流式
+     * 共用同一份连接池；个别请求要不同超时仍走 `newBuilder()` 派生（连接池照样共享）。
+     */
+    private val http: OkHttpClient = sharedHttp
 
     /**
      * 构造请求（纯形状，不执行）。[tools] 为 null/空时不带字段（向后兼容）。
@@ -667,10 +674,17 @@ class LlmClient(private val provider: Provider) {
             .build()
     }
 
-    /** 异步流式：把阻塞解析丢到 [netExecutor]，事件回 [sink]。 */
-    fun streamAsync(messages: List<LlmMessage>, tools: JSONArray? = null, sink: (LlmEvent) -> Unit) {
+    /**
+     * 异步流式：把阻塞解析丢到 [netExecutor]，事件回 [sink]。
+     *
+     * P2-5（第五十六批）：**返回这个 [Call]**。旧实现返回 Unit，调用方拿不到句柄 ⇒
+     * 用户点停止只能置标志位干等，最长要耗到 readTimeout（60s）才收工。现在
+     * [com.example.zhengdao.baopu.agent.RunEngine] 保存它、`stop()` 里直接 cancel。
+     */
+    fun streamAsync(messages: List<LlmMessage>, tools: JSONArray? = null, sink: (LlmEvent) -> Unit): Call {
         val call = http.newCall(chatRequest(messages, tools))
         netExecutor.execute { stream(call, sink) }
+        return call
     }
 
     /**
@@ -806,7 +820,8 @@ class LlmClient(private val provider: Provider) {
                 LlmWire.headersOf(provider).forEach { (k, v) -> header(k, v) }
             }
             .build()
-        val http = defaultHttp().newBuilder()
+        // P2-4：从共享实例派生（连接池照样复用），只盖这一个请求的 callTimeout
+        val http = sharedHttp.newBuilder()
             .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
             .build()
         return try {
@@ -870,5 +885,13 @@ class LlmClient(private val provider: Provider) {
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)     // 重连是引擎层的事，客户端不暗自重试
             .build()
+
+        /**
+         * P2-4：进程级共享实例（lazy，第一个客户端才建）。
+         *
+         * 不做成 `var`：全局可变 client 会被某处顺手改配置然后影响所有人。
+         * 只读单例 + `newBuilder()` 派生，是"共享又不互相踩"的唯一稳妥形状。
+         */
+        val sharedHttp: OkHttpClient by lazy { defaultHttp() }
     }
 }

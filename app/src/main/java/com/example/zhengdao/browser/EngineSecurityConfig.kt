@@ -47,6 +47,18 @@ data class EngineSecurityConfig(
      * 本字段保留 null（引擎不再尝试 per-tab 后缀），仅作文档位。
      */
     val dataDirectorySuffix: String? = null,
+    /**
+     * **断网档**（第五十九批 §5.2：本地预览页签默认断网）。
+     *
+     * 默认 false ⇒ 上网页签行为逐字节不变（`BrowserTabManager.newTab` 仍是
+     * `EngineSecurityConfig()` 零参构造，由 [com.example.zhengdao.ui.browser.BrowserTabManager]
+     * 那条源码门禁与 `EngineSecurityConfigDefaultsTest` 两头钉着）。
+     * true 时 [WebViewEngine] 的 `shouldInterceptRequest` 把**所有** http/https 资源请求
+     * 换成空响应，`loadUrl` 直接不投递——「只显示」不靠用户别点链接，靠这一条硬拦。
+     * 与 [javaScriptEnabled] 是两个独立旋钮：JS 沙箱档（§5.3）开脚本时本字段仍为 true
+     * ⇒「脚本会跑、出不了网」。
+     */
+    val blockAllNetwork: Boolean = false,
 ) {
     companion object {
         /** 对应 android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW。 */

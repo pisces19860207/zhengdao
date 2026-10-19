@@ -66,8 +66,15 @@ internal object SkillRefine {
      *
      * 「值得做成流程」的确定性判据就一条：**用户明说**。模型自行脑补的「这值得沉淀」
      * 不出候选（确认卡每轮刷屏是事故，宁可漏——派工单 §2.3「用户明说优先」的落地）。
+     *
+     * @param rejectedKeys 第五十七批 §1.3：被**丢弃**过的候选去重键（名称＋正文摘要）。
+     *   命中 ⇒ 直接跳过——丢过的东西下轮不许再端上来。
      */
-    fun refine(facts: MemoryRefine.SessionFacts, existing: List<SkillRules.IndexLine>): Result {
+    fun refine(
+        facts: MemoryRefine.SessionFacts,
+        existing: List<SkillRules.IndexLine>,
+        rejectedKeys: Set<String> = emptySet(),
+    ): Result {
         val all = mutableListOf<Candidate>()
         val seenNames = LinkedHashSet<String>()
         for (text in facts.userTexts) {
@@ -78,6 +85,7 @@ internal object SkillRefine {
                     .ifEmpty { "skill" }
                 if (!seenNames.add(name)) continue // 同批同名去重（先见先立）
                 if (existing.any { it.name == name }) continue // 已有同名索引 ⇒ 不重复提（不算丢）
+                if (dedupeKey(name, normalizeKeyText(scenario)) in rejectedKeys) continue // 丢过 ⇒ 不再提（§1.3）
                 val scope = if (sentence.contains("全局")) MemoryScope.GLOBAL else MemoryScope.PROJECT
                 all += Candidate(scope, name, scenario, fromUser = true)
             }
@@ -145,10 +153,13 @@ internal object SkillRefine {
      * 已经存在的同名技能 ⇒ 建议改成「转正式」而不是再建一条草稿。
      *
      * @param existingNames 已有技能名（决定建议是草稿还是转正式）
+     * @param rejectedKeys 第五十七批 §1.3：被**丢弃**过的候选去重键——命中 ⇒ 跳过，
+     *   同一候选下轮不再重复提（丢弃留痕的另一半）。
      */
     fun learnProposals(
         signals: List<LearnSignal>,
         existingNames: Set<String> = emptySet(),
+        rejectedKeys: Set<String> = emptySet(),
     ): List<LearnProposal> {
         if (signals.isEmpty()) return emptyList()
         val seen = LinkedHashSet<String>()
@@ -157,6 +168,7 @@ internal object SkillRefine {
         for (s in ordered) {
             val name = MemoryRules.slugOf(s.detail.take(12)).ifEmpty { "skill" }
             if (!seen.add(name)) continue
+            if (dedupeKey(name, normalizeKeyText(s.detail.take(LEARN_CONTENT_LIMIT))) in rejectedKeys) continue // §1.3
             val content = s.detail.take(LEARN_CONTENT_LIMIT)
             val suggest = if (name in existingNames) Suggest.FORMAL else Suggest.DRAFT
             out += LearnProposal(
@@ -300,4 +312,212 @@ internal object SkillRefine {
 
         return LearnReview(issues, details)
     }
+
+    // ── 第五十七批 §1.2：过期判据（纯函数）＋「待重验」旁挂 JSON ─────────────
+    //
+    // 派工单原话：技能头 `status=… uses=…` **不可再加字段**（抱朴会写歪，36 批 B 段
+    // 同一条判断）⇒ 「待重验」走**旁挂 JSON**（照 36 批 `_分类.json` 房型：扁平
+    // string→string、排序输出幂等、坏 JSON 当空表不抛），**SKILL.md 一个字节不动**。
+    // 且**不自动降级/删除技能**——标记只是提示，处置权在人。
+
+    /** 过期判据阈值（派工单 §1.2「阈值常量集中一处，默认值写清」——就这一处）。 */
+    object SkillExpiry {
+        /** 久未用：超过 14 天没被用过 ⇒ 待重验。 */
+        const val STALE_DAYS = 14L
+        const val STALE_MS: Long = STALE_DAYS * 24L * 60L * 60L * 1000L
+
+        /** 失败率窗口：看最近 5 次使用。 */
+        const val FAIL_WINDOW = 5
+
+        /** 失败率阈值：窗口内失败 ≥ 60% ⇒ 待重验。 */
+        const val FAIL_RATE = 0.6
+    }
+
+    /** 一次过期判据的结论。 */
+    enum class ExpiryVerdict(val needsRecheck: Boolean) {
+        /** 有证据说它还行（或证据不够说它不行）。 */
+        FRESH(false),
+
+        /** 久未用。 */
+        STALE_UNUSED(true),
+
+        /** 最近几次老失败。 */
+        STALE_FAILING(true),
+
+        /** 又久未用又老失败。 */
+        STALE_BOTH(true),
+    }
+
+    /** 给人看的那句话（设置页技能行 / 答复提醒共用一个口径）。 */
+    fun reasonOf(v: ExpiryVerdict): String = when (v) {
+        ExpiryVerdict.FRESH -> ""
+        ExpiryVerdict.STALE_UNUSED -> "超过 ${SkillExpiry.STALE_DAYS} 天没用过"
+        ExpiryVerdict.STALE_FAILING ->
+            "最近 ${SkillExpiry.FAIL_WINDOW} 次里失败≥${(SkillExpiry.FAIL_RATE * 100).toInt()}%"
+        ExpiryVerdict.STALE_BOTH ->
+            "超过 ${SkillExpiry.STALE_DAYS} 天没用过，且最近 ${SkillExpiry.FAIL_WINDOW} 次里失败≥${(SkillExpiry.FAIL_RATE * 100).toInt()}%"
+    }
+
+    /**
+     * 过期判据（**纯函数、确定性**）。
+     *
+     * 两条证据、一条一条来：
+     * - **久未用**：`lastUsedAtMs` 非空且距今超过 [SkillExpiry.STALE_MS]。
+     *   null（记录上线后还没用过）⇒ **没有证据，不判**——宁可漏标不冤枉。
+     * - **高失败率**：最近 [SkillExpiry.FAIL_WINDOW] 次（不足整窗 ⇒ 证据不够，不判）
+     *   失败占比 ≥ [SkillExpiry.FAIL_RATE]。
+     *
+     * @param recentOks 旧→新的使用成败（多余条目取窗口尾）
+     */
+    fun expiryVerdict(lastUsedAtMs: Long?, recentOks: List<Boolean>, nowMs: Long): ExpiryVerdict {
+        val stale = lastUsedAtMs != null && nowMs - lastUsedAtMs > SkillExpiry.STALE_MS
+        val window = recentOks.takeLast(SkillExpiry.FAIL_WINDOW)
+        val failing = window.size >= SkillExpiry.FAIL_WINDOW &&
+            window.count { !it }.toDouble() / window.size >= SkillExpiry.FAIL_RATE
+        return when {
+            stale && failing -> ExpiryVerdict.STALE_BOTH
+            stale -> ExpiryVerdict.STALE_UNUSED
+            failing -> ExpiryVerdict.STALE_FAILING
+            else -> ExpiryVerdict.FRESH
+        }
+    }
+
+    /** 「待重验」旁挂文件名（与 36 批 `_分类.json` 同目录同级：`<技能目录>/_重验.json`）。 */
+    const val RECHECK_FILE = "_重验.json"
+
+    /**
+     * 编码（**按键排序输出 ⇒ 幂等**，照 36 批 `encodeCategories` 口径：同一状态写两次
+     * 字节必须一致）。两空格缩进、每行一键，用户在文件管理器里能直接看懂、手改。
+     */
+    fun encodeRecheck(map: Map<String, String>): String {
+        val sb = StringBuilder("{\n")
+        val keys = map.keys.sorted()
+        keys.forEachIndexed { i, key ->
+            sb.append("  \"").append(escapeJson(key)).append("\": \"")
+                .append(escapeJson(map.getValue(key))).append('"')
+            if (i < keys.size - 1) sb.append(',')
+            sb.append('\n')
+        }
+        return sb.append("}\n").toString()
+    }
+
+    /** 解码（**坏 JSON ⇒ 空表，绝不抛**，照 36 批口径；只认扁平 string→string）。 */
+    fun decodeRecheck(text: String?): Map<String, String> {
+        val src = text?.trim().orEmpty()
+        if (src.isEmpty()) return emptyMap()
+        if (!src.startsWith("{") || !src.endsWith("}")) return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        val body = src.substring(1, src.length - 1)
+        var i = 0
+        while (i < body.length) {
+            while (i < body.length && body[i].isWhitespace()) i++
+            if (i >= body.length) break
+            val k = readJsonString(body, i) ?: return emptyMap()
+            i = skipWs(body, k.second)
+            if (i >= body.length || body[i] != ':') return emptyMap()
+            i = skipWs(body, i + 1)
+            val v = readJsonString(body, i) ?: return emptyMap()
+            out[k.first] = v.first
+            i = skipWs(body, v.second)
+            if (i >= body.length) break
+            if (body[i] != ',') return emptyMap()
+            i++
+        }
+        return out.filterKeys { it.isNotBlank() }
+    }
+
+    private fun skipWs(s: String, from: Int): Int {
+        var i = from
+        while (i < s.length && s[i].isWhitespace()) i++
+        return i
+    }
+
+    /** 读一个 JSON 字符串字面量（含 `\"` `\\` `\n` `\r` `\t`）；没闭合/不认识 ⇒ null。 */
+    private fun readJsonString(s: String, from: Int): Pair<String, Int>? {
+        if (from >= s.length || s[from] != '"') return null
+        val sb = StringBuilder()
+        var i = from + 1
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '"') return sb.toString() to (i + 1)
+            if (c != '\\') { sb.append(c); i++; continue }
+            if (i + 1 >= s.length) return null
+            when (s[i + 1]) {
+                '"' -> sb.append('"')
+                '\\' -> sb.append('\\')
+                '/' -> sb.append('/')
+                'n' -> sb.append('\n')
+                'r' -> sb.append('\r')
+                't' -> sb.append('\t')
+                else -> return null
+            }
+            i += 2
+        }
+        return null
+    }
+
+    private fun escapeJson(raw: String): String = buildString {
+        raw.forEach { c ->
+            when (c) {
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(c)
+            }
+        }
+    }
+
+    // ── 第五十七批 §1.3：采纳/丢弃留痕的去重键 ────────────────────────────────
+
+    /** 去重键的文本规范化（索引行往返会 trim 尾部标点，两侧用同一把尺才对得上）。 */
+    internal fun normalizeKeyText(s: String): String = s.trim().trimEnd('，', ',')
+
+    /**
+     * 候选去重键 = **名称＋正文摘要的 SHA-256 前 16 位**（派工单 §1.3 原文口径）。
+     *
+     * 纯函数：同内容同 key（跨轮措辞一致才认得出是同一个候选）、不同内容不同 key
+     * （两条不同候选不许被误并）。**纯哈希，零 I/O**——与 58 批 `SkillAudit.shaOf`
+     * 的分工：那边算的是**盘上文件**的摘要（改了什么），这边算的是**卡上候选**的
+     * 摘要（提没提过、丢没丢过）。
+     */
+    fun dedupeKey(name: String, content: String): String {
+        val d = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("$name\n$content".toByteArray(Charsets.UTF_8))
+        return d.joinToString("") { "%02x".format(it.toInt() and 0xff) }.take(16)
+    }
+
+    /** 学习卡候选的去重键（卡上那条的口径：名字＋content 摘要）。 */
+    fun dedupeKeyOf(p: LearnProposal): String = dedupeKey(nameOf(p), p.content)
+
+    /**
+     * 封卷确认卡候选的**名字**（PersonaProposal 只有整段索引文本，名字要从
+     * 「proposed 比 current 多出的那行」里提——采纳/丢弃留痕都要用它）。
+     *
+     * 多于一行/提不出 ⇒ null（留痕就少记一条 hash，**不瞎猜**——猜错会把没丢过的
+     * 候选也拉黑）。
+     */
+    fun proposalNameOf(p: PersonaProposal): String? {
+        val scope = when (p.layer) {
+            PersonaLayer.B_GLOBAL -> MemoryScope.GLOBAL
+            else -> MemoryScope.PROJECT
+        }
+        val before = SkillRules.parseIndexLines(p.current, scope).map { it.name }.toSet()
+        val added = SkillRules.parseIndexLines(p.proposed, scope).filter { it.name !in before }
+        return added.singleOrNull()?.name
+    }
+
+    /** 封卷确认卡候选的去重键（与 [refine] 产候选时的口径同一把尺：名字＋scenario）。 */
+    fun dedupeKeyOfProposal(p: PersonaProposal): String? =
+        proposalNameOf(p)?.let { name ->
+            val scope = when (p.layer) {
+                PersonaLayer.B_GLOBAL -> MemoryScope.GLOBAL
+                else -> MemoryScope.PROJECT
+            }
+            val before = SkillRules.parseIndexLines(p.current, scope).map { it.name }.toSet()
+            val added = SkillRules.parseIndexLines(p.proposed, scope)
+                .filter { it.name !in before }.singleOrNull()
+            dedupeKey(name, normalizeKeyText(added?.scenario.orEmpty()))
+        }
 }

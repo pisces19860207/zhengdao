@@ -31,7 +31,14 @@ class LibraryOrganizePipelineTest {
         val pipeline: GuardPipeline
 
         init {
-            val reg = ToolRegistry().apply { register(LibraryTools.organizeSpec { root }) }
+            val reg = ToolRegistry().apply {
+                register(LibraryTools.organizeSpec { root })
+                // 第五十九批 §1.2：library_organize 属默认不可见的 library 组 ⇒ 不解锁就只剩
+                // 「未解锁」桩，本文件六条判据（promote/rename/index/越界）全会被桩打成同一种
+                // Rejected，越界那两条还会把"原因写清"的判据带偏。这里给一个已解锁的会话当舞台。
+                currentSessionId = 1L
+                unlockStore().unlock(1L, ToolGroup.values().toList())
+            }
             pipeline = GuardPipeline(
                 reg,
                 { root },

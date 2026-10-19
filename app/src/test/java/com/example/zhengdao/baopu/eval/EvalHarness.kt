@@ -8,6 +8,7 @@ import com.example.zhengdao.baopu.agent.InMemoryToolPrefs
 import com.example.zhengdao.baopu.agent.SpillResult
 import com.example.zhengdao.baopu.agent.ToolCall
 import com.example.zhengdao.baopu.agent.ToolCallCodec
+import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolSpec
@@ -60,13 +61,17 @@ internal data class CaseResult(
 
 internal object EvalHarness {
 
+    /** 评测专用的会话号（第五十九批：解锁按会话分格，评测用它自己那一格，不碰任何真会话）。 */
+    private const val EVAL_SESSION_ID = 1L
+
     fun runCase(case: EvalCase, cfg: EvalConfig): CaseResult {
         val dir = kotlin.io.path.createTempDirectory("zd-eval-${case.id}-").toFile()
         return try {
             val before = seed(case, dir)
             val reg = registryOf(dir)
             val pipeline = GuardPipeline(reg, { dir }, { null })
-            val tools = reg.toolsJsonOpenAi()
+            // 传会话号：数组由那条唯一的可见性链算出（registryOf 已把各组在这一格解锁）
+            val tools = reg.toolsJsonOpenAi(EVAL_SESSION_ID)
 
             val messages = JSONArray()
             messages.put(JSONObject().put("role", "system").put("content", BaopuPreset.personaText(dir.absolutePath)))
@@ -252,6 +257,15 @@ internal object EvalHarness {
     private fun registryOf(root: File): ToolRegistry {
         val reg = ToolRegistry(InMemoryToolPrefs())
         BaopuToolCatalog.loadInto(reg) { root }
+        // 第五十九批（渐进披露）：评测集量的是「会不会干活」，不是「要不要先解锁」。
+        // 所以这里给评测一个专用会话号，把每一组都解锁 ⇒ 判据仍是线上同一条
+        // [com.example.zhengdao.baopu.agent.visibleTools]（没有为评测开后门），只是入参取
+        // 「全开」，语义等于 59 批之前的「启用的全部发给模型」。
+        // ⚠️ 必须在下面那个 CONFIRM→FREE 重注册**之前**做：那个循环取的是 `reg.find(name)`，
+        //    未解锁时它拿到的是「该工具组未解锁」的拒绝桩，再包装一次就把真能力换成了假能力
+        //    ——那样评测集体挂的是自己的脚手架，不是模型。
+        reg.currentSessionId = EVAL_SESSION_ID
+        reg.unlockStore().unlock(EVAL_SESSION_ID, ToolGroup.values().toList())
         for (name in reg.names().toList()) {
             val spec = reg.find(name) ?: continue
             if (spec.permission != ToolPermission.CONFIRM) continue

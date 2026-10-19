@@ -1944,6 +1944,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // （getSystemService / Toast），不清同样会把已销毁的 Activity 钉在单例上。
         SessionManager.onCopyText = null
         SessionManager.onPasteRequest = null
+        // P2-6（第五十六批）：onSessionDied 也捕获了本 Activity（onCreate :239 赋值），
+        // 不清 ⇒ SessionManager 单例钉住已销毁的 Activity —— 会话真死的时候往一个
+        // 死页面发回调，轻则空刷，重则泄漏。审计 P2-6 点名的那一条。
+        SessionManager.onSessionDied = null
         // 🔴3（2026-10-12）：粘贴通道是本次新增的后台线程，页面没了就收掉。
         // shutdownNow 会打断正在 `wait()` 的 pty 写 —— 那笔粘贴转为失败回调，前台已无
         // Toast，但 RunLog 之外不该再有人持有本 Activity（回调里 runOnUiThread 已被销毁）。

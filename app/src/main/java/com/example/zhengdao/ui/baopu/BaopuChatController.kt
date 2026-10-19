@@ -231,7 +231,18 @@ internal class BaopuChatController(context: Context) {
         get() = engine.learn.value
 
     /** 用户点了「不记」⇒ 只把卡收起来，**一个字节都不写**。 */
-    fun dismissLearn() = engine.dismissLearn()
+    fun dismissLearn() {
+        // 第五十七批 §1.3：整卡「不记」= 全部候选记成丢弃留痕（下轮提炼不再重复提）。
+        engine.learn.value?.forEach { p ->
+            recordSkillDecision(
+                name = com.example.zhengdao.baopu.SkillRefine.nameOf(p),
+                adopted = false,
+                hash = com.example.zhengdao.baopu.SkillRefine.dedupeKeyOf(p),
+                detail = null,
+            )
+        }
+        engine.dismissLearn()
+    }
 
     /**
      * 采纳一条 ⇒ **唯一落盘路径**：`SkillStore.plan` → `SkillStore.apply`
@@ -243,8 +254,15 @@ internal class BaopuChatController(context: Context) {
         skillNote = "记下来中…"
         scope.launch {
             val out = withContext(Dispatchers.IO) { writeLearnedSkill(p) }
+            // 第五十七批 §1.3：采纳留痕（新草稿的 uses 头从 0 起算——试用期从采纳起算）
+            recordSkillDecision(
+                name = com.example.zhengdao.baopu.SkillRefine.nameOf(p),
+                adopted = true,
+                hash = com.example.zhengdao.baopu.SkillRefine.dedupeKeyOf(p),
+                detail = null,
+            )
             skillNote = out
-            engine.dismissLearn() // 采纳完就收卡，不重复写
+            engine.dismissLearn() // 采纳完就收卡，不重复写（收卡这里不记丢弃——上面记过采纳了）
         }
     }
 
@@ -966,9 +984,19 @@ internal class BaopuChatController(context: Context) {
     /** 记忆候选：不记（文件与索引都删——候选没资格占地方）。 */
     fun forgetMemory(id: String) {
         store.delete(id)
-        db.write { d ->
-            val stmt = com.example.zhengdao.baopu.BaopuSql.deleteMemory(id)
-            d.execSQL(stmt.sql, stmt.args)
+        // P2-2（第五十六批）：写完**等它落库**再刷新。旧实现把 db.write 的 Future 丢掉：
+        // 写失败被静默吞掉，refreshMemory() 照常按"成功"刷新 ⇒ 用户看到候选没了，
+        // 库里那行还在，下次进页面又冒出来。
+        runCatching {
+            db.write { d ->
+                val stmt = com.example.zhengdao.baopu.BaopuSql.deleteMemory(id)
+                d.execSQL(stmt.sql, stmt.args)
+            }.get()
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：忘记记忆失败 ${it.javaClass.simpleName}: ${it.message}",
+            )
+            pendingNote = "这条没删掉（写库失败），稍后再试；错误已记日志"
         }
         refreshMemory()
     }
@@ -1389,7 +1417,15 @@ internal class BaopuChatController(context: Context) {
             userTexts = readUserTextsFor(sid),
             now = System.currentTimeMillis(),
         )
-        val r = com.example.zhengdao.baopu.SkillRefine.refine(facts, globalLines + projectLines)
+        // 第五十七批 §1.3：被丢弃过的候选（名称＋正文摘要 hash）这一轮直接跳过——
+        // 丢弃留痕的另一半：丢过的东西不许下轮再端上来。读失败 ⇒ 空 set（只记录的链
+        // 断了也不拦提炼，与「记录不阻塞」同一口径）。
+        val rejectedKeys = runCatching {
+            readRejectedDecisionHashes()
+        }.getOrDefault(emptySet())
+        val r = com.example.zhengdao.baopu.SkillRefine.refine(
+            facts, globalLines + projectLines, rejectedKeys,
+        )
         if (r.candidates.isEmpty()) {
             if (r.dropped > 0) {
                 skillNote = appCtx.getString(
@@ -1475,11 +1511,65 @@ internal class BaopuChatController(context: Context) {
             return
         }
         pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
+        // 第五十七批 §1.3：采纳留痕（名字/摘要从 proposed 比 current 多出的那一行提）
+        recordSkillDecisionFor(p, adopted = true, detail = null)
     }
 
     /** 技能提案：丢弃（只在内存列表里移除——PENDING 本来就没落盘，没有文件可删）。 */
-    fun discardSkillProposal(p: com.example.zhengdao.baopu.PersonaProposal) {
+    fun discardSkillProposal(
+        p: com.example.zhengdao.baopu.PersonaProposal,
+        reason: String? = null,
+    ) {
         pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
+        // 第五十七批 §1.3：丢弃留痕（理由可空不强制；记了 hash，下轮提炼跳过同一候选）
+        recordSkillDecisionFor(p, adopted = false, detail = reason?.take(120))
+    }
+
+    // ── 第五十七批 §1.3：采纳/丢弃留痕（skill_event 表；只记录、写失败只 log）────
+
+    /**
+     * 记一条 decision（学习卡候选口径：名字＋content 摘要 hash）。
+     * 写失败只 RunLog——留痕是账本不是闸门，账本卡住业务就是本末倒置（红线原话口径）。
+     */
+    private fun recordSkillDecision(name: String, adopted: Boolean, hash: String?, detail: String?) {
+        runCatching {
+            val stmt = com.example.zhengdao.baopu.BaopuSql.insertSkillDecision(
+                "skill", name, adopted, hash, detail, System.currentTimeMillis(),
+            )
+            db.write { d -> d.execSQL(stmt.sql, stmt.args) }
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：skill_decision 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
+    }
+
+    /** 封卷确认卡候选口径：名字/摘要从 proposed 比 current 多出的那一行提（提不出 ⇒ 不记 hash）。 */
+    private fun recordSkillDecisionFor(
+        p: com.example.zhengdao.baopu.PersonaProposal,
+        adopted: Boolean,
+        detail: String?,
+    ) {
+        val name = com.example.zhengdao.baopu.SkillRefine.proposalNameOf(p)
+        if (name == null) {
+            com.example.zhengdao.rootfs.RunLog.log("抱朴：提案留痕提不出名字，只记条目不记 hash")
+            recordSkillDecision("（提不出名字）", adopted, hash = null, detail = detail)
+            return
+        }
+        recordSkillDecision(name, adopted, com.example.zhengdao.baopu.SkillRefine.dedupeKeyOfProposal(p), detail)
+    }
+
+    /** 被**丢弃**过的候选去重键全集（提炼时跳过；读失败由调用方当空 set 处理）。 */
+    private fun readRejectedDecisionHashes(): Set<String> {
+        val stmt = com.example.zhengdao.baopu.BaopuSql.rejectedDecisionHashes()
+        return db.read { d ->
+            d.rawQuery(stmt.sql, stmt.args).use { c ->
+                buildSet {
+                    while (c.moveToNext()) c.getString(0)?.let { add(it) }
+                }
+            }
+        }
     }
 
     /** 清掉技能动作那句话（UI 显示几秒后调）。 */
@@ -1490,39 +1580,70 @@ internal class BaopuChatController(context: Context) {
     /**
      * 重读消息列表 ＋ 中断标记 ＋ 记忆候选（一次 db 读，不逐事件逐表）。
      *
+     * P2-1（第五十六批）：**库读全部在 `Dispatchers.IO` 上做**。旧实现在主线程直读
+     * `readMessages` / `readStepRows` / `interruptedStep`——引擎事件每个都回主线程调一次
+     * refresh，消息多时逐帧掉。状态写回仍留主线程：2026-10-17 真机两次实测过「后台线程
+     * 直写 Compose 状态会时灵时不灵」，那条教训不变，所以只搬读、不搬写。
+     *
+     * 对外语义不变：`force` 仍表示「不看在不在跑，直接重算中断标记」；更新顺序
+     * （消息 → 步骤行 → 自省便签 → 中断标记 → 确认卡 → 压缩细条 → 记忆候选）与原实现一致。
+     *
      * @param force true = 不看"在不在跑"，直接重算中断标记（[EngineEvent.Settled] 专用）
      */
     fun refresh(force: Boolean = false) {
-        val sid = sessionId
-        messages = if (sid == null) emptyList() else readMessages(sid)
-        // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
-        stepRows = if (sid == null) emptyList() else readStepRows(sid)
-        if (introspectionNote == null && sid != null) {
-            introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
+        scope.launch {
+            val sid = sessionId
+            val recomputeInterrupt = force || !runningNow()
+            val snap = if (sid == null) null else withContext(Dispatchers.IO) {
+                RefreshSnapshot(
+                    messages = readMessages(sid),
+                    stepRows = readStepRows(sid),
+                    interruptedStep = if (recomputeInterrupt) BaopuRuntime.interruptedStep(db, sid) else null,
+                    pendingGone = pendingStore.load(sid) == null,
+                    compression = runCatching { SessionCompressionStore(db).latest(sid) }.getOrNull(),
+                )
+            }
+            messages = snap?.messages ?: emptyList()
+            // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
+            stepRows = snap?.stepRows ?: emptyList()
+            if (introspectionNote == null && sid != null) {
+                introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
+            }
+            // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
+            // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
+            //    "正在思考"误读成"被杀了"——所以运行中跳过；
+            // ② 判"在不在跑"**不能看 `engine.state`**：那是后台线程写的 Compose State，
+            //    主线程读到的可能是旧值（本次实测读到过 DONE），于是运行中照样重算并误报。
+            //    改用 `ActiveSessionGate`（AtomicReference，跨线程立即可见）——它在整个
+            //    循环期间被持有，收尾 finally 里才释放，正是"本轮还没结束"的真值。
+            // 收尾那一下引擎会发 `EngineEvent.Settled`，带着 `force = true` 过来，因此
+            // "跑完了红字还不下来"这种情况不可能再出现（不依赖上面那个判据的对错）。
+            if (recomputeInterrupt) interruptedStep = snap?.interruptedStep ?: -1
+            // 确认卡的生命周期跟 DB 的 pending 行走（派工单 §3.3）：活的卡在等 ⇒ 库里
+            // 有行；引擎超时/处理完清行 ⇒ 卡跟着消失（不等用户手动关——T4 的「卡消失」）。
+            if (confirmCard != null && snap?.pendingGone == true) {
+                confirmCard = null
+                confirmRestored = false
+            }
+            // 压缩细条跟着库走：压成功那一刻库里才有行，细条才出现（失败/跳过 ⇒ 不出现，
+            // 不许凭空报「已压缩」）。一条主键查询，跟着 refresh 走最省心，也最不容易漂。
+            val rec = snap?.compression
+            if (sid != null && rec != null) {
+                engine.restoreCompression(rec.summary, rec.compressedIds.toSet())
+                compressionNote = CompressionNote(count = rec.compressedIds.size, summary = rec.summary)
+            }
+            refreshMemory()
         }
-        // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
-        // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
-        //    "正在思考"误读成"被杀了"——所以运行中跳过；
-        // ② 判"在不在跑"**不能看 `engine.state`**：那是后台线程写的 Compose State，
-        //    主线程读到的可能是旧值（本次实测读到过 DONE），于是运行中照样重算并误报。
-        //    改用 `ActiveSessionGate`（AtomicReference，跨线程立即可见）——它在整个
-        //    循环期间被持有，收尾 finally 里才释放，正是"本轮还没结束"的真值。
-        // 收尾那一下引擎会发 `EngineEvent.Settled`，带着 `force = true` 过来，因此
-        // "跑完了红字还不下来"这种情况不可能再出现（不依赖上面那个判据的对错）。
-        if (force || !runningNow()) {
-            interruptedStep = if (sid == null) -1 else BaopuRuntime.interruptedStep(db, sid)
-        }
-        // 确认卡的生命周期跟 DB 的 pending 行走（派工单 §3.3）：活的卡在等 ⇒ 库里
-        // 有行；引擎超时/处理完清行 ⇒ 卡跟着消失（不等用户手动关——T4 的「卡消失」）。
-        if (confirmCard != null && sid != null && pendingStore.load(sid) == null) {
-            confirmCard = null
-            confirmRestored = false
-        }
-        // 压缩细条跟着库走：压成功那一刻库里才有行，细条才出现（失败/跳过 ⇒ 不出现，
-        // 不许凭空报「已压缩」）。一条主键查询，跟着 refresh 走最省心，也最不容易漂。
-        if (sid != null) restoreCompression()
-        refreshMemory()
     }
+
+    /** [refresh] 在 IO 上读到的一批快照（读与写分开：读在 IO，写回主线程）。 */
+    private data class RefreshSnapshot(
+        val messages: List<BaopuUiMessage>,
+        val stepRows: List<BaopuStepRow>,
+        val interruptedStep: Int?,
+        val pendingGone: Boolean,
+        val compression: com.example.zhengdao.baopu.CompressionRecord?,
+    )
 
     /** 本轮是否还在跑（单活跃门的持有即"在跑"）。 */
     private fun runningNow(): Boolean =

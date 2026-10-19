@@ -66,11 +66,15 @@ class BaopuLearnCardGuardTest {
 
     @Test
     fun `控制器_不记只收卡_不落盘`() {
-        // 只看 `fun dismissLearn()` 那一行本体（切片别跨到下一个函数的注释里去）
-        val line = controller.lines().first { it.contains("fun dismissLearn()") }
-        assertTrue("dismissLearn 只能收卡：$line", line.contains("engine.dismissLearn"))
-        assertTrue("dismissLearn 不许碰 SkillStore：$line", !line.contains("SkillStore"))
-        assertTrue("dismissLearn 不许写技能：$line", !line.contains("writeLearnedSkill"))
+        // 第五十七批起 dismissLearn 是多行函数（先把整卡候选记成 skill_event 丢弃留痕，
+        // 再收卡）——判据从「那一行」改成「函数体切片」，钉的意图不变：
+        // 收卡动作本身不落盘（不碰 SkillStore、不调 writeLearnedSkill）；
+        // recordSkillDecision 是被动留痕（写失败只 log），不在禁列。
+        val body = block(controller, "fun dismissLearn()", limit = 14)
+        assertTrue("dismissLearn 最终要收卡：\n$body", body.contains("engine.dismissLearn()"))
+        assertTrue("dismissLearn 不许碰 SkillStore：\n$body", !body.contains("SkillStore"))
+        assertTrue("dismissLearn 不许写技能：\n$body", !body.contains("writeLearnedSkill"))
+        assertTrue("丢弃要走留痕（§1.3：下轮不再重复提）", body.contains("recordSkillDecision"))
     }
 
     @Test
