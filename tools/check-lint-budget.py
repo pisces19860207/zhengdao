@@ -26,6 +26,18 @@ from pathlib import Path
 DEFAULT_REPORT = Path("app/build/reports/lint-results-debug.xml")
 DEFAULT_BASELINE = Path("tools/lint-baseline.json")
 
+# ⚠️ 网络/时间相关的检查不计入预算：本机与 CI 联网状态、库发布时间不同，
+# 同一条代码会数出不同的 NewerVersionAvailable ⇒ 会变成假红。
+# 它们仍然会出现在 artifact 报告里，只是不参与「超预算」判定。
+UNBUDGETED_RULES = frozenset(
+    {
+        "NewerVersionAvailable",
+        "GradleDependency",
+        "AndroidGradlePluginVersion",
+        "RemoteVersionCheck",
+    }
+)
+
 
 def count_issues(report: Path) -> dict:
     if not report.exists():
@@ -35,16 +47,27 @@ def count_issues(report: Path) -> dict:
 
     root = ET.parse(report).getroot()
     total = errors = warnings = infos = 0
+    unbudgeted = 0
     for issue in root.iter("issue"):
-        total += 1
+        rid = issue.get("id") or ""
         sev = (issue.get("severity") or "").lower()
+        if rid in UNBUDGETED_RULES:
+            unbudgeted += 1
+            continue
+        total += 1
         if sev == "error" or sev == "fatal":
             errors += 1
         elif sev == "warning":
             warnings += 1
         else:
             infos += 1
-    return {"total": total, "errors": errors, "warnings": warnings, "infos": infos}
+    return {
+        "total": total,
+        "errors": errors,
+        "warnings": warnings,
+        "infos": infos,
+        "unbudgeted": unbudgeted,
+    }
 
 
 def main() -> int:
@@ -56,7 +79,8 @@ def main() -> int:
 
     now = count_issues(args.report)
     print(
-        "[lint-budget] 本次：total={total} errors={errors} warnings={warnings} infos={infos}".format(**now)
+        "[lint-budget] 本次：total={total} errors={errors} warnings={warnings} infos={infos}"
+        "（另有 {unbudgeted} 条网络/版本类不计预算）".format(**now)
     )
 
     if args.write_baseline:
