@@ -465,11 +465,41 @@ internal object BaopuSql {
     fun listSessions(includeArchived: Boolean): Stmt = Stmt(
         if (includeArchived) {
             "SELECT id, title, model, provider, created_at, updated_at, archived, msg_count, preview " +
-                "FROM session ORDER BY updated_at DESC"
+                "FROM session WHERE deleted_at IS NULL ORDER BY updated_at DESC"
         } else {
             "SELECT id, title, model, provider, created_at, updated_at, archived, msg_count, preview " +
-                "FROM session WHERE archived = 0 ORDER BY updated_at DESC"
+                "FROM session WHERE deleted_at IS NULL AND archived = 0 ORDER BY updated_at DESC"
         },
+        emptyArray(),
+    )
+
+    // ── 会话回收站（第四十七批）────────────────────────────────────────────
+
+    /** v10：session 加 `deleted_at`（可空；NULL＝未删）。列已在⇒空语句（幂等）。 */
+    fun sessionDeletedAtStmt(cols: List<String>): List<Stmt> =
+        if ("deleted_at" in cols) emptyList()
+        else listOf(Stmt("ALTER TABLE session ADD COLUMN deleted_at INTEGER", emptyArray()))
+
+    /** 软删：只动 session 这一行，消息/产物/计划都还在（恢复即回来）。 */
+    fun softDeleteSession(sid: Long, nowMs: Long): Stmt = Stmt(
+        "UPDATE session SET deleted_at = ?, updated_at = ? WHERE id = ?",
+        arrayOf<String?>(nowMs.toString(), nowMs.toString(), sid.toString()),
+    )
+
+    /** 恢复：把 deleted_at 清回 NULL。 */
+    fun restoreSession(sid: Long, nowMs: Long): Stmt = Stmt(
+        "UPDATE session SET deleted_at = NULL, updated_at = ? WHERE id = ?",
+        arrayOf<String?>(nowMs.toString(), sid.toString()),
+    )
+
+    fun listDeletedSessions(): Stmt = Stmt(
+        "SELECT id, title, updated_at, msg_count FROM session " +
+            "WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
+        emptyArray(),
+    )
+
+    fun countDeletedSessions(): Stmt = Stmt(
+        "SELECT COUNT(*) FROM session WHERE deleted_at IS NOT NULL",
         emptyArray(),
     )
 
@@ -912,6 +942,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV7Migration(db)
         applyV8Migration(db)
         applyV9Migration(db)
+        applyV10Migration(db)
     }
 
     /**
@@ -939,6 +970,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 7) applyV7Migration(db)
         if (oldVersion < 8) applyV8Migration(db)
         if (oldVersion < 9) applyV9Migration(db)
+        if (oldVersion < 10) applyV10Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1027,6 +1059,14 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
      * ⇒ 幂等（照 v6 `compression` 房型：加表就是 DDL 一遍，不需要看列况）。
      * 新安装（onCreate 也调它）与 v8 库升级走**同一条**路径。
      */
+    /** v10 迁移体：session 加 deleted_at（看列再动）——会话回收站（第四十七批）。 */
+    private fun applyV10Migration(db: SQLiteDatabase) {
+        val cols = tableColumns(db, "session")
+        BaopuSql.sessionDeletedAtStmt(cols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
     private fun applyV9Migration(db: SQLiteDatabase) {
         BaopuSql.ARTIFACT_DDL.forEach { db.execSQL(it) }
     }
@@ -1057,7 +1097,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。
          *  v7 = 第十九批（session 封卷两列）。v8 = 第二十批（session 工作区列）。
          *  v9 = 第三十八批 §9（`artifact` 产物台账表 ＋ (workspace, rel_path) 唯一索引）。 */
-        const val VERSION = 9
+        const val VERSION = 10
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

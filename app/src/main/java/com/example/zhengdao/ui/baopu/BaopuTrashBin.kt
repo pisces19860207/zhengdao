@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -298,6 +300,63 @@ internal fun TrashDialog(
     // 关掉面板也清掉（下次进来重新问一遍——判据 T3 不许记住上次的许可）。
     var confirmingFile by remember { mutableStateOf<String?>(null) }
     var confirmingEmpty by remember { mutableStateOf(false) }
+    // 第四十七批：会话回收站（软删）——与文件回收站同一个面板，数字分开数。
+    val res = LocalResources.current
+    val db = remember { com.example.zhengdao.baopu.BaopuRuntime.db(ctx) }
+    var confirmingSession by remember { mutableStateOf<Long?>(null) }
+    val deletedSessions = remember(tick) {
+        runCatching {
+            db.read { d ->
+                d.rawQuery(
+                    com.example.zhengdao.baopu.BaopuSql.listDeletedSessions().sql,
+                    emptyArray(),
+                ).use { c ->
+                    val out = ArrayList<Triple<Long, String, Int>>()
+                    while (c.moveToNext()) {
+                        out += Triple(c.getLong(0), c.getString(1), c.getInt(3))
+                    }
+                    out
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun restoreSessionRow(id: Long, title: String) {
+        val ok = runCatching {
+            db.write { d ->
+                val st = com.example.zhengdao.baopu.BaopuSql.restoreSession(id, System.currentTimeMillis())
+                d.execSQL(st.sql, st.args)
+            }.get()
+        }.isSuccess
+        Toast.makeText(
+            ctx,
+            res.getString(if (ok) R.string.trash_session_restored else R.string.trash_session_failed, title),
+            Toast.LENGTH_LONG,
+        ).show()
+        confirmingSession = null
+        tick++
+    }
+
+    fun purgeSessionRow(id: Long, title: String) {
+        if (confirmingSession != id) {
+            confirmingSession = id
+            return
+        }
+        val ok = runCatching {
+            db.write { d ->
+                com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(id).forEach { st ->
+                    d.execSQL(st.sql, st.args)
+                }
+            }.get()
+        }.isSuccess
+        Toast.makeText(
+            ctx,
+            res.getString(if (ok) R.string.trash_session_purged else R.string.trash_session_failed, title),
+            Toast.LENGTH_LONG,
+        ).show()
+        confirmingSession = null
+        tick++
+    }
 
     /** 每一种下场都要**说话**（不许静默）：句子全在 strings，这里只查键。 */
     fun sayCommon(o: TrashOutcome) {
@@ -405,6 +464,45 @@ internal fun TrashDialog(
                                         color = zhengdaoErrorText(),
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.trash_sessions_title, deletedSessions.size),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                if (deletedSessions.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.trash_sessions_none),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
+                    deletedSessions.forEach { (id, title, count) ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Text(
+                                text = stringResource(R.string.trash_session_row, title, count),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(onClick = { restoreSessionRow(id, title) }) {
+                                    Text(stringResource(R.string.trash_session_restore))
+                                }
+                                TextButton(onClick = { purgeSessionRow(id, title) }) {
+                                    Text(stringResource(R.string.trash_session_purge))
+                                }
+                            }
+                            if (confirmingSession == id) {
+                                Text(
+                                    text = stringResource(R.string.trash_session_confirm, title),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = zhengdaoErrorText(),
+                                )
                             }
                         }
                     }
