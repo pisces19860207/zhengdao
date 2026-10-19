@@ -9,8 +9,10 @@ import android.content.Context
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.AskUserTool
+import com.example.zhengdao.baopu.agent.GroupUnlockStore
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.RunEngine
+import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolPrefs
@@ -124,12 +126,16 @@ internal object BaopuRuntime {
      *
      * 开关是热的：注册表持 [BaopuToolPrefs] 单例，设置页改开关后下一轮请求的
      * tools 数组就变（被关的模型看不见；幻觉调用拿到「已被用户关闭」的拒绝）。
+     *
+     * 第五十九批 §1.4 起这里还注入**会话解锁存储** [BaopuToolUnlocks]：
+     * 注册表因此同时握着「表 + 用户开关 + 本会话解锁」三样输入，`capabilities`
+     * 的名册与解锁都在它自己肚子里算，不再需要第二条通道。
      */
     fun registry(context: Context, provider: Provider): ToolRegistry {
         val appCtx = context.applicationContext
         // 浏览器六件的网关（进程内直调玄览；幂等，重复注入只换同一份）
         BaopuBrowserWiring.install(appCtx)
-        val reg = ToolRegistry(toolPrefs(appCtx))
+        val reg = ToolRegistry(toolPrefs(appCtx), toolUnlocks(appCtx))
         BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
         // 2026-10-18：抱朴自己写技能（确认制；写前备份、同名即改、写完进索引）
         reg.register(
@@ -167,7 +173,7 @@ internal object BaopuRuntime {
                         permission = ToolPermission.FREE,
                     ) { _ ->
                         ToolOutcome.Rejected(
-                            "read_file 已被用户关闭（在 设置 → 终端与资料 → 抱朴工具 里打开）。" +
+                            "read_file 已被用户关闭（在 抱朴 → 抽屉「抱朴设置」→ 抱朴工具 里打开）。" +
                                 "本 App 不提供别的读取通道，也不会替你打开它。",
                         )
                     }
@@ -193,10 +199,18 @@ internal object BaopuRuntime {
      *
      * 放在 [BaopuRuntime]（装配层）而不是 agent 包：注册表要零 Android 依赖
      * （JVM 直测），Context 只能出现在这一层。
+     *
+     * 第五十九批 §1.6 起这里多一档**组开关**（key `disabled_groups`）：它与单工具开关
+     * 存在同一份 SP 文件里、走同一套读法，但**语义不是"另一种禁用"**——
+     * 组关掉后 `capabilities` 也解不开（判据只在 [com.example.zhengdao.baopu.agent.isVisibleTool]
+     * 那一处），而单工具关掉只影响那一个工具。两档并存是派工单硬要求的，不许合并成一档。
      */
     internal object BaopuToolPrefs : ToolPrefs {
         private const val FILE = "baopu_tools"
         private const val KEY_DISABLED = "disabled"
+
+        /** 组开关那份集合（存的是组的 `key`，不是枚举 ordinal——枚举顺序将来会变）。 */
+        private const val KEY_DISABLED_GROUPS = "disabled_groups"
 
         @Volatile
         private var appCtx: Context? = null
@@ -222,6 +236,77 @@ internal object BaopuRuntime {
 
         override fun disabledNames(): Set<String> =
             sp()?.getStringSet(KEY_DISABLED, mutableSetOf()) ?: emptySet()
+
+        override fun disabledGroups(): Set<ToolGroup> =
+            sp()?.getStringSet(KEY_DISABLED_GROUPS, emptySet())
+                ?.mapNotNull { ToolGroup.fromKey(it) }?.toSet()
+                ?: emptySet()
+
+        override fun setGroupDisabled(group: ToolGroup, disabled: Boolean) {
+            val p = sp() ?: return
+            val cur = p.getStringSet(KEY_DISABLED_GROUPS, emptySet())?.toMutableSet() ?: mutableSetOf()
+            if (disabled) cur.add(group.key) else cur.remove(group.key)
+            p.edit().putStringSet(KEY_DISABLED_GROUPS, cur).apply()
+        }
+    }
+
+    /**
+     * 会话解锁存储（第五十九批 §1.4：`capabilities` 解开的组**按会话**留着）。
+     *
+     * 落点选 SharedPreferences（不是 `session` 表、也不是新开一张小表），三条理由，
+     * 交付报告里逐字记：
+     * 1. **派工单给的二选一里有"单独小表"**，但那要动 `BaopuDb.kt` 的迁移（v9→v10）——
+     *    本批红线写着「不碰工具实现、不碰 GuardPipeline 权限语义」，而 56 批
+     *    （`fix/p2-concurrency-six`）**正在改这台 DB 的并发语义**：同处落笔 = 把两条在飞
+     *    分支的冲突提前引爆，代价远大于这里的"存储选型不够正统"；
+     * 2. 与 [BaopuToolPrefs] 同房：解锁状态与开关状态是同一件事的两半（谁能看见什么），
+     *    分两处存就要两处冷启动、两处迁移、两处测试假件；
+     * 3. 生命周期天然匹配：解锁是"进程内偏好级"的短命状态，SP 的语义正是这个
+     *    （新会话回到默认 = 一个新 sessionId 天然查不到旧 key，不需要任何清理逻辑）。
+     *
+     * 🛑 一格一档（§4 打回第三条）：key 是 `session:<id>`，**没有**全局那一格。
+     * 会话删除后残留的那几个 key 是无害垃圾（sessionId 单调增、不回绕 ⇒ 不会被新会话捡走），
+     * 清理入口 [clear] 已备好，但"删会话"那一处不在本批红线内 ⇒ 如实写在报告里。
+     */
+    internal object BaopuToolUnlocks : GroupUnlockStore {
+        private const val FILE = "baopu_tool_unlocks"
+
+        @Volatile
+        private var appCtx: Context? = null
+
+        fun init(context: Context) {
+            appCtx = context.applicationContext
+        }
+
+        private fun sp(): android.content.SharedPreferences? =
+            appCtx?.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+
+        private fun key(sessionId: Long) = "session:$sessionId"
+
+        override fun unlocked(sessionId: Long): Set<ToolGroup> =
+            sp()?.getStringSet(key(sessionId), emptySet())
+                ?.mapNotNull { ToolGroup.fromKey(it) }?.toSet()
+                ?: emptySet()
+
+        override fun unlock(sessionId: Long, groups: Collection<ToolGroup>) {
+            val p = sp() ?: return
+            if (groups.isEmpty()) return
+            // 读-改-写不做成原子：同一会话的解锁只由那一轮的工具调用串行发起
+            // （RunEngine 单写者线程），并发写在这里等于"两个会话互写各自的 key"——不互相覆盖。
+            val cur = p.getStringSet(key(sessionId), emptySet())?.toMutableSet() ?: mutableSetOf()
+            cur += groups.map { it.key }
+            p.edit().putStringSet(key(sessionId), cur).apply()
+        }
+
+        override fun clear(sessionId: Long) {
+            sp()?.edit()?.remove(key(sessionId))?.apply()
+        }
+    }
+
+    /** 设置页/引擎用：拿会话解锁存储（顺带保证已 init）。 */
+    fun toolUnlocks(context: Context): GroupUnlockStore {
+        BaopuToolUnlocks.init(context)
+        return BaopuToolUnlocks
     }
 
     /** 设置页用：拿开关存储（顺带保证已 init）。 */

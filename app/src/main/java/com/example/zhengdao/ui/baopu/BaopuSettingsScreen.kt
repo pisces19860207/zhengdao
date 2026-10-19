@@ -56,7 +56,8 @@ import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
-import com.example.zhengdao.baopu.agent.BaopuToolCatalog
+import com.example.zhengdao.baopu.agent.ToolGroup
+import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.FilterChip2
@@ -97,37 +98,79 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
-                // 注册表持 ToolPrefs 单例（开关是热的：改完下一轮请求的 tools 数组就变）。
-                // isEnabled/setDisabled 都现读 SP ⇒ 这里不必 remember(toolTick)，
-                // tick 只负责在切完那一击触发重组（进程级单例的状态 Compose 本来就看不见）。
-                val toolRegistry = remember {
-                    BaopuRuntime.registry(
-                        ctx,
-                        BaopuRuntime.provider(ctx),
-                    )
-                }
-                // 2026-10-19 用户拍板「落 A」：21 个开关平铺太长 ⇒ 按用途分组（纯界面，不动任何数据）
-                BaopuToolGroups.GROUPS.forEachIndexed { gi, group ->
+                // 开关存储（热读热写：改完下一轮请求的 tools 数组就变）。
+                // 第五十九批 §1.1/§1.6 两处改动：
+                // 1. **这里不再造注册表**。以前写的是 `BaopuRuntime.registry(ctx, provider)`，
+                //    而注册表装配时会把全局 `CapabilitiesTool.sink` 指到自己身上——设置页
+                //    这一张是"只为读开关"的临时注册表，`currentSessionId` 还是 NO_SESSION，
+                //    于是用户开过一次设置页之后，模型 `capabilities(enable=…)` 就把解锁写进
+                //    -1 那一格（§4 打回第三条"跨会话串状态"的另一种犯法）。开关的语义
+                //    `isEnabled(n) == !prefs.isDisabled(n)` 完全等价 ⇒ 直接读 prefs，
+                //    一张表、一个存储，注册表留给引擎自己装配。
+                // 2. **分组标题与成员都从那张唯一的分组表读**（[ToolGroupTable]），
+                //    原来这里的 `BaopuToolGroups.GROUPS` 是第二张组表（纯展示也算第二张，
+                //    §1.1 不认），已删。
+                // 状态仍在 SP 里（进程级），Compose 看不见 ⇒ tick 只负责切完那一击触发重组。
+                val prefs = remember { BaopuRuntime.toolPrefs(ctx) }
+                // ── 渐进披露的一句解释（§1.6）──
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.baopu_tools_progressive_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                // COMPAT（read / bash）不在这里列：它由通道决定、没有开关，
+                // 卡片尾部那两行只读说明（第十八批 §2.1-4）仍是它们的唯一展示位。
+                ToolGroup.values().filter { it != ToolGroup.COMPAT }.forEachIndexed { gi, group ->
                     if (gi > 0) Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = stringResource(group.titleRes),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    group.names.forEach { name ->
-                        val entry = BaopuToolCatalog.ENTRIES.firstOrNull { it.name == name } ?: return@forEach
-                        val on = toolTick.let { toolRegistry.isEnabled(entry.name) }
+                    val groupOn = group !in prefs.disabledGroups()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(baopuGroupTitle(group)),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (group in ToolGroup.DEFAULT_VISIBLE) {
+                                        R.string.baopu_tools_group_default_on
+                                    } else {
+                                        R.string.baopu_tools_group_default_off
+                                    },
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        // 组开关（§1.6「与单工具开关并存」）：关掉 ⇒ 组内一律不可见，
+                        // 且 capabilities 也解不开（判据只有 isVisibleTool 那一处）。
+                        Switch(
+                            checked = groupOn,
+                            onCheckedChange = { want ->
+                                prefs.setGroupDisabled(group, !want)
+                                toolTick++
+                            },
+                            colors = iosSwitchColors(),
+                        )
+                    }
+                    ToolGroupTable.namesOf(group).forEach { name ->
+                        val on = toolTick.let { !prefs.isDisabled(name) }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    text = stringResource(baopuToolLabel(entry.name)),
+                                    text = stringResource(baopuToolLabel(name)),
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                                 Text(
-                                    text = stringResource(baopuToolDesc(entry.name)),
+                                    text = stringResource(baopuToolDesc(name)),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -135,7 +178,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             Switch(
                                 checked = on,
                                 onCheckedChange = { want ->
-                                    toolRegistry.setDisabled(entry.name, !want)
+                                    prefs.setDisabled(name, !want)
                                     toolTick++
                                 },
                                 colors = iosSwitchColors(),
@@ -820,59 +863,42 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
 }
 
 /**
+ * 设置页分组标题（第五十九批 §1.1）。
+ *
+ * 只有「组 → 标题字符串」这一小段映射留在 UI 层，**成员表不在这**——
+ * 组里有哪些工具由 [ToolGroupTable.namesOf] 出（那张唯一的分组表）。
+ * 原来这里是一份 `BaopuToolGroups.GROUPS`（组名＋成员各写一遍），它就是派工单
+ * 禁止的第二张组表：改了工具忘了改它，界面会显示一个不存在的分组。
+ *
+ * 新增组时会直接抛 IllegalArgumentException（fail-fast），与 baopuToolLabel 同一口径。
+ */
+private fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
+    ToolGroup.CORE -> R.string.baopu_tools_group_core
+    ToolGroup.EDIT -> R.string.baopu_tools_group_edit
+    ToolGroup.BROWSER -> R.string.baopu_tools_group_browser
+    ToolGroup.FILES -> R.string.baopu_tools_group_files
+    ToolGroup.LIBRARY -> R.string.baopu_tools_group_library
+    ToolGroup.CARD -> R.string.baopu_tools_group_card
+    ToolGroup.SKILL -> R.string.baopu_tools_group_skill
+    ToolGroup.PREVIEW -> R.string.baopu_tools_group_preview
+    // COMPAT 由通道决定、没有开关，卡片尾部以只读文字展示（第十八批 §2.1-4）⇒ 不进分组列表
+    ToolGroup.COMPAT -> throw IllegalArgumentException("COMPAT 组没有开关，不该走到分组标题")
+}
+
+/**
  * 抱朴工具的开关标签（自 SettingsDataActivity 原样搬入——本页是这些卡唯一的家）。
  *
  * 为什么用 when 而不是从 catalog 里带名字：agent 包零 Android 依赖，R 引用
  * 不能进那里；标签是纯展示层的事，走 strings.xml 双语。
- * catalog 加新工具时这里同步加一行——漏了会直接抛 IllegalArgumentException（fail-fast）。
+ * catalog 加新工具时这里同步加一行——漏了会直接抛 IllegalArgumentException（fail-fast），
+ * 回归网见 BaopuSettingsGuardTest J8。
  */
-/**
- * 工具开关的分组（2026-10-19「落 A」）。
- *
- * 三条口径：
- * 1. **纯展示**：分组不影响启用逻辑（`DEFAULT_ENABLED` 与开关仍是唯一真相）；
- * 2. 每个 `ENTRIES` 里的工具**必须**落进某一组——漏了就跑不出来（`ImageOpsTest` 有一条门禁盯着）；
- * 3. 「看图」不是工具，是模型能力（`Provider.vision`），所以这里没有「看图类」。
- */
-internal object BaopuToolGroups {
-    internal data class Group(val titleRes: Int, val names: List<String>)
-
-    val GROUPS: List<Group> = listOf(
-        Group(
-            R.string.baopu_tools_group_read,
-            listOf("read_file", "list_dir", "search_in_files", "find_files", "book_outline", "file_info"),
-        ),
-        Group(
-            R.string.baopu_tools_group_write,
-            listOf("write_file", "edit_file", "move_path", "delete_path", "convert_encoding"),
-        ),
-        Group(
-            R.string.baopu_tools_group_image,
-            listOf("image_ops"),
-        ),
-        Group(
-            R.string.baopu_tools_group_browser,
-            listOf("browser_open", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_screenshot"),
-        ),
-        Group(
-            R.string.baopu_tools_group_library,
-            listOf("library_list", "library_organize"),
-        ),
-        Group(
-            R.string.baopu_tools_group_plan,
-            listOf("update_plan", "write_skill", "ask_user"),
-        ),
-        // 格式层（第三十九批 B）：体检只读、导出写 PNG 但绝不覆盖
-        Group(
-            R.string.baopu_tools_group_card,
-            listOf("card_inspect", "card_export", "card_build"),
-        ),
-    )
-}
 private fun baopuToolLabel(name: String): Int = when (name) {
     "card_inspect" -> R.string.baopu_tool_card_inspect
     "card_export" -> R.string.baopu_tool_card_export
     "card_build" -> R.string.baopu_tool_card_build
+    "capabilities" -> R.string.baopu_tool_capabilities
+    "preview_local_file" -> R.string.baopu_tool_preview_local_file
     "read_file" -> R.string.baopu_tool_read_file
     "list_dir" -> R.string.baopu_tool_list_dir
     "search_in_files" -> R.string.baopu_tool_search_in_files
@@ -920,6 +946,8 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "card_inspect" -> R.string.baopu_tool_card_inspect_desc
     "card_export" -> R.string.baopu_tool_card_export_desc
     "card_build" -> R.string.baopu_tool_card_build_desc
+    "capabilities" -> R.string.baopu_tool_capabilities_desc
+    "preview_local_file" -> R.string.baopu_tool_preview_local_file_desc
     "read_file" -> R.string.baopu_tool_read_file_desc
     "list_dir" -> R.string.baopu_tool_list_dir_desc
     "search_in_files" -> R.string.baopu_tool_search_in_files_desc

@@ -12,7 +12,9 @@ import com.example.zhengdao.R
 import com.example.zhengdao.browser.BrowserMemoryProbe
 import com.example.zhengdao.browser.BrowserTabPolicy
 import com.example.zhengdao.browser.EngineSecurityConfig
+import com.example.zhengdao.browser.LocalPreviewPolicy
 import com.example.zhengdao.browser.NavigationDelegate
+import com.example.zhengdao.browser.PreviewMode
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.rootfs.RunLog
 
@@ -37,6 +39,13 @@ import com.example.zhengdao.rootfs.RunLog
  *
  * **每标签真正做到的隔离**：独立 WebView 实例（独立历史栈 / 页面状态 / JS 上下文 /
  * 渲染进程优先级）＋ 后台 onPause + RENDERER_PRIORITY_WAIVED（§4.2 两条）。
+ *
+ * 第五十九批 §5 在本类加**本地预览页签**那一支（[openPreviewTab] / [setPreviewMode] /
+ * [setPreviewJsSandbox]）：同一个 `tabs` 列表、同一套生命周期与回收出口，差别只在
+ * 「建的时候装的是断网+禁 JS 那一档配置、内容是注入进来的、地址是假的」。
+ * 刻意**不另开一个 PreviewTabManager**：另开就要在 [BrowserHolder.isIdle]、`pauseAll`、
+ * 上限 20、回收出口各处都补一句"那边也有一份"——那些语义每一条都是踩过坑钉下来的，
+ * 复制一份就是给将来留两份真相。
  */
 object BrowserTabManager {
 
@@ -206,6 +215,97 @@ object BrowserTabManager {
         }
     }
 
+    // ── 本地预览页签（第五十九批 §5） ──────────────────────────────────────
+    //
+    // 三条硬语义，逐条对着派工单 §5.2 的验收判据：
+    // - **与上网页签互不干涉**：预览页签是**独立的 WebView 实例**、独立的一套
+    //   [EngineSecurityConfig]（[LocalPreviewPolicy.configFor]），`newTab` 那条零参构造
+    //   `EngineSecurityConfig()` 一个字没改 ⇒ 正常标签的 JS/网络配置零改动（§5 验收第一条）；
+    // - **只显示**：内容经 [WebViewEngine.loadLocalDocument] 注入（不走 file://，红线见该类 KDoc），
+    //   断网与禁 JS 由配置 + [LocalPreviewPolicy] 在引擎层硬拦，不靠"用户别点链接"；
+    // - **不留旧缓存**：[openPreviewTab] 每次都按**调用方刚读出来的**文本重注入
+    //   （文本由 [com.example.zhengdao.baopu.agent.PreviewTool] 每次现读盘，见其 preview()）；
+    //   同一文件再预览**复用那个页签**（不叠一层页签堆），换个文件就开新页签。
+
+    /**
+     * 开或复用一个本地预览页签。
+     *
+     * @param relPath 相对工作区根的文件路径（`/` 分隔）——**权限判定不在这里**：
+     *   越界由工具层 [com.example.zhengdao.baopu.agent.PreviewTool] 用现成的
+     *   [com.example.zhengdao.baopu.BaopuGuardCore] 拒掉，能走到这里的内容已经在工作区内。
+     *   本管理器不再判一次路径，是为了避免"同一件事两处各有一套判据"（§4 打回第二条的形状）。
+     * @return 页签 id；null = 标签数已达上限（调用方如实给提示，不静默丢）。
+     */
+    fun openPreviewTab(context: Context, relPath: String, text: String): Int? {
+        val same = tabs.firstOrNull { it.state.previewPath == relPath }
+        if (same != null) {
+            same.state.openPreview(relPath, text)
+            same.engine.loadLocalDocument(same.state.previewDocument())
+            selectTab(same.id)
+            return same.id
+        }
+        if (!BrowserTabPolicy.canOpenMore(tabs.size)) return null
+        val app = context.applicationContext
+        val id = nextId++
+        BrowserMemoryProbe.log("before-webview#preview$id")
+        // 构造耗时观测（§B 61）与 newTab 同规：WebView 构造是本仓唯一已知会间歇卡死的点。
+        RunLog.log("玄览 预览#$id：主线程开始构造 WebView（thread=${Thread.currentThread().name}）")
+        val ctorBeginNanos = System.nanoTime()
+        val wv = WebView(app)
+        // MATCH_PARENT 的 LayoutParams：与 newTab 同一味药（100vh=0 那个自锁，2026-10-18 判决）。
+        // 两处各自写死而不抽公共函数，是因为 BrowserRecycleGateTest 钉"WebView 实例必须在
+        // newTab 里创建"——把构造搬进 helper 会让那条门禁字面失效。改这里时记得同时改那里。
+        wv.layoutParams = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        val ctorMs = (System.nanoTime() - ctorBeginNanos) / 1_000_000
+        RunLog.log("玄览 预览#$id：WebView 构造返回（${ctorMs}ms${if (ctorMs > 2000) "，异常缓慢" else ""}）")
+        BrowserMemoryProbe.log("after-webview#preview$id")
+        val eng = WebViewEngine(wv)
+        val tab = Tab(id, wv, eng)
+        // 顺序是硬要求：**先装档再注入**。JS 开关在 loadDataWithBaseURL 之后才设，
+        // 页面里的 `<script>` 就已经跑过了（§5.2「默认禁 JS」会变成一句空话）。
+        eng.applySecurityConfig(LocalPreviewPolicy.configFor(jsSandbox = false))
+        eng.setNavigationDelegate(delegateFor(tab, app))
+        tabs.add(tab)
+        selectTab(id)
+        tab.state.openPreview(relPath, text)
+        eng.loadLocalDocument(tab.state.previewDocument())
+        return id
+    }
+
+    /**
+     * 换显示模式（§5.3「源码查看／渲染预览切换」）。
+     * 非预览页签调到这里 = 什么都不做（判据在 [BrowserTabState.isPreview]，不新增状态源）。
+     */
+    fun setPreviewMode(tabId: Int, mode: PreviewMode) {
+        val tab = tabs.firstOrNull { it.id == tabId } ?: return
+        if (!tab.state.isPreview() || tab.state.previewMode == mode) return
+        tab.state.previewMode = mode
+        tab.engine.loadLocalDocument(tab.state.previewDocument())
+    }
+
+    /**
+     * 开/关本页签的脚本沙箱（§5.3 的可选开关，默认关）。
+     *
+     * 改的是**本页签**的配置：[LocalPreviewPolicy.configFor] 里 `blockAllNetwork` 恒为 true
+     * ⇒「脚本会跑、出不了网」是这一档的全部含义，别读成"开了沙箱就能联网"。
+     * 重注入而不是"就地生效"：已经跑起来的脚本关不掉（WebView 没有这个能力），
+     * 所以关掉时重新注入一份干净的——这比留着脚本再骗用户"已经关了"诚实。
+     */
+    fun setPreviewJsSandbox(tabId: Int, enabled: Boolean) {
+        val tab = tabs.firstOrNull { it.id == tabId } ?: return
+        if (!tab.state.isPreview() || tab.state.previewJsSandbox == enabled) return
+        tab.state.previewJsSandbox = enabled
+        tab.engine.applySecurityConfig(LocalPreviewPolicy.configFor(enabled))
+        tab.engine.loadLocalDocument(tab.state.previewDocument())
+    }
+
+    /** 预览页签此刻是否允许脚本（UI 那一侧的开关初值；非预览页签回 false）。 */
+    fun previewJsSandboxOf(tabId: Int): Boolean =
+        tabs.firstOrNull { it.id == tabId }?.state?.previewJsSandbox == true
+
     /**
      * 回收用（第⑱刀 · D-4）：把**全部**标签从管理器摘下并返回它们的 WebView，交给
      * [BrowserHolder.releaseIfIdle] 统一销毁。
@@ -253,9 +353,21 @@ object BrowserTabManager {
     /**
      * 每标签导航委托：把页面事件写进**该标签**的状态（后台标签照常演进）。
      * scheme 拦截与消息文案与原单标签版逐字一致（[BrowserHolder] 时代的 BrowserScreen 逻辑）。
+     *
+     * 第五十九批 §5：预览页签走同一份委托、多三个分支（下面 `isPreview()` 那三处），
+     * 上网页签那几行**一字未动**。为什么不让预览页签用另一份委托：委托管的是
+     * 「页面事件 → 本标签状态」的落点，两档页签在这一点上是同一件事；
+     * 另开一份就会有两处记 url/title 的地方，将来改一处漏一处。
      */
     private fun delegateFor(tab: Tab, app: Context): NavigationDelegate = object : NavigationDelegate {
         override fun shouldOverrideUrlLoading(url: String): Boolean {
+            if (tab.state.isPreview()) {
+                // 预览页签不跳转（§5.2「只显示」）。引擎层的 allowsNavigation 已经把 http/https
+                // 拒在投递之前，这里到得了的多半是同一文档内的事件或非网络 scheme——
+                // 一律拦下并**给一句人话**（点了链接没反应是最容易被当成 bug 的静默）。
+                tab.state.onBlocked(app.getString(R.string.browser_preview_no_nav))
+                return true
+            }
             val scheme = runCatching { android.net.Uri.parse(url).scheme?.lowercase() }.getOrNull()
             if (scheme !in setOf("http", "https")) {
                 tab.state.onBlocked(app.getString(R.string.browser_blocked_scheme))
@@ -265,6 +377,10 @@ object BrowserTabManager {
         }
 
         override fun onPageStarted(url: String) {
+            // 委托**只转发**：预览页签要把显示地址换回那条假地址（`local-preview://…`），
+            // 这件事归 [BrowserTabState] 自己判（它才知道自己是预览页签）。
+            // 不在这里写 if —— `BrowserTabStateTest` 那条源码门禁钉的就是"逐字写进本标签 state"，
+            // 委托里加条件等于把门禁的针脚从语义上拆开了（第五十九批合流时踩到，改回原样）。
             tab.state.onPageStarted(url)
         }
 
@@ -273,7 +389,9 @@ object BrowserTabManager {
         }
 
         override fun onReceivedTitle(title: String) {
-            tab.state.onReceivedTitle(title)
+            // 预览页签的标题 = 文件名（openPreview 里写的），不让页面自带的 <title> 顶掉：
+            // 用户在一排页签里要认的是"这是哪个文件"，不是"这页 HTML 自己说它叫什么"。
+            if (!tab.state.isPreview()) tab.state.onReceivedTitle(title)
         }
 
         override fun onSslError(url: String) {
