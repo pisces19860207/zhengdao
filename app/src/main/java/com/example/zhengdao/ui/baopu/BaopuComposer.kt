@@ -314,8 +314,25 @@ private val ATTACH_CHIP_RADIUS_DP = 8.dp
  * 28dp —— **明知低于 M3 的 48dp 触摸目标**：56dp 的方块上再套 48dp 的移除区，
  * × 会盖掉半张图。派工单要的是「右上角小 × 移除」，所以按"看得清"取舍，
  * 并把这条列进报告的真机手感项（蓝总管摸完再决定要不要把 chip 放大）。
+ *
+ * UI 第二批（2026-10-19 §1）复核结论：**这一处按派工单停下来报告，不改。**
+ * 两条理由都在 [thumbTapBandDp] 的算术里：
+ * 1. 框架本来会把小目标的触摸判定扩到 48dp（`ViewConfiguration.minimumTouchTargetSize`），
+ *    但 Compose 的优先级条款是「别人的**直接命中**赢过我的最小触摸扩展命中」——
+ *    chip 那层 `combinedClickable`（点缩略图看路径）就是直接命中 ⇒ × 扩不出去；
+ * 2. 真把 48dp 做进布局，缩略图只剩 [thumbTapBandDp] ＝ 8dp 宽的 L 形边，
+ *    「点开看路径」等于废掉。要么放大方块（视觉变）、要么把 × 挪出方块（版式变），
+ *    两条都超出本单「视觉尺寸一个字不换」的纪律 ⇒ 交蓝总管定。
  */
 private val ATTACH_REMOVE_DP = 28.dp
+
+/**
+ * 缩略图还剩多少能点的边：方块边长 − 移除盒边长。
+ *
+ * 剩下的是一条 8dp 宽的 L 形（左边一条＋底边一条），不是 48dp 的方块 ⇒ 判定"放不下"。
+ * 门禁 H3 钉这条算术：谁想把 × 直接套 48dp，先让这条算术说明白缩略图还剩什么。
+ */
+internal fun thumbTapBandDp(chipDp: Int, hitDp: Int): Int = chipDp - hitDp
 
 /**
  * 56dp chip 的采样目标像素：56 × 3.5（真机 HONOR PGT-AN10 实测 density 3.5）= 196。
