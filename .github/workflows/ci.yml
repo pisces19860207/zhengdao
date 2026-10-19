@@ -6,6 +6,7 @@
 #                   RootFS 只在 rootfs/ 有改动时才重建 —— 见 ERRATA E-029/E-030）
 #   - ci.yml      = 质量验证（编译 + 全量单测 + Rust 单测 + R8 冒烟 + lint 报告，轻；
 #                   main 上约 3.5 分钟；R8 冒烟在 main 上交给 build.yml，只在 PR/手动时跑）
+#                   ＋ supply-chain job（第四十三批：SBOM/OSV/许可报告，report-only 不拦 CI）
 #
 # 触发：推送到 main、PR 到 main、手动。
 # 失败语义：单测失败 / 编译失败 / R8 构建失败 → job 红（这就是抓回归的价值）。
@@ -260,3 +261,100 @@ jobs:
           path: app/build/reports/lint-results-debug.html
           retention-days: 14
           if-no-files-found: ignore
+
+  # 第四十三批（供应链可见）：SBOM ＋ 离线 OSV 漏洞扫描 ＋ 许可/版本报告。
+  # 三条纪律（派工单红线）：
+  #   ① 全部 report-only —— 本 job 每一步都 continue-on-error，**永远不拦 CI**；
+  #   ② 不动业务代码/构建脚本/AGP/Kotlin —— SBOM 闭包由 tools/sbom-init.gradle.kts
+  #      （-I 注入的 init script）解析，Gradle 侧零改动；
+  #   ③ 离线优先 —— 漏洞库是入库快照 tools/osv/osv-scanner/Maven/all.zip
+  #      （数据截止日见报告首行），scanner 二进制固定版本＋sha256 校验。
+  # 独立 job：verify 红/绿都不影响本 job 跑，产物永远归档。
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 授权 gradlew（CI 上无 local.properties，SDK 走 runner 预装）
+        run: chmod +x gradlew
+
+      - name: 缓存 Gradle（SBOM 的 release 闭包解析用；key 与 verify 一致）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-ci-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-ci-${{ runner.os }}-
+
+      - name: 缓存 osv-scanner 二进制（固定版本，manifest 哈希做 key）
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/zhengdao-tools
+          key: osv-scanner-${{ runner.os }}-${{ hashFiles('tools/osv-scanner.json') }}
+
+      # 任务 A：CycloneDX 1.5 SBOM。主清单 = :app releaseRuntimeClasspath 全量闭包
+      # （含传递依赖）；debug/test/androidTest/benchmark/macrobenchmark 分区单列。
+      # 文件名带 commit 短号与日期（派工单 §1 要求）。
+      - name: 生成 SBOM（report-only）
+        continue-on-error: true
+        run: python3 tools/sbom.py --commit "${GITHUB_SHA::7}"
+
+      # 任务 A 验收件：构建文件声明的直接依赖必须全部在 SBOM 对应分节里
+      # （catalog 访问器/字面坐标/BOM 托管版本都解析）。
+      - name: 直连依赖断言（验收下限）
+        continue-on-error: true
+        run: python3 tools/check-sbom-direct-deps.py
+
+      # 任务 B：离线 OSV 扫描（入库快照；报告首行数据截止日）。
+      - name: 离线 OSV 漏洞扫描（report-only）
+        continue-on-error: true
+        run: python3 tools/osv-scan.py
+
+      # 任务 B 验收件：合成夹具（log4j-core:2.14.1 高危 / commons-compress:1.25.0
+      # 中危 / xz:1.9 干净）必被扫出；同一输入连跑两次 diff 为空。
+      - name: OSV 夹具自检
+        continue-on-error: true
+        run: python3 tools/osv-scan.py --selftest
+
+      # 任务 C：许可证分布（SPDX，对齐 licenses/ 口径）＋ 未知/冲突清单 ＋
+      # 落后主版本 ≥1 的新鲜度（只报告不升级）。
+      - name: 许可与版本新鲜度报告（report-only）
+        continue-on-error: true
+        run: python3 tools/license-report.py
+
+      - name: 归档 SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: build/sbom/sbom-*.cdx.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: 归档漏洞报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-report
+          path: build/supply-chain/vuln-report-*.{md,json}
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: 归档许可/版本报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: build/supply-chain/license-release-report-*.{md,json}
+          retention-days: 14
+          if-no-files-found: warn
