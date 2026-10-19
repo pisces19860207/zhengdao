@@ -1,0 +1,14 @@
+{
+  "name": "OSV Maven 全量快照（tools/osv/ 离线漏洞库）",
+  "url": "https://osv-vulnerabilities.storage.googleapis.com/Maven/all.zip",
+  "path": "tools/osv/osv-scalibr/Maven/all.zip",
+  "last_modified": "2026-10-16T20:03:11Z",
+  "sha256": "52ec189d363e84d6f4614c7d8c6ff1acea0140ef1d7e6c8461157dcd18353697",
+  "size_bytes": 10410399,
+  "record_count": 7192,
+  "ecosystem": "Maven",
+  "format": "zip（内部为平铺的 <OSV-ID>.json，如 GHSA-xxxx-yyyy-zzzz.json）",
+  "cutoff_date": "2026-10-16",
+  "note": "数据截止日取快照自身的 Last-Modified（不是运行当天）——离线库不新，报告首行必须让读者知道库有多旧。目录结构 {tools/osv}/osv-scalibr/Maven/all.zip 是 osv-scanner 2.7.0（osv-scalibr 本地库）的约定布局（实测源码 zip.go/StoredAt 与 matcher.go/setupLocalDBDirectory：dbBasePath = localDBPath + \"/osv-scalibr\"；官方文档里写的 osv-scanner/ 与本版本实现不符）。刷新：python3 tools/osv-scan.py --update-db。",
+  "fetched_at": "2026-10-19T15:14:00+08:00"
+}

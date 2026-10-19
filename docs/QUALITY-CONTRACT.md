@@ -25,6 +25,9 @@
 | Lint 明细 | `./gradlew :app:lintDebug` | `app/build/reports/lint-results-debug.html`（CI artifact `lint-report`） |
 | Detekt（两条复杂度规则） | 见 `config/detekt/README.md`（需 JDK 21） | `app/build/reports/detekt/detekt.html` |
 | 真机冒烟 | `powershell -ExecutionPolicy Bypass -File scripts/smoke/device-smoke.ps1` | 5 项 PASS/FAIL ＋ 截图 |
+| SBOM（CycloneDX 1.5，第四十三批） | `python3 tools/sbom.py`（本地一条命令复现；CI 同命令） | `build/sbom/sbom-<commit>-<日期>.cdx.json`（CI artifact `sbom`）。主清单＝`:app` release 运行时全量闭包；debug/test/androidTest/benchmark/macrobenchmark 分区单列；直连依赖覆盖由 `tools/check-sbom-direct-deps.py` 断言 |
+| 离线 OSV 漏洞扫描（第四十三批） | `python3 tools/osv-scan.py`（夹具自检 `--selftest`） | `build/supply-chain/vuln-report-<commit>-<日期>.md/.json`（CI artifact `vuln-report`）。报告**首行＝数据截止日**（取快照 Last-Modified，非运行当天）；同一输入连跑两次输出一致 |
+| 许可证/版本新鲜度（第四十三批） | `python3 tools/license-report.py` | `build/supply-chain/license-release-report-<commit>-<日期>.md/.json`（CI artifact `license-report`）。SPDX 口径对齐 `licenses/`；「落后主版本 ≥1」只报告不升级 |
 
 ## 3. 基线数字（2026-10-19，改基线必须同时改这一节）
 
