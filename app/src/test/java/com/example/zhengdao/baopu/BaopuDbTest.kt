@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(8, BaopuDb.VERSION) // v8 = 第二十批（session 工作区列；v7 是第十九批封卷两列）
+        assertEquals(9, BaopuDb.VERSION) // v9 = 第三十八批 §9（artifact 表）；v8 = 第二十批（工作区列）；v7 = 第十九批（封卷两列）
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(8, BaopuDb.VERSION) // v8 = 第二十批（session 工作区列；v7 是第十九批封卷两列）
+        assertEquals(9, BaopuDb.VERSION) // v9 = 第三十八批 §9（artifact 表）；v8 = 第二十批（工作区列）；v7 = 第十九批（封卷两列）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -488,8 +488,8 @@ class BaopuDbTest {
             }
         }
         assertEquals(
-            "DDL 里应当找到 message/run_log/plan_batch/compression 四张引用 session 的表，实际 $refs",
-            setOf("message", "run_log", "plan_batch", "compression"),
+            "DDL 里应当找到 message/run_log/plan_batch/compression/artifact 五张引用 session 的表，实际 $refs",
+            setOf("message", "run_log", "plan_batch", "compression", "artifact"),
             refs.keys,
         )
         val deleted = BaopuSql.deleteSessionStatements(1L).joinToString("\n") { it.sql }
@@ -499,6 +499,14 @@ class BaopuDbTest {
                 deleted.contains("DELETE FROM $table WHERE session_id = ?"),
             )
         }
+        // 第三十八批 §9：`artifact` 引用 session **且带 ON DELETE CASCADE** ⇒ 上面那个循环
+        // 不要求显式删它（与 v1 的 `part` 同处理）。这里反过来把「级联确实在 DDL 里」钉住：
+        // 哪天有人摘掉 CASCADE 又忘了补删除语句 ⇒ refs 里它变 false ⇒ 上面那条 forEach 立刻红。
+        assertTrue("artifact 必须带 ON DELETE CASCADE（删会话时台账跟着走）", refs["artifact"] == true)
+        assertFalse(
+            "带级联的表不许在删会话语句里重复删（part / artifact 都靠 SQLite 联动）",
+            deleted.contains("DELETE FROM artifact") || deleted.contains("DELETE FROM part"),
+        )
     }
 
     @Test

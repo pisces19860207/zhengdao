@@ -14,9 +14,12 @@ import androidx.compose.runtime.setValue
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
+import com.example.zhengdao.baopu.accumulateUsage
+import com.example.zhengdao.baopu.BaopuUsageRow
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuSql
+import com.example.zhengdao.baopu.emptyRoundUsage
 import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.MemoryRefine
@@ -360,8 +363,80 @@ internal class BaopuChatController(context: Context) {
     var stepRows by mutableStateOf<List<BaopuStepRow>>(emptyList())
         private set
 
+    // ── 本轮用量 ＋ 本轮产物（第三十八批 A/B 段）──────────────────────────
+
+    /**
+     * 本轮的用量账（累计 ＋ 每步明细）——顶栏跑马灯「本轮用量」的唯一数据源。
+     *
+     * 三个数都在 [accumulateUsage] 里长（**纯函数，JVM 直测 A1/A2/A4**），控制器只做
+     * 「收到 ⇒ 换一份 state」这一件事。为什么不是从 `stepRows` 反推：run_log 的
+     * `latency_ms` 是**工具**耗时，模型那几步花了多久与 token 数都不在那条 SELECT 里。
+     *
+     * 线程：写它的是 `engine.onUsage` 回调，跑在 `zd-baopu-run` 上——`mutableStateOf`
+     * 可跨线程写（本仓既有口径），所以回调体里不改别的、不读盘、不起线程（判据 A6）。
+     */
+    var roundUsage by mutableStateOf(emptyRoundUsage())
+        private set
+
+    /**
+     * 本轮够格的文本产物（相对路径，写入顺序）。
+     *
+     * 引擎那份 [com.example.zhengdao.baopu.agent.RunEngine.roundArtifacts] 的只读透传：
+     * 组合里读它会随引擎写入自动重组（同一个 `mutableStateOf`，别再抄一份进控制器——
+     * 抄一份就有两个真源，产物行会比实际落盘慢一拍）。
+     */
+    val roundArtifacts: List<String> get() = engine.roundArtifacts.value
+
+    /** 现在点开的是哪个产物（null = 查看器没开）。只读查看器自己不开，由产物行点片写。 */
+    var viewingArtifact by mutableStateOf<String?>(null)
+        private set
+
+    fun openArtifact(relPath: String) {
+        viewingArtifact = relPath
+    }
+
+    fun closeArtifact() {
+        viewingArtifact = null
+    }
+
+    /**
+     * 回到「本轮还没有用量」的样子（判据 A4 的落点）。
+     *
+     * 三件事一起做：清累计与每步列表、请引擎清产物视图、关掉还开着的查看器。
+     * 调用时机 = **新开一轮**（[send]）与**换会话**（[newSession] / [openSession] /
+     * [clearSessionView]）——后三个是顺手补的：上个会话的「本轮用量」赖在顶栏
+     * 跑马灯上，切过去就能看到一串不属于这个会话的数，那是假账。
+     */
+    private fun resetRoundUsage() {
+        roundUsage = emptyRoundUsage()
+        engine.clearRoundArtifactView()
+        viewingArtifact = null
+    }
+
     init {
         engine.onEvent = { ev -> onEngineEvent(ev) }
+        // 第三十八批 A 段：把「每步拿到 usage 就回调一次」挂到本轮用量账上。
+        // 判据 A6 钉的就是**这个 lambda 的实现体**：它跑在 `zd-baopu-run` 线程上，
+        // 里面只许改 `mutableStateOf`——出现 `File(`／`Thread(`／`Dispatchers` 就是
+        // 拿后台线程读盘或另起线程（BaopuCostAndArtifactsTest 的 A6 用源码级用例拦它，
+        // 并配判别器自证：往体里塞一行 `File("x").readText()` 必须报红）。
+        //
+        // 三列**照抄可空**（null = 服务端没测到）：不在这里 `?: 0` 把它坐实成 0，
+        // 显示层（usageTotalLine / usageDetailLines）自己会跳过没读到的那一项。
+        // `?.toLong()` 只是类型口径：LlmUsage 是 Int?（各家返回的都是 32 位内的 token 数），
+        // 而累计账用 Long——单步永远不溢出，累加到几十万轮也不会。
+        engine.onUsage = { s ->
+            roundUsage = accumulateUsage(
+                roundUsage,
+                BaopuUsageRow(
+                    step = s.step,
+                    tokensIn = s.usage.promptTokens?.toLong(),
+                    tokensOut = s.usage.completionTokens?.toLong(),
+                    cacheHit = s.usage.cacheHitTokens?.toLong(),
+                    elapsedMs = s.elapsedMs,
+                ),
+            )
+        }
         refresh()
         // 进程重启后重建确认卡（派工单 §3.3：pending_tool 非空 ⇒ 卡还在）
         restoreConfirmCard()
@@ -457,6 +532,11 @@ internal class BaopuChatController(context: Context) {
      */
     fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()) {
         if (text.isBlank() || busy) return
+        // 第三十八批 A4：新一轮开局清账（与 introspectionNote 同一处节奏）——
+        // 「本轮累计」必须是**本轮**的，不许把上一轮的 token 加进来。
+        // 引擎那边会在新 run 开头自己清产物视图，这里再清一次是为了让界面**立刻**变，
+        // 不等引擎线程排上队（`engine.send` 只是 submit，真跑可能在几百毫秒之后）。
+        resetRoundUsage()
         // 先记附件再发：引擎可能在 send 返回后就落库并发事件
         pendingImagePaths = AttachmentParts.imageRelPaths(attachments)
         val sid = sessionId ?: engine.createSession(
@@ -623,6 +703,7 @@ internal class BaopuChatController(context: Context) {
         confirmCard = null
         confirmRestored = false
         compressionNote = null // 新会话没压过，细条不许跟着上个会话走
+        resetRoundUsage() // 用量与产物同理：顶栏跑马灯不许把上个会话的本轮账带过来
     }
 
     // ── 会话库（第二十批 §2.1：旧会话能开能删）─────────────────────────────
@@ -710,6 +791,7 @@ internal class BaopuChatController(context: Context) {
         confirmCard = null
         confirmRestored = false
         compressionNote = null
+        resetRoundUsage() // 切会话 ⇒ 上个会话的本轮账一起清（A4 同一口径）
         refresh()
         restoreConfirmCard()
     }
@@ -818,6 +900,7 @@ internal class BaopuChatController(context: Context) {
         confirmCard = null
         confirmRestored = false
         compressionNote = null
+        resetRoundUsage() // 删掉当前会话回空态 ⇒ 顶栏也不许留着它的本轮账
     }
 
     /**

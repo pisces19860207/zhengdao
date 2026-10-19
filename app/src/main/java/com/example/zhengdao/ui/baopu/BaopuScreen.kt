@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -71,6 +72,12 @@ import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.BackupRules
 import com.example.zhengdao.baopu.BaopuWorkspace
+import com.example.zhengdao.baopu.TopBarSlot
+import com.example.zhengdao.baopu.UsageCopy
+import com.example.zhengdao.baopu.shouldShowUsageNotice
+import com.example.zhengdao.baopu.toggleTopBarExpanded
+import com.example.zhengdao.baopu.topBarSlot
+import com.example.zhengdao.baopu.usageNoticeBody
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.WorkspaceFolderPicker
@@ -96,6 +103,7 @@ private fun openSettings(context: Context) {
 @Composable
 fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val res = LocalResources.current
     // 换通道 = 换引擎：控制器构造期持引擎（BaopuChatController），改 epoch 让它重建。
     var channelEpoch by remember { mutableIntStateOf(0) }
     val controller = remember(channelEpoch) { BaopuChatController(context) }
@@ -223,6 +231,16 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     val state = controller.engineState.value
     val lastAssistant = controller.messages.lastOrNull { it.role != "user" }
         ?.parts?.lastOrNull { it.kind == "text" }?.text.orEmpty()
+    // ── 第三十八批 §8（用户 2026-10-19 追加）：顶栏那一条显示什么 ──────────────
+    // 用户原话：「把那个复制功能做小点，这样点击展开就能显示更多的那些产物的内容了，
+    // 也不用一定要去左侧栏翻产物区里的东西了。」
+    // **这里只接线**：「有产物出产物条、没产物出回复」这条判断在纯函数 `topBarSlot`
+    // 里（判据 B9 钉着，负例「无产物也硬出产物条」打的就是它）。
+    // 产物源与消息列表那行**同一份**：controller.roundArtifacts（引擎筛过的文本白名单）。
+    val topArtifacts = controller.roundArtifacts
+    // 展开态键在产物列表上：换一轮（或同轮新增一个产物）就收回折叠，
+    // 免得用户翻过的东西在下一轮还压着下面的内容（判据 B10）。
+    var topBarExpanded by remember(topArtifacts) { mutableStateOf(false) }
 
     // 资料库结果一句话：显示几秒就退（不占地方；要再看有导出记录在库里）
     val libraryNote = controller.libraryNote
@@ -380,6 +398,32 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                 ),
                             )
                         }
+                        // 第三十八批 A 段：本轮用量。跑马灯滚的是标题（「本轮用量」），
+                        // 点开 DropdownMenu 才是明细：第一行累计、往后**每步一行**
+                        // （`第 3 步 · 入 12.3k · 出 2.1k · 4.2s`——排布照 run_log 那套：
+                        // 步骤／入／出／耗时，用户 2026-10-19 原话「按那个展开显示就好了」）。
+                        //
+                        // **一条读数都没收到就不加这一条**（判据 A3：不许显示 0 假装知道）。
+                        // 源头在引擎 `persistUsage`：usage 为 null 或五列全空 ⇒ 根本不回调。
+                        //
+                        // 步号那一项用 `context.getString`：`UsageCopy.stepLabel` 是普通
+                        // lambda（纯函数文件里不能出现 @Composable），在 lambda 里调
+                        // `stringResource` 编译就过不去。
+                        val usage = controller.roundUsage
+                        if (shouldShowUsageNotice(usage)) {
+                            val usageCopy = UsageCopy(
+                                stepLabel = { step -> res.getString(R.string.baopu_usage_step, step) },
+                                inLabel = stringResource(R.string.baopu_usage_in),
+                                outLabel = stringResource(R.string.baopu_usage_out),
+                                cacheHitLabel = stringResource(R.string.baopu_usage_cache_hit),
+                            )
+                            add(
+                                NoticeItem(
+                                    stringResource(R.string.baopu_usage_label),
+                                    usageNoticeBody(usage, usageCopy),
+                                ),
+                            )
+                        }
                     }
                     Spacer(Modifier.width(8.dp))
                     BaopuNoticeTicker(items = noticeItems, modifier = Modifier.weight(1f))
@@ -466,16 +510,30 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
-            // 提示词小框（右上角复制）：显示最近一条抱朴回复。2026-10-18 用户定稿
-            // 「已完成还是固定到现在这个位置，不用跟着正文框跑，现在的形态很好了」
-            // ⇒ 固定在「待命中」下面，保持可折叠形态（默认一行，点开展开，再点收回）。
-            if (lastAssistant.isNotBlank()) {
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    CopyBox(
-                        text = lastAssistant,
-                        label = stringResource(R.string.baopu_role_assistant),
-                        collapsible = true,
+            // 顶栏那一条（2026-10-18 定稿「固定到现在这个位置，不用跟着正文框跑」＋
+            // 38 批 §8 追加「这一栏改成产物」）：位置不变、折叠态仍是一行高（§8.3）。
+            // 二选一的判断全在 topBarSlot 里，这一层不写 isEmpty()。
+            when (val slot = topBarSlot(topArtifacts, lastAssistant, topBarExpanded)) {
+                is TopBarSlot.Artifacts -> Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    BaopuArtifactTopBar(
+                        // 查看器用的根目录与下面 `BaopuArtifactViewer` 同一取法（不另开一路）
+                        root = BaopuWorkspace.hostDir(context),
+                        artifacts = topArtifacts,
+                        expanded = slot.expanded,
+                        onToggle = { topBarExpanded = toggleTopBarExpanded(topBarExpanded) },
+                        // 点文件名 = 打开 38 批 B 段那个只读查看器（两处共用同一个）
+                        onOpen = { rel -> controller.openArtifact(rel) },
                     )
+                }
+                // 没有产物 ⇒ 退化为原 CopyBox（判据 B9 的另一半；回复为空时整条不出）
+                is TopBarSlot.ReplyPreview -> if (slot.text.isNotBlank()) {
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        CopyBox(
+                            text = slot.text,
+                            label = stringResource(R.string.baopu_role_assistant),
+                            collapsible = true,
+                        )
+                    }
                 }
             }
             // （跑马灯已移进顶栏那一行，见上）
@@ -551,6 +609,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     onSpeak = { speaker.speak(it) },
                     // 第四十批：长按用户那条消息 ⇒ 菜单（编辑这条 / 复制）
                     onUserLongPress = { msg -> if (!controller.busy) menuMsg = msg },
+                    // 第三十八批 B 段：本轮写出来的文本产物（json/txt/md…）。
+                    // 数据源是引擎那份只读视图（写成功才进来），点片开只读查看器。
+                    artifacts = controller.roundArtifacts,
+                    onOpenArtifact = { rel -> controller.openArtifact(rel) },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // 「⬇ 回到最新」浮标（主单 §2.4.1）：不在底部才出现，有新内容带
@@ -778,6 +840,17 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuSessionLibraryScreen(
                     controller = controller,
                     onDismiss = { showSessionLibrary = false },
+                )
+            }
+            // 第三十八批 B 段：产物只读查看器（点产物片才开，**不自动开**）。
+            // Dialog 本体在新文件 BaopuArtifactViewer.kt：`BaopuMessageList.kt` 有门禁
+            // 钉着「整文件只应有 1 处 Dialog(」（BaopuImageGridTest G5），别处的浮层
+            // 也都各自守着自己的文件——查看器同样一处。
+            controller.viewingArtifact?.let { rel ->
+                BaopuArtifactViewer(
+                    root = BaopuWorkspace.hostDir(context),
+                    relPath = rel,
+                    onDismiss = { controller.closeArtifact() },
                 )
             }
             // ── 「在这个工作区开新会话」（文件夹行右侧的圆里加号）──────────────

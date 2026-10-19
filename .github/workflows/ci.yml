@@ -243,9 +243,14 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      - name: Android Lint（报告-only，不阻塞；报告入 artifact）
+      - name: Android Lint（预算闸：不许新增告警；报告入 artifact）
         if: always()
-        run: ./gradlew :app:lintDebug --console=plain || echo "lint 有告警，报告见 artifact"
+        # P0-2（2026-10-19）：原来这里 `|| echo` 把失败吞掉，告警数永远不可见。
+        # 现在分两步：先跑 lint（允许它失败，报告仍要出），再用 tools/check-lint-budget.py
+        # 对比 tools/lint-baseline.json —— 超过基线就红。Error 级告警始终判红。
+        run: |
+          ./gradlew :app:lintDebug --console=plain || echo "lint 自身返回非零（仍有严重问题），报告见 artifact"
+          python3 tools/check-lint-budget.py
 
       - name: 归档 lint 报告
         if: always()
