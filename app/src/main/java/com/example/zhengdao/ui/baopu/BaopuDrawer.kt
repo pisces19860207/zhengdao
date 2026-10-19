@@ -41,8 +41,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -265,6 +270,9 @@ internal fun BaopuDrawer(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState())) {
+        // 三十六批 A 段：回收站那一行要**现读盘**数个数，所以这里需要一个 Context
+        // （取根仍走全仓同一口径 BaopuRuntime.workspaceRoot，不在抽屉里自己拼 Download/证道）。
+        val ctx = LocalContext.current
         Text(
             text = stringResource(R.string.baopu_drawer_title),
             style = MaterialTheme.typography.titleMedium,
@@ -318,6 +326,32 @@ internal fun BaopuDrawer(
             node.rows.forEach { row ->
                 SessionRow(row = row, onOpen = onOpenSession, onLongPress = onSessionLongPress)
             }
+        }
+
+        // ── 回收站（第三十六批 A 段）────────────────────────────────────────
+        // 常驻一行：N=0 时**只把 enabled 关掉，不许整条消失**（判据 T1）。
+        // 为什么放在工作区树后面：回收站是**这个工作区里**的一个目录（Download/证道/回收站），
+        // 不是全局设置——它跟着「你在哪个文件夹干活」这件事，不跟着「设置」。
+        // N 现读盘：目录列表一次而已，且只在抽屉真的重组时读（remember 的键是 tick 与根）。
+        // 面板自己管状态（[TrashDialog]），因为本批改不了 BaopuScreen.kt ⇒ 抽屉形参一个都不加。
+        val trashRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+        var trashTick by remember { mutableStateOf(0) }
+        var trashOpen by remember { mutableStateOf(false) }
+        val trashCount = remember(trashTick, trashRoot) { trashRows(BaopuTrashBin.dirOf(trashRoot)).size }
+        DrawerItem(
+            title = stringResource(R.string.trash_drawer_entry, trashCount),
+            description = stringResource(R.string.trash_drawer_desc),
+            enabled = trashCount > 0,
+            onClick = { trashOpen = true },
+        )
+        if (trashOpen) {
+            TrashDialog(
+                workspaceRoot = trashRoot,
+                onDismiss = {
+                    trashOpen = false
+                    trashTick++ // 关掉面板就重数一次：恢复／清空都改了 N
+                },
+            )
         }
 
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
