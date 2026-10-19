@@ -7299,3 +7299,42 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 **负例实做**（都在已提交状态上做，先备份字节、还原后 `git status` 只剩本次改动）：摘掉 `LaunchedEffect(drawerOpen)` ⇒ `T1_入口常驻…` 红；把说明改回 `.回收站/` ⇒ `D12_给模型看的说明里_回收站路径就是盘上那个` 红。合并后全量 **243 套件 / 2321 例 / 0 失败 / 0 错误 / 13 跳过**。
 
 **教训**：**「读盘」不等于「看起来像读盘」**。Compose 里 `remember(keys)` 的键选错了，值就是「第一次组合时的那一眼」——而源码级门禁只能证明它读了盘，证明不了它**什么时候**读。凡是要「现读盘」的值，先问一句：**什么事件之后它必须重算？那个事件有没有进 remember 的键？** 这类问题只有真机走一遍会暴露，所以 36 批这种带 UI 的批，「单测全绿」不足以收账。
+
+---
+
+## E-164 · 2026-10-19 · CI 两连红：Lint 预算闸把「联网版本检查」当代码债；台账重排又撞上「账本一致性门禁」
+
+**怎么发现的**：质量 P0-2 接上「Lint 告警预算闸」后，`dff55884` 的 `ci` 红在「Android Lint（预算闸）」步骤（同一次 `build` 绿）；修完规则后，我试着把本次会话的 22 行台账重排到 195+，`ad7a4740` 的 `ci` 又红在「账本一致性门禁（第三十三批）」。
+
+**① Lint 预算闸第一红：把联网检查算进绝对预算**
+
+- 现象：本地 lint 报 `total=703`，CI 报的数字不同，预算闸直接判「超基线」。
+- 根因：差异 11 条全部是 `NewerVersionAvailable`——它依赖「**联网时的最新库版本**」。同一份代码、不同联网状态，数字必然不同；**把这种指标算进绝对值就是设计错误**。
+- 修法（`63c05ea7`）：`tools/check-lint-budget.py` 增加 `UNBUDGETED_RULES`（`NewerVersionAvailable`／`GradleDependency`／`AndroidGradlePluginVersion`／`RemoteVersionCheck`），不计预算、仍进 artifact 报告；基线重算 **692**。
+
+**② 台账重排第二红：账本改动也是改动，必须小步自检**
+
+- 现象：重排后本地 `check-doc-ledger --strict` 我只看最后一行汇总（「75 条 allowlist」），没看到上一行的 findings 计数，就推了。
+- 根因（两层）：重排脚本用 `read_text`（通用换行把 CRLF 折成 LF）再按 `\r\n` 切分，行边界判断失效；同时**插在旧行之后**导致 §A 表编号重复/位置错乱，门禁红。
+- 修法：整笔 revert（`98223666`），恢复绿；重排改为独立一批（第四十二批），要求 dry-run 默认、引用同步、每笔提交跑门禁。
+- **诚实边界**：第二次红的 CI 日志没有取到（无 token），所以「具体是哪条 D 判据」只能从「revert 即绿」反推，不做臆断。
+
+**教训**：① 门禁的数字必须「同输入同输出」——依赖网络/时间的指标只能进报告，不能进闸；② **账本不是"文档"，是和代码同级的产物**：改它要像改代码一样小步、自检、看 findings 计数而不只是最后一行。
+
+---
+
+## E-165 · 2026-10-19 · 38 批带入 8 条 `LocalContextGetResourceValueCall` Error，被 Lint 预算闸当场拦下
+
+**怎么发现的**：38 批（成本与产物）合并后 `a024622a` 的 `ci` 红在「Lint 预算闸」；本地复跑 `:app:lintDebug` 读到 `total=708 / errors=186`（基线 692/178）。
+
+**根因**：新 UI 代码在**非 @Composable 的 lambda** 里取字符串（`stepLabel = { step -> context.getString(...) }`、列表行的 `ctx.getString(...)`），踩中 Compose 的 `LocalContextGetResourceValueCall`。这正是「`stringResource` 不能在 lambda 里用」的另一面——能用的替代品是 `LocalResources.current.getString(...)`，而不是继续抓 `Context`。
+
+**修法**（`1a0fcf4e` → 合并 `7884ab0a`）：
+- `BaopuArtifactShelf` 7 处、`BaopuScreen` 1 处改成 `val res = LocalResources.current` ＋ `res.getString(...)`；
+- 源码门禁 `BaopuCostWiringTest` 的断言同步改口径（从「必须 `context.getString`」改成「必须 `res.getString`，且原因写明」）；
+- 另 8 条新 warning/info（`PluralsCandidate` 等）按流程把基线 **692 → 700**（errors 保持 178），与代码修复同一笔提交。
+
+**复跑**：257 suites / 2501 tests / 0 fail；lint `700 / errors=178`，预算闸通过。
+
+**教训**：**「lambda 里不能用 `stringResource`」的正确结论是"用 `LocalResources`"，不是"退回 `Context`"**。新写 UI 时直接用 `res.getString`；审查时看到 `context.getString` 在可组合树里就要问一句「这里为什么不用 `LocalResources`」。
+
