@@ -36,6 +36,7 @@ import com.example.zhengdao.baopu.eval.ProposalRedline
 import com.example.zhengdao.baopu.eval.ProposalRestore
 import com.example.zhengdao.baopu.eval.ProposalSelfCheck
 import com.example.zhengdao.baopu.eval.RuntimeEval
+import com.example.zhengdao.baopu.eval.SelfCheckOutcome
 import com.example.zhengdao.baopu.eval.SelfCheckText
 import com.example.zhengdao.baopu.eval.TargetKind
 import com.example.zhengdao.baopu.eval.TargetSnapshot
