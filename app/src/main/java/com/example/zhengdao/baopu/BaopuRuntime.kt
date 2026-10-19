@@ -281,7 +281,7 @@ internal object BaopuRuntime {
      */
     fun latestSessionId(db: BaopuDb): Long? = db.read { d ->
         d.rawQuery(
-            "SELECT s.id FROM session s WHERE s.archived = 0 " +
+            "SELECT s.id FROM session s WHERE s.archived = 0 AND s.deleted_at IS NULL " +
                 "AND EXISTS (SELECT 1 FROM message m WHERE m.session_id = s.id) " +
                 "ORDER BY s.updated_at DESC LIMIT 1",
             emptyArray(),

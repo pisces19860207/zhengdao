@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(9, BaopuDb.VERSION) // v9 = 第三十八批 §9（artifact 表）；v8 = 第二十批（工作区列）；v7 = 第十九批（封卷两列）
+        assertEquals(10, BaopuDb.VERSION) // v9 = 第三十八批 §9（artifact 表）；v8 = 第二十批（工作区列）；v7 = 第十九批（封卷两列）
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(9, BaopuDb.VERSION) // v9 = 第三十八批 §9（artifact 表）；v8 = 第二十批（工作区列）；v7 = 第十九批（封卷两列）
+        assertEquals(10, BaopuDb.VERSION) // v9 = 第三十八批 §9（artifact 表）；v8 = 第二十批（工作区列）；v7 = 第十九批（封卷两列）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -401,8 +401,10 @@ class BaopuDbTest {
     @Test
     fun `listSessions按归档过滤`() {
         assertTrue(BaopuSql.listSessions(includeArchived = true).sql.contains("ORDER BY updated_at DESC"))
-        assertFalse(BaopuSql.listSessions(includeArchived = true).sql.contains("WHERE"))
-        assertTrue(BaopuSql.listSessions(includeArchived = false).sql.contains("WHERE archived = 0"))
+        // 第四十七批：两种列表都要排除软删会话
+        assertTrue(BaopuSql.listSessions(includeArchived = true).sql.contains("deleted_at IS NULL"))
+        assertTrue(BaopuSql.listSessions(includeArchived = false).sql.contains("deleted_at IS NULL"))
+        assertTrue(BaopuSql.listSessions(includeArchived = false).sql.contains("archived = 0"))
     }
 
     @Test

@@ -921,9 +921,8 @@ internal class BaopuChatController(context: Context) {
         if (busy) return false // 在跑不许删：引擎还在往库里写
         val ok = runCatching {
             db.write { d ->
-                com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(sid).forEach { stmt ->
-                    d.execSQL(stmt.sql, stmt.args)
-                }
+                val stmt = com.example.zhengdao.baopu.BaopuSql.softDeleteSession(sid, System.currentTimeMillis())
+                d.execSQL(stmt.sql, stmt.args)
             }.get()
         }.isSuccess
         if (ok && sessionId == sid) {
@@ -931,6 +930,23 @@ internal class BaopuChatController(context: Context) {
         }
         return ok
     }
+
+    /** 从回收站恢复一个会话（第四十七批）；返回是否成功。 */
+    fun restoreSession(sid: Long): Boolean = runCatching {
+        db.write { d ->
+            val stmt = com.example.zhengdao.baopu.BaopuSql.restoreSession(sid, System.currentTimeMillis())
+            d.execSQL(stmt.sql, stmt.args)
+        }.get()
+    }.isSuccess
+
+    /** 从回收站彻底删除（复用既有的五条删除语句）；返回是否成功。 */
+    fun purgeSession(sid: Long): Boolean = runCatching {
+        db.write { d ->
+            com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(sid).forEach { stmt ->
+                d.execSQL(stmt.sql, stmt.args)
+            }
+        }.get()
+    }.isSuccess
 
     /** 记忆候选：确认（落盘 CONFIRMED）。 */
     fun confirmMemory(id: String) {
