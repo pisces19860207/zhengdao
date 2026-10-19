@@ -125,11 +125,12 @@ class ResMonitorTest {
 
     @Test
     fun `P1-5 映射顺序打乱不影响结果`() {
-        val t0 = linkedMapOf(1 to 100L, 2 to 200L, 3 to 300L)
-        val t1 = linkedMapOf(3 to 330L, 1 to 140L, 2 to 260L)
-        // 逐 pid：40 + 60 + 30
-        assertEquals(130L, ResMonitor.cpuDelta(t0, t1))
-        assertEquals(130L, ResMonitor.cpuDelta(t0.entries.reversed().associate { it.key to it.value }, t1))
+        // 顺序打乱 + 两侧数量不同：旧下标实现会把 pid=3 的 300 当成 pid=1 的基线，
+        // 算出来是 (260+140) - (300+100) = 0；按 pid 对齐则是 1 号 +40、2 号 +60 = 100。
+        val t0 = linkedMapOf(3 to 300L, 1 to 100L, 2 to 200L)
+        val t1 = linkedMapOf(2 to 260L, 1 to 140L)
+        assertEquals(100L, ResMonitor.cpuDelta(t0, t1))
+        assertEquals(100L, ResMonitor.cpuDelta(t0.entries.reversed().associate { it.key to it.value }, t1))
     }
 
     @Test
