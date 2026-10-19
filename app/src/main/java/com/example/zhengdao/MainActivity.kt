@@ -375,6 +375,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleBaopuShortcut(intent)
+        // P1-9（第五十三批）：热启动也要读 open_terminal。此前只有 onCreate 读它 ⇒
+        // App 已在栈里（home 在前台/后台）时点通知栏「回到终端」无效。
+        // 复用与冷启动 LaunchedEffect 同一个 terminalIntent(...)（同一入口、同一组 flag），
+        // 不新造第二条终端路由；setIntent 已同步，重复收到旧 intent 时这里不会反复拉起。
+        if (intent.getBooleanExtra("open_terminal", false)) {
+            startActivity(terminalIntent(this, null, null))
+        }
     }
 
     override fun onTrimMemory(level: Int) {
