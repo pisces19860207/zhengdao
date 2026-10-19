@@ -7,6 +7,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.BaopuGuardCore
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.rootfs.RunLog
 import org.json.JSONObject
 import java.io.File
@@ -90,6 +91,16 @@ data class SpillResult(val file: File, val chars: Int)
 internal class GuardPipeline(
     private val registry: ToolRegistry,
     private val workspaceRoot: () -> File,
+    /**
+     * 原件区（`资料库/原始/`）的**权威路径**——第四十八批 P0-2 数据红线。
+     *
+     * 为什么是注入而不是在这里硬编码 `File(root, "资料库/原始")`：抱朴工作区可自定义，
+     * 而原件区跟的是**终端工作区**（`KnowledgeBase.rawDir(appCtx)`）——两者默认相同
+     * （都是 `Download/证道`）但允许不同，硬编码就会在自定义工作区下判错地方。
+     * 生产唯一注入点：`BaopuRuntime`（传 `KnowledgeBase.rawDir(appCtx)`）；
+     * null = 该环境没有原件区（纯 JVM 单测里不关心这条红线时显式传 null）。
+     */
+    private val rawDir: () -> File?,
     private val runner: ToolRunner = ToolRunner(ToolRunner.toolExecutor),
     private val log: (String) -> Unit = { RunLog.log(it) },
 ) {
@@ -248,36 +259,121 @@ internal class GuardPipeline(
     }
 
     /**
-     * 把 arguments 里的 `path`（相对工作区根的相对路径，或绝对路径）解析 + 守卫。
-     * 通过 ⇒ 返回 path 已改写为**绝对路径**的新 ToolCall（executor 只认绝对路径）；
-     * 没有 path 参数的工具（如纯计算类）原样放行。
+     * 把 arguments 里的路径参数解析 + 守卫，通过 ⇒ 返回已改写为**绝对路径**的新 ToolCall
+     * （executor 只认绝对路径）；没有路径参数的工具（如纯计算类）原样放行。
+     *
+     * 两处第四十八批的修正（审计 §一 P0-2 / P0-4）：
+     * - **P0-2**：对会改盘的工具，按**解析后的真实目标**判「原件区只读」红线——
+     *   相对/绝对/`..` 折叠/多余分隔符先归一，再按路径组件比较（同前缀兄弟目录骗不过）；
+     * - **P0-4**：`library_organize` 的 `path` 是「相对 投递/整理」的口径，**不改写**成
+     *   绝对路径（改写后 `LibraryTools.normalizeRel` 见 `/` 直接拒 ⇒ promote/rename 必败），
+     *   越界由 `normalizeRel` + `destinationUnder` + `PathGuard` 自己判。
      */
     private fun guardPath(call: ToolCall, toolName: String): Guarded {
-        val args = call.arguments
-        if (!args.has(ReadFileTool.ARG_PATH) && !args.has(ListDirTool.ARG_PATH)) {
-            return Guarded.Yes(call)
-        }
-        val pathKey = if (args.has(ReadFileTool.ARG_PATH)) ReadFileTool.ARG_PATH else ListDirTool.ARG_PATH
-        val raw = args.optString(pathKey).trim()
-        if (raw.isBlank()) {
-            return Guarded.No("参数「$pathKey」为空（要一个相对工作区根的路径）")
-        }
-        val root = workspaceRoot()
-        val resolved = if (File(raw).isAbsolute) File(raw) else File(root, raw)
-        return when (val v = BaopuGuardCore.checkPath(root, resolved)) {
-            is BaopuGuardCore.PathVerdict.Inside -> {
-                val newArgs = JSONObject(args.toString()).put(pathKey, v.file.absolutePath)
-                log("抱朴管线：$toolName 路径放行 ${v.file.absolutePath}")
-                Guarded.Yes(call.copy(arguments = newArgs))
-            }
+        // P0-4：相对路径工具白名单——path 保持相对，改写会把它变成必然被拒的绝对路径
+        if (toolName == "library_organize") return Guarded.Yes(call)
 
-            is BaopuGuardCore.PathVerdict.Outside -> {
-                val reason = "路径越界被拒：$raw 不在工作区（${root.absolutePath}）内。" +
-                    "只读工作区里的文件；要读外面的，先把它复制进工作区。"
-                log("抱朴管线：拒绝越界 $toolName $raw（root=${root.absolutePath}）")
-                Guarded.No(reason)
+        val args = call.arguments
+        val keys = pathKeysFor(toolName, args)
+        if (keys.isEmpty()) return Guarded.Yes(call)
+        val root = workspaceRoot()
+
+        // P0-2：先把该工具**会写盘的目标**判一遍原始区红线（读类工具不在此限）
+        for (target in writeTargets(toolName, args, root)) {
+            rawRejection(target)?.let { return Guarded.No(it) }
+        }
+
+        var newArgs = args
+        for (key in keys) {
+            val raw = args.optString(key).trim()
+            if (raw.isBlank()) {
+                // 保持既有语义：path 为空是管线级拒绝（不走工具，避免把"没给路径"当可重试错误）
+                if (key == ReadFileTool.ARG_PATH) {
+                    return Guarded.No("参数「$key」为空（要一个相对工作区根的路径）")
+                }
+                continue
+            }
+            val resolved = resolve(root, raw)
+            when (val v = BaopuGuardCore.checkPath(root, resolved)) {
+                is BaopuGuardCore.PathVerdict.Inside -> {
+                    newArgs = JSONObject(newArgs.toString()).put(key, v.file.absolutePath)
+                }
+
+                is BaopuGuardCore.PathVerdict.Outside -> {
+                    val reason = "路径越界被拒：$raw 不在工作区（${root.absolutePath}）内。" +
+                        "只读工作区里的文件；要读外面的，先把它复制进工作区。"
+                    log("抱朴管线：拒绝越界 $toolName $raw（root=${root.absolutePath}）")
+                    return Guarded.No(reason)
+                }
             }
         }
+        log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
+        return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
+    }
+
+    private fun resolve(root: File, raw: String): File =
+        if (File(raw).isAbsolute) File(raw) else File(root, raw)
+
+    /**
+     * 该工具需要解析的路径参数名（按工具的**真实**参数名，不是一律 `path`）。
+     *
+     * `move_path` 是 `from`/`to`（第四十八批 P0-2 补：旧实现只认 `path`，
+     * 这两个参数此前**完全没进管线**）；读类工具保持既有「有 path 就改写」的行为。
+     */
+    private fun pathKeysFor(toolName: String, args: JSONObject): List<String> = when (toolName) {
+        "write_file", "edit_file", "delete_path", "convert_encoding", "image_ops" ->
+            listOf(ReadFileTool.ARG_PATH).filter { args.has(it) }
+
+        "move_path" -> listOf("from", "to").filter { args.has(it) }
+        // 读类：既有行为（read_file / list_dir 及将来任何带 path 的只读工具）
+        else -> listOf(ReadFileTool.ARG_PATH, ListDirTool.ARG_PATH).distinct().filter { args.has(it) }
+    }
+
+    /**
+     * 该工具**会写盘的真实目标**（P0-2 红线按这些判）。
+     *
+     * 为什么不是"有 path 就判 path"：
+     * - `move_path` 的源与目标都会被改（源被移走＝原件没了），两个都要判；
+     * - `image_ops` 的 `out` 显式给了就写 `out`，**没给则按实现落在源图同目录**
+     *   （`ImageOpsTool.writeOne`：`File(src.parentFile, …)`）——所以缺省时要判源图路径，
+     *   显式 `out` 时源图只读不写（`read_file` 也能读原件区，读不改字节）。
+     */
+    private fun writeTargets(toolName: String, args: JSONObject, root: File): List<File> {
+        fun resolved(key: String): File? =
+            args.optString(key).trim().takeIf { it.isNotEmpty() }?.let { resolve(root, it) }
+
+        return when (toolName) {
+            "write_file", "edit_file", "delete_path", "convert_encoding" ->
+                listOfNotNull(resolved(ReadFileTool.ARG_PATH))
+
+            "move_path" -> listOfNotNull(resolved("from"), resolved("to"))
+            "image_ops" -> {
+                val out = args.optString("out").trim()
+                if (out.isNotEmpty()) listOfNotNull(resolved("out"))
+                else listOfNotNull(resolved(ReadFileTool.ARG_PATH))
+            }
+            else -> emptyList() // 读类工具不改盘
+        }
+    }
+
+    /**
+     * P0-2 数据红线：目标是否落在原件区（`资料库/原始/`）子树内。
+     *
+     * 归一口径与 [`PathGuard.isInside`] 一致：`absoluteFile` + 组件级比较
+     * （canonicalize 后按路径组件 startsWith——`资料库/原始2/` 这类同前缀兄弟目录过不来，
+     * 已存在的软链也会被解开再比）。命中即拒，原因里写清"只读、一个字节都不许碰"。
+     *
+     * @return null = 不涉及原件区；非 null = 给模型的拒绝原文
+     */
+    private fun rawRejection(target: File): String? {
+        val raw = rawDir() ?: return null
+        if (!PathGuard.isInside(raw, target)) return null
+        val shown = runCatching {
+            raw.absoluteFile.toRelativeString(target.absoluteFile)
+        }.getOrDefault(target.name)
+        log("抱朴管线：拒绝写原件区 $shown（raw=${raw.absolutePath}）")
+        return "路径被拒：$shown 在资料库/原始/ 里——原件区只读，一个字节都不许碰（用户红线）。" +
+            "要产出改过的文件，请写到 资料库/整理/（或 资料库/改版/）。"
     }
 
     companion object {

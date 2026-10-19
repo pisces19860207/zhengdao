@@ -90,7 +90,7 @@ class PlanToolTest {
         val store = RecordingStore()
         PlanTool.sink = PlanController(sessionId = { 1L }, store = store)
         val reg = catalogRegistry()
-        val pipeline = GuardPipeline(reg, { File(".") })
+        val pipeline = GuardPipeline(reg, { File(".") }, { null })
         val call = ToolCall("c1", PlanTool.NAME, planArgs("读文件" to "todo"))
         val result = pipeline.execute(call) { _, _ -> null }
         assertTrue("FREE 工具不该走确认：$result", result is GuardPipeline.Result.Done)
@@ -173,7 +173,7 @@ class PlanToolTest {
     fun `sink没接线_拒绝并说明`() {
         PlanTool.sink = null
         val reg = catalogRegistry()
-        val pipeline = GuardPipeline(reg, { File(".") })
+        val pipeline = GuardPipeline(reg, { File(".") }, { null })
         val call = ToolCall("c1", PlanTool.NAME, planArgs("读文件" to "todo"))
         val result = pipeline.execute(call) { _, _ -> null }
         assertTrue("没接线必须 Rejected（终止本轮并回灌理由）", result is GuardPipeline.Result.Rejected)
@@ -186,7 +186,7 @@ class PlanToolTest {
         val store = RecordingStore()
         PlanTool.sink = PlanController(sessionId = { 99L }, store = store)
         val reg = catalogRegistry()
-        val pipeline = GuardPipeline(reg, { File(".") })
+        val pipeline = GuardPipeline(reg, { File(".") }, { null })
         val thirteen = (1..13).map { "条目$it" to "todo" }.toTypedArray()
         val result = pipeline.execute(ToolCall("c1", PlanTool.NAME, planArgs(*thirteen))) { _, _ -> null }
         assertTrue(result is GuardPipeline.Result.Done)
