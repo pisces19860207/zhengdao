@@ -57,6 +57,18 @@ class SessionService : Service() {
         private const val NOTIF_ID = 42
         const val ACTION_TOGGLE_KEEPALIVE = "zhengdao.toggle_keepalive"
         const val ACTION_STOP_SESSION = "zhengdao.stop_session"
+
+        // ── PendingIntent 请求码（P2-12，第六十批）────────────────────────────
+        //
+        // `PendingIntent` 的等价性只看「请求码 + Intent.filterEquals」，**不看 extras**。
+        // 点通知去的主界面 Intent 三处同形（MainActivity + SINGLE_TOP），唯一身份就是请求码；
+        // 三条通知都用 0 时，`FLAG_UPDATE_CURRENT` 会让最后建的那条把别人的 extras 改掉
+        // （例如缓存通知抹掉 `open_terminal` ⇒ 点了不进终端）。三个值必须互不相同：
+        // 本类 [REQ_KEEPALIVE]＝4103、`CacheNotifier.REQ_CACHE`＝4101、
+        // `InstallNotifier.REQ_INSTALL`＝4102。停会话与切保活是本服务内的两个动作，也各占一个。
+        internal const val REQ_KEEPALIVE = 4103
+        internal const val REQ_STOP_SESSION = 4104
+        internal const val REQ_TOGGLE_KEEPALIVE = 4105
         /**
          * 通知栏口径的 RSS 警告阈值（MB）：超过则在通知里明示（骨架 §6 软监控，不主动杀）。
          * 只量**会话 shell 这一个进程**，而它下面挂着 agent（node/python/tmux），正常就能上 GB
@@ -359,19 +371,19 @@ class SessionService : Service() {
         // 避免他看到"空闲休眠"以为任务死了
         val idleText = if (keepAlive && idlePolicy.isDeliberatelyIdle) " · 有活动自动唤醒" else ""
         val contentIntent = PendingIntent.getActivity(
-            this, 0,
+            this, REQ_KEEPALIVE,
             Intent(this, MainActivity::class.java)
                 .putExtra("open_terminal", true)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val stopIntent = PendingIntent.getService(
-            this, 1,
+            this, REQ_STOP_SESSION,
             Intent(this, SessionService::class.java).setAction(ACTION_STOP_SESSION),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val keepIntent = PendingIntent.getService(
-            this, 2,
+            this, REQ_TOGGLE_KEEPALIVE,
             Intent(this, SessionService::class.java).setAction(ACTION_TOGGLE_KEEPALIVE),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )

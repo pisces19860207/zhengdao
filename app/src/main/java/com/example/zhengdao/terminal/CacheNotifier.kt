@@ -26,8 +26,21 @@ object CacheNotifier {
     /** 与保活通知（`SessionService.NOTIF_ID = 42`）、安装通知（20261008）区分开，互不覆盖。 */
     private const val NOTIF_ID = 20261010
 
+    /**
+     * 点击通知的 PendingIntent 请求码（P2-12，第六十批）。
+     *
+     * 为什么必须与另外两处不同：`PendingIntent` 的等价性是「**请求码 + Intent 的
+     * filterEquals**」，与 extras 无关。三处都是 `MainActivity` + `SINGLE_TOP`，
+     * 只用 target 区分；请求码再一样 ⇒ 系统认为它们是**同一个** PendingIntent，
+     * `FLAG_UPDATE_CURRENT` 会拿最后一次的 extras 覆盖前面的 —— 表现就是「点缓存通知
+     * 回到主界面，没进终端」或反过来。请求码是这三条通知唯一的身份，不许再撞：
+     * 本处 [REQ_CACHE]＝4101、`InstallNotifier.REQ_INSTALL`＝4102、
+     * `SessionService.REQ_KEEPALIVE`＝4103。改任何一个都要同步三条（门禁按源码钉）。
+     */
+    internal const val REQ_CACHE = 4101
+
     private fun contentIntent(ctx: Context): PendingIntent = PendingIntent.getActivity(
-        ctx, 0,
+        ctx, REQ_CACHE,
         Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
