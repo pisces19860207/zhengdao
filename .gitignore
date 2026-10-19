@@ -48,3 +48,5 @@ __pycache__/
 scripts/smoke/out/
 # P0 本轮本地运行日志
 quality-run.log
+# 本地验收日志
+verify-*.log
