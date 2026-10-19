@@ -44,6 +44,17 @@ sealed interface ToolOutcome {
 object ToolTimeout {
     const val FILE_MS = 5_000L
     const val BROWSER_MS = 20_000L
+
+    /**
+     * **等用户**的回答上限（第四十八批 P0-1）：确认超时 + 5 秒余量。
+     *
+     * 为什么单独一条：`ask_user` 的超时不是「工具执行超时」，而是「用户响应时限」——
+     * 引擎自己最多等 [RunRules.CONFIRM_TIMEOUT_MS]（15 分钟）后返回 null，工具必须
+     * 比它多留 5 秒把「没人回答」如实回灌。复用 [FILE_MS]（5 秒）会让每次点卡都先
+     * 被判「执行超时」，且单线程工具池被占死 15 分钟、后续工具逐个 5 秒排队超时
+     * （2026-10-19 全量审计 §一 P0-1）。
+     */
+    const val CONFIRM_MS = RunRules.CONFIRM_TIMEOUT_MS + 5_000L
 }
 
 /**
