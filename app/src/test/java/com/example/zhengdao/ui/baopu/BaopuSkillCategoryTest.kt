@@ -6,7 +6,7 @@
 //   1. **行为层**：真临时目录里造出 `技能/<名>/SKILL.md`，跑 setCategory／readCategories／
 //      categorize，断言**盘上到底变成什么样**——T5 那句「SKILL.md 一个字节都不动」只能靠
 //      前后 sha256 相减来证，源码字符串代替不了；
-//   2. **源码层**：读剥掉注释后的分类文件与设置页那一段，钉「写出口只有一处且写的是 `_分类.json`」
+//   2. **源码层**：读剥掉注释后的分类文件与设置页那一段，钉「写出口只有两处且都是旁挂 json（`_分类.json`/`_重验.json`）」
 //      「正文头不许出现 `kind=`」「索引行那套读写函数一个字没碰」。每条「不许出现 X」都配判别器自证。
 //
 // 负例 N3（派工单 §5 第 3 条）：把分类改成写进 `SKILL.md` 头（`kind=…`）⇒ 本文件
@@ -237,12 +237,16 @@ class BaopuSkillCategoryTest {
     }
 
     @Test
-    fun `T5_写出口只有一处且写的是_分类json`() {
+    fun `T5_写出口只有两处且都是旁挂json_分类与重验`() {
         val src = cat()
         val writes = Regex("\\.writeText\\(").findAll(src).toList()
-        assertEquals("整个分类文件里只允许一次写盘", 1, writes.size)
-        assertTrue("那一次写的就是编码结果", src.contains("file.writeText(text, Charsets.UTF_8)"))
-        assertTrue("写的目标是 categoryFileOf（不是 SKILL.md、不是人设）", src.contains("val file = categoryFileOf(skillDir)"))
+        // 第五十七批 §1.2 新增 refreshRecheck → `_重验.json`，与 `_分类.json` 同族旁挂写口：
+        // 整个文件只允许这两处写盘，且谁都不许是 SKILL.md / 人设。
+        assertEquals("整个分类文件里只允许两次写盘（_分类.json + _重验.json）", 2, writes.size)
+        assertTrue("一处写的是分类编码结果", src.contains("file.writeText(text, Charsets.UTF_8)"))
+        assertTrue("分类写口目标是 categoryFileOf（不是 SKILL.md、不是人设）", src.contains("val file = categoryFileOf(skillDir)"))
+        assertTrue("另一处写的是重验编码结果", src.contains("recheckFileOf(skillDir).writeText("))
+        assertTrue("重验写口写的是 encodeRecheck 输出", src.contains("SkillRefine.encodeRecheck(out)"))
         assertTrue("内容来自排序编码", src.contains("val text = encodeCategories(next)"))
         assertFalse("不许直接写正文文件名", src.contains("SKILL_FILE).writeText"))
         assertFalse("不许引数据层那个写口", src.contains("SkillStore.apply("))

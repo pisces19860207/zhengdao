@@ -301,7 +301,7 @@ class BaopuSessionLibraryTest {
 
     @Test
     fun `P2_不改表结构_VERSION仍是8_无新加列`() {
-        assertEquals("第二十五批不动表结构（v9 是第三十八批 §9 的 artifact 表，与本批无关）", 10, com.example.zhengdao.baopu.BaopuDb.VERSION)
+        assertEquals("第二十五批不动表结构（v9/v10/v11 是后续批次的表，与本批无关；v11 为第五十七批 skill_event）", 11, com.example.zhengdao.baopu.BaopuDb.VERSION)
         assertTrue(
             "workspace 列（v8）保持原样",
             BaopuSql.SESSION_WORKSPACE_COLUMNS == listOf("workspace" to "TEXT"),
