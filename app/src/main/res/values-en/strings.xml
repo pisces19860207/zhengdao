@@ -1188,6 +1188,7 @@
     <string name="skill_cat_saved">Category saved: %1$s -> %2$s (skill body untouched)</string>
     <string name="skill_cat_rejected">Skill not on disk, category not written: %1$s</string>
     <string name="skill_cat_io_failed">Category write failed: %1$s (%2$s)</string>
+    <string name="skill_recheck_badge">Needs recheck: %1$s (verify by using it first)</string>
     <string name="skill_cat_corrupt">That _分类.json is unreadable, treated as no categories</string>
     <string name="skill_cat_close">Close</string>
     <!-- ── Session library (batch 20): reopen or delete old chats + workspace surfaced ── -->

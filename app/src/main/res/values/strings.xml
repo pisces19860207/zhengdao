@@ -1187,6 +1187,7 @@
     <string name="skill_cat_saved">分类已记下：%1$s → %2$s（技能正文一个字没动）</string>
     <string name="skill_cat_rejected">这个技能不在盘上，分类没写：%1$s</string>
     <string name="skill_cat_io_failed">分类没写成：%1$s（%2$s）</string>
+    <string name="skill_recheck_badge">待重验：%1$s（先用起来验证，别照单全收）</string>
     <string name="skill_cat_corrupt">那份 _分类.json 读不通，先当没有分类用</string>
     <string name="skill_cat_close">关闭</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->

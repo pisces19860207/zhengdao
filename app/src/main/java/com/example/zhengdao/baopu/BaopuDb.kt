@@ -932,6 +932,21 @@ internal object BaopuSql {
                 nowMs.toString(),
             ),
         )
+
+    /**
+     * 某技能最近 [limit] 次**使用成败**（旧→新；§1.2 过期判据「最近 M 次失败率」的数据源）。
+     * 记录不足 [limit] 条也照回——不足时判据侧「证据不够不判」。
+     */
+    fun recentUseOks(name: String, limit: Int): Stmt = Stmt(
+        "SELECT ok FROM skill_event WHERE kind = 'use' AND name = ? ORDER BY id DESC LIMIT $limit",
+        arrayOf<String?>(name),
+    )
+
+    /** 某技能最后一次被用的时间（null = 记录上线后还没用过；§1.2 判据「久未用」的数据源）。 */
+    fun lastUseAt(name: String): Stmt = Stmt(
+        "SELECT MAX(at) FROM skill_event WHERE kind = 'use' AND name = ?",
+        arrayOf<String?>(name),
+    )
 }
 
 /**
