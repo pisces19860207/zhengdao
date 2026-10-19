@@ -9,6 +9,7 @@
 // 这里只做「已经能算出来的事，界面上终于露出来」——派工单 §0 原话。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuGuardCore
+import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaProposal
@@ -49,11 +53,55 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.io.File
 
 /**
+ * 技能提案卡的判据（UI 第二批 §2 点名：这张卡「只显示正文最后一行非空」＝静默截断，
+ * 而且 `proposals.forEach` 没有上限，条目一多把对话挤没）。
+ *
+ * 三件事各归一位：**标题**＝技能名，由数据层 [SkillRules.parseIndexLines] 解析出来——
+ * UI 不自己切字符串（切法一多，同一个技能在两张卡上会显示成两个名字）；
+ * **摘要**＝这句索引的适用场景，解析不出索引行时退回提案理由「为什么改」，不留空；
+ * **还有没有正文可看**＝除那一行之外还有别的非空行——没有就不许摆个假入口。
+ */
+
+/** 提案层 ⇒ 技能索引的作用域（解析器要它；A 内核不收索引行，兜底按全局）。 */
+internal fun personaScopeOf(layer: PersonaLayer): MemoryScope = when (layer) {
+    PersonaLayer.C_PROJECT -> MemoryScope.PROJECT
+    else -> MemoryScope.GLOBAL
+}
+
+/** 提案正文里的索引行（多条时取第一条：一张卡说的是一个技能）。解析不出 ⇒ null。 */
+private fun skillProposalIndexLine(p: PersonaProposal): SkillRules.IndexLine? =
+    SkillRules.parseIndexLines(p.proposed, personaScopeOf(p.layer)).firstOrNull()
+
+/**
+ * 标题：解析得出用技能名，解析不出用那一行原文——宁可土，不猜。
+ * 两种都过 [withoutBoldMarkers]：显示层不露 `**`（4a8ca5b2 那条口径），**存盘文本一个字不动**。
+ */
+internal fun skillProposalTitle(p: PersonaProposal): String {
+    val line = skillProposalIndexLine(p)
+    if (line != null) return withoutBoldMarkers(line.name)
+    return withoutBoldMarkers(p.proposed.lines().lastOrNull { it.isNotBlank() }.orEmpty())
+}
+
+/** 可读摘要：索引行的适用场景那句；不是索引行的提案 ⇒ 提案理由（用户审的就是它）。同样只去显示层的 `**`。 */
+internal fun skillProposalSummary(p: PersonaProposal): String {
+    val line = skillProposalIndexLine(p)
+    if (line != null) return withoutBoldMarkers(line.scenario)
+    return withoutBoldMarkers(p.reason)
+}
+
+/** 正文里除了标题那一行还有别的内容 ⇒ 才有「展开」可点。 */
+internal fun skillProposalHasMore(p: PersonaProposal): Boolean =
+    p.proposed.lines().count { it.isNotBlank() } > 1
+
+/**
  * 技能索引提案卡（第十九批 §2.2）：封卷提炼／启动补算产出的 PENDING 提案，
  * 用户「采纳」⇒ 写进人设对应层，「丢弃」⇒ 只移除。**采纳之前人设一个字都不动**（K4）。
  *
  * 卡上注明提案来路：用户明说的（「记住这个流程」）写「这是你说的」，其余写「会话封卷提炼」
  * ——确认制要求用户审的就是「为什么改」（[PersonaProposal.reason] 已带，这里再亮一遍层）。
+ *
+ * UI 第二批 §2：每条给「技能名＋可读摘要」（不再只甩最后一行），长正文按条展开，
+ * 超过 [CARD_VISIBLE_LIMIT] 条折叠成「还有 N 条」。
  */
 @Composable
 fun BaopuSkillProposalCard(
@@ -62,6 +110,11 @@ fun BaopuSkillProposalCard(
     onDiscard: (PersonaProposal) -> Unit,
 ) {
     if (proposals.isEmpty()) return
+    // 两个开关：① 列表折叠（「还有 N 条」）；② 每条自己的正文展开。
+    // ②按提案对象记——PersonaProposal 是 data class，内容完全相同的两条会一起展开，
+    // 它们在卡上本来就长得一模一样，不做多余区分。
+    var listExpanded by remember { mutableStateOf(false) }
+    var openedProposals by remember { mutableStateOf(setOf<PersonaProposal>()) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -75,30 +128,56 @@ fun BaopuSkillProposalCard(
                 style = MaterialTheme.typography.titleSmall,
             )
             Spacer(Modifier.height(4.dp))
-            proposals.forEach { p ->
+            val visible = visibleItems(proposals, expanded = listExpanded, limit = CARD_VISIBLE_LIMIT)
+            val hidden = moreCount(total = proposals.size, shown = visible.size)
+            visible.forEach { p ->
                 val layerLabel = stringResource(
                     if (p.layer == PersonaLayer.B_GLOBAL) R.string.skill_layer_global
                     else R.string.skill_layer_project,
                 )
+                val opened = p in openedProposals
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = layerLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = skillProposalTitle(p),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    Text(
+                        text = skillProposalSummary(p),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    // 展开态才给正文全貌（收起态只上面那两行，卡不撑爆对话）。
+                    if (opened) {
                         Text(
-                            text = layerLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = p.reason,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = withoutBoldMarkers(p.proposed),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(top = 2.dp),
                         )
                     }
-                    Text(
-                        text = withoutBoldMarkers(p.proposed.lines().lastOrNull { it.isNotBlank() }.orEmpty()),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
-                    )
+                    if (skillProposalHasMore(p)) {
+                        Text(
+                            text = stringResource(
+                                if (opened) R.string.common_collapse_arrow else R.string.common_expand_arrow,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .clickable {
+                                    openedProposals =
+                                        if (opened) openedProposals - p else openedProposals + p
+                                },
+                        )
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(top = 2.dp),
@@ -111,6 +190,13 @@ fun BaopuSkillProposalCard(
                         }
                     }
                 }
+            }
+            if (hidden > 0) {
+                MoreItemsRow(
+                    hidden = hidden,
+                    expanded = listExpanded,
+                    onToggle = { listExpanded = !listExpanded },
+                )
             }
         }
     }
