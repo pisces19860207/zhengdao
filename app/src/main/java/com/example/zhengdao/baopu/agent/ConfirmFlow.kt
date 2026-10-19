@@ -78,9 +78,23 @@ internal class ConfirmFlow(
         val argsJson: String,
     )
 
+    // ── 跨线程字段（P2-10，第六十批：四个都必须 @Volatile）────────────────────
+    //
+    // 写：引擎线程（enter 里置 pending/deferred、清 note/abandoned、结束后整体清空）。
+    // 读：UI 主线程（resumeWithApproval / abandon / liveCallId 判陈旧点击）。
+    // 没有 @Volatile 时的故障形态是「点了批准，引擎还在等」——两个线程各自缓存了旧值，
+    // 且在 x86 模拟器上几乎不复现（只有真机 ARM 的弱内存序才稳定出）。状态机语义一个字没改：
+    // 仍是「写 pending → 等 deferred → 清 pending」这一个串行故事，只是让读写彼此可见。
+    @Volatile
     private var pending: Pending? = null
+
+    @Volatile
     private var deferred: CompletableDeferred<Boolean>? = null
+
+    @Volatile
     private var note: String? = null
+
+    @Volatile
     private var abandoned = false
 
     /** 当前挂起的 callId（没有 ⇒ null；陈旧点击判别与测试都看它）。 */
