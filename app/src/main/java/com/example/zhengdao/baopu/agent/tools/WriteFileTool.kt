@@ -9,6 +9,7 @@
 // 4. 单次写入上限 200 行，超了拒绝并提示分次；**不提供任何删除能力**。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -90,6 +91,8 @@ internal object WriteFileTool {
     ): ToolOutcome {
         val rel = path.trim()
         if (rel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        // 第三十七批 A 段：人设与技能索引只能走提案/设置页，工具不许直接写（动手之前就拒）
+        PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
         if (content.isEmpty()) {
             return ToolOutcome.Failed("参数「$ARG_CONTENT」为空（没有要写的内容；不想写就别调 write_file）")
         }

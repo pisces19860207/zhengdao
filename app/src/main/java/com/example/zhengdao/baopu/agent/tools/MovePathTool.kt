@@ -13,6 +13,7 @@
 // 5. 权限 CONFIRM——每次搬都要用户看一眼 from → to。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -104,6 +105,9 @@ internal object MovePathTool {
         val toRel = to.trim()
         if (fromRel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_FROM」")
         if (toRel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_TO」")
+        // 第三十七批 A 段：**源或目标**任一命中即拒（搬走也是改，搬进来更是改）
+        PersonaGuard.blocked(fromRel)?.let { return ToolOutcome.Rejected(it) }
+        PersonaGuard.blocked(toRel)?.let { return ToolOutcome.Rejected(it) }
         val src = resolve(root, fromRel)
         val dst = resolve(root, toRel)
         if (!PathGuard.isInside(root, src)) {
