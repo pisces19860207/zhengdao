@@ -1,12 +1,12 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.preview
 
+import com.example.zhengdao.testkit.TestAssume
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
 import java.io.File
@@ -270,10 +270,10 @@ class PreviewServerTest {
     fun `J5_第一个候选被占_自动顺延到下一个`() {
         PreviewServer.stop()
         val blocker = bindBlocker(PreviewServer.PORT_CANDIDATES.first())
-        Assume.assumeTrue(
-            "本次 J5（顺延）未实测：候选端口 ${PreviewServer.PORT_CANDIDATES.first()} 3 秒内占不上" +
+        TestAssume.assume(
+            condition = blocker != null,
+            reason = "本次 J5（顺延）未实测：候选端口 ${PreviewServer.PORT_CANDIDATES.first()} 3 秒内占不上" +
                 "（多半是并行的别的用例还拿着它）",
-            blocker != null,
         )
         try {
             val r = PreviewServer.start()
@@ -299,10 +299,10 @@ class PreviewServerTest {
                 val s = bindBlocker(p) ?: return@forEach
                 blockers.add(s)
             }
-            Assume.assumeTrue(
-                "本次 J5（全占）未实测：只占到 ${blockers.size}/10 个候选端口" +
+            TestAssume.assume(
+                condition = blockers.size == PreviewServer.PORT_CANDIDATES.size,
+                reason = "本次 J5（全占）未实测：只占到 ${blockers.size}/10 个候选端口" +
                     "（多半是并行的别的用例还拿着剩下的）",
-                blockers.size == PreviewServer.PORT_CANDIDATES.size,
             )
             val r = PreviewServer.start()
             assertTrue("全占时不许假装起来：$r", r is PreviewServer.StartResult.Failed)
