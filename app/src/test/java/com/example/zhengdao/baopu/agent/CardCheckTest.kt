@@ -12,7 +12,7 @@ import com.example.zhengdao.baopu.card.CardDialectChecks
 import com.example.zhengdao.baopu.card.CardDialectMap
 import com.example.zhengdao.baopu.card.CardJson
 import com.example.zhengdao.baopu.card.CheckReport
-import com.example.zhengdao.baopu.card.FengyueWork
+import com.example.zhengdao.baopu.card.WebWork
 import com.example.zhengdao.baopu.card.Level
 import com.example.zhengdao.baopu.card.Stage
 import com.example.zhengdao.baopu.card.Worldbook
@@ -41,13 +41,13 @@ class CardCheckTest {
 
     /**
      * F4 的共同断言。⚠️ 判据表原话是「恰好一条 ERROR」，但 J1 自己的 key
-     * `_or_甲@wb@乙` 含两个单字 ⇒ 恒定产出一条 FY_KEY_TOO_BROAD(ERROR)。
+     * `_or_甲@wb@乙` 含两个单字 ⇒ 恒定产出一条 WEB_KEY_TOO_BROAD(ERROR)。
      * 所以这里钉「该字段恰好一条 ERROR ＋ 不出现别的种类的 ERROR」。
      */
     private fun assertSingleRangeError(r: CheckReport, code: String, field: String) {
         val e = r.findings.filter { it.level == Level.ERROR }
         assertEquals("「$field」应恰好一条 ERROR：${e.map { it.code }}", 1, e.count { it.field == field })
-        assertTrue("出现了意料外的 ERROR：${e.map { it.code }}", e.all { it.field == field || it.code == "FY_KEY_TOO_BROAD" })
+        assertTrue("出现了意料外的 ERROR：${e.map { it.code }}", e.all { it.field == field || it.code == "WEB_KEY_TOO_BROAD" })
         val f = e.first { it.field == field }
         assertEquals(code, f.code)
         assertEquals(0, f.entry?.index)
@@ -55,40 +55,40 @@ class CardCheckTest {
 
     private fun kindOf(a: CardAsset): String = when (a) {
         is Worldbook -> "worldbook:${a.dialect}"
-        is FengyueWork -> "work"
+        is WebWork -> "work"
         else -> a.javaClass.simpleName
     }
 
     // ── F4 · 四个越界值（拆四个用例，不许合并）─────────────────────────────
 
     @Test
-    fun `fengyue_probability_zero_is_error`() {
-        assertSingleRangeError(check(CardFixtures.J1.replace("\"probability\":100", "\"probability\":0")), "FY_PROBABILITY_RANGE", "probability")
+    fun `web_probability_zero_is_error`() {
+        assertSingleRangeError(check(CardFixtures.J1.replace("\"probability\":100", "\"probability\":0")), "WEB_PROBABILITY_RANGE", "probability")
     }
 
     @Test
-    fun `fengyue_depth_21_is_error`() {
-        assertSingleRangeError(check(CardFixtures.J1.replace("\"depth\":2", "\"depth\":21")), "FY_DEPTH_RANGE", "depth")
+    fun `web_depth_21_is_error`() {
+        assertSingleRangeError(check(CardFixtures.J1.replace("\"depth\":2", "\"depth\":21")), "WEB_DEPTH_RANGE", "depth")
     }
 
     @Test
-    fun `fengyue_key_region_8_is_error`() {
-        assertSingleRangeError(check(CardFixtures.J1.replace("\"key_region\":3", "\"key_region\":8")), "FY_KEY_REGION_RANGE", "key_region")
+    fun `web_key_region_8_is_error`() {
+        assertSingleRangeError(check(CardFixtures.J1.replace("\"key_region\":3", "\"key_region\":8")), "WEB_KEY_REGION_RANGE", "key_region")
     }
 
     @Test
-    fun `fengyue_match_type_5_is_error`() {
-        assertSingleRangeError(check(CardFixtures.J1.replace("\"match_type\":2", "\"match_type\":5")), "FY_MATCH_TYPE_RANGE", "match_type")
+    fun `web_match_type_5_is_error`() {
+        assertSingleRangeError(check(CardFixtures.J1.replace("\"match_type\":2", "\"match_type\":5")), "WEB_MATCH_TYPE_RANGE", "match_type")
     }
 
     // ── F5 · `_or_` 单字 ────────────────────────────────────────────────
 
     @Test
-    fun `fengyue_or_single_char_is_score_assassin_risk`() {
+    fun `web_or_single_char_is_score_assassin_risk`() {
         val r = check(CardFixtures.N4)
-        val broad = r.findings.filter { it.code.startsWith("FY_KEY_TOO_BROAD") }
+        val broad = r.findings.filter { it.code.startsWith("WEB_KEY_TOO_BROAD") }
         assertEquals(
-            listOf(0 to ("FY_KEY_TOO_BROAD" to Level.ERROR), 1 to ("FY_KEY_TOO_BROAD_AND" to Level.WARN)),
+            listOf(0 to ("WEB_KEY_TOO_BROAD" to Level.ERROR), 1 to ("WEB_KEY_TOO_BROAD_AND" to Level.WARN)),
             broad.map { it.entry?.index to (it.code to it.level) },
         )
         assertEquals("key", broad[0].field)
@@ -106,12 +106,12 @@ class CardCheckTest {
     fun `single_char_boundaries_strip_fullwidth_and_combining`() {
         fun broad(key: String): List<String> =
             check(CardFixtures.webBook(CardFixtures.webEntry(key))).findings
-                .filter { it.code.startsWith("FY_KEY_TOO_BROAD") }.map { it.code }
+                .filter { it.code.startsWith("WEB_KEY_TOO_BROAD") }.map { it.code }
 
         // 分隔符旁有空格：strip 后仍是单字
-        assertTrue("_or_ 水 应仍报单字", broad("_or_ 水").contains("FY_KEY_TOO_BROAD"))
+        assertTrue("_or_ 水 应仍报单字", broad("_or_ 水").contains("WEB_KEY_TOO_BROAD"))
         // 全角字母：1 个码点
-        assertTrue("_or_Ａ 应算单字", broad("_or_Ａ").contains("FY_KEY_TOO_BROAD"))
+        assertTrue("_or_Ａ 应算单字", broad("_or_Ａ").contains("WEB_KEY_TOO_BROAD"))
         // e + 组合符 = 2 个码点 ⇒ 不算单字（已知漏报口子，主文 §8-10）
         assertTrue("e+组合符不该算单字", broad("_or_e\u0301").isEmpty())
     }
@@ -126,7 +126,7 @@ class CardCheckTest {
         val html = r.findings.filter { it.code == "KEY_IS_HTML_TOKEN" }
         assertEquals(2, html.size)
         assertTrue(html.all { it.level == Level.WARN && it.field == "key" })
-        assertTrue("div/span 不是单字，不该报过宽", r.findings.none { it.code.startsWith("FY_KEY_TOO_BROAD") })
+        assertTrue("div/span 不是单字，不该报过宽", r.findings.none { it.code.startsWith("WEB_KEY_TOO_BROAD") })
     }
 
     // ── F6-a ────────────────────────────────────────────────────────────
@@ -137,8 +137,8 @@ class CardCheckTest {
         assertEquals(0, r.stats.cCount)          // 能给 0，但必须是 0 不是 null
         assertEquals(2, r.stats.unjudgedCount)
         assertEquals(2, r.stats.notApplicableCount)
-        assertEquals(2, r.count("FY_NOT_APPLICABLE_REGION"))
-        assertTrue(r.findings.filter { it.code == "FY_NOT_APPLICABLE_REGION" }.all { it.level == Level.INFO })
+        assertEquals(2, r.count("WEB_NOT_APPLICABLE_REGION"))
+        assertTrue(r.findings.filter { it.code == "WEB_NOT_APPLICABLE_REGION" }.all { it.level == Level.INFO })
         assertTrue("C 类计数要能显示 0：${CardCheck.render(r)}", CardCheck.render(r).contains("有 0 条永远触发不了"))
     }
 
@@ -153,10 +153,10 @@ class CardCheckTest {
         assertEquals(1, c[0].entry?.index)
         assertEquals(0, r.stats.unjudgedCount)
         // 条目 4 只在 HTML 里命中 ⇒ B，不该出任何 ERROR/WARN
-        // （N5 的 key 是单字，恒定带一条 FY_KEY_TOO_BROAD；那是 F5 的事，不属「触发判定」）
+        // （N5 的 key 是单字，恒定带一条 WEB_KEY_TOO_BROAD；那是 F5 的事，不属「触发判定」）
         assertTrue(
             r.findings.none {
-                it.entry?.index == 4 && it.level != Level.INFO && !it.code.startsWith("FY_KEY_TOO_BROAD")
+                it.entry?.index == 4 && it.level != Level.INFO && !it.code.startsWith("WEB_KEY_TOO_BROAD")
             },
         )
         assertTrue(CardCheck.render(r).contains("有 1 条永远触发不了：第 1 条"))
@@ -241,18 +241,18 @@ class CardCheckTest {
     @Test
     fun `dialect_tables_never_cross`() {
         assertTrue(CardDialectChecks.codesFor(WorldbookDialect.WEB).none { it.startsWith("TV_") || it.startsWith("ST_") })
-        assertTrue(CardDialectChecks.codesFor(WorldbookDialect.TAVO).none { it.startsWith("FY_") || it.startsWith("ST_") })
-        assertTrue(CardDialectChecks.codesFor(WorldbookDialect.ST_NATIVE).none { it.startsWith("FY_") || it.startsWith("TV_") })
+        assertTrue(CardDialectChecks.codesFor(WorldbookDialect.TAVO).none { it.startsWith("WEB_") || it.startsWith("ST_") })
+        assertTrue(CardDialectChecks.codesFor(WorldbookDialect.ST_NATIVE).none { it.startsWith("WEB_") || it.startsWith("TV_") })
     }
 
     @Test
     fun `web_book_is_not_judged_with_st_rules`() {
-        // 给风月条目塞一个酒馆专有字段 constant：不许因此触发 ST_* 判定
+        // 给网络平台条目塞一个酒馆专有字段 constant：不许因此触发 ST_* 判定
         val json = CardFixtures.webBook(
             """{"key":"_or_甲","value":"v","group":"","key_region":3,"value_region":1,"sort":1,"depth":2,"probability":100,"match_type":2,"enable":true,"constant":true}""",
         )
         val r = check(json, prompt = "甲")
-        assertTrue("风月书里出现了酒馆码：${r.codes()}", r.findings.none { it.code.startsWith("ST_") })
+        assertTrue("网络平台书里出现了酒馆码：${r.codes()}", r.findings.none { it.code.startsWith("ST_") })
         assertTrue(r.codes().all { it in CardDialectChecks.codesFor(WorldbookDialect.WEB) })
     }
 
@@ -357,11 +357,11 @@ class CardCheckTest {
     }
 
     @Test
-    fun `fengyue_is_a_work_not_a_card`() {
+    fun `web_is_a_work_not_a_card`() {
         val parsed = CardAssetParser.parse(CardFixtures.J1.toByteArray(Charsets.UTF_8))!!
-        assertTrue("风月必须是 FengyueWork：${parsed.asset}", parsed.asset is FengyueWork)
-        assertFalse("风月不许塞进 Card", parsed.asset.javaClass.simpleName == "Card")
-        assertEquals(WorldbookDialect.WEB, (parsed.asset as FengyueWork).worldbook!!.dialect)
+        assertTrue("网络平台必须是 WebWork：${parsed.asset}", parsed.asset is WebWork)
+        assertFalse("网络平台不许塞进 Card", parsed.asset.javaClass.simpleName == "Card")
+        assertEquals(WorldbookDialect.WEB, (parsed.asset as WebWork).worldbook!!.dialect)
     }
 
 

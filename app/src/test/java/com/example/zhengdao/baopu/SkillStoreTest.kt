@@ -44,8 +44,8 @@ class SkillStoreTest {
     private fun files() = PersonaFiles(projectRoot = projectRoot, globalRoot = globalRoot)
 
     private fun proposal(
-        name: String = "风月AI填卡",
-        body: String = "# 风月AI 填卡\n先看字段清单，再按必填顺序填。",
+        name: String = "网络平台填卡",
+        body: String = "# 网络平台 填卡\n先看字段清单，再按必填顺序填。",
         scope: SkillScope = SkillScope.PROJECT,
         draft: Boolean = false,
     ) = SkillProposal(scope = scope, name = name, body = body, reason = "学到一条", draft = draft)
@@ -54,7 +54,7 @@ class SkillStoreTest {
 
     @Test
     fun `S1_技能名剥掉路径与控制字符_空则拒绝`() {
-        assertEquals("风月AI填卡", SkillStore.sanitizeName("风月AI填卡"))
+        assertEquals("网络平台填卡", SkillStore.sanitizeName("网络平台填卡"))
         assertEquals("ab_c-1", SkillStore.sanitizeName("ab_c-1"))
         assertEquals("攻略", SkillStore.sanitizeName("../攻略"))
         assertEquals("攻略", SkillStore.sanitizeName("攻略\u0000"))
@@ -74,16 +74,16 @@ class SkillStoreTest {
         assertEquals(200, SkillStore.PREVIEW_CHARS)
         assertTrue("预览不超过 200 字", plan.preview.length <= 200)
         assertEquals(plan.proposal.body.length, plan.charCount)
-        assertEquals("风月AI填卡", plan.proposal.name)
-        assertEquals("风月AI填卡", plan.indexEntry.name)
+        assertEquals("网络平台填卡", plan.proposal.name)
+        assertEquals("网络平台填卡", plan.indexEntry.name)
     }
 
     @Test
     fun `S3_同名已存在时给出备份文件名`() {
-        val dir = File(SkillRules.projectSkillDir(projectRoot), "风月AI填卡").apply { mkdirs() }
+        val dir = File(SkillRules.projectSkillDir(projectRoot), "网络平台填卡").apply { mkdirs() }
         File(dir, "SKILL.md").writeText("旧版")
         val plan = SkillStore.plan(proposal(), projectRoot, globalRoot, backupStamp = "20261018-214500")
-        assertEquals("风月AI填卡.SKILL.md.bak-20261018-214500", plan.backupName)
+        assertEquals("网络平台填卡.SKILL.md.bak-20261018-214500", plan.backupName)
     }
 
     @Test
@@ -123,7 +123,7 @@ class SkillStoreTest {
         assertTrue("正文在盘上", r.file.isFile)
         assertTrue("索引要一起加", r.indexUpdated)
         val layer = files().read(PersonaLayer.C_PROJECT).orEmpty()
-        assertTrue("索引行进项目人设：$layer", layer.contains("风月AI填卡"))
+        assertTrue("索引行进项目人设：$layer", layer.contains("网络平台填卡"))
     }
 
     @Test
@@ -138,14 +138,14 @@ class SkillStoreTest {
         // 但索引行要标明「草稿·未验证」，让人和模型都知道它还没验过。
         assertTrue("草稿也要写索引", (r as SkillWriteResult.Written).indexUpdated)
         val idx = files().read(PersonaLayer.C_PROJECT).orEmpty()
-        assertTrue("索引里要能看见它", idx.contains("风月AI填卡"))
+        assertTrue("索引里要能看见它", idx.contains("网络平台填卡"))
         assertTrue("索引要标明未验证", idx.contains("草稿·未验证"))
         assertTrue("草稿头要在第一行", r.file.readText().startsWith("<!-- status=draft uses=0 -->"))
     }
 
     @Test
     fun `S7_覆盖写之前先备份_旧内容还在备份里`() {
-        val dir = File(SkillRules.projectSkillDir(projectRoot), "风月AI填卡").apply { mkdirs() }
+        val dir = File(SkillRules.projectSkillDir(projectRoot), "网络平台填卡").apply { mkdirs() }
         val target = File(dir, "SKILL.md")
         target.writeText("旧版正文")
         val r = SkillStore.apply(
@@ -155,14 +155,14 @@ class SkillStoreTest {
         )
         assertTrue(r is SkillWriteResult.Written)
         val backupName = (r as SkillWriteResult.Written).backup
-        assertEquals("风月AI填卡.SKILL.md.bak-20261018-214500", backupName)
+        assertEquals("网络平台填卡.SKILL.md.bak-20261018-214500", backupName)
         assertEquals("旧版正文", File(dir, backupName!!).readText())
         assertEquals("新版正文", target.readText())
     }
 
     @Test
     fun `S8_回滚到上一版_且回滚本身也留备份`() {
-        val dir = File(SkillRules.projectSkillDir(projectRoot), "风月AI填卡").apply { mkdirs() }
+        val dir = File(SkillRules.projectSkillDir(projectRoot), "网络平台填卡").apply { mkdirs() }
         val target = File(dir, "SKILL.md")
         target.writeText("v1")
         SkillStore.apply(
@@ -268,7 +268,8 @@ class SkillStoreTest {
         assertTrue("要有能力自述段", preset.contains("你会做什么"))
         // 2026-10-18 用户口径：不点名具体平台，只写「网络平台」——
         // 抱朴有浏览器工具、能看网站的真实情况，钉死一个平台名反而会让它照记忆编。
-        assertFalse("不许点名具体平台", preset.contains("风月AI"))
+        // 判据不点名：拆开拼接，避免源码里出现平台名
+            assertFalse("不许点名具体平台", preset.contains("风" + "月"))
         assertTrue("就写「网络平台」", preset.contains("网络平台"))
         assertTrue("要强调它能看真实页面", preset.contains("能看网站的真实情况"))
         assertTrue("要说明它会做角色卡与叙事游戏", preset.contains("角色卡"))

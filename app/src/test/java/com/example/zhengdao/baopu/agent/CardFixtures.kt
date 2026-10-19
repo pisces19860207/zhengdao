@@ -19,12 +19,12 @@ import javax.imageio.ImageIO
 
 internal object CardFixtures {
 
-    // ── J1 · 网络平台常规（FENGYUE / PLAIN）──────────────────────────────
+    // ── J1 · 网络平台常规（WEB_BOOK / PLAIN）──────────────────────────────
     const val J1 = """
 {"world_book":[{"key":"_or_甲@wb@乙","value":"示例正文","group":"","key_region":3,"value_region":1,"sort":1,"depth":2,"probability":100,"match_type":2,"enable":true}]}
 """
 
-    // ── J2 · 网络平台模板（FENGYUE / TEMPLATE）───────────────────────────
+    // ── J2 · 网络平台模板（WEB_BOOK / TEMPLATE）───────────────────────────
     const val J2 = """
 {"_comment":["示例说明一","示例说明二"],"world_book":[{"key":"_or_甲","value":"示例正文","group":"","key_region":3,"value_region":1,"sort":1,"depth":2,"probability":100,"match_type":2,"enable":true}]}
 """
