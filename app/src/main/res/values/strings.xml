@@ -1255,4 +1255,5 @@
     <string name="learn_suggest_formal">转成正式技能</string>
     <string name="learn_adopt">采纳</string>
     <string name="learn_dismiss">不记</string>
+    <string name="learn_gate_blocked">这条不能采纳：%1$s</string>
 </resources>
