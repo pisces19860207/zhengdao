@@ -42,6 +42,7 @@ import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 
 /** 引擎状态（程枢版 §2 状态表；UI 只读这些）。 */
@@ -311,6 +312,15 @@ internal class RunEngine(
     @Volatile
     private var stopRequested = false
 
+    /**
+     * 当前这一轮流式调用的句柄（P2-5，2026-10-19 第五十六批）。
+     *
+     * 只为「停止」服务：用户点停止时立刻 cancel 底层的 Call，不用干等
+     * readTimeout（60s）。@Volatile：写在引擎线程、读在调用 stop() 的那条线程。
+     */
+    @Volatile
+    private var activeCall: okhttp3.Call? = null
+
     /** 连续工具失败计数（到 [RunRules.MAX_TOOL_FAILURES] 停下问人）。 */
     private var consecutiveToolFailures = 0
 
@@ -562,6 +572,10 @@ internal class RunEngine(
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
     fun stop() {
         stopRequested = true
+        // P2-5：取消正在飞的流式 Call。旧实现只置标志位 ⇒ 网络流照收，
+        // 最长耗到 readTimeout（60s）才收工；用户看到的就是「点了停止还在写」。
+        // 取消后 stream() 收到 IOException ⇒ 转 Failed，不会再回调成功。
+        runCatching { activeCall?.cancel() }
         // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
         confirmFlow.abandon()
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")
@@ -1234,7 +1248,9 @@ internal class RunEngine(
         // max_tokens（Anthropic 系）。不认这个的话，"半截回复"会被当成正常写完存下来。
         var stopReason: String? = null
         val client = LlmClient(provider)
-        client.streamAsync(messages, tools) { ev ->
+        // P2-5（第五十六批）：句柄存进字段 ⇒ stop() 能立刻 cancel。旧实现本地 Call
+        // 用完即弃，用户点停止后最多要干等 readTimeout（60s）。
+        val call = client.streamAsync(messages, tools) { ev ->
             when (ev) {
                 is LlmEvent.Delta -> textBuf.append(ev.text)
                 is LlmEvent.Finished -> {
@@ -1249,7 +1265,17 @@ internal class RunEngine(
             }
             if (ev is LlmEvent.Finished || ev is LlmEvent.Failed) latch.countDown()
         }
-        latch.await()
+        activeCall = call
+        // P2-5：等也要有上限。旧实现 `latch.await()` 无参 ⇒ 通道只连上不收数据时
+        // 这里能挂死整个 run 线程（唯一一条引擎线程，后面全排队）。
+        val arrived = latch.await(RunRules.STREAM_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        activeCall = null
+        if (!arrived) {
+            // 超时按失败处理，并把 Call 砍掉（不砍的话底层连接还占着）
+            runCatching { call.cancel() }
+            log("抱朴引擎：等模型流超过 ${RunRules.STREAM_WAIT_TIMEOUT_MS / 1000}s，本轮作废")
+            return RoundOutcome.Failed("等模型回复超时（${RunRules.STREAM_WAIT_TIMEOUT_MS / 1000}s）：这条通道只连上不收数据")
+        }
         // 原文取不到时退回异常 message（至少 err 列不为空，能看出是哪一类失败）
         failure?.let { return RoundOutcome.Failed(humanizeNetFailure(it), failureRaw ?: it) }
         if (rawCalls.isNotEmpty()) {
@@ -1528,87 +1554,111 @@ internal class RunEngine(
 
     /** 用户消息先落库再渲染（§3：顺序反了断点续跑就是空话）。 */
     private fun persistUserMessage(sessionId: Long, text: String) {
-        db.write { d ->
-            d.beginTransaction()
-            try {
-                val now = System.currentTimeMillis()
-                val seq = nextSeq(d, sessionId)
-                val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_USER, now, "done")
-                d.execSQL(m.sql, m.args)
-                val msgId = lastInsertId(d)
-                val p = BaopuSql.insertPart(msgId, 0, "text", text, now)
-                d.execSQL(p.sql, p.args)
-                val t = BaopuSql.touchSession(sessionId, now, text.take(80))
-                d.execSQL(t.sql, t.args)
-                d.setTransactionSuccessful()
-                onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_USER))
-            } finally {
-                d.endTransaction()
-            }
+        var msgId = -1L
+        // P2-3（第五十六批）：① `.get()` 等事务真的提交（旧实现把 Future 丢了，
+        // 写失败静默）；② 事件移到 `endTransaction()` **之后**——旧实现在事务体内就发，
+        // UI 可能先收到事件、库里还没有（用户看到一条"存在"的消息，杀进程就没了）。
+        val ok = runCatching {
+            db.write { d ->
+                d.beginTransaction()
+                try {
+                    val now = System.currentTimeMillis()
+                    val seq = nextSeq(d, sessionId)
+                    val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_USER, now, "done")
+                    d.execSQL(m.sql, m.args)
+                    val id = lastInsertId(d)
+                    val p = BaopuSql.insertPart(id, 0, "text", text, now)
+                    d.execSQL(p.sql, p.args)
+                    val t = BaopuSql.touchSession(sessionId, now, text.take(80))
+                    d.execSQL(t.sql, t.args)
+                    d.setTransactionSuccessful()
+                    msgId = id
+                } finally {
+                    d.endTransaction()
+                }
+            }.get()
+        }.isSuccess
+        if (!ok) {
+            log("抱朴引擎：用户消息落库失败（session=$sessionId），本次不发 MessagePersisted")
+            return
         }
+        onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_USER))
     }
 
     /** assistant 消息：流结束一次性落库（判据 7：流式期间内存累积，不每 token 写一次）。 */
     private fun persistAssistantMessage(sessionId: Long, text: String) {
         if (text.isBlank()) return
-        db.write { d ->
-            d.beginTransaction()
-            try {
-                val now = System.currentTimeMillis()
-                val seq = nextSeq(d, sessionId)
-                val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_ASSISTANT, now, "done")
-                d.execSQL(m.sql, m.args)
-                val msgId = lastInsertId(d)
-                val p = BaopuSql.insertPart(msgId, 0, "text", text, now)
-                d.execSQL(p.sql, p.args)
-                val t = BaopuSql.touchSession(sessionId, now, text.take(80))
-                d.execSQL(t.sql, t.args)
-                d.setTransactionSuccessful()
-                onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_ASSISTANT))
-            } finally {
-                d.endTransaction()
-            }
+        var msgId = -1L
+        // P2-3：同 persistUserMessage——等提交 + 事件在事务外
+        val ok = runCatching {
+            db.write { d ->
+                d.beginTransaction()
+                try {
+                    val now = System.currentTimeMillis()
+                    val seq = nextSeq(d, sessionId)
+                    val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_ASSISTANT, now, "done")
+                    d.execSQL(m.sql, m.args)
+                    val id = lastInsertId(d)
+                    val p = BaopuSql.insertPart(id, 0, "text", text, now)
+                    d.execSQL(p.sql, p.args)
+                    val t = BaopuSql.touchSession(sessionId, now, text.take(80))
+                    d.execSQL(t.sql, t.args)
+                    d.setTransactionSuccessful()
+                    msgId = id
+                } finally {
+                    d.endTransaction()
+                }
+            }.get()
+        }.isSuccess
+        if (!ok) {
+            log("抱朴引擎：assistant 消息落库失败（session=$sessionId），本次不发 MessagePersisted")
+            return
         }
+        onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_ASSISTANT))
     }
 
     /** 工具交换（入参 + 围栏后的出参）落一条 tool part：会话里看得见（设计 §9 施工细节）。 */
     private fun persistToolExchange(sessionId: Long, step: Int, tool: String, wrapped: String) {
-        db.write { d ->
-            d.beginTransaction()
-            try {
-                val now = System.currentTimeMillis()
-                val seq = nextSeq(d, sessionId)
-                val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_ASSISTANT, now, "done")
-                d.execSQL(m.sql, m.args)
-                val msgId = lastInsertId(d)
-                val payload = org.json.JSONObject()
-                    .put("tool", tool)
-                    .put("step", step)
-                    .put("result", wrapped)
-                    .toString()
-                val p = BaopuSql.insertPart(msgId, 0, "tool", payload, now)
-                d.execSQL(p.sql, p.args)
-                val rl = BaopuSql.insertRunLog(
-                    sessionId = sessionId,
-                    step = step,
-                    state = "Acting",
-                    model = provider.model,
-                    tokensIn = 0,
-                    tokensOut = 0,
-                    tokensInEst = 0,
-                    tokensOutEst = 0,
-                    tool = tool,
-                    ok = !wrapped.startsWith("失败") && !wrapped.startsWith("被拒"),
-                    latencyMs = 0,
-                    err = "",
-                    createdAt = now,
-                )
-                d.execSQL(rl.sql, rl.args)
-                d.setTransactionSuccessful()
-            } finally {
-                d.endTransaction()
-            }
-        }
+        // P2-3：`.get()` 等提交；失败落日志（旧实现丢弃 Future ⇒ 工具结果丢了你都不知道）
+        val ok = runCatching {
+            db.write { d ->
+                d.beginTransaction()
+                try {
+                    val now = System.currentTimeMillis()
+                    val seq = nextSeq(d, sessionId)
+                    val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_ASSISTANT, now, "done")
+                    d.execSQL(m.sql, m.args)
+                    val msgId = lastInsertId(d)
+                    val payload = org.json.JSONObject()
+                        .put("tool", tool)
+                        .put("step", step)
+                        .put("result", wrapped)
+                        .toString()
+                    val p = BaopuSql.insertPart(msgId, 0, "tool", payload, now)
+                    d.execSQL(p.sql, p.args)
+                    val rl = BaopuSql.insertRunLog(
+                        sessionId = sessionId,
+                        step = step,
+                        state = "Acting",
+                        model = provider.model,
+                        tokensIn = 0,
+                        tokensOut = 0,
+                        tokensInEst = 0,
+                        tokensOutEst = 0,
+                        tool = tool,
+                        ok = !wrapped.startsWith("失败") && !wrapped.startsWith("被拒"),
+                        latencyMs = 0,
+                        err = "",
+                        createdAt = now,
+                    )
+                    d.execSQL(rl.sql, rl.args)
+                    d.setTransactionSuccessful()
+                } finally {
+                    d.endTransaction()
+                }
+            }.get()
+        }.isSuccess
+        if (!ok) log("抱朴引擎：工具交换落库失败（session=$sessionId, tool=$tool）")
     }
 
     /**
