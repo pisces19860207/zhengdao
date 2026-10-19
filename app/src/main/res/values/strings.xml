@@ -818,6 +818,21 @@
     <string name="browser_new_tab">新标签</string>
     <string name="browser_close_tab">关闭标签</string>
     <string name="browser_tabs_full">标签数已达上限（20 个）</string>
+    <!-- 第五十九批 §5：玄览「本地预览」页签（只显示、默认断网、默认禁 JS）-->
+    <!-- 状态行那一串是"这一页签此刻的事实"，写死在文字里而不是靠图标：用户不必记住自己开过什么。
+         js_off_label / js_on_label 的键名按**当前状态**，值是**按下之后的动作**
+         （BrowserPreviewBar 里那条注释是判据）。 -->
+    <string name="browser_preview_status">只显示 · 已断网 · %1$s</string>
+    <string name="browser_preview_badge_js_off">脚本关</string>
+    <string name="browser_preview_badge_js_on">脚本开（沙箱）</string>
+    <string name="browser_preview_to_source">看源码</string>
+    <string name="browser_preview_to_render">看排版</string>
+    <string name="browser_preview_js_off_label">开脚本</string>
+    <string name="browser_preview_js_on_label">关脚本</string>
+    <string name="browser_preview_copy">复制</string>
+    <string name="browser_preview_copied">已复制</string>
+    <string name="browser_preview_copy_failed">没复制上</string>
+    <string name="browser_preview_no_nav">本地预览不上网：这条链接已被拦下（该页签默认断网）</string>
     <string name="browser_js_dialog_title">网页对话框</string>
     <string name="browser_dismiss">关闭</string>
     <string name="browser_blocked_scheme">为了安全，这种链接不允许在 App 内打开</string>
@@ -1187,6 +1202,7 @@
     <string name="skill_cat_saved">分类已记下：%1$s → %2$s（技能正文一个字没动）</string>
     <string name="skill_cat_rejected">这个技能不在盘上，分类没写：%1$s</string>
     <string name="skill_cat_io_failed">分类没写成：%1$s（%2$s）</string>
+    <string name="skill_recheck_badge">待重验：%1$s（先用起来验证，别照单全收）</string>
     <string name="skill_cat_corrupt">那份 _分类.json 读不通，先当没有分类用</string>
     <string name="skill_cat_close">关闭</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->
@@ -1251,6 +1267,23 @@
     <string name="baopu_tools_group_library">资料库</string>
     <string name="baopu_tools_group_plan">计划与技能</string>
     <string name="baopu_tools_group_card">卡片与格式</string>
+    <!-- 第五十九批 §1.6：设置页的分组标题。成员表已收进那**唯一一张**分组表
+         （baopu.agent.ToolGroupTable），这里只有「组 → 标题」字符串。
+         read / write / image / plan 四个键自本批起不再被任何代码引用（第二张组表已删）；
+         本批不删——删字符串是跨分支改动，未合入的 32/34 批 UI 分支还在那条基线上，
+         留给合完那一批清理（交付报告里如实记了这一条）。 -->
+    <string name="baopu_tools_group_core">核心（默认显示）</string>
+    <string name="baopu_tools_group_edit">写与改（默认显示）</string>
+    <string name="baopu_tools_group_files">文件管理</string>
+    <string name="baopu_tools_group_skill">技能</string>
+    <string name="baopu_tools_group_preview">本地预览</string>
+    <string name="baopu_tools_group_default_on">默认可见：这几件直接发给模型</string>
+    <string name="baopu_tools_group_default_off">默认不发给模型：抱朴要用时自己解锁，只在本会话有效</string>
+    <string name="baopu_tools_progressive_note">默认只显示核心工具；低频组按需解锁。「不显示」不是禁用——是模型根本看不见它：它调 capabilities 就能把组开出来（新会话回到默认）。右边那个开关是**组开关**：整组关掉后连 capabilities 也解不开（用户开关优先）；组里每个工具仍各有自己的开关，两档并存、互不覆盖。</string>
+    <string name="baopu_tool_capabilities">工具名册（capabilities）</string>
+    <string name="baopu_tool_capabilities_desc">看与开：列出有哪些工具组、每组一句话、谁是默认可见 / 已解锁 / 被你关掉，并按需解锁本会话要用的组。只改「模型这一轮能看见哪些工具」，不碰任何文件，所以不弹确认卡。被你这个开关关掉的组，它解不开——这一点它会如实告诉用户。</string>
+    <string name="baopu_tool_preview_local_file">本地预览（玄览）</string>
+    <string name="baopu_tool_preview_local_file_desc">把工作区里的一个文件送到玄览「本地预览」页签**只显示**：HTML 看排版、其余看源码，栏上有「源码 / 排版」切换与复制。该页签默认断网（页面内所有 http/https 请求被拦成空响应）、默认禁 JS；开了「脚本沙箱」也只在这一页签跑、照样出不了网。不执行你的程序、不接终端、不碰 rootfs；路径越界直接拒。它不写任何文件，所以不弹确认卡。</string>
     <string name="baopu_tool_image_ops">图片处理</string>
     <string name="baopu_tool_image_ops_desc">改图（每次执行前弹确认卡）：等比缩到长边、按矩形裁剪、转 png/jpg/webp、取主色（只回文本）、生成 48/72/96/144/192 五档方图标。原图永不覆盖——默认另存 &lt;名&gt;-&lt;动作&gt;.&lt;ext&gt;，目标已存在就拒绝。</string>
     <string name="baopu_tool_delete_path_desc">删工作区里的一个文件（每次执行前弹确认卡）：默认**移进回收站**（工作区/回收站/时间戳-原名），说一声就能搬回来；勾了「彻底删」才是不可恢复的删除。只删单个文件，目录一律拒；备份区 .baopu-bak/、回收站本身、资料库/原始/ 都不许碰。</string>
