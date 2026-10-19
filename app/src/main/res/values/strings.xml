@@ -1154,6 +1154,38 @@
     <string name="skill_edit_title">编辑技能</string>
     <string name="skill_name_locked_hint">技能名锁定：要改名请新建一个，再删掉这个</string>
     <string name="skill_edit_saved">已保存（旧版已备份）</string>
+    <!-- ── 第三十六批 A 段：抽屉「回收站」入口＋列表 ── -->
+    <string name="trash_drawer_entry">回收站（%1$d）</string>
+    <string name="trash_drawer_desc">删掉的文件先落在这里，能捞回来也能真删</string>
+    <string name="trash_dialog_title">回收站（%1$d）</string>
+    <string name="trash_none">回收站里没有文件</string>
+    <string name="trash_row_meta">%1$s ・ %2$s</string>
+    <string name="trash_restore">恢复</string>
+    <string name="trash_delete">彻底删除</string>
+    <string name="trash_empty">清空回收站</string>
+    <string name="trash_close">关闭</string>
+    <string name="trash_confirm_one">再点一次「彻底删除」就删了，删了恢复不了：%1$s（%2$s）</string>
+    <string name="trash_confirm_empty">再点一次「清空回收站」就全清：%1$d 个文件，共 %2$s，删了恢复不了</string>
+    <string name="trash_restored">已恢复到工作区根：%1$s</string>
+    <string name="trash_occupied">目标位已经有东西，没搬：%1$s</string>
+    <string name="trash_deleted_one">已彻底删除：%1$s</string>
+    <string name="trash_emptied">已清空回收站：%1$d 个文件，共 %2$s</string>
+    <string name="trash_emptied_partial">已清空回收站：%1$d 个文件，共 %2$s；另有 %3$d 个没删掉</string>
+    <string name="trash_rejected">这一步没做：%1$s（%2$s）</string>
+    <string name="trash_io_failed">盘上没做成：%1$s（%2$s）</string>
+    <!-- ── 第三十六批 B 段：技能分类旁挂（_分类.json，SKILL.md 一个字不动）── -->
+    <string name="skill_cat_make_card">做卡</string>
+    <string name="skill_cat_lookup">查资料</string>
+    <string name="skill_cat_read_image">看图</string>
+    <string name="skill_cat_edit_image">改图</string>
+    <string name="skill_cat_other">其他</string>
+    <string name="skill_cat_unset">未分类</string>
+    <string name="skill_cat_pick_title">「%1$s」的分类</string>
+    <string name="skill_cat_saved">分类已记下：%1$s → %2$s（技能正文一个字没动）</string>
+    <string name="skill_cat_rejected">这个技能不在盘上，分类没写：%1$s</string>
+    <string name="skill_cat_io_failed">分类没写成：%1$s（%2$s）</string>
+    <string name="skill_cat_corrupt">那份 _分类.json 读不通，先当没有分类用</string>
+    <string name="skill_cat_close">关闭</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->
     <string name="baopu_drawer_history">历史会话</string>
     <string name="baopu_drawer_history_desc">全部会话，平铺看</string>
