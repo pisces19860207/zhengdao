@@ -618,9 +618,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 注：本分支的执行已挪进 [startSessionOffMainThread]（§B 顺序 6 / P1-3），
         //    上面这段决策的说明留在入口处，读代码时不必跳进后台线程才发现口径。
         usesTmux = SessionManager.usesTmux
-        fallbackActive = false
+        // P1-4（第五十三批）：attach 也要把「这条会话是不是系统 shell 回退」读回来。
+        // 原先这里无条件 `false`，而 SessionManager.isFallback 全仓只写不读 ⇒ 环境未装、
+        // 会话是系统 sh 时，退出再进顶栏仍写「Debian 13.7」，启动命令还会打进系统 sh。
+        fallbackActive = SessionManager.isFallback
         // 同一串短标题：attach 到已有会话也走这条（理由见上面新会话那处的注释）
-        toolbarTitle?.text = "证道 - Debian 13.7"
+        toolbarTitle?.text =
+            if (fallbackActive) "证道 — 系统 shell（环境未安装）" else "证道 - Debian 13.7"
         attachViewToSession()
     }
 
