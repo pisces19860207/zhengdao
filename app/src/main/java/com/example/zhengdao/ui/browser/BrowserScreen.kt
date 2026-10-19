@@ -190,6 +190,31 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    // ── 本地预览请求（第五十九批 §5）：上面那条链的**同房型、另一个槽** ──────────────
+    // 为什么另开一个槽而不复用 pendingUrl：pendingUrl 装的是"去打开这个网址"，这里装的是
+    // "这份**已经读出来、已经守过越界**的文本，挂到只显示页签上"。塞进同一条 `openExternal`
+    // 就要在链中间判类型分叉——那是第二条过滤链的兄弟形状（§4 打回第二条）。
+    // 房型照抄三条：① 读发生在组合期（写入即重组，P1-8 那条病不重犯）；
+    // ② effect 以「值」为 key，而 Request 带单调 seq ⇒ 同一文件原样再预览一次也是新事件
+    //    （否则"页签被关掉后再调一次没反应"）；③ 先清槽再开页签（key 变 null 那一趟是空操作）。
+    // 满了（20）时 openPreviewTab 回 null ⇒ 如实落一条 UI 层提示，不静默丢（与「＋」键同一条文案）。
+    // 文案在**组合期**取好再给 effect 用：`LaunchedEffect` 里不能调 stringResource（协程体不在
+    // 组合上下文），而 `context.getString` 写在 effect 里会被 lint 判成本地上下文取资源
+    // （LocalContextGetResourceValueCall，Error 级——预算闸只容存量、不容新增）。
+    val tabsFullNote = stringResource(R.string.browser_tabs_full)
+    val previewPending = LocalPreviewHolder.pending
+    LaunchedEffect(previewPending) {
+        if (previewPending != null) {
+            LocalPreviewHolder.pending = null
+            val opened = BrowserTabManager.openPreviewTab(
+                context,
+                previewPending.relPath,
+                previewPending.text,
+            )
+            if (opened == null) uiMsg = tabsFullNote
+        }
+    }
+
     // 地址胶囊编辑态的「退出」通道（2026-10-18 收尾，§B 顺序 75 落地）：
     // 定稿 §6 只写了「点胶囊进编辑态 + 键盘 Go 提交」，没写怎么取消。旧设计地址栏永远是输入框，
     // 所以这不算回归；但两态设计里「点开却退不出去」是硬伤 —— 退出只能靠提交或切标签。
@@ -307,41 +332,58 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        // ── 底栏（一条 56dp · 2026-10-18 定稿）：`‹〔›〕[地址胶囊] ↻/⨯ ⋯` ──
-        // 动作本体仍写在本文件（门禁要求）：主页 = HOME_URL、刷新/停止 = reload/stopLoading、
-        // 提交 = 唯一入口 tryNavigate；切 Tab 时展示态跟着换（读活跃标签 state.url）。
-        // P1-7：引擎相关件在构造完成前一律"没有"——前进/后退判据取不到历史就当没有历史，
-        // 动作键空安全（engine 为 null 时静默，不 `!!` 硬取）；提交键不受影响，它走 tryNavigate
-        // （内部 `activeEngine() ?: obtain` 自己保证有承载，㊽-D 那条路径本来就不吃这里的 engine）。
-        BrowserBottomBar(
-            displayUrl = active?.state?.url ?: "",
-            editValue = urlInput,
-            isEditing = addressEditing,
-            canBack = engine?.canGoBack() == true,
-            canForward = engine?.canGoForward() == true,
-            loading = active?.state?.loading == true,
-            canCloseTab = active != null,
-            onEditStart = {
-                // 进编辑态先把当前页的真实 URL 灌进输入框（否则改的是上次提交的残留）
-                urlInput = active?.state?.url ?: ""
-                addressEditing = true
-            },
-            onEditEnd = { addressEditing = false },
-            onValueChange = { urlInput = it },
-            onSubmit = navigate,
-            onBack = { engine?.goBack() },
-            onForward = { engine?.goForward() },
-            onRefreshOrStop = {
-                if (active?.state?.loading == true) engine?.stopLoading() else engine?.reload()
-            },
-            onHome = { engine?.loadUrl(HOME_URL) },
-            onNewTab = {
-                if (BrowserTabManager.newTab(context) == null) {
-                    uiMsg = context.getString(R.string.browser_tabs_full)
-                }
-            },
-            onCloseTab = { active?.let { BrowserTabManager.closeTab(it.id) } },
-        )
+        // ── 底栏那一格（56dp）：二选一 ──
+        //  · 上网页签 → [BrowserBottomBar]（`‹〔›〕[地址胶囊] ↻/⨯ ⋯`，2026-10-18 定稿，一个字没改）
+        //  · 本地预览页签 → [BrowserPreviewBar]（文件名＋状态 / 看源码·看排版 / 脚本 / 复制，§5.3-§5.4）
+        // 判据只有 [BrowserTabState.isPreview] 这一条（= previewPath 非空），不新增状态源。
+        // 为什么是"换一栏"而不是"底栏加几个参数"或"底栏上再叠一栏"：见 BrowserPreviewBar 的 KDoc；
+        // 叠一栏会把壳子从 108dp 撑到 164dp（页面可视少 56dp），那是 §5 从没要求的外观预算。
+        val previewTab = active?.takeIf { it.state.isPreview() }
+        if (previewTab != null) {
+            BrowserPreviewBar(
+                fileName = previewTab.state.previewFileName(),
+                mode = previewTab.state.previewMode,
+                jsSandbox = previewTab.state.previewJsSandbox,
+                text = previewTab.state.previewText.orEmpty(),
+                onSetMode = { BrowserTabManager.setPreviewMode(previewTab.id, it) },
+                onToggleJsSandbox = { BrowserTabManager.setPreviewJsSandbox(previewTab.id, it) },
+            )
+        } else {
+            // 动作本体仍写在本文件（门禁要求）：主页 = HOME_URL、刷新/停止 = reload/stopLoading、
+            // 提交 = 唯一入口 tryNavigate；切 Tab 时展示态跟着换（读活跃标签 state.url）。
+            // P1-7：引擎相关件在构造完成前一律"没有"——前进/后退判据取不到历史就当没有历史，
+            // 动作键空安全（engine 为 null 时静默，不 `!!` 硬取）；提交键不受影响，它走 tryNavigate
+            // （内部 `activeEngine() ?: obtain` 自己保证有承载，㊽-D 那条路径本来就不吃这里的 engine）。
+            BrowserBottomBar(
+                displayUrl = active?.state?.url ?: "",
+                editValue = urlInput,
+                isEditing = addressEditing,
+                canBack = engine?.canGoBack() == true,
+                canForward = engine?.canGoForward() == true,
+                loading = active?.state?.loading == true,
+                canCloseTab = active != null,
+                onEditStart = {
+                    // 进编辑态先把当前页的真实 URL 灌进输入框（否则改的是上次提交的残留）
+                    urlInput = active?.state?.url ?: ""
+                    addressEditing = true
+                },
+                onEditEnd = { addressEditing = false },
+                onValueChange = { urlInput = it },
+                onSubmit = navigate,
+                onBack = { engine?.goBack() },
+                onForward = { engine?.goForward() },
+                onRefreshOrStop = {
+                    if (active?.state?.loading == true) engine?.stopLoading() else engine?.reload()
+                },
+                onHome = { engine?.loadUrl(HOME_URL) },
+                onNewTab = {
+                    if (BrowserTabManager.newTab(context) == null) {
+                        uiMsg = context.getString(R.string.browser_tabs_full)
+                    }
+                },
+                onCloseTab = { active?.let { BrowserTabManager.closeTab(it.id) } },
+            )
+        }
     }
 
     // ── JS 弹窗对话框 ──

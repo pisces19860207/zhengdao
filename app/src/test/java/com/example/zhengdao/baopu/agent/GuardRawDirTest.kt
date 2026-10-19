@@ -41,6 +41,13 @@ class GuardRawDirTest {
                 register(DeletePathTool.spec { root })
                 register(ConvertEncodingTool.spec { root })
                 register(ImageOpsTool.spec { root })
+                // 第五十九批 §1.2 起「组默认不可见」：没解锁的会话里，FILES 组那几个工具
+                // （move_path / delete_path / convert_encoding）拿到的是「未解锁」桩，
+                // 本文件那三条"批准后照常执行"的判据会被桩打成 Rejected。
+                // 这里给一个**全组已解锁**的会话当舞台：本文件验的是 GuardPipeline 的
+                // 权限与路径语义（第四十八批 P0-2），可见性另由 ProgressiveToolsTest 钉。
+                currentSessionId = 1L
+                unlockStore().unlock(1L, ToolGroup.values().toList())
             }
             pipeline = GuardPipeline(
                 reg,
