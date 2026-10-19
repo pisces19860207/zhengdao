@@ -202,8 +202,8 @@ class BareThreadGuardTest {
             "SettingsDataActivity.kt:592",          // zd-net-check（清场批注 +1；抱朴刀 2 加「抱朴工具」开关卡 +53 ⇒ 589→642；刀 3 B 段模型参数+思考深度两卡 +57 ⇒ 642→699；工具补强二三开关加在它之后 ⇒ 行号不动；第十八批 A 段抱朴三块整搬进 BaopuSettingsScreen（-106 行）+ 搬迁批注 +3 ⇒ 699→592）
             "SettingsEnvActivity.kt:218",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5；第十八批 B 段 Hermes 卡条件化包裹 +4 ⇒ 214→218）
             "SettingsEnvActivity.kt:273",           // zd-env-check（同上 +7；第十八批 B 段 Hermes 卡条件化包裹再 +5 ⇒ 268→273）
-            "SettingsEnvActivity.kt:578",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1；第十八批 B 段包裹 +5 ⇒ 573→578）
-            "SettingsEnvActivity.kt:673",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5 ⇒ 668→673）
+            "SettingsEnvActivity.kt:586",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +8 ⇒ 578→586）
+            "SettingsEnvActivity.kt:687",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
             "TerminalActivity.kt:650",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17）
             "TerminalActivity.kt:865",              // zd-net-probe（同上；第二十一批 +17）
