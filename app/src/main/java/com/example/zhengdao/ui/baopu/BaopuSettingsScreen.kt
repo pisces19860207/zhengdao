@@ -846,6 +846,7 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     // 「catalog 每个工具都有标签/副标题」那条。
     "update_plan" -> R.string.baopu_tool_update_plan
     "write_skill" -> R.string.baopu_tool_write_skill
+        "append_persona" -> R.string.baopu_tool_append_persona
     "library_list" -> R.string.baopu_tool_library_list
     "library_organize" -> R.string.baopu_tool_library_organize
     "delete_path" -> R.string.baopu_tool_delete_path
@@ -889,6 +890,7 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
     "update_plan" -> R.string.baopu_tool_update_plan_desc
     "write_skill" -> R.string.baopu_tool_write_skill_desc
+        "append_persona" -> R.string.baopu_tool_append_persona_desc
     "library_list" -> R.string.baopu_tool_library_list_desc
     "library_organize" -> R.string.baopu_tool_library_organize_desc
     "delete_path" -> R.string.baopu_tool_delete_path_desc

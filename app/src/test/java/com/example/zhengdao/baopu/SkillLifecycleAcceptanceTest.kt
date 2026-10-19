@@ -124,17 +124,22 @@ class SkillLifecycleAcceptanceTest {
     // ── write_skill 工具的门禁（第二十三批追加） ─────────────────────────────
 
     @Test
-    fun `L7_write_skill必须是确认制_且默认启用`() {
+    fun `L7_write_skill项目档免确认_全局仍拒_且默认启用`() {
         val spec = com.example.zhengdao.baopu.agent.SkillTools.spec(
             workspaceRoot = { projectRoot },
             personaFiles = { pf() },
         )
         assertEquals("write_skill", spec.name)
+        // 2026-10-19 用户拍板「C 层可以让他自治」：项目技能免确认（备份+索引+审计兜底）
         assertEquals(
-            "写技能会改用户文件，必须是 CONFIRM（不许 FREE 一键落盘）",
-            com.example.zhengdao.baopu.agent.ToolPermission.CONFIRM,
+            "C 层自治（第五十八批）：项目技能应是 FREE，靠备份/审计而不是确认卡",
+            com.example.zhengdao.baopu.agent.ToolPermission.FREE,
             spec.permission,
         )
+        val card = File("src/main/java/com/example/zhengdao/baopu/agent/tools/SkillTools.kt")
+            .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/agent/tools/SkillTools.kt") }
+            .readText()
+        assertTrue("全局技能仍必须拒写", card.contains("全局技能不许我自己改"))
         val reg = File("src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt")
             .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt") }
             .readText()
