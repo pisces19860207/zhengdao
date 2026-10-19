@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.testkit.TestAssume
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -224,7 +225,7 @@ class CacheCleanerTest {
             java.nio.file.Files.createSymbolicLink(link, outside.toPath())
         }.isSuccess
         // Windows 非开发者模式下建不了软链：跳过（在 Linux/CI 上会真跑）
-        org.junit.Assume.assumeTrue("本机不支持建软链，跳过", created)
+        TestAssume.symlinkUnsupported(created)
 
         assertTrue("应当删掉了缓存目录里的东西", CacheCleaner.deleteTree(cache))
         assertFalse("缓存目录本身应当被删掉", cache.exists())
@@ -271,7 +272,7 @@ class CacheCleanerTest {
         }.isSuccess
         // E-138：本机（Windows 非开发者模式）建不了软链。以前静默 return ＝假绿，
         // 改成显式跳过（Linux CI 上仍会真跑）。
-        org.junit.Assume.assumeTrue("本机不支持建软链（E-138）：本用例未覆盖", created)
+        TestAssume.symlinkUnsupported(created)
 
         val st = CacheCleaner.deleteTreeCounted(root)
 
@@ -315,7 +316,7 @@ class CacheCleanerTest {
         }.isSuccess
         // E-138：Windows 上建软链要特权/开发者模式。以前静默 return ＝假绿，
         // 改成显式跳过（Linux CI 上仍会真跑）。
-        org.junit.Assume.assumeTrue("本机不支持建软链（E-138）：本用例未覆盖", created)
+        TestAssume.symlinkUnsupported(created)
         assertEquals(
             "软链被跟进就会把同一份数据数两遍",
             500_000L,
@@ -338,7 +339,7 @@ class CacheCleanerTest {
             )
         }.isSuccess
         // E-138：本机不允许无特权建软链。以前静默 return ＝假绿，改成显式跳过。
-        org.junit.Assume.assumeTrue("本机不支持建软链（E-138）：本用例未覆盖", created)
+        TestAssume.symlinkUnsupported(created)
         assertEquals(900_000L, CacheCleaner.fileLengths(root))
     }
 

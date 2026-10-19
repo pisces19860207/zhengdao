@@ -1,4 +1,6 @@
 import java.util.Base64
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
 
 plugins {
     alias(libs.plugins.android.application)
@@ -458,7 +460,61 @@ android {
     }
 }
 
+// ── Detekt（P1-3，2026-10-19）──────────────────────────────────────────────────
+// 只开 LongMethod / CyclomaticComplexMethod 两条，report-only；CI 不接这一步
+//（质量工程报告 P1-3 原话「不设门槛前不影响 CI」）。
+//
+// 为什么走 CLI 而不是 Gradle 插件：Detekt 1.23.8 内置的 Kotlin 编译器不认 JDK 25
+//（`JavaVersion.parse("25.0.3")` 直接抛），而本仓 Gradle daemon 钉的是 JDK 25。
+// 插件任务与 daemon 同 JVM，绕不开；这里改用 `JavaExec` + Java 21 toolchain 起子进程，
+// 既保留 Detekt 本体，也不影响主构建的 JDK 25。
+//
+// 首跑（2026-10-19）的违规已写进 `config/detekt/baseline.xml` 冻结；以后新增违规只会出现在
+// `app/build/reports/detekt/detekt.html`，不会拦构建。
+val detektCli = configurations.create("detektCli") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+val detektLauncher = extensions.getByType<JavaToolchainService>().launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+}
+
+val detektCommonArgs = listOf(
+    "--input", "src/main/java",
+    "--config", rootProject.file("config/detekt/detekt.yml").absolutePath,
+    "--baseline", rootProject.file("config/detekt/baseline.xml").absolutePath,
+    "--jvm-target", "17",
+)
+
+tasks.register<JavaExec>("detektReport") {
+    group = "verification"
+    description = "Detekt 报告（只跑 LongMethod / CyclomaticComplexMethod，report-only）"
+    classpath = detektCli
+    mainClass.set("io.gitlab.arturbosch.detekt.cli.Main")
+    javaLauncher.set(detektLauncher)
+    workingDir = projectDir
+    args = detektCommonArgs + listOf(
+        "--report", "html:build/reports/detekt/detekt.html",
+        "--report", "xml:build/reports/detekt/detekt.xml",
+    )
+    // report-only：发现问题也不让构建红。
+    isIgnoreExitValue = true
+}
+
+tasks.register<JavaExec>("detektBaselineUpdate") {
+    group = "verification"
+    description = "重算 Detekt 基线（只跑 LongMethod / CyclomaticComplexMethod）"
+    classpath = detektCli
+    mainClass.set("io.gitlab.arturbosch.detekt.cli.Main")
+    javaLauncher.set(detektLauncher)
+    workingDir = projectDir
+    args = detektCommonArgs + "--create-baseline"
+}
+
 dependencies {
+    // Detekt CLI（P1-3）：只在 detektReport / detektBaselineUpdate 两个任务里用，不进 APK。
+    add("detektCli", libs.detekt.cli)
     // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.apache.commons:commons-compress:1.26.2")

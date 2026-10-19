@@ -4,6 +4,7 @@
 // + 负例演练②（去掉生效逻辑 ⇒ 范围/越界用例必红——本文件与 ReadFileToolTest 是红的那批）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.testkit.TestAssume
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,11 +63,8 @@ class ListDirToolTest {
         val outside = tmp("outside-target")
         File(outside, "leak.txt").writeText("l")
         runCatching { Files.createSymbolicLink(File(root, "link-out").toPath(), outside.toPath()) }
-        // 沙盒造不出真软链（已知环境限制，与 GuardTest 同款处理）：造不出就跳过本用例
-        org.junit.Assume.assumeTrue(
-            "沙盒造不出真软链（已知环境限制）",
-            Files.isSymbolicLink(File(root, "link-out").toPath()),
-        )
+        // 沙盒造不出真软链（已知环境限制，与 GuardTest 同款处理）：统一走 TestAssume。
+        TestAssume.symlinkUnsupported(Files.isSymbolicLink(File(root, "link-out").toPath()))
         val out = ListDirTool.list(root, depth = 3, limit = 500)
         val text = (out as ToolOutcome.Ok).text
         assertFalse("软链本身不列出", text.contains("link-out"))
