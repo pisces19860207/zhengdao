@@ -76,6 +76,16 @@ object SessionManager {
     @Volatile
     var session: TerminalSession? = null
         private set
+    /**
+     * 会话启动时刻（毫秒；0 = 没有会话）。
+     *
+     * ⚠️ P2-11（第六十批）补 `@Volatile`：写入点全在会话线程/主线程（`start()` 登记、
+     * `killInternal()` 与 onSessionFinished 清零），但**读它的不止一个线程**——
+     * [com.example.zhengdao.terminal.SessionService] 的 30 秒巡检（`elapsedText()`）跑在
+     * 服务自己的线程上。没有 `@Volatile` 时那里可能长期读到 0，通知里「已运行 N 分钟」
+     * 就一直是空串（比读到旧值更糟：不是短一截，而是整段消失）。赋值点一个都没动。
+     */
+    @Volatile
     var startedAtMs: Long = 0L
         private set
     @Volatile
