@@ -12,6 +12,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -200,4 +201,24 @@ class PlanControllerTest {
     }
 
     private fun longText(n: Int) = "乙".repeat(n)
+
+    // ── 2026-10-19：计划提醒（用户真机「打完一步不打勾」；库里 done 出现 0 次）────────
+
+    @Test
+    fun reminder_lists_remaining_and_disappears_when_all_done() {
+        val r = rig()
+        assertNull("没计划时不该有提醒", r.controller.reminderLine())
+
+        r.controller.submit(planArgs("读文件" to "doing", "写文件" to "todo", "核对" to "todo"))
+        val line = r.controller.reminderLine()
+        assertNotNull("有计划时应给提醒", line)
+        assertTrue("要报剩余条数：$line", line!!.contains("还有 3 条没勾"))
+        assertTrue("要指到 update_plan：$line", line.contains("update_plan"))
+        assertTrue("要把后果说清：$line", line.contains("不标就等于没做"))
+        assertTrue("要讲清「开始先标 doing」：$line", line.contains("先标 doing"))
+        assertTrue("要讲清「不许批量补」：$line", line.contains("攒到最后批量补"))
+
+        r.controller.submit(planArgs("读文件" to "done", "写文件" to "done", "核对" to "done"))
+        assertNull("全勾完就不该再提醒", r.controller.reminderLine())
+    }
 }
