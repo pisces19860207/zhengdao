@@ -102,6 +102,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var showChannel by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
+    // 第四十批：长按用户消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框。
+    var menuMsg by remember { mutableStateOf<BaopuUiMessage?>(null) }
+    var editMsg by remember { mutableStateOf<Pair<Long, String>?>(null) }
     // 第十八批 A 段：抽屉「抱朴设置」直达抱朴自己的设置页（页内全屏浮层，
     // 与章节抽取／备份／换通道同一模式）——不再去「终端与资料」大杂烩页。
     var showSettings by remember { mutableStateOf(false) }
@@ -546,6 +549,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     pinLastRound = controller.actionCardsPresent,
                     listState = listState,
                     onSpeak = { speaker.speak(it) },
+                    // 第四十批：长按用户那条消息 ⇒ 菜单（编辑这条 / 复制）
+                    onUserLongPress = { msg -> if (!controller.busy) menuMsg = msg },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // 「⬇ 回到最新」浮标（主单 §2.4.1）：不在底部才出现，有新内容带
@@ -689,29 +694,42 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 )
                 Spacer(Modifier.height(8.dp))
             }
-            // 第四十批：继续说完 / 重试 / 编辑上一条——同一个区域（输入栏上方）
+            // 第四十批：继续说完 / 重试（只在被截断、跑挂时出现；平时不占屏幕）。
             val tailSet = tailActions(
                 busy = controller.busy,
-                hasSession = controller.sessionId != null,
                 truncated = controller.tailTruncated,
                 aborted = controller.engineState.value == RunState.ABORTED,
             )
-            var editSeed by remember { mutableStateOf<String?>(null) }
             if (tailSet.isNotEmpty()) {
                 BaopuTailActions(
                     actions = tailSet,
                     onContinue = { controller.continueTruncated() },
                     onRetry = { controller.retryLastTurn() },
-                    onEdit = { controller.latestUserMessage()?.let { editSeed = it.second } },
                 )
             }
-            editSeed?.let { seed ->
+            // 第四十批：长按用户那条消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框
+            menuMsg?.let { msg ->
+                BaopuUserMessageMenu(
+                    onEdit = {
+                        controller.userMessageText(msg.id)?.let { editMsg = msg.id to it }
+                        menuMsg = null
+                    },
+                    onCopy = {
+                        controller.userMessageText(msg.id)?.let {
+                            com.example.zhengdao.util.copyPlainText(context, "baopu-user-message", it)
+                        }
+                        menuMsg = null
+                    },
+                    onDismiss = { menuMsg = null },
+                )
+            }
+            editMsg?.let { (id, seed) ->
                 BaopuEditMessageDialog(
                     initial = seed,
-                    onDismiss = { editSeed = null },
+                    onDismiss = { editMsg = null },
                     onSave = { text ->
-                        controller.editLastUser(text)
-                        editSeed = null
+                        controller.editUser(id, text)
+                        editMsg = null
                     },
                 )
             }

@@ -226,6 +226,10 @@ internal fun BaopuMessageList(
     listState: LazyListState = rememberLazyListState(),
     // 朗读（2026-10-18）：null ⇒ 不出「朗读」按钮（单测/预览场景不必造 TTS）。
     onSpeak: ((String) -> Unit)? = null,
+    // 第四十批（用户 2026-10-19）：「编辑上一条」不占屏幕 ——
+    // 「编辑上一条可以在对应那个用户发送的信息长按出现吗？」「就不这么显化了，有点挡手机的屏幕」
+    // ⇒ 长按**那条用户消息**才出菜单；null 时不接这个手势（单测/预览场景）。
+    onUserLongPress: ((BaopuUiMessage) -> Unit)? = null,
     // 2026-10-18 用户：「这次学到和已压缩这类可以放到已完成下面滚动播放吗？不占用正文框，
     // 很影响手机的可视面积」⇒ 两条便签从固定头区搬进列表首项，随内容一起滚走。
     modifier: Modifier = Modifier,
@@ -254,7 +258,7 @@ internal fun BaopuMessageList(
             rounds.forEach { round ->
                 if (round.toolPartCount == 0) {
                     items(round.messages, key = { it.id }) { msg ->
-                        BaopuMessageRow(msg, onSpeak)
+                        BaopuMessageRow(msg, onSpeak, onUserLongPress)
                     }
                 } else {
                     item(key = round.userMessageId) {
@@ -307,6 +311,7 @@ private fun BaopuRoundItem(
     userOpened: Boolean,
     onUserToggle: () -> Unit,
     onSpeak: ((String) -> Unit)? = null,
+    onUserLongPress: ((BaopuUiMessage) -> Unit)? = null,
 ) {
     var planOpened by remember(round.userMessageId) { mutableStateOf(false) }
     val collapsed = roundCollapsed(
@@ -328,7 +333,7 @@ private fun BaopuRoundItem(
         if (collapsed) {
             // 收起：user 消息（问题常显）＋ 摘要一行（可点开）＋ **计划卡收起态那一行**
             // （不许被轮收纳吃掉——J15）＋ 最终回答（照旧常显）
-            round.messages.filter { it.role == "user" }.forEach { BaopuMessageRow(it) }
+            round.messages.filter { it.role == "user" }.forEach { BaopuMessageRow(it, onUserLongPress = onUserLongPress) }
             BaopuRoundSummaryRow(round, steps, onUserToggle)
             if (planVisible) {
                 BaopuPlanCard(
@@ -346,7 +351,7 @@ private fun BaopuRoundItem(
             // 其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
             var planMounted = false
             round.messages.forEach { msg ->
-                BaopuMessageRow(msg, onSpeak)
+                BaopuMessageRow(msg, onSpeak, onUserLongPress)
                 if (!planMounted && msg.role == "user") {
                     planMounted = true
                     if (planVisible) {
@@ -418,7 +423,11 @@ private fun BaopuRoundSummaryRow(
 }
 
 @Composable
-private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = null) {
+private fun BaopuMessageRow(
+    msg: BaopuUiMessage,
+    onSpeak: ((String) -> Unit)? = null,
+    onUserLongPress: ((BaopuUiMessage) -> Unit)? = null,
+) {
     // 只有 plan part 的消息（第十七批 C 段：计划已解析进 msg.plan 由计划卡渲染）⇒
     // 不建空气泡（角色标签下一片空白比不渲染更怪）。
     if (msg.parts.isEmpty()) return
@@ -426,6 +435,9 @@ private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = 
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         // 2026-10-18 用户：「抱朴在左，用户在右才对啊」⇒ 用户气泡靠右、助手靠左；
         // 「长按都没有复制功能哦」⇒ 气泡正文套 SelectionContainer（长按可选、系统菜单可复制）。
+        // 第四十批（2026-10-19）：用户气泡的**长按改成长按菜单**（编辑这条／复制）——
+        // 那个手势原来被 SelectionContainer 占着，现在由菜单里「复制」接管；
+        // 助手气泡不动（仍可长按选字），她改的是自己发出去的话。
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -438,7 +450,20 @@ private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = 
                     MaterialTheme.colorScheme.surfaceVariant
                 },
                 tonalElevation = if (isUser) 0.dp else 1.dp,
-                modifier = Modifier.fillMaxWidth(if (isUser) 0.85f else 1f),
+                modifier = if (isUser && onUserLongPress != null) {
+                    Modifier
+                        .fillMaxWidth(0.85f)
+                        // 长按与轻点都给同一个菜单：长按是用户点名的手势；轻点也接上，
+                        // 一是不让气泡「点了没反应」（以前点它什么都不发生），
+                        // 二是长按手势在个别输入法/手势导航下容易被系统吃掉。
+                        .combinedClickable(
+                            onClick = { onUserLongPress(msg) },
+                            onLongClickLabel = stringResource(R.string.baopu_user_msg_longpress),
+                            onLongClick = { onUserLongPress(msg) },
+                        )
+                } else {
+                    Modifier.fillMaxWidth(if (isUser) 0.85f else 1f)
+                },
             ) {
                 Column(Modifier.padding(12.dp)) {
                     // 2026-10-18 用户：「那个『你』字也应该在右啊」⇒ 用户气泡里的角色标签右对齐。
@@ -459,7 +484,7 @@ private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = 
                     val textParts = msg.parts.filter { it.kind != "image" }
                     val imageParts = msg.parts.filter { it.kind == "image" }
                     if (textParts.isNotEmpty()) {
-                        androidx.compose.foundation.text.selection.SelectionContainer {
+                        val renderParts: @Composable () -> Unit = {
                             Column {
                                 textParts.forEachIndexed { i, part ->
                                     when (part.kind) {
@@ -468,6 +493,15 @@ private fun BaopuMessageRow(msg: BaopuUiMessage, onSpeak: ((String) -> Unit)? = 
                                         else -> BaopuTextPart(part, key = "${msg.id}-$i")
                                     }
                                 }
+                            }
+                        }
+                        // 用户气泡：长按归「长按菜单」（编辑/复制），不再套 SelectionContainer；
+                        // 助手气泡照旧可长按选字复制。
+                        if (isUser) {
+                            renderParts()
+                        } else {
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                renderParts()
                             }
                         }
                     }

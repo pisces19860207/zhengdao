@@ -542,40 +542,35 @@ internal class BaopuChatController(context: Context) {
         engine.resume(sid, -1)
     }
 
-    /** 最近一条用户消息（id ＋ 正文），给编辑框预填。 */
-    fun latestUserMessage(): Pair<Long, String>? {
-        val sid = sessionId ?: return null
-        return db.read { d ->
-            d.rawQuery(
-                "SELECT message.id, part.payload FROM message " +
-                    "JOIN part ON part.message_id = message.id " +
-                    "WHERE message.session_id = ? AND message.role = 'user' AND part.kind = 'text' " +
-                    "ORDER BY message.id DESC, part.seq ASC LIMIT 1",
-                arrayOf(sid.toString()),
-            ).use { c -> if (c.moveToFirst()) c.getLong(0) to c.getString(1) else null }
-        }
+    /** 某条用户消息的正文（长按菜单「编辑这条」预填用）。 */
+    fun userMessageText(messageId: Long): String? = db.read { d ->
+        d.rawQuery(
+            "SELECT payload FROM part WHERE message_id = ? AND kind = 'text' ORDER BY seq ASC LIMIT 1",
+            arrayOf(messageId.toString()),
+        ).use { c -> if (c.moveToFirst()) c.getString(0) else null }
     }
 
     /**
-     * 改「最近一条用户消息」并让它重跑。
+     * 改某条用户消息并让它重跑（用户 2026-10-19：长按那条消息 ⇒ 编辑 ⇒ 重新输出）。
      *
      * 三步，**一个事务**：① 改正文 part；② 删掉它之后的所有消息（助手回复、工具卡、计划卡
      * 一并清掉，part 靠外键级联）；③ 清掉该会话的计划快照（旧计划不该跟着新内容走）。
      * 然后引擎续跑——**不新增用户消息**，模型看到的就是改后的那句。
+     *
+     * @param messageId 长按的那条用户消息 id（不一定是最后一条：改中间那条 ＝ 从那儿重来）
      */
-    fun editLastUser(newText: String) {
+    fun editUser(messageId: Long, newText: String) {
         val sid = sessionId ?: return
         if (busy) return
         val text = newText.trim()
         if (text.isEmpty()) return
-        val latest = latestUserMessage() ?: return
         runCatching {
             db.write { d ->
                 d.beginTransaction()
                 try {
-                    val u = BaopuSql.updateUserText(latest.first, text)
+                    val u = BaopuSql.updateUserText(messageId, text)
                     d.execSQL(u.sql, u.args)
-                    val del = BaopuSql.deleteMessagesAfter(sid, latest.first)
+                    val del = BaopuSql.deleteMessagesAfter(sid, messageId)
                     d.execSQL(del.sql, del.args)
                     val plan = BaopuSql.deletePlanBatches(sid)
                     d.execSQL(plan.sql, plan.args)
@@ -586,7 +581,7 @@ internal class BaopuChatController(context: Context) {
             }.get()
         }.onFailure {
             com.example.zhengdao.rootfs.RunLog.log(
-                "抱朴：编辑上一条失败 ${it.javaClass.simpleName}: ${it.message}",
+                "抱朴：编辑消息失败 ${it.javaClass.simpleName}: ${it.message}",
             )
         }
         engine.clearTailTruncated()
