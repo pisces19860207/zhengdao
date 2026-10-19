@@ -41,6 +41,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -247,6 +248,8 @@ private fun SessionRow(
 @Composable
 internal fun BaopuDrawer(
     busy: Boolean,
+    /** 抽屉当前是不是打开着（E-163：打开时要重数回收站，不然 N 永远是旧的）。 */
+    drawerOpen: Boolean,
     nodes: List<DrawerWorkspaceNode>,
     onNewSession: () -> Unit,
     onOpenSession: (Long) -> Unit,
@@ -333,9 +336,14 @@ internal fun BaopuDrawer(
         // 为什么放在工作区树后面：回收站是**这个工作区里**的一个目录（Download/证道/回收站），
         // 不是全局设置——它跟着「你在哪个文件夹干活」这件事，不跟着「设置」。
         // N 现读盘：目录列表一次而已，且只在抽屉真的重组时读（remember 的键是 tick 与根）。
-        // 面板自己管状态（[TrashDialog]），因为本批改不了 BaopuScreen.kt ⇒ 抽屉形参一个都不加。
+        // 面板自己管状态（[TrashDialog]）。E-163 之后多了一个形参 `drawerOpen`——抽屉内容常驻组合，
+        // 没有「打开」这个信号，N 就永远是刚进页面那一次的值。
         val trashRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
         var trashTick by remember { mutableStateOf(0) }
+        // E-163（真机 2026-10-19 抓到的）：ModalNavigationDrawer 的 drawerContent 一直处于组合中，
+        // remember 不会因为「把抽屉拉开」而重算 ⇒ 抱朴刚删完文件，抽屉里仍显示旧 N；
+        // 更糟的是旧 N=0 时整行 enabled=false，连面板都打不开（只能重启 App）。所以每次打开都重数一次。
+        LaunchedEffect(drawerOpen) { if (drawerOpen) trashTick++ }
         var trashOpen by remember { mutableStateOf(false) }
         val trashCount = remember(trashTick, trashRoot) { trashRows(BaopuTrashBin.dirOf(trashRoot)).size }
         DrawerItem(

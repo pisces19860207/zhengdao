@@ -8,9 +8,9 @@
 //
 // 五条硬纪律：
 // 1. 只在工作区根内删，越界即拒（PathGuard.isInside，组件级比较）；
-// 2. **默认进回收站**（`.回收站/<时间戳>-<原名>`，同分区 rename 原子），`permanent=true` 才真删；
+// 2. **默认进回收站**（`回收站/<时间戳>-<原名>`，同分区 rename 原子），`permanent=true` 才真删；
 // 3. 只删**单个文件**：目录一律拒（删目录一步能毁半个资料库，等真有需求再单开一刀）；
-// 4. 禁区一律拒并说清：`.baopu-bak/`（旧版本备份）、`.回收站/`（回收站本身）、
+// 4. 禁区一律拒并说清：`.baopu-bak/`（旧版本备份）、`回收站/`（回收站本身）、
 //    `资料库/原始/`（App 私有原件区，结构上本来就在工作区外，这里是第二道保险）；
 // 5. 权限 CONFIRM——每次删都要用户看一眼「删哪个、进回收站还是真删」。
 package com.example.zhengdao.baopu.agent
@@ -48,7 +48,7 @@ internal object DeletePathTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "delete_path",
-        description = "删工作区里的一个文件。**默认进回收站**（工作区/.回收站/时间戳-原名），" +
+        description = "删工作区里的一个文件。**默认进回收站**（工作区/回收站/时间戳-原名），" +
             "说一声就能捞回来；permanent=true 才是彻底删（确认卡上会写明「删了就没了」）。" +
             "只删单个文件：目录、备份区 .baopu-bak/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
             "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡，不用逐个删）。" +
