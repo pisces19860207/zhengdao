@@ -141,11 +141,20 @@ class SkillExpiryTest {
     }
 
     @Test
-    fun `E3_设置页的待重验写盘只落RECHECK_FILE`() {
-        val src = source("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
-        assertTrue("设置页要引用 RECHECK_FILE（落点唯一）", src.contains("SkillRefine.RECHECK_FILE"))
-        assertTrue("判据必须走纯函数 expiryVerdict（不许 UI 自己数）", src.contains("SkillRefine.expiryVerdict"))
-        assertTrue("编码必须走 encodeRecheck（不许自己拼 JSON）", src.contains("SkillRefine.encodeRecheck"))
+    fun `E3_设置页零写盘_待重验写盘只在数据层refreshRecheck`() {
+        // 门禁意图（36 批 T5 原判据）：设置页一个字写盘语句都不许有。
+        // 本批把「算表＋写 _重验.json」全收进数据层函数 refreshRecheck（BaopuSkillCategory.kt）。
+        val settings = source("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
+        assertEquals(
+            "设置页不许有 writeText（写全在数据层与分类函数里）",
+            0,
+            Regex("\\.writeText\\(").findAll(settings).count(),
+        )
+        val layer = source("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSkillCategory.kt")
+        assertTrue("写盘只落 RECHECK_FILE（落点唯一）", layer.contains("SkillRefine.RECHECK_FILE"))
+        assertTrue("判据必须走纯函数 expiryVerdict（不许 UI 自己数）", layer.contains("SkillRefine.expiryVerdict"))
+        assertTrue("编码必须走 encodeRecheck（不许自己拼 JSON）", layer.contains("SkillRefine.encodeRecheck"))
+        assertTrue("写失败只吞（提示不依赖它）", layer.contains("runCatching {"))
     }
 
     @Test

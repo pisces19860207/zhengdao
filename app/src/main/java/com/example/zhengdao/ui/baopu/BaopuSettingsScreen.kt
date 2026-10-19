@@ -319,58 +319,34 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     SkillRules.parseIndexLines(cText, MemoryScope.PROJECT)
                 }
                 // ── 第五十七批 §1.2 · 待重验（旁挂 `_重验.json`，SKILL.md 一个字节不动）──
-                // 判据是纯函数（SkillRefine.expiryVerdict：久未用 14 天 / 最近 5 次失败≥60%），
-                // 证据来自 skill_event 表（57 批 P1 的 use 留痕）。这里**只提示不处置**：
-                // 不降级、不删技能、不改正文——写盘只有 `_重验.json` 一条（幂等全量重写）。
-                // 记录上线前没有 use 数据 ⇒ 判不了 ⇒ 不标（宁可漏标不冤枉）。
+                // 判据是纯函数（SkillRefine.expiryVerdict），证据来自 skill_event 表；
+                // 算表＋幂等写旁挂 JSON 全在数据层函数 refreshRecheck（T5：设置页零写盘）。
+                // 记录上线前没有 use 数据 ⇒ 判不了 ⇒ 不标（宁可漏标不冤枉）。只提示不处置。
                 val recheckTables = remember(skillReload) {
-                    buildMap {
-                        fun verdictsOf(dir: File, lines: List<SkillRules.IndexLine>): Map<String, String> {
-                            val d = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
-                            val now = System.currentTimeMillis()
-                            val out = linkedMapOf<String, String>()
-                            for (line in lines) {
-                                val oks = d.read { x ->
-                                    val s2 = com.example.zhengdao.baopu.BaopuSql.recentUseOks(
-                                        line.name, com.example.zhengdao.baopu.SkillRefine.SkillExpiry.FAIL_WINDOW,
-                                    )
-                                    x.rawQuery(s2.sql, s2.args).use { c ->
-                                        (0 until c.count).map { c.moveToPosition(it); c.getInt(0) == 1 }
-                                    }
-                                }
-                                val last = d.read { x ->
-                                    val s2 = com.example.zhengdao.baopu.BaopuSql.lastUseAt(line.name)
-                                    x.rawQuery(s2.sql, s2.args).use { c ->
-                                        if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
-                                    }
-                                }
-                                val v = com.example.zhengdao.baopu.SkillRefine.expiryVerdict(last, oks, now)
-                                if (v.needsRecheck) {
-                                    out[line.name] = com.example.zhengdao.baopu.SkillRefine.reasonOf(v)
-                                }
-                            }
-                            return out
-                        }
-                        val g = verdictsOf(
-                            SkillRules.globalSkillDir(globalRoot),
-                            globalLines,
+                    val d = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
+                    val now = System.currentTimeMillis()
+                    fun oksOf(name: String): List<Boolean> = d.read { x ->
+                        val s2 = com.example.zhengdao.baopu.BaopuSql.recentUseOks(
+                            name, com.example.zhengdao.baopu.SkillRefine.SkillExpiry.FAIL_WINDOW,
                         )
-                        val p = verdictsOf(
-                            SkillRules.projectSkillDir(projectRoot),
-                            projectLines,
-                        )
-                        // 旁挂 JSON 是留痕（人可查），与 `_分类.json` 同级；写失败只吞（提示不依赖它）
-                        runCatching {
-                            File(SkillRules.globalSkillDir(globalRoot), com.example.zhengdao.baopu.SkillRefine.RECHECK_FILE)
-                                .parentFile?.mkdirs()
-                            File(SkillRules.globalSkillDir(globalRoot), com.example.zhengdao.baopu.SkillRefine.RECHECK_FILE)
-                                .writeText(com.example.zhengdao.baopu.SkillRefine.encodeRecheck(g), Charsets.UTF_8)
-                            File(SkillRules.projectSkillDir(projectRoot), com.example.zhengdao.baopu.SkillRefine.RECHECK_FILE)
-                                .writeText(com.example.zhengdao.baopu.SkillRefine.encodeRecheck(p), Charsets.UTF_8)
+                        x.rawQuery(s2.sql, s2.args).use { c ->
+                            (0 until c.count).map { c.moveToPosition(it); c.getInt(0) == 1 }
                         }
-                        put("global", g)
-                        put("project", p)
                     }
+                    fun lastOf(name: String): Long? = d.read { x ->
+                        val s2 = com.example.zhengdao.baopu.BaopuSql.lastUseAt(name)
+                        x.rawQuery(s2.sql, s2.args).use { c ->
+                            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+                        }
+                    }
+                    mapOf(
+                        "global" to refreshRecheck(
+                            SkillRules.globalSkillDir(globalRoot), globalLines, ::oksOf, ::lastOf, now,
+                        ),
+                        "project" to refreshRecheck(
+                            SkillRules.projectSkillDir(projectRoot), projectLines, ::oksOf, ::lastOf, now,
+                        ),
+                    )
                 }
                 val globalRecheck: Map<String, String> = recheckTables["global"].orEmpty()
                 val projectRecheck: Map<String, String> = recheckTables["project"].orEmpty()

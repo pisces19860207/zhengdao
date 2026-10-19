@@ -102,6 +102,45 @@ internal fun skillDirOf(globalRoot: File, projectRoot: File, global: Boolean): F
 /** 旁挂文件：`<技能目录>/_分类.json`（按层各一份：全局与项目互不串）。 */
 internal fun categoryFileOf(skillDir: File): File = File(skillDir, "_分类.json")
 
+/**
+ * 旁挂文件：`<技能目录>/_重验.json`（第五十七批 §1.2，与 `_分类.json` 同族：
+ * 只影响显示、不改 SKILL.md、幂等、坏 JSON 当空表）。
+ */
+internal fun recheckFileOf(skillDir: File): File =
+    File(skillDir, com.example.zhengdao.baopu.SkillRefine.RECHECK_FILE)
+
+/**
+ * 算一个层的「待重验」表并**幂等写回**旁挂 JSON（第五十七批 §1.2）。
+ *
+ * 判据是纯函数 [com.example.zhengdao.baopu.SkillRefine.expiryVerdict]；
+ * 证据（最近 M 次成败 / 最后使用时刻）由调用方以 lambda 注入（数据层不摸 DB）。
+ * 写失败只吞（提示不依赖它）——与 [setCategory] 同一口径。
+ * **只提示不处置**：不降级、不删技能、不碰正文一个字节。
+ */
+internal fun refreshRecheck(
+    skillDir: File,
+    lines: List<SkillRules.IndexLine>,
+    recentOksOf: (String) -> List<Boolean>,
+    lastUsedAtOf: (String) -> Long?,
+    nowMs: Long,
+): Map<String, String> {
+    val out = linkedMapOf<String, String>()
+    for (line in lines) {
+        val v = com.example.zhengdao.baopu.SkillRefine.expiryVerdict(
+            lastUsedAtOf(line.name), recentOksOf(line.name), nowMs,
+        )
+        if (v.needsRecheck) out[line.name] = com.example.zhengdao.baopu.SkillRefine.reasonOf(v)
+    }
+    runCatching {
+        recheckFileOf(skillDir).parentFile?.mkdirs()
+        recheckFileOf(skillDir).writeText(
+            com.example.zhengdao.baopu.SkillRefine.encodeRecheck(out),
+            Charsets.UTF_8,
+        )
+    }
+    return out
+}
+
 /** 技能名在不在盘上（判据 T5 的旁证：认的是 `SKILL.md`，但**只读不写**）。 */
 internal fun skillExists(skillDir: File, name: String): Boolean {
     if (name.isBlank() || name == "." || name == ".." || name.contains('/') || name.contains('\\')) {
