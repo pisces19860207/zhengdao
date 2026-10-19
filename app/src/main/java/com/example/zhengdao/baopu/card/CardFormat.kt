@@ -3,7 +3,7 @@
 // 依据：docs/格式层规格-三套卡与酒馆PNG-2026-10-19.md §2（认脸）：
 //   §2.0 门禁只看扩展名，解析器只看字节（本文件签名只有 ByteArray）
 //   §2.2 判定算法**按顺序命中即停**（顺序就是优先级，不许重排）
-//   §2.3 PNG 分支／§2.4 风月省略默认值就地补／§2.5 冲突裁决／§2.6 置信度／§2.7 逐字话术
+//   §2.3 PNG 分支／§2.4 网络平台省略默认值就地补／§2.5 冲突裁决／§2.6 置信度／§2.7 逐字话术
 //   §12.1–§12.3 CCv3 Lorebook 与 CHARX（F17／F18）
 //
 // 三条纪律：不许猜（判不出就 UNKNOWN＋keysSeen）；不许写盘；不许按文件名判。
@@ -47,9 +47,9 @@ internal object CardFormat {
         val j = value
         val keys = CardJson.topLevelKeys(text)
 
-        // 第 2 步：P1 风月 —— 最高优先级（见了 world_book 就不再往下看）
+        // 第 2 步：P1 网络平台 —— 最高优先级（见了 world_book 就不再往下看）
         val worldBook = CardJson.arrayOf(j, "world_book")
-        if (worldBook != null) return fengyue(j, worldBook, keys, text)
+        if (worldBook != null) return web(j, worldBook, keys, text)
 
         // 第 2.5 步：P2 CCv3 显式标记（比字段猜更可靠）
         val spec = CardJson.stringOf(j, "spec")
@@ -222,9 +222,9 @@ internal object CardFormat {
         return unknown("NO_SIGNATURE_KEY", keys, text, CardText.unknownKeys(keys)).copy(conflicts = conflicts)
     }
 
-    // ── 风月（P1） ───────────────────────────────────────────────────────
+    // ── 网络平台（P1） ───────────────────────────────────────────────────────
 
-    private fun fengyue(j: JSONObject, book: JSONArray, keys: List<String>, text: String): FormatVerdict {
+    private fun web(j: JSONObject, book: JSONArray, keys: List<String>, text: String): FormatVerdict {
         val defaults = LinkedHashSet<String>()
         for (i in 0 until book.length()) {
             val e = book.optJSONObject(i) ?: continue
@@ -234,7 +234,7 @@ internal object CardFormat {
 
         val conflicts = ArrayList<String>()
         for (k in listOf("entries", "kind", "id", "updatedAt")) {
-            if (j.has(k)) conflicts += "world_book 与 $k 并存，按风月世界书处理"
+            if (j.has(k)) conflicts += "world_book 与 $k 并存，按网络平台世界书处理"
         }
         val comment = j.opt("_comment")
         val hasComment = j.has("_comment")
@@ -242,8 +242,8 @@ internal object CardFormat {
         if (hasComment && !commentIsArray) conflicts += "_comment 不是数组"
 
         return FormatVerdict(
-            format = FormatKind.FENGYUE,
-            subtype = if (commentIsArray) SUBTYPE_FENGYUE_TEMPLATE else SUBTYPE_FENGYUE_PLAIN,
+            format = FormatKind.WEB_BOOK,
+            subtype = if (commentIsArray) SUBTYPE_WEB_BOOK_TEMPLATE else SUBTYPE_WEB_BOOK_PLAIN,
             confidence = Confidence.HIGH,
             evidence = buildList {
                 add("顶层键 world_book 是数组（${book.length()} 条）")
@@ -361,8 +361,8 @@ internal object CardFormat {
     }
 
     // 子类型字面量（§2.2 哨兵值；§2.1 表视为过时，见 §16.3-2）
-    const val SUBTYPE_FENGYUE_TEMPLATE = "TEMPLATE"
-    const val SUBTYPE_FENGYUE_PLAIN = "PLAIN"
+    const val SUBTYPE_WEB_BOOK_TEMPLATE = "TEMPLATE"
+    const val SUBTYPE_WEB_BOOK_PLAIN = "PLAIN"
     const val SUBTYPE_PNG_V3 = "V3"
     const val SUBTYPE_PNG_V2 = "V2"
     const val SUBTYPE_TAVO_ASSET_UNKNOWN = "TAVO_ASSET_UNKNOWN"

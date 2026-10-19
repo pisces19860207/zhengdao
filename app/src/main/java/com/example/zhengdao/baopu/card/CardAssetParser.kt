@@ -7,7 +7,7 @@
 // 三条纪律：
 // 1. `raw` 原样保留，视图**只读**；本批不提供任何写回入口（§16.2）。
 // 2. `dialect` 只记来源血统，不改变字段；跨血统转换是未来批次的事。
-// 3. 风月走 [FengyueWork]，不许硬塞进 [Card]（它没有卡）。
+// 3. 网络平台走 [WebWork]，不许硬塞进 [Card]（它没有卡）。
 package com.example.zhengdao.baopu.card
 
 import org.json.JSONArray
@@ -25,7 +25,7 @@ internal object CardAssetParser {
         val text = verdict.jsonText ?: verdict.embeddedJson ?: return null
         val raw = CardJson.parseObject(text) ?: return null
         val asset = when (verdict.format) {
-            FormatKind.FENGYUE -> fengyue(raw)
+            FormatKind.WEB_BOOK -> web(raw)
             FormatKind.TAVO_BOOK -> worldbook(raw, WorldbookDialect.TAVO, "tavo")
             FormatKind.ST_WORLD -> worldbook(raw, WorldbookDialect.ST_NATIVE, "sillytavern")
             FormatKind.CCV3_LOREBOOK -> worldbook(raw, WorldbookDialect.CCV3, "ccv3")
@@ -50,7 +50,7 @@ internal object CardAssetParser {
 
     // ── 世界书视图 ───────────────────────────────────────────────────────
 
-    private fun fengyue(raw: JSONObject): FengyueWork {
+    private fun web(raw: JSONObject): WebWork {
         val book = CardJson.arrayOf(raw, "world_book") ?: JSONArray()
         val wb = Worldbook(
             raw = raw,
@@ -62,7 +62,7 @@ internal object CardAssetParser {
         )
         // 平台把「详细介绍／提示词／前置词／后置词」放在作品层；本批只认脸 ⇒ 留空串，
         // 不猜字段名（规格没给这三个键的名字，猜了就违反「不许猜」）。
-        return FengyueWork(
+        return WebWork(
             detailHtml = "",
             prompt = "",
             prePrompt = "",

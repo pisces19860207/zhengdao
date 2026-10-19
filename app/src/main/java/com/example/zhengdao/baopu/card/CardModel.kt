@@ -3,7 +3,7 @@
 // 依据：docs/格式层规格-三套卡与酒馆PNG-2026-10-19.md
 //   §2.1（FormatVerdict 字段名照抄）／§2.2（九个 FormatKind）／§4.1（CheckReport）
 //   §14.3（统一内部模型）／§15.1（血统枚举写 WorldbookDialect.WEB）
-//   §16.3（三层并存：FormatKind.FENGYUE／WorldbookDialect.WEB／FY_* 码表）
+//   §16.3（三层并存：FormatKind.WEB_BOOK／WorldbookDialect.WEB／WEB_* 码表）
 //
 // 「正文/数据只有一个真相」：认脸结果、体检输入、导出的 JSON 全走这里的数据类，
 // 不许为读/写各拼一份。
@@ -13,8 +13,8 @@ import org.json.JSONObject
 
 /** 认脸结论（规格 §2.2：**只有这 9 个值**，不许自创）。 */
 internal enum class FormatKind {
-    /** 网络平台世界书（`world_book` 数组）。判据文本固定叫 FENGYUE，见 §16.3。 */
-    FENGYUE,
+    /** 网络平台世界书（`world_book` 数组）。判据文本固定叫 WEB_BOOK，见 §16.3。 */
+    WEB_BOOK,
     TAVO_BOOK,
     TAVO_CHAR,
     TAVO_REGEX,
@@ -142,9 +142,9 @@ internal data class Persona(
 
 /**
  * 网络平台的「作品」：**它没有角色卡**，对等物是「详细介绍」等四段文本 ＋ 世界书。
- * （§14.3 第三条纪律：风月内容不许塞进 [Card]。）
+ * （§14.3 第三条纪律：网络平台内容不许塞进 [Card]。）
  */
-internal data class FengyueWork(
+internal data class WebWork(
     val detailHtml: String,
     val prompt: String,
     val prePrompt: String,

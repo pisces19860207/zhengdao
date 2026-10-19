@@ -1316,4 +1316,6 @@
     <string name="baopu_artifact_shelf_none">No artifacts yet</string>
     <string name="baopu_artifact_shelf_none_hint">Ask it to write something</string>
     <string name="baopu_artifact_shelf_close">Close</string>
+    <string name="baopu_tool_card_build">Card builder</string>
+    <string name="baopu_tool_card_build_desc">Build a card / world book / five-piece skeleton from a workspace spec JSON (writes files after confirmation; never overwrites)</string>
 </resources>

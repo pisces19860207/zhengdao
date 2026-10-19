@@ -330,6 +330,7 @@ internal object BaopuToolCatalog {
         // 格式层（第三十九批 B）：inspect 只读；export 写 PNG 但**绝不覆盖**，且每次一张确认卡
         "card_inspect",
         "card_export",
+        "card_build",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -365,6 +366,8 @@ internal object BaopuToolCatalog {
         // 格式层（第三十九批 B）：认脸＋体检（只读）／导出酒馆 PNG（不覆盖）
         Entry("card_inspect") { CardTools.inspectSpec() },
         Entry("card_export") { CardTools.exportSpec(it) },
+        // 写卡（第四十五批）：母档 → 三套产物（CONFIRM，不覆盖）
+        Entry("card_build") { CardTools.buildSpec(it) },
     )
 
     /**

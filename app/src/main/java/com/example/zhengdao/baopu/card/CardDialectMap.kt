@@ -4,7 +4,7 @@
 //   §15.2（四套激活策略完全不同，别互相套）→ F22：只在该 dialect 存在时才检查
 //   §15.6（Tavo 是酒馆的改名版：字段对应表）→ F23：不许默认成 false/0
 //   §15.6.1（注入顺序：relative vs before_char）→ F24：injectionDepth 只映射 depth
-//   §16.3-3（三层并存：FormatKind.FENGYUE／WorldbookDialect.WEB／FY_* 码表）
+//   §16.3-3（三层并存：FormatKind.WEB_BOOK／WorldbookDialect.WEB／WEB_* 码表）
 //
 // 本文件是**纯表**：没有任何 I/O、没有状态。体检拿它判断「这条码属不属于这个方言」，
 // 测试拿它当「一套规则套四家」的靶子。
@@ -123,10 +123,10 @@ internal object CardDialectChecks {
 
     /** 三套字段级码（§4.2.1／§4.2.2／§4.2.3）。 */
     val WEB_FIELD_CODES: Set<String> = setOf(
-        "FY_MISSING_FIELD", "FY_TYPE_MISMATCH", "FY_PROBABILITY_RANGE", "FY_DEPTH_RANGE",
-        "FY_KEY_REGION_RANGE", "FY_VALUE_REGION_RANGE", "FY_MATCH_TYPE_RANGE",
-        "FY_VALUE_TYPE_RANGE", "FY_VALUE_CONFIGS_CONFLICT", "FY_EMPTY_KEY",
-        "FY_SORT_DUPLICATE", "FY_GROUP_EMPTY",
+        "WEB_MISSING_FIELD", "WEB_TYPE_MISMATCH", "WEB_PROBABILITY_RANGE", "WEB_DEPTH_RANGE",
+        "WEB_KEY_REGION_RANGE", "WEB_VALUE_REGION_RANGE", "WEB_MATCH_TYPE_RANGE",
+        "WEB_VALUE_TYPE_RANGE", "WEB_VALUE_CONFIGS_CONFLICT", "WEB_EMPTY_KEY",
+        "WEB_SORT_DUPLICATE", "WEB_GROUP_EMPTY",
     )
     val TAVO_FIELD_CODES: Set<String> = setOf(
         "TV_MISSING_FIELD", "TV_TYPE_MISMATCH", "TV_PROBABILITY_RANGE", "TV_KEYWORDS_EMPTY",
@@ -144,8 +144,8 @@ internal object CardDialectChecks {
 
     /** 方言专属的语义码（区域／分隔符／不适用的说法各不一样）。 */
     val WEB_SEMANTIC_CODES: Set<String> = setOf(
-        "FY_KEY_TOO_BROAD", "FY_KEY_TOO_BROAD_AND", "FY_KEY_TOO_BROAD_IMPLICIT",
-        "FY_NOT_APPLICABLE_REGION", "KEYSEP_BROKEN", "REGION_KEY_NO_SELF_TRIGGER", "REGION_VALUE_MULTI",
+        "WEB_KEY_TOO_BROAD", "WEB_KEY_TOO_BROAD_AND", "WEB_KEY_TOO_BROAD_IMPLICIT",
+        "WEB_NOT_APPLICABLE_REGION", "KEYSEP_BROKEN", "REGION_KEY_NO_SELF_TRIGGER", "REGION_VALUE_MULTI",
     )
     val TAVO_SEMANTIC_CODES: Set<String> = setOf(
         "TV_NOT_APPLICABLE_CONSTANT", "TV_NOT_APPLICABLE_DISABLED",
@@ -173,8 +173,8 @@ internal object CardDialectChecks {
     /** 该方言**不许**出现的码前缀（测试与自检用）。 */
     fun foreignPrefixes(dialect: WorldbookDialect): List<String> = when (dialect) {
         WorldbookDialect.WEB -> listOf("TV_", "ST_")
-        WorldbookDialect.TAVO -> listOf("FY_", "ST_")
-        WorldbookDialect.ST_NATIVE -> listOf("FY_", "TV_")
-        WorldbookDialect.CCV3 -> listOf("FY_", "TV_", "ST_")
+        WorldbookDialect.TAVO -> listOf("WEB_", "ST_")
+        WorldbookDialect.ST_NATIVE -> listOf("WEB_", "TV_")
+        WorldbookDialect.CCV3 -> listOf("WEB_", "TV_", "ST_")
     }
 }

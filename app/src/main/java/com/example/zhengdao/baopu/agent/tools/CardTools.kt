@@ -11,12 +11,14 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.BaopuGuardCore
 import com.example.zhengdao.baopu.card.CardAsset
 import com.example.zhengdao.baopu.card.CardAssetParser
+import com.example.zhengdao.baopu.card.CardBuild
 import com.example.zhengdao.baopu.card.CardCheck
+import com.example.zhengdao.baopu.card.CardFormat
 import com.example.zhengdao.baopu.card.CardRoster
 import com.example.zhengdao.baopu.card.CardJson
 import com.example.zhengdao.baopu.card.CardPng
 import com.example.zhengdao.baopu.card.CheckReport
-import com.example.zhengdao.baopu.card.FengyueWork
+import com.example.zhengdao.baopu.card.WebWork
 import com.example.zhengdao.baopu.card.FormatKind
 import com.example.zhengdao.baopu.card.FormatVerdict
 import com.example.zhengdao.baopu.card.Level
@@ -157,6 +159,68 @@ internal object CardTools {
 
     // ── 人话 ─────────────────────────────────────────────────────────────
 
+    // ── card_build（CONFIRM／写盘：母档 → 一套产物）────────────────────────
+
+    const val ARG_SPEC = "spec"
+    const val ARG_OUT_DIR = "out_dir"
+
+    fun buildSpec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
+        name = "card_build",
+        description = "从母档生成一套卡/世界书/五件套骨架（会写盘，弹确认卡）。" +
+            "format 只认 web／tavo／st：web 出 world_book.json＋提示词/前置词/后置词/内置CSS/详细介绍；" +
+            "tavo 出 card.json＋lorebook.json；st 出 card.json＋card.png（内嵌 chara/ccv3）。" +
+            "**已存在的文件一律拒绝，不覆盖**；单字关键词会被拒（积分刺客）。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_SPEC to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "母档 JSON 的相对路径（默认 母档.json）",
+                ),
+                ARG_OUT_DIR to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "输出目录（相对工作区根；省略则 成品/<name>/）",
+                ),
+            ),
+            "required" to jsonArrayOf(),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.FILE_MS,
+    ) { args ->
+        val root = workspaceRoot()
+        val specRaw = args.optString(ARG_SPEC).trim().ifEmpty { "母档.json" }
+        val specFile = resolve(root, specRaw)
+            ?: return@ToolSpec ToolOutcome.Rejected("路径越界被拒：$specRaw 不在工作区内")
+        if (!specFile.isFile) return@ToolSpec ToolOutcome.Failed("母档不存在：$specRaw")
+        val outRel = args.optString(ARG_OUT_DIR).trim().takeIf { it.isNotEmpty() }
+        if (outRel != null && resolve(root, outRel) == null) {
+            return@ToolSpec ToolOutcome.Rejected("路径越界被拒：$outRel 不在工作区内")
+        }
+        val text = runCatching { specFile.readText(Charsets.UTF_8) }.getOrElse {
+            return@ToolSpec ToolOutcome.Failed("读不了母档：$specRaw")
+        }
+        val spec = runCatching { CardBuild.parseSpec(text) }.getOrElse {
+            return@ToolSpec ToolOutcome.Failed(it.message ?: "母档解析失败")
+        }
+        val built = runCatching { CardBuild.build(spec, root, outRel) }.getOrElse {
+            return@ToolSpec ToolOutcome.Failed(it.message ?: "生成失败")
+        }
+        val lines = StringBuilder()
+        lines.appendLine("已生成 ${built.files.size} 个文件 → ${built.outDir.relativeTo(root).path}")
+        built.files.forEach { lines.appendLine("· ${it.name}（${it.length()} B）") }
+        // 自检：能认脸的产物先认一次（web 的世界书；tavo/st 的卡）
+        val checkTarget = when (spec.format) {
+            CardBuild.FORMAT_WEB -> built.files.firstOrNull { it.name == "world_book.json" }
+            else -> built.files.firstOrNull { it.name == "card.json" }
+        }
+        if (checkTarget != null) {
+            val verdict = CardFormat.recognize(checkTarget.readBytes())
+            lines.appendLine("自检：${if (verdict.isKnown) "认脸通过" else "认脸未通过"}（${verdict.format.name}）")
+        }
+        ToolOutcome.Ok(lines.toString().trimEnd())
+    }
+
     private fun resolve(root: File, raw: String): File? {
         val f = if (File(raw).isAbsolute) File(raw) else File(root, raw)
         return when (BaopuGuardCore.checkPath(root, f)) {
@@ -177,7 +241,7 @@ internal object CardTools {
     }
 
     private fun label(f: FormatKind): String = when (f) {
-        FormatKind.FENGYUE -> "网络平台世界书"
+        FormatKind.WEB_BOOK -> "网络平台世界书"
         FormatKind.TAVO_BOOK -> "Tavo 世界书"
         FormatKind.TAVO_CHAR -> "Tavo 角色卡"
         FormatKind.TAVO_REGEX -> "Tavo 正则"
@@ -209,7 +273,7 @@ internal object CardTools {
     /** 供测试断言「认脸结果里带着型号」用（避免测试直接依赖内部枚举名）。 */
     internal fun assetKind(a: CardAsset): String = when (a) {
         is Worldbook -> "worldbook:${a.dialect.name}"
-        is FengyueWork -> "work:${a.worldbook?.dialect?.name ?: "-"}"
+        is WebWork -> "work:${a.worldbook?.dialect?.name ?: "-"}"
         else -> a.javaClass.simpleName
     }
 
