@@ -142,6 +142,12 @@ import kotlin.text.Charsets
  *   加 `import com.example.zhengdao.rootfs.PathGuard`（P0-2 原始区红线）⇒ import 区 +1，
  *   zd-baopu-tool 创建点 67→68，本次回填；`RunEngine.kt` 删 `runLoop` 内同名局部
  *   var（P0-3）只动 757 行之后的代码，zd-baopu-run（:192）**未平移**。
+ * - 2026-10-19（第五十三批 · 终端/外壳 P1 五件）：**无新增线程**。`TerminalActivity.kt`
+ *   P1-4 attach 分支读 `SessionManager.isFallback` 并条件化标题（+4 行）⇒ 五个创建点
+ *   650→654 / 865→869 / 1672→1676；P1-6 系统文本菜单粘贴改走 `pasteText` 的 KDoc 与
+ *   单行调用（+7 行）⇒ 后三个再 1676→1683 / 1732→1743 / 1818→1829。`MainActivity.kt`
+ *   P1-9 的 `onNewIntent` 分支（+7 行）落在 :316 之后 ⇒ 该创建点不动；`HomeScreen.kt`
+ *   P1-10 只改一行判据 ⇒ :667 不动。逐处核过仍是同一段 `Thread {`，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -205,11 +211,11 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:586",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +8 ⇒ 578→586）
             "SettingsEnvActivity.kt:687",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
-            "TerminalActivity.kt:650",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17）
-            "TerminalActivity.kt:865",              // zd-net-probe（同上；第二十一批 +17）
-            "TerminalActivity.kt:1672",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1；第二十一批 +63）
-            "TerminalActivity.kt:1732",             // zd-install-cache（同上；第二十一批 +63）
-            "TerminalActivity.kt:1818",             // zd-install-download（同上；第二十一批 +63）
+            "TerminalActivity.kt:654",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17；第五十三批 P1-4 +4）
+            "TerminalActivity.kt:869",              // zd-net-probe（同上；第五十三批 P1-4 +4）
+            "TerminalActivity.kt:1683",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1；第二十一批 +63；第五十三批 P1-4 +4 / P1-6 +7）
+            "TerminalActivity.kt:1743",             // zd-install-cache（同上）
+            "TerminalActivity.kt:1829",             // zd-install-download（同上）
             "ZhengdaoApp.kt:82",                    // zhengdao-keepalive-archive（第⑲刀 +3；清场删两 import −2、删 onCreate 调用 −1、补说明 +2 ⇒ +2）
             "ZhengdaoApp.kt:132",                   // zd-auto-clean（同上）
         )
