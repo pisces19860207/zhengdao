@@ -318,6 +318,7 @@ internal class RunEngine(
         // 新一轮：上一轮的「这次学到」卡与信号都清掉（卡不跨轮保留，免得攒成一叠）
         learnSignals.clear()
         learnShown = false
+        _learnNames.value = emptySet()
         _learn.value = null
         // 新一轮 ⇒ 上一轮的「尾部被截断」标记作废（第四十批）
         _tailTruncated.value = false
@@ -360,6 +361,10 @@ internal class RunEngine(
     private val _learn = mutableStateOf<List<SkillRefine.LearnProposal>?>(null)
     val learn: State<List<SkillRefine.LearnProposal>?> get() = _learn
 
+    /** 出卡那一刻的「已有技能名」快照（C 段门禁判同名冲突用；纯卡片展示，不落盘）。 */
+    private val _learnNames = mutableStateOf<Set<String>>(emptySet())
+    val learnExistingNames: Set<String> get() = _learnNames.value
+
     /**
      * 用户点了「不记」⇒ **只清卡，一个字节都不写**（采纳才有落盘路径，且不在这里）。
      */
@@ -376,7 +381,10 @@ internal class RunEngine(
     private fun emitLearnCardIfDue() {
         if (!SkillRefine.shouldEmit(learnSignals, learnShown)) return
         learnShown = true
-        _learn.value = SkillRefine.learnProposals(learnSignals, existingSkillNames())
+        // 先取一次已有技能名：既决定建议「草稿/转正式」，也是 C 段门禁判同名冲突的依据
+        val names = existingSkillNames()
+        _learnNames.value = names
+        _learn.value = SkillRefine.learnProposals(learnSignals, names)
     }
 
     /** 已有技能名（决定卡上建议「草稿」还是「转正式」）。 */

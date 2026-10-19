@@ -245,16 +245,34 @@ internal class BaopuChatController(context: Context) {
         }
     }
 
+    /** 卡片要用「已有技能名」判同名冲突（引擎出卡时的快照，纯展示用）。 */
+    val learnExistingNames: Set<String> get() = engine.learnExistingNames
+
+    /** 采纳前的三道门禁（危险指令／平台事实没标未实测／同名冲突），IO 线程现读，纯本地判断。 */
+    private fun reviewBeforeWrite(
+        p: com.example.zhengdao.baopu.SkillRefine.LearnProposal,
+        root: java.io.File,
+    ): com.example.zhengdao.baopu.SkillRefine.LearnReview {
+        val existing = runCatching {
+            com.example.zhengdao.baopu.SkillRules.projectSkillDir(root).listFiles()
+                ?.filter { it.isDirectory }?.map { it.name }?.toSet() ?: emptySet()
+        }.getOrDefault(emptySet())
+        return com.example.zhengdao.baopu.SkillRefine.reviewLearn(p, existing)
+    }
+
     /** 把卡上一条提案写成技能（草稿/转正式按卡上的建议）。 */
     private fun writeLearnedSkill(p: com.example.zhengdao.baopu.SkillRefine.LearnProposal): String {
         val root = com.example.zhengdao.baopu.BaopuWorkspace.hostDir(appCtx)
         val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
         val globalRoot = java.io.File(pf.globalFile().parentFile ?: root, "")
-        val name = p.id.substringAfter('-').ifBlank { "skill" }
+        // C 段硬闸：卡上标红只是提示，**真落盘前再查一次**（卡可能已经过期）
+        val review = reviewBeforeWrite(p, root)
+        if (!review.ok) return "不能写：${review.summary}"
+        val name = com.example.zhengdao.baopu.SkillRefine.nameOf(p)
         val proposal = com.example.zhengdao.baopu.SkillProposal(
             scope = com.example.zhengdao.baopu.SkillScope.PROJECT,
             name = name,
-            body = "# 技能：$name\n\n## 场景\n${p.content}\n\n## 来源\n${p.source}\n",
+            body = com.example.zhengdao.baopu.SkillRefine.skillBodyFor(p),
             reason = "「这次学到」卡片采纳",
             draft = p.suggest != com.example.zhengdao.baopu.SkillRefine.Suggest.FORMAL,
         )

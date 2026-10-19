@@ -1265,4 +1265,5 @@
     <string name="baopu_user_msg_menu_title">这条消息</string>
     <string name="baopu_user_msg_longpress">长按：编辑这条或复制</string>
     <string name="baopu_edit_this">编辑这条</string>
+    <string name="learn_gate_blocked">这条不能采纳：%1$s</string>
 </resources>

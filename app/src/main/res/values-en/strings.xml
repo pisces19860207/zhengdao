@@ -1266,4 +1266,5 @@
     <string name="baopu_user_msg_menu_title">This message</string>
     <string name="baopu_user_msg_longpress">Long-press to edit or copy</string>
     <string name="baopu_edit_this">Edit this</string>
+    <string name="learn_gate_blocked">Cannot adopt this one: %1$s</string>
 </resources>
