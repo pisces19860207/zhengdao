@@ -231,7 +231,18 @@ internal class BaopuChatController(context: Context) {
         get() = engine.learn.value
 
     /** 用户点了「不记」⇒ 只把卡收起来，**一个字节都不写**。 */
-    fun dismissLearn() = engine.dismissLearn()
+    fun dismissLearn() {
+        // 第五十七批 §1.3：整卡「不记」= 全部候选记成丢弃留痕（下轮提炼不再重复提）。
+        engine.learn.value?.forEach { p ->
+            recordSkillDecision(
+                name = com.example.zhengdao.baopu.SkillRefine.nameOf(p),
+                adopted = false,
+                hash = com.example.zhengdao.baopu.SkillRefine.dedupeKeyOf(p),
+                detail = null,
+            )
+        }
+        engine.dismissLearn()
+    }
 
     /**
      * 采纳一条 ⇒ **唯一落盘路径**：`SkillStore.plan` → `SkillStore.apply`
@@ -243,8 +254,15 @@ internal class BaopuChatController(context: Context) {
         skillNote = "记下来中…"
         scope.launch {
             val out = withContext(Dispatchers.IO) { writeLearnedSkill(p) }
+            // 第五十七批 §1.3：采纳留痕（新草稿的 uses 头从 0 起算——试用期从采纳起算）
+            recordSkillDecision(
+                name = com.example.zhengdao.baopu.SkillRefine.nameOf(p),
+                adopted = true,
+                hash = com.example.zhengdao.baopu.SkillRefine.dedupeKeyOf(p),
+                detail = null,
+            )
             skillNote = out
-            engine.dismissLearn() // 采纳完就收卡，不重复写
+            engine.dismissLearn() // 采纳完就收卡，不重复写（收卡这里不记丢弃——上面记过采纳了）
         }
     }
 
@@ -1389,7 +1407,15 @@ internal class BaopuChatController(context: Context) {
             userTexts = readUserTextsFor(sid),
             now = System.currentTimeMillis(),
         )
-        val r = com.example.zhengdao.baopu.SkillRefine.refine(facts, globalLines + projectLines)
+        // 第五十七批 §1.3：被丢弃过的候选（名称＋正文摘要 hash）这一轮直接跳过——
+        // 丢弃留痕的另一半：丢过的东西不许下轮再端上来。读失败 ⇒ 空 set（只记录的链
+        // 断了也不拦提炼，与「记录不阻塞」同一口径）。
+        val rejectedKeys = runCatching {
+            readRejectedDecisionHashes()
+        }.getOrDefault(emptySet())
+        val r = com.example.zhengdao.baopu.SkillRefine.refine(
+            facts, globalLines + projectLines, rejectedKeys,
+        )
         if (r.candidates.isEmpty()) {
             if (r.dropped > 0) {
                 skillNote = appCtx.getString(
@@ -1475,11 +1501,65 @@ internal class BaopuChatController(context: Context) {
             return
         }
         pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
+        // 第五十七批 §1.3：采纳留痕（名字/摘要从 proposed 比 current 多出的那一行提）
+        recordSkillDecisionFor(p, adopted = true, detail = null)
     }
 
     /** 技能提案：丢弃（只在内存列表里移除——PENDING 本来就没落盘，没有文件可删）。 */
-    fun discardSkillProposal(p: com.example.zhengdao.baopu.PersonaProposal) {
+    fun discardSkillProposal(
+        p: com.example.zhengdao.baopu.PersonaProposal,
+        reason: String? = null,
+    ) {
         pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
+        // 第五十七批 §1.3：丢弃留痕（理由可空不强制；记了 hash，下轮提炼跳过同一候选）
+        recordSkillDecisionFor(p, adopted = false, detail = reason?.take(120))
+    }
+
+    // ── 第五十七批 §1.3：采纳/丢弃留痕（skill_event 表；只记录、写失败只 log）────
+
+    /**
+     * 记一条 decision（学习卡候选口径：名字＋content 摘要 hash）。
+     * 写失败只 RunLog——留痕是账本不是闸门，账本卡住业务就是本末倒置（红线原话口径）。
+     */
+    private fun recordSkillDecision(name: String, adopted: Boolean, hash: String?, detail: String?) {
+        runCatching {
+            val stmt = com.example.zhengdao.baopu.BaopuSql.insertSkillDecision(
+                "skill", name, adopted, hash, detail, System.currentTimeMillis(),
+            )
+            db.write { d -> d.execSQL(stmt.sql, stmt.args) }
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：skill_decision 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
+    }
+
+    /** 封卷确认卡候选口径：名字/摘要从 proposed 比 current 多出的那一行提（提不出 ⇒ 不记 hash）。 */
+    private fun recordSkillDecisionFor(
+        p: com.example.zhengdao.baopu.PersonaProposal,
+        adopted: Boolean,
+        detail: String?,
+    ) {
+        val name = com.example.zhengdao.baopu.SkillRefine.proposalNameOf(p)
+        if (name == null) {
+            com.example.zhengdao.rootfs.RunLog.log("抱朴：提案留痕提不出名字，只记条目不记 hash")
+            recordSkillDecision("（提不出名字）", adopted, hash = null, detail = detail)
+            return
+        }
+        recordSkillDecision(name, adopted, com.example.zhengdao.baopu.SkillRefine.dedupeKeyOfProposal(p), detail)
+    }
+
+    /** 被**丢弃**过的候选去重键全集（提炼时跳过；读失败由调用方当空 set 处理）。 */
+    private fun readRejectedDecisionHashes(): Set<String> {
+        val stmt = com.example.zhengdao.baopu.BaopuSql.rejectedDecisionHashes()
+        return db.read { d ->
+            d.rawQuery(stmt.sql, stmt.args).use { c ->
+                buildSet {
+                    while (c.moveToNext()) c.getString(0)?.let { add(it) }
+                }
+            }
+        }
     }
 
     /** 清掉技能动作那句话（UI 显示几秒后调）。 */

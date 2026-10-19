@@ -947,6 +947,33 @@ internal object BaopuSql {
         "SELECT MAX(at) FROM skill_event WHERE kind = 'use' AND name = ?",
         arrayOf<String?>(name),
     )
+
+    /** 记一条「提案采纳/丢弃」（§1.3 提案卡按钮收口时调；detail=丢弃理由，可空）。 */
+    fun insertSkillDecision(
+        target: String,
+        name: String,
+        adopted: Boolean,
+        hash: String?,
+        detail: String?,
+        nowMs: Long,
+    ): Stmt = Stmt(
+        "INSERT INTO skill_event (kind, target, name, ok, hash, detail, at) " +
+            "VALUES ('decision', ?, ?, ?, ?, ?, ?)",
+        arrayOf<String?>(
+            target,
+            name,
+            if (adopted) "1" else "0",
+            hash,
+            detail,
+            nowMs.toString(),
+        ),
+    )
+
+    /** 被**丢弃**过的提案去重键全集（§1.3 提炼时跳过同一候选，下轮不再重复提）。 */
+    fun rejectedDecisionHashes(): Stmt = Stmt(
+        "SELECT DISTINCT hash FROM skill_event WHERE kind = 'decision' AND ok = 0 AND hash IS NOT NULL",
+        emptyArray(),
+    )
 }
 
 /**
