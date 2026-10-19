@@ -30,6 +30,7 @@ enum class SegmentKind {
     PERSONA_B,   // B 全局人设（永不进压缩）
     PERSONA_C,   // C 项目人设（永不进压缩）
     HARD_FACTS,  // 硬事实卡（永不进压缩）
+    PROJECT_MEMORY, // 项目记忆（工作区根 项目记忆.md；永不进压缩，2026-10-19 最小版）
     MEMORY,      // 记忆召回（永不进压缩；同会话内只增不改）
     COMPRESSION, // 压缩摘要替身（唯一会随压缩事件变化的段）
     HISTORY,     // 会话历史（只增不改）
@@ -240,6 +241,8 @@ internal object ContextAssembler {
         compressedIds: Set<String> = emptySet(),
         skipIds: Set<String> = emptySet(),
         oldMessageCount: Int = 0,
+        /** 项目记忆（已裁剪；null/空 ⇒ 不注入）。见 [ProjectMemory]。 */
+        projectMemory: String? = null,
         // ── 视觉通道（第二十四批 A 段）──
         /** 本轮附件里**是图片**的那些（已由调用方读成 data URL；[VisionRules.ImagePayload] 不含路径）。 */
         images: List<VisionRules.ImagePayload> = emptyList(),
@@ -285,6 +288,12 @@ internal object ContextAssembler {
         val segments = mutableListOf<PromptSegment>()
         for (p in persona) segments += PromptSegment(personaKind(p.layer), p.text)
         segments += PromptSegment(SegmentKind.HARD_FACTS, renderFacts(facts))
+        if (!projectMemory.isNullOrBlank()) {
+            segments += PromptSegment(
+                SegmentKind.PROJECT_MEMORY,
+                "【项目记忆】（工作区根的 `" + ProjectMemory.FILE_NAME + "`，每轮自动读）\n" + projectMemory,
+            )
+        }
         if (memoryLines.isNotEmpty()) {
             val note = if (recallTruncated) "\n$recallNote" else ""
             segments += PromptSegment(SegmentKind.MEMORY, memoryLines.joinToString("\n") + note)
