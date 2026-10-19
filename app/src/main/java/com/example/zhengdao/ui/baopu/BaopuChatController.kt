@@ -512,6 +512,89 @@ internal class BaopuChatController(context: Context) {
         engine.resume(sid, interruptedStep)
     }
 
+    // ── 截断 / 重试 / 编辑上一条（第四十批）───────────────────────────────
+
+    /** 上一次回答是不是被服务端截在输出上限（引擎给的真实读数）。 */
+    val tailTruncated: Boolean get() = engine.tailTruncated.value
+
+    /** 上一次跑挂了 / 被截断后停下来 ⇒ 可以「重试」。 */
+    val canRetry: Boolean
+        get() = !busy && sessionId != null && engineState.value == RunState.ABORTED
+
+    /**
+     * 「继续说完」：接着把话写完，**不新增一条用户消息**。
+     *
+     * 走引擎续跑那条链（`resume` ⇒ `runLoop(userText=null, resumed=true)`）：历史从库里
+     * 重建，模型看到的就是自己那半截回答，接着说。
+     */
+    fun continueTruncated() {
+        val sid = sessionId ?: return
+        if (busy) return
+        engine.clearTailTruncated()
+        engine.resume(sid, -1)
+    }
+
+    /** 「重试」：把失败的那一轮重发一次（同样不新增用户消息，步数接着算）。 */
+    fun retryLastTurn() {
+        val sid = sessionId ?: return
+        if (busy) return
+        engine.clearTailTruncated()
+        engine.resume(sid, -1)
+    }
+
+    /** 最近一条用户消息（id ＋ 正文），给编辑框预填。 */
+    fun latestUserMessage(): Pair<Long, String>? {
+        val sid = sessionId ?: return null
+        return db.read { d ->
+            d.rawQuery(
+                "SELECT message.id, part.payload FROM message " +
+                    "JOIN part ON part.message_id = message.id " +
+                    "WHERE message.session_id = ? AND message.role = 'user' AND part.kind = 'text' " +
+                    "ORDER BY message.id DESC, part.seq ASC LIMIT 1",
+                arrayOf(sid.toString()),
+            ).use { c -> if (c.moveToFirst()) c.getLong(0) to c.getString(1) else null }
+        }
+    }
+
+    /**
+     * 改「最近一条用户消息」并让它重跑。
+     *
+     * 三步，**一个事务**：① 改正文 part；② 删掉它之后的所有消息（助手回复、工具卡、计划卡
+     * 一并清掉，part 靠外键级联）；③ 清掉该会话的计划快照（旧计划不该跟着新内容走）。
+     * 然后引擎续跑——**不新增用户消息**，模型看到的就是改后的那句。
+     */
+    fun editLastUser(newText: String) {
+        val sid = sessionId ?: return
+        if (busy) return
+        val text = newText.trim()
+        if (text.isEmpty()) return
+        val latest = latestUserMessage() ?: return
+        runCatching {
+            db.write { d ->
+                d.beginTransaction()
+                try {
+                    val u = BaopuSql.updateUserText(latest.first, text)
+                    d.execSQL(u.sql, u.args)
+                    val del = BaopuSql.deleteMessagesAfter(sid, latest.first)
+                    d.execSQL(del.sql, del.args)
+                    val plan = BaopuSql.deletePlanBatches(sid)
+                    d.execSQL(plan.sql, plan.args)
+                    d.setTransactionSuccessful()
+                } finally {
+                    d.endTransaction()
+                }
+            }.get()
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：编辑上一条失败 ${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
+        engine.clearTailTruncated()
+        interruptedStep = -1
+        refresh(force = true)
+        engine.resume(sid, -1)
+    }
+
     /** 新会话：释放旧视图状态（库里的会话不删——账本只增）。 */
     fun newSession() {
         // 第十九批 §2.4：点「新会话」＝旧会话**封卷**——先写 closed_at，提炼成功才写
