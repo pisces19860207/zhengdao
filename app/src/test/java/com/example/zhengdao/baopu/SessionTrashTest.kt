@@ -47,6 +47,11 @@ class SessionTrashTest {
             BaopuSql.listDeletedSessions().sql.contains("deleted_at IS NOT NULL"),
         )
         assertTrue(BaopuSql.countDeletedSessions().sql.contains("deleted_at IS NOT NULL"))
+        // 抽屉里那份「会话库」也必须排除软删——否则删完会话列表里还在（用户 2026-10-19 报）
+        assertTrue(
+            "抽屉会话库也要排除软删：${BaopuSql.sessionLibraryEntries().sql}",
+            BaopuSql.sessionLibraryEntries().sql.contains("deleted_at IS NULL"),
+        )
     }
 
     @Test

@@ -1327,4 +1327,5 @@
     <string name="trash_session_restored">Restored "%1$s"</string>
     <string name="trash_session_purged">Deleted "%1$s" for good</string>
     <string name="trash_session_failed">Failed (%1$s); the chat is untouched</string>
+    <string name="baopu_delete_session_body_ws">Delete "%1$s" (workspace: %2$s · %3$s)? It moves to Trash; messages stay and can be restored from Trash → Deleted chats.</string>
 </resources>
