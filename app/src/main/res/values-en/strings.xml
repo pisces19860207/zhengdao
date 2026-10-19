@@ -885,6 +885,9 @@
     <string name="baopu_memory_confirm">Remember</string>
     <string name="baopu_memory_forget">Don’t</string>
     <string name="baopu_compressed_marker">Compressed here: older messages were summarized; the originals are still in the log — tap to expand.</string>
+    <!-- UI batch 2 (2026-10-19 §2): folding must be visible — show how many items are hidden.
+         Expand/collapse arrows reuse the existing common_expand_arrow / common_collapse_arrow; this batch adds only this one key. -->
+    <string name="baopu_more_items">%1$d more</string>
     <!-- Baopu step-card collapsing (batch 16, item 1): a finished round collapses into one line -->
     <string name="baopu_round_summary">%1$d steps · took %2$s · %3$d failed</string>
     <string name="baopu_round_summary_nodur">%1$d steps · %2$d failed</string>
