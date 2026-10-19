@@ -754,7 +754,13 @@ internal class RunEngine(
             persistUserMessage(sessionId, userText)
             history += HistoryMessage("local-user-${System.nanoTime()}", HistoryMessage.ROLE_USER, userText)
         }
-        var compressionSummary: String? = null
+        // 第四十八批 P0-3：这里**不许**再声明同名局部 `var compressionSummary`——
+        // 局部会遮蔽字段：`restoreCompression()` 写的是字段，`runLoop` 读写的是局部 ⇒
+        // 进程重启后摘要看不见、同进程第二轮又从 null 起，而 `compressedIds` 还在 ⇒
+        // 组装时跳过被压消息却没有摘要替身，模型**永久丢掉那段上下文**。
+        // 摘要的唯一存储是字段 `compressionSummary`；写入口只有两处：
+        // `restoreCompression()`（重启回种）与 `runCompression()` 的返回值（压缩当场生成）。
+        // 形状门禁：CompressionSummaryShadowGateTest（runLoop 内不得再出现同名局部 var）。
 
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
