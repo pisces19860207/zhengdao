@@ -1,5 +1,7 @@
 # 第四十五批 · 写卡 `card_build`（从母档到三套格式的卡）
 
+> 状态：**已交付**（蓝总管自做，2026-10-19，合并见台账；未派给 qoder）。
+
 - 派单：2026-10-19 蓝总管
 - 基线：`63c5a28e`（或开工时最新 main）
 - 承接：qoder
@@ -20,7 +22,7 @@
 
 ```json
 {
-  "format": "fengyue | tavo | st",
+  "format": "web | tavo | st",
   "name": "作品名",
   "persona": "人设",
   "world": ["世界设定/规则条目…"],
@@ -35,7 +37,7 @@
 
 | format | 产出文件（写到 `outDir`，默认 `成品/<name>/`） |
 |---|---|
-| `fengyue` | `world_book.json`（12 字段：`key/value/group/key_region/value_region/sort/depth/probability/match_type/enable/value_type/value_configs`；`key` 按 `_or_…@wb@…` 生成）＋ `前置词.txt`／`提示词.txt`／`后置词.txt`／`内置CSS.txt`／`详细介绍.html`（模板骨架，填空） |
+| `web` | `world_book.json`（12 字段：`key/value/group/key_region/value_region/sort/depth/probability/match_type/enable/value_type/value_configs`；`key` 按 `_or_…@wb@…` 生成）＋ `前置词.txt`／`提示词.txt`／`后置词.txt`／`内置CSS.txt`／`详细介绍.html`（模板骨架，填空） |
 | `tavo` | `card.json`（CCv3：`name/description/first_mes/personality/scenario/mes_example/extensions`）＋ `lorebook.json`（entries 数组，26 键最小集） |
 | `st` | `card.json`（CCv3 卡）＋ `card.png`（调 `CardPng` 写 `chara`+`ccv3` 两块） |
 

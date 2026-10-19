@@ -22,8 +22,8 @@ class CardFormatTest {
     @Test
     fun `format_recognizes_all_seven_shapes`() {
         val cases = listOf(
-            Triple("J1", CardFixtures.J1, FormatKind.FENGYUE to "PLAIN"),
-            Triple("J2", CardFixtures.J2, FormatKind.FENGYUE to "TEMPLATE"),
+            Triple("J1", CardFixtures.J1, FormatKind.WEB_BOOK to "PLAIN"),
+            Triple("J2", CardFixtures.J2, FormatKind.WEB_BOOK to "TEMPLATE"),
             Triple("J3", CardFixtures.J3, FormatKind.TAVO_BOOK to null),
             Triple("J4", CardFixtures.J4, FormatKind.ST_WORLD to null),
             Triple("J5", CardFixtures.J5, FormatKind.TAVO_CHAR to null),
@@ -61,9 +61,9 @@ class CardFormatTest {
     // ── F2 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `fengyue_omitted_defaults_are_not_errors`() {
+    fun `web_omitted_defaults_are_not_errors`() {
         val v = judge(CardFixtures.J1)
-        assertEquals(FormatKind.FENGYUE, v.format)
+        assertEquals(FormatKind.WEB_BOOK, v.format)
         assertEquals(listOf("value_configs", "value_type"), v.defaultsApplied.sorted())
         // 认脸阶段不许因为「省略」报缺字段：判不出字段级错误，这里只能验「没把省略当错」
         assertTrue(v.conflicts.none { it.contains("value_type") || it.contains("value_configs") })

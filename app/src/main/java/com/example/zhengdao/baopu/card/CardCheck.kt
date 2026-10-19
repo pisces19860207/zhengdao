@@ -104,11 +104,11 @@ internal object CardCheck {
 
         val entries = when (asset) {
             is Worldbook -> asset.entries
-            is FengyueWork -> asset.worldbook?.entries ?: emptyList()
+            is WebWork -> asset.worldbook?.entries ?: emptyList()
             else -> emptyList()
         }
         val stats = when (val f = verdict.format) {
-            FormatKind.FENGYUE -> checkWeb(entries, prompt, pre, post, detailHtml, given, findings)
+            FormatKind.WEB_BOOK -> checkWeb(entries, prompt, pre, post, detailHtml, given, findings)
             FormatKind.TAVO_BOOK -> checkTavo(entries, prompt, pre, post, detailHtml, given, findings)
             FormatKind.ST_WORLD -> checkSt(asset.raw, entries, prompt, pre, post, detailHtml, given, findings)
             FormatKind.TAVO_CHAR, FormatKind.ST_CARD_PNG -> {
@@ -147,11 +147,11 @@ internal object CardCheck {
             if (c > 0) appendLine("有 $c 条永远触发不了：第 ${idx.joinToString("、")} 条。")
             else appendLine("有 0 条永远触发不了。")
         }
-        val noRegion = report.findings.count { it.code == "FY_NOT_APPLICABLE_REGION" }
+        val noRegion = report.findings.count { it.code == "WEB_NOT_APPLICABLE_REGION" }
         if (noRegion > 0) appendLine("另有 $noRegion 条不参与判定（触发区域不吃系统文本）。")
     }.trimEnd()
 
-    // ── 风月（WEB） ──────────────────────────────────────────────────────
+    // ── 网络平台（WEB） ──────────────────────────────────────────────────────
 
     private fun checkWeb(
         entries: List<WorldbookEntryView>,
@@ -174,7 +174,7 @@ internal object CardCheck {
             // ① 缺必填（value_type / value_configs **不在**此列：平台合法省略，§2.4）
             for (f in listOf("key", "value", "group", "sort", "enable", "key_region", "value_region", "depth", "probability", "match_type")) {
                 if (!e.has(f) || CardJson.isJsonNull(e, f)) {
-                    out += Finding(Level.ERROR, "FY_MISSING_FIELD", Stage.FIELD, ref, f, "第 ${v.index} 条缺少字段 $f。")
+                    out += Finding(Level.ERROR, "WEB_MISSING_FIELD", Stage.FIELD, ref, f, "第 ${v.index} 条缺少字段 $f。")
                 }
             }
 
@@ -192,42 +192,42 @@ internal object CardCheck {
             if (e.has("value_type") && !CardJson.isJsonNull(e, "value_type")) expectInt(e, "value_type", ref, out)
             if (e.has("value_configs") && !CardJson.isJsonNull(e, "value_configs")) {
                 if (e.opt("value_configs") !is JSONArray) {
-                    out += Finding(Level.ERROR, "FY_TYPE_MISMATCH", Stage.FIELD, ref, "value_configs", "第 ${v.index} 条的 value_configs 类型不对：应为数组。")
+                    out += Finding(Level.ERROR, "WEB_TYPE_MISMATCH", Stage.FIELD, ref, "value_configs", "第 ${v.index} 条的 value_configs 类型不对：应为数组。")
                 }
             }
 
             // ③ 取值域
             CardJson.numberAsInt(e, "probability")?.let {
-                if (it !in 1..100) out += Finding(Level.ERROR, "FY_PROBABILITY_RANGE", Stage.FIELD, ref, "probability", "第 ${v.index} 条的触发概率是 $it，不在 1–100 之间。", "$it")
+                if (it !in 1..100) out += Finding(Level.ERROR, "WEB_PROBABILITY_RANGE", Stage.FIELD, ref, "probability", "第 ${v.index} 条的触发概率是 $it，不在 1–100 之间。", "$it")
             }
             CardJson.numberAsInt(e, "depth")?.let {
-                if (it !in 0..20) out += Finding(Level.ERROR, "FY_DEPTH_RANGE", Stage.FIELD, ref, "depth", "第 ${v.index} 条的扫描深度是 $it，不在 0–20 之间。", "$it")
+                if (it !in 0..20) out += Finding(Level.ERROR, "WEB_DEPTH_RANGE", Stage.FIELD, ref, "depth", "第 ${v.index} 条的扫描深度是 $it，不在 0–20 之间。", "$it")
             }
             CardJson.numberAsInt(e, "key_region")?.let {
-                if (it !in 1..7) out += Finding(Level.ERROR, "FY_KEY_REGION_RANGE", Stage.FIELD, ref, "key_region", "第 ${v.index} 条的触发区域是 $it，只允许 1–7（1 系统 / 2 玩家 / 4 AI 相加）。", "$it")
+                if (it !in 1..7) out += Finding(Level.ERROR, "WEB_KEY_REGION_RANGE", Stage.FIELD, ref, "key_region", "第 ${v.index} 条的触发区域是 $it，只允许 1–7（1 系统 / 2 玩家 / 4 AI 相加）。", "$it")
             }
             CardJson.numberAsInt(e, "value_region")?.let {
-                if (it !in 1..7) out += Finding(Level.ERROR, "FY_VALUE_REGION_RANGE", Stage.FIELD, ref, "value_region", "第 ${v.index} 条的影响范围是 $it，只允许 1–7（1 提示词 / 2 前置词 / 4 后置词 相加）。", "$it")
+                if (it !in 1..7) out += Finding(Level.ERROR, "WEB_VALUE_REGION_RANGE", Stage.FIELD, ref, "value_region", "第 ${v.index} 条的影响范围是 $it，只允许 1–7（1 提示词 / 2 前置词 / 4 后置词 相加）。", "$it")
             }
             CardJson.numberAsInt(e, "match_type")?.let {
-                if (it != 2 && it != 3) out += Finding(Level.ERROR, "FY_MATCH_TYPE_RANGE", Stage.FIELD, ref, "match_type", "第 ${v.index} 条的匹配方式是 $it，只允许 2（关键词）或 3（正则）。", "$it")
+                if (it != 2 && it != 3) out += Finding(Level.ERROR, "WEB_MATCH_TYPE_RANGE", Stage.FIELD, ref, "match_type", "第 ${v.index} 条的匹配方式是 $it，只允许 2（关键词）或 3（正则）。", "$it")
             }
             CardJson.numberAsInt(e, "value_type")?.let {
-                if (it != 0 && it != 1) out += Finding(Level.ERROR, "FY_VALUE_TYPE_RANGE", Stage.FIELD, ref, "value_type", "第 ${v.index} 条的注入模式是 $it，只允许 0（常规）或 1（概率）。", "$it")
+                if (it != 0 && it != 1) out += Finding(Level.ERROR, "WEB_VALUE_TYPE_RANGE", Stage.FIELD, ref, "value_type", "第 ${v.index} 条的注入模式是 $it，只允许 0（常规）或 1（概率）。", "$it")
             }
             val vt = CardJson.numberAsInt(e, "value_type") ?: 0
             val vc = CardJson.arrayOf(e, "value_configs")
             if (vt == 0 && vc != null && vc.length() > 0) {
-                out += Finding(Level.WARN, "FY_VALUE_CONFIGS_CONFLICT", Stage.FIELD, ref, "value_configs", "第 ${v.index} 条是常规模式，却配了概率候选内容，配置矛盾。", "value_type=0 且 value_configs 有 ${vc.length()} 项")
+                out += Finding(Level.WARN, "WEB_VALUE_CONFIGS_CONFLICT", Stage.FIELD, ref, "value_configs", "第 ${v.index} 条是常规模式，却配了概率候选内容，配置矛盾。", "value_type=0 且 value_configs 有 ${vc.length()} 项")
             }
 
             // ④ 弱提示
             val keyStr = v.keys
             if (CardJson.stringOf(e, "key")?.let { CardAssetParser.webTokens(it).isEmpty() } == true) {
-                out += Finding(Level.WARN, "FY_EMPTY_KEY", Stage.FIELD, ref, "key", "第 ${v.index} 条的关键词是空的。", "key=\"${truncate(CardJson.stringOf(e, "key") ?: "", 20)}\"")
+                out += Finding(Level.WARN, "WEB_EMPTY_KEY", Stage.FIELD, ref, "key", "第 ${v.index} 条的关键词是空的。", "key=\"${truncate(CardJson.stringOf(e, "key") ?: "", 20)}\"")
             }
             if (CardJson.stringOf(e, "group") == "") {
-                out += Finding(Level.INFO, "FY_GROUP_EMPTY", Stage.FIELD, ref, "group", "第 ${v.index} 条没有分组（按默认处理）。", "")
+                out += Finding(Level.INFO, "WEB_GROUP_EMPTY", Stage.FIELD, ref, "group", "第 ${v.index} 条没有分组（按默认处理）。", "")
             }
             CardJson.numberAsInt(e, "sort")?.let { sortGroups.getOrPut(it) { ArrayList() } += v.index }
 
@@ -253,7 +253,7 @@ internal object CardCheck {
         for ((sort, idx) in sortGroups) {
             if (idx.size >= 2) {
                 out += Finding(
-                    Level.WARN, "FY_SORT_DUPLICATE", Stage.FIELD,
+                    Level.WARN, "WEB_SORT_DUPLICATE", Stage.FIELD,
                     EntryRef(index = idx.first(), sort = sort),
                     "sort",
                     "有 ${idx.size} 条的插入顺序都排在第 $sort 位，先后不确定。",
@@ -269,7 +269,7 @@ internal object CardCheck {
 
         return CheckStats(
             entries = entries.size,
-            byFormat = FormatKind.FENGYUE.name,
+            byFormat = FormatKind.WEB_BOOK.name,
             cCount = cls.cCount,
             unjudgedCount = cls.unjudged,
             notApplicableCount = cls.notApplicable,
@@ -288,17 +288,17 @@ internal object CardCheck {
         val ref = EntryRef(index = v.index, sort = CardJson.numberAsInt(v.raw, "sort"), key = truncate(key, 30))
         return when (prefix) {
             "OR" -> Finding(
-                Level.ERROR, "FY_KEY_TOO_BROAD", Stage.SEMANTIC, ref, "key",
+                Level.ERROR, "WEB_KEY_TOO_BROAD", Stage.SEMANTIC, ref, "key",
                 "第 ${v.index} 条的关键词里有单字「$single」。单字在「或」模式下几乎必中，平台会判为积分刺客风险（下架＋清积分）。",
                 "单字 token：$single",
             )
             "AND" -> Finding(
-                Level.WARN, "FY_KEY_TOO_BROAD_AND", Stage.SEMANTIC, ref, "key",
+                Level.WARN, "WEB_KEY_TOO_BROAD_AND", Stage.SEMANTIC, ref, "key",
                 "第 ${v.index} 条的「与」模式里有单字「$single」，会明显抬高触发门槛、多半导致永不触发。",
                 "单字 token：$single",
             )
             else -> Finding(
-                Level.WARN, "FY_KEY_TOO_BROAD_IMPLICIT", Stage.SEMANTIC, ref, "key",
+                Level.WARN, "WEB_KEY_TOO_BROAD_IMPLICIT", Stage.SEMANTIC, ref, "key",
                 "第 ${v.index} 条的关键词里有单字「$single」（没写「或/与」前缀，按保守口径提示）。",
                 "单字 token：$single",
             )
@@ -591,7 +591,7 @@ internal object CardCheck {
             if (kr == null || (kr and 1) == 0) {
                 na++
                 out += Finding(
-                    Level.INFO, "FY_NOT_APPLICABLE_REGION", Stage.SEMANTIC, ref, "key_region",
+                    Level.INFO, "WEB_NOT_APPLICABLE_REGION", Stage.SEMANTIC, ref, "key_region",
                     "第 ${v.index} 条不参与触发判定：${regionPhrase(kr)}。",
                     "key_region=${kr ?: "?"}",
                 )
@@ -937,21 +937,21 @@ internal object CardCheck {
     private fun expectString(e: JSONObject, f: String, ref: EntryRef, out: MutableList<Finding>) {
         if (!e.has(f) || CardJson.isJsonNull(e, f)) return
         if (e.opt(f) !is String) {
-            out += Finding(Level.ERROR, "FY_TYPE_MISMATCH", Stage.FIELD, ref, f, "第 ${ref.index} 条的 $f 类型不对：应为字符串。")
+            out += Finding(Level.ERROR, "WEB_TYPE_MISMATCH", Stage.FIELD, ref, f, "第 ${ref.index} 条的 $f 类型不对：应为字符串。")
         }
     }
 
     private fun expectInt(e: JSONObject, f: String, ref: EntryRef, out: MutableList<Finding>) {
         if (!e.has(f) || CardJson.isJsonNull(e, f)) return
         if (CardJson.numberAsInt(e, f) == null) {
-            out += Finding(Level.ERROR, "FY_TYPE_MISMATCH", Stage.FIELD, ref, f, "第 ${ref.index} 条的 $f 类型不对：应为整数。")
+            out += Finding(Level.ERROR, "WEB_TYPE_MISMATCH", Stage.FIELD, ref, f, "第 ${ref.index} 条的 $f 类型不对：应为整数。")
         }
     }
 
     private fun expectBool(e: JSONObject, f: String, ref: EntryRef, out: MutableList<Finding>) {
         if (!e.has(f) || CardJson.isJsonNull(e, f)) return
         if (e.opt(f) !is Boolean) {
-            out += Finding(Level.ERROR, "FY_TYPE_MISMATCH", Stage.FIELD, ref, f, "第 ${ref.index} 条的 $f 类型不对：应为布尔值。")
+            out += Finding(Level.ERROR, "WEB_TYPE_MISMATCH", Stage.FIELD, ref, f, "第 ${ref.index} 条的 $f 类型不对：应为布尔值。")
         }
     }
 }

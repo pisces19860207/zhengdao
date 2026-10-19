@@ -43,7 +43,7 @@ class ToolRegistrySwitchTest {
     // ── 表 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `一张表_默认二十四个全启用`() {
+    fun `一张表_默认二十五个全启用`() {
         setup()
         val reg = registry()
 
@@ -56,7 +56,7 @@ class ToolRegistrySwitchTest {
                 "browser_open", "browser_snapshot", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot", "update_plan",
                 "library_list", "library_organize", "delete_path", "image_ops", "ask_user",
-                "card_inspect", "card_export",
+                "card_inspect", "card_export", "card_build",
             ),
             reg.names(),
         )
@@ -176,14 +176,14 @@ class ToolRegistrySwitchTest {
     }
 
     @Test
-    fun `关二十二个_全关时tools数组为空`() {
+    fun `全关时tools数组为空`() {
         setup()
         val prefs = InMemoryToolPrefs(BaopuToolCatalog.DEFAULT_ENABLED)
         val reg = registry(prefs)
         assertEquals(0, reg.toolsJsonOpenAi().length())
         assertEquals(0, reg.toolsJsonAnthropic().length())
-        // 注册表仍有二十二条（都能拿到「已被关闭」）
-        assertEquals(24, reg.names().size)
+        // 注册表仍有二十五条（都能拿到「已被关闭」）
+        assertEquals(25, reg.names().size)
     }
 
     @Test
