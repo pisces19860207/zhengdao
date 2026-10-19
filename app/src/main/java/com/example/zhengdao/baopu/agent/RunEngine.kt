@@ -192,6 +192,105 @@ internal class RunEngine(
         Thread(r, "zd-baopu-run").apply { isDaemon = true }
     }
 
+    // ── 第三十八批 A/B 段：用量透给壳层 ＋ 本轮文本产物视图 ──────────────────
+    //
+    // ⚠️ 这一段只能写在 runExecutor **之下**：`BareThreadGuardTest` 的冻结对账单按
+    // `file:line` 钉住全部裸线程创建点，里面有 `RunEngine.kt:192`（就是上面那个
+    // `Thread(r, "zd-baopu-run")`）。在它上面插任何一行 ⇒ 192 平移 ⇒ 门禁红。
+
+    /**
+     * 每步拿到 usage 就回调一次；null 表示这一步真没读到（不是 0）。
+     *
+     * 形制照 `AskUserTool.sink`：可空的 `var` lambda，由壳层在构造后挂上，引擎不假设有人听。
+     * 调用点只有 [persistUsage] 一处（派工单 §1.1：同一处，别另起一条链），所以
+     * 「落库的读数」与「界面上的读数」永远同源——不会出现库里 600、界面 500。
+     *
+     * **线程**：回调在 `zd-baopu-run` 上跑。实现体里只许改 `mutableStateOf`（Compose
+     * 状态可跨线程写），不许读盘、不许起线程（判据 A6 用源码级用例钉着这条）。
+     *
+     * 与派工单片段的**一处偏差**（申报）：形参从 `LlmUsage` 换成 [BaopuUsageStep]——
+     * §1.2 要求每步列表带「步骤号、耗时」，而步号与耗时只有引擎知道（壳层按回调
+     * 到达顺序编号会把「中间有一步没读到 usage」的轮次编错号，那是编数）。
+     */
+    var onUsage: ((BaopuUsageStep) -> Unit)? = null
+
+    /**
+     * 本步开步时刻（`Thinking` 行落下时记）。0 = 还没开过步（断点续跑的第一个
+     * 回调就是这种）⇒ [BaopuUsageStep.elapsedMs] 给 -1 = 未知，界面**不显示耗时**，
+     * 不写「0.0s」假装知道。
+     */
+    private var stepStartedAtMs = 0L
+
+    /**
+     * 本轮**够格进「产物」行**的相对路径（写成功、文本、≤512 KB、前 8 KB 无 NUL）。
+     *
+     * 数据源就是 [verifyTouched]（收尾闸那份「这一轮真落了哪些盘」），只是在它之上
+     * 加了一层筛选并把可变集合换成不可变快照给 Compose 读。**只读视图**：查看器
+     * 一个字也不往盘上写（判据 B6）。
+     */
+    private val _roundArtifacts = mutableStateOf<List<String>>(emptyList())
+    val roundArtifacts: State<List<String>> get() = _roundArtifacts
+
+    /**
+     * 换会话 / 开新会话时清空产物视图（引擎内那份 [verifyTouched] 不动——它只在
+     * 一个 run 里有意义）。不清就会看到上个会话的文件名，点进去是别人的产物。
+     */
+    fun clearRoundArtifactView() {
+        _roundArtifacts.value = emptyList()
+    }
+
+    /**
+     * 把 [verifyTouched] 筛成产物列表（**在引擎线程上跑**：每个候选要开一次流读前
+     * 8 KB 判二进制，所以不许搬到主线程去算）。
+     *
+     * 不在这里砍到 8 个——「最多 8 片 ＋ 还有 N 个」是展示层的事，在这儿砍了就
+     * 数不出 N（判据 B5）。
+     *
+     * 用全限定名调 `com.example.zhengdao.baopu.selectTextArtifacts`：这批**不许在
+     * 文件头加 import**——加一行就把 `Thread(r, "zd-baopu-run")` 从 192 行顶走，
+     * `BareThreadGuardTest` 的冻结对账单立刻红（同文件里 `android.database.sqlite.SQLiteDatabase`
+     * 早就是同一个写法）。
+     */
+    private fun publishRoundArtifacts() {
+        _roundArtifacts.value =
+            com.example.zhengdao.baopu.selectTextArtifacts(spillRoot(), verifyTouched.toList())
+    }
+
+    /**
+     * 第三十八批 §9.1：把**这一子调用真写成功**的文本产物记进 `artifact` 台账。
+     *
+     * 「什么算产物」一个字都不在这里重写——直接复用 B 段那两个纯函数：
+     * `selectTextArtifacts`（文本白名单＋≤512 KB＋前 8 KB 无 NUL）与
+     * `artifactEntries`（字节数取自盘，不编）。顶栏、消息列表、抽屉三处看的是同一份
+     * 规则（用户 2026-10-19 口径：两处共用同一份收集逻辑与查看器）。
+     *
+     * 表里只有**相对路径**与字节数（§9.4：不存绝对路径、不存文件内容）；
+     * 同一 `(workspace, rel_path)` 再写 ⇒ `ON CONFLICT DO UPDATE` 只刷字节与时间，
+     * 一份文件永远一行（判据 C1）。
+     *
+     * 线程：读盘跟 `publishRoundArtifacts` 一样在 `zd-baopu-run` 上；写库走 `db.write`
+     * 的单写者线程（与本文件 usage 落库同房型）。落库失败只 log 一句——台账是账本，
+     * 不该把整轮跑崩，更不许静默假装记上了。
+     *
+     * 全程全限定名调 `com.example.zhengdao.baopu.*`：本文件头**不许加 import**——加一行
+     * 就把 `Thread(r, "zd-baopu-run")`（192 行）顶走，`BareThreadGuardTest` 的冻结
+     * 对账单立刻红（同文件里 usage 那条链早就是同一个写法）。
+     */
+    private fun persistArtifactLedger(sessionId: Long, touched: List<String>) {
+        val root = spillRoot()
+        val kept = com.example.zhengdao.baopu.selectTextArtifacts(root, touched)
+        if (kept.isEmpty()) return
+        // workspace 存绝对路径**字符串**（与 session.workspace 同一取法：spillRoot() 就是
+        // BaopuRuntime.workspaceRoot ⇒ 与 hostDir 同一个目录），产物按工作区隔离全靠它。
+        val workspace = root.absolutePath
+        val now = System.currentTimeMillis()
+        val stmts = com.example.zhengdao.baopu.artifactEntries(root, kept).map { e ->
+            com.example.zhengdao.baopu.BaopuSql.upsertArtifact(sessionId, workspace, e.relPath, e.fileBytes, now)
+        }
+        runCatching { db.write { d -> stmts.forEach { s -> d.execSQL(s.sql, s.args) } }.get() }
+            .onFailure { log("抱朴引擎：产物台账落库失败 ${it.javaClass.simpleName}: ${it.message}") }
+    }
+
     @Volatile
     private var stopRequested = false
 
@@ -660,6 +759,9 @@ internal class RunEngine(
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
         verifyRepairs = 0
+        // 第三十八批 B 段：产物视图跟着 verifyTouched 一起清（上个 run 的文件名
+        // 不许在这一轮的产物行里赖着不走）。
+        clearRoundArtifactView()
 
         // 工作计划（第十七批）：续跑＝同一轮的继续 ⇒ 计划态从库回种。进程被杀过
         // 内存是空的；不回种的话模型重发计划时 sticky done 失效，done 会被打回
@@ -696,6 +798,9 @@ internal class RunEngine(
             _step.value = stepCount
             _state.value = RunState.THINKING
             persistStep(sessionId, stepCount, "Thinking")
+            // 第三十八批 A 段：记开步时刻 ⇒ usage 到手时能说「这步花了多久」。
+            // 口径写进界面文案（耗时 = 本步开步到模型读数到手），别当成整步含工具的墙钟时间。
+            stepStartedAtMs = System.currentTimeMillis()
 
             val prompt = assemble(
                 persona, facts, history, "", windowTokens,
@@ -1205,9 +1310,21 @@ internal class RunEngine(
      * 也**不会**往 `tokens_in/out` 这些 NOT NULL 列绑 null（SQL 层只 SET 有读数的列）。
      */
     private fun persistUsage(sessionId: Long, step: Int, usage: LlmUsage?) {
-        val stmt = BaopuSql.updateRunLogUsage(sessionId, step, usage) ?: return
+        val readings = usage ?: return
+        val stmt = BaopuSql.updateRunLogUsage(sessionId, step, readings) ?: return
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
             .onFailure { log("抱朴引擎：usage 落库失败 ${it.javaClass.simpleName}: ${it.message}") }
+        // 第三十八批 A 段：同一处把这步的读数透给壳层（派工单 §1.1「别另起一条链」）。
+        // 两道 `?: return` 已经把「没读到」的都在上面拦掉了：usage 为 null、或五列
+        // 全空 ⇒ stmt 为 null ⇒ **不回调**（判据 A3 的「没有读数就不加这一条」，
+        // 引擎侧才是源头）。elapsedMs 的口径见 [stepStartedAtMs]；负数 = 未知。
+        onUsage?.invoke(
+            BaopuUsageStep(
+                step = step,
+                usage = readings,
+                elapsedMs = if (stepStartedAtMs == 0L) -1L else System.currentTimeMillis() - stepStartedAtMs,
+            ),
+        )
     }
 
     // ── 工具结果处理（在线路径与批准路径共用：回灌、历史、可见卡同形） ──────
@@ -1233,6 +1350,13 @@ internal class RunEngine(
             // 收尾闸记账：只记真写成功的调用（失败/被拒不算产物）
             val touchedPaths = VerifyTargets.pathsOf(result.call.name, result.call.arguments)
             touchedPaths.forEach { verifyTouched += it }
+            // 第三十八批 B 段：产物行就记账在这里——与收尾闸同一个源头（只有真写
+            // 成功的才进来），失败走 Failed、被闸拦下走 Rejected，两个都不到这一行。
+            publishRoundArtifacts()
+            // 第三十八批 §9.1：抽屉「产物区」那本台账也记在这一行——与产物行同一个源头
+            // （只有真写成功的才走到这里：失败走 Failed、被闸拦下走 Rejected，两条都不到
+            // 这一行），所以判据 C2「写失败/被拒不记」靠的是**分支归属**，不是额外判断。
+            persistArtifactLedger(sessionId, touchedPaths)
             // 只有**真写成功**的调用才算「学到」：被保护闸拦下的走 Rejected 分支、失败的走
             // Failed 分支，两个都不记信号 ⇒ 进不了「这次学到」卡（用户 2026-10-19 口径）。
             SkillRefine.signalKindFor(result.call.name)?.let { kind ->
@@ -1503,3 +1627,20 @@ internal class RunEngine(
     private fun lastInsertId(d: android.database.sqlite.SQLiteDatabase): Long =
         d.rawQuery("SELECT last_insert_rowid()", null).use { c -> if (c.moveToFirst()) c.getLong(0) else -1L }
 }
+
+/**
+ * 一步的用量读数 ＋ 步号 ＋ 这步耗时（第三十八批 A 段，[RunEngine.onUsage] 的参数）。
+ *
+ * 为什么不直接传 `LlmUsage`（派工单 §1.1 的片段就只写了它）：§1.2 要每步列表带
+ * 「步骤号、耗时 ms」，而这两样只有引擎知道——壳层按回调到达顺序编号，遇到
+ * 「中间某步服务端没返 usage」就把第 3 步标成第 2 步，那是编数。
+ * 申报在交付报告的「与文档偏差」一节（形制没变：还是可空 `var` lambda、还是
+ * `persistUsage` 同一处调）。
+ *
+ * `elapsedMs < 0` = 未知（续跑开局没有开步时刻）⇒ 界面不显示耗时那一截。
+ */
+data class BaopuUsageStep(
+    val step: Int,
+    val usage: LlmUsage,
+    val elapsedMs: Long,
+)
