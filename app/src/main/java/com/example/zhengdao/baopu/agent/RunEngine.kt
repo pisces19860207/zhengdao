@@ -1366,10 +1366,13 @@ internal class RunEngine(
             onEvent?.invoke(
                 EngineEvent.ToolCallVisible(result.call.name, toolSummary(result.call, result.wrapped), true),
             )
+            // 2026-10-19（用户报「打完一步不打勾」）：普通工具结果后面附一句计划提醒。
+            // 只进**模型可见的历史**，不进 UI 的工具卡（卡片仍显示工具原文）。
+            val planHint = if (result.call.name != "update_plan") planController.reminderLine() else null
             history += HistoryMessage(
                 "local-tool-${System.nanoTime()}",
                 HistoryMessage.ROLE_ASSISTANT,
-                result.wrapped,
+                if (planHint != null) result.wrapped + "\n\n" + planHint else result.wrapped,
             )
             ToolResultFlow.CONTINUE
         }

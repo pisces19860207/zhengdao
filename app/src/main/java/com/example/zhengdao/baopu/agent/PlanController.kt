@@ -83,6 +83,25 @@ internal class PlanController(
      */
     fun unfinishedCount(): Int = current.count { it.status != PlanRules.STATUS_DONE }
 
+    /**
+     * 回灌给模型的「计划提醒」（2026-10-19 用户报「做完一步不打勾」；真机库读数：
+     * 6 条 plan 快照里 `done` 出现 0 次——**模型从没标**，不是 UI 不刷新）。
+     *
+     * 只加在**普通工具结果**后面（`update_plan` 自己的 ack 已经有同类话术，别叠）；
+     * 内容刻意短：剩余条数＋前两条＋一句「不标等于没做」。
+     */
+    fun reminderLine(): String? {
+        if (current.isEmpty()) return null
+        val todo = current.filter { it.status != PlanRules.STATUS_DONE }
+        if (todo.isEmpty()) return null
+        val names = todo.take(2).joinToString("；") { it.text }
+        val more = if (todo.size > 2) "…" else ""
+        return "【计划提醒】还有 ${todo.size} 条没勾（$names$more）。" +
+            "打勾是干活的一部分：一步开始时先标 doing，做完那一刻立刻再调一次 update_plan、整表重发标 done；" +
+            "卡住就留在 doing 并说明。" +
+            "不许攒到最后批量补、不许偷偷划掉、不许假装做完——不标就等于没做（用户看到的是没打勾）。"
+    }
+
     fun newRound() {
         current = emptyList()
     }
