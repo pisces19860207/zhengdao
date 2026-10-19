@@ -95,8 +95,9 @@ fun BaopuSkillProposalCard(
                         )
                     }
                     Text(
-                        text = p.proposed.lines().lastOrNull { it.isNotBlank() }.orEmpty(),
+                        text = withoutBoldMarkers(p.proposed.lines().lastOrNull { it.isNotBlank() }.orEmpty()),
                         style = MaterialTheme.typography.bodySmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                     )
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -919,4 +920,28 @@ internal fun SkillArchivedDialog(
             }
         }
     }
+}
+
+
+/**
+ * 显示用：把 `**加粗**` 标记去掉（2026-10-19 用户：「可以不用这个（**改稿**）这种吗？」）。
+ *
+ * 只改**显示**：提案/索引的原文一个字不动（那是要写入人设的字节）；这里只是别让星号
+ * 露在卡片上。粗体由 Compositor 的字重给（整行 Medium），不再依赖 markdown。
+ */
+internal fun withoutBoldMarkers(text: String): String {
+    if (!text.contains("**")) return text
+    // 不用正则：UI 层「不解析文本」是本仓的门禁（BaopuSkillTrialUiTest T2），
+    // 这里只是去掉成对的 ** 显示标记，逐字符扫一遍足够。
+    val sb = StringBuilder(text.length)
+    var i = 0
+    while (i < text.length) {
+        if (i + 1 < text.length && text[i] == '*' && text[i + 1] == '*') {
+            i += 2
+        } else {
+            sb.append(text[i])
+            i++
+        }
+    }
+    return sb.toString()
 }
