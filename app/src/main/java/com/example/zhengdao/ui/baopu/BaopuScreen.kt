@@ -689,6 +689,32 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 )
                 Spacer(Modifier.height(8.dp))
             }
+            // 第四十批：继续说完 / 重试 / 编辑上一条——同一个区域（输入栏上方）
+            val tailSet = tailActions(
+                busy = controller.busy,
+                hasSession = controller.sessionId != null,
+                truncated = controller.tailTruncated,
+                aborted = controller.engineState.value == RunState.ABORTED,
+            )
+            var editSeed by remember { mutableStateOf<String?>(null) }
+            if (tailSet.isNotEmpty()) {
+                BaopuTailActions(
+                    actions = tailSet,
+                    onContinue = { controller.continueTruncated() },
+                    onRetry = { controller.retryLastTurn() },
+                    onEdit = { controller.latestUserMessage()?.let { editSeed = it.second } },
+                )
+            }
+            editSeed?.let { seed ->
+                BaopuEditMessageDialog(
+                    initial = seed,
+                    onDismiss = { editSeed = null },
+                    onSave = { text ->
+                        controller.editLastUser(text)
+                        editSeed = null
+                    },
+                )
+            }
             BaopuComposer(
                 busy = controller.busy,
                 // 第二十四批 B 段：附件随文本一起交出去（图片要落 image part）
