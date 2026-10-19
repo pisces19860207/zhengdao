@@ -82,7 +82,7 @@ class ConfirmFlowTest {
         val persisted = mutableListOf<Array<Any?>>()
         val cards = mutableListOf<ConfirmRequest>()
         val flow = ConfirmFlow(
-            pipeline = GuardPipeline(reg, { root }, ToolRunner(Executors.newSingleThreadExecutor())),
+            pipeline = GuardPipeline(reg, { root }, { null }, ToolRunner(Executors.newSingleThreadExecutor())),
             store = store,
             foregroundElapsedMs = foreground,
             onPersistPending = { sid, step, tool, args, at -> persisted += arrayOf(sid, step, tool, args, at) },

@@ -138,6 +138,10 @@ import kotlin.text.Charsets
  *   房型；名字必须写字符串字面量——本扫描器判「有名」认的是构造函数里的字面量，传常量判不出）
  *   ⇒ 对账单 29→30 处（红线 32 内）。派工单 §2.1 明写「线程名登记 `zd-preview-*`（必须在
  *   `util/BareThreadGuardTest.kt` 里加登记，否则门禁红）」，本条即那次登记；其余 29 条创建点未动。
+ * - 2026-10-19（第四十八批 · 抱朴 P0 四件）：**无新增线程**。`agent/GuardPipeline.kt`
+ *   加 `import com.example.zhengdao.rootfs.PathGuard`（P0-2 原始区红线）⇒ import 区 +1，
+ *   zd-baopu-tool 创建点 67→68，本次回填；`RunEngine.kt` 删 `runLoop` 内同名局部
+ *   var（P0-3）只动 757 行之后的代码，zd-baopu-run（:192）**未平移**。
  */
 class BareThreadGuardTest {
 
@@ -189,7 +193,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:175",                 // zd-knowledge-base-index（同上 -1）
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
-            "GuardPipeline.kt:67",                  // zd-baopu-tool（抱朴刀 1：工具执行单线程，串行+超时；26-B 内核委托 import +1 ⇒ 66→67）
+            "GuardPipeline.kt:68",                  // zd-baopu-tool（抱朴刀 1：工具执行单线程，串行+超时；26-B 内核委托 import +1 ⇒ 66→67；第四十八批 P0-2 加 PathGuard import +1 ⇒ 67→68）
             "LlmClient.kt:862",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658；第十三批加 completeOnce/completeBody/plainTextOf +134 ⇒ 658→792；第二十四批加 LlmMessage.images 与 contentBlocks +70 ⇒ 792→862）
             "MainActivity.kt:316",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308；2026-10-18 加屏幕常亮标志 +8 ⇒ 308→316）
             "NetSelfCheck.kt:94",                   // net-self-check-index
