@@ -26,6 +26,246 @@ enum class ToolPermission {
 }
 
 /**
+ * 工具**能力组**（第五十九批 §1.1）——渐进披露的单位。
+ *
+ * 三条口径（派工单原话级）：
+ * 1. **分组表只有一份，就放在本文件**（[ToolGroupTable]）：UI 从这里读、`tools` 数组
+ *    从这里算、`capabilities` 的名册也从这里出——不许出现第二张组表；
+ * 2. 组控制的是**可见性**，不是权限：[DEFAULT_VISIBLE] 之外的组默认**不进 tools 数组**
+ *    （模型根本看不见它），不是「看得见但调用报错」——那是 §4 打回的第一条；
+ * 3. 组与 [ToolPermission] 是两件独立的事：解锁只让工具**出现**，CONFIRM 工具解锁后
+ *    仍然每次一张确认卡（[GuardPipeline] 的权限语义一个字没动）。
+ *
+ * 组的划分按**默认可见性 + 用途**，不按工具名前缀：§6 要求默认可见集合覆盖
+ * 「读/写/改/列/搜/浏览器读页/ask_user/update_plan/图片改写/card」，而 §2 又硬卡
+ * 「默认 tools ≤ 12（core+edit+capabilities）」——两条同时成立只有一个办法：把 §6 点名
+ * 的那十件事放进 CORE / EDIT 两组（所以 browser_open / browser_snapshot / image_ops /
+ * card_build 在 core/edit，而网页的**交互**四件在 browser）。交付报告里逐字记了这条取法。
+ */
+enum class ToolGroup(val key: String, val oneLine: String) {
+    /** 默认就看得见：抱朴干活的最小闭环（§6 点名项）。 */
+    CORE("core", "核心：读文件、列目录、搜内容、问用户、列计划，以及打开网页并读它"),
+
+    /** 默认就看得见：写产物的最小闭环（§6 点名项）。 */
+    EDIT("edit", "写与改：写文件、改文件、处理图片、写卡"),
+
+    /** 网页交互（会改页面状态），默认不可见。 */
+    BROWSER("browser", "网页操作：点击、输入、滚动、截图"),
+
+    /** 文件管理（改名/移动/删除/转码），默认不可见。 */
+    FILES("files", "文件管理：文件详情、按名字找、移动改名、转编码、删除"),
+
+    /** 资料库，默认不可见。 */
+    LIBRARY("library", "资料库：列清单、整理归位、书的大纲"),
+
+    /** 格式层的体检与导出（写卡本体在 EDIT，理由见上面的第 3 条）。 */
+    CARD("card", "卡片格式：体检角色卡、导出酒馆 PNG"),
+
+    /** 技能与人设自写，默认不可见。 */
+    SKILL("skill", "技能与人设：把学到的东西写成 SKILL.md、给自己的条款追加一份"),
+
+    /** 玄览本地预览（只显示、默认断网禁 JS），默认不可见。 */
+    PREVIEW("preview", "本地预览：在玄览只显示工作区里的网页/源码，不执行、出不了网"),
+
+    /**
+     * 免费通道的兼容占位（read / bash）：由通道决定注册与否，用户管不着、设置页也不列它们。
+     * 注册了就**必须**默认可见（否则免费档 403），见 [ToolGroup.DEFAULT_VISIBLE] 的说明。
+     */
+    COMPAT("compat", "免费通道占位：read / bash 两个兼容条目（由通道决定，没有开关）"),
+
+    ;
+
+    companion object {
+        /**
+         * 默认可见的组（§1.2：core 与 edit 默认可见，其余组默认**不可见**）。
+         * 新会话、没解锁 ⇒ 只有这几组的工具进 tools 数组。
+         *
+         * ⚠️ [COMPAT] 也在默认可见里，这不是手滑：`read` / `bash` 两条是**免费通道**
+         * 的兼容占位（② 台账：免费档要求 tools 数组里含这两个名字，否则服务端 403
+         * FreeTierError，见 [com.example.zhengdao.baopu.BaopuRuntime.registry]）。它们
+         * 只在 `provider.builtinFree` 时才注册——没注册就不存在"默认可见"这回事，
+         * 注册了就必须让模型看见，否则整条免费通道第一次请求就废。
+         *
+         * 于是 §2 那条「默认 tools ≤ 12（core+edit+capabilities）」的正确读法是：
+         * 普通通道 = CORE 8 + EDIT 4 = **12**；免费通道在同一张表上多两条通道自带的
+         * 兼容条目 ⇒ **14**（实测读数与这条取法都写进交付报告，留给蓝总管裁定）。
+         */
+        val DEFAULT_VISIBLE: Set<ToolGroup> = setOf(CORE, EDIT, COMPAT)
+
+        /** 按 key 找组（`capabilities` 的 enable 参数走这里；找不到就是没这个组）。 */
+        fun fromKey(raw: String): ToolGroup? = values().firstOrNull { it.key == raw.trim().lowercase() }
+    }
+}
+
+/**
+ * name → group 的**唯一一张分组表**（§1.1「分组表只有一份」）。
+ *
+ * 为什么不把 group 写进 [BaopuToolCatalog.Entry]：`write_skill`（23 批）与
+ * `append_persona`（58 批）要 personaFiles、免费通道的 `read` / `bash` 要按通道分支，
+ * 这四条都由 [com.example.zhengdao.baopu.BaopuRuntime] 单独注册——不进 ENTRIES——
+ * 组若挂在 Entry 上，这四条就得再开第二张表。一张表按名字覆盖**所有会注册进去的工具**，
+ * [ToolRegistry.register] 注册时按它盖章，装配层与表内谁先谁后都不影响结果。
+ *
+ * 🛑 §6「孤儿工具直接红」：这张表的键集与「ENTRIES ∪ 运行时那四条」**双向相等**，
+ * 初始化时就核（[checkCoverage]）。加新工具忘了分组 ⇒ 加载即抛 ⇒ 全量单测直接红，
+ * 不需要等某人去点那个工具。
+ */
+internal object ToolGroupTable {
+
+    /** 由装配层（BaopuRuntime）单独注册的名字——注释里写明为什么它们不在 ENTRIES。 */
+    val RUNTIME_REGISTERED: Set<String> = setOf("write_skill", "append_persona", "read", "bash")
+
+    val GROUP_OF: Map<String, ToolGroup> = mapOf(
+        // ── CORE：§6 点名的最小闭环（读 / 列 / 搜 / 问人 / 计划 / 浏览器读页）＋ capabilities 本体
+        "capabilities" to ToolGroup.CORE,
+        "read_file" to ToolGroup.CORE,
+        "list_dir" to ToolGroup.CORE,
+        "search_in_files" to ToolGroup.CORE,
+        "ask_user" to ToolGroup.CORE,
+        "update_plan" to ToolGroup.CORE,
+        "browser_open" to ToolGroup.CORE,
+        "browser_snapshot" to ToolGroup.CORE,
+        // ── EDIT：写产物的最小闭环（写 / 改 / 图片 / 写卡）
+        "write_file" to ToolGroup.EDIT,
+        "edit_file" to ToolGroup.EDIT,
+        "image_ops" to ToolGroup.EDIT,
+        "card_build" to ToolGroup.EDIT,
+        // ── 以下默认不可见，要 capabilities 解锁
+        "browser_click" to ToolGroup.BROWSER,
+        "browser_type" to ToolGroup.BROWSER,
+        "browser_scroll" to ToolGroup.BROWSER,
+        "browser_screenshot" to ToolGroup.BROWSER,
+        "file_info" to ToolGroup.FILES,
+        "find_files" to ToolGroup.FILES,
+        "move_path" to ToolGroup.FILES,
+        "convert_encoding" to ToolGroup.FILES,
+        "delete_path" to ToolGroup.FILES,
+        "book_outline" to ToolGroup.LIBRARY,
+        "library_list" to ToolGroup.LIBRARY,
+        "library_organize" to ToolGroup.LIBRARY,
+        "card_inspect" to ToolGroup.CARD,
+        "card_export" to ToolGroup.CARD,
+        // 58 批 C 层「追加-only」人设通道：与 write_skill 同属自写类，同一组、同样默认不可见
+        // （合流时补的分组——补不上 checkCoverage 直接抛，这是 §6「孤儿工具直接红」在跑）
+        "write_skill" to ToolGroup.SKILL,
+        "append_persona" to ToolGroup.SKILL,
+        "preview_local_file" to ToolGroup.PREVIEW,
+        "read" to ToolGroup.COMPAT,
+        "bash" to ToolGroup.COMPAT,
+    )
+
+    /** 该组里的工具名（保持 ENTRIES 的表序，稳定 ⇒ tools 数组顺序不乱、缓存友好）。 */
+    fun namesOf(group: ToolGroup): List<String> =
+        BaopuToolCatalog.ENTRIES.map { it.name }
+            .filter { GROUP_OF[it] == group }
+            .plus(RUNTIME_REGISTERED.filter { GROUP_OF[it] == group }.sorted())
+
+    /**
+     * 覆盖率自检（§6 孤儿工具直接红）：表里列的名字必须**恰好**等于
+     * 「ENTRIES 全部」∪「[RUNTIME_REGISTERED] 四条」——少一个（漏分组）与多一个
+     * （分组表里躺着个已删的工具）都算红。
+     */
+    fun checkCoverage(): String? {
+        val declared = BaopuToolCatalog.ENTRIES.map { it.name }.toSet() + RUNTIME_REGISTERED
+        val missing = declared - GROUP_OF.keys
+        val stale = GROUP_OF.keys - declared
+        return when {
+            missing.isNotEmpty() -> "这些工具没有分组（孤儿工具）：${missing.sorted()}"
+            stale.isNotEmpty() -> "分组表里这些名字根本没注册（过期条目）：${stale.sorted()}"
+            else -> null
+        }
+    }
+
+    init {
+        checkCoverage()?.let { error("ToolGroupTable 分组表不完整：$it") }
+    }
+}
+
+/**
+ * 用户侧开关的**快照**（§1.6：组开关与单工具开关并存）。
+ *
+ * 两种开关、一条链：可见性只由 [visibleTools] 一处算，这里就是它的「用户开关」入参——
+ * 组关掉了 ⇒ 组里每个工具都不可见，且 `capabilities` 也解不开（§1.4）；
+ * 单工具关掉了 ⇒ 只有那个工具不可见，同组其余照常。
+ */
+internal data class ToolUserSettings(
+    val disabledNames: Set<String> = emptySet(),
+    val disabledGroups: Set<ToolGroup> = emptySet(),
+)
+
+/**
+ * 会话解锁存储（§1.4：解锁状态**按会话**，新会话回默认）。
+ *
+ * 为什么是接口而不是直接 SharedPreferences：注册表零 Android 依赖（JVM 直测），
+ * Context 只能出现在装配层 ⇒ Android 实现（`BaopuToolUnlocks`）在
+ * [com.example.zhengdao.baopu.BaopuRuntime]，与 [ToolPrefs] 的 `BaopuToolPrefs` 同房。
+ *
+ * 🛑 §4 打回第三条：**不许全局共享**（那会串会话）。key 就是 sessionId。
+ */
+internal interface GroupUnlockStore {
+    /** 本会话已解锁的组（默认可见组不在这里——那是 [ToolGroup.DEFAULT_VISIBLE]）。 */
+    fun unlocked(sessionId: Long): Set<ToolGroup>
+
+    /** 解锁（只增不减：解锁是累加的，用户没有「重新收起」的入口，下一会话自然回默认）。 */
+    fun unlock(sessionId: Long, groups: Collection<ToolGroup>)
+
+    /** 清掉一个会话的解锁（会话删除时顺带清，不留垃圾）。 */
+    fun clear(sessionId: Long)
+}
+
+/** 内存实现（单测与无 Context 环境用；进程内生效，不持久）。 */
+internal class InMemoryGroupUnlocks(
+    initial: Map<Long, Set<ToolGroup>> = emptyMap(),
+) : GroupUnlockStore {
+    private val bySession = initial.toMutableMap()
+
+    override fun unlocked(sessionId: Long): Set<ToolGroup> = bySession[sessionId] ?: emptySet()
+
+    override fun unlock(sessionId: Long, groups: Collection<ToolGroup>) {
+        if (groups.isEmpty()) return
+        bySession[sessionId] = unlocked(sessionId) + groups
+    }
+
+    override fun clear(sessionId: Long) {
+        bySession.remove(sessionId)
+    }
+
+    /** 只看快照（门禁与单测用：证明解锁确实按 sessionId 分格，不是一格共用）。 */
+    fun snapshot(): Map<Long, Set<ToolGroup>> = bySession.toMap()
+}
+
+/**
+ * **唯一一条工具可见性计算链**（§2 源码门禁的靶心）。
+ *
+ * 可见 = 组没被用户关掉 ∧ 工具没被用户关掉 ∧（组默认可见 ∪ 组已在本会话解锁）。
+ *
+ * 纯函数：吃三样输入（表、用户开关、本会话解锁），零 Android、零 IO ⇒ JVM 直测
+ * §2 要求的三组用例（默认 / 解锁 / 用户关闭）。
+ *
+ * ⚠️ 三个出口都必须走它——[ToolRegistry.toolsJsonOpenAi] / [ToolRegistry.toolsJsonAnthropic]
+ * （请求侧）与 [ToolRegistry.find]（执行侧的「未解锁就明说」）。谁再另写一遍 filter，
+ * 就是 §4 打回第四条「另起第二条工具过滤链」。判据本体是 [isVisibleTool]，
+ * [visibleTools] 只是它的整表版本——两者永远同进同退。
+ */
+internal fun isVisibleTool(
+    spec: ToolSpec,
+    settings: ToolUserSettings,
+    unlockedGroups: Set<ToolGroup>,
+): Boolean {
+    val visibleGroups = ToolGroup.DEFAULT_VISIBLE + unlockedGroups
+    return spec.name !in settings.disabledNames &&
+        spec.group !in settings.disabledGroups &&
+        spec.group in visibleGroups
+}
+
+/** 整表版（[isVisibleTool] 的 filter；tools 数组由它产出，顺序 = 表顺序）。 */
+internal fun visibleTools(
+    catalog: List<ToolSpec>,
+    settings: ToolUserSettings,
+    unlockedGroups: Set<ToolGroup>,
+): List<ToolSpec> = catalog.filter { isVisibleTool(it, settings, unlockedGroups) }
+
+/**
  * 工具执行结果（执行器的唯一出口形状）。
  *
  * 三种结局分开是因为**处理方式完全不同**：
@@ -69,6 +309,15 @@ data class ToolSpec(
     val inputSchema: JSONObject,
     val permission: ToolPermission = ToolPermission.FREE,
     val timeoutMs: Long = ToolTimeout.FILE_MS,
+    /**
+     * 能力组（第五十九批 §1.1）。
+     *
+     * 默认值是 [ToolGroup.CORE] 只为让工具实现文件不改动也能编译（红线：本批不碰工具
+     * 实现）；真正的组**由注册表在 [ToolRegistry.register] 时按 [ToolGroupTable] 盖章覆盖**，
+     * 所以没有任何工具会带着这个默认值进入运行态——漏分组由
+     * [ToolGroupTable.checkCoverage] 在类加载时就抛，不等运行。
+     */
+    val group: ToolGroup = ToolGroup.CORE,
     val executor: (JSONObject) -> ToolOutcome,
 ) {
     companion object {
@@ -176,17 +425,39 @@ internal interface ToolPrefs {
     fun isDisabled(name: String): Boolean
     fun setDisabled(name: String, disabled: Boolean)
     fun disabledNames(): Set<String>
+
+    /**
+     * 被用户**整组**关掉的组（第五十九批 §1.6：设置页组开关的落点）。
+     *
+     * 语义与单工具开关同一条链（见 [visibleTools]）：组关 ⇒ 组内工具一律不可见，
+     * 且 `capabilities` 也解不开（§1.4「用户既有开关仍然优先」）。
+     * 默认实现返回空集 = 组开关全开（刀 2 时代没有组开关，存量实现不必改）。
+     */
+    fun disabledGroups(): Set<ToolGroup> = emptySet()
+
+    /** 改组开关（热改，与单工具开关同一时机生效：下一轮请求）。 */
+    fun setGroupDisabled(group: ToolGroup, disabled: Boolean) {}
 }
 
 /** 内存实现（单测与无 Context 环境用；进程内生效，不持久）。 */
-internal class InMemoryToolPrefs(initial: Set<String> = emptySet()) : ToolPrefs {
+internal class InMemoryToolPrefs(
+    initial: Set<String> = emptySet(),
+    initialGroups: Set<ToolGroup> = emptySet(),
+) : ToolPrefs {
     private val disabled = initial.toMutableSet()
+    private val disabledGroups = initialGroups.toMutableSet()
     override fun isDisabled(name: String): Boolean = name in disabled
     override fun setDisabled(name: String, disabled: Boolean) {
         if (disabled) this.disabled.add(name) else this.disabled.remove(name)
     }
 
     override fun disabledNames(): Set<String> = disabled.toSet()
+
+    override fun disabledGroups(): Set<ToolGroup> = disabledGroups.toSet()
+
+    override fun setGroupDisabled(group: ToolGroup, disabled: Boolean) {
+        if (disabled) disabledGroups.add(group) else disabledGroups.remove(group)
+    }
 }
 
 /**
@@ -200,29 +471,58 @@ internal class InMemoryToolPrefs(initial: Set<String> = emptySet()) : ToolPrefs 
  * （[find] 取到时现换成桩形态：同 Schema、免确认、执行一律回「该工具已被用户关闭」），
  * 但**不进 `tools` 数组**（模型根本看不见）；模型若幻觉调用，拿到的是
  * 这条拒绝（不自动打开）。
+ *
+ * 第五十九批（渐进披露）在此之上加**第二层**「组可见性」，仍是一张表、一条链：
+ * - 组由 [ToolGroupTable] 在 [register] 时盖章（工具实现文件不写组，见 [ToolSpec.group]）；
+ * - 默认可见只有 [ToolGroup.DEFAULT_VISIBLE] 两组，其余要 `capabilities` 按会话解锁
+ *   （[unlocks]）；
+ * - **请求侧与执行侧共用 [visibleTools] 这一条链**：`tools` 数组由它算，[find] 遇到
+ *   未解锁组回的是同一条判据（§4 打回第四条禁止另起第二条）。
  */
 internal class ToolRegistry(
     private val prefs: ToolPrefs = InMemoryToolPrefs(),
-) {
+    private val unlocks: GroupUnlockStore = InMemoryGroupUnlocks(),
+) : CapabilitiesSink {
 
     private val specs = LinkedHashMap<String, ToolSpec>()
 
+    /**
+     * 本轮属于哪个会话（第五十九批 §1.4 的「按会话」落点）。
+     *
+     * 形制照 [RunEngine] 里的 `planSessionId`：引擎是进程级单例、一轮只跑一个会话，
+     * 由 [runLoop] 在**组装 tools 数组那一处**写入；[NO_SESSION] = 没有会话上下文
+     * （单测、装配期探测）⇒ 只按默认可见组算，行为等于「新会话」。
+     */
+    @Volatile
+    var currentSessionId: Long = NO_SESSION
+
     /** 注册（同名覆盖：工具集演化时后注册的赢，调用方显式覆盖而非默默双注册）。 */
     fun register(spec: ToolSpec) {
-        specs[spec.name] = spec
+        // 组按那张唯一的表盖章：装配层（BaopuRuntime 的 write_skill / read / bash）与
+        // ENTRIES 走同一条路，谁都不用自己记得带组（记得的组也会被表覆盖）。
+        specs[spec.name] = spec.copy(group = ToolGroupTable.GROUP_OF[spec.name] ?: spec.group)
     }
 
     /**
-     * 取一个工具的**当前形态**（刀 2 追加包：开关是**调用时**判的，不是加载时）。
+     * 取一个工具的**当前形态**（刀 2 追加包：开关是**调用时**判的，不是加载时；
+     * 第五十九批：组解锁同样是调用时判）。
      *
      * 为什么不在 [loadInto] 时装桩：注册表是进程级单例，设置页改开关时它已经建好了——
      * 加载时判定的话，加载后才被关的工具仍以真身注册着（CONFIRM 权限 + 真执行器），
      * 模型幻觉调用它照样弹确认框、照样真写文件（2026-10-17 单测实测出来的洞）。
-     * 这里每次取都现查：被关 ⇒ 回桩（免确认 + 执行一律 Rejected）。
+     * 这里每次取都现查：被关 ⇒ 回桩（免确认 + 执行一律 Rejected）；
+     * 组未解锁 ⇒ 回另一种桩（免确认 + 执行一律 Rejected，并告诉模型先调 capabilities）。
+     *
+     * 两条拒绝的**先后**：用户开关优先（§1.4），所以先判被关、再判未解锁——
+     * 用户明确关掉的东西不该被指路成「解锁一下就能用」。
      */
     fun find(name: String): ToolSpec? {
         val spec = specs[name] ?: return null
-        return if (isEnabled(name)) spec else BaopuToolCatalog.disabledStub(spec)
+        return when {
+            prefs.isDisabled(name) -> BaopuToolCatalog.disabledStub(spec)
+            !isVisible(spec, currentSessionId) -> BaopuToolCatalog.groupLockedStub(spec)
+            else -> spec
+        }
     }
 
     fun names(): List<String> = specs.keys.toList()
@@ -237,7 +537,35 @@ internal class ToolRegistry(
         prefs.setDisabled(name, disabled)
     }
 
-    /** 启用中的工具名（设置页对照用）。 */
+    /** 组级开关（§1.6 设置页落点；与单工具开关并存，同一条链）。 */
+    fun setGroupDisabled(group: ToolGroup, disabled: Boolean) {
+        prefs.setGroupDisabled(group, disabled)
+    }
+
+    fun disabledGroups(): Set<ToolGroup> = prefs.disabledGroups()
+
+    /** 本会话已解锁的组（默认可见组不在其中）。 */
+    fun unlockedGroups(sessionId: Long = currentSessionId): Set<ToolGroup> = unlocks.unlocked(sessionId)
+
+    /** 会话解锁存储（[com.example.zhengdao.baopu.BaopuRuntime] 注入持久实现）。 */
+    fun unlockStore(): GroupUnlockStore = unlocks
+
+    /** 本会话生效的用户开关快照（[visibleTools] 的第二路输入）。 */
+    fun settings(): ToolUserSettings = ToolUserSettings(prefs.disabledNames(), prefs.disabledGroups())
+
+    /**
+     * 此刻该模型看见的工具（**唯一一条链的调用点**；顺序 = 表顺序，稳定缓存友好）。
+     *
+     * @param sessionId 本轮会话；默认可见组 ∪ 本会话解锁组，再 ∩ 用户两种开关。
+     */
+    fun visibleSpecs(sessionId: Long = currentSessionId): List<ToolSpec> =
+        visibleTools(all(), settings(), unlockedGroups(sessionId))
+
+    /** 单个工具此刻是否可见（与 [visibleSpecs] 同一判据本体 [isVisibleTool]，不重写一遍）。 */
+    fun isVisible(spec: ToolSpec, sessionId: Long = currentSessionId): Boolean =
+        isVisibleTool(spec, settings(), unlockedGroups(sessionId))
+
+    /** 启用中的工具名（设置页对照用；注意这是「用户没关」，不等于「模型看得见」）。 */
     fun enabledNames(): List<String> = specs.keys.filter { isEnabled(it) }
 
     /**
@@ -249,9 +577,12 @@ internal class ToolRegistry(
         return SchemaCheck.validate(spec.inputSchema, args)
     }
 
-    /** OpenAI 兼容 `tools` 数组（协议 A 请求侧；**只含启用的**——被关的模型看不见）。 */
-    fun toolsJsonOpenAi(): JSONArray = JSONArray().also { arr ->
-        all().filter { isEnabled(it.name) }.forEach { s ->
+    /**
+     * OpenAI 兼容 `tools` 数组（协议 A 请求侧；**只含此刻可见的**——
+     * 被用户关掉的、以及组还没解锁的，模型都看不见）。
+     */
+    fun toolsJsonOpenAi(sessionId: Long = currentSessionId): JSONArray = JSONArray().also { arr ->
+        visibleSpecs(sessionId).forEach { s ->
             arr.put(
                 JSONObject()
                     .put("type", "function")
@@ -266,9 +597,9 @@ internal class ToolRegistry(
         }
     }
 
-    /** Anthropic `tools` 数组（形状不同：schema 直接铺平；同样只含启用的）。 */
-    fun toolsJsonAnthropic(): JSONArray = JSONArray().also { arr ->
-        all().filter { isEnabled(it.name) }.forEach { s ->
+    /** Anthropic `tools` 数组（形状不同：schema 直接铺平；同样只含此刻可见的）。 */
+    fun toolsJsonAnthropic(sessionId: Long = currentSessionId): JSONArray = JSONArray().also { arr ->
+        visibleSpecs(sessionId).forEach { s ->
             arr.put(
                 JSONObject()
                     .put("name", s.name)
@@ -276,6 +607,81 @@ internal class ToolRegistry(
                     .put("input_schema", s.inputSchema),
             )
         }
+    }
+
+    /**
+     * `capabilities` 的落点（[CapabilitiesSink]；照 [PlanSink] / ask_user 的接线房型）。
+     *
+     * 注册表本来就同时握着三样输入（表、用户开关、会话解锁），所以名册与解锁动作
+     * 都在这里算——工具文件只负责 Schema 与「没接线就明说」，不再自己拼一份判据。
+     */
+    override fun handle(args: JSONObject): ToolOutcome {
+        val sessionId = currentSessionId
+        val want = args.optJSONArray(CapabilitiesTool.ARG_ENABLE)
+        val settings = settings()
+        // 名册按组走（表序），每组：状态 + 组内工具名 + 「这一组被用户关了」如实标。
+        val sb = StringBuilder()
+        if (want != null && want.length() > 0) {
+            val unknown = mutableListOf<String>()
+            val asked = mutableListOf<ToolGroup>()
+            for (i in 0 until want.length()) {
+                val key = want.optString(i)
+                val group = ToolGroup.fromKey(key)
+                if (group == null) unknown += key else if (group !in asked) asked += group
+            }
+            val already = unlockedGroups(sessionId)
+            val toAdd = asked.filter { it !in ToolGroup.DEFAULT_VISIBLE && it !in already }
+            // 被用户整组关掉的：**不解锁**，如实回原因（§1.4 用户开关优先）。
+            val blocked = toAdd.filter { it in settings.disabledGroups }
+            val granted = toAdd - blocked.toSet()
+            unlocks.unlock(sessionId, granted)
+            sb.append("解锁结果（本会话，下一轮生效；新会话回到默认）：\n")
+            if (granted.isEmpty() && blocked.isEmpty() && asked.isEmpty()) {
+                sb.append("（enable 里没给出可解锁的组）\n")
+            }
+            granted.forEach { sb.append("- 已解锁：${it.key}（${it.oneLine}）\n") }
+            blocked.forEach { sb.append("- 解不开：${it.key} —— 这一组被你用户在设置里关掉了，" +
+                "capabilities 不能替用户打开它（要用的话请用户去 抱朴 → 抽屉「抱朴设置」→ 抱朴工具）\n") }
+            asked.filter { it in ToolGroup.DEFAULT_VISIBLE }
+                .forEach { sb.append("- 本来就默认可见，无需解锁：${it.key}\n") }
+            asked.filter { it in already && it !in ToolGroup.DEFAULT_VISIBLE }
+                .forEach { sb.append("- 本会话此前已解锁过：${it.key}\n") }
+            unknown.forEach { sb.append("- 没有这个组：$it\n") }
+            sb.append("可解锁的组名：")
+                .append(ToolGroup.values().filter { it != ToolGroup.COMPAT }
+                    .joinToString("、") { it.key })
+                .append("\n")
+        }
+        val visible = visibleSpecs(sessionId).map { it.name }.toSet()
+        sb.append("当前可见工具（").append(visible.size).append(" 个）：")
+            .append(visible.joinToString("、")).append("\n")
+        sb.append("全量名册（组 → 状态 → 组内工具）：\n")
+        ToolGroup.values().forEach { group ->
+            val names = ToolGroupTable.namesOf(group)
+            if (names.isEmpty()) return@forEach
+            // 名册列的是**此刻真注册着的**工具（[ToolGroupTable] 是分组表，不是注册表）：
+            // COMPAT 那两条只有免费通道会注册，普通通道列出来就是骗模型「解锁了就能用」。
+            // 这不是第二条过滤链——可见性判据仍只有 [visibleTools] 一处，这里只影响名册文案。
+            val registered = names.filter { specs.containsKey(it) }
+            val state = when {
+                group in settings.disabledGroups -> "已被用户关闭（解不开）"
+                group in ToolGroup.DEFAULT_VISIBLE -> "默认可见"
+                group in unlockedGroups(sessionId) -> "本会话已解锁"
+                else -> "未解锁"
+            }
+            sb.append("- ${group.key}（$state）：${group.oneLine}\n")
+            if (registered.isEmpty()) {
+                sb.append("  本通道没有注册这组的工具（表里备着：${names.joinToString("、")}），解锁也不会有东西出现\n")
+            } else {
+                sb.append("  工具：${registered.joinToString("、")}\n")
+            }
+        }
+        return ToolOutcome.Ok(sb.toString().trimEnd())
+    }
+
+    companion object {
+        /** 没有会话上下文时的哨兵值（单测/装配期探测；效果 = 只按默认可见组算）。 */
+        const val NO_SESSION = -1L
     }
 }
 
@@ -343,6 +749,10 @@ internal object BaopuToolCatalog {
         "card_inspect",
         "card_export",
         "card_build",
+        // 渐进披露（第五十九批 §1.3）：capabilities 是「按需解锁低频组」的入口，默认开
+        "capabilities",
+        // 玄览本地预览（第五十九批 §5）：只显示、默认断网禁 JS，不执行任何东西
+        "preview_local_file",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -380,6 +790,13 @@ internal object BaopuToolCatalog {
         Entry("card_export") { CardTools.exportSpec(it) },
         // 写卡（第四十五批）：母档 → 三套产物（CONFIRM，不覆盖）
         Entry("card_build") { CardTools.buildSpec(it) },
+        // 渐进披露（第五十九批 §1.3）：列出组与解锁状态 / 本会话内解锁某组。
+        // FREE：它只改「模型本轮能看见哪些工具」，不碰用户任何文件（与 update_plan 同理，
+        // 逼它走确认卡等于每问一次「我有什么工具」就弹一次框）。
+        Entry("capabilities") { CapabilitiesTool.spec() },
+        // 玄览本地预览（第五十九批 §5.2）：读工作区内一个文件 → 交给玄览「本地预览」页签
+        // 只显示。FREE + 只读：不写盘、不发网络请求（断网与禁 JS 在页签那一侧硬拦，§5.2）。
+        Entry("preview_local_file") { PreviewTool.spec(it) },
     )
 
     /**
@@ -392,6 +809,10 @@ internal object BaopuToolCatalog {
         ENTRIES.forEach { entry ->
             registry.register(entry.factory(workspaceRoot))
         }
+        // capabilities 的落点就是注册表本身（名册与解锁都要同时看三样输入：表、用户开关、
+        // 会话解锁）。形制照 PlanTool.sink / AskUserTool.sink 的运行时接线房型——
+        // spec 注册时拿不到 registry，所以在这里挂。JVM 单测走同一条路，不注假件。
+        CapabilitiesTool.sink = registry
     }
 
     /**
@@ -404,8 +825,30 @@ internal object BaopuToolCatalog {
         permission = ToolPermission.FREE, // 免确认——它根本不执行，没有可确认的东西
         executor = { _ ->
             ToolOutcome.Rejected(
-                "该工具已被用户关闭（在 设置 → 终端与资料 → 抱朴工具 里打开）。" +
+                "该工具已被用户关闭（在 抱朴 → 抽屉「抱朴设置」→ 抱朴工具 里打开）。" +
                     "本轮不自动打开，也不改写成别的工具。",
+            )
+        },
+    )
+
+    /**
+     * 未解锁组的桩（第五十九批 §1.5「诚实」）。
+     *
+     * 组默认不可见 = **不进 tools 数组**（模型看不见），不是「看得见但报错」——那是 §4
+     * 打回第一条。但模型仍可能凭旧上下文或幻觉直接调用（协议 B 尤其如此），
+     * 这一支保证它拿到的是**明说**：这个组还没解锁，先调 capabilities。绝不静默。
+     *
+     * 与 [disabledStub] 的区别要说清：被用户关了的东西 capabilities 也解不开（§1.4），
+     * 而未解锁的组是**能**用 capabilities 当轮解开的——所以两条拒绝的文案不同，
+     * 且 [ToolRegistry.find] 里先判「被关」（用户开关优先）。
+     */
+    fun groupLockedStub(spec: ToolSpec): ToolSpec = spec.copy(
+        permission = ToolPermission.FREE, // 同上：不执行，没有可确认的东西
+        executor = { _ ->
+            ToolOutcome.Rejected(
+                "该工具组未解锁：先调 capabilities（无参数可看全量名册，" +
+                    "带 enable=[\"${spec.group.key}\"] 可在本会话解锁它）。" +
+                    "本轮不解锁、不代调，也不改写成别的工具。",
             )
         },
     )

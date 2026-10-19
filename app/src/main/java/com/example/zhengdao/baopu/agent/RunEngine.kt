@@ -711,6 +711,14 @@ internal class RunEngine(
         }
         // 工作计划（第十七批）：update_plan 落到哪个会话，由这里喂给 PlanController
         planSessionId = sessionId
+        // 工具渐进披露（第五十九批 §1.4）：**同一处、同一个值**告诉注册表"这一轮是哪个会话"。
+        // 为什么和 planSessionId 挤在一行下面：解锁状态按会话持久，而 capabilities 的
+        // executor 拿不到 sessionId（它是工具层的 `JSONObject -> ToolOutcome`，签名不许改）⇒
+        // 只能由引擎在每轮入口把身份喂进来，房型与 [planSessionId] 逐字一致（同一个 @Volatile
+        // 落点、同一个 runLoop 入口）。下面步循环里每次组装 tools 数组时显式再传一次同一个
+        // sessionId，读的是同一份「可见组 ∩ 用户开关」判据（[ToolRegistry.visibleSpecs]）——
+        // 全仓只有那一处算 tools 数组，门禁 ProgressiveToolsTest 判据 G2 钉的就是那一处。
+        registry.currentSessionId = sessionId
         // 用户明说「记住／记下来／以后都这样」⇒ 一条高置信信号（排卡时排最前）
         userText?.let { learnSignals += SkillRefine.learnMarkersIn(it) }
         val workspacePath = spillRoot().absolutePath
@@ -725,10 +733,12 @@ internal class RunEngine(
             ?.let { MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.RECALL_TOKEN_BUDGET) }
             ?.picked ?: emptyList()
         recalledCache = recalled
-        val tools = when (provider.protocol) {
-            com.example.zhengdao.baopu.LlmProtocol.OPENAI_COMPAT -> registry.toolsJsonOpenAi()
-            com.example.zhengdao.baopu.LlmProtocol.ANTHROPIC -> registry.toolsJsonAnthropic()
-        }
+        // tools 数组**不在这里算**——它在下面步循环里、每次请求前算一次（第五十九批 §1.3）。
+        // 为什么必须进循环：`capabilities` 解锁只改「模型能看见哪些组」，而解锁本身是一次
+        // 工具调用——如果数组在循环外算死，模型这一整段（用户的一个回合）都拿不到刚解锁的
+        // 工具，"按需解锁"就变成"解锁了但要等下一条用户消息才管用"，§7 那条
+        // 「一轮里同时看到写 html 与玄览预览两张卡」也永远验不过。
+        // 一个回合内数组通常只变 0–2 次（不解锁就一次都不变 ⇒ 前缀缓存不受扰动）。
 
         // 历史（续跑 = 重建上下文：人设 + 硬事实 + 最近 N 轮原文；C 段起含工具结果回灌）
         var history = loadHistory(sessionId).toMutableList()
@@ -852,6 +862,15 @@ internal class RunEngine(
                         images = prompt.images,
                     ),
                 )
+            }
+
+            // ── tools 数组：全仓**唯一**一处组装（第五十九批 §2 源码门禁 G2 的钉点）──
+            // 判据只有一条链：`registry.toolsJsonXxx(sessionId)` 内部走
+            // [ToolRegistry.visibleSpecs] = 可见组 ∩ 用户两种开关。这里不许出现任何 filter。
+            // 放在步循环内 = 模型刚用 capabilities 解锁的组，**同一个回合的下一次请求**就看得见。
+            val tools = when (provider.protocol) {
+                com.example.zhengdao.baopu.LlmProtocol.OPENAI_COMPAT -> registry.toolsJsonOpenAi(sessionId)
+                com.example.zhengdao.baopu.LlmProtocol.ANTHROPIC -> registry.toolsJsonAnthropic(sessionId)
             }
 
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──
