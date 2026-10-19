@@ -107,6 +107,10 @@ def main() -> int:
     base_errors = int(base.get("errors", 0))
     base_total = int(base.get("total", 0))
 
+    # 允许的告警抖动：CI 与本机在少数规则（PluralsCandidate/UnusedResources 的
+    # 资源合并顺序等）上会差 1~3 条，这不是代码债。**只对总数给 ±5% 的带宽；
+    # Error 级一律零容忍**（E-167：47 批基线 701 在 CI 上多出 1~2 条导致假红）。
+    tolerance = int(base_total * 0.05)
     ok = True
     if now["errors"] > base_errors:
         print(
@@ -115,10 +119,10 @@ def main() -> int:
             file=sys.stderr,
         )
         ok = False
-    if now["total"] > base_total:
+    if now["total"] > base_total + tolerance:
         print(
-            f"[lint-budget] ✗ 告警总数超过基线：{base_total} → {now['total']}"
-            f"（新增 {now['total'] - base_total} 条；修掉或按流程调基线）",
+            f"[lint-budget] ✗ 告警总数超过基线+抖动带：{base_total} → {now['total']}"
+            f"（新增 {now['total'] - base_total} 条，带宽 ±{tolerance}；修掉或按流程调基线）",
             file=sys.stderr,
         )
         ok = False
@@ -126,6 +130,10 @@ def main() -> int:
         print(
             f"[lint-budget] ✓ 告警比基线少：{base_total} → {now['total']}"
             f"（可以把基线下调到 {now['total']} 并提交）"
+        )
+    if base_total < now["total"] <= base_total + tolerance:
+        print(
+            f"[lint-budget] ~ 告警略高于基线但在 ±{tolerance} 抖动带内：{base_total} → {now['total']}"
         )
     if ok:
         print(f"[lint-budget] ✓ 未超基线（{now['total']}/{base_total}）")
