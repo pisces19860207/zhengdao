@@ -67,15 +67,16 @@ object ResMonitor {
         // 剔除 App 自身：否则量到的是体检过程本身（见类注释，实测 0.0% → 报 90%）。
         val pids = excludeSelf(pidsOfUid(uid), android.os.Process.myPid())
         if (pids.isEmpty()) return null
-        val t0 = pids.mapNotNull { ticksOf(it) }
+        // P1-5（第五十三批）：两侧都收成 pid → 累计滴答 的映射，再按交集 pid 求差。
+        // 原先两个 List 用 `take(min)` 按**下标**对齐：窗口内进程退出/新增就错配，
+        // 而末尾 `coerceAtLeast(0)` 又把错配的负值压成 0% —— 既量不准，也不告警。
+        val t0 = pids.mapNotNull { pid -> ticksOf(pid)?.let { pid to it } }.toMap()
         val rss = pids.mapNotNull { rssKbOf(it) }.sum()
         if (t0.isEmpty()) return null
         runCatching { Thread.sleep(windowMs) }
-        val t1 = pids.mapNotNull { ticksOf(it) }
+        val t1 = pids.mapNotNull { pid -> ticksOf(pid)?.let { pid to it } }.toMap()
         if (t1.isEmpty()) return null
-        // 进程可能在窗口内退出，导致两次数量不同 → 取较小值对齐
-        val n = minOf(t0.size, t1.size)
-        val delta = (t1.take(n).sum() - t0.take(n).sum()).coerceAtLeast(0)
+        val delta = cpuDelta(t0, t1)
         // 滴答单位是 1/100 秒：窗口内可用滴答 = windowMs/10
         val cpu = delta.toFloat() * 1000f / windowMs.toFloat()
         return Sample(
@@ -83,6 +84,23 @@ object ResMonitor {
             cpuPct = cpu,
             procs = pids.size,
         )
+    }
+
+    /**
+     * 纯函数（可单测）：按 **pid 交集** 算累计滴答差。
+     *
+     * 只对两侧都存在的 pid 求差，逐 pid `coerceAtLeast(0)` 后再求和：
+     * - 窗口内退出的进程：t1 里没有 ⇒ 没有可比基线，跳过；
+     * - 窗口内新增的进程：t0 里没有 ⇒ 跳过（它的累计值不是这段窗口的 CPU）；
+     * - pid 复用 / 计数回绕：该 pid 的差为负 ⇒ 记 0，不拖累其它 pid。
+     */
+    internal fun cpuDelta(t0: Map<Int, Long>, t1: Map<Int, Long>): Long {
+        var sum = 0L
+        for ((pid, t1Ticks) in t1) {
+            val t0Ticks = t0[pid] ?: continue
+            sum += (t1Ticks - t0Ticks).coerceAtLeast(0L)
+        }
+        return sum
     }
 
     /**
