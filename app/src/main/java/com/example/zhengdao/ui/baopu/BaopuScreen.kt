@@ -492,6 +492,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuIntrospectionNote(
                     text = note,
                     onDismiss = { controller.clearPendingNote() },
+                    // 2026-10-19：错误便签有自己的标题与错误色；压紧凑，别比它替换掉的单行更高
+                    label = stringResource(R.string.memory_write_failed_label),
+                    isError = true,
+                    compact = true,
                 )
             }
             // 技能动作一句话（第十九批：上限拒绝／写盘失败；显示几秒就清）
