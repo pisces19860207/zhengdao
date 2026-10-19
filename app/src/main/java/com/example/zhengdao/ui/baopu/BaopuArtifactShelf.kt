@@ -25,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -271,6 +272,8 @@ internal fun ArtifactShelfDialog(
     onDismiss: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    // P0-2 后续：Compose 里取字符串走 LocalResources（lint 规则 LocalContextGetResourceValueCall）
+    val res = LocalResources.current
     val db = BaopuRuntime.db(ctx)
     var tick by remember { mutableStateOf(0) }
     // 读库与读盘都 off-main（UI 线程查库是「点一下就卡住」的老坑）
@@ -287,14 +290,14 @@ internal fun ArtifactShelfDialog(
         val msg = when (o) {
             // 确认那句分两型：盘上还有东西 ⇒ 问「移进回收站」；东西早没了 ⇒ 问「清掉这一行」（C6）
             is ArtifactMoveOutcome.NeedsConfirm -> if (o.onDisk) {
-                ctx.getString(R.string.baopu_artifact_shelf_confirm, o.relPath)
+                res.getString(R.string.baopu_artifact_shelf_confirm, o.relPath)
             } else {
-                ctx.getString(R.string.baopu_artifact_shelf_confirm_gone, o.relPath)
+                res.getString(R.string.baopu_artifact_shelf_confirm_gone, o.relPath)
             }
-            is ArtifactMoveOutcome.Moved -> ctx.getString(R.string.baopu_artifact_shelf_moved, o.relPath, o.trashRelPath)
-            is ArtifactMoveOutcome.LedgerOnly -> ctx.getString(R.string.baopu_artifact_shelf_ledger_cleared, o.relPath)
-            is ArtifactMoveOutcome.Rejected -> ctx.getString(R.string.baopu_artifact_shelf_rejected, o.relPath, o.why)
-            is ArtifactMoveOutcome.IoFailed -> ctx.getString(R.string.baopu_artifact_shelf_io_failed, o.relPath, o.why)
+            is ArtifactMoveOutcome.Moved -> res.getString(R.string.baopu_artifact_shelf_moved, o.relPath, o.trashRelPath)
+            is ArtifactMoveOutcome.LedgerOnly -> res.getString(R.string.baopu_artifact_shelf_ledger_cleared, o.relPath)
+            is ArtifactMoveOutcome.Rejected -> res.getString(R.string.baopu_artifact_shelf_rejected, o.relPath, o.why)
+            is ArtifactMoveOutcome.IoFailed -> res.getString(R.string.baopu_artifact_shelf_io_failed, o.relPath, o.why)
         }
         Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
     }
@@ -319,7 +322,7 @@ internal fun ArtifactShelfDialog(
             if (!cleared) {
                 Toast.makeText(
                     ctx,
-                    ctx.getString(R.string.baopu_artifact_shelf_ledger_failed, row.relPath),
+                    res.getString(R.string.baopu_artifact_shelf_ledger_failed, row.relPath),
                     Toast.LENGTH_LONG,
                 ).show()
             }
