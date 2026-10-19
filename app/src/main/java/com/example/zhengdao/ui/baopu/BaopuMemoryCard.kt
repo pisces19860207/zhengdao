@@ -156,36 +156,45 @@ internal fun BaopuIntrospectionNote(
     text: String,
     modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
+    /** 标题；null ⇒ 用「这次学到」（兼容老调用点）。2026-10-19：错误便签不该顶着这个标题。 */
+    label: String? = null,
+    /** true ⇒ 用错误色（留痕不变，警示性回来）。 */
+    isError: Boolean = false,
+    /** true ⇒ 压紧凑（错误便签只是一句原因，不需要正文级留白）。 */
+    compact: Boolean = false,
 ) {
     if (text.isBlank()) return
+    val fg = if (isError) com.example.zhengdao.ui.theme.zhengdaoErrorText() else MaterialTheme.colorScheme.onSurfaceVariant
+    val padV = if (compact) 1.dp else 2.dp
+    val innerV = if (compact) 5.dp else 8.dp
     Surface(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .padding(horizontal = 16.dp, vertical = padV)
             .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = innerV)) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.baopu_introspection_label),
+                    text = label ?: stringResource(R.string.baopu_introspection_label),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = fg,
                 )
                 Text(
                     text = text,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
+                    style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall,
+                    color = fg,
+                    modifier = Modifier.padding(top = if (compact) 0.dp else 2.dp),
                 )
             }
             if (onDismiss != null) {
                 Text(
                     text = "\u00d7",
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = fg,
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }

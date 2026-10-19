@@ -34,6 +34,21 @@ internal fun stateLabel(state: RunState): Int = when (state) {
 }
 
 /**
+ * 会话头到底占不占地方（第四十九批 · 任务 A，2026-10-19 用户：「那条灰条是干什么的？什么都没写还占一行」）。
+ *
+ * 判据就是下面这两行原有的两条 if 的**或**：中断行（`interruptedStep>=0` ∧ 没在跑 ∧ 会话真的开着）
+ * 与引擎人话（`notice` 非空白）。**两条都没有 ⇒ 整个 Surface 不组合** —— 改前它无条件渲染，
+ * 空态时 `Column(vertical = 8.dp)` 自己撑出一条 16dp 的空灰条，常驻首屏。
+ * 纯函数放这儿是为了能在 JVM 里问（`SessionBarVisibilityTest` 钉着六个判点）。
+ */
+internal fun sessionBarVisible(
+    state: RunState,
+    interruptedStep: Int,
+    hasSession: Boolean,
+    notice: String?,
+): Boolean = (interruptedStep >= 0 && !busyState(state) && hasSession) || !notice.isNullOrBlank()
+
+/**
  * 会话头：状态条 ＋ 中断提示 ＋ 续跑/新会话。
  * 中断判据：interruptedStep >= 0 且引擎没在跑（跑起来就不再是"中断"而是"续跑中"）。
  */
@@ -46,34 +61,36 @@ internal fun BaopuSessionBar(
     onResume: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(tonalElevation = 1.dp, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            // 中断提示（可续跑）
-            if (interruptedStep >= 0 && !busyState(state) && hasSession) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = stringResource(R.string.baopu_interrupted_at, interruptedStep),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = zhengdaoErrorText(), // P2-11：error 色 3.55:1 不达正文 AA 4.5:1
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onResume) {
-                        Text(stringResource(R.string.baopu_resume))
+    if (sessionBarVisible(state, interruptedStep, hasSession, notice)) {
+        Surface(tonalElevation = 1.dp, modifier = modifier.fillMaxWidth()) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                // 中断提示（可续跑）
+                if (interruptedStep >= 0 && !busyState(state) && hasSession) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.baopu_interrupted_at, interruptedStep),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = zhengdaoErrorText(), // P2-11：error 色 3.55:1 不达正文 AA 4.5:1
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onResume) {
+                            Text(stringResource(R.string.baopu_resume))
+                        }
                     }
                 }
-            }
-            // 引擎给的人话（AskUser / 错误号口径；不是英文 err 直出）
-            if (!notice.isNullOrBlank()) {
-                Text(
-                    text = notice,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+                // 引擎给的人话（AskUser / 错误号口径；不是英文 err 直出）
+                if (!notice.isNullOrBlank()) {
+                    Text(
+                        text = notice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
             }
         }
     }
