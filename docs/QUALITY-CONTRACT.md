@@ -15,7 +15,7 @@
 | 账本一致性（`tools/check-doc-ledger.py --strict`） | CI | 补 ERRATA／改引用；D1–D5 全绿才算完 |
 | R8 mapping 断言（`tools/check-r8-mapping.py`） | CI（PR/手动） | 关键类被改名＝真问题，修 keep 规则 |
 | 重编比对（评测基线） | CI | 按流程更新基线并写理由 |
-| **Lint 预算闸**（`tools/check-lint-budget.py`） | CI | 新增告警先**修**；确有理由才调基线（见 §4） |
+| **Lint 预算闸**（`tools/check-lint-budget.py`） | CI | 新增告警先**修**；确有理由才调基线（见 §4）。**Error 零容忍；warning 允许 ±5% 环境抖动**（E-167） |
 
 ## 2. 只出报告、不设门槛
 
