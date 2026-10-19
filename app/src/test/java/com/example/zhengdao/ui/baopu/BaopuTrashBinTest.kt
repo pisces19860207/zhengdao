@@ -54,6 +54,8 @@ class BaopuTrashBinTest {
 
     private fun drawer() = strip("src/main/java/com/example/zhengdao/ui/baopu/BaopuDrawer.kt")
 
+    private fun screen() = strip("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt")
+
     private fun zh() = repoFile("src/main/res/values/strings.xml").readText(Charsets.UTF_8)
 
     private fun en() = repoFile("src/main/res/values-en/strings.xml").readText(Charsets.UTF_8)
@@ -158,6 +160,12 @@ class BaopuTrashBinTest {
         )
         assertTrue("N 现读盘：数的是 trashRows", src.contains("trashRows(BaopuTrashBin.dirOf(trashRoot)).size"))
         assertTrue("取根走全仓那一处", src.contains("BaopuRuntime.workspaceRoot(ctx)"))
+        // E-163（真机 2026-10-19 抓到）：`ModalNavigationDrawer` 的 drawerContent 一直处于组合中，
+        // 光靠 remember(tick) 不会因为「把抽屉拉开」而重算 ⇒ 抱朴刚删完文件，抽屉里仍显示旧 N；
+        // 而旧 N=0 又把整行 enabled 关掉，连面板都打不开（只能重启 App）。
+        assertTrue("打开抽屉要重数一次", src.contains("LaunchedEffect(drawerOpen)"))
+        assertTrue("抽屉自己要看得到打开状态", src.contains("drawerOpen: Boolean"))
+        assertTrue("页面必须把 drawerState.isOpen 传进来", screen().contains("drawerOpen = drawerState.isOpen"))
     }
 
     // ── T2：恢复 ──────────────────────────────────────────────────────────

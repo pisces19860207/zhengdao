@@ -196,4 +196,13 @@ class DeletePathToolTest {
         assertTrue(out is ToolOutcome.Ok)
         assertTrue((out as ToolOutcome.Ok).text.contains("空的"))
     }
+
+    @Test
+    fun `D12_给模型看的说明里_回收站路径就是盘上那个`() {
+        // E-163（真机 2026-10-19 走查发现）：回收站早就从 `.回收站/` 改成可见的 `回收站/`，
+        // 但工具说明（模型读的那段）和设置页文案还写着「.回收站/」——模型会照着它说错路径。
+        val desc = DeletePathTool.spec { root }.description
+        assertTrue("说明要写准落点：工作区/回收站/时间戳-原名 ⇒ 实际是 $desc", desc.contains("工作区/回收站/时间戳-原名"))
+        assertFalse("不许再说点开头的旧路径（盘上没有这个目录）", desc.contains(".回收站"))
+    }
 }
