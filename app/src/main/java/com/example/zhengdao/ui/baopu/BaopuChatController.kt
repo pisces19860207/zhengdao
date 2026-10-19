@@ -219,6 +219,60 @@ internal class BaopuChatController(context: Context) {
     /** 用户点了一个选项。 */
     fun answerChoice(id: String) = engine.answerChoice(id)
 
+    // ── 「这次学到」提案卡（第三十七批 B 段）─────────────────────────────
+    //
+    // 用户 2026-10-19 口径：**收尾才出卡、只出卡不落盘、点采纳才写、拒绝一字不动**。
+
+    /** 引擎收尾给的提案（null = 现在没有卡；没信号时引擎根本不会出）。 */
+    val learnProposals: List<com.example.zhengdao.baopu.SkillRefine.LearnProposal>?
+        get() = engine.learn.value
+
+    /** 用户点了「不记」⇒ 只把卡收起来，**一个字节都不写**。 */
+    fun dismissLearn() = engine.dismissLearn()
+
+    /**
+     * 采纳一条 ⇒ **唯一落盘路径**：`SkillStore.plan` → `SkillStore.apply`
+     * （写前先备份、进索引并标「草稿·未验证」）。没点采纳就什么都不写。
+     */
+    fun adoptLearn(id: String) {
+        val list = engine.learn.value ?: return
+        val p = list.firstOrNull { it.id == id } ?: return
+        skillNote = "记下来中…"
+        scope.launch {
+            val out = withContext(Dispatchers.IO) { writeLearnedSkill(p) }
+            skillNote = out
+            engine.dismissLearn() // 采纳完就收卡，不重复写
+        }
+    }
+
+    /** 把卡上一条提案写成技能（草稿/转正式按卡上的建议）。 */
+    private fun writeLearnedSkill(p: com.example.zhengdao.baopu.SkillRefine.LearnProposal): String {
+        val root = com.example.zhengdao.baopu.BaopuWorkspace.hostDir(appCtx)
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val globalRoot = java.io.File(pf.globalFile().parentFile ?: root, "")
+        val name = p.id.substringAfter('-').ifBlank { "skill" }
+        val proposal = com.example.zhengdao.baopu.SkillProposal(
+            scope = com.example.zhengdao.baopu.SkillScope.PROJECT,
+            name = name,
+            body = "# 技能：$name\n\n## 场景\n${p.content}\n\n## 来源\n${p.source}\n",
+            reason = "「这次学到」卡片采纳",
+            draft = p.suggest != com.example.zhengdao.baopu.SkillRefine.Suggest.FORMAL,
+        )
+        val plan = com.example.zhengdao.baopu.SkillStore.plan(
+            proposal,
+            root,
+            globalRoot,
+            com.example.zhengdao.util.TimeFormats.fileStamp(),
+        )
+        plan.blocked?.let { return it }
+        val layer = com.example.zhengdao.baopu.PersonaLayer.C_PROJECT
+        return when (val r = com.example.zhengdao.baopu.SkillStore.apply(plan, pf, pf.read(layer).orEmpty())) {
+            is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                "已记下：${r.file.name}" + (r.backup?.let { "（旧版备份：$it）" } ?: "")
+            is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
+        }
+    }
+
     /** 会话中（可停止）。 */
     val busy: Boolean
         get() = engineState.value in setOf(

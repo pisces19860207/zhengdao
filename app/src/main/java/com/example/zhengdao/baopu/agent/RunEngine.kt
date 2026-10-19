@@ -16,6 +16,8 @@ import com.example.zhengdao.baopu.BaopuPreset
 import com.example.zhengdao.baopu.BaopuSql
 import com.example.zhengdao.baopu.Compressor
 import com.example.zhengdao.baopu.ContextAssembler
+import com.example.zhengdao.baopu.SkillRefine
+import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.HardFacts
 import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.VisionFiles
@@ -313,6 +315,10 @@ internal class RunEngine(
         acquireOrNotice(sessionId) ?: return
         stopRequested = false
         _notice.value = null
+        // 新一轮：上一轮的「这次学到」卡与信号都清掉（卡不跨轮保留，免得攒成一叠）
+        learnSignals.clear()
+        learnShown = false
+        _learn.value = null
         // 第二十四批 C 段：本轮要随请求发出去的图片。**只收相对路径**，读盘在引擎线程里做
         // （调用方是主线程，不许在那里读 2 MB 文件）。
         pendingImageRelPaths = imageRelPaths
@@ -341,6 +347,43 @@ internal class RunEngine(
      */
     private val _choice = mutableStateOf<AskUserRequest?>(null)
     val choice: State<AskUserRequest?> get() = _choice
+
+    // ── 「这次学到」提案卡（第三十七批 B 段）─────────────────────────────
+    //
+    // 口径（用户 2026-10-19）：**收尾才出卡、只出卡不落盘、点采纳才写、拒绝一字不动**、
+    // 同一次收尾只出一次；**被保护闸拦下的写尝试不算学到，不许进卡**——所以信号只在
+    // GuardPipeline.Result.Done（真写成功）时记，Rejected/Failed 一律不记。
+    private val learnSignals = mutableListOf<SkillRefine.LearnSignal>()
+    private var learnShown = false
+    private val _learn = mutableStateOf<List<SkillRefine.LearnProposal>?>(null)
+    val learn: State<List<SkillRefine.LearnProposal>?> get() = _learn
+
+    /**
+     * 用户点了「不记」⇒ **只清卡，一个字节都不写**（采纳才有落盘路径，且不在这里）。
+     */
+    fun dismissLearn() {
+        _learn.value = null
+    }
+
+    /**
+     * 收尾时才出卡：**没信号不出**（不许每轮都弹）、**同一次收尾只出一次**（[learnShown]）。
+     *
+     * 只生成卡片内容，**不落盘**——落盘是控制器收到「采纳」之后的事，走 `SkillStore.apply`
+     * 那唯一一条写盘口（带备份、进索引、标草稿）。
+     */
+    private fun emitLearnCardIfDue() {
+        if (!SkillRefine.shouldEmit(learnSignals, learnShown)) return
+        learnShown = true
+        _learn.value = SkillRefine.learnProposals(learnSignals, existingSkillNames())
+    }
+
+    /** 已有技能名（决定卡上建议「草稿」还是「转正式」）。 */
+    private fun existingSkillNames(): Set<String> = runCatching {
+        SkillRules.projectSkillDir(spillRoot()).listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { it.name }
+            ?.toSet() ?: emptySet()
+    }.getOrDefault(emptySet())
 
     private val choiceLock = Object()
     private var choiceResult: AskUserOption? = null
@@ -524,6 +567,8 @@ internal class RunEngine(
         }
         // 工作计划（第十七批）：update_plan 落到哪个会话，由这里喂给 PlanController
         planSessionId = sessionId
+        // 用户明说「记住／记下来／以后都这样」⇒ 一条高置信信号（排卡时排最前）
+        userText?.let { learnSignals += SkillRefine.learnMarkersIn(it) }
         val workspacePath = spillRoot().absolutePath
         val windowTokens = ContextAssembler.ContextBudgets.windowOf(provider)
         val persona = PersonaRules.assemble(
@@ -694,6 +739,7 @@ internal class RunEngine(
                     if (left > 0) {
                         _notice.value = "计划里还有 $left 条没勾（进度看顶部计划卡）"
                     }
+                    emitLearnCardIfDue()
                     settle(sessionId, stepCount, RunState.DONE, "Done")
                     return
                 }
@@ -828,6 +874,7 @@ internal class RunEngine(
             if (RunRules.isStepExhausted(stepCount)) {
                 val msg = "已到 ${RunRules.MAX_STEPS} 步上限，停下。继续说「继续」会重新计步。"
                 _notice.value = msg
+                emitLearnCardIfDue()
                 settle(sessionId, stepCount, RunState.DONE, "Done")
                 onEvent?.invoke(EngineEvent.AskUser(msg))
                 return
@@ -1136,8 +1183,13 @@ internal class RunEngine(
         is GuardPipeline.Result.Done -> {
             consecutiveToolFailures = 0
             // 收尾闸记账：只记真写成功的调用（失败/被拒不算产物）
-            VerifyTargets.pathsOf(result.call.name, result.call.arguments)
-                .forEach { verifyTouched += it }
+            val touchedPaths = VerifyTargets.pathsOf(result.call.name, result.call.arguments)
+            touchedPaths.forEach { verifyTouched += it }
+            // 只有**真写成功**的调用才算「学到」：被保护闸拦下的走 Rejected 分支、失败的走
+            // Failed 分支，两个都不记信号 ⇒ 进不了「这次学到」卡（用户 2026-10-19 口径）。
+            SkillRefine.signalKindFor(result.call.name)?.let { kind ->
+                learnSignals += SkillRefine.LearnSignal(kind, touchedPaths.firstOrNull() ?: result.call.name)
+            }
             persistToolExchange(sessionId, step, result.call.name, result.wrapped)
             onEvent?.invoke(
                 EngineEvent.ToolCallVisible(result.call.name, toolSummary(result.call, result.wrapped), true),
@@ -1174,6 +1226,7 @@ internal class RunEngine(
 
         is GuardPipeline.Result.Rejected -> {
             // 越界/权限 ⇒ 终止本轮（§8）：回灌理由让模型知道边界，本轮到此
+            // **不记进「这次学到」的信号**——被保护闸拦下的写尝试不算学到，不许进卡。
             val name = result.call?.name ?: "tool"
             persistToolExchange(sessionId, step, name, "被拒：${result.reason}")
             onEvent?.invoke(EngineEvent.ToolCallVisible(name, result.reason, false))
