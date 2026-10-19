@@ -118,7 +118,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         super.onCreate(savedInstanceState)
         // 终端打开期间保持屏幕常亮
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        RootfsInstaller.cleanupPartial(applicationContext)
+        // P2-7（第六十批）：残局清理已**挪出 onCreate**。它最坏要递归删 1.5–2GB（上次安装中断
+        // 留下的 tmp 树 / 替换备份 rootfs.old），同步跑在主线程就是掉帧甚至 ANR。
+        // 现在放在 [startSessionOffMainThread] 的后台 worker 头部：顺序仍是「先清残局、
+        // 再算启动计划」（清理可能把 rootfs.old 复原成 rootfs，而启动计划读的就是这棵树），
+        // 只是整段让出了主线程。为什么不放在这里另起线程：起会话前本来就必然经过那条
+        // worker（新进程一定没有会话），复用它可以保证**清理一定早于启动计划**，
+        // 不必再加一把锁去排序。
         RunLog.init(applicationContext)
         SessionManager.init(applicationContext)
         // 只在全新启动读取（Activity 异常重建会带原 intent，避免同一命令重跑两遍）
@@ -652,6 +658,22 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (!sessionStartGate.tryEnter()) return
         val t0 = android.os.SystemClock.uptimeMillis()
         val worker = Thread({
+            // P2-7（第六十批）：启动残局清理。原先它在 onCreate 里同步跑（最坏递归删 1.5–2GB
+            // ⇒ 冷启动掉帧/ANR），现在挪到这条后台 worker 的**最前面**。三条口径不动：
+            //  ① 顺序仍是「先清残局、再算启动计划」——[RootfsInstaller.cleanupPartial] 可能把
+            //     上次替换中断留下的 rootfs.old 复原成 rootfs，而 prepareLaunchPlan 读的就是
+            //     这棵树；调换顺序会把「唯一的环境」当成残局删掉。
+            //  ② 互斥仍由 RootfsInstaller 自己的安装锁负责（tryLock 语义：安装在跑就跳过本次，
+            //     下次再试）。这里**不绕过、不自己抢锁**——绕过去就会与解包并发动 tmp 树。
+            //  ③ 失败不许静默：cleanupPartial 内部已 catch 并 Log.w，这里再兜一层 runCatching，
+            //     保证任何漏网异常都落 RunLog（用户能在「设置 → 运行日志」里看到）。
+            runCatching { RootfsInstaller.cleanupPartial(this) }
+                .onFailure { t ->
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "启动残局清理失败：${t.javaClass.simpleName}: ${t.message}"
+                    )
+                    android.util.Log.w("ZhengdaoColdStart", "cleanupPartial 失败", t)
+                }
             // 只在这里做重活。失败**不许吞**（真机退回的教训）：落 RunLog + Log.e，
             // 回主线程后明确告诉用户，而不是静默黑屏。
             val plan = try {
