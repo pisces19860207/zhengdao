@@ -138,6 +138,12 @@ internal object BaopuRuntime {
                 personaFiles = { personaFiles(appCtx) },
             ),
         )
+        // 第五十八批：C 层人设**追加-only**通道（改/删既有条款仍被 guard 拦）
+        reg.register(
+            com.example.zhengdao.baopu.agent.AppendPersonaTool.spec(
+                personaFiles = { personaFiles(appCtx) },
+            ),
+        )
         if (provider.builtinFree) {
             val readSchema = ReadFileTool.spec().inputSchema
             reg.register(

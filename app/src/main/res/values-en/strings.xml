@@ -1333,4 +1333,6 @@
     <string name="baopu_delete_session_body_ws">Delete "%1$s" (workspace: %2$s · %3$s)? It moves to Trash; messages stay and can be restored from Trash → Deleted chats.</string>
     <string name="memory_write_failed_label">Not saved</string>
     <string name="baopu_browser_notice_label">Browser</string>
+    <string name="baopu_tool_append_persona">Append persona clause</string>
+    <string name="baopu_tool_append_persona_desc">Append one clause to this workspace persona (append-only; cannot edit/delete existing clauses)</string>
 </resources>

@@ -161,6 +161,7 @@ object SkillStore {
         val file = plan.file
         return runCatching {
             file.parentFile?.mkdirs()
+            val beforeSha = SkillAudit.shaOf(file)
             // ① 备份（同名已在 ⇒ 先复制一份，绝不覆盖原件的最后一份）
             val backup = plan.backupName?.let { name ->
                 val b = File(file.parentFile, name)
@@ -191,6 +192,17 @@ object SkillStore {
                     else -> false
                 }
             }
+            // 第五十八批：自动写入留痕（追加一行 JSON，失败不影响写入）
+            SkillAudit.record(
+                skillFile = file,
+                scope = if (plan.proposal.scope == SkillScope.PROJECT) "project" else "global",
+                name = plan.proposal.name,
+                action = if (backup != null) "update" else "write",
+                reason = plan.proposal.reason,
+                beforeSha = beforeSha,
+                indexUpdated = indexUpdated,
+                nowMs = System.currentTimeMillis(),
+            )
             SkillWriteResult.Written(file = file, backup = backup, indexUpdated = indexUpdated)
         }.getOrElse { SkillWriteResult.Rejected("写盘失败：${it.javaClass.simpleName}") }
     }

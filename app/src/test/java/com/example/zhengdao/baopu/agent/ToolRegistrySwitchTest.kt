@@ -43,12 +43,12 @@ class ToolRegistrySwitchTest {
     // ── 表 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `一张表_默认二十五个全启用`() {
+    fun `一张表_默认二十六个全启用`() {
         setup()
         val reg = registry()
 
-        // write_skill 由 BaopuRuntime 单独注册（它要 personaFiles，ENTRIES 的工厂只吃 workspaceRoot）
-        assertEquals(BaopuToolCatalog.ENTRIES.size + 1, BaopuToolCatalog.DEFAULT_ENABLED.size)
+        // write_skill / append_persona 由 BaopuRuntime 单独注册（要 personaFiles，ENTRIES 的工厂只吃 workspaceRoot）
+        assertEquals(BaopuToolCatalog.ENTRIES.size + 2, BaopuToolCatalog.DEFAULT_ENABLED.size)
         assertEquals(
             listOf(
                 "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
