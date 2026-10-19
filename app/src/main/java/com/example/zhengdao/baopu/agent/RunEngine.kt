@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
-// 依据：抱朴-Agent设计-程枢版 §2 状态机（每步迁移一次 SQLite 事务；max_steps=16；
+// 依据：抱朴-Agent设计-程枢版 §2 状态机（每步迁移一次 SQLite 事务；max_steps=120（2026-10-19 两次上调 16→48→120，见 RunRules）；
 // 一步 = 一次模型轮次；确认批不计步；全局单活跃会话；通道熔断）+ §8 错误矩阵。
 //
 // 2026-10-17（抱朴刀 3）：纯判据拆去 `RunRules.kt`、历史编解码拆去 `HistoryCodec.kt`、
@@ -1015,7 +1015,7 @@ internal class RunEngine(
                 }
             }
 
-            // ── 步数刹车：16 步必停 ──
+            // ── 步数刹车：RunRules.MAX_STEPS 步必停（现 120） ──
             if (RunRules.isStepExhausted(stepCount)) {
                 val msg = "已到 ${RunRules.MAX_STEPS} 步上限，停下。继续说「继续」会重新计步。"
                 _notice.value = msg
@@ -1539,7 +1539,7 @@ internal class RunEngine(
      * **真跑一次压缩**（第十三批 A 段 —— 替换刀 0b 留下的恒返回 null 的桩）。
      *
      * 桩的问题（派工单 §1 现状证据）：只选区 + 记日志，恒 null ⇒ 长会话反复进
-     * `COMPRESSING` 却什么都没压，最后靠 `MAX_STEPS=16` 硬刹车——用户看到的
+     * `COMPRESSING` 却什么都没压，最后靠 `MAX_STEPS`（现 120，见 RunRules）硬刹车——用户看到的
      * 「压缩中」一直是假的。
      *
      * 现在交给 [CompressionRunner]（内核：选区 → 判通道 → 一次非流式补全 → 解析 →
