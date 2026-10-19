@@ -145,6 +145,11 @@ internal class PersonaFiles(
         val f = fileOf(p.layer)
         return runCatching {
             f.parentFile?.mkdirs()
+            // 第三十七批 D 段：B/C 层写入前**自动**备份（`人设-本项目.md.bak-<stamp>`）。
+            // 放在这里而不是各调用点：这是「写人设」的唯一道口，做成不变式才不会漏
+            // （设置页删索引、技能转正、采纳提案、技能写索引全汇到这一处）。
+            // 文件还不存在时它返回 null —— 首次写入不造空备份。
+            PersonaBackup.backupBefore(f, PersonaBackup.nowStamp())
             f.writeText(p.proposed, Charsets.UTF_8)
             true
         }.getOrDefault(false)
