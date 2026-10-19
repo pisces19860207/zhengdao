@@ -128,6 +128,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var addWorkspaceOpen by remember { mutableStateOf(false) }
     // 长按会话行 ⇒ 删除确认（设置页那套平铺列表已删，删除只在这里）
     var deleteRow by remember { mutableStateOf<DrawerSessionRow?>(null) }
+    // 2026-10-19：确认框要写清工作区名（行上不带分组键，W4）
+    var deleteRowWs by remember { mutableStateOf("") }
     // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
@@ -286,9 +288,12 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         controller.requestOpenSession(sid)
                     },
                     // 长按＝删除：先关抽屉再问人，确认才真删（走修好 compression 的 deleteSession）
-                    onSessionLongPress = { row ->
+                    // 2026-10-19：回收站里恢复/彻底删除会话后，让会话库重读一次（否则列表像没变）。
+                    onSessionLibraryChanged = { drawerTick++ },
+                    onSessionLongPress = { row, ws ->
                         scope.launch { drawerState.close() }
                         deleteRow = row
+                        deleteRowWs = ws
                     },
                     // 文件夹行右侧的「圆里加号」＝在这个工作区里干活（开新会话）。
                     onWorkspaceRunHere = { node ->
@@ -860,7 +865,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 AlertDialog(
                     onDismissRequest = { deleteRow = null },
                     title = { Text(stringResource(R.string.baopu_delete_session_title)) },
-                    text = { Text(stringResource(R.string.baopu_delete_session_body, row.title)) },
+                    text = { Text(stringResource(R.string.baopu_delete_session_body_ws, row.title, deleteRowWs, row.timeText)) },
                     confirmButton = {
                         TextButton(onClick = {
                             val id = row.id

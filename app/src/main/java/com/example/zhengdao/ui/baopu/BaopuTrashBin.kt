@@ -291,6 +291,8 @@ private fun oneDecimal(value: Long, unit: Long, suffix: String): String {
 internal fun TrashDialog(
     workspaceRoot: File,
     onDismiss: () -> Unit,
+    /** 会话被恢复/彻底删除后回调：抽屉里那份会话库要重读（2026-10-19 用户「显示慢」）。 */
+    onSessionsChanged: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val dir = BaopuTrashBin.dirOf(workspaceRoot)
@@ -335,6 +337,7 @@ internal fun TrashDialog(
         ).show()
         confirmingSession = null
         tick++
+        onSessionsChanged()
     }
 
     fun purgeSessionRow(id: Long, title: String) {
