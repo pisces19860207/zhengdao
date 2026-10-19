@@ -2,7 +2,7 @@
 //
 // 2026-10-19 用户口径（第四十批）：
 //   「有些公司会偶尔抽风截断模型的回复，可以有重试吗？就是一个刷新的按钮」
-//   「如果用户打字错了，可以修改当前对话里的最近一条已经发出去的信息内容吗？然后让模型重新输出」
+//   「编辑上一条可以在对应那个用户发送的信息长按出现吗？就不这么显化了，有点挡手机的屏幕」
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.layout.Arrangement
@@ -27,29 +27,25 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 
-/** 输入栏上方那一行的动作（三个都只在「该出现」的时候出现）。 */
+/** 输入栏上方那一行的动作（只在出事时出现——平时**不占屏幕**）。 */
 internal enum class TailAction {
     /** 上一轮被输出上限截断 ⇒ 接着说完（不新增用户消息）。 */
     CONTINUE,
 
     /** 上一轮跑挂了 / 被截断后停下 ⇒ 重发这一轮。 */
     RETRY,
-
-    /** 改「最近一条用户消息」再重跑。 */
-    EDIT,
 }
 
 /**
  * 该显示哪几个动作（纯函数，JVM 直测）。
  *
  * 纪律：
- * 1. 跑着的时候一个都不显示（不许在跑的时候改历史/重发，会把自己绕进去）；
- * 2. 没有会话就没有「编辑上一条」；
- * 3. 截断与失败可以同时成立（先截断收尾、后面又失败过）——两个都给，用户自己选。
+ * 1. **跑着的时候一个都不显示**（不许在跑的时候重发，会把自己绕进去）；
+ * 2. 平常什么都不显示——「编辑上一条」改成**长按那条消息**出菜单（用户：挡屏幕）；
+ * 3. 截断与失败可以同时成立，两个都给，用户自己选。
  */
 internal fun tailActions(
     busy: Boolean,
-    hasSession: Boolean,
     truncated: Boolean,
     aborted: Boolean,
 ): Set<TailAction> {
@@ -57,21 +53,15 @@ internal fun tailActions(
     val out = mutableSetOf<TailAction>()
     if (truncated) out += TailAction.CONTINUE
     if (aborted) out += TailAction.RETRY
-    if (hasSession) out += TailAction.EDIT
     return out
 }
 
-/**
- * 输入栏上方的动作行（第四十批）。
- *
- * 位置纪律与「这次学到」「ask_user」一致：**输入栏上方**，不遮对话、不跳新页。
- */
+/** 输入栏上方的动作行：只在被截断 / 跑挂时出现，平时整行不存在。 */
 @Composable
 internal fun BaopuTailActions(
     actions: Set<TailAction>,
     onContinue: () -> Unit,
     onRetry: () -> Unit,
-    onEdit: () -> Unit,
 ) {
     if (actions.isEmpty()) return
     Row(
@@ -80,9 +70,6 @@ internal fun BaopuTailActions(
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.End,
     ) {
-        if (TailAction.EDIT in actions) {
-            TextButton(onClick = onEdit) { Text(stringResource(R.string.baopu_edit_last)) }
-        }
         if (TailAction.RETRY in actions) {
             TextButton(onClick = onRetry) { Text(stringResource(R.string.baopu_tail_retry)) }
         }
@@ -93,9 +80,37 @@ internal fun BaopuTailActions(
 }
 
 /**
- * 「编辑上一条」的编辑框（第四十批）。
+ * 长按用户消息弹出的小菜单（第四十批，用户指定位置）。
  *
- * **保存前把后果写清楚**：这句之后的回复（含工具卡、计划卡）会被删掉，然后按改后的内容重跑。
+ * 为什么是菜单而不是直接进编辑框：那个长按手势以前是「选中复制」，直接改成编辑会把复制弄丢；
+ * 菜单里两项各归各位，也不占正文区。
+ */
+@Composable
+internal fun BaopuUserMessageMenu(
+    onEdit: () -> Unit,
+    onCopy: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.baopu_user_msg_menu_title)) },
+        text = {
+            Column {
+                TextButton(onClick = onEdit) { Text(stringResource(R.string.baopu_edit_this)) }
+                TextButton(onClick = onCopy) { Text(stringResource(R.string.copy_text)) }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        },
+    )
+}
+
+/**
+ * 「编辑这条」的编辑框（第四十批）。
+ *
+ * **保存前把后果写清楚**：这条之后的回复（含工具卡、计划卡）会被删掉，然后按改后的内容重跑。
  * 不给这段说明的话，用户会以为改字只是改字。
  */
 @Composable

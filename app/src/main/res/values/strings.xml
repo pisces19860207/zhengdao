@@ -1258,8 +1258,11 @@
     <!-- 第四十批：继续说完 / 重试 / 编辑上一条 -->
     <string name="baopu_tail_continue">继续说完</string>
     <string name="baopu_tail_retry">重试</string>
-    <string name="baopu_edit_last">编辑上一条</string>
     <string name="baopu_edit_title">改这句，再让它重跑</string>
     <string name="baopu_edit_hint">保存后会删掉这句之后的回复（含工具卡和计划卡），然后按改后的内容重新生成。这一步不能撤销。</string>
     <string name="baopu_edit_save">保存并重跑</string>
+    <!-- 第四十批：长按用户消息的小菜单（不占屏幕） -->
+    <string name="baopu_user_msg_menu_title">这条消息</string>
+    <string name="baopu_user_msg_longpress">长按：编辑这条或复制</string>
+    <string name="baopu_edit_this">编辑这条</string>
 </resources>
