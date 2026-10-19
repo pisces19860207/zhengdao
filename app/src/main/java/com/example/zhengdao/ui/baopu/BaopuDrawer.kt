@@ -108,6 +108,25 @@ private fun DrawerGroup(title: String, trailing: (@Composable () -> Unit)? = nul
     }
 }
 
+/** ⊕ 的**视觉**圆点边长（24dp——UI 第二批一个字没改）。 */
+internal const val RUN_HERE_GLYPH_DP = 24
+
+/** ⊕ 的**命中盒**边长（48dp＝派工单 §1 的目标；上一行那个圆仍然画在正中）。 */
+internal const val RUN_HERE_TOUCH_DP = 48
+
+/** 工作区行原来的行尾留白（16dp）；命中盒放大后要靠它做算术补偿。 */
+internal const val OLD_WORKSPACE_ROW_END_DP = 16
+
+/**
+ * 命中盒从 24dp 扩到 48dp 以后，行尾 padding 该留多少，圆点才**还画在原来的位置上**。
+ *
+ * 盒子比圆每边多出 (48−24)/2 ＝ 12dp 的空，所以行尾要让出这 12dp：16 − 12 ＝ 4dp。
+ * 不补偿 ⇒ 整颗 ⊕ 往左挪 12dp（那就是"改了视觉"，纪律不允许）。
+ * 归门禁测（H2）：三个 dp 常量任一改动，这条算术就得跟着变。
+ */
+internal fun runHereRowEndPaddingDp(oldEndDp: Int, touchDp: Int, glyphDp: Int): Int =
+    oldEndDp - (touchDp - glyphDp) / 2
+
 /**
  * 工作区一行（文件夹行）。
  *
@@ -117,6 +136,18 @@ private fun DrawerGroup(title: String, trailing: (@Composable () -> Unit)? = nul
  *
  * 当前工作区整行**铺底色**（secondaryContainer）＝W6 里强度最高的那一档。
  * 不许做展开／收起动画（A6）：这里就是一个静态行，组的内容永远全展开。
+ *
+ * ## UI 第二批（2026-10-19 §1）：⊕ 的命中盒从 24dp 扩到 48dp
+ *
+ * 为什么这一处**必须**动布局，而抽屉「＋」/顶栏跑马灯/「朗读」三处不用动：
+ * Compose 自己会把太小的可点目标在**触摸判定**上扩到 `ViewConfiguration.minimumTouchTargetSize`
+ * ＝ 48×48dp（`NodeCoordinator.hitTest` 的 `hitNear` 分支；见交付报告 §2 的源码引用）。
+ * 但同一份源码的优先级条款写着：**别人的直接命中赢过我的最小触摸扩展命中**。
+ * 这一行的 `Row` 自己 `combinedClickable`（点行＝切到这个工作区），所以 ⊕ 那圈 12dp 扩展
+ * 被行抢走 ⇒ 实际能点的就是画出来的 24dp。⇒ 只能把命中盒真做进布局。
+ *
+ * 视觉一个字没换：圆还是 24dp、边框还是 1dp outline、字形还是「＋」，
+ * 只是外面那一层可点的方盒子从 24dp 变成 48dp。
  */
 @Composable
 private fun WorkspaceRow(
@@ -140,7 +171,9 @@ private fun WorkspaceRow(
                 onClick = { onTap(node.fullPath) },
                 onLongClick = { onHold(node.fullPath) },
             )
-            .padding(start = 20.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
+            // 行尾按算术让位（见 runHereRowEndPaddingDp），上下留白交给 48dp 命中盒自己带
+            // （旧 9/9 是给 24dp 内容用的；命中盒 48dp 时圆点居中 ⇒ 上下各 12dp，比原来松 3dp）。
+            .padding(start = 20.dp, end = runHereRowEndPaddingDp(OLD_WORKSPACE_ROW_END_DP, RUN_HERE_TOUCH_DP, RUN_HERE_GLYPH_DP).dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -168,17 +201,25 @@ private fun WorkspaceRow(
             Spacer(Modifier.width(8.dp))
             Box(
                 modifier = Modifier
-                    .size(24.dp)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                    .size(RUN_HERE_TOUCH_DP.dp)
                     .clickable { onRunHere(node) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "＋",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center,
-                )
+                // 画出来的还是原来那颗 24dp 的圆（边框、字形、颜色一个字没动），
+                // 只是它现在住在一个 48dp 的可点盒子里。
+                Box(
+                    modifier = Modifier
+                        .size(RUN_HERE_GLYPH_DP.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "＋",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }
