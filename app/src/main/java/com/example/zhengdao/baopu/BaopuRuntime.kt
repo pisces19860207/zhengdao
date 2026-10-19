@@ -294,7 +294,8 @@ internal object BaopuRuntime {
      * - step：`run_log` 里本会话最新一步（引擎每步都 persistStep，工具执行时它就是当前步）；
      * - **写失败只 log**（`.get(3s)` 等提交、超时/异常都算失败）——红线「只记录、不阻塞
      *   主流程」：记录是账本，不是闸门，账本卡住业务就是本末倒置。
-     * - 返回 null：本批只记录；「答复里一句提醒」在 §1.2 提交里接（接口已留返回值）。
+     * - §1.2「答复里给一句提醒」：记录成功后**顺手查一次过期判据**（刚记的这条也在
+     *   窗口里），命中「待重验」就把一句话带回去拼进工具答复。只提醒，**不拦**。
      */
     private fun recordSkillUse(appCtx: Context, name: String, ok: Boolean): String? {
         if (name.isBlank()) return null
@@ -310,9 +311,24 @@ internal object BaopuRuntime {
                     ).use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
                 }
             }
-            val stmt = BaopuSql.insertSkillUse(name, sid, step, ok, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            val stmt = BaopuSql.insertSkillUse(name, sid, step, ok, now)
             d.write { x -> x.execSQL(stmt.sql, stmt.args) }.get(3, java.util.concurrent.TimeUnit.SECONDS)
-            null
+            // §1.2：提醒。查不到/判不了 ⇒ null（没提醒），同样只读不拦。
+            val oks = d.read { x ->
+                val s2 = BaopuSql.recentUseOks(name, SkillRefine.SkillExpiry.FAIL_WINDOW)
+                x.rawQuery(s2.sql, s2.args).use { c ->
+                    (0 until c.count).map { c.moveToPosition(it); c.getInt(0) == 1 }
+                }
+            }
+            val last = d.read { x ->
+                val s2 = BaopuSql.lastUseAt(name)
+                x.rawQuery(s2.sql, s2.args).use { c ->
+                    if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+                }
+            }
+            val v = SkillRefine.expiryVerdict(last, oks, now)
+            if (v.needsRecheck) "（提醒：这条技能${SkillRefine.reasonOf(v)}，先用起来验证它还行不行，别照单全收）" else null
         }.getOrElse {
             RunLog.log("抱朴：skill_use 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}")
             null

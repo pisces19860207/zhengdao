@@ -300,4 +300,160 @@ internal object SkillRefine {
 
         return LearnReview(issues, details)
     }
+
+    // ── 第五十七批 §1.2：过期判据（纯函数）＋「待重验」旁挂 JSON ─────────────
+    //
+    // 派工单原话：技能头 `status=… uses=…` **不可再加字段**（抱朴会写歪，36 批 B 段
+    // 同一条判断）⇒ 「待重验」走**旁挂 JSON**（照 36 批 `_分类.json` 房型：扁平
+    // string→string、排序输出幂等、坏 JSON 当空表不抛），**SKILL.md 一个字节不动**。
+    // 且**不自动降级/删除技能**——标记只是提示，处置权在人。
+
+    /** 过期判据阈值（派工单 §1.2「阈值常量集中一处，默认值写清」——就这一处）。 */
+    object SkillExpiry {
+        /** 久未用：超过 14 天没被用过 ⇒ 待重验。 */
+        const val STALE_DAYS = 14L
+        const val STALE_MS: Long = STALE_DAYS * 24L * 60L * 60L * 1000L
+
+        /** 失败率窗口：看最近 5 次使用。 */
+        const val FAIL_WINDOW = 5
+
+        /** 失败率阈值：窗口内失败 ≥ 60% ⇒ 待重验。 */
+        const val FAIL_RATE = 0.6
+    }
+
+    /** 一次过期判据的结论。 */
+    enum class ExpiryVerdict(val needsRecheck: Boolean) {
+        /** 有证据说它还行（或证据不够说它不行）。 */
+        FRESH(false),
+
+        /** 久未用。 */
+        STALE_UNUSED(true),
+
+        /** 最近几次老失败。 */
+        STALE_FAILING(true),
+
+        /** 又久未用又老失败。 */
+        STALE_BOTH(true),
+    }
+
+    /** 给人看的那句话（设置页技能行 / 答复提醒共用一个口径）。 */
+    fun reasonOf(v: ExpiryVerdict): String = when (v) {
+        ExpiryVerdict.FRESH -> ""
+        ExpiryVerdict.STALE_UNUSED -> "超过 ${SkillExpiry.STALE_DAYS} 天没用过"
+        ExpiryVerdict.STALE_FAILING ->
+            "最近 ${SkillExpiry.FAIL_WINDOW} 次里失败≥${(SkillExpiry.FAIL_RATE * 100).toInt()}%"
+        ExpiryVerdict.STALE_BOTH ->
+            "超过 ${SkillExpiry.STALE_DAYS} 天没用过，且最近 ${SkillExpiry.FAIL_WINDOW} 次里失败≥${(SkillExpiry.FAIL_RATE * 100).toInt()}%"
+    }
+
+    /**
+     * 过期判据（**纯函数、确定性**）。
+     *
+     * 两条证据、一条一条来：
+     * - **久未用**：`lastUsedAtMs` 非空且距今超过 [SkillExpiry.STALE_MS]。
+     *   null（记录上线后还没用过）⇒ **没有证据，不判**——宁可漏标不冤枉。
+     * - **高失败率**：最近 [SkillExpiry.FAIL_WINDOW] 次（不足整窗 ⇒ 证据不够，不判）
+     *   失败占比 ≥ [SkillExpiry.FAIL_RATE]。
+     *
+     * @param recentOks 旧→新的使用成败（多余条目取窗口尾）
+     */
+    fun expiryVerdict(lastUsedAtMs: Long?, recentOks: List<Boolean>, nowMs: Long): ExpiryVerdict {
+        val stale = lastUsedAtMs != null && nowMs - lastUsedAtMs > SkillExpiry.STALE_MS
+        val window = recentOks.takeLast(SkillExpiry.FAIL_WINDOW)
+        val failing = window.size >= SkillExpiry.FAIL_WINDOW &&
+            window.count { !it }.toDouble() / window.size >= SkillExpiry.FAIL_RATE
+        return when {
+            stale && failing -> ExpiryVerdict.STALE_BOTH
+            stale -> ExpiryVerdict.STALE_UNUSED
+            failing -> ExpiryVerdict.STALE_FAILING
+            else -> ExpiryVerdict.FRESH
+        }
+    }
+
+    /** 「待重验」旁挂文件名（与 36 批 `_分类.json` 同目录同级：`<技能目录>/_重验.json`）。 */
+    const val RECHECK_FILE = "_重验.json"
+
+    /**
+     * 编码（**按键排序输出 ⇒ 幂等**，照 36 批 `encodeCategories` 口径：同一状态写两次
+     * 字节必须一致）。两空格缩进、每行一键，用户在文件管理器里能直接看懂、手改。
+     */
+    fun encodeRecheck(map: Map<String, String>): String {
+        val sb = StringBuilder("{\n")
+        val keys = map.keys.sorted()
+        keys.forEachIndexed { i, key ->
+            sb.append("  \"").append(escapeJson(key)).append("\": \"")
+                .append(escapeJson(map.getValue(key))).append('"')
+            if (i < keys.size - 1) sb.append(',')
+            sb.append('\n')
+        }
+        return sb.append("}\n").toString()
+    }
+
+    /** 解码（**坏 JSON ⇒ 空表，绝不抛**，照 36 批口径；只认扁平 string→string）。 */
+    fun decodeRecheck(text: String?): Map<String, String> {
+        val src = text?.trim().orEmpty()
+        if (src.isEmpty()) return emptyMap()
+        if (!src.startsWith("{") || !src.endsWith("}")) return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        val body = src.substring(1, src.length - 1)
+        var i = 0
+        while (i < body.length) {
+            while (i < body.length && body[i].isWhitespace()) i++
+            if (i >= body.length) break
+            val k = readJsonString(body, i) ?: return emptyMap()
+            i = skipWs(body, k.second)
+            if (i >= body.length || body[i] != ':') return emptyMap()
+            i = skipWs(body, i + 1)
+            val v = readJsonString(body, i) ?: return emptyMap()
+            out[k.first] = v.first
+            i = skipWs(body, v.second)
+            if (i >= body.length) break
+            if (body[i] != ',') return emptyMap()
+            i++
+        }
+        return out.filterKeys { it.isNotBlank() }
+    }
+
+    private fun skipWs(s: String, from: Int): Int {
+        var i = from
+        while (i < s.length && s[i].isWhitespace()) i++
+        return i
+    }
+
+    /** 读一个 JSON 字符串字面量（含 `\"` `\\` `\n` `\r` `\t`）；没闭合/不认识 ⇒ null。 */
+    private fun readJsonString(s: String, from: Int): Pair<String, Int>? {
+        if (from >= s.length || s[from] != '"') return null
+        val sb = StringBuilder()
+        var i = from + 1
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '"') return sb.toString() to (i + 1)
+            if (c != '\\') { sb.append(c); i++; continue }
+            if (i + 1 >= s.length) return null
+            when (s[i + 1]) {
+                '"' -> sb.append('"')
+                '\\' -> sb.append('\\')
+                '/' -> sb.append('/')
+                'n' -> sb.append('\n')
+                'r' -> sb.append('\r')
+                't' -> sb.append('\t')
+                else -> return null
+            }
+            i += 2
+        }
+        return null
+    }
+
+    private fun escapeJson(raw: String): String = buildString {
+        raw.forEach { c ->
+            when (c) {
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(c)
+            }
+        }
+    }
 }
