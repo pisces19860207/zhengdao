@@ -181,6 +181,23 @@ internal class RunEngine(
     /** 已经让模型「按自检报告修过一次」的次数（只给一次机会，修不好就如实说没通过）。 */
     private var verifyRepairs = 0
 
+    /**
+     * 连续几轮「工具参数不是合法 JSON」（P1-2，2026-10-19 第五十四批）。
+     *
+     * 只在**连续**坏的时候数：模型自己改对了（Text/ToolCalls 正常回来）就归零。
+     * 为什么需要它：坏参数不是通道坏，给它一次看错误原文的机会；但同一个错误
+     * 连着来第二次，说明这一轮状态不对，继续重试只是烧 token。
+     */
+    private var badArgsRetries = 0
+
+    /**
+     * 换通道后重跑同一步 ⇒ 这一步**不重复计**预算（P1-3，2026-10-19 第五十四批）。
+     *
+     * 旧行为：换通道分支 `continue` 回循环头，`stepCount++` 照跑 ⇒ 每次换通道白烧一步
+     * （注释写着「不涨步数」，代码却涨了——典型的注释与实现打架）。
+     */
+    private var reuseStep = false
+
 
     /** 给人看的一句话（错误号口径：不直出英文 err）。 */
     private val _notice = mutableStateOf<String?>(null)
@@ -765,6 +782,9 @@ internal class RunEngine(
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
         verifyRepairs = 0
+        // P1-2 / P1-3 的两个跨轮计数同样按 run 重置（续跑是新 run，不继承上一段的运气）
+        badArgsRetries = 0
+        reuseStep = false
         // 第三十八批 B 段：产物视图跟着 verifyTouched 一起清（上个 run 的文件名
         // 不许在这一轮的产物行里赖着不走）。
         clearRoundArtifactView()
@@ -800,7 +820,9 @@ internal class RunEngine(
             }
 
             // ── 一步 = 一次模型轮次 ──
-            stepCount++
+            // P1-3：换通道后是**重跑同一步**（换了通道，模型的活没变）⇒ 不重复计预算。
+            // 只在这一处跳计数：其他 continue（收尾闸重跑、坏参数重试）都是新的一步，照计。
+            if (reuseStep) reuseStep = false else stepCount++
             _step.value = stepCount
             _state.value = RunState.THINKING
             persistStep(sessionId, stepCount, "Thinking")
@@ -835,9 +857,29 @@ internal class RunEngine(
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──
             when (val outcome = streamRound(sessionId, messages, tools)) {
                 is RoundOutcome.Text -> {
+                    // P1-1（第五十四批）：流式回答期间用户点了停止 ⇒ 状态与日志不许撒谎。
+                    // 旧行为：这个分支一路走到 settle(DONE)——回答照出、run_log 记「正常完成」，
+                    // 用户明明按了停止（`stopRequested` 只在循环头与工具批查，文本流是盲区）。
+                    if (stopRequested) {
+                        // token 真花了，账照记；但**不记 DONE**、不出学习卡、不提示计划未勾
+                        persistUsage(sessionId, stepCount, outcome.usage)
+                        // 已收到的正文留下（用户不丢已经打出来的字），但不走收尾闸/学习卡
+                        persistAssistantMessage(sessionId, outcome.text)
+                        history += HistoryMessage(
+                            "local-a-${System.nanoTime()}",
+                            HistoryMessage.ROLE_ASSISTANT,
+                            outcome.text,
+                        )
+                        _notice.value = "已停止（这轮的回答到这儿为止）"
+                        log("抱朴引擎：流式期间用户点停止 ⇒ ABORTED（不记 DONE；已保留已收到的正文）")
+                        settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
+                        return
+                    }
                     // usage 接线（J13）：此刻该 step 的最新一行还是 Thinking 行
                     //（settle 的 Done 行还没落）⇒ 更到的就是它
                     persistUsage(sessionId, stepCount, outcome.usage)
+                    // P1-2：正常回来一轮 ⇒ 坏参数计数归零（只算**连续**坏）
+                    badArgsRetries = 0
                     // ── 收尾闸：模型说完了，机器先核对这一轮写过的产物 ──
                     // 过了 ⇒ 正常收尾；没过 ⇒ 给一次「按清单修」的机会，再不过就如实说没通过。
                     val findings = if (verifyTouched.isEmpty()) {
@@ -894,6 +936,8 @@ internal class RunEngine(
                     // Acting 行插入之前**调——updateRunLogUsage 取该 (session, step)
                     // 最新一行做 UPDATE，Acting 行后落就更到它头上（时序硬约束）。
                     persistUsage(sessionId, stepCount, outcome.usage)
+                    // P1-2：正常回来一轮 ⇒ 坏参数计数归零（只算**连续**坏）
+                    badArgsRetries = 0
                     if (outcome.text.isNotBlank()) {
                         persistAssistantMessage(sessionId, outcome.text)
                         history += HistoryMessage(
@@ -964,6 +1008,39 @@ internal class RunEngine(
                     }
                 }
 
+                is RoundOutcome.BadArgs -> {
+                    // P1-2（第五十四批）：坏参数**不是通道坏**。
+                    // 旧行为把它塞进 `Failed` ⇒ `consecutiveChannelFailures++`、可能切通道/熔断：
+                    // 模型一次引号写错，整轮被判成「网络坏了」，三次还真熔断。
+                    persistUsage(sessionId, stepCount, outcome.usage)
+                    if (outcome.text.isNotBlank()) {
+                        persistAssistantMessage(sessionId, outcome.text)
+                        history += HistoryMessage(
+                            "local-a-${System.nanoTime()}",
+                            HistoryMessage.ROLE_ASSISTANT,
+                            outcome.text,
+                        )
+                    }
+                    val retry = RunRules.shouldRetryBadArgs(badArgsRetries)
+                    // 错误原文**回灌进历史**：只说「参数不对」模型改不对，得让它看见自己错在哪
+                    val feed = "工具调用参数不是合法 JSON：${outcome.error}；请修正参数后重试"
+                    history += HistoryMessage(
+                        "local-badargs-${System.nanoTime()}",
+                        HistoryMessage.ROLE_ASSISTANT,
+                        feed,
+                    )
+                    persistAssistantMessage(sessionId, feed)
+                    log("抱朴引擎：坏参数（不记通道失败、不切通道）：${outcome.error.take(200)}")
+                    if (!retry) {
+                        _notice.value = "模型连续给的参数都不合法，这轮停下来（错误已记日志）"
+                        settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
+                        return
+                    }
+                    badArgsRetries++
+                    _notice.value = "模型这轮给的参数不对，已让它重试（第 $badArgsRetries 次）"
+                    continue
+                }
+
                 is RoundOutcome.Failed -> {
                     consecutiveChannelFailures++
                     // 原文只进 run_log.err（≤300 字）；界面拿的仍是 humanize 后的人话。
@@ -986,6 +1063,9 @@ internal class RunEngine(
                             _notice.value = "当前通道不通，已自动切到 ${next.model} 重试"
                             provider = next
                             persistStep(sessionId, stepCount, "Switched", err = errText)
+                            // P1-3：标记「这一步重跑」⇒ 循环头不再 stepCount++。
+                            // 旧行为：continue 回循环头照涨一步，每次换通道白烧一步预算。
+                            reuseStep = true
                             continue // 重跑同一步，不涨步数
                         }
 
@@ -1116,6 +1196,22 @@ internal class RunEngine(
         ) : RoundOutcome
 
         /**
+         * 坏参数：模型这轮的 tool_calls 参数不是合法 JSON / 过不了 Schema（P1-2）。
+         *
+         * **刻意不与 [Failed] 合用**：`Failed` 的语义是「通道/网络坏了」——它会让
+         * `consecutiveChannelFailures++`、触发换通道与熔断。模型写错一次引号不该
+         * 把整轮判成网络故障，所以单开一类，走「回灌错误原文 + 重试一次」的路。
+         *
+         * @param error 错误原文（回灌给模型看的那句；用户侧只看到人话 notice）
+         * @param text 同一轮里已经收到的正文（有就留下，别把打了一半的字丢了）
+         */
+        data class BadArgs(
+            val error: String,
+            val text: String = "",
+            val usage: LlmUsage? = null,
+        ) : RoundOutcome
+
+        /**
          * @param userFacing 给人看的人话（UI 只显示这个）
          * @param raw 服务端原文（只落 `run_log.err`；空串 = 没有原文可取）
          */
@@ -1160,8 +1256,9 @@ internal class RunEngine(
             val decoded = ToolCallCodec.decode(rawCalls, registry)
             return when (decoded) {
                 is ToolCallCodec.DecodeResult.Ok -> RoundOutcome.ToolCalls(textBuf.toString(), decoded.calls, finishedUsage)
-                // 坏 JSON/坏参数：错误原文已在 decode 里备好 ⇒ 回灌走 Failed 通道（引擎只给一次重试）
-                is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.Failed(decoded.error)
+                // 坏 JSON/坏参数：**不**走 Failed 通道（P1-2）。错误原文已在 decode 里备好，
+                // 交给引擎回灌给模型看 + 重试一次；再坏才如实收尾。
+                is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.BadArgs(decoded.error, textBuf.toString(), finishedUsage)
             }
         }
         val truncated = stopReason == "length" || stopReason == "max_tokens"
