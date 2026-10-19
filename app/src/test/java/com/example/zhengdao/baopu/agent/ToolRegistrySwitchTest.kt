@@ -16,8 +16,8 @@ import java.io.File
  *
  * 钉死追加包原话级口径：
  * - 一张表加载（spec＋permission＋factory），**引擎不写死工具清单**；
- * - 默认全启用：ENTRIES 十九个全开（第十七批 update_plan、第三十一批资料库两件套）；
- *   `write_skill` 由 BaopuRuntime 单独注册（要 personaFiles）⇒ DEFAULT_ENABLED 二十二个；
+ * - 默认全启用：ENTRIES 二十四个全开（第十七批 update_plan、第三十一批资料库两件套）；
+ *   `write_skill` 由 BaopuRuntime 单独注册（要 personaFiles）⇒ DEFAULT_ENABLED 二十四个；
  * - 关掉的工具**不进 tools 数组**（模型看不见）⇒ 判据③「模型看不到该工具」的构造成立；
  * - 被关工具仍是注册形态（同 Schema），模型幻觉调用拿到「该工具已被用户关闭」，
  *   **不自动打开**；
@@ -43,7 +43,7 @@ class ToolRegistrySwitchTest {
     // ── 表 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `一张表_默认二十二个全启用`() {
+    fun `一张表_默认二十四个全启用`() {
         setup()
         val reg = registry()
 
@@ -56,6 +56,7 @@ class ToolRegistrySwitchTest {
                 "browser_open", "browser_snapshot", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot", "update_plan",
                 "library_list", "library_organize", "delete_path", "image_ops", "ask_user",
+                "card_inspect", "card_export",
             ),
             reg.names(),
         )
@@ -182,7 +183,7 @@ class ToolRegistrySwitchTest {
         assertEquals(0, reg.toolsJsonOpenAi().length())
         assertEquals(0, reg.toolsJsonAnthropic().length())
         // 注册表仍有二十二条（都能拿到「已被关闭」）
-        assertEquals(22, reg.names().size)
+        assertEquals(24, reg.names().size)
     }
 
     @Test
