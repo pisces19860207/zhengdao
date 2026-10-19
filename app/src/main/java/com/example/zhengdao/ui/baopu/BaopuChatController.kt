@@ -698,6 +698,7 @@ internal class BaopuChatController(context: Context) {
         messages = emptyList()
         pendingMemories = emptyList()
         introspectionNote = null
+        pendingNote = null   // 50 批遗留：换会话必须清掉"没记住"便签（原来只靠 UI 8 秒计时器兜底）
         refineMarkSession = -1L
         refineMarkUserCount = -1
         confirmCard = null
@@ -786,6 +787,7 @@ internal class BaopuChatController(context: Context) {
         messages = emptyList()
         pendingMemories = emptyList()
         introspectionNote = null
+        pendingNote = null   // 50 批遗留：换会话必须清掉"没记住"便签（原来只靠 UI 8 秒计时器兜底）
         refineMarkSession = -1L
         refineMarkUserCount = -1
         confirmCard = null
@@ -895,6 +897,7 @@ internal class BaopuChatController(context: Context) {
         messages = emptyList()
         pendingMemories = emptyList()
         introspectionNote = null
+        pendingNote = null   // 50 批遗留：换会话必须清掉"没记住"便签（原来只靠 UI 8 秒计时器兜底）
         refineMarkSession = -1L
         refineMarkUserCount = -1
         confirmCard = null

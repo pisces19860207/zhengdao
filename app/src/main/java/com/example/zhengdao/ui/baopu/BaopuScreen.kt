@@ -252,13 +252,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             controller.clearLibraryNote()
         }
     }
-    val pendingNote = controller.pendingNote
-    LaunchedEffect(pendingNote) {
-        if (pendingNote != null) {
-            delay(8_000)
-            controller.clearPendingNote()
-        }
-    }
+    // 第四十九批 · 任务 B：pendingNote 的 8 秒自清**删掉了**。
+    // 它装的是错误原因（BaopuChatController.kt:984 = r.reason），不是进度 —— 错误凭什么叫到 8 秒就自己走。
+    // libraryNote ／ skillNote 那两个 LaunchedEffect 一行不动（派工单 §3：它们既有「记下来中…／收料处理中…／导出中…」
+    // 这类进度，也有失败，没分类之前把自清去掉会把进度钉死在屏上）。
     val skillNote = controller.skillNote
     LaunchedEffect(skillNote) {
         if (skillNote != null) {
@@ -489,13 +486,16 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 hasSession = controller.sessionId != null,
                 onResume = { controller.resume() },
             )
-            // 自省便签（C 段：恰好一条；新会话清空）
+            // 自省便签（C 段：恰好一条）。任务 B：改成仓库里早就写好、却一直零调用的 BaopuIntrospectionNote
+            // （Surface ＋ 标题 ＋ ×）。**不自动消失，点整条（含 ×）才清** —— 内边距由组件自己给，这里不再传 modifier。
             controller.pendingNote?.let { note ->
-                Text(
+                BaopuIntrospectionNote(
                     text = note,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = zhengdaoErrorText(), // P2-11：error 色 3.55:1 不达正文 AA 4.5:1
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    onDismiss = { controller.clearPendingNote() },
+                    // 2026-10-19：错误便签有自己的标题与错误色；压紧凑，别比它替换掉的单行更高
+                    label = stringResource(R.string.memory_write_failed_label),
+                    isError = true,
+                    compact = true,
                 )
             }
             // 技能动作一句话（第十九批：上限拒绝／写盘失败；显示几秒就清）
