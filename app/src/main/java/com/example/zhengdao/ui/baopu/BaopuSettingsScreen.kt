@@ -813,13 +813,14 @@ internal object BaopuToolGroups {
         // 格式层（第三十九批 B）：体检只读、导出写 PNG 但绝不覆盖
         Group(
             R.string.baopu_tools_group_card,
-            listOf("card_inspect", "card_export"),
+            listOf("card_inspect", "card_export", "card_build"),
         ),
     )
 }
 private fun baopuToolLabel(name: String): Int = when (name) {
     "card_inspect" -> R.string.baopu_tool_card_inspect
     "card_export" -> R.string.baopu_tool_card_export
+    "card_build" -> R.string.baopu_tool_card_build
     "read_file" -> R.string.baopu_tool_read_file
     "list_dir" -> R.string.baopu_tool_list_dir
     "search_in_files" -> R.string.baopu_tool_search_in_files
@@ -865,6 +866,7 @@ private fun effortLabel(level: String): Int = when (level) {
 private fun baopuToolDesc(name: String): Int = when (name) {
     "card_inspect" -> R.string.baopu_tool_card_inspect_desc
     "card_export" -> R.string.baopu_tool_card_export_desc
+    "card_build" -> R.string.baopu_tool_card_build_desc
     "read_file" -> R.string.baopu_tool_read_file_desc
     "list_dir" -> R.string.baopu_tool_list_dir_desc
     "search_in_files" -> R.string.baopu_tool_search_in_files_desc

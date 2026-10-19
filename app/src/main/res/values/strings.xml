@@ -1315,4 +1315,6 @@
     <string name="baopu_artifact_shelf_none">还没有产物</string>
     <string name="baopu_artifact_shelf_none_hint">让它写点东西就有了</string>
     <string name="baopu_artifact_shelf_close">关闭</string>
+    <string name="baopu_tool_card_build">写卡（母档生成）</string>
+    <string name="baopu_tool_card_build_desc">从工作区母档 JSON 生成一套卡/世界书/五件套骨架（会写盘，弹确认卡；不覆盖已有文件）</string>
 </resources>
