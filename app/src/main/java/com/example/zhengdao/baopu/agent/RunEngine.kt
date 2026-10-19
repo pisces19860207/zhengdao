@@ -319,6 +319,8 @@ internal class RunEngine(
         learnSignals.clear()
         learnShown = false
         _learn.value = null
+        // 新一轮 ⇒ 上一轮的「尾部被截断」标记作废（第四十批）
+        _tailTruncated.value = false
         // 第二十四批 C 段：本轮要随请求发出去的图片。**只收相对路径**，读盘在引擎线程里做
         // （调用方是主线程，不许在那里读 2 MB 文件）。
         pendingImageRelPaths = imageRelPaths
@@ -385,6 +387,22 @@ internal class RunEngine(
             ?.toSet() ?: emptySet()
     }.getOrDefault(emptySet())
 
+    // ── 尾部被截断（第四十批）─────────────────────────────────────────────
+    /**
+     * 上一次回答是不是被服务端截在输出上限（`finish_reason=length` / Anthropic 的
+     * `max_tokens`）。
+     *
+     * 为什么要单独一个状态：这种截断**不抛异常**，正文看起来完整，只有 finish_reason
+     * 说了实话。壳层据此在输入栏上方给「继续说完」；不认它，用户只能自己发现「话说一半」。
+     */
+    private val _tailTruncated = mutableStateOf(false)
+    val tailTruncated: androidx.compose.runtime.State<Boolean> get() = _tailTruncated
+
+    /** 清掉截断标记（用户点了「继续说完」，或新开一轮）。 */
+    fun clearTailTruncated() {
+        _tailTruncated.value = false
+    }
+
     private val choiceLock = Object()
     private var choiceResult: AskUserOption? = null
 
@@ -432,6 +450,8 @@ internal class RunEngine(
     fun resume(sessionId: Long, interruptedStepValue: Int) {
         acquireOrNotice(sessionId) ?: return
         stopRequested = false
+        // 续跑也要清：上一轮的截断提示不许跟着这一轮（第四十批）
+        _tailTruncated.value = false
         runExecutor.execute {
             try {
                 markInterrupted(sessionId, interruptedStepValue)
@@ -739,6 +759,12 @@ internal class RunEngine(
                     if (left > 0) {
                         _notice.value = "计划里还有 $left 条没勾（进度看顶部计划卡）"
                     }
+                    // 第四十批：被输出上限截断 ⇒ 记下标记（壳层给「继续说完」），
+                    // 并用一句话说明——「看着写完了其实没写完」必须让用户看见。
+                    _tailTruncated.value = outcome.truncated
+                    if (outcome.truncated) {
+                        _notice.value = "回复被输出上限截断了（服务端说的），点「继续说完」接着写"
+                    }
                     emitLearnCardIfDue()
                     settle(sessionId, stepCount, RunState.DONE, "Done")
                     return
@@ -952,7 +978,16 @@ internal class RunEngine(
     // ── 流式一轮 ──────────────────────────────────────────────────────────
 
     private sealed interface RoundOutcome {
-        data class Text(val text: String, val usage: LlmUsage? = null) : RoundOutcome
+        /**
+         * @param truncated 服务端把回复截在了输出上限（`finish_reason=length` /
+         *   Anthropic 的 `max_tokens`）。**"看起来写完了其实没写完"必须让用户看见**，
+         *   所以这里单独带一个标记，壳层据此给「继续说完」按钮（第四十批）。
+         */
+        data class Text(
+            val text: String,
+            val usage: LlmUsage? = null,
+            val truncated: Boolean = false,
+        ) : RoundOutcome
         data class ToolCalls(
             val text: String,
             val calls: List<ToolCall>,
@@ -978,6 +1013,9 @@ internal class RunEngine(
         var failureRaw: String? = null
         var rawCalls: List<com.example.zhengdao.baopu.RawToolCall> = emptyList()
         var finishedUsage: LlmUsage? = null
+        // 第四十批：服务端把它截在输出上限时，finish_reason 会说 length（OpenAI 系）/
+        // max_tokens（Anthropic 系）。不认这个的话，"半截回复"会被当成正常写完存下来。
+        var stopReason: String? = null
         val client = LlmClient(provider)
         client.streamAsync(messages, tools) { ev ->
             when (ev) {
@@ -985,6 +1023,7 @@ internal class RunEngine(
                 is LlmEvent.Finished -> {
                     rawCalls = ev.toolCalls
                     finishedUsage = ev.usage
+                    stopReason = ev.reason
                 }
                 is LlmEvent.Failed -> {
                     failure = ev.error.message ?: ev.error.javaClass.simpleName
@@ -1004,7 +1043,8 @@ internal class RunEngine(
                 is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.Failed(decoded.error)
             }
         }
-        return RoundOutcome.Text(textBuf.toString(), finishedUsage)
+        val truncated = stopReason == "length" || stopReason == "max_tokens"
+        return RoundOutcome.Text(textBuf.toString(), finishedUsage, truncated)
     }
 
     /** 网络失败人话化（错误号口径：英文原文只进日志，UI 拿人话）。 */

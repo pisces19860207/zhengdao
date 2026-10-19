@@ -1256,4 +1256,11 @@
     <string name="learn_suggest_formal">Promote to a formal skill</string>
     <string name="learn_adopt">Adopt</string>
     <string name="learn_dismiss">Skip</string>
+    <!-- 第四十批：继续说完 / 重试 / 编辑上一条 -->
+    <string name="baopu_tail_continue">Continue</string>
+    <string name="baopu_tail_retry">Retry</string>
+    <string name="baopu_edit_last">Edit last</string>
+    <string name="baopu_edit_title">Edit this message and rerun</string>
+    <string name="baopu_edit_hint">Saving deletes every reply after this message (tool cards and plan card included) and regenerates from the edited text. This can\'t be undone.</string>
+    <string name="baopu_edit_save">Save &amp; rerun</string>
 </resources>

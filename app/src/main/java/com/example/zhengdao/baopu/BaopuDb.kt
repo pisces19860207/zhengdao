@@ -486,6 +486,35 @@ internal object BaopuSql {
         )
 
     /**
+     * 改「最近一条用户消息」的正文（第四十批「编辑上一条」）。
+     *
+     * 只改 `kind='text'` 的 part（用户消息的正文在 seq=0 的 text part 里）；图片 part 不动
+     * ——改字不该顺手把她发过的图删了。
+     */
+    fun updateUserText(messageId: Long, text: String): Stmt = Stmt(
+        "UPDATE part SET payload = ? WHERE message_id = ? AND kind = 'text'",
+        arrayOf<String?>(text, messageId.toString()),
+    )
+
+    /**
+     * 删掉某会话里 **id 大于 [afterId]** 的全部消息（第四十批「编辑上一条」/「重试」）。
+     *
+     * part 与 message 之间是 `ON DELETE CASCADE`（DB 打开时已开外键）⇒ 删 message 连带删
+     * parts，不用两条语句。只按 `session_id + id` 定位：id 是自增主键、同会话内天然单调；
+     * seq 会因压缩重排而不可靠，不能拿它当边界。
+     */
+    fun deleteMessagesAfter(sessionId: Long, afterId: Long): Stmt = Stmt(
+        "DELETE FROM message WHERE session_id = ? AND id > ?",
+        arrayOf<String?>(sessionId.toString(), afterId.toString()),
+    )
+
+    /** 清掉某会话的计划快照（编辑上一条后重跑：旧计划不该跟着新内容走）。 */
+    fun deletePlanBatches(sessionId: Long): Stmt = Stmt(
+        "DELETE FROM plan_batch WHERE session_id = ?",
+        arrayOf<String?>(sessionId.toString()),
+    )
+
+    /**
      * 计划快照的消息行（第十七批 B 段）：assistant 消息＋一条 `kind='plan'` part。
      *
      * seq 用 `MAX(seq)+1` 子查询**在一条 INSERT 里算**——与引擎 `nextSeq` 同口径
