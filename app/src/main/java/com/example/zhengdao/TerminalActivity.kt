@@ -618,9 +618,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 注：本分支的执行已挪进 [startSessionOffMainThread]（§B 顺序 6 / P1-3），
         //    上面这段决策的说明留在入口处，读代码时不必跳进后台线程才发现口径。
         usesTmux = SessionManager.usesTmux
-        fallbackActive = false
+        // P1-4（第五十三批）：attach 也要把「这条会话是不是系统 shell 回退」读回来。
+        // 原先这里无条件 `false`，而 SessionManager.isFallback 全仓只写不读 ⇒ 环境未装、
+        // 会话是系统 sh 时，退出再进顶栏仍写「Debian 13.7」，启动命令还会打进系统 sh。
+        fallbackActive = SessionManager.isFallback
         // 同一串短标题：attach 到已有会话也走这条（理由见上面新会话那处的注释）
-        toolbarTitle?.text = "证道 - Debian 13.7"
+        toolbarTitle?.text =
+            if (fallbackActive) "证道 — 系统 shell（环境未安装）" else "证道 - Debian 13.7"
         attachViewToSession()
     }
 
@@ -1396,11 +1400,18 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         Toast.makeText(this, getString(R.string.term_copied_chars, text.length), Toast.LENGTH_SHORT).show()
     }
 
-    /** 系统文本选择工具栏点「粘贴」时走到这里：读剪贴板并写回终端。 */
+    /**
+     * 系统文本选择工具栏点「粘贴」时走到这里：读剪贴板并写回终端。
+     *
+     * P1-6（第五十三批）：写入必须交给后台通道 [pasteText]（与顶部粘贴按钮、
+     * `SessionManager.onPasteRequest` 同一条路），不能在这里主线程直写 pty ——
+     * `TerminalSession.write` 在 4 KiB ByteQueue 满后会 wait，贴长文就是主线程干等 ⇒ ANR。
+     * 失败提示由 [pasteText] 的后台回调负责。
+     */
     override fun onPasteTextFromClipboard(session: TerminalSession?) {
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
-        if (text.isNotEmpty()) runCatching { SessionManager.write(text) }
+        if (text.isNotEmpty()) pasteText(text)
     }
 
     // ── 「更多」上下文菜单（选择工具栏 MORE → showContextMenu → 本节）──
