@@ -268,10 +268,43 @@ fun isTextArtifactFile(f: File): Boolean {
  */
 fun selectTextArtifacts(root: File, relPaths: List<String>): List<String> {
     val kept = LinkedHashSet<String>()
-    relPaths.forEach { rel ->
+    relPaths.forEach { raw ->
+        val rel = toWorkspaceRelative(root, raw)
         if (isTextArtifactPath(rel) && isTextArtifactFile(File(root, rel))) kept += rel
     }
     return kept.toList()
+}
+
+/**
+ * 把「守卫改写过的路径」归一化成工作区相对路径（E-166 / D-01）。
+ *
+ * 背景：`GuardPipeline` 第②步路径守卫会把 `path` 参数**改写成绝对路径**再往下传，
+ * 于是 `verifyTouched` 里存的是 `/storage/…/男性/verify44/out.txt`。以前这里直接
+ * `File(root, rel)` —— Java 对以 `/` 开头的 child 仍会拼在 parent 后面，于是文件被
+ * 判成不存在，顶栏/台账/抽屉三处一起哑（单测喂的是相对路径，所以全绿）。
+ *
+ * 规则：
+ * - 已经是相对路径 ⇒ 原样返回（并去掉开头的 `./`）；
+ * - 绝对路径且落在 `root` 下 ⇒ 截成相对路径；
+ * - 其它绝对路径 ⇒ 原样返回（让它照旧在 root 拼一次、判不存在——不猜它想去哪）。
+ */
+fun toWorkspaceRelative(root: File, raw: String): String {
+    val path = raw.trim().replace('\\', '/')
+    if (path.isEmpty()) return ""
+    // 相对路径（不含盘符/前导斜杠）直接放行
+    val isAbsolute = path.startsWith("/") || Regex("^[A-Za-z]:/").containsMatchIn(path)
+    if (!isAbsolute) return path.removePrefix("./")
+    val rootPath = root.absolutePath.replace('\\', '/').trimEnd('/')
+    if (path.equals(rootPath, ignoreCase = true)) return ""
+    if (path.startsWith("$rootPath/", ignoreCase = true)) return path.substring(rootPath.length + 1)
+    // 允许 root 之后带一段（例如 root 是 /…/男性，而路径多了 /../）：用规范化兜一层
+    return try {
+        val rp = root.canonicalFile.toPath()
+        val fp = File(path).canonicalFile.toPath()
+        if (fp.startsWith(rp)) rp.relativize(fp).toString().replace('\\', '/') else path
+    } catch (_: Exception) {
+        path
+    }
 }
 
 /** 产物行的摆法：最多 [max] 片 ＋「还有 N 个」的 N（B5）。 */
