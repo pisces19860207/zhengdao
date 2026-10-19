@@ -376,6 +376,9 @@ internal class BaopuChatController(context: Context) {
      * 可跨线程写（本仓既有口径），所以回调体里不改别的、不读盘、不起线程（判据 A6）。
      */
     var roundUsage by mutableStateOf(emptyRoundUsage())
+
+    /** 顶栏「玄览正在干什么」那一行（2026-10-19）；`Settled` 时清空。 */
+    var browserActivity by mutableStateOf<String?>(null)
         private set
 
     /**
@@ -1218,7 +1221,14 @@ internal class BaopuChatController(context: Context) {
                 pendingImagePaths = emptyList()
                 attachImageParts(ev.messageId, paths)
             }
+            // 顶栏玄览状态：只有浏览器工具在跑时才出现，本轮结束就撤（不留在屏上骗人）
+            if (ev is EngineEvent.ToolCallVisible) {
+                com.example.zhengdao.baopu.browserActivityLine(ev.tool, ev.summary)?.let {
+                    browserActivity = it
+                }
+            }
             val force = ev is EngineEvent.Settled
+            if (force) browserActivity = null
             refresh(force)
             if (force) {
                 refineOnSettle()
