@@ -1266,4 +1266,12 @@
     <string name="baopu_user_msg_longpress">长按：编辑这条或复制</string>
     <string name="baopu_edit_this">编辑这条</string>
     <string name="learn_gate_blocked">这条不能采纳：%1$s</string>
+    <string name="persona_rollback_card">人设</string>
+    <string name="persona_rollback_desc">人设每次被改写前都会自动留一份备份；这里是「恢复到上一版」。</string>
+    <string name="persona_rollback_project">本项目人设（跟工作区）</string>
+    <string name="persona_rollback_global">全局人设（跟 App）</string>
+    <string name="persona_rollback_last">最近备份 %1$s</string>
+    <string name="persona_rollback_none">还没有备份（第一次改写之后才会有）</string>
+    <string name="persona_rollback_action">恢复</string>
+    <string name="persona_rollback_done">已恢复到上一版；当前版也备份了：%1$s</string>
 </resources>
