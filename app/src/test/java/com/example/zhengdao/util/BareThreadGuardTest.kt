@@ -200,11 +200,11 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",                 // zd-knowledge-base-auto（同上 -1）
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "GuardPipeline.kt:68",                  // zd-baopu-tool（抱朴刀 1：工具执行单线程，串行+超时；26-B 内核委托 import +1 ⇒ 66→67；第四十八批 P0-2 加 PathGuard import +1 ⇒ 67→68）
-            "LlmClient.kt:862",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658；第十三批加 completeOnce/completeBody/plainTextOf +134 ⇒ 658→792；第二十四批加 LlmMessage.images 与 contentBlocks +70 ⇒ 792→862）
+            "LlmClient.kt:877",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658；第十三批加 completeOnce/completeBody/plainTextOf +134 ⇒ 658→792；第二十四批加 LlmMessage.images 与 contentBlocks +70 ⇒ 792→862）；第五十六批 P2-4 共享 OkHttp 单例 +15 ⇒ 862→877
             "MainActivity.kt:316",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308；2026-10-18 加屏幕常亮标志 +8 ⇒ 308→316）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "PreviewServer.kt:112",                 // zd-preview-http（刀 4 预览服务 acceptor：一条串行线程，有名 + daemon；登记于 2026-10-18）
-            "RunEngine.kt:209",                     // zd-baopu-run（第五十四批 P1 三件：BadArgs 变体/两个计数器/停止检查/ reuseStep +17 ⇒ 192→209）（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复 161→171；刀 1 补丁换通道 +34 ⇒ 205→215；刀 3 A 段确认制（ConfirmFlow/HistoryCodec/接线）+293 ⇒ 215→508；刀 3 A 段拆文件（RunRules/HistoryCodec/ConfirmFlow 出笼 + import 清理 -357）⇒ 508→151；工具补强二收尾闸字段/闸口 +16 ⇒ 151→167；真机修正单活跃门 release 的 KDoc +12 ⇒ 167→179）；第十七批工作计划卡接线（imports +2 ⇒ 180→182）；2026-10-18 大图缩图批（构造器加 shrinkImage 形参 +7 ⇒ 183→190）；第三十七批 B 段「这次学到」提案卡（import SkillRefine/SkillRules +2 ⇒ 190→192）
+            "RunEngine.kt:210",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复 161→171；刀 1 补丁换通道 +34 ⇒ 205→215；刀 3 A 段确认制 +293 ⇒ 215→508；刀 3 A 段拆文件 -357 ⇒ 508→151；工具补强二收尾闸 +16 ⇒ 151→167；真机修正单活跃门 KDoc +12 ⇒ 167→179；第十七批工作计划卡接线 ⇒ 180→182；2026-10-18 大图缩样批 +7 ⇒ 183→190；第三十七批 B 段提案卡 +2 ⇒ 190→192；第五十四批 P1 三件 +17 ⇒ 192→209；第五十六批 P2-5 activeCall 字段/import +1 ⇒ 209→210）
             "SettingsDataActivity.kt:592",          // zd-net-check（清场批注 +1；抱朴刀 2 加「抱朴工具」开关卡 +53 ⇒ 589→642；刀 3 B 段模型参数+思考深度两卡 +57 ⇒ 642→699；工具补强二三开关加在它之后 ⇒ 行号不动；第十八批 A 段抱朴三块整搬进 BaopuSettingsScreen（-106 行）+ 搬迁批注 +3 ⇒ 699→592）
             "SettingsEnvActivity.kt:218",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5；第十八批 B 段 Hermes 卡条件化包裹 +4 ⇒ 214→218）
             "SettingsEnvActivity.kt:273",           // zd-env-check（同上 +7；第十八批 B 段 Hermes 卡条件化包裹再 +5 ⇒ 268→273）

@@ -72,6 +72,18 @@ internal object RunRules {
     fun shouldAskUser(consecutiveToolFailures: Int): Boolean =
         consecutiveToolFailures >= MAX_TOOL_FAILURES
 
+    /**
+     * 等一轮模型流式的总上限（P2-5，2026-10-19 第五十六批）。
+     *
+     * 为什么必须有：`latch.await()` 无参 ⇒ 通道只连上不收数据时，引擎那条**唯一**的
+     * run 线程会挂死在这里，后面每个工具都排队。旧实现靠 readTimeout（60s）兜底，
+     * 但那是「读一小段」的超时，不是「整轮」的。
+     *
+     * 取值 90s：比 readTimeout（60s）宽一档，给「慢但活着」的流留余地；
+     * 又不至于让用户干等太久。到顶按失败处理并取消 Call。
+     */
+    const val STREAM_WAIT_TIMEOUT_MS = 90_000L
+
     /** 通道熔断判据。 */
     fun shouldBreakChannel(consecutiveChannelFailures: Int): Boolean =
         consecutiveChannelFailures >= CHANNEL_BREAK_THRESHOLD
