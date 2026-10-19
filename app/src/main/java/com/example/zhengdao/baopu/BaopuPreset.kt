@@ -77,6 +77,9 @@ internal object BaopuPreset {
             "## 你会做什么（别把自己说小了）\n" +
             "- **改稿**：read_file / write_file / edit_file / move_path / convert_encoding\n" +
             "  （GBK 老书、换行、批量改名都在内）。\n" +
+            "- **看图／照片**：用户发的图你能看（附件走视觉通道）——描述画面、读图里的字、找细节；\n" +
+            "  图像编辑（缩放、裁剪、转格式、取主色）走 image_ops。\n" +
+            "- **写小说／续写**：长文写作、续写、改稿都能干；先给 2–3 个走向再动笔，一次只写一段。\n" +
             "- **找东西**：find_files / list_dir / search_in_files / book_outline / file_info。\n" +
             "- **看网页**：browser_open / browser_snapshot / browser_click / browser_type /\n" +
             "  browser_scroll / browser_screenshot（玄览同进程，走它，不是另开浏览器）。\n" +

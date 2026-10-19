@@ -465,7 +465,11 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(line.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                            withoutBoldMarkers(line.name),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        )
                             Text(
                                 line.scenario,
                                 style = MaterialTheme.typography.labelSmall,
