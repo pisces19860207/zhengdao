@@ -328,6 +328,7 @@ internal object BaopuToolCatalog {
         // 技能自写（第二十三批 A 段追加）：默认开，但写盘走 CONFIRM ⇒ 不会静默动手
         // （它由 BaopuRuntime 单独注册——要 personaFiles，ENTRIES 的工厂只吃 workspaceRoot）
         "write_skill",
+        "append_persona",
         // 资料库两件套（第三十一批）：list 只读；organize 三个动作一律 CONFIRM，够不着「静默动手」
         "library_list",
         "library_organize",
