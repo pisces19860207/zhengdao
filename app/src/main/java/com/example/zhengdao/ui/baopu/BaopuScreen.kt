@@ -689,6 +689,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             controller.learnProposals?.let { list ->
                 BaopuLearnCard(
                     proposals = list,
+                    existingNames = controller.learnExistingNames,
                     onAdopt = { id -> controller.adoptLearn(id) },
                     onDismiss = { controller.dismissLearn() },
                 )

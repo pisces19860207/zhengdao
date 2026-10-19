@@ -196,4 +196,108 @@ internal object SkillRefine {
         "write_skill", "skill_lifecycle" -> SignalKind.SKILL
         else -> if (toolName.startsWith("browser_")) SignalKind.BROWSER else null
     }
+
+    // ── C 段：采纳前的三道最小校验（第三十七批）─────────────────────────────
+    //
+    // 派工单 §3：**采纳前必须过三道最小校验**（危险指令 / 平台事实没标未实测 / 同名冲突），
+    // 不通过 ⇒ 卡片标红、**禁止采纳**、并说清哪条不过。**零网络、零 I/O、纯函数**——
+    // 所以它能在 JVM 里被直接钉死，不用起 App、不用真机。
+    //
+    // 为什么校验的是 [skillBodyFor] 而不是卡上的 `content`：**门禁要看的必须是「将要写进
+    // SKILL.md 的那段字」**。校验 A 却写入 B 是这类闸门最经典的失效方式，所以正文只有这一个
+    // 生成口，卡上显示、门禁校验、控制器落盘三处共用。
+
+    /** 提案的名字（卡上显示、落盘文件名、冲突判定**共用这一个真相**）。 */
+    fun nameOf(p: LearnProposal): String = p.id.substringAfter('-').ifEmpty { "skill" }
+
+    /** 将要写进 `SKILL.md` 的正文（**唯一生成口**：门禁校验的就是这一段）。 */
+    fun skillBodyFor(p: LearnProposal): String =
+        "# 技能：${nameOf(p)}\n\n## 场景\n${p.content}\n\n## 来源\n${p.source}\n"
+
+    /** 三道校验的编号（报错要让人看懂是哪一条不过）。 */
+    enum class LearnIssue(val label: String) {
+        /** 危险指令：删库/删根、格式化、管道执行远端脚本、外发凭据、把工具结果当指令。 */
+        DANGEROUS("危险指令"),
+
+        /** 平台事实（字段名/下拉值/按钮名…）写了但既没标「未实测」也没写实测日期。 */
+        UNVERIFIED("平台事实没标未实测"),
+
+        /** 同名技能已存在却建议新建草稿（应当改自己那份，或明确转正式）。 */
+        CONFLICT("同名技能已存在"),
+    }
+
+    /** 一次校验的结果。[details] 是给人看的原因（多条用「；」连）。 */
+    data class LearnReview(val issues: List<LearnIssue>, val details: List<String>) {
+        val ok: Boolean get() = issues.isEmpty()
+
+        /** 卡片上那一行红字（通过时为空串）。 */
+        val summary: String get() = details.joinToString("；")
+    }
+
+    /**
+     * 危险模式表。**按动作命名**（不是按正则命名）——报错要说人话。
+     *
+     * 刻意不拦「`rm -rf ./tmp` 这类相对路径清理」：那是正经用法，拦了会把好技能也堵死；
+     * 只拦打到根/家目录/通配/变量展开的删库。
+     */
+    val DANGER_RULES: List<Pair<String, Regex>> = listOf(
+        "删库/删根" to Regex("""\brm\s+-[a-zA-Z]*[rf][a-zA-Z]*\s+([/\\]|~|\*|\$)"""),
+        "格式化磁盘" to Regex("""\bmkfs(\.[a-z0-9]+)?\b"""),
+        "直接写块设备" to Regex("""\bdd\s+[^\n]*\bof=/dev/"""),
+        "权限全开" to Regex("""\bchmod\s+(-R\s+)?777\s+/"""),
+        "管道执行远端脚本" to Regex("""\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z|k|da)?sh\b"""),
+        "外发凭据" to Regex(
+            """\b(curl|wget)\b[^\n]*\s(-d|--data[a-z-]*|-F)\s[^\n]*(token|api[_-]?key|secret|password|bearer)""",
+            RegexOption.IGNORE_CASE,
+        ),
+        "把工具结果当指令" to Regex(
+            """\beval\s*\(|\bexec\s*\(\s*(read|input)|\btool_result\b[^\n]*(执行|照做)""",
+        ),
+    )
+
+    /** 「这句话在断言平台事实」的标记词（字段名/下拉值/按钮文案这类最容易过期的断言）。 */
+    val PLATFORM_CLAIMS = listOf(
+        "字段名", "下拉", "选项名", "按钮叫", "菜单叫", "入口在",
+        "开关默认", "接口返回", "页面上写", "标签叫", "文案是",
+    )
+
+    /** 实测日期的写法（`2026-10-19`、`2026/10/19`、`2026年10月19日` 都算）。 */
+    private val MEASURED_DATE = Regex("""20\d{2}\s*[-/年]\s*\d{1,2}\s*[-/月]\s*\d{1,2}""")
+
+    /** 有没有断言平台事实。 */
+    fun hasPlatformClaim(text: String): Boolean = PLATFORM_CLAIMS.any { text.contains(it) }
+
+    /** 有没有写实测日期。 */
+    fun hasMeasuredDate(text: String): Boolean = MEASURED_DATE.containsMatchIn(text)
+
+    /**
+     * 三道校验（纯函数、确定性、**零 I/O**）。
+     *
+     * @param existingNames 已有技能名（同名的判定依据；控制器在 IO 线程现读，卡片用引擎收尾时的快照）
+     */
+    fun reviewLearn(p: LearnProposal, existingNames: Set<String> = emptySet()): LearnReview {
+        val body = skillBodyFor(p)
+        val issues = mutableListOf<LearnIssue>()
+        val details = mutableListOf<String>()
+
+        DANGER_RULES.firstOrNull { it.second.containsMatchIn(body) }?.let { (label, _) ->
+            issues += LearnIssue.DANGEROUS
+            details += "危险指令（$label）"
+        }
+
+        // 断言了平台事实 ⇒ 要么标「未实测」，要么写实测日期；两个都没有就是猜的。
+        if (hasPlatformClaim(body) && !body.contains("未实测") && !hasMeasuredDate(body)) {
+            issues += LearnIssue.UNVERIFIED
+            details += "断言了平台事实（字段名/下拉值这类），但没标「未实测」也没写实测日期"
+        }
+
+        // 同名：建议「转正式」＝改自己那份（SkillStore 会先备份再覆盖）⇒ 放行；
+        // 建议「草稿」又想建同名 ⇒ 拦（不然会出现两条同名技能，索引里也分不清）。
+        if (nameOf(p) in existingNames && p.suggest != Suggest.FORMAL) {
+            issues += LearnIssue.CONFLICT
+            details += "同名技能已存在（${nameOf(p)}）：改自己那份，或把建议改成「转成正式技能」"
+        }
+
+        return LearnReview(issues, details)
+    }
 }
