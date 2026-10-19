@@ -331,6 +331,27 @@ internal fun BaopuDrawer(
             }
         }
 
+        // ── 产物（第三十八批 §9）──────────────────────────────────────────────
+        // 派工单 §9.2：入口放在「回收站」**上面**一行。与回收站那一行的两点不同都是它写死的：
+        //   1. **永远可点**——N=0 也得进得去。空态那两句（「还没有产物」＋「让它写点东西就有了」）
+        //      是 §9.2 点名要的，照着回收站那样置灰就永远看不见；
+        //   2. N 数的是**台账**（库里的 artifact 表），不是数目录：这一行要回答的是
+        //      「抱朴这一阵子写出来过什么」，回收站那一行回答的是「被扔出去过什么」。
+        // E-163 那条教训照抄（判据 C3）：ModalNavigationDrawer 的 drawerContent 一直处于组合中，
+        // 只 remember 一次 ⇒ N 永远停在刚进页面那一个值 ⇒ 每次拉开抽屉都重数一遍。
+        // 取根走全仓同一处（BaopuRuntime.workspaceRoot），面板的调用在回收站那一段之后（见那里）。
+        val artifactRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+        val artifactDb = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
+        var artifactTick by remember { mutableStateOf(0) }
+        LaunchedEffect(drawerOpen) { if (drawerOpen) artifactTick++ }
+        val artifactCount = remember(artifactTick, artifactRoot) { artifactShelfCount(artifactDb, artifactRoot) }
+        var artifactShelfOpen by remember { mutableStateOf(false) }
+        DrawerItem(
+            title = stringResource(R.string.baopu_artifact_shelf_title, artifactCount),
+            description = stringResource(R.string.baopu_artifact_shelf_desc),
+            onClick = { artifactShelfOpen = true },
+        )
+
         // ── 回收站（第三十六批 A 段）────────────────────────────────────────
         // 常驻一行：N=0 时**只把 enabled 关掉，不许整条消失**（判据 T1）。
         // 为什么放在工作区树后面：回收站是**这个工作区里**的一个目录（Download/证道/回收站），
@@ -358,6 +379,25 @@ internal fun BaopuDrawer(
                 onDismiss = {
                     trashOpen = false
                     trashTick++ // 关掉面板就重数一次：恢复／清空都改了 N
+                },
+            )
+        }
+
+        // 产物区面板（38 批 §9.2）。调用位置**故意**在回收站那一段之后：
+        // onChanged 要把两笔账一起重数（搬一条进回收站 ⇒ 产物 N 减一、回收站 N 加一），
+        // 而 `trashTick` 是 36 批那一段里声明的局部量，本批不改它一个字——
+        // Kotlin 不许可先读后声明，所以只能把调用放后面。Dialog 是独立窗口，
+        // 声明顺序不改变「产物」那一行排在回收站上面这件事（上面那段才是行的顺序）。
+        if (artifactShelfOpen) {
+            ArtifactShelfDialog(
+                workspaceRoot = artifactRoot,
+                onChanged = {
+                    artifactTick++
+                    trashTick++
+                },
+                onDismiss = {
+                    artifactShelfOpen = false
+                    artifactTick++ // 关掉面板再数一次：面板里可能已经搬走了几条
                 },
             )
         }
