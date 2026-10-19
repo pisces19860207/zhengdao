@@ -87,6 +87,53 @@ data class BaopuUiPart(
 )
 
 /**
+ * 便签级别（第六十一批 §2「错误留痕 1b」）。
+ *
+ * 现场：`libraryNote` / `skillNote` 这两类一句话里混着两种东西——
+ * 「记下来中…／收料处理中…／导出中…」是**进度**，
+ * 「技能上限拒绝／写盘失败／资料库选项对不上」是**出错**。
+ * 而 UI 只有一条规矩：非空 8 秒后清空。于是错误和进度一起蒸发，
+ * 用户 8 秒后看到的是一片安静，什么都没发生。
+ *
+ * 两档各走各的：**Info 照旧 8 秒自清**（进度提示不许钉在屏上），
+ * **Error 常驻、点掉才清**（那条错误就是用户下一步的依据）。
+ */
+internal enum class BaopuNoteLevel { Info, Error }
+
+/**
+ * 一条便签 = 文案 ＋ 级别（§2 选「`data class Note(text, level)`」这一型，不选「多一个
+ * `*NoteLevel` 字段」）：级别跟文案同一个对象 ⇒ **赋值点不可能只写文案漏标级别**，
+ * 也不可能出现「文案是错误、级别还是 Info」那种半新半旧的状态。
+ *
+ * 副作用范围：只影响「这条提示怎么留」，不改 SKILL 写盘与资料库动作本身。
+ */
+internal data class BaopuNote(val text: String, val level: BaopuNoteLevel) {
+    /**
+     * 这条会不会自己走。判据本体只有一个（[BaopuNotePolicy.shouldAutoClear]），
+     * 这里只是 UI 那边少写一层的入口——别在显示处再抄一遍 `level == Info`。
+     */
+    val autoClears: Boolean get() = BaopuNotePolicy.shouldAutoClear(level)
+}
+
+/**
+ * 级别 → 行为 的纯判据（零 Android，§2 判据直接打）。
+ */
+internal object BaopuNotePolicy {
+
+    /** 只有进度（Info）挂 8 秒自清；错误常驻——这是那条延迟唯一的开关。 */
+    fun shouldAutoClear(level: BaopuNoteLevel): Boolean = level == BaopuNoteLevel.Info
+
+    /**
+     * 结果播报的定级：有出问题的件数（被拒／跳过／撞名／失败）⇒ Error。
+     *
+     * 为什么不能一律 Info：「收料完成：3 件进私有；被拒 5 件」这句话 8 秒后没了，
+     * 用户记住的只有「完成了」半截——那 5 件为什么没进，一个字都不剩。
+     */
+    fun levelOfResult(problemCount: Int): BaopuNoteLevel =
+        if (problemCount > 0) BaopuNoteLevel.Error else BaopuNoteLevel.Info
+}
+
+/**
  * 抱朴页的胶水（进程级单例挂在 [BaopuRuntime]；本类只持 UI 可观察状态）。
  *
  * 数据流：引擎落库（先落库再渲染）⇒ onEvent ⇒ [refresh] 重读 db ⇒ Compose 状态更新。
@@ -185,8 +232,13 @@ internal class BaopuChatController(context: Context) {
     var askCard by mutableStateOf<AskUserCard?>(null)
         private set
 
-    /** 资料库动作的一句话结果（收料/导出；成功失败都明说，不静默）。 */
-    var libraryNote by mutableStateOf<String?>(null)
+    /**
+     * 资料库动作的一句话结果（收料/导出；成功失败都明说，不静默）。
+     *
+     * 第六十一批 §2：带级别——进度（收料处理中…）8 秒自清，错误（选项对不上、
+     * 什么都没做成、有件被拒）常驻到用户点掉。
+     */
+    var libraryNote by mutableStateOf<BaopuNote?>(null)
         private set
 
     /** 顶条防丢提醒要的两个数（[BackupStats.lastExportAt] ≤0 = 从没导出过）。 */
@@ -251,7 +303,7 @@ internal class BaopuChatController(context: Context) {
     fun adoptLearn(id: String) {
         val list = engine.learn.value ?: return
         val p = list.firstOrNull { it.id == id } ?: return
-        skillNote = "记下来中…"
+        skillNote = BaopuNote("记下来中…", BaopuNoteLevel.Info)
         scope.launch {
             val out = withContext(Dispatchers.IO) { writeLearnedSkill(p) }
             // 第五十七批 §1.3：采纳留痕（新草稿的 uses 头从 0 起算——试用期从采纳起算）
@@ -282,13 +334,13 @@ internal class BaopuChatController(context: Context) {
     }
 
     /** 把卡上一条提案写成技能（草稿/转正式按卡上的建议）。 */
-    private fun writeLearnedSkill(p: com.example.zhengdao.baopu.SkillRefine.LearnProposal): String {
+    private fun writeLearnedSkill(p: com.example.zhengdao.baopu.SkillRefine.LearnProposal): BaopuNote {
         val root = com.example.zhengdao.baopu.BaopuWorkspace.hostDir(appCtx)
         val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
         val globalRoot = java.io.File(pf.globalFile().parentFile ?: root, "")
         // C 段硬闸：卡上标红只是提示，**真落盘前再查一次**（卡可能已经过期）
         val review = reviewBeforeWrite(p, root)
-        if (!review.ok) return "不能写：${review.summary}"
+        if (!review.ok) return BaopuNote("不能写：${review.summary}", BaopuNoteLevel.Error)
         val name = com.example.zhengdao.baopu.SkillRefine.nameOf(p)
         val proposal = com.example.zhengdao.baopu.SkillProposal(
             scope = com.example.zhengdao.baopu.SkillScope.PROJECT,
@@ -303,12 +355,16 @@ internal class BaopuChatController(context: Context) {
             globalRoot,
             com.example.zhengdao.util.TimeFormats.fileStamp(),
         )
-        plan.blocked?.let { return it }
+        plan.blocked?.let { return BaopuNote(it, BaopuNoteLevel.Error) }
         val layer = com.example.zhengdao.baopu.PersonaLayer.C_PROJECT
         return when (val r = com.example.zhengdao.baopu.SkillStore.apply(plan, pf, pf.read(layer).orEmpty())) {
-            is com.example.zhengdao.baopu.SkillWriteResult.Written ->
-                "已记下：${r.file.name}" + (r.backup?.let { "（旧版备份：$it）" } ?: "")
-            is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
+            // 写成 = 结果播报（Info，8 秒走）；被拒 = 没写成（Error，常驻到点掉）
+            is com.example.zhengdao.baopu.SkillWriteResult.Written -> BaopuNote(
+                "已记下：${r.file.name}" + (r.backup?.let { "（旧版备份：$it）" } ?: ""),
+                BaopuNoteLevel.Info,
+            )
+            is com.example.zhengdao.baopu.SkillWriteResult.Rejected ->
+                BaopuNote(r.reason, BaopuNoteLevel.Error)
         }
     }
 
@@ -357,8 +413,11 @@ internal class BaopuChatController(context: Context) {
     var pendingSkillProposals by mutableStateOf<List<com.example.zhengdao.baopu.PersonaProposal>>(emptyList())
         private set
 
-    /** 技能动作的一句话结果（上限拒绝 / 写盘失败等；显示几秒就清）。 */
-    var skillNote by mutableStateOf<String?>(null)
+    /**
+     * 技能动作的一句话结果（上限拒绝 / 写盘失败 / 记下来中…／已记下）——
+     * 第六十一批 §2：出错那一档常驻、点掉才清，进度那一档仍是 8 秒自己走。
+     */
+    var skillNote by mutableStateOf<BaopuNote?>(null)
         private set
 
 
@@ -1032,7 +1091,12 @@ internal class BaopuChatController(context: Context) {
         pendingNote = null
     }
 
-    /** 清掉资料库动作结果那句话。 */
+    /**
+     * 清掉资料库动作结果那句话。
+     *
+     * 第六十一批 §2：进度那一档由 UI 的 8 秒定时器调；错误那一档**只**由用户点便签
+     * 上的 `×` 调（错误不许自己走）。
+     */
     fun clearLibraryNote() {
         libraryNote = null
     }
@@ -1064,7 +1128,7 @@ internal class BaopuChatController(context: Context) {
     fun answerAskCard(option: AskUserOption) {
         val choice = runCatching { MoveChoice.valueOf(option.id.uppercase()) }.getOrNull()
         if (choice == null) {
-            libraryNote = "没能对上选项（${option.id}）——没有执行任何动作"
+            libraryNote = BaopuNote("没能对上选项（${option.id}）——没有执行任何动作", BaopuNoteLevel.Error)
             return
         }
         runImport(choice)
@@ -1080,7 +1144,7 @@ internal class BaopuChatController(context: Context) {
         val imp = BaopuRuntime.libraryImport(appCtx)
         val choice = imp.parseChoice(text)
         if (choice == null) {
-            libraryNote = "没能对上选项，请直接点上面的按钮（不猜、不静默执行）"
+            libraryNote = BaopuNote("没能对上选项，请直接点上面的按钮（不猜、不静默执行）", BaopuNoteLevel.Error)
             return
         }
         runImport(choice)
@@ -1095,7 +1159,7 @@ internal class BaopuChatController(context: Context) {
      */
     private fun runImport(choice: MoveChoice) {
         askCard = null
-        libraryNote = "收料处理中…"
+        libraryNote = BaopuNote("收料处理中…", BaopuNoteLevel.Info)
         scope.launch {
             val imp = BaopuRuntime.libraryImport(appCtx)
             val store = BaopuRuntime.libraryStore(appCtx)
@@ -1170,7 +1234,10 @@ internal class BaopuChatController(context: Context) {
                 }
             }
             if (firstMove) parts += "（首次搬原件：以后在 设置 → 终端与资料 → 抱朴 里能一键导出备份）"
-            libraryNote = parts.joinToString("")
+            // §2：这句里带着「被拒 N 件」那半截失败——整句 8 秒蒸发后用户只记得"完成"，
+            // 所以有被拒就按错误留痕（选「先不搬」那一档不报被拒，仍是 Info）。
+            val rejectedCount = if (choice == MoveChoice.SKIP) 0 else out.rejected.size
+            libraryNote = BaopuNote(parts.joinToString(""), BaopuNotePolicy.levelOfResult(rejectedCount))
             refreshBackupStats()
         }
     }
@@ -1178,7 +1245,7 @@ internal class BaopuChatController(context: Context) {
     /** 导出原件（D 段第 1/3 条）：`textOnly` = 只导文本件那一档。 */
     fun exportOriginals(textOnly: Boolean) {
         exportBusy = true
-        libraryNote = "导出中…"
+        libraryNote = BaopuNote("导出中…", BaopuNoteLevel.Info)
         scope.launch {
             try {
                 val pipeline = BaopuRuntime.libraryPipeline(appCtx)
@@ -1194,12 +1261,20 @@ internal class BaopuChatController(context: Context) {
                     }
                 }
                 libraryNote = when {
-                    report.exported.isEmpty() -> "没有可导出的原件（索引是空的）。" +
-                        (report.notes.firstOrNull()?.let { "（$it）" } ?: "")
-                    else -> buildString {
-                        append("导出完成：${report.exported.size} 件（在 整理/原件导出-<时间戳>/）")
-                        if (report.notes.isNotEmpty()) append("；另有 ${report.notes.size} 条备注（跳过/撞名/失败）")
-                    }
+                    // 一件都没导出去 = 这次动作没做成，用户得知道为什么 ⇒ Error 常驻
+                    report.exported.isEmpty() -> BaopuNote(
+                        "没有可导出的原件（索引是空的）。" +
+                            (report.notes.firstOrNull()?.let { "（$it）" } ?: ""),
+                        BaopuNoteLevel.Error,
+                    )
+                    else -> BaopuNote(
+                        buildString {
+                            append("导出完成：${report.exported.size} 件（在 整理/原件导出-<时间戳>/）")
+                            if (report.notes.isNotEmpty()) append("；另有 ${report.notes.size} 条备注（跳过/撞名/失败）")
+                        },
+                        // 「另有 N 条备注（跳过/撞名/失败）」那半截是部分失败 ⇒ Error
+                        BaopuNotePolicy.levelOfResult(report.notes.size),
+                    )
                 }
                 refreshBackupStats()
             } finally {
@@ -1428,8 +1503,9 @@ internal class BaopuChatController(context: Context) {
         )
         if (r.candidates.isEmpty()) {
             if (r.dropped > 0) {
-                skillNote = appCtx.getString(
-                    R.string.skill_refine_dropped, r.dropped,
+                skillNote = BaopuNote(
+                    appCtx.getString(R.string.skill_refine_dropped, r.dropped),
+                    BaopuNoteLevel.Error,
                 )
             }
             return
@@ -1437,8 +1513,11 @@ internal class BaopuChatController(context: Context) {
         val total = globalLines.size + projectLines.size
         if (total + r.candidates.size > com.example.zhengdao.baopu.SkillRules.INDEX_CAP) {
             // K2：超上限 ⇒ 拒绝并提示先删旧的（不是截断）
-            skillNote = appCtx.getString(
-                R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+            skillNote = BaopuNote(
+                appCtx.getString(
+                    R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+                ),
+                BaopuNoteLevel.Error,
             )
             return
         }
@@ -1500,14 +1579,20 @@ internal class BaopuChatController(context: Context) {
         val adding = com.example.zhengdao.baopu.SkillRules.parseIndexLines(p.proposed, scope).size -
             com.example.zhengdao.baopu.SkillRules.parseIndexLines(p.current, scope).size
         if (total + adding > com.example.zhengdao.baopu.SkillRules.INDEX_CAP) {
-            skillNote = appCtx.getString(
-                R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+            skillNote = BaopuNote(
+                appCtx.getString(
+                    R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+                ),
+                BaopuNoteLevel.Error,
             )
             return
         }
         val ok = pf.applyProposal(p)
         if (!ok) {
-            skillNote = appCtx.getString(R.string.skill_apply_failed)
+            skillNote = BaopuNote(
+                appCtx.getString(R.string.skill_apply_failed),
+                BaopuNoteLevel.Error,
+            )
             return
         }
         pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
@@ -1572,7 +1657,11 @@ internal class BaopuChatController(context: Context) {
         }
     }
 
-    /** 清掉技能动作那句话（UI 显示几秒后调）。 */
+    /**
+     * 清掉技能动作那句话。
+     *
+     * 第六十一批 §2：同 [clearLibraryNote]——进度走 8 秒自清，错误只走用户那一击。
+     */
     fun clearSkillNote() {
         skillNote = null
     }
