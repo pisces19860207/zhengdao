@@ -31,10 +31,10 @@ CI **不接**这一步（质量工程评估 P1-3 原话「不设门槛前不影�
 .\gradlew.bat :app:detektBaselineUpdate -Porg.gradle.java.installations.paths=<JDK21>
 ```
 
-## 首跑读数（2026-10-19，`origin/main` 7884ab0a + 本次清债）
+## 首跑读数（2026-10-19，`origin/main` fd299123 + 本次清债）
 
-- **156 条**（`LongMethod` 73 / `CyclomaticComplexMethod` 83），涉及 **85 个文件**；
-- 生产代码 217 个 Kotlin 文件、38,931 SLOC。
+- **175 条**（`LongMethod` 78 / `CyclomaticComplexMethod` 97），涉及 **90 个文件**；
+- 生产代码 225 个 Kotlin 文件、40,938 SLOC。
 
 G7 点名的 5 个文件共 **16 条**：
 
