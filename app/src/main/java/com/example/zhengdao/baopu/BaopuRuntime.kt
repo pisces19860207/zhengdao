@@ -25,6 +25,7 @@ import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.terminal.KnowledgeBase
 import org.json.JSONObject
 import java.io.File
 
@@ -239,7 +240,13 @@ internal object BaopuRuntime {
         ModelParams.initEffort(appCtx)
         val provider = provider(appCtx)
         val reg = registry(appCtx, provider)
-        val pipeline = GuardPipeline(reg, { workspaceRoot(appCtx) })
+        val pipeline = GuardPipeline(
+            reg,
+            { workspaceRoot(appCtx) },
+            // 第四十八批 P0-2：原件区权威路径＝终端侧的 KnowledgeBase.rawDir（抱朴工作区
+            // 可自定义，原件区跟的是终端工作区）。不在这里拼 "资料库/原始" 字符串。
+            { KnowledgeBase.rawDir(appCtx) },
+        )
         val db = db(appCtx)
         // 选项卡的落点：引擎负责弹、等、收答案
         val engine = RunEngine(
