@@ -327,6 +327,9 @@ internal object BaopuToolCatalog {
         "image_ops",
         // 选项卡（2026-10-19）：不写盘、只问人，默认开；没有界面时回人话而不是干等
         "ask_user",
+        // 格式层（第三十九批 B）：inspect 只读；export 写 PNG 但**绝不覆盖**，且每次一张确认卡
+        "card_inspect",
+        "card_export",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -358,7 +361,11 @@ internal object BaopuToolCatalog {
         // 图片处理（2026-10-18）：缩放/裁剪/转格式/取主色/生成图标各档
         Entry("image_ops") { ImageOpsTool.spec(it) },
         // 选项卡（2026-10-19）：落点在引擎（AskUserTool.sink），表里只放 spec
-        Entry("ask_user") { AskUserTool.spec() },    )
+        Entry("ask_user") { AskUserTool.spec() },
+        // 格式层（第三十九批 B）：认脸＋体检（只读）／导出酒馆 PNG（不覆盖）
+        Entry("card_inspect") { CardTools.inspectSpec() },
+        Entry("card_export") { CardTools.exportSpec(it) },
+    )
 
     /**
      * 把整张表装进注册表（**只装真身**；被关的形态由 [ToolRegistry.find] 在调用时判）。

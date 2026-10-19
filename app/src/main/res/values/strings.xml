@@ -1237,12 +1237,17 @@
     <string name="baopu_tool_delete_path">删除文件</string>
     <string name="baopu_tool_ask_user">选项卡（问人）</string>
     <string name="baopu_tool_ask_user_desc">拿不准时弹一张选项卡（出现在输入栏上方）：2–4 个选项、推荐项排第一并带一句理由，用户点完继续干。不写盘、不改文件。</string>
+    <string name="baopu_tool_card_inspect">卡片体检（只读）</string>
+    <string name="baopu_tool_card_inspect_desc">只读体检一张卡或世界书：先认脸（网络平台世界书 / Tavo 世界书·角色卡·正则·预设 / 酒馆世界书 / CCv3 世界书 / 酒馆角色卡 PNG；认不出就报未知＋看过的键名），再逐条体检（字段缺失与越界、关键词过宽、永不触发、分隔符写坏、同名压制）。只读：不改、不挪、不删任何文件。</string>
+    <string name="baopu_tool_card_export">导出酒馆卡 PNG</string>
+    <string name="baopu_tool_card_export_desc">把一段 JSON 写成酒馆角色卡 PNG（内嵌 chara 与 ccv3 两块文本，插在 IEND 之前）。不覆盖：目标已存在就拒绝；源文件一个字节都不改。每次执行前弹确认卡。</string>
     <string name="baopu_tools_group_read">读与找</string>
     <string name="baopu_tools_group_write">写与改</string>
     <string name="baopu_tools_group_image">图片</string>
     <string name="baopu_tools_group_browser">网页</string>
     <string name="baopu_tools_group_library">资料库</string>
     <string name="baopu_tools_group_plan">计划与技能</string>
+    <string name="baopu_tools_group_card">卡片与格式</string>
     <string name="baopu_tool_image_ops">图片处理</string>
     <string name="baopu_tool_image_ops_desc">改图（每次执行前弹确认卡）：等比缩到长边、按矩形裁剪、转 png/jpg/webp、取主色（只回文本）、生成 48/72/96/144/192 五档方图标。原图永不覆盖——默认另存 &lt;名&gt;-&lt;动作&gt;.&lt;ext&gt;，目标已存在就拒绝。</string>
     <string name="baopu_tool_delete_path_desc">删工作区里的一个文件（每次执行前弹确认卡）：默认**移进回收站**（工作区/回收站/时间戳-原名），说一声就能搬回来；勾了「彻底删」才是不可恢复的删除。只删单个文件，目录一律拒；备份区 .baopu-bak/、回收站本身、资料库/原始/ 都不许碰。</string>
