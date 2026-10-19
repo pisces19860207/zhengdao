@@ -21,6 +21,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -115,11 +119,39 @@ internal fun planCardExpanded(
     else -> round.userMessageId in userPlanExpandedIds
 }
 
+// ── 条目级截断判据（UI 第二批 §2 第三行：`maxLines = 1` ＋ Ellipsis ＝ 静默截断）──
+
+/**
+ * 一条计划**收起态显示几行**。派工单给的口径是「至少两行或加展开入口」——
+ * 这里两行**和**入口都给：两行是保底（不点也看得见开头），入口负责看全。
+ */
+internal const val PLAN_ITEM_COLLAPSED_MAX_LINES = 2
+
+/**
+ * 「两行装不装得下」的字符阈值（保守值，不测像素）。
+ *
+ * 为什么用字数而不是直接量：JVM 里跑不了 Compose 排版，拿不到真实宽度；
+ * 按 bodySmall（约 12sp）在常见手机宽度上**一行 ≈ 30 字**估，两行取 60。
+ * 偏保守 ⇒ 后果只是「短条目多摆了一个展开入口」，点一下全量就在眼前；
+ * 反过来估小了会让长条目两行截掉还没入口，那正是本批要治的病。
+ */
+internal const val PLAN_ITEM_COLLAPSED_CHARS = 60
+
+/**
+ * 这条计划需不需要摆展开入口：**只有可能装不下的才摆**，
+ * 每条都挂个「展开」等于没有（点了什么也不会多出来）。
+ */
+internal fun planItemNeedsExpand(text: String): Boolean = text.length > PLAN_ITEM_COLLAPSED_CHARS
+
 // ── 渲染 ────────────────────────────────────────────────────────────────
 
 /**
  * 工作计划卡：收起态一行「计划 3/5 完成」＋ 箭头；展开态每条一行（符号＋原文，
- * 超长单行省略）。点这一行 ⇄ 翻转（不新增「全部展开」按钮——派工单 §2.1）。
+ * 超长给 [PLAN_ITEM_COLLAPSED_MAX_LINES] 行＋「展开」看全）。点卡头那一行 ⇄ 翻转
+ * （不新增「全部展开」按钮——派工单 §2.1）。
+ *
+ * UI 第二批 §2：条目不再 `maxLines = 1` 硬省略；展开状态**按条目记**（一条一个键），
+ * 点某条不许把整卡其他条目也撑开。done/doing/todo 判据一个字没动。
  */
 @Composable
 internal fun BaopuPlanCard(
@@ -128,6 +160,8 @@ internal fun BaopuPlanCard(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 条目级展开：记条目下标（[plan.items] 的顺序由解析器给，同一次渲染内稳定）。
+    var expandedItemIndexes by remember { mutableStateOf(setOf<Int>()) }
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = MaterialTheme.shapes.small,
@@ -159,10 +193,10 @@ internal fun BaopuPlanCard(
                 )
             }
             if (expanded) {
-                plan.items.forEach { item ->
+                plan.items.forEachIndexed { index, item ->
                     Row(
                         Modifier.padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Top,
                     ) {
                         Text(
                             text = planStatusSymbol(item.status),
@@ -170,13 +204,44 @@ internal fun BaopuPlanCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = item.text,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = item.text,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines =
+                                    if (index in expandedItemIndexes) Int.MAX_VALUE
+                                    else PLAN_ITEM_COLLAPSED_MAX_LINES,
+                                overflow = if (index in expandedItemIndexes) {
+                                    TextOverflow.Visible
+                                } else {
+                                    TextOverflow.Ellipsis
+                                },
+                            )
+                            // 入口只在「可能装不下」的条目上；点开之后文案换成「收起」。
+                            if (planItemNeedsExpand(item.text)) {
+                                Text(
+                                    text = stringResource(
+                                        if (index in expandedItemIndexes) {
+                                            R.string.common_collapse_arrow
+                                        } else {
+                                            R.string.common_expand_arrow
+                                        },
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .clickable {
+                                            expandedItemIndexes = if (index in expandedItemIndexes) {
+                                                expandedItemIndexes - index
+                                            } else {
+                                                expandedItemIndexes + index
+                                            }
+                                        },
+                                )
+                            }
+                        }
                     }
                 }
             }

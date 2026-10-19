@@ -8,19 +8,75 @@ package com.example.zhengdao.ui.baopu
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.MemoryEntry
+
+// ── 静态截断的公共判据（UI 第二批 §2；技能提案卡共用同一套，别各写一份）──────
+//
+// 口径只有一句：**同屏少显示几条可以，"少显示了还不说"不行**。
+// 所以 `take(3)` 这类切片必须配上「还有 N 条」的入口，入口点开能看全量、再点收起。
+
+/** 同屏最多显示几条（要改这个数字得另派单，门禁 M3 钉着）。 */
+internal const val CARD_VISIBLE_LIMIT = 3
+
+/** 还有几条没显示 ⇒ 0 表示根本没折叠（那就不许摆入口）。 */
+internal fun moreCount(total: Int, shown: Int): Int = (total - shown).coerceAtLeast(0)
+
+/** 折叠态给前 [limit] 条，展开态给全量（顺序不动，只做"看得全/看得少"）。 */
+internal fun <T> visibleItems(items: List<T>, expanded: Boolean, limit: Int): List<T> =
+    if (expanded) items else items.take(limit)
+
+/**
+ * 「还有 N 条」那一行（记忆两张卡＋技能提案卡共用）。
+ *
+ * 文案只有两样：计数走本批新增的**唯一一个**键 `baopu_more_items`，
+ * 箭头复用既有的 `common_expand_arrow` / `common_collapse_arrow`（派工单 §2：不许新造第二套）。
+ * 整行可点——它不是一个"按钮"，是这一区块的开关。
+ */
+@Composable
+internal fun MoreItemsRow(hidden: Int, expanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(
+                if (expanded) R.string.common_collapse_arrow else R.string.common_expand_arrow,
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        if (!expanded) {
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = stringResource(R.string.baopu_more_items, hidden),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
 /**
  * 记忆候选卡：一条候选 = 标题 ＋ 正文摘要 ＋「记住 / 不记」。
@@ -35,8 +91,13 @@ internal fun BaopuMemoryCard(
     modifier: Modifier = Modifier,
 ) {
     if (candidates.isEmpty()) return
+    // 折叠状态记在组合里（房型照计划卡：不落库），**两张卡各自一份**——
+    // 候选卡和待过目卡同屏时，点开一张不许把另一张也撑开。
+    var candidatesExpanded by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth()) {
-        candidates.take(3).forEach { e -> // 最多同屏 3 张，避免把对话挤没
+        val visible = visibleItems(candidates, expanded = candidatesExpanded, limit = CARD_VISIBLE_LIMIT)
+        val hidden = moreCount(total = candidates.size, shown = visible.size)
+        visible.forEach { e -> // 同屏最多 3 张，避免把对话挤没；超出的走「还有 N 条」，不静默
             Surface(
                 shape = MaterialTheme.shapes.small,
                 tonalElevation = 2.dp,
@@ -76,6 +137,13 @@ internal fun BaopuMemoryCard(
                 }
             }
         }
+        if (hidden > 0) {
+            MoreItemsRow(
+                hidden = hidden,
+                expanded = candidatesExpanded,
+                onToggle = { candidatesExpanded = !candidatesExpanded },
+            )
+        }
     }
 }
 
@@ -99,8 +167,11 @@ internal fun BaopuPendingMemoryCard(
     modifier: Modifier = Modifier,
 ) {
     if (pending.isEmpty()) return
+    var pendingExpanded by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth()) {
-        pending.take(3).forEach { e ->
+        val visible = visibleItems(pending, expanded = pendingExpanded, limit = CARD_VISIBLE_LIMIT)
+        val hidden = moreCount(total = pending.size, shown = visible.size)
+        visible.forEach { e ->
             Surface(
                 shape = MaterialTheme.shapes.small,
                 tonalElevation = 2.dp,
@@ -140,6 +211,13 @@ internal fun BaopuPendingMemoryCard(
                     }
                 }
             }
+        }
+        if (hidden > 0) {
+            MoreItemsRow(
+                hidden = hidden,
+                expanded = pendingExpanded,
+                onToggle = { pendingExpanded = !pendingExpanded },
+            )
         }
     }
 }
