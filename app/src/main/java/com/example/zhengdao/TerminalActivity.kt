@@ -1400,11 +1400,18 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         Toast.makeText(this, getString(R.string.term_copied_chars, text.length), Toast.LENGTH_SHORT).show()
     }
 
-    /** 系统文本选择工具栏点「粘贴」时走到这里：读剪贴板并写回终端。 */
+    /**
+     * 系统文本选择工具栏点「粘贴」时走到这里：读剪贴板并写回终端。
+     *
+     * P1-6（第五十三批）：写入必须交给后台通道 [pasteText]（与顶部粘贴按钮、
+     * `SessionManager.onPasteRequest` 同一条路），不能在这里主线程直写 pty ——
+     * `TerminalSession.write` 在 4 KiB ByteQueue 满后会 wait，贴长文就是主线程干等 ⇒ ANR。
+     * 失败提示由 [pasteText] 的后台回调负责。
+     */
     override fun onPasteTextFromClipboard(session: TerminalSession?) {
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val text = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
-        if (text.isNotEmpty()) runCatching { SessionManager.write(text) }
+        if (text.isNotEmpty()) pasteText(text)
     }
 
     // ── 「更多」上下文菜单（选择工具栏 MORE → showContextMenu → 本节）──
