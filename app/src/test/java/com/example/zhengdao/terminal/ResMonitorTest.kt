@@ -108,4 +108,55 @@ class ResMonitorTest {
         assertTrue(v.warn)
         assertTrue("同时超阈值时先说内存（更可能导致 OOM/发热）", v.detail.contains("内存"))
     }
+
+    // ── P1-5（第五十三批）：CPU 两次采样必须按 pid 对齐 ─────────────────────
+    //
+    // 旧实现把两侧映射成两个 List 后按 `take(min)` **下标**相减：窗口内只要有进程
+    // 退出/新增，下标就会错位，末尾的 `coerceAtLeast(0)` 再把错配的负值压成 0%
+    // —— 结果既不是真实 CPU，也不会告警。以下用例全部钉住「按 pid 交集求差」。
+
+    @Test
+    fun `P1-5 CPU 差值按 pid 对齐而不是按列表下标`() {
+        // 旧下标实现：(950 + 800) - (100 + 900) = 750；正确的 pid 交集只有 pid=2 的 50。
+        val t0 = mapOf(1 to 100L, 2 to 900L)
+        val t1 = mapOf(2 to 950L, 3 to 800L)
+        assertEquals("只应对两侧都存在的 pid 求差", 50L, ResMonitor.cpuDelta(t0, t1))
+    }
+
+    @Test
+    fun `P1-5 映射顺序打乱不影响结果`() {
+        val t0 = linkedMapOf(1 to 100L, 2 to 200L, 3 to 300L)
+        val t1 = linkedMapOf(3 to 330L, 1 to 140L, 2 to 260L)
+        // 逐 pid：40 + 60 + 30
+        assertEquals(130L, ResMonitor.cpuDelta(t0, t1))
+        assertEquals(130L, ResMonitor.cpuDelta(t0.entries.reversed().associate { it.key to it.value }, t1))
+    }
+
+    @Test
+    fun `P1-5 窗口内退出的进程不计入`() {
+        val t0 = mapOf(1 to 100L, 2 to 200L)
+        val t1 = mapOf(1 to 150L)
+        assertEquals("pid=2 在窗口内退出了，不能拿它去和别的进程比", 50L, ResMonitor.cpuDelta(t0, t1))
+    }
+
+    @Test
+    fun `P1-5 窗口内新增的进程不计入`() {
+        val t0 = mapOf(1 to 100L)
+        val t1 = mapOf(1 to 120L, 3 to 9999L)
+        assertEquals("pid=3 是窗口内新起的，没有基线可比", 20L, ResMonitor.cpuDelta(t0, t1))
+    }
+
+    @Test
+    fun `P1-5 pid 复用或计数回绕的负差按 0 计`() {
+        val t0 = mapOf(1 to 100L, 2 to 200L)
+        // pid=2 的累计滴答反而变小（pid 复用 / 计数回绕）：该 pid 记 0，其余照算。
+        val t1 = mapOf(1 to 150L, 2 to 50L)
+        assertEquals(50L, ResMonitor.cpuDelta(t0, t1))
+    }
+
+    @Test
+    fun `P1-5 两侧没有交集时差值为零`() {
+        assertEquals(0L, ResMonitor.cpuDelta(mapOf(1 to 100L), mapOf(2 to 200L)))
+        assertEquals(0L, ResMonitor.cpuDelta(emptyMap(), mapOf(2 to 200L)))
+    }
 }
