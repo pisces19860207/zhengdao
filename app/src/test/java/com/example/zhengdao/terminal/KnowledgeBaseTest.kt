@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.testkit.TestAssume
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -82,7 +83,7 @@ class KnowledgeBaseTest {
         }.isSuccess
         // E-138：本机（Windows 非开发者模式）建不了软链。以前静默 return ＝假绿，
         // 改成显式跳过（Linux CI 上仍会真跑）。
-        org.junit.Assume.assumeTrue("本机不允许无特权建符号链接（E-138）：本用例未覆盖", created)
+        TestAssume.symlinkUnsupported(created)
         assertEquals(1, KnowledgeBase.countRawIn(raw))
     }
 

@@ -4,6 +4,7 @@ package com.example.zhengdao.ui
 
 import android.content.Context
 import android.content.ContextWrapper
+import com.example.zhengdao.testkit.TestAssume
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -112,7 +113,7 @@ class AgentCatalogTest {
      * 宿主侧 `File.isFile()` 读它是悬空的（目标 `/root/…` 在宿主上不存在）⇒ 会误判「没装」。
      * 修法是读到软链后把 `/root/` 前缀映射回 `files/home/` 再判一次。
      *
-     * Windows 上建软链要特权；建不出来就 `assumeTrue` 跳过（Linux CI 会真跑）。
+     * Windows 上建软链要特权；建不出来就 `TestAssume.symlinkUnsupported` 跳过（Linux CI 会真跑）。
      */
     @Test
     fun `软链映射_guest 的 home 软链按 files_home 再判一次`() {
@@ -125,7 +126,7 @@ class AgentCatalogTest {
                 link.toPath(), java.nio.file.Paths.get("/root/real-claude")
             )
         }.isSuccess
-        org.junit.Assume.assumeTrue("本机/本用户不允许建软链，跳过", made)
+        TestAssume.symlinkUnsupported(made)
 
         val ctx = FakeFilesContext(files)
         assertTrue(existsInHost(ctx, "home/.local/bin/claude"))
@@ -146,7 +147,7 @@ class AgentCatalogTest {
      * `\root\...`（反斜杠），旧代码只判 `startsWith("/root/")` ⇒ 在"能建软链的 Windows
      * 机器"上这条链与上面那条一跳链用例都会真红（Linux/Android 上才是 `/root/...`）。
      *
-     * Windows 上建软链要特权；建不出来就 `assumeTrue` 跳过（与上面那条同一约定）。
+     * Windows 上建软链要特权；建不出来就 `TestAssume.symlinkUnsupported` 跳过（与上面那条同一约定）。
      */
     @Test
     fun `两跳软链_Codex 那条链现在能认出来`() {
@@ -166,7 +167,7 @@ class AgentCatalogTest {
                 java.nio.file.Paths.get("/root/.codex/packages/standalone/releases/0.162.1")
             )
         }.isSuccess
-        org.junit.Assume.assumeTrue("本机/本用户不允许建软链，跳过", hop2)
+        TestAssume.symlinkUnsupported(hop2)
 
         // 第一跳：~/.local/bin/codex → ~/.codex/packages/standalone/current/bin/codex
         val bin = File(home, ".local/bin/codex").apply { parentFile!!.mkdirs() }
@@ -176,7 +177,7 @@ class AgentCatalogTest {
                 java.nio.file.Paths.get("/root/.codex/packages/standalone/current/bin/codex")
             )
         }.isSuccess
-        org.junit.Assume.assumeTrue("本机/本用户不允许建软链，跳过", hop1)
+        TestAssume.symlinkUnsupported(hop1)
 
         val ctx = FakeFilesContext(files)
         assertTrue(

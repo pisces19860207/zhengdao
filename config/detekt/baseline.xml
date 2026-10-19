@@ -1,0 +1,162 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:AgentInstaller.kt$AgentInstaller$private fun installCommand(ctx: Context, agent: AppState.AgentInfo): String</ID>
+    <ID>CyclomaticComplexMethod:BaopuArtifactShelf.kt$@Composable internal fun ArtifactShelfDialog( workspaceRoot: File, onChanged: () -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:BaopuArtifactShelf.kt$internal fun moveArtifactToTrash( root: File, relPath: String, nowMs: Long, confirmed: Boolean, ): ArtifactMoveOutcome</ID>
+    <ID>CyclomaticComplexMethod:BaopuArtifactViewer.kt$@Composable internal fun BaopuArtifactTopBar( root: File, artifacts: List&lt;String&gt;, expanded: Boolean, onToggle: () -&gt; Unit, onOpen: (String) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:BaopuChatController.kt$BaopuChatController$private fun readMessages(sessionId: Long): List&lt;BaopuUiMessage&gt;</ID>
+    <ID>CyclomaticComplexMethod:BaopuComposer.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun BaopuComposer( busy: Boolean, /** * 发送回调：`(要发出去的文本, 本轮附件)`。 * * 第二十四批 B 段把签名从 `(String)` 扩成两参：图片要**随消息落成 * `part.kind='image'`**（气泡里渲缩略图），而文本里那句 hint **照样保留** * （判据 B2——有了图片块不等于模型一定看得到，接线没通之前那句提示仍然是真的）。 */ onSend: (String, List&lt;BaopuAttachments.Saved&gt;) -&gt; Unit, onStop: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>CyclomaticComplexMethod:BaopuCostAndArtifacts.kt$fun artifactViewOf(root: File, relPath: String): ArtifactView?</ID>
+    <ID>CyclomaticComplexMethod:BaopuExtractSheet.kt$@Composable internal fun BaopuExtractSheet(onDismiss: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:BaopuMessageList.kt$@Composable private fun BaopuMessageRow( msg: BaopuUiMessage, onSpeak: ((String) -&gt; Unit)? = null, onUserLongPress: ((BaopuUiMessage) -&gt; Unit)? = null, )</ID>
+    <ID>CyclomaticComplexMethod:BaopuPreview.kt$private fun renderBody(markdown: String, title: String): String</ID>
+    <ID>CyclomaticComplexMethod:BaopuScreen.kt$@Composable fun BaopuScreen(onExit: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>CyclomaticComplexMethod:BaopuSettingsScreen.kt$@Composable internal fun BaopuSettingsScreen(onDismiss: () -&gt; Unit, onOpenSessionLibrary: () -&gt; Unit = {})</ID>
+    <ID>CyclomaticComplexMethod:BaopuSettingsScreen.kt$private fun baopuToolDesc(name: String): Int</ID>
+    <ID>CyclomaticComplexMethod:BaopuSettingsScreen.kt$private fun baopuToolLabel(name: String): Int</ID>
+    <ID>CyclomaticComplexMethod:BaopuSkillCategory.kt$private fun readJsonString(src: String, from: Int, end: Int): ReadStr?</ID>
+    <ID>CyclomaticComplexMethod:BaopuTrashBin.kt$@Composable internal fun TrashDialog( workspaceRoot: File, onDismiss: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:BrowserAgentBridge.kt$BrowserAgentBridge$private fun handle(app: Context, sock: Socket)</ID>
+    <ID>CyclomaticComplexMethod:BrowserCommands.kt$BrowserCommands$fun screenshot(context: Context, tabId: String?, fullPage: String?, selector: String? = null): String</ID>
+    <ID>CyclomaticComplexMethod:BrowserCommands.kt$BrowserCommands$fun snapshot(mode: String?, selector: String?, tabId: String? = null): String</ID>
+    <ID>CyclomaticComplexMethod:BrowserScreen.kt$@Composable fun BrowserScreen(modifier: Modifier = Modifier)</ID>
+    <ID>CyclomaticComplexMethod:BrowserUrlPolicy.kt$BrowserUrlPolicy$private fun hostLabel(scheme: String, authority: String): String</ID>
+    <ID>CyclomaticComplexMethod:ContextAssembler.kt$ContextAssembler$@Suppress("LongParameterList") fun assemble( persona: List&lt;PersonaSegment&gt;, facts: HardFacts, stickyMemories: List&lt;MemoryEntry&gt;, newMemories: List&lt;MemoryEntry&gt;, history: List&lt;HistoryMessage&gt;, current: String, windowTokens: Int = DEFAULT_WINDOW_TOKENS, compressionSummary: String? = null, compressedIds: Set&lt;String&gt; = emptySet(), skipIds: Set&lt;String&gt; = emptySet(), oldMessageCount: Int = 0, // ── 视觉通道（第二十四批 A 段）── /** 本轮附件里**是图片**的那些（已由调用方读成 data URL；[VisionRules.ImagePayload] 不含路径）。 */ images: List&lt;VisionRules.ImagePayload&gt; = emptyList(), /** * 当前通道能不能看图——**必须来自 `Provider.vision`**（V5：这里不许自己判断 * 模型名，否则"哪个模型能看图"就有第二份真相，且必然漂移）。 */ visionSupported: Boolean = false, /** * 调用方要拼在本轮输入末尾的额外说明（第二十四批 C 段追加）。 * * 第一个用处：图片**没发出去**时的逐张原因（`VisionFiles.Loaded.note()`）。 * 为什么要一路传到这里：说明必须跟在「用户这条消息」后面才有意义， * 而 `current` 是每步重算的（工具循环里会变），不能在引擎侧一次性拼死。 */ extraNotes: List&lt;String&gt; = emptyList(), tokensOf: (String) -&gt; Int = { TokenEstimator.estimate(it) }, ): AssembledPrompt</ID>
+    <ID>CyclomaticComplexMethod:ConvertEncodingTool.kt$ConvertEncodingTool$fun convert(root: File, file: File): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:DeletePathTool.kt$DeletePathTool$fun run( path: String, permanent: Boolean = false, root: File, stamp: String = TimeFormats.fileStamp(), ): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:DocxTextExtractor.kt$DocxTextExtractor$internal fun unescapeXml(s: String): String</ID>
+    <ID>CyclomaticComplexMethod:EditFileTool.kt$EditFileTool$fun edit( root: File, path: String, op: String, fromLine: Int?, toLine: Int?, content: String, stamp: String = TimeFormats.fileStamp(), ): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:EnvHealth.kt$EnvHealth$private fun uvCheck(ctx: Context, res: Resources?): Check</ID>
+    <ID>CyclomaticComplexMethod:FaceIndex.kt$FaceIndex$private fun jsonUnescape(s: String): String</ID>
+    <ID>CyclomaticComplexMethod:FaceIndex.kt$FaceIndex$private fun parseItems(text: String): List&lt;Item&gt;?</ID>
+    <ID>CyclomaticComplexMethod:FindFilesTool.kt$FindFilesTool$fun find( root: File, dir: File, pattern: String, limit: Int = DEFAULT_LIMIT, maxDepth: Int = DEFAULT_DEPTH, ): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:HermesEnv.kt$HermesEnv$fun inspect(root: File, res: android.content.res.Resources? = null): State</ID>
+    <ID>CyclomaticComplexMethod:HermesEnv.kt$HermesEnv$fun repairOnHost(root: File): Boolean</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen( onOpenTerminal: (autocmd: String?, agentId: String?) -&gt; Unit, onOpenSettings: () -&gt; Unit = {}, // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。 // 走外部 state 让"切到抱朴再切回"时仍记得位置； // 不传时退化到内部新建（保持向后兼容，例如设置页内嵌的 HomeScreen 预览）。 listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(), )</ID>
+    <ID>CyclomaticComplexMethod:HumanizeError.kt$HumanizeError$fun title(t: Throwable, res: Resources? = null): String</ID>
+    <ID>CyclomaticComplexMethod:ImageOpsTool.kt$ImageOpsTool$fun run( root: File, action: String, path: String, out: String?, maxEdge: Int?, rect: PixelRect?, format: String?, colors: Int = DEFAULT_COLORS, ): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:ImageOpsTool.kt$ImageOpsTool$private fun writeOne( root: File, src: File, action: String, out: String?, format: String, bmp: Bitmap, ): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:JsEmbed.kt$internal fun unescapeJsonString(s: String): String</ID>
+    <ID>CyclomaticComplexMethod:KeepaliveArchive.kt$KeepaliveArchive$internal fun reasonText(reason: Int, description: String? = null): String</ID>
+    <ID>CyclomaticComplexMethod:KnowledgeBaseHints.kt$KnowledgeBaseHints$internal fun scan( sources: List&lt;Pair&lt;String, String&gt;&gt;, candidates: List&lt;String&gt;, deadline: Long, maxHits: Int = MAX_HITS, ): SearchResult</ID>
+    <ID>CyclomaticComplexMethod:KnowledgeBaseHints.kt$KnowledgeBaseHints$private fun collectSources(ctx: Context, deadline: Long): List&lt;Pair&lt;String, String&gt;&gt;</ID>
+    <ID>CyclomaticComplexMethod:LibraryImport.kt$LibraryImport$fun execute(choice: MoveChoice, now: Long): ImportOutcome</ID>
+    <ID>CyclomaticComplexMethod:LibraryImport.kt$LibraryImport$fun parseChoice(text: String): MoveChoice?</ID>
+    <ID>CyclomaticComplexMethod:LibraryImport.kt$LibraryImport$private fun parseEntry(obj: String): PendingDeleteEntry?</ID>
+    <ID>CyclomaticComplexMethod:LibraryPaths.kt$LibraryPaths$fun scanTree(dir: File): ScanResult</ID>
+    <ID>CyclomaticComplexMethod:LibraryPipeline.kt$LibraryPipeline$fun run( source: String = LibrarySource.DELIVER, isolatedBySha: Map&lt;String, Boolean&gt; = emptyMap(), onItem: (FaceIndex.Item) -&gt; Unit = {}, ): PipelineReport</ID>
+    <ID>CyclomaticComplexMethod:LibraryTools.kt$LibraryTools$fun list(root: File, dir: String = "deliver", pattern: String? = null): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:LibraryTools.kt$LibraryTools$private fun rename(root: File, deliver: File, done: File, path: String?, newName: String?): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:ListDirTool.kt$ListDirTool$fun list(target: File, depth: Int, limit: Int): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:LlmClient.kt$LlmClient$fun stream(call: Call, sink: (LlmEvent) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:LlmClient.kt$LlmSse$fun toolCallDeltas(protocol: LlmProtocol, payload: String): List&lt;ToolCallDelta&gt;</ID>
+    <ID>CyclomaticComplexMethod:LlmClient.kt$LlmWire$fun bodyOf( p: Provider, messages: List&lt;LlmMessage&gt;, stream: Boolean = true, tools: JSONArray? = null, ): String</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$@Composable fun HomeTabs( onOpenTerminal: (autocmd: String?, agentId: String?) -&gt; Unit, onOpenSettings: () -&gt; Unit = {}, )</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$@Composable fun ZhengdaoApp( startInTerminal: Boolean = false, lastRoute: String? = null, // 首启是否需要先走一遍「权限」页（判定在 MainActivity.onCreate，见那里的说明）。 // 默认 false：不传的调用方（预览/测试）行为与改动前完全一致。 guidePermissions: Boolean = false, )</ID>
+    <ID>CyclomaticComplexMethod:MemoryStore.kt$EntryCodec$fun parse(text: String): MemoryEntry?</ID>
+    <ID>CyclomaticComplexMethod:MovePathTool.kt$MovePathTool$fun move( root: File, from: String, to: String, createDirs: Boolean = true, stamp: String = TimeFormats.fileStamp(), preferCopy: Boolean = false, ): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:NetSelfCheck.kt$NetSelfCheck$fun summary(cn: Probe, update: Probe, res: Resources? = null): String</ID>
+    <ID>CyclomaticComplexMethod:PageSnapshot.kt$PageSnapshot$private fun nameOf(el: El): String</ID>
+    <ID>CyclomaticComplexMethod:PageSnapshot.kt$PageSnapshot$private fun parse(html: String): Doc</ID>
+    <ID>CyclomaticComplexMethod:PageSnapshot.kt$PageSnapshot$private fun parseAttrs(s: String): Map&lt;String, String&gt;</ID>
+    <ID>CyclomaticComplexMethod:PageSnapshot.kt$PageSnapshot$private fun roleOf(el: El): String</ID>
+    <ID>CyclomaticComplexMethod:PageSnapshot.kt$PageSnapshot$private fun walk(el: El, nodes: MutableList&lt;Node&gt;, text: StringBuilder)</ID>
+    <ID>CyclomaticComplexMethod:PermissionSetupScreen.kt$@Composable fun PermissionSetupScreen(onDone: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:PinnedAssets.kt$PinnedAssets$fun parse(text: String): Map&lt;String, Stamp&gt;</ID>
+    <ID>CyclomaticComplexMethod:ProotLauncher.kt$ProotLauncher$private fun buildLaunchPlanLocked(context: Context, tmuxSession: String): LaunchPlan</ID>
+    <ID>CyclomaticComplexMethod:RootfsDownloader.kt$RootfsDownloader$fun download( urls: List&lt;String&gt;, dest: File, shaUrls: List&lt;String&gt; = emptyList(), onProgress: (doneBytes: Long, totalBytes: Long) -&gt; Unit, ): String?</ID>
+    <ID>CyclomaticComplexMethod:RootfsDownloader.kt$RootfsDownloader$private fun downloadOne( client: OkHttpClient, url: String, dest: File, hasFallback: Boolean, onProgress: (Long, Long) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:RootfsIndex.kt$JsonReader$private fun readNumber(): Any</ID>
+    <ID>CyclomaticComplexMethod:RootfsIndex.kt$JsonReader$private fun readString(): String</ID>
+    <ID>CyclomaticComplexMethod:RootfsInstaller.kt$RootfsInstaller$internal fun swapLocked(tmpDir: File, rootfsDir: File)</ID>
+    <ID>CyclomaticComplexMethod:RunEngine.kt$RunEngine$private fun runLoop(sessionId: Long, userText: String?, resumed: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:SearchInFilesTool.kt$SearchInFilesTool$fun search( root: File, dir: File, query: String, caseSensitive: Boolean = false, ): ToolOutcome</ID>
+    <ID>CyclomaticComplexMethod:SessionService.kt$GuestCpuCounter$fun read(myUid: Int, myPid: Int): Long?</ID>
+    <ID>CyclomaticComplexMethod:SettingsDataActivity.kt$@Composable private fun SettingsDataPage(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:SettingsEnvActivity.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun SettingsEnvPage(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:SettingsScreen.kt$@Composable fun SettingsScreen( onOpenTerminal: (autocmd: String?, agentId: String?) -&gt; Unit = { _, _ -&gt; }, )</ID>
+    <ID>CyclomaticComplexMethod:SettingsStorageActivity.kt$@Composable private fun SettingsStoragePage(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:SkillTools.kt$SkillTools$fun spec(workspaceRoot: () -&gt; File, personaFiles: () -&gt; PersonaFiles)</ID>
+    <ID>CyclomaticComplexMethod:SystemInfoProvider.kt$SystemInfoProvider$fun collect(ctx: Context, res: android.content.res.Resources? = null): Info</ID>
+    <ID>CyclomaticComplexMethod:SystemInfoProvider.kt$SystemInfoProvider$internal fun scanNodeVersion(file: File, major: String?): String?</ID>
+    <ID>CyclomaticComplexMethod:ToolRegistry.kt$SchemaCheck$fun validate(schema: JSONObject, args: JSONObject): String?</ID>
+    <ID>CyclomaticComplexMethod:ToolRegistry.kt$SchemaCheck$private fun typeMismatch(key: String, ps: JSONObject, v: Any): String?</ID>
+    <ID>CyclomaticComplexMethod:VisionFiles.kt$VisionFiles$fun load( root: File, relPaths: List&lt;String&gt;, cap: Int = VisionRules.MAX_IMAGE_BYTES, shrink: ((File) -&gt; ShrinkOutcome)? = null, ): Loaded</ID>
+    <ID>CyclomaticComplexMethod:WriteFileTool.kt$WriteFileTool$fun write( root: File, path: String, content: String, overwrite: Boolean, stamp: String = TimeFormats.fileStamp(), ): ToolOutcome</ID>
+    <ID>LongMethod:BaopuArtifactShelf.kt$@Composable internal fun ArtifactShelfDialog( workspaceRoot: File, onChanged: () -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuArtifactViewer.kt$@Composable internal fun BaopuArtifactTopBar( root: File, artifacts: List&lt;String&gt;, expanded: Boolean, onToggle: () -&gt; Unit, onOpen: (String) -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuArtifactViewer.kt$@Composable internal fun BaopuArtifactViewer( root: File, relPath: String, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuAskUserCard.kt$@Composable internal fun BaopuAskUserCard( card: AskUserCard, onPick: (AskUserOption) -&gt; Unit, onFreeText: (String) -&gt; Unit, modifier: Modifier = Modifier, enabled: Boolean = true, )</ID>
+    <ID>LongMethod:BaopuChannelSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun BaopuChannelSheet( currentChannelId: String, storedKeyOf: (String) -&gt; String, customBaseUrl: String?, customModel: String?, onDismiss: () -&gt; Unit, onSave: (channelId: String, apiKey: String, baseUrl: String?, model: String?) -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuChatController.kt$BaopuChatController$private fun runImport(choice: MoveChoice)</ID>
+    <ID>LongMethod:BaopuComposer.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun BaopuComposer( busy: Boolean, /** * 发送回调：`(要发出去的文本, 本轮附件)`。 * * 第二十四批 B 段把签名从 `(String)` 扩成两参：图片要**随消息落成 * `part.kind='image'`**（气泡里渲缩略图），而文本里那句 hint **照样保留** * （判据 B2——有了图片块不等于模型一定看得到，接线没通之前那句提示仍然是真的）。 */ onSend: (String, List&lt;BaopuAttachments.Saved&gt;) -&gt; Unit, onStop: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:BaopuConfirmCard.kt$@Composable internal fun BaopuConfirmCard( request: ConfirmRequest, onApprove: () -&gt; Unit, onReject: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:BaopuCostAndArtifacts.kt$fun artifactViewOf(root: File, relPath: String): ArtifactView?</ID>
+    <ID>LongMethod:BaopuDrawer.kt$@Composable internal fun BaopuDrawer( busy: Boolean, /** 抽屉当前是不是打开着（E-163：打开时要重数回收站，不然 N 永远是旧的）。 */ drawerOpen: Boolean, nodes: List&lt;DrawerWorkspaceNode&gt;, onNewSession: () -&gt; Unit, onOpenSession: (Long) -&gt; Unit, /** 长按会话行：删除确认（不再有设置页那套平铺列表）。 */ onSessionLongPress: (DrawerSessionRow) -&gt; Unit, onWorkspaceTap: (String) -&gt; Unit, onWorkspaceHold: (String) -&gt; Unit, /** 文件夹行右侧的「圆里加号」：在这个工作区里开新会话（不是当前工作区时由页面先问人）。 */ onWorkspaceRunHere: (DrawerWorkspaceNode) -&gt; Unit, /** 「工作区」小节标题右侧的 ＋：选一个文件夹加进工作区。 */ onAddWorkspace: () -&gt; Unit, onLibrary: () -&gt; Unit, onExtract: () -&gt; Unit, onBackup: () -&gt; Unit, /** 预览这条回复（刀 4-B 的 `previewLastReply`；本页只负责转交，渲染在 BaopuScreen）。 */ onPreviewLastReply: () -&gt; Unit, /** 清空预览缓存（返回清掉的张数，由调用方说话）。 */ onPreviewClear: () -&gt; Unit, onChannel: () -&gt; Unit, onSettings: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:BaopuExtractSheet.kt$@Composable internal fun BaopuExtractSheet(onDismiss: () -&gt; Unit)</ID>
+    <ID>LongMethod:BaopuLearnCard.kt$@Composable internal fun BaopuLearnCard( proposals: List&lt;SkillRefine.LearnProposal&gt;, existingNames: Set&lt;String&gt;, onAdopt: (String) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuMessageList.kt$@Composable internal fun BaopuMessageList( messages: List&lt;BaopuUiMessage&gt;, steps: List&lt;BaopuStepRow&gt; = emptyList(), running: Boolean = false, pinLastRound: Boolean = false, // 第十八批-B：滚动状态归 BaopuScreen（贴底跟随＋「回到最新」浮标在屏幕层 // 接线，列表只管用它渲染）——调用方不传就自持（预览/单测场景）。 listState: LazyListState = rememberLazyListState(), // 朗读（2026-10-18）：null ⇒ 不出「朗读」按钮（单测/预览场景不必造 TTS）。 onSpeak: ((String) -&gt; Unit)? = null, // 第四十批（用户 2026-10-19）：「编辑上一条」不占屏幕 —— // 「编辑上一条可以在对应那个用户发送的信息长按出现吗？」「就不这么显化了，有点挡手机的屏幕」 // ⇒ 长按**那条用户消息**才出菜单；null 时不接这个手势（单测/预览场景）。 onUserLongPress: ((BaopuUiMessage) -&gt; Unit)? = null, // 第三十八批 B 段：本轮**写成功**的文本产物（相对路径，引擎那份只读视图透传下来）。 // 空 ⇒ 整行不出（大多数纯聊天的轮本来就没产物）。onOpen 只在有片时才会被调。 artifacts: List&lt;String&gt; = emptyList(), onOpenArtifact: (String) -&gt; Unit = {}, // 2026-10-18 用户：「这次学到和已压缩这类可以放到已完成下面滚动播放吗？不占用正文框， // 很影响手机的可视面积」⇒ 两条便签从固定头区搬进列表首项，随内容一起滚走。 modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:BaopuMessageList.kt$@Composable private fun BaopuMessageRow( msg: BaopuUiMessage, onSpeak: ((String) -&gt; Unit)? = null, onUserLongPress: ((BaopuUiMessage) -&gt; Unit)? = null, )</ID>
+    <ID>LongMethod:BaopuNoticeTicker.kt$@Composable internal fun BaopuNoticeTicker( items: List&lt;NoticeItem&gt;, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:BaopuPreset.kt$BaopuPreset$fun personaText(workspacePath: String): String</ID>
+    <ID>LongMethod:BaopuScreen.kt$@Composable fun BaopuScreen(onExit: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:BaopuSessionLibraryScreen.kt$@Composable internal fun BaopuSessionLibraryScreen( controller: BaopuChatController, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuSettingsScreen.kt$@Composable internal fun BaopuSettingsScreen(onDismiss: () -&gt; Unit, onOpenSessionLibrary: () -&gt; Unit = {})</ID>
+    <ID>LongMethod:BaopuSkillCard.kt$@Composable internal fun SkillArchivedDialog( rows: List&lt;ArchivedSkillRow&gt;, confirming: File?, onDismiss: () -&gt; Unit, onRestore: (ArchivedSkillRow) -&gt; Unit, onDelete: (ArchivedSkillRow) -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuSkillCard.kt$@Composable internal fun SkillDetailDialog( detail: SkillDetailRow, onDismiss: () -&gt; Unit, onRestoreBackup: () -&gt; Unit, onEdit: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BaopuSkillCard.kt$@Composable internal fun SkillEditorDialog( onDismiss: () -&gt; Unit, onSaved: (SkillWriteResult) -&gt; Unit, projectRoot: java.io.File, globalRoot: java.io.File, personaFiles: com.example.zhengdao.baopu.PersonaFiles, backupStamp: String, lockedName: String? = null, initialBody: String = "", initialScope: SkillScope = SkillScope.PROJECT, initialDraft: Boolean = true, originalBody: String = "", )</ID>
+    <ID>LongMethod:BaopuTrashBin.kt$@Composable internal fun TrashDialog( workspaceRoot: File, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BrowserBottomBar.kt$@Composable fun BrowserBottomBar( displayUrl: String, editValue: String, isEditing: Boolean, canBack: Boolean, canForward: Boolean, loading: Boolean, canCloseTab: Boolean, onEditStart: () -&gt; Unit, onEditEnd: () -&gt; Unit, onValueChange: (String) -&gt; Unit, onSubmit: () -&gt; Unit, onBack: () -&gt; Unit, onForward: () -&gt; Unit, onRefreshOrStop: () -&gt; Unit, onHome: () -&gt; Unit, onNewTab: () -&gt; Unit, onCloseTab: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:BrowserBottomBar.kt$@Composable private fun RowScope.AddressPill( displayUrl: String, editValue: String, isEditing: Boolean, palette: XuanLanPalette, onEditStart: () -&gt; Unit, onEditEnd: () -&gt; Unit, onValueChange: (String) -&gt; Unit, onSubmit: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BrowserCommands.kt$BrowserCommands$fun screenshot(context: Context, tabId: String?, fullPage: String?, selector: String? = null): String</ID>
+    <ID>LongMethod:BrowserScreen.kt$@Composable fun BrowserScreen(modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:BrowserStartPage.kt$@Composable fun BrowserStartPage( onSearch: (String) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:ContextAssembler.kt$ContextAssembler$@Suppress("LongParameterList") fun assemble( persona: List&lt;PersonaSegment&gt;, facts: HardFacts, stickyMemories: List&lt;MemoryEntry&gt;, newMemories: List&lt;MemoryEntry&gt;, history: List&lt;HistoryMessage&gt;, current: String, windowTokens: Int = DEFAULT_WINDOW_TOKENS, compressionSummary: String? = null, compressedIds: Set&lt;String&gt; = emptySet(), skipIds: Set&lt;String&gt; = emptySet(), oldMessageCount: Int = 0, // ── 视觉通道（第二十四批 A 段）── /** 本轮附件里**是图片**的那些（已由调用方读成 data URL；[VisionRules.ImagePayload] 不含路径）。 */ images: List&lt;VisionRules.ImagePayload&gt; = emptyList(), /** * 当前通道能不能看图——**必须来自 `Provider.vision`**（V5：这里不许自己判断 * 模型名，否则"哪个模型能看图"就有第二份真相，且必然漂移）。 */ visionSupported: Boolean = false, /** * 调用方要拼在本轮输入末尾的额外说明（第二十四批 C 段追加）。 * * 第一个用处：图片**没发出去**时的逐张原因（`VisionFiles.Loaded.note()`）。 * 为什么要一路传到这里：说明必须跟在「用户这条消息」后面才有意义， * 而 `current` 是每步重算的（工具循环里会变），不能在引擎侧一次性拼死。 */ extraNotes: List&lt;String&gt; = emptyList(), tokensOf: (String) -&gt; Int = { TokenEstimator.estimate(it) }, ): AssembledPrompt</ID>
+    <ID>LongMethod:ConvertEncodingTool.kt$ConvertEncodingTool$fun convert(root: File, file: File): ToolOutcome</ID>
+    <ID>LongMethod:CopyBox.kt$@Composable fun CopyBox( text: String, modifier: Modifier = Modifier, label: String = "证道", maxLines: Int = 6, // 2026-10-18 用户：「已完成做成动态卡吧，点击后展开，再次点击就收回，只显示已完成和右边的复制按钮」 // ⇒ collapsible=true 时默认 1 行，点正文展开全文，再点收回（复制按钮不受影响）。 collapsible: Boolean = false, )</ID>
+    <ID>LongMethod:DeletePathTool.kt$DeletePathTool$fun run( path: String, permanent: Boolean = false, root: File, stamp: String = TimeFormats.fileStamp(), ): ToolOutcome</ID>
+    <ID>LongMethod:EditFileTool.kt$EditFileTool$fun edit( root: File, path: String, op: String, fromLine: Int?, toLine: Int?, content: String, stamp: String = TimeFormats.fileStamp(), ): ToolOutcome</ID>
+    <ID>LongMethod:FindFilesTool.kt$FindFilesTool$fun find( root: File, dir: File, pattern: String, limit: Int = DEFAULT_LIMIT, maxDepth: Int = DEFAULT_DEPTH, ): ToolOutcome</ID>
+    <ID>LongMethod:GitAccel.kt$GitAccel$fun wrapperScript(): String</ID>
+    <ID>LongMethod:HermesEnv.kt$HermesEnv$fun inspect(root: File, res: android.content.res.Resources? = null): State</ID>
+    <ID>LongMethod:HomeScreen.kt$@Composable fun HomeScreen( onOpenTerminal: (autocmd: String?, agentId: String?) -&gt; Unit, onOpenSettings: () -&gt; Unit = {}, // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。 // 走外部 state 让"切到抱朴再切回"时仍记得位置； // 不传时退化到内部新建（保持向后兼容，例如设置页内嵌的 HomeScreen 预览）。 listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(), )</ID>
+    <ID>LongMethod:ImageOpsTool.kt$ImageOpsTool$fun spec(workspaceRoot: () -&gt; File): ToolSpec</ID>
+    <ID>LongMethod:ImeRegressionActivity.kt$@Composable private fun ImeRegressionScreen( verdicts: Map&lt;String, ImeProbe.Verdict&gt;, typedLines: Map&lt;String, String&gt;, logLines: List&lt;String&gt;, onMount: () -&gt; Unit, onJudge: (ImeProbe.Scenario) -&gt; Unit, onRestart: () -&gt; Unit, onCopy: () -&gt; Unit, onSelfCheck: suspend () -&gt; ImeProbe.Verdict, )</ID>
+    <ID>LongMethod:KeepaliveLogActivity.kt$@Composable private fun KeepaliveLogScreen()</ID>
+    <ID>LongMethod:LibraryImport.kt$LibraryImport$fun execute(choice: MoveChoice, now: Long): ImportOutcome</ID>
+    <ID>LongMethod:LibraryPipeline.kt$LibraryPipeline$fun run( source: String = LibrarySource.DELIVER, isolatedBySha: Map&lt;String, Boolean&gt; = emptyMap(), onItem: (FaceIndex.Item) -&gt; Unit = {}, ): PipelineReport</ID>
+    <ID>LongMethod:MainActivity.kt$@Composable fun HomeTabs( onOpenTerminal: (autocmd: String?, agentId: String?) -&gt; Unit, onOpenSettings: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:MainActivity.kt$@Composable fun ZhengdaoApp( startInTerminal: Boolean = false, lastRoute: String? = null, // 首启是否需要先走一遍「权限」页（判定在 MainActivity.onCreate，见那里的说明）。 // 默认 false：不传的调用方（预览/测试）行为与改动前完全一致。 guidePermissions: Boolean = false, )</ID>
+    <ID>LongMethod:MainActivity.kt$MainActivity$override fun onCreate(savedInstanceState: Bundle?)</ID>
+    <ID>LongMethod:MovePathTool.kt$MovePathTool$fun move( root: File, from: String, to: String, createDirs: Boolean = true, stamp: String = TimeFormats.fileStamp(), preferCopy: Boolean = false, ): ToolOutcome</ID>
+    <ID>LongMethod:OpenSourceLicensesActivity.kt$@Composable private fun LicenseDetail(entry: LicenseEntry)</ID>
+    <ID>LongMethod:PageSnapshot.kt$PageSnapshot$private fun parse(html: String): Doc</ID>
+    <ID>LongMethod:PermissionSetupScreen.kt$@Composable fun PermissionSetupScreen(onDone: () -&gt; Unit)</ID>
+    <ID>LongMethod:ProotLauncher.kt$ProotLauncher$private fun buildLaunchPlanLocked(context: Context, tmuxSession: String): LaunchPlan</ID>
+    <ID>LongMethod:RootfsDownloader.kt$RootfsDownloader$private fun downloadOne( client: OkHttpClient, url: String, dest: File, hasFallback: Boolean, onProgress: (Long, Long) -&gt; Unit, )</ID>
+    <ID>LongMethod:RunEngine.kt$RunEngine$private fun runLoop(sessionId: Long, userText: String?, resumed: Boolean)</ID>
+    <ID>LongMethod:SearchInFilesTool.kt$SearchInFilesTool$fun search( root: File, dir: File, query: String, caseSensitive: Boolean = false, ): ToolOutcome</ID>
+    <ID>LongMethod:SettingsAboutActivity.kt$@Composable private fun SettingsAboutPage(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:SettingsBridgeActivity.kt$@Composable private fun SettingsBridgePage(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:SettingsCommon.kt$@Composable fun WorkspaceFolderPicker(onDismiss: () -&gt; Unit, onPick: (String) -&gt; Unit)</ID>
+    <ID>LongMethod:SettingsDataActivity.kt$@Composable private fun SettingsDataPage(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:SettingsEnvActivity.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun SettingsEnvPage(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:SettingsHelpActivity.kt$@Composable private fun SettingsHelpPage(onBack: () -&gt; Unit, scrollToEnd: Boolean = false)</ID>
+    <ID>LongMethod:SettingsKeepaliveActivity.kt$@Composable private fun SettingsKeepalivePage(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:SettingsScreen.kt$@Composable fun SettingsScreen( onOpenTerminal: (autocmd: String?, agentId: String?) -&gt; Unit = { _, _ -&gt; }, )</ID>
+    <ID>LongMethod:SettingsStorageActivity.kt$@Composable private fun SettingsStoragePage(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:SkillTools.kt$SkillTools$fun spec(workspaceRoot: () -&gt; File, personaFiles: () -&gt; PersonaFiles)</ID>
+    <ID>LongMethod:StorageAudit.kt$StorageAudit$fun items(ctx: Context): List&lt;Item&gt;</ID>
+    <ID>LongMethod:SystemInfoProvider.kt$SystemInfoProvider$fun collect(ctx: Context, res: android.content.res.Resources? = null): Info</ID>
+    <ID>LongMethod:TerminalActivity.kt$TerminalActivity$override fun onCreate(savedInstanceState: Bundle?)</ID>
+    <ID>LongMethod:TerminalActivity.kt$TerminalActivity$private fun startInstall(url: String)</ID>
+    <ID>LongMethod:TerminalActivity.kt$TerminalActivity$private fun startInstallFromFile(local: File)</ID>
+    <ID>LongMethod:TerminalActivity.kt$TerminalActivity$private fun startSessionOffMainThread()</ID>
+    <ID>LongMethod:TerminalActivity.kt$TerminalActivity$private fun wireKeyBar()</ID>
+    <ID>LongMethod:VisionFiles.kt$VisionFiles$fun load( root: File, relPaths: List&lt;String&gt;, cap: Int = VisionRules.MAX_IMAGE_BYTES, shrink: ((File) -&gt; ShrinkOutcome)? = null, ): Loaded</ID>
+    <ID>LongMethod:WelcomeScreen.kt$@Composable fun WelcomeScreen( environmentInstalled: Boolean, onStart: (installed: Boolean) -&gt; Unit, onSkip: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:WriteFileTool.kt$WriteFileTool$fun write( root: File, path: String, content: String, overwrite: Boolean, stamp: String = TimeFormats.fileStamp(), ): ToolOutcome</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -2,11 +2,11 @@
 package com.example.zhengdao.bridge
 
 import com.example.zhengdao.browser.PageSnapshot
+import com.example.zhengdao.testkit.TestAssume
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -263,10 +263,9 @@ class JsEmbedTest {
      * 换一种求值语义：实测 `(function(){1+1})()` 与 `String(1+1; 2)` 都会失真）。
      */
     private fun probeWithNode(scriptText: String, preamble: String = ""): JsProbe {
-        val exe = nodeExecutable() ?: run {
-            assumeTrue("本机/CI 无 node，跳过 JS 引擎自证（形态判据仍由门禁三与 ① 正例覆盖）", false)
-            throw AssertionError("unreachable")
-        }
+        val node = nodeExecutable()
+        TestAssume.externalTool(node != null, "node")
+        val exe = requireNotNull(node)
         val dir = java.nio.file.Files.createTempDirectory("zd-execjs-jsprobe").toFile()
         try {
             // 被测脚本原样落到 case.js（零转义层：任何转义助手本身都可能引入假象），

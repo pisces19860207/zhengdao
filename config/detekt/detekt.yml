@@ -1,0 +1,23 @@
+# Detekt 配置（P1-3，2026-10-19）
+#
+# 目的：先只开两条「可维护性」规则，report-only、冻结基线；不设门槛、不影响 CI。
+# 两条规则都只需要语法树，不需要类型解析（type resolution），所以对 AGP 9 内置 Kotlin
+# 的工程也能跑。
+#
+# 为什么只开两条：G7 的痛点是「5 个文件吃掉 13% 生产代码」，先量 LongMethod /
+# CyclomaticComplexMethod，不把 Style/Formatting 的几千条噪音一起放进来。
+#
+# ⚠️ `buildUponDefaultConfig = false`（见 app/build.gradle.kts）：本文件没写的规则一律不跑。
+# 阈值按当前代码冻结时的默认值（LongMethod 60 行 / CyclomaticComplexity 15）留档；
+# 首跑违规已进 `baseline.xml`，以后新增违规会出现在 report 里，但 ignoreFailures=true 不拦构建。
+
+complexity:
+  active: true
+  LongMethod:
+    active: true
+    threshold: 60
+  # Detekt 1.x 的规则名是 CyclomaticComplexMethod（质量报告里写的 CyclomaticComplexity
+  # 是 2.x / 文档口语名，实际配置必须用 1.x 的名字）。
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 15
