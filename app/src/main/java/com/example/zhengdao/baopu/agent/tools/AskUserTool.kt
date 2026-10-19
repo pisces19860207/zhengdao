@@ -90,7 +90,11 @@ internal object AskUserTool {
                 "用户选了：${picked.label}" + if (detail.isEmpty()) "" else "（$detail）",
             )
         },
-        timeoutMs = ToolTimeout.FILE_MS,
+        // 第四十八批 P0-1：这条工具等的是**用户**（引擎侧上限 RunRules.CONFIRM_TIMEOUT_MS
+        // ＝ 15 分钟），不是文件 I/O——用 ToolTimeout.FILE_MS（5 秒）会让用户还没点就
+        // 被判「执行超时」，且单线程工具池被占死到 15 分钟、后续工具逐个排队超时。
+        // CONFIRM_MS = 15 分钟 + 5 秒：比引擎多留 5 秒把「没人回答」如实回灌。
+        timeoutMs = ToolTimeout.CONFIRM_MS,
     )
 
     /**

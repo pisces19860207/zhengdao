@@ -43,7 +43,7 @@ class GuardPipelineTest {
     private fun directRunner() = ToolRunner(Executors.newSingleThreadExecutor())
 
     private fun pipeline(root: File, log: (String) -> Unit = {}): GuardPipeline =
-        GuardPipeline(registry(root), { root }, directRunner(), log)
+        GuardPipeline(registry(root), { root }, { null }, directRunner(), log)
 
     private fun call(name: String, path: String, extra: JSONObject = JSONObject()): ToolCall =
         ToolCall("c1", name, JSONObject().put("path", path).apply { extra.keys().forEach { put(it, extra.get(it)) } })
@@ -139,7 +139,7 @@ class GuardPipelineTest {
                     ToolOutcome.Failed("磁盘抖动")
                 },
             )
-            GuardPipeline(reg, { root }, directRunner()).execute(ToolCall("c", "boom", JSONObject()), { _, _ -> null })
+            GuardPipeline(reg, { root }, { null }, directRunner()).execute(ToolCall("c", "boom", JSONObject()), { _, _ -> null })
         }
         assertTrue(r is GuardPipeline.Result.Failed)
         assertTrue((r as GuardPipeline.Result.Failed).error.contains("磁盘抖动"))

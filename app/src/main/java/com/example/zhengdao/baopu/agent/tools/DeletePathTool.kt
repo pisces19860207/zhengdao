@@ -11,7 +11,8 @@
 // 2. **默认进回收站**（`回收站/<时间戳>-<原名>`，同分区 rename 原子），`permanent=true` 才真删；
 // 3. 只删**单个文件**：目录一律拒（删目录一步能毁半个资料库，等真有需求再单开一刀）；
 // 4. 禁区一律拒并说清：`.baopu-bak/`（旧版本备份）、`回收站/`（回收站本身）、
-//    `资料库/原始/`（App 私有原件区，结构上本来就在工作区外，这里是第二道保险）；
+//    `资料库/原始/`（原件区，**默认工作区下它就在根内**——拦住它靠的是
+//    GuardPipeline 的原始区只读红线（第四十八批 P0-2），不是"结构上在工作区外"）；
 // 5. 权限 CONFIRM——每次删都要用户看一眼「删哪个、进回收站还是真删」。
 package com.example.zhengdao.baopu.agent
 
@@ -43,7 +44,14 @@ internal object DeletePathTool {
     /** 旧版本备份区（与 write_file／move_path 同一处，删它等于删回滚点）。 */
     const val BACKUP_DIR_NAME = ".baopu-bak"
 
-    /** 第二道保险：App 私有原件区在工作区外，但库里/历史里出现过这个相对路径就拒。 */
+    /**
+     * 第二道保险：**按模型给的相对路径字符串**再判一次原件区。
+     *
+     * 事实更正（第四十八批 P0-2）：默认工作区（`Download/证道`）下 `资料库/原始` 就在
+     * 工作区**之内**，不是"在工作区外"。真正兜底的是 `GuardPipeline` 的原始区红线
+     * （按解析后的真实绝对路径判，改写后也骗不过）；这里这层字符串判断只管
+     * 「模型明确写了 `资料库/原始/…`」的显式形态，两层都在。
+     */
     const val RAW_GUARD_REL = "资料库/原始"
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
@@ -122,7 +130,8 @@ internal object DeletePathTool {
         if (PathGuard.isInside(File(root, BACKUP_DIR_NAME), target)) {
             return ToolOutcome.Failed("不许删 $BACKUP_DIR_NAME/ 里的东西——那是旧版本备份区（回滚点）。")
         }
-        // 第二道保险：私有原件区在工作区外，但「相对路径长得像它」也一律拒
+        // 第二道保险（字符串层）：管线已按真实绝对路径判过原始区红线（P0-2）；
+        // 这里再挡一次「模型明确写了 资料库/原始/…」的显式形态（直调工具时也生效）。
         val norm = rel.replace('\\', '/').removePrefix("./")
         if (norm == RAW_GUARD_REL || norm.startsWith("$RAW_GUARD_REL/")) {
             return ToolOutcome.Rejected(

@@ -34,6 +34,12 @@ import java.io.File
  */
 internal object LibraryTools {
 
+    /**
+     * `library_organize` 的工具名（第四十八批 P0-4：管线按它走「相对路径白名单」——
+     * 它的 `path` 是相对 `投递/` 或 `整理/` 的口径，**不许**被改写成绝对路径）。
+     */
+    const val NAME = "library_organize"
+
     const val ARG_DIR = "dir"
     const val ARG_PATTERN = "pattern"
     const val ARG_ACTION = "action"
@@ -136,7 +142,7 @@ internal object LibraryTools {
     // ── B 段：library_organize（写，一律 CONFIRM） ────────────────────────────
 
     fun organizeSpec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
-        name = "library_organize",
+        name = NAME,
         description = "把抱朴的整理结果落地（每次调用只做一件，执行前 App 弹确认卡）：" +
             "promote＝把投递里的一个文件移到整理（同名已存在会拒绝，不覆盖）；" +
             "rename＝在同一个目录内改名（新名不带路径分隔符）；" +
@@ -202,7 +208,8 @@ internal object LibraryTools {
 
     /** promote：投递/<rel> → 整理/<rel>（同名已存在 ⇒ 拒绝，不覆盖）。 */
     private fun promote(root: File, deliver: File, done: File, path: String?): ToolOutcome {
-        val rel = normalizeRel(path, "投递") ?: return ToolOutcome.Failed("promote 需要 path（投递里的文件相对路径，如 a.txt）")
+        val rel = normalizeRel(path, "投递")
+            ?: return ToolOutcome.Failed(badPathMessage("promote", path, "投递"))
         val src = underDir(deliver, rel)
             ?: return ToolOutcome.Rejected(
                 "路径越界被拒：$rel 不在 投递/ 内（不许 ..／绝对路径／盘符；library_organize 只动投递与整理）",
@@ -247,7 +254,8 @@ internal object LibraryTools {
                     "——不许路径分隔符／控制字符／前导点，长度封顶 $MAX_NAME_CHARS 字",
             )
         }
-        val rel = normalizeRel(path, "投递或整理") ?: return ToolOutcome.Failed("rename 需要 path（要改名的文件相对路径）")
+        val rel = normalizeRel(path, "投递或整理")
+            ?: return ToolOutcome.Failed(badPathMessage("rename", path, "投递/ 或 整理/"))
         // 危险形态先显式拒（..／绝对路径／盘符）：destinationUnder 对这两处都返回 null 即越界
         if (underDir(deliver, rel) == null && underDir(done, rel) == null) {
             return ToolOutcome.Rejected(
@@ -324,6 +332,18 @@ internal object LibraryTools {
     // ── 内部工具 ─────────────────────────────────────────────────────────────
 
     /**
+     * `path` 被 [normalizeRel] 拒掉时的错误文案（第四十八批 P0-4）：
+     * 空路径说「需要 path」；**给了路径但形态不对**（绝对路径/盘符）要说清「只能是相对路径」——
+     * 原文案对绝对路径也回「需要 path」，用户/模型会以为参数没传，反复重试同一个绝对路径。
+     */
+    private fun badPathMessage(action: String, path: String?, under: String): String =
+        if (path.isNullOrBlank()) {
+            "$action 需要 path（相对 $under 的路径，如 a.txt 或 武侠/a.txt）"
+        } else {
+            "path 只能是相对 $under 的路径（不要绝对路径、盘符或 URL）：$path"
+        }
+
+    /**
      * 把模型给的相对路径归一到「相对投递/整理」的口径，并挡掉危险形态。
      *
      * 宽容的一处：模型常把工作区全路径写进来（`资料库/投递/a.txt`）——剥掉这层前缀，
@@ -338,6 +358,9 @@ internal object LibraryTools {
         }
         if (rel.isEmpty() || rel == "/") return null
         if (rel.startsWith("/")) return null
+        // 盘符（C:\…）与 URL scheme：绝对形态一律不收（第四十八批 P0-4 文案统一——
+        // 让调用方用 badPathMessage 说清「只能是相对路径」，而不是含糊的「越界」）
+        if (rel.contains(":")) return null
         return rel
     }
 

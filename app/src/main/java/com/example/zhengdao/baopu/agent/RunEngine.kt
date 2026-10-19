@@ -754,7 +754,13 @@ internal class RunEngine(
             persistUserMessage(sessionId, userText)
             history += HistoryMessage("local-user-${System.nanoTime()}", HistoryMessage.ROLE_USER, userText)
         }
-        var compressionSummary: String? = null
+        // 第四十八批 P0-3：这里**不许**再声明同名局部 `var compressionSummary`——
+        // 局部会遮蔽字段：`restoreCompression()` 写的是字段，`runLoop` 读写的是局部 ⇒
+        // 进程重启后摘要看不见、同进程第二轮又从 null 起，而 `compressedIds` 还在 ⇒
+        // 组装时跳过被压消息却没有摘要替身，模型**永久丢掉那段上下文**。
+        // 摘要的唯一存储是字段 `compressionSummary`；写入口只有两处：
+        // `restoreCompression()`（重启回种）与 `runCompression()` 的返回值（压缩当场生成）。
+        // 形状门禁：CompressionSummaryShadowGateTest（runLoop 内不得再出现同名局部 var）。
 
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
@@ -1056,6 +1062,8 @@ internal class RunEngine(
         compressedIds = compressedIds,
         skipIds = skipIds,
         oldMessageCount = oldMessageCount,
+        // 2026-10-19 最小版项目记忆：工作区根 `项目记忆.md`，每轮开工自动读（见 ProjectMemory）
+        projectMemory = com.example.zhengdao.baopu.ProjectMemory.load(spillRoot()),
         images = images,
         extraNotes = extraNotes,
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
@@ -1366,10 +1374,13 @@ internal class RunEngine(
             onEvent?.invoke(
                 EngineEvent.ToolCallVisible(result.call.name, toolSummary(result.call, result.wrapped), true),
             )
+            // 2026-10-19（用户报「打完一步不打勾」）：普通工具结果后面附一句计划提醒。
+            // 只进**模型可见的历史**，不进 UI 的工具卡（卡片仍显示工具原文）。
+            val planHint = if (result.call.name != "update_plan") planController.reminderLine() else null
             history += HistoryMessage(
                 "local-tool-${System.nanoTime()}",
                 HistoryMessage.ROLE_ASSISTANT,
-                result.wrapped,
+                if (planHint != null) result.wrapped + "\n\n" + planHint else result.wrapped,
             )
             ToolResultFlow.CONTINUE
         }

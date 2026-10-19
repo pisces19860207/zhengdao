@@ -65,7 +65,7 @@ internal object EvalHarness {
         return try {
             val before = seed(case, dir)
             val reg = registryOf(dir)
-            val pipeline = GuardPipeline(reg, { dir })
+            val pipeline = GuardPipeline(reg, { dir }, { null })
             val tools = reg.toolsJsonOpenAi()
 
             val messages = JSONArray()
