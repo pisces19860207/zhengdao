@@ -49,7 +49,7 @@ internal interface CompressionStore {
  * 3. 失败（超时/非 2xx/没文本）⇒ **转成 [Outcome.Failed]，绝不抛**——
  *    抛上去整轮就炸了，压缩只是优化，不配让整轮陪葬（J6 钉的就是这条）；
  * 4. 失败后**冷却 10 步**（[COOLDOWN_STEPS]）：压缩失败通常是通道的问题，
- *    一步一重试等于每步都多烧一次请求，MAX_STEPS=16 拦得住步数、拦不住钱。
+ *    一步一重试等于每步都多烧一次请求，步数上限（RunRules.MAX_STEPS，现 120）拦得住步数、拦不住钱。
  *
  * 成功之后什么时候再压：**不归这里管**——派工单 §3.2 第 2 条说「下次必须确实又超
  * 触发线」，那是 `ContextAssembler.needsCompressing` 的事，内核不主动重压。
