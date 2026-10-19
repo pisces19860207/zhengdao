@@ -7338,3 +7338,22 @@ bad = bool(env) and not os.path.isfile(os.path.join(env, "pyvenv.cfg"))
 
 **教训**：**「lambda 里不能用 `stringResource`」的正确结论是"用 `LocalResources`"，不是"退回 `Context`"**。新写 UI 时直接用 `res.getString`；审查时看到 `context.getString` 在可组合树里就要问一句「这里为什么不用 `LocalResources`」。
 
+---
+
+## E-166 · 2026-10-19 · 真机走查 44 批揪出两个「单测全绿、真机全哑」：产物台账永远 0 行、带工具的轮长按无菜单
+
+**怎么发现的**：44 批真机走查（38/40 批）。38 批成本半边真机全绿；产物半边六条判据里**四条在真机上根本走不到**——文件真写到盘上（`verify44/out.txt` 102 B），但顶栏不出「产物 · 1」、抽屉「产物（0）」、`artifact` 表 0 行。40 批五条里，带工具/计划卡的轮**长按用户气泡不出菜单**（纯聊天轮正常）。
+
+**① 产物三处一起哑（P1）**
+
+- 根因链：`GuardPipeline` 第②步把 `path` 参数**改写成绝对路径** → `RunEngine` 的 `verifyTouched` 存的是 `/storage/…/男性/verify44/out.txt` → `selectTextArtifacts` 里 `File(root, rel)` 对以 `/` 开头的 child **仍拼在 parent 后面** → 文件判成不存在 → 全部被过滤 → 顶栏/台账/抽屉（同一份收集逻辑）三处一起空。
+- 为什么单测全绿：B 段判据喂给 `selectTextArtifacts` 的是**相对路径**；绝对路径只有真机走完守卫改写才会出现。
+- 修法：`selectTextArtifacts` 入口加归一化 `toWorkspaceRelative(root, raw)`（相对原样；落在 root 下的绝对路径截成相对；Windows 盘符与大小写都收），**一处改、三处一起活**。回归测试 `E166RegressionTest`（4 例）。
+
+**② 带工具的轮漏传长按回调（P1）**
+
+- 根因：`BaopuMessageList` 里 `toolPartCount == 0` 那支传了 `onUserLongPress`，**带工具卡那支调 `BaopuRoundItem` 时漏传** ⇒ 该分支 `if (isUser && onUserLongPress != null)` 走 else，气泡既不可点也不可长按。真机 A/B：纯聊天轮有 clickable 节点、工具轮整条 y 带没有 clickable。
+- 修法：补传 `onUserLongPress = onUserLongPress`；加源码级门禁（`E166RegressionTest` 断言该调用里有这一行）。
+
+**教训**：**「单测全绿」证明的是喂进去的输入形态**。守卫会把参数改写成另一种形态（绝对路径）、UI 有多个分支各传一套回调——这类「形态差」只有真机/端到端才撞得到。走查清单里那两条 `未验到` 不是没测，是被上游缺陷挡在门外；修完 D-01 之后，38 批产物六条要**重新真机走一遍**（尤其剪贴板逐字节比对）。
+

@@ -279,6 +279,9 @@ internal fun BaopuMessageList(
                             running = running,
                             pinned = pinned,
                             onSpeak = onSpeak,
+                            // E-166 / D-02：带工具/计划卡的轮**也要**传长按回调，
+                            // 漏传会让这一型用户气泡既不可点也不可长按。
+                            onUserLongPress = onUserLongPress,
                             userOpened = expandedRoundId == round.userMessageId,
                             onUserToggle = {
                                 expandedRoundId =
