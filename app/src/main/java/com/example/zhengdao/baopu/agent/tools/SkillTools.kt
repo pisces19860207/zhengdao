@@ -30,12 +30,14 @@ internal object SkillTools {
     private const val DESC =
         "把自己摸索到的流程（比如某个网络平台的填写方式）写成技能文件 SKILL.md。" +
             "写前自动备份、同名就是改上一次写的那份（平台改了就改名同一次）、写完自动加索引。" +
-            "会改用户文件，所以必须先经确认卡。正文别写没实测的东西——没验的段落标「未实测」。"
+            "会改用户文件：写前自动备份、每次改动记一行 `技能/_变更.jsonl`，可回滚；全局技能不许自查。正文别写没实测的东西——没验的段落标「未实测」。"
 
     fun spec(workspaceRoot: () -> File, personaFiles: () -> PersonaFiles) = ToolSpec(
         name = "write_skill",
         description = DESC,
-        permission = ToolPermission.CONFIRM,
+        // 第五十八批（C 层自治，2026-10-19 用户拍板）：项目技能不再弹确认卡——
+        // 备份、索引、`技能/_变更.jsonl` 留痕三重保障；全局档仍直接拒（见下面 GLOBAL 分支）。
+        permission = ToolPermission.FREE,
         inputSchema = JSONObject(
             """
             {

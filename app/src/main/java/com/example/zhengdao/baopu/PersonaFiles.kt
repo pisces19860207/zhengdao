@@ -101,6 +101,24 @@ internal object PersonaRules {
         )
     }
 
+    /**
+     * 2026-10-19（第五十八批）：C 层人设**追加-only**判据。
+     *
+     * 允许「在原文末尾追加新条款」，不允许改/删既有条款——它是约束文件，
+     * 自治到「能改自己缰绳」就过头了（用户「按你的来」）。
+     *
+     * @param current 现有正文（可为空）
+     * @param proposed 拟写入的完整正文
+     */
+    fun appendOnly(current: String, proposed: String): Boolean {
+        val cur = current.trimEnd()
+        if (cur.isEmpty()) return proposed.isNotBlank()
+        val next = proposed.trimEnd()
+        if (!next.startsWith(cur)) return false
+        // 必须真的长了东西，别拿原文原样再写一遍
+        return next.length > cur.length
+    }
+
     /** 提案能否落盘：必须 PENDING 且层可写。A 内核的提案永远到不了 APPLIED。 */
     fun canApply(p: PersonaProposal): Boolean =
         p.status == PersonaProposalStatus.PENDING && canWrite(p.layer)
