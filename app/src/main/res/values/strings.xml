@@ -1041,7 +1041,7 @@
     <string name="baopu_switch_ws_cancel">取消</string>
     <string name="baopu_switch_ws_failed">这个路径不能当工作区（只能是共享存储里的文件夹）</string>
     <string name="baopu_delete_session_title">删除这个会话？</string>
-    <string name="baopu_delete_session_body">「%1$s」会被永久删除（消息、步骤、压缩摘要一起删），删了就找不回来了。</string>
+    <string name="baopu_delete_session_body">删除「%1$s」会**移入回收站**：消息和产物都还在，需要时能从抽屉「回收站 → 已删除会话」恢复。</string>
     <string name="baopu_delete_session_confirm">永久删除</string>
     <string name="baopu_delete_session_cancel">先不删</string>
     <string name="baopu_delete_session_failed">删除失败，再试一次或重启后重试</string>
@@ -1317,4 +1317,13 @@
     <string name="baopu_artifact_shelf_close">关闭</string>
     <string name="baopu_tool_card_build">写卡（母档生成）</string>
     <string name="baopu_tool_card_build_desc">从工作区母档 JSON 生成一套卡/世界书/五件套骨架（会写盘，弹确认卡；不覆盖已有文件）</string>
+    <string name="trash_sessions_title">已删除会话（%1$d）</string>
+    <string name="trash_sessions_none">回收站里没有会话。</string>
+    <string name="trash_session_row">%1$s（%2$d 条消息）</string>
+    <string name="trash_session_restore">恢复</string>
+    <string name="trash_session_purge">彻底删除</string>
+    <string name="trash_session_confirm">再点一次「彻底删除」：会话「%1$s」的消息会一起消失，不可恢复。</string>
+    <string name="trash_session_restored">已恢复会话「%1$s」</string>
+    <string name="trash_session_purged">已彻底删除会话「%1$s」</string>
+    <string name="trash_session_failed">操作失败（%1$s），会话没动</string>
 </resources>

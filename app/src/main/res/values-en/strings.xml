@@ -1040,7 +1040,7 @@
     <string name="baopu_switch_ws_cancel">Cancel</string>
     <string name="baopu_switch_ws_failed">That path cannot be a workspace (shared-storage folders only)</string>
     <string name="baopu_delete_session_title">Delete this session?</string>
-    <string name="baopu_delete_session_body">“%1$s” will be permanently deleted (messages, steps and compression summary too). This cannot be undone.</string>
+    <string name="baopu_delete_session_body">"%1$s" moves to Trash: messages stay; restore it from Trash → Deleted chats any time.</string>
     <string name="baopu_delete_session_confirm">Delete</string>
     <string name="baopu_delete_session_cancel">Keep</string>
     <string name="baopu_delete_session_failed">Delete failed; try again or restart</string>
@@ -1318,4 +1318,13 @@
     <string name="baopu_artifact_shelf_close">Close</string>
     <string name="baopu_tool_card_build">Card builder</string>
     <string name="baopu_tool_card_build_desc">Build a card / world book / five-piece skeleton from a workspace spec JSON (writes files after confirmation; never overwrites)</string>
+    <string name="trash_sessions_title">Deleted chats (%1$d)</string>
+    <string name="trash_sessions_none">No deleted chats.</string>
+    <string name="trash_session_row">%1$s (%2$d messages)</string>
+    <string name="trash_session_restore">Restore</string>
+    <string name="trash_session_purge">Delete forever</string>
+    <string name="trash_session_confirm">Tap "Delete forever" again: "&#37;1$s" and its messages will be gone for good.</string>
+    <string name="trash_session_restored">Restored "%1$s"</string>
+    <string name="trash_session_purged">Deleted "%1$s" for good</string>
+    <string name="trash_session_failed">Failed (%1$s); the chat is untouched</string>
 </resources>
