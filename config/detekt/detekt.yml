@@ -7,9 +7,9 @@
 # 为什么只开两条：G7 的痛点是「5 个文件吃掉 13% 生产代码」，先量 LongMethod /
 # CyclomaticComplexMethod，不把 Style/Formatting 的几千条噪音一起放进来。
 #
-# ⚠️ `buildUponDefaultConfig = false`（见 app/build.gradle.kts）：本文件没写的规则一律不跑。
-# 阈值按当前代码冻结时的默认值（LongMethod 60 行 / CyclomaticComplexity 15）留档；
-# 首跑违规已进 `baseline.xml`，以后新增违规会出现在 report 里，但 ignoreFailures=true 不拦构建。
+# ⚠️ CLI 默认不 buildUponDefaultConfig（没加 --build-upon-default-config）：本文件没写的规则一律不跑。
+# 阈值按当前代码冻结时的默认值（LongMethod 60 行 / CyclomaticComplexMethod 15）留档；
+# 首跑违规已进 `baseline.xml`，以后新增违规会出现在 report 里，但 `isIgnoreExitValue=true` 不拦构建。
 
 complexity:
   active: true
