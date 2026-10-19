@@ -966,9 +966,19 @@ internal class BaopuChatController(context: Context) {
     /** 记忆候选：不记（文件与索引都删——候选没资格占地方）。 */
     fun forgetMemory(id: String) {
         store.delete(id)
-        db.write { d ->
-            val stmt = com.example.zhengdao.baopu.BaopuSql.deleteMemory(id)
-            d.execSQL(stmt.sql, stmt.args)
+        // P2-2（第五十六批）：写完**等它落库**再刷新。旧实现把 db.write 的 Future 丢掉：
+        // 写失败被静默吞掉，refreshMemory() 照常按"成功"刷新 ⇒ 用户看到候选没了，
+        // 库里那行还在，下次进页面又冒出来。
+        runCatching {
+            db.write { d ->
+                val stmt = com.example.zhengdao.baopu.BaopuSql.deleteMemory(id)
+                d.execSQL(stmt.sql, stmt.args)
+            }.get()
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：忘记记忆失败 ${it.javaClass.simpleName}: ${it.message}",
+            )
+            pendingNote = "这条没删掉（写库失败），稍后再试；错误已记日志"
         }
         refreshMemory()
     }
