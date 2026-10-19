@@ -25,6 +25,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +72,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.getSystemService
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.ArtifactChipPlan
+import com.example.zhengdao.baopu.artifactChipPlan
+import com.example.zhengdao.baopu.artifactFileName
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -230,6 +235,10 @@ internal fun BaopuMessageList(
     // 「编辑上一条可以在对应那个用户发送的信息长按出现吗？」「就不这么显化了，有点挡手机的屏幕」
     // ⇒ 长按**那条用户消息**才出菜单；null 时不接这个手势（单测/预览场景）。
     onUserLongPress: ((BaopuUiMessage) -> Unit)? = null,
+    // 第三十八批 B 段：本轮**写成功**的文本产物（相对路径，引擎那份只读视图透传下来）。
+    // 空 ⇒ 整行不出（大多数纯聊天的轮本来就没产物）。onOpen 只在有片时才会被调。
+    artifacts: List<String> = emptyList(),
+    onOpenArtifact: (String) -> Unit = {},
     // 2026-10-18 用户：「这次学到和已压缩这类可以放到已完成下面滚动播放吗？不占用正文框，
     // 很影响手机的可视面积」⇒ 两条便签从固定头区搬进列表首项，随内容一起滚走。
     modifier: Modifier = Modifier,
@@ -253,6 +262,8 @@ internal fun BaopuMessageList(
     // 展开态的摘要行上下各有一条，但**一轮展开后有十几张工具卡、两条都滚出屏幕**，
     // 用户找不到。⇒ 展开状态提到列表层，屏幕上常驻一颗「收起详情」浮标（不随内容滚走）。
     var expandedRoundId by remember { mutableStateOf<Long?>(null) }
+    // 产物行只摆前 8 片，剩下的折成「还有 N 个」（判据 B5；切法在纯函数里，JVM 直测）。
+    val chipPlan = remember(artifacts) { artifactChipPlan(artifacts) }
     Box(modifier.fillMaxWidth()) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
             rounds.forEach { round ->
@@ -278,6 +289,14 @@ internal fun BaopuMessageList(
                     }
                 }
             }
+            // 第三十八批 B 段：本轮产物。挂在**所有轮之后**（= 最后一条回复的下方），
+            // 跟着内容一起滚走——2026-10-18 用户嫌「这次学到／已压缩」占固定区那句
+            // 「很影响手机的可视面积」的口径还在，新东西一律不进固定区。
+            if (chipPlan.shown.isNotEmpty()) {
+                item(key = "baopu-artifacts") {
+                    BaopuArtifactRow(plan = chipPlan, onOpen = onOpenArtifact)
+                }
+            }
         }
         if (expandedRoundId != null) {
             // 上移 56dp 让开「⬇ 回到最新」浮标（它在 BottomEnd + 12dp）；两个都可能在。
@@ -297,6 +316,60 @@ internal fun BaopuMessageList(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
+        }
+    }
+}
+
+/**
+ * 产物行（第三十八批 B 段）：一行小片，每片是**文件名的最后一段**，横向可滚。
+ *
+ * 只有片名没有路径全貌——顶部/查看器里才给相对路径（一行塞不下，用户 2026-10-18
+ * 已经说过「很影响手机的可视面积」）。超过 8 个只列前 8 ＋「还有 N 个」（B5）。
+ *
+ * 点片 ⇒ 把**相对路径**交给调用方（`BaopuScreen` 写 `controller.viewingArtifact`），
+ * 查看器不在本文件弹：30 批的门钉着「整文件只应有 1 处 Dialog(」，那是图片全屏层的
+ * （`BaopuImageGridTest.G5_点击带的是自己那一格的索引_全屏层只有一份`）。
+ */
+@Composable
+private fun BaopuArtifactRow(plan: ArtifactChipPlan, onOpen: (String) -> Unit) {
+    val rowLabel = stringResource(R.string.baopu_artifact_row_label)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = rowLabel,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        plan.shown.forEach { rel ->
+            val name = artifactFileName(rel)
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(12.dp),
+                tonalElevation = 1.dp,
+                modifier = Modifier
+                    .clickable { onOpen(rel) }
+                    .semantics { contentDescription = "$rowLabel $name" },
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                )
+            }
+        }
+        if (plan.more > 0) {
+            Text(
+                text = stringResource(R.string.baopu_artifact_more, plan.more),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

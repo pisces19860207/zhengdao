@@ -662,8 +662,10 @@ internal object BaopuSql {
      * 5. message（part 靠 DDL 的 ON DELETE CASCADE 级联，不重复删）；
      * 6. 最后才是 session 本体。
      *
-     * ⚠️ 以后给任何表加 `REFERENCES session(id)` 都**必须**在这里补一条
-     * （`BaopuDbTest` 有一条从 DDL 反推的门禁，漏了会红）。
+     * ⚠️ 以后给任何表加 `REFERENCES session(id)`：**没写级联的**必须在这里补一条
+     * （`BaopuDbTest` 有一条从 DDL 反推的门禁，漏了会红）；**写了 `ON DELETE CASCADE`
+     * 的**由 SQLite 联动清行，不在此列——`part`（v1）与 `artifact`（v9，38 批 §9.1）
+     * 都是这一类，别为它们加重复语句。
      */
     fun deleteSessionStatements(sessionId: Long): List<Stmt> = listOf(
         Stmt(
@@ -761,6 +763,96 @@ internal object BaopuSql {
         "UPDATE memory SET use_count = use_count + 1, last_used_at = ? WHERE id = ?",
         arrayOf<String?>(now.toString(), id),
     )
+
+    // ── artifact 表（v9 · 第三十八批 §9.1：抽屉「产物区」要能回看与删除）─────────
+    //
+    // 为什么要落库、不再每次扫盘猜：产物区要显示**来自哪个会话**和**时间**，删过的还不许
+    // 再冒出来——这三件事扫盘扫不出来（派工单 §9.1 原话）。
+    // 表里只有**相对路径**与字节数：不存绝对路径、更不存文件内容（§9.4 红线）；
+    // 内容永远现读盘，与 B 段那个查看器同一个口径（查看器也不看这张表）。
+    //
+    // ⚠️ 版本号纠偏：派工单写「v7 迁移」，但仓里 v7（第十九批 session 封卷两列）与
+    // v8（第二十批 session 工作区列）**已经占用** ⇒ 本表落在 **v9**。写法照 v6
+    // `compression`：新常量 + `applyV9Migration`，onCreate / onUpgrade 走同一份迁移体。
+
+    /**
+     * 产物台账表（全部 `IF NOT EXISTS` ⇒ 幂等，重复跑不炸；「一份文件只出现一次」
+     * 靠那条 UNIQUE 索引，判据 C1）。
+     *
+     * `session_id … ON DELETE CASCADE`：删会话时台账跟着走（与 `part` 同处理，
+     * 所以 `deleteSessionStatements` 里**不**为它另加一条——BaopuDbTest 那条从 DDL
+     * 反推的门禁认级联）。
+     */
+    val ARTIFACT_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS artifact (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+          workspace TEXT NOT NULL,
+          rel_path TEXT NOT NULL,
+          bytes INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_ws_path ON artifact (workspace, rel_path)",
+    )
+
+    /** 抽屉产物列表最多列几行（派工单 §9.2「最多 200 行」）。 */
+    const val ARTIFACT_LIST_MAX = 200
+
+    /**
+     * 记一条产物：同一 `(workspace, rel_path)` 再写 ⇒ **UPDATE**（只刷 `bytes`／
+     * `updated_at`，`created_at` 与 `session_id` 保持第一次那份）——判据 C1。
+     *
+     * `ON CONFLICT … DO UPDATE` 需要 SQLite 3.24+：本仓 minSdk=36，且
+     * `LibraryStore` 里 `ON CONFLICT(sha256) DO NOTHING` 早有先例。
+     * 只在**真写成功**时调（引擎 Done 分支；判据 C2 从源码层钉）。
+     */
+    fun upsertArtifact(sessionId: Long, workspace: String, relPath: String, bytes: Long, nowMs: Long): Stmt =
+        Stmt(
+            "INSERT INTO artifact (session_id, workspace, rel_path, bytes, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?) " +
+                "ON CONFLICT (workspace, rel_path) DO UPDATE SET " +
+                "bytes = excluded.bytes, updated_at = excluded.updated_at",
+            arrayOf<String?>(
+                sessionId.toString(),
+                workspace,
+                relPath,
+                bytes.toString(),
+                nowMs.toString(),
+                nowMs.toString(),
+            ),
+        )
+
+    /** 当前工作区有几个产物（抽屉入口那个 N；判据 C3 按工作区隔离）。 */
+    fun countArtifacts(workspace: String): Stmt = Stmt(
+        "SELECT COUNT(*) FROM artifact WHERE workspace = ?",
+        arrayOf<String?>(workspace),
+    )
+
+    /**
+     * 产物列表（抽屉面板那一份读）：`updated_at` 倒序、最多 [ARTIFACT_LIST_MAX] 行，
+     * 每行带「来自哪个会话」的标题。
+     *
+     * `LEFT JOIN session` 而不是 INNER：会话记录被清了也不该把产物整行弄丢
+     * （文件还在盘上，用户还得能删它）；没标题 ⇒ `COALESCE` 落空串，界面显示「（未命名）」。
+     *
+     * `LIMIT` 拼的是 internal 常量字面量、不是外部输入 ⇒ 不违反「参数一律 `?`」那条
+     * （SQLite 的 LIMIT 要整数，绑 String 靠隐式转换，宁可钉在 SQL 文本里更可测）。
+     */
+    fun listArtifacts(workspace: String): Stmt = Stmt(
+        "SELECT a.rel_path, a.bytes, a.created_at, a.updated_at, COALESCE(s.title, '') " +
+            "FROM artifact a LEFT JOIN session s ON s.id = a.session_id " +
+            "WHERE a.workspace = ? ORDER BY a.updated_at DESC LIMIT $ARTIFACT_LIST_MAX",
+        arrayOf<String?>(workspace),
+    )
+
+    /** 从台账里清掉一条（抽屉删除：文件**移进回收站之后**才调；判据 C5/C6）。 */
+    fun deleteArtifact(workspace: String, relPath: String): Stmt = Stmt(
+        "DELETE FROM artifact WHERE workspace = ? AND rel_path = ?",
+        arrayOf<String?>(workspace, relPath),
+    )
 }
 
 /**
@@ -819,6 +911,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV6Migration(db)
         applyV7Migration(db)
         applyV8Migration(db)
+        applyV9Migration(db)
     }
 
     /**
@@ -845,6 +938,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 6) applyV6Migration(db)
         if (oldVersion < 7) applyV7Migration(db)
         if (oldVersion < 8) applyV8Migration(db)
+        if (oldVersion < 9) applyV9Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -928,6 +1022,15 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /**
+     * v8 → v9 迁移体（第三十八批 §9.1）：`artifact` 表 + 唯一索引，**全是 IF NOT EXISTS**
+     * ⇒ 幂等（照 v6 `compression` 房型：加表就是 DDL 一遍，不需要看列况）。
+     * 新安装（onCreate 也调它）与 v8 库升级走**同一条**路径。
+     */
+    private fun applyV9Migration(db: SQLiteDatabase) {
+        BaopuSql.ARTIFACT_DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -951,8 +1054,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     companion object {
         const val DB_NAME = "baopu.db"
 
-        /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。 */
-        const val VERSION = 8
+        /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。
+         *  v7 = 第十九批（session 封卷两列）。v8 = 第二十批（session 工作区列）。
+         *  v9 = 第三十八批 §9（`artifact` 产物台账表 ＋ (workspace, rel_path) 唯一索引）。 */
+        const val VERSION = 9
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
