@@ -5,6 +5,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// P0-1（2026-10-19 质量门禁点灯）：单测覆盖率。
+// 只出报告、不设门槛；用 Gradle 自带的 jacoco 插件，不新增第三方依赖。
+apply(plugin = "jacoco")
+
 // 版本号单点定义：defaultConfig 与输出文件名共用（GitHub Actions 产物带版本，用户可辨新旧）
 // v2.0.0（2026-10-09）：**里子工程 + 环境信任链**——第一个真正换「引擎」的主版本。
 //   Rust 核心收口（sha256 / rootfs 解压 / 增量补丁解压 / Ed25519 验签全部进单个
@@ -688,4 +692,48 @@ androidComponents {
             StageLicenseAssetsTask::outDir,
         )
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P0-1（2026-10-19）：单测覆盖率报告（JaCoCo，**只出报告、不设门槛**）
+//   产物：app/build/reports/jacoco/jacocoUnitTestReport/html/index.html
+//   用法：./gradlew :app:jacocoUnitTestReport
+//   纪律：不设阈值、不阻塞 CI；先让「哪些代码没被跑到」变成看得见的数字。
+// ─────────────────────────────────────────────────────────────────────────────
+tasks.withType<Test>().configureEach {
+    extensions.configure<org.gradle.testing.jacoco.plugins.JacocoTaskExtension> {
+        // Kotlin inline / 反射类没有行号信息，不排掉会刷 "No source file" 噪音
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+tasks.register<org.gradle.testing.jacoco.tasks.JacocoReport>("jacocoUnitTestReport") {
+    group = "verification"
+    description = "生成单测覆盖率报告（只出报告，不设门槛）"
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+
+    val buildDir = layout.buildDirectory
+    classDirectories.setFrom(
+        files(
+            // AGP 9.4 + built-in Kotlin 编译器的真实落点（2026-10-19 实测）：
+            //   app/build/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes
+            // 老路径保留兼容（tmp/kotlin-classes 是 KGP 旧布局；javac 给 Java 源集）。
+            buildDir.map { it.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes") },
+            buildDir.map { it.dir("tmp/kotlin-classes/debug") },
+            buildDir.map { it.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes") },
+            buildDir.map { it.dir("intermediates/javac/debug") },
+        ).asFileTree.matching {
+            // 生成物与壳类不参与统计（R/BuildConfig/Manifest 不是我们的逻辑）
+            exclude("**/R.class", "**/R\$*.class", "**/BuildConfig.class", "**/Manifest*")
+        },
+    )
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
+    executionData.setFrom(buildDir.map { it.file("jacoco/testDebugUnitTest.exec") })
 }
