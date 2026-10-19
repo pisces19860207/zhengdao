@@ -198,7 +198,9 @@ private fun SessionRow(
     row: DrawerSessionRow,
     onOpen: (Long) -> Unit,
     /** 长按＝删除这个会话（2026-10-18：设置页那张「会话记录」并联列表删掉了，删除改在这里）。 */
-    onLongPress: (DrawerSessionRow) -> Unit,
+    onLongPress: (DrawerSessionRow, String) -> Unit,
+    /** 这一行所属工作区名（2026-10-19：确认框要写清，防"分不清删哪一行"）。 */
+    workspaceLabel: String = "",
 ) {
     val current = highlightOf(row) == Highlight.SESSION_CURRENT
     Row(
@@ -206,7 +208,7 @@ private fun SessionRow(
             .fillMaxWidth()
             .combinedClickable(
                 onClick = { onOpen(row.id) },
-                onLongClick = { onLongPress(row) },
+                onLongClick = { onLongPress(row, workspaceLabel) },
             )
             .padding(start = 44.dp, end = 16.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -254,7 +256,7 @@ internal fun BaopuDrawer(
     onNewSession: () -> Unit,
     onOpenSession: (Long) -> Unit,
     /** 长按会话行：删除确认（不再有设置页那套平铺列表）。 */
-    onSessionLongPress: (DrawerSessionRow) -> Unit,
+    onSessionLongPress: (DrawerSessionRow, String) -> Unit,
     onWorkspaceTap: (String) -> Unit,
     onWorkspaceHold: (String) -> Unit,
     /** 文件夹行右侧的「圆里加号」：在这个工作区里开新会话（不是当前工作区时由页面先问人）。 */
@@ -270,6 +272,8 @@ internal fun BaopuDrawer(
     onPreviewClear: () -> Unit,
     onChannel: () -> Unit,
     onSettings: () -> Unit,
+    /** 回收站里恢复/彻底删除会话后，通知页面重读会话库。 */
+    onSessionLibraryChanged: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState())) {
@@ -327,7 +331,12 @@ internal fun BaopuDrawer(
                 onRunHere = onWorkspaceRunHere,
             )
             node.rows.forEach { row ->
-                SessionRow(row = row, onOpen = onOpenSession, onLongPress = onSessionLongPress)
+                SessionRow(
+                    row = row,
+                    onOpen = onOpenSession,
+                    onLongPress = onSessionLongPress,
+                    workspaceLabel = node.label,
+                )
             }
         }
 
@@ -366,7 +375,21 @@ internal fun BaopuDrawer(
         // 更糟的是旧 N=0 时整行 enabled=false，连面板都打不开（只能重启 App）。所以每次打开都重数一次。
         LaunchedEffect(drawerOpen) { if (drawerOpen) trashTick++ }
         var trashOpen by remember { mutableStateOf(false) }
-        val trashCount = remember(trashTick, trashRoot) { trashRows(BaopuTrashBin.dirOf(trashRoot)).size }
+        // 2026-10-19 用户「移入回收站后以为没移进去」：会话是软删（47 批），
+        // 不数它的话删完会话抽屉里的 N 一点不动 ⇒ 看上去像没生效。文件 + 会话一起数。
+        val trashDb = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
+        val trashCount = remember(trashTick, trashRoot) {
+            val files = trashRows(BaopuTrashBin.dirOf(trashRoot)).size
+            val sessions = runCatching {
+                trashDb.read { d ->
+                    d.rawQuery(
+                        com.example.zhengdao.baopu.BaopuSql.countDeletedSessions().sql,
+                        emptyArray(),
+                    ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                }
+            }.getOrDefault(0)
+            files + sessions
+        }
         DrawerItem(
             title = stringResource(R.string.trash_drawer_entry, trashCount),
             description = stringResource(R.string.trash_drawer_desc),
