@@ -145,7 +145,11 @@ class BaopuCostWiringTest {
         assertTrue("条目走 NoticeItem(label, body)", src.contains("NoticeItem(") && src.contains("stringResource(R.string.baopu_usage_label),"))
         assertTrue("body 由纯函数拼（累计一行＋每步明细）", src.contains("usageNoticeBody(usage, usageCopy)"))
         assertTrue("累计取的是控制器持有的本轮账", src.contains("val usage = controller.roundUsage"))
-        assertTrue("步号文案走 strings 且用 context.getString（lambda 里不能调 stringResource）", src.contains("context.getString(R.string.baopu_usage_step, step)"))
+        assertTrue(
+            "步号文案走 strings，且在 lambda 里用 Resources.getString（不能调 stringResource；" +
+                "上下文取 LocalResources 而不是 LocalContext——后者会踩 lint LocalContextGetResourceValueCall）",
+            src.contains("res.getString(R.string.baopu_usage_step, step)"),
+        )
         // 判别器（A3 的负例形状「没读数也出条目」）：条目必须落在守卫那一段里
         val guardIdx = src.indexOf("if (shouldShowUsageNotice(usage))")
         val addIdx = src.indexOf("stringResource(R.string.baopu_usage_label),")
