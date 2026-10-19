@@ -184,8 +184,8 @@ class BaopuArtifactLedgerTest {
     fun `v9_迁移挂在onCreate与onUpgrade两条路上`() {
         val src = dbSource()
         assertTrue(
-            "版本号必须进到 10（派工单写 v7，仓里 v7/v8 已被占 ⇒ 落 v9，报告里声明）",
-            src.contains("const val VERSION = 10"),
+            "版本号必须 ≥ 10（v9 归本批 artifact；v11 起归第五十七批 skill_event）",
+            Regex("const val VERSION = (1[0-9]|[2-9][0-9])").containsMatchIn(src),
         )
         assertTrue("onCreate 里要建表", src.contains("applyV9Migration(db)"))
         assertTrue("老库升级也要建表", src.contains("if (oldVersion < 9) applyV9Migration(db)"))
