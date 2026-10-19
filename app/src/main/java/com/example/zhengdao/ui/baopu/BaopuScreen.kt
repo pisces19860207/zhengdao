@@ -250,6 +250,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             ModalDrawerSheet(modifier = Modifier.width(drawerWidth)) {
                 BaopuDrawer(
                     busy = controller.busy,
+                    // E-163：抽屉内容常驻组合，回收站个数得靠「打开」这个信号重数一次。
+                    drawerOpen = drawerState.isOpen,
                     nodes = drawerNodes,
                     onNewSession = {
                         scope.launch { drawerState.close() }
