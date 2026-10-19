@@ -680,6 +680,15 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuChoiceCard(request = req, onPick = { option -> controller.answerChoice(option.id) })
                 Spacer(Modifier.height(8.dp))
             }
+            // 「这次学到」提案卡：同一区域（输入栏上方），收尾才出、点采纳才落盘
+            controller.learnProposals?.let { list ->
+                BaopuLearnCard(
+                    proposals = list,
+                    onAdopt = { id -> controller.adoptLearn(id) },
+                    onDismiss = { controller.dismissLearn() },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             BaopuComposer(
                 busy = controller.busy,
                 // 第二十四批 B 段：附件随文本一起交出去（图片要落 image part）

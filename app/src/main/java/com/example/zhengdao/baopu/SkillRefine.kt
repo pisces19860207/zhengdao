@@ -86,4 +86,114 @@ internal object SkillRefine {
         // 丢的 = 收集到的候选 − 留下的（超限截断的那截；不静默，壳层说出来）
         return Result(kept, (all.size - kept.size).coerceAtLeast(0))
     }
+
+    // ── 「这次学到」提案卡（第三十七批 B 段）───────────────────────────────
+    //
+    // 与上面 `refine` 的分工（别混）：`refine` 走**会话封卷**、判据是「用户明说要做技能」
+    // （K6 钉死：每轮结束不许触发技能提炼）；本段是**一次 run 正常收尾**的「这次学到」卡，
+    // 判据是「本轮真的动过东西」——且**只出卡，不落盘**，用户点采纳才写（唯一落盘口走
+    // SkillStore.apply）。两条链互不替换，`skillTriggerFor` 一行未动。
+
+    /** 用户「明说要记住」的标记词（命中 ⇒ 高置信，排在最前）。 */
+    val LEARN_MARKERS = listOf("记住", "记下来", "以后都这样", "以后就这么做", "记一下")
+
+    /** 一条「可提炼信号」的来路。 */
+    enum class SignalKind {
+        /** 写/改/搬/删了工作区里的文件（**只有真写成功的才算**）。 */
+        FILE,
+
+        /** 用过浏览器（开页/快照/点击/读字段）。 */
+        BROWSER,
+
+        /** 改过或新建过技能。 */
+        SKILL,
+
+        /** 用户明说「记住／记下来／以后都这样」。 */
+        USER_SAID,
+    }
+
+    /** 一条信号（detail 是来源的一句话：哪个工具／哪个文件／哪句原话）。 */
+    data class LearnSignal(val kind: SignalKind, val detail: String)
+
+    /** 卡上「建议」那一栏：写成草稿技能，还是转正式。 */
+    enum class Suggest { DRAFT, FORMAL }
+
+    /** 一条提案（**卡上三件套**：内容／来源／建议）。id 稳定，采纳时按 id 找回同一条。 */
+    data class LearnProposal(
+        val id: String,
+        val content: String,
+        val source: String,
+        val suggest: Suggest,
+        val fromUser: Boolean,
+    )
+
+    /** 一条提案最多显示多少字（卡要能一眼看完）。 */
+    const val LEARN_CONTENT_LIMIT = 60
+
+    /**
+     * 该不该出卡（**同一次收尾只出一次**由调用方的 `alreadyShown` 决定）。
+     *
+     * 没信号 ⇒ 不出（不许每轮都弹，那是骚扰）。
+     */
+    fun shouldEmit(signals: List<LearnSignal>, alreadyShown: Boolean): Boolean =
+        signals.isNotEmpty() && !alreadyShown
+
+    /**
+     * 生成提案（**纯函数、确定性、≤[MAX_CANDIDATES] 条**）。
+     *
+     * 排序：用户明说的排最前，其余按信号出现顺序；同名（同一来源）去重；
+     * 已经存在的同名技能 ⇒ 建议改成「转正式」而不是再建一条草稿。
+     *
+     * @param existingNames 已有技能名（决定建议是草稿还是转正式）
+     */
+    fun learnProposals(
+        signals: List<LearnSignal>,
+        existingNames: Set<String> = emptySet(),
+    ): List<LearnProposal> {
+        if (signals.isEmpty()) return emptyList()
+        val seen = LinkedHashSet<String>()
+        val out = mutableListOf<LearnProposal>()
+        val ordered = signals.sortedByDescending { it.kind == SignalKind.USER_SAID }
+        for (s in ordered) {
+            val name = MemoryRules.slugOf(s.detail.take(12)).ifEmpty { "skill" }
+            if (!seen.add(name)) continue
+            val content = s.detail.take(LEARN_CONTENT_LIMIT)
+            val suggest = if (name in existingNames) Suggest.FORMAL else Suggest.DRAFT
+            out += LearnProposal(
+                id = "${s.kind.name.lowercase()}-$name",
+                content = content,
+                source = sourceLabel(s.kind),
+                suggest = suggest,
+                fromUser = s.kind == SignalKind.USER_SAID,
+            )
+            if (out.size >= MAX_CANDIDATES) break
+        }
+        return out
+    }
+
+    /** 来源那一栏的人话（用户看得懂，不是工具名）。 */
+    private fun sourceLabel(kind: SignalKind): String = when (kind) {
+        SignalKind.FILE -> "这轮动过的文件"
+        SignalKind.BROWSER -> "这轮看过的页面"
+        SignalKind.SKILL -> "这轮的技能改动"
+        SignalKind.USER_SAID -> "你说的原话"
+    }
+
+    /** 用户文本里有没有「记住／记下来／以后都这样」这类话（有 ⇒ 一条 USER_SAID 信号）。 */
+    fun learnMarkersIn(text: String): List<LearnSignal> {
+        if (text.isBlank()) return emptyList()
+        val hits = LEARN_MARKERS.filter { text.contains(it) }
+        if (hits.isEmpty()) return emptyList()
+        return listOf(LearnSignal(SignalKind.USER_SAID, text.trim().take(LEARN_CONTENT_LIMIT)))
+    }
+
+    /**
+     * 工具名 ⇒ 信号种类。**被保护闸拦下的（Rejected）根本不会走到这里**——
+     * 引擎只在工具真写成功（Done）时记信号；被拒的写尝试不算「学到」，不许进卡。
+     */
+    fun signalKindFor(toolName: String): SignalKind? = when (toolName) {
+        "write_file", "edit_file", "move_path", "delete_path" -> SignalKind.FILE
+        "write_skill", "skill_lifecycle" -> SignalKind.SKILL
+        else -> if (toolName.startsWith("browser_")) SignalKind.BROWSER else null
+    }
 }

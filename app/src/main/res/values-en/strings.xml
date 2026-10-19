@@ -1247,4 +1247,13 @@
     <string name="baopu_tool_image_ops">Image tools</string>
     <string name="baopu_tool_image_ops_desc">Edit images (a confirmation card pops up before each run): resize to a max edge, crop by rectangle, convert to png/jpg/webp, extract the dominant palette (text only), or generate 48/72/96/144/192 square icon PNGs. The original is never overwritten — output goes to &lt;name&gt;-&lt;action&gt;.&lt;ext&gt; and an existing target is refused.</string>
     <string name="baopu_tool_delete_path_desc">Delete one file in the workspace (a confirmation card pops up before each run): by default it is **moved to the recycle bin** (workspace/.回收站/&lt;stamp&gt;-&lt;name&gt;), so it can be moved back; only with \"permanent\" ticked is it unrecoverable. Files only — directories are always refused; the backup area .baopu-bak/, the recycle bin itself and 资料库/原始/ are off limits.</string>
+
+    <!-- Batch 37 segment B: the "what I learned" proposal card (shown at wrap-up only, writes nothing until adopted) -->
+    <string name="learn_card_title">What I learned (only saved if you tap Adopt)</string>
+    <string name="learn_source_prefix">Source</string>
+    <string name="learn_suggest_prefix">Suggestion</string>
+    <string name="learn_suggest_draft">Save as a draft skill</string>
+    <string name="learn_suggest_formal">Promote to a formal skill</string>
+    <string name="learn_adopt">Adopt</string>
+    <string name="learn_dismiss">Skip</string>
 </resources>
