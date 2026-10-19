@@ -271,7 +271,7 @@ internal class GuardPipeline(
      */
     private fun guardPath(call: ToolCall, toolName: String): Guarded {
         // P0-4：相对路径工具白名单——path 保持相对，改写会把它变成必然被拒的绝对路径
-        if (toolName == "library_organize") return Guarded.Yes(call)
+        if (toolName == LibraryTools.NAME) return Guarded.Yes(call)
 
         val args = call.arguments
         val keys = pathKeysFor(toolName, args)
