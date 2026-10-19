@@ -32,7 +32,23 @@ internal object SkillTools {
             "写前自动备份、同名就是改上一次写的那份（平台改了就改名同一次）、写完自动加索引。" +
             "会改用户文件：写前自动备份、每次改动记一行 `技能/_变更.jsonl`，可回滚；全局技能不许自查。正文别写没实测的东西——没验的段落标「未实测」。"
 
-    fun spec(workspaceRoot: () -> File, personaFiles: () -> PersonaFiles) = ToolSpec(
+    /**
+     * 「技能被用过」的被动记录器（第五十七批 §1.1）。
+     *
+     * - 装配层（BaopuRuntime）注入：写 `skill_event` 表一行（skill／sessionId／step／ok／时间）。
+     * - **只记录，不据此自动改技能**——本批最重要的边界，红线原文。
+     * - 返回值：给「答复里一句话提醒」用的尾巴（§1.2，null = 没提醒）；记录器内部
+     *   自己兜异常，这里再包一层 runCatching 双保险。
+     */
+    fun interface UseRecorder {
+        fun onUse(name: String, ok: Boolean): String?
+    }
+
+    fun spec(
+        workspaceRoot: () -> File,
+        personaFiles: () -> PersonaFiles,
+        useRecorder: UseRecorder? = null,
+    ) = ToolSpec(
         name = "write_skill",
         description = DESC,
         // 第五十八批（C 层自治，2026-10-19 用户拍板）：项目技能不再弹确认卡——
@@ -57,12 +73,38 @@ internal object SkillTools {
         executor = { args ->
             val action = args.optString("action").trim().lowercase().ifEmpty { "write" }
             val name = args.optString("name").trim()
-            val root0 = workspaceRoot()
-            val pf0 = personaFiles()
-            // use / promote：只动**项目技能**，且只碰已存在那一条（不新建、不改名）
-            if (action == "use" || action == "promote") {
-                return@ToolSpec lifecycle(action, name, root0, pf0)
+            val out = runAction(args, workspaceRoot, personaFiles)
+            // 第五十七批 §1.1：use 收口**必记一条**（成功失败都记——失败也是「用了没成」的证据）。
+            // 记录器内部自己兜异常、这里再包一层 runCatching 双保险 ⇒ 记录失败只丢提醒，
+            // 绝不影响这次工具调用的结果本身（红线：只记录、不阻塞、不据此改技能）。
+            if (action == "use" && useRecorder != null) {
+                val tip = runCatching { useRecorder.onUse(name, out is ToolOutcome.Ok) }.getOrNull()
+                if (out is ToolOutcome.Ok && !tip.isNullOrBlank()) {
+                    ToolOutcome.Ok(out.text + "\n" + tip)
+                } else {
+                    out
+                }
+            } else {
+                out
             }
+        },
+        timeoutMs = ToolTimeout.FILE_MS,
+    )
+
+    /** 原 executor 体（第五十七批抽出来给上面的记录薄壳包着；语义一行没动）。 */
+    private fun runAction(
+        args: JSONObject,
+        workspaceRoot: () -> File,
+        personaFiles: () -> PersonaFiles,
+    ): ToolOutcome {
+        val action = args.optString("action").trim().lowercase().ifEmpty { "write" }
+        val name = args.optString("name").trim()
+        val root0 = workspaceRoot()
+        val pf0 = personaFiles()
+        // use / promote：只动**项目技能**，且只碰已存在那一条（不新建、不改名）
+        if (action == "use" || action == "promote") {
+            return lifecycle(action, name, root0, pf0)
+        }
             val body = args.optString("body")
             val scope = when (args.optString("scope").lowercase()) {
                 "global" -> SkillScope.GLOBAL
@@ -72,13 +114,13 @@ internal object SkillTools {
             // 全局技能是所有项目共用的人设底座，抱朴一旦能自写，等于它可以悄悄改自己的规矩；
             // 项目技能仍可自写（草稿＋确认卡＋写前备份），全局只能由用户在本机设置页里改。
             if (scope == SkillScope.GLOBAL) {
-                return@ToolSpec ToolOutcome.Rejected(
+                return ToolOutcome.Rejected(
                     "全局技能不许我自己改：那是所有项目共用的底座。要动全局技能，请你在设置页里改，" +
                         "或者改成项目技能（scope=project）。",
                 )
             }
             val draft = if (args.has("draft")) args.optBoolean("draft") else true
-            if (name.isEmpty()) {
+            return if (name.isEmpty()) {
                 ToolOutcome.Failed("name 不能为空")
             } else if (body.isBlank()) {
                 ToolOutcome.Failed("body 不能为空——空技能写下去只会占索引位")
@@ -95,7 +137,7 @@ internal object SkillTools {
                     draft = draft,
                 )
                 val plan = SkillStore.plan(proposal, root, globalRoot, stamp(), indexCountAfterAdd = 0)
-                plan.blocked?.let { return@ToolSpec ToolOutcome.Failed(it) }
+                plan.blocked?.let { return ToolOutcome.Failed(it) }
                 val layer = if (scope == SkillScope.GLOBAL) PersonaLayer.B_GLOBAL else PersonaLayer.C_PROJECT
                 when (val r = SkillStore.apply(plan, pf, pf.read(layer).orEmpty())) {
                     is SkillWriteResult.Written -> ToolOutcome.Ok(
@@ -109,9 +151,7 @@ internal object SkillTools {
                     is SkillWriteResult.Rejected -> ToolOutcome.Failed(r.reason)
                 }
             }
-        },
-        timeoutMs = ToolTimeout.FILE_MS,
-    )
+    }
 
     /**
      * 技能生命周期两步（2026-10-19 用户口径：像养孩子——不懂就查、查到就记、用多了转正）。

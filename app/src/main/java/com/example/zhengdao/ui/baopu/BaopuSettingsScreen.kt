@@ -318,6 +318,38 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 val projectLines = remember(skillReload) {
                     SkillRules.parseIndexLines(cText, MemoryScope.PROJECT)
                 }
+                // ── 第五十七批 §1.2 · 待重验（旁挂 `_重验.json`，SKILL.md 一个字节不动）──
+                // 判据是纯函数（SkillRefine.expiryVerdict），证据来自 skill_event 表；
+                // 算表＋幂等写旁挂 JSON 全在数据层函数 refreshRecheck（T5：设置页零写盘）。
+                // 记录上线前没有 use 数据 ⇒ 判不了 ⇒ 不标（宁可漏标不冤枉）。只提示不处置。
+                val recheckTables = remember(skillReload) {
+                    val d = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
+                    val now = System.currentTimeMillis()
+                    fun oksOf(name: String): List<Boolean> = d.read { x ->
+                        val s2 = com.example.zhengdao.baopu.BaopuSql.recentUseOks(
+                            name, com.example.zhengdao.baopu.SkillRefine.SkillExpiry.FAIL_WINDOW,
+                        )
+                        x.rawQuery(s2.sql, s2.args).use { c ->
+                            (0 until c.count).map { c.moveToPosition(it); c.getInt(0) == 1 }
+                        }
+                    }
+                    fun lastOf(name: String): Long? = d.read { x ->
+                        val s2 = com.example.zhengdao.baopu.BaopuSql.lastUseAt(name)
+                        x.rawQuery(s2.sql, s2.args).use { c ->
+                            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+                        }
+                    }
+                    mapOf(
+                        "global" to refreshRecheck(
+                            SkillRules.globalSkillDir(globalRoot), globalLines, ::oksOf, ::lastOf, now,
+                        ),
+                        "project" to refreshRecheck(
+                            SkillRules.projectSkillDir(projectRoot), projectLines, ::oksOf, ::lastOf, now,
+                        ),
+                    )
+                }
+                val globalRecheck: Map<String, String> = recheckTables["global"].orEmpty()
+                val projectRecheck: Map<String, String> = recheckTables["project"].orEmpty()
                 // ── 第三十六批 B 段 · 技能分类（旁挂 `_分类.json`，SKILL.md 一个字不动）──
                 // 分类**只影响显示**：它不改索引行文本、不改正文、不改人设（判据 T5）。
                 // 两层各一份表（全局那份在 App 私有、项目那份在工作区），互不串。
@@ -475,6 +507,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            // 第五十七批 §1.2：待重验徽标（只提示不处置；数据来自 skill_event 留痕）
+                            globalRecheck[line.name]?.let { why ->
+                                Text(
+                                    text = stringResource(R.string.skill_recheck_badge, why),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = zhengdaoErrorText(),
+                                )
+                            }
                         }
                         // 右侧当前分类（点一下弹六档小选单改）。不用 TextButton：那玩意儿最小宽度
                         // 会把这一行挤到 360dp 窄屏上换行。
@@ -525,6 +565,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            // 第五十七批 §1.2：待重验徽标（只提示不处置；数据来自 skill_event 留痕）
+                            projectRecheck[line.name]?.let { why ->
+                                Text(
+                                    text = stringResource(R.string.skill_recheck_badge, why),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = zhengdaoErrorText(),
+                                )
+                            }
                         }
                         Text(
                             text = stringResource(lineCat.labelRes),

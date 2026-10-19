@@ -883,6 +883,97 @@ internal object BaopuSql {
         "DELETE FROM artifact WHERE workspace = ? AND rel_path = ?",
         arrayOf<String?>(workspace, relPath),
     )
+
+    // ── v11（第五十七批）：技能事件表 skill_event ────────────────────────────
+    //
+    // 一张表两种事件（kind 区分），派工单 §1.1/§1.3「同 1.1 的表或一张 skill_decision 表，
+    // 二选一说明」⇒ **选一张表**：两件事都是「技能进化链上的被动留痕」，字段几乎重合
+    // （名字/时间/成败），分开两张要两份迁移、两份读写壳，合一张省一半且审计一条 SELECT 全出。
+    //
+    // - kind='use'：技能被用过一次（write_skill 的 use 动作收口时记）；ok=该次调用最终成败。
+    // - kind='decision'：提案被采纳/丢弃；ok=1 采纳 / 0 丢弃；hash=「名称＋正文摘要」去重键
+    //   （丢弃后下轮提炼按它跳过）；detail=丢弃理由（可空）。
+    //
+    // 红线：这表是**只增不改不删**的账本——没有 UPDATE/DELETE 语句（判据在测试里钉）。
+    // session_id 不挂 CASCADE：会话删了，技能用过没用的账还要留（过期判据靠它）。
+
+    /**
+     * 技能事件表（全部 `IF NOT EXISTS` ⇒ 幂等，照 v6/v9 房型）。
+     * `target`：'skill' | 'memory'（use 恒为 skill；decision 记提案是哪一类）。
+     */
+    val SKILL_EVENT_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS skill_event (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          target TEXT NOT NULL,
+          name TEXT NOT NULL,
+          session_id INTEGER,
+          step INTEGER,
+          ok INTEGER NOT NULL DEFAULT 1,
+          hash TEXT,
+          detail TEXT,
+          at INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS idx_skill_event_name ON skill_event (name, kind, id)",
+    )
+
+    /** 记一条「技能被用过」（use 收口时调；写失败由调用方只 log 不阻塞）。 */
+    fun insertSkillUse(name: String, sessionId: Long?, step: Int?, ok: Boolean, nowMs: Long): Stmt =
+        Stmt(
+            "INSERT INTO skill_event (kind, target, name, session_id, step, ok, at) " +
+                "VALUES ('use', 'skill', ?, ?, ?, ?, ?)",
+            arrayOf<String?>(
+                name,
+                sessionId?.toString(),
+                step?.toString(),
+                if (ok) "1" else "0",
+                nowMs.toString(),
+            ),
+        )
+
+    /**
+     * 某技能最近 [limit] 次**使用成败**（旧→新；§1.2 过期判据「最近 M 次失败率」的数据源）。
+     * 记录不足 [limit] 条也照回——不足时判据侧「证据不够不判」。
+     */
+    fun recentUseOks(name: String, limit: Int): Stmt = Stmt(
+        "SELECT ok FROM skill_event WHERE kind = 'use' AND name = ? ORDER BY id DESC LIMIT $limit",
+        arrayOf<String?>(name),
+    )
+
+    /** 某技能最后一次被用的时间（null = 记录上线后还没用过；§1.2 判据「久未用」的数据源）。 */
+    fun lastUseAt(name: String): Stmt = Stmt(
+        "SELECT MAX(at) FROM skill_event WHERE kind = 'use' AND name = ?",
+        arrayOf<String?>(name),
+    )
+
+    /** 记一条「提案采纳/丢弃」（§1.3 提案卡按钮收口时调；detail=丢弃理由，可空）。 */
+    fun insertSkillDecision(
+        target: String,
+        name: String,
+        adopted: Boolean,
+        hash: String?,
+        detail: String?,
+        nowMs: Long,
+    ): Stmt = Stmt(
+        "INSERT INTO skill_event (kind, target, name, ok, hash, detail, at) " +
+            "VALUES ('decision', ?, ?, ?, ?, ?, ?)",
+        arrayOf<String?>(
+            target,
+            name,
+            if (adopted) "1" else "0",
+            hash,
+            detail,
+            nowMs.toString(),
+        ),
+    )
+
+    /** 被**丢弃**过的提案去重键全集（§1.3 提炼时跳过同一候选，下轮不再重复提）。 */
+    fun rejectedDecisionHashes(): Stmt = Stmt(
+        "SELECT DISTINCT hash FROM skill_event WHERE kind = 'decision' AND ok = 0 AND hash IS NOT NULL",
+        emptyArray(),
+    )
 }
 
 /**
@@ -943,6 +1034,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV8Migration(db)
         applyV9Migration(db)
         applyV10Migration(db)
+        applyV11Migration(db)
     }
 
     /**
@@ -971,6 +1063,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 8) applyV8Migration(db)
         if (oldVersion < 9) applyV9Migration(db)
         if (oldVersion < 10) applyV10Migration(db)
+        if (oldVersion < 11) applyV11Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1071,6 +1164,15 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.ARTIFACT_DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v10 → v11 迁移体（第五十七批）：`skill_event` 技能事件表 ＋ 索引，**全是 IF NOT
+     * EXISTS** ⇒ 幂等（照 v6 `compression`／v9 `artifact` 房型：加表就是 DDL 一遍）。
+     * 新安装（onCreate 也调它）与 v10 库升级走**同一条**路径。
+     */
+    private fun applyV11Migration(db: SQLiteDatabase) {
+        BaopuSql.SKILL_EVENT_DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1096,8 +1198,9 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
 
         /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。
          *  v7 = 第十九批（session 封卷两列）。v8 = 第二十批（session 工作区列）。
-         *  v9 = 第三十八批 §9（`artifact` 产物台账表 ＋ (workspace, rel_path) 唯一索引）。 */
-        const val VERSION = 10
+         *  v9 = 第三十八批 §9（`artifact` 产物台账表 ＋ (workspace, rel_path) 唯一索引）。
+         *  v11 = 第五十七批（`skill_event` 技能事件表：use 留痕 ＋ 采纳/丢弃留痕）。 */
+        const val VERSION = 11
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
