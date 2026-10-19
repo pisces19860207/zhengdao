@@ -5,6 +5,7 @@ import android.net.Uri
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,6 +46,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.zhengdao.R
+import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.launch
@@ -72,7 +74,14 @@ import kotlinx.coroutines.launch
  * - 安全：启动即 applySecurityConfig(EngineSecurityConfig())（默认加固值，§4.4）；
  *   危险 scheme 由引擎 + 委托双重拦截并给用户提示；
  * - JS 弹窗收口（§4.4）：引擎回调 → 本界面 Compose 对话框；
- * - WebView 实例经 [BrowserTabManager] 跨 Tab 保活（applicationContext 创建防泄漏）。
+ * - WebView 实例经 [BrowserTabManager] 跨 Tab 保活（applicationContext 创建防泄漏）；
+ * - **第五十五批 · §B 77 审计 P1-7/P1-8（2026-10-19）**：① WebView 不再在组合期构造 ——
+ *   `remember { BrowserHolder.obtain(...) }` 改成首帧后的 `LaunchedEffect`，构造期间页面区
+ *   给 [BrowserWarmupPlaceholder]（主题底＋进度件，不白屏），引擎改「可空＋随活跃标签派生」，
+ *   所有引擎调用空安全（治的是首帧卡死 / ANR 风险，见 §B 61 的构造耗时观测）；
+ *   ② 外部打开入口 `BrowserHolder.pendingUrl` 改可观察状态后，本界面以「值」为 key 消费 ——
+ *   已停在玄览 Tab 时点终端链接不再整条丢失（旧 `LaunchedEffect(Unit)` 只消费一次）。
+ *   两条各有一套源码门禁：[BrowserFirstFrameEngineGateTest] / [BrowserPendingUrlObservableGateTest]。
  *
  * 图标说明：本项目图标一律 Canvas 自绘（Tab 图标 / BackChevron 同款笔法），不引
  * material-icons 库——视觉统一 + 零额外依赖。底栏键位 glyph 见 [BrowserBottomBar]。
@@ -80,10 +89,34 @@ import kotlinx.coroutines.launch
 @Composable
 fun BrowserScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    // 首建第一个标签（无标签时）；之后取活跃引擎
-    val engine = remember { BrowserHolder.obtain(context) }
+    // ── P1-7（第五十五批 · §B 77 审计，2026-10-19）：WebView 不再在组合期构造 ──────────
+    // 旧写法 `val engine = remember { BrowserHolder.obtain(context) }`：remember 的 lambda 在
+    // **组合期**执行，obtain 里 `new WebView(app)`；而 WebView 构造是本仓唯一已知会**间歇卡死
+    // （≥100s）**的点，卡点在 Chromium 内部（App 侧修不了，见 BrowserTabManager.newTab 里
+    // §B 61 的前后耗时观测）。它落在首帧之前 ⇒ 首帧卡死 / ANR。现在首帧只画占位
+    // [BrowserWarmupPlaceholder]，构造挪进下面的 LaunchedEffect —— 仍跑主线程，但**已过首帧**。
+    //
+    // 延迟构造后「第一个标签要自己冒出来」靠什么：BrowserTabManager 的状态本就是 snapshot
+    // state（tabs = mutableStateListOf、activeId = mutableStateOf），本界面在**组合体**里读
+    // tabs() / activeTab() ⇒ newTab 的写入直接驱动重组，不需要额外刷新通道，也不需要改
+    // BrowserTabManager（门禁 BrowserFirstFrameEngineGateTest 判据 F7 同时钉这两件事：
+    // 状态源可观察 ＋ 读发生在组合期）。
+    //
+    // 初值取「已有标签」：切回玄览时标签还在（第⑨刀的跨 Tab 保活是本类设计前提），此刻
+    // WebView 早已构造完 ⇒ 首帧就该是页面，不该先转一圈；冷启动（0 标签）才走占位。
+    var engineReady by remember { mutableStateOf(BrowserTabManager.count() > 0) }
     val tabs = BrowserTabManager.tabs()
     val active = BrowserTabManager.activeTab()
+    // 引擎跟着**活跃标签**走：构造完成前是 null ⇒ 下面所有引擎动作一律空安全（不 `!!` 硬取）。
+    // 顺带堵住旧写法的另一半病：remember 下来的 engine 在用户关掉最后一个标签之后指向
+    // **已销毁**实例（㊽-D 只把提交路径改活了，底栏那几个键当时仍在吃死引擎）。
+    val engine: WebViewEngine? = active?.engine
+
+    LaunchedEffect(Unit) {
+        // 首帧后构造：无标签时建第一个（建 WebView + 引擎 + 委托），已有标签时复用活跃引擎。
+        BrowserHolder.obtain(context)
+        engineReady = true
+    }
 
     // 内存回收守卫（第⑱刀 · D-4）：把"玄览正显示在屏幕上"告诉回收出口 —— 只有本界面
     // 离开组合（切到别的底栏 Tab）之后，WebView 才允许被 destroy（挂载中的实例不可销毁，
@@ -124,26 +157,36 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     // ── JS 弹窗收口（§4.4）：引擎（applicationContext 的 WebView，弹不了框）→ 本界面对话框 ──
     // 每条回答都必须最终调用一次结果回调，否则页面 JS 永久阻塞等答案。
     var jsDialog by remember { mutableStateOf<JsDialog?>(null) }
-    DisposableEffect(engine) {
-        engine.jsConfirmHandler = { message, onResult ->
-            jsDialog = JsDialog.Confirm(message, onResult)
-        }
-        engine.jsPromptHandler = { message, defaultValue, onResult ->
-            jsDialog = JsDialog.Prompt(message, defaultValue, onResult)
-        }
-        onDispose {
-            engine.jsConfirmHandler = null
-            engine.jsPromptHandler = null
+    // P1-7：engine 构造前为 null ⇒ 回调只在有引擎时挂（`if (engine != null)` 守卫块是门禁
+    // F5 认可的**唯一**直取位置）；key 换成每标签引擎后，切标签会把回调搬到当前那一页，
+    // 不再只绑在第一个标签上（旧写法 remember 一个引擎，第二个标签的 JS 弹窗没人接）。
+    if (engine != null) {
+        DisposableEffect(engine) {
+            engine.jsConfirmHandler = { message, onResult ->
+                jsDialog = JsDialog.Confirm(message, onResult)
+            }
+            engine.jsPromptHandler = { message, defaultValue, onResult ->
+                jsDialog = JsDialog.Prompt(message, defaultValue, onResult)
+            }
+            onDispose {
+                engine.jsConfirmHandler = null
+                engine.jsPromptHandler = null
+            }
         }
     }
 
-    // 外部打开入口（§4.6，第 ② 刀接线）：终端链接点击把 URL 写进 BrowserHolder；
-    // 组合时一次性消费 ⇒ 开新标签加载（多标签语义，见 BrowserTabManager.openExternal）。
-    LaunchedEffect(Unit) {
-        val target = BrowserHolder.pendingUrl
-        if (target != null) {
+    // 外部打开入口（§4.6，第 ② 刀接线）：终端链接点击把 URL 写进 BrowserHolder。
+    // ── P1-8（第五十五批 · §B 77 审计，2026-10-19）：pendingUrl 改成可观察状态后，消费
+    // 不再挂在 `LaunchedEffect(Unit)` 上。旧写法只在**首次组合**跑一次：用户已经停在玄览
+    // Tab 时从终端点一条链接，组合不重跑 ⇒ URL 整条丢失（@Volatile 只给可见性，不给重组）。
+    // 现在先在组合体读一次（读发生在组合期 ⇒ 写入即重组），再以「值」为 key 起 effect 消费。
+    // 消费后先清槽再开标签：key 变成 null 会让 effect 再跑一次，那一趟走 `pending != null`
+    // 的分支外（空操作），不会重复 openExternal（门禁 S5/S6 钉顺序与次数）。
+    val pending = BrowserHolder.pendingUrl
+    LaunchedEffect(pending) {
+        if (pending != null) {
             BrowserHolder.pendingUrl = null
-            BrowserTabManager.openExternal(context, target)
+            BrowserTabManager.openExternal(context, pending)
         }
     }
 
@@ -159,8 +202,12 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
 
     // 系统返回键优先级：① 编辑态 ⇒ 先退出编辑 ② 有历史 ⇒ 走 WebView 历史栈（§4.2 导航语义）
     // ③ 都没有 ⇒ 交给系统。两条 BackHandler 的 enabled **互斥**，谁在栈顶都不抢对方。
+    // P1-7：第二条要等引擎构造完（engine 非空）才登记 —— 构造前没有历史栈可退，
+    // 不登记就等于「交给系统」，语义与旧版 canGoBack()==false 一致。
     BackHandler(enabled = addressEditing) { exitAddressEditing() }
-    BackHandler(enabled = !addressEditing && engine.canGoBack()) { engine.goBack() }
+    if (engine != null) {
+        BackHandler(enabled = !addressEditing && engine.canGoBack()) { engine.goBack() }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         // ── 标签条（第⑨刀 B） ──
@@ -204,7 +251,12 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                     )
                 }
             }
-            if (active == null || !active.state.everLoaded) {
+            // P1-7：WebView 还在构造（首帧后那一段）⇒ 页面区显示占位，**不给白屏**。
+            // 占位自带主题底色（不是 WebView 的默认白底，第㊱刀那条深色对比度教训同一件事），
+            // 且不挂 AndroidView —— 构造没完成时此刻也没有可挂的实例。
+            if (!engineReady) {
+                BrowserWarmupPlaceholder(modifier = Modifier.fillMaxSize())
+            } else if (active == null || !active.state.everLoaded) {
                 // 第㊱刀：空态 = 浏览器式起始页（居中搜索框 + 快捷入口），替代原裸 Text。
                 // 提交仍走 tryNavigate（既有归一化路径，禁第二套解析）；scheme 预检失败
                 // 沿用既有 browser_blocked_scheme 提示；空态判据一字未动
@@ -258,12 +310,15 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         // ── 底栏（一条 56dp · 2026-10-18 定稿）：`‹〔›〕[地址胶囊] ↻/⨯ ⋯` ──
         // 动作本体仍写在本文件（门禁要求）：主页 = HOME_URL、刷新/停止 = reload/stopLoading、
         // 提交 = 唯一入口 tryNavigate；切 Tab 时展示态跟着换（读活跃标签 state.url）。
+        // P1-7：引擎相关件在构造完成前一律"没有"——前进/后退判据取不到历史就当没有历史，
+        // 动作键空安全（engine 为 null 时静默，不 `!!` 硬取）；提交键不受影响，它走 tryNavigate
+        // （内部 `activeEngine() ?: obtain` 自己保证有承载，㊽-D 那条路径本来就不吃这里的 engine）。
         BrowserBottomBar(
             displayUrl = active?.state?.url ?: "",
             editValue = urlInput,
             isEditing = addressEditing,
-            canBack = engine.canGoBack(),
-            canForward = engine.canGoForward(),
+            canBack = engine?.canGoBack() == true,
+            canForward = engine?.canGoForward() == true,
             loading = active?.state?.loading == true,
             canCloseTab = active != null,
             onEditStart = {
@@ -274,12 +329,12 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             onEditEnd = { addressEditing = false },
             onValueChange = { urlInput = it },
             onSubmit = navigate,
-            onBack = { engine.goBack() },
-            onForward = { engine.goForward() },
+            onBack = { engine?.goBack() },
+            onForward = { engine?.goForward() },
             onRefreshOrStop = {
-                if (active?.state?.loading == true) engine.stopLoading() else engine.reload()
+                if (active?.state?.loading == true) engine?.stopLoading() else engine?.reload()
             },
-            onHome = { engine.loadUrl(HOME_URL) },
+            onHome = { engine?.loadUrl(HOME_URL) },
             onNewTab = {
                 if (BrowserTabManager.newTab(context) == null) {
                     uiMsg = context.getString(R.string.browser_tabs_full)
@@ -418,6 +473,30 @@ private fun normalizeInput(input: String): String =
 // 提示条自绘小图标（与项目 Tab 图标 / BackChevron 同一套笔：圆头 1.9f 描边）。
 // 底栏键位 glyph 在 BrowserBottomBar.kt（描边宽度可配，禁用态 1.4）。
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 首帧占位（P1-7 · 第五十五批）：WebView 构造完成前页面区显示的东西，要求是「轻量、**不白屏**」。
+ *
+ * 为什么不能是一块白：页面区此刻没有挂 AndroidView（引擎还在构造），露出来的是窗口底 ——
+ * 深浅色下不一致，第㊱刀已经为"WebView 默认白底压掉深色起始页"付过一次学费。所以这里
+ * 自己铺一层主题 `background`，再居中一个进度件（与标签条加载转圈同族，28dp）。
+ *
+ * 只活一小会儿：正常情况下一帧到几百毫秒；真卡在 Chromium 构造里（§B 61 那条）时，
+ * 它至少让用户看到"在准备"而不是白屏或闪退。
+ */
+@Composable
+private fun BrowserWarmupPlaceholder(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.CircularProgressIndicator(
+            modifier = Modifier.size(28.dp),
+            color = MaterialTheme.colorScheme.primary,
+            strokeWidth = 2.5.dp,
+        )
+    }
+}
 
 /** 警告：三角 + 感叹号。 */
 @Composable

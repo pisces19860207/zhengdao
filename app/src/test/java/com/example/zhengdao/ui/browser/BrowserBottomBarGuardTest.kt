@@ -163,12 +163,17 @@ class BrowserBottomBarGuardTest {
 
     @Test
     fun `动作仍住_主屏_底栏只发回调`() {
+        // 第五十五批 P1-7（2026-10-19）随动：BrowserScreen 的 engine 改成「可空 + 随活跃标签
+        // 派生」（组合期不构造 WebView ⇒ 首帧前没有引擎），引擎调用一律走安全调用。这条判据钉的
+        // 是**归属**（动作本体住主屏、底栏只发回调），不是调用写法 ⇒ 断言跟着换成 `engine?.`
+        // 形态，语义一字未减；同一条线在 BrowserFirstFrameEngineGateTest F5/F6 里反向钉死
+        // （未守卫的直取、`!!` 硬取当场红）。
         val src = screen()
-        assertTrue("刷新键加载中必须走 stopLoading", src.contains("engine.stopLoading()"))
-        assertTrue("常态刷新必须走 reload", src.contains("engine.reload()"))
-        assertTrue("主页必须走 HOME_URL（菜单第一项）", src.contains("engine.loadUrl(HOME_URL)"))
+        assertTrue("刷新键加载中必须走 stopLoading", src.contains("engine?.stopLoading()"))
+        assertTrue("常态刷新必须走 reload", src.contains("engine?.reload()"))
+        assertTrue("主页必须走 HOME_URL（菜单第一项）", src.contains("engine?.loadUrl(HOME_URL)"))
         assertTrue("HOME_URL 必须是必应国内版（设计稿起始页）", src.contains("https://cn.bing.com"))
-        assertTrue("前进判据仍取引擎", src.contains("canForward = engine.canGoForward()"))
+        assertTrue("前进判据仍取引擎", src.contains("canForward = engine?.canGoForward() == true"))
         assertTrue("底栏提交必须接到唯一入口 navigate", src.contains("onSubmit = navigate"))
         // 底栏自己不许解析/导航（与起始页同一口径：纯 UI ＋ 回调）
         val bar = bar()

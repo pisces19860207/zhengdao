@@ -4,6 +4,9 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.view.ViewGroup
 import android.webkit.WebView
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.example.zhengdao.browser.WebViewEngine
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -21,7 +24,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 阶段 2（第⑨刀 B）拆分：多标签本体（按 tabId 管多个 Engine / 渲染优先级 / 生命周期 /
  * 每标签状态）搬到 [BrowserTabManager]；本类只留**跨界面入口**（TerminalActivity 与
  * MainActivity 都在用，不动它们）：
- * - [pendingUrl]：外部打开入口（终端链接点击写入）；
+ * - [pendingUrl]：外部打开入口（终端链接点击写入）——**Compose 可观察状态**
+ *   （P1-8，2026-10-19：已停在玄览时点链接也要立刻被消费，裸 @Volatile var 驱动不了重组）；
  * - [requestBrowserTab] / [consumeTabRequest]：请求主页切到玄览（一次性）；
  * - [obtain] / [view]：取活跃引擎/WebView 的转发口。
  *
@@ -38,10 +42,23 @@ object BrowserHolder {
 
     /**
      * 外部打开入口（§4.6）：终端链接点击等把待加载 URL 写在这里；
-     * 玄览组合时由 [BrowserTabManager.openExternal] 一次性消费（防重复加载）。
+     * 玄览界面读到它时由 [BrowserTabManager.openExternal] 消费并清槽（防重复加载）。
+     *
+     * **P1-8（第五十五批 · §B 77 审计，2026-10-19）：必须是 Compose 可观察状态。**
+     * 旧写法是裸 `@Volatile var` —— Volatile 只保证**跨线程可见性**，不保证**重组**：
+     * 用户已经停在玄览 Tab 时从终端点一条链接，值确实写进去了，但 BrowserScreen 不会因为
+     * 这次写入而重新组合/重跑 effect ⇒ 整条链接石沉大海（要等下次进玄览才被消费）。
+     * 现在 [androidx.compose.runtime.State] 承载，写入即失效读侧、驱动重组，消费侧改以
+     * 「值」为 key 的 `LaunchedEffect`（判据见 BrowserPendingUrlObservableGateTest S1–S6）。
+     *
+     * 对外签名不变：写入方（[com.example.zhengdao.TerminalActivity] /
+     * [com.example.zhengdao.ui.baopu.BaopuPreview]）仍是 `BrowserHolder.pendingUrl = url`
+     * 一行赋值，禁再造第二条「待打开 URL」通道。
+     *
+     * 线程：写入方都在 UI 线程（点链接、切 Tab 都是 UI 事件）；UI 线程读写 snapshot state
+     * 正是它的适用场景，跨线程可见性由快照机制兜底。
      */
-    @Volatile
-    var pendingUrl: String? = null
+    var pendingUrl: String? by mutableStateOf<String?>(null)
 
     /** 切 Tab 请求（一次性）：终端在独立 Activity 点链接 → 回主页 → MainActivity ON_RESUME 消费。 */
     private val tabRequested = AtomicBoolean(false)
