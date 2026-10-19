@@ -500,7 +500,19 @@ internal class RunEngine(
         // 先取一次已有技能名：既决定建议「草稿/转正式」，也是 C 段门禁判同名冲突的依据
         val names = existingSkillNames()
         _learnNames.value = names
-        _learn.value = SkillRefine.learnProposals(learnSignals, names)
+        // 第五十七批 §1.3：被丢弃过的候选这轮直接跳过（读失败 ⇒ 空 set，不拦出卡）。
+        // 只换 learnProposals 的入参，主循环语义一行没动。
+        val rejected = runCatching {
+            val s = com.example.zhengdao.baopu.BaopuSql.rejectedDecisionHashes()
+            db.read { d ->
+                d.rawQuery(s.sql, s.args).use { c ->
+                    buildSet {
+                        while (c.moveToNext()) c.getString(0)?.let { add(it) }
+                    }
+                }
+            }
+        }.getOrDefault(emptySet())
+        _learn.value = SkillRefine.learnProposals(learnSignals, names, rejected)
     }
 
     /** 已有技能名（决定卡上建议「草稿」还是「转正式」）。 */
