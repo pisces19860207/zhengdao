@@ -1490,39 +1490,70 @@ internal class BaopuChatController(context: Context) {
     /**
      * 重读消息列表 ＋ 中断标记 ＋ 记忆候选（一次 db 读，不逐事件逐表）。
      *
+     * P2-1（第五十六批）：**库读全部在 `Dispatchers.IO` 上做**。旧实现在主线程直读
+     * `readMessages` / `readStepRows` / `interruptedStep`——引擎事件每个都回主线程调一次
+     * refresh，消息多时逐帧掉。状态写回仍留主线程：2026-10-17 真机两次实测过「后台线程
+     * 直写 Compose 状态会时灵时不灵」，那条教训不变，所以只搬读、不搬写。
+     *
+     * 对外语义不变：`force` 仍表示「不看在不在跑，直接重算中断标记」；更新顺序
+     * （消息 → 步骤行 → 自省便签 → 中断标记 → 确认卡 → 压缩细条 → 记忆候选）与原实现一致。
+     *
      * @param force true = 不看"在不在跑"，直接重算中断标记（[EngineEvent.Settled] 专用）
      */
     fun refresh(force: Boolean = false) {
-        val sid = sessionId
-        messages = if (sid == null) emptyList() else readMessages(sid)
-        // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
-        stepRows = if (sid == null) emptyList() else readStepRows(sid)
-        if (introspectionNote == null && sid != null) {
-            introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
+        scope.launch {
+            val sid = sessionId
+            val recomputeInterrupt = force || !runningNow()
+            val snap = if (sid == null) null else withContext(Dispatchers.IO) {
+                RefreshSnapshot(
+                    messages = readMessages(sid),
+                    stepRows = readStepRows(sid),
+                    interruptedStep = if (recomputeInterrupt) BaopuRuntime.interruptedStep(db, sid) else null,
+                    pendingGone = pendingStore.load(sid) == null,
+                    compression = runCatching { SessionCompressionStore(db).latest(sid) }.getOrNull(),
+                )
+            }
+            messages = snap?.messages ?: emptyList()
+            // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
+            stepRows = snap?.stepRows ?: emptyList()
+            if (introspectionNote == null && sid != null) {
+                introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
+            }
+            // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
+            // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
+            //    "正在思考"误读成"被杀了"——所以运行中跳过；
+            // ② 判"在不在跑"**不能看 `engine.state`**：那是后台线程写的 Compose State，
+            //    主线程读到的可能是旧值（本次实测读到过 DONE），于是运行中照样重算并误报。
+            //    改用 `ActiveSessionGate`（AtomicReference，跨线程立即可见）——它在整个
+            //    循环期间被持有，收尾 finally 里才释放，正是"本轮还没结束"的真值。
+            // 收尾那一下引擎会发 `EngineEvent.Settled`，带着 `force = true` 过来，因此
+            // "跑完了红字还不下来"这种情况不可能再出现（不依赖上面那个判据的对错）。
+            if (recomputeInterrupt) interruptedStep = snap?.interruptedStep ?: -1
+            // 确认卡的生命周期跟 DB 的 pending 行走（派工单 §3.3）：活的卡在等 ⇒ 库里
+            // 有行；引擎超时/处理完清行 ⇒ 卡跟着消失（不等用户手动关——T4 的「卡消失」）。
+            if (confirmCard != null && snap?.pendingGone == true) {
+                confirmCard = null
+                confirmRestored = false
+            }
+            // 压缩细条跟着库走：压成功那一刻库里才有行，细条才出现（失败/跳过 ⇒ 不出现，
+            // 不许凭空报「已压缩」）。一条主键查询，跟着 refresh 走最省心，也最不容易漂。
+            val rec = snap?.compression
+            if (sid != null && rec != null) {
+                engine.restoreCompression(rec.summary, rec.compressedIds.toSet())
+                compressionNote = CompressionNote(count = rec.compressedIds.size, summary = rec.summary)
+            }
+            refreshMemory()
         }
-        // 中断标记：**引擎在跑的时候不刷新**。真机实测（2026-10-17）两条教训：
-        // ① 跑到第 N 步时库里最后一条 run_log 正是 Thinking/Acting，此刻重算会把
-        //    "正在思考"误读成"被杀了"——所以运行中跳过；
-        // ② 判"在不在跑"**不能看 `engine.state`**：那是后台线程写的 Compose State，
-        //    主线程读到的可能是旧值（本次实测读到过 DONE），于是运行中照样重算并误报。
-        //    改用 `ActiveSessionGate`（AtomicReference，跨线程立即可见）——它在整个
-        //    循环期间被持有，收尾 finally 里才释放，正是"本轮还没结束"的真值。
-        // 收尾那一下引擎会发 `EngineEvent.Settled`，带着 `force = true` 过来，因此
-        // "跑完了红字还不下来"这种情况不可能再出现（不依赖上面那个判据的对错）。
-        if (force || !runningNow()) {
-            interruptedStep = if (sid == null) -1 else BaopuRuntime.interruptedStep(db, sid)
-        }
-        // 确认卡的生命周期跟 DB 的 pending 行走（派工单 §3.3）：活的卡在等 ⇒ 库里
-        // 有行；引擎超时/处理完清行 ⇒ 卡跟着消失（不等用户手动关——T4 的「卡消失」）。
-        if (confirmCard != null && sid != null && pendingStore.load(sid) == null) {
-            confirmCard = null
-            confirmRestored = false
-        }
-        // 压缩细条跟着库走：压成功那一刻库里才有行，细条才出现（失败/跳过 ⇒ 不出现，
-        // 不许凭空报「已压缩」）。一条主键查询，跟着 refresh 走最省心，也最不容易漂。
-        if (sid != null) restoreCompression()
-        refreshMemory()
     }
+
+    /** [refresh] 在 IO 上读到的一批快照（读与写分开：读在 IO，写回主线程）。 */
+    private data class RefreshSnapshot(
+        val messages: List<BaopuUiMessage>,
+        val stepRows: List<BaopuStepRow>,
+        val interruptedStep: Int?,
+        val pendingGone: Boolean,
+        val compression: com.example.zhengdao.baopu.CompressionRecord?,
+    )
 
     /** 本轮是否还在跑（单活跃门的持有即"在跑"）。 */
     private fun runningNow(): Boolean =
