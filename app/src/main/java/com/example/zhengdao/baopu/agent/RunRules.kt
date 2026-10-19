@@ -54,6 +54,20 @@ internal object RunRules {
     /** 一步 = 一次模型轮次 ⇒ 步数从 1 起；满 16 必停。 */
     fun isStepExhausted(steps: Int): Boolean = steps >= MAX_STEPS
 
+    /**
+     * 坏参数（模型给的 tool_call 参数不是合法 JSON）最多连续重试几次（P1-2，2026-10-19）。
+     *
+     * 为什么是 1：模型偶尔把引号/转义写坏，把错误原文回灌给它，下一轮基本能自己改对；
+     * 同一个错误连着来第二次，说明这一轮状态不对，再试只是烧 token ⇒ 如实收尾问人。
+     *
+     * 为什么不进 [com.example.zhengdao.baopu.kernel.BaopuKernel.Budget]：那是 A 内核的
+     * 只读真源，引擎的容错策略不该往内核里加字段（本单红线：不碰 A 内核）。
+     */
+    const val MAX_BAD_ARGS_RETRIES = 1
+
+    /** 还能再试一次坏参数吗（纯判据：`retries` 是**已经**用掉的机会）。 */
+    fun shouldRetryBadArgs(retries: Int): Boolean = retries < MAX_BAD_ARGS_RETRIES
+
     /** 连续工具失败到线 ⇒ 停下问人。 */
     fun shouldAskUser(consecutiveToolFailures: Int): Boolean =
         consecutiveToolFailures >= MAX_TOOL_FAILURES
