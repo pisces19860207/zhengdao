@@ -1267,4 +1267,12 @@
     <string name="baopu_user_msg_longpress">Long-press to edit or copy</string>
     <string name="baopu_edit_this">Edit this</string>
     <string name="learn_gate_blocked">Cannot adopt this one: %1$s</string>
+    <string name="persona_rollback_card">Persona</string>
+    <string name="persona_rollback_desc">A backup is saved automatically before every persona rewrite. Restore the previous version here.</string>
+    <string name="persona_rollback_project">Project persona (follows the workspace)</string>
+    <string name="persona_rollback_global">Global persona (follows the app)</string>
+    <string name="persona_rollback_last">Last backup %1$s</string>
+    <string name="persona_rollback_none">No backups yet (available after the first rewrite)</string>
+    <string name="persona_rollback_action">Restore</string>
+    <string name="persona_rollback_done">Restored the previous version; the current version was backed up as %1$s</string>
 </resources>
