@@ -42,6 +42,7 @@ import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 
 /** 引擎状态（程枢版 §2 状态表；UI 只读这些）。 */
@@ -311,6 +312,15 @@ internal class RunEngine(
     @Volatile
     private var stopRequested = false
 
+    /**
+     * 当前这一轮流式调用的句柄（P2-5，2026-10-19 第五十六批）。
+     *
+     * 只为「停止」服务：用户点停止时立刻 cancel 底层的 Call，不用干等
+     * readTimeout（60s）。@Volatile：写在引擎线程、读在调用 stop() 的那条线程。
+     */
+    @Volatile
+    private var activeCall: okhttp3.Call? = null
+
     /** 连续工具失败计数（到 [RunRules.MAX_TOOL_FAILURES] 停下问人）。 */
     private var consecutiveToolFailures = 0
 
@@ -562,6 +572,10 @@ internal class RunEngine(
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
     fun stop() {
         stopRequested = true
+        // P2-5：取消正在飞的流式 Call。旧实现只置标志位 ⇒ 网络流照收，
+        // 最长耗到 readTimeout（60s）才收工；用户看到的就是「点了停止还在写」。
+        // 取消后 stream() 收到 IOException ⇒ 转 Failed，不会再回调成功。
+        runCatching { activeCall?.cancel() }
         // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
         confirmFlow.abandon()
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")
@@ -1234,7 +1248,9 @@ internal class RunEngine(
         // max_tokens（Anthropic 系）。不认这个的话，"半截回复"会被当成正常写完存下来。
         var stopReason: String? = null
         val client = LlmClient(provider)
-        client.streamAsync(messages, tools) { ev ->
+        // P2-5（第五十六批）：句柄存进字段 ⇒ stop() 能立刻 cancel。旧实现本地 Call
+        // 用完即弃，用户点停止后最多要干等 readTimeout（60s）。
+        val call = client.streamAsync(messages, tools) { ev ->
             when (ev) {
                 is LlmEvent.Delta -> textBuf.append(ev.text)
                 is LlmEvent.Finished -> {
@@ -1249,7 +1265,17 @@ internal class RunEngine(
             }
             if (ev is LlmEvent.Finished || ev is LlmEvent.Failed) latch.countDown()
         }
-        latch.await()
+        activeCall = call
+        // P2-5：等也要有上限。旧实现 `latch.await()` 无参 ⇒ 通道只连上不收数据时
+        // 这里能挂死整个 run 线程（唯一一条引擎线程，后面全排队）。
+        val arrived = latch.await(RunRules.STREAM_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        activeCall = null
+        if (!arrived) {
+            // 超时按失败处理，并把 Call 砍掉（不砍的话底层连接还占着）
+            runCatching { call.cancel() }
+            log("抱朴引擎：等模型流超过 ${RunRules.STREAM_WAIT_TIMEOUT_MS / 1000}s，本轮作废")
+            return RoundOutcome.Failed("等模型回复超时（${RunRules.STREAM_WAIT_TIMEOUT_MS / 1000}s）：这条通道只连上不收数据")
+        }
         // 原文取不到时退回异常 message（至少 err 列不为空，能看出是哪一类失败）
         failure?.let { return RoundOutcome.Failed(humanizeNetFailure(it), failureRaw ?: it) }
         if (rawCalls.isNotEmpty()) {
