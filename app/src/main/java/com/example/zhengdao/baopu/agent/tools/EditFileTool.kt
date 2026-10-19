@@ -182,10 +182,12 @@ internal object EditFileTool {
         if (exists && original.take(SNIFF_CHARS).contains('\u0000')) {
             return ToolOutcome.Failed("像是二进制文件：${target.name}（edit_file 只改文本）")
         }
-        // 先去掉「一个」结尾换行再切行：否则 "a\n" 会被切成 ["a", ""]——多出一个空行，
-        // 总行数、行号、写回结果全跟着错一位（单测第一条就踩的是这个）。
-        val body = original.removeSuffix("\n").removeSuffix("\r")
-        val lines = if (body.isEmpty()) mutableListOf() else body.lines().toMutableList()
+        // E-168 / D-03（2026-10-19）：写回要**保住原文件的行尾与「有没有尾换行」**。
+        // 旧实现一律 LF＋补一个尾换行 ⇒ 一个 CRLF 文件被改一行，整篇行尾都变。
+        // 新文件（不存在）沿用旧习惯：LF＋尾换行；已存在的文件按原文件保真（E-168）
+        val eolStyle = if (exists) detectEol(original) else EolStyle("\n", endsWithNewline = true)
+        val body = original.removeSuffix("\r\n").removeSuffix("\n").removeSuffix("\r")
+        val lines = if (body.isEmpty()) mutableListOf() else body.split("\r\n", "\n", "\r").toMutableList()
         val total = lines.size
         val note: String
         when (op) {
@@ -227,7 +229,7 @@ internal object EditFileTool {
                 note = "追加 ${contentLines.size} 行到末尾"
             }
         }
-        val newText = if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n"
+        val newText = joinWithEol(lines, eolStyle)
         if (newText == original) {
             return ToolOutcome.Ok("内容没有变化（$note），未写盘：${target.name}")
         }
@@ -300,5 +302,29 @@ internal object EditFileTool {
             toLine = toLine,
             content = args.optString(ARG_CONTENT),
         )
+    }
+
+    // ── E-168 / D-03：行尾保真（纯函数，JVM 直测）──────────────────────────
+
+    /** 原文件的行尾风格与「是否以换行结尾」。 */
+    internal data class EolStyle(val eol: String, val endsWithNewline: Boolean)
+
+    /**
+     * 判主导行尾：有 `CRLF` 就是 `CRLF`（Windows 文件最常见）；只有 `CR` 才是 `CR`；否则 `LF`。
+     * 混合行尾的文件按主导风格统一（这一点在改之前就做不到「逐字节保真」——记在 D-03 报告里）。
+     */
+    internal fun detectEol(text: String): EolStyle {
+        val eol = when {
+            text.contains("\r\n") -> "\r\n"
+            text.contains("\r") -> "\r"
+            else -> "\n"
+        }
+        return EolStyle(eol, text.endsWith("\n") || text.endsWith("\r"))
+    }
+
+    /** 按原行尾风格拼回去；原来没有尾换行就不补。 */
+    internal fun joinWithEol(lines: List<String>, style: EolStyle): String {
+        if (lines.isEmpty()) return ""
+        return lines.joinToString(style.eol) + if (style.endsWithNewline) style.eol else ""
     }
 }
