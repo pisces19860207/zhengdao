@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +69,56 @@ import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+
+/** 折叠态摘要的那四种局面（第六十一批 §1；只描述「关掉了几个」，不参与任何开关判定）。 */
+internal enum class BaopuFoldKind { EmptyGroup, AllOn, SomeOff, AllOff }
+
+/**
+ * 一个组在折叠态要显示的那一行摘要的数据（[offNames] 保持分组表的表序）。
+ *
+ * [total] 是该组成员数：整组关光时「关闭项」就是全部成员，摘要只有名字没有总数
+ * 会让人误估规模，所以这一行按 [total] 说话。
+ */
+internal data class BaopuFoldSummary(
+    val foldKind: BaopuFoldKind,
+    val offNames: List<String>,
+    val total: Int,
+)
+
+/**
+ * 折叠态「关闭项摘要」的生成（第六十一批 §1 的纯函数，零 Android）。
+ *
+ * 为什么需要它：组头一收起，组里那些**被用户关掉的**工具就跟着不见了——那等于把
+ * 「这个工具你关过」这件事藏起来，比不折叠更糟（§1 原话「不许把关闭项藏到看不见」）。
+ *
+ * 三条口径：
+ * 1. 纯展示：输入只有「成员名单 / 组开关状态 / 单个开关状态」，**不写任何东西**，
+ *    也不改任何默认值——开关语义仍是 `prefs.isDisabled(n)` 那一处；
+ * 2. 名单由调用方从那张唯一的分组表（[ToolGroupTable.namesOf]）传入，这里不许出现
+ *    第二份工具名单；
+ * 3. [groupDisabled] 优先：组开关关掉 ⇒ 组内一律不可见（引擎侧 `isVisibleTool` 同一口径），
+ *    所以关闭项 = 全部成员，而不是"逐个关掉的那几个"。
+ */
+internal object BaopuToolFoldSummary {
+
+    fun of(
+        members: List<String>,
+        groupDisabled: Boolean,
+        isDisabled: (String) -> Boolean,
+    ): BaopuFoldSummary = when {
+        members.isEmpty() -> BaopuFoldSummary(BaopuFoldKind.EmptyGroup, emptyList(), 0)
+        groupDisabled -> BaopuFoldSummary(BaopuFoldKind.AllOff, members, members.size)
+        else -> {
+            val off = members.filter { isDisabled(it) }
+            val foldKind = when {
+                off.isEmpty() -> BaopuFoldKind.AllOn
+                off.size == members.size -> BaopuFoldKind.AllOff
+                else -> BaopuFoldKind.SomeOff
+            }
+            BaopuFoldSummary(foldKind, off, members.size)
+        }
+    }
+}
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
 @Composable
@@ -122,11 +173,41 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 Spacer(Modifier.height(10.dp))
                 // COMPAT（read / bash）不在这里列：它由通道决定、没有开关，
                 // 卡片尾部那两行只读说明（第十八批 §2.1-4）仍是它们的唯一展示位。
+                //
+                // ── 第六十一批 §1：组头可点展开/收起，默认折叠 ────────────────────────
+                // 三条口径（都是"纯展示"，越线就算打回）：
+                // 1. 折叠**不参与任何开关判定**：下面 `prefs.setGroupDisabled` /
+                //    `prefs.setDisabled` 两个写入点、以及 `isDisabled` / `disabledGroups`
+                //    两个读取点全部一行没动；默认值与 `DEFAULT_ENABLED` 也不在这里。
+                //    收起只是把成员藏起来，关掉的工具照样不进 tools 数组、开着的照样进。
+                // 2. 折叠态**必须**留一行「关闭项摘要」（[BaopuToolFoldSummary.of]）——
+                //    用户关掉的工具不许因为收起而查不到；没有关闭项就写「全部开启」。
+                // 3. 折叠状态用 `rememberSaveable(group.key)`：本次页面存活期记住、
+                //    冷启动回默认折叠。用 `remember` 会连旋转/回前台都丢（收起一半又弹开），
+                //    存 SP 又把「UI 姿势」当配置（跨会话串状态那一类雷，59 批刚踩过）。
+                val foldNote = stringResource(R.string.baopu_tools_fold_note)
+                Text(
+                    text = foldNote,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
                 ToolGroup.values().filter { it != ToolGroup.COMPAT }.forEachIndexed { gi, group ->
                     if (gi > 0) Spacer(Modifier.height(10.dp))
+                    val expanded = rememberSaveable(group.key) { mutableStateOf(false) }
                     val groupOn = group !in prefs.disabledGroups()
+                    // 成员名单只从那张唯一的分组表读（§1「不新造第二张表」）；
+                    // 摘要与展开后的开关共用这一个 members，两行说的一定是同一批工具。
+                    val members = ToolGroupTable.namesOf(group)
+                    val summary = BaopuToolFoldSummary.of(members, groupDisabled = !groupOn) {
+                        prefs.isDisabled(it)
+                    }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // 组头整行可点＝展开/收起。右边的组开关自己吃点击事件、
+                            // 不会顺带折叠（嵌套 clickable：子级消费掉，父级收不到）。
+                            .clickable { expanded.value = !expanded.value },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
@@ -147,6 +228,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        // 箭头用既成键（§1「能复用就复用」）：common_expand_arrow / common_collapse_arrow
+                        Text(
+                            text = stringResource(
+                                if (expanded.value) R.string.common_collapse_arrow else R.string.common_expand_arrow,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         // 组开关（§1.6「与单工具开关并存」）：关掉 ⇒ 组内一律不可见，
                         // 且 capabilities 也解不开（判据只有 isVisibleTool 那一处）。
                         Switch(
@@ -158,31 +247,42 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             colors = iosSwitchColors(),
                         )
                     }
-                    ToolGroupTable.namesOf(group).forEach { name ->
-                        val on = toolTick.let { !prefs.isDisabled(name) }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(baopuToolLabel(name)),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                                Text(
-                                    text = stringResource(baopuToolDesc(name)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // 折叠态常驻的「关闭项摘要」——展开时不显示（成员就在下面，看得见）
+                    if (!expanded.value) {
+                        Text(
+                            text = baopuFoldSummaryText(summary),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    if (expanded.value) {
+                        members.forEach { name ->
+                            val on = toolTick.let { !prefs.isDisabled(name) }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(baopuToolLabel(name)),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Text(
+                                        text = stringResource(baopuToolDesc(name)),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Switch(
+                                    checked = on,
+                                    onCheckedChange = { want ->
+                                        prefs.setDisabled(name, !want)
+                                        toolTick++
+                                    },
+                                    colors = iosSwitchColors(),
                                 )
                             }
-                            Switch(
-                                checked = on,
-                                onCheckedChange = { want ->
-                                    prefs.setDisabled(name, !want)
-                                    toolTick++
-                                },
-                                colors = iosSwitchColors(),
-                            )
                         }
                     }
                 }
@@ -859,6 +959,31 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             }
             }
         }
+    }
+}
+
+/**
+ * 折叠态那一行「关闭项摘要」的文案（第六十一批 §1）。
+ *
+ * 名单怎么算在 [BaopuToolFoldSummary.of]（零 Android、直接打）；这里只把名字换成
+ * 本地化的工具标签——**标签取的还是 baopuToolLabel 那一份映射**，一个工具在展开的
+ * 开关行与收起的摘要行里必须是同一个名字，否则「摘要」就成了另一套话术。
+ */
+@Composable
+private fun baopuFoldSummaryText(summary: BaopuFoldSummary): String {
+    val sep = stringResource(R.string.baopu_tools_fold_list_sep)
+    return when (summary.foldKind) {
+        BaopuFoldKind.EmptyGroup -> stringResource(R.string.baopu_tools_fold_empty)
+        BaopuFoldKind.AllOn -> stringResource(R.string.baopu_tools_fold_all_on)
+        // 整组关光（组开关关掉的、或逐个关到零的）：名单全列出来比只报个数有用吗？
+        // 这里报个数——一组的成员名整排会撑成好几行，而"这一组一个都别想用"这件事
+        // 组开关那个位置已经写明白了。
+        BaopuFoldKind.AllOff -> stringResource(R.string.baopu_tools_fold_all_off, summary.total)
+        BaopuFoldKind.SomeOff -> stringResource(
+            R.string.baopu_tools_fold_some_off,
+            summary.offNames.size,
+            summary.offNames.map { stringResource(baopuToolLabel(it)) }.joinToString(sep),
+        )
     }
 }
 
