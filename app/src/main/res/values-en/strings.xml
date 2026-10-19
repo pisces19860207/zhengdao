@@ -1267,5 +1267,48 @@
     <string name="baopu_user_msg_longpress">Long-press to edit or copy</string>
     <string name="baopu_edit_this">Edit this</string>
     <string name="learn_gate_blocked">Cannot adopt this one: %1$s</string>
-    <string name="persona_rollback_card">Persona</string>    <string name="persona_rollback_desc">A backup is saved automatically before every persona rewrite. Restore the previous version here.</string>    <string name="persona_rollback_project">Project persona (follows the workspace)</string>    <string name="persona_rollback_global">Global persona (follows the app)</string>    <string name="persona_rollback_last">Last backup %1$s</string>    <string name="persona_rollback_none">No backups yet (available after the first rewrite)</string>    <string name="persona_rollback_action">Restore</string>    <string name="persona_rollback_done">Restored the previous version; the current version was backed up as %1$s</string>    <!-- batch 38: round usage ticker + read-only artifact viewer (en) -->    <string name="baopu_usage_label">This round\'s usage</string>    <string name="baopu_usage_in">In</string>    <string name="baopu_usage_out">Out</string>    <string name="baopu_usage_cache_hit">Cache hit</string>    <string name="baopu_usage_step">Step %1$d</string>    <string name="baopu_artifact_row_label">Artifacts</string>    <string name="baopu_artifact_more">%1$d more</string>    <string name="baopu_artifact_loading">Loading...</string>    <string name="baopu_artifact_bytes">%1$d bytes</string>    <string name="baopu_artifact_truncated">Showing first %1$d lines (%2$d total)</string>    <string name="baopu_artifact_truncated_only">Showing first %1$d lines</string>    <string name="baopu_artifact_copy">Copy full text</string>    <string name="baopu_artifact_copied">Copied %1$d chars / %2$d lines</string>    <string name="baopu_artifact_copy_incomplete">Copy incomplete, please retry</string>    <string name="baopu_artifact_missing">File is gone: %1$s</string><!-- batch 38 §8: top-bar artifact strip (en) --><string name="baopu_artifact_top_label">Artifacts · %1$d</string><!-- batch 38 §9: drawer artifact shelf (en) --><string name="baopu_artifact_shelf_title">Artifacts (%1$d)</string><string name="baopu_artifact_shelf_desc">Files written lately. Open one to read it, or move it to the trash.</string><string name="baopu_artifact_shelf_row_meta">%1$s - updated %2$s</string><string name="baopu_artifact_shelf_row_session">From: %1$s</string><string name="baopu_artifact_shelf_offdisk">Not on disk</string><string name="baopu_artifact_shelf_open">Read</string><string name="baopu_artifact_shelf_delete">Move to trash</string><string name="baopu_artifact_shelf_confirm">Tap again to move %1$s to the trash. It leaves this folder, but you can restore it from the trash.</string><string name="baopu_artifact_shelf_moved">Moved to the trash: %1$s -> %2$s</string><string name="baopu_artifact_shelf_confirm_gone">Tap again to clear this row: %1$s (the file is already gone from disk)</string><string name="baopu_artifact_shelf_ledger_cleared">Cleared this row: %1$s (nothing on disk to move)</string><string name="baopu_artifact_shelf_rejected">Not done: %1$s (%2$s)</string><string name="baopu_artifact_shelf_io_failed">Could not move it to the trash: %1$s (%2$s) - file and ledger untouched</string><string name="baopu_artifact_shelf_ledger_failed">The file is in the trash, but this ledger row was not cleared: %1$s (you will still see it next time)</string><string name="baopu_artifact_shelf_none">No artifacts yet</string><string name="baopu_artifact_shelf_none_hint">Ask it to write something</string><string name="baopu_artifact_shelf_close">Close</string>
+    <string name="persona_rollback_card">Persona</string>
+    <string name="persona_rollback_desc">A backup is saved automatically before every persona rewrite. Restore the previous version here.</string>
+    <string name="persona_rollback_project">Project persona (follows the workspace)</string>
+    <string name="persona_rollback_global">Global persona (follows the app)</string>
+    <string name="persona_rollback_last">Last backup %1$s</string>
+    <string name="persona_rollback_none">No backups yet (available after the first rewrite)</string>
+    <string name="persona_rollback_action">Restore</string>
+    <string name="persona_rollback_done">Restored the previous version; the current version was backed up as %1$s</string>
+    <!-- batch 38: round usage ticker + read-only artifact viewer (en) -->
+    <string name="baopu_usage_label">This round\'s usage</string>
+    <string name="baopu_usage_in">In</string>
+    <string name="baopu_usage_out">Out</string>
+    <string name="baopu_usage_cache_hit">Cache hit</string>
+    <string name="baopu_usage_step">Step %1$d</string>
+    <string name="baopu_artifact_row_label">Artifacts</string>
+    <string name="baopu_artifact_more">%1$d more</string>
+    <string name="baopu_artifact_loading">Loading...</string>
+    <string name="baopu_artifact_bytes">%1$d bytes</string>
+    <string name="baopu_artifact_truncated">Showing first %1$d lines (%2$d total)</string>
+    <string name="baopu_artifact_truncated_only">Showing first %1$d lines</string>
+    <string name="baopu_artifact_copy">Copy full text</string>
+    <string name="baopu_artifact_copied">Copied %1$d chars / %2$d lines</string>
+    <string name="baopu_artifact_copy_incomplete">Copy incomplete, please retry</string>
+    <string name="baopu_artifact_missing">File is gone: %1$s</string>
+    <!-- batch 38 §8: top-bar artifact strip (en) -->
+    <string name="baopu_artifact_top_label">Artifacts · %1$d</string>
+    <!-- batch 38 §9: drawer artifact shelf (en) -->
+    <string name="baopu_artifact_shelf_title">Artifacts (%1$d)</string>
+    <string name="baopu_artifact_shelf_desc">Files written lately. Open one to read it, or move it to the trash.</string>
+    <string name="baopu_artifact_shelf_row_meta">%1$s - updated %2$s</string>
+    <string name="baopu_artifact_shelf_row_session">From: %1$s</string>
+    <string name="baopu_artifact_shelf_offdisk">Not on disk</string>
+    <string name="baopu_artifact_shelf_open">Read</string>
+    <string name="baopu_artifact_shelf_delete">Move to trash</string>
+    <string name="baopu_artifact_shelf_confirm">Tap again to move %1$s to the trash. It leaves this folder, but you can restore it from the trash.</string>
+    <string name="baopu_artifact_shelf_moved">Moved to the trash: %1$s -> %2$s</string>
+    <string name="baopu_artifact_shelf_confirm_gone">Tap again to clear this row: %1$s (the file is already gone from disk)</string>
+    <string name="baopu_artifact_shelf_ledger_cleared">Cleared this row: %1$s (nothing on disk to move)</string>
+    <string name="baopu_artifact_shelf_rejected">Not done: %1$s (%2$s)</string>
+    <string name="baopu_artifact_shelf_io_failed">Could not move it to the trash: %1$s (%2$s) - file and ledger untouched</string>
+    <string name="baopu_artifact_shelf_ledger_failed">The file is in the trash, but this ledger row was not cleared: %1$s (you will still see it next time)</string>
+    <string name="baopu_artifact_shelf_none">No artifacts yet</string>
+    <string name="baopu_artifact_shelf_none_hint">Ask it to write something</string>
+    <string name="baopu_artifact_shelf_close">Close</string>
 </resources>

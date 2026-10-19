@@ -1266,5 +1266,48 @@
     <string name="baopu_user_msg_longpress">长按：编辑这条或复制</string>
     <string name="baopu_edit_this">编辑这条</string>
     <string name="learn_gate_blocked">这条不能采纳：%1$s</string>
-    <string name="persona_rollback_card">人设</string>    <string name="persona_rollback_desc">人设每次被改写前都会自动留一份备份；这里是「恢复到上一版」。</string>    <string name="persona_rollback_project">本项目人设（跟工作区）</string>    <string name="persona_rollback_global">全局人设（跟 App）</string>    <string name="persona_rollback_last">最近备份 %1$s</string>    <string name="persona_rollback_none">还没有备份（第一次改写之后才会有）</string>    <string name="persona_rollback_action">恢复</string>    <string name="persona_rollback_done">已恢复到上一版；当前版也备份了：%1$s</string>    <!-- 第三十八批：本轮用量跑马灯＋产物只读查看器（中） -->    <string name="baopu_usage_label">本轮用量</string>    <string name="baopu_usage_in">入</string>    <string name="baopu_usage_out">出</string>    <string name="baopu_usage_cache_hit">缓存命中</string>    <string name="baopu_usage_step">第 %1$d 步</string>    <string name="baopu_artifact_row_label">产物</string>    <string name="baopu_artifact_more">还有 %1$d 个</string>    <string name="baopu_artifact_loading">读取中…</string>    <string name="baopu_artifact_bytes">%1$d 字节</string>    <string name="baopu_artifact_truncated">只显示前 %1$d 行（共 %2$d 行）</string>    <string name="baopu_artifact_truncated_only">只显示前 %1$d 行</string>    <string name="baopu_artifact_copy">复制全文</string>    <string name="baopu_artifact_copied">已复制 %1$d 字符／%2$d 行</string>    <string name="baopu_artifact_copy_incomplete">复制不完整，请重试</string>    <string name="baopu_artifact_missing">文件不在了：%1$s</string><!-- 第三十八批 §8（用户 2026-10-19 追加）：顶栏产物条（中） --><string name="baopu_artifact_top_label">产物 · %1$d</string><!-- 第三十八批 §9（用户 2026-10-19 追加）：抽屉产物区（中） --><string name="baopu_artifact_shelf_title">产物（%1$d）</string><string name="baopu_artifact_shelf_desc">这一阵子写出来的文件；点开能回看，也能移进回收站</string><string name="baopu_artifact_shelf_row_meta">%1$s ・ 更新 %2$s</string><string name="baopu_artifact_shelf_row_session">来自：%1$s</string><string name="baopu_artifact_shelf_offdisk">已不在盘上</string><string name="baopu_artifact_shelf_open">回看</string><string name="baopu_artifact_shelf_delete">移进回收站</string><string name="baopu_artifact_shelf_confirm">再点一次就把 %1$s 移进回收站（原位置就没有了，还能从回收站找回）</string><string name="baopu_artifact_shelf_moved">已移进回收站：%1$s → %2$s</string><string name="baopu_artifact_shelf_confirm_gone">再点一次就把这一行从产物区清掉：%1$s（盘上本来就没有它了）</string><string name="baopu_artifact_shelf_ledger_cleared">已从产物区清掉这一行：%1$s（盘上没有东西要搬）</string><string name="baopu_artifact_shelf_rejected">这一步没做：%1$s（%2$s）</string><string name="baopu_artifact_shelf_io_failed">移进回收站失败：%1$s（%2$s）——文件与台账都原样未动</string><string name="baopu_artifact_shelf_ledger_failed">文件已进回收站，但台账那一行没清掉：%1$s（下次打开还会看见它）</string><string name="baopu_artifact_shelf_none">还没有产物</string><string name="baopu_artifact_shelf_none_hint">让它写点东西就有了</string><string name="baopu_artifact_shelf_close">关闭</string>
+    <string name="persona_rollback_card">人设</string>
+    <string name="persona_rollback_desc">人设每次被改写前都会自动留一份备份；这里是「恢复到上一版」。</string>
+    <string name="persona_rollback_project">本项目人设（跟工作区）</string>
+    <string name="persona_rollback_global">全局人设（跟 App）</string>
+    <string name="persona_rollback_last">最近备份 %1$s</string>
+    <string name="persona_rollback_none">还没有备份（第一次改写之后才会有）</string>
+    <string name="persona_rollback_action">恢复</string>
+    <string name="persona_rollback_done">已恢复到上一版；当前版也备份了：%1$s</string>
+    <!-- 第三十八批：本轮用量跑马灯＋产物只读查看器（中） -->
+    <string name="baopu_usage_label">本轮用量</string>
+    <string name="baopu_usage_in">入</string>
+    <string name="baopu_usage_out">出</string>
+    <string name="baopu_usage_cache_hit">缓存命中</string>
+    <string name="baopu_usage_step">第 %1$d 步</string>
+    <string name="baopu_artifact_row_label">产物</string>
+    <string name="baopu_artifact_more">还有 %1$d 个</string>
+    <string name="baopu_artifact_loading">读取中…</string>
+    <string name="baopu_artifact_bytes">%1$d 字节</string>
+    <string name="baopu_artifact_truncated">只显示前 %1$d 行（共 %2$d 行）</string>
+    <string name="baopu_artifact_truncated_only">只显示前 %1$d 行</string>
+    <string name="baopu_artifact_copy">复制全文</string>
+    <string name="baopu_artifact_copied">已复制 %1$d 字符／%2$d 行</string>
+    <string name="baopu_artifact_copy_incomplete">复制不完整，请重试</string>
+    <string name="baopu_artifact_missing">文件不在了：%1$s</string>
+    <!-- 第三十八批 §8（用户 2026-10-19 追加）：顶栏产物条（中） -->
+    <string name="baopu_artifact_top_label">产物 · %1$d</string>
+    <!-- 第三十八批 §9（用户 2026-10-19 追加）：抽屉产物区（中） -->
+    <string name="baopu_artifact_shelf_title">产物（%1$d）</string>
+    <string name="baopu_artifact_shelf_desc">这一阵子写出来的文件；点开能回看，也能移进回收站</string>
+    <string name="baopu_artifact_shelf_row_meta">%1$s ・ 更新 %2$s</string>
+    <string name="baopu_artifact_shelf_row_session">来自：%1$s</string>
+    <string name="baopu_artifact_shelf_offdisk">已不在盘上</string>
+    <string name="baopu_artifact_shelf_open">回看</string>
+    <string name="baopu_artifact_shelf_delete">移进回收站</string>
+    <string name="baopu_artifact_shelf_confirm">再点一次就把 %1$s 移进回收站（原位置就没有了，还能从回收站找回）</string>
+    <string name="baopu_artifact_shelf_moved">已移进回收站：%1$s → %2$s</string>
+    <string name="baopu_artifact_shelf_confirm_gone">再点一次就把这一行从产物区清掉：%1$s（盘上本来就没有它了）</string>
+    <string name="baopu_artifact_shelf_ledger_cleared">已从产物区清掉这一行：%1$s（盘上没有东西要搬）</string>
+    <string name="baopu_artifact_shelf_rejected">这一步没做：%1$s（%2$s）</string>
+    <string name="baopu_artifact_shelf_io_failed">移进回收站失败：%1$s（%2$s）——文件与台账都原样未动</string>
+    <string name="baopu_artifact_shelf_ledger_failed">文件已进回收站，但台账那一行没清掉：%1$s（下次打开还会看见它）</string>
+    <string name="baopu_artifact_shelf_none">还没有产物</string>
+    <string name="baopu_artifact_shelf_none_hint">让它写点东西就有了</string>
+    <string name="baopu_artifact_shelf_close">关闭</string>
 </resources>
