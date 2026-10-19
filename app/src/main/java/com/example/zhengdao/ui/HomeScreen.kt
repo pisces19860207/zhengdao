@@ -1118,7 +1118,9 @@ fun HomeScreen(
             }
         }
         // 空态：manifest 拉不到时列表会空掉，给一句话而不是一片白
-        if (agents.none { it.id != "opencode" }) {
+        // P1-10（第五十三批）：判据就是「空表」。原先 `it.id != "opencode"` 里的 opencode
+        // 早已不在 agent 列表里 ⇒ 条件退化成恒真，首帧空表就闪「清单拉不到」。
+        if (agents.isEmpty()) {
             item {
                 Text(
                     text = stringResource(R.string.home_manifest_unreachable),
