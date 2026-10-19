@@ -175,13 +175,18 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // 外部打开入口（§4.6，第 ② 刀接线）：终端链接点击把 URL 写进 BrowserHolder；
-    // 组合时一次性消费 ⇒ 开新标签加载（多标签语义，见 BrowserTabManager.openExternal）。
-    LaunchedEffect(Unit) {
-        val target = BrowserHolder.pendingUrl
-        if (target != null) {
+    // 外部打开入口（§4.6，第 ② 刀接线）：终端链接点击把 URL 写进 BrowserHolder。
+    // ── P1-8（第五十五批 · §B 77 审计，2026-10-19）：pendingUrl 改成可观察状态后，消费
+    // 不再挂在 `LaunchedEffect(Unit)` 上。旧写法只在**首次组合**跑一次：用户已经停在玄览
+    // Tab 时从终端点一条链接，组合不重跑 ⇒ URL 整条丢失（@Volatile 只给可见性，不给重组）。
+    // 现在先在组合体读一次（读发生在组合期 ⇒ 写入即重组），再以「值」为 key 起 effect 消费。
+    // 消费后先清槽再开标签：key 变成 null 会让 effect 再跑一次，那一趟走 `pending != null`
+    // 的分支外（空操作），不会重复 openExternal（门禁 S5/S6 钉顺序与次数）。
+    val pending = BrowserHolder.pendingUrl
+    LaunchedEffect(pending) {
+        if (pending != null) {
             BrowserHolder.pendingUrl = null
-            BrowserTabManager.openExternal(context, target)
+            BrowserTabManager.openExternal(context, pending)
         }
     }
 
