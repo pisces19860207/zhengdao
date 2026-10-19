@@ -400,6 +400,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                 ),
                             )
                         }
+                        // 2026-10-19：玄览正在干什么（用户：别只留工具卡在消息流里）
+                        controller.browserActivity?.let {
+                            add(NoticeItem(stringResource(R.string.baopu_browser_notice_label), it))
+                        }
                         // 第三十八批 A 段：本轮用量。跑马灯滚的是标题（「本轮用量」），
                         // 点开 DropdownMenu 才是明细：第一行累计、往后**每步一行**
                         // （`第 3 步 · 入 12.3k · 出 2.1k · 4.2s`——排布照 run_log 那套：
