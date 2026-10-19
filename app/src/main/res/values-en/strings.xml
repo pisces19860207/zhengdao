@@ -1238,12 +1238,17 @@
     <string name="baopu_tool_delete_path">Delete file</string>
     <string name="baopu_tool_ask_user">Choice card</string>
     <string name="baopu_tool_ask_user_desc">Pops a choice card above the input bar when unsure: 2–4 options, the recommended one first with a one-line reason; the run continues after you pick. Touches no files.</string>
+    <string name="baopu_tool_card_inspect">Card check (read-only)</string>
+    <string name="baopu_tool_card_inspect_desc">Read-only health check for a card or world book: identify the shape first (web-platform world book / Tavo book, character card, regex, preset / SillyTavern world book / CCv3 lorebook / SillyTavern card PNG; unknown formats report the top-level keys it saw), then check field by field (missing vs out-of-range, keys too broad, never triggers, broken separators, same-key collisions). Read-only: nothing is changed, moved or deleted.</string>
+    <string name="baopu_tool_card_export">Export card PNG</string>
+    <string name="baopu_tool_card_export_desc">Write a JSON string into a SillyTavern card PNG (embedded chara and ccv3 text chunks, inserted before IEND). Never overwrites: an existing target is refused; the source file is left byte-for-byte intact. Asks for confirmation before each run.</string>
     <string name="baopu_tools_group_read">Read &amp; find</string>
     <string name="baopu_tools_group_write">Write &amp; change</string>
     <string name="baopu_tools_group_image">Images</string>
     <string name="baopu_tools_group_browser">Web</string>
     <string name="baopu_tools_group_library">Library</string>
     <string name="baopu_tools_group_plan">Plan &amp; skills</string>
+    <string name="baopu_tools_group_card">Cards &amp; formats</string>
     <string name="baopu_tool_image_ops">Image tools</string>
     <string name="baopu_tool_image_ops_desc">Edit images (a confirmation card pops up before each run): resize to a max edge, crop by rectangle, convert to png/jpg/webp, extract the dominant palette (text only), or generate 48/72/96/144/192 square icon PNGs. The original is never overwritten — output goes to &lt;name&gt;-&lt;action&gt;.&lt;ext&gt; and an existing target is refused.</string>
     <string name="baopu_tool_delete_path_desc">Delete one file in the workspace (a confirmation card pops up before each run): by default it is **moved to the recycle bin** (workspace/.回收站/&lt;stamp&gt;-&lt;name&gt;), so it can be moved back; only with \"permanent\" ticked is it unrecoverable. Files only — directories are always refused; the backup area .baopu-bak/, the recycle bin itself and 资料库/原始/ are off limits.</string>
