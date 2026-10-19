@@ -723,6 +723,13 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             // R-25（第⑯刀）：裸 Thread{} 改 scope + withContext(Dispatchers.IO)；
                             // 盘 IO（sha256/解压/安装）全在 IO 线程，回主线程只做状态赋值与 Snackbar。
                             scope.launch {
+                                // 第五十二批 · P0-5：活会话时不换 rootfs —— 回退也是一次整树替换
+                                // （旧树被 rename+递归删除），运行中的 proot/agent 后续 open/exec
+                                // 会 ENOENT。判定在解压/替换之前，被拦时零文件改动。
+                                if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "回退环境", com.example.zhengdao.rootfs.RunLog::log)) {
+                                    Toast.makeText(ctx, LIVE_SESSION_BLOCK_MESSAGE, Toast.LENGTH_LONG).show()
+                                    return@launch
+                                }
                                 try {
                                     withContext(Dispatchers.IO) {
                                         // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）

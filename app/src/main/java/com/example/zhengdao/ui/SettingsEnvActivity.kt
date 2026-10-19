@@ -562,6 +562,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 TextButton(
                     enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
                     onClick = {
+                    // 第五十二批 · P0-5：活会话时不换 rootfs —— swapLocked 是「旧树改名 → 新树
+                    // 就位 → 旧树递归删除」，运行中的 proot/agent 后续 open/exec 会 ENOENT。
+                    // 判定放在任何下载/解压/替换之前；被拦时一个字节都不动，不报「安装失败」
+                    // （这是前置条件不满足，不是安装失败）。
+                    if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.rootfs.RunLog::log)) {
+                        toastOnMain(LIVE_SESSION_BLOCK_MESSAGE, long = true)
+                        return@TextButton
+                    }
                     repairConfirm = false
                     val candidates = (
                         listOf(
@@ -658,6 +666,12 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 TextButton(
                     enabled = !InstallFlow.isRunning(), // #11 / E-078：与其它长流程共享 busy
                     onClick = {
+                    // 第五十二批 · P0-5：活会话时不换 rootfs（增量 apply 与全量 install 走同一个
+                    // 整树替换）。判定在下单/下载之前，被拦时零文件改动。
+                    if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "环境更新", com.example.zhengdao.rootfs.RunLog::log)) {
+                        toastOnMain(LIVE_SESSION_BLOCK_MESSAGE, long = true)
+                        return@TextButton
+                    }
                     val url = pendingUpdateUrl
                     updateMsg = null
                     if (url == null) {
