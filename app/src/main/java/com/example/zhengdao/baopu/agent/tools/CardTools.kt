@@ -12,6 +12,7 @@ import com.example.zhengdao.baopu.BaopuGuardCore
 import com.example.zhengdao.baopu.card.CardAsset
 import com.example.zhengdao.baopu.card.CardAssetParser
 import com.example.zhengdao.baopu.card.CardCheck
+import com.example.zhengdao.baopu.card.CardRoster
 import com.example.zhengdao.baopu.card.CardJson
 import com.example.zhengdao.baopu.card.CardPng
 import com.example.zhengdao.baopu.card.CheckReport
@@ -66,7 +67,7 @@ internal object CardTools {
         val bytes = runCatching { file.readBytes() }.getOrElse {
             return@ToolSpec ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.name}")
         }
-        ToolOutcome.Ok(inspect(bytes))
+        ToolOutcome.Ok(inspect(bytes, CardRoster.findNear(file)))
     }
 
     /**
@@ -74,12 +75,12 @@ internal object CardTools {
      *
      * **这条链上不许有写盘**（F11）：只有解析与统计。
      */
-    fun inspect(bytes: ByteArray): String {
+    fun inspect(bytes: ByteArray, roster: CardRoster? = null): String {
         val verdict = com.example.zhengdao.baopu.card.CardFormat.recognize(bytes)
         if (!verdict.isKnown) return describeUnknown(verdict)
         val parsed = CardAssetParser.parse(bytes)
             ?: return "认出了（${label(verdict.format)}），但读不出结构化内容。${verdict.message ?: ""}"
-        val report = CardCheck.check(parsed)
+        val report = CardCheck.check(parsed, roster = roster)
         return buildString {
             appendLine("【认脸】${label(verdict.format)}${subtitle(verdict)}（${conf(verdict)}）")
             appendLine("依据：${verdict.evidence.joinToString("；").ifEmpty { "（无）" }}")
