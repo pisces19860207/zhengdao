@@ -92,10 +92,12 @@ private fun openSettings(context: Context) {
 /**
  * 抱朴页（刀 1 · B 段）：真身（占位页 BaopuRebuilding 已于第六十二批删除）。
  *
- * 结构（上→下）：☰ 顶条 → 防丢顶条 → 会话头（状态/中断/续跑）→ 自省便签 → 待办提示行
- * → 资料库结果一行 → 提示词小框（可复制）→ 消息流（贴底跟随＋「⬇ 回到最新」浮标）→
+ * 结构（上→下）：☰ 顶条 → **通知位**（第六十三批：防丢顶条、会话头的中断＋续跑与引擎人话、
+ * 自省便签、待办提示行、资料库结果一行——五条合成一条。同一时刻只显最高一档
+ * （错误＞行动＞提示），其余折进「还有 N 条」，点开看全量）
+ * → 提示词小框（可复制）→ 消息流（贴底跟随＋「⬇ 回到最新」浮标）→
  * **底部操作卡区（确认卡/问人卡/待过目记忆卡/记忆候选卡，第十八批-B 从列表上方挪来）**
- * → 输入区（composer）。纯展示类（压缩条/资料库提示/提示词小框/自省便签）留在原处；
+ * → 输入区（composer）。压缩条这类纯展示行仍留在原处；
  * 卡片区与输入框之间还夹着抽屉/各类 Sheet（ModalNavigationDrawer 与弹层）。
  * 「提示词小框」的落地：展示**最近一条抱朴回复**的可复制小框（CopyBox）——
  * 用户把回复复制到别处用，是这一行设计的实际用途场景（报告里写明解释）。
@@ -448,102 +450,103 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     }
                 }
             }
-            // 防丢顶条（D 段第 3 条）：原件超 N 天没导出就提醒 ＋ 一键导出。
-            // 判据是纯函数（BackupRules.isStale，N 可配）；从没导出过且库里有件 ⇒ 立刻算超期。
+            // ── 第六十三批：首屏通知位（2026-10-20 定稿）────────────────────────
+            // 原来这五条各占一行——防丢横幅、SessionBar（中断＋引擎人话）、pendingNote、
+            // skillNote、libraryNote，最坏同屏 ≈200dp，比正文还高。现在收进**一个通知位**：
+            // 同一时刻只显最高一档（错误 > 行动 > 提示），其余折成「还有 N 条」，点开看全量。
+            // 这里不写优先级、不写同档先后——那些全在 BaopuNoticeSlot 的纯函数里
+            // （行动 续跑>导出；错误 记忆>资料库>技能；提示 引擎人话>Info 便签）。
+            // 这一层只回答两件事：**有没有这一条**（判据原样搬过来）与**它的文案／入口**。
             val stats = controller.backupStats
             val nowMs = remember(stats) { System.currentTimeMillis() }
-            if (BackupRules.isStale(stats.lastExportAt, nowMs, stats.total)) {
-                val days = BackupRules.daysSinceExport(stats.lastExportAt, nowMs)
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
+            val engineNotice = controller.engineNotice.value
+            val noticeEntries = buildList {
+                // ① 错误档：errorContainer 红底、常驻、点掉才清（清通道仍是那三个既有 clear*）
+                controller.pendingNote?.let { note ->
+                    add(
+                        BaopuNoticeEntry(
+                            source = BaopuNoticeSource.MemoryWriteError,
+                            text = note,
+                            label = stringResource(R.string.memory_write_failed_label),
+                            onDismiss = { controller.clearPendingNote() },
+                        ),
+                    )
+                }
+                // 技能动作一句话（第十九批起有；第六十一批 §2 分档：**进度**几秒自清、**错误**常驻可点）
+                controller.skillNote?.let { note ->
+                    if (note.level == BaopuNoteLevel.Error) {
+                        add(
+                            BaopuNoticeEntry(
+                                source = BaopuNoticeSource.SkillError,
+                                text = note.text,
+                                label = stringResource(R.string.baopu_note_skill_error_label),
+                                onDismiss = { controller.clearSkillNote() },
+                            ),
+                        )
+                    } else {
+                        add(BaopuNoticeEntry(source = BaopuNoticeSource.InfoNote, text = note.text))
+                    }
+                }
+                libraryNote?.let { note ->
+                    if (note.level == BaopuNoteLevel.Error) {
+                        add(
+                            BaopuNoticeEntry(
+                                source = BaopuNoticeSource.LibraryError,
+                                text = note.text,
+                                label = stringResource(R.string.baopu_note_library_error_label),
+                                onDismiss = { controller.clearLibraryNote() },
+                            ),
+                        )
+                    } else {
+                        add(BaopuNoticeEntry(source = BaopuNoticeSource.InfoNote, text = note.text))
+                    }
+                }
+                // ② 行动档：入口**直接长在条上**（保命线 3——不许藏进「+N」）。灰底，不再是红底告警。
+                //    中断判据与 49 批 `sessionBarVisible` 前半句同形：interruptedStep>=0 ∧ 没在跑 ∧ 会话真开着
+                //    （`controller.busy` 就是那个 `busyState` 比的那组状态，口径没另开一条）。
+                if (controller.interruptedStep >= 0 && !controller.busy && controller.sessionId != null) {
+                    add(
+                        BaopuNoticeEntry(
+                            source = BaopuNoticeSource.Resume,
+                            text = stringResource(R.string.baopu_interrupted_at, controller.interruptedStep),
+                            action = BaopuNoticeAction(stringResource(R.string.baopu_resume)) {
+                                controller.resume()
+                            },
+                        ),
+                    )
+                }
+                //    防丢（D 段第 3 条）：判据仍是纯函数 `BackupRules.isStale`（N 可配；从没导出过
+                //    且库里有件 ⇒ 立刻算超期）。2026-10-20 定稿：它不再当红底告警条——跟中断同档，
+                //    条尾那颗按钮就是「一键导出」；导出完成 `backupStats` 变了，这条自然消失。
+                if (BackupRules.isStale(stats.lastExportAt, nowMs, stats.total)) {
+                    val days = BackupRules.daysSinceExport(stats.lastExportAt, nowMs)
+                    add(
+                        BaopuNoticeEntry(
+                            source = BaopuNoticeSource.Export,
                             text = if (days == null) {
                                 stringResource(R.string.baopu_backup_stale_never)
                             } else {
                                 stringResource(R.string.baopu_backup_stale_days, days)
                             },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(
-                            onClick = { controller.exportOriginals(false) },
-                            enabled = !controller.exportBusy,
-                        ) {
-                            Text(
-                                stringResource(
+                            action = BaopuNoticeAction(
+                                // 导出中：文案换成「导出中…」并 disable——按钮还在，只是点不动
+                                label = stringResource(
                                     if (controller.exportBusy) R.string.baopu_export_running else R.string.baopu_backup_go,
                                 ),
-                            )
-                        }
-                    }
-                }
-            }
-            BaopuSessionBar(
-                state = state,
-                interruptedStep = controller.interruptedStep,
-                notice = controller.engineNotice.value,
-                hasSession = controller.sessionId != null,
-                onResume = { controller.resume() },
-            )
-            // 自省便签（C 段：恰好一条）。任务 B：改成仓库里早就写好、却一直零调用的 BaopuIntrospectionNote
-            // （Surface ＋ 标题 ＋ ×）。**不自动消失，点整条（含 ×）才清** —— 内边距由组件自己给，这里不再传 modifier。
-            controller.pendingNote?.let { note ->
-                BaopuIntrospectionNote(
-                    text = note,
-                    onDismiss = { controller.clearPendingNote() },
-                    // 2026-10-19：错误便签有自己的标题与错误色；压紧凑，别比它替换掉的单行更高
-                    label = stringResource(R.string.memory_write_failed_label),
-                    isError = true,
-                    compact = true,
-                )
-            }
-            // 技能动作一句话（第十九批起有；第六十一批 §2 分档：**进度**几秒自清、**错误**常驻可点）
-            controller.skillNote?.let { note ->
-                if (note.level == BaopuNoteLevel.Error) {
-                    // 复用 49 批那个现成的可关便签（Surface ＋ 标题 ＋ ×），不新造组件；
-                    // compact 与 pendingNote 同一档高度，三条便签叠在一起不成三样。
-                    BaopuIntrospectionNote(
-                        text = note.text,
-                        onDismiss = { controller.clearSkillNote() },
-                        label = stringResource(R.string.baopu_note_skill_error_label),
-                        isError = true,
-                        compact = true,
-                    )
-                } else {
-                    Text(
-                        text = note.text,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                                enabled = !controller.exportBusy,
+                            ) { controller.exportOriginals(false) },
+                        ),
                     )
                 }
-            }
-            libraryNote?.let { note ->
-                if (note.level == BaopuNoteLevel.Error) {
-                    BaopuIntrospectionNote(
-                        text = note.text,
-                        onDismiss = { controller.clearLibraryNote() },
-                        label = stringResource(R.string.baopu_note_library_error_label),
-                        isError = true,
-                        compact = true,
-                    )
-                } else {
-                    Text(
-                        text = note.text,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                    )
+                // ③ 提示档：引擎给的人话（AskUser ／ 错误号口径；不是英文 err 直出）。
+                //    无按钮，也**不在这儿清**：50 批定过「不因搬位改成自动消失」，而引擎那条
+                //    `_notice` 在 `baopu/agent` 那条线里既没有公开写口也没有清口（本批红线不碰它）
+                //    ⇒ 维持现状由引擎自己清；定稿要的「点一下收掉」需要引擎开一条通道，交下一批。
+                if (!engineNotice.isNullOrBlank()) {
+                    add(BaopuNoticeEntry(source = BaopuNoticeSource.EngineNotice, text = engineNotice))
                 }
             }
+            BaopuNoticeSlot(noticeEntries)
             // 顶栏那一条（2026-10-18 定稿「固定到现在这个位置，不用跟着正文框跑」＋
             // 38 批 §8 追加「这一栏改成产物」）：位置不变、折叠态仍是一行高（§8.3）。
             // 二选一的判断全在 topBarSlot 里，这一层不写 isEmpty()。
