@@ -68,14 +68,22 @@ class PendingNoteRetentionTest {
 
     @Test
     fun `换成现成的可关便签组件`() {
-        val block = pendingBlock(screen())
-        assertTrue("显示处必须换成 BaopuIntrospectionNote(", block.contains("BaopuIntrospectionNote("))
+        // 2026-10-20 第六十三批：首屏五条收进一个通知位（`BaopuNoticeSlot.kt`），
+        // pendingNote 这一条在屏里只剩「交进通知位的条目」，`×` 那个组件本体被详情卡复用。
+        // 本批真正要钉的两件事一条没松：显示处**可点**（onDismiss 接 controller.clearPendingNote()）、
+        // 全文件只有一处 clearPendingNote 调用；换的只是「组件在哪个文件被调」。
+        val src = screen()
+        val block = pendingBlock(src)
+        assertTrue("pendingNote 必须交进通知位（不再自己常驻一条）", block.contains("BaopuNoticeEntry("))
         assertTrue(
             "onDismiss 必须接 controller.clearPendingNote()（点 × 立即消失）",
             block.contains("onDismiss = { controller.clearPendingNote() }"),
         )
         assertFalse("裸 Text 不许留着（不可点不可关那一型）", block.contains("Text("))
-        assertEquals("本批只有一处 clearPendingNote 调用", 1, Regex("clearPendingNote\\(\\)").findAll(screen()).count())
+        assertEquals("本批只有一处 clearPendingNote 调用", 1, Regex("clearPendingNote\\(\\)").findAll(src).count())
+        val slot = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuNoticeSlot.kt")
+        assertTrue("通知位的详情卡仍复用那个现成组件", slot.contains("BaopuIntrospectionNote("))
+        assertTrue("那个组件的 onDismiss 通道还接得上", slot.contains("onDismiss = entry.onDismiss"))
     }
 
     @Test

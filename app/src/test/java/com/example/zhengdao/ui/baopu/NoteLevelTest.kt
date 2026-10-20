@@ -34,6 +34,9 @@ class NoteLevelTest {
 
     private fun screen(): String = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt")
 
+    /** 第六十三批那个通知位组件（三条错误便签的渲染点搬这儿来了）。 */
+    private fun slot(): String = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuNoticeSlot.kt")
+
     private fun controller(): String =
         code("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt")
 
@@ -120,7 +123,13 @@ class NoteLevelTest {
 
     @Test
     fun `B3_错误靠点掉_且走既有clear`() {
+        // 2026-10-20 第六十三批：首屏五条收进**一个通知位**（`BaopuNoticeSlot.kt`），
+        // 三条错误便签的「渲染点」从 BaopuScreen 搬进了那个组件的详情卡——本用例的判据
+        // 「错误靠点掉、点掉走既有 clear*、不新造组件、分支按级别」一条都没放宽，
+        // 只有「组件在哪个文件里被调」跟着搬位改了目标（屏里 0 处、通知位里 1 处）。
+        // 对照：第六十一批 §2 也是这么处理 49 批那句「两个 LaunchedEffect 一行不动」的。
         val src = screen()
+        val slot = slot()
         listOf(
             "controller.clearSkillNote()" to "技能错误便签",
             "controller.clearLibraryNote()" to "资料库错误便签",
@@ -132,10 +141,12 @@ class NoteLevelTest {
                 Regex("onDismiss = \\{ ${Regex.escape(clearer)} \\}").findAll(src).count(),
             )
         }
-        // 不新造大组件：三条错误便签都用 49 批那个现成的（Surface ＋ 标题 ＋ ×）
-        assertEquals(3, Regex("BaopuIntrospectionNote\\(").findAll(src).count())
+        // 不新造大组件：错误档用的还是 49 批那个现成的（Surface ＋ 标题 ＋ ×），只是调用点在通知位里
+        assertEquals("屏里不该再自己渲染便签", 0, Regex("BaopuIntrospectionNote\\(").findAll(src).count())
+        assertEquals("通知位里错误档仍复用那个组件（恰好一处）", 1, Regex("BaopuIntrospectionNote\\(").findAll(slot).count())
+        assertEquals("屏里通知位出口只有一处", 1, Regex("BaopuNoticeSlot\\(").findAll(src).count())
         assertFalse(
-            "本批不许在 BaopuScreen 里另造一个便签组件",
+            "不许在 BaopuScreen 里另造一个便签组件",
             Regex("fun \\w*Note\\(").containsMatchIn(src),
         )
         // 错误两族的分支判据是级别，不是文案内容（不许写 contains("失败") 那种话术匹配）
