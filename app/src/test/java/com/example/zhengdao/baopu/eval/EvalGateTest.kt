@@ -79,6 +79,9 @@ class EvalGateTest {
         writeReport(root, results, rate, avgSteps, elapsed, tokensIn, tokensOut, cfg, determinism, all)
 
         val baseline = readBaseline(root)
+        // 第九十批 ③：B/C 条目紧挨着读数打出来——**没实测的层不许安静地不在账上**。
+        // 拿 fixture 跑的 12/12 不是这两层的水位，光看 A 段通过率会把「没人验过」读成「都过了」。
+        baseline?.layers?.values?.sortedBy { it.persona }?.forEach { println("  " + it.label()) }
         println("进化门禁：$pass/${cases.size} 通过（${"%.0f".format(rate * 100)}%），平均 ${"%.1f".format(avgSteps)} 步，token 入 $tokensIn 出 $tokensOut，用时 ${elapsed / 1000}s")
         println("  确定性：${determinism.label()} —— ${determinism.reason()}")
         results.filter { !it.ok }.forEach { r ->
@@ -107,9 +110,9 @@ class EvalGateTest {
         // 所以把「上轮过、这轮挂」单独点名。
         val broke = baseline.passing - nowPassing
         if (broke.isNotEmpty()) println("  ⚠ 上轮过、这轮挂：${broke.joinToString("、")}")
-        val floor = (baseline.rate - 0.10).coerceAtLeast(0.0)
+        val floor = (baseline.passRate - 0.10).coerceAtLeast(0.0)
         assertTrue(
-            "通过率退化：本次 ${"%.0f".format(rate * 100)}%，基线 ${"%.0f".format(baseline.rate * 100)}%，下限 ${"%.0f".format(floor * 100)}%",
+            "通过率退化：本次 ${"%.0f".format(rate * 100)}%，基线 ${"%.0f".format(baseline.passRate * 100)}%，下限 ${"%.0f".format(floor * 100)}%",
             rate >= floor,
         )
         assertTrue(
@@ -130,32 +133,15 @@ class EvalGateTest {
 
     // ── 基线 / 报告 ──────────────────────────────────────────────────────
 
-    private data class Baseline(
-        val rate: Double,
-        val avgSteps: Double,
-        val passing: Set<String> = emptySet(),
-        /** 基线记下的模型名（null = 老基线文件没这字段）。 */
-        val model: String? = null,
-        /** 基线记下的确定性档标签（null = 老基线文件没这字段）。 */
-        val determinismLabel: String? = null,
+    /**
+     * 读基线（第九十批 ③：口径收进 [EvalBaseline]，门禁不再自己养一份解析）。
+     *
+     * 读不出＝null＝「没有可比对象」，与旧行为一致；**绝不**把坏文件按 0 分判红，
+     * 也不把里面 `measured=false` 的 B/C 条目按通过算（见 [EvalBaseline.Layer.readingOrNull]）。
+     */
+    private fun readBaseline(root: File): EvalBaseline.Doc? = EvalBaseline.parseOrNull(
+        File(root, "eval/baseline.json").takeIf { it.isFile }?.readText(Charsets.UTF_8),
     )
-
-    private fun readBaseline(root: File): Baseline? {
-        val f = File(root, "eval/baseline.json")
-        if (!f.isFile) return null
-        return runCatching {
-            val o = JSONObject(f.readText(Charsets.UTF_8))
-            val arr = o.optJSONArray("passing")
-            val passing = (0 until (arr?.length() ?: 0)).map { arr!!.getString(it) }.toSet()
-            Baseline(
-                rate = o.getDouble("passRate"),
-                avgSteps = o.getDouble("avgSteps"),
-                passing = passing,
-                model = o.optString("model").takeIf { it.isNotBlank() },
-                determinismLabel = o.optJSONObject("determinism")?.optString("label")?.takeIf { it.isNotBlank() },
-            )
-        }.getOrNull()
-    }
 
     private fun writeBaseline(
         root: File,
@@ -176,7 +162,11 @@ class EvalGateTest {
             .put("cases", passing.size)
             .put("passing", JSONArray(passing))
             .put("recordedAt", System.currentTimeMillis())
-        File(root, "eval/baseline.json").writeText(o.toString(2) + "\n", Charsets.UTF_8)
+        // 第九十批 ③：自动写回**只该动 A 段水位**，盘上已有的 B/C 条目必须原样带走——
+        // 否则一次「删基线重跑」就把「这两层还没实测」的账抹掉了，那正是门禁最该留下的信息。
+        val f = File(root, "eval/baseline.json")
+        val doc = EvalBaseline.withPreservedPersonas(o, f.takeIf { it.isFile }?.readText(Charsets.UTF_8))
+        f.writeText(doc.toString(2) + "\n", Charsets.UTF_8)
     }
 
     private fun writeReport(
