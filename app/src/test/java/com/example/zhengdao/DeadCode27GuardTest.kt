@@ -159,7 +159,8 @@ class DeadCode27GuardTest {
     @Test
     fun `清单六项在代码里各有归属`() {
         // 判「留」3 + 判「删」3（saveScheme/saveInset/indexedCount）= 6；
-        // 第 7 项 navigateActive 属浏览器线、本单只登记不碰，故不在此断言。
+        // 第 7 项 navigateActive 属浏览器线、第二十七批只登记不碰；**第六十二批已删除**
+        // （chore/deadcode-cleanup-1，生产零调用），故不在此断言。
         val kept = Regex("保留原因（第二十七批审计").findAll(knowledgeBase).count()
         assertEquals("判「留」的必须是 3 项", 3, kept)
 

@@ -22,10 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -139,28 +136,6 @@ private fun PlusGlyph(tint: Color, contentDescription: String?, side: androidx.c
         val m = w * 0.30f
         drawLine(tint, androidx.compose.ui.geometry.Offset(m, h / 2), androidx.compose.ui.geometry.Offset(w - m, h / 2), 1.9.dp.toPx(), StrokeCap.Round)
         drawLine(tint, androidx.compose.ui.geometry.Offset(w / 2, m), androidx.compose.ui.geometry.Offset(w / 2, h - m), 1.9.dp.toPx(), StrokeCap.Round)
-    }
-}
-
-/**
- * 「眼睛」glyph（第⑲刀「导出给 agent」）：一枚眼眶 + 瞳孔。
- *
- * 与项目自绘图标同笔（圆头 1.9f 描边）；眼眶用两段二次贝塞尔拼成杏仁形，瞳孔是实心圆点。
- * 不引 material-icons —— 与 [PlusGlyph] / [CloseGlyph] 同理（视觉统一 + 零额外依赖）。
- */
-@Composable
-private fun EyeGlyph(tint: Color, contentDescription: String?, side: androidx.compose.ui.unit.Dp = 22.dp) {
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(side)) {
-        val w = size.width
-        val h = size.height
-        val lid = Path().apply {
-            moveTo(w * 0.06f, h * 0.5f)
-            quadraticTo(w * 0.5f, h * 0.10f, w * 0.94f, h * 0.5f)
-            quadraticTo(w * 0.5f, h * 0.90f, w * 0.06f, h * 0.5f)
-            close()
-        }
-        drawPath(lid, tint, style = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-        drawCircle(tint, radius = w * 0.135f, center = androidx.compose.ui.geometry.Offset(w * 0.50f, h * 0.50f))
     }
 }
 

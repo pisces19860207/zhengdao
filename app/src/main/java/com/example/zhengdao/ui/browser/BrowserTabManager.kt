@@ -184,11 +184,6 @@ object BrowserTabManager {
         resumeAndPromote(tab)
     }
 
-    /** 活跃标签直接导航（地址栏"前往"用；scheme 预检在 UI 层）。 */
-    fun navigateActive(input: String) {
-        activeTab()?.engine?.loadUrl(input)
-    }
-
     /** 整个 App 退后台（MainActivity ON_PAUSE）：全部标签 onPause + 全部降 WAIVED。 */
     fun pauseAll() {
         tabs.forEach { tab ->
