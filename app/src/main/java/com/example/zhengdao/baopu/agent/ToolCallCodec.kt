@@ -27,12 +27,36 @@ data class ToolCall(
  */
 internal object ToolCallCodec {
 
+    /**
+     * 坏参数的**来源**（第九十五批）。
+     *
+     * 为什么要分：回灌文案决定模型下一步往哪修。把「JSON 合法但缺 path」也说成
+     * 「参数不是合法 JSON」，模型会去数引号和括号——它的 JSON 本来就是对的，
+     * 于是再错一次、用完唯一一次重试预算、整轮停下（94 报告 §4 实测定性）。
+     */
+    enum class BadArgsKind {
+        /** tool_calls 的**形状/语法**层面坏：参数不是合法 JSON、缺函数名、没有调用内容。 */
+        JSON_SYNTAX,
+
+        /** JSON 合法但过不了工具 Schema：缺必填、类型不对、枚举外、未知参数。 */
+        SCHEMA,
+    }
+
     sealed interface DecodeResult {
         /** 解码 + 校验全过（可直接进 GuardPipeline）。 */
         data class Ok(val calls: List<ToolCall>) : DecodeResult
 
-        /** 坏 JSON / 坏参数 / 未知工具（error 是**错误原文**，回灌给模型）。 */
-        data class Bad(val error: String) : DecodeResult
+        /**
+         * 坏 JSON / 坏参数 / 未知工具（error 是**错误原文**，回灌给模型）。
+         *
+         * @param kind 坏在哪（回灌前缀按它二选一，见 `RunRules.badArgsFeed`）；
+         *   默认 [BadArgsKind.JSON_SYNTAX]——本类里绝大多数 Bad 都是形状/语法层面的，
+         *   唯一需要显式改成 [BadArgsKind.SCHEMA] 的是过 [ToolRegistry.validateCall] 那两处。
+         */
+        data class Bad(
+            val error: String,
+            val kind: BadArgsKind = BadArgsKind.JSON_SYNTAX,
+        ) : DecodeResult
     }
 
     /**
@@ -48,7 +72,9 @@ internal object ToolCallCodec {
             }
             val args = parseArgs(raw.argumentsJson)
                 ?: return DecodeResult.Bad("工具「${raw.name}」的参数不是合法 JSON：${raw.argumentsJson}")
-            registry?.validateCall(raw.name, args)?.let { return DecodeResult.Bad(it) }
+            registry?.validateCall(raw.name, args)?.let {
+                return DecodeResult.Bad(it, BadArgsKind.SCHEMA)
+            }
             out += ToolCall(id = raw.id.ifBlank { "call_$i" }, name = raw.name, arguments = args)
         }
         return DecodeResult.Ok(out)
@@ -87,7 +113,7 @@ internal object ToolCallCodec {
             val name = b!!.optString("name")
             if (name.isBlank()) return DecodeResult.Bad("tool_use[$i].name 为空")
             val args = b.optJSONObject("input") ?: JSONObject()
-            registry?.validateCall(name, args)?.let { return DecodeResult.Bad(it) }
+            registry?.validateCall(name, args)?.let { return DecodeResult.Bad(it, BadArgsKind.SCHEMA) }
             out += ToolCall(id = b.optString("id").ifBlank { "toolu_$i" }, name = name, arguments = args)
         }
         return DecodeResult.Ok(out)
