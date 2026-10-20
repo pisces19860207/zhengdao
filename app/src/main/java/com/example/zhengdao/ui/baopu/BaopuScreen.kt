@@ -244,21 +244,24 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // 免得用户翻过的东西在下一轮还压着下面的内容（判据 B10）。
     var topBarExpanded by remember(topArtifacts) { mutableStateOf(false) }
 
-    // 资料库结果一句话：显示几秒就退（不占地方；要再看有导出记录在库里）
+    // 资料库结果一句话（第六十一批 §2 分档）：进度几秒就退（不占地方；要再看有导出记录在库里），
+    // 错误不许自己走——判据只有一个（BaopuNote.autoClears → BaopuNotePolicy.shouldAutoClear），
+    // 这里不许再抄一遍 `level == Info`（第二条判据就是下一次「改一处漏一处」的源头）。
     val libraryNote = controller.libraryNote
     LaunchedEffect(libraryNote) {
-        if (libraryNote != null) {
+        if (libraryNote != null && libraryNote.autoClears) {
             delay(8_000)
             controller.clearLibraryNote()
         }
     }
     // 第四十九批 · 任务 B：pendingNote 的 8 秒自清**删掉了**。
     // 它装的是错误原因（BaopuChatController.kt:984 = r.reason），不是进度 —— 错误凭什么叫到 8 秒就自己走。
-    // libraryNote ／ skillNote 那两个 LaunchedEffect 一行不动（派工单 §3：它们既有「记下来中…／收料处理中…／导出中…」
-    // 这类进度，也有失败，没分类之前把自清去掉会把进度钉死在屏上）。
+    // 同批当时留的话「libraryNote ／ skillNote 两个 LaunchedEffect 一行不动」到第六十一批 §2
+    // 作废：那两条混着进度与错误，没分类时去掉自清会把进度钉死 ⇒ 现在按级别走，
+    // Info 仍挂这同一个 8 秒定时器，Error 不挂（点 × 才清）。
     val skillNote = controller.skillNote
     LaunchedEffect(skillNote) {
-        if (skillNote != null) {
+        if (skillNote != null && skillNote.autoClears) {
             delay(8_000)
             controller.clearSkillNote()
         }
@@ -502,22 +505,44 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     compact = true,
                 )
             }
-            // 技能动作一句话（第十九批：上限拒绝／写盘失败；显示几秒就清）
+            // 技能动作一句话（第十九批起有；第六十一批 §2 分档：**进度**几秒自清、**错误**常驻可点）
             controller.skillNote?.let { note ->
-                Text(
-                    text = note,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                )
+                if (note.level == BaopuNoteLevel.Error) {
+                    // 复用 49 批那个现成的可关便签（Surface ＋ 标题 ＋ ×），不新造组件；
+                    // compact 与 pendingNote 同一档高度，三条便签叠在一起不成三样。
+                    BaopuIntrospectionNote(
+                        text = note.text,
+                        onDismiss = { controller.clearSkillNote() },
+                        label = stringResource(R.string.baopu_note_skill_error_label),
+                        isError = true,
+                        compact = true,
+                    )
+                } else {
+                    Text(
+                        text = note.text,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
             }
             libraryNote?.let { note ->
-                Text(
-                    text = note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                )
+                if (note.level == BaopuNoteLevel.Error) {
+                    BaopuIntrospectionNote(
+                        text = note.text,
+                        onDismiss = { controller.clearLibraryNote() },
+                        label = stringResource(R.string.baopu_note_library_error_label),
+                        isError = true,
+                        compact = true,
+                    )
+                } else {
+                    Text(
+                        text = note.text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
             }
             // 顶栏那一条（2026-10-18 定稿「固定到现在这个位置，不用跟着正文框跑」＋
             // 38 批 §8 追加「这一栏改成产物」）：位置不变、折叠态仍是一行高（§8.3）。

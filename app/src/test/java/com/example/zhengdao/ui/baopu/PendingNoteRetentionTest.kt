@@ -21,7 +21,9 @@ import java.io.File
  * 五组判据（源码文本级，先剥注释再断言）：
  * ① `pendingNote` 不许再自动清（`LaunchedEffect(pendingNote)` 不许存在，全文件 `delay(8_000)` 只许剩 2 处）；
  * ② 显示处必须换成 `BaopuIntrospectionNote(`，且 `onDismiss` 里调 `clearPendingNote()`；
- * ③ `libraryNote` / `skillNote` 的两个 8 秒自清块**一行不动**（派工单 §3 红线）；
+ * ③ `libraryNote` / `skillNote` 的 8 秒自清仍在、清理入口没换（**2026-10-20 第六十一批 §2 修订**：
+ *    原句「一行不动」的前提是那两类还没分级，§2 来分级了 ⇒ 这一条改成钉「进度仍自清、
+ *    且必须先问级别」，见那个用例的注释；①④⑤ 三条一字未动）；
  * ④ 组件本体确实认 `onDismiss`（不传就不显示 `×`、不可点）；
  * ⑤ 全文件只许有**一处** `clearPendingNote()` 调用（点 `×` 那一条路，不许别处偷清）。
  */
@@ -77,7 +79,12 @@ class PendingNoteRetentionTest {
     }
 
     @Test
-    fun `library与skill两个自清块一行不动`() {
+    fun `library与skill的八秒自清只剩进度那一档`() {
+        // 第四十九批当时钉的是「这两个块一行不动」——那句的前提是**还没分类**
+        // （那批的派工单 §3 原话：没分类之前去掉自清会把进度钉死）。
+        // 第六十一批 §2 正是来分类的：Info 仍走这同一个 8 秒定时器，Error 不挂定时器、
+        // 只走 `×`。所以这里保留 49 批真正关心的两件事（8 秒还在、清理入口没换），
+        // 并把「必须先问级别」加进来——那是 §2 新判据，不是把 49 批的判据放宽。
         val src = screen()
         for ((key, clearer) in listOf("libraryNote" to "clearLibraryNote()", "skillNote" to "clearSkillNote()")) {
             val i = src.indexOf("LaunchedEffect($key)")
@@ -85,6 +92,10 @@ class PendingNoteRetentionTest {
             val block = src.substring(i, minOf(src.length, i + 200))
             assertTrue("$key 仍走 8 秒自清（进度类一句话，不许钉在屏上）", block.contains("delay(8_000)"))
             assertTrue("$key 的清理入口没换", block.contains("controller.$clearer"))
+            assertTrue(
+                "$key 的 8 秒自清必须先问级别（第六十一批 §2：错误不许自己走）",
+                block.contains("$key.autoClears"),
+            )
         }
     }
 
