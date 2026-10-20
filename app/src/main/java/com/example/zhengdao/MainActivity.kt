@@ -80,6 +80,9 @@ private const val APP_RELEASES_API = "https://api.github.com/repos/pisces1986020
 
 // 冷启动可恢复白名单与两条路由判据（起始页 / 恢复页）见 MainRouteRules（第七十六批抽出，KDoc 同迁）。
 
+/** 外部 Intent 的单次消费门（进程级；同一投递不因配置变更/Activity 重建而重复处理）。 */
+private val incomingIntentSingleShot = IntentSingleShot()
+
 /**
  * 应用入口：Compose Navigation 承载 欢迎页 → 首页（Agent/终端 双 Tab）。
  * 终端本体是独立 Activity（TerminalActivity，零改动复用），从首页 Tab 启动。
@@ -87,16 +90,105 @@ private const val APP_RELEASES_API = "https://api.github.com/repos/pisces1986020
 class MainActivity : ComponentActivity() {
 
     /**
-     * 长按图标快捷方式（刀 2 D 段第 1 条）的 intent 分发。
+     * 长按图标快捷方式（刀 2 D 段第 1 条）与外部入口（第八十三批：系统分享 / 深链）的
+     * intent 分发口。
      *
      * 为什么走进程级单例（[com.example.zhengdao.ui.baopu.BaopuIntents]）而不是在这里
      * 直接开对话框：对话框画在抱朴页里，而入口可能落在「App 已经在跑、终端页压在
      * 主页之上」的场景——那时候连主页都没在前台，直接开对话框会开在错误的栈顶上。
      * 请求挂单例、由抱朴页组合时消费，冷/热启动与收栈三条路都通。
      */
-    private fun handleBaopuShortcut(intent: android.content.Intent?) {
+    private fun handleBaopuShortcut(
+        intent: android.content.Intent?,
+        // onCreate 在配置变更/进程恢复时会再拿到同一份 launch intent；那时**不重放**
+        // 外部请求（Compose 的 rememberSaveable 已恢复输入框，重放会把同一段正文再合并
+        // 一次）。onNewIntent 是真·新投递，走默认值 true。
+        allowIncoming: Boolean = true,
+    ) {
         if (intent?.action == com.example.zhengdao.ui.baopu.BaopuIntents.ACTION_BACKUP) {
             com.example.zhengdao.ui.baopu.BaopuIntents.requestBackup()
+        }
+        // 第八十三批（§B 88）：系统分享 / zhengdao:// 深链与快捷方式共用这一个分发口。
+        // onCreate（含 !isTaskRoot 收栈分支）与 onNewIntent 都只调这里；判据全在纯函数
+        // [routeIncomingIntent]，两条生命周期路径不会各长一套。
+        if (allowIncoming) dispatchIncomingIntent(intent)
+    }
+
+    /**
+     * 把外部 Intent 拍平成 [IncomingIntent]、过单次消费门、按 [routeIncomingIntent] 分发。
+     *
+     * 安全口径（派工单 §1③）：外部 Intent 只当**不可信数据**——
+     *   · ClipData 只取 `text` / `htmlText`，**绝不 coerceToText**（那会把 file://、
+     *     content:// 真的读出来，等于接收本地文件）；
+     *   · 被拒的只落 RunLog（界面不弹任何东西），拒绝原因见 [RejectReason]。
+     */
+    private fun dispatchIncomingIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+        // EXTRA_TEXT 的类型不受本 App 控制：第三方可以塞非 CharSequence。取不到就当没有，
+        // 绝不让一个畸形分享把主界面崩掉。
+        val extraText = runCatching {
+            intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString()
+        }.getOrNull()
+        val clipItem = intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        val request = IncomingIntent(
+            action = intent.action,
+            scheme = intent.data?.scheme,
+            host = intent.data?.host,
+            path = intent.data?.path,
+            rawQuery = intent.data?.encodedQuery,
+            isHierarchical = intent.data?.isHierarchical ?: true,
+            hasUserInfo = intent.data?.userInfo != null,
+            port = intent.data?.port ?: -1,
+            type = intent.type,
+            text = extraText,
+            clipText = clipItem?.text?.toString() ?: clipItem?.htmlText,
+            token = incomingIntentToken(
+                System.identityHashCode(intent),
+                intent.action,
+                intent.dataString,
+                extraText,
+            ),
+        )
+        // 单次消费：同一 Intent 对象（例如转屏后 Activity 重建又拿到同一份 launch intent）
+        // 只处理一次；两次独立分享即使正文一模一样也会分别处理（token 含对象身份）。
+        if (!incomingIntentSingleShot.shouldHandle(request.token)) {
+            com.example.zhengdao.rootfs.RunLog.log("外部 Intent：同一次投递已处理，跳过")
+            return
+        }
+        when (val route = routeIncomingIntent(request)) {
+            is IncomingRoute.ShareToBaopu -> {
+                // 只记来源与长度，不记正文（分享内容可能是用户的私事）。
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "外部分享：预填抱朴 ${route.text.length} 字（截断=${route.truncated}）"
+                )
+                com.example.zhengdao.ui.baopu.BaopuIntents.requestPrompt(route.text, route.truncated)
+            }
+            is IncomingRoute.AskBaopu -> {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "深链提问：预填抱朴 ${route.text.length} 字（截断=${route.truncated}）"
+                )
+                com.example.zhengdao.ui.baopu.BaopuIntents.requestPrompt(route.text, route.truncated)
+            }
+            is IncomingRoute.PrefillTerminal -> {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "深链终端：预填命令 ${route.command.length} 字（不执行）"
+                )
+                // 复用进终端的唯一入口 terminalIntent(...)；只带预填 extra，**不碰 autocmd**。
+                startActivity(
+                    terminalIntent(this, null, null).putExtra(EXTRA_TERMINAL_PREFILL, route.command)
+                )
+            }
+            is IncomingRoute.Rejected -> {
+                // 未知/畸形 URI 丢弃并记日志：不记正文，只记形态与长度，够定位即可。
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "外部 Intent 被拒：${route.reason.label}" +
+                        "（action=${request.action.orEmpty()}" +
+                        " scheme=${request.scheme.orEmpty()}" +
+                        " host=${request.host.orEmpty()}" +
+                        " data长度=${intent.dataString?.length ?: 0}）"
+                )
+            }
+            IncomingRoute.Ignore -> Unit
         }
     }
 
@@ -246,12 +338,15 @@ class MainActivity : ComponentActivity() {
         // 副本直接收掉，请求挂进程级单例后由既有主页在 ON_RESUME 时切 Tab 消费——
         // 不让用户面对「备份页 → 返回 → 又回终端」这种错乱栈。
         if (!isTaskRoot) {
-            handleBaopuShortcut(intent)
+            // 恢复出来的副本同样不重放外部请求（真正的宿主是栈里那份主页）。
+            handleBaopuShortcut(intent, allowIncoming = savedInstanceState == null)
             finish()
             return
         }
-        // 正常路径：把快捷方式请求挂上（抱朴页组合时消费，见 BaopuIntents）
-        handleBaopuShortcut(intent)
+        // 正常路径：把快捷方式请求挂上（抱朴页组合时消费，见 BaopuIntents）。
+        // ⚠️ 外部 Intent（分享/深链）只在**全新启动**时路由一次：config change 与
+        // 进程恢复会带着同一份 launch intent 再进 onCreate，重放等于同一段正文合并两遍。
+        handleBaopuShortcut(intent, allowIncoming = savedInstanceState == null)
 
         // 记住上次页面（用户反馈：上滑切走再回来不该回首页）。
         // 欢迎页只在首次安装展示；之后冷启动直达上次位置。
@@ -458,6 +553,18 @@ fun ZhengdaoApp(
         if (restore != null) {
             nav.navigate(restore) { launchSingleTop = true }
         }
+    }
+
+    // 外部分享/深链（第八十三批 §B 88）：请求挂在进程级单例上，抱朴页不一定在屏上。
+    // 冷启动落在欢迎页、或恢复态是设置页时，这里先回首页（launchSingleTop：已在 home 不动）。
+    // 本效果写在恢复效果**之后**：同一帧里恢复先导航，这里再把它盖回 home。
+    // 权限页是门槛（guidePermissions=true）时不抢它的导航——用户点完「完成」本来就会进
+    // 首页，届时请求仍在，照样由输入框消费。
+    val incomingPrompt by com.example.zhengdao.ui.baopu.BaopuIntents.promptRequestedState
+    androidx.compose.runtime.LaunchedEffect(incomingPrompt, guidePermissions) {
+        if (guidePermissions) return@LaunchedEffect
+        if (incomingPrompt == null) return@LaunchedEffect
+        nav.navigate("home") { launchSingleTop = true }
     }
 
     // 记录当前页面（供冷启动恢复；terminal 是独立 Activity，见下）
@@ -718,6 +825,12 @@ fun HomeTabs(
                     if (com.example.zhengdao.ui.baopu.BaopuIntents.peekBackup()) {
                         tab = TabIndex.BAOPU
                     }
+                    // 外部分享/深链（第八十三批 §B 88）：分屏/终端压在主页上时，系统分享
+                    // 可能新建一个 !isTaskRoot 的主页副本再 finish()；请求由进程级单例带回来，
+                    // 旧主页在这里恢复。同样只**看**不消费。
+                    if (com.example.zhengdao.ui.baopu.BaopuIntents.peekPrompt() != null) {
+                        tab = TabIndex.BAOPU
+                    }
                 }
                 // 退后台（切别的 App、或跳终端独立 Activity）：全部标签 onPause + 降 WAIVED
                 // （§4.2「后台标签降优先级」的进程级落实；回前台由上面 ON_RESUME 恢复）。
@@ -728,6 +841,14 @@ fun HomeTabs(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 外部分享/深链（第八十三批 §B 88）：热启动时 onNewIntent 落在**已在前台**的
+    // MainActivity 上，不会触发 ON_RESUME ⇒ 必须直接观察进程级请求状态来切 Tab。
+    // 只切 Tab，不消费：真消费在输入框（BaopuComposer），它才知道怎么合并草稿。
+    val incomingPrompt by com.example.zhengdao.ui.baopu.BaopuIntents.promptRequestedState
+    androidx.compose.runtime.LaunchedEffect(incomingPrompt) {
+        if (incomingPrompt != null) tab = TabIndex.BAOPU
     }
 
     // K2 的另外两个伴随量（baopuFollow / baopuPositionedSession）2026-10-16 随旧抱朴页

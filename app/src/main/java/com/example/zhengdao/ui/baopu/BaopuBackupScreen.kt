@@ -66,6 +66,39 @@ object BaopuIntents {
         backupRequested.value = false
         return v
     }
+
+    /**
+     * 一次外部正文请求（第八十三批 §B 88）：系统分享的文本，或 `zhengdao://ask?q=` 解出的正文。
+     *
+     * [truncated] 只用于提示「超长已截断」——截断本身在纯路由层完成（上限
+     * `MAX_BAOPU_CHARS`），这里不重复截断，免得提示的字数和实际内容对不上。
+     */
+    data class PromptRequest(val text: String, val truncated: Boolean)
+
+    private val promptRequested = mutableStateOf<PromptRequest?>(null)
+
+    /** 请求状态（输入框用 LaunchedEffect 观察——热启动时请求是后到的）。 */
+    internal val promptRequestedState: State<PromptRequest?> get() = promptRequested
+
+    /** 请求把一段外部正文预填进抱朴输入框（Activity 侧调）。**绝不发送**。 */
+    fun requestPrompt(text: String, truncated: Boolean) {
+        promptRequested.value = PromptRequest(text, truncated)
+    }
+
+    /** 看一眼有没有待预填正文（切 Tab 用，**不清**——真消费在输入框）。 */
+    fun peekPrompt(): PromptRequest? = promptRequested.value
+
+    /**
+     * 输入框组合时消费（只消费一次）。
+     *
+     * 按**引用**比对：效果可能被重组重放，旧请求不能吞掉后到的新请求
+     *（[requestPrompt] 每次都新建对象，引用不同即视为新请求）。
+     */
+    fun consumePrompt(expected: PromptRequest): Boolean {
+        if (promptRequested.value !== expected) return false
+        promptRequested.value = null
+        return true
+    }
 }
 
 /**

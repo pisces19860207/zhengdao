@@ -103,6 +103,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private var pendingAutocmd: String? = null
 
     /**
+     * 第八十三批（§B 88）：外部深链带进来的「只预填、不执行」命令。
+     *
+     * 与 [pendingAutocmd] 的唯一区别在**结尾**：autocmd 写入时补 `\n`（立即执行）；
+     * 这里原样写字节、不补换行，只落到 shell 的输入行，等用户按回车确认。
+     */
+    private var pendingPrefill: String? = null
+
+    /**
      * 本次请求要进入哪个 Agent（**仅当带 [pendingAutocmd] 时有意义**）。
      *
      * 「安装中」按钮（HomeScreen）会传 agent_id 但不带命令——那只是"带我去看看
@@ -485,7 +493,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         ensureStartedAndAttach()
     }
 
-    /** 从 Intent 读一次「进终端请求」（autocmd + agent_id）。onCreate 与 onNewIntent 共用。 */
+    /** 从 Intent 读一次「进终端请求」（autocmd + agent_id + prefill_cmd）。onCreate 与 onNewIntent 共用。 */
     private fun readRequestFromIntent(intent: Intent?) {
         // 两条优先级规则（空白命令不算请求、agent_id 只在带命令时才算）已搬进纯函数，
         // 判据与理由见 [deriveTerminalRequest] 的 KDoc；这里只做取值与落字段。
@@ -495,6 +503,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         )
         pendingAutocmd = request.cmd
         pendingAgentId = request.agentId
+        // 外部深链（第八十三批 §B 88）：只预填、不执行。新一次请求没带就清掉旧值，
+        // 免得上一次深链的文本在下一轮 attach 时才冒出来（跨请求串味）。
+        pendingPrefill = intent?.getStringExtra(EXTRA_TERMINAL_PREFILL)
     }
 
     /**
@@ -754,7 +765,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             // 没有尺寸变化事件来重试——下一帧补一次，确保 emulator 初始化、进程 spawn。
             termView.post { termView.updateSize() }
             // 回退 shell 不注入 autocmd（命令会打进系统 sh）——保留待 Debian 会话就绪时注入
-            if (!fallbackActive) injectPendingAutocmd()
+            if (!fallbackActive) {
+                injectPendingAutocmd()
+                // 深链只预填、不执行（第八十三批 §B 88）；两条注入互不影响，各自幂等。
+                injectPendingPrefill()
+            }
         }
         termView.requestFocus()
     }
@@ -829,6 +844,38 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (aid != null && cmd.trim() != launchCmdOf(aid)) {
             AgentRepository.markInstalling(this, aid)
         }
+    }
+
+    /**
+     * 注入外部深链的**预填**命令（第八十三批 §B 88）：只写命令字节、**不追加换行**，
+     * 命令停在输入行，必须用户按回车才执行。
+     *
+     * 为什么在这里再校验一次：路由层（[com.example.zhengdao.isSafeTerminalPrefillCommand]）
+     * 已挡过换行/控制符/超长，但本 Activity 才是真正写 pty 的地方——任何新入口绕过路由时，
+     * 这道闸必须仍然兜住「不带换行」。
+     *
+     * 就绪/失败口径与 [injectPendingAutocmd] 一致：会话没起来就保留待重试，写入成功才清。
+     * 回退 shell 下不写（与 autocmd 同一条规矩：命令不能打进系统 sh）。
+     */
+    private fun injectPendingPrefill() {
+        if (fallbackActive) return
+        val cmd = pendingPrefill ?: return
+        if (!isSafeTerminalPrefillCommand(cmd)) {
+            RunLog.log("预填命令被拒：含换行/控制字符或超长（${cmd.length} 字）")
+            pendingPrefill = null
+            return
+        }
+        val session = SessionManager.session
+        if (session == null || !session.isRunning) {
+            RunLog.log("预填命令：会话未就绪，保留待重试")
+            return
+        }
+        val ok = runCatching { SessionManager.write(cmd.toByteArray(Charsets.UTF_8)) }
+            .onFailure { RunLog.log("预填命令写入失败，保留待重试：${it.message}") }
+            .isSuccess
+        if (!ok) return
+        pendingPrefill = null
+        RunLog.log("预填命令已写入输入行（未执行）：${cmd.length} 字")
     }
 
     // ⚠️ 已删除 `sendTmuxCommand()`（v1.1.1 阶段 2.1）：它走 `C-b :` 命令提示符 +
@@ -1360,6 +1407,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         mainHandler.post {
             if (!fallbackActive) startNetWatch()
             injectPendingAutocmd()
+            // 深链预填（第八十三批 §B 88）：新会话 spawn 完成后再写输入行；成功即清，不重放。
+            injectPendingPrefill()
         }
     }
     override fun logError(tag: String, message: String) { RunLog.log("E: $message") }
