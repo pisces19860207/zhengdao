@@ -52,6 +52,15 @@ internal data class EvalConfig(
     val temperature: Double = EvalDeterminism.EVAL_TEMPERATURE,
     /** 采样种子；null = 不发（provider 未必支持，见 [EvalDeterminism.seedFrom]）。 */
     val seed: Long? = null,
+    /**
+     * 系统提示由**调用方注入**（第五十批新增）。
+     *
+     * - `null` ⇒ 退回老行为「只用 A 内核」——只有构建期门禁（`EvalGateTest`）该这么用：
+     *   它量的是「提示词/工具改动有没有让本事退化」，只需要一个稳定基线；
+     * - 运行时自检**必须**传「A 内核 ＋ 落盘后的 B/C」的拼装结果。拿 `BaopuPreset.personaText`
+     *   单独跑，测的是改之前的人设，自检就是演戏。
+     */
+    val systemPrompt: String? = null,
 )
 
 internal data class CaseResult(
@@ -83,7 +92,14 @@ internal object EvalHarness {
             val tools = reg.toolsJsonOpenAi(EVAL_SESSION_ID)
 
             val messages = JSONArray()
-            messages.put(JSONObject().put("role", "system").put("content", BaopuPreset.personaText(dir.absolutePath)))
+            // 注入优先：运行时自检传的是「落盘后的有效人设」，构建期门禁不传 ⇒ A 内核（老行为）。
+            // 第八十四批：带 persona 的用例用**写死的 fixture**（显式回放才有用户之外的参照物），
+            // 自检路径压根不跑这类用例（见 RuntimeEval），所以 fixture 与盘上人设不会碰面。
+            val system = when {
+                case.personaText.isNotBlank() -> case.personaText
+                else -> cfg.systemPrompt ?: BaopuPreset.personaText(dir.absolutePath)
+            }
+            messages.put(JSONObject().put("role", "system").put("content", system))
             messages.put(JSONObject().put("role", "user").put("content", case.prompt))
 
             val calls = ArrayList<String>()

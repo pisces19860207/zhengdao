@@ -751,7 +751,76 @@ androidComponents {
             stageLicenseAssets,
             StageLicenseAssetsTask::outDir,
         )
+        // 第五十批：评测集与基线随 APK 分发（`eval/` 是唯一真源，仓库里不再有第二份）
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            stageEvalAssets,
+            StageEvalAssetsTask::outDir,
+        )
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 评测集/基线进包（2026-10-19 第五十批）：仓库根 `eval/cases.json` ＋ `eval/baseline.json`
+//   → `assets/eval/`。App 运行时读不到仓库里的文件，要自检就得把用例带进包。
+//
+// 为什么必须构建期复制、而不是在 `app/src/main/assets/` 里再存一份：
+//   两份东西放在两个地方，早晚会漂移——那时随包那份就成了假真源。复制 + 逐字节回读断言
+//   保证「包里的那份就是 eval/ 的那份」，仓库 `eval/` 保持唯一真源。
+//
+// 校验随包结果：
+//   .\gradlew.bat :app:assembleDebug
+//   powershell -c "Add-Type -A System.IO.Compression.FileSystem; $z=[IO.Compression.ZipFile]::OpenRead('<apk>'); $z.Entries | ? FullName -like 'assets/eval/*' | %% { \"{0}  {1}\" -f $_.Length, $_.FullName }; $z.Dispose()"
+// ─────────────────────────────────────────────────────────────────────────────
+abstract class StageEvalAssetsTask : DefaultTask() {
+
+    @get:InputDirectory
+    abstract val evalDir: DirectoryProperty
+
+    /** 由 `addGeneratedSourceDirectory` 指定（build/generated/…/assets/eval），不手工设置。 */
+    @get:OutputDirectory
+    abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun stage() {
+        val outRoot = outDir.get().asFile
+        if (outRoot.exists() && !outRoot.deleteRecursively()) {
+            error("[stageEvalAssets] 清不掉旧输出目录：$outRoot")
+        }
+        // 与许可证装配同一个坑：AGP 把这个目录当 assets 的**根**，正文必须落在 eval/ 子目录下
+        val out = File(outRoot, "eval")
+        check(out.mkdirs() || out.isDirectory) { "[stageEvalAssets] 建不出输出目录：$out" }
+
+        val names = listOf("cases.json", "baseline.json")
+        for (name in names) {
+            val src = File(evalDir.get().asFile, name)
+            check(src.isFile) {
+                "[stageEvalAssets] 缺 $name（$src）——仓库 eval/ 是唯一真源，缺了就是漏交付"
+            }
+            val bytes = src.readBytes()
+            File(out, name).writeBytes(bytes)
+            // 防漂移断言：回读与源逐字节一致（复制即校验，成本可忽略）
+            val copy = File(out, name).readBytes()
+            check(copy.contentEquals(bytes)) {
+                "[stageEvalAssets] $name 副本与 eval/ 逐字节不一致（漂移）——中止，别把假用例装进 APK"
+            }
+        }
+        // 只许这两份：多出一份就是有人在 assets 里手存了第二真源
+        val extra = out.listFiles().orEmpty()
+            .filter { it.isFile }
+            .map { it.name }
+            .filterNot { it in names }
+        check(extra.isEmpty()) { "[stageEvalAssets] assets/eval 里多出不认识的产物：$extra" }
+
+        logger.lifecycle("[stageEvalAssets] OK：${names.joinToString(" + ")} → ${out.absolutePath}")
+    }
+}
+
+val stageEvalAssets = tasks.register<StageEvalAssetsTask>("stageEvalAssets") {
+    description = "把仓库根 eval/ 的评测集与基线复制进 assets/eval/（随 APK 分发的唯一副本）"
+    group = "build"
+    evalDir.set(rootProject.layout.projectDirectory.dir("eval"))
+    // 廉价且不做增量跳过：「跳过」看起来像「通过」
+    outputs.upToDateWhen { false }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

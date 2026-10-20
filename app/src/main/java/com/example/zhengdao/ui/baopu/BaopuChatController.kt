@@ -30,6 +30,20 @@ import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.ProposalCandidateStore
 import com.example.zhengdao.baopu.ProposalRules
 import com.example.zhengdao.baopu.SessionPendingStore
+import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.eval.EvalAttempt
+import com.example.zhengdao.baopu.eval.ProposalRedline
+import com.example.zhengdao.baopu.eval.ProposalRestore
+import com.example.zhengdao.baopu.eval.ProposalSelfCheck
+import com.example.zhengdao.baopu.eval.RuntimeEval
+import com.example.zhengdao.baopu.eval.SelfCheckGate
+import com.example.zhengdao.baopu.eval.SelfCheckOutcome
+import com.example.zhengdao.baopu.eval.SelfCheckText
+import com.example.zhengdao.baopu.eval.SkillBodyGuard
+import com.example.zhengdao.baopu.eval.SkillBodyInput
+import com.example.zhengdao.baopu.eval.SkillBodyOutcome
+import com.example.zhengdao.baopu.eval.TargetKind
+import com.example.zhengdao.baopu.eval.TargetSnapshot
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.EngineEvent
 import com.example.zhengdao.baopu.agent.RunState
@@ -170,6 +184,84 @@ internal class BaopuChatController(context: Context) {
             CoroutineName("zd-baopu-shell") +
             com.example.zhengdao.keepalive.CoroutineCrashHandler,
     )
+
+    /**
+     * 第五十批：模型提案**落盘后**的自检（单飞）。
+     *
+     * 三个刻意的设计：
+     * 1. `runEval` 里**现读**人设与通道，不缓存任何东西——落盘后调用时读到的就是新版
+     *    （用 `BaopuPreset.personaText` 单独跑＝测旧人设，派工单 §0 的硬约束）；
+     * 2. **只挂「模型提案被采纳」这一条路**（人设 B/C 采纳、技能卡采纳），设置页手写
+     *    （`BaopuSettingsScreen` / `BaopuSkillCard`）是用户自己的编辑，不挂；
+     * 3. 不阻塞：自检在 IO 上跑，用户照旧继续聊；第二个并发调用直接 Busy，不互相回滚。
+     */
+    private val proposalSelfCheck: ProposalSelfCheck by lazy {
+        ProposalSelfCheck(
+            runEval = {
+                val provider = RuntimeEval.providerOf(appCtx)
+                val why = RuntimeEval.unusableReason(provider)
+                if (why != null) {
+                    EvalAttempt.Skip(why)
+                } else {
+                    val run = RuntimeEval.runFor(
+                        appCtx,
+                        com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx),
+                        com.example.zhengdao.baopu.BaopuWorkspace.hostDir(appCtx),
+                        provider,
+                    )
+                    if (run == null) {
+                        EvalAttempt.Skip("用例读不到（APK 里没有 eval/cases.json）")
+                    } else {
+                        EvalAttempt.Ran(run)
+                    }
+                }
+            },
+        )
+    }
+
+    /**
+     * 排一次自检：先照快照与允许集合算红线，再在 IO 上跑（结果回写 [skillNote]）。
+     *
+     * [targets] 必须**落盘前**建好（`TargetSnapshot.of` 记当时的 sha256 与"文件在不在"）。
+     */
+    private fun scheduleSelfCheck(scene: String, targets: List<TargetSnapshot>) {
+        if (targets.isEmpty()) return
+        val workspace = com.example.zhengdao.baopu.BaopuWorkspace.hostDir(appCtx)
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val globalRoot = java.io.File(pf.globalFile().parentFile ?: workspace, "")
+        val redline = targets.flatMap { t ->
+            ProposalRedline.violationsOf(
+                target = t.file,
+                workspace = workspace,
+                allowedFiles = listOf(pf.globalFile(), pf.projectFile()),
+                allowedDirs = listOf(
+                    SkillRules.projectSkillDir(workspace),
+                    SkillRules.globalSkillDir(globalRoot),
+                ),
+            )
+        }
+        // 派工单 84 批 v1 适配项：main 上 skillNote 已是 BaopuNote（便签系统）而非 String
+        skillNote = BaopuNote("自检中…", BaopuNoteLevel.Info)
+        scope.launch {
+            val out = withContext(Dispatchers.IO) {
+                proposalSelfCheck.execute(scene, targets, redline)
+            }
+            // Busy 不覆盖屏上已有的「自检中…」（另一个自检还在跑）
+            if (out != SelfCheckOutcome.Busy) {
+                skillNote = BaopuNote(SelfCheckText.of(out).orEmpty(), selfCheckLevel(out))
+            }
+        }
+    }
+
+    /** 自检结果 → 便签级别（派工单 84 批 v1 适配项：等级与 SelfCheckText 口径同源）。 */
+    private fun selfCheckLevel(o: SelfCheckOutcome): BaopuNoteLevel = when (o) {
+        is SelfCheckOutcome.Passed -> BaopuNoteLevel.Info
+        is SelfCheckOutcome.NotRun -> BaopuNoteLevel.Info
+        else -> BaopuNoteLevel.Error
+    }
+
+    /** 第八十四批 v2：技能正文自检器（本地判据 + 失败回滚，不调模型）。 */
+    private val skillBodyGuard: SkillBodyGuard by lazy { SkillBodyGuard() }
 
     /** 当前会话（null = 还没有；首次发送时建）。 */
     var sessionId by mutableStateOf(BaopuRuntime.latestSessionId(db))
@@ -358,15 +450,71 @@ internal class BaopuChatController(context: Context) {
         )
         plan.blocked?.let { return BaopuNote(it, BaopuNoteLevel.Error) }
         val layer = com.example.zhengdao.baopu.PersonaLayer.C_PROJECT
+        // 第五十批：落盘**前**记快照（sha256 + 文件在不在）——回滚要核的就是这一刻
+        val skillTarget = TargetSnapshot.of(plan.file, TargetKind.SKILL)
+        val personaTarget = TargetSnapshot.of(pf.projectFile(), TargetKind.PERSONA)
         return when (val r = com.example.zhengdao.baopu.SkillStore.apply(plan, pf, pf.read(layer).orEmpty())) {
-            // 写成 = 结果播报（Info，8 秒走）；被拒 = 没写成（Error，常驻到点掉）
-            is com.example.zhengdao.baopu.SkillWriteResult.Written -> BaopuNote(
-                "已记下：${r.file.name}" + (r.backup?.let { "（旧版备份：$it）" } ?: ""),
-                BaopuNoteLevel.Info,
-            )
+            is com.example.zhengdao.baopu.SkillWriteResult.Written -> {
+                // 技能正文本身不在 v1 的 eval 覆盖内（现 10 例不测技能正文）；
+                // 只有**索引（B/C 人设）被改**时，这份新索引才值得跑一次自检。
+                if (r.indexUpdated) {
+                    scheduleSelfCheck(
+                        scene = "技能提案（索引已改）",
+                        targets = listOf(skillTarget, personaTarget),
+                    )
+                }
+                // 派工单 84 批 v1 适配项：main 上返回值从 String 改成 BaopuNote（信息便签）
+                val written = BaopuNote(
+                    "已记下：${r.file.name}" + (r.backup?.let { "（旧版备份：$it）" } ?: ""),
+                    BaopuNoteLevel.Info,
+                )
+                // 第八十四批 v2：**正文级**自检（派工单 §0.1）。默认不跑（SelfCheckGate），
+                // 跑了也不过是本地四条判据 + 失败回滚，不调模型、不要 key、不新增备份通道。
+                val guarded = skillBodySelfCheck(
+                    scene = "技能正文（${r.file.name}）",
+                    target = skillTarget,
+                    name = name,
+                    file = r.file,
+                ) ?: return written
+                return when (guarded) {
+                    is SkillBodyOutcome.FailedRolledBack -> BaopuNote(
+                        "已写但自检不过（${guarded.reason}），已回滚（sha256 与落盘前一致）",
+                        BaopuNoteLevel.Error,
+                    )
+
+                    is SkillBodyOutcome.RollbackFailed -> BaopuNote(
+                        "已写但自检不过（${guarded.reason}），回滚也没成功：${guarded.paths.joinToString("、")}——请手动核对",
+                        BaopuNoteLevel.Error,
+                    )
+
+                    SkillBodyOutcome.Passed -> written
+                }
+            }
             is com.example.zhengdao.baopu.SkillWriteResult.Rejected ->
                 BaopuNote(r.reason, BaopuNoteLevel.Error)
         }
+    }
+
+    /**
+     * 第八十四批 v2：技能正文自检（[SkillBodyGuard]）。返回 null = 闸门关着，没跑。
+     *
+     * 闸门默认关（[SelfCheckGate]）：调试构建/CI 开箱即跑，Release 要用户自己拨开关。
+     */
+    private fun skillBodySelfCheck(
+        scene: String,
+        target: TargetSnapshot,
+        name: String,
+        file: java.io.File,
+    ): SkillBodyOutcome? {
+        if (!SelfCheckGate.enabledNow(com.example.zhengdao.BuildConfig.DEBUG, appCtx)) return null
+        val body = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        val input = SkillBodyInput(
+            name = name,
+            body = body,
+            backups = com.example.zhengdao.baopu.SkillStore.backupsOf(file).size,
+            existed = target.existed,
+        )
+        return skillBodyGuard.execute(scene, target, input)
     }
 
     /** 会话中（可停止）。 */
@@ -1749,6 +1897,8 @@ internal class BaopuChatController(context: Context) {
             )
             return
         }
+        // 第五十批：落盘前记快照；采纳成功且真的落了盘才排自检
+        val personaTarget = TargetSnapshot.of(pf.fileOf(p.layer), TargetKind.PERSONA)
         val ok = pf.applyProposal(p)
         if (!ok) {
             skillNote = BaopuNote(
@@ -1760,6 +1910,8 @@ internal class BaopuChatController(context: Context) {
         pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
         // 第五十七批 §1.3：采纳留痕（名字/摘要从 proposed 比 current 多出的那一行提）
         recordSkillDecisionFor(p, adopted = true, detail = null)
+        // 第五十批：采纳成功且真的落了盘才排自检（v1）
+        scheduleSelfCheck(scene = "人设/索引提案采纳", targets = listOf(personaTarget))
     }
 
     /** 技能提案：丢弃（只在内存列表里移除——PENDING 本来就没落盘，没有文件可删）。 */
