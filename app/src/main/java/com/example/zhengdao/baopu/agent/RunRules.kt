@@ -65,6 +65,22 @@ internal object RunRules {
      */
     const val MAX_BAD_ARGS_RETRIES = 1
 
+    /**
+     * 坏参数回灌文案（纯函数，第九十五批）。
+     *
+     * **只改前缀，错误原文逐字保留**——原文里有字段名与允许范围，是模型能改对的前提。
+     *
+     * @param kind 坏在哪（JSON 语法 / Schema）。两者共用一句话的后果见 [ToolCallCodec.BadArgsKind]。
+     * @param error 校验/解析给出的错误原文（不许改写、不许截断）
+     */
+    fun badArgsFeed(kind: ToolCallCodec.BadArgsKind, error: String): String {
+        val prefix = when (kind) {
+            ToolCallCodec.BadArgsKind.JSON_SYNTAX -> "工具调用参数不是合法 JSON"
+            ToolCallCodec.BadArgsKind.SCHEMA -> "工具调用参数不符合 schema"
+        }
+        return "$prefix：$error；请修正参数后重试"
+    }
+
     /** 还能再试一次坏参数吗（纯判据：`retries` 是**已经**用掉的机会）。 */
     fun shouldRetryBadArgs(retries: Int): Boolean =
         // 第八十七批：判据本体搬到统一策略表（[FailurePolicy]），这里是**同语义**的薄适配器
