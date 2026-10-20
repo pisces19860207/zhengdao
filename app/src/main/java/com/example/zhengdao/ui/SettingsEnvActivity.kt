@@ -596,14 +596,30 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             )
                             try {
                                 InstallFlow.update(ctx, ctx.getString(R.string.env_preparing, candidates.name))
+                                val trace = com.example.zhengdao.rootfs.InstallTrace()
                                 val archive = File(ctx.cacheDir, candidates.name)
+                                val copyAt = System.nanoTime()
                                 if (archive.absolutePath != candidates.absolutePath) candidates.copyTo(archive, true)
+                                trace.record(
+                                    com.example.zhengdao.rootfs.InstallTrace.Stage.DOWNLOAD,
+                                    (System.nanoTime() - copyAt) / 1_000_000L,
+                                    "本地包拷贝 ${archive.length() / (1024 * 1024)}MB",
+                                )
                                 InstallFlow.update(ctx, ctx.getString(R.string.env_unpacking_long))
                                 // 修复＝拿本地这个包再解压一次。若它与「当初装出当前 env 的那个包」
                                 // 逐字节相同（标记里的 archive-sha256 对得上），内容指纹照样成立 ⇒ 原样写回，
                                 // 否则一次修复就把增量基线抹掉、下次更新被迫全量（2026-10-08 真机 bug，
                                 // 详见 RootfsInstaller.envForReinstall 的 KDoc）。对不上就传 null。
+                                val hashAt = System.nanoTime()
                                 val repairSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(archive)
+                                trace.record(
+                                    com.example.zhengdao.rootfs.InstallTrace.Stage.VERIFY,
+                                    (System.nanoTime() - hashAt) / 1_000_000L,
+                                    "sha256Of 同包",
+                                )
+                                // 第六十五批：这一次是**独立**整包哈希；install 里的 Rust 对账是第二遍。
+                                // 汇总行会打「整包哈希 2 次」——改造目标就是把它降到 1。
+                                trace.hashPasses += 1
                                 val repairEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
                                     File(ctx.filesDir, "rootfs"),
                                     repairSha,
@@ -617,7 +633,13 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         "修复环境：本地包与当前环境无法确认同源（sha=${repairSha.take(12)}），不写环境记录（下次更新要重下完整包）",
                                     )
                                 }
-                                com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, archive, repairEnv, repairSha) { }
+                                com.example.zhengdao.rootfs.RootfsInstaller.install(
+                                    ctx,
+                                    archive,
+                                    repairEnv,
+                                    repairSha,
+                                    trace,
+                                ) { }
                                 InstallFlow.finish(
                                     ctx,
                                     ctx.getString(R.string.env_repair_done),
@@ -765,6 +787,8 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
 
                             if (!deltaDone) {
                                 // ── ② 全量下载安装（原流程，也是增量失败的唯一兜底）──
+                                val trace = com.example.zhengdao.rootfs.InstallTrace()
+                                val downloadAt = System.nanoTime()
                                 val verifiedSha = RootfsDownloader.download(
                                     // 镜像兜底（v1.2 B3）：环境更新走的是同一条 github 直链
                                     urls = RootfsDownloader.withMirrorFallback(url),
@@ -785,8 +809,22 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         )
                                     }
                                 }
+                                trace.record(
+                                    com.example.zhengdao.rootfs.InstallTrace.Stage.DOWNLOAD,
+                                    (System.nanoTime() - downloadAt) / 1_000_000L,
+                                    "联网下载+下载时校验 ${archive.length() / (1024 * 1024)}MB",
+                                )
+                                // download() 返回前已经整包校验过一次（它就是返回值）。
+                                trace.hashPasses += 1
                                 if (!expectedSha.isNullOrBlank()) {
+                                    val rehashAt = System.nanoTime()
                                     RootfsDownloader.verifySha256(archive, expectedSha)
+                                    trace.record(
+                                        com.example.zhengdao.rootfs.InstallTrace.Stage.VERIFY,
+                                        (System.nanoTime() - rehashAt) / 1_000_000L,
+                                        "索引值与下载值不一致，按索引复验",
+                                    )
+                                    trace.hashPasses += 1
                                 }
                                 // 信任锚（用户 2026-10-08 规则）：只有索引 sha256 == 实际校验通过的 sha256
                                 // 才敢把索引的 env 写进标记；否则照装不写 env ⇒ 下次自然走全量。
@@ -802,7 +840,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 // archiveSha256 一并写进标记：它是下次「修复环境/回退」判断
                                 // "本地这个包是否就是装出当前 env 的那个包"的唯一依据（见
                                 // RootfsInstaller.envForReinstall）。全量更新路径有确定值，一定传。
-                                RootfsInstaller.install(ctx, archive, envToWrite, actualSha) { }
+                                RootfsInstaller.install(ctx, archive, envToWrite, actualSha, trace) { }
                                 RootfsCache.pruneKeep(ctx)
                             }
                             InstallFlow.finish(ctx, fallbackNote + ctx.getString(R.string.env_update_done))

@@ -216,7 +216,7 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:218",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5；第十八批 B 段 Hermes 卡条件化包裹 +4 ⇒ 214→218）
             "SettingsEnvActivity.kt:273",           // zd-env-check（同上 +7；第十八批 B 段 Hermes 卡条件化包裹再 +5 ⇒ 268→273）
             "SettingsEnvActivity.kt:586",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +8 ⇒ 578→586）
-            "SettingsEnvActivity.kt:687",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687）
+            "SettingsEnvActivity.kt:709",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687；第六十五批加安装阶段计时 trace +22 ⇒ 687→709）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
             "TerminalActivity.kt:660",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17；第五十三批 P1-4 +4）；第六十批 P2-7 清理挪入 worker + 注释 +6 ⇒ 654→660
             "TerminalActivity.kt:893",              // zd-net-probe（同上；第五十三批 P1-4 +4）；第六十批 P2-7 +22 ⇒ 869→891
