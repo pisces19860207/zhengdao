@@ -50,6 +50,8 @@ import com.example.zhengdao.R
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.ui.theme.AppearancePrefs
+import com.example.zhengdao.ui.theme.rCard
+import com.example.zhengdao.ui.theme.rDialog
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.Dispatchers
@@ -249,7 +251,7 @@ fun SettingsScreen(
             )
             AlertDialog(
                 onDismissRequest = { appearDialog = false },
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(rDialog),
                 title = { Text(stringResource(R.string.settings_appearance)) },
                 text = {
                     Column {
@@ -281,7 +283,7 @@ fun SettingsScreen(
             )
             AlertDialog(
                 onDismissRequest = { langDialog = false },
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(rDialog),
                 title = { Text(stringResource(R.string.settings_language)) },
                 text = {
                     Column {
@@ -325,7 +327,7 @@ internal fun SectionCard(title: String, content: @Composable () -> Unit) {
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(rCard),
             border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
