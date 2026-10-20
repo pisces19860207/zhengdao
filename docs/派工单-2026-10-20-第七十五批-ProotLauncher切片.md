@@ -3,7 +3,7 @@
 - 派单：2026-10-20 蓝总管（用户：「再给workbuddy派个大活，我今天要把他们都榨干」）
 - 基线：开工时最新 `main`（出单时 `ac30e31c`）。先 `git fetch origin`，确认 `git rev-list --left-right --count origin/main...HEAD` **左侧为 0**。
 - 承接：workbuddy
-- 排期：**64（状态机）→ 72（Controller）→ 74（TerminalActivity）→ 75**；本单只在前三单收口后做。
+- 排期：**国际版：72 → 75 → 77；国内版 74/76 不在此队列。**
 - 改单：2026-10-20 出单后原地更正一处硬伤——原红线写的 `rootfs/ProotLauncher.kt` **路径有误**（`rootfs/` 包是 65 在飞的 `RootfsInstaller`/`RootfsDownloader` 所在地），实际文件是 `terminal/ProotLauncher.kt`；同时按最新代码补了行号锚点与候选片段口径。其余不变。
 - 红线：只动 `terminal/ProotLauncher.kt` ＋ 新建的纯逻辑 helper/test 文件；**不碰** `RootfsInstaller` / `RootfsDownloader`（65 在飞）、`TerminalActivity`（74）、`RunEngine`（64）、`BaopuChatController`（72）、`ProotBinaries` / `PinnedAssets` / `Workspace` / `Store` / `EnvSelfHeal`（只读协作类，调用原样保留）、Rust、`AndroidManifest.xml`、`build.gradle.kts`、`libs.versions.toml`、版本号；**启动行为/参数/环境变量零变化**；不合并、不推送；不跑真机。
 
