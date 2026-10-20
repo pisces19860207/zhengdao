@@ -32,6 +32,11 @@ import java.io.File
 internal data class EvalRun(
     val results: List<CaseResult>,
     val elapsedMs: Long,
+    /**
+     * 被跳过的用例 id + 原因（第八十四批：带 persona fixture 的用例不在自检口径里，
+     * 见 [EvalCases.PERSONAS]）。跳过必须留名——安静少跑几条比红更糟。
+     */
+    val skipped: List<Pair<String, String>> = emptyList(),
 ) {
     val total: Int get() = results.size
     val passed: Int get() = results.count { it.ok }
@@ -126,7 +131,16 @@ internal object RuntimeEval {
         val started = now()
         val results = ArrayList<CaseResult>(cases.size)
         var cleaned = 0
+        val skipped = mutableListOf<Pair<String, String>>()
         for (case in cases) {
+            // 第八十四批：带 persona fixture 的用例**不在自检口径里**——自检验的是
+            // 「用户自己那两层没把事办坏」，fixture 是写死的样板文案，拿它跑等于演戏。
+            // 跳过必须留名（安静少跑几条比红更糟）；这类用例只在显式回放
+            // （`ZHENGDAO_EVAL_PERSONA=1`，见 `EvalGateTest`）里跑。
+            if (case.persona.isNotBlank()) {
+                skipped += case.id to "persona fixture 用例（显式回放 ZHENGDAO_EVAL_PERSONA=1 才跑）"
+                continue
+            }
             if (now() - started > budgetMs) {
                 results += CaseResult(
                     id = case.id,
@@ -146,7 +160,7 @@ internal object RuntimeEval {
             if (r.dir != null && runCatching { r.dir.deleteRecursively() }.getOrDefault(false)) cleaned++
         }
         if (cleaned > 0) RunLog.log("[proposal-selfcheck] 清理临时工作区 $cleaned 份")
-        return EvalRun(results = results, elapsedMs = now() - started)
+        return EvalRun(results = results, elapsedMs = now() - started, skipped = skipped)
     }
 
     /**
@@ -165,7 +179,17 @@ internal object RuntimeEval {
         val cases = runCatching { EvalCases.parse(json) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return null
         val prompt = PersonaPrompt.ofDisk(personaFiles, workspace)
         RunLog.log("[proposal-selfcheck] 开始：${cases.size} 例，通道 ${provider.id}/${provider.model}")
-        return run(cases, configOf(provider, prompt))
+        val run = run(cases, configOf(provider, prompt))
+        if (run.skipped.isNotEmpty()) {
+            RunLog.log(
+                "[proposal-selfcheck] 跳过 ${run.skipped.size} 条 persona fixture 用例：" +
+                    run.skipped.joinToString("、") { it.first },
+            )
+        }
+        // 全是 persona fixture 用例（本仓评测集另有 10 条非 persona 用例，正常到不了这）
+        // ⇒ 没有可跑的自检：按「跑不了」处理，不拿空结果去回滚用户刚写的东西。
+        if (run.results.isEmpty() && run.skipped.isNotEmpty()) return null
+        return run
     }
 
     /** 自检能不能跑的原因（给 UI 用的那一句）。 */

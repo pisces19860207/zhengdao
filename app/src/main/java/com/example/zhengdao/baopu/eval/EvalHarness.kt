@@ -83,8 +83,13 @@ internal object EvalHarness {
             val tools = reg.toolsJsonOpenAi(EVAL_SESSION_ID)
 
             val messages = JSONArray()
-            // 注入优先：运行时自检传的是「落盘后的有效人设」，构建期门禁不传 ⇒ A 内核（老行为）
-            val system = cfg.systemPrompt ?: BaopuPreset.personaText(dir.absolutePath)
+            // 注入优先：运行时自检传的是「落盘后的有效人设」，构建期门禁不传 ⇒ A 内核（老行为）。
+            // 第八十四批：带 persona 的用例用**写死的 fixture**（显式回放才有用户之外的参照物），
+            // 自检路径压根不跑这类用例（见 RuntimeEval），所以 fixture 与盘上人设不会碰面。
+            val system = when {
+                case.personaText.isNotBlank() -> case.personaText
+                else -> cfg.systemPrompt ?: BaopuPreset.personaText(dir.absolutePath)
+            }
             messages.put(JSONObject().put("role", "system").put("content", system))
             messages.put(JSONObject().put("role", "user").put("content", case.prompt))
 

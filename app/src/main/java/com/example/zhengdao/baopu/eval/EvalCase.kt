@@ -33,9 +33,31 @@ internal data class EvalCase(
     val maxSteps: Int,
     val files: List<EvalFile>,
     val asserts: List<EvalAssert>,
+    /**
+     * 这一例要的人设层（第八十四批 §0.2：原来只用 A 内核，B/C 没人覆盖）。
+     *
+     * - `""`：只用 A（老行为，全部存量 10 例）
+     * - `"B_GLOBAL"` / `"C_PROJECT"`：这一例的系统提示**只用 fixture**（[personaText]），
+     *   不用盘上人设——理由见 [EvalCases.PERSONAS] 与 `RuntimeEval` 的跳过口径。
+     */
+    val persona: String = "",
+    /** [persona] 非空时必填：整段系统提示（A 内核之后直接拼这一段，方便 fixture 自包含）。 */
+    val personaText: String = "",
 )
 
 internal object EvalCases {
+
+    /**
+     * 允许的人设层（第八十四批）。
+     *
+     * 为什么带 persona 的用例**只能**用 fixture、不能拿盘上人设：自检的口径是
+     * 「用户自己那两层没把事办坏」（v1 派工单 §0 硬约束），fixture 是写死的样板文案，
+     * 拿它跑等于演戏；而**显式回放**（`ZHENGDAO_EVAL_PERSONA=1`）没有用户，
+     * 用 fixture 正是为了把「B/C 层真的进了系统提示」这条通路钉住。
+     * ⇒ `RuntimeEval`（自检路径）跳过它们，`EvalGateTest`（显式回放）默认也跳过，
+     * 拨了 `ZHENGDAO_EVAL_PERSONA=1` 才跑。
+     */
+    val PERSONAS: Set<String> = setOf("B_GLOBAL", "C_PROJECT")
 
     /**
      * 允许的判据种类。
@@ -81,6 +103,14 @@ internal object EvalCases {
             }
             val assertsJson = o.optJSONArray("expect") ?: JSONArray()
             require(assertsJson.length() > 0) { "用例 $id 没有任何判据：那它验不了任何东西" }
+            val persona = o.optString("persona", "")
+            require(persona.isEmpty() || persona in PERSONAS) {
+                "用例 $id 的 persona 未知：$persona（允许：空 或 ${PERSONAS.joinToString("、")}）"
+            }
+            val personaText = o.optString("personaText", "")
+            require(persona.isEmpty() || personaText.isNotBlank()) {
+                "用例 $id 声明了 persona=$persona 却没给 personaText：那一层就是空的，验不到东西"
+            }
             val asserts = ArrayList<EvalAssert>(assertsJson.length())
             for (j in 0 until assertsJson.length()) {
                 val a = assertsJson.getJSONObject(j)
@@ -103,6 +133,8 @@ internal object EvalCases {
                     maxSteps = o.optInt("maxSteps", 8),
                     files = files,
                     asserts = asserts,
+                    persona = persona,
+                    personaText = personaText,
                 ),
             )
         }
