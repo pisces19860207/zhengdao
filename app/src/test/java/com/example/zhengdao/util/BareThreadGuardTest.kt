@@ -167,6 +167,11 @@ import kotlin.text.Charsets
  *   import 区 +5（zd-paste 83→88），其余六处等值搬移净 −14 行 ⇒ 五个创建点整体 −9
  *   （660→651 / 893→884 / 1707→1698 / 1767→1758 / 1853→1844）。逐处核过仍是同一段
  *   `Thread {` / `Thread(…, "zd-…")`，本次回填。
+ * - 2026-10-20（第八十五批 · 技能效果信号）：**无新增线程**（本批不建线程，写走既有单写者队列）。
+ *   `BaopuDb.kt` 在 `internal object BaopuSql` 里加 v12 四列 ＋ 效果信号写/读语句（+107 行，**全在创建点之前**）
+ *   ⇒ zd-baopu-db 单写者创建点 1012→1119 平移，本次回填；迁移体 `applyV12Migration` 与 `VERSION = 12`
+ *   都落在创建点之后，不参与平移。逐处核过仍是同一段
+ *   `Thread(r, "zd-baopu-db").apply { isDaemon = true }`，有名 + daemon 都没变。
  */
 class BareThreadGuardTest {
 
@@ -210,7 +215,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:136",
-            "BaopuDb.kt:1012",
+            "BaopuDb.kt:1119",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:68",
             "KeepaliveWatcher.kt:66",
