@@ -42,9 +42,10 @@ internal object DataFence {
 /**
  * 工具执行器（第 ④ 段的「带超时」部分）。
  *
- * 串行由**调用方结构保证**：引擎的循环是单线程顺序调（一次一个工具调用批），
- * 这里只负责把单个 executor 调用包上超时。绝不在主线程跑（ANR）——
- * executor 是引擎注入的 `zd-baopu-tool` 单线程（BareThreadGuardTest 登记）。
+ * 串行由**调用方结构保证**：引擎的循环按 `ToolScheduling` 排出的段顺序调（写工具单飞、
+ * 读工具成段并行），这里只负责把单个 executor 调用包上超时。绝不在主线程跑（ANR）——
+ * 两个池都是引擎/调度层注入的命名 daemon 线程（`zd-baopu-tool` 写用单线程、
+ * `zd-baopu-tool-read` 读用有界线程池，均登记在 BareThreadGuardTest）。
  */
 internal class ToolRunner(private val executor: ExecutorService) {
 
@@ -55,9 +56,9 @@ internal class ToolRunner(private val executor: ExecutorService) {
             future.get(spec.timeoutMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             future.cancel(true)
-            ToolOutcome.Failed("工具「${spec.name}」执行超时（上限 ${spec.timeoutMs} ms）——可重试一次")
+            timeoutFailure(spec)
         } catch (e: Exception) {
-            ToolOutcome.Failed("工具「${spec.name}」执行崩了：${e.javaClass.simpleName}")
+            crashFailure(spec, e)
         }
     }
 
@@ -67,6 +68,68 @@ internal class ToolRunner(private val executor: ExecutorService) {
             Executors.newSingleThreadExecutor { r ->
                 Thread(r, "zd-baopu-tool").apply { isDaemon = true }
             }
+        }
+
+        /**
+         * 读工具的有界并行池（`zd-baopu-tool-read`，daemon）——第九十二批新增。
+         *
+         * 为什么必须和 [toolExecutor] 分开：写工具要「单飞」（一次只有一个、按提交顺序），
+         * 读工具要「有界并行」（慢读不堵后面）。两类混在一个池里，任一方的约束都会破。
+         * 池大小就是并发上限 [ToolScheduling.MAX_READ_PARALLEL]（结构性封顶：
+         * 并发数不可能超过线程数，不靠计数器的自觉）。
+         *
+         * ⚠️ 段任务本身就跑在这个池上，所以并行读那条路**不许再往里 submit**
+         * （池内再提交 = 拿线程等自己，池满了就自锁）——见 [GuardPipeline.executeInline]。
+         */
+        val readExecutor: ExecutorService by lazy {
+            Executors.newFixedThreadPool(ToolScheduling.MAX_READ_PARALLEL) { r ->
+                Thread(r, "zd-baopu-tool-read").apply { isDaemon = true }
+            }
+        }
+
+        /**
+         * 超时的失败原文（**唯一来源**）。
+         *
+         * 为什么抽出来：串行那条路在 [run] 里造这句，并行读那条路的超时由调度层
+         * 封（见 `ToolBatchRunner`）——两处必须是**逐字同一句**，否则模型看到的
+         * 「超时」描述随走哪条 lane 而变，那就是两条语义。
+         */
+        fun timeoutFailure(spec: ToolSpec): ToolOutcome = timeoutFailure(spec.name, spec.timeoutMs)
+
+        /** 同上（按名字/时限直出：并行段那条路拿不到 spec 时用，文案必须逐字同一句）。 */
+        fun timeoutFailure(toolName: String, timeoutMs: Long): ToolOutcome =
+            ToolOutcome.Failed(timeoutText(toolName, timeoutMs))
+
+        /** 超时原文（字符串形态：`Result.Failed` 的并行收口要用它，见 `ToolBatchRunner`）。 */
+        fun timeoutText(toolName: String, timeoutMs: Long): String =
+            "工具「$toolName」执行超时（上限 $timeoutMs ms）——可重试一次"
+
+        /** 崩了的失败原文（同一条唯一来源纪律，见 [timeoutFailure]）。 */
+        fun crashFailure(spec: ToolSpec, e: Throwable): ToolOutcome = crashFailure(spec.name, e)
+
+        /** 同上（按名字直出）。 */
+        fun crashFailure(toolName: String, e: Throwable): ToolOutcome =
+            ToolOutcome.Failed(crashText(toolName, e))
+
+        /** 崩了原文（字符串形态）。 */
+        fun crashText(toolName: String, e: Throwable): String =
+            "工具「$toolName」执行崩了：${realCauseOf(e).javaClass.simpleName}"
+
+        /**
+         * 挖出**真正的**异常（第九十二批）。
+         *
+         * 为什么要有这一步：串行 lane 的异常是 `Future.get()` 包过的
+         * （`ExecutionException`），并行 lane 的异常是任务里直接抛的——不挖一层，
+         * 同一把崩会打印出两个类名，模型看到的东西随 lane 漂移（那正是本批要消灭的
+         * 「两条语义」）。挖出来的也是更有用的那个名字。
+         */
+        fun realCauseOf(e: Throwable): Throwable {
+            var cur = e
+            // 只解 Future 的包装（`ExecutionException`），业务异常本身是 cause 链的终点
+            while (cur is java.util.concurrent.ExecutionException && cur.cause != null && cur.cause !== cur) {
+                cur = cur.cause!!
+            }
+            return cur
         }
     }
 }
@@ -84,7 +147,8 @@ data class SpillResult(val file: File, val chars: Int)
  * 3. （③）权限判定：[ToolPermission.FREE] 直行；[ToolPermission.CONFIRM] ⇒
  *    [Result.NeedsConfirm]（刀 3 A 段起通电：引擎挂起等用户点批准，批了走
  *    [executeApproved]——只跳这一段，其余四段原样）；
- * 4. （④）执行：[ToolRunner] 带超时；**串行**（引擎单线程循环顺序调）；
+ * 4. （④）执行：[ToolRunner] 带超时；**顺序由调度层给**（第九十二批）：写工具单飞、
+ *    读工具成段有界并行（[ToolScheduling]）；并行读走 [executeInline]（同一个池，直跑）；
  * 5. （⑤）输出处理：超 [SPILL_THRESHOLD_CHARS] ⇒ spill 落盘只回摘要；回灌必经
  *    [DataFence.wrap]（围栏统一，没有第二个出口）。
  */
@@ -127,6 +191,23 @@ internal class GuardPipeline(
     }
 
     /**
+     * 第 ①②③ 段的结论（第九十二批）。
+     *
+     * 为什么要把「准备」和「执行」拆开：读工具要**并行**跑 ④⑤，但 ①②③
+     * （注册表/Schema、路径守卫、权限）带有**顺序语义**——批里第一个越界就要终止本轮、
+     * 后面的不许再跑。所以顺序是：先按原顺序把三段跑完（可为空跑），再并发执行。
+     * 这样并行段里**只剩**「已经合法、且本来就是只读」的调用，越界/坏参数的批行为
+     * 与串行时逐字相同（不会因为并行而多读一个文件）。
+     */
+    sealed interface Prepared {
+        /** ①②③ 都过了：可以执行（[call] 已是路径改写后的有效调用）。 */
+        data class Ready(val call: ToolCall, val spec: ToolSpec) : Prepared
+
+        /** ①②③ 里已有定论（Failed / Rejected / NeedsConfirm）——按 [result] 收场。 */
+        data class Settled(val result: Result) : Prepared
+    }
+
+    /**
      * 跑一个工具调用的完整五段。
      *
      * @param spillWriter spill 落盘注入（引擎给：落工作区内 `.baopu-spill/`，read_file 够得着）
@@ -134,38 +215,99 @@ internal class GuardPipeline(
     fun execute(
         call: ToolCall,
         spillWriter: (fileName: String, text: String) -> SpillResult?,
-    ): Result {
+    ): Result = when (val p = prepare(call)) {
+        is Prepared.Settled -> p.result
+        is Prepared.Ready -> finish(p.spec, p.call, runner.run(p.spec, p.call.arguments), spillWriter)
+    }
+
+    /**
+     * **并行读**的执行入口（第九十二批）：①②③ 同 [execute]（含确认判定——所以只有
+     * 免确认的只读工具会被调度层送到这里），④ 改为**在当前线程直跑**。
+     *
+     * 为什么 ④ 不再走 [ToolRunner.run]（不 submit、不 get）：这个方法**本身就跑在
+     * 读池线程上**（`zd-baopu-tool-read`），再往同一个池 submit 就是拿线程等自己，
+     * 池满即自锁。超时因此由调度层封：`ToolBatchRunner` 给每个调用一个 deadline，
+     * 到点 `future.cancel(true)` 并按 [ToolRunner.timeoutFailure] 的**同一句原文**收场。
+     *
+     * ⑤ 与 [execute] 是**同一个** [fenceOutput]——围栏仍然只有这一个出口。
+     */
+    fun executeInline(
+        call: ToolCall,
+        spillWriter: (fileName: String, text: String) -> SpillResult?,
+    ): Result = when (val p = prepare(call)) {
+        is Prepared.Settled -> p.result
+        is Prepared.Ready -> executeInline(p, spillWriter)
+    }
+
+    /**
+     * 同上，但调用已经在**并发之前**过完 ①②③（[Prepared.Ready]）——并行段用这个。
+     *
+     * 为什么不让并行段直接重跑 [executeInline] 的 `prepare`：同一份守卫跑两遍会
+     * 多一次 `canonicalize`，还会把「路径放行」日志打两行（真机排障时会误以为
+     * 有两次调用）。**守卫语义一点没少**——它是在派发前按顺序跑完的。
+     */
+    fun executeInline(
+        prepared: Prepared.Ready,
+        spillWriter: (fileName: String, text: String) -> SpillResult?,
+    ): Result = finish(prepared.spec, prepared.call, runInline(prepared.spec, prepared.call.arguments), spillWriter)
+
+    /**
+     * 第 ①②③ 段（**唯一实现**；[execute] / [executeInline] / [executeApproved] 共用）。
+     *
+     * @param skipConfirm 批准后的路径传 true（只跳 ③ 权限判定，其余原样）
+     */
+    fun prepare(call: ToolCall, skipConfirm: Boolean = false): Prepared {
         // ① 注册表校验（含 Schema）
         val spec = registry.find(call.name)
-            ?: return Result.Rejected(
-                call,
-                "未知工具「${call.name}」（已注册：${registry.names().joinToString("、")}）",
+            ?: return Prepared.Settled(
+                Result.Rejected(
+                    call,
+                    "未知工具「${call.name}」（已注册：${registry.names().joinToString("、")}）",
+                ),
             )
         registry.validateCall(call.name, call.arguments)?.let { err ->
-            return Result.Failed(call, err) // Schema 错是可重试（回灌原文）
+            return Prepared.Settled(Result.Failed(call, err)) // Schema 错是可重试（回灌原文）
         }
 
         // ② 路径守卫（只对有 path 参数的工具；解析后写回绝对路径）
         val guarded = guardPath(call, spec.name)
-        if (guarded is Guarded.No) return Result.Rejected(call, guarded.reason)
+        if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
         val effectiveCall = (guarded as Guarded.Yes).call
 
-        // ③ 权限判定
-        if (spec.permission == ToolPermission.CONFIRM) {
-            return Result.NeedsConfirm(effectiveCall)
+        // ③ 权限判定（批准路径跳过）
+        if (!skipConfirm && spec.permission == ToolPermission.CONFIRM) {
+            return Prepared.Settled(Result.NeedsConfirm(effectiveCall))
         }
+        return Prepared.Ready(effectiveCall, spec)
+    }
 
-        // ④ 执行（带超时；串行由调用方结构保证）
-        val outcome = runner.run(spec, effectiveCall.arguments)
+    /**
+     * 第 ④⑤ 段的**唯一实现**（三条入口共用）：④ 的 outcome 进来，⑤ spill ＋ 围栏出去。
+     *
+     * 为什么把 ④ 的产物当参数而不是在这里调执行器：串行（带超时）与并行（直跑、
+     * 超时在调度层）两种跑法都要落到同一段「结果 → 结局 + 围栏」上——两处各写一遍
+     * 就是两条语义（模型看到的东西会随 lane 漂移）。
+     */
+    private fun finish(
+        spec: ToolSpec,
+        effectiveCall: ToolCall,
+        outcome: ToolOutcome,
+        spillWriter: (fileName: String, text: String) -> SpillResult?,
+    ): Result {
         val text = when (outcome) {
             is ToolOutcome.Ok -> outcome.text
             is ToolOutcome.Failed -> return Result.Failed(effectiveCall, outcome.error)
             is ToolOutcome.Rejected -> return Result.Rejected(effectiveCall, outcome.reason)
         }
-
-        // ⑤ 输出处理：spill + 围栏（围栏统一出口）
         val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
         return Result.Done(effectiveCall, wrapped, spilled)
+    }
+
+    /** 直跑（并行读用；崩了也走 [ToolRunner.crashFailure] 的同一句原文）。 */
+    private fun runInline(spec: ToolSpec, args: JSONObject): ToolOutcome = try {
+        spec.executor(args)
+    } catch (e: Exception) {
+        ToolRunner.crashFailure(spec, e)
     }
 
     /**
@@ -183,35 +325,9 @@ internal class GuardPipeline(
     fun executeApproved(
         call: ToolCall,
         spillWriter: (fileName: String, text: String) -> SpillResult?,
-    ): Result {
-        // ① 注册表校验（含 Schema）
-        val spec = registry.find(call.name)
-            ?: return Result.Rejected(
-                call,
-                "未知工具「${call.name}」（已注册：${registry.names().joinToString("、")}）",
-            )
-        registry.validateCall(call.name, call.arguments)?.let { err ->
-            return Result.Failed(call, err) // Schema 错是可重试（回灌原文）
-        }
-
-        // ② 路径守卫（不跳过：批准后越界仍须 Rejected——J5）
-        val guarded = guardPath(call, spec.name)
-        if (guarded is Guarded.No) return Result.Rejected(call, guarded.reason)
-        val effectiveCall = (guarded as Guarded.Yes).call
-
-        // ③ 权限判定：本方法跳过（用户已批准；再判一次就是死循环）
-
-        // ④ 执行（带超时；串行由调用方结构保证）
-        val outcome = runner.run(spec, effectiveCall.arguments)
-        val text = when (outcome) {
-            is ToolOutcome.Ok -> outcome.text
-            is ToolOutcome.Failed -> return Result.Failed(effectiveCall, outcome.error)
-            is ToolOutcome.Rejected -> return Result.Rejected(effectiveCall, outcome.reason)
-        }
-
-        // ⑤ 输出处理（与 execute 同一出口：同一函数，不第二份实现）
-        val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
-        return Result.Done(effectiveCall, wrapped, spilled)
+    ): Result = when (val p = prepare(call, skipConfirm = true)) {
+        is Prepared.Settled -> p.result
+        is Prepared.Ready -> finish(p.spec, p.call, runner.run(p.spec, p.call.arguments), spillWriter)
     }
 
     /**
