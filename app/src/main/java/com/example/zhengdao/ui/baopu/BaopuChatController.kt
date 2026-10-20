@@ -36,8 +36,12 @@ import com.example.zhengdao.baopu.eval.ProposalRedline
 import com.example.zhengdao.baopu.eval.ProposalRestore
 import com.example.zhengdao.baopu.eval.ProposalSelfCheck
 import com.example.zhengdao.baopu.eval.RuntimeEval
+import com.example.zhengdao.baopu.eval.SelfCheckGate
 import com.example.zhengdao.baopu.eval.SelfCheckOutcome
 import com.example.zhengdao.baopu.eval.SelfCheckText
+import com.example.zhengdao.baopu.eval.SkillBodyGuard
+import com.example.zhengdao.baopu.eval.SkillBodyInput
+import com.example.zhengdao.baopu.eval.SkillBodyOutcome
 import com.example.zhengdao.baopu.eval.TargetKind
 import com.example.zhengdao.baopu.eval.TargetSnapshot
 import com.example.zhengdao.baopu.agent.ConfirmRequest
@@ -256,6 +260,9 @@ internal class BaopuChatController(context: Context) {
         else -> BaopuNoteLevel.Error
     }
 
+    /** 第八十四批 v2：技能正文自检器（本地判据 + 失败回滚，不调模型）。 */
+    private val skillBodyGuard: SkillBodyGuard by lazy { SkillBodyGuard() }
+
     /** 当前会话（null = 还没有；首次发送时建）。 */
     var sessionId by mutableStateOf(BaopuRuntime.latestSessionId(db))
         private set
@@ -457,14 +464,57 @@ internal class BaopuChatController(context: Context) {
                     )
                 }
                 // 派工单 84 批 v1 适配项：main 上返回值从 String 改成 BaopuNote（信息便签）
-                BaopuNote(
+                val written = BaopuNote(
                     "已记下：${r.file.name}" + (r.backup?.let { "（旧版备份：$it）" } ?: ""),
                     BaopuNoteLevel.Info,
                 )
+                // 第八十四批 v2：**正文级**自检（派工单 §0.1）。默认不跑（SelfCheckGate），
+                // 跑了也不过是本地四条判据 + 失败回滚，不调模型、不要 key、不新增备份通道。
+                val guarded = skillBodySelfCheck(
+                    scene = "技能正文（${r.file.name}）",
+                    target = skillTarget,
+                    name = name,
+                    file = r.file,
+                ) ?: return written
+                return when (guarded) {
+                    is SkillBodyOutcome.FailedRolledBack -> BaopuNote(
+                        "已写但自检不过（${guarded.reason}），已回滚（sha256 与落盘前一致）",
+                        BaopuNoteLevel.Error,
+                    )
+
+                    is SkillBodyOutcome.RollbackFailed -> BaopuNote(
+                        "已写但自检不过（${guarded.reason}），回滚也没成功：${guarded.paths.joinToString("、")}——请手动核对",
+                        BaopuNoteLevel.Error,
+                    )
+
+                    SkillBodyOutcome.Passed -> written
+                }
             }
             is com.example.zhengdao.baopu.SkillWriteResult.Rejected ->
                 BaopuNote(r.reason, BaopuNoteLevel.Error)
         }
+    }
+
+    /**
+     * 第八十四批 v2：技能正文自检（[SkillBodyGuard]）。返回 null = 闸门关着，没跑。
+     *
+     * 闸门默认关（[SelfCheckGate]）：调试构建/CI 开箱即跑，Release 要用户自己拨开关。
+     */
+    private fun skillBodySelfCheck(
+        scene: String,
+        target: TargetSnapshot,
+        name: String,
+        file: java.io.File,
+    ): SkillBodyOutcome? {
+        if (!SelfCheckGate.enabledNow(com.example.zhengdao.BuildConfig.DEBUG, appCtx)) return null
+        val body = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        val input = SkillBodyInput(
+            name = name,
+            body = body,
+            backups = com.example.zhengdao.baopu.SkillStore.backupsOf(file).size,
+            existed = target.existed,
+        )
+        return skillBodyGuard.execute(scene, target, input)
     }
 
     /** 会话中（可停止）。 */
