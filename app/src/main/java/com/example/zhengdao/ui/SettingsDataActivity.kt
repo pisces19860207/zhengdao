@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.ui.settings.DataRules
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import androidx.compose.ui.res.stringResource
@@ -238,7 +239,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
      */
     var wsAsk by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     fun changeWorkspace(toastText: String, doSwitch: () -> Unit) {
-        if ((kbStatus?.files ?: 0) > 0) {
+        // 迁移前置条件搬去 DataRules（第七十七批）：当前资料库有东西才先问一句。
+        if (DataRules.shouldConfirmWorkspaceChange(kbStatus?.files)) {
             wsAsk = toastText to doSwitch
         } else {
             doSwitch()
@@ -264,7 +266,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             val st = kbStatus
             // E-089（让号自 E-082）：文件数达到扫描上限时**必须提示** —— 否则用户会以为"资料全在这儿了"
             val capNote = { n: Int ->
-                if (n >= com.example.zhengdao.terminal.KnowledgeBase.MAX_SCAN)
+                // 扫描上限判定搬去 DataRules.capReached（第七十七批）：到了必须提示（E-089）。
+                if (DataRules.capReached(n))
                     ctx.getString(R.string.data_kb_cap_note)
                 else ""
             }
@@ -282,7 +285,9 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 null -> stringResource(R.string.data_kb_reading)
             }
             InfoRow(stringResource(R.string.data_state_label), stateText)
-            if (st != null && st.state != com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED) {
+            // 挂载状态 → 路径行显不显，搬去 DataRules（第七十七批）；
+            // null 段留在调用处：st.path 要靠它做智能转换（原判据 = st != null && state != DISABLED）。
+            if (st != null && DataRules.shouldShowKbPath(st.state)) {
                 Text(
                     text = st.path,
                     style = MaterialTheme.typography.labelSmall,
@@ -316,9 +321,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     com.example.zhengdao.terminal.KnowledgeBase.otherPopulated(ctx)
                 }
             }
-            if (st?.state == com.example.zhengdao.terminal.KnowledgeBase.State.NOT_MOUNTED &&
-                otherKb.isNotEmpty()
-            ) {
+            // 未挂载 + 别处真有资料 ⇒ 提示并给复制入口（搬去 DataRules，第七十七批）。
+            if (DataRules.shouldOfferOtherKbCopy(st?.state, otherKb.size)) {
                 val otherPath = otherKb.first().first
                 val otherCount = otherKb.first().second
                 var copyAsk by remember { mutableStateOf(false) }
@@ -677,7 +681,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 onDismiss = { wsPickerOpen = false },
                 onPick = { path ->
                     wsPickerOpen = false
-                    if (!path.startsWith("/storage/emulated/0")) {
+                    if (!DataRules.isSharedStoragePath(path)) {
                         Toast.makeText(
                             ctx,
                             ctx.getString(R.string.data_ws_invalid),

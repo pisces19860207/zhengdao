@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.ui.settings.StorageRules
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
@@ -227,14 +228,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         lastGroup = item.group
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            // 数据层分组名是匹配契约（"hermes 工具"等原样比较），展示层换白话——
-                            // 用户反馈：「不知道清理的是什么，专业人才看得懂」。
-                            text = when (item.group) {
-                                "hermes 工具" -> "装 hermes 工具时下载的文件"
-                                "hermes 自检" -> "hermes 自检记录"
-                                "公共区安装脚本" -> "安装时下载的脚本"
-                                else -> item.group
-                            },
+                            // 分组名 → 白话展示名搬去 StorageRules.groupLabel（第七十七批）：
+                            // 数据契约（"hermes 工具"等原样比较）与展示层解耦，映射表只此一份。
+                            text = StorageRules.groupLabel(item.group),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -259,9 +255,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             // 把它挪进 StorageAudit 的 OPTIONAL 表，这里就自动出现，不用再改 UI。
             // ⚠️ "hermes 工具" 是 StorageAudit 侧的分组名（数据契约，不是界面文案）——
             // 这里按原样匹配，不做 i18n 抽取，改了会破坏分组匹配。
-            val optMb = audit.filter {
-                it.removable && it.group == "hermes 工具"
-            }.sumOf { it.mb }
+            // 判定与汇总搬去 StorageRules（第七十七批）：可清项口径只此一份，页面只留调用。
+            val optMb = StorageRules.optionalToolsMb(audit)
             var optConfirm by remember { mutableStateOf(false) }
             if (optMb > 0) {
                 Spacer(Modifier.height(4.dp))
@@ -322,7 +317,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             // 写到一半被杀——用户看到的是**永远同一个失败**且毫无自救手段（公共区连
             // 卸载 App 都清不掉）。清掉它，下次安装重新下一份干净的。
             var scriptConfirm by remember { mutableStateOf(false) }
-            if (audit.any { it.group == "公共区安装脚本" }) {
+            if (StorageRules.hasScriptCache(audit)) {
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = { scriptConfirm = true }) {
                     Text(stringResource(R.string.storage_script_btn))
@@ -473,7 +468,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             LaunchedEffect(storageTick) {
                 agentSizes = withContext(Dispatchers.IO) { CacheCleaner.agentCacheMeasure(ctx) }
             }
-            val agentMb = agentSizes.sumOf { it.second }
+            val agentMb = StorageRules.agentCacheMb(agentSizes)
             var agentConfirm by remember { mutableStateOf(false) }
             TextButton(enabled = !cleaning, onClick = { agentConfirm = true }) {
                 Text(
