@@ -183,7 +183,18 @@ object BrowserCommands {
         }
         if (started.failure != null) return null
         val done = runCatching { latch.await(EVAL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }.getOrDefault(false)
-        return if (done) jsResultToString(box[0]) else null
+        if (!done) {
+            // §B 79（第七十一批④）：超时必须落日志——与 onMain 的超时日志（:145 段）同款，
+            // 两处不许漂移。command 取脚本前 80 字（压成单行）作指纹，整段脚本不进日志。
+            runCatching {
+                RunLog.log(
+                    "浏览器桥：JS 回调超时（>${EVAL_TIMEOUT_MS}ms 未返回，" +
+                        "command=${script.take(80).replace(Regex("\\s+"), " ")}）——按契约归一为 null",
+                )
+            }
+            return null
+        }
+        return jsResultToString(box[0])
     }
 
     // ── JSON 小工具 ────────────────────────────────────────────────────────

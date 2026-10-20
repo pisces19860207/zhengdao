@@ -2,6 +2,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
 /**
@@ -160,7 +161,13 @@ object Store {
     fun adoptDir(target: File, legacy: File): Int {
         if (!legacy.isDirectory) return 0
         if (!target.isDirectory && !target.mkdirs()) return 0
-        val src = runCatching { legacy.listFiles() }.getOrNull() ?: return 0
+        // 第七十一批③：源目录列不出内容（IO 错误）之前静默 return 0，迁移悄悄放弃、
+        // 旧数据滞留无提示——补一条日志再按原样返回；返回值/行为不变。
+        // （源目录不存在走上面 isDirectory 那条正常路径，不算异常，不打日志。）
+        val src = runCatching { legacy.listFiles() }.getOrNull() ?: run {
+            RunLog.log("迁移源不可读，跳过（src=${legacy.path}）")
+            return 0
+        }
         var moved = 0
         for (f in src) {
             val dst = File(target, f.name)
