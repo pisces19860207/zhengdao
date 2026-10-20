@@ -191,7 +191,7 @@ class BareThreadGuardTest {
     }
 
     @Test
-    fun `对账单_2026-10-16_实测 29 处创建点`() {
+    fun `对账单_2026-10-16_实测 30 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -210,13 +210,14 @@ class BareThreadGuardTest {
             "LlmClient.kt:877",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658；第十三批加 completeOnce/completeBody/plainTextOf +134 ⇒ 658→792；第二十四批加 LlmMessage.images 与 contentBlocks +70 ⇒ 792→862）；第五十六批 P2-4 共享 OkHttp 单例 +15 ⇒ 862→877
             "MainActivity.kt:316",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308；2026-10-18 加屏幕常亮标志 +8 ⇒ 308→316）
             "NetSelfCheck.kt:94",                   // net-self-check-index
+            "OldTreeCleaner.kt:48",                 // zd-rootfs-clean（第六十五批：旧树后台删除单线程；有名 + daemon + MIN_PRIORITY，登记于 2026-10-20；改后台安全深删 + NIO imports ⇒ 41→48）
             "PreviewServer.kt:125",                 // zd-preview-http（刀 4 预览服务 acceptor：一条串行线程，有名 + daemon；登记于 2026-10-18）；第六十批 P2-8 加 REQUEST_TIMEOUT_MS 常量与说明 +13 ⇒ 112→125
             "RunEngine.kt:222",                     // zd-baopu-run（抱朴刀 1：引擎状态机循环单线程，全局单活跃；真机修复 161→171；刀 1 补丁换通道 +34 ⇒ 205→215；刀 3 A 段确认制 +293 ⇒ 215→508；刀 3 A 段拆文件 -357 ⇒ 508→151；工具补强二收尾闸 +16 ⇒ 151→167；真机修正单活跃门 KDoc +12 ⇒ 167→179；第十七批工作计划卡接线 ⇒ 180→182；2026-10-18 大图缩样批 +7 ⇒ 183→190；第三十七批 B 段提案卡 +2 ⇒ 190→192；第五十四批 P1 三件 +17 ⇒ 192→209；第五十六批 P2-5 activeCall 字段/import +1 ⇒ 209→210）
             "SettingsDataActivity.kt:592",          // zd-net-check（清场批注 +1；抱朴刀 2 加「抱朴工具」开关卡 +53 ⇒ 589→642；刀 3 B 段模型参数+思考深度两卡 +57 ⇒ 642→699；工具补强二三开关加在它之后 ⇒ 行号不动；第十八批 A 段抱朴三块整搬进 BaopuSettingsScreen（-106 行）+ 搬迁批注 +3 ⇒ 699→592）
             "SettingsEnvActivity.kt:218",           // zd-hermes-repair（B-补-22 import +2 / @OptIn KDoc +5；第十八批 B 段 Hermes 卡条件化包裹 +4 ⇒ 214→218）
             "SettingsEnvActivity.kt:273",           // zd-env-check（同上 +7；第十八批 B 段 Hermes 卡条件化包裹再 +5 ⇒ 268→273）
             "SettingsEnvActivity.kt:586",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +8 ⇒ 578→586）
-            "SettingsEnvActivity.kt:687",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687）
+            "SettingsEnvActivity.kt:713",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687；第六十五批加安装阶段计时/去重复校验 +26 ⇒ 687→713）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
             "TerminalActivity.kt:660",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17；第五十三批 P1-4 +4）；第六十批 P2-7 清理挪入 worker + 注释 +6 ⇒ 654→660
             "TerminalActivity.kt:893",              // zd-net-probe（同上；第五十三批 P1-4 +4）；第六十批 P2-7 +22 ⇒ 869→891

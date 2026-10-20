@@ -198,7 +198,14 @@ object RootfsDelta {
             RootfsMarker.write(tmpDir, oldDistro, info.new, RootfsMarker.nowIso())
 
             // ── 6. 原子替换（锁已在手，见 apply；#11 / E-078） ──
-            RootfsInstaller.swapLocked(tmpDir, rootfsDir)
+            // 第六十五批（必做 #3）：旧树先改名交后台再返回，别让「更新完成」等 1–2GB 删完；
+            // 增量与全量走同一套清理语义（失败留给下次启动的 cleanupPartial）。
+            val oldTree = RootfsInstaller.swapLocked(tmpDir, rootfsDir, deferOldTreeCleanup = true)
+            if (oldTree != null) {
+                // 新树已就位：清理派发失败不该把本次更新判失败（残留由下次启动清扫）
+                runCatching { OldTreeCleaner.submitDelete(OldTreeCleaner.park(oldTree)) }
+                    .onFailure { Log.w(TAG, "旧树后台清理派发失败（不影响更新）：${it.message}") }
+            }
             Log.i(TAG, "增量更新完成：${info.base} → ${info.new}")
         } catch (t: Throwable) {
             // 失败即丢弃半成品：绝不把 tmp 留在可能被误认成环境的状态

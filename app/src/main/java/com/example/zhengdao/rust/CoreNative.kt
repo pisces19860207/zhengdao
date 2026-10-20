@@ -118,9 +118,16 @@ object CoreNative {
 
     // ────────────────────────── extract 模块 ──────────────────────────
 
-    /** 进度回调（native 限频触发，约每 200 条目一次）。 */
+    /**
+     * 进度回调（native 限频触发，约每 200 条目一次）。
+     *
+     * 第六十五批：不再只打 logcat——转发给 [com.example.zhengdao.rootfs.InstallPulse]，
+     * 由它节流成 UI 的「已解 N 条 · 已用 T 秒」（派工单必做 #2）。转发侧自带 try/catch，
+     * 进度出错不会把解包本身炸掉；本方法签名与名字**一个字都不能改**（R8 keep 与 JNI 按名查找）。
+     */
     @JvmStatic
     fun onProgress(entries: String, name: String) {
+        runCatching { com.example.zhengdao.rootfs.InstallPulse.fromRust(entries, name) }
         Log.i(TAG, "解压进度: $entries $name")
     }
 
