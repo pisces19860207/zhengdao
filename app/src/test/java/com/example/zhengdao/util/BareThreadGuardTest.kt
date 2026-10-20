@@ -185,6 +185,7 @@ class BareThreadGuardTest {
         val total = scanAppSources().size
         // 2026-10-16 实测 29 处（刀 0b 后 27；抱朴刀 1 新增 zd-baopu-run / zd-baopu-tool 两条 => 29）；
         // 2026-10-18 刀 4 新增 zd-preview-http（预览服务 acceptor）=> 30；
+        // 2026-10-20 第六十八批消除 HomeScreen 的 zd-health-fix（改协程）=> 29。
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
@@ -198,7 +199,6 @@ class BareThreadGuardTest {
             "AgentInstaller.kt:54",                 // zd-agent-install
             "AgentManifest.kt:136",                 // zd-manifest-refresh
             "BaopuDb.kt:1012",                       // zd-baopu-db（抱朴刀 0：SQLite 单写者；刀 0b 加 memory 表/迁移/缓存列后自 :258 两次平移；刀 2 加资料库两表+章节索引表 +67 ⇒ 393→460；刀 3 B 段 v4 迁移+usage 语句 +50 ⇒ 460→510；刀 3 A 段 pending 三列+v5 迁移+PendingStore +44 ⇒ 510→554；第十三批 v6 compression 表+迁移+CompressionStore +81 ⇒ 554→635；第十六批第一件 RUN_LOG_STEPS_SELECT +12 ⇒ 635→647；第十七批 plan part 读写 SQL +37 ⇒ 647→684；第十九批封卷两列+迁移函数 +37 ⇒ 684→721；第二十批 workspace 列+迁移+会话库 SELECT +37 ⇒ 721→758；第二十五批会话库 SQL 改 LEFT JOIN 计数 +6 ⇒ 758→764；第二十三批B段补 compression 删语句 +6 ⇒ 764→770；第四十批编辑上一条三条 SQL +29 ⇒ 770→799；第三十八批 §9 产物台账：VERSION 8→9 两行 +2、artifact DDL 两条＋ARTIFACT_LIST_MAX＋四条语句（upsert/count/list/delete）+90 ⇒ 799→891。**同一条线程**，只是被顶走，不是新增）
-            "HomeScreen.kt:667",                    // zd-health-fix（清场删掉 zd-taiji-retry 后自 :620 平移 -21；第十八批 B 段体检区改合并行结构＋C 段顶栏 tagline ⇒ 599→667）
             "BrowserAgentBridge.kt:73",            // zd-bridge-http（2026-10-15 浏览器桥 acceptor 线程池；第㊷刀改字节级请求解析行号平移）
             "KeepaliveWatcher.kt:66",               // zd-keepalive-io（第⑪批 D-1 心跳执行器）
             "KeepaliveWatcher.kt:230",              // zhengdao-keepalive-patrol（D-1 编辑后行号平移）

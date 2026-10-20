@@ -139,6 +139,17 @@
     <string name="home_uninstall_purge">\n\n「彻底清除」将连同用户数据（%1$s）一起删除，不可恢复。</string>
     <string name="home_uninstall_action">卸载</string>
     <string name="home_purge_action">彻底清除（含用户数据）</string>
+    <string name="home_uninstall_command_label">将执行的命令：</string>
+    <string name="home_uninstall_purge_title">彻底清除 %1$s？</string>
+    <string name="home_uninstall_purge_confirm">再点一次「确认彻底删除」——将永久删除以下路径，不可恢复：
+%1$s</string>
+    <string name="home_uninstall_purge_confirm_action">确认彻底删除</string>
+    <string name="home_uninstall_purge_back">返回</string>
+    <string name="home_uninstall_echo">证道：正在卸载 %1$s…</string>
+    <string name="home_purge_echo">证道：正在彻底清除 %1$s…</string>
+    <string name="home_fixing">修复中…</string>
+    <string name="home_refresh_failed">刷新失败：%1$s</string>
+    <string name="home_refresh_timeout">刷新超时，已停止转圈；下拉可重试。</string>
     <string name="home_reinstall_title">重新安装 %1$s？</string>
     <string name="home_reinstall_desc">会重新跑一遍官方安装脚本（增量执行）：不会删除已有的配置、API Key 和会话数据。安装输出实时显示在「终端」。</string>
     <string name="home_reinstall_action">重新安装</string>
