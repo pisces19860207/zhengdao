@@ -139,6 +139,17 @@
     <string name="home_uninstall_purge">\n\n\"Erase everything\" also deletes your data (%1$s) — this cannot be undone.</string>
     <string name="home_uninstall_action">Uninstall</string>
     <string name="home_purge_action">Erase everything (incl. data)</string>
+    <string name="home_uninstall_command_label">Command to run:</string>
+    <string name="home_uninstall_purge_title">Erase %1$s completely?</string>
+    <string name="home_uninstall_purge_confirm">Tap \"Erase permanently\" again — these paths will be gone for good:
+%1$s</string>
+    <string name="home_uninstall_purge_confirm_action">Erase permanently</string>
+    <string name="home_uninstall_purge_back">Back</string>
+    <string name="home_uninstall_echo">Zhengdao: uninstalling %1$s…</string>
+    <string name="home_purge_echo">Zhengdao: erasing %1$s and its data…</string>
+    <string name="home_fixing">Repairing…</string>
+    <string name="home_refresh_failed">Refresh failed: %1$s</string>
+    <string name="home_refresh_timeout">Refresh timed out; pull down to try again.</string>
     <string name="home_reinstall_title">Reinstall %1$s?</string>
     <string name="home_reinstall_desc">Runs the official install script again (incremental): existing config, API keys and session data are kept. Output shows live in the terminal.</string>
     <string name="home_reinstall_action">Reinstall</string>
