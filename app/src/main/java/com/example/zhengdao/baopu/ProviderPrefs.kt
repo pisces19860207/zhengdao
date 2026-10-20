@@ -7,6 +7,7 @@
 package com.example.zhengdao.baopu
 
 import android.content.Context
+import androidx.core.content.edit
 
 /**
  * 抱朴通道选择（刀 1 补丁）——用户选了哪个通道、填了什么 Key 的**唯一真相**。
@@ -45,6 +46,18 @@ internal object ProviderPrefs {
     /** 当前通道 id（UI 弹层初始选中态用；不算 provider 解析，不算第二入口）。 */
     fun currentChannelId(context: Context): String =
         prefs(context).getString(KEY_CHANNEL, null) ?: Providers.BUILTIN_FREE.id
+
+    /**
+     * 只翻「当前通道」选择位（第六十四批安全点切换的落点）。
+     *
+     * 与 [save] 的分工：[save] 是设置页「启用此通道」（Key 与自定义三件一起写）；
+     * 本方法**只写 KEY_CHANNEL**——Key / custom_base / custom_model 原样保留。
+     * 解析后的校验与失败回滚由调用方（BaopuRuntime 装配层）负责：
+     * 解析没落到目标 ⇒ 回滚到 oldId，ProviderPrefs 永远与引擎看到的一致。
+     */
+    fun selectChannel(context: Context, channelId: String) {
+        prefs(context).edit { putString(KEY_CHANNEL, channelId) }
+    }
 
     /** 某通道的用户 Key（BaopuRuntime 组装 channelFallback 闭包用）。 */
     fun storedKey(context: Context, id: String): String? = prefs(context).getString(keyOf(id), null)

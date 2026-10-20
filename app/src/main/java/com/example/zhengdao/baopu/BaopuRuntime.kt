@@ -366,6 +366,24 @@ internal object BaopuRuntime {
                     customModel = cm,
                 )
             },
+            // 安全点切换效应（第六十四批）：写只经 ProviderPrefs（唯一真相）。
+            // 解析没落到目标（如 custom 三件不齐被兜底成免费通道）⇒ 回滚选择位，
+            // SP 与引擎不漂移；异常同样回滚后返回 null（状态机走 FALLBACK）。
+            switchChannel = { oldId, targetId ->
+                try {
+                    ProviderPrefs.selectChannel(appCtx, targetId)
+                    val p = ProviderPrefs.current(appCtx)
+                    if (p.id != targetId) {
+                        ProviderPrefs.selectChannel(appCtx, oldId)
+                        null
+                    } else {
+                        p
+                    }
+                } catch (t: Throwable) {
+                    runCatching { ProviderPrefs.selectChannel(appCtx, oldId) }
+                    null
+                }
+            },
         )
         // ask_user：工具线程阻塞在 engine.askUser 上，UI 点一下即回（有界，与确认卡同超时）
         AskUserTool.sink = { req -> engine.askUser(req) }
