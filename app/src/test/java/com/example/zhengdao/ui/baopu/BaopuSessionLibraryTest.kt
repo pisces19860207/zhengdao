@@ -302,8 +302,8 @@ class BaopuSessionLibraryTest {
     @Test
     fun `P2_不改表结构_VERSION仍是8_无新加列`() {
         assertEquals(
-            "第二十五批不动表结构（v9/v10/v11 是后续批次的表，与本批无关；v11 为第五十七批 skill_event、v12 为第八十五批效果信号）",
-            12,
+            "第二十五批不动表结构（v9/v10/v11/v12/v13 是后续批次的表，与本批无关；v12 为第八十五批效果信号、v13 为第八十七批 run_trace）",
+            13,
             com.example.zhengdao.baopu.BaopuDb.VERSION,
         )
         assertTrue(

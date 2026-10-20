@@ -66,11 +66,21 @@ internal object RunRules {
     const val MAX_BAD_ARGS_RETRIES = 1
 
     /** 还能再试一次坏参数吗（纯判据：`retries` 是**已经**用掉的机会）。 */
-    fun shouldRetryBadArgs(retries: Int): Boolean = retries < MAX_BAD_ARGS_RETRIES
+    fun shouldRetryBadArgs(retries: Int): Boolean =
+        // 第八十七批：判据本体搬到统一策略表（[FailurePolicy]），这里是**同语义**的薄适配器
+        // —— `retries` 是 0-based「已用掉几次」，策略表吃 1-based「这是第几次失败」⇒ +1。
+        // 保留这个函数是为了不惊动既有调用点与判据（P1EngineGateTest 钉着它必须出现）。
+        FailurePolicy.decide(FailureKind.BAD_JSON, retries + 1, fallbackAvailable = false) is FailureAction.Retry
 
     /** 连续工具失败到线 ⇒ 停下问人。 */
     fun shouldAskUser(consecutiveToolFailures: Int): Boolean =
-        consecutiveToolFailures >= MAX_TOOL_FAILURES
+        // 第八十七批：同 [shouldRetryBadArgs]——判据本体在统一策略表，这里保持原签名与语义
+        // （「还能再让模型试一次」＝策略给 Retry；到线必然是 AskUser）。
+        FailurePolicy.decide(
+            FailureKind.TOOL_ERROR,
+            consecutiveToolFailures,
+            fallbackAvailable = false,
+        ) !is FailureAction.Retry
 
     /**
      * 等一轮模型流式的总上限（P2-5，2026-10-19 第五十六批）。
@@ -105,10 +115,34 @@ internal object RunRules {
         data object BrokenAskUser : ChannelDecision
     }
 
-    fun channelDecision(consecutiveChannelFailures: Int, fallback: Provider?): ChannelDecision = when {
-        !shouldBreakChannel(consecutiveChannelFailures) -> ChannelDecision.KeepCurrent
-        fallback != null -> ChannelDecision.SwitchTo(fallback)
-        else -> ChannelDecision.BrokenAskUser
+    fun channelDecision(consecutiveChannelFailures: Int, fallback: Provider?): ChannelDecision =
+        // 第八十七批：判据本体搬到统一策略表（[FailurePolicy]），本函数退成**物理映射器**
+        // ——「连续失败 N 次」在没有重试预算的口径下问策略，再把四种语义翻成三条老出路。
+        // 用 [FailurePolicyConfig.LEGACY_NO_RETRY] 是刻意的：这个签名的语义里**没有重试**
+        // （「重试」是第八十七批新加的一层，压缩在 [FailurePolicyConfig.retries] 里，由引擎
+        // 先问一次策略、没被判成重试才走到这里）⇒ 旧口径逐条相等，ProviderSwitchTest 不动。
+        channelDecision(
+            FailurePolicy.decide(
+                FailureKind.NETWORK,
+                consecutiveChannelFailures,
+                fallbackAvailable = fallback != null,
+                config = FailurePolicyConfig.LEGACY_NO_RETRY,
+            ),
+            fallback,
+        )
+
+    /**
+     * 策略结论 → 物理出路（第八十七批；纯函数）。
+     *
+     * 为什么还要这一层：物理动作（切通道 / 停下问人 / 留原通道）是引擎既有三件套，
+     * 策略只回答「该不该切、该不该问」。两者分开，策略表才能被单测单独喂假数据。
+     */
+    fun channelDecision(action: FailureAction, fallback: Provider?): ChannelDecision = when {
+        // 策略说换，但装配层没给出候选（或换够次数了）⇒ 只能问人，绝不「切到 null」。
+        action is FailureAction.Fallback && fallback != null -> ChannelDecision.SwitchTo(fallback)
+        action is FailureAction.Fallback -> ChannelDecision.BrokenAskUser
+        action is FailureAction.AskUser -> ChannelDecision.BrokenAskUser
+        else -> ChannelDecision.KeepCurrent
     }
 
     /**
