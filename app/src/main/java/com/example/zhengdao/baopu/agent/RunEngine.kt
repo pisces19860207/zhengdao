@@ -979,7 +979,7 @@ internal class RunEngine(
                             outcome.text,
                         )
                         val report = ArtifactVerifier.render(findings)
-                        _notice.value = "自检发现 ${findings.size} 项未过，已让抱朴修一轮"
+                        _notice.value = RunLoopRules.verifyRepairNotice(findings.size)
                         history += HistoryMessage(
                             "local-verify-${System.nanoTime()}",
                             HistoryMessage.ROLE_ASSISTANT,
@@ -988,9 +988,19 @@ internal class RunEngine(
                         continue
                     }
                     if (findings.isNotEmpty()) {
-                        _notice.value = ArtifactVerifier.summarize(findings)
+                        // notice 的最终值在下方统一裁决（RunLoopRules.textSettleNotice）——
+                        // 先落的日志保持原样：未过项摘要只进 run_log，文案以裁决结果为准
                         log("抱朴引擎：收尾闸未通过（已修过 ${verifyRepairs} 次），${findingBrief(findings)}")
                     }
+                    // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）。
+                    // 覆盖顺序（改前源码的顺序，一级压一级）：截断 > 计划未勾 > 收尾闸摘要；
+                    // 都不命中 ⇒ 不动 notice（保留本轮此前可能已贴的提示）。
+                    RunLoopRules.textSettleNotice(
+                        findingsCount = findings.size,
+                        findingsSummary = if (findings.isEmpty()) null else ArtifactVerifier.summarize(findings),
+                        unfinishedPlanCount = planController.unfinishedCount(),
+                        truncated = outcome.truncated,
+                    )?.let { _notice.value = it }
 
                     persistAssistantMessage(sessionId, outcome.text)
                     history += HistoryMessage(
@@ -998,17 +1008,9 @@ internal class RunEngine(
                         HistoryMessage.ROLE_ASSISTANT,
                         outcome.text,
                     )
-                    // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）
-                    val left = planController.unfinishedCount()
-                    if (left > 0) {
-                        _notice.value = "计划里还有 $left 条没勾（进度看顶部计划卡）"
-                    }
-                    // 第四十批：被输出上限截断 ⇒ 记下标记（壳层给「继续说完」），
-                    // 并用一句话说明——「看着写完了其实没写完」必须让用户看见。
+                    // 第四十批：被输出上限截断 ⇒ 记下标记（壳层给「继续说完」）——
+                    // 「看着写完了其实没写完」必须让用户看见（notice 文案在上面裁决）。
                     _tailTruncated.value = outcome.truncated
-                    if (outcome.truncated) {
-                        _notice.value = "回复被输出上限截断了（服务端说的），点「继续说完」接着写"
-                    }
                     emitLearnCardIfDue()
                     settle(sessionId, stepCount, RunState.DONE, "Done")
                     return
@@ -1124,7 +1126,7 @@ internal class RunEngine(
                         return
                     }
                     badArgsRetries++
-                    _notice.value = "模型这轮给的参数不对，已让它重试（第 $badArgsRetries 次）"
+                    _notice.value = RunLoopRules.badArgsRetryNotice(badArgsRetries)
                     continue
                 }
 
@@ -1158,13 +1160,8 @@ internal class RunEngine(
 
                         RunRules.ChannelDecision.BrokenAskUser -> {
                             channelBroken = true
-                            val msg = if (channelSwitches >= RunRules.MAX_CHANNEL_SWITCHES) {
-                                "同一轮已自动换过 ${RunRules.MAX_CHANNEL_SWITCHES} 次通道都不通：" +
-                                    "换个通道或稍后再试（已停在第 $stepCount 步）"
-                            } else {
-                                "当前通道连续失败 ${consecutiveChannelFailures} 次（已熔断）：" +
-                                    "换个通道或稍后再试"
-                            }
+                            // 两个分支的文案判据（换过次数到顶 ⇄ 连续失败）搬去纯判据（第七十九批）
+                            val msg = RunLoopRules.channelBrokenNotice(channelSwitches, consecutiveChannelFailures, stepCount)
                             _notice.value = msg
                             settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = errText)
                             onEvent?.invoke(EngineEvent.AskUser(msg))
@@ -1350,7 +1347,7 @@ internal class RunEngine(
             return RoundOutcome.Failed("等模型回复超时（${RunRules.STREAM_WAIT_TIMEOUT_MS / 1000}s）：这条通道只连上不收数据")
         }
         // 原文取不到时退回异常 message（至少 err 列不为空，能看出是哪一类失败）
-        failure?.let { return RoundOutcome.Failed(humanizeNetFailure(it), failureRaw ?: it) }
+        failure?.let { return RoundOutcome.Failed(RunLoopRules.humanizeNetFailure(it), failureRaw ?: it) }
         if (rawCalls.isNotEmpty()) {
             val decoded = ToolCallCodec.decode(rawCalls, registry)
             return when (decoded) {
@@ -1360,19 +1357,8 @@ internal class RunEngine(
                 is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.BadArgs(decoded.error, textBuf.toString(), finishedUsage)
             }
         }
-        val truncated = stopReason == "length" || stopReason == "max_tokens"
+        val truncated = RunLoopRules.isTruncatedStopReason(stopReason)
         return RoundOutcome.Text(textBuf.toString(), finishedUsage, truncated)
-    }
-
-    /** 网络失败人话化（错误号口径：英文原文只进日志，UI 拿人话）。 */
-    private fun humanizeNetFailure(raw: String): String = when {
-        raw.contains("403") -> "该通道拒绝访问（403）：Key 不对、没权限，或这条通道在你的网络里不通——换通道"
-        raw.contains("401") -> "该通道不认这把 Key（401）：检查 Key 是否填对，或换通道"
-        raw.contains("429") -> "模型端限流（429）：稍等再试，或换一个 provider"
-        raw.contains("HTTP 5") -> "模型端服务错误（5xx）：稍等再试"
-        raw.contains("截断") -> "响应流中断：该轮作废重发（已花的 token 记在账里）"
-        raw.contains("timeout", ignoreCase = true) -> "连接超时：检查网络或换一个 provider"
-        else -> "模型调用失败（原文已记日志）"
     }
 
     /** 工具调用可见卡的摘要（入参出参各取一段；全量在 db 的 tool part 里）。 */
@@ -1780,7 +1766,7 @@ internal class RunEngine(
                         tokensInEst = 0,
                         tokensOutEst = 0,
                         tool = tool,
-                        ok = !wrapped.startsWith("失败") && !wrapped.startsWith("被拒"),
+                        ok = RunLoopRules.toolExchangeOk(wrapped),
                         latencyMs = 0,
                         err = "",
                         createdAt = now,
