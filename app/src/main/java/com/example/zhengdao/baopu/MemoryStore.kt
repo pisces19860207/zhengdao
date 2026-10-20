@@ -5,6 +5,7 @@
 // reindex 能从 抱朴记忆/ 的 .md/.json 重建）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
 /**
@@ -156,6 +157,8 @@ internal class MemoryStore(
             file.writeText(EntryCodec.render(ok), Charsets.UTF_8)
             WriteResult(true, file, "")
         } catch (e: Exception) {
+            // 第七十一批②：失败要有声音（不打印记忆正文；调用方 UI 提示在飞，待下一批）
+            RunLog.log("记忆写入失败：id=${ok.id} reason=写盘异常（${e.javaClass.simpleName}）")
             WriteResult(false, null, "写盘失败（${e.javaClass.simpleName}）")
         }
     }
@@ -163,10 +166,16 @@ internal class MemoryStore(
     /** 改一条（按 id 找文件整份重写；id 不变 ⇒ 文件位置不变）。 */
     fun update(entry: MemoryEntry): Boolean {
         val file = findFile(entry.id) ?: return false
-        return runCatching {
+        // 第七十一批②：这里的 false 之前纯静默（返回值被调用方忽略，用户以为记住了）——
+        // 至少在本方法内落一条日志；reason 只给异常类别，不带记忆正文。
+        val written = runCatching {
             file.writeText(EntryCodec.render(entry), Charsets.UTF_8)
             true
         }.getOrDefault(false)
+        if (!written) {
+            RunLog.log("记忆写入失败：id=${entry.id} reason=改写落盘异常")
+        }
+        return written
     }
 
     /** 删一条（判据：可单条删）。文件不在 ⇒ false。 */
