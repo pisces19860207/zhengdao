@@ -1383,4 +1383,6 @@
     <!-- 第六十一批 §2：错误便签的标题（技能／资料库两族）。进度不占标题——它没标题、8 秒自己走。 -->
     <string name="baopu_note_skill_error_label">技能没成</string>
     <string name="baopu_note_library_error_label">资料库没成</string>
+    <string name="baopu_scratch_left_label">临时文件</string>
+    <string name="baopu_scratch_left_body">%1$d 个临时文件已移入回收站（可恢复）</string>
 </resources>

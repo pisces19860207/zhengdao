@@ -456,6 +456,9 @@ internal class BaopuChatController(context: Context) {
 
     /** 顶栏「玄览正在干什么」那一行（2026-10-19）；`Settled` 时清空。 */
     var browserActivity by mutableStateOf<String?>(null)
+
+    /** `临时/` 还剩几个文件（收尾时由引擎事件告知）。 */
+    var scratchLeft by mutableStateOf(0)
         private set
 
     /**
@@ -778,6 +781,7 @@ internal class BaopuChatController(context: Context) {
         messages = emptyList()
         pendingMemories = emptyList()
         introspectionNote = null
+        scratchLeft = 0
         pendingNote = null   // 50 批遗留：换会话必须清掉"没记住"便签（原来只靠 UI 8 秒计时器兜底）
         refineMarkSession = -1L
         refineMarkUserCount = -1
@@ -867,6 +871,7 @@ internal class BaopuChatController(context: Context) {
         messages = emptyList()
         pendingMemories = emptyList()
         introspectionNote = null
+        scratchLeft = 0
         pendingNote = null   // 50 批遗留：换会话必须清掉"没记住"便签（原来只靠 UI 8 秒计时器兜底）
         refineMarkSession = -1L
         refineMarkUserCount = -1
@@ -977,6 +982,7 @@ internal class BaopuChatController(context: Context) {
         messages = emptyList()
         pendingMemories = emptyList()
         introspectionNote = null
+        scratchLeft = 0
         pendingNote = null   // 50 批遗留：换会话必须清掉"没记住"便签（原来只靠 UI 8 秒计时器兜底）
         refineMarkSession = -1L
         refineMarkUserCount = -1
@@ -1325,6 +1331,7 @@ internal class BaopuChatController(context: Context) {
                 attachImageParts(ev.messageId, paths)
             }
             // 顶栏玄览状态：只有浏览器工具在跑时才出现，本轮结束就撤（不留在屏上骗人）
+            if (ev is EngineEvent.ScratchLeft) scratchLeft = ev.count
             if (ev is EngineEvent.ToolCallVisible) {
                 com.example.zhengdao.baopu.browserActivityLine(ev.tool, ev.summary)?.let {
                     browserActivity = it
