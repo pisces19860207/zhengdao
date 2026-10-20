@@ -1081,6 +1081,111 @@ internal object BaopuSql {
         "SELECT MAX(step) FROM run_log WHERE session_id = ?",
         arrayOf<String?>(sessionId.toString()),
     )
+
+    // ── v13（第八十七批）：运行轨迹表 run_trace ──────────────────────────────
+    //
+    // 为什么新开一张表而不是复用 run_log：两者**寿命与粒度都不同**。
+    // run_log 是「状态迁移流水」（一步可能好几行：Thinking/Acting/Done），它的用途是
+    // **断点续跑判据**（最后一行是什么 ⇒ 有没有中断），字段被确认制/用量/缓存三批
+    // 反复加列，语义已经很挤。轨迹是「一次运行的结构」，按 runId 聚合、一行一个边界
+    // （步/工具/压缩），要能被 traceOf(runId) 一次读全。
+    //
+    // 三处刻意的取舍：
+    // 1. **不存正文**：工具参数只留 16 位 sha256 摘要（args_hash），提示词/回答/文件内容
+    //    一个字节都不进库——这张表要能随便给人看（判据 T4 从 DDL 与模型类两处钉）；
+    // 2. `session_id … ON DELETE CASCADE`：删会话时轨迹跟着走（与 `artifact` 同处理，
+    //    所以 `deleteSessionStatements` 里**不**为它另加一条——那条从 DDL 反推的门禁认级联）；
+    // 3. `duration_ms` 可负：-1 = **没测到**（审批路径耗在等人点按钮上，工具本身没耗时），
+    //    不写 0 假装知道（与 `BaopuUsageStep.elapsedMs` 同口径）。
+    //
+    // 只增不改：这张表没有 UPDATE/DELETE 语句——轨迹是「当时发生了什么」，不许事后改写。
+    //
+    // ⚠️ 版本号：派工单出单时 v12 还空着，开工时被第八十五批（skill_event 效果信号四列）
+    // 先占了 ⇒ 本表落在 **v13**（同批 rebase 实测）。
+
+    /** 运行轨迹表（全部 `IF NOT EXISTS` ⇒ 幂等，照 v6/v9/v11/v12 房型）。 */
+    val RUN_TRACE_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS run_trace (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id TEXT NOT NULL,
+          session_id INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+          step INTEGER NOT NULL DEFAULT 0,
+          seq INTEGER NOT NULL DEFAULT 0,
+          phase TEXT NOT NULL DEFAULT '',
+          tool TEXT NOT NULL DEFAULT '',
+          args_hash TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT '',
+          duration_ms INTEGER NOT NULL DEFAULT 0,
+          tokens_in INTEGER NOT NULL DEFAULT 0,
+          tokens_out INTEGER NOT NULL DEFAULT 0,
+          failure_kind TEXT NOT NULL DEFAULT '',
+          decision TEXT NOT NULL DEFAULT '',
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        // 回放读法就一种：按 runId 取全量、按 seq 排 ⇒ 复合索引。
+        "CREATE INDEX IF NOT EXISTS idx_run_trace_run ON run_trace (run_id, seq)",
+        // 「这个会话上次跑成什么样」按会话倒查 ⇒ 单列索引。
+        "CREATE INDEX IF NOT EXISTS idx_run_trace_session ON run_trace (session_id, id)",
+    )
+
+    /**
+     * 轨迹表的列序（**唯一一份**：SELECT 与游标映射都读它。
+     * `agent/RunTrace.kt` 的 `RunTraceRules.COLUMNS` 直接转手这里，不另抄一遍）。
+     */
+    val RUN_TRACE_COLUMNS: List<String> = listOf(
+        "run_id", "session_id", "step", "seq", "phase", "tool", "args_hash", "status",
+        "duration_ms", "tokens_in", "tokens_out", "failure_kind", "decision", "started_at", "ended_at",
+    )
+
+    /**
+     * 记一行轨迹。
+     *
+     * 参数全是**枚举名/计数/时刻/摘要**（[com.example.zhengdao.baopu.agent.TraceRow.toStmt]
+     * 是唯一调用方）——本函数刻意收成扁平参数，不让 `BaopuSql` 反向依赖 agent 包的类型。
+     */
+    @Suppress("LongParameterList")
+    fun insertRunTrace(
+        runId: String,
+        sessionId: Long,
+        step: Int,
+        seq: Int,
+        phase: String,
+        tool: String,
+        argsHash: String,
+        status: String,
+        durationMs: Long,
+        tokensIn: Int,
+        tokensOut: Int,
+        failureKind: String,
+        decision: String,
+        startedAt: Long,
+        endedAt: Long,
+    ): Stmt = Stmt(
+        "INSERT INTO run_trace (run_id, session_id, step, seq, phase, tool, args_hash, status, " +
+            "duration_ms, tokens_in, tokens_out, failure_kind, decision, started_at, ended_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        arrayOf<String?>(
+            runId, sessionId.toString(), step.toString(), seq.toString(), phase, tool, argsHash, status,
+            durationMs.toString(), tokensIn.toString(), tokensOut.toString(), failureKind, decision,
+            startedAt.toString(), endedAt.toString(),
+        ),
+    )
+
+    /** 读一次运行的全部轨迹（顺序＝`seq`，就是发生顺序；空表 ⇒ 零行，不报错＝老库可读）。 */
+    fun selectRunTrace(runId: String): Stmt = Stmt(
+        "SELECT " + RUN_TRACE_COLUMNS.joinToString(", ") +
+            " FROM run_trace WHERE run_id = ? ORDER BY seq ASC",
+        arrayOf<String?>(runId),
+    )
+
+    /** 该会话最近一次有轨迹的 runId（没有 ⇒ 零行）。 */
+    fun selectLatestRunTrace(sessionId: Long): Stmt = Stmt(
+        "SELECT run_id FROM run_trace WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        arrayOf<String?>(sessionId.toString()),
+    )
 }
 
 /**
@@ -1143,6 +1248,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV10Migration(db)
         applyV11Migration(db)
         applyV12Migration(db)
+        applyV13Migration(db)
     }
 
     /**
@@ -1173,6 +1279,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 10) applyV10Migration(db)
         if (oldVersion < 11) applyV11Migration(db)
         if (oldVersion < 12) applyV12Migration(db)
+        if (oldVersion < 13) applyV13Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1295,6 +1402,18 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /**
+     * v12 → v13 迁移体（第八十七批）：`run_trace` 运行轨迹表 ＋ 两条索引，**全是
+     * `IF NOT EXISTS`** ⇒ 幂等（照 v6/v9/v11/v12 房型）。新安装（onCreate 也调它）
+     * 与 v12 库升级走**同一条**路径。
+     *
+     * 老库可读性：v12 及更早的库升上来只会**多一张空表**，`run_log`/`message`/`part`/
+     * `skill_event` 一列不动 ⇒ 老会话照常打开；老 run 没有轨迹（`traceOf` 返回空表），不报错。
+     */
+    private fun applyV13Migration(db: SQLiteDatabase) {
+        BaopuSql.RUN_TRACE_DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1323,8 +1442,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v9 = 第三十八批 §9（`artifact` 产物台账表 ＋ (workspace, rel_path) 唯一索引）。
          *  v11 = 第五十七批（`skill_event` 技能事件表：use 留痕 ＋ 采纳/丢弃留痕）。
          *  v12 = 第八十五批（同一张表加效果信号四列 outcome／source／skill_version／reason_code，
-         *  全部可空＝老行不回填；kind='effect' 的行只存枚举名／技能名／正文摘要／时刻）。 */
-        const val VERSION = 12
+         *  全部可空＝老行不回填；kind='effect' 的行只存枚举名／技能名／正文摘要／时刻）。
+         *  v13 = 第八十七批（`run_trace` 运行轨迹表：一次运行一行一个边界，只存枚举/计数/hash，
+         *  **不存正文**；版本号让号说明见 `RUN_TRACE_DDL` 上方注释）。 */
+        const val VERSION = 13
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
