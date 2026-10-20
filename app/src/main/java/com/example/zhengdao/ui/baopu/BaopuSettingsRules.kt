@@ -140,18 +140,43 @@ internal fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
     ToolGroup.COMPAT -> throw IllegalArgumentException("COMPAT 组没有开关，不该走到分组标题")
 }
 
-// ── ④ 组头第二行「默认是否可见」取哪句（照搬页面 220-225 行的 if/else）───────────
+// ── ④ 组头第二行：四态说明（第九十七批把「默认开/不开」扩成「默认可见/已锁/已同意/已关闭」）──
 
 /**
- * 组头第二行的那句「这一组默认开启 / 默认不开启」（第八十一批 ④）。
+ * 一个组在设置页上的四态（第九十七批 §1/§3.5）。
  *
- * 输入是**调用方算好的布尔**：`group in ToolGroup.DEFAULT_VISIBLE` 那一次读取留在页面里
- * ——六十一批 G5 钉它必须恰好一处，第五十九批 §1.6 与 ProgressiveToolsTest G3 也钉着
- * 「设置页只许**读** DEFAULT_VISIBLE 来显示这一句，不许拿它去算可见集合」（那是第二条链）。
+ * 为什么从两态扩成四态：59 批只有「默认可见 / 默认不发」两种说法，用户看到的就是
+ * 「工具全都打开的」——因为「已锁」与「你已开」在界面上长得一样。现在分开：
+ * - [DefaultVisible]：CORE/EDIT，一直发给模型；
+ * - [Locked]：高组默认态——不发给模型，抱朴要用时会弹卡申请；
+ * - [Approved]：你（或卡片上的「一直」）已经同意长期开启；
+ * - [Disabled]：你手动关掉了，抱朴自己也解不开（连卡都不弹）。
+ *
+ * 优先级固定：disabled 压过 default-visible（用户关的就是关了），approved 只在
+ * 非默认组上有意义。**只描述显示，不算可见性**——可见性仍只有 `isVisibleTool` 一处。
  */
-internal fun baopuGroupDefaultCaption(isDefaultVisible: Boolean): Int =
-    if (isDefaultVisible) R.string.baopu_tools_group_default_on
-    else R.string.baopu_tools_group_default_off
+internal enum class BaopuGroupState { DefaultVisible, Locked, Approved, Disabled }
+
+/** 四态归一（纯函数；输入就是页面读到的三个布尔）。 */
+internal fun baopuGroupState(defaultVisible: Boolean, approved: Boolean, disabled: Boolean): BaopuGroupState =
+    when {
+        disabled -> BaopuGroupState.Disabled
+        defaultVisible -> BaopuGroupState.DefaultVisible
+        approved -> BaopuGroupState.Approved
+        else -> BaopuGroupState.Locked
+    }
+
+/** 四态 → 组头第二行那句说明。 */
+internal fun baopuGroupCaptionKey(state: BaopuGroupState): Int = when (state) {
+    BaopuGroupState.DefaultVisible -> R.string.baopu_tools_group_default_on
+    BaopuGroupState.Locked -> R.string.baopu_tools_group_default_off
+    BaopuGroupState.Approved -> R.string.baopu_tools_group_approved
+    BaopuGroupState.Disabled -> R.string.baopu_tools_group_disabled
+}
+
+/** 组开关此刻该不该是「开」——只有「默认可见」与「已长期同意」两个状态算开。 */
+internal fun baopuGroupSwitchOn(state: BaopuGroupState): Boolean =
+    state == BaopuGroupState.DefaultVisible || state == BaopuGroupState.Approved
 
 // ── ⑤ 技能作用域 → 人设层（照搬页面 589-592 行那个局部 fun layerOf）─────────────
 
