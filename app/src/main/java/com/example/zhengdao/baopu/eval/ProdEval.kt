@@ -245,7 +245,7 @@ internal class ProdEval(
 
         const val PROD_EVAL_SCHEMA = "zhengdao-prod-eval/1"
 
-        /** 产物目录/文件名（App 私有 files/eval/ ，与仓库里的 eval/ 目录无关）。 */
+        /** 产物目录与文件名：落在 App 私有 filesDir 下的 eval 目录里，与仓库里的 eval 目录无关。 */
         const val ARTIFACT_DIR = "eval"
         const val ARTIFACT_NAME = "prod-result.json"
         const val PROD_EVAL_SKIP_FIXTURE = "B/C fixture 用例（生产口径只跑水位池）"
