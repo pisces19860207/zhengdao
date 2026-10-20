@@ -389,7 +389,10 @@ class SkillEffectSignalTest {
     fun `S5_没有自动晋升退役`() {
         val newRegion = auditSource.substringAfter("// ── 第八十五批")
         val fn = effectFn()
-        val sql = dbSource.substringAfter("// ── v12（第八十五批）").substringBefore("\n}")
+        // 窗口右边界显式钉在**下一条批次注释**上：原来靠 `\n}`（对象结尾）兜底，
+        // 第八十七批的 v13 run_trace 段插在同一对象里 ⇒ 会把别人的新表扫进「效果信号」判据。
+        val sql = dbSource.substringAfter("// ── v12（第八十五批）")
+            .substringBefore("// ── v13（第八十七批）")
         (newRegion + fn + sql).let { all ->
             listOf(
                 "canPromote", "promote(", "archive(", "renameTo", "bumpUses", "expiryVerdict",
