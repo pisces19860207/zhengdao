@@ -583,6 +583,52 @@ internal object BaopuRuntime {
     }
 
     /**
+     * 第九十九批 §1.5.3：**手动使用入口**——设置页技能组「用一次」背后记两行账：
+     * `kind='use'`（57 批那张表、同一个形状）＋ `kind='effect'` 且 `source=MANUAL`
+     * （85 §2 点名的那条：用户点用与模型自用是两种来源，效果聚合时分得开）。
+     *
+     * 为什么单开一个入口而不是给 [recordSkillEffect] 加开关：设置页这一击**没有会话上下文**
+     * （用户在设置里点按钮，不在对话轮里）⇒ 上一条信号、本轮用户的话都定位不了 ⇒
+     * 按 85「判不了就不猜」只记裸成败（SUCCESS/FAILURE），不猜 RETRIED/USER_CORRECTED。
+     *
+     * 复用现有函数、不新开写盘路径：use 行走 [BaopuSql.insertSkillUse]，效果行走
+     * [SkillEffects.toStmt]（先过闸门再拼 SQL）；写失败只 log（账本卡住业务就是本末倒置）。
+     *
+     * @param skillFile 盘上那个技能正文文件（只为取 sha256 版本戳；读不到 ⇒ "-"）
+     */
+    fun recordSkillUseManual(appCtx: Context, name: String, skillFile: java.io.File?) {
+        if (name.isBlank()) return
+        runCatching {
+            val d = db(appCtx)
+            val now = System.currentTimeMillis()
+            val useStmt = BaopuSql.insertSkillUse(name, null, null, true, now)
+            d.write { x -> x.execSQL(useStmt.sql, useStmt.args) }
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+            val (outcome, reason) = SkillEffects.classify(null, null, null, true)
+            val signal = SkillEffects.Signal(
+                name = name,
+                skillVersion = SkillAudit.shaOf(skillFile ?: java.io.File(name)),
+                outcome = outcome,
+                source = SkillSource.MANUAL,
+                reason = reason,
+                sessionId = null,
+                step = null,
+                attemptOk = true,
+                at = now,
+            )
+            val stmt = SkillEffects.toStmt(signal)
+            if (stmt == null) {
+                RunLog.log("抱朴：手动使用效果信号被闸门拦下（字段不是合法 token）name=${name.take(8)}")
+                return@runCatching
+            }
+            d.write { x -> x.execSQL(stmt.sql, stmt.args) }
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+        }.getOrElse {
+            RunLog.log("抱朴：手动使用记录失败（不影响设置页）${it.javaClass.simpleName}: ${it.message}")
+        }
+    }
+
+    /**
      * 本会话「中断于第 N 步」（-1 = 未中断）。
      *
      * **判据是推导的，不读 `session.interrupted_step`**——那个列被 `RunEngine.persistStep`

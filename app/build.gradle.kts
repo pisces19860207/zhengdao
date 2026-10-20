@@ -780,6 +780,11 @@ abstract class StageEvalAssetsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outDir: DirectoryProperty
 
+    companion object {
+        /** 第九十九批：最近一次发版 eval 结果文件进包后的固定名（运行时 `EvalResultFile` 只认它）。 */
+        const val EVAL_RESULT_NAME = "eval-result.json"
+    }
+
     @TaskAction
     fun stage() {
         val outRoot = outDir.get().asFile
@@ -804,14 +809,27 @@ abstract class StageEvalAssetsTask : DefaultTask() {
                 "[stageEvalAssets] $name 副本与 eval/ 逐字节不一致（漂移）——中止，别把假用例装进 APK"
             }
         }
-        // 只许这两份：多出一份就是有人在 assets 里手存了第二真源
+        // 第九十九批 §1.5.2：最近一次发版 eval 的**结果文件**也进包（eval 证据的唯一来源）。
+        // 挑文件名时间戳最大那份 report-*.json，落成固定名字 eval-result.json——「哪次算最近」
+        // 在构建期定死，运行时只认固定名字（运行时自己挑文件＝读数随设备状态变）。
+        // 没有报告就不装：App 读不到 ⇒ eval=null ⇒ 政策判 DEFER，**不许默认过线**。
+        val report = evalDir.get().asFile.listFiles { f ->
+            f.isFile && f.name.startsWith("report-") && f.name.endsWith(".json")
+        }?.maxByOrNull { f ->
+            f.name.removePrefix("report-").removeSuffix(".json").toLongOrNull() ?: Long.MIN_VALUE
+        }
+        if (report != null) {
+            File(out, EVAL_RESULT_NAME).writeBytes(report.readBytes())
+            logger.lifecycle("[stageEvalAssets] eval 结果：${report.name} → $EVAL_RESULT_NAME")
+        }
+        // 只许已知的这几份：多出一份就是有人在 assets 里手存了第二真源
         val extra = out.listFiles().orEmpty()
             .filter { it.isFile }
             .map { it.name }
-            .filterNot { it in names }
+            .filterNot { it in names || it == EVAL_RESULT_NAME }
         check(extra.isEmpty()) { "[stageEvalAssets] assets/eval 里多出不认识的产物：$extra" }
 
-        logger.lifecycle("[stageEvalAssets] OK：${names.joinToString(" + ")} → ${out.absolutePath}")
+        logger.lifecycle("[stageEvalAssets] OK：${(names + listOfNotNull(EVAL_RESULT_NAME.takeIf { report != null })).joinToString(" + ")} → ${out.absolutePath}")
     }
 }
 

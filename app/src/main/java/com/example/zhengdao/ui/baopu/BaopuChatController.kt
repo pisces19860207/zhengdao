@@ -19,6 +19,10 @@ import com.example.zhengdao.baopu.BaopuUsageRow
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuSql
+import com.example.zhengdao.baopu.EvolutionAuditLog
+import com.example.zhengdao.baopu.EvolutionDecision
+import com.example.zhengdao.baopu.EvolutionDecisionPort
+import com.example.zhengdao.baopu.EvolutionEvidence
 import com.example.zhengdao.baopu.emptyRoundUsage
 import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.SessionCompressionStore
@@ -34,6 +38,7 @@ import com.example.zhengdao.baopu.ProposalRules
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.eval.EvalAttempt
+import com.example.zhengdao.baopu.eval.EvalResultFile
 import com.example.zhengdao.baopu.eval.ProposalRedline
 import com.example.zhengdao.baopu.eval.ProposalRestore
 import com.example.zhengdao.baopu.eval.ProposalSelfCheck
@@ -149,6 +154,28 @@ internal object BaopuNotePolicy {
     fun levelOfResult(problemCount: Int): BaopuNoteLevel =
         if (problemCount > 0) BaopuNoteLevel.Error else BaopuNoteLevel.Info
 }
+
+/**
+ * 一条「进化建议」：86 的候选快照 ＋ 88 决策口的判定（第九十九批，供设置页那张卡读）。
+ *
+ * 为什么带 payload：卡上要显示建议正文给人看——**审计里不进**（[EvolutionAuditEntry] 只有
+ * 输入摘要与判定），这里只是 UI 状态，不是账本。
+ *
+ * @param requiresApproval 是否需要人批（v1 恒 true：L3 开关默认关）
+ * @param reasons 只带证据 id 的原因链（渲染时按原因码查 strings.xml，不把 id 当文案显示）
+ */
+internal data class EvolutionSuggestion(
+    val candidateId: String,
+    val kind: com.example.zhengdao.baopu.ProposalKind,
+    val target: String,
+    val payload: String,
+    val createdAt: Long,
+    val recommendation: com.example.zhengdao.baopu.EvolutionRecommendation,
+    val confidence: Double,
+    val riskClass: com.example.zhengdao.baopu.EvolutionRisk,
+    val requiresApproval: Boolean,
+    val reasons: List<com.example.zhengdao.baopu.EvolutionReason>,
+)
 
 /**
  * 抱朴页的胶水（进程级单例挂在 [BaopuRuntime]；本类只持 UI 可观察状态）。
@@ -303,6 +330,15 @@ internal class BaopuChatController(context: Context) {
 
     /** C 段自省便签（**恰好一条**；本轮结束时刷新，新会话清空）。 */
     var introspectionNote by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * 第九十九批：进化建议（PENDING 候选＋判定快照；每轮收尾判定后刷新）。
+     *
+     * 这是 §2 要的「controller 可观察状态」接缝：judge 结果**只影响展示**，
+     * 没有任何自动执行路径读它。UI 批未到之前它就先在这儿等着（判据钉它非空链路）。
+     */
+    var evolutionSuggestions by mutableStateOf(listOf<EvolutionSuggestion>())
         private set
 
     /** 动作结果的一句话（确认失败/重复等；给 UI 显示，5 秒后由 UI 清）。 */
@@ -1578,6 +1614,10 @@ internal class BaopuChatController(context: Context) {
      * 输入全是**已有记录**：引擎刚出的学习卡（[RunEngine.learn]，主线程先快照）、
      * `skill_event` 的 use/decision 行、`run_log` 的工具行；不新抓用户正文、不跑模型。
      * 读库/读盘放在 IO 线程，收尾主线程只做一次状态快照，不压 UI。
+     *
+     * 第九十九批：生成之后**紧接着判定**（[judgeProposalCandidates]）——候选没人读就永远是
+     * 死代码，判定结果进 [evolutionSuggestions] 与 `决策审计.jsonl`。判定失败只 log，
+     * 不堵主流程（65/89 口径）；判定只影响展示与审计，不影响任何自动执行路径。
      */
     private fun generateProposalCandidatesOnSettle() {
         val sid = sessionId ?: return
@@ -1585,13 +1625,19 @@ internal class BaopuChatController(context: Context) {
         val learn = engine.learn.value.orEmpty()
         val now = System.currentTimeMillis()
         scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) { appendProposalCandidates(sid, learn, now) }
-            }.onFailure {
+            val judged = runCatching {
+                withContext(Dispatchers.IO) {
+                    appendProposalCandidates(sid, learn, now)
+                    judgeProposalCandidates()
+                }
+            }
+            judged.onFailure {
                 com.example.zhengdao.rootfs.RunLog.log(
                     "[baopu-proposal] 候选生成本轮失败（${it.javaClass.simpleName}）：${it.message}",
                 )
             }
+            // 回主线程再写状态（withContext 回来天然在 Main；失败就保留上一轮的判定）
+            judged.onSuccess { evolutionSuggestions = it }
         }
     }
 
@@ -1734,6 +1780,107 @@ internal class BaopuChatController(context: Context) {
             }
         }
         return out
+    }
+
+    // ── 进化闭环 v1（第九十九批）：候选判定（证据桥 → judge → 审计 → 状态）──────
+
+    /**
+     * 对 PENDING 候选逐条判定（派工单 §2）。**只读＋记账，不写技能/人设一个字节**：
+     *   候选   ← [ProposalCandidateStore.listPending]（86 的唯一读口；已被 57 批拒绝留痕
+     *            挡掉的同 hash 候选直接跳过，不重复判定）；
+     *   效果   ← [com.example.zhengdao.baopu.SkillEffects.outcomesFor]（85 的按技能聚合）；
+     *   自检   ← [com.example.zhengdao.baopu.dryRunSelfCheck]（84 判据层事前试跑，只读）；
+     *   eval   ← [com.example.zhengdao.baopu.eval.EvalResultFile.latest]（最近一次发版结果；
+     *            没有 ⇒ null ⇒ DEFER，不许默认过线）；
+     *   决策   ← [EvolutionDecisionPort.decide]（88 决策口，每次调用恰好落一条审计）。
+     *
+     * 失败不阻塞主流程：任一条候选判定抛异常只 log 并跳过它（65/89「只记录不阻塞」），
+     * 其余候选照判；整段失败由调用方兜（[generateProposalCandidatesOnSettle]）。
+     *
+     * @return 「候选＋判定」快照（进 [evolutionSuggestions] 供 UI 读；**只影响展示**）
+     */
+    private fun judgeProposalCandidates(): List<EvolutionSuggestion> {
+        val globalRoot = File(appCtx.filesDir, "抱朴记忆")
+        val store = ProposalCandidateStore.under(globalRoot)
+        // 57 批拒绝留痕：同 hash 被明确拒绝过的候选不再判定（用户说「不」要算数）
+        val rejected = runCatching { readRejectedDecisionHashes() }.getOrDefault(emptySet())
+        val pending = store.listPending().filter { it.id !in rejected }
+        if (pending.isEmpty()) return emptyList()
+
+        val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
+        val audit = EvolutionAuditLog.under(globalRoot)
+        // 决策口自带默认策略（全人批；L3 开关默认 false）——本类不实例化 EvolutionPolicy
+        val port = EvolutionDecisionPort(audit = audit)
+        // eval 证据：只认最近一次发版结果文件；拿不到就 null（policy 判 DEFER 并写进原因链）
+        val evalResult = EvalResultFile.latest(appCtx)
+
+        val out = ArrayList<EvolutionSuggestion>(pending.size)
+        for (c in pending) {
+            val suggestion = runCatching {
+                val evidence = EvolutionEvidence(
+                    effect = if (c.target.isNotBlank()) {
+                        com.example.zhengdao.baopu.SkillEffects.outcomesFor(db, c.target)
+                    } else {
+                        emptyMap()
+                    },
+                    effectSignalIds = com.example.zhengdao.baopu.evidenceIdsOf(c),
+                    selfCheck = com.example.zhengdao.baopu.dryRunSelfCheck(
+                        c,
+                        skillFileOf(c.target, projectRoot, globalRoot),
+                    ),
+                    eval = evalResult,
+                )
+                val decision: EvolutionDecision = port.decide(
+                    com.example.zhengdao.baopu.inputFor(c, evidence),
+                    operatorId = "settle",
+                )
+                EvolutionSuggestion(
+                    candidateId = c.id,
+                    kind = c.kind,
+                    target = c.target,
+                    payload = c.payload,
+                    createdAt = c.createdAt,
+                    recommendation = decision.recommendation,
+                    confidence = decision.confidence,
+                    riskClass = decision.riskClass,
+                    requiresApproval = decision.requiresApproval,
+                    reasons = decision.reasons,
+                )
+            }.getOrElse {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "[baopu-evolution] 候选判定跳过（${it.javaClass.simpleName}）：${it.message}",
+                )
+                null
+            }
+            if (suggestion != null) out += suggestion
+        }
+        return out
+    }
+
+    /**
+     * 候选目标技能在盘上的文件（项目层优先、全局层兜底；两层都没有 ⇒ null = 首写）。
+     *
+     * 只读现查，给 [com.example.zhengdao.baopu.dryRunSelfCheck] 判「回滚走哪条路」用——
+     * 查找优先级与 [readExistingSkillBodies] 同一口径（项目覆盖全局）。
+     */
+    private fun skillFileOf(name: String, projectRoot: File, globalRoot: File): File? {
+        if (name.isBlank()) return null
+        val project = File(
+            File(
+                com.example.zhengdao.baopu.SkillRules.projectSkillDir(projectRoot),
+                name,
+            ),
+            com.example.zhengdao.baopu.SkillRules.SKILL_FILE,
+        )
+        if (project.isFile) return project
+        val global = File(
+            File(
+                com.example.zhengdao.baopu.SkillRules.globalSkillDir(globalRoot),
+                name,
+            ),
+            com.example.zhengdao.baopu.SkillRules.SKILL_FILE,
+        )
+        return global.takeIf { it.isFile }
     }
 
     // ── 技能沉淀（第十九批）：会话封卷 → 提炼 → 提案等确认 ──────────────────
