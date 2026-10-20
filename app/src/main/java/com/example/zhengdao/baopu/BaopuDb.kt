@@ -974,6 +974,113 @@ internal object BaopuSql {
         "SELECT DISTINCT hash FROM skill_event WHERE kind = 'decision' AND ok = 0 AND hash IS NOT NULL",
         emptyArray(),
     )
+
+    // ── v12（第八十五批）：技能使用**效果**信号（同表新 kind，加四列）───────────────
+    //
+    // 派工单 §2「复用现有 SkillAudit／skill_event 表；没有就加表/列」＋ §3「不新增第二套审计表」
+    // ⇒ **同表加列**：`kind='effect'` 的行用新四列，57 批的 `kind='use'`／`kind='decision'`
+    // 一行语义没改（过期判据只读 kind='use'，所以新行不会搅动晋升／退役）。
+    //
+    // 四列全部**可空**：老库升上来后既有的 use／decision 行留 NULL——NULL 是「当时没这个口径」
+    // 这个历史事实，不许回填（回填＝编造历史，与 v8 的 session.workspace 同口径）。
+    // 效果行的值域只有枚举名／技能名／12 位正文摘要／时刻；闸门在 `SkillEffects.toStmt`。
+
+    /** skill_event 表 v12 新增四列（效果信号；NULL = 老记录没有，一眼可判）。 */
+    val SKILL_EFFECT_COLUMNS: List<Pair<String, String>> = listOf(
+        "outcome" to "TEXT",
+        "source" to "TEXT",
+        "skill_version" to "TEXT",
+        "reason_code" to "TEXT",
+    )
+
+    /**
+     * 效果信号四列的加列语句（**纯函数**：缺哪列给哪条 ALTER，幂等；
+     * 照 [sessionCloseColumnsStmt]／[sessionDeletedAtStmt] 房型——加列必须看列况，
+     * 裸 ALTER 写进 DDL 常量会让第二次迁移炸掉）。
+     */
+    fun skillEffectColumnStmt(existingColumns: List<String>): List<Stmt> =
+        SKILL_EFFECT_COLUMNS
+            .filterNot { (col, _) -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { (col, type) -> Stmt("ALTER TABLE skill_event ADD COLUMN $col $type", emptyArray()) }
+
+    /**
+     * 记一条「这次使用效果如何」（第八十五批 §1；写失败由调用方只 log 不阻塞）。
+     *
+     * - `kind`／`target` 与 use 行同为 `'effect'`／`'skill'`（写死在 SQL 文本里，不绑参）；
+     * - `ok` = **这次调用本身**成没成（事实）；`outcome` = 这条信号说明什么（解释）。
+     *   两列各管一头，谁也不覆盖谁——RETRIED 行可以 ok=1（重来了、而且成了），
+     *   这正是 §B 92 要的「用了之后有没有用」；
+     * - `detail`／`hash` **不写**：那两列留给 57 批的 decision 行，效果行不往里塞任何文本。
+     */
+    fun insertSkillEffect(
+        name: String,
+        sessionId: Long?,
+        step: Int?,
+        outcome: String,
+        source: String,
+        skillVersion: String?,
+        reasonCode: String?,
+        ok: Boolean,
+        nowMs: Long,
+    ): Stmt = Stmt(
+        "INSERT INTO skill_event (kind, target, name, session_id, step, ok, outcome, source, skill_version, reason_code, at) " +
+            "VALUES ('effect', 'skill', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        arrayOf<String?>(
+            name,
+            sessionId?.toString(),
+            step?.toString(),
+            if (ok) "1" else "0",
+            outcome,
+            source,
+            skillVersion,
+            reasonCode,
+            nowMs.toString(),
+        ),
+    )
+
+    /**
+     * 某技能在**这一会话**里最后一条效果信号（outcome ＋ 时刻；没有 ⇒ 空结果集）。
+     *
+     * 判 RETRIED 的输入。走 `idx_skill_event_name (name, kind, id)` 定位再筛 session_id；
+     * 按 id 倒序取第一条——`at` 会因时钟调整不单调，id 才是写入顺序。
+     */
+    fun lastSkillEffect(name: String, sessionId: Long): Stmt = Stmt(
+        "SELECT outcome, at FROM skill_event " +
+            "WHERE kind = 'effect' AND name = ? AND session_id = ? ORDER BY id DESC LIMIT 1",
+        arrayOf<String?>(name, sessionId.toString()),
+    )
+
+    /**
+     * 按 outcome 聚合某技能的效果信号计数（派工单 §2 的读接口所依赖的那条 SELECT）。
+     *
+     * **只数数**：不许在这里带出门槛／评分／退役判据。outcome 为 NULL 的行不计数
+     * （效果行恒带 outcome，NULL 只可能是有人往这张表塞了别的东西——不认）。
+     */
+    fun skillOutcomeCounts(name: String): Stmt = Stmt(
+        "SELECT outcome, COUNT(*) FROM skill_event " +
+            "WHERE kind = 'effect' AND name = ? AND outcome IS NOT NULL GROUP BY outcome",
+        arrayOf<String?>(name),
+    )
+
+    /**
+     * 某会话 `created_at` 晚于 [sinceMs] 的**最后一条**用户消息正文（判「用户纠正」用）。
+     *
+     * 只取 seq=0 的 text part（用户消息正文就在那儿，图片 part 不参与认脸）；
+     * **这条 SELECT 读出来的文本只进内存、过 [SkillEffects.correctionCode] 就丢**，
+     * 一个字都不落表——红线「不存用户原话」。按 m.id 倒序：id 是自增主键、天然单调。
+     */
+    fun userTextAfter(sessionId: Long, sinceMs: Long): Stmt = Stmt(
+        "SELECT p.payload FROM message m JOIN part p ON p.message_id = m.id " +
+            "WHERE m.session_id = ? AND m.role = 'user' AND p.kind = 'text' AND p.seq = 0 AND m.created_at > ? " +
+            "ORDER BY m.id DESC LIMIT 1",
+        arrayOf<String?>(sessionId.toString(), sinceMs.toString()),
+    )
+
+    /** 本会话最新步号（效果行的 step 与 57 批 use 行同一个来源；57 批那份是内联写的，本批不回填改造）。 */
+    fun lastRunLogStep(sessionId: Long): Stmt = Stmt(
+        "SELECT MAX(step) FROM run_log WHERE session_id = ?",
+        arrayOf<String?>(sessionId.toString()),
+    )
 }
 
 /**
@@ -1035,6 +1142,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV9Migration(db)
         applyV10Migration(db)
         applyV11Migration(db)
+        applyV12Migration(db)
     }
 
     /**
@@ -1064,6 +1172,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 9) applyV9Migration(db)
         if (oldVersion < 10) applyV10Migration(db)
         if (oldVersion < 11) applyV11Migration(db)
+        if (oldVersion < 12) applyV12Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1173,6 +1282,19 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.SKILL_EVENT_DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v11 → v12 迁移体（第八十五批）：`skill_event` 加效果信号四列（可空）。
+     *
+     * **看列再动** ⇒ 幂等（照 v7 封卷两列／v10 deleted_at 房型：加列不能写成裸 ALTER 常量，
+     * 否则第二次跑就炸）。新安装（onCreate 也调它）与 v11 库升级走**同一条**路径。
+     */
+    private fun applyV12Migration(db: SQLiteDatabase) {
+        val cols = tableColumns(db, "skill_event")
+        BaopuSql.skillEffectColumnStmt(cols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1199,8 +1321,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         /** v5（刀 3 A 段）：session 加 pending 三列（确认制跨进程续）。v4 = 刀 3 B 段（run_log 加 reasoning_tokens）。v3 = 刀 2（资料库两表）。v2 = 刀 0b memory。
          *  v7 = 第十九批（session 封卷两列）。v8 = 第二十批（session 工作区列）。
          *  v9 = 第三十八批 §9（`artifact` 产物台账表 ＋ (workspace, rel_path) 唯一索引）。
-         *  v11 = 第五十七批（`skill_event` 技能事件表：use 留痕 ＋ 采纳/丢弃留痕）。 */
-        const val VERSION = 11
+         *  v11 = 第五十七批（`skill_event` 技能事件表：use 留痕 ＋ 采纳/丢弃留痕）。
+         *  v12 = 第八十五批（同一张表加效果信号四列 outcome／source／skill_version／reason_code，
+         *  全部可空＝老行不回填；kind='effect' 的行只存枚举名／技能名／正文摘要／时刻）。 */
+        const val VERSION = 12
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
