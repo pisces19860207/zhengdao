@@ -349,6 +349,11 @@ def main() -> int:
         return 2
     repo = Path(rest[0]).resolve() if rest else Path(__file__).resolve().parent.parent
     if not (repo / ERRATA_REL).is_file():
+        # 2026-10-20：工程文档（ERRATA / 派工单 / 设计 / 验收）已移出公开仓，
+        # 私有副本在工作区根的 _zd-private/docs/。公开仓里没有账，本门禁不适用。
+        if (repo / "AGENTS.md").is_file():
+            print("[doc-ledger] 跳过：工程文档已移出公开仓（ERRATA/派工单/台账全文不在此仓）。")
+            return 0
         print(f"[环境错误] 不像仓库根（找不到 {ERRATA_REL}）：{repo}")
         return 2
 
