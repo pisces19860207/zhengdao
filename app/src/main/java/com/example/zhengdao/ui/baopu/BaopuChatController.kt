@@ -27,6 +27,8 @@ import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
 import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
+import com.example.zhengdao.baopu.ProposalCandidateStore
+import com.example.zhengdao.baopu.ProposalRules
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.EngineEvent
@@ -41,6 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * 会话库一行（第二十批 §2.1 浮层数据源；SQL 在
@@ -1329,6 +1332,9 @@ internal class BaopuChatController(context: Context) {
             refresh(force)
             if (force) {
                 refineOnSettle()
+                // 第八十六批：任务收尾 ⇒ 从已有记录生成提案候选（只生成、不应用）。
+                // 放在 refineOnSettle 之后：学习卡在引擎收尾时已经出好，这里读的是同一轮。
+                generateProposalCandidatesOnSettle()
                 // 第二十九批 B 段：用户在确认卡上拍过「停掉并切过来」⇒ 门一放就兑现那一下切换。
                 // 放在这里而不是 acceptSessionSwitch 里死等：Settled 由引擎在释放单活跃门之后才发，
                 // 是"这个 run 真结束了"的唯一权威信号（同上面对 interruptedStep 的那条口径）。
@@ -1398,6 +1404,176 @@ internal class BaopuChatController(context: Context) {
         runCatching {
             notePrefs.edit().putString("note_$sid", r.introspection.text).apply()
         }
+    }
+
+    // ── 提案候选（第八十六批）：任务后从已有记录生成，只存不应用 ─────────────
+
+    /**
+     * 一轮收尾 ⇒ 生成一次提案候选（派工单第八十六批 §1/§2）。
+     *
+     * **只生成、不应用**：候选写进 `抱朴记忆/提案候选.json` 等 82/⑤ 来读；
+     * 这里绝不调 `SkillStore.apply` / `PersonaFiles.applyProposal` / `restore`，
+     * 也不碰任何技能/人设文件。
+     *
+     * 输入全是**已有记录**：引擎刚出的学习卡（[RunEngine.learn]，主线程先快照）、
+     * `skill_event` 的 use/decision 行、`run_log` 的工具行；不新抓用户正文、不跑模型。
+     * 读库/读盘放在 IO 线程，收尾主线程只做一次状态快照，不压 UI。
+     */
+    private fun generateProposalCandidatesOnSettle() {
+        val sid = sessionId ?: return
+        // Compose State 只在主线程读；先快照，再进 IO。
+        val learn = engine.learn.value.orEmpty()
+        val now = System.currentTimeMillis()
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { appendProposalCandidates(sid, learn, now) }
+            }.onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "[baopu-proposal] 候选生成本轮失败（${it.javaClass.simpleName}）：${it.message}",
+                )
+            }
+        }
+    }
+
+    /**
+     * 读记录 → 纯判据生成 → 追加落盘（IO 线程）。返回真正写入的条数。
+     *
+     * 「同会话」口径（派工单 §1 的阈值都挂在这上面）：
+     * - skill `use` 行本来就带 `session_id`，直接按它取；
+     * - `decision` 行（第五十七批）当时没写 `session_id`，只能按**会话时间窗**
+     *   `[session.created_at, now]` 取。单活跃门保证同一时刻只有一轮在跑，
+     *   这是现有账本下最窄、可解释的口径（不新增列、不动 migration）。
+     * - `run_log` 工具行带 `session_id`，直接按它取。
+     */
+    private fun appendProposalCandidates(
+        sid: Long,
+        learn: List<com.example.zhengdao.baopu.SkillRefine.LearnProposal>,
+        now: Long,
+    ): Int {
+        val since = db.read { d ->
+            d.rawQuery(
+                "SELECT created_at FROM session WHERE id = ?",
+                arrayOf(sid.toString()),
+            ).use { c -> if (c.moveToFirst()) c.getLong(0) else 0L }
+        }.takeIf { it > 0L } ?: now
+
+        val uses = db.read { d ->
+            d.rawQuery(
+                "SELECT id, name, ok, at, step FROM skill_event " +
+                    "WHERE kind = 'use' AND session_id = ? ORDER BY id",
+                arrayOf(sid.toString()),
+            ).use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        add(
+                            ProposalRules.SkillEvent(
+                                id = c.getLong(0),
+                                name = c.getString(1).orEmpty(),
+                                ok = c.getInt(2) != 0,
+                                atMs = c.getLong(3),
+                                step = if (c.isNull(4)) null else c.getInt(4),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        val decisions = db.read { d ->
+            d.rawQuery(
+                "SELECT id, target, name, ok, at FROM skill_event " +
+                    "WHERE kind = 'decision' AND at >= ? AND at <= ? ORDER BY id",
+                arrayOf(since.toString(), now.toString()),
+            ).use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        add(
+                            ProposalRules.SkillEvent(
+                                id = c.getLong(0),
+                                name = c.getString(2).orEmpty(),
+                                ok = c.getInt(3) != 0,
+                                atMs = c.getLong(4),
+                                target = c.getString(1).orEmpty().ifEmpty { "skill" },
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        val toolRuns = db.read { d ->
+            d.rawQuery(
+                "SELECT id, tool, ok, created_at FROM run_log " +
+                    "WHERE session_id = ? AND tool != '' ORDER BY id",
+                arrayOf(sid.toString()),
+            ).use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        add(
+                            ProposalRules.ToolRun(
+                                id = c.getLong(0),
+                                tool = c.getString(1).orEmpty(),
+                                ok = c.getInt(2) != 0,
+                                atMs = c.getLong(3),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        val globalRoot = File(appCtx.filesDir, "抱朴记忆")
+        val projectRoot = BaopuRuntime.workspaceRoot(appCtx)
+        val store = ProposalCandidateStore.under(globalRoot)
+        val pf = BaopuRuntime.personaFiles(appCtx)
+        val personaText = listOfNotNull(
+            pf.read(com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL),
+            pf.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT),
+        ).joinToString("\n")
+
+        val input = ProposalRules.Input(
+            sessionId = sid,
+            nowMs = now,
+            learn = learn,
+            skillUses = uses,
+            decisions = decisions,
+            toolRuns = toolRuns,
+            existingSkillBodies = readExistingSkillBodies(globalRoot, projectRoot),
+            personaText = personaText,
+            // 读失败 ⇒ 空 set（只记录的链断了也不拦生成；与 refineSkillsForSession 同口径）。
+            rejectedIds = runCatching { readRejectedDecisionHashes() }.getOrDefault(emptySet()),
+            pendingIds = store.listPending().mapTo(mutableSetOf()) { it.id },
+        )
+        val r = ProposalRules.generate(input)
+        val written = store.appendNew(r.candidates, now)
+        if (r.candidates.isNotEmpty() || r.dropped > 0 || r.skipped.isNotEmpty()) {
+            // 只记计数与目标，不记 payload/用户正文（证据留痕的同一口径）。
+            com.example.zhengdao.rootfs.RunLog.log(
+                "[baopu-proposal] 候选生成：产出 ${r.candidates.size} 条，写入 $written，" +
+                    "跳过 ${r.skipped.size} 条，超上限丢弃 ${r.dropped} 条",
+            )
+        }
+        return written
+    }
+
+    /** 两层技能正文（项目覆盖全局；只读，供「已有技能」去重）。 */
+    private fun readExistingSkillBodies(globalRoot: File, projectRoot: File): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        for (dir in listOf(
+            com.example.zhengdao.baopu.SkillRules.globalSkillDir(globalRoot),
+            com.example.zhengdao.baopu.SkillRules.projectSkillDir(projectRoot),
+        )) {
+            val children = runCatching { dir.listFiles() }.getOrNull() ?: continue
+            for (child in children) {
+                if (!child.isDirectory) continue
+                val f = File(child, com.example.zhengdao.baopu.SkillRules.SKILL_FILE)
+                val text = runCatching {
+                    if (f.isFile) f.readText(Charsets.UTF_8) else null
+                }.getOrNull() ?: continue
+                out[child.name] = text
+            }
+        }
+        return out
     }
 
     // ── 技能沉淀（第十九批）：会话封卷 → 提炼 → 提案等确认 ──────────────────
