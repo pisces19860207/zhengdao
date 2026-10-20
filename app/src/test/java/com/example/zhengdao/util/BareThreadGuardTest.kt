@@ -150,6 +150,11 @@ import kotlin.text.Charsets
  *   P1-10 只改一行判据 ⇒ :667 不动。逐处核过仍是同一段 `Thread {`，本次回填。
  * - 2026-10-20（第五十七批）：BaopuDb 加 skill_event 表 v11 迁移（+91 行，全在 921 之前）
  *   ⇒ 单写者线程 921→1012，本次回填。
+ * - 2026-10-20（第六十四批 · 资源机）：**无新增线程**。`RunEngine.kt` 加
+ *   `switchChannel` 构造参（安全点切换效应注入，含 KDoc 共 +9 行，全在创建点之前）
+ *   ⇒ zd-baopu-run 创建点 210→219，本次回填；资源机本体在
+ *   `agent/ChannelSwitchFsm.kt`（纯判据，逐行核过无裸 Thread；`dispatch` 用
+ *   方法级 synchronized，不建线程）。
  */
 class BareThreadGuardTest {
 
