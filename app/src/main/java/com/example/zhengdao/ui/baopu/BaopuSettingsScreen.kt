@@ -13,6 +13,10 @@
 // 承载方式：BaopuScreen 抽屉「抱朴设置」**直达本页**——页内全屏浮层，与章节抽取 /
 // 备份原件 / 换通道同一模式（BaopuScreen 的 showExtract/showBackup/showChannel）。
 // 不新建 Activity：AndroidManifest.xml 本批禁改，新增 Activity 必须动清单。
+//
+// 第八十一批（§B 80 延伸）：五条纯判据（折叠摘要 ①、取组序 ②、组标题 ③、默认可见提示 ④、
+// 作用域→人设层 ⑤）等值搬进 ui/baopu/BaopuSettingsRules.kt，本页只留调用；布局、文案、
+// prefs 读写点、写盘口一个没动（清单与方法盘点写在那个文件的文件头）。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.clickable
