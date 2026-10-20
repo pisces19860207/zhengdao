@@ -804,6 +804,16 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 )
                 Spacer(Modifier.height(8.dp))
             }
+            // 第一百批：采纳后效果的建议卡（同一槽位；只出建议，点回滚才动文件）
+            controller.postAdoptionNotice?.let { notice ->
+                BaopuPostAdoptionCard(
+                    notice = notice,
+                    onRollback = { controller.rollbackPostAdoption() },
+                    onKeep = { controller.keepPostAdoption() },
+                    onLater = { controller.laterPostAdoption() },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             // 第四十批：继续说完 / 重试（只在被截断、跑挂时出现；平时不占屏幕）。
             val tailSet = tailActions(
                 busy = controller.busy,

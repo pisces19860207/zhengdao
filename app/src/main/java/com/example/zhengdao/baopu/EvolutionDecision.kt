@@ -65,6 +65,14 @@ internal enum class EvolutionReasonCode {
 
     /** 低风险、L3 开关打开但条件不足：仍人批，原因见同条决策的其它原因码。 */
     L3_AUTO_LOW_RISK_BLOCKED,
+
+    /**
+     * 第一百批：这条技能**采纳之后**被判定变差（ROLLBACK／RETIRE）。
+     *
+     * 含义只有一句：先别在它身上再加新东西，等人把回滚处理完。它不执行任何动作，
+     * 也不改风险等级——决策口出的是建议，执行权在用户手上。
+     */
+    POST_ADOPTION_NEGATIVE,
 }
 
 /**
@@ -147,6 +155,28 @@ internal data class EvolutionAssessment(
     val effect: EffectSnapshot = EffectSnapshot(),
 )
 
+/**
+ * 第一百批：**采纳之后**的效果（[PostAdoptionEvent] 的判定结果，只带 id 与计数）。
+ *
+ * 与 [EffectSnapshot] 的区别：那个是「候选被提出来之前」的证据，这个是「已经采纳过的东西
+ * 用下来怎么样」。两者同时进决策口，含义不同、来源不同，绝不能混成一格。
+ */
+internal data class PostAdoptionEffect(
+    val eventId: String,
+    val verdict: PostAdoptionVerdict,
+    val successes: Int = 0,
+    val failures: Int = 0,
+    val corrections: Int = 0,
+    val retries: Int = 0,
+    val windowUses: Int = PostAdoptionWindow.USES,
+    val windowDays: Int = PostAdoptionWindow.DAYS,
+) {
+    init {
+        require(eventId.isNotBlank()) { "采纳后效果必须带事件 id" }
+        require(successes >= 0 && failures >= 0 && corrections >= 0 && retries >= 0) { "采纳后计数不能为负" }
+    }
+}
+
 /** 决策口的输入：候选 id／kind／证据 id＋评估。正文、target、时间都不进来。 */
 internal data class EvolutionDecisionInput(
     val candidateId: String,
@@ -156,6 +186,8 @@ internal data class EvolutionDecisionInput(
     val selfCheck: SelfCheckEvidence? = null,
     val eval: EvolutionEval? = null,
     val effect: EffectSnapshot = EffectSnapshot(),
+    /** 第一百批：该技能「采纳后」的效果结论；拿不到就 null（不许按名字模糊匹配猜）。 */
+    val postAdoption: PostAdoptionEffect? = null,
 ) {
     init {
         require(candidateId.isNotBlank()) { "候选 id 不能为空" }

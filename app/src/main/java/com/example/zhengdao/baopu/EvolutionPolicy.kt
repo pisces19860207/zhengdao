@@ -137,6 +137,19 @@ internal class EvolutionPolicy(
         input: EvolutionDecisionInput,
         reasons: MutableList<EvolutionReason>,
     ): EvolutionRecommendation {
+        // 第一百批（唯一新增规则）：这条技能**采纳之后**已被判变差 ⇒ 先别在它身上再加东西，
+        // 等人把回滚处理完。放在最前是为了「变差」优先于一切按证据算出来的建议；
+        // 只影响建议与原因链，**不改置信度、不改人批判定**（88 的那套一个字没动）。
+        val post = input.postAdoption
+        if (post != null &&
+            (post.verdict == PostAdoptionVerdict.ROLLBACK || post.verdict == PostAdoptionVerdict.RETIRE)
+        ) {
+            reasons += EvolutionReason(
+                EvolutionReasonCode.POST_ADOPTION_NEGATIVE,
+                listOf("adoption:${post.eventId}"),
+            )
+            return EvolutionRecommendation.DEFER
+        }
         val selfCheck = input.selfCheck
         if (selfCheck == null) {
             reasons += EvolutionReason(EvolutionReasonCode.SELF_CHECK_NOT_RUN, input.evidenceIds)

@@ -1319,6 +1319,14 @@
     <string name="learn_suggest_formal">Promote to a formal skill</string>
     <string name="learn_adopt">Adopt</string>
     <string name="learn_dismiss">Skip</string>
+    <!-- Batch 100: post-adoption effect loop (suggestion only; rollback needs a human tap) -->
+    <string name="post_adopt_title">After adoption: %1$s</string>
+    <string name="post_adopt_counts">Before: ok %1$d / fail %2$d / corrected %3$d · After: +ok %4$d / +fail %5$d / +corrected %6$d</string>
+    <string name="post_adopt_verdict_rollback">It got worse in use — rollback suggested</string>
+    <string name="post_adopt_verdict_retire">It got worse in use and there is no backup — stop using it</string>
+    <string name="post_adopt_rollback">Roll back</string>
+    <string name="post_adopt_keep">Keep it</string>
+    <string name="post_adopt_later">Later</string>
     <!-- 第四十批：继续说完 / 重试 / 编辑上一条 -->
     <string name="baopu_tail_continue">Continue</string>
     <string name="baopu_tail_retry">Retry</string>
