@@ -27,7 +27,8 @@ class EvolutionDecisionWiringTest {
     private val decisionSrc = raw("src/main/java/com/example/zhengdao/baopu/EvolutionDecision.kt")
     private val policySrc = raw("src/main/java/com/example/zhengdao/baopu/EvolutionPolicy.kt")
     private val auditSrc = raw("src/main/java/com/example/zhengdao/baopu/EvolutionAudit.kt")
-    private val all = decisionSrc + policySrc + auditSrc
+    private val inputsSrc = raw("src/main/java/com/example/zhengdao/baopu/EvolutionInputs.kt")
+    private val all = decisionSrc + policySrc + auditSrc + inputsSrc
 
     private fun candidate(id: String, createdAt: Long) = ProposalCandidate(
         id = id,
@@ -217,10 +218,15 @@ class EvolutionDecisionWiringTest {
         }
         val engine = raw("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt")
         val controller = raw("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt")
+        // 第九十九批起边界改写：控制器是**合法消费点**（收尾判定 → 审计 → 可观察状态），
+        // 引擎仍然一行不接。旧的「控制器不许出现」门禁在这里换成「必须接上」——防的是
+        // 接线被悄悄删掉又变回死代码（判据：EvolutionDecision 有非测试引用）。
         for (token in listOf("EvolutionDecision", "EvolutionPolicy", "EvolutionAudit")) {
             assertFalse("RunEngine 不许接线：$token", engine.contains(token))
-            assertFalse("抱朴控制器不许接线：$token", controller.contains(token))
         }
+        assertTrue("控制器必须接上决策口", controller.contains("EvolutionDecisionPort"))
+        assertTrue("判定链必须用 EvolutionDecision", controller.contains("EvolutionDecision"))
+        assertTrue("审计落点必须接上", controller.contains("EvolutionAuditLog"))
     }
 
     @Test
