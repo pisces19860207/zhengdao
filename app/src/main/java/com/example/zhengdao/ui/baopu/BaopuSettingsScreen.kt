@@ -718,7 +718,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 // （两层根目录 globalRoot／projectRoot 已在卡片开头声明，34 批上移——详情与归档共用。）
                 val draftRows = remember(skillReload) { draftSkillRows(projectRoot, globalRoot) }
 
-                /** 「用一次」：uses+1 写回，仍是草稿（能不能转正继续由数据层判）。 */
+                /**
+                 * 「用一次」：uses+1 写回，仍是草稿（能不能转正继续由数据层判）。
+                 *
+                 * 第九十九批 §1.5.3：写成功之后**顺手记两行账**——`use` 行＋
+                 * `source=MANUAL` 的效果信号（85 §2 点名的手动使用入口）。这是「用了之后
+                 * 有没有用」这条效果链上唯一的人肉样本来源：不接它，新技能永远零样本，
+                 * 进化判定只会永远 DEFER。记账失败只 log，不拦这一次试用（65/89 口径）。
+                 */
                 fun useOnce(row: SkillDraftRow) {
                     val msg = when (
                         val r = commitSkillDraft(
@@ -731,8 +738,10 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
                         )
                     ) {
-                        is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                        is com.example.zhengdao.baopu.SkillWriteResult.Written -> {
+                            com.example.zhengdao.baopu.BaopuRuntime.recordSkillUseManual(ctx, row.name, row.file)
                             ctx.getString(R.string.skill_draft_used, row.name)
+                        }
                         is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
                     }
                     Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
