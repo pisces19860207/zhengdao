@@ -237,7 +237,8 @@ object KnowledgeBase {
      * 只增不减（这条与整个工作区的纪律一致）：
      * - 同名文件**不覆盖**（用户可能已经在新的那份里改过）
      * - 软链跳过（不跟随、也不复制链接本身）
-     * - 源文件一份不动；失败的单条静默跳过，最后只报成功的条数
+     * - 源文件一份不动；失败的单条跳过但**计数并落日志**（§B 79 / 第七十一批⑤），
+     *   返回值仍是成功的条数（调用方在 UI/设置页，本单红线不碰——失败数暂不入返回值）
      *
      * 用途：换工作区后把旧资料一起带过来；以及设置页"另外发现一份带资料的资料库 → 复制过来"。
      *
@@ -257,17 +258,30 @@ object KnowledgeBase {
             .take(MAX_SCAN)
             .toList()
         var copied = 0
+        var failed = 0
+        var firstFail: String? = null
         for (src in srcFiles) {
             val rel = src.absolutePath.removePrefix("$srcAbs/")
             val dst = File(dstRaw, rel)
             if (dst.exists()) continue
-            runCatching {
+            // 第七十一批⑤：单条失败不再无声——计数＋记住首个失败的相对路径；
+            // 成功路径一行没动（mkdirs→copyTo 照旧）。
+            val ok = runCatching {
                 dst.parentFile?.mkdirs()
                 src.copyTo(dst, overwrite = false)
+            }.isSuccess
+            if (ok) {
                 copied++
+            } else {
+                failed++
+                if (firstFail == null) firstFail = rel
             }
         }
-        if (copied > 0) RunLog.log("资料库：从 $srcAbs 复制了 $copied 个文件到 $dstAbs")
+        if (failed > 0) {
+            RunLog.log("资料复制：成功 $copied，失败 $failed（首个失败：$firstFail）——src=$srcAbs")
+        } else if (copied > 0) {
+            RunLog.log("资料库：从 $srcAbs 复制了 $copied 个文件到 $dstAbs")
+        }
         copied
     }.getOrDefault(0)
 
