@@ -28,6 +28,12 @@ import java.io.File
  *
  * 判据一律是**源码形态**，与 [PullToRefreshGuardTest] / [A11yBannerGuardTest] 同惯例：
  * 本模块没有 Compose UI 测试基建，因此钉「源码不能被悄悄改回裸字符串/裸 navigate」。
+ *
+ * 第七十六批（2026-10-20，§B 80 MainActivity 纯逻辑抽取）改动说明：
+ * 判定主体与白名单搬进 `MainRouteRules`（`restoreRoute` / `RESTORABLE_ROUTES`），
+ * 白名单声明与 KDoc 的读取目标随之改为 `MainRouteRules.kt`；MainActivity 侧改为钉
+ * 「调用 `MainRouteRules.restoreRoute(`」＋「不许退回裸字符串/裸 navigate」。
+ * 判据没有放松：白名单非空、⊆ NavHost、KDoc 三字样、禁裸值，四条全在。
  */
 class RouteRestoreGuardTest {
 
@@ -40,6 +46,10 @@ class RouteRestoreGuardTest {
 
     private fun mainActivity(): String =
         repoFile("app/src/main/java/com/example/zhengdao/MainActivity.kt").readText()
+
+    /** 第七十六批：白名单与恢复判定搬到这里（`com.example.zhengdao.MainRouteRules`）。 */
+    private fun routeRules(): String =
+        repoFile("app/src/main/java/com/example/zhengdao/MainRouteRules.kt").readText()
 
     /** NavHost 真正注册的路由（字面量 + `PermissionSetup.ROUTE` 常量）。 */
     private fun registeredRoutes(): Set<String> {
@@ -60,11 +70,11 @@ class RouteRestoreGuardTest {
         return literal + resolved
     }
 
-    /** `private val RESTORABLE_ROUTES = setOf(...)` 里的条目。 */
+    /** `val RESTORABLE_ROUTES = setOf(...)` 里的条目（第七十六批起在 `MainRouteRules.kt`）。 */
     private fun whitelist(): Set<String> {
-        val src = mainActivity()
-        val decl = Regex("""private val RESTORABLE_ROUTES\s*=\s*setOf\(([^)]*)\)""").find(src)
-            ?: throw AssertionError("MainActivity.kt 里找不到 RESTORABLE_ROUTES 白名单声明")
+        val src = routeRules()
+        val decl = Regex("""val RESTORABLE_ROUTES\s*=\s*setOf\(([^)]*)\)""").find(src)
+            ?: throw AssertionError("MainRouteRules.kt 里找不到 RESTORABLE_ROUTES 白名单声明")
         val items = Regex(""""([A-Za-z0-9_\-]+)"""").findAll(decl.groupValues[1])
             .map { it.groupValues[1] }
             .toSet()
@@ -101,8 +111,12 @@ class RouteRestoreGuardTest {
     fun `门禁_B补15_恢复逻辑走白名单而不是裸字符串比对`() {
         val code = restoreBlock()
         assertTrue(
-            "B-补-15：恢复判定要走 RESTORABLE_ROUTES 白名单",
-            code.contains("lastRoute?.takeIf { it in RESTORABLE_ROUTES }"),
+            "B-补-15：MainActivity 的恢复块必须走 MainRouteRules.restoreRoute（第七十六批抽出）",
+            code.contains("MainRouteRules.restoreRoute("),
+        )
+        assertTrue(
+            "B-补-15：白名单判定必须还在（MainRouteRules 里应保留 takeIf { it in RESTORABLE_ROUTES }）",
+            routeRules().contains("lastRoute?.takeIf { it in RESTORABLE_ROUTES }"),
         )
         assertFalse(
             "B-补-15：不能退回只认 settings 的裸字符串比对",
@@ -116,8 +130,8 @@ class RouteRestoreGuardTest {
 
     @Test
     fun `门禁_B补15_白名单有说明为什么只有 settings`() {
-        val src = mainActivity()
-        val start = src.indexOf("private val RESTORABLE_ROUTES")
+        val src = routeRules()
+        val start = src.indexOf("val RESTORABLE_ROUTES")
         assertTrue("找不到白名单声明", start > 0)
         // 往前 1600 字符内应能找到 KDoc（含四个目的地与 plugins 死值的说明）
         val doc = src.substring((start - 1600).coerceAtLeast(0), start)

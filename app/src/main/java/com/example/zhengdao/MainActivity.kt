@@ -78,22 +78,7 @@ import com.example.zhengdao.ui.WelcomeScreen
 /** App 自更新检查端点（GitHub Releases 最新发布）。 */
 private const val APP_RELEASES_API = "https://api.github.com/repos/pisces19860207/zhengdao/releases/latest"
 
-/**
- * 冷启动可恢复的 Compose 路由白名单（B-补-15 复核，2026-10-16）。
- *
- * NavHost 只有四个目的地：`welcome` / `home` / `permission_setup` / `settings`。
- *  - `welcome`：首次安装的入口，由 `startRoute` 决定，谈不上「恢复」；
- *  - `home`：默认落点，本身就是兜底；
- *  - `permission_setup`：权限门槛，由 `guidePermissions` 那个效果按需重新叠加（见 `onCreate` 里的注释）；
- *  - `settings`：用户会主动离开、又期望回来还在原处的二级页 ⇒ **唯一值得恢复的**。
- *
- * ⚠️ 故意写成「白名单 + 兜底判空」，而不是 `nav.navigate(lastRoute)`：prefs 里可能残留
- * **老版本**的路由字符串 —— 例：插件页 2026-10-08 曾搬进抱朴抽屉（该抽屉的插件面板
- * 复用 `ui/PluginsScreen.kt`；抽屉本身 2026-10-16 随旧抱朴线清场删除），`plugins` 路由随之删除，但老装机的
- * `last_route` 里仍可能留着 "plugins"。直接 navigate 会抛
- * `IllegalArgumentException` 崩在冷启动，白名单把这类死值一律当「没有可恢复的页面」。
- */
-private val RESTORABLE_ROUTES = setOf("settings")
+// 冷启动可恢复白名单与两条路由判据（起始页 / 恢复页）见 MainRouteRules（第七十六批抽出，KDoc 同迁）。
 
 /**
  * 应用入口：Compose Navigation 承载 欢迎页 → 首页（Agent/终端 双 Tab）。
@@ -320,9 +305,8 @@ class MainActivity : ComponentActivity() {
                 c.readTimeout = 15000
                 c.setRequestProperty("Accept", "application/vnd.github+json")
                 val body = c.inputStream.bufferedReader().readText()
-                val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-                    ?: return@Thread
-                if (!isNewerVersion(tag, BuildConfig.VERSION_NAME)) return@Thread
+                val tag = AppUpdateRules.parseLatestTag(body) ?: return@Thread
+                if (!AppUpdateRules.isNewer(tag, BuildConfig.VERSION_NAME)) return@Thread
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     android.app.AlertDialog.Builder(this)
@@ -351,17 +335,7 @@ class MainActivity : ComponentActivity() {
         }.apply { isDaemon = true; name = "zd-update-check" }.start()
     }
 
-    /** 语义化版本比较：remote 严格大于 local 才算有更新（v 前缀与缺失段容错）。 */
-    private fun isNewerVersion(remote: String, local: String): Boolean {
-        val r = remote.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
-        val l = local.split('.').map { it.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(r.size, l.size)) {
-            val a = r.getOrElse(i) { 0 }
-            val b = l.getOrElse(i) { 0 }
-            if (a != b) return a > b
-        }
-        return false
-    }
+    // 语义化版本比较已移至 AppUpdateRules.isNewer（第七十六批抽出；JVM 用例见 AppUpdateRulesTest）。
 
     /** 内存看护（用户指定）：退后台时释放空闲连接等非必要资源，降低被系统清理的概率。 */
     /**
@@ -447,11 +421,7 @@ fun ZhengdaoApp(
     // ⚠️ 恢复页不能当 startDestination——起始页底下没有返回栈，popBackStack
     // 无处可退（用户实测：冷启动直落设置页后返回键和右滑全失效）。改为永远
     // 落 home，恢复页叠加其上。
-    val startRoute = when {
-        startInTerminal -> "home"
-        lastRoute != null -> "home"
-        else -> "welcome"
-    }
+    val startRoute = MainRouteRules.startRoute(startInTerminal, lastRoute)
 
     // 通知栏直达终端：落到主页后立即拉起终端（会话由 SessionManager attach 恢复）
     if (startInTerminal) {
@@ -482,9 +452,10 @@ fun ZhengdaoApp(
     androidx.compose.runtime.LaunchedEffect(lastRoute) {
         val cur = nav.currentBackStackEntry?.destination?.route
         // B-补-15（2026-10-16）：白名单化 —— 只有确实还在 NavHost 里的路由才恢复，
-        // 老版本残留的死值（如已删除的 "plugins"）按「无可恢复页面」处理，见 RESTORABLE_ROUTES。
-        val restore = lastRoute?.takeIf { it in RESTORABLE_ROUTES }
-        if (!startInTerminal && restore != null && (cur == "home" || cur == "welcome")) {
+        // 老版本残留的死值（如已删除的 "plugins"）按「无可恢复页面」处理。
+        // 判定主体在 MainRouteRules.restoreRoute（第七十六批抽出；白名单与 KDoc 同迁）。
+        val restore = MainRouteRules.restoreRoute(lastRoute, startInTerminal, cur)
+        if (restore != null) {
             nav.navigate(restore) { launchSingleTop = true }
         }
     }
@@ -793,13 +764,10 @@ fun HomeTabs(
     }
 
     fun onTabClicked(target: Int, onTerminalClicked: () -> Unit) {
-        if (tab == target) {
-            val t = now()
-            if (t - lastTabClickAt.longValue < 300L) {
-                animateToTop(target)
-                lastTabClickAt.longValue = 0L
-                return
-            }
+        if (TabClickRules.isDoubleTap(tab, target, now(), lastTabClickAt.longValue)) {
+            animateToTop(target)
+            lastTabClickAt.longValue = 0L
+            return
         }
         lastTabClickAt.longValue = now()
         when (target) {
