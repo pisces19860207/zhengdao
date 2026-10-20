@@ -1145,15 +1145,16 @@ internal class RunEngine(
                         FailureKind.BAD_JSON,
                         if (retry) FailureAction.Retry(0L, badArgsRetries + 1) else FailureAction.Abort,
                     )
-                    // 错误原文**回灌进历史**：只说「参数不对」模型改不对，得让它看见自己错在哪
-                    val feed = "工具调用参数不是合法 JSON：${outcome.error}；请修正参数后重试"
+                    // 错误原文**回灌进历史**：只说「参数不对」模型改不对，得让它看见自己错在哪。
+                    // 第九十五批：前缀按**坏在哪**分两说（JSON 语法 / Schema）——原文逐字不动。
+                    val feed = RunRules.badArgsFeed(outcome.kind, outcome.error)
                     history += HistoryMessage(
                         "local-badargs-${System.nanoTime()}",
                         HistoryMessage.ROLE_ASSISTANT,
                         feed,
                     )
                     persistAssistantMessage(sessionId, feed)
-                    log("抱朴引擎：坏参数（不记通道失败、不切通道）：${outcome.error.take(200)}")
+                    log("抱朴引擎：坏参数 ${outcome.kind.name}（不记通道失败、不切通道）：${outcome.error.take(200)}")
                     if (!retry) {
                         _notice.value = "模型连续给的参数都不合法，这轮停下来（错误已记日志）"
                         settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
@@ -1349,11 +1350,13 @@ internal class RunEngine(
          *
          * @param error 错误原文（回灌给模型看的那句；用户侧只看到人话 notice）
          * @param text 同一轮里已经收到的正文（有就留下，别把打了一半的字丢了）
+         * @param kind 坏在哪：JSON 语法 / Schema（第九十五批；回灌前缀按它二选一）
          */
         data class BadArgs(
             val error: String,
             val text: String = "",
             val usage: LlmUsage? = null,
+            val kind: ToolCallCodec.BadArgsKind = ToolCallCodec.BadArgsKind.JSON_SYNTAX,
         ) : RoundOutcome
 
         /**
@@ -1415,7 +1418,7 @@ internal class RunEngine(
                 is ToolCallCodec.DecodeResult.Ok -> RoundOutcome.ToolCalls(textBuf.toString(), decoded.calls, finishedUsage)
                 // 坏 JSON/坏参数：**不**走 Failed 通道（P1-2）。错误原文已在 decode 里备好，
                 // 交给引擎回灌给模型看 + 重试一次；再坏才如实收尾。
-                is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.BadArgs(decoded.error, textBuf.toString(), finishedUsage)
+                is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.BadArgs(decoded.error, textBuf.toString(), finishedUsage, decoded.kind)
             }
         }
         val truncated = RunLoopRules.isTruncatedStopReason(stopReason)

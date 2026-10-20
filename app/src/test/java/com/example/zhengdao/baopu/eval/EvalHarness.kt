@@ -43,6 +43,15 @@ internal data class EvalConfig(
     val disableThinking: Boolean = true,
     val timeoutSeconds: Long = 120,
     val maxOutputTokens: Int = 2_048,
+    /** 通道标识（进结果/trace 对账用；换 baseUrl 必须一起换，否则报告会张冠李戴）。 */
+    val providerName: String = "deepseek",
+    /**
+     * eval 显式温度（第九十四批 ②）：**只影响 eval**。线上对话的请求体一个字都不动
+     * ——`LlmWire.bodyOf` 里根本没有 temperature 字段（有负例钉着，见 EvalDeterminismTest）。
+     */
+    val temperature: Double = EvalDeterminism.EVAL_TEMPERATURE,
+    /** 采样种子；null = 不发（provider 未必支持，见 [EvalDeterminism.seedFrom]）。 */
+    val seed: Long? = null,
 )
 
 internal data class CaseResult(
@@ -173,14 +182,29 @@ internal object EvalHarness {
         val error: String?,
     )
 
-    private fun call(cfg: EvalConfig, messages: JSONArray, tools: JSONArray): Round {
-        val body = JSONObject()
+    /**
+     * 请求体（**纯函数**；抽出来是为了给「参数有没有真发出去」写单测——
+     * 不抽就只能真调模型，一条断言一次 token，还得看网络脸色）。
+     *
+     * 三条口径：
+     * 1. `temperature` 显式发（派工单 ② 原文），不再交给「服务端默认」；
+     * 2. `seed` **只在 cfg.seed 非 null 时发**——provider 不支持就别发，
+     *    发一个对方不认的字段比不发更糟（看着固定了，其实没有）；
+     * 3. 其余字段（model/messages/tools/stream/max_tokens/thinking）与旧实现逐字节一致。
+     */
+    internal fun bodyOf(cfg: EvalConfig, messages: JSONArray, tools: JSONArray): JSONObject =
+        JSONObject()
             .put("model", cfg.model)
             .put("messages", messages)
             .put("tools", tools)
             .put("stream", false)
             .put("max_tokens", cfg.maxOutputTokens)
-        if (cfg.disableThinking) body.put("thinking", JSONObject().put("type", "disabled"))
+            .put("temperature", cfg.temperature)
+            .apply { if (cfg.disableThinking) put("thinking", JSONObject().put("type", "disabled")) }
+            .apply { cfg.seed?.let { put("seed", it) } }
+
+    private fun call(cfg: EvalConfig, messages: JSONArray, tools: JSONArray): Round {
+        val body = bodyOf(cfg, messages, tools)
 
         val http = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
