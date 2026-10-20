@@ -36,6 +36,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,6 +73,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -78,6 +81,7 @@ import androidx.compose.ui.unit.lerp
 import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -110,6 +114,21 @@ private var sysInfoProcessCache: SystemInfoProvider.Info? = null
 private val HOME_TITLE_COLLAPSE_DISTANCE = 24.dp
 
 /**
+ * 第六十八批：下拉刷新的安全超时（10s）。正常完成/失败由加载 effect 先收 spinner；
+ * 这里只兜「effect 因故没回来」的底 —— 不能让用户永远看转圈。
+ */
+internal const val PTR_TIMEOUT_MS = 10_000L
+
+/** 下拉刷新 spinner 的三个结束出口：完成 / 失败 / 超时（失败优先于超时）。 */
+internal enum class PtrEnd { DONE, FAILED, TIMED_OUT }
+
+internal fun ptrEnd(loadFailed: Boolean = false, timedOut: Boolean = false): PtrEnd = when {
+    loadFailed -> PtrEnd.FAILED
+    timedOut -> PtrEnd.TIMED_OUT
+    else -> PtrEnd.DONE
+}
+
+/**
  * 首页：顶部可折叠系统状态卡 + Agent 卡片列表；底部 Tab 的「终端」页由
  * 外层 MainActivity 处理（导航到 TerminalActivity）。
  */
@@ -124,6 +143,10 @@ fun HomeScreen(
         androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // 第六十八批：刷新收尾的兜底提示在 lambda 里拼，取字符串不能再走 LocalContext
+    // （lint `LocalContextGetResourceValueCall`：配置变化后可能读到旧值）。走 LocalResources，
+    // 与抱朴页既有口径一致。
+    val resources = androidx.compose.ui.platform.LocalResources.current
     // 2026-10-12（走查报告 §五）：错误提示从 Toast 迁 Snackbar——Toast 不能带动作、
     // 与页面内容脱节；Snackbar 挂在本页底部，可读、可跟随、不打断。
     // 定义在使用点之前（Kotlin 局部函数作用域从声明处开始）。
@@ -202,6 +225,9 @@ fun HomeScreen(
     // 流式刷新逐项就地覆盖——不再「先空白 → 11 行同时蹦出来」（用户原话：有点吓人）。
     var healthChecks by remember { mutableStateOf(LastValues.loadChecks(context)) }
     var healthEpoch by remember { mutableStateOf(0) }
+    // 第六十八批：体检「修复」的进行中状态（null = 空闲）。同一时刻只跑一项 ——
+    // EnvHealth 的修复要拿会话准备锁，并发点第二项只会换来一条「锁被占」的失败。
+    var fixingCheckId by remember { mutableStateOf<String?>(null) }
     // 卸载二次确认（P3）：非 null 时弹出确认弹窗
     var uninstallTarget by remember { mutableStateOf<AppState.AgentInfo?>(null) }
     // 2026-10-09（E-059）：已装的 Agent 也要有一条**不卸载**就能重来的路——用户不会为了修一个
@@ -281,9 +307,23 @@ fun HomeScreen(
     val installStates = remember { androidx.compose.runtime.mutableStateMapOf<String, AgentRepository.State>() }
     // 刷新节拍：改 stateTick 能让下面那个 effect 立刻重灌一遍镜像（不等 2 秒）。
     var stateTick by remember { mutableIntStateOf(0) }
-    // P2-12（issue #17）：下拉刷新。转圈只做**反馈**——真正的扫描在 stateTick++ 之后
-    // 由上面的常驻轮询立刻跑掉（IO 毫秒级）；350ms 是最短可见时长，防"闪一下"。
+    // P2-12（issue #17）：下拉刷新。第六十八批去掉 350ms 假进度：转圈由**真实加载**
+    // 收尾 —— 常驻轮询那一趟 IO 读完、镜像写完（或失败）才置 false；另加 10s 安全超时兜底。
     var ptrRefreshing by remember { mutableStateOf(false) }
+    fun endPtrRefresh(exit: PtrEnd, detail: String? = null) {
+        ptrRefreshing = false
+        when (exit) {
+            PtrEnd.DONE -> Unit
+            PtrEnd.FAILED -> snack(resources.getString(R.string.home_refresh_failed, detail ?: "?"))
+            PtrEnd.TIMED_OUT -> snack(resources.getString(R.string.home_refresh_timeout))
+        }
+    }
+    // 安全超时：只负责「永远不回来」这一种；正常完成/失败由下面加载 effect 先收。
+    LaunchedEffect(ptrRefreshing) {
+        if (!ptrRefreshing) return@LaunchedEffect
+        delay(PTR_TIMEOUT_MS)
+        if (ptrRefreshing) endPtrRefresh(ptrEnd(timedOut = true))
+    }
     // ⚠️ 这里必须是**常驻循环**，不能写成"还有 Agent 在装才继续查下一轮"（2026-10-07 二次真机实测）：
     //    条件式轮询有个致命缺口——**它需要有东西先把它叫醒**。而"点了「安装」"这件事在
     //    Compose 眼里什么都没发生：没有 state 变化 ⇒ 不重组 ⇒ effect 的 key 不变 ⇒
@@ -301,10 +341,26 @@ fun HomeScreen(
             // 回主线程写进 Compose 状态（状态必须在主线程改）。
             // 2026-10-14 冲突处置：原先这里还顺手同步「恢复全部」账本（AgentLedger）——
             // 那条功能已按用户拍板整条删除，故只保留 IO 化这件事。
-            val states = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                agents.map { a -> a.id to AgentRepository.stateOf(context, a) }
+            val result = try {
+                Result.success(
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        agents.map { a -> a.id to AgentRepository.stateOf(context, a) }
+                    },
+                )
+            } catch (ce: CancellationException) {
+                // 取消不是失败（effect 重启/离开页面）：不能落进下面的失败出口。
+                throw ce
+            } catch (t: Throwable) {
+                Result.failure(t)
             }
-            states.forEach { (id, st) -> installStates[id] = st }
+            result.onSuccess { states -> states.forEach { (id, st) -> installStates[id] = st } }
+            if (ptrRefreshing) {
+                val failure = result.exceptionOrNull()
+                endPtrRefresh(
+                    ptrEnd(loadFailed = failure != null),
+                    failure?.let { it.message ?: it.javaClass.simpleName },
+                )
+            }
             kotlinx.coroutines.delay(2000)
         }
     }
@@ -399,16 +455,13 @@ fun HomeScreen(
 
         // P2-12（issue #17）：下拉刷新包住列表（material3 1.4 的 PullToRefreshBox）。
         // 刷新的实质 = stateTick++ ⇒ 常驻轮询的 effect 立刻重跑一遍（不等 2 秒），
-        // 与 ON_RESUME 那条路径同一个机制（见 :311 附近）。
+        // 与 ON_RESUME 那条路径同一个机制。第六十八批：spinner 的收尾不再定时 ——
+        // 那趟 IO 读完/失败才收，10s 超时兜底（见 ptrRefreshing 附近）。
         PullToRefreshBox(
             isRefreshing = ptrRefreshing,
             onRefresh = {
                 ptrRefreshing = true
                 stateTick++
-                snackbarScope.launch {
-                    kotlinx.coroutines.delay(350)
-                    ptrRefreshing = false
-                }
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -662,19 +715,28 @@ fun HomeScreen(
                                         if (!c.ok) {
                                             val tcmd = c.terminalCmd
                                             when {
-                                                c.fixId != null -> TextButton(onClick = {
-                                                    val fid = c.fixId
-                                                    Thread {
-                                                        // #10：线程体绝不外抛（未捕获异常 = 进程级闪退，
-                                                        // 审计报告 P0-1）。异常在这里就地转成一条「最近问题」。
-                                                        try {
-                                                            val res = EnvHealth.fixDetailed(context, fid)
-                                                            // 修复动作"跑过了"不等于"修好了"（例如
-                                                            // link-mode 写成功但 uv 仍裸奔），所以
-                                                            // 复检一次再决定要不要在「最近问题」里留一条。
-                                                            val again = EnvHealth.inspect(context, context.resources)
-                                                                .firstOrNull { it.id == c.id }
-                                                            android.os.Handler(context.mainLooper).post {
+                                                c.fixId != null -> TextButton(
+                                                    enabled = fixingCheckId == null,
+                                                    onClick = {
+                                                        if (fixingCheckId != null) return@TextButton
+                                                        val fid = c.fixId
+                                                        fixingCheckId = c.id
+                                                        reloadScope.launch {
+                                                            // #10：修复体绝不外抛（未捕获异常 = 进程级闪退，
+                                                            // 审计报告 P0-1）。异常在这里就地转成一条「最近问题」。
+                                                            try {
+                                                                val res = kotlinx.coroutines.withContext(
+                                                                    kotlinx.coroutines.Dispatchers.IO,
+                                                                ) { EnvHealth.fixDetailed(context, fid) }
+                                                                // 修复动作"跑过了"不等于"修好了"（例如
+                                                                // link-mode 写成功但 uv 仍裸奔），所以
+                                                                // 复检一次再决定要不要在「最近问题」里留一条。
+                                                                val again = kotlinx.coroutines.withContext(
+                                                                    kotlinx.coroutines.Dispatchers.IO,
+                                                                ) {
+                                                                    EnvHealth.inspect(context, context.resources)
+                                                                        .firstOrNull { it.id == c.id }
+                                                                }
                                                                 healthEpoch++
                                                                 if (again != null && !again.ok) {
                                                                     IssueCenter.report(
@@ -696,28 +758,31 @@ fun HomeScreen(
                                                                 } else {
                                                                     IssueCenter.resolve("health-fix-${c.id}")
                                                                 }
+                                                            } catch (ce: CancellationException) {
+                                                                throw ce
+                                                            } catch (t: Throwable) {
+                                                                IssueCenter.report(
+                                                                    id = "health-fix-${c.id}",
+                                                                    title = context.getString(
+                                                                        R.string.home_fix_crashed, c.label,
+                                                                    ),
+                                                                    detail = context.getString(
+                                                                        R.string.home_fix_thread_threw,
+                                                                        t.javaClass.simpleName,
+                                                                        t.message?.let { m ->
+                                                                            context.getString(R.string.home_fix_thread_msg, m)
+                                                                        } ?: "",
+                                                                    ),
+                                                                    actionLabel = context.getString(R.string.common_feedback),
+                                                                    actionId = IssueCenter.ACTION_FEEDBACK,
+                                                                )
+                                                                healthEpoch++
+                                                            } finally {
+                                                                fixingCheckId = null
                                                             }
-                                                        } catch (t: Throwable) {
-                                                            IssueCenter.report(
-                                                                id = "health-fix-${c.id}",
-                                                                title = context.getString(
-                                                                    R.string.home_fix_crashed, c.label,
-                                                                ),
-                                                                detail = context.getString(
-                                                                    R.string.home_fix_thread_threw,
-                                                                    t.javaClass.simpleName,
-                                                                    t.message?.let { m ->
-                                                                        context.getString(R.string.home_fix_thread_msg, m)
-                                                                    } ?: "",
-                                                                ),
-                                                                actionLabel = context.getString(R.string.common_feedback),
-                                                                actionId = IssueCenter.ACTION_FEEDBACK,
-                                                            )
-                                                            android.os.Handler(context.mainLooper)
-                                                                .post { healthEpoch++ }
                                                         }
-                                                    }.apply { isDaemon = true; name = "zd-health-fix" }.start()
-                                                }) { Text(stringResource(R.string.common_repair)) }
+                                                    },
+                                                ) { Text(stringResource(if (fixingCheckId == c.id) R.string.home_fixing else R.string.common_repair)) }
 
                                                 tcmd != null -> TextButton(onClick = {
                                                     // 宿主侧修不了（要重建 Python 环境、或要 git checkout 补
@@ -1161,12 +1226,16 @@ fun HomeScreen(
     // 卸载二次确认（P3/v1.0）：「卸载」删程序、留用户数据；「彻底清除」连用户数据一起删
     // （仅限已知名单内的 Agent——未知 manifest 条目的数据布局不猜测，不提供该选项）。
     // 尺寸用真实 du（从 uninstall 命令解析 rm 目标路径映射宿主后统计），不写死数字。
+    // 第六十八批：弹窗里显式列出「要跑什么、删什么」；「彻底清除」两段式 —— 第一下只进入
+    // 确认态，第二下才允许跳终端；两条路进终端前都先 `echo` 一句人话。
     uninstallTarget?.let { target ->
         val cmd = target.uninstallCmd ?: return@let
-        val wipe = wipeTargets[target.id]
+        val wipe = wipeTargets[target.id]?.takeIf { it.isNotEmpty() }
         var sizesText by remember(target.id) {
             mutableStateOf(context.getString(R.string.home_size_measuring))
         }
+        // 第六十八批：「彻底清除」二段式。第一次点击只进入确认态；第二下才允许跳终端。
+        var purgeArmed by remember(target.id) { mutableStateOf(false) }
         LaunchedEffect(target.id) {
             sizesText = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val prog = programSizeMb(context, cmd)
@@ -1179,40 +1248,87 @@ fun HomeScreen(
                 context.getString(R.string.home_uninstall_detail, progText, cache)
             }
         }
+        val uninstallEcho = stringResource(R.string.home_uninstall_echo, target.name)
+        val purgeEcho = stringResource(R.string.home_purge_echo, target.name)
+        val displayCmd = uninstallCommandWithWipe(cmd, if (purgeArmed) wipe else null)
         AlertDialog(
             onDismissRequest = { uninstallTarget = null },
             shape = RoundedCornerShape(14.dp),
-            title = { Text(stringResource(R.string.home_uninstall_title, target.name)) },
-            text = {
+            title = {
                 Text(
-                    buildString {
-                        append(context.getString(R.string.home_uninstall_delete)).append(sizesText).append("\n\n")
-                        append(context.getString(R.string.home_uninstall_keep))
-                        wipe?.let {
-                            append(context.getString(R.string.home_uninstall_purge, it.joinToString("、")))
-                        }
-                    }
+                    stringResource(
+                        if (purgeArmed) R.string.home_uninstall_purge_title else R.string.home_uninstall_title,
+                        target.name,
+                    )
                 )
             },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        buildString {
+                            if (purgeArmed) {
+                                append(
+                                    context.getString(
+                                        R.string.home_uninstall_purge_confirm,
+                                        wipe.orEmpty().joinToString("、"),
+                                    )
+                                )
+                            } else {
+                                append(context.getString(R.string.home_uninstall_delete)).append(sizesText).append("\n\n")
+                                append(context.getString(R.string.home_uninstall_keep))
+                                wipe?.let {
+                                    append(resources.getString(R.string.home_uninstall_purge, it.joinToString("、")))
+                                }
+                            }
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(R.string.home_uninstall_command_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = displayCmd,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    uninstallTarget = null
-                    // agentId 传 null：卸载不走「一键安装」登记，传 id 会被误标「安装中」
-                    onOpenTerminal(cmd, null)
-                }) { Text(stringResource(R.string.home_uninstall_action)) }
+                if (purgeArmed) {
+                    TextButton(onClick = {
+                        uninstallTarget = null
+                        // agentId 传 null：卸载不走「一键安装」登记，传 id 会被误标「安装中」
+                        onOpenTerminal(uninstallTerminalCommand(cmd, purgeEcho, wipe), null)
+                    }) {
+                        Text(
+                            stringResource(R.string.home_uninstall_purge_confirm_action),
+                            // P2-11：破坏性按钮的文字也要 4.5:1（error 色只有 3.55:1）
+                            color = zhengdaoErrorText(),
+                        )
+                    }
+                } else {
+                    TextButton(onClick = {
+                        uninstallTarget = null
+                        onOpenTerminal(uninstallTerminalCommand(cmd, uninstallEcho, null), null)
+                    }) { Text(stringResource(R.string.home_uninstall_action)) }
+                }
             },
             dismissButton = {
                 Row {
-                    if (wipe != null) {
-                        TextButton(onClick = {
-                            uninstallTarget = null
-                            onOpenTerminal(cmd + " && rm -rf " + wipe.joinToString(" "), null)
-                        }) {
+                    if (wipe != null && !purgeArmed) {
+                        TextButton(onClick = { purgeArmed = true }) {
                             Text(
                                 stringResource(R.string.home_purge_action),
-                                // P2-11：破坏性按钮的文字也要 4.5:1（error 色只有 3.55:1）
                                 color = zhengdaoErrorText(),
                             )
+                        }
+                    }
+                    if (purgeArmed) {
+                        TextButton(onClick = { purgeArmed = false }) {
+                            Text(stringResource(R.string.home_uninstall_purge_back))
                         }
                     }
                     TextButton(onClick = { uninstallTarget = null }) { Text(stringResource(R.string.common_cancel)) }
@@ -1274,6 +1390,17 @@ private val wipeTargets: Map<String, List<String>> = mapOf(
     "hermes" to listOf("~/.hermes"),
     "codex" to listOf("~/.codex"),
 )
+
+/** 卸载/彻底清除共用的命令拼装：`cmd` 与 `rm -rf` 路径集合与改前**逐字一致**，
+ *  只多一条人话回声。路径为空时不拼 `rm -rf`。 */
+internal fun uninstallCommandWithWipe(cmd: String, wipe: List<String>?): String =
+    if (wipe.isNullOrEmpty()) cmd else cmd + " && rm -rf " + wipe.joinToString(" ")
+
+/** 进终端前的人话回声（单引号安全转义）——用户第一眼就能看到「在干什么」。 */
+internal fun uninstallTerminalCommand(cmd: String, echo: String, wipe: List<String>?): String =
+    "echo " + shellSingleQuote(echo) + " && " + uninstallCommandWithWipe(cmd, wipe)
+
+internal fun shellSingleQuote(raw: String): String = "'" + raw.replace("'", "'\\''") + "'"
 
 /** 依据 manifest 的 uninstall 命令估算 Agent 程序体积：解析其中 rm -rf 的目标路径，
  *  映射到宿主真实目录后求 du 和（真实 du，不写死数字）。仅识别 /root/→home 与
