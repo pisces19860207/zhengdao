@@ -26,6 +26,10 @@ import java.io.File
  * updated_at: 1729000000000
  * use_count: 0
  * last_used_at: 0
+ * quality_score: 100
+ * quality_flags: STALE
+ * merged_from: 1729000000000-称呼偏好
+ * scored_at: 0
  * ---
  *
  * 正文……
@@ -47,6 +51,10 @@ internal object EntryCodec {
         append("updated_at: ").append(e.updatedAt).append('\n')
         append("use_count: ").append(e.useCount).append('\n')
         append("last_used_at: ").append(e.lastUsedAt).append('\n')
+        append("quality_score: ").append(e.qualityScore).append('\n')
+        append("quality_flags: ").append(e.qualityFlags.joinToString(",")).append('\n')
+        append("merged_from: ").append(e.mergedFrom.joinToString(",")).append('\n')
+        append("scored_at: ").append(e.scoredAt).append('\n')
         append("---\n\n")
         append(e.body.trim()).append('\n')
     }
@@ -91,6 +99,21 @@ internal object EntryCodec {
             updatedAt = fields["updated_at"]?.toLongOrNull() ?: 0L,
             useCount = fields["use_count"]?.toIntOrNull() ?: 0,
             lastUsedAt = fields["last_used_at"]?.toLongOrNull() ?: 0L,
+            // 第八十九批：老文件没有这四行 ⇒ 全部走默认（满分／无标记／无合并账／没算过分）。
+            // 坏值（`quality_score: abc`／负数／超 100）同样落默认——**容错但不装**：
+            // 分数是算得出来的账，读不回来就重算，绝不拿一个坏值去降权或顶替正文。
+            qualityScore = fields["quality_score"]?.toIntOrNull()
+                ?.takeIf { it in MemoryQuality.MIN_SCORE..MemoryQuality.MAX_SCORE }
+                ?: MemoryQuality.DEFAULT_SCORE,
+            qualityFlags = fields["quality_flags"].orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() },
+            mergedFrom = fields["merged_from"].orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() },
+            scoredAt = fields["scored_at"]?.toLongOrNull() ?: 0L,
         )
     }
 
@@ -109,7 +132,10 @@ internal object EntryCodec {
  *
  * 设计要点：
  * 1. **只有 CONFIRMED 才落盘**（判据 3：候选 → 待确认 → 落盘，没有确认不写盘）；
- * 2. 落盘前过 [MemoryRules.validate] ＋ 去重（同 scope+kind+正文近似不重复入库）；
+ * 2. 落盘前过 [MemoryRules.validate]（合格性）＋ [MemoryQuality.gateWrite]（质量闸门：
+ *    同键／正文近似不重复入库；同键不同值放行并标 `CONFLICT`，不覆盖既有那条）；
+ * 2b. **读**的排序走质量序（[MemoryQuality.rankComparator]：分数降 → 创建升 → id 升），
+ *    老数据默认满分 ⇒ 升级当天读取序与旧序逐位相同（不改变注入前缀）；
  * 3. [loadAll] 就是 reindex 的地基——把 `baopu.db` 删掉，扫一遍目录全回来；
  * 4. 本类不碰 Context、不建线程（写由调用方线程做；索引同步是刀 1 接线时的事），
  *    全部逻辑可用临时目录 JVM 直测。
@@ -144,18 +170,37 @@ internal class MemoryStore(
         }
         val ok = (v as MemoryRules.Validation.Ok).normalized
         val existing = loadAll()
-        if (MemoryRules.dedupeAgainst(listOf(ok), existing).isEmpty()) {
-            return WriteResult(false, null, "与既有记忆重复（同 scope ＋ 同 kind ＋ 正文近似），不重复入库")
+        // 第八十九批：去重那一步升级成**质量闸门**（判据全在纯函数
+        // [MemoryQuality.gateWrite]，这里只负责落盘与不静默）：
+        // ① 空／超长 ⇒ 上面 [MemoryRules.validate] 已拒（第八批判据，本批不重造）；
+        // ② 同键且正文近似、或同 scope+kind 正文近似 ⇒ 拒（不重复入库）；
+        // ③ 同键但正文不一样 ⇒ **放行并给新条目打 CONFLICT**：既不覆盖既有那条
+        //    （覆盖＝自动改掉用户记忆，红线），也不替用户判哪条对。
+        val gate = MemoryQuality.gateWrite(ok, existing, System.currentTimeMillis())
+        // 闸门结论分两支。为什么写成显式转换而不是「判完 Reject 就直接 gate.entry」：
+        // Kotlin 不在 `is Reject ⇒ return` 之后把 sealed 类型收窄成 Ok（流分析到此为止），
+        // 硬要写得像能收窄只会得到一串「Unresolved reference」。
+        val rejected = gate as? MemoryQuality.WriteGate.Reject
+        if (rejected != null) {
+            RunLog.log("记忆写入拒绝：id=${ok.id} reason=质量闸门（撞 ${rejected.audit.target}）")
+            return WriteResult(false, null, rejected.reason, null, listOf(rejected.audit))
         }
-        val dir = dirFor(ok.scope)
-        val file = File(dir, ok.id + ".md")
+        val allowed = gate as MemoryQuality.WriteGate.Ok
+        val dir = dirFor(allowed.entry.scope)
+        val file = File(dir, allowed.entry.id + ".md")
         if (file.exists()) {
             return WriteResult(false, null, "同名文件已存在（${file.name}）——记忆 id 撞了，换标题或稍候重试")
         }
+        val stored = allowed.entry
         return try {
             dir.mkdirs()
-            file.writeText(EntryCodec.render(ok), Charsets.UTF_8)
-            WriteResult(true, file, "")
+            file.writeText(EntryCodec.render(stored), Charsets.UTF_8)
+            // 质量动作要「可审计」：只出声两类（冲突／拒），普通入库分留在
+            // [WriteResult.audits] 里给调用方——每次写盘都刷一行会把运行日志淹掉。
+            if (stored.qualityFlags.contains(MemoryQuality.FLAG_CONFLICT)) {
+                RunLog.log("记忆质量：CONFLICT id=${stored.id} 同键两条并排留存，不覆盖、不删除")
+            }
+            WriteResult(true, file, allowed.note, stored, allowed.audits)
         } catch (e: Exception) {
             // 第七十一批②：失败要有声音（不打印记忆正文；调用方 UI 提示在飞，待下一批）
             RunLog.log("记忆写入失败：id=${ok.id} reason=写盘异常（${e.javaClass.simpleName}）")
@@ -187,9 +232,14 @@ internal class MemoryStore(
     /**
      * 扫全部目录解析出全部记忆（**reindex 的地基**：文件是真相）。
      *
-     * 排序键 = (createdAt, id) —— **显式稳定排序**（追加四第 2 条）：
-     * 只按 createdAt 排，同时间的条目会落回文件系统遍历顺序（跨设备/跨次不确定），
-     * 拼进上下文就是两次不同的前缀。
+     * 排序键 = 质量序（分数降 → 创建升 → id 升；[MemoryQuality.rankComparator]），
+     * 后两档就是第八批那对**显式稳定排序**键：只按 createdAt 排，同时间的条目会落回
+     * 文件系统遍历顺序（跨设备/跨次不确定），拼进上下文就是两次不同的前缀。
+     *
+     * 为什么这里用**文件里存的分数**而不是当场重算：本方法是「原样读盘」，重算就要把
+     * 算出来的分数写回别人的 .md（= 改写用户记忆，红线）。当场重算的质量账在
+     * [qualityPass]（读时算、零写入）；两处的排序键同名同序，所以「老数据默认满分」
+     * 这种全平情形下 [loadAll] 与旧序逐位相同（[MemoryStore] 的兼容判据）。
      */
     fun loadAll(): List<MemoryEntry> {
         val out = mutableListOf<MemoryEntry>()
@@ -201,7 +251,7 @@ internal class MemoryStore(
                 if (entry != null) out += entry
             }
         }
-        return out.sortedWith(compareBy({ it.createdAt }, { it.id }))
+        return out.sortedWith(MemoryQuality.rankComparator())
     }
 
     /**
@@ -219,12 +269,31 @@ internal class MemoryStore(
                 if (entry != null) entries += entry else broken += f.name
             }
         }
-        return ReindexResult(entries.sortedWith(compareBy({ it.createdAt }, { it.id })), broken)
+        return ReindexResult(entries.sortedWith(MemoryQuality.rankComparator()), broken)
     }
 
-    /** 召回（按当前任务，≤ 上界；判据 2：不全量灌，截断明说）。 */
+    /**
+     * 召回（按当前任务，≤ 上界；判据 2：不全量灌，截断明说）。
+     *
+     * 第八十九批改了一件事：喂给 [MemoryRules.recall] 的是 [qualityPass] 的**合并视图**
+     * ——同键重复塌成一条（来源 id 全在 `merged_from`，原件一条不动），同键不同值的
+     * 冲突两侧都留着并带标记。查询相关性仍是第一裁决（第八批），质量分只管同分排序。
+     * 签名与返回类型没动 ⇒ 调用方零改动（派工单 §1「接口保持兼容」）。
+     */
     fun recall(query: String, budgetTokens: Int = MemoryRules.RECALL_TOKEN_BUDGET): RecallResult =
-        MemoryRules.recall(loadAll().filter { it.status == MemoryStatus.CONFIRMED }, query, budgetTokens)
+        MemoryRules.recall(ranked(), query, budgetTokens)
+
+    /**
+     * 一次质量扫描（**读时算、零写入、可逆**）：打分 → 同键分组 → 合并视图 ＋ 审计。
+     *
+     * `now` 由调用方给（生产传 [System.currentTimeMillis]，单测传常量 ⇒ 边界可钉）。
+     * 只看已确认的：候选/待确认的条目还没被用户点头，不参与质量账（判据 3 的延伸）。
+     */
+    fun qualityPass(now: Long): MemoryQuality.Pass =
+        MemoryQuality.pass(loadAll().filter { it.status == MemoryStatus.CONFIRMED }, now)
+
+    /** 按质量序读全部（合并视图；**条数只可能因「同键重复并成一条」而减，绝不因过期而减**）。 */
+    fun ranked(now: Long = System.currentTimeMillis()): List<MemoryEntry> = qualityPass(now).merged
 
     /** 按 id 找文件（两个目录都找）。 */
     fun findFile(id: String): File? {
@@ -235,7 +304,21 @@ internal class MemoryStore(
         return null
     }
 
-    data class WriteResult(val ok: Boolean, val file: File?, val reason: String)
+    /**
+     * 写入结果。前三个字段口径不变（第七十一批②的 UI 提示照旧）。
+     *
+     * @param entry 真正落盘的那条（含质量分与标记）；拒绝时为 null。
+     *   **调用方要展示/记账要用它**，别拿自己传进来的那条——闸门可能已经加了标记。
+     * @param audits 本次写入产生的质量账（拒／冲突；普通入库分也在里面，由
+     *   [MemoryQuality] 出，不含记忆正文 ⇒ 可以贴日志）。
+     */
+    data class WriteResult(
+        val ok: Boolean,
+        val file: File?,
+        val reason: String,
+        val entry: MemoryEntry? = null,
+        val audits: List<MemoryQuality.Audit> = emptyList(),
+    )
 
     data class ReindexResult(val entries: List<MemoryEntry>, val brokenFiles: List<String>)
 
