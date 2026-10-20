@@ -26,12 +26,23 @@ class PendingNoteSideEffectsTest {
     private val controller: String
         get() = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt").readText()
 
+    /** 第六十三批那个通知位组件（错误便签的渲染点搬这儿来了）。 */
+    private val slot: String
+        get() = repoFile("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuNoticeSlot.kt").readText()
+
     @Test
     fun error_note_has_own_label_and_error_tone() {
+        // 2026-10-20 第六十三批：三件事一件没少，只是**分工**变了——
+        // 「自己的标题」仍长在屏里那条 entry 上（文案跟着数据来源走），
+        // 「错误色＋不占地方」改由通知位统一兑现：错误档 errorContainer 底色，
+        // 行高由 36–40dp 那两个令牌钉住（原来靠 compact=true 压，现在整条只有一行，比 compact 更矮）。
         val call = screen.substringAfter("controller.pendingNote?.let { note ->").take(400)
         assertTrue("错误便签要有自己的标题：$call", call.contains("memory_write_failed_label"))
-        assertTrue("要用错误色：$call", call.contains("isError = true"))
-        assertTrue("要压紧凑：$call", call.contains("compact = true"))
+        assertTrue("要交进通知位（不再自己占一行）：$call", call.contains("BaopuNoticeEntry("))
+        val err = slot.substringAfter("if (ordered.isEmpty()) return")
+        assertTrue("错误档要用 errorContainer 那一型：$err", err.contains("MaterialTheme.colorScheme.errorContainer"))
+        assertTrue("详情卡仍走 isError = true 那个组件：", slot.contains("isError = true"))
+        assertTrue("行高有上限，不许长成第二块正文：", slot.contains("ROW_HEIGHT_MAX = 40.dp"))
     }
 
     @Test

@@ -1037,6 +1037,10 @@
     <string name="baopu_export_done">导出完成：%1$d 件（在 整理/原件导出-&lt;时间戳&gt;/）</string>
     <string name="baopu_export_none">没有可导出的原件（索引是空的）。</string>
     <string name="baopu_export_notes">另有 %1$d 条备注（跳过/撞名/失败）。</string>
+      <!-- 第六十三批：首屏通知位。口径——同一时刻只显最高一档（错误＞行动＞提示），
+           其余折成这一句，点开看全量（每条仍可操作）。 -->
+    <string name="baopu_notice_more">还有 %1$d 条</string>
+    <string name="baopu_notice_sheet_title">全部通知</string>
       <!-- 刀 3：抱朴抽屉。口径——低频入口收一层，首屏只留 ☰／状态／＋。 -->
     <string name="baopu_drawer_open">打开侧栏</string>
     <string name="baopu_drawer_title">抱朴</string>
