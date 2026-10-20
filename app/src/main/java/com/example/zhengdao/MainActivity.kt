@@ -675,7 +675,8 @@ fun ZhengdaoApp(
  *
  * 为什么要抽常量：这次交换暴露了隐患 —— 全文件原有 **20 处硬编码索引**
  * （`when (tab)` 分支、底栏 selected/onClick/图标、`animateToTop`、ON_RESUME 切 Tab、
- * 抱朴页的 onExit —— 清场后一度是占位页 BaopuRebuilding，刀 1 起又是真页面 BaopuScreen），
+ * 抱朴页的 onExit —— 旧线清场后一度是占位页 BaopuRebuilding（第六十二批已删除），
+ * 刀 1 起是真页面 BaopuScreen），
  * 漏改任何一处都会**静默错位**。最隐蔽的一处是初始值
  * `mutableIntStateOf(2)`：2 原本是怡然、交换后变成玄览，不跟着换常量的话，
  * 启动页会无声无息地从"怡然"漂到"玄览"。改顺序时只动这里。
@@ -902,8 +903,8 @@ fun HomeTabs(
             // 分支沿用原物理顺序（语义见 [TabIndex]）：抱朴 → 怡然 → 逍遥 → 玄览。
             when (tab) {
                 // 抱朴：刀 1 起是真页面（自研 agent：状态机 + 守卫管线 + 两个读工具）。
-                // 旧线（opencode serve）与占位页的历史见 docs/ERRATA.md E-140 与
-                // ui/baopu/BaopuRebuilding.kt 的 KDoc；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
+                // 旧线（opencode serve）史见 docs/ERRATA.md E-140；占位页 BaopuRebuilding
+                // 已于第六十二批删除；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
                 TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
                     onExit = { tab = TabIndex.AGENTS },
                 )

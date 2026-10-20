@@ -90,7 +90,7 @@ private fun openSettings(context: Context) {
 }
 
 /**
- * 抱朴页（刀 1 · B 段）：占位页 [BaopuRebuilding] 的真身。
+ * 抱朴页（刀 1 · B 段）：真身（占位页 BaopuRebuilding 已于第六十二批删除）。
  *
  * 结构（上→下）：☰ 顶条 → 防丢顶条 → 会话头（状态/中断/续跑）→ 自省便签 → 待办提示行
  * → 资料库结果一行 → 提示词小框（可复制）→ 消息流（贴底跟随＋「⬇ 回到最新」浮标）→
