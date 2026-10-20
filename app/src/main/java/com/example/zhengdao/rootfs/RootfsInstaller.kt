@@ -305,6 +305,7 @@ object RootfsInstaller {
         archive: File,
         env: String? = null,
         archiveSha256: String? = null,
+        trace: InstallTrace = InstallTrace(),
         onEntry: (String) -> Unit,
     ) = withInstallLock("安装环境") {
         val files = context.filesDir
@@ -316,6 +317,7 @@ object RootfsInstaller {
             archiveSha256 = archiveSha256,
             // R-07：空间预检下沉进内核，保证「先查空间、再动盘」——磁盘不够时一个字节都不写。
             ensureSpace = { ensureFreeSpace(context, archive.length()) },
+            trace = trace,
             onEntry = onEntry,
         )
     }
@@ -336,30 +338,58 @@ object RootfsInstaller {
         env: String?,
         archiveSha256: String?,
         ensureSpace: () -> Unit = {},
+        trace: InstallTrace = InstallTrace(),
         onEntry: (String) -> Unit,
     ) {
-        // ① 清掉上次中断留下的 tmp 残局（[cleanupPartial] 之外的第二道保险；持锁期间它一定是陈的）。
-        tmpDir.deleteRecursively()
-        // ② 空间预检：不足时抛出（人话文案由 [ensureSpace] 给），此刻盘上还没动。
-        ensureSpace()
-        // ③ 建临时树：mkdirs 说了算，不能"建不出来也照解包"——那会在 [extractArchive] 里
-        //    以更难懂的方式炸（NoSuchFile / 只读父目录），文案也指不回来。
-        if (!tmpDir.mkdirs() && !tmpDir.isDirectory) {
-            throw InstallFailed("无法创建临时解包目录，安装未开始（存储不可写或空间不足）：${tmpDir.path}")
-        }
+        trace.archiveBytes = archive.length()
         try {
+            // ① 清掉上次中断留下的 tmp 残局（[cleanupPartial] 之外的第二道保险；持锁期间它一定是陈的）。
+            // ② 空间预检：不足时抛出（人话文案由 [ensureSpace] 给），此刻盘上还没动。
+            // ③ 建临时树：mkdirs 说了算，不能"建不出来也照解包"——那会在 [extractArchive] 里
+            //    以更难懂的方式炸（NoSuchFile / 只读父目录），文案也指不回来。
+            trace.begin(InstallTrace.Stage.PREPARE)
+            tmpDir.deleteRecursively()
+            ensureSpace()
+            if (!tmpDir.mkdirs() && !tmpDir.isDirectory) {
+                throw InstallFailed("无法创建临时解包目录，安装未开始（存储不可写或空间不足）：${tmpDir.path}")
+            }
+            trace.end()
+
             // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
             // 回退纪律（规范 #2）：任何失败 → 落回 commons-compress Java 路径；
             // 唯一例外是**完整性失败**（见 extractArchive），它必须硬失败。
             // 把"这份包应当是什么 sha256"交给 Rust 对账：信任锚落在**恰好被解压的那些字节**上，
             // 而不是另一次遍历的结果；没有独立期望值的路径（用户自选文件等）传 null = 只算不校验。
-            val usedRust = extractArchive(archive, tmpDir, expectedSha256 = archiveSha256, onEntry = onEntry)
+            trace.begin(InstallTrace.Stage.EXTRACT)
+            val usedRust = extractArchive(
+                archive,
+                tmpDir,
+                expectedSha256 = archiveSha256,
+                trace = trace,
+                onEntry = onEntry,
+            )
+            trace.extractionPath = if (usedRust) "Rust" else "Java"
+            trace.end(if (usedRust) "Rust，含整包对账" else "Java 回退")
 
             // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
+            trace.begin(InstallTrace.Stage.MARKER)
             RootfsMarker.write(tmpDir, DEFAULT_DISTRO, env, archiveSha256 = archiveSha256)
+            trace.end()
 
             // 锁已在手（#11）：走无锁的替换内核，别用自带锁的 [swapIntoPlace] 自锁自己
-            swapLocked(tmpDir, rootfsDir)
+            trace.begin(InstallTrace.Stage.SWAP)
+            // 第六十五批（计时阶段）：先只把删旧树拆出来单独计时，行为仍是**同步删除**；
+            // 移出关键路径在下一步做，这样"改前/改后"两次真机读数能直接对比清旧树那一档。
+            val oldTree = swapLocked(tmpDir, rootfsDir, deferOldTreeCleanup = true)
+            trace.end()
+            if (oldTree != null) {
+                trace.begin(InstallTrace.Stage.CLEAN_OLD)
+                if (!oldTree.deleteRecursively()) {
+                    Log.w(TAG, "旧环境目录删不掉（不影响使用，下次启动会再试）：${oldTree.path}")
+                }
+                trace.end("前台")
+            }
+            trace.log(true)
             Log.i(
                 TAG,
                 if (usedRust) "RootFS 安装完成（Rust 路径）：${rootfsDir.path}"
@@ -369,6 +399,8 @@ object RootfsInstaller {
             // ④ 失败路径必须清干净：半截 tmp 树既白占 1–2GB，又会被下次启动的 [cleanupPartial]
             //    多清一遍；更糟的是它看起来像"有环境"（rootfs.tmp 里是半个完整的树）。
             //    替换成功时 [swapLocked] 已自行删掉 tmp，所以这里清的是"还没换上去"的残树。
+            val failedAt = trace.abortOpen()
+            trace.log(false, failedAt, t.message ?: t.javaClass.simpleName)
             runCatching { tmpDir.deleteRecursively() }
             throw t
         }
@@ -391,6 +423,7 @@ object RootfsInstaller {
         destDir: File,
         skipNames: Set<String> = emptySet(),
         expectedSha256: String? = null,
+        trace: InstallTrace? = null,
         onEntry: (String) -> Unit = {},
     ): Boolean {
         if (com.example.zhengdao.rust.CoreNative.isRustAvailable()) {
@@ -406,6 +439,12 @@ object RootfsInstaller {
                 // 计数判断是给「新 Kotlin + 旧 .so」留的保险——旧 .so 会把 0 条目当成功回。
                 if (report.first <= 0L) {
                     throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）")
+                }
+                trace?.let {
+                    it.entries = report.first
+                    it.bytesWritten = report.second
+                    // Rust 流水线内部至少对账一遍；本函数不再做第二次整包哈希。
+                    if (!expectedSha256.isNullOrBlank()) it.hashPasses += 1
                 }
                 Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
             }
@@ -429,7 +468,8 @@ object RootfsInstaller {
             //    处理（离线手选包就是纯 tar）——把它列进"不回退"会直接废掉纯 tar 包。
             Log.w(TAG, "Rust 解压失败，回退 Java 路径（skip=${skipNames.size}）", err)
         }
-        extractArchiveJava(archive, destDir, skipNames, onEntry)
+        val extracted = extractArchiveJava(archive, destDir, skipNames, onEntry)
+        trace?.entries = extracted.toLong()
         return false
     }
 
@@ -440,13 +480,14 @@ object RootfsInstaller {
      * 防穿越），避免增量路径出现第二份"略有不同"的解包逻辑。
      *
      * @param skipNames 需要跳过的成员名（调用方给的是**去掉 `./` 前缀**后的名字）
+     * @return 实际解出的条目数（Rust 路径拿不到走这里时，计时汇总用它；调用方可忽略）
      */
     internal fun extractArchiveJava(
         archive: File,
         destDir: File,
         skipNames: Set<String> = emptySet(),
         onEntry: (String) -> Unit,
-    ) {
+    ): Int {
         destDir.mkdirs()
         val canonicalRoot = destDir.canonicalFile
         var extracted = 0
@@ -484,6 +525,7 @@ object RootfsInstaller {
         // 空归档兜底：纯 tar 分支不再靠"无法识别的格式"报错，改由"一条都没解出来"把
         // 垃圾文件挡在这里（否则会装出一个空环境还报成功）。
         if (extracted == 0) throw InstallFailed("压缩包不含任何条目或格式不受支持")
+        return extracted
     }
 
     /**
@@ -523,8 +565,17 @@ object RootfsInstaller {
      *
      * 失败语义：让位失败 ⇒ 原样不动直接抛；就位失败 ⇒ 先把可能只拷了一半的新树删掉，
      * 再把旧树放回去；**放不回也要在文案里给出 `rootfs.old` 的路径**，绝不静默。
+     *
+     * @param deferOldTreeCleanup true = 新树就位后**不删**旧树，把它作为返回值交给调用方
+     *   （第六十五批：让安装先返回、旧树后台删；返回的目录必须被删或留给
+     *   [cleanupPartial]，否则白占 1–2GB）。false = 旧行为，函数内同步删完再返回。
+     * @return 需要调用方清理的旧树目录；没有旧树 / 已在本函数内删掉时返回 null。
      */
-    internal fun swapLocked(tmpDir: File, rootfsDir: File) {
+    internal fun swapLocked(
+        tmpDir: File,
+        rootfsDir: File,
+        deferOldTreeCleanup: Boolean = false,
+    ): File? {
         if (!tmpDir.isDirectory) throw InstallFailed("临时环境不存在，已放弃替换：${tmpDir.path}")
         val parent = rootfsDir.parentFile
             ?: throw InstallFailed("环境目录没有父目录，已放弃替换：${rootfsDir.path}")
@@ -567,9 +618,16 @@ object RootfsInstaller {
             )
         }
         tmpDir.deleteRecursively()
-        if (hadOld && backup.exists() && !backup.deleteRecursively()) {
-            Log.w(TAG, "旧环境目录删不掉（不影响使用，下次启动会再试）：${backup.path}")
+        if (hadOld && backup.exists()) {
+            // 第六十五批：安装关键路径只做两次 O(1) 改名；旧树的递归删除可以晚点再做。
+            // 传 true 的调用方拿到这个目录后**必须**负责删掉它（前台或后台），失败留给
+            // [cleanupPartial] 下次启动重试——绝不能直接扔掉引用。
+            if (deferOldTreeCleanup) return backup
+            if (!backup.deleteRecursively()) {
+                Log.w(TAG, "旧环境目录删不掉（不影响使用，下次启动会再试）：${backup.path}")
+            }
         }
+        return null
     }
 
     private enum class Format { ZSTD, GZIP, TAR }
