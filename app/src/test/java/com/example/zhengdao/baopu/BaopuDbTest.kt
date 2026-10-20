@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(12, BaopuDb.VERSION) // v12 = 第八十五批（skill_event 加效果信号四列）；v11 = 第五十七批（skill_event 技能事件表）；v9 = 第三十八批（artifact 表）；v8 = 第二十批（工作区列）
+        assertEquals(13, BaopuDb.VERSION) // v13 = 第八十七批（run_trace 轨迹表）；v12 = 第八十五批（skill_event 效果四列）；v11 = 第五十七批（skill_event）；v9 = 第三十八批（artifact 表）
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(12, BaopuDb.VERSION) // v12 = 第八十五批（skill_event 加效果信号四列）；v11 = 第五十七批（skill_event 技能事件表）；v9 = 第三十八批（artifact 表）；v8 = 第二十批（工作区列）
+        assertEquals(13, BaopuDb.VERSION) // v13 = 第八十七批（run_trace 轨迹表）；v12 = 第八十五批（skill_event 效果四列）；v11 = 第五十七批（skill_event）；v9 = 第三十八批（artifact 表）
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -490,8 +490,8 @@ class BaopuDbTest {
             }
         }
         assertEquals(
-            "DDL 里应当找到 message/run_log/plan_batch/compression/artifact 五张引用 session 的表，实际 $refs",
-            setOf("message", "run_log", "plan_batch", "compression", "artifact"),
+            "DDL 里应当找到 message/run_log/plan_batch/compression/artifact/run_trace 六张引用 session 的表，实际 $refs",
+            setOf("message", "run_log", "plan_batch", "compression", "artifact", "run_trace"),
             refs.keys,
         )
         val deleted = BaopuSql.deleteSessionStatements(1L).joinToString("\n") { it.sql }
@@ -505,6 +505,7 @@ class BaopuDbTest {
         // 不要求显式删它（与 v1 的 `part` 同处理）。这里反过来把「级联确实在 DDL 里」钉住：
         // 哪天有人摘掉 CASCADE 又忘了补删除语句 ⇒ refs 里它变 false ⇒ 上面那条 forEach 立刻红。
         assertTrue("artifact 必须带 ON DELETE CASCADE（删会话时台账跟着走）", refs["artifact"] == true)
+        assertTrue("run_trace 必须带 ON DELETE CASCADE（v13 第八十七批：删会话时轨迹跟着走）", refs["run_trace"] == true)
         assertFalse(
             "带级联的表不许在删会话语句里重复删（part / artifact 都靠 SQLite 联动）",
             deleted.contains("DELETE FROM artifact") || deleted.contains("DELETE FROM part"),

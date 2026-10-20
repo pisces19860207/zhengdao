@@ -172,6 +172,13 @@ import kotlin.text.Charsets
  *   ⇒ zd-baopu-db 单写者创建点 1012→1119 平移，本次回填；迁移体 `applyV12Migration` 与 `VERSION = 12`
  *   都落在创建点之后，不参与平移。逐处核过仍是同一段
  *   `Thread(r, "zd-baopu-db").apply { isDaemon = true }`，有名 + daemon 都没变。
+ * - 2026-10-20（第八十七批 · 运行时 trace/失败策略）：**无新增线程**。`BaopuDb.kt` 在
+ *   `BaopuSql` 里加 v13 `run_trace` 建表 ＋ 列序 ＋ 三条写读语句（约 +105 行，**全在创建点之前**）
+ *   ⇒ zd-baopu-db 单写者创建点 1119→1224 平移，本次回填；迁移体 `applyV13Migration` 与
+ *   `VERSION = 13` 都落在创建点之后。`RunEngine.kt` 的轨迹接线**刻意全部写在
+ *   zd-baopu-run 创建点（:222）之后**（新字段/落库壳/分支内调用），与第七十九批抽出的
+ *   `RunLoopRules` 调用并存，创建点原地不动。新增 `agent/RunTrace.kt`／
+ *   `agent/FailurePolicy.kt` 逐行核过无裸 Thread。
  */
 class BareThreadGuardTest {
 
@@ -215,7 +222,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:136",
-            "BaopuDb.kt:1119",
+            "BaopuDb.kt:1224",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:68",
             "KeepaliveWatcher.kt:66",
