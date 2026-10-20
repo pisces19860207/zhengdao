@@ -59,6 +59,7 @@ internal data class EvolutionAuditEntry(
             .put("kind", input.kind.name)
             .put("risk_category", input.riskCategory.name)
             .put("evidence_ids", JSONArray(input.evidenceIds))
+            .put("post_adoption", postAdoptionJson(input.postAdoption))
             .put(
                 "input",
                 JSONObject()
@@ -99,6 +100,27 @@ internal data class EvolutionAuditEntry(
             JSONObject()
                 .put("score", eval.score)
                 .put("case_ids", JSONArray(eval.caseIds))
+        }
+
+    /**
+     * 第一百批：采纳后效果（null ⇒ `null`，键**恒在**）。
+     *
+     * 键恒在是有意的：以后要问「这条决策当时看过采纳后效果吗」，缺键和 null 是两件事
+     * （缺键＝老版本写的行，null＝看了、没有）。键名与 [PostAdoptionEvent] 的 JSONL 同一把尺。
+     */
+    private fun postAdoptionJson(post: PostAdoptionEffect?): Any =
+        if (post == null) {
+            JSONObject.NULL
+        } else {
+            JSONObject()
+                .put("event_id", post.eventId)
+                .put("verdict", post.verdict.name)
+                .put("successes", post.successes)
+                .put("failures", post.failures)
+                .put("corrections", post.corrections)
+                .put("retries", post.retries)
+                .put("window_uses", post.windowUses)
+                .put("window_days", post.windowDays)
         }
 }
 
