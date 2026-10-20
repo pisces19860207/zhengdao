@@ -31,8 +31,20 @@ object InstallNotifier {
     /** 与保活通知（NOTIF_ID=1）区分开，互不覆盖。 */
     private const val NOTIF_ID = 20261008
 
+    /**
+     * 点击通知的 PendingIntent 请求码（P2-12，第六十批）。
+     *
+     * 三处点通知都去 `MainActivity` + `SINGLE_TOP`，Intent 只有 extras 不同，而
+     * `PendingIntent` 的等价性**不看 extras**（只看请求码 + filterEquals）⇒ 请求码一样
+     * 就等于同一个 PendingIntent，`FLAG_UPDATE_CURRENT` 会让三条通知互相改掉对方的 extras
+     * （典型症状：缓存通知清掉安装通知的 `open_terminal`，点了不进终端）。
+     * 本处 [REQ_INSTALL]＝4102，与 `CacheNotifier.REQ_CACHE`＝4101、
+     * `SessionService.REQ_KEEPALIVE`＝4103 各不相同；门禁按源码钉这三个值。
+     */
+    internal const val REQ_INSTALL = 4102
+
     private fun contentIntent(ctx: Context): PendingIntent = PendingIntent.getActivity(
-        ctx, 0,
+        ctx, REQ_INSTALL,
         Intent(ctx, MainActivity::class.java)
             .putExtra("open_terminal", true)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
