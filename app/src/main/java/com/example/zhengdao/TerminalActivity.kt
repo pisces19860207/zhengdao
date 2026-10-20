@@ -32,7 +32,12 @@ import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.AgentRepository
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.browser.BrowserHolder
+import com.example.zhengdao.terminal.EdgeSwipeTracker
 import com.example.zhengdao.terminal.KnowledgeBaseHints
+import com.example.zhengdao.terminal.deriveTerminalRequest
+import com.example.zhengdao.terminal.downloadPercentBucket
+import com.example.zhengdao.terminal.nextPaneCountAfterClose
+import com.example.zhengdao.terminal.nextPaneCountAfterSplit
 import com.example.zhengdao.terminal.NetWatch
 import com.example.zhengdao.terminal.ProotLauncher
 import com.example.zhengdao.terminal.SessionManager
@@ -202,7 +207,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 ).show()
                 else -> {
                     runCatching { SessionManager.write(byteArrayOf(0x02, '"'.code.toByte())) }
-                    paneCount = if (paneCount > 0) paneCount + 1 else 2
+                    paneCount = nextPaneCountAfterSplit(paneCount)
                     Toast.makeText(this, "已分成上下两块", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -220,7 +225,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 paneCount == 1 -> Toast.makeText(this, "只剩一块，不用关", Toast.LENGTH_SHORT).show()
                 else -> {
                     runCatching { SessionManager.write(byteArrayOf(0x02, 'x'.code.toByte())) }
-                    paneCount = if (paneCount > 1) paneCount - 1 else 1
+                    paneCount = nextPaneCountAfterClose(paneCount)
                 }
             }
         }
@@ -364,10 +369,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         Unit
     }
 
-    // 边缘右滑的旁观状态（不参与事件消费，见 [installEdgeSwipeToClose]）
-    private var edgeStartX = 0f
-    private var edgeStartY = 0f
-    private var edgeTracking = false
+    // 边缘右滑的旁观状态（不参与事件消费，见 [installEdgeSwipeToClose]）。
+    // 判定已搬进 [EdgeSwipeTracker]（第七十四批纯逻辑抽取）：只吃浮点数、不碰 View，可单测。
+    private val edgeSwipe = EdgeSwipeTracker()
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         val density = resources.displayMetrics.density
@@ -375,40 +379,27 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         val trigger = EDGE_SWIPE_TRIGGER_DP * density
         val slop = EDGE_SWIPE_SLOP_DP * density
         when (ev.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN -> {
-                edgeTracking = ev.x <= edge
-                if (edgeTracking) {
-                    edgeStartX = ev.x
-                    edgeStartY = ev.y
-                }
-            }
+            android.view.MotionEvent.ACTION_DOWN -> edgeSwipe.onDown(ev.x, ev.y, edge)
             android.view.MotionEvent.ACTION_MOVE,
             android.view.MotionEvent.ACTION_UP -> {
-                if (edgeTracking) {
-                    val dx = ev.x - edgeStartX
-                    val dy = kotlin.math.abs(ev.y - edgeStartY)
-                    // 横向占优 + 走够阈值 + 纵向没跑偏，才算「右滑返回」；
-                    // 纵向占优的滑动一律放过（终端继续滚动）。
-                    //
-                    // 2026-10-10 UIUX 审计 B7 修：**排除"正在选词"**。
-                    // 长按选中文字后拖动选择手柄，轨迹恰好是"横向 >40dp、纵向 <40dp"——
-                    // 和右滑返回判据完全同形。旧代码不查选词状态 ⇒ 起手点又常在左边缘，
-                    // 于是"想选一段命令"被判成"右滑关闭"，终端连带这一屏直接没了，且无撤销。
-                    // [TerminalView.isSelectingText()] 是上游公开方法（terminal-view:1463）。
-                    val selectingText = ::termView.isInitialized && termView.isSelectingText()
-                    if (!selectingText && dx > trigger && dx > dy && dy < slop) {
-                        edgeTracking = false
-                        android.util.Log.d(
-                            "EdgeSwipe",
-                            "命中 ${if (ev.actionMasked == android.view.MotionEvent.ACTION_UP) "UP 兜底" else "MOVE"}" +
-                                " dx=$dx dy=$dy startX=$edgeStartX",
-                        )
-                        finish()
-                    }
+                // 四条判据（横向占优 / 走够阈值 / 纵向没跑偏 / 排除选词）全在
+                // [EdgeSwipeTracker.onDrag] 的 KDoc 里；这里只留事件分发与命中日志。
+                val up = ev.actionMasked == android.view.MotionEvent.ACTION_UP
+                val hit = edgeSwipe.onDrag(ev.x, ev.y, trigger, slop) {
+                    ::termView.isInitialized && termView.isSelectingText()
                 }
-                if (ev.actionMasked == android.view.MotionEvent.ACTION_UP) edgeTracking = false
+                if (hit) {
+                    // 命中日志保留搬移前的三个字段（dx/dy/startX），真机排查误触时照旧能对账。
+                    android.util.Log.d(
+                        "EdgeSwipe",
+                        "命中 ${if (up) "UP 兜底" else "MOVE"}" +
+                            " dx=${edgeSwipe.lastDx} dy=${edgeSwipe.lastDy} startX=${edgeSwipe.startXValue}",
+                    )
+                    finish()
+                }
+                if (up) edgeSwipe.onUp()
             }
-            android.view.MotionEvent.ACTION_CANCEL -> edgeTracking = false
+            android.view.MotionEvent.ACTION_CANCEL -> edgeSwipe.onCancel()
         }
         return super.dispatchTouchEvent(ev)
     }
@@ -496,14 +487,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /** 从 Intent 读一次「进终端请求」（autocmd + agent_id）。onCreate 与 onNewIntent 共用。 */
     private fun readRequestFromIntent(intent: Intent?) {
-        val cmd = intent?.getStringExtra("autocmd")?.takeIf { it.isNotBlank() }
-        pendingAutocmd = cmd
-        // agent_id 只在**带着命令**时才算一次请求：见 pendingAgentId 注释。
-        pendingAgentId = if (cmd == null) {
-            null
-        } else {
-            intent.getStringExtra("agent_id")?.takeIf { it.isNotBlank() }
-        }
+        // 两条优先级规则（空白命令不算请求、agent_id 只在带命令时才算）已搬进纯函数，
+        // 判据与理由见 [deriveTerminalRequest] 的 KDoc；这里只做取值与落字段。
+        val request = deriveTerminalRequest(
+            autocmdRaw = intent?.getStringExtra("autocmd"),
+            agentIdRaw = intent?.getStringExtra("agent_id"),
+        )
+        pendingAutocmd = request.cmd
+        pendingAgentId = request.agentId
     }
 
     /**
@@ -1891,7 +1882,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                         shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
                     ) { done, total ->
                         if (total > 0) {
-                            val percent = ((done * 100 / total).coerceIn(0, 100) / 20) * 20
+                            val percent = downloadPercentBucket(done, total)
                             if (percent != lastPercent) {
                                 lastPercent = percent
                                 installStatus(

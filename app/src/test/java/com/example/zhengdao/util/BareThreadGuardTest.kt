@@ -155,6 +155,11 @@ import kotlin.text.Charsets
  *   ⇒ zd-baopu-run 创建点 210→219，本次回填；资源机本体在
  *   `agent/ChannelSwitchFsm.kt`（纯判据，逐行核过无裸 Thread；`dispatch` 用
  *   方法级 synchronized，不建线程）。
+ * - 2026-10-20（第七十四批 · TerminalActivity 纯逻辑抽取）：**无新增线程**。纯逻辑搬进
+ *   `terminal/` 四个 helper（Intent 路由 / 边滑判定 / 分屏计数 / 进度分档），活动侧只留调用：
+ *   import 区 +5（zd-paste 83→88），其余六处等值搬移净 −14 行 ⇒ 五个创建点整体 −9
+ *   （660→651 / 893→884 / 1707→1698 / 1767→1758 / 1853→1844）。逐处核过仍是同一段
+ *   `Thread {` / `Thread(…, "zd-…")`，本次回填。
  */
 class BareThreadGuardTest {
 
