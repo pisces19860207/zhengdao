@@ -102,6 +102,26 @@ class RootfsInstallerBackgroundCleanupTest {
     }
 
     @Test
+    fun `后台删除不跟随符号链接 不碰树外目标`() {
+        val h = home("zd-r65-symlink")
+        val outside = File(h, "outside").apply { mkdirs() }
+        tree(outside, "keep.txt", "keep")
+        val trash = File(h, "trash").apply { mkdirs() }
+        tree(trash, "normal.txt", "x")
+        val created = runCatching {
+            java.nio.file.Files.createSymbolicLink(
+                File(trash, "fd").toPath(),
+                outside.toPath(),
+            )
+        }.isSuccess
+        org.junit.Assume.assumeTrue("当前文件系统不允许创建符号链接，跳过", created)
+
+        assertTrue("整棵树应删净", OldTreeCleaner.deleteTree(trash))
+        assertFalse(trash.exists())
+        assertTrue("符号链接指向的树外目标必须原样保留", File(outside, "keep.txt").isFile)
+    }
+
+    @Test
     fun `垃圾目录名判定只认 rootfs_old点纯数字`() {
         assertTrue(OldTreeCleaner.isTrashName("rootfs.old.123"))
         assertFalse(OldTreeCleaner.isTrashName("rootfs.old"))

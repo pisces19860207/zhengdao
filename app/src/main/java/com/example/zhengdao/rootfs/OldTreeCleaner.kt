@@ -2,6 +2,13 @@
 package com.example.zhengdao.rootfs
 
 import java.io.File
+import java.io.IOException
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.Executors
 
 /**
@@ -61,10 +68,10 @@ internal object OldTreeCleaner {
     fun submitDelete(trash: File) {
         val task = Runnable {
             val at = System.nanoTime()
-            val ok = runCatching { trash.deleteRecursively() }.getOrDefault(false)
+            val ok = deleteTree(trash)
             val ms = (System.nanoTime() - at) / 1_000_000L
             RunLog.log(
-                "旧环境后台清理：" + (if (ok) "完成" else "失败（不影响使用，下次启动会再试）") +
+                "旧环境后台清理：" + (if (ok) "完成" else "未删净（不影响使用，下次启动会再试）") +
                     "，${ms}ms，${trash.name}"
             )
         }
@@ -77,6 +84,58 @@ internal object OldTreeCleaner {
         }
         runCatching { executor.execute(task) }
             .onFailure { RunLog.log("旧树后台清理派发失败（不影响使用，下次启动会再试）：${it.message}") }
+    }
+
+    /**
+     * 深删旧树，但**不跟随符号链接**（2026-10-20 真机证据）。
+     *
+     * 为什么不用 `File.deleteRecursively()`：它用 `File.isDirectory` 判定类型，会跟随符号链接。
+     * rootfs 里的 `/dev/fd -> /proc/self/fd` 这类链接会把删除带进宿主 `/proc`，SELinux 拒绝
+     * （logcat：`avc: denied { write } ... name="fd" ... proc`），函数返回 false——第一次真机
+     * 改进版跑完，旧树其实已删净，日志却报「失败」；在策略宽松的设备上还可能误删应用目录
+     * 之外的宿主文件。
+     *
+     * `Files.walkFileTree` 默认**不跟随**符号链接：链接本身按文件访问、只删链接。目录先补上
+     * owner 写位（解包保留的只读目录也能删空），单条失败不中断其余条目，最后以**路径真的
+     * 不存在**判成功，而不是信某个中间返回值。
+     */
+    internal fun deleteTree(root: File): Boolean {
+        val path = root.toPath()
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return true
+        return runCatching {
+            Files.walkFileTree(
+                path,
+                object : SimpleFileVisitor<Path>() {
+                    override fun preVisitDirectory(
+                        dir: Path,
+                        attrs: BasicFileAttributes,
+                    ): FileVisitResult {
+                        runCatching { dir.toFile().setWritable(true, true) }
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun visitFile(
+                        file: Path,
+                        attrs: BasicFileAttributes,
+                    ): FileVisitResult {
+                        runCatching { Files.deleteIfExists(file) }
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
+                        // 单条删不掉（被占用/权限）不中断整棵树；总账最后按 exists 判
+                        runCatching { Files.deleteIfExists(file) }
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+                        runCatching { Files.deleteIfExists(dir) }
+                        return FileVisitResult.CONTINUE
+                    }
+                },
+            )
+            !Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+        }.getOrDefault(false)
     }
 
     /** `rootfs.old.<纯数字>` 判定（纯函数，单测直接调）。 */
@@ -94,8 +153,8 @@ internal object OldTreeCleaner {
         val dirs = filesDir.listFiles { f -> f.isDirectory && isTrashName(f.name) } ?: return 0
         var deleted = 0
         for (d in dirs) {
-            if (runCatching { d.deleteRecursively() }.getOrDefault(false)) deleted++
-            else RunLog.log("旧树垃圾目录删不掉（下次再试）：${d.name}")
+            if (deleteTree(d)) deleted++
+            else RunLog.log("旧树垃圾目录未删净（下次再试）：${d.name}")
         }
         return deleted
     }
