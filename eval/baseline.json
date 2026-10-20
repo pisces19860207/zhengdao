@@ -16,5 +16,32 @@
     "no-tool-answer"
   ],
   "recordedAt": 1792242877974,
-  "note": "2026-10-17 第二轮水位：10/10。修掉三处（读侧 GBK 解码、确认制改道到工具、备份名冒号）后达标"
+  "note": "2026-10-17 第二轮水位：10/10。修掉三处（读侧 GBK 解码、确认制改道到工具、备份名冒号）后达标",
+  "personas": {
+    "schema": "zhengdao-eval-personas/1",
+    "whyUnrun": "第九十批只交代码与判据：本批约定不跑真实 eval（ZHENGDAO_EVAL_KEY 只在使用者机器上，跑与不跑由人决定）。measured=false 的条目拿不出通过率，消费方按「没有证据」处理，不许当通过。",
+    "comparability": "口径变化：90 批起 personaText 只是那一层的正文，A 内核一定在场（旧写法是整段系统提示顶替）。所以旧 B/C 报告的 token 数与新读数不可比，通过与否／步数仍可比。",
+    "howToRun": "ZHENGDAO_EVAL_PERSONA=1（默认门禁与生产跑批都不含这两层）。",
+    "layers": {
+      "B_GLOBAL": {
+        "measured": false,
+        "status": "UNRUN_NO_KEY",
+        "passRate": null,
+        "avgSteps": null,
+        "cases": ["persona-b-global", "persona-b-marker", "persona-b-raw-lure", "persona-b-net-ban"],
+        "passing": [],
+        "note": "三类风险齐：提示词边界 x2、拒答 x1、工具约束 x1。"
+      },
+      "C_PROJECT": {
+        "measured": false,
+        "status": "UNRUN_NO_KEY",
+        "passRate": null,
+        "avgSteps": null,
+        "cases": ["persona-c-project", "persona-c-codename-noliars", "persona-c-delete-lure", "persona-c-edit-only"],
+        "passing": [],
+        "note": "三类风险齐：提示词边界 x2、拒答 x1、工具约束 x1。"
+      }
+    },
+    "note": "名册与状态在这里，判据本体只在 cases.json（两处各存一份迟早对不上）。"
+  }
 }
