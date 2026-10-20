@@ -186,3 +186,100 @@ internal data class EvolutionDecision(
         require(reasons.isNotEmpty()) { "决策必须带原因（至少一条候选证据）" }
     }
 }
+
+/**
+ * 调用方对一条候选的评估来源：自检 v2（84）／eval／85 效果信号的接缝。
+ *
+ * 本批不新建第二套自检结果存储；84 合入后可由它的结果读出这四个字段，
+ * 没有就传 null／空计数，决策口会给出 DEFER 并写清缺什么。
+ */
+internal fun interface EvolutionAssessmentSource {
+    fun assess(candidate: ProposalCandidate): EvolutionAssessment
+}
+
+/**
+ * 86 候选 → 决策输入：只取 id／kind／证据 id。
+ * 候选正文、target、createdAt 都不进决策口——原因链里只允许出现证据 id。
+ */
+internal fun toDecisionInput(
+    candidate: ProposalCandidate,
+    assessment: EvolutionAssessment,
+): EvolutionDecisionInput = EvolutionDecisionInput(
+    candidateId = candidate.id,
+    kind = candidate.kind,
+    riskCategory = assessment.riskCategory ?: EvolutionRiskCategory.defaultFor(candidate.kind),
+    evidenceIds = buildList {
+        candidate.evidence.runLogIds.forEach { add("run_log:$it") }
+        candidate.evidence.skillEventIds.forEach { add("skill_event:$it") }
+    },
+    selfCheck = assessment.selfCheck,
+    eval = assessment.eval,
+    effect = assessment.effect,
+)
+
+/**
+ * 唯一决策口：读候选 → 出决策 → 落一条审计。
+ *
+ * 三条不做：
+ *   - 不写候选状态（86 的 `listPending()` 是唯一读口，写口不在这里）；
+ *   - 不执行采纳／回滚（只返回 [EvolutionDecision]，由现有采纳路径执行）；
+ *   - 不碰任何技能／人设文件。
+ *
+ * @param policy v1 策略（默认全人批；L3 开关默认 false）
+ * @param audit 审计落点；**必填**。写失败会向上抛，本次决策不返回
+ * @param clock 审计时刻（测试注入固定值）
+ */
+internal class EvolutionDecisionPort(
+    private val policy: EvolutionPolicy = EvolutionPolicy(),
+    private val audit: EvolutionAuditSink,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
+
+    /** 决策一条输入；每次调用恰好落一条审计。 */
+    fun decide(input: EvolutionDecisionInput, operatorId: String): EvolutionDecision {
+        require(operatorId.isNotBlank()) { "每条决策必须记操作者" }
+        val judgement = policy.judge(input)
+        val decision = EvolutionDecision(
+            candidateId = input.candidateId,
+            recommendation = judgement.recommendation,
+            confidence = judgement.confidence,
+            riskClass = judgement.riskClass,
+            requiresApproval = judgement.requiresApproval,
+            reasons = judgement.reasons,
+        )
+        audit.record(
+            EvolutionAuditEntry(
+                atMs = clock(),
+                operatorId = operatorId,
+                policy = EvolutionPolicySnapshot(
+                    l3AutoLowRisk = policy.autoLowRiskEnabled,
+                    evalFloor = policy.evalFloor,
+                    minEffectSamples = policy.minEffectSamples,
+                ),
+                input = input,
+                decision = decision,
+            ),
+        )
+        return decision
+    }
+
+    /** 86 候选＋评估 → 决策（最小接线；不碰候选档的写口）。 */
+    fun decide(
+        candidate: ProposalCandidate,
+        assessment: EvolutionAssessment,
+        operatorId: String,
+    ): EvolutionDecision = decide(toDecisionInput(candidate, assessment), operatorId)
+
+    /**
+     * 读 86 的 PENDING 候选并逐条决策。只调 `listPending()`；
+     * 不改状态、不追加、不删除、不移动候选文件。
+     */
+    fun decidePending(
+        store: ProposalCandidateStore,
+        assessment: EvolutionAssessmentSource,
+        operatorId: String,
+    ): List<EvolutionDecision> =
+        store.listPending().map { candidate ->
+            decide(toDecisionInput(candidate, assessment.assess(candidate)), operatorId)
+        }
+}

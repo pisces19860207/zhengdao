@@ -1,0 +1,133 @@
+// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+//
+// 第八十八批（2026-10-20，§B 92 进化地基 ⑤）：**决策审计**——每条决策追加一行 JSONL。
+//
+// 记什么（派工单 §1）：
+//   - 输入摘要：候选 id/kind/风险类别/证据 id＋自检结果/eval 分数/效果计数（只有 id 与数值）；
+//   - 输出：建议/置信度/风险等级/是否人批/原因链（原因只带证据 id）；
+//   - 操作者与时刻；以及当时的策略快照（L3 开关/过线值/样本下限），
+//     这样以后开关变了也能解释「当时为什么免人批」。
+//
+// 不记什么：候选正文、target、用户原话、技能/人设内容、工具参数——一个字都不进来。
+// 写失败不吞：决策口必须先落审计再把决策交出去，宁可这次决策不返回，也不留无账的决策。
+package com.example.zhengdao.baopu
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+
+/** 当时生效的策略参数（审计用；只读快照）。 */
+internal data class EvolutionPolicySnapshot(
+    val l3AutoLowRisk: Boolean,
+    val evalFloor: Double,
+    val minEffectSamples: Int,
+)
+
+/** 一条决策审计：输入摘要＋输出＋是否人批＋操作者＋策略快照。 */
+internal data class EvolutionAuditEntry(
+    val atMs: Long,
+    val operatorId: String,
+    val policy: EvolutionPolicySnapshot,
+    val input: EvolutionDecisionInput,
+    val decision: EvolutionDecision,
+) {
+    init {
+        require(operatorId.isNotBlank()) { "审计必须记操作者" }
+    }
+
+    /** JSONL 的一行（键名固定，测试逐个钉）。 */
+    fun toJson(): JSONObject {
+        val reasons = JSONArray()
+        for (reason in decision.reasons) {
+            reasons.put(
+                JSONObject()
+                    .put("code", reason.code.name)
+                    .put("evidence_ids", JSONArray(reason.evidenceIds)),
+            )
+        }
+        return JSONObject()
+            .put("at_ms", atMs)
+            .put("operator", operatorId)
+            .put(
+                "policy",
+                JSONObject()
+                    .put("l3_auto_low_risk", policy.l3AutoLowRisk)
+                    .put("eval_floor", policy.evalFloor)
+                    .put("min_effect_samples", policy.minEffectSamples),
+            )
+            .put("candidate_id", input.candidateId)
+            .put("kind", input.kind.name)
+            .put("risk_category", input.riskCategory.name)
+            .put("evidence_ids", JSONArray(input.evidenceIds))
+            .put(
+                "input",
+                JSONObject()
+                    .put("self_check", selfCheckJson(input.selfCheck))
+                    .put("eval", evalJson(input.eval))
+                    .put(
+                        "effect",
+                        JSONObject()
+                            .put("successes", input.effect.successes)
+                            .put("failures", input.effect.failures)
+                            .put("corrections", input.effect.corrections)
+                            .put("retries", input.effect.retries)
+                            .put("signal_ids", JSONArray(input.effect.signalIds)),
+                    ),
+            )
+            .put("recommendation", decision.recommendation.name)
+            .put("confidence", decision.confidence)
+            .put("risk_class", decision.riskClass.name)
+            .put("requires_approval", decision.requiresApproval)
+            .put("reasons", reasons)
+    }
+
+    private fun selfCheckJson(selfCheck: SelfCheckEvidence?): Any =
+        if (selfCheck == null) {
+            JSONObject.NULL
+        } else {
+            JSONObject()
+                .put("passed", selfCheck.passed)
+                .put("rollback_available", selfCheck.rollbackAvailable)
+                .put("case_ids", JSONArray(selfCheck.caseIds))
+                .put("rule_ids", JSONArray(selfCheck.failedRuleIds))
+        }
+
+    private fun evalJson(eval: EvolutionEval?): Any =
+        if (eval == null) {
+            JSONObject.NULL
+        } else {
+            JSONObject()
+                .put("score", eval.score)
+                .put("case_ids", JSONArray(eval.caseIds))
+        }
+}
+
+/** 审计落点（测试注入内存实现）。 */
+internal fun interface EvolutionAuditSink {
+    fun record(entry: EvolutionAuditEntry)
+}
+
+/**
+ * 追加式 JSONL 审计（`抱朴记忆/决策审计.jsonl`）。
+ *
+ * 只追加、不覆盖、不改历史行；父目录不存在就建。写入失败向上抛——
+ * 由决策口决定「这次决策不返回」，而不是静默丢账。
+ */
+internal class EvolutionAuditLog(private val file: File) : EvolutionAuditSink {
+
+    @Synchronized
+    override fun record(entry: EvolutionAuditEntry) {
+        file.parentFile?.mkdirs()
+        file.appendText(entry.toJson().toString() + "\n", Charsets.UTF_8)
+    }
+
+    fun file(): File = file
+
+    companion object {
+        /** 审计文件名；与记忆/技能同一棵目录，用户可看可备份。 */
+        const val FILE_NAME = "决策审计.jsonl"
+
+        /** 生产落点：`<App私有>/抱朴记忆/决策审计.jsonl`（本批不接线，由调用方传根）。 */
+        fun under(globalRoot: File): EvolutionAuditLog = EvolutionAuditLog(File(globalRoot, FILE_NAME))
+    }
+}
