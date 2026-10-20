@@ -136,7 +136,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    val drawerWidth = if (screenWidthDp * 0.8f > 300f) 300.dp else (screenWidthDp * 0.8f).dp
+    val drawerWidth = drawerWidthDp(screenWidthDp).dp
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
     BackHandler(enabled = showSettings) { showSettings = false }
@@ -233,8 +233,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     }
 
     val state = controller.engineState.value
-    val lastAssistant = controller.messages.lastOrNull { it.role != "user" }
-        ?.parts?.lastOrNull { it.kind == "text" }?.text.orEmpty()
+    val lastAssistant = lastNonUserPartText(controller.messages)
     // ── 第三十八批 §8（用户 2026-10-19 追加）：顶栏那一条显示什么 ──────────────
     // 用户原话：「把那个复制功能做小点，这样点击展开就能显示更多的那些产物的内容了，
     // 也不用一定要去左侧栏翻产物区里的东西了。」
@@ -385,8 +384,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         Text(text = "☰", style = MaterialTheme.typography.titleMedium)
                     }
                     Text(
-                        text = stringResource(stateLabel(state)) +
-                            if (controller.engineStep.value > 0) " · ${controller.engineStep.value}" else "",
+                        text = statusLineWithStep(
+                            stringResource(stateLabel(state)),
+                            controller.engineStep.value,
+                        ),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium,
                     )
@@ -613,12 +614,12 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
             // 内容签名变化（新消息/新步骤行/忙态/操作卡增减）⇒ 贴着底部就滚到最新
             // （最新内容紧贴输入框上方）；上翻读历史时不抢，只记「有新内容」。
-            val bottomCardsInput = BottomCardsInput(
-                confirmCard = controller.confirmCard != null,
-                askCard = controller.askCard != null,
-                pendingMemory = controller.pendingMemories.isNotEmpty(),
-                memoryCandidate = controller.memoryCandidates.isNotEmpty(),
-                skillProposal = controller.pendingSkillProposals.isNotEmpty(),
+            val bottomCardsInput = screenBottomCardsInput(
+                hasConfirmCard = controller.confirmCard != null,
+                hasAskCard = controller.askCard != null,
+                pendingMemoryCount = controller.pendingMemories.size,
+                memoryCandidateCount = controller.memoryCandidates.size,
+                skillProposalCount = controller.pendingSkillProposals.size,
             )
             var expandAllCards by remember { mutableStateOf(false) }
             val cardsView = bottomCards(bottomCardsInput, expandAllCards)
