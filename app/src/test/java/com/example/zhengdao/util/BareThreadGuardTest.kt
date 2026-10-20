@@ -155,6 +155,13 @@ import kotlin.text.Charsets
  *   ⇒ zd-baopu-run 创建点 210→219，本次回填；资源机本体在
  *   `agent/ChannelSwitchFsm.kt`（纯判据，逐行核过无裸 Thread；`dispatch` 用
  *   方法级 synchronized，不建线程）。
+ * - 2026-10-20（第八十三批 · Intent 分享 + 深链）：**无新增线程**。`MainActivity.kt`
+ *   加外部 Intent 分发口（单次消费门 + `dispatchIncomingIntent`）与两处 Compose 效果，
+ *   并给 `onCreate` 加「恢复不重放」判据（`allowIncoming = savedInstanceState == null`）
+ *   （+95 行全在 `zd-update-check` 之前）⇒ 创建点 301→396；`TerminalActivity.kt`
+ *   加深链预填字段/读入/注入函数与两处调用（+49 行）⇒ 五个创建点
+ *   651→662 / 884→931 / 1698→1747 / 1758→1807 / 1844→1893（:88 的 zd-paste 在其前，不动）。
+ *   逐处核过仍是同一段 `Thread {` / `Thread(r, "…")`，本次回填。
  * - 2026-10-20（第七十四批 · TerminalActivity 纯逻辑抽取）：**无新增线程**。纯逻辑搬进
  *   `terminal/` 四个 helper（Intent 路由 / 边滑判定 / 分屏计数 / 进度分档），活动侧只留调用：
  *   import 区 +5（zd-paste 83→88），其余六处等值搬移净 −14 行 ⇒ 五个创建点整体 −9
@@ -213,7 +220,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",
             "KnowledgeBaseHints.kt:133",
             "LlmClient.kt:877",
-            "MainActivity.kt:301",
+            "MainActivity.kt:396",
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
@@ -224,11 +231,11 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:586",
             "SettingsEnvActivity.kt:713",
             "TerminalActivity.kt:88",
-            "TerminalActivity.kt:651",
-            "TerminalActivity.kt:884",
-            "TerminalActivity.kt:1698",
-            "TerminalActivity.kt:1758",
-            "TerminalActivity.kt:1844",
+            "TerminalActivity.kt:662",
+            "TerminalActivity.kt:931",
+            "TerminalActivity.kt:1747",
+            "TerminalActivity.kt:1807",
+            "TerminalActivity.kt:1893",
             "ZhengdaoApp.kt:82",
             "ZhengdaoApp.kt:132",
         )

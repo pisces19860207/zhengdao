@@ -47,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -72,7 +73,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.content.getSystemService
+import com.example.zhengdao.MAX_BAOPU_CHARS
 import com.example.zhengdao.R
+import com.example.zhengdao.mergeIncomingDraft
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -117,6 +120,23 @@ internal fun BaopuComposer(
     val attachDesc = stringResource(R.string.baopu_attach_title)
     // 相机要写入的那个临时 Uri（TakePicture 先给 Uri，回调时才知道成没成）
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    // 第八十三批（§B 88）：外部分享 / `zhengdao://ask?q=` 的预填。
+    // **只改输入框内容，绝不调用 onSend**——发送只由用户点按钮触发。
+    // 截断提示里的字数用路由层的实际上限（MAX_BAOPU_CHARS），不另写一个数。
+    val incomingPrompt by BaopuIntents.promptRequestedState
+    LaunchedEffect(incomingPrompt) {
+        val request = incomingPrompt ?: return@LaunchedEffect
+        if (!BaopuIntents.consumePrompt(request)) return@LaunchedEffect
+        text = mergeIncomingDraft(text, request.text)
+        if (request.truncated) {
+            Toast.makeText(
+                ctx,
+                "分享内容过长，已截断到 $MAX_BAOPU_CHARS 字",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
 
     /** 一次选中若干 Uri，能存几个存几个；有失败就报一句（不静默）。 */
     fun saveAll(uris: List<Uri>, fallback: String) {

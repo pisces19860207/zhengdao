@@ -78,6 +78,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name"
             android:theme="@style/Theme.Zhengdao"
             android:windowSoftInputMode="adjustResize">
@@ -85,6 +86,40 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 第八十三批（§B 88）：外部入口只开三扇小门。launchMode=singleTop 让 App
+                 已在前台时走 onNewIntent（与 onCreate 共用同一个路由判据）。
+                 · 收分享：其他 App「分享文本」→ 抱朴输入框（只预填，不发送）；
+                 · zhengdao://ask?q=… → 抱朴；
+                 · zhengdao://terminal?cmd=… → 终端（只预填到输入行，不带换行、不执行）。
+                 **不声明 http/https**：那是玄览的浏览器地盘；也不收 file:// 与任何图片/文件类型。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="ask"
+                    android:scheme="zhengdao" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="terminal"
+                    android:scheme="zhengdao" />
             </intent-filter>
         </activity>
         <!-- ⚠️ 终端页的实例唯一性由**发起方的 Intent flag** 保证（见 MainActivity.terminalIntent），
