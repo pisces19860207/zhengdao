@@ -7,6 +7,8 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.CompletionResult
+import com.example.zhengdao.baopu.CompressionMetrics
+import com.example.zhengdao.baopu.CompressionQuality
 import com.example.zhengdao.baopu.CompressionRecord
 import com.example.zhengdao.baopu.Compressor
 import com.example.zhengdao.baopu.HistoryMessage
@@ -71,8 +73,16 @@ internal class CompressionRunner(
 ) {
 
     sealed interface Outcome {
-        /** 压成了：[record] 已落库，调用方拿 `record.summary` 当摘要替身。 */
-        data class Ok(val record: CompressionRecord) : Outcome
+        /**
+         * 压成了：[record] 已落库，调用方拿 `record.summary` 当摘要替身。
+         *
+         * [metrics] 是第九十一批的只读度量（token/保留率/触发原因）；量不出来时为
+         * null，**不影响**压缩本身是否成功。
+         */
+        data class Ok(
+            val record: CompressionRecord,
+            val metrics: CompressionMetrics? = null,
+        ) : Outcome
 
         /** 该压但没压（选区为空 / 通道降级）：[reason] 是给人看的一句话。 */
         data class Skipped(val reason: String) : Outcome
@@ -148,9 +158,32 @@ internal class CompressionRunner(
                 )
                 val record = parsed.copy(summary = merged)
                 val sourceTokens = range.sumOf { tokensOf(it.text) }
-                store.insert(sessionId, record, sourceTokens, tokensOf(record.summary))
+                val summaryTokens = tokensOf(record.summary)
+                // 第九十一批：只读度量（标签保留率/token/触发原因）。量不出来也只记一行，
+                // **绝不影响**落库与摘要替身（压缩是优化，度量更不配让整轮陪葬）。
+                val metrics = runCatching {
+                    CompressionQuality.measure(
+                        sourceTexts = range.map { it.text },
+                        summary = record.summary,
+                        triggerReason = CompressionQuality.triggerReason(sourceTokens, provider),
+                        summaryTokens = summaryTokens,
+                        sourceTokens = sourceTokens,
+                    )
+                }.getOrNull()
+                store.insert(sessionId, record, sourceTokens, summaryTokens)
                 log("抱朴压缩：${ids.size} 条压成摘要（模型 ${r.model}），已落库")
-                Outcome.Ok(record)
+                if (metrics != null) {
+                    log("抱朴压缩度量：${metrics.summaryLine()}")
+                    if (metrics.lowRetention) {
+                        log(
+                            "抱朴压缩告警：关键标签保留率 ${metrics.labelsKept}/${metrics.labelsTotal} 低于 " +
+                                "${CompressionQuality.LOW_RETENTION_THRESHOLD} ⇒ 只记录，不重压、不改阈值、不拦对话",
+                        )
+                    }
+                } else {
+                    log("抱朴压缩度量：本次读数失败（摘要已照常落库，不影响对话）")
+                }
+                Outcome.Ok(record, metrics)
             }
 
             is CompletionResult.Failed -> {
