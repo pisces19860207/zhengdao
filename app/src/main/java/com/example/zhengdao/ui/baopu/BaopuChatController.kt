@@ -22,6 +22,8 @@ import com.example.zhengdao.baopu.BaopuSql
 import com.example.zhengdao.baopu.emptyRoundUsage
 import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.SessionCompressionStore
+import com.example.zhengdao.baopu.MemoryEntry
+import com.example.zhengdao.baopu.MemoryInjectionBudget
 import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
@@ -277,6 +279,16 @@ internal class BaopuChatController(context: Context) {
 
     /** 记忆候选（status=CANDIDATE 的条目；确认/不记都在这里操作）。 */
     var memoryCandidates by mutableStateOf(listOf<com.example.zhengdao.baopu.MemoryEntry>())
+        private set
+
+    /**
+     * 记忆注入预算的只读预览（第九十一批 R3）。
+     *
+     * **不驱动实际注入**：RunEngine 的注入仍走原来的 `MemoryRules.trimToBudget`；
+     * 这里只把「按分数/新鲜度/相关性排序后，条数/字符预算装得下几条」算出来，
+     * 供后续批次与报告取读数（本批 UI 不渲染它，视觉零变化）。
+     */
+    internal var memoryInjectionPreview by mutableStateOf(MemoryInjectionBudget.Plan.EMPTY)
         private set
 
     /**
@@ -1998,12 +2010,20 @@ internal class BaopuChatController(context: Context) {
             val sid = sessionId
             val recomputeInterrupt = force || !runningNow()
             val snap = if (sid == null) null else withContext(Dispatchers.IO) {
+                // 第九十一批：记忆一次读、两处用（候选列表 ＋ 注入预算预览），
+                // 不再在 refresh 收尾时回主线程读文件。
+                val memories = store.loadAll()
                 RefreshSnapshot(
                     messages = readMessages(sid),
                     stepRows = readStepRows(sid),
                     interruptedStep = if (recomputeInterrupt) BaopuRuntime.interruptedStep(db, sid) else null,
                     pendingGone = pendingStore.load(sid) == null,
                     compression = runCatching { SessionCompressionStore(db).latest(sid) }.getOrNull(),
+                    memories = memories,
+                    injectionPreview = MemoryInjectionBudget.plan(
+                        memories.filter { it.status == MemoryStatus.CONFIRMED },
+                        System.currentTimeMillis(),
+                    ),
                 )
             }
             messages = snap?.messages ?: emptyList()
@@ -2035,7 +2055,7 @@ internal class BaopuChatController(context: Context) {
                 engine.restoreCompression(rec.summary, rec.compressedIds.toSet())
                 compressionNote = CompressionNote(count = rec.compressedIds.size, summary = rec.summary)
             }
-            refreshMemory()
+            refreshMemory(snap?.memories, snap?.injectionPreview)
         }
     }
 
@@ -2046,6 +2066,10 @@ internal class BaopuChatController(context: Context) {
         val interruptedStep: Int?,
         val pendingGone: Boolean,
         val compression: com.example.zhengdao.baopu.CompressionRecord?,
+        /** 第九十一批：全会话记忆（IO 段读，主线程只消费）。 */
+        val memories: List<MemoryEntry>,
+        /** 第九十一批：注入预算只读预览（纯计算，不写盘、不删记忆）。 */
+        val injectionPreview: MemoryInjectionBudget.Plan,
     )
 
     /** 本轮是否还在跑（单活跃门的持有即"在跑"）。 */
@@ -2078,8 +2102,22 @@ internal class BaopuChatController(context: Context) {
         }
     }
 
-    private fun refreshMemory() {
-        memoryCandidates = store.loadAll().filter { it.status == MemoryStatus.CANDIDATE }
+    /**
+     * 刷新记忆候选与注入预算预览。
+     *
+     * [all] / [preview] 由 [refresh] 在 IO 段读好传入；其它调用点（确认/忘记之后）
+     * 不传 ⇒ 沿用旧行为现场读（这两处是低频用户操作，不在每帧热路径上）。
+     */
+    private fun refreshMemory(
+        all: List<MemoryEntry>? = null,
+        preview: MemoryInjectionBudget.Plan? = null,
+    ) {
+        val entries = all ?: store.loadAll()
+        memoryCandidates = entries.filter { it.status == MemoryStatus.CANDIDATE }
+        memoryInjectionPreview = preview ?: MemoryInjectionBudget.plan(
+            entries.filter { it.status == MemoryStatus.CONFIRMED },
+            System.currentTimeMillis(),
+        )
     }
 
     private fun readMessages(sessionId: Long): List<BaopuUiMessage> = db.read { d ->
