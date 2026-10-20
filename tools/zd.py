@@ -13,6 +13,8 @@
     python tools/zd.py install-hooks
     python tools/zd.py hooks-status
 
+preflight 第 5 段会顺带跑 tools/check-inflight.py（在飞表占用核对，表：docs/在飞.md，规矩：docs/协作规约.md §11）。
+
 退出码
     preflight     0 = 未发现阻塞，可以开工 ／ 1 = 有阻塞项 ／ 2 = 不在仓库或找不到基准
     doctor        0 = 环境健康 ／ 1 = 有 ✗ 项（✗ 之外的 ！ 只是提醒）
@@ -228,7 +230,24 @@ def cmd_preflight(argv: list[str]) -> int:
                 for ln in dels[:6]:
                     say(f"      {ln}", "gray")
 
-    sec("5. 结论")
+    sec("5. 在飞表核对（谁在改哪些文件：docs/在飞.md，规矩见 docs/协作规约.md §11）")
+    inflight = Path(root) / "tools" / "check-inflight.py"
+    if not inflight.is_file():
+        say("  ！tools/check-inflight.py 不存在，跳过在飞表核对", "yellow")
+    else:
+        p = subprocess.run(
+            [sys.executable, str(inflight)],
+            cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        if p.stdout and p.stdout.strip():
+            say(p.stdout.rstrip("\r\n"))  # 子脚本输出原样带出
+        if p.returncode == 1:
+            blockers.append("在飞表存在占用相交（见上方输出）——相交范围不许同时开工，先协调或换范围")
+        elif p.returncode != 0:
+            say(f"  ！check-inflight.py 异常退出（exit {p.returncode}），本次按无冲突继续", "yellow")
+
+    sec("6. 结论")
     if not blockers:
         say("  ✓ 未发现阻塞项。开工前再去 docs/FEATURE-LEDGER.md 的 §2 扫一眼这个功能在不在。", "green")
         return 0
