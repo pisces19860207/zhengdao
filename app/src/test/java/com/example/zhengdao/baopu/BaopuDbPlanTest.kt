@@ -25,7 +25,11 @@ class BaopuDbPlanTest {
         // 版本号：plan 批次本身没动表（加一种 kind 不需要迁移）；
         // v7 是第十九批加的（session 封卷两列 closed_at / refined_at，有正式迁移）；
         // v8 是第二十批加的（session 工作区列 workspace，有正式迁移）——plan 部件自己依旧零 DDL。
-        assertEquals("plan 批次不加表不加列；v9 归 artifact、v11 归 skill_event——plan 部件自己依旧零 DDL", 11, BaopuDb.VERSION)
+        assertEquals(
+            "plan 批次不加表不加列；v9 归 artifact、v11 归 skill_event、v12 归第八十五批效果信号——plan 部件自己依旧零 DDL",
+            12,
+            BaopuDb.VERSION,
+        )
     }
 
     // ── 写：消息行 ＋ plan part ────────────────────────────────────────
