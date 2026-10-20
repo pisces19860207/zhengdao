@@ -95,6 +95,12 @@ internal object RuntimeEval {
     /** 总时长上限（派工单 §3 建议 120s）。 */
     const val TOTAL_BUDGET_MS = 120_000L
 
+    /** 提案自检的日志前缀（50 批起就是这个串，UI/对账都按它 grep，不许改）。 */
+    const val SELF_CHECK_TAG = "proposal-selfcheck"
+
+    /** 生产跑批（第九十批 ②）的日志前缀：同一批代码，不同的触发者与额度归属。 */
+    const val PROD_EVAL_TAG = "prod-eval"
+
     /**
      * 这条通道能不能跑自检。
      *
@@ -127,6 +133,11 @@ internal object RuntimeEval {
         cfg: EvalConfig,
         budgetMs: Long = TOTAL_BUDGET_MS,
         now: () -> Long = { System.currentTimeMillis() },
+        /**
+         * 日志前缀（第九十批）。默认是自检那条；生产跑批传 [PROD_EVAL_TAG]——
+         * 同一个执行壳、两种触发者，账上必须分得清是谁起的这一轮（花的是谁的额度）。
+         */
+        tag: String = SELF_CHECK_TAG,
     ): EvalRun {
         val started = now()
         val results = ArrayList<CaseResult>(cases.size)
@@ -159,7 +170,7 @@ internal object RuntimeEval {
             // 而且里面是模型当时写的产物。删不动只记账，不许静默吞。
             if (r.dir != null && runCatching { r.dir.deleteRecursively() }.getOrDefault(false)) cleaned++
         }
-        if (cleaned > 0) RunLog.log("[proposal-selfcheck] 清理临时工作区 $cleaned 份")
+        if (cleaned > 0) RunLog.log("[$tag] 清理临时工作区 $cleaned 份")
         return EvalRun(results = results, elapsedMs = now() - started, skipped = skipped)
     }
 
