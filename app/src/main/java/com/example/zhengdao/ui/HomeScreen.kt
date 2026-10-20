@@ -4,6 +4,15 @@ package com.example.zhengdao.ui
 
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+// 第七十三批 · 结构切片：Agent 卡片的「该显示哪一个」判据搬到了 ui/home/（纯逻辑，可 JVM 直测）。
+// 这里只留调用——渲染、文案、点击后跑什么命令、state 写回全在本文件原位没动。
+import com.example.zhengdao.ui.home.HomePrimaryAction
+import com.example.zhengdao.ui.home.HomeStatusLine
+import com.example.zhengdao.ui.home.homeMoreMenuVisible
+import com.example.zhengdao.ui.home.homePrimaryActionOf
+import com.example.zhengdao.ui.home.homeReinstallItemVisible
+import com.example.zhengdao.ui.home.homeStatusLineOf
+import com.example.zhengdao.ui.home.uninstallProgramPaths
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -1049,7 +1058,11 @@ fun HomeScreen(
                         // 挪到主操作旁——它和「启动」同属"对这张卡片的操作"。
                         // 2026-10-09（E-059）：菜单里不止「卸载」——已装的 Agent 也要能「重新安装」，
                         // 所以有安装命令的也把「更多」显示出来。
-                        if (agent.installed && (agent.uninstallCmd != null || agent.installCmd != null)) {
+                        if (homeMoreMenuVisible(
+                                installed = agent.installed,
+                                hasUninstallCmd = agent.uninstallCmd != null,
+                                hasInstallCmd = agent.installCmd != null,
+                            )) {
                             Box {
                                 Box(
                                     modifier = Modifier
@@ -1072,7 +1085,10 @@ fun HomeScreen(
                                     expanded = menuOpenFor == agent.id,
                                     onDismissRequest = { menuOpenFor = null },
                                 ) {
-                                    if (agent.installCmd != null && envReady) {
+                                    if (homeReinstallItemVisible(
+                                            hasInstallCmd = agent.installCmd != null,
+                                            envReady = envReady,
+                                        )) {
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.home_agent_reinstall)) },
                                             onClick = {
@@ -1091,7 +1107,15 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        when {
+                        // 判据在 ui/home/HomeAgentRules.kt（六臂的优先序 = 改前 when 的顺序）；
+                        // 下面六个出口渲染的东西一个字没变。
+                        when (homePrimaryActionOf(
+                            failedInstall = failedInstall,
+                            installed = agent.installed,
+                            installing = installing,
+                            hasInstallCmd = agent.installCmd != null,
+                            envReady = envReady,
+                        )) {
                             // ⚠️ 失败要排在 installed **前面**（2026-10-07 真机实测）：
                             //    安装挂在最后一步时，可执行文件往往已经落位了（hermes 实测：
                             //    转发脚本 22:29 就位，Python 依赖装不上、脚本退出码 1）。
@@ -1100,12 +1124,12 @@ fun HomeScreen(
                             //    失败时该给的是「重试安装」。但要带上 envReady：
                             //    环境没了（重装 App / 卸载过）时重试安装也无从谈起，
                             //    该落到下面的「先装环境」，别给一个点了只会报错的按钮。
-                            failedInstall && envReady -> OutlinedButton(
+                            HomePrimaryAction.RetryInstall -> OutlinedButton(
                                 onClick = startInstall,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text(stringResource(R.string.home_agent_retry_install)) }
-                            agent.installed -> Button(
+                            HomePrimaryAction.Launch -> Button(
                                 onClick = { onOpenTerminal(agent.launchCmd, agent.id) },
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
@@ -1120,24 +1144,24 @@ fun HomeScreen(
                             // 也能 Ctrl-C 中断再点按钮重来。这比一个死掉的禁用按钮诚实。
                             // 注：这条走 onOpenTerminal(null, agent.id) —— **不带命令**，
                             // 会话路由会判成"只是打开终端"，绝不会杀掉正在跑的安装。
-                            installing -> OutlinedButton(
+                            HomePrimaryAction.Installing -> OutlinedButton(
                                 onClick = { onOpenTerminal(null, agent.id) },
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text(stringResource(R.string.home_agent_installing)) }
-                            agent.installCmd != null && envReady -> OutlinedButton(
+                            HomePrimaryAction.Install -> OutlinedButton(
                                 onClick = startInstall,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text(stringResource(R.string.home_agent_install)) }
-                            agent.installCmd == null -> OutlinedButton(
+                            HomePrimaryAction.ComingSoon -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
                                 shape = RoundedCornerShape(50),
                             ) { Text(stringResource(R.string.home_agent_coming_soon)) }
                             // 环境未装：Agent 无法安装，按钮禁用（上方横幅已给一键安装路径）
-                            else -> OutlinedButton(
+                            HomePrimaryAction.InstallEnvFirst -> OutlinedButton(
                                 onClick = { },
                                 enabled = false,
                                 modifier = Modifier.widthIn(min = BUTTON_MIN_WIDTH_DP.dp),
@@ -1153,30 +1177,38 @@ fun HomeScreen(
                     )
                     // 状态行：失败 / 安装中用浅底提示条（原先的裸彩字在真机上会被读成
                     // 上一行的溢出，像渲染坏了）；已装版本属常态信息，保持素色小字。
-                    if (failedInstall) {
+                    // 判据在 ui/home/HomeAgentRules.kt（三条优先序 = 改前 if / else-if 链的顺序）；
+                    // 三个渲染出口逐字未动。改前这条链没有 else（全不命中就什么都不显示）⇒ 现在由 None 这一档承担。
+                    when (homeStatusLineOf(
+                        failedInstall = failedInstall,
+                        installing = installing,
+                        installed = agent.installed,
+                        hasInstalledVersion = agent.installedVersion != null,
+                    )) {
                         // 文案由 AgentRepository 给：分清「失败（带退出码）」和「被打断」，
                         // 而不是一句笼统的「未完成」——用户 2026-10-07 要求失败可见且可行动。
-                        StatusNote(
+                        HomeStatusLine.Failure -> StatusNote(
                             text = AgentRepository.failureReason(context, agent.id),
                             tone = zhengdaoErrorText(), // P2-11：tone 即文字色（见 StatusNote）
                         )
-                    } else if (installing) {
                         // E-060：安装的最后一步是 Agent **自己的交互式配置向导**（hermes 实测：
                         // "How would you like to set up Hermes?"）。没人回答它就永远停在那儿——
                         // 脚本不返回、rc 文件不写，卡片一直「安装中」；而在那里按 Ctrl+C
                         // （不是 ESC）会把脚本打断，退出码非 0，又变成"装好了却报失败"。
                         // 我们没法替用户回答向导，但至少能提前把这件事说出来。
-                        StatusNote(
+                        HomeStatusLine.InstallHint -> StatusNote(
                             text = stringResource(R.string.home_agent_install_hint),
                             tone = MaterialTheme.colorScheme.primary,
                         )
-                    } else if (agent.installed && agent.installedVersion != null) {
-                        // 只显示已装版本（本地 package.json 探测）；要不要更新由用户自己决定
-                        Text(
-                            text = stringResource(R.string.home_agent_version, agent.installedVersion),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        HomeStatusLine.Version -> agent.installedVersion?.let { version ->
+                            // 只显示已装版本（本地 package.json 探测）；要不要更新由用户自己决定
+                            Text(
+                                text = stringResource(R.string.home_agent_version, version),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        HomeStatusLine.None -> Unit
                     }
 
                 }
@@ -1407,22 +1439,11 @@ internal fun shellSingleQuote(raw: String): String = "'" + raw.replace("'", "'\\
  *  /usr/→rootfs/usr 两类映射；含通配符的路径跳过；解析不出已知路径时返回 -1
  *  （弹窗改用"以实际占用为准"措辞，不编造）。 */
 private fun programSizeMb(ctx: android.content.Context, uninstallCmd: String): Long {
-    val paths = Regex("rm\\s+-rf\\s+([^&\\n]+)").findAll(uninstallCmd)
-        .flatMap { it.groupValues[1].trim().split(Regex("\\s+")) }
-        .filter { it.startsWith("/") && !it.contains('*') }
-        .distinct()
-        .mapNotNull { p ->
-            when {
-                p == "/root" || p.startsWith("/root/") ->
-                    java.io.File(ctx.filesDir, "home/" + p.removePrefix("/root/"))
-                p == "/usr" || p.startsWith("/usr/") ->
-                    java.io.File(ctx.filesDir, "rootfs" + p)
-                else -> null
-            }
-        }
-        .toList()
+    // 解析与映射在 ui/home/HomeInstallRules.kt（纯字符串，JVM 直测）；这里只剩真的去 du。
+    // helper 返回的是相对 filesDir 的宿主路径，拼接方式与改前一致（home/… 与 rootfs… 两类映射）。
+    val paths = uninstallProgramPaths(uninstallCmd)
     if (paths.isEmpty()) return -1
-    return paths.sumOf { SystemInfoProvider.dirSizeMb(it) }
+    return paths.sumOf { SystemInfoProvider.dirSizeMb(java.io.File(ctx.filesDir, it)) }
 }
 
 /**
