@@ -3,7 +3,7 @@
 - 派单：2026-10-20 蓝总管（结构拆分第五阶段；72→76 五单队列的末单）
 - 基线：开工时最新 `main`。出单时 `origin/main` = `cdd924cc`（`docs(账): 立账 64/68/70 三批验收`）；本单全部行号按该版本 `MainActivity.kt`（**1,267 行**，`app/src/main/java/com/example/zhengdao/MainActivity.kt`）复核（证据等级②）。开工前 `git fetch origin`，确认 `git rev-list --left-right --count origin/main...HEAD` **左侧为 0**；若 main 又前进，按开工时版本重算行号再动手。
 - 承接：workbuddy
-- 排期：**64（已合入 main：`integ/64-68-70` 即 origin/main tip）→ 72 → 74 → 75 → 76**；本单在 75 之后做。出单时实测：72 的 helper（`baopu/PlanRules.kt`／`SkillRules.kt`／`VisionRules.kt`）已在 main；74/75 尚无施工分支（`TerminalActivity.kt` 2,018 行、`terminal/ProotLauncher.kt` 843 行均未抽）；`MainActivity.kt` 无任何在飞分支/改动（`git worktree list`＋主要工作树 `git status` 全干净）。
+- 排期：**64（已合入 main）→ 72 → 76（插队）→ 74 → 75**；用户 2026-10-20 13:xx 要求 76 先干，74/75 顺延。出单时实测：72 的 helper（`baopu/PlanRules.kt`／`SkillRules.kt`／`VisionRules.kt`）已在 main；74/75 尚无施工分支（`TerminalActivity.kt` 2,018 行、`terminal/ProotLauncher.kt` 843 行均未抽）；`MainActivity.kt` 无任何在飞分支/改动（`git worktree list`＋主要工作树 `git status` 全干净）。
 - 红线：只动 `MainActivity.kt` ＋ 新建的纯逻辑 helper/test 文件；**不碰** `ui/HomeScreen.kt`（68/73 冲突区）、`ui/baopu/BaopuChatController.kt`（72）、`TerminalActivity.kt`（74）、`terminal/ProotLauncher.kt`（75）、`RootfsInstaller`（65）、`RunEngine.kt`（64）、`ui/browser/**`、Rust、`AndroidManifest.xml`、版本号；**行为/布局/导航结果零变化**；不合并、不推送；不跑真机。
 
 ## 0. 为什么是它
