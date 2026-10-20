@@ -213,7 +213,7 @@ class BareThreadGuardTest {
             "KnowledgeBaseHints.kt:133",            // zd-kb-hints
             "GuardPipeline.kt:68",                  // zd-baopu-tool（抱朴刀 1：工具执行单线程，串行+超时；26-B 内核委托 import +1 ⇒ 66→67；第四十八批 P0-2 加 PathGuard import +1 ⇒ 67→68）
             "LlmClient.kt:877",                     // zd-baopu-net（抱朴刀 0：SSE 网络 lane；刀 1 加 tools/tool_calls 解析后自 :315 平移；刀 1 补丁 Failed.raw 再 +7；刀 3 B 段 usage/reasoning/effort +208 ⇒ 450→658；第十三批加 completeOnce/completeBody/plainTextOf +134 ⇒ 658→792；第二十四批加 LlmMessage.images 与 contentBlocks +70 ⇒ 792→862）；第五十六批 P2-4 共享 OkHttp 单例 +15 ⇒ 862→877
-            "MainActivity.kt:316",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308；2026-10-18 加屏幕常亮标志 +8 ⇒ 308→316）
+            "MainActivity.kt:301",                  // zd-update-check（第㉕刀 +7 / B-补-15 +17 / B-补-19 +21 / B-补-8 +1 / 抱朴刀 2 快捷方式接线 +27 ⇒ 281→308；2026-10-18 加屏幕常亮标志 +8 ⇒ 308→316；第七十六批白名单块搬去 MainRouteRules -15 ⇒ 316→301）
             "NetSelfCheck.kt:94",                   // net-self-check-index
             "OldTreeCleaner.kt:48",                 // zd-rootfs-clean（第六十五批：旧树后台删除单线程；有名 + daemon + MIN_PRIORITY，登记于 2026-10-20；改后台安全深删 + NIO imports ⇒ 41→48）
             "PreviewServer.kt:125",                 // zd-preview-http（刀 4 预览服务 acceptor：一条串行线程，有名 + daemon；登记于 2026-10-18）；第六十批 P2-8 加 REQUEST_TIMEOUT_MS 常量与说明 +13 ⇒ 112→125
