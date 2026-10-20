@@ -7,6 +7,7 @@
 package com.example.zhengdao.baopu
 
 import android.content.Context
+import androidx.core.content.edit
 
 /**
  * 抱朴通道选择（刀 1 补丁）——用户选了哪个通道、填了什么 Key 的**唯一真相**。
@@ -55,7 +56,7 @@ internal object ProviderPrefs {
      * 解析没落到目标 ⇒ 回滚到 oldId，ProviderPrefs 永远与引擎看到的一致。
      */
     fun selectChannel(context: Context, channelId: String) {
-        prefs(context).edit().putString(KEY_CHANNEL, channelId).apply()
+        prefs(context).edit { putString(KEY_CHANNEL, channelId) }
     }
 
     /** 某通道的用户 Key（BaopuRuntime 组装 channelFallback 闭包用）。 */
