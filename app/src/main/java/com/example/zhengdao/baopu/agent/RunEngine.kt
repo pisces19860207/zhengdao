@@ -222,6 +222,28 @@ internal class RunEngine(
         Thread(r, "zd-baopu-run").apply { isDaemon = true }
     }
 
+    // ── 第八十七批 R1：运行轨迹 ────────────────────────────────────────────
+    //
+    // ⚠️ 同样只能写在冻结创建点（上面那个 `Thread(r, "zd-baopu-run")`）**之下**：
+    // `BareThreadGuardTest` 的对账单按 file:line 钉着它，在它上面插一行就平移、门禁红。
+    //
+    // 记录器本身不含 IO（[TraceJournal] 只配对时刻、发号、拼行），落库经 [persistTrace]
+    // 丢给 db 单写者线程，**不 `.get()`**：轨迹是账本，不该让一次运行等它写盘。
+    private val trace = TraceJournal(emit = ::persistTrace)
+
+    /**
+     * 轨迹落库（唯一写入口）。
+     *
+     * 失败只记日志、绝不把整轮跑崩：轨迹是「观测」，观测坏掉不许连带任务失败
+     * （与产物台账 [persistArtifactLedger] 同一房型）。不 `.get()` ⇒ 不等提交，
+     * 顺序由 db 单写者线程保证（同一 run 的行天然有序）。
+     */
+    private fun persistTrace(row: TraceRow) {
+        val stmt = row.toStmt()
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) } }
+            .onFailure { log("抱朴引擎：轨迹落库失败 ${it.javaClass.simpleName}: ${it.message}") }
+    }
+
     // ── 第三十八批 A/B 段：用量透给壳层 ＋ 本轮文本产物视图 ──────────────────
     //
     // ⚠️ 这一段只能写在 runExecutor **之下**：`BareThreadGuardTest` 的冻结对账单按
@@ -859,6 +881,9 @@ internal class RunEngine(
         // 第三十八批 B 段：产物视图跟着 verifyTouched 一起清（上个 run 的文件名
         // 不许在这一轮的产物行里赖着不走）。
         clearRoundArtifactView()
+        // 第八十七批 R1：**新 run ⇒ 新轨迹**。runId ＝ `r<sessionId>@<开跑时刻>`，
+        // 回放时一眼看出是哪个会话、什么时候起的（续跑也是新 run，与 run_log 同口径）。
+        trace.newRun(sessionId)
 
         // 工作计划（第十七批）：续跑＝同一轮的继续 ⇒ 计划态从库回种。进程被杀过
         // 内存是空的；不回种的话模型重发计划时 sticky done 失效，done 会被打回
@@ -903,6 +928,9 @@ internal class RunEngine(
             // 第三十八批 A 段：记开步时刻 ⇒ usage 到手时能说「这步花了多久」。
             // 口径写进界面文案（耗时 = 本步开步到模型读数到手），别当成整步含工具的墙钟时间。
             stepStartedAtMs = System.currentTimeMillis()
+            // 第八十七批 R1：轨迹的开步时刻——与 usage 的 elapsedMs 同一个起点
+            // （两处读数因此永远同源，不会出现「界面 3.2s、轨迹 2.1s」）。
+            trace.beginStep(stepCount, stepStartedAtMs)
 
             val prompt = assemble(
                 persona, facts, history, "", windowTokens,
@@ -946,6 +974,9 @@ internal class RunEngine(
                     if (stopRequested) {
                         // token 真花了，账照记；但**不记 DONE**、不出学习卡、不提示计划未勾
                         persistUsage(sessionId, stepCount, outcome.usage)
+                        // 第八十七批 R1：这一步是「被用户停掉」的，轨迹如实记 CANCELLED
+                        // （记 OK 会让回放的人以为模型这一轮正常结束了）
+                        trace.settleStep(stepCount, TraceStatus.CANCELLED, FailureKind.CANCELLED)
                         // 已收到的正文留下（用户不丢已经打出来的字），但不走收尾闸/学习卡
                         persistAssistantMessage(sessionId, outcome.text)
                         history += HistoryMessage(
@@ -961,6 +992,8 @@ internal class RunEngine(
                     // usage 接线（J13）：此刻该 step 的最新一行还是 Thinking 行
                     //（settle 的 Done 行还没落）⇒ 更到的就是它
                     persistUsage(sessionId, stepCount, outcome.usage)
+                    // 第八十七批 R1：这一步的轨迹（模型正常答完；耗时/读数/状态一行收口）
+                    trace.settleStep(stepCount, TraceStatus.OK)
                     // P1-2：正常回来一轮 ⇒ 坏参数计数归零（只算**连续**坏）
                     badArgsRetries = 0
                     // ── 收尾闸：模型说完了，机器先核对这一轮写过的产物 ──
@@ -1021,6 +1054,9 @@ internal class RunEngine(
                     // Acting 行插入之前**调——updateRunLogUsage 取该 (session, step)
                     // 最新一行做 UPDATE，Acting 行后落就更到它头上（时序硬约束）。
                     persistUsage(sessionId, stepCount, outcome.usage)
+                    // 第八十七批 R1：模型这一轮**成功**了（要调工具是它的正常产出）——
+                    // 后面的工具成败由 ACT 行单独记，不混进这一步的 THINK 行里。
+                    trace.settleStep(stepCount, TraceStatus.OK)
                     // P1-2：正常回来一轮 ⇒ 坏参数计数归零（只算**连续**坏）
                     badArgsRetries = 0
                     if (outcome.text.isNotBlank()) {
@@ -1036,13 +1072,32 @@ internal class RunEngine(
                     var terminateRound = false
                     for (call in outcome.calls) {
                         if (stopRequested) {
+                            // 第八十七批 R1：这次工具调用**没执行**（批里前面那个还在跑就停了）
+                            trace.noteTool(
+                                step = stepCount,
+                                tool = call.name,
+                                args = call.arguments,
+                                startedAtMs = 0L,
+                                status = TraceStatus.CANCELLED,
+                                failureKind = FailureKind.CANCELLED,
+                            )
                             settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
                             return
                         }
+                        val toolStartedAt = System.currentTimeMillis()
                         val result = pipeline.execute(call) { name, text ->
                             writeSpill(sessionId, name, text)
                         }
                         if (result is GuardPipeline.Result.NeedsConfirm) {
+                            // 第八十七批 R1：挂起那一刻先记一行 CONFIRM——它不是成功也不是失败，
+                            // 记成 OK 会让回放的人以为这次写已经生效了（P1-1 的同一类谎言）。
+                            trace.noteTool(
+                                step = stepCount,
+                                tool = call.name,
+                                args = call.arguments,
+                                startedAtMs = toolStartedAt,
+                                status = TraceStatus.CONFIRM,
+                            )
                             // 安全点 2（第六十四批）：出确认卡之前——不能卡在工具
                             // 半途切（那一步的模型决定已经是旧通道做的，卡要出给
                             // 当前用户看；切换影响的是下一步）。
@@ -1058,6 +1113,16 @@ internal class RunEngine(
                                 }
                             ) {
                                 is ConfirmFlow.Outcome.Approved -> {
+                                    // 第八十七批 R1：真执行完了补一行（`startedAtMs = 0` ⇒ 耗时
+                                    // 记「未测」：那段时间耗在等人点按钮上，不是工具的耗时）。
+                                    trace.noteTool(
+                                        step = stepCount,
+                                        tool = call.name,
+                                        args = call.arguments,
+                                        startedAtMs = 0L,
+                                        status = traceStatusOf(oc.result),
+                                        failureKind = traceFailureOf(oc.result),
+                                    )
                                     // 批准后执行的结果与在线路径**同形**处理（回灌/历史/可见卡）
                                     when (handleToolResult(sessionId, stepCount, oc.result, history)) {
                                         ToolResultFlow.CONTINUE -> Unit
@@ -1067,6 +1132,13 @@ internal class RunEngine(
                                 }
 
                                 is ConfirmFlow.Outcome.Rejected -> {
+                                    trace.noteTool(
+                                        step = stepCount,
+                                        tool = call.name,
+                                        args = call.arguments,
+                                        startedAtMs = 0L,
+                                        status = TraceStatus.REJECTED,
+                                    )
                                     // 拒绝不执行；回灌进历史（模型下一轮看得见）＋ 落库可见；对话继续
                                     persistAssistantMessage(sessionId, oc.note)
                                     history += HistoryMessage(
@@ -1078,6 +1150,14 @@ internal class RunEngine(
 
                                 is ConfirmFlow.Outcome.Abandoned -> Unit // 用户点了停止：循环头部收尾
                                 is ConfirmFlow.Outcome.TimedOut -> {
+                                    trace.noteTool(
+                                        step = stepCount,
+                                        tool = call.name,
+                                        args = call.arguments,
+                                        startedAtMs = 0L,
+                                        status = TraceStatus.TIMEOUT,
+                                        failureKind = FailureKind.CANCELLED,
+                                    )
                                     _notice.value = oc.note
                                     persistAssistantMessage(sessionId, oc.note)
                                     settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
@@ -1087,6 +1167,15 @@ internal class RunEngine(
                                 is ConfirmFlow.Outcome.Ignored -> Unit // 双保险：不该发生，跳过这个调用
                             }
                         } else {
+                            // 第八十七批 R1：在线路径（不经人看）——工具真跑了，耗时是实测的
+                            trace.noteTool(
+                                step = stepCount,
+                                tool = call.name,
+                                args = call.arguments,
+                                startedAtMs = toolStartedAt,
+                                status = traceStatusOf(result),
+                                failureKind = traceFailureOf(result),
+                            )
                             when (handleToolResult(sessionId, stepCount, result, history)) {
                                 ToolResultFlow.CONTINUE -> Unit
                                 ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
@@ -1111,6 +1200,14 @@ internal class RunEngine(
                         )
                     }
                     val retry = RunRules.shouldRetryBadArgs(badArgsRetries)
+                    // 第八十七批 R1/R2：坏参数这一步的轨迹（失败分类 ＋ 策略结论都留痕）。
+                    // 判据仍走 [RunRules.shouldRetryBadArgs]（它已是策略表的适配器，两者不可能打架）。
+                    trace.settleStep(
+                        stepCount,
+                        TraceStatus.FAILED,
+                        FailureKind.BAD_JSON,
+                        if (retry) FailureAction.Retry(0L, badArgsRetries + 1) else FailureAction.Abort,
+                    )
                     // 错误原文**回灌进历史**：只说「参数不对」模型改不对，得让它看见自己错在哪
                     val feed = "工具调用参数不是合法 JSON：${outcome.error}；请修正参数后重试"
                     history += HistoryMessage(
@@ -1140,7 +1237,33 @@ internal class RunEngine(
                     } else {
                         null
                     }
-                    when (val d = RunRules.channelDecision(consecutiveChannelFailures, fallback)) {
+                    // ── 第八十七批 R2：先问**统一失败策略**（本批唯一新增的一层）──
+                    // 旧口径：失败 ⇒ 直接进熔断三件套（没到熔断线就整轮停）。
+                    // 新口径：先按分类问策略要不要「退避重试同一步」；不要重试才落到下面那套
+                    // 既有出口（换通道/问人/停）——**没有第二套状态机**，仍然只有这一个循环。
+                    // 分类只看原文里的状态码/关键词，不看正文（`classifyModel` 是纯函数）。
+                    val failureKind = FailurePolicy.classifyModel(outcome.raw.ifEmpty { outcome.userFacing })
+                    val action = FailurePolicy.decide(
+                        kind = failureKind,
+                        attempt = consecutiveChannelFailures,
+                        fallbackAvailable = fallback != null,
+                    )
+                    // 第八十七批 R1：这一步失败点 ＋ 策略结论都进轨迹（回放时一眼看出当时判了什么）
+                    trace.settleStep(stepCount, TraceStatus.FAILED, failureKind, action)
+                    if (action is FailureAction.Retry) {
+                        // 有界重试：延迟退避后**重跑同一步**（步数不涨，与换通道同一个 reuseStep 口子）。
+                        // 为什么敢在这里睡：循环跑在 zd-baopu-run 这颗专用线程上（它本来就在等网络），
+                        // 睡 500ms 不挡 UI；重试预算由策略表封顶（MAX_RETRY_ATTEMPTS），不会睡成死循环。
+                        log(
+                            "抱朴引擎：失败判为 ${failureKind.name}，${action.delayMs}ms 后重试同一步" +
+                                "（第 ${action.attempt} 次失败；通道 ${provider.id}/${provider.model}）",
+                        )
+                        _notice.value = "这条通道刚才没通，${action.delayMs}ms 后重试同一步（第 ${action.attempt} 次）"
+                        if (action.delayMs > 0) runCatching { Thread.sleep(action.delayMs) }
+                        reuseStep = true
+                        continue
+                    }
+                    when (val d = RunRules.channelDecision(action, fallback)) {
                         is RunRules.ChannelDecision.SwitchTo -> {
                             val next = d.next
                             channelSwitches++
@@ -1169,7 +1292,8 @@ internal class RunEngine(
                         }
 
                         RunRules.ChannelDecision.KeepCurrent -> {
-                            // 没到熔断线：本轮失败即停（不硬重试，与 0b 口径一致）
+                            // 还没到熔断线（重试预算也已用尽，见上面的策略判定）：本轮失败即停，
+                            // 不硬试（0b 口径）；退避重试那一层是第八十七批新加的，走到这里说明它不同意。
                             _notice.value = outcome.userFacing
                             settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = errText)
                             onEvent?.invoke(EngineEvent.AskUser(_notice.value!!))
@@ -1561,6 +1685,10 @@ internal class RunEngine(
      * 也**不会**往 `tokens_in/out` 这些 NOT NULL 列绑 null（SQL 层只 SET 有读数的列）。
      */
     private fun persistUsage(sessionId: Long, step: Int, usage: LlmUsage?) {
+        // 第八十七批 R1：读数先记进轨迹的内存态（这一步稍后 settle 时一起落行）。
+        // 放在两道 `?: return` **之前**：没读到也要让「这一步用了多少」有个明确的 0，
+        // 而不是等 settle 时才发现压根没记（那样只能编数）。
+        trace.noteUsage(step, usage)
         val readings = usage ?: return
         val stmt = BaopuSql.updateRunLogUsage(sessionId, step, readings) ?: return
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
@@ -1631,6 +1759,14 @@ internal class RunEngine(
         is GuardPipeline.Result.Failed -> {
             consecutiveToolFailures++
             val name = result.call?.name ?: "tool"
+            // 第八十七批 R2：工具失败也归统一策略——**工具超时单独一类**（它不是通道坏，
+            // 第五十四批 P1-2 的同一条教训：一次工具报错不该把整轮判成网络故障）。
+            val kind = FailurePolicy.classifyTool(result.error)
+            val action = FailurePolicy.decide(
+                kind = kind,
+                attempt = consecutiveToolFailures,
+                fallbackAvailable = false, // 工具坏了换通道没用（不是通道的事）
+            )
             persistToolExchange(sessionId, step, name, "失败：${result.error}")
             onEvent?.invoke(EngineEvent.ToolCallVisible(name, result.error, false))
             history += HistoryMessage(
@@ -1638,15 +1774,17 @@ internal class RunEngine(
                 HistoryMessage.ROLE_ASSISTANT,
                 DataFence.wrap(name, System.currentTimeMillis(), "失败：${result.error}"),
             )
-            if (RunRules.shouldAskUser(consecutiveToolFailures)) {
+            if (action is FailureAction.Retry) {
+                // Retry 在这里的语义＝「回灌错误原文、让模型自己看着办」（与坏参数同款）：
+                // 工具层没有「偷偷再跑一次」这回事——真重跑决定权在模型，不在引擎。
+                ToolResultFlow.CONTINUE
+            } else {
                 val msg = "工具连续失败 ${consecutiveToolFailures} 次，已停下。" +
                     "换个说法或换个文件再试（不许硬试）。"
                 _notice.value = msg
                 settle(sessionId, step, RunState.ABORTED, "Aborted")
                 onEvent?.invoke(EngineEvent.AskUser(msg))
                 ToolResultFlow.STOP_RUN
-            } else {
-                ToolResultFlow.CONTINUE
             }
         }
 
@@ -1672,6 +1810,31 @@ internal class RunEngine(
         }
     }
 
+    /**
+     * 工具结果 → 轨迹状态（第八十七批 R1）。
+     *
+     * 为什么单列一个映射函数：`NeedsConfirm` 在**在线路径**这里不会出现（它走另一个分支），
+     * 但类型上仍要穷尽——真出现就记 CONFIRM（绝不当成功）。
+     */
+    private fun traceStatusOf(result: GuardPipeline.Result): TraceStatus = when (result) {
+        is GuardPipeline.Result.Done -> TraceStatus.OK
+        is GuardPipeline.Result.Failed -> TraceStatus.FAILED
+        is GuardPipeline.Result.Rejected -> TraceStatus.REJECTED
+        is GuardPipeline.Result.NeedsConfirm -> TraceStatus.CONFIRM
+    }
+
+    /** 工具结果 → 失败分类（只在失败/被拒时有值；成功为 null）。 */
+    private fun traceFailureOf(result: GuardPipeline.Result): FailureKind? = when (result) {
+        is GuardPipeline.Result.Failed -> FailurePolicy.classifyTool(result.error)
+        // 被保护闸拦下不是「失败」，是边界：分类留空，状态已经写了 REJECTED。
+        is GuardPipeline.Result.Rejected -> null
+        is GuardPipeline.Result.Done -> null
+        is GuardPipeline.Result.NeedsConfirm -> null
+    }
+
+    // 第八十七批 R1：工具结果 → 轨迹状态/分类的两个映射**必须放在 handleToolResult 之后**。
+    // 为什么：`BaopuArtifactShelfTest.C2` 用 `indexOf("is GuardPipeline.Result.Done ->")` 认
+    // 「记账调用落在 Done 支、且在 Failed 支之前」——同形的 when 支写在前面会把那个窗口认错。
     /** 用户消息先落库再渲染（§3：顺序反了断点续跑就是空话）。 */
     private fun persistUserMessage(sessionId: Long, text: String) {
         var msgId = -1L
@@ -1821,7 +1984,10 @@ internal class RunEngine(
         history: List<HistoryMessage>,
         provider: Provider,
         previousSummary: String?,
-    ): String? = when (
+    ): String? {
+        // 第八十七批 R1：压缩也是轨迹里的一种边界（耗时/成没成都要看得见——
+        // 「压缩中」曾经假了十三批，就是因为没人记它到底跑没跑成）。
+        val compressStartedAt = System.currentTimeMillis()
         val outcome = compression.runOnce(
             sessionId, history, provider, step,
             // 第十六批：把 compressedIds 传给内核扣选区（「压过的不再重发」）——
@@ -1829,22 +1995,38 @@ internal class RunEngine(
             skipIds = compressedIds,
             previousSummary = previousSummary,
         )
-    ) {
-        is CompressionRunner.Outcome.Ok -> {
-            val added = outcome.record.compressedIds.size
-            compressedIds = compressedIds + outcome.record.compressedIds
-            log("抱朴引擎：压缩完成，累计已压 ${compressedIds.size} 条（本轮新增 $added 条）")
-            outcome.record.summary
-        }
+        trace.noteCompress(
+            step = step,
+            startedAtMs = compressStartedAt,
+            status = when (outcome) {
+                is CompressionRunner.Outcome.Ok -> TraceStatus.OK
+                is CompressionRunner.Outcome.Skipped -> TraceStatus.SKIPPED
+                is CompressionRunner.Outcome.Cooling -> TraceStatus.SKIPPED
+                is CompressionRunner.Outcome.Failed -> TraceStatus.FAILED
+            },
+            failureKind = when (outcome) {
+                is CompressionRunner.Outcome.Failed ->
+                    FailurePolicy.classifyModel("HTTP ${outcome.code} ${outcome.message}")
+                else -> null
+            },
+        )
+        return when (outcome) {
+            is CompressionRunner.Outcome.Ok -> {
+                val added = outcome.record.compressedIds.size
+                compressedIds = compressedIds + outcome.record.compressedIds
+                log("抱朴引擎：压缩完成，累计已压 ${compressedIds.size} 条（本轮新增 $added 条）")
+                outcome.record.summary
+            }
 
-        is CompressionRunner.Outcome.Skipped -> {
-            log("抱朴引擎：本次不压——${outcome.reason}")
-            null
-        }
+            is CompressionRunner.Outcome.Skipped -> {
+                log("抱朴引擎：本次不压——${outcome.reason}")
+                null
+            }
 
-        // 失败与冷却：内核已记 run_log，这里连日志都不重复打（避免两处各说一遍口径）
-        is CompressionRunner.Outcome.Failed -> null
-        is CompressionRunner.Outcome.Cooling -> null
+            // 失败与冷却：内核已记 run_log，这里连日志都不重复打（避免两处各说一遍口径）
+            is CompressionRunner.Outcome.Failed -> null
+            is CompressionRunner.Outcome.Cooling -> null
+        }
     }
 
     // ── spill（第 ⑤ 段配套） ──────────────────────────────────────────────
