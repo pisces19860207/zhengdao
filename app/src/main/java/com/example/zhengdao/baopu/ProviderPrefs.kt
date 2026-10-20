@@ -26,6 +26,10 @@ internal object ProviderPrefs {
     private const val KEY_CHANNEL = "channel_id"
     private const val KEY_CUSTOM_BASE = "custom_base_url"
     private const val KEY_CUSTOM_MODEL = "custom_model"
+    // 第九十三批 · 模型路由：AUTO_ROUTE 是**显式开关**，默认关（派工单 §2「不默认改变当前通道」）。
+    // 关着的时候本文件行为与开关存在之前逐字节一致，见 routeCandidates / fallbackFrom 的注释。
+    private const val KEY_AUTO_ROUTE = "auto_route"
+    private const val KEY_ROUTE_PREFERENCE = "route_preference"
 
     /** 自定义通道（OpenAI 兼容形状；baseUrl/model/key 三件齐才可用）。 */
     const val CHANNEL_CUSTOM = "custom"
@@ -83,7 +87,42 @@ internal object ProviderPrefs {
             .apply()
     }
 
+    // ── 模型路由开关（第九十三批，SP 薄壳；判据本体在 ModelRouter） ─────────────
+
+    /** AUTO_ROUTE 现在开没开（薄壳只读 SP，判据走内核：没存过 ⇒ false）。 */
+    fun autoRouteEnabled(context: Context): Boolean =
+        autoRouteEnabled(prefs(context).getBoolean(KEY_AUTO_ROUTE, false))
+
+    /** 存的排序偏好；没存过 / 脏值 ⇒ null（**不猜默认偏好**）。 */
+    fun routePreference(context: Context): ModelRouter.Preference? =
+        ModelRouter.preferenceOf(prefs(context).getString(KEY_ROUTE_PREFERENCE, null))
+
+    /**
+     * 写路由开关。本批**没有 UI 消费者**（派工单红线：不做 UI）——入口先立住，
+     * 设置页批接一个开关即可。与第六十四批 `channelSwitchStatus` 同口径：
+     * 「已暴露但暂无消费者」是派工单要求，不是死代码。
+     *
+     * 开启必须同时给一个认得出来的偏好（"cheap"/"fast"/"quality"）；
+     * 脏偏好 ⇒ 一个字都不写、返回 false（宁可不开，也不替用户猜一个偏好）。
+     * 关闭只翻开关，偏好留着——下次打开还是他上次选的那个。
+     */
+    fun setAutoRoute(context: Context, enabled: Boolean, preference: String?): Boolean {
+        val p = ModelRouter.preferenceOf(preference)
+        if (enabled && p == null) return false
+        prefs(context).edit {
+            putBoolean(KEY_AUTO_ROUTE, enabled)
+            if (p != null) putString(KEY_ROUTE_PREFERENCE, ModelRouter.keyOf(p))
+        }
+        return true
+    }
+
     // ── Context-free 判据内核（JVM 直测） ─────────────────────────────────
+
+    /**
+     * 「存出来的开关」→「生效开关」（Context-free，JVM 直测）。
+     * 只有 `true` 算开：null / 脏值 ⇒ **关**（派工单「不默认改变当前通道」的落点）。
+     */
+    internal fun autoRouteEnabled(stored: Boolean?): Boolean = stored == true
 
     /**
      * 解析当前通道。
@@ -122,31 +161,69 @@ internal object ProviderPrefs {
     }
 
     /**
-     * 熔断后的下一个候选通道（纯判据）。
+     * 熔断 / 路由**共用的一套候选规则**（第九十三批从 [fallbackFrom] 里原样抽出：
+     * 一条判据都没改，只是从「当场取第一个」变成「先把名单列出来」，好让排序也吃同一份名单）。
      *
-     * 候选序 = Providers.all() 顺序里的预设，但**两条排除**：
+     * 排除规则照旧：
      * - 排除当前通道（熔断的就是它，切回去等于没切）；
      * - 排除内置免费通道（2026-10-17 真机实测整条 403 RegionError，它是"没得选才用"的
-     *   默认值，不是降级去向；切回它只会再吃一次 403）。
-     * 预设必须已填 Key；都不行再看自定义通道（三件齐才可用）。
-     * 全没有 ⇒ null（调用方走 ask_user，不抛异常）。
+     *   默认值，不是降级去向；切回它只会再吃一次 403）；
+     * - 预设必须已填 Key。
+     * 都不行再看自定义通道（三件齐才可用）；顺序照旧（Providers.all() 的预设序，自定义在最后）。
+     * 全没有 ⇒ 空表（调用方走 ask_user，不抛异常）。
+     */
+    internal fun routeCandidates(
+        currentId: String,
+        keyFor: (String) -> String?,
+        customBase: String? = null,
+        customModel: String? = null,
+    ): List<Provider> {
+        val out = mutableListOf<Provider>()
+        Providers.all().forEach { p ->
+            if (p.id != currentId && !p.builtinFree) {
+                val key = keyFor(p.id)?.trim().orEmpty()
+                if (key.isNotEmpty()) out += Providers.withUserKey(p, key)
+            }
+        }
+        if (currentId != CHANNEL_CUSTOM) {
+            val custom = resolve(CHANNEL_CUSTOM, keyFor, customBase, customModel)
+            if (custom.id == CHANNEL_CUSTOM) out += custom
+        }
+        return out
+    }
+
+    /**
+     * 熔断后的下一个通道（纯判据；第九十三批在这里挂路由，**默认关 ⇒ 行为与挂之前一致**）。
+     *
+     * - `autoRoute = false`（默认，也是 SP 的默认）⇒ 取 [routeCandidates] 的第一个：
+     *   与刀 1 补丁 / 第六十四批时代的 `fallbackFrom` 同序同值，行为一个字节都没改；
+     * - `autoRoute = true` ⇒ 把**同一份名单**交给 [ModelRouter.plan] 按偏好排序后取第一个。
+     *   排不出（能力不满足 / 那一维全表 UNKNOWN / 名单空）⇒ 返回 **null**，
+     *   调用方走既有 ask_user 出口——这就是派工单 §2「没有满足能力的模型 ⇒ 明确报错，不静默降级」。
+     *
+     * 本方法不写存储、不碰状态机：切不切、什么时候切仍是第六十四批的三个安全点说了算
+     * （§2「回退复用 64，不新建第二套状态」；「当前模型」的真相仍然只在 SP 的 channel_id 那一处）。
+     * `need` 缺省为空：熔断回退发生在轮内，本批没有一处现成的能力需求真相可传（空 need =
+     * 不做能力过滤 ⇒ 开 auto 也只改「谁排第一」，不改「谁能进名单」）。
      */
     internal fun fallbackFrom(
         currentId: String,
         keyFor: (String) -> String?,
         customBase: String? = null,
         customModel: String? = null,
+        autoRoute: Boolean = false,
+        preference: ModelRouter.Preference? = null,
+        need: ModelRouter.Need = ModelRouter.Need(),
     ): Provider? {
-        val preset = Providers.all().firstOrNull {
-            it.id != currentId && !it.builtinFree && !keyFor(it.id).isNullOrBlank()
-        }
-        if (preset != null) {
-            return Providers.withUserKey(preset, keyFor(preset.id)!!.trim())
-        }
-        if (currentId != CHANNEL_CUSTOM) {
-            val p = resolve(CHANNEL_CUSTOM, keyFor, customBase, customModel)
-            if (p.id == CHANNEL_CUSTOM) return p
-        }
-        return null
+        val candidates = routeCandidates(currentId, keyFor, customBase, customModel)
+        if (!autoRouteEnabled(autoRoute)) return candidates.firstOrNull()
+        val plan = ModelRouter.plan(
+            autoEnabled = true,
+            preference = preference,
+            need = need,
+            current = resolve(currentId, keyFor, customBase, customModel),
+            candidates = candidates,
+        )
+        return (plan as? ModelRouter.Plan.Routed)?.picked
     }
 }
