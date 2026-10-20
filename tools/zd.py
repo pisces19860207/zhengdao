@@ -438,7 +438,7 @@ def cmd_doctor(_argv: list[str]) -> int:
     except Exception as e:
         c.fail("build.yml 解析失败", str(e))
 
-    for rel in ("AGENTS.md", "docs/协作规约.md", "docs/FEATURE-LEDGER.md", "docs/ERRATA.md", "tools/zd.py"):
+    for rel in ("AGENTS.md", "docs/协作规约.md", "docs/FEATURE-LEDGER.md", "tools/zd.py"):
         p = Path(root) / rel
         (c.ok if p.exists() else c.warn)(rel, f"{p.stat().st_size} 字节" if p.exists() else "缺少")
 

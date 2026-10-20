@@ -51,11 +51,13 @@ python tools\zd.py preflight -k 终端,单会话 `
 
 ## 该读哪个文件
 
+> **工程文档已移出公开仓（2026-10-20）**：勘误、派工单、设计/验收/交接这批「机制与踩坑」文档不在本仓，私有副本在工作区根 `..\_zd-private\docs\`（本机）。本仓 `docs/` 只留用户向文档、在飞表与台账/规约。
+
 | 想知道 | 读 |
 |---|---|
-| 多主体怎么协作、边界在哪、工具怎么用 | `docs/协作规约.md` |
-| **已经做完 / 待做的结账总表（新会话先读这个）**、现在有哪些功能、哪些半残、哪些被拍板删过 | `docs/FEATURE-LEDGER.md` 的「结账 · 现状总表」+ §2 / §3 |
-| 踩过的坑与更正（E-xxx，按编号查） | `docs/ERRATA.md` |
-| 终端 / rootfs 出问题怎么排查 | `docs/milestones/证道-故障排查手册.md` |
-| 终端为什么只有一个会话（改动重灾区） | `docs/milestones/证道-终端单会话模型.md` |
-| 版本计划、里程碑、验收 | `docs/milestones/`、`docs/acceptance/` |
+| 多主体怎么协作、边界在哪、工具怎么用 | `docs/协作规约.md`（全文在 `..\_zd-private\docs\协作规约.md`） |
+| **已经做完 / 待做的结账总表（新会话先读这个）**、现在有哪些功能、哪些半残、哪些被拍板删过 | `docs/FEATURE-LEDGER.md` 的「结账 · 现状总表」+ §2 / §3（全文在私有副本） |
+| 踩过的坑与更正（E-xxx，按编号查） | `..\_zd-private\docs\ERRATA.md` |
+| 终端 / rootfs 出问题怎么排查 | `..\_zd-private\docs\milestones\证道-故障排查手册.md` |
+| 终端为什么只有一个会话（改动重灾区） | `..\_zd-private\docs\milestones\证道-终端单会话模型.md` |
+| 版本计划、里程碑、验收 | `..\_zd-private\docs\milestones\`、`..\_zd-private\docs\acceptance\` |
