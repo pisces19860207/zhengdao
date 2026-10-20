@@ -146,7 +146,7 @@ object ProotLauncher {
                 actionLabel = "修复环境",
                 actionId = IssueCenter.ACTION_REPAIR_ENV,
             )
-            return fallbackPlan(files, context.cacheDir)
+            return ProotLaunchRules.fallbackPlan(files, context.cacheDir)
         }
 
         // 版本固定校验（与旧方案同款戳记机制，BUG-2 / E-083）：nativeLibraryDir 由
@@ -216,7 +216,9 @@ object ProotLauncher {
         )
 
         val installMarker = File(rootfsDir, ".zhengdao-rootfs-ok")
-        val rootfsReady = prootBin.isFile && prootBin.canExecute() && loaderBin.isFile && installMarker.isFile
+        val rootfsReady = ProotLaunchRules.rootfsReady(
+            prootBin.isFile, prootBin.canExecute(), loaderBin.isFile, installMarker.isFile
+        )
 
         if (!rootfsReady) {
             // #4：装了环境却又起不来 proot（文件被删 / 权限漂移）才算"出问题"；
@@ -231,7 +233,7 @@ object ProotLauncher {
                     actionId = IssueCenter.ACTION_REPAIR_ENV,
                 )
             }
-            return fallbackPlan(files, context.cacheDir)
+            return ProotLaunchRules.fallbackPlan(files, context.cacheDir)
         }
         // 正常路径：撤下这两条历史问题（下次真坏了会重新报）
         IssueCenter.resolve("proot-fallback")
@@ -448,78 +450,41 @@ object ProotLauncher {
         // TZ（双保险的第二层）：tmux server / date / Node 等都读它。带 zoneinfo 的
         // 环境用地理名；万一哪个 rootfs 变体没装 zoneinfo，glibc 解析不了地理名，
         // 就退到 POSIX 自包含写法 CST-8（= UTC+8，POSIX 偏移符号西正东负，零依赖）
-        val tzName = if (File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai").isFile) "Asia/Shanghai" else "CST-8"
-        val env = mutableListOf(
-            // ⚠️ /root/.local/bin 必须在 PATH 里（2026-10-07 真机血案）：Agent 安装器
-            // （agy 官方脚本、claude 官方脚本、npm 全局装）一律把命令发布到 ~/.local/bin，
-            // 而这里原先只有系统路径 ⇒ 装好的 agy/claude 敲出来是 "command not found"，
-            // 用户看到的现象就是「点启动没反应、Agent 没起来」。实测 files/home/.local/bin
-            // 里躺着 201MB 的 agy 与指向 claude 的软链，但 shell 根本找不到它们。
-            // 放在最前（用户级目录优先于系统层，与常规 Linux 习惯一致）。
-            "PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-            "HOME=/root",
-            "TERM=xterm-256color",
-            "LANG=C.UTF-8",
-            "TZ=$tzName",
-            // proot 自身需要：临时目录必须指向 App 可写路径（部分机型 /tmp 不可写）
-            "PROOT_TMP_DIR=${prootTmp.absolutePath}",
-            // ⚠️ 不要设 PROOT_NO_SECCOMP=1：这台 Honor/安卓16 实测证明，
-            // 关闭 seccomp 加速后（纯 PTRACE_SYSCALL 模式）guest 会静默退出 255；
-            // 默认的 seccomp 加速模式反而是本机唯一稳定的工作模式（2026-10-04 实测矩阵）。
-            // 防硬链接报错双保险（实测坑 #4）：proot --link2symlink 之外，uv 也强制 copy 模式
-            "UV_LINK_MODE=copy",
-            // 明确告知 uv 系统解释器位置（Debian 13.7 自带 Python 3.13，不做版本管理）
-            "UV_PYTHON=/usr/bin/python3",
-            // Termux proot 的依赖库与 loader 定位（第⑳刀 jniLibs 化）：
-            // libtalloc.so.2 在运行期目录（复制改名，bionic 按 DT_NEEDED 文件名精确查找）；
-            // libandroid-shmem.so 文件名恰与 DT_NEEDED 一致，留在 nativeLibraryDir 直接命中
-            "LD_LIBRARY_PATH=${rtDir.absolutePath}:${nativeDir.absolutePath}",
-            // ⚠️ 必须显式指 jniLibs 里的 loader：不设的话 proot 自抽取 loader 落临时
-            // 目录 ⇒ EACCES，且失败是静默的（原型真机实录，见 ProotBinaries KDoc）
-            "PROOT_LOADER=${loaderBin.absolutePath}",
-            // ── 网络优化（v1.2）─────────────────────────────────────────────────
-            // 禁 IPv6（P0）：Bun 在"DNS 返回全局 IPv6 但接口只有链路本地地址"的网络下会
-            //   优先连 IPv6 并**一直挂到超时**（oven-sh/bun#25619）。本 flag 在 Bun 源码
-            //   `src/env_var.zig` 里真实存在（2026-10-07 已核对），不是臆造项。
-            //   ⚠️ 本机实测未复现卡死（curl opencode.ai 1.50s vs -4 的 1.45s），
-            //   这里按用户决定**预防性**开启。
-            //   （2026-10-07 更正：原注释写「与 /etc/hosts 里钉的 IPv4 互为双保险」已不成立——
-            //    opencode.ai 的钉 IP 早前已撤除，见 EnvSelfHeal.HOSTS_UNPINS/"stripObsoletePins"。）
-            "BUN_FEATURE_FLAG_DISABLE_IPV6=1",
-            // 遥测屏蔽（P1）：网络不稳时的无退避重试会拖出大量失败 DNS 查询（发热/耗电）。
-            //   前两个是各类 CLI 通用的退出开关（未设时进程忽略，零副作用），
-            //   第三个是 **Claude Code 官方**文档的非必要流量开关。
-            "DISABLE_TELEMETRY=1",
-            "DISABLE_ERROR_REPORTING=1",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
-            // 本机环回**不走代理**（P0）：代理 App 若把 HTTP_PROXY 注入环境，
-            //   访问 127.0.0.1 的本地服务会被错误地送去代理、形成回环。
-            "NO_PROXY=localhost,127.0.0.1,::1",
-            "no_proxy=localhost,127.0.0.1,::1",
+        // TZ 取值规则搬到了 ProotLaunchRules.tzNameFor（第七十五批）：zoneinfo 的
+        // 文件查询留在调用点，纯选择逻辑进 helper。
+        val tzName = ProotLaunchRules.tzNameFor(
+            File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai").isFile
+        )
+        // env 表拼装搬到了 ProotLaunchRules.envEntries（第七十五批）：每条字面量的
+        // 出处注释随行搬运；顺序/内容与拆分前逐字节一致（对账见 ProotLaunchRulesTest）。
+        val env = ProotLaunchRules.envEntries(
+            tzName = tzName,
+            prootTmpPath = prootTmp.absolutePath,
+            rtDirPath = rtDir.absolutePath,
+            nativeDirPath = nativeDir.absolutePath,
+            loaderBinPath = loaderBin.absolutePath,
         )
 
-        val args = mutableListOf(
-            prootBin.absolutePath,   // 宿主侧 execve 的目标：Termux fork 的 proot（nativeLibraryDir，安装器自带执行位）
-            "--kill-on-exit",        // proot 退出时清掉 guest 内的全部进程，防孤儿
-            "--link2symlink",        // 硬链接失败自动降级为符号链接（实测坑 #4：SELinux 拒绝非 root 硬链接）
-            "-r", rootfsDir.absolutePath,          // guest 根目录
-            "-0",                    // 假装 root（guest 内 uid/gid 显示为 0，apt 等工具可用）
-            "-w", "/root",           // guest 内起始工作目录
-            "-b", "/dev",            // 绑定设备树
-            "-b", "/proc",           // 绑定进程信息
-            "-b", "/sys",            // 绑定系统信息
-            "-b", "${homeDir.absolutePath}:/root", // 用户 home（与系统层分离）
+        // 固定段（proot 选项）先入队，存储 bind/缓存 bind/收尾命令随后追加——
+        // 顺序即原顺序（guest 命令必须收尾：bind 被追加到 bash 之后会被当成脚本
+        // 路径执行，exit 127；2026-10-04 修复）。
+        val args = mutableListOf<String>()
+        args.addAll(
+            ProotLaunchRules.baseArgs(
+                prootBinPath = prootBin.absolutePath,
+                rootfsPath = rootfsDir.absolutePath,
+                homePath = homeDir.absolutePath,
+            )
         )
         // 手机存储直通：共享存储绑进 guest 的相同路径 + /sdcard 视图。
         // 工作区解析已在预置块前完成（wsHost/wsShared，统一走 Workspace）
-        if (storageGranted(context) && wsShared) {
-            val shared = "/storage/emulated/0"
-            args.addAll(arrayOf("-b", "$shared:$shared", "-b", "/sdcard:/sdcard"))
+        if (ProotLaunchRules.sharedStorageAllowed(storageGranted(context), wsShared)) {
+            args.addAll(ProotLaunchRules.sharedStorageBindArgs())
             // 工作区软链跟随当前工作区（guest 内 /root/工作区 直达；变更时重建）
             try {
                 val link = File(context.filesDir, "home/工作区")
                 link.parentFile?.mkdirs()
-                val target = "/sdcard" + wsHost.absolutePath.removePrefix("/storage/emulated/0")
+                val target = ProotLaunchRules.guestSymlinkTargetFor(wsHost.absolutePath)
                 val cur = runCatching { android.system.Os.readlink(link.absolutePath) }.getOrNull()
                 if (cur != target) {
                     link.delete()
@@ -535,7 +500,7 @@ object ProotLauncher {
             "工作区: /workspace <- ${wsHost.absolutePath}" +
                 if (wsShared) "（共享存储，卸载保留）" else "（仅私有，随卸载删除）"
         )
-        args.addAll(arrayOf("-b", "${wsHost.absolutePath}:/workspace"))
+        args.addAll(ProotLaunchRules.workspaceBindArg(wsHost.absolutePath))
 
         // ── 公共存放区直通（2026-10-08 用户拍板：日志 / 缓存 / Agent 脚本账本都放
         // `Download/证道`，**不跟随工作区**）──
@@ -546,7 +511,7 @@ object ProotLauncher {
         // 脚本、账本、包缓存、日志在 guest 里也都能直接翻。
         // 挂载点先在 rootfs 里建好（proot 不保证替调用方创建落点）。
         runCatching { File(rootfsDir, "opt/zhengdao").mkdirs() }
-        args.addAll(arrayOf("-b", "${Store.root(context).absolutePath}:${Store.GUEST_ROOT}"))
+        args.addAll(ProotLaunchRules.storeRootBindArg(Store.root(context).absolutePath, Store.GUEST_ROOT))
 
         // ── 包缓存搬进公共区（用户 2026-10-08：「下载的东西都放到 download 证道 文件夹里」）──
         // Agent 重装的大头从来不是安装脚本，而是 npm / uv / pip 的**包缓存**（真机实测：
@@ -570,7 +535,7 @@ object ProotLauncher {
         // hermes 的 pm 还会主动剥掉 `UV_*` 环境变量并显式设 `UV_CACHE_DIR`（见 :556 注释），
         // 所以「缓存整块留在私有 home（f2fs）」是唯一可行解；代价只是重装 App 后
         // uv 的轮子缓存要重下，npm / pip 缓存不受影响（它们不建软链、不 flock）。
-        if (storageGranted(context) && wsShared) {
+        if (ProotLaunchRules.sharedStorageAllowed(storageGranted(context), wsShared)) {
             for ((kind, rel) in sharedCacheBindings()) {
                 bindSharedCache(context, args, homeDir, kind, rel)
             }
@@ -583,49 +548,18 @@ object ProotLauncher {
         // ⚠️ M2 骨架结论（2026-10-04）：虚拟地址空间≠物理内存，Node/V8 真实负载下虚拟
         // 占用远超物理，硬限可能"正常用也崩"——因此默认关闭，交由 M2 的软监控
         // （读 /proc VmRSS + 通知栏警告）负责内存治理。设置页「运行内存上限」可手动开启。
-        val memLimitMb = AppPrefs.prefs(context)
-            .getString("guest_mem_limit_mb", "0")?.toIntOrNull() ?: 0
-        val memPrefix = if (memLimitMb > 0) "ulimit -v ${memLimitMb * 1024}; " else ""
+        val memLimitMb = ProotLaunchRules.parseMemLimitMb(
+            AppPrefs.prefs(context).getString("guest_mem_limit_mb", "0")
+        )
+        val memPrefix = ProotLaunchRules.memLimitPrefix(memLimitMb)
         // 会话保持（用户第三批）：tmux new-session -A = 有名为 zhengdao 的会话则 attach，
         // 没有则新建——终端断线重进不丢现场；Agent 经 autocmd 注入的命令同样落在会话内。
         // 外层 bash -l 先读 /etc/profile（UV_LINK_MODE 全局生效），再 exec 进 tmux。
         // 宿主侧检查 rootfs 是否带 tmux：旧包没有时降级裸 bash，guest 内不会报 command not found。
         val hasTmux = File(rootfsDir, "usr/bin/tmux").isFile
-        if (hasTmux) {
-            if (tmuxSession == "zhengdao") {
-                // 主会话：kill-server 兜底（孤儿 tmux server 会让 attach 失败）。
-                // ⚠️ 仅主会话可 kill——其它副会话与 zhengdao 共存于同一 server，
-                // kill 会连带杀掉它们的会话。
-                args.addAll(
-                    arrayOf(
-                        "/bin/bash",
-                        "-lc",
-                        "${memPrefix}tmux kill-server 2>/dev/null; exec tmux new-session -A -s zhengdao",
-                    )
-                )
-            } else {
-                // 副会话：不 kill、直接 attach-or-create。
-                // （v1.2 删掉了 `taiji` 副会话分支：它启动的是终端里 npm 版 opencode 的
-                //   /usr/local/bin/taiji 脚本，该 opencode 已随主线一卸载，分支不可达。）
-                val paneCmd = "/bin/bash -l"
-                args.addAll(
-                    arrayOf(
-                        "/bin/bash",
-                        "-lc",
-                        "${memPrefix}exec tmux new-session -A -s '$tmuxSession' $paneCmd",
-                    )
-                )
-            }
-        } else {
-            RunLog.log("rootfs 未带 tmux，降级为裸 bash 会话")
-            args.addAll(
-                arrayOf(
-                    "/bin/bash",
-                    "-lc",
-                    "${memPrefix}exec /bin/bash -l",
-                )
-            )
-        }
+        if (!hasTmux) RunLog.log("rootfs 未带 tmux，降级为裸 bash 会话")
+        args.addAll(ProotLaunchRules.guestCommandArgs(tmuxSession, memPrefix, hasTmux))
+
         if (memLimitMb > 0) RunLog.log("guest 内存上限: ${memLimitMb}MB (ulimit -v)")
 
         // apt 分层策略（用户第四批）：系统层不支持 apt upgrade；语言级依赖走 pip / npm。
@@ -827,17 +761,4 @@ object ProotLauncher {
         }
     }
 
-    /** 回退计划：系统自带 shell。功能完整可用，但不是 Debian 环境。 */
-    private fun fallbackPlan(filesDir: File, cacheDir: File): LaunchPlan = LaunchPlan(
-        cmd = "/system/bin/sh",
-        args = arrayOf("-l"),
-        env = arrayOf(
-            "PATH=/system/bin:/system/xbin:/vendor/bin",
-            "HOME=${filesDir.absolutePath}",
-            "TMPDIR=${cacheDir.absolutePath}",
-            "TERM=xterm-256color",
-            "LANG=C.UTF-8",
-        ),
-        isFallback = true,
-    )
 }
