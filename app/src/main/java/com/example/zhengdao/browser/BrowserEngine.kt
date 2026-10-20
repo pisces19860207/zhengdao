@@ -11,7 +11,8 @@ package com.example.zhengdao.browser
  * 本接口把 WebView 特有调用收敛到单点——未来若换 GeckoView 或其他引擎，
  * 只换实现、不动上层（桥 / UI / 终端链接）。不做多引擎工厂（§2.3 明确不过度设计）。
  *
- * 状态：骨架（未实现）。实现见 [WebViewEngine]（阶段 1）。
+ * 状态：已实现。实现见 [WebViewEngine]（系统 WebView，阶段 1 起）——
+ * 本接口把 WebView 特有调用收敛到单点，未来若换 GeckoView 或其他引擎只换实现、不动上层。
  */
 interface BrowserEngine {
 
