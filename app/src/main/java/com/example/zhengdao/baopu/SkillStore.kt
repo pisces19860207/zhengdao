@@ -15,6 +15,7 @@
 // 落点沿用 `SkillRules.globalSkillDir` / `projectSkillDir`，**不另起目录**。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 
 /** 技能落点：跟 App 走（全局）还是跟工作区走（项目）。 */
@@ -192,17 +193,23 @@ object SkillStore {
                     else -> false
                 }
             }
-            // 第五十八批：自动写入留痕（追加一行 JSON，失败不影响写入）
-            SkillAudit.record(
+            // 第五十八批：自动写入留痕（追加一行 JSON，失败不影响写入）。
+            // 第七十一批①：失败要有声音——KDoc 说「由调用方 log」，这里兑现；
+            // 只补日志，**不回滚**技能写盘（审计写不进不该弄丢刚写好的技能）。
+            val action = if (backup != null) "update" else "write"
+            val auditWritten = SkillAudit.record(
                 skillFile = file,
                 scope = if (plan.proposal.scope == SkillScope.PROJECT) "project" else "global",
                 name = plan.proposal.name,
-                action = if (backup != null) "update" else "write",
+                action = action,
                 reason = plan.proposal.reason,
                 beforeSha = beforeSha,
                 indexUpdated = indexUpdated,
                 nowMs = System.currentTimeMillis(),
             )
+            if (!auditWritten) {
+                RunLog.log("技能审计行写入失败：op=$action target=${plan.proposal.name}")
+            }
             SkillWriteResult.Written(file = file, backup = backup, indexUpdated = indexUpdated)
         }.getOrElse { SkillWriteResult.Rejected("写盘失败：${it.javaClass.simpleName}") }
     }
