@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.core.IssueCenter
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.rootfs.InstallPulse
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.InstallNotifier
@@ -38,6 +39,16 @@ object InstallFlow {
         InstallProgress.start(text, fromLocal)
         RunLog.log(text)
         InstallNotifier.update(ctx, text)
+        // 第六十五批（必做 #2）：解包阶段的高频读数只刷状态行 + 通知栏（[tick]），
+        // 不逐条写 RunLog——1.8 万条目会把日志刷成一片进度行。汇总仍由 InstallTrace 写一行。
+        val app = ctx.applicationContext
+        InstallPulse.onTick = { snap -> tick(app, InstallPulse.line(snap)) }
+    }
+
+    /** 解包进度的一帧：Compose 状态行 + 通知栏；**不**写 RunLog（节流 1Hz，日志只留汇总）。 */
+    fun tick(ctx: Context, text: String) {
+        InstallProgress.update(text)
+        InstallNotifier.update(ctx, text)
     }
 
     /** 过程中的一行进度；`percent` ≥ 0 时通知栏显示确定进度条。 */
@@ -49,6 +60,7 @@ object InstallFlow {
 
     /** 成功收尾：横幅常驻结论 + 通知改成可划掉的「已就绪」+ 给终端留一行。 */
     fun finish(ctx: Context, text: String) {
+        InstallPulse.onTick = null
         RunLog.log(text)
         InstallProgress.finish(text)
         InstallNotifier.finish(ctx, text, failed = false)
@@ -59,6 +71,7 @@ object InstallFlow {
 
     /** 失败收尾：状态标红、通知标失败（调用方再决定要不要补 Toast）。 */
     fun fail(ctx: Context, text: String) {
+        InstallPulse.onTick = null
         RunLog.log(text)
         InstallProgress.finish(text, failed = true)
         InstallNotifier.finish(ctx, text, failed = true)

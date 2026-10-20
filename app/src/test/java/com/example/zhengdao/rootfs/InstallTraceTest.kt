@@ -63,7 +63,8 @@ class InstallTraceTest {
         t.archiveBytes = 201_632_517L
         t.entries = 12_345L
         t.bytesWritten = 812_000_000L
-        t.hashPasses = 2
+        t.hashPasses = 1
+        t.preHashPasses = 1
         t.extractionPath = "Rust"
         t.begin(InstallTrace.Stage.EXTRACT)
         clock.advance(2_000)
@@ -74,7 +75,10 @@ class InstallTraceTest {
         assertTrue("必须带原始字节数（对账用）：$line", line.contains("201632517B"))
         assertTrue("必须带条目数：$line", line.contains("条目 12345"))
         assertTrue("必须带写出体积：$line", line.contains("写出 774.4MB"))
-        assertTrue("必须带整包哈希次数（本期判据）：$line", line.contains("整包哈希 2 次"))
+        assertTrue(
+            "必须把安装内/安装前哈希次数分开（派工单 §1-④ 判据）：$line",
+            line.contains("整包哈希 安装内 1 次 · 安装前 1 次"),
+        )
         assertTrue("必须标出解包路径：$line", line.contains("解包路径 Rust"))
         assertTrue("未发生的阶段写 —，不能编数：$line", line.contains("下载 —"))
     }
