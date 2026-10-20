@@ -370,6 +370,12 @@ internal object BaopuRuntime {
                     keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
                     customBase = cb,
                     customModel = cm,
+                    // 第九十三批 · 模型路由的**只读**接线：读 SP 现值传进判据。
+                    // 用户没显式开过 AUTO_ROUTE ⇒ autoRoute=false、preference=null ⇒
+                    // fallbackFrom 走「取候选名单第一个」的老路，行为与本两行存在之前一致。
+                    // Key 仍只经 keyFor 从 SP 读：不进引擎、不进日志、不进路由理由。
+                    autoRoute = ProviderPrefs.autoRouteEnabled(appCtx),
+                    preference = ProviderPrefs.routePreference(appCtx),
                 )
             },
             // 安全点切换效应（第六十四批）：写只经 ProviderPrefs（唯一真相）。
