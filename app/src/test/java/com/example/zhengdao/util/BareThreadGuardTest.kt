@@ -155,6 +155,11 @@ import kotlin.text.Charsets
  *   ⇒ zd-baopu-run 创建点 210→219，本次回填；资源机本体在
  *   `agent/ChannelSwitchFsm.kt`（纯判据，逐行核过无裸 Thread；`dispatch` 用
  *   方法级 synchronized，不建线程）。
+ * - 2026-10-20（第七十四批 · TerminalActivity 纯逻辑抽取）：**无新增线程**。纯逻辑搬进
+ *   `terminal/` 四个 helper（Intent 路由 / 边滑判定 / 分屏计数 / 进度分档），活动侧只留调用：
+ *   import 区 +5（zd-paste 83→88），其余六处等值搬移净 −14 行 ⇒ 五个创建点整体 −9
+ *   （660→651 / 893→884 / 1707→1698 / 1767→1758 / 1853→1844）。逐处核过仍是同一段
+ *   `Thread {` / `Thread(…, "zd-…")`，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -217,12 +222,12 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:273",           // zd-env-check（同上 +7；第十八批 B 段 Hermes 卡条件化包裹再 +5 ⇒ 268→273）
             "SettingsEnvActivity.kt:586",           // zd-env-repair（第⑯刀 R-29 +4 / B-补-22 内存上限卡 +11 / 清场批注 +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +8 ⇒ 578→586）
             "SettingsEnvActivity.kt:687",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687）
-            "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
-            "TerminalActivity.kt:660",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17；第五十三批 P1-4 +4）；第六十批 P2-7 清理挪入 worker + 注释 +6 ⇒ 654→660
-            "TerminalActivity.kt:893",              // zd-net-probe（同上；第五十三批 P1-4 +4）；第六十批 P2-7 +22 ⇒ 869→891
-            "TerminalActivity.kt:1707",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1；第二十一批 +63；第五十三批 P1-4 +4 / P1-6 +7）；第六十批 P2-7 +22 ⇒ 1683→1705
-            "TerminalActivity.kt:1767",             // zd-install-cache（同上）；第六十批 P2-7 +22 ⇒ 1743→1765
-            "TerminalActivity.kt:1853",             // zd-install-download（同上）；第六十批 P2-7 +22 ⇒ 1829→1851
+            "TerminalActivity.kt:88",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）；第七十四批 74 纯逻辑抽取 import +5 ⇒ 83→88
+            "TerminalActivity.kt:651",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17；第五十三批 P1-4 +4）；第六十批 P2-7 清理挪入 worker + 注释 +6 ⇒ 654→660；第七十四批 74 纯逻辑抽取 −9 ⇒ 660→651
+            "TerminalActivity.kt:884",              // zd-net-probe（同上；第五十三批 P1-4 +4）；第六十批 P2-7 +22 ⇒ 869→891；第七十四批 74 纯逻辑抽取 −9 ⇒ 893→884
+            "TerminalActivity.kt:1698",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1；第二十一批 +63；第五十三批 P1-4 +4 / P1-6 +7）；第六十批 P2-7 +22 ⇒ 1683→1705；第七十四批 74 纯逻辑抽取 −9 ⇒ 1707→1698
+            "TerminalActivity.kt:1758",             // zd-install-cache（同上）；第六十批 P2-7 +22 ⇒ 1743→1765；第七十四批 74 纯逻辑抽取 −9 ⇒ 1767→1758
+            "TerminalActivity.kt:1844",             // zd-install-download（同上）；第六十批 P2-7 +22 ⇒ 1829→1851；第七十四批 74 纯逻辑抽取 −9 ⇒ 1853→1844
             "ZhengdaoApp.kt:82",                    // zhengdao-keepalive-archive（第⑲刀 +3；清场删两 import −2、删 onCreate 调用 −1、补说明 +2 ⇒ +2）
             "ZhengdaoApp.kt:132",                   // zd-auto-clean（同上）
         )
