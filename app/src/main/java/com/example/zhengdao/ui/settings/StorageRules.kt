@@ -29,6 +29,9 @@ internal object StorageRules {
     /** [StorageAudit] 明细里「公共区安装脚本」组的组名（数据契约，非界面文案）。 */
     private const val GROUP_INSTALL_SCRIPT = "公共区安装脚本"
 
+    /** [StorageAudit] 明细里「hermes 自检」组的组名（数据契约，非界面文案）。 */
+    private const val GROUP_HERMES_SELFCHECK = "hermes 自检"
+
     /**
      * 明细分组名 → 展示名（原 `SettingsStoragePage` 里 `when (item.group)` 四路映射）。
      *
@@ -40,7 +43,7 @@ internal object StorageRules {
      */
     fun groupLabel(group: String): String = when (group) {
         GROUP_HERMES_TOOLS -> "装 hermes 工具时下载的文件"
-        "hermes 自检" -> "hermes 自检记录"
+        GROUP_HERMES_SELFCHECK -> "hermes 自检记录"
         GROUP_INSTALL_SCRIPT -> "安装时下载的脚本"
         else -> group
     }

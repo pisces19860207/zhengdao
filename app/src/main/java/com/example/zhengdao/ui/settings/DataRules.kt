@@ -41,8 +41,10 @@ internal object DataRules {
     /**
      * 资料库路径行是否展示（原 `if (st != null && st.state != DISABLED)`）。
      *
-     * DISABLED（用户把开关关了）时没有可展示的路径；其余状态（含还没读到的
-     * null）都展示——路径是用户「进去放资料」的唯一线索。
+     * DISABLED（用户把开关关了）时没有可展示的路径；其余状态都展示——路径是
+     * 用户「进去放资料」的唯一线索。**null（还没读到状态）算不展示**：调用处
+     * 本来就先用 `st != null &&` 挡了一层（保住 `st.path` 的智能转换），本函数
+     * 收到 null 只会返回 false——两者口径一致，别把它读成「null 也展示」。
      */
     fun shouldShowKbPath(state: KnowledgeBase.State?): Boolean =
         state != null && state != KnowledgeBase.State.DISABLED
