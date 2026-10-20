@@ -1033,6 +1033,11 @@
     <string name="baopu_export_done">Export done: %1$d files (in 整理/原件导出-&lt;timestamp&gt;/)</string>
     <string name="baopu_export_none">Nothing to export (the index is empty).</string>
     <string name="baopu_export_notes">%1$d extra notes (skipped / name clash / failure).</string>
+      <!-- Batch 63: the first-screen notice slot. Only the highest level shows at a time
+           (error > action > hint); the rest fold into this line, tap to see them all —
+           every one of them stays operable in there. -->
+    <string name="baopu_notice_more">%1$d more</string>
+    <string name="baopu_notice_sheet_title">All notices</string>
       <!-- 刀 3：抱朴抽屉。口径——低频入口收一层，首屏只留 ☰／状态／＋。 -->
     <string name="baopu_drawer_open">Open sidebar</string>
     <string name="baopu_drawer_title">Baopu</string>
