@@ -237,7 +237,9 @@ class BaopuPlanCardTest {
 
     @Test
     fun `J16_controller里的plan过滤行已删_解析落点在`() {
-        val src = source("BaopuChatController.kt")
+        // 第七十二批：装配判据从控制器搬到 BaopuMessageAssembler（纯函数，JVM 直测）；
+        // 判据本体不变——plan 必须经 BaopuUiPlan.fromPayload 解析进 msg.plan，不许直显 payload。
+        val src = source("BaopuMessageAssembler.kt")
         assertFalse(
             "「过滤行」（if (kind == \"plan\") continue 形态）必须消失——C 段摘掉临时过滤",
             src.contains("if (kind == \"plan\") continue"),

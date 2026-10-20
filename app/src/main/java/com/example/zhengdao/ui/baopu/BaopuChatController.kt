@@ -30,7 +30,6 @@ import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.EngineEvent
-import com.example.zhengdao.baopu.agent.RunRules
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.LibraryItem
 import com.example.zhengdao.baopu.library.LibraryKind
@@ -42,7 +41,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 /**
  * 会话库一行（第二十批 §2.1 浮层数据源；SQL 在
@@ -549,20 +547,15 @@ internal class BaopuChatController(context: Context) {
     /**
      * 进程重启后重建确认卡（T3 的第一半）：session 的 pending 三列非空 ⇒ 造一张卡。
      *
-     * summary 由工具名＋参数**重新生成**（[RunRules.confirmSummary]——与在线
-     * 出卡同一个函数，不落库；callId 合成 `restored-<pending_at>`，稳定）。
-     * 参数坏 JSON ⇒ 摘要照给（路径那行显示工具名），批准时引擎侧同样兜底。
+     * 三格的合成判据在 [BaopuConfirmRestore]（第七十二批抽出的纯函数）：
+     * summary 由工具名＋参数**重新生成**（与在线出卡同一个函数，不落库；
+     * callId 合成 `restored-<pending_at>`，稳定）；参数坏 JSON ⇒ 摘要照给。
      */
     private fun restoreConfirmCard() {
         val sid = sessionId ?: return
         val row = pendingStore.load(sid) ?: return
-        val args = runCatching { JSONObject(row.argsJson) }.getOrNull() ?: JSONObject()
-        confirmCard = ConfirmRequest(
-            callId = "restored-${row.at}",
-            tool = row.tool,
-            summary = RunRules.confirmSummary(row.tool, args),
-            argsJson = row.argsJson,
-        )
+        // 三格合成在 BaopuConfirmRestore（第七十二批抽出的纯函数，坏 JSON 也不抛）
+        confirmCard = BaopuConfirmRestore.card(row)
         confirmRestored = true
     }
 
@@ -817,17 +810,11 @@ internal class BaopuChatController(context: Context) {
                 }
             }
         }
-        val blankIds = rows.filter { it.title.isBlank() }.map { it.id }
+        // 标题兜底（§2.1.2）：空标题取首条用户消息**前 20 字**；再空由 UI 显示「未命名会话」。
+        // 判据本体在 BaopuSessionTitles（第七十二批抽出的纯函数），这里只补查数据源。
+        val blankIds = BaopuSessionTitles.blankIds(rows)
         if (blankIds.isEmpty()) return rows
-        val firstTexts = readFirstUserTexts(blankIds)
-        // 标题兜底（§2.1.2）：空标题取首条用户消息**前 20 字**；再空由 UI 显示「未命名会话」
-        return rows.map { e ->
-            if (e.title.isNotBlank()) {
-                e
-            } else {
-                e.copy(title = firstTexts[e.id].orEmpty().trim().take(20))
-            }
-        }
+        return BaopuSessionTitles.withFallback(rows, readFirstUserTexts(blankIds))
     }
 
     /** 空标题会话的首条用户消息正文（标题兜底的数据源；没有 ⇒ 不在该表里）。 */
@@ -1370,28 +1357,20 @@ internal class BaopuChatController(context: Context) {
      */
     private fun refineOnSettle() {
         val sid = sessionId ?: return
-        val userTexts = messages
-            .filter { it.role == "user" }
-            .flatMap { m -> m.parts.filter { it.kind == "text" }.map { it.text } }
-        val already = if (refineMarkSession == sid) refineMarkUserCount.coerceAtLeast(0) else 0
-        val fresh = userTexts.drop(already)
-        if (fresh.isEmpty()) return // 没有新用户输入（空跑/纯恢复）不提炼
+        // 游标切片与工具统计是纯判据（第七十二批抽到 BaopuRefineWindow）：返回 null = 没新输入
+        val slice = BaopuRefineWindow.slice(
+            messages = messages,
+            sessionId = sid,
+            markSession = refineMarkSession,
+            markCount = refineMarkUserCount,
+        ) ?: return
         refineMarkSession = sid
-        refineMarkUserCount = userTexts.size
-
-        // 本轮的消息范围：从第一条新用户消息开始（工具统计只算本轮的）
-        val firstFreshId = messages.filter { it.role == "user" }
-            .let { users -> if (users.isEmpty()) null else users[users.size - fresh.size].id }
-        val roundMsgs = messages.filter { it.id >= (firstFreshId ?: Long.MAX_VALUE) }
-        val toolsUsed = roundMsgs
-            .flatMap { m -> m.parts.filter { it.kind == "tool" }.map { it.tool } }
-            .filter { it.isNotBlank() }
-            .distinct()
+        refineMarkUserCount = slice.markCount
 
         val facts = MemoryRefine.SessionFacts(
             sessionId = sid,
-            userTexts = fresh,
-            toolsUsed = toolsUsed,
+            userTexts = slice.freshUserTexts,
+            toolsUsed = slice.toolsUsed,
             steps = db.read { d ->
                 d.rawQuery(
                     "SELECT COALESCE(MAX(step), 0) FROM run_log WHERE session_id = ?",
@@ -1408,13 +1387,13 @@ internal class BaopuChatController(context: Context) {
         )
         val r = MemoryRefine.refine(facts)
         // 追加（不冲掉用户还没过目的老候选）＋ 同正文去重 ＋ 上限截断（先到先得）
-        val merged = (pendingMemories + r.candidates).distinctBy { it.body }
-        if (merged.size > maxPending) {
+        val merge = BaopuRefineWindow.mergePending(pendingMemories, r.candidates, maxPending)
+        if (merge.dropped > 0) {
             com.example.zhengdao.rootfs.RunLog.log(
-                "[baopu-refine] 待过目候选超过 $maxPending 条，截断 ${merged.size - maxPending} 条（body 去重后仍超限）",
+                "[baopu-refine] 待过目候选超过 $maxPending 条，截断 ${merge.dropped} 条（body 去重后仍超限）",
             )
         }
-        pendingMemories = merged.take(maxPending)
+        pendingMemories = merge.kept
         introspectionNote = r.introspection.text
         runCatching {
             notePrefs.edit().putString("note_$sid", r.introspection.text).apply()
@@ -1518,7 +1497,8 @@ internal class BaopuChatController(context: Context) {
             return
         }
         val total = globalLines.size + projectLines.size
-        if (total + r.candidates.size > com.example.zhengdao.baopu.SkillRules.INDEX_CAP) {
+        // 上限判据只有一处算术（BaopuIndexBudget，第七十二批抽出）
+        if (BaopuIndexBudget.wouldExceed(total, r.candidates.size)) {
             // K2：超上限 ⇒ 拒绝并提示先删旧的（不是截断）
             skillNote = BaopuNote(
                 appCtx.getString(
@@ -1583,9 +1563,8 @@ internal class BaopuChatController(context: Context) {
         } else {
             com.example.zhengdao.baopu.MemoryScope.PROJECT
         }
-        val adding = com.example.zhengdao.baopu.SkillRules.parseIndexLines(p.proposed, scope).size -
-            com.example.zhengdao.baopu.SkillRules.parseIndexLines(p.current, scope).size
-        if (total + adding > com.example.zhengdao.baopu.SkillRules.INDEX_CAP) {
+        val adding = BaopuIndexBudget.addedIndexLines(p.proposed, p.current, scope)
+        if (BaopuIndexBudget.wouldExceed(total, adding)) {
             skillNote = BaopuNote(
                 appCtx.getString(
                     R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
@@ -1782,52 +1761,22 @@ internal class BaopuChatController(context: Context) {
                 "WHERE message.session_id = ? ORDER BY message.seq ASC, part.seq ASC",
             arrayOf(sessionId.toString()),
         ).use { c ->
-            val out = mutableListOf<BaopuUiMessage>()
-            var curId = -1L
-            var curRole = ""
-            var curAt = 0L
-            var parts = mutableListOf<BaopuUiPart>()
-            var curPlan: BaopuUiPlan? = null
-            fun flush() {
-                // 计划 part（第十七批 C 段）：解析进 msg.plan，**不进 parts**（payload
-                // 原文不当正文渲染——J16）。只有 plan part 的消息 parts 为空、plan 非空，
-                // 照样建消息（计划卡挂在轮上，气泡本身由列表层跳过）。
-                if (curId >= 0 && (parts.isNotEmpty() || curPlan != null)) {
-                    out += BaopuUiMessage(curId, curRole, parts.toList(), curAt, curPlan)
-                }
-            }
-            while (c.moveToNext()) {
-                val id = c.getLong(0)
-                if (id != curId) {
-                    flush()
-                    curId = id
-                    curRole = c.getString(1)
-                    curAt = if (c.isNull(2)) 0L else c.getLong(2)
-                    parts = mutableListOf()
-                    curPlan = null
-                }
-                val kind = if (c.isNull(3)) "text" else c.getString(3)
-                val payload = if (c.isNull(4)) "" else c.getString(4)
-                if (kind == "plan") {
-                    // 同消息多条 plan（理论不会）⇒ 后一条赢；解析不出条目 ⇒ 当作没有
-                    BaopuUiPlan.fromPayload(payload)?.let { curPlan = it }
-                    continue
-                }
-                parts += if (kind == "tool") {
-                    val json = runCatching { JSONObject(payload) }.getOrNull()
-                    BaopuUiPart(
-                        kind = "tool",
-                        tool = json?.optString("tool") ?: "",
-                        text = json?.optString("result") ?: payload,
+            // 装配判据（plan 进 msg.plan、tool JSON、空消息丢不丢）是纯函数，
+            // 第七十二批抽到 BaopuMessageAssembler；这里只把游标摊成行。
+            val rows = buildList {
+                while (c.moveToNext()) {
+                    add(
+                        BaopuPartRow(
+                            messageId = c.getLong(0),
+                            role = c.getString(1),
+                            createdAt = if (c.isNull(2)) 0L else c.getLong(2),
+                            kind = if (c.isNull(3)) "text" else c.getString(3),
+                            payload = if (c.isNull(4)) "" else c.getString(4),
+                        ),
                     )
-                } else {
-                    // 保留库里的原始 kind（不硬归一成 "text"）：part.kind 是自由文本，
-                    // 未来新增 kind（如压缩标记）不该在列表层被静默吞掉。本刀实际只会有 text。
-                    BaopuUiPart(kind = kind, text = payload)
                 }
             }
-            flush()
-            out
+            BaopuMessageAssembler.assemble(rows)
         }
     }
 
