@@ -191,6 +191,13 @@ internal object ToolGroupTable {
 internal data class ToolUserSettings(
     val disabledNames: Set<String> = emptySet(),
     val disabledGroups: Set<ToolGroup> = emptySet(),
+    /**
+     * 用户**长期同意开启**的组（第九十七批：御批卡选「一直」的落点，设置页组开关同步）。
+     *
+     * 与 [disabledGroups] 是两件事：approved = 「我允许它用」，disabled = 「我不许它用」；
+     * 两者都空 ⇒ 高频组之外的组就是「已锁」（默认不发给模型，抱朴要用时会弹卡申请）。
+     */
+    val approvedGroups: Set<ToolGroup> = emptySet(),
 )
 
 /**
@@ -211,6 +218,15 @@ internal interface GroupUnlockStore {
 
     /** 清掉一个会话的解锁（会话删除时顺带清，不留垃圾）。 */
     fun clear(sessionId: Long)
+
+    /**
+     * 把某几个组**从所有会话**的解锁格里撤掉（第九十七批 §3.5：设置页手动关组 ⇒
+     * 「会话内已解锁的一并失效」）。
+     *
+     * 默认实现什么都不做：老实现与测试假件不必改；生产实现（`BaopuToolUnlocks`）
+     * 按 `session:` 前缀扫一遍 SP 键。
+     */
+    fun relockAll(groups: Collection<ToolGroup>) {}
 }
 
 /** 内存实现（单测与无 Context 环境用；进程内生效，不持久）。 */
@@ -228,6 +244,15 @@ internal class InMemoryGroupUnlocks(
 
     override fun clear(sessionId: Long) {
         bySession.remove(sessionId)
+    }
+
+    override fun relockAll(groups: Collection<ToolGroup>) {
+        if (groups.isEmpty()) return
+        val drop = groups.toSet()
+        bySession.keys.toList().forEach { sid ->
+            val cur = bySession[sid] ?: return@forEach
+            bySession[sid] = cur - drop
+        }
     }
 
     /** 只看快照（门禁与单测用：证明解锁确实按 sessionId 分格，不是一格共用）。 */
@@ -252,7 +277,9 @@ internal fun isVisibleTool(
     settings: ToolUserSettings,
     unlockedGroups: Set<ToolGroup>,
 ): Boolean {
-    val visibleGroups = ToolGroup.DEFAULT_VISIBLE + unlockedGroups
+    // 第九十七批：可见 = 默认可见 ∪ 长期同意 ∪ 本会话已解锁（三种授权同一档；
+    // 组开关与单工具开关仍各自能否决——那两条判据在下面两行，一个字没动）。
+    val visibleGroups = ToolGroup.DEFAULT_VISIBLE + settings.approvedGroups + unlockedGroups
     return spec.name !in settings.disabledNames &&
         spec.group !in settings.disabledGroups &&
         spec.group in visibleGroups
@@ -466,15 +493,28 @@ internal interface ToolPrefs {
 
     /** 改组开关（热改，与单工具开关同一时机生效：下一轮请求）。 */
     fun setGroupDisabled(group: ToolGroup, disabled: Boolean) {}
+
+    /**
+     * 用户**长期同意**开启的组（第九十七批：御批卡「一直」与设置页组开关的落点）。
+     *
+     * 默认实现返回空集 = 没有任何组被长期授权（高组一律「已锁」）——刀 2/59 批时代的
+     * 存量实现不必改就能编译，语义也正是新口径的默认值。
+     */
+    fun approvedGroups(): Set<ToolGroup> = emptySet()
+
+    /** 写长期同意（热改；设置页与御批卡共用这一处）。 */
+    fun setGroupApproved(group: ToolGroup, approved: Boolean) {}
 }
 
 /** 内存实现（单测与无 Context 环境用；进程内生效，不持久）。 */
 internal class InMemoryToolPrefs(
     initial: Set<String> = emptySet(),
     initialGroups: Set<ToolGroup> = emptySet(),
+    initialApproved: Set<ToolGroup> = emptySet(),
 ) : ToolPrefs {
     private val disabled = initial.toMutableSet()
     private val disabledGroups = initialGroups.toMutableSet()
+    private val approvedGroups = initialApproved.toMutableSet()
     override fun isDisabled(name: String): Boolean = name in disabled
     override fun setDisabled(name: String, disabled: Boolean) {
         if (disabled) this.disabled.add(name) else this.disabled.remove(name)
@@ -486,6 +526,12 @@ internal class InMemoryToolPrefs(
 
     override fun setGroupDisabled(group: ToolGroup, disabled: Boolean) {
         if (disabled) disabledGroups.add(group) else disabledGroups.remove(group)
+    }
+
+    override fun approvedGroups(): Set<ToolGroup> = approvedGroups.toSet()
+
+    override fun setGroupApproved(group: ToolGroup, approved: Boolean) {
+        if (approved) approvedGroups.add(group) else approvedGroups.remove(group)
     }
 }
 
@@ -511,6 +557,19 @@ internal class InMemoryToolPrefs(
 internal class ToolRegistry(
     private val prefs: ToolPrefs = InMemoryToolPrefs(),
     private val unlocks: GroupUnlockStore = InMemoryGroupUnlocks(),
+    /**
+     * 组启用的限流闸（第九十七批）：每个注册表一份。默认 [ToolGroupGate.DEFAULT_THRESHOLD]＝3；
+     * 单测传更小的值即可直接验「连续 N 次」。
+     */
+    private val gate: ToolGroupGate = ToolGroupGate(),
+    /**
+     * 弹卡并等用户点（第九十七批的御批闸）。
+     *
+     * 默认取 `AskUserTool.sink`（装配层在 `BaopuRuntime.build` 里接到 `engine.askUser`）——
+     * 形制与 `ask_user` 完全一样：**阻塞当前工具线程**、有界（15 分钟）、没人听就回 null。
+     * 单测注入确定性回答，不必起界面。
+     */
+    private val ask: ((AskUserRequest) -> AskUserOption?)? = { AskUserTool.sink?.invoke(it) },
 ) : CapabilitiesSink {
 
     private val specs = LinkedHashMap<String, ToolSpec>()
@@ -573,6 +632,14 @@ internal class ToolRegistry(
 
     fun disabledGroups(): Set<ToolGroup> = prefs.disabledGroups()
 
+    /** 长期同意开启的组（御批卡「一直」与设置页组开关的落点）。 */
+    fun approvedGroups(): Set<ToolGroup> = prefs.approvedGroups()
+
+    /** 写长期同意（热改；设置页与御批卡共用这一处）。 */
+    fun setGroupApproved(group: ToolGroup, approved: Boolean) {
+        prefs.setGroupApproved(group, approved)
+    }
+
     /** 本会话已解锁的组（默认可见组不在其中）。 */
     fun unlockedGroups(sessionId: Long = currentSessionId): Set<ToolGroup> = unlocks.unlocked(sessionId)
 
@@ -580,7 +647,11 @@ internal class ToolRegistry(
     fun unlockStore(): GroupUnlockStore = unlocks
 
     /** 本会话生效的用户开关快照（[visibleTools] 的第二路输入）。 */
-    fun settings(): ToolUserSettings = ToolUserSettings(prefs.disabledNames(), prefs.disabledGroups())
+    fun settings(): ToolUserSettings = ToolUserSettings(
+        disabledNames = prefs.disabledNames(),
+        disabledGroups = prefs.disabledGroups(),
+        approvedGroups = prefs.approvedGroups(),
+    )
 
     /**
      * 此刻该模型看见的工具（**唯一一条链的调用点**；顺序 = 表顺序，稳定缓存友好）。
@@ -641,8 +712,11 @@ internal class ToolRegistry(
     /**
      * `capabilities` 的落点（[CapabilitiesSink]；照 [PlanSink] / ask_user 的接线房型）。
      *
-     * 注册表本来就同时握着三样输入（表、用户开关、会话解锁），所以名册与解锁动作
+     * 注册表本来就同时握着三样输入（表、用户开关、会话解锁），所以名册与授权动作
      * 都在这里算——工具文件只负责 Schema 与「没接线就明说」，不再自己拼一份判据。
+     *
+     * 第九十七批起「解锁」不再是自解锁：`enable` 走 [askAndGrant] 弹御批卡，
+     * 用户点同意才落授权（59 批 FREE 自解锁口径作废，见 [ToolGroupGate] 文件头）。
      */
     override fun handle(args: JSONObject): ToolOutcome {
         val sessionId = currentSessionId
@@ -659,22 +733,25 @@ internal class ToolRegistry(
                 if (group == null) unknown += key else if (group !in asked) asked += group
             }
             val already = unlockedGroups(sessionId)
-            val toAdd = asked.filter { it !in ToolGroup.DEFAULT_VISIBLE && it !in already }
-            // 被用户整组关掉的：**不解锁**，如实回原因（§1.4 用户开关优先）。
-            val blocked = toAdd.filter { it in settings.disabledGroups }
-            val granted = toAdd - blocked.toSet()
-            unlocks.unlock(sessionId, granted)
-            sb.append("解锁结果（本会话，下一轮生效；新会话回到默认）：\n")
-            if (granted.isEmpty() && blocked.isEmpty() && asked.isEmpty()) {
-                sb.append("（enable 里没给出可解锁的组）\n")
+            sb.append("启用申请结果（用户御批；同意后下一轮生效）：\n")
+            if (asked.isEmpty()) sb.append("（enable 里没给出可解锁的组）\n")
+            // 逐个组走同一条判定，先后次序本身就是判据（E3「用户开关优先」）：
+            // 默认可见 → 用户关掉 → 已长期同意 → 本会话已解锁 → 弹卡申请。别调换。
+            asked.forEach { group ->
+                when {
+                    group in ToolGroup.DEFAULT_VISIBLE ->
+                        sb.append("- 本来就默认可见，不需要申请：${group.key}\n")
+                    group in settings.disabledGroups -> sb.append(
+                        "- 解不开：${group.key} —— 这一组被你用户在设置里关掉了，" +
+                            "capabilities 不能替用户打开它（要用的话请用户去 抱朴 → 抽屉「抱朴设置」→ 抱朴工具）\n",
+                    )
+                    group in settings.approvedGroups ->
+                        sb.append("- 用户已经长期同意过，不用再申请：${group.key}\n")
+                    group in already ->
+                        sb.append("- 本会话此前已解锁过：${group.key}\n")
+                    else -> sb.append(askAndGrant(group, sessionId))
+                }
             }
-            granted.forEach { sb.append("- 已解锁：${it.key}（${it.oneLine}）\n") }
-            blocked.forEach { sb.append("- 解不开：${it.key} —— 这一组被你用户在设置里关掉了，" +
-                "capabilities 不能替用户打开它（要用的话请用户去 抱朴 → 抽屉「抱朴设置」→ 抱朴工具）\n") }
-            asked.filter { it in ToolGroup.DEFAULT_VISIBLE }
-                .forEach { sb.append("- 本来就默认可见，无需解锁：${it.key}\n") }
-            asked.filter { it in already && it !in ToolGroup.DEFAULT_VISIBLE }
-                .forEach { sb.append("- 本会话此前已解锁过：${it.key}\n") }
             unknown.forEach { sb.append("- 没有这个组：$it\n") }
             sb.append("可解锁的组名：")
                 .append(ToolGroup.values().filter { it != ToolGroup.COMPAT }
@@ -695,8 +772,10 @@ internal class ToolRegistry(
             val state = when {
                 group in settings.disabledGroups -> "已被用户关闭（解不开）"
                 group in ToolGroup.DEFAULT_VISIBLE -> "默认可见"
+                group in settings.approvedGroups -> "用户已同意长期开启"
                 group in unlockedGroups(sessionId) -> "本会话已解锁"
-                else -> "未解锁"
+                // 保留「未解锁」三个字：C2 的既有判据钉着它（59 批口径，本批只补后缀）。
+                else -> "未解锁（要用时先向你申请，你同意才开）"
             }
             sb.append("- ${group.key}（$state）：${group.oneLine}\n")
             if (registered.isEmpty()) {
@@ -706,6 +785,52 @@ internal class ToolRegistry(
             }
         }
         return ToolOutcome.Ok(sb.toString().trimEnd())
+    }
+
+    /**
+     * 御批闸（本批核心）：弹一张卡，按用户的选择落授权。
+     *
+     * 四条边界：
+     * - **没同意就不授权**：取消 / 无人应答 / 没有界面三条路都只记账，不动解锁与开关；
+     * - **用户开关优先**：调用方已先判过 `disabledGroups`，这里不再碰（关掉的组连卡都不弹）；
+     * - **不改 `ToolPermission`**：`capabilities` 仍是 FREE 档——它自己不改可见性，只发起申请；
+     *   真正决定可见性的仍是 [isVisibleTool] 那一处；
+     * - **限流靠 [gate]**：拒绝后要再攒 N 次申请才弹下一张（§2「连续 N 次」）。
+     */
+    private fun askAndGrant(group: ToolGroup, sessionId: Long): String {
+        when (val decision = gate.decide(sessionId, group)) {
+            is GroupGateDecision.Suppress ->
+                return "- 这次不弹卡：${decision.reason}（${group.key}）\n"
+            is GroupGateDecision.Ask -> Unit
+        }
+        val picked = ask?.invoke(GroupApprovalCard.request(group))
+        return when (picked?.id) {
+            GroupGrantScope.SESSION.key -> {
+                unlocks.unlock(sessionId, listOf(group))
+                gate.noteApproved(sessionId, group)
+                ToolGroupAudit.grant(group, "本次会话")
+                "- 已解锁：${group.key}（${group.oneLine}）—— 本次会话有效，下一轮就能用\n"
+            }
+            GroupGrantScope.ALWAYS.key -> {
+                prefs.setGroupApproved(group, true)
+                prefs.setGroupDisabled(group, false)
+                unlocks.unlock(sessionId, listOf(group))
+                gate.noteApproved(sessionId, group)
+                ToolGroupAudit.grant(group, "长期")
+                "- 已解锁：${group.key}（${group.oneLine}）—— 用户同意长期开启，下一轮就能用\n"
+            }
+            null -> {
+                gate.noteAbandoned(sessionId, group)
+                ToolGroupAudit.deny(group, "卡片-无人应答")
+                "- 没有解锁：${group.key} —— 用户没有回应（超时或当前没有界面能弹卡）。" +
+                    "先用现有工具做，别反复申请\n"
+            }
+            else -> {
+                gate.noteDeclined(sessionId, group)
+                ToolGroupAudit.deny(group, "卡片")
+                "- 没有解锁：${group.key} —— 用户这次没同意。先用现有工具做；不要反复要同一组\n"
+            }
+        }
     }
 
     companion object {
@@ -861,14 +986,15 @@ internal object BaopuToolCatalog {
     )
 
     /**
-     * 未解锁组的桩（第五十九批 §1.5「诚实」）。
+     * 未解锁组的桩（第五十九批 §1.5「诚实」；第九十七批改指路文案）。
      *
      * 组默认不可见 = **不进 tools 数组**（模型看不见），不是「看得见但报错」——那是 §4
      * 打回第一条。但模型仍可能凭旧上下文或幻觉直接调用（协议 B 尤其如此），
-     * 这一支保证它拿到的是**明说**：这个组还没解锁，先调 capabilities。绝不静默。
+     * 这一支保证它拿到的是**明说**：这个组还没解锁，先调 capabilities 申请。
+     * 绝不静默。
      *
      * 与 [disabledStub] 的区别要说清：被用户关了的东西 capabilities 也解不开（§1.4），
-     * 而未解锁的组是**能**用 capabilities 当轮解开的——所以两条拒绝的文案不同，
+     * 而未解锁的组是**能**申请解锁的（要用户点同意）——所以两条拒绝的文案不同，
      * 且 [ToolRegistry.find] 里先判「被关」（用户开关优先）。
      */
     fun groupLockedStub(spec: ToolSpec): ToolSpec = spec.copy(
@@ -876,7 +1002,7 @@ internal object BaopuToolCatalog {
         executor = { _ ->
             ToolOutcome.Rejected(
                 "该工具组未解锁：先调 capabilities（无参数可看全量名册，" +
-                    "带 enable=[\"${spec.group.key}\"] 可在本会话解锁它）。" +
+                    "带 enable=[\"${spec.group.key}\"] 会向用户申请启用——用户同意后下一轮才能用）。" +
                     "本轮不解锁、不代调，也不改写成别的工具。",
             )
         },
