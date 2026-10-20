@@ -40,6 +40,16 @@ private val TICKER_HEIGHT = 16.dp
 private const val SCROLL_STEP_PX = 0.3f
 
 /**
+ * 跑马灯摆几份标签。
+ *
+ * **单条不复制**（2026-10-20 真机 UI-D1）：视口只有 [TICKER_HEIGHT] 一行高，
+ * 复制出来的第二份永远露着顶上那一截，看上去就是「这次学到」写了两遍、下面被裁掉。
+ * 只有两条及以上才有「首尾相接循环」的意义，这时才复制两份。
+ */
+internal fun tickerLoop(items: List<NoticeItem>): List<NoticeItem> =
+    if (items.size <= 1) items else items + items
+
+/**
  * 「这次学到 / 已压缩」**标题竖向跑马灯**（2026-10-18 用户定稿，第四版）。
  *
  * 口径（用户逐条给的原话）：
@@ -57,10 +67,11 @@ internal fun BaopuNoticeTicker(
     var selected by remember(items) { mutableStateOf(-1) }
     val scroll = rememberScrollState()
 
-    // 只滚标题：两份首尾相接实现无缝循环。
-    val doubled = remember(items) { items + items }
+    // 只滚标题：两条以上才复制成首尾相接；单条不复制（否则第二份会露一截＝重影）。
+    val doubled = remember(items) { tickerLoop(items) }
 
     LaunchedEffect(doubled, selected) {
+        if (items.size <= 1) return@LaunchedEffect // 单条没有循环可言，不滚
         if (selected >= 0) return@LaunchedEffect // 详情弹窗开着时不滚（正在读的不许被滚走）
         while (true) {
             val half = scroll.maxValue / 2

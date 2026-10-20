@@ -1278,6 +1278,15 @@
     <string name="baopu_tools_group_default_on">Shown by default: these go straight to the model</string>
     <string name="baopu_tools_group_default_off">Hidden by default: Baopu unlocks it when needed (this session only)</string>
     <string name="baopu_tools_progressive_note">Only core tools show by default; low-frequency groups unlock on demand. "Hidden" is not "disabled" — the model simply never sees them; it calls capabilities to open a group (a new session goes back to default). The switch on the right is a GROUP switch: once a group is off, capabilities cannot unlock it either (your switch wins). Each tool inside keeps its own switch too — the two tiers coexist and neither overrides the other.</string>
+    <!-- Batch 61 §1: collapsing the tool-switch groups on the settings page. Display only - no switch read/write changed.
+         Arrows reuse the existing common_expand_arrow / common_collapse_arrow; baopu_tools_fold_list_sep is the
+         separator between tool names in the collapsed summary line (Chinese ideographic comma vs English comma). -->
+    <string name="baopu_tools_fold_note">Groups start collapsed: tap a group name to expand or collapse. While collapsed the group keeps a standing summary line of what is switched off - tools you turned off never hide behind the fold.</string>
+    <string name="baopu_tools_fold_empty">No tools in this group</string>
+    <string name="baopu_tools_fold_all_on">All on</string>
+    <string name="baopu_tools_fold_all_off">All %1$d tools here are off</string>
+    <string name="baopu_tools_fold_some_off">%1$d off: %2$s</string>
+    <string name="baopu_tools_fold_list_sep">", "</string>
     <string name="baopu_tool_capabilities">Tool roster (capabilities)</string>
     <string name="baopu_tool_capabilities_desc">Look and unlock: lists every tool group with a one-line summary and who is default-visible / unlocked / switched off by you, then unlocks groups for this session. It only changes "which tools the model can see this round" and touches no files, so no confirmation card. A group you switched off stays locked — and it will say so honestly.</string>
     <string name="baopu_tool_preview_local_file">Local preview (XuanLan)</string>
@@ -1365,4 +1374,7 @@
     <string name="baopu_browser_notice_label">Browser</string>
     <string name="baopu_tool_append_persona">Append persona clause</string>
     <string name="baopu_tool_append_persona_desc">Append one clause to this workspace persona (append-only; cannot edit/delete existing clauses)</string>
+    <!-- Batch 61 §2: titles of the two persistent error notes (skill / library). Progress notes carry no title - they go away in 8s. -->
+    <string name="baopu_note_skill_error_label">Skill did not land</string>
+    <string name="baopu_note_library_error_label">Library did not land</string>
 </resources>
