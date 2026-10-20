@@ -606,39 +606,43 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     "本地包拷贝 ${archive.length() / (1024 * 1024)}MB",
                                 )
                                 InstallFlow.update(ctx, ctx.getString(R.string.env_unpacking_long))
+                                // 校验与解包同遍（Rust 对账）：派工单 §1-② 要求"若与下载同遍则记 0 并注明"
+                                trace.record(
+                                    com.example.zhengdao.rootfs.InstallTrace.Stage.VERIFY,
+                                    0L,
+                                    "与解包同遍（Rust 对账）",
+                                )
                                 // 修复＝拿本地这个包再解压一次。若它与「当初装出当前 env 的那个包」
                                 // 逐字节相同（标记里的 archive-sha256 对得上），内容指纹照样成立 ⇒ 原样写回，
                                 // 否则一次修复就把增量基线抹掉、下次更新被迫全量（2026-10-08 真机 bug，
-                                // 详见 RootfsInstaller.envForReinstall 的 KDoc）。对不上就传 null。
-                                val hashAt = System.nanoTime()
-                                val repairSha = com.example.zhengdao.rootfs.RootfsDownloader.sha256Of(archive)
-                                trace.record(
-                                    com.example.zhengdao.rootfs.InstallTrace.Stage.VERIFY,
-                                    (System.nanoTime() - hashAt) / 1_000_000L,
-                                    "sha256Of 同包",
-                                )
-                                // 第六十五批：这一次是**独立**整包哈希；install 里的 Rust 对账是第二遍。
-                                // 汇总行会打「整包哈希 2 次」——改造目标就是把它降到 1。
-                                trace.hashPasses += 1
-                                val repairEnv = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
-                                    File(ctx.filesDir, "rootfs"),
-                                    repairSha,
-                                )
-                                if (repairEnv != null) {
-                                    com.example.zhengdao.rootfs.RunLog.log(
-                                        "修复环境：本地包与当前环境同源（sha=${repairSha.take(12)}），保留环境记录 $repairEnv",
-                                    )
-                                } else {
-                                    com.example.zhengdao.rootfs.RunLog.log(
-                                        "修复环境：本地包与当前环境无法确认同源（sha=${repairSha.take(12)}），不写环境记录（下次更新要重下完整包）",
-                                    )
-                                }
+                                // 详见 RootfsInstaller.envForReinstall 的 KDoc）。
+                                //
+                                // 第六十五批（去重复校验）：这里**不再** sha256Of 整包读一遍。Rust 解包
+                                // 流水线本来就会对恰好被解压的字节算 sha256 并回传（extract.rs 步骤 1），
+                                // 安装内核拿它调 resolveEnv 即可——同一份包在本次安装里只哈希一遍。
+                                // 改前：sha256Of（校验 184ms）+ Rust 对账 = 2 遍；改后：安装内 1 遍。
+                                // Java 回退拿不到 sha ⇒ 不写 env（与"无法确认同源"同一处理，下次老实全量）。
+                                val repairRootfs = File(ctx.filesDir, "rootfs")
                                 com.example.zhengdao.rootfs.RootfsInstaller.install(
                                     ctx,
                                     archive,
-                                    repairEnv,
-                                    repairSha,
-                                    trace,
+                                    trace = trace,
+                                    resolveEnv = { actualSha ->
+                                        val env = com.example.zhengdao.rootfs.RootfsInstaller.envForReinstall(
+                                            repairRootfs,
+                                            actualSha,
+                                        )
+                                        if (env != null) {
+                                            com.example.zhengdao.rootfs.RunLog.log(
+                                                "修复环境：本地包与当前环境同源（sha=${actualSha.take(12)}），保留环境记录 $env",
+                                            )
+                                        } else {
+                                            com.example.zhengdao.rootfs.RunLog.log(
+                                                "修复环境：本地包与当前环境无法确认同源（sha=${actualSha.take(12)}），不写环境记录（下次更新要重下完整包）",
+                                            )
+                                        }
+                                        env
+                                    },
                                 ) { }
                                 InstallFlow.finish(
                                     ctx,
@@ -815,8 +819,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     "联网下载+下载时校验 ${archive.length() / (1024 * 1024)}MB",
                                 )
                                 // download() 返回前已经整包校验过一次（它就是返回值）。
-                                trace.hashPasses += 1
-                                if (!expectedSha.isNullOrBlank()) {
+                                trace.preHashPasses += 1
+                                // 第六十五批（去重复校验）：只有**两个可信来源不一致**时才按索引值
+                                // 再验一遍（此时多读一遍是必要的证据，而不是日常开销）；一致就跳过——
+                                // 改前这里的 verifySha256 是无条件执行的，等于下载后立刻整读第二遍。
+                                if (!expectedSha.isNullOrBlank() &&
+                                    !verifiedSha.isNullOrBlank() &&
+                                    !verifiedSha.equals(expectedSha, ignoreCase = true)
+                                ) {
                                     val rehashAt = System.nanoTime()
                                     RootfsDownloader.verifySha256(archive, expectedSha)
                                     trace.record(
@@ -824,7 +834,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         (System.nanoTime() - rehashAt) / 1_000_000L,
                                         "索引值与下载值不一致，按索引复验",
                                     )
-                                    trace.hashPasses += 1
+                                    trace.preHashPasses += 1
                                 }
                                 // 信任锚（用户 2026-10-08 规则）：只有索引 sha256 == 实际校验通过的 sha256
                                 // 才敢把索引的 env 写进标记；否则照装不写 env ⇒ 下次自然走全量。

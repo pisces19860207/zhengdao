@@ -4,22 +4,26 @@ package com.example.zhengdao.rootfs
 /**
  * 一次安装的分阶段计时（第六十五批 · 安装体验）。
  *
- * 用户原话：「验证和解压的过程很慢」——**先量后治**。本类只做三件事：
+ * 用户原话：「验证和解压的过程很慢」——**先量后治**。本类只做四件事：
  * 1. 记录每个阶段的真实耗时（纳秒时钟，阶段内可嵌套记录多条）；
  * 2. 汇总成**一行** RunLog（成功也写、失败也写），带包大小与条目数；
- * 3. 记下「这次安装对同一个包做了几遍整包哈希」，让去重复校验有可断言的读数。
+ * 3. 记下「安装内部对同一个包做了几遍整包哈希」与「调用方在安装前做了几遍」，
+ *    让去重复校验有可断言的读数（派工单 §1-④ 的日志断言）；
+ * 4. 记下 Rust 回报的**实际归档 sha256**——修复路径不再自己先算一遍，而是拿这个
+ *    由「恰好被解压的那些字节」算出来的值去判断能不能保留环境记录（无 TOCTOU）。
  *
  * 不参与任何安装决策：计时失败、日志写不进去都不能影响安装本身。
  *
  * 阶段口径（与派工单 §1 一一对应）：
  * - [Stage.DOWNLOAD]：下载（调用方记录；本地包拷贝也算这一档，note 里写明）；
- * - [Stage.VERIFY]：**独立**整包校验（下载后重读、修复前的 sha256Of 等）。
- *   与解包同遍的校验不单独记，`EXTRACT` 的 note 会写「含校验」，避免把同一段耗时算两次；
+ * - [Stage.VERIFY]：**独立**整包校验（下载后重读、索引值复验等）。与解包同遍的
+ *   校验不单独记，`EXTRACT` 的 note 会写「含整包对账」，避免把同一段耗时算两次；
  * - [Stage.PREPARE]：清旧残局 + 空间预检 + 建临时树；
  * - [Stage.EXTRACT]：解包（Rust 快路径时含它内部的整包对账）；
  * - [Stage.MARKER]：写完成标记；
  * - [Stage.SWAP]：旧树让位 + 新树就位（第六十五批起不再含删旧树）；
- * - [Stage.CLEAN_OLD]：删旧树（前台）或后台清理完成时的实测耗时。
+ * - [Stage.CLEAN_OLD]：把旧树交给后台的那一下（毫秒级）；真正的删除耗时由
+ *   `OldTreeCleaner` 在后台完成后另写一行「旧环境后台清理」，**不计入合计**。
  */
 class InstallTrace(
     private val nanoTime: () -> Long = System::nanoTime,
@@ -50,14 +54,24 @@ class InstallTrace(
     /** 解包写出的字节数；拿不到（Java 回退）时保持 0，不编。 */
     @Volatile var bytesWritten: Long = 0L
 
+    /** Rust 回报的实际归档 sha256（hex 小写）；Java 回退或旧 .so 时为空。 */
+    @Volatile var actualSha256: String = ""
+
     /**
-     * 本次安装/更新的整包哈希次数。
+     * **安装内部**的整包哈希次数。
      *
-     * 为什么记它：派工单 §1-④ 要求「同一次安装对同一包只做一遍哈希」。调用方在做
-     * **独立**校验时显式 +1（下载后重读、修复前 sha256Of），Rust 解包流水线内部对账
-     * 再 +1。汇总行会把它打出来，重复校验一眼可见——这比 grep 源码更难骗。
+     * Rust 解包流水线开解前会整读一遍算 sha256（`extract.rs` 步骤 1），无论有没有
+     * expected 都会算——这就是安装内部的那一遍，恒为 1（走 Rust 时）。Java 回退不哈希，为 0。
      */
     @Volatile var hashPasses: Int = 0
+
+    /**
+     * 调用方在**进入安装之前**做的独立整包哈希次数（下载时校验、修复前的 sha256Of 等）。
+     *
+     * 第六十五批目标：修复路径把它从 1 降到 0（改由 Rust 回报的 actualSha256 判断同源），
+     * 更新路径保留下载时的那一遍（它是下载完整性的一部分，不在 install 内重复）。
+     */
+    @Volatile var preHashPasses: Int = 0
 
     /** 本进程内实际走了 Rust 还是 Java 回退（写进汇总，排障用）。 */
     @Volatile var extractionPath: String = ""
@@ -104,8 +118,8 @@ class InstallTrace(
      *
      * 例：
      * `安装阶段汇总（成功）：包 192.3MB（201632517B）/ 条目 12345 | 下载 — | 校验 — |
-     *  准备 35ms | 解包 28456ms（Rust，含校验） | 写标记 3ms | 换树 22ms | 清旧树 9876ms |
-     *  合计 38392ms | 整包哈希 2 次`
+     *  准备 35ms | 解包 28456ms（Rust，含整包对账） | 写标记 3ms | 换树 22ms |
+     *  清旧树 1ms（已交后台） | 合计 28517ms | 整包哈希 安装内 1 次 · 安装前 0 次`
      */
     fun summary(ok: Boolean, failedAt: Stage? = null, reason: String? = null): String {
         val total = records().sumOf { it.ms }
@@ -133,7 +147,7 @@ class InstallTrace(
         }
         val tail = buildString {
             append("合计 ${total}ms")
-            append(" | 整包哈希 $hashPasses 次")
+            append(" | 整包哈希 安装内 $hashPasses 次 · 安装前 $preHashPasses 次")
             if (extractionPath.isNotEmpty()) append(" | 解包路径 $extractionPath")
             if (!reason.isNullOrBlank()) append(" | 原因 ${reason.take(200)}")
         }
