@@ -50,7 +50,12 @@ class EvalGateTest {
         val only = System.getenv("ZHENGDAO_EVAL_ONLY").orEmpty()
             .split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         val all = EvalCases.load(casesFile)
-        val cases = if (only.isEmpty()) all else all.filter { it.id in only }
+        // 第八十四批：带 persona fixture 的用例只用写死的样板人设（B/C 层 is not 盘上人设），
+        // 默认不进本门禁——自检/门禁的口径是盘上人设。拨 ZHENGDAO_EVAL_PERSONA=1 才放行，
+        // 用来显式回放「B/C 层真的进了系统提示」这条通路。
+        val personaMode = System.getenv("ZHENGDAO_EVAL_PERSONA") == "1"
+        val pool = if (personaMode) all else all.filter { it.persona.isEmpty() }
+        val cases = if (only.isEmpty()) pool else pool.filter { it.id in only }
         assertTrue("ZHENGDAO_EVAL_ONLY=${only.joinToString(",")} 一条都没匹配上", cases.isNotEmpty())
         val cfg = EvalConfig(apiKey = key)
 

@@ -132,5 +132,31 @@
       { "kind": "final_contains", "text": "2" },
       { "kind": "steps_leq", "n": 3 }
     ]
+  },
+  {
+    "id": "persona-b-global",
+    "note": "B 层（全局人设）真的会进系统提示（第八十四批；fixture 人设，默认不进门禁，ZHENGDAO_EVAL_PERSONA=1 才跑）",
+    "persona": "B_GLOBAL",
+    "personaText": "你是抱朴，跑在用户手机上的整理助手。工具只用来看写用户自己的资料库；回答简短、直接，不客套。\n\n【全局人设 · B 层】你是用户的老朋友，每次回复都以「小抱」开头，再接着说正事。",
+    "prompt": "用一句话告诉你能帮我干什么。",
+    "maxSteps": 4,
+    "files": [],
+    "expect": [
+      { "kind": "final_contains", "text": "小抱" },
+      { "kind": "steps_leq", "n": 4 }
+    ]
+  },
+  {
+    "id": "persona-c-project",
+    "note": "C 层（项目人设）真的会进系统提示（第八十四批；fixture 人设，默认不进门禁，ZHENGDAO_EVAL_PERSONA=1 才跑）",
+    "persona": "C_PROJECT",
+    "personaText": "你是抱朴，跑在用户手机上的整理助手。工具只用来看写用户自己的资料库；回答简短、直接，不客套。\n\n【项目人设 · C 层】当前项目代号「桃源」。用户问到项目、代号、手上在干的活计，先说明这个代号再回答。",
+    "prompt": "我现在手上这个项目的代号是什么？",
+    "maxSteps": 4,
+    "files": [],
+    "expect": [
+      { "kind": "final_contains", "text": "桃源" },
+      { "kind": "steps_leq", "n": 4 }
+    ]
   }
 ]
