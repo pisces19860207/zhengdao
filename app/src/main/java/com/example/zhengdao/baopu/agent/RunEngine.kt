@@ -165,6 +165,12 @@ internal class RunEngine(
      * 引擎的 [provider] 字段只在两处被写：熔断降级、本效应的安全点切换。
      */
     private val switchChannel: (String, String) -> Provider? = { _, _ -> null },
+    /**
+     * 并行读段的执行器（第九十二批）。默认就是生产口径（读池 `zd-baopu-tool-read` ＋ 墙钟）；
+     * 单测要控时序/池大小时注入自己的（引擎本身要 Android SQLite，JVM 里起不来，
+     * 所以并行段的时序用例都在 `ToolSchedulingTest` 里直接驱这个执行器）。
+     */
+    private val batchRunner: ToolBatchRunner = ToolBatchRunner(),
     private val log: (String) -> Unit = { RunLog.log(it) },
 ) {
 
@@ -221,6 +227,12 @@ internal class RunEngine(
     private val runExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "zd-baopu-run").apply { isDaemon = true }
     }
+
+    /**
+     * spill 文件名序号（第九十二批）：并行读之后 [writeSpill] 会被几个读线程同时调，
+     * 毫秒时间戳不足以区分「同一毫秒里的两个同名工具」⇒ 补一个自增序号（原子）。
+     */
+    private val spillSeq = java.util.concurrent.atomic.AtomicLong(0L)
 
     // ── 第八十七批 R1：运行轨迹 ────────────────────────────────────────────
     //
@@ -1070,117 +1082,42 @@ internal class RunEngine(
                     _state.value = RunState.ACTING
                     persistStep(sessionId, stepCount, "Acting")
                     var terminateRound = false
-                    for (call in outcome.calls) {
+                    // ── 第九十二批：工具调度（读并行 ＋ 写单飞）──────────────────
+                    // 先把这一批**排段**：连续的只读工具合成一段（并发上限见
+                    // ToolScheduling.MAX_READ_PARALLEL），写工具各自独占一段。
+                    // 段与段之间是硬屏障 ⇒「写与写不并行」「写之后的读一定读到新值」
+                    // 是**结构**保证（不靠谁记得加锁）。排段是纯函数，JVM 直测。
+                    val stages = ToolScheduling.plan(outcome.calls) { call -> laneOfCall(call) }
+                    // 整批总时限：各段预算之和。为什么不拍一个固定秒数——单工具上限量级差很大
+                    // （文件 5s / 浏览器 20s / ask_user 等用户 15 分钟），拍死一个值要么掐死
+                    // 正经的等用户，要么形同虚设；按段求和在任何合法批次上都够用，又给
+                    // 「线程卡死不返回」留了上界。
+                    val batchDeadlineMs = System.currentTimeMillis() +
+                        ToolScheduling.batchBudgetMs(stages) { call -> timeoutOfCall(call) }
+                    for (stage in stages) {
+                        val headCall = when (stage) {
+                            is ToolStage.Serial -> stage.call
+                            is ToolStage.Parallel -> stage.calls.first()
+                        }
                         if (stopRequested) {
                             // 第八十七批 R1：这次工具调用**没执行**（批里前面那个还在跑就停了）
-                            trace.noteTool(
-                                step = stepCount,
-                                tool = call.name,
-                                args = call.arguments,
-                                startedAtMs = 0L,
-                                status = TraceStatus.CANCELLED,
-                                failureKind = FailureKind.CANCELLED,
-                            )
-                            settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
+                            abortBeforeCall(sessionId, stepCount, headCall)
                             return
                         }
-                        val toolStartedAt = System.currentTimeMillis()
-                        val result = pipeline.execute(call) { name, text ->
-                            writeSpill(sessionId, name, text)
-                        }
-                        if (result is GuardPipeline.Result.NeedsConfirm) {
-                            // 第八十七批 R1：挂起那一刻先记一行 CONFIRM——它不是成功也不是失败，
-                            // 记成 OK 会让回放的人以为这次写已经生效了（P1-1 的同一类谎言）。
-                            trace.noteTool(
-                                step = stepCount,
-                                tool = call.name,
-                                args = call.arguments,
-                                startedAtMs = toolStartedAt,
-                                status = TraceStatus.CONFIRM,
-                            )
-                            // 安全点 2（第六十四批）：出确认卡之前——不能卡在工具
-                            // 半途切（那一步的模型决定已经是旧通道做的，卡要出给
-                            // 当前用户看；切换影响的是下一步）。
-                            drainChannelSwitch(SafePoint.BeforeConfirmCard)
-                            // 确认制（刀 3 A 段）：落 pending → 出卡 → 挂起等 → 执行/拒绝/超时。
-                            // runBlocking 桥：循环跑在裸线程 zd-baopu-run 上（本来就常驻阻塞
-                            // 等网络），这里等的是人点按钮——同一颗线程，等什么不是等。
-                            when (
-                                val oc = runBlocking {
-                                    confirmFlow.enter(sessionId, stepCount, result.call) { name, text ->
-                                        writeSpill(sessionId, name, text)
-                                    }
-                                }
-                            ) {
-                                is ConfirmFlow.Outcome.Approved -> {
-                                    // 第八十七批 R1：真执行完了补一行（`startedAtMs = 0` ⇒ 耗时
-                                    // 记「未测」：那段时间耗在等人点按钮上，不是工具的耗时）。
-                                    trace.noteTool(
-                                        step = stepCount,
-                                        tool = call.name,
-                                        args = call.arguments,
-                                        startedAtMs = 0L,
-                                        status = traceStatusOf(oc.result),
-                                        failureKind = traceFailureOf(oc.result),
-                                    )
-                                    // 批准后执行的结果与在线路径**同形**处理（回灌/历史/可见卡）
-                                    when (handleToolResult(sessionId, stepCount, oc.result, history)) {
-                                        ToolResultFlow.CONTINUE -> Unit
-                                        ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
-                                        ToolResultFlow.STOP_RUN -> return
-                                    }
+                        when (stage) {
+                            is ToolStage.Serial ->
+                                when (handleSerialCall(sessionId, stepCount, stage.call, history)) {
+                                    ToolResultFlow.CONTINUE -> Unit
+                                    ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
+                                    ToolResultFlow.STOP_RUN -> return
                                 }
 
-                                is ConfirmFlow.Outcome.Rejected -> {
-                                    trace.noteTool(
-                                        step = stepCount,
-                                        tool = call.name,
-                                        args = call.arguments,
-                                        startedAtMs = 0L,
-                                        status = TraceStatus.REJECTED,
-                                    )
-                                    // 拒绝不执行；回灌进历史（模型下一轮看得见）＋ 落库可见；对话继续
-                                    persistAssistantMessage(sessionId, oc.note)
-                                    history += HistoryMessage(
-                                        "local-note-${System.nanoTime()}",
-                                        HistoryMessage.ROLE_ASSISTANT,
-                                        oc.note,
-                                    )
+                            is ToolStage.Parallel ->
+                                when (runParallelStage(sessionId, stepCount, stage, history, batchDeadlineMs)) {
+                                    ToolResultFlow.CONTINUE -> Unit
+                                    ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
+                                    ToolResultFlow.STOP_RUN -> return
                                 }
-
-                                is ConfirmFlow.Outcome.Abandoned -> Unit // 用户点了停止：循环头部收尾
-                                is ConfirmFlow.Outcome.TimedOut -> {
-                                    trace.noteTool(
-                                        step = stepCount,
-                                        tool = call.name,
-                                        args = call.arguments,
-                                        startedAtMs = 0L,
-                                        status = TraceStatus.TIMEOUT,
-                                        failureKind = FailureKind.CANCELLED,
-                                    )
-                                    _notice.value = oc.note
-                                    persistAssistantMessage(sessionId, oc.note)
-                                    settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
-                                    return
-                                }
-
-                                is ConfirmFlow.Outcome.Ignored -> Unit // 双保险：不该发生，跳过这个调用
-                            }
-                        } else {
-                            // 第八十七批 R1：在线路径（不经人看）——工具真跑了，耗时是实测的
-                            trace.noteTool(
-                                step = stepCount,
-                                tool = call.name,
-                                args = call.arguments,
-                                startedAtMs = toolStartedAt,
-                                status = traceStatusOf(result),
-                                failureKind = traceFailureOf(result),
-                            )
-                            when (handleToolResult(sessionId, stepCount, result, history)) {
-                                ToolResultFlow.CONTINUE -> Unit
-                                ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
-                                ToolResultFlow.STOP_RUN -> return
-                            }
                         }
                         if (terminateRound) break
                     }
@@ -1810,6 +1747,211 @@ internal class RunEngine(
         }
     }
 
+    // ── 第九十二批：工具调度的两条路（读并行 / 串行含确认卡） ────────────────
+
+    /** 这个调用走哪条 lane（纯判据在 [ToolScheduling.laneOf]；这里只做一次注册表查询）。 */
+    private fun laneOfCall(call: ToolCall): ToolLane = ToolScheduling.laneOf(registry.find(call.name))
+
+    /** 这个调用的单工具时限（与管线第 ④ 段用的是**同一个数**：`ToolSpec.timeoutMs`）。 */
+    private fun timeoutOfCall(call: ToolCall): Long =
+        registry.find(call.name)?.timeoutMs ?: ToolTimeout.FILE_MS
+
+    /**
+     * 一个工具结果的收口（轨迹 ＋ 回灌/历史/可见卡）。
+     *
+     * 串行路与并行段**共用这一个函数** ⇒ 两条路径记的东西逐字节同形
+     * （第八十七批 trace 的 ACT 行不会因为走了哪条 lane 而长成两个样子）。
+     *
+     * @param startedAtMs 实测起点；`0` = 未测（等用户点批准的那段不算工具耗时）
+     */
+    private fun handleResultAndTrace(
+        sessionId: Long,
+        step: Int,
+        call: ToolCall,
+        result: GuardPipeline.Result,
+        history: MutableList<HistoryMessage>,
+        startedAtMs: Long,
+        endedAtMs: Long = System.currentTimeMillis(),
+    ): ToolResultFlow {
+        trace.noteTool(
+            step = step,
+            tool = call.name,
+            args = call.arguments,
+            startedAtMs = startedAtMs,
+            endedAtMs = endedAtMs,
+            status = traceStatusOf(result),
+            failureKind = traceFailureOf(result),
+        )
+        return handleToolResult(sessionId, step, result, history)
+    }
+
+    /** 停止信号落在**执行前**：这次调用没执行，如实记一行 CANCELLED（批里剩下的不再记）。 */
+    private fun abortBeforeCall(sessionId: Long, step: Int, call: ToolCall) {
+        trace.noteTool(
+            step = step,
+            tool = call.name,
+            args = call.arguments,
+            startedAtMs = 0L,
+            status = TraceStatus.CANCELLED,
+            failureKind = FailureKind.CANCELLED,
+        )
+        settle(sessionId, step, RunState.ABORTED, "Aborted")
+    }
+
+    /**
+     * 一个工具调用的**串行**处理（含确认卡）：第九十二批从工具批循环里整段抽出，
+     * **行为逐字不变**——确认卡仍在执行前出、批准后只跳第 ③ 段（`executeApproved`）、
+     * 拒绝/超时/放弃仍按原样收尾。抽出来只是让并行的读段能走另一条路，
+     * 而不是让两种语义挤在一个 for 里互相将就。
+     */
+    private fun handleSerialCall(
+        sessionId: Long,
+        step: Int,
+        call: ToolCall,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow {
+        val toolStartedAt = System.currentTimeMillis()
+        val result = pipeline.execute(call) { name, text ->
+            writeSpill(sessionId, name, text)
+        }
+        if (result !is GuardPipeline.Result.NeedsConfirm) {
+            // 在线路径（不经人看）：工具真跑了，耗时是实测的
+            return handleResultAndTrace(sessionId, step, call, result, history, toolStartedAt)
+        }
+        // 第八十七批 R1：挂起那一刻先记一行 CONFIRM——它不是成功也不是失败，
+        // 记成 OK 会让回放的人以为这次写已经生效了（P1-1 的同一类谎言）。
+        trace.noteTool(
+            step = step,
+            tool = call.name,
+            args = call.arguments,
+            startedAtMs = toolStartedAt,
+            status = TraceStatus.CONFIRM,
+        )
+        // 安全点 2（第六十四批）：出确认卡之前——不能卡在工具
+        // 半途切（那一步的模型决定已经是旧通道做的，卡要出给
+        // 当前用户看；切换影响的是下一步）。
+        drainChannelSwitch(SafePoint.BeforeConfirmCard)
+        // 确认制（刀 3 A 段）：落 pending → 出卡 → 挂起等 → 执行/拒绝/超时。
+        // runBlocking 桥：循环跑在裸线程 zd-baopu-run 上（本来就常驻阻塞
+        // 等网络），这里等的是人点按钮——同一颗线程，等什么不是等。
+        val oc = runBlocking {
+            confirmFlow.enter(sessionId, step, result.call) { name, text ->
+                writeSpill(sessionId, name, text)
+            }
+        }
+        return when (oc) {
+            is ConfirmFlow.Outcome.Approved -> {
+                // 第八十七批 R1：真执行完了补一行（`startedAtMs = 0` ⇒ 耗时
+                // 记「未测」：那段时间耗在等人点按钮上，不是工具的耗时）。
+                trace.noteTool(
+                    step = step,
+                    tool = call.name,
+                    args = call.arguments,
+                    startedAtMs = 0L,
+                    status = traceStatusOf(oc.result),
+                    failureKind = traceFailureOf(oc.result),
+                )
+                // 批准后执行的结果与在线路径**同形**处理（回灌/历史/可见卡）
+                handleToolResult(sessionId, step, oc.result, history)
+            }
+
+            is ConfirmFlow.Outcome.Rejected -> {
+                trace.noteTool(
+                    step = step,
+                    tool = call.name,
+                    args = call.arguments,
+                    startedAtMs = 0L,
+                    status = TraceStatus.REJECTED,
+                )
+                // 拒绝不执行；回灌进历史（模型下一轮看得见）＋ 落库可见；对话继续
+                persistAssistantMessage(sessionId, oc.note)
+                history += HistoryMessage(
+                    "local-note-${System.nanoTime()}",
+                    HistoryMessage.ROLE_ASSISTANT,
+                    oc.note,
+                )
+                ToolResultFlow.CONTINUE
+            }
+
+            is ConfirmFlow.Outcome.Abandoned -> ToolResultFlow.CONTINUE // 用户点了停止：循环头部收尾
+
+            is ConfirmFlow.Outcome.TimedOut -> {
+                trace.noteTool(
+                    step = step,
+                    tool = call.name,
+                    args = call.arguments,
+                    startedAtMs = 0L,
+                    status = TraceStatus.TIMEOUT,
+                    failureKind = FailureKind.CANCELLED,
+                )
+                _notice.value = oc.note
+                persistAssistantMessage(sessionId, oc.note)
+                settle(sessionId, step, RunState.ABORTED, "Aborted")
+                ToolResultFlow.STOP_RUN
+            }
+
+            is ConfirmFlow.Outcome.Ignored -> ToolResultFlow.CONTINUE // 双保险：不该发生，跳过这个调用
+        }
+    }
+
+    /**
+     * 一个**并行读段**（第九十二批）：
+     * 1. 先按提交顺序把 ①②③（注册表/Schema、路径守卫、权限）跑完——这三段带顺序语义，
+     *    第一个越界就要终止本轮、后面的不许再跑，所以**不能**丢进并发里；
+     * 2. 再把通过的那几个同时丢进读池（上限 `ToolScheduling.MAX_READ_PARALLEL`）；
+     * 3. 最后仍按**提交顺序**收口（回灌给模型、落库、可见卡、轨迹的顺序都不变）。
+     *
+     * 停止信号落在段中间：已跑完的照常采信，没回来的 `cancel(true)` 并按 CANCELLED 收尾
+     * ——读工具不写盘，中断是安全的（写工具根本不进这里）。
+     */
+    private fun runParallelStage(
+        sessionId: Long,
+        step: Int,
+        stage: ToolStage.Parallel,
+        history: MutableList<HistoryMessage>,
+        batchDeadlineMs: Long,
+    ): ToolResultFlow {
+        val ready = ArrayList<GuardPipeline.Prepared.Ready>(stage.calls.size)
+        for (call in stage.calls) {
+            val before = System.currentTimeMillis()
+            when (val p = pipeline.prepare(call)) {
+                is GuardPipeline.Prepared.Ready -> ready += p
+                // ①②③ 已定论（坏 Schema / 越界 / 需确认）：与串行走**同一个**收口函数
+                is GuardPipeline.Prepared.Settled -> {
+                    val flow = handleResultAndTrace(sessionId, step, call, p.result, history, before)
+                    if (flow != ToolResultFlow.CONTINUE) return flow
+                }
+            }
+        }
+        if (ready.isEmpty()) return ToolResultFlow.CONTINUE
+        val items = batchRunner.runParallel(
+            stage = ToolStage.Parallel(ready.map { it.call }),
+            timeoutOf = { call -> timeoutOfCall(call) },
+            // 索引回查：并行读走 executeInline（④ 直跑；超时由本层封，
+            // 因为段任务本身就跑在读池上，再 submit 一次就是拿线程等自己）
+            execute = { index, _ ->
+                pipeline.executeInline(ready[index]) { name, text ->
+                    writeSpill(sessionId, name, text)
+                }
+            },
+            shouldStop = { stopRequested },
+            deadlineAtMs = batchDeadlineMs,
+        )
+        for (item in items) {
+            if (item.cancelled) {
+                // 停止落在这段里：如实记 CANCELLED（`startedAtMs = 0` ＝ 未采信它的耗时）
+                abortBeforeCall(sessionId, step, item.call)
+                return ToolResultFlow.STOP_RUN
+            }
+            val result = item.result ?: continue
+            val flow = handleResultAndTrace(
+                sessionId, step, item.call, result, history, item.startedAtMs, item.endedAtMs,
+            )
+            if (flow != ToolResultFlow.CONTINUE) return flow
+        }
+        return ToolResultFlow.CONTINUE
+    }
+
     /**
      * 工具结果 → 轨迹状态（第八十七批 R1）。
      *
@@ -2031,11 +2173,20 @@ internal class RunEngine(
 
     // ── spill（第 ⑤ 段配套） ──────────────────────────────────────────────
 
-    /** spill 落盘：落工作区内 `.baopu-spill/`（read_file 够得着——范围读的前提）。 */
+    /**
+     * spill 落盘：落工作区内 `.baopu-spill/`（read_file 够得着——范围读的前提）。
+     *
+     * 第九十二批：文件名后缀加了**自增序号**。并行读之后这个函数会被几个读线程同时调，
+     * 而旧名字只到毫秒——同一毫秒里两个同名工具各溢出一份，后写的会把先写的覆盖掉，
+     * 两条回灌于是指向同一个文件（内容只剩一份）。加序号是唯一不依赖时钟精度的解法。
+     */
     private fun writeSpill(sessionId: Long, name: String, text: String): SpillResult? = runCatching {
         val dir = File(spillRoot(), ".baopu-spill")
         dir.mkdirs()
-        val f = File(dir, "spill-s$sessionId-$name-${System.currentTimeMillis()}.txt")
+        val f = File(
+            dir,
+            "spill-s$sessionId-$name-${System.currentTimeMillis()}-${spillSeq.incrementAndGet()}.txt",
+        )
         f.writeText(text, Charsets.UTF_8)
         SpillResult(f, text.length)
     }.getOrNull().also {

@@ -183,6 +183,14 @@ import kotlin.text.Charsets
  *   `ui/SettingsDataActivity.kt` 五处判定搬进 `ui/settings/DataRules.kt`，活动侧
  *   import 区 +1、四处搬移注释、别处资料库提示三行并一行 −1 ⇒ zd-net-check
  *   创建点 592→596。逐处核过仍是同一段 `Thread {`，本次回填。
+ * - 2026-10-20（第九十二批 · 工具调度：读并行/写单飞）：**新增 1 条**——
+ *   `agent/GuardPipeline.kt` 的读池 `zd-baopu-tool-read`（`:86`，
+ *   `Executors.newFixedThreadPool(MAX_READ_PARALLEL) { r -> Thread(r, "zd-baopu-tool-read")… }`
+ *   房型，有名 ＋ daemon；池大小就是并发上限，见 `ToolScheduling.MAX_READ_PARALLEL`）
+ *   ⇒ 对账单 29→30 处（红线 32 内）。同一文件里这条写入点在它**之上**，
+ *   读池插在写池之后不挪它：zd-baopu-tool 68→69；`RunEngine.kt` 因新增
+ *   `batchRunner` 构造参（+6 行，全在创建点之前）⇒ zd-baopu-run 222→228。
+ *   新增 `agent/ToolScheduling.kt` 逐行核过**无**裸 Thread（池由 `ToolRunner` 现成提供）。
  */
 class BareThreadGuardTest {
 
@@ -213,7 +221,8 @@ class BareThreadGuardTest {
         val total = scanAppSources().size
         // 2026-10-16 实测 29 处（刀 0b 后 27；抱朴刀 1 新增 zd-baopu-run / zd-baopu-tool 两条 => 29）；
         // 2026-10-18 刀 4 新增 zd-preview-http（预览服务 acceptor）=> 30；
-        // 2026-10-20 第六十八批消除 HomeScreen 的 zd-health-fix（改协程）=> 29。
+        // 2026-10-20 第六十八批消除 HomeScreen 的 zd-health-fix（改协程）=> 29；
+        // 2026-10-20 第九十二批新增读池 zd-baopu-tool-read => 30（对账单在下一段里逐条钉）。
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
@@ -228,7 +237,8 @@ class BareThreadGuardTest {
             "AgentManifest.kt:136",
             "BaopuDb.kt:1281",
             "BrowserAgentBridge.kt:73",
-            "GuardPipeline.kt:68",
+            "GuardPipeline.kt:69",
+            "GuardPipeline.kt:86",
             "KeepaliveWatcher.kt:66",
             "KeepaliveWatcher.kt:230",
             "KnowledgeBase.kt:152",
@@ -240,7 +250,7 @@ class BareThreadGuardTest {
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
-            "RunEngine.kt:222",
+            "RunEngine.kt:228",
             "SettingsDataActivity.kt:596",
             "SettingsEnvActivity.kt:219",
             "SettingsEnvActivity.kt:274",
