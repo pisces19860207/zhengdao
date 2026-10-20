@@ -27,6 +27,7 @@ import kotlin.text.Charsets
  * | 子资源名里出现 `..`、`/`、`\` ⇒ 直接 404 | **不做路径归一化**（归一化＝自己实现一遍解析器，而解析器最容易错在这里） | J4 |
  * | `Cache-Control: no-store` ＋ `X-Content-Type-Options: nosniff` | 不留缓存（预览是一次性的）；不嗅探类型（防一张 png 被当 html 执行） | J3 附带 |
  * | 端口起不来 ⇒ 明确失败并带原因 | 静默不启动的话，调用方拿着 url 只会看到一个连不上的端口，查不到根因 | J5 |
+ * | **每条连接都必须有请求超时** | 本服务是**单线程串行**：一个连上却不发数据的客户端会把整条循环钉死，之后所有预览一起卡住且无报错。accept 的 `soTimeout` 是「醒来查停止标志」的轮询间隔，语义不同、不能当请求超时用 | **P2-8（`SilentClientTest`）** |
  *
  * ## 一条连接一个请求
  * 响应头固定带 `Connection: close`，不做 keep-alive、不解析 body。好处：accept 循环
@@ -51,6 +52,18 @@ object PreviewServer {
     // （`Thread(r, "名字")` 或紧随其后的 `name = "…"`），传常量会让门禁判成无名 ⇒ 名字必须写死在这。
     private const val BACKLOG = 16
     private const val ACCEPT_TIMEOUT_MS = 1_000
+
+    /**
+     * 单条连接的**请求超时**（P2-8，第六十批）。
+     *
+     * 为什么单列、不复用 [ACCEPT_TIMEOUT_MS]：两者语义相反。accept 的那个是「醒来看看
+     * 该不该停」的**轮询间隔**（越小越灵敏，1 秒刚好）；这条是「客户端连上后，多久必须把
+     * 请求行＋头发完」的**容忍上界**（越小越容易冤枉真机上的慢 WebView）。预览请求只有一行
+     * GET，正常在毫秒级完成，3 秒已经非常宽松；而它同时是**单线程串行**循环的止损线——
+     * 一个连上却不发数据的客户端最多只能把服务钉住这么久，随后连接被关、循环继续。
+     */
+    internal const val REQUEST_TIMEOUT_MS = 3_000
+
     private const val MAX_REQUEST_LINES = 64
 
     /** 404 的固定响应体：一行、不区分「uuid 不存在」与「已被淘汰」（§2.1）。 */
@@ -162,7 +175,22 @@ object PreviewServer {
                 .onFailure { if (running && it !is SocketTimeoutException) log("预览 accept 失败：${it.message}") }
                 .getOrNull()
             if (sock == null) continue
-            runCatching { handle(sock) }.onFailure { if (running) log("预览请求处理异常：${it.message}") }
+            // P2-8（第六十批）：accept 出来的连接必须自带**读超时**。这条循环是单线程串行的，
+            // 一个连上却不发请求的客户端（半开连接、被挂起的浏览器标签、扫描器）会让
+            // `handle` 里的 readLine() 永远阻塞 ⇒ 之后所有预览请求一起卡死，且没有任何报错。
+            // 设置失败只记一行日志、照常处理这条连接（不因为设不上超时就把请求丢掉——
+            // 那等于把「可能卡住」换成「一定失败」）。
+            runCatching { sock.soTimeout = REQUEST_TIMEOUT_MS }
+                .onFailure { log("预览连接超时设置失败：${it.message}") }
+            runCatching { handle(sock) }
+                .onFailure { e ->
+                    // 超时当坏请求：关连接（下面统一关）、记一行、循环继续——不往上抛。
+                    if (e is SocketTimeoutException) {
+                        log("预览请求超时（连上 ${REQUEST_TIMEOUT_MS}ms 没发完请求），已关连接")
+                    } else if (running) {
+                        log("预览请求处理异常：${e.message}")
+                    }
+                }
             runCatching { sock.close() }.onFailure { log("预览连接关闭异常：${it.message}") }
         }
     }
