@@ -78,13 +78,6 @@ internal object LibraryPaths {
     fun rawDirUnder(filesDir: File): File =
         File(File(File(filesDir, DIR_BAOPU), DIR_LIBRARY_PRIVATE), SUB_RAW_PRIVATE)
 
-    /** 私有资料库根（`filesDir/baopu/library`，导出/建目录用）。 */
-    fun privateLibraryRoot(filesDir: File): File = File(File(filesDir, DIR_BAOPU), DIR_LIBRARY_PRIVATE)
-
-    /** [target] 是否落在 [workspace] 内（组件级比较，复用 PathGuard）。 */
-    fun isInsideWorkspace(workspace: File, target: File): Boolean =
-        PathGuard.isInside(workspace, target)
-
     /**
      * 原件进私有目录的目标路径（**越界即拒**，判据 §5.4）。
      *

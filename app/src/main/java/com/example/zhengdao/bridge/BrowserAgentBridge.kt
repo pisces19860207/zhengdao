@@ -415,6 +415,4 @@ object BrowserAgentBridge {
         runCatching { sock.close() }
     }
 
-    @Suppress("unused")
-    private fun debugLog(msg: String) = Log.d(TAG, msg)
 }

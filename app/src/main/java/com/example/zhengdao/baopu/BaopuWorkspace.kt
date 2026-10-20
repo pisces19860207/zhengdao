@@ -60,12 +60,6 @@ object BaopuWorkspace {
         return if (target.isDirectory) target else privateDir(ctx).apply { runCatching { mkdirs() } }
     }
 
-    /** 当前是不是用户自定义的那个（默认工作区不算）。 */
-    fun isCustom(ctx: Context): Boolean = mode(ctx) == "custom" && isValidCustom(customPath(ctx))
-
-    /** 当前是不是默认工作区（`Download/证道`）。 */
-    fun isDefault(ctx: Context): Boolean = mode(ctx) == "default" || !storageGranted(ctx)
-
     /** 当前是不是「仅 App 私有」（没授权时也会落在这里）。 */
     fun isPrivate(ctx: Context): Boolean = !storageGranted(ctx) || mode(ctx) == "private"
 

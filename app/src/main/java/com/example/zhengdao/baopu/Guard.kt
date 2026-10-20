@@ -262,37 +262,4 @@ internal class BaopuGuards(
         return verdict
     }
 
-    /** 开工闸门（甲）：没素材 ⇒ 拒绝开工（理由留痕）。 */
-    fun gateOpen(): BaopuGuardCore.MaterialVerdict {
-        val verdict = BaopuGuardCore.checkMaterial(rawDir)
-        if (verdict is BaopuGuardCore.MaterialVerdict.Empty) {
-            log("抱朴守卫：拒绝开工——${verdict.reason}")
-        }
-        return verdict
-    }
-
-    /**
-     * 归档闸门（乙）：写 `改版/` 或任何产物之前调用。
-     * @param source 要被修改的原件（可以就在 `原始/` 里，也可以在工作区别处）
-     * @param relName 归档进 `原始/` 时用的相对名（通常 = 原件的相对路径）
-     */
-    fun gateArchive(source: File, relName: String): BaopuGuardCore.ArchiveVerdict {
-        // 原件本身也必须在工作区内——工作区外的文件，读都读不到，谈不上改。
-        val pathVerdict = checkPath(source)
-        if (pathVerdict is BaopuGuardCore.PathVerdict.Outside) {
-            val refused = BaopuGuardCore.ArchiveVerdict.Refused(
-                "原件在工作区外（${source.absolutePath}），拒绝归档"
-            )
-            log("抱朴守卫：拒绝归档——${refused.reason}")
-            return refused
-        }
-        val verdict = BaopuGuardCore.ensureArchived(rawDir, source, relName)
-        if (verdict is BaopuGuardCore.ArchiveVerdict.Refused) {
-            log("抱朴守卫：拒绝归档——${verdict.reason}")
-        }
-        return verdict
-    }
-
-    /** 改版目录（也过一遍守卫，防 Workspace 解析异常时指向别处）。 */
-    fun checkRevisedDir(): BaopuGuardCore.PathVerdict = checkPath(revisedDir)
 }
