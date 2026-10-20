@@ -179,6 +179,10 @@ import kotlin.text.Charsets
  *   zd-baopu-run 创建点（:222）之后**（新字段/落库壳/分支内调用），与第七十九批抽出的
  *   `RunLoopRules` 调用并存，创建点原地不动。新增 `agent/RunTrace.kt`／
  *   `agent/FailurePolicy.kt` 逐行核过无裸 Thread。
+ * - 2026-10-20（第七十七批 · Settings 存储/数据页纯逻辑抽取）：**无新增线程**。
+ *   `ui/SettingsDataActivity.kt` 五处判定搬进 `ui/settings/DataRules.kt`，活动侧
+ *   import 区 +1、四处搬移注释、别处资料库提示三行并一行 −1 ⇒ zd-net-check
+ *   创建点 592→596。逐处核过仍是同一段 `Thread {`，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -237,7 +241,7 @@ class BareThreadGuardTest {
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
             "RunEngine.kt:222",
-            "SettingsDataActivity.kt:592",
+            "SettingsDataActivity.kt:596",
             "SettingsEnvActivity.kt:219",
             "SettingsEnvActivity.kt:274",
             "SettingsEnvActivity.kt:595",
