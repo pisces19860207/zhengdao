@@ -156,38 +156,51 @@ class BaopuSettingsRulesTest {
         }
     }
 
-    // ── ④ 组头第二句：默认开启 / 默认不开启 ──────────────────────────────────
+    // ── ④ 组头第二句：四态（第九十七批把「默认开/不开」扩成「默认可见/已锁/已同意/已关闭」）──
 
     @Test
-    fun `C1_布尔进句子出_两句话互不相同`() {
-        // 正常
-        assertEquals(R.string.baopu_tools_group_default_on, baopuGroupDefaultCaption(true))
-        assertEquals(R.string.baopu_tools_group_default_off, baopuGroupDefaultCaption(false))
-        // 边界：两句不许是同一句（那样「默认是否可见」这行就成了废话）
-        assertNotEquals(baopuGroupDefaultCaption(true), baopuGroupDefaultCaption(false))
+    fun `C1_四态各有一句_四句互不相同`() {
+        val keys = BaopuGroupState.values().map { baopuGroupCaptionKey(it) }
+        assertEquals("四态四句（两句一样就等于两态没拆开）", keys.size, keys.toSet().size)
+        assertEquals(R.string.baopu_tools_group_default_on, baopuGroupCaptionKey(BaopuGroupState.DefaultVisible))
+        assertEquals(R.string.baopu_tools_group_default_off, baopuGroupCaptionKey(BaopuGroupState.Locked))
+        assertEquals(R.string.baopu_tools_group_approved, baopuGroupCaptionKey(BaopuGroupState.Approved))
+        assertEquals(R.string.baopu_tools_group_disabled, baopuGroupCaptionKey(BaopuGroupState.Disabled))
     }
 
     @Test
     fun `C2_每组那句必须与DEFAULT_VISIBLE现算的一致`() {
-        // 冲突优先级：这句只能跟着那张唯一的默认可见名单说，UI 不许另立一套（59 批 §1.6）。
-        // 这里把 helper 与 `ToolGroup.DEFAULT_VISIBLE` 逐组对一遍——谁改了名单或改了映射，这条就红。
+        // 冲突优先级：默认态只跟着那张唯一的默认可见名单说（59 批 §1.6）。
         baopuSwitchableGroups(ToolGroup.values()).forEach { g ->
-            val expected = if (g in ToolGroup.DEFAULT_VISIBLE) {
+            val isDefault = g in ToolGroup.DEFAULT_VISIBLE
+            val state = baopuGroupState(defaultVisible = isDefault, approved = false, disabled = false)
+            val expected = if (isDefault) {
                 R.string.baopu_tools_group_default_on
             } else {
                 R.string.baopu_tools_group_default_off
             }
-            assertEquals("$g 的默认可见提示", expected, baopuGroupDefaultCaption(g in ToolGroup.DEFAULT_VISIBLE))
+            assertEquals("$g 的默认提示", expected, baopuGroupCaptionKey(state))
         }
     }
 
     @Test
     fun `C3_默认可见名单现实读数_只有core与edit上页就亮`() {
-        // 空值/边界：COMPAT 也在 DEFAULT_VISIBLE 里（它是通道占位、由引擎决定），但它压根不上页（②），
-        // 所以这条只核对**上页的那几组**——把 61 批「按 DEFAULT_VISIBLE 说话」的口径固定成读数。
         val onPage = baopuSwitchableGroups(ToolGroup.values())
-            .filter { baopuGroupDefaultCaption(it in ToolGroup.DEFAULT_VISIBLE) == R.string.baopu_tools_group_default_on }
+            .filter { baopuGroupSwitchOn(baopuGroupState(it in ToolGroup.DEFAULT_VISIBLE, false, false)) }
         assertEquals(listOf(ToolGroup.CORE, ToolGroup.EDIT), onPage)
+    }
+
+    @Test
+    fun `C4_四态优先级_关掉压过默认可见_同意只在非默认组上说得通`() {
+        assertEquals(BaopuGroupState.Disabled, baopuGroupState(defaultVisible = true, approved = true, disabled = true))
+        assertEquals(BaopuGroupState.DefaultVisible, baopuGroupState(true, true, false))
+        assertEquals(BaopuGroupState.Approved, baopuGroupState(false, true, false))
+        assertEquals(BaopuGroupState.Locked, baopuGroupState(false, false, false))
+        // 开关：只有「默认可见」与「已长期同意」是开；已锁/已关闭都是关
+        assertTrue(baopuGroupSwitchOn(BaopuGroupState.DefaultVisible))
+        assertTrue(baopuGroupSwitchOn(BaopuGroupState.Approved))
+        assertFalse(baopuGroupSwitchOn(BaopuGroupState.Locked))
+        assertFalse(baopuGroupSwitchOn(BaopuGroupState.Disabled))
     }
 
     // ── ⑤ 作用域 → 人设层 ────────────────────────────────────────────────────
