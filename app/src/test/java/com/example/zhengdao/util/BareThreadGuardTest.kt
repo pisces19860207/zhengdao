@@ -214,10 +214,10 @@ class BareThreadGuardTest {
             "SettingsEnvActivity.kt:687",           // zd-env-update（同上 +11 / +1；第十八批 B 段包裹 +5；第五十二批 P0-5 守卫 +5 ⇒ 673→687）
             "TerminalActivity.kt:83",               // zd-paste（第㉕刀 insets +3 / 第㉚刀 import +1）
             "TerminalActivity.kt:660",              // zd-session-start（㉕ +23 / ㉚ +3 / B-补-13 ＋ B-补-21 横幅 +11；第二十一批 +17；第五十三批 P1-4 +4）；第六十批 P2-7 清理挪入 worker + 注释 +6 ⇒ 654→660
-            "TerminalActivity.kt:891",              // zd-net-probe（同上；第五十三批 P1-4 +4）；第六十批 P2-7 +22 ⇒ 869→891
-            "TerminalActivity.kt:1705",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1；第二十一批 +63；第五十三批 P1-4 +4 / P1-6 +7）；第六十批 P2-7 +22 ⇒ 1683→1705
-            "TerminalActivity.kt:1765",             // zd-install-cache（同上）；第六十批 P2-7 +22 ⇒ 1743→1765
-            "TerminalActivity.kt:1851",             // zd-install-download（同上）；第六十批 P2-7 +22 ⇒ 1829→1851
+            "TerminalActivity.kt:893",              // zd-net-probe（同上；第五十三批 P1-4 +4）；第六十批 P2-7 +22 ⇒ 869→891
+            "TerminalActivity.kt:1707",             // zd-install-saf（㉕ +23 / ㉚ +3 / 横幅 +22；2026-10-18 终端标题居中回退 -1；第二十一批 +63；第五十三批 P1-4 +4 / P1-6 +7）；第六十批 P2-7 +22 ⇒ 1683→1705
+            "TerminalActivity.kt:1767",             // zd-install-cache（同上）；第六十批 P2-7 +22 ⇒ 1743→1765
+            "TerminalActivity.kt:1853",             // zd-install-download（同上）；第六十批 P2-7 +22 ⇒ 1829→1851
             "ZhengdaoApp.kt:82",                    // zhengdao-keepalive-archive（第⑲刀 +3；清场删两 import −2、删 onCreate 调用 −1、补说明 +2 ⇒ +2）
             "ZhengdaoApp.kt:132",                   // zd-auto-clean（同上）
         )

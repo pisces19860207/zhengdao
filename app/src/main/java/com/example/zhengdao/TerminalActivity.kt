@@ -630,7 +630,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         fallbackActive = SessionManager.isFallback
         // 同一串短标题：attach 到已有会话也走这条（理由见上面新会话那处的注释）
         toolbarTitle?.text =
-            if (fallbackActive) "证道 — 系统 shell（环境未安装）" else "证道 - Debian 13.7"
+            if (fallbackActive) "证道 - 系统 shell" else "证道 - Debian 13.7"
         attachViewToSession()
     }
 
@@ -733,9 +733,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 //（三个圆点热区占 104dp + 复制/粘贴占 ~92dp）⇒「· bash」整段被省略号吃掉、
                 // `13.7` 也只剩半截。改成短标题，并由 activity_main.xml 里 toolbar_title 的
                 // autoSize 在更窄的屏上自动降号兜底（宁可小一号，不再截断）。
-                // ⚠️ 回退态那条 `证道 — 系统 shell（环境未安装）` 同样偏长，本次未动。
+                // 2026-10-20 用户：「证道-shell 和 证道-debian 13.7 字不一样大」——根因是回退态标题太长，
+        // autoSize 把它降到 12–13sp，而 Debian 那条仍 17sp。修法：回退态也缩短成与 Debian 等长的短标题，
+        // 两条都按 17sp 渲染；「环境未安装」的解释由终端内的兜底文案/提示承担，不塞进标题。
                 toolbarTitle?.text =
-                    if (started.isFallback) "证道 — 系统 shell（环境未安装）" else "证道 - Debian 13.7"
+                    if (started.isFallback) "证道 - 系统 shell" else "证道 - Debian 13.7"
                 // 环境未装：给安装引导（本地有归档则零交互自动装）。
                 // ⚠️ v1.1 重写 TerminalActivity 时此调用曾丢失——新用户装完 App 卡在
                 // fallback shell、没有任何安装入口（2026-10-07 恢复数据时实测发现）。
