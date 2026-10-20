@@ -1,6 +1,5 @@
 package com.example.zhengdao.baopu.eval
 
-import com.example.zhengdao.baopu.BaopuPreset
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.DataFence
 import com.example.zhengdao.baopu.agent.GuardPipeline
@@ -92,13 +91,12 @@ internal object EvalHarness {
             val tools = reg.toolsJsonOpenAi(EVAL_SESSION_ID)
 
             val messages = JSONArray()
-            // 注入优先：运行时自检传的是「落盘后的有效人设」，构建期门禁不传 ⇒ A 内核（老行为）。
-            // 第八十四批：带 persona 的用例用**写死的 fixture**（显式回放才有用户之外的参照物），
-            // 自检路径压根不跑这类用例（见 RuntimeEval），所以 fixture 与盘上人设不会碰面。
-            val system = when {
-                case.personaText.isNotBlank() -> case.personaText
-                else -> cfg.systemPrompt ?: BaopuPreset.personaText(dir.absolutePath)
-            }
+            // 第九十批：拼装收到 EvalPersona 一处。三条口径没变——
+            // 注入优先（运行时自检传落盘后的有效人设）、构建期门禁不注入 ⇒ A 内核（老行为逐字不变）、
+            // B/C 用例用写死的 fixture（自检路径压根不跑它们，见 RuntimeEval，fixture 与盘上人设不碰面）。
+            // 变的是 fixture 的**位置**：从「顶替整段系统提示」改成「当那一层的正文，A 内核仍在场」，
+            // 否则「B/C 不许削弱 A」这条根本没法验。
+            val system = EvalPersona.systemPromptOf(case, dir.absolutePath, cfg.systemPrompt)
             messages.put(JSONObject().put("role", "system").put("content", system))
             messages.put(JSONObject().put("role", "user").put("content", case.prompt))
 
@@ -146,7 +144,7 @@ internal object EvalHarness {
                 }
             }
             if (finalText.isBlank()) failures.add("${case.maxSteps} 步内没有给出终答（最后一轮仍在调工具）")
-            for (a in case.asserts) check(a, dir, before, finalText, step, failures)
+            for (a in case.asserts) check(a, dir, before, finalText, step, calls, failures)
             finish(case, dir, step, calls, failures, finalText, tokensIn, tokensOut, null)
         } catch (t: Throwable) {
             CaseResult(
@@ -330,12 +328,19 @@ internal object EvalHarness {
 
     // ── 判据 ─────────────────────────────────────────────────────────────
 
-    private fun check(
+    /**
+     * 一条判据怎么落地。
+     *
+     * [calls] 是这一例**提交过**的工具名序列（含被守卫拒掉的：拒掉说明模型真去试了，
+     * 而「有没有去试」正是 `tool_not_called` 要量的东西）。
+     */
+    internal fun check(
         a: EvalAssert,
         root: File,
         before: Map<String, ByteArray>,
         finalText: String,
         steps: Int,
+        calls: List<String>,
         out: MutableList<String>,
     ) {
         when (a.kind) {
@@ -364,6 +369,14 @@ internal object EvalHarness {
             }
 
             "steps_leq" -> if (steps > a.n) out.add("步数 $steps 超过上限 ${a.n}")
+
+            "tool_not_called" -> when {
+                a.text.isBlank() -> out.add("tool_not_called 没写工具名（text 要填一个工具名）")
+                a.text in calls -> out.add(
+                    "不该提交的工具提交了 ${calls.count { it == a.text }} 次：${a.text}" +
+                        "（实际序列：${calls.joinToString("、")}）",
+                )
+            }
 
             "unchanged" -> {
                 val seed = before[a.path]

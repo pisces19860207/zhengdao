@@ -137,7 +137,7 @@ internal object RuntimeEval {
             // 「用户自己那两层没把事办坏」，fixture 是写死的样板文案，拿它跑等于演戏。
             // 跳过必须留名（安静少跑几条比红更糟）；这类用例只在显式回放
             // （`ZHENGDAO_EVAL_PERSONA=1`，见 `EvalGateTest`）里跑。
-            if (case.persona.isNotBlank()) {
+            if (case.usesLayerFixture) {
                 skipped += case.id to "persona fixture 用例（显式回放 ZHENGDAO_EVAL_PERSONA=1 才跑）"
                 continue
             }

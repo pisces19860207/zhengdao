@@ -50,11 +50,12 @@ class EvalGateTest {
         val only = System.getenv("ZHENGDAO_EVAL_ONLY").orEmpty()
             .split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         val all = EvalCases.load(casesFile)
-        // 第八十四批：带 persona fixture 的用例只用写死的样板人设（B/C 层 is not 盘上人设），
-        // 默认不进本门禁——自检/门禁的口径是盘上人设。拨 ZHENGDAO_EVAL_PERSONA=1 才放行，
-        // 用来显式回放「B/C 层真的进了系统提示」这条通路。
+        // 第八十四批：带 B/C fixture 的用例测的是「这一层的通路对不对」（写死的样板人设，不是盘上人设），
+        // 默认不进本门禁——默认池子的口径是 A 内核水位。拨 ZHENGDAO_EVAL_PERSONA=1 才放行。
+        // 第九十批：过滤条件从 `persona.isEmpty()` 收成 `usesLayerFixture`——显式 `"A"` 的用例
+        // 只吃内核，本来就该在水位池里；用「persona 字段非空」判会把它错当成 fixture 用例跳过。
         val personaMode = System.getenv("ZHENGDAO_EVAL_PERSONA") == "1"
-        val pool = if (personaMode) all else all.filter { it.persona.isEmpty() }
+        val pool = if (personaMode) all else all.filter { !it.usesLayerFixture }
         val cases = if (only.isEmpty()) pool else pool.filter { it.id in only }
         assertTrue("ZHENGDAO_EVAL_ONLY=${only.joinToString(",")} 一条都没匹配上", cases.isNotEmpty())
         // 第九十四批 ②：eval 显式 temperature=0；seed 由环境变量决定
@@ -75,7 +76,7 @@ class EvalGateTest {
         val tokensOut = results.sumOf { it.tokensOut }
         val elapsed = System.currentTimeMillis() - started
 
-        writeReport(root, results, rate, avgSteps, elapsed, tokensIn, tokensOut, cfg, determinism)
+        writeReport(root, results, rate, avgSteps, elapsed, tokensIn, tokensOut, cfg, determinism, all)
 
         val baseline = readBaseline(root)
         println("进化门禁：$pass/${cases.size} 通过（${"%.0f".format(rate * 100)}%），平均 ${"%.1f".format(avgSteps)} 步，token 入 $tokensIn 出 $tokensOut，用时 ${elapsed / 1000}s")
@@ -188,12 +189,20 @@ class EvalGateTest {
         tokensOut: Int,
         cfg: EvalConfig,
         determinism: EvalDeterminism,
+        all: List<EvalCase>,
     ) {
+        // 报告要能按「哪一层、验的是哪类风险」对账（第九十批：B/C 用例进了池子之后，
+        // 只看 id 分不清这次挂的是通路还是红线），所以把用例身上的两个标签一起写出去。
+        // 只**增字段**，不动既有字段名与形状——99 批的 EvalResultFile 仍按 passRate/cases[].id 解析。
+        val byId = all.associateBy { it.id }
         val arr = JSONArray()
         for (r in results) {
+            val spec = byId[r.id]
             arr.put(
                 JSONObject()
                     .put("id", r.id)
+                    .put("persona", spec?.persona ?: "")
+                    .put("covers", spec?.covers ?: "")
                     .put("ok", r.ok)
                     .put("steps", r.steps)
                     .put("tokensIn", r.tokensIn)
