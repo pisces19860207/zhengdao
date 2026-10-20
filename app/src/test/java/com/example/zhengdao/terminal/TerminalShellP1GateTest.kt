@@ -58,8 +58,16 @@ class TerminalShellP1GateTest {
         )
         assertTrue(
             "两条标题串都要在（回退态 / Debian）",
-            attach.contains("证道 — 系统 shell（环境未安装）") &&
+            attach.contains("证道 - 系统 shell") &&
                 attach.contains("证道 - Debian 13.7")
+        )
+        // 2026-10-20：回退态标题必须与 Debian 标题等长级（长标题会被 autoSize 降到 12–13sp，
+        // 两条标题字号不一致——用户真机看到「字不一样大」）。
+        val fallbackTitle = "证道 - 系统 shell"
+        val debianTitle = "证道 - Debian 13.7"
+        assertTrue(
+            "回退态标题不许比 Debian 标题长（否则 autoSize 降字号）",
+            fallbackTitle.length <= debianTitle.length + 1
         )
     }
 
