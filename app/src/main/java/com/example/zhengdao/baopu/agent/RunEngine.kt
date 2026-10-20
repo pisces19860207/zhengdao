@@ -153,6 +153,15 @@ internal class RunEngine(
      * 已经是拼好的 [Provider]（含 Key），它不需要知道 Key 从哪来。
      */
     private val channelFallback: (Provider) -> Provider? = { null },
+    /**
+     * 安全点切换效应（第六十四批）：入参 (当前通道 id, 目标通道 id)，
+     * 返回重建后的新 Provider；null = 没切过去（调用方要回滚并留因）。
+     *
+     * 写只经 [com.example.zhengdao.baopu.ProviderPrefs]（BaopuRuntime 装配层
+     * 注入，引擎不持 context——与 [channelFallback] 同一纪律：Key 不进引擎）。
+     * 引擎的 [provider] 字段只在两处被写：熔断降级、本效应的安全点切换。
+     */
+    private val switchChannel: (String, String) -> Provider? = { _, _ -> null },
     private val log: (String) -> Unit = { RunLog.log(it) },
 ) {
 
@@ -238,6 +247,27 @@ internal class RunEngine(
      * 不写「0.0s」假装知道。
      */
     private var stepStartedAtMs = 0L
+
+    // ── 第六十四批：资源机（跨模型/通道切换状态机）────────────────────────
+    //
+    // ⚠️ 本段放在 `zd-baopu-run` 冻结创建点（BareThreadGuardTest 对账单按
+    // file:line 钉）**下方**：在上面插行会平移创建点行号、把门禁弄红
+    // （213–217 行那段警告说的是同一件事）。构造参 [switchChannel] 无法避开
+    // （在类签名里），它的平移已按实测回填对账单。
+
+    /**
+     * 正交协作层。引擎只经它发请求（[requestChannelSwitch]）与落切换
+     * （[drainChannelSwitch]，三个安全点共用）；「当前通道」真相仍是
+     * ProviderPrefs ＋ 本类 [provider] 字段，本机不另存一份。
+     */
+    private val channelSwitch = ChannelSwitchCoordinator(
+        applySwitch = ::applyChannelSwitch,
+        hasPendingImages = { pendingImageRelPaths.isNotEmpty() },
+        log = log,
+    )
+
+    private val _channelSwitchStatus = mutableStateOf(ChannelSwitchSnapshot())
+    val channelSwitchStatus: State<ChannelSwitchSnapshot> get() = _channelSwitchStatus
 
     /**
      * 本轮**够格进「产物」行**的相对路径（写成功、文本、≤512 KB、前 8 KB 无 NUL）。
@@ -856,6 +886,9 @@ internal class RunEngine(
             }
 
             // ── 一步 = 一次模型轮次 ──
+            // 安全点 1（第六十四批）：两步之间（stepCount 增长前）。用户点了
+            // 「换通道」也只在这里生效 ⇒ 不打断当前步、不烧预算。
+            drainChannelSwitch(SafePoint.StepBoundary)
             // P1-3：换通道后是**重跑同一步**（换了通道，模型的活没变）⇒ 不重复计预算。
             // 只在这一处跳计数：其他 continue（收尾闸重跑、坏参数重试）都是新的一步，照计。
             if (reuseStep) reuseStep = false else stepCount++
@@ -1003,6 +1036,10 @@ internal class RunEngine(
                             writeSpill(sessionId, name, text)
                         }
                         if (result is GuardPipeline.Result.NeedsConfirm) {
+                            // 安全点 2（第六十四批）：出确认卡之前——不能卡在工具
+                            // 半途切（那一步的模型决定已经是旧通道做的，卡要出给
+                            // 当前用户看；切换影响的是下一步）。
+                            drainChannelSwitch(SafePoint.BeforeConfirmCard)
                             // 确认制（刀 3 A 段）：落 pending → 出卡 → 挂起等 → 执行/拒绝/超时。
                             // runBlocking 桥：循环跑在裸线程 zd-baopu-run 上（本来就常驻阻塞
                             // 等网络），这里等的是人点按钮——同一颗线程，等什么不是等。
@@ -1357,6 +1394,54 @@ internal class RunEngine(
     /** 收尾闸未通过时的 run_log 摘要（只写路径＋检查项名，绝不写文件内容）。 */
     private fun findingBrief(findings: List<Finding>): String =
         findings.take(10).joinToString("；") { f -> "${f.path}(${ArtifactVerifier.label(f.check)})" }
+    // ── 第六十四批：资源机的三个入口/效应（状态机本体在 ChannelSwitchFsm.kt）──
+
+    /**
+     * UI 入口：请求切换通道。任何时刻可调（含任务在跑）——只置 PENDING，
+     * **到安全点才生效，不打断当前步**。返回给用户看的一句话。
+     *
+     * @param allowDropImages 用户在「去图再切 / 留在原通道」里显式选了前者才 true
+     *   （派工单 §3 三选一：默认拒切，不静默剥图；历史消息一个字节不动）。
+     */
+    fun requestChannelSwitch(target: Provider, allowDropImages: Boolean = false): String {
+        val msg = channelSwitch.requestSwitch(provider, target, allowDropImages)
+        _channelSwitchStatus.value = channelSwitch.snapshot()
+        log("资源机：请求切换 ⇒ ${target.id}（${msg}）")
+        return msg
+    }
+
+    /**
+     * 切换效应（引擎内部装配）：写只经注入的 [switchChannel]（Prefs 唯一真相），
+     * 解析漂移/异常由装配层回滚；本方法只做「同一个通道别切」的前判与翻译。
+     */
+    private fun applyChannelSwitch(target: Provider): SwitchApplyOutcome {
+        val oldId = provider.id
+        if (target.id == oldId) {
+            return SwitchApplyOutcome.Failed("目标通道就是当前通道（$oldId）")
+        }
+        val p = switchChannel(oldId, target.id)
+            ?: return SwitchApplyOutcome.Failed("没切过去（已留在 $oldId）")
+        return SwitchApplyOutcome.Applied(p)
+    }
+
+    /**
+     * 安全点抽干：三个安全点（两步之间 / 出确认卡之前 / 本轮 Settled 之后）
+     * 共用这一处。只有 PENDING 才真落切换；成功才改 [provider] 字段并提示，
+     * 失败只提示（状态机留 FALLBACK ＋ lastResult，已留在原通道）。
+     */
+    private fun drainChannelSwitch(point: SafePoint) {
+        val o = channelSwitch.atSafePoint(point)
+        _channelSwitchStatus.value = channelSwitch.snapshot()
+        if (o.switched && o.provider != null) {
+            provider = o.provider
+            _notice.value = "已切换到 ${o.provider.label}（${o.provider.model}）"
+            log("资源机：安全点 ${point.name} 完成 ⇒ ${o.provider.id}")
+        } else if (!o.switched && o.message != null) {
+            _notice.value = o.message
+            log("资源机：安全点 ${point.name} 未切成（${o.message}）")
+        }
+    }
+
     private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String, err: String = "") {
         // **必须等落库真的完成**：db.write 返回的是 Future（单写者线程 submit 排队），
         // 只调用不 get 就等于"先切状态、收尾行稍后才落"。2026-10-17 真机复现：
@@ -1364,6 +1449,8 @@ internal class RunEngine(
         runCatching { persistStep(sessionId, step, runLogState, err).get() }
             .onFailure { log("抱朴引擎：收尾落库失败 ${it.javaClass.simpleName}: ${it.message}") }
         _state.value = state
+        // 安全点 3（第六十四批）：本轮 Settled 之后——收尾后立刻切，不等下一轮。
+        drainChannelSwitch(SafePoint.AfterSettled)
     }
 
     /** 步迁移 = 一次事务（session.interrupted_step + updated_at + run_log）。返回落库 Future。 */
