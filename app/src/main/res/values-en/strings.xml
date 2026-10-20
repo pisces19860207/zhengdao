@@ -1382,4 +1382,6 @@
     <!-- Batch 61 §2: titles of the two persistent error notes (skill / library). Progress notes carry no title - they go away in 8s. -->
     <string name="baopu_note_skill_error_label">Skill did not land</string>
     <string name="baopu_note_library_error_label">Library did not land</string>
+    <string name="baopu_scratch_left_label">Scratch files</string>
+    <string name="baopu_scratch_left_body">%1$d scratch file(s) moved to Trash (restorable)</string>
 </resources>

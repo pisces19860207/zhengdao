@@ -406,6 +406,15 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                             )
                         }
                         // 2026-10-19：玄览正在干什么（用户：别只留工具卡在消息流里）
+                        // 2026-10-20：临时/ 还剩文件（抱朴自己造的垃圾），收尾时提醒
+                        if (controller.scratchLeft > 0) {
+                            add(
+                                NoticeItem(
+                                    stringResource(R.string.baopu_scratch_left_label),
+                                    stringResource(R.string.baopu_scratch_left_body, controller.scratchLeft),
+                                ),
+                            )
+                        }
                         controller.browserActivity?.let {
                             add(NoticeItem(stringResource(R.string.baopu_browser_notice_label), it))
                         }

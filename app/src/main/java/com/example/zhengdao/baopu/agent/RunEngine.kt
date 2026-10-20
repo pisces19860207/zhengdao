@@ -99,6 +99,9 @@ sealed interface EngineEvent {
     /** 需要人看一眼（停下问人 / 熔断 / 步数耗尽——都是"可报告地失败"）。 */
     data class AskUser(val message: String) : EngineEvent
 
+    /** 收尾时把抱朴自己造的 `临时/` 垃圾移进回收站，搬走了几个（2026-10-20 用户口径）。 */
+    data class ScratchLeft(val count: Int) : EngineEvent
+
     /**
      * 本轮彻底收尾（单活跃门**已释放**、`run_log` 收尾行**已落库**）：UI 该重读一次库。
      *
@@ -464,7 +467,9 @@ internal class RunEngine(
                 turnNotes = emptyList()
                 pendingImageRelPaths = emptyList()
                 ActiveSessionGate.release("id:$sessionId")
-                onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记（见 Settled 的说明）
+                reapScratch()
+            reapScratch()
+            onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记（见 Settled 的说明）
             }
         }
     }
@@ -1357,6 +1362,18 @@ internal class RunEngine(
     /** 收尾闸未通过时的 run_log 摘要（只写路径＋检查项名，绝不写文件内容）。 */
     private fun findingBrief(findings: List<Finding>): String =
         findings.take(10).joinToString("；") { f -> "${f.path}(${ArtifactVerifier.label(f.check)})" }
+    /**
+     * 收尾：把抱朴自己造的 `临时/` 垃圾**移进回收站**（2026-10-20 用户：「垃圾就让他自己弄到回收站」）。
+     *
+     * 只搬进回收站、不真删 ⇒ 可反悔；用户不需要为它点确认（那是它自己的草稿区）。
+     */
+    private fun reapScratch() {
+        runCatching {
+            val n = com.example.zhengdao.baopu.TempScratch.reap(spillRoot(), System.currentTimeMillis())
+            if (n > 0) onEvent?.invoke(EngineEvent.ScratchLeft(n))
+        }.onFailure { log("抱朴引擎：临时目录回收失败 ${it.javaClass.simpleName}") }
+    }
+
     private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String, err: String = "") {
         // **必须等落库真的完成**：db.write 返回的是 Future（单写者线程 submit 排队），
         // 只调用不 get 就等于"先切状态、收尾行稍后才落"。2026-10-17 真机复现：
