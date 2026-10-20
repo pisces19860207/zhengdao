@@ -179,6 +179,13 @@ import kotlin.text.Charsets
  *   zd-baopu-run 创建点（:222）之后**（新字段/落库壳/分支内调用），与第七十九批抽出的
  *   `RunLoopRules` 调用并存，创建点原地不动。新增 `agent/RunTrace.kt`／
  *   `agent/FailurePolicy.kt` 逐行核过无裸 Thread。
+ * - 2026-10-20（第八十九批 · 记忆质量环）：**无新增线程**。`BaopuDb.kt` 加 memory 质量四列常量、
+ *   `memoryQualityColumnsStmt`、`allMemories` 四个新列、`allMemoriesRanked`（净 +57 行，**全在创建点之前**）
+ *   ⇒ zd-baopu-db 单写者创建点 1224→1281 平移，本次回填；迁移体 `applyV14Migration` 与
+ *   `VERSION = 14` 都落在创建点之后。`MemoryStore.kt`／`MemoryQuality.kt` 不建线程也不碰线程
+ *   （`MemoryQuality` 一条 import 都没有，门禁 `门禁_质量层是纯判据没有删除也没有IO` 钉着）。
+ *   `grep -c 'Thread(' BaopuDb.kt` 实测 = 1，逐处核过仍是同一段
+ *   `Thread(r, "zd-baopu-db").apply { isDaemon = true }`，有名 + daemon 都没变。
  */
 class BareThreadGuardTest {
 
@@ -222,7 +229,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:136",
-            "BaopuDb.kt:1224",
+            "BaopuDb.kt:1281",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:68",
             "KeepaliveWatcher.kt:66",

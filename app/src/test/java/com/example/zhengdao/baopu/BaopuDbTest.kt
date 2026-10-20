@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(13, BaopuDb.VERSION) // v13 = 第八十七批（run_trace 轨迹表）；v12 = 第八十五批（skill_event 效果四列）；v11 = 第五十七批（skill_event）；v9 = 第三十八批（artifact 表）
+        assertEquals(14, BaopuDb.VERSION) // v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(13, BaopuDb.VERSION) // v13 = 第八十七批（run_trace 轨迹表）；v12 = 第八十五批（skill_event 效果四列）；v11 = 第五十七批（skill_event）；v9 = 第三十八批（artifact 表）
+        assertEquals(14, BaopuDb.VERSION) // v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -262,7 +262,7 @@ class BaopuDbTest {
     // ── memory 表语句（v2 · 刀 0b） ───────────────────────────────────────
 
     @Test
-    fun `upsertMemory十三个参数全绑定`() {
+    fun `upsertMemory十七个参数全绑定`() {
         val e = MemoryEntry(
             id = "1729000000000-称呼偏好", scope = MemoryScope.PROJECT, kind = MemoryKind.PREFERENCE,
             title = "称呼偏好", body = "用户希望被称呼为老师", tags = listOf("称呼", "用户"),
@@ -271,7 +271,8 @@ class BaopuDbTest {
         )
         val s = BaopuSql.upsertMemory(e)
         assertTrue(s.sql.startsWith("INSERT OR REPLACE INTO memory"))
-        assertEquals(13, s.args.size)
+        // 13 → 17：第八十九批加了 score / quality_flags / merged_from / scored_at
+        assertEquals(17, s.args.size)
         assertEquals("1729000000000-称呼偏好", s.args[0])
         assertEquals("project", s.args[1])
         assertEquals("preference", s.args[2])
@@ -281,6 +282,61 @@ class BaopuDbTest {
         assertEquals("100", s.args[9])
         assertEquals("3", s.args[11])
         assertEquals("300", s.args[12])
+        // 质量四项（这条没算过质量账 ⇒ 默认满分／无标记／无合并账／scored_at 为 0）
+        assertEquals("100", s.args[13])
+        assertEquals("", s.args[14])
+        assertEquals("", s.args[15])
+        assertEquals("0", s.args[16])
+        val q = e.copy(
+            qualityScore = 25, qualityFlags = listOf("STALE", "CONFLICT"),
+            mergedFrom = listOf("a", "b"), scoredAt = 999L,
+        )
+        val qs = BaopuSql.upsertMemory(q)
+        assertEquals("25", qs.args[13])
+        assertEquals("STALE,CONFLICT", qs.args[14]) // 与 .md 的 quality_flags 同一个逗号口径
+        assertEquals("a,b", qs.args[15])
+        assertEquals("999", qs.args[16])
+    }
+
+    @Test
+    fun `v14_质量四列_看列再动_默认满分`() {
+        // 老库（v2 的 13 列，没有质量列）⇒ 四条 ALTER，一条不多一条不少
+        val old = listOf(
+            "id", "scope", "kind", "title", "body", "tags", "source_session", "source_file",
+            "status", "created_at", "updated_at", "use_count", "last_used_at",
+        )
+        val stmts = BaopuSql.memoryQualityColumnsStmt(old)
+        assertEquals("四列全缺 ⇒ 四条 ALTER", 4, stmts.size)
+        assertEquals("ALTER TABLE memory ADD COLUMN score INTEGER NOT NULL DEFAULT 100", stmts[0].sql)
+        assertTrue("老数据必须有默认分（派工单 §1）：${stmts[0].sql}", stmts[0].sql.contains("DEFAULT 100"))
+        assertEquals("ALTER TABLE memory ADD COLUMN quality_flags TEXT NOT NULL DEFAULT ''", stmts[1].sql)
+        assertEquals("ALTER TABLE memory ADD COLUMN merged_from TEXT NOT NULL DEFAULT ''", stmts[2].sql)
+        assertEquals("ALTER TABLE memory ADD COLUMN scored_at INTEGER NOT NULL DEFAULT 0", stmts[3].sql)
+        // 重跑迁移 ⇒ 一条都不给（幂等；SQLite 没有 ADD COLUMN IF NOT EXISTS，全靠看列再动）
+        assertTrue(BaopuSql.memoryQualityColumnsStmt(old + listOf("score", "quality_flags", "merged_from", "scored_at")).isEmpty())
+        // 列况大小写不敏感（PRAGMA 回来的列名可能不是小写）
+        assertTrue(BaopuSql.memoryQualityColumnsStmt(old + listOf("SCORE", "QUALITY_FLAGS", "MERGED_FROM", "SCORED_AT")).isEmpty())
+        // 只缺一条 ⇒ 只补那一条（半途炸过的库要能自愈）
+        val partial = BaopuSql.memoryQualityColumnsStmt(old + listOf("score", "quality_flags"))
+        assertEquals(2, partial.size)
+        assertTrue(partial[0].sql.contains("merged_from"))
+        // 加列语句不许进 DDL 常量（DDL 里出现裸 ALTER = 重跑必炸，v3 那条门禁同口径）
+        assertTrue("DDL 常量里不许有 memory 质量列的裸 ALTER", BaopuSql.DDL.none { it.contains("ALTER TABLE memory") })
+        // 默认分与纯判据层同值（两份真相迟早漂，这里钉死）
+        assertEquals(MemoryQuality.DEFAULT_SCORE, BaopuSql.MEMORY_QUALITY_DEFAULT_SCORE)
+    }
+
+    @Test
+    fun `v14_质量列读得到_另给一条按分数排序的读法`() {
+        val plain = BaopuSql.allMemories()
+        for (col in listOf("score", "quality_flags", "merged_from", "scored_at")) {
+            assertTrue("allMemories 要读得到 $col：${plain.sql}", plain.sql.contains(col))
+        }
+        assertTrue("对拍序不动（v2 历史判据）", plain.sql.contains("ORDER BY created_at"))
+        val ranked = BaopuSql.allMemoriesRanked()
+        assertTrue("读时排序 = 分数降 → 创建升 → id 升：${ranked.sql}",
+            ranked.sql.contains("ORDER BY score DESC, created_at ASC, id ASC"))
+        assertEquals("排序读法也不许带参数", 0, ranked.args.size)
     }
 
     @Test
