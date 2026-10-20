@@ -77,6 +77,7 @@ import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.ui.settings.EnvRules
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -281,106 +282,112 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             //    老逻辑拿恒定的发行版号（13.7）比，于是永远判"已是最新"——本次修掉的正是它。
                             val idx = RootfsIndexFetcher.fetch()
                             if (idx != null && !idx.env.isNullOrBlank()) {
+                                // 第八十批（2026-10-20）：这里原先是一坨 75 行的 when 树 —— 8 种口径
+                                // 各自决定"给哪句话 / 有没有下载目标 / 要不要先试增量"，从没有单测钉住
+                                // （2026-10-08「同版本被叫成发现新版本」的投诉就是这段判据失守）。
+                                // 判据整体搬到 EnvRules.planUpdate（纯值进出），本处只做三件事：
+                                // 取值、按结论落 pending*、按结论选一句文案。分支与旧实现逐条对应。
                                 val localEnv = RootfsMarker.installedEnv(ctx)
-                                val ver = idx.version.ifBlank {
-                                    idx.distro.ifBlank { ctx.getString(R.string.env_version_unknown) }
+                                val ver = EnvRules.displayVersion(
+                                    idx.version,
+                                    idx.distro,
+                                    ctx.getString(R.string.env_version_unknown),
+                                )
+                                // 有可下载目标 ⇒ 交给下面那个确认弹窗；没有 ⇒ 只 Toast 一句。
+                                // 判据只有一条：本地 env 指纹与索引不一致（[EnvRules.isUpToDate] 取反），
+                                // 不是文案前缀 —— 同版本补指纹的文案不以「发现新版本」开头，按前缀判
+                                // 会让它既不弹窗也不提示（2026-10-08 修）。挂 pending 放在判定之前，
+                                // 与迁移前同序（判定里读盘抛异常时，迁移前也是先挂了 pending）。
+                                if (!EnvRules.isUpToDate(localEnv, idx.env)) {
+                                    pendingUrl = idx.url; pendingSha = idx.sha256
+                                    pendingIdx = idx
                                 }
-                                when {
+                                val plan = EnvRules.planUpdate(
+                                    localEnv = localEnv,
+                                    indexEnv = idx.env,
+                                    indexVersion = ver,
+                                    indexSize = idx.size,
+                                    // 惰性取值：迁移前这两项只在需要它的分支里读盘，传闭包保持读盘次数不变
+                                    localVersion = {
+                                        com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx).orEmpty()
+                                    },
+                                    cachedBytes = {
+                                        com.example.zhengdao.rootfs.RootfsCache
+                                            .localCandidateFor(ctx, idx.url, idx.size)?.length()
+                                    },
+                                    patchFrom = idx.patch?.from,
+                                    patchSize = idx.patch?.size ?: 0L,
+                                )
+                                if (plan.wantPatch) pendingPatchRef = idx.patch
+                                when (plan.notice) {
                                     // 旧安装（标记里没有 env 行）：第一次更新只能全量，装完就记上 env。
                                     // 2026-10-08：本地装的往往**就是同一个版本**（13.7），只是标记缺 env 行，
                                     // 却被叫成"发现新版本 13.7"——用户会以为真出了新版（真机投诉）。
-                                    // 这里按本地已装版本分两种口径：同版本＝补指纹，不同/未知＝确实有新版。
-                                    localEnv == null -> {
-                                        pendingUrl = idx.url; pendingSha = idx.sha256
-                                        pendingIdx = idx
-                                        val localVer = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx).orEmpty()
-                                        // 2026-10-08：缓存里若已躺着索引那个包（下过一次没装成、或上次重装留下的），
-                                        // 就有一条"本地已有"的提示可按；只按大小定位，不据此改走本地安装。
-                                        // （2026-10-14 用户拍板：环境更新**不再用本地包**，一律重新下载。）
-                                        val cached = com.example.zhengdao.rootfs.RootfsCache
-                                            .localCandidateFor(ctx, idx.url, idx.size)
-                                        val sameVer = localVer.isNotBlank() && localVer.equals(ver, ignoreCase = true)
-                                        when {
-                                            cached != null && sameVer ->
-                                                ctx.getString(
-                                                    R.string.env_local_env_missing_cached,
-                                                    ver,
-                                                    bytesMbText(cached.length(), ctx.resources),
-                                                )
-                                            cached != null ->
-                                                ctx.getString(
-                                                    R.string.env_local_cached,
-                                                    bytesMbText(cached.length(), ctx.resources),
-                                                )
-                                            sameVer ->
-                                                ctx.getString(
-                                                    R.string.env_local_env_missing_full,
-                                                    ver,
-                                                    bytesMbText(idx.size, ctx.resources),
-                                                )
-                                            else ->
-                                                ctx.getString(
-                                                    R.string.env_new_version_no_local_record,
-                                                    ver,
-                                                    bytesMbText(idx.size, ctx.resources),
-                                                )
-                                        }
-                                    }
-                                    localEnv.equals(idx.env, ignoreCase = true) ->
-                                        ctx.getString(R.string.env_up_to_date, ver, localEnv)
-                                    else -> {
-                                        pendingUrl = idx.url; pendingSha = idx.sha256
-                                        pendingIdx = idx
-                                        val p = idx.patch
-                                        // 本地已有索引那个整包：只影响下面给出的提示文案，不改更新路径。
-                                        val cached = com.example.zhengdao.rootfs.RootfsCache
-                                            .localCandidateFor(ctx, idx.url, idx.size)
-                                        when {
-                                            cached != null ->
-                                                ctx.getString(
-                                                    R.string.env_new_version_cached,
-                                                    ver,
-                                                    bytesMbText(cached.length(), ctx.resources),
-                                                )
-                                            p != null && p.from.equals(localEnv, ignoreCase = true) -> {
-                                                pendingPatchRef = p
-                                                ctx.getString(
-                                                    R.string.env_new_version_patch,
-                                                    ver,
-                                                    bytesMbText(p.size, ctx.resources),
-                                                )
-                                            }
-                                            else ->
-                                                ctx.getString(
-                                                    R.string.env_new_version_full,
-                                                    ver,
-                                                    localEnv,
-                                                    bytesMbText(idx.size, ctx.resources),
-                                                )
-                                        }
-                                    }
+                                    // 所以按本地已装版本分两种口径：同版本＝补指纹，不同/未知＝确实有新版。
+                                    // 缓存里若已躺着索引那个包（下过一次没装成、或上次重装留下的），
+                                    // 就多一条"本地已有"的提示可选；只按大小定位，不据此改走本地安装
+                                    // （2026-10-14 用户拍板：环境更新**不再用本地包**，一律重新下载）。
+                                    EnvRules.UpdateNotice.LocalEnvMissingCached -> ctx.getString(
+                                        R.string.env_local_env_missing_cached,
+                                        plan.version,
+                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                    )
+                                    EnvRules.UpdateNotice.LocalCached -> ctx.getString(
+                                        R.string.env_local_cached,
+                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                    )
+                                    EnvRules.UpdateNotice.LocalEnvMissingFull -> ctx.getString(
+                                        R.string.env_local_env_missing_full,
+                                        plan.version,
+                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                    )
+                                    EnvRules.UpdateNotice.NewVersionNoLocalRecord -> ctx.getString(
+                                        R.string.env_new_version_no_local_record,
+                                        plan.version,
+                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                    )
+                                    EnvRules.UpdateNotice.UpToDate -> ctx.getString(
+                                        R.string.env_up_to_date,
+                                        plan.version,
+                                        localEnv ?: "",
+                                    )
+                                    // 有新版本：本地已有索引那个整包只影响给的提示文案，不改更新路径。
+                                    EnvRules.UpdateNotice.NewVersionCached -> ctx.getString(
+                                        R.string.env_new_version_cached,
+                                        plan.version,
+                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                    )
+                                    EnvRules.UpdateNotice.NewVersionPatch -> ctx.getString(
+                                        R.string.env_new_version_patch,
+                                        plan.version,
+                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                    )
+                                    EnvRules.UpdateNotice.NewVersionFull -> ctx.getString(
+                                        R.string.env_new_version_full,
+                                        plan.version,
+                                        localEnv ?: "",
+                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                    )
                                 }
                             } else {
                                 // ② 索引取不到：保留老 manifest 提示路径（该文件已无人维护，见 ERRATA E-033）
                                 val manifestText = com.example.zhengdao.rootfs.RootfsDownloader
                                     .fetchText(com.example.zhengdao.rootfs.RootfsCache.MANIFEST_URL)
                                 if (manifestText != null) {
-                                    val ver = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
-                                    val url = Regex("\"url\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
-                                    val sha = Regex("\"sha256\"\\s*:\\s*\"([^\"]+)\"").find(manifestText)?.groupValues?.get(1)
+                                    val feed = EnvRules.parseLegacyManifest(manifestText)
                                     val installed = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
                                     when {
-                                        ver == null || url == null ->
+                                        feed.version == null || feed.url == null ->
                                             ctx.getString(R.string.env_feed_unreadable)
                                         // 刻意不再判定"已是最新"：旧 manifest 的 version 恒为发行版号
                                         // （13.7），拿它跟本地比得出的"最新"是假的（见 ERRATA E-033）。
                                         // 拿不到索引时只给"可下载"的事实，不替用户下结论。
                                         else -> {
-                                            pendingUrl = url; pendingSha = sha
+                                            pendingUrl = feed.url; pendingSha = feed.sha256
                                             ctx.getString(
                                                 R.string.env_only_old_manifest,
                                                 installed,
-                                                ver,
+                                                feed.version,
                                             )
                                         }
                                     }
@@ -431,35 +438,36 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 // 就一直挂着（真机现象："⏳ 正在安装环境……安装完成！"，还带着"不能重复检查更新"
                 // 这句对已结束安装毫无意义的话，被用户读成"还在装"）。现在按 phase 给图标与颜色，
                 // "正在安装"只属于 Running；Done/Failed 收尾成一次性状态，可点「知道了」清掉。
-                val (icon, color) = when (st.phase) {
-                    InstallProgress.Phase.Running -> "⏳" to MaterialTheme.colorScheme.primary
-                    InstallProgress.Phase.Done -> "✅" to MaterialTheme.colorScheme.primary
-                    InstallProgress.Phase.Failed -> "⚠️" to MaterialTheme.colorScheme.error
-                }
+                // 第八十批：图标/错误色/收尾行/重试入口的对应关系搬到 EnvRules.phaseView（可单测）
+                val view = EnvRules.phaseView(st.phase)
+                // 第八十批：颜色口径与迁移前**完全一致**（失败仍用 colorScheme.error，视觉零变化）。
+                // 该处「错误色当正文」是迁移前就有的 AA 问题（3.55:1），本批不改视觉，已记入报告遗留项。
+                val statusColor = if (view.isError) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.primary
                 Text(
                     text = when (st.phase) {
                         InstallProgress.Phase.Running ->
-                            "$icon " + stringResource(
+                            "${view.icon} " + stringResource(
                                 R.string.env_installing,
                                 if (st.fromLocal) stringResource(R.string.env_install_local)
                                 else stringResource(R.string.env_install_online),
                                 st.text,
                             )
                         InstallProgress.Phase.Done ->
-                            "$icon " + stringResource(R.string.env_install_last, st.text)
+                            "${view.icon} " + stringResource(R.string.env_install_last, st.text)
                         InstallProgress.Phase.Failed ->
-                            "$icon " + stringResource(R.string.env_install_last_failed, st.text)
+                            "${view.icon} " + stringResource(R.string.env_install_last_failed, st.text)
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = color,
+                    color = statusColor,
                 )
-                if (st.phase != InstallProgress.Phase.Running) {
+                if (view.showCloseRow) {
                     // 结束后给一个明确的收尾动作：否则这条状态会一直占着按钮下面的位置
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // #4（2026-10-09）：失败时此前只有「知道了」——把它清掉就再没有任何重试入口，
                         // 用户只能自己想起"修复环境"那张卡。这里直接给重试，走的就是同一条修复流程
                         // （本地安装包重解压，不联网；见下方 repairConfirm 的二次确认）。
-                        if (st.phase == InstallProgress.Phase.Failed) {
+                        if (view.showRetry) {
                             TextButton(onClick = { repairConfirm = true }) {
                                 Text(stringResource(R.string.env_retry_install))
                             }
@@ -575,7 +583,8 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                         listOf(
                             File("/storage/emulated/0/Download/证道/debian-13.7-base-arm64.tar.zst"),
                         ) + com.example.zhengdao.rootfs.RootfsCache.listArchives(ctx)
-                        ).firstOrNull { it.isFile && it.length() > 100_000_000L }
+                        // 第八十批：≥100MB 的门槛搬进 EnvRules（严格大于，与迁移前一致）
+                        ).firstOrNull { EnvRules.isRepairCandidate(it.isFile, it.length()) }
                     if (candidates == null) {
                         Toast.makeText(
                             ctx,
@@ -737,8 +746,9 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         dest = deltaFile,
                                         shaUrls = RootfsDownloader.withMirrorFallback("${patchRef.url}.sha256"),
                                     ) { done, total ->
-                                        if (total > 0 && done * 100 / total % 10 == 0L) {
-                                            val pct = (done * 100 / total).toInt()
+                                        // 第八十批：10% 一档的节流判据搬进 EnvRules（整数除法口径不变）
+                                        val pct = EnvRules.progressPercent(done, total)
+                                        if (pct != null) {
                                             InstallFlow.update(
                                                 ctx,
                                                 ctx.getString(
@@ -799,8 +809,9 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     dest = archive,
                                     shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
                                 ) { done, total ->
-                                    if (total > 0 && done * 100 / total % 10 == 0L) {
-                                        val pct = (done * 100 / total).toInt()
+                                    // 第八十批：同上，全量下载走同一条节流判据
+                                    val pct = EnvRules.progressPercent(done, total)
+                                    if (pct != null) {
                                         InstallFlow.update(
                                             ctx,
                                             ctx.getString(
