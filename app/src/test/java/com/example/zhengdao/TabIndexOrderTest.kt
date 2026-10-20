@@ -13,7 +13,7 @@ import java.io.File
  *
  * 为什么值得钉一条测试：这次交换暴露了**20 处硬编码索引**（when(tab) 分支、底栏
  * selected/onClick/图标、animateToTop、ON_RESUME 切 Tab、抱朴页的 onExit
- * （清场前是 `BaopuScreen`，现为 `BaopuRebuilding`））。
+ * （清场前是 `BaopuScreen`；旧线清场后的占位页 `BaopuRebuilding` 已于第六十二批删除）。
  * 漏改任何一处都不会编译报错，只会**静默错位** —— 最隐蔽的是初始值
  * `mutableIntStateOf(2)`：2 原本是怡然，交换后变成玄览，启动页会无声无息地漂走。
  * 所以这里钉两半：① 顺序契约（常量值）② 源码里不再出现裸索引字面量。
