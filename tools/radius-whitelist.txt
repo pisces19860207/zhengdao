@@ -1,0 +1,39 @@
+# radius-whitelist.txt —— 圆角令牌门禁（tools/check-radius-tokens.py）的白名单
+#
+# 格式：路径 | 值 | 理由        （`#` 开头为注释；路径＝仓内相对路径，可写目录前缀；值＝数字，`*`＝该路径任意值）
+# 规约（第七十批 · UI 第六批，2026-10-20）：
+#   · 8 档裸值（4/6/8/10/12/14/16/24）默认**报红**，只有两种理由可以进白名单：
+#       「待收编」＝文件正被别的批次占用（63/68），合入 main 后必须换成令牌并**删掉这一行**；
+#       「语义位不同」＝值虽然撞在 8 档上，但那一位的语义不是 Radius.kt 定义的层（例：对话框用了 16dp）。
+#   · ≥50（`50` 百分比式 / `999.dp`）是**胶囊**，门禁自动放行，不需要写在这里。
+#   · 20/22/28 这类自定义值必须写清「为什么不是 8 档之一」。
+#   · 白名单条目一旦没有对应裸值，门禁会打「过期」提示 ⇒ 当场删行，不许留僵尸条目。
+#
+# ── 待收编：HomeScreen.kt（第六十八批在飞文件，合入后换令牌并删这 4 行）──
+app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt | 16 | 待收编：5 处卡片（437 clip/439/824/862/942）＝rCard；68 批在飞，本单不动，合入 main 后换 RoundedCornerShape(rCard)
+app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt | 14 | 待收编：2 处 AlertDialog（1184 卸载/1228 重装）＝rDialog；同上，68 批合入后换
+app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt | 8  | 待收编：1259 状态提示条＝rChip（语义位「状态条」正是 Radius.kt 给 8dp 的定义）；68 批合入后换
+app/src/main/java/com/example/zhengdao/ui/HomeScreen.kt | 10 | 语义位待定：790 是首屏状态区容器面板，值撞 rPill(10)，但 rPill 定义的是「选中 chip / 模型标签」⇒ 不属无争议，等用户拍板（改值 or 认层）
+#
+# ── 语义位不同：卡片层用了对话框层的值 ──
+app/src/main/java/com/example/zhengdao/ui/WelcomeScreen.kt | 14 | 语义位待定：74 三步上手是**卡面板**却写 14dp（14 档定义是对话框，卡层是 16）⇒ 换 rCard 会改视觉值，本单不许改值 ⇒ 白名单，列给用户定
+#
+# ── baopu/**：第七十批红线目录（63 批正在飞），本单一处不动；逐处登记待收编 ──
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuArtifactShelf.kt | 16 | 待收编：338 Dialog 内 Surface 用 16dp，而对话框层令牌是 rDialog(14) ⇒ 值撞 rCard、语义是弹窗，先白名单等拍板
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuArtifactViewer.kt | 20 | 自定义：145 Dialog 内 Surface 20dp，8 档没有 20 这一档（介于 rCard16 与 rSheet24）⇒ 不是 8 档之一
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuBackupScreen.kt | 28 | 自定义：96 Dialog 内 Surface 28dp，比 rSheet(24) 还大 ⇒ 8 档之外，另立浮层口径时再收
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuExtractSheet.kt | 28 | 自定义：123 Dialog 内 Surface 28dp，与 BaopuBackupScreen 同层同值 ⇒ 一起等「大浮层」口径
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuMessageList.kt | 12 | 语义位待定：356 计划卡内产物条用 12dp（12 档定义是按钮/输入框）⇒ 卡层还是控件层没定论
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuMessageList.kt | 8 | 语义位待定：875/895/909 图片缩略格 clip 用 8dp，值撞 rChip，但 8 档定义是「状态条/可点列表行」不是缩略图；且第 30 批图片并排规格把 8dp 写在派工单里 ⇒ 认层需拍板
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSkillCard.kt | 16 | 待收编：250/838/948 三处 Dialog 内 Surface，与 BaopuArtifactShelf 同一层同值 ⇒ 一起等「弹窗层用 14 还是 16」的结论
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSkillCategory.kt | 16 | 待收编：342 Dialog 内 Surface 16dp，同上
+app/src/main/java/com/example/zhengdao/ui/baopu/BaopuTrashBin.kt | 16 | 待收编：403 Dialog 内 Surface 16dp，同上
+#
+# ── ui/browser/**：玄览 shell 自成一套几何，本批不并入 iOS 8 档 ──
+# 理由（口径）：底栏几何由用户 2026-10-18 定稿，并被 BrowserBottomBarGuardTest 以**源码字面量**
+# 钉死（12dp 键、20dp 胶囊、禁止 14dp 簇回潮），色板另住 XuanLanPalette。令牌化那两处＝同时改门禁断言，
+# 属争议面 ⇒ 整片留白名单，要不要并轨由用户单独拍板。
+app/src/main/java/com/example/zhengdao/ui/browser/ | 16 | 玄览 shell：BrowserBottomBar 194 ⋯ 下拉菜单浮层 ⇒ 值撞 rCard 但语义是 popup，且属定稿区
+app/src/main/java/com/example/zhengdao/ui/browser/ | 12 | 玄览 shell：底栏键 391 / 标签条 tab 90 / 预览条按钮 149，12dp 由 BrowserBottomBarGuardTest 钉死
+app/src/main/java/com/example/zhengdao/ui/browser/ | 20 | 玄览 shell：地址胶囊 249＝40dp 高的**半高圆**（视觉全圆），8 档没有 20 ⇒ 只能按定稿留字面量（guard 亦钉死）
+app/src/main/java/com/example/zhengdao/ui/browser/ | 22 | 玄览 shell：起始页搜索框 111＝44dp 高的半高圆，同上 ⇒ 8 档之外的自定义值
