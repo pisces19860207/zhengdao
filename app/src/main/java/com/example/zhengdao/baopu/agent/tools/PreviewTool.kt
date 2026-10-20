@@ -71,6 +71,8 @@ internal object PreviewTool {
         ),
         permission = ToolPermission.FREE,
         timeoutMs = ToolTimeout.FILE_MS,
+        // 第九十二批：只读盘（不改文件），但会**切玄览页签** ⇒ 不许和别的读并行
+        readOnly = true,
     ) { args -> run(workspaceRoot(), args) }
 
     /**

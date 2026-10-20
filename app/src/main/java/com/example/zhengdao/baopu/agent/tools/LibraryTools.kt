@@ -76,6 +76,8 @@ internal object LibraryTools {
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
+        readOnly = true,
+        parallelSafe = true, // 纯文件读：无共享可变状态，可与别的读并行
         timeoutMs = ToolTimeout.FILE_MS,
     ) { args ->
         list(

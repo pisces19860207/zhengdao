@@ -318,6 +318,35 @@ data class ToolSpec(
      * [ToolGroupTable.checkCoverage] 在类加载时就抛，不等运行。
      */
     val group: ToolGroup = ToolGroup.CORE,
+    /**
+     * **只读分类**（第九十二批 §1）：这个工具会不会改盘。
+     *
+     * 默认 `false` ＝ **按写处理**（保守）——一个工具登记时忘了标，只会让它更安全
+     * （独占、不和别的工具并行），不会让写工具混进读并行里去。
+     *
+     * 口径是「改不改盘」，不是「改不改状态」：
+     * - `write_file` / `edit_file` / `move_path` / `delete_path` / `image_ops` /
+     *   `convert_encoding` / `library_organize` / `card_export` / `card_build` ⇒ false（缺省）；
+     * - `read_file` / `list_dir` / `search_in_files` / `find_files` / `book_outline` /
+     *   `file_info` / `card_inspect` / `library_list` ⇒ true；
+     * - **会改内存/界面状态但不动盘**的（`browser_*` 改页面、`preview_local_file` 切页签、
+     *   `capabilities` 改会话解锁、`update_plan` 改计划卡、`ask_user` 弹卡等人）也标 true
+     *   —— 它们是「只读盘」，但**不许并行**（见 [parallelSafe]）。
+     */
+    val readOnly: Boolean = false,
+    /**
+     * **可并行标记**（第九十二批 §1）：能不能和别的读工具**同时**跑。
+     *
+     * 默认 `false` ＝ 不并行（保守）。只有「纯文件读」这几个标了 true：
+     * 它们之间没有共享可变状态，两个 `read_file` 同时开不会互相踩。
+     *
+     * ⚠️ 为什么不能只凭 [readOnly] 判并行：`browser_snapshot` / `browser_screenshot`
+     * 都只读，但它们抢**同一个 WebView**；`preview_local_file` 要切玄览页签；
+     * `ask_user` 会阻塞等人十五分钟——把它们塞进并行段就是拿「读」当万能许可。
+     * 两条标记的**依赖关系**由 `ToolScheduling.classificationErrors` 机检：
+     * `parallelSafe = true` 而 `readOnly = false`，或并行标记落在 CONFIRM 工具上 ⇒ 直接红。
+     */
+    val parallelSafe: Boolean = false,
     val executor: (JSONObject) -> ToolOutcome,
 ) {
     companion object {
