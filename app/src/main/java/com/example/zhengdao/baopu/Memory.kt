@@ -40,6 +40,15 @@ data class MemoryEntry(
     val updatedAt: Long = 0L,
     val useCount: Int = 0,
     val lastUsedAt: Long = 0L,
+    // ── 第八十九批「记忆质量环」追加的四项（只加不改；老库/老文件读回来有默认值）──
+    /** 质量分（[MemoryQuality.MIN_SCORE]..[MemoryQuality.MAX_SCORE]，默认满分＝暂不扣分）。 */
+    val qualityScore: Int = MemoryQuality.DEFAULT_SCORE,
+    /** 质量标记字面值（`STALE`／`CONFLICT`／`MERGED`；见 [MemoryQuality]）。 */
+    val qualityFlags: List<String> = emptyList(),
+    /** 合并视图保留的来源条目 id（**含主体自己**）；原件全在盘上，顺 id 就能回原文。 */
+    val mergedFrom: List<String> = emptyList(),
+    /** 分数计算时刻（毫秒，0＝从没算过）。只用于审计，不参与内容判据。 */
+    val scoredAt: Long = 0L,
 )
 
 /** 召回结果： picked + **是否截断（截断必须明说，不许静默）**。 */
@@ -216,7 +225,8 @@ internal object MemoryRules {
 
     /**
      * 打分：标签命中 ×3，标题命中 ×2，正文命中 ×1（每个查询词分开计）。
-     * 同分按更新时间新的优先（后写的记忆更可能反映现状）。
+     * 同分先按**质量分**高的优先（第八十九批），再按更新时间新的优先
+     * （后写的记忆更可能反映现状）。
      */
     fun score(entry: MemoryEntry, queryTerms: Set<String>): Int {
         if (queryTerms.isEmpty()) return 0
@@ -248,9 +258,12 @@ internal object MemoryRules {
             .map { it to score(it, terms) }
             .filter { it.second > 0 }
             // 全平手判据（追加四第 2 条：显式稳定排序，不依赖集合迭代顺序）：
-            // 分数 → 更新时间 → 创建时间 → id，一路排到没有平手为止。
+            // 相关度 → 质量分 → 更新时间 → 创建时间 → id，一路排到没有平手为止。
+            // 质量分这一档是第八十九批加的；**它是「同分时谁先注入」的裁决，
+            // 不是「谁被剔除」**——低分记忆照样在这张表里，只是排得靠后（红线：只降权不删）。
             .sortedWith(
                 compareByDescending<Pair<MemoryEntry, Int>> { it.second }
+                    .thenByDescending { it.first.qualityScore }
                     .thenByDescending { it.first.updatedAt }
                     .thenByDescending { it.first.createdAt }
                     .thenBy { it.first.id },
