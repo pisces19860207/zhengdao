@@ -166,6 +166,9 @@ internal object BaopuRuntime {
                         description = "免费网关兼容占位：等价于 read_file（路径相对工作区根）。",
                         inputSchema = readSchema,
                         permission = ToolPermission.FREE,
+                        // 第九十二批：它就是 read_file 的别名 ⇒ 同样只读、同样可并行
+                        readOnly = true,
+                        parallelSafe = true,
                     ) { args -> ReadFileTool.spec().executor(args) }
                 } else {
                     // read_file 被关 ⇒ 别名同样拒绝（否则设置页的开关就白设了）

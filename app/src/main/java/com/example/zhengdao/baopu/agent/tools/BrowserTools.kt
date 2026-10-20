@@ -136,6 +136,8 @@ internal object BrowserTools {
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
+        readOnly = true,
+        // parallelSafe 缺省 false：只读盘，但抢的是**同一个 WebView** ⇒ 不许并行
         timeoutMs = ToolTimeout.BROWSER_MS,
     ) { args ->
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
@@ -245,6 +247,8 @@ internal object BrowserTools {
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
+        readOnly = true,
+        // parallelSafe 缺省 false：只读盘，但抢的是**同一个 WebView** ⇒ 不许并行
         timeoutMs = ToolTimeout.BROWSER_MS,
     ) { args ->
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)

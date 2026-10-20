@@ -48,6 +48,8 @@ internal object AskUserTool {
             "给 2–4 个选项，把**你推荐的那个放第一并标 recommended**，每项可带一句理由。" +
             "用户点完你会收到他的选择，然后继续干——不用再自己猜，也不要在正文里重复问一遍。",
         permission = ToolPermission.FREE,
+        // 第九十二批：不改盘，但它要**阻塞等人**（最长 15 分钟）⇒ 绝不许进并行段
+        readOnly = true,
         inputSchema = JSONObject(
             """
             {
