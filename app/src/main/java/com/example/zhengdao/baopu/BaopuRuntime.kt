@@ -143,8 +143,11 @@ internal object BaopuRuntime {
                 workspaceRoot = { workspaceRoot(appCtx) },
                 personaFiles = { personaFiles(appCtx) },
                 // 第五十七批 §1.1：技能被用 ⇒ 记一条 skill_event（被动留痕；写失败只 log）
+                // 第八十五批 §2：同一次使用**再**记一条效果信号（kind='effect'；只记不决策）
                 useRecorder = com.example.zhengdao.baopu.agent.SkillTools.UseRecorder { name, ok ->
-                    recordSkillUse(appCtx, name, ok)
+                    val tip = recordSkillUse(appCtx, name, ok)
+                    recordSkillEffect(appCtx, name, ok)
+                    tip
                 },
             ),
         )
@@ -435,6 +438,77 @@ internal object BaopuRuntime {
         }.getOrElse {
             RunLog.log("抱朴：skill_use 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}")
             null
+        }
+    }
+
+    /**
+     * 第八十五批 §2：一次技能使用**再**记一条效果信号（`skill_event(kind='effect')`）。
+     *
+     * 与 57 批的分工：`kind='use'` 记「被用过 ＋ 这次调用成没成」，本条记
+     * 「用了之后有没有用」（SUCCESS／FAILURE／USER_CORRECTED／RETRIED）。
+     * 过期判据只读 `kind='use'` ⇒ 新行不搅动晋升／退役（红线），两行各写各的、互不覆盖。
+     *
+     * **只存 id／枚举／时刻**：技能名、正文摘要（[SkillAudit.shaOf] 的 12 位十六进制）、
+     * outcome／source／reasonCode、会话号、步号、时刻。提示词、工具参数、文件内容、用户原话
+     * 一个字都不进表——用户消息只为「判纠正」在内存里过一遍（[SkillEffects.correctionCode]），
+     * 认完就丢；真要写进去的东西先过 [SkillEffects.toStmt] 的闸门，不合格 ⇒ 整条不写并 log。
+     *
+     * 判定优先级（[SkillEffects.classify]，派工单 §2「判不了就不猜」）：
+     * ① 本轮用户否定／改写上一条 ⇒ USER_CORRECTED；② 上一条失败／被纠正且在窗口内 ⇒ RETRIED；
+     * ③ 其余按这次调用本身的成败记 SUCCESS／FAILURE。没有会话号 ⇒ 直接走 ③。
+     *
+     * 写失败**只 log**（与 57 批同口径：账本卡住业务就是本末倒置）；`.get(3s)` 等提交，
+     * 超时与异常都算失败。
+     */
+    private fun recordSkillEffect(appCtx: Context, name: String, ok: Boolean) {
+        if (name.isBlank()) return
+        runCatching {
+            val d = db(appCtx)
+            val now = System.currentTimeMillis()
+            val sid = com.example.zhengdao.baopu.agent.ActiveSessionGate.current()
+                ?.removePrefix("id:")?.toLongOrNull()
+            val step = sid?.let { s ->
+                val st = BaopuSql.lastRunLogStep(s)
+                d.read { x ->
+                    x.rawQuery(st.sql, st.args).use { c ->
+                        if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null
+                    }
+                }
+            }
+            val (outcome, reason) = if (sid == null) {
+                // 没有会话号 ⇒ 上一条信号与本轮用户的话都定位不了（判不了就不猜）
+                SkillEffects.classify(null, null, null, ok)
+            } else {
+                val (prev, prevAt) = SkillEffects.lastEffect(d, name, sid)
+                val correction = prevAt?.let { t ->
+                    SkillEffects.correctionCode(SkillEffects.userTextAfter(d, sid, t))
+                }
+                SkillEffects.classify(prev, prevAt?.let { now - it }, correction, ok)
+            }
+            val skillFile = File(
+                SkillRules.projectSkillDir(workspaceRoot(appCtx)),
+                "$name/${SkillRules.SKILL_FILE}",
+            )
+            val signal = SkillEffects.Signal(
+                name = name,
+                skillVersion = SkillAudit.shaOf(skillFile),
+                outcome = outcome,
+                source = SkillSource.AUTO,
+                reason = reason,
+                sessionId = sid,
+                step = step,
+                attemptOk = ok,
+                at = now,
+            )
+            val stmt = SkillEffects.toStmt(signal)
+            if (stmt == null) {
+                // 闸门拦下：name／版本形状不对（正文混进来的唯一路径就长这样）。宁缺毋滥。
+                RunLog.log("抱朴：skill_effect 被闸门拦下（字段不是合法 token）name=${name.take(8)}")
+                return@runCatching
+            }
+            d.write { x -> x.execSQL(stmt.sql, stmt.args) }.get(3, java.util.concurrent.TimeUnit.SECONDS)
+        }.getOrElse {
+            RunLog.log("抱朴：skill_effect 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}")
         }
     }
 
