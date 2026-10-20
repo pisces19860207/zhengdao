@@ -13,6 +13,10 @@
 // 承载方式：BaopuScreen 抽屉「抱朴设置」**直达本页**——页内全屏浮层，与章节抽取 /
 // 备份原件 / 换通道同一模式（BaopuScreen 的 showExtract/showBackup/showChannel）。
 // 不新建 Activity：AndroidManifest.xml 本批禁改，新增 Activity 必须动清单。
+//
+// 第八十一批（§B 80 延伸）：五条纯判据（折叠摘要 ①、取组序 ②、组标题 ③、默认可见提示 ④、
+// 作用域→人设层 ⑤）等值搬进 ui/baopu/BaopuSettingsRules.kt，本页只留调用；布局、文案、
+// prefs 读写点、写盘口一个没动（清单与方法盘点写在那个文件的文件头）。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.clickable
@@ -69,56 +73,6 @@ import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.ui.theme.iosSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
-
-/** 折叠态摘要的那四种局面（第六十一批 §1；只描述「关掉了几个」，不参与任何开关判定）。 */
-internal enum class BaopuFoldKind { EmptyGroup, AllOn, SomeOff, AllOff }
-
-/**
- * 一个组在折叠态要显示的那一行摘要的数据（[offNames] 保持分组表的表序）。
- *
- * [total] 是该组成员数：整组关光时「关闭项」就是全部成员，摘要只有名字没有总数
- * 会让人误估规模，所以这一行按 [total] 说话。
- */
-internal data class BaopuFoldSummary(
-    val foldKind: BaopuFoldKind,
-    val offNames: List<String>,
-    val total: Int,
-)
-
-/**
- * 折叠态「关闭项摘要」的生成（第六十一批 §1 的纯函数，零 Android）。
- *
- * 为什么需要它：组头一收起，组里那些**被用户关掉的**工具就跟着不见了——那等于把
- * 「这个工具你关过」这件事藏起来，比不折叠更糟（§1 原话「不许把关闭项藏到看不见」）。
- *
- * 三条口径：
- * 1. 纯展示：输入只有「成员名单 / 组开关状态 / 单个开关状态」，**不写任何东西**，
- *    也不改任何默认值——开关语义仍是 `prefs.isDisabled(n)` 那一处；
- * 2. 名单由调用方从那张唯一的分组表（[ToolGroupTable.namesOf]）传入，这里不许出现
- *    第二份工具名单；
- * 3. [groupDisabled] 优先：组开关关掉 ⇒ 组内一律不可见（引擎侧 `isVisibleTool` 同一口径），
- *    所以关闭项 = 全部成员，而不是"逐个关掉的那几个"。
- */
-internal object BaopuToolFoldSummary {
-
-    fun of(
-        members: List<String>,
-        groupDisabled: Boolean,
-        isDisabled: (String) -> Boolean,
-    ): BaopuFoldSummary = when {
-        members.isEmpty() -> BaopuFoldSummary(BaopuFoldKind.EmptyGroup, emptyList(), 0)
-        groupDisabled -> BaopuFoldSummary(BaopuFoldKind.AllOff, members, members.size)
-        else -> {
-            val off = members.filter { isDisabled(it) }
-            val foldKind = when {
-                off.isEmpty() -> BaopuFoldKind.AllOn
-                off.size == members.size -> BaopuFoldKind.AllOff
-                else -> BaopuFoldKind.SomeOff
-            }
-            BaopuFoldSummary(foldKind, off, members.size)
-        }
-    }
-}
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
 @Composable
@@ -192,7 +146,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
-                ToolGroup.values().filter { it != ToolGroup.COMPAT }.forEachIndexed { gi, group ->
+                baopuSwitchableGroups(ToolGroup.values()).forEachIndexed { gi, group ->
                     if (gi > 0) Spacer(Modifier.height(10.dp))
                     val expanded = rememberSaveable(group.key) { mutableStateOf(false) }
                     val groupOn = group !in prefs.disabledGroups()
@@ -218,11 +172,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             )
                             Text(
                                 text = stringResource(
-                                    if (group in ToolGroup.DEFAULT_VISIBLE) {
-                                        R.string.baopu_tools_group_default_on
-                                    } else {
-                                        R.string.baopu_tools_group_default_off
-                                    },
+                                    baopuGroupDefaultCaption(group in ToolGroup.DEFAULT_VISIBLE),
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -585,12 +535,6 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     skillReload++
                 }
 
-                /** 作用域 → 人设层（A/B 段共用，与上面 `skillFileOf` 同一口径）。 */
-                fun layerOf(scope: SkillScope): PersonaLayer = when (scope) {
-                    SkillScope.GLOBAL -> PersonaLayer.B_GLOBAL
-                    SkillScope.PROJECT -> PersonaLayer.C_PROJECT
-                }
-
                 /**
                  * B 段：归档的每一种结果都要**说话**（判据 U3＋U5 的第二、三处）。
                  *
@@ -896,7 +840,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         onDismiss = { detail = null },
                         onRestoreBackup = {
                             // 写盘仍然只有 SkillStore.restore 那一条（它自己先备份当前正文再覆盖）
-                            restoreLast(layerOf(d.scope), d.name)
+                            restoreLast(baopuPersonaLayerOf(d.scope), d.name)
                             detail = skillDetailRow(d.name, d.scope, projectRoot, globalRoot)
                         },
                         onEdit = {
@@ -985,29 +929,6 @@ private fun baopuFoldSummaryText(summary: BaopuFoldSummary): String {
             summary.offNames.map { stringResource(baopuToolLabel(it)) }.joinToString(sep),
         )
     }
-}
-
-/**
- * 设置页分组标题（第五十九批 §1.1）。
- *
- * 只有「组 → 标题字符串」这一小段映射留在 UI 层，**成员表不在这**——
- * 组里有哪些工具由 [ToolGroupTable.namesOf] 出（那张唯一的分组表）。
- * 原来这里是一份 `BaopuToolGroups.GROUPS`（组名＋成员各写一遍），它就是派工单
- * 禁止的第二张组表：改了工具忘了改它，界面会显示一个不存在的分组。
- *
- * 新增组时会直接抛 IllegalArgumentException（fail-fast），与 baopuToolLabel 同一口径。
- */
-private fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
-    ToolGroup.CORE -> R.string.baopu_tools_group_core
-    ToolGroup.EDIT -> R.string.baopu_tools_group_edit
-    ToolGroup.BROWSER -> R.string.baopu_tools_group_browser
-    ToolGroup.FILES -> R.string.baopu_tools_group_files
-    ToolGroup.LIBRARY -> R.string.baopu_tools_group_library
-    ToolGroup.CARD -> R.string.baopu_tools_group_card
-    ToolGroup.SKILL -> R.string.baopu_tools_group_skill
-    ToolGroup.PREVIEW -> R.string.baopu_tools_group_preview
-    // COMPAT 由通道决定、没有开关，卡片尾部以只读文字展示（第十八批 §2.1-4）⇒ 不进分组列表
-    ToolGroup.COMPAT -> throw IllegalArgumentException("COMPAT 组没有开关，不该走到分组标题")
 }
 
 /**
