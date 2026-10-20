@@ -134,6 +134,29 @@ internal object BaopuSql {
     )
 
     /**
+     * v14 新增（第八十九批 · 记忆质量环）：memory 表的质量四列。
+     *
+     * 为什么是**加列**而不是改 `MEMORY_DDL`：那张表已经跟着 v2 发出去了，改它的字面量
+     * 等于伪造历史（`BaopuDbTest` 的 v2 判据就是历史）。新装与升级都走
+     * `applyV14Migration` 的同一条加列路径 ⇒ 不会出现「新装的有列、升级的没列」。
+     *
+     * 为什么 `score` 默认 100：派工单 §1「老数据有默认分数」——升级那天老记忆一条都不该
+     * 因为「没算过分」被判成低质量而沉底。**默认满分 = 暂不扣分**，不是「已经算过」。
+     * 列名不叫 `quality_score` 而叫 `score`：与 `use_count`/`last_used_at` 一样是短账列，
+     * 且 `memory` 表里只有这一个分数，不会歧义（.md 侧仍写 `quality_score`，
+     * 人读的文件名要自解释，索引列短就行——两份口径由 [BaopuSql.upsertMemory] 一处对齐）。
+     */
+    val MEMORY_QUALITY_COLUMNS: List<Pair<String, String>> = listOf(
+        "score" to "INTEGER NOT NULL DEFAULT " + MEMORY_QUALITY_DEFAULT_SCORE,
+        "quality_flags" to "TEXT NOT NULL DEFAULT ''",
+        "merged_from" to "TEXT NOT NULL DEFAULT ''",
+        "scored_at" to "INTEGER NOT NULL DEFAULT 0",
+    )
+
+    /** 老库默认分（与 [MemoryQuality.DEFAULT_SCORE] 同值，由 v14 迁移测试钉住不漂移）。 */
+    const val MEMORY_QUALITY_DEFAULT_SCORE = 100
+
+    /**
      * v3 新增（刀 2）：资料库两张表 —— `library_item`（认脸索引的**库内镜像**，
      * 真相是共享区 `整理/_认脸索引.json`）与 `library_move_log`（搬家/导出/一次性提示的流水账）。
      *
@@ -726,8 +749,9 @@ internal object BaopuSql {
     fun upsertMemory(e: MemoryEntry): Stmt = Stmt(
         "INSERT OR REPLACE INTO memory " +
             "(id, scope, kind, title, body, tags, source_session, source_file, status, " +
-            "created_at, updated_at, use_count, last_used_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "created_at, updated_at, use_count, last_used_at, " +
+            "score, quality_flags, merged_from, scored_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         arrayOf<String?>(
             e.id,
             e.scope.name.lowercase(),
@@ -742,8 +766,25 @@ internal object BaopuSql {
             e.updatedAt.toString(),
             e.useCount.toString(),
             e.lastUsedAt.toString(),
+            e.qualityScore.toString(),
+            e.qualityFlags.joinToString(","),
+            e.mergedFrom.joinToString(","),
+            e.scoredAt.toString(),
         ),
     )
+
+    /**
+     * v14 质量四列的加列语句（**纯函数**：缺哪列给哪条 ALTER，幂等）。
+     * 与 [runLogReasoningColumnsStmt]／`skillEffectColumnStmt` 同一房型——
+     * SQLite 没有 `ADD COLUMN IF NOT EXISTS`，重跑迁移必须看列况再动，否则老库升级直接炸。
+     *
+     * 老行填默认值靠 `NOT NULL DEFAULT`（ALTER 时 SQLite 就给既有行补上），
+     * 不写 UPDATE：**不写就等于不碰用户数据**（红线：不许动已有记忆正文）。
+     */
+    fun memoryQualityColumnsStmt(existingColumns: List<String>): List<Stmt> =
+        MEMORY_QUALITY_COLUMNS
+            .filterNot { (col, _) -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { (col, type) -> Stmt("ALTER TABLE memory ADD COLUMN $col $type", emptyArray()) }
 
     /** 删一条记忆索引行（文件由 [MemoryStore.delete] 删；这里是索引同步）。 */
     fun deleteMemory(id: String): Stmt =
@@ -784,7 +825,23 @@ internal object BaopuSql {
     /** 读全部索引行（按创建时间序——与 [MemoryStore.loadAll] 同序，便于对拍）。 */
     fun allMemories(): Stmt = Stmt(
         "SELECT id, scope, kind, title, body, tags, source_session, source_file, status, " +
-            "created_at, updated_at, use_count, last_used_at FROM memory ORDER BY created_at",
+            "created_at, updated_at, use_count, last_used_at, " +
+            "score, quality_flags, merged_from, scored_at FROM memory ORDER BY created_at",
+        emptyArray(),
+    )
+
+    /**
+     * 按质量序读索引行（第八十九批 §1「检索排序」在 DB 侧的那一份）。
+     *
+     * 为什么新开一条而不是改 [allMemories]：`allMemories` 的对拍口径是
+     * 「与文件重建同序」（v2 就定死了，`BaopuDbTest` 钉着），改了就是把历史判据偷偷换掉。
+     * 排序键与 [MemoryQuality.rankComparator] 逐字对应：**分数降 → 创建升 → id 升**。
+     */
+    fun allMemoriesRanked(): Stmt = Stmt(
+        "SELECT id, scope, kind, title, body, tags, source_session, source_file, status, " +
+            "created_at, updated_at, use_count, last_used_at, " +
+            "score, quality_flags, merged_from, scored_at FROM memory " +
+            "ORDER BY score DESC, created_at ASC, id ASC",
         emptyArray(),
     )
 
@@ -1249,6 +1306,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV11Migration(db)
         applyV12Migration(db)
         applyV13Migration(db)
+        applyV14Migration(db)
     }
 
     /**
@@ -1280,6 +1338,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 11) applyV11Migration(db)
         if (oldVersion < 12) applyV12Migration(db)
         if (oldVersion < 13) applyV13Migration(db)
+        if (oldVersion < 14) applyV14Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1414,6 +1473,25 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.RUN_TRACE_DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v13 → v14 迁移体（第八十九批 · 记忆质量环）：`memory` 加质量四列（**看列再动** ⇒ 幂等）。
+     *
+     * 号为什么是 v14：出单时 main 是 v11，派工单写「DB 版本 +1」（＝v12）。但排队的这段时间里
+     * **85 批把 v12 用掉了**（`62744e1d` skill_event 效果四列）、**87 批把 v13 用掉了**
+     * （`70118526` run_trace 表），两支都已在 origin/main 落地 ⇒ 89 顺位接 **v14**，
+     * 迁移链 `12 → 13 → 14` 一路接上、不跳号也不抢号（号归口见 `docs/在飞.md`）。
+     * 新装（onCreate 也调它）与 v13 及更早的库升级走**同一条**路径。
+     *
+     * 老库可读性：升上来只多四个有默认值的账列，`memory` 的 id／标题／**正文一列都不动**
+     * （派工单红线「不自动删除用户记忆」的最硬形态——连写都不写）；老行默认满分＝暂不扣分。
+     */
+    private fun applyV14Migration(db: SQLiteDatabase) {
+        val cols = tableColumns(db, "memory")
+        BaopuSql.memoryQualityColumnsStmt(cols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1444,8 +1522,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v12 = 第八十五批（同一张表加效果信号四列 outcome／source／skill_version／reason_code，
          *  全部可空＝老行不回填；kind='effect' 的行只存枚举名／技能名／正文摘要／时刻）。
          *  v13 = 第八十七批（`run_trace` 运行轨迹表：一次运行一行一个边界，只存枚举/计数/hash，
-         *  **不存正文**；版本号让号说明见 `RUN_TRACE_DDL` 上方注释）。 */
-        const val VERSION = 13
+         *  **不存正文**；版本号让号说明见 `RUN_TRACE_DDL` 上方注释）。
+         *  v14 = 第八十九批（`memory` 质量四列 `score`／`quality_flags`／`merged_from`／`scored_at`，
+         *  全部 `NOT NULL` 带默认值 ⇒ 老行不回填、正文一列不动；默认满分＝暂不扣分）。 */
+        const val VERSION = 14
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
