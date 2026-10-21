@@ -39,6 +39,12 @@ import hashlib
 import os
 import sys
 
+
+try:  # Windows 控制台默认 GBK：个别字符编不出来时降级为替换，而不是让门禁自己崩
+    sys.stdout.reconfigure(errors="replace")
+except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
+    pass
+
 # ── Ed25519（RFC 8032）常量 ────────────────────────────────────────────────
 P = 2 ** 255 - 19
 L = 2 ** 252 + 27742317777372353535851937790883648493

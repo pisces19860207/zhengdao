@@ -40,6 +40,12 @@ import subprocess
 import sys
 import tempfile
 
+
+try:  # Windows 控制台默认 GBK：个别字符编不出来时降级为替换，而不是让门禁自己崩
+    sys.stdout.reconfigure(errors="replace")
+except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
+    pass
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_SOURCE = os.path.join(REPO_ROOT, "app", "src", "main", "assets", "fonts",
                               "JetBrainsMapleMono-NF-Regular.ttf")

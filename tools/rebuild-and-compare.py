@@ -88,6 +88,12 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+try:  # Windows 控制台默认 GBK：个别字符编不出来时降级为替换，而不是让门禁自己崩
+    sys.stdout.reconfigure(errors="replace")
+except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
+    pass
+
 TARGET_TRIPLE = "aarch64-linux-android"
 LIB_FILE = "libzhengdao_core.so"
 BASELINE_REL = os.path.join("tools", "so-repro-baseline.json")
