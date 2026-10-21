@@ -109,23 +109,31 @@ class ZhengdaoApp : Application() {
     }
 
     /**
-     * 自动清理垃圾（2026-10-08 落地二档；**2026-10-10 按 Issue #3 接上一档**）。
+     * 启动后台杂务线（一条 daemon 线程干两件事，**刻意不新增线程**——
+     * 裸 Thread 对账本已贴红线 32，见 `util/BareThreadGuardTest.kt`）：
      *
-     * 用户原话：「终端的缓存机制还有自动缓存清理、自动清理垃圾信息可以有吗？」
-     * ——代码层核实（当时）：`CacheCleaner.autoCleanNeeded()` / `maybeNotify()` **全仓库零调用点**，
-     * 文档里那条"启动时 >500MB 才清"从未落地（另有 ERRATA 记档）。
+     * 1. **自动清理垃圾**（2026-10-08 落地二档；**2026-10-10 按 Issue #3 接上一档**）。
      *
-     * 现在这条路径 = `CacheCleaner.autoCleanIfDue()`：到阈值就清**第一档**（npm/uv/pip 与
-     * Agent 包缓存、旧版安装包只留最新 2 个）+ **二档**（rootfs/tmp 里带固定指纹、且 24 小时
-     * 没动过的宿主侧残留），清完发一条**静默通知**报释放量。
+     *    用户原话：「终端的缓存机制还有自动缓存清理、自动清理垃圾信息可以有吗？」
+     *    ——代码层核实（当时）：`CacheCleaner.autoCleanNeeded()` / `maybeNotify()` **全仓库零调用点**，
+     *    文档里那条"启动时 >500MB 才清"从未落地（另有 ERRATA 记档）。
      *
-     * 跳过条件是硬的（Issue #3 的原文要求）：会话活着、或 `AgentProcesses` 探到
-     * uv / npm / apt / git / python / hermes / opencode 等进程在跑 ⇒ 只写日志、不删不通知。
-     * 三档（`.hermes/tools`、rootfs 系统层、home 用户数据）**永不**参与自动清理。
+     *    现在这条路径 = `CacheCleaner.autoCleanIfDue()`：到阈值就清**第一档**（npm/uv/pip 与
+     *    Agent 包缓存、旧版安装包只留最新 2 个）+ **二档**（rootfs/tmp 里带固定指纹、且 24 小时
+     *    没动过的宿主侧残留），清完发一条**静默通知**报释放量。
      *
-     * 一档里那几条官方 CLI（`npm cache clean` / `uv cache prune` / `apt-get clean`）仍然只走
-     * 设置页按钮：它们要在 guest 里跑、输出应当可见可中断。这里删的是**宿主侧**能直接判定的
-     * 缓存目录（同 `cleanAgentCaches` 的白名单），不冒充"跑过官方命令"。
+     *    跳过条件是硬的（Issue #3 的原文要求）：会话活着、或 `AgentProcesses` 探到
+     *    uv / npm / apt / git / python / hermes / opencode 等进程在跑 ⇒ 只写日志、不删不通知。
+     *    三档（`.hermes/tools`、rootfs 系统层、home 用户数据）**永不**参与自动清理。
+     *
+     *    一档里那几条官方 CLI（`npm cache clean` / `uv cache prune` / `apt-get clean`）仍然只走
+     *    设置页按钮：它们要在 guest 里跑、输出应当可见可中断。这里删的是**宿主侧**能直接判定的
+     *    缓存目录（同 `cleanAgentCaches` 的白名单），不冒充"跑过官方命令"。
+     *
+     * 2. **遗留记忆插件一次性迁移**（第一百二十一批，`LegacyMemMigration.runOnce`）：
+     *    `opencode-mem` 2026-10-07 就摘除了，历史 `opencode.json` 的 `plugin` 数组里可能
+     *    还留着它的名字。搭同一条线跑：有残留才动盘（先备份再原子替换），幂等，
+     *    失败不置标记 ⇒ 下次重启重试；失败自己兜住记日志，不挡上面、也不挡冷启动。
      */
     private fun autoCleanJunk() {
         runCatching {
@@ -135,6 +143,14 @@ class ZhengdaoApp : Application() {
                     if (report.freedMb > 0) {
                         com.example.zhengdao.terminal.CacheNotifier.cleaned(
                             this, report.freedMb, report.totalMb
+                        )
+                    }
+                    runCatching {
+                        com.example.zhengdao.terminal.LegacyMemMigration.runOnce(this)
+                    }.onFailure { e ->
+                        RunLog.log(
+                            "⚠️ 遗留插件迁移失败（不置标记，下次重启重试）：" +
+                                "${e.javaClass.simpleName}: ${e.message}",
                         )
                     }
                 }

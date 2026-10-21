@@ -4,11 +4,16 @@
 // java.io.File 拷贝语义（JDK 标准库）。
 package com.example.zhengdao.baopu.library
 
+import com.example.zhengdao.terminal.DocxTextExtractor
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
 
 /**
  * 五步流水线（刀 2 B 段）：认脸 → 去重 → 归一 → 副本进 `整理/` → 写索引。
+ *
+ * 第一百二十一批：第 3 步「归一」对 `.docx` 认领件改走 `DocxTextExtractor` 抽正文
+ * （大小门槛先于读字节；抽不出 ⇒ 可读理由进 rejected，不静默、不当纯文本硬读）。
+ * 其余文本件照旧走 [Normalizer] 编码归一。
  *
  * ## 每步都可单独被单测打到（派工单 §1 B 段原话）
  * - 认脸/去重/索引读写：[FaceIndex]（纯函数）；
@@ -101,22 +106,39 @@ internal class LibraryPipeline(
         val newItems = mutableListOf<FaceIndex.Item>()
         for (c in dedup.kept) {
             val file = File(rawPrivateDir, c.name)
+            val base = File(c.name).name
+            // 第一百二十一批：docx 走提取器抽正文，**不当纯文本硬读**（负例单测钉死）
+            val isDocx = LibraryPaths.classify(c.name).first == LibraryPaths.FileKind.DOCX
+            // 大小门槛先于读字节（docx 专属）：超过 DocxTextExtractor.MAX_DOCX_BYTES 直接不试，
+            // 不白白解压一个巨大文件；文本件无此门槛（本来就要整读）。
+            if (isDocx && c.size > DocxTextExtractor.MAX_DOCX_BYTES) {
+                rejected += RejectedFile(
+                    c.name,
+                    "Word 文档 ${c.size / 1024 / 1024} MB，超过 " +
+                        "${DocxTextExtractor.MAX_DOCX_BYTES / 1024 / 1024} MB 上限，未处理",
+                )
+                continue
+            }
             val bytes = runCatching { file.readBytes() }.getOrElse { e ->
                 rejected += RejectedFile(c.name, "读取失败：${e.message ?: e.javaClass.simpleName}")
                 null
             } ?: continue
-            val norm = Normalizer.normalize(bytes)
-            if (!norm.ok) {
-                rejected += RejectedFile(c.name, norm.reason)
+            // 两条路都把失败变成**可读理由**（不静默）：docx 抽不出 ⇒ 明说；文本件非 UTF-8 ⇒ 归一给的理由
+            var text: String? = null
+            var reason = ""
+            if (isDocx) {
+                text = runCatching { DocxTextExtractor.extract(bytes) }.getOrNull()?.takeIf { it.isNotBlank() }
+                reason = "docx 抽不出正文（不是合法 Word 文档、已损坏或内容为空），未处理"
+            } else {
+                val norm = Normalizer.normalize(bytes)
+                text = norm.text
+                reason = norm.reason
+            }
+            if (text == null) {
+                rejected += RejectedFile(c.name, reason)
                 continue
             }
-            val text = norm.text.orEmpty()
-            val base = File(c.name).name
-            val content = if (Normalizer.needsSourceHeader(base)) {
-                Normalizer.sourceHeaderLine(c.name) + "\n" + text
-            } else {
-                text
-            }
+            val content = withSourceHeader(c.name, base, text)
             val product = writeProduct(base, content)
             processed += PipelineItem(relPath = c.name, sha256 = c.sha256, product = product)
             newItems += c.copy(
@@ -221,6 +243,17 @@ internal class LibraryPipeline(
     }
 
     // ── 内部工具 ─────────────────────────────────────────────────────────────
+
+    /**
+     * 来源头（`txt`/`md` 直通不加；其它加一行）——**docx 与文本件同一口径**：
+     * 抽出来的正文也是"归一化副本"，同样该带来源（第一百二十一批）。
+     */
+    private fun withSourceHeader(relPath: String, baseName: String, text: String): String =
+        if (Normalizer.needsSourceHeader(baseName)) {
+            Normalizer.sourceHeaderLine(relPath) + "\n" + text
+        } else {
+            text
+        }
 
     /**
      * 写 `整理/<名>.md`：撞名且**不同内容** ⇒ 加 sha 前 8 位后缀让路（两个不同的

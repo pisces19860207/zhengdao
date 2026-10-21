@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.baopu.library
 
+import com.example.zhengdao.terminal.DocxTextExtractor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -40,6 +41,30 @@ class LibraryPipelineTest {
         f.parentFile?.mkdirs()
         f.writeText(text)
     }
+
+    /** 往私有 `原始/` 投一个二进制 docx。 */
+    private fun rawDocx(name: String, docXml: String) {
+        val f = File(raw, name)
+        f.parentFile?.mkdirs()
+        f.writeBytes(fakeDocx(docXml))
+    }
+
+    /** 造一个最小 `.docx`（zip 里只有 word/document.xml）——与 DocxTextExtractorTest 同房型。 */
+    private fun fakeDocx(docXml: String): ByteArray {
+        val bos = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(bos).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("word/document.xml"))
+            z.write(docXml.toByteArray(Charsets.UTF_8))
+            z.closeEntry()
+        }
+        return bos.toByteArray()
+    }
+
+    private fun docxXml(body: String) =
+        """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+           <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+             <w:body>$body</w:body>
+           </w:document>"""
 
     // ── 五步流水线 ────────────────────────────────────────────────────────
 
@@ -105,6 +130,101 @@ class LibraryPipelineTest {
         assertEquals(1, r.rejected.size)
         assertTrue(r.rejected.single().reason.contains("不是 UTF-8"))
         assertFalse(File(done, "gbk.md").exists())
+    }
+
+    // ── docx（第一百二十一批：DocxTextExtractor 接进导入流水线） ────────────
+
+    @Test
+    fun `流水线_docx抽正文进整理_带来源头_原件不动`() {
+        setup()
+        rawDocx(
+            "书.docx",
+            docxXml("<w:p><w:r><w:t>第一段</w:t></w:r></w:p><w:p><w:r><w:t>第二段</w:t></w:r></w:p>"),
+        )
+        val r = pipeline.run()
+
+        assertEquals(1, r.processed.size)
+        assertEquals("书.md", r.processed.single().product)
+        val out = File(done, "书.md").readText()
+        assertTrue("抽出的正文必须在", out.contains("第一段"))
+        assertTrue(out.contains("第二段"))
+        assertTrue("非 txt/md ⇒ 带一行来源头", out.startsWith("> 来源：书.docx"))
+        assertTrue(r.ok)
+        // 抽取不搬不删原件：私有里那份 docx 原样还在
+        assertTrue(File(raw, "书.docx").isFile)
+    }
+
+    @Test
+    fun `流水线_docx跑两遍_第二遍全duplicate_索引字节稳定`() {
+        setup()
+        rawDocx("书.docx", docxXml("<w:p><w:r><w:t>正文</w:t></w:r></w:p>"))
+
+        val r1 = pipeline.run()
+        val bytes1 = r1.indexFile.readBytes()
+        assertEquals(1, r1.processed.size)
+
+        val r2 = pipeline.run()
+        assertEquals(0, r2.processed.size)
+        assertEquals(1, r2.duplicates.size)
+        assertEquals("索引字节必须稳定", String(bytes1), r2.indexFile.readText())
+    }
+
+    @Test
+    fun `流水线_空文档docx_拒绝且理由可读`() {
+        setup()
+        rawDocx("空.docx", docxXml("<w:p/>"))
+        val r = pipeline.run()
+
+        assertFalse(r.ok)
+        assertEquals(1, r.rejected.size)
+        assertTrue(
+            "理由要说明白是 docx 抽不出：${r.rejected.single().reason}",
+            r.rejected.single().reason.contains("抽不出正文"),
+        )
+        assertFalse(File(done, "空.md").exists())
+    }
+
+    @Test
+    fun `流水线_损坏docx_拒绝且理由可读`() {
+        setup()
+        // 真实场景：用户把 .doc 改名成 .docx，或文件下了半截
+        File(raw, "坏.docx").writeBytes("这不是 zip，是改了名的纯文本".toByteArray(Charsets.UTF_8))
+        val r = pipeline.run()
+
+        assertFalse(r.ok)
+        assertEquals(1, r.rejected.size)
+        assertTrue(r.rejected.single().reason.contains("抽不出正文"))
+        assertFalse(File(done, "坏.md").exists())
+    }
+
+    @Test
+    fun `负例_docx不许当纯文本硬读`() {
+        // 内容恰好是合法 UTF-8（Normalizer 会开心收下当正文）——也必须走提取器：
+        // 提取失败 ⇒ 拒绝，不许把"纯文本内容"当 docx 正文写进整理/
+        setup()
+        File(raw, "假装.docx").writeText("这是一段普通文本，没有任何 zip 结构")
+        val r = pipeline.run()
+
+        assertFalse(r.ok)
+        assertEquals(1, r.rejected.size)
+        assertTrue(r.rejected.single().reason.contains("抽不出正文"))
+        assertFalse("不许当纯文本硬读出产物", File(done, "假装.md").exists())
+    }
+
+    @Test
+    fun `流水线_超大docx_不读不解压_拒绝理由带上限`() {
+        setup()
+        // 稀疏文件：只要长度超上限（大小门槛在读字节之前，不会真去解压）
+        java.io.RandomAccessFile(File(raw, "大.docx"), "rw").use {
+            it.setLength(DocxTextExtractor.MAX_DOCX_BYTES + 1)
+        }
+        val r = pipeline.run()
+
+        assertFalse(r.ok)
+        assertEquals(1, r.rejected.size)
+        val reason = r.rejected.single().reason
+        assertTrue("理由要带上限：$reason", reason.contains("超过") && reason.contains("MB"))
+        assertFalse(File(done, "大.md").exists())
     }
 
     @Test
