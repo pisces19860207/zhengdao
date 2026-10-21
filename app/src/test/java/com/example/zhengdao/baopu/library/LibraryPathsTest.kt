@@ -89,6 +89,11 @@ class LibraryPathsTest {
         assertEquals(LibraryPaths.FileKind.TEXT, LibraryPaths.classify("a.kt").first)
         assertEquals(LibraryPaths.FileKind.UNCLAIMED, LibraryPaths.classify("a.pdf").first)
         assertTrue(LibraryPaths.classify("a.pdf").second.contains("外部转换"))
+        // 第一百二十一批：docx 是认领件（FileKind.DOCX）——正文由流水线抽，不再当"需外部转换"
+        assertEquals(LibraryPaths.FileKind.DOCX, LibraryPaths.classify("a.docx").first)
+        assertEquals("docx 是认领件，没有不认领理由", "", LibraryPaths.classify("a.docx").second)
+        // 旧版 .doc 不是 zip，明确不支持 ⇒ 仍不认领
+        assertEquals(LibraryPaths.FileKind.UNCLAIMED, LibraryPaths.classify("旧文档.doc").first)
         assertEquals(LibraryPaths.FileKind.UNCLAIMED, LibraryPaths.classify("a.png").first)
         assertEquals(LibraryPaths.FileKind.UNCLAIMED, LibraryPaths.classify("a.zip").first)
         assertEquals(LibraryPaths.FileKind.UNCLAIMED, LibraryPaths.classify("README").first)
@@ -98,6 +103,7 @@ class LibraryPathsTest {
     @Test
     fun `分类_大小写不敏感`() {
         assertEquals(LibraryPaths.FileKind.TEXT, LibraryPaths.classify("a.TXT").first)
+        assertEquals(LibraryPaths.FileKind.DOCX, LibraryPaths.classify("A.DOCX").first)
         assertEquals(LibraryPaths.FileKind.UNCLAIMED, LibraryPaths.classify("a.PDF").first)
     }
 
