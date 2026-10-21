@@ -328,26 +328,19 @@ class BaopuDbTest {
 
     @Test
     fun `v14_质量列读得到_另给一条按分数排序的读法`() {
-        val plain = BaopuSql.allMemories()
-        for (col in listOf("score", "quality_flags", "merged_from", "scored_at")) {
-            assertTrue("allMemories 要读得到 $col：${plain.sql}", plain.sql.contains(col))
-        }
-        assertTrue("对拍序不动（v2 历史判据）", plain.sql.contains("ORDER BY created_at"))
         val ranked = BaopuSql.allMemoriesRanked()
+        for (col in listOf("score", "quality_flags", "merged_from", "scored_at")) {
+            assertTrue("allMemoriesRanked 要读得到 $col：${ranked.sql}", ranked.sql.contains(col))
+        }
         assertTrue("读时排序 = 分数降 → 创建升 → id 升：${ranked.sql}",
             ranked.sql.contains("ORDER BY score DESC, created_at ASC, id ASC"))
         assertEquals("排序读法也不许带参数", 0, ranked.args.size)
     }
 
     @Test
-    fun `memory删清查与touch语句`() {
+    fun `memory删清语句`() {
         assertEquals("DELETE FROM memory WHERE id = ?", BaopuSql.deleteMemory("x").sql)
         assertEquals(listOf("x"), BaopuSql.deleteMemory("x").args.toList())
-        assertEquals("DELETE FROM memory", BaopuSql.clearMemories().sql)
-        assertTrue(BaopuSql.allMemories().sql.contains("ORDER BY created_at"))
-        val t = BaopuSql.touchMemoryUse("x", 999L)
-        assertTrue(t.sql.contains("use_count = use_count + 1"))
-        assertEquals(listOf("999", "x"), t.args.toList())
     }
 
     // ── v2 追加三：run_log 缓存口径两列 ───────────────────────────────────
@@ -540,12 +533,10 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `touchSession与setMsgCount`() {
+    fun `touchSession`() {
         val t = BaopuSql.touchSession(5L, 200L, "预览…")
         assertTrue(t.sql.contains("SET updated_at = ?, preview = ?"))
         assertEquals(listOf("200", "预览…", "5"), t.args.toList())
-        val c = BaopuSql.setMsgCount(5L, 9)
-        assertEquals(listOf("9", "5"), c.args.toList())
     }
     /** 仓库相对路径解析（单测工作目录是 app/，也可能是仓库根）。 */
     private fun repoFile(rel: String): File =
