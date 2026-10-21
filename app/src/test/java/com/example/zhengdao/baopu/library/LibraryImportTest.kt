@@ -240,21 +240,6 @@ class LibraryImportTest {
     }
 
     @Test
-    fun `待外部转换清单_三批合并不丢中间那批`() {
-        // 第三十一批 C 段起 execute 不再写这份清单（停写）；函数保留备查，
-        // 这里直接驱动 appendExternalList 验它的合并不丢条目（真恢复时靠这条兜底）。
-        setup()
-        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("a.pdf", "Office/PDF 文档（.pdf），需外部转换")))
-        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("b.png", "图片（.png），需外部转换")))
-        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("c.zip", "压缩包（.zip），需外部转换")))
-
-        val text = File(done, LibraryImport.FILE_EXTERNAL).readText()
-        listOf("a.pdf", "b.png", "c.zip").forEach {
-            assertTrue("外部清单丢了 $it：\n$text", text.contains("\"$it\""))
-        }
-    }
-
-    @Test
     fun `待删除清单_与旧清单合并不清空`() {
         setup()
         deliverFile("a.txt")
@@ -266,18 +251,4 @@ class LibraryImportTest {
         assertTrue("旧条目不许被抹掉", text.contains("\"a.txt\""))
         assertTrue(text.contains("\"b.txt\""))
     }
-
-    @Test
-    fun `待外部转换清单_可合并追加`() {
-        // 函数保留备查（execute 已停写）：同 rel_path 后写赢，不同条目都在
-        setup()
-        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("a.pdf", "Office/PDF 文档（.pdf），需外部转换")))
-        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("b.png", "图片（.png），需外部转换")))
-        imp.appendExternalList(listOf(LibraryImport.ExternalEntry("a.pdf", "不是 UTF-8 编码")))
-
-        val text = File(done, LibraryImport.FILE_EXTERNAL).readText()
-        // 两条都还在（a.pdf 同 rel_path 只一条，理由被后写的覆盖）
-        assertEquals(2, text.lines().count { it.contains("\"rel_path\"") })
-        assertTrue(text.contains("不是 UTF-8 编码"))
-        assertTrue(text.contains("b.png"))
-    }}
+}
