@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -53,12 +52,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 
-/** 卡圆角 20、按钮圆角 14（设计稿 §1 圆角 token）。 */
-private val CardShape = RoundedCornerShape(20.dp)
-private val ButtonShape = RoundedCornerShape(14.dp)
-
-/** 按钮行最低触控高（设计稿 §4：48dp；真机判据见验收 #1/#25）。 */
-private val ButtonMinHeight = 48.dp
+// 卡圆角 20 / 按钮圆角 14 / 按钮最低 48dp：**值定义在 BaopuSkin.kt**（第一百零五批收口），
+// 本文件只引用——卡与外壳用同一份，改一处不会漏另一处。卡的排版与判据一行没动。
 
 /**
  * 决策卡（四变体共用骨架）——**只渲染**，零判据。
@@ -78,7 +73,7 @@ internal fun DecisionCard(
     val cardDesc = stringResource(R.string.decision_card_desc, spec.title)
 
     Surface(
-        shape = CardShape,
+        shape = BaoCardShape,
         tonalElevation = 3.dp,
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier
@@ -89,7 +84,7 @@ internal fun DecisionCard(
             // 高风险警示带（贴顶；设计稿 §2「高风险变体加贴顶警示带」）
             if (spec.warning != null) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = BaoChipShape,
                     color = MaterialTheme.colorScheme.errorContainer,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -141,7 +136,7 @@ internal fun DecisionCard(
                 if (spec.body.length > BODY_COLLAPSE_THRESHOLD) {
                     TextButton(
                         onClick = { expanded = !expanded },
-                        modifier = Modifier.heightIn(min = ButtonMinHeight),
+                        modifier = Modifier.heightIn(min = BAO_BUTTON_MIN_HEIGHT_DP.dp),
                     ) {
                         Text(
                             stringResource(
@@ -250,20 +245,20 @@ private fun DecisionActionButton(
     val desc = stringResource(R.string.decision_button_desc, label)
     val modifier = Modifier
         .fillMaxWidth()
-        .heightIn(min = ButtonMinHeight)
+        .heightIn(min = BAO_BUTTON_MIN_HEIGHT_DP.dp)
         .semantics { contentDescription = desc }
     when (button.role) {
         DecisionButtonRole.PRIMARY -> Button(
             onClick = { onAction(button.id) },
             enabled = button.enabled,
-            shape = ButtonShape,
+            shape = BaoButtonShape,
             modifier = modifier,
         ) { Text(label, maxLines = 2) }
 
         DecisionButtonRole.DANGER -> Button(
             onClick = { onAction(button.id) },
             enabled = button.enabled,
-            shape = ButtonShape,
+            shape = BaoButtonShape,
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError,
@@ -274,14 +269,14 @@ private fun DecisionActionButton(
         DecisionButtonRole.BUFFER -> OutlinedButton(
             onClick = { onAction(button.id) },
             enabled = button.enabled,
-            shape = ButtonShape,
+            shape = BaoButtonShape,
             modifier = modifier,
         ) { Text(label, maxLines = 2) }
 
         DecisionButtonRole.NEGATIVE -> TextButton(
             onClick = { onAction(button.id) },
             enabled = button.enabled,
-            shape = ButtonShape,
+            shape = BaoButtonShape,
             modifier = modifier,
         ) { Text(label, maxLines = 2) }
     }

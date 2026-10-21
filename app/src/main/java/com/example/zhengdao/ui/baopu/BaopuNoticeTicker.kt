@@ -26,6 +26,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -33,8 +35,38 @@ import kotlinx.coroutines.delay
 /** 跑马灯里的一条：标题（短）× 详情（点标题才看）。 */
 internal data class NoticeItem(val label: String, val body: String)
 
-/** 跑马灯窗口高度（一行文字）。 */
-private val TICKER_HEIGHT = 16.dp
+/**
+ * 跑马灯窗口高度（**默认**一行文字 16dp）。
+ *
+ * 第一百零五批：它不再是一个写死的 Dp —— 旧版恒 16dp，1.3× 字体下 labelSmall 的行高是
+ * 13sp×1.3 ≈ 16.9dp ⇒ 窗口比字还矮，字被裁掉一条（1.0× 时 13 ≤ 16 刚好没事，所以真机
+ * 只有"系统字体调大"才暴露）。现在窗口 = [tickerWindowDp]（默认 16、大字体随行高长），
+ * 门禁 H5 的判据同步改成「默认 16dp、大字体 ≤ 一行行高」——见 `BaopuTouchTargetGateTest`。
+ */
+internal const val TICKER_HEIGHT_DP = 16
+
+/** labelSmall 的行高（`ui/theme/Type.kt`：10sp/13sp）。窗口在大字体下长到这个高度就够一行。 */
+internal const val TICKER_LINE_DP = 13
+
+/**
+ * 窗口高度 = max(默认 16dp, 一行行高 × fontScale)。
+ *
+ * 为什么在大字体下**正好**长到一行行高、而不是"随字号无限长"：窗口是**单行视口**，
+ * 比一行高就会露出下一条标签的半截（2026-10-20 真机 UI-D1「这次学到」重影就是露半截）。
+ * 所以大字体下窗口＝一行行高：既裁不到字，也不会看到第二条。
+ * 1.0× 时一行只有 13dp（比默认 16dp 还矮）⇒ 窗口**保持 16dp 不回缩**，那是 v1.4 与
+ * 门禁 H5 一起钉死的默认值。
+ */
+internal fun tickerWindowDp(fontScale: Float): Float {
+    val line = TICKER_LINE_DP * fontScale
+    return if (line > TICKER_HEIGHT_DP) line else TICKER_HEIGHT_DP.toFloat()
+}
+
+/**
+ * 系统「动画时长缩放」＝0 ⇒ 用户关了动画（无障碍/省电设置，**不是** App 的开关）。
+ * 此时自动滚动降级为「只显最新一条、不滚」（v1.4 §3.9 末条；不新增设置项）。
+ */
+internal fun reduceMotionFrom(animatorScale: Float): Boolean = animatorScale == 0f
 
 /** 每帧滚 0.3px（≈18px/秒），慢到能看清、快过"卡住"的错觉。 */
 private const val SCROLL_STEP_PX = 0.3f
@@ -64,13 +96,28 @@ internal fun BaopuNoticeTicker(
     modifier: Modifier = Modifier,
 ) {
     if (items.isEmpty()) return
+    val ctx = LocalContext.current
+    val fontScale = LocalDensity.current.fontScale
+    // 系统动画缩放读一次就够（改它要回系统设置，页内不会变）。默认值 1f＝动画开着。
+    val animatorScale = remember(ctx) {
+        android.provider.Settings.Global.getFloat(
+            ctx.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        )
+    }
+    val reduceMotion = reduceMotionFrom(animatorScale)
     var selected by remember(items) { mutableStateOf(-1) }
     val scroll = rememberScrollState()
 
     // 只滚标题：两条以上才复制成首尾相接；单条不复制（否则第二份会露一截＝重影）。
-    val doubled = remember(items) { tickerLoop(items) }
+    // 减少动画时**只摆最新一条**（items.last()）——不滚、不复制，视口里始终是当前这条。
+    val doubled = remember(items, reduceMotion) {
+        if (reduceMotion) listOf(items.last()) else tickerLoop(items)
+    }
 
-    LaunchedEffect(doubled, selected) {
+    LaunchedEffect(doubled, selected, reduceMotion) {
+        if (reduceMotion) return@LaunchedEffect // 减少动画：自动滚降级为「只显最新一条」
         if (items.size <= 1) return@LaunchedEffect // 单条没有循环可言，不滚
         if (selected >= 0) return@LaunchedEffect // 详情弹窗开着时不滚（正在读的不许被滚走）
         while (true) {
@@ -84,14 +131,18 @@ internal fun BaopuNoticeTicker(
     }
 
     Surface(
-        shape = MaterialTheme.shapes.small,
+        // 圆角与卡片/按钮同一套（BaopuSkin）：顶栏里的小药丸不再各写一个 shapes.small。
+        shape = BaoChipShape,
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier,
     ) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
-            Column(Modifier.height(TICKER_HEIGHT).verticalScroll(scroll)) {
+            // 视口高度随字体走（默认 16dp、大字体＝一行行高），所以 1.3× 下不再裁字。
+            Column(Modifier.height(tickerWindowDp(fontScale).dp).verticalScroll(scroll)) {
                 doubled.forEachIndexed { i, item ->
-                    val idx = i % items.size
+                    // 减少动画时 doubled 只有一条（最新那条），索引要指回它在 items 里的位置，
+                    // 否则点标题会展开"第 0 条"的详情。
+                    val idx = if (reduceMotion) items.lastIndex else i % items.size
                     Text(
                         text = item.label,
                         style = MaterialTheme.typography.labelSmall,

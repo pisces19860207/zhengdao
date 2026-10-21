@@ -477,9 +477,12 @@ class BaopuSessionTreeTest {
     fun `W6_落地用两套不同语义_底色只给工作区行_主色只给会话行`() {
         val ws = bodyOf(drawerCode, "private fun WorkspaceRow(")
         val se = bodyOf(drawerCode, "private fun SessionRow(")
+        // 第一百零五批：底色从 secondaryContainer（灰）改成 primaryContainer（主色浅底＝v1.4 的 tint）。
+        // 为什么改判而不是改回：v1.4 §3.8 写的是「当前工作区整行铺 **tint** 底」，灰底在深色主题下
+        // 与普通行几乎同色，看不出"我在这个文件夹里"；而 tint 底 + 会话行只染字，正好是设计要的两级强度。
         assertTrue(
-            "工作区行＝整行铺 secondaryContainer（最强那一档）",
-            ws.contains("background(MaterialTheme.colorScheme.secondaryContainer)"),
+            "工作区行＝整行铺 tint 底（primaryContainer，最强那一档）",
+            ws.contains("background(MaterialTheme.colorScheme.primaryContainer)"),
         )
         assertFalse("会话行不许也铺底色（那就分不出强度了）", se.contains("background("))
         // 主色那一句在源码里是 if/else 两块写的，断言按形状拆成两半查（合起来才是"只有点着才主色"）

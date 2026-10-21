@@ -121,10 +121,12 @@ class DecisionCardGateTest {
 
     @Test
     fun `P1_决策卡按钮行不低于48dp`() {
+        // 第一百零五批：卡 20 / 钮 14 / 标题 48 的**值**收进 BaopuSkin.kt（卡与外壳共用一份），
+        // 本判据跟着改从"文件里有个 48.dp"变成"引用共享常量且常量 ≥48"——判的是同一个事实。
         assertTrue(
-            "按钮必须 heightIn(min = 48.dp)",
-            decisionCard.contains("heightIn(min = ButtonMinHeight)") &&
-                decisionCard.contains("private val ButtonMinHeight = 48.dp"),
+            "按钮必须 heightIn(min = BAO_BUTTON_MIN_HEIGHT_DP.dp) 且该常量 ≥48",
+            decisionCard.contains("heightIn(min = BAO_BUTTON_MIN_HEIGHT_DP.dp)") &&
+                BAO_BUTTON_MIN_HEIGHT_DP >= 48,
         )
     }
 
