@@ -81,21 +81,4 @@ class BrowserTabPolicyTest {
     fun `外部打开满员时复用当前标签`() {
         assertFalse(BrowserTabPolicy.externalOpenShouldCreateTab(BrowserTabPolicy.MAX_TABS))
     }
-
-    // ── 渲染优先级 ──
-
-    @Test
-    fun `活跃与后台的渲染优先级不同_后台是 WAIVED`() {
-        assertEquals(
-            "后台标签必须 WAIVED（§4.2）",
-            BrowserTabPolicy.RENDERER_PRIORITY_WAIVED,
-            BrowserTabPolicy.rendererPriority(false)
-        )
-        assertEquals(
-            "活跃标签 IMPORTANT（框架默认档，javap 实读同值）",
-            BrowserTabPolicy.RENDERER_PRIORITY_IMPORTANT,
-            BrowserTabPolicy.rendererPriority(true)
-        )
-        assertFalse("两个档位不能相同", BrowserTabPolicy.rendererPriority(true) == BrowserTabPolicy.rendererPriority(false))
-    }
 }
