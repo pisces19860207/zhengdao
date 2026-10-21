@@ -439,6 +439,8 @@ class ToolSchemaAllTest {
             ),
             "library_list" to JSONObject(),
             "library_organize" to JSONObject().put("action", "index"),
+            "kb_index" to JSONObject(),
+            "kb_search" to JSONObject().put("query", "第一章"),
             "delete_path" to JSONObject(),
             "image_ops" to JSONObject().put("action", "palette").put("path", "a.png"),
             "ask_user" to JSONObject().put("question", "选哪个？").put(

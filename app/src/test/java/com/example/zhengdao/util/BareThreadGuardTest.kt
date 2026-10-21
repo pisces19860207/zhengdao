@@ -206,6 +206,11 @@ import kotlin.text.Charsets
  *   `RunEngine.kt` 的 `MessagePersisted` 扩字段与 `QueueChanged` 登记（+16 行，全在创建点之前）
  *   ⇒ zd-baopu-run 228→244；`BaopuDb.kt` 的 v15 `run_queue` DDL/语句（+44 行，全在创建点之前）
  *   ⇒ zd-baopu-db 1213→1257。逐处核过仍是同一段 `Thread(r, "zd-…")`，有名 + daemon 都没变。
+ * - 2026-10-21（第一百二十八批 · 知识库 v2）：**无新增线程**（索引/检索是同步纯逻辑，
+ *   自动注入每轮在既有 zd-baopu-run 线程上算；`baopu/kb/` 目录与 `KbTools.kt` 逐行核过
+ *   无裸 Thread/池）。`RunEngine.kt` 构造函数新增 `kbRecall` 注入形参（含 KDoc 共 +9 行，
+ *   **全在创建点之前**）⇒ zd-baopu-run 244→253，本次回填。逐处核过仍是同一段
+ *   `Thread(r, "zd-baopu-run").apply { isDaemon = true }`，有名 + daemon 都没变。
  */
 class BareThreadGuardTest {
 
@@ -265,7 +270,7 @@ class BareThreadGuardTest {
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
-            "RunEngine.kt:244",
+            "RunEngine.kt:253",
             "SettingsDataActivity.kt:596",
             "SettingsEnvActivity.kt:220",
             "SettingsEnvActivity.kt:275",
