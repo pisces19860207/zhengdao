@@ -35,7 +35,7 @@ internal data class SubAgentEnv(
  * 单条子任务的执行器（有界小循环）。
  *
  * 边界（派工单 §1）：
- * - 步数 ≤ [SubTask.maxSteps]（默认 8）：用完即「失败：步数用尽」，不无限续；
+ * - 步数 ≤ [SubTask.maxSteps]（默认 16）：用完即「失败：步数用尽」，不无限续；
  * - 墙钟 ≤ [SubTask.timeoutMs]（默认 90s，钳制 10–300s）：每轮开头查，超时即止；
  * - 取消：每轮开头 + 每次工具调用前查 [SubAgentEnv.isCancelled] ⇒ CANCELLED；
  * - 工具结果按父引擎同款回灌（[DataFence] 围栏 ＋ **user** 角色进历史；不发 assistant，见 UI-D10）。
