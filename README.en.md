@@ -34,7 +34,7 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 | Baopu | the built-in agent | Chat; read, write and search workspace files; view, edit and multi-attach images; read web pages; organise the library and build a local index; keep plans; grow skills. It writes novels and drafts, and it will write code — but code is only shown, never run |
 | Xiaoyao | the terminal | A Debian 13 environment for when you need a shell |
 | Xuanlan | the browser | Baopu's eyes: open a page in the app and hand it over. Baopu can also click and scroll it. Local pages and code are displayed, not executed |
-| Yiran | install & health | Install third-party agents (Hermes / Claude Code / Codex / AGY CLI — none preinstalled) and the runtime, and run environment health checks |
+| Yiran | install & health | Install third-party agents (Hermes / Claude Code / Codex / AGY CLI — none preinstalled), see environment status, and run health checks |
 
 Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to Baopu, and results land back in the workspace. Baopu never touches a shell and never spawns a process; it works only inside its workspace. System-level work belongs to Xiaoyao.
 
@@ -42,15 +42,15 @@ Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to
 
 **Organise.** Scattered settings, reference images and notes? Describe the rules — how to classify, how to name — and let Baopu put them into your library. It proposes a list or a plan first and acts only after you say yes, one item at a time, and tells you which files it touched. The library can be indexed locally; answers come with sources and line numbers, and still work offline.
 
-**See and edit.** Hand it pages and images: summarise, excerpt, resize, crop, convert. Pages open in Xuanlan; you can let Baopu click and turn pages, or point it at a specific page. Images can be attached several at a time.
+**See and edit.** Hand it pages and images: summarise, excerpt, resize, crop, convert. Pages open in Xuanlan; you can let Baopu click and turn pages, or point it at a specific page. The first time it needs the browser group, you get an approval card (this session / always). Images can be attached several at a time.
 
 **Write.** Give it an outline and it writes chapter by chapter; keep going, or paste an old draft back and ask for changes. Output is plain files in the workspace — any file manager can open them. Same for code, except code is only displayed, never executed.
 
 ## It grows — but never behind your back
 
-Baopu accumulates skills and memories, and every step needs your nod:
+Baopu accumulates skills and memories, and every step needs your nod. Writes and deletes, opening a new tool group, changing a memory or a skill — each one raises a decision card; the decision center in the top bar collects them:
 
-- **Skills** start as drafts that Baopu cannot see by default; they are promoted after three uses. Writing one requires a confirmation card, and a backup is taken first, so you can restore the previous version.
+- **Skills** start as drafts that Baopu cannot see by default; after three uses a "promote" option appears, and it only becomes a real skill when you tap it. Writing one requires a confirmation card, and a backup is taken first, so you can restore the previous version.
 - **Memories** are distilled into candidates at the end of a session; they are written only when you tap "Remember", and discarded when you don't.
 - **Persona** has three layers: the core is read-only; the global and project layers evolve with sessions, but only as proposals you approve. The global layer follows the app; the project layer follows the workspace.
 - **Global skills** cannot be changed by Baopu — only proposed. You make the change yourself in settings.
@@ -68,10 +68,10 @@ Together that is what "heavy harness" means here: not many tools, but a boundary
 ## Install and use
 
 1. Download the APK from [Releases](https://github.com/pisces19860207/zhengdao/releases) and install it. Every build is signed; the in-app About page marks whether it is an official build or a repackaged one.
-2. On first launch, grant the permissions on the single page; run the environment check in Yiran, and install the Debian environment there if you want Xiaoyao (about 200 MB, needs network).
+2. On first launch, grant the permissions on the single page; install the Debian environment under Settings → Environment (about 200 MB, needs network); environment status and health checks live in Yiran.
 3. Before using Baopu, set a model provider in Settings: an OpenAI-compatible or Anthropic-style endpoint, with your own URL and key.
 4. Yiran offers install cards, not preinstalled agents: Hermes / Claude Code / Codex / AGY CLI are installed when you tap install, and not before.
-5. Baopu reads and writes inside its workspace (default `Download/证道` on the phone, changeable in Settings). Uninstalling Zhengdao keeps those files.
+5. Baopu reads and writes inside its workspace (default `Download/证道` on the phone, changeable in Settings); the default workspace lives on shared storage, so uninstalling Zhengdao keeps those files.
 6. Updates: the app can check for app and component updates; environment updates are downloaded as diffs.
 
 Release history is on the [Releases](https://github.com/pisces19860207/zhengdao/releases) page.
@@ -82,7 +82,7 @@ What Zhengdao connects to, precisely:
 
 - **Baopu**: sends your messages and the files you ask it to read to the model provider you configured (OpenAI-compatible / Anthropic).
 - **Xuanlan**: fetches the pages you open; rendering uses the system WebView.
-- **Yiran**: downloads the runtime and components.
+- **Environment settings**: downloads the Debian runtime; **Yiran**: downloads agent installers.
 
 Beyond that, Zhengdao itself does not collect user data. Keys stay on the device. Baopu has no model of its own and does not work offline; Xiaoyao's terminal does, once the environment is installed.
 
@@ -94,7 +94,7 @@ Android may kill backgrounded apps. For long tasks, keep Zhengdao in the foregro
 
 - Keys are stored on-device and never uploaded.
 - The only thing Baopu sends out is your messages, plus the files you ask it to read, to the model provider you chose. It does not go through your files on its own — only what you point it at is sent.
-- Xuanlan fetches the pages you open, and Yiran downloads components; nothing else.
+- Xuanlan fetches the pages you open, and Environment settings / Yiran download components; nothing else.
 - ⚠️ **The terminal is not a security sandbox**: processes inside Xiaoyao share Zhengdao's Android UID, kernel and network stack, and can read and write whatever the app can. Run only commands you trust.
 
 ## Known limits
