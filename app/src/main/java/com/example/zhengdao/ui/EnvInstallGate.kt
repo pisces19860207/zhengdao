@@ -14,26 +14,38 @@
 // 而且这几条路径都在设置页，判定放在触发点最直观。中央守卫（所有入口一律拦）留 v2。
 package com.example.zhengdao.ui
 
+import androidx.annotation.StringRes
+import com.example.zhengdao.R
 import com.example.zhengdao.rootfs.RunLog
 
 /**
- * 活会话时的固定文案。
+ * 活会话拦截时给**用户看**的正文资源（中/英各一份，见 strings.xml）。
  *
- * 两句话是被测试钉死的（派工单 §1）：必须出现「结束当前终端会话」与「没有改动任何文件」。
- * 后者是这一单最要紧的一句——用户被拦下时最想知道的是「我的环境有没有被弄坏」，
- * 答案必须是明确的「没有」，而不是让他自己猜。
+ * 第一百一十批 · ENV-D1（2026-10-21）：这段文案原来硬编码在 Kotlin 里、由系统 Toast 展示。
+ * Android 12+ 的文本 Toast 只有两行（真机 Android 16 实测），第二句「本次没有改动任何文件…」
+ * 被截掉。现在文案进 strings.xml（两句之间 `\n` 分行），展示统一走设置页现有的
+ * `SnackbarHost`（`showReadable`：不限行数、用户点「知道了」才关）。
  */
-internal const val LIVE_SESSION_BLOCK_MESSAGE: String =
-    "终端会话还开着：请先结束当前终端会话（回到终端页输入 exit 或点右上角关闭），再重新点一次。" +
-        "本次没有改动任何文件——运行环境一个字节都没动，会话里正在跑的东西也还在。"
+@StringRes
+internal val LIVE_SESSION_BLOCK_MESSAGE_RES: Int = R.string.env_block_live_session
 
 /**
- * 纯函数门禁：活会话 ⇒ 固定文案；没有活会话 ⇒ null（放行）。
+ * 拦截日志句（**只落 RunLog，不进 UI**）。
+ *
+ * 保留第五十二批门禁钉住的两句关键词，排障时能直接看出「为什么拦、有没有动文件」。
+ * 用户可见正文以 [LIVE_SESSION_BLOCK_MESSAGE_RES] 为准，别把这一句再拿去弹 Toast。
+ */
+internal const val LIVE_SESSION_BLOCK_LOG: String =
+    "终端会话还开着：请先结束当前终端会话；本次没有改动任何文件"
+
+/**
+ * 纯函数门禁：活会话 ⇒ 日志句；没有活会话 ⇒ null（放行）。
  *
  * 只吃一个 Boolean、不碰 I/O，JVM 直测（本仓无 Robolectric）。
+ * 返回的是日志句，不是 UI 正文（UI 正文在 strings.xml，须由 Context 取）。
  */
 internal fun liveSessionBlocksEnvInstall(alive: Boolean): String? =
-    if (alive) LIVE_SESSION_BLOCK_MESSAGE else null
+    if (alive) LIVE_SESSION_BLOCK_LOG else null
 
 /**
  * 四条设置页路径共用的判定：`true` = 已拦下（调用方**必须立刻 return**，不许再碰任何 IO）。

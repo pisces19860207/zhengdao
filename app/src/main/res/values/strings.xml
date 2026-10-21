@@ -240,6 +240,7 @@
     <string name="env_repair_start">修复环境：用本地安装包（%1$d MB）重新解压，不联网</string>
     <string name="env_repair_done">修复完成：环境已重置，登录状态和工作区保留（这次没联网）</string>
     <string name="env_repair_failed">修复失败：%1$s</string>
+    <string name="env_block_live_session">终端会话还开着：请先结束当前终端会话（回到终端页输入 exit 或点右上角关闭），再重新点一次。\n本次没有改动任何文件——运行环境一个字节都没动，会话里正在跑的东西也还在。</string>
     <string name="env_hermes_card">Hermes 依赖环境</string>
     <string name="env_hermes_checking">检测中…</string>
     <string name="env_hermes_fix_record">一键修正记录</string>

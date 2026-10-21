@@ -240,6 +240,7 @@
     <string name="env_repair_start">Repair: unpack again from local installer (%1$d MB), no download</string>
     <string name="env_repair_done">Repair done: environment reset, logins and workspace kept (no download)</string>
     <string name="env_repair_failed">Repair failed: %1$s</string>
+    <string name="env_block_live_session">Terminal session is still open: end the current session first (go back to the terminal screen and type exit, or tap Close in the top-right corner), then try again.\nNo files were changed — the environment wasn\'t touched at all, and whatever is running in the session is still running.</string>
     <string name="env_hermes_card">Hermes dependencies</string>
     <string name="env_hermes_checking">Checking…</string>
     <string name="env_hermes_fix_record">Fix the record</string>
