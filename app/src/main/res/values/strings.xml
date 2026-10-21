@@ -23,21 +23,16 @@
     <string name="common_got_it">知道了</string>
     <string name="common_learn_more">了解详情 ›</string>
     <string name="common_collapse">收起</string>
-    <string name="common_retry">重试</string>
     <string name="common_clean">清理</string>
     <string name="common_cleaning">清理中…</string>
     <string name="common_loading">加载中…</string>
-    <string name="common_done">完成</string>
     <string name="common_view_log">查看日志</string>
     <string name="common_clear">清空</string>
     <string name="common_feedback">反馈</string>
     <string name="common_repair">修复</string>
-    <string name="common_default">默认</string>
     <string name="common_later">稍后</string>
-    <string name="common_not_installed">未安装</string>
     <string name="common_approx_mb">约 %1$d MB</string>
     <string name="common_size_unknown">大小未知</string>
-    <string name="common_mb">%1$d MB</string>
 
     <!-- ── 底部导航 ── -->
     <!-- 2026-10-14 派工单：前三 Tab 同步改名为四祝福定稿（抱朴真实/逍遥自由/怡然幸福/玄览期望）。
@@ -79,8 +74,6 @@
     <!-- ── 首页 ── -->
     <string name="home_grant_page_failed">打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启</string>
     <string name="home_no_browser">没有可用的浏览器</string>
-    <string name="home_start_error">启动异常：%1$s</string>
-    <string name="home_taiji_not_up">抱朴（OpenCode）仍没起来</string>
     <string name="home_env_ready">环境就绪</string>
     <string name="home_env_missing">环境未安装</string>
     <string name="home_agent_count">%1$d 个 Agent</string>
@@ -91,7 +84,6 @@
     <string name="home_debian_installed">Debian 13.7 已安装</string>
     <string name="home_debian_missing">Debian 未安装</string>
     <string name="home_health_checking">环境体检中…</string>
-    <string name="home_health_pass">环境体检 %1$d/%2$d 通过</string>
     <string name="home_health_scanning">正在检查环境状态…</string>
     <string name="home_fix_ineffective">一键修复没生效：%1$s</string>
     <string name="home_fix_error_prefix">修复时出错：%1$s；</string>
@@ -455,127 +447,18 @@
     <string name="main_unofficial_build">这个安装包不是作者发布的版本（签名对不上）。建议到作者的 GitHub 下载官方包。</string>
 
     <!-- ── 抱朴 Tab（原 BaopuScreen：安装 / 连接 / 版本 —— 该文件 2026-10-16 清场已删，文案留待刀 1 对齐）── -->
-    <string name="taiji_connecting">正在连接 OpenCode…</string>
-    <string name="taiji_refresh_failed">刷新会话失败：%1$s</string>
-    <string name="taiji_send_failed">发送失败：%1$s</string>
     <string name="taiji_copied">已复制到剪贴板</string>
     <string name="taiji_copy_failed">复制失败：系统剪贴板不可用</string>
-    <string name="taiji_start_new">开始一段新对话</string>
-    <string name="taiji_start_new_hint">在下方输入你的任务，例如「帮我看看下载文件夹里有什么」</string>
-    <string name="taiji_oc_not_installed_title">尚未安装 OpenCode</string>
-    <string name="taiji_oc_install_hint">点下方按钮下载安装（约 65MB，已有缓存则约 1 分钟）</string>
-    <string name="taiji_oc_preparing">准备中…</string>
-    <string name="taiji_oc_installing">安装中…</string>
-    <string name="taiji_oc_retry_install">重试安装</string>
-    <string name="taiji_oc_download_install">下载并安装</string>
-    <string name="taiji_oc_install_done">安装完成，正在启动 OpenCode…</string>
-    <string name="taiji_oc_install_failed">安装失败：%1$s</string>
-    <string name="taiji_oc_start_failed">OpenCode 启动失败</string>
-    <string name="taiji_oc_auth_hint">若提示鉴权失败，说明 serve 密码未就绪——可重启 App 再试</string>
-    <string name="taiji_oc_version_line">OpenCode %1$s（出厂 %2$s）</string>
-    <string name="taiji_oc_up_to_date">OpenCode 已是最新（%1$s）</string>
-    <string name="taiji_oc_check_failed">检查更新失败：%1$s</string>
-    <string name="taiji_oc_processing">处理中…</string>
-    <string name="taiji_oc_check_update">检查 OpenCode 更新</string>
-    <string name="taiji_oc_install">安装 OpenCode</string>
-    <string name="taiji_oc_found_new">发现 OpenCode %1$s</string>
-    <string name="taiji_oc_no_digest">当前 %1$s → %2$s。该 release 未提供 SHA256 digest，为安全起见不提供 App 内直装 —— 可到 GitHub 手动下载。</string>
-    <string name="taiji_oc_digest_ok">当前 %1$s → %2$s。将从 GitHub 下载约 65MB 并校验 digest，通过后覆盖安装。安装完成后重启 App 生效。</string>
 
     <!-- ── 抱朴 Tab：模型池（原 ModelSheet，2026-10-16 清场已删）── -->
-    <string name="taiji_model_pool">模型池</string>
-    <string name="taiji_fetching">拉取中…</string>
-    <string name="taiji_refresh_action">⟳ 刷新</string>
-    <string name="taiji_current_prefix">当前：</string>
-    <string name="taiji_session_override">（本会话覆盖）</string>
-    <string name="taiji_server_default">服务端默认</string>
-    <string name="taiji_model_refresh_failed">刷新失败：%1$s</string>
-    <string name="taiji_loading_model_catalog">正在拉取模型目录…</string>
-    <string name="taiji_no_models">暂无可用模型</string>
-    <string name="taiji_catalog_unreachable">模型目录来自 models.dev，当前网络不可达（免费模型也依赖目录）。在代理 App 的「分应用代理」里勾选证道后重试。</string>
-    <string name="taiji_reload">重新加载</string>
-    <string name="taiji_default_clear_override">默认（清除本会话覆盖）</string>
-    <string name="taiji_free">免费</string>
 
     <!-- ── 抱朴 Tab：会话顶栏 / 连接 / 工具卡（原 BaopuSessionBar / BaopuPartCards，2026-10-16 清场已删）── -->
-    <string name="taiji_session_history">会话历史</string>
-    <string name="taiji_new_session">新会话</string>
-    <string name="taiji_new_session_plus">＋  新会话</string>
-    <string name="taiji_conn_connected">● 已连接</string>
-    <string name="taiji_conn_connecting">○ 连接中…</string>
-    <string name="taiji_conn_reconnecting">○ 已断开，正在重连（第 %1$d 次）</string>
-    <string name="oc_give_up_reconnecting">连接已中断（连续 %1$d 次失败），已停止自动重连——点重试可恢复</string>
-    <string name="taiji_banner_connecting">正在连接…</string>
-    <string name="taiji_banner_idle">未连接</string>
-    <string name="taiji_banner_reconnecting">连接已断开，正在重连…</string>
-    <string name="taiji_agent_run_failed">Agent 运行失败：%1$s</string>
     <string name="taiji_back_to_latest">⬇ 回到最新</string>
     <string name="taiji_back_to_latest_desc">回到最新消息</string>
-    <string name="taiji_copy_message">复制这条消息</string>
-    <string name="taiji_unknown_part">未知内容（%1$s）</string>
-    <string name="taiji_state_running">执行中</string>
-    <string name="taiji_state_done">已完成</string>
-    <string name="taiji_state_failed">失败</string>
-    <string name="taiji_tool">工具</string>
-    <string name="taiji_tool_input">入参</string>
-    <string name="taiji_tool_output">结果</string>
-    <string name="taiji_reasoning_head">思考过程</string>
-    <string name="taiji_reasoning_head_steps">思考过程 · %1$d 步</string>
     <string name="common_collapse_arrow">收起 ▲</string>
     <string name="common_expand_arrow">展开 ▼</string>
-    <string name="taiji_todo_header">任务清单（%1$d/%2$d）</string>
-    <string name="taiji_placeholder_streaming">AI 正在回复…</string>
-    <string name="taiji_placeholder_idle">描述你的任务…</string>
-    <string name="taiji_send_desc">发送</string>
-    <string name="taiji_stop_desc">停止生成</string>
-    <string name="taiji_perm_title">工具请求授权</string>
-    <string name="taiji_perm_tool">工具：%1$s</string>
-    <string name="taiji_perm_target">目标</string>
-    <string name="taiji_perm_remember">记住这个选择</string>
-    <string name="taiji_perm_deny">拒绝</string>
-    <string name="taiji_perm_allow">允许</string>
-    <string name="taiji_perm_hint">不处理会让 Agent 卡住等待，任务无法继续。</string>
-    <string name="taiji_msg_actions_title">消息操作</string>
-    <string name="taiji_no_copyable_text">（这条消息没有可复制的文字）</string>
-    <string name="taiji_copy_all_conv">复制全部对话（%1$d 条）</string>
-    <string name="taiji_delete_hint">不能单独删其中一条；要删就得把整段对话删掉，去左侧「会话历史」里删。</string>
-    <string name="taiji_sessions">会话</string>
-    <string name="taiji_refresh_sessions_desc">刷新会话列表</string>
-    <string name="taiji_no_sessions">还没有历史会话。\n点上方「＋ 新会话」开始第一段对话。</string>
-    <string name="taiji_plugins">插件</string>
-    <string name="taiji_plugins_enabled">%1$d 个已启用</string>
-    <string name="taiji_plugins_none">未启用</string>
-    <string name="taiji_close_session">关闭抱朴并退出</string>
-    <string name="taiji_close_session_hint">记录还在，下次接着聊</string>
-    <string name="taiji_close_session_title">关闭抱朴并退出？</string>
-    <string name="taiji_close_session_msg">关闭后聊天列表里还能看到这次对话，点进去会重新打开。</string>
-    <string name="taiji_delete_session_title">永久删除这个会话</string>
-    <string name="taiji_delete_session_msg">「%1$s」将在服务端被永久删除，无法恢复。</string>
-    <string name="taiji_delete_failed">删除失败：服务端未确认（网络异常或该会话已不存在）</string>
-    <string name="taiji_deleting">删除中…</string>
-    <string name="taiji_delete">删除</string>
-    <string name="taiji_msg_count">%1$d 条消息</string>
-    <string name="taiji_current">当前</string>
-    <string name="taiji_delete_session_desc">删除会话「%1$s」</string>
-    <string name="taiji_session_fallback">会话 %1$s</string>
-    <string name="taiji_day_today">今天</string>
-    <string name="taiji_day_yesterday">昨天</string>
-    <string name="taiji_day_earlier">更早</string>
 
     <!-- ── 复制到剪贴板的文本（原 MessageCopy，2026-10-16 清场已删；样板留档见报告仓「参考-旧线样板-2026-10-16」）── -->
-    <string name="copy_role_separator">：</string>
-    <string name="copy_role_user">我</string>
-    <string name="copy_role_assistant">助手</string>
-    <string name="copy_role_system">系统</string>
-    <string name="copy_reasoning">（思考过程）</string>
-    <string name="copy_attachment">（附件）%1$s</string>
-    <string name="copy_unknown">（未知内容 %1$s）</string>
-    <string name="copy_tool_open">（工具 %1$s · %2$s）</string>
-    <string name="copy_unnamed_tool">未命名</string>
-    <string name="copy_tool_input">入参：</string>
-    <string name="copy_tool_output">结果：</string>
-    <string name="copy_truncated">\n…（已截断，原文 %1$d 字）</string>
-    <string name="copy_state_unknown">未知</string>
 
     <!-- ── 首次启动欢迎页（WelcomeScreen）── -->
     <string name="welcome_tagline">在手机上运行你自己的 AI Agent</string>
@@ -729,52 +612,9 @@
     <!-- ── 抱朴 OpenCode（OcManager：启动 / 安装 / 更新）──
          2026-10-16：OcManager 与整条旧抱朴线已删除，本节文案暂时无人引用；
          保留给抱朴线刀 1 复用（避免一次性删掉几十条中英对照）。 -->
-    <string name="oc_not_installed">OpenCode 尚未安装</string>
-    <string name="oc_serve_no_password_title">抱朴连上了、但没拿到访问密码</string>
-    <string name="oc_serve_no_password_detail">serve 在 14000 端口活着，serve.log 里没有可用的 server password 行（旧场次的密码不能复用）⇒ 之后每个请求都会 401，界面看着像卡住。</string>
-    <string name="oc_restart_taiji">重启抱朴</string>
-    <string name="oc_serve_timeout_title">抱朴（OpenCode）启动超时</string>
-    <string name="oc_serve_timeout_detail">15 秒内 serve 没就绪（端口 14000 无响应）。常见原因：上一场 serve 僵着、端口被占、或内置二进制被杀软拦下。</string>
-    <string name="oc_serve_timeout_short">启动超时：serve 未在 15 秒内就绪（详见运行日志）</string>
-    <string name="oc_serve_start_failed_title">抱朴（OpenCode）启动失败</string>
-    <string name="oc_serve_start_failed_short">启动失败：%1$s</string>
-    <string name="oc_cached_verifying">检测到已下载的安装包，校验中…</string>
-    <string name="oc_cached_verified">安装包校验通过，释放中…</string>
-    <string name="oc_downloading_start">开始下载 OpenCode %1$s（约 65MB，断点续传）…</string>
-    <string name="oc_downloading_pct">下载中 %1$d%%（%2$d/%3$d MB）</string>
-    <string name="oc_verified_extracting">校验通过，释放中（约需一分钟）…</string>
-    <string name="oc_download_failed">下载失败：%1$s</string>
-    <string name="oc_no_digest_rejected">更新包缺少 SHA256（release digest 缺失），已拒绝安装</string>
-    <string name="oc_update_failed">更新失败：%1$s</string>
-    <string name="oc_extract_incomplete">释放不完整：%1$s（%2$d/%3$d 字节）</string>
-    <string name="oc_extracting_count">释放中… %1$d</string>
-    <string name="oc_extract_failed">释放失败：%1$s</string>
-    <string name="oc_binary_missing">释放后二进制缺失（包不完整？）</string>
-    <string name="oc_install_done">OpenCode %1$s 安装完成</string>
 
     <!-- ── 抱朴连接层（OcRepository：横幅 / 发送 / 模型池的错误）──
          2026-10-16：OcRepository 已删除，同上。 -->
-    <string name="oc_create_session_failed">无法创建会话</string>
-    <string name="oc_polling_retry">轮询失败，正在重试</string>
-    <string name="oc_empty_response">空响应 %1$s</string>
-    <string name="oc_empty_response_perm">空响应 permission/request</string>
-    <string name="oc_get_failed">GET %1$s 失败：%2$s</string>
-    <string name="oc_get_http">GET %1$s HTTP %2$d</string>
-    <string name="oc_bad_body">响应既非数组也无 data 数组：%1$s</string>
-    <string name="oc_models_http">拉取模型目录 HTTP %1$d</string>
-    <string name="oc_empty_body">响应体为空</string>
-    <string name="oc_http_status">服务器返回 %1$d</string>
-    <string name="oc_session_not_ready">会话未就绪</string>
-    <string name="oc_switch_model_http">切换模型 HTTP %1$d</string>
-    <string name="oc_session_not_open">未打开会话</string>
-    <string name="oc_send_http">发送失败 HTTP %1$d</string>
-    <string name="oc_send_failed">发送失败：%1$s</string>
-    <string name="oc_abort_failed">中止失败：%1$s</string>
-    <string name="oc_perm_http">授权失败 HTTP %1$d</string>
-    <string name="oc_perm_submit_failed">授权提交失败：%1$s</string>
-    <string name="oc_nothing_to_retry">没有可重试的内容</string>
-    <string name="oc_list_sessions_failed">拉取会话列表失败：%1$s</string>
-    <string name="oc_delete_session_failed">删除会话失败（id=%1$s）：%2$s</string>
 
     <!-- ── Hermes 依赖体检（HermesEnv）── -->
     <string name="hermes_not_installed">未安装 Hermes，跳过</string>
@@ -851,7 +691,6 @@
     <string name="browser_ssl_error">这个网址的安全证书有问题，已停止加载</string>
     <string name="browser_safe_browsing_hit">这个网址有安全风险，已被拦下</string>
     <string name="browser_page_error">页面加载出了点问题</string>
-    <string name="browser_empty_hint">在上方输入网址，或从终端里点一条链接进来</string>
     <string name="browser_start_title">玄 览</string>
     <string name="browser_start_hint">输入网址或搜索词，或点一个快捷入口</string>
     <string name="browser_start_search_hint">搜索或输入网址</string>
@@ -887,9 +726,6 @@
     <string name="bridge_howto">终端里先记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让 agent 走本机环回操作玄览页面，例如：\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\n可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。\n注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。\n抱朴（内置 OpenCode）不接这条桥，它的浏览器能力由自身插件提供。</string>
     <!-- ── 抱朴页占位（2026-10-16 旧抱朴线清场；真实页面归抱朴线刀 1）── -->
     <string name="home_baopu_retired">旧抱朴（内置 OpenCode）已经下线了 —— 它在 Android 16 上起不来，代码已清出仓库。新抱朴正在重做，做好后回来。</string>
-    <string name="baopu_rebuilding_title">抱朴正在重建</string>
-    <string name="baopu_rebuilding_body">旧抱朴（内置 OpenCode）那条线已经下线：它在 Android 16 上起不来，代码已整条清出仓库。新抱朴正按刀次重做，做好后这里就是它的页面。</string>
-    <string name="baopu_rebuilding_go">先去怡然</string>
     <!-- ── 抱朴页（刀 1 · 2026-10-16；键一律 baopu_ 前缀）── -->
     <string name="baopu_input_hint">说说要做什么…</string>
     <string name="baopu_send">发送</string>
@@ -1039,7 +875,6 @@
     <string name="baopu_confirm_running">执行中…</string>
     <string name="baopu_confirm_approve_desc">批准这个动作，允许抱朴改动文件</string>
     <string name="baopu_confirm_reject_desc">拒绝这个动作，文件不会被改动</string>
-    <string name="baopu_confirm_timeout">等了 15 分钟没收到批准，本轮先停</string>
     <!-- ── 抱朴思考深度（刀 3 · B 段；设置 → 终端与资料）── -->
     <string name="baopu_effort_card">思考深度</string>
     <string name="baopu_effort_desc">模型每一步想多深。机械活选低、复杂整理选最高；关掉省 token 但复杂任务会变笨。改完下一轮就生效，不用重建任何东西。</string>
@@ -1061,6 +896,9 @@
     <string name="baopu_tool_convert_encoding">转编码</string>
     <string name="baopu_tool_convert_encoding_desc">把 GBK / UTF-16 的老 txt 转成 UTF-8 写回原文件；转之前先把原文件备份到 .baopu-bak。本来就是 UTF-8 就不动。</string>
     <!-- ── 静态快捷方式（刀 2 · D 段第 1 条；标签 ≤10 字）── -->
+    <!-- 第 129 批 lint 清债：这两条被 UnusedResources 报出，是因为 res/xml/shortcuts.xml
+         整个文件没在 AndroidManifest 里挂 android.app.shortcuts 的 meta-data（从未生效）。
+         保留不删：是否挂接由用户裁决，见 证道设计报告/lint清债-2026-10-21.md 待确认清单。 -->
     <string name="baopu_shortcut_backup">备份原件</string>
     <string name="baopu_shortcut_backup_long">备份抱朴库里的原件</string>
     <!-- ── 抱朴页新增入口与提示（刀 2 · C/D 段 ＋ 追加包）── -->
@@ -1070,17 +908,7 @@
     <string name="baopu_backup_stale_never">原件还从没导出过，去导一份？</string>
     <string name="baopu_backup_stale_days">原件 %1$d 天没导出了，去导一份？</string>
     <string name="baopu_backup_go">去导出</string>
-    <string name="baopu_ask_unmatched">没能对上选项，请直接点上面的按钮（不猜、不静默执行）</string>
-    <string name="baopu_import_running">收料处理中…</string>
-    <string name="baopu_import_done">收料完成：%1$d 件进私有（%2$s）</string>
-    <string name="baopu_import_left">；仍在投递 %1$d 件</string>
-    <string name="baopu_import_pending_delete">；待删除清单 %1$d 件（在 整理/_待删除清单.json，删不删你定）</string>
-    <string name="baopu_import_rejected">；被拒 %1$d 件</string>
-    <string name="baopu_import_skip">先不搬——投递里的件原样没动。</string>
     <string name="baopu_export_running">导出中…</string>
-    <string name="baopu_export_done">导出完成：%1$d 件（在 整理/原件导出-&lt;时间戳&gt;/）</string>
-    <string name="baopu_export_none">没有可导出的原件（索引是空的）。</string>
-    <string name="baopu_export_notes">另有 %1$d 条备注（跳过/撞名/失败）。</string>
       <!-- 第六十三批：首屏通知位。口径——同一时刻只显最高一档（错误＞行动＞提示），
            其余折成这一句，点开看全量（每条仍可操作）。 -->
     <string name="baopu_notice_more">还有 %1$d 条</string>
@@ -1107,13 +935,9 @@
     <string name="baopu_switch_ws_cancel">取消</string>
     <string name="baopu_switch_ws_failed">这个路径不能当工作区（只能是共享存储里的文件夹）</string>
     <string name="baopu_delete_session_title">删除这个会话？</string>
-    <string name="baopu_delete_session_body">删除「%1$s」会**移入回收站**：消息和产物都还在，需要时能从抽屉「回收站 → 已删除会话」恢复。</string>
     <string name="baopu_delete_session_confirm">移入回收站</string>
     <string name="baopu_delete_session_cancel">先不删</string>
     <string name="baopu_delete_session_failed">没删成功（会话没动），再试一次</string>
-    <string name="baopu_session_manage_card">会话记录</string>
-    <string name="baopu_session_manage_desc">全部会话平铺看，也可以在这里删除（抽屉里不放了）</string>
-    <string name="baopu_session_manage_open">打开全部会话</string>
     <string name="baopu_drawer_group_settings">设置</string>
     <string name="baopu_drawer_channel_desc">换模型通道（会重建引擎，跑到一半不能换）</string>
     <string name="baopu_drawer_settings">抱朴设置</string>
@@ -1157,7 +981,6 @@
     <string name="skill_confirm_backup">备份文件名：%1$s</string>
     <string name="skill_restore_last">恢复到上一版</string>
     <string name="skill_restore_done">已恢复到上一版；恢复前那版也留了备份</string>
-    <string name="skill_restore_none">这个技能还没有备份，没有可恢复的版本</string>
     <string name="skill_review_card">技能索引</string>
     <string name="skill_review_desc">技能＝技能目录里的 SKILL.md 文件＋下面一句索引（索引进人设，人设带着走）。这里删除会同时把技能正文**归档**（改名为 .deleted-*，不硬删）；要彻底删清，去文件管理器删那个 .deleted-* 文件。已存 %1$d/%2$d 条。</string>
     <string name="skill_group_global">全局技能（跟 App，换工作区不丢）</string>
@@ -1254,7 +1077,8 @@
     <string name="skill_cat_corrupt">那份 _分类.json 读不通，先当没有分类用</string>
     <string name="skill_cat_close">关闭</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->
-    <string name="baopu_drawer_history">历史会话</string>
+    <!-- 第 129 批 lint 清债：这两条 UnusedResources 被单测钉死（BaopuSessionTreeTest A2 / DecisionCardGateTest P4），
+         删了单测就红 ⇒ 保留。属「测试钉住的僵尸文案」，清掉需要先改判据（另批）。 -->
     <string name="baopu_drawer_history_desc">全部会话，平铺看</string>
     <string name="baopu_session_library_title">历史会话</string>
     <string name="baopu_session_empty">还没有聊过。</string>
@@ -1272,15 +1096,6 @@
     <string name="baopu_session_deleted_current">已删除，当前回到空态</string>
     <string name="baopu_session_delete_failed">删除失败，再试一次或重启后重试</string>
     <string name="baopu_session_ws_unknown_header">默认工作区 · %1$s</string>
-    <string name="baopu_ws_card">工作区</string>
-    <string name="baopu_ws_desc">抱朴自己的工作地点（和终端**分开**设置，互不影响）。默认是 Download/证道；产出、附件与项目技能都跟着它走。</string>
-    <string name="baopu_ws_current">当前位置</string>
-    <string name="baopu_ws_mode_default">默认（证道文件夹）</string>
-    <string name="baopu_ws_mode_custom">自定义</string>
-    <string name="baopu_ws_mode_private">私有</string>
-    <string name="baopu_ws_no_storage">还没给存储权限，工作区暂时用不了。</string>
-    <string name="baopu_ws_new_session_note">改完对新会话生效，当前会话不换。</string>
-    <string name="baopu_ws_log_note">改这里会记一条日志（[kernel] 留痕）。</string>
       <string name="baopu_tool_browser_open">打开网页</string>
     <string name="baopu_tool_browser_open_desc">在玄览里打开网址（只认 http/https）。会弹确认卡；打开是异步的，内容随后再看。</string>
     <string name="baopu_tool_browser_snapshot">看网页</string>
@@ -1314,12 +1129,8 @@
     <string name="baopu_tool_card_inspect_desc">只读体检一张卡或世界书：先认脸（网络平台世界书 / Tavo 世界书·角色卡·正则·预设 / 酒馆世界书 / CCv3 世界书 / 酒馆角色卡 PNG；认不出就报未知＋看过的键名），再逐条体检（字段缺失与越界、关键词过宽、永不触发、分隔符写坏、同名压制）。只读：不改、不挪、不删任何文件。</string>
     <string name="baopu_tool_card_export">导出酒馆卡 PNG</string>
     <string name="baopu_tool_card_export_desc">把一段 JSON 写成酒馆角色卡 PNG（内嵌 chara 与 ccv3 两块文本，插在 IEND 之前）。不覆盖：目标已存在就拒绝；源文件一个字节都不改。每次执行前弹确认卡。</string>
-    <string name="baopu_tools_group_read">读与找</string>
-    <string name="baopu_tools_group_write">写与改</string>
-    <string name="baopu_tools_group_image">图片</string>
     <string name="baopu_tools_group_browser">网页操作</string>
     <string name="baopu_tools_group_library">资料库</string>
-    <string name="baopu_tools_group_plan">计划与技能</string>
     <string name="baopu_tools_group_card">卡片格式</string>
     <!-- 第五十九批 §1.6：设置页的分组标题。成员表已收进那**唯一一张**分组表
          （baopu.agent.ToolGroupTable），这里只有「组 → 标题」字符串。
@@ -1396,8 +1207,6 @@
     <string name="decision_suggest_defer">搁置</string>
     <string name="decision_suggest_adopt">采纳</string>
     <string name="decision_suggest_adopt_blocked_tool_rule">工具约束类建议还没有落盘通道（不做就是不做）——这条只作记录</string>
-    <string name="decision_suggest_subtitle">来自抱朴对自己使用记录的复盘；采纳米的权利在你</string>
-    <string name="decision_suggest_reason_label">判断依据</string>
     <!-- 提案卡（96）：作用域 -->
     <string name="decision_scope_workspace">作用域：本工作区（C）</string>
     <string name="decision_scope_global">作用域：所有工作区（B）</string>
@@ -1457,7 +1266,6 @@
     <string name="decision_type_suggestion">建议</string>
     <string name="decision_type_effect">效果</string>
     <string name="decision_queue_more">还有 %1$d 条在排队</string>
-    <string name="decision_once_footer">只弹一次</string>
     <string name="decision_undo">撤销</string>
     <string name="decision_undone">已撤销</string>
     <string name="decision_shield_desc">决策中心</string>
