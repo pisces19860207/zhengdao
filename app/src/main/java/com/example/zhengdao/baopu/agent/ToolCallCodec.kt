@@ -56,6 +56,14 @@ internal object ToolCallCodec {
         data class Bad(
             val error: String,
             val kind: BadArgsKind = BadArgsKind.JSON_SYNTAX,
+            /**
+             * 出错的那个调用（第一百一十五批）：Schema 错时能确定工具名与参数，
+             * 交给归因层生成建议参数；语法/形状层拿不到就是空。
+             *
+             * 只读：归因层复制后才改，绝不原地改这里。
+             */
+            val toolName: String = "",
+            val arguments: JSONObject? = null,
         ) : DecodeResult
     }
 
@@ -71,9 +79,13 @@ internal object ToolCallCodec {
                 return DecodeResult.Bad("第 ${i + 1} 个工具调用缺少名字（tool_calls[$i].function.name 为空）")
             }
             val args = parseArgs(raw.argumentsJson)
-                ?: return DecodeResult.Bad("工具「${raw.name}」的参数不是合法 JSON：${raw.argumentsJson}")
+                ?: return DecodeResult.Bad(
+                    "工具「${raw.name}」的参数不是合法 JSON：${raw.argumentsJson}",
+                    toolName = raw.name,
+                )
             registry?.validateCall(raw.name, args)?.let {
-                return DecodeResult.Bad(it, BadArgsKind.SCHEMA)
+                // 工具名/参数一并带上：归因层要据此给「建议参数」（第一百一十五批）
+                return DecodeResult.Bad(it, BadArgsKind.SCHEMA, toolName = raw.name, arguments = args)
             }
             out += ToolCall(id = raw.id.ifBlank { "call_$i" }, name = raw.name, arguments = args)
         }
@@ -113,7 +125,9 @@ internal object ToolCallCodec {
             val name = b!!.optString("name")
             if (name.isBlank()) return DecodeResult.Bad("tool_use[$i].name 为空")
             val args = b.optJSONObject("input") ?: JSONObject()
-            registry?.validateCall(name, args)?.let { return DecodeResult.Bad(it, BadArgsKind.SCHEMA) }
+            registry?.validateCall(name, args)?.let {
+                return DecodeResult.Bad(it, BadArgsKind.SCHEMA, toolName = name, arguments = args)
+            }
             out += ToolCall(id = b.optString("id").ifBlank { "toolu_$i" }, name = name, arguments = args)
         }
         return DecodeResult.Ok(out)
