@@ -176,9 +176,12 @@ class ProgressiveToolsTest {
         reg.currentSessionId = 11L
         val out = CapabilitiesTool.spec().executor(JSONObject()) as ToolOutcome.Ok
         val roster = out.text
-        ToolGroup.values().forEach { g ->
-            assertTrue("名册漏了组「${g.key}」：$roster", roster.contains(g.key))
+        // 动态组（MCP）不在静态名册里：v1 没有连接入口，成员为空；它由 connect 授权，
+        // 不靠 capabilities 解锁（第一百二十三批，见 ToolGroup.STATIC）。
+        ToolGroup.STATIC.forEach { g ->
+            assertTrue("名册漏了组「${g.key}」：$roster", roster.contains("- ${g.key}"))
         }
+        assertFalse("动态组不许画进静态名册", roster.lines().any { it.startsWith("- mcp") })
         // 三种状态都得在（§1.3：无参数＝列全量名册）
         assertTrue(roster.contains("默认可见"))
         assertTrue(roster.contains("未解锁"))

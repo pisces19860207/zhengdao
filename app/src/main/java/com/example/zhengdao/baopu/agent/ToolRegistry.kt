@@ -42,7 +42,7 @@ enum class ToolPermission {
  * 的那十件事放进 CORE / EDIT 两组（所以 browser_open / browser_snapshot / image_ops /
  * card_build 在 core/edit，而网页的**交互**四件在 browser）。交付报告里逐字记了这条取法。
  */
-enum class ToolGroup(val key: String, val oneLine: String) {
+enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean = false) {
     /** 默认就看得见：抱朴干活的最小闭环（§6 点名项）。 */
     CORE("core", "核心：读文件、列目录、搜内容、问用户、列计划，以及打开网页并读它"),
 
@@ -68,6 +68,22 @@ enum class ToolGroup(val key: String, val oneLine: String) {
     PREVIEW("preview", "本地预览：在玄览只显示工作区里的网页/源码，不执行、出不了网"),
 
     /**
+     * 外部 MCP server 的工具（第一百二十三批），默认不可见，**动态组**。
+     *
+     * 为什么 `dynamic=true`：其它组的成员在 [ToolGroupTable] 里静态列着，设置页与
+     * capabilities 名册按枚举逐个画；本组的成员要等用户显式连接某个 server 才存在，
+     * 且 v1 没有「添加 server」界面 ⇒ 固定枚举里画它只会得到一个空组。所以设置页、
+     * capabilities 名册与 enable 名单都跳过动态组（[STATIC]）；`connect` 成功仍会把
+     * 本组标成「用户已同意」，工具照常出现在 tools 数组里。用户若已关掉本组，
+     * 连接逻辑也不覆盖（工具隐藏，抱朴自己也解不开）。
+     */
+    MCP(
+        "mcp",
+        "外部工具（MCP）：用户手动连接的外部服务器；首次使用要你确认，写操作每次都问",
+        dynamic = true,
+    ),
+
+    /**
      * 免费通道的兼容占位（read / bash）：由通道决定注册与否，用户管不着、设置页也不列它们。
      * 注册了就**必须**默认可见（否则免费档 403），见 [ToolGroup.DEFAULT_VISIBLE] 的说明。
      */
@@ -91,6 +107,17 @@ enum class ToolGroup(val key: String, val oneLine: String) {
          * 兼容条目 ⇒ **14**（实测读数与这条取法都写进交付报告，留给蓝总管裁定）。
          */
         val DEFAULT_VISIBLE: Set<ToolGroup> = setOf(CORE, EDIT, COMPAT)
+
+        /**
+         * 成员在 [ToolGroupTable] 里有静态名单的组（设置页 / capabilities 名册 /
+         * enable 名单的枚举口径）。
+         *
+         * 为什么要有这一层：MCP 是动态组（成员由连接动作写入），固定枚举里没有它的
+         * 工具名；把它画进设置页会得到一个永远空着的组，写进 enable 名单则会让模型
+         * 申请一个「解锁了也没东西」的组。组本身仍参与可见性判定——只是不上这几张
+         * 静态名单。COMPAT 仍在 [STATIC] 里，由调用方按「没有开关」再摘。
+         */
+        val STATIC: List<ToolGroup> = values().filter { !it.dynamic }
 
         /** 按 key 找组（`capabilities` 的 enable 参数走这里；找不到就是没这个组）。 */
         fun fromKey(raw: String): ToolGroup? = values().firstOrNull { it.key == raw.trim().lowercase() }
@@ -374,6 +401,15 @@ data class ToolSpec(
      * `parallelSafe = true` 而 `readOnly = false`，或并行标记落在 CONFIRM 工具上 ⇒ 直接红。
      */
     val parallelSafe: Boolean = false,
+    /**
+     * 用户在**确认卡**上批准之后、执行器开跑之前调一次（第一百二十三批）。
+     *
+     * 为什么要有它：MCP 外部工具的「授权」发生在现有 `ConfirmFlow` 里，但执行器
+     * 自己也要有一道闸（防绕过 Guard 直调）。`GuardPipeline.executeApproved` 是
+     * **唯一**会调本钩子的入口——`execute` 遇到 CONFIRM 只回 NeedsConfirm、不执行；
+     * 直接调 `executor` 也不会经过这里。默认 null ⇒ 既有工具一个字都不用改。
+     */
+    val onUserApproved: (() -> Unit)? = null,
     val executor: (JSONObject) -> ToolOutcome,
 ) {
     companion object {
@@ -635,6 +671,19 @@ internal class ToolRegistry(
     fun schemaIssues(): Map<String, List<String>> = issues.toMap()
 
     /**
+     * 注销（第一百二十三批：MCP 断连的对称出口）。
+     *
+     * 只删内存里的注册；用户开关/解锁格不动——那些是用户数据，重连时按原名覆盖回来。
+     * 静默删不存在的名字也不炸：断连是幂等的，重复调用不该把界面卡在错误态。
+     * schema 体检账一并删：第一百一十九批的账按工具名索引，注销后留旧账会让
+     * [schemaIssues] 报一个已不存在的工具（断连—重连之间名册与账必须同进同退）。
+     */
+    fun unregister(name: String) {
+        specs.remove(name)
+        issues.remove(name)
+    }
+
+    /**
      * 取一个工具的**当前形态**（刀 2 追加包：开关是**调用时**判的，不是加载时；
      * 第五十九批：组解锁同样是调用时判）。
      *
@@ -813,7 +862,7 @@ internal class ToolRegistry(
             }
             unknown.forEach { sb.append("- 没有这个组：$it\n") }
             sb.append("可解锁的组名：")
-                .append(ToolGroup.values().filter { it != ToolGroup.COMPAT }
+                .append(ToolGroup.STATIC.filter { it != ToolGroup.COMPAT }
                     .joinToString("、") { it.key })
                 .append("\n")
         }
@@ -821,7 +870,9 @@ internal class ToolRegistry(
         sb.append("当前可见工具（").append(visible.size).append(" 个）：")
             .append(visible.joinToString("、")).append("\n")
         sb.append("全量名册（组 → 状态 → 组内工具）：\n")
-        ToolGroup.values().forEach { group ->
+        // 动态组（MCP）不在静态名册里：它的成员要连接 server 后才存在，固定枚举只会
+        // 画出一个空组（见 ToolGroup.STATIC）。
+        ToolGroup.STATIC.forEach { group ->
             val names = ToolGroupTable.namesOf(group)
             if (names.isEmpty()) return@forEach
             // 名册列的是**此刻真注册着的**工具（[ToolGroupTable] 是分组表，不是注册表）：

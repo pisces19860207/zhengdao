@@ -94,13 +94,14 @@ class BaopuSettingsRulesTest {
     // ── ② 取组序：哪些组上设置页、按什么序 ────────────────────────────────────
 
     @Test
-    fun `G1_取组序只摘掉COMPAT_其余保持枚举声明序`() {
+    fun `G1_取组序摘掉COMPAT与动态组_其余保持枚举声明序`() {
         // 正常：喂真实的整张枚举表
         val got = baopuSwitchableGroups(ToolGroup.values())
         assertFalse("COMPAT 没有开关，不许出现在取组列表里", got.contains(ToolGroup.COMPAT))
-        assertEquals("除了 COMPAT 全都得上页", ToolGroup.values().size - 1, got.size)
-        assertEquals("顺序 = 枚举声明序（页面上的组上下次序就是这个序）",
-            ToolGroup.values().filter { it != ToolGroup.COMPAT }, got)
+        assertFalse("MCP 是动态组，v1 没有管理入口，不许画成空组", got.contains(ToolGroup.MCP))
+        val expected = ToolGroup.values().filter { it != ToolGroup.COMPAT && !it.dynamic }
+        assertEquals("除了 COMPAT 与动态组全都得上页", expected.size, got.size)
+        assertEquals("顺序 = 枚举声明序（页面上的组上下次序就是这个序）", expected, got)
     }
 
     @Test

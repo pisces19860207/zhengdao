@@ -190,8 +190,9 @@ class SettingsGroupFoldTest {
         )
         // 表序 = 摘要与开关行的顺序都跟着 ToolGroupTable；这里顺手量一次真实表的组数，
         // 免得哪天有人把组数写死（页面上「8 组 / 29 个开关」这种数字）。
-        val groups = ToolGroup.values().filter { it != ToolGroup.COMPAT }
-        assertEquals("分组表读出来的组数", groups.size, ToolGroup.values().size - 1)
+        // 动态组（MCP）不在设置页：v1 没有「添加 server」入口，它没有静态成员可列。
+        val groups = ToolGroup.STATIC.filter { it != ToolGroup.COMPAT }
+        assertEquals("分组表读出来的组数", groups.size, ToolGroup.STATIC.count { it != ToolGroup.COMPAT })
         assertTrue(groups.all { ToolGroupTable.namesOf(it).isNotEmpty() })
     }
 
