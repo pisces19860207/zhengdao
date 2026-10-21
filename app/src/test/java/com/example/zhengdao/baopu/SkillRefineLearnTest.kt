@@ -143,4 +143,57 @@ class SkillRefineLearnTest {
         assertTrue("第二次也该成功：$r2", r2 is SkillWriteResult.Written)
         assertTrue("改旧版必须先备份：${(r2 as SkillWriteResult.Written).backup}", r2.backup != null)
     }
+
+    // ── ⑤ 第一百零七批（EVO-D1 返工）：骨架必须自己过结构自检 ─────────────
+    //
+    // 真机现场：路径型候选（detail=技能/note1/SKILL.md）经 103 的骨架后，去标题只剩 77 字符，
+    // 差 3 个字符没过 MIN_BODY_CHARS=80 ⇒ 采纳卡永远不出。这里钉死：三种来路的候选，
+    // 生成的正文都必须被**真正的** SkillBodySelfCheck 判 Ok（不是字符串断言）。
+
+    private fun verdictOf(p: SkillRefine.LearnProposal): com.example.zhengdao.baopu.eval.SkillBodyVerdict =
+        com.example.zhengdao.baopu.eval.SkillBodySelfCheck.check(
+            com.example.zhengdao.baopu.eval.SkillBodyInput(
+                name = SkillRefine.nameOf(p),
+                body = SkillRefine.skillBodyFor(p),
+                backups = 0,
+                existed = false,
+            ),
+        )
+
+    @Test
+    fun `路径型候选_骨架能过结构自检`() {
+        val p = SkillRefine.learnProposals(
+            listOf(sig(SkillRefine.SignalKind.SKILL, "技能/note1/SKILL.md")),
+        ).single()
+        val v = verdictOf(p)
+        assertTrue("路径型候选的骨架必须过自检；实际=$v", v is com.example.zhengdao.baopu.eval.SkillBodyVerdict.Ok)
+    }
+
+    @Test
+    fun `工具名型候选_骨架能过结构自检`() {
+        val p = SkillRefine.learnProposals(
+            listOf(sig(SkillRefine.SignalKind.SKILL, "write_skill")),
+        ).single()
+        val v = verdictOf(p)
+        assertTrue("工具名型候选的骨架必须过自检；实际=$v", v is com.example.zhengdao.baopu.eval.SkillBodyVerdict.Ok)
+    }
+
+    @Test
+    fun `长文本型候选_骨架能过结构自检`() {
+        val p = SkillRefine.learnProposals(
+            listOf(sig(SkillRefine.SignalKind.USER_SAID, "记住：以后写技能正文都得先写标题再写步骤")),
+        ).single()
+        assertTrue(verdictOf(p) is com.example.zhengdao.baopu.eval.SkillBodyVerdict.Ok)
+    }
+
+    @Test
+    fun `正文里已有同名节_不重复补`() {
+        val p = SkillRefine.learnProposals(
+            listOf(sig(SkillRefine.SignalKind.FILE, "笔记/步骤清单.md")),
+        ).single()
+        val body = SkillRefine.skillBodyFor(p)
+        assertEquals("## 步骤 只能出现一次", 1, Regex("(?m)^## 步骤$").findAll(body).count())
+        assertEquals("## 验证 只能出现一次", 1, Regex("(?m)^## 验证$").findAll(body).count())
+        assertEquals("标题只补一次", 1, Regex("(?m)^# ").findAll(body).count())
+    }
 }

@@ -234,13 +234,36 @@ internal object SkillRefine {
      */
     fun skillBodyFor(p: LearnProposal): String {
         val name = nameOf(p)
-        return ensureTitle(
-            name,
-            "# 技能：$name\n\n" +
-                "## 场景\n${p.content}\n\n" +
-                "## 来源\n${p.source}\n\n" +
-                "## 步骤\n（还没写下具体步骤：下次真正做成时，把实际做法补在这里，并标上实测日期。）\n",
+        val base = "# 技能：$name\n\n" +
+            "## 场景\n${p.content}\n\n" +
+            "## 来源\n${p.source}\n"
+        // 场景为空的候选**不补骨架**：骨架会把「空内容」垫到 80 字符以上，等于用占位句
+        // 掩盖掉一条本来该被拒的候选（自检那条「正文太短」正是这么用的）。
+        if (p.content.isBlank()) return ensureTitle(name, base)
+        // 第一百零七批（EVO-D1 返工）：原来只补到「## 步骤」，路径型候选去标题后只有 77 字符，
+        // 仍差 3 个字符没过 MIN_BODY_CHARS=80（真机便签逐字「正文太短（77 字符 < 80）」）。
+        // 这里再补一节「## 验证」空骨架，把下界稳稳抬过线；两节都幂等（正文里已有同名节就不重复加）。
+        val withSteps = ensureSection(
+            base,
+            "步骤",
+            "（还没写下具体步骤：下次真正做成时，把实际做法补在这里，并标上实测日期。）",
         )
+        val withVerify = ensureSection(
+            withSteps,
+            "验证",
+            "（还没验过：下次实测后补日期与结果；没验之前按草稿对待。）",
+        )
+        return ensureTitle(name, withVerify)
+    }
+
+    /**
+     * 正文里没有 `## <heading>` 就补一节（空骨架占位）。**已有该节 ⇒ 原样返回**，不重复加。
+     *
+     * 只补结构、不编造事实：占位句明说「还没写下 / 还没验过」，与草稿「未验证」的既有口径一致。
+     */
+    internal fun ensureSection(body: String, heading: String, placeholder: String): String {
+        if (body.contains("\n## $heading\n") || body.startsWith("## $heading\n")) return body
+        return body.trimEnd() + "\n\n## $heading\n$placeholder\n"
     }
 
     /**
