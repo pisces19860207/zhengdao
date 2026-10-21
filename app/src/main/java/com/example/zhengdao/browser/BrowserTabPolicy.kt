@@ -25,10 +25,6 @@ object BrowserTabPolicy {
     /** 与 android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT 同值（javap 实读；框架默认档）。 */
     const val RENDERER_PRIORITY_IMPORTANT = 2
 
-    /** 前台标签渲染优先级（框架默认档，显式设定保证切回时确定恢复）。 */
-    fun rendererPriority(isActive: Boolean): Int =
-        if (isActive) RENDERER_PRIORITY_IMPORTANT else RENDERER_PRIORITY_WAIVED
-
     /** 还能不能开新标签（到上限即拒）。 */
     fun canOpenMore(currentCount: Int): Boolean = currentCount < MAX_TABS
 
