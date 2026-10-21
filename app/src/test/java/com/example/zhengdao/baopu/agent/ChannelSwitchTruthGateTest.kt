@@ -85,10 +85,20 @@ class ChannelSwitchTruthGateTest {
             .map { it.groupValues[1] }.toList()
         assertEquals(
             "派工单 §2 只认三处：两步之间 / 出确认卡之前 / 本轮 Settled 之后。" +
-                "少一处＝切换时机被猜，多一处＝自己造安全点。",
-            listOf("StepBoundary", "BeforeConfirmCard", "AfterSettled").sorted(),
+                "少一处＝切换时机被猜，多一处＝自己造安全点。" +
+                "【第一百二十四批改判】发图同意闸的「切到已验证通道」接在**本轮入口**" +
+                "（第 0 步与第 1 步之间），语义与既有 StepBoundary 逐字相同 ⇒ StepBoundary 记两处；" +
+                "档位种类一个没多（下面那条枚举钉子就是防这个）。同批先例：105 批 81618595、124 批 V5/C3。",
+            listOf("StepBoundary", "StepBoundary", "BeforeConfirmCard", "AfterSettled").sorted(),
             calls.sorted(),
         )
+        // 真正的钉子是**档位**：SafePoint 枚举仍只许三档（新增档位＝自己造安全点，要单开一批）
+        val enumBody = codeOnly(read(fsmFile))
+            .substringAfter("enum class SafePoint {").substringBefore("}")
+        listOf("StepBoundary", "BeforeConfirmCard", "AfterSettled").forEach {
+            assertTrue("档位 $it 必须还在（第六十四批的三个安全点一个不许少）", enumBody.contains("$it,"))
+        }
+        assertEquals("安全点档位仍是三个（本批不许加第四档）", 3, Regex("[A-Z]\\w*,").findAll(enumBody).count())
         val funnels = Regex("channelSwitch\\.atSafePoint\\(").findAll(engine).count()
         assertEquals(
             "三个接线点必须收口在 drainChannelSwitch 一个漏斗里（成功才写 provider）",
