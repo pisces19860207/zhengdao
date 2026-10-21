@@ -1129,6 +1129,18 @@ internal object BaopuSql {
         "duration_ms", "tokens_in", "tokens_out", "failure_kind", "decision", "started_at", "ended_at",
     )
 
+    // ── v15（第一百一十七批）：会话内任务队列 run_queue ─────────────────────
+    //
+    // 为什么单独一张表：队列行要在**开跑那一刻**与用户消息同事务删/插，
+    // 靠 run_log 的 step 或 message 表都表达不了「这条还没开跑」。
+    // `ON DELETE CASCADE`：删会话时排队条跟着走（与 artifact/run_trace 同处理，
+    // 所以 deleteSessionStatements **不**为它另加一条——DDL 反推门禁认级联）。
+    // 只有 text / 相对图片路径 / 时间：不存附件字节、不存绝对路径。
+    val RUN_QUEUE_DDL: List<String> = listOf(
+        "CREATE TABLE IF NOT EXISTS run_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE, text TEXT NOT NULL, image_rel_paths TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)",
+        "CREATE INDEX IF NOT EXISTS idx_run_queue_session ON run_queue (session_id, id)",
+    )
+
     /**
      * 记一行轨迹。
      *
@@ -1174,6 +1186,38 @@ internal object BaopuSql {
     fun selectLatestRunTrace(sessionId: Long): Stmt = Stmt(
         "SELECT run_id FROM run_trace WHERE session_id = ? ORDER BY id DESC LIMIT 1",
         arrayOf<String?>(sessionId.toString()),
+    )
+
+    // ── v15（第一百一十七批）：run_queue 语句 ─────────────────────────────
+
+    /** 入队一行；开跑事务里按 id 删它（删行 + 插用户消息同事务）。 */
+    fun insertRunQueue(
+        sessionId: Long,
+        text: String,
+        imageRelPaths: List<String>,
+        createdAt: Long,
+    ): Stmt = Stmt(
+        "INSERT INTO run_queue (session_id, text, image_rel_paths, created_at) VALUES (?, ?, ?, ?)",
+        arrayOf<String?>(
+            sessionId.toString(), text, idsToJson(imageRelPaths), createdAt.toString(),
+        ),
+    )
+
+    fun deleteRunQueue(rowId: Long): Stmt =
+        Stmt("DELETE FROM run_queue WHERE id = ?", arrayOf<String?>(rowId.toString()))
+
+    fun deleteRunQueueForSession(sessionId: Long): Stmt =
+        Stmt("DELETE FROM run_queue WHERE session_id = ?", arrayOf<String?>(sessionId.toString()))
+
+    fun selectRunQueue(sessionId: Long): Stmt = Stmt(
+        "SELECT id, session_id, text, image_rel_paths FROM run_queue " +
+            "WHERE session_id = ? ORDER BY id ASC",
+        arrayOf<String?>(sessionId.toString()),
+    )
+
+    fun selectAllRunQueue(): Stmt = Stmt(
+        "SELECT id, session_id, text, image_rel_paths FROM run_queue ORDER BY id ASC",
+        emptyArray(),
     )
 }
 
@@ -1239,6 +1283,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV12Migration(db)
         applyV13Migration(db)
         applyV14Migration(db)
+        applyV15Migration(db)
     }
 
     /**
@@ -1271,6 +1316,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 12) applyV12Migration(db)
         if (oldVersion < 13) applyV13Migration(db)
         if (oldVersion < 14) applyV14Migration(db)
+        if (oldVersion < 15) applyV15Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1424,6 +1470,17 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /**
+     * v14 → v15 迁移体（第一百一十七批）：`run_queue` 表 ＋ 索引，全是 `IF NOT EXISTS`
+     * ⇒ 幂等（照 v13 run_trace 房型）。新安装（onCreate 也调它）与 v14 及更早的库升级
+     * 走**同一条**路径。
+     *
+     * 老库可读性：升上来只多一张空表；`message`/`session`/`run_log` 一列不动 ⇒ 老会话照开。
+     */
+    private fun applyV15Migration(db: SQLiteDatabase) {
+        BaopuSql.RUN_QUEUE_DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1456,8 +1513,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v13 = 第八十七批（`run_trace` 运行轨迹表：一次运行一行一个边界，只存枚举/计数/hash，
          *  **不存正文**；版本号让号说明见 `RUN_TRACE_DDL` 上方注释）。
          *  v14 = 第八十九批（`memory` 质量四列 `score`／`quality_flags`／`merged_from`／`scored_at`，
-         *  全部 `NOT NULL` 带默认值 ⇒ 老行不回填、正文一列不动；默认满分＝暂不扣分）。 */
-        const val VERSION = 14
+         *  全部 `NOT NULL` 带默认值 ⇒ 老行不回填、正文一列不动；默认满分＝暂不扣分）。
+         *  v15 = 第一百一十七批（`run_queue` 会话内任务队列：只存文本/相对图片路径/时刻，
+         *  开跑事务删行；带 `ON DELETE CASCADE`）。 */
+        const val VERSION = 15
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
