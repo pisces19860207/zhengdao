@@ -1145,9 +1145,24 @@ internal class RunEngine(
                         FailureKind.BAD_JSON,
                         if (retry) FailureAction.Retry(0L, badArgsRetries + 1) else FailureAction.Abort,
                     )
+                    // 第一百一十五批：Schema 错额外给一条归因/建议（只生成，不执行）。
+                    // 语法层（JSON 都坏了）没有结构化的参数证据，不硬猜，沿用原文回灌。
+                    val repair = if (outcome.kind == ToolCallCodec.BadArgsKind.SCHEMA) {
+                        ToolFailureAdvisor.advise(
+                            ToolFailureEvidence(
+                                toolName = outcome.toolName,
+                                errorText = outcome.error,
+                                arguments = outcome.arguments,
+                                failureKind = FailureKind.BAD_JSON,
+                            ),
+                        ).also { log(ToolFailureAdvisor.auditLine(it, outcome.error)) }
+                    } else {
+                        null
+                    }
                     // 错误原文**回灌进历史**：只说「参数不对」模型改不对，得让它看见自己错在哪。
                     // 第九十五批：前缀按**坏在哪**分两说（JSON 语法 / Schema）——原文逐字不动。
-                    val feed = RunRules.badArgsFeed(outcome.kind, outcome.error)
+                    val feed = RunRules.badArgsFeed(outcome.kind, outcome.error) +
+                        (repair?.let { "\n${it.feedbackSuffix()}" } ?: "")
                     history += HistoryMessage(
                         "local-badargs-${System.nanoTime()}",
                         HistoryMessage.ROLE_ASSISTANT,
@@ -1357,6 +1372,9 @@ internal class RunEngine(
             val text: String = "",
             val usage: LlmUsage? = null,
             val kind: ToolCallCodec.BadArgsKind = ToolCallCodec.BadArgsKind.JSON_SYNTAX,
+            /** 出错的那个调用（第一百一十五批：Schema 错时给归因/建议用；语法层为空）。 */
+            val toolName: String = "",
+            val arguments: org.json.JSONObject? = null,
         ) : RoundOutcome
 
         /**
@@ -1418,7 +1436,14 @@ internal class RunEngine(
                 is ToolCallCodec.DecodeResult.Ok -> RoundOutcome.ToolCalls(textBuf.toString(), decoded.calls, finishedUsage)
                 // 坏 JSON/坏参数：**不**走 Failed 通道（P1-2）。错误原文已在 decode 里备好，
                 // 交给引擎回灌给模型看 + 重试一次；再坏才如实收尾。
-                is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.BadArgs(decoded.error, textBuf.toString(), finishedUsage, decoded.kind)
+                is ToolCallCodec.DecodeResult.Bad -> RoundOutcome.BadArgs(
+                    decoded.error,
+                    textBuf.toString(),
+                    finishedUsage,
+                    decoded.kind,
+                    decoded.toolName,
+                    decoded.arguments,
+                )
             }
         }
         val truncated = RunLoopRules.isTruncatedStopReason(stopReason)
@@ -1713,12 +1738,24 @@ internal class RunEngine(
                 attempt = consecutiveToolFailures,
                 fallbackAvailable = false, // 工具坏了换通道没用（不是通道的事）
             )
-            persistToolExchange(sessionId, step, name, "失败：${result.error}")
-            onEvent?.invoke(EngineEvent.ToolCallVisible(name, result.error, false))
+            // 第一百一十五批：先给出**可读的归因/建议**（只生成、只记日志，不执行）。
+            // 建议文本随失败原文一起回灌（模型据此决定下一步），执行权仍在模型/用户手里。
+            val repair = ToolFailureAdvisor.advise(
+                ToolFailureEvidence(
+                    toolName = name,
+                    errorText = result.error,
+                    arguments = result.call?.arguments,
+                    failureKind = kind,
+                ),
+            )
+            log(ToolFailureAdvisor.auditLine(repair, result.error))
+            val failureText = "失败：${result.error}\n${repair.feedbackSuffix()}"
+            persistToolExchange(sessionId, step, name, failureText)
+            onEvent?.invoke(EngineEvent.ToolCallVisible(name, failureText, false))
             history += HistoryMessage(
                 "local-tool-${System.nanoTime()}",
                 HistoryMessage.ROLE_ASSISTANT,
-                DataFence.wrap(name, System.currentTimeMillis(), "失败：${result.error}"),
+                DataFence.wrap(name, System.currentTimeMillis(), failureText),
             )
             if (action is FailureAction.Retry) {
                 // Retry 在这里的语义＝「回灌错误原文、让模型自己看着办」（与坏参数同款）：
@@ -1738,12 +1775,22 @@ internal class RunEngine(
             // 越界/权限 ⇒ 终止本轮（§8）：回灌理由让模型知道边界，本轮到此
             // **不记进「这次学到」的信号**——被保护闸拦下的写尝试不算学到，不许进卡。
             val name = result.call?.name ?: "tool"
-            persistToolExchange(sessionId, step, name, "被拒：${result.reason}")
-            onEvent?.invoke(EngineEvent.ToolCallVisible(name, result.reason, false))
+            // 第一百一十五批：被拒不等于可重试——建议层只负责把「该找用户」说清楚。
+            val repair = ToolFailureAdvisor.advise(
+                ToolFailureEvidence(
+                    toolName = name,
+                    errorText = result.reason,
+                    arguments = result.call?.arguments,
+                ),
+            )
+            log(ToolFailureAdvisor.auditLine(repair, result.reason))
+            val rejectedText = "被拒：${result.reason}\n${repair.feedbackSuffix()}"
+            persistToolExchange(sessionId, step, name, rejectedText)
+            onEvent?.invoke(EngineEvent.ToolCallVisible(name, rejectedText, false))
             history += HistoryMessage(
                 "local-tool-${System.nanoTime()}",
                 HistoryMessage.ROLE_ASSISTANT,
-                DataFence.wrap(name, System.currentTimeMillis(), "被拒：${result.reason}"),
+                DataFence.wrap(name, System.currentTimeMillis(), rejectedText),
             )
             ToolResultFlow.TERMINATE_ROUND
         }
