@@ -894,6 +894,11 @@
     <string name="baopu_input_hint">说说要做什么…</string>
     <string name="baopu_send">发送</string>
     <string name="baopu_stop">停止</string>
+    <plurals name="baopu_queue_count">
+        <item quantity="other">排队中 %1$d 条</item>
+    </plurals>
+    <string name="baopu_queue_continue">继续排队</string>
+    <string name="baopu_queue_clear">清空排队</string>
     <string name="baopu_state_idle">待命中</string>
     <string name="baopu_state_thinking">思考中…</string>
     <string name="baopu_state_acting">执行工具中…</string>

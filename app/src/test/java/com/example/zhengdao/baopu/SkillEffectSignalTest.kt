@@ -87,7 +87,7 @@ class SkillEffectSignalTest {
             2,
             Regex("applyV12Migration\\(db\\)").findAll(body).count(),
         )
-        assertEquals("v14 = 第八十九批 memory 质量四列（v13 = 第八十七批 run_trace，v12 = 第八十五批效果信号）", 14, BaopuDb.VERSION)
+        assertEquals("v15 = 第一百一十七批 run_queue（v14 = 第八十九批 memory 质量四列，v13 = 第八十七批 run_trace，v12 = 第八十五批效果信号）", 15, BaopuDb.VERSION)
     }
 
     @Test
