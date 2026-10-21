@@ -155,11 +155,22 @@ class BaopuTouchTargetGateTest {
 
     // ── H5：跑马灯（不改）────────────────────────────────────────────────────
 
+    /**
+     * H5（第一百零五批改判据）：窗口**默认**仍是 16dp，但大字体下随行高增长。
+     *
+     * 为什么必须改：v1.4 §3.9 与交接提示都点名了——旧判据把 16dp 钉成常量，
+     * 而 1.3× 字体下 labelSmall 的行高是 13sp×1.3≈16.9dp ⇒ 字被裁掉一条（真机只有
+     * 「系统字体调大」才暴露）。新判据＝「默认 16dp、大字体 ≤ 一行行高」，两件都不许破：
+     * 破了第一件顶栏被撑高／露出第二条，破了第二件就是大字体裁字。
+     */
     @Test
-    fun `H5_跑马灯窗口仍是16dp_滚动参数没动`() {
+    fun `H5_跑马灯窗口默认16dp_大字体随行高_滚动参数没动`() {
         val src = ticker()
-        assertEquals("窗口高度不许改（改了就撑顶栏／看到三条）", 16, dpValue(src, "TICKER_HEIGHT"))
+        assertEquals("默认窗口高度不许改（改了就看到第二条／撑顶栏）", 16, dpValue(src, "TICKER_HEIGHT_DP"))
         assertEquals("每帧步长不许改（派工单：滚动参数不动）", 0.3f, src.toFloatConst("SCROLL_STEP_PX"))
+        assertEquals("1.0× 仍是 16dp", 16f, tickerWindowDp(1.0f), 0.01f)
+        assertTrue("1.3× 必须长到一行行高（16.9dp），否则裁字", tickerWindowDp(1.3f) > 16f)
+        assertTrue("大字体也不许超过一行行高（超了就露半截）", tickerWindowDp(1.3f) <= 13f * 1.3f + 0.01f)
         assertFalse("不许给窗口套 48dp", flat(src).contains("height(48.dp)"))
     }
 
