@@ -7,11 +7,7 @@
 //     （原始/ 只读、只增不减、同名不覆盖、软链不跟随不复制）。
 package com.example.zhengdao.baopu
 
-import android.content.Context
 import com.example.zhengdao.rootfs.PathGuard
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.KnowledgeBase
-import com.example.zhengdao.baopu.BaopuWorkspace
 import java.io.File
 import java.nio.file.Files
 
@@ -225,41 +221,4 @@ internal object BaopuGuardCore {
     /** 软链判定（拿不到时保守判 false——调用方还有 isFile 等其他闸门）。 */
     fun isSymlink(f: File): Boolean =
         runCatching { Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
-}
-
-/**
- * 守卫的 Context 绑定壳（刀 0 · 2026-10-16）。
- *
- * 职责只有三件：把"当前工作区 / 资料库根"解析出来（[Workspace] / [KnowledgeBase]，
- * 只读调用）、调用纯内核、**把拒绝写进 RunLog**（绝不静默）。
- * 判据本身全在 [BaopuGuardCore]——这个壳进不了 JVM 单测，所以它必须薄。
- */
-internal class BaopuGuards(
-    private val context: Context,
-    private val log: (String) -> Unit = { RunLog.log(it) },
-) {
-
-    /** 当前工作区根（唯一真相源；共享 / 仅私有两种模式都由它解析）。 */
-    private val workspace: File get() = BaopuWorkspace.hostDir(context)
-
-    /** 资料库/原始（开工闸门的判据落点）。 */
-    private val rawDir: File get() = KnowledgeBase.rawDir(context)
-
-    /** 资料库/改版（产物区；路径本身也过守卫）。 */
-    private val revisedDir: File get() = KnowledgeBase.revisedDir(context)
-
-    fun workspaceRoot(): File = workspace
-
-    /** 路径守卫：越界即拒并留痕。 */
-    fun checkPath(target: File): BaopuGuardCore.PathVerdict {
-        val verdict = BaopuGuardCore.checkPath(workspace, target)
-        if (verdict is BaopuGuardCore.PathVerdict.Outside) {
-            log(
-                "抱朴守卫：拒绝越界访问 ${target.absolutePath}" +
-                    "（工作区根：${workspace.absolutePath}）"
-            )
-        }
-        return verdict
-    }
-
 }
