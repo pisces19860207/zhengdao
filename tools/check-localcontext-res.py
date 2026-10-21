@@ -22,6 +22,11 @@ import re
 import sys
 from pathlib import Path
 
+try:  # Windows 控制台默认 GBK：成功路径的 ✓ 不能把门禁自己打死（E-170 同款）
+    sys.stdout.reconfigure(errors="replace")
+except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
+    pass
+
 SRC = "app/src/main/java"
 LINT_XML = "app/src/main/lint.xml"
 RULES = ("LocalContextGetResourceValueCall", "LocalContextResourcesRead")
