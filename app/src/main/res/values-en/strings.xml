@@ -1424,6 +1424,8 @@
     <string name="baopu_group_line_card">Inspect character cards, export Tavern PNG</string>
     <string name="baopu_group_line_skill">Turn what was learned into SKILL.md, append a clause to your own terms</string>
     <string name="baopu_group_line_preview">Only display web pages/source in the workspace via Xuanlan; no execution, no network</string>
+    <string name="baopu_group_line_mcp">Servers you connect manually; tools come from the server and ask you the first time</string>
+    <string name="baopu_tools_group_mcp">External tools (MCP)</string>
     <!-- Effect card (100) -->
     <string name="decision_effect_once_note">This is a one-time reminder; Keep = close it, Later = keep it under observation in History</string>
     <string name="decision_effect_to_settings">Handle in settings</string>

@@ -101,7 +101,9 @@ class BaopuSettingsSliceGateTest {
         listOf(
             "members.isEmpty() -> BaopuFoldSummary(BaopuFoldKind.EmptyGroup," to 1,
             "groupDisabled -> BaopuFoldSummary(BaopuFoldKind.AllOff" to 1,
-            "all.filter { it != ToolGroup.COMPAT }" to 1,
+            // 第一百二十三批：取组序的判据从「只摘 COMPAT」扩成「再摘动态组（MCP）」，
+            // 仍只有这一处 filter —— 断言跟着唯一实现走，不允许出现第二份。
+            "all.filter { it != ToolGroup.COMPAT && !it.dynamic }" to 1,
             // 第一百零四批：COMPAT 的 fail-fast 从「标题映射里写一份」收成一处共享
             // （组用途映射也要抛同一个理由）⇒ 判据仍只有一份：声明一次、两张映射各调一次
             "private fun compatNoSwitch(): Nothing" to 1,

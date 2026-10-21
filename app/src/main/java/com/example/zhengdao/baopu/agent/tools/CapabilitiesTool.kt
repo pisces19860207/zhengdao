@@ -48,9 +48,13 @@ internal object CapabilitiesTool {
     @Volatile
     var sink: CapabilitiesSink? = null
 
-    /** 可以点名的组：COMPAT（免费通道占位）不在其列——它由通道决定，解锁它没有意义。 */
+    /**
+     * 可以点名的组：COMPAT（免费通道占位）不在其列——它由通道决定，解锁它没有意义；
+     * 动态组（MCP）也不在——它的成员要靠「连接 server」写入，v1 没有管理入口，
+     * 解锁一个空组只会让模型白申请（见 [ToolGroup.STATIC]）。
+     */
     fun unlockableKeys(): List<String> =
-        ToolGroup.values().filter { it != ToolGroup.COMPAT }.map { it.key }
+        ToolGroup.STATIC.filter { it != ToolGroup.COMPAT }.map { it.key }
 
     /** 写进系统提示的工具描述（≤ [ToolSpec.MAX_DESC] 字符；工具描述是注入面）。 */
     const val DESCRIPTION: String =

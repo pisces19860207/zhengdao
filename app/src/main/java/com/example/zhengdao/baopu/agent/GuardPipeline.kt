@@ -270,7 +270,10 @@ internal class GuardPipeline(
         }
 
         // ② 路径守卫（只对有 path 参数的工具；解析后写回绝对路径）
-        val guarded = guardPath(call, spec.name)
+        // 第一百二十三批：外部 MCP 工具的 `path` 是**服务端**的路径语义，不是本地工作区
+        // 路径——按本地规则改写/越界判定会把参数改坏（远端看到一个绝对路径）。MCP 组整组
+        // 跳过②，但①③④⑤原样保留（Schema 校验、确认、超时、围栏一个都不少）。
+        val guarded = if (spec.group == ToolGroup.MCP) Guarded.Yes(call) else guardPath(call, spec.name)
         if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
         val effectiveCall = (guarded as Guarded.Yes).call
 
@@ -327,7 +330,14 @@ internal class GuardPipeline(
         spillWriter: (fileName: String, text: String) -> SpillResult?,
     ): Result = when (val p = prepare(call, skipConfirm = true)) {
         is Prepared.Settled -> p.result
-        is Prepared.Ready -> finish(p.spec, p.call, runner.run(p.spec, p.call.arguments), spillWriter)
+        is Prepared.Ready -> {
+            // 第一百二十三批：这里**是**用户批准后的唯一入口（ConfirmFlow 批准后走它）。
+            // 外部 MCP 工具靠这个钩子记授权。钩子坏了 ⇒ 按可重试失败收场，绝不在
+            // 「授权没记上」的情况下继续执行外部工具。
+            val hookError = runCatching { p.spec.onUserApproved?.invoke() }.exceptionOrNull()
+                ?: return finish(p.spec, p.call, runner.run(p.spec, p.call.arguments), spillWriter)
+            Result.Failed(p.call, "工具授权失败（${hookError.javaClass.simpleName}），这次不执行")
+        }
     }
 
     /**
