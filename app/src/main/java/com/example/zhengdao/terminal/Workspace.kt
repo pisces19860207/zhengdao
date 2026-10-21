@@ -3,6 +3,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.zhengdao.core.AppPrefs
 import java.io.File
 
@@ -110,14 +111,14 @@ object Workspace {
     private fun rememberCurrent(ctx: Context) {
         runCatching {
             val cur = hostDir(ctx).absolutePath
-            AppPrefs.prefs(ctx).edit().putString(KEY_PREV, cur).apply()
+            AppPrefs.prefs(ctx).edit { putString(KEY_PREV, cur) }
         }
     }
 
     /** 设置为默认工作区（Download/证道）。 */
     fun setDefault(ctx: Context) {
         rememberCurrent(ctx)
-        AppPrefs.prefs(ctx).edit().putString(KEY_MODE, "default").apply()
+        AppPrefs.prefs(ctx).edit { putString(KEY_MODE, "default") }
     }
 
     /** 设置为自定义工作区（任意共享存储路径；非法路径拒绝）。 */
@@ -134,7 +135,7 @@ object Workspace {
     /** 设置为仅私有。 */
     fun setPrivate(ctx: Context) {
         rememberCurrent(ctx)
-        AppPrefs.prefs(ctx).edit().putString(KEY_MODE, "private").apply()
+        AppPrefs.prefs(ctx).edit { putString(KEY_MODE, "private") }
     }
 
     /** 一次性迁移：旧 workspace_custom 的有效路径转存新键，无效值清除。 */
@@ -144,10 +145,10 @@ object Workspace {
         val legacy = prefs.getString("workspace_custom", null)
         if (!legacy.isNullOrBlank()) {
             if (legacy.startsWith(SHARED_ROOT)) {
-                prefs.edit().putString(KEY_PATH, legacy.trimEnd('/')).apply()
+                prefs.edit { putString(KEY_PATH, legacy.trimEnd('/')) }
             }
-            prefs.edit().remove("workspace_custom").apply()
+            prefs.edit { remove("workspace_custom") }
         }
-        prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+        prefs.edit { putBoolean(KEY_MIGRATED, true) }
     }
 }

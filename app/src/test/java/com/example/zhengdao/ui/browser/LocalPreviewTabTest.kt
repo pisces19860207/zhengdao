@@ -14,6 +14,7 @@
 // 脚本是否真的不跑）归蓝总管采，报告里如实写着。
 package com.example.zhengdao.ui.browser
 
+import androidx.core.net.toUri
 import com.example.zhengdao.CodeText
 import com.example.zhengdao.browser.EngineSecurityConfig
 import com.example.zhengdao.browser.LocalPreviewPolicy
@@ -93,7 +94,7 @@ class LocalPreviewTabTest {
     @Test
     fun `B1_上网档的资源判据与改前的scheme白名单逐字等价`() {
         // 改前写的是 `private val allowedSchemes = setOf("http","https")` +
-        // `isAllowedUrl = Uri.parse(url).scheme?.lowercase() in allowedSchemes`。
+        // `isAllowedUrl = url.toUri().scheme?.lowercase() in allowedSchemes`。
         // 这里用**独立的**老写法（正则取 scheme，与 §5.1 那句"一个字节都不改"对照）逐条比。
         val oldWhitelist = setOf("http", "https")
         fun oldScheme(u: String): String? = Regex("^([A-Za-z][A-Za-z0-9+.-]*):").find(u)?.groupValues?.get(1)?.lowercase()

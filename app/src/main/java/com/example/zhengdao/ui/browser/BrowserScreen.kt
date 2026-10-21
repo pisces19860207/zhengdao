@@ -42,9 +42,11 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import com.example.zhengdao.R
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.rootfs.RunLog
@@ -89,6 +91,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun BrowserScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val res = LocalResources.current
     // ── P1-7（第五十五批 · §B 77 审计，2026-10-19）：WebView 不再在组合期构造 ──────────
     // 旧写法 `val engine = remember { BrowserHolder.obtain(context) }`：remember 的 lambda 在
     // **组合期**执行，obtain 里 `new WebView(app)`；而 WebView 构造是本仓唯一已知会**间歇卡死
@@ -146,7 +149,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     // loadUrl 落进没人承载的 WebView；提示又写进 active?.state，而 active 也是 null ⇒ 连
     // 「被拦」的提示都发不出来（真机实证 N5）。现在统一走 [tryNavigate]，由它保证有承载。
     val reportBlocked: () -> Unit = {
-        val msg = context.getString(R.string.browser_blocked_scheme)
+        val msg = res.getString(R.string.browser_blocked_scheme)
         val tab = BrowserTabManager.activeTab()
         if (tab != null) tab.state.onBlocked(msg) else uiMsg = msg
     }
@@ -243,7 +246,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             onClose = { BrowserTabManager.closeTab(it) },
             onAdd = {
                 if (BrowserTabManager.newTab(context) == null) {
-                    uiMsg = context.getString(R.string.browser_tabs_full)
+                    uiMsg = res.getString(R.string.browser_tabs_full)
                 }
             },
         )
@@ -378,7 +381,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 onHome = { engine?.loadUrl(HOME_URL) },
                 onNewTab = {
                     if (BrowserTabManager.newTab(context) == null) {
-                        uiMsg = context.getString(R.string.browser_tabs_full)
+                        uiMsg = res.getString(R.string.browser_tabs_full)
                     }
                 },
                 onCloseTab = { active?.let { BrowserTabManager.closeTab(it.id) } },
@@ -492,7 +495,7 @@ private fun tryNavigate(context: Context, input: String): Boolean {
     if (BrowserUrlPolicy.shouldReject(input)) return false
     val url = normalizeInput(input)
     if (url.isEmpty()) return true
-    val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
+    val scheme = runCatching { url.toUri().scheme?.lowercase() }.getOrNull()
     if (scheme !in setOf("http", "https")) return false
     // ㊽-D：0 标签空态（用户关掉最后一个标签）时先建一个，否则这次提交没有承载者。
     val engine = BrowserTabManager.activeEngine() ?: BrowserTabManager.obtain(context)

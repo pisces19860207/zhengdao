@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -837,6 +838,7 @@ private fun BaopuImageBlock(imageParts: List<BaopuUiPart>, msgId: Long) {
 @Composable
 private fun BaopuImageCell(cell: ImageCell, side: Dp, key: String, onOpen: () -> Unit) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     val relPath = cell.relPath
     // 工作区根 + 相对路径 = 真实文件。换工作区后老图找不到 ⇒ 走"缺失"分支，不崩。
     // 第三十一批口径（E-159）：抱朴的根从 `BaopuWorkspace` 取，不再蹭终端那套。
@@ -858,7 +860,7 @@ private fun BaopuImageCell(cell: ImageCell, side: Dp, key: String, onOpen: () ->
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.errorContainer)
                     // 读屏把这格念成带路径的完整一句话（可见文字太短，不足以定位是哪张）
-                    .semantics { contentDescription = ctx.getString(R.string.baopu_image_missing, relPath) },
+                    .semantics { contentDescription = res.getString(R.string.baopu_image_missing, relPath) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -898,7 +900,7 @@ private fun BaopuImageCell(cell: ImageCell, side: Dp, key: String, onOpen: () ->
                     cm?.setPrimaryClip(ClipData.newPlainText("baopu-image-path", relPath))
                     Toast.makeText(
                         ctx,
-                        ctx.getString(R.string.baopu_image_path_copied),
+                        res.getString(R.string.baopu_image_path_copied),
                         Toast.LENGTH_SHORT,
                     ).show()
                 },

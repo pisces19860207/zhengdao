@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.util.Log
 import android.view.View
+import androidx.core.content.edit
 import com.termux.terminal.TextStyle
 import com.termux.terminal.TerminalColors
 import com.termux.view.TerminalView
@@ -183,7 +184,7 @@ object TerminalPrefs {
         )
 
     fun saveSize(ctx: Context, dp: Int) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_SIZE_DP, dp).apply()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putInt(KEY_SIZE_DP, dp) }
     }
 
     /**
@@ -196,7 +197,7 @@ object TerminalPrefs {
      * 删除需一并处理 `KEY_SCHEME`：删掉后 [scheme] 恒回 [DEFAULT_SCHEME]（当前就是如此）。
      */
     fun saveScheme(ctx: Context, scheme: Scheme) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_SCHEME, scheme.id).apply()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY_SCHEME, scheme.id) }
     }
 
     fun insetDp(ctx: Context): Int =
@@ -211,7 +212,7 @@ object TerminalPrefs {
      * 删除需一并处理 `KEY_INSET_DP`：删掉后 [insetDp] 恒回 `DEFAULT_INSET_DP`（当前就是如此）。
      */
     fun saveInset(ctx: Context, dp: Int) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_INSET_DP, dp).apply()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putInt(KEY_INSET_DP, dp) }
     }
 
     fun spacing(ctx: Context): Spacing =
@@ -221,7 +222,7 @@ object TerminalPrefs {
         )
 
     fun saveSpacing(ctx: Context, spacing: Spacing) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_SPACING, spacing.id).apply()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY_SPACING, spacing.id) }
     }
 
     /** 三点说明是否已看过（只看一次，之后靠长按圆点复查）。 */
@@ -230,7 +231,7 @@ object TerminalPrefs {
 
     fun markDotsHintShown(ctx: Context) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_DOTS_HINT_SHOWN, true).apply()
+            .edit { putBoolean(KEY_DOTS_HINT_SHOWN, true) }
     }
 
     /**

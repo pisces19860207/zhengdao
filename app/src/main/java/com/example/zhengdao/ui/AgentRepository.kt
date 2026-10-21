@@ -2,6 +2,7 @@
 package com.example.zhengdao.ui
 
 import android.content.Context
+import androidx.core.content.edit
 import java.io.File
 
 /**
@@ -83,12 +84,12 @@ object AgentRepository {
 
     /** 点 [安装] 时登记（TerminalActivity 在 autocmd 派发时调用）。 */
     fun markInstalling(ctx: Context, agentId: String) {
-        prefs(ctx).edit().putLong("installing_$agentId", System.currentTimeMillis()).apply()
+        prefs(ctx).edit { putLong("installing_$agentId", System.currentTimeMillis()) }
         runCatching { rcFile(ctx, agentId).delete() } // 新一轮开始，先清掉上一轮的结局文件
     }
 
     fun clearInstalling(ctx: Context, agentId: String) {
-        prefs(ctx).edit().remove("installing_$agentId").apply()
+        prefs(ctx).edit { remove("installing_$agentId") }
     }
 
     /**

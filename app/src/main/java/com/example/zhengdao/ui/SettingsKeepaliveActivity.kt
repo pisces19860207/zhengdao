@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
@@ -90,6 +91,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import com.example.zhengdao.BackChevron
 import com.example.zhengdao.keepalive.KeepaliveArchive
@@ -116,6 +118,7 @@ class SettingsKeepaliveActivity : ComponentActivity() {
 @Composable
 private fun SettingsKeepalivePage(onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     var storageTick by remember { mutableIntStateOf(0) }
 
     // 「保活记录」卡里那一行用 storageTick 当键：在新页面点完「清空记录」返回时，它要自己刷空。
@@ -146,13 +149,13 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
                 try {
                     ctx.startActivity(
                         Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                            .apply { data = android.net.Uri.parse("package:${ctx.packageName}") }
+                            .apply { data = "package:${ctx.packageName}".toUri() }
                     )
                 } catch (_: Throwable) {
                     try {
                         ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                     } catch (_: Throwable) {
-                        Toast.makeText(ctx, ctx.getString(R.string.keepalive_battery_toast), Toast.LENGTH_LONG).show()
+                        Toast.makeText(ctx, res.getString(R.string.keepalive_battery_toast), Toast.LENGTH_LONG).show()
                     }
                 }
             }) { Text(stringResource(R.string.keepalive_battery_btn)) }
@@ -161,10 +164,10 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
                 runCatching {
                     ctx.startActivity(
                         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                            .apply { data = android.net.Uri.parse("package:${ctx.packageName}") }
+                            .apply { data = "package:${ctx.packageName}".toUri() }
                     )
                 }.onFailure {
-                    Toast.makeText(ctx, ctx.getString(R.string.keepalive_details_toast), Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx, res.getString(R.string.keepalive_details_toast), Toast.LENGTH_LONG).show()
                 }
             }) { Text(stringResource(R.string.keepalive_details_btn)) }
 

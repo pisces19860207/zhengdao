@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import androidx.core.net.toUri
 import com.example.zhengdao.R
 import com.example.zhengdao.terminal.ProotBinaries
 import com.example.zhengdao.ui.AppState.rootfsInstalled
@@ -163,7 +164,7 @@ object SystemInfoProvider {
         gms = safe(res) {
             val r = ctx.packageManager.resolveActivity(
                 android.content.Intent("android.intent.action.VIEW").apply {
-                    data = android.net.Uri.parse("https://play.google.com")
+                    data = "https://play.google.com".toUri()
                 }, 0
             )
             val has = try {

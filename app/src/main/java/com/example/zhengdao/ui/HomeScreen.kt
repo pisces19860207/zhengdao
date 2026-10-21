@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import androidx.core.net.toUri
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 // 第七十三批 · 结构切片：Agent 卡片的「该显示哪一个」判据搬到了 ui/home/（纯逻辑，可 JVM 直测）。
@@ -171,12 +172,12 @@ fun HomeScreen(
             val i = android.content.Intent(
                 android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
             )
-            i.data = android.net.Uri.parse("package:" + context.packageName)
+            i.data = ("package:" + context.packageName).toUri()
             i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(i)
         }.onFailure {
             // 个别 ROM 没有这个页面（或被策略拦下）——不能静默失败，给一句人话 + 手动路径
-            snack(context.getString(R.string.home_grant_page_failed))
+            snack(resources.getString(R.string.home_grant_page_failed))
         }
     }
     // 台账 §B 顺序 11（原 §B-补-42）：两条「去看记录 / 看日志」的通知按钮各自的落点。
@@ -208,12 +209,12 @@ fun HomeScreen(
         runCatching {
             val i = android.content.Intent(
                 android.content.Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/issues/new"),
+                "https://github.com/pisces19860207/zhengdao/issues/new".toUri(),
             )
             i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(i)
         }.onFailure {
-            snack(context.getString(R.string.home_no_browser))
+            snack(resources.getString(R.string.home_no_browser))
         }
     }
     // 2026-10-16 旧抱朴线清场：这里原先是「重启 serve」的后台线程（`zd-taiji-retry`），
@@ -221,7 +222,7 @@ fun HomeScreen(
     // 动作改为**如实收尾**：撤下卡片并说明一句。不再起线程，也不再碰任何 oc 类型。
     val retireServeIssue: (issueId: String) -> Unit = { issueId ->
         IssueCenter.resolve(issueId)
-        snack(context.getString(R.string.home_baopu_retired))
+        snack(resources.getString(R.string.home_baopu_retired))
     }
 
     // R-27（第⑪批 B-1）：AppState.agents 是查盘（rootfsInstalled/factoryAgents 走
@@ -256,7 +257,7 @@ fun HomeScreen(
     LaunchedEffect(statusExpanded, healthEpoch) {
         if (statusExpanded) {
             runCatching {
-                EnvHealth.inspectStream(context, context.resources).collect { c ->
+                EnvHealth.inspectStream(context, resources).collect { c ->
                     val cur = healthChecks
                     healthChecks = if (cur.isNullOrEmpty()) listOf(c)
                     else cur.filter { it.id != c.id } + c
@@ -274,7 +275,7 @@ fun HomeScreen(
     var sysTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(sysTick) {
         sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            SystemInfoProvider.collect(context, context.resources)
+            SystemInfoProvider.collect(context, resources)
         }
         sysInfoProcessCache = sysInfo
     }
@@ -558,11 +559,11 @@ fun HomeScreen(
                             append("Android ").append(android.os.Build.VERSION.RELEASE)
                             append(" · ").append(
                                 android.os.Build.SUPPORTED_ABIS.firstOrNull()
-                                    ?: context.getString(R.string.home_abi_unknown)
+                                    ?: resources.getString(R.string.home_abi_unknown)
                             )
                             append(" · ").append(
-                                if (envReady) context.getString(R.string.home_debian_installed)
-                                else context.getString(R.string.home_debian_missing)
+                                if (envReady) resources.getString(R.string.home_debian_installed)
+                                else resources.getString(R.string.home_debian_missing)
                             )
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -619,8 +620,8 @@ fun HomeScreen(
                                 if (failedChecks.isNotEmpty()) {
                                     // 缺失合并行：红叉 ✗ + 「缺 N 项」（口径在 visibleRows，J5/J6 的靶子）
                                     var issuesExpanded by remember { mutableStateOf(false) }
-                                    val missingFmt = context.getString(R.string.home_health_missing)
-                                    val agentMissingFmt = context.getString(R.string.home_agent_missing)
+                                    val missingFmt = resources.getString(R.string.home_health_missing)
+                                    val agentMissingFmt = resources.getString(R.string.home_agent_missing)
                                     val headline = visibleRows(
                                         checks, agents,
                                         summarize = { n -> String.format(missingFmt, n) },
@@ -743,25 +744,25 @@ fun HomeScreen(
                                                                 val again = kotlinx.coroutines.withContext(
                                                                     kotlinx.coroutines.Dispatchers.IO,
                                                                 ) {
-                                                                    EnvHealth.inspect(context, context.resources)
+                                                                    EnvHealth.inspect(context, resources)
                                                                         .firstOrNull { it.id == c.id }
                                                                 }
                                                                 healthEpoch++
                                                                 if (again != null && !again.ok) {
                                                                     IssueCenter.report(
                                                                         id = "health-fix-${c.id}",
-                                                                        title = context.getString(
+                                                                        title = resources.getString(
                                                                             R.string.home_fix_ineffective, c.label,
                                                                         ),
                                                                         detail = (res.error?.let {
-                                                                            context.getString(
+                                                                            resources.getString(
                                                                                 R.string.home_fix_error_prefix, it,
                                                                             )
                                                                         } ?: "") +
-                                                                            context.getString(
+                                                                            resources.getString(
                                                                                 R.string.home_fix_still, again.detail,
                                                                             ),
-                                                                        actionLabel = context.getString(R.string.common_feedback),
+                                                                        actionLabel = resources.getString(R.string.common_feedback),
                                                                         actionId = IssueCenter.ACTION_FEEDBACK,
                                                                     )
                                                                 } else {
@@ -772,17 +773,17 @@ fun HomeScreen(
                                                             } catch (t: Throwable) {
                                                                 IssueCenter.report(
                                                                     id = "health-fix-${c.id}",
-                                                                    title = context.getString(
+                                                                    title = resources.getString(
                                                                         R.string.home_fix_crashed, c.label,
                                                                     ),
-                                                                    detail = context.getString(
+                                                                    detail = resources.getString(
                                                                         R.string.home_fix_thread_threw,
                                                                         t.javaClass.simpleName,
                                                                         t.message?.let { m ->
-                                                                            context.getString(R.string.home_fix_thread_msg, m)
+                                                                            resources.getString(R.string.home_fix_thread_msg, m)
                                                                         } ?: "",
                                                                     ),
-                                                                    actionLabel = context.getString(R.string.common_feedback),
+                                                                    actionLabel = resources.getString(R.string.common_feedback),
                                                                     actionId = IssueCenter.ACTION_FEEDBACK,
                                                                 )
                                                                 healthEpoch++
@@ -803,13 +804,13 @@ fun HomeScreen(
                                                     } else {
                                                         // 静默失败改正：以前只有一句 Toast，现在同时
                                                         // 留一条「最近问题」（去路 = 去设置页重试）
-                                                        val msg = context.getString(R.string.home_repair_script_failed)
+                                                        val msg = resources.getString(R.string.home_repair_script_failed)
                                                         snack(msg)
                                                         IssueCenter.report(
                                                             id = "hermes-repair-script",
-                                                            title = context.getString(R.string.home_hermes_script_issue),
-                                                            detail = context.getString(R.string.home_hermes_script_issue_detail),
-                                                            actionLabel = context.getString(R.string.home_go_settings),
+                                                            title = resources.getString(R.string.home_hermes_script_issue),
+                                                            detail = resources.getString(R.string.home_hermes_script_issue_detail),
+                                                            actionLabel = resources.getString(R.string.home_go_settings),
                                                             actionId = IssueCenter.ACTION_OPEN_SETTINGS,
                                                         )
                                                     }
@@ -866,7 +867,7 @@ fun HomeScreen(
                                         .padding(10.dp),
                                 ) {
                                     Text(
-                                        text = info.asText(context.resources),
+                                        text = info.asText(resources),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -876,9 +877,9 @@ fun HomeScreen(
                                     val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                         as android.content.ClipboardManager
                                     cm.setPrimaryClip(
-                                        android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText(context.resources))
+                                        android.content.ClipData.newPlainText("zhengdao-sysinfo", info.asText(resources))
                                     )
-                                    snack(context.getString(R.string.home_sysinfo_copied))
+                                    snack(resources.getString(R.string.home_sysinfo_copied))
                                 }) { Text(stringResource(R.string.home_copy_sysinfo)) }
                             } ?: Text(
                                 stringResource(R.string.common_loading),
@@ -1264,7 +1265,7 @@ fun HomeScreen(
         val cmd = target.uninstallCmd ?: return@let
         val wipe = wipeTargets[target.id]?.takeIf { it.isNotEmpty() }
         var sizesText by remember(target.id) {
-            mutableStateOf(context.getString(R.string.home_size_measuring))
+            mutableStateOf(resources.getString(R.string.home_size_measuring))
         }
         // 第六十八批：「彻底清除」二段式。第一次点击只进入确认态；第二下才允许跳终端。
         var purgeArmed by remember(target.id) { mutableStateOf(false) }
@@ -1275,9 +1276,9 @@ fun HomeScreen(
                     // "安装包缓存" 是 CacheCleaner.measure() 的目录名（数据侧 key），按原样匹配
                     com.example.zhengdao.terminal.CacheCleaner.measure(context)["安装包缓存"] ?: 0L
                 }.getOrDefault(0L)
-                val progText = if (prog >= 0) context.getString(R.string.home_about_mb, prog)
-                else context.getString(R.string.home_actual_usage)
-                context.getString(R.string.home_uninstall_detail, progText, cache)
+                val progText = if (prog >= 0) resources.getString(R.string.home_about_mb, prog)
+                else resources.getString(R.string.home_actual_usage)
+                resources.getString(R.string.home_uninstall_detail, progText, cache)
             }
         }
         val uninstallEcho = stringResource(R.string.home_uninstall_echo, target.name)
@@ -1300,14 +1301,14 @@ fun HomeScreen(
                         buildString {
                             if (purgeArmed) {
                                 append(
-                                    context.getString(
+                                    resources.getString(
                                         R.string.home_uninstall_purge_confirm,
                                         wipe.orEmpty().joinToString("、"),
                                     )
                                 )
                             } else {
-                                append(context.getString(R.string.home_uninstall_delete)).append(sizesText).append("\n\n")
-                                append(context.getString(R.string.home_uninstall_keep))
+                                append(resources.getString(R.string.home_uninstall_delete)).append(sizesText).append("\n\n")
+                                append(resources.getString(R.string.home_uninstall_keep))
                                 wipe?.let {
                                     append(resources.getString(R.string.home_uninstall_purge, it.joinToString("、")))
                                 }

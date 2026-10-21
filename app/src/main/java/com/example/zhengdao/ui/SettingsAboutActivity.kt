@@ -90,6 +90,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import com.example.zhengdao.BackChevron
 import com.example.zhengdao.keepalive.KeepaliveArchive
@@ -171,7 +172,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 value = "",
                 onClick = {
                     ctx.startActivity(
-                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/pisces19860207/zhengdao"))
+                        Intent(Intent.ACTION_VIEW, "https://github.com/pisces19860207/zhengdao".toUri())
                     )
                 },
             )
@@ -181,7 +182,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 value = "",
                 onClick = {
                     ctx.startActivity(
-                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/issues"))
+                        Intent(Intent.ACTION_VIEW, "https://github.com/pisces19860207/zhengdao/issues".toUri())
                     )
                 },
             )
@@ -195,7 +196,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                     ctx.startActivity(
                         Intent(
                             Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/blob/main/LICENSE"),
+                            "https://github.com/pisces19860207/zhengdao/blob/main/LICENSE".toUri(),
                         )
                     )
                 },
@@ -216,7 +217,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 value = "",
                 onClick = {
                     ctx.startActivity(
-                        Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:putaopanpan@gmail.com"))
+                        Intent(Intent.ACTION_SENDTO, "mailto:putaopanpan@gmail.com".toUri())
                     )
                 },
             )

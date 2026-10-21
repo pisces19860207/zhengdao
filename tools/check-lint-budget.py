@@ -76,11 +76,48 @@ def count_issues(report: Path) -> dict:
     }
 
 
+def check_not_raised(baseline: Path, base_rev: str) -> bool:
+    """第 133 批加：基线只许下调。
+
+    原来的闸只比「当前告警 vs 基线」，有人把基线抬到 600 它反而显示「未超基线」
+    —— 抬基线本身就是绕过闸（负例③要的正是这一条）。这里直接比对 base_rev 里的基线。
+    """
+    import subprocess
+
+    try:
+        rel = baseline.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        rel = baseline.as_posix()
+    r = subprocess.run(["git", "show", f"{base_rev}:{rel}"], capture_output=True)
+    if r.returncode != 0:
+        print(f"[lint-budget] ~ 取不到 {base_rev}:{rel}，跳过「基线不许抬」检查")
+        return True
+    try:
+        old = json.loads(r.stdout.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        print("[lint-budget] ~ 基线在基线版本里不是合法 JSON，跳过检查")
+        return True
+    now = json.loads(baseline.read_text(encoding="utf-8"))
+    ok = True
+    for key in ("total", "errors"):
+        o, n = int(old.get(key, 0)), int(now.get(key, 0))
+        if n > o:
+            print(
+                f"[lint-budget] ✗ 基线被抬高：{key} {o} → {n}（基线只许下调；要抬请在台账写清理由并走评审）",
+                file=sys.stderr,
+            )
+            ok = False
+    if ok:
+        print(f"[lint-budget] ✓ 基线未抬高（total {old.get('total')} → {now.get('total')}）")
+    return ok
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Android Lint 预算闸")
     ap.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     ap.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     ap.add_argument("--write-baseline", action="store_true", help="把当前数字写成基线")
+    ap.add_argument("--base-rev", default="origin/main", help="比「基线不许抬」用的参照版本（默认 origin/main）")
     args = ap.parse_args()
 
     now = count_issues(args.report)
@@ -100,6 +137,9 @@ def main() -> int:
         )
         print(f"[lint-budget] 基线已写入：{args.baseline}")
         return 0
+
+    if not check_not_raised(args.baseline, args.base_rev):
+        return 1
 
     if not args.baseline.exists():
         print(

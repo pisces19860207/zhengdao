@@ -3,6 +3,7 @@
 package com.example.zhengdao.ui
 
 import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import com.example.zhengdao.R
 import android.Manifest
 import android.content.Context
@@ -39,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -245,6 +247,7 @@ object PermissionSetup {
 @Composable
 fun PermissionSetupScreen(onDone: () -> Unit) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
 
     // §B 顺序 15（2026-10-14）：硬件返回键**也写已引导标记**。
     // 原口径是「返回不写标记 ⇒ 下次冷启动再出现一次」（历史留痕见本页 KDoc），但它与验收
@@ -277,9 +280,9 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
     ) {
         refresh()
         hint = if (PermissionSetup.storageGranted(ctx)) {
-            ctx.getString(R.string.data_perm_granted)
+            res.getString(R.string.data_perm_granted)
         } else {
-            ctx.getString(R.string.perm_hint_storage_denied)
+            res.getString(R.string.perm_hint_storage_denied)
         }
     }
 
@@ -291,7 +294,7 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
         hint = if (PermissionSetup.notificationsGranted(ctx)) {
             null
         } else {
-            ctx.getString(R.string.perm_hint_notify_denied)
+            res.getString(R.string.perm_hint_notify_denied)
         }
     }
 
@@ -311,10 +314,10 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
         runCatching {
             ctx.startActivity(
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    .setData(Uri.parse("package:${ctx.packageName}"))
+                    .setData("package:${ctx.packageName}".toUri())
             )
         }.onFailure {
-            Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it, ctx.resources)), Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, res.getString(R.string.perm_open_failed, HumanizeError.title(it, res)), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -324,14 +327,14 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
         val ok = runCatching {
             ctx.startActivity(
                 Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    .setData(Uri.parse("package:${ctx.packageName}"))
+                    .setData("package:${ctx.packageName}".toUri())
             )
         }.isSuccess
         if (!ok) {
             runCatching {
                 ctx.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             }.onFailure {
-                Toast.makeText(ctx, ctx.getString(R.string.perm_open_failed, HumanizeError.title(it, ctx.resources)), Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, res.getString(R.string.perm_open_failed, HumanizeError.title(it, res)), Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -3,6 +3,7 @@ package com.example.zhengdao.ui.theme
 
 import android.content.Context
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.core.content.edit
 
 /**
  * 外观偏好：跟随系统 / 浅色 / 深色（2026-10-12 接入深色主题）。
@@ -49,7 +50,7 @@ object AppearancePrefs {
     /** 写偏好：落盘 + 递增变更信号（触发主题重算，界面立即切换）。 */
     fun set(ctx: Context, value: String) {
         val v = normalize(value)
-        runCatching { prefs(ctx).edit().putString(KEY, v).apply() }
+        runCatching { prefs(ctx).edit { putString(KEY, v) } }
         changeTick.intValue++
     }
 

@@ -124,7 +124,7 @@ class SettingsDataActivity : ComponentActivity() {
 
 @Composable
 private fun SettingsDataPage(onBack: () -> Unit) {
-    val ctx = LocalContext.current
+    val ctx = LocalContext.current; val res = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     var kbStatus by remember { mutableStateOf<com.example.zhengdao.terminal.KnowledgeBase.Status?>(null) }
@@ -142,8 +142,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
     var permHint by remember { mutableStateOf<String?>(null) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         storageOk = storageGrantedNow()
-        permHint = if (storageOk) ctx.getString(R.string.data_perm_granted)
-        else ctx.getString(R.string.data_perm_denied)
+        permHint = if (storageOk) res.getString(R.string.data_perm_granted)
+        else res.getString(R.string.data_perm_denied)
     }
 
     var netChecking by remember { mutableStateOf(false) }
@@ -165,7 +165,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文已落日志
                 Toast.makeText(
                     ctx,
-                    ctx.getString(R.string.data_open_failed, HumanizeError.title(e2, ctx.resources)),
+                    res.getString(R.string.data_open_failed, HumanizeError.title(e2, res)),
                     Toast.LENGTH_SHORT,
                 ).show()
             }
@@ -268,7 +268,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             val capNote = { n: Int ->
                 // 扫描上限判定搬去 DataRules.capReached（第七十七批）：到了必须提示（E-089）。
                 if (DataRules.capReached(n))
-                    ctx.getString(R.string.data_kb_cap_note)
+                    res.getString(R.string.data_kb_cap_note)
                 else ""
             }
             val stateText = when (st?.state) {
@@ -366,8 +366,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                         n to 0L
                                     },
                                     toast = { n, _ ->
-                                        if (n > 0) ctx.getString(R.string.data_kb_copied, n)
-                                        else ctx.getString(R.string.data_kb_copy_none)
+                                        if (n > 0) res.getString(R.string.data_kb_copied, n)
+                                        else res.getString(R.string.data_kb_copy_none)
                                     },
                                 )
                             }) { Text(stringResource(R.string.data_copy_action)) }
@@ -388,12 +388,12 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                             as android.content.ClipboardManager
                         cm.setPrimaryClip(
                             android.content.ClipData.newPlainText(
-                                ctx.getString(R.string.data_kb_path_label),
+                                res.getString(R.string.data_kb_path_label),
                                 p,
                             )
                         )
                     }
-                    toastOnMain(ctx.getString(R.string.data_path_copied, p))
+                    toastOnMain(res.getString(R.string.data_path_copied, p))
                 }) { Text(stringResource(R.string.data_copy_path)) }
                 TextButton(onClick = { kbHelpOpen = true }) { Text(stringResource(R.string.data_view_help)) }
                 TextButton(onClick = {
@@ -406,7 +406,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     //    ⇒ 摘除该调用。「重新整理」从此只做纯本地的「重建清单」这一件事。
                     //    Runner 源码保留不删（将来若做"本地摘要"可在此重新接线）；
                     //    摘要改由终端里带工具的 agent 自行生成（见 docs/知识库-收工条件.md）。
-                    toastOnMain(ctx.getString(R.string.data_organizing))
+                    toastOnMain(res.getString(R.string.data_organizing))
                     storageTick++
                 }) { Text(stringResource(R.string.data_rebuild)) }
             }
@@ -523,7 +523,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     // 2026-10-08：异常原文 → 人话（[HumanizeError]）
                     Toast.makeText(
                         ctx,
-                        ctx.getString(R.string.data_open_failed, HumanizeError.title(it, ctx.resources)),
+                        res.getString(R.string.data_open_failed, HumanizeError.title(it, res)),
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -589,14 +589,14 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 onClick = {
                     if (!netChecking) {
                     netChecking = true
-                    netMsg = ctx.getString(R.string.data_net_checking)
+                    netMsg = res.getString(R.string.data_net_checking)
                     // 两个探针：国内基线 + 更新源（GitHub 家族，含 gh-proxy 镜像回退）。
                     // 只探前者会在「国内通、GitHub 家族全灭」的设备上给出骗人的绿灯——
                     // 用户拿着"✅ 网络可用"却下不动环境包。见 NetSelfCheck 的类注释与 ERRATA E-034。
                     Thread {
                         val cn = NetSelfCheck.probeCn()
-                        val update = NetSelfCheck.probeIndex(res = ctx.resources)
-                        netMsg = NetSelfCheck.summary(cn, update, ctx.resources)
+                        val update = NetSelfCheck.probeIndex(res = res)
+                        netMsg = NetSelfCheck.summary(cn, update, res)
                         netChecking = false
                     }.apply { isDaemon = true; name = "zd-net-check" }.start()
                     }
@@ -660,12 +660,12 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 }
                 TextButton(onClick = {
                     // 2026-10-11：先过 changeWorkspace 的闸（当前资料库有东西时会先问一句）
-                    changeWorkspace(ctx.getString(R.string.data_ws_restored)) {
+                    changeWorkspace(res.getString(R.string.data_ws_restored)) {
                         com.example.zhengdao.terminal.Workspace.setDefault(ctx)
                     }
                 }) { Text(stringResource(R.string.data_ws_restore)) }
                 TextButton(onClick = {
-                    changeWorkspace(ctx.getString(R.string.data_ws_private_done)) {
+                    changeWorkspace(res.getString(R.string.data_ws_private_done)) {
                         com.example.zhengdao.terminal.Workspace.setPrivate(ctx)
                     }
                 }) { Text(stringResource(R.string.data_ws_private)) }
@@ -684,12 +684,12 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     if (!DataRules.isSharedStoragePath(path)) {
                         Toast.makeText(
                             ctx,
-                            ctx.getString(R.string.data_ws_invalid),
+                            res.getString(R.string.data_ws_invalid),
                             Toast.LENGTH_SHORT,
                         ).show()
                     } else {
                         // 同样过 changeWorkspace 的闸：换工作区 = 换一份资料库
-                        changeWorkspace(ctx.getString(R.string.data_ws_set, path)) {
+                        changeWorkspace(res.getString(R.string.data_ws_set, path)) {
                             com.example.zhengdao.terminal.Workspace.setCustom(ctx, path)
                         }
                     }
@@ -733,8 +733,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                 c to 0L
                             },
                             toast = { c, _ ->
-                                if (c > 0) ctx.getString(R.string.data_ws_change_copied, c)
-                                else ctx.getString(R.string.data_ws_change_none)
+                                if (c > 0) res.getString(R.string.data_ws_change_copied, c)
+                                else res.getString(R.string.data_ws_change_none)
                             },
                         )
                     }) { Text(stringResource(R.string.data_ws_change_copy_btn)) }
