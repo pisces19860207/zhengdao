@@ -57,6 +57,10 @@ object TimeFormats {
     private val hourMinuteFmt: DateTimeFormatter =
         DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).withZone(zone)
 
+    /** `MM-dd` —— 「哪一天」（抱朴计划面板的组头：昨天的写「昨天 22:10」，更早的写 `10-18`）。 */
+    private val monthDayFmt: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("MM-dd", Locale.US).withZone(zone)
+
     private fun at(millis: Long): Instant = Instant.ofEpochMilli(millis)
 
     fun logStamp(millis: Long): String = logStampFmt.format(at(millis))
@@ -76,4 +80,7 @@ object TimeFormats {
         clockMillisFmt.format(at(millis))
 
     fun hourMinute(millis: Long): String = hourMinuteFmt.format(at(millis))
+
+    /** `MM-dd`（第一百零六批：抱朴计划面板组头用）。 */
+    fun monthDay(millis: Long): String = monthDayFmt.format(at(millis))
 }

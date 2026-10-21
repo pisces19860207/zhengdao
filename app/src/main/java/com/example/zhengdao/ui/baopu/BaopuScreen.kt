@@ -718,7 +718,20 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     // 数据源是引擎那份只读视图（写成功才进来），点片开只读查看器。
                     artifacts = controller.roundArtifacts,
                     onOpenArtifact = { rel -> controller.openArtifact(rel) },
+                    // 第一百零六批活动面板：引擎状态/步号/正在等确认的工具——
+                    // 全是现有读数，不新造事件源（v1.5 §3.12「活动类型映射」表）。
+                    engineState = state,
+                    engineStep = controller.engineStep.value,
+                    awaitConfirmTool = controller.confirmCard?.tool,
                     modifier = Modifier.fillMaxSize(),
+                )
+                // 计划区（第一百零六批，v1.5 §3.11）：消息区右上悬浮胶囊＋浮层面板。
+                // 计划已从消息正文撤出（BaopuMessageList 不再内联计划卡），本会话所有
+                // 计划按轮集中在这里；无计划 ⇒ 组件自己什么都不画（零占位）。
+                // 不遮输入框由物理位置保证（本 Box 只到输入框上方）；不做自动展开。
+                BaopuPlanArea(
+                    messages = controller.messages,
+                    running = controller.busy,
                 )
                 // 「⬇ 回到最新」浮标（主单 §2.4.1）：不在底部才出现，有新内容带
                 // 小圆点；点一下回底并清标记。文案复用旧键 taiji_back_to_latest
