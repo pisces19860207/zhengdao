@@ -79,6 +79,9 @@ internal object CapabilitiesTool {
                     ),
                 ),
             ),
+            // 第一百一十九批：required 必须有这一段（哪怕为空）。本工具确实全可选
+            // （不带 enable ＝ 只念名册），理由登记在 ToolSchemaRules.REQUIRED_EMPTY_OK。
+            "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         // 免确认：它只发起「申请」，授权动作由用户点卡决定（见文件头第 1 条）。

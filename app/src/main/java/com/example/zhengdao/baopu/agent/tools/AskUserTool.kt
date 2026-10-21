@@ -94,6 +94,7 @@ internal object AskUserTool {
                   "type": "array",
                   "minItems": 2,
                   "maxItems": 4,
+                  "description": "2–4 个选项（一个选项等于命令，五个往上用户不看了）；推荐的那个标 recommended 会排第一",
                   "items": {
                     "type": "object",
                     "properties": {
@@ -106,7 +107,8 @@ internal object AskUserTool {
                   }
                 }
               },
-              "required": ["question", "options"]
+              "required": ["question", "options"],
+              "additionalProperties": false
             }
             """.trimIndent(),
         ),

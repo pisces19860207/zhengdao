@@ -45,7 +45,8 @@ internal object AppendPersonaTool {
                 "text": {"type": "string", "description": "要追加的条款（一行一条，可带编号）"},
                 "reason": {"type": "string", "description": "为什么加（一句话，会显示在御批卡上）"}
               },
-              "required": ["text"]
+              "required": ["text"],
+              "additionalProperties": false
             }
             """.trimIndent(),
         ),
