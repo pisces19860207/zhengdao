@@ -206,6 +206,15 @@ import kotlin.text.Charsets
  *   `RunEngine.kt` 的 `MessagePersisted` 扩字段与 `QueueChanged` 登记（+16 行，全在创建点之前）
  *   ⇒ zd-baopu-run 228→244；`BaopuDb.kt` 的 v15 `run_queue` DDL/语句（+44 行，全在创建点之前）
  *   ⇒ zd-baopu-db 1213→1257。逐处核过仍是同一段 `Thread(r, "zd-…")`，有名 + daemon 都没变。
+ * - 2026-10-21（第一百二十七批 · 多 Agent 协作 v1）：**新增 1 条**——
+ *   `agent/multiagent/SubAgentCoordinator.kt` 的子 Agent 池 `zd-baopu-sub`（`:34`，
+ *   `Executors.newFixedThreadPool(maxParallel) { r -> Thread(r, "zd-baopu-sub").apply { isDaemon = true } }`
+ *   房型，有名 ＋ daemon；池大小＝并发上限 `SubAgentRules.MAX_PARALLEL_SUBAGENTS`）
+ *   ⇒ 对账单 30→31 处（红线 32 内）。`BaopuDb.kt` 的 v16 `sub_task` DDL/语句/列序
+ *   （+约 113 行，全在创建点之前）⇒ zd-baopu-db 1257→1370 平移，本次回填。
+ *   `RunEngine.kt` 的两个只读观测口（stopRequestedNow / currentProviderNow）刻意写在
+ *   zd-baopu-run 创建点（:244）**之下**，未平移；新增的 multiagent 七件逐行核过无裸
+ *   Thread（唯一的池在上面那处，已登记）。
  */
 class BareThreadGuardTest {
 
@@ -237,7 +246,8 @@ class BareThreadGuardTest {
         // 2026-10-16 实测 29 处（刀 0b 后 27；抱朴刀 1 新增 zd-baopu-run / zd-baopu-tool 两条 => 29）；
         // 2026-10-18 刀 4 新增 zd-preview-http（预览服务 acceptor）=> 30；
         // 2026-10-20 第六十八批消除 HomeScreen 的 zd-health-fix（改协程）=> 29；
-        // 2026-10-20 第九十二批新增读池 zd-baopu-tool-read => 30（对账单在下一段里逐条钉）。
+        // 2026-10-20 第九十二批新增读池 zd-baopu-tool-read => 30（对账单在下一段里逐条钉）；
+        // 2026-10-21 第一百二十七批新增子 Agent 池 zd-baopu-sub => 31。
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
@@ -250,7 +260,8 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:140",
-            "BaopuDb.kt:1257",
+            "BaopuDb.kt:1370",
+            "SubAgentCoordinator.kt:34",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",

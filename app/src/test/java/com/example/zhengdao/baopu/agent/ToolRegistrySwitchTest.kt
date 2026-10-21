@@ -66,6 +66,8 @@ class ToolRegistrySwitchTest {
                 "card_inspect", "card_export", "card_build",
                 // 第五十九批两条：capabilities（渐进披露入口）与 preview_local_file（玄览只显示）
                 "capabilities", "preview_local_file",
+                // 第一百二十七批：多 Agent 协作（AGENT 组，默认不可见但默认启用）
+                "run_subtasks",
             ),
             reg.names(),
         )

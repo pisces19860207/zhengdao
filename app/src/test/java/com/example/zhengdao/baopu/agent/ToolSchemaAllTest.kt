@@ -452,6 +452,11 @@ class ToolSchemaAllTest {
             "card_build" to JSONObject(),
             "capabilities" to JSONObject(),
             "preview_local_file" to JSONObject().put("path", "产物/首页.html"),
+            // 第一百二十七批：多 Agent 协作（只给最小合法形状：一条带 goal 的子任务）
+            "run_subtasks" to JSONObject().put(
+                "subtasks",
+                JSONArray().put(JSONObject().put("goal", "读 a.md 写摘要")),
+            ),
             "write_skill" to JSONObject().put("name", "试样").put("body", "# 试样\n"),
             "append_persona" to JSONObject().put("text", "先列计划再动手"),
             "read" to JSONObject().put("path", "a.md"),

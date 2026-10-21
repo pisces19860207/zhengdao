@@ -6,6 +6,7 @@
 // 引擎不再写死工具清单。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -66,6 +67,13 @@ enum class ToolGroup(val key: String, val oneLine: String) {
 
     /** 玄览本地预览（只显示、默认断网禁 JS），默认不可见。 */
     PREVIEW("preview", "本地预览：在玄览只显示工作区里的网页/源码，不执行、出不了网"),
+
+    /**
+     * 多 Agent 协作（第一百二十七批）：父 Agent 拆子任务、子 Agent 只读研究。
+     * 默认不可见——渐进披露：模型先调 `capabilities` 看见这一组再解锁。
+     * （默认可见工具数被 ProgressiveToolsTest 硬钉 12，本组不占默认面。）
+     */
+    AGENT("agent", "多 Agent 协作：把大任务拆成子任务并行或串行跑，收回汇总结果"),
 
     /**
      * 免费通道的兼容占位（read / bash）：由通道决定注册与否，用户管不着、设置页也不列它们。
@@ -150,6 +158,9 @@ internal object ToolGroupTable {
         "write_skill" to ToolGroup.SKILL,
         "append_persona" to ToolGroup.SKILL,
         "preview_local_file" to ToolGroup.PREVIEW,
+        // 第一百二十七批：多 Agent 协作（run_subtasks）。默认不可见——大任务才用得到，
+        // 小任务模型看不见它就不会瞎拆（渐进披露，见 ToolGroup.AGENT 注释）。
+        "run_subtasks" to ToolGroup.AGENT,
         "read" to ToolGroup.COMPAT,
         "bash" to ToolGroup.COMPAT,
     )
@@ -966,6 +977,9 @@ internal object BaopuToolCatalog {
         "capabilities",
         // 玄览本地预览（第五十九批 §5）：只显示、默认断网禁 JS，不执行任何东西
         "preview_local_file",
+        // 多 Agent 协作（第一百二十七批）：默认**开着**但默认不可见（AGENT 组）——
+        // capabilities 解锁后立即可用，不必先去设置页找开关；小任务模型看不见它就不会瞎拆。
+        "run_subtasks",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -1010,6 +1024,10 @@ internal object BaopuToolCatalog {
         // 玄览本地预览（第五十九批 §5.2）：读工作区内一个文件 → 交给玄览「本地预览」页签
         // 只显示。FREE + 只读：不写盘、不发网络请求（断网与禁 JS 在页签那一侧硬拦，§5.2）。
         Entry("preview_local_file") { PreviewTool.spec(it) },
+        // 多 Agent 协作（第一百二十七批）：落点在协调器（SubTaskTool.sink），
+        // 表里只放 spec。默认不可见（AGENT 组，渐进披露）但**默认启用**——
+        // 「看得见」与「开着」是两件事：解锁后立即可用，不必先去设置页找开关。
+        Entry("run_subtasks") { SubTaskTool.spec() },
     )
 
     /**

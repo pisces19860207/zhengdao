@@ -18,7 +18,7 @@ class SessionTrashTest {
     fun v10_adds_deleted_at_only_when_missing() {
         assertTrue("缺列时要 ALTER", BaopuSql.sessionDeletedAtStmt(emptyList()).any { it.sql.contains("ADD COLUMN deleted_at") })
         assertTrue("已有列时幂等", BaopuSql.sessionDeletedAtStmt(listOf("deleted_at")).isEmpty())
-        assertEquals(15, BaopuDb.VERSION) // v15 = 第一百一十七批 run_queue；v14 = 第八十九批 memory 质量四列；本批只钉「版本在往前走」
+        assertEquals(16, BaopuDb.VERSION) // v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批 memory 质量四列；本批只钉「版本在往前走」
     }
 
     @Test
