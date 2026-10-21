@@ -13,6 +13,7 @@ import com.example.zhengdao.baopu.agent.GroupUnlockStore
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.ToolGroup
+import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolPrefs
@@ -218,6 +219,14 @@ internal object BaopuRuntime {
         /** 组开关那份集合（存的是组的 `key`，不是枚举 ordinal——枚举顺序将来会变）。 */
         private const val KEY_DISABLED_GROUPS = "disabled_groups"
 
+        /**
+         * 长期同意开启的组（第九十七批：御批卡「一直」与设置页组开关的落点）。
+         *
+         * 与 [KEY_DISABLED_GROUPS] 是两件事：approved = 我允许它用，disabled = 我不许它用。
+         * 都没有 ⇒ 高组就是「已锁」（模型看不见，抱朴要用时会弹卡申请）。
+         */
+        private const val KEY_APPROVED_GROUPS = "approved_groups"
+
         @Volatile
         private var appCtx: Context? = null
 
@@ -253,6 +262,18 @@ internal object BaopuRuntime {
             val cur = p.getStringSet(KEY_DISABLED_GROUPS, emptySet())?.toMutableSet() ?: mutableSetOf()
             if (disabled) cur.add(group.key) else cur.remove(group.key)
             p.edit().putStringSet(KEY_DISABLED_GROUPS, cur).apply()
+        }
+
+        override fun approvedGroups(): Set<ToolGroup> =
+            sp()?.getStringSet(KEY_APPROVED_GROUPS, emptySet())
+                ?.mapNotNull { ToolGroup.fromKey(it) }?.toSet()
+                ?: emptySet()
+
+        override fun setGroupApproved(group: ToolGroup, approved: Boolean) {
+            val p = sp() ?: return
+            val cur = p.getStringSet(KEY_APPROVED_GROUPS, emptySet())?.toMutableSet() ?: mutableSetOf()
+            if (approved) cur.add(group.key) else cur.remove(group.key)
+            p.edit().putStringSet(KEY_APPROVED_GROUPS, cur).apply()
         }
     }
 
@@ -306,6 +327,25 @@ internal object BaopuRuntime {
 
         override fun clear(sessionId: Long) {
             sp()?.edit()?.remove(key(sessionId))?.apply()
+        }
+
+        /**
+         * 第九十七批 §3.5：设置页手动关组 ⇒ 「会话内已解锁的一并失效」。
+         *
+         * 实现是扫一遍 `session:*` 键（解锁状态本来就只按会话分格、没有全局格），
+         * 把要撤的组从每一格里去掉。扫描量＝历史会话数（几十个），发生在用户点开关时，
+         * 不在每轮热路径上。
+         */
+        override fun relockAll(groups: Collection<ToolGroup>) {
+            val p = sp() ?: return
+            if (groups.isEmpty()) return
+            val drop = groups.map { it.key }.toSet()
+            val edit = p.edit()
+            p.all.keys.filter { it.startsWith("session:") }.forEach { k ->
+                val cur = p.getStringSet(k, emptySet())?.toMutableSet() ?: return@forEach
+                if (cur.removeAll(drop)) edit.putStringSet(k, cur)
+            }
+            edit.apply()
         }
     }
 
@@ -399,6 +439,9 @@ internal object BaopuRuntime {
         )
         // ask_user：工具线程阻塞在 engine.askUser 上，UI 点一下即回（有界，与确认卡同超时）
         AskUserTool.sink = { req -> engine.askUser(req) }
+        // 第九十七批：组授权留痕（`[group] …`，可 grep）。只产出文本的纯函数在 agent 包，
+        // 落盘统一走 RunLog —— 与 26-B 的 `[kernel]` 留痕同一口径（引擎线程上串行写）。
+        ToolGroupAudit.sink = { line -> RunLog.log(line) }
         return engine
     }
 

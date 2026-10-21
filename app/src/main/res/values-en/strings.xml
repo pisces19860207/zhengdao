@@ -1292,8 +1292,10 @@
     <string name="baopu_tools_group_skill">Skills</string>
     <string name="baopu_tools_group_preview">Local preview</string>
     <string name="baopu_tools_group_default_on">Shown by default: these go straight to the model</string>
-    <string name="baopu_tools_group_default_off">Hidden by default: Baopu unlocks it when needed (this session only)</string>
-    <string name="baopu_tools_progressive_note">Only core tools show by default; low-frequency groups unlock on demand. "Hidden" is not "disabled" — the model simply never sees them; it calls capabilities to open a group (a new session goes back to default). The switch on the right is a GROUP switch: once a group is off, capabilities cannot unlock it either (your switch wins). Each tool inside keeps its own switch too — the two tiers coexist and neither overrides the other.</string>
+    <string name="baopu_tools_group_default_off">Locked: not sent to the model by default; Baopu asks you when it needs it</string>
+    <string name="baopu_tools_group_approved">On: you approved it for good (turn it off on the right anytime)</string>
+    <string name="baopu_tools_group_disabled">Off: you turned it off; Baopu cannot unlock it either</string>
+    <string name="baopu_tools_progressive_note">Only Core and Edit show by default; the rest are Locked — not disabled, just invisible to the model. When Baopu needs one it pops a card asking you (this session / always / cancel); it works only after you agree. "Always" is the same tier as the group switch on the right: on = you approved it, off = even Baopu cannot unlock it (your switch wins). Each tool inside keeps its own switch too — the two tiers coexist.</string>
     <!-- Batch 61 §1: collapsing the tool-switch groups on the settings page. Display only - no switch read/write changed.
          Arrows reuse the existing common_expand_arrow / common_collapse_arrow; baopu_tools_fold_list_sep is the
          separator between tool names in the collapsed summary line (Chinese ideographic comma vs English comma). -->

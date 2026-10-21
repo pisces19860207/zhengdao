@@ -54,7 +54,8 @@ class ProgressiveToolsTest {
         prefs: ToolPrefs = InMemoryToolPrefs(),
         unlocks: GroupUnlockStore = InMemoryGroupUnlocks(),
         root: File = tmp.newFolder("ws"),
-    ): ToolRegistry = ToolRegistry(prefs, unlocks).also {
+        ask: ((AskUserRequest) -> AskUserOption?)? = null,
+    ): ToolRegistry = ToolRegistry(prefs, unlocks, ask = ask).also {
         BaopuToolCatalog.loadInto(it) { root }
     }
 
@@ -226,28 +227,30 @@ class ProgressiveToolsTest {
     // ── 判据 E/F：capabilities 解锁与按会话（§1.4） ───────────────────────
 
     @Test
-    fun `E1_解锁browser后同会话的下一次数组里有它`() {
-        val reg = realRegistry()
+    fun `E1_申请并同意本次会话后_同会话的下一次数组里有它`() {
+        // 第九十七批口径变更：capabilities 不再当场自解锁（59 批 §1.3 FREE 自解锁作废）；
+        // 现在必须经过一张御批卡，用户点「本次会话」才落解锁。
+        val reg = realRegistry(ask = { pick -> pick.options.first { it.id == "session" } })
         reg.currentSessionId = 101L
         assertFalse(names(reg.toolsJsonOpenAi()).contains("browser_click"))
 
         val out = CapabilitiesTool.spec().executor(
             JSONObject().put("enable", JSONArray().put("browser")),
         ) as ToolOutcome.Ok
-        assertTrue("解锁要回明文说成功了：${out.text}", out.text.contains("已解锁：browser"))
+        assertTrue("同意后要回明文说解锁了：${out.text}", out.text.contains("已解锁：browser"))
 
         assertTrue(
-            "§2：解锁后同一会话的下一次请求必须含该组工具",
+            "§2：同意后同一会话的下一次请求必须含该组工具",
             names(reg.toolsJsonOpenAi(101L)).contains("browser_click"),
         )
-        // 下一轮没解锁的组仍然看不见（不是"一解锁就全开"）
+        // 没申请的组仍然看不见（不是"一解锁就全开"）
         assertFalse(names(reg.toolsJsonOpenAi(101L)).contains("file_info"))
     }
 
     @Test
-    fun `E2_解锁按会话分格_新会话回默认`() {
+    fun `E2_本次会话同意按会话分格_新会话回默认`() {
         val unlocks = InMemoryGroupUnlocks()
-        val reg = realRegistry(unlocks = unlocks)
+        val reg = realRegistry(unlocks = unlocks, ask = { pick -> pick.options.first { it.id == "session" } })
         reg.currentSessionId = 201L
         CapabilitiesTool.spec().executor(JSONObject().put("enable", JSONArray().put("card")))
         assertEquals(setOf(ToolGroup.CARD), unlocks.unlocked(201L))
@@ -261,6 +264,60 @@ class ProgressiveToolsTest {
         // 清格入口备好（删会话时调；本批没接线，报告里如实写）
         unlocks.clear(201L)
         assertEquals(emptySet<ToolGroup>(), unlocks.unlocked(201L))
+    }
+
+    @Test
+    fun `E2b_一直同意写持久档_新会话也看得见`() {
+        // 「一直」= 写长期同意（approvedGroups），所以跨会话；这也是设置页组开关的同一档。
+        val prefs = InMemoryToolPrefs()
+        val unlocks = InMemoryGroupUnlocks()
+        val reg = realRegistry(prefs, unlocks, ask = { pick -> pick.options.first { it.id == "always" } })
+        reg.currentSessionId = 211L
+        val out = CapabilitiesTool.spec().executor(
+            JSONObject().put("enable", JSONArray().put("card")),
+        ) as ToolOutcome.Ok
+        assertTrue(out.text.contains("已解锁：card"))
+        assertEquals(setOf(ToolGroup.CARD), prefs.approvedGroups())
+        // 换会话仍在（持久档的语义）
+        reg.currentSessionId = 212L
+        assertTrue("一直同意必须跨会话生效", names(reg.toolsJsonOpenAi(212L)).contains("card_inspect"))
+    }
+
+    @Test
+    fun `E7_用户取消则不授权_且不再弹同一张卡`() {
+        val prefs = InMemoryToolPrefs()
+        val unlocks = InMemoryGroupUnlocks()
+        var cards = 0
+        val reg = realRegistry(prefs, unlocks, ask = { pick ->
+            cards += 1
+            pick.options.first { it.id == "cancel" }
+        })
+        reg.currentSessionId = 221L
+        val out = CapabilitiesTool.spec().executor(
+            JSONObject().put("enable", JSONArray().put("library")),
+        ) as ToolOutcome.Ok
+        assertEquals("第一次申请只弹一张卡", 1, cards)
+        assertTrue("要如实说没同意：${out.text}", out.text.contains("用户这次没同意"))
+        assertFalse("没同意就不许解锁", unlocks.unlocked(221L).contains(ToolGroup.LIBRARY))
+        assertFalse(names(reg.toolsJsonOpenAi(221L)).contains("library_list"))
+        assertTrue("不许写持久档", prefs.approvedGroups().isEmpty())
+        // 立刻再申请：限流闸压住，不再弹卡（§2「同类建议限流/合并，不每次任务弹」）
+        CapabilitiesTool.spec().executor(JSONObject().put("enable", JSONArray().put("library")))
+        assertEquals("被拒后不能每次都弹卡（N＝3）", 1, cards)
+    }
+
+    @Test
+    fun `E8_没有界面时如实说不授权`() {
+        // ask=null = 后台/无界面：与 ask_user 同一口径（明说，不假装用户选了）
+        val unlocks = InMemoryGroupUnlocks()
+        val reg = realRegistry(unlocks = unlocks, ask = null)
+        reg.currentSessionId = 231L
+        val out = CapabilitiesTool.spec().executor(
+            JSONObject().put("enable", JSONArray().put("files")),
+        ) as ToolOutcome.Ok
+        assertTrue("要明说没人应答：${out.text}", out.text.contains("没有回应"))
+        assertTrue(unlocks.unlocked(231L).isEmpty())
+        assertFalse(names(reg.toolsJsonOpenAi(231L)).contains("file_info"))
     }
 
     @Test
@@ -482,6 +539,43 @@ class ProgressiveToolsTest {
         ToolGroup.values().filterNot { it in ToolGroup.DEFAULT_VISIBLE }.forEach { g ->
             assertFalse("${g.key} 组不该默认可见", g in ToolGroup.DEFAULT_VISIBLE)
         }
+    }
+
+    @Test
+    fun `I4_手动关组会撤掉会话解锁`() {
+        val unlocks = InMemoryGroupUnlocks()
+        val reg = realRegistry(unlocks = unlocks, ask = { pick -> pick.options.first { it.id == "session" } })
+        reg.currentSessionId = 901L
+        CapabilitiesTool.spec().executor(JSONObject().put("enable", JSONArray().put("browser")))
+        assertTrue(unlocks.unlocked(901L).contains(ToolGroup.BROWSER))
+        // 设置页关组 ⇒ 会话内已解锁的一并失效（§3.5「手动关 ⇒ 立即禁用整组」）
+        reg.setGroupDisabled(ToolGroup.BROWSER, true)
+        unlocks.relockAll(listOf(ToolGroup.BROWSER))
+        assertFalse("关组后会话格里的 browser 必须被撤掉", unlocks.unlocked(901L).contains(ToolGroup.BROWSER))
+        assertFalse(names(reg.toolsJsonOpenAi(901L)).contains("browser_click"))
+    }
+
+    @Test
+    fun `I5_长期同意跨会话可见_禁用压过同意`() {
+        val prefs = InMemoryToolPrefs(initialApproved = setOf(ToolGroup.BROWSER))
+        val reg = realRegistry(prefs)
+        reg.currentSessionId = 1001L
+        // 「一直」档不依赖会话：新会话也看得见
+        assertTrue(names(reg.toolsJsonOpenAi(1001L)).contains("browser_click"))
+        // 用户后来手动关掉（disabled 优先于 approved）
+        prefs.setGroupDisabled(ToolGroup.BROWSER, true)
+        assertFalse("disabled 必须压过 approved", names(reg.toolsJsonOpenAi(1001L)).contains("browser_click"))
+    }
+
+    @Test
+    fun `I6_组授权不等于免确认_CONFIRM工具仍每次一张卡`() {
+        val prefs = InMemoryToolPrefs(initialApproved = setOf(ToolGroup.FILES))
+        val reg = realRegistry(prefs)
+        reg.currentSessionId = 1101L
+        // 组授权后工具确实可见（这是本批要的）
+        assertTrue(names(reg.toolsJsonOpenAi(1101L)).contains("delete_path"))
+        // 但权限分级一个字节没动：delete_path 仍是 CONFIRM（每次动作一张卡）
+        assertEquals(ToolPermission.CONFIRM, reg.find("delete_path")!!.permission)
     }
 
     // ── 判据 J：§7 提示词（许愿式编程 W6＋渐进披露得让模型知道） ────────────

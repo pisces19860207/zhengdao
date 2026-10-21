@@ -1293,8 +1293,10 @@
     <string name="baopu_tools_group_skill">技能</string>
     <string name="baopu_tools_group_preview">本地预览</string>
     <string name="baopu_tools_group_default_on">默认可见：这几件直接发给模型</string>
-    <string name="baopu_tools_group_default_off">默认不发给模型：抱朴要用时自己解锁，只在本会话有效</string>
-    <string name="baopu_tools_progressive_note">默认只显示核心工具；低频组按需解锁。「不显示」不是禁用——是模型根本看不见它：它调 capabilities 就能把组开出来（新会话回到默认）。右边那个开关是**组开关**：整组关掉后连 capabilities 也解不开（用户开关优先）；组里每个工具仍各有自己的开关，两档并存、互不覆盖。</string>
+    <string name="baopu_tools_group_default_off">已锁：默认不发给模型；抱朴要用时会向你申请，你同意才开</string>
+    <string name="baopu_tools_group_approved">已开启：你已同意长期可用（随时可以在右边关掉）</string>
+    <string name="baopu_tools_group_disabled">已关闭：你关掉了它，抱朴自己也解不开</string>
+    <string name="baopu_tools_progressive_note">默认只显示核心与编辑两组；其余组是「已锁」——不是禁用，是模型根本看不见。抱朴要用时会弹一张卡向你申请（本次会话 / 一直 / 取消），你点同意才开。「一直」与右边那个组开关是同一档：打开＝长期同意，关掉＝连抱朴自己都解不开（用户开关优先）。组里每个工具仍各有自己的开关，两档并存、互不覆盖。</string>
     <!-- 第六十一批 §1：设置页工具开关折叠。折叠只是展示层——开关读写一行没动。
          展开/收起的箭头复用既成的 common_expand_arrow / common_collapse_arrow，
          baopu_tools_fold_list_sep 是摘要里工具名之间的分隔符（中文顿号、英文逗号）。 -->
