@@ -120,6 +120,10 @@ class SettingsStorageActivity : ComponentActivity() {
 private fun SettingsStoragePage(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
+    // ENV-D1：同环境页 —— 正文在组合期取资源，协程里只捕获结果。
+    val blockMessage = stringResource(LIVE_SESSION_BLOCK_MESSAGE_RES)
+    val gotIt = stringResource(R.string.common_got_it)
+    val cacheNotInstalledMsg = stringResource(R.string.storage_cache_not_installed)
     val snackbarHostState = remember { SnackbarHostState() }
     var storageTick by remember { mutableStateOf(0) }
     // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖。
@@ -411,11 +415,13 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             //    跑不了的情况：环境未安装（此时终端是回退 shell，命令无处可去）。
             TextButton(onClick = {
                 if (!AppState.rootfsInstalled(ctx)) {
-                    Toast.makeText(
-                        ctx,
-                        ctx.getString(R.string.storage_cache_not_installed),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    // ENV-D1：英文 82 字符，Toast 两行装不下 ⇒ 走 Snackbar。
+                    scope.launch {
+                        snackbarHostState.showReadable(
+                            message = cacheNotInstalledMsg,
+                            actionLabel = gotIt,
+                        )
+                    }
                 } else {
                     onOpenTerminal(com.example.zhengdao.terminal.CacheCleaner.guestCommand(), null)
                 }
@@ -722,7 +728,11 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 // （旧树被 rename+递归删除），运行中的 proot/agent 后续 open/exec
                                 // 会 ENOENT。判定在解压/替换之前，被拦时零文件改动。
                                 if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "回退环境", com.example.zhengdao.rootfs.RunLog::log)) {
-                                    Toast.makeText(ctx, LIVE_SESSION_BLOCK_MESSAGE, Toast.LENGTH_LONG).show()
+                                    // ENV-D1：两行 Toast 会截掉第二句 ⇒ 走本页 Snackbar（不限行数）。
+                                    snackbarHostState.showReadable(
+                                        message = blockMessage,
+                                        actionLabel = gotIt,
+                                    )
                                     return@launch
                                 }
                                 try {
