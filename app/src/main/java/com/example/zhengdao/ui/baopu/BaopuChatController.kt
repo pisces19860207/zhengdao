@@ -428,9 +428,92 @@ internal class BaopuChatController(context: Context) {
     //
     // 用户 2026-10-19 口径：**收尾才出卡、只出卡不落盘、点采纳才写、拒绝一字不动**。
 
-    /** 引擎收尾给的提案（null = 现在没有卡；没信号时引擎根本不会出）。 */
+    /**
+     * 引擎收尾给的提案（null = 现在没有卡 / 全部不合格）。
+     *
+     * 第一百零三批 §B②：**前置校验在这里**——每条候选真跑 `SkillBodySelfCheck`
+     * （[com.example.zhengdao.baopu.SkillRefine.learnPrecheckIssues]），不合格的
+     * 不进卡（用户看不到采纳按钮＝「不出采纳卡」），只落一条审计（同一 id 同一套原因只记一次）。
+     * 全都不合格 ⇒ 返回 null（不出空卡：空壳比没卡更像坏了）。
+     */
     val learnProposals: List<com.example.zhengdao.baopu.SkillRefine.LearnProposal>?
-        get() = engine.learn.value
+        get() {
+            val raw = engine.learn.value ?: return null
+            val kept = raw.filter { p ->
+                val issues = com.example.zhengdao.baopu.SkillRefine.learnPrecheckIssues(p)
+                if (issues.isEmpty()) {
+                    true
+                } else {
+                    auditLearnPrecheck(p, issues)
+                    false
+                }
+            }
+            return kept.ifEmpty { null }
+        }
+
+    /**
+     * 第一百零三批 §B②：采纳/出卡前的前置校验（不合格 ⇒ 审计＋一句人话，返回 false）。
+     *
+     * 抽出来是为了让 [adoptLearn] 主路径保持「取基线 → 写盘」两行之内
+     * （既有门禁 `BaopuLearnCardGuardTest` 用 12 行窗钉这点，别把它挤出去）。
+     */
+    private fun precheckOrRefuse(
+        p: com.example.zhengdao.baopu.SkillRefine.LearnProposal,
+        prefix: String = "这条候选本身不合格，没有写盘",
+    ): Boolean {
+        val issues = com.example.zhengdao.baopu.SkillRefine.learnPrecheckIssues(p)
+        if (issues.isEmpty()) return true
+        auditLearnPrecheck(p, issues)
+        skillNote = BaopuNote("$prefix：${issues.joinToString("；")}", BaopuNoteLevel.Error)
+        return false
+    }
+
+    /** 前置校验不过的候选已记过审计的键（id＋原因；同一套只记一次，不刷日志）。 */
+    private val learnPrecheckAudited = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** 上一次「坏候选没给出」已经提示过的那批（同批只提示一次，不每轮重弹）。 */
+    private var learnFilteredNoted: String? = null
+
+    /**
+     * 第一百零三批 §B②：坏候选**不出卡**，但用户要能看到一句人话原因。
+     *
+     * 只在收尾（Settled）看一次：引擎这一轮确实产了候选、且其中有过不了前置校验的，
+     * 用既有的 `skillNote`（技能动作的一句话结果）说清是哪条、为什么——同一条不重复说。
+     */
+    private fun noteFilteredLearn() {
+        val raw = engine.learn.value ?: return
+        val bad = raw.mapNotNull { p ->
+            val issues = com.example.zhengdao.baopu.SkillRefine.learnPrecheckIssues(p)
+            if (issues.isEmpty()) null else p to issues
+        }
+        if (bad.isEmpty()) {
+            learnFilteredNoted = null
+            return
+        }
+        val sig = bad.joinToString("|") { (p, issues) -> p.id + ":" + issues.joinToString("；") }
+        if (sig == learnFilteredNoted) return
+        learnFilteredNoted = sig
+        val (p, issues) = bad.first()
+        skillNote = BaopuNote(
+            "这次「学到」有 ${bad.size} 条没给出来（" +
+                "${com.example.zhengdao.baopu.SkillRefine.nameOf(p)}：${issues.joinToString("；")}）" +
+                "——修好再记，或直接告诉我要记什么。",
+            BaopuNoteLevel.Error,
+        )
+    }
+
+    /** 前置校验不过 ⇒ 一条审计（`[skill-body-selfcheck]` 锚，与 v2 自检同一个 grep 口）。 */
+    private fun auditLearnPrecheck(
+        p: com.example.zhengdao.baopu.SkillRefine.LearnProposal,
+        issues: List<String>,
+    ) {
+        val key = p.id + "|" + issues.joinToString("；")
+        if (learnPrecheckAudited.add(key)) {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "[skill-body-selfcheck] 采纳卡前置校验不过（${p.id}）：${issues.joinToString("；")}",
+            )
+        }
+    }
 
     /** 用户点了「不记」⇒ 只把卡收起来，**一个字节都不写**。 */
     fun dismissLearn() {
@@ -453,6 +536,9 @@ internal class BaopuChatController(context: Context) {
     fun adoptLearn(id: String) {
         val list = engine.learn.value ?: return
         val p = list.firstOrNull { it.id == id } ?: return
+        // 第一百零三批 §B②：卡上已经滤过一遍，这里再拒一次（卡可能过期/被旧版本填过）；
+        // 拒在取基线之前、写盘之前（J7 的顺序不会被打乱）。
+        if (!precheckOrRefuse(p)) return
         skillNote = BaopuNote("记下来中…", BaopuNoteLevel.Info)
         scope.launch {
             val name = com.example.zhengdao.baopu.SkillRefine.nameOf(p)
@@ -582,7 +668,11 @@ internal class BaopuChatController(context: Context) {
         file: java.io.File,
     ): SkillBodyOutcome? {
         if (!SelfCheckGate.enabledNow(com.example.zhengdao.BuildConfig.DEBUG, appCtx)) return null
-        val body = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        val raw = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        // 第一百零三批 §B：`SkillStore` 落盘时给草稿前置了机器头（`<!-- status=draft uses=0 -->`），
+        // 而结构自检把「第一个非空行」当标题 ⇒ 草稿永远判「缺标题段」、采纳永远回滚
+        // （真机 EVO-D1 逐字如此）。机器头是纯注释、不是正文 ⇒ 喂判据前去掉它（判据本体不动）。
+        val body = com.example.zhengdao.baopu.SkillRefine.contentWithoutMachineHeader(raw)
         val input = SkillBodyInput(
             name = name,
             body = body,
@@ -1558,6 +1648,9 @@ internal class BaopuChatController(context: Context) {
                 // 第八十六批：任务收尾 ⇒ 从已有记录生成提案候选（只生成、不应用）。
                 // 放在 refineOnSettle 之后：学习卡在引擎收尾时已经出好，这里读的是同一轮。
                 generateProposalCandidatesOnSettle()
+                // 第一百零三批 §B②：被前置校验挡下的候选不出卡，但要给一句人话原因
+                // （审计行在采样处已落 `[skill-body-selfcheck]` 锚）。
+                noteFilteredLearn()
                 // 第二十九批 B 段：用户在确认卡上拍过「停掉并切过来」⇒ 门一放就兑现那一下切换。
                 // 放在这里而不是 acceptSessionSwitch 里死等：Settled 由引擎在释放单活跃门之后才发，
                 // 是"这个 run 真结束了"的唯一权威信号（同上面对 interruptedStep 的那条口径）。
