@@ -59,14 +59,21 @@ internal object PlanTool {
             "properties" to jsonObjectOf(
                 "items" to jsonObjectOf(
                     "type" to "array",
+                    // 第一百一十九批：属性必须带 description（模型看不见怎么填就在猜）。
+                    "description" to "整张计划表（全量覆盖，不是追加）：每条形如 " +
+                        "{\"text\":\"要做的事\",\"status\":\"todo|doing|done\"}",
                     "items" to jsonObjectOf(
                         "type" to "object",
                         "properties" to jsonObjectOf(
-                            "text" to jsonObjectOf("type" to "string"),
+                            "text" to jsonObjectOf(
+                                "type" to "string",
+                                "description" to "这一条要做什么（≤60 字，超出自动截断）",
+                            ),
                             "status" to jsonObjectOf(
                                 "type" to "string",
                                 // enum 与校验同源（PlanRules.STATUSES）——两处各写一份必漂移
                                 "enum" to jsonArrayOf(*PlanRules.STATUSES.toTypedArray()),
+                                "description" to "todo=还没做 / doing=正在做 / done=做完了",
                             ),
                         ),
                         "required" to jsonArrayOf("text", "status"),

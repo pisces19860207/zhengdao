@@ -73,6 +73,9 @@ internal object LibraryTools {
                     "description" to "可选：文件名/路径子串过滤（不区分大小写），命中才列",
                 ),
             ),
+            // 第一百一十九批：required 必须有这一段（哪怕为空）。列清单不需要必填
+            // （dir 默认 deliver、pattern 可选），理由登记在 ToolSchemaRules.REQUIRED_EMPTY_OK。
+            "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
