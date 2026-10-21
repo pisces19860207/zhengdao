@@ -121,13 +121,29 @@ class SubAgentRunnerTest {
 
     @Test
     fun `步数用尽_失败且说清上限`() {
-        // 脚本永远给 Calls ⇒ 永远不结束
-        val turn = FakeTurn(List(20) { TurnOutcome.Calls(listOf(ToolCall("c$it", "list_dir", JSONObject())), "") })
+        // 脚本永远给 Calls ⇒ 永远不结束（参数每轮不同，避开「重复调用」提前收口）
+        val turn = FakeTurn(
+            List(20) { TurnOutcome.Calls(listOf(ToolCall("c$it", "list_dir", JSONObject().put("i", it))), "") },
+        )
         val runner = SubAgentRunner(env(turn))
         val r = runner.run(task(maxSteps = 3))
         assertEquals(SubTaskStatus.FAILED, r.status)
         assertEquals(3, r.steps)
         assertTrue("原因要点名步数：${r.failureReason}", r.failureReason.contains("步数用尽") && r.failureReason.contains("3"))
+    }
+
+    @Test
+    fun `同一工具同一参数反复调用_提前收口_不烧满步数`() {
+        // 2026-10-22 真机「8 步用尽」的形态：模型反复拿同样的参数调同一个工具。
+        val same = JSONObject().put("path", "资料库")
+        val turn = FakeTurn(List(10) { TurnOutcome.Calls(listOf(ToolCall("c$it", "list_dir", same)), "") })
+        val r = SubAgentRunner(env(turn)).run(task(maxSteps = 16))
+        assertEquals(SubTaskStatus.FAILED, r.status)
+        assertTrue(
+            "原因要点名重复调用：${r.failureReason}",
+            r.failureReason.contains("重复调用") && r.failureReason.contains("3"),
+        )
+        assertTrue("要在 3 步内收口（strides=${r.steps}）", r.steps <= 3)
     }
 
     @Test
