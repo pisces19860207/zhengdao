@@ -1301,6 +1301,10 @@
     <string name="baopu_tool_library_list_desc">只读列资料库：投递/（你丢进来的原件）或整理/（抱朴的产出），每条给相对路径、字节数、扩展名、sha256 前 8 位（肉眼判断重复）。输出封顶，超了会写明还有多少条。一个字节都不动。</string>
     <string name="baopu_tool_library_organize">整理资料库</string>
     <string name="baopu_tool_library_organize_desc">把整理结果落地（每次执行前弹确认卡）：把投递里的文件移到整理（同名会拒绝，不覆盖）、同目录内改名、重建 资料库/索引.md。只动投递/与整理/，绝不动 原始/。</string>
+    <string name="baopu_tool_kb_index">建知识库索引</string>
+    <string name="baopu_tool_kb_index_desc">给一个工作区内目录建本地知识库索引（只写 App 私有索引文件，不碰你的原文件）：支持 txt/md/html/docx（pdf/图片/压缩包跳过并计数）。缺省索引 资料库/投递；默认增量（按 大小+修改时间 只重切变更的文件），rebuild=true 全量重切。执行前会弹一次确认卡。</string>
+    <string name="baopu_tool_kb_search">搜知识库</string>
+    <string name="baopu_tool_kb_search_desc">在本地知识库索引里按关键词检索（只读，一个字节都不动）：返回最相关的片段，每段带来源（文件＋行号）。没有索引或索引损坏时会告诉你要先建索引。默认返回 5 段，最多 10 段。</string>
     <string name="baopu_tool_delete_path">删除文件</string>
     <string name="baopu_tool_ask_user">选项卡（问人）</string>
     <string name="baopu_tool_ask_user_desc">拿不准时弹一张选项卡（出现在输入栏上方）：2–4 个选项、推荐项排第一并带一句理由，用户点完继续干。不写盘、不改文件。</string>

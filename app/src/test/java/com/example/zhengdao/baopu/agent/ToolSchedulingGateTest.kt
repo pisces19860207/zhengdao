@@ -35,6 +35,8 @@ class ToolSchedulingGateTest {
     private val EXPECTED_PARALLEL_READS = setOf(
         "read_file", "list_dir", "search_in_files", "find_files",
         "book_outline", "file_info", "library_list", "card_inspect",
+        // 第一百二十八批：kb_search 只读索引文件（不碰工作区、不写盘），与别的读可并行
+        "kb_search",
     )
 
     // ── ① 分类自洽 ────────────────────────────────────────────────────────

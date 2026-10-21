@@ -103,6 +103,7 @@ internal object ToolSchemaRules {
         "delete_path" to "path 与 empty_trash 二选一：清空整个回收站时不需要 path（DeletePathTool.kt 的注释原文）",
         "capabilities" to "只带一个可选参数 enable：不带就是「把名册念给我听」（CapabilitiesTool）",
         "library_list" to "dir 默认 deliver、pattern 可选（不筛就全列），列清单本身不需要必填（LibraryTools.listSpec）",
+        "kb_index" to "path 缺省＝资料库/投递、rebuild 缺省＝增量：两个参数都有默认值，建索引本身不需要必填（KbTools.indexSpec，第一百二十八批）",
         "bash" to "免费通道占位条目：properties 为空，任何参数都不接受（执行器一律拒绝，见 ToolSchemaRules.S7 的放行理由）",
     )
 
