@@ -206,6 +206,13 @@ import kotlin.text.Charsets
  *   `RunEngine.kt` 的 `MessagePersisted` 扩字段与 `QueueChanged` 登记（+16 行，全在创建点之前）
  *   ⇒ zd-baopu-run 228→244；`BaopuDb.kt` 的 v15 `run_queue` DDL/语句（+44 行，全在创建点之前）
  *   ⇒ zd-baopu-db 1213→1257。逐处核过仍是同一段 `Thread(r, "zd-…")`，有名 + daemon 都没变。
+ * - 2026-10-21（第一百二十四批 · 多模态输入 v1）：**无新增线程**。同意闸跑在既有
+ *   `zd-baopu-run` 上（`askUser` 的阻塞等待与 `ask_user` 工具同一房型，不另起线程）；
+ *   新增的 `VisionConsent.kt` / `VisionRouting.kt` 两个文件逐行核过无裸 Thread。
+ *   `RunEngine.kt` 只因文件头新增两行 import（`VisionConsent` / `VisionRouting`，
+ *   全在创建点之前；其余新增字段与函数都刻意写在创建点之下）
+ *   ⇒ zd-baopu-run 244→246 平移，本次回填。逐处核过仍是同一段
+ *   `Thread(r, "zd-baopu-run").apply { isDaemon = true }`，有名 + daemon 都没变。
  */
 class BareThreadGuardTest {
 
@@ -265,7 +272,7 @@ class BareThreadGuardTest {
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
-            "RunEngine.kt:244",
+            "RunEngine.kt:246",
             "SettingsDataActivity.kt:596",
             "SettingsEnvActivity.kt:220",
             "SettingsEnvActivity.kt:275",

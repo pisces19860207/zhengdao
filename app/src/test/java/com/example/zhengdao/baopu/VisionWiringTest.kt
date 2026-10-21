@@ -98,7 +98,9 @@ class VisionWiringTest {
         )
         assertTrue(
             "组装器里仍是唯一一次 VisionRules.select（不许在引擎里再裁一遍）",
-            asm.contains("VisionRules.select(images, visionSupported)"),
+            // 第一百二十四批改判：select 随签名平移多了一个带默认值的 userAuthorized；
+            // 「唯一一次裁图」这条判据本身一个字没松（同批先例：105 批 81618595）。
+            asm.contains("VisionRules.select(images, visionSupported, visionAuthorized)"),
         )
     }
 
