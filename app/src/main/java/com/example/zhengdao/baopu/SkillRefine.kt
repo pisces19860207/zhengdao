@@ -223,6 +223,30 @@ internal object SkillRefine {
     fun nameOf(p: LearnProposal): String = p.id.substringAfter('-').ifEmpty { "skill" }
 
     /**
+     * 一条「学到」信号该记什么内容（**唯一取法**，第一百零七批·`EVO-D2`）。
+     *
+     * 真机现场：`write_skill` 写技能时 `touchedPaths` 为空，旧实现回退成**工具名**
+     * （`write_skill`）⇒ 候选名成了 `write-skill`、场景正文也是 `write_skill`，
+     * 采纳后落出一份没有场景的垃圾技能。现在的口径：
+     * 1. 有真实路径 ⇒ 用路径（文件类信号照旧）；
+     * 2. 技能类信号（[SignalKind.SKILL]）没路径 ⇒ 用**技能名**（args 的 `name`）；
+     * 3. 技能类信号连技能名都没有 ⇒ **不出信号**（返回 null，宁缺勿滥）；
+     * 4. 其余类没路径 ⇒ 仍回退工具名（浏览器类等，保持旧行为）。
+     */
+    fun learnDetailFor(
+        kind: SignalKind,
+        toolName: String,
+        touchedPaths: List<String>,
+        skillName: String? = null,
+    ): String? {
+        touchedPaths.firstOrNull { it.isNotBlank() }?.let { return it }
+        if (kind == SignalKind.SKILL) {
+            return skillName?.trim()?.takeIf { it.isNotEmpty() }
+        }
+        return toolName
+    }
+
+    /**
      * 将要写进 `SKILL.md` 的正文（**唯一生成口**：门禁校验的就是这一段）。
      *
      * 第一百零三批 §B（EVO-D1）两处**结构**补齐，都是被 `SkillBodySelfCheck` 的硬判据逼出来的：
