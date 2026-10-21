@@ -143,6 +143,34 @@ internal class EvolutionAuditLog(private val file: File) : EvolutionAuditSink {
         file.appendText(entry.toJson().toString() + "\n", Charsets.UTF_8)
     }
 
+    /**
+     * 第一百零四批（UI P0）：**用户动作**审计行（99 批报告 §6「随 UI 批补」）。
+     *
+     * 与判定行（[record]）同仓不同形：判定行记「机器建议什么」，动作行记
+     * 「人对着卡按了什么」。键名固定（candidate_id/action/risk_class/
+     * recommendation），写入失败只由调用方 log——动作本身已经发生了，
+     * 账本卡住不回滚用户的选择（留痕是账本不是闸门）。
+     *
+     * @param action adopt / reject / defer（小写稳定键；效果卡的 keep/later/rollback
+     *   走 [com.example.zhengdao.baopu.PostAdoptionLog]，不在这里重复记账）
+     */
+    @Synchronized
+    fun recordAction(
+        candidateId: String,
+        action: String,
+        riskClass: String,
+        recommendation: String,
+    ) {
+        file.parentFile?.mkdirs()
+        val row = JSONObject()
+            .put("at_ms", System.currentTimeMillis())
+            .put("candidate_id", candidateId)
+            .put("action", action)
+            .put("risk_class", riskClass)
+            .put("recommendation", recommendation)
+        file.appendText(row.toString() + "\n", Charsets.UTF_8)
+    }
+
     fun file(): File = file
 
     companion object {
