@@ -660,14 +660,6 @@ internal object BaopuSql {
         )
     }
 
-    /** 提案批：proposalId 必须为 null（CHECK 约束会拦 ops 形态）。 */
-    fun insertProposalBatch(sessionId: Long, opsJson: String, expiresAt: Long, createdAt: Long): Stmt =
-        Stmt(
-            "INSERT INTO plan_batch (session_id, kind, proposal_id, ops_json, expires_at, created_at) " +
-                "VALUES (?, 'proposal', NULL, ?, ?, ?)",
-            arrayOf<String?>(sessionId.toString(), opsJson, expiresAt.toString(), createdAt.toString()),
-        )
-
     /** 执行批：必须挂在已 approved 的提案批下（"approved"判据归计划层，SQL 只保证存在）。 */
     fun insertOpsBatch(
         sessionId: Long,

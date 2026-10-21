@@ -466,12 +466,7 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `提案批与执行批的kind和proposal_id绑定`() {
-        val proposal = BaopuSql.insertProposalBatch(1L, "[]", 100L, 50L)
-        assertTrue(proposal.sql.contains("'proposal'"))
-        assertTrue(proposal.sql.contains("NULL"))
-        assertEquals(listOf("1", "[]", "100", "50"), proposal.args.toList())
-
+    fun `执行批的kind和proposal_id绑定`() {
         val ops = BaopuSql.insertOpsBatch(1L, proposalId = 9L, opsJson = "[{}]", expiresAt = 100L, createdAt = 50L)
         assertTrue(ops.sql.contains("'ops'"))
         assertEquals(listOf("1", "9", "[{}]", "100", "50"), ops.args.toList())
