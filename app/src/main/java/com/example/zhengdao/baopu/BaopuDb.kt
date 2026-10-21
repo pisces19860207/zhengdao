@@ -478,17 +478,6 @@ internal object BaopuSql {
             arrayOf<String?>(count.toString(), id.toString()),
         )
 
-    fun listSessions(includeArchived: Boolean): Stmt = Stmt(
-        if (includeArchived) {
-            "SELECT id, title, model, provider, created_at, updated_at, archived, msg_count, preview " +
-                "FROM session WHERE deleted_at IS NULL ORDER BY updated_at DESC"
-        } else {
-            "SELECT id, title, model, provider, created_at, updated_at, archived, msg_count, preview " +
-                "FROM session WHERE deleted_at IS NULL AND archived = 0 ORDER BY updated_at DESC"
-        },
-        emptyArray(),
-    )
-
     // ── 会话回收站（第四十七批）────────────────────────────────────────────
 
     /** v10：session 加 `deleted_at`（可空；NULL＝未删）。列已在⇒空语句（幂等）。 */

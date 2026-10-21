@@ -35,14 +35,6 @@ class SessionTrashTest {
     @Test
     fun active_lists_filter_deleted_and_trash_list_filters_opposite() {
         assertTrue(
-            "主动列表必须排除软删：${BaopuSql.listSessions(false).sql}",
-            BaopuSql.listSessions(false).sql.contains("deleted_at IS NULL"),
-        )
-        assertTrue(
-            "含归档的列表也要排除：${BaopuSql.listSessions(true).sql}",
-            BaopuSql.listSessions(true).sql.contains("deleted_at IS NULL"),
-        )
-        assertTrue(
             "回收站列表只看已删：${BaopuSql.listDeletedSessions().sql}",
             BaopuSql.listDeletedSessions().sql.contains("deleted_at IS NOT NULL"),
         )
