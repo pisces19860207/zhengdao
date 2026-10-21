@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -310,6 +311,7 @@ private fun firstSentenceOf(text: String, threshold: Int): String {
 @Composable
 internal fun SettingsLogDialog(log: String?, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     log?.takeIf { it.isNotBlank() }?.let { text ->
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -328,7 +330,7 @@ internal fun SettingsLogDialog(log: String?, onDismiss: () -> Unit) {
                 TextButton(onClick = {
                     val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     cm.setPrimaryClip(ClipData.newPlainText("zhengdao-log", text))
-                    Toast.makeText(ctx, ctx.getString(R.string.help_log_copied), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, res.getString(R.string.help_log_copied), Toast.LENGTH_SHORT).show()
                 }) { Text(stringResource(R.string.common_copy_all)) }
             },
             dismissButton = {

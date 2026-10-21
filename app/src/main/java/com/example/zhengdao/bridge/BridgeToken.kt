@@ -2,6 +2,7 @@ package com.example.zhengdao.bridge
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import java.security.SecureRandom
 import java.util.Locale
 
@@ -129,14 +130,14 @@ object BridgeToken {
         val existing = prefs(ctx).getString(KEY_TOKEN, null)
         if (!existing.isNullOrBlank()) return existing
         val fresh = generateTokenHex(SecureRandom())
-        prefs(ctx).edit().putString(KEY_TOKEN, fresh).apply()
+        prefs(ctx).edit { putString(KEY_TOKEN, fresh) }
         return fresh
     }
 
     /** 重新生成（设置页「重置口令」用；旧 token 立即失效）。 */
     fun regenerate(ctx: Context): String {
         val fresh = generateTokenHex(SecureRandom())
-        prefs(ctx).edit().putString(KEY_TOKEN, fresh).apply()
+        prefs(ctx).edit { putString(KEY_TOKEN, fresh) }
         return fresh
     }
 

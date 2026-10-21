@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.BackChevron
@@ -151,6 +152,7 @@ private fun KeepaliveLogTopBar(onBack: () -> Unit) {
 @Composable
 private fun KeepaliveLogScreen() {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     var exitLines by remember { mutableStateOf(emptyList<String>()) }
     var beatLines by remember { mutableStateOf(emptyList<String>()) }
     var snippetCount by remember { mutableIntStateOf(0) }
@@ -246,8 +248,8 @@ private fun KeepaliveLogScreen() {
                         val dst = withContext(Dispatchers.IO) { KeepaliveArchive.export(ctx) }
                         Toast.makeText(
                             ctx,
-                            dst?.let { ctx.getString(R.string.keepalive_log_exported, it.absolutePath) }
-                                ?: ctx.getString(R.string.keepalive_log_export_failed),
+                            dst?.let { res.getString(R.string.keepalive_log_exported, it.absolutePath) }
+                                ?: res.getString(R.string.keepalive_log_export_failed),
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -285,7 +287,7 @@ private fun KeepaliveLogScreen() {
                                 tick++
                                 Toast.makeText(
                                     ctx,
-                                    ctx.getString(R.string.keepalive_log_cleared, n),
+                                    res.getString(R.string.keepalive_log_cleared, n),
                                     Toast.LENGTH_SHORT,
                                 ).show()
                             }

@@ -32,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -69,6 +70,7 @@ private const val PREVIEW_MAX_BYTES = 2L * 1024 * 1024
 @Composable
 internal fun BaopuExtractSheet(onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     // 步骤：0 选书 / 1 预览与选择 / 2 结果
@@ -211,10 +213,10 @@ internal fun BaopuExtractSheet(onDismiss: () -> Unit) {
                                 chapterCount = chapters.size,
                                 firstTitles = chapters.map { it.title },
                                 labels = ExtractLabels(
-                                    digest = ctx.getString(R.string.baopu_extract_mode_digest),
-                                    index = ctx.getString(R.string.baopu_extract_mode_index),
-                                    deep = ctx.getString(R.string.baopu_extract_mode_deep),
-                                    freePrompt = ctx.getString(R.string.baopu_extract_free_prompt),
+                                    digest = res.getString(R.string.baopu_extract_mode_digest),
+                                    index = res.getString(R.string.baopu_extract_mode_index),
+                                    deep = res.getString(R.string.baopu_extract_mode_deep),
+                                    freePrompt = res.getString(R.string.baopu_extract_free_prompt),
                                 ),
                             )
                         }

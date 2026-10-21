@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.core.net.toUri
 import com.example.zhengdao.R
 import com.example.zhengdao.browser.BrowserMemoryProbe
 import com.example.zhengdao.browser.BrowserTabPolicy
@@ -363,7 +364,7 @@ object BrowserTabManager {
                 tab.state.onBlocked(app.getString(R.string.browser_preview_no_nav))
                 return true
             }
-            val scheme = runCatching { android.net.Uri.parse(url).scheme?.lowercase() }.getOrNull()
+            val scheme = runCatching { url.toUri().scheme?.lowercase() }.getOrNull()
             if (scheme !in setOf("http", "https")) {
                 tab.state.onBlocked(app.getString(R.string.browser_blocked_scheme))
                 return true

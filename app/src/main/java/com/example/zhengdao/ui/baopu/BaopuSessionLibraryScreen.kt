@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -159,6 +160,7 @@ internal fun BaopuSessionLibraryScreen(
 ) {
     var tick by remember { mutableIntStateOf(0) }
     val ctx = LocalContext.current
+    val res = LocalResources.current
     val entries = remember(tick) { controller.loadSessionLibrary() }
     val busy = controller.busy
     val now = System.currentTimeMillis()
@@ -262,13 +264,13 @@ internal fun BaopuSessionLibraryScreen(
                                         // 追加一 D4：删除失败必须说出来，不许静默
                                         Toast.makeText(
                                             ctx,
-                                            ctx.getString(R.string.baopu_session_delete_failed),
+                                            res.getString(R.string.baopu_session_delete_failed),
                                             Toast.LENGTH_SHORT,
                                         ).show()
                                     } else if (wasCurrent) {
                                         Toast.makeText(
                                             ctx,
-                                            ctx.getString(R.string.baopu_session_deleted_current),
+                                            res.getString(R.string.baopu_session_deleted_current),
                                             Toast.LENGTH_SHORT,
                                         ).show()
                                     }

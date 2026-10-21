@@ -17,6 +17,7 @@
 package com.example.zhengdao.baopu
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.terminal.ProotLauncher
@@ -65,7 +66,7 @@ object BaopuWorkspace {
 
     /** 设为仅 App 私有。 */
     fun setPrivate(ctx: Context) {
-        AppPrefs.prefs(ctx).edit().putString(KEY_MODE, "private").remove(KEY_PATH).apply()
+        AppPrefs.prefs(ctx).edit { putString(KEY_MODE, "private").remove(KEY_PATH) }
     }
 
     /** 仅 App 私有（没授权时的回落落点）。 */
@@ -73,7 +74,7 @@ object BaopuWorkspace {
 
     /** 设为默认工作区（`Download/证道`）。 */
     fun setDefault(ctx: Context) {
-        AppPrefs.prefs(ctx).edit().putString(KEY_MODE, "default").remove(KEY_PATH).apply()
+        AppPrefs.prefs(ctx).edit { putString(KEY_MODE, "default").remove(KEY_PATH) }
     }
 
     /**

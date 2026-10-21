@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +61,7 @@ class SettingsBridgeActivity : ComponentActivity() {
 @Composable
 private fun SettingsBridgePage(onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     // 进程内单例：桥开着就是开着（开关只反映现状，不持有第二份状态）
     var enabled by remember { mutableStateOf(BrowserAgentBridge.isRunning()) }
     // 重置口令后自增，逼 remember 重新取一次打码串
@@ -103,9 +105,9 @@ private fun SettingsBridgePage(onBack: () -> Unit) {
                             false
                         }
                         toast = if (enabled) {
-                            ctx.getString(R.string.bridge_started)
+                            res.getString(R.string.bridge_started)
                         } else {
-                            ctx.getString(R.string.bridge_stopped)
+                            res.getString(R.string.bridge_stopped)
                         }
                     },
                 )
@@ -145,13 +147,13 @@ private fun SettingsBridgePage(onBack: () -> Unit) {
                     cm?.setPrimaryClip(
                         android.content.ClipData.newPlainText("zhengdao-bridge-token", BridgeToken.copyable(ctx)),
                     )
-                    toast = ctx.getString(R.string.bridge_copied)
+                    toast = res.getString(R.string.bridge_copied)
                 }) { Text(stringResource(R.string.bridge_copy)) }
 
                 TextButton(onClick = {
                     BridgeToken.regenerate(ctx)
                     tokenTick++
-                    toast = ctx.getString(R.string.bridge_reset_done)
+                    toast = res.getString(R.string.bridge_reset_done)
                 }) { Text(stringResource(R.string.bridge_reset)) }
             }
         }
