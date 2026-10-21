@@ -62,6 +62,7 @@ import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.agent.ToolGroup
+import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
@@ -149,11 +150,20 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 baopuSwitchableGroups(ToolGroup.values()).forEachIndexed { gi, group ->
                     if (gi > 0) Spacer(Modifier.height(10.dp))
                     val expanded = rememberSaveable(group.key) { mutableStateOf(false) }
-                    val groupOn = group !in prefs.disabledGroups()
+                    // 第九十七批：组状态四态（默认可见/已锁/已长期同意/已关闭）。
+                    // 上一版「已锁」在界面上显示成「开」，用户看到的就是「工具全都打开的」。
+                    val state = baopuGroupState(
+                        defaultVisible = group in ToolGroup.DEFAULT_VISIBLE,
+                        approved = group in prefs.approvedGroups(),
+                        disabled = group in prefs.disabledGroups(),
+                    )
+                    val groupOn = baopuGroupSwitchOn(state)
                     // 成员名单只从那张唯一的分组表读（§1「不新造第二张表」）；
                     // 摘要与展开后的开关共用这一个 members，两行说的一定是同一批工具。
                     val members = ToolGroupTable.namesOf(group)
-                    val summary = BaopuToolFoldSummary.of(members, groupDisabled = !groupOn) {
+                    // 「关闭项摘要」只描述**用户逐个关掉的工具**：已锁（没同意）不代表工具被关，
+                    // 所以只有 Disabled 才按整组关光算（否则会把「已锁」误报成「全部关闭」）。
+                    val summary = BaopuToolFoldSummary.of(members, groupDisabled = state == BaopuGroupState.Disabled) {
                         prefs.isDisabled(it)
                     }
                     Row(
@@ -171,9 +181,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 color = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                text = stringResource(
-                                    baopuGroupDefaultCaption(group in ToolGroup.DEFAULT_VISIBLE),
-                                ),
+                                text = stringResource(baopuGroupCaptionKey(state)),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -186,12 +194,16 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        // 组开关（§1.6「与单工具开关并存」）：关掉 ⇒ 组内一律不可见，
-                        // 且 capabilities 也解不开（判据只有 isVisibleTool 那一处）。
+                        // 组开关＝唯一主开关（§3.5）：开 ⇒ 长期同意（默认组就是解除禁用）；
+                        // 关 ⇒ 立即禁用整组＋会话内已解锁的一并失效。卡片上的「一直」写的是
+                        // 同一个 approved 档，所以两处状态永远一致（审计来源不同：卡片/设置页）。
                         Switch(
                             checked = groupOn,
                             onCheckedChange = { want ->
+                                prefs.setGroupApproved(group, want && group !in ToolGroup.DEFAULT_VISIBLE)
                                 prefs.setGroupDisabled(group, !want)
+                                if (!want) BaopuRuntime.toolUnlocks(ctx).relockAll(listOf(group))
+                                RunLog.log(ToolGroupAudit.manual(group, want))
                                 toolTick++
                             },
                             colors = iosSwitchColors(),

@@ -44,7 +44,7 @@ class BaopuSettingsSliceGateTest {
         listOf(
             "baopuSwitchableGroups(ToolGroup.values()).forEachIndexed",
             "stringResource(baopuGroupTitle(group))",
-            "baopuGroupDefaultCaption(group in ToolGroup.DEFAULT_VISIBLE)",
+            "baopuGroupCaptionKey(state)",
             "restoreLast(baopuPersonaLayerOf(d.scope), d.name)",
             "BaopuToolFoldSummary.of(members,",
         ).forEach { call ->
@@ -62,7 +62,10 @@ class BaopuSettingsSliceGateTest {
             "internal data class BaopuFoldSummary",
             "internal object BaopuToolFoldSummary",
             "internal fun baopuGroupTitle(",
-            "internal fun baopuGroupDefaultCaption(",
+            "internal enum class BaopuGroupState",
+            "internal fun baopuGroupState(",
+            "internal fun baopuGroupCaptionKey(",
+            "internal fun baopuGroupSwitchOn(",
             "internal fun baopuPersonaLayerOf(",
         ).forEach { d ->
             assertTrue("helper 里必须有 $d", rules.contains(d))
@@ -78,7 +81,8 @@ class BaopuSettingsSliceGateTest {
             "data class BaopuFoldSummary",
             "object BaopuToolFoldSummary",
             "fun baopuGroupTitle(",
-            "fun baopuGroupDefaultCaption(",
+            "fun baopuGroupCaptionKey(",
+            "fun baopuGroupState(",
             "fun baopuPersonaLayerOf(",
             "fun layerOf(",
             "it != ToolGroup.COMPAT",
@@ -167,8 +171,11 @@ class BaopuSettingsSliceGateTest {
         assertEquals(1, Regex("prefs\\.setGroupDisabled\\(group, !want\\)").findAll(page).count())
         assertEquals(1, Regex("prefs\\.setDisabled\\(name, !want\\)").findAll(page).count())
         assertEquals(1, Regex("prefs\\.isDisabled\\(it\\)").findAll(page).count())
-        assertEquals("本页只留四个 prefs 方法",
-            setOf("setGroupDisabled", "setDisabled", "disabledGroups", "isDisabled"),
+        assertEquals("本页只留这几个 prefs 方法（第九十七批新增 approved 两档，别的一律不许）",
+            setOf(
+                "setGroupDisabled", "setGroupApproved", "setDisabled",
+                "disabledGroups", "approvedGroups", "isDisabled",
+            ),
             Regex("prefs\\.(\\w+)\\(").findAll(page).map { it.groupValues[1] }.toSet())
         // 37/34/32 批钉在页内的字面量：回滚三钉 ＋ 归档七句 ＋ 草稿两钉，一个都没被我搬走
         listOf(

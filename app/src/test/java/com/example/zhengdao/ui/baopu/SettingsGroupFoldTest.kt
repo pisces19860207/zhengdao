@@ -196,13 +196,20 @@ class SettingsGroupFoldTest {
     }
 
     @Test
-    fun `G5_开关的读写点一个都没动`() {
+    fun `G5_开关的读写点各一处_第九十七批两档`() {
         val src = screen()
-        // 两个写入点：原样、各一处（§1「不改任何开关的读写」；多一处就是偷偷写了状态）
+        // 第九十七批口径变更：组开关同时写「长期同意」与「禁用」两档，各恰好一处
+        // （多一处就是有人又在别处偷偷改状态；61 批的「各一处」精神不变，只是档数变了）。
         assertEquals(
-            "组开关写入点必须原样且只有一处",
+            "组开关（禁用档）写入点必须只有一处",
             1,
             Regex("prefs\\.setGroupDisabled\\(group, !want\\)").findAll(src).count(),
+        )
+        assertEquals(
+            "组开关（长期同意档）写入点必须只有一处",
+            1,
+            Regex("prefs\\.setGroupApproved\\(group, want && group !in ToolGroup\\.DEFAULT_VISIBLE\\)")
+                .findAll(src).count(),
         )
         assertEquals(
             "单工具开关写入点必须原样且只有一处",
@@ -210,22 +217,39 @@ class SettingsGroupFoldTest {
             Regex("prefs\\.setDisabled\\(name, !want\\)").findAll(src).count(),
         )
         // 读取点也各自只有一处：折叠不许变成第三种"算可见性"的路子
-        assertEquals(1, Regex("group !in prefs\\.disabledGroups\\(\\)").findAll(src).count())
+        assertEquals("组状态只许在一处归一（四态）", 1, Regex("baopuGroupState\\(").findAll(src).count())
         assertEquals(1, Regex("!prefs\\.isDisabled\\(name\\)").findAll(src).count())
         assertEquals(
             "折叠态摘要读开关只能走 isDisabled 那一个入口",
             1,
             Regex("prefs\\.isDisabled\\(it\\)").findAll(src).count(),
         )
-        // 页面能碰 prefs 的方法只有这四个（多出来的都是新造的读写口子）
+        // 关组时撤会话解锁：也只许一个点
+        assertEquals(1, Regex("relockAll\\(listOf\\(group\\)\\)").findAll(src).count())
+        // 页面能碰 prefs 的方法就这几个（多出来的都是新造的读写口子）
         val calls = Regex("prefs\\.(\\w+)\\(").findAll(src).map { it.groupValues[1] }.toSet()
         assertEquals(
-            "设置页只许读写这四个开关方法：$calls",
-            setOf("setGroupDisabled", "setDisabled", "disabledGroups", "isDisabled"),
+            "设置页只许读写这几个开关方法：$calls",
+            setOf(
+                "setGroupDisabled", "setGroupApproved", "setDisabled",
+                "disabledGroups", "approvedGroups", "isDisabled",
+            ),
             calls,
         )
-        // 默认可见那一句解释仍按 DEFAULT_VISIBLE 说，不因为折叠换个说法
+        // 默认可见那一次读取仍按 DEFAULT_VISIBLE 说，不因为四态换个说法
         assertEquals(1, Regex("group in ToolGroup\\.DEFAULT_VISIBLE").findAll(src).count())
+    }
+
+    @Test
+    fun `G8_锁着的组照常上页_不许按状态过滤`() {
+        val src = screen()
+        // 第九十七批 §1：「锁着的组显示已锁/原因，不隐藏」——组列表必须无条件渲染，
+        // 不许有人加 filter { … approved / switchOn } 把锁着的组藏掉（那是打回第 2 条）。
+        assertTrue("组列表必须无条件遍历", src.contains("baopuSwitchableGroups(ToolGroup.values()).forEachIndexed"))
+        assertFalse(
+            "不许按开关/授权状态过滤组列表",
+            Regex("baopuSwitchableGroups\\(ToolGroup\\.values\\(\\)\\)\\s*\\.filter").containsMatchIn(src),
+        )
     }
 
     @Test
