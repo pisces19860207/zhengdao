@@ -65,7 +65,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
@@ -213,7 +212,17 @@ class MainActivity : ComponentActivity() {
         //    → RunLog.log() 开头的 `appContext ?: return` 把所有日志**静默丢掉**。
         //    后果：跨多轮分支构建 RunLog 零输出，SSE 断连原因完全无法定位。
         //    「失败可见」的前提是日志能落盘，故必须在 App 入口无条件初始化。
-        RunLog.init(applicationContext)
+        //
+        // 第一百一十八批 §2 T3：这行 `RunLog.init(applicationContext)` 删掉了——**不是删 init，
+        // 是删第二次 init**。同一个 `RunLog.init()` 在 [ZhengdaoApp.onCreate] 已经跑过，而
+        // `Application.onCreate` 恒早于任何 Activity（清单里 `android:name=".ZhengdaoApp"` 已钉死、
+        // 且全 App 只有单进程），所以"日志必须落盘"这条判据由 App 入口那份**独立成立**。
+        // 为什么要删：`init()` 每次调用都会跑 `migrateLegacy()` —— 里面是**公共区目录枚举**
+        // (`Download/证道/logs/` 的 listFiles) + 逐文件 `isFile/length` 判定，全在冷启动主线程上；
+        // 一次冷启动跑两遍 = 同样的活干两次（`resolvedDir`/`settled` 只兜住了 mkdirs 与归档，
+        // 没兜住迁移）。TerminalActivity 那份**保留**（红线：本批不碰终端），它多出来的那一次
+        // 记在未做项里。
+        // 复现核对：`grep -rn "RunLog.init(" app/src/main/java` ⇒ 期望 2 处（ZhengdaoApp、TerminalActivity）。
 
         // 系统版本兜底门槛（用户第四批）：minSdk=36 已拦住安装，这里双保险
         // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
