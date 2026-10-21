@@ -237,7 +237,13 @@ class LlmWireVisionTest {
             )
         }
         assertTrue("判据参数必须在签名里", raw.contains("visionSupported: Boolean"))
-        assertTrue("必须真的把它交给裁图判据", code.contains("VisionRules.select(images, visionSupported)"))
+        // 第一百二十四批改判：select 多了一个**带默认值**的 `userAuthorized`（用户显式选了
+        // 「仍要发送」才 true）。钉的东西没变——仍是「组装层把能力位交给唯一那把裁图判据」，
+        // 只是调用形状随签名平移。同批先例：105 批 81618595「三条旧判据随新口径改判」。
+        assertTrue(
+            "必须真的把它交给裁图判据",
+            code.contains("VisionRules.select(images, visionSupported, visionAuthorized)"),
+        )
     }
 
     // ── 组装层：note 落位 ────────────────────────────────────────────────────
