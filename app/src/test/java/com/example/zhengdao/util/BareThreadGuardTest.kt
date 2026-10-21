@@ -191,6 +191,11 @@ import kotlin.text.Charsets
  *   读池插在写池之后不挪它：zd-baopu-tool 68→69；`RunEngine.kt` 因新增
  *   `batchRunner` 构造参（+6 行，全在创建点之前）⇒ zd-baopu-run 222→228。
  *   新增 `agent/ToolScheduling.kt` 逐行核过**无**裸 Thread（池由 `ToolRunner` 现成提供）。
+ * - 2026-10-21（第一百一十批 · ENV-D1 可读 Snackbar）：**无新增线程**。
+ *   `SettingsEnvActivity.kt` 删页内 `toastOnMain`（−6 行）、三处拦截/失败文案改走
+ *   `showReadable`（Snackbar）且确认框先关；正文改在组合期用 `stringResource` 绑定
+ *   （避开 Lint 的 LocalContextGetResourceValueCall）⇒ 四个创建点
+ *   219→220 / 274→275 / 595→613 / 722→747。逐处核过仍是同一段 `Thread {`，本次回填。
  */
 class BareThreadGuardTest {
 
@@ -252,10 +257,10 @@ class BareThreadGuardTest {
             "PreviewServer.kt:125",
             "RunEngine.kt:228",
             "SettingsDataActivity.kt:596",
-            "SettingsEnvActivity.kt:219",
-            "SettingsEnvActivity.kt:274",
-            "SettingsEnvActivity.kt:595",
-            "SettingsEnvActivity.kt:722",
+            "SettingsEnvActivity.kt:220",
+            "SettingsEnvActivity.kt:275",
+            "SettingsEnvActivity.kt:613",
+            "SettingsEnvActivity.kt:747",
             "TerminalActivity.kt:88",
             "TerminalActivity.kt:662",
             "TerminalActivity.kt:931",

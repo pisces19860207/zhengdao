@@ -1,7 +1,11 @@
 // 第五十二批 · P0-5（2026-10-19）：rootfs 会话守卫的门禁。
 //
+// 第一百一十批 · ENV-D1（2026-10-21）：用户可见正文搬进 strings.xml（中/英），由
+// EnvNoticeDisplayGateTest 钉「两句完整、多行 Snackbar、不走两行 Toast」。本文件继续钉
+// 判据/行为/接线，① 检查的是**日志句**（仍保留两句关键词，排障对账用）。
+//
 // 三层：
-//   ① 纯判据：活会话 ⇒ 固定文案（含派工单要求的两句话）；无活会话 ⇒ null；
+//   ① 纯判据：活会话 ⇒ 日志句（含派工单要求的两句话）；无活会话 ⇒ null；
 //   ② 行为：被拦时安装动作**一次都不执行**、临时 rootfs 一个字节不变；
 //   ③ 源码门禁：四条设置页路径的「守卫 → 替换调用」交错序必须与预期完全一致
 //      （漏一条、错序、或换成 hasSession 判据，都红）。
@@ -21,11 +25,13 @@ class EnvInstallGateTest {
     // ── ① 纯判据 ─────────────────────────────────────────────────────────
 
     @Test
-    fun `门禁_活会话时给出固定文案_且两句关键词都在`() {
+    fun `门禁_活会话时给出日志句_且两句关键词都在`() {
         val msg = liveSessionBlocksEnvInstall(alive = true)
-        assertTrue("活会话必须拦下（返回文案），实际 null", msg != null)
-        assertTrue("文案里必须让用户先结束会话：$msg", msg!!.contains("结束当前终端会话"))
-        assertTrue("文案里必须明说没动文件：$msg", msg.contains("没有改动任何文件"))
+        assertTrue("活会话必须拦下（返回日志句），实际 null", msg != null)
+        assertTrue("日志里必须让用户先结束会话：$msg", msg!!.contains("结束当前终端会话"))
+        assertTrue("日志里必须明说没动文件：$msg", msg.contains("没有改动任何文件"))
+        // 110 批：这只是日志句，不是 UI 正文 —— UI 正文两句分行在 strings.xml。
+        assertTrue("日志句不应再兼任 UI 正文（正文见 env_block_live_session）", !msg.contains("回到终端页输入 exit"))
     }
 
     @Test

@@ -127,6 +127,13 @@ class SettingsEnvActivity : ComponentActivity() {
 private fun SettingsEnvPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
+    // ENV-D1：Snackbar 正文在组合期按资源取（stringResource 跟随配置/语言变化），
+    // 协程里只捕获结果 —— 不拿 LocalContext 读资源（Lint LocalContextGetResourceValueCall）。
+    val blockMessage = stringResource(LIVE_SESSION_BLOCK_MESSAGE_RES)
+    val gotIt = stringResource(R.string.common_got_it)
+    val viewLog = stringResource(R.string.common_view_log)
+    val repairNoLocalMsg = stringResource(R.string.env_repair_no_local)
+    val updateFailedTemplate = stringResource(R.string.env_update_failed)
     val snackbarHostState = remember { SnackbarHostState() }
     var storageTick by remember { mutableStateOf(0) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
@@ -158,12 +165,6 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
 
     fun openLogFromSnackbar() {
         openLogDialog(scope, ctx) { logDialogText = it }
-    }
-
-    fun toastOnMain(text: String, long: Boolean = false) {
-        android.os.Handler(ctx.mainLooper).post {
-            Toast.makeText(ctx, text, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
-        }
     }
 
     var checking by remember { mutableStateOf(false) }
@@ -417,11 +418,18 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             pendingIndex = pendingIdx
                             pendingPatch = pendingPatchRef
                             // 有可下载目标 → 交给下面的弹窗（用户点「下载并安装」）；
-                            // 没有目标（已是最新 / 只能手动去下载） → 用 Toast 说清楚。
+                            // 没有目标（已是最新 / 只能手动去下载） → 用可读 Snackbar 说清楚。
                             // 判据是 pendingUrl 而不是文案前缀：同版本补指纹的文案不以"发现新版本"开头，
                             // 按前缀判断会让它既不弹窗也不提示（2026-10-08 修）。
+                            // ENV-D1（2026-10-21）：这些结论最长 60 字（英文 180+ 字符），系统 Toast
+                            // 只有两行 ⇒ 改走 Snackbar，第二句/补充说明不再被截。
                             if (pendingUrl == null) {
-                                Toast.makeText(ctx, result, Toast.LENGTH_LONG).show()
+                                scope.launch {
+                                    snackbarHostState.showReadable(
+                                        message = result,
+                                        actionLabel = gotIt,
+                                    )
+                                }
                             }
                         }
                     }.apply { isDaemon = true; name = "zd-env-check" }.start()
@@ -575,7 +583,15 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     // 判定放在任何下载/解压/替换之前；被拦时一个字节都不动，不报「安装失败」
                     // （这是前置条件不满足，不是安装失败）。
                     if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.rootfs.RunLog::log)) {
-                        toastOnMain(LIVE_SESSION_BLOCK_MESSAGE, long = true)
+                        // ENV-D1：先关确认框再弹 Snackbar —— 对话框是独立窗口，不关会把
+                        // 页面底部的 Snackbar 整个盖住；同时 Toast 两行上限会截掉第二句。
+                        repairConfirm = false
+                        scope.launch {
+                            snackbarHostState.showReadable(
+                                message = blockMessage,
+                                actionLabel = gotIt,
+                            )
+                        }
                         return@TextButton
                     }
                     repairConfirm = false
@@ -586,11 +602,13 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                         // 第八十批：≥100MB 的门槛搬进 EnvRules（严格大于，与迁移前一致）
                         ).firstOrNull { EnvRules.isRepairCandidate(it.isFile, it.length()) }
                     if (candidates == null) {
-                        Toast.makeText(
-                            ctx,
-                            ctx.getString(R.string.env_repair_no_local),
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        // ENV-D1：英文 61 字符，超出两行 Toast 的可读上限 ⇒ 走 Snackbar。
+                        scope.launch {
+                            snackbarHostState.showReadable(
+                                message = repairNoLocalMsg,
+                                actionLabel = gotIt,
+                            )
+                        }
                     } else {
                         Thread {
                             // 进度走 InstallFlow（横幅状态 + 通知栏常驻 + RunLog）——此前这条路
@@ -704,7 +722,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     // 第五十二批 · P0-5：活会话时不换 rootfs（增量 apply 与全量 install 走同一个
                     // 整树替换）。判定在下单/下载之前，被拦时零文件改动。
                     if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "环境更新", com.example.zhengdao.rootfs.RunLog::log)) {
-                        toastOnMain(LIVE_SESSION_BLOCK_MESSAGE, long = true)
+                        // ENV-D1：同修复路径 —— 先关更新确认框，Snackbar 才不会被盖住。
+                        updateMsg = null
+                        scope.launch {
+                            snackbarHostState.showReadable(
+                                message = blockMessage,
+                                actionLabel = gotIt,
+                            )
+                        }
                         return@TextButton
                     }
                     val url = pendingUpdateUrl
@@ -867,13 +892,27 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             InstallFlow.finish(ctx, fallbackNote + ctx.getString(R.string.env_update_done))
                             android.os.Handler(ctx.mainLooper).post { storageTick++ }
                         } catch (t: Throwable) {
-                            // R-29（第⑯刀）：why 进 InstallFlow.fail + Toast（用户可见），原文只落 RunLog
+                            // R-29（第⑯刀）：why 进 InstallFlow.fail + 可读 Snackbar（用户可见），原文只落 RunLog
                             com.example.zhengdao.rootfs.RunLog.log(
                                 "环境更新失败（原文）：${t.javaClass.simpleName}: ${t.message}"
                             )
                             val why = HumanizeError.title(t, ctx.resources)
                             InstallFlow.fail(ctx, ctx.getString(R.string.env_update_failed, why))
-                            toastOnMain(ctx.getString(R.string.env_update_failed, why), long = true)
+                            // ENV-D1：失败原因可长可短，Toast 两行装不下 ⇒ 与「修复失败」同口径：
+                            // Snackbar 全程可读，点「查看日志」现场取日志。
+                            scope.launch {
+                                val r = snackbarHostState.showReadable(
+                                    message = String.format(
+                                        java.util.Locale.getDefault(),
+                                        updateFailedTemplate,
+                                        why,
+                                    ),
+                                    actionLabel = viewLog,
+                                )
+                                if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                    openLogFromSnackbar()
+                                }
+                            }
                         }
                     }.apply { isDaemon = true; name = "zd-env-update" }.start()
                 }) {
