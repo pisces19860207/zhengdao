@@ -1396,6 +1396,8 @@
     <string name="baopu_group_line_card">体检角色卡、导出酒馆 PNG</string>
     <string name="baopu_group_line_skill">把学到的东西写成 SKILL.md、给自己的条款追加一份</string>
     <string name="baopu_group_line_preview">在玄览只显示工作区里的网页/源码，不执行、出不了网</string>
+    <string name="baopu_group_line_mcp">用户手动连接的外部服务器；工具由服务器提供，首次使用要你确认</string>
+    <string name="baopu_tools_group_mcp">外部工具（MCP）</string>
     <!-- 效果卡（100） -->
     <string name="decision_effect_once_note">这条只提醒一次；先留着＝结案，稍后处理＝留在记录里观察</string>
     <string name="decision_effect_to_settings">去设置页处理</string>
