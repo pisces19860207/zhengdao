@@ -78,4 +78,25 @@ class UiD4DrawerAboveTopBarTest {
             !drawerBody.contains("☰") && !drawerBody.contains("baopu_drawer_close"),
         )
     }
+
+    /**
+     * F5（2026-10-21 真机复验加钉）：☰ 必须是**开关**，不许只 `open()`。
+     *
+     * 真机现场：顶栏挪到抽屉上方后 ☰ 点得到，但 `onClick = drawerState.open()` 让
+     * 「再点 ☰ 关」变成空操作（连点三次抽屉仍开）。这里同时钉「有 close 分支」与
+     * 「有 isOpen 判断」，防止退回只开不关。
+     */
+    @Test
+    fun `F5_三横线是开关_开着能关`() {
+        val button = screen.indexOf("Text(text = " + '"' + "☰" + '"')
+        val onClick = screen.lastIndexOf("onClick = {", button)
+        assertTrue("☰ 按钮的 onClick 必须可定位", button > 0 && onClick > 0)
+        val block = screen.substring(onClick, minOf(screen.length, onClick + 260))
+        assertTrue(
+            "☰ 的 onClick 必须按 drawerState.isOpen 分支（否则「再点 ☰ 关」不成立）",
+            block.contains("drawerState.isOpen"),
+        )
+        assertTrue("☰ 的 onClick 必须真的能 close()", block.contains("drawerState.close()"))
+        assertTrue("☰ 也必须能 open()", block.contains("drawerState.open()"))
+    }
 }

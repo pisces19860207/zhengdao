@@ -398,7 +398,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     val openLabel = stringResource(R.string.baopu_drawer_open)
                     val newSessionLabel = stringResource(R.string.baopu_new_session)
                     IconButton(
-                        onClick = { scope.launch { drawerState.open() } },
+                        // 2026-10-21 真机复验（蓝总管）：131 把抽屉挪到顶栏下面之后，☰ 确实点得到了，
+                        // 但这里当时仍只调 `open()` ⇒ 抽屉开着再点 ☰ 是空操作，「再点 ☰ 关」不成立。
+                        // 改成**开关切换**：开着就关、关着就开（两条路都在真机复验里点过）。
+                        onClick = {
+                            scope.launch {
+                                if (drawerState.isOpen) drawerState.close() else drawerState.open()
+                            }
+                        },
                         modifier = Modifier
                             .size(BAO_ICON_SLOT_DP.dp)
                             .semantics { contentDescription = openLabel },
