@@ -478,24 +478,6 @@ internal object BaopuSql {
             arrayOf<String?>(count.toString(), id.toString()),
         )
 
-    /** 归档 / 取消归档（updated_at 一并动，保证列表排序跟着变）。 */
-    fun setArchived(id: Long, archived: Boolean, updatedAt: Long): Stmt =
-        Stmt(
-            "UPDATE session SET archived = ?, updated_at = ? WHERE id = ?",
-            arrayOf<String?>(if (archived) "1" else "0", updatedAt.toString(), id.toString()),
-        )
-
-    fun listSessions(includeArchived: Boolean): Stmt = Stmt(
-        if (includeArchived) {
-            "SELECT id, title, model, provider, created_at, updated_at, archived, msg_count, preview " +
-                "FROM session WHERE deleted_at IS NULL ORDER BY updated_at DESC"
-        } else {
-            "SELECT id, title, model, provider, created_at, updated_at, archived, msg_count, preview " +
-                "FROM session WHERE deleted_at IS NULL AND archived = 0 ORDER BY updated_at DESC"
-        },
-        emptyArray(),
-    )
-
     // ── 会话回收站（第四十七批）────────────────────────────────────────────
 
     /** v10：session 加 `deleted_at`（可空；NULL＝未删）。列已在⇒空语句（幂等）。 */
@@ -677,33 +659,6 @@ internal object BaopuSql {
             args.toTypedArray(),
         )
     }
-
-    /** 提案批：proposalId 必须为 null（CHECK 约束会拦 ops 形态）。 */
-    fun insertProposalBatch(sessionId: Long, opsJson: String, expiresAt: Long, createdAt: Long): Stmt =
-        Stmt(
-            "INSERT INTO plan_batch (session_id, kind, proposal_id, ops_json, expires_at, created_at) " +
-                "VALUES (?, 'proposal', NULL, ?, ?, ?)",
-            arrayOf<String?>(sessionId.toString(), opsJson, expiresAt.toString(), createdAt.toString()),
-        )
-
-    /** 执行批：必须挂在已 approved 的提案批下（"approved"判据归计划层，SQL 只保证存在）。 */
-    fun insertOpsBatch(
-        sessionId: Long,
-        proposalId: Long,
-        opsJson: String,
-        expiresAt: Long,
-        createdAt: Long,
-    ): Stmt = Stmt(
-        "INSERT INTO plan_batch (session_id, kind, proposal_id, ops_json, expires_at, created_at) " +
-            "VALUES (?, 'ops', ?, ?, ?, ?)",
-        arrayOf<String?>(sessionId.toString(), proposalId.toString(), opsJson, expiresAt.toString(), createdAt.toString()),
-    )
-
-    fun decidePlanBatch(id: Long, status: String, decidedAt: Long): Stmt =
-        Stmt(
-            "UPDATE plan_batch SET status = ?, decided_at = ? WHERE id = ?",
-            arrayOf<String?>(status, decidedAt.toString(), id.toString()),
-        )
 
     /**
      * 删一个会话的**全部**语句，**顺序即执行顺序**（外键已开，顺序错就报 constraint）：
