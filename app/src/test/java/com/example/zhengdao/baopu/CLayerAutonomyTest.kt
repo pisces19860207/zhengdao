@@ -41,7 +41,11 @@ class CLayerAutonomyTest {
         )
         val before = files.projectFile().readText(Charsets.UTF_8)
 
-        val spec = AppendPersonaTool.spec { files }
+        // 第九十六批：58 批的「调了就写」作废——现在必须过御批卡，用户点「本工作区」才写。
+        val spec = AppendPersonaTool.spec(
+            ask = { req -> req.options.first { it.id == "workspace" } },
+            personaFiles = { files },
+        )
         val out = spec.executor(org.json.JSONObject().put("text", "- 新条款").put("reason", "用户说过"))
         assertTrue("工具应成功：$out", out is ToolOutcome.Ok)
 
@@ -51,6 +55,36 @@ class CLayerAutonomyTest {
         assertTrue("确实是追加", after.startsWith(before.trimEnd()))
         val backups = files.projectFile().parentFile!!.listFiles { f -> f.name.contains(".bak-") }
         assertTrue("人设写入要备份", backups != null && backups.isNotEmpty())
+    }
+
+    @Test
+    fun append_persona_tool_declined_writes_nothing() {
+        val files = pf()
+        val before = files.projectFile().exists()
+        val spec = AppendPersonaTool.spec(
+            ask = { req -> req.options.first { it.id == "cancel" } },
+            personaFiles = { files },
+        )
+        val out = spec.executor(org.json.JSONObject().put("text", "- 不该写进去"))
+        assertTrue("拒绝必须 Rejected：$out", out is ToolOutcome.Rejected)
+        assertFalse("用户没同意就不许写：${(out as ToolOutcome.Rejected).reason}", files.projectFile().exists())
+        assertEquals("没写过也不该凭空多出文件", before, files.projectFile().exists())
+    }
+
+    @Test
+    fun append_persona_tool_without_ui_says_so_and_writes_nothing() {
+        val files = pf()
+        val oldSink = com.example.zhengdao.baopu.agent.AskUserTool.sink
+        com.example.zhengdao.baopu.agent.AskUserTool.sink = null
+        try {
+            val spec = AppendPersonaTool.spec(personaFiles = { files })
+            val out = spec.executor(org.json.JSONObject().put("text", "- 无界面"))
+            assertTrue("没界面必须明说：$out", out is ToolOutcome.Rejected)
+            assertTrue((out as ToolOutcome.Rejected).reason.contains("没有写入"))
+            assertFalse(files.projectFile().exists())
+        } finally {
+            com.example.zhengdao.baopu.agent.AskUserTool.sink = oldSink
+        }
     }
 
     @Test
