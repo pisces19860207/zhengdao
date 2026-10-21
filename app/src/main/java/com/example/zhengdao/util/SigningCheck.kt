@@ -65,9 +65,38 @@ object SigningCheck {
         UNKNOWN,
     }
 
+    /**
+     * 进程内缓存（第一百一十八批 §2 T2）。
+     *
+     * ## 为什么敢缓存
+     * 签名由**当前装在这个包名下的 APK** 决定，进程活着它就不会变——覆盖安装时系统必杀进程，
+     * 新进程第一次调用照样重读。所以缓存的不是"判断结果"，而是"一个本来就不会变的常量"。
+     *
+     * ## 为什么这条值得改
+     * `check()` 每次调用都是一次 `PackageManager.getPackageInfo(GET_SIGNING_CERTIFICATES)`
+     * ——**跨进程 binder 往返**（还要顺带解签、SHA-256 一遍证书）。改前它在冷启动主线程上跑
+     * **两次**：[com.example.zhengdao.ZhengdaoApp.onCreate] 的 `logSignature()` 与
+     * [com.example.zhengdao.MainActivity.onCreate] 的 `warnIfUnofficialSignature()`，
+     * 第三次在设置页「关于」的组合期（`remember { SigningCheck.check(ctx) }`）。
+     * 缓存后：冷启动 1 次、关于页 0 次。调用点一个都不动（那是各页的语义，不是这里的）。
+     *
+     * ## 唯一不缓存的是 UNKNOWN
+     * UNKNOWN 的含义是"**这一次**没读到"（E-065 的立场：宁可漏报不误报）。把它缓存下去就等于
+     * 把一次偶发失败永久固化成"这 App 读不到签名"，与现状（下次调用照常重试）不一致 ⇒ 不缓存。
+     */
+    @Volatile
+    private var cachedResult: Result? = null
+
     fun check(ctx: Context): Result {
-        val hex = runCatching { signerSha256(ctx) }.getOrNull() ?: return Result.UNKNOWN
-        return if (hex in OFFICIAL_SHA256S) Result.OFFICIAL else Result.UNOFFICIAL
+        cachedResult?.let { return it }
+        val hex = runCatching { signerSha256(ctx) }.getOrNull()
+        val result = when {
+            hex == null -> Result.UNKNOWN
+            hex in OFFICIAL_SHA256S -> Result.OFFICIAL
+            else -> Result.UNOFFICIAL
+        }
+        if (result != Result.UNKNOWN) cachedResult = result
+        return result
     }
 
     /** 当前安装包第一个签名证书的 SHA-256（大写十六进制）；取不到返回 null。 */
