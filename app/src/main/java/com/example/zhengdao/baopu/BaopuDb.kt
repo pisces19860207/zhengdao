@@ -478,13 +478,6 @@ internal object BaopuSql {
             arrayOf<String?>(count.toString(), id.toString()),
         )
 
-    /** 归档 / 取消归档（updated_at 一并动，保证列表排序跟着变）。 */
-    fun setArchived(id: Long, archived: Boolean, updatedAt: Long): Stmt =
-        Stmt(
-            "UPDATE session SET archived = ?, updated_at = ? WHERE id = ?",
-            arrayOf<String?>(if (archived) "1" else "0", updatedAt.toString(), id.toString()),
-        )
-
     fun listSessions(includeArchived: Boolean): Stmt = Stmt(
         if (includeArchived) {
             "SELECT id, title, model, provider, created_at, updated_at, archived, msg_count, preview " +

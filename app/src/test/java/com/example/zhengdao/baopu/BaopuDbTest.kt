@@ -446,15 +446,6 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `归档语句置archived并动updated_at`() {
-        val on = BaopuSql.setArchived(7L, true, 123L)
-        assertTrue(on.sql.contains("SET archived = ?, updated_at = ?"))
-        assertEquals(listOf("1", "123", "7"), on.args.toList())
-        val off = BaopuSql.setArchived(7L, false, 123L)
-        assertEquals("0", off.args[0])
-    }
-
-    @Test
     fun `listSessions按归档过滤`() {
         assertTrue(BaopuSql.listSessions(includeArchived = true).sql.contains("ORDER BY updated_at DESC"))
         // 第四十七批：两种列表都要排除软删会话
