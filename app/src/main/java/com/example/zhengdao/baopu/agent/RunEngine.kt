@@ -187,6 +187,15 @@ internal class RunEngine(
      * 所以并行段的时序用例都在 `ToolSchedulingTest` 里直接驱这个执行器）。
      */
     private val batchRunner: ToolBatchRunner = ToolBatchRunner(),
+    /**
+     * 知识库自动注入（第一百二十八批）：入参＝本轮用户输入，出参＝要拼进本轮输入
+     * 末尾的一节 note（或 null＝不注入）。
+     *
+     * 为什么是注入的函数而不是持存储：索引文件在 App 私有目录，引擎自己要能在 JVM 里跑
+     * （单测不注入就没有自动注入，既有用例一个都不动）；真实现由装配层闭包
+     * `KbTools.store` 提供（Context 只出现在 BaopuRuntime）。
+     */
+    private val kbRecall: ((String) -> String?)? = null,
     private val log: (String) -> Unit = { RunLog.log(it) },
 ) {
 
@@ -1126,6 +1135,18 @@ internal class RunEngine(
                     }
                     loaded.payloads
                 }
+            }
+        }
+        // 第一百二十八批：知识库自动注入——索引存在时，用**本轮用户输入**检索一次，
+        // TopK 按 2k 预算裁成 note 拼进 turnNotes（房型同图片说明：每轮算一次、
+        // 工具循环里每步都看得到）。索引缺失/损坏 ⇒ 静默跳过，不阻塞对话；
+        // 续跑不重复注入（原轮已注过，同 turnImages 口径）；无命中 ⇒ 不注
+        // （"没找到"的明说属于显式检索 kb_search）。
+        if (userText != null && !resumed) {
+            val kbNote = runCatching { kbRecall?.invoke(userText) }.getOrNull()
+            if (!kbNote.isNullOrBlank()) {
+                turnNotes = turnNotes + kbNote
+                log("抱朴引擎：知识库自动注入已拼入本轮输入（${kbNote.length} 字符）")
             }
         }
         if (userText != null) {
