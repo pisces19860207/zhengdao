@@ -200,6 +200,12 @@ import kotlin.text.Charsets
  *   4 个测试专用 SQL 拼装（setMsgCount/clearMemories/allMemories/touchMemoryUse，−23 行）
  *   ⇒ zd-baopu-db 单写者创建点 1236→1213 平移，本次回填。逐处核过仍是同一段
  *   `Thread(r, "zd-baopu-db").apply { isDaemon = true }`，有名 + daemon 都没变。
+ * - 2026-10-21（第一百一十七批 · 多任务并发 v1）：**无新增线程**。队列是内存
+ *   `SessionRunQueue` + 既有 `zd-baopu-run` 单线程上的 drain，未建任何 Thread/池；
+ *   `RunQueue.kt` 逐行核过无裸 Thread。两处创建点因上方新增 KDoc 平移：
+ *   `RunEngine.kt` 的 `MessagePersisted` 扩字段与 `QueueChanged` 登记（+16 行，全在创建点之前）
+ *   ⇒ zd-baopu-run 228→244；`BaopuDb.kt` 的 v15 `run_queue` DDL/语句（+44 行，全在创建点之前）
+ *   ⇒ zd-baopu-db 1213→1257。逐处核过仍是同一段 `Thread(r, "zd-…")`，有名 + daemon 都没变。
  */
 class BareThreadGuardTest {
 
@@ -244,7 +250,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:136",
-            "BaopuDb.kt:1213",
+            "BaopuDb.kt:1257",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",
@@ -259,7 +265,7 @@ class BareThreadGuardTest {
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
-            "RunEngine.kt:228",
+            "RunEngine.kt:244",
             "SettingsDataActivity.kt:596",
             "SettingsEnvActivity.kt:220",
             "SettingsEnvActivity.kt:275",

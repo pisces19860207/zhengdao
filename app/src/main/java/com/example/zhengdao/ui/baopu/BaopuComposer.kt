@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -82,7 +83,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 输入区：＋（附件）／输入框／发送（busy 时变停止）。busy 由调用方给（引擎状态）。
+ * 输入区：＋（附件）／输入框／发送（跑着时另给一个停止）。
+ *
+ * 第一百一十七批：**跑着也能输入、也能发**——发送进本会话 FIFO 队列（最多 8 条），
+ * 当前回合收尾后自动接着跑；被拒（队列满/别的会话在跑）时**原文留在框里**，
+ * 由 `onSend` 返回的 Boolean 决定清不清。停止与发送并排，停止永远可点。
  *
  * 附件（第二十二批 A 段）三条口径：
  * 1. **一个「＋」开三个口**：拍照／相册／选文件 —— 不摆三个按钮挤输入框；
@@ -99,15 +104,23 @@ private const val MAX_ATTACH = 9
 internal fun BaopuComposer(
     busy: Boolean,
     /**
-     * 发送回调：`(要发出去的文本, 本轮附件)`。
+     * 发送回调：`(要发出去的文本, 本轮附件)`，返回**引擎接没接**。
      *
      * 第二十四批 B 段把签名从 `(String)` 扩成两参：图片要**随消息落成
      * `part.kind='image'`**（气泡里渲缩略图），而文本里那句 hint **照样保留**
      * （判据 B2——有了图片块不等于模型一定看得到，接线没通之前那句提示仍然是真的）。
+     * 第一百一十七批再扩返回值：被拒时输入框与附件**不许清**（原话是用户的）。
      */
-    onSend: (String, List<BaopuAttachments.Saved>) -> Unit,
+    onSend: (String, List<BaopuAttachments.Saved>) -> Boolean,
     onStop: () -> Unit,
+    // Modifier 必须是第一个可选参数（Compose 约定 + lint ModifierParameter）。
     modifier: Modifier = Modifier,
+    /** 本会话排队条数（0 ⇒ 不显示状态行）。 */
+    queuedCount: Int = 0,
+    /** 冷启动恢复的队列不会自己跑：用户点「继续排队」才接上。 */
+    onContinueQueue: () -> Unit = {},
+    /** 清掉还没开跑的排队条（不动当前这一轮）。 */
+    onClearQueue: () -> Unit = {},
 ) {
     var text by rememberSaveable { mutableStateOf("") }
     // 多选（2026-10-18 用户）：最多 9 个
@@ -220,6 +233,29 @@ internal fun BaopuComposer(
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }
+        // 排队状态行（第一百一十七批）：跑着也能看见「还有几条在等」。
+        // 「继续排队」只在没跑的时候出现——跑到一半点它只会撞单活跃门（引擎会拒绝）。
+        if (queuedCount > 0) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = pluralStringResource(R.plurals.baopu_queue_count, queuedCount, queuedCount),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!busy) {
+                    TextButton(onClick = onContinueQueue) {
+                        Text(stringResource(R.string.baopu_queue_continue))
+                    }
+                }
+                TextButton(onClick = onClearQueue) {
+                    Text(stringResource(R.string.baopu_queue_clear))
+                }
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth() // imePadding 由 BaopuScreen 根 Column 统一消费（2026-10-18，避免双份）
@@ -231,7 +267,6 @@ internal fun BaopuComposer(
             // 40dp 的无边框小键，图形是自绘 Canvas（不引图标库、不加 emoji，与玄览/终端那套自绘一致）
             IconButton(
                 onClick = { sheetOpen = true },
-                enabled = !busy,
                 modifier = Modifier
                     .padding(bottom = 8.dp)
                     .size(40.dp)
@@ -245,33 +280,35 @@ internal fun BaopuComposer(
                 modifier = Modifier.weight(1f),
                 placeholder = { Text(stringResource(R.string.baopu_input_hint)) },
                 maxLines = 4,
-                enabled = !busy,
             )
             if (busy) {
                 // 停止：立刻可点（点停止任何时候都该有用）
-                Button(
+                TextButton(
                     onClick = { onStop() },
                     modifier = Modifier.padding(bottom = 8.dp),
                 ) {
                     Text(stringResource(R.string.baopu_stop))
                 }
-            } else {
-                Button(
-                    onClick = {
-                        val body = text
-                        val list = attachList
-                        if (body.isNotBlank() || list.isNotEmpty()) {
+            }
+            // 发送在跑着时**也留着**：点下去＝排队，不是丢掉。
+            Button(
+                onClick = {
+                    val body = text
+                    val list = attachList
+                    if (body.isNotBlank() || list.isNotEmpty()) {
+                        // hint 照旧拼进文本（B2：不许因为有了 image part 就删提示）
+                        val accepted = onSend(withAttachmentHint(ctx, body, list), list)
+                        // 被拒（队列满 / 别的会话在跑）⇒ 原文与附件都不清，用户不用重打
+                        if (accepted) {
                             text = ""
                             attachList = emptyList()
-                            // hint 照旧拼进文本（B2：不许因为有了 image part 就删提示）
-                            onSend(withAttachmentHint(ctx, body, list), list)
                         }
-                    },
-                    enabled = text.isNotBlank() || attachList.isNotEmpty(),
-                    modifier = Modifier.padding(bottom = 8.dp),
-                ) {
-                    Text(stringResource(R.string.baopu_send))
-                }
+                    }
+                },
+                enabled = text.isNotBlank() || attachList.isNotEmpty(),
+                modifier = Modifier.padding(bottom = 8.dp),
+            ) {
+                Text(stringResource(R.string.baopu_send))
             }
         }
     }

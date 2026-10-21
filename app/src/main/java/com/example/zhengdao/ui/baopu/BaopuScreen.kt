@@ -938,9 +938,13 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
             BaopuComposer(
                 busy = controller.busy,
-                // 第二十四批 B 段：附件随文本一起交出去（图片要落 image part）
+                queuedCount = controller.queuedCount,
+                // 第二十四批 B 段：附件随文本一起交出去（图片要落 image part）；
+                // 第一百一十七批：返回值＝引擎接没接（被拒时 composer 保留原文）。
                 onSend = { text, attachments -> controller.send(text, attachments) },
                 onStop = { controller.stop() },
+                onContinueQueue = { controller.continueQueue() },
+                onClearQueue = { controller.clearQueue() },
             )
             if (showChannel) {
                 val (customBase, customModel) = ProviderPrefs.storedCustom(context)

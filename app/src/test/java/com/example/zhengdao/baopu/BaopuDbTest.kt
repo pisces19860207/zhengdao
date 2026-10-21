@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(14, BaopuDb.VERSION) // v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+        assertEquals(15, BaopuDb.VERSION) // v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(14, BaopuDb.VERSION) // v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+        assertEquals(15, BaopuDb.VERSION) // v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -495,6 +495,11 @@ class BaopuDbTest {
             val create = Regex("CREATE TABLE IF NOT EXISTS (\\w+)").find(line)
             if (create != null) {
                 current = create.groupValues[1]
+                // 第一百一十七批：run_queue 的建表是一行写完的（v15）；
+                // REFERENCES 与 CREATE 同一行时也要记，别直接 continue 漏掉。
+                if (line.contains("REFERENCES session(id)")) {
+                    current?.let { refs[it] = line.contains("ON DELETE CASCADE") }
+                }
                 continue
             }
             if (line.contains("REFERENCES session(id)")) {
@@ -502,8 +507,8 @@ class BaopuDbTest {
             }
         }
         assertEquals(
-            "DDL 里应当找到 message/run_log/plan_batch/compression/artifact/run_trace 六张引用 session 的表，实际 $refs",
-            setOf("message", "run_log", "plan_batch", "compression", "artifact", "run_trace"),
+            "DDL 里应当找到 message/run_log/plan_batch/compression/artifact/run_trace/run_queue 七张引用 session 的表，实际 $refs",
+            setOf("message", "run_log", "plan_batch", "compression", "artifact", "run_trace", "run_queue"),
             refs.keys,
         )
         val deleted = BaopuSql.deleteSessionStatements(1L).joinToString("\n") { it.sql }
@@ -518,10 +523,33 @@ class BaopuDbTest {
         // 哪天有人摘掉 CASCADE 又忘了补删除语句 ⇒ refs 里它变 false ⇒ 上面那条 forEach 立刻红。
         assertTrue("artifact 必须带 ON DELETE CASCADE（删会话时台账跟着走）", refs["artifact"] == true)
         assertTrue("run_trace 必须带 ON DELETE CASCADE（v13 第八十七批：删会话时轨迹跟着走）", refs["run_trace"] == true)
+        assertTrue("run_queue 必须带 ON DELETE CASCADE（v15 第一百一十七批：删会话时排队条跟着走）", refs["run_queue"] == true)
         assertFalse(
-            "带级联的表不许在删会话语句里重复删（part / artifact 都靠 SQLite 联动）",
-            deleted.contains("DELETE FROM artifact") || deleted.contains("DELETE FROM part"),
+            "带级联的表不许在删会话语句里重复删（part / artifact / run_queue 都靠 SQLite 联动）",
+            deleted.contains("DELETE FROM artifact") || deleted.contains("DELETE FROM part") ||
+                deleted.contains("DELETE FROM run_queue"),
         )
+    }
+
+    @Test
+    fun `v15_run_queue_幂等建表_级联_按会话取队`() {
+        assertTrue("v15 DDL 必须 IF NOT EXISTS（幂等真迁移）", BaopuSql.RUN_QUEUE_DDL.all { it.contains("IF NOT EXISTS") })
+        val table = BaopuSql.RUN_QUEUE_DDL.first { it.contains("CREATE TABLE IF NOT EXISTS run_queue") }
+        assertTrue("run_queue 必须引用 session 并级联删除：$table", table.contains("REFERENCES session(id) ON DELETE CASCADE"))
+        assertTrue("排队行必须有会话/正文/图片/时间四类列：$table",
+            table.contains("session_id INTEGER NOT NULL") && table.contains("text TEXT NOT NULL") &&
+                table.contains("image_rel_paths TEXT NOT NULL DEFAULT ''") && table.contains("created_at INTEGER NOT NULL"))
+        assertTrue("按会话取队要有索引", BaopuSql.RUN_QUEUE_DDL.any {
+            it.contains("idx_run_queue_session ON run_queue (session_id, id)")
+        })
+        val ins = BaopuSql.insertRunQueue(7L, "排队一条", listOf("附件/a.png", "附件/b.png"), 123L)
+        assertTrue("插入绑定 session/正文/JSON/时间：${ins.sql}", ins.sql.contains("INSERT INTO run_queue"))
+        assertEquals(listOf("7", "排队一条", "[\"附件/a.png\",\"附件/b.png\"]", "123"), ins.args.toList())
+        val sel = BaopuSql.selectRunQueue(7L)
+        assertTrue("取队按 id 升序（FIFO）：${sel.sql}", sel.sql.contains("ORDER BY id ASC"))
+        assertEquals(listOf("7"), sel.args.toList())
+        assertTrue("清空只按会话删", BaopuSql.deleteRunQueueForSession(7L).sql.contains("WHERE session_id = ?"))
+        assertTrue("单条删除按主键", BaopuSql.deleteRunQueue(9L).sql.contains("WHERE id = ?"))
     }
 
     @Test

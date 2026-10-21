@@ -40,11 +40,25 @@ class VisionWiringTest {
     fun `C1_控制器把相对路径交给引擎`() {
         assertTrue(
             "send 必须把本批图片路径带进 engine.send（不传 ⇒ 引擎永远拿不到图）",
-            controller.contains("engine.send(sid, text, pendingImagePaths)"),
+            controller.contains("engine.send(sid, text, imageRelPaths)"),
         )
         assertTrue(
             "路径来源必须是 B 段那个判据（同一批判据，不许另起一套）",
-            controller.contains("pendingImagePaths = AttachmentParts.imageRelPaths(attachments)"),
+            controller.contains("val imageRelPaths = AttachmentParts.imageRelPaths(attachments)"),
+        )
+        // 第一百一十七批：路径必须**随消息**走。控制器里若还有共享的 pendingImagePaths，
+        // 排队的两条带图消息会串图 —— 这条负例就是「背景任务丢/串消息」的守门员。
+        assertFalse(
+            "控制器不许再用单个 pendingImagePaths 格子（队列会串图）",
+            controller.contains("pendingImagePaths"),
+        )
+        assertTrue(
+            "引擎事件必须带回这条消息自己的图路径",
+            engine.contains("val imageRelPaths: List<String> = emptyList()"),
+        )
+        assertTrue(
+            "控制器按事件的路径补 image part（不是从共享格子里取）",
+            controller.contains("attachImageParts(ev.messageId, ev.imageRelPaths)"),
         )
     }
 
@@ -54,7 +68,7 @@ class VisionWiringTest {
         // 的原因吞掉，真机上表现为「一张 3 MB 照片 = 模型看不见图」。load 必须带缩图实现。
         assertTrue(
             "引擎必须用 VisionFiles.load(spillRoot(), paths, …) 读图",
-            engine.contains("VisionFiles.load(spillRoot(), paths"),
+            engine.contains("VisionFiles.load(spillRoot(), turnImagePaths"),
         )
         assertTrue(
             "读图必须带上缩图实现（不带 ⇒ 超 2 MB 的图照旧全丢）",
