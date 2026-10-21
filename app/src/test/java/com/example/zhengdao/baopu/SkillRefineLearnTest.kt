@@ -196,4 +196,52 @@ class SkillRefineLearnTest {
         assertEquals("## 验证 只能出现一次", 1, Regex("(?m)^## 验证$").findAll(body).count())
         assertEquals("标题只补一次", 1, Regex("(?m)^# ").findAll(body).count())
     }
+
+    // ── ⑥ 第一百零七批（EVO-D2）：信号内容不许拿工具名兜底 ─────────────────
+
+    @Test
+    fun `技能类信号_有路径用路径`() {
+        assertEquals(
+            "技能/note2/SKILL.md",
+            SkillRefine.learnDetailFor(
+                SkillRefine.SignalKind.SKILL, "write_skill",
+                listOf("技能/note2/SKILL.md"), "note2",
+            ),
+        )
+    }
+
+    @Test
+    fun `技能类信号_没路径用技能名_而不是工具名`() {
+        assertEquals(
+            "note2",
+            SkillRefine.learnDetailFor(SkillRefine.SignalKind.SKILL, "write_skill", emptyList(), " note2 "),
+        )
+    }
+
+    @Test
+    fun `技能类信号_连技能名都没有就不出信号`() {
+        assertEquals(
+            "没名字的 write_skill 不许推出一条垃圾候选",
+            null,
+            SkillRefine.learnDetailFor(SkillRefine.SignalKind.SKILL, "write_skill", emptyList(), "  "),
+        )
+        assertEquals(null, SkillRefine.learnDetailFor(SkillRefine.SignalKind.SKILL, "write_skill", emptyList(), null))
+    }
+
+    @Test
+    fun `其余类没路径仍回退工具名_旧行为不变`() {
+        assertEquals(
+            "browser_snapshot",
+            SkillRefine.learnDetailFor(SkillRefine.SignalKind.BROWSER, "browser_snapshot", emptyList(), null),
+        )
+    }
+
+    @Test
+    fun `EVO_D2_候选名是技能名而不是工具名`() {
+        val detail = SkillRefine.learnDetailFor(
+            SkillRefine.SignalKind.SKILL, "write_skill", emptyList(), "note2",
+        )
+        val p = SkillRefine.learnProposals(listOf(sig(SkillRefine.SignalKind.SKILL, detail!!))).single()
+        assertEquals("note2", SkillRefine.nameOf(p))
+    }
 }
