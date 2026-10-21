@@ -660,19 +660,6 @@ internal object BaopuSql {
         )
     }
 
-    /** 执行批：必须挂在已 approved 的提案批下（"approved"判据归计划层，SQL 只保证存在）。 */
-    fun insertOpsBatch(
-        sessionId: Long,
-        proposalId: Long,
-        opsJson: String,
-        expiresAt: Long,
-        createdAt: Long,
-    ): Stmt = Stmt(
-        "INSERT INTO plan_batch (session_id, kind, proposal_id, ops_json, expires_at, created_at) " +
-            "VALUES (?, 'ops', ?, ?, ?, ?)",
-        arrayOf<String?>(sessionId.toString(), proposalId.toString(), opsJson, expiresAt.toString(), createdAt.toString()),
-    )
-
     fun decidePlanBatch(id: Long, status: String, decidedAt: Long): Stmt =
         Stmt(
             "UPDATE plan_batch SET status = ?, decided_at = ? WHERE id = ?",
