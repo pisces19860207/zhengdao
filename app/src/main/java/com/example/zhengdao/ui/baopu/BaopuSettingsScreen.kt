@@ -1003,6 +1003,8 @@ private fun baopuToolLabel(name: String): Int = when (name) {
         "append_persona" -> R.string.baopu_tool_append_persona
     "library_list" -> R.string.baopu_tool_library_list
     "library_organize" -> R.string.baopu_tool_library_organize
+    "kb_index" -> R.string.baopu_tool_kb_index
+    "kb_search" -> R.string.baopu_tool_kb_search
     "delete_path" -> R.string.baopu_tool_delete_path
     "image_ops" -> R.string.baopu_tool_image_ops
     "ask_user" -> R.string.baopu_tool_ask_user
@@ -1051,6 +1053,8 @@ private fun baopuToolDesc(name: String): Int = when (name) {
         "append_persona" -> R.string.baopu_tool_append_persona_desc
     "library_list" -> R.string.baopu_tool_library_list_desc
     "library_organize" -> R.string.baopu_tool_library_organize_desc
+    "kb_index" -> R.string.baopu_tool_kb_index_desc
+    "kb_search" -> R.string.baopu_tool_kb_search_desc
     "delete_path" -> R.string.baopu_tool_delete_path_desc
     "image_ops" -> R.string.baopu_tool_image_ops_desc
     "ask_user" -> R.string.baopu_tool_ask_user_desc

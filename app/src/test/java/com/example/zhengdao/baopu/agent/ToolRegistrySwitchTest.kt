@@ -62,7 +62,10 @@ class ToolRegistrySwitchTest {
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 "browser_open", "browser_snapshot", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot", "update_plan",
-                "library_list", "library_organize", "delete_path", "image_ops", "ask_user",
+                "library_list", "library_organize",
+                // 第一百二十八批两条：kb_index（建索引，CONFIRM）/ kb_search（检索，FREE 只读）
+                "kb_index", "kb_search",
+                "delete_path", "image_ops", "ask_user",
                 "card_inspect", "card_export", "card_build",
                 // 第五十九批两条：capabilities（渐进披露入口）与 preview_local_file（玄览只显示）
                 "capabilities", "preview_local_file",
