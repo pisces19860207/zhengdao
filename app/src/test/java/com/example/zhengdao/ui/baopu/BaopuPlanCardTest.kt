@@ -1,11 +1,15 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
-// 依据：派工单第十七批追加一 §4 判据 J5/J6/J15–J18。判据分两层：
-// - **纯函数层**（JVM 直测）：planCardExpanded / shouldShowPlanCard / planDoneCount /
-//   planStatusSymbol / BaopuUiPlan.fromPayload——与第十六批第一件同房型；
-// - **源码级门禁**（J15/J16）：轮收起分支也挂计划卡、plan payload 不进文本通道——
-//   Compose 渲染不可 JVM 直测（本仓无 Robolectric），照 BaopuPresetGuardTest 的
-//   范式用源码断言钉死。
+// 依据：派工单第十七批追加一 §4 判据 J5/J6/J15–J18 —— **第一百零六批已把 J5 / J15 迁走**：
+// - J5（展开态）从「卡级」迁到「组级」：`planGroupExpanded(group, running, userChoice)`
+//   ⇒ 判据落在 `BaopuPlanAreaTest`（本文件不再测 J5）；
+// - J15（显隐）从「与轮收起无关」升级为「胶囊显隐只看有没有计划」
+//   ⇒ `planCapsuleState(messages) != null`，同样在 `BaopuPlanAreaTest`；
+// - J16 升级为「正文里不许再出现计划卡渲染」，也在 `BaopuPlanAreaTest`；
+//   本文件保留**数据层**那条：plan payload 不进文本通道、卡只认解析后的 `BaopuUiPlan`。
+//
+// 本文件留下的判据：计划取数（同轮取最后）、payload 容错、三态符号、完成计数、
+// 条目截断阈值、J16 数据层。
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.PlanRules
@@ -51,31 +55,10 @@ class BaopuPlanCardTest {
         return f.readText()
     }
 
-    // ── J15：不被轮收纳吃掉 ─────────────────────────────────────────────
+    // ── 计划取数：同轮取最后一条 ─────────────────────────────────────────
 
     @Test
-    fun `J15_轮收起也显示计划卡`() {
-        val payload = PlanRules.toJson(
-            listOf(PlanRules.PlanItem("读文件", PlanRules.STATUS_DONE), PlanRules.PlanItem("写文件", PlanRules.STATUS_TODO)),
-        )
-        val round = groupRounds(roundWithPlan(payload)).single()
-        val plan = round.planOrNull()
-        assertNotNull("轮里应解析出计划", plan)
-        // 收起/展开两个态都返回 true——「与轮收起无关」正是本判据
-        assertTrue(shouldShowPlanCard(round, plan, collapsed = true))
-        assertTrue(shouldShowPlanCard(round, plan, collapsed = false))
-    }
-
-    @Test
-    fun `J15_没有计划的轮不显示卡片`() {
-        val round = groupRounds(listOf(msg(1, "user", 1_000), msg(2, "assistant", 2_000, textPart("纯聊天")))).single()
-        assertNull(round.planOrNull())
-        assertFalse(shouldShowPlanCard(round, null, collapsed = false))
-        assertFalse(shouldShowPlanCard(round, null, collapsed = true))
-    }
-
-    @Test
-    fun `J15_同一轮多次update_plan_取最后一条`() {
+    fun `同轮多次update_plan_取最后一条`() {
         val first = PlanRules.toJson(listOf(PlanRules.PlanItem("旧计划", PlanRules.STATUS_TODO)))
         val last = PlanRules.toJson(
             listOf(
@@ -95,55 +78,18 @@ class BaopuPlanCardTest {
     }
 
     @Test
-    fun `J15_收起与展开两个分支都挂计划卡_源码级`() {
-        val src = source("BaopuMessageList.kt")
-        val collapsedBlock = src.substringAfter("if (collapsed) {").substringBefore("} else {")
-        assertTrue(
-            "收起的轮也必须渲染计划卡（被轮收纳吃掉就红）",
-            collapsedBlock.contains("BaopuPlanCard("),
-        )
-        val expandedBlock = src.substringAfter("} else {")
-            .substringBefore("private fun BaopuRound.finalAnswerMessage")
-        assertTrue("展开的轮也要渲染计划卡", expandedBlock.contains("BaopuPlanCard("))
-    }
-
-    // ── J5：收起/展开 ───────────────────────────────────────────────────
-
-    @Test
-    fun `J5_正在跑_计划卡自动展开`() {
-        val payload = PlanRules.toJson(listOf(PlanRules.PlanItem("读文件", PlanRules.STATUS_DOING)))
-        val round = groupRounds(roundWithPlan(payload)).single()
-        assertTrue("跑着 ⇒ 展开", planCardExpanded(round, running = true, userPlanExpandedIds = emptySet()))
+    fun `没有计划的轮_planOrNull为null`() {
+        val round = groupRounds(listOf(msg(1, "user", 1_000), msg(2, "assistant", 2_000, textPart("纯聊天")))).single()
+        assertNull(round.planOrNull())
     }
 
     @Test
-    fun `J5_跑完_计划卡自动收起`() {
-        val payload = PlanRules.toJson(listOf(PlanRules.PlanItem("读文件", PlanRules.STATUS_DONE)))
-        val round = groupRounds(roundWithPlan(payload)).single()
-        assertFalse("跑完 ⇒ 收起", planCardExpanded(round, running = false, userPlanExpandedIds = emptySet()))
-    }
-
-    @Test
-    fun `J5_点一次翻转一次`() {
-        val payload = PlanRules.toJson(listOf(PlanRules.PlanItem("读文件", PlanRules.STATUS_DONE)))
-        val round = groupRounds(roundWithPlan(payload)).single()
-        val key = round.userMessageId
-        assertFalse("初始收起", planCardExpanded(round, running = false, userPlanExpandedIds = emptySet()))
-        assertTrue("点一次 ⇒ 展开", planCardExpanded(round, running = false, userPlanExpandedIds = setOf(key)))
-        assertFalse(
-            "再点一次 ⇒ 收起（翻转由组合层换集合实现，这里钉集合→状态）",
-            planCardExpanded(round, running = false, userPlanExpandedIds = emptySet()),
-        )
-    }
-
-    @Test
-    fun `J5_跑着的是当前轮_历史轮不跟跑`() {
-        val payload = PlanRules.toJson(listOf(PlanRules.PlanItem("旧任务", PlanRules.STATUS_DONE)))
-        val messages = roundWithPlan(payload) + msg(10, "user", 20_000) + msg(11, "assistant", 21_000, textPart("新轮"))
-        val rounds = groupRounds(messages)
-        val historical = rounds.first()
-        assertFalse("历史轮不因在跑而展开", planCardExpanded(historical, running = true, userPlanExpandedIds = emptySet()))
-        assertTrue("当前轮在跑 ⇒ 展开", planCardExpanded(rounds.last(), running = true, userPlanExpandedIds = emptySet()))
+    fun `空计划的轮_planOrNull为null`() {
+        assertEquals(0, plan().items.size)
+        assertNotNull("空计划本身是个对象（解析器给的）", BaopuUiPlan(emptyList()))
+        // 「没有条目 ⇒ 等于没有计划」的口径落在面板/胶囊取数上（BaopuPlanAreaTest）
+        val round = groupRounds(roundWithPlan("""{"v":1,"items":[]}""")).single()
+        assertNull("空 items 解析不出来 ⇒ 没有可显示的计划", round.planOrNull())
     }
 
     // ── J6：重启恢复 ────────────────────────────────────────────────────
@@ -176,7 +122,7 @@ class BaopuPlanCardTest {
     }
 
     @Test
-    fun `J6_重启后重新分组_计划还在历史轮上且默认收起`() {
+    fun `J6_重启后重新分组_计划还在历史轮上`() {
         val payload = PlanRules.toJson(
             listOf(
                 PlanRules.PlanItem("一", PlanRules.STATUS_DONE),
@@ -188,12 +134,8 @@ class BaopuPlanCardTest {
         val round = groupRounds(messages).single()
         assertNotNull("重启后计划仍在", round.planOrNull())
         assertTrue(
-            "历史轮默认收起（J6）",
+            "历史轮默认收起（第十六批口径不变）",
             roundCollapsed(round, running = false, pinnedUserIds = emptySet(), userExpandedIds = emptySet()),
-        )
-        assertTrue(
-            "但收起也要露计划那一行（J15）",
-            shouldShowPlanCard(round, round.planOrNull(), collapsed = true),
         )
     }
 
@@ -227,13 +169,18 @@ class BaopuPlanCardTest {
         assertEquals("分母是全部条目", 5, items.size)
     }
 
+    // ── 条目截断阈值（UI 第二批 §2 保留） ────────────────────────────────
+
     @Test
-    fun `J18_空计划整卡不渲染`() {
-        assertTrue(plan().items.isEmpty())
-        assertFalse(shouldShowPlanCard(groupRounds(listOf(msg(1, "user", 1_000))).single(), plan(), collapsed = false))
+    fun `条目截断_只有可能装不下的才摆展开入口`() {
+        assertEquals("阈值 60 字（保守值）", 60, PLAN_ITEM_COLLAPSED_CHARS)
+        assertEquals("两行保底", 2, PLAN_ITEM_COLLAPSED_MAX_LINES)
+        assertFalse("短条目不该挂入口", planItemNeedsExpand("读文件"))
+        assertFalse("正好 60 字不挂", planItemNeedsExpand("甲".repeat(60)))
+        assertTrue("61 字要挂", planItemNeedsExpand("甲".repeat(61)))
     }
 
-    // ── J16：plan 不当正文（源码级） ─────────────────────────────────────
+    // ── J16：plan 不当正文（数据层） ─────────────────────────────────────
 
     @Test
     fun `J16_controller里的plan过滤行已删_解析落点在`() {

@@ -27,7 +27,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,6 +74,7 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.ArtifactChipPlan
 import com.example.zhengdao.baopu.artifactChipPlan
 import com.example.zhengdao.baopu.artifactFileName
+import com.example.zhengdao.baopu.agent.RunState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -239,6 +239,11 @@ internal fun BaopuMessageList(
     // 空 ⇒ 整行不出（大多数纯聊天的轮本来就没产物）。onOpen 只在有片时才会被调。
     artifacts: List<String> = emptyList(),
     onOpenArtifact: (String) -> Unit = {},
+    // 第一百零六批（2026-10-21）活动面板：引擎三件（状态/步号/正在等确认的工具）——
+    // 都是**现有**读数，面板不新造事件源。默认值让单测/预览场景不必造引擎。
+    engineState: RunState = RunState.IDLE,
+    engineStep: Int = 0,
+    awaitConfirmTool: String? = null,
     // 2026-10-18 用户：「这次学到和已压缩这类可以放到已完成下面滚动播放吗？不占用正文框，
     // 很影响手机的可视面积」⇒ 两条便签从固定头区搬进列表首项，随内容一起滚走。
     modifier: Modifier = Modifier,
@@ -264,60 +269,45 @@ internal fun BaopuMessageList(
     var expandedRoundId by remember { mutableStateOf<Long?>(null) }
     // 产物行只摆前 8 片，剩下的折成「还有 N 个」（判据 B5；切法在纯函数里，JVM 直测）。
     val chipPlan = remember(artifacts) { artifactChipPlan(artifacts) }
-    Box(modifier.fillMaxWidth()) {
-        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
-            rounds.forEach { round ->
-                if (round.toolPartCount == 0) {
-                    items(round.messages, key = { it.id }) { msg ->
-                        BaopuMessageRow(msg, onSpeak, onUserLongPress)
-                    }
-                } else {
-                    item(key = round.userMessageId) {
-                        BaopuRoundItem(
-                            round = round,
-                            steps = steps,
-                            running = running,
-                            pinned = pinned,
-                            onSpeak = onSpeak,
-                            // E-166 / D-02：带工具/计划卡的轮**也要**传长按回调，
-                            // 漏传会让这一型用户气泡既不可点也不可长按。
-                            onUserLongPress = onUserLongPress,
-                            userOpened = expandedRoundId == round.userMessageId,
-                            onUserToggle = {
-                                expandedRoundId =
-                                    if (expandedRoundId == round.userMessageId) null
-                                    else round.userMessageId
-                            },
-                        )
-                    }
+    // 第一百零六批（2026-10-21）：原来这里有一颗常驻「收起详情」浮标（BottomEnd + 56dp
+    // 让开「回到最新」）。用户点名移除，改由**轮尾活动面板那一行**承接「入口不随内容
+    // 滚走」的保证（v1.5 §3.12）。`expandedRoundId` 仍在列表层（门禁①不许退回 item 内）。
+    LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
+        rounds.forEach { round ->
+            if (round.toolPartCount == 0) {
+                items(round.messages, key = { it.id }) { msg ->
+                    BaopuMessageRow(msg, onSpeak, onUserLongPress)
                 }
-            }
-            // 第三十八批 B 段：本轮产物。挂在**所有轮之后**（= 最后一条回复的下方），
-            // 跟着内容一起滚走——2026-10-18 用户嫌「这次学到／已压缩」占固定区那句
-            // 「很影响手机的可视面积」的口径还在，新东西一律不进固定区。
-            if (chipPlan.shown.isNotEmpty()) {
-                item(key = "baopu-artifacts") {
-                    BaopuArtifactRow(plan = chipPlan, onOpen = onOpenArtifact)
+            } else {
+                item(key = round.userMessageId) {
+                    BaopuRoundItem(
+                        round = round,
+                        steps = steps,
+                        running = running,
+                        pinned = pinned,
+                        onSpeak = onSpeak,
+                        // E-166 / D-02：带工具/计划卡的轮**也要**传长按回调，
+                        // 漏传会让这一型用户气泡既不可点也不可长按。
+                        onUserLongPress = onUserLongPress,
+                        userOpened = expandedRoundId == round.userMessageId,
+                        engineState = engineState,
+                        engineStep = engineStep,
+                        awaitConfirmTool = awaitConfirmTool,
+                        onUserToggle = {
+                            expandedRoundId =
+                                if (expandedRoundId == round.userMessageId) null
+                                else round.userMessageId
+                        },
+                    )
                 }
             }
         }
-        if (expandedRoundId != null) {
-            // 上移 56dp 让开「⬇ 回到最新」浮标（它在 BottomEnd + 12dp）；两个都可能在。
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = CircleShape,
-                tonalElevation = 3.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = 56.dp)
-                    .clickable { expandedRoundId = null },
-            ) {
-                Text(
-                    text = stringResource(R.string.baopu_collapse_detail),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                )
+        // 第三十八批 B 段：本轮产物。挂在**所有轮之后**（= 最后一条回复的下方），
+        // 跟着内容一起滚走——2026-10-18 用户嫌「这次学到／已压缩」占固定区那句
+        // 「很影响手机的可视面积」的口径还在，新东西一律不进固定区。
+        if (chipPlan.shown.isNotEmpty()) {
+            item(key = "baopu-artifacts") {
+                BaopuArtifactRow(plan = chipPlan, onOpen = onOpenArtifact)
             }
         }
     }
@@ -388,65 +378,58 @@ private fun BaopuRoundItem(
     onUserToggle: () -> Unit,
     onSpeak: ((String) -> Unit)? = null,
     onUserLongPress: ((BaopuUiMessage) -> Unit)? = null,
+    engineState: RunState = RunState.IDLE,
+    engineStep: Int = 0,
+    awaitConfirmTool: String? = null,
 ) {
-    var planOpened by remember(round.userMessageId) { mutableStateOf(false) }
     val collapsed = roundCollapsed(
         round = round,
         running = running,
         pinnedUserIds = pinned,
         userExpandedIds = if (userOpened) setOf(round.userMessageId) else emptySet(),
     )
-    // 工作计划卡（第十七批 C 段）：与轮收起**各自独立**——轮收起也露那一行（J15），
-    // 点计划卡只翻计划卡（J5）。计划取自轮里最后一条 plan（多次 update_plan 取最后）。
-    val plan = round.planOrNull()
-    val planVisible = shouldShowPlanCard(round, plan, collapsed)
-    val planExpanded = planCardExpanded(
-        round = round,
+    // 第一百零六批（2026-10-21）：计划从消息正文**全面撤出**——本文件不再渲染
+    // `BaopuPlanCard`，本会话所有计划按轮收进 `BaopuPlanArea` 的浮层面板（v1.5 §3.11）。
+    // J16 升级为「正文里不许再出现计划卡渲染」（门禁：BaopuPlanAreaTest）。
+    val hasActivity = stepsInWindow(steps, round.startMs, round.endMs).isNotEmpty() ||
+        !awaitConfirmTool.isNullOrBlank()
+    val showActivity = activityPanelVisible(
+        hasActivity = hasActivity,
         running = running,
-        userPlanExpandedIds = if (planOpened) setOf(round.userMessageId) else emptySet(),
+        isCurrent = round.isCurrent,
+        collapsed = collapsed,
     )
+    // 轮尾活动面板（v1.5 §3.12）：轮内最后一个「信息块」，跟在最终回答之后；
+    // 它同时接过了被删掉的「收起详情」浮标的班（入口不随内容滚走）。
+    val activityPanel: @Composable () -> Unit = {
+        if (showActivity) {
+            BaopuActivityPanel(
+                round = round,
+                steps = steps,
+                running = running,
+                state = engineState,
+                engineStep = engineStep,
+                awaitConfirmTool = awaitConfirmTool,
+            )
+        }
+    }
     Column(Modifier.fillMaxWidth()) {
         if (collapsed) {
-            // 收起：user 消息（问题常显）＋ 摘要一行（可点开）＋ **计划卡收起态那一行**
-            // （不许被轮收纳吃掉——J15）＋ 最终回答（照旧常显）
+            // 收起：user 消息（问题常显）＋ 摘要一行（可点开）＋ 最终回答（照旧常显）
             round.messages.filter { it.role == "user" }.forEach { BaopuMessageRow(it, onUserLongPress = onUserLongPress) }
             BaopuRoundSummaryRow(round, steps, onUserToggle)
-            if (planVisible) {
-                BaopuPlanCard(
-                    plan = plan!!,
-                    expanded = planExpanded,
-                    onToggle = { planOpened = !planOpened },
-                )
-            }
             round.finalAnswerMessage()?.let { BaopuMessageRow(it, onSpeak) }
+            activityPanel()
         } else {
             // 展开：**先给一条可点的摘要行**（2026-10-18 真机：底那条在长内容里找不到，
             // 用户以为"收不回去"）——点顶部这一行即收回；底部再留一条，两头都能收。
             BaopuRoundSummaryRow(round, steps, onUserToggle)
-            // user 消息在最前，计划卡紧随其后（＝该轮顶部、工具卡之上），
-            // 其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
-            var planMounted = false
+            // user 消息在最前，其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
             round.messages.forEach { msg ->
                 BaopuMessageRow(msg, onSpeak, onUserLongPress)
-                if (!planMounted && msg.role == "user") {
-                    planMounted = true
-                    if (planVisible) {
-                        BaopuPlanCard(
-                            plan = plan!!,
-                            expanded = planExpanded,
-                            onToggle = { planOpened = !planOpened },
-                        )
-                    }
-                }
             }
-            // 防御：轮里没有 user 消息（assistant 开头，理论不该有）⇒ 计划卡挂最前
-            if (!planMounted && planVisible) {
-                BaopuPlanCard(
-                    plan = plan!!,
-                    expanded = planExpanded,
-                    onToggle = { planOpened = !planOpened },
-                )
-            }
+            // 活动面板紧跟最终回答（设计「轮内最后一个元素，跟在最终回答后」）。
+            activityPanel()
             // 2026-10-18 真机反馈：「工具调用我点了，展开后就收不回去了」——
             // 原因是收起态才渲染那行摘要，展开后就没有任何可点的地方。
             // 展开态末尾补一条同样的摘要行，点它即收回（文案/数字与收起态一致）。
