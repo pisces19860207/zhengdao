@@ -1320,6 +1320,14 @@
     <string name="learn_suggest_formal">转成正式技能</string>
     <string name="learn_adopt">采纳</string>
     <string name="learn_dismiss">不记</string>
+    <!-- 第一百批：采纳后效果回环（只出建议卡；回滚要人点，绝不自动） -->
+    <string name="post_adopt_title">采纳后效果：%1$s</string>
+    <string name="post_adopt_counts">采纳前 成功%1$d／失败%2$d／纠正%3$d · 采纳后 +成功%4$d／+失败%5$d／+纠正%6$d</string>
+    <string name="post_adopt_verdict_rollback">用下来变差了，建议回滚</string>
+    <string name="post_adopt_verdict_retire">用下来变差了，而且没有备份可退，建议停用</string>
+    <string name="post_adopt_rollback">回滚</string>
+    <string name="post_adopt_keep">先留着</string>
+    <string name="post_adopt_later">稍后处理</string>
     <!-- 第四十批：继续说完 / 重试 / 编辑上一条 -->
     <string name="baopu_tail_continue">继续说完</string>
     <string name="baopu_tail_retry">重试</string>

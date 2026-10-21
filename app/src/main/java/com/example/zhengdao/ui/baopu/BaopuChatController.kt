@@ -178,6 +178,15 @@ internal data class EvolutionSuggestion(
 )
 
 /**
+ * 第一百批：采纳前的基线快照（**写盘之前**取）。[source] 的三态含义见
+ * [com.example.zhengdao.baopu.PostAdoptionBaseline]。
+ */
+private data class PreAdoptionBaseline(
+    val counts: Map<com.example.zhengdao.baopu.SkillOutcome, Int>,
+    val source: com.example.zhengdao.baopu.PostAdoptionBaseline,
+)
+
+/**
  * 抱朴页的胶水（进程级单例挂在 [BaopuRuntime]；本类只持 UI 可观察状态）。
  *
  * 数据流：引擎落库（先落库再渲染）⇒ onEvent ⇒ [refresh] 重读 db ⇒ Compose 状态更新。
@@ -446,14 +455,32 @@ internal class BaopuChatController(context: Context) {
         val p = list.firstOrNull { it.id == id } ?: return
         skillNote = BaopuNote("记下来中…", BaopuNoteLevel.Info)
         scope.launch {
+            val name = com.example.zhengdao.baopu.SkillRefine.nameOf(p)
+            // 第一百批 §1：基线必须**写盘之前**取（写完之后再读就是「采纳后」了，口径会反）
+            val baseline = withContext(Dispatchers.IO) { postAdoptionBaseline(name) }
             val out = withContext(Dispatchers.IO) { writeLearnedSkill(p) }
             // 第五十七批 §1.3：采纳留痕（新草稿的 uses 头从 0 起算——试用期从采纳起算）
             recordSkillDecision(
-                name = com.example.zhengdao.baopu.SkillRefine.nameOf(p),
+                name = name,
                 adopted = true,
                 hash = com.example.zhengdao.baopu.SkillRefine.dedupeKeyOf(p),
                 detail = null,
             )
+            // 第一百批 §1：**真落了盘**才记采纳事件。判据用便签级别：writeLearnedSkill 只有
+            // 「成」才给 Info，被门禁挡住/自检不过（含已回滚）一律 Error——那种情形等于没采纳。
+            if (out.level != BaopuNoteLevel.Error) {
+                withContext(Dispatchers.IO) {
+                    val globalRoot = File(appCtx.filesDir, "抱朴记忆")
+                    val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
+                    recordPostAdoption(
+                        channel = com.example.zhengdao.baopu.PostAdoptionChannel.LEARN_CARD,
+                        candidateId = p.id,
+                        skillName = name,
+                        file = skillFileOf(name, projectRoot, globalRoot),
+                        baseline = baseline,
+                    )
+                }
+            }
             skillNote = out
             engine.dismissLearn() // 采纳完就收卡，不重复写（收卡这里不记丢弃——上面记过采纳了）
         }
@@ -1625,19 +1652,26 @@ internal class BaopuChatController(context: Context) {
         val learn = engine.learn.value.orEmpty()
         val now = System.currentTimeMillis()
         scope.launch {
-            val judged = runCatching {
+            val settled = runCatching {
                 withContext(Dispatchers.IO) {
                     appendProposalCandidates(sid, learn, now)
-                    judgeProposalCandidates()
+                    val suggestions = judgeProposalCandidates()
+                    // 第一百批：同一个收尾点复测「采纳之后」的效果——只判、只出建议卡，
+                    // 不执行任何回滚（回滚要人点，见 rollbackPostAdoption）
+                    suggestions to postAdoptionRecheck()
                 }
             }
-            judged.onFailure {
+            settled.onFailure {
                 com.example.zhengdao.rootfs.RunLog.log(
                     "[baopu-proposal] 候选生成本轮失败（${it.javaClass.simpleName}）：${it.message}",
                 )
             }
             // 回主线程再写状态（withContext 回来天然在 Main；失败就保留上一轮的判定）
-            judged.onSuccess { evolutionSuggestions = it }
+            settled.onSuccess {
+                evolutionSuggestions = it.first
+                // 已经有一张没处理的卡 ⇒ 不覆盖它（一次只打扰一张）
+                if (postAdoptionNotice == null) it.second?.let { notice -> postAdoptionNotice = notice }
+            }
         }
     }
 
@@ -1883,6 +1917,209 @@ internal class BaopuChatController(context: Context) {
         return global.takeIf { it.isFile }
     }
 
+    // ── 采纳后效果回环（第一百批）：记事件 → 窗口复测 → **只出建议卡** ──────────────
+
+    /**
+     * 采纳后效果的建议卡（UI 只读它；点按钮才动，见 [rollbackPostAdoption]）。
+     *
+     * 只有 ROLLBACK / RETIRE 会把它填上；KEEP 只写审计不打扰人。
+     */
+    var postAdoptionNotice by mutableStateOf<com.example.zhengdao.baopu.PostAdoptionNotice?>(null)
+        private set
+
+    /**
+     * 回环端口：读数走 85 的 `SkillEffects.outcomesFor`，版本走盘上正文的 sha12。
+     *
+     * 两个依赖都现取现传（不在端口里 new DB），所以端口本身可以拿假数据直测。
+     */
+    private fun postAdoptionPort(): com.example.zhengdao.baopu.PostAdoptionPort {
+        val globalRoot = File(appCtx.filesDir, "抱朴记忆")
+        val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
+        return com.example.zhengdao.baopu.PostAdoptionPort(
+            log = com.example.zhengdao.baopu.PostAdoptionLog.under(globalRoot),
+            readOutcomes = { name ->
+                runCatching { com.example.zhengdao.baopu.SkillEffects.outcomesFor(db, name) }.getOrNull()
+            },
+            versionOf = { name ->
+                skillFileOf(name, projectRoot, globalRoot)
+                    ?.let { com.example.zhengdao.baopu.SkillAudit.shaOf(it) }
+                    ?: "-"
+            },
+        )
+    }
+
+    /**
+     * 采纳**之前**的基线（第一百批 §1 的三态）。
+     *
+     * 顺序是硬的：这个函数必须在写盘之前调用。写完之后再读，读到的就已经混进了
+     * 「采纳后」的样本——那样比出来的增量永远偏小，等于把效果藏起来。
+     */
+    private fun postAdoptionBaseline(name: String): PreAdoptionBaseline {
+        val globalRoot = File(appCtx.filesDir, "抱朴记忆")
+        val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
+        val file = skillFileOf(name, projectRoot, globalRoot)
+        // 文件本来不存在 ⇒ 基线全 0 是事实（不是「读不到」）
+        if (file == null) return PreAdoptionBaseline(emptyMap(), com.example.zhengdao.baopu.PostAdoptionBaseline.NEW)
+        return runCatching {
+            PreAdoptionBaseline(
+                com.example.zhengdao.baopu.SkillEffects.outcomesFor(db, name),
+                com.example.zhengdao.baopu.PostAdoptionBaseline.MEASURED,
+            )
+        }.getOrElse {
+            // 读不到就标 UNKNOWN：判定时只出 DEFER，绝不当 0 用
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：采纳前基线读失败（记 UNKNOWN）${it.javaClass.simpleName}: ${it.message}",
+            )
+            PreAdoptionBaseline(emptyMap(), com.example.zhengdao.baopu.PostAdoptionBaseline.UNKNOWN)
+        }
+    }
+
+    /**
+     * 记一条采纳事件（**写盘之后**，因为「有没有备份」要现读一次）。
+     *
+     * 名字过不了 85 的名字闸门 ⇒ 整条不写并 log（与 `SkillEffects.toStmt` 同口径：
+     * 名字里混进正文/用户原话就不许进账本）。
+     */
+    private fun recordPostAdoption(
+        channel: com.example.zhengdao.baopu.PostAdoptionChannel,
+        candidateId: String?,
+        skillName: String,
+        file: java.io.File?,
+        baseline: PreAdoptionBaseline,
+    ) {
+        if (com.example.zhengdao.baopu.SkillEffects.nameToken(skillName) == null) {
+            com.example.zhengdao.rootfs.RunLog.log("抱朴：采纳事件的名字过不了闸门，不记（channel=$channel）")
+            return
+        }
+        val backups = file?.let { com.example.zhengdao.baopu.SkillStore.backupsOf(it) }.orEmpty()
+        val now = System.currentTimeMillis()
+        val event = com.example.zhengdao.baopu.PostAdoptionEvent(
+            eventId = "adopt-" + (candidateId ?: skillName) + "-" + now,
+            channel = channel,
+            candidateId = candidateId,
+            skillName = skillName,
+            skillVersion = file?.let { com.example.zhengdao.baopu.SkillAudit.shaOf(it) } ?: "-",
+            appliedAtMs = now,
+            baseline = baseline.counts,
+            baselineSource = baseline.source,
+            // 现读：写完之后盘上到底有没有备份（不按「应该备了」写 true）
+            rollbackAvailable = backups.isNotEmpty(),
+            backupIds = backups.mapNotNull {
+                it.name.substringAfter(com.example.zhengdao.baopu.SkillStore.BACKUP_MARK, "")
+                    .takeIf(String::isNotBlank)
+            },
+        )
+        postAdoptionPort().onAdopted(event)
+    }
+
+    /**
+     * 复测所有还开着的事件（挂在会话收尾，见 [generateProposalCandidatesOnSettle]）。
+     *
+     * 失败只 log：采纳后效果是账本，不该把收尾流程拖垮（57/65/89 同口径）。
+     *
+     * @return 本轮新要弹的那一张卡（通常 0 张）
+     */
+    private fun postAdoptionRecheck(): com.example.zhengdao.baopu.PostAdoptionNotice? =
+        runCatching { postAdoptionPort().recheck().firstOrNull() }.getOrElse {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：采纳后复测失败（不影响收尾）${it.javaClass.simpleName}: ${it.message}",
+            )
+            null
+        }
+
+    /**
+     * 卡上点「回滚」⇒ **唯一**会真的换文件的入口（人批之后）。
+     *
+     * 走到这里说明用户刚点过按钮，`approvedBy` 就是「人批」这件事本身；
+     * 失败要把原因说出来，并**保留卡**（让人可以再试或改主意）。
+     */
+    fun rollbackPostAdoption() {
+        val notice = postAdoptionNotice ?: return
+        postAdoptionNotice = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                if (notice.channel == com.example.zhengdao.baopu.PostAdoptionChannel.SKILL_PROPOSAL) {
+                    // 人设索引没有「技能正文」可滚：这条通道不出口滚卡（没有量尺 ⇒ 永远 DEFER），
+                    // 万一到了这里也只是指路，不擅自动人设。
+                    com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected(
+                        "人设索引的回滚请到设置页用人设回滚，这里不代劳",
+                    )
+                } else {
+                    val globalRoot = File(appCtx.filesDir, "抱朴记忆")
+                    val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
+                    val file = skillFileOf(notice.skillName, projectRoot, globalRoot)
+                    val backups = file?.let { com.example.zhengdao.baopu.SkillStore.backupsOf(it) }.orEmpty()
+                    val r = com.example.zhengdao.baopu.PostAdoptionRollback.applyOnUserApproval(
+                        channel = notice.channel,
+                        rollbackAvailable = backups.isNotEmpty(),
+                        approvedBy = "user",
+                        skillFile = file,
+                        personaFile = null,
+                        stamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                    )
+                    if (r is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Done) {
+                        postAdoptionPort().recordUserAction(
+                            eventId = notice.eventId,
+                            action = com.example.zhengdao.baopu.PostAdoptionAction.APPLIED,
+                            verdict = notice.verdict,
+                            reason = notice.reason,
+                            delta = notice.delta,
+                        )
+                    }
+                    r
+                }
+            }
+            // 失败（Rejected）⇒ 把卡放回去，别逼人再等一轮收尾
+            if (result is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected) {
+                postAdoptionNotice = notice
+            }
+            skillNote = when {
+                result is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Done ->
+                    BaopuNote("已回滚到备份：${result.backupName}", BaopuNoteLevel.Info)
+
+                else -> BaopuNote(
+                    "没回滚：${(result as com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected).reason}",
+                    BaopuNoteLevel.Error,
+                )
+            }
+        }
+    }
+
+    /** 卡上点「先留着」⇒ 接受风险，结案不再提。 */
+    fun keepPostAdoption() {
+        val notice = postAdoptionNotice ?: return
+        postAdoptionNotice = null
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                postAdoptionPort().recordUserAction(
+                    eventId = notice.eventId,
+                    action = com.example.zhengdao.baopu.PostAdoptionAction.DISMISSED,
+                    verdict = notice.verdict,
+                    reason = notice.reason,
+                    delta = notice.delta,
+                )
+            }
+            skillNote = BaopuNote("这条建议不再提：${notice.skillName}", BaopuNoteLevel.Info)
+        }
+    }
+
+    /** 卡上点「稍后处理」⇒ 只关卡，事件**仍未结案**，下次收尾再判。 */
+    fun laterPostAdoption() {
+        val notice = postAdoptionNotice ?: return
+        postAdoptionNotice = null
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                postAdoptionPort().recordUserAction(
+                    eventId = notice.eventId,
+                    action = com.example.zhengdao.baopu.PostAdoptionAction.LATER,
+                    verdict = notice.verdict,
+                    reason = notice.reason,
+                    delta = notice.delta,
+                )
+            }
+        }
+    }
+
     // ── 技能沉淀（第十九批）：会话封卷 → 提炼 → 提案等确认 ──────────────────
 
     /**
@@ -2069,6 +2306,32 @@ internal class BaopuChatController(context: Context) {
         pendingSkillProposals = pendingSkillProposals.filterNot { it === p }
         // 第五十七批 §1.3：采纳留痕（名字/摘要从 proposed 比 current 多出的那一行提）
         recordSkillDecisionFor(p, adopted = true, detail = null)
+        // 第一百批 §1：记采纳事件（人设索引通道）。这一条**没有技能正文**（file = null ⇒
+        // 版本记 "-"、备份记 false）：技能效果信号本来也量不到人设索引，所以它之后只会
+        // 得到 DEFER，不会凭「没有效果信号」被判成变差——这是刻意的保守，不是漏做。
+        val indexName = com.example.zhengdao.baopu.SkillRefine.proposalNameOf(p)
+        if (indexName != null) {
+            // 注意：本函数上面有个同名局部 val scope（MemoryScope），协程作用域要显式取成员
+            this.scope.launch {
+                withContext(Dispatchers.IO) {
+                    val baseline = runCatching {
+                        PreAdoptionBaseline(
+                            com.example.zhengdao.baopu.SkillEffects.outcomesFor(db, indexName),
+                            com.example.zhengdao.baopu.PostAdoptionBaseline.MEASURED,
+                        )
+                    }.getOrElse {
+                        PreAdoptionBaseline(emptyMap(), com.example.zhengdao.baopu.PostAdoptionBaseline.UNKNOWN)
+                    }
+                    recordPostAdoption(
+                        channel = com.example.zhengdao.baopu.PostAdoptionChannel.SKILL_PROPOSAL,
+                        candidateId = null,
+                        skillName = indexName,
+                        file = null,
+                        baseline = baseline,
+                    )
+                }
+            }
+        }
         // 第五十批：采纳成功且真的落了盘才排自检（v1）
         scheduleSelfCheck(scene = "人设/索引提案采纳", targets = listOf(personaTarget))
     }

@@ -102,17 +102,13 @@ internal class EvolutionPolicy(
      *   NEGATIVE = 失败/纠正 ≥ N 且多于成功；
      *   其余（含样本不足、势均力敌）一律 INSUFFICIENT——不猜。
      * 重试（retries）只进审计，不冒充成功或失败。
+     *
+     * 第一百批：算法本身搬到 [effectVerdictOf]（伴生纯函数），这样「采纳后效果」这一层
+     * 可以直接调用**同一个判据**，不用为了拿判定去 new 一个策略实例（生产实例化只许留
+     * 决策口一处，89 的门禁钉着）。
      */
-    fun effectVerdict(effect: EffectSnapshot): EffectVerdict {
-        val negative = effect.failures + effect.corrections
-        if (effect.successes >= minEffectSamples && effect.successes > negative) {
-            return EffectVerdict.POSITIVE
-        }
-        if (negative >= minEffectSamples && negative > effect.successes) {
-            return EffectVerdict.NEGATIVE
-        }
-        return EffectVerdict.INSUFFICIENT
-    }
+    fun effectVerdict(effect: EffectSnapshot): EffectVerdict =
+        effectVerdictOf(effect, minEffectSamples)
 
     /** 一条决策的完整策略判定（建议＋置信度＋等级＋是否人批＋原因链）。 */
     fun judge(input: EvolutionDecisionInput): EvolutionJudgement {
@@ -137,6 +133,19 @@ internal class EvolutionPolicy(
         input: EvolutionDecisionInput,
         reasons: MutableList<EvolutionReason>,
     ): EvolutionRecommendation {
+        // 第一百批（唯一新增规则）：这条技能**采纳之后**已被判变差 ⇒ 先别在它身上再加东西，
+        // 等人把回滚处理完。放在最前是为了「变差」优先于一切按证据算出来的建议；
+        // 只影响建议与原因链，**不改置信度、不改人批判定**（88 的那套一个字没动）。
+        val post = input.postAdoption
+        if (post != null &&
+            (post.verdict == PostAdoptionVerdict.ROLLBACK || post.verdict == PostAdoptionVerdict.RETIRE)
+        ) {
+            reasons += EvolutionReason(
+                EvolutionReasonCode.POST_ADOPTION_NEGATIVE,
+                listOf("adoption:${post.eventId}"),
+            )
+            return EvolutionRecommendation.DEFER
+        }
         val selfCheck = input.selfCheck
         if (selfCheck == null) {
             reasons += EvolutionReason(EvolutionReasonCode.SELF_CHECK_NOT_RUN, input.evidenceIds)
@@ -279,5 +288,25 @@ internal class EvolutionPolicy(
 
         /** 效果样本下限：至少 3 次观察才谈正负（v1 写死，可注入用于测试）。 */
         const val DEFAULT_MIN_EFFECT_SAMPLES = 3
+
+        /**
+         * 效果判定的**唯一算法**（纯函数，不依赖实例）。
+         *
+         * 第一百批加的入口：采纳后效果判正负时直接调它，免得为了判定去 new 一个策略
+         * （生产实例化只许留在决策口，89 的门禁钉着）。语义与 [effectVerdict] 完全一致。
+         */
+        fun effectVerdictOf(
+            effect: EffectSnapshot,
+            minSamples: Int = DEFAULT_MIN_EFFECT_SAMPLES,
+        ): EffectVerdict {
+            val negative = effect.failures + effect.corrections
+            if (effect.successes >= minSamples && effect.successes > negative) {
+                return EffectVerdict.POSITIVE
+            }
+            if (negative >= minSamples && negative > effect.successes) {
+                return EffectVerdict.NEGATIVE
+            }
+            return EffectVerdict.INSUFFICIENT
+        }
     }
 }
