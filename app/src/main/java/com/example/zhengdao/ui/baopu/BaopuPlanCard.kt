@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -73,20 +74,14 @@ data class BaopuUiPlan(val items: List<BaopuPlanItem>) {
  */
 internal fun BaopuRound.planOrNull(): BaopuUiPlan? = messages.lastOrNull { it.plan != null }?.plan
 
-/**
- * J15：计划卡显不显示——**与轮收起无关**：有计划（非空）就显示，收起态也露那一行。
- *
- * [round] / [collapsed] 入参是把「不许被第十六批的轮收纳吃掉」写进签名：函数体
- * 故意不看它们（轮收起 ⇒ true，这正是本判据）。负例：把 `&& !collapsed` 写回来
- * ⇒ 收起轮的计划卡消失 ⇒ J15 红。
- */
-internal fun shouldShowPlanCard(round: BaopuRound, plan: BaopuUiPlan?, collapsed: Boolean): Boolean {
-    // round 与 collapsed 故意不参与判断（见 KDoc）：有计划就显示，与轮收起无关。
-    // 负例：把 `&& !collapsed` 写回来 ⇒ 收起轮的计划卡消失 ⇒ J15 红。
-    @Suppress("UNUSED_PARAMETER", "UNUSED_EXPRESSION")
-    val contract = round to collapsed
-    return plan != null && plan.items.isNotEmpty()
-}
+// 第一百零六批（2026-10-21）：`shouldShowPlanCard` 与 `planCardExpanded` 两个旧判据
+// 已删除——它们服务的是「计划卡内联在轮里」的形态（第十七批 C 段）。v1.5 §3.11 把
+// 计划从消息正文撤出后：
+//   · 显隐判据升级为「胶囊显隐只看有没有计划」⇒ `planCapsuleState(messages) != null`
+//     （`BaopuPlanArea.kt`；与轮收起无关这一条精神原样保留）；
+//   · 展开判据从**卡级**迁到**组级** ⇒ `planGroupExpanded(group, running, userChoice)`
+//     （运行中当前组展开 / 跑完收起 / 用户选择优先）。
+// 保留 `planOrNull`：它是上述两条判据的公共取数口。
 
 /** J18：分子口径＝`done` 条数（「计划 3/5 完成」的 3）。负例：改成「非 todo 条数」必红。 */
 internal fun planDoneCount(items: List<BaopuPlanItem>): Int =
@@ -100,23 +95,6 @@ internal fun planStatusSymbol(status: String): String = when (status) {
     PlanRules.STATUS_DONE -> "✓"
     PlanRules.STATUS_DOING -> "●"
     else -> "○"
-}
-
-/**
- * J5：计划卡展开态（与**轮的收起各自独立**——点计划卡只翻计划卡）：
- * - 正在跑 ⇒ 自动展开（用户要看得见做到哪儿了）；
- * - 跑完 ⇒ 自动收起（跟轮一起收，但那一行还在）；
- * - 用户点过（键在 [userPlanExpandedIds]）⇒ 展开，再点收起（翻转由组合层做）。
- *
- * 房型照十六批 [roundCollapsed]：状态只记在组合内（remember 轮键），不落库。
- */
-internal fun planCardExpanded(
-    round: BaopuRound,
-    running: Boolean,
-    userPlanExpandedIds: Set<Long>,
-): Boolean = when {
-    running && round.isCurrent -> true
-    else -> round.userMessageId in userPlanExpandedIds
 }
 
 // ── 条目级截断判据（UI 第二批 §2 第三行：`maxLines = 1` ＋ Ellipsis ＝ 静默截断）──
@@ -152,6 +130,12 @@ internal fun planItemNeedsExpand(text: String): Boolean = text.length > PLAN_ITE
  *
  * UI 第二批 §2：条目不再 `maxLines = 1` 硬省略；展开状态**按条目记**（一条一个键），
  * 点某条不许把整卡其他条目也撑开。done/doing/todo 判据一个字没动。
+ *
+ * 第一百零六批（2026-10-21）：本组件从「内联在轮里」改成「计划面板里的组渲染」，
+ * 因此多两个可选参数——
+ * - [showHeader]：面板已经有组头（「本轮 · 10:24 · 3/6」），卡头不再重复画；
+ * - [rowMinHeightDp]：面板要求条目行命中高度 ≥48dp（设计 §3.11 规格表「触控」行）。
+ * 两个参数都有默认值 ⇒ 旧调用方（如果有）行为不变。
  */
 @Composable
 internal fun BaopuPlanCard(
@@ -159,6 +143,8 @@ internal fun BaopuPlanCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
+    rowMinHeightDp: Int = 0,
 ) {
     // 条目级展开：记条目下标（[plan.items] 的顺序由解析器给，同一次渲染内稳定）。
     var expandedItemIndexes by remember { mutableStateOf(setOf<Int>()) }
@@ -169,33 +155,38 @@ internal fun BaopuPlanCard(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        Column(
-            Modifier
-                .clickable(onClick = onToggle)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (expanded) "▾" else "▸",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = stringResource(
-                        R.string.baopu_plan_summary,
-                        planDoneCount(plan.items),
-                        plan.items.size,
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            if (showHeader) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onToggle),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (expanded) "▾" else "▸",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.baopu_plan_summary,
+                            planDoneCount(plan.items),
+                            plan.items.size,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (expanded) {
                 plan.items.forEachIndexed { index, item ->
                     Row(
-                        Modifier.padding(top = 4.dp),
+                        Modifier
+                            .padding(top = 4.dp)
+                            .heightIn(min = rowMinHeightDp.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
                         Text(
