@@ -71,6 +71,10 @@ internal object GroupApprovalCard {
                     detail = "这次不用，先用现有的工具",
                 ),
             ),
+            // 第一百零四批：盖上「授权」种＋组 key——壳层据此渲染决策卡·授权变体
+            // 并按 (session, group) 分格；执行路径（askAndGrant）一个字没动。
+            kind = AskKind.GROUP_AUTHORIZATION,
+            subject = group.key,
         )
     }
 }
@@ -207,6 +211,15 @@ internal object ToolGroupAudit {
     /** 设置页手动开/关（来源固定写「设置页」，与卡片区分）。 */
     fun manual(group: ToolGroup, on: Boolean): String =
         "$TAG 手动${if (on) "开启" else "关闭"} ${group.key} 来源=设置页".also { emit(it) }
+
+    /**
+     * 第一百零四批：决策中心·记录页撤销授权（来源＝决策中心）。
+     *
+     * 与 [manual] 分开：manual 是「用户开关优先」那个硬档（关掉连卡都不弹），
+     * undo 只是收回「同意」这件事——组还回「已锁」，模型下次要再申请。
+     */
+    fun undo(group: ToolGroup, scope: String): String =
+        "$TAG 撤销 ${group.key}（$scope）来源=决策中心".also { emit(it) }
 
     private fun emit(line: String) {
         sink?.invoke(line)

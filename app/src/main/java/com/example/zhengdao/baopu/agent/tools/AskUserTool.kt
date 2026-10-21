@@ -23,8 +23,42 @@ internal data class AskUserOption(
     val recommended: Boolean = false,
 )
 
-/** 一次选项请求（UI 拿它渲染输入栏上方那张卡）。 */
-internal data class AskUserRequest(val question: String, val options: List<AskUserOption>)
+/**
+ * 一次选项请求（UI 拿它渲染输入栏上方那张卡）。
+ *
+ * 第一百零四批（UI P0）补三个**带默认值的展示字段**——语义一个字没动，只是让
+ * 壳层知道「这是哪一种事、关于谁、附文是什么」，好把它渲染进决策卡家族
+ * （`ui/baopu/DecisionCard.kt`，设计稿 v1.4 §2）：
+ * - [kind]：`ask_user` 工具自己的提问（默认）；97 的组授权、96 的人设提案
+ *   分别由 [com.example.zhengdao.baopu.agent.GroupApprovalCard] /
+ *   [com.example.zhengdao.baopu.agent.PersonaApprovalCard] 在构造时盖上；
+ * - [subject]：授权组 key（`browser`…）或人设层（`B`/`C`）——槽位判据要稳定 id；
+ * - [detailText]：附文（人设提案的条款全文；授权卡不需要，留空）。
+ *
+ * 为什么不另立一个「带类型的请求」类：引擎/工具侧只认这一个形状，多加一类
+ * 就要在 sink 上分叉；默认值保证既有调用方与测试原样编译。
+ */
+internal data class AskUserRequest(
+    val question: String,
+    val options: List<AskUserOption>,
+    val kind: AskKind = AskKind.QUESTION,
+    val subject: String = "",
+    val detailText: String = "",
+)
+
+/**
+ * 这张选项卡是哪一种事（第一百零四批；只影响渲染与槽位归类，不影响执行）。
+ */
+internal enum class AskKind {
+    /** `ask_user` 工具：抱朴自己拿不准时问用户（既有形状，走原选项卡）。 */
+    QUESTION,
+
+    /** 工具组授权（97：本次会话/一直/取消）——决策卡·授权变体。 */
+    GROUP_AUTHORIZATION,
+
+    /** B/C 人设提案（96：拒绝/本工作区/全局）——决策卡·提案变体。 */
+    PERSONA_PROPOSAL,
+}
 
 /** `ask_user`：让抱朴把「推荐删/建议留」这类意见做成一张卡让用户点。 */
 internal object AskUserTool {
