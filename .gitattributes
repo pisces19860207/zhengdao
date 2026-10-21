@@ -11,3 +11,7 @@ licenses/*.txt text eol=lf
 LICENSE text eol=lf
 app/src/main/assets/fonts/OFL.txt text eol=lf
 docs/archive/** -text
+
+# 第一百一十三批：eval 真报告的 sha256 就是证据指纹，按提交进去的字节算；
+# -text 禁止 text=auto 把它在 checkout 时改成 CRLF（改一个字节指纹就废）。
+eval/report-*.json -text
