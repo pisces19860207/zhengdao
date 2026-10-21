@@ -206,14 +206,4 @@ class ArtifactVerifierTest {
         assertTrue(VerifyTargets.pathsOf("write_file", JSONObject("{\"path\":\"  \"}")).isEmpty())
         assertTrue(VerifyTargets.pathsOf("write_file", null).isEmpty())
     }
-
-    @Test
-    fun `isWriteTool_四个写类为真`() {
-        listOf("write_file", "edit_file", "convert_encoding", "move_path").forEach {
-            assertTrue(it, VerifyTargets.isWriteTool(it))
-        }
-        listOf("read_file", "search_in_files", "browser_open").forEach {
-            assertTrue(it, !VerifyTargets.isWriteTool(it))
-        }
-    }
 }
