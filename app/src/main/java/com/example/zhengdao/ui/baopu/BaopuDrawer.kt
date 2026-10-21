@@ -348,6 +348,8 @@ internal fun BaopuDrawer(
     onSettings: () -> Unit,
     /** 回收站里恢复/彻底删除会话后，通知页面重读会话库。 */
     onSessionLibraryChanged: () -> Unit = {},
+    /** 回收站里「彻底删除」一个会话（两击确认后）：走控制器口子，面板不自己开库。 */
+    onPurgeSession: (Long) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     // 根 Column 左右各 8dp：条目自己再内缩 16dp ⇒ 文字左缘仍是 24dp（老落点），
@@ -494,6 +496,11 @@ internal fun BaopuDrawer(
                     trashOpen = false
                     trashTick++ // 关掉面板就重数一次：恢复／清空都改了 N
                 },
+                // 第一百二十一批：47 批起就声明了 onSessionLibraryChanged（页面也一直传着），
+                // 却没接到本面板 ⇒ 恢复/彻底删除后抽屉里那份会话库不重读。这条线今天接上。
+                onSessionsChanged = onSessionLibraryChanged,
+                // 彻底删除走控制器口子（controller.purgeSession），SQL 形状只许一处定。
+                onPurgeSession = onPurgeSession,
             )
         }
 

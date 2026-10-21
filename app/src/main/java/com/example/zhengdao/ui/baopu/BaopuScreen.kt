@@ -303,6 +303,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     // 长按＝删除：先关抽屉再问人，确认才真删（走修好 compression 的 deleteSession）
                     // 2026-10-19：回收站里恢复/彻底删除会话后，让会话库重读一次（否则列表像没变）。
                     onSessionLibraryChanged = { drawerTick++ },
+                    // 第一百二十一批：回收站「彻底删除」接控制器口子（purgeSession 转正）——
+                    // 两击确认在面板里，硬删 SQL 只走 deleteSessionStatements 一处。
+                    onPurgeSession = { controller.purgeSession(it) },
                     onSessionLongPress = { row, ws ->
                         scope.launch { drawerState.close() }
                         deleteRow = row

@@ -286,6 +286,13 @@ private fun oneDecimal(value: Long, unit: Long, suffix: String): String {
  *   这一行/那一按钮下面出现那句红字（写清数量与「恢复不了」），第二击才带 true。
  *   确认位靠的是**比对盘上路径**（`confirmingFile == row.file.absolutePath`），不是写死的 true；
  * - 每条下场的句子都查 `strings.xml`（中英对称归 T6）。
+ *
+ * 第一百二十一批（死代码转正）：会话的「彻底删除」不再在本面板里内联硬删，改走
+ * [onPurgeSession] 口子（`BaopuChatController.purgeSession`）——硬删的 SQL 形状只许
+ * `BaopuSql.deleteSessionStatements` 一处定，面板只管两击确认与下场说话。
+ * 同批把 `onSessionsChanged` 这条线接上：47 批起抽屉就声明了
+ * `onSessionLibraryChanged`（Screen 也一直传着），却没有传到本面板 ⇒ 恢复/彻底删除后
+ * 抽屉里那份会话库不重读（2026-10-19 用户「列表像没变」）。
  */
 @Composable
 internal fun TrashDialog(
@@ -293,6 +300,8 @@ internal fun TrashDialog(
     onDismiss: () -> Unit,
     /** 会话被恢复/彻底删除后回调：抽屉里那份会话库要重读（2026-10-19 用户「显示慢」）。 */
     onSessionsChanged: () -> Unit = {},
+    /** 彻底删除一个会话（第二击确认后）：走控制器口子，返回是否成功；面板不自己开库。 */
+    onPurgeSession: (Long) -> Boolean,
 ) {
     val ctx = LocalContext.current
     val dir = BaopuTrashBin.dirOf(workspaceRoot)
@@ -345,13 +354,10 @@ internal fun TrashDialog(
             confirmingSession = id
             return
         }
-        val ok = runCatching {
-            db.write { d ->
-                com.example.zhengdao.baopu.BaopuSql.deleteSessionStatements(id).forEach { st ->
-                    d.execSQL(st.sql, st.args)
-                }
-            }.get()
-        }.isSuccess
+        // 第一百二十一批：第二击才真删，且走控制器口子（controller.purgeSession）——
+        // 里面是同一个写事务跑完 deleteSessionStatements 六条（消息/产物/计划快照按外键序），
+        // 失败即整体保留（单写者事务天然原子），这里只把成败念出来（不许静默）。
+        val ok = onPurgeSession(id)
         Toast.makeText(
             ctx,
             res.getString(if (ok) R.string.trash_session_purged else R.string.trash_session_failed, title),
@@ -359,6 +365,7 @@ internal fun TrashDialog(
         ).show()
         confirmingSession = null
         tick++
+        onSessionsChanged() // 与恢复对称：删完也让抽屉里那份会话库重读一次
     }
 
     /** 每一种下场都要**说话**（不许静默）：句子全在 strings，这里只查键。 */
