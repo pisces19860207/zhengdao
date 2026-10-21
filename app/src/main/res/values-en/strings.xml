@@ -891,6 +891,12 @@
     <string name="baopu_input_hint">Tell Baopu what to do…</string>
     <string name="baopu_send">Send</string>
     <string name="baopu_stop">Stop</string>
+    <plurals name="baopu_queue_count">
+        <item quantity="one">%1$d queued</item>
+        <item quantity="other">%1$d queued</item>
+    </plurals>
+    <string name="baopu_queue_continue">Run queued</string>
+    <string name="baopu_queue_clear">Clear queue</string>
     <string name="baopu_state_idle">Idle</string>
     <string name="baopu_state_thinking">Thinking…</string>
     <string name="baopu_state_acting">Running tools…</string>

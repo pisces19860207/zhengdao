@@ -90,8 +90,17 @@ internal object ActiveSessionGate {
 
 /** 给 UI 的事件（引擎 → 界面；界面不回数据给引擎，只观察）。 */
 sealed interface EngineEvent {
-    /** 一条消息落库完成（UI 从 db 重读列表——先落库再渲染）。 */
-    data class MessagePersisted(val messageId: Long, val role: String) : EngineEvent
+    /**
+     * 一条消息落库完成（UI 从 db 重读列表——先落库再渲染）。
+     *
+     * [imageRelPaths]（第一百一十七批）：这条**用户消息自己的**图片相对路径。
+     * 排队后不能再用控制器里的单个 `pendingImagePaths` 字段——两条带图消息会串。
+     */
+    data class MessagePersisted(
+        val messageId: Long,
+        val role: String,
+        val imageRelPaths: List<String> = emptyList(),
+    ) : EngineEvent
 
     /** 工具调用可见卡（入参出参摘要；UI 渲染后仍从 db 读全量）。 */
     data class ToolCallVisible(val tool: String, val summary: String, val ok: Boolean) : EngineEvent
@@ -111,6 +120,13 @@ sealed interface EngineEvent {
      * `Done` 就算没中断），错在**没人去重算**。
      */
     data object Settled : EngineEvent
+
+    /**
+     * 某会话排队条数变了（第一百一十七批）：入队/开跑/清空时发。
+     *
+     * UI 只更新输入栏上方那一行，不为了一个数字重读整库。
+     */
+    data class QueueChanged(val sessionId: Long, val queued: Int) : EngineEvent
 }
 
 /**
@@ -233,6 +249,18 @@ internal class RunEngine(
      * 毫秒时间戳不足以区分「同一毫秒里的两个同名工具」⇒ 补一个自增序号（原子）。
      */
     private val spillSeq = java.util.concurrent.atomic.AtomicLong(0L)
+
+    // ── 第一百一十七批：会话内任务队列（内存镜像 ＋ run_queue 落库）─────────
+    //
+    // 所有字段都在冻结创建点 `Thread(r, "zd-baopu-run")` **之下**，不挪对账单。
+    private val runQueue = SessionRunQueue()
+    private val draining = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
+
+    init {
+        // 冷启动把上次没开跑的排队条读回内存；**不自动开跑**（避免背地里烧 token）。
+        // 提交在 runExecutor 最前面：之后任何 send 的 drain 都排在它后面，恢复与入队不抢。
+        runExecutor.execute { restoreQueuedTurns() }
+    }
 
     // ── 第八十七批 R1：运行轨迹 ────────────────────────────────────────────
     //
@@ -497,44 +525,255 @@ internal class RunEngine(
 
     /**
      * 用户发一条消息（会话不存在则由调用方先 [createSession]）。
-     * 前台入口：UI 线程调，循环丢 [runExecutor]。
+     *
+     * 第一百一十七批起不再是「忙就丢」：本会话跑着时入队（最多 [RunQueueRules.MAX_QUEUED] 条），
+     * 门被别的会话占着时明确拒绝。返回值同步告诉调用方**输入框该不该清**——被拒时保留原文。
      */
     fun send(
         sessionId: Long,
         text: String,
         imageRelPaths: List<String> = emptyList(),
-    ) {
-        if (text.isBlank()) return
-        acquireOrNotice(sessionId) ?: return
+    ): SendAcceptance {
+        val key = "id:$sessionId"
+        val owner = when (ActiveSessionGate.current()) {
+            null -> GateOwner.NONE
+            key -> GateOwner.SAME_SESSION
+            else -> GateOwner.OTHER_SESSION
+        }
+        val verdict = RunQueueRules.acceptance(owner, runQueue.size(sessionId), text.isBlank())
+        when (verdict) {
+            SendAcceptance.REFUSED_EMPTY -> Unit
+            SendAcceptance.REFUSED_BUSY_OTHER_SESSION -> {
+                log("抱朴引擎：单活跃门占用（当前=${ActiveSessionGate.current()}，要=$key）")
+                _notice.value = "已有另一个会话在跑（全局单活跃）：先等它结束或停止它"
+            }
+            SendAcceptance.REFUSED_QUEUE_FULL ->
+                _notice.value = "排队已满（最多 ${RunQueueRules.MAX_QUEUED} 条）：等前面的跑完或点停止"
+            SendAcceptance.STARTED, SendAcceptance.QUEUED -> Unit
+        }
+        if (!verdict.accepted) return verdict
+
+        if (verdict == SendAcceptance.STARTED) {
+            // 先抢门再入队：抢不到就明确拒绝，绝不把消息悄悄塞进别人的队列。
+            if (!ActiveSessionGate.tryAcquire(key)) {
+                log("抱朴引擎：单活跃门抢占失败（当前=${ActiveSessionGate.current()}，要=$key）")
+                _notice.value = "已有另一个会话在跑（全局单活跃）：先等它结束或停止它"
+                return SendAcceptance.REFUSED_BUSY_OTHER_SESSION
+            }
+            _sessionKey.value = key
+            stopRequested = false
+            _notice.value = null
+            // 新一轮：上一轮的「这次学到」卡与信号都清掉（卡不跨轮保留）
+            learnSignals.clear()
+            learnShown = false
+            _learnNames.value = emptySet()
+            _learn.value = null
+            // 新一轮 ⇒ 上一轮的「尾部被截断」标记作废
+            _tailTruncated.value = false
+        }
+
+        val turn = QueuedTurn(
+            sessionId = sessionId,
+            text = text,
+            imageRelPaths = imageRelPaths,
+            persist = persistQueuedTurn(sessionId, text, imageRelPaths),
+        )
+        runQueue.enqueue(turn)
+        emitQueueChanged(sessionId)
+        if (verdict == SendAcceptance.STARTED) {
+            startDrain(sessionId)
+        } else {
+            // 竞态兜底：刚判「本会话在跑」，那一轮可能正好收尾放门；放门后没人抽就会躺到下次。
+            maybeContinueQueued(sessionId)
+        }
+        return verdict
+    }
+
+    // ── 第一百一十七批：队列调度 ──────────────────────────────────────────
+
+    /** 当前排在本会话里的条数（UI 输入栏上方那一行）。 */
+    fun queuedCount(sessionId: Long): Int = runQueue.size(sessionId)
+
+    /** 冷启动恢复：只读 `run_queue` 排进内存，**不自动跑**；用户点「继续排队」才动。 */
+    private fun restoreQueuedTurns() {
+        runCatching {
+            val turns = db.read { d ->
+                val stmt = BaopuSql.selectAllRunQueue()
+                d.rawQuery(stmt.sql, stmt.args).use { c ->
+                    buildList {
+                        while (c.moveToNext()) {
+                            add(
+                                QueuedTurn(
+                                    sessionId = c.getLong(1),
+                                    text = c.getString(2) ?: "",
+                                    imageRelPaths = BaopuSql.idsFromJson(c.getString(3)),
+                                    rowId = c.getLong(0),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            if (turns.isEmpty()) return
+            turns.groupBy { it.sessionId }.forEach { (sid, list) ->
+                runQueue.restore(sid, list)
+                emitQueueChanged(sid)
+            }
+            log("抱朴引擎：恢复了 ${turns.size} 条排队消息（不自动开跑）")
+        }.onFailure {
+            log("抱朴引擎：恢复排队消息失败 ${it.javaClass.simpleName}: ${it.message}")
+        }
+    }
+
+    /** 入队即落 `run_queue`；返回插入 Future，开跑事务用它拿 id。 */
+    private fun persistQueuedTurn(
+        sessionId: Long,
+        text: String,
+        imageRelPaths: List<String>,
+    ): java.util.concurrent.Future<Long>? = runCatching {
+        db.write { d ->
+            val stmt = BaopuSql.insertRunQueue(
+                sessionId, text, imageRelPaths, System.currentTimeMillis(),
+            )
+            d.execSQL(stmt.sql, stmt.args)
+            lastInsertId(d)
+        }
+    }.onFailure {
+        log("抱朴引擎：排队行落库失败 ${it.javaClass.simpleName}: ${it.message}")
+    }.getOrNull()
+
+    private fun emitQueueChanged(sessionId: Long) {
+        onEvent?.invoke(EngineEvent.QueueChanged(sessionId, runQueue.size(sessionId)))
+    }
+
+    private fun startDrain(sessionId: Long) {
+        synchronized(draining) {
+            if (!draining.add(sessionId)) return
+        }
+        runExecutor.execute { drainQueue(sessionId) }
+    }
+
+    /** 门空着且队列里有货 ⇒ 接上；否则什么都不做（正常收尾路径自己接力）。 */
+    private fun maybeContinueQueued(sessionId: Long) {
+        if (stopRequested) return
+        if (_state.value != RunState.DONE) return
+        if (!runQueue.hasItems(sessionId)) return
+        val key = "id:$sessionId"
+        if (!ActiveSessionGate.tryAcquire(key)) return
+        _sessionKey.value = key
+        startDrain(sessionId)
+    }
+
+    /** 用户点「继续排队」（恢复出来的队列不会自己跑）。 */
+    fun resumeQueue(sessionId: Long): Boolean {
+        if (!runQueue.hasItems(sessionId)) {
+            _notice.value = "没有排队的消息"
+            return false
+        }
+        val key = "id:$sessionId"
+        if (!ActiveSessionGate.tryAcquire(key)) {
+            _notice.value = "已有另一个会话在跑（全局单活跃）：先等它结束或停止它"
+            return false
+        }
+        _sessionKey.value = key
         stopRequested = false
         _notice.value = null
-        // 新一轮：上一轮的「这次学到」卡与信号都清掉（卡不跨轮保留，免得攒成一叠）
-        learnSignals.clear()
-        learnShown = false
-        _learnNames.value = emptySet()
-        _learn.value = null
-        // 新一轮 ⇒ 上一轮的「尾部被截断」标记作废（第四十批）
         _tailTruncated.value = false
-        // 第二十四批 C 段：本轮要随请求发出去的图片。**只收相对路径**，读盘在引擎线程里做
-        // （调用方是主线程，不许在那里读 2 MB 文件）。
-        pendingImageRelPaths = imageRelPaths
-        runExecutor.execute {
-            try {
-                runLoop(sessionId, userText = text, resumed = false)
-            } catch (e: Exception) {
-                log("抱朴引擎：循环崩了 ${e.javaClass.simpleName}: ${e.message}")
-                _state.value = RunState.ABORTED
-                _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
-            } finally {
-                // 本轮图片与说明都不外溢：下一次 resume 若不清，会把上一轮的图和说明再发一遍
-                turnImages = emptyList()
-                turnNotes = emptyList()
-                pendingImageRelPaths = emptyList()
-                ActiveSessionGate.release("id:$sessionId")
-                reapScratch()
-            reapScratch()
-            onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记（见 Settled 的说明）
+        startDrain(sessionId)
+        return true
+    }
+
+    /** 清空某会话的排队（**不动正在跑的那一轮**）。返回清掉的条数。 */
+    fun clearQueue(sessionId: Long): Int {
+        val removed = runQueue.clear(sessionId)
+        runCatching {
+            val stmt = BaopuSql.deleteRunQueueForSession(sessionId)
+            db.write { d -> d.execSQL(stmt.sql, stmt.args) }
+        }.onFailure {
+            log("抱朴引擎：清排队行落库失败 ${it.javaClass.simpleName}: ${it.message}")
+        }
+        emitQueueChanged(sessionId)
+        if (removed.isNotEmpty()) log("抱朴引擎：清掉 ${removed.size} 条排队消息（session=$sessionId）")
+        return removed.size
+    }
+
+    /**
+     * 抽队列主循环（**只在 `zd-baopu-run` 单线程上跑**，且调用方已握门）。
+     *
+     * 一轮 `DONE` 才自动抽下一条；`ABORTED`/停止 ⇒ 立即停手、剩余条目保留。
+     * 整个批次持有全局单活跃门 ⇒ 两条排队任务之间也插不进别的会话。
+     */
+    private fun drainQueue(sessionId: Long) {
+        try {
+            while (!stopRequested) {
+                val turn = runQueue.poll(sessionId) ?: break
+                emitQueueChanged(sessionId)
+                if (stopRequested) {
+                    // 停止刚清过队列：这条已经取出来但还没开跑，不许再写用户消息
+                    log("抱朴引擎：停止到达，取出的排队条不再开跑（session=$sessionId）")
+                    break
+                }
+                val rowId = ensureQueueRow(turn)
+                _state.value = RunState.THINKING
+                _notice.value = null
+                learnSignals.clear()
+                learnShown = false
+                _learnNames.value = emptySet()
+                _learn.value = null
+                _tailTruncated.value = false
+                pendingImageRelPaths = turn.imageRelPaths
+                try {
+                    runLoop(sessionId, userText = turn.text, resumed = false, queueRowId = rowId)
+                } catch (e: Exception) {
+                    log("抱朴引擎：排队轮崩了 ${e.javaClass.simpleName}: ${e.message}")
+                    _state.value = RunState.ABORTED
+                    _notice.value = "引擎内部错误（已记录日志）：${e.javaClass.simpleName}"
+                } finally {
+                    turnImages = emptyList()
+                    turnNotes = emptyList()
+                    pendingImageRelPaths = emptyList()
+                }
+                if (!RunQueueRules.canAutoAdvance(
+                        _state.value, stopRequested, runQueue.size(sessionId),
+                    )
+                ) {
+                    break
+                }
             }
+        } finally {
+            turnImages = emptyList()
+            turnNotes = emptyList()
+            pendingImageRelPaths = emptyList()
+            ActiveSessionGate.release("id:$sessionId")
+            emitQueueChanged(sessionId)
+            reapScratch()
+            onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记
+            synchronized(draining) { draining.remove(sessionId) }
+            // 收尾瞬间又进了一条（判 QUEUED）的竞态：这里把接力补上。
+            maybeContinueQueued(sessionId)
+        }
+    }
+
+    /** 开跑前拿到 `run_queue.id`：优先等入队 Future；失败就同步补一行（消息不能凭空消失）。 */
+    private fun ensureQueueRow(turn: QueuedTurn): Long {
+        if (turn.rowId > 0) return turn.rowId
+        val fromFuture = runCatching {
+            turn.persist?.get(5, TimeUnit.SECONDS)
+        }.onFailure {
+            log("抱朴引擎：排队行落库失败 ${it.javaClass.simpleName}: ${it.message}")
+        }.getOrNull()
+        if (fromFuture != null && fromFuture > 0) return fromFuture
+        return runCatching {
+            db.write { d ->
+                val stmt = BaopuSql.insertRunQueue(
+                    turn.sessionId, turn.text, turn.imageRelPaths, System.currentTimeMillis(),
+                )
+                d.execSQL(stmt.sql, stmt.args)
+                lastInsertId(d)
+            }.get(5, TimeUnit.SECONDS)
+        }.getOrElse {
+            log("抱朴引擎：排队行补写失败 ${it.javaClass.simpleName}: ${it.message}")
+            0L
         }
     }
 
@@ -659,6 +898,11 @@ internal class RunEngine(
         runCatching { activeCall?.cancel() }
         // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
         confirmFlow.abandon()
+        // 第一百一十七批：停止 = 连本会话还没开跑的排队条一起清（派工单「按设计清队列」）。
+        _sessionKey.value?.removePrefix("id:")?.toLongOrNull()?.let { sid ->
+            val n = clearQueue(sid)
+            if (n > 0) _notice.value = "已停止，排队中的 $n 条也清掉了"
+        }
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")
     }
 
@@ -682,6 +926,7 @@ internal class RunEngine(
             } finally {
                 ActiveSessionGate.release("id:$sessionId")
                 onEvent?.invoke(EngineEvent.Settled) // 门已释放 ⇒ UI 重算中断标记
+                maybeContinueQueued(sessionId)
             }
         }
     }
@@ -753,6 +998,7 @@ internal class RunEngine(
             } finally {
                 ActiveSessionGate.release("id:$sessionId")
                 onEvent?.invoke(EngineEvent.Settled)
+                maybeContinueQueued(sessionId)
             }
         }
     }
@@ -775,6 +1021,7 @@ internal class RunEngine(
             } finally {
                 ActiveSessionGate.release("id:$sessionId")
                 onEvent?.invoke(EngineEvent.Settled)
+                maybeContinueQueued(sessionId)
             }
         }
     }
@@ -798,7 +1045,12 @@ internal class RunEngine(
 
     // ── 状态机主循环 ──────────────────────────────────────────────────────
 
-    private fun runLoop(sessionId: Long, userText: String?, resumed: Boolean) {
+    private fun runLoop(
+        sessionId: Long,
+        userText: String?,
+        resumed: Boolean,
+        queueRowId: Long = -1L,
+    ) {
         if (channelBroken) {
             _notice.value = "当前通道已熔断（连续失败）：换一个 provider 再试"
             _state.value = RunState.ABORTED
@@ -842,15 +1094,21 @@ internal class RunEngine(
         // 第二十四批 C 段：本轮图片在**引擎线程**上读好一次，全程复用。
         // 续跑不带图（上一轮的图已经跟着那一轮发出去了，重发等于给模型看第二遍）。
         turnNotes = emptyList()
+        // 这一轮自己的图片相对路径：既用来读图，也随 MessagePersisted 回给控制器补 part。
+        val turnImagePaths = if (resumed) {
+            emptyList()
+        } else {
+            pendingImageRelPaths.also { pendingImageRelPaths = emptyList() }
+        }
         turnImages = if (resumed) {
             emptyList()
         } else {
-            val paths = pendingImageRelPaths
-            pendingImageRelPaths = emptyList()
-            if (paths.isEmpty()) {
+            if (turnImagePaths.isEmpty()) {
                 emptyList()
             } else {
-                val loaded = runCatching { VisionFiles.load(spillRoot(), paths, shrink = shrinkImage) }
+                val loaded = runCatching {
+                    VisionFiles.load(spillRoot(), turnImagePaths, shrink = shrinkImage)
+                }
                     .onFailure { log("抱朴引擎：读图失败（本轮按纯文本走）${it.javaClass.simpleName}") }
                     .getOrNull()
                 if (loaded == null) {
@@ -871,9 +1129,23 @@ internal class RunEngine(
             }
         }
         if (userText != null) {
+            // 第一百一十七批负例「取消后仍然写」的第一道闸：排队条刚被取出、或停止与开跑
+            // 抢在同一毫秒 —— stopRequested 已立 ⇒ **不许落用户消息，更不许开工具**。
+            // 这里返回不写 run_log（这一轮压根没开始），drain 的 finally 照常放门。
+            if (stopRequested) {
+                _notice.value = "已停止：排队里的这一条没有开跑"
+                _state.value = RunState.ABORTED
+                return
+            }
             // 新一轮 ⇒ 新计划：不继承上一轮的勾选状态（新任务不该因同名条目被钉 done）
             planController.newRound()
-            persistUserMessage(sessionId, userText)
+            val persisted = persistUserMessage(sessionId, userText, turnImagePaths, queueRowId)
+            if (!persisted) {
+                // 消息没落库就不许跑：跑了等于「库里有答案、没有问题」，续跑也会错位。
+                _notice.value = "用户消息没落库（已记日志）：这一轮没有跑"
+                settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = "user-persist-failed")
+                return
+            }
             history += HistoryMessage("local-user-${System.nanoTime()}", HistoryMessage.ROLE_USER, userText)
         }
         // 第四十八批 P0-3：这里**不许**再声明同名局部 `var compressionSummary`——
@@ -2033,8 +2305,21 @@ internal class RunEngine(
     // 第八十七批 R1：工具结果 → 轨迹状态/分类的两个映射**必须放在 handleToolResult 之后**。
     // 为什么：`BaopuArtifactShelfTest.C2` 用 `indexOf("is GuardPipeline.Result.Done ->")` 认
     // 「记账调用落在 Done 支、且在 Failed 支之前」——同形的 when 支写在前面会把那个窗口认错。
-    /** 用户消息先落库再渲染（§3：顺序反了断点续跑就是空话）。 */
-    private fun persistUserMessage(sessionId: Long, text: String) {
+    /**
+     * 用户消息先落库再渲染（§3：顺序反了断点续跑就是空话）。
+     *
+     * 第一百一十七批追加：排队条开跑时，**删 `run_queue` 行与插用户消息在同一个事务**。
+     * - 崩在事务前 ⇒ 队列行还在，消息没落 ⇒ 重进还能再跑，不丢；
+     * - 崩在事务后 ⇒ 消息已落、队列行已删 ⇒ 不会重复跑。
+     *
+     * @return false = 事务失败（调用方必须停下这一轮，不许「库里没问题、模型却答了」）。
+     */
+    private fun persistUserMessage(
+        sessionId: Long,
+        text: String,
+        imageRelPaths: List<String> = emptyList(),
+        queueRowId: Long = -1L,
+    ): Boolean {
         var msgId = -1L
         // P2-3（第五十六批）：① `.get()` 等事务真的提交（旧实现把 Future 丢了，
         // 写失败静默）；② 事件移到 `endTransaction()` **之后**——旧实现在事务体内就发，
@@ -2043,6 +2328,10 @@ internal class RunEngine(
             db.write { d ->
                 d.beginTransaction()
                 try {
+                    if (queueRowId > 0) {
+                        val q = BaopuSql.deleteRunQueue(queueRowId)
+                        d.execSQL(q.sql, q.args)
+                    }
                     val now = System.currentTimeMillis()
                     val seq = nextSeq(d, sessionId)
                     val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_USER, now, "done")
@@ -2061,9 +2350,10 @@ internal class RunEngine(
         }.isSuccess
         if (!ok) {
             log("抱朴引擎：用户消息落库失败（session=$sessionId），本次不发 MessagePersisted")
-            return
+            return false
         }
-        onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_USER))
+        onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_USER, imageRelPaths))
+        return true
     }
 
     /** assistant 消息：流结束一次性落库（判据 7：流式期间内存累积，不每 token 写一次）。 */

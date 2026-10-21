@@ -9,6 +9,7 @@ package com.example.zhengdao.ui.baopu
 
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.zhengdao.R
@@ -64,6 +65,7 @@ import com.example.zhengdao.baopu.eval.TargetSnapshot
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.EngineEvent
 import com.example.zhengdao.baopu.agent.RunState
+import com.example.zhengdao.baopu.agent.SendAcceptance
 import com.example.zhengdao.baopu.library.LibraryItem
 import com.example.zhengdao.baopu.library.LibraryKind
 import com.example.zhengdao.baopu.library.LibrarySource
@@ -1263,6 +1265,15 @@ internal class BaopuChatController(context: Context) {
         )
 
     /**
+     * 本会话还没开跑的排队条数（第一百一十七批：输入栏上方那一行）。
+     *
+     * 真源在引擎内存队列（同步可见），这里只是把 `QueueChanged` / `refresh` 的读数
+     * 摊成 Compose 状态；**不是**另一本账，切会话/新会话都按引擎的读数重写。
+     */
+    var queuedCount by mutableIntStateOf(0)
+        private set
+
+    /**
      * 有「要人动手」的卡在 ⇒ 最近一轮不许收（十六批第一件 C 段：确认卡/问人卡/
      * 待过目候选卡都是要人点的东西，它们所在的轮收起来就是事故）。
      *
@@ -1479,32 +1490,28 @@ internal class BaopuChatController(context: Context) {
     /** 确认等待期间App回前台（前台计时继续）。 */
     fun onScreenResume() = engine.noteConfirmForeground()
 
-    /**
-     * 本轮要挂到用户消息上的图片（**相对工作区路径**，第二十四批 B 段）。
-     *
-     * 为什么在这里暂存、不在 send 里直接写库：用户消息的 messageId 由**引擎**在
-     * 落库那一刻才产生（`RunEngine.persistUserMessage`），而 agent 包本单禁改。
-     * 所以顺序是：send 时存下附件 → 引擎落完消息发 [EngineEvent.MessagePersisted] →
-     * 在事件处理里按那个 messageId 补写 image part。写库发生在主线程（见
-     * [onEngineEvent] 的线程纪律），此时 `zd-baopu-db` 单写者已空闲，不会自锁。
-     */
-    private var pendingImagePaths: List<String> = emptyList()
+    // 第一百一十七批：图片路径**不再**停在控制器这一格（单格排在队列里会串图：
+    // 用户连发两条、各自带图，事件回来时全挂到最后一条上）。现在路径随每条
+    // QueuedTurn 走，引擎落库后在 MessagePersisted.imageRelPaths 里带回；
+    // 事件处理直接按 messageId 补 part（线程纪律不变：apply 恒在主线程）。
 
     /**
      * 发送（首次自动建会话）。
      *
+     * 第一百一十七批起**不再「忙就丢」**：本会话跑着 ⇒ 进该会话 FIFO 队列；
+     * 别的会话占着全局单活跃门 ⇒ 明确拒绝（原文留在输入框）。
+     *
+     * @return 引擎接没接（Composer 据此决定清不清输入框）：
+     *   [SendAcceptance.STARTED] 立刻开跑；[SendAcceptance.QUEUED] 已排队；
+     *   `false` = 拒绝（原因由引擎 notice 显示）。
      * @param attachments 本轮附件（Composer 传来）。**只挑 `isImage` 的落 image part**；
      *   非图片附件仍只出现在文本 hint 里（本轮不做文件块）。
      */
-    fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()) {
-        if (text.isBlank() || busy) return
-        // 第三十八批 A4：新一轮开局清账（与 introspectionNote 同一处节奏）——
-        // 「本轮累计」必须是**本轮**的，不许把上一轮的 token 加进来。
-        // 引擎那边会在新 run 开头自己清产物视图，这里再清一次是为了让界面**立刻**变，
-        // 不等引擎线程排上队（`engine.send` 只是 submit，真跑可能在几百毫秒之后）。
-        resetRoundUsage()
-        // 先记附件再发：引擎可能在 send 返回后就落库并发事件
-        pendingImagePaths = AttachmentParts.imageRelPaths(attachments)
+    fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()): Boolean {
+        if (text.isBlank()) return false
+        // 第二十四批 C 段：同一批判据喂给引擎——**只传相对路径**，读盘在引擎线程里做
+        // （这里是主线程，不许在这儿读 2 MB 的图）。图片路径随这条消息排队，不共享格子。
+        val imageRelPaths = AttachmentParts.imageRelPaths(attachments)
         val sid = sessionId ?: engine.createSession(
             title = text.take(40),
             now = System.currentTimeMillis(),
@@ -1512,9 +1519,14 @@ internal class BaopuChatController(context: Context) {
             sessionId = created
             recordSessionWorkspace(created)
         }
-        // 第二十四批 C 段：同一批判据喂给引擎——**只传相对路径**，读盘在引擎线程里做
-        // （这里是主线程，不许在这儿读 2 MB 的图）。B 段的落库路径仍走 pendingImagePaths。
-        engine.send(sid, text, pendingImagePaths)
+        val verdict = engine.send(sid, text, imageRelPaths)
+        if (verdict == SendAcceptance.STARTED) {
+            // 第三十八批 A4：新一轮开局清账（与 introspectionNote 同一处节奏）——
+            // 「本轮累计」必须是**本轮**的。只在本轮真开跑时清：排队的消息还没跑，
+            // 清了会把正在跑那一轮的账抹掉。
+            resetRoundUsage()
+        }
+        return verdict.accepted
     }
 
     /**
@@ -1567,8 +1579,29 @@ internal class BaopuChatController(context: Context) {
             }
     }
 
-    /** 停止（半成品保留；本刀只读无写半成品）。 */
+    /**
+     * 停止（半成品保留）。
+     *
+     * 第一百一十七批：引擎同时**清掉本会话还没开跑的排队条**（当前这一轮照旧收尾）；
+     * 计数由 `QueueChanged` 回来更新，这里不先斩后奏地写 0。
+     */
     fun stop() = engine.stop()
+
+    /**
+     * 「继续排队」：冷启动恢复的队列**不会自己跑**（见设计页「恢复边界」），
+     * 用户点一下才接上；别的会话占着门时引擎会明确拒绝并给 notice。
+     */
+    fun continueQueue() {
+        val sid = sessionId ?: return
+        if (engine.resumeQueue(sid)) refresh()
+    }
+
+    /** 「清空排队」：只清还没开跑的消息，不动正在跑的这一轮。 */
+    fun clearQueue() {
+        val sid = sessionId ?: return
+        engine.clearQueue(sid)
+        queuedCount = 0
+    }
 
     /** 一键续跑（中断于第 N 步）。 */
     fun resume() {
@@ -1671,6 +1704,7 @@ internal class BaopuChatController(context: Context) {
         confirmCard = null
         confirmRestored = false
         compressionNote = null // 新会话没压过，细条不许跟着上个会话走
+        queuedCount = 0       // 新会话没有队列，计数不许跟着上个会话走
         resetRoundUsage() // 用量与产物同理：顶栏跑马灯不许把上个会话的本轮账带过来
     }
 
@@ -1755,6 +1789,7 @@ internal class BaopuChatController(context: Context) {
         confirmCard = null
         confirmRestored = false
         compressionNote = null
+        queuedCount = 0 // 先归零，refresh 再按目标会话的引擎队列写回真值
         resetRoundUsage() // 切会话 ⇒ 上个会话的本轮账一起清（A4 同一口径）
         refresh()
         restoreConfirmCard()
@@ -1866,6 +1901,7 @@ internal class BaopuChatController(context: Context) {
         confirmCard = null
         confirmRestored = false
         compressionNote = null
+        queuedCount = 0
         resetRoundUsage() // 删掉当前会话回空态 ⇒ 顶栏也不许留着它的本轮账
     }
 
@@ -2203,9 +2239,11 @@ internal class BaopuChatController(context: Context) {
             // 线程纪律：apply 恒在主线程（上面那层判断保证），所以这里 db.write{}.get()
             // 只是等单写者把活干完，不会与引擎自己的写事务互相等待。
             if (ev is EngineEvent.MessagePersisted && ev.role == HistoryMessage.ROLE_USER) {
-                val paths = pendingImagePaths
-                pendingImagePaths = emptyList()
-                attachImageParts(ev.messageId, paths)
+                // 路径随事件回来（排队时各自独立）——别再从一个共享格子里取。
+                attachImageParts(ev.messageId, ev.imageRelPaths)
+            }
+            if (ev is EngineEvent.QueueChanged && ev.sessionId == sessionId) {
+                queuedCount = ev.queued
             }
             // 顶栏玄览状态：只有浏览器工具在跑时才出现，本轮结束就撤（不留在屏上骗人）
             if (ev is EngineEvent.ScratchLeft) scratchLeft = ev.count
@@ -3125,6 +3163,7 @@ internal class BaopuChatController(context: Context) {
         scope.launch {
             val sid = sessionId
             val recomputeInterrupt = force || !runningNow()
+            val queued = if (sid == null) 0 else engine.queuedCount(sid)
             val snap = if (sid == null) null else withContext(Dispatchers.IO) {
                 // 第九十一批：记忆一次读、两处用（候选列表 ＋ 注入预算预览），
                 // 不再在 refresh 收尾时回主线程读文件。
@@ -3145,6 +3184,8 @@ internal class BaopuChatController(context: Context) {
             messages = snap?.messages ?: emptyList()
             // 步骤卡汇总行跟着消息一起刷（同一轮生命周期；只读一条 SELECT，跟着 refresh 走最省心）
             stepRows = snap?.stepRows ?: emptyList()
+            // 排队计数跟引擎内存队列走（切回页面/后台跑完都靠这一下对齐）
+            if (sid != null) queuedCount = queued
             if (introspectionNote == null && sid != null) {
                 introspectionNote = runCatching { notePrefs.getString("note_$sid", null) }.getOrNull()
             }

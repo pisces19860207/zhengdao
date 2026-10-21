@@ -105,7 +105,7 @@ class MemoryQualityGateTest {
             alter.contains("filterNot") && alter.contains("ALTER TABLE memory ADD COLUMN") &&
             db.contains("INTEGER NOT NULL DEFAULT \" + MEMORY_QUALITY_DEFAULT_SCORE") &&
             db.contains("const val MEMORY_QUALITY_DEFAULT_SCORE = 100") &&
-            db.contains("const val VERSION = 14")
+            db.contains("const val VERSION = 15") // 第一百一十七批升到 v15；v14 迁移体仍在
     }
 
     /** 红线 G：删除只有人那一把口（[MemoryStore.delete]），质量层与写路径都不碰它。 */
