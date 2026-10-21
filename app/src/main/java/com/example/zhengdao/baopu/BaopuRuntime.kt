@@ -12,6 +12,7 @@ import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.CompatChannelTools
 import com.example.zhengdao.baopu.agent.GroupUnlockStore
 import com.example.zhengdao.baopu.agent.GuardPipeline
+import com.example.zhengdao.baopu.agent.KbTools
 import com.example.zhengdao.baopu.agent.ListDirTool
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.ToolGroup
@@ -139,6 +140,10 @@ internal object BaopuRuntime {
             onVisibleChanged = { line -> RunLog.log(line) },
         )
         BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
+        // 第一百二十八批：知识库 v2 的索引存储壳（App 私有 filesDir/baopu/kb）。
+        // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
+        // AskUserTool.sink／PlanTool.sink：Context 只到装配层这一处。
+        KbTools.store = com.example.zhengdao.baopu.kb.KbIndexStore(appCtx.filesDir)
         // 2026-10-18：抱朴自己写技能（确认制；写前备份、同名即改、写完进索引）
         reg.register(
             com.example.zhengdao.baopu.agent.SkillTools.spec(
@@ -368,6 +373,10 @@ internal object BaopuRuntime {
             // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，
             // 不缩等于每张都发不出去——2026-10-18 真机「看不见图」就是这个原因。
             shrinkImage = { file -> ImageShrink.toJpeg(file) },
+            // 第一百二十八批：知识库自动注入（索引在 ⇒ 每轮把相关片段按 2k 预算拼进
+            // 本轮输入；索引不在 ⇒ null，静默跳过不阻塞）。真实存储在 KbTools.store
+            // （registry() 里注入的同一份壳），Context 依旧只出现在装配层。
+            kbRecall = { text -> KbTools.autoInjectNote(text) },
             log = { RunLog.log(it) },
             // 熔断自动降级：引擎只问"下一个是谁"，怎么挑在 ProviderPrefs（Key 不进引擎）。
             channelFallback = { cur ->

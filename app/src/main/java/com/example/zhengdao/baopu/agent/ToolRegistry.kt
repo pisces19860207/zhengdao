@@ -143,6 +143,9 @@ internal object ToolGroupTable {
         "book_outline" to ToolGroup.LIBRARY,
         "library_list" to ToolGroup.LIBRARY,
         "library_organize" to ToolGroup.LIBRARY,
+        // 知识库 v2 两件套（第一百二十八批）：同资料库组，默认不可见（要 capabilities 解锁）
+        "kb_index" to ToolGroup.LIBRARY,
+        "kb_search" to ToolGroup.LIBRARY,
         "card_inspect" to ToolGroup.CARD,
         "card_export" to ToolGroup.CARD,
         // 58 批 C 层「追加-only」人设通道：与 write_skill 同属自写类，同一组、同样默认不可见
@@ -951,6 +954,10 @@ internal object BaopuToolCatalog {
         // 资料库两件套（第三十一批）：list 只读；organize 三个动作一律 CONFIRM，够不着「静默动手」
         "library_list",
         "library_organize",
+        // 知识库 v2 两件套（第一百二十八批）：index 只写 App 私有索引缓存（CONFIRM）；
+        // search 只读索引文件（FREE）
+        "kb_index",
+        "kb_search",
         // 删除（2026-10-18 用户点名「删除工具没加啊？」）：默认开，但**每次一张确认卡**，
         // 且默认只进回收站（.回收站/），permanent=true 才是不可恢复的真删。
         "delete_path",
@@ -992,6 +999,10 @@ internal object BaopuToolCatalog {
         // 资料库两件套（第三十一批）：library_list 只读清单；library_organize 写落地（CONFIRM）
         Entry("library_list") { LibraryTools.listSpec(it) },
         Entry("library_organize") { LibraryTools.organizeSpec(it) },
+        // 知识库 v2 两件套（第一百二十八批）：kb_index 建/增量索引（CONFIRM，只写 App 私有索引文件）；
+        // kb_search 关键词检索带来源引用（FREE 只读）
+        Entry("kb_index") { KbTools.indexSpec(it) },
+        Entry("kb_search") { KbTools.searchSpec(it) },
         // 删除（2026-10-18）：默认进回收站，permanent 才真删；禁区一律拒
         Entry("delete_path") { DeletePathTool.spec(it) },
         // 图片处理（2026-10-18）：缩放/裁剪/转格式/取主色/生成图标各档
