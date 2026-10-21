@@ -92,12 +92,24 @@ object VisionRules {
      * @param payloads 本轮附件里**是图片**的那些（调用方已筛过类型；非图片文件不进这里）
      * @param visionSupported 当前通道有没有视觉能力——**必须来自 `Provider.vision`**
      *   （V5：组装层不许自己猜模型名）
+     * @param userAuthorized 第一百二十四批：**用户在这轮显式选了「仍要发送（风险自负）」**。
+     *   默认 `false` ⇒ 行为与本参数存在之前逐字相同（能力不够一张都不发）。
+     *
+     *   为什么需要它：`Provider.vision=false` 混着两种事——「有依据地不支持」与「没验证过」，
+     *   而默认不许猜 `true` ⇒ 线上几乎所有通道都落在后者。给「没验证」的通道发图时，
+     *   旧的整批省略就等于**静默丢图**（派工单点名要治的那条）。本参数只把「机器替用户
+     *   省略」换成「用户自己同意了照发」；大小／张数／合法性三道闸**一道不少**——
+     *   同意承担「这条通道可能不认图片块」的风险，不等于同意把上下文窗口打穿。
      */
-    fun select(payloads: List<ImagePayload>, visionSupported: Boolean): Selection {
+    fun select(
+        payloads: List<ImagePayload>,
+        visionSupported: Boolean,
+        userAuthorized: Boolean = false,
+    ): Selection {
         if (payloads.isEmpty()) return Selection()
 
-        // 没有视觉能力：一张都不发，并且**明说**省了几张（V3，不许静默丢）。
-        if (!visionSupported) {
+        // 没有视觉能力**且用户没同意冒险**：一张都不发，并且**明说**省了几张（V3，不许静默丢）。
+        if (!visionSupported && !userAuthorized) {
             return Selection(
                 images = emptyList(),
                 omittedNoVision = payloads.size,
@@ -128,12 +140,20 @@ object VisionRules {
             total += p.bytes
         }
 
+        val capNote = noteOf(tooLarge, overLimit, invalid)
+        // 授权说明只在「能力不够但用户同意冒险」时出现（能力够的通道无需解释）。
+        val authNote = if (!visionSupported) {
+            "（当前通道未验证看图：本轮按用户选择原样上送 ${picked.size} 张，" +
+                "失败会给出原因，不会悄悄丢图）"
+        } else {
+            ""
+        }
         return Selection(
             images = picked,
             omittedTooLarge = tooLarge,
             omittedOverLimit = overLimit,
             omittedInvalid = invalid,
-            note = noteOf(tooLarge, overLimit, invalid),
+            note = authNote + capNote,
         )
     }
 

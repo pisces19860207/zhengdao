@@ -20,7 +20,9 @@ import com.example.zhengdao.baopu.SkillRefine
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.HardFacts
 import com.example.zhengdao.baopu.HistoryMessage
+import com.example.zhengdao.baopu.VisionConsent
 import com.example.zhengdao.baopu.VisionFiles
+import com.example.zhengdao.baopu.VisionRouting
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.Finding
 import com.example.zhengdao.baopu.verify.VerifyTargets
@@ -333,6 +335,20 @@ internal class RunEngine(
 
     private val _channelSwitchStatus = mutableStateOf(ChannelSwitchSnapshot())
     val channelSwitchStatus: State<ChannelSwitchSnapshot> get() = _channelSwitchStatus
+
+    /**
+     * 「已验证能看图的候选通道」接缝（第一百二十四批）。
+     *
+     * 形制照 [onUsage] / `AskUserTool.sink`：可空的 `var` lambda，由装配层
+     * （`BaopuRuntime.build`）在构造后挂上，判据本体在 `VisionRouting`。
+     *
+     * 为什么引擎只要一个 `(当前通道 id) -> List<Provider>`：Key 只该在 `ProviderPrefs` 手里
+     * （与 [channelFallback] 同一纪律）——引擎拿到的已经是拼好的 [Provider]，
+     * 它既不知道 Key 从哪来，也不许知道。默认空表是**fail-safe**：装配层没挂 ⇒ 同意闸
+     * 上根本不出现「切到已验证通道」这一项，只剩「仍要发送／取消」，绝不会凭空切去一条
+     * 没验证过的通道。
+     */
+    var visionCandidates: (String) -> List<Provider> = { emptyList() }
 
     /**
      * 本轮**够格进「产物」行**的相对路径（写成功、文本、≤512 KB、前 8 KB 无 NUL）。
@@ -1066,6 +1082,23 @@ internal class RunEngine(
         // sessionId，读的是同一份「可见组 ∩ 用户开关」判据（[ToolRegistry.visibleSpecs]）——
         // 全仓只有那一处算 tools 数组，门禁 ProgressiveToolsTest 判据 G2 钉的就是那一处。
         registry.currentSessionId = sessionId
+        // ── 第一百二十四批：未验证通道发图**之前**的同意闸 ──────────────────────
+        // 触发＝本轮有图片附件 且 `Provider.vision=false`。位置有三条硬约束，少一条都不对：
+        // 1. **在 runLoop 里、不在 send() 里**：`askUser` 是阻塞调用，而 send() 在 UI 线程上跑
+        //    ⇒ 放那里就是主线程卡死（ANR）；
+        // 2. **在 `VisionFiles.load` 之前**：取消＝图片一个字节都不读盘，更谈不上编码上传
+        //    （派工单红线「不自动上传、不后台偷传」的落点）；
+        // 3. **在 `persistUserMessage` 之前**：取消＝这条消息不落库，库里不会出现
+        //    「有问题没答案」的半轮（`run_queue` 那一行仍按第一百一十七批的路径留着，
+        //    重启后能看到「排队的消息」并点「继续排队」）。
+        // 「切到已验证通道」走第六十四批既有机器（请求→安全点→效应），本轮入口**就是**一个
+        // 安全点（第 0 步与第 1 步之间、没有任何在飞的步）；没切成就明说并收轮，
+        // 绝不退化成「悄悄按原通道发」——那是派工单点名的静默丢图。
+        turnVisionAuthorized = false
+        stepImagesSent = 0
+        if (!resumed && pendingImageRelPaths.isNotEmpty() && !provider.vision) {
+            if (!askVisionConsent(pendingImageRelPaths.size)) return
+        }
         // 用户明说「记住／记下来／以后都这样」⇒ 一条高置信信号（排卡时排最前）
         userText?.let { learnSignals += SkillRefine.learnMarkersIn(it) }
         val workspacePath = spillRoot().absolutePath
@@ -1220,6 +1253,9 @@ internal class RunEngine(
                 persona, facts, history, "", windowTokens,
                 compressionSummary, compressedIds, compressedIds,
             )
+            // 第一百二十四批：记下**这一步真的带上 wire 的图数**（失败那句要报得出几张；
+            // 1213 行那次探针不算——它只为判断要不要压缩，不进请求体）。
+            stepImagesSent = prompt.images.size
             // 唯一出口产出的渲染：前缀（人设+硬事实+记忆）作 system，其余作 user
             // （0b 的 renderHistory 已把角色写进文本 ⇒ 拆两半不改变模型看到的内容）
             val rendered = prompt.render()
@@ -1519,7 +1555,14 @@ internal class RunEngine(
                         RunRules.ChannelDecision.KeepCurrent -> {
                             // 还没到熔断线（重试预算也已用尽，见上面的策略判定）：本轮失败即停，
                             // 不硬试（0b 口径）；退避重试那一层是第八十七批新加的，走到这里说明它不同意。
-                            _notice.value = outcome.userFacing
+                            // 第一百二十四批：这一轮若是用户选了「仍要发送」才把图发给一条没验证过
+                            // 看图的通道，那句人话后面**必须再补一步可操作的话**（派工单：失败给可读
+                            // 原因）。三个条件不齐 ⇒ 空串 ⇒ 这一行与改之前逐字相同。
+                            _notice.value = outcome.userFacing + VisionConsent.failureHint(
+                                provider,
+                                turnVisionAuthorized,
+                                stepImagesSent,
+                            )
                             settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = errText)
                             onEvent?.invoke(EngineEvent.AskUser(_notice.value!!))
                             return
@@ -1581,6 +1624,9 @@ internal class RunEngine(
         extraNotes = extraNotes,
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
         visionSupported = provider.vision,
+        // 第一百二十四批：本轮这张「仍要发送（风险自负）」的通行证（默认 false ⇒ 行为与
+        // 本行存在之前逐字相同；只有同意闸选了「仍发送」才为 true）
+        visionAuthorized = turnVisionAuthorized,
     )
 
     /**
@@ -1602,6 +1648,27 @@ internal class RunEngine(
 
     /** 本轮附件里图片的**相对路径**（[send] 写入，[runLoop] 开跑时消费并清空）。 */
     private var pendingImageRelPaths: List<String> = emptyList()
+
+    /**
+     * 本轮图片是不是**用户显式同意**发给一条没验证过看图的通道（第一百二十四批）。
+     *
+     * 与 [turnImages] 同寿命：`runLoop` 入口置 false，只有同意闸上用户点了「仍要发送（风险
+     * 自负）」才置 true，本轮结束自然被下一次入口重置。**不落盘、不跨轮、不跨会话**——
+     * 「这次同意」不是「以后都同意」，派工单红线是机器不许替用户默认上传。
+     *
+     * 它只喂给 [ContextAssembler.assemble] 的 `visionAuthorized`（→ `VisionRules.select`
+     * 的授权分支）与失败文案那一处；别处不许拿它当「这轮可以不看通道就发图」的通行证。
+     */
+    private var turnVisionAuthorized = false
+
+    /**
+     * 本步**真的进了请求体**的图片块数（第一百二十四批）。
+     *
+     * 只有一个用途：用户选了「仍要发送」而这一大步失败时，那句可读原因要说得出几张。
+     * 赋值点就是发请求前那次 [assemble]（不是压缩探针那次——探针不进 wire）。
+     * 不拿它做能力判断，也不进日志以外的任何地方。
+     */
+    private var stepImagesSent = 0
 
     /** 本会话已注入的记忆（只增不改——0b 的 sticky 语义；候选确认后才进这里）。 */
     private val stickyMemories = mutableListOf<com.example.zhengdao.baopu.MemoryEntry>()
@@ -1802,6 +1869,70 @@ internal class RunEngine(
         } else if (!o.switched && o.message != null) {
             _notice.value = o.message
             log("资源机：安全点 ${point.name} 未切成（${o.message}）")
+        }
+    }
+
+    /**
+     * 第一百二十四批：未验证通道要发图 ⇒ 弹卡问用户（**只在 runLoop 入口调**）。
+     *
+     * 三条分支（派工单口径逐字对上了）：
+     * - **切到已验证通道** ⇒ [requestChannelSwitch] ＋ 当场 [drainChannelSwitch]（本轮入口就是
+     *   安全点），切成了返回 true 让这一轮继续跑——图跟着**新通道**发，`provider.vision`
+     *   已经为真 ⇒ 不需要授权旗；没切成 ⇒ 明说并收轮（返回 false），**不退化成按原通道发**；
+     * - **仍要发送（风险自负）** ⇒ [turnVisionAuthorized] = true，图真的读盘、真的上 wire；
+     * - **取消 / 超时 / 认不出的答案** ⇒ 返回 false，一个字节不读、不落库、不发（默认不发）。
+     *
+     * 阻塞安全性：调用点在 `zd-baopu-run` 线程上；[askUser] 有界等待
+     * （`RunRules.CONFIRM_TIMEOUT_MS`），超时返回 null，由这里按取消收尾。
+     */
+    private fun askVisionConsent(imageCount: Int): Boolean {
+        val verified = runCatching { visionCandidates(provider.id) }
+            .onFailure { log("抱朴引擎：取已验证看图候选失败 ${it.javaClass.simpleName}: ${it.message}") }
+            .getOrNull()
+            .orEmpty()
+        log("抱朴引擎：发图同意闸开（本轮 $imageCount 张；${VisionRouting.describe(verified)}）")
+        val picked = askUser(VisionConsent.request(verified, imageCount))
+        return when (VisionConsent.decide(picked?.id)) {
+            VisionConsent.Decision.SEND -> {
+                turnVisionAuthorized = true
+                log(
+                    "抱朴引擎：用户选「仍要发送」（${provider.id}/${provider.model}，" +
+                        "${VisionConsent.authorizedNote(provider, imageCount)}）",
+                )
+                _notice.value = "已按你的选择原样上送 $imageCount 张图（这条通道未验证看图，失败会给原因）"
+                true
+            }
+
+            VisionConsent.Decision.SWITCH -> {
+                val target = VisionConsent.switchTarget(verified, picked?.id)
+                if (target == null) {
+                    // 候选在弹卡这段时间里变了（用户刚改了设置）⇒ 认不出这个目标，按取消处理。
+                    // 绝不拿一个「没在候选名单里的通道」硬切：那正好是派工单禁的自动 fallback。
+                    _notice.value = "已取消：那张卡上的候选通道已经不作数了（可能刚改过设置）"
+                    _state.value = RunState.ABORTED
+                    log("抱朴引擎：发图同意闸的切换目标认不出（${picked?.id}）⇒ 按取消收轮")
+                    false
+                } else {
+                    val msg = requestChannelSwitch(target)
+                    drainChannelSwitch(SafePoint.StepBoundary)
+                    if (provider.vision) {
+                        log("抱朴引擎：发图同意闸 ⇒ 已切到 ${target.id}/${target.model}，本轮按它发图")
+                        true
+                    } else {
+                        _notice.value = "没切到 ${target.label}（$msg）：本轮图片没有发送，也没有上传"
+                        _state.value = RunState.ABORTED
+                        log("抱朴引擎：发图同意闸 ⇒ 切没成（$msg）⇒ 收轮，不按原通道硬发")
+                        false
+                    }
+                }
+            }
+
+            VisionConsent.Decision.CANCEL -> {
+                _notice.value = "已取消：本轮图片没读盘、没上传，这条消息也没落库"
+                _state.value = RunState.ABORTED
+                log("抱朴引擎：发图同意闸 ⇒ 用户取消或没人回答（${picked?.id ?: "超时"}）⇒ 本轮不发")
+                false
+            }
         }
     }
 

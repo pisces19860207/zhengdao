@@ -406,6 +406,18 @@ internal object BaopuRuntime {
         )
         // ask_user：工具线程阻塞在 engine.askUser 上，UI 点一下即回（有界，与确认卡同超时）
         AskUserTool.sink = { req -> engine.askUser(req) }
+        // 第一百二十四批 · 发图同意闸的候选来源：「已验证能看图、且真能切过去」的那几条通道。
+        // 判据在 VisionRouting（候选规矩照用 ProviderPrefs.routeCandidates，能力过滤照用
+        // ModelRouter + Need(vision=true)）；Key 只在这里现取现用 ⇒ 引擎不持 Key、不进日志。
+        engine.visionCandidates = { currentId ->
+            val (cb, cm) = ProviderPrefs.storedCustom(appCtx)
+            VisionRouting.verifiedCandidates(
+                currentId = currentId,
+                keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
+                customBase = cb,
+                customModel = cm,
+            )
+        }
         // 第九十七批：组授权留痕（`[group] …`，可 grep）。只产出文本的纯函数在 agent 包，
         // 落盘统一走 RunLog —— 与 26-B 的 `[kernel]` 留痕同一口径（引擎线程上串行写）。
         ToolGroupAudit.sink = { line -> RunLog.log(line) }

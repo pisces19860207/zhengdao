@@ -252,6 +252,15 @@ internal object ContextAssembler {
          */
         visionSupported: Boolean = false,
         /**
+         * 第一百二十四批：本轮图片是**用户显式选了「仍要发送（风险自负）」**才发出来的。
+         *
+         * 只在 `visionSupported=false` 时有意义：默认 `false` ⇒ 未验证通道的图仍按第二十四批
+         * 整批省略（行为与本参数存在之前逐字相同）；传 `true` ⇒ 交给
+         * [VisionRules.select] 的授权分支，图照发并留一句说明。
+         * 判据不在这里算：谁同意、问几次全在 `VisionConsent`，组装器只转发一个布尔。
+         */
+        visionAuthorized: Boolean = false,
+        /**
          * 调用方要拼在本轮输入末尾的额外说明（第二十四批 C 段追加）。
          *
          * 第一个用处：图片**没发出去**时的逐张原因（`VisionFiles.Loaded.note()`）。
@@ -316,12 +325,12 @@ internal object ContextAssembler {
         if (visibleHistory.isNotEmpty()) {
             segments += PromptSegment(SegmentKind.HISTORY, renderHistory(visibleHistory))
         }
-        // ── 本轮输入 ＋ 图片（第二十四批 A 段）──
+        // ── 本轮输入 ＋ 图片（第二十四批 A 段；第一百二十四批补「用户已授权」这一路）──
         // 裁图判据全在 VisionRules.select（纯函数）：能力不够就一张不发、超限就截断，
         // 两种情况都会给一句 note。note **拼在本轮输入末尾**而不是单独开一段：
         // 开新段会让 SegmentKind 枚举顺序里多一个位置，压缩与前缀判据都要跟着改；
         // 而这句话本来就是"关于本轮输入"的，跟在后面最自然。
-        val vision = VisionRules.select(images, visionSupported)
+        val vision = VisionRules.select(images, visionSupported, visionAuthorized)
         val notes = buildList {
             if (vision.note.isNotEmpty()) add(vision.note)
             extraNotes.forEach { if (it.isNotBlank()) add(it) }
