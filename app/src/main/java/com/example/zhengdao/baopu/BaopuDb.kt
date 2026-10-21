@@ -1219,6 +1219,119 @@ internal object BaopuSql {
         "SELECT id, session_id, text, image_rel_paths FROM run_queue ORDER BY id ASC",
         emptyArray(),
     )
+
+    // ── v16（第一百二十七批）：多 Agent 协作 sub_task 审计表 ───────────────
+    //
+    // 为什么单独一张表：父子关系（parent_id 一串同分解的子任务）、逐条状态机
+    // （PENDING→RUNNING→终态）、尝试次数与步数累计，都表达不了在 message/run_log 里。
+    // `ON DELETE CASCADE`：删会话时子任务账跟着走（与 run_queue/run_trace 同处理，
+    // deleteSessionStatements 不为它另加一条——DDL 反推门禁认级联）。
+    // `task_id` 是 [com.example.zhengdao.baopu.agent.multiagent.SubTask.id] 的原文
+    // （`sg-<会话>-<时刻>-<第几笔>-<序号>`）——更新/查询都按它，不拼字符串。
+    // 只存枚举名/计数/时刻/摘要：result_text 截断 600 字（与 run_trace「不存正文」同口径），
+    // goal/input/acceptance 也已在入口截断（SubAgentRules 的 MAX_*_CHARS）。
+    val SUB_TASK_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS sub_task (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id TEXT NOT NULL UNIQUE,
+          parent_id TEXT NOT NULL,
+          session_id INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+          seq INTEGER NOT NULL,
+          goal TEXT NOT NULL,
+          input TEXT NOT NULL DEFAULT '',
+          acceptance TEXT NOT NULL DEFAULT '',
+          tools TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 1,
+          steps INTEGER NOT NULL DEFAULT 0,
+          started_at INTEGER NOT NULL DEFAULT 0,
+          ended_at INTEGER NOT NULL DEFAULT 0,
+          failure_reason TEXT NOT NULL DEFAULT '',
+          result_text TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        // 「这笔分解有哪些子任务」按 parent 取、按 seq 排 ⇒ 复合索引。
+        "CREATE INDEX IF NOT EXISTS idx_sub_task_parent ON sub_task (parent_id, seq)",
+        // 「这个会话历史上拆过哪些任务」按会话倒查 ⇒ 复合索引。
+        "CREATE INDEX IF NOT EXISTS idx_sub_task_session ON sub_task (session_id, id)",
+    )
+
+    /** sub_task 的列序（唯一一份：SELECT 与游标映射都读它）。 */
+    val SUB_TASK_COLUMNS: List<String> = listOf(
+        "task_id", "parent_id", "session_id", "seq", "goal", "input", "acceptance", "tools",
+        "status", "attempts", "steps", "started_at", "ended_at", "failure_reason",
+        "result_text",
+    )
+
+    /** 分解落账：整批 PENDING（一行一条）。 */
+    fun insertSubTask(
+        taskId: String,
+        parentId: String,
+        sessionId: Long,
+        seq: Int,
+        goal: String,
+        input: String,
+        acceptance: String,
+        tools: String,
+        status: String,
+        attempts: Int,
+        steps: Int,
+        startedAt: Long,
+        endedAt: Long,
+        failureReason: String,
+        resultText: String,
+        createdAt: Long,
+    ): Stmt = Stmt(
+        "INSERT INTO sub_task (task_id, parent_id, session_id, seq, goal, input, acceptance, " +
+            "tools, status, attempts, steps, started_at, ended_at, failure_reason, result_text, " +
+            "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        arrayOf<String?>(
+            taskId, parentId, sessionId.toString(), seq.toString(), goal, input, acceptance, tools,
+            status, attempts.toString(), steps.toString(), startedAt.toString(), endedAt.toString(),
+            failureReason, resultText, createdAt.toString(),
+        ),
+    )
+
+    /** 一条开跑（PENDING ⇒ RUNNING；attempts/steps 不动）。 */
+    fun updateSubTaskRunning(taskId: String, at: Long): Stmt = Stmt(
+        "UPDATE sub_task SET status = 'RUNNING', started_at = ? WHERE task_id = ?",
+        arrayOf<String?>(at.toString(), taskId),
+    )
+
+    /** 一条进终态（连同结果/原因/步数/尝试次数）。 */
+    fun updateSubTaskFinished(
+        taskId: String,
+        status: String,
+        attempts: Int,
+        steps: Int,
+        startedAt: Long,
+        endedAt: Long,
+        failureReason: String,
+        resultText: String,
+    ): Stmt = Stmt(
+        "UPDATE sub_task SET status = ?, attempts = ?, steps = ?, started_at = ?, ended_at = ?, " +
+            "failure_reason = ?, result_text = ? WHERE task_id = ?",
+        arrayOf<String?>(
+            status, attempts.toString(), steps.toString(), startedAt.toString(), endedAt.toString(),
+            failureReason, resultText, taskId,
+        ),
+    )
+
+    /** 审计查询：一笔分解的全部子任务（按 seq）。 */
+    fun selectSubTasksOfParent(parentId: String): Stmt = Stmt(
+        "SELECT " + SUB_TASK_COLUMNS.joinToString(", ") + " FROM sub_task " +
+            "WHERE parent_id = ? ORDER BY seq ASC",
+        arrayOf<String?>(parentId),
+    )
+
+    /** 审计查询：一个会话的全部分解开销（按 id 正序＝开拆顺序）。 */
+    fun selectSubTasksOfSession(sessionId: Long): Stmt = Stmt(
+        "SELECT " + SUB_TASK_COLUMNS.joinToString(", ") + " FROM sub_task " +
+            "WHERE session_id = ? ORDER BY id ASC",
+        arrayOf<String?>(sessionId.toString()),
+    )
 }
 
 /**
@@ -1284,6 +1397,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV13Migration(db)
         applyV14Migration(db)
         applyV15Migration(db)
+        applyV16Migration(db)
     }
 
     /**
@@ -1317,6 +1431,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 13) applyV13Migration(db)
         if (oldVersion < 14) applyV14Migration(db)
         if (oldVersion < 15) applyV15Migration(db)
+        if (oldVersion < 16) applyV16Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1481,6 +1596,17 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.RUN_QUEUE_DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v15 → v16 迁移体（第一百二十七批）：`sub_task` 表 ＋ 两个索引，全是 `IF NOT EXISTS`
+     * ⇒ 幂等（照 v15 run_queue 房型）。新安装（onCreate 也调它）与 v15 及更早的库升级
+     * 走**同一条**路径。
+     *
+     * 老库可读性：升上来只多一张空表；`message`/`session`/`run_log` 一列不动 ⇒ 老会话照开。
+     */
+    private fun applyV16Migration(db: SQLiteDatabase) {
+        BaopuSql.SUB_TASK_DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1515,8 +1641,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v14 = 第八十九批（`memory` 质量四列 `score`／`quality_flags`／`merged_from`／`scored_at`，
          *  全部 `NOT NULL` 带默认值 ⇒ 老行不回填、正文一列不动；默认满分＝暂不扣分）。
          *  v15 = 第一百一十七批（`run_queue` 会话内任务队列：只存文本/相对图片路径/时刻，
-         *  开跑事务删行；带 `ON DELETE CASCADE`）。 */
-        const val VERSION = 15
+         *  开跑事务删行；带 `ON DELETE CASCADE`）。
+         *  v16 = 第一百二十七批（`sub_task` 多 Agent 协作审计表：父子 id/状态/尝试/
+         *  步数/起止/原因/结果摘要，带 `ON DELETE CASCADE` 与 task_id UNIQUE）。 */
+        const val VERSION = 16
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

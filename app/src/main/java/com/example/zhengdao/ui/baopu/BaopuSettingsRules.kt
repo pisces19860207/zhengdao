@@ -136,6 +136,7 @@ internal fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
     ToolGroup.CARD -> R.string.baopu_tools_group_card
     ToolGroup.SKILL -> R.string.baopu_tools_group_skill
     ToolGroup.PREVIEW -> R.string.baopu_tools_group_preview
+    ToolGroup.AGENT -> R.string.baopu_tools_group_agent
     // COMPAT 由通道决定、没有开关，卡片尾部以只读文字展示（第十八批 §2.1-4）⇒ 不进分组列表
     ToolGroup.COMPAT -> compatNoSwitch()
 }
@@ -167,6 +168,7 @@ internal fun baopuGroupLine(group: ToolGroup): Int = when (group) {
     ToolGroup.CARD -> R.string.baopu_group_line_card
     ToolGroup.SKILL -> R.string.baopu_group_line_skill
     ToolGroup.PREVIEW -> R.string.baopu_group_line_preview
+    ToolGroup.AGENT -> R.string.baopu_group_line_agent
     ToolGroup.COMPAT -> compatNoSwitch()
 }
 
