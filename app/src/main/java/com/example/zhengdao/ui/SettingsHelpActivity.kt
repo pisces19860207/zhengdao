@@ -36,6 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -129,7 +130,7 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
 
     /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
     var prevLogText by remember { mutableStateOf<String?>(null) }
-    var archiveCount by remember { mutableStateOf(0) }
+    var archiveCount by remember { mutableIntStateOf(0) }
     // §B 顺序 2 · P2-5：剪掉旧日志归档是**永久删除**，先弹确认框再执行。
     var pruneConfirm by remember { mutableStateOf(false) }
 

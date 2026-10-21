@@ -36,7 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -118,7 +118,7 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
     // 隐藏入口（2026-10-12 走查报告 §1.2-D）：输入回归页是开发自测页，从用户设置里撤下，
     // 收成「版本」行连点 3 次。普通人误点三次也只会当它是彩蛋。
-    var versionTaps by remember { mutableStateOf(0) }
+    var versionTaps by remember { mutableIntStateOf(0) }
     SettingsSubPage(title = stringResource(R.string.settings_about), onBack = onBack) {
         // ── 关于 ──
         SectionCard(stringResource(R.string.settings_about)) {

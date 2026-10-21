@@ -28,6 +28,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,13 +80,13 @@ fun SettingsScreen(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> },
 ) {
     val ctx = LocalContext.current
-    var storageTick by remember { mutableStateOf(0) }
+    var storageTick by remember { mutableIntStateOf(0) }
     // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖——
     // 不再先显示「统计中…」再让三个数字一起蹦出来。
     val lastStorage = remember { LastValues.loadStorageMb(ctx) }
-    var rootfsMb by remember { mutableStateOf(lastStorage?.first ?: -1L) }
-    var homeMb by remember { mutableStateOf(lastStorage?.second ?: -1L) }
-    var cacheMb by remember { mutableStateOf(lastStorage?.third ?: -1L) }
+    var rootfsMb by remember { mutableLongStateOf(lastStorage?.first ?: -1L) }
+    var homeMb by remember { mutableLongStateOf(lastStorage?.second ?: -1L) }
+    var cacheMb by remember { mutableLongStateOf(lastStorage?.third ?: -1L) }
 
     // 局部函数没有提升：必须先声明再用（否则 remember { } 里的调用会推不出类型）。
     fun storageGrantedNow(): Boolean =
@@ -104,7 +106,7 @@ fun SettingsScreen(
     var langDialog by remember { mutableStateOf(false) }
     // 外观（2026-10-12 深色主题）：订阅变更信号，切换即重组、不用重建页面。
     var appearDialog by remember { mutableStateOf(false) }
-    val appearTick = AppearancePrefs.changeTick.value
+    val appearTick = AppearancePrefs.changeTick.intValue
     val appearPref = remember(appearTick) { AppearancePrefs.get(ctx) }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
