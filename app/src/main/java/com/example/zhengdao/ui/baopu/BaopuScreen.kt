@@ -1118,7 +1118,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                             val id = row.id
                             deleteRow = null
                             if (!controller.deleteSession(id)) {
-                                Toast.makeText(context, context.getString(R.string.baopu_delete_session_failed), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, res.getString(R.string.baopu_delete_session_failed), Toast.LENGTH_SHORT).show()
                             }
                         }) { Text(stringResource(R.string.baopu_delete_session_confirm)) }
                     },
@@ -1153,7 +1153,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                 } else {
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.baopu_switch_ws_failed),
+                                        res.getString(R.string.baopu_switch_ws_failed),
                                         Toast.LENGTH_SHORT,
                                     ).show()
                                 }

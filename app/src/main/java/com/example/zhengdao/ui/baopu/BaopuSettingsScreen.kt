@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.io.File
@@ -81,6 +82,7 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 @Composable
 internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: () -> Unit = {}) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     // 承载方式（2026-10-18 真机修正）：必须用 **Dialog 全屏**，不能直接摆在 BaopuScreen 的
     // Column 里——实测那样只在对话与输入框之间挤出一条，聊天还露在外面上下两端。
     // 与 BaopuExtractSheet 同一条路子（Dialog 是真窗口），宽度默认受限故关掉 usePlatformDefaultWidth。
@@ -396,7 +398,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 val msg = when (
                                     val r = PersonaBackup.restore(pfile, PersonaBackup.nowStamp())
                                 ) {
-                                    is PersonaBackupResult.Done -> ctx.getString(
+                                    is PersonaBackupResult.Done -> res.getString(
                                         R.string.persona_rollback_done,
                                         r.backup.name,
                                     )
@@ -498,7 +500,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         onSaved = { result ->
                             val msg = when (result) {
                                 is com.example.zhengdao.baopu.SkillWriteResult.Written ->
-                                    ctx.getString(R.string.skill_new_saved, result.file.parentFile?.name ?: "")
+                                    res.getString(R.string.skill_new_saved, result.file.parentFile?.name ?: "")
                                 is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> result.reason
                             }
                             Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
@@ -536,7 +538,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     val file = skillFileOf(layer, name)
                     val msg = when (val r = SkillStore.restore(file, com.example.zhengdao.util.TimeFormats.fileStamp())) {
                         is com.example.zhengdao.baopu.SkillWriteResult.Written ->
-                            ctx.getString(R.string.skill_restore_done)
+                            res.getString(R.string.skill_restore_done)
                         is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
                     }
                     Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
@@ -555,7 +557,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         ?.newText ?: return
                     val p = PersonaRules.propose(
                         layer, current, newText,
-                        ctx.getString(R.string.skill_reason_manual),
+                        res.getString(R.string.skill_reason_manual),
                     ) ?: return
                     pf.applyProposal(p)
                     skillReload++
@@ -571,14 +573,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 fun sayArchived(o: ArchivedOutcome) {
                     val msg = when (o) {
                         is ArchivedOutcome.Restored -> when (o.index) {
-                            RestoredIndex.Added -> ctx.getString(R.string.skill_archived_restored, o.name)
-                            RestoredIndex.OverCap -> ctx.getString(R.string.skill_archived_index_full, SkillRules.INDEX_CAP)
-                            RestoredIndex.BadName -> ctx.getString(R.string.skill_archived_index_skipped, o.name)
+                            RestoredIndex.Added -> res.getString(R.string.skill_archived_restored, o.name)
+                            RestoredIndex.OverCap -> res.getString(R.string.skill_archived_index_full, SkillRules.INDEX_CAP)
+                            RestoredIndex.BadName -> res.getString(R.string.skill_archived_index_skipped, o.name)
                         }
-                        is ArchivedOutcome.Occupied -> ctx.getString(R.string.skill_archived_occupied, o.target)
-                        is ArchivedOutcome.IoFailed -> ctx.getString(R.string.skill_archived_io_failed, o.target, o.why)
-                        is ArchivedOutcome.NeedsConfirm -> ctx.getString(R.string.skill_archived_confirm, o.target)
-                        is ArchivedOutcome.Deleted -> ctx.getString(R.string.skill_archived_deleted, o.target)
+                        is ArchivedOutcome.Occupied -> res.getString(R.string.skill_archived_occupied, o.target)
+                        is ArchivedOutcome.IoFailed -> res.getString(R.string.skill_archived_io_failed, o.target, o.why)
+                        is ArchivedOutcome.NeedsConfirm -> res.getString(R.string.skill_archived_confirm, o.target)
+                        is ArchivedOutcome.Deleted -> res.getString(R.string.skill_archived_deleted, o.target)
                     }
                     Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
                 }
@@ -726,10 +728,10 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         onPick = { cat ->
                             val msg = when (val o = setCategory(pickDir, pickName, cat)) {
                                 is CategoryOutcome.Saved ->
-                                    ctx.getString(R.string.skill_cat_saved, o.name, ctx.getString(o.category.labelRes))
-                                is CategoryOutcome.Rejected -> ctx.getString(R.string.skill_cat_rejected, o.name)
+                                    res.getString(R.string.skill_cat_saved, o.name, res.getString(o.category.labelRes))
+                                is CategoryOutcome.Rejected -> res.getString(R.string.skill_cat_rejected, o.name)
                                 is CategoryOutcome.IoFailed ->
-                                    ctx.getString(R.string.skill_cat_io_failed, o.name, o.why)
+                                    res.getString(R.string.skill_cat_io_failed, o.name, o.why)
                             }
                             Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
                             picking = null
@@ -766,7 +768,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     ) {
                         is com.example.zhengdao.baopu.SkillWriteResult.Written -> {
                             com.example.zhengdao.baopu.BaopuRuntime.recordSkillUseManual(ctx, row.name, row.file)
-                            ctx.getString(R.string.skill_draft_used, row.name)
+                            res.getString(R.string.skill_draft_used, row.name)
                         }
                         is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
                     }
@@ -789,8 +791,8 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     ) {
                         // 索引没加上（上限挡着）时必须明说——正文已转正但模型还看不见它。
                         is com.example.zhengdao.baopu.SkillWriteResult.Written ->
-                            if (r.indexUpdated) ctx.getString(R.string.skill_draft_promoted, row.name)
-                            else ctx.getString(R.string.skill_draft_index_full, SkillRules.INDEX_CAP)
+                            if (r.indexUpdated) res.getString(R.string.skill_draft_promoted, row.name)
+                            else res.getString(R.string.skill_draft_index_full, SkillRules.INDEX_CAP)
                         is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
                     }
                     Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
@@ -893,7 +895,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         onSaved = { result ->
                             val msg = when (result) {
                                 is com.example.zhengdao.baopu.SkillWriteResult.Written ->
-                                    ctx.getString(R.string.skill_edit_saved)
+                                    res.getString(R.string.skill_edit_saved)
                                 is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> result.reason
                             }
                             Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()

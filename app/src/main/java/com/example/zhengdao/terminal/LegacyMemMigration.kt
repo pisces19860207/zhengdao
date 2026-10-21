@@ -2,6 +2,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
@@ -71,7 +72,7 @@ internal object LegacyMemMigration {
         for (rel in CONFIG_RELS) {
             if (migrateConfigFile(File(home, rel), stamp)) touched += rel
         }
-        prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+        prefs.edit { putBoolean(KEY_MIGRATED, true) }
         if (touched.isNotEmpty()) {
             RunLog.log(
                 "遗留插件迁移：清理 ${touched.joinToString("、")} 里的 opencode-mem 残留" +

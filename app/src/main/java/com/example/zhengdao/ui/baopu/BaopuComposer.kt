@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -129,6 +130,7 @@ internal fun BaopuComposer(
     // 一句提示（没权限 / 保存失败）；下一次成功或再点一次就换掉
     var note by remember { mutableStateOf<String?>(null) }
     val ctx = LocalContext.current
+    val res = LocalResources.current
     // 回形针的读屏名（自绘图形没有文字，必须给 contentDescription，否则无障碍读成「按钮」）
     val attachDesc = stringResource(R.string.baopu_attach_title)
     // 相机要写入的那个临时 Uri（TakePicture 先给 Uri，回调时才知道成没成）
@@ -163,8 +165,8 @@ internal fun BaopuComposer(
         }
         if (saved.isNotEmpty()) attachList = attachList + saved
         note = when {
-            failed > 0 -> ctx.getString(R.string.baopu_attach_failed)
-            uris.size > saved.size -> ctx.getString(R.string.baopu_attach_too_many, MAX_ATTACH)
+            failed > 0 -> res.getString(R.string.baopu_attach_failed)
+            uris.size > saved.size -> res.getString(R.string.baopu_attach_too_many, MAX_ATTACH)
             else -> null
         }
     }
@@ -173,7 +175,7 @@ internal fun BaopuComposer(
         val uri = cameraUri
         cameraUri = null
         if (ok && uri != null) {
-            saveAll(listOf(uri), ctx.getString(R.string.baopu_attach_photo_name))
+            saveAll(listOf(uri), res.getString(R.string.baopu_attach_photo_name))
         }
         // 用户取消：不提示、不报错（取消不是失败）
     }
@@ -200,7 +202,7 @@ internal fun BaopuComposer(
     val requestCamera = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) launchCamera() else note = ctx.getString(R.string.baopu_attach_camera_denied)
+        if (granted) launchCamera() else note = res.getString(R.string.baopu_attach_camera_denied)
     }
 
     Column(modifier = modifier.fillMaxWidth()) {

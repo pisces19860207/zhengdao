@@ -13,6 +13,7 @@ package com.example.zhengdao.terminal
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.edit
 import com.example.zhengdao.rootfs.RunLog
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -189,7 +190,7 @@ object SessionManager {
         startedAtMs = System.currentTimeMillis()
         isFallback = p.isFallback
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putLong("started_at", startedAtMs).apply()
+            .edit { putLong("started_at", startedAtMs) }
         // #10：日志**排在**前台服务之前——startForegroundService 抛异常时，
         // 「会话启动」这条必须已经落盘（以前它排在后面，抛了就什么都没有）。
         RunLog.log(
@@ -239,7 +240,7 @@ object SessionManager {
         startedAtMs = 0L
         isFallback = false
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().remove("started_at").apply()
+            .edit { remove("started_at") }
         s.finishIfRunning()
         SessionService.stop(context)
         RunLog.log("会话已停止" + if (clearAgent) "（并清空当前 Agent 记录）" else "")
@@ -273,7 +274,7 @@ object SessionManager {
                 setCurrentAgent(null)
                 appContext?.let {
                     it.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                        .edit().remove("started_at").apply()
+                        .edit { remove("started_at") }
                     SessionService.stop(it)
                 }
                 RunLog.log("会话退出 code=$code")

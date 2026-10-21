@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.edit
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
@@ -2330,7 +2331,7 @@ internal class BaopuChatController(context: Context) {
         pendingMemories = merge.kept
         introspectionNote = r.introspection.text
         runCatching {
-            notePrefs.edit().putString("note_$sid", r.introspection.text).apply()
+            notePrefs.edit { putString("note_$sid", r.introspection.text) }
         }
     }
 

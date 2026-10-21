@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
@@ -121,6 +122,7 @@ class SettingsStorageActivity : ComponentActivity() {
 @Composable
 private fun SettingsStoragePage(onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
     // ENV-D1：同环境页 —— 正文在组合期取资源，协程里只捕获结果。
     val blockMessage = stringResource(LIVE_SESSION_BLOCK_MESSAGE_RES)
@@ -300,12 +302,12 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            ctx.getString(
+                                            res.getString(
                                                 R.string.storage_opt_deleted,
                                                 count,
                                                 CacheCleaner.bytesToMb(freed),
                                             )
-                                        else ctx.getString(R.string.storage_opt_none)
+                                        else res.getString(R.string.storage_opt_none)
                                     },
                                 )
                             }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
@@ -352,12 +354,12 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            ctx.getString(
+                                            res.getString(
                                                 R.string.storage_script_cleared,
                                                 count,
                                                 CacheCleaner.bytesToMb(freed),
                                             )
-                                        else ctx.getString(R.string.storage_script_none)
+                                        else res.getString(R.string.storage_script_none)
                                     },
                                 )
                             }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
@@ -455,8 +457,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             runClean(
                                 work = { 0 to CacheCleaner.cleanTempFiles(ctx) },
                                 toast = { _, freed ->
-                                    if (freed > 0) ctx.getString(R.string.storage_freed, CacheCleaner.bytesToMb(freed))
-                                    else ctx.getString(R.string.storage_temp_cleaned_none)
+                                    if (freed > 0) res.getString(R.string.storage_freed, CacheCleaner.bytesToMb(freed))
+                                    else res.getString(R.string.storage_temp_cleaned_none)
                                 },
                             )
                         }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
@@ -518,8 +520,8 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                             runClean(
                                 work = { 0 to CacheCleaner.cleanAgentCaches(ctx) },
                                 toast = { _, freed ->
-                                    if (freed > 0) ctx.getString(R.string.storage_freed, CacheCleaner.bytesToMb(freed))
-                                    else ctx.getString(R.string.storage_agent_cleaned_none)
+                                    if (freed > 0) res.getString(R.string.storage_freed, CacheCleaner.bytesToMb(freed))
+                                    else res.getString(R.string.storage_agent_cleaned_none)
                                 },
                             )
                         }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
@@ -569,12 +571,12 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     work = { HermesEnv.pruneGenerations(HermesEnv.hermesHome(ctx)) },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            ctx.getString(
+                                            res.getString(
                                                 R.string.storage_gen_deleted,
                                                 count,
                                                 CacheCleaner.bytesToMb(freed),
                                             )
-                                        else ctx.getString(R.string.storage_gen_none)
+                                        else res.getString(R.string.storage_gen_none)
                                     },
                                 )
                             }) { Text(if (cleaning) stringResource(R.string.common_cleaning) else stringResource(R.string.common_clean)) }
@@ -592,7 +594,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             var cacheText by remember {
                 mutableStateOf(
                     LastValues.loadText(ctx, "installer_cache_text")
-                        ?: ctx.getString(R.string.settings_status_measuring)
+                        ?: res.getString(R.string.settings_status_measuring)
                 )
             }
             var rollbacks by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -609,17 +611,17 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         val dir = com.example.zhengdao.rootfs.RootfsCache.dir(ctx)
                         val current = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
                         val text = buildString {
-                            appendLine(ctx.getString(R.string.storage_installer_dir, dir.path))
+                            appendLine(res.getString(R.string.storage_installer_dir, dir.path))
                             appendLine(
-                                ctx.getString(
+                                res.getString(
                                     R.string.storage_installer_count,
                                     archives.size,
-                                    current ?: ctx.getString(R.string.settings_status_not_installed),
+                                    current ?: res.getString(R.string.settings_status_not_installed),
                                 )
                             )
                             archives.forEach {
                                 appendLine(
-                                    ctx.getString(
+                                    res.getString(
                                         R.string.storage_installer_item,
                                         it.name,
                                         it.length() / (1024 * 1024),
@@ -677,7 +679,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 }
                                 Toast.makeText(
                                     ctx,
-                                    ctx.getString(R.string.storage_installer_cleaned, n),
+                                    res.getString(R.string.storage_installer_cleaned, n),
                                     Toast.LENGTH_SHORT,
                                 ).show()
                                 reloadCache()
@@ -742,10 +744,10 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                         // 这条路自己写着"约几分钟"，此前却只有结束那一条 Toast（E-036 §7）
                                         InstallFlow.start(
                                             ctx,
-                                            ctx.getString(R.string.storage_rollback_start, target.name),
+                                            res.getString(R.string.storage_rollback_start, target.name),
                                             fromLocal = true,
                                         )
-                                        InstallFlow.update(ctx, ctx.getString(R.string.storage_unpacking))
+                                        InstallFlow.update(ctx, res.getString(R.string.storage_unpacking))
                                         RootfsInstaller.ensureFreeSpace(ctx, target.length())
                                         // 回退到"与当前环境同源的那个包"（例如刚回退过又点了一次同一个版本）时
                                         // 保留环境指纹；换成别的版本必然对不上 ⇒ null，照装不写 env。
@@ -757,7 +759,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                         )
                                         com.example.zhengdao.rootfs.RootfsInstaller.install(ctx, target, rollEnv, rollSha) { }
                                         com.example.zhengdao.rootfs.RootfsCache.pruneKeep(ctx)
-                                        InstallFlow.finish(ctx, ctx.getString(R.string.storage_rollback_done, target.name))
+                                        InstallFlow.finish(ctx, res.getString(R.string.storage_rollback_done, target.name))
                                     }
                                     // 原 Handler(mainLooper).post { storageTick++ }：
                                     // withContext 正常返回即在主线程，直接赋值（仅成功路径）
@@ -765,7 +767,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 } catch (t: Throwable) {
                                     InstallFlow.fail(
                                         ctx,
-                                        ctx.getString(R.string.storage_rollback_failed, HumanizeError.title(t, ctx.resources)),
+                                        res.getString(R.string.storage_rollback_failed, HumanizeError.title(t, res)),
                                     )
                                     // 2026-10-08：Toast → Snackbar（带"查看日志"action）。
                                     // t.message 原文仍落 InstallFlow.fail + RunLog（诊断不丢），
@@ -773,11 +775,11 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     // 现场取日志并弹窗（缺日志时给指向目录的 Toast，不静默）。
                                     // scope 默认走 Dispatchers.Main.immediate —— 这里已在主线程，直接挂起弹。
                                     val r = snackbarHostState.showSnackbar(
-                                        message = ctx.getString(
+                                        message = res.getString(
                                             R.string.storage_rollback_failed,
-                                            HumanizeError.title(t, ctx.resources),
+                                            HumanizeError.title(t, res),
                                         ),
-                                        actionLabel = ctx.getString(R.string.common_view_log),
+                                        actionLabel = res.getString(R.string.common_view_log),
                                         duration = SnackbarDuration.Indefinite,
                                     )
                                     if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {

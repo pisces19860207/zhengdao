@@ -503,6 +503,7 @@ fun ZhengdaoApp(
     guidePermissions: Boolean = false,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val nav = rememberNavController()
     // 可观察状态：环境装/没装会变（终端里装完、设置里卸载），必须跟着变。
     val installed by com.example.zhengdao.ui.RootfsState.installed
@@ -616,7 +617,7 @@ fun ZhengdaoApp(
             // 2026-10-08：异常原文 → 人话。原文已落 RunLog，用户看的用 [HumanizeError]
             // 转成「没有权限 / 网络超时 / 文件找不到」之类可读短语
             android.widget.Toast.makeText(
-                context, "无法打开终端：${com.example.zhengdao.util.HumanizeError.title(t, context.resources)}", android.widget.Toast.LENGTH_LONG
+                context, "无法打开终端：${com.example.zhengdao.util.HumanizeError.title(t, res)}", android.widget.Toast.LENGTH_LONG
             ).show()
         }
     }
