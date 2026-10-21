@@ -660,12 +660,6 @@ internal object BaopuSql {
         )
     }
 
-    fun decidePlanBatch(id: Long, status: String, decidedAt: Long): Stmt =
-        Stmt(
-            "UPDATE plan_batch SET status = ?, decided_at = ? WHERE id = ?",
-            arrayOf<String?>(status, decidedAt.toString(), id.toString()),
-        )
-
     /**
      * 删一个会话的**全部**语句，**顺序即执行顺序**（外键已开，顺序错就报 constraint）：
      * 1. 先删 ops 子批（plan_batch 自引用，子先父后）；

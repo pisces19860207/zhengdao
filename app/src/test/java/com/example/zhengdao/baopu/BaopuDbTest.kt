@@ -466,13 +466,6 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `decidePlanBatch更新状态与决定时间`() {
-        val s = BaopuSql.decidePlanBatch(3L, "approved", 777L)
-        assertTrue(s.sql.contains("SET status = ?, decided_at = ?"))
-        assertEquals(listOf("approved", "777", "3"), s.args.toList())
-    }
-
-    @Test
     fun `删会话六步_顺序即执行顺序_压缩摘要也必须显式删`() {
         val stmts = BaopuSql.deleteSessionStatements(42L)
         assertEquals("E-158：compression 那一步漏过一次，会话就永远删不掉", 6, stmts.size)
