@@ -213,6 +213,13 @@ import kotlin.text.Charsets
  *   全在创建点之前；其余新增字段与函数都刻意写在创建点之下）
  *   ⇒ zd-baopu-run 244→246 平移，本次回填。逐处核过仍是同一段
  *   `Thread(r, "zd-baopu-run").apply { isDaemon = true }`，有名 + daemon 都没变。
+ * - 2026-10-21（第一百二十一批 · 死代码转正三件）：**无新增线程**。遗留插件迁移
+ *   （`LegacyMemMigration.runOnce`）**刻意搭车**既有 `zd-auto-clean` 后台杂务线
+ *   （ZhengdaoApp.autoCleanJunk 的同一个 Thread 里顺序跑，自己 runCatching 兜底）——
+ *   本批实测发现对账本早已贴满红线：127 批新增 zd-baopu-sub 后实际就是 **32 处**
+ *   （原注「=> 31」少算了一条，本次校正），再开一条就 33 越线。按纪律「想新增先收敛」，
+ *   迁移选搭车而非新开线程。ZhengdaoApp.kt 两条创建点 82/132 **未平移**（迁移代码加在
+ *   它们之后），本次无需回填。
  */
 class BareThreadGuardTest {
 
@@ -245,7 +252,8 @@ class BareThreadGuardTest {
         // 2026-10-18 刀 4 新增 zd-preview-http（预览服务 acceptor）=> 30；
         // 2026-10-20 第六十八批消除 HomeScreen 的 zd-health-fix（改协程）=> 29；
         // 2026-10-20 第九十二批新增读池 zd-baopu-tool-read => 30（对账单在下一段里逐条钉）；
-        // 2026-10-21 第一百二十七批新增子 Agent 池 zd-baopu-sub => 31。
+        // 2026-10-21 第一百二十七批新增子 Agent 池 zd-baopu-sub => 32（原注 31 有误，实测对账本 32 条，121 批校正）；
+        // 2026-10-21 第一百二十一批遗留插件迁移搭车 zd-auto-clean，无新增 => 仍 32（贴红线 32）。
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
@@ -287,7 +295,7 @@ class BareThreadGuardTest {
             "TerminalActivity.kt:1807",
             "TerminalActivity.kt:1893",
             "ZhengdaoApp.kt:82",
-            "ZhengdaoApp.kt:132",
+            "ZhengdaoApp.kt:140",
         )
         assertEquals(
             "裸 Thread 创建点与 2026-10-15 对账单不符——新增/移动了线程？" +
