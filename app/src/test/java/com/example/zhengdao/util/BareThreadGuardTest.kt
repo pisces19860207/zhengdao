@@ -249,7 +249,7 @@ class BareThreadGuardTest {
             .sorted()
         val expected = listOf(
             "AgentInstaller.kt:54",
-            "AgentManifest.kt:136",
+            "AgentManifest.kt:140",
             "BaopuDb.kt:1257",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:69",
@@ -261,8 +261,6 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",
             "KnowledgeBaseHints.kt:133",
             "LlmClient.kt:877",
-            // MainActivity.kt:396 ⇒ 405：第一百一十八批 T3 在 onCreate 里删了第二次 RunLog.init、
-            // 换成 9 行说明（同一创建点，`sed -n '405p'` = `Thread {`）。
             "MainActivity.kt:405",
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
