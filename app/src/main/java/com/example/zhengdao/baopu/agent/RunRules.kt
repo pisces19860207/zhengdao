@@ -243,15 +243,6 @@ internal object RunRules {
     fun rejectNote(summary: String, note: String?): String =
         if (note.isNullOrBlank()) "用户拒绝：$summary" else "用户拒绝：$summary；备注：$note"
 
-    /**
-     * 展示用相对路径（纯函数：绝对路径在工作区内 ⇒ 剥成相对；不在 ⇒ 原样）。
-     * 确认卡标题用（`要动文件：<路径>`——绝对路径又长又泄目录结构）。
-     */
-    fun relativizePath(absolutePath: String, root: File): String {
-        val prefix = root.absolutePath.trimEnd('/', '\\') + File.separator
-        return if (absolutePath.startsWith(prefix)) absolutePath.removePrefix(prefix) else absolutePath
-    }
-
     /** 中断标记值：会话被标「中断于第 N 步」时落这个数；-1 = 未中断。 */
     const val NOT_INTERRUPTED = -1
 

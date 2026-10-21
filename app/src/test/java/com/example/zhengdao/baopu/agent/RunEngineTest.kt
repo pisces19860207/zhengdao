@@ -217,15 +217,4 @@ class RunEngineTest {
         assertEquals("用户拒绝：覆盖 a.txt（1 行）", RunRules.rejectNote("覆盖 a.txt（1 行）", null))
         assertTrue(RunRules.rejectNote("s", "路径不对").contains("备注：路径不对"))
     }
-
-    @Test
-    fun `相对路径_工作区内剥根_不在原样`() {
-        // 平台无关写法（Windows 上 File("/tmp/ws") 的 absolutePath 是 C:\tmp\ws，
-        // 分隔符也是反斜杠 ⇒ 期望值用 File(...).path 归一，不手写斜杠）
-        val root = File("/tmp/ws")
-        val inside = File(root, "a/b.txt").absolutePath
-        assertEquals(File("a/b.txt").path, RunRules.relativizePath(inside, root))
-        val outside = File(root.parentFile ?: root, "elsewhere/passwd").absolutePath
-        assertEquals("不在工作区 ⇒ 原样", outside, RunRules.relativizePath(outside, root))
-    }
 }
