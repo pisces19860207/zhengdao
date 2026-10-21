@@ -557,7 +557,7 @@ private fun ScenarioCard(
 
 @Composable
 private fun TerminalProbeHost(onMount: () -> Unit) {
-    val activity = androidx.compose.ui.platform.LocalContext.current as ImeRegressionActivity
+    val activity = androidx.activity.compose.LocalActivity.current as ImeRegressionActivity
     AndroidView(
         modifier = Modifier
             .fillMaxWidth()
