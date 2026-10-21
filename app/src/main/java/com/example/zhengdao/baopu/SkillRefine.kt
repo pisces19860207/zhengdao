@@ -222,9 +222,81 @@ internal object SkillRefine {
     /** 提案的名字（卡上显示、落盘文件名、冲突判定**共用这一个真相**）。 */
     fun nameOf(p: LearnProposal): String = p.id.substringAfter('-').ifEmpty { "skill" }
 
-    /** 将要写进 `SKILL.md` 的正文（**唯一生成口**：门禁校验的就是这一段）。 */
-    fun skillBodyFor(p: LearnProposal): String =
-        "# 技能：${nameOf(p)}\n\n## 场景\n${p.content}\n\n## 来源\n${p.source}\n"
+    /**
+     * 将要写进 `SKILL.md` 的正文（**唯一生成口**：门禁校验的就是这一段）。
+     *
+     * 第一百零三批 §B（EVO-D1）两处**结构**补齐，都是被 `SkillBodySelfCheck` 的硬判据逼出来的：
+     * 1. 第一行必须是 `# <技能名>` —— [ensureTitle] 兜底（已有标题不重复补）；
+     * 2. 正文 ≥ `MIN_BODY_CHARS`（80）——原来只有「场景＋来源」两节，真机那条信号
+     *    （`技能/haiku-helper/SKILL.md`）算下来正文只有 40 多字符，自检判「一句话不算一个技能」
+     *    ⇒ 采纳必败。补一节**空步骤骨架**：只补结构、不编造事实（明说「还没写下具体步骤」），
+     *    与草稿「未验证」的既有口径一致。
+     */
+    fun skillBodyFor(p: LearnProposal): String {
+        val name = nameOf(p)
+        return ensureTitle(
+            name,
+            "# 技能：$name\n\n" +
+                "## 场景\n${p.content}\n\n" +
+                "## 来源\n${p.source}\n\n" +
+                "## 步骤\n（还没写下具体步骤：下次真正做成时，把实际做法补在这里，并标上实测日期。）\n",
+        )
+    }
+
+    /**
+     * 保证正文第一行是 `# <技能名>`（第一百零三批 §B①）。
+     *
+     * **只补结构、不改语义**：首个非空行已经是**一级标题**（`# ` 开头，`## 场景` 这种
+     * 二级标题不算）⇒ 原样返回（已有标题不重复补、不改写原句）；否则在开头补一行
+     * `# <name>` 加一个空行。
+     */
+    fun ensureTitle(name: String, body: String): String {
+        val first = body.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+        if (first.startsWith("# ")) return body
+        return "# ${name.ifBlank { "skill" }}\n\n" + body.trimStart('\n')
+    }
+
+    /**
+     * 去掉 `SkillStore` 落盘时前置的**机器头**（`<!-- status=draft uses=0 -->`）。
+     *
+     * 为什么需要（第一百零三批 §B 现场，`SkillStore.kt` 的 `withDraftHeader`）：
+     * 写草稿时机器头在最前面，而 `SkillBodySelfCheck` 把「第一个非空行」当标题
+     * ⇒ 草稿永远被判「缺标题段」、采纳永远回滚（真机报错逐字如此）。
+     * 机器头是**纯注释**（SkillStore 自己的 KDoc 口径），不是正文内容 ⇒
+     * 喂结构自检前去掉开头连续的 HTML 注释行，**判据本体一个字不动**。
+     */
+    fun contentWithoutMachineHeader(text: String): String {
+        val lines = text.lines()
+        var i = 0
+        while (i < lines.size) {
+            val t = lines[i].trim()
+            if (t.startsWith("<!--") && t.endsWith("-->")) i++ else break
+        }
+        return lines.drop(i).joinToString("\n")
+    }
+
+    /**
+     * 采纳卡的前置校验（第一百零三批 §B②）：**真跑** `SkillBodySelfCheck`（不是字符串断言）。
+     *
+     * @return 空 = 可采纳；非空 = 每条人话原因（卡上不出这条、落盘前再拒一次）
+     *
+     * 卡还没落盘 ⇒ `backups=0 / existed=false`：回滚那条判据此时没有盘上事实可判，
+     * 它会在真落盘之后由 `SkillBodyGuard` 按盘上状态再判一次（两道闸各管一段）。
+     */
+    fun learnPrecheckIssues(p: LearnProposal): List<String> =
+        when (
+            val v = com.example.zhengdao.baopu.eval.SkillBodySelfCheck.check(
+                com.example.zhengdao.baopu.eval.SkillBodyInput(
+                    name = nameOf(p),
+                    body = skillBodyFor(p),
+                    backups = 0,
+                    existed = false,
+                ),
+            )
+        ) {
+            is com.example.zhengdao.baopu.eval.SkillBodyVerdict.Ok -> emptyList()
+            is com.example.zhengdao.baopu.eval.SkillBodyVerdict.Bad -> v.issues
+        }
 
     /** 三道校验的编号（报错要让人看懂是哪一条不过）。 */
     enum class LearnIssue(val label: String) {

@@ -136,7 +136,13 @@ internal object BaopuRuntime {
         val appCtx = context.applicationContext
         // 浏览器六件的网关（进程内直调玄览；幂等，重复注入只换同一份）
         BaopuBrowserWiring.install(appCtx)
-        val reg = ToolRegistry(toolPrefs(appCtx), toolUnlocks(appCtx))
+        val reg = ToolRegistry(
+            prefs = toolPrefs(appCtx),
+            unlocks = toolUnlocks(appCtx),
+            // 第一百零三批 A 段：可见集合变化留痕（`[tools] 可见 N 个：…`）。
+            // 真机 TOOLS-D1 在代码层复现不出，下一次复测要能直接读出「那一刻的 tools 数组」。
+            onVisibleChanged = { line -> RunLog.log(line) },
+        )
         BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
         // 2026-10-18：抱朴自己写技能（确认制；写前备份、同名即改、写完进索引）
         reg.register(

@@ -570,9 +570,23 @@ internal class ToolRegistry(
      * 单测注入确定性回答，不必起界面。
      */
     private val ask: ((AskUserRequest) -> AskUserOption?)? = { AskUserTool.sink?.invoke(it) },
+    /**
+     * 可见集合**变化**时的留痕口（第一百零三批 A 段）。
+     *
+     * 为什么加（TOOLS-D1 现场）：真机上「刚拨开技能组、同进程里模型仍说没有 append_persona」
+     * 这件事，在代码层复现不出来（[visibleSpecs] 每次现算、`BaopuToolPrefs` 每次现读 SP，
+     * 没有任何缓存——判据 8 例已钉死）。下一次真机复测要能**直接读出**那一刻的 tools 数组，
+     * 所以这里在集合变化时吐一行 `[tools] 可见 N 个：…`（不变不吐，正常一轮 0–2 行）。
+     * 只观察、不参与判定：判据仍是 [isVisibleTool] 一处。
+     */
+    private val onVisibleChanged: ((String) -> Unit)? = null,
 ) : CapabilitiesSink {
 
     private val specs = LinkedHashMap<String, ToolSpec>()
+
+    /** 上一次吐给 [onVisibleChanged] 的可见名册（只在变化时吐，见该参数的 KDoc）。 */
+    @Volatile
+    private var lastEmitted: List<String> = emptyList()
 
     /**
      * 本轮属于哪个会话（第五十九批 §1.4 的「按会话」落点）。
@@ -658,8 +672,24 @@ internal class ToolRegistry(
      *
      * @param sessionId 本轮会话；默认可见组 ∪ 本会话解锁组，再 ∩ 用户两种开关。
      */
-    fun visibleSpecs(sessionId: Long = currentSessionId): List<ToolSpec> =
-        visibleTools(all(), settings(), unlockedGroups(sessionId))
+    fun visibleSpecs(sessionId: Long = currentSessionId): List<ToolSpec> {
+        val visible = visibleTools(all(), settings(), unlockedGroups(sessionId))
+        // 第一百零三批：集合变了才留痕（下一轮真机复测靠这行读「那一刻模型到底看得见什么」）
+        emitIfChanged(visible.map { it.name })
+        return visible
+    }
+
+    /** 见 [onVisibleChanged]：只做观察，异常自己吞掉（留痕不许影响请求）。 */
+    private fun emitIfChanged(names: List<String>) {
+        val sink = onVisibleChanged ?: return
+        val last = lastEmitted
+        if (names == last) return
+        synchronized(this) {
+            if (names == lastEmitted) return
+            lastEmitted = names
+            runCatching { sink("[tools] 可见 ${names.size} 个：${names.joinToString(",")}") }
+        }
+    }
 
     /** 单个工具此刻是否可见（与 [visibleSpecs] 同一判据本体 [isVisibleTool]，不重写一遍）。 */
     fun isVisible(spec: ToolSpec, sessionId: Long = currentSessionId): Boolean =
