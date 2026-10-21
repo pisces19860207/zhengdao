@@ -923,6 +923,26 @@ internal class RunEngine(
     }
 
     /**
+     * 停止标志的**只读观测口**（第一百二十七批：子 Agent 级联取消靠它）。
+     *
+     * 为什么不改 [stop] 的语义：停止的权威仍在 [stop]（置位 ＋ 砍流 ＋ 废确认 ＋
+     * 清队列）；这里只是让多 Agent 协调器能**看见**「父已经停了」——它每 50ms
+     * 轮询一次这个口，在子任务的轮次边界收队（未开的记 CANCELLED，在飞的跑到
+     * 当前轮边界即止）。加观测口不改任何既有行为；本方法刻意放在
+     * `zd-baopu-run` 创建点**之下**，不动裸线程对账单钉的行号。
+     */
+    fun stopRequestedNow(): Boolean = stopRequested
+
+    /**
+     * 当前通道的只读观测口（第一百二十七批）：子 Agent 的每一轮都用**父此刻的通道**。
+     *
+     * 为什么不直接从 ProviderPrefs 现读：熔断降级时引擎的 [provider] 是兜底通道，
+     * 而 prefs 里选的还是原来那条坏的——现读会让子 Agent 拿一条父刚刚才绕开的通道。
+     * （安全点切换与熔断都只经引擎改这个字段，所以它是「父此刻在用哪条」的唯一真相。）
+     */
+    fun currentProviderNow(): Provider = provider
+
+    /**
      * 一键续跑（进程被杀后重进）：先标「中断于第 N 步」，再从历史重建上下文继续。
      * @param interruptedStepValue 该会话落库的 interrupted_step（-1 = 其实没中断）
      */

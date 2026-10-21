@@ -1305,6 +1305,8 @@
     <string name="baopu_tool_delete_path">Delete file</string>
     <string name="baopu_tool_ask_user">Choice card</string>
     <string name="baopu_tool_ask_user_desc">Pops a choice card above the input bar when unsure: 2–4 options, the recommended one first with a one-line reason; the run continues after you pick. Touches no files.</string>
+    <string name="baopu_tool_run_subtasks">Split subtasks (multi-agent)</string>
+    <string name="baopu_tool_run_subtasks_desc">Splits a big task into 1-5 subtasks and runs them with up to 2 read-only sub-agents in parallel or in series, then collects the summary. Sub-agents can only read files, list directories and search content - they have no write tools and never see your conversation history. A failed subtask is retried once; if it still fails the reason is reported. Sub-results are never written to any file. Hidden by default: unlock the multi-agent group in capabilities first.</string>
     <string name="baopu_tool_card_inspect">Card check (read-only)</string>
     <string name="baopu_tool_card_inspect_desc">Read-only health check for a card or world book: identify the shape first (web-platform world book / Tavo book, character card, regex, preset / SillyTavern world book / CCv3 lorebook / SillyTavern card PNG; unknown formats report the top-level keys it saw), then check field by field (missing vs out-of-range, keys too broad, never triggers, broken separators, same-key collisions). Read-only: nothing is changed, moved or deleted.</string>
     <string name="baopu_tool_card_export">Export card PNG</string>
@@ -1326,6 +1328,7 @@
     <string name="baopu_tools_group_files">File management</string>
     <string name="baopu_tools_group_skill">Skills</string>
     <string name="baopu_tools_group_preview">Local preview</string>
+    <string name="baopu_tools_group_agent">Multi-agent</string>
     <string name="baopu_tools_group_default_on">Shown by default: these go straight to the model</string>
     <string name="baopu_tools_group_default_off">Locked: not sent to the model by default; Baopu asks you when it needs it</string>
     <string name="baopu_tools_group_approved">On: you approved it for good (turn it off on the right anytime)</string>
@@ -1426,6 +1429,7 @@
     <string name="baopu_group_line_preview">Only display web pages/source in the workspace via Xuanlan; no execution, no network</string>
     <string name="baopu_group_line_mcp">Servers you connect manually; tools come from the server and ask you the first time</string>
     <string name="baopu_tools_group_mcp">External tools (MCP)</string>
+    <string name="baopu_group_line_agent">Split a big task into subtasks, run them in parallel or in series, collect the summary</string>
     <!-- Effect card (100) -->
     <string name="decision_effect_once_note">This is a one-time reminder; Keep = close it, Later = keep it under observation in History</string>
     <string name="decision_effect_to_settings">Handle in settings</string>
