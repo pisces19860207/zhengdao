@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
+import com.example.zhengdao.baopu.agent.AskKind
+import com.example.zhengdao.baopu.agent.AskUserRequest
 import com.example.zhengdao.baopu.accumulateUsage
 import com.example.zhengdao.baopu.BaopuUsageRow
 import com.example.zhengdao.baopu.BaopuWorkspace
@@ -357,6 +359,570 @@ internal class BaopuChatController(context: Context) {
      */
     var evolutionSuggestions by mutableStateOf(listOf<EvolutionSuggestion>())
         private set
+
+    // ── 第一百零四批：决策卡家族＋全局单卡槽（设计稿 v1.4 §2/§2.3）────────────
+    //
+    // 四类事（授权 97 / 效果 100 / 提案 96 / 建议 99）共用一张卡；对话流里
+    // **任何时刻只展示一张**，按优先级占槽，其余排队（判据在 DecisionCardRules，
+    // JVM 直测）。本类只回答两件事：这一刻有哪些待办、当前这一件的规格是什么。
+
+    /**
+     * 第一百批的效果卡从「单张」改成「队列」：recheck 可能一次返回多张，
+     * 旧代码 `if (postAdoptionNotice == null)` 会把多出来的**直接丢掉**——
+     * 而账本已经记了 SUGGESTED，丢掉＝再也不回来（只弹一次被浪费在排队上）。
+     * 现在进队列，按槽位优先级逐张出示。
+     */
+    var postAdoptionQueue by mutableStateOf(listOf<com.example.zhengdao.baopu.PostAdoptionNotice>())
+        private set
+
+    /** 槽里当前展示的那一件（null = 空槽；判据见 [decisionSlotCurrent]）。 */
+    private var decisionCurrent by mutableStateOf<DecisionItem?>(null)
+
+    /**
+     * 这一刻的全部待办（授权/效果/提案/建议四类；普通 `ask_user` 提问**不进**决策槽——
+     * 那是对话不是决策，仍走原选项卡 [pendingChoice]）。
+     *
+     * 投影本身是纯函数（[decisionPendingItems]），这里只负责把可观察状态摊平。
+     */
+    val decisionPending: List<DecisionItem>
+        get() = decisionPendingItems(
+            choiceKind = pendingChoice?.kind,
+            choiceSubject = pendingChoice?.subject.orEmpty(),
+            effectIds = postAdoptionQueue.map { it.eventId },
+            suggestionIds = evolutionSuggestions.map { it.candidateId },
+        )
+
+    /** 当前该展示哪一件（不抢占：处理/消失才换，见 [decisionSlotCurrent]）。 */
+    val decisionSlot: DecisionItem?
+        get() = decisionSlotCurrent(decisionCurrent, decisionPending)
+
+    /**
+     * 槽位展示登记（屏幕层在 [androidx.compose.runtime.SideEffect] 里调）。
+     *
+     * 为什么需要它：不抢占（§2.3 第 2 条）靠「当前展示的那一件被钉住」实现——
+     * 每次重组都重算「优先级最高的一件」的话，后来的高优先级卡会把用户正在看的卡
+     * 抢走。登记是幂等的（同值不写），item 为 null＝空槽。
+     */
+    fun noteDecisionShown(item: DecisionItem?) {
+        if (decisionCurrent != item) decisionCurrent = item
+    }
+
+    /** 排队数（「还有 N 条在排队」那一行）。 */
+    val decisionQueueCount: Int
+        get() = decisionQueueCount(decisionCurrent, decisionPending)
+
+    /** 顶栏盾牌徽标（前三页签待处理总数；记录页不计）。0 = 不显示。 */
+    val decisionBadge: Int
+        get() {
+            val auth = if (pendingChoice?.kind == AskKind.GROUP_AUTHORIZATION) 1 else 0
+            val proposal = if (pendingChoice?.kind == AskKind.PERSONA_PROPOSAL) 1 else 0
+            return decisionBadgeCount(auth, postAdoptionQueue.size + evolutionSuggestions.size, proposal)
+        }
+
+    // ── 决策卡规格（接线层填文案；判据在 DecisionCardRules，JVM 直测） ──────────
+
+    /** 当前槽位那一件的卡片规格（null = 空槽，不渲染卡）。 */
+    fun decisionCardSpec(): DecisionCardSpec? {
+        val slot = decisionSlot ?: return null
+        return when (slot.kind) {
+            DecisionVariant.AUTHORIZATION -> pendingChoice
+                ?.takeIf { it.kind == AskKind.GROUP_AUTHORIZATION }
+                ?.let { authorizationSpec(it) }
+
+            DecisionVariant.PERSONA -> pendingChoice
+                ?.takeIf { it.kind == AskKind.PERSONA_PROPOSAL }
+                ?.let { personaSpec(it) }
+
+            DecisionVariant.POST_ADOPTION -> postAdoptionQueue
+                .firstOrNull { "effect:${it.eventId}" == slot.id }
+                ?.let { effectSpec(it) }
+
+            DecisionVariant.SUGGESTION -> evolutionSuggestions
+                .firstOrNull { "suggestion:${it.candidateId}" == slot.id }
+                ?.let { suggestionSpec(it) }
+        }
+    }
+
+    // 四变体规格的构建在 `DecisionCardSpecs.kt`（纯映射＋文案解析器注入，JVM 直测）；
+    // 这里只包一层「生产解析器」——appCtx.getString 就是那唯一的 Android 依赖。
+    private val decisionStr = DecisionStrRes { id, args -> appCtx.getString(id, *args) }
+
+    private fun authorizationSpec(req: AskUserRequest): DecisionCardSpec =
+        DecisionSpecs.authorization(req, decisionStr)
+
+    private fun personaSpec(req: AskUserRequest): DecisionCardSpec =
+        DecisionSpecs.persona(req, decisionStr)
+
+    private fun suggestionSpec(s: EvolutionSuggestion): DecisionCardSpec =
+        DecisionSpecs.suggestion(s, decisionStr)
+
+    private fun effectSpec(n: com.example.zhengdao.baopu.PostAdoptionNotice): DecisionCardSpec =
+        DecisionSpecs.effect(n, decisionStr)
+
+    /**
+     * 卡上点了一枚按钮（屏幕层原样转交 id，本层按当前槽位归类）。
+     *
+     * 授权/提案的按钮 id 就是引擎选项 id ⇒ 原路 [answerChoice] 答回去，
+     * 执行路径（解锁/落盘）一个字没动；「去设置页处理」由屏幕层拦截（它拥有
+     * 设置页开关），不往控制器传。
+     */
+    fun onDecisionAction(id: String) {
+        val slot = decisionSlot ?: return
+        onDecisionCardAction(slot.id, id)
+    }
+
+    /**
+     * 对**指定**的一张卡动手（决策中心里点行开的卡；不依赖当前槽位）。
+     *
+     * @param key 卡键（`auth:`/`persona:`/`effect:`/`suggestion:` 前缀，见 [DecisionItem]）
+     */
+    fun onDecisionCardAction(key: String, buttonId: String) {
+        when {
+            key.startsWith("effect:") -> {
+                val eventId = key.removePrefix("effect:")
+                when (buttonId) {
+                    "keep" -> keepPostAdoption(eventId)
+                    "later" -> laterPostAdoption(eventId)
+                    "rollback" -> rollbackPostAdoption(eventId)
+                    else -> Unit // tosettings：屏幕层拦截
+                }
+            }
+
+            key.startsWith("suggestion:") -> {
+                val candidateId = key.removePrefix("suggestion:")
+                when (buttonId) {
+                    "reject" -> decideSuggestion(candidateId, SuggestionDecision.REJECT)
+                    "defer" -> decideSuggestion(candidateId, SuggestionDecision.DEFER)
+                    "adopt" -> decideSuggestion(candidateId, SuggestionDecision.ADOPT)
+                    else -> Unit
+                }
+            }
+
+            else -> answerChoice(buttonId) // auth: / persona: ⇒ 引擎选项 id 原路答回
+        }
+    }
+
+    // ── 决策中心的数据口（屏幕层只渲染，不自己判） ────────────────────────────
+
+    /** 待授权页签：当前那张授权卡（引擎单槽，最多一张）。 */
+    fun pendingAuthorizationSpec(): DecisionCardSpec? =
+        pendingChoice?.takeIf { it.kind == AskKind.GROUP_AUTHORIZATION }?.let { authorizationSpec(it) }
+
+    /** 提案页签：当前那张人设提案卡。 */
+    fun pendingProposalSpec(): DecisionCardSpec? =
+        pendingChoice?.takeIf { it.kind == AskKind.PERSONA_PROPOSAL }?.let { personaSpec(it) }
+
+    /**
+     * 建议页签的行（99 建议＋100 效果双类型；效果排前，类型签区分——不并串）。
+     *
+     * 行可点开同款卡；行上的徽标/副标题与卡面同源（标题函数复用）。
+     */
+    fun decisionCenterSuggestionRows(): List<DecisionCenterRow> = suggestionTabRows(
+        buildList {
+            postAdoptionQueue.forEach { n ->
+                val retire = n.verdict == com.example.zhengdao.baopu.PostAdoptionVerdict.RETIRE
+                add(
+                    DecisionCenterRow(
+                        id = "effect:${n.eventId}",
+                        variant = DecisionVariant.POST_ADOPTION,
+                        title = appCtx.getString(R.string.post_adopt_title, n.skillName),
+                        subtitle = appCtx.getString(
+                            if (retire) R.string.post_adopt_verdict_retire else R.string.post_adopt_verdict_rollback,
+                        ),
+                        badge = appCtx.getString(R.string.decision_badge_effect),
+                        typeLabel = appCtx.getString(R.string.decision_type_effect),
+                    ),
+                )
+            }
+            evolutionSuggestions.forEach { s ->
+                add(
+                    DecisionCenterRow(
+                        id = "suggestion:${s.candidateId}",
+                        variant = DecisionVariant.SUGGESTION,
+                        title = DecisionSpecs.suggestionTitle(s, decisionStr),
+                        subtitle = appCtx.getString(
+                            R.string.decision_suggest_judge,
+                            appCtx.getString(recommendationRes(s.recommendation)),
+                        ),
+                        badge = appCtx.getString(riskBadgeRes(s.riskClass)),
+                        typeLabel = appCtx.getString(R.string.decision_type_suggestion),
+                    ),
+                )
+            }
+        },
+    )
+
+    /** 按卡键取规格（决策中心点行开卡用；键不存在 ⇒ null）。 */
+    fun decisionCardSpecFor(key: String): DecisionCardSpec? = when {
+        key.startsWith("auth:") -> pendingChoice
+            ?.takeIf { it.kind == AskKind.GROUP_AUTHORIZATION && "auth:${it.subject}" == key }
+            ?.let { authorizationSpec(it) }
+
+        key.startsWith("persona:") -> pendingChoice
+            ?.takeIf { it.kind == AskKind.PERSONA_PROPOSAL && "persona:${it.subject}" == key }
+            ?.let { personaSpec(it) }
+
+        key.startsWith("effect:") -> postAdoptionQueue
+            .firstOrNull { "effect:${it.eventId}" == key }
+            ?.let { effectSpec(it) }
+
+        key.startsWith("suggestion:") -> evolutionSuggestions
+            .firstOrNull { "suggestion:${it.candidateId}" == key }
+            ?.let { suggestionSpec(it) }
+
+        else -> null
+    }
+
+    // ── 建议卡三决策（99 批报告 §6：采纳只走现有落盘通道） ─────────────────────
+
+    /** 建议卡上人的三个动作（卡上永远三钮俱全，建议只是建议）。 */
+    internal enum class SuggestionDecision { ADOPT, REJECT, DEFER }
+
+    /** 高风险采纳的二次确认层（验收 #8：无确认不可采纳）。 */
+    var pendingAdoptConfirm by mutableStateOf<EvolutionSuggestion?>(null)
+        private set
+
+    /**
+     * 二次确认层的「采纳前」正文（IO 现读；null = 还没读出来或首写）。
+     *
+     * 高风险采纳的确认层要展示完整 diff（设计稿 §0 决策 #4）——「后」就是
+     * [EvolutionSuggestion.payload]，「前」在这里现读盘（项目层优先、全局层兜底，
+     * 与 [skillFileOf] 同一口径；人设类读 C 层正文）。
+     */
+    var pendingAdoptBefore by mutableStateOf<String?>(null)
+        private set
+
+    fun dismissAdoptConfirm() {
+        pendingAdoptConfirm = null
+        pendingAdoptBefore = null
+    }
+
+    /** 二次确认层里点「确认采纳」。 */
+    fun confirmAdoptSuggestion() {
+        val s = pendingAdoptConfirm ?: return
+        pendingAdoptConfirm = null
+        pendingAdoptBefore = null
+        applySuggestionAdopt(s)
+    }
+
+    /** 打开二次确认层，并异步读「采纳前」正文（IO 不压重组）。 */
+    private fun openAdoptConfirm(s: EvolutionSuggestion) {
+        pendingAdoptConfirm = s
+        pendingAdoptBefore = null
+        scope.launch {
+            pendingAdoptBefore = withContext(Dispatchers.IO) {
+                runCatching {
+                    when (s.kind) {
+                        com.example.zhengdao.baopu.ProposalKind.SKILL_BODY -> {
+                            val globalRoot = java.io.File(appCtx.filesDir, "抱朴记忆")
+                            val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
+                            skillFileOf(s.target, projectRoot, globalRoot)?.readText()
+                        }
+
+                        com.example.zhengdao.baopu.ProposalKind.PERSONA_APPEND ->
+                            com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+                                .read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT)
+
+                        com.example.zhengdao.baopu.ProposalKind.TOOL_RULE -> null
+                    }
+                }.getOrNull()
+            }
+        }
+    }
+
+    fun decideSuggestion(candidateId: String, decision: SuggestionDecision) {
+        val s = evolutionSuggestions.firstOrNull { it.candidateId == candidateId } ?: return
+        when (decision) {
+            SuggestionDecision.REJECT -> {
+                // 出卡即离槽（队列补位）；拒绝留痕同 57 批口径：同 hash 以后不再判定
+                evolutionSuggestions = evolutionSuggestions.filter { it.candidateId != candidateId }
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        recordSkillDecision(
+                            name = s.target.ifBlank { "（人设）" },
+                            adopted = false,
+                            hash = s.candidateId,
+                            detail = "进化建议卡拒绝",
+                        )
+                    }
+                    auditSuggestionAction(s, "reject")
+                }
+                skillNote = BaopuNote(
+                    appCtx.getString(R.string.decision_history_rejected, s.target),
+                    BaopuNoteLevel.Info,
+                )
+            }
+
+            SuggestionDecision.DEFER -> {
+                // 只写审计＋记录页「搁置中」；候选仍是 PENDING（下一轮收尾再判）
+                evolutionSuggestions = evolutionSuggestions.filter { it.candidateId != candidateId }
+                rememberDecisionAction("defer", s.target)
+                scope.launch { auditSuggestionAction(s, "defer") }
+            }
+
+            SuggestionDecision.ADOPT -> {
+                if (!suggestionAdoptEnabled(s.kind)) {
+                    skillNote = BaopuNote(
+                        appCtx.getString(R.string.decision_suggest_adopt_blocked_tool_rule),
+                        BaopuNoteLevel.Error,
+                    )
+                    return
+                }
+                if (adoptNeedsConfirm(s.riskClass)) {
+                    openAdoptConfirm(s)
+                    return
+                }
+                applySuggestionAdopt(s)
+            }
+        }
+    }
+
+    /**
+     * 采纳一条建议 ⇒ **现有落盘通道**（99 批报告 §6）：
+     * - SKILL_BODY：`SkillStore.plan/apply`（写前备份＋索引更新时挂自检）；
+     * - PERSONA_APPEND：`PersonaFiles.applyProposal`（写前自动备份）。
+     * 两条都不新开写盘路径；TOOL_RULE 到不了这里（按钮置灰＋双闸）。
+     */
+    private fun applySuggestionAdopt(s: EvolutionSuggestion) {
+        skillNote = BaopuNote("采纳中…", BaopuNoteLevel.Info)
+        scope.launch {
+            // 第一百批 §1：基线必须在**写盘之前**取（写完后读到的就是「采纳后」了）
+            val baseline = if (s.kind == com.example.zhengdao.baopu.ProposalKind.SKILL_BODY) {
+                withContext(Dispatchers.IO) { postAdoptionBaseline(s.target) }
+            } else {
+                null
+            }
+            val out = withContext(Dispatchers.IO) {
+                when (s.kind) {
+                    com.example.zhengdao.baopu.ProposalKind.SKILL_BODY ->
+                        // 与学习卡**共用同一个落盘口**（writeLearnedSkill → SkillStore.plan/apply）：
+                        // 99 批报告 §6「采纳只走现有落盘通道，不新开写盘路径」——把建议包成
+                        // 学习卡同形状的提案，门禁（危险指令/平台事实/同名）也一并复用。
+                        writeLearnedSkill(learnProposalOf(s))
+
+                    com.example.zhengdao.baopu.ProposalKind.PERSONA_APPEND -> appendSuggestionPersona(s)
+                    com.example.zhengdao.baopu.ProposalKind.TOOL_RULE ->
+                        BaopuNote(
+                            appCtx.getString(R.string.decision_suggest_adopt_blocked_tool_rule),
+                            BaopuNoteLevel.Error,
+                        )
+                }
+            }
+            if (out.level != BaopuNoteLevel.Error) {
+                withContext(Dispatchers.IO) {
+                    recordSkillDecision(
+                        name = s.target.ifBlank { "（人设）" },
+                        adopted = true,
+                        hash = s.candidateId,
+                        detail = "进化建议卡采纳",
+                    )
+                    // 真落了盘才记采纳事件 ⇒ 100 的效果回环接着盯它（同学习卡口径）
+                    if (s.kind == com.example.zhengdao.baopu.ProposalKind.SKILL_BODY && baseline != null) {
+                        val globalRoot = java.io.File(appCtx.filesDir, "抱朴记忆")
+                        val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
+                        recordPostAdoption(
+                            channel = com.example.zhengdao.baopu.PostAdoptionChannel.PROPOSAL_CANDIDATE,
+                            candidateId = s.candidateId,
+                            skillName = s.target,
+                            file = skillFileOf(s.target, projectRoot, globalRoot),
+                            baseline = baseline,
+                        )
+                    }
+                }
+                rememberDecisionAction("adopt", s.target)
+                auditSuggestionAction(s, "adopt")
+            }
+            evolutionSuggestions = evolutionSuggestions.filter { it.candidateId != s.candidateId }
+            skillNote = out
+        }
+    }
+
+    /**
+     * 把一条技能正文建议包成**学习卡同形状**的提案（落盘与门禁全部复用
+     * [writeLearnedSkill]：`SkillStore.plan/apply`＋写前备份＋索引自检）。
+     *
+     * id 取 `suggestion-<target>`：[com.example.zhengdao.baopu.SkillRefine.nameOf] 按
+     * `-` 后半段取名 ⇒ 正好是候选的 target；正文走 [com.example.zhengdao.baopu.SkillRefine.skillBodyFor]
+     * 的结构化包装（场景＝payload）——与 103 批 EVO-D1 的标题/正文自检同一条路。
+     */
+    private fun learnProposalOf(s: EvolutionSuggestion): com.example.zhengdao.baopu.SkillRefine.LearnProposal =
+        com.example.zhengdao.baopu.SkillRefine.LearnProposal(
+            id = "suggestion-${s.target}",
+            content = s.payload,
+            source = "进化建议卡",
+            suggest = com.example.zhengdao.baopu.SkillRefine.Suggest.DRAFT,
+            fromUser = false,
+        )
+
+    /** 把一条人设追加建议写进 C 层（通道＝`PersonaFiles.applyProposal`，写前自动备份）。 */
+    private fun appendSuggestionPersona(s: EvolutionSuggestion): BaopuNote {
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val current = pf.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT).orEmpty()
+        val proposed = if (current.isBlank()) s.payload else current.trimEnd() + "\n\n" + s.payload
+        val p = com.example.zhengdao.baopu.PersonaProposal(
+            layer = com.example.zhengdao.baopu.PersonaLayer.C_PROJECT,
+            current = current,
+            proposed = proposed,
+            reason = "进化建议卡采纳",
+        )
+        return if (pf.applyProposal(p)) {
+            BaopuNote("已追加进人设（旧版已自动备份，可回滚）", BaopuNoteLevel.Info)
+        } else {
+            BaopuNote("没能写进人设（可能超上限或被规则挡下）——一个字节都没动", BaopuNoteLevel.Error)
+        }
+    }
+
+    /** 建议卡动作审计（99 批报告 §6 定的格式；失败只 log，不回滚用户的选择）。 */
+    private fun auditSuggestionAction(s: EvolutionSuggestion, action: String) {
+        runCatching {
+            com.example.zhengdao.baopu.EvolutionAuditLog
+                .under(java.io.File(appCtx.filesDir, "抱朴记忆"))
+                .recordAction(
+                    candidateId = s.candidateId,
+                    action = action,
+                    riskClass = s.riskClass.name,
+                    recommendation = s.recommendation.name,
+                )
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴：建议动作审计没记上（${action}/${s.candidateId}）${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
+    }
+
+    // ── 决策中心·记录页（撤销仅可回退操作；验收 #9/#24） ──────────────────────
+
+    /** 本进程里发生过的建议/效果处置（记录页「搁置中/先留着/稍后处理/已回滚」行）。 */
+    private val decisionActionLog = mutableStateOf(listOf<DecisionActionEntry>())
+
+    private data class DecisionActionEntry(val action: String, val name: String, val atMs: Long)
+
+    /** 记一条进程内处置（出卡即离槽的那些：defer/keep/later/rollback/adopt）。 */
+    private fun rememberDecisionAction(action: String, name: String) {
+        decisionActionLog.value = decisionActionLog.value + DecisionActionEntry(
+            action = action,
+            name = name,
+            atMs = System.currentTimeMillis(),
+        )
+    }
+
+    /** 本进程里撤销过的授权（「已撤销」行；跨进程不保留——账本在 [ToolGroupAudit]）。 */
+    private val undoneGrants = mutableStateOf(listOf<String>())
+
+    /**
+     * 记录页数据（四来源，全部只读现算）：
+     * ① 会话授权（`toolUnlocks`，可撤销＝还回「已锁」）；
+     * ② 长期授权（`prefs.approvedGroups`，可撤销＝还回「已锁」，不是「关掉」）；
+     * ③ 技能决策行（`skill_event` 的 decision 行：已应用/已拒绝建议）；
+     * ④ 进程内处置（搁置/先留着/稍后处理/已回滚/已采纳）。
+     */
+    fun decisionHistoryRows(): List<DecisionCenterRow> {
+        val out = mutableListOf<DecisionCenterRow>()
+        val prefs = com.example.zhengdao.baopu.BaopuRuntime.toolPrefs(appCtx)
+        val sessionIdNow = sessionId ?: -1L
+        val sessionGroups = runCatching {
+            com.example.zhengdao.baopu.BaopuRuntime.toolUnlocks(appCtx).unlocked(sessionIdNow)
+        }.getOrDefault(emptySet())
+        val approved = prefs.approvedGroups()
+        approved.forEach { g ->
+            out += DecisionCenterRow(
+                id = "undo:always:${g.key}",
+                variant = DecisionVariant.AUTHORIZATION,
+                title = appCtx.getString(R.string.decision_history_grant_always, appCtx.getString(baopuGroupTitle(g))),
+                undoable = true,
+            )
+        }
+        (sessionGroups - approved).forEach { g ->
+            out += DecisionCenterRow(
+                id = "undo:session:${g.key}",
+                variant = DecisionVariant.AUTHORIZATION,
+                title = appCtx.getString(R.string.decision_history_grant_session, appCtx.getString(baopuGroupTitle(g))),
+                undoable = true,
+            )
+        }
+        undoneGrants.value.forEachIndexed { i, name ->
+            out += DecisionCenterRow(
+                // 行键必须唯一：同一个组先撤销、再授权、又撤销 ⇒ 两条「已撤销」
+                // （LazyColumn 同键会崩）⇒ 带序号
+                id = "undone:$i:$name",
+                variant = DecisionVariant.AUTHORIZATION,
+                title = appCtx.getString(R.string.decision_history_undone_row, name),
+            )
+        }
+        // ③ 技能决策行（DB；含学习卡与建议卡的采纳/拒绝留痕）
+        runCatching {
+            db.read { d ->
+                d.rawQuery(
+                    "SELECT name, ok, at FROM skill_event WHERE kind = 'decision' ORDER BY id DESC LIMIT 20",
+                    emptyArray(),
+                ).use { c ->
+                    var i = 0
+                    while (c.moveToNext()) {
+                        val name = c.getString(0).orEmpty()
+                        val ok = c.getInt(1) != 0
+                        val at = c.getLong(2)
+                        out += DecisionCenterRow(
+                            // 同毫秒同名的两行也要能区分 ⇒ 带序号
+                            id = "decision:$i:$at:$name",
+                            variant = DecisionVariant.SUGGESTION,
+                            title = appCtx.getString(
+                                if (ok) R.string.decision_history_applied else R.string.decision_history_rejected,
+                                name,
+                            ),
+                        )
+                        i++
+                    }
+                }
+            }
+        }
+        // ④ 进程内处置
+        decisionActionLog.value.forEachIndexed { i, e ->
+            val res = when (e.action) {
+                "defer" -> R.string.decision_history_deferred
+                "keep" -> R.string.decision_history_kept
+                "later" -> R.string.decision_history_later
+                "rollback" -> R.string.decision_history_rolled_back
+                "adopt" -> R.string.decision_history_applied
+                else -> null
+            } ?: return@forEachIndexed
+            out += DecisionCenterRow(
+                id = "action:$i:${e.atMs}:${e.action}",
+                variant = if (e.action == "keep" || e.action == "later" || e.action == "rollback") {
+                    DecisionVariant.POST_ADOPTION
+                } else {
+                    DecisionVariant.SUGGESTION
+                },
+                title = appCtx.getString(res, e.name),
+            )
+        }
+        return out
+    }
+
+    /**
+     * 撤销一条授权（记录页；**仅可回退操作**——不制造新待处理）。
+     *
+     * 会话授权 ⇒ 还回「已锁」（本会话不再可用，模型下次要再申请）；
+     * 长期授权 ⇒ 还回「已锁」（不是「关掉」——关掉是设置页那个用户开关，
+     * 连卡都不弹；撤销只是收回「同意」这件事本身）。
+     */
+    fun undoDecisionGrant(id: String) {
+        val key = when {
+            id.startsWith("undo:session:") -> id.removePrefix("undo:session:")
+            id.startsWith("undo:always:") -> id.removePrefix("undo:always:")
+            else -> return
+        }
+        val group = com.example.zhengdao.baopu.agent.ToolGroup.fromKey(key) ?: return
+        val prefs = com.example.zhengdao.baopu.BaopuRuntime.toolPrefs(appCtx)
+        val scope = if (id.startsWith("undo:always:")) "长期" else "本次会话"
+        if (id.startsWith("undo:always:")) {
+            prefs.setGroupApproved(group, false)
+            prefs.setGroupDisabled(group, false)
+        }
+        com.example.zhengdao.baopu.BaopuRuntime.toolUnlocks(appCtx).relockAll(listOf(group))
+        com.example.zhengdao.baopu.agent.ToolGroupAudit.undo(group, scope)
+        val name = appCtx.getString(baopuGroupTitle(group))
+        undoneGrants.value = undoneGrants.value + name
+    }
 
     /** 动作结果的一句话（确认失败/重复等；给 UI 显示，5 秒后由 UI 清）。 */
     var pendingNote by mutableStateOf<String?>(null)
@@ -1770,8 +2336,13 @@ internal class BaopuChatController(context: Context) {
             // 回主线程再写状态（withContext 回来天然在 Main；失败就保留上一轮的判定）
             settled.onSuccess {
                 evolutionSuggestions = it.first
-                // 已经有一张没处理的卡 ⇒ 不覆盖它（一次只打扰一张）
-                if (postAdoptionNotice == null) it.second?.let { notice -> postAdoptionNotice = notice }
+                // 第一百零四批：效果卡进**队列**而不是「有就丢」——账本已记 SUGGESTED，
+                // 丢掉＝再也不回（只弹一次被浪费在排队上）。同 eventId 去重。
+                it.second?.let { notice ->
+                    if (postAdoptionQueue.none { q -> q.eventId == notice.eventId }) {
+                        postAdoptionQueue = postAdoptionQueue + notice
+                    }
+                }
             }
         }
     }
@@ -2053,14 +2624,7 @@ internal class BaopuChatController(context: Context) {
     }
 
     // ── 采纳后效果回环（第一百批）：记事件 → 窗口复测 → **只出建议卡** ──────────────
-
-    /**
-     * 采纳后效果的建议卡（UI 只读它；点按钮才动，见 [rollbackPostAdoption]）。
-     *
-     * 只有 ROLLBACK / RETIRE 会把它填上；KEEP 只写审计不打扰人。
-     */
-    var postAdoptionNotice by mutableStateOf<com.example.zhengdao.baopu.PostAdoptionNotice?>(null)
-        private set
+    // （效果卡队列 postAdoptionQueue 声明在决策卡槽那一节——它同时是槽位的数据源）
 
     /**
      * 回环端口：读数走 85 的 `SkillEffects.outcomesFor`，版本走盘上正文的 sha12。
@@ -2167,10 +2731,13 @@ internal class BaopuChatController(context: Context) {
      *
      * 走到这里说明用户刚点过按钮，`approvedBy` 就是「人批」这件事本身；
      * 失败要把原因说出来，并**保留卡**（让人可以再试或改主意）。
+     *
+     * 第一百零四批：入参从「当前那张」改成 eventId——决策中心里也能对排队中的
+     * 某一张动手，不再隐式绑定槽位。
      */
-    fun rollbackPostAdoption() {
-        val notice = postAdoptionNotice ?: return
-        postAdoptionNotice = null
+    fun rollbackPostAdoption(eventId: String) {
+        val notice = postAdoptionQueue.firstOrNull { it.eventId == eventId } ?: return
+        postAdoptionQueue = postAdoptionQueue.filter { it.eventId != eventId }
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 if (notice.channel == com.example.zhengdao.baopu.PostAdoptionChannel.SKILL_PROPOSAL) {
@@ -2206,7 +2773,9 @@ internal class BaopuChatController(context: Context) {
             }
             // 失败（Rejected）⇒ 把卡放回去，别逼人再等一轮收尾
             if (result is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected) {
-                postAdoptionNotice = notice
+                postAdoptionQueue = postAdoptionQueue + notice
+            } else {
+                rememberDecisionAction("rollback", notice.skillName)
             }
             skillNote = when {
                 result is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Done ->
@@ -2221,9 +2790,10 @@ internal class BaopuChatController(context: Context) {
     }
 
     /** 卡上点「先留着」⇒ 接受风险，结案不再提。 */
-    fun keepPostAdoption() {
-        val notice = postAdoptionNotice ?: return
-        postAdoptionNotice = null
+    fun keepPostAdoption(eventId: String) {
+        val notice = postAdoptionQueue.firstOrNull { it.eventId == eventId } ?: return
+        postAdoptionQueue = postAdoptionQueue.filter { it.eventId != eventId }
+        rememberDecisionAction("keep", notice.skillName)
         scope.launch {
             withContext(Dispatchers.IO) {
                 postAdoptionPort().recordUserAction(
@@ -2239,9 +2809,10 @@ internal class BaopuChatController(context: Context) {
     }
 
     /** 卡上点「稍后处理」⇒ 只关卡，事件**仍未结案**，下次收尾再判。 */
-    fun laterPostAdoption() {
-        val notice = postAdoptionNotice ?: return
-        postAdoptionNotice = null
+    fun laterPostAdoption(eventId: String) {
+        val notice = postAdoptionQueue.firstOrNull { it.eventId == eventId } ?: return
+        postAdoptionQueue = postAdoptionQueue.filter { it.eventId != eventId }
+        rememberDecisionAction("later", notice.skillName)
         scope.launch {
             withContext(Dispatchers.IO) {
                 postAdoptionPort().recordUserAction(
