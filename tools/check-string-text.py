@@ -17,6 +17,11 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+try:  # Windows 控制台默认 GBK：成功路径的 ✓ 不能把门禁自己打死（E-170 同款）
+    sys.stdout.reconfigure(errors="replace")
+except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
+    pass
+
 PAIRS = [("app/src/main/res/values/strings.xml", "zh"), ("app/src/main/res/values-en/strings.xml", "en")]
 
 
