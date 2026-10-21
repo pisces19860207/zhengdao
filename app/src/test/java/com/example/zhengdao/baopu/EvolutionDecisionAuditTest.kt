@@ -128,6 +128,8 @@ class EvolutionDecisionAuditTest {
                 "risk_class",
                 "requires_approval",
                 "reasons",
+                // 第一百批（口径变更记账）：采纳后效果这一格键恒在；没有就是 JSON null
+                "post_adoption",
             ),
             row.keys().asSequence().toSet(),
         )

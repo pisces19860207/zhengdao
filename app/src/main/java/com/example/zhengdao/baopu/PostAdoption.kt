@@ -264,7 +264,7 @@ internal fun judgePostAdoption(
     if (delta.attempts < minSamples) {
         return PostAdoptionJudgement(PostAdoptionVerdict.DEFER, PostAdoptionReason.SAMPLES_INSUFFICIENT, delta, terminal = false)
     }
-    return when (EvolutionPolicy(minEffectSamples = minSamples).effectVerdict(delta)) {
+    return when (EvolutionPolicy.effectVerdictOf(delta, minSamples)) {
         EffectVerdict.POSITIVE ->
             PostAdoptionJudgement(PostAdoptionVerdict.KEEP, PostAdoptionReason.EFFECT_POSITIVE, delta, terminal = true)
 
