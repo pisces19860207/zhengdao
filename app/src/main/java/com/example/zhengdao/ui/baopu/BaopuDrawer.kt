@@ -26,12 +26,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -47,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -56,7 +59,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import com.example.zhengdao.R
 
-/** 抽屉里的一行：标题＋说明＋点击。说明写给"不常用的人"看，省得点进去才知道是什么。 */
+/**
+ * 抽屉里的一行：标题＋说明＋点击。说明写给"不常用的人"看，省得点进去才知道是什么。
+ *
+ * 第一百零五批（v1.4 §3.8）只改视觉，**条目一个字没增减**：
+ * · 行高 ≥48dp（[BAO_ROW_MIN_HEIGHT_DP]）——条目是低频入口，但手指不会因为"低频"变细；
+ * · 整行圆角高亮块（[BaoChipShape]）：点下去/置灰时是一块"可点的面"，不再是一行裸文字；
+ * · 标题 16sp·500 走 onSurface，说明 11sp 走 onSurfaceVariant——两级对比靠字号与颜色，
+ *   不靠加粗堆叠（旧版标题与说明同色同重，一屏十条读下来没有节奏）；
+ * · 置灰（引擎在跑的新会话/换通道、N=0 的回收站）＝两级文字一起降到 38%，
+ *   行**仍然占位**（判据 T1：N=0 只置灰不消失）。
+ */
 @Composable
 private fun DrawerItem(
     title: String,
@@ -64,43 +77,59 @@ private fun DrawerItem(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val ink1 = MaterialTheme.colorScheme.onSurface
+    val ink2 = MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)
+            .clip(BaoChipShape)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = BAO_LIST_INSET_DP.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium,
-            color = if (enabled) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-            },
+            color = if (enabled) ink1 else ink1.copy(alpha = 0.38f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = description,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (enabled) ink2 else ink2.copy(alpha = 0.38f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
-/** 分组标题（会话／工作区／资料与书／设置）。右侧可带一个入口（工作区组用它放「＋ 选文件夹」）。 */
+/**
+ * 分组标题（会话／工作区／资料与书／预览／设置）。右侧可带一个入口（工作区组用它放「＋」）。
+ *
+ * 第一百零五批：标题从**主色**改成**次文本色**（onSurfaceVariant）。
+ * 七段并排时，五个蓝色组标签会跟主操作抢注意力——组标签是"目录"，不该比条目更亮；
+ * 层级改由"上留白 18dp＋小字号"表达（v1.4 §1：分组靠间距不靠颜色）。
+ */
 @Composable
 private fun DrawerGroup(title: String, trailing: (@Composable () -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+            .padding(
+                start = BAO_LIST_INSET_DP.dp,
+                end = BAO_LIST_INSET_DP.dp,
+                top = 18.dp,
+                bottom = 2.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.weight(1f))
@@ -160,20 +189,21 @@ private fun WorkspaceRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (current) {
-                    Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
-                } else {
-                    Modifier
-                },
-            )
+            // 当前工作区＝**整行铺 tint 底**（v1.4 §3.8 里强度最高的那一档）。
+            // 105 批：底从 secondaryContainer（灰）换成 primaryContainer（主色浅底）——
+            // 灰底在深色主题下几乎看不出"我在这个文件夹里"，而 tint 底与"当前会话只染字"
+            // 正好构成两级强度（一个是块、一个是字）。
+            .then(if (current) Modifier.clip(BaoChipShape).background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
             .combinedClickable(
                 onClick = { onTap(node.fullPath) },
                 onLongClick = { onHold(node.fullPath) },
             )
             // 行尾按算术让位（见 runHereRowEndPaddingDp），上下留白交给 48dp 命中盒自己带
             // （旧 9/9 是给 24dp 内容用的；命中盒 48dp 时圆点居中 ⇒ 上下各 12dp，比原来松 3dp）。
-            .padding(start = 20.dp, end = runHereRowEndPaddingDp(OLD_WORKSPACE_ROW_END_DP, RUN_HERE_TOUCH_DP, RUN_HERE_GLYPH_DP).dp),
+            .padding(
+                start = BAO_LIST_INSET_DP.dp,
+                end = runHereRowEndPaddingDp(OLD_WORKSPACE_ROW_END_DP, RUN_HERE_TOUCH_DP, RUN_HERE_GLYPH_DP).dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -186,7 +216,7 @@ private fun WorkspaceRow(
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
             color = if (current) {
-                MaterialTheme.colorScheme.onSecondaryContainer
+                MaterialTheme.colorScheme.onPrimaryContainer
             } else {
                 MaterialTheme.colorScheme.onSurface
             },
@@ -251,7 +281,10 @@ private fun SessionRow(
                 onClick = { onOpen(row.id) },
                 onLongClick = { onLongPress(row, workspaceLabel) },
             )
-            .padding(start = 44.dp, end = 16.dp, top = 7.dp, bottom = 7.dp),
+            // 缩进＝文件夹行下面一层（BAO_SESSION_INDENT_DP）：从属关系靠缩进，不靠颜色。
+            // 上下 7dp 让行高 ≈34dp：会话行是**扫读列表**，不是触控主目标（点开会话另有整行热区）；
+            // 这里刻意不套 48dp——一个工作区挂十来条会话时，48dp 会把抽屉撑成三屏（v1.4 §3.8 的取舍）。
+            .padding(start = BAO_SESSION_INDENT_DP.dp, end = BAO_LIST_INSET_DP.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -317,21 +350,35 @@ internal fun BaopuDrawer(
     onSessionLibraryChanged: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.verticalScroll(rememberScrollState())) {
+    // 根 Column 左右各 8dp：条目自己再内缩 16dp ⇒ 文字左缘仍是 24dp（老落点），
+    // 但圆角高亮块左右各留 8dp 呼吸位，不再像旧版那样从边贴到边。
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp),
+    ) {
         // 三十六批 A 段：回收站那一行要**现读盘**数个数，所以这里需要一个 Context
         // （取根仍走全仓同一口径 BaopuRuntime.workspaceRoot，不在抽屉里自己拼 Download/证道）。
         val ctx = LocalContext.current
+        // 抽屉头部（v1.4 W8）：标题 22sp·600 + 一句"这里是低频入口"的副题。
+        // 左右 8+16＝24 与旧版落点一致（根 Column 另有 8dp 边距），下面所有条目左缘与副题对齐。
         Text(
             text = stringResource(R.string.baopu_drawer_title),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 4.dp),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(
+                start = BAO_LIST_INSET_DP.dp,
+                end = BAO_LIST_INSET_DP.dp,
+                top = 20.dp,
+                bottom = 2.dp,
+            ),
         )
         Text(
             text = stringResource(R.string.baopu_drawer_subtitle),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp),
+            modifier = Modifier.padding(start = BAO_LIST_INSET_DP.dp, end = BAO_LIST_INSET_DP.dp),
         )
 
         DrawerGroup(stringResource(R.string.baopu_drawer_group_session))
@@ -346,7 +393,10 @@ internal fun BaopuDrawer(
         // 再留一个「全部会话（平铺看）」就是同一批东西两个入口，抽屉还比 DSH 多一截）。
         // 那一页没消失，只是挪成低频入口：抱朴设置 → 会话记录（删除仍在那儿做）。
 
-        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        HorizontalDivider(
+            Modifier.padding(vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
 
         // ── 工作区树（A 段本体）──
         DrawerGroup(
@@ -466,7 +516,10 @@ internal fun BaopuDrawer(
             )
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        HorizontalDivider(
+            Modifier.padding(vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
 
         DrawerGroup(stringResource(R.string.baopu_drawer_group_library))
         DrawerItem(
@@ -485,7 +538,10 @@ internal fun BaopuDrawer(
             onClick = onBackup,
         )
 
-        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        HorizontalDivider(
+            Modifier.padding(vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
 
         // 预览两行（刀 4-B 的两个零件函数在这里终于有调用方；第二十九批追加）。
         // 排序刻意放在「设置」之前：它读的是**当前这条回复**，属于会话动作，不属于配置。
@@ -502,7 +558,10 @@ internal fun BaopuDrawer(
             onClick = onPreviewClear,
         )
 
-        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        HorizontalDivider(
+            Modifier.padding(vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
 
         DrawerGroup(stringResource(R.string.baopu_drawer_group_settings))
         DrawerItem(
