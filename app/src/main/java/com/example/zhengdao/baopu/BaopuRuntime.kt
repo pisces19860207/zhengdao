@@ -16,9 +16,18 @@ import com.example.zhengdao.baopu.agent.ListDirTool
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
+import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPrefs
 import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolRunner
+import com.example.zhengdao.baopu.agent.multiagent.BaopuSubTaskStore
+import com.example.zhengdao.baopu.agent.multiagent.LlmSubAgentTurn
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentCoordinator
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentEnv
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentRules
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentRunner
+import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
+import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import com.example.zhengdao.baopu.library.LibraryImport
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
@@ -26,7 +35,10 @@ import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.baopu.mcp.McpToolSource
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.KnowledgeBase
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 抱朴运行时（刀 1 · B 段）——**Context 装配的唯一处**，进程级单例。
@@ -450,6 +462,11 @@ internal object BaopuRuntime {
                 customModel = cm,
             )
         }
+        // 第一百二十七批：多 Agent 协作——run_subtasks 的落点（协调器）在这里装配。
+        // 装配层才拿得到 Context/注册表/库 ⇒ 三件生产件（LLM 一轮、工具执行、审计存储）
+        // 都在下面 runSubtasks 里拼；引擎侧只认 SubTaskSink 接口（与 AskUserTool.sink
+        // 同一房型）。判据与并发全在 multiagent 包的纯函数层，本函数只做接线。
+        SubTaskTool.sink = SubTaskSink { args -> runSubtasks(appCtx, engine, reg, args) }
         // 第九十七批：组授权留痕（`[group] …`，可 grep）。只产出文本的纯函数在 agent 包，
         // 落盘统一走 RunLog —— 与 26-B 的 `[kernel]` 留痕同一口径（引擎线程上串行写）。
         ToolGroupAudit.sink = { line -> RunLog.log(line) }
@@ -457,6 +474,116 @@ internal object BaopuRuntime {
         PersonaAudit.sink = { line -> RunLog.log(line) }
         return engine
     }
+
+    /**
+     * 第一百二十七批：`run_subtasks` 的生产落点（解析 ⇒ 协调 ⇒ 聚合）。
+     *
+     * 三件生产件为什么在这层拼：LLM 一轮要 [com.example.zhengdao.baopu.Provider]、
+     * 工具执行要注册表与工作区根、审计存储要 [BaopuDb]——全都带 Context 或进程态，
+     * 按「Context 依赖装配成一台机器」的纪律只能出现在本文件。
+     *
+     * 安全口径（协作模型 §3）：白名单天花板在 [SubAgentRules]（只读六件），
+     * 执行层再按**每条子任务自己的**生效白名单拦一次；通道用引擎此刻的
+     * （[RunEngine.currentProviderNow]）——熔断兜底时子 Agent 与父同一条。
+     */
+    private fun runSubtasks(appCtx: Context, engine: RunEngine, reg: ToolRegistry, args: JSONObject): ToolOutcome {
+        val sessionId = ActiveSessionGate.current()?.removePrefix("id:")?.toLongOrNull()
+            ?: return ToolOutcome.Rejected("当前没有活跃会话：run_subtasks 只能在抱朴干活时调。")
+        // 可用集 = 父会话此刻看得见的（组解锁 ∩ 用户开关）——子 Agent 够不着父够不着的东西
+        val available = reg.visibleSpecs(sessionId).map { it.name }.toSet()
+        val seq = subTaskSeq.incrementAndGet().toInt()
+        return when (
+            val parsed = SubAgentRules.parseDecomposition(
+                args = args,
+                available = available,
+                sessionId = sessionId,
+                now = System.currentTimeMillis(),
+                attemptSeq = seq,
+            )
+        ) {
+            is SubAgentRules.ParseResult.Rejected -> ToolOutcome.Rejected(parsed.reason)
+            is SubAgentRules.ParseResult.Ok -> {
+                val d = parsed.decomposition
+                val root = workspaceRoot(appCtx)
+                val provider = engine.currentProviderNow()
+                val results = SubAgentCoordinator(
+                    newRunner = { task ->
+                        val whitelist = task.tools.toSet()
+                        val toolsJson = if (whitelist.isEmpty()) {
+                            null
+                        } else {
+                            JSONArray().also { arr ->
+                                whitelist.forEach { name ->
+                                    reg.find(name)?.let { s ->
+                                        arr.put(
+                                            JSONObject()
+                                                .put("type", "function")
+                                                .put(
+                                                    "function",
+                                                    JSONObject()
+                                                        .put("name", s.name)
+                                                        .put("description", s.description)
+                                                        .put("parameters", s.inputSchema),
+                                                ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        SubAgentRunner(
+                            SubAgentEnv(
+                                turn = LlmSubAgentTurn(provider, reg) { RunLog.log(it) },
+                                toolExec = { call ->
+                                    when {
+                                        call.name !in whitelist -> ToolOutcome.Rejected(
+                                            "${call.name} 不在这条子任务的白名单里" +
+                                                "（可用：${whitelist.joinToString("、").ifEmpty { "无" }}）",
+                                        )
+
+                                        else -> {
+                                            val spec = reg.find(call.name)
+                                            if (spec == null) {
+                                                ToolOutcome.Rejected("工具 ${call.name} 当前不可用（被关闭或组未解锁）")
+                                            } else {
+                                                spec.executor(resolveSubTaskPaths(call.arguments, root))
+                                            }
+                                        }
+                                    }
+                                },
+                                toolsJson = toolsJson,
+                                isCancelled = { engine.stopRequestedNow() },
+                                log = { RunLog.log(it) },
+                            ),
+                        )
+                    },
+                    store = BaopuSubTaskStore(db(appCtx)) { RunLog.log(it) },
+                    isCancelled = { engine.stopRequestedNow() },
+                    now = { System.currentTimeMillis() },
+                    log = { RunLog.log(it) },
+                ).runAll(d)
+                ToolOutcome.Ok(
+                    SubAgentRules.aggregate(results) { id -> d.subtasks.firstOrNull { it.id == id }?.goal },
+                )
+            }
+        }
+    }
+
+    /**
+     * 只读工具的相对路径 ⇒ 工作区根下绝对路径（与 [GuardPipeline] 读类同一口径）。
+     *
+     * 只解析 `path` 一个键：白名单里六件只读工具的参数名都是它（逐把核过）。
+     * 写类工具不进白名单 ⇒ 不需要 P0-2 那套「解析后真实目标判原件区」——子 Agent
+     * 结构上就没有写通路（协作模型 §3）。
+     */
+    private fun resolveSubTaskPaths(args: JSONObject, root: File): JSONObject {
+        val raw = args.optString("path").trim()
+        if (raw.isEmpty() || File(raw).isAbsolute) return args
+        val out = JSONObject(args.toString())
+        return out.put("path", File(root, raw).absolutePath)
+    }
+
+    /** 同会话内第几笔 run_subtasks（分解 id 用它防同毫秒相撞；进程级计数）。 */
+    private val subTaskSeq = AtomicLong(0L)
 
     /**
      * 第五十七批 §1.1：`write_skill(use)` 收口写一条 `skill_event(kind='use')`。

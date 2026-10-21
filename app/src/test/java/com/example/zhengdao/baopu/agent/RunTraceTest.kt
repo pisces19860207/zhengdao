@@ -286,7 +286,7 @@ class RunTraceTest {
 
     @Test
     fun `R1_迁移只看表不动既有列_老库照常可读`() {
-        assertEquals("v15 = 第一百一十七批 run_queue（v14 = 第八十九批 memory 质量四列，v13 = 第八十七批 run_trace，v12 是第八十五批效果信号）", 15, BaopuDb.VERSION)
+        assertEquals("v16 = 第一百二十七批 sub_task 多 Agent 审计（v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列，v13 = 第八十七批 run_trace，v12 是第八十五批效果信号）", 16, BaopuDb.VERSION)
         BaopuSql.RUN_TRACE_DDL.forEach {
             assertTrue("迁移 DDL 必须 IF NOT EXISTS（幂等）：$it", it.contains("IF NOT EXISTS"))
             assertFalse("加表不许顺手 ALTER 既有表（老库可读的前提）：$it", it.contains("ALTER TABLE"))

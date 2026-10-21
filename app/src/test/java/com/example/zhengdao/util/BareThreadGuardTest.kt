@@ -244,7 +244,8 @@ class BareThreadGuardTest {
         // 2026-10-16 实测 29 处（刀 0b 后 27；抱朴刀 1 新增 zd-baopu-run / zd-baopu-tool 两条 => 29）；
         // 2026-10-18 刀 4 新增 zd-preview-http（预览服务 acceptor）=> 30；
         // 2026-10-20 第六十八批消除 HomeScreen 的 zd-health-fix（改协程）=> 29；
-        // 2026-10-20 第九十二批新增读池 zd-baopu-tool-read => 30（对账单在下一段里逐条钉）。
+        // 2026-10-20 第九十二批新增读池 zd-baopu-tool-read => 30（对账单在下一段里逐条钉）；
+        // 2026-10-21 第一百二十七批新增子 Agent 池 zd-baopu-sub => 31。
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
     }
@@ -257,7 +258,8 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:140",
-            "BaopuDb.kt:1257",
+            "BaopuDb.kt:1370",
+            "SubAgentCoordinator.kt:34",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",

@@ -287,7 +287,7 @@ class EvolutionShadowGateTest {
             assertFalse("影子文件不许出现：$token", shadow.contains(token))
         }
         // 第一百一十七批把库升到 v15（run_queue）；本批（影子）自己依旧不动库。
-        assertTrue("BaopuDb.VERSION 已是 15（本批不动库）", db.contains("const val VERSION = 15"))
+        assertTrue("BaopuDb.VERSION 已是 16（v16 = 第一百二十七批 sub_task；本批不动库）", db.contains("const val VERSION = 16"))
         assertTrue("影子读数不碰 DDL", !shadow.contains("DATABASE"))
     }
 

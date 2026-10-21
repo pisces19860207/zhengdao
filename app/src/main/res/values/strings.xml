@@ -1304,6 +1304,8 @@
     <string name="baopu_tool_delete_path">删除文件</string>
     <string name="baopu_tool_ask_user">选项卡（问人）</string>
     <string name="baopu_tool_ask_user_desc">拿不准时弹一张选项卡（出现在输入栏上方）：2–4 个选项、推荐项排第一并带一句理由，用户点完继续干。不写盘、不改文件。</string>
+    <string name="baopu_tool_run_subtasks">拆分子任务（多 Agent）</string>
+    <string name="baopu_tool_run_subtasks_desc">把大任务拆成 1-5 个子任务，交给至多 2 个只读子 Agent 并行或串行执行，结果汇总回来。子 Agent 只能读文件、列目录、搜内容，没有任何写工具，也看不到你们的对话历史；子任务失败会自动重试一次，仍失败就照实报原因。子结果不会自动写进任何文件，要不要落产物另行决定。默认不可见：先在 capabilities 里解锁「多 Agent 协作」组才会出现。</string>
     <string name="baopu_tool_card_inspect">卡片体检（只读）</string>
     <string name="baopu_tool_card_inspect_desc">只读体检一张卡或世界书：先认脸（网络平台世界书 / Tavo 世界书·角色卡·正则·预设 / 酒馆世界书 / CCv3 世界书 / 酒馆角色卡 PNG；认不出就报未知＋看过的键名），再逐条体检（字段缺失与越界、关键词过宽、永不触发、分隔符写坏、同名压制）。只读：不改、不挪、不删任何文件。</string>
     <string name="baopu_tool_card_export">导出酒馆卡 PNG</string>
@@ -1325,6 +1327,7 @@
     <string name="baopu_tools_group_files">文件管理</string>
     <string name="baopu_tools_group_skill">技能</string>
     <string name="baopu_tools_group_preview">本地预览</string>
+    <string name="baopu_tools_group_agent">多 Agent 协作</string>
     <string name="baopu_tools_group_default_on">默认可见：这几件直接发给模型</string>
     <string name="baopu_tools_group_default_off">已锁：默认不发给模型；抱朴要用时会向你申请，你同意才开</string>
     <string name="baopu_tools_group_approved">已开启：你已同意长期可用（随时可以在右边关掉）</string>
@@ -1425,6 +1428,7 @@
     <string name="baopu_group_line_preview">在玄览只显示工作区里的网页/源码，不执行、出不了网</string>
     <string name="baopu_group_line_mcp">用户手动连接的外部服务器；工具由服务器提供，首次使用要你确认</string>
     <string name="baopu_tools_group_mcp">外部工具（MCP）</string>
+    <string name="baopu_group_line_agent">把大任务拆成子任务并行或串行跑，收回汇总结果</string>
     <!-- 效果卡（100） -->
     <string name="decision_effect_once_note">这条只提醒一次；先留着＝结案，稍后处理＝留在记录里观察</string>
     <string name="decision_effect_to_settings">去设置页处理</string>
