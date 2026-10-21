@@ -106,7 +106,7 @@ Android may kill backgrounded apps. For long tasks, keep Zhengdao in the foregro
 
 ## License and trademarks
 
-- First-party code is written from scratch. Since 2026-10-11 it is released as **all rights reserved**: you may read, clone and evaluate it locally; redistribution and any commercial use require prior written permission from the owner. Versions published before that date remain under the GPL-3.0 they shipped with.
+- First-party code is written from scratch. Since 2026-10-11 it is released as **all rights reserved**: you may read the source on GitHub, clone it locally, and install official builds on your own device; building from source, modifying, reverse-engineering or redistributing it is not permitted (except where mandatory law allows); commercial use requires prior written permission from the owner. Versions published before that date remain under the GPL-3.0 they shipped with.
 - Bundled third-party components (Termux terminal components, proot, fonts, etc.) are distributed under their own licenses; the license texts ship inside the APK and can be read offline under Settings → About → Open source licenses.
 - Claude Code, OpenCode, Hermes, AGY CLI and other names belong to their respective owners. This project has no affiliation with, authorisation from, or partnership with those vendors.
 - The name "Zhengdao" and the author's signature are not licensed with the code. If you republish, use your own name — not "Zhengdao".
