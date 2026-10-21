@@ -584,6 +584,18 @@ internal class ToolRegistry(
 
     private val specs = LinkedHashMap<String, ToolSpec>()
 
+    /**
+     * 注册时逐个工具的 **schema 体检账**（第一百一十九批）。
+     *
+     * 谁在读：门禁测试 `ToolSchemaGateTest`（要求真注册表全空）＋ `ToolSchemaTest`
+     * 的「坏 schema 会被记账」负例（证明这份账不是空转）。运行期只记账、不抛异常——
+     * 理由见 [ToolSchemaRules] 的类注释（装配期崩溃比一个工具用不了更糟，
+     * 红的落点在 CI 门禁，与派工单 §2 原文一致）。
+     *
+     * 值为空列表的工具不记账（同名覆盖成合规 schema 时会把旧账抹掉）。
+     */
+    private val issues = LinkedHashMap<String, List<String>>()
+
     /** 上一次吐给 [onVisibleChanged] 的可见名册（只在变化时吐，见该参数的 KDoc）。 */
     @Volatile
     private var lastEmitted: List<String> = emptyList()
@@ -602,8 +614,25 @@ internal class ToolRegistry(
     fun register(spec: ToolSpec) {
         // 组按那张唯一的表盖章：装配层（BaopuRuntime 的 write_skill / read / bash）与
         // ENTRIES 走同一条路，谁都不用自己记得带组（记得的组也会被表覆盖）。
-        specs[spec.name] = spec.copy(group = ToolGroupTable.GROUP_OF[spec.name] ?: spec.group)
+        val stamped = spec.copy(group = ToolGroupTable.GROUP_OF[spec.name] ?: spec.group)
+        specs[spec.name] = stamped
+        // 第一百一十九批：注册即体检（规则本体在 ToolSchemaRules，这里只记账——
+        // 运行期不抛，红在门禁测试那一侧，理由见 ToolSchemaRules 的类注释）。
+        val found = ToolSchemaRules.audit(stamped.name, stamped.inputSchema, stamped.description)
+        if (found.isEmpty()) {
+            issues.remove(stamped.name)
+        } else {
+            issues[stamped.name] = found.map { it.toString() }
+        }
     }
+
+    /**
+     * 已注册工具的 schema 体检账（空 map ＝ 全部合规）。
+     *
+     * 只给门禁与单测读：真注册表（[BaopuToolCatalog] + 运行时四条）必须为空，
+     * 写一个缺 required / 忘关 additionalProperties 的新工具 ⇒ 门禁红。
+     */
+    fun schemaIssues(): Map<String, List<String>> = issues.toMap()
 
     /**
      * 取一个工具的**当前形态**（刀 2 追加包：开关是**调用时**判的，不是加载时；
