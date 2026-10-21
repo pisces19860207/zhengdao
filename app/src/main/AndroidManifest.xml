@@ -55,6 +55,10 @@
          里按需请求（见 BaopuComposer 的 RequestPermission）。 -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- 第 129 批 lint 清债：CAMERA 权限要配一条 required=false 的 uses-feature，否则 lint 报
+         PermissionImpliesUnsupportedChromeOsHardware（原意就是这个：没摄像头也能装，只是拍照按钮不可用）。 -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <!-- 明文（cleartext）放行范围收窄（2026-10-12，用户交办）：
          改前这里是 android:usesCleartextTraffic="true" —— 全局放行，等于允许 App 与
          guest 内任何程序对任意域名发明文 HTTP。实际只用到两处（本机 oc serve 环回
