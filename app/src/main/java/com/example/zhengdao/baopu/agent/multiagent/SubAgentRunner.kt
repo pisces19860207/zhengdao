@@ -52,6 +52,8 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
         var steps = 0
         val messages = mutableListOf<LlmMessage>()
         messages += SubAgentRules.subTaskMessages(task)
+        // 同一工具同一参数调了几次（≥3 即提前收口；见 Calls 分支注释）。
+        val seenCalls = mutableMapOf<String, Int>()
         try {
             while (steps < task.maxSteps) {
                 if (env.isCancelled()) {
@@ -83,9 +85,13 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
                         // 这条回传链（主链路本就不发 assistant 消息——历史全部渲染进 user）。
                         // ⇒ 与父引擎同形：preamble 与围栏结果并进**一条 user 消息**，历史里
                         // 不出现 assistant，也就不再触发该 400。
+                        //
+                        // 2026-10-22 二次（「8 步用尽」）：真机那条子任务只是列两个目录却兜了 8 步
+                        // ⇒ 不是工具额度不够，是**不收敛**。两道收口：①回灌消息里明说「够了就收尾」；
+                        // ②同一工具同一参数第 3 次出现即提前失败（结果不会变，多跑只会烧步数）。
                         val sb = StringBuilder()
                         if (outcome.preamble.isNotBlank()) {
-                            sb.append("（你上一步说：").append(outcome.preamble).append("）\n\n")
+                            sb.append("【你上一步说】").append(outcome.preamble).append("\n\n")
                         }
                         for (call in outcome.calls) {
                             if (env.isCancelled()) {
@@ -94,10 +100,22 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
                                     "父任务已停止（工具调用前）", steps, startedAt,
                                 )
                             }
+                            val key = call.name + "|" + call.arguments.toString()
+                            val times = (seenCalls[key] ?: 0) + 1
+                            seenCalls[key] = times
+                            if (times >= 3) {
+                                return finish(
+                                    task, SubTaskStatus.FAILED, "",
+                                    "同一工具同一参数重复调用 $times 次（结果不会变），提前收口；" +
+                                        "换个路径/换个工具，或把子任务拆小点",
+                                    steps, startedAt,
+                                )
+                            }
                             val result = env.toolExec(call)
                             sb.append(fenced(call.name, result)).append("\n\n")
                         }
                         if (sb.isNotEmpty()) {
+                            sb.append("【提示】上面是工具结果；如果已经够回答目标，现在就给结论，不要重复调用同一工具。")
                             messages += LlmMessage(LlmMessage.ROLE_USER, sb.toString().trim())
                         }
                     }
