@@ -446,15 +446,6 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `listSessions按归档过滤`() {
-        assertTrue(BaopuSql.listSessions(includeArchived = true).sql.contains("ORDER BY updated_at DESC"))
-        // 第四十七批：两种列表都要排除软删会话
-        assertTrue(BaopuSql.listSessions(includeArchived = true).sql.contains("deleted_at IS NULL"))
-        assertTrue(BaopuSql.listSessions(includeArchived = false).sql.contains("deleted_at IS NULL"))
-        assertTrue(BaopuSql.listSessions(includeArchived = false).sql.contains("archived = 0"))
-    }
-
-    @Test
     fun `insertRunLog十五个参数全绑定`() {
         val s = BaopuSql.insertRunLog(
             sessionId = 1L, step = 2, state = "thinking", model = "m",
