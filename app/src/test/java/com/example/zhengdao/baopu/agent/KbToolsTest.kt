@@ -93,6 +93,37 @@ class KbToolsTest {
         }
     }
 
+    // ── UI-D9：工作区内绝对路径必须能索引（真机 2026-10-22） ──────────────
+
+    @Test
+    fun `工作区内绝对路径_可以索引`() {
+        val root = ws()
+        write(root, "资料库/整理/书.txt", "整理区里的书")
+        useStore()
+        val abs = File(root, "资料库/整理").canonicalPath
+        val out = KbTools.index(args("path" to abs), root)
+        assertTrue("工作区内绝对路径应被接受：$out", out is ToolOutcome.Ok)
+        val index = KbTools.store!!.load()!!
+        assertTrue("整理区里的书要进索引", index.docs.any { it.relPath.contains("书.txt") })
+    }
+
+    @Test
+    fun `工作区外绝对路径_仍然拒`() {
+        val root = ws()
+        val outside = tmp.newFolder("outside")
+        useStore()
+        val out = KbTools.index(args("path" to File(outside, "x").canonicalPath), root)
+        assertTrue("工作区外绝对路径必须拒", out is ToolOutcome.Rejected)
+    }
+
+    // ── UI-D12：卡面要写「将要索引哪个目录」，不许回显空对象 ────────────────
+
+    @Test
+    fun `卡面目录_没传path时给缺省_传了照抄`() {
+        assertEquals(KbTools.DEFAULT_DIR_REL, KbTools.effectiveTarget(args()))
+        assertEquals("小说", KbTools.effectiveTarget(args("path" to "小说")))
+    }
+
     @Test
     fun `目录不存在_明说`() {
         val root = ws()

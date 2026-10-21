@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+﻿// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
 // 依据：派工单《第一百二十七批 · 多 Agent 协作 v1》§1「子 Agent：独立上下文/
 // 工具白名单/超时」与开工闸门《多Agent协作v1-协作模型-2026-10-21.md》§3/§6。
@@ -38,7 +38,7 @@ internal data class SubAgentEnv(
  * - 步数 ≤ [SubTask.maxSteps]（默认 8）：用完即「失败：步数用尽」，不无限续；
  * - 墙钟 ≤ [SubTask.timeoutMs]（默认 90s，钳制 10–300s）：每轮开头查，超时即止；
  * - 取消：每轮开头 + 每次工具调用前查 [SubAgentEnv.isCancelled] ⇒ CANCELLED；
- * - 工具结果按父引擎同款回灌（[DataFence] 围栏 ＋ assistant 角色进历史）。
+ * - 工具结果按父引擎同款回灌（[DataFence] 围栏 ＋ **user** 角色进历史；不发 assistant，见 UI-D10）。
  */
 internal class SubAgentRunner(private val env: SubAgentEnv) {
 
@@ -76,11 +76,16 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
                     }
 
                     is TurnOutcome.Calls -> {
+                        // 2026-10-22 真机 UI-D10：子 Agent 三连
+                        // `HTTP 400 The reasoning_content in the thinking mode must be passed back to the API`。
+                        // 根因：旧实现把工具结果当 **assistant** 消息回灌，而 thinking 模式的
+                        // 服务端要求每条 assistant 都带回 `reasoning_content`；子 Agent 没有
+                        // 这条回传链（主链路本就不发 assistant 消息——历史全部渲染进 user）。
+                        // ⇒ 与父引擎同形：preamble 与围栏结果并进**一条 user 消息**，历史里
+                        // 不出现 assistant，也就不再触发该 400。
+                        val sb = StringBuilder()
                         if (outcome.preamble.isNotBlank()) {
-                            messages += LlmMessage(
-                                LlmMessage.ROLE_ASSISTANT,
-                                outcome.preamble,
-                            )
+                            sb.append("（你上一步说：").append(outcome.preamble).append("）\n\n")
                         }
                         for (call in outcome.calls) {
                             if (env.isCancelled()) {
@@ -90,10 +95,10 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
                                 )
                             }
                             val result = env.toolExec(call)
-                            messages += LlmMessage(
-                                LlmMessage.ROLE_ASSISTANT,
-                                fenced(call.name, result),
-                            )
+                            sb.append(fenced(call.name, result)).append("\n\n")
+                        }
+                        if (sb.isNotEmpty()) {
+                            messages += LlmMessage(LlmMessage.ROLE_USER, sb.toString().trim())
                         }
                     }
                 }

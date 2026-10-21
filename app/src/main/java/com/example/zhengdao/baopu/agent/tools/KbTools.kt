@@ -48,6 +48,15 @@ internal object KbTools {
     val DEFAULT_DIR_REL: String = LibraryPaths.DIR_LIBRARY + "/" + LibraryPaths.SUB_DELIVER
 
     /**
+     * 卡面展示用的「要动的目录」：显式传了就用它，没传就是缺省目录。
+     *
+     * 2026-10-22 真机 UI-D12：模型不传 path 时确认卡只有 `kb_index({})`，看不出
+     * 将要索引哪儿；对**有默认值**的工具，卡上要写人话而不是回显空对象。
+     */
+    fun effectiveTarget(args: org.json.JSONObject): String =
+        args.optString(ARG_PATH).trim().ifEmpty { DEFAULT_DIR_REL }
+
+    /**
      * 索引存储壳（装配层注入；JVM 单测直接赋值）。
      * 没有注入 ⇒ 两个工具都明说"索引没初始化"，不猜、不崩。
      */
@@ -93,7 +102,7 @@ internal object KbTools {
         val rel = args.optString(ARG_PATH).trim().ifEmpty { DEFAULT_DIR_REL }
         val dir = resolveUnder(root, rel)
             ?: return ToolOutcome.Rejected(
-                "路径越界被拒：$rel 形态不合法（不许 ..／绝对路径／盘符）或不在工作区内",
+                "路径越界被拒：$rel 不在工作区内（绝对路径须指向工作区里面；不许 ..／盘符）",
             )
         if (!dir.isDirectory) {
             return ToolOutcome.Failed(
@@ -180,16 +189,31 @@ internal object KbTools {
     // ── 内部工具 ─────────────────────────────────────────────────────────────
 
     /**
-     * 把相对工作区根的路径解析成目录（越界 ⇒ null）。
-     * 复用 [LibraryPaths.destinationUnder] 的危险形态检查（前导 `/`、`..`、盘符、
-     * 空段）＋ [PathGuard.isInside] 组件级双保险——不另起一套路径判据。
+     * 把「模型给的路径」解析成工作区内目录（越界 ⇒ null）。
      *
-     * ⚠️ **不自己剥前导 `/`**：剥了再送检，等于把"绝对路径即拒"这条判据拆了
-     * （`/资料库` 会变成相对的 `资料库` 被收下）——交给 destinationUnder 原样拒。
+     * 2026-10-22 真机 UI-D9：模型常把 `list_dir` 看到的**绝对路径**原样传回来
+     * （`/storage/emulated/0/Download/证道/资料库/整理`），旧实现一律按相对路径解析
+     * ⇒ `destinationUnder` 见到前导 `/` 直接 null ⇒ 索引一次都建不成。
+     *
+     * 现在：绝对路径先 `canonicalFile`，**落在 root 内**才转成相对 root，再走同一套
+     * [LibraryPaths.destinationUnder] 纪律（`..`、盘符、空段、[PathGuard.isInside]）；
+     * 落在 root 外照旧拒。**不是无脑剥 `/`**：`/资料库` 这种根外绝对路径仍然被拒
+     * （负例 N3「绝对路径即拒」的口径由「root 内/root 外」取代，见 133 单 A 段）。
      */
     internal fun resolveUnder(root: File, rel: String): File? {
         val cleaned = rel.replace('\\', '/').trim()
         if (cleaned.isEmpty()) return null
+        // 先判绝对路径（Windows 盘符也走这里：`File.isAbsolute` 不靠冒号猜）。
+        // 顺序不能反——先查冒号会把 `C:\…` 当非法拒掉，测试机与真机行为就分叉了。
+        val asFile = runCatching { File(rel.trim()) }.getOrNull()
+        if (asFile != null && asFile.isAbsolute) {
+            val rootCanon = runCatching { root.canonicalFile }.getOrElse { root }
+            val abs = runCatching { asFile.canonicalFile }.getOrNull() ?: return null
+            if (!PathGuard.isInside(rootCanon, abs)) return null
+            val relPath = runCatching { abs.relativeTo(rootCanon).path.replace('\\', '/') }.getOrNull()
+                ?: return null
+            return LibraryPaths.destinationUnder(root, relPath)
+        }
         if (cleaned.contains(":")) return null
         return LibraryPaths.destinationUnder(root, cleaned)
     }

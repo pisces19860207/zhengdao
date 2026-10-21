@@ -75,6 +75,14 @@ class SubAgentRunnerTest {
             secondRound.any { it.content.contains(DataFence.FENCE_OPEN) && it.content.contains("文件内容") },
         )
         assertTrue("回灌要含工具名：$secondRound", secondRound.any { it.content.contains("read_file") })
+        // UI-D10（2026-10-22 真机）：子 Agent 历史里**不许出现 assistant 消息**。
+        // thinking 模式要求 assistant 带回 reasoning_content，子 Agent 没有这条链 ⇒ 全 400。
+        // 现在与父引擎同形：工具结果并进 user。
+        assertEquals(
+            "子 Agent 历史里不许出现 assistant（会触发 reasoning_content 400）：$secondRound",
+            0,
+            secondRound.count { it.role == LlmMessage.ROLE_ASSISTANT },
+        )
     }
 
     @Test
