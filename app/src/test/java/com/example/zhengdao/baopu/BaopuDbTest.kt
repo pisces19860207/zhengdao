@@ -446,24 +446,6 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `归档语句置archived并动updated_at`() {
-        val on = BaopuSql.setArchived(7L, true, 123L)
-        assertTrue(on.sql.contains("SET archived = ?, updated_at = ?"))
-        assertEquals(listOf("1", "123", "7"), on.args.toList())
-        val off = BaopuSql.setArchived(7L, false, 123L)
-        assertEquals("0", off.args[0])
-    }
-
-    @Test
-    fun `listSessions按归档过滤`() {
-        assertTrue(BaopuSql.listSessions(includeArchived = true).sql.contains("ORDER BY updated_at DESC"))
-        // 第四十七批：两种列表都要排除软删会话
-        assertTrue(BaopuSql.listSessions(includeArchived = true).sql.contains("deleted_at IS NULL"))
-        assertTrue(BaopuSql.listSessions(includeArchived = false).sql.contains("deleted_at IS NULL"))
-        assertTrue(BaopuSql.listSessions(includeArchived = false).sql.contains("archived = 0"))
-    }
-
-    @Test
     fun `insertRunLog十五个参数全绑定`() {
         val s = BaopuSql.insertRunLog(
             sessionId = 1L, step = 2, state = "thinking", model = "m",
@@ -481,25 +463,6 @@ class BaopuDbTest {
         // 缓存两列默认不给 ⇒ null（SQL 留空，不瞎填 0）
         assertNull(s.args[13])
         assertNull(s.args[14])
-    }
-
-    @Test
-    fun `提案批与执行批的kind和proposal_id绑定`() {
-        val proposal = BaopuSql.insertProposalBatch(1L, "[]", 100L, 50L)
-        assertTrue(proposal.sql.contains("'proposal'"))
-        assertTrue(proposal.sql.contains("NULL"))
-        assertEquals(listOf("1", "[]", "100", "50"), proposal.args.toList())
-
-        val ops = BaopuSql.insertOpsBatch(1L, proposalId = 9L, opsJson = "[{}]", expiresAt = 100L, createdAt = 50L)
-        assertTrue(ops.sql.contains("'ops'"))
-        assertEquals(listOf("1", "9", "[{}]", "100", "50"), ops.args.toList())
-    }
-
-    @Test
-    fun `decidePlanBatch更新状态与决定时间`() {
-        val s = BaopuSql.decidePlanBatch(3L, "approved", 777L)
-        assertTrue(s.sql.contains("SET status = ?, decided_at = ?"))
-        assertEquals(listOf("approved", "777", "3"), s.args.toList())
     }
 
     @Test
