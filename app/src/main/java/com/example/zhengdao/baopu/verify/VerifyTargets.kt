@@ -23,9 +23,6 @@ object VerifyTargets {
         "move_path" to ARG_TO,
     )
 
-    /** 是不是落盘类工具（用于收尾闸判断「这一轮到底改过东西没有」）。 */
-    fun isWriteTool(name: String): Boolean = name in WRITE_TOOLS
-
     /**
      * 从一次工具调用里取它写入的相对路径。
      * @return 空列表 = 这条调用不需要验收（读类/不认识的工具/参数缺键）
