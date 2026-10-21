@@ -923,9 +923,8 @@
     <!-- ── 抱朴步骤卡收纳（第十六批第一件；一轮收成一行，点开看每一步）── -->
     <string name="baopu_round_summary">干了 %1$d 步 · 用时 %2$s · 失败 %3$d</string>
     <string name="baopu_round_summary_nodur">干了 %1$d 步 · 失败 %2$d</string>
-    <!-- 2026-10-18 真机第二次反馈：一轮展开后有十几张工具卡，上下两条摘要行都滚出屏幕。
-         改成屏幕上常驻一颗浮标 —— 文案就是「收起详情」。 -->
-    <string name="baopu_collapse_detail">收起详情</string>
+    <!-- 2026-10-18 那颗「收起详情」浮标已在第一百零六批移除（用户点名）：
+         「入口不随内容滚走」改由轮尾内联活动面板那一行承接（设计 v1.5 §3.12）。 -->
     <!-- 朗读（2026-10-18）：只用系统 TTS，不联网、不引库；失败必须说出来（不静默） -->
     <string name="baopu_speak">朗读</string>
     <string name="baopu_speak_failed">系统朗读引擎不可用</string>
@@ -950,6 +949,34 @@
     <string name="baopu_attach_thumb_desc">附件图片：%1$s</string>
     <string name="baopu_attach_path_copied">已复制附件路径</string>
     <string name="baopu_plan_summary">计划 %1$d/%2$d 完成</string>
+    <!-- ── 计划区（第一百零六批，v1.5 §3.11）：悬浮胶囊＋浮层面板；计划从消息正文撤出 ── -->
+    <string name="baopu_plan_panel_title">计划</string>
+    <string name="baopu_plan_panel_progress">已完成 %1$d/%2$d</string>
+    <string name="baopu_plan_capsule_step">第 %1$d/%2$d 步 · %3$s</string>
+    <string name="baopu_plan_capsule_done">✓ 计划 %1$d/%2$d 完成</string>
+    <string name="baopu_plan_capsule_stale">计划 %1$d/%2$d · 未更新</string>
+    <string name="baopu_plan_capsule_desc">打开工作计划</string>
+    <string name="baopu_plan_group_current">本轮</string>
+    <string name="baopu_plan_group_prev">上一轮</string>
+    <string name="baopu_plan_group_nth">第 %1$d 轮</string>
+    <string name="baopu_plan_group_meta">%1$s · %2$s · %3$s</string>
+    <string name="baopu_plan_stale_chip">计划未更新</string>
+    <string name="baopu_plan_stale_hint">这轮跑完了，但计划没打完勾——以实际做了为准</string>
+    <string name="baopu_plan_time_today">今天 %1$s</string>
+    <string name="baopu_plan_time_yesterday">昨天 %1$s</string>
+    <!-- ── 活动面板（第一百零六批，v1.5 §3.12）：轮尾内联，取代「收起详情」浮标 ── -->
+    <string name="baopu_activity_running">● 正在：%1$s · 第 %2$d 步</string>
+    <string name="baopu_activity_summary">本轮活动 · 干了 %1$d 步 · 用时 %2$s</string>
+    <string name="baopu_activity_summary_nodur">本轮活动 · 干了 %1$d 步</string>
+    <string name="baopu_activity_fails">失败 %1$d</string>
+    <string name="baopu_activity_more">还有 %1$d 条</string>
+    <string name="baopu_activity_kind_tool">工具</string>
+    <string name="baopu_activity_kind_compression">压缩</string>
+    <string name="baopu_activity_kind_await">等确认</string>
+    <string name="baopu_activity_kind_failed">失败</string>
+    <string name="baopu_activity_reason">失败：%1$s</string>
+    <string name="baopu_activity_toggle_open">展开活动明细</string>
+    <string name="baopu_activity_toggle_close">收起活动明细</string>
   <string name="baopu_channel_button">换通道</string>
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
     <string name="baopu_ask_recommended">推荐选项</string>
