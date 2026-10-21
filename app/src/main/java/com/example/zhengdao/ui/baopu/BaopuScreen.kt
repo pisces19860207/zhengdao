@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -67,6 +68,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
@@ -377,9 +379,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         Column(Modifier.fillMaxSize().imePadding()) {
             // 顶条（刀 3 瘦身）：☰ 开抽屉 · 状态 · ＋新会话。
             // 「章节抽取／备份原件／换通道」已进抽屉；中断提示与续跑仍由 BaopuSessionBar 承担。
-            Surface(tonalElevation = 1.dp) {
+            // 顶栏五件（v1.4 W9a）：☰ · 状态行 · 跑马灯 · 🛡 · ＋。设置入口不在这里（在抽屉）。
+            // 高度＝48dp 图标位（三处 IconButton 各 48），跑马灯窗口只有 16dp ⇒ **零额外高度**；
+            // 底下补一条发丝线把顶栏和正文分开——旧版靠 tonalElevation 1dp，深色主题里几乎看不见。
+            Surface(color = MaterialTheme.colorScheme.surface) {
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val openLabel = stringResource(R.string.baopu_drawer_open)
@@ -387,12 +394,15 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     IconButton(
                         onClick = { scope.launch { drawerState.open() } },
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(BAO_ICON_SLOT_DP.dp)
                             .semantics { contentDescription = openLabel },
                     ) {
                         // 本项目没引 material-icons 依赖，用字形够了（☰），不为一个图标多打一个包。
                         Text(text = "☰", style = MaterialTheme.typography.titleMedium)
                     }
+                    // 状态行**锁单行**（v1.4 §4「状态行优先、跑马灯弹性」）：
+                    // 不锁的话 1.3× 字体下它会折成两行 ⇒ 顶栏被撑高，跑马灯跟着"变高"，
+                    // 正好落进负例「跑马灯撑高顶栏」那一格。这里宁可省略号，也不许折行。
                     Text(
                         text = statusLineWithStep(
                             stringResource(stateLabel(state)),
@@ -400,6 +410,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         ),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     // 「这次学到 / 已压缩」竖向跑马灯（2026-10-18 用户：位置在「待命中」和「＋」
                     // 那一栏里）——顶栏中间剩余宽度全给它，只占一行高。
@@ -471,7 +484,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     IconButton(
                         onClick = { showDecisionCenter = true },
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(BAO_ICON_SLOT_DP.dp)
                             .semantics { contentDescription = shieldDesc },
                     ) {
                         // 字形盾（🛡）；徽标是右上角小丸，≥48dp 热区由 IconButton 给
@@ -497,12 +510,13 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         onClick = { controller.newSession() },
                         enabled = !controller.busy,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(BAO_ICON_SLOT_DP.dp)
                             .semantics { contentDescription = newSessionLabel },
                     ) {
                         Text(text = "＋", style = MaterialTheme.typography.titleMedium)
                     }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
             // ── 第六十三批：首屏通知位（2026-10-20 定稿）────────────────────────
             // 原来这五条各占一行——防丢横幅、SessionBar（中断＋引擎人话）、pendingNote、
