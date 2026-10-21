@@ -104,7 +104,7 @@ val ZhengdaoDarkScheme = darkColorScheme(
 @Composable
 fun ZhengdaoTheme(content: @Composable () -> Unit) {
     val ctx = LocalContext.current
-    val tick = AppearancePrefs.changeTick.value
+    val tick = AppearancePrefs.changeTick.intValue
     val pref = remember(tick) { AppearancePrefs.get(ctx) }
     val dark = AppearancePrefs.resolveDark(pref, isSystemInDarkTheme())
     MaterialTheme(

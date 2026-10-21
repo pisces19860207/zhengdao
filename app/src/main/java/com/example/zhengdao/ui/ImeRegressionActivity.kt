@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,11 +79,11 @@ class ImeRegressionActivity : ComponentActivity(), TerminalViewClient, TerminalS
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             MaterialTheme {
-                val ready = remember { mutableStateOf(0) }
+                val ready = remember { mutableIntStateOf(0) }
                 val verdicts = remember { mutableStateMapOf<String, ImeProbe.Verdict>() }
                 val typedLines = remember { mutableStateMapOf<String, String>() }
                 var logLines by remember { mutableStateOf(ImeProbe.snapshot()) }
-                var mountTick by remember { mutableStateOf(0) }
+                var mountTick by remember { mutableIntStateOf(0) }
                 LaunchedEffect(mountTick) {
                     while (true) {
                         logLines = ImeProbe.snapshot()

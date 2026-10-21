@@ -318,7 +318,7 @@ internal class BaopuChatController(context: Context) {
         private set
 
     /** 会话里落库的 interrupted_step（-1 = 未中断）。 */
-    var interruptedStep by mutableStateOf(-1)
+    var interruptedStep by mutableIntStateOf(-1)
         private set
 
     /** 消息列表（从 db 读——先落库再渲染，UI 永远不比库新）。 */
@@ -1357,7 +1357,7 @@ internal class BaopuChatController(context: Context) {
     var browserActivity by mutableStateOf<String?>(null)
 
     /** `临时/` 还剩几个文件（收尾时由引擎事件告知）。 */
-    var scratchLeft by mutableStateOf(0)
+    var scratchLeft by mutableIntStateOf(0)
         private set
 
     /**

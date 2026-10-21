@@ -25,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,7 +72,7 @@ internal fun BaopuExtractSheet(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     // 步骤：0 选书 / 1 预览与选择 / 2 结果
-    var step by remember { mutableStateOf(0) }
+    var step by remember { mutableIntStateOf(0) }
     var books by remember { mutableStateOf<List<Pair<String, File>>>(emptyList()) }
     var picked by remember { mutableStateOf<File?>(null) }
     var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }

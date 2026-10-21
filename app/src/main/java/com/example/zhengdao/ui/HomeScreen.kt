@@ -63,8 +63,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -233,7 +233,7 @@ fun HomeScreen(
     // 2026-10-12 无感化（走查报告 §5.4）：**打开即显上次缓存值**（旧值），
     // 流式刷新逐项就地覆盖——不再「先空白 → 11 行同时蹦出来」（用户原话：有点吓人）。
     var healthChecks by remember { mutableStateOf(LastValues.loadChecks(context)) }
-    var healthEpoch by remember { mutableStateOf(0) }
+    var healthEpoch by remember { mutableIntStateOf(0) }
     // 第六十八批：体检「修复」的进行中状态（null = 空闲）。同一时刻只跑一项 ——
     // EnvHealth 的修复要拿会话准备锁，并发点第二项只会换来一条「锁被占」的失败。
     var fixingCheckId by remember { mutableStateOf<String?>(null) }
@@ -271,7 +271,7 @@ fun HomeScreen(
     // 卡片里的"内存可用 / 已装 Agent / 发行版"全是切走之前的旧快照。
     // 2026-10-12 无感化（§5.5 第 5 处）：进程级缓存兜底——重进页面先显上一次的系统信息，
     // 新快照到达后就地覆盖，不再「加载中…」整块闪现。
-    var sysTick by remember { mutableStateOf(0) }
+    var sysTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(sysTick) {
         sysInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             SystemInfoProvider.collect(context, context.resources)

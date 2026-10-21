@@ -2,7 +2,7 @@
 package com.example.zhengdao.ui.theme
 
 import android.content.Context
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 
 /**
  * 外观偏好：跟随系统 / 浅色 / 深色（2026-10-12 接入深色主题）。
@@ -35,7 +35,7 @@ object AppearancePrefs {
      * 读取方一律 `remember(changeTick.value) { AppearancePrefs.get(ctx) }`。
      * 这样避免在组合期间写状态（首次组合只读不写）。
      */
-    internal val changeTick = mutableStateOf(0)
+    internal val changeTick = mutableIntStateOf(0)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(SP, Context.MODE_PRIVATE)
 
@@ -50,7 +50,7 @@ object AppearancePrefs {
     fun set(ctx: Context, value: String) {
         val v = normalize(value)
         runCatching { prefs(ctx).edit().putString(KEY, v).apply() }
-        changeTick.value++
+        changeTick.intValue++
     }
 
     /** 该偏好在当前系统设置下，最终是否走深色。[systemDark] 传 `isSystemInDarkTheme()`。 */

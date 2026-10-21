@@ -161,7 +161,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // ② 把当前工作区（BaopuWorkspace.hostDir）与它的状态（正常／私有／未授权）交进纯函数；
     // ③ 点文件夹行的两个落点接上：临时提示（Toast，飘完就没＝A5 的"不许常驻"）＋设置页「工作区」卡；
     // ④ 点会话行走 controller.requestOpenSession——撞上单活跃门由下面那张确认卡问人（不许自动停）。
-    var drawerTick by remember { mutableStateOf(0) }
+    var drawerTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(drawerState.isOpen) { if (drawerState.isOpen) drawerTick++ }
     val wsPrivateLabel = stringResource(R.string.baopu_drawer_ws_private)
     val wsUnauthorizedLabel = stringResource(R.string.baopu_drawer_ws_unauthorized)

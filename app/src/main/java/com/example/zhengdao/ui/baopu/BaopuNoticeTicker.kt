@@ -22,7 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -107,7 +107,7 @@ internal fun BaopuNoticeTicker(
         )
     }
     val reduceMotion = reduceMotionFrom(animatorScale)
-    var selected by remember(items) { mutableStateOf(-1) }
+    var selected by remember(items) { mutableIntStateOf(-1) }
     val scroll = rememberScrollState()
 
     // 只滚标题：两条以上才复制成首尾相接；单条不复制（否则第二份会露一截＝重影）。
