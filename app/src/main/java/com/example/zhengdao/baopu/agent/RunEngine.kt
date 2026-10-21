@@ -1678,8 +1678,14 @@ internal class RunEngine(
             persistArtifactLedger(sessionId, touchedPaths)
             // 只有**真写成功**的调用才算「学到」：被保护闸拦下的走 Rejected 分支、失败的走
             // Failed 分支，两个都不记信号 ⇒ 进不了「这次学到」卡（用户 2026-10-19 口径）。
+            // 信号内容怎么取由 [SkillRefine.learnDetailFor] 一处决定（第一百零七批·EVO-D2）：
+            // 技能类拿不到路径时用**技能名**，连名字都没有就不出信号——不许拿工具名兜底，
+            // 否则会推出 `write-skill` 这种没有场景的垃圾技能。
             SkillRefine.signalKindFor(result.call.name)?.let { kind ->
-                learnSignals += SkillRefine.LearnSignal(kind, touchedPaths.firstOrNull() ?: result.call.name)
+                val skillName = result.call.arguments.optString("name")
+                SkillRefine.learnDetailFor(kind, result.call.name, touchedPaths, skillName)?.let { detail ->
+                    learnSignals += SkillRefine.LearnSignal(kind, detail)
+                }
             }
             persistToolExchange(sessionId, step, result.call.name, result.wrapped)
             onEvent?.invoke(
