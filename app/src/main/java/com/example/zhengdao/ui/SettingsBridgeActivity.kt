@@ -63,7 +63,7 @@ private fun SettingsBridgePage(onBack: () -> Unit) {
     // 进程内单例：桥开着就是开着（开关只反映现状，不持有第二份状态）
     var enabled by remember { mutableStateOf(BrowserAgentBridge.isRunning()) }
     // 重置口令后自增，逼 remember 重新取一次打码串
-    var tokenTick by remember { mutableStateOf(0) }
+    var tokenTick by remember { mutableIntStateOf(0) }
     var toast by remember { mutableStateOf<String?>(null) }
     // 第二十一批 B 段：监听地址行的只读说明卡（原来这行是空 lambda——看着能点、
     // 点下去零反应，是最典型的「装样子」）。二选一里选「真做」：数据全部从

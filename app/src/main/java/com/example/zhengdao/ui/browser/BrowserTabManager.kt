@@ -188,7 +188,7 @@ object BrowserTabManager {
     fun pauseAll() {
         tabs.forEach { tab ->
             runCatching { tab.webView.onPause() }
-            runCatching { tab.webView.setRendererPriorityPolicy(BrowserTabPolicy.RENDERER_PRIORITY_WAIVED, false) }
+            runCatching { tab.webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, false) }
         }
     }
 
@@ -328,14 +328,14 @@ object BrowserTabManager {
     private fun pauseAndWaive(tab: Tab) {
         runCatching { tab.webView.onPause() }
         runCatching {
-            tab.webView.setRendererPriorityPolicy(BrowserTabPolicy.RENDERER_PRIORITY_WAIVED, false)
+            tab.webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, false)
         }
     }
 
     private fun resumeAndPromote(tab: Tab) {
         runCatching { tab.webView.onResume() }
         runCatching {
-            tab.webView.setRendererPriorityPolicy(BrowserTabPolicy.RENDERER_PRIORITY_IMPORTANT, false)
+            tab.webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         }
     }
 

@@ -49,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -305,7 +306,7 @@ internal fun TrashDialog(
 ) {
     val ctx = LocalContext.current
     val dir = BaopuTrashBin.dirOf(workspaceRoot)
-    var tick by remember { mutableStateOf(0) }
+    var tick by remember { mutableIntStateOf(0) }
     val rows = remember(tick) { trashRows(dir) }
     // 「等第二击」记的是**哪一个文件**（绝对路径）；换一条就得重新确认，
     // 关掉面板也清掉（下次进来重新问一遍——判据 T3 不许记住上次的许可）。

@@ -36,7 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -116,7 +116,7 @@ class SettingsKeepaliveActivity : ComponentActivity() {
 @Composable
 private fun SettingsKeepalivePage(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    var storageTick by remember { mutableStateOf(0) }
+    var storageTick by remember { mutableIntStateOf(0) }
 
     // 「保活记录」卡里那一行用 storageTick 当键：在新页面点完「清空记录」返回时，它要自己刷空。
     // 原来的自增点是设置页的 ON_RESUME 观察者，这里照搬一个只做自增的。
@@ -188,7 +188,7 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
             //（本仓 E-073 的教训）迟早对不上。读不到时 history 自己返回空表 ⇒ 显示空串。
             // 键用 storageTick（上面 ON_RESUME 观察者自增）而不是 Unit：在新页面点完
             // 「清空记录」返回，这一行会自己刷成空串，不会留着已清掉的旧数字。
-            var kaExitCount by remember { mutableStateOf(0) }
+            var kaExitCount by remember { mutableIntStateOf(0) }
             LaunchedEffect(storageTick) {
                 kaExitCount = withContext(Dispatchers.IO) {
                     com.example.zhengdao.keepalive.KeepaliveArchive.history(ctx, 3).size

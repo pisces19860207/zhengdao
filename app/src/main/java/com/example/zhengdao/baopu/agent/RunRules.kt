@@ -193,7 +193,7 @@ internal object RunRules {
     const val CONFIRM_ARGS_MAX_CHARS = BaopuKernel.Auth.CONFIRM_ARGS_MAX_CHARS
 
     /**
-     * 超时回灌的人话（与 strings 的 `baopu_confirm_timeout` 同文）。
+     * 超时回灌的人话（引擎侧唯一真源；strings.xml 里那条同文资源已在第 129 批 lint 清债中删除）。
      *
      * 为什么这里有一份中文：引擎要把这句话**落进会话历史**（模型要看得见），
      * 而 `strings.xml` 只有 UI 层（Compose）够得着——引擎无 Context。

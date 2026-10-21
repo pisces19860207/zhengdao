@@ -38,6 +38,7 @@ import android.widget.Toast
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -97,7 +98,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             // 2. 模型若仍幻觉调用被关的工具，回一条工具结果「该工具已被用户关闭」，
             //    **不许自动打开**；
             // 3. 默认五个全启用（read_file / list_dir / search_in_files / file_info / write_file）。
-            var toolTick by remember { mutableStateOf(0) }
+            var toolTick by remember { mutableIntStateOf(0) }
             SectionCard(stringResource(R.string.baopu_tools_card)) {
                 Text(
                     text = stringResource(R.string.baopu_tools_desc),
@@ -355,7 +356,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             // 这里只负责「滚回去」：点了先备份当前版，再覆盖 —— 可反悔。
             // 没有备份时**按钮灰掉但这一行不消失**（判据 L6 最后一句：灰掉≠假装没这功能）。
             SectionCard(stringResource(R.string.persona_rollback_card)) {
-                var rollbackTick by remember { mutableStateOf(0) }
+                var rollbackTick by remember { mutableIntStateOf(0) }
                 val pfr = remember { BaopuRuntime.personaFiles(ctx) }
                 Text(
                     text = stringResource(R.string.persona_rollback_desc),
@@ -416,7 +417,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             // PersonaFiles.applyProposal（PENDING 提案），不另开写文件的路。
             // 只删索引行，不删技能文件（§2.5：文件由用户在文件管理器自己删）。
             SectionCard(stringResource(R.string.skill_review_card)) {
-                var skillReload by remember { mutableStateOf(0) }
+                var skillReload by remember { mutableIntStateOf(0) }
                 val pf = remember { BaopuRuntime.personaFiles(ctx) }
                 // 第三十四批：两层根目录上移到卡片开头。A 段的详情、B 段的归档列表都要按这两个根
                 // **现读盘**，而入口在下面的索引行上（原来这两行到草稿段才声明，够不着）。
@@ -472,7 +473,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 // 分类**只影响显示**：它不改索引行文本、不改正文、不改人设（判据 T5）。
                 // 两层各一份表（全局那份在 App 私有、项目那份在工作区），互不串。
                 // 坏 JSON 由纯函数当空表（corrupt=true），这里只补一句红字，页面不许崩。
-                var catTick by remember { mutableStateOf(0) }
+                var catTick by remember { mutableIntStateOf(0) }
                 var picking by remember { mutableStateOf<Pair<SkillScope, String>?>(null) }
                 val globalCats = remember(catTick) { readCategories(SkillRules.globalSkillDir(globalRoot)) }
                 val projectCats = remember(catTick) { readCategories(SkillRules.projectSkillDir(projectRoot)) }

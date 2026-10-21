@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -152,9 +153,9 @@ private fun KeepaliveLogScreen() {
     val ctx = LocalContext.current
     var exitLines by remember { mutableStateOf(emptyList<String>()) }
     var beatLines by remember { mutableStateOf(emptyList<String>()) }
-    var snippetCount by remember { mutableStateOf(0) }
+    var snippetCount by remember { mutableIntStateOf(0) }
     // tick 只被「清空记录」自增：清空后重新读一遍，列表当场变空态。
-    var tick by remember { mutableStateOf(0) }
+    var tick by remember { mutableIntStateOf(0) }
     // §B 顺序 2 · P2-5：清空留档是**永久删除**，先弹确认框再执行。
     var clearConfirm by remember { mutableStateOf(false) }
     // R-22（第⑪批 B-1）：导出/清空都是整目录拷贝或删除（最多 ~1MB+），

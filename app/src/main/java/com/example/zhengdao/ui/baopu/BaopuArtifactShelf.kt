@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -275,7 +276,7 @@ internal fun ArtifactShelfDialog(
     // P0-2 后续：Compose 里取字符串走 LocalResources（lint 规则 LocalContextGetResourceValueCall）
     val res = LocalResources.current
     val db = BaopuRuntime.db(ctx)
-    var tick by remember { mutableStateOf(0) }
+    var tick by remember { mutableIntStateOf(0) }
     // 读库与读盘都 off-main（UI 线程查库是「点一下就卡住」的老坑）
     val rows by produceState(initialValue = emptyList<ArtifactShelfRow>(), key1 = workspaceRoot, key2 = tick) {
         value = withContext(Dispatchers.IO) { artifactShelfRows(db, workspaceRoot) }

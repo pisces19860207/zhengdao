@@ -26,20 +26,6 @@
         <item name="android:colorAccent">#FF007AFF</item>
     </style>
 
-    <!-- 终端快捷键条按键的公共外观 -->
-    <style name="TermKey">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">38dp</item>
-        <item name="android:minWidth">46dp</item>
-        <item name="android:gravity">center</item>
-        <item name="android:layout_marginEnd">6dp</item>
-        <item name="android:paddingStart">10dp</item>
-        <item name="android:paddingEnd">10dp</item>
-        <item name="android:background">@drawable/key_button_bg</item>
-        <item name="android:textColor">#FF222222</item>
-        <item name="android:textSize">12sp</item>
-    </style>
-
     <!--
       快捷键条自适应按键：宽度按 weight 均分，而非固定 wrap_content。
       目的：竖屏一行放不下全部按键（原先靠横向滚动），改为等宽均分后

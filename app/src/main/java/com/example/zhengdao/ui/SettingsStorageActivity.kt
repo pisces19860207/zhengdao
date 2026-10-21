@@ -36,6 +36,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -125,12 +127,12 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
     val gotIt = stringResource(R.string.common_got_it)
     val cacheNotInstalledMsg = stringResource(R.string.storage_cache_not_installed)
     val snackbarHostState = remember { SnackbarHostState() }
-    var storageTick by remember { mutableStateOf(0) }
+    var storageTick by remember { mutableIntStateOf(0) }
     // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖。
     val lastStorage = remember { LastValues.loadStorageMb(ctx) }
-    var rootfsMb by remember { mutableStateOf(lastStorage?.first ?: -1L) }
-    var homeMb by remember { mutableStateOf(lastStorage?.second ?: -1L) }
-    var cacheMb by remember { mutableStateOf(lastStorage?.third ?: -1L) }
+    var rootfsMb by remember { mutableLongStateOf(lastStorage?.first ?: -1L) }
+    var homeMb by remember { mutableLongStateOf(lastStorage?.second ?: -1L) }
+    var cacheMb by remember { mutableLongStateOf(lastStorage?.third ?: -1L) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
 
     /** 卡片里原本直调设置页的 `onOpenTerminal`，这里接到同一条意图上。 */
@@ -532,7 +534,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             // 下堆了 4 代、`facts.json` 只指向其中一代 ⇒ 约 734M 是死的（每次重建依赖环境都会留一代）。
             // 这里是**用户手动**那一刀（自动那一刀在 CacheCleaner.autoCleanFirstTier）；判据全在
             // HermesEnv.prunableGenerations 里，删完当前依赖环境与记忆都不动。
-            var genMb by remember(storageTick) { mutableStateOf(0L) }
+            var genMb by remember(storageTick) { mutableLongStateOf(0L) }
             LaunchedEffect(storageTick) {
                 genMb = withContext(Dispatchers.IO) {
                     CacheCleaner.bytesToMb(HermesEnv.deadGenerationsMb(HermesEnv.hermesHome(ctx)))
