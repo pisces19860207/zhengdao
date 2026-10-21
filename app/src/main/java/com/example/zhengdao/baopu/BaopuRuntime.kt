@@ -7,29 +7,24 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
-import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.AskUserTool
+import com.example.zhengdao.baopu.agent.BaopuToolCatalog
+import com.example.zhengdao.baopu.agent.CompatChannelTools
 import com.example.zhengdao.baopu.agent.GroupUnlockStore
 import com.example.zhengdao.baopu.agent.GuardPipeline
+import com.example.zhengdao.baopu.agent.ListDirTool
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
-import com.example.zhengdao.baopu.agent.ToolOutcome
-import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolPrefs
 import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolRunner
-import com.example.zhengdao.baopu.agent.ToolSpec
-import com.example.zhengdao.baopu.agent.ListDirTool
-import com.example.zhengdao.baopu.agent.ReadFileTool
-import com.example.zhengdao.baopu.agent.jsonObjectOf
 import com.example.zhengdao.baopu.library.LibraryImport
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.KnowledgeBase
-import org.json.JSONObject
 import java.io.File
 
 /**
@@ -165,44 +160,10 @@ internal object BaopuRuntime {
             ),
         )
         if (provider.builtinFree) {
-            val readSchema = ReadFileTool.spec().inputSchema
-            reg.register(
-                if (reg.isEnabled("read_file")) {
-                    ToolSpec(
-                        name = "read",
-                        description = "免费网关兼容占位：等价于 read_file（路径相对工作区根）。",
-                        inputSchema = readSchema,
-                        permission = ToolPermission.FREE,
-                        // 第九十二批：它就是 read_file 的别名 ⇒ 同样只读、同样可并行
-                        readOnly = true,
-                        parallelSafe = true,
-                    ) { args -> ReadFileTool.spec().executor(args) }
-                } else {
-                    // read_file 被关 ⇒ 别名同样拒绝（否则设置页的开关就白设了）
-                    ToolSpec(
-                        name = "read",
-                        description = "免费网关兼容占位：read_file 已被用户关闭，本别名同样不可用。",
-                        inputSchema = readSchema,
-                        permission = ToolPermission.FREE,
-                    ) { _ ->
-                        ToolOutcome.Rejected(
-                            "read_file 已被用户关闭（在 抱朴 → 抽屉「抱朴设置」→ 抱朴工具 里打开）。" +
-                                "本 App 不提供别的读取通道，也不会替你打开它。",
-                        )
-                    }
-                },
-            )
-            reg.register(
-                ToolSpec(
-                    name = "bash",
-                    description = "免费网关兼容占位：本 App 不提供 shell 执行（安全边界，不跨 rootfs）。",
-                    inputSchema = jsonObjectOf("type" to "object", "properties" to JSONObject()),
-                    permission = ToolPermission.FREE,
-                ) { _ ->
-                    ToolOutcome.Rejected("bash 被拒：本 App 不提供 shell 执行（不跨 rootfs 是硬边界）；" +
-                        "文件相关的事用 list_dir / read_file。")
-                },
-            )
+            // 第一百一十九批：这两条的 schema 与执行器搬到了 CompatChannelTools
+            // （零依赖 object，JVM 门禁测试才够得着）；这里只剩下「按通道决定注册与否」。
+            reg.register(CompatChannelTools.readSpec(readFileEnabled = reg.isEnabled("read_file")))
+            reg.register(CompatChannelTools.bashSpec())
         }
         return reg
     }
