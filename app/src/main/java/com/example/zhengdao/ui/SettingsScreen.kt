@@ -205,6 +205,9 @@ fun SettingsScreen(
                 SettingRow(
                     label = stringResource(R.string.settings_bridge),
                     value = stringResource(R.string.settings_value_bridge),
+                    // 131 批 UI-D5：英文是整句（For agents inside the terminal），一行放不下
+                    // ⇒ 给两行；中文短句仍是一行（默认值 1，别处不受影响）。
+                    valueMaxLines = 2,
                 ) { open(SettingsBridgeActivity::class.java) }
             }
 
@@ -412,6 +415,10 @@ internal fun SettingRow(
     label: String,
     value: String,
     valueColor: Color = Color.Unspecified,
+    // 第一百三十一批 UI-D5：英文副标题被省略号吃掉（真机 `For agents inside the te…`）。
+    // 默认仍是 1 行（中文版面一个像素都不动），只给需要长句的那一行传 2。
+    // 不许只调 maxLines 不给高度：本行没有固定高（padding + 文字自撑），两行时自然长高。
+    valueMaxLines: Int = 1,
     onClick: () -> Unit,
 ) {
     val rowModifier = Modifier
@@ -462,8 +469,9 @@ internal fun SettingRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = valueText,
                 textAlign = TextAlign.End,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                // 131 批 UI-D5：1 行时保留省略号（中文既有观感），>1 行时整句换行显示。
+                maxLines = valueMaxLines,
+                overflow = if (valueMaxLines > 1) TextOverflow.Clip else TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(6.dp))
