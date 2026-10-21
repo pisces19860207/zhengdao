@@ -196,6 +196,10 @@ import kotlin.text.Charsets
  *   `showReadable`（Snackbar）且确认框先关；正文改在组合期用 `stringResource` 绑定
  *   （避开 Lint 的 LocalContextGetResourceValueCall）⇒ 四个创建点
  *   219→220 / 274→275 / 595→613 / 722→747。逐处核过仍是同一段 `Thread {`，本次回填。
+ * - 2026-10-21（第一百一十四批 · 死代码第四批）：**无新增线程**。`BaopuDb.kt` 删掉
+ *   4 个测试专用 SQL 拼装（setMsgCount/clearMemories/allMemories/touchMemoryUse，−23 行）
+ *   ⇒ zd-baopu-db 单写者创建点 1236→1213 平移，本次回填。逐处核过仍是同一段
+ *   `Thread(r, "zd-baopu-db").apply { isDaemon = true }`，有名 + daemon 都没变。
  */
 class BareThreadGuardTest {
 
@@ -240,7 +244,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:136",
-            "BaopuDb.kt:1236",
+            "BaopuDb.kt:1213",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",

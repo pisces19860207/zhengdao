@@ -472,12 +472,6 @@ internal object BaopuSql {
             arrayOf<String?>(updatedAt.toString(), preview, id.toString()),
         )
 
-    fun setMsgCount(id: Long, count: Int): Stmt =
-        Stmt(
-            "UPDATE session SET msg_count = ? WHERE id = ?",
-            arrayOf<String?>(count.toString(), id.toString()),
-        )
-
     // ── 会话回收站（第四十七批）────────────────────────────────────────────
 
     /** v10：session 加 `deleted_at`（可空；NULL＝未删）。列已在⇒空语句（幂等）。 */
@@ -745,9 +739,6 @@ internal object BaopuSql {
     fun deleteMemory(id: String): Stmt =
         Stmt("DELETE FROM memory WHERE id = ?", arrayOf<String?>(id))
 
-    /** 清空记忆索引（reindex 第一步：先清后建，索引永远跟着文件走）。 */
-    fun clearMemories(): Stmt = Stmt("DELETE FROM memory", emptyArray())
-
     /** run_log v2 新增的两个缓存口径列（追加三：可空，取不到留空不许填 0）。 */
     val RUN_LOG_CACHE_COLUMNS = listOf("cache_hit_tokens", "cache_miss_tokens")
 
@@ -777,19 +768,11 @@ internal object BaopuSql {
             .filterNot { col -> existingColumns.any { it.equals(col, ignoreCase = true) } }
             .map { col -> Stmt("ALTER TABLE run_log ADD COLUMN " + col + " INTEGER", emptyArray()) }
 
-    /** 读全部索引行（按创建时间序——与 [MemoryStore.loadAll] 同序，便于对拍）。 */
-    fun allMemories(): Stmt = Stmt(
-        "SELECT id, scope, kind, title, body, tags, source_session, source_file, status, " +
-            "created_at, updated_at, use_count, last_used_at, " +
-            "score, quality_flags, merged_from, scored_at FROM memory ORDER BY created_at",
-        emptyArray(),
-    )
-
     /**
      * 按质量序读索引行（第八十九批 §1「检索排序」在 DB 侧的那一份）。
      *
-     * 为什么新开一条而不是改 [allMemories]：`allMemories` 的对拍口径是
-     * 「与文件重建同序」（v2 就定死了，`BaopuDbTest` 钉着），改了就是把历史判据偷偷换掉。
+     * 为什么单开一条而不是复用旧读法：历史那套「与文件重建同序」的对拍口径
+     * （v2 就定死了，`BaopuDbTest` 钉着）改了就是把历史判据偷偷换掉。
      * 排序键与 [MemoryQuality.rankComparator] 逐字对应：**分数降 → 创建升 → id 升**。
      */
     fun allMemoriesRanked(): Stmt = Stmt(
@@ -798,12 +781,6 @@ internal object BaopuSql {
             "score, quality_flags, merged_from, scored_at FROM memory " +
             "ORDER BY score DESC, created_at ASC, id ASC",
         emptyArray(),
-    )
-
-    /** 用一次记忆（use_count + 1，last_used_at 刷新——「哪条还真被用上」的账）。 */
-    fun touchMemoryUse(id: String, now: Long): Stmt = Stmt(
-        "UPDATE memory SET use_count = use_count + 1, last_used_at = ? WHERE id = ?",
-        arrayOf<String?>(now.toString(), id),
     )
 
     // ── artifact 表（v9 · 第三十八批 §9.1：抽屉「产物区」要能回看与删除）─────────
