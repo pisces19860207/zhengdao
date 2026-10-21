@@ -58,6 +58,15 @@ internal const val ACTIVITY_ROW_TOUCH_DP = 48
 /** 目标短描述的字数上限（超了省略，一行一个意思）。 */
 internal const val ACTIVITY_TARGET_CHARS = 40
 
+/**
+ * 耗时取不到时的占位（第一百三十一批 UI-D7）。
+ *
+ * 为什么不是「0s」：`run_log` 里 `latency_ms` 缺省就是 0，而 `formatDuration(0)` 会吐出
+ * **「0s」——那是一个假读数**（看着像"这步瞬间完成"）。派工单 §C 判据 J9 点名禁止，
+ * 取不到就明说不知道：`—`。
+ */
+internal const val ACTIVITY_LATENCY_UNKNOWN = "—"
+
 // ── 纯数据 ────────────────────────────────────────────────────────────────
 
 /**
@@ -96,6 +105,28 @@ internal fun activityItemOf(row: BaopuStepRow, target: String): ActivityItem = w
     row.tool.startsWith("compression_") ->
         ActivityItem(ActivityKind.COMPRESSION, row.tool, target, "", row.latencyMs)
     else -> ActivityItem(ActivityKind.TOOL, row.tool, target, "", row.latencyMs)
+}
+
+/**
+ * 该步耗时的显示文本（**纯函数**，第一百三十一批 UI-D7）。
+ *
+ * 口径（派工单 §C）：
+ * - 数据只取 `run_log` 已有的 `latency_ms`（[BaopuStepRow.latencyMs]），**不新造计时源**；
+ * - `<= 0` ⇒ 取不到 ⇒ [ACTIVITY_LATENCY_UNKNOWN]（`—`），**不许写 0s 假装知道**；
+ * - `1ms..999ms` ⇒ 保留一位小数（`0.3s`）——亚秒步在 `formatDuration` 里会被截成 `0s`，
+ *   那正是 J9 要堵的假值，所以这一档在这里单独处理；
+ * - `>= 1s` ⇒ 复用既有 [formatDuration]（`3s` / `1m20s`），口径与轮摘要同一套。
+ *
+ * 负例：把 `latencyMs <= 0` 也走 formatDuration ⇒ 出现「0s」⇒ 门禁红；
+ * 把亚秒直接交给 formatDuration ⇒ 300ms 显示「0s」⇒ 门禁红。
+ */
+internal fun activityLatencyText(latencyMs: Long): String {
+    if (latencyMs <= 0L) return ACTIVITY_LATENCY_UNKNOWN
+    if (latencyMs < 1_000L) {
+        val tenths = (latencyMs + 50L) / 100L
+        return if (tenths >= 10L) "1.0s" else "0.${tenths.coerceAtLeast(1L)}s"
+    }
+    return formatDuration(latencyMs)
 }
 
 /**
@@ -306,13 +337,13 @@ private fun ActivityRow(item: ActivityItem) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                if (item.latencyMs > 0) {
-                    Text(
-                        text = formatDuration(item.latencyMs),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // 131 批 UI-D7：耗时位**恒在**（取不到显示 —）。原来 `latencyMs > 0` 才画，
+                // 于是 run_log 没记时长的行整块消失，真机上「每条都有耗时」读不到。
+                Text(
+                    text = activityLatencyText(item.latencyMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (item.kind == ActivityKind.FAILED) {
                 Text(
