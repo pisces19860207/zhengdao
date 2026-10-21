@@ -280,9 +280,13 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
+    // ── 第一百三十一批 · UI-D4：抽屉内容先存成 lambda，等顶栏画完再挂 ────────────
+    // 真机证据（qa-2026-10-21-all/02-关闭3-再点☰.png）：抽屉面板覆盖 x=0..1050 全高，
+    // 把顶栏的 ☰ 整个盖住 ⇒「再点 ☰ 关」这条路径物理上不存在，点下去落在抽屉标题区。
+    // 判据口径（派工单 §A）：**保留抽屉全高观感，但顶栏必须画在抽屉之上**，三条关闭路径都成立。
+    // 做法＝派工单给的「可选实现 2」：抽屉降级成顶栏下方那一块的兄弟，
+    // 遮罩与面板都从顶栏下缘开始，顶栏常驻可点（不是把 ☰ 复制进抽屉，那会出现两个 ☰）。
+    val drawerSheet: @Composable () -> Unit = {
             ModalDrawerSheet(modifier = Modifier.width(drawerWidth)) {
                 BaopuDrawer(
                     busy = controller.busy,
@@ -373,8 +377,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                 )
             }
-        },
-    ) {
+    }
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier.fillMaxSize()) {
         // 键盘遮挡（2026-10-18 真机：输入框没被键盘顶上去）：edge-to-edge 下
         // （MainActivity setDecorFitsSystemWindows(false)）窗口不 resize，必须自己消费 ime insets。
@@ -521,6 +524,15 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
+            // ── 131 批 UI-D4：抽屉从这里开始（顶栏连同它自己的 Surface／发丝线已经在上面）──
+            // 抽屉只吃顶栏下缘以下的区域 ⇒ 遮罩碰不到 ☰，「再点 ☰ 关」成立；
+            // 观感仍是整列抽屉（面板高＝屏高−顶栏高），没有在抽屉里再塞第二个 ☰。
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = drawerSheet,
+                modifier = Modifier.weight(1f),
+            ) {
+            Column(Modifier.fillMaxSize()) {
             // ── 第六十三批：首屏通知位（2026-10-20 定稿）────────────────────────
             // 原来这五条各占一行——防丢横幅、SessionBar（中断＋引擎人话）、pendingNote、
             // skillNote、libraryNote，最坏同屏 ≈200dp，比正文还高。现在收进**一个通知位**：
@@ -1193,8 +1205,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                 )
             }
+                }   // 131 批 UI-D4：新增的内容 Column（顶栏下缘以下）收尾
+            }       // 131 批 UI-D4：ModalNavigationDrawer 内容 lambda 收尾
         }
-    }
     }
 }
 
