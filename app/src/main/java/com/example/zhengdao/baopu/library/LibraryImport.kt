@@ -16,7 +16,10 @@ internal enum class MoveChoice {
     /** 复制：私有留一份，但**共享区留底 ⇒ 隔离作废**（库里 `isolated=0`，UI 必须明示）。 */
     COPY,
 
-    /** 只搬文档类（`.txt`/`.md`）：json/yaml/csv/源码等仍留投递（派工单的「只挑某些格式」）。 */
+    /**
+     * 只搬文档类（`.txt`/`.md`/`.docx`——第一百二十一批起 Word 也算文档）：
+     * json/yaml/csv/源码等仍留投递（派工单的「只挑某些格式」）。
+     */
     MOVE_DOCS_ONLY,
 
     /** 先不搬：什么都不动（连清单都不写）。 */
@@ -45,6 +48,10 @@ internal data class ImportScan(
     val textCount: Int get() = textFiles.size
     val unclaimedCount: Int get() = unclaimedFiles.size
     val textBytes: Long get() = textFiles.sumOf { it.size }
+    /** Word 文档（第一百二十一批起认领；正文由流水线抽，不当外部转换件）。 */
+    val docxFiles: List<LibraryPaths.ScannedFile> get() = files.filter { it.kind == LibraryPaths.FileKind.DOCX }
+    val docxCount: Int get() = docxFiles.size
+    val docxBytes: Long get() = docxFiles.sumOf { it.size }
 }
 
 /** 搬/复制成功的一件（[CopiedFile.privateRelPath] 可能因撞名加过 sha 后缀）。 */
@@ -107,7 +114,10 @@ internal class LibraryImport(
         /** 已搬走原件的待删除清单（用户点头才删；App 永不自动删）。 */
         const val FILE_PENDING_DELETE = "_待删除清单.json"
 
-        /** 「只搬文档」档认的扩展名（派工单「只挑某些格式」的最小可用形态）。 */
+        /**
+         * 「只搬文档」档认的文本扩展名（派工单「只挑某些格式」的最小可用形态）。
+         * `.docx` 不在这张表里——它按 [LibraryPaths.FileKind.DOCX] 放行（Word 也是文档）。
+         */
         val DOC_EXTS: Set<String> = setOf("txt", "md", "markdown")
     }
 
@@ -143,12 +153,23 @@ internal class LibraryImport(
             "投递里条目超过 ${LibraryPaths.MAX_SCAN} 个（光顶层就 ${scan.topLevelCount} 条），" +
                 "这次没有逐个细扫。请先把要收的件归到某个子目录（或清掉不要的），再触发收料。"
         } else {
-            "投递里有 ${scan.textCount} 个文本件（${humanSize(scan.textBytes)}），怎么处理？"
+            // 第一百二十一批起：docx 也是认领件——提问卡上单独报数，并明说"会自动抽正文"
+            // （用户投了 Word 文档，得知道它会被怎么处理，不许混在"文本件"里含糊过去）
+            buildString {
+                append("投递里有 ${scan.textCount} 个文本件（${humanSize(scan.textBytes)}）")
+                if (scan.docxCount > 0) {
+                    append(
+                        "、${scan.docxCount} 个 Word 文档（.docx，${humanSize(scan.docxBytes)}，" +
+                            "会自动抽正文）",
+                    )
+                }
+                append("，怎么处理？")
+            }
         },
         options = listOf(
             AskUserOption(id = MoveChoice.MOVE.name.lowercase(), label = "搬进 App 私有（推荐）", recommended = true),
             AskUserOption(id = MoveChoice.COPY.name.lowercase(), label = "复制一份，共享区留底（不作隔离）"),
-            AskUserOption(id = MoveChoice.MOVE_DOCS_ONLY.name.lowercase(), label = "只搬文档（.txt/.md），其它仍留投递"),
+            AskUserOption(id = MoveChoice.MOVE_DOCS_ONLY.name.lowercase(), label = "只搬文档（.txt/.md/.docx），其它仍留投递"),
             AskUserOption(id = MoveChoice.SKIP.name.lowercase(), label = "先不搬"),
         ),
         freeTextPrompt = AskUserCardRules.FREE_TEXT_PROMPT,
@@ -203,11 +224,14 @@ internal class LibraryImport(
         val leftBehind = mutableListOf<LibraryPaths.ScannedFile>()
 
         for (f in scan.files) {
-            val isText = f.kind == LibraryPaths.FileKind.TEXT
-            // 不认领的格式永远不进私有（只列 _待外部转换.json）；「只搬文档」再收窄到 .txt/.md
+            // 第一百二十一批：docx 也是认领件（正文由流水线抽）；不认领的格式永远不进私有
+            val claimed = f.kind == LibraryPaths.FileKind.TEXT || f.kind == LibraryPaths.FileKind.DOCX
+            // 「只搬文档」再收窄：文本件按 DOC_EXTS（.txt/.md），docx 按种类（Word 也是文档）
             val wanted = when {
-                !isText -> false
-                choice == MoveChoice.MOVE_DOCS_ONLY -> f.name.substringAfterLast('.', "").lowercase() in DOC_EXTS
+                !claimed -> false
+                choice == MoveChoice.MOVE_DOCS_ONLY ->
+                    f.kind == LibraryPaths.FileKind.DOCX ||
+                        f.name.substringAfterLast('.', "").lowercase() in DOC_EXTS
                 else -> true
             }
             if (!wanted) {
