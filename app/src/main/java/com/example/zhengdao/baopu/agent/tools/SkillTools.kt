@@ -66,7 +66,8 @@ internal object SkillTools {
                 "draft": {"type": "boolean", "description": "是否草稿（默认 true；草稿也会进索引但标未验证）"},
                 "action": {"type": "string", "enum": ["write", "use", "promote"], "description": "write=写/改（默认）；use=这条技能刚用过一次（次数+1，用满 3 次可转正）；promote=把用满的草稿转正"}
               },
-              "required": ["name", "body"]
+              "required": ["name", "body"],
+              "additionalProperties": false
             }
             """.trimIndent(),
         ),
