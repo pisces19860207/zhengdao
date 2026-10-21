@@ -1279,10 +1279,10 @@
     <string name="baopu_tools_group_read">读与找</string>
     <string name="baopu_tools_group_write">写与改</string>
     <string name="baopu_tools_group_image">图片</string>
-    <string name="baopu_tools_group_browser">网页</string>
+    <string name="baopu_tools_group_browser">网页操作</string>
     <string name="baopu_tools_group_library">资料库</string>
     <string name="baopu_tools_group_plan">计划与技能</string>
-    <string name="baopu_tools_group_card">卡片与格式</string>
+    <string name="baopu_tools_group_card">卡片格式</string>
     <!-- 第五十九批 §1.6：设置页的分组标题。成员表已收进那**唯一一张**分组表
          （baopu.agent.ToolGroupTable），这里只有「组 → 标题」字符串。
          read / write / image / plan 四个键自本批起不再被任何代码引用（第二张组表已删）；
@@ -1331,6 +1331,105 @@
     <string name="post_adopt_rollback">回滚</string>
     <string name="post_adopt_keep">先留着</string>
     <string name="post_adopt_later">稍后处理</string>
+    <!-- 第一百零四批：决策卡家族＋全局单卡槽＋决策中心（设计稿 v1.4） -->
+    <string name="decision_card_desc">决策卡：%1$s</string>
+    <string name="decision_button_desc">按钮：%1$s</string>
+    <string name="decision_badge_high">高</string>
+    <string name="decision_badge_medium">中</string>
+    <string name="decision_badge_low">低</string>
+    <string name="decision_badge_effect">效果回退</string>
+    <string name="decision_rec_adopt">建议采纳</string>
+    <string name="decision_rec_reject">建议拒绝</string>
+    <string name="decision_rec_defer">建议搁置</string>
+    <string name="decision_chip_self_check_passed">自检通过</string>
+    <string name="decision_chip_self_check_failed">自检没过</string>
+    <string name="decision_chip_self_check_not_run">自检没跑</string>
+    <string name="decision_chip_eval_passed">eval 过线</string>
+    <string name="decision_chip_eval_below">eval 没过线</string>
+    <string name="decision_chip_eval_not_run">eval 没跑</string>
+    <string name="decision_chip_effect_positive">效果正向</string>
+    <string name="decision_chip_effect_negative">效果变差</string>
+    <string name="decision_chip_effect_insufficient">样本不够</string>
+    <string name="decision_chip_rollback_available">可回滚</string>
+    <string name="decision_chip_rollback_unavailable">没有备份</string>
+    <!-- 建议卡（99）：三按钮＋置灰原因 -->
+    <string name="decision_suggest_reject">拒绝</string>
+    <string name="decision_suggest_defer">搁置</string>
+    <string name="decision_suggest_adopt">采纳</string>
+    <string name="decision_suggest_adopt_blocked_tool_rule">工具约束类建议还没有落盘通道（不做就是不做）——这条只作记录</string>
+    <string name="decision_suggest_subtitle">来自抱朴对自己使用记录的复盘；采纳米的权利在你</string>
+    <string name="decision_suggest_reason_label">判断依据</string>
+    <!-- 提案卡（96）：作用域 -->
+    <string name="decision_scope_workspace">作用域：本工作区（C）</string>
+    <string name="decision_scope_global">作用域：所有工作区（B）</string>
+    <string name="decision_persona_subtitle">人设条款只能追加，不能改已有的；写前自动备份，可回滚</string>
+    <!-- 授权卡（97）：高风险警示带＋副标题 -->
+    <string name="decision_authorize_subtitle">整组授权，不逐个工具问；你同意才开，随时能收</string>
+    <string name="decision_authorize_title">允许使用「%1$s」工具组？</string>
+    <string name="decision_authorize_session">本次会话</string>
+    <string name="decision_authorize_always">一直</string>
+    <string name="decision_authorize_cancel">取消</string>
+    <string name="decision_authorize_warning_skill">这一组能写技能文件、给人设追加条款，可能改变抱朴的行为方式；A 内核的越界与权限检查仍然有效</string>
+    <string name="decision_authorize_once_note">取消后，本会话不再就这一组打扰你</string>
+    <!-- 提案卡（96） -->
+    <string name="decision_persona_title">把这段记进人设？</string>
+    <string name="decision_persona_workspace">本工作区</string>
+    <string name="decision_persona_global">全局（仅 B）</string>
+    <string name="decision_persona_cancel">拒绝</string>
+    <!-- 建议卡（99）：标题（按候选类型）＋判断行 -->
+    <string name="decision_suggest_title_skill">改进技能「%1$s」？</string>
+    <string name="decision_suggest_title_persona">给人设追加一条？</string>
+    <string name="decision_suggest_title_tool">给「%1$s」加条使用约束？</string>
+    <string name="decision_suggest_judge">抱朴的判断：%1$s</string>
+    <string name="decision_suggest_warning_high">这条风险等级高：采纳会写进盘上的文件，可能改变抱朴的行为方式；确认前请把前后对比看清楚</string>
+    <!-- 八组的一句话用途（授权卡副标题用；与 ToolGroup.oneLine 对位，UI 层本地化） -->
+    <string name="baopu_group_line_core">读文件、列目录、搜内容、问用户、列计划，以及打开网页并读它</string>
+    <string name="baopu_group_line_edit">写文件、改文件、处理图片、写卡</string>
+    <string name="baopu_group_line_browser">在网页上点击、输入、滚动、截图</string>
+    <string name="baopu_group_line_files">文件详情、按名字找、移动改名、转编码、删除</string>
+    <string name="baopu_group_line_library">列清单、整理归位、书的大纲</string>
+    <string name="baopu_group_line_card">体检角色卡、导出酒馆 PNG</string>
+    <string name="baopu_group_line_skill">把学到的东西写成 SKILL.md、给自己的条款追加一份</string>
+    <string name="baopu_group_line_preview">在玄览只显示工作区里的网页/源码，不执行、出不了网</string>
+    <!-- 效果卡（100） -->
+    <string name="decision_effect_once_note">这条只提醒一次；先留着＝结案，稍后处理＝留在记录里观察</string>
+    <string name="decision_effect_to_settings">去设置页处理</string>
+    <!-- 二次确认（高风险采纳，验收 #8：无确认不可采纳） -->
+    <string name="decision_adopt_confirm_title">高风险采纳确认</string>
+    <string name="decision_adopt_confirm_body">这条建议风险等级高。确认后按下面的前后对比落盘（写前自动备份、可回滚）。不确认就什么都不写。</string>
+    <string name="decision_adopt_confirm_before">采纳前</string>
+    <string name="decision_adopt_confirm_after">采纳后（将写入）</string>
+    <string name="decision_adopt_confirm_ok">确认采纳</string>
+    <string name="decision_adopt_confirm_cancel">再想想</string>
+    <string name="decision_adopt_none">（还没有这一技能——这是首写）</string>
+    <!-- 决策中心（四页签） -->
+    <string name="decision_center_title">决策中心</string>
+    <string name="decision_tab_authorize">待授权</string>
+    <string name="decision_tab_suggestions">建议</string>
+    <string name="decision_tab_proposals">提案</string>
+    <string name="decision_tab_history">记录</string>
+    <string name="decision_empty_authorize">没有等待授权的工具组</string>
+    <string name="decision_empty_suggestions">暂时没有新的建议</string>
+    <string name="decision_empty_proposals">暂时没有人设提案</string>
+    <string name="decision_empty_history">还没有决策记录</string>
+    <string name="decision_type_suggestion">建议</string>
+    <string name="decision_type_effect">效果</string>
+    <string name="decision_queue_more">还有 %1$d 条在排队</string>
+    <string name="decision_once_footer">只弹一次</string>
+    <string name="decision_undo">撤销</string>
+    <string name="decision_undone">已撤销</string>
+    <string name="decision_shield_desc">决策中心</string>
+    <string name="decision_shield_badge_desc">有 %1$d 件待处理</string>
+    <string name="decision_center_hint">待处理集中在这里；记录页里能撤销本会话的授权。</string>
+    <string name="decision_history_grant_session">本会话已允许「%1$s」</string>
+    <string name="decision_history_grant_always">已长期允许「%1$s」</string>
+    <string name="decision_history_undone_row">已撤销「%1$s」的允许</string>
+    <string name="decision_history_applied">已应用建议：%1$s</string>
+    <string name="decision_history_rejected">已拒绝建议：%1$s</string>
+    <string name="decision_history_deferred">搁置中：%1$s</string>
+    <string name="decision_history_kept">先留着：%1$s</string>
+    <string name="decision_history_later">稍后处理：%1$s</string>
+    <string name="decision_history_rolled_back">已回滚：%1$s</string>
     <!-- 第四十批：继续说完 / 重试 / 编辑上一条 -->
     <string name="baopu_tail_continue">继续说完</string>
     <string name="baopu_tail_retry">重试</string>

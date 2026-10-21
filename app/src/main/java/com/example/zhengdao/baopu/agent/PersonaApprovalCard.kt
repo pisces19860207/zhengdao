@@ -51,6 +51,11 @@ internal object PersonaApprovalCard {
         return AskUserRequest(
             question = "把这段记进人设？「${previewOf(patch)}…」（${patch.reason}）",
             options = options,
+            // 第一百零四批：盖上「提案」种＋层（B/C）＋条款全文——壳层据此渲染
+            // 决策卡·提案变体（作用域文案与展开正文）；执行路径一个字没动。
+            kind = AskKind.PERSONA_PROPOSAL,
+            subject = if (patch.scope == PersonaPatchScope.B_GLOBAL) "B" else "C",
+            detailText = patch.sections.joinToString("\n") { it.text.trim() },
         )
     }
 }

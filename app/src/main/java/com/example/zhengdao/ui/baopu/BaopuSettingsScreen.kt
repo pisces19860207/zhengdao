@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -174,6 +175,10 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            // 第一百零四批：组行 64dp 整行可点（派工单④；真机 uiautomator
+                            // 量 bounds，宽高均 ≥64×64）。视觉上仍是两行文字的高度，
+                            // 只是把命中区给足——用户点空白处也能展开，不用瞄小开关。
+                            .heightIn(min = 64.dp)
                             // 组头整行可点＝展开/收起。右边的组开关自己吃点击事件、
                             // 不会顺带折叠（嵌套 clickable：子级消费掉，父级收不到）。
                             .clickable { expanded.value = !expanded.value },

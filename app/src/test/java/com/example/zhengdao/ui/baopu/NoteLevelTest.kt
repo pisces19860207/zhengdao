@@ -229,7 +229,9 @@ class NoteLevelTest {
         }
         // skillNote = out 这一条：级别由 writeLearnedSkill 的返回值自带（转手不重新定级）
         assertTrue(c.contains("private fun writeLearnedSkill(p: com.example.zhengdao.baopu.SkillRefine.LearnProposal): BaopuNote"))
-        assertEquals("采纳那条只能转手，不许在这儿重新定级", 1, Regex("skillNote = out\\b").findAll(c).count())
+        // 第一百零四批：建议卡采纳（applySuggestionAdopt）是**第二条**同口径的转手点
+        // （写盘结果是什么级就报什么级，卡上不二次定级）⇒ 两处。
+        assertEquals("采纳那条只能转手，不许在这儿重新定级", 2, Regex("skillNote = out\\b").findAll(c).count())
     }
 
     /**

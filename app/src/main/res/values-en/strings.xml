@@ -1278,10 +1278,10 @@
     <string name="baopu_tools_group_read">Read &amp; find</string>
     <string name="baopu_tools_group_write">Write &amp; change</string>
     <string name="baopu_tools_group_image">Images</string>
-    <string name="baopu_tools_group_browser">Web</string>
+    <string name="baopu_tools_group_browser">Web interaction</string>
     <string name="baopu_tools_group_library">Library</string>
     <string name="baopu_tools_group_plan">Plan &amp; skills</string>
-    <string name="baopu_tools_group_card">Cards &amp; formats</string>
+    <string name="baopu_tools_group_card">Card format</string>
     <!-- Batch 59 §1.6: settings-page group titles. Membership now comes from the ONE
          group table (baopu.agent.ToolGroupTable); this holds only group -> title strings.
          read / write / image / plan are unreferenced since this batch (the second group
@@ -1330,6 +1330,105 @@
     <string name="post_adopt_rollback">Roll back</string>
     <string name="post_adopt_keep">Keep it</string>
     <string name="post_adopt_later">Later</string>
+    <!-- Batch 104: decision card family + single slot + decision center (design v1.4) -->
+    <string name="decision_card_desc">Decision card: %1$s</string>
+    <string name="decision_button_desc">Button: %1$s</string>
+    <string name="decision_badge_high">High</string>
+    <string name="decision_badge_medium">Med</string>
+    <string name="decision_badge_low">Low</string>
+    <string name="decision_badge_effect">Effect</string>
+    <string name="decision_rec_adopt">Adopt suggested</string>
+    <string name="decision_rec_reject">Decline suggested</string>
+    <string name="decision_rec_defer">Park suggested</string>
+    <string name="decision_chip_self_check_passed">Self-check passed</string>
+    <string name="decision_chip_self_check_failed">Self-check failed</string>
+    <string name="decision_chip_self_check_not_run">Self-check not run</string>
+    <string name="decision_chip_eval_passed">Eval passed</string>
+    <string name="decision_chip_eval_below">Eval below floor</string>
+    <string name="decision_chip_eval_not_run">Eval not run</string>
+    <string name="decision_chip_effect_positive">Effect positive</string>
+    <string name="decision_chip_effect_negative">Effect negative</string>
+    <string name="decision_chip_effect_insufficient">Not enough samples</string>
+    <string name="decision_chip_rollback_available">Rollback available</string>
+    <string name="decision_chip_rollback_unavailable">No backup</string>
+    <!-- Suggestion card (99): three buttons + disabled reason -->
+    <string name="decision_suggest_reject">Decline</string>
+    <string name="decision_suggest_defer">Park</string>
+    <string name="decision_suggest_adopt">Adopt</string>
+    <string name="decision_suggest_adopt_blocked_tool_rule">Tool-rule suggestions have no write path yet (not doing it is the decision) — recorded only</string>
+    <string name="decision_suggest_subtitle">From Baopu reviewing its own usage records; adopting is your call</string>
+    <string name="decision_suggest_reason_label">Why</string>
+    <!-- Proposal card (96): scope -->
+    <string name="decision_scope_workspace">Scope: this workspace (C)</string>
+    <string name="decision_scope_global">Scope: all workspaces (B)</string>
+    <string name="decision_persona_subtitle">Persona clauses can only be appended; a backup is taken before writing and you can roll back</string>
+    <!-- Authorization card (97): high-risk band + subtitle -->
+    <string name="decision_authorize_subtitle">The whole group at once, not tool by tool; it opens only if you agree, and you can close it anytime</string>
+    <string name="decision_authorize_title">Allow the “%1$s” tool group?</string>
+    <string name="decision_authorize_session">This session</string>
+    <string name="decision_authorize_always">Always</string>
+    <string name="decision_authorize_cancel">Cancel</string>
+    <string name="decision_authorize_warning_skill">This group can write skill files and append persona clauses, which may change how Baopu behaves; the kernel\'s boundary and permission checks still apply</string>
+    <string name="decision_authorize_once_note">After cancel, this group will not ask again in this session</string>
+    <!-- Proposal card (96) -->
+    <string name="decision_persona_title">Record this in the persona?</string>
+    <string name="decision_persona_workspace">This workspace</string>
+    <string name="decision_persona_global">Global (B only)</string>
+    <string name="decision_persona_cancel">Decline</string>
+    <!-- Suggestion card (99): titles by candidate kind + verdict line -->
+    <string name="decision_suggest_title_skill">Improve the “%1$s” skill?</string>
+    <string name="decision_suggest_title_persona">Append a persona clause?</string>
+    <string name="decision_suggest_title_tool">Add a usage rule for “%1$s”?</string>
+    <string name="decision_suggest_judge">Baopu’s read: %1$s</string>
+    <string name="decision_suggest_warning_high">This suggestion is high risk: adopting writes to disk and may change how Baopu behaves; read the before/after carefully before confirming</string>
+    <!-- One-line purpose per group (authorization card subtitle; mirrors ToolGroup.oneLine, UI-localized) -->
+    <string name="baopu_group_line_core">Read files, list dirs, search text, ask you, list plans, and open a web page to read it</string>
+    <string name="baopu_group_line_edit">Write files, edit files, process images, write cards</string>
+    <string name="baopu_group_line_browser">Click, type, scroll and screenshot on web pages</string>
+    <string name="baopu_group_line_files">File info, find by name, move/rename, convert encoding, delete</string>
+    <string name="baopu_group_line_library">List items, organize into place, book outlines</string>
+    <string name="baopu_group_line_card">Inspect character cards, export Tavern PNG</string>
+    <string name="baopu_group_line_skill">Turn what was learned into SKILL.md, append a clause to your own terms</string>
+    <string name="baopu_group_line_preview">Only display web pages/source in the workspace via Xuanlan; no execution, no network</string>
+    <!-- Effect card (100) -->
+    <string name="decision_effect_once_note">This is a one-time reminder; Keep = close it, Later = keep it under observation in History</string>
+    <string name="decision_effect_to_settings">Handle in settings</string>
+    <!-- Second confirmation (high-risk adopt; acceptance #8: no confirm, no adopt) -->
+    <string name="decision_adopt_confirm_title">Confirm high-risk adoption</string>
+    <string name="decision_adopt_confirm_body">This suggestion is high risk. Confirming writes the before/after below to disk (backup taken first, rollback available). Not confirming writes nothing.</string>
+    <string name="decision_adopt_confirm_before">Before</string>
+    <string name="decision_adopt_confirm_after">After (to be written)</string>
+    <string name="decision_adopt_confirm_ok">Confirm adopt</string>
+    <string name="decision_adopt_confirm_cancel">Not now</string>
+    <string name="decision_adopt_none">(No such skill yet — this is the first write)</string>
+    <!-- Decision center (four tabs) -->
+    <string name="decision_center_title">Decision center</string>
+    <string name="decision_tab_authorize">To authorize</string>
+    <string name="decision_tab_suggestions">Suggestions</string>
+    <string name="decision_tab_proposals">Proposals</string>
+    <string name="decision_tab_history">History</string>
+    <string name="decision_empty_authorize">No groups waiting</string>
+    <string name="decision_empty_suggestions">No suggestions</string>
+    <string name="decision_empty_proposals">No proposals</string>
+    <string name="decision_empty_history">No decisions yet</string>
+    <string name="decision_type_suggestion">Suggestion</string>
+    <string name="decision_type_effect">Effect</string>
+    <string name="decision_queue_more">%1$d more waiting</string>
+    <string name="decision_once_footer">One-time prompt</string>
+    <string name="decision_undo">Undo</string>
+    <string name="decision_undone">Undone</string>
+    <string name="decision_shield_desc">Decision center</string>
+    <string name="decision_shield_badge_desc">%1$d items waiting</string>
+    <string name="decision_center_hint">Everything waiting lives here; session grants can be undone in History.</string>
+    <string name="decision_history_grant_session">Allowed “%1$s” for this session</string>
+    <string name="decision_history_grant_always">Allowed “%1$s” for good</string>
+    <string name="decision_history_undone_row">Undone the grant for “%1$s”</string>
+    <string name="decision_history_applied">Applied suggestion: %1$s</string>
+    <string name="decision_history_rejected">Declined suggestion: %1$s</string>
+    <string name="decision_history_deferred">Parked: %1$s</string>
+    <string name="decision_history_kept">Kept: %1$s</string>
+    <string name="decision_history_later">Later: %1$s</string>
+    <string name="decision_history_rolled_back">Rolled back: %1$s</string>
     <!-- 第四十批：继续说完 / 重试 / 编辑上一条 -->
     <string name="baopu_tail_continue">Continue</string>
     <string name="baopu_tail_retry">Retry</string>

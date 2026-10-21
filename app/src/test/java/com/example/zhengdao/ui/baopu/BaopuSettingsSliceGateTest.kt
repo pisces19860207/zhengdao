@@ -102,7 +102,10 @@ class BaopuSettingsSliceGateTest {
             "members.isEmpty() -> BaopuFoldSummary(BaopuFoldKind.EmptyGroup," to 1,
             "groupDisabled -> BaopuFoldSummary(BaopuFoldKind.AllOff" to 1,
             "all.filter { it != ToolGroup.COMPAT }" to 1,
-            "ToolGroup.COMPAT -> throw IllegalArgumentException" to 1,
+            // 第一百零四批：COMPAT 的 fail-fast 从「标题映射里写一份」收成一处共享
+            // （组用途映射也要抛同一个理由）⇒ 判据仍只有一份：声明一次、两张映射各调一次
+            "private fun compatNoSwitch(): Nothing" to 1,
+            "-> compatNoSwitch()" to 2,
             "SkillScope.GLOBAL -> PersonaLayer.B_GLOBAL" to 1,
             "SkillScope.PROJECT -> PersonaLayer.C_PROJECT" to 1,
         ).forEach { (needle, times) ->
