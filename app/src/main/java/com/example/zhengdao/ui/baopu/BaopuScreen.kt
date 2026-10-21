@@ -14,6 +14,11 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.DragInteraction
@@ -46,6 +51,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -118,6 +124,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // 第十八批 A 段：抽屉「抱朴设置」直达抱朴自己的设置页（页内全屏浮层，
     // 与章节抽取／备份／换通道同一模式）——不再去「终端与资料」大杂烩页。
     var showSettings by remember { mutableStateOf(false) }
+    // 第一百零四批：决策中心（顶栏盾牌进的四页签浮层）
+    var showDecisionCenter by remember { mutableStateOf(false) }
     // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
     // 引擎是异步就绪的，首次点击由 BaopuSpeaker 自己排队（见该类 KDoc 第 1 条）。
     val speaker = remember { BaopuSpeaker(context) }
@@ -140,6 +148,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
     BackHandler(enabled = showSettings) { showSettings = false }
+    // 第一百零四批：决策中心浮层的返回键（Dialog 自己也会收，这里与设置同口径）。
+    BackHandler(enabled = showDecisionCenter) { showDecisionCenter = false }
     // 会话库浮层同口径（第二十批）。
     BackHandler(enabled = showSessionLibrary) { showSessionLibrary = false }
 
@@ -449,6 +459,40 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     Spacer(Modifier.width(8.dp))
                     BaopuNoticeTicker(items = noticeItems, modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(4.dp))
+                    // ── 第一百零四批：顶栏第五件·盾牌（决策中心）──────────────────
+                    // v1.4 与真机对齐后定稿的五件＝☰·状态·跑马灯·🛡·＋；徽标＝前三页签
+                    // 待处理总数（记录页不计），0 不显示（顶栏全净）。设置入口仍留抽屉。
+                    val decisionBadge = controller.decisionBadge
+                    val shieldDesc = if (decisionBadge > 0) {
+                        stringResource(R.string.decision_shield_badge_desc, decisionBadge)
+                    } else {
+                        stringResource(R.string.decision_shield_desc)
+                    }
+                    IconButton(
+                        onClick = { showDecisionCenter = true },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics { contentDescription = shieldDesc },
+                    ) {
+                        // 字形盾（🛡）；徽标是右上角小丸，≥48dp 热区由 IconButton 给
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            Text(text = "🛡", style = MaterialTheme.typography.titleMedium)
+                            if (decisionBadge > 0) {
+                                Box(
+                                    Modifier
+                                        .size(14.dp)
+                                        .background(MaterialTheme.colorScheme.error, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = if (decisionBadge > 9) "9+" else decisionBadge.toString(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onError,
+                                    )
+                                }
+                            }
+                        }
+                    }
                     IconButton(
                         onClick = { controller.newSession() },
                         enabled = !controller.busy,
@@ -789,28 +833,67 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     }
                 }
             }
-            // ask_user 的选项卡：就在输入栏上方（用户 2026-10-19 点名位置）
-            controller.pendingChoice?.let { req ->
+            // ask_user 的选项卡：就在输入栏上方（用户 2026-10-19 点名位置）。
+            // 第一百零四批：只有**普通提问**（QUESTION）还走这张卡——组授权（97）与
+            // 人设提案（96）已归入上面的决策卡单卡槽（同一张 engine.choice，按 kind 分流）。
+            controller.pendingChoice?.takeIf { it.kind == com.example.zhengdao.baopu.agent.AskKind.QUESTION }?.let { req ->
                 BaopuChoiceCard(request = req, onPick = { option -> controller.answerChoice(option.id) })
                 Spacer(Modifier.height(8.dp))
             }
+            // ── 第一百零四批：全局单卡槽（决策卡家族）──────────────────────────
+            // 四类事共用一张卡；任何时刻只展示一张，其余排队（判据在 DecisionCardRules）。
+            // 处理完释放、队首补位 150ms；空槽整个区不渲染。
+            val decisionSpec = controller.decisionCardSpec()
+            // 不抢占的登记：把「正在展示的这一件」钉住（新卡再急也排队；处理完才换）。
+            // SideEffect 而不是直接写：合成期内写状态会触发额外重组，这里只要落定值。
+            SideEffect { controller.noteDecisionShown(controller.decisionSlot) }
+            AnimatedContent(
+                targetState = decisionSpec,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(150))
+                },
+                label = "decision-slot",
+            ) { spec ->
+                if (spec != null) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 4.dp),
+                    ) {
+                        DecisionCard(
+                            spec = spec,
+                            onAction = { id ->
+                                if (id == "tosettings") {
+                                    // RETIRE 效果卡的指路钮：开设置页（屏幕层拥有开关）
+                                    showSettings = true
+                                } else {
+                                    controller.onDecisionAction(id)
+                                }
+                            },
+                        )
+                        if (controller.decisionQueueCount > 0) {
+                            Text(
+                                text = stringResource(
+                                    R.string.decision_queue_more,
+                                    controller.decisionQueueCount,
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
+                }
+            }
             // 「这次学到」提案卡：同一区域（输入栏上方），收尾才出、点采纳才落盘
+            // （37 批学习卡，不属决策卡四变体，保持原样）
             controller.learnProposals?.let { list ->
                 BaopuLearnCard(
                     proposals = list,
                     existingNames = controller.learnExistingNames,
                     onAdopt = { id -> controller.adoptLearn(id) },
                     onDismiss = { controller.dismissLearn() },
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-            // 第一百批：采纳后效果的建议卡（同一槽位；只出建议，点回滚才动文件）
-            controller.postAdoptionNotice?.let { notice ->
-                BaopuPostAdoptionCard(
-                    notice = notice,
-                    onRollback = { controller.rollbackPostAdoption() },
-                    onKeep = { controller.keepPostAdoption() },
-                    onLater = { controller.laterPostAdoption() },
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -891,6 +974,65 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuSettingsScreen(
                     onDismiss = { showSettings = false },
                     onOpenSessionLibrary = { showSettings = false; showSessionLibrary = true },
+                )
+            }
+            // ── 第一百零四批：决策中心（顶栏盾牌；四页签）────────────────────
+            if (showDecisionCenter) {
+                DecisionCenterScreen(
+                    controller = controller,
+                    onDismiss = { showDecisionCenter = false },
+                    onOpenSettings = { showDecisionCenter = false; showSettings = true },
+                )
+            }
+            // 高风险采纳的二次确认层（验收 #8：无确认不可采纳；完整前后对比）
+            controller.pendingAdoptConfirm?.let { s ->
+                AlertDialog(
+                    onDismissRequest = { controller.dismissAdoptConfirm() },
+                    title = { Text(stringResource(R.string.decision_adopt_confirm_title)) },
+                    text = {
+                        Column {
+                            Text(
+                                text = stringResource(R.string.decision_adopt_confirm_body),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = stringResource(R.string.decision_adopt_confirm_before),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = controller.pendingAdoptBefore
+                                    ?: stringResource(R.string.decision_adopt_none),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.decision_adopt_confirm_after),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = s.payload,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { controller.confirmAdoptSuggestion() }) {
+                            Text(
+                                stringResource(R.string.decision_adopt_confirm_ok),
+                                color = zhengdaoErrorText(),
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { controller.dismissAdoptConfirm() }) {
+                            Text(stringResource(R.string.decision_adopt_confirm_cancel))
+                        }
+                    },
                 )
             }
             if (showSessionLibrary) {

@@ -137,7 +137,37 @@ internal fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
     ToolGroup.SKILL -> R.string.baopu_tools_group_skill
     ToolGroup.PREVIEW -> R.string.baopu_tools_group_preview
     // COMPAT 由通道决定、没有开关，卡片尾部以只读文字展示（第十八批 §2.1-4）⇒ 不进分组列表
-    ToolGroup.COMPAT -> throw IllegalArgumentException("COMPAT 组没有开关，不该走到分组标题")
+    ToolGroup.COMPAT -> compatNoSwitch()
+}
+
+// ── ③b 组用途一句话（第一百零四批：授权卡副标题；与 ToolGroup.oneLine 对位）──
+
+/**
+ * COMPAT（read / bash）没有开关：标题与用途两张映射都对它抛——**抛的理由只写一遍**。
+ *
+ * 81 批「每条判据只算一次」：同一个 fail-fast 不许在两个映射里各抄一份
+ * （抄两份就会有「改了标题忘了用途」的那天）。两个映射表共用这一处。
+ */
+private fun compatNoSwitch(): Nothing =
+    throw IllegalArgumentException("COMPAT 组没有开关，不该走到这里")
+
+/**
+ * 组用途一句话（第一百零四批）。
+ *
+ * 授权卡副标题要「一句话用途」（需求 §P0）。引擎侧 [com.example.zhengdao.baopu.agent.ToolGroup.oneLine]
+ * 是中文直写（引擎层不引 Android，不本地化）⇒ UI 层按同一口径给一份本地化映射，
+ * **只作展示**：组成员仍只有 `ToolGroupTable` 一张表，这里不列工具。
+ */
+internal fun baopuGroupLine(group: ToolGroup): Int = when (group) {
+    ToolGroup.CORE -> R.string.baopu_group_line_core
+    ToolGroup.EDIT -> R.string.baopu_group_line_edit
+    ToolGroup.BROWSER -> R.string.baopu_group_line_browser
+    ToolGroup.FILES -> R.string.baopu_group_line_files
+    ToolGroup.LIBRARY -> R.string.baopu_group_line_library
+    ToolGroup.CARD -> R.string.baopu_group_line_card
+    ToolGroup.SKILL -> R.string.baopu_group_line_skill
+    ToolGroup.PREVIEW -> R.string.baopu_group_line_preview
+    ToolGroup.COMPAT -> compatNoSwitch()
 }
 
 // ── ④ 组头第二行：四态说明（第九十七批把「默认开/不开」扩成「默认可见/已锁/已同意/已关闭」）──

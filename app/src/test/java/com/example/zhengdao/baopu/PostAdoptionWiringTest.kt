@@ -57,22 +57,25 @@ class PostAdoptionWiringTest {
 
     @Test
     fun `F4_回滚只能从卡上的按钮进来`() {
-        val rollback = bodyOf("fun rollbackPostAdoption()")
+        val rollback = bodyOf("fun rollbackPostAdoption(eventId: String)")
         assertTrue(rollback.contains("PostAdoptionRollback.applyOnUserApproval("))
         assertTrue(rollback.contains("approvedBy = "))
         // 三个按钮各有一个入口
-        assertTrue(bodyOf("fun keepPostAdoption()").contains("PostAdoptionAction.DISMISSED"))
-        assertTrue(bodyOf("fun laterPostAdoption()").contains("PostAdoptionAction.LATER"))
-        // 卡只在收尾里被填上（不许别处偷偷弹）
-        val setters = Regex("postAdoptionNotice = ").findAll(controller).count()
-        assertTrue("postAdoptionNotice 的写点太多，检查是否被别处偷偷填：$setters", setters <= 6)
+        assertTrue(bodyOf("fun keepPostAdoption(eventId: String)").contains("PostAdoptionAction.DISMISSED"))
+        assertTrue(bodyOf("fun laterPostAdoption(eventId: String)").contains("PostAdoptionAction.LATER"))
+        // 卡只在收尾里进队列（不许别处偷偷弹）——第一百零四批：单张改队列，
+        // 写点＝收尾入队＋三个动作出队＋回滚失败放回，共 5 处
+        val setters = Regex("postAdoptionQueue = ").findAll(controller).count()
+        assertTrue("postAdoptionQueue 的写点太多，检查是否被别处偷偷填：$setters", setters <= 6)
     }
 
     @Test
     fun `F5_状态只给UI读_不给UI写`() {
         assertTrue(
-            "postAdoptionNotice 必须是 private set（UI 只能读）",
-            controller.contains("var postAdoptionNotice by mutableStateOf<com.example.zhengdao.baopu.PostAdoptionNotice?>(null)\n        private set"),
+            "postAdoptionQueue 必须是 private set（UI 只能读）",
+            controller.contains(
+                "var postAdoptionQueue by mutableStateOf(listOf<com.example.zhengdao.baopu.PostAdoptionNotice>())\n        private set",
+            ),
         )
         assertFalse(
             "UI 层不许直接构造采纳事件（记账只走控制器）",
