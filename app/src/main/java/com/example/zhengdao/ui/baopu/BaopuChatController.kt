@@ -187,14 +187,6 @@ private data class PreAdoptionBaseline(
 )
 
 /**
- * 第一百批：一次「写技能」的结果——便签给用户看，[file] 只在**真落了盘**时非空。
- *
- * 为什么要分开：自检不过会把正文滚回去，那种情形下这个技能等于没采纳，
- * 不能记采纳事件（否则窗口从一次不存在的采纳开始算）。
- */
-private data class LearnedWrite(val note: BaopuNote, val file: java.io.File?)
-
-/**
  * 抱朴页的胶水（进程级单例挂在 [BaopuRuntime]；本类只持 UI 可观察状态）。
  *
  * 数据流：引擎落库（先落库再渲染）⇒ onEvent ⇒ [refresh] 重读 db ⇒ Compose 状态更新。
@@ -466,7 +458,7 @@ internal class BaopuChatController(context: Context) {
             val name = com.example.zhengdao.baopu.SkillRefine.nameOf(p)
             // 第一百批 §1：基线必须**写盘之前**取（写完之后再读就是「采纳后」了，口径会反）
             val baseline = withContext(Dispatchers.IO) { postAdoptionBaseline(name) }
-            val w = withContext(Dispatchers.IO) { writeLearnedSkill(p) }
+            val out = withContext(Dispatchers.IO) { writeLearnedSkill(p) }
             // 第五十七批 §1.3：采纳留痕（新草稿的 uses 头从 0 起算——试用期从采纳起算）
             recordSkillDecision(
                 name = name,
@@ -474,19 +466,22 @@ internal class BaopuChatController(context: Context) {
                 hash = com.example.zhengdao.baopu.SkillRefine.dedupeKeyOf(p),
                 detail = null,
             )
-            // 第一百批 §1：**真落了盘**才记采纳事件（被自检挡回/回滚掉的不算采纳）
-            w.file?.let { file ->
+            // 第一百批 §1：**真落了盘**才记采纳事件。判据用便签级别：writeLearnedSkill 只有
+            // 「成」才给 Info，被门禁挡住/自检不过（含已回滚）一律 Error——那种情形等于没采纳。
+            if (out.level != BaopuNoteLevel.Error) {
                 withContext(Dispatchers.IO) {
+                    val globalRoot = File(appCtx.filesDir, "抱朴记忆")
+                    val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
                     recordPostAdoption(
                         channel = com.example.zhengdao.baopu.PostAdoptionChannel.LEARN_CARD,
                         candidateId = p.id,
                         skillName = name,
-                        file = file,
+                        file = skillFileOf(name, projectRoot, globalRoot),
                         baseline = baseline,
                     )
                 }
             }
-            skillNote = w.note
+            skillNote = out
             engine.dismissLearn() // 采纳完就收卡，不重复写（收卡这里不记丢弃——上面记过采纳了）
         }
     }
@@ -507,13 +502,13 @@ internal class BaopuChatController(context: Context) {
     }
 
     /** 把卡上一条提案写成技能（草稿/转正式按卡上的建议）。 */
-    private fun writeLearnedSkill(p: com.example.zhengdao.baopu.SkillRefine.LearnProposal): LearnedWrite {
+    private fun writeLearnedSkill(p: com.example.zhengdao.baopu.SkillRefine.LearnProposal): BaopuNote {
         val root = com.example.zhengdao.baopu.BaopuWorkspace.hostDir(appCtx)
         val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
         val globalRoot = java.io.File(pf.globalFile().parentFile ?: root, "")
         // C 段硬闸：卡上标红只是提示，**真落盘前再查一次**（卡可能已经过期）
         val review = reviewBeforeWrite(p, root)
-        if (!review.ok) return LearnedWrite(BaopuNote("不能写：${review.summary}", BaopuNoteLevel.Error), null)
+        if (!review.ok) return BaopuNote("不能写：${review.summary}", BaopuNoteLevel.Error)
         val name = com.example.zhengdao.baopu.SkillRefine.nameOf(p)
         val proposal = com.example.zhengdao.baopu.SkillProposal(
             scope = com.example.zhengdao.baopu.SkillScope.PROJECT,
@@ -528,7 +523,7 @@ internal class BaopuChatController(context: Context) {
             globalRoot,
             com.example.zhengdao.util.TimeFormats.fileStamp(),
         )
-        plan.blocked?.let { return LearnedWrite(BaopuNote(it, BaopuNoteLevel.Error), null) }
+        plan.blocked?.let { return BaopuNote(it, BaopuNoteLevel.Error) }
         val layer = com.example.zhengdao.baopu.PersonaLayer.C_PROJECT
         // 第五十批：落盘**前**记快照（sha256 + 文件在不在）——回滚要核的就是这一刻
         val skillTarget = TargetSnapshot.of(plan.file, TargetKind.SKILL)
@@ -555,30 +550,23 @@ internal class BaopuChatController(context: Context) {
                     target = skillTarget,
                     name = name,
                     file = r.file,
-                ) ?: return LearnedWrite(written, r.file)
+                ) ?: return written
                 return when (guarded) {
-                    is SkillBodyOutcome.FailedRolledBack -> LearnedWrite(
-                        BaopuNote(
-                            "已写但自检不过（${guarded.reason}），已回滚（sha256 与落盘前一致）",
-                            BaopuNoteLevel.Error,
-                        ),
-                        // 自检把它滚回去了 ⇒ 这次不算采纳，不记采纳事件（第一百批 §1）
-                        null,
+                    is SkillBodyOutcome.FailedRolledBack -> BaopuNote(
+                        "已写但自检不过（${guarded.reason}），已回滚（sha256 与落盘前一致）",
+                        BaopuNoteLevel.Error,
                     )
 
-                    is SkillBodyOutcome.RollbackFailed -> LearnedWrite(
-                        BaopuNote(
-                            "已写但自检不过（${guarded.reason}），回滚也没成功：${guarded.paths.joinToString("、")}——请手动核对",
-                            BaopuNoteLevel.Error,
-                        ),
-                        null,
+                    is SkillBodyOutcome.RollbackFailed -> BaopuNote(
+                        "已写但自检不过（${guarded.reason}），回滚也没成功：${guarded.paths.joinToString("、")}——请手动核对",
+                        BaopuNoteLevel.Error,
                     )
 
-                    SkillBodyOutcome.Passed -> LearnedWrite(written, r.file)
+                    SkillBodyOutcome.Passed -> written
                 }
             }
             is com.example.zhengdao.baopu.SkillWriteResult.Rejected ->
-                LearnedWrite(BaopuNote(r.reason, BaopuNoteLevel.Error), null)
+                BaopuNote(r.reason, BaopuNoteLevel.Error)
         }
     }
 
@@ -1679,10 +1667,10 @@ internal class BaopuChatController(context: Context) {
                 )
             }
             // 回主线程再写状态（withContext 回来天然在 Main；失败就保留上一轮的判定）
-            settled.onSuccess { (suggestions, notice) ->
-                evolutionSuggestions = suggestions
+            settled.onSuccess {
+                evolutionSuggestions = it.first
                 // 已经有一张没处理的卡 ⇒ 不覆盖它（一次只打扰一张）
-                if (postAdoptionNotice == null) notice?.let { postAdoptionNotice = it }
+                if (postAdoptionNotice == null) it.second?.let { notice -> postAdoptionNotice = notice }
             }
         }
     }
@@ -2049,11 +2037,13 @@ internal class BaopuChatController(context: Context) {
         val notice = postAdoptionNotice ?: return
         postAdoptionNotice = null
         scope.launch {
-            val msg = withContext(Dispatchers.IO) {
+            val result = withContext(Dispatchers.IO) {
                 if (notice.channel == com.example.zhengdao.baopu.PostAdoptionChannel.SKILL_PROPOSAL) {
                     // 人设索引没有「技能正文」可滚：这条通道不出口滚卡（没有量尺 ⇒ 永远 DEFER），
                     // 万一到了这里也只是指路，不擅自动人设。
-                    BaopuNote("人设索引的回滚请到设置页用人设回滚，这里不代劳", BaopuNoteLevel.Error)
+                    com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected(
+                        "人设索引的回滚请到设置页用人设回滚，这里不代劳",
+                    )
                 } else {
                     val globalRoot = File(appCtx.filesDir, "抱朴记忆")
                     val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
@@ -2067,26 +2057,31 @@ internal class BaopuChatController(context: Context) {
                         personaFile = null,
                         stamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
                     )
-                    when (r) {
-                        is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Done -> {
-                            postAdoptionPort().recordUserAction(
-                                eventId = notice.eventId,
-                                action = com.example.zhengdao.baopu.PostAdoptionAction.APPLIED,
-                                verdict = notice.verdict,
-                                reason = notice.reason,
-                                delta = notice.delta,
-                            )
-                            BaopuNote("已回滚到备份：${r.backupName}", BaopuNoteLevel.Info)
-                        }
-
-                        is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected ->
-                            BaopuNote("没回滚：${r.reason}", BaopuNoteLevel.Error)
+                    if (r is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Done) {
+                        postAdoptionPort().recordUserAction(
+                            eventId = notice.eventId,
+                            action = com.example.zhengdao.baopu.PostAdoptionAction.APPLIED,
+                            verdict = notice.verdict,
+                            reason = notice.reason,
+                            delta = notice.delta,
+                        )
                     }
+                    r
                 }
             }
             // 失败（Rejected）⇒ 把卡放回去，别逼人再等一轮收尾
-            if (msg.level == BaopuNoteLevel.Error) postAdoptionNotice = notice
-            skillNote = msg
+            if (result is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected) {
+                postAdoptionNotice = notice
+            }
+            skillNote = when {
+                result is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Done ->
+                    BaopuNote("已回滚到备份：${result.backupName}", BaopuNoteLevel.Info)
+
+                else -> BaopuNote(
+                    "没回滚：${(result as com.example.zhengdao.baopu.PostAdoptionRollbackResult.Rejected).reason}",
+                    BaopuNoteLevel.Error,
+                )
+            }
         }
     }
 
