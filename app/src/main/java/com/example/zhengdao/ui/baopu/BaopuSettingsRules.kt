@@ -106,14 +106,16 @@ internal object BaopuToolFoldSummary {
  * 设置页取组的顺序（第八十一批 ②）。
  *
  * COMPAT（read / bash）由通道决定、压根没有开关 ⇒ 不进取组列表（第十八批 §2.1-4，
- * 卡片尾部那两行只读说明是它们的唯一展示位）；其余组保持 `values()` 的枚举声明序，
- * 页面按这个序画组头、`gi > 0` 才补间距——所以这个函数改动顺序就是界面上组的顺序。
+ * 卡片尾部那两行只读说明是它们的唯一展示位）；动态组（MCP）v1 没有「添加 server」
+ * 入口、成员为空 ⇒ 也不上页（画出来就是一个永远空着的组；第一百二十三批）。其余组
+ * 保持 `values()` 的枚举声明序，页面按这个序画组头、`gi > 0` 才补间距——所以这个
+ * 函数改动顺序就是界面上组的顺序。
  *
  * 输入是调用方给的整张枚举表（不自己 `values()`），为的是能在 JVM 上喂各种形态；
  * 这里**不列成员**：组里有哪些工具仍由页面从那张唯一的分组表读（`ToolGroupTable.namesOf`）。
  */
 internal fun baopuSwitchableGroups(all: Array<ToolGroup>): List<ToolGroup> =
-    all.filter { it != ToolGroup.COMPAT }
+    all.filter { it != ToolGroup.COMPAT && !it.dynamic }
 
 // ── ③ 组标题（第十八批 A 段搬入、第五十九批 §1.1 定形的 private fun，整段照搬）────
 
@@ -136,6 +138,8 @@ internal fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
     ToolGroup.CARD -> R.string.baopu_tools_group_card
     ToolGroup.SKILL -> R.string.baopu_tools_group_skill
     ToolGroup.PREVIEW -> R.string.baopu_tools_group_preview
+    // 第一百二十三批：外部 MCP 工具组（成员由连接成功后动态注册，默认不可见）
+    ToolGroup.MCP -> R.string.baopu_tools_group_mcp
     // COMPAT 由通道决定、没有开关，卡片尾部以只读文字展示（第十八批 §2.1-4）⇒ 不进分组列表
     ToolGroup.COMPAT -> compatNoSwitch()
 }
@@ -167,6 +171,7 @@ internal fun baopuGroupLine(group: ToolGroup): Int = when (group) {
     ToolGroup.CARD -> R.string.baopu_group_line_card
     ToolGroup.SKILL -> R.string.baopu_group_line_skill
     ToolGroup.PREVIEW -> R.string.baopu_group_line_preview
+    ToolGroup.MCP -> R.string.baopu_group_line_mcp
     ToolGroup.COMPAT -> compatNoSwitch()
 }
 

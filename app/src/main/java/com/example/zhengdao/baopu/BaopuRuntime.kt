@@ -23,6 +23,7 @@ import com.example.zhengdao.baopu.library.LibraryImport
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
+import com.example.zhengdao.baopu.mcp.McpToolSource
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.KnowledgeBase
 import java.io.File
@@ -41,6 +42,16 @@ internal object BaopuRuntime {
 
     @Volatile
     private var engineInstance: RunEngine? = null
+
+    /**
+     * 外部 MCP server 管理器（第一百二十三批；进程级一份）。
+     *
+     * 为什么放在这里且**不随引擎重建**：换通道会重建 RunEngine/注册表，但用户手动连上的
+     * server 不该因此断掉——[McpToolSource.attach] 只把已注册的工具搬进新表，不联网。
+     * 配置只在内存（v1 不落盘），进程重启后自然为空。
+     */
+    @Volatile
+    private var mcpSource: McpToolSource? = null
 
     /** 数据库（进程级一份；SQLiteOpenHelper 自带线程安全）。 */
     fun db(context: Context): BaopuDb =
@@ -165,7 +176,28 @@ internal object BaopuRuntime {
             reg.register(CompatChannelTools.readSpec(readFileEnabled = reg.isEnabled("read_file")))
             reg.register(CompatChannelTools.bashSpec())
         }
+        // 第一百二十三批：MCP 工具桥接（只搬已连接的 server；**这里绝不联网**）。
+        mcpSourceFor(reg)
         return reg
+    }
+
+    /**
+     * 外部 MCP 管理器（唯一入口；测试不经过它，直接构造 [McpToolSource]）。
+     *
+     * [registry] 在每次装配时都会调用它：同一个 source 会被 attach 到当前这张表——
+     * 换通道后旧连接继续可用，但工具只在新表里出现。
+     */
+    fun mcp(context: Context): McpToolSource {
+        val appCtx = context.applicationContext
+        return mcpSourceFor(registry(appCtx, provider(appCtx)))
+    }
+
+    private fun mcpSourceFor(reg: ToolRegistry): McpToolSource {
+        val source = mcpSource ?: synchronized(this) {
+            mcpSource ?: McpToolSource(reg, log = { RunLog.log(it) }).also { mcpSource = it }
+        }
+        source.attach(reg)
+        return source
     }
 
     /**
