@@ -372,10 +372,10 @@ internal fun TrashDialog(
     /** 每一种下场都要**说话**（不许静默）：句子全在 strings，这里只查键。 */
     fun sayCommon(o: TrashOutcome) {
         val msg = when (o) {
-            is TrashOutcome.Restored -> ctx.getString(R.string.trash_restored, o.target)
-            is TrashOutcome.Occupied -> ctx.getString(R.string.trash_occupied, o.target)
-            is TrashOutcome.Rejected -> ctx.getString(R.string.trash_rejected, o.target, o.why)
-            is TrashOutcome.IoFailed -> ctx.getString(R.string.trash_io_failed, o.target, o.why)
+            is TrashOutcome.Restored -> res.getString(R.string.trash_restored, o.target)
+            is TrashOutcome.Occupied -> res.getString(R.string.trash_occupied, o.target)
+            is TrashOutcome.Rejected -> res.getString(R.string.trash_rejected, o.target, o.why)
+            is TrashOutcome.IoFailed -> res.getString(R.string.trash_io_failed, o.target, o.why)
             else -> null
         } ?: return
         Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
@@ -384,8 +384,8 @@ internal fun TrashDialog(
     /** 单条动作（恢复／彻底删除）的下场。NeedsConfirm 与 Deleted 的措辞跟批量不是一回事。 */
     fun sayOne(o: TrashOutcome) {
         val msg = when (o) {
-            is TrashOutcome.NeedsConfirm -> ctx.getString(R.string.trash_confirm_one, o.target, humanBytes(o.bytes))
-            is TrashOutcome.Deleted -> ctx.getString(R.string.trash_deleted_one, o.target)
+            is TrashOutcome.NeedsConfirm -> res.getString(R.string.trash_confirm_one, o.target, humanBytes(o.bytes))
+            is TrashOutcome.Deleted -> res.getString(R.string.trash_deleted_one, o.target)
             else -> null
         }
         if (msg != null) Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show() else sayCommon(o)
@@ -394,11 +394,11 @@ internal fun TrashDialog(
     /** 清空整回收站的下场：文案必须带**数量与体积**（判据 T3 点名的那条）。 */
     fun sayBatch(o: TrashOutcome) {
         val msg = when (o) {
-            is TrashOutcome.NeedsConfirm -> ctx.getString(R.string.trash_confirm_empty, o.count, humanBytes(o.bytes))
+            is TrashOutcome.NeedsConfirm -> res.getString(R.string.trash_confirm_empty, o.count, humanBytes(o.bytes))
             is TrashOutcome.Deleted -> if (o.failed > 0) {
-                ctx.getString(R.string.trash_emptied_partial, o.count, humanBytes(o.bytes), o.failed)
+                res.getString(R.string.trash_emptied_partial, o.count, humanBytes(o.bytes), o.failed)
             } else {
-                ctx.getString(R.string.trash_emptied, o.count, humanBytes(o.bytes))
+                res.getString(R.string.trash_emptied, o.count, humanBytes(o.bytes))
             }
             else -> null
         }

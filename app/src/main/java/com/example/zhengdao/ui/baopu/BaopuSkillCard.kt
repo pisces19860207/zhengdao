@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -828,6 +829,7 @@ internal fun SkillDetailDialog(
     onEdit: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     var copied by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
@@ -906,7 +908,7 @@ internal fun SkillDetailDialog(
                             val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                 as android.content.ClipboardManager
                             cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-skill", text))
-                            copied = ctx.getString(R.string.skill_copied_chars, text.length)
+                            copied = res.getString(R.string.skill_copied_chars, text.length)
                         }) { Text(stringResource(R.string.skill_copy_all)) }
                     }
                     val backup = detail.backupName

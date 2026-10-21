@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,6 +61,7 @@ fun CopyBox(
     collapsible: Boolean = false,
 ) {
     val context = LocalContext.current
+    val res = LocalResources.current
     var hint by remember { mutableStateOf<String?>(null) }
     var expanded by remember(text) { mutableStateOf(false) }
 
@@ -96,9 +98,9 @@ fun CopyBox(
                 onClick = {
                     val ok = copyPlainText(context, label, text)
                     hint = if (ok) {
-                        context.getString(R.string.taiji_copied)
+                        res.getString(R.string.taiji_copied)
                     } else {
-                        context.getString(R.string.taiji_copy_failed)
+                        res.getString(R.string.taiji_copy_failed)
                     }
                 },
                 enabled = text.isNotEmpty(),

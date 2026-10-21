@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
@@ -126,6 +127,7 @@ class SettingsHelpActivity : ComponentActivity() {
 @Composable
 private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     val ctx = LocalContext.current
+    val res = LocalResources.current
     var logDialogText by remember { mutableStateOf<String?>(null) }
 
     /** 上一轮（有错误时）的日志原文；只喂「运行日志」卡片的提示与按钮。 */
@@ -164,7 +166,7 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                 val ok = withContext(Dispatchers.IO) { writeLogExport(ctx, uri) }
                 Toast.makeText(
                     ctx,
-                    ctx.getString(if (ok) R.string.help_log_export_ok else R.string.help_log_export_fail),
+                    res.getString(if (ok) R.string.help_log_export_ok else R.string.help_log_export_fail),
                     Toast.LENGTH_SHORT,
                 ).show()
             }
@@ -269,7 +271,7 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                                 pruneConfirm = false
                                 val n = com.example.zhengdao.rootfs.RunLog.pruneArchivesKeep(ctx, keep = 3)
                                 archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
-                                Toast.makeText(ctx, ctx.getString(R.string.help_log_pruned, n), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(ctx, res.getString(R.string.help_log_pruned, n), Toast.LENGTH_SHORT).show()
                             }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                         },
                         dismissButton = {

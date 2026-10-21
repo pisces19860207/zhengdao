@@ -2,6 +2,7 @@
 package com.example.zhengdao.ui
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.zhengdao.terminal.StorageAudit
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,7 +27,7 @@ internal object LastValues {
         runCatching { prefs(ctx).getString(key, null) }.getOrNull()
 
     private fun put(ctx: Context, key: String, value: String) {
-        runCatching { prefs(ctx).edit().putString(key, value).apply() }
+        runCatching { prefs(ctx).edit { putString(key, value) } }
     }
 
     // ── 环境体检表 ────────────────────────────────────────────────────────────

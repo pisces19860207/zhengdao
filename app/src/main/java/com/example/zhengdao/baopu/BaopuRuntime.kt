@@ -6,6 +6,7 @@
 package com.example.zhengdao.baopu
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
@@ -262,7 +263,7 @@ internal object BaopuRuntime {
             // getStringSet 返回的实例不许原地改（Android 文档）⇒ 拷贝再写回
             val cur = p.getStringSet(KEY_DISABLED, emptySet())?.toMutableSet() ?: mutableSetOf()
             if (disabled) cur.add(name) else cur.remove(name)
-            p.edit().putStringSet(KEY_DISABLED, cur).apply()
+            p.edit { putStringSet(KEY_DISABLED, cur) }
         }
 
         override fun disabledNames(): Set<String> =
@@ -277,7 +278,7 @@ internal object BaopuRuntime {
             val p = sp() ?: return
             val cur = p.getStringSet(KEY_DISABLED_GROUPS, emptySet())?.toMutableSet() ?: mutableSetOf()
             if (disabled) cur.add(group.key) else cur.remove(group.key)
-            p.edit().putStringSet(KEY_DISABLED_GROUPS, cur).apply()
+            p.edit { putStringSet(KEY_DISABLED_GROUPS, cur) }
         }
 
         override fun approvedGroups(): Set<ToolGroup> =
@@ -289,7 +290,7 @@ internal object BaopuRuntime {
             val p = sp() ?: return
             val cur = p.getStringSet(KEY_APPROVED_GROUPS, emptySet())?.toMutableSet() ?: mutableSetOf()
             if (approved) cur.add(group.key) else cur.remove(group.key)
-            p.edit().putStringSet(KEY_APPROVED_GROUPS, cur).apply()
+            p.edit { putStringSet(KEY_APPROVED_GROUPS, cur) }
         }
     }
 
@@ -338,7 +339,7 @@ internal object BaopuRuntime {
             // （RunEngine 单写者线程），并发写在这里等于"两个会话互写各自的 key"——不互相覆盖。
             val cur = p.getStringSet(key(sessionId), emptySet())?.toMutableSet() ?: mutableSetOf()
             cur += groups.map { it.key }
-            p.edit().putStringSet(key(sessionId), cur).apply()
+            p.edit { putStringSet(key(sessionId), cur) }
         }
 
         override fun clear(sessionId: Long) {

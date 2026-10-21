@@ -11,6 +11,7 @@
 package com.example.zhengdao.baopu
 
 import android.content.Context
+import androidx.core.content.edit
 import java.util.Locale
 
 /**
@@ -114,7 +115,7 @@ internal object ModelParams {
     /** 保存档位（设置页「思考深度」落点；脏值不进 SP——[normalizeEffort] 先过）。 */
     fun saveEffort(context: Context, effort: String) {
         val v = normalizeEffort(effort) ?: DEFAULT_EFFORT
-        prefs(context).edit().putString(KEY_EFFORT, v).apply()
+        prefs(context).edit { putString(KEY_EFFORT, v) }
         // 进程级缓存同刷：下一轮请求体就变（不用重建引擎——派工单 C 段第 9 条）
         liveEffort = v
     }

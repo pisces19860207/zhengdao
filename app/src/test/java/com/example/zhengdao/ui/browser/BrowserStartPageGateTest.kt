@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.ui.browser
 
+import androidx.core.net.toUri
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -151,7 +152,7 @@ class BrowserStartPageGateTest {
     fun `负例_起始页自写解析时判据D必拦`() {
         val 反例 = """
             fun StartPageFake(onSearch: (String) -> Unit) {
-                val url = Uri.parse(input).toString()
+                val url = input.toUri().toString()
                 engine.loadUrl(url)
             }
         """.trimIndent()

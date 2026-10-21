@@ -125,7 +125,7 @@ class SettingsEnvActivity : ComponentActivity() {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SettingsEnvPage(onBack: () -> Unit) {
-    val ctx = LocalContext.current
+    val ctx = LocalContext.current; val res = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
     // ENV-D1：Snackbar 正文在组合期按资源取（stringResource 跟随配置/语言变化），
     // 协程里只捕获结果 —— 不拿 LocalContext 读资源（Lint LocalContextGetResourceValueCall）。
@@ -195,7 +195,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
         }
         LaunchedEffect(storageTick) {
             hermesEnv = withContext(Dispatchers.IO) {
-                com.example.zhengdao.terminal.HermesEnv.inspect(ctx, ctx.resources)
+                com.example.zhengdao.terminal.HermesEnv.inspect(ctx, res)
             }
         }
         // 第十八批 B 段（§2.2-2/4）：检测通过且没有要清理的东西 ⇒ 整卡不出现
@@ -236,7 +236,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     } else {
                         Toast.makeText(
                             ctx,
-                            ctx.getString(R.string.env_hermes_script_failed),
+                            res.getString(R.string.env_hermes_script_failed),
                             Toast.LENGTH_SHORT,
                         ).show()
                     }
@@ -292,7 +292,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 val ver = EnvRules.displayVersion(
                                     idx.version,
                                     idx.distro,
-                                    ctx.getString(R.string.env_version_unknown),
+                                    res.getString(R.string.env_version_unknown),
                                 )
                                 // 有可下载目标 ⇒ 交给下面那个确认弹窗；没有 ⇒ 只 Toast 一句。
                                 // 判据只有一条：本地 env 指纹与索引不一致（[EnvRules.isUpToDate] 取反），
@@ -328,46 +328,46 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     // 缓存里若已躺着索引那个包（下过一次没装成、或上次重装留下的），
                                     // 就多一条"本地已有"的提示可选；只按大小定位，不据此改走本地安装
                                     // （2026-10-14 用户拍板：环境更新**不再用本地包**，一律重新下载）。
-                                    EnvRules.UpdateNotice.LocalEnvMissingCached -> ctx.getString(
+                                    EnvRules.UpdateNotice.LocalEnvMissingCached -> res.getString(
                                         R.string.env_local_env_missing_cached,
                                         plan.version,
-                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                        bytesMbText(plan.sizeBytes, res),
                                     )
-                                    EnvRules.UpdateNotice.LocalCached -> ctx.getString(
+                                    EnvRules.UpdateNotice.LocalCached -> res.getString(
                                         R.string.env_local_cached,
-                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                        bytesMbText(plan.sizeBytes, res),
                                     )
-                                    EnvRules.UpdateNotice.LocalEnvMissingFull -> ctx.getString(
+                                    EnvRules.UpdateNotice.LocalEnvMissingFull -> res.getString(
                                         R.string.env_local_env_missing_full,
                                         plan.version,
-                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                        bytesMbText(plan.sizeBytes, res),
                                     )
-                                    EnvRules.UpdateNotice.NewVersionNoLocalRecord -> ctx.getString(
+                                    EnvRules.UpdateNotice.NewVersionNoLocalRecord -> res.getString(
                                         R.string.env_new_version_no_local_record,
                                         plan.version,
-                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                        bytesMbText(plan.sizeBytes, res),
                                     )
-                                    EnvRules.UpdateNotice.UpToDate -> ctx.getString(
+                                    EnvRules.UpdateNotice.UpToDate -> res.getString(
                                         R.string.env_up_to_date,
                                         plan.version,
                                         localEnv ?: "",
                                     )
                                     // 有新版本：本地已有索引那个整包只影响给的提示文案，不改更新路径。
-                                    EnvRules.UpdateNotice.NewVersionCached -> ctx.getString(
+                                    EnvRules.UpdateNotice.NewVersionCached -> res.getString(
                                         R.string.env_new_version_cached,
                                         plan.version,
-                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                        bytesMbText(plan.sizeBytes, res),
                                     )
-                                    EnvRules.UpdateNotice.NewVersionPatch -> ctx.getString(
+                                    EnvRules.UpdateNotice.NewVersionPatch -> res.getString(
                                         R.string.env_new_version_patch,
                                         plan.version,
-                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                        bytesMbText(plan.sizeBytes, res),
                                     )
-                                    EnvRules.UpdateNotice.NewVersionFull -> ctx.getString(
+                                    EnvRules.UpdateNotice.NewVersionFull -> res.getString(
                                         R.string.env_new_version_full,
                                         plan.version,
                                         localEnv ?: "",
-                                        bytesMbText(plan.sizeBytes, ctx.resources),
+                                        bytesMbText(plan.sizeBytes, res),
                                     )
                                 }
                             } else {
@@ -379,13 +379,13 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     val installed = com.example.zhengdao.rootfs.RootfsCache.currentVersion(ctx)
                                     when {
                                         feed.version == null || feed.url == null ->
-                                            ctx.getString(R.string.env_feed_unreadable)
+                                            res.getString(R.string.env_feed_unreadable)
                                         // 刻意不再判定"已是最新"：旧 manifest 的 version 恒为发行版号
                                         // （13.7），拿它跟本地比得出的"最新"是假的（见 ERRATA E-033）。
                                         // 拿不到索引时只给"可下载"的事实，不替用户下结论。
                                         else -> {
                                             pendingUrl = feed.url; pendingSha = feed.sha256
-                                            ctx.getString(
+                                            res.getString(
                                                 R.string.env_only_old_manifest,
                                                 installed,
                                                 feed.version,
@@ -400,8 +400,8 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     c.setRequestProperty("Accept", "application/vnd.github+json")
                                     val body = c.inputStream.bufferedReader().readText()
                                     val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-                                    if (tag != null) ctx.getString(R.string.env_latest_release, tag)
-                                    else ctx.getString(R.string.env_repo_unparsable)
+                                    if (tag != null) res.getString(R.string.env_latest_release, tag)
+                                    else res.getString(R.string.env_repo_unparsable)
                                 }
                             }
                         } catch (t: Throwable) {
@@ -409,7 +409,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             com.example.zhengdao.rootfs.RunLog.log(
                                 "环境检查失败（原文）：${t.javaClass.simpleName}: ${t.message}"
                             )
-                            ctx.getString(R.string.env_check_failed, HumanizeError.title(t, ctx.resources))
+                            res.getString(R.string.env_check_failed, HumanizeError.title(t, res))
                         }
                         android.os.Handler(ctx.mainLooper).post {
                             updateMsg = result; checking = false
@@ -493,12 +493,12 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             TextButton(onClick = {
-                Toast.makeText(ctx, ctx.getString(R.string.env_manifest_refreshing), Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, res.getString(R.string.env_manifest_refreshing), Toast.LENGTH_SHORT).show()
                 AgentManifest.refresh(ctx, force = true) { applied ->
                     android.os.Handler(ctx.mainLooper).post {
                         Toast.makeText(
                             ctx,
-                            ctx.getString(
+                            res.getString(
                                 if (applied) R.string.env_manifest_updated
                                 else R.string.env_manifest_failed
                             ),
@@ -537,7 +537,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "0").apply()
                     Toast.makeText(
                         ctx,
-                        ctx.getString(R.string.env_memlimit_toast_off),
+                        res.getString(R.string.env_memlimit_toast_off),
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -546,7 +546,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "3072").apply()
                     Toast.makeText(
                         ctx,
-                        ctx.getString(R.string.env_memlimit_toast, "3GB"),
+                        res.getString(R.string.env_memlimit_toast, "3GB"),
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -555,7 +555,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "4096").apply()
                     Toast.makeText(
                         ctx,
-                        ctx.getString(R.string.env_memlimit_toast, "4GB"),
+                        res.getString(R.string.env_memlimit_toast, "4GB"),
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -615,14 +615,14 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             // 从头到尾只有两条 Toast，用户看到的就是"点了没反应"（E-036 §7）。
                             InstallFlow.start(
                                 ctx,
-                                ctx.getString(
+                                res.getString(
                                     R.string.env_repair_start,
                                     candidates.length() / (1024 * 1024),
                                 ),
                                 fromLocal = true,
                             )
                             try {
-                                InstallFlow.update(ctx, ctx.getString(R.string.env_preparing, candidates.name))
+                                InstallFlow.update(ctx, res.getString(R.string.env_preparing, candidates.name))
                                 val trace = com.example.zhengdao.rootfs.InstallTrace()
                                 val archive = File(ctx.cacheDir, candidates.name)
                                 val copyAt = System.nanoTime()
@@ -632,7 +632,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     (System.nanoTime() - copyAt) / 1_000_000L,
                                     "本地包拷贝 ${archive.length() / (1024 * 1024)}MB",
                                 )
-                                InstallFlow.update(ctx, ctx.getString(R.string.env_unpacking_long))
+                                InstallFlow.update(ctx, res.getString(R.string.env_unpacking_long))
                                 // 校验与解包同遍（Rust 对账）：派工单 §1-② 要求"若与下载同遍则记 0 并注明"
                                 trace.record(
                                     com.example.zhengdao.rootfs.InstallTrace.Stage.VERIFY,
@@ -673,22 +673,22 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 ) { }
                                 InstallFlow.finish(
                                     ctx,
-                                    ctx.getString(R.string.env_repair_done),
+                                    res.getString(R.string.env_repair_done),
                                 )
                                 android.os.Handler(ctx.mainLooper).post { storageTick++ }
                             } catch (t: Throwable) {
                                 InstallFlow.fail(
                                     ctx,
-                                    ctx.getString(R.string.env_repair_failed, HumanizeError.title(t, ctx.resources)),
+                                    res.getString(R.string.env_repair_failed, HumanizeError.title(t, res)),
                                 )
                                 // 2026-10-08：Toast → Snackbar（带"查看日志"action），同"回退失败"分支
                                 scope.launch {
                                     val r = snackbarHostState.showSnackbar(
-                                        message = ctx.getString(
+                                        message = res.getString(
                                             R.string.env_repair_failed,
-                                            HumanizeError.title(t, ctx.resources),
+                                            HumanizeError.title(t, res),
                                         ),
-                                        actionLabel = ctx.getString(R.string.common_view_log),
+                                        actionLabel = res.getString(R.string.common_view_log),
                                         duration = SnackbarDuration.Indefinite,
                                     )
                                     if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
@@ -754,7 +754,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             // 进度走 InstallFlow：通知栏常驻进度条 + 设置页状态行 + RunLog。
                             // 此前是每 20% 闪一条 Toast（"下载中 20%"），正是用户说的
                             // "提示时间有点短……我以为要重新下载呢"（E-036 §7）。
-                            InstallFlow.start(ctx, ctx.getString(R.string.env_update_start_download), fromLocal = false)
+                            InstallFlow.start(ctx, res.getString(R.string.env_update_start_download), fromLocal = false)
                             val archive = RootfsCache.archiveFor(ctx, url)
 
                             // ── ① 先试增量（协议 §6）：只有索引给了补丁、且本机基线正是补丁基线时才走 ──
@@ -764,7 +764,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 try {
                                     InstallFlow.update(
                                         ctx,
-                                        ctx.getString(R.string.env_patch_downloading, bytesMbText(patchRef.size, ctx.resources)),
+                                        res.getString(R.string.env_patch_downloading, bytesMbText(patchRef.size, res)),
                                     )
                                     RootfsDownloader.download(
                                         urls = RootfsDownloader.withMirrorFallback(patchRef.url),
@@ -776,7 +776,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         if (pct != null) {
                                             InstallFlow.update(
                                                 ctx,
-                                                ctx.getString(
+                                                res.getString(
                                                     R.string.env_patch_progress,
                                                     pct,
                                                     done / (1024 * 1024),
@@ -798,7 +798,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     )
                                     val info = RootfsDelta.readPatchInfo(deltaFile)
                                         ?: throw RootfsInstaller.InstallFailed(
-                                            ctx.getString(R.string.env_patch_meta_missing)
+                                            res.getString(R.string.env_patch_meta_missing)
                                         )
                                     // 索引给的补丁 sha256 双重把关：下载校验一次（协议 §4），
                                     // 再把同一期望值交给解压流水线（Rust 对"恰好被解压的字节"算一次）
@@ -809,16 +809,16 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     // 让用户明确知道"这次没有重下 300MB"——他上次的误会正来自这里
                                     InstallFlow.update(
                                         ctx,
-                                        ctx.getString(R.string.env_patch_done, bytesMbText(patchRef.size, ctx.resources)),
+                                        res.getString(R.string.env_patch_done, bytesMbText(patchRef.size, res)),
                                     )
                                 } catch (t: Throwable) {
                                     // 增量路径的任何失败（含基线不符 BaseMismatch）都回退全量：
                                     // applyTo 是原子的——此时 rootfs 要么没动，要么已完整换成新环境
                                     // R-29（第⑯刀）：fallbackNote 会进 InstallFlow.finish 的用户可见文案，
                                     // 原文只落 RunLog（下一行），UI 拿人话
-                                    val why = HumanizeError.title(t, ctx.resources)
+                                    val why = HumanizeError.title(t, res)
                                     com.example.zhengdao.rootfs.RunLog.log("小更新失败，改为完整下载：${t.message}")
-                                    fallbackNote = ctx.getString(R.string.env_patch_fallback, why)
+                                    fallbackNote = res.getString(R.string.env_patch_fallback, why)
                                 } finally {
                                     RootfsCache.cleanupDelta(ctx, deltaFile)
                                 }
@@ -839,7 +839,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     if (pct != null) {
                                         InstallFlow.update(
                                             ctx,
-                                            ctx.getString(
+                                            res.getString(
                                                 R.string.env_full_downloading,
                                                 pct,
                                                 done / (1024 * 1024),
@@ -881,7 +881,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                         "安装包校验值与更新信息对不上，这次不写环境记录"
                                     )
                                 }
-                                InstallFlow.update(ctx, ctx.getString(R.string.env_unpacking_here))
+                                InstallFlow.update(ctx, res.getString(R.string.env_unpacking_here))
                                 RootfsInstaller.ensureFreeSpace(ctx, archive.length())
                                 // archiveSha256 一并写进标记：它是下次「修复环境/回退」判断
                                 // "本地这个包是否就是装出当前 env 的那个包"的唯一依据（见
@@ -889,15 +889,15 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 RootfsInstaller.install(ctx, archive, envToWrite, actualSha, trace) { }
                                 RootfsCache.pruneKeep(ctx)
                             }
-                            InstallFlow.finish(ctx, fallbackNote + ctx.getString(R.string.env_update_done))
+                            InstallFlow.finish(ctx, fallbackNote + res.getString(R.string.env_update_done))
                             android.os.Handler(ctx.mainLooper).post { storageTick++ }
                         } catch (t: Throwable) {
                             // R-29（第⑯刀）：why 进 InstallFlow.fail + 可读 Snackbar（用户可见），原文只落 RunLog
                             com.example.zhengdao.rootfs.RunLog.log(
                                 "环境更新失败（原文）：${t.javaClass.simpleName}: ${t.message}"
                             )
-                            val why = HumanizeError.title(t, ctx.resources)
-                            InstallFlow.fail(ctx, ctx.getString(R.string.env_update_failed, why))
+                            val why = HumanizeError.title(t, res)
+                            InstallFlow.fail(ctx, res.getString(R.string.env_update_failed, why))
                             // ENV-D1：失败原因可长可短，Toast 两行装不下 ⇒ 与「修复失败」同口径：
                             // Snackbar 全程可读，点「查看日志」现场取日志。
                             scope.launch {

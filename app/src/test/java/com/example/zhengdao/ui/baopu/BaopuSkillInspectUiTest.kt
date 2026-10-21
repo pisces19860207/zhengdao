@@ -540,7 +540,7 @@ class BaopuSkillInspectUiTest {
         assertTrue("没备份要拒绝：$r", r is SkillWriteResult.Rejected)
         assertTrue("理由不是空串", (r as SkillWriteResult.Rejected).reason.isNotBlank())
         val src = settings()
-        assertTrue("界面上这条拒绝也要把理由念出来", src.contains("ctx.getString(R.string.skill_restore_done)"))
+        assertTrue("界面上这条拒绝也要把理由念出来", src.contains("res.getString(R.string.skill_restore_done)"))
         assertTrue("至少三处把 Rejected 的 reason 直接给用户", src.split("-> r.reason").size - 1 >= 3)
     }
 

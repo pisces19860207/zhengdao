@@ -1,8 +1,8 @@
 {
-  "total": 483,
-  "errors": 169,
-  "warnings": 310,
+  "total": 236,
+  "errors": 0,
+  "warnings": 232,
   "infos": 4,
   "unbudgeted": 12,
-  "_comment": "Android Lint 告警预算基线（P0-2）。只许通过显式提交改动；下调是好消息，上调必须在 PR/台账里写清原因。 2026-10-21 第 129 批清债下调：701→483（errors 178→169、warnings 485→310、infos 38→4）。本批真删 UnusedResources 204→5、AutoboxingStateCreation 39→4、Error 级 6 条清零（WrongConstant 3/ContextCastToActivity 1/ExtraText 1/PermissionImpliesUnsupportedChromeOsHardware 1）。未做：LocalContextGetResourceValueCall 169 条（架构性改法，另批）；UseKtx 83／PluralsCandidate 68／HardcodedText 40／ObsoleteSdkInt 32 留待后续批次。"
+  "_comment": "Android Lint 告警预算基线（P0-2）。只许通过显式提交改动；下调是好消息，上调必须在 PR/台账里写清原因。 2026-10-21 第 133 批清债下调：483→236（errors 169→0）。A 段 LocalContextGetResourceValueCall 169 + LocalContextResourcesRead 29 全部改走 LocalResources.current，Error 级归零、:app:lintDebug exit 0；B 段 UseKtx 83→34（toUri 17、SharedPreferences.edit 30、另有 10 处因裸 Thread 对账单行号冻结未动、24 处为多行链/位图/事务类未做）。未做：PluralsCandidate 68／HardcodedText 40／ObsoleteSdkInt 32 等留第三批。"
 }
