@@ -23,6 +23,14 @@ import com.example.zhengdao.baopu.EvolutionAuditLog
 import com.example.zhengdao.baopu.EvolutionDecision
 import com.example.zhengdao.baopu.EvolutionDecisionPort
 import com.example.zhengdao.baopu.EvolutionEvidence
+import com.example.zhengdao.baopu.EvolutionShadowHuman
+import com.example.zhengdao.baopu.EvolutionShadowLog
+import com.example.zhengdao.baopu.ShadowJudgement
+import com.example.zhengdao.baopu.agreementShadow
+import com.example.zhengdao.baopu.latestByCandidate
+import com.example.zhengdao.baopu.shadowSummaryLine
+import com.example.zhengdao.baopu.shadowVerdictOf
+import com.example.zhengdao.baopu.tallyShadow
 import com.example.zhengdao.baopu.emptyRoundUsage
 import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.SessionCompressionStore
@@ -1940,6 +1948,12 @@ internal class BaopuChatController(context: Context) {
         val port = EvolutionDecisionPort(audit = audit)
         // eval 证据：只认最近一次发版结果文件；拿不到就 null（policy 判 DEFER 并写进原因链）
         val evalResult = EvalResultFile.latest(appCtx)
+        // 第一百零九批：L3-lite **影子**。同一轮判定顺带问一句「若把低风险自动批准那条闸
+        // 开起来，这条会批／会拒／会搁置」，只往 进化影子.jsonl 追加账。红线三条：
+        //   不改候选状态、不自批、不碰开关（L3_AUTO_LOW_RISK 仍是 false，本类也不实例化策略）。
+        val shadowLog = EvolutionShadowLog.under(globalRoot)
+        val shadowAt = System.currentTimeMillis()
+        val shadowRows = ArrayList<ShadowJudgement>(pending.size)
 
         val out = ArrayList<EvolutionSuggestion>(pending.size)
         for (c in pending) {
@@ -1957,10 +1971,16 @@ internal class BaopuChatController(context: Context) {
                     ),
                     eval = evalResult,
                 )
-                val decision: EvolutionDecision = port.decide(
-                    com.example.zhengdao.baopu.inputFor(c, evidence),
-                    operatorId = "settle",
-                )
+                val input = com.example.zhengdao.baopu.inputFor(c, evidence)
+                val decision: EvolutionDecision = port.decide(input, operatorId = "settle")
+                // 影子单独兜：账记不上**不许**把真判定一起带走——人是决定，影子只是数。
+                runCatching {
+                    shadowRows += shadowVerdictOf(input, decision, shadowAt)
+                }.onFailure {
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "[baopu-shadow] 影子判定跳过（${it.javaClass.simpleName}）：${it.message}",
+                    )
+                }
                 EvolutionSuggestion(
                     candidateId = c.id,
                     kind = c.kind,
@@ -1980,6 +2000,28 @@ internal class BaopuChatController(context: Context) {
                 null
             }
             if (suggestion != null) out += suggestion
+        }
+        if (shadowRows.isNotEmpty()) {
+            // 落账 → 汇总，两步各自兜底：影子是攒给「以后开不开闸」看的数，
+            // 记不上/读不动只 log，绝不回头堵住 99 那条判定链（65/89「只记录不阻塞」口径）。
+            runCatching { shadowRows.forEach { shadowLog.record(it) } }.onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "[baopu-shadow] 影子账本写入失败（本轮不记账）${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+            runCatching {
+                // 汇总读**整份账本**并按候选取最后一行：同一候选每轮都被重判，
+                // 不去重就会把一致率灌满重复票。人工留痕读不到 ⇒ 本轮没有配对样本（不猜）。
+                val dedup = latestByCandidate(shadowLog.load().orEmpty())
+                val human = EvolutionShadowHuman.fromDb(db)
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "[baopu-shadow] " + shadowSummaryLine(tallyShadow(dedup), agreementShadow(dedup, human)),
+                )
+            }.onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "[baopu-shadow] 汇总跳过（${it.javaClass.simpleName}）：${it.message}",
+                )
+            }
         }
         return out
     }
