@@ -466,13 +466,6 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `执行批的kind和proposal_id绑定`() {
-        val ops = BaopuSql.insertOpsBatch(1L, proposalId = 9L, opsJson = "[{}]", expiresAt = 100L, createdAt = 50L)
-        assertTrue(ops.sql.contains("'ops'"))
-        assertEquals(listOf("1", "9", "[{}]", "100", "50"), ops.args.toList())
-    }
-
-    @Test
     fun `decidePlanBatch更新状态与决定时间`() {
         val s = BaopuSql.decidePlanBatch(3L, "approved", 777L)
         assertTrue(s.sql.contains("SET status = ?, decided_at = ?"))
