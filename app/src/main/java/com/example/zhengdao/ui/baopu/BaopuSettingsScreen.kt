@@ -152,11 +152,16 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     val expanded = rememberSaveable(group.key) { mutableStateOf(false) }
                     // 第九十七批：组状态四态（默认可见/已锁/已长期同意/已关闭）。
                     // 上一版「已锁」在界面上显示成「开」，用户看到的就是「工具全都打开的」。
-                    val state = baopuGroupState(
-                        defaultVisible = group in ToolGroup.DEFAULT_VISIBLE,
-                        approved = group in prefs.approvedGroups(),
-                        disabled = group in prefs.disabledGroups(),
-                    )
+                    // 2026-10-21 真机缺陷：开关写盘成功，但同屏一直显示「已锁」、退出重进才对
+                    // ——组头没订阅 toolTick（它只在展开后的成员行里被读）。这里用
+                    // remember(toolTick) 把组头挂到同一个刷新源上。
+                    val state = remember(toolTick) {
+                        baopuGroupState(
+                            defaultVisible = group in ToolGroup.DEFAULT_VISIBLE,
+                            approved = group in prefs.approvedGroups(),
+                            disabled = group in prefs.disabledGroups(),
+                        )
+                    }
                     val groupOn = baopuGroupSwitchOn(state)
                     // 成员名单只从那张唯一的分组表读（§1「不新造第二张表」）；
                     // 摘要与展开后的开关共用这一个 members，两行说的一定是同一批工具。
@@ -203,7 +208,10 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 prefs.setGroupApproved(group, want && group !in ToolGroup.DEFAULT_VISIBLE)
                                 prefs.setGroupDisabled(group, !want)
                                 if (!want) BaopuRuntime.toolUnlocks(ctx).relockAll(listOf(group))
-                                RunLog.log(ToolGroupAudit.manual(group, want))
+                                // 审计自带落盘（ToolGroupAudit.manual 的 `.also { emit }` 走
+                                // sink=RunLog）；这里再 RunLog.log 一次就是双写
+                                // （2026-10-21 真机：一次点击两条一模一样的 [group] 行）。
+                                ToolGroupAudit.manual(group, want)
                                 toolTick++
                             },
                             colors = iosSwitchColors(),
