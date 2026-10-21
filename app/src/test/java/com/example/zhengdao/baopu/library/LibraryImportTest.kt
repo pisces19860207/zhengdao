@@ -49,6 +49,31 @@ class LibraryImportTest {
         return f
     }
 
+    /** 投一个二进制件（docx 用——deliverFile 只写文本）。 */
+    private fun deliverBytes(name: String, bytes: ByteArray): File {
+        val f = File(deliver, name)
+        f.parentFile?.mkdirs()
+        f.writeBytes(bytes)
+        return f
+    }
+
+    /** 造一个最小 `.docx`（zip 里只有 word/document.xml）——与 DocxTextExtractorTest 同房型。 */
+    private fun fakeDocx(docXml: String): ByteArray {
+        val bos = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(bos).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("word/document.xml"))
+            z.write(docXml.toByteArray(Charsets.UTF_8))
+            z.closeEntry()
+        }
+        return bos.toByteArray()
+    }
+
+    private fun docxXml(body: String) =
+        """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+           <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+             <w:body>$body</w:body>
+           </w:document>"""
+
     // ── 扫描与提问卡 ──────────────────────────────────────────────────────
 
     @Test
@@ -165,6 +190,53 @@ class LibraryImportTest {
         assertEquals(listOf("b.json"), out.leftBehind.map { it.relPath })
         assertTrue(File(raw, "a.txt").isFile)
         assertFalse(File(raw, "b.json").exists())
+    }
+
+    // ── docx（第一百二十一批：认领件，进私有后由流水线抽正文） ──────────────
+
+    @Test
+    fun `docx_认领进私有_进待删除清单_真隔离`() {
+        setup()
+        deliverBytes("书.docx", fakeDocx(docxXml("<w:p><w:r><w:t>正文</w:t></w:r></w:p>")))
+        val out = imp.execute(MoveChoice.MOVE, now = 1000L)
+
+        assertEquals(listOf("书.docx"), out.copied.map { it.relPath })
+        assertTrue("docx 原件必须进私有", File(raw, "书.docx").isFile)
+        assertEquals(listOf("书.docx"), out.pendingDelete)
+        assertTrue(out.copied.single().isolated)
+        // 投递原件不自动删（硬纪律照旧）
+        assertTrue(File(deliver, "书.docx").isFile)
+    }
+
+    @Test
+    fun `只搬文档_docx算文档一起搬`() {
+        setup()
+        deliverBytes("书.docx", fakeDocx(docxXml("<w:p><w:r><w:t>正文</w:t></w:r></w:p>")))
+        deliverFile("b.json")
+        val out = imp.execute(MoveChoice.MOVE_DOCS_ONLY, now = 1000L)
+
+        assertEquals(listOf("书.docx"), out.copied.map { it.relPath })
+        assertEquals(listOf("b.json"), out.leftBehind.map { it.relPath })
+        assertTrue(File(raw, "书.docx").isFile)
+        assertFalse(File(raw, "b.json").exists())
+    }
+
+    @Test
+    fun `扫描_docx单独计数_提问卡明说要抽正文`() {
+        setup()
+        deliverFile("a.txt")
+        deliverBytes("书.docx", fakeDocx(docxXml("<w:p><w:r><w:t>正文</w:t></w:r></w:p>")))
+
+        val scan = imp.scan()
+        assertEquals(1, scan.textCount)
+        assertEquals(1, scan.docxCount)
+        assertTrue(scan.docxBytes > 0)
+
+        val card = imp.card(scan)
+        assertTrue("卡上要明说 docx 会抽正文：${card.question}", card.question.contains("Word"))
+        assertTrue(card.question.contains("抽正文"))
+        assertTrue("只搬文档档要带上 .docx", card.options.any { it.label.contains(".docx") })
+        assertTrue(AskUserCardRules.isValid(card))
     }
 
     @Test

@@ -101,8 +101,11 @@ internal object LibraryPaths {
 
     // ── 扫描（只扫投递/） ─────────────────────────────────────────────────────
 
-    /** 文件分类：认领的文本件 vs 不认领（只列清单，不解析）。 */
-    enum class FileKind { TEXT, UNCLAIMED }
+    /**
+     * 文件分类：认领的文本件 / 认领的 Word 件（第一百二十一批起，抽正文后进流水线） /
+     * 不认领（只列清单，不解析）。
+     */
+    enum class FileKind { TEXT, DOCX, UNCLAIMED }
 
     /**
      * 扫描到的一个文件。
@@ -222,7 +225,7 @@ internal object LibraryPaths {
     }
 
     /**
-     * 按扩展名分类（**只认已知文本格式**；未知一律不认领——不猜编码、不引解析库）。
+     * 按扩展名分类（**只认已知文本格式与 `.docx`**；其余一律不认领——不猜编码、不引解析库）。
      * 纯函数，单测直接打。
      */
     fun classify(name: String): Pair<FileKind, String> {
@@ -232,6 +235,9 @@ internal object LibraryPaths {
             return FileKind.UNCLAIMED to "没有扩展名，无法判断是不是文本"
         }
         if (ext in TEXT_EXTS) return FileKind.TEXT to ""
+        // 第一百二十一批：`.docx` 认领——正文由 `DocxTextExtractor` 零依赖抽取
+        // （zip + word/document.xml），接现有导入流水线；旧版 `.doc` 不是 zip，仍不认领
+        if (ext == "docx") return FileKind.DOCX to ""
         if (ext in OFFICE_EXTS) return FileKind.UNCLAIMED to "Office/PDF 文档（.$ext），需外部转换"
         if (ext in IMAGE_EXTS) return FileKind.UNCLAIMED to "图片（.$ext），需外部转换"
         if (ext in ARCHIVE_EXTS) return FileKind.UNCLAIMED to "压缩包（.$ext），需外部转换"
@@ -248,7 +254,8 @@ internal object LibraryPaths {
     )
 
     private val OFFICE_EXTS: Set<String> = setOf(
-        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf",
+        // docx 不在这张表里——第一百二十一批起它是认领件（FileKind.DOCX），见 classify
+        "pdf", "doc", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf",
     )
 
     private val IMAGE_EXTS: Set<String> = setOf(
