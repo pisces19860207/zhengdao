@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.agent.ConfirmRequest
+import com.example.zhengdao.baopu.agent.KbTools
 import org.json.JSONObject
 
 /**
@@ -49,8 +50,18 @@ internal fun BaopuConfirmCard(
 ) {
     // 点过就进忙碌态（执行中…）；卡被摘掉（控制器置空）时本组件随之消失
     var busy by remember(request.callId) { mutableStateOf(false) }
-    val path = remember(request.argsJson) {
-        runCatching { JSONObject(request.argsJson).optString("path").trim() }.getOrNull()?.ifBlank { null }
+    val path = remember(request.argsJson, request.tool) {
+        runCatching {
+            val obj = JSONObject(request.argsJson)
+            val explicit = obj.optString("path").trim()
+            when {
+                explicit.isNotBlank() -> explicit
+                // UI-D12：kb_index 的 path 有缺省值，卡面要写「将来要索引哪儿」，
+                // 不许只回显 `{}`（2026-10-22 真机）。
+                request.tool == KbTools.NAME_INDEX -> KbTools.effectiveTarget(obj)
+                else -> null
+            }
+        }.getOrNull()
     }
     val approveDesc = stringResource(R.string.baopu_confirm_approve_desc)
     val rejectDesc = stringResource(R.string.baopu_confirm_reject_desc)
