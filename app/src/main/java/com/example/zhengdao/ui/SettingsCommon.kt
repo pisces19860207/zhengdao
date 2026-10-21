@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -223,6 +224,27 @@ internal fun SettingsSubPage(
         }
     }
 }
+
+/**
+ * 需要用户**读完**的 Snackbar（第一百一十批 · ENV-D1，2026-10-21）。
+ *
+ * 为什么不用 Toast：Android 12+ 的文本 Toast 只显示两行（真机 Android 16 实测），
+ * P0-5 拦截文案的第二句「本次没有改动任何文件…」就是被系统这样截掉的。Snackbar 正文
+ * 按可用宽度自然折行、不限行数；`Indefinite` 让文案一直留到用户点动作按钮
+ * （「知道了」/「查看日志」），1.3× 字号下也不会读一半就消失。
+ *
+ * 只统一**展示口径**：宿主仍是各页现有的 [SnackbarHost] 与 Material3 默认样式，
+ * 不新造 token、不改布局语言。
+ */
+internal suspend fun SnackbarHostState.showReadable(
+    message: String,
+    actionLabel: String,
+): SnackbarResult =
+    showSnackbar(
+        message = message,
+        actionLabel = actionLabel,
+        duration = SnackbarDuration.Indefinite,
+    )
 
 /** 设置页统一分隔线（B-补-16）：全页只此一种粗细与颜色，行间不再各写各的。 */
 @Composable
