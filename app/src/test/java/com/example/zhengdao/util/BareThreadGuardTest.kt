@@ -235,7 +235,7 @@ class BareThreadGuardTest {
         val expected = listOf(
             "AgentInstaller.kt:54",
             "AgentManifest.kt:136",
-            "BaopuDb.kt:1281",
+            "BaopuDb.kt:1236",
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",
