@@ -320,8 +320,12 @@ class PerfBaselineBenchTest {
             assertEquals("$label：B 与线上不等价，A/B 作废", a, b)
             assertEquals("$label：C 与线上不等价，A/C 作废", a, c)
             val ops = if (label == "real") 200 else 100
+            // 标签更正（T1 落地后）：这里原名 `A_prod_scan6x`，T1 之后线上实现已经是
+            // block-once，"scan6x" 就成了假话。A 现在应当与 C 同档（实测确实同档），
+            // B 保留的是**被同轮对照否掉的那条路**（旧算法 + 正则缓存），留着它才解释得了
+            // 为什么当初的立项假设是错的。
             bench(
-                name = "parse[$label] A_prod_scan6x",
+                name = "parse[$label] A_prod",
                 ops = ops,
                 sample = { "entries=${a.size}" },
                 body = { AgentManifest.parse(text) },

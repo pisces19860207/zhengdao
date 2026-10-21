@@ -215,7 +215,7 @@ class MainActivity : ComponentActivity() {
         //
         // 第一百一十八批 §2 T3：这行 `RunLog.init(applicationContext)` 删掉了——**不是删 init，
         // 是删第二次 init**。同一个 `RunLog.init()` 在 [ZhengdaoApp.onCreate] 已经跑过，而
-        // `Application.onCreate` 恒早于任何 Activity（清单里 `android:name=".ZhengdaoApp"` 已钉死、
+        // `Application.onCreate` 恒早于任何 Activity（清单里 `android:name="com.example.zhengdao.ZhengdaoApp"` 已钉死、
         // 且全 App 只有单进程），所以"日志必须落盘"这条判据由 App 入口那份**独立成立**。
         // 为什么要删：`init()` 每次调用都会跑 `migrateLegacy()` —— 里面是**公共区目录枚举**
         // (`Download/证道/logs/` 的 listFiles) + 逐文件 `isFile/length` 判定，全在冷启动主线程上；
