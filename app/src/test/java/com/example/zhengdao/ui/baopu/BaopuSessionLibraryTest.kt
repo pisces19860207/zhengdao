@@ -321,7 +321,13 @@ class BaopuSessionLibraryTest {
             ?: error("找不到 baopu_drawer_library_desc")
         assertFalse("不许再承诺「搬进来的书」（真资料库页是刀 2）：$desc", desc.contains("搬进来的书"))
         assertFalse("不许再承诺「整理进度」：$desc", desc.contains("整理进度"))
-        assertTrue("desc 要说清落点（终端与资料页）：$desc", desc.contains("终端与资料"))
+        // 第一百零五批 §0① 文案红线：**抱朴没有终端**，抽屉文案一律不许出现「终端」
+        // （v1.4 W8b 那张线框还写着「（在『终端与资料』页）」，属设计稿没跟上的旧词）。
+        // 因此原来那条「desc 要点名终端与资料页」作废，改成两条更稳的：
+        //   ① 不许出现终端/终端与资料；② 落点仍然是 openSettings（下面两段照旧校验）。
+        // 英文那侧的「Terminal」由 BaopuShellP1GateTest.D5 统一扫（中英两套 strings 一起扫），
+        // 这里只钉中文这一条，免得同一条规则两处各写一半。
+        assertFalse("抽屉文案不许出现「终端」（抱朴没有终端）：$desc", desc.contains("终端"))
         // 落点确实开「终端与资料」页（SettingsDataActivity）——desc 与落点一致
         val drawer = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
         assertTrue(
