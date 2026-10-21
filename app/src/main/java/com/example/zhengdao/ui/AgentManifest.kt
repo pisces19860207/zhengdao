@@ -66,26 +66,30 @@ object AgentManifest {
 
     /** 解析 manifest 文本（纯函数；只在验签通过后调用）。 */
     fun parse(text: String): List<Entry> {
-        fun str(id: String, key: String): String {
-            // 逐 agent 块解析：以 "id" 为锚找块内字段
-            // ⚠ 花括号必须转义：部分设备 regex 引擎（如 MagicOS/ICU）拒绝字符类内的裸 `}`，
-            // 桌面 JVM 容忍——单测发现不了，真机上 parse 会整体抛 PatternSyntaxException。
-            val block = Regex("\"id\"\\s*:\\s*\"$id\"[^\\}]*\\}").find(text)?.value ?: return ""
-            return Regex("\"$key\"\\s*:\\s*\"([^\"]*)\"").find(block)?.groupValues?.get(1) ?: ""
-        }
         val ids = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").findAll(text).map { it.groupValues[1] }.toList()
         return ids.mapNotNull { id ->
-            val name = str(id, "name")
-            val install = str(id, "installCmd")
+            // 块锚点**每条只算一次**。原先这里是 `fun str(id, key)` 每次调用都重算 block，
+            // 而 block 只是 (text, id) 的纯函数 ⇒ 一条目 6 个字段 = **6 次从文本头开始的
+            // 全文正则扫描**。第一百一十八批 §2 T1：同轮 A/B/C 实测这样才快（20 条目 4.9×，
+            // 真实清单 2.1×），而"缓存 Regex 对象"一档完全不快（Pattern.compile 不是成本大头）。
+            // ⚠ 花括号必须转义：部分设备 regex 引擎（如 MagicOS/ICU）拒绝字符类内的裸 `}`，
+            // 桌面 JVM 容忍——单测发现不了，真机上 parse 会整体抛 PatternSyntaxException。
+            val block = Regex("\"id\"\\s*:\\s*\"$id\"[^\\}]*\\}").find(text)?.value ?: ""
+            // 取不到块 ⇒ 六个字段一律空串，与搬移前"每次 str 各自找不到块"逐字等价。
+            fun str(key: String): String =
+                if (block.isEmpty()) ""
+                else Regex("\"$key\"\\s*:\\s*\"([^\"]*)\"").find(block)?.groupValues?.get(1) ?: ""
+            val name = str("name")
+            val install = str("installCmd")
             if (name.isBlank() || install.isBlank()) null
             else Entry(
                 id = id,
                 name = name,
-                desc = str(id, "desc"),
-                launchCmd = str(id, "launchCmd").ifBlank { id },
+                desc = str("desc"),
+                launchCmd = str("launchCmd").ifBlank { id },
                 installCmd = install,
-                npmPackage = str(id, "npmPackage").ifBlank { null },
-                uninstallCmd = str(id, "uninstall").ifBlank { null },
+                npmPackage = str("npmPackage").ifBlank { null },
+                uninstallCmd = str("uninstall").ifBlank { null },
             )
         }
     }
