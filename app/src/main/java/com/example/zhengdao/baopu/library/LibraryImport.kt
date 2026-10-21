@@ -465,67 +465,6 @@ internal class LibraryImport(
         return text.length
     }
 
-    /**
-     * 往 `_待外部转换.json` **合并**条目（流水线发现「不是 UTF-8 编码」的件也走这里——
-     * 同一个文件只许一个写者，那就是 A 段）。按 rel_path 去重、排序，原子写。
-     *
-     * **后写覆盖**（不是 distinctBy 保留先到）：同一件先因「是图片」进清单、后被
-     * 流水线判出「不是 UTF-8」，新理由必须赢——否则更新被静默吞掉（2026-10-17
-     * 单测实测：distinctBy 保留旧理由，用户看到的是过时的原因）。
-     */
-    fun appendExternalList(entries: List<ExternalEntry>) {
-        // **已停写**（第三十一批 C 段）：本函数自建成起就没有生产调用方（壳层从未把流水线的
-        // rejected 并进来），`_待外部转换.json` 也没有读方。保留函数与单测备查，不再启用；
-        // 要恢复请连读方一起恢复。
-        if (entries.isEmpty()) return
-        val file = File(doneDir, FILE_EXTERNAL)
-        val existing = runCatching { if (file.isFile) parseExternalList(file.readText()) else emptyList() }
-            .getOrDefault(emptyList())
-        val byRel = LinkedHashMap<String, ExternalEntry>()
-        existing.forEach { byRel[it.relPath] = it }
-        entries.forEach { byRel[it.relPath] = it } // 后写赢
-        val merged = byRel.values.sortedBy { it.relPath }
-        val sb = StringBuilder()
-        sb.append("{\n  \"items\": [\n")
-        merged.forEachIndexed { i, e ->
-            sb.append("    {\"name\": \"").append(FaceIndex.jsonEscape(File(e.relPath).name))
-            sb.append("\", \"rel_path\": \"").append(FaceIndex.jsonEscape(e.relPath))
-            sb.append("\", \"reason\": \"").append(FaceIndex.jsonEscape(e.reason))
-            sb.append("\"}")
-            sb.append(if (i == merged.lastIndex) "\n" else ",\n")
-        }
-        sb.append("  ]\n}\n")
-        LibraryPaths.atomicWrite(file, sb.toString())
-    }
-
-    /** `_待外部转换.json` 的一条（只列，不解析、不引任何第三方解析库）。 */
-    data class ExternalEntry(val relPath: String, val reason: String)
-
-    /**
-     * 解析 `_待外部转换.json`（与 [parsePendingDelete] 同一把尺子：条目在第 2 层）。
-     *
-     * ⚠️ 同样的坑在 2026-10-17 单测里实测过一次（按 depth==1 记会把整个文档
-     * 当成一条，合并时吞掉旧条目）——两处共用 [parseRows]，别各写一份。
-     */
-    private fun parseExternalList(text: String): List<ExternalEntry> =
-        parseRows(text, ::parseExternalRow)
-
-    private fun parseExternalRow(obj: String): ExternalEntry? {
-        val rel = strField(obj, "rel_path") ?: return null
-        return ExternalEntry(rel, strField(obj, "reason") ?: "")
-    }
-
-    private fun strField(obj: String, key: String): String? {
-        val k = obj.indexOf("\"$key\"")
-        if (k < 0) return null
-        val colon = obj.indexOf(':', k)
-        if (colon < 0) return null
-        val q1 = obj.indexOf('"', colon)
-        if (q1 < 0) return null
-        val end = skipStr(obj, q1)
-        return if (end > q1 + 1) obj.substring(q1 + 1, end - 1) else ""
-    }
-
     private fun atomicWrite(target: File, text: String) {
         LibraryPaths.atomicWrite(target, text)
     }
