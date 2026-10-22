@@ -169,6 +169,7 @@
 | 123 | 🔵 **2026-10-21 已派第一百三十批（workbuddy 国内版）：小说/写卡推荐选项 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百三十批-推荐选项v1.md`（复用 ask_user 推荐项；不新造卡；发版后/129 后开工） |
 | 125 | 🔵 **2026-10-22 设置重构 P1/P2 已改号：137 Token/四档、138 跑马灯、139 过程条、140 计划区、141 工具区、142 Agent 恢复** —— 清单 `..\_zd-private\docs\抱朴设置重构-拆分清单-2026-10-22.md`；原 132-136 顺延为 138-142（避 133×3/134×2/136×2 撞号）；C 层手动编辑不做 | 137-142 待派 |
 | 126 | 🔵 **2026-10-22 已派第一百三十七批（workbuddy 国内版）：换 Token ＋ 四档容器** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百三十七批-Token与四档容器.md`（先改 ContrastGuardTest 再换色；只许四档容器；138-142 均等此单） |
+| 127 | ⚪ **后期评估：抱朴 Rust 化（2026-10-22 立账；UI 优先，暂不派）** —— 不是从零：已有 `rust/core`＋JNI/NDK/`.so`/CI 可复用，但 Baopu 专用 crate/API/Kotlin fallback/属性测试仍要从头做。候选：card 解析/JSON/格式、Guard/Plan/RunRules/ToolSchema/FailurePolicy/ChannelSwitchFsm、TokenEstimator/ContextBudget/CompressionQuality、文件工具纯部分。建议先单模块试点（TokenEstimator 或 CardJson）＋粗粒度 JNI＋fallback；第一刀成本高，不插队 UI。 | 后期 |
 | 124 | 🔵 **2026-10-22 已派第一百三十一批（qoder）：模型选择 P0（OpenRouter 免费/多 Key/动态模型/术语）** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百三十一批-模型选择P0.md`（发版前 P0；用户自填 key，不内置；C 层保持现状）；**含 OpenRouter 玄览跳转**：`https://openrouter.ai/settings/keys` / `https://openrouter.ai/models?q=free`，走 `BrowserHolder` 不新开 WebView；用户自填 key |
 | 120 | 🔵 **2026-10-21 已派第一百二十七批（workbuddy 国内版）：多 Agent 协作 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十七批-多Agent协作v1.md`（子任务分解/隔离/汇总；默认最多 2 子 Agent，不自动合并） |
 | 118 | ⚪ **2026-10-21 已派第一百二十五批（workbuddy 国内版）：语音对话 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十五批-语音对话v1.md`（按住说话→STT→抱朴；可选 TTS；不常驻/不后台上传）；**暂缓/后排（STT 体积顾虑，先不做）** |
