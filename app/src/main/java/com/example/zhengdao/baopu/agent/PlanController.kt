@@ -38,6 +38,26 @@ internal class PlanController(
     @Volatile
     private var current: List<PlanItem> = emptyList()
 
+    // ── 软档（140）：结构变更过卡 ＋ 连续 3 步偏离提示 ──────────────────────
+    // 计数只统计「工具步」：一步跑完既没推进计划（update_plan 成功）也没更新计划
+    // ⇒ +1；满 3 步弹一次卡。所有判据只提示，不拒绝任何工具调用（不绑一步一勾）。
+
+    /** 连续几步工具跑完还没更新计划。 */
+    private var stepsWithoutPlanUpdate = 0
+
+    /** 本段偏离已经弹过卡（同一段不重复弹；计划更新/新轮后清零）。 */
+    private var deviationPrompted = false
+
+    /** 用户选了「继续」⇒ 本段偏离不再打扰，直到计划真的更新或新开一轮。 */
+    private var deviationMuted = false
+
+    /**
+     * 用户刚批准过一次计划结构变更（御批卡「更新计划」/ 偏离卡「更新计划」）。
+     * 下一次成功的 submit 消费掉——一次批准只放行一次改动。
+     */
+    @Volatile
+    private var changeAuthorized = false
+
     /**
      * 一次 update_plan（工具执行器入口）。
      *
@@ -51,11 +71,27 @@ internal class PlanController(
             return ToolOutcome.Failed(parsed.message)
         }
         val ok = parsed as PlanRules.Parse.Ok
+        // 软档（140）：文字增删＝结构变更，必须过用户那张卡；没有批准 ⇒ 不落库、不动内存。
+        // 初始计划（上一版为空）与只改 status 的进度更新不走这里（不打扰）。
+        val change = PlanChangeRules.classify(current, ok.items)
+        if (change.needsCard && !changeAuthorized) {
+            log(
+                "抱朴计划：拒绝未经确认的改动（新增 ${change.added.size} 条 / " +
+                    "删去 ${change.removed.size} 条）",
+            )
+            return ToolOutcome.Failed(PlanGuardRules.changeBlocked(change))
+        }
+        // 一次批准只放行一次改动：哪怕这次只是进度更新，也算用掉了。
+        changeAuthorized = false
         val applied = PlanRules.applyOverwrite(current, ok.items)
         current = applied.items
         val payload = PlanRules.toJson(applied.items)
         val sid = sessionId()
         store.insert(sid, payload)
+        // 计划真的更新了（不论推进还是结构变更）⇒ 偏离计数清零、解除静音。
+        stepsWithoutPlanUpdate = 0
+        deviationPrompted = false
+        deviationMuted = false
         log(
             "抱朴计划：已更新（session=$sid，共 ${applied.items.size} 条、" +
                 "${PlanRules.doneCount(applied.items)} 完成" +
@@ -83,6 +119,76 @@ internal class PlanController(
      */
     fun unfinishedCount(): Int = current.count { it.status != PlanRules.STATUS_DONE }
 
+    // ── 软档 API（140；引擎只调这几个口子，判据全在 PlanGuardRules） ──────────
+
+    /** 当前计划快照（卡面文案与测试用；调用方只读，不许拿它改内存态）。 */
+    fun currentPlan(): List<PlanItem> = current
+
+    /**
+     * 预览这次 update_plan 的变更性质（**不落库、不动内存**）。
+     * 解析失败返 null（让 submit 去回灌错误原文，别在预览层抢答）。
+     */
+    fun previewChange(args: JSONObject): PlanChange? {
+        val parsed = PlanRules.parseItems(args) as? PlanRules.Parse.Ok ?: return null
+        return PlanChangeRules.classify(current, parsed.items)
+    }
+
+    /** 是否已有一次待消费的「同意改计划」授权。 */
+    fun isChangeAuthorized(): Boolean = changeAuthorized
+
+    /** 用户点了「更新计划」⇒ 放行下一次结构变更（一次一张）。 */
+    fun authorizeNextChange() {
+        changeAuthorized = true
+        log("抱朴计划：用户同意更新计划（下一次改动放行）")
+    }
+
+    /** 引擎在一整步工具调用结束后调用：这一步成功 update_plan 过 ⇒ 清零。 */
+    fun notePlanUpdated() {
+        stepsWithoutPlanUpdate = 0
+        deviationPrompted = false
+        deviationMuted = false
+    }
+
+    /**
+     * 引擎在一整步工具调用结束后调用（这一步**没有**成功 update_plan）。
+     *
+     * @return true = 该弹偏离卡（同一段只弹一次；没有未完成计划 / 已静音 ⇒ 不弹）
+     *
+     * 只返回「要不要提示」，**不做任何阻断**——工具已经跑完了，这里绝不回退或终止。
+     */
+    fun noteToolStep(): Boolean {
+        if (deviationMuted) return false
+        val hasUnfinished = current.any { it.status != PlanRules.STATUS_DONE }
+        if (!hasUnfinished) {
+            stepsWithoutPlanUpdate = 0
+            deviationPrompted = false
+            return false
+        }
+        stepsWithoutPlanUpdate++
+        if (!deviationPrompted && PlanGuardRules.shouldPromptDeviation(stepsWithoutPlanUpdate)) {
+            deviationPrompted = true
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 偏离卡回答完：按选择收尾。
+     * - 回计划 / 更新计划：计数清零，满 3 步仍可再提示；
+     * - 更新计划：额外放行下一次结构变更；
+     * - 继续：本段偏离静音（不再弹），直到计划更新或新轮。
+     */
+    fun noteDeviationAnswered(action: PlanDeviationAction) {
+        stepsWithoutPlanUpdate = 0
+        deviationPrompted = false
+        when (action) {
+            PlanDeviationAction.UPDATE_PLAN -> changeAuthorized = true
+            PlanDeviationAction.CONTINUE -> deviationMuted = true
+            PlanDeviationAction.BACK_TO_PLAN -> Unit
+        }
+        log("抱朴计划：偏离卡选择 $action")
+    }
+
     /**
      * 回灌给模型的「计划提醒」（2026-10-19 用户报「做完一步不打勾」；真机库读数：
      * 6 条 plan 快照里 `done` 出现 0 次——**模型从没标**，不是 UI 不刷新）。
@@ -104,6 +210,10 @@ internal class PlanController(
 
     fun newRound() {
         current = emptyList()
+        stepsWithoutPlanUpdate = 0
+        deviationPrompted = false
+        deviationMuted = false
+        changeAuthorized = false
     }
 
     /**
@@ -115,5 +225,9 @@ internal class PlanController(
      */
     fun seedFromStore(sessionId: Long) {
         current = PlanRules.fromJson(store.latest(sessionId) ?: return)
+        stepsWithoutPlanUpdate = 0
+        deviationPrompted = false
+        deviationMuted = false
+        changeAuthorized = false
     }
 }

@@ -799,11 +799,9 @@
     <string name="baopu_plan_summary">计划 %1$d/%2$d 完成</string>
     <!-- ── 计划区（第一百零六批，v1.5 §3.11）：悬浮胶囊＋浮层面板；计划从消息正文撤出 ── -->
     <string name="baopu_plan_panel_title">计划</string>
-    <string name="baopu_plan_panel_progress">已完成 %1$d/%2$d</string>
-    <string name="baopu_plan_capsule_step">第 %1$d/%2$d 步 · %3$s</string>
-    <string name="baopu_plan_capsule_done">✓ 计划 %1$d/%2$d 完成</string>
-    <string name="baopu_plan_capsule_stale">计划 %1$d/%2$d · 未更新</string>
+    <string name="baopu_plan_capsule_active">%1$d 个进行中</string>
     <string name="baopu_plan_capsule_desc">打开工作计划</string>
+    <string name="baopu_plan_more">还有 %1$d 个</string>
     <string name="baopu_plan_group_current">本轮</string>
     <string name="baopu_plan_group_prev">上一轮</string>
     <string name="baopu_plan_group_nth">第 %1$d 轮</string>
