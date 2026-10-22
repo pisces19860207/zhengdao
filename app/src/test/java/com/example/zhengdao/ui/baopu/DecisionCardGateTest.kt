@@ -131,9 +131,19 @@ class DecisionCardGateTest {
     }
 
     @Test
-    fun `P2_设置页组行整行可点且不低于64dp`() {
-        assertTrue("组行必须整行可点", settings.contains(".clickable { expanded.value = !expanded.value }"))
+    fun `P2_设置页摘要行整行可点且组行不低于64dp`() {
+        // 141 批：组行不再"整行可点展开成员"（成员名单不进 UI，行内展开已砍），
+        // 整行可点的角色交给**摘要行**（点它展开/收起要你处理的组）；组行只留开关。
+        // 触控目标的两条底线都没动：整行可点仍在，组行仍 ≥64dp（派工单④）。
+        assertTrue(
+            "摘要行必须整行可点（展开/收起）",
+            settings.contains(".clickable { toolRowsOpen = !toolRowsOpen }"),
+        )
         assertTrue("组行必须 ≥64dp（派工单④）", settings.contains("heightIn(min = 64.dp)"))
+        assertFalse(
+            "成员行内展开不许回潮（141 批已砍）",
+            settings.contains(".clickable { expanded.value = !expanded.value }"),
+        )
     }
 
     @Test

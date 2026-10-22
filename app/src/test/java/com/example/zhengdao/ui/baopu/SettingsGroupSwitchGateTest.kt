@@ -24,21 +24,22 @@ class SettingsGroupSwitchGateTest {
     }
 
     @Test
-    fun `G1_组头状态必须订阅toolTick_否则开关点完不刷新`() {
+    fun `G1_组状态必须订阅toolTick_否则开关点完不刷新`() {
+        // 2026-10-21 真机缺陷：开关写盘成功，但同屏一直显示旧状态，退出重进才对。
+        // 141 批换了形态（组头不再各自 remember，改成整卡一份快照），**判据的实质没变**：
+        // 组状态必须挂在 toolTick 这一个刷新源上，且归一仍只有一处。
         val src = source()
-        val wrapped = src.indexOf("val state = remember(toolTick)")
-        assertTrue(
-            "组头状态必须包在 remember(toolTick) 里（2026-10-21 真机：写盘成功但同屏仍显示「已锁」）",
-            wrapped >= 0,
-        )
-        assertTrue(
-            "remember(toolTick) 之后必须紧接 baopuGroupState",
-            src.substring(wrapped, minOf(src.length, wrapped + 220)).contains("baopuGroupState("),
-        )
+        listOf("approvedGroups", "disabledGroupSet", "disabledNameSet").forEach { name ->
+            assertTrue(
+                "val $name 必须 remember(toolTick)（写盘成功但同屏不刷新就是漏了这一层）",
+                src.contains("val $name = remember(toolTick)"),
+            )
+        }
         assertFalse(
-            "不许退回裸的 val state = baopuGroupState(（没有订阅，点了不刷新）",
-            src.contains("val state = baopuGroupState("),
+            "不许退回无订阅的 remember（点了不刷新）",
+            Regex("val (approvedGroups|disabledGroupSet|disabledNameSet) = remember \\{").containsMatchIn(src),
         )
+        assertTrue("组状态归一必须在页面里出现（四态）", src.contains("baopuGroupState("))
     }
 
     @Test
@@ -49,8 +50,8 @@ class SettingsGroupSwitchGateTest {
             src.contains("RunLog.log(ToolGroupAudit.manual"),
         )
         assertTrue(
-            "调用点必须保留审计动作本身",
-            src.contains("ToolGroupAudit.manual(group, want)"),
+            "调用点必须保留审计动作本身（141 批：组开关移进 toolRows.forEach，变量名跟着变）",
+            src.contains("ToolGroupAudit.manual(row.group, want)"),
         )
     }
 

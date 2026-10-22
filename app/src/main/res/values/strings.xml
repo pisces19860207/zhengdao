@@ -863,7 +863,6 @@
     <string name="baopu_extract_close">关闭</string>
     <!-- ── 抱朴工具开关（刀 2 追加包；设置 → 终端与资料）── -->
     <string name="baopu_tools_card">抱朴工具</string>
-    <string name="baopu_tools_desc">抱朴能用的工具。关掉的工具不会发给模型，它看不到也就不会调用；它硬要调用时只会收到「该工具已被用户关闭」，不会自动打开。</string>
     <string name="baopu_tool_read_file">读文件</string>
     <string name="baopu_tool_read_file_desc">读工作区里的文本文件，可指定从第几行开始、读多少行。</string>
     <string name="baopu_tool_list_dir">列目录</string>
@@ -1161,16 +1160,14 @@
     <string name="baopu_tools_group_default_off">已锁：默认不发给模型；抱朴要用时会向你申请，你同意才开</string>
     <string name="baopu_tools_group_approved">已开启：你已同意长期可用（随时可以在右边关掉）</string>
     <string name="baopu_tools_group_disabled">已关闭：你关掉了它，抱朴自己也解不开</string>
-    <string name="baopu_tools_progressive_note">默认只显示核心与编辑两组；其余组是「已锁」——不是禁用，是模型根本看不见。抱朴要用时会弹一张卡向你申请（本次会话 / 一直 / 取消），你点同意才开。「一直」与右边那个组开关是同一档：打开＝长期同意，关掉＝连抱朴自己都解不开（用户开关优先）。组里每个工具仍各有自己的开关，两档并存、互不覆盖。</string>
-    <!-- 第六十一批 §1：设置页工具开关折叠。折叠只是展示层——开关读写一行没动。
-         展开/收起的箭头复用既成的 common_expand_arrow / common_collapse_arrow，
-         baopu_tools_fold_list_sep 是摘要里工具名之间的分隔符（中文顿号、英文逗号）。 -->
-    <string name="baopu_tools_fold_note">分组默认收起：点组名展开或收起。收起时这一组仍然常驻一行「关闭项摘要」——你关掉的工具不会因为折叠而查不到。</string>
-    <string name="baopu_tools_fold_empty">这一组没有可列的工具</string>
-    <string name="baopu_tools_fold_all_on">全部开启</string>
-    <string name="baopu_tools_fold_all_off">这一组 %1$d 项已全部关闭</string>
-    <string name="baopu_tools_fold_some_off">已关闭 %1$d 项：%2$s</string>
-    <string name="baopu_tools_fold_list_sep">、</string>
+    <!-- 第一百四十一批 §8：抱朴工具区改成一张摘要卡。上面三段落说明（tools_desc /
+         progressive_note / fold_note）与六句折叠摘要随长列表一起退役 —— 语义没有丢：
+         关掉的工具仍不进 tools 数组、模型幻觉调用仍被拒，只是不再用三段话在设置页里讲。 -->
+    <string name="baopu_tools_summary">工具 %1$d · %2$d 组开 · %3$d 组待同意</string>
+    <string name="baopu_tools_rows_empty">没有要你处理的组</string>
+    <string name="baopu_tools_row_pending">待同意</string>
+    <string name="baopu_tools_row_closed">已关闭</string>
+    <string name="baopu_tools_row_partial">%1$d 个已关</string>
     <string name="baopu_tool_capabilities">工具名册（capabilities）</string>
     <string name="baopu_tool_capabilities_desc">看与开：列出有哪些工具组、每组一句话、谁是默认可见 / 已解锁 / 被你关掉，并按需解锁本会话要用的组。只改「模型这一轮能看见哪些工具」，不碰任何文件，所以不弹确认卡。被你这个开关关掉的组，它解不开——这一点它会如实告诉用户。</string>
     <string name="baopu_tool_preview_local_file">本地预览（玄览）</string>
