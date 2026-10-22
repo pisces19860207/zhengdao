@@ -1,10 +1,11 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+﻿// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.rootfs
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * 下载地址的镜像兜底规则（v1.2 B3 起；**2026-10-11 改为多源**）。只测纯函数
@@ -86,5 +87,43 @@ class RootfsDownloaderTest {
     @Test
     fun `最后一个候选永不中断（没有备选时再慢也只能下完）`() {
         assertEquals(false, RootfsDownloader.SpeedGuard.shouldAbort(600_000, 1, false))
+    }
+
+    // ── 分片下载（2026-10-22，用户「分片多连接下载」）──────────────────────
+
+    @Test
+    fun `分片边界_整除时均分且首尾相接`() {
+        val segs = RootfsDownloader.segmentRanges(100, 4)
+        assertEquals(4, segs.size)
+        assertEquals(listOf(0L, 25L, 50L, 75L), segs.map { it.start })
+        assertEquals(listOf(25L, 50L, 75L, 100L), segs.map { it.endExclusive })
+        assertEquals(100L, segs.sumOf { it.length })
+    }
+
+    @Test
+    fun `分片边界_不整除时最后一段吃余数`() {
+        val segs = RootfsDownloader.segmentRanges(101, 4)
+        assertEquals(listOf(0L, 25L, 50L, 75L), segs.map { it.start })
+        assertEquals(101L, segs.last().endExclusive)
+        assertEquals(101L, segs.sumOf { it.length })
+    }
+
+    @Test
+    fun `分片边界_总长太小或非法时退化成单段或空`() {
+        assertEquals(1, RootfsDownloader.segmentRanges(3, 4).size)
+        assertEquals(0L, RootfsDownloader.segmentRanges(3, 4).first().start)
+        assertEquals(3L, RootfsDownloader.segmentRanges(3, 4).first().endExclusive)
+        assertTrue(RootfsDownloader.segmentRanges(0, 4).isEmpty())
+        assertTrue(RootfsDownloader.segmentRanges(100, 0).isEmpty())
+    }
+
+    @Test
+    fun `分片续传必须追加写_不许用会截断的 outputStream`() {
+        // 2026-10-22 真机：续传用了 File.outputStream()（截断），已下 41.9MB 的分片
+        // 被写成 8.4MB，最终「长度不符」。这条门禁钉住「追加写」。
+        val src = File("src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt")
+            .let { if (it.isFile) it else File("app/src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt") }
+            .readText()
+        assertTrue("分片续传必须用 FileOutputStream(f, true) 追加写", src.contains("FileOutputStream(f, true)"))
     }
 }

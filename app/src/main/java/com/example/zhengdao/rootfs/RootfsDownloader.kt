@@ -230,6 +230,7 @@ object RootfsDownloader {
                     // 资产在下载途中被更新：残件作废、重取最新校验值、从头再来
                     Log.w(TAG, "SHA256 不匹配，删除残件并重取校验值重试", e)
                     dest.delete()
+                    deleteSegments(dest)
                     expectedSha = fetchFirstSha(shaUrls) ?: expectedSha
                     lastError = e
                 } catch (e: SlowTransfer) {
@@ -251,6 +252,7 @@ object RootfsDownloader {
         }
         dest.delete()
         File(dest.parentFile, dest.name + PART_SUFFIX).delete()
+        deleteSegments(dest)
         throw DownloadFailed("全部下载通道失败：${lastError?.message ?: "未知错误"}")
     }
 
@@ -290,6 +292,150 @@ object RootfsDownloader {
             if (trimEnds) text.trim() else text
         }?.takeIf { it.isNotEmpty() }
 
+    /** 分组下载残片（`.part.s0…sN`）：失败要一并清掉，别留下"看不见的半截文件"。 */
+    private fun deleteSegments(dest: File) {
+        val dir = dest.parentFile ?: return
+        val base = dest.name + PART_SUFFIX
+        for (i in 0 until SEGMENT_PARTS) File(dir, "$base.s$i").delete()
+    }
+
+    /**
+     * 分片下载的边界（2026-10-22，用户「网络波动有点大，分片多连接下载」）。
+     *
+     * 目标：单连接在慢网/抖动下只能吃几十 KB/s；开 3–4 条 Range 连接并行拉，
+     * 谁快谁多干、断一条只补那一片。**失败/不支持 Range 时自动退回单连接**，
+     * 不在新路径上赌正确性（sha256 仍是最终裁判）。
+     */
+    private const val SEGMENT_MIN_BYTES = 16L * 1024 * 1024
+    private const val SEGMENT_PARTS = 4
+
+    /** 一段字节区间：[start, endExclusive)。 */
+    internal data class Segment(val start: Long, val endExclusive: Long) {
+        val length: Long get() = endExclusive - start
+    }
+
+    /** 把 total 切成 parts 段（纯函数，可单测）：整除部分均分，最后一段吃余数。 */
+    internal fun segmentRanges(total: Long, parts: Int): List<Segment> {
+        if (total <= 0L || parts <= 0) return emptyList()
+        val n = parts
+        val size = total / n
+        if (size <= 0L) return listOf(Segment(0, total))
+        return (0 until n).map { i ->
+            val start = i * size
+            val end = if (i == n - 1) total else start + size
+            Segment(start, end)
+        }
+    }
+
+    /** 探测远端是否支持 Range 并取总长：支持 ⇒ (true, total)；不支持 ⇒ (false, -1)。 */
+    private fun probeRange(client: OkHttpClient, url: String): Pair<Boolean, Long> {
+        val req = Request.Builder().url(url).header("Range", "bytes=0-0").build()
+        return client.newCall(req).execute().use { resp ->
+            if (resp.code == 206) {
+                val total = resp.header("Content-Range")
+                    ?.substringAfterLast('/')?.trim()?.toLongOrNull() ?: -1L
+                resp.body?.close()
+                true to total
+            } else {
+                resp.body?.close()
+                false to -1L
+            }
+        }
+    }
+
+    /** 分片下载（4 连接）；每片各自支持断点续传，失败保留残片给下一次尝试。 */
+    private fun downloadSegmented(
+        client: OkHttpClient,
+        url: String,
+        dest: File,
+        total: Long,
+        onProgress: (Long, Long) -> Unit,
+    ) {
+        val part = File(dest.parentFile, dest.name + PART_SUFFIX)
+        // 旧的单连接残片与新粒度不能混用：删掉，由分片文件重新计。
+        if (part.isFile) part.delete()
+        val segments = segmentRanges(total, SEGMENT_PARTS)
+        val segFiles = segments.indices.map { File(part.parentFile, part.name + ".s$it") }
+        val done = java.util.concurrent.atomic.AtomicLong(
+            segFiles.sumOf { if (it.isFile) it.length().coerceAtMost(total) else 0L },
+        )
+        val reported = java.util.concurrent.atomic.AtomicLong(done.get())
+        val firstError = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
+        val latch = java.util.concurrent.CountDownLatch(segments.size)
+        onProgress(done.get(), total)
+        segments.forEachIndexed { i, seg ->
+            val f = segFiles[i]
+            Thread({
+                try {
+                    var already = if (f.isFile) f.length() else 0L
+                    if (already > seg.length) { f.delete(); already = 0L }
+                    if (already >= seg.length) return@Thread
+                    val from = seg.start + already
+                    val to = seg.endExclusive - 1
+                    val req = Request.Builder().url(url)
+                        .header("Range", "bytes=$from-$to")
+                        .build()
+                    client.newCall(req).execute().use { resp ->
+                        if (resp.code != 206) {
+                            throw IOException("分片 ${i + 1}/${segments.size} 未获 206（HTTP ${resp.code}）")
+                        }
+                        val body = resp.body ?: throw IOException("分片 ${i + 1} 空响应体")
+                        body.byteStream().use { input ->
+                            // ⚠️ 续传必须**追加**：`File.outputStream()` 会截断，
+                            // 2026-10-22 真机实测把已下 41.9MB 的分片截成 8.4MB
+                            // （日志「分片 1 长度不符（8465089/50408129）」）——就是这里。
+                            java.io.FileOutputStream(f, true).use { out ->
+                                val buf = ByteArray(64 * 1024)
+                                while (true) {
+                                    val n = input.read(buf)
+                                    if (n < 0) break
+                                    out.write(buf, 0, n)
+                                    val d = done.addAndGet(n.toLong())
+                                    val last = reported.get()
+                                    if (d - last >= 512 * 1024) {
+                                        reported.set(d)
+                                        onProgress(d, total)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (f.length() != seg.length) {
+                        throw IOException(
+                            "分片 ${i + 1} 长度不符（${f.length()}/${seg.length}）",
+                        )
+                    }
+                } catch (t: Throwable) {
+                    firstError.compareAndSet(null, t)
+                } finally {
+                    latch.countDown()
+                }
+            }, "zd-seg-$i").apply { isDaemon = true }.start()
+        }
+        if (!latch.await(30, TimeUnit.MINUTES)) {
+            firstError.compareAndSet(null, IOException("分片下载超时（30 分钟）"))
+        }
+        firstError.get()?.let { throw IOException("分片下载失败：${it.message}", it) }
+        // 合并成 .part，再交给外层做 sha256 校验与改名（与单连接路径同一收尾）
+        part.outputStream().use { out ->
+            segFiles.forEach { f -> f.inputStream().use { it.copyTo(out) } }
+        }
+        segFiles.forEach { it.delete() }
+        if (part.length() != total) {
+            part.delete()
+            throw IOException("分片合并后长度不符（${part.length()}/$total）")
+        }
+        // ⚠️ 必须和单连接路径一样把 .part 改名成 dest：外层 `download()` 校验的是
+        // dest，不是 part；只合并不改名会让 sha 校验读不到文件、整轮重下。
+        // （2026-10-22 真机实测：合并完成后立刻又一轮「下载中 0%」——就是这里。）
+        if (!part.renameTo(dest)) {
+            part.copyTo(dest, overwrite = true)
+            part.delete()
+        }
+        onProgress(total, total)
+        Log.i(TAG, "分片下载完成：$total 字节")
+    }
+
     private fun downloadOne(
         client: OkHttpClient,
         url: String,
@@ -299,6 +445,16 @@ object RootfsDownloader {
     ) {
         val part = File(dest.parentFile, dest.name + PART_SUFFIX)
         val already = if (part.isFile) part.length() else 0L
+        // 分片下载优先：仅"全新下载 + 远端支持 Range + 包够大"时启用；
+        // 任何探测失败都静默退回单连接（旧路径一行没动）。
+        if (already == 0L) {
+            val (supportsRange, totalBytes) = runCatching { probeRange(client, url) }
+                .getOrDefault(false to -1L)
+            if (supportsRange && totalBytes >= SEGMENT_MIN_BYTES) {
+                downloadSegmented(client, url, dest, totalBytes, onProgress)
+                return
+            }
+        }
         val requestBuilder = Request.Builder().url(url)
         if (already > 0) requestBuilder.header("Range", "bytes=$already-")
 
