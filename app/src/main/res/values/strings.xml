@@ -749,6 +749,14 @@
     <string name="baopu_tool_label">工具调用</string>
     <string name="baopu_role_user">你</string>
     <string name="baopu_role_assistant">抱朴</string>
+    <!-- 第一百三十七批（2026-10-22）：四档容器的行动卡标题条。
+         七张行动卡外形完全一致，只有这行字与按钮不同——这是「3 秒指出哪张在等我动手」的来源。 -->
+    <string name="baopu_tier_action_ask">提问 · 需要你选</string>
+    <string name="baopu_tier_action_choice">选择 · 需要你选</string>
+    <string name="baopu_tier_action_confirm">确认 · 等你批准</string>
+    <string name="baopu_tier_action_skill">技能提案 · 等你同意</string>
+    <string name="baopu_tier_action_decision">决策 · 等你批准</string>
+    <string name="baopu_tier_action_badge">待你操作</string>
     <string name="baopu_memory_card_title">记性（候选）</string>
     <string name="baopu_memory_confirm">记住</string>
     <string name="baopu_memory_forget">不记</string>

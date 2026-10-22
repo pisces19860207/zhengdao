@@ -7,18 +7,18 @@
 // 那条路才允许换文件。样式全部沿用现有卡（`BaopuLearnCard`）：同样的 Surface 高度、
 // 同样的 12/10 内距、同样的 bodyMedium/bodySmall/labelSmall 三级字号、同样的
 // 「会动的用实心、不动的用描边」口径——**本批不新增配色/字号/圆角/动效**。
+//
+// 第一百三十七批（2026-10-22）：与「这次学到」同归**信息卡**档
+// （纸深底＋只左边 4dp 黛青竖条），两卡同档同形，差别只在文案与按钮。
 package com.example.zhengdao.ui.baopu
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -35,59 +35,48 @@ internal fun BaopuPostAdoptionCard(
     onKeep: () -> Unit,
     onLater: () -> Unit,
 ) {
-    Surface(
-        tonalElevation = 3.dp,
-        shadowElevation = 2.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.post_adopt_title, notice.skillName),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(Modifier.height(6.dp))
-            // 一行纯文本说清「采纳前 / 采纳后」——不做表格、不加新布局组件
-            Text(
-                text = stringResource(
-                    R.string.post_adopt_counts,
-                    notice.before.successes,
-                    notice.before.failures,
-                    notice.before.corrections,
-                    notice.delta.successes,
-                    notice.delta.failures,
-                    notice.delta.corrections,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                text = stringResource(
-                    if (notice.verdict == PostAdoptionVerdict.RETIRE) {
-                        R.string.post_adopt_verdict_retire
-                    } else {
-                        R.string.post_adopt_verdict_rollback
-                    },
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(Modifier.fillMaxWidth()) {
-                // 会动文件的那个用实心（与学习卡「采纳＝实心」同口径）
-                Button(onClick = onRollback, enabled = notice.verdict == PostAdoptionVerdict.ROLLBACK) {
-                    Text(stringResource(R.string.post_adopt_rollback))
-                }
-                Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = onKeep) {
-                    Text(stringResource(R.string.post_adopt_keep))
-                }
-                Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = onLater) {
-                    Text(stringResource(R.string.post_adopt_later))
-                }
+    BaopuInfoContainer {
+        Text(
+            text = stringResource(R.string.post_adopt_title, notice.skillName),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(6.dp))
+        // 一行纯文本说清「采纳前 / 采纳后」——不做表格、不加新布局组件
+        Text(
+            text = stringResource(
+                R.string.post_adopt_counts,
+                notice.before.successes,
+                notice.before.failures,
+                notice.before.corrections,
+                notice.delta.successes,
+                notice.delta.failures,
+                notice.delta.corrections,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            text = stringResource(
+                if (notice.verdict == PostAdoptionVerdict.RETIRE) {
+                    R.string.post_adopt_verdict_retire
+                } else {
+                    R.string.post_adopt_verdict_rollback
+                },
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(Modifier.fillMaxWidth()) {
+            // 会动文件的那个用实心（与学习卡「采纳＝实心」同口径）
+            Button(onClick = onRollback, enabled = notice.verdict == PostAdoptionVerdict.ROLLBACK) {
+                Text(stringResource(R.string.post_adopt_rollback))
+            }
+            Spacer(Modifier.weight(1f))
+            OutlinedButton(onClick = onKeep) {
+                Text(stringResource(R.string.post_adopt_keep))
+            }
+            Spacer(Modifier.weight(1f))
+            OutlinedButton(onClick = onLater) {
+                Text(stringResource(R.string.post_adopt_later))
             }
         }
     }

@@ -21,14 +21,14 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="#FF000000">
+        android:background="#FF1C1B18">
 
         <LinearLayout
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:orientation="horizontal"
-            android:background="#FFFFFFFF"
+            android:background="#FFF7F4ED"
             android:gravity="center_vertical"
             android:paddingStart="14dp"
             android:paddingEnd="14dp">
@@ -103,7 +103,7 @@
                 android:gravity="center"
                 android:paddingEnd="32dp"
                 android:text="证道"
-                android:textColor="#FF1C1C1E"
+                android:textColor="#FF1F1E1B"
                 android:textSize="17sp"
                 android:textStyle="bold"
                 android:maxLines="1"
@@ -128,7 +128,7 @@
                 android:paddingTop="12dp"
                 android:paddingBottom="12dp"
                 android:text="复制"
-                android:textColor="#FF007AFF"
+                android:textColor="#FF2C5F54"
                 android:textSize="13sp"
                 android:clickable="true"
                 android:focusable="true" />
@@ -144,7 +144,7 @@
                 android:paddingTop="12dp"
                 android:paddingBottom="12dp"
                 android:text="粘贴"
-                android:textColor="#FF007AFF"
+                android:textColor="#FF2C5F54"
                 android:textSize="13sp"
                 android:clickable="true"
                 android:focusable="true" />
@@ -153,7 +153,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#FFC6C6C8" />
+            android:background="#FFDCD7C9" />
 
         <!-- 状态横幅：v3.9 起终端为原生 TerminalView，App 无法再像 xterm.js 那样
              往终端里注入显示文本（写入 pty 会变成 shell 输入）。安装/下载/解压等
@@ -172,12 +172,12 @@
             android:id="@+id/status_banner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#FFFFF4CE"
+            android:background="#FFEDE8DC"
             android:paddingStart="14dp"
             android:paddingEnd="14dp"
             android:paddingTop="6dp"
             android:paddingBottom="6dp"
-            android:textColor="#FF5C4300"
+            android:textColor="#FF856018"
             android:textSize="12sp"
             android:maxLines="3"
             android:ellipsize="end"
@@ -203,7 +203,7 @@
             android:layout_height="0dp"
             android:layout_weight="1"
             android:padding="8dp"
-            android:background="#FF000000">
+            android:background="#FF1C1B18">
 
             <!-- ⚠️ 背景色必须与 Termux 配色一致，否则白字画在白底上完全看不见
                  ——2026-10-05 实测：会话/输入/引擎全部正常，屏幕却一片空白，
@@ -215,7 +215,7 @@
                 android:id="@+id/terminal_native"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#FF000000"
+                android:background="#FF1C1B18"
                 android:focusable="true"
                 android:focusableInTouchMode="true" />
         </FrameLayout>

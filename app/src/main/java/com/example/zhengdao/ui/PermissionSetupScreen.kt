@@ -46,14 +46,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.zhengdao.terminal.ProotLauncher
-import com.example.zhengdao.ui.theme.zhengdaoReadyGreen
+import com.example.zhengdao.ui.theme.zhengdaoReady
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 
-// 状态行「已授权／已开启」用的绿：2026-10-12 起改走主题感知取色
-// （浅色 #2E7D32 / 深色 #30D158，见 theme/Theme.kt 的 zhengdaoReadyGreen()），
-// 深色主题下不再是一枚看不清的深绿。
+// 状态行「已授权／已开启」用的强调色：2026-10-22 起是**青**（纸墨黛青语言删掉了绿通道）
+// （浅色 #2C5F54 / 深色 #7FA89B，见 theme/Theme.kt 的 zhengdaoReady()），
+// 「青＝可行动」，已授权就是可行动。
 
 /**
  * 首启「权限」页的状态与判据（2026-10-11）。
@@ -224,9 +224,9 @@ object PermissionSetup {
  *
  * 判据与取舍（都是有意为之，改之前先读）：
  * - 视觉语言沿用设置页「权限」卡的排版习惯（SectionCard 的卡片 + SettingRow 的行节奏：
- *   文字 + 右侧状态 + 行尾 ›），不另起一套审美；绿色用 `zhengdaoReadyGreen()`——
- *   主题 tertiary `#34C759` 白底只有 2.22:1，作正文色读不清；浅色走 #2E7D32（5.13:1）、
- *   深色走 #30D158（8.4:1），见 ui/theme/Theme.kt。
+ *   文字 + 右侧状态 + 行尾 ›），不另起一套审美；状态色用 `zhengdaoReady()`——
+ *   青＝可行动，浅色 #2C5F54（纸底 6.66:1）、深色 #7FA89B（卡面 5.97:1），
+ *   见 ui/theme/Theme.kt（2026-10-22 第一百三十七批：绿色已从语言里删除）。
  * - 未授权时点整行直接去授权；已授权时点整行去系统「应用详情」看/改（权限已给，
  *   再拉一次请求系统会直接回「已授予」，表现就是点了没反应）。
  * - 「网络访问」是安装时权限，**行不可点、不画 ›**：没事可做的地方给一个能点的行，
@@ -507,7 +507,7 @@ private fun PermissionRow(
                 text = status,
                 style = MaterialTheme.typography.bodyMedium,
                 // P2-11：绿侧早已用语义色，红侧对齐（error 色 3.55:1 不达 AA）
-                color = if (granted) zhengdaoReadyGreen() else zhengdaoErrorText(),
+                color = if (granted) zhengdaoReady() else zhengdaoErrorText(),
             )
             if (onClick != null) {
                 Spacer(Modifier.width(6.dp))

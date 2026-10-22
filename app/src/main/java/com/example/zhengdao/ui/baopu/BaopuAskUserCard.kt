@@ -2,6 +2,10 @@
 //
 // 依据：派工单第十批 §1 C 段（提问卡形状：问题一行、选项 2–4 且推荐第一并标
 // 「推荐」、永远留一行空白输入）+ §4（渲染层只画 [AskUserCard]，判据全在纯函数）。
+//
+// 第一百三十七批（2026-10-22）：外框换成四档容器的**行动卡**（四边 2dp 黛青＋
+// 顶部浅青标题条），卡内排版与按钮一行不动——「布局位置零位移，允许且仅允许
+// 容器与颜色按本文改」（派工单红线）。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.layout.Arrangement
@@ -12,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,66 +54,64 @@ internal fun BaopuAskUserCard(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        tonalElevation = 3.dp,
-        modifier = modifier.fillMaxWidth(),
+    BaopuActionContainer(
+        title = stringResource(R.string.baopu_tier_action_ask),
+        badge = stringResource(R.string.baopu_tier_action_badge),
+        modifier = modifier,
     ) {
-        Column(Modifier.padding(16.dp)) {
-            // 问题（一行）
-            Text(
-                text = card.question,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            // 选项（推荐第一是数据层的排序保证；这里按给定顺序画）
-            card.options.forEach { opt ->
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // 问题（一行）
+        Text(
+            text = card.question,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        // 选项（推荐第一是数据层的排序保证；这里按给定顺序画）
+        card.options.forEach { opt ->
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { onPick(opt) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Button(
-                        onClick = { onPick(opt) },
-                        enabled = enabled,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(opt.label)
-                    }
-                    if (opt.recommended) {
-                        Text(
-                            text = stringResource(R.string.baopu_ask_recommended),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(top = 12.dp),
-                        )
-                    }
+                    Text(opt.label)
+                }
+                if (opt.recommended) {
+                    Text(
+                        text = stringResource(R.string.baopu_ask_recommended),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
                 }
             }
-            // 空白输入行（永远在；提交后清空——下一次还是一张干净的卡）
-            var freeText by remember(card) { mutableStateOf("") }
-            OutlinedTextField(
-                value = freeText,
-                onValueChange = { freeText = it },
-                enabled = enabled,
-                placeholder = { Text(card.freeTextPrompt) },
-                singleLine = false,
-                maxLines = 3,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            )
-            Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp),
-                horizontalArrangement = Arrangement.End,
+        }
+        // 空白输入行（永远在；提交后清空——下一次还是一张干净的卡）
+        var freeText by remember(card) { mutableStateOf("") }
+        OutlinedTextField(
+            value = freeText,
+            onValueChange = { freeText = it },
+            enabled = enabled,
+            placeholder = { Text(card.freeTextPrompt) },
+            singleLine = false,
+            maxLines = 3,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(
+                onClick = {
+                    onFreeText(freeText)
+                    freeText = ""
+                },
+                enabled = enabled && freeText.isNotBlank(),
             ) {
-                TextButton(
-                    onClick = {
-                        onFreeText(freeText)
-                        freeText = ""
-                    },
-                    enabled = enabled && freeText.isNotBlank(),
-                ) {
-                    Text(stringResource(R.string.baopu_ask_free_submit))
-                }
+                Text(stringResource(R.string.baopu_ask_free_submit))
             }
         }
     }

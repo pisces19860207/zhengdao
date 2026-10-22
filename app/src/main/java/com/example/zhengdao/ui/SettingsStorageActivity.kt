@@ -52,7 +52,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.ui.settings.StorageRules
 import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp

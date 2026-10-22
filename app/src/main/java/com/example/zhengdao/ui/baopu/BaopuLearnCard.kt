@@ -8,6 +8,10 @@
 // 控制器落盘前还会再查一次（卡可能已经过期）。
 //
 // 位置纪律（与 ask_user 那张卡同区）：**输入栏上方**——不遮对话、不跳新页。
+//
+// 第一百三十七批（2026-10-22）：外框换成四档容器的**信息卡**（纸深底＋只左边 4dp
+// 黛青竖条）。它不要求用户动手（采纳与否是"要不要留"而不是"任务卡住等指令"），
+// 所以不进行动卡——这是 §6.2「先判要不要用户动手，再判是不是历史」的落点。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.layout.Column
@@ -19,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -44,65 +47,54 @@ internal fun BaopuLearnCard(
     onAdopt: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Surface(
-        tonalElevation = 3.dp,
-        shadowElevation = 2.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.learn_card_title),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(Modifier.height(6.dp))
-            proposals.forEach { p ->
-                val review = SkillRefine.reviewLearn(p, existingNames)
-                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    // 三件套：内容 · 来源 · 建议（草稿还是转正式）
+    BaopuInfoContainer {
+        Text(
+            text = stringResource(R.string.learn_card_title),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(6.dp))
+        proposals.forEach { p ->
+            val review = SkillRefine.reviewLearn(p, existingNames)
+            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                // 三件套：内容 · 来源 · 建议（草稿还是转正式）
+                Text(
+                    text = p.content,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = "${stringResource(R.string.learn_source_prefix)}：${p.source}" +
+                        "（${stringResource(R.string.learn_suggest_prefix)}：${
+                            stringResource(
+                                if (p.suggest == SkillRefine.Suggest.FORMAL) {
+                                    R.string.learn_suggest_formal
+                                } else {
+                                    R.string.learn_suggest_draft
+                                },
+                            )
+                        }）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // 门禁不过 ⇒ 红字说清哪条不过（这里不落盘，也没有"强行写"的入口）
+                if (!review.ok) {
                     Text(
-                        text = p.content,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        text = "${stringResource(R.string.learn_source_prefix)}：${p.source}" +
-                            "（${stringResource(R.string.learn_suggest_prefix)}：${
-                                stringResource(
-                                    if (p.suggest == SkillRefine.Suggest.FORMAL) {
-                                        R.string.learn_suggest_formal
-                                    } else {
-                                        R.string.learn_suggest_draft
-                                    },
-                                )
-                            }）",
+                        text = stringResource(R.string.learn_gate_blocked, review.summary),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // P2-11：colorScheme.error 做正文只有 3.55:1，走 zhengdaoErrorText()（门禁钉着）
+                        color = zhengdaoErrorText(),
                     )
-                    // 门禁不过 ⇒ 红字说清哪条不过（这里不落盘，也没有"强行写"的入口）
-                    if (!review.ok) {
-                        Text(
-                            text = stringResource(R.string.learn_gate_blocked, review.summary),
-                            style = MaterialTheme.typography.labelSmall,
-                            // P2-11：colorScheme.error 做正文只有 3.55:1，走 zhengdaoErrorText()（门禁钉着）
-                            color = zhengdaoErrorText(),
-                        )
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    // 采纳＝实心（这是会落盘的那个动作），「不记」用描边
+                    Button(
+                        onClick = { onAdopt(p.id) },
+                        enabled = review.ok,
+                    ) {
+                        Text(stringResource(R.string.learn_adopt))
                     }
-                    Row(Modifier.fillMaxWidth()) {
-                        // 采纳＝实心（这是会落盘的那个动作），「不记」用描边
-                        Button(
-                            onClick = { onAdopt(p.id) },
-                            enabled = review.ok,
-                        ) {
-                            Text(stringResource(R.string.learn_adopt))
-                        }
-                        Spacer(Modifier.weight(1f))
-                        OutlinedButton(onClick = onDismiss) {
-                            Text(stringResource(R.string.learn_dismiss))
-                        }
+                    Spacer(Modifier.weight(1f))
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.learn_dismiss))
                     }
                 }
             }
