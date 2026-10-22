@@ -80,7 +80,6 @@ import com.example.zhengdao.baopu.agent.RunState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 // ── 纯数据与纯判据（JVM 直测：J1–J7） ─────────────────────────────────────
 
@@ -155,22 +154,23 @@ internal fun groupRounds(messages: List<BaopuUiMessage>): List<BaopuRound> {
 /**
  * J2/J3/J7：一轮该不该收起（**纯函数**）。
  *
- * 三条口径（派工单 §2.2/§2.3/§2.4）：
+ * 三条口径（派工单 §2.2/§2.3/§2.4，139 批收口）：
  * 1. 带「要人动手」卡的轮（确认卡/问人卡/待过目候选卡）**强制展开**——收起来是事故；
  * 2. 正在跑 ⇒ 当前轮保持展开（正在干活的要看得见）；
- * 3. 其余一律默认收起（历史轮收；当前轮收工后也收——「一轮结束时自动收成一行」）。
- * 用户点开的轮（[userExpandedIds] 含其键）保持展开——展开状态只记在组合内
- * （remember），不落库（派工单 §2.3）。
+ * 3. 其余一律收起（历史轮收；当前轮收工后也收——「一轮结束时自动收成一行」）。
+ *
+ * 139 批：用户能展开的不再是「整轮」（步骤卡/工具卡已撤出正文），而是轮尾过程条的
+ * **浮层明细**；因此这里不再有 userExpandedIds——正文的收/展只由运行态与钉住卡决定，
+ * 用户展开明细不会把正文推长。
  */
 internal fun roundCollapsed(
     round: BaopuRound,
     running: Boolean,
     pinnedUserIds: Set<Long>,
-    userExpandedIds: Set<Long>,
 ): Boolean = when {
     round.userMessageId in pinnedUserIds -> false
     running && round.isCurrent -> false
-    else -> round.userMessageId !in userExpandedIds
+    else -> true
 }
 
 /** 轮窗口切片（**纯函数**）：run_log 行按 [BaopuRound.startMs, endMs) 左闭右开取。 */
@@ -200,6 +200,23 @@ internal fun roundSummary(rows: List<BaopuStepRow>, fallbackMs: Long? = null): R
 }
 
 /**
+ * 这一轮有没有过程数据（**纯函数**，139）：有工具 part、有 run_log 行，
+ * 或当前轮正在等确认 ⇒ 才挂过程条；都没有 ⇒ **空过程不显示**（派工单负例）。
+ *
+ * 历史轮的数据来源仍是 run_log + 消息里的 tool part（16 批步骤数据不丢），
+ * 只是渲染位置从正文换到了过程条的浮层明细。
+ */
+internal fun roundHasProcess(
+    round: BaopuRound,
+    steps: List<BaopuStepRow>,
+    awaitConfirmTool: String?,
+): Boolean =
+    round.toolPartCount > 0 ||
+        stepsInWindow(steps, round.startMs, round.endMs)
+            .any { !it.tool.startsWith("compression_") } ||
+        (round.isCurrent && !awaitConfirmTool.isNullOrBlank())
+
+/**
  * J5：用时口径（测试写死）：90_000 → "1m30s"；120_000 → "2m"；42_000 → "42s"。
  * 中英两套文案共用这个值（它不是 UI 文案，是数据格式化）。
  */
@@ -218,9 +235,9 @@ internal fun formatDuration(ms: Long): String {
  * tool part 显示「工具调用 · 名字」＋ 摘要（点开看全文——围栏包裹的原文）。
  *
  * 十六批第一件：先按轮分组——
- * - 纯聊天轮（无工具卡）照旧全显，没有可收的东西；
- * - 有工具卡的轮：在跑的当前轮与被「要人动手」卡钉住的轮展开，其余收成一行摘要；
- * - 点摘要行展开该轮全部消息（工具卡就在其中——工具名/结果/错误原文都在卡上）。
+ * - 纯聊天轮（无过程数据）照旧全显，没有可收的东西；
+ * - 有过程数据的轮：在跑的当前轮与被「要人动手」卡钉住的轮展开，其余只留用户消息＋最终回答；
+ * - 步骤卡/工具卡**不再进正文**（139）：每条回答尾巴挂一行过程条，点开是浮层明细。
  */
 @Composable
 internal fun BaopuMessageList(
@@ -265,18 +282,14 @@ internal fun BaopuMessageList(
     // 最后一条 user 消息 id）。卡本体渲染在消息流之外，这里保证它背后的明细也不收。
     val lastUserId = messages.lastOrNull { it.role == "user" }?.id
     val pinned = if (pinLastRound && lastUserId != null) setOf(lastUserId) else emptySet<Long>()
-    // 2026-10-18 真机第二次反馈：「干了几步点开后没法收回」。真因不是没有收起入口 ——
-    // 展开态的摘要行上下各有一条，但**一轮展开后有十几张工具卡、两条都滚出屏幕**，
-    // 用户找不到。⇒ 展开状态提到列表层，屏幕上常驻一颗「收起详情」浮标（不随内容滚走）。
-    var expandedRoundId by remember { mutableStateOf<Long?>(null) }
     // 产物行只摆前 8 片，剩下的折成「还有 N 个」（判据 B5；切法在纯函数里，JVM 直测）。
     val chipPlan = remember(artifacts) { artifactChipPlan(artifacts) }
-    // 第一百零六批（2026-10-21）：原来这里有一颗常驻「收起详情」浮标（BottomEnd + 56dp
-    // 让开「回到最新」）。用户点名移除，改由**轮尾活动面板那一行**承接「入口不随内容
-    // 滚走」的保证（v1.5 §3.12）。`expandedRoundId` 仍在列表层（门禁①不许退回 item 内）。
+    // 第一百零六批移除常驻「收起详情」浮标；139 批再收口：正文的收/展只看运行态与
+    // 「要人动手」卡（不再有 expandedRoundId），用户点开的是轮尾过程条的浮层明细，
+    // 明细不进入列表布局、不会把正文推长。
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
         rounds.forEach { round ->
-            if (round.toolPartCount == 0) {
+            if (!roundHasProcess(round, steps, awaitConfirmTool)) {
                 items(round.messages, key = { it.id }) { msg ->
                     BaopuMessageRow(msg, onSpeak, onUserLongPress)
                 }
@@ -291,15 +304,9 @@ internal fun BaopuMessageList(
                         // E-166 / D-02：带工具/计划卡的轮**也要**传长按回调，
                         // 漏传会让这一型用户气泡既不可点也不可长按。
                         onUserLongPress = onUserLongPress,
-                        userOpened = expandedRoundId == round.userMessageId,
                         engineState = engineState,
                         engineStep = engineStep,
                         awaitConfirmTool = awaitConfirmTool,
-                        onUserToggle = {
-                            expandedRoundId =
-                                if (expandedRoundId == round.userMessageId) null
-                                else round.userMessageId
-                        },
                     )
                 }
             }
@@ -369,15 +376,19 @@ private fun BaopuArtifactRow(plan: ArtifactChipPlan, onOpen: (String) -> Unit) {
     }
 }
 
-/** 一轮的完整渲染（收起 ⇄ 展开的状态只活在组合里：remember(轮键)，不落库）。 */
+/**
+ * 一轮的完整渲染（十六批轮内收敛 + 139 批过程条）。
+ *
+ * 收起（历史轮 / 已收工）：用户消息 ＋ 最终回答 ＋ 过程条；
+ * 展开（在跑的当前轮 / 被要人动手卡钉住）：用户消息 ＋ 全部文字消息 ＋ 过程条。
+ * 工具卡不在这两支里——它们在过程条的浮层明细里（点开才出现，不推正文）。
+ */
 @Composable
 private fun BaopuRoundItem(
     round: BaopuRound,
     steps: List<BaopuStepRow>,
     running: Boolean,
     pinned: Set<Long>,
-    userOpened: Boolean,
-    onUserToggle: () -> Unit,
     onSpeak: ((String) -> Unit)? = null,
     onUserLongPress: ((BaopuUiMessage) -> Unit)? = null,
     engineState: RunState = RunState.IDLE,
@@ -388,55 +399,30 @@ private fun BaopuRoundItem(
         round = round,
         running = running,
         pinnedUserIds = pinned,
-        userExpandedIds = if (userOpened) setOf(round.userMessageId) else emptySet(),
     )
-    // 第一百零六批（2026-10-21）：计划从消息正文**全面撤出**——本文件不再渲染
-    // `BaopuPlanCard`，本会话所有计划按轮收进 `BaopuPlanArea` 的浮层面板（v1.5 §3.11）。
-    // J16 升级为「正文里不许再出现计划卡渲染」（门禁：BaopuPlanAreaTest）。
-    val hasActivity = stepsInWindow(steps, round.startMs, round.endMs).isNotEmpty() ||
-        !awaitConfirmTool.isNullOrBlank()
-    val showActivity = activityPanelVisible(
-        hasActivity = hasActivity,
-        running = running,
-        isCurrent = round.isCurrent,
-        collapsed = collapsed,
-    )
-    // 轮尾活动面板（v1.5 §3.12）：轮内最后一个「信息块」，跟在最终回答之后；
-    // 它同时接过了被删掉的「收起详情」浮标的班（入口不随内容滚走）。
-    val activityPanel: @Composable () -> Unit = {
-        if (showActivity) {
-            BaopuActivityPanel(
-                round = round,
-                steps = steps,
-                running = running,
-                state = engineState,
-                engineStep = engineStep,
-                awaitConfirmTool = awaitConfirmTool,
-            )
-        }
-    }
     Column(Modifier.fillMaxWidth()) {
         if (collapsed) {
-            // 收起：user 消息（问题常显）＋ 摘要一行（可点开）＋ 最终回答（照旧常显）
-            round.messages.filter { it.role == "user" }.forEach { BaopuMessageRow(it, onUserLongPress = onUserLongPress) }
-            BaopuRoundSummaryRow(round, steps, onUserToggle)
+            // 收起：user 消息（问题常显）＋ 最终回答（照旧常显），过程数据在尾巴那一行里
+            round.messages.filter { it.role == "user" }.forEach {
+                BaopuMessageRow(it, onUserLongPress = onUserLongPress)
+            }
             round.finalAnswerMessage()?.let { BaopuMessageRow(it, onSpeak) }
-            activityPanel()
         } else {
-            // 展开：**先给一条可点的摘要行**（2026-10-18 真机：底那条在长内容里找不到，
-            // 用户以为"收不回去"）——点顶部这一行即收回；底部再留一条，两头都能收。
-            BaopuRoundSummaryRow(round, steps, onUserToggle)
-            // user 消息在最前，其余消息照原样（工具卡＝每一步明细：工具名/结果/错误原文可点开）
+            // 展开：user 消息在最前，其余文字消息照原样（工具卡已在 139 撤出正文）
             round.messages.forEach { msg ->
                 BaopuMessageRow(msg, onSpeak, onUserLongPress)
             }
-            // 活动面板紧跟最终回答（设计「轮内最后一个元素，跟在最终回答后」）。
-            activityPanel()
-            // 2026-10-18 真机反馈：「工具调用我点了，展开后就收不回去了」——
-            // 原因是收起态才渲染那行摘要，展开后就没有任何可点的地方。
-            // 展开态末尾补一条同样的摘要行，点它即收回（文案/数字与收起态一致）。
-            BaopuRoundSummaryRow(round, steps, onUserToggle)
         }
+        // 第一百三十九批：每条回答尾巴下挂一行折叠过程条（整行可点；空过程不显示）。
+        // 它同时是 16 批「步骤数据仍可展开」的唯一入口——浮层明细不推正文。
+        BaopuProcessBar(
+            round = round,
+            steps = steps,
+            running = running,
+            state = engineState,
+            engineStep = engineStep,
+            awaitConfirmTool = awaitConfirmTool,
+        )
     }
 }
 
@@ -446,36 +432,6 @@ private fun BaopuRound.finalAnswerMessage(): BaopuUiMessage? =
         m.role != "user" && m.parts.any { it.kind == "text" && it.text.isNotBlank() }
     }
 
-/** 收起行的三个数（J4/J5/J6 的 UI 落点）：run_log 活动行切窗汇总，消息时间差兜底用时。 */
-private fun roundSummaryOf(round: BaopuRound, steps: List<BaopuStepRow>): RoundSummary {
-    val rows = stepsInWindow(steps, round.startMs, round.endMs)
-    val fallback = (round.messages.lastOrNull()?.createdAt ?: round.startMs) - round.startMs
-    return roundSummary(rows, fallback)
-}
-
-/**
- * 收起行：`干了 N 步 · 用时 X · 失败 M`（走 strings.xml，不拼中文）；
- * 没有可靠用时数据 ⇒ 用「无用时」变体（J6：不显示 0s 假装知道）。
- *
- * 第一百三十七批：换四档容器的**记录条**档——单行 44dp、只下边 1dp 发丝线、
- * 行首 `›` 折叠符、整行可点（原先是一个 surfaceVariant 圆角块，与其它卡同底色、分不出来）。
- */
-@Composable
-private fun BaopuRoundSummaryRow(
-    round: BaopuRound,
-    steps: List<BaopuStepRow>,
-    onToggle: () -> Unit,
-) {
-    val s = roundSummaryOf(round, steps)
-    BaopuRecordRow(
-        text = s.durationMs?.let {
-            stringResource(R.string.baopu_round_summary, s.steps, formatDuration(it), s.fails)
-        } ?: stringResource(R.string.baopu_round_summary_nodur, s.steps, s.fails),
-        onClick = onToggle,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-    )
-}
-
 @Composable
 private fun BaopuMessageRow(
     msg: BaopuUiMessage,
@@ -484,7 +440,9 @@ private fun BaopuMessageRow(
 ) {
     // 只有 plan part 的消息（第十七批 C 段：计划已解析进 msg.plan 由计划卡渲染）⇒
     // 不建空气泡（角色标签下一片空白比不渲染更怪）。
-    if (msg.parts.isEmpty()) return
+    // 139：工具卡整体撤出正文（明细进轮尾过程条）⇒ 只剩工具 part 的消息也不建空气泡。
+    val visibleParts = msg.parts.filter { it.kind != "tool" }
+    if (visibleParts.isEmpty()) return
     val isUser = msg.role == "user"
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         // 2026-10-18 用户：「抱朴在左，用户在右才对啊」⇒ 用户气泡靠右、助手靠左；
@@ -539,14 +497,14 @@ private fun BaopuMessageRow(
                     // 文字类 part 走 SelectionContainer（长按可选中复制）。
                     // 图片 part **移出**它：图片要的"长按＝复制路径"与"长按＝选字"
                     // 是同一个手势，套在 SelectionContainer 里必然被抢走。
-                    val textParts = msg.parts.filter { it.kind != "image" }
-                    val imageParts = msg.parts.filter { it.kind == "image" }
+                    val textParts = visibleParts.filter { it.kind != "image" }
+                    val imageParts = visibleParts.filter { it.kind == "image" }
                     if (textParts.isNotEmpty()) {
                         val renderParts: @Composable () -> Unit = {
                             Column {
                                 textParts.forEachIndexed { i, part ->
                                     when (part.kind) {
-                                        "tool" -> BaopuToolPart(part, key = "${msg.id}-$i")
+                                        // 139：没有 tool 分支——工具明细只走过程条浮层
                                         "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
                                         else -> BaopuTextPart(part, key = "${msg.id}-$i")
                                     }
@@ -631,35 +589,6 @@ private fun BaopuCompressedPart(part: BaopuUiPart, key: String) {
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-    }
-}
-
-/**
- * 工具 part（＝十六批第一件展开后的「每一步明细」）：工具名 ＋ 结果摘要；
- * 点开看全文（围栏原文，含 offset/limit 提示）。摘要截 200 字
- * （派工单 §2.3「错误原文截断 200 字，可点开全文」；原 160 按本单上调）。
- */
-@Composable
-private fun BaopuToolPart(part: BaopuUiPart, key: String) {
-    var expanded by remember(key) { mutableStateOf(false) }
-    val failed = part.text.startsWith("失败") || part.text.startsWith("被拒")
-    Column(Modifier.padding(top = 6.dp).clickable { expanded = !expanded }) {
-        Text(
-            text = stringResource(R.string.baopu_tool_label) + " · " + part.tool,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Medium,
-            color = if (failed) {
-                zhengdaoErrorText() // P2-11：error 色 3.55:1 不达正文 AA 4.5:1
-            } else {
-                MaterialTheme.colorScheme.primary
-            },
-        )
-        Text(
-            text = if (expanded) part.text else part.text.take(200) + if (part.text.length > 200) "…" else "",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 2.dp),
-        )
     }
 }
 
