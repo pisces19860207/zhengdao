@@ -46,7 +46,7 @@ class ModelParamsTest {
         assertEquals("high", ModelParams.effortOverlay(ds, null).reasoningEffort)
         // 通道没声明 effort ⇒ 不盖也不发（不替不认这个字段的通道瞎发）
         assertNull(ModelParams.effortOverlay(Providers.OPENAI_COMPAT, "low").reasoningEffort)
-        assertNull(ModelParams.effortOverlay(Providers.BUILTIN_FREE, "low").reasoningEffort)
+        assertNull(ModelParams.effortOverlay(Providers.OPENROUTER_FREE, "low").reasoningEffort)
         // 脏值不盖（服务端 422）
         assertEquals("high", ModelParams.effortOverlay(ds, "banana").reasoningEffort)
     }

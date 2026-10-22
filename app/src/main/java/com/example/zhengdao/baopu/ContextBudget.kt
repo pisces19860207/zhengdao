@@ -106,13 +106,14 @@ internal object BudgetTable {
             source = "公开文档预设（本仓未实测）",
         ),
         ModelBudget(
-            providerId = "builtin-free",
+            providerId = "openrouter-free",
             modelPrefix = "",
             contextWindow = 128_000,
             maxOutput = 16_384,
             systemPromptReserve = 8_000,
             toolSchemaReserve = 16_000,
-            source = "预设占位（该通道 403，未实测）",
+            source = "预设占位（免费车道能从清单里换模型 ⇒ 取保守值；" +
+                "Providers.OPENROUTER_FREE 已声明的 ① 实测窗口优先于本行）",
         ),
         ModelBudget(
             providerId = "*",

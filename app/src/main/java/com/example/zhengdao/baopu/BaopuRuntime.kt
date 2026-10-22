@@ -16,6 +16,7 @@ import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.KbTools
 import com.example.zhengdao.baopu.agent.ListDirTool
 import com.example.zhengdao.baopu.agent.RunEngine
+import com.example.zhengdao.baopu.agent.RunRules
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolOutcome
@@ -423,21 +424,48 @@ internal object BaopuRuntime {
             // （registry() 里注入的同一份壳），Context 依旧只出现在装配层。
             kbRecall = { text -> KbTools.autoInjectNote(text) },
             log = { RunLog.log(it) },
-            // 熔断自动降级：引擎只问"下一个是谁"，怎么挑在 ProviderPrefs（Key 不进引擎）。
-            channelFallback = { cur ->
-                val (cb, cm) = ProviderPrefs.storedCustom(appCtx)
-                ProviderPrefs.fallbackFrom(
-                    currentId = cur.id,
-                    keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
-                    customBase = cb,
-                    customModel = cm,
-                    // 第九十三批 · 模型路由的**只读**接线：读 SP 现值传进判据。
-                    // 用户没显式开过 AUTO_ROUTE ⇒ autoRoute=false、preference=null ⇒
-                    // fallbackFrom 走「取候选名单第一个」的老路，行为与本两行存在之前一致。
-                    // Key 仍只经 keyFor 从 SP 读：不进引擎、不进日志、不进路由理由。
-                    autoRoute = ProviderPrefs.autoRouteEnabled(appCtx),
-                    preference = ProviderPrefs.routePreference(appCtx),
-                )
+            // 熔断自动降级 ＋ 第一百三十一批 ② 多 Key 轮询：引擎只问"下一步是谁"，
+            // 怎么挑通道、罚哪把 Key 全在这一个闭包里（Key 不进引擎、不进日志）。
+            channelFallback = { cur, err ->
+                // 顺序有讲究：**先问池子**。派工单 ② 说的是 429/403/额度耗尽 ⇒ 切下一个 key，
+                // 换通道是同一模型把所有 Key 走完之后的事——同一条模型还有一把能用的 Key
+                // 就先烧那把，别把用户已经配好的模型悄悄换成别的。
+                // 写池子（记冷却/置禁用＋挪游标）只发生在 rotateAfterFailure 里，而它返回
+                // Rotated 时引擎**必然**消费这把 Key（FailurePolicy 的 NETWORK / MODEL_CHANNEL
+                // 两支都短路成 Fallback，候选非空 ⇒ channelDecision 必走 SwitchTo）
+                // ⇒ 不存在"罚了这把、却没人用它"的中间态。异常 ⇒ 当作"与 Key 无关"，
+                // 本批接线整体退回第一百三十一批之前的行为（池子写不进去也不能把这一轮弄崩）。
+                val rotation = runCatching {
+                    ProviderPrefs.rotateAfterFailure(appCtx, cur.id, cur.apiKey, err)
+                }.getOrNull() ?: ProviderPrefs.KeyRotation.NotKeyRelated
+                if (rotation is ProviderPrefs.KeyRotation.Rotated) {
+                    // 同 id、只换凭据 ⇒ 交给引擎的是一条"看起来还是这条模型"的 Provider。
+                    // Key 原文只进这一处 copy，日志与 trace 都拿不到它（RunEngine 只打 id/model）。
+                    RunRules.ChannelCandidate(
+                        next = cur.copy(apiKey = rotation.key),
+                        keySwap = true,
+                    )
+                } else {
+                    // 与 Key 无关（超时/断流/5xx）或全池不可用 ⇒ 照旧走第九十三批那条通道降级。
+                    // Exhausted 的那句人话（不含任何 Key 原文）挂在 notice 上带给界面。
+                    val notice = (rotation as? ProviderPrefs.KeyRotation.Exhausted)?.notice.orEmpty()
+                    val (cb, cm) = ProviderPrefs.storedCustom(appCtx)
+                    RunRules.ChannelCandidate(
+                        next = ProviderPrefs.fallbackFrom(
+                            currentId = cur.id,
+                            keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
+                            customBase = cb,
+                            customModel = cm,
+                            // 第九十三批 · 模型路由的**只读**接线：读 SP 现值传进判据。
+                            // 用户没显式开过 AUTO_ROUTE ⇒ autoRoute=false、preference=null ⇒
+                            // fallbackFrom 走「取候选名单第一个」的老路，行为与本两行存在之前一致。
+                            // Key 仍只经 keyFor 从 SP 读：不进引擎、不进日志、不进路由理由。
+                            autoRoute = ProviderPrefs.autoRouteEnabled(appCtx),
+                            preference = ProviderPrefs.routePreference(appCtx),
+                        ),
+                        notice = notice,
+                    )
+                }
             },
             // 安全点切换效应（第六十四批）：写只经 ProviderPrefs（唯一真相）。
             // 解析没落到目标（如 custom 三件不齐被兜底成免费通道）⇒ 回滚选择位，

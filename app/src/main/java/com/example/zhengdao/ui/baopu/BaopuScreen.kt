@@ -31,9 +31,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -41,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -61,6 +64,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -76,6 +80,7 @@ import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.SettingsDataActivity
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.ModelPickerRules
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.BackupRules
@@ -117,7 +122,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // 换通道 = 换引擎：控制器构造期持引擎（BaopuChatController），改 epoch 让它重建。
     var channelEpoch by remember { mutableIntStateOf(0) }
     val controller = remember(channelEpoch) { BaopuChatController(context) }
-    var showChannel by remember { mutableStateOf(false) }
+    // 第一百三十一批：初值读进程级草稿——跳玄览会把本页整个带出组合，回来时
+    // 「抽屉还在」这句话只有草稿能兑现（补充节 §三末句）。
+    var showChannel by remember { mutableStateOf(ModelSheetDraft.showing) }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
     // 第四十批：长按用户消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框。
@@ -386,6 +393,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             // 顶条（刀 3 瘦身）：☰ 开抽屉 · 状态 · ＋新会话。
             // 「章节抽取／备份原件／换通道」已进抽屉；中断提示与续跑仍由 BaopuSessionBar 承担。
             // 顶栏五件（v1.4 W9a）：☰ · 状态行 · 跑马灯 · 🛡 · ＋。设置入口不在这里（在抽屉）。
+            // 第一百三十一批补充节 §三：五件顺序固定＝☰ · **公司名(+角标)** · 状态/跑马灯位 · 🛡 · ＋，
+            // 一个不多一个不少——公司名插在 ☰ 之后、状态行之前，状态行与跑马灯仍共占中间那一「位」。
             // 高度＝48dp 图标位（三处 IconButton 各 48），跑马灯窗口只有 16dp ⇒ **零额外高度**；
             // 底下补一条发丝线把顶栏和正文分开——旧版靠 tonalElevation 1dp，深色主题里几乎看不见。
             Surface(color = MaterialTheme.colorScheme.surface) {
@@ -397,6 +406,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 ) {
                     val openLabel = stringResource(R.string.baopu_drawer_open)
                     val newSessionLabel = stringResource(R.string.baopu_new_session)
+                    // ④ 术语：这颗键对用户说的是「选模型」（strings.xml 里同一个 key，值已换过）。
+                    val companyLabel = stringResource(R.string.baopu_channel_button)
                     IconButton(
                         // 2026-10-21 真机复验（蓝总管）：131 把抽屉挪到顶栏下面之后，☰ 确实点得到了，
                         // 但这里当时仍只调 `open()` ⇒ 抽屉开着再点 ☰ 是空操作，「再点 ☰ 关」不成立。
@@ -412,6 +423,43 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     ) {
                         // 本项目没引 material-icons 依赖，用字形够了（☰），不为一个图标多打一个包。
                         Text(text = "☰", style = MaterialTheme.typography.titleMedium)
+                    }
+                    // ── 第一百三十一批 · 顶栏第二件：公司名（点它开选模型浮层）──────────
+                    // 补充节 §三逐条：13sp 墨、后面跟 10sp 次墨的上下文角标、**不用黛青**、
+                    // 不加下划线、不加箭头；热区 ≥48dp 高 × ≥44dp 宽。热区用 heightIn/widthIn 给，
+                    // 不占那三处 48dp 图标位（BaopuShellP1GateTest T2 数的正是它们、只许三处），
+                    // 宽度上限 96dp 是为了**不挤掉跑马灯**——公司名一长就让位给省略号，不抢中间那一格。
+                    val companyProvider = remember(channelEpoch) { ProviderPrefs.current(context) }
+                    val companyBadge = ModelPickerRules.contextBadge(companyProvider.contextWindow)
+                    Box(
+                        contentAlignment = Alignment.CenterStart,
+                        modifier = Modifier
+                            .widthIn(min = 44.dp, max = 96.dp)
+                            .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)
+                            .clip(RoundedCornerShape(BAO_CHIP_RADIUS_DP.dp))
+                            .clickable { showChannel = true }
+                            .padding(horizontal = 8.dp)
+                            .semantics { contentDescription = companyLabel },
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                ModelPickerRules.companyOf(companyProvider),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            // 角标：上下文没声明就**不摆**（不编数，与设置页那句「未声明」同一口径）。
+                            if (companyBadge.isNotEmpty()) {
+                                Text(
+                                    companyBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
                     }
                     // 状态行**锁单行**（v1.4 §4「状态行优先、跑马灯弹性」）：
                     // 不锁的话 1.3× 字体下它会折成两行 ⇒ 顶栏被撑高，跑马灯跟着"变高"，
@@ -999,12 +1047,23 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 val (customBase, customModel) = ProviderPrefs.storedCustom(context)
                 BaopuChannelSheet(
                     currentChannelId = ProviderPrefs.currentChannelId(context),
-                    storedKeyOf = { id -> ProviderPrefs.storedKey(context, id).orEmpty() },
                     customBaseUrl = customBase,
                     customModel = customModel,
-                    onDismiss = { showChannel = false },
-                    onSave = { id, key, base, model ->
+                    onDismiss = {
+                        // 取消 ⇒ 草稿作废（输入过的那串 Key 原文不留过夜），但**不改 SP**：
+                        // 没点「启用」就一个字都不写，选择位还是原来那条模型。
+                        ModelSheetDraft.clear()
+                        showChannel = false
+                    },
+                    onSave = { id, key, base, model, picked ->
+                        // 提交口仍然只有一个：BaopuRuntime.switchChannel ⇒ ProviderPrefs.save。
+                        // 预设上点定的模型（连同那一刻的元数据）另走 saveModelOverride，
+                        // 与选择位同一刻落下；自定义的模型名已经在 save() 的 model 参数里。
                         BaopuRuntime.switchChannel(context, id, key, base, model)
+                        if (id != ProviderPrefs.CHANNEL_CUSTOM) {
+                            ProviderPrefs.saveModelOverride(context, id, picked)
+                        }
+                        ModelSheetDraft.clear()
                         showChannel = false
                         channelEpoch++ // 换引擎（provider 是构造期注入；旧引擎线程闲着无害）
                     },
