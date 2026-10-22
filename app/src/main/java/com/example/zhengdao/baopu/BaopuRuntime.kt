@@ -36,6 +36,8 @@ import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.baopu.mcp.McpToolSource
+import com.example.zhengdao.baopu.policy.PolicyAssets
+import com.example.zhengdao.baopu.policy.PolicyRuntime
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.KnowledgeBase
 import org.json.JSONArray
@@ -392,6 +394,10 @@ internal object BaopuRuntime {
         }
 
     private fun build(appCtx: Context): RunEngine {
+        // 第一百二十二批：**先装政策表，再装任何会读政策的零件**。
+        // 组闸 / 工具可见性 / 进化决策口都在本函数后半段构造；装晚了它们会拿到默认值。
+        // fail closed 由 PolicyRuntime 负责：缺表回默认、坏表整张拒绝；这里只负责落审计行。
+        RunLog.log(PolicyRuntime.install(PolicyAssets.load(appCtx)))
         // 刀 3 B 段 C 段：预热思考深度的进程级缓存（SP ⇒ liveEffort）——
         // 设置页落盘时也会同刷（ModelParams.saveEffort），这里管的是「跨会话」
         // （上轮选过「低」，这轮直接进抱朴页也要生效，不必先去设置页逛一圈）。
