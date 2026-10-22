@@ -55,7 +55,7 @@ class BaopuConfirmRestoreTest {
     @Test
     fun `G1_控制器只剩调用_合成判据不留第二份`() {
         val c = controller()
-        assertTrue(c.contains("BaopuConfirmRestore.card(row)"))
+        assertTrue(c.contains("BaopuConfirmRestore.card(row, workspaceRoot)"))
         assertTrue("callId 前缀只许在 helper 里", !c.contains("\"restored-"))
     }
 }

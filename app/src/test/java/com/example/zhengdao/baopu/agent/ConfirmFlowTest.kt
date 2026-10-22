@@ -59,7 +59,8 @@ class ConfirmFlowTest {
         val root: File,
     )
 
-    private fun rig(root: File, foreground: () -> Long = { 0L }): Rig {
+    // foreground 保持末位：调用点的尾随 lambda（J3 超时钟）靠位置绑定，插在它前面会静默改绑。
+    private fun rig(root: File, projectRoot: () -> File? = { null }, foreground: () -> Long = { 0L }): Rig {
         val reg = ToolRegistry().apply {
             register(WriteFileTool.spec { root })
             register(ReadFileTool.spec())
@@ -87,6 +88,7 @@ class ConfirmFlowTest {
             foregroundElapsedMs = foreground,
             onPersistPending = { sid, step, tool, args, at -> persisted += arrayOf(sid, step, tool, args, at) },
             onRequestCard = { cards += it },
+            projectRoot = projectRoot,
         )
         return Rig(flow, store, persisted, cards, root)
     }
@@ -329,5 +331,44 @@ class ConfirmFlowTest {
         job.join()
         assertTrue(File(root, "a.txt").exists())
         assertFalse("第二个没被执行", File(root, "b.txt").exists())
+    }
+    // ── 第一百四十九批 组5：确认卡显示相对路径（走完整条引擎链路）───────────
+
+    @Test
+    fun `组5_摘要按工作区根剥成相对_落库参数仍是绝对原样`() = runBlocking {
+        val root = tmp("relpath")
+        val r = rig(root, projectRoot = { root })
+        // 生产形状：管线②段把 "资料库/x.txt" 改写成了绝对路径，③段才出卡
+        // （GuardPipeline.prepare → Result.NeedsConfirm(effectiveCall)）。
+        val abs = File(root, "资料库/x.txt").absolutePath
+        var outcome: ConfirmFlow.Outcome? = null
+        val job = launch {
+            outcome = r.flow.enter(1L, 1, writeCall("call-rel", abs, "甲\n乙")) { _, _ -> null }
+        }
+        awaitLive(r.flow, "call-rel")
+        val card = r.cards.first()
+        val shown = File("资料库", "x.txt").path
+        assertTrue("摘要没剥成相对路径（卡面泄目录结构）：${card.summary}", card.summary.contains(shown))
+        assertFalse("摘要里还留着绝对前缀：${card.summary}", card.summary.contains(root.absolutePath))
+        // 落库参数按 JSON 取值比（argsJson 里反斜杠是转义过的，字符串 contains 会假红）。
+        assertEquals("执行参数被显示逻辑改掉了（批准后会写到别处）", abs,
+            JSONObject(card.argsJson).getString("path"))
+        r.flow.resumeWithApproval("call-rel", approved = true, note = null)
+        job.join()
+        assertTrue("剥路径只该动显示，文件仍落在工作区内原位", File(root, "资料库/x.txt").exists())
+        assertTrue(outcome is ConfirmFlow.Outcome.Approved)
+    }
+
+    @Test
+    fun `组5_不给工作区根时摘要逐字节保持旧行为`() = runBlocking {
+        val root = tmp("relpath-off")
+        val r = rig(root) // projectRoot 默认 { null } = 接线前的形状
+        val abs = File(root, "keep2.txt").absolutePath
+        val job = launch { r.flow.enter(1L, 1, writeCall("call-keep", abs, "一")) { _, _ -> null } }
+        awaitLive(r.flow, "call-keep")
+        assertTrue("没给根却剥了路径 = 凭空发明短路径",
+            r.cards.first().summary.contains(abs))
+        r.flow.resumeWithApproval("call-keep", approved = false, note = "停")
+        job.join()
     }
 }

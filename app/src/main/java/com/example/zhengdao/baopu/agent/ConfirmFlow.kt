@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.PendingRow
 import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.rootfs.RunLog
+import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import org.json.JSONObject
@@ -51,6 +52,12 @@ internal class ConfirmFlow(
     private val onPersistPending: (sessionId: Long, step: Int, tool: String, argsJson: String, at: Long) -> Unit = { _, _, _, _, _ -> },
     private val onRequestCard: (ConfirmRequest) -> Unit = {},
     private val log: (String) -> Unit = { RunLog.log(it) },
+    /**
+     * 工作区根（第一百四十九批 组5）：确认卡摘要把绝对路径剥成相对显示。
+     * 注入函数而不是 File —— 引擎的根本身是 `() -> File`（换工作区时读数得跟着变）；
+     * 排在参数表**最后**且默认 `{ null }` ⇒ 旧调用点（含测试）一个字不改、行为逐字节不变。
+     */
+    private val projectRoot: () -> File? = { null },
 ) {
 
     sealed interface Outcome {
@@ -116,7 +123,7 @@ internal class ConfirmFlow(
             return Outcome.Ignored
         }
         val argsJson = RunRules.capArgsJson(call.arguments.toString())
-        val summary = RunRules.confirmSummary(call.name, call.arguments)
+        val summary = RunRules.confirmSummary(call.name, call.arguments, projectRoot())
         pending = Pending(sessionId, step, call, summary, argsJson)
         deferred = CompletableDeferred()
         note = null

@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.KbTools
+import com.example.zhengdao.baopu.agent.RunRules
+import java.io.File
 import org.json.JSONObject
 
 /**
@@ -48,21 +50,13 @@ internal fun BaopuConfirmCard(
     onApprove: () -> Unit,
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 工作区根（第一百四十九批 组5）：标题与摘要都把路径剥成相对显示；null ⇒ 原样。 */
+    projectRoot: File? = null,
 ) {
     // 点过就进忙碌态（执行中…）；卡被摘掉（控制器置空）时本组件随之消失
     var busy by remember(request.callId) { mutableStateOf(false) }
-    val path = remember(request.argsJson, request.tool) {
-        runCatching {
-            val obj = JSONObject(request.argsJson)
-            val explicit = obj.optString("path").trim()
-            when {
-                explicit.isNotBlank() -> explicit
-                // UI-D12：kb_index 的 path 有缺省值，卡面要写「将来要索引哪儿」，
-                // 不许只回显 `{}`（2026-10-22 真机）。
-                request.tool == KbTools.NAME_INDEX -> KbTools.effectiveTarget(obj)
-                else -> null
-            }
-        }.getOrNull()
+    val path = remember(request.argsJson, request.tool, projectRoot) {
+        confirmCardTitlePath(request, projectRoot)
     }
     val approveDesc = stringResource(R.string.baopu_confirm_approve_desc)
     val rejectDesc = stringResource(R.string.baopu_confirm_reject_desc)
@@ -132,4 +126,29 @@ internal fun BaopuConfirmCard(
             }
         }
     }
+}
+
+/**
+ * 卡面标题里的路径（**纯函数**，JVM 直测；第一百四十九批 组5 从 Composable 里抽出来）。
+ *
+ * 取法一字未改：只从 `argsJson` 取 `path`（取不到且是 kb_index ⇒ 用它的有效目标；
+ * 再取不到 ⇒ null，卡面退化成「要执行：<工具名>」）。新增的只有最后一步——
+ * 给了工作区根就把绝对路径剥成相对：②段路径守卫改写出来的就是这种长串，
+ * 直接印在标题上又长又泄目录结构（[RunRules.relativizePath] 的口径）。
+ *
+ * 只做**显示**：`argsJson` 本身没被改过，批准执行的仍是原参数。
+ */
+internal fun confirmCardTitlePath(request: ConfirmRequest, projectRoot: File?): String? {
+    val raw = runCatching {
+        val obj = JSONObject(request.argsJson)
+        val explicit = obj.optString("path").trim()
+        when {
+            explicit.isNotBlank() -> explicit
+            // UI-D12：kb_index 的 path 有缺省值，卡面要写「将来要索引哪儿」，
+            // 不许只回显 `{}`（2026-10-22 真机）。
+            request.tool == KbTools.NAME_INDEX -> KbTools.effectiveTarget(obj)
+            else -> null
+        }
+    }.getOrNull()
+    return if (raw == null || projectRoot == null) raw else RunRules.relativizePath(raw, projectRoot)
 }

@@ -541,6 +541,9 @@ internal class RunEngine(
         },
         onRequestCard = { req -> onEvent?.invoke(req) },
         log = log,
+        // 组5：确认卡摘要按工作区根剥成相对路径显示（根与②段改写路径用的是同一个 spillRoot，
+        // ⇒ 剥得掉；剥不掉（工作区外的路径）原样印，不编一个短路径出来）。
+        projectRoot = { spillRoot() },
     )
 
     /** 确认等待的**前台累计毫秒**（后台不计时——切后台时 [noteConfirmBackground] 结账）。 */
