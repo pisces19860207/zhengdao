@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +22,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +69,7 @@ internal fun BaopuChannelSheet(
     var fetchError by remember { mutableStateOf<String?>(null) }
 
     val candidates = remember { Providers.all() }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val customValid = selected != ProviderPrefs.CHANNEL_CUSTOM ||
         (baseUrlText.trim().startsWith("https://") && modelText.isNotBlank())
 
@@ -90,12 +93,13 @@ internal fun BaopuChannelSheet(
         fetching = false
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = 24.dp)
+                .imePadding(),
         ) {
             Text(
                 "抱朴通道",
@@ -118,6 +122,31 @@ internal fun BaopuChannelSheet(
                         keyText = storedKeyOf(p.id)
                     },
                 )
+            }
+            // 2026-10-22：Key 输入挪到「选完公司」的正下方，并强制整屏展开——
+            // 之前它排在「自定义」之后、又只弹半屏，用户在预设上找不到填 Key 的地方。
+            if (selected != Providers.BUILTIN_FREE.id) {
+                Text(
+                    "填你的 API Key",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                )
+                OutlinedTextField(
+                    value = keyText,
+                    onValueChange = { keyText = it },
+                    label = { Text("API Key（只存本机，不进日志不进库）") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (keyText.isNotBlank()) {
+                    Text(
+                        "这台手机上已存过 Key，已帮你填上；要换就清空重填。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             ChannelRow(
@@ -177,18 +206,6 @@ internal fun BaopuChannelSheet(
                         }
                     }
                 }
-            }
-            if (selected != Providers.BUILTIN_FREE.id) {
-                OutlinedTextField(
-                    value = keyText,
-                    onValueChange = { keyText = it },
-                    label = { Text("API Key（只存本机，不进日志不进库）") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
