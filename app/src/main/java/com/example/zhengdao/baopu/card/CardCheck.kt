@@ -130,7 +130,29 @@ internal object CardCheck {
             }
         }
 
+        findings += dialectGuards(verdict.format, findings.toList())
+
         return CheckReport(findings, stats, skipped, given)
+    }
+
+    /**
+     * F22 兜底断言（第一百四十九批 组4）：判据按方言跑完，出报告**之前**再问一遍"跑对表了吗"。
+     *
+     * 两问，都是从 [CardDialectMap] 那张纯表问的，不在这里另写第二套口径：
+     * ① 认脸说是世界书、`dialectOf` 却给不出血统 ⇒ [CardDialectChecks.unmappedDialectFinding]
+     *    （今天不可达，守的是以后有人加第五种世界书忘了同步表）；
+     * ② 世界书页里出了别家的码 ⇒ [CardDialectChecks.foreignCodeFindings]（判据表串味）。
+     *
+     * 卡／正则／预设（`dialectOf` 为 null 且不在世界书列里）不查②——`checkCardInfo` 的
+     * `CARD_*` 码本来就与方言无关，把它们算成"外来码"是给合法输出凭空加错误。
+     * 因此**合法卡的报告逐字节不变**：守卫只在"判据走错门"时才开口。
+     */
+    private fun dialectGuards(format: FormatKind, findings: List<Finding>): List<Finding> {
+        val unmapped = CardDialectChecks.unmappedDialectFinding(format)
+        val dialect = CardDialectMap.dialectOf(format)
+        if (dialect == null) return if (unmapped != null) listOf(unmapped) else emptyList()
+        val foreign = CardDialectChecks.foreignCodeFindings(dialect, findings)
+        return if (unmapped != null) listOf(unmapped) + foreign else foreign
     }
 
     /**
@@ -549,18 +571,34 @@ internal object CardCheck {
         )
     }
 
-    /** §3.3 表内字段（核心＋扩展）。表外字段只记 INFO。 */
-    private val ST_ENTRY_FIELDS: Set<String> = setOf(
-        "key", "keysecondary", "comment", "content", "constant", "vectorized", "selective",
-        "selectiveLogic", "addMemo", "order", "position", "disable", "ignoreBudget",
-        "excludeRecursion", "preventRecursion",
-        "matchPersonaDescription", "matchCharacterDescription", "matchCharacterPersonality",
-        "matchCharacterDepthPrompt", "matchScenario", "matchCreatorNotes",
-        "delayUntilRecursion", "probability", "useProbability", "depth", "group",
-        "groupOverride", "groupWeight", "scanDepth", "caseSensitive", "matchWholeWords",
-        "useGroupScoring", "automationId", "role", "sticky", "cooldown", "delay", "uid",
-        "displayIndex", "extensions", "triggers", "outletName", "characterFilter",
+    /**
+     * §3.3 里酒馆有、§15.6 对应表没给行的字段（对应表只列**跨方言可映射**的语义，
+     * 这 14 个没有别家对应物，所以不占行；但字段名必须进体检的已知集，否则合法字段会被
+     * 报成「表外字段」。每条都点得出 §3.3 的行号）：
+     *
+     * 核心（69/69 全有）：`comment`#3 · `vectorized`#6 · `selective`#7 · `addMemo`#9 ·
+     * `ignoreBudget`#13 · `groupOverride`#27 · `groupWeight`#28 · `automationId`#33 ·
+     * `uid`#38 · `displayIndex`#39；
+     * 扩展（只在部分条目出现，必须原样搬运）：`extensions` · `triggers` · `outletName` · `characterFilter`。
+     *
+     * 声明顺序有讲究：[ST_ENTRY_FIELDS] 的初始化器要读它，必须排在前面。
+     */
+    private val ST_ENTRY_EXTRA_FIELDS: Set<String> = setOf(
+        "comment", "vectorized", "selective", "addMemo", "ignoreBudget",
+        "groupOverride", "groupWeight", "automationId", "uid", "displayIndex",
+        "extensions", "triggers", "outletName", "characterFilter",
     )
+
+    /**
+     * §3.3 表内字段（核心＋扩展）——**名字从 [CardDialectMap.fieldsOf] 派生，不在这里手写第二份**。
+     *
+     * 第一百四十九批 组4 之前这里是硬编码的 43 个字符串，与 §15.6 对应表**没有机械关系**：
+     * 对应表改一个字段名，这份表不会跟着动，于是「表外字段只记 INFO」这条判据开始凭第二份
+     * 事实判。派生后 = 对应表的 st 列 29 项 ∪ 上面 14 项表外补充 = 原来的 43 项（集合相等，
+     * 由 `CardDialectChainTest` 钉住）⇒ **合法卡的输出逐字节不变**。
+     */
+    private val ST_ENTRY_FIELDS: Set<String> =
+        CardDialectMap.fieldsOf(WorldbookDialect.ST_NATIVE) + ST_ENTRY_EXTRA_FIELDS
 
     /** `extensions` 里允许任意子键（开放对象）；其余按表判。 */
     private fun maybeKnown(k: String, known: Set<String>): Boolean = k in known
