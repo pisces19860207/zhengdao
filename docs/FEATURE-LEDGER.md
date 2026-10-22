@@ -160,7 +160,7 @@
 | 112 | 🔵 **2026-10-21 已派第一百一十九批（workbuddy 国内版）：工具 schema 契约全覆盖** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百一十九批-工具schema全覆盖.md`（94 批续；所有已注册工具补 schema/校验/门禁，不改合法行为；105 在验收，不碰 UI） |
 | 113 | 🔵 **2026-10-21 已派第一百二十批（workbuddy 国内版）：AI 生图 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十批-AI生图v1.md`（能力表 `imageGeneration`＋适配器，不锁 provider；`generate_image`→产物/预览；成本确认，key 不入库）；**UI 落点按 v1.5 §3.13 图片区/全屏查看器，不新造** |
 | 114 | 🔵 **2026-10-21 已派第一百二十一批（workbuddy 国内版）：死代码转正三件** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十一批-死代码转正三件.md`（purgeSession 清会话、LegacyMemPlugin 迁移、DocxTextExtractor 导入；各带确认/回滚/测试；不含 withObjectStorage/isInFlight/markRemoved） |
-| 115 | ⚪ **2026-10-21 已立单待派：政策表 v1（只读/typed/版本化，A 执行）** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十二批-政策表v1.md`（不现在做；只外置政策数据，不外置政策权力；等 UI/生图/转正收口再评估） | 待派 |
+| 115 | 🔵 **2026-10-22 已派第一百二十二批（qoder）：政策表 v1（只读/typed/版本化，A 执行）** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十二批-政策表v1.md`（不现在做；只外置政策数据，不外置政策权力；等 UI/生图/转正收口再评估） | 待派；2026-10-22 用户放行，派 qoder |
 | 116 | 🔵 **2026-10-21 已派第一百二十三批（qoder）：MCP 工具接入 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十三批-MCP接入v1.md`（HTTP/SSE 外部 MCP；工具转 ToolSpec；人批；不自动连接/不执行远程代码/不拉 stdio；不锁 server 名单） |
 | 117 | 🔵 **2026-10-21 已派第一百二十四批（qoder）：多模态输入 v1（图片/截图）** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十四批-多模态输入v1.md`（相册/相机/截图→vision provider；显式发送、压缩/预算；不自动上传、不锁模型） |
 | 119 | ⚪ **2026-10-21 已派第一百二十六批（workbuddy 国内版）：AI 视频生成 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十六批-AI视频v1.md`（能力驱动、异步任务/轮询/产物；不锁 provider、不自动批量）；**暂缓/后排（先做 127/128）** |
@@ -171,6 +171,7 @@
 | 126 | 🔵 **2026-10-22 已派第一百三十七批（workbuddy 国内版）：换 Token ＋ 四档容器** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百三十七批-Token与四档容器.md`（先改 ContrastGuardTest 再换色；只许四档容器；138-142 均等此单） |
 | 127 | ⚪ **后期评估：抱朴 Rust 化（2026-10-22 立账；UI 优先，暂不派）** —— 结论：Rust 的正当身份是**类型层保险**，前提三条齐备：**FFI 契约（共享 schema/粗粒度 JNI/同源类型）＋单一真相（Rust/Kotlin 不双写）＋fail-closed（`.so` 加载失败拒绝进入 Acting，不做功能性降级；Kotlin fallback 仅过渡对拍）**；**先契约测试/fixtures，codegen 等漂移再上**；试点 **TokenEstimator**（`run_log` 已有 `tokens_in_est/out_est` 对拍）→ **BaopuKernel**（207 行，七条边界判据）；card/规则/文件工具后扩。不另建立项文档；不插队 UI。 | 待做（后期，UI 后） |
 | 128 | 🔵 **2026-10-22 已派第一百四十三批（Trea，限 100 积分）：纯函数边界测试补强** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百四十三批-纯函数边界测试.md`（PlanRules/TokenEstimator/FailurePolicy/ChannelSwitchFsm 等 5 组边界；只加测试不改生产） |
+| 129 | 🔵 **2026-10-22 已派第一百四十四批（Trea，限 100 积分）：纯函数边界测试第二批** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百四十四批-纯函数边界测试二.md`（ContextBudget/RunRules/ToolGroupGate/PersonaRules/SkillRules；只加测试） |
 | 124 | 🔵 **2026-10-22 已派第一百三十一批（qoder）：模型选择 P0（OpenRouter 免费/多 Key/动态模型/术语）** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百三十一批-模型选择P0.md`（发版前 P0；用户自填 key，不内置；C 层保持现状）；**含 OpenRouter 玄览跳转**：`https://openrouter.ai/settings/keys` / `https://openrouter.ai/models?q=free`，走 `BrowserHolder` 不新开 WebView；用户自填 key |
 | 120 | 🔵 **2026-10-21 已派第一百二十七批（workbuddy 国内版）：多 Agent 协作 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十七批-多Agent协作v1.md`（子任务分解/隔离/汇总；默认最多 2 子 Agent，不自动合并） |
 | 118 | ⚪ **2026-10-21 已派第一百二十五批（workbuddy 国内版）：语音对话 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十五批-语音对话v1.md`（按住说话→STT→抱朴；可选 TTS；不常驻/不后台上传）；**暂缓/后排（STT 体积顾虑，先不做）** |
