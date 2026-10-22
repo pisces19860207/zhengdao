@@ -32,6 +32,7 @@ enum class SegmentKind {
     HARD_FACTS,  // 硬事实卡（永不进压缩）
     PROJECT_MEMORY, // 项目记忆（工作区根 项目记忆.md；永不进压缩，2026-10-19 最小版）
     MEMORY,      // 记忆召回（永不进压缩；同会话内只增不改）
+    EPISODE,     // 情景记忆·日记召回（147 ②；永不进压缩；同会话内只增不改——排序只用条目字段不读时钟）
     COMPRESSION, // 压缩摘要替身（唯一会随压缩事件变化的段）
     HISTORY,     // 会话历史（只增不改）
     CURRENT,     // 本轮输入
@@ -263,6 +264,13 @@ internal object ContextAssembler {
         oldMessageCount: Int = 0,
         /** 项目记忆（已裁剪；null/空 ⇒ 不注入）。见 [ProjectMemory]。 */
         projectMemory: String? = null,
+        /**
+         * 情景记忆（日记）条目（147 ②；空 ⇒ 不注入 EPISODE 段，行为与本参数存在之前逐字相同）。
+         *
+         * 由调用方从 `DiaryStore` 读（文件是真相）；挑选与标注在 [DiaryRecall]，
+         * **没选上的只是不注入**（判据 5）。
+         */
+        diaryEntries: List<DiaryEntry> = emptyList(),
         // ── 视觉通道（第二十四批 A 段）──
         /** 本轮附件里**是图片**的那些（已由调用方读成 data URL；[VisionRules.ImagePayload] 不含路径）。 */
         images: List<VisionRules.ImagePayload> = emptyList(),
@@ -328,6 +336,20 @@ internal object ContextAssembler {
             segments += PromptSegment(SegmentKind.MEMORY, memoryLines.joinToString("\n") + note)
         } else if (recallNote.isNotEmpty()) {
             segments += PromptSegment(SegmentKind.MEMORY, recallNote)
+        }
+        // ── 情景记忆（日记）段（147 ②）：预算内挑选＋证据档标注；只是不注入，文件一条不删（判据 5） ──
+        val diaryRecall = DiaryRecall.recall(diaryEntries)
+        if (diaryRecall.selected.isNotEmpty()) {
+            val note = if (diaryRecall.omitted > 0) {
+                "\n（另有 ${diaryRecall.omitted} 条日记未注入：" +
+                    "预算 ${DiaryRecall.MAX_ITEMS} 条 / ${DiaryRecall.MAX_CHARS} 字符内挑选，文件一条未删）"
+            } else {
+                ""
+            }
+            segments += PromptSegment(
+                SegmentKind.EPISODE,
+                diaryRecall.selected.joinToString("\n") { DiaryRecall.renderForContext(it) } + note,
+            )
         }
         if (!compressionSummary.isNullOrBlank()) {
             val mark = buildString {

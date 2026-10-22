@@ -123,4 +123,90 @@ class DiaryStoreTest {
         assertEquals(1, store(wsB).loadAll().entries.size)
         assertTrue(store(wsB).loadAll().entries.none { it.sessionId == 42L })
     }
+
+    // ── 判据 14/20：维护（浓缩 → 归档 → 清理） ─────────────────────────
+
+    private val DAY = 86_400_000L
+    private val now = 1_800_000_000_000L
+
+    private fun aged(id: String, date: String, daysAgo: Long, artifacts: List<String>) = entry(
+        id = id, date = date, sessionId = 1L,
+        artifacts = artifacts, createdAt = now - daysAgo * DAY,
+    ).let { it.copy(timeFromMs = now - daysAgo * DAY, timeToMs = now - daysAgo * DAY) }
+
+    @Test
+    fun `维护_无候选时零动作`() {
+        val s = store(tmp.newFolder())
+        s.upsert(entry(createdAt = now))
+        assertEquals(DiaryStore.MaintenanceReport(0, 0, 0), s.maintain(now))
+        assertEquals(1, s.loadAll().entries.size)
+    }
+
+    @Test
+    fun `判据14_超窗条目浓缩成月度摘要_原文转归档_摘要引用一条不丢`() {
+        val root = tmp.newFolder()
+        val s = store(root)
+        s.upsert(aged("1-20260805", "2026-08-05", 60, listOf("整理/a.md", "整理/b.md")))
+        val r = s.maintain(now)
+        assertEquals(1, r.digested)
+        assertEquals(1, r.archivedFiles)
+        // 原文进了归档（不再参与 loadAll），摘要落 digest 文件且引用齐全
+        assertTrue(File(File(root, "记忆/日记/归档"), "2026-08-05.md").isFile)
+        val digests = s.loadAll().entries.filter { DiaryRecall.isDigest(it.id) }
+        assertEquals(1, digests.size)
+        assertEquals(listOf("整理/a.md", "整理/b.md"), digests[0].artifacts)
+        assertEquals(0, s.loadAll().entries.count { !DiaryRecall.isDigest(it.id) })
+    }
+
+    @Test
+    fun `判据20_归档清理_归档满窗且被承载才删_产物文件逐字节不动`() {
+        val root = tmp.newFolder()
+        val s = store(root)
+        // 产物与「用户文件」在工作区内、日记目录之外——维护谁也不许碰（相对路径合法）
+        val artifact = File(root, "整理/a.md").apply { parentFile!!.mkdirs(); writeText("产物原文") }
+        val userFile = File(root, "用户的重要文件.txt").apply { writeText("别动我") }
+        s.upsert(aged("1-20260401", "2026-04-01", 200, listOf("整理/a.md")))
+        s.maintain(now) // 浓缩＋归档（归档文件时间戳＝now，刚住进来）
+        val archived = File(File(root, "记忆/日记/归档"), "2026-04-01.md")
+        assertTrue("应先转归档", archived.isFile)
+        assertEquals(0, s.maintain(now).cleanedFiles) // 没住满 180 天 ⇒ 不删
+        // 模拟归档满 200 天（盖文件时间戳）⇒ 再维护才清理
+        assertTrue(archived.setLastModified(now - 200 * DAY))
+        val r3 = s.maintain(now)
+        assertEquals(1, r3.cleanedFiles)
+        assertFalse(archived.exists())
+        // 摘要仍在，引用仍有效；目录外两个文件逐字节不动
+        assertTrue(s.loadAll().entries.any { DiaryRecall.isDigest(it.id) })
+        assertEquals("产物原文", artifact.readText())
+        assertEquals("别动我", userFile.readText())
+    }
+
+    @Test
+    fun `维护_未被摘要承载的归档件_住满窗也不删`() {
+        val root = tmp.newFolder()
+        val s = store(root)
+        s.upsert(aged("1-20260401", "2026-04-01", 200, listOf("整理/only-here.md")))
+        s.maintain(now)
+        val archived = File(File(root, "记忆/日记/归档"), "2026-04-01.md")
+        assertTrue(archived.isFile)
+        // 把摘要里的引用抹掉（模拟「线索会断」）＋ 盖老时间戳 ⇒ 两条都不满足，留着
+        val digestFile = File(File(root, "记忆/日记"), "digest-2026-04.md")
+        digestFile.writeText(digestFile.readText().replace("- 整理/only-here.md\n", ""))
+        assertTrue(archived.setLastModified(now - 200 * DAY))
+        assertEquals(0, s.maintain(now).cleanedFiles)
+        assertTrue(archived.isFile)
+    }
+
+    @Test
+    fun `摘要upsert路由_digest文件_不被当成日文件`() {
+        val root = tmp.newFolder()
+        val s = store(root)
+        val digest = DiaryRecall.composeDigest(
+            "2026-10", listOf(entry(createdAt = now)), now,
+        )
+        s.upsert(digest)
+        assertTrue(File(File(root, "记忆/日记"), "digest-2026-10.md").isFile)
+        assertFalse(File(File(root, "记忆/日记"), "2026-10.md").isFile)
+        assertEquals(listOf(digest.id), s.loadAll().entries.map { it.id })
+    }
 }

@@ -516,6 +516,12 @@ internal object BaopuRuntime {
                 customProtocol = ProviderPrefs.storedCustomProtocol(appCtx),
             )
         }
+        // 147 ②：日记召回源（闭包注入同 visionCandidates 房型）。文件是真相——
+        // 每步现读现选（DiaryRecall 只读不写；同会话内日记不中途变化 ⇒ 前缀稳定）。
+        // 作用域随工作区（硬点 1）：换工作树即换日记，跨区不回灌。
+        engine.diaryRecall = {
+            DiaryStore(File(workspaceRoot(appCtx), "记忆/日记")).loadAll().entries
+        }
         // 第一百二十七批：多 Agent 协作——run_subtasks 的落点（协调器）在这里装配。
         // 装配层才拿得到 Context/注册表/库 ⇒ 三件生产件（LLM 一轮、工具执行、审计存储）
         // 都在下面 runSubtasks 里拼；引擎侧只认 SubTaskSink 接口（与 AskUserTool.sink

@@ -1374,6 +1374,14 @@ internal class BaopuChatController(context: Context) {
         val res = store.upsert(entry)
         if (res.ok) {
             DiaryIndexStore(db).replace(entry)
+            // 147 ②：收尾顺手维护（浓缩/归档/清理）——判据在 DiaryRecall（纯函数），
+            // 失败不阻塞会话收尾（try/catch ＋ 运行日志，同 MemoryStore 既有风格）。
+            runCatching { store.maintain(now) }
+                .onFailure {
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "抱朴日记：维护失败 ${it.javaClass.simpleName}: ${it.message}",
+                    )
+                }
         } else {
             com.example.zhengdao.rootfs.RunLog.log("抱朴日记：$res.reason")
         }
