@@ -285,6 +285,111 @@ class ChannelSwitchFsmTest {
         assertNull(s.requestedTarget)
         assertNull(s.lastResult)
     }
+
+    // ── 第一百四十三批 · 重复迁移/终态边界（只钉当前实现） ────────────────
+
+    @Test
+    fun `SWITCHING_重复SwitchSucceeded_第二次被拒但已回CURRENT`() {
+        val f = fsm()
+        f.dispatch(SwitchEvent.Requested(deepseek()))
+        f.dispatch(SwitchEvent.ReachedSafePoint)
+        f.dispatch(SwitchEvent.SwitchSucceeded) // ⇒ SWITCHED
+        val second = f.dispatch(SwitchEvent.SwitchSucceeded)
+        assertTrue("没有正在进行的切换，第二次只能拒", second is SwitchOutcome.Rejected)
+        // 按当前实现钉住：D1 的自动回带先于迁移判定 ⇒ Rejected 时状态已从 SWITCHED 变成 CURRENT。
+        assertEquals(ChannelSwitchState.CURRENT, f.snapshot().state)
+        assertEquals("lastResult 仍保留 Ok", SwitchResult.Ok, f.snapshot().lastResult)
+    }
+
+    @Test
+    fun `SWITCHING_重复SwitchFailed_第二次被拒且留在FALLBACK`() {
+        val f = fsm()
+        f.dispatch(SwitchEvent.Requested(deepseek()))
+        f.dispatch(SwitchEvent.ReachedSafePoint)
+        f.dispatch(SwitchEvent.SwitchFailed("网络不通")) // ⇒ FALLBACK
+        val second = f.dispatch(SwitchEvent.SwitchFailed("又一次"))
+        assertTrue(second is SwitchOutcome.Rejected)
+        assertEquals("FALLBACK 不收完成类事件", ChannelSwitchState.FALLBACK, f.snapshot().state)
+        assertEquals(
+            "第二次原因不许覆盖第一次的可观察结果",
+            SwitchResult.Failed("网络不通"),
+            f.snapshot().lastResult,
+        )
+    }
+
+    @Test
+    fun `SWITCHING_重复ReachedSafePoint_接受但不迁移`() {
+        val f = fsm()
+        f.dispatch(SwitchEvent.Requested(deepseek()))
+        f.dispatch(SwitchEvent.ReachedSafePoint) // ⇒ SWITCHING
+        val o = f.dispatch(SwitchEvent.ReachedSafePoint)
+        assertTrue(o is SwitchOutcome.Accepted)
+        o as SwitchOutcome.Accepted
+        assertFalse("安全点在 SWITCHING 上只是重复到达，不改状态", o.changed)
+        assertEquals(ChannelSwitchState.SWITCHING, o.snapshot.state)
+    }
+
+    @Test
+    fun `FALLBACK_稳态变体_拒收完成类事件且原因保留`() {
+        val f = fsm()
+        f.dispatch(SwitchEvent.Requested(deepseek()))
+        f.dispatch(SwitchEvent.ReachedSafePoint)
+        f.dispatch(SwitchEvent.SwitchFailed("Key 无效")) // ⇒ FALLBACK
+        assertTrue(f.dispatch(SwitchEvent.SwitchStarted) is SwitchOutcome.Rejected)
+        assertTrue(f.dispatch(SwitchEvent.SwitchSucceeded) is SwitchOutcome.Rejected)
+        assertTrue(f.dispatch(SwitchEvent.SwitchFailed("x")) is SwitchOutcome.Rejected)
+        assertEquals("三条拒绝都不许动状态", ChannelSwitchState.FALLBACK, f.snapshot().state)
+        assertEquals(SwitchResult.Failed("Key 无效"), f.snapshot().lastResult)
+        // 安全点在 FALLBACK 上仍是「不在 PENDING ⇒ 不变」
+        val o = f.dispatch(SwitchEvent.ReachedSafePoint)
+        assertTrue(o is SwitchOutcome.Accepted)
+        assertFalse((o as SwitchOutcome.Accepted).changed)
+        assertEquals(ChannelSwitchState.FALLBACK, f.snapshot().state)
+    }
+
+    @Test
+    fun `初始SWITCHED_收到安全点先自动回CURRENT`() {
+        // 构造器允许从任意态起（调度器重启/回放快照）；SWITCHED 是瞬态，任何事件先回家
+        val f = ChannelSwitchFsm(ChannelSwitchState.SWITCHED)
+        val o = f.dispatch(SwitchEvent.ReachedSafePoint)
+        assertTrue(o is SwitchOutcome.Accepted)
+        o as SwitchOutcome.Accepted
+        assertTrue("自动回带算一次状态变化", o.changed)
+        assertEquals(ChannelSwitchState.CURRENT, o.snapshot.state)
+        assertNull(o.snapshot.lastResult)
+    }
+
+    @Test
+    fun `初始SWITCHED_收到请求_自动回CURRENT后排队`() {
+        val f = ChannelSwitchFsm(ChannelSwitchState.SWITCHED)
+        val o = f.dispatch(SwitchEvent.Requested(deepseek()))
+        assertTrue(o is SwitchOutcome.Accepted)
+        o as SwitchOutcome.Accepted
+        assertEquals(ChannelSwitchState.PENDING, o.snapshot.state)
+        assertEquals(deepseek().id, o.snapshot.requestedTarget?.id)
+    }
+
+    @Test
+    fun `PENDING_同一目标重复请求_仍按单飞忽略`() {
+        val f = fsm()
+        f.dispatch(SwitchEvent.Requested(deepseek()))
+        val o = f.dispatch(SwitchEvent.Requested(deepseek()))
+        assertTrue("同一目标也不排队两个：一次只切一个", o is SwitchOutcome.Ignored)
+        assertEquals(ChannelSwitchState.PENDING, f.snapshot().state)
+        assertEquals(deepseek().id, f.snapshot().requestedTarget?.id)
+    }
+
+    @Test
+    fun `CURRENT_连续两次安全点_两次都不变`() {
+        val f = fsm()
+        val first = f.dispatch(SwitchEvent.ReachedSafePoint)
+        val second = f.dispatch(SwitchEvent.ReachedSafePoint)
+        listOf(first, second).forEach { o ->
+            assertTrue(o is SwitchOutcome.Accepted)
+            assertFalse("CURRENT 上安全点不动", (o as SwitchOutcome.Accepted).changed)
+        }
+        assertEquals(ChannelSwitchState.CURRENT, f.snapshot().state)
+    }
 }
 
 /**
