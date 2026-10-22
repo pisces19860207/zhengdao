@@ -157,6 +157,22 @@ class PlanToolTest {
     }
 
     @Test
+    fun `设置页中英文文案也是3到12`() {
+        fun resFile(rel: String): File {
+            val f = File("app/src/main/res/$rel")
+            return if (f.isFile) f else File("src/main/res/$rel")
+        }
+        fun descLine(rel: String): String =
+            resFile(rel).readLines().first { it.contains("name=\"baopu_tool_update_plan_desc\"") }
+        val zh = descLine("values/strings.xml")
+        val en = descLine("values-en/strings.xml")
+        assertTrue("中文设置页文案要写 3–12：$zh", zh.contains("3–12"))
+        assertFalse("中文设置页文案还写旧口径 3–8：$zh", zh.contains("3–8"))
+        assertTrue("英文设置页文案要写 3–12：$en", en.contains("3–12"))
+        assertFalse("英文设置页文案还写旧口径 3–8：$en", en.contains("3–8"))
+    }
+
+    @Test
     fun `items属性说明也写了计划有变与done保留`() {
         val spec = BaopuToolCatalog.ENTRIES.first { it.name == PlanTool.NAME }.factory { File(".") }
         val desc = spec.inputSchema
