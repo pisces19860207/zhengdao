@@ -416,12 +416,12 @@ class ProposalSelfCheckTest {
     // ── 附：通道可用性判据 ──────────────────────────────────────────────
 
     @Test
-    fun `通道可用性_没key与免费通道与Anthropic都不可用`() {
+    fun `模型可用性_没key与免费车道与Anthropic都不可用`() {
         val deepseek = com.example.zhengdao.baopu.Providers.DEEPSEEK.copy(apiKey = "sk-test")
         assertNull("填了 key 的 OpenAI 兼容通道可用", RuntimeEval.unusableReason(deepseek))
         assertTrue(
-            "内置免费通道不可用（真机整条 403）",
-            RuntimeEval.unusableReason(com.example.zhengdao.baopu.Providers.BUILTIN_FREE) != null,
+            "免费车道不跑自检（第一百三十一批 ①：OpenRouter 免费档 50 次/天，10 例自检一次吃两成额度）",
+            RuntimeEval.unusableReason(com.example.zhengdao.baopu.Providers.OPENROUTER_FREE) != null,
         )
         assertTrue(
             "没填 key 不可用",

@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * Provider / 预设 / 免费过滤单测（刀 0 · 2026-10-16）。
@@ -18,26 +19,31 @@ import org.junit.Test
 class ProviderTest {
 
     @Test
-    fun `四个预设都在且形状正确`() {
+    fun `五个预设都在且形状正确_且一个Key都不内置`() {
+        // 第一百三十一批 ①：内置 zen 免费通道（整条 403）删除，换成 OpenRouter 免费档；
+        // 预设从四条变五条。第五个新加的这条**不带 Key**——负例「内置 key」钉的就是它。
         val all = Providers.all()
-        assertEquals(4, all.size)
+        assertEquals(5, all.size)
         assertEquals(
-            setOf("builtin-free", "openai-compat", "anthropic", "deepseek"),
+            setOf("openai-compat", "anthropic", "deepseek", "openrouter", "openrouter-free"),
             all.map { it.id }.toSet(),
         )
         all.forEach {
             assertTrue("预设 baseUrl 必须 https：${it.id}", it.baseUrl.startsWith("https://"))
             assertTrue("预设 model 不能空：${it.id}", it.model.isNotBlank())
             assertTrue("预设 label 不能空：${it.id}", it.label.isNotBlank())
+            assertEquals("预设本体不许带 Key：${it.id}", "", it.apiKey)
         }
-        assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("builtin-free")!!.protocol)
+        assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("openrouter-free")!!.protocol)
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("openai-compat")!!.protocol)
         assertEquals(LlmProtocol.ANTHROPIC, Providers.of("anthropic")!!.protocol)
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("deepseek")!!.protocol)
-        assertTrue(Providers.of("builtin-free")!!.builtinFree)
+        assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("openrouter")!!.protocol)
+        assertTrue(Providers.of("openrouter-free")!!.builtinFree)
         assertFalse(Providers.of("openai-compat")!!.builtinFree)
         assertFalse(Providers.of("anthropic")!!.builtinFree)
         assertFalse(Providers.of("deepseek")!!.builtinFree)
+        assertFalse(Providers.of("openrouter")!!.builtinFree)
     }
 
     @Test
@@ -53,18 +59,31 @@ class ProviderTest {
         assertNull(Providers.OPENAI_COMPAT.contextWindow)
         assertNull(Providers.OPENAI_COMPAT.maxOutput)
         assertNull(Providers.ANTHROPIC.contextWindow)
-        assertNull(Providers.BUILTIN_FREE.contextWindow)
+        // 第一百三十一批 ①：新的免费车道与 OpenRouter 正式档都带 ① 实测元数据，
+        // 不再是"没依据"的 zen 免费通道（那条整条 403，元数据全是猜的）。
+        assertEquals(1_000_000, Providers.OPENROUTER_FREE.contextWindow)
+        assertEquals(131_072, Providers.OPENROUTER_FREE.maxOutput)
+        assertEquals(1_048_576, Providers.OPENROUTER.contextWindow)
+        assertNull(Providers.OPENROUTER.maxOutput)
     }
 
     @Test
-    fun `免费预设带伪装头与默认模型首位`() {
-        val free = Providers.BUILTIN_FREE
-        assertEquals(Providers.FREE_MODELS.first(), free.model)
-        assertEquals("opencode/1.18.34", free.headers["User-Agent"])
-        assertEquals("cli", free.headers["x-opencode-client"])
-        // 免费档占位 Bearer：钉住这个值，防后人"顺手修掉"（② 台账取证，别当 bug）
-        assertEquals("null", free.apiKey)
-        assertEquals(Providers.FREE_PLACEHOLDER_KEY, free.apiKey)
+    fun `免费车道不内置Key_不带伪装头_默认模型是实测那条free`() {
+        val free = Providers.OPENROUTER_FREE
+        // 派工单 ①「App 不兜底、不内置」：交出来的预设 Key 必须是空的
+        assertEquals("", free.apiKey)
+        // 旧 zen 免费通道的伪装头（User-Agent / x-opencode-client）随整条通道一起删掉了
+        assertTrue("免费车道不许再带伪装头：${free.headers}", free.headers.isEmpty())
+        // 默认模型＝① 实测（2026-10-22）18 条 `:free` 里的那条带 vl 的；
+        // 清单**不硬编码**（③ 免费档每次现拉），仓库里只留这一条默认值。
+        assertEquals("nvidia/nemotron-3.5-super-vl:free", free.model)
+        assertTrue(free.model.endsWith(":free"))
+        assertEquals("https://openrouter.ai/api/v1", free.baseUrl)
+        // ① 实测台账里这条默认模型的 architecture.input_modalities =
+        // ["text", "image", "video"] ⇒ 不是纯文本模型；按 2026-10-18 用户口径
+        // 「除非是文本模型，不然肯定要打开」＋「纯文本模型自己就会说看不见」⇒ true，
+        // 不在本地替模型判。真机发图未验（本单红线）；端上不认图时按纪律改回 false。
+        assertTrue("默认模型 input_modalities 含 image ⇒ 图照发", free.vision)
     }
 
     @Test
@@ -79,14 +98,14 @@ class ProviderTest {
             assertEquals(preset.builtinFree, withKey.builtinFree)
         }
         // 预设本体不可变（data class copy 语义）：换 key 不会写回预设
-        assertEquals("null", Providers.BUILTIN_FREE.apiKey)
+        assertEquals("", Providers.OPENROUTER_FREE.apiKey)
         assertEquals("", Providers.OPENAI_COMPAT.apiKey)
         assertEquals("", Providers.ANTHROPIC.apiKey)
     }
 
     @Test
-    fun `免费通道换用户key后仍是免费车道`() {
-        val v = Providers.withUserKey(Providers.BUILTIN_FREE, "sk-real")
+    fun `免费车道换用户key后仍是免费车道`() {
+        val v = Providers.withUserKey(Providers.OPENROUTER_FREE, "sk-real")
         assertTrue("builtinFree 描述通道不描述 key", v.builtinFree)
         assertEquals("sk-real", v.apiKey)
     }
@@ -117,10 +136,16 @@ class ProviderTest {
     }
 
     @Test
-    fun `免费模型默认序首位与台账一致`() {
-        // ② 证道设计报告/抱朴-免费模型能力-2026-10-16.md 的"刀 0 免费默认序"
-        assertEquals("muse-spark-1.3-contributor-free", Providers.FREE_MODELS[0])
-        assertEquals(5, Providers.FREE_MODELS.size)
-        assertTrue(Providers.FREE_MODELS.all { it.endsWith("-free") })
+    fun `免费限额写在数据层_仓库不再有硬编码免费模型清单`() {
+        // ①「免费限额 UI 明示」：数字是 ① 官方口径（2026-10-22 两处交叉核对），不编。
+        val hint = Providers.FREE_QUOTA_HINT
+        assertTrue(hint.contains("20 次/分钟"))
+        assertTrue(hint.contains("50 次/天"))
+        assertTrue("超额要说 429 会自动恢复，不许留 403 死路", hint.contains("429"))
+        assertFalse("旧的 zen 免费通道 403 口径不许回来", hint.contains("403"))
+        // ③：免费档清单每次现拉、不缓存 ⇒ Providers 里不再有 FREE_MODELS 这个数组
+        val src = File("src/main/java/com/example/zhengdao/baopu/Provider.kt").readText()
+        assertFalse("免费模型清单不许硬编码进仓库", src.contains("FREE_MODELS"))
+        assertFalse("旧的内置免费通道（整条 403）不许回来", src.contains("BUILTIN_FREE"))
     }
 }

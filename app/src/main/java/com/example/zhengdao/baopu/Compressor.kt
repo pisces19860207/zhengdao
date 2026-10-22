@@ -48,8 +48,8 @@ internal object Compressor {
     /** 最近 N 条原文不压（方案 §9b「必须留住的四样」之一）。 */
     const val KEEP_RECENT = 4
 
-    /** 默认压缩通道 id（内置免费通道；追加二第 4 条）。 */
-    val DEFAULT_CHANNEL_ID: String get() = Providers.BUILTIN_FREE.id
+    /** 默认压缩车道 id（免费车道；追加二第 4 条 + 第一百三十一批 ① 换道）。 */
+    val DEFAULT_CHANNEL_ID: String get() = Providers.OPENROUTER_FREE.id
 
     /** 压缩专用系统提示（便宜模型也能照做的短提示）。 */
     fun systemPrompt(): String = (
@@ -60,32 +60,35 @@ internal object Compressor {
         )
 
     /**
-     * 压缩通道选择（追加二第 4 条 · 纯函数）。
+     * 压缩模型选择（追加二第 4 条 · 纯函数）。
      *
-     * 默认走 **内置免费通道**（方案 §9b 第 5 条：摘要用便宜模型，不占主对话的钱）；
-     * 免费通道不可用 ⇒ **降级到当前会话的 provider**，且 [ChannelChoice.degraded]
+     * 默认走 **免费车道**（方案 §9b 第 5 条：摘要用便宜模型，不占主对话的钱）；
+     * 第一百三十一批 ① 之后这条车道是 OpenRouter 免费档——**它要用户自己的 Key**，
+     * 没填 Key 或额度打满就算「不可用」。
+     * 不可用 ⇒ **降级到当前会话的 provider**，且 [ChannelChoice.degraded]
      * 置位、[ChannelChoice.reason] 写清为什么——降级必须让用户知情。
      *
      * 「可用与否」是运行时判定（连通性/额度），由引擎探针喂进来
      * （[freeAvailable]）；没有信息时按可用处理（默认即免费）。
      */
     fun chooseChannel(sessionProvider: Provider, freeAvailable: Boolean = true): ChannelChoice {
-        val free = Providers.BUILTIN_FREE
+        val free = Providers.OPENROUTER_FREE
         if (freeAvailable) {
             return ChannelChoice(provider = free, degraded = false, reason = "")
         }
         return ChannelChoice(
             provider = sessionProvider,
             degraded = true,
-            reason = "免费通道当前不可用，本次压缩改用当前会话的模型 ${sessionProvider.model}（${sessionProvider.label}）",
+            reason = "免费模型当前不可用（没填 Key 或额度已用完），" +
+                "本次压缩改用当前会话的模型 ${sessionProvider.model}（${sessionProvider.label}）",
         )
     }
 
-    /** 通道留痕一行（进压缩记录给用户看：用了谁、降没降、为什么）。 */
+    /** 模型留痕一行（进压缩记录给用户看：用了谁、降没降、为什么）。 */
     fun channelNote(choice: ChannelChoice): String = if (choice.degraded) {
-        "压缩通道：${choice.provider.label}（降级）——${choice.reason}"
+        "压缩模型：${choice.provider.label}（降级）——${choice.reason}"
     } else {
-        "压缩通道：${choice.provider.label}（默认免费通道）"
+        "压缩模型：${choice.provider.label}（默认免费模型）"
     }
 
     /**

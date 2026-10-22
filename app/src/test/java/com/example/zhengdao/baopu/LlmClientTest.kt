@@ -525,10 +525,12 @@ class LlmClientTest {
         val h = LlmWire.headersOf(p)
         assertEquals("override", h["x-api-key"])
         assertEquals(LlmWire.ANTHROPIC_VERSION, h["anthropic-version"])
-        // 免费通道形态：Bearer null 也走同一出口
-        val free = LlmWire.headersOf(Providers.BUILTIN_FREE)
-        assertEquals("Bearer null", free["Authorization"])
-        assertEquals("opencode/1.18.34", free["User-Agent"])
+        // 第一百三十一批 ①：免费车道**不内置 Key** ⇒ 没 Key 就一个鉴权头都不发
+        //（旧的 "Bearer null" 占位与 zen 的伪装 User-Agent 随整条通道一起删掉了）
+        val free = LlmWire.headersOf(Providers.OPENROUTER_FREE)
+        assertNull("没填 Key 不许发 Authorization（更不许发占位的 Bearer null）", free["Authorization"])
+        assertFalse("伪装头随内置免费通道一起删除：${free.keys}", free.containsKey("User-Agent"))
+        assertEquals("application/json", free["Content-Type"])
     }
 
     @Test

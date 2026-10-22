@@ -23,7 +23,7 @@ class CompressorTest {
     fun `压缩请求_系统提示列全字段_正文带全部待压消息`() {
         val req = Compressor.buildRequest(
             listOf(msg("m1", HistoryMessage.ROLE_USER, "你好"), msg("m2", HistoryMessage.ROLE_ASSISTANT, "再见")),
-            Providers.BUILTIN_FREE,
+            Providers.OPENROUTER_FREE,
         )
         assertEquals(2, req.size)
         assertEquals(LlmMessage.ROLE_SYSTEM, req[0].role)
@@ -98,10 +98,10 @@ class CompressorTest {
     // ── 压缩通道（追加二第 4 条） ─────────────────────────────────────────
 
     @Test
-    fun `通道_默认走内置免费通道`() {
+    fun `模型_默认走免费车道`() {
         val session = Providers.OPENAI_COMPAT
         val c = Compressor.chooseChannel(session, freeAvailable = true)
-        assertEquals(Providers.BUILTIN_FREE.id, c.provider.id)
+        assertEquals(Providers.OPENROUTER_FREE.id, c.provider.id)
         assertFalse(c.degraded)
         assertEquals("", c.reason)
     }
@@ -112,14 +112,14 @@ class CompressorTest {
         val c = Compressor.chooseChannel(session, freeAvailable = false)
         assertEquals(session.id, c.provider.id)
         assertTrue("降级必须置位", c.degraded)
-        assertTrue("降级必须带理由（用户知情的前提）", c.reason.contains("免费通道当前不可用"))
+        assertTrue("降级必须带理由（用户知情的前提）", c.reason.contains("免费模型当前不可用"))
         assertTrue(c.reason.contains(session.model))
     }
 
     @Test
     fun `通道留痕_降级与默认都说清用了谁`() {
         val free = Compressor.chooseChannel(Providers.OPENAI_COMPAT, true)
-        assertTrue(Compressor.channelNote(free).contains("免费通道"))
+        assertTrue(Compressor.channelNote(free).contains("免费模型"))
         val degraded = Compressor.chooseChannel(Providers.ANTHROPIC, false)
         val note = Compressor.channelNote(degraded)
         assertTrue(note.contains("降级"))
@@ -127,9 +127,9 @@ class CompressorTest {
     }
 
     @Test
-    fun `记录默认通道即免费通道id`() {
+    fun `记录默认模型即免费车道id`() {
         val r = Compressor.parseSummary("目标：x", emptyList(), 1L, "m")
-        assertEquals(Providers.BUILTIN_FREE.id, r.channel)
+        assertEquals(Providers.OPENROUTER_FREE.id, r.channel)
         assertFalse(r.degraded)
     }
 

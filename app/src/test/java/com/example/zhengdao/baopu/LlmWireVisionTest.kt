@@ -195,18 +195,20 @@ class LlmWireVisionTest {
     // ── V5：视觉判据来自 Provider，不硬编码模型名 ───────────────────────────
 
     @Test
-    fun `V5_只有DeepSeek声明vision_其余仍为false`() {
+    fun `V5_预设全部声明vision_不在本地替模型判能不能看`() {
         // 2026-10-18 口径变更：用户明确 deepseek v4.1 flash（1017）是**全模态**模型，
-        // 图片要发得出去 ⇒ DEEPSEEK 预设 vision=true。其余预设（没有依据）一律仍 false。
-        // 这条会挡住「顺手给别的通道也开 true」——开之前必须真发一张图验证。
+        // 图片要发得出去 ⇒ DEEPSEEK 预设 vision=true。
+        // 第一百三十一批 ① 新加的两条 OpenRouter 预设同样开 true：① 实测里
+        // `deepseek/deepseek-v4.1-flash` 与 `nvidia/nemotron-3.5-super-vl:free` 的
+        // input_modalities 都含 image/video ⇒ 按「除非是文本模型，不然肯定要打开」没有理由关。
         val all = Providers.all()
-        assertEquals("预设数量变了就要重看这条", 4, all.size)
+        assertEquals("预设数量变了就要重看这条", 5, all.size)
         val visionOn = all.filter { it.vision }.map { it.id }.sorted()
         // 2026-10-18 用户口径：「除非是文本模型，不然肯定要打开」⇒ 三个多模态预设全开；
         // 只有 builtin-free 留着 false（整条车道 403 未实测）。
         // 2026-10-18 用户口径再进一步：「**纯文本模型自己就会说看不见**」——
         // 所以不要在本地替模型判断能不能看：图照发，端上认不认由它自己回答。
-        assertEquals("四个预设全开（图照发，不让本地替模型判）", 4, visionOn.size)
+        assertEquals("五个预设全开（图照发，不让本地替模型判）", 5, visionOn.size)
     }
 
     @Test
