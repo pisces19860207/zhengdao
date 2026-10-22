@@ -269,4 +269,92 @@ class PlanRulesTest {
         assertEquals(PlanRules.STATUS_DOING, ok.items[0].status)
     }
 
+    // ── 第一百四十三批 · 边界补强（只钉当前实现，不改判据） ─────────────
+
+    @Test
+    fun `重复text_不去重_两条都保留`() {
+        // 当前实现没有去重：text 相同但 status 不同的两条各占一格。
+        // 按当前实现钉住（计划表是「模型重发的整张表」，去重会改动模型给的步数）。
+        val r = parseOk("读文件" to "todo", "读文件" to "done")
+        assertEquals(2, r.items.size)
+        assertEquals(listOf(PlanRules.STATUS_TODO, PlanRules.STATUS_DONE), r.items.map { it.status })
+    }
+
+    @Test
+    fun `重复text共用sticky身份_两处都钉成done`() {
+        // sticky 按 text 原文匹配 ⇒ 同一 text 的两条都会命中上一版的 done；
+        // notice 只针对真正被改写的条目（已是 done 的那条不重复记）。
+        val previous = listOf(PlanRules.PlanItem("读文件", PlanRules.STATUS_DONE))
+        val incoming = listOf(
+            PlanRules.PlanItem("读文件", PlanRules.STATUS_TODO),
+            PlanRules.PlanItem("读文件", PlanRules.STATUS_DOING),
+        )
+        val applied = PlanRules.applyOverwrite(previous, incoming)
+        assertEquals(2, applied.items.size)
+        assertTrue("两条都该钉成 done：${applied.items}", applied.items.all { it.status == PlanRules.STATUS_DONE })
+        // 两条都不是 done ⇒ 两条各记一次 sticky 命中（按当前实现钉住，不做合并去重）
+        assertEquals("每条被改写的条目各记一条：${applied.stickyNotes}", 2, applied.stickyNotes.size)
+    }
+
+    @Test
+    fun `text首尾空白被归一_状态也认大小写`() {
+        val r = parseOk("  读文件  " to " DONE ")
+        assertEquals("读文件", r.items[0].text)
+        assertEquals(PlanRules.STATUS_DONE, r.items[0].status)
+    }
+
+    @Test
+    fun `状态别名_连字符与空格写法不被认_空格写法可归一`() {
+        // 归一顺序是 trim → lowercase → '-' 换 '_' → ' ' 换 '_'，再精确匹配。
+        // 因此 "to-do" ⇒ "to_do"、"TO DO" ⇒ "to_do" 都不在别名表里（按当前实现钉住）。
+        assertNull(PlanRules.normalizeStatus("to-do"))
+        assertNull(PlanRules.normalizeStatus("TO DO"))
+        assertEquals(PlanRules.STATUS_DOING, PlanRules.normalizeStatus(" In Progress "))
+        assertNull(PlanRules.normalizeStatus(""))
+    }
+
+    @Test
+    fun `status缺失或为空_拒绝并点名status`() {
+        val missing = JSONArray().put(JSONObject().put("text", "读文件"))
+        val msg = parseErr("items" to missing)
+        assertTrue("错误原文要点名 status：$msg", msg.contains("status"))
+        // 空串同样认不出（normalizeStatus(null 之外的空串) → null）
+        val blank = JSONArray().put(JSONObject().put("text", "读文件").put("status", "  "))
+        assertTrue(parseErr("items" to blank).contains("status"))
+    }
+
+    @Test
+    fun `text恰好60字_不截断也不记notice`() {
+        val r = parseOk(longText(60) to "todo")
+        assertEquals(60, r.items[0].text.length)
+        assertTrue("恰好到上限不算超：${r.notices}", r.notices.isEmpty())
+    }
+
+    @Test
+    fun `text61字_截断到60并记notice`() {
+        val r = parseOk(longText(61) to "todo")
+        assertEquals(60, r.items[0].text.length)
+        assertTrue("超一个字也要记 notice：${r.notices}", r.notices.any { it.contains("60") })
+    }
+
+    @Test
+    fun `恰好12条_不截断也不记notice`() {
+        val twelve = (1..12).map { "条目$it" to "todo" }.toTypedArray()
+        val r = parseOk(*twelve)
+        assertEquals(12, r.items.size)
+        assertTrue("恰好到上限不算超：${r.notices}", r.notices.isEmpty())
+    }
+
+    @Test
+    fun `本版空表_全量覆盖成空_旧done不复活`() {
+        // parseItems 会拒绝空 items，但 applyOverwrite 本身是全量覆盖 ⇒ 空进空出，
+        // 上一版的 done 不会被 sticky 逻辑拉回来（按当前实现钉住）。
+        val applied = PlanRules.applyOverwrite(
+            listOf(PlanRules.PlanItem("读文件", PlanRules.STATUS_DONE)),
+            emptyList(),
+        )
+        assertTrue(applied.items.isEmpty())
+        assertTrue(applied.stickyNotes.isEmpty())
+    }
+
 }
