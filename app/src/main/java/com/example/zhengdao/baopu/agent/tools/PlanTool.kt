@@ -46,9 +46,11 @@ internal object PlanTool {
 
     /** 写进系统提示的工具描述（≤ [ToolSpec.MAX_DESC] 字符；工具描述是注入面）。 */
     const val DESCRIPTION: String =
-        "更新你的工作计划。接到任务先用本工具列 3–8 条计划；之后每完成一条就再调一次，" +
+        "更新你的工作计划。接到任务先用本工具列 3–12 条计划；之后每完成一条就再调一次，" +
             "把整张表重发（做完的标 done、正在做的标 doing、没做的标 todo）。" +
-            "每次调用都是全量覆盖，不是追加；最多 8 条、每条最多 60 字，超出自动截断。" +
+            "计划有变（发现新步骤、合并或拆开、顺序变了）也在原表上改：新步骤加进去；" +
+            "增删步骤时 App 可能先弹确认卡，按用户的选择来。已完成的条目不许漏写。" +
+            "每次调用全量覆盖；本版最多 12 条、每条最多 60 字，超出自动截断。" +
             "计划只走本工具，不要写进回复正文（正文只留最终答复）。"
 
     fun spec(): ToolSpec = ToolSpec(
@@ -60,8 +62,9 @@ internal object PlanTool {
                 "items" to jsonObjectOf(
                     "type" to "array",
                     // 第一百一十九批：属性必须带 description（模型看不见怎么填就在猜）。
-                    "description" to "整张计划表（全量覆盖，不是追加）：每条形如 " +
-                        "{\"text\":\"要做的事\",\"status\":\"todo|doing|done\"}",
+                    "description" to "整张计划表（全量覆盖）：每条形如 " +
+                        "{\"text\":\"要做的事\",\"status\":\"todo|doing|done\"}；" +
+                        "计划有变时整表重发、新步骤加进来，已完成的条目要保留",
                     "items" to jsonObjectOf(
                         "type" to "object",
                         "properties" to jsonObjectOf(

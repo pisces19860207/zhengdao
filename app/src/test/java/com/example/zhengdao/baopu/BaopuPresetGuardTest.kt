@@ -84,6 +84,15 @@ class BaopuPresetGuardTest {
     }
 
     @Test
+    fun `计划纪律_计划有变在原表改且done不许漏写`() {
+        val text = BaopuPreset.personaText("工作区")
+        assertTrue("A 内核要写清计划有变怎么改：缺「计划有变就在原表上改」", text.contains("计划有变就在原表上改"))
+        assertTrue("A 内核要写清新步骤加进原表：缺「新步骤加进去」", text.contains("新步骤加进去"))
+        assertTrue("A 内核要写清 done 不许漏写：缺「不许漏写」", text.contains("不许漏写"))
+        assertTrue("增删步骤以确认卡为准：缺「弹确认卡」", text.contains("弹确认卡"))
+    }
+
+    @Test
     fun `门禁三_包内没有别的文件调 BaopuPreset 的写路径`() {
         // 目前 BaopuPreset 只有读接口；此门禁防的是"给它加个写方法然后被人调"——
         // 一旦出现写形态方法名（write/update/delete/set/apply/overwrite），立刻红。
