@@ -735,7 +735,7 @@
     </plurals>
     <string name="baopu_queue_continue">继续排队</string>
     <string name="baopu_queue_clear">清空排队</string>
-    <string name="baopu_state_idle">待命中</string>
+    <string name="baopu_state_idle">空闲</string>
     <string name="baopu_state_thinking">思考中…</string>
     <string name="baopu_state_acting">执行工具中…</string>
     <string name="baopu_state_compressing">压缩上下文中…</string>
@@ -813,7 +813,7 @@
     <string name="baopu_activity_reason">失败：%1$s</string>
     <string name="baopu_activity_toggle_open">展开活动明细</string>
     <string name="baopu_activity_toggle_close">收起活动明细</string>
-  <string name="baopu_channel_button">换通道</string>
+  <string name="baopu_channel_button">选模型</string>
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
     <string name="baopu_ask_recommended">推荐选项</string>
     <string name="baopu_ask_free_submit">按这个回答</string>
@@ -883,7 +883,7 @@
     <string name="baopu_effort_high">高</string>
     <string name="baopu_effort_max">最高</string>
     <!-- 第十八批 A 段：思考深度只在 DeepSeek 通道生效，界面上要说清楚 -->
-    <string name="baopu_effort_deepseek_hint">只有 DeepSeek 通道会带上这个参数；其余通道选了也不生效。</string>
+    <string name="baopu_effort_deepseek_hint">只有 DeepSeek 这个提供商会带上这个参数；其余提供商选了也不生效。</string>
     <!-- ── 抱朴模型参数只读行（刀 3 · B 段；第十四批 J12：没声明不许显示 0 或 128000）── -->
     <string name="baopu_params_card">模型参数</string>
     <string name="baopu_params_window">上下文窗口</string>
@@ -939,7 +939,7 @@
     <string name="baopu_delete_session_cancel">先不删</string>
     <string name="baopu_delete_session_failed">没删成功（会话没动），再试一次</string>
     <string name="baopu_drawer_group_settings">设置</string>
-    <string name="baopu_drawer_channel_desc">换模型通道（会重建引擎，跑到一半不能换）</string>
+    <string name="baopu_drawer_channel_desc">选模型或提供商（会重建引擎，跑到一半不能换）</string>
     <string name="baopu_drawer_settings">抱朴设置</string>
     <string name="baopu_drawer_settings_desc">工具开关、模型参数、思考深度、人设、技能索引</string>
     <!-- ── 第二十九批：抽屉顶部＝工作区树（说清「在哪个文件夹干活」）──
@@ -958,10 +958,10 @@
     <string name="baopu_switch_desc">「%1$s」还在跑。要停掉它，并切到「%2$s」继续吗？</string>
     <string name="baopu_switch_confirm">停掉并切过来</string>
     <!-- ── 抱朴当家（第十八批）：设置归位 ＋ 定位文案 ── -->
-    <string name="baopu_tools_alias_read">read（免费通道别名）</string>
-    <string name="baopu_tools_alias_read_desc">等价于 read_file，随上面 read_file 的开关一起开与关；免费通道要求工具表里带这个名字。</string>
-    <string name="baopu_tools_alias_bash">bash（免费通道占位）</string>
-    <string name="baopu_tools_alias_bash_desc">本 App 不提供 shell 执行，调用一律拒绝；免费通道要求工具表里带这个名字。</string>
+    <string name="baopu_tools_alias_read">read（免费档别名）</string>
+    <string name="baopu_tools_alias_read_desc">等价于 read_file，随上面 read_file 的开关一起开与关；选免费档时会把这个名字带进工具表。</string>
+    <string name="baopu_tools_alias_bash">bash（免费档占位）</string>
+    <string name="baopu_tools_alias_bash_desc">本 App 不提供 shell 执行，调用一律拒绝；选免费档时会把这个名字带进工具表。</string>
     <string name="baopu_positioning_label">定位</string>
     <string name="baopu_positioning_value">自研 harness：自带 agent 运行时，不依赖外部 CLI</string>
     <!-- ── 技能沉淀（第十九批）：审阅＋提案卡 ── -->
@@ -1303,7 +1303,7 @@
     <string name="baopu_usage_label">本轮用量</string>
     <string name="baopu_usage_in">入</string>
     <string name="baopu_usage_out">出</string>
-    <string name="baopu_usage_cache_hit">缓存命中</string>
+    <string name="baopu_usage_cache_hit">已用缓存</string>
     <string name="baopu_usage_step">第 %1$d 步</string>
     <string name="baopu_artifact_row_label">产物</string>
     <string name="baopu_artifact_more">还有 %1$d 个</string>

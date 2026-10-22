@@ -41,7 +41,7 @@ internal sealed interface FailureAction {
     /** 重试同一步：`attempt` = 这是第几次失败（1-based），`delayMs` 是退避时长。 */
     data class Retry(val delayMs: Long, val attempt: Int) : FailureAction
 
-    /** 换通道（复用第六十四批的通道切换/能力差异；候选由装配层给，策略不认 Key）。 */
+    /** 换通道 / 换 Key（复用第六十四批的通道切换；候选由装配层给，策略不认 Key）。 */
     data object Fallback : FailureAction
 
     /** 停下问人（换通道 / 换说法 / 修 Key）。 */
@@ -146,12 +146,19 @@ internal object FailurePolicy {
      * @param kind 失败分类
      * @param attempt 本步**连续**第几次失败（1-based；≤0 按 1 算）
      * @param fallbackAvailable 装配层有没有给出候选通道（策略不认 Key，只看有没有）
+     * @param keyRotationAvailable 第一百三十一批 ②：装配层说了"**同一模型还有下一把 Key**"。
+     *   默认 false ⇒ 本表与第八十七批至今逐格相等（既有单测一格没动）。
+     *   置 true 时**换 Key 优先于退避重试**：429 的语义是"这把 Key 请求太多了"，
+     *   退避 500ms 再用同一把只会再吃一次 429——先换一把才是派工单要的动作。
+     *   同理 401/403：MODEL_CHANNEL 原本要连坏到熔断线（3 次）才肯换，而池子里明明还有货，
+     *   等三次只是把用户的额度烧在明知会失败的同一把上。
      */
     fun decide(
         kind: FailureKind,
         attempt: Int,
         fallbackAvailable: Boolean,
         config: FailurePolicyConfig = DEFAULT,
+        keyRotationAvailable: Boolean = false,
     ): FailureAction {
         val n = attempt.coerceAtLeast(1)
         return when (kind) {
@@ -171,18 +178,18 @@ internal object FailurePolicy {
 
             // 网络类：先有界重试；重试花完还没通，到熔断线换通道，不到线就停下（旧口径）。
             FailureKind.NETWORK -> when {
+                keyRotationAvailable -> FailureAction.Fallback
                 n <= retriesOf(kind, config) -> retry(n, config)
                 n >= config.channelBreakThreshold -> fallbackOrAsk(fallbackAvailable, config)
                 else -> FailureAction.Abort
             }
 
             // 通道类：不重试；连续到熔断线才换通道，不到线就停下问人（旧口径）。
-            FailureKind.MODEL_CHANNEL ->
-                if (n >= config.channelBreakThreshold) {
-                    fallbackOrAsk(fallbackAvailable, config)
-                } else {
-                    FailureAction.Abort
-                }
+            FailureKind.MODEL_CHANNEL -> when {
+                keyRotationAvailable -> FailureAction.Fallback
+                n >= config.channelBreakThreshold -> fallbackOrAsk(fallbackAvailable, config)
+                else -> FailureAction.Abort
+            }
         }
     }
 

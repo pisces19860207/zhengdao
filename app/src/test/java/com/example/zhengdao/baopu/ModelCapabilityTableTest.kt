@@ -66,15 +66,31 @@ class ModelCapabilityTableTest {
     }
 
     @Test
-    fun 四个预设与五个免费模型都有自己那一行() {
-        val targets = Providers.all().map { it.id to it.model } +
-            Providers.FREE_MODELS.map { Providers.BUILTIN_FREE.id to it }
-        targets.forEach { (id, model) ->
+    fun 实测过的预设有自己的行_没实测的新预设不许有行() {
+        // 第一百三十一批 ①：内置 zen 免费通道整条删除（连同它那 5 行 ② 台账）；
+        // 新加的 OpenRouter 两条预设只在 Provider 里声明形状，表里**不给行**——
+        // 没在这条端点发过 tools / 思考字段就写一行，等于给陌生端点冒领依据。
+        // 该走的路是 rowOrUnknown()：形状齐全、六列全 UNKNOWN，路由据此「不参与排序」。
+        listOf("deepseek", "openai-compat", "anthropic").forEach { id ->
+            val model = Providers.of(id)!!.model
             val r = ModelCapabilityTable.rowOf(id, model)
             assertTrue("$id/$model 查不到精确行（退到兜底行就不算这一台模型的依据）", r != null)
             assertEquals("$id/$model 命中的必须是它自己那一行", model, r?.model)
             assertTrue("$id/$model 的 evidence 空着就是没依据", !r!!.evidence.isBlank())
         }
+        listOf("openrouter", "openrouter-free").forEach { id ->
+            val model = Providers.of(id)!!.model
+            assertNull("$id 本仓没实测过 ⇒ 表里不许有行", ModelCapabilityTable.rowOf(id, model))
+            val u = ModelCapabilityTable.rowOrUnknown(id, model)
+            assertEquals("$id 只能落到全 UNKNOWN 的空行", ModelCapabilityTable.Support.UNKNOWN, u.toolSchema)
+            assertEquals(ModelCapabilityTable.Support.UNKNOWN, u.thinking)
+            assertFalse("$id 没依据就不许参与成本排序", u.costKnown)
+        }
+        // 自定义通道仍然只有 ANY_MODEL 那一张兜底行
+        assertTrue(
+            "自定义通道要有兜底行（用户自填端点只有这一种行）",
+            ModelCapabilityTable.rowOf(ProviderPrefs.CHANNEL_CUSTOM, ModelCapabilityTable.ANY_MODEL) != null,
+        )
     }
 
     // ── UNKNOWN 口径（派工单 §1 原话） ────────────────────────────────────
@@ -122,12 +138,15 @@ class ModelCapabilityTableTest {
 
     @Test
     fun 精确行优先_命中不了才退该通道的兜底行() {
-        val precise = ModelCapabilityTable.rowOf("builtin-free", "muse-spark-1.3-contributor-free")!!
-        assertEquals("精确行命中的是自己", "muse-spark-1.3-contributor-free", precise.model)
-        val fallback = ModelCapabilityTable.rowOf("builtin-free", "some-model-not-listed")!!
+        // 第一百三十一批 ①：原来用 builtin-free 的精确行＋ANY_MODEL 兜底行验这条路，
+        // 那张表随整条通道一起删了 ⇒ 换成「deepseek 精确行 ＋ 自定义通道的兜底行」，
+        // 判据本身一个字没改：先精确、再本通道兜底、兜底行不许替没登记的模型充「会思考」。
+        val precise = ModelCapabilityTable.rowOf("deepseek", "deepseek-flash")!!
+        assertEquals("精确行命中的是自己", "deepseek-flash", precise.model)
+        val fallback = ModelCapabilityTable.rowOf(ProviderPrefs.CHANNEL_CUSTOM, "some-model-not-listed")!!
         assertEquals("退到兜底行", ModelCapabilityTable.ANY_MODEL, fallback.model)
         assertEquals(
-            "元数据说 reasoning 只有 121/126 ⇒ 兜底行不能替没登记的模型充「会思考」",
+            "用户自填的端点没取证 ⇒ 兜底行不能替没登记的模型充「会思考」",
             ModelCapabilityTable.Support.UNKNOWN,
             fallback.thinking,
         )
@@ -135,7 +154,7 @@ class ModelCapabilityTableTest {
 
     @Test
     fun 兜底行不许跨通道串门() {
-        // openai-compat 没写 ANY_MODEL 行：查一个没登记的模型必须查不到，而不是借 builtin-free 那行
+        // openai-compat 没写 ANY_MODEL 行：查一个没登记的模型必须查不到，而不是借别的通道的行
         assertNull(ModelCapabilityTable.rowOf("openai-compat", "no-such-model"))
         assertNull(ModelCapabilityTable.rowOf("anthropic", "no-such-model"))
     }

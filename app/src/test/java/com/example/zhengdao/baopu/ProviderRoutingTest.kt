@@ -69,10 +69,11 @@ class ProviderRoutingTest {
             ProviderPrefs.fallbackFrom(currentId = presetD.id, keyFor = keys()),
         )
         assertNull(
-            "只给内置免费通道填 key 也不算候选（2026-10-17 真机整条 403 RegionError）",
+            "只给免费车道填 key 也不算候选（第一百三十一批 ①：免费档有 50 次/天额度，" +
+                "不许拿它兜别的通道的故障）",
             ProviderPrefs.fallbackFrom(
                 currentId = presetD.id,
-                keyFor = { id -> if (id == Providers.BUILTIN_FREE.id) "free-key" else null },
+                keyFor = { id -> if (id == Providers.OPENROUTER_FREE.id) "free-key" else null },
             ),
         )
         assertEquals(
@@ -129,8 +130,9 @@ class ProviderRoutingTest {
             customModel = customModel,
         )
         assertEquals(
-            "预设都没填 key（这里 keyFor 给的是万能 key，但 currentId 是 custom ⇒ 只剩预设）",
-            listOf(presetA.id, presetB.id, presetD.id),
+            "名单＝Providers.all() 里除免费车道外的全部（第一百三十一批 ① 之后含 OpenRouter 正式档），" +
+                "顺序照预设序；currentId 是 custom ⇒ 自定义不进自己的名单",
+            Providers.all().filter { !it.builtinFree }.map { it.id },
             list.map { it.id },
         )
         assertFalse("名单里不许出现当前通道自己", list.any { it.id == ProviderPrefs.CHANNEL_CUSTOM })

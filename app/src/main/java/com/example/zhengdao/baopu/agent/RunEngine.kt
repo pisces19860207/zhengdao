@@ -168,19 +168,20 @@ internal class RunEngine(
      */
     private val shrinkImage: ((File) -> com.example.zhengdao.baopu.VisionFiles.ShrinkOutcome)? = null,
     /**
-     * 熔断后的候选通道（刀 1 补丁）：入参是当前通道，返回下一个或 null。
+     * 熔断后的候选（刀 1 补丁 ＋ 第一百三十一批 ②）：入参（当前通道, 失败原文），返回候选或 null。
      *
      * 为什么不给引擎一个"通道列表"：Key 只该在 ProviderPrefs 手里，引擎拿到的
      * 已经是拼好的 [Provider]（含 Key），它不需要知道 Key 从哪来。
+     * 为什么要多收一个失败原文、为什么不直接返回 Provider：见 [RunRules.ChannelCandidate]。
      */
-    private val channelFallback: (Provider) -> Provider? = { null },
+    private val channelFallback: (Provider, String) -> RunRules.ChannelCandidate? = { _, _ -> null },
     /**
      * 安全点切换效应（第六十四批）：入参 (当前通道 id, 目标通道 id)，
      * 返回重建后的新 Provider；null = 没切过去（调用方要回滚并留因）。
      *
      * 写只经 [com.example.zhengdao.baopu.ProviderPrefs]（BaopuRuntime 装配层
      * 注入，引擎不持 context——与 [channelFallback] 同一纪律：Key 不进引擎）。
-     * 引擎的 [provider] 字段只在两处被写：熔断降级、本效应的安全点切换。
+     * 引擎的 [provider] 字段只许两处被写：①熔断降级（含 ② 换 Key，同一个口子）②本效应的安全点切换。
      */
     private val switchChannel: (String, String) -> Provider? = { _, _ -> null },
     /**
@@ -243,7 +244,6 @@ internal class RunEngine(
      * （注释写着「不涨步数」，代码却涨了——典型的注释与实现打架）。
      */
     private var reuseStep = false
-
 
     /** 给人看的一句话（错误号口径：不直出英文 err）。 */
     private val _notice = mutableStateOf<String?>(null)
@@ -1534,11 +1534,23 @@ internal class RunEngine(
                     // 原文只进 run_log.err（≤300 字）；界面拿的仍是 humanize 后的人话。
                     val errText = outcome.raw.take(300)
                     // 换够次数就把候选关掉（防「两个坏通道来回切」的死循环，见 MAX_CHANNEL_SWITCHES）
-                    val fallback = if (channelSwitches < RunRules.MAX_CHANNEL_SWITCHES) {
-                        channelFallback(provider)
+                    val candidate = if (channelSwitches < RunRules.MAX_CHANNEL_SWITCHES) {
+                        channelFallback(provider, errText)
                     } else {
                         null
                     }
+                    // 第一百三十一批 ②：同一条模型换一把 Key 也是"候选"，但它**不花换通道次数**
+                    // （id 没变 ⇒ 只是凭据换了；判据为什么安全，写在 RunRules.ChannelCandidate）。
+                    // 有界性靠池子自己排空：每换一把就把刚失败的那把记冷却/禁用，
+                    // 一把 Key 池最多 [com.example.zhengdao.baopu.KeyPool.MAX_KEYS] 把 ⇒ 必然走到"没候选"。
+                    val keySwap = candidate?.keySwap == true
+                    val fallback = candidate?.next
+                    // 第一百三十一批 ②：候选带来的"人话尾巴"（全池不可用那一句）。
+                    // 没带 ⇒ 空串 ⇒ 下面三处拼串与本行存在之前**逐字相同**（不硬塞一个句号）。
+                    val candidateNotice = candidate?.notice
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { "。$it" }
+                        .orEmpty()
                     // ── 第八十七批 R2：先问**统一失败策略**（本批唯一新增的一层）──
                     // 旧口径：失败 ⇒ 直接进熔断三件套（没到熔断线就整轮停）。
                     // 新口径：先按分类问策略要不要「退避重试同一步」；不要重试才落到下面那套
@@ -1549,6 +1561,7 @@ internal class RunEngine(
                         kind = failureKind,
                         attempt = consecutiveChannelFailures,
                         fallbackAvailable = fallback != null,
+                        keyRotationAvailable = keySwap,
                     )
                     // 第八十七批 R1：这一步失败点 ＋ 策略结论都进轨迹（回放时一眼看出当时判了什么）
                     trace.settleStep(stepCount, TraceStatus.FAILED, failureKind, action)
@@ -1568,15 +1581,33 @@ internal class RunEngine(
                     when (val d = RunRules.channelDecision(action, fallback)) {
                         is RunRules.ChannelDecision.SwitchTo -> {
                             val next = d.next
-                            channelSwitches++
+                            // ② 换 Key 不涨"换通道"预算：它没换通道，只是凭据换了一把。
+                            // 把它算进 channelSwitches 的后果是"两个坏通道来回切"的那道闸
+                            // 被 Key 轮询提前吃光，真正的通道降级反而轮不上。
+                            if (!keySwap) channelSwitches++
                             consecutiveChannelFailures = 0
                             log(
-                                "抱朴引擎：通道 ${provider.id}/${provider.model} 熔断，自动切到 " +
-                                    "${next.id}/${next.model}（第 $channelSwitches 次）",
+                                if (keySwap) {
+                                    "抱朴引擎：通道 ${provider.id}/${provider.model} 的这把 Key 失败，" +
+                                        "换同一条模型的下一把 Key 重试（Key 原文不进日志）"
+                                } else {
+                                    "抱朴引擎：通道 ${provider.id}/${provider.model} 熔断，自动切到 " +
+                                        "${next.id}/${next.model}（第 $channelSwitches 次）"
+                                },
                             )
-                            _notice.value = "当前通道不通，已自动切到 ${next.model} 重试"
+                            _notice.value = (
+                                if (keySwap) {
+                                    "这把 Key 刚才没通过（限流或额度），已换同一条模型的下一把 Key 重试"
+                                } else {
+                                    "当前通道不通，已自动切到 ${next.model} 重试"
+                                }
+                                ) + candidateNotice
                             provider = next
-                            persistStep(sessionId, stepCount, "Switched", err = errText)
+                            if (keySwap) {
+                                persistStep(sessionId, stepCount, "KeyRotated", err = errText)
+                            } else {
+                                persistStep(sessionId, stepCount, "Switched", err = errText)
+                            }
                             // P1-3：标记「这一步重跑」⇒ 循环头不再 stepCount++。
                             // 旧行为：continue 回循环头照涨一步，每次换通道白烧一步预算。
                             reuseStep = true
@@ -1586,7 +1617,8 @@ internal class RunEngine(
                         RunRules.ChannelDecision.BrokenAskUser -> {
                             channelBroken = true
                             // 两个分支的文案判据（换过次数到顶 ⇄ 连续失败）搬去纯判据（第七十九批）
-                            val msg = RunLoopRules.channelBrokenNotice(channelSwitches, consecutiveChannelFailures, stepCount)
+                            val msg = RunLoopRules.channelBrokenNotice(channelSwitches, consecutiveChannelFailures, stepCount) +
+                                candidateNotice
                             _notice.value = msg
                             settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = errText)
                             onEvent?.invoke(EngineEvent.AskUser(msg))
@@ -1603,7 +1635,7 @@ internal class RunEngine(
                                 provider,
                                 turnVisionAuthorized,
                                 stepImagesSent,
-                            )
+                            ) + candidateNotice
                             settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = errText)
                             onEvent?.invoke(EngineEvent.AskUser(_notice.value!!))
                             return
