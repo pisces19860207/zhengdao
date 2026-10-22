@@ -20,6 +20,9 @@
 //    注册表继续零 Android 依赖（JVM 直测）。行首 `[group]` 是可 grep 的锚。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.policy.Policy
+import com.example.zhengdao.baopu.policy.PolicyRuntime
+
 /** 一次组授权的范围（卡片上两个「同意」按钮的 id）。 */
 internal enum class GroupGrantScope(val key: String, val label: String, val detail: String) {
     /** 只在这个会话里可用（59 批的原有语义）。 */
@@ -99,11 +102,18 @@ internal sealed interface GroupGateDecision {
  *
  * 全部状态**按 (sessionId, group) 分格**（§4 打回第三条：不许全局共享）。
  */
-internal class ToolGroupGate(val threshold: Int = DEFAULT_THRESHOLD) {
+internal class ToolGroupGate(
+    val threshold: Int = PolicyRuntime.current().approval.groupReaskThreshold,
+) {
 
     companion object {
-        /** 默认 N＝3（§2「默认 3，写死可配」）。 */
-        const val DEFAULT_THRESHOLD = 3
+        /**
+         * 代码默认 N＝3（§2「默认 3，写死可配」）。
+         *
+         * 第一百二十二批：生效值改从政策表读（[PolicyRuntime]）；这里保留常量作为
+         * 「表缺失时同一份默认」与 KDoc 锚，两处同源（[Policy.GROUP_REASK_THRESHOLD]）。
+         */
+        const val DEFAULT_THRESHOLD = Policy.GROUP_REASK_THRESHOLD
     }
 
     private data class Key(val sessionId: Long, val group: ToolGroup)
