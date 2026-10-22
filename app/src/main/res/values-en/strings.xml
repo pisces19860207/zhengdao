@@ -793,11 +793,9 @@
     <string name="baopu_plan_summary">Plan %1$d/%2$d done</string>
     <!-- Plan area (batch 106, v1.5 §3.11): floating capsule + overlay panel; plans leave the message body -->
     <string name="baopu_plan_panel_title">Plan</string>
-    <string name="baopu_plan_panel_progress">%1$d of %2$d done</string>
-    <string name="baopu_plan_capsule_step">Step %1$d/%2$d · %3$s</string>
-    <string name="baopu_plan_capsule_done">✓ Plan %1$d/%2$d done</string>
-    <string name="baopu_plan_capsule_stale">Plan %1$d/%2$d · not updated</string>
+    <string name="baopu_plan_capsule_active">%1$d in progress</string>
     <string name="baopu_plan_capsule_desc">Open work plan</string>
+    <string name="baopu_plan_more">%1$d more</string>
     <string name="baopu_plan_group_current">This round</string>
     <string name="baopu_plan_group_prev">Previous round</string>
     <string name="baopu_plan_group_nth">Round %1$d</string>
