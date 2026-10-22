@@ -245,7 +245,7 @@ apply(plugin = "jacoco")
 //    ⑦底子：`targetSdk` 28 → 36（E-134 证伪「必须 ≤28」；PRoot 四件套迁 `jniLibs`）、终端
 //      一批修复（光标脏区 / 纵向换算 / DCS 超限 / OSC 52 / 滚轮 / 功能键配色）。
 //    ⑧单测：发布时 **1244 例 / 173 suite**（0 失败 0 错误、9 例按环境条件跳过）。
-val appVersionName = "2.1.2"
+val appVersionName = "2.2.0"
 
 // ── 签名钥匙：由环境变量**显式钉死**，不再依赖 AGP 自己猜目录（docs/ERRATA.md E-014 §7）──
 // 背景（2026-10-07 深夜实测）：CI 把本机那把 debug keystore 还原到 $HOME/.android/debug.keystore，
@@ -320,7 +320,7 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 37
+        versionCode = 38
         versionName = appVersionName
 
         ndk {
