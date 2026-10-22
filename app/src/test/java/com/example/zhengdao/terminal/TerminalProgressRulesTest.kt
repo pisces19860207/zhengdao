@@ -8,35 +8,37 @@ import org.junit.Test
 import java.io.File
 
 /**
- * [downloadPercentBucket] 的验收（第七十四批 · 结构拆分第三阶段）。
+ * [downloadPercentBucket] 的验收（第七十四批 · 结构拆分第三阶段；2026-10-22 改 1% 一档）。
  *
  * 三件会被用户看见的事：
- * 1. 进度只按 20% 一档刷（192MB 首装最多 6 次更新，不刷屏）；
- * 2. 没走完不显示 100%（整数向下取整，99% 仍报 80 档）；
+ * 1. 进度**1% 一档**（用户原话：「百分比应该是个位数跳动的话，会心里更有数」）——
+ *    慢网下每推进约 1% 就能看到一个数字变化，最多 100 次更新；
+ * 2. 没走完不显示 100%（整数向下取整，99% 报 99）；
  * 3. 总长度异常（镜像报错、done > total）时不出现负数或 120% 这种值。
  *
- * 返回类型是 **Long**（与搬移前的 `percent: Long` 一致，调用方还要跟 `lastPercent: Long`
- * 比去重），断言一律带 `L`——别写成 Int 字面量，那会变成装箱比较而假红。
+ * 返回类型是 **Long**（调用方还要跟 `lastPercent: Long` 比去重），
+ * 断言一律带 `L`——别写成 Int 字面量，那会变成装箱比较而假红。
  */
 class TerminalProgressRulesTest {
 
     @Test
-    fun `0 到 19 百分比都算 0 档`() {
+    fun `个位数就跳_1% 一档`() {
         assertEquals(0L, downloadPercentBucket(0, 100))
-        assertEquals(0L, downloadPercentBucket(19, 100))
-        assertEquals("浮点前的向下取整：19.9% 还不是 20 档", 0L, downloadPercentBucket(199, 1000))
+        assertEquals(1L, downloadPercentBucket(1, 100))
+        assertEquals(7L, downloadPercentBucket(7, 100))
+        assertEquals("向下取整：19.9% 报 19", 19L, downloadPercentBucket(199, 1000))
     }
 
     @Test
-    fun `走满一档才进位`() {
+    fun `每一档都进位`() {
         assertEquals(20L, downloadPercentBucket(20, 100))
-        assertEquals(20L, downloadPercentBucket(39, 100))
+        assertEquals(39L, downloadPercentBucket(39, 100))
         assertEquals(40L, downloadPercentBucket(40, 100))
     }
 
     @Test
     fun `没下完不报 100`() {
-        assertEquals("99% 仍属 80 档 —— 用户不能看到「100% 但还没完」", 80L, downloadPercentBucket(99, 100))
+        assertEquals("99% 就报 99 —— 用户不能看到「100% 但还没完」", 99L, downloadPercentBucket(99, 100))
         assertEquals(100L, downloadPercentBucket(100, 100))
     }
 
@@ -50,7 +52,7 @@ class TerminalProgressRulesTest {
     fun `真实首装量级`() {
         val total = 192L * 1024 * 1024
         assertEquals(0L, downloadPercentBucket(0, total))
-        assertEquals("一半 ⇒ 50% 落到 40 档", 40L, downloadPercentBucket(total / 2, total))
+        assertEquals("一半 ⇒ 50%", 50L, downloadPercentBucket(total / 2, total))
         assertEquals(100L, downloadPercentBucket(total, total))
     }
 
