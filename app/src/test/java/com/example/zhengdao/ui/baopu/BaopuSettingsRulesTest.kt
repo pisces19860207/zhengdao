@@ -5,10 +5,9 @@
 // 这 21 例打的全是 `BaopuSettingsRules.kt` 里搬过去的判据本体（零 Android ⇒ 不需要 Robolectric）；
 // 页面侧「只剩调用、不留第二份实现」由 BaopuSettingsSliceGateTest 用源码门禁钉。
 //
-// 与 61 批 SettingsGroupFoldTest P1–P6 的分工：那六例钉的是「折叠摘要在产品口径上对不对」
-// （空组/全开/部分关/逐个关光/整组关/不串组），本文件 F1–F5 钉的是**搬走之后仍然成立的性质**：
-// 表序不被重排、重复名单不走去重、组开关与空组的优先序、取组序不碰输入、
-// 标题映射两两不同且 COMPAT 依然 fail-fast。两条网叠着才拦得住「抽取时顺手改了点东西」。
+// 141 批：原 ① 段（折叠态「关闭项摘要」F1–F5）随长列表一起退役——设置页不再铺开成员，
+// 那六个用例钉的函数已删；工具区的新判据（摘要卡）在 ToolAreaCardTest，本文件只留
+// 取组序（G）／组标题（T）／四态（C）／人设层（L）四组，以及一条「判据不碰 Android」的行为证据。
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.R
@@ -22,74 +21,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BaopuSettingsRulesTest {
-
-    // ── ① 折叠态「关闭项摘要」：搬走的是同一段 when，先把优先序钉死 ──────────────
-
-    private val core = listOf("read_file", "list_dir", "search_in_files", "file_info", "ask_user")
-
-    private fun off(members: List<String>, groupDisabled: Boolean, disabled: Set<String>) =
-        BaopuToolFoldSummary.of(members, groupDisabled) { it in disabled }
-
-    @Test
-    fun `F1_部分关闭_名单按传入的表序_计数与总数各说各的`() {
-        // 正常：5 个成员关掉第 2 与第 4 个
-        val s = off(core, false, setOf("list_dir", "file_info"))
-        assertEquals(BaopuFoldKind.SomeOff, s.foldKind)
-        assertEquals("名单必须就是传进来的那个顺序（不排序、不反着来）",
-            listOf("list_dir", "file_info"), s.offNames)
-        assertEquals(2, s.offNames.size)
-        assertEquals("total 是成员数，不是关闭数", 5, s.total)
-    }
-
-    @Test
-    fun `F2_单成员组_关掉就是全关`() {
-        // 边界：一个成员的组，关掉它 ⇒ SomeOff 与 AllOff 只差在说法，这里必须是 AllOff（61 批 P4 的同一口径）
-        val s = off(listOf("image_ops"), false, setOf("image_ops"))
-        assertEquals(BaopuFoldKind.AllOff, s.foldKind)
-        assertEquals(listOf("image_ops"), s.offNames)
-        assertEquals(1, s.total)
-        // 同一个成员没被关 ⇒ 全开，offNames 空
-        val on = off(listOf("image_ops"), false, emptySet())
-        assertEquals(BaopuFoldKind.AllOn, on.foldKind)
-        assertTrue(on.offNames.isEmpty())
-    }
-
-    @Test
-    fun `F3_空组优先于组开关_不凭空报关闭项`() {
-        // 空值：空组即便组开关是关的，也说「这一组没有工具」，不许写成「0 项已全部关闭」
-        val s = off(emptyList(), true, emptySet())
-        assertEquals(BaopuFoldKind.EmptyGroup, s.foldKind)
-        assertEquals(0, s.total)
-        assertTrue(s.offNames.isEmpty())
-        // 空名单 + 关闭集合非空：还是空组（关闭集合里那些名字与本组无关）
-        assertEquals(BaopuFoldKind.EmptyGroup, off(emptyList(), false, setOf("read_file")).foldKind)
-    }
-
-    @Test
-    fun `F4_组开关赢_整组关光时报全部成员`() {
-        // 冲突优先级：组开关优先于单工具开关（引擎侧 isVisibleTool 同一口径）。
-        // 用户一个单工具都没关，组开关一关 ⇒ 关闭项 = 全部成员，而不是「全部开启」。
-        val s = off(core, true, emptySet())
-        assertEquals(BaopuFoldKind.AllOff, s.foldKind)
-        assertEquals(core, s.offNames)
-        assertEquals(core.size, s.total)
-        // 组开关开着、逐个关到零：同样 AllOff，但名单是逐个关的那几个（这里恰好也等于全部）
-        val byItem = off(core, false, core.toSet())
-        assertEquals(BaopuFoldKind.AllOff, byItem.foldKind)
-        assertEquals(core, byItem.offNames)
-    }
-
-    @Test
-    fun `F5_名单里出现重复名字时不走去重_照搬原filter的脾气`() {
-        // 这是一条** quirks 照搬 **用例：判据本体用的是 `members.filter { }`，它不去重、不排序。
-        // 分组表本来不会给重名（ToolGroupTable 每个名字只落一个组），所以这条不改变任何现实行为，
-        // 它钉的是「抽取时没有人顺手加了 distinct()」——真要改这个脾气，属于另立一单。
-        val dup = listOf("read_file", "list_dir", "read_file")
-        val s = off(dup, false, setOf("read_file"))
-        assertEquals(BaopuFoldKind.SomeOff, s.foldKind)
-        assertEquals(listOf("read_file", "read_file"), s.offNames)
-        assertEquals(3, s.total)
-    }
 
     // ── ② 取组序：哪些组上设置页、按什么序 ────────────────────────────────────
 
@@ -236,15 +167,22 @@ class BaopuSettingsRulesTest {
 
     @Test
     fun `Z1_判据本体不调Compose也不读prefs`() {
-        // 判别器：折叠摘要吃的是调用方给的 lambda——本文件全程没建过 Context、没开过 SharedPreferences，
-        // 页面里那句 `prefs.isDisabled(it)` 仍在页内（源码门禁钉）。这里补一条行为证据：
-        // 同一个 members 换一种「谁被关掉」的读法，摘要就跟着变 ⇒ 判据没有自己藏一份开关状态。
-        val a = BaopuToolFoldSummary.of(core, false) { it == "read_file" }
-        val b = BaopuToolFoldSummary.of(core, false) { it == "list_dir" }
-        assertEquals(listOf("read_file"), a.offNames)
-        assertEquals(listOf("list_dir"), b.offNames)
-        // 全 false（等于一个都没关）与全 true（等于逐个关光）是两头的边界
-        assertEquals(BaopuFoldKind.AllOn, BaopuToolFoldSummary.of(core, false) { false }.foldKind)
-        assertEquals(BaopuFoldKind.AllOff, BaopuToolFoldSummary.of(core, false) { true }.foldKind)
+        // 判别器：摘要卡的判据吃的是调用方给的两个 lambda（状态查询 / 开关查询）——
+        // 本文件全程没建过 Context、没开过 SharedPreferences。这里补一条行为证据：
+        // 同一批组、同一份成员表，换个「谁被关掉」的读法，三个数字就跟着变
+        // ⇒ 判据没有自己藏一份开关状态（141 批把 ① 段换成 [BaopuToolArea] 后同一条仍然成立）。
+        val core = listOf("read_file", "list_dir", "search_in_files")
+        val groups = listOf(ToolGroup.CORE, ToolGroup.EDIT)
+        val members = { g: ToolGroup -> if (g == ToolGroup.CORE) core else listOf("write_file") }
+        val stateOf = { g: ToolGroup ->
+            baopuGroupState(g in ToolGroup.DEFAULT_VISIBLE, approved = false, disabled = false)
+        }
+        val allOn = BaopuToolArea.summarize(groups, stateOf, members) { false }
+        val oneOff = BaopuToolArea.summarize(groups, stateOf, members) { it == "read_file" }
+        assertEquals(core.size + 1, allOn.toolCount)
+        assertEquals(allOn.toolCount - 1, oneOff.toolCount)
+        // 组数与待同意数不受单工具开关影响（两档互不覆盖）
+        assertEquals(allOn.groupOnCount, oneOff.groupOnCount)
+        assertEquals(allOn.pendingGroupCount, oneOff.pendingGroupCount)
     }
 }

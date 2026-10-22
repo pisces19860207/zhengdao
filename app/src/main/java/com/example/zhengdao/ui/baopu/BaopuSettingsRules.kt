@@ -19,7 +19,7 @@
 //     └ fun removeIndex                    570-586       17  ctx+pf.applyProposal（写盘） 非纯 ⇒ 不动
 //     └ fun layerOf                        589-592        4  纯（枚举 → 枚举）           ⇒ 本文件 ⑤
 //     └ fun sayArchived                    601-614       14  ctx.getString+7 个 R 键     七键被 34 批 U5 钉在本页 ⇒ 不动
-// baopuFoldSummaryText @Composable          972-988      17  stringResource+6 个 R 键    六键被 61 批 G6 钉在本页 ⇒ 不动（它吃的名单判据 = ①）
+// baopuToolAreaSummaryText @Composable      ——           ——   stringResource+3 个 R 键    141 批新增；判据在 ①（摘要卡）
 // baopuGroupTitle private fun              1000-1011     12  纯（只有 R 引用）           ⇒ 本文件 ③
 // baopuToolLabel private fun               1021-1055     35  纯（只有 R 引用）           J1 钉 private fun ＋ J8 数本页「"名" ->」两次 ⇒ 不动
 // effortLabel private fun                  1061-1067      7  纯（只有 R 引用）           J1 钉 ⇒ 不动
@@ -30,7 +30,8 @@
 //   默认可见提示 if (group in ToolGroup.DEFAULT_VISIBLE) …        220-225 ⇒ 本文件 ④（那一次读取仍留页内：61 批 G5 钉它必须恰好一处）
 //
 // 盘点依据：15 个测试套按文本读 BaopuSettingsScreen.kt（BaopuSettingsGuardTest J1/J8、
-// SettingsGroupFoldTest G1-G7、PersonaBackupTest、SkillStoreTest S14、BaopuSkillCategoryTest
+// ToolAreaCardTest G1-G12（141 批接手原 SettingsGroupFoldTest G1-G7 的位置）、
+// PersonaBackupTest、SkillStoreTest S14、BaopuSkillCategoryTest
 // T5、BaopuSkillInspectUiTest U3/U5/红线、BaopuSkillTrialUiTest T3/T4/红线、
 // ToolRegistrySwitchTest、ProgressiveToolsTest G3、KernelGuardTest、BaopuSessionTreeTest 口径 4、
 // DeletePathToolTest G3、ImageOpsTest G4），它们把标签表/副标题表/档位表/写口形状钉在本页，
@@ -48,56 +49,110 @@ import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.agent.ToolGroup
 
-// ── ① 折叠态「关闭项摘要」的生成（第六十一批 §1，整段照搬）────────────────────
+// ── ① 工具区摘要卡（第一百四十一批 §8；原「折叠态关闭项摘要」随长列表一起退役）────
+//
+// §8 把「抱朴工具」从一张长列表（每组一行开关 ＋ 行内「展开看具体工具」＋ 三段落说明）
+// 改成**一张摘要卡**：收起时只有三个数字，点开只列「要你处理」的组。
+// 判据全在这里（零 Android、JVM 直测），页面只负责画。
+//
+// 为什么原 ① 段可以退役：它服务的是「组头收起后仍要看得到关了什么」，而新形态
+// 根本不再把成员铺开——成员的可见性由摘要数字与「N 个已关」承担（见 [BaopuToolArea.rowsOf]）。
 
-/** 折叠态摘要的那四种局面（第六十一批 §1；只描述「关掉了几个」，不参与任何开关判定）。 */
-internal enum class BaopuFoldKind { EmptyGroup, AllOn, SomeOff, AllOff }
-
-/**
- * 一个组在折叠态要显示的那一行摘要的数据（[offNames] 保持分组表的表序）。
- *
- * [total] 是该组成员数：整组关光时「关闭项」就是全部成员，摘要只有名字没有总数
- * 会让人误估规模，所以这一行按 [total] 说话。
- */
-internal data class BaopuFoldSummary(
-    val foldKind: BaopuFoldKind,
-    val offNames: List<String>,
-    val total: Int,
+/** 摘要卡上的三个数字（§8 那句「工具 14 · 11 组开 · 2 组待同意」）。 */
+internal data class BaopuToolAreaSummary(
+    /** 此刻**真的发给模型**的工具数：默认可见／已同意的组里没被单独关掉的成员。 */
+    val toolCount: Int,
+    /** 此刻开着的组数（默认可见 ＋ 你已长期同意）。 */
+    val groupOnCount: Int,
+    /** 等着你点头的组数（已锁：不发，抱朴要用时会弹卡申请）。 */
+    val pendingGroupCount: Int,
 )
 
+/** 摘要卡展开后**露面**的一行。 */
+internal data class BaopuToolAreaRow(
+    val group: ToolGroup,
+    val state: BaopuGroupState,
+    /** 组内被单独关掉的成员数（0 ＝ 一个没关）。 */
+    val offCount: Int,
+)
+
+/** 一行在界面上算哪种口径（琥珀＝等你点头；次墨＝你自己关的）。 */
+internal enum class BaopuToolRowTone { Pending, Closed, Partial }
+
 /**
- * 折叠态「关闭项摘要」的生成（第六十一批 §1 的纯函数，零 Android）。
- *
- * 为什么需要它：组头一收起，组里那些**被用户关掉的**工具就跟着不见了——那等于把
- * 「这个工具你关过」这件事藏起来，比不折叠更糟（§1 原话「不许把关闭项藏到看不见」）。
+ * 工具区摘要卡的判据（§8）。
  *
  * 三条口径：
- * 1. 纯展示：输入只有「成员名单 / 组开关状态 / 单个开关状态」，**不写任何东西**，
- *    也不改任何默认值——开关语义仍是 `prefs.isDisabled(n)` 那一处；
- * 2. 名单由调用方从那张唯一的分组表（`ToolGroupTable.namesOf`）传入，这里不许出现
- *    第二份工具名单；
- * 3. [groupDisabled] 优先：组开关关掉 ⇒ 组内一律不可见（引擎侧 `isVisibleTool` 同一口径），
- *    所以关闭项 = 全部成员，而不是"逐个关掉的那几个"。
+ * 1. **数字与开关同源**：只吃调用方从 `ToolPrefs` 读出来的那份快照，自己不存任何状态
+ *    ⇒ 开关一改（`toolTick` 重组）三个数字跟着变，不可能一边说 12 个一边列 13 行；
+ * 2. **露面只列要你处理的组**：已锁（等你点头）与已关闭（你关的）必露面；默认开启／
+ *    已长期同意的组**不露面**——但组里有成员被你单独关掉时仍要露面（第六十一批
+ *    「不许把关闭项藏到看不见」不因换形态而作废），标「N 个已关」；
+ * 3. 成员名单只从调用方传进来的 `membersOf` 取（页面给的是 `ToolGroupTable.namesOf`），
+ *    这里不许出现第二份名单。
+ *
+ * 为什么 `toolCount` 只算「开着且成员没被关」的数量：这是「模型此刻看得见几个工具」。
+ * 已锁的组模型看不见（`isVisibleTool` 同一口径），所以不计入——否则摘要会替一个
+ * 模型根本拿不到的工具数作证。
  */
-internal object BaopuToolFoldSummary {
+internal object BaopuToolArea {
 
-    fun of(
-        members: List<String>,
-        groupDisabled: Boolean,
+    fun summarize(
+        groups: List<ToolGroup>,
+        stateOf: (ToolGroup) -> BaopuGroupState,
+        membersOf: (ToolGroup) -> List<String>,
         isDisabled: (String) -> Boolean,
-    ): BaopuFoldSummary = when {
-        members.isEmpty() -> BaopuFoldSummary(BaopuFoldKind.EmptyGroup, emptyList(), 0)
-        groupDisabled -> BaopuFoldSummary(BaopuFoldKind.AllOff, members, members.size)
-        else -> {
-            val off = members.filter { isDisabled(it) }
-            val foldKind = when {
-                off.isEmpty() -> BaopuFoldKind.AllOn
-                off.size == members.size -> BaopuFoldKind.AllOff
-                else -> BaopuFoldKind.SomeOff
+    ): BaopuToolAreaSummary {
+        var tools = 0
+        var on = 0
+        var pending = 0
+        groups.forEach { group ->
+            val state = stateOf(group)
+            if (baopuGroupSwitchOn(state)) {
+                on++
+                tools += membersOf(group).count { !isDisabled(it) }
             }
-            BaopuFoldSummary(foldKind, off, members.size)
+            if (state == BaopuGroupState.Locked) pending++
+        }
+        return BaopuToolAreaSummary(tools, on, pending)
+    }
+
+    /**
+     * 展开后要画哪几行（顺序＝传进来的组序，页面给的是 `baopuSwitchableGroups`）。
+     *
+     * 三种露面理由，其余一律不露面（§8「默认开启的组不露面」）：
+     * - [BaopuGroupState.Locked]：等用户点头；
+     * - [BaopuGroupState.Disabled]：用户自己关的，得能找回来；
+     * - 组开着但有成员被单独关掉：组里有成员被单独关掉，标「N 个已关」——
+     *   去掉这一条就等于把第六十一批那条红线作废（用户关过的东西不许查不到）。
+     */
+    fun rowsOf(
+        groups: List<ToolGroup>,
+        stateOf: (ToolGroup) -> BaopuGroupState,
+        membersOf: (ToolGroup) -> List<String>,
+        isDisabled: (String) -> Boolean,
+    ): List<BaopuToolAreaRow> = groups.mapNotNull { group ->
+        val state = stateOf(group)
+        val off = membersOf(group).count { isDisabled(it) }
+        when {
+            state == BaopuGroupState.Locked -> BaopuToolAreaRow(group, state, off)
+            state == BaopuGroupState.Disabled -> BaopuToolAreaRow(group, state, off)
+            off > 0 -> BaopuToolAreaRow(group, state, off)
+            else -> null
         }
     }
+}
+
+/**
+ * 一行用什么色相（纯函数；琥珀**只**给「等你点头」，其余次墨，不加图标）。
+ *
+ * [BaopuToolRowTone.Partial] 只给「组开着、但里面有成员被单独关掉」的行；这种行由
+ * [BaopuToolArea.rowsOf] 的 `offCount > 0` 筛出来，一个没关的默认组根本不成行。
+ */
+internal fun baopuToolRowTone(state: BaopuGroupState): BaopuToolRowTone = when (state) {
+    BaopuGroupState.Locked -> BaopuToolRowTone.Pending
+    BaopuGroupState.Disabled -> BaopuToolRowTone.Closed
+    BaopuGroupState.DefaultVisible, BaopuGroupState.Approved -> BaopuToolRowTone.Partial
 }
 
 // ── ② 设置页要渲染哪几个组、按什么序（照搬页面 195 行那一句 filter）────────────

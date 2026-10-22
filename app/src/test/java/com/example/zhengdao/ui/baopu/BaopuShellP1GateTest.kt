@@ -326,7 +326,11 @@ class BaopuShellP1GateTest {
             "R.string.persona_rollback_card",
             "R.string.skill_review_card",
         )
-        val idx = cards.map { src.indexOf("SectionCard(stringResource($it)") }
+        // 141 批：第 1 张（抱朴工具）改成了信息卡档位的摘要卡（卡外同款标签 ＋ 纸深卡体），
+        // 不再是 SectionCard —— 所以头一张按键定位、其余四张仍按 SectionCard 定位；
+        // 顺序判据一个字没放宽（五张的相对次序仍必须与 v1.4 W10a 一致）。
+        val idx = listOf(src.indexOf("R.string.baopu_tools_card")) +
+            cards.drop(1).map { src.indexOf("SectionCard(stringResource($it)") }
         idx.forEachIndexed { i, at ->
             assertTrue("设置页第 ${i + 1} 张卡 ${cards[i]} 不见了", at >= 0)
         }
