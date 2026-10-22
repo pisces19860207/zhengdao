@@ -62,8 +62,10 @@ class E166RegressionTest {
         // 取带工具分支里那次 BaopuRoundItem(...) 调用
         val idx = screen.indexOf("BaopuRoundItem(")
         assertTrue("找不到 BaopuRoundItem 调用", idx > 0)
+        // 139 批把调用挪进了 `if (roundHasProcess…) else` 分支，缩进变了——
+        // 取调用点之后的一段够用的窗口，而不是依赖某个固定缩进的右括号。
         val tail = screen.substring(idx)
-        val call = tail.substring(0, tail.indexOf("\n                        )"))
+        val call = tail.substring(0, minOf(tail.length, 800))
         assertTrue("带工具的轮漏传 onUserLongPress：\n$call", call.contains("onUserLongPress = onUserLongPress"))
     }
 }

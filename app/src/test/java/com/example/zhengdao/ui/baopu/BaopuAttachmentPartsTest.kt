@@ -177,7 +177,7 @@ class BaopuAttachmentPartsTest {
     fun `B3_图片part不进SelectionContainer_否则长按被选字抢走`() {
         assertTrue(
             "图片 part 必须从文字区里分出来",
-            list.contains("""val imageParts = msg.parts.filter { it.kind == "image" }"""),
+            list.contains("""val imageParts = visibleParts.filter { it.kind == "image" }"""),
         )
     }
 

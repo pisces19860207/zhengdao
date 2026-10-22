@@ -744,7 +744,6 @@
     <string name="baopu_resume">Resume</string>
     <string name="baopu_new_session">New session</string>
     <string name="baopu_empty">No conversation yet. Put material in the workspace under “资料库/原始”, then ask Baopu to take a look.</string>
-    <string name="baopu_tool_label">Tool call</string>
     <string name="baopu_role_user">You</string>
     <string name="baopu_role_assistant">Baopu</string>
     <!-- Batch 137 (2026-10-22): action-tile header strip for the four container tiers. -->
@@ -762,8 +761,6 @@
          Expand/collapse arrows reuse the existing common_expand_arrow / common_collapse_arrow; this batch adds only this one key. -->
     <string name="baopu_more_items">%1$d more</string>
     <!-- Baopu step-card collapsing (batch 16, item 1): a finished round collapses into one line -->
-    <string name="baopu_round_summary">%1$d steps · took %2$s · %3$d failed</string>
-    <string name="baopu_round_summary_nodur">%1$d steps · %2$d failed</string>
     <!-- The persistent "Hide details" chip was removed in batch 106 (user request):
          the round-tail inline activity panel now carries the "entry never scrolls away" guarantee. -->
     <!-- Read aloud (2026-10-18): system TTS only, no network, no library; failures must be spoken out -->
@@ -807,17 +804,29 @@
     <string name="baopu_plan_time_yesterday">yesterday %1$s</string>
     <!-- Activity panel (batch 106, v1.5 §3.12): inline at the round tail, replaces the "Hide details" chip -->
     <string name="baopu_activity_running">● Working: %1$s · step %2$d</string>
-    <string name="baopu_activity_summary">This round · %1$d steps · took %2$s</string>
-    <string name="baopu_activity_summary_nodur">This round · %1$d steps</string>
-    <string name="baopu_activity_fails">%1$d failed</string>
     <string name="baopu_activity_more">%1$d more</string>
     <string name="baopu_activity_kind_tool">Tool</string>
     <string name="baopu_activity_kind_compression">Compact</string>
     <string name="baopu_activity_kind_await">Waiting</string>
     <string name="baopu_activity_kind_failed">Failed</string>
     <string name="baopu_activity_reason">Failed: %1$s</string>
-    <string name="baopu_activity_toggle_open">Expand activity</string>
-    <string name="baopu_activity_toggle_close">Collapse activity</string>
+    <!-- Batch 139: folded process row at the tail of an answer. -->
+    <plurals name="baopu_process_files_steps">
+        <item quantity="one">Read %1$d files · ran %2$d step</item>
+        <item quantity="other">Read %1$d files · ran %2$d steps</item>
+    </plurals>
+    <plurals name="baopu_process_steps">
+        <item quantity="one">Ran %1$d step</item>
+        <item quantity="other">Ran %1$d steps</item>
+    </plurals>
+    <string name="baopu_process_waiting">Waiting for your OK</string>
+    <plurals name="baopu_process_fails">
+        <item quantity="one">%1$d didn\'t work out</item>
+        <item quantity="other">%1$d didn\'t work out</item>
+    </plurals>
+    <string name="baopu_process_toggle_open">Expand process details</string>
+    <string name="baopu_process_toggle_close">Collapse process details</string>
+    <string name="baopu_process_detail_title">What happened this round</string>
   <string name="baopu_channel_button">Pick a model</string>
     <!-- ── Baopu ask_user card (task 2, part C) ── -->
     <string name="baopu_ask_recommended">Suggested options</string>

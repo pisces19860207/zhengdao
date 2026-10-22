@@ -14,7 +14,7 @@ import java.io.File
  *    正文档没有容器函数（零代码表达「没有边界」），由消息行的透明 Surface 承担。
  * 2. **边界位置四选一、不许叠加**——行动卡只许「四边 2dp」、信息卡只许「左边 4dp」、
  *    记录条只许「下边 1dp」；同一容器里出现第二种边界通道即红。
- * 3. **尺寸常量与设计文档一致**（2/4/44/1/16/12/8）。
+ * 3. **尺寸常量与设计文档一致**（2/4/44/48/1/16/12/8；48 = 139 批的记录条命中热区）。
  * 4. **行动卡的调用点只有五个已知文件**——多一个就是「新造第五种卡」或「到处行动卡」，
  *    也就破了一屏最多 1 张的规矩。
  *
@@ -85,6 +85,7 @@ class ContainerTierGuardTest {
         assertTrue("记录条不许描四边", !body.contains(".border("))
         assertTrue("记录条不许填底（它落在纸面上）", !body.contains(".background("))
         assertTrue("记录条行高必须取 44dp 常量", body.contains("BAO_RECORD_HEIGHT_DP.dp"))
+        assertTrue("记录条命中热区必须取 48dp 常量（139）", body.contains("BAO_RECORD_TOUCH_DP.dp"))
     }
 
     @Test
@@ -95,6 +96,7 @@ class ContainerTierGuardTest {
             "BAO_INFO_BAR_DP" to 4,
             "BAO_INFO_INSET_DP" to 12,
             "BAO_RECORD_HEIGHT_DP" to 44,
+            "BAO_RECORD_TOUCH_DP" to 48,
             "BAO_RECORD_INSET_DP" to 8,
             "BAO_HAIRLINE_DP" to 1,
         )
@@ -144,7 +146,10 @@ class ContainerTierGuardTest {
         val src = repoFile("$BAOPU_DIR/BaopuMessageList.kt").readText()
         assertTrue("助手消息必须透明底（正文档）", src.contains("Color.Transparent"))
         assertTrue("助手消息必须无圆角形状（正文档）", src.contains("RectangleShape"))
-        assertTrue("轮次摘要必须走记录条容器", src.contains("BaopuRecordRow("))
+        // 139：轮次摘要行已换成轮尾过程条；记录条容器由过程条复用（不许新造第五种）。
+        val bar = repoFile("$BAOPU_DIR/BaopuProcessBar.kt").readText()
+        assertTrue("轮次过程条必须走记录条容器", bar.contains("BaopuRecordRow("))
+        assertTrue("消息列表不许再自己画记录条", !src.contains("BaopuRecordRow("))
     }
 
     /** 取某个顶层函数的花括号正文（第一个 `{` 到匹配的 `}`），够用的朴素配对。 */
