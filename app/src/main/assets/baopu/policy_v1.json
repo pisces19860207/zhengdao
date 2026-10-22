@@ -1,0 +1,24 @@
+{
+  "schema": "zhengdao-policy",
+  "version": 1,
+  "description": "证道政策表 v1（只读、随包发布）。只装可调参数，不装 Guard/权限/确认/越界拒绝；未知键、越界、降级一律整表拒绝。",
+  "toolGroups": {
+    "defaultVisible": ["core", "edit", "compat"]
+  },
+  "approval": {
+    "groupReaskThreshold": 3,
+    "riskLevels": {
+      "PERSONA_CORE": "HIGH",
+      "TOOL_PERMISSION": "HIGH",
+      "ROOTFS_SYSTEM": "HIGH",
+      "SKILL_BODY_STRUCTURE": "MEDIUM",
+      "CROSS_SKILL_IMPACT": "MEDIUM",
+      "PROMPT_TWEAK": "LOW",
+      "SKILL_BODY_MINOR": "LOW"
+    }
+  },
+  "eval": {
+    "floor": 0.8,
+    "minEffectSamples": 3
+  }
+}

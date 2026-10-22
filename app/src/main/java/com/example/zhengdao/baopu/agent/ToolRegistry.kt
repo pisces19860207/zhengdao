@@ -7,6 +7,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.baopu.policy.PolicyRuntime
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -114,7 +115,8 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
          * 普通通道 = CORE 8 + EDIT 4 = **12**；免费通道在同一张表上多两条通道自带的
          * 兼容条目 ⇒ **14**（实测读数与这条取法都写进交付报告，留给蓝总管裁定）。
          */
-        val DEFAULT_VISIBLE: Set<ToolGroup> = setOf(CORE, EDIT, COMPAT)
+        val DEFAULT_VISIBLE: Set<ToolGroup>
+            get() = PolicyRuntime.current().toolGroups.defaultVisible
 
         /**
          * 成员在 [ToolGroupTable] 里有静态名单的组（设置页 / capabilities 名册 /

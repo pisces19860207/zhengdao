@@ -18,6 +18,9 @@
 //   ADOPT  = 自检过＋eval 过线＋效果正向＋回滚可用。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.policy.Policy
+import com.example.zhengdao.baopu.policy.PolicyRuntime
+
 /**
  * 风险类别：调用方按候选内容判定，本类只做**类别 → 等级**的确定性映射。
  *
@@ -83,13 +86,15 @@ internal data class EvolutionJudgement(
 )
 
 /**
- * v1 策略。所有阈值都可注入，但默认值写死在 [companion]；
+ * v1 策略。阈值与风险映射默认从当前政策表读（[PolicyRuntime]），调用方仍可显式注入；
  * `L3_AUTO_LOW_RISK` 默认 **false**，本批不读设置页、不读环境变量——开关只由调用方显式传。
  */
 internal class EvolutionPolicy(
-    val evalFloor: Double = DEFAULT_EVAL_FLOOR,
-    val minEffectSamples: Int = DEFAULT_MIN_EFFECT_SAMPLES,
+    val evalFloor: Double = PolicyRuntime.current().eval.floor,
+    val minEffectSamples: Int = PolicyRuntime.current().eval.minEffectSamples,
     val autoLowRiskEnabled: Boolean = L3_AUTO_LOW_RISK,
+    val riskLevels: Map<EvolutionRiskCategory, EvolutionRisk> =
+        PolicyRuntime.current().approval.riskLevels,
 ) {
     init {
         require(evalFloor in 0.0..1.0) { "eval 过线值必须在 0–1" }
@@ -112,7 +117,7 @@ internal class EvolutionPolicy(
 
     /** 一条决策的完整策略判定（建议＋置信度＋等级＋是否人批＋原因链）。 */
     fun judge(input: EvolutionDecisionInput): EvolutionJudgement {
-        val riskClass = input.riskCategory.riskClass
+        val riskClass = riskOf(input.riskCategory)
         val reasons = mutableListOf(
             EvolutionReason(EvolutionReasonCode.CANDIDATE_EVIDENCE, input.evidenceIds),
         )
@@ -188,6 +193,10 @@ internal class EvolutionPolicy(
             }
         }
     }
+
+    /** 表里的等级再抬也不许低于代码底线（[Policy.riskFloor]）。 */
+    private fun riskOf(category: EvolutionRiskCategory): EvolutionRisk =
+        maxOf(riskLevels[category] ?: category.riskClass, Policy.riskFloor(category))
 
     private data class Approval(
         val requiresApproval: Boolean,
@@ -284,10 +293,10 @@ internal class EvolutionPolicy(
         const val L3_AUTO_LOW_RISK = false
 
         /** eval 过线默认值：0.8（v1 写死，可注入用于测试）。 */
-        const val DEFAULT_EVAL_FLOOR = 0.8
+        const val DEFAULT_EVAL_FLOOR = Policy.EVAL_FLOOR
 
         /** 效果样本下限：至少 3 次观察才谈正负（v1 写死，可注入用于测试）。 */
-        const val DEFAULT_MIN_EFFECT_SAMPLES = 3
+        const val DEFAULT_MIN_EFFECT_SAMPLES = Policy.MIN_EFFECT_SAMPLES
 
         /**
          * 效果判定的**唯一算法**（纯函数，不依赖实例）。
