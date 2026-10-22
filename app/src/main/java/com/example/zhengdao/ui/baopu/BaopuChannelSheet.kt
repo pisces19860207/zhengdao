@@ -87,7 +87,8 @@ private const val MIDDLE_ELLIPSIS_CHARS = 34
  *   列出（补充节：永不显示全 key）；
  * · 清单不再只有自定义通道能拉 ⇒ 预设也拉（③），停手 0.6s 自动拉、拉取中缓存先行、免费档每次重拉。
  *
- * @param onSave 提交：(选中的提供商 id, 待加的新 Key, 自定义接口地址, 自定义模型名, 预设上点定的模型)
+ * @param onSave 提交：(选中的提供商 id, 待加的新 Key, 自定义接口地址, 自定义模型名,
+ *   自定义协议, 预设上点定的模型)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,12 +96,14 @@ internal fun BaopuChannelSheet(
     currentChannelId: String,
     customBaseUrl: String?,
     customModel: String?,
+    customProtocol: String?,
     onDismiss: () -> Unit,
     onSave: (
         channelId: String,
         apiKey: String,
         baseUrl: String?,
         model: String?,
+        protocol: String?,
         picked: ModelPickerRules.ModelOverride?,
     ) -> Unit,
 ) {
@@ -120,9 +123,19 @@ internal fun BaopuChannelSheet(
     fun baseUrlOf(id: String): String =
         Providers.of(id)?.baseUrl ?: customBaseUrl.orEmpty()
 
+    /** 某一家此刻的协议（只有自定义有得选；预设用自己的协议，草稿位留空）。 */
+    fun protocolOf(id: String): String =
+        if (id == ProviderPrefs.CHANNEL_CUSTOM) ProviderPrefs.protocolKeyOf(customProtocol) else ""
+
     var selected by remember { mutableStateOf(if (restored) ModelSheetDraft.channelId.ifBlank { currentChannelId } else currentChannelId) }
     var addKeyText by remember { mutableStateOf(if (restored) ModelSheetDraft.addKey else "") }
     var baseUrlText by remember { mutableStateOf(if (restored) ModelSheetDraft.baseUrl else baseUrlOf(currentChannelId)) }
+    var protocolText by remember {
+        mutableStateOf(
+            if (restored) ModelSheetDraft.protocol.ifBlank { protocolOf(currentChannelId) }
+            else protocolOf(currentChannelId),
+        )
+    }
     var modelText by remember { mutableStateOf(if (restored) ModelSheetDraft.model else modelOf(currentChannelId)) }
     var query by remember { mutableStateOf(if (restored) ModelSheetDraft.query else "") }
     var picked by remember { mutableStateOf(if (restored) ModelSheetDraft.picked else ProviderPrefs.modelOverride(ctx, currentChannelId)) }
@@ -140,6 +153,8 @@ internal fun BaopuChannelSheet(
     var addKeyMsg by remember { mutableStateOf<String?>(null) }
 
     val isCustom = selected == ProviderPrefs.CHANNEL_CUSTOM
+    // 第一百三十六批：自定义 Anthropic 没有清单接口 ⇒ 即使换了 base/Key 也不发这次请求。
+    val manualModelOnly = isCustom && protocolText == ProviderPrefs.PROTOCOL_ANTHROPIC
     val preset = Providers.of(selected)
     val effectiveBase = (if (isCustom) baseUrlText else baseUrlOf(selected)).trim()
     // 拉清单带哪把 Key：输入框里正在打的那把优先（用户正盯着它），否则池子里此刻该带出去的。
@@ -151,11 +166,12 @@ internal fun BaopuChannelSheet(
 
     /** 换一家：草稿跟着走，输入位与清单全部重取（不把上一家的选择串到这一家）。 */
     fun selectProvider(id: String) {
-        ModelSheetDraft.moveTo(id, baseUrlOf(id), modelOf(id))
+        ModelSheetDraft.moveTo(id, baseUrlOf(id), modelOf(id), protocolOf(id))
         ModelSheetDraft.picked = ProviderPrefs.modelOverride(ctx, id)
         ModelSheetDraft.pickedFor = id
         selected = id
         baseUrlText = ModelSheetDraft.baseUrl
+        protocolText = ModelSheetDraft.protocol
         modelText = ModelSheetDraft.model
         picked = ModelSheetDraft.picked
         pickedFor = id
@@ -168,11 +184,12 @@ internal fun BaopuChannelSheet(
     }
 
     // 草稿回写：每一项改动都立刻同步（中途跳玄览也不会丢正在打的字）。
-    LaunchedEffect(selected, addKeyText, baseUrlText, modelText, query, picked, pickedFor) {
+    LaunchedEffect(selected, addKeyText, baseUrlText, protocolText, modelText, query, picked, pickedFor) {
         ModelSheetDraft.showing = true
         ModelSheetDraft.channelId = selected
         ModelSheetDraft.addKey = addKeyText
         ModelSheetDraft.baseUrl = baseUrlText
+        ModelSheetDraft.protocol = protocolText
         ModelSheetDraft.model = modelText
         ModelSheetDraft.query = query
         ModelSheetDraft.picked = picked
@@ -180,7 +197,15 @@ internal fun BaopuChannelSheet(
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    LaunchedEffect(selected, effectiveBase, keyForFetch, refreshTick) {
+    LaunchedEffect(selected, effectiveBase, keyForFetch, refreshTick, manualModelOnly) {
+        if (manualModelOnly) {
+            // Anthropic 没有 /v1/models：不硬拉，直接说「手填模型名」（136 单 §1）。
+            entries = emptyList()
+            fetching = false
+            fetchError = null
+            pullNote = ModelPickerRules.ANTHROPIC_MANUAL_MODEL_HINT
+            return@LaunchedEffect
+        }
         val neverCache = isFreeLane
         val cached = ModelCatalogCache.cached(effectiveBase, neverCache)
         if (effectiveBase.isEmpty()) {
@@ -272,6 +297,21 @@ internal fun BaopuChannelSheet(
                 onClick = { selectProvider(ProviderPrefs.CHANNEL_CUSTOM) },
             )
             if (isCustom) {
+                // 第一百三十六批 · 自定义行展开后的第一项：协议二选一。
+                // 只换协议形状（端点/请求头由 LlmWire 按 Provider.protocol 走），不新写请求层。
+                GroupLabel("协议")
+                PickerRow(
+                    title = "OpenAI 兼容",
+                    sub = "默认 · /v1/chat/completions",
+                    selected = protocolText == ProviderPrefs.PROTOCOL_OPENAI_COMPAT,
+                    onClick = { protocolText = ProviderPrefs.PROTOCOL_OPENAI_COMPAT },
+                )
+                PickerRow(
+                    title = "Anthropic",
+                    sub = "Claude · /v1/messages",
+                    selected = protocolText == ProviderPrefs.PROTOCOL_ANTHROPIC,
+                    onClick = { protocolText = ProviderPrefs.PROTOCOL_ANTHROPIC },
+                )
                 OutlinedTextField(
                     value = baseUrlText,
                     onValueChange = { baseUrlText = it },
@@ -283,6 +323,10 @@ internal fun BaopuChannelSheet(
                         .fillMaxWidth()
                         .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp),
                 )
+                if (manualModelOnly) {
+                    // Anthropic 的版本前缀是 baseUrl 的一部分（/v1/messages 由它拼出来）。
+                    Footnote("Anthropic 的接口地址以 /v1 结尾，例如 https://api.anthropic.com/v1")
+                }
             }
 
             // ── 二、模型（搜索框 ＋ 清单 ＋ 手填兜底；③＋补充节 §一） ────────
@@ -347,7 +391,8 @@ internal fun BaopuChannelSheet(
                 },
                 label = {
                     Text(
-                        if (isCustom) "模型名（必填，如 deepseek-chat）"
+                        if (manualModelOnly) "模型名（必填，如 claude-sonnet-4-5）"
+                        else if (isCustom) "模型名（必填，如 deepseek-chat）"
                         else "模型名（手填，覆盖上面选的那条）",
                     )
                 },
@@ -445,6 +490,7 @@ internal fun BaopuChannelSheet(
                             addKeyText.trim(),
                             if (isCustom) effectiveBase else null,
                             if (isCustom) modelText.trim() else null,
+                            if (isCustom) protocolText else null,
                             usePicked,
                         )
                     },

@@ -23,7 +23,7 @@ import com.example.zhengdao.baopu.ModelPickerRules
  * 三条语义，逐条对上补充节：
  * - [showing]：抽屉是不是"用户还没关掉"的状态 ⇒ 抱朴页重新组合时据此**把抽屉重新弹回来**；
  * - [channelId]：跳转前选中的那家（公司名）⇒ 不许重置回默认通道；
- * - 其余四个输入位（[addKey] / [baseUrl] / [model] / [query]）＝已填内容原样保留。
+ * - 其余输入位（[addKey] / [baseUrl] / [protocol] / [model] / [query]）＝已填内容原样保留。
  *
  * **这里故意没有"起稿"函数**：第一次打开（`showing` 为假）时该显示什么是抽屉自己算的——
  * `BaopuChannelSheet` 那七行 `if (restored) 草稿 else 现值`（预设取 `Providers` 那条、自定义取 SP）。
@@ -43,6 +43,12 @@ internal object ModelSheetDraft {
     /** 自定义通道的接口地址。 */
     var baseUrl: String = ""
 
+    /**
+     * 自定义通道的协议线值（第一百三十六批；[com.example.zhengdao.baopu.ProviderPrefs]
+     * 的两个 PROTOCOL_* 之一）。预设上没有协议可选 ⇒ 空串。
+     */
+    var protocol: String = ""
+
     /** 手填的模型名（自定义必填；预设上留空＝用自带的那条）。 */
     var model: String = ""
 
@@ -61,11 +67,12 @@ internal object ModelSheetDraft {
     var pickedFor: String = ""
 
     /** 切到另一家：输入位跟着这家的真实状态走（其余草稿位作废，特别是 [picked]）。 */
-    fun moveTo(id: String, storedBaseUrl: String, storedModel: String) {
+    fun moveTo(id: String, storedBaseUrl: String, storedModel: String, storedProtocol: String = "") {
         channelId = id
         addKey = ""
         baseUrl = storedBaseUrl
         model = storedModel
+        protocol = storedProtocol
         picked = null
         pickedFor = ""
     }
@@ -77,6 +84,7 @@ internal object ModelSheetDraft {
         addKey = ""
         baseUrl = ""
         model = ""
+        protocol = ""
         query = ""
         picked = null
         pickedFor = ""
