@@ -9,6 +9,7 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 // 这里只留调用——渲染、文案、点击后跑什么命令、state 写回全在本文件原位没动。
 import com.example.zhengdao.ui.home.HomePrimaryAction
 import com.example.zhengdao.ui.home.HomeStatusLine
+import com.example.zhengdao.ui.home.homeEntryVisible
 import com.example.zhengdao.ui.home.homeMoreMenuVisible
 import com.example.zhengdao.ui.home.homePrimaryActionOf
 import com.example.zhengdao.ui.home.homeReinstallItemVisible
@@ -81,9 +82,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -1009,9 +1014,14 @@ fun HomeScreen(
                 }
             }
         }
-        // ── Agent 卡片（第十八批 B 段：只保留 Hermes——Claude Code / AGY / Codex
-        // 不再出现状态行（§2.2-1）；OpenCode 已内置为抱朴，原本就不展示——用户定稿）──
-        items(agents.filter { it.id == "hermes" }, key = { it.id }) { agent ->
+        // ── Agent 卡片（第一百四十二批：恢复四件——Claude Code / Hermes Agent /
+        // AGY CLI / Codex CLI。覆盖 2026-10-18 第十八批 B 段旧定稿「只保留 Hermes——
+        // Claude Code / AGY / Codex 不再出现状态行（§2.2-1）……用户定稿」：旧定稿原文
+        // 留存备查，新决策见《抱朴设置重构方案-2026-10-22》§10（用户 09:22「都恢复」）。
+        // 白名单判据在 ui/home/HomeAgentRules.kt（homeEntryVisible）——manifest 追加的
+        // 未知 id 注册表照收，但不进首页入口；OpenCode 已内置为抱朴、原本就不展示，
+        // 这一条新旧定稿一致）──
+        items(agents.filter { homeEntryVisible(it.id) }, key = { it.id }) { agent ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -1171,10 +1181,28 @@ fun HomeScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
+                    // 描述（142 批）：正文墨一（onSurface）＋体积提示次墨
+                    // （onSurfaceVariant＝#57544C，浅深两季自动切换）收在同一段末尾，
+                    // 不新开一行、不加图标（设计约束）。minLines = maxLines = 2：
+                    // 四张同构卡的描述区恒占两行 ⇒ 同高（同构卡不同高＝纯视觉噪音）；
+                    // 超两行省略号收口。入口卡属首页/设置页体系，不受消息流四档约束。
+                    val descText = buildAnnotatedString {
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
+                            append(agent.desc)
+                        }
+                        val hint = agent.sizeHint
+                        if (!hint.isNullOrBlank()) {
+                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                                append(" · $hint")
+                            }
+                        }
+                    }
                     Text(
-                        text = agent.desc,
+                        text = descText,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        minLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     // 状态行：失败 / 安装中用浅底提示条（原先的裸彩字在真机上会被读成
                     // 上一行的溢出，像渲染坏了）；已装版本属常态信息，保持素色小字。

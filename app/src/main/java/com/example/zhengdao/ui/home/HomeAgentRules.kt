@@ -106,3 +106,32 @@ internal fun homeMoreMenuVisible(
 /** 菜单里「重新安装」一项是否出现：有安装命令且环境就绪（环境没了重装无从谈起）。 */
 internal fun homeReinstallItemVisible(hasInstallCmd: Boolean, envReady: Boolean): Boolean =
     hasInstallCmd && envReady
+
+// ═══ 首页入口白名单（第一百四十二批 · 2026-10-22） ═══
+
+/**
+ * 首页 Agent 入口白名单：Claude Code / Hermes Agent / AGY CLI / Codex CLI 四件。
+ *
+ * **决策链（覆盖记录，别当冗余注释）**：
+ * - 2026-10-18 第十八批 B 段旧定稿：filter 只认 `id == "hermes"`，其余三件从首页收起
+ *   （原文留在 `HomeScreen.kt` 该处注释里备查）；
+ * - 2026-10-22 用户 09:22「都恢复」⇒ 《抱朴设置重构方案-2026-10-22.md》§10 拍板四件全恢复，
+ *   按 L2 局部变更处理：旧定稿原文留存，本白名单为新决策。
+ *
+ * **为什么是白名单而不是「注册表里有什么就展什么」**：manifest 可以追加未知 id 的条目
+ * （注册表层面照单全收，供版本探测/检测区用），但**首页入口**只放这四个——未知条目没有
+ * 经过安装/卸载/数据目录的适配，展出来就是让用户点一个可能跑不起来的按钮。要展新 agent
+ * 是改这个白名单的决定，不是 manifest 单方面能推的。
+ *
+ * OpenCode 不在内：它已内置为抱朴的模型通道，本来就不作为终端 agent 展示（旧注释口径不变）。
+ */
+internal val HOME_AGENT_ENTRY_IDS: List<String> =
+    listOf("claude-code", "hermes", "antigravity", "codex")
+
+/**
+ * 首页 Agent 入口是否可见（白名单判据）。
+ *
+ * 纯函数：入参一个 id，出参一个 Boolean——manifest 追加的未知 id、历史 id（opencode）
+ * 一律不进首页。调用方 `items(agents.filter { homeEntryVisible(it.id) }, …)`。
+ */
+internal fun homeEntryVisible(agentId: String): Boolean = agentId in HOME_AGENT_ENTRY_IDS
