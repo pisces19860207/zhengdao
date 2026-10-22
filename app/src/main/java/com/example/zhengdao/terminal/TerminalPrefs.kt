@@ -158,8 +158,10 @@ object TerminalPrefs {
         GREEN("green", "复古绿 · 黑底绿字", 0xFF001208.toInt(), 0xFF3DF53D.toInt(), 0xFF8CFF8C.toInt()),
         PAPER("paper", "浅色 · 白底黑字", 0xFFF6F6F6.toInt(), 0xFF1A1A1A.toInt(), 0xFF666666.toInt()),
         CATPPUCCIN_MOCHA(
+            // 2026-10-22 第一百三十七批：底色/默认前景跟到全站墨底（§15.2「让终端也是墨底成立」），
+            // 16 个 ANSI 色仍是 Catppuccin Mocha 官方值——那是用户命令输出的色彩，属内容不属皮肤。
             "catppuccin_mocha", "Catppuccin Mocha",
-            0xFF1E1E2E.toInt(), 0xFFCDD6F4.toInt(), 0xFFF5E0DC.toInt(),
+            0xFF1C1B18.toInt(), 0xFFEDE9DF.toInt(), 0xFFF5E0DC.toInt(),
             0xFF585B70.toInt(), CATPPUCCIN_MOCHA_ANSI,
         ),
         ;
