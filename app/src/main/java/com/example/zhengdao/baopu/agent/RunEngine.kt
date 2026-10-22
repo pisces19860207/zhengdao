@@ -378,6 +378,14 @@ internal class RunEngine(
     var visionCandidates: (String) -> List<Provider> = { emptyList() }
 
     /**
+     * 147 ②：日记召回源（闭包注入，同 [visionCandidates] 房型）。
+     *
+     * 引擎自己不碰盘：条目由 [com.example.zhengdao.baopu.BaopuRuntime] 接线时从
+     * `DiaryStore` 读（文件是真相）；默认空 ⇒ 不注入 EPISODE 段，行为与之前逐字相同。
+     */
+    var diaryRecall: () -> List<com.example.zhengdao.baopu.DiaryEntry> = { emptyList() }
+
+    /**
      * 本轮**够格进「产物」行**的相对路径（写成功、文本、≤512 KB、前 8 KB 无 NUL）。
      *
      * 数据源就是 [verifyTouched]（收尾闸那份「这一轮真落了哪些盘」），只是在它之上
@@ -1779,6 +1787,11 @@ internal class RunEngine(
         images: List<com.example.zhengdao.baopu.VisionRules.ImagePayload> = turnImages,
         /** 本轮额外说明（图没发出去的原因等）；默认取 [turnNotes]。 */
         extraNotes: List<String> = turnNotes,
+        /**
+         * 147 ②：日记召回条目。默认读 [diaryRecall]（工具循环里每步同一批——
+         * 同会话内只增不改是提示词缓存判据，途中换批等于打破前缀）。
+         */
+        diaryEntries: List<com.example.zhengdao.baopu.DiaryEntry> = diaryRecall(),
     ) = ContextAssembler.assemble(
         persona = persona,
         facts = facts,
@@ -1800,6 +1813,11 @@ internal class RunEngine(
         // 第一百二十四批：本轮这张「仍要发送（风险自负）」的通行证（默认 false ⇒ 行为与
         // 本行存在之前逐字相同；只有同意闸选了「仍发送」才为 true）
         visionAuthorized = turnVisionAuthorized,
+        // 147 ②：日记召回。**必须转本函数的 [diaryEntries] 参数**（默认值即 diaryRecall()）——
+        // 蓝总管 2026-10-22 20:1x 指出：原先这里写 diaryRecall()，签名里的参数被忽略，
+        // 调用方显式传值会被静默丢掉（死参数陷阱）。现行为不变（调用方都没显式传，
+        // 走默认），但显式传参从此有效。
+        diaryEntries = diaryEntries,
     )
 
     /**

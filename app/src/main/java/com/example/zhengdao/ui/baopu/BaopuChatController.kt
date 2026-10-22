@@ -23,6 +23,11 @@ import com.example.zhengdao.baopu.BaopuUsageRow
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuSql
+import com.example.zhengdao.baopu.DiaryEntry
+import com.example.zhengdao.baopu.DiaryEvidence
+import com.example.zhengdao.baopu.DiaryIndexStore
+import com.example.zhengdao.baopu.DiaryRules
+import com.example.zhengdao.baopu.DiaryStore
 import com.example.zhengdao.baopu.EvolutionAuditLog
 import com.example.zhengdao.baopu.EvolutionDecision
 import com.example.zhengdao.baopu.EvolutionDecisionPort
@@ -1309,6 +1314,79 @@ internal class BaopuChatController(context: Context) {
     private var refineMarkSession = -1L
     private var refineMarkUserCount = -1
 
+    // ── 情景记忆（147）：Settled ⇒ 日记 upsert（结构化拼装，无模型文本）────────
+    //
+    // 与提炼游标同款手法：记「哪个会话、已经记到第几行 run_log」，只认基线之后
+    // 的新增行——老历史不回填（日记从本功能落地后的新活动开始记，如实）。
+    // 活动判据是**结构化**的（判据 3）：本轮有成功工具步（stepRows 增量里 ok=true）
+    // 或有新增产物（engine.roundArtifacts），两者皆无 ⇒ 不记，闲聊不产生日记。
+
+    private var diaryMarkSession = -1L
+    private var diaryMarkSteps = 0
+
+    /** 跑前基线：用户消息落库时标定（此刻 stepRows 还不含本轮）。 */
+    private fun diaryMarkBeforeRun() {
+        val sid = sessionId ?: return
+        if (diaryMarkSession != sid) {
+            diaryMarkSession = sid
+            diaryMarkSteps = stepRows.size
+        } else if (diaryMarkSteps > stepRows.size) {
+            diaryMarkSteps = stepRows.size
+        }
+    }
+
+    private fun diaryOnSettle() {
+        val sid = sessionId ?: return
+        if (diaryMarkSession != sid) {
+            // 没经过本控制器跑前标定（如切回老会话后直接收尾）⇒ 只标定不回填。
+            diaryMarkSession = sid
+            diaryMarkSteps = stepRows.size
+            return
+        }
+        val delta = stepRows.drop(diaryMarkSteps.coerceAtMost(stepRows.size))
+        diaryMarkSteps = stepRows.size
+        val okSteps = delta.count { it.ok }
+        val newArtifacts = DiaryRules.sanitizeArtifacts(engine.roundArtifacts.value)
+        if (!DiaryRules.hasActivity(okSteps, newArtifacts.size)) return // 判据 3：结构化无产出不记
+
+        val now = System.currentTimeMillis()
+        val date = DiaryRules.dateOf(now)
+        val store = DiaryStore(File(BaopuRuntime.workspaceRoot(appCtx), "记忆/日记"), db)
+        val prev = store.loadDay(date).firstOrNull { it.id == DiaryRules.diaryId(sid, date) }
+        // 当日累计（同会话同日多轮 upsert 相加；产物并集去重）。
+        val okTotal = (prev?.okSteps ?: 0) + okSteps
+        val failedTotal = (prev?.failedSteps ?: 0) + (delta.size - okSteps)
+        val artifactTotal = DiaryRules.sanitizeArtifacts((prev?.artifacts ?: emptyList()) + newArtifacts)
+        val entry = DiaryEntry(
+            id = DiaryRules.diaryId(sid, date),
+            date = date,
+            sessionId = sid,
+            timeFromMs = prev?.timeFromMs ?: (delta.firstOrNull()?.createdAt ?: now),
+            timeToMs = now,
+            title = DiaryRules.composeTitle(okTotal, artifactTotal.size),
+            summary = DiaryRules.composeSummary(okTotal, failedTotal, artifactTotal.size),
+            artifacts = artifactTotal,
+            evidence = DiaryEvidence.OBSERVED, // 结构化事实：本会话真实发生的动作与产出
+            okSteps = okTotal,
+            failedSteps = failedTotal,
+            createdAt = prev?.createdAt ?: now,
+        )
+        val res = store.upsert(entry)
+        if (res.ok) {
+            DiaryIndexStore(db).replace(entry)
+            // 147 ②：收尾顺手维护（浓缩/归档/清理）——判据在 DiaryRecall（纯函数），
+            // 失败不阻塞会话收尾（try/catch ＋ 运行日志，同 MemoryStore 既有风格）。
+            runCatching { store.maintain(now) }
+                .onFailure {
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "抱朴日记：维护失败 ${it.javaClass.simpleName}: ${it.message}",
+                    )
+                }
+        } else {
+            com.example.zhengdao.rootfs.RunLog.log("抱朴日记：$res.reason")
+        }
+    }
+
     /** 待过目候选的进程内上限（UI 同屏放得下 3 张；超了先到先得，截断记日志）。 */
     private val maxPending = 6
 
@@ -2252,6 +2330,8 @@ internal class BaopuChatController(context: Context) {
             if (ev is EngineEvent.MessagePersisted && ev.role == HistoryMessage.ROLE_USER) {
                 // 路径随事件回来（排队时各自独立）——别再从一个共享格子里取。
                 attachImageParts(ev.messageId, ev.imageRelPaths)
+                // 147：跑前基线（提炼游标同款）——只认本会话在此之后新增的 run_log 行。
+                diaryMarkBeforeRun()
             }
             if (ev is EngineEvent.QueueChanged && ev.sessionId == sessionId) {
                 queuedCount = ev.queued
@@ -2267,6 +2347,8 @@ internal class BaopuChatController(context: Context) {
             if (force) browserActivity = null
             refresh(force)
             if (force) {
+                // 147：日记 upsert 放在 refresh 之后——stepRows 刚重读过，拿到的是本轮的最终行。
+                diaryOnSettle()
                 refineOnSettle()
                 // 第八十六批：任务收尾 ⇒ 从已有记录生成提案候选（只生成、不应用）。
                 // 放在 refineOnSettle 之后：学习卡在引擎收尾时已经出好，这里读的是同一轮。
