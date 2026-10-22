@@ -135,7 +135,7 @@ class BaopuPlanCardTest {
         assertNotNull("重启后计划仍在", round.planOrNull())
         assertTrue(
             "历史轮默认收起（第十六批口径不变）",
-            roundCollapsed(round, running = false, pinnedUserIds = emptySet(), userExpandedIds = emptySet()),
+            roundCollapsed(round, running = false, pinnedUserIds = emptySet()),
         )
     }
 

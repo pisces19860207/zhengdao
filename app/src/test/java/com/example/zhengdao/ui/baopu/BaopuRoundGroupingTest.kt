@@ -62,12 +62,12 @@ class BaopuRoundGroupingTest {
         val rounds = groupRounds(j1Messages())
         assertFalse(
             "running=true ⇒ 当前（最后一）轮必须展开",
-            roundCollapsed(rounds.last(), running = true, pinnedUserIds = emptySet(), userExpandedIds = emptySet()),
+            roundCollapsed(rounds.last(), running = true, pinnedUserIds = emptySet()),
         )
         // 收起的对称面：不在跑且没点开 ⇒ 收
         assertTrue(
             "收工后当前轮也收（一轮结束自动收成一行）",
-            roundCollapsed(rounds.last(), running = false, pinnedUserIds = emptySet(), userExpandedIds = emptySet()),
+            roundCollapsed(rounds.last(), running = false, pinnedUserIds = emptySet()),
         )
     }
 
@@ -78,17 +78,21 @@ class BaopuRoundGroupingTest {
         val rounds = groupRounds(j1Messages())
         assertTrue(
             "历史轮（无卡/没点开）默认收起",
-            roundCollapsed(rounds.first(), running = false, pinnedUserIds = emptySet(), userExpandedIds = emptySet()),
+            roundCollapsed(rounds.first(), running = false, pinnedUserIds = emptySet()),
         )
         assertTrue(
             "在跑时历史轮照样收（只有当前轮保持展开）",
-            roundCollapsed(rounds.first(), running = true, pinnedUserIds = emptySet(), userExpandedIds = emptySet()),
+            roundCollapsed(rounds.first(), running = true, pinnedUserIds = emptySet()),
         )
-        // 用户点开过 ⇒ 保持展开（记住状态，不落库）
-        val key = rounds.first().userMessageId
-        assertFalse(
-            "用户点开的轮保持展开",
-            roundCollapsed(rounds.first(), running = false, pinnedUserIds = emptySet(), userExpandedIds = setOf(key)),
+        // 139：用户能展开的是轮尾过程条的**浮层明细**，不是正文——
+        // 点开明细不会把历史轮的正文重新拉开（roundCollapsed 不再看用户展开态）。
+        assertTrue(
+            "点开过程明细不改变正文收起（明细走 Popup，不进布局流）",
+            roundCollapsed(rounds.first(), running = false, pinnedUserIds = emptySet()),
+        )
+        assertTrue(
+            "历史轮有工具 part ⇒ 仍挂过程条（16 批数据不丢）",
+            roundHasProcess(rounds.last(), steps = emptyList(), awaitConfirmTool = null),
         )
     }
 
@@ -150,12 +154,12 @@ class BaopuRoundGroupingTest {
         val key = rounds.last().userMessageId
         assertFalse(
             "pinned 命中 ⇒ 不收（哪怕不在跑、用户也没点开）",
-            roundCollapsed(rounds.last(), running = false, pinnedUserIds = setOf(key), userExpandedIds = emptySet()),
+            roundCollapsed(rounds.last(), running = false, pinnedUserIds = setOf(key)),
         )
         // 钉住的是「要人动手」的卡所在的轮：确认卡/问人卡跟着最后一轮走（controller.actionCardsPresent）
         assertFalse(
             "在跑时被钉住的轮也不收（双保险，口径一致）",
-            roundCollapsed(rounds.last(), running = true, pinnedUserIds = setOf(key), userExpandedIds = emptySet()),
+            roundCollapsed(rounds.last(), running = true, pinnedUserIds = setOf(key)),
         )
     }
 

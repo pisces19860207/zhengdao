@@ -66,8 +66,16 @@ internal const val BAO_INFO_BAR_DP = 4
 /** 信息卡内部留白（§6.1：内距 12）。 */
 internal const val BAO_INFO_INSET_DP = 12
 
-/** 记录条视觉行高（§6.1：单行 44dp）。 */
+/** 记录条视觉行高（§6.1：单行 44dp；139 批补：视觉与命中分离）。 */
 internal const val BAO_RECORD_HEIGHT_DP = 44
+
+/**
+ * 记录条命中热区（139 批设计约束 11:50：视觉 44dp、热区 48dp）。
+ *
+ * 不靠放大视觉去凑热区——与交通灯同一手法（视觉 11dp / 热区 48dp）：
+ * 外层 48dp 承接点击，内层 44dp 仍是画出来的那一行。
+ */
+internal const val BAO_RECORD_TOUCH_DP = 48
 
 /** 记录条内部横向留白（§6.1：内距 8）。 */
 internal const val BAO_RECORD_INSET_DP = 8
@@ -179,11 +187,13 @@ internal fun BaopuInfoContainer(
 /**
  * ④ 记录条：单行 44dp，**只下边 1dp 发丝线**，左右无框，点开进详情。
  *
- * 判据「历史，不占地方」。行首 `›` 只是视觉折叠符，**整行可点**（热区＝整行 44dp）；
- * 单行不折行，超宽省略号（§6.1 + 约束汇总 133 单口径）。
+ * 判据「历史，不占地方」。行首 `›` 只是视觉折叠符，**整行可点**；
+ * 视觉 44dp、命中热区 48dp（139 批设计约束；外层撑热区、内层保持原视觉）。
+ * 单行不折行，13sp，超宽省略号（§6.1 + 139 批约束）。
  *
- * @param text 摘要文案（「上一轮 · 5 步 · 42s · 失败 1」这类，由调用方拼好）
+ * @param text 摘要文案（「看了 3 个文件 · 跑了 5 步」这类，由调用方拼好）
  * @param onClick 点开详情（收起／展开同一个入口）
+ * @param onClickLabel 读屏播报的动作名（「展开过程明细」；null ⇒ 用 Compose 默认）
  */
 @Composable
 internal fun BaopuRecordRow(
@@ -191,38 +201,47 @@ internal fun BaopuRecordRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     leading: String = "\u203a",
+    onClickLabel: String? = null,
 ) {
     val hairline = MaterialTheme.colorScheme.outlineVariant
-    Row(
+    // 外层是**命中盒**（48dp），内层是**视觉行**（44dp）——两者分离，视觉不放大。
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = BAO_RECORD_HEIGHT_DP.dp)
-            .clickable(onClick = onClick)
-            .drawBehind {
-                // 只画下边一条：这是记录条唯一的边界位置（不描四边、不填底）
-                val y = size.height - (BAO_HAIRLINE_DP.dp.toPx() / 2f)
-                drawLine(
-                    color = hairline,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = BAO_HAIRLINE_DP.dp.toPx(),
-                )
-            }
-            .padding(horizontal = BAO_RECORD_INSET_DP.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .heightIn(min = BAO_RECORD_TOUCH_DP.dp)
+            .clickable(onClickLabel = onClickLabel, onClick = onClick),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
-            text = leading,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(BAO_RECORD_HEIGHT_DP.dp)
+                .drawBehind {
+                    // 只画下边一条：这是记录条唯一的边界位置（不描四边、不填底）
+                    val y = size.height - (BAO_HAIRLINE_DP.dp.toPx() / 2f)
+                    drawLine(
+                        color = hairline,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = BAO_HAIRLINE_DP.dp.toPx(),
+                    )
+                }
+                .padding(horizontal = BAO_RECORD_INSET_DP.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = leading,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
