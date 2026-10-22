@@ -25,10 +25,13 @@ package com.example.zhengdao.ui.baopu
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 
-/** 卡圆角（v1.4 §1：卡 20）。决策卡与设置页卡片共用。 */
-internal const val BAO_CARD_RADIUS_DP = 20
+// 2026-10-22 第一百三十七批（设计语言 §4「显式收编」）：
+//   **卡圆角 20 → rCard 16**（`ui/theme/Radius.kt` 的八档令牌）。
+//   20dp 在圆角门禁里属「自定义值」，本就欠一个理由；四档容器统一走 `RoundedCornerShape(rCard)` 后，
+//   `BAO_CARD_RADIUS_DP` / `BaoCardShape` 已零引用 ⇒ 本条删除（留常量＝留后门）。
+//   按钮 14 / chip 12 本轮不动（属于已拍板保留的「形状语言」，§17 定论）。
 
-/** 按钮圆角（v1.4 §1：按钮 14）。 */
+/** 按钮圆角（按钮层仍用既有值；设计语言 §4 的对照是 rButton 12，换形要另开单）。 */
 internal const val BAO_BUTTON_RADIUS_DP = 14
 
 /** 小容器/警示带/列表高亮块圆角（v1.4 §1：列表容器 16、chip 12——壳件取 12 这一档）。 */
@@ -48,8 +51,6 @@ internal const val BAO_LIST_INSET_DP = 16
 
 /** 会话行在文件夹行下面的缩进（视觉从属关系，不是命中区）。 */
 internal const val BAO_SESSION_INDENT_DP = 40
-
-internal val BaoCardShape = RoundedCornerShape(BAO_CARD_RADIUS_DP.dp)
 
 internal val BaoButtonShape = RoundedCornerShape(BAO_BUTTON_RADIUS_DP.dp)
 

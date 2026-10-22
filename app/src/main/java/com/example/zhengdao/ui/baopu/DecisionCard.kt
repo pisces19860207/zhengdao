@@ -72,15 +72,11 @@ internal fun DecisionCard(
     var expanded by remember(spec.key) { mutableStateOf(false) }
     val cardDesc = stringResource(R.string.decision_card_desc, spec.title)
 
-    Surface(
-        shape = BaoCardShape,
-        tonalElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = cardDesc },
+    BaopuActionContainer(
+        title = stringResource(R.string.baopu_tier_action_decision),
+        badge = stringResource(R.string.baopu_tier_action_badge),
+        modifier = modifier.semantics { contentDescription = cardDesc },
     ) {
-        Column(Modifier.padding(16.dp)) {
             // 高风险警示带（贴顶；设计稿 §2「高风险变体加贴顶警示带」）
             if (spec.warning != null) {
                 Surface(
@@ -199,7 +195,6 @@ internal fun DecisionCard(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-        }
     }
 }
 

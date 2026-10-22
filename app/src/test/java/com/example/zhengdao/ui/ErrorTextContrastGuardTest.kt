@@ -11,10 +11,11 @@ import java.io.File
  * 浅色主题的 `colorScheme.error` = IOSRed #FF3B30，白底对比度正好 **3.55:1**，
  * 够不上 WCAG AA 正文的 4.5:1（图形/图标只要 3:1，那个槽位本是给它们用的）。
  *
- * 修法：新增语义色 `zhengdaoErrorText()`（Theme.kt，与既有的 zhengdaoReadyGreen /
- * zhengdaoBlueText 同一模式）：浅色 #C0392B（5.4:1）/ 深色 #FFC9C2（对 #1C1C1E 11.7:1）。
+ * 修法：新增语义色 `zhengdaoErrorText()`（Theme.kt，与既有的 zhengdaoReady /
+ * zhengdaoLinkText 同一模式）。2026-10-22 第一百三十七批换 Token 后取值：
+ * 浅色朱砂 #A8402B（纸底 5.57:1）/ 深色 #F0BBAE（卡面 9.31:1）。
  * 全部**文字**站点切过去；**图标/图形**（警告三角、状态点、⚠️/✗ 字形对）保留 error 色
- * ——它们只需 3:1，3.55:1 本来就过。
+ * ——它们只需 3:1。
  *
  * 本守卫钉：① 语义色函数存在且两分支齐全；② 源码里 colorScheme.error 不再出现在
  * 任何**文字**赋值行（color = / valueColor = / tone = / Triple 的第二元素）。
@@ -33,8 +34,8 @@ class ErrorTextContrastGuardTest {
     fun `门禁_Theme 必须有 zhengdaoErrorText 且两分支齐全`() {
         val theme = File("src/main/java/com/example/zhengdao/ui/theme/Theme.kt").readText()
         assertTrue("Theme.kt 必须有 zhengdaoErrorText()", theme.contains("fun zhengdaoErrorText()"))
-        assertTrue("浅色分支用 IOSErrorText（#C0392B 5.4:1）", theme.contains("else IOSErrorText"))
-        assertTrue("深色分支用 IOSDarkOnTintedRed（11.7:1）", theme.contains("isZhengdaoDark()) IOSDarkOnTintedRed"))
+        assertTrue("浅色分支用朱砂 ZhuSha（纸底 5.57:1）", theme.contains("else ZhuSha"))
+        assertTrue("深色分支用 DarkOnZhuTint（卡面 9.31:1）", theme.contains("isZhengdaoDark()) DarkOnZhuTint"))
     }
 
     @Test

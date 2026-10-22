@@ -8,32 +8,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * 2026-10-10 改：iOS 风 Switch 配色（M3 SwitchDefaults 的颜色叠加）。
+ * Switch 配色（M3 [SwitchDefaults] 的四个颜色），全 App 集中一处。
  *
- * 改动理由：M3 Switch 默认走 primary 色（项目色板 = IOSBlue #007AFF），iOS 是
- * systemGreen #34C759。底栏/卡片已经全面 iOS 化，Switch 是最后一块 M3 默认色。
+ * 2026-10-22 第一百三十七批换 Token：**选中轨道 → 黛青、未选中轨道 → 发丝线，形状一行不动**
+ * （§15.4 与 §17 定论：iOS 的「形状语言」保留——胶囊开关、圆角分组、对勾、底栏几何、
+ * 手势长期保持现状，本轮只换色）。旧值（选中绿 #34C759 / 未选中灰 #E9E9EB）随绿通道删除。
  *
- * 改动范围：4 处 Switch（PluginsScreen × 2 + SettingsScreen × 2），
- * 通过本 helper 集中定义颜色，调用处加 `colors = iosSwitchColors()` 一行即可。
+ * 四色口径：
+ * - 选中轨道 = [DaiQing]（深色 [DarkDaiQing]）：青＝可行动；
+ * - 未选中轨道 = [Hairline]（深色 [DarkHairline]）：发丝线，纯装饰位置；
+ * - 两态滑块保持纯白：白在黛青上 7.31:1、在发丝线上靠 M3 自带 1dp 投影分辨（形状不动，
+ *   不给滑块额外描边——那是改形状）；
+ * - 边框全透明：iOS Switch 没有描边，本批不新增。
  *
- * 配色细节：
- * - 选中轨道 = IOSGreen（iOS systemGreen 原色，与项目 StatusCard "就绪" 同源）
- * - 选中/未选中滑块 = 纯白（iOS 是白，M3 默认是 onPrimary 本项目 = 白，刚好一致）
- * - 边框全透明：iOS Switch 没有描边
- * - 未选中轨道 = IOSFill（iOS 系统填充灰 #E9E9EB）
- *
- * 2026-10-12：接入深色——轨道色改从主题取（深色下 #30D158 / #2C2C2E），
- * 否则深底上一条 #E9E9EB 的浅灰轨道会亮得刺眼。滑块保持纯白（两套主题下都成立）。
+ * 原名 `iosSwitchColors()` 同步改名（旧名保留＝留后门，与 Color.kt 同一纪律）。
  */
 @Composable
-fun iosSwitchColors(): SwitchColors {
+fun zhengdaoSwitchColors(): SwitchColors {
     val dark = isZhengdaoDark()
     return SwitchDefaults.colors(
         checkedThumbColor = Color.White,
-        checkedTrackColor = if (dark) IOSDarkGreen else IOSGreen,
+        checkedTrackColor = if (dark) DarkDaiQing else DaiQing,
         checkedBorderColor = Color.Transparent,
         uncheckedThumbColor = Color.White,
-        uncheckedTrackColor = if (dark) IOSDarkFill else IOSFill,
+        uncheckedTrackColor = if (dark) DarkHairline else Hairline,
         uncheckedBorderColor = Color.Transparent,
     )
 }
