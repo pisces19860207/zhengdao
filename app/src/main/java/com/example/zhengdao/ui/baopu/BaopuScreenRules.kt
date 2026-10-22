@@ -17,15 +17,6 @@ internal fun drawerWidthDp(screenWidthDp: Int): Float =
     if (screenWidthDp * 0.8f > 300f) 300f else screenWidthDp * 0.8f
 
 /**
- * 顶栏状态行：状态文案 ＋（引擎跑起来后）「 · 步号」。
- *
- * 逐字保留原式 `label + if (step > 0) " · $step" else ""`：
- * 0 与负数都不加尾巴（步号从 1 起算；-1 是「没在跑」的哨兵）。
- */
-internal fun statusLineWithStep(label: String, engineStep: Int): String =
-    label + if (engineStep > 0) " · $engineStep" else ""
-
-/**
  * 顶栏「最近一条回复」的取法：**最后一条非 user 消息的最后一个 text part**。
  *
  * 这是原式的逐字搬运（含三个容易被「顺手修」的怪癖）：

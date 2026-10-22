@@ -47,26 +47,26 @@ class BaopuScreenRulesTest {
         assertEquals(0f, drawerWidthDp(0), 0.001f)
     }
 
-    // ── 顶栏状态行（原 BaopuScreen.kt:388-389） ───────────────────────────
+    // ── 顶栏状态行（第一百三十八批：整块撤出，判据已迁到 BaopuTickerRulesTest）─────
 
+    /**
+     * S1 状态行的**第二出口**不许回来。
+     *
+     * 钉两件：①`statusLineWithStep` 这个纯函数已随状态行一起删除（0 处定义）；
+     * ② 屏幕里不再出现 `stateLabel(` —— 顶栏状态只由跑马灯说话（设计 §5 裁决）。
+     * 活动面板仍可用 `stateLabel`（那是二级页，不是"同一时刻两处"）。
+     */
     @Test
-    fun `S1_没跑起来只有状态文案`() {
-        assertEquals("待命中", statusLineWithStep("待命中", 0))
-    }
-
-    @Test
-    fun `S2_第一步起带步号`() {
-        assertEquals("待命中 · 1", statusLineWithStep("待命中", 1))
-    }
-
-    @Test
-    fun `S3_负数哨兵不加尾巴`() {
-        assertEquals("待命中", statusLineWithStep("待命中", -1))
-    }
-
-    @Test
-    fun `S4_多位数原样带上`() {
-        assertEquals("思考中 · 12", statusLineWithStep("思考中", 12))
+    fun `S1_顶栏不再有第二个状态出口`() {
+        val bar = code(screenRel)
+        assertTrue(
+            "statusLineWithStep 已删（状态行撤出），不许回来",
+            !bar.contains("statusLineWithStep"),
+        )
+        assertTrue(
+            "屏幕里不许再直接渲染 stateLabel（状态只走跑马灯）",
+            !bar.contains("stateLabel("),
+        )
     }
 
     // ── 顶栏「最近一条回复」（原 BaopuScreen.kt:236-237） ──────────────────
@@ -205,12 +205,11 @@ class BaopuScreenRulesTest {
         .replace(Regex("(?m)^[ \\t]*//.*$"), "")
 
     @Test
-    fun `G1_屏幕只剩四处调用_旧内联式子不再出现`() {
+    fun `G1_屏幕只剩三处调用_旧内联式子不再出现`() {
         val screen = code(screenRel)
         listOf(
             "val drawerWidth = drawerWidthDp(screenWidthDp).dp",
             "val lastAssistant = lastNonUserPartText(controller.messages)",
-            "text = statusLineWithStep(",
             "val bottomCardsInput = screenBottomCardsInput(",
         ).forEach { call ->
             assertTrue("屏幕上必须只剩这个调用：$call", screen.contains(call))
@@ -249,7 +248,7 @@ class BaopuScreenRulesTest {
     }
 
     @Test
-    fun `G3_四个函数在全仓主源码里只定义一次`() {
+    fun `G3_三个函数在全仓主源码里只定义一次`() {
         val mainRoot = listOf(
             File("src/main/java/com/example/zhengdao"),
             File("app/src/main/java/com/example/zhengdao"),
@@ -259,12 +258,13 @@ class BaopuScreenRulesTest {
             .joinToString("\n") { it.readText(Charsets.UTF_8) }
         listOf(
             "fun drawerWidthDp(",
-            "fun statusLineWithStep(",
             "fun lastNonUserPartText(",
             "fun screenBottomCardsInput(",
         ).forEach { def ->
             assertEquals("$def 只该有一处定义（屏幕里不许留第二份）", 1, all.split(def).size - 1)
         }
+        // 第一百三十八批：状态行撤出后这个函数**零定义**（防止有人"顺手恢复"再造成两个出口）。
+        assertEquals("statusLineWithStep 不该存在（状态只走跑马灯）", 0, all.split("fun statusLineWithStep(").size - 1)
     }
 
     @Test
