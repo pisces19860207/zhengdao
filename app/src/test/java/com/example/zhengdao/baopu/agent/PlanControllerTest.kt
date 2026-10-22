@@ -7,6 +7,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanStore
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -42,6 +43,11 @@ class PlanControllerTest {
         /** 经过 GuardPipeline 真跑一次的结局（Done 才有 wrapped）。 */
         var lastWrapped: String? = null
     }
+
+    private fun source(rel: String): String =
+        File(rel).let { if (it.isFile) it else File("app/$rel") }
+            .readText()
+            .replace("\r\n", "\n")
 
     private fun rig(sessionId: Long = 7L): Rig {
         val store = FakeStore()
@@ -108,6 +114,8 @@ class PlanControllerTest {
     fun `先5条再3条_库里留两条_最后一条是3条版`() {
         val r = rig()
         r.controller.submit(planArgs("一" to "todo", "二" to "todo", "三" to "todo", "四" to "todo", "五" to "todo"))
+        // 140 软档：5 条缩成 3 条是结构变更，必须过用户的卡（这里模拟用户点了「更新计划」）
+        r.controller.authorizeNextChange()
         val out = r.controller.submit(planArgs("一" to "done", "二" to "doing", "三" to "todo"))
         assertTrue(out is ToolOutcome.Ok)
         assertEquals("每次调用一条，全部保留（不删旧行）", 2, r.store.inserts.size)
@@ -220,5 +228,165 @@ class PlanControllerTest {
 
         r.controller.submit(planArgs("读文件" to "done", "写文件" to "done", "核对" to "done"))
         assertNull("全勾完就不该再提醒", r.controller.reminderLine())
+    }
+
+    // ── 140 软档：计划有变必须过卡 ──────────────────────────────────────
+
+    @Test
+    fun `结构变更_未过卡_拒绝且不落库不改变内存`() {
+        val r = rig()
+        r.controller.submit(planArgs("读文件" to "todo", "写文件" to "todo"))
+        val out = r.controller.submit(planArgs("读文件" to "todo", "随便看看" to "todo"))
+        assertTrue("未经确认的结构变更必须拒绝：$out", out is ToolOutcome.Failed)
+        assertTrue("要说清没生效", (out as ToolOutcome.Failed).error.contains("没有生效"))
+        assertEquals("拒绝不许落库", 1, r.store.inserts.size)
+        assertEquals("内存计划保持不变", listOf("读文件", "写文件"), r.controller.currentPlan().map { it.text })
+        assertTrue(
+            "预览能看出这版是结构变更",
+            r.controller.previewChange(planArgs("读文件" to "todo", "随便看看" to "todo"))!!.needsCard,
+        )
+    }
+
+    @Test
+    fun `结构变更_过卡后生效_一次批准只放行一次`() {
+        val r = rig()
+        r.controller.submit(planArgs("读文件" to "todo"))
+        r.controller.authorizeNextChange()
+        val accepted = r.controller.submit(planArgs("读文件" to "doing", "写文件" to "todo"))
+        assertTrue("用户点过更新计划 ⇒ 这一次必须生效：$accepted", accepted is ToolOutcome.Ok)
+        assertEquals(listOf("读文件", "写文件"), r.controller.currentPlan().map { it.text })
+        assertFalse("授权已消费", r.controller.isChangeAuthorized())
+        val second = r.controller.submit(planArgs("读文件" to "doing", "核对" to "todo"))
+        assertTrue("一次批准只放行一次：$second", second is ToolOutcome.Failed)
+        assertEquals(2, r.store.inserts.size)
+        assertEquals(listOf("读文件", "写文件"), r.controller.currentPlan().map { it.text })
+    }
+
+    @Test
+    fun `只改status_是进度_不过卡`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val out = r.controller.submit(planArgs("一" to "done", "二" to "doing"))
+        assertTrue("进度更新不打扰用户：$out", out is ToolOutcome.Ok)
+        assertEquals(2, r.store.inserts.size)
+    }
+
+    @Test
+    fun `只换顺序_不过卡`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val out = r.controller.submit(planArgs("二" to "doing", "一" to "todo"))
+        assertTrue("重排不该逼用户点卡：$out", out is ToolOutcome.Ok)
+    }
+
+    @Test
+    fun `初始计划_不过卡`() {
+        val r = rig()
+        assertEquals(PlanChangeKind.NEW, r.controller.previewChange(planArgs("一" to "todo"))!!.kind)
+        val out = r.controller.submit(planArgs("一" to "todo"))
+        assertTrue(out is ToolOutcome.Ok)
+        assertFalse("初始计划不该产生授权状态", r.controller.isChangeAuthorized())
+    }
+
+    // ── 140 软档：连续 3 步偏离 ────────────────────────────────────────
+
+    @Test
+    fun `连续3步未推进_第3步提示_第4步不重复`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        assertFalse("第 1 步不弹", r.controller.noteToolStep())
+        assertFalse("第 2 步不弹", r.controller.noteToolStep())
+        assertTrue("第 3 步必须提示", r.controller.noteToolStep())
+        assertFalse("同一段偏离不连环弹", r.controller.noteToolStep())
+    }
+
+    @Test
+    fun `偏离卡选更新计划_放行新计划_后续按新计划提醒`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo"))
+        repeat(3) { r.controller.noteToolStep() }
+        r.controller.noteDeviationAnswered(PlanDeviationAction.UPDATE_PLAN)
+        assertTrue("偏离卡选更新 ⇒ 下一次结构变更放行", r.controller.isChangeAuthorized())
+        val out = r.controller.submit(planArgs("一" to "doing", "二" to "todo"))
+        assertTrue("新计划必须生效：$out", out is ToolOutcome.Ok)
+        assertEquals(listOf("一", "二"), r.controller.currentPlan().map { it.text })
+        assertFalse("授权已消费", r.controller.isChangeAuthorized())
+        assertTrue("回灌按新计划提醒（二还没勾）", r.controller.reminderLine()!!.contains("二"))
+    }
+
+    @Test
+    fun `偏离卡选继续_不阻断也不再弹_计划更新后恢复`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo"))
+        repeat(3) { r.controller.noteToolStep() }
+        r.controller.noteDeviationAnswered(PlanDeviationAction.CONTINUE)
+        assertFalse("继续不等于授权改计划", r.controller.isChangeAuthorized())
+        repeat(6) { assertFalse("选继续后本段不再弹", r.controller.noteToolStep()) }
+        val out = r.controller.submit(planArgs("一" to "doing"))
+        assertTrue("继续不阻断计划更新：$out", out is ToolOutcome.Ok)
+        assertFalse(r.controller.noteToolStep())
+        assertFalse(r.controller.noteToolStep())
+        assertTrue("计划更新后重新计数，满 3 步再提示", r.controller.noteToolStep())
+    }
+
+    @Test
+    fun `偏离卡选回计划_三步后可再提示`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo"))
+        repeat(3) { r.controller.noteToolStep() }
+        r.controller.noteDeviationAnswered(PlanDeviationAction.BACK_TO_PLAN)
+        assertFalse("回计划不等于授权改计划", r.controller.isChangeAuthorized())
+        assertFalse(r.controller.noteToolStep())
+        assertFalse(r.controller.noteToolStep())
+        assertTrue("模型不听劝 ⇒ 满 3 步还得提醒", r.controller.noteToolStep())
+    }
+
+    @Test
+    fun `没有计划_不提示偏离`() {
+        val r = rig()
+        repeat(5) { assertFalse(r.controller.noteToolStep()) }
+    }
+
+    @Test
+    fun `计划全完成_不提示偏离`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "done", "二" to "done"))
+        repeat(5) { assertFalse("全勾完不该催", r.controller.noteToolStep()) }
+    }
+
+    @Test
+    fun `一次勾完多条_接受_不是一步一勾`() {
+        // 负例靶心：把实现改成「一步只许勾一条」⇒ 本用例红
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo", "三" to "todo"))
+        val out = r.controller.submit(planArgs("一" to "done", "二" to "done", "三" to "done"))
+        assertTrue("不绑一步一勾：一次勾完多条必须接受：$out", out is ToolOutcome.Ok)
+        assertEquals(3, PlanRules.doneCount(r.controller.currentPlan()))
+    }
+
+    @Test
+    fun `新轮重置偏离与授权`() {
+        val r = rig()
+        r.controller.submit(planArgs("旧任务" to "todo"))
+        repeat(2) { r.controller.noteToolStep() }
+        r.controller.noteDeviationAnswered(PlanDeviationAction.UPDATE_PLAN)
+        r.controller.newRound()
+        assertFalse("新轮不许继承旧授权", r.controller.isChangeAuthorized())
+        assertFalse("新轮没有计划，不提示", r.controller.noteToolStep())
+        val out = r.controller.submit(planArgs("新任务" to "todo"))
+        assertTrue("新轮第一份计划是 NEW，不过卡：$out", out is ToolOutcome.Ok)
+    }
+
+    // ── 140 红线：不新开存储 ────────────────────────────────────────────
+
+    @Test
+    fun `不新开存储_仍只走PlanStore`() {
+        val controller = source("src/main/java/com/example/zhengdao/baopu/agent/PlanController.kt")
+        val guard = source("src/main/java/com/example/zhengdao/baopu/agent/PlanGuard.kt")
+        assertTrue("计划内核仍只认 PlanStore 接口", controller.contains("private val store: PlanStore"))
+        assertFalse("计划内核不许自己建表", controller.contains("CREATE TABLE"))
+        assertFalse("计划内核不许碰 SQLite", controller.contains("SQLite"))
+        assertFalse("软档判据零存储", guard.contains("CREATE TABLE") || guard.contains("SQLite"))
+        assertFalse("软档判据不许拿数据库", guard.contains("PlanStore("))
     }
 }
