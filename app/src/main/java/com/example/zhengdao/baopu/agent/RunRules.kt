@@ -239,9 +239,13 @@ internal object RunRules {
      * 在线出卡与重启重建**共用这一个函数**（派工单 §3.3：summary 由工具名 ＋
      * 参数重新生成，不落库）⇒ 两处永远一致，不会「重启后摘要变了」。
      * 不声称旧文件行数——那要读文件，摘要函数不碰 IO（③ 不知道的不编）。
+     *
+     * @param projectRoot 工作区根（第一百四十九批 组5）：给了 ⇒ 摘要里的路径剥成
+     *   **相对工作区**的显示形式；不给（null）⇒ 逐字节保持旧行为（印参数原样）。
+     *   只影响**显示**：`argsJson` 落库、批准后执行的仍是绝对路径原参数。
      */
-    fun confirmSummary(tool: String, args: JSONObject): String {
-        val path = args.optString("path").trim().ifBlank { null }
+    fun confirmSummary(tool: String, args: JSONObject, projectRoot: File? = null): String {
+        val path = showPath(args.optString("path").trim().ifBlank { null }, projectRoot)
         return when (tool) {
             "write_file" -> {
                 val lines = args.optString("content").lines().size
@@ -250,8 +254,8 @@ internal object RunRules {
             }
 
             "edit_file" -> "编辑 ${path ?: "（未给路径）"}"
-            "move_path" -> "移动 ${args.optString("from").trim().ifBlank { "?" }} → " +
-                args.optString("to").trim().ifBlank { "?" }
+            "move_path" -> "移动 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
+                showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot)
             else -> "$tool（${args.toString().take(60)}）"
         }
     }
@@ -273,6 +277,25 @@ internal object RunRules {
     /** 拒绝回灌（历史里多这一条；备注非空时附上——用户为什么拒，模型该知道）。 */
     fun rejectNote(summary: String, note: String?): String =
         if (note.isNullOrBlank()) "用户拒绝：$summary" else "用户拒绝：$summary；备注：$note"
+
+    /**
+     * 展示用相对路径（纯函数：绝对路径在工作区内 ⇒ 剥成相对；不在 ⇒ 原样）。
+     * 确认卡标题用（`要动文件：<路径>`——绝对路径又长又泄目录结构）。
+     *
+     * 第一百四十九批 组5 的回程：`9cda8e31` 删过它（当时生产零调用、只有测试在读），
+     * 这一批把它接上确认卡。为什么现在接得住：管线第②段 `guardPath` 会把工作区内路径
+     * **改写成绝对路径**（[GuardPipeline.prepare] 的 `Guarded.Yes(call.copy(arguments = newArgs))`），
+     * 第③段才出确认卡 ⇒ 卡面拿到的永远是 `C:\…\资料库\x.txt` 这种长串，
+     * 而工作区根就在引擎手里（`spillRoot`）。
+     */
+    fun relativizePath(absolutePath: String, root: File): String {
+        val prefix = root.absolutePath.trimEnd('/', '\\') + File.separator
+        return if (absolutePath.startsWith(prefix)) absolutePath.removePrefix(prefix) else absolutePath
+    }
+
+    /** 摘要里的路径显示口径：没给根 ⇒ 原样（旧行为，一处判据）。 */
+    private fun showPath(raw: String?, projectRoot: File?): String? =
+        if (raw == null || projectRoot == null) raw else relativizePath(raw, projectRoot)
 
     /** 中断标记值：会话被标「中断于第 N 步」时落这个数；-1 = 未中断。 */
     const val NOT_INTERRUPTED = -1

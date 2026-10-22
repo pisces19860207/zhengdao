@@ -219,6 +219,15 @@ internal class BaopuChatController(context: Context) {
     /** pending 三列的存取（控制器重建确认卡与销卡都经它；清库由引擎负责）。 */
     private val pendingStore: PendingStore = SessionPendingStore(db)
 
+    /**
+     * 工作区根 = 确认卡显示相对路径的基准（第一百四十九批 组5）。
+     *
+     * 必须是 [BaopuRuntime.workspaceRoot] 那一个目录：装配层把它注入给引擎的 `spillRoot`，
+     * 管线②段改写绝对路径用的也是它 ⇒ 同一个根才剥得掉。这里现取不缓存，
+     * 因为换工作区（[BaopuRuntime] 支持）后卡面要跟着一变。
+     */
+    val workspaceRoot: File get() = BaopuRuntime.workspaceRoot(appCtx)
+
     /** UI 线程 Handler：引擎事件从后台线程来，统一 post 回主线程再刷（见 [onEngineEvent]）。 */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -1457,7 +1466,8 @@ internal class BaopuChatController(context: Context) {
         val sid = sessionId ?: return
         val row = pendingStore.load(sid) ?: return
         // 三格合成在 BaopuConfirmRestore（第七十二批抽出的纯函数，坏 JSON 也不抛）
-        confirmCard = BaopuConfirmRestore.card(row)
+        // 组5：给根 ⇒ 摘要里的路径与在线出卡同一口径（相对工作区显示）
+        confirmCard = BaopuConfirmRestore.card(row, workspaceRoot)
         confirmRestored = true
     }
 

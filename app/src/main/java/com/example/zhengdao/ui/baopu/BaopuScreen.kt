@@ -888,6 +888,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                     request = card,
                                     onApprove = { controller.approveConfirm() },
                                     onReject = { controller.rejectConfirm() },
+                                    // 组5：标题与摘要按工作区根剥成相对路径（与引擎同一个根）
+                                    projectRoot = controller.workspaceRoot,
                                 )
                             }
 
