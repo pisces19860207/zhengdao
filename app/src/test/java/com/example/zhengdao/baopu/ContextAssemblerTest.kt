@@ -57,6 +57,7 @@ class ContextAssemblerTest {
         compressedIds: Set<String> = emptySet(),
         skipIds: Set<String> = emptySet(),
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
+        diary: List<DiaryEntry> = emptyList(),
     ) = ContextAssembler.assemble(
         persona = persona(),
         facts = facts,
@@ -69,7 +70,73 @@ class ContextAssemblerTest {
         compressedIds = compressedIds,
         skipIds = skipIds,
         tokensOf = tokensOf,
+        diaryEntries = diary,
     )
+
+    // ── 147 ②：EPISODE 段（判据 4/5/12） ─────────────────────────────
+
+    private fun diaryEntry(
+        id: String,
+        timeToMs: Long = 100L,
+        evidence: DiaryEvidence = DiaryEvidence.OBSERVED,
+    ) = DiaryEntry(
+        id = id, date = "2026-10-22", sessionId = 7L,
+        timeFromMs = 0L, timeToMs = timeToMs,
+        title = "工具 1 次 · 产物 1 个",
+        summary = "工具成功 1 次 · 失败 0 次 · 产物 1 个",
+        artifacts = listOf("整理/a.md"), evidence = evidence,
+        okSteps = 1, failedSteps = 0, createdAt = timeToMs,
+    )
+
+    @Test
+    fun `判据4_EPISODE段在MEMORY之后_COMPRESSION之前`() {
+        val p = assemble(
+            newMemories = listOf(mem("m1")),
+            diary = listOf(diaryEntry("1-20261022")),
+            compressionSummary = "压了一轮",
+        )
+        val kinds = p.segments.map { it.kind }
+        val memIdx = kinds.indexOf(SegmentKind.MEMORY)
+        val epIdx = kinds.indexOf(SegmentKind.EPISODE)
+        val compIdx = kinds.indexOf(SegmentKind.COMPRESSION)
+        assertTrue("MEMORY 段应在场", memIdx >= 0)
+        assertTrue("EPISODE 应在 MEMORY 之后", epIdx > memIdx)
+        assertTrue("EPISODE 应在 COMPRESSION 之前", compIdx > epIdx)
+    }
+
+    @Test
+    fun `判据4_同会话两轮_日记段前缀逐字节相同`() {
+        val first = assemble(diary = listOf(diaryEntry("1-20261022")), history = listOf(msg("m1")))
+        val second = assemble(
+            diary = listOf(diaryEntry("1-20261022")),
+            history = listOf(msg("m1"), msg("m2")),
+        )
+        val beforeHistory = { p: AssembledPrompt ->
+            p.segments.takeWhile { it.kind != SegmentKind.HISTORY }.joinToString("\u0000") { it.kind.name + ":" + it.text }
+        }
+        assertEquals("新增一条消息不许动摇日记及之前的段（缓存判据）", beforeHistory(first), beforeHistory(second))
+    }
+
+    @Test
+    fun `日记为空时不出EPISODE段_行为与之前逐字相同`() {
+        val p = assemble()
+        assertFalse(p.segments.any { it.kind == SegmentKind.EPISODE })
+    }
+
+    @Test
+    fun `判据5_超预算时段尾注明未注入_文件一条未删`() {
+        val many = (1..8).map { diaryEntry("$it-20261022", timeToMs = it * 10L) }
+        val p = assemble(diary = many)
+        val ep = p.segments.single { it.kind == SegmentKind.EPISODE }
+        assertTrue("段尾应注明未注入条数：${ep.text}", ep.text.contains("未注入"))
+        assertTrue(ep.text.contains("文件一条未删"))
+    }
+
+    @Test
+    fun `判据12_推断档条目在回灌里带标注`() {
+        val p = assemble(diary = listOf(diaryEntry("1-20261022", evidence = DiaryEvidence.INFERRED)))
+        assertTrue(p.segments.single { it.kind == SegmentKind.EPISODE }.text.contains("（推断）"))
+    }
 
     // ── 第十三批：压缩跳过与前缀不动 ──────────────────────────────────────
 

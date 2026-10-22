@@ -22,6 +22,92 @@ internal class DiaryStore(private val diaryRoot: File) {
 
     fun dayFile(date: String): File = File(diaryRoot, "$date.md")
 
+    /** 摘要条目落 `digest-<月份>.md`，普通条目落 `<日期>.md`（[loadAll] 两种都扫）。 */
+    private fun fileFor(entry: DiaryEntry): File =
+        if (DiaryRecall.isDigest(entry.id)) digestFile(entry.date) else dayFile(entry.date)
+
+    private fun digestFile(month: String): File =
+        File(diaryRoot, DiaryRecall.DIGEST_PREFIX + month + ".md")
+
+    /** 归档子目录（软删落点；[loadAll] 不递归扫它 ⇒ 归档件不参与回灌）。 */
+    private fun archiveDir(): File = File(diaryRoot, "归档")
+
+    /** 维护报告（收尾顺手跑；失败不阻塞，调用方记日志）。 */
+    data class MaintenanceReport(val digested: Int, val archivedFiles: Int, val cleanedFiles: Int)
+
+    /**
+     * 浓缩/归档/清理（147 阶段②，判据 14/20）。判据全在 [DiaryRecall]（纯函数），
+     * 本方法只做编排与落盘：**只碰 `diaryRoot` 内的日记文件**——产物、用户文件、
+     * 资料库原件一概不碰（红线 4 重申）。
+     */
+    fun maintain(
+        nowMs: Long,
+        retainDays: Int = DiaryRecall.RETAIN_DAYS,
+        archiveDays: Int = DiaryRecall.ARCHIVE_DAYS,
+    ): MaintenanceReport {
+        if (!diaryRoot.isDirectory) return MaintenanceReport(0, 0, 0)
+        val entries = loadAll().entries
+        val candidates = DiaryRecall.archiveCandidates(entries, nowMs, retainDays)
+        var digested = 0
+        var archivedFiles = 0
+        val composedDigests = mutableListOf<DiaryEntry>()
+        if (candidates.isNotEmpty()) {
+            // ① 按月浓缩（判据 14：产物引用一条不丢——composeDigest 里并集去重）
+            for ((month, group) in candidates.groupBy { it.date.take(7) }) {
+                val digest = DiaryRecall.composeDigest(month, group, nowMs)
+                val f = digestFile(month)
+                val prev = if (f.isFile) splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse) else emptyList()
+                val merged = prev.filter { it.id != digest.id } + digest
+                f.parentFile?.mkdirs()
+                f.writeText(merged.joinToString("\n") { DiaryCodec.render(it) })
+                composedDigests += digest
+                digested += group.size
+            }
+            // ② 原文条目转归档：整日文件的条目全在候选里 ⇒ 整文件挪 归档/（部分候选 ⇒ 重写留非候选）
+            val candIds = candidates.map { it.id }.toSet()
+            archiveDir().apply { mkdirs() }
+            for ((date, group) in entries.groupBy { it.date }) {
+                if (group.isEmpty()) continue
+                val keep = group.filter { it.id !in candIds }
+                val f = dayFile(date)
+                if (!f.isFile) continue
+                if (keep.isEmpty()) {
+                    val target = File(archiveDir(), f.name)
+                    if (f.renameTo(target)) {
+                        // 归档时间戳：清理按「归档满 archiveDays 天」把关（不是条目年龄）——
+                        // renameTo 保留的是写入时间，盖一下才是归档时间。
+                        runCatching { target.setLastModified(nowMs) }
+                        archivedFiles++
+                    }
+                } else {
+                    f.writeText(keep.joinToString("\n") { DiaryCodec.render(it) })
+                }
+            }
+        }
+        // ③ 归档清理（判据 20）：归档满窗口（文件时间戳）＋产物引用被同月摘要完整承载
+        //    ⇒ 删归档文件（只删日记；产物与用户文件不碰）。
+        var cleanedFiles = 0
+        val ad = archiveDir()
+        if (ad.isDirectory) {
+            val digests = entries.filter { DiaryRecall.isDigest(it.id) } + composedDigests
+            val archiveWindowMs = archiveDays * 86_400_000L
+            ad.listFiles { f -> f.isFile && f.name.endsWith(".md") }?.forEach { f ->
+                if (nowMs - f.lastModified() <= archiveWindowMs) return@forEach // 还没住满 180 天
+                val parsed = splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse)
+                if (parsed.isEmpty()) return@forEach
+                val doomedIds = DiaryRecall.cleanupCandidates(parsed, digests).map { it.id }.toSet()
+                if (doomedIds.isEmpty()) return@forEach
+                val keep = parsed.filter { it.id !in doomedIds }
+                if (keep.isEmpty()) {
+                    if (f.delete()) cleanedFiles++
+                } else {
+                    f.writeText(keep.joinToString("\n") { DiaryCodec.render(it) })
+                }
+            }
+        }
+        return MaintenanceReport(digested, archivedFiles, cleanedFiles)
+    }
+
     /**
      * upsert（判据 2/3/11/21）：同 id 替换、其余保留，按 `createdAt` 稳定排序落盘；
      * 脱敏闸命中 ⇒ 拒写（返回 [WriteResult.ok] = false 与原因，调用方记日志）。
@@ -30,7 +116,7 @@ internal class DiaryStore(private val diaryRoot: File) {
         if (DiaryRules.containsSensitive(entry.summary, entry.artifacts)) {
             return WriteResult(false, null, "脱敏闸命中：条目含敏感样式，整条不写（判据 21）")
         }
-        val f = dayFile(entry.date)
+        val f = fileFor(entry)
         val existing = if (f.isFile) splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse) else emptyList()
         val merged = existing.filter { it.id != entry.id } + entry
         val sorted = merged.sortedBy { it.createdAt }
