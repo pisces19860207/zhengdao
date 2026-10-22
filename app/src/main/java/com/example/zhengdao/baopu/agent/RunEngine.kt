@@ -153,7 +153,7 @@ internal class RunEngine(
      * 构造期仍由 [com.example.zhengdao.baopu.BaopuRuntime.build] 注入**一份**，
      * 之后只在熔断降级时改写，别处不换。
      */
-    private var provider: Provider,
+    @Volatile private var provider: Provider,
     private val db: BaopuDb,
     private val registry: ToolRegistry,
     private val pipeline: GuardPipeline,
@@ -266,6 +266,14 @@ internal class RunEngine(
     // 所有字段都在冻结创建点 `Thread(r, "zd-baopu-run")` **之下**，不挪对账单。
     private val runQueue = SessionRunQueue()
     private val draining = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
+
+    /**
+     * 150批 F：`drainQueue` 的「poll ＋ stopRequested 检查」与 `stop` 的「置位 ＋ clearQueue」
+     * 共用这一把锁 ⇒ 取条与清队不再有竞争窗口：要么 stop 先拿锁（排队条还在队列里、被
+     * clearQueue 一起清掉并计入「清掉 N 条」），要么这条过了闸（过了闸就必须进 runLoop，
+     * 停止迟到由循环头看到 stopRequested 收尾 Aborted，用户消息已落库、可续跑）。
+     */
+    private val queueGate = Object()
 
     init {
         // 冷启动把上次没开跑的排队条读回内存；**不自动开跑**（避免背地里烧 token）。
@@ -453,6 +461,21 @@ internal class RunEngine(
     /** 本次运行里自动换过几次通道（到 [RunRules.MAX_CHANNEL_SWITCHES] 就把候选关掉）。 */
     private var channelSwitches = 0
 
+    /**
+     * 150批 A：四个 run 级计数器在新一轮入口统一复位（调用点在 [runLoop] 第一行）。
+     *
+     * 为什么收口成一个方法、且只在 runLoop 入口调：send/resume/approveRestoredPending/
+     * rejectRestoredPending/drainQueue 全部收敛到 runLoop，各入口自己写一遍就会漏
+     * （resume 路径此前就漏）；只复位 channelBroken 不修其余三个，第二轮照样继承
+     * 上一轮的失败账（工具失败直接判到第 4 次、换通道预算被上一轮吃光）。
+     */
+    private fun resetRunScopedCounters() {
+        consecutiveToolFailures = 0
+        consecutiveChannelFailures = 0
+        channelSwitches = 0
+        channelBroken = false
+    }
+
     // ── 确认制（刀 3 A 段） ──────────────────────────────────────────────
 
     /** pending 三列的存取（清与读；"进 AWAIT_CONFIRM"的写在引擎事务里，见 [enterAwaitConfirm]）。 */
@@ -532,12 +555,18 @@ internal class RunEngine(
     private val confirmFlow = ConfirmFlow(
         pipeline = pipeline,
         store = pendingStore,
-        foregroundElapsedMs = { RunRules.confirmElapsedMs(confirmForegroundMs, confirmResumeAt, System.currentTimeMillis()) },
+        foregroundElapsedMs = {
+            synchronized(confirmTimingLock) {
+                RunRules.confirmElapsedMs(confirmForegroundMs, confirmResumeAt, System.currentTimeMillis())
+            }
+        },
         onPersistPending = { sid, step, tool, argsJson, at ->
             enterAwaitConfirm(sid, step, tool, argsJson, at)
             // 前台计时从进确认这一刻起算（进后台再由 noteConfirmBackground 暂停累计）
-            confirmForegroundMs = 0L
-            confirmResumeAt = at
+            synchronized(confirmTimingLock) {
+                confirmForegroundMs = 0L
+                confirmResumeAt = at
+            }
         },
         onRequestCard = { req -> onEvent?.invoke(req) },
         log = log,
@@ -548,6 +577,14 @@ internal class RunEngine(
 
     /** 本次进前台的时刻（null = 当前在后台或没有确认在等）。 */
     private var confirmResumeAt: Long? = null
+
+    /**
+     * 150批 E：前台计时的写×3（进确认 / 切后台 / 回前台）与读×1（[RunRules.confirmElapsedMs]）
+     * 共用这一把内部锁。为什么不用 @Volatile 糊：`confirmForegroundMs += ` 是复合操作，
+     * 「结账后置空」又是两步写——不加锁时任意交错都能造出读数回退（整段前台时间丢失）
+     * 与「回前台了还在暂停」的卡死计时。
+     */
+    private val confirmTimingLock = Object()
 
     // ── 对外动作 ──────────────────────────────────────────────────────────
 
@@ -733,14 +770,14 @@ internal class RunEngine(
      */
     private fun drainQueue(sessionId: Long) {
         try {
-            while (!stopRequested) {
-                val turn = runQueue.poll(sessionId) ?: break
+            while (true) {
+                // 150批 F：取条与停止检查同锁（[queueGate]）。stop 先拿锁 ⇒ 这条还排在队列里、
+                // 被 clearQueue 一起清掉并计入「清掉 N 条」；这条先拿锁 ⇒ 过闸，过了闸就必须
+                // 进 runLoop——不许在检查点之后再 break 丢弃（那正是审计 F 的「取出后永久丢失」）。
+                val turn = synchronized(queueGate) {
+                    if (stopRequested) null else runQueue.poll(sessionId)
+                } ?: break
                 emitQueueChanged(sessionId)
-                if (stopRequested) {
-                    // 停止刚清过队列：这条已经取出来但还没开跑，不许再写用户消息
-                    log("抱朴引擎：停止到达，取出的排队条不再开跑（session=$sessionId）")
-                    break
-                }
                 val rowId = ensureQueueRow(turn)
                 _state.value = RunState.THINKING
                 _notice.value = null
@@ -919,17 +956,22 @@ internal class RunEngine(
 
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
     fun stop() {
-        stopRequested = true
-        // P2-5：取消正在飞的流式 Call。旧实现只置标志位 ⇒ 网络流照收，
-        // 最长耗到 readTimeout（60s）才收工；用户看到的就是「点了停止还在写」。
-        // 取消后 stream() 收到 IOException ⇒ 转 Failed，不会再回调成功。
-        runCatching { activeCall?.cancel() }
-        // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
-        confirmFlow.abandon()
-        // 第一百一十七批：停止 = 连本会话还没开跑的排队条一起清（派工单「按设计清队列」）。
-        _sessionKey.value?.removePrefix("id:")?.toLongOrNull()?.let { sid ->
-            val n = clearQueue(sid)
-            if (n > 0) _notice.value = "已停止，排队中的 $n 条也清掉了"
+        // 150批 F：置位与清队必须和 drainQueue 的取条同锁（[queueGate]），否则「已 poll 出、
+        // 还没开跑」的那条会被 clearQueue 删行却没人接——永久丢失且不计入「清掉 N 条」。
+        // 临界区内全是非阻塞调用（cancel/abandon 立即返回；clearQueue 只提交写，不等落库）。
+        synchronized(queueGate) {
+            stopRequested = true
+            // P2-5：取消正在飞的流式 Call。旧实现只置标志位 ⇒ 网络流照收，
+            // 最长耗到 readTimeout（60s）才收工；用户看到的就是「点了停止还在写」。
+            // 取消后 stream() 收到 IOException ⇒ 转 Failed，不会再回调成功。
+            runCatching { activeCall?.cancel() }
+            // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
+            confirmFlow.abandon()
+            // 第一百一十七批：停止 = 连本会话还没开跑的排队条一起清（派工单「按设计清队列」）。
+            _sessionKey.value?.removePrefix("id:")?.toLongOrNull()?.let { sid ->
+                val n = clearQueue(sid)
+                if (n > 0) _notice.value = "已停止，排队中的 $n 条也清掉了"
+            }
         }
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")
     }
@@ -982,7 +1024,7 @@ internal class RunEngine(
     /** 抢单活跃门；抢不到 ⇒ notice 说明原因并返回 null（调用方据此放弃）。 */
     private fun acquireOrNotice(sessionId: Long): Unit? {
         if (!ActiveSessionGate.tryAcquire("id:$sessionId")) {
-            log("抱朴引擎：单活跃门占用（当前=，要=id:）")
+            log("抱朴引擎：单活跃门占用（当前=${ActiveSessionGate.current()}，要=id:$sessionId）")
             _notice.value = "已有另一个会话在跑（全局单活跃）：先等它结束或停止它"
             return null
         }
@@ -1002,14 +1044,18 @@ internal class RunEngine(
 
     /** 确认等待期间App进后台：前台计时暂停（累计到现在的段落，回前台再续）。 */
     fun noteConfirmBackground() {
-        val since = confirmResumeAt ?: return
-        confirmForegroundMs += (System.currentTimeMillis() - since).coerceAtLeast(0L)
-        confirmResumeAt = null
+        synchronized(confirmTimingLock) {
+            val since = confirmResumeAt ?: return
+            confirmForegroundMs += (System.currentTimeMillis() - since).coerceAtLeast(0L)
+            confirmResumeAt = null
+        }
     }
 
     /** 确认等待期间App回前台：前台计时继续。 */
     fun noteConfirmForeground() {
-        if (confirmResumeAt == null) confirmResumeAt = System.currentTimeMillis()
+        synchronized(confirmTimingLock) {
+            if (confirmResumeAt == null) confirmResumeAt = System.currentTimeMillis()
+        }
     }
 
     /**
@@ -1099,9 +1145,17 @@ internal class RunEngine(
         resumed: Boolean,
         queueRowId: Long = -1L,
     ) {
+        // 150批 A：四个 run 级计数器在入口统一复位——必须在 channelBroken 判断**之前**调，
+        // 否则上一轮熔断会把这一轮直接拦死；send/resume/approveRestoredPending/
+        // rejectRestoredPending/drainQueue 全收敛到这里，一处复位全盖住。
+        resetRunScopedCounters()
         if (channelBroken) {
+            // 150批 G：早退也收尾——旧行为只切 ABORTED，run_log 没有 Aborted 行、
+            // interrupted_step 不更新，UI 会把这一轮当成「进程被杀」。settle 只写
+            // run_log/interrupted_step；Settled 事件仍由调用方 finally 发，不双记账。
+            log("抱朴引擎：通道熔断，本轮直接收尾（session=$sessionId）")
+            settle(sessionId, 0, RunState.ABORTED, "Aborted", err = "channel-broken")
             _notice.value = "当前通道已熔断（连续失败）：换一个 provider 再试"
-            _state.value = RunState.ABORTED
             return
         }
         // 工作计划（第十七批）：update_plan 落到哪个会话，由这里喂给 PlanController
@@ -1206,14 +1260,11 @@ internal class RunEngine(
             }
         }
         if (userText != null) {
-            // 第一百一十七批负例「取消后仍然写」的第一道闸：排队条刚被取出、或停止与开跑
-            // 抢在同一毫秒 —— stopRequested 已立 ⇒ **不许落用户消息，更不许开工具**。
-            // 这里返回不写 run_log（这一轮压根没开始），drain 的 finally 照常放门。
-            if (stopRequested) {
-                _notice.value = "已停止：排队里的这一条没有开跑"
-                _state.value = RunState.ABORTED
-                return
-            }
+            // 150批 F：能走到这里 ⇒ 这条已在 drain 的同锁闸上过了检查（取出那一刻 stop 还没立）。
+            // 停止哪怕在闸后这一瞬到达：用户消息照落库（run_queue 行与消息同一事务——stop 的
+            // clearQueue 已删也不碍事，DELETE 幂等），随即由下面的步循环头看到 stopRequested
+            // ⇒ 收尾 Aborted——消息可续跑，不凭空消失。117批在这里设的「不落用户消息」第二
+            // 丢弃闸正是审计 F 的病灶（丢条且不计入「清掉 N 条」），随同锁闸一并撤销。
             // 新一轮 ⇒ 新计划：不继承上一轮的勾选状态（新任务不该因同名条目被钉 done）
             planController.newRound()
             val persisted = persistUserMessage(sessionId, userText, turnImagePaths, queueRowId)
@@ -2612,6 +2663,19 @@ internal class RunEngine(
                     if (queueRowId > 0) {
                         val q = BaopuSql.deleteRunQueue(queueRowId)
                         d.execSQL(q.sql, q.args)
+                    } else {
+                        // 150批 I：ensureQueueRow 返回 0L ⇒ 队列行可能残留（落库 Future 丢失、
+                        // 补写也没成功时拿不到 id）。按 (session, text) 兜底删：消息这就要落库，
+                        // 同文队列行必须跟着走，否则重进 App 会被 restore 再排一遍（双发）。
+                        val sel = BaopuSql.selectRunQueue(sessionId)
+                        val ids = mutableListOf<Long>()
+                        d.rawQuery(sel.sql, sel.args).use { c ->
+                            while (c.moveToNext()) if (c.getString(2) == text) ids.add(c.getLong(0))
+                        }
+                        ids.forEach { id ->
+                            val q = BaopuSql.deleteRunQueue(id)
+                            d.execSQL(q.sql, q.args)
+                        }
                     }
                     val now = System.currentTimeMillis()
                     val seq = nextSeq(d, sessionId)
