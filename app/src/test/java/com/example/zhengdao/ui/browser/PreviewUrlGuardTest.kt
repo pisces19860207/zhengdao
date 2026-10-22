@@ -94,6 +94,23 @@ class PreviewUrlGuardTest {
             LocalPreviewPolicy.allowsNavigation("https://x", blockAllNetwork = false))
     }
 
+    @Test
+    fun `路径穿越写法仍算预览地址_外部入口必须拦下`() {
+        // 穿越本身不归这条判据管（越界判定住 BaopuGuardCore）；这里要钉的是：
+        // 一条带 ../ 或反斜杠的预览假地址，不许因为写法怪就被判成「不是预览」而放去上网页签。
+        for (url in listOf(
+                "local-preview://../../Windows/system32/config",
+                "local-preview://产物/../../秘密.txt",
+                "LOCAL-PREVIEW://a/./b/../c.html",
+                "local-preview:x/..%2f..%2fsecret",
+            )
+        ) {
+            assertTrue("写法怪就漏判（会被当普通网址开）：$url", LocalPreviewPolicy.isPreviewUrl(url))
+            assertFalse("既然判成预览，就不许同时被算成可导航网址：$url",
+                LocalPreviewPolicy.allowsNavigation(url, blockAllNetwork = false))
+        }
+    }
+
     // ── 接线门禁：接上前这条红 ───────────────────────────────────────────
 
     @Test
