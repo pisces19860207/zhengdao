@@ -18,7 +18,7 @@ import java.io.File
  *
  * 派工单点名的四条负例分别落在：
  * - [N1] 同会话两个 run 同时跑；
- * - [N2] 取消后排队条仍然开跑/写库；
+ * - [N2] 取消后清排队（与取条同锁）；过闸的条不许凭空消失（150批 F 口径）；
  * - [N3] 离开页面后台丢消息/不续跑；
  * - [N4] 队列满还清输入框（用户原话被吞）。
  */
@@ -58,17 +58,19 @@ class MultitaskWiringTest {
             runEngine.contains("if (!draining.add(sessionId)) return")
     }
 
-    /** 停止 = 清排队 ＋ 取出后二次检查 ＋ 落用户消息前再检查。 */
+    /** 150批 F 口径：停止清排队且与取条同一把锁；过了同锁闸的条不许再丢（消息落库、循环头收尾）。 */
     private fun cancelStopsQueued(runEngine: String): Boolean {
         val stop = slice(runEngine, "fun stop()", "fun resume(")
         val drain = slice(runEngine, "private fun drainQueue(", "private fun ensureQueueRow(")
         val persistGate = slice(runEngine, "if (userText != null) {", "history += HistoryMessage(")
+        val gate = drain.indexOf("synchronized(queueGate)")
         val poll = drain.indexOf("runQueue.poll(sessionId)")
-        val recheck = drain.indexOf("if (stopRequested)", poll)
         return stop.contains("clearQueue(sid)") &&
-            poll >= 0 && recheck > poll &&
-            persistGate.contains("if (stopRequested)") &&
-            persistGate.indexOf("if (stopRequested)") < persistGate.indexOf("persistUserMessage")
+            stop.contains("synchronized(queueGate)") &&
+            stop.indexOf("stopRequested = true") > stop.indexOf("synchronized(queueGate)") &&
+            gate >= 0 && poll > gate &&
+            drain.contains("if (stopRequested) null else runQueue.poll(sessionId)") &&
+            !persistGate.contains("if (stopRequested)")
     }
 
     /** 入队即落库；冷启动恢复进内存但**不自动跑**。 */
@@ -106,18 +108,26 @@ class MultitaskWiringTest {
         )
     }
 
-    // ── N2：取消后不许再开跑/写库 ───────────────────────────────────────
+    // ── N2：取消后清排队；过闸的条不许凭空消失 ───────────────────────────
 
     @Test
-    fun `N2_停止清队列_取出后与落库前都有检查`() {
+    fun `N2_停止清队列_取条与清队同锁_过闸条目不丢`() {
         assertTrue("取消后排队条仍会开跑的接线漏洞", cancelStopsQueued(engine))
         assertFalse(
             "判别器：stop 不清队列，判据必须变红",
             cancelStopsQueued(engine.replace("val n = clearQueue(sid)", "val n = 0")),
         )
         assertFalse(
-            "判别器：拿掉 drain/落库前的 stopRequested 检查，判据必须变红",
-            cancelStopsQueued(engine.replace("if (stopRequested) {", "if (false) {")),
+            "判别器：取条挪出同锁闸（150批 F 的竞争窗口回来了），判据必须变红",
+            cancelStopsQueued(
+                engine.replace("if (stopRequested) null else runQueue.poll(sessionId)", "runQueue.poll(sessionId)"),
+            ),
+        )
+        assertFalse(
+            "判别器：117批的第二丢弃闸又回来了（过闸条目被丢且不计入清掉条数），判据必须变红",
+            cancelStopsQueued(
+                engine.replace("planController.newRound()", "if (stopRequested) return\n            planController.newRound()"),
+            ),
         )
     }
 
