@@ -1049,17 +1049,18 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     currentChannelId = ProviderPrefs.currentChannelId(context),
                     customBaseUrl = customBase,
                     customModel = customModel,
+                    customProtocol = ProviderPrefs.storedCustomProtocol(context),
                     onDismiss = {
                         // 取消 ⇒ 草稿作废（输入过的那串 Key 原文不留过夜），但**不改 SP**：
                         // 没点「启用」就一个字都不写，选择位还是原来那条模型。
                         ModelSheetDraft.clear()
                         showChannel = false
                     },
-                    onSave = { id, key, base, model, picked ->
+                    onSave = { id, key, base, model, protocol, picked ->
                         // 提交口仍然只有一个：BaopuRuntime.switchChannel ⇒ ProviderPrefs.save。
                         // 预设上点定的模型（连同那一刻的元数据）另走 saveModelOverride，
-                        // 与选择位同一刻落下；自定义的模型名已经在 save() 的 model 参数里。
-                        BaopuRuntime.switchChannel(context, id, key, base, model)
+                        // 与选择位同一刻落下；自定义的模型名与协议已经在 save() 的参数里。
+                        BaopuRuntime.switchChannel(context, id, key, base, model, protocol)
                         if (id != ProviderPrefs.CHANNEL_CUSTOM) {
                             ProviderPrefs.saveModelOverride(context, id, picked)
                         }
