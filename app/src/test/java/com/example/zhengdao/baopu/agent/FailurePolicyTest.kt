@@ -298,4 +298,117 @@ class FailurePolicyTest {
         assertEquals("ASK_USER", FailurePolicy.decisionLabel(FailureAction.AskUser))
         assertEquals("ABORT", FailurePolicy.decisionLabel(FailureAction.Abort))
     }
+
+    // ── 第一百四十三批 · 阈值/边界补强（只钉当前实现） ─────────────────
+
+    @Test
+    fun `R2_attempt非正按第1次失败算`() {
+        // decide 的 n = attempt.coerceAtLeast(1)；Retry.attempt 也回填 1（不是原始 0/-7）
+        assertEquals(FailureAction.Retry(500L, 1), FailurePolicy.decide(FailureKind.NETWORK, 0, false))
+        assertEquals(FailureAction.Retry(500L, 1), FailurePolicy.decide(FailureKind.NETWORK, -7, false))
+        assertEquals(FailureAction.Retry(500L, 1), FailurePolicy.decide(FailureKind.BAD_JSON, 0, false))
+        assertEquals(
+            "取消类与次数无关，负次数也只 Abort",
+            FailureAction.Abort,
+            FailurePolicy.decide(FailureKind.CANCELLED, -1, fallbackAvailable = true),
+        )
+    }
+
+    @Test
+    fun `R2_重试硬上限2_第三次一定不重试`() {
+        // 配置写 99 也越不过 MAX_RETRY_ATTEMPTS=2：第 3 次既不在预算内、也没到熔断线 ⇒ Abort
+        val wide = FailurePolicyConfig(
+            retries = FAILURE_DEFAULT_RETRIES + (FailureKind.NETWORK to 99),
+            channelBreakThreshold = 99,
+        )
+        assertTrue(FailurePolicy.decide(FailureKind.NETWORK, 1, false, wide) is FailureAction.Retry)
+        assertTrue(FailurePolicy.decide(FailureKind.NETWORK, 2, false, wide) is FailureAction.Retry)
+        assertEquals(
+            FailureAction.Abort,
+            FailurePolicy.decide(FailureKind.NETWORK, 3, false, wide),
+        )
+    }
+
+    @Test
+    fun `R2_工具失败先判到线_再判重试预算`() {
+        // 源码顺序是 `n >= toolFailureLimit` 在前 ⇒ 线设成 1 时第 1 次直接问人，
+        // 即使 retries 预算还给着 1 次（按当前实现钉住的优先级）。
+        val lineFirst = FailurePolicyConfig(toolFailureLimit = 1)
+        assertEquals(
+            FailureAction.AskUser,
+            FailurePolicy.decide(FailureKind.TOOL_TIMEOUT, 1, false, lineFirst),
+        )
+        assertEquals(
+            FailureAction.AskUser,
+            FailurePolicy.decide(FailureKind.TOOL_ERROR, 1, true, lineFirst),
+        )
+    }
+
+    @Test
+    fun `R2_网络重试分支优先于熔断线`() {
+        // 熔断线设成 1：第 1 次仍走「n <= retries」的重试分支（顺序在源码里就是先重试）
+        val breakAtOnce = FailurePolicyConfig(channelBreakThreshold = 1)
+        assertTrue(
+            FailurePolicy.decide(FailureKind.NETWORK, 1, false, breakAtOnce) is FailureAction.Retry,
+        )
+        assertEquals(
+            "第 2 次重试预算用尽且已过熔断线 ⇒ 有候选就换",
+            FailureAction.Fallback,
+            FailurePolicy.decide(FailureKind.NETWORK, 2, true, breakAtOnce),
+        )
+        assertEquals(
+            "第 2 次过线但没候选 ⇒ 问人",
+            FailureAction.AskUser,
+            FailurePolicy.decide(FailureKind.NETWORK, 2, false, breakAtOnce),
+        )
+    }
+
+    @Test
+    fun `R2_配置重试为负_按0算_第一次就停`() {
+        val negative = FailurePolicyConfig(retries = mapOf(FailureKind.NETWORK to -3))
+        assertEquals(
+            FailureAction.Abort,
+            FailurePolicy.decide(FailureKind.NETWORK, 1, false, negative),
+        )
+    }
+
+    @Test
+    fun `R2_退避_attempt0与max小于base的边界`() {
+        // attempt 0 被压到 1 ⇒ 基数 500
+        assertEquals(500L, FailurePolicy.backoffMs(0))
+        // max < base：无论第几次都只能落在 max（且不为负）
+        val capped = FailurePolicyConfig(backoffBaseMs = 2_000L, backoffMaxMs = 500L)
+        assertEquals(500L, FailurePolicy.backoffMs(1, capped))
+        assertEquals(500L, FailurePolicy.backoffMs(2, capped))
+        // max 为负：结果被夹到 0，绝不产生负延迟
+        val negativeMax = FailurePolicyConfig(backoffBaseMs = 500L, backoffMaxMs = -1L)
+        assertEquals(0L, FailurePolicy.backoffMs(1, negativeMax))
+        assertEquals(0L, FailurePolicy.backoffMs(2, negativeMax))
+    }
+
+    @Test
+    fun `R2_分类_子串命中比数字边界宽`() {
+        // 分类用的是 contains 子串："1401" 里含 "401" 也会被判成通道类（按当前实现钉住，
+        // 交付报告登记为「脆弱但当前无害」——请求号恰好含 401 的概率极低）。
+        assertEquals(
+            FailureKind.MODEL_CHANNEL,
+            FailurePolicy.classifyModel("请求号 1401 超时"),
+        )
+        assertEquals(FailureKind.MODEL_CHANNEL, FailurePolicy.classifyModel("regionerror"))
+        assertEquals(FailureKind.MODEL_CHANNEL, FailurePolicy.classifyModel("FreeTier 限制"))
+        assertEquals(FailureKind.NETWORK, FailurePolicy.classifyModel("HTTP 429"))
+        assertEquals(FailureKind.TOOL_TIMEOUT, FailurePolicy.classifyTool("TIMEOUT"))
+        assertEquals(
+            "只认 timeouts 子串写法；timed out 不含 timeout ⇒ 归工具报错",
+            FailureKind.TOOL_ERROR,
+            FailurePolicy.classifyTool("timed out"),
+        )
+    }
+
+    @Test
+    fun `R2_结论标签不再归一_attempt0原样`() {
+        // decisionLabel 只做字符串拼接，不 coerce attempt（按当前实现钉住）
+        assertEquals("RETRY#0", FailurePolicy.decisionLabel(FailureAction.Retry(500L, 0)))
+        assertEquals("RETRY#-1", FailurePolicy.decisionLabel(FailureAction.Retry(500L, -1)))
+    }
 }
