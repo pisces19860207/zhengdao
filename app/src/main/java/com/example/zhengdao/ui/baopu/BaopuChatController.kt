@@ -1351,7 +1351,7 @@ internal class BaopuChatController(context: Context) {
 
         val now = System.currentTimeMillis()
         val date = DiaryRules.dateOf(now)
-        val store = DiaryStore(File(BaopuRuntime.workspaceRoot(appCtx), "记忆/日记"))
+        val store = DiaryStore(File(BaopuRuntime.workspaceRoot(appCtx), "记忆/日记"), db)
         val prev = store.loadDay(date).firstOrNull { it.id == DiaryRules.diaryId(sid, date) }
         // 当日累计（同会话同日多轮 upsert 相加；产物并集去重）。
         val okTotal = (prev?.okSteps ?: 0) + okSteps

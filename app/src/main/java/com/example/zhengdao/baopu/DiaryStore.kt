@@ -13,7 +13,11 @@ import java.io.File
  * 全部逻辑可用临时目录 JVM 直测。脱敏闸在写路径上（判据 21）：**摘要先过
  * [DiaryRules.containsSensitive]，命中 ⇒ 整条不写**——「脱敏失败宁可整条不写」。
  */
-internal class DiaryStore(private val diaryRoot: File) {
+internal class DiaryStore(
+    private val diaryRoot: File,
+    /** 索引库（真删/重建时同步 `diary_index`；null = 不碰索引，纯文件半边）。 */
+    private val db: BaopuDb? = null,
+) {
 
     data class WriteResult(val ok: Boolean, val file: File?, val reason: String? = null)
 
@@ -146,6 +150,16 @@ internal class DiaryStore(private val diaryRoot: File) {
         return splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse)
     }
 
+    /** 归档目录里的条目（真删的可见范围：老日子搬进 归档/ 后仍可按日期删）。 */
+    fun loadArchive(): List<DiaryEntry> {
+        val ad = archiveDir()
+        if (!ad.isDirectory) return emptyList()
+        return ad.listFiles { f -> f.isFile && f.name.endsWith(".md") }
+            ?.sortedBy { it.name }
+            ?.flatMap { f -> splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse) }
+            ?: emptyList()
+    }
+
     /**
      * 按 id 删除（阶段③「真删」的文件半边；**只删日记**——本函数只摸 `diaryRoot`，
      * 调用方红线：不得把任何产物/用户文件路径传进本类的任何方法）。
@@ -165,6 +179,78 @@ internal class DiaryStore(private val diaryRoot: File) {
                 }
             }
         return deleted
+    }
+
+    /**
+     * 真删（阶段③，判据 18：四处全消）。[DiaryDeletionRules.plan] 给计划、
+     * 本方法执行——**只删日记**：日文件、归档残影、月度摘要重算、索引行；
+     * 产物与用户文件一个字节不碰（边界①，调用方红线）。
+     *
+     * 摘要重算口径：只有「从归档里删掉了条目」才重算受影响月份的摘要
+     * （归档条目必然进过摘要；日文件里的新条目没进过，删它不碰摘要）。
+     * 重算后该月归档为空 ⇒ 摘要连同文件一起消失（删了就忘）。
+     */
+    fun realDelete(plan: DiaryDeletionPlan): DiaryDeletionReport {
+        if (plan.isEmpty || !diaryRoot.isDirectory) return DiaryDeletionReport(0, 0, 0, 0, 0)
+        val doomed = plan.targetIds.toSet()
+        var deletedEntries = 0
+        var deletedFiles = 0
+        var removedArchiveFiles = 0
+        val monthsTouchedFromArchive = mutableSetOf<String>()
+
+        fun prune(f: File): Pair<Int, Boolean> {
+            val all = splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse)
+            val kept = all.filter { it.id !in doomed }
+            if (kept.size == all.size) return 0 to false
+            if (kept.isEmpty()) {
+                return if (f.delete()) (all.size to true) else (0 to false)
+            }
+            f.writeText(kept.joinToString("\n") { DiaryCodec.render(it) })
+            return (all.size - kept.size) to false
+        }
+
+        // ① 顶层（日文件＋月度摘要文件）
+        diaryRoot.listFiles { f -> f.isFile && f.name.endsWith(".md") }?.forEach { f ->
+            val (n, del) = prune(f)
+            deletedEntries += n
+            if (del) deletedFiles++
+        }
+        // ② 归档残影
+        val ad = archiveDir()
+        if (ad.isDirectory) {
+            ad.listFiles { f -> f.isFile && f.name.endsWith(".md") }?.forEach { f ->
+                val before = splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse)
+                val (n, del) = prune(f)
+                if (n > 0) {
+                    deletedEntries += n
+                    before.filter { it.id in doomed }.forEach { monthsTouchedFromArchive += it.date.take(7) }
+                }
+                if (del) removedArchiveFiles++
+            }
+        }
+        // ③ 受影响月份的摘要重算（只动「确有归档条目被删」的月份）
+        var rebuiltDigests = 0
+        for (month in monthsTouchedFromArchive) {
+            val f = digestFile(month)
+            val remaining = loadArchive().filter { it.date.take(7) == month }
+            if (remaining.isEmpty()) {
+                if (f.isFile && f.delete()) rebuiltDigests++
+            } else {
+                val digest = DiaryRecall.composeDigest(month, remaining, System.currentTimeMillis())
+                val prev = if (f.isFile) splitBlocks(f.readText()).mapNotNull(DiaryCodec::parse) else emptyList()
+                val merged = prev.filter { it.id != digest.id } + digest
+                f.parentFile?.mkdirs()
+                f.writeText(merged.joinToString("\n") { DiaryCodec.render(it) })
+                rebuiltDigests++
+            }
+        }
+        // ④ 索引行（db 为 null ⇒ 只做文件半边，调用方自行同步）
+        var deletedIndexRows = 0
+        db?.let { d ->
+            val idx = DiaryIndexStore(d)
+            doomed.forEach { deletedIndexRows += idx.deleteById(it) }
+        }
+        return DiaryDeletionReport(deletedEntries, deletedFiles, rebuiltDigests, removedArchiveFiles, deletedIndexRows)
     }
 
     /**
