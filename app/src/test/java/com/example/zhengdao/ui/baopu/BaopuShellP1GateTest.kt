@@ -42,6 +42,9 @@ class BaopuShellP1GateTest {
 
     private fun ticker(): String = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuNoticeTicker.kt")
 
+    /** 第一百三十八批：跑马灯的判据全在纯函数文件里（高度/节拍/暂停/排序）。 */
+    private fun rules(): String = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuTickerRules.kt")
+
     private fun settingsPage(): String =
         code("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
 
@@ -186,25 +189,28 @@ class BaopuShellP1GateTest {
     // ── ② 顶栏五件（v1.4 §3.9 / §4）─────────────────────────────────────
 
     /**
-     * T1 五件顺序：☰ → 状态行 → 跑马灯 → 🛡 → ＋。
+     * T1 顶栏四件顺序：☰ → 跑马灯 → 🛡 → ＋（公司名插在 ☰ 之后，另由 131 的门禁守）。
      *
-     * 红＝有人把盾牌挪到跑马灯前面、或把 ＋ 挤到状态行旁边（真机五件的左右手分工就乱了）。
+     * 第一百三十八批改判据：**状态行已撤出**（设计 §5「状态单一出口」）⇒ 原来的「五件」
+     * 变成「四件」，并且这一段里**不许再出现第二处状态文案**。
+     * 红＝有人把盾牌挪到跑马灯前面、把 ＋ 挤到中间，或给顶栏加回状态行。
      */
     @Test
-    fun `T1_顶栏五件顺序固定`() {
+    fun `T1_顶栏四件顺序固定_状态行不许回来`() {
         val bar = flat(topBarBlock())
         val order = listOf(
             "Text(text = \"☰\"",
-            "statusLineWithStep(",
             "BaopuNoticeTicker(",
             "Text(text = \"🛡\"",
             "Text(text = \"＋\"",
         )
         val idx = order.map { bar.indexOf(it) }
         idx.forEachIndexed { i, at ->
-            assertTrue("顶栏第 ${i + 1} 件 ${order[i]} 不见了（五件缺一即不合格）", at >= 0)
+            assertTrue("顶栏第 ${i + 1} 件 ${order[i]} 不见了（四件缺一即不合格）", at >= 0)
         }
-        assertEquals("顶栏五件必须按 ☰·状态·跑马灯·🛡·＋ 排（v1.4 W9a），实得 $idx", idx.sorted(), idx)
+        assertEquals("顶栏四件必须按 ☰·跑马灯·🛡·＋ 排（138），实得 $idx", idx.sorted(), idx)
+        assertFalse("状态行的第二出口不许回来（状态只走跑马灯）", bar.contains("statusLineWithStep("))
+        assertFalse("顶栏不许再直接渲染 stateLabel", bar.contains("stateLabel("))
     }
 
     /**
@@ -237,47 +243,51 @@ class BaopuShellP1GateTest {
     }
 
     /**
-     * T4 状态行锁单行（否则 1.3× 字体折行 ⇒ 顶栏被撑高，正好是负例「跑马灯撑高顶栏」的连带）。
+     * T4 跑马灯孔位**不撑高**顶栏（原「状态行单行省略」判据随状态行一起撤出）。
      *
-     * 红＝有人删掉 maxLines/overflow（状态文案一长就两行）。
+     * 红＝有人把孔位调到 ≥48dp（顶栏被撑高），或让文字折行/溢出（40dp 里塞两行）。
      */
     @Test
-    fun `T4_状态行单行省略`() {
-        val bar = flat(topBarBlock())
-        val status = bar.substringAfter("statusLineWithStep(").take(320)
-        assertTrue("状态行必须 maxLines = 1（不许折行撑高顶栏）", status.contains("maxLines = 1"))
-        assertTrue("状态行超宽要省略", status.contains("TextOverflow.Ellipsis"))
+    fun `T4_跑马灯孔位不撑高顶栏`() {
+        assertTrue(
+            "孔位 ${TICKER_SLOT_DP}dp 必须小于 48dp 图标位（否则顶栏被撑高）",
+            TICKER_SLOT_DP < BAO_ICON_SLOT_DP,
+        )
+        val tk = flat(ticker())
+        assertTrue("跑马灯必须单行（不许折行撑高）", tk.contains("maxLines = 1"))
+        assertTrue("跑马灯超宽要省略", tk.contains("TextOverflow.Ellipsis"))
     }
 
     // ── ③ 跑马灯（v1.4 §3.9）────────────────────────────────────────────
 
     /**
-     * K1 窗口高度：默认 16dp，大字体跟着长但**正好一行**。
+     * K1 孔位**恒定 40dp**，空态／空闲／运行三态同高（第一百三十八批判据）。
      *
-     * 红＝① 有人把默认值改成别的数（v1.4 与真机门禁 H5 都钉 16）；
-     * ② 有人图省事写成"随字号无限长"——窗口比一行高就会露出下一条标签的半截（UI-D1 重影）。
+     * 红＝① 有人把 40dp 改小（露不出「待你确认」的琥珀边框）或改大（顶栏被撑高）；
+     * ② 有人让高度随"有没有内容／什么态"变——那就会重现「事件到来时顶栏跳一下」这个真机缺陷。
      */
     @Test
-    fun `K1_跑马灯窗口默认16_大字体等于一行行高`() {
-        assertEquals("默认窗口仍是 16dp（v1.4 §3.9）", 16, TICKER_HEIGHT_DP)
-        assertEquals("1.0× 字体＝默认 16dp", 16f, tickerWindowDp(1.0f), 0.01f)
-        assertEquals("1.3× 字体＝一行行高 13×1.3＝16.9dp（旧版 16dp 会裁字）", 16.9f, tickerWindowDp(1.3f), 0.01f)
-        assertEquals("2.0× 字体＝26dp", 26f, tickerWindowDp(2.0f), 0.01f)
-        // 大字体下的唯一正确值＝「一行行高」：比它矮＝裁字，比它高＝看到第二条的半截。
-        // （1.0× 例外：一行 13dp 比默认 16dp 还矮，此时窗口**保持 16dp 不回缩**——那是定稿值。）
-        // 分界在 16/13 ≈ 1.231×：小于它时一行还比默认窗口矮，窗口保持 16dp 不动。
-        assertEquals("1.15× 时一行 14.95dp 仍比默认矮 ⇒ 窗口保持 16dp", 16f, tickerWindowDp(1.15f), 0.01f)
-        listOf(1.3f, 1.5f, 2.0f, 3.0f).forEach { scale ->
-            val line = TICKER_LINE_DP * scale
-            val win = tickerWindowDp(scale)
-            assertEquals("fontScale=$scale 时窗口必须正好一行行高 $line", line, win, 0.01f)
-            // 且顶栏高度仍由 48dp 图标位决定（零额外高度）
-            assertTrue(
-                "fontScale=$scale 时窗口 $win 不该顶到图标位 $BAO_ICON_SLOT_DP（否则就是撑高顶栏）",
-                win < BAO_ICON_SLOT_DP,
-            )
-        }
-        assertEquals("1.0× 时一行只有 13dp，窗口**不回缩**（默认 16dp 是定稿值）", 16f, tickerWindowDp(1.0f), 0.01f)
+    fun `K1_孔位恒定40dp_三态同高`() {
+        assertEquals("孔位 40dp（138 定稿，顶栏 48dp 之内）", 40, TICKER_SLOT_DP)
+        assertEquals("1.0× 字体＝40dp", 40f, tickerSlotDp(1.0f), 0.01f)
+        assertEquals("2.0× 字体一行 36dp 仍装得下 ⇒ 孔位不动", 40f, tickerSlotDp(2.0f), 0.01f)
+        assertTrue("3.0× 一行 54dp 超了 ⇒ 只许长高防裁字", tickerSlotDp(3.0f) > 40f)
+        // 三态同高的代码形态：高度只由 fontScale 决定，与 RunState / items 无关。
+        val body = funBody(rules(), "tickerSlotDp")
+        assertFalse("tickerSlotDp 不许吃 RunState（吃了就会按态变高）", body.contains("RunState"))
+        assertFalse("tickerSlotDp 不许吃 items", body.contains("items"))
+        // 而且不许顶到图标位：40 < 48，顶栏几何零位移。
+        assertTrue("孔位必须小于图标位 48dp", TICKER_SLOT_DP < BAO_ICON_SLOT_DP)
+    }
+
+    /** 取某个顶层函数的函数体文本（到下一个顶层声明为止，够门禁用）。 */
+    private fun funBody(src: String, name: String): String {
+        val at = src.indexOf("fun $name(")
+        assertTrue("源码里找不到 fun $name(", at >= 0)
+        val rest = src.substring(at)
+        val next = listOf("\ninternal ", "\nprivate ", "\n@", "\n}\n").map { rest.indexOf(it, 1) }
+            .filter { it > 0 }.minOrNull() ?: rest.length
+        return rest.substring(0, next)
     }
 
     /**
@@ -295,18 +305,20 @@ class BaopuShellP1GateTest {
     }
 
     /**
-     * K3 减少动画（系统动画缩放＝0）时降级为「只显最新一条、不滚」。
+     * K3 减少动画（系统动画缩放＝0）时降级为「只显最新一条、不轮播」（判据迁到纯函数）。
      *
      * 红＝有人只判断了 items.size 却没看系统动画开关（无障碍用户的"关动画"就没生效）。
      */
     @Test
     fun `K3_减少动画降级为只显最新一条`() {
         assertTrue("动画缩放 0 ⇒ 减少动画", reduceMotionFrom(0f))
-        assertFalse("动画缩放 1 ⇒ 正常滚", reduceMotionFrom(1f))
+        assertFalse("动画缩放 1 ⇒ 正常轮播", reduceMotionFrom(1f))
         assertFalse("动画缩放 0.5 ⇒ 仍是动画", reduceMotionFrom(0.5f))
-        val src = flat(ticker())
-        assertTrue("减少动画时只摆最新一条", src.contains("if (reduceMotion) listOf(items.last()) else tickerLoop(items)"))
-        assertTrue("减少动画时滚动循环要提前返回", src.contains("if (reduceMotion) return@LaunchedEffect"))
+        assertFalse(
+            "减少动画时不许起轮播协程",
+            tickerShouldCycle(TickerMode.IDLE, 3, expanded = false, reduceMotion = true),
+        )
+        assertEquals("减少动画时固定最新一条（末尾）", 2, tickerEntryIndex(size = 3, cursor = 0, reduceMotion = true))
     }
 
     // ── ④ 设置页五卡（v1.4 §3.10）────────────────────────────────────────

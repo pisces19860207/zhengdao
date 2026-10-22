@@ -200,7 +200,7 @@ class ModelPickerGateTest {
             setOf("titleSmall", "bodyMedium", "bodySmall"),
             roles,
         )
-        val chip = between(screenRaw, "// ── 第一百三十一批 · 顶栏第二件：公司名", "// 状态行**锁单行**")
+        val chip = between(screenRaw, "// ── 第一百三十一批 · 顶栏第二件：公司名", "// 当前型号（§5 空闲条目池第一项）")
         assertEquals("顶栏那颗用的正是 13sp＋10sp 两档",
             setOf("bodySmall", "labelSmall"),
             Regex("typography\\.([a-zA-Z]+)").findAll(chip).map { it.groupValues[1] }.toSet(),
@@ -246,7 +246,7 @@ class ModelPickerGateTest {
 
     @Test
     fun 顶栏公司名那颗逐条对上补充节() {
-        val chip = between(screenRaw, "// ── 第一百三十一批 · 顶栏第二件：公司名", "// 状态行**锁单行**")
+        val chip = between(screenRaw, "// ── 第一百三十一批 · 顶栏第二件：公司名", "// 当前型号（§5 空闲条目池第一项）")
         val chipCode = codeOnly(chip)
         assertTrue("13sp 墨", chipCode.contains("typography.bodySmall") && chipCode.contains("colorScheme.onSurface"))
         assertTrue("角标 10sp 次墨", chipCode.contains("typography.labelSmall") && chipCode.contains("onSurfaceVariant"))
