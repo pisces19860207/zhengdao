@@ -88,9 +88,16 @@ internal object BaopuRuntime {
      * 引擎一份的来历见 [engine]——换通道必须换引擎（provider 是构造期注入的），
      * 重建由下次 [engine] 调用完成；旧引擎的 daemon 线程闲着无害（换通道是低频动作）。
      */
-    fun switchChannel(context: Context, channelId: String, apiKey: String, baseUrl: String? = null, model: String? = null) {
+    fun switchChannel(
+        context: Context,
+        channelId: String,
+        apiKey: String,
+        baseUrl: String? = null,
+        model: String? = null,
+        protocol: String? = null,
+    ) {
         val appCtx = context.applicationContext
-        ProviderPrefs.save(appCtx, channelId, apiKey, baseUrl, model)
+        ProviderPrefs.save(appCtx, channelId, apiKey, baseUrl, model, protocol)
         synchronized(this) { engineInstance = null }
     }
 
@@ -456,12 +463,14 @@ internal object BaopuRuntime {
                     // Exhausted 的那句人话（不含任何 Key 原文）挂在 notice 上带给界面。
                     val notice = (rotation as? ProviderPrefs.KeyRotation.Exhausted)?.notice.orEmpty()
                     val (cb, cm) = ProviderPrefs.storedCustom(appCtx)
+                    val cp = ProviderPrefs.storedCustomProtocol(appCtx)
                     RunRules.ChannelCandidate(
                         next = ProviderPrefs.fallbackFrom(
                             currentId = cur.id,
                             keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
                             customBase = cb,
                             customModel = cm,
+                            customProtocol = cp,
                             // 第九十三批 · 模型路由的**只读**接线：读 SP 现值传进判据。
                             // 用户没显式开过 AUTO_ROUTE ⇒ autoRoute=false、preference=null ⇒
                             // fallbackFrom 走「取候选名单第一个」的老路，行为与本两行存在之前一致。
@@ -504,6 +513,7 @@ internal object BaopuRuntime {
                 keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
                 customBase = cb,
                 customModel = cm,
+                customProtocol = ProviderPrefs.storedCustomProtocol(appCtx),
             )
         }
         // 第一百二十七批：多 Agent 协作——run_subtasks 的落点（协调器）在这里装配。
