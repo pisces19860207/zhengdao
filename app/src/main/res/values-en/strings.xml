@@ -863,7 +863,6 @@
     <string name="baopu_extract_close">Close</string>
     <!-- ── Baopu tool switches (task 2 addendum; Settings → Terminal & library) ── -->
     <string name="baopu_tools_card">Baopu tools</string>
-    <string name="baopu_tools_desc">Tools Baopu can use. A switched-off tool is never sent to the model, so it cannot see or call it; if it calls anyway it only gets “this tool was switched off by the user” — nothing is switched back on automatically.</string>
     <string name="baopu_tool_read_file">Read file</string>
     <string name="baopu_tool_read_file_desc">Read a text file in the workspace, from a given line, for a given number of lines.</string>
     <string name="baopu_tool_list_dir">List directory</string>
@@ -1163,16 +1162,14 @@
     <string name="baopu_tools_group_default_off">Locked: not sent to the model by default; Baopu asks you when it needs it</string>
     <string name="baopu_tools_group_approved">On: you approved it for good (turn it off on the right anytime)</string>
     <string name="baopu_tools_group_disabled">Off: you turned it off; Baopu cannot unlock it either</string>
-    <string name="baopu_tools_progressive_note">Only Core and Edit show by default; the rest are Locked — not disabled, just invisible to the model. When Baopu needs one it pops a card asking you (this session / always / cancel); it works only after you agree. "Always" is the same tier as the group switch on the right: on = you approved it, off = even Baopu cannot unlock it (your switch wins). Each tool inside keeps its own switch too — the two tiers coexist.</string>
-    <!-- Batch 61 §1: collapsing the tool-switch groups on the settings page. Display only - no switch read/write changed.
-         Arrows reuse the existing common_expand_arrow / common_collapse_arrow; baopu_tools_fold_list_sep is the
-         separator between tool names in the collapsed summary line (Chinese ideographic comma vs English comma). -->
-    <string name="baopu_tools_fold_note">Groups start collapsed: tap a group name to expand or collapse. While collapsed the group keeps a standing summary line of what is switched off - tools you turned off never hide behind the fold.</string>
-    <string name="baopu_tools_fold_empty">No tools in this group</string>
-    <string name="baopu_tools_fold_all_on">All on</string>
-    <string name="baopu_tools_fold_all_off">All %1$d tools here are off</string>
-    <string name="baopu_tools_fold_some_off">%1$d off: %2$s</string>
-    <string name="baopu_tools_fold_list_sep">", "</string>
+    <!-- Batch 141 section 8: the Baopu tools area is now one summary card. The three long notes
+         and the six collapsed-summary strings retired with the long list; behaviour is unchanged
+         (a switched-off tool still never reaches the model, and a hallucinated call is still refused). -->
+    <string name="baopu_tools_summary">Tools %1$d · %2$d groups on · %3$d pending</string>
+    <string name="baopu_tools_rows_empty">Nothing needs you</string>
+    <string name="baopu_tools_row_pending">Needs your OK</string>
+    <string name="baopu_tools_row_closed">Off</string>
+    <string name="baopu_tools_row_partial">%1$d off</string>
     <string name="baopu_tool_capabilities">Tool roster (capabilities)</string>
     <string name="baopu_tool_capabilities_desc">Look and unlock: lists every tool group with a one-line summary and who is default-visible / unlocked / switched off by you, then unlocks groups for this session. It only changes "which tools the model can see this round" and touches no files, so no confirmation card. A group you switched off stays locked — and it will say so honestly.</string>
     <string name="baopu_tool_preview_local_file">Local preview (XuanLan)</string>
