@@ -21,6 +21,11 @@ internal data class QueuedTurn(
     val rowId: Long = 0L,
     /** 入队时提交给单写者线程的插入 Future（恢复出来的老行没有它）。 */
     val persist: Future<Long>? = null,
+    /**
+     * 入队时刻（毫秒）。151 批：`run_queue` 兜底删要拿它区分「本轮这一条」和
+     * 「同会话同文案的另一条」——老行（恢复出来的）没有它，按 0 处理。
+     */
+    val submittedAt: Long = 0L,
 )
 
 /** 单活跃门当前握着谁（纯判据的输入，不直接读 AtomicReference）。 */

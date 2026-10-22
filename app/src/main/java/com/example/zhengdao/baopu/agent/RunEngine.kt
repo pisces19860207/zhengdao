@@ -275,6 +275,16 @@ internal class RunEngine(
      */
     private val queueGate = Object()
 
+    /**
+     * 151 批 F 补：已过闸（poll 出）但还没收尾的条数。
+     *
+     * 150 批把「取条＋停止检查」关进了同一把锁，但 `stop()` 的 notice 只数
+     * `clearQueue` 清掉的内存队列条数——已取出的那条不在内存队列里，用户会看到
+     * 「清掉 N 条」却不知道还有一条已落库、续跑时会继续。这个计数只用于把话说全，
+     * 不改停止语义。
+     */
+    private val polledInFlight = java.util.concurrent.atomic.AtomicInteger(0)
+
     init {
         // 冷启动把上次没开跑的排队条读回内存；**不自动开跑**（避免背地里烧 token）。
         // 提交在 runExecutor 最前面：之后任何 send 的 drain 都排在它后面，恢复与入队不抢。
@@ -645,6 +655,7 @@ internal class RunEngine(
             text = text,
             imageRelPaths = imageRelPaths,
             persist = persistQueuedTurn(sessionId, text, imageRelPaths),
+            submittedAt = System.currentTimeMillis(),
         )
         runQueue.enqueue(turn)
         emitQueueChanged(sessionId)
@@ -778,7 +789,9 @@ internal class RunEngine(
                 // 被 clearQueue 一起清掉并计入「清掉 N 条」；这条先拿锁 ⇒ 过闸，过了闸就必须
                 // 进 runLoop——不许在检查点之后再 break 丢弃（那正是审计 F 的「取出后永久丢失」）。
                 val turn = synchronized(queueGate) {
-                    if (stopRequested) null else runQueue.poll(sessionId)
+                    if (stopRequested) null else runQueue.poll(sessionId)?.also {
+                        polledInFlight.incrementAndGet()
+                    }
                 } ?: break
                 emitQueueChanged(sessionId)
                 val rowId = ensureQueueRow(turn)
@@ -791,7 +804,10 @@ internal class RunEngine(
                 _tailTruncated.value = false
                 pendingImageRelPaths = turn.imageRelPaths
                 try {
-                    runLoop(sessionId, userText = turn.text, resumed = false, queueRowId = rowId)
+                    runLoop(
+                        sessionId, userText = turn.text, resumed = false,
+                        queueRowId = rowId, queueSubmittedAt = turn.submittedAt,
+                    )
                 } catch (e: Exception) {
                     log("抱朴引擎：排队轮崩了 ${e.javaClass.simpleName}: ${e.message}")
                     _state.value = RunState.ABORTED
@@ -800,6 +816,7 @@ internal class RunEngine(
                     turnImages = emptyList()
                     turnNotes = emptyList()
                     pendingImageRelPaths = emptyList()
+                    polledInFlight.decrementAndGet()
                 }
                 if (!RunQueueRules.canAutoAdvance(
                         _state.value, stopRequested, runQueue.size(sessionId),
@@ -973,7 +990,18 @@ internal class RunEngine(
             // 第一百一十七批：停止 = 连本会话还没开跑的排队条一起清（派工单「按设计清队列」）。
             _sessionKey.value?.removePrefix("id:")?.toLongOrNull()?.let { sid ->
                 val n = clearQueue(sid)
-                if (n > 0) _notice.value = "已停止，排队中的 $n 条也清掉了"
+                // 151 批 F：已 poll 出、还没收尾的那条不在内存队列里 ⇒ n 不含它。
+                // 这里把两条分开说，别让用户以为「都清完了」而续跑时又冒出一条。
+                val running = polledInFlight.get()
+                val text = when {
+                    n > 0 && running > 0 ->
+                        "已停止：清掉 $n 条排队；另有 1 条已开始处理的消息会保留，可续跑"
+                    n > 0 -> "已停止，排队中的 $n 条也清掉了"
+                    running > 0 ->
+                        "已停止：正在处理的那条会停在当前步，消息保留可续跑"
+                    else -> null
+                }
+                if (text != null) _notice.value = text
             }
         }
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")
@@ -1147,6 +1175,7 @@ internal class RunEngine(
         userText: String?,
         resumed: Boolean,
         queueRowId: Long = -1L,
+        queueSubmittedAt: Long = 0L,
     ) {
         // 150批 A：四个 run 级计数器在入口统一复位——必须在 channelBroken 判断**之前**调，
         // 否则上一轮熔断会把这一轮直接拦死；send/resume/approveRestoredPending/
@@ -1270,7 +1299,9 @@ internal class RunEngine(
             // 丢弃闸正是审计 F 的病灶（丢条且不计入「清掉 N 条」），随同锁闸一并撤销。
             // 新一轮 ⇒ 新计划：不继承上一轮的勾选状态（新任务不该因同名条目被钉 done）
             planController.newRound()
-            val persisted = persistUserMessage(sessionId, userText, turnImagePaths, queueRowId)
+            val persisted = persistUserMessage(
+                sessionId, userText, turnImagePaths, queueRowId, queueSubmittedAt,
+            )
             if (!persisted) {
                 // 消息没落库就不许跑：跑了等于「库里有答案、没有问题」，续跑也会错位。
                 _notice.value = "用户消息没落库（已记日志）：这一轮没有跑"
@@ -2656,6 +2687,7 @@ internal class RunEngine(
         text: String,
         imageRelPaths: List<String> = emptyList(),
         queueRowId: Long = -1L,
+        queueSubmittedAt: Long = 0L,
     ): Boolean {
         var msgId = -1L
         // P2-3（第五十六批）：① `.get()` 等事务真的提交（旧实现把 Future 丢了，
@@ -2672,14 +2704,25 @@ internal class RunEngine(
                         // 150批 I：ensureQueueRow 返回 0L ⇒ 队列行可能残留（落库 Future 丢失、
                         // 补写也没成功时拿不到 id）。按 (session, text) 兜底删：消息这就要落库，
                         // 同文队列行必须跟着走，否则重进 App 会被 restore 再排一遍（双发）。
+                        // 151 批 I：**只删最新的一条匹配行**。同一会话可能连发两条完全相同的
+                        // 文本（连点发送/复制粘贴）；按文案全删会误删另一条合法排队消息。
+                        // 迟到落库的那条按 id 一定是较新的 ⇒ 取 max(id) 删一条；若我们的行还
+                        // 没落库、这里匹配到的是别人的旧行，宁可留一条残留（下次冷启动可见）
+                        // 也不误删用户消息——残留的代价是重复问一次，误删的代价是消息没了。
                         val sel = BaopuSql.selectRunQueue(sessionId)
-                        val ids = mutableListOf<Long>()
+                        var newestMatch = 0L
                         d.rawQuery(sel.sql, sel.args).use { c ->
-                            while (c.moveToNext()) if (c.getString(2) == text) ids.add(c.getLong(0))
+                            while (c.moveToNext()) {
+                                if (c.getString(2) == text) {
+                                    val id = c.getLong(0)
+                                    if (id > newestMatch) newestMatch = id
+                                }
+                            }
                         }
-                        ids.forEach { id ->
-                            val q = BaopuSql.deleteRunQueue(id)
+                        if (newestMatch > 0) {
+                            val q = BaopuSql.deleteRunQueue(newestMatch)
                             d.execSQL(q.sql, q.args)
+                            log("抱朴引擎：队列行兜底删（id=$newestMatch，同文案仅删最新一条）")
                         }
                     }
                     val now = System.currentTimeMillis()
