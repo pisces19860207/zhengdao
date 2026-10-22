@@ -516,6 +516,9 @@ internal class RunEngine(
         log = log,
     )
 
+    /** 这一步有没有成功执行过 update_plan（软档计数用；每步开始时清零）。 */
+    private var planUpdatedInStep = false
+
     init {
         PlanTool.sink = planController
     }
@@ -1431,6 +1434,7 @@ internal class RunEngine(
                     _state.value = RunState.ACTING
                     persistStep(sessionId, stepCount, "Acting")
                     var terminateRound = false
+                    planUpdatedInStep = false
                     // ── 第九十二批：工具调度（读并行 ＋ 写单飞）──────────────────
                     // 先把这一批**排段**：连续的只读工具合成一段（并发上限见
                     // ToolScheduling.MAX_READ_PARALLEL），写工具各自独占一段。
@@ -1469,6 +1473,15 @@ internal class RunEngine(
                                 }
                         }
                         if (terminateRound) break
+                    }
+                    // 软档（140）：这一步跑完按「有没有成功 update_plan」记账；
+                    // 连续 3 步都没有 ⇒ 弹御批卡。只提示，不阻断下一步，也不要求一步一勾。
+                    if (!terminateRound) {
+                        if (planUpdatedInStep) {
+                            planController.notePlanUpdated()
+                        } else if (planController.noteToolStep()) {
+                            promptPlanDeviation(sessionId, stepCount, history)
+                        }
                     }
                 }
 
@@ -2167,6 +2180,8 @@ internal class RunEngine(
     ): ToolResultFlow = when (result) {
         is GuardPipeline.Result.Done -> {
             consecutiveToolFailures = 0
+            // 软档（140）：update_plan 真成功才算「更新了计划」（被卡拦下的走 Failed）。
+            if (result.call.name == PlanTool.NAME) planUpdatedInStep = true
             // 收尾闸记账：只记真写成功的调用（失败/被拒不算产物）
             val touchedPaths = VerifyTargets.pathsOf(result.call.name, result.call.arguments)
             touchedPaths.forEach { verifyTouched += it }
@@ -2342,6 +2357,11 @@ internal class RunEngine(
         call: ToolCall,
         history: MutableList<HistoryMessage>,
     ): ToolResultFlow {
+        // 软档（140）：计划结构变更必须在真执行前过用户那张卡。被拒 ⇒ 本次调用
+        // 不执行、不落库，失败原文回灌给模型；等人耗时不计进工具耗时（传 0）。
+        planChangeGate(call)?.let { blocked ->
+            return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
+        }
         val toolStartedAt = System.currentTimeMillis()
         val result = pipeline.execute(call) { name, text ->
             writeSpill(sessionId, name, text)
@@ -2423,6 +2443,63 @@ internal class RunEngine(
             }
 
             is ConfirmFlow.Outcome.Ignored -> ToolResultFlow.CONTINUE // 双保险：不该发生，跳过这个调用
+        }
+    }
+
+    /**
+     * 软档（140）· 计划结构变更闸：在工具真执行前问用户。
+     *
+     * 为什么放在引擎而不是 `PlanController.submit`：submit 跑在工具线程上，而那一步的
+     * 执行线程（zd-baopu-run）本来就在等它；卡要弹给界面、等人点，必须回到引擎线程用
+     * [askUser]（与视觉授权卡同一条路）。submit 里仍保留第二道闸（JVM 直测
+     * 「悄悄改 ⇒ 拒绝」）。
+     *
+     * @return null = 放行（不是 update_plan / 初始计划 / 只改进度 / 已获授权）；
+     *   非 null = 用户没同意，按失败结果回灌（不执行、不落库）。
+     */
+    private fun planChangeGate(call: ToolCall): GuardPipeline.Result.Failed? {
+        if (call.name != PlanTool.NAME) return null
+        val change = planController.previewChange(call.arguments) ?: return null
+        if (!change.needsCard || planController.isChangeAuthorized()) return null
+        log("抱朴计划：结构变更待确认（新增 ${change.added.size} 条 / 删去 ${change.removed.size} 条）")
+        val picked = askUser(PlanGuardCards.changeRequest(change))
+        if (PlanGuardRules.changeAccepted(picked?.id)) {
+            planController.authorizeNextChange()
+            return null
+        }
+        log("抱朴计划：用户没同意改动（${picked?.id ?: "timeout"}）⇒ 本次 update_plan 不执行")
+        return GuardPipeline.Result.Failed(
+            call = call,
+            error = PlanGuardRules.changeBlocked(change),
+        )
+    }
+
+    /**
+     * 软档（140）· 连续 3 步偏离卡：回计划 / 更新计划 / 继续。
+     *
+     * 只在引擎线程（zd-baopu-run）调；[askUser] 有界等待，超时按「继续」收场。
+     * 「回计划 / 更新计划」各往模型历史里塞一条提示（只进内存历史，不落库、不进正文）；
+     * 「继续」什么都不塞——用户要的是不打断。
+     */
+    private fun promptPlanDeviation(
+        sessionId: Long,
+        step: Int,
+        history: MutableList<HistoryMessage>,
+    ) {
+        val items = planController.currentPlan()
+        log(
+            "抱朴计划：连续 $PLAN_STALE_STEPS 步未推进计划 ⇒ 弹偏离卡" +
+                "（session=$sessionId, step=$step）",
+        )
+        val picked = askUser(PlanGuardCards.deviationRequest(items))
+        val action = PlanGuardRules.deviationAction(picked?.id)
+        planController.noteDeviationAnswered(action)
+        PlanGuardRules.deviationFeed(action, items)?.let { feed ->
+            history += HistoryMessage(
+                "local-plan-${System.nanoTime()}",
+                HistoryMessage.ROLE_ASSISTANT,
+                feed,
+            )
         }
     }
 

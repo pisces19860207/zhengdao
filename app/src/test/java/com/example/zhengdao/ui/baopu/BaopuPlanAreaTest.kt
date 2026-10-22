@@ -1,17 +1,19 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
-// 依据：派工单第一百零六批 §3（测试 · 计划区）＋ 设计 v1.5 §3.11。
+// 依据：派工单第一百四十批 §测试（胶囊计数 / 只列未完成 / 当前步骤高亮 / 无计划隐藏）
+// ＋ §设计约束（11:50：120dp / 28dp / 48dp / rPill / rSheet / 320dp / 8 条折叠 / 黛青高亮）。
 //
-// 两层判据（与 `BaopuPlanCardTest` 同房型）：
-// - **纯函数层**（JVM 直测）：`planAreaGroups` / `planCapsuleState` / `planGroupExpanded` /
-//   `planGroupStale` / `planGroupTitle` / `planTimeLabel`——本仓无 Robolectric，Compose
-//   渲染跑不起来，所以判据全压在纯函数与源码断言上；
-// - **源码级门禁**：计划不进正文（J16 升级）、胶囊显隐只看有没有计划（J15 迁移）、
-//   触控/尺寸常量、挂载位置（消息区内、卡区之前）。
+// 两层判据（与 106 版同房型）：
+// - **纯函数层**（JVM 直测）：`planAreaPlans` / `planCapsuleState` / `planPanelSlice` /
+//   `planSummaryExpanded` / `planGroupStale` / `planGroupTitle` / `planTimeLabel` /
+//   `planPalette`——本仓无 Robolectric，Compose 渲染跑不起来，判据全压在纯函数与源码断言；
+// - **源码级门禁**：胶囊/面板尺寸、当前步骤只染黛青不整行加粗、无计划零占位、
+//   计划不进正文、挂载位置、可滚/可收回。
 //
-// 负例靶心（派工单 §3「负例」）：
-// ① 计划卡回正文 ⇒ `正文零计划卡` 红；
-// ② 胶囊无计划也占位 ⇒ `无计划_胶囊态为null` 与 `胶囊显隐只看有没有计划` 红。
+// 负例靶心（派工单 §测试）：
+// ① 已完成计划仍占位 ⇒ `只列未完成` 与 `胶囊计数` 红；
+// ② 无计划也占位 ⇒ `无计划_胶囊态为null` 与 `源码_无计划整块不渲染` 红；
+// ③ 硬绑一步一勾 ⇒ `BaopuPlanCard` 的高亮若改成整行加粗/整行着色，`只染当前行` 红。
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.PlanRules
@@ -39,9 +41,6 @@ class BaopuPlanAreaTest {
 
     private fun textPart(t: String) = BaopuUiPart(kind = "text", text = t)
     private fun toolPart(t: String = "update_plan") = BaopuUiPart(kind = "tool", text = "结果：$t", tool = t)
-
-    private fun planOf(vararg items: Pair<String, String>) =
-        BaopuUiPlan(items.map { (t, s) -> BaopuPlanItem(t, s) })
 
     private fun payload(vararg items: Pair<String, String>) =
         PlanRules.toJson(items.map { (t, s) -> PlanRules.PlanItem(t, s) })
@@ -79,6 +78,12 @@ class BaopuPlanAreaTest {
         .replace(Regex("(?s)/\\*.*?\\*/"), "")
         .replace(Regex("(?m)^[ \\t]*//.*$"), "")
 
+    private fun res(name: String): String {
+        val roots = listOf(File("app/src/main/res/$name"), File("src/main/res/$name"))
+        val f = roots.firstOrNull { it.isFile } ?: error("找不到 res/$name")
+        return f.readText()
+    }
+
     // ── 胶囊：无计划零占位 ────────────────────────────────────────────────
 
     @Test
@@ -86,223 +91,250 @@ class BaopuPlanAreaTest {
         assertNull("空会话不占位", planCapsuleState(emptyList(), running = false))
         val chatOnly = listOf(msg(1, "user", 1_000, textPart("你好")), msg(2, "assistant", 2_000, textPart("在")))
         assertNull("纯聊天轮不占位", planCapsuleState(chatOnly, running = false))
+        assertTrue(planAreaPlans(chatOnly, running = false).isEmpty())
     }
 
     @Test
-    fun `胶囊显隐只看有没有计划_源码级`() {
+    fun `源码_无计划整块不渲染`() {
         val src = code("BaopuPlanArea.kt")
         assertTrue(
             "无计划必须整块不渲染（零占位），不是渲染一个空胶囊",
-            src.contains("if (capsule == null || groups.isEmpty()) return"),
+            src.contains("if (capsule == null || plans.isEmpty()) return"),
         )
     }
 
-    // ── 胶囊：计数与当前步 ────────────────────────────────────────────────
+    // ── 胶囊：计数＝未完成的计划数（不是步数） ────────────────────────────
 
     @Test
-    fun `胶囊_第n步取第一个doing`() {
-        val messages = round(
-            1, 1_000,
-            payload(
-                "一" to PlanRules.STATUS_DONE,
-                "二" to PlanRules.STATUS_DONE,
-                "三" to PlanRules.STATUS_DOING,
-                "四" to PlanRules.STATUS_TODO,
+    fun `胶囊计数_只数未完成计划`() {
+        val messages = round(1, 1_000, payload("做完一" to PlanRules.STATUS_DONE)) +
+            round(20, 10_000, payload("一" to PlanRules.STATUS_DONE, "二" to PlanRules.STATUS_DOING)) +
+            round(40, 20_000, payload("三" to PlanRules.STATUS_TODO, "四" to PlanRules.STATUS_TODO))
+        val capsule = planCapsuleState(messages, running = true)
+        assertNotNull(capsule)
+        assertEquals("两份计划有未完成项（done 那份不占位）", 2, capsule!!.activeCount)
+        assertEquals("列表也只列两份", 2, planAreaPlans(messages, running = true).size)
+    }
+
+    @Test
+    fun `只列未完成_全done计划不进列表_也不给胶囊留入口`() {
+        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_DONE, "二" to PlanRules.STATUS_DONE))
+        assertTrue("已完成计划必须过滤掉（负例：留着 ⇒ 本断言红）", planAreaPlans(messages, running = false).isEmpty())
+        assertNull("只剩已完成 ⇒ 胶囊也不显示", planCapsuleState(messages, running = false))
+    }
+
+    @Test
+    fun `当前步骤_取第一个doing_没有doing取第一个未完成`() {
+        val withDoing = planAreaPlans(
+            round(
+                1, 1_000,
+                payload(
+                    "一" to PlanRules.STATUS_DONE,
+                    "二" to PlanRules.STATUS_DONE,
+                    "三" to PlanRules.STATUS_DOING,
+                    "四" to PlanRules.STATUS_TODO,
+                ),
             ),
-        )
-        val capsule = planCapsuleState(messages, running = true)!!
-        assertEquals("分子只数 done", 2, capsule.done)
-        assertEquals("分母是全部条目", 4, capsule.total)
-        assertEquals("当前步 = 第一个 doing 的序号（1 起）", 3, capsule.currentStepIndex)
-        assertEquals("当前步短句", "三", capsule.currentText)
-        assertFalse(capsule.allDone)
-    }
+            running = true,
+        ).single()
+        assertEquals("当前步 = 第一个 doing（1 起）", 3, withDoing.currentStepIndex)
+        assertEquals("三", withDoing.currentText)
+        assertEquals("分子只数 done", 2, withDoing.done)
+        assertEquals("分母是全部条目", 4, withDoing.total)
 
-    @Test
-    fun `胶囊_没有doing取第一个todo`() {
-        val messages = round(
-            1, 1_000,
-            payload(
-                "一" to PlanRules.STATUS_DONE,
-                "二" to PlanRules.STATUS_TODO,
-                "三" to PlanRules.STATUS_TODO,
+        val noDoing = planAreaPlans(
+            round(
+                1, 1_000,
+                payload(
+                    "一" to PlanRules.STATUS_DONE,
+                    "二" to PlanRules.STATUS_TODO,
+                    "三" to PlanRules.STATUS_TODO,
+                ),
             ),
+            running = true,
+        ).single()
+        assertEquals("没有 doing 就取第一个未完成", 2, noDoing.currentStepIndex)
+        assertEquals("二", noDoing.currentText)
+    }
+
+    @Test
+    fun `当前步骤高亮_只染当前行_不整行加粗`() {
+        val area = code("BaopuPlanArea.kt")
+        assertTrue(
+            "面板必须把当前步 index 交给卡片（转成 0 起）",
+            area.contains("highlightIndex = summary.currentStepIndex?.minus(1)"),
         )
-        val capsule = planCapsuleState(messages, running = true)!!
-        assertEquals(2, capsule.currentStepIndex)
-        assertEquals("二", capsule.currentText)
-    }
-
-    @Test
-    fun `胶囊_全完成_allDone且无当前步`() {
-        val messages = round(
-            1, 1_000,
-            payload("一" to PlanRules.STATUS_DONE, "二" to PlanRules.STATUS_DONE),
+        assertTrue("当前步用黛青（palette.accent）", area.contains("accentColor = accent"))
+        val card = code("BaopuPlanCard.kt")
+        assertTrue("卡片只对当前行取前景色", card.contains("highlightIndex == index"))
+        assertTrue("只换颜色", card.contains("color = foreground"))
+        assertFalse(
+            "当前步骤不许靠整行加粗（11:50 设计约束）",
+            card.contains("FontWeight.Bold"),
         )
-        val capsule = planCapsuleState(messages, running = false)!!
-        assertTrue(capsule.allDone)
-        assertNull(capsule.currentStepIndex)
-        assertFalse("全完成不是漏打勾", capsule.stale)
     }
 
-    @Test
-    fun `胶囊_当前轮没报计划_取最后一个有计划的轮`() {
-        val messages = round(1, 1_000, payload("旧一" to PlanRules.STATUS_DONE, "旧二" to PlanRules.STATUS_DOING)) +
-            round(10, 20_000, planPayload = null, answer = "纯聊天")
-        val capsule = planCapsuleState(messages, running = true)!!
-        assertEquals("取的是上一轮那份计划", 2, capsule.total)
-        assertEquals("旧二", capsule.currentText)
-    }
-
-    // ── 分组：全部计划、最新置顶、历史倒序 ───────────────────────────────
+    // ── 聚合：同轮取最后一条、最新置顶、无计划轮不占组 ────────────────────
 
     @Test
-    fun `分组_三份计划全部列出_最新置顶`() {
-        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_DONE)) +
+    fun `聚合_三份未完成计划全部列出_最新置顶`() {
+        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_TODO)) +
             round(20, 10_000, payload("二" to PlanRules.STATUS_DOING)) +
             round(40, 20_000, payload("三" to PlanRules.STATUS_TODO))
-        val groups = planAreaGroups(messages, running = false)
-        assertEquals("按轮列出本会话所有计划", 3, groups.size)
-        assertEquals("最新轮置顶", "三", groups[0].plan.items.single().text)
-        assertEquals("历史倒序", "二", groups[1].plan.items.single().text)
-        assertEquals("最早的在最后", "一", groups[2].plan.items.single().text)
-        assertTrue("最新的那轮就是当前轮", groups[0].isCurrent)
+        val plans = planAreaPlans(messages, running = false)
+        assertEquals("一个会话所有未完成计划集中在这里", 3, plans.size)
+        assertEquals("最新轮置顶", "三", plans[0].plan.items.single().text)
+        assertEquals("历史倒序", "二", plans[1].plan.items.single().text)
+        assertEquals("最早的在最后", "一", plans[2].plan.items.single().text)
+        assertTrue("最新的那轮就是当前轮", plans[0].isCurrent)
+        assertEquals(0, plans[0].ageIndex)
+        assertEquals(2, plans[2].ageIndex)
     }
 
     @Test
-    fun `分组_没有计划的轮不占组`() {
-        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_DONE)) +
+    fun `聚合_没有计划的轮不占组`() {
+        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_TODO)) +
             round(20, 10_000, planPayload = null)
-        val groups = planAreaGroups(messages, running = true)
-        assertEquals("纯聊天轮不进面板", 1, groups.size)
-        assertFalse("那一组不是当前轮", groups[0].isCurrent)
+        val plans = planAreaPlans(messages, running = true)
+        assertEquals("纯聊天轮不进面板", 1, plans.size)
+        assertFalse("那一份不是当前轮的计划", plans[0].isCurrent)
     }
 
     @Test
-    fun `分组_同轮多次update_plan取最后一条`() {
+    fun `聚合_同轮多次update_plan取最后一条`() {
         val messages = listOf(
             msg(1, "user", 1_000, textPart("做事")),
             msg(2, "assistant", 2_000, toolPart()),
             msg(3, "assistant", 2_100, plan = BaopuUiPlan.fromPayload(payload("旧" to PlanRules.STATUS_TODO))),
             msg(4, "assistant", 5_000, toolPart()),
-            msg(5, "assistant", 5_100, plan = BaopuUiPlan.fromPayload(payload("新" to PlanRules.STATUS_DONE))),
+            msg(5, "assistant", 5_100, plan = BaopuUiPlan.fromPayload(payload("新" to PlanRules.STATUS_DOING))),
         )
-        val groups = planAreaGroups(messages, running = false)
-        assertEquals(1, groups.size)
-        assertEquals("后一版覆盖前一版", "新", groups[0].plan.items.single().text)
+        val plans = planAreaPlans(messages, running = false)
+        assertEquals(1, plans.size)
+        assertEquals("后一版覆盖前一版", "新", plans[0].plan.items.single().text)
     }
 
-    // ── J5 迁移：组级展开 ────────────────────────────────────────────────
+    // ── 展开列表：超过 8 条收成「还有 N 个」 ──────────────────────────────
+
+    private fun manyPlans(n: Int): List<PlanSummary> {
+        var messages = emptyList<BaopuUiMessage>()
+        for (i in 1..n) {
+            messages = messages + round(i * 10L, i * 1_000L, payload("计划$i" to PlanRules.STATUS_TODO))
+        }
+        return planAreaPlans(messages, running = false)
+    }
 
     @Test
-    fun `J5组级_运行中当前组自动展开`() {
-        val groups = planAreaGroups(round(1, 1_000, payload("一" to PlanRules.STATUS_DOING)), running = true)
+    fun `展开列表_不超8条_全部显示_没有更多`() {
+        val slice = planPanelSlice(manyPlans(8), showAll = false)
+        assertEquals(8, slice.visible.size)
+        assertEquals(0, slice.hiddenCount)
+    }
+
+    @Test
+    fun `展开列表_超过8条_先收8条_还有N个`() {
+        val slice = planPanelSlice(manyPlans(11), showAll = false)
+        assertEquals(8, slice.visible.size)
+        assertEquals(3, slice.hiddenCount)
+        assertEquals("最新 8 条在前", "计划11", slice.visible.first().plan.items.single().text)
+    }
+
+    @Test
+    fun `展开列表_点还有N个_一次看全`() {
+        val slice = planPanelSlice(manyPlans(11), showAll = true)
+        assertEquals(11, slice.visible.size)
+        assertEquals(0, slice.hiddenCount)
+    }
+
+    // ── J5 迁移：计划级展开 ──────────────────────────────────────────────
+
+    @Test
+    fun `J5计划级_运行中当前计划自动展开`() {
+        val plans = planAreaPlans(round(1, 1_000, payload("一" to PlanRules.STATUS_DOING)), running = true)
         assertTrue(
-            "跑着 ⇒ 当前组展开，打开面板即见每条 ✓/●/○",
-            planGroupExpanded(groups.single(), running = true, userChoice = emptyMap()),
+            "跑着 ⇒ 当前计划展开，打开面板即见每条 ✓/●/○",
+            planSummaryExpanded(plans.single(), running = true, userChoice = emptyMap()),
         )
     }
 
     @Test
-    fun `J5组级_跑完当前组自动收起`() {
-        val groups = planAreaGroups(round(1, 1_000, payload("一" to PlanRules.STATUS_DONE)), running = false)
+    fun `J5计划级_跑完自动收起`() {
+        val plans = planAreaPlans(round(1, 1_000, payload("一" to PlanRules.STATUS_DOING)), running = false)
         assertFalse(
             "跑完 ⇒ 收起（胶囊入口保留）",
-            planGroupExpanded(groups.single(), running = false, userChoice = emptyMap()),
+            planSummaryExpanded(plans.single(), running = false, userChoice = emptyMap()),
         )
     }
 
     @Test
-    fun `J5组级_用户选择优先_跑完也不收回用户刚点的展开`() {
-        val groups = planAreaGroups(round(1, 1_000, payload("一" to PlanRules.STATUS_DONE)), running = false)
-        val key = groups.single().roundKey
+    fun `J5计划级_用户选择优先`() {
+        val plans = planAreaPlans(round(1, 1_000, payload("一" to PlanRules.STATUS_DOING)), running = false)
+        val key = plans.single().roundKey
         assertTrue(
             "用户点开过 ⇒ 保持用户选择",
-            planGroupExpanded(groups.single(), running = false, userChoice = mapOf(key to true)),
+            planSummaryExpanded(plans.single(), running = false, userChoice = mapOf(key to true)),
         )
         assertFalse(
             "用户收起过 ⇒ 跑着也照用户的",
-            planGroupExpanded(groups.single(), running = true, userChoice = mapOf(key to false)),
+            planSummaryExpanded(plans.single(), running = true, userChoice = mapOf(key to false)),
         )
     }
 
-    @Test
-    fun `J5组级_历史组不因在跑而展开`() {
-        val messages = round(1, 1_000, payload("旧" to PlanRules.STATUS_DONE)) +
-            round(20, 10_000, payload("新" to PlanRules.STATUS_DOING))
-        val groups = planAreaGroups(messages, running = true)
-        assertTrue("当前组展开", planGroupExpanded(groups[0], running = true, userChoice = emptyMap()))
-        assertFalse(
-            "历史组不跟跑",
-            planGroupExpanded(groups[1], running = true, userChoice = emptyMap()),
-        )
-    }
-
-    // ── 漏打勾（W11c） ──────────────────────────────────────────────────
+    // ── 漏打勾（W11c，106 版口径原样保留） ────────────────────────────────
 
     @Test
     fun `漏打勾_已结束的轮还有未完成项才算`() {
-        val items = planOf(
-            "一" to PlanRules.STATUS_DONE,
-            "二" to PlanRules.STATUS_TODO,
-        ).items
         val round = groupRounds(round(1, 1_000, payload("一" to PlanRules.STATUS_DONE))).single()
+        val items = BaopuUiPlan.fromPayload(
+            payload("一" to PlanRules.STATUS_DONE, "二" to PlanRules.STATUS_TODO),
+        )!!.items
         assertTrue("跑完了还有 todo ⇒ 漏打勾", planGroupStale(round, running = false, items = items))
-    }
-
-    @Test
-    fun `漏打勾_在跑的当前轮不算漏`() {
-        val items = planOf("一" to PlanRules.STATUS_DOING).items
-        val round = groupRounds(round(1, 1_000, payload("一" to PlanRules.STATUS_DOING))).single()
-        assertFalse("在跑是正常中间态", planGroupStale(round, running = true, items = items))
         assertFalse(
-            "全 done 更不算漏",
-            planGroupStale(round, running = false, items = planOf("一" to PlanRules.STATUS_DONE).items),
+            "在跑的当前轮不算漏",
+            planGroupStale(round, running = true, items = items),
         )
     }
 
     @Test
-    fun `漏打勾_分组里带上stale标记`() {
+    fun `漏打勾_面板里带上stale标记_但不替它补勾`() {
         val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_DONE, "二" to PlanRules.STATUS_TODO))
-        val groups = planAreaGroups(messages, running = false)
-        assertTrue("结束轮有未完成项 ⇒ 组头挂 chip", groups.single().stale)
-        assertEquals(
-            "面板里也不替它补勾",
-            2,
-            groups.single().plan.items.size,
-        )
+        val plans = planAreaPlans(messages, running = false)
+        assertTrue("结束轮有未完成项 ⇒ 计划行挂 chip", plans.single().stale)
+        assertEquals("面板里也不替它补勾", 2, plans.single().plan.items.size)
+        assertEquals(1, plans.single().done)
     }
 
-    // ── 组头：本轮 / 上一轮 / 第 N 轮 ＋ 时间 ────────────────────────────
+    // ── 计划头：本轮 / 上一轮 / 第 N 轮 ＋ 时间 ────────────────────────────
 
     @Test
-    fun `组头_当前轮本轮_最新历史组上一轮_更早第N轮`() {
-        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_DONE)) +
+    fun `计划头_当前轮本轮_最新历史轮上一轮_更早第N轮`() {
+        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_TODO)) +
             round(20, 10_000, planPayload = null) +
-            round(40, 20_000, payload("三" to PlanRules.STATUS_DONE))
-        val groups = planAreaGroups(messages, running = false)
-        assertEquals(PlanGroupTitleKind.CURRENT, planGroupTitle(groups[0]).kind)
-        // 第 2 轮没有计划，所以最新的历史组是第 1 轮（它前面只有它自己）
-        assertEquals(PlanGroupTitleKind.NTH, planGroupTitle(groups[1]).kind)
-        assertEquals("第 N 轮取全轮序号", 1, planGroupTitle(groups[1]).nth)
+            round(40, 20_000, payload("三" to PlanRules.STATUS_TODO))
+        val plans = planAreaPlans(messages, running = false)
+        assertEquals(PlanGroupTitleKind.CURRENT, planGroupTitle(plans[0]).kind)
+        assertEquals(
+            "第 2 轮没有计划，所以最新历史计划是第 1 轮",
+            PlanGroupTitleKind.NTH,
+            planGroupTitle(plans[1]).kind,
+        )
+        assertEquals("第 N 轮取全轮序号", 1, planGroupTitle(plans[1]).nth)
     }
 
     @Test
-    fun `组头_当前轮没计划_最新有计划的组叫上一轮`() {
-        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_DONE)) +
+    fun `计划头_当前轮没计划_最新有计划的叫上一轮`() {
+        val messages = round(1, 1_000, payload("一" to PlanRules.STATUS_TODO)) +
             round(20, 10_000, planPayload = null)
-        val groups = planAreaGroups(messages, running = true)
+        val plans = planAreaPlans(messages, running = true)
         assertEquals(
-            "当前轮还没报计划 ⇒ 最新有计划的组是上一轮",
+            "当前轮还没报计划 ⇒ 最新有计划的叫上一轮",
             PlanGroupTitleKind.PREV,
-            planGroupTitle(groups.single()).kind,
+            planGroupTitle(plans.single()).kind,
         )
     }
 
     @Test
     fun `时间标签_今天昨天更早三态`() {
-        // 时刻与判定都在系统默认时区里造（生产路径走 TimeFormats，唯一真源），
-        // 所以在任何时区的机器上这条都自洽。
         val zone = TimeZone.getDefault()
         fun at(y: Int, m: Int, d: Int, h: Int, min: Int): Long =
             Calendar.getInstance(zone).apply {
@@ -324,7 +356,80 @@ class BaopuPlanAreaTest {
         assertEquals("10-18", older.date)
     }
 
-    // ── 源码门禁：计划不进正文、规格常量、挂载位置 ──────────────────────
+    // ── 11:50 设计约束：尺寸、颜色、触控 ──────────────────────────────────
+
+    private fun luminance(argb: Long): Double {
+        fun channel(shift: Int): Double {
+            val c = ((argb shr shift) and 0xFF) / 255.0
+            return if (c <= 0.03928) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+    }
+
+    private fun contrast(a: Long, b: Long): Double {
+        val la = luminance(a)
+        val lb = luminance(b)
+        return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
+    }
+
+    @Test
+    fun `胶囊规格_28dp视觉_48dp热区_120dp宽_rPill`() {
+        val src = code("BaopuPlanArea.kt")
+        assertTrue("视觉高 28dp", src.contains("PLAN_CAPSULE_VISUAL_DP = 28"))
+        assertTrue("命中热区 ≥48dp", src.contains("PLAN_CAPSULE_TOUCH_DP = 48"))
+        assertTrue("宽 ≤120dp（现状 268dp 必须收）", src.contains("PLAN_CAPSULE_MAX_WIDTH_DP = 120"))
+        assertTrue("圆角 rPill", src.contains("RoundedCornerShape(rPill)"))
+        assertTrue("热区真撑到 48dp", src.contains("defaultMinSize(minHeight = PLAN_CAPSULE_TOUCH_DP.dp)"))
+        assertTrue("视觉真收到 28dp", src.contains("height(PLAN_CAPSULE_VISUAL_DP.dp)"))
+    }
+
+    @Test
+    fun `面板规格_rSheet_320限高_行48dp_内部可滚`() {
+        val src = code("BaopuPlanArea.kt")
+        assertTrue("限高 320dp", src.contains("PLAN_PANEL_MAX_HEIGHT_DP = 320"))
+        assertTrue("圆角 rSheet", src.contains("RoundedCornerShape(rSheet)"))
+        assertTrue("每行命中 ≥48dp", src.contains("PLAN_ROW_MIN_DP = 48"))
+        assertTrue("内部可滚（不撑破上限）", src.contains("verticalScroll(rememberScrollState())"))
+        assertTrue("≥8 条折叠阈值", src.contains("PLAN_PANEL_VISIBLE_MAX = 8"))
+    }
+
+    @Test
+    fun `胶囊配色_浅色6点11比_深色同构换色`() {
+        val light = planPalette(dark = false)
+        assertEquals("浅色底 #E3EDE7", 0xFFE3EDE7, light.capsuleBg)
+        assertEquals("浅色字 #2C5F54", 0xFF2C5F54, light.capsuleFg)
+        assertTrue(
+            "浅色胶囊文字对比度 ≥ 4.5（设计稿给 6.11）",
+            contrast(light.capsuleBg, light.capsuleFg) >= 4.5,
+        )
+        assertTrue(
+            "浅色当前步骤黛青在纸面（#F7F4ED）上 ≥ 4.5",
+            contrast(0xFFF7F4ED, light.accent) >= 4.5,
+        )
+
+        val dark = planPalette(dark = true)
+        assertTrue("深色只是换色、结构不变", dark.capsuleBg != light.capsuleBg)
+        assertTrue(
+            "深色胶囊文字对比度 ≥ 4.5",
+            contrast(dark.capsuleBg, dark.capsuleFg) >= 4.5,
+        )
+        assertTrue(
+            "深色当前步骤（青提亮）在墨底上 ≥ 4.5",
+            contrast(0xFF1C1B18, dark.accent) >= 4.5,
+        )
+    }
+
+    @Test
+    fun `胶囊文案_N个进行中_中英都有`() {
+        val zh = res("values/strings.xml")
+        val en = res("values-en/strings.xml")
+        assertTrue("中文文案模板", zh.contains("baopu_plan_capsule_active\">%1\$d 个进行中"))
+        assertTrue("英文文案模板", en.contains("baopu_plan_capsule_active\">%1\$d in progress"))
+        assertTrue("超过 8 条的折叠行", zh.contains("baopu_plan_more\">还有 %1\$d 个"))
+        assertTrue("英文折叠行", en.contains("baopu_plan_more\">%1\$d more"))
+    }
+
+    // ── 源码门禁：计划不进正文、挂载位置、可收回 ──────────────────────────
 
     @Test
     fun `正文零计划卡_计划只在面板`() {
@@ -337,23 +442,10 @@ class BaopuPlanAreaTest {
             "面板里必须复用计划卡做组渲染（不是另写一套条目）",
             code("BaopuPlanArea.kt").contains("BaopuPlanCard("),
         )
-    }
-
-    @Test
-    fun `胶囊与行的触控规格`() {
-        val src = code("BaopuPlanArea.kt")
-        assertTrue("视觉高 32dp", src.contains("PLAN_CAPSULE_VISUAL_DP = 32"))
-        assertTrue("热区 ≥48dp", src.contains("PLAN_CAPSULE_TOUCH_DP = 48"))
-        assertTrue("组头/条目行 ≥48dp", src.contains("PLAN_ROW_MIN_DP = 48"))
-    }
-
-    @Test
-    fun `面板尺寸上限_宽340高六成`() {
-        val src = code("BaopuPlanArea.kt")
-        assertTrue("宽上限 340dp", src.contains("PLAN_PANEL_MAX_WIDTH_DP = 340"))
-        assertTrue("左右让位 32dp（屏宽 360 ⇒ 328）", src.contains("PLAN_PANEL_MARGIN_DP = 32"))
-        assertTrue("高上限 = 屏高 60%", src.contains("PLAN_PANEL_HEIGHT_RATIO = 0.6f"))
-        assertTrue("内部可滚（不撑破上限）", src.contains("verticalScroll("))
+        assertTrue(
+            "计划数据只从消息里的已解析 plan 取（不新开查询）",
+            code("BaopuPlanArea.kt").contains("planOrNull()"),
+        )
     }
 
     @Test

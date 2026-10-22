@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -136,6 +137,9 @@ internal fun planItemNeedsExpand(text: String): Boolean = text.length > PLAN_ITE
  * - [showHeader]：面板已经有组头（「本轮 · 10:24 · 3/6」），卡头不再重复画；
  * - [rowMinHeightDp]：面板要求条目行命中高度 ≥48dp（设计 §3.11 规格表「触控」行）。
  * 两个参数都有默认值 ⇒ 旧调用方（如果有）行为不变。
+ *
+ * 第一百四十批（2026-10-22）：再添两个可选参数 [highlightIndex] / [accentColor]——
+ * 当前步骤只把符号与原文染成黛青，不加粗整行（11:50 设计约束）；默认 null ⇒ 旧行为不变。
  */
 @Composable
 internal fun BaopuPlanCard(
@@ -145,6 +149,8 @@ internal fun BaopuPlanCard(
     modifier: Modifier = Modifier,
     showHeader: Boolean = true,
     rowMinHeightDp: Int = 0,
+    highlightIndex: Int? = null,
+    accentColor: Color? = null,
 ) {
     // 条目级展开：记条目下标（[plan.items] 的顺序由解析器给，同一次渲染内稳定）。
     var expandedItemIndexes by remember { mutableStateOf(setOf<Int>()) }
@@ -183,6 +189,13 @@ internal fun BaopuPlanCard(
             }
             if (expanded) {
                 plan.items.forEachIndexed { index, item ->
+                    // 140：当前步骤只换前景色（黛青），不整行加粗——高亮靠颜色指认。
+                    val isCurrent = highlightIndex == index
+                    val foreground = if (isCurrent && accentColor != null) {
+                        accentColor
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                     Row(
                         Modifier
                             .padding(top = 4.dp)
@@ -192,14 +205,14 @@ internal fun BaopuPlanCard(
                         Text(
                             text = planStatusSymbol(item.status),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = foreground,
                         )
                         Spacer(Modifier.width(6.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 text = item.text,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = foreground,
                                 maxLines =
                                     if (index in expandedItemIndexes) Int.MAX_VALUE
                                     else PLAN_ITEM_COLLAPSED_MAX_LINES,
