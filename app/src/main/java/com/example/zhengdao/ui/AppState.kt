@@ -62,6 +62,10 @@ object AppState {
         val npmPackage: String? = null,   // 非空时可探测已装版本 + 查 npm 最新版
         val installedVersion: String? = null, // node_modules package.json 探测；null = 版本未知
         val uninstallCmd: String? = null, // P3：卸载命令（guest 内执行）
+        // 142：体积提示（实测占用），展示在描述末尾、次墨色、不新开一行（设计约束：
+        // 别让用户装完才发现存储不够）。null = 没有实测值就不显示——不编数字。
+        // manifest 条目不带这个字段（Entry 没有对应项）⇒ 未知 id 一律无提示。
+        val sizeHint: String? = null,
     )
 
     fun rootfsInstalled(ctx: Context): Boolean =
@@ -226,7 +230,8 @@ object AppState {
             AgentInfo(
                 id = "claude-code",
                 name = "Claude Code",
-                desc = "Anthropic 官方 AI 编程助手",
+                // 142 批：描述说人话——使用门槛写在明处（设计文档 §10）
+                desc = "Anthropic 官方编程助手，官方账号登录即用",
                 launchCmd = "claude",
                 installCmd = "curl -fsSL https://claude.ai/install.sh | bash",
                 installed = rootfsInstalled && firstExisting(
@@ -236,7 +241,9 @@ object AppState {
             AgentInfo(
                 id = "hermes",
                 name = "Hermes Agent",
-                desc = "多技能 AI 助手（Nous Research）",
+                // 142 批：「本项目通道」＝走抱朴内置的模型来源，与终端 agent 各自的
+                // 官方登录/Key 是两套并存的体系，UI 上不混写（设计文档 §10/§2）
+                desc = "本项目通道的多技能 AI 助手",
                 launchCmd = "hermes",
                 installCmd = "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
                 installed = rootfsInstalled && firstExisting(
@@ -246,7 +253,10 @@ object AppState {
             AgentInfo(
                 id = "antigravity",
                 name = "AGY CLI（Antigravity）",
-                desc = "Google 新一代 Agent CLI（Gemini/Claude 模型，官方含 linux-arm64 构建；Gemini CLI 已向它合并）",
+                // 142 批：说人话＝Google 账号登录；体积提示收在描述末尾（实测 201MB，
+                // 次墨色不新开一行——装之前就让用户知道要占多少存储）
+                desc = "Google 账号登录，Gemini/Claude 模型",
+                sizeHint = "约 201MB",
                 launchCmd = "agy",
                 installCmd = "curl -fsSL https://antigravity.google/cli/install.sh | bash",
                 installed = rootfsInstalled && firstExisting(
@@ -259,7 +269,9 @@ object AppState {
             AgentInfo(
                 id = "codex",
                 name = "Codex CLI",
-                desc = "OpenAI 官方编程 Agent（可用自己的 API Key 换基底）",
+                // 142 批：官方登录或换自己的 Key 换基底（DeepSeek 可）——与抱朴的
+                // 模型来源分开，不混写（设计文档 §10）
+                desc = "OpenAI 官方编程 Agent，官方登录或换自己的 Key 换基底（DeepSeek 可）",
                 // `--no-daemon` 不是装饰：非 root 的 Android 上 bubblewrap 起不来
                 // （/proc/sys/kernel/overflowuid 读不到）⇒ Codex 的 pid-managed app-server
                 // 子进程秒退。它是**顶层**标志，写在 exec 后面会报 unexpected argument。
