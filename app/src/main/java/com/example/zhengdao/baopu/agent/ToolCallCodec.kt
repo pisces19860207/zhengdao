@@ -5,6 +5,7 @@
 // 帧级解析与流式累积在 baopu/LlmClient.kt 的 LlmSse（依赖单向：agent → baopu）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.LlmProtocol
 import com.example.zhengdao.baopu.RawToolCall
 import org.json.JSONArray
 import org.json.JSONObject
@@ -131,6 +132,42 @@ internal object ToolCallCodec {
             out += ToolCall(id = b.optString("id").ifBlank { "toolu_$i" }, name = name, arguments = args)
         }
         return DecodeResult.Ok(out)
+    }
+
+    /**
+     * 非流式（整包响应）的**生产解码入口**（第一百四十九批：死代码转正第二批）。
+     *
+     * 为什么要有它：[decode] 吃的是流式累积出的 [RawToolCall]，而「一次一回合、
+     * 非流式直连」那条生产路径（eval 回放下发）此前**自己手写了一遍 tool_calls 解析**
+     * ——同一件事两处各一套判据，正是格式层审计点名过的形状。现在两处都从这里进，
+     * **按 provider 协议选解码器**，一张表、一个出口。
+     *
+     * @param root 响应**根对象**（不是 `choices[0]`：协议形状由本函数自己拆，调用方不猜）
+     * @param registry null = 只解码不校验（与 [decode] 同口径）
+     *
+     * 失败一律是 [DecodeResult.Bad] 带**错误原文**，不许在这里吞成 null：
+     * 「协议走错」与「模型没给调用」是两件事，混成一句就没法定位（见两类负例用例）。
+     */
+    fun decodeNonStream(
+        protocol: LlmProtocol,
+        root: JSONObject,
+        registry: ToolRegistry? = null,
+    ): DecodeResult = when (protocol) {
+        LlmProtocol.OPENAI_COMPAT -> {
+            val choice = root.optJSONArray("choices")?.optJSONObject(0)
+                ?: return DecodeResult.Bad("OpenAI 兼容响应里没有 choices[0]（协议走错或响应不完整）")
+            val msg = choice.optJSONObject("message")
+                ?: return DecodeResult.Bad("OpenAI 兼容响应的 choices[0] 里没有 message 对象")
+            val calls = msg.optJSONArray("tool_calls")
+                ?: return DecodeResult.Bad("OpenAI 兼容响应的 message 里没有 tool_calls 数组")
+            decodeOpenAi(calls, registry)
+        }
+
+        LlmProtocol.ANTHROPIC -> {
+            val content = root.optJSONArray("content")
+                ?: return DecodeResult.Bad("Anthropic 响应里没有 content 块数组（协议走错或响应不完整）")
+            decodeAnthropic(content, registry)
+        }
     }
 
     /** arguments JSON 字符串 parse（**坏 JSON 不抛**：返回 null 由调用方转 Bad）。空串按空对象。 */

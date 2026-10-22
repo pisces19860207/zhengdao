@@ -1,5 +1,6 @@
 package com.example.zhengdao.baopu.eval
 
+import com.example.zhengdao.baopu.LlmProtocol
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.DataFence
 import com.example.zhengdao.baopu.agent.GuardPipeline
@@ -44,6 +45,12 @@ internal data class EvalConfig(
     val maxOutputTokens: Int = 2_048,
     /** 通道标识（进结果/trace 对账用；换 baseUrl 必须一起换，否则报告会张冠李戴）。 */
     val providerName: String = "deepseek",
+    /**
+     * 解码用的协议（第一百四十九批）。由 [RuntimeEval.configOf] 从 `provider.protocol` 带入，
+     * 非流式解码器据此选 OpenAI 兼容 / Anthropic 两张表——**这里只是解码**，请求体仍是
+     * 兼容形状那一种（`RuntimeEval.unusableReason` 早就把别的协议拦在自检门外）。
+     */
+    val protocol: LlmProtocol = LlmProtocol.OPENAI_COMPAT,
     /**
      * eval 显式温度（第九十四批 ②）：**只影响 eval**。线上对话的请求体一个字都不动
      * ——`LlmWire.bodyOf` 里根本没有 temperature 字段（有负例钉着，见 EvalDeterminismTest）。
@@ -256,16 +263,16 @@ internal object EvalHarness {
         val rawCalls = msg.optJSONArray("tool_calls") ?: JSONArray()
         if (rawCalls.length() == 0) return Round(content, emptyList(), rawCalls, tokensIn, tokensOut, null)
 
-        val parsed = ArrayList<ToolCall>(rawCalls.length())
-        for (i in 0 until rawCalls.length()) {
-            val c = rawCalls.getJSONObject(i)
-            val fn = c.optJSONObject("function") ?: continue
-            val name = fn.optString("name")
-            val args = ToolCallCodec.parseArgs(fn.optString("arguments", "{}"))
-                ?: return Round(content, emptyList(), rawCalls, tokensIn, tokensOut, "工具参数不是合法 JSON：$name")
-            parsed.add(ToolCall(id = c.optString("id", "call_$i"), name = name, arguments = args))
+        // 第一百四十九批：这里原来手写了一遍 tool_calls 解析（缺 function 就 continue 静默跳过），
+        // 与 ToolCallCodec 那两套判据各说各话。现在从生产解码入口进，按 provider 协议选解码器。
+        // 挂账（接线前后同形，不是本批带来的）：上面 choices/message 那两句还是 OpenAI 形状，
+        // Anthropic provider 的回放会先在那里返回「响应没有 choices」而进不到入口——要真支持，
+        // 得连 Round 的 content/rawCalls/usage 一起按协议拆，那是另一单的活。
+        return when (val decoded = ToolCallCodec.decodeNonStream(cfg.protocol, root)) {
+            is ToolCallCodec.DecodeResult.Ok -> Round(content, decoded.calls, rawCalls, tokensIn, tokensOut, null)
+            is ToolCallCodec.DecodeResult.Bad ->
+                Round(content, emptyList(), rawCalls, tokensIn, tokensOut, decoded.error)
         }
-        return Round(content, parsed, rawCalls, tokensIn, tokensOut, null)
     }
 
     // ── 工作区：撒种、注册表、spill ───────────────────────────────────────
