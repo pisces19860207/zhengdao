@@ -6,10 +6,12 @@
 // 为什么要有它：纯函数直测能证明 helper 自己是对的，证明不了 `BaopuSettingsScreen` 真的
 // 改走了 helper——两边各留一份也能全绿（§4 打回「留了两份实现」就是这么来的）。
 //
-// 判据一律读**剥掉注释**后的源码（先剥块注释再剥整行注释，与 61/59/36 批同一套做法），
-// 且只钉这次真正搬走的字面（`enum class BaopuFoldKind`、`it != ToolGroup.COMPAT`…），
-// 不用宽泛子串：页面里 `baopuToolLabel`/`baopuToolDesc`/`effortLabel` 三张表是 18 批 J1
-// 与 J8 钉死在本页的，`sayArchived` 的七个 R 键是 34 批 U5 钉死在本页的，一条都不许被我顺手搬走。
+// 判据一律读**剥掉注释**后的源码（先剥块注释再剥整行注释，与 61/59/36 批同一套做法）。
+//
+// 141 批更新：工具区从长列表改成一张摘要卡，页面改走的 helper 由「折叠摘要」换成
+// `BaopuToolArea`（`summarize` / `rowsOf` / `baopuToolRowTone`）。**门槛没有放宽**——
+// 原来是「折叠摘要的判据只许在 helper、页面只剩一次调用」，现在是「摘要卡的三个数字与
+// 露面行列只许在 helper、页面只剩各一次调用」，逐条对得上。
 package com.example.zhengdao.ui.baopu
 
 import org.junit.Assert.assertEquals
@@ -42,11 +44,12 @@ class BaopuSettingsSliceGateTest {
     @Test
     fun `门禁_五处判据都从 helper 取`() {
         listOf(
-            "baopuSwitchableGroups(ToolGroup.values()).forEachIndexed",
-            "stringResource(baopuGroupTitle(group))",
-            "baopuGroupCaptionKey(state)",
+            "baopuSwitchableGroups(ToolGroup.values())",
+            "stringResource(baopuGroupTitle(row.group))",
+            "baopuToolRowTone(row.state)",
             "restoreLast(baopuPersonaLayerOf(d.scope), d.name)",
-            "BaopuToolFoldSummary.of(members,",
+            "BaopuToolArea.summarize(toolGroups,",
+            "BaopuToolArea.rowsOf(toolGroups,",
         ).forEach { call ->
             assertTrue("设置页里没有 $call —— 抽取没接线", page.contains(call))
         }
@@ -58,9 +61,12 @@ class BaopuSettingsSliceGateTest {
         assertTrue("helper 文件必须存在",
             repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsRules.kt").isFile)
         listOf(
-            "internal enum class BaopuFoldKind",
-            "internal data class BaopuFoldSummary",
-            "internal object BaopuToolFoldSummary",
+            // 141：折叠摘要三件已退役，换成摘要卡四件（判据本体仍在 helper，页面只剩调用）
+            "internal object BaopuToolArea",
+            "internal data class BaopuToolAreaSummary",
+            "internal data class BaopuToolAreaRow",
+            "internal enum class BaopuToolRowTone",
+            "internal fun baopuToolRowTone(",
             "internal fun baopuGroupTitle(",
             "internal enum class BaopuGroupState",
             "internal fun baopuGroupState(",
@@ -99,8 +105,10 @@ class BaopuSettingsSliceGateTest {
     fun `门禁_helper 里每条判据只算一次`() {
         // 判据本体只有一份：折叠摘要那个 when 的四个出口、取组序的 filter、组标题的 when 分支
         listOf(
-            "members.isEmpty() -> BaopuFoldSummary(BaopuFoldKind.EmptyGroup," to 1,
-            "groupDisabled -> BaopuFoldSummary(BaopuFoldKind.AllOff" to 1,
+            // 141：摘要卡的三个数字与露面行列各只有一处实现
+            "fun summarize(" to 1,
+            "fun rowsOf(" to 1,
+            "internal fun baopuToolRowTone(" to 1,
             // 第一百二十三批：取组序的判据从「只摘 COMPAT」扩成「再摘动态组（MCP）」，
             // 仍只有这一处 filter —— 断言跟着唯一实现走，不允许出现第二份。
             "all.filter { it != ToolGroup.COMPAT && !it.dynamic }" to 1,
@@ -113,9 +121,10 @@ class BaopuSettingsSliceGateTest {
         ).forEach { (needle, times) ->
             assertEquals("helper 里 $needle 出现次数", times, rules.split(needle).size - 1)
         }
-        // 折叠摘要的本体在 helper，页面只剩一次调用（两边各一份就是这个形状）
-        assertEquals(1, page.split("BaopuToolFoldSummary.of(members,").size - 1)
-        assertEquals(1, page.split("stringResource(baopuGroupTitle(group))").size - 1)
+        // 摘要卡的本体在 helper，页面只剩一次调用（两边各一份就是这个形状）
+        assertEquals(1, page.split("BaopuToolArea.summarize(toolGroups,").size - 1)
+        assertEquals(1, page.split("BaopuToolArea.rowsOf(toolGroups,").size - 1)
+        assertEquals(1, page.split("stringResource(baopuGroupTitle(row.group))").size - 1)
         assertEquals(1, rules.split("internal fun baopuGroupTitle(").size - 1)
     }
 
@@ -142,7 +151,7 @@ class BaopuSettingsSliceGateTest {
             Regex("listOf\\(\\s*\"(read_file|list_dir|write_file|delete_path)\"").containsMatchIn(rules))
         assertFalse("不许碰可见性判据（那是第二条链）", Regex("visibleTools\\(|isVisibleTool\\(").containsMatchIn(rules))
         assertFalse("不许自己列成员表", rules.contains("ToolGroupTable.ENTRIES"))
-        assertEquals("成员名单只许在页面里从那张表读一次", 1, page.split("ToolGroupTable.namesOf(group)").size - 1)
+        assertEquals("成员名单只许在页面里从那张表读一次", 1, page.split("ToolGroupTable.namesOf(it)").size - 1)
     }
 
     // ── 4. 搬走的是判据，不是文案：句子与读取点都得还在 ─────────────────────────
@@ -162,24 +171,28 @@ class BaopuSettingsSliceGateTest {
 
     @Test
     fun `门禁_没顺手把别的批次的钉子搬走`() {
-        // 61 批 G6：折叠那六句必须还在页面里被引用（搬走 baopuFoldSummaryText 就是打回）
+        // 61 批那六句折叠文案在 141 批随长列表一起退役（成员名单不进 UI ⇒ 摘要行没有容身之处）。
+        // 门禁反向钉：它们既不许被页面引用，字符串本身也不许留着当零引用资源。
         listOf(
             "baopu_tools_fold_note", "baopu_tools_fold_empty", "baopu_tools_fold_all_on",
             "baopu_tools_fold_all_off", "baopu_tools_fold_some_off", "baopu_tools_fold_list_sep",
         ).forEach { key ->
-            assertTrue("$key 必须仍被设置页引用", page.contains("R.string.$key"))
+            assertFalse("$key 已退役，页面不许再引用", page.contains("R.string.$key"))
+            assertFalse("$key 的字符串也该删掉", zh.contains("name=\"$key\""))
         }
         // 18 批 J1/J8：三张标签表仍是本页的 private fun，两个写入点仍各一处
         listOf("baopuToolLabel", "effortLabel", "baopuToolDesc").forEach { fn ->
             assertTrue("设置页必须有 private fun $fn", page.contains("private fun $fn"))
         }
-        assertEquals(1, Regex("prefs\\.setGroupDisabled\\(group, !want\\)").findAll(page).count())
-        assertEquals(1, Regex("prefs\\.setDisabled\\(name, !want\\)").findAll(page).count())
-        assertEquals(1, Regex("prefs\\.isDisabled\\(it\\)").findAll(page).count())
-        assertEquals("本页只留这几个 prefs 方法（第九十七批新增 approved 两档，别的一律不许）",
+        // 141：组开关三档各一处；单工具开关的写入点从「成员行」搬到「打开组时清单项」，
+        // 仍恰好一处（成员名单不进 UI ⇒ 这是用户把以前关掉的工具开回来的唯一出路）。
+        assertEquals(1, Regex("prefs\\.setGroupDisabled\\(row\\.group, !want\\)").findAll(page).count())
+        assertEquals(1, Regex("prefs\\.setDisabled\\(it, false\\)").findAll(page).count())
+        assertEquals(1, Regex("relockAll\\(listOf\\(row\\.group\\)\\)").findAll(page).count())
+        assertEquals("本页只留这几个 prefs 方法（141：单工具开关的读改走 disabledNames 一次快照）",
             setOf(
                 "setGroupDisabled", "setGroupApproved", "setDisabled",
-                "disabledGroups", "approvedGroups", "isDisabled",
+                "disabledGroups", "approvedGroups", "disabledNames",
             ),
             Regex("prefs\\.(\\w+)\\(").findAll(page).map { it.groupValues[1] }.toSet())
         // 37/34/32 批钉在页内的字面量：回滚三钉 ＋ 归档七句 ＋ 草稿两钉，一个都没被我搬走

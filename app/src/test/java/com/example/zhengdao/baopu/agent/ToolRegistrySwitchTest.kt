@@ -315,14 +315,17 @@ class ToolRegistrySwitchTest {
             )
         }
 
-        // 四、组标题 + 渐进披露那句说明 + 两档默认可见提示：中英都要有
+        // 四、组标题 + 两档默认可见提示：中英都要有
+        // 141 批：工具区改成摘要卡后，`baopu_tools_progressive_note`（渐进披露那段长说明）
+        // 与新增的摘要卡五个键一起换位 —— 这里只管「组标题 / 组状态」这批仍活着的键。
         val zh = File("src/main/res/values/strings.xml").let { if (it.isFile) it else File("app/$it") }.readText()
         val en = File("src/main/res/values-en/strings.xml").let { if (it.isFile) it else File("app/$it") }.readText()
         val keys = ToolGroup.values().filter { it != ToolGroup.COMPAT }
             .map { "baopu_tools_group_${it.key}" } +
             listOf(
                 "baopu_tools_group_default_on", "baopu_tools_group_default_off",
-                "baopu_tools_progressive_note",
+                "baopu_tools_summary", "baopu_tools_row_pending", "baopu_tools_row_closed",
+                "baopu_tools_row_partial", "baopu_tools_rows_empty",
             )
         keys.forEach { key ->
             assertTrue("中文缺 $key", zh.contains("name=\"$key\""))

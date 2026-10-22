@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.io.File
 import androidx.compose.ui.window.Dialog
@@ -93,169 +94,144 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             SettingsSubPage(title = stringResource(R.string.baopu_drawer_settings), onBack = onDismiss) {
 
-            // ── 抱朴工具（刀 2 追加包：工具集「表＋开关」的开关侧）──（自 SettingsDataActivity 原样搬入）
-            // 定位：抱朴页里那个 agent 能用哪些工具，由用户在这里逐项决定。
+            // ── 抱朴工具（第一百四十一批 §8：长列表 → 一张摘要卡）──
+            // 定位：抱朴页里那个 agent 能用哪些工具，由用户在这里决定。
             // 三条口径（派工单原话级）：
             // 1. 关掉的工具**不进发给模型的 tools 数组**——模型根本看不见；
             // 2. 模型若仍幻觉调用被关的工具，回一条工具结果「该工具已被用户关闭」，
             //    **不许自动打开**；
             // 3. 默认五个全启用（read_file / list_dir / search_in_files / file_info / write_file）。
+            //
+            // 141 批把「每组一行开关 ＋ 行内展开成员 ＋ 三段落说明」整段换成 §8 的摘要卡：
+            // 收起只有一行三个数字，点开只列**要你处理**的组。**成员名单不进 UI**
+            // （用户原话「谁关心你具体是哪些工具啊」）⇒ 单工具开关一并退役，组级开关是唯一入口。
             var toolTick by remember { mutableIntStateOf(0) }
-            SectionCard(stringResource(R.string.baopu_tools_card)) {
-                Text(
-                    text = stringResource(R.string.baopu_tools_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            var toolRowsOpen by rememberSaveable { mutableStateOf(false) }
+            // 开关存储（热读热写：改完下一轮请求的 tools 数组就变）。第五十九批两条仍生效：
+            // 1. **这里不造注册表**（`BaopuRuntime.registry` 会把全局 CapabilitiesTool.sink
+            //    指到自己身上，设置页那张临时注册表 `currentSessionId` 是 NO_SESSION ⇒
+            //    用户开过一次设置页后，模型 `capabilities(enable=…)` 就写进 -1 那一格）。
+            //    开关语义 `isEnabled(n) == !prefs.isDisabled(n)` 完全等价 ⇒ 直接读 prefs。
+            // 2. **分组只从那张唯一的分组表读**（[ToolGroupTable]），不新造第二张组表。
+            //
+            // 九个组 × 每个成员一次 isDisabled 全在一次快照里读齐（`toolTick` 订阅），
+            // 不给每个组各留一个 remember —— 那是九个刷新源，迟早有一个不跟手。
+            val prefs = remember { BaopuRuntime.toolPrefs(ctx) }
+            val toolGroups = remember { baopuSwitchableGroups(ToolGroup.values()) }
+            val approvedGroups = remember(toolTick) { prefs.approvedGroups() }
+            val disabledGroupSet = remember(toolTick) { prefs.disabledGroups() }
+            val disabledNameSet = remember(toolTick) { prefs.disabledNames() }
+            val toolStateOf: (ToolGroup) -> BaopuGroupState = { group ->
+                baopuGroupState(
+                    defaultVisible = group in ToolGroup.DEFAULT_VISIBLE,
+                    approved = group in approvedGroups,
+                    disabled = group in disabledGroupSet,
                 )
-                Spacer(Modifier.height(6.dp))
-                // 开关存储（热读热写：改完下一轮请求的 tools 数组就变）。
-                // 第五十九批 §1.1/§1.6 两处改动：
-                // 1. **这里不再造注册表**。以前写的是 `BaopuRuntime.registry(ctx, provider)`，
-                //    而注册表装配时会把全局 `CapabilitiesTool.sink` 指到自己身上——设置页
-                //    这一张是"只为读开关"的临时注册表，`currentSessionId` 还是 NO_SESSION，
-                //    于是用户开过一次设置页之后，模型 `capabilities(enable=…)` 就把解锁写进
-                //    -1 那一格（§4 打回第三条"跨会话串状态"的另一种犯法）。开关的语义
-                //    `isEnabled(n) == !prefs.isDisabled(n)` 完全等价 ⇒ 直接读 prefs，
-                //    一张表、一个存储，注册表留给引擎自己装配。
-                // 2. **分组标题与成员都从那张唯一的分组表读**（[ToolGroupTable]），
-                //    原来这里的 `BaopuToolGroups.GROUPS` 是第二张组表（纯展示也算第二张，
-                //    §1.1 不认），已删。
-                // 状态仍在 SP 里（进程级），Compose 看不见 ⇒ tick 只负责切完那一击触发重组。
-                val prefs = remember { BaopuRuntime.toolPrefs(ctx) }
-                // ── 渐进披露的一句解释（§1.6）──
-                Spacer(Modifier.height(6.dp))
+            }
+            val toolMembersOf: (ToolGroup) -> List<String> = { ToolGroupTable.namesOf(it) }
+            val toolIsDisabled: (String) -> Boolean = { it in disabledNameSet }
+            val toolSummary = BaopuToolArea.summarize(toolGroups, toolStateOf, toolMembersOf, toolIsDisabled)
+            val toolRows = BaopuToolArea.rowsOf(toolGroups, toolStateOf, toolMembersOf, toolIsDisabled)
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 卡外组标签：与 [SectionCard] 的标题同款（本区换的是卡片本体，标签位置不换）
                 Text(
-                    text = stringResource(R.string.baopu_tools_progressive_note),
-                    style = MaterialTheme.typography.bodySmall,
+                    text = stringResource(R.string.baopu_tools_card),
+                    style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
                 )
-                Spacer(Modifier.height(10.dp))
-                // COMPAT（read / bash）不在这里列：它由通道决定、没有开关，
-                // 卡片尾部那两行只读说明（第十八批 §2.1-4）仍是它们的唯一展示位。
-                //
-                // ── 第六十一批 §1：组头可点展开/收起，默认折叠 ────────────────────────
-                // 三条口径（都是"纯展示"，越线就算打回）：
-                // 1. 折叠**不参与任何开关判定**：下面 `prefs.setGroupDisabled` /
-                //    `prefs.setDisabled` 两个写入点、以及 `isDisabled` / `disabledGroups`
-                //    两个读取点全部一行没动；默认值与 `DEFAULT_ENABLED` 也不在这里。
-                //    收起只是把成员藏起来，关掉的工具照样不进 tools 数组、开着的照样进。
-                // 2. 折叠态**必须**留一行「关闭项摘要」（[BaopuToolFoldSummary.of]）——
-                //    用户关掉的工具不许因为收起而查不到；没有关闭项就写「全部开启」。
-                // 3. 折叠状态用 `rememberSaveable(group.key)`：本次页面存活期记住、
-                //    冷启动回默认折叠。用 `remember` 会连旋转/回前台都丢（收起一半又弹开），
-                //    存 SP 又把「UI 姿势」当配置（跨会话串状态那一类雷，59 批刚踩过）。
-                val foldNote = stringResource(R.string.baopu_tools_fold_note)
-                Text(
-                    text = foldNote,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
-                baopuSwitchableGroups(ToolGroup.values()).forEachIndexed { gi, group ->
-                    if (gi > 0) Spacer(Modifier.height(10.dp))
-                    val expanded = rememberSaveable(group.key) { mutableStateOf(false) }
-                    // 第九十七批：组状态四态（默认可见/已锁/已长期同意/已关闭）。
-                    // 上一版「已锁」在界面上显示成「开」，用户看到的就是「工具全都打开的」。
-                    // 2026-10-21 真机缺陷：开关写盘成功，但同屏一直显示「已锁」、退出重进才对
-                    // ——组头没订阅 toolTick（它只在展开后的成员行里被读）。这里用
-                    // remember(toolTick) 把组头挂到同一个刷新源上。
-                    val state = remember(toolTick) {
-                        baopuGroupState(
-                            defaultVisible = group in ToolGroup.DEFAULT_VISIBLE,
-                            approved = group in prefs.approvedGroups(),
-                            disabled = group in prefs.disabledGroups(),
-                        )
-                    }
-                    val groupOn = baopuGroupSwitchOn(state)
-                    // 成员名单只从那张唯一的分组表读（§1「不新造第二张表」）；
-                    // 摘要与展开后的开关共用这一个 members，两行说的一定是同一批工具。
-                    val members = ToolGroupTable.namesOf(group)
-                    // 「关闭项摘要」只描述**用户逐个关掉的工具**：已锁（没同意）不代表工具被关，
-                    // 所以只有 Disabled 才按整组关光算（否则会把「已锁」误报成「全部关闭」）。
-                    val summary = BaopuToolFoldSummary.of(members, groupDisabled = state == BaopuGroupState.Disabled) {
-                        prefs.isDisabled(it)
-                    }
+                // 档位＝信息卡（《纸墨黛青》§6.1）：纸深底 ＋ 只左边 4dp 黛青竖条，**不描四边**
+                // （描四边＝行动卡语义，会与「等你动手」混淆）。这里刻意用 [BaopuInfoContainer]
+                // 而不是 [SectionCard]：后者是白底 0.5dp 发丝边，两层叠起来就是两种边界位置。
+                BaopuInfoContainer {
+                    // 摘要行：整行可点＝展开／收起（热区 ≥48dp）。**不设 maxLines**——
+                    // 200% 字号下宁可折两行也不许裁字（派工单设计约束第 4 条）。
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            // 第一百零四批：组行 64dp 整行可点（派工单④；真机 uiautomator
-                            // 量 bounds，宽高均 ≥64×64）。视觉上仍是两行文字的高度，
-                            // 只是把命中区给足——用户点空白处也能展开，不用瞄小开关。
-                            .heightIn(min = 64.dp)
-                            // 组头整行可点＝展开/收起。右边的组开关自己吃点击事件、
-                            // 不会顺带折叠（嵌套 clickable：子级消费掉，父级收不到）。
-                            .clickable { expanded.value = !expanded.value },
+                            .heightIn(min = 48.dp)
+                            .clickable { toolRowsOpen = !toolRowsOpen },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(baopuGroupTitle(group)),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                text = stringResource(baopuGroupCaptionKey(state)),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        // 箭头用既成键（§1「能复用就复用」）：common_expand_arrow / common_collapse_arrow
                         Text(
                             text = stringResource(
-                                if (expanded.value) R.string.common_collapse_arrow else R.string.common_expand_arrow,
+                                R.string.baopu_tools_summary,
+                                toolSummary.toolCount,
+                                toolSummary.groupOnCount,
+                                toolSummary.pendingGroupCount,
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = stringResource(
+                                if (toolRowsOpen) R.string.common_collapse_arrow else R.string.common_expand_arrow,
                             ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        // 组开关＝唯一主开关（§3.5）：开 ⇒ 长期同意（默认组就是解除禁用）；
-                        // 关 ⇒ 立即禁用整组＋会话内已解锁的一并失效。卡片上的「一直」写的是
-                        // 同一个 approved 档，所以两处状态永远一致（审计来源不同：卡片/设置页）。
-                        Switch(
-                            checked = groupOn,
-                            onCheckedChange = { want ->
-                                prefs.setGroupApproved(group, want && group !in ToolGroup.DEFAULT_VISIBLE)
-                                prefs.setGroupDisabled(group, !want)
-                                if (!want) BaopuRuntime.toolUnlocks(ctx).relockAll(listOf(group))
-                                // 审计自带落盘（ToolGroupAudit.manual 的 `.also { emit }` 走
-                                // sink=RunLog）；这里再 RunLog.log 一次就是双写
-                                // （2026-10-21 真机：一次点击两条一模一样的 [group] 行）。
-                                ToolGroupAudit.manual(group, want)
-                                toolTick++
-                            },
-                            colors = zhengdaoSwitchColors(),
-                        )
                     }
-                    // 折叠态常驻的「关闭项摘要」——展开时不显示（成员就在下面，看得见）
-                    if (!expanded.value) {
-                        Text(
-                            text = baopuFoldSummaryText(summary),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
-                    }
-                    if (expanded.value) {
-                        members.forEach { name ->
-                            val on = toolTick.let { !prefs.isDisabled(name) }
+                    if (toolRowsOpen) {
+                        if (toolRows.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.baopu_tools_rows_empty),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
+                        toolRows.forEach { row ->
+                            val tone = baopuToolRowTone(row.state)
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // 组行命中 ≥48dp（派工单设计约束第 3 条）
+                                    .heightIn(min = 64.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        text = stringResource(baopuToolLabel(name)),
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        text = stringResource(baopuGroupTitle(row.group)),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     Text(
-                                        text = stringResource(baopuToolDesc(name)),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        text = when (tone) {
+                                            BaopuToolRowTone.Pending ->
+                                                stringResource(R.string.baopu_tools_row_pending)
+                                            BaopuToolRowTone.Closed ->
+                                                stringResource(R.string.baopu_tools_row_closed)
+                                            BaopuToolRowTone.Partial ->
+                                                stringResource(R.string.baopu_tools_row_partial, row.offCount)
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = when (tone) {
+                                            // 琥珀 #856018（纸深底 4.66:1，§2.1 第 2 条）只给「等你点头」
+                                            BaopuToolRowTone.Pending -> MaterialTheme.colorScheme.tertiary
+                                            BaopuToolRowTone.Closed, BaopuToolRowTone.Partial ->
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
                                     )
                                 }
                                 Switch(
-                                    checked = on,
+                                    checked = baopuGroupSwitchOn(row.state),
                                     onCheckedChange = { want ->
-                                        prefs.setDisabled(name, !want)
+                                        prefs.setGroupApproved(row.group, want && row.group !in ToolGroup.DEFAULT_VISIBLE)
+                                        prefs.setGroupDisabled(row.group, !want)
+                                        if (want) {
+                                            // 141：单工具开关随成员名单一起退役（§8）⇒ 组开关打开时把
+                                            // 组内「被单独关掉」的成员一并清掉。否则用户以前关过的那几个
+                                            // 工具**再也开不回来**（界面里已经没有它们的开关了）。
+                                            toolMembersOf(row.group).forEach { prefs.setDisabled(it, false) }
+                                        }
+                                        if (!want) BaopuRuntime.toolUnlocks(ctx).relockAll(listOf(row.group))
+                                        // 审计自带落盘（ToolGroupAudit.manual 的 `.also { emit }` 走
+                                        // sink=RunLog）；这里再 RunLog.log 一次就是双写
+                                        // （2026-10-21 真机：一次点击两条一模一样的 [group] 行）。
+                                        ToolGroupAudit.manual(row.group, want)
                                         toolTick++
                                     },
                                     colors = zhengdaoSwitchColors(),
@@ -265,10 +241,11 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     }
                 }
                 // ── read / bash（第十八批 §2.1-4：只读展示「由通道决定」）──
-                // 这两个名字不在 [BaopuToolCatalog.ENTRIES] 里（那是引擎侧的免费通道兼容
-                // 别名：read 跟随 read_file 的开关，bash 恒拒），所以没有开关可给——
-                // 在此明说，不再「模型看得见、用户管不着」。
-                Spacer(Modifier.height(6.dp))
+                // 这两个名字不在 [BaopuToolCatalog.ENTRIES] 里（引擎侧的免费通道兼容别名：
+                // read 跟随 read_file 的开关，bash 恒拒），所以没有开关可给——在此明说，
+                // 不再「模型看得见、用户管不着」。它们**在摘要卡外**：不是组，塞进卡里会让
+                // 「卡里全是组」这条读数失真。
+                Spacer(Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.baopu_tools_alias_read),
                     style = MaterialTheme.typography.bodyMedium,
@@ -940,31 +917,6 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             }
             }
         }
-    }
-}
-
-/**
- * 折叠态那一行「关闭项摘要」的文案（第六十一批 §1）。
- *
- * 名单怎么算在 [BaopuToolFoldSummary.of]（零 Android、直接打）；这里只把名字换成
- * 本地化的工具标签——**标签取的还是 baopuToolLabel 那一份映射**，一个工具在展开的
- * 开关行与收起的摘要行里必须是同一个名字，否则「摘要」就成了另一套话术。
- */
-@Composable
-private fun baopuFoldSummaryText(summary: BaopuFoldSummary): String {
-    val sep = stringResource(R.string.baopu_tools_fold_list_sep)
-    return when (summary.foldKind) {
-        BaopuFoldKind.EmptyGroup -> stringResource(R.string.baopu_tools_fold_empty)
-        BaopuFoldKind.AllOn -> stringResource(R.string.baopu_tools_fold_all_on)
-        // 整组关光（组开关关掉的、或逐个关到零的）：名单全列出来比只报个数有用吗？
-        // 这里报个数——一组的成员名整排会撑成好几行，而"这一组一个都别想用"这件事
-        // 组开关那个位置已经写明白了。
-        BaopuFoldKind.AllOff -> stringResource(R.string.baopu_tools_fold_all_off, summary.total)
-        BaopuFoldKind.SomeOff -> stringResource(
-            R.string.baopu_tools_fold_some_off,
-            summary.offNames.size,
-            summary.offNames.map { stringResource(baopuToolLabel(it)) }.joinToString(sep),
-        )
     }
 }
 
