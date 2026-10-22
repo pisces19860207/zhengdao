@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 //
-// 依据：派工单第十七批 §3 判据 J1（参数校验：空拒绝/超 8 截断/超 60 字截断）、
+// 依据：派工单第十七批 §3 判据 J1（参数校验：空拒绝/超 12 截断/超 60 字截断）、
 // J2（全量覆盖）、J3（勾选只增不减）、J4（payload 往返逐字一致——库侧回读见
 // BaopuDbPlanTest）。判据全压 PlanRules 这个纯函数，JVM 直测。
 package com.example.zhengdao.baopu
@@ -125,7 +125,7 @@ class PlanRulesTest {
     // ── J2：全量覆盖 ───────────────────────────────────────────────────
 
     @Test
-    fun `全量覆盖_先5条再3条_结果是3条不是8条合并`() {
+    fun `全量覆盖_先5条再3条_结果是3条不是合并`() {
         val first = parseOk("一" to "todo", "二" to "todo", "三" to "todo", "四" to "todo", "五" to "todo")
         val second = parseOk("一" to "done", "二" to "doing", "三" to "todo")
         val applied = PlanRules.applyOverwrite(first.items, second.items)
@@ -135,6 +135,8 @@ class PlanRulesTest {
 
     @Test
     fun `全量覆盖_旧有条目不收编`() {
+        // 第一百四十五批：规则层不做漏写补回；结构变更（含漏写 done）由引擎侧的
+        // 计划变更确认闸拦下并要求用户批准（140 批），所以这里钉住纯覆盖语义。
         val first = parseOk("老一" to "done", "老二" to "doing")
         val second = parseOk("新一" to "todo")
         val applied = PlanRules.applyOverwrite(first.items, second.items)
@@ -149,6 +151,29 @@ class PlanRulesTest {
         val applied = PlanRules.applyOverwrite(emptyList(), r.items)
         assertEquals(r.items, applied.items)
         assertTrue("没有 sticky 命中：${applied.stickyNotes}", applied.stickyNotes.isEmpty())
+    }
+
+    @Test
+    fun `计划增长_新步骤加入原表_已完成不动`() {
+        val first = parseOk("一" to "done", "二" to "doing")
+        val second = parseOk("一" to "done", "二" to "doing", "三" to "todo")
+        val applied = PlanRules.applyOverwrite(first.items, second.items)
+        assertEquals(listOf("一", "二", "三"), applied.items.map { it.text })
+        assertEquals(
+            listOf(PlanRules.STATUS_DONE, PlanRules.STATUS_DOING, PlanRules.STATUS_TODO),
+            applied.items.map { it.status },
+        )
+        assertTrue("正常增长不该有 sticky notice：${applied.stickyNotes}", applied.stickyNotes.isEmpty())
+    }
+
+    @Test
+    fun `计划改序_本版顺序优先`() {
+        val first = parseOk("一" to "done", "二" to "todo")
+        val second = parseOk("二" to "todo", "一" to "done")
+        val applied = PlanRules.applyOverwrite(first.items, second.items)
+        assertEquals(listOf("二", "一"), applied.items.map { it.text })
+        assertEquals(PlanRules.STATUS_DONE, applied.items[1].status)
+        assertTrue(applied.stickyNotes.isEmpty())
     }
 
     // ── J3：勾选只增不减 ───────────────────────────────────────────────
@@ -231,10 +256,11 @@ class PlanRulesTest {
     @Test
     fun `renderAck_带notice与行动指引`() {
         val items = parseOk("一" to "done").items
-        val ack = PlanRules.renderAck(items, listOf("共 9 条，已截断到前 8 条"))
+        val ack = PlanRules.renderAck(items, listOf("共 13 条，已截断到前 12 条"))
         assertTrue("ack 要带进度：$ack", ack.contains("计划 1/1 完成"))
         assertTrue("ack 要带 notice：$ack", ack.contains("截断"))
         assertTrue("ack 要提醒整表重发：$ack", ack.contains("重发"))
+        assertTrue("ack 要提醒计划有变也在这张表上改：$ack", ack.contains("计划有变"))
     }
 
     @Test
@@ -347,8 +373,8 @@ class PlanRulesTest {
 
     @Test
     fun `本版空表_全量覆盖成空_旧done不复活`() {
-        // parseItems 会拒绝空 items，但 applyOverwrite 本身是全量覆盖 ⇒ 空进空出，
-        // 上一版的 done 不会被 sticky 逻辑拉回来（按当前实现钉住）。
+        // parseItems 会拒绝空 items，但 applyOverwrite 本身是全量覆盖 ⇒ 空进空出；
+        // 漏写 done 的补回由引擎侧确认闸承接（140 批），规则层不硬塞回来。
         val applied = PlanRules.applyOverwrite(
             listOf(PlanRules.PlanItem("读文件", PlanRules.STATUS_DONE)),
             emptyList(),
