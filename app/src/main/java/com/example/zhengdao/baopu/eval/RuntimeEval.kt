@@ -121,6 +121,8 @@ internal object RuntimeEval {
         baseUrl = provider.baseUrl,
         model = provider.model,
         apiKey = provider.apiKey,
+        // 协议跟着 provider 走（第一百四十九批）：非流式解码器据此选表，不在这里写死。
+        protocol = provider.protocol,
         systemPrompt = systemPrompt,
     )
 

@@ -204,13 +204,33 @@ internal object ContextAssembler {
         fun outputOf(p: Provider): Int =
             p.maxOutput?.takeIf { it > 0 } ?: DEFAULT_OUTPUT_TOKENS
 
-        /** 单轮 token 预算 = min(窗口 × 0.6, 输出上限 × 0.9)。 */
+        /**
+         * 单轮 token 预算 = min(窗口 × 0.6, 输出上限 × 0.9)。
+         *
+         * 🛑 **本批没接生产，是刻意的**（第一百四十九批 组2 报告同段）：线上没有第二个
+         * 「这一轮还能塞多少输入」的口——请求体发的 `max_tokens` 是**输出**上限
+         * （[com.example.zhengdao.baopu.LlmClient] 取 `provider.maxOutput`），
+         * 输入侧的口径住在 [com.example.zhengdao.baopu.TokenBudget.availableContext]
+         * （窗口 − 输出上限 − 两笔预留）。两条**数值不同**：deepseek 这条
+         * `budgetOf` = 353,894，而 `availableContext` = 619,360。
+         * 派工单口径「数值不同就保持现状并报告」⇒ 保持现状：不拿它替换任何一条现有线，
+         * 也不为了让它"接上"而新造一个调用者。存亡条件：等 R3 降级阶梯真打开执行
+         * （[com.example.zhengdao.baopu.DegradationPolicy.ENGAGED_BY_DEFAULT] 转 true 那批）
+         * 再判它该不该替代 availableContext。
+         */
         fun budgetOf(p: Provider): Int = minOf(
             Math.floor(windowOf(p) * WINDOW_BUDGET_RATIO).toInt(),
             Math.floor(outputOf(p) * OUTPUT_BUDGET_RATIO).toInt(),
         )
 
-        /** 压缩触发线（min(窗口 × 0.85, 120k)——第十五批 A 段封顶）。 */
+        /**
+         * 压缩触发线（`min(窗口 × 0.70, 900k)`，2026-10-19 用户口径）。
+         *
+         * 这里是**引擎侧唯一的取线口**：判定（[needsCompressing] 经 [compressionThreshold]）
+         * 与日志读数（`RunEngine` 的「压缩触发」那一行）都必须从这里进，
+         * 不许在调用点再写一次 `窗口 × 比例`——两处各算一遍就是漂移的入口
+         * （第一百四十九批 组2；反例钉在 `CompressTriggerWiringGateTest`）。
+         */
         fun thresholdOf(p: Provider): Double = compressionThreshold(windowOf(p))
     }
 

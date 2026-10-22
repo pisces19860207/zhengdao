@@ -541,6 +541,9 @@ internal class RunEngine(
         },
         onRequestCard = { req -> onEvent?.invoke(req) },
         log = log,
+        // 组5：确认卡摘要按工作区根剥成相对路径显示（根与②段改写路径用的是同一个 spillRoot，
+        // ⇒ 剥得掉；剥不掉（工作区外的路径）原样印，不编一个短路径出来）。
+        projectRoot = { spillRoot() },
     )
 
     /** 确认等待的**前台累计毫秒**（后台不计时——切后台时 [noteConfirmBackground] 结账）。 */
@@ -1266,9 +1269,11 @@ internal class RunEngine(
                 _state.value = RunState.COMPRESSING
                 persistStep(sessionId, stepCount, "Compressing")
                 // 双读数落一行：估算/触发线 ＋ 可压条数/条数线，T1 一眼看出是哪条触发
+                // 触发线从 ContextBudgets.thresholdOf 取（第一百四十九批 组2）：判定与读数
+                // 同一个出处，不许在这里再按 windowTokens 手写一遍乘积。
                 log(
                     "抱朴引擎：压缩触发（估算 ${probe.estimatedTokens} tokens / 触发线 " +
-                        "${ContextAssembler.compressionThreshold(windowTokens).toInt()}；" +
+                        "${ContextAssembler.ContextBudgets.thresholdOf(provider).toInt()}；" +
                         "可压旧消息 $oldMessageCount 条 / 线 ${RunRules.COMPRESS_OLD_MESSAGE_MIN}）" +
                         "进 Compressing",
                 )

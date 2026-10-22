@@ -63,6 +63,38 @@ internal object CardDialectMap {
     }
 
     /**
+     * 某一侧**有名字**的全部字段（第一百四十九批 组4：体检的字段名从这里取）。
+     *
+     * 为什么必须由这里出：`CardCheck` 原来自己写死一份 43 个名字的表，与这张对应表
+     * **没有机械关系**——对应表里改一个字段名（或补一列），体检表不会跟着动，
+     * 于是「表外字段」那条 INFO 判据就开始凭第二份事实判（规格 §15.6 的口径只有一个出处）。
+     * 现在体检表 = `fieldsOf(本方言)` ∪ 规格表外补充名（那份补充名逐条写得出理由）。
+     */
+    fun fieldsOf(dialect: WorldbookDialect): Set<String> =
+        TABLE.mapNotNull { fieldOf(dialect, it) }.toSet()
+
+    /**
+     * 认脸结果 → 血统（§16.3-3 三层并存里「格式 → 方言」这一层的唯一映射）。
+     *
+     * 只有世界书四类有血统；卡／正则／预设／认脸失败 ⇒ null（不硬造一个方言，
+     * 与 [CardAsset] 的 `dialect` 可空口径一致）。体检拿它决定「该跑哪张表」，
+     * 拿到 null 又确实是世界书格式时**必须显式报错**，不许默默跳过（F22 的兜底断言）。
+     */
+    fun dialectOf(format: FormatKind): WorldbookDialect? = when (format) {
+        FormatKind.WEB_BOOK -> WorldbookDialect.WEB
+        FormatKind.TAVO_BOOK -> WorldbookDialect.TAVO
+        FormatKind.ST_WORLD -> WorldbookDialect.ST_NATIVE
+        FormatKind.CCV3_LOREBOOK -> WorldbookDialect.CCV3
+        FormatKind.TAVO_CHAR, FormatKind.ST_CARD_PNG, FormatKind.TAVO_REGEX,
+        FormatKind.TAVO_PRESET, FormatKind.UNKNOWN -> null
+    }
+
+    /** 四类世界书格式（`dialectOf` 返回 null 而格式在这一列里 ⇒ 映射漏了，必须报错）。 */
+    val WORLDBOOK_FORMATS: Set<FormatKind> = setOf(
+        FormatKind.WEB_BOOK, FormatKind.TAVO_BOOK, FormatKind.ST_WORLD, FormatKind.CCV3_LOREBOOK,
+    )
+
+    /**
      * [from] 有、[to] 没有的字段 ⇒ **不可表达**（F23）。
      *
      * 关键：这里返回的是「没有对应物」，调用方**不许**把它们补成 `false`/`0`——
@@ -176,5 +208,75 @@ internal object CardDialectChecks {
         WorldbookDialect.TAVO -> listOf("WEB_", "ST_")
         WorldbookDialect.ST_NATIVE -> listOf("WEB_", "TV_")
         WorldbookDialect.CCV3 -> listOf("WEB_", "TV_", "ST_")
+    }
+
+    // ── F22 兜底断言（第一百四十九批 组4：接到体检链上）─────────────────────
+    //
+    // 上面两张表（[codesFor]／[foreignPrefixes]）立账以来只有测试在读：`CardCheck.check`
+    // 自己 dispatch 完就直接出报告，**没有任何一步问"这次出的码属不属于本方言"**。
+    // 于是"拿 A 家的字段表判 B 家的书"这类改动能在测试全绿的前提下溜进生产
+    // ——测试钉的是各家各自的样例，钉不住"dispatch 走错门"这一层。
+    // 这里把判据收成一个函数，`check()` 在出报告前调它。
+
+    /** 守卫自己会出的码（不参与「外来码」判定，否则自我指控）。 */
+    val GUARD_CODES: Set<String> = setOf("DIALECT_UNMAPPED_FORMAT", "DIALECT_FOREIGN_CODE")
+
+    /** 外来码前缀 → 人话是谁家的码（与 [foreignPrefixes] 同一份事实）。 */
+    private fun houseOf(prefix: String?): String? = when (prefix) {
+        "WEB_" -> "网络平台"
+        "TV_" -> "Tavo"
+        "ST_" -> "酒馆"
+        else -> null
+    }
+
+    /**
+     * 认脸说是世界书、血统表却给不出方言 ⇒ **必须显式报错**（不许静默当成"没问题"）。
+     *
+     * 这条分支在表写全的现在不可达（`dialectOf` 穷举了 9 个 FormatKind）；它守的是**以后**：
+     * 有人往 FormatKind 加了第五种世界书、或往 [CardDialectMap.WORLDBOOK_FORMATS] 加了成员
+     * 却忘了同步 `dialectOf` —— 那时没有它，体检会一声不响地跑零条字段判据并回「0 条问题」。
+     */
+    fun unmappedDialectFinding(format: FormatKind): Finding? {
+        if (CardDialectMap.dialectOf(format) != null) return null
+        if (format !in CardDialectMap.WORLDBOOK_FORMATS) return null
+        return Finding(
+            Level.ERROR, "DIALECT_UNMAPPED_FORMAT", Stage.FIELD, null, null,
+            "认脸说这是世界书（$format），但方言表没给出血统 ⇒ 字段级判据一条都没跑，" +
+                "这不是「没有毛病」，是「没判」。补 CardDialectMap.dialectOf。",
+            format.name,
+        )
+    }
+
+    /**
+     * 本方言不该出的码，一条都不许放过（F22 的机械版）。
+     *
+     * 允许集 = [codesFor]（该方言字段级＋语义级＋共享码）∪ [GUARD_CODES]。
+     * 外来码按 [foreignPrefixes] 定性成"谁家的码串进了这家的体检"，其余（`CARD_*` 之类
+     * 与方言无关的卡内码）只说"不属于本方言"。级别一律 ERROR：这是判据走错的信号，
+     * 不是卡片的毛病——§4.1 不许自行升降级，但这一条本来就没人给它定过级。
+     */
+    fun foreignCodeFindings(dialect: WorldbookDialect, findings: List<Finding>): List<Finding> {
+        val allowed = codesFor(dialect) + GUARD_CODES
+        val prefixes = foreignPrefixes(dialect)
+        return findings.filter { it.code !in allowed }.map { f ->
+            val house = houseOf(prefixes.firstOrNull { p -> f.code.startsWith(p) })
+            Finding(
+                Level.ERROR, "DIALECT_FOREIGN_CODE", Stage.FIELD, f.entry, f.field,
+                if (house != null)
+                    "体检串味：这份是${dialectName(dialect)}的书，却出了${house}家的码 ${f.code}" +
+                        "（F22：每家只跑自己那张判据表）。"
+                else
+                    "体检串味：${dialectName(dialect)}的判据表里没有 ${f.code} 这条码。",
+                f.code,
+            )
+        }
+    }
+
+    /** 方言 → 人话名字（话术用；不新增事实，与 [CardDialectMap] 的列名一致）。 */
+    private fun dialectName(dialect: WorldbookDialect): String = when (dialect) {
+        WorldbookDialect.WEB -> "网络平台"
+        WorldbookDialect.TAVO -> "Tavo"
+        WorldbookDialect.ST_NATIVE -> "酒馆"
+        WorldbookDialect.CCV3 -> "CCv3"
     }
 }
