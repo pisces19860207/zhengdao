@@ -12,7 +12,9 @@
 
 **门槛**：Android 16（API 36）＋ arm64 手机。不符合装不上。
 
-**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.2.1（versionCode 39）。
+**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.1.2（versionCode 37）。
+
+> v2.2.0 已撤回，v2.2 还在修，**暂不提供下载**；下面写的抱朴能力在仓库里已就绪，等修好随下一版一起发。
 
 **不用装**：Termux、Shizuku，不需要 ADB，也不用连电脑。
 
