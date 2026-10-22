@@ -330,6 +330,29 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 }
             }
 
+            // ── 第一百四十七批 · 日记（情景记忆）卡 ──
+            // 定位：看近期流水、按条真删。删除语义全在 DiaryDeletionRules（纯函数）＋
+            // DiaryStore.realDelete（执行）；本卡只展示与确认——确认卡把
+            // 「删日记，不删文件」说到字面上，并把产物路径逐条列出来给人核对（§5 边界②⑤）。
+            // 这是本页除技能归档删除外第二处「用户本人按确认才写盘」的口径。
+            SectionCard(stringResource(R.string.baopu_diary_card)) {
+                var diaryReload by remember { mutableIntStateOf(0) }
+                val (diaryEntries, diaryOnDelete) = rememberDiarySection(ctx, diaryReload)
+                Text(
+                    text = stringResource(R.string.baopu_diary_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                BaopuDiaryCard(
+                    entries = diaryEntries,
+                    onDelete = { plan ->
+                        diaryOnDelete(plan)
+                        diaryReload++
+                    },
+                )
+            }
+
             // ── 第三十七批 D 段 · 人设回滚（B 全局 / C 本项目各一行）──
             // 写入前的备份已经在唯一写盘口做完（PersonaFiles.applyProposal），
             // 这里只负责「滚回去」：点了先备份当前版，再覆盖 —— 可反悔。
