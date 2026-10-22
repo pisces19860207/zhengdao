@@ -57,16 +57,17 @@ class ProviderSwitchTest {
         )
     }
 
-    // ---------- ③ 候选永不落回内置免费通道 ----------
+    // ---------- ③ 候选永不落回免费车道 ----------
 
     @Test
-    fun 只给内置免费通道填了key_也不算候选() {
+    fun 只给免费车道填了key_也不算候选() {
         val got = ProviderPrefs.fallbackFrom(
             currentId = preset.id,
-            keyFor = { id -> if (id == Providers.BUILTIN_FREE.id) "free-key" else null },
+            keyFor = { id -> if (id == Providers.OPENROUTER_FREE.id) "free-key" else null },
         )
         assertNull(
-            "内置免费通道 2026-10-17 真机实测整条 403 RegionError，它是兜底不是降级去向：$got",
+            "免费车道（第一百三十一批 ①＝OpenRouter 免费档）有 50 次/天的额度上限：" +
+                "它是「没得选才用」的默认值，不是拿用户的免费额度去兜别的通道的故障：$got",
             got,
         )
     }
@@ -74,7 +75,7 @@ class ProviderSwitchTest {
     @Test
     fun 预设填了key_它就是候选且带上这把key() {
         val got = ProviderPrefs.fallbackFrom(
-            currentId = Providers.BUILTIN_FREE.id,
+            currentId = Providers.OPENROUTER_FREE.id,
             keyFor = { id -> if (id == preset.id) "sk-test" else null },
         )
         assertEquals(preset.id, got?.id)
@@ -97,14 +98,14 @@ class ProviderSwitchTest {
     }
 
     @Test
-    fun 自定义通道缺一件就退回内置免费通道() {
+    fun 自定义通道缺一件就退回免费车道() {
         val baseOnly = ProviderPrefs.resolve(
             channelId = ProviderPrefs.CHANNEL_CUSTOM,
             keyFor = { null },
             customBase = "https://api.deepseek.com/v1",
             customModel = "",
         )
-        assertEquals("缺 model 不许当成自定义通道", Providers.BUILTIN_FREE.id, baseOnly.id)
+        assertEquals("缺 model 不许当成自定义通道", Providers.OPENROUTER_FREE.id, baseOnly.id)
 
         val plainHttp = ProviderPrefs.resolve(
             channelId = ProviderPrefs.CHANNEL_CUSTOM,
@@ -112,7 +113,7 @@ class ProviderSwitchTest {
             customBase = "http://example.com/v1",
             customModel = "m",
         )
-        assertEquals("明文 http 非环回不许放行", Providers.BUILTIN_FREE.id, plainHttp.id)
+        assertEquals("明文 http 非环回不许放行", Providers.OPENROUTER_FREE.id, plainHttp.id)
     }
 
     @Test
@@ -131,8 +132,8 @@ class ProviderSwitchTest {
     }
 
     @Test
-    fun 未知通道号_退回内置免费通道() {
+    fun 未知通道号_退回免费车道() {
         val got = ProviderPrefs.resolve(channelId = "no-such-channel", keyFor = { "x" })
-        assertEquals(Providers.BUILTIN_FREE.id, got.id)
+        assertEquals(Providers.OPENROUTER_FREE.id, got.id)
     }
 }

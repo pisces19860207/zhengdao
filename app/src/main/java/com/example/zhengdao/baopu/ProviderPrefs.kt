@@ -36,20 +36,55 @@ internal object ProviderPrefs {
 
     private fun keyOf(id: String) = "user_key_$id"
 
+    // 第一百三十一批 ②：一条通道从「一把 Key」变成「一池 Key」。
+    // 新增两格：`user_keys_$id`（池子本体，JSON）＋ `user_key_cursor_$id`（轮询走到哪一把）。
+    // 老格 `user_key_$id` **保留只读**做迁移（见 KeyPool.migrate），首次写池子时清掉，
+    // 免得"一格一池"两份真相同时存在。
+    private fun keysOf(id: String) = "user_keys_$id"
+    private fun cursorOf(id: String) = "user_key_cursor_$id"
+
+    // 第一百三十一批 ③：预设也能选模型 ⇒ 每个提供商名下存一格"用户选定的模型"（连同那一刻的
+    // 元数据）。**自定义不用这格**——它的模型名早就存在 `custom_model` 里，再存一份就是第二真相。
+    private fun modelOf(id: String) = "user_model_$id"
+
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     /** 当前通道（BaopuRuntime.provider() 的实现细节都委托到这里）。 */
     fun current(context: Context): Provider = resolve(
         channelId = prefs(context).getString(KEY_CHANNEL, null),
-        keyFor = { id -> prefs(context).getString(keyOf(id), null) },
+        keyFor = { id -> storedKey(context, id) },
         customBase = prefs(context).getString(KEY_CUSTOM_BASE, null),
         customModel = prefs(context).getString(KEY_CUSTOM_MODEL, null),
+        presetModelFor = { id -> modelOverride(context, id) },
     )
+
+    /**
+     * 某个**预设**被用户选定的模型（第一百三十一批 ③；自定义不走这里，见 [storedCustom]）。
+     * 没选过 / 存坏了 ⇒ null（照预设自带的模型跑，**不猜**）。
+     */
+    fun modelOverride(context: Context, id: String): ModelPickerRules.ModelOverride? =
+        ModelPickerRules.decodeOverride(prefs(context).getString(modelOf(id), null))
+
+    /**
+     * 写下用户在预设上选定的模型（连同那一刻从清单里拿到的元数据）。
+     *
+     * 传 null 或空 id = **删掉这一格**（"恢复预设默认模型"）；不许传空串假装改好了。
+     */
+    fun saveModelOverride(
+        context: Context,
+        id: String,
+        override: ModelPickerRules.ModelOverride?,
+    ) {
+        val text = ModelPickerRules.encodeOverride(override)
+        prefs(context).edit {
+            if (text.isEmpty()) remove(modelOf(id)) else putString(modelOf(id), text)
+        }
+    }
 
     /** 当前通道 id（UI 弹层初始选中态用；不算 provider 解析，不算第二入口）。 */
     fun currentChannelId(context: Context): String =
-        prefs(context).getString(KEY_CHANNEL, null) ?: Providers.BUILTIN_FREE.id
+        prefs(context).getString(KEY_CHANNEL, null) ?: Providers.OPENROUTER_FREE.id
 
     /**
      * 只翻「当前通道」选择位（第六十四批安全点切换的落点）。
@@ -63,15 +98,135 @@ internal object ProviderPrefs {
         prefs(context).edit { putString(KEY_CHANNEL, channelId) }
     }
 
-    /** 某通道的用户 Key（BaopuRuntime 组装 channelFallback 闭包用）。 */
-    fun storedKey(context: Context, id: String): String? = prefs(context).getString(keyOf(id), null)
+    /**
+     * 某通道**此刻该带出去的那把** Key（BaopuRuntime 组装候选闭包、UI 回填都用它）。
+     *
+     * 第一百三十一批 ②：一格变一池——池子非空时从 `cursor` 起取第一把「没禁用、没在冷却」的；
+     * 池子空但老格 `user_key_$id` 有货 ⇒ 照旧给老格（迁移前的单 Key 形态，行为不变）。
+     * 整池都在冷却／禁用 ⇒ **null**：调用方给可读提示，不许静默退回第一把硬试（派工单 ②）。
+     */
+    fun storedKey(context: Context, id: String): String? {
+        val p = prefs(context)
+        val pool = KeyPool.migrate(p.getString(keysOf(id), null), p.getString(keyOf(id), null))
+        if (pool.isEmpty()) return null
+        return KeyPool.activeKey(pool, p.getInt(cursorOf(id), 0), System.currentTimeMillis())
+    }
+
+    /** 某通道的 Key 池（选模型抽屉列 Key 用；给的是原文，**界面自己 [KeyPool.mask]**）。 */
+    fun keyPool(context: Context, id: String): List<KeyPool.Entry> {
+        val p = prefs(context)
+        return KeyPool.migrate(p.getString(keysOf(id), null), p.getString(keyOf(id), null))
+    }
+
+    /** 轮询走到哪一把（0 = 从头）。 */
+    fun keyCursor(context: Context, id: String): Int = prefs(context).getInt(cursorOf(id), 0)
+
+    /**
+     * 写池子：写新格、**清掉老格**（一格一池两份真相就是漂移的开始），并把游标夹回范围内。
+     * 空池 ⇒ 新格写 `"[]"`（"删光了"与"从来没填过"在读取端仍是两件事，见 KeyPool.encode）。
+     */
+    fun saveKeyPool(context: Context, id: String, entries: List<KeyPool.Entry>, cursor: Int = 0) {
+        val p = prefs(context)
+        val kept = entries.take(KeyPool.MAX_KEYS)
+        p.edit {
+            putString(keysOf(id), KeyPool.encode(kept))
+            putInt(cursorOf(id), if (kept.isEmpty()) 0 else cursor.mod(kept.size))
+            remove(keyOf(id))
+        }
+    }
+
+    /**
+     * 加一把 Key（② 用户自管；App 不自动创建/购买、不预填、不读剪贴板）。
+     *
+     * @return false = 空串／这把已在池里／池子到 [KeyPool.MAX_KEYS] 上限（一个字都不写）
+     */
+    fun addKey(context: Context, id: String, key: String): Boolean {
+        val pool = keyPool(context, id)
+        val next = KeyPool.add(pool, key)
+        if (next.size == pool.size) return false
+        saveKeyPool(context, id, next, keyCursor(context, id))
+        return true
+    }
+
+    /** 删一把（按原文精确匹配）。 */
+    fun removeKey(context: Context, id: String, key: String): Boolean {
+        val pool = keyPool(context, id)
+        val next = KeyPool.remove(pool, key)
+        if (next.size == pool.size) return false
+        saveKeyPool(context, id, next, keyCursor(context, id))
+        return true
+    }
+
+    /**
+     * 禁用／解禁一把（**只有用户点**：401 自动置位的禁用，引擎永不自己解开）。
+     * 解禁顺带清掉它的冷却——用户既然说"这把还能用"，就别再拿旧冷却挡它。
+     */
+    fun setKeyDisabled(context: Context, id: String, index: Int, disabled: Boolean): Boolean {
+        val pool = keyPool(context, id)
+        if (index !in pool.indices) return false
+        val next = KeyPool.setDisabled(pool, index, disabled)
+            .mapIndexed { i, e -> if (i == index && !disabled) e.copy(cooldownUntil = 0L) else e }
+        saveKeyPool(context, id, next, keyCursor(context, id))
+        return true
+    }
+
+    /**
+     * 失败一次之后换下一把 Key（第一百三十一批 ② 的落点；由 BaopuRuntime 的候选闭包调，
+     * 引擎只看到 [KeyRotation] 这个结果，不持 context、不写 SP——与 [storedKey] 同一纪律）。
+     *
+     * 三种结论：
+     * - [KeyRotation.NotKeyRelated]：这次失败与 Key 无关（超时/断流/5xx）⇒ **一个字都不写**，
+     *   交回通道级策略（第五十四批 P1-2 的同一条教训：别把不相干的失败记到凭据头上）；
+     * - [KeyRotation.Rotated]：处罚这把（429 冷却 60s／403·额度 5min／401 禁用）＋给出下一把；
+     * - [KeyRotation.Exhausted]：处罚完这把之后没有可用的了 ⇒ 带一句可读提示（不静默重试）。
+     */
+    fun rotateAfterFailure(context: Context, id: String, usedKey: String, rawError: String): KeyRotation {
+        val outcome = KeyPool.classify(rawError)
+        if (outcome == KeyPool.Outcome.NOT_ABOUT_KEY) return KeyRotation.NotKeyRelated
+        val p = prefs(context)
+        val pool = KeyPool.migrate(p.getString(keysOf(id), null), p.getString(keyOf(id), null))
+        if (pool.isEmpty()) return KeyRotation.NotKeyRelated
+        val now = System.currentTimeMillis()
+        // 失败的就是"刚刚带出去的那把"：按原文定位；对不上（用户刚改过池子）⇒ 用当前游标那把。
+        val byKey = pool.indexOfFirst { it.key == usedKey.trim() }
+        val index = if (byKey >= 0) byKey else KeyPool.activeIndex(pool, p.getInt(cursorOf(id), 0), now)
+        if (index < 0) return KeyRotation.Exhausted(KeyPool.allUnavailableNotice(pool, now))
+        val (punished, next, key) = KeyPool.rotate(pool, index, outcome, now)
+        if (next < 0 || key == null) {
+            saveKeyPool(context, id, punished, index)
+            return KeyRotation.Exhausted(KeyPool.allUnavailableNotice(punished, now))
+        }
+        saveKeyPool(context, id, punished, next)
+        return KeyRotation.Rotated(key)
+    }
+
+    /** 换 Key 的三种结论（见 [rotateAfterFailure]；`Rotated` 里是**原文** Key，只在内存里传）。 */
+    sealed interface KeyRotation {
+        /** 这次失败不是这把 Key 的锅 ⇒ 池子不动。 */
+        data object NotKeyRelated : KeyRotation
+
+        /** 已处罚这把并换到下一把。 */
+        data class Rotated(val key: String) : KeyRotation
+
+        /** 全池不可用：带一句给用户的人话（不含任何 Key 原文）。 */
+        data class Exhausted(val notice: String) : KeyRotation
+    }
 
     /** 自定义通道的 baseUrl / model（同上）。 */
     fun storedCustom(context: Context): Pair<String?, String?> = prefs(context).let {
         it.getString(KEY_CUSTOM_BASE, null) to it.getString(KEY_CUSTOM_MODEL, null)
     }
 
-    /** 保存选择（UI「启用此通道」落点；保存即生效——调用方随后重建引擎）。 */
+    /**
+     * 保存选择（UI「启用此通道」落点；保存即生效——调用方随后重建引擎）。
+     *
+     * 第一百三十一批 ②：Key 那一格改成进**池子**——填进来的这把追加到池尾（已在池里就原样不动），
+     * 空串不写（不许把用户已经存好的池子清空）。老格式那条 `user_key_$id` 由
+     * [saveKeyPool] 顺手清掉，避免一格一池两份真相。
+     *
+     * ③「预设也拉、预设也能选模型」**不在本方法里落**：预设上选定的模型走
+     * [saveModelOverride]（它带得下元数据那一截，本方法的 `model` 只是一个字符串）。
+     */
     fun save(
         context: Context,
         channelId: String,
@@ -79,12 +234,16 @@ internal object ProviderPrefs {
         baseUrl: String? = null,
         model: String? = null,
     ) {
+        val key = apiKey.trim()
+        val pool = keyPool(context, channelId)
+        val next = if (key.isEmpty()) pool else KeyPool.add(pool, key)
+        val cursor = if (next.isEmpty()) 0 else keyCursor(context, channelId).mod(next.size)
         prefs(context).edit()
             .putString(KEY_CHANNEL, channelId)
-            .putString(keyOf(channelId), apiKey)
             .putString(KEY_CUSTOM_BASE, baseUrl)
             .putString(KEY_CUSTOM_MODEL, model)
             .apply()
+        if (next.isNotEmpty()) saveKeyPool(context, channelId, next, cursor)
     }
 
     // ── 模型路由开关（第九十三批，SP 薄壳；判据本体在 ModelRouter） ─────────────
@@ -127,15 +286,18 @@ internal object ProviderPrefs {
     /**
      * 解析当前通道。
      * - 自定义通道：三件（base/model）齐 + URL 过得了许可判据 ⇒ 自定义 Provider；
-     *   缺件或非法 ⇒ 回退内置免费通道（**不静默装好**——UI 保存时已拦截，这里是兜底）。
-     * - 预设通道：填了 Key 就套上（[Providers.withUserKey]：只换 key，其余保留）。
-     * - 认不出的 id（含 null/脏数据）⇒ 内置免费通道（第一次装起来就能点的默认）。
+     *   缺件或非法 ⇒ 回退免费车道（**不静默装好**——UI 保存时已拦截，这里是兜底）。
+     * - 预设通道：填了 Key 就套上（[Providers.withUserKey]：只换 key，其余保留）；
+     *   第一百三十一批 ③ 再叠一层"用户在这条预设上选定的模型"（[presetModelFor]），
+     *   模型名与它的元数据**一起换**——留着上一个模型的窗口数就是假数据。
+     * - 认不出的 id（含 null/脏数据）⇒ 免费车道（第一百三十一批 ①：OpenRouter 免费档）。
      */
     internal fun resolve(
         channelId: String?,
         keyFor: (String) -> String?,
         customBase: String? = null,
         customModel: String? = null,
+        presetModelFor: (String) -> ModelPickerRules.ModelOverride? = { null },
     ): Provider {
         if (channelId == CHANNEL_CUSTOM) {
             val base = customBase?.trim().orEmpty()
@@ -151,13 +313,17 @@ internal object ProviderPrefs {
                         model = model,
                         apiKey = key,
                     )
-                }.getOrDefault(Providers.BUILTIN_FREE)
+                }.getOrDefault(Providers.OPENROUTER_FREE)
             }
-            return Providers.BUILTIN_FREE
+            return Providers.OPENROUTER_FREE
         }
-        val chosen = Providers.of(channelId ?: "") ?: Providers.BUILTIN_FREE
+        val chosen = Providers.of(channelId ?: "") ?: Providers.OPENROUTER_FREE
         val userKey = keyFor(chosen.id)?.trim().orEmpty()
-        return if (userKey.isEmpty()) chosen else Providers.withUserKey(chosen, userKey)
+        val withKey = if (userKey.isEmpty()) chosen else Providers.withUserKey(chosen, userKey)
+        val picked = presetModelFor(chosen.id) ?: return withKey
+        val name = picked.id.trim()
+        if (name.isEmpty() || name == withKey.model) return withKey
+        return withKey.copy(model = name, contextWindow = picked.contextWindow, maxOutput = picked.maxOutput)
     }
 
     /**
@@ -166,8 +332,9 @@ internal object ProviderPrefs {
      *
      * 排除规则照旧：
      * - 排除当前通道（熔断的就是它，切回去等于没切）；
-     * - 排除内置免费通道（2026-10-17 真机实测整条 403 RegionError，它是"没得选才用"的
-     *   默认值，不是降级去向；切回它只会再吃一次 403）；
+     * - 排除免费车道（第一百三十一批 ① 之后它是 OpenRouter 免费档，**要 Key 也能干活**，
+     *   但它仍是"没得选才用"的默认值而不是降级去向：免费档有 50 次/天的额度上限，
+     *   把它当降级去向等于拿用户的免费额度去兜另一条通道的故障）；
      * - 预设必须已填 Key。
      * 都不行再看自定义通道（三件齐才可用）；顺序照旧（Providers.all() 的预设序，自定义在最后）。
      * 全没有 ⇒ 空表（调用方走 ask_user，不抛异常）。

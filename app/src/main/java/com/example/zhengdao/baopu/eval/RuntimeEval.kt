@@ -102,16 +102,17 @@ internal object RuntimeEval {
     const val PROD_EVAL_TAG = "prod-eval"
 
     /**
-     * 这条通道能不能跑自检。
+     * 这条模型能不能跑自检。
      *
      * - 没有 key（`""`）⇒ 不能；
-     * - 内置免费通道的占位 key（`"null"`）⇒ 不能——2026-10-17 真机实测整条 403，
-     *   拿它跑只会得到 10 条网络失败，再被当成「人设变差」自动回滚，那是纯事故；
+     * - 免费车道（第一百三十一批 ① 之后＝OpenRouter 免费档）⇒ **不跑**——这条车道有
+     *   50 次/天的额度上限（① 官方口径），10 例自检一次就吃掉两成额度；行为与旧的
+     *   「内置 zen 免费通道整条 403 不能跑」逐条相同，只是理由换了；
      * - 非 OpenAI 兼容协议（Anthropic）⇒ 不能——`EvalHarness` 只实现了一种请求形状。
      */
     fun unusableReason(provider: Provider): String? = when {
-        provider.builtinFree -> "无可用通道（内置免费通道整条 403，2026-10-17 真机实测）"
-        provider.apiKey.isBlank() || provider.apiKey == Providers.FREE_PLACEHOLDER_KEY -> "无可用通道（当前通道没填 Key）"
+        provider.builtinFree -> "无可用通道（免费档额度有限，自检跑批要花钱的模型才跑）"
+        provider.apiKey.isBlank() -> "无可用通道（当前通道没填 Key）"
         provider.protocol != LlmProtocol.OPENAI_COMPAT -> "无可用通道（自检只支持 OpenAI 兼容通道）"
         else -> null
     }

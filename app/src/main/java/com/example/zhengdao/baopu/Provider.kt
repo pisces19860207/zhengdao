@@ -8,9 +8,17 @@
 
 //   - Anthropic Messages API 公开文档形态（POST /messages，x-api-key + anthropic-version 头）；
 
-//   - opencode zen 免费网关的形态取自**仓库台账取证**（docs/FEATURE-LEDGER.md 2026-10-15
+//   - OpenRouter 的 baseUrl 与免费档清单取自**本会话实测**（第一百三十一批 ①：2026-10-22
 
-//     第三十四答：dsh-opencode-patch 插件的路由表与注入头），**非本文件实测**（证据等级③）。
+//     `GET https://openrouter.ai/api/v1/models` 未带 Key 返回 200，共 468 个模型、
+
+//     其中 18 个以 `:free` 结尾）；逐条 id／context_length 见
+
+//     证道设计报告/模型选择P0-交付-2026-10-22.md §三。
+
+//   - 历史：曾内置一条 opencode zen 免费车道（整条 403 RegionError，2026-10-17 真机实测），
+
+//     第一百三十一批 ① 按派工单**整条删除**——删干净，不留占位 Key、不留伪装头。
 
 package com.example.zhengdao.baopu
 
@@ -22,7 +30,7 @@ package com.example.zhengdao.baopu
 
  *
 
- * 只分两种，因为市面上的"OpenAI 兼容"端点（OpenAI 官方、DeepSeek、智谱、zen 网关……）
+ * 只分两种，因为市面上的"OpenAI 兼容"端点（OpenAI 官方、DeepSeek、智谱、OpenRouter……）
 
  * 请求/响应形状完全一致，值得共享一条代码路径；Anthropic 是唯一形状不同的主流协议。
 
@@ -56,9 +64,13 @@ enum class LlmProtocol {
 
  * baseUrl / model / headers 一律保留（[Providers.withUserKey]）。
 
- * 内置免费通道（[Providers.BUILTIN_FREE]）的 `builtinFree = true` 描述的是
+ * 免费车道（[Providers.OPENROUTER_FREE]）的 `builtinFree = true` 描述的是
 
  * **这条通道**，不随 key 变化——它回答"这是不是免费车道"，不是"现在免不免费"。
+
+ * 第一百三十一批 ① 起免费车道**同样要用户自己的 Key**（OpenRouter 注册后填），
+
+ * 所以这个标志不再隐含"免密钥可用"，只用于路由排除与限额提示两处判据。
 
  *
 
@@ -86,7 +98,7 @@ data class Provider(
 
     val apiKey: String = "",
 
-    /** 自定义 header（最后合并，允许覆盖协议默认头）。免费通道的伪装头就走这里。 */
+    /** 自定义 header（最后合并，允许覆盖协议默认头）。第一百三十一批 ① 起预设一律不带。 */
 
     val headers: Map<String, String> = emptyMap(),
 
@@ -216,11 +228,13 @@ data class Provider(
 
 /**
 
- * 三个内置预设（刀 0 · 2026-10-16）。
+ * 内置预设（刀 0 · 2026-10-16 起；第一百三十一批 ① 换免费车道、③ 增 OpenRouter）。
 
  *
 
- * 持久化（用户选了哪个、填了什么 key）归刀 1 的设置页；本文件只给**默认值**。
+ * 持久化（用户选了哪个、填了什么 key）归刀 1 的设置页；本文件只给**默认值**，
+
+ * 且**不含任何 Key**（红线：不内置 key、App 不兜底）。
 
  */
 
@@ -234,7 +248,7 @@ object Providers {
 
         id = "openai-compat",
 
-        label = "OpenAI 兼容",
+        label = "OpenAI",
 
         protocol = LlmProtocol.OPENAI_COMPAT,
 
@@ -284,121 +298,149 @@ object Providers {
 
     /**
 
-     * 免费档占位 Bearer —— **这不是 bug，别"顺手修掉"**。
+     * OpenRouter 预设（第一百三十一批 ③：预设也要能动态拉模型，本文件先给形状）。
 
      *
 
-     * ② 仓库台账取证（FEATURE-LEDGER.md 2026-10-15 第三十四答）：dsh-opencode-patch 插件
+     * ① 实测（2026-10-22 本会话）：`GET https://openrouter.ai/api/v1/models` 未带 Key 即 200，
 
-     * 源码里 `PLACEHOLDER_API_KEYS = Set(["null","none","undefined","unused"])`，
+     * 返回 468 个模型；默认模型 `deepseek/deepseek-v4.1-flash` 在其中，
 
-     * 即适配器握不到真凭据时拿 `Bearer null` 硬填。免费档是否真的免密钥**未实测**（③，
-
-     * 裸探 zen 网关 403/401），留待刀 0b 探针定案；在那之前与插件行为保持一致。
-
-     */
-
-    const val FREE_PLACEHOLDER_KEY = "null"
-
-
-
-    /**
-
-     * zen 网关 baseUrl（② 台账取证：裸探路径 `/zen/v1/chat/completions`；
-
-     * ③ 端点本身未真机实测）。
-
-     */
-
-    const val FREE_BASE_URL = "https://opencode.ai/zen/v1"
-
-
-
-    /**
-
-     * 免费模型默认序（② `证道设计报告/抱朴-免费模型能力-2026-10-16.md` 的"刀 0 免费默认序"：
-
-     * muse-spark-1.3-contributor-free ＞ nemotron-3.5-super-vl-free ＞ longcat-2.5-preview-free
-
-     * ＞ mimo-v2.6-flash-free ＞ deepseek-v4.1-flash-free）。元数据非实测；动态刷新归后续刀。
-
-     */
-
-    val FREE_MODELS: List<String> = listOf(
-
-        "muse-spark-1.3-contributor-free",
-
-        "nemotron-3.5-super-vl-free",
-
-        "longcat-2.5-preview-free",
-
-        "mimo-v2.6-flash-free",
-
-        "deepseek-v4.1-flash-free",
-
-    )
-
-
-
-    /**
-
-     * 免费通道的伪装头（② 台账取证：dsh-opencode-patch 注入 `User-Agent: opencode/1.18.34`
-
-     * 与 `x-opencode-client: cli`，让服务端以为请求来自 opencode 官方 CLI）。
-
-     * 只收**静态**两条；会话确定性哈希那类动态头归后续刀的 FreeLane。
-
-     */
-
-    val FREE_HEADERS: Map<String, String> = mapOf(
-
-        "User-Agent" to "opencode/1.18.34",
-
-        "x-opencode-client" to "cli",
-
-    )
-
-
-
-    /**
-
-     * 内置免费通道预设。默认模型取 [FREE_MODELS] 首位。
+     * `context_length=1048576`。
 
      *
 
-     * ⚠️ 免费档还要在工具 schema 里补 `read` + `bash` 两个工具，否则服务端回
-
-     * `403 FreeTierError`（② 台账取证）——**那是工具集（刀 1+）的事**，本刀不带工具。
+     * **不带 Key**：用户自己注册、自己填（红线：不内置、不兜底、不预填、不读剪贴板）。
 
      */
 
-    val BUILTIN_FREE = Provider(
+    val OPENROUTER = Provider(
 
-        id = "builtin-free",
+        id = "openrouter",
 
-        label = "内置免费通道",
+        label = "OpenRouter",
 
         protocol = LlmProtocol.OPENAI_COMPAT,
 
-        baseUrl = FREE_BASE_URL,
+        baseUrl = "https://openrouter.ai/api/v1",
 
-        model = FREE_MODELS.first(),
+        model = "deepseek/deepseek-v4.1-flash",
 
-        apiKey = FREE_PLACEHOLDER_KEY,
+        contextWindow = 1_048_576,
 
-        headers = FREE_HEADERS,
+        // vision = true（第一百三十一批 ① + 2026-10-18 用户口径）。
 
-        builtinFree = true,
+        // ① 实测台账：本会话抓 `GET https://openrouter.ai/api/v1/models`（未带 Key 即 200，
 
-        // vision = false：**未实测**。该车道整条 403 RegionError（2026-10-17 真机），
+        // 468 条）里 `deepseek/deepseek-v4.1-flash` 的
 
-        // 连文本都不通，更没法验图片。FREE_MODELS 里确实有名字带 `-vl-` 的模型
+        // `architecture.input_modalities = ["text", "image"]`。
 
-        // （nemotron-3.5-super-vl-free），但"名字像支持视觉"不是依据 ⇒ 不许猜 true。
+        // 用户口径：「除非是文本模型，不然肯定要打开」＋「纯文本模型自己就会说看不见」
+
+        // ⇒ 不在本地替模型判断能不能看图，图照发；端上认不认由它自己回答。
+
+        // 纪律没被绕过：真机发图验证属**未验项**（本单红线不跑真机）。若端上拒图或模型
+
+        // 答「看不到」，就把这里改回 false 并在交付报告里记下日期。
 
         vision = true,
 
     )
+
+
+
+
+
+    /**
+
+     * OpenRouter 免费档：第一百三十一批 ① 之后**新用户开箱的第一条车道**，
+
+     * 替换整条 403 的 opencode zen 免费通道。
+
+     *
+
+     * 口径（派工单 ①）：**App 不兜底**——这条预设不带 Key，用户自己去
+
+     * `https://openrouter.ai/settings/keys` 注册拿 Key 填进来；没填 Key 时界面说的是
+
+     * 「去 OpenRouter 注册填 Key」＋跳转，**不是**一条 403 死路。
+
+     *
+
+     * 限额（① 官方口径，2026-10-22 两处交叉核对）：未充值 **20 次/分钟、50 次/天**，
+
+     * 余额满 $10 起 1000 次/天；超额回 429。界面必须把这句话显示出来（[FREE_QUOTA_HINT]）。
+
+     *
+
+     * 模型清单**不硬编码**：免费档每次现拉、不缓存（派工单 ③），所以这里只放一条
+
+     * ① 实测到的 `:free` 模型当默认值，其余由选模型抽屉列给用户点。
+
+     */
+
+    val OPENROUTER_FREE = Provider(
+
+        id = "openrouter-free",
+
+        label = "OpenRouter 免费",
+
+        protocol = LlmProtocol.OPENAI_COMPAT,
+
+        baseUrl = "https://openrouter.ai/api/v1",
+
+        // ① 实测（2026-10-22）：18 条 `:free` 里有 nvidia/nemotron-3.5-super-vl:free，
+
+        // context_length=1000000、top_provider.max_completion_tokens=131072；与被删掉的
+
+        // zen 菜单里那条 nemotron-3.5-super-vl-free 是同一批模型的延续。
+
+        model = "nvidia/nemotron-3.5-super-vl:free",
+
+        contextWindow = 1_000_000,
+
+        maxOutput = 131_072,
+
+        // apiKey 用默认值（空串）= **本仓库不内置任何 Key**（负例用例钉的就是这一条）。
+
+        builtinFree = true,
+
+        // vision = true（2026-10-18 用户口径，见 LlmWireVisionTest V5）：
+
+        // 「除非是文本模型，不然肯定要打开」「纯文本模型自己就会说看不见」⇒ 不在本地替模型
+
+        // 判断能不能看图，图照发。① 实测这条 `:free` 的 input_modalities 含 image/video，
+
+        // 它本来就不是文本模型。
+
+        vision = true,
+
+    )
+
+
+
+
+
+    /**
+
+     * 免费档限额的界面文案（派工单 ①「免费限额 UI 明示」；数字是 ① 官方口径，不编）。
+
+     *
+
+     * 为什么放在数据层：选模型抽屉与设置页两处都要说同一件事，写两遍就会漂成两个数
+
+     * （第二真相）。UI 只显示，不自己拼数字。
+
+     */
+
+    const val FREE_QUOTA_HINT =
+
+        "OpenRouter 免费档限额：未充值 20 次/分钟、50 次/天；余额满 \$10 后 1000 次/天。" +
+
+            "超额会返回 429，稍后自动恢复，不阻塞继续使用。"
+
+
 
 
 
@@ -490,9 +532,21 @@ object Providers {
 
 
 
-    /** 三个预设（顺序即 UI 上的展示序）。 */
+    /**
 
-    fun all(): List<Provider> = listOf(BUILTIN_FREE, OPENAI_COMPAT, ANTHROPIC, DEEPSEEK)
+     * 预设清单（顺序即 UI 上的展示序，与《抱朴设置重构方案》§2 抽屉树一致）。
+
+     *
+
+     * 第一百三十一批 ①：删掉整条 403 的内置 zen 免费车道；③：新增 OpenRouter。
+
+     * 自定义通道不在此列——它不是预设，见 [ProviderPrefs.CHANNEL_CUSTOM]。
+
+     */
+
+    fun all(): List<Provider> =
+
+        listOf(OPENAI_COMPAT, DEEPSEEK, ANTHROPIC, OPENROUTER, OPENROUTER_FREE)
 
 
 

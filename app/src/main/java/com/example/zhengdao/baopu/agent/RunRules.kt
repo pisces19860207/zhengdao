@@ -51,6 +51,37 @@ internal object RunRules {
      */
     const val MAX_CHANNEL_SWITCHES = BaopuKernel.Budget.MAX_CHANNEL_SWITCHES
 
+    /**
+     * 熔断/失败后递给引擎的**候选**（第一百三十一批 ②；纯数据，判定全在装配层）。
+     *
+     * 为什么要有这个壳而不是继续返回 [Provider]：②「同一 provider 可填多把 Key，遇
+     * 429/403/额度耗尽切下一个」与「整条通道坏了换一条」在引擎里必须走**同一个写入口**
+     * （`ChannelSwitchTruthGateTest` 钉死 provider 字段只许两处赋值）。壳就是为此：
+     * 装配层把"下一把 Key"包成 next = 当前 Provider 换掉 apiKey 的副本 并置
+     * [keySwap]，引擎在同一个分支里换掉 provider，只是话说得不一样、计数器不一样。
+     *
+     * 为什么带 [notice]：② 要求"全部不可用 ⇒ 可读提示，不静默重试"。那句提示的原料
+     * （几把在冷却、最快多久回来）只有拿着 Key 池的装配层知道，引擎猜不出来；
+     * 而它**不是 Key**（KeyPool.mask 那关都过不了的东西根本不进这里），所以可以上界面。
+     *
+     * 怎么区分"换 Key"与"换通道"而不用第四个信号：看 [next] 的 `id` 还等不等于当前 provider
+     * 的 `id`。这条判据是安全的，因为候选名单的来源只有两处——
+     * `ProviderPrefs.routeCandidates` **显式排除当前 id**（第九十三批起就这样），
+     * 而 Key 池永远挂在当前 id 名下 ⇒ 同 id 只能是换 Key。**新加候选来源时必须守住这一点。**
+     *
+     * @param next 要切过去的那个 Provider（含 Key）；null = 没得切，只剩 [notice] 要说
+     * @param keySwap true = 同一条模型换一把 Key（不花换通道次数、不涨步数）
+     * @param notice 要贴给用户的一句话；空串 = 没有额外的话要说
+     */
+    data class ChannelCandidate(
+        val next: Provider?,
+        val keySwap: Boolean = false,
+        val notice: String = "",
+    ) {
+        /** 什么都没带（引擎按"没候选"处理，与 null 同义，只是调用方少写一个 `?.`）。 */
+        val isEmpty: Boolean get() = next == null && notice.isEmpty()
+    }
+
     /** 一步 = 一次模型轮次 ⇒ 步数从 1 起；满 16 必停。 */
     fun isStepExhausted(steps: Int): Boolean = steps >= MAX_STEPS
 
