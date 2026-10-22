@@ -61,6 +61,10 @@ object TimeFormats {
     private val monthDayFmt: DateTimeFormatter =
         DateTimeFormatter.ofPattern("MM-dd", Locale.US).withZone(zone)
 
+    /** `yyyy-MM-dd` —— 完整日期（147 批：情景记忆日记的日文件名与 `date` 字段）。 */
+    private val dayStampFmt: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US).withZone(zone)
+
     private fun at(millis: Long): Instant = Instant.ofEpochMilli(millis)
 
     fun logStamp(millis: Long): String = logStampFmt.format(at(millis))
@@ -83,4 +87,7 @@ object TimeFormats {
 
     /** `MM-dd`（第一百零六批：抱朴计划面板组头用）。 */
     fun monthDay(millis: Long): String = monthDayFmt.format(at(millis))
+
+    /** `yyyy-MM-dd`（147 批：情景记忆日记的日文件名与 `date` 字段）。 */
+    fun dayStamp(millis: Long): String = dayStampFmt.format(at(millis))
 }
