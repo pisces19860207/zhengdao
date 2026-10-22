@@ -21,7 +21,7 @@ import kotlin.text.Charsets
 class ActivityLatencyTextTest {
 
     private val panel: String by lazy {
-        File("src/main/java/com/example/zhengdao/ui/baopu/BaopuActivityPanel.kt")
+        File("src/main/java/com/example/zhengdao/ui/baopu/BaopuProcessBar.kt")
             .readText(Charsets.UTF_8)
     }
 
