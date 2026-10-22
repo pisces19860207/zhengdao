@@ -1,4 +1,4 @@
-# Zhengdao (证道)
+﻿# Zhengdao (证道)
 
 **English** ｜ [简体中文](README.md)
 
@@ -15,7 +15,7 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.0 (versionCode 38).
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.1 (versionCode 39).
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
