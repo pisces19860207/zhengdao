@@ -42,8 +42,9 @@ internal object VisionRouting {
         keyFor: (String) -> String?,
         customBase: String? = null,
         customModel: String? = null,
+        customProtocol: String? = null,
     ): List<Provider> = verifiedAmong(
-        ProviderPrefs.routeCandidates(currentId, keyFor, customBase, customModel),
+        ProviderPrefs.routeCandidates(currentId, keyFor, customBase, customModel, customProtocol),
     )
 
     /**

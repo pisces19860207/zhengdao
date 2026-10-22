@@ -35,6 +35,12 @@ internal object ModelPickerRules {
     /** 搜索框空结果的话（补充节 §一硬要求，原文一字不改）。 */
     const val SEARCH_EMPTY_NOTICE = "没有匹配的模型，可手填模型名"
 
+    /**
+     * 第一百三十六批：自定义 Anthropic 没有 `/v1/models`（Claude 那家不提供清单接口）⇒
+     * 清单段不许硬拉，直接把「手填」这句话摆出来。
+     */
+    const val ANTHROPIC_MANUAL_MODEL_HINT = "该协议需手填模型名"
+
     // ── ③ 拉取时机 ────────────────────────────────────────────────────────
 
     /** 停手多久才拉（重构方案 §3「停手 0.6s」；沿用自定义那头的既有数值）。 */

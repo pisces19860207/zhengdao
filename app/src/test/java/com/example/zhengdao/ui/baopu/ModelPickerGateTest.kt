@@ -138,9 +138,11 @@ class ModelPickerGateTest {
     @Test
     fun 负例四_预设也拉清单不只自定义() {
         // ③「预设 provider 也拉 {base}/models」——判据是拉取那一段不吃 isCustom
+        // 第一百三十六批：Anthropic 自定义通道不拉 `/v1/models`，拉取段多了一个
+        // `manualModelOnly` 开关（只挡这一种组合；预设仍照旧全拉——本用例其余判据不变）。
         val block = between(
             sheetRaw,
-            "LaunchedEffect(selected, effectiveBase, keyForFetch, refreshTick)",
+            "LaunchedEffect(selected, effectiveBase, keyForFetch, refreshTick, manualModelOnly)",
             "val filtered = ModelPickerRules.filter(query, entries)",
         )
         assertTrue("拉的是当前这一家的地址", block.contains("effectiveBase"))

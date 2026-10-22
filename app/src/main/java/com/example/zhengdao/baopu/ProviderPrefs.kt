@@ -26,6 +26,12 @@ internal object ProviderPrefs {
     private const val KEY_CHANNEL = "channel_id"
     private const val KEY_CUSTOM_BASE = "custom_base_url"
     private const val KEY_CUSTOM_MODEL = "custom_model"
+
+    // 第一百三十六批：自定义通道的协议（二选一）。存的是下面两个线值；老数据没有这一格，
+    // 读出来按 OPENAI_COMPAT 处理——与 136 之前「自定义写死 OpenAI 兼容」逐字节一致。
+    private const val KEY_CUSTOM_PROTOCOL = "custom_protocol"
+    const val PROTOCOL_OPENAI_COMPAT = "openai_compat"
+    const val PROTOCOL_ANTHROPIC = "anthropic"
     // 第九十三批 · 模型路由：AUTO_ROUTE 是**显式开关**，默认关（派工单 §2「不默认改变当前通道」）。
     // 关着的时候本文件行为与开关存在之前逐字节一致，见 routeCandidates / fallbackFrom 的注释。
     private const val KEY_AUTO_ROUTE = "auto_route"
@@ -56,6 +62,7 @@ internal object ProviderPrefs {
         keyFor = { id -> storedKey(context, id) },
         customBase = prefs(context).getString(KEY_CUSTOM_BASE, null),
         customModel = prefs(context).getString(KEY_CUSTOM_MODEL, null),
+        customProtocol = prefs(context).getString(KEY_CUSTOM_PROTOCOL, null),
         presetModelFor = { id -> modelOverride(context, id) },
     )
 
@@ -218,6 +225,13 @@ internal object ProviderPrefs {
     }
 
     /**
+     * 自定义通道的协议（第一百三十六批）。缺省/脏值 ⇒ [PROTOCOL_OPENAI_COMPAT]：
+     * 老数据（没这一格）与手改坏的值都不许把请求发去错的端点。
+     */
+    fun storedCustomProtocol(context: Context): String =
+        protocolKeyOf(prefs(context).getString(KEY_CUSTOM_PROTOCOL, null))
+
+    /**
      * 保存选择（UI「启用此通道」落点；保存即生效——调用方随后重建引擎）。
      *
      * 第一百三十一批 ②：Key 那一格改成进**池子**——填进来的这把追加到池尾（已在池里就原样不动），
@@ -233,6 +247,7 @@ internal object ProviderPrefs {
         apiKey: String,
         baseUrl: String? = null,
         model: String? = null,
+        protocol: String? = null,
     ) {
         val key = apiKey.trim()
         val pool = keyPool(context, channelId)
@@ -242,6 +257,12 @@ internal object ProviderPrefs {
             .putString(KEY_CHANNEL, channelId)
             .putString(KEY_CUSTOM_BASE, baseUrl)
             .putString(KEY_CUSTOM_MODEL, model)
+            // 协议只属于自定义通道：与 base/model 同口径，切到预设时这三格一起清；
+            // 写进来之前先归一（脏值不落盘），读取端 [protocolOf] 再兜一层。
+            .putString(
+                KEY_CUSTOM_PROTOCOL,
+                if (channelId == CHANNEL_CUSTOM) protocolKeyOf(protocol) else null,
+            )
             .apply()
         if (next.isNotEmpty()) saveKeyPool(context, channelId, next, cursor)
     }
@@ -284,8 +305,27 @@ internal object ProviderPrefs {
     internal fun autoRouteEnabled(stored: Boolean?): Boolean = stored == true
 
     /**
+     * 「存出来的协议」→「真正发请求用的协议」（Context-free，JVM 直测）。
+     *
+     * 只认 [PROTOCOL_ANTHROPIC]（trim 后精确相等）；null / 空串 / 大小写不符 / 别的脏值
+     * 一律 [LlmProtocol.OPENAI_COMPAT]——缺省与今天（136 之前）的自定义行为完全一致，
+     * 手改坏的值也不许把用户的请求发去 `/messages`。
+     */
+    internal fun protocolOf(stored: String?): LlmProtocol =
+        if (stored?.trim() == PROTOCOL_ANTHROPIC) {
+            LlmProtocol.ANTHROPIC
+        } else {
+            LlmProtocol.OPENAI_COMPAT
+        }
+
+    /** [protocolOf] 的线值版本（UI 选中态与 SP 回写共用这一条判据，不另造一套）。 */
+    internal fun protocolKeyOf(stored: String?): String =
+        if (stored?.trim() == PROTOCOL_ANTHROPIC) PROTOCOL_ANTHROPIC else PROTOCOL_OPENAI_COMPAT
+
+    /**
      * 解析当前通道。
      * - 自定义通道：三件（base/model）齐 + URL 过得了许可判据 ⇒ 自定义 Provider；
+     *   协议按 [customProtocol] 取（第一百三十六批），缺省/脏值 ⇒ OpenAI 兼容；
      *   缺件或非法 ⇒ 回退免费车道（**不静默装好**——UI 保存时已拦截，这里是兜底）。
      * - 预设通道：填了 Key 就套上（[Providers.withUserKey]：只换 key，其余保留）；
      *   第一百三十一批 ③ 再叠一层"用户在这条预设上选定的模型"（[presetModelFor]），
@@ -297,6 +337,7 @@ internal object ProviderPrefs {
         keyFor: (String) -> String?,
         customBase: String? = null,
         customModel: String? = null,
+        customProtocol: String? = null,
         presetModelFor: (String) -> ModelPickerRules.ModelOverride? = { null },
     ): Provider {
         if (channelId == CHANNEL_CUSTOM) {
@@ -308,7 +349,7 @@ internal object ProviderPrefs {
                     Provider(
                         id = CHANNEL_CUSTOM,
                         label = "自定义通道",
-                        protocol = LlmProtocol.OPENAI_COMPAT,
+                        protocol = protocolOf(customProtocol),
                         baseUrl = base,
                         model = model,
                         apiKey = key,
@@ -344,6 +385,7 @@ internal object ProviderPrefs {
         keyFor: (String) -> String?,
         customBase: String? = null,
         customModel: String? = null,
+        customProtocol: String? = null,
     ): List<Provider> {
         val out = mutableListOf<Provider>()
         Providers.all().forEach { p ->
@@ -353,7 +395,7 @@ internal object ProviderPrefs {
             }
         }
         if (currentId != CHANNEL_CUSTOM) {
-            val custom = resolve(CHANNEL_CUSTOM, keyFor, customBase, customModel)
+            val custom = resolve(CHANNEL_CUSTOM, keyFor, customBase, customModel, customProtocol)
             if (custom.id == CHANNEL_CUSTOM) out += custom
         }
         return out
@@ -378,17 +420,18 @@ internal object ProviderPrefs {
         keyFor: (String) -> String?,
         customBase: String? = null,
         customModel: String? = null,
+        customProtocol: String? = null,
         autoRoute: Boolean = false,
         preference: ModelRouter.Preference? = null,
         need: ModelRouter.Need = ModelRouter.Need(),
     ): Provider? {
-        val candidates = routeCandidates(currentId, keyFor, customBase, customModel)
+        val candidates = routeCandidates(currentId, keyFor, customBase, customModel, customProtocol)
         if (!autoRouteEnabled(autoRoute)) return candidates.firstOrNull()
         val plan = ModelRouter.plan(
             autoEnabled = true,
             preference = preference,
             need = need,
-            current = resolve(currentId, keyFor, customBase, customModel),
+            current = resolve(currentId, keyFor, customBase, customModel, customProtocol),
             candidates = candidates,
         )
         return (plan as? ModelRouter.Plan.Routed)?.picked
