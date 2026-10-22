@@ -155,6 +155,9 @@ class RunEngineConcurrencyGateTest {
         val p = src.indexOf("private fun persistUserMessage(")
         assertTrue("找不到 persistUserMessage", p >= 0)
         val body = src.substring(p, src.indexOf("private fun persistAssistantMessage(", p))
-        assertTrue("queueRowId 拿不到 id 时必须有按内容兜底删", body.contains("deleteRunQueue(id)"))
+        assertTrue(
+            "queueRowId 拿不到 id 时必须有按内容兜底删（151 批：只删最新一条）",
+            body.contains("deleteRunQueue(newestMatch)"),
+        )
     }
 }
