@@ -144,11 +144,28 @@ class PlanToolTest {
     }
 
     @Test
-    fun `描述写清了三条纪律`() {
+    fun `描述写清了计划纪律_12条_计划变更_done不漏写`() {
         assertTrue(PlanTool.DESCRIPTION.contains("全量覆盖"))
-        assertTrue(PlanTool.DESCRIPTION.contains("8"))
+        assertTrue("上限口径是 12：${PlanTool.DESCRIPTION}", PlanTool.DESCRIPTION.contains("12"))
+        assertFalse("旧的 3–8 口径已废：${PlanTool.DESCRIPTION}", PlanTool.DESCRIPTION.contains("3–8"))
+        assertFalse("不再写「不是追加」：${PlanTool.DESCRIPTION}", PlanTool.DESCRIPTION.contains("不是追加"))
+        assertTrue("要讲计划有变怎么改：${PlanTool.DESCRIPTION}", PlanTool.DESCRIPTION.contains("计划有变"))
+        assertTrue("要把新步骤加进原表：${PlanTool.DESCRIPTION}", PlanTool.DESCRIPTION.contains("新步骤"))
+        assertTrue("已完成条目不许漏写：${PlanTool.DESCRIPTION}", PlanTool.DESCRIPTION.contains("不许漏写"))
         assertTrue(PlanTool.DESCRIPTION.contains("60"))
         assertTrue(PlanTool.DESCRIPTION.contains("不要写进回复正文"))
+    }
+
+    @Test
+    fun `items属性说明也写了计划有变与done保留`() {
+        val spec = BaopuToolCatalog.ENTRIES.first { it.name == PlanTool.NAME }.factory { File(".") }
+        val desc = spec.inputSchema
+            .getJSONObject("properties")
+            .getJSONObject("items")
+            .getString("description")
+        assertTrue("属性说明是模型填参时的提示：$desc", desc.contains("计划有变"))
+        assertTrue("要写清完成的条目要保留：$desc", desc.contains("已完成的条目要保留"))
+        assertFalse("不再写「不是追加」：$desc", desc.contains("不是追加"))
     }
 
     // ── enum 同源（schema 与校验不许漂移） ────────────────────────────
