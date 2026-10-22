@@ -15,7 +15,9 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.1 (versionCode 39).
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.1.2 (versionCode 37).
+
+> v2.2.0 has been withdrawn; v2.2 is still being fixed and is **not available for download yet**. The Baopu capabilities below are ready in the repository and will ship with the next release.
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
