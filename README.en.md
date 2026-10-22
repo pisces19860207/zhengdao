@@ -15,9 +15,7 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.1.2 (versionCode 37).
-
-> v2.2.0 has been withdrawn; v2.2 is still being fixed and is **not available for download yet**. The Baopu capabilities below are ready in the repository and will ship with the next release.
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.0 (versionCode 38).
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
@@ -40,6 +38,8 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to Baopu, and results land back in the workspace. Baopu never touches a shell and never spawns a process; it works only inside its workspace. System-level work belongs to Xiaoyao.
 
+**The conversation is all you see**: the transcript holds only your messages and Baopu's replies. Every step and tool call collapses into a single "process bar" at the end of each turn — tap it to see the details. Plans sit ahead as a capsule; the process bar looks back, and neither takes over the transcript.
+
 ## What it does
 
 **Organise.** Scattered settings, reference images and notes? Describe the rules — how to classify, how to name — and let Baopu put them into your library. It proposes a list or a plan first and acts only after you say yes, one item at a time, and tells you which files it touched. The library can be indexed locally; answers come with sources and line numbers, and still work offline.
@@ -54,6 +54,7 @@ Baopu accumulates skills and memories, and every step needs your nod. Writes and
 
 - **Skills** start as drafts that Baopu cannot see by default; after three uses a "promote" option appears, and it only becomes a real skill when you tap it. Writing one requires a confirmation card, and a backup is taken first, so you can restore the previous version.
 - **Memories** are distilled into candidates at the end of a session; they are written only when you tap "Remember", and discarded when you don't.
+- **Episodic memory**: what Baopu did is written into a diary; the files are the source of truth. You can recall a diary into the conversation, or delete it.
 - **Persona** has three layers: the core is read-only; the global and project layers evolve with sessions, but only as proposals you approve. The global layer follows the app; the project layer follows the workspace.
 - **Global skills** cannot be changed by Baopu — only proposed. You make the change yourself in settings.
 
@@ -71,7 +72,7 @@ Together that is what "heavy harness" means here: not many tools, but a boundary
 
 1. Download the APK from [Releases](https://github.com/pisces19860207/zhengdao/releases) and install it. Every build is signed; the in-app About page marks whether it is an official build or a repackaged one.
 2. On first launch, grant the permissions on the single page; install the Debian environment under Settings → Environment (about 200 MB, needs network); environment status and health checks live in Yiran.
-3. Before using Baopu, set a model provider in Settings: an OpenAI-compatible or Anthropic-style endpoint, with your own URL and key.
+3. Before using Baopu, tap the company name in the top bar to pick a model: choose a company (OpenAI / Anthropic / DeepSeek / OpenRouter) → fetch its model list (OpenRouter is searchable) → enter a key (you can store several; they rotate). The free lane now runs on OpenRouter and still needs your own key; the sheet has a "get an OpenRouter key" link.
 4. Yiran offers install cards, not preinstalled agents: Hermes / Claude Code / Codex / AGY CLI are installed when you tap install, and not before.
 5. Baopu reads and writes inside its workspace (default `Download/证道` on the phone, changeable in Settings); the default workspace lives on shared storage, so uninstalling Zhengdao keeps those files.
 6. Updates: the app can check for app and component updates; environment updates are downloaded as diffs.
