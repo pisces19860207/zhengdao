@@ -55,8 +55,23 @@ object LocalPreviewPolicy {
     /** 预览页签显示的地址（只给人看，不喂 WebView）。 */
     fun previewUrl(relPath: String): String = "$PREVIEW_SCHEME://$relPath"
 
-    /** 是否预览假地址（[previewUrl] 的反向）。 */
-    fun isPreviewUrl(url: String): Boolean = url.startsWith("$PREVIEW_SCHEME://")
+    /**
+     * 是否预览假地址（[previewUrl] 的反向）。
+     *
+     * 第一百四十九批改法：**按 scheme 判，不按字符串前缀判**。原来写的是
+     * `url.startsWith("$PREVIEW_SCHEME://")`，与本文件其他三条判据（[isNetwork]、
+     * [blocksResource]、[allowsNavigation]）用的**不是同一把尺子**，于是有两个认不出的形状：
+     * - `LOCAL-PREVIEW://产物/x.html` 这种大小写变体在旧写法下**判不出是预览**
+     *   （`Uri.scheme` 是小写的，浏览器侧认它，判据侧不认 ⇒ 一条假地址能被当成普通网址
+     *   送进上网页签）；
+     * - `local-preview:`（少两个斜杠）同理。
+     * 现在统一走 [schemeOf]：scheme 等于 [PREVIEW_SCHEME] 就是预览地址，大小写不敏感。
+     *
+     * 放宽的方向是**收紧**：本函数唯一的调用点在「要不要拦」这一侧
+     * （`BrowserTabManager.openExternal`；放行侧走 [allowsNavigation]，不经过这里），
+     * 多认一条只会多拦一个，不会多放行一个。
+     */
+    fun isPreviewUrl(url: String): Boolean = schemeOf(url) == PREVIEW_SCHEME
 
     /**
      * 取 URL 的 scheme（小写；没有 scheme 返回 null）。

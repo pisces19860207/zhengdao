@@ -201,9 +201,21 @@ object BrowserTabManager {
     /**
      * 外部打开入口（终端链接点击等，§4.6）：**开新标签**加载（[BrowserTabPolicy.externalOpenShouldCreateTab]；
      * 满 20 时回退当前活跃标签）。由 BrowserScreen 组合时消费 BrowserHolder.pendingUrl 后调。
+     *
+     * 第一百四十九批 组3：入口先拒**预览假地址**（`local-preview://…`，判据走
+     * [LocalPreviewPolicy.isPreviewUrl] 这一条，不在这里写 scheme 字面量）。为什么必须拦在这里：
+     * 预览页签的三条硬语义（断网、默认禁脚本、内容现读注入）住在 [openPreviewTab] 那一支，
+     * 而本入口建的是**上网页签**——一条假地址只要从这里进去，就会以"能导航的网址"的身份
+     * 拿到默认档配置、显示在地址胶囊里（用户会以为那是个真页面），而引擎层只是"投不进去"，
+     * 不报错也不给提示 = 静默。地址栏那条链早就有 `BrowserUrlPolicy.shouldReject` 拦同样的输入
+     * （第51刀），本入口此前是这条判据的缺口。
      */
     fun openExternal(context: Context, url: String) {
         if (url.isEmpty()) return
+        if (LocalPreviewPolicy.isPreviewUrl(url)) {
+            RunLog.log("玄览 外部打开：拒收预览假地址 $url（预览只走 openPreviewTab 那条注入通道）")
+            return
+        }
         if (BrowserTabPolicy.externalOpenShouldCreateTab(tabs.size)) {
             newTab(context, url)
         } else {
