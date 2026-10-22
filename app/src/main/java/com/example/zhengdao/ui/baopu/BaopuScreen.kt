@@ -461,25 +461,35 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                             }
                         }
                     }
-                    // 状态行**锁单行**（v1.4 §4「状态行优先、跑马灯弹性」）：
-                    // 不锁的话 1.3× 字体下它会折成两行 ⇒ 顶栏被撑高，跑马灯跟着"变高"，
-                    // 正好落进负例「跑马灯撑高顶栏」那一格。这里宁可省略号，也不许折行。
-                    Text(
-                        text = statusLineWithStep(
-                            stringResource(stateLabel(state)),
-                            controller.engineStep.value,
-                        ),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    // 「这次学到 / 已压缩」竖向跑马灯（2026-10-18 用户：位置在「待命中」和「＋」
-                    // 那一栏里）——顶栏中间剩余宽度全给它，只占一行高。
+                    // ── 第一百三十八批：状态行的第二出口已撤出 ──────────────────────
+                    // 改前这里是「状态文案 ＋ 步号」的第二个 Text，紧挨着跑马灯 —— 同一时刻两个地方说两种话。
+                    // 按设计 §5「状态单一出口」的裁决：**状态只由跑马灯说话**，那一行已删。
+                    // 引擎步数仍在活动面板里（`BaopuActivityPanel` 那一行），不是被删掉。
+                    // 「这次学到 / 已压缩」跑马灯（2026-10-18 用户：位置在状态和「＋」
+                    // 那一栏里）——顶栏中间剩余宽度全给它，恒定 40dp 占位。
+                    // 当前型号（§5 空闲条目池第一项）：只写人类可读的显示名
+                    // （「Claude Opus 5.5」），不写 `deepseek-chat` 这种原始 ID。
+                    val modelLabel = remember(companyProvider.model) {
+                        ModelPickerRules.displayName(companyProvider.model)
+                    }
                     val noticeItems = buildList {
+                        if (modelLabel.isNotBlank()) {
+                            add(
+                                NoticeItem(
+                                    stringResource(R.string.baopu_ticker_model_label),
+                                    modelLabel,
+                                    NoticeKind.INFO,
+                                ),
+                            )
+                        }
                         controller.introspectionNote?.takeIf { it.isNotBlank() }?.let {
-                            add(NoticeItem(stringResource(R.string.baopu_introspection_label), it))
+                            add(
+                                NoticeItem(
+                                    stringResource(R.string.baopu_introspection_label),
+                                    it,
+                                    NoticeKind.NEEDS_KNOWING,
+                                ),
+                            )
                         }
                         controller.compressionNote?.let {
                             add(
@@ -487,6 +497,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                     stringResource(R.string.baopu_notice_compressed_label),
                                     stringResource(R.string.baopu_compressed_bar, it.count, it.summary.length) +
                                         "\n" + it.summary,
+                                    NoticeKind.NEEDS_KNOWING,
                                 ),
                             )
                         }
@@ -497,11 +508,19 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                 NoticeItem(
                                     stringResource(R.string.baopu_scratch_left_label),
                                     stringResource(R.string.baopu_scratch_left_body, controller.scratchLeft),
+                                    // 「临时文件还剩 N 个」要她决定清不清 ⇒ 待你拍板档，排最前。
+                                    NoticeKind.NEEDS_YOU,
                                 ),
                             )
                         }
                         controller.browserActivity?.let {
-                            add(NoticeItem(stringResource(R.string.baopu_browser_notice_label), it))
+                            add(
+                                NoticeItem(
+                                    stringResource(R.string.baopu_browser_notice_label),
+                                    it,
+                                    NoticeKind.INFO,
+                                ),
+                            )
                         }
                         // 第三十八批 A 段：本轮用量。跑马灯滚的是标题（「本轮用量」），
                         // 点开 DropdownMenu 才是明细：第一行累计、往后**每步一行**
@@ -526,12 +545,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                 NoticeItem(
                                     stringResource(R.string.baopu_usage_label),
                                     usageNoticeBody(usage, usageCopy),
+                                    NoticeKind.INFO,
                                 ),
                             )
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    BaopuNoticeTicker(items = noticeItems, modifier = Modifier.weight(1f))
+                    // 两态的唯一开关是 state：运行中锁定只换字，空闲才逐条轮播。
+                    BaopuNoticeTicker(state = state, items = noticeItems, modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(4.dp))
                     // ── 第一百零四批：顶栏第五件·盾牌（决策中心）──────────────────
                     // v1.4 与真机对齐后定稿的五件＝☰·状态·跑马灯·🛡·＋；徽标＝前三页签

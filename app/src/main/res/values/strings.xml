@@ -736,12 +736,19 @@
     <string name="baopu_queue_continue">继续排队</string>
     <string name="baopu_queue_clear">清空排队</string>
     <string name="baopu_state_idle">空闲</string>
-    <string name="baopu_state_thinking">思考中…</string>
-    <string name="baopu_state_acting">执行工具中…</string>
-    <string name="baopu_state_compressing">压缩上下文中…</string>
-    <string name="baopu_state_await_confirm">等你确认</string>
+    <!-- 第一百三十八批：跑马灯运行态四词（设计 §5 定稿）。全 App 唯一一套，活动面板同吃。 -->
+    <string name="baopu_state_thinking">深度思考中</string>
+    <string name="baopu_state_acting">调用中</string>
+    <string name="baopu_state_compressing">压缩中</string>
+    <string name="baopu_state_await_confirm">待你确认</string>
     <string name="baopu_state_aborted">已停止</string>
     <string name="baopu_state_done">已完成</string>
+    <!-- 空闲轮播条目池第一项：当前型号（标题短，详情是人类可读的模型名） -->
+    <string name="baopu_ticker_model_label">型号</string>
+    <!-- 第一百三十八批：跑马灯的读屏描述（不硬编码在 .kt 里，英文环境跟着走） -->
+    <string name="baopu_ticker_a11y_locked">当前状态（不会自动切换）</string>
+    <string name="baopu_ticker_a11y_confirm">待你确认，需要你拍板</string>
+    <string name="baopu_ticker_a11y_idle">点击展开这条的详情</string>
     <string name="baopu_interrupted_at">上次中断于第 %1$d 步（进程当时被杀了）</string>
     <string name="baopu_resume">续跑</string>
     <string name="baopu_new_session">新会话</string>
