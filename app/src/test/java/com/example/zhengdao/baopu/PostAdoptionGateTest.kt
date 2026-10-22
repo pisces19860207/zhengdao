@@ -96,9 +96,10 @@ class PostAdoptionGateTest {
         assertFalse("不许自造颜色", card.contains("Color("))
         assertFalse("不许加动效", card.contains("animate") || card.contains("tween("))
         assertFalse("不许加渐变/画笔", card.contains("Brush."))
-        // 与学习卡同口径：同样的 Surface 高度与内距
-        assertTrue(card.contains("tonalElevation = 3.dp"))
-        assertTrue(card.contains("padding(horizontal = 12.dp, vertical = 10.dp)"))
+        // 2026-10-22 第一百三十七批：原断言钉的是「与学习卡同内距（12/10）+ tonalElevation 3」——
+        // 换四档容器后内距由信息卡统一给（12dp），同一性改由**同一个容器函数**保证，
+        // 比"两处巧合相同的内距数字"更强。
+        assertTrue("必须走四档容器的信息卡档", card.contains("BaopuInfoContainer"))
     }
 
     @Test

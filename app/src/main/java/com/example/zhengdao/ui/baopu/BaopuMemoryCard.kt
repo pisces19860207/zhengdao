@@ -3,6 +3,10 @@
 // 依据：派工单第九批 §4.3（BaopuMemoryCard：记忆写入要在会话里可见——设计 §9
 // 施工细节第 8 条）+ 程枢版 §16.4（记忆带来源、可单条删改；提炼归会话结束一次性）
 // ＋ 派工单第十批 §1 C 段（提炼候选一律 PENDING 未落盘，等用户过目；顺带一条自省）。
+//
+// 第一百三十七批（2026-10-22）：三张卡全部换四档容器的**信息卡**档
+// （纸深底＋只左边 4dp 黛青竖条）。原先是「surfaceVariant 底 + 无边界」——
+// §6.1 实测纸深对纸只有 1.11:1，靠它分卡片屏幕上看不见，这是「糊」的来源。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.clickable
@@ -13,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -98,41 +101,35 @@ internal fun BaopuMemoryCard(
         val visible = visibleItems(candidates, expanded = candidatesExpanded, limit = CARD_VISIBLE_LIMIT)
         val hidden = moreCount(total = candidates.size, shown = visible.size)
         visible.forEach { e -> // 同屏最多 3 张，避免把对话挤没；超出的走「还有 N 条」，不静默
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                tonalElevation = 2.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
+            BaopuInfoContainer(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
             ) {
-                Column(Modifier.padding(12.dp)) {
+                Text(
+                    text = stringResource(R.string.baopu_memory_card_title),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+                Text(
+                    text = e.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                if (e.body.isNotBlank()) {
                     Text(
-                        text = stringResource(R.string.baopu_memory_card_title),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
-                    Text(
-                        text = e.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
+                        text = e.body.take(120) + if (e.body.length > 120) "\u2026" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp),
                     )
-                    if (e.body.isNotBlank()) {
-                        Text(
-                            text = e.body.take(120) + if (e.body.length > 120) "…" else "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { onConfirm(e.id) }) {
+                        Text(stringResource(R.string.baopu_memory_confirm))
                     }
-                    Row(Modifier.fillMaxWidth()) {
-                        TextButton(onClick = { onConfirm(e.id) }) {
-                            Text(stringResource(R.string.baopu_memory_confirm))
-                        }
-                        TextButton(onClick = { onForget(e.id) }) {
-                            Text(stringResource(R.string.baopu_memory_forget))
-                        }
+                    TextButton(onClick = { onForget(e.id) }) {
+                        Text(stringResource(R.string.baopu_memory_forget))
                     }
                 }
             }
@@ -156,8 +153,9 @@ internal fun BaopuMemoryCard(
  *    标题明说「还没落盘」，用户知道点什么都不会立刻改文件。
  * 2. 按钮文案用同一对（记住/不记）——动作语义一致，不发明第三套词。
  *
- * 房型（同屏 3 张、Surface + 两按钮）与老卡一致：同一个位置换数据源，
- * 不让用户学两套界面。
+ * 房型（同屏 3 张、信息卡容器 + 两按钮）与老卡一致：同一个位置换数据源，
+ * 不让用户学两套界面。第一百三十七批：底色不再靠 secondaryContainer 区分
+ * （那是"另一种底色深浅"，§6.1 明确不许），改由标题文案区分。
  */
 @Composable
 internal fun BaopuPendingMemoryCard(
@@ -172,42 +170,35 @@ internal fun BaopuPendingMemoryCard(
         val visible = visibleItems(pending, expanded = pendingExpanded, limit = CARD_VISIBLE_LIMIT)
         val hidden = moreCount(total = pending.size, shown = visible.size)
         visible.forEach { e ->
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                tonalElevation = 2.dp,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
+            BaopuInfoContainer(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
             ) {
-                Column(Modifier.padding(12.dp)) {
+                Text(
+                    text = stringResource(R.string.baopu_pending_card_title),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = e.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                if (e.body.isNotBlank()) {
                     Text(
-                        text = stringResource(R.string.baopu_pending_card_title),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                    Text(
-                        text = e.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
+                        text = e.body.take(120) + if (e.body.length > 120) "\u2026" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp),
                     )
-                    if (e.body.isNotBlank()) {
-                        Text(
-                            text = e.body.take(120) + if (e.body.length > 120) "…" else "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { onConfirm(e.id) }) {
+                        Text(stringResource(R.string.baopu_memory_confirm))
                     }
-                    Row(Modifier.fillMaxWidth()) {
-                        TextButton(onClick = { onConfirm(e.id) }) {
-                            Text(stringResource(R.string.baopu_memory_confirm))
-                        }
-                        TextButton(onClick = { onForget(e.id) }) {
-                            Text(stringResource(R.string.baopu_memory_forget))
-                        }
+                    TextButton(onClick = { onForget(e.id) }) {
+                        Text(stringResource(R.string.baopu_memory_forget))
                     }
                 }
             }
@@ -228,6 +219,8 @@ internal fun BaopuPendingMemoryCard(
  * 派工单原话：「顺带产出一条『这次学到什么』……一条，短句」。
  * 2026-10-18 用户：「已完成那个卡不会自己消失吗？做成动态卡，点击后就消失，表示用户知道了」
  * ⇒ 整条可点掉（onDismiss 为空时保持只读，不显示 ×）。
+ *
+ * 第一百三十七批：换信息卡档。`compact` 只压内距，不换档（同一条便签不许有时是卡、有时不是）。
  */
 @Composable
 internal fun BaopuIntrospectionNote(
@@ -244,16 +237,13 @@ internal fun BaopuIntrospectionNote(
     if (text.isBlank()) return
     val fg = if (isError) com.example.zhengdao.ui.theme.zhengdaoErrorText() else MaterialTheme.colorScheme.onSurfaceVariant
     val padV = if (compact) 1.dp else 2.dp
-    val innerV = if (compact) 5.dp else 8.dp
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+    BaopuInfoContainer(
         modifier = modifier
-            .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = padV)
             .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = innerV)) {
+        // 内距由信息卡统一给 12dp；compact 只压缩卡外上下留白（档位不许随场景变）
+        Row {
             Column(Modifier.weight(1f)) {
                 Text(
                     text = label ?: stringResource(R.string.baopu_introspection_label),

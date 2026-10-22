@@ -13,85 +13,88 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * 浅色主题：iOS 风格（白卡片 + 系统蓝点缀）。
+ * 浅色主题：纸墨黛青（2026-10-22 第一百三十七批换 Token）。
  *
- * 原注释「唯一主题、不随系统深色切换」已于 2026-10-12 作废——用户要求补深色，
- * 现由 [ZhengdaoTheme] 在浅/深之间按偏好选择（见 [AppearancePrefs]）。
- * 终端页仍自成黑底白框，不依赖此主题。
+ * 逐槽位映射依据 `抱朴UI设计语言方案-纸墨黛青-2026-10-22.md` §16.1（28 槽），
+ * 一条一行、顺序与文档表一致，便于逐条对账。**不再走 iOS 系统色板**——
+ * 旧值（systemBlue #007AFF / 分组底 #F2F2F7 / 系统填充 #E9E9EB）已随常量删除。
+ *
+ * 两个要点（都是 §2.1 定的，不是随手取）：
+ * - `onSurfaceVariant` = 次墨 #57544C：全站 110 处次要文字都读它，对纸深底 6.18:1、
+ *   对纸 6.88:1，比旧 iOS 的 4.6:1 清楚——这是「不再糊」的最大来源；
+ * - `surfaceVariant` = 纸深 #EDE8DC：它只是容器底，**边界由四档容器的形状通道承担**
+ *   （四边 2dp / 左边 4dp / 下边 1dp，见 `ui/baopu/BaopuContainers.kt`），
+ *   不许再靠「底色深浅」分卡片（§6.1 实测纸深对纸只有 1.11:1，靠它分区等于没分）。
  */
 val ZhengdaoLightScheme = lightColorScheme(
-    primary = IOSBlue,
+    primary = DaiQing,
     onPrimary = Color.White,
-    primaryContainer = IOSTintedBlue,
-    onPrimaryContainer = Color(0xFF003E7E),
-    secondary = IOSSecondaryLabel,
+    primaryContainer = QingTint,
+    onPrimaryContainer = DaiQing,
+    secondary = Ink2,
     onSecondary = Color.White,
-    secondaryContainer = IOSFill,
-    onSecondaryContainer = IOSLabel,
-    tertiary = IOSGreen,
-    // 2026-10-08 走查补齐：lightColorScheme 原本缺 errorContainer / onErrorContainer /
-    // tertiaryContainer / onTertiaryContainer——A4 修 ConnectionBanner 引用前两个，
-    // 缺了会拿到 Color.Unspecified，运行时渲染异常。配色按 iOS 色板延伸
-    // (IOSTintedRed / IOSTintedGreen 与 IOSTintedBlue 同源：12% 透明叠加)。
-    // onTertiaryContainer 用 IOSLabel 主文字黑：在 IOSTintedGreen 上对比度 ~13:1，远超
-    // WCAG AA 的 4.5:1；不另起「深绿」变量避免扩散（该色只在此一处用）。
-    errorContainer = IOSTintedRed,
-    onErrorContainer = IOSErrorText,
-    tertiaryContainer = IOSTintedGreen,
-    onTertiaryContainer = IOSLabel,
-    background = IOSBg,
-    onBackground = IOSLabel,
-    surface = IOSCard,
-    onSurface = IOSLabel,
-    surfaceVariant = IOSFill,
-    onSurfaceVariant = IOSSecondaryLabel,
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF7F7FA),
-    surfaceContainer = Color.White,
-    surfaceContainerHigh = Color(0xFFF7F7FA),
-    surfaceContainerHighest = IOSFill,
-    outline = IOSSeparator,
-    outlineVariant = Color(0xFFE5E5EA),
-    error = IOSRed,
+    secondaryContainer = PaperDeep,
+    onSecondaryContainer = Ink1,
+    tertiary = HuPo,
+    onTertiary = Color.White,
+    tertiaryContainer = PaperDeep,
+    onTertiaryContainer = HuPo,
+    error = ZhuSha,
     onError = Color.White,
+    errorContainer = ZhuTint,
+    onErrorContainer = ZhuSha,
+    background = Paper,
+    onBackground = Ink1,
+    surface = CardSurface,
+    onSurface = Ink1,
+    surfaceVariant = PaperDeep,
+    onSurfaceVariant = Ink2,
+    surfaceContainerLowest = CardSurface,
+    surfaceContainerLow = Paper,
+    surfaceContainer = CardSurface,
+    surfaceContainerHigh = PaperDeep,
+    surfaceContainerHighest = PaperDeep,
+    outline = Ink3,
+    outlineVariant = Hairline,
 )
 
 /**
- * 深色主题（2026-10-12 新增）：取值 = Apple HIG 的 dark 系统色，
- * 逐色对比度已在 `Color.kt` 里注（对 #1C1C1E 卡片底，均达 WCAG AA 4.5:1）。
+ * 深色主题（§16.2，28 槽）：同一套语言的深位，**不是第二套皮肤**。
  *
- * 槽位与浅色**一一对应**，业务代码全走 `MaterialTheme.colorScheme.*`，
- * 因此无需为深色改任何布局代码。
+ * 与浅色槽位一一对应，业务代码全走 `MaterialTheme.colorScheme.*` ⇒ 切深浅只换颜色、
+ * 布局零位移。`onError` 取墨底而不是白：朱提亮 #D0705A 是浅色相的块，
+ * 白字在其上只有 2.4:1，墨底 5.04:1 才达 AA（§16.2）。
  */
 val ZhengdaoDarkScheme = darkColorScheme(
-    primary = IOSDarkBlue,
-    onPrimary = Color.Black,
-    primaryContainer = IOSDarkTintedBlue,
-    onPrimaryContainer = IOSDarkOnTintedBlue,
-    secondary = IOSDarkSecondaryLabel,
-    onSecondary = Color.Black,
-    secondaryContainer = IOSDarkFill,
-    onSecondaryContainer = IOSDarkLabel,
-    tertiary = IOSDarkGreen,
-    errorContainer = IOSDarkTintedRed,
-    onErrorContainer = IOSDarkOnTintedRed,
-    tertiaryContainer = IOSDarkTintedGreen,
-    onTertiaryContainer = IOSDarkOnTintedGreen,
-    background = IOSDarkBg,
-    onBackground = IOSDarkLabel,
-    surface = IOSDarkCard,
-    onSurface = IOSDarkLabel,
-    surfaceVariant = IOSDarkFill,
-    onSurfaceVariant = IOSDarkSecondaryLabel,
-    surfaceContainerLowest = IOSDarkBg,
-    surfaceContainerLow = Color(0xFF141416),
-    surfaceContainer = IOSDarkCard,
-    surfaceContainerHigh = Color(0xFF242426),
-    surfaceContainerHighest = IOSDarkFill,
-    outline = IOSDarkSeparator,
-    outlineVariant = Color(0xFF2C2C2E),
-    error = IOSDarkRed,
-    onError = Color.Black,
+    primary = DarkDaiQing,
+    onPrimary = DarkGround,
+    primaryContainer = DaiQing,
+    onPrimaryContainer = QingTint,
+    secondary = DarkText2,
+    onSecondary = DarkGround,
+    secondaryContainer = DarkDeep,
+    onSecondaryContainer = DarkText,
+    tertiary = DarkHuPo,
+    onTertiary = DarkGround,
+    tertiaryContainer = DarkDeep,
+    onTertiaryContainer = DarkHuPo,
+    error = DarkZhuSha,
+    onError = DarkGround,
+    errorContainer = DarkZhuTint,
+    onErrorContainer = DarkOnZhuTint,
+    background = DarkGround,
+    onBackground = DarkText,
+    surface = DarkSurface,
+    onSurface = DarkText,
+    surfaceVariant = DarkDeep,
+    onSurfaceVariant = DarkText2,
+    surfaceContainerLowest = DarkGround,
+    surfaceContainerLow = DarkSurface,
+    surfaceContainer = DarkSurface,
+    surfaceContainerHigh = DarkDeep,
+    surfaceContainerHighest = DarkDeep,
+    outline = DarkInk3,
+    outlineVariant = DarkHairline,
 )
 
 /**
@@ -124,31 +127,34 @@ fun ZhengdaoTheme(content: @Composable () -> Unit) {
 @Composable
 fun isZhengdaoDark(): Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
-/** 语义色「就绪绿」（小字/图形用）：浅色 #2E7D32（5.1:1）/ 深色 #30D158（8.4:1）。 */
-@Composable
-fun zhengdaoReadyGreen(): Color = if (isZhengdaoDark()) IOSDarkReadyGreen else IOSReadyGreen
-
 /**
- * 语义色「蓝色小字」（链接/强调文字）：浅色 #0058B0 / 深色 #64B5F6。
+ * 语义色「就绪」（小字/图形用）：青。
  *
- * 对比度（2026-10-16 按源码取值、用 WCAG 公式复算；`ContrastGuardTest` 会重算一遍）：
- * 浅色 #0058B0 —— 白底 **6.95:1** / 页面灰底 #F2F2F7 6.23:1 / 选中 chip 底 #E1ECFF 5.84:1；
- * 深色 #64B5F6 —— 卡片底 #1C1C1E 7.68:1。全部达 AA 正文线 4.5:1。
- *
- * ⚠️ 这里曾经写「浅色 5.1:1」，台账 B-补-25 也曾记「在选中 chip 底上 3.38:1」——
- * 两个数字都**没复算过**，实测都不成立（见上）。数字以本注释为准。
+ * 2026-10-22 第一百三十七批：原名 `zhengdaoReadyGreen()`，返回绿色 `#2E7D32`。
+ * §2.1「色数收敛」删掉绿色通道——**青＝可行动**，已就绪就是可行动，所以返青
+ * （浅 #2C5F54 / 深 #7FA89B）。这不是丢功能，是执行 §1 那句「归不进的，删」。
  */
 @Composable
-fun zhengdaoBlueText(): Color = if (isZhengdaoDark()) IOSDarkBlueText else IOSBlueText
+fun zhengdaoReady(): Color = if (isZhengdaoDark()) DarkDaiQing else DaiQing
 
 /**
- * 语义色「错误正文」（P2-11 / issue #17）：浅色 #C0392B（白底 5.4:1）/
- * 深色 #FFC9C2（对 #1C1C1E 11.7:1）。
+ * 语义色「链接/强调文字」：黛青。
  *
- * 为什么不用 `colorScheme.error`：那个槽位是给**色块/图标**用的——浅色值 IOSRed
- * #FF3B30 在白底只有 3.55:1，够不上 WCAG AA 正文的 4.5:1。审计（P2-11）抓到的
- * 正是抱朴顶栏「重连中」红字用了它。深色值直接复用 onErrorContainer 的
- * [IOSDarkOnTintedRed]——同为"深底上的红字"，不必另起变量。
+ * 2026-10-22 第一百三十七批：原名 `zhengdaoBlueText()`，返回系统蓝 `#0058B0`。
+ * 现值浅色 #2C5F54（纸底 6.66:1 / 白卡 7.31:1 / 浅青底 6.11:1）、
+ * 深色 #7FA89B（卡面 5.97:1 / 墨底 6.54:1），全部达 AA 4.5:1 正文线。
  */
 @Composable
-fun zhengdaoErrorText(): Color = if (isZhengdaoDark()) IOSDarkOnTintedRed else IOSErrorText
+fun zhengdaoLinkText(): Color = if (isZhengdaoDark()) DarkDaiQing else DaiQing
+
+/**
+ * 语义色「错误正文」（P2-11 / issue #17）：浅色朱砂 #A8402B（纸底 5.57:1）/
+ * 深色 #F0BBAE（卡面 9.31:1、墨底 10.19:1）。
+ *
+ * 为什么不用 `colorScheme.error`：那个槽位是给**色块/图标**用的——浅色朱砂本身
+ * 5.57:1 够用，但深色 `error` 提亮成 #D0705A 只有 4.60:1，紧贴门槛且不适合长段正文；
+ * 深色错误正文一律取 [#DarkOnZhuTint]（errorContainer 内容色），留足余量。
+ * 审计（P2-11）抓到的正是抱朴顶栏「重连中」红字用过 `colorScheme.error`。
+ */
+@Composable
+fun zhengdaoErrorText(): Color = if (isZhengdaoDark()) DarkOnZhuTint else ZhuSha

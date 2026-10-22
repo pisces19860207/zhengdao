@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -455,6 +456,9 @@ private fun roundSummaryOf(round: BaopuRound, steps: List<BaopuStepRow>): RoundS
 /**
  * 收起行：`干了 N 步 · 用时 X · 失败 M`（走 strings.xml，不拼中文）；
  * 没有可靠用时数据 ⇒ 用「无用时」变体（J6：不显示 0s 假装知道）。
+ *
+ * 第一百三十七批：换四档容器的**记录条**档——单行 44dp、只下边 1dp 发丝线、
+ * 行首 `›` 折叠符、整行可点（原先是一个 surfaceVariant 圆角块，与其它卡同底色、分不出来）。
  */
 @Composable
 private fun BaopuRoundSummaryRow(
@@ -463,23 +467,13 @@ private fun BaopuRoundSummaryRow(
     onToggle: () -> Unit,
 ) {
     val s = roundSummaryOf(round, steps)
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.small,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(onClick = onToggle),
-    ) {
-        Text(
-            text = s.durationMs?.let {
-                stringResource(R.string.baopu_round_summary, s.steps, formatDuration(it), s.fails)
-            } ?: stringResource(R.string.baopu_round_summary_nodur, s.steps, s.fails),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        )
-    }
+    BaopuRecordRow(
+        text = s.durationMs?.let {
+            stringResource(R.string.baopu_round_summary, s.steps, formatDuration(it), s.fails)
+        } ?: stringResource(R.string.baopu_round_summary_nodur, s.steps, s.fails),
+        onClick = onToggle,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -502,14 +496,18 @@ private fun BaopuMessageRow(
             Modifier.fillMaxWidth(),
             horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
         ) {
+            // 第一百三十七批四档（§6.1 第一行）：**助手消息＝正文档**——无底、无边界、
+            // 无圆角、无内距，纯文字落在纸上，只有左上「抱朴」小标（那行 label 在下面）。
+            // 用户消息保留气泡：右对齐气泡是已拍板保留的「形状语言」，它的边界不是四档
+            // 那一套（没有描边），所以不构成第五种容器。两者的差别只剩「谁在说」。
             Surface(
-                shape = MaterialTheme.shapes.medium,
+                shape = if (isUser) MaterialTheme.shapes.medium else RectangleShape,
                 color = if (isUser) {
                     MaterialTheme.colorScheme.secondaryContainer
                 } else {
-                    MaterialTheme.colorScheme.surfaceVariant
+                    Color.Transparent
                 },
-                tonalElevation = if (isUser) 0.dp else 1.dp,
+                tonalElevation = 0.dp,
                 modifier = if (isUser && onUserLongPress != null) {
                     Modifier
                         .fillMaxWidth(0.85f)
@@ -525,7 +523,7 @@ private fun BaopuMessageRow(
                     Modifier.fillMaxWidth(if (isUser) 0.85f else 1f)
                 },
             ) {
-                Column(Modifier.padding(12.dp)) {
+                Column(Modifier.padding(if (isUser) 12.dp else 0.dp)) {
                     // 2026-10-18 用户：「那个『你』字也应该在右啊」⇒ 用户气泡里的角色标签右对齐。
                     Text(
                         text = stringResource(

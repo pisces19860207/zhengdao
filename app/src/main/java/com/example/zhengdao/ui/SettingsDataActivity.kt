@@ -49,7 +49,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.ui.settings.DataRules
 import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -75,7 +75,7 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.AppState.rootfsInstalled
-import com.example.zhengdao.ui.theme.zhengdaoReadyGreen
+import com.example.zhengdao.ui.theme.zhengdaoReady
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -117,9 +117,9 @@ class SettingsDataActivity : ComponentActivity() {
 }
 
 /**
- * 状态行"就绪／已授权"用的绿：2026-10-12 起改走主题感知取色
- * （浅色 #2E7D32 / 深色 #30D158，见 theme/Theme.kt 的 zhengdaoReadyGreen()），
- * 深色主题下不再是一枚看不清的深绿。
+ * 状态行"就绪／已授权"用的强调色：2026-10-22 起是**青**
+ * （浅色 #2C5F54 / 深色 #7FA89B，见 theme/Theme.kt 的 zhengdaoReady()），
+ * 纸墨黛青语言里绿通道已删除（青＝可行动 / 琥珀＝待处理 / 朱＝错误）。
  */
 
 @Composable
@@ -425,7 +425,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                         if (on) com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
                         storageTick++
                     },
-                    colors = iosSwitchColors(),
+                    colors = zhengdaoSwitchColors(),
                 )
             }
             // ── FIX-F（2026-10-10，E-084）：提问时自动附上资料线索 ──
@@ -444,7 +444,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     },
                     // 2026-10-11 补（验收页 §4-1）：同一张卡里的两个开关必须同色，
                     // 上一处（「让终端 AI 自动读取」）已用 iOS 绿，这处漏了。
-                    colors = iosSwitchColors(),
+                    colors = zhengdaoSwitchColors(),
                 )
             }
             ExpandableHint(stringResource(R.string.data_hints_desc))
@@ -535,7 +535,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 value = if (storageOk) stringResource(R.string.data_perm_granted)
                 else stringResource(R.string.data_perm_not_granted),
                 // P2-11：未授予是状态文字，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
-                valueColor = if (storageOk) zhengdaoReadyGreen() else zhengdaoErrorText(),
+                valueColor = if (storageOk) zhengdaoReady() else zhengdaoErrorText(),
                 onClick = {
                     if (storageOk) {
                         openAppDetails()
@@ -570,7 +570,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             SettingRow(
                 label = stringResource(R.string.data_net_row),
                 value = stringResource(R.string.data_net_auto),
-                valueColor = zhengdaoReadyGreen(),
+                valueColor = zhengdaoReady(),
                 onClick = openAppDetails,
             )
             Text(
@@ -615,7 +615,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 label = stringResource(R.string.data_manage_row),
                 value = if (manageOk) stringResource(R.string.data_manage_on)
                 else stringResource(R.string.data_manage_off),
-                valueColor = if (manageOk) zhengdaoReadyGreen() else MaterialTheme.colorScheme.onSurfaceVariant,
+                valueColor = if (manageOk) zhengdaoReady() else MaterialTheme.colorScheme.onSurfaceVariant,
                 onClick = { launchManage() },
             )
             Text(

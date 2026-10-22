@@ -75,7 +75,7 @@ import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.SettingsSubPage
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.baopu.BaopuWorkspace
-import com.example.zhengdao.ui.theme.iosSwitchColors
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
@@ -222,7 +222,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 ToolGroupAudit.manual(group, want)
                                 toolTick++
                             },
-                            colors = iosSwitchColors(),
+                            colors = zhengdaoSwitchColors(),
                         )
                     }
                     // 折叠态常驻的「关闭项摘要」——展开时不显示（成员就在下面，看得见）
@@ -258,7 +258,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                         prefs.setDisabled(name, !want)
                                         toolTick++
                                     },
-                                    colors = iosSwitchColors(),
+                                    colors = zhengdaoSwitchColors(),
                                 )
                             }
                         }

@@ -116,14 +116,13 @@ fun BaopuSkillProposalCard(
     // 它们在卡上本来就长得一模一样，不做多余区分。
     var listExpanded by remember { mutableStateOf(false) }
     var openedProposals by remember { mutableStateOf(setOf<PersonaProposal>()) }
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = MaterialTheme.shapes.medium,
-        tonalElevation = 1.dp,
+    // 第一百三十七批：行动卡档（四边 2dp 黛青＋浅青标题条）——「等你同意」是行动卡判据
+    BaopuActionContainer(
+        title = stringResource(R.string.baopu_tier_action_skill),
+        badge = stringResource(R.string.baopu_tier_action_badge),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column {
             Text(
                 text = stringResource(R.string.skill_proposal_title),
                 style = MaterialTheme.typography.titleSmall,

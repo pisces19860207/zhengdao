@@ -42,8 +42,11 @@ class CatppuccinPaletteTest {
 
     @Test
     fun `basic colors match spec`() {
-        assertEquals(0xFF1E1E2E.toInt(), mocha.bg)
-        assertEquals(0xFFCDD6F4.toInt(), mocha.fg)
+        // 2026-10-22 第一百三十七批（设计语言 §15.2）：**底色与默认前景改跟全站墨底**
+        // ——「终端也是墨底」是同一套语言的一部分（终端常驻深色模式，不是第二套皮肤）。
+        // 16 个 ANSI 色仍是 Catppuccin 官方规格（上一个用例逐色钉着，本批一个没动）。
+        assertEquals(0xFF1C1B18.toInt(), mocha.bg)
+        assertEquals(0xFFEDE9DF.toInt(), mocha.fg)
         assertEquals(0xFFF5E0DC.toInt(), mocha.cursor)
         assertEquals(0xFF585B70.toInt(), mocha.selection)
     }

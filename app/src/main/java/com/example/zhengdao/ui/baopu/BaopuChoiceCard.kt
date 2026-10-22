@@ -7,6 +7,9 @@
 // 1. **就在输入栏上方**（不遮对话、不跳新页）：用户眼睛本来就在这儿；
 // 2. **推荐项要能一眼看出来**（实心按钮），其余用描边按钮；
 // 3. **每项都带理由**（`detail` 非空才显示）——只有按钮没有理由，等于让用户瞎点。
+//
+// 第一百三十七批（2026-10-22）：外框换成四档容器的**行动卡**；原先的
+// `surfaceVariant` 底＋投影随之取消（§6.1：不许再靠底色深浅分卡片）。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.layout.Arrangement
@@ -19,11 +22,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.zhengdao.R
 import com.example.zhengdao.baopu.agent.AskUserOption
 import com.example.zhengdao.baopu.agent.AskUserRequest
 
@@ -38,48 +42,40 @@ internal fun BaopuChoiceCard(
     request: AskUserRequest,
     onPick: (AskUserOption) -> Unit,
 ) {
-    Surface(
-        tonalElevation = 3.dp,
-        shadowElevation = 2.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.medium,
+    BaopuActionContainer(
+        title = stringResource(R.string.baopu_tier_action_choice),
+        badge = stringResource(R.string.baopu_tier_action_badge),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Text(
-                text = request.question,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(Modifier.height(8.dp))
-            request.options.forEach { option ->
-                Column(Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        if (option.recommended) {
-                            Button(onClick = { onPick(option) }, modifier = Modifier.fillMaxWidth()) {
-                                Text(option.label)
-                            }
-                        } else {
-                            OutlinedButton(onClick = { onPick(option) }, modifier = Modifier.fillMaxWidth()) {
-                                Text(option.label)
-                            }
+        Text(
+            text = request.question,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(8.dp))
+        request.options.forEach { option ->
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (option.recommended) {
+                        Button(onClick = { onPick(option) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(option.label)
+                        }
+                    } else {
+                        OutlinedButton(onClick = { onPick(option) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(option.label)
                         }
                     }
-                    if (option.detail.isNotBlank()) {
-                        Text(
-                            text = option.detail,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 6.dp),
-                        )
-                    } else {
-                        Spacer(Modifier.height(6.dp))
-                    }
+                }
+                if (option.detail.isNotBlank()) {
+                    Text(
+                        text = option.detail,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 6.dp),
+                    )
+                } else {
+                    Spacer(Modifier.height(6.dp))
                 }
             }
         }
