@@ -1398,6 +1398,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV14Migration(db)
         applyV15Migration(db)
         applyV16Migration(db)
+        applyV17Migration(db)
     }
 
     /**
@@ -1432,6 +1433,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 14) applyV14Migration(db)
         if (oldVersion < 15) applyV15Migration(db)
         if (oldVersion < 16) applyV16Migration(db)
+        if (oldVersion < 17) applyV17Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1607,6 +1609,32 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         BaopuSql.SUB_TASK_DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v17 迁移体（147 批）：`diary_index` 情景记忆索引（**只是加速——文件是真相**，
+     * 索引删掉后从「记忆/日记」目录下的日文件全量重建，见 [DiaryIndexStore.rebuild]）。
+     *
+     * ⚠️ DDL 放在本迁移体旁而不是文件头 `BaopuSql`（:24）：裸线程对账单把
+     * `zd-baopu-db` 创建点钉在 **:1370**，`BaopuSql` 在它之上，往里加行会平移冻结点；
+     * 迁移区在冻结点之下，加行零位移（87 批「迁移体落在创建点之后」同款手法）。
+     */
+    private fun applyV17Migration(db: SQLiteDatabase) {
+        DIARY_DDL.forEach { db.execSQL(it) }
+    }
+
+    /** `diary_index` DDL（v17）。不存 summary/正文与产物清单——那些以日记文件为真相。 */
+    private val DIARY_DDL = listOf(
+        """CREATE TABLE IF NOT EXISTS diary_index(
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            session_id INTEGER NOT NULL,
+            time_from INTEGER NOT NULL,
+            time_to INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            evidence TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )""",
+    )
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1643,8 +1671,9 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v15 = 第一百一十七批（`run_queue` 会话内任务队列：只存文本/相对图片路径/时刻，
          *  开跑事务删行；带 `ON DELETE CASCADE`）。
          *  v16 = 第一百二十七批（`sub_task` 多 Agent 协作审计表：父子 id/状态/尝试/
-         *  步数/起止/原因/结果摘要，带 `ON DELETE CASCADE` 与 task_id UNIQUE）。 */
-        const val VERSION = 16
+         *  步数/起止/原因/结果摘要，带 `ON DELETE CASCADE` 与 task_id UNIQUE）。
+         *  v17 = 第一百四十七批（`diary_index` 情景记忆索引：文件是真相，索引只是加速）。 */
+        const val VERSION = 17
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
@@ -1824,5 +1853,104 @@ internal class SessionPendingStore(private val db: BaopuDb) : PendingStore {
                 null
             }
         }
+    }
+}
+
+/**
+ * 情景记忆**索引**的 BaopuDb 实现（147 阶段①，v17）——薄壳同 [SessionPendingStore]：
+ * 写走 [BaopuDb.write] 的 Future 并 `.get()`，读走调用方线程（WAL 下不挡写）。
+ *
+ * **索引只是加速，文件是真相**（`<工作区根>/记忆/日记/` 下的日文件，真相在 [DiaryStore]）：
+ * 索引可随时 [rebuild]——把表清空后按 [DiaryStore.loadAll] 的条目全量重灌，
+ * 判据 19 要求「删索引 → 重建 → 条数与内容逐条一致」。
+ *
+ * SQL 内联在本类而不进文件头 `BaopuSql`（:24）：裸线程对账单把 `zd-baopu-db`
+ * 创建点钉在 :1370，`BaopuSql` 在它之上，加行会平移冻结点（applyV17Migration 旁有同款注释）。
+ */
+internal class DiaryIndexStore(private val db: BaopuDb) {
+
+    data class Row(
+        val id: String,
+        val date: String,
+        val sessionId: Long,
+        val timeFromMs: Long,
+        val timeToMs: Long,
+        val title: String,
+        val evidence: String,
+        val createdAt: Long,
+    )
+
+    private fun replaceSql(e: DiaryEntry) = Pair(
+        "INSERT OR REPLACE INTO diary_index" +
+            "(id, date, session_id, time_from, time_to, title, evidence, created_at) " +
+            "VALUES (?,?,?,?,?,?,?,?)",
+        arrayOf<Any>(
+            e.id, e.date, e.sessionId, e.timeFromMs, e.timeToMs, e.title,
+            e.evidence.name.lowercase(), e.createdAt,
+        ),
+    )
+
+    /** upsert 一条索引行（与 [DiaryStore.upsert] 同一事务口径：文件写成功后调它）。 */
+    fun replace(e: DiaryEntry) {
+        val (sql, args) = replaceSql(e)
+        runCatching { db.write { d -> d.execSQL(sql, args) }.get() }
+            .onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "抱朴日记：索引写入失败 ${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+    }
+
+    /** 删一条索引行（真删的索引半边；文件半边在 [DiaryStore.deleteById]）。 */
+    fun deleteById(id: String) {
+        runCatching { db.write { d -> d.execSQL("DELETE FROM diary_index WHERE id = ?", arrayOf<Any>(id)) }.get() }
+            .onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "抱朴日记：索引删除失败 ${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+    }
+
+    fun count(): Int = db.read { d ->
+        d.rawQuery("SELECT COUNT(*) FROM diary_index", null).use { c ->
+            if (c.moveToFirst()) c.getInt(0) else 0
+        }
+    }
+
+    fun readAll(): List<Row> = db.read { d ->
+        val out = mutableListOf<Row>()
+        d.rawQuery(
+            "SELECT id, date, session_id, time_from, time_to, title, evidence, created_at " +
+                "FROM diary_index ORDER BY created_at, id",
+            null,
+        ).use { c ->
+            while (c.moveToNext()) {
+                out += Row(
+                    id = c.getString(0),
+                    date = c.getString(1),
+                    sessionId = c.getLong(2),
+                    timeFromMs = c.getLong(3),
+                    timeToMs = c.getLong(4),
+                    title = c.getString(5),
+                    evidence = c.getString(6),
+                    createdAt = c.getLong(7),
+                )
+            }
+        }
+        out
+    }
+
+    /**
+     * 全量重建（判据 19）：清空索引 → 按给定条目（来自 [DiaryStore.loadAll]，文件是真相）
+     * 逐条重灌。单事务；文件读取在调用方（本类不碰盘上日记文件）。
+     */
+    fun rebuild(entries: List<DiaryEntry>) {
+        db.write { d ->
+            d.execSQL("DELETE FROM diary_index")
+            entries.forEach { e ->
+                val (sql, args) = replaceSql(e)
+                d.execSQL(sql, args)
+            }
+        }.get()
     }
 }
