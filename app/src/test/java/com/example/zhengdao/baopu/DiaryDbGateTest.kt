@@ -55,14 +55,25 @@ class DiaryDbGateTest {
         )
     }
 
+    private val storeSrc: String by lazy {
+        val cands = listOf(
+            File("app/src/main/java/com/example/zhengdao/baopu/DiaryStore.kt"),
+            File("../app/src/main/java/com/example/zhengdao/baopu/DiaryStore.kt"),
+        )
+        cands.firstOrNull { it.isFile }?.readText()
+            ?: throw AssertionError("找不到 DiaryStore.kt")
+    }
+
+    private val storeCode: String by lazy { storeSrc.replace(Regex("(?m)^[ \\t]*//.*$"), "") }
+
     @Test
     fun `门禁_索引读写口齐全_文件是真相`() {
         for (needle in listOf(
             "internal class DiaryIndexStore",
             "fun replace(e: DiaryEntry)",
-            "fun deleteById(id: String)",
+            "fun deleteById(id: String): Int",
             "fun rebuild(entries: List<DiaryEntry>)",
-            "DELETE FROM diary_index",
+            "d.delete(\"diary_index\"",
         )) {
             assertTrue("缺 $needle", code.contains(needle))
         }
@@ -74,5 +85,27 @@ class DiaryDbGateTest {
         assertFalse("diary_index 不得存 summary", diaryDdl.contains("summary"))
         assertFalse("diary_index 不得存产物清单", diaryDdl.contains("artifacts"))
         assertFalse("diary_index 不得存正文", diaryDdl.contains("body"))
+    }
+
+    /**
+     * 阶段③ · 真删的索引半边接线（判据 18 的 DB 半边）：
+     * 本仓无 Robolectric ⇒ 索引删除**功能**验不了，钉源码接线——
+     * [DiaryStore.realDelete] 必须真的去调 [DiaryIndexStore.deleteById]，
+     * 且**只删 diary_index**（不得顺手碰别的表）。
+     */
+    @Test
+    fun `门禁_真删接线索引删除_只碰diary_index`() {
+        assertTrue("realDelete 应存在", storeCode.contains("fun realDelete(plan: DiaryDeletionPlan)"))
+        assertTrue(
+            "realDelete 必须调 DiaryIndexStore(db).deleteById（四处全消的索引半边）",
+            storeCode.contains("DiaryIndexStore(d)") && storeCode.contains("idx.deleteById(it)"),
+        )
+        // DiaryIndexStore.deleteById 的删除面：只许 diary_index（真删红线）
+        val idxBody = code.substringAfter("fun deleteById(id: String): Int")
+            .substringBefore("fun count()")
+        val tables = Regex("(?:DELETE FROM|d\\.delete\\(\\s*\")(\\w+)").findAll(idxBody)
+            .map { it.groupValues[1] }.toList()
+        assertTrue("索引删除只许指向 diary_index，实测 $tables", tables.all { it == "diary_index" })
+        assertTrue("索引删除应至少指向 diary_index", tables.isNotEmpty())
     }
 }

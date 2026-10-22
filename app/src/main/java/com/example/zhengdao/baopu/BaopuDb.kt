@@ -1902,14 +1902,15 @@ internal class DiaryIndexStore(private val db: BaopuDb) {
     }
 
     /** 删一条索引行（真删的索引半边；文件半边在 [DiaryStore.deleteById]）。 */
-    fun deleteById(id: String) {
-        runCatching { db.write { d -> d.execSQL("DELETE FROM diary_index WHERE id = ?", arrayOf<Any>(id)) }.get() }
-            .onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
-                    "抱朴日记：索引删除失败 ${it.javaClass.simpleName}: ${it.message}",
-                )
-            }
-    }
+    /** @return 删掉的行数（0 = 本来就没有）；失败不抛（记运行日志），调用方按 0 处理。 */
+    fun deleteById(id: String): Int =
+        runCatching {
+            db.write { d -> d.delete("diary_index", "id = ?", arrayOf(id)) }.get()
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴日记：索引删除失败 ${it.javaClass.simpleName}: ${it.message}",
+            )
+        }.getOrDefault(0)
 
     fun count(): Int = db.read { d ->
         d.rawQuery("SELECT COUNT(*) FROM diary_index", null).use { c ->
