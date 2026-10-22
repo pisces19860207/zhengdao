@@ -15,11 +15,15 @@ import org.json.JSONObject
  * 1. **最多 12 条、每条 ≤60 字**（[MAX_ITEMS] / [MAX_TEXT_CHARS]）：超了**截断并记
  *    notice**（不拒绝——模型多发几条不该让整轮白跑）；`items` 为空才拒绝。
  * 2. **每次调用全量覆盖**（[applyOverwrite]）：先 5 条再 3 条 ⇒ 计划表就是 3 条，
- *    不是「合并成 8 条」。模型每完成一条就重发整张表，简单可靠、不用增量补丁。
+ *    不做增量合并。模型每完成一条就重发整张表，简单可靠、不用增量补丁。
  * 3. **勾选只增不减**（[applyOverwrite] 的 sticky done）：同一条目（按 text 原文
  *    匹配）上一版是 done，这一版回成 todo/doing ⇒ **保持 done**。选「保持」而不是
  *    「报错」的理由：done→doing 多半是模型重描进度时的笔误，为一条笔误终止本轮
  *    不值当；保持 done 并把它写进回灌（notice），模型下一版就对了。
+ *
+ * 第一百四十五批（2026-10-22）：结构变更（文字增删）的确认由引擎侧的计划变更
+ * 确认闸负责（140 批）。本层**不补回**本版漏写的旧 done——那会覆盖用户已批准的
+ * 删除；「不许漏写」写进 A 内核与工具说明，保护由确认卡承接。
  *
  * 零 Android 依赖（org.json 单测里有真实现，见 build.gradle 的 testImplementation）。
  */
@@ -63,7 +67,7 @@ internal object PlanRules {
      * 是不是数组），数组里每个条目的 text/status 它不管——协议 A/B 两条路都这样。
      * 模型幻觉出的坏条目（第 3 条 status 写成 "finish"、text 是数字）只有这里拦得住。
      *
-     * @return Ok = 归一化后的条目（≤8 条、每条 ≤60 字）＋ 截断/丢弃 notice；
+     * @return Ok = 归一化后的条目（≤12 条、每条 ≤60 字）＋ 截断/丢弃 notice；
      *   Error = 错误原文（回灌给模型，下一步它自己改）
      */
     /**
@@ -89,7 +93,7 @@ internal object PlanRules {
                     "status 只能是 todo / doing / done。",
             )
         if (raw.length() == 0) {
-            return Parse.Error("items 是空的：先列 3–8 条计划（每条 ≤60 字）再调本工具。")
+            return Parse.Error("items 是空的：先列 3–12 条计划（每条 ≤60 字）再调本工具。")
         }
         val notices = mutableListOf<String>()
         val kept = mutableListOf<PlanItem>()
@@ -132,6 +136,8 @@ internal object PlanRules {
 
     /**
      * 全量覆盖 ＋ sticky done（J2/J3）。
+     *
+     * 不补回本版漏写的旧 done：结构变更的确认在引擎侧（见文件头，140 批）。
      *
      * @param previous 上一版计划（引擎内存态；首轮/新一轮是空表）
      * @param incoming 本版计划（已过 [parseItems] 归一化）
@@ -213,6 +219,6 @@ internal object PlanRules {
             append(notices.joinToString("；"))
             append("。")
         }
-        append("每完成一条就再调一次本工具（整张表重发：做完的标 done、正在做的标 doing）。")
+        append("每完成一条就再调一次本工具（整张表重发：做完的标 done、正在做的标 doing；计划有变就把新步骤加进这张表）。")
     }
 }
