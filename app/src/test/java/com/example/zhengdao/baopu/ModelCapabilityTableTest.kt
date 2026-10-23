@@ -78,7 +78,7 @@ class ModelCapabilityTableTest {
             assertEquals("$id/$model 命中的必须是它自己那一行", model, r?.model)
             assertTrue("$id/$model 的 evidence 空着就是没依据", !r!!.evidence.isBlank())
         }
-        listOf("openrouter", "openrouter-free").forEach { id ->
+        listOf("gemini", "openrouter-free").forEach { id ->
             val model = Providers.of(id)!!.model
             assertNull("$id 本仓没实测过 ⇒ 表里不许有行", ModelCapabilityTable.rowOf(id, model))
             val u = ModelCapabilityTable.rowOrUnknown(id, model)

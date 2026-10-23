@@ -65,6 +65,10 @@ internal object ModelCatalog {
         val b = baseUrl.trim().lowercase()
         return when {
             b.contains("anthropic.com") -> CatalogShape.ANTHROPIC
+            // Gemini 的 OpenAI 兼容层（/v1beta/openai/）：走 `/v1/models` 与 Bearer，
+            // 与原生 generateContent 不同，必须先于下面的 Gemini 原生判定。
+            b.trimEnd('/').endsWith("/openai") || b.contains("/openai/") ->
+                CatalogShape.OPENAI_COMPAT
             b.contains("generativelanguage.googleapis.com") || b.contains("/v1beta") ->
                 CatalogShape.GEMINI_NATIVE
             else -> CatalogShape.OPENAI_COMPAT

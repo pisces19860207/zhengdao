@@ -199,13 +199,32 @@ object AgentInstaller {
             //    整整一屏全是 base64 乱码，用户完全看不到安装进度。宿主侧写的是同一个文件
             //    （filesDir/home ⇄ guest /root 是同一个 bind），结果一样，终端里只剩可读输出。
             append(installCmd)
+            append("; __zd_rc=\$?; ")
+            if (agent.id == "hermes") {
+                // 2026-10-23（用户「UV 怎么总是追新版」）：官方每升一次 UV_PIN_VERSION
+                //（这次 0.12.3 → 0.13.5），宿主预置的固定目录就失效 ⇒ ensure_uv 会重新
+                // 下载一个新的 uv-<ver> 目录，裸奔一次就撞硬链接（uv sync exited 2）。
+                // 自动修复：安装失败时把新目录里的 ELF 挪成 uv.real，原路径放一个只做
+                // `export UV_LINK_MODE=copy` 的通用包装器（不是 1.5KB base64，不会刷屏），
+                // 然后**自动重跑一遍**——用户不必再手动点第二次安装。
+                append("if [ \$__zd_rc -ne 0 ]; then ")
+                append("for d in /root/.hermes/tools/uv-*-linux-arm64; do ")
+                append("[ -x \"\$d/uv\" ] && [ ! -e \"\$d/uv.real\" ] || continue; ")
+                append("mv \"\$d/uv\" \"\$d/uv.real\"; ")
+                append("printf '#!/bin/sh\\nexport UV_LINK_MODE=copy\\nexec \"\$(dirname \"\$0\")/uv.real\" \"\$@\"\\n' > \"\$d/uv\"; ")
+                append("chmod 755 \"\$d/uv\"; echo \"[证道] 新 pinned uv 已套 copy 包装器：\$d\"; ")
+                append("done; ")
+                append("echo \"[证道] 首次安装失败，uv 已修复，自动重跑一次…\"; ")
+                append(installCmd)
+                append("; __zd_rc=\$?; fi; ")
+            }
             // 安装结局**必须落在文件上**，否则 App 只能靠固定 TTL 猜 —— 而 hermes 官方
             // 安装器要 clone 1.1GB 仓库再建 Python 环境，真机实测远超 15 分钟：安装还在
             // 正常跑，卡片已经翻成「上次安装未完成」，用户看到一条假警报（2026-10-07 报）。
             // 这里把退出码写进 home 层的 ~/.zhengdao/install-<id>.rc
             //（宿主侧 = filesDir/home/.zhengdao/），成功失败都留痕；
             // 进程被 Ctrl-C / 关页打断则文件不更新，由 AgentRepository 用「有没有进程」补判。
-            append("; __zd_rc=\$?; mkdir -p /root/.zhengdao; echo \$__zd_rc > /root/.zhengdao/install-${agent.id}.rc; ")
+            append("mkdir -p /root/.zhengdao; echo \$__zd_rc > /root/.zhengdao/install-${agent.id}.rc; ")
             // E-057 顺带（真机：装完敲 `hermes` 报 command not found）：hermes 把命令发布在
             // ~/.local/bin，而**当时那个 shell 的 PATH 是启动时的快照**（Debian 的 /etc/profile
             // 还会显式重置 PATH，root 分支里没有 ~/.local/bin）。往 /usr/local/bin——系统层、
