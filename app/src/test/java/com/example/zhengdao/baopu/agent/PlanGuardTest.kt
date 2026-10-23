@@ -312,4 +312,18 @@ class PlanGuardTest {
         )
     }
 
+    @Test
+    fun `引擎接线_已拒的同一版不弹卡_只有明确点拒才记账`() {
+        val src = source("baopu/agent/RunEngine.kt")
+        val askIdx = src.indexOf("askUser(PlanGuardCards.changeRequest(change))")
+        val checkIdx = src.indexOf("planController.decisionFor(change) == PlanChangeDecision.REJECTED")
+        assertTrue("闸口要查决定登记", checkIdx > 0)
+        assertTrue("查登记必须在弹卡之前（否则已被拒的同一版还要再问一次）", checkIdx < askIdx)
+        assertTrue("已拒的同一版走 repeatRejected 回灌模型", src.contains("error = PlanGuardRules.repeatRejected(change)"))
+        val rejectIdx = src.indexOf("picked?.id == PlanGuardRules.OPT_CHANGE_REJECT")
+        val recIdx = src.indexOf("planController.noteDecision(change, PlanChangeDecision.REJECTED)")
+        assertTrue("记账只能发生在『明确点拒』判据之内（超时／别的 id 不许替她记）", rejectIdx in 0 until recIdx)
+        assertTrue("卡面调用一字不动（两键结构是她要的）", askIdx > 0)
+    }
+
 }
