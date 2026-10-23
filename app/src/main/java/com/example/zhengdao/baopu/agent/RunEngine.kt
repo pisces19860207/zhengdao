@@ -9,7 +9,9 @@
 package com.example.zhengdao.baopu.agent
 
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.database.sqlite.transaction
 import com.example.zhengdao.baopu.AssembledPrompt
 import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuPreset
@@ -1187,12 +1189,8 @@ internal class RunEngine(
     /** 新建会话（返回 sessionId；UI 在首次发送时调）。write 回 Future ⇒ .get() 等结果。 */
     fun createSession(title: String, now: Long): Long = db.write { d ->
         val stmt = BaopuSql.insertSession(title, provider.model, provider.id, now)
-        d.beginTransaction()
-        try {
-            d.execSQL(stmt.sql, stmt.args)
-            d.setTransactionSuccessful()
-        } finally {
-            d.endTransaction()
+        d.transaction {
+            execSQL(stmt.sql, stmt.args)
         }
         // execSQL 拿不到 insertId ⇒ 回头查（单写者线程内无并发，安全）
         d.rawQuery(

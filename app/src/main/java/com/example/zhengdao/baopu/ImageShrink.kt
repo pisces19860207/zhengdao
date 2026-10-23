@@ -9,6 +9,7 @@ package com.example.zhengdao.baopu
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.core.graphics.scale
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -42,7 +43,7 @@ object ImageShrink {
         try {
             val (w, h) = VisionFit.scaledSize(bmp.width, bmp.height, plan.maxEdge)
             if (w != bmp.width || h != bmp.height) {
-                val scaled = runCatching { Bitmap.createScaledBitmap(bmp, w, h, true) }.getOrNull()
+                val scaled = runCatching { bmp.scale(w, h) }.getOrNull()
                 if (scaled != null && scaled !== bmp) {
                     bmp.recycle()
                     bmp = scaled

@@ -129,9 +129,9 @@ object SessionManager {
     fun setCurrentAgent(agentId: String?) {
         currentAgentId = agentId
         val ctx = appContext ?: return
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
             if (agentId.isNullOrBlank()) remove(KEY_CURRENT_AGENT) else putString(KEY_CURRENT_AGENT, agentId)
-        }.apply()
+        }
     }
 
     fun isAlive(): Boolean = session?.isRunning == true

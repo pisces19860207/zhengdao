@@ -3,6 +3,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.core.AppPrefs
 import java.io.File
@@ -137,7 +138,7 @@ object KnowledgeBaseHints {
         AppPrefs.prefs(ctx).getBoolean(KEY_ENABLED, false)
 
     fun setEnabled(ctx: Context, on: Boolean) {
-        AppPrefs.prefs(ctx).edit().putBoolean(KEY_ENABLED, on).apply()
+        AppPrefs.prefs(ctx).edit { putBoolean(KEY_ENABLED, on) }
         if (!on) reset()
     }
 

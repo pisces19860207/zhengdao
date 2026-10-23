@@ -3,6 +3,7 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.rootfs.RunLog
@@ -108,7 +109,7 @@ object KnowledgeBase {
     fun isEnabled(ctx: Context): Boolean = AppPrefs.prefs(ctx).getBoolean(KEY_ENABLED, true)
 
     fun setEnabled(ctx: Context, on: Boolean) {
-        AppPrefs.prefs(ctx).edit().putBoolean(KEY_ENABLED, on).apply()
+        AppPrefs.prefs(ctx).edit { putBoolean(KEY_ENABLED, on) }
     }
 
     /**
@@ -337,7 +338,7 @@ object KnowledgeBase {
         }
 
         if (r.isDirectory) {
-            prefs.edit().putBoolean(KEY_CREATED, true).apply()
+            prefs.edit { putBoolean(KEY_CREATED, true) }
             return seedFiles(ctx)
         }
 
@@ -348,14 +349,17 @@ object KnowledgeBase {
                 forced = forced,
             )
         ) {
-            prefs.edit().putBoolean(KEY_DELETED, true).apply()
+            prefs.edit { putBoolean(KEY_DELETED, true) }
             return false
         }
 
         if (!r.mkdirs()) return false
         val ok = seedFiles(ctx)
         if (ok) {
-            prefs.edit().putBoolean(KEY_CREATED, true).putBoolean(KEY_DELETED, false).apply()
+            prefs.edit {
+                putBoolean(KEY_CREATED, true)
+                putBoolean(KEY_DELETED, false)
+            }
             RunLog.log("资料库已预置：${r.absolutePath}")
         }
         return ok
@@ -489,7 +493,7 @@ object KnowledgeBase {
         val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull()
         val carried = KnowledgeBaseSummarizer.carryOverSummary(old, text)
         if (atomicWriteChecked(idx, carried)) {
-            prefs.edit().putString(KEY_SIG, sig).apply()
+            prefs.edit { putString(KEY_SIG, sig) }
         }
     }
 
@@ -543,14 +547,14 @@ object KnowledgeBase {
      * 超出"1 小时清理"的边界）。
      */
     fun markBusy(ctx: Context) {
-        AppPrefs.prefs(ctx).edit()
-            .putBoolean(KEY_BUSY, true)
-            .putLong(KEY_BUSY_AT, System.currentTimeMillis())
-            .apply()
+        AppPrefs.prefs(ctx).edit {
+            putBoolean(KEY_BUSY, true)
+            putLong(KEY_BUSY_AT, System.currentTimeMillis())
+        }
     }
 
     fun clearBusy(ctx: Context) {
-        AppPrefs.prefs(ctx).edit().putBoolean(KEY_BUSY, false).apply()
+        AppPrefs.prefs(ctx).edit { putBoolean(KEY_BUSY, false) }
     }
 
     /** 是否正在整理（含"僵尸标记"自愈：超过 [BUSY_STALE_MS] 视为没在跑）。 */
