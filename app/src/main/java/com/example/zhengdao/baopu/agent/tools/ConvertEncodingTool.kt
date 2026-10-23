@@ -8,6 +8,7 @@
 // 5. 写回走「临时文件 + rename」原子替换，中途失败不留半个文件。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -63,9 +64,13 @@ internal object ConvertEncodingTool {
         if (!file.isFile) {
             return ToolOutcome.Failed("不是一个文件：${file.name}（convert_encoding 只转文件）")
         }
-        if (!PathGuard.isInside(root, file)) {
-            return ToolOutcome.Rejected("路径越界被拒：${file.name} 不在工作区（${root.absolutePath}）内。")
-        }
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
+        workspaceBoundaryCheck(
+            root,
+            file,
+            file.name,
+            "路径越界被拒：${file.name} 不在工作区（${root.absolutePath}）内。",
+        )?.let { return ToolOutcome.Rejected(it) }
         val backupDir = File(root, BACKUP_DIR_NAME)
         if (PathGuard.isInside(backupDir, file)) {
             return ToolOutcome.Failed("不能转 $BACKUP_DIR_NAME/ 里的文件（那是旧版本备份区，改它等于毁掉退路）")

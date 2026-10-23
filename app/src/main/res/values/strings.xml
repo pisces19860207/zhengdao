@@ -1382,4 +1382,13 @@
     <string name="baopu_note_library_error_label">资料库没成</string>
     <string name="baopu_scratch_left_label">临时文件</string>
     <string name="baopu_scratch_left_body">%1$d 个临时文件已移入回收站（可恢复）</string>
+    <string name="baopu_tool_novel_create">novel_create：新建小说项目</string>
+    <string name="baopu_tool_novel_create_desc">建小说/书名/ 目录与元数据（大纲、每章字数、人物、设定）；每次要确认。正文仍用 write_file 写。</string>
+    <string name="baopu_tool_novel_project">novel_project：看小说项目</string>
+    <string name="baopu_tool_novel_project_desc">看一个项目的总览：大纲、人物、目录、每章实际字数与目标差；只读。</string>
+    <string name="baopu_tool_novel_continue">novel_continue：续写简报</string>
+    <string name="baopu_tool_novel_continue_desc">接哪章哪段、人物与设定、一致性提示；续写用 edit_file 追加或 write_file 新开一章，不覆盖正文。</string>
+    <string name="baopu_workspace_card">工作区</string>
+    <string name="baopu_ws_outside_title">允许访问工作区外</string>
+    <string name="baopu_ws_outside_desc">打开后，抱朴要读写工作区外的文件时会先弹卡问你，同意才做；每次运行只问一次。关掉则一律拒绝。</string>
 </resources>

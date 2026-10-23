@@ -414,6 +414,32 @@ internal object BaopuRuntime {
     }
 
     /**
+     * 第一百五十六批：设置项「允许访问工作区外（每次会问你）」的存储。
+     *
+     * 默认**开**（用户口径逐字：「用户觉得可以那就是可以」）——开 ≠ 不问：每次运行里
+     * 第一次越界仍要过确认卡，用户拒绝就做不了（红线「不许静默放行」）。
+     * 关 ⇒ 越界一律原文拒绝（与 156 批之前逐字一致）。
+     *
+     * 为什么不带 `appCtx` 静态字段（与 BaopuToolPrefs 不同款）：那套写法每份要交
+     * StaticFieldLeak＋UseKtx 两条 lint 的税（lint 报告里在案），这里调用方手里都有
+     * Context（装配层 build() 的 appCtx / 设置页的 ctx），直接传参就行——不欠新账。
+     */
+    internal object WorkspacePrefs {
+        private const val FILE = "baopu_workspace"
+        private const val KEY_ALLOW_OUTSIDE = "baopu_allow_outside"
+
+        private fun sp(context: Context) =
+            context.applicationContext.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+
+        /** 默认开（key 没写过也是开）。 */
+        fun enabled(context: Context): Boolean = sp(context).getBoolean(KEY_ALLOW_OUTSIDE, true)
+
+        fun setEnabled(context: Context, on: Boolean) {
+            sp(context).edit { putBoolean(KEY_ALLOW_OUTSIDE, on) }
+        }
+    }
+
+    /**
      * 运行引擎（进程级一份；double-check lazy）。
      *
      * 刀 1 补丁：provider 从 ProviderPrefs 读（可换通道）。换通道 = [switchChannel]
@@ -443,6 +469,9 @@ internal object BaopuRuntime {
             // 第四十八批 P0-2：原件区权威路径＝终端侧的 KnowledgeBase.rawDir（抱朴工作区
             // 可自定义，原件区跟的是终端工作区）。不在这里拼 "资料库/原始" 字符串。
             { KnowledgeBase.rawDir(appCtx) },
+            // 第一百五十六批：工作区外访问开关（设置页可关；默认开，开也每运行问一次）。
+            // 具名传参（allowOutside 排在参数表最后，第 4 位是 runner）
+            allowOutside = { WorkspacePrefs.enabled(appCtx) },
         )
         val db = db(appCtx)
         // 选项卡的落点：引擎负责弹、等、收答案
@@ -528,6 +557,11 @@ internal object BaopuRuntime {
         )
         // ask_user：工具线程阻塞在 engine.askUser 上，UI 点一下即回（有界，与确认卡同超时）
         AskUserTool.sink = { req -> engine.askUser(req) }
+        // 第一百五十六批：工作区外访问的读数点（工具层自检现读，改开关即时生效）
+        // ＋每轮入口清授权账本（与 150 批 run 级计数同一处复位，跨运行重新问）。
+        com.example.zhengdao.baopu.WorkspaceAccessPolicy.settingOn = { WorkspacePrefs.enabled(appCtx) }
+        com.example.zhengdao.baopu.WorkspaceAccessPolicy.granted = { WorkspaceGrants.granted(it) }
+        engine.onRunScopedReset = { WorkspaceGrants.beginRun() }
         // 第一百二十四批 · 发图同意闸的候选来源：「已验证能看图、且真能切过去」的那几条通道。
         // 判据在 VisionRouting（候选规矩照用 ProviderPrefs.routeCandidates，能力过滤照用
         // ModelRouter + Need(vision=true)）；Key 只在这里现取现用 ⇒ 引擎不持 Key、不进日志。

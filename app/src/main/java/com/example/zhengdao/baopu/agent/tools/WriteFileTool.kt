@@ -10,6 +10,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -97,12 +98,15 @@ internal object WriteFileTool {
             return ToolOutcome.Failed("参数「$ARG_CONTENT」为空（没有要写的内容；不想写就别调 write_file）")
         }
         val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
-        if (!PathGuard.isInside(root, target)) {
-            return ToolOutcome.Rejected(
-                "路径越界被拒：$rel 不在工作区（${root.absolutePath}）内。" +
-                    "write_file 只能写工作区里的文件。",
-            )
-        }
+        // 第一百五十六批：越界不再一律硬拒——开关开且本运行已授权 ⇒ 放行（判据统一在
+        // workspaceBoundaryCheck）；开关关 ⇒ 原文拒绝（文案逐字不动）。
+        workspaceBoundaryCheck(
+            root,
+            target,
+            rel,
+            "路径越界被拒：$rel 不在工作区（${root.absolutePath}）内。" +
+                "write_file 只能写工作区里的文件。",
+        )?.let { return ToolOutcome.Rejected(it) }
         val backupDir = File(root, BACKUP_DIR_NAME)
         if (PathGuard.isInside(backupDir, target)) {
             return ToolOutcome.Failed(

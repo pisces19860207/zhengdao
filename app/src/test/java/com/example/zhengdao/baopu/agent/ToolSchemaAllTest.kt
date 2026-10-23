@@ -427,6 +427,10 @@ class ToolSchemaAllTest {
             "edit_file" to JSONObject().put("path", "a.md").put("op", "append").put("content", "新行"),
             "move_path" to JSONObject().put("from", "a.md").put("to", "b.md"),
             "convert_encoding" to JSONObject().put("path", "a.md"),
+            // 小说工程三件（第一百五十五批）：create 必填书名；project/continue 必填项目路径
+            "novel_create" to JSONObject().put("title", "书名"),
+            "novel_project" to JSONObject().put("path", "小说/书名"),
+            "novel_continue" to JSONObject().put("path", "小说/书名"),
             "browser_open" to JSONObject().put("url", "https://m.bing.com"),
             "browser_snapshot" to JSONObject(),
             "browser_click" to JSONObject().put("target", "#a"),
