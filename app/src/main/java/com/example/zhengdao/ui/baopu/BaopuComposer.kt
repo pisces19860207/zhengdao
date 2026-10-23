@@ -166,7 +166,7 @@ internal fun BaopuComposer(
         if (saved.isNotEmpty()) attachList = attachList + saved
         note = when {
             failed > 0 -> res.getString(R.string.baopu_attach_failed)
-            uris.size > saved.size -> res.getString(R.string.baopu_attach_too_many, MAX_ATTACH)
+            uris.size > saved.size -> res.getQuantityString(R.plurals.baopu_attach_too_many, MAX_ATTACH, MAX_ATTACH)
             else -> null
         }
     }
@@ -641,10 +641,10 @@ internal fun withAttachmentHint(
         items.joinToString("；") { "${it.relPath}（${it.sizeBytes} B）" }
     val hints = buildList {
         if (files.isNotEmpty()) {
-            add(ctx.getString(R.string.baopu_attach_hint_files, files.size, describe(files)))
+            add(ctx.resources.getQuantityString(R.plurals.baopu_attach_hint_files, files.size, files.size, describe(files)))
         }
         if (images.isNotEmpty()) {
-            add(ctx.getString(R.string.baopu_attach_hint_images, images.size, describe(images)))
+            add(ctx.resources.getQuantityString(R.plurals.baopu_attach_hint_images, images.size, images.size, describe(images)))
         }
     }
     val hint = hints.joinToString("\n")

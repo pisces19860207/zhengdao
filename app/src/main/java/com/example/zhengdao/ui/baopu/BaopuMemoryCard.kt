@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -73,7 +74,7 @@ internal fun MoreItemsRow(hidden: Int, expanded: Boolean, onToggle: () -> Unit) 
         if (!expanded) {
             Spacer(Modifier.width(6.dp))
             Text(
-                text = stringResource(R.string.baopu_more_items, hidden),
+                text = pluralStringResource(R.plurals.baopu_more_items, hidden, hidden),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

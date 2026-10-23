@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -202,7 +203,7 @@ internal fun BaopuNoticeSlot(
             )
             if (more > 0) {
                 TextButton(onClick = { expanded = true }) {
-                    Text(stringResource(R.string.baopu_notice_more, more))
+                    Text(pluralStringResource(R.plurals.baopu_notice_more, more, more))
                 }
             }
             top.action?.let { a ->

@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -184,5 +185,5 @@ internal fun exportStatusLine(lastExportAt: Long, unexportedCount: Int): String 
     } else {
         stringResource(R.string.baopu_backup_last, TimeFormats.fileStamp(lastExportAt))
     }
-    return last + "；" + stringResource(R.string.baopu_backup_unexported, unexportedCount)
+    return last + "；" + pluralStringResource(R.plurals.baopu_backup_unexported, unexportedCount, unexportedCount)
 }

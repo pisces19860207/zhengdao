@@ -13,6 +13,7 @@
     android:id="@+id/terminal_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@android:color/white"
     android:padding="4dp">
 
     <LinearLayout

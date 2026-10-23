@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -155,8 +156,9 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = stringResource(
-                                R.string.baopu_tools_summary,
+                            text = pluralStringResource(
+                                R.plurals.baopu_tools_summary,
+                                toolSummary.groupOnCount,
                                 toolSummary.toolCount,
                                 toolSummary.groupOnCount,
                                 toolSummary.pendingGroupCount,
@@ -205,7 +207,7 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                             BaopuToolRowTone.Closed ->
                                                 stringResource(R.string.baopu_tools_row_closed)
                                             BaopuToolRowTone.Partial ->
-                                                stringResource(R.string.baopu_tools_row_partial, row.offCount)
+                                                pluralStringResource(R.plurals.baopu_tools_row_partial, row.offCount, row.offCount)
                                         },
                                         style = MaterialTheme.typography.labelMedium,
                                         color = when (tone) {

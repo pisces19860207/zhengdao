@@ -263,7 +263,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                 as android.content.ClipboardManager
             cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-term", text))
-            runOnUiThread { Toast.makeText(this, getString(R.string.term_copied_chars, text.length), Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, resources.getQuantityString(R.plurals.term_copied_chars, text.length, text.length), Toast.LENGTH_SHORT).show() }
         }
         SessionManager.onPasteRequest = {
             runOnUiThread {
@@ -1031,7 +1031,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             } else {
                 val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text))
-                Toast.makeText(this, getString(R.string.term_copied_screen, text.length), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, resources.getQuantityString(R.plurals.term_copied_screen, text.length, text.length), Toast.LENGTH_SHORT).show()
             }
         }
         // ^C 中断：独立按钮。点一下直接发 Ctrl+C（0x03 = ETX），
@@ -1137,7 +1137,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             Toast.makeText(this, getString(R.string.term_session_not_ready), Toast.LENGTH_SHORT).show()
             return
         }
-        Toast.makeText(this, getString(R.string.term_pasting, text.length), Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, resources.getQuantityString(R.plurals.term_pasting, text.length, text.length), Toast.LENGTH_SHORT).show()
         pasteWriter.submit(
             text = text,
             isSessionAlive = { SessionManager.session?.isRunning == true },
@@ -1146,7 +1146,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             runOnUiThread {
                 result
                     .onSuccess {
-                        Toast.makeText(this, getString(R.string.term_pasted, it), Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, resources.getQuantityString(R.plurals.term_pasted, it, it), Toast.LENGTH_SHORT).show()
                     }
                     .onFailure {
                         // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
@@ -1463,7 +1463,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         if (text.isEmpty()) return
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text))
-        Toast.makeText(this, getString(R.string.term_copied_chars, text.length), Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, resources.getQuantityString(R.plurals.term_copied_chars, text.length, text.length), Toast.LENGTH_SHORT).show()
     }
 
     /**

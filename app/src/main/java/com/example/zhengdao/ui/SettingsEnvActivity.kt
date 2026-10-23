@@ -38,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -137,7 +138,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
     val repairNoLocalMsg = stringResource(R.string.env_repair_no_local)
     val updateFailedTemplate = stringResource(R.string.env_update_failed)
     val snackbarHostState = remember { SnackbarHostState() }
-    var storageTick by remember { mutableStateOf(0) }
+    var storageTick by remember { mutableIntStateOf(0) }
     var logDialogText by remember { mutableStateOf<String?>(null) }
 
     /** 卡片里原本直调设置页的 `onOpenTerminal`，这里接到同一条意图上（Hermes 卡的「在终端里修复」）。 */

@@ -3059,7 +3059,7 @@ internal class BaopuChatController(context: Context) {
         if (r.candidates.isEmpty()) {
             if (r.dropped > 0) {
                 skillNote = BaopuNote(
-                    appCtx.getString(R.string.skill_refine_dropped, r.dropped),
+                    appCtx.resources.getQuantityString(R.plurals.skill_refine_dropped, r.dropped, r.dropped),
                     BaopuNoteLevel.Error,
                 )
             }
@@ -3070,8 +3070,8 @@ internal class BaopuChatController(context: Context) {
         if (BaopuIndexBudget.wouldExceed(total, r.candidates.size)) {
             // K2：超上限 ⇒ 拒绝并提示先删旧的（不是截断）
             skillNote = BaopuNote(
-                appCtx.getString(
-                    R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+                appCtx.resources.getQuantityString(
+                    R.plurals.skill_cap_reached, total, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
                 ),
                 BaopuNoteLevel.Error,
             )
@@ -3135,8 +3135,8 @@ internal class BaopuChatController(context: Context) {
         val adding = BaopuIndexBudget.addedIndexLines(p.proposed, p.current, scope)
         if (BaopuIndexBudget.wouldExceed(total, adding)) {
             skillNote = BaopuNote(
-                appCtx.getString(
-                    R.string.skill_cap_reached, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
+                appCtx.resources.getQuantityString(
+                    R.plurals.skill_cap_reached, total, total, com.example.zhengdao.baopu.SkillRules.INDEX_CAP,
                 ),
                 BaopuNoteLevel.Error,
             )
