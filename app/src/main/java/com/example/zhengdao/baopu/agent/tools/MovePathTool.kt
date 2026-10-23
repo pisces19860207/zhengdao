@@ -5,7 +5,7 @@
 //（把 投递/ 里看过的书归到 产物/书目/、把书改名、建目录）只能靠人手动点文件管理器。
 //
 // 五条硬纪律（逐条对应口径）：
-// 1. 只在工作区根内搬，越界即拒（PathGuard.isInside 双保险，纯函数层可测）；
+// 1. 越界走 workspaceBoundaryCheck（156 批统一判据，纯函数层可测）；备份区禁区另用 PathGuard 硬拒；
 // 2. 同分区优先 rename（原子，不留半截）；跨分区只能复制 ⇒ **不自动删源**，
 //    把源文件记进 `产物/_待删除清单.md`，由用户自己确认后删（与刀 2 的「待删除清单」同一口径）；
 // 3. **绝不覆盖**：撞名不同内容 ⇒ 加 sha 后缀让路；内容相同（sha 一致）⇒ 幂等回「已搬」；
@@ -14,11 +14,8 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
-<<<<<<< HEAD
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-=======
 import com.example.zhengdao.baopu.kernel.BaopuKernel
->>>>>>> feat/memory-157-onmain
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File

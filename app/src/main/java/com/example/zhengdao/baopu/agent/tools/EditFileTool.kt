@@ -6,17 +6,15 @@
 //
 // 四条硬纪律：
 // 1. 权限 CONFIRM——改文件必须过用户那一下（与 write_file 同口径）；
-// 2. 路径必须过 PathGuard.isInside(工作区)，越界即拒（纯函数层自检，JVM 直测）；
+// 2. 路径过 workspaceBoundaryCheck（156 批统一判据；工作区外要用户批准），
+//    纯函数层自检、JVM 直测；备份区等禁区另用 PathGuard 硬拒；
 // 3. 写之前先把旧版本备份到 <工作区>/备份/（157 起可见化，原 .baopu-bak；备份失败 ⇒ 放弃本次修改）；
 // 4. 单次提交 ≤ 200 行、只改文本、**无删除能力**（不提供 delete 参数，也不删行以外的任何东西）。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
-<<<<<<< HEAD
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-=======
 import com.example.zhengdao.baopu.kernel.BaopuKernel
->>>>>>> feat/memory-157-onmain
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File

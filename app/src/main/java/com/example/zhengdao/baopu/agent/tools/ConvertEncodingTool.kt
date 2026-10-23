@@ -8,11 +8,8 @@
 // 5. 写回走「临时文件 + rename」原子替换，中途失败不留半个文件。
 package com.example.zhengdao.baopu.agent
 
-<<<<<<< HEAD
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-=======
 import com.example.zhengdao.baopu.kernel.BaopuKernel
->>>>>>> feat/memory-157-onmain
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
