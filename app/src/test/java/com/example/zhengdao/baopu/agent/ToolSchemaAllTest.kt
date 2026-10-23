@@ -443,6 +443,8 @@ class ToolSchemaAllTest {
             "kb_search" to JSONObject().put("query", "第一章"),
             "delete_path" to JSONObject(),
             "image_ops" to JSONObject().put("action", "palette").put("path", "a.png"),
+            // 第一百五十八批：文生图（只给最小合法形状：一句提示词）
+            "generate_image" to JSONObject().put("prompt", "画一只橘猫"),
             "ask_user" to JSONObject().put("question", "选哪个？").put(
                 "options",
                 JSONArray()

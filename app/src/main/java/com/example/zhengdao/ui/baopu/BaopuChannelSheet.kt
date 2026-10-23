@@ -365,6 +365,7 @@ internal fun BaopuChannelSheet(
                         .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp),
                 )
             }
+<<<<<<< HEAD
             if (!listExpanded && modelText.isNotBlank()) {
                 PickerRow(
                     title = ModelPickerRules.displayName(modelText, null),
@@ -373,6 +374,9 @@ internal fun BaopuChannelSheet(
                     onClick = { listExpanded = true },
                 )
             } else when {
+=======
+            when {
+>>>>>>> feat/image-gen-158
                 entries.isEmpty() && fetching -> Footnote("正在拉取模型列表…")
                 entries.isEmpty() && pullNote != null -> Footnote(pullNote)
                 entries.isEmpty() && fetchError != null -> Footnote(
@@ -434,12 +438,20 @@ internal fun BaopuChannelSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SmallAction("刷新") { refreshTick++ }
                 if (aggregate) {
+<<<<<<< HEAD
                     // 2026-10-23 用户：「看全部免费模型」没必要（free 过滤已够）→ 撤掉；
                     // 「去拿 Key」与提示语重复 → 只留一个「注册」，点了直接去注册页。
                     SmallAction("注册") {
                         openInXuanlan(ModelPickerRules.OPENROUTER_SIGNUP_URL)
                         onDismiss()
                     }
+=======
+                    // ①「跳转链接（玄览内打开）」：只走 openInXuanlan 那一条 B 路径
+                    // （pendingUrl ＋ requestBrowserTab），不新开 WebView、不落系统浏览器。
+                    SmallAction("看全部免费模型") { openInXuanlan(ModelPickerRules.OPENROUTER_FREE_MODELS_URL) }
+                    // 第一百五十三批：聚合服务的 Key 入口（玄览内打开，不新开 WebView）。
+                    SmallAction("去拿 Key") { openInXuanlan(ModelPickerRules.OPENROUTER_KEYS_URL) }
+>>>>>>> feat/image-gen-158
                 }
             }
             OutlinedTextField(

@@ -11,6 +11,8 @@ import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.CompatChannelTools
+import com.example.zhengdao.baopu.agent.GenerateImage
+import com.example.zhengdao.baopu.agent.GenerateImageTool
 import com.example.zhengdao.baopu.agent.GroupUnlockStore
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.KbTools
@@ -174,6 +176,29 @@ internal object BaopuRuntime {
             onVisibleChanged = { line -> RunLog.log(line) },
         )
         BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
+        // 第一百五十八批：文生图（`generate_image`）的接线。
+        // Key 的口径：当前通道若是 Gemini 原生就用它的（含用户填的 Key）；否则退回
+        // 「设置 → Google Gemini」里存的那把——生图是独立于对话通道的能力，不该逼用户
+        // 为了画一张图把对话也切过去。两处都没有 ⇒ 工具回一句「去哪儿填 Key」。
+        val liveGemini = provider.protocol == LlmProtocol.GEMINI_NATIVE
+        val geminiKey = if (liveGemini) {
+            provider.apiKey.ifBlank { ProviderPrefs.storedKey(appCtx, Providers.GEMINI.id).orEmpty() }
+        } else {
+            ProviderPrefs.storedKey(appCtx, Providers.GEMINI.id).orEmpty()
+        }
+        GenerateImageTool.env = GenerateImageTool.Env(
+            provider = Providers.GEMINI.copy(
+                apiKey = geminiKey,
+                baseUrl = if (liveGemini) provider.baseUrl else Providers.GEMINI.baseUrl,
+            ),
+            // 默认工作区 ⇒ 资料库/整理；自定义与私有工作区 ⇒ <工作区>/产物（派工单 §1）。
+            artifactDir = { ws ->
+                GenerateImage.artifactDir(
+                    ws,
+                    libraryMode = ws.absolutePath == BaopuWorkspace.defaultDir().absolutePath,
+                )
+            },
+        )
         // 第一百二十八批：知识库 v2 的索引存储壳（App 私有 filesDir/baopu/kb）。
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
         // AskUserTool.sink／PlanTool.sink：Context 只到装配层这一处。

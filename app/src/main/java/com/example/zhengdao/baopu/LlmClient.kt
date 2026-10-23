@@ -871,7 +871,11 @@ sealed interface CompletionResult {
 }
 
 /** 158：5xx 重试信号（只在 stream 内部用，不外抛）。 */
+<<<<<<< HEAD
 private class Retryable5xx : Exception()
+=======
+private class Retryable5xx(val code: Int) : Exception("HTTP $code")
+>>>>>>> feat/image-gen-158
 
 class LlmClient(private val provider: Provider) {
 
@@ -934,13 +938,24 @@ class LlmClient(private val provider: Provider) {
     fun stream(call: Call, sink: (LlmEvent) -> Unit) {
         try {
             streamOnce(call, sink, allowRetry = true)
+<<<<<<< HEAD
         } catch (_: Retryable5xx) {
+=======
+        } catch (e: Retryable5xx) {
+>>>>>>> feat/image-gen-158
             // 158：只对 5xx（500/502/503/504）重试一次，退避 1s；重试仍失败按原口径转 Failed。
             runCatching { Thread.sleep(1000) }
             try {
                 streamOnce(call.clone(), sink, allowRetry = false)
+<<<<<<< HEAD
             } catch (_: Retryable5xx) {
                 sink(LlmEvent.Failed(IOException("HTTP 5xx（重试一次仍失败）")))
+=======
+            } catch (e2: Retryable5xx) {
+                sink(LlmEvent.Failed(IOException("HTTP ${e2.code}（重试一次仍失败）")))
+            } catch (e2: Exception) {
+                sink(LlmEvent.Failed(IOException("HTTP ${e.code}（重试一次仍失败）", e2)))
+>>>>>>> feat/image-gen-158
             }
         }
     }
@@ -953,7 +968,11 @@ class LlmClient(private val provider: Provider) {
                     val snippet = runCatching {
                         resp.body?.string()?.take(ERROR_BODY_SNIPPET)
                     }.getOrNull()
+<<<<<<< HEAD
                     if (allowRetry && resp.code in RETRYABLE_5XX) throw Retryable5xx()
+=======
+                    if (allowRetry && resp.code in RETRYABLE_5XX) throw Retryable5xx(resp.code)
+>>>>>>> feat/image-gen-158
                     RunLog.log(
                         "抱朴 LLM：HTTP ${resp.code} ${resp.message}" +
                             if (snippet.isNullOrBlank()) "" else " body=${snippet.replace('\n', ' ')}"
@@ -1020,7 +1039,7 @@ class LlmClient(private val provider: Provider) {
                         sink(LlmEvent.Failed(IOException("流在完成标记前结束（疑似截断）")))
                 }
             }
-        } catch (e: CancellationException) {
+        } catch (e: Retryable5xx) { throw e } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             sink(LlmEvent.Failed(e))
