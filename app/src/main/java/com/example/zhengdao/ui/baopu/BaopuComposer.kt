@@ -283,34 +283,41 @@ internal fun BaopuComposer(
                 placeholder = { Text(stringResource(R.string.baopu_input_hint)) },
                 maxLines = 4,
             )
-            if (busy) {
-                // 停止：立刻可点（点停止任何时候都该有用）
+            // 第一百五十三批：只留**一个按钮、三态**（用户：「发送/停止还没并到一个按钮」）：
+            // 空闲 ⇒ 发送；跑动＋无草稿 ⇒ 停止；跑动＋有草稿 ⇒ 发送（进 FIFO 排队）。
+            // 不新造暂停语义，停止仍走 onStop()（砍流＋清排队，见引擎 150/151）。
+            val canSend = text.isNotBlank() || attachList.isNotEmpty()
+            if (busy && !canSend) {
                 TextButton(
                     onClick = { onStop() },
                     modifier = Modifier.padding(bottom = 8.dp),
                 ) {
                     Text(stringResource(R.string.baopu_stop))
                 }
-            }
-            // 发送在跑着时**也留着**：点下去＝排队，不是丢掉。
-            Button(
-                onClick = {
-                    val body = text
-                    val list = attachList
-                    if (body.isNotBlank() || list.isNotEmpty()) {
-                        // hint 照旧拼进文本（B2：不许因为有了 image part 就删提示）
-                        val accepted = onSend(withAttachmentHint(ctx, body, list), list)
-                        // 被拒（队列满 / 别的会话在跑）⇒ 原文与附件都不清，用户不用重打
-                        if (accepted) {
-                            text = ""
-                            attachList = emptyList()
+            } else {
+                Button(
+                    onClick = {
+                        val body = text
+                        val list = attachList
+                        if (body.isNotBlank() || list.isNotEmpty()) {
+                            // hint 照旧拼进文本（B2：不许因为有了 image part 就删提示）
+                            val accepted = onSend(withAttachmentHint(ctx, body, list), list)
+                            // 被拒（队列满 / 别的会话在跑）⇒ 原文与附件都不清，用户不用重打
+                            if (accepted) {
+                                text = ""
+                                attachList = emptyList()
+                            }
                         }
-                    }
-                },
-                enabled = text.isNotBlank() || attachList.isNotEmpty(),
-                modifier = Modifier.padding(bottom = 8.dp),
-            ) {
-                Text(stringResource(R.string.baopu_send))
+                    },
+                    enabled = canSend,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                ) {
+                    Text(
+                        stringResource(
+                            if (busy) R.string.baopu_send_queue else R.string.baopu_send,
+                        ),
+                    )
+                }
             }
         }
     }

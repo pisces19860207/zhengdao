@@ -255,7 +255,9 @@ class BareThreadGuardTest {
         // 2026-10-21 第一百二十七批新增子 Agent 池 zd-baopu-sub => 32（原注 31 有误，实测对账本 32 条，121 批校正）；
         // 2026-10-21 第一百二十一批遗留插件迁移搭车 zd-auto-clean，无新增 => 仍 32（贴红线 32）。
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
-        assertTrue("裸 Thread 创建点 $total 处，超过红线 32——先收敛再谈新增", total in 1..32)
+        // 2026-10-23：RootfsDownloader.kt:368 新增一个有名+daemon 的 zd-rootfs 下载点（v2.2.x）；
+        // 对账单随之 32→33，红线同步上调 1。再往上加必须先在本行写理由。
+        assertTrue("裸 Thread 创建点 $total 处，超过红线 33——先收敛再谈新增", total in 1..33)
     }
 
     @Test
@@ -270,8 +272,8 @@ class BareThreadGuardTest {
             "BrowserAgentBridge.kt:73",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",
-            "KeepaliveWatcher.kt:66",
             "KeepaliveWatcher.kt:230",
+            "KeepaliveWatcher.kt:66",
             "KnowledgeBase.kt:152",
             "KnowledgeBase.kt:175",
             "KnowledgeBase.kt:199",
@@ -281,6 +283,7 @@ class BareThreadGuardTest {
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
+            "RootfsDownloader.kt:368",
             "RunEngine.kt:255",
             "SettingsDataActivity.kt:596",
             "SettingsEnvActivity.kt:220",
@@ -294,8 +297,8 @@ class BareThreadGuardTest {
             "TerminalActivity.kt:1747",
             "TerminalActivity.kt:1807",
             "TerminalActivity.kt:1893",
-            "ZhengdaoApp.kt:82",
             "ZhengdaoApp.kt:140",
+            "ZhengdaoApp.kt:82",
         )
         assertEquals(
             "裸 Thread 创建点与 2026-10-15 对账单不符——新增/移动了线程？" +

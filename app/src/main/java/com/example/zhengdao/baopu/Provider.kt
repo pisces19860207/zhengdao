@@ -297,60 +297,24 @@ object Providers {
 
 
     /**
-
-     * OpenRouter 预设（第一百三十一批 ③：预设也要能动态拉模型，本文件先给形状）。
-
+     * Google Gemini（2026-10-23 用户：「两个 OpenRouter，把其中一个换成 Gemini」）。
      *
-
-     * ① 实测（2026-10-22 本会话）：`GET https://openrouter.ai/api/v1/models` 未带 Key 即 200，
-
-     * 返回 468 个模型；默认模型 `deepseek/deepseek-v4.1-flash` 在其中，
-
-     * `context_length=1048576`。
-
-     *
-
-     * **不带 Key**：用户自己注册、自己填（红线：不内置、不兜底、不预填、不读剪贴板）。
-
+     * 为什么走 OpenAI 兼容端点而不是原生 `generateContent`：
+     * 本仓 `LlmProtocol` 只有 OPENAI_COMPAT / ANTHROPIC 两档，原生 Gemini 要新写请求层与
+     * 鉴权头；Google 官方提供 OpenAI 兼容层
+     * （`https://generativelanguage.googleapis.com/v1beta/openai/`），完全复用现有 wire。
+     * Key 由用户自己填（`https://aistudio.google.com/apikey`），App 不内置、不兜底。
      */
-
-    val OPENROUTER = Provider(
-
-        id = "openrouter",
-
-        label = "OpenRouter",
-
+    val GEMINI = Provider(
+        id = "gemini",
+        label = "Google Gemini",
         protocol = LlmProtocol.OPENAI_COMPAT,
-
-        baseUrl = "https://openrouter.ai/api/v1",
-
-        model = "deepseek/deepseek-v4.1-flash",
-
+        baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
+        model = "gemini-2.5-flash",
+        // Gemini 2.5 Flash：输入窗口约 1M token（Google 文档）；与 OpenRouter 预设同一存档口径。
         contextWindow = 1_048_576,
-
-        // vision = true（第一百三十一批 ① + 2026-10-18 用户口径）。
-
-        // ① 实测台账：本会话抓 `GET https://openrouter.ai/api/v1/models`（未带 Key 即 200，
-
-        // 468 条）里 `deepseek/deepseek-v4.1-flash` 的
-
-        // `architecture.input_modalities = ["text", "image"]`。
-
-        // 用户口径：「除非是文本模型，不然肯定要打开」＋「纯文本模型自己就会说看不见」
-
-        // ⇒ 不在本地替模型判断能不能看图，图照发；端上认不认由它自己回答。
-
-        // 纪律没被绕过：真机发图验证属**未验项**（本单红线不跑真机）。若端上拒图或模型
-
-        // 答「看不到」，就把这里改回 false 并在交付报告里记下日期。
-
         vision = true,
-
     )
-
-
-
-
 
     /**
 
@@ -546,7 +510,7 @@ object Providers {
 
     fun all(): List<Provider> =
 
-        listOf(OPENAI_COMPAT, DEEPSEEK, ANTHROPIC, OPENROUTER, OPENROUTER_FREE)
+        listOf(OPENAI_COMPAT, DEEPSEEK, ANTHROPIC, GEMINI, OPENROUTER_FREE)
 
 
 
