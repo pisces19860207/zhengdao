@@ -194,7 +194,7 @@ internal object KbTools {
      * 把「模型给的路径」解析成工作区内目录（越界 ⇒ null）。
      *
      * 2026-10-22 真机 UI-D9：模型常把 `list_dir` 看到的**绝对路径**原样传回来
-     * （`/storage/emulated/0/Download/证道/资料库/整理`），旧实现一律按相对路径解析
+     * （`/storage/emulated/0/Download/证道/产物`），旧实现一律按相对路径解析
      * ⇒ `destinationUnder` 见到前导 `/` 直接 null ⇒ 索引一次都建不成。
      *
      * 现在：绝对路径先 `canonicalFile`，**落在 root 内**才转成相对 root，再走同一套

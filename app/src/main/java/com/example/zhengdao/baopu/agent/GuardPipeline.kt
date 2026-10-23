@@ -499,7 +499,7 @@ internal class GuardPipeline(
         }.getOrDefault(target.name)
         log("抱朴管线：拒绝写原件区 $shown（raw=${raw.absolutePath}）")
         return "路径被拒：$shown 在资料库/原始/ 里——原件区只读，一个字节都不许碰（用户红线）。" +
-            "要产出改过的文件，请写到 资料库/整理/（或 资料库/改版/）。"
+            "要产出改过的文件，请写到 产物/。"
     }
 
     companion object {

@@ -192,13 +192,8 @@ internal object BaopuRuntime {
                 apiKey = geminiKey,
                 baseUrl = if (liveGemini) provider.baseUrl else Providers.GEMINI.baseUrl,
             ),
-            // 默认工作区 ⇒ 资料库/整理；自定义与私有工作区 ⇒ <工作区>/产物（派工单 §1）。
-            artifactDir = { ws ->
-                GenerateImage.artifactDir(
-                    ws,
-                    libraryMode = ws.absolutePath == BaopuWorkspace.defaultDir().absolutePath,
-                )
-            },
+            // 157 目录收口：默认/自定义/私有工作区一律 ⇒ <工作区>/产物（旧 资料库/整理 已迁入）。
+            artifactDir = { ws -> GenerateImage.artifactDir(ws) },
         )
         // 第一百二十八批：知识库 v2 的索引存储壳（App 私有 filesDir/baopu/kb）。
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同

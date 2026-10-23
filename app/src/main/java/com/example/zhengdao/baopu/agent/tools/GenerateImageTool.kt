@@ -65,7 +65,7 @@ internal object GenerateImageTool {
         name = "generate_image",
         description = "画图（文生图/图生图；每次执行前弹确认卡，会消耗 Gemini 额度）：" +
             "先拉 {base}/models 清单挑图模型（Nano Banana Pro 优先，其次 Nano Banana 2），" +
-            "产物只落本机（默认工作区落 资料库/整理/，自定义工作区落 产物/），同名不覆盖。" +
+            "产物只落本机 `<工作区>/产物/`（157 收口后默认与自定义工作区同一口径），同名不覆盖。" +
             "reference 给工作区里的一张图，就是「照着它改」。count 最多 ${GenerateImage.MAX_COUNT} 张。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -87,7 +87,7 @@ internal object GenerateImageTool {
                 ),
                 ARG_REFERENCE to jsonObjectOf(
                     "type" to "string",
-                    "description" to "可选：工作区里的参考图（相对工作区根，如 资料库/整理/cat.png），用于图生图",
+                    "description" to "可选：工作区里的参考图（相对工作区根，如 产物/cat.png），用于图生图",
                 ),
             ),
             "required" to jsonArrayOf(ARG_PROMPT),
