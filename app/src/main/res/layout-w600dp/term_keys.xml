@@ -24,91 +24,91 @@
     <TextView
         android:id="@+id/key_esc"
         style="@style/TermKeyFlex"
-        android:text="ESC" />
+        android:text="@string/term_key_esc" />
 
     <TextView
         android:id="@+id/key_tab"
         style="@style/TermKeyFlex"
-        android:text="TAB" />
+        android:text="@string/term_key_tab" />
 
     <TextView
         android:id="@+id/key_ctrl"
         style="@style/TermKeyFlex"
-        android:text="CTRL" />
+        android:text="@string/term_key_ctrl" />
 
     <TextView
         android:id="@+id/key_shift"
         style="@style/TermKeyFlex"
-        android:text="SHIFT" />
+        android:text="@string/term_key_shift" />
 
     <TextView
         android:id="@+id/key_interrupt"
         style="@style/TermKeyDangerFlex"
-        android:text="^C" />
+        android:text="@string/term_key_interrupt" />
 
     <TextView
         android:id="@+id/key_up"
         style="@style/TermKeyFlex"
-        android:text="↑" />
+        android:text="@string/term_key_up" />
 
     <TextView
         android:id="@+id/key_down"
         style="@style/TermKeyFlex"
-        android:text="↓" />
+        android:text="@string/term_key_down" />
 
     <TextView
         android:id="@+id/key_left"
         style="@style/TermKeyFlex"
-        android:text="←" />
+        android:text="@string/term_key_left" />
 
     <TextView
         android:id="@+id/key_right"
         style="@style/TermKeyFlex"
-        android:text="→" />
+        android:text="@string/term_key_right" />
 
     <TextView
         android:id="@+id/key_pgup"
         style="@style/TermKeyFlex"
             android:layout_weight="1.35"
-        android:text="PGUP" />
+        android:text="@string/term_key_pgup" />
 
     <TextView
         android:id="@+id/key_pgdn"
         style="@style/TermKeyFlex"
             android:layout_weight="1.35"
-        android:text="PGDN" />
+        android:text="@string/term_key_pgdn" />
 
     <TextView
         android:id="@+id/key_home"
         style="@style/TermKeyFlex"
             android:layout_weight="1.35"
-        android:text="HOME" />
+        android:text="@string/term_key_home" />
 
     <TextView
         android:id="@+id/key_end"
         style="@style/TermKeyFlex"
             android:layout_weight="1.15"
-        android:text="END" />
+        android:text="@string/term_key_end" />
 
     <TextView
         android:id="@+id/key_pipe"
         style="@style/TermKeyFlex"
-        android:text="|" />
+        android:text="@string/term_key_pipe" />
 
     <TextView
         android:id="@+id/key_minus"
         style="@style/TermKeyFlex"
-        android:text="-" />
+        android:text="@string/term_key_minus" />
 
     <TextView
         android:id="@+id/key_slash"
         style="@style/TermKeyFlex"
-        android:text="/" />
+        android:text="@string/term_key_slash" />
 
     <!-- Delete（前向删除）：与窄屏两行版保持同一 id 与位置语义（最右）。
          ⚠️ 2026-10-11 起这颗键发的是 Delete（CSI 3~），不再是退格——见 layout/term_keys.xml 的注释 -->
     <TextView
         android:id="@+id/key_backspace"
         style="@style/TermKeyFlex"
-        android:text="DEL" />
+        android:text="@string/term_key_del" />
 </LinearLayout>

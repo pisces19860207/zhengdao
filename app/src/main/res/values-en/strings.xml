@@ -633,6 +633,28 @@
 
     <!-- ── Terminal page subset (TerminalActivity: install guide + long-press menu + copy/paste) ── -->
     <!-- Remaining toasts (split panes / dot help / install progress details) are exempt by user decision: the terminal screen itself prints in English -->
+    <!-- 134 lint HardcodedText cleanup: the three traffic-dot accessibility labels + 17 key caps,
+         moved verbatim out of res/layout*/ (key caps are technical identifiers, same literal in both locales). -->
+    <string name="term_close_terminal_cd">Close terminal</string>
+    <string name="term_close_split_cd">Close split pane</string>
+    <string name="term_split_cd">tmux split (top/bottom)</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_key_ctrl">CTRL</string>
+    <string name="term_key_shift">SHIFT</string>
+    <string name="term_key_interrupt">^C</string>
+    <string name="term_key_up">↑</string>
+    <string name="term_key_down">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_pgup">PGUP</string>
+    <string name="term_key_pgdn">PGDN</string>
+    <string name="term_key_home">HOME</string>
+    <string name="term_key_end">END</string>
+    <string name="term_key_pipe">|</string>
+    <string name="term_key_minus">\u002D</string>
+    <string name="term_key_slash">/</string>
+    <string name="term_key_del">DEL</string>
     <string name="term_no_network">No network: the proxy app was probably killed in the background. Restart it, or let Zhengdao go direct over the phone network (no proxy) — that works too</string>
     <string name="term_nothing_to_copy">Nothing to copy</string>
     <string name="term_copied_screen">Copied the screen content (%1$d characters)</string>
