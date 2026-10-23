@@ -1,4 +1,4 @@
-﻿import java.util.Base64
+import java.util.Base64
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaToolchainService
 
@@ -322,6 +322,14 @@ android {
         minSdk = 36
         versionCode = 38
         versionName = appVersionName
+        // 2026-10-23：构建指纹（只进 BuildConfig，不进日志/上报）。
+        // 为什么需要：同一天多次构建 versionName 全是 2.2.0，用户在手机上无法分辨装的是哪一版
+        // （当天真机复验就卡在这上面）。CI 里 GITHUB_SHA 就是提交哈希；本机构建写 local。
+        buildConfigField(
+            "String",
+            "GIT_SHA",
+            "\"" + (System.getenv("GITHUB_SHA")?.take(8) ?: "local") + "\"",
+        )
 
         ndk {
             // 只编真机 arm64 单架构（2026-10-06 用户定案，见设计文档 §4）：
