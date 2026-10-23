@@ -339,12 +339,16 @@ internal fun BaopuDrawer(
     /** 「工作区」小节标题右侧的 ＋：选一个文件夹加进工作区。 */
     onAddWorkspace: () -> Unit,
     onLibrary: () -> Unit,
+    /** 第一百五十五批：小说工程总览（抽屉入口；之前只有模型工具，没有 UI 落点）。 */
+    onNovel: () -> Unit,
     onExtract: () -> Unit,
     onBackup: () -> Unit,
     /** 预览这条回复（刀 4-B 的 `previewLastReply`；本页只负责转交，渲染在 BaopuScreen）。 */
     onPreviewLastReply: () -> Unit,
     /** 清空预览缓存（返回清掉的张数，由调用方说话）。 */
     onPreviewClear: () -> Unit,
+    /** 第一百二十三批 MCP：抽屉入口（之前只有工具组，没有落点）。 */
+    onMcp: () -> Unit,
     onChannel: () -> Unit,
     onSettings: () -> Unit,
     /** 回收站里「彻底删除」一个会话（两击确认后）：走控制器口子，面板不自己开库。 */
@@ -538,6 +542,11 @@ internal fun BaopuDrawer(
             onClick = onLibrary,
         )
         DrawerItem(
+            title = stringResource(R.string.baopu_drawer_novel),
+            description = stringResource(R.string.baopu_drawer_novel_desc),
+            onClick = onNovel,
+        )
+        DrawerItem(
             title = stringResource(R.string.baopu_extract_title),
             description = stringResource(R.string.baopu_drawer_extract_desc),
             onClick = onExtract,
@@ -574,6 +583,11 @@ internal fun BaopuDrawer(
         )
 
         DrawerGroup(stringResource(R.string.baopu_drawer_group_settings))
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_mcp),
+            description = stringResource(R.string.baopu_drawer_mcp_desc),
+            onClick = onMcp,
+        )
         DrawerItem(
             title = stringResource(R.string.baopu_channel_button),
             description = stringResource(R.string.baopu_drawer_channel_desc),
