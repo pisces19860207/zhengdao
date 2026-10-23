@@ -332,6 +332,28 @@ internal object ProviderPrefs {
      *   模型名与它的元数据**一起换**——留着上一个模型的窗口数就是假数据。
      * - 认不出的 id（含 null/脏数据）⇒ 免费车道（第一百三十一批 ①：OpenRouter 免费档）。
      */
+    /**
+     * 这个 baseUrl 是不是 Google 的生成式接口（原生或它的 OpenAI 兼容层）。
+     *
+     * 纯字符串判据：只看 host（大小写不敏感），解析不了 ⇒ false。
+     */
+    internal fun isGoogleGenerativeBase(base: String): Boolean =
+        runCatching { java.net.URI(base.trim()).host }
+            .getOrNull()
+            ?.equals("generativelanguage.googleapis.com", ignoreCase = true) == true
+
+    /**
+     * 把 Google 的 baseUrl 归一成原生端点前缀 `https://generativelanguage.googleapis.com/v1beta`。
+     *
+     * 为什么不用用户原样填的：`…/v1beta/openai` 是兼容层前缀，原生路径要拼
+     * `/models/{model}:generateContent`，多带 `/openai` 会 404。host 拿不到时退回官方默认。
+     */
+    internal fun googleNativeBase(base: String): String {
+        val host = runCatching { java.net.URI(base.trim()).host }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: "generativelanguage.googleapis.com"
+        return "https://$host/v1beta"
+    }
+
     internal fun resolve(
         channelId: String?,
         keyFor: (String) -> String?,
@@ -345,12 +367,18 @@ internal object ProviderPrefs {
             val model = customModel?.trim().orEmpty()
             val key = keyFor(CHANNEL_CUSTOM)?.trim().orEmpty()
             if (base.isNotEmpty() && model.isNotEmpty() && Provider.isPermittedBaseUrl(base)) {
+                // 2026-10-23：自定义通道指向 Google 时**强制走原生协议**。
+                // 真机形态之一：自定义通道里填 `generativelanguage.googleapis.com/v1beta/openai`
+                // （Google 的 OpenAI 兼容层），那条路对 functionDeclarations 参数表的处理与原生不同
+                // （同 9fc6bec0 的教训），工具参数会被模型丢弃/乱造；只有原生 `:generateContent`
+                // 才带完整参数表。baseUrl 一并归一化成 `https://generativelanguage.googleapis.com/v1beta`。
+                val google = isGoogleGenerativeBase(base)
                 return runCatching {
                     Provider(
                         id = CHANNEL_CUSTOM,
                         label = "自定义通道",
-                        protocol = protocolOf(customProtocol),
-                        baseUrl = base,
+                        protocol = if (google) LlmProtocol.GEMINI_NATIVE else protocolOf(customProtocol),
+                        baseUrl = if (google) googleNativeBase(base) else base,
                         model = model,
                         apiKey = key,
                     )

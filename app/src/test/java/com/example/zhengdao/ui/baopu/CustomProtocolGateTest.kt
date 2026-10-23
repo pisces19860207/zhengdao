@@ -144,8 +144,11 @@ class CustomProtocolGateTest {
         assertTrue("SP 格名就是派工单写的 custom_protocol",
             prefsRaw.contains("KEY_CUSTOM_PROTOCOL = \"custom_protocol\""))
         assertTrue("save 写协议格", prefsRaw.contains("KEY_CUSTOM_PROTOCOL,"))
-        assertTrue("resolve 按协议构造自定义 Provider",
-            prefsRaw.contains("protocol = protocolOf(customProtocol)"))
+        assertTrue(
+            "resolve 按协议构造自定义 Provider（Google 地址强制原生，2026-10-23）",
+            prefsRaw.contains("protocolOf(customProtocol)") &&
+                prefsRaw.contains("LlmProtocol.GEMINI_NATIVE"),
+        )
         assertTrue("候选名单与回退也要带协议",
             prefsRaw.contains("customProtocol: String? = null"))
         assertTrue("弹层提交口带协议",
@@ -190,3 +193,4 @@ class CustomProtocolGateTest {
         assertTrue(ProviderPrefs.protocolKeyOf("whatever") == ProviderPrefs.PROTOCOL_OPENAI_COMPAT)
     }
 }
+
