@@ -870,6 +870,9 @@ sealed interface CompletionResult {
     data class Failed(val code: Int, val message: String) : CompletionResult
 }
 
+/** 158：5xx 重试信号（只在 stream 内部用，不外抛）。 */
+private class Retryable5xx : Exception()
+
 class LlmClient(private val provider: Provider) {
 
     /**
@@ -930,11 +933,27 @@ class LlmClient(private val provider: Provider) {
      */
     fun stream(call: Call, sink: (LlmEvent) -> Unit) {
         try {
+            streamOnce(call, sink, allowRetry = true)
+        } catch (_: Retryable5xx) {
+            // 158：只对 5xx（500/502/503/504）重试一次，退避 1s；重试仍失败按原口径转 Failed。
+            runCatching { Thread.sleep(1000) }
+            try {
+                streamOnce(call.clone(), sink, allowRetry = false)
+            } catch (_: Retryable5xx) {
+                sink(LlmEvent.Failed(IOException("HTTP 5xx（重试一次仍失败）")))
+            }
+        }
+    }
+
+    /** 单次解析；[allowRetry] 在 5xx 时抛 [Retryable5xx] 交给外层重试。 */
+    private fun streamOnce(call: Call, sink: (LlmEvent) -> Unit, allowRetry: Boolean) {
+        try {
             call.execute().use { resp ->
                 if (!resp.isSuccessful) {
                     val snippet = runCatching {
                         resp.body?.string()?.take(ERROR_BODY_SNIPPET)
                     }.getOrNull()
+                    if (allowRetry && resp.code in RETRYABLE_5XX) throw Retryable5xx()
                     RunLog.log(
                         "抱朴 LLM：HTTP ${resp.code} ${resp.message}" +
                             if (snippet.isNullOrBlank()) "" else " body=${snippet.replace('\n', ' ')}"
@@ -1096,6 +1115,9 @@ class LlmClient(private val provider: Provider) {
     companion object {
         /** HTTP 错误体记日志时的截断长度（只取开头，够定位）。 */
         private const val ERROR_BODY_SNIPPET = 300
+
+        /** 158：可重试的 5xx（只这一档；4xx/超时/断连不在此列）。 */
+        private val RETRYABLE_5XX = setOf(500, 502, 503, 504)
 
         /** 压缩摘要的 token 上限（派工单 §3.3：≤ 1024，摘要不需要长篇）。 */
         const val COMPLETE_MAX_TOKENS = 1024
