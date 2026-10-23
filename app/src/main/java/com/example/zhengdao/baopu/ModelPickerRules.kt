@@ -22,12 +22,15 @@ internal object ModelPickerRules {
     /** 注册/拿 Key 的页面（用户在玄览里自己登录，App 不代填、不读剪贴板）。 */
     const val OPENROUTER_KEYS_URL = "https://openrouter.ai/settings/keys"
 
+    /** 注册页（2026-10-23：入口只留「注册」，点了直接来这）。 */
+    const val OPENROUTER_SIGNUP_URL = "https://openrouter.ai/sign-up"
+
     /** 免费模型清单页（搜 `free` 那个交互的网页版）。 */
     const val OPENROUTER_FREE_MODELS_URL = "https://openrouter.ai/models?q=free"
 
     /** 没填 Key 时给的那句话（**不许出现 403 死路**——补充节：拉不到/没 key 时提示去注册填 Key）。 */
     const val NEED_FREE_KEY_HINT =
-        "还没有 Key：去 OpenRouter 注册一个，把 Key 填在下面就能用（限额见下一行）。"
+        "还没有 Key：点「注册」去 OpenRouter 开一个，把 Key 填在下面就能用（限额见下一行）。"
 
     /** 搜 `free` 的用法（② 重构方案 §2：这是"免费档选哪几个模型"的解法，不是可选项）。 */
     const val SEARCH_FREE_TIP = "在下面的搜索框里输入 free，就能筛出全部免费模型"
