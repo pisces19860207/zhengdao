@@ -391,7 +391,12 @@ internal object LlmWire {
                     // Gemini 的 Schema.type 是枚举（STRING/OBJECT/INTEGER/…），2026-10-23 真机：
                     // 原样发小写时模型收不到参数表（它自己猜 keys：capabilities 传 items、
                     // novel_create 漏 title），改发枚举名字后按 schema 出参。
-                    k == "type" -> out.put("type", (src.optString("type")).uppercase())
+                    // 2026-10-23 真机二连：`parametersJsonSchema` 要的是**标准 JSON Schema**，
+                    // type 必须小写（`object`/`string`/`integer`…）。早先按 Gemini 老 Schema
+                    // 枚举发过 `OBJECT`/`STRING`，服务端不报错但模型当作没拿到参数表——
+                    // 真机表现就是 `list_dir` 回 `{"items":[…]}`、`capabilities` 回 `items`
+                    // （日志 20:05 复现）。这里统一小写。
+                    k == "type" -> out.put("type", src.optString("type").lowercase())
                     k in keep -> out.put(k, src.get(k))
                     else -> Unit
                 }

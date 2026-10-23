@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 
 // 第一百五十四批：Gemini 原生协议形状（纯函数层，不联网）。
@@ -106,8 +106,8 @@ class GeminiNativeWireTest {
         val params = d.getJSONObject("parametersJsonSchema")
         assertFalse("新形态不再发 parameters", d.has("parameters"))
         assertFalse("additionalProperties 必须被剥掉", params.has("additionalProperties"))
-        assertEquals("STRING", params.getJSONObject("properties").getJSONObject("path").getString("type"))
-        assertEquals("OBJECT", params.getString("type"))
+        assertEquals("string", params.getJSONObject("properties").getJSONObject("path").getString("type"))
+        assertEquals("object", params.getString("type"))
     }
 
     @Test
