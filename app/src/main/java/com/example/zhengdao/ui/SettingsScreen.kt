@@ -45,6 +45,7 @@ import com.example.zhengdao.ui.util.pressClickable
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.ChevronRight
@@ -187,7 +188,7 @@ fun SettingsScreen(
                     value = when {
                         !kbEnabled -> stringResource(R.string.settings_status_disabled)
                         (kbFiles ?: 0) > 0 ->
-                            stringResource(R.string.settings_status_file_count, kbFiles ?: 0)
+                            pluralStringResource(R.plurals.settings_status_file_count, kbFiles ?: 0, kbFiles ?: 0)
                         else -> stringResource(R.string.settings_status_enabled)
                     },
                 ) { open(SettingsDataActivity::class.java) }

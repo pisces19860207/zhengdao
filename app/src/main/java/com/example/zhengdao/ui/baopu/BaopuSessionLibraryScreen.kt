@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -244,8 +245,9 @@ internal fun BaopuSessionLibraryScreen(
                         title = { Text(stringResource(R.string.baopu_session_delete_title)) },
                         text = {
                             Text(
-                                stringResource(
-                                    R.string.baopu_session_delete_desc,
+                                pluralStringResource(
+                                    R.plurals.baopu_session_delete_desc,
+                                    row.roundCount,
                                     row.title,
                                     row.roundCount,
                                 ),
@@ -324,7 +326,7 @@ private fun SessionLibraryRowItem(
             Spacer(Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = stringResource(R.string.baopu_session_rounds, row.roundCount) +
+                    text = pluralStringResource(R.plurals.baopu_session_rounds, row.roundCount, row.roundCount) +
                         " · " + row.timeText + " · " + stringResource(
                         if (row.sealed) R.string.baopu_session_sealed else R.string.baopu_session_continuable,
                     ) +

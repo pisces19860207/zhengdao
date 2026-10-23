@@ -140,7 +140,6 @@ object HermesEnv {
             R.string.hermes_record_lost to "依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）",
             R.string.hermes_no_record to "尚未登记依赖环境（安装可能没跑完），需在终端重建",
             R.string.hermes_lock_missing to "源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回",
-            R.string.hermes_ok_stale to "依赖环境记录有效（另有 %1\$d 个更新中断留下的标记文件，可一键清理）",
             R.string.hermes_ok to "依赖环境记录有效",
         )
         var out = zh[id] ?: ""
@@ -208,7 +207,9 @@ object HermesEnv {
             brokenRecord -> s(R.string.hermes_record_lost)
             !anyRecord -> s(R.string.hermes_no_record)
             sourceLockMissing -> s(R.string.hermes_lock_missing)
-            stale > 0 -> s(R.string.hermes_ok_stale, stale)
+            // 134 批（lint PluralsCandidate）：改成 plurals；无资源的 JVM 单测走同一句中文兜底。
+            stale > 0 -> res?.getQuantityString(R.plurals.hermes_ok_stale, stale, stale)
+                ?: "依赖环境记录有效（另有 $stale 个更新中断留下的标记文件，可一键清理）"
             else -> s(R.string.hermes_ok)
         }
         if (!ok) {

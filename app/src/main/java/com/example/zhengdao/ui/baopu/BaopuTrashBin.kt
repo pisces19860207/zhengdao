@@ -57,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -394,11 +395,11 @@ internal fun TrashDialog(
     /** 清空整回收站的下场：文案必须带**数量与体积**（判据 T3 点名的那条）。 */
     fun sayBatch(o: TrashOutcome) {
         val msg = when (o) {
-            is TrashOutcome.NeedsConfirm -> res.getString(R.string.trash_confirm_empty, o.count, humanBytes(o.bytes))
+            is TrashOutcome.NeedsConfirm -> res.getQuantityString(R.plurals.trash_confirm_empty, o.count, o.count, humanBytes(o.bytes))
             is TrashOutcome.Deleted -> if (o.failed > 0) {
-                res.getString(R.string.trash_emptied_partial, o.count, humanBytes(o.bytes), o.failed)
+                res.getQuantityString(R.plurals.trash_emptied_partial, o.count, o.count, humanBytes(o.bytes), o.failed)
             } else {
-                res.getString(R.string.trash_emptied, o.count, humanBytes(o.bytes))
+                res.getQuantityString(R.plurals.trash_emptied, o.count, o.count, humanBytes(o.bytes))
             }
             else -> null
         }
@@ -495,7 +496,7 @@ internal fun TrashDialog(
                     deletedSessions.forEach { (id, title, count) ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                             Text(
-                                text = stringResource(R.string.trash_session_row, title, count),
+                                text = pluralStringResource(R.plurals.trash_session_row, count, title, count),
                                 style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -529,8 +530,9 @@ internal fun TrashDialog(
                     if (confirmingEmpty) {
                         // 清空那一击前的红字：数量与体积都写进去（判据 T3 的文案要求）
                         Text(
-                            text = stringResource(
-                                R.string.trash_confirm_empty,
+                            text = pluralStringResource(
+                                R.plurals.trash_confirm_empty,
+                                rows.size,
                                 rows.size,
                                 humanBytes(rows.sumOf { it.bytes }),
                             ),

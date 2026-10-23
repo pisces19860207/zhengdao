@@ -1409,7 +1409,7 @@ internal class RunEngine(
             // P1-3：换通道后是**重跑同一步**（换了通道，模型的活没变）⇒ 不重复计预算。
             // 只在这一处跳计数：其他 continue（收尾闸重跑、坏参数重试）都是新的一步，照计。
             if (reuseStep) reuseStep = false else stepCount++
-            _step.value = stepCount
+            _step.intValue = stepCount
             _state.value = RunState.THINKING
             persistStep(sessionId, stepCount, "Thinking")
             // 第三十八批 A 段：记开步时刻 ⇒ usage 到手时能说「这步花了多久」。
@@ -2905,7 +2905,7 @@ internal class RunEngine(
      * ＋「续跑」按钮，两条同时出现就是同一句话说两遍（2026-10-17 真机实测）。
      */
     private fun markInterrupted(sessionId: Long, interruptedStepValue: Int) {
-        _interruptedStep.value = interruptedStepValue
+        _interruptedStep.intValue = interruptedStepValue
     }
 
     /** 续跑起点 = 落库的 interrupted_step（没有就从 0 起）。 */

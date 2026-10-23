@@ -62,12 +62,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -95,6 +98,7 @@ import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** 抽屉入口统一跳「终端与资料」页（工具开关、资料库都在那儿）。 */
@@ -152,8 +156,13 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // 刀 3：抽屉。宽度按屏宽算（窄屏 80%，宽屏封顶 300dp），点遮罩／返回键都能关。
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    val drawerWidth = drawerWidthDp(screenWidthDp).dp
+    // 134 批 lint(ConfigurationScreenWidthHeight)：屏宽改从窗口容器尺寸取（LocalWindowInfo），
+    // 不再读 Configuration.screenWidthDp —— 后者在多窗口/折叠屏下不随窗口变化。
+    // 手机单窗口下两者数值相同，抽屉宽度不变。
+    val windowWidthDp = with(LocalDensity.current) {
+        (LocalWindowInfo.current.containerSize.width / density).toInt()
+    }
+    val drawerWidth = drawerWidthDp(windowWidthDp).dp
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
     BackHandler(enabled = showSettings) { showSettings = false }
@@ -495,7 +504,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                             add(
                                 NoticeItem(
                                     stringResource(R.string.baopu_notice_compressed_label),
-                                    stringResource(R.string.baopu_compressed_bar, it.count, it.summary.length) +
+                                    pluralStringResource(R.plurals.baopu_compressed_bar, it.count, it.count, it.summary.length) +
                                         "\n" + it.summary,
                                     NoticeKind.NEEDS_KNOWING,
                                 ),
@@ -507,7 +516,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                             add(
                                 NoticeItem(
                                     stringResource(R.string.baopu_scratch_left_label),
-                                    stringResource(R.string.baopu_scratch_left_body, controller.scratchLeft),
+                                    pluralStringResource(R.plurals.baopu_scratch_left_body, controller.scratchLeft, controller.scratchLeft),
                                     // 「临时文件还剩 N 个」要她决定清不清 ⇒ 待你拍板档，排最前。
                                     NoticeKind.NEEDS_YOU,
                                 ),
@@ -559,7 +568,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     // 待处理总数（记录页不计），0 不显示（顶栏全净）。设置入口仍留抽屉。
                     val decisionBadge = controller.decisionBadge
                     val shieldDesc = if (decisionBadge > 0) {
-                        stringResource(R.string.decision_shield_badge_desc, decisionBadge)
+                        pluralStringResource(R.plurals.decision_shield_badge_desc, decisionBadge, decisionBadge)
                     } else {
                         stringResource(R.string.decision_shield_desc)
                     }
@@ -685,7 +694,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                             text = if (days == null) {
                                 stringResource(R.string.baopu_backup_stale_never)
                             } else {
-                                stringResource(R.string.baopu_backup_stale_days, days)
+                                pluralStringResource(R.plurals.baopu_backup_stale_days, if (days == 1L) 1 else 2, days)
                             },
                             action = BaopuNoticeAction(
                                 // 导出中：文案换成「导出中…」并 disable——按钮还在，只是点不动
@@ -745,12 +754,18 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             // 列表视口变矮、滚动位置不变 ⇒ 最下面那条被挡在键盘后面。
             // 这里盯视口高度：一变矮（键盘弹出/旋转）且用户本来就贴着底部，就把列表重新贴回底部。
             // 不依赖 WindowInsets.ime（该版本 Compose 里取不到这个扩展属性）。
-            val viewportH = listState.layoutInfo.viewportSize.height
-            LaunchedEffect(viewportH) {
-                if (autoScroll) {
-                    val last = listState.layoutInfo.totalItemsCount - 1
-                    if (last >= 0) listState.scrollToItem(last)
-                }
+            // 134 批 lint(FrequentlyChangingValue)：viewportSize 是频繁变化的值，不能在组合期
+            // 读（会每帧触发重组）。改成 snapshotFlow 在协程里观察，高度变了才重新贴底；
+            // 语义与原来「viewportH 变化 ⇒ 重跑贴底」一致（初值也会发一次）。
+            LaunchedEffect(listState) {
+                snapshotFlow { listState.layoutInfo.viewportSize.height }
+                    .distinctUntilChanged()
+                    .collect {
+                        if (autoScroll) {
+                            val last = listState.layoutInfo.totalItemsCount - 1
+                            if (last >= 0) listState.scrollToItem(last)
+                        }
+                    }
             }
             LaunchedEffect(listState) {
                 listState.interactionSource.interactions.collect { interaction ->
@@ -994,8 +1009,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         )
                         if (controller.decisionQueueCount > 0) {
                             Text(
-                                text = stringResource(
-                                    R.string.decision_queue_more,
+                                text = pluralStringResource(
+                                    R.plurals.decision_queue_more,
+                                    controller.decisionQueueCount,
                                     controller.decisionQueueCount,
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
@@ -1336,7 +1352,7 @@ internal fun BaopuCompressedBar(note: BaopuChatController.CompressionNote) {
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
-                text = stringResource(R.string.baopu_compressed_bar, note.count, note.summary.length),
+                text = pluralStringResource(R.plurals.baopu_compressed_bar, note.count, note.count, note.summary.length),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

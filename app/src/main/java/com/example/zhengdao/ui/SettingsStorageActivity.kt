@@ -54,6 +54,7 @@ import com.example.zhengdao.ui.settings.StorageRules
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -302,8 +303,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            res.getString(
-                                                R.string.storage_opt_deleted,
+                                            res.getQuantityString(
+                                                R.plurals.storage_opt_deleted,
+                                                count,
                                                 count,
                                                 CacheCleaner.bytesToMb(freed),
                                             )
@@ -354,8 +356,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            res.getString(
-                                                R.string.storage_script_cleared,
+                                            res.getQuantityString(
+                                                R.plurals.storage_script_cleared,
+                                                count,
                                                 count,
                                                 CacheCleaner.bytesToMb(freed),
                                             )
@@ -571,8 +574,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                     work = { HermesEnv.pruneGenerations(HermesEnv.hermesHome(ctx)) },
                                     toast = { count, freed ->
                                         if (count > 0)
-                                            res.getString(
-                                                R.string.storage_gen_deleted,
+                                            res.getQuantityString(
+                                                R.plurals.storage_gen_deleted,
+                                                count,
                                                 count,
                                                 CacheCleaner.bytesToMb(freed),
                                             )
@@ -613,8 +617,9 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                         val text = buildString {
                             appendLine(res.getString(R.string.storage_installer_dir, dir.path))
                             appendLine(
-                                res.getString(
-                                    R.string.storage_installer_count,
+                                res.getQuantityString(
+                                    R.plurals.storage_installer_count,
+                                    archives.size,
                                     archives.size,
                                     current ?: res.getString(R.string.settings_status_not_installed),
                                 )
@@ -679,7 +684,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 }
                                 Toast.makeText(
                                     ctx,
-                                    res.getString(R.string.storage_installer_cleaned, n),
+                                    res.getQuantityString(R.plurals.storage_installer_cleaned, n, n),
                                     Toast.LENGTH_SHORT,
                                 ).show()
                                 reloadCache()
