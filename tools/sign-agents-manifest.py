@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 独立开发声明：本脚本为本项目从零编写。
+# 独立开发声明：本脚本为本项目原创。
 # 用途：对 rootfs/agents.json 做 ed25519 签名（M3 manifest 验签链）。
 # 私钥位置（仓库外）：C:/Users/guoli/.zhengdao-keys/agents-manifest.ed25519.key
 # 用法：python tools/sign-agents-manifest.py   （在仓库根目录执行）

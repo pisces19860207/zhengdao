@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 可参考的公开资料：Android 官方 R8/ProGuard 手册（keep 规则语义）、
 //   R8 的"看不见 JNI 调用点"这一既知限制（见 docs/ERRATA.md E-022）。
 package com.example.zhengdao.rust
