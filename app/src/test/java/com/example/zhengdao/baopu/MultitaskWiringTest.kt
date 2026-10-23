@@ -30,6 +30,10 @@ class MultitaskWiringTest {
     private val engine: String
         get() = src("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt")
 
+    // 152批 F：取条/置位清队的同锁临界区收进 QueueStopGate——接线判据改吃两份源码。
+    private val stopGate: String
+        get() = src("src/main/java/com/example/zhengdao/baopu/agent/QueueStopGate.kt")
+
     private val controller: String
         get() = src("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt")
 
@@ -58,18 +62,24 @@ class MultitaskWiringTest {
             runEngine.contains("if (!draining.add(sessionId)) return")
     }
 
-    /** 150批 F 口径：停止清排队且与取条同一把锁；过了同锁闸的条不许再丢（消息落库、循环头收尾）。 */
-    private fun cancelStopsQueued(runEngine: String): Boolean {
+    /** 150批 F 口径：停止清排队且与取条同一把锁；过了同锁闸的条不许再丢（消息落库、循环头收尾）。
+     *  152批 F：临界区本体收进 QueueStopGate——引擎侧只留两个门调用，同锁本体钉在门文件里。
+     *  门源码先做 \r\n 归一：门本体判据带多行序列，CRLF 工作树里不许被 \r 卡住。 */
+    private fun cancelStopsQueued(runEngine: String, gateSrcRaw: String): Boolean {
+        val gateSrc = gateSrcRaw.replace("\r\n", "\n")
         val stop = slice(runEngine, "fun stop()", "fun resume(")
         val drain = slice(runEngine, "private fun drainQueue(", "private fun ensureQueueRow(")
         val persistGate = slice(runEngine, "if (userText != null) {", "history += HistoryMessage(")
-        val gate = drain.indexOf("synchronized(queueGate)")
-        val poll = drain.indexOf("runQueue.poll(sessionId)")
-        return stop.contains("clearQueue(sid)") &&
-            stop.contains("synchronized(queueGate)") &&
-            stop.indexOf("stopRequested = true") > stop.indexOf("synchronized(queueGate)") &&
-            gate >= 0 && poll > gate &&
-            drain.contains("if (stopRequested) null else runQueue.poll(sessionId)") &&
+        // 门本体：同锁恰两处（取条/置位清队），置位先于放行 body，取条与查停同临界区
+        val gateOk = gateSrc.contains("private val lock = Object()") &&
+            Regex("synchronized\\(lock\\)").findAll(gateSrc).count() == 2 &&
+            gateSrc.contains("if (isStopped()) null else queue.poll(sessionId)") &&
+            gateSrc.contains("markStopped()\n        interrupt()\n        body()")
+        // 引擎侧：drain 只经门取条；stop 只经门置位清队（清队仍在门内 body）
+        return gateOk &&
+            stop.contains("clearQueue(sid)") &&
+            stop.indexOf("queueGate.onStopArrived(") > 0 &&
+            drain.contains("queueGate.pollForRun(sessionId) ?: break") &&
             !persistGate.contains("if (stopRequested)")
     }
 
@@ -112,21 +122,31 @@ class MultitaskWiringTest {
 
     @Test
     fun `N2_停止清队列_取条与清队同锁_过闸条目不丢`() {
-        assertTrue("取消后排队条仍会开跑的接线漏洞", cancelStopsQueued(engine))
+        assertTrue("取消后排队条仍会开跑的接线漏洞", cancelStopsQueued(engine, stopGate))
         assertFalse(
             "判别器：stop 不清队列，判据必须变红",
-            cancelStopsQueued(engine.replace("val n = clearQueue(sid)", "val n = 0")),
+            cancelStopsQueued(engine.replace("val n = clearQueue(sid)", "val n = 0"), stopGate),
         )
         assertFalse(
             "判别器：取条挪出同锁闸（150批 F 的竞争窗口回来了），判据必须变红",
             cancelStopsQueued(
-                engine.replace("if (stopRequested) null else runQueue.poll(sessionId)", "runQueue.poll(sessionId)"),
+                engine,
+                stopGate.replace("if (isStopped()) null else queue.poll(sessionId)", "queue.poll(sessionId)"),
+            ),
+        )
+        assertFalse(
+            "判别器：门丢了同锁（只剩一处临界区），判据必须变红",
+            cancelStopsQueued(
+                engine,
+                stopGate.replace("fun <R> onStopArrived(interrupt: () -> Unit, body: () -> R): R = synchronized(lock) {",
+                    "fun <R> onStopArrived(interrupt: () -> Unit, body: () -> R): R = {"),
             ),
         )
         assertFalse(
             "判别器：117批的第二丢弃闸又回来了（过闸条目被丢且不计入清掉条数），判据必须变红",
             cancelStopsQueued(
                 engine.replace("planController.newRound()", "if (stopRequested) return\n            planController.newRound()"),
+                stopGate,
             ),
         )
     }
@@ -141,7 +161,11 @@ class MultitaskWiringTest {
             queueSurvivesRestart(engine.replace("runExecutor.execute { restoreQueuedTurns() }", "")),
         )
         // 队列是引擎字段（进程级），不挂在页面/控制器上：离开页面只是不画，不停止。
-        assertTrue("队列必须是引擎字段", engine.contains("private val runQueue = SessionRunQueue()"))
+        // 152批 F：字段形改构造注入（SessionRunQueue 接口，默认 DefaultSessionRunQueue）。
+        assertTrue(
+            "队列必须是引擎字段",
+            engine.contains("private val runQueue: SessionRunQueue = DefaultSessionRunQueue()"),
+        )
         val drain = slice(engine, "private fun drainQueue(", "private fun ensureQueueRow(")
         assertFalse("drain 不许依赖任何 UI 生命周期", drain.contains("onPause") || drain.contains("onDispose"))
         val disposeLines = screen.lines().filter { it.contains("onDispose") }
