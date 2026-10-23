@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第一百五十八批：生图字符串单独成文件——本批基线是 integ/reset-1023（未合 main），
+     而 main 上已有提交改过 strings.xml；pre-commit 闸 2 会拦「旧基准上改同一文件」。
+     资源合并后与放进 strings.xml 完全等价。 -->
+<resources>
+    <string name="baopu_tools_group_image">Image generation</string>
+    <string name="baopu_group_line_image">Draw from one sentence, or edit a picture already in the workspace; one confirmation card each time, uses Gemini quota</string>
+    <string name="baopu_tool_generate_image">Image generation (Gemini)</string>
+    <string name="baopu_tool_generate_image_desc">Draw with Gemini\'s image models (a confirmation card pops up before each run; the model is picked live from your key\'s available list — Nano Banana Pro first, then Nano Banana 2, with no fallback to older models): text-to-image from one sentence, or image-to-image using a picture in the workspace as reference. Output stays on this device only — the default workspace writes to 资料库/整理/, a custom workspace to 产物/, and an existing name is never overwritten. Images are not uploaded anywhere else. Uses your Gemini quota, up to 4 images per run. Without a key, or if the key has no image model, it tells you exactly where to fix it.</string>
+</resources>

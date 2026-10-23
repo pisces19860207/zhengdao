@@ -14,7 +14,10 @@ class BaopuToolStringsTest {
     private fun strings(path: String): String {
         val f = File(path)
         assertTrue("找不到 $path（单测工作目录应在 app/ 下）", f.exists())
-        return f.readText()
+        // 第一百五十八批：生图字符串单独成文件（strings_baopu_image.xml）；门禁按目录全读。
+        val siblings = f.parentFile?.listFiles { x -> x.name.startsWith("strings") && x.name.endsWith(".xml") }
+            .orEmpty().filter { it != f }.sortedBy { it.name }
+        return f.readText() + siblings.joinToString("") { it.readText() }
     }
 
     @Test
