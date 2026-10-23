@@ -438,8 +438,6 @@
     <string name="appearance_dark">深色</string>
 
     <!-- ── 启动与更新提示（MainActivity）── -->
-    <string name="main_android_too_old_title">系统版本过低</string>
-    <string name="main_android_too_old_msg">证道需要安卓 16 或更高版本（当前安卓 %1$s）。</string>
     <string name="main_update_title">发现新版本</string>
     <string name="main_update_msg">最新版 %1$s（当前 %2$s），可到 GitHub Releases 下载。</string>
     <string name="main_update_go">去下载</string>

@@ -438,8 +438,6 @@
     <string name="appearance_dark">Dark</string>
 
     <!-- ── Startup / update dialogs (MainActivity) ── -->
-    <string name="main_android_too_old_title">Android version too old</string>
-    <string name="main_android_too_old_msg">Zhengdao requires Android 16 or newer (current: Android %1$s).</string>
     <string name="main_update_title">Update available</string>
     <string name="main_update_msg">Version %1$s is available (you have %2$s). Get it from GitHub Releases.</string>
     <string name="main_update_go">Download</string>

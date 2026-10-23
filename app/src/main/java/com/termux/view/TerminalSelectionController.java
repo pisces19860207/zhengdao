@@ -4,14 +4,12 @@
 
 package com.termux.view;
 
-import android.os.Build;
 import android.view.ActionMode;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
 import android.view.ViewTreeObserver;
 
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 
 import com.termux.view.textselection.TextSelectionCursorController;
 
@@ -154,7 +152,6 @@ final class TerminalSelectionController {
      * Define functions required for long hold toolbar.
      */
     private final Runnable mShowFloatingToolbar = new Runnable() {
-        @RequiresApi(api = Build.VERSION_CODES.M)
         @Override
         public void run() {
             if (getTextSelectionActionMode() != null) {
@@ -163,7 +160,6 @@ final class TerminalSelectionController {
         }
     };
 
-    @RequiresApi(api = Build.VERSION_CODES.M)
     private void showFloatingToolbar() {
         if (getTextSelectionActionMode() != null) {
             int delay = ViewConfiguration.getDoubleTapTimeout();
@@ -171,7 +167,6 @@ final class TerminalSelectionController {
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.M)
     void hideFloatingToolbar() {
         if (getTextSelectionActionMode() != null) {
             mView.removeCallbacks(mShowFloatingToolbar);
@@ -180,7 +175,7 @@ final class TerminalSelectionController {
     }
 
     void updateFloatingToolbarVisibility(MotionEvent event) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && getTextSelectionActionMode() != null) {
+        if (getTextSelectionActionMode() != null) {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_MOVE:
                     hideFloatingToolbar();

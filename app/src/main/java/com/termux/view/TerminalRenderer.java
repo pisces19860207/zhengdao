@@ -10,7 +10,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
-import android.os.Build;
 
 import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalEmulator;
@@ -284,11 +283,7 @@ public final class TerminalRenderer {
             mTextPaint.setColor(foreColor);
 
             // The text alignment is the default Paint.Align.LEFT.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                canvas.drawTextRun(text, startCharIndex, runWidthChars, startCharIndex, runWidthChars, left, y - mFontLineSpacingAndAscent, false, mTextPaint);
-            } else {
-                canvas.drawText(text, startCharIndex, runWidthChars, left, y - mFontLineSpacingAndAscent, mTextPaint);
-            }
+            canvas.drawTextRun(text, startCharIndex, runWidthChars, startCharIndex, runWidthChars, left, y - mFontLineSpacingAndAscent, false, mTextPaint);
         }
 
         if (savedMatrix) canvas.restore();
