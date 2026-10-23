@@ -3,12 +3,15 @@
 // 依据：派工单第一百四十批 §范围（软档执行约束）＋ 设计 `抱朴设置重构方案-2026-10-22.md`
 // §5「执行约束三档（已拍板：软档＋确认卡）」。
 //
-// 软档的两条判据都放在这个**零 Android / 零 IO / 零时钟**的文件里（JVM 直测）：
+// 软档的三条判据都放在这个**零 Android / 零 IO / 零时钟**的文件里（JVM 直测）：
 // 1. **计划有变必须过卡**：`PlanChangeRules.classify` 只认文字序列——同一批文字只改
 //    status（todo/doing/done）＝进度更新，不需要卡；文字增删＝结构变更，必须过卡。
 //    只换顺序不算变更（避免模型重排一下就被迫打扰用户）。
 // 2. **连续 3 步未推进且未更新 ⇒ 弹御批卡**：计数在 [PlanController]（它知道当前计划），
 //    本文件只给阈值与三选一的映射。
+// 3. **同一份被拒的改动不重复打卡**（161 降噪）：[PlanChangeMemory] 只记**用户真点过的按钮**
+//    （批准／拒），判据一律不猜语义——实测「同义改写」的相似度（0.44–0.71）与
+//    「换成另一件事」的相似度（0.35–0.44）区间重叠，任何阈值都会放过某次真替换。
 //
 // 不绑死一步一勾：所有判据只**提示**，不拒绝工具调用、不终止本轮；用户选「继续」
 // 后本段偏离不再弹卡，直到计划真的被更新/推进或新开一轮。
@@ -45,6 +48,17 @@ internal data class PlanChange(
 ) {
     /** 要不要过卡：只有文字增删才算「悄悄改计划」。 */
     val needsCard: Boolean get() = kind == PlanChangeKind.STRUCTURE
+
+    /**
+     * 这份改动的指纹：同一版计划被原样重发 ⇒ 同一个串（161 决定登记的键）。
+     *
+     * 条目按「长度＃原文」编码后再拼，所以文字里出现 `/`、`#`、`]` 都不会串号。
+     * **刻意不做模糊归一化**——归一化就是把「换了一件事」误判成「换了个说法」。
+     */
+    val signature: String
+        get() = "A[" + encode(added) + "]R[" + encode(removed) + "]"
+
+    private fun encode(items: List<String>) = items.joinToString("/") { "${it.length}#$it" }
 }
 
 /** 计划结构变更的纯判据（零依赖，JVM 直测）。 */
@@ -72,6 +86,68 @@ internal object PlanChangeRules {
             removed = oldTexts.filter { it !in newSet }.distinct(),
         )
     }
+}
+
+/** 用户对某一次结构变更表过的态（161：只有真点过的按钮才算数）。 */
+internal enum class PlanChangeDecision {
+    /**
+     * 点过「更新计划」。
+     *
+     * **它不额外放行任何一次改动**——放行照旧只走 [PlanController.authorizeNextChange]
+     * 那一张一次性的授权（用户红线：点一次只放行下一次）。记它只为覆盖此前的拒录：
+     * 她改主意批了同一版改动，旧的那次「拒」不该继续挡后面。
+     */
+    APPROVED,
+
+    /** 点过「不改，按原计划」⇒ 同一份改动本轮重发不再打扰，只回灌模型。 */
+    REJECTED,
+}
+
+/**
+ * 最近若干次「用户已经表过态」的结构变更（161 降噪的核心零件；零 Android / 零 IO / 零时钟）。
+ *
+ * ## 为什么要它（真机实据）
+ * 被拒的改动**不落库**，模型原样再发 ⇒ `classify` 算出同一版 diff ⇒ 同一张卡再弹一次。
+ * 2026-10-22 真机一次 6 步任务里「结构变更待确认」连弹 5 次（22:37:50／22:38:14／22:40:34／
+ * 22:41:31／22:44:57）：前三次都是「新增 6 条／删去 6 条」的整表重发，最后一次只给第 6 步
+ * 补了半句（「…再读回核对」⇒「…再读回核对，报总行数」）；她全程点了 3 次「更新计划」才把这一轮
+ * 跑完（报告 `真机验收-2026-10-22-合验.md` UI-D17）。这不是判据判错，是**没记住人的决定**。
+ *
+ * ## 为什么不做「同义改写自动放行」
+ * 见文件头第 3 条：相似度区间重叠 ⇒ 阈值必然放过某次真替换，而那正是 140 摆在
+ * `classify` 注释里的负例靶心（「改成条数相同就算没变 ⇒ 换一条内容也能绕卡，同样会红」）。
+ *
+ * ## 什么不算「表过态」
+ * **超时／没点不记**——`changeAccepted` 把超时当不同意，但「不同意」不等于「用户答过」；
+ * 记下去等于替用户做决定，下次同一份改动用户就没机会改主意了。
+ *
+ * ## 和「记忆能力」不是一回事
+ * `baopu/Memory.kt`／`MemoryStore.kt` 那条线是**落盘**的情景记忆（候选→待确认→没确认不落盘）。
+ * 本类只是进程内的一张最近裁决表：不落盘、不跨进程、不喂模型，换一轮就清。
+ *
+ * @param maxEntries LRU 上限：留太久的决定会把新改动误认成老决定
+ */
+internal class PlanChangeMemory(private val maxEntries: Int = DEFAULT_MAX_ENTRIES) {
+
+    private val decided = LinkedHashMap<String, PlanChangeDecision>()
+
+    /** 记下用户的决定；同一份改动再记 ⇒ 覆盖并前移到最新。 */
+    @Synchronized
+    fun record(change: PlanChange, decision: PlanChangeDecision) {
+        decided.remove(change.signature)
+        decided[change.signature] = decision
+        while (decided.size > maxEntries) decided.remove(decided.keys.first())
+    }
+
+    /** 这份改动表过态吗；没见过 ⇒ null（照常弹卡，一次都不许多放）。 */
+    @Synchronized
+    fun lookup(change: PlanChange): PlanChangeDecision? = decided[change.signature]
+
+    /** 换会话／全新任务时清空：决定属于那一版计划，不该跟到下一场。 */
+    @Synchronized
+    fun clear() = decided.clear()
+
+    companion object { const val DEFAULT_MAX_ENTRIES = 8 }
 }
 
 /** 偏离卡用户点完后，引擎怎么走。 */
@@ -129,6 +205,20 @@ internal object PlanGuardRules {
         append(describeChange(change))
         append("）。原计划保持不变。不要换一种写法绕过确认；")
         append("要么按原计划继续，要么先在正文里说明为什么要改、等用户明确同意后再调 update_plan。")
+    }
+
+    /**
+     * 同一份改动用户已经明确拒过、模型又原样发过来时的回灌（这一次**不弹卡**）。
+     *
+     * 三条缺一不可：没生效、为什么这次没再问（用户已经答过）、下一步怎么走。
+     * [changeBlocked] 里「不要换一种写法绕过确认」防的是改写，防不住原样重发。
+     */
+    fun repeatRejected(change: PlanChange): String = buildString {
+        append("计划改动**没有生效**：这份改动（")
+        append(describeChange(change))
+        append("）用户刚才已经明确拒过，这次不再重复弹确认卡。原计划保持不变。")
+        append("要么按原计划继续，要么先在正文里说明为什么要改、请用户重新同意之后再调 update_plan；")
+        append("原样重发同一版不会有第二次确认机会。")
     }
 
     /** 变更的人话摘要（卡面与回灌共用）。 */
