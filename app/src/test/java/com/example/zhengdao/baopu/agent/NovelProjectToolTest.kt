@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第一百五十五批判据测试（派工单 §3）：
 // - 新建项目/章节/大纲/字数；续写追加不覆盖；一致性提示；空/坏项目可读；
@@ -172,5 +172,35 @@ class NovelProjectToolTest {
     fun `字数口径_非空白字符数`() {
         assertEquals(4, NovelProjectStore.wordCount("第一 章一\n"))
         assertEquals(0, NovelProjectStore.wordCount(" \n\t"))
+    }
+
+    // ── 2026-10-23：path 可省略（唯一项目自动回退）──────────────────────
+
+    @Test
+    fun `唯一项目时可省略path_多项目要求指定`() {
+        val root = tmp()
+        val none = NovelProjectTool.overview(root, "")
+        assertTrue("没有项目时给可读失败", none is ToolOutcome.Failed)
+        assertTrue((none as ToolOutcome.Failed).error.contains("novel_create"))
+
+        create(root, "title" to "唯一书")
+        val ok = NovelProjectTool.overview(root, "")
+        assertTrue("唯一项目自动用它", ok is ToolOutcome.Ok)
+        assertTrue((ok as ToolOutcome.Ok).text.contains("唯一书"))
+
+        create(root, "title" to "第二本")
+        val multi = NovelProjectTool.overview(root, "")
+        assertTrue("多项目要求显式指定", multi is ToolOutcome.Failed)
+        assertTrue((multi as ToolOutcome.Failed).error.contains("请用 path 指定"))
+    }
+
+    @Test
+    fun `novel_continue 可省略path_唯一项目自动回退`() {
+        val root = tmp()
+        create(root, "title" to "唯一书")
+        writeChapter(root, "唯一书", "第001章-开局.md", "第一章正文……")
+        val r = NovelContinueTool.brief(root, "", 0)
+        assertTrue("唯一项目自动回退", r is ToolOutcome.Ok)
+        assertTrue((r as ToolOutcome.Ok).text.contains("第001章-开局.md"))
     }
 }

@@ -109,6 +109,49 @@ internal object NovelProjectStore {
         return f.takeIf { it.isDirectory && File(it, NOVEL_META_FILE).isFile }
     }
 
+    /** 工作区里所有小说项目（`小说/<书名>/book.json` 存在即算），按目录名排序。 */
+    fun listProjects(root: File): List<File> {
+        val base = File(root, NOVEL_ROOT_DIR)
+        if (!base.isDirectory) return emptyList()
+        return base.listFiles()
+            ?.filter { it.isDirectory && File(it, NOVEL_META_FILE).isFile }
+            ?.sortedBy { it.name }
+            ?: emptyList()
+    }
+
+    /**
+     * 解析「要看哪个项目」：显式 path 优先；**path 省略时**只有一个项目就用它，
+     * 0 个/多个都给可通过的话（不猜、不建目录）。
+     *
+     * 2026-10-23 真机（Gemini）：模型调 `novel_project` 时漏传必填 `path`，
+     * 被 schema 拦下后连续失败、整轮熔断 —— 唯一项目是常态，允许省略比逼模型
+     * 再猜一次路径更可靠；多项目仍要求显式指定（不替用户挑）。
+     */
+    data class Picked(val dir: File?, val error: String?)
+
+    fun pick(root: File, path: String): Picked {
+        val p = path.trim()
+        if (p.isNotEmpty()) {
+            val dir = resolveProject(root, p)
+                ?: return Picked(
+                    null,
+                    "不是一个小说项目：$p（项目目录里要有 $NOVEL_META_FILE；" +
+                        "新建用 novel_create，看单本书的目录用 book_outline）",
+                )
+            return Picked(dir, null)
+        }
+        val projects = listProjects(root)
+        return when (projects.size) {
+            0 -> Picked(null, "还没有小说项目：先用 novel_create 建一个（$NOVEL_ROOT_DIR/<书名>/）")
+            1 -> Picked(projects[0], null)
+            else -> Picked(
+                null,
+                "工作区里有 ${projects.size} 个小说项目，请用 path 指定一个：" +
+                    projects.joinToString("、") { "$NOVEL_ROOT_DIR/${it.name}" },
+            )
+        }
+    }
+
     /** 正文目录下的章节清单（按文件名排序＝章节序；跳过隐藏/临时文件）。 */
     fun chapters(dir: File): List<NovelChapter> {
         val body = File(dir, NOVEL_BODY_DIR)
@@ -158,7 +201,9 @@ internal object NovelCreateTool {
         description = "新建小说项目（小说/<书名>/）：书名、全书大纲、每章目标字数、" +
             "主要人物（每行「名字：简介」）、前情摘要。建好项目后，章节正文用 write_file " +
             "写到 正文/ 目录（一章一个文件，如 正文/第001章-标题.md），后续用 novel_project " +
-            "看目录与字数、novel_continue 拿续写简报。每次新建都要用户点确认卡。",
+            "看目录与字数、novel_continue 拿续写简报。每次新建都要用户点确认卡。" +
+            "**title 必填**（书名，会做成目录名），参数示例：" +
+            "{\"title\":\"我的书\",\"outline\":\"三卷：…\",\"chapter_target_words\":3000}。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -254,16 +299,17 @@ internal object NovelProjectTool {
         name = "novel_project",
         description = "看一个小说项目的总览：书名、大纲、每章目标字数、主要人物、设定、" +
             "正文目录（每章的文件名/实际字数/与目标差）与全书总字数。只读不改。" +
+            "**path 可省略**：只有一个小说项目时自动用它，有多个会列出让你指定。" +
             "单文件整本书（txt/md）不归它管——看那种书的目录用 book_outline。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "项目目录的相对路径（如 小说/我的书）",
+                    "description" to "项目目录的相对路径（如 小说/我的书）；省略＝唯一项目",
                 ),
             ),
-            "required" to jsonArrayOf(ARG_PATH),
+            "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
@@ -274,11 +320,9 @@ internal object NovelProjectTool {
 
     /** 项目总览（目录可列、字数可算、坏元数据可读提示——派工单 §1「可查看/不崩溃」）。 */
     fun overview(root: File, path: String): ToolOutcome {
-        val (dir, meta) = NovelProjectStore.load(root, path)
-            ?: return ToolOutcome.Failed(
-                "不是一个小说项目：$path（项目目录里要有 $NOVEL_META_FILE；" +
-                    "新建用 novel_create，看单本书的目录用 book_outline）",
-            )
+        val picked = NovelProjectStore.pick(root, path)
+        val dir = picked.dir ?: return ToolOutcome.Failed(picked.error ?: "项目目录无效")
+        val meta = NovelProjectStore.parse(File(dir, NOVEL_META_FILE).readText())
         if (meta.error != null) return ToolOutcome.Failed(meta.error)
         val chapters = NovelProjectStore.chapters(dir)
         val total = chapters.sumOf { it.chars }
@@ -322,21 +366,21 @@ internal object NovelContinueTool {
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "novel_continue",
         description = "拿一份续写简报：接哪一章哪一段（最后一章的文件与末段原文）、" +
-            "主要人物与设定、一致性提示。真正动笔用 edit_file（op=append 追加到该章末尾，" +
+            "主要人物与设定、一致性提示。**path 可省略**：只有一个项目时自动用它。" +
             "**不覆盖已有正文**）或 write_file 新开下一章；本工具只读不改。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "项目目录的相对路径（如 小说/我的书）",
+                    "description" to "项目目录的相对路径（如 小说/我的书）；省略＝唯一项目",
                 ),
                 ARG_WORDS to jsonObjectOf(
                     "type" to "integer",
                     "description" to "这次想续多少字（省略则按项目里的每章目标字数）",
                 ),
             ),
-            "required" to jsonArrayOf(ARG_PATH),
+            "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
@@ -353,10 +397,9 @@ internal object NovelContinueTool {
      * - 不覆盖正文：给的两条路都是「追加/新文件」，覆盖参数不在建议里。
      */
     fun brief(root: File, path: String, words: Int): ToolOutcome {
-        val (dir, meta) = NovelProjectStore.load(root, path)
-            ?: return ToolOutcome.Failed(
-                "不是一个小说项目：$path（项目目录里要有 $NOVEL_META_FILE；先 novel_create 建项目）",
-            )
+        val picked = NovelProjectStore.pick(root, path)
+        val dir = picked.dir ?: return ToolOutcome.Failed(picked.error ?: "项目目录无效")
+        val meta = NovelProjectStore.parse(File(dir, NOVEL_META_FILE).readText())
         if (meta.error != null) return ToolOutcome.Failed(meta.error)
         val chapters = NovelProjectStore.chapters(dir)
         if (chapters.isEmpty()) {

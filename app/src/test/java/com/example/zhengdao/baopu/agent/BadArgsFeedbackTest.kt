@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单第九十五批（94 后续）——「坏参数回灌文案分清 JSON 与 Schema」。
 //
@@ -71,6 +71,7 @@ class BadArgsFeedbackTest {
         assertTrue("第一次坏参数（语法）还要给机会", RunRules.shouldRetryBadArgs(0))
         assertTrue("第一次坏参数（schema）还要给机会", RunRules.shouldRetryBadArgs(0))
         assertFalse("第二次就停", RunRules.shouldRetryBadArgs(1))
+        
         for (kind in ToolCallCodec.BadArgsKind.values()) {
             assertTrue(
                 "$kind 的回灌文案不能是空的（空文案等于没告诉模型错在哪）",

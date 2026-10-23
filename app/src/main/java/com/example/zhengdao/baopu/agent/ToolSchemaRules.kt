@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单第一百一十九批 §0 / §1（第九十四批的续）。
 // 94 批只锁了四个核心文件工具（read_file / write_file / edit_file / list_dir）的契约，
@@ -105,6 +105,8 @@ internal object ToolSchemaRules {
         "library_list" to "dir 默认 deliver、pattern 可选（不筛就全列），列清单本身不需要必填（LibraryTools.listSpec）",
         "kb_index" to "path 缺省＝投递、rebuild 缺省＝增量：两个参数都有默认值，建索引本身不需要必填（KbTools.indexSpec，第一百二十八批；157 收口后投递在工作区根）",
         "bash" to "免费通道占位条目：properties 为空，任何参数都不接受（执行器一律拒绝，见 ToolSchemaRules.S7 的放行理由）",
+        "novel_project" to "path 可省略：只有一个小说项目时自动用它，多个才要求显式指定（2026-10-23 真机 Gemini 漏传必填 path 后连续熔断）",
+        "novel_continue" to "path 可省略：同 novel_project 的唯一项目自动回退（2026-10-23 同一口径）",
     )
 
     /**

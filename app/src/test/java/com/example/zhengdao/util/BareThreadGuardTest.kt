@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 
 package com.example.zhengdao.util
@@ -286,7 +286,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:199",
             "KnowledgeBase.kt:223",
             "KnowledgeBaseHints.kt:133",
-            "LlmClient.kt:1145",
+            "LlmClient.kt:1149",
             "MainActivity.kt:405",
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",
