@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写。
+// 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.browser
 
 import org.junit.Assert.assertEquals

@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写。会话引擎为 Termux 官方
+// 独立开发声明：本文件为本项目原创。会话引擎为 Termux 官方
 // terminal-emulator（Apache-2.0，v0.119.0-beta.3，聚合分发见 PROVENANCE.md）。
 package com.example.zhengdao.terminal
 

@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写。被测类是 Termux 官方 terminal-view
+// 独立开发声明：本文件为本项目原创。被测类是 Termux 官方 terminal-view
 // （Apache-2.0，见 PROVENANCE.md）**衍生**的 `TerminalGestureController`
 // （本项目的 6 个"沿用 com.termux.view 包名的第一方类"之一，非上游文件）；
 // 本测试钉的是 2026-10-12 的两处手势守卫（§B-补-49 🟡1 / 🟡2）。

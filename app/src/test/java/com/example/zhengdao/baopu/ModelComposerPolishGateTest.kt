@@ -1,3 +1,6 @@
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+
 // 第一百五十三批门禁：预设 vs 聚合的模型选择形态、发送/停止单按钮三态、
 // 以及 hermes 新 pinned uv 的自动修复（用户 2026-10-23 一次交办）。
 package com.example.zhengdao.baopu

@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据的公开接口：Jetpack Compose（Material 3）官方 Canvas / Path API。
 package com.example.zhengdao.ui
