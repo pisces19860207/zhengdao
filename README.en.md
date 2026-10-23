@@ -15,7 +15,7 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.0 (versionCode 38).
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.1 (versionCode 39).
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
@@ -44,7 +44,7 @@ Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to
 
 **Organise.** Scattered settings, reference images and notes? Describe the rules — how to classify, how to name — and let Baopu put them into your library. It proposes a list or a plan first and acts only after you say yes, one item at a time, and tells you which files it touched. The library can be indexed locally; answers come with sources and line numbers, and still work offline.
 
-**See and edit.** Hand it pages and images: summarise, excerpt, resize, crop, convert. Pages open in Xuanlan; you can let Baopu click and turn pages, or point it at a specific page. The first time it needs the browser group, you get an approval card (this session / always). Images can be attached several at a time.
+**See and edit.** Hand it pages and images: summarise, excerpt, resize, crop, convert. Pages open in Xuanlan; you can let Baopu click and turn pages, or point it at a specific page. The first time it needs the browser group, you get an approval card (this session / always). Images can be attached several at a time; it can also generate an image from a sentence (Gemini, one confirmation card per image).
 
 **Write.** Give it an outline and it writes chapter by chapter; keep going, or paste an old draft back and ask for changes. Output is plain files in the workspace — any file manager can open them. Same for code, except code is only displayed, never executed.
 
