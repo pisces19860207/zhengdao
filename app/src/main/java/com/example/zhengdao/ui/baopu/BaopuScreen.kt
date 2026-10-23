@@ -131,6 +131,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var showChannel by remember { mutableStateOf(ModelSheetDraft.showing) }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
+    // 2026-10-23：小说工程与 MCP 的抽屉入口（之前只有工具、没有落点）。
+    var showNovel by remember { mutableStateOf(false) }
+    var showMcp by remember { mutableStateOf(false) }
     // 第四十批：长按用户消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框。
     var menuMsg by remember { mutableStateOf<BaopuUiMessage?>(null) }
     var editMsg by remember { mutableStateOf<Pair<Long, String>?>(null) }
@@ -357,6 +360,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         openSettings(context)
                     },
+                    onNovel = {
+                        scope.launch { drawerState.close() }
+                        showNovel = true
+                    },
                     onExtract = {
                         scope.launch { drawerState.close() }
                         showExtract = true
@@ -383,11 +390,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         val n = clearPreviewCache()
                         Toast.makeText(context, PreviewNotice.cleared(n), Toast.LENGTH_SHORT).show()
                     },
+                    onMcp = {
+                        scope.launch { drawerState.close() }
+                        showMcp = true
+                    },
                     onChannel = {
                         scope.launch { drawerState.close() }
                         showChannel = true
-                    },
-                    onSettings = {
+                    },                    onSettings = {
                         scope.launch { drawerState.close() }
                         showSettings = true
                     },
@@ -1121,6 +1131,25 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             }
             if (showExtract) {
                 BaopuExtractSheet(onDismiss = { showExtract = false })
+            }
+            if (showNovel) {
+                BaopuNovelSheet(
+                    workspaceRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(context),
+                    onDismiss = { showNovel = false },
+                    onCreate = { title ->
+                        showNovel = false
+                        controller.send("新建小说《$title》，每章目标 3000 字；先建项目，再写第一章。")
+                    },
+                )
+            }
+            if (showMcp) {
+                BaopuMcpSheet(
+                    onDismiss = { showMcp = false },
+                    onConnect = { url ->
+                        showMcp = false
+                        controller.send("连接 MCP 服务：$url")
+                    },
+                )
             }
             if (showSettings) {
                 BaopuSettingsScreen(
