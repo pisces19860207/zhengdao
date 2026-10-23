@@ -632,6 +632,28 @@
 
     <!-- ── 终端页子集（TerminalActivity：安装引导 + 长按菜单 + 复制粘贴）── -->
     <!-- 其余 Toast（分屏 / 圆点说明 / 安装过程细节）按用户拍板登记豁免：终端画面本身是英文输出 -->
+    <!-- 134 批 lint HardcodedText 清零：工具栏三个圆点的读屏文案 + 快捷键条 17 个键帽，
+         原来硬编码在 res/layout*/ 里，这里逐字搬出（键帽是技术标识，中英同一字面值）。 -->
+    <string name="term_close_terminal_cd">关闭终端</string>
+    <string name="term_close_split_cd">关闭分屏</string>
+    <string name="term_split_cd">tmux 上下分屏</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_key_ctrl">CTRL</string>
+    <string name="term_key_shift">SHIFT</string>
+    <string name="term_key_interrupt">^C</string>
+    <string name="term_key_up">↑</string>
+    <string name="term_key_down">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_pgup">PGUP</string>
+    <string name="term_key_pgdn">PGDN</string>
+    <string name="term_key_home">HOME</string>
+    <string name="term_key_end">END</string>
+    <string name="term_key_pipe">|</string>
+    <string name="term_key_minus">\u002D</string>
+    <string name="term_key_slash">/</string>
+    <string name="term_key_del">DEL</string>
     <string name="term_no_network">网络不通：多半是代理 App 被系统后台杀掉了 —— 把它拉起来即可；不开代理、让「证道」直连手机网络也能通</string>
     <string name="term_nothing_to_copy">没有可复制的内容</string>
     <string name="term_copied_screen">已复制屏幕内容（%1$d 字）</string>
