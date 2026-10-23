@@ -20,6 +20,8 @@ import com.example.zhengdao.baopu.agent.AskUserRequest
 import com.example.zhengdao.baopu.agent.GroupGrantScope
 import com.example.zhengdao.baopu.agent.PersonaApprovalCard
 import com.example.zhengdao.baopu.agent.ToolGroup
+import com.example.zhengdao.baopu.eval.EvalEvidenceSource
+import com.example.zhengdao.util.TimeFormats
 
 /** 文案解析器（生产传 `appCtx.getString`；测试传假实现或读 strings.xml）。 */
 internal fun interface DecisionStrRes {
@@ -119,6 +121,8 @@ internal object DecisionSpecs {
             body = sug.payload,
             chips = sug.reasons.mapNotNull { reasonChipRes(it.code) }.distinct()
                 .map { s.get(it) },
+            // 第一百六十八批：证据来源与日期（派工单 §2「UI 必须标个人生产证据/发版证据」）。
+            footer = evidenceFooter(sug, s),
             buttons = orderedButtons(
                 buildList {
                     add(DecisionButton("reject", s.get(R.string.decision_suggest_reject), DecisionButtonRole.NEGATIVE))
@@ -142,6 +146,27 @@ internal object DecisionSpecs {
         ProposalKind.SKILL_BODY -> s.get(R.string.decision_suggest_title_skill, sug.target)
         ProposalKind.PERSONA_APPEND -> s.get(R.string.decision_suggest_title_persona)
         ProposalKind.TOOL_RULE -> s.get(R.string.decision_suggest_title_tool, sug.target)
+    }
+
+    /**
+     * 第一百六十八批：证据来源行（派工单 §2「UI 必须标个人生产证据/发版证据」）。
+     *
+     * 只回答「这次判定看的是谁产的证据、什么时候产的」：没有证据时明说没有
+     * （缺/过期 ⇒ DEFER 是决策口的结论，那句话由原因链说，这一行不越位）。
+     * 日期走 [TimeFormats]（B-补-24：主源码不许裸 SimpleDateFormat）。
+     */
+    private fun evidenceFooter(sug: EvolutionSuggestion, s: DecisionStrRes): String {
+        val src = sug.evalSource ?: return s.get(R.string.decision_suggest_evidence_none)
+        val label = s.get(
+            if (src == EvalEvidenceSource.PERSONAL_PROD) {
+                R.string.decision_evidence_personal
+            } else {
+                R.string.decision_evidence_release
+            },
+        )
+        val date = sug.evalRanAt?.let { TimeFormats.minuteStamp(it) }
+            ?: s.get(R.string.decision_evidence_date_unknown)
+        return s.get(R.string.decision_suggest_evidence, label, date)
     }
 
     // ── 效果卡（100） ───────────────────────────────────────────────────────

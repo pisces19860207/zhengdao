@@ -69,6 +69,7 @@ import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolGroupTable
+import com.example.zhengdao.baopu.eval.ProdEvalSettings
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.FilterChip2
@@ -371,6 +372,45 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             ModelParams.saveEffort(ctx, level)
                         }
                     }
+                }
+            }
+
+            // ── 生产评测（第一百六十八批：eval_prod_on 写入口；派工单 §2）──
+            // 定位：周期性用当前通道跑一轮迷你评测，给进化建议供「个人生产证据」。
+            // 默认关；关掉时零读用例、零请求、零写文件（ProdEvalGate＋execute 的计数器假件钉着）。
+            // 写口只有这一个（[ProdEvalSettings.set]）——没有 devMode/adb/环境变量旁路；
+            // 跑到只记录：不阻塞聊天、不回滚、不改人设/技能。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.baopu_eval_prod_card)) {
+                var prodEvalOn by rememberSaveable { mutableStateOf(ProdEvalSettings.get(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 命中 ≥48dp（派工单设计约束第 3 条）
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_eval_prod_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_eval_prod_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = prodEvalOn,
+                        onCheckedChange = { want ->
+                            ProdEvalSettings.set(ctx, want)
+                            prodEvalOn = want
+                            RunLog.log("抱朴设置：周期性生产评测 = $want（会话收尾触发，24h 至多一次，烧额度）")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
                 }
             }
 

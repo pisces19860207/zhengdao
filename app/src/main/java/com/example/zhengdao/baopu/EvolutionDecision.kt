@@ -14,6 +14,8 @@
 // 所以自检结果以值对象传入，不新建第二套自检结果存储；见交付报告「未做项」。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.eval.EvalEvidenceSource
+
 /** 决策口给出的建议（派工单 §1 的三个值）。 */
 internal enum class EvolutionRecommendation {
     /** 证据齐、自检过、eval 过线、效果正向、可回滚：建议采纳（高风险仍需人批）。 */
@@ -109,10 +111,19 @@ internal data class SelfCheckEvidence(
         if (passed) caseIds else failedRuleIds + caseIds
 }
 
-/** eval 分数（0–1）与用例 id；未跑 eval 时调用方传 null。 */
+/**
+ * eval 分数（0–1）与用例 id；未跑 eval 时调用方传 null。
+ *
+ * 第一百六十八批：加 [source] 与 [ranAt]——同一份分数来自本机生产跑批还是发版门禁，
+ * 含义不同（派工单 §2「不许两套分数混用」）。决策卡与审计按这两个字段标来源与日期；
+ * 缺来源的旧读数按 [EvalEvidenceSource.RELEASE]（构建期那份）处理，日期不知道就 null
+ * （卡上显示「日期不详」），不许编。
+ */
 internal data class EvolutionEval(
     val score: Double,
     val caseIds: List<String> = emptyList(),
+    val source: EvalEvidenceSource = EvalEvidenceSource.RELEASE,
+    val ranAt: Long? = null,
 ) {
     init {
         require(score in 0.0..1.0) { "eval 分数必须在 0–1" }
