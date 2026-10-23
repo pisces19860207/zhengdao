@@ -243,8 +243,8 @@ class ToolSchemaAllTest {
     @Test
     fun `golden_library_list_合法参数照旧列清单`() {
         val root = newRoot()
-        File(root, "资料库/投递/武侠").mkdirs()
-        File(root, "资料库/投递/武侠/书.txt").writeText("内容", Charsets.UTF_8)
+        File(root, "投递/武侠").mkdirs()
+        File(root, "投递/武侠/书.txt").writeText("内容", Charsets.UTF_8)
         val reg = registryOf(root)
         val out = reg.find("library_list")!!.executor(JSONObject().put("dir", "deliver"))
         val text = (out as ToolOutcome.Ok).text

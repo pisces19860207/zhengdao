@@ -268,7 +268,8 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
             }
 
             // ── 工作区（第一百五十六批：放开工作区边界，用户批准即可）──
-            // 开关只管「越界还要不要问」：开 ⇒ 每次运行第一次越界弹一张确认卡，同意才做；
+            // 开关只管「越界还要不要问」：开 ⇒ 每个会话第一次越界弹一张确认卡，同意才做
+            // （157 补充：授权按会话落库，重启不再问；清单与撤销在下面一张卡里）；
             // 关 ⇒ 越界一律拒（与 156 批之前逐字一致）。存储在 BaopuRuntime.WorkspacePrefs。
             SectionCard(stringResource(R.string.baopu_workspace_card)) {
                 var allowOutside by rememberSaveable { mutableStateOf(BaopuRuntime.WorkspacePrefs.enabled(ctx)) }
@@ -296,12 +297,17 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         onCheckedChange = { want ->
                             BaopuRuntime.WorkspacePrefs.setEnabled(ctx, want)
                             allowOutside = want
-                            RunLog.log("抱朴设置：允许访问工作区外 = $want（开也每运行问一次）")
+                            RunLog.log("抱朴设置：允许访问工作区外 = $want（开也每会话问一次）")
                         },
                         colors = zhengdaoSwitchColors(),
                     )
                 }
             }
+
+            // ── 已放行工作区外的会话（157 补充：一次会话问一次，可一键撤销）──
+            // 清单本身读库（workspace_grant）；撤销只影响那一个会话，撤完下次越界重新问。
+            Spacer(Modifier.height(12.dp))
+            WorkspaceGrantCard()
 
             // ── 模型参数（刀 3 B 段 · 第十四批 J12：只读展示，不许编数）──（原样搬入）
             // 定位：当前通道向服务端声明的两个硬参数。没声明 ⇒ 「未声明」——

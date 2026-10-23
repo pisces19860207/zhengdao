@@ -22,7 +22,7 @@ class DiaryStoreTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
-    private fun store(root: File) = DiaryStore(File(root, "记忆/日记"))
+    private fun store(root: File) = DiaryStore(MemoryLayout.memoryDir(root))
 
     private fun entry(
         id: String = "42-20261022",
@@ -151,7 +151,7 @@ class DiaryStoreTest {
         assertEquals(1, r.digested)
         assertEquals(1, r.archivedFiles)
         // 原文进了归档（不再参与 loadAll），摘要落 digest 文件且引用齐全
-        assertTrue(File(File(root, "记忆/日记/归档"), "2026-08-05.md").isFile)
+        assertTrue(File(MemoryLayout.archiveDir(root), "2026-08-05.md").isFile)
         val digests = s.loadAll().entries.filter { DiaryRecall.isDigest(it.id) }
         assertEquals(1, digests.size)
         assertEquals(listOf("整理/a.md", "整理/b.md"), digests[0].artifacts)
@@ -167,7 +167,7 @@ class DiaryStoreTest {
         val userFile = File(root, "用户的重要文件.txt").apply { writeText("别动我") }
         s.upsert(aged("1-20260401", "2026-04-01", 200, listOf("整理/a.md")))
         s.maintain(now) // 浓缩＋归档（归档文件时间戳＝now，刚住进来）
-        val archived = File(File(root, "记忆/日记/归档"), "2026-04-01.md")
+        val archived = File(MemoryLayout.archiveDir(root), "2026-04-01.md")
         assertTrue("应先转归档", archived.isFile)
         assertEquals(0, s.maintain(now).cleanedFiles) // 没住满 180 天 ⇒ 不删
         // 模拟归档满 200 天（盖文件时间戳）⇒ 再维护才清理
@@ -187,7 +187,7 @@ class DiaryStoreTest {
         val s = store(root)
         s.upsert(aged("1-20260401", "2026-04-01", 200, listOf("整理/only-here.md")))
         s.maintain(now)
-        val archived = File(File(root, "记忆/日记/归档"), "2026-04-01.md")
+        val archived = File(MemoryLayout.archiveDir(root), "2026-04-01.md")
         assertTrue(archived.isFile)
         // 把摘要里的引用抹掉（模拟「线索会断」）＋ 盖老时间戳 ⇒ 两条都不满足，留着
         val digestFile = File(File(root, "记忆/日记"), "digest-2026-04.md")

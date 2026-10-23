@@ -39,10 +39,21 @@ internal object DiaryRecall {
     /**
      * 召回（判据 4/5）：月度摘要优先（它承载更早历史的压缩形态），其余按 timeToMs 新的在前；
      * 条数/字符双上限挑，放不下的**只是不注入**（omitted 计数供段尾注明）。
+     *
+     * 157 追加 [query]（账 §B-待做 149「记得住、找不到」）：**摘要仍恒最前**（它承载
+     * 30 天前的浓缩历史，正是原始条目检索够不着的部分），其余**检索命中的排在未命中前**
+     * （同会话内查询不变 ⇒ 前缀稳定）；query 为 null 或不活跃 ⇒ 与 147 行为逐字相同
+     * （回归判据 J5 钉）。预算与段序一概不动。
      */
-    fun recall(entries: List<DiaryEntry>): Recall {
+    fun recall(entries: List<DiaryEntry>, query: DiaryQuery? = null): Recall {
+        val hitIds = if (query != null && query.isActive) {
+            search(entries, query).map { it.id }.toSet()
+        } else {
+            emptySet()
+        }
         val ordered = entries.sortedWith(
             compareByDescending<DiaryEntry> { isDigest(it.id) }
+                .thenByDescending { it.id in hitIds }
                 .thenByDescending { it.timeToMs }
                 .thenBy { it.id },
         )
@@ -139,4 +150,103 @@ internal object DiaryRecall {
         archived.filter { e ->
             digests.any { d -> d.date == e.date.take(7) && e.artifacts.all { it in d.artifacts } }
         }
+
+    // ── 第一百五十七批：检索（日期范围＋关键词）──────────────────────────
+    // 来历：账 §B-待做 149「记得住、找不到」——召回原本只有「摘要优先＋新鲜度」两轴，
+    // 超 30 天的日记已浓缩成主题列表、预算外的近期日记也召回不了 ⇒「三周前聊过的那件事」
+    // 型提问找不到。本批在召回前加一道检索：命中条目在预算内提前。
+    // 边界（派工单-157 红线）：不动存储、不动 MAX_ITEMS/MAX_CHARS、纯函数不读时钟、
+    // 不改段序（EPISODE 仍在 MEMORY 后 COMPRESSION 前；摘要在召回里恒最前）。
+
+    /** 关键词上限（拉丁词＋CJK 二元组合计；超了按出现序截断——防长句把 5 条预算吃光）。 */
+    const val MAX_KEYWORDS = 12
+
+    /**
+     * 检索查询（157）。
+     *
+     * 日期范围用 `yyyy-MM-dd` **文本**比大小——[DiaryEntry.date] 就是这个格式
+     * （`TimeFormats.dayStamp` 唯一真源），不引时钟、不引时区；null 表示该侧不限，
+     * `dateFrom > dateTo` 天然空结果（不特殊化，调用方传畸形区间自负）。
+     */
+    data class DiaryQuery(
+        val dateFrom: String? = null,
+        val dateTo: String? = null,
+        /** 关键词一律小写形态（提取时转好）；匹配对大小写不敏感。 */
+        val keywords: List<String> = emptyList(),
+    ) {
+        /** 有没有检索意图。空查询 ⇒ 不检索，挑选行为与 147 逐字相同（负例 J5 钉）。 */
+        val isActive: Boolean
+            get() = dateFrom != null || dateTo != null || keywords.isNotEmpty()
+    }
+
+    /**
+     * 从当前轮输入提取查询（157；**纯函数、不读时钟**）。
+     *
+     * 日期只认**显式** `yyyy-MM-dd`（`\d` 默认只匹配 ASCII 数字，全角数字不混入）；
+     * 一个 ⇒ 当天；多个 ⇒ 最早/最晚为闭区间。「上周」「三天前」这类相对时间**不猜**
+     * （猜年份要读时钟，会打破「同输入同输出」——那是前缀稳定与测试确定性的前提）。
+     * 关键词两形态，**拉丁词排在二元组前**（更具体），合计截断到 [MAX_KEYWORDS]：
+     * ① 拉丁/数字词：≥2 字符、**至少含一个字母**（纯数字词是噪音）、内部允许 `.`/`_`、
+     *    去尾部 `.`/`_`、转小写；
+     * ② CJK 二元组：每个连续中文串的 2 字滑窗（不依赖分词器，确定性可测）。
+     */
+    fun queryFromInput(text: String, maxKeywords: Int = MAX_KEYWORDS): DiaryQuery {
+        if (text.isBlank()) return DiaryQuery()
+        val dates = Regex("\\d{4}-\\d{2}-\\d{2}").findAll(text).map { it.value }.distinct().toList()
+        val keywords = mutableListOf<String>()
+        for (m in Regex("[A-Za-z0-9][A-Za-z0-9._]*").findAll(text)) {
+            val w = m.value.trimEnd('.', '_').lowercase()
+            if (w.length >= 2 && w.any { it.isLetter() } && w !in keywords) keywords += w
+        }
+        for (run in Regex("[\\u4e00-\\u9fff]+").findAll(text)) {
+            val s = run.value
+            for (i in 0..s.length - 2) {
+                val bi = s.substring(i, i + 2)
+                if (bi !in keywords) keywords += bi
+            }
+        }
+        return DiaryQuery(
+            dateFrom = dates.minOrNull(),
+            dateTo = dates.maxOrNull(),
+            keywords = keywords.take(maxKeywords),
+        )
+    }
+
+    /**
+     * 检索（157；纯函数、**零写接口**——读时挑选不删除，同 [recall] 哲学）。
+     *
+     * 日期范围**闭区间**过滤；关键词在「标题＋摘要＋产物引用」合文里查（大小写不敏感），
+     * 命中数＝**distinct 关键词计数**（同一词在文中出现多次只算 1 次——防复读刷分）。
+     * 结果按 命中数降 → timeToMs 降 → id 升；**输入换序同输出**（不读时钟、不用输入序）。
+     *
+     * 注意：月度摘要的 [DiaryEntry.date] 是 `yyyy-MM`（月粒度）⇒ 日期范围天然圈不住它——
+     * 不是缺陷：召回里摘要恒最前（见 [recall]），检索不到摘要不影响它被注入。
+     */
+    fun search(entries: List<DiaryEntry>, query: DiaryQuery): List<DiaryEntry> {
+        if (!query.isActive) return emptyList()
+        val inRange = entries.filter { e ->
+            (query.dateFrom == null || e.date >= query.dateFrom) &&
+                (query.dateTo == null || e.date <= query.dateTo)
+        }
+        val kw = query.keywords
+        if (kw.isEmpty()) {
+            return inRange.sortedWith(compareByDescending<DiaryEntry> { it.timeToMs }.thenBy { it.id })
+        }
+        return inRange
+            .map { e -> e to scoreOf(e, kw) }
+            .filter { it.second > 0 }
+            .sortedWith(
+                compareByDescending<Pair<DiaryEntry, Int>> { it.second }
+                    .thenByDescending { it.first.timeToMs }
+                    .thenBy { it.first.id },
+            )
+            .map { it.first }
+    }
+
+    /** 命中计数：distinct 关键词在「标题＋摘要＋产物」合文里出现几次（大小写不敏感）。 */
+    fun scoreOf(e: DiaryEntry, keywords: List<String>): Int {
+        if (keywords.isEmpty()) return 0
+        val hay = (listOf(e.title, e.summary) + e.artifacts).joinToString("\n").lowercase()
+        return keywords.count { hay.contains(it) }
+    }
 }

@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import java.io.File
 
 /**
@@ -14,10 +15,17 @@ import java.io.File
  * [DiaryRules.containsSensitive]，命中 ⇒ 整条不写**——「脱敏失败宁可整条不写」。
  */
 internal class DiaryStore(
-    private val diaryRoot: File,
+    /**
+     * 记忆根（`<工作区>/记忆/`）——157 起收**根**而不是直接收日记目录：
+     * 归档要从 `日记/归档/` 上移到 `记忆/归档/`（用户「记忆目录约定」），
+     * 收根才能一处推导日记与归档两处（[MemoryLayout] 是路径真源）。
+     */
+    private val memoryRoot: File,
     /** 索引库（真删/重建时同步 `diary_index`；null = 不碰索引，纯文件半边）。 */
     private val db: BaopuDb? = null,
 ) {
+    /** 每日日记目录（`<记忆根>/日记/`）。 */
+    private val diaryRoot: File = File(memoryRoot, BaopuKernel.Data.DIR_DIARY)
 
     data class WriteResult(val ok: Boolean, val file: File?, val reason: String? = null)
 
@@ -33,8 +41,9 @@ internal class DiaryStore(
     private fun digestFile(month: String): File =
         File(diaryRoot, DiaryRecall.DIGEST_PREFIX + month + ".md")
 
-    /** 归档子目录（软删落点；[loadAll] 不递归扫它 ⇒ 归档件不参与回灌）。 */
-    private fun archiveDir(): File = File(diaryRoot, "归档")
+    /** 归档子目录（软删落点；157 起在 `记忆/归档/`——原 `日记/归档/` 上移一级；
+     *  [loadAll] 不递归扫它 ⇒ 归档件不参与回灌）。 */
+    private fun archiveDir(): File = File(memoryRoot, BaopuKernel.Data.DIR_ARCHIVE)
 
     /** 维护报告（收尾顺手跑；失败不阻塞，调用方记日志）。 */
     data class MaintenanceReport(val digested: Int, val archivedFiles: Int, val cleanedFiles: Int)
@@ -127,6 +136,49 @@ internal class DiaryStore(
         f.parentFile?.mkdirs()
         f.writeText(sorted.joinToString("\n") { DiaryCodec.render(it) })
         return WriteResult(true, f, null)
+    }
+
+    /**
+     * 建空目录（157 初始化约定：进工作区自动建 `记忆/日记/`，**不弹卡、不写内容**）。
+     * 归档目录按需由 [maintain] 建；这里只保证日记目录在（首启与迁移两条路都走它）。
+     */
+    fun ensureDirs() {
+        diaryRoot.mkdirs()
+    }
+
+    /**
+     * **修正已有条目**（157 补 147 缺口「只有追加/浓缩/归档，没有修正」）。
+     *
+     * 与 [upsert] 的分工：upsert 是同 id 覆盖（收尾每轮累加的追加语义）；
+     * amend 是**显式修正**——provenance 六字段不可改（[DiaryRules.amendGuard]）、
+     * 条目不存在即拒（「修正必须改在已有条目上」，不许借修正之名新插一条）、
+     * 脱敏闸同样管修正。放行后走 upsert 的同 id 替换落盘（文件是真相）。
+     *
+     * @return [WriteResult]；ok = false 时 [WriteResult.reason] 说清为什么拒
+     */
+    fun amend(entry: DiaryEntry): WriteResult {
+        val existing = loadAll().entries.firstOrNull { it.id == entry.id }
+            ?: return WriteResult(
+                false, null,
+                "条目不存在（${entry.id}）：修正必须改在已有条目上，不许借修正新插（157）",
+            )
+        DiaryRules.amendGuard(existing, entry)?.let { reason ->
+            return WriteResult(false, null, reason)
+        }
+        return upsert(entry)
+    }
+
+    /**
+     * 重建索引（157 收尾流程最后一步）：`diary_index` 只是**可重建的加速层**——
+     * 清空重扫（[DiaryIndexStore.rebuild]，文件是真相）。db 为 null ⇒ 0
+     * （纯文件半边没有索引可重建）。
+     * @return 重建的条目数
+     */
+    fun rebuildIndex(): Int {
+        val d = db ?: return 0
+        val entries = loadAll().entries
+        DiaryIndexStore(d).rebuild(entries)
+        return entries.size
     }
 
     /** 全量读取（`loadAll` 就是 reindex 的地基——把 `diary_index` 删掉，扫一遍目录全回来）。 */

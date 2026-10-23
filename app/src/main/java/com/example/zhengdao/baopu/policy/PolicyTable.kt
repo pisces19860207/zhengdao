@@ -25,7 +25,10 @@ import org.json.JSONObject
  *   "schema": "zhengdao-policy",
  *   "version": 1,
  *   "description": "…",
- *   "toolGroups": { "defaultVisible": ["core", "edit", "compat"] },
+ *   "toolGroups": {
+ *     "defaultVisible": ["core", "edit", "compat"],
+ *     "defaultVisibleTools": ["library_list", "kb_search"]
+ *   },
  *   "approval": {
  *     "groupReaskThreshold": 3,
  *     "riskLevels": {
@@ -107,7 +110,7 @@ internal object PolicyTable {
         root.opt("description")?.let { require(it is String) { "顶层 description 必须是字符串" } }
 
         val groupsObj = strictObject(root, "toolGroups", "顶层")
-        rejectUnknown(groupsObj, setOf("defaultVisible"), "toolGroups")
+        rejectUnknown(groupsObj, setOf("defaultVisible", "defaultVisibleTools"), "toolGroups")
         val visibleArr = strictArray(groupsObj, "defaultVisible", "toolGroups")
         require(visibleArr.length() > 0) { "toolGroups.defaultVisible 不许为空" }
         val keys = (0 until visibleArr.length()).map { i ->
@@ -121,6 +124,23 @@ internal object PolicyTable {
         }
         require(keys.toSet().size == keys.size) { "toolGroups.defaultVisible 有重复组" }
         val defaultVisible = keys.toSet()
+
+        // 157：工具级默认可见（可选键；缺省 = 空集）。语义与 defaultVisible 平行：
+        // 名单内工具一上来就进 tools 数组，组开关/单工具开关仍能否决。
+        val defaultVisibleTools: Set<String> = if (groupsObj.has("defaultVisibleTools")) {
+            val toolsArr = strictArray(groupsObj, "defaultVisibleTools", "toolGroups")
+            val names = (0 until toolsArr.length()).map { i ->
+                val raw = toolsArr.get(i)
+                require(raw is String) { "toolGroups.defaultVisibleTools[$i] 必须是字符串" }
+                val name = raw.trim()
+                require(name.isNotEmpty()) { "toolGroups.defaultVisibleTools[$i] 不许为空串" }
+                name
+            }
+            require(names.toSet().size == names.size) { "toolGroups.defaultVisibleTools 有重复工具名" }
+            names.toSet()
+        } else {
+            emptySet()
+        }
 
         val approvalObj = strictObject(root, "approval", "顶层")
         rejectUnknown(approvalObj, setOf("groupReaskThreshold", "riskLevels"), "approval")
@@ -148,7 +168,10 @@ internal object PolicyTable {
         // 最后交给 typed 模型再验一遍（范围/底线/七类齐全）；构造器抛的也是 IllegalArgumentException
         return Policy(
             version = VERSION,
-            toolGroups = ToolGroupPolicy(defaultVisible = defaultVisible),
+            toolGroups = ToolGroupPolicy(
+                defaultVisible = defaultVisible,
+                defaultVisibleTools = defaultVisibleTools,
+            ),
             approval = ApprovalPolicy(groupReaskThreshold = threshold, riskLevels = riskLevels),
             eval = EvalPolicy(floor = floor, minEffectSamples = minSamples),
         )

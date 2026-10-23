@@ -68,7 +68,7 @@ class ProgressiveToolsTest {
     // ── 判据 A：§2 要求的三组纯函数用例 ──────────────────────────────────
 
     @Test
-    fun `A1_默认可见_只有core与edit进数组`() {
+    fun `A1_默认可见_只有core与edit与默认可见工具进数组`() {
         val catalog = catalogOf(
             "read_file" to ToolGroup.CORE,
             "write_file" to ToolGroup.EDIT,
@@ -78,9 +78,15 @@ class ProgressiveToolsTest {
             "write_skill" to ToolGroup.SKILL,
             "preview_local_file" to ToolGroup.PREVIEW,
             "library_list" to ToolGroup.LIBRARY,
+            "kb_search" to ToolGroup.LIBRARY,
         )
         val visible = visibleTools(catalog, ToolUserSettings(), emptySet()).map { it.name }
-        assertEquals("默认只出 core+edit（§1.2：其余组模型根本看不见）", listOf("read_file", "write_file"), visible)
+        // 157：core+edit 之外，工具级默认可见名单（library_list/kb_search）也进——组仍锁
+        assertEquals(
+            "默认只出 core+edit＋工具级默认可见两件（§1.2＋157）",
+            listOf("read_file", "write_file", "library_list", "kb_search"),
+            visible,
+        )
     }
 
     @Test
@@ -118,26 +124,27 @@ class ProgressiveToolsTest {
     // ── 判据 B：默认可见读数（§2「tools ≤ 12」）─────────────────────────
 
     @Test
-    fun `B1_普通通道默认可见恰好12条`() {
+    fun `B1_普通通道默认可见恰好14条`() {
         val reg = realRegistry()
         val visible = reg.visibleSpecs()
-        assertEquals("§2 硬卡「默认 tools ≤ 12」：实测读数 ${visible.map { it.name }}", 12, visible.size)
+        assertEquals("157 后默认可见 12+2（core+edit＋资料库只读两件）：实测读数 ${visible.map { it.name }}", 14, visible.size)
         assertEquals(
-            // 表序（read_file…card_build + capabilities），不是名字序——顺序变了前缀缓存就抖
+            // 表序（read_file…card_build + capabilities），不是名字序——顺序变了前缀缓存就抖；
+            // library_list/kb_search 按 ENTRIES 表序落在 update_plan 之后（157）
             listOf(
                 "read_file", "list_dir", "search_in_files", "write_file", "edit_file",
-                "browser_open", "browser_snapshot", "update_plan", "image_ops", "ask_user",
-                "card_build", "capabilities",
+                "browser_open", "browser_snapshot", "update_plan", "library_list", "kb_search",
+                "image_ops", "ask_user", "card_build", "capabilities",
             ),
             visible.map { it.name },
         )
         // 两个协议侧同一份集合（数组形状不同，成员必须同源）
-        assertEquals(12, names(reg.toolsJsonOpenAi()).size)
-        assertEquals(12, names(reg.toolsJsonAnthropic(), path = null).size)
+        assertEquals(14, names(reg.toolsJsonOpenAi()).size)
+        assertEquals(14, names(reg.toolsJsonAnthropic(), path = null).size)
     }
 
     @Test
-    fun `B2_免费通道在同一张表上是14条`() {
+    fun `B2_免费通道在同一张表上是16条`() {
         // read / bash 是免费通道的兼容占位（BaopuRuntime 按 provider.builtinFree 单独注册）。
         // 它们必须由 COMPAT 组**默认可见**：一旦藏起来，免费档第一次请求就 403 FreeTierError。
         // 于是 §2 那句「≤12」在同一条链上有两个读数——本条把它钉成**实测值**，不藏进注释。
@@ -146,7 +153,7 @@ class ProgressiveToolsTest {
         reg.register(fake("bash", ToolGroup.CORE))
         assertEquals(ToolGroup.COMPAT, reg.all().first { it.name == "read" }.group)
         val visible = reg.visibleSpecs().map { it.name }
-        assertEquals(14, visible.size)
+        assertEquals(16, visible.size)
         assertTrue("免费档要求 tools 数组含 read/bash：$visible", visible.contains("read") && visible.contains("bash"))
     }
 
@@ -302,7 +309,11 @@ class ProgressiveToolsTest {
         assertEquals("第一次申请只弹一张卡", 1, cards)
         assertTrue("要如实说没同意：${out.text}", out.text.contains("用户这次没同意"))
         assertFalse("没同意就不许解锁", unlocks.unlocked(221L).contains(ToolGroup.LIBRARY))
-        assertFalse(names(reg.toolsJsonOpenAi(221L)).contains("library_list"))
+        // 157 口径：library_list 只读默认可见（不靠解锁）；没同意锁住的是写类三件
+        assertFalse(
+            "没同意 ⇒ 写类工具不许进数组",
+            names(reg.toolsJsonOpenAi(221L)).contains("library_organize"),
+        )
         assertTrue("不许写持久档", prefs.approvedGroups().isEmpty())
         // 立刻再申请：限流闸压住，不再弹卡（§2「同类建议限流/合并，不每次任务弹」）
         CapabilitiesTool.spec().executor(JSONObject().put("enable", JSONArray().put("library")))
@@ -612,5 +623,32 @@ class ProgressiveToolsTest {
         // 三、这段必须在「你会做什么」那一节里——写到别处等于模型看不见
         val section = preset.substringAfter("## 你会做什么")
         assertTrue("两条新句必须落在「## 你会做什么」节内", section.contains("写程序/做页面") && section.contains("工具是按需给你的"))
+    }
+
+    /**
+     * J2（157「资料库默认可见」）：只读两件进默认面；写类三件仍要解锁；
+     * 组开关/单工具开关照样能否决默认可见工具（用户关掉 ⇒ 不进数组）。
+     */
+    @Test
+    fun `J2_资料库只读两件默认可见_写类三件不默认可见`() {
+        val root = tmp.newFolder("ws") // 建一次：默认参数每次调用都 newFolder 会撞名
+        val visible = realRegistry(root = root).visibleSpecs().map { it.name }.toSet()
+        // ① 只读两件默认可见（用户口径「资料库默认可见」）
+        assertTrue("library_list 必须默认可见", "library_list" in visible)
+        assertTrue("kb_search 必须默认可见", "kb_search" in visible)
+        // ② 写类三件仍锁在 LIBRARY 组（按需解锁）
+        listOf("library_organize", "book_outline", "kb_index").forEach {
+            assertFalse("写类不许默认可见：$it", it in visible)
+        }
+        // ③ 开关否决：单工具关掉 ⇒ 默认可见也进不去
+        val prefs = InMemoryToolPrefs()
+        prefs.setDisabled("library_list", true)
+        val reg = realRegistry(prefs = prefs, root = root)
+        assertFalse("用户关掉后默认可见也无效", reg.visibleSpecs().map { it.name }.contains("library_list"))
+        // ④ 组开关否决：LIBRARY 组被关 ⇒ kb_search 同样进不去
+        val prefs2 = InMemoryToolPrefs()
+        prefs2.setGroupDisabled(ToolGroup.LIBRARY, true)
+        val reg2 = realRegistry(prefs = prefs2, root = root)
+        assertFalse("组被关后默认可见工具也无效", reg2.visibleSpecs().map { it.name }.contains("kb_search"))
     }
 }

@@ -59,6 +59,14 @@ internal class PlanController(
     private var changeAuthorized = false
 
     /**
+     * 用户对某一版结构变更**真点过按钮**的最近裁决（161 降噪）。
+     *
+     * 与 `baopu/Memory.kt` 那条记忆能力无关：进程内、不落盘、不跨进程，换一轮就清。
+     * 它**不改变授权粒度**——放行照旧只认 [changeAuthorized] 那一张一次性的票。
+     */
+    private val changeMemory = PlanChangeMemory()
+
+    /**
      * 一次 update_plan（工具执行器入口）。
      *
      * Failed（空 items / 坏条目）⇒ **不落库、不动内存态**：错误原文回灌给模型，
@@ -75,6 +83,15 @@ internal class PlanController(
         // 初始计划（上一版为空）与只改 status 的进度更新不走这里（不打扰）。
         val change = PlanChangeRules.classify(current, ok.items)
         if (change.needsCard && !changeAuthorized) {
+            // 161 降噪：这一版改动用户本轮已经明确拒过 ⇒ 不再重复要授权，也不落库。
+            // 只记「真点过按钮」的裁决；没点／超时不在这里（那不等于她答过）。
+            if (changeMemory.lookup(change) == PlanChangeDecision.REJECTED) {
+                log(
+                    "抱朴计划：同一改动已被用户拒过（新增 ${change.added.size} 条 / " +
+                        "删去 ${change.removed.size} 条）⇒ 不再重复打扰",
+                )
+                return ToolOutcome.Failed(PlanGuardRules.repeatRejected(change))
+            }
             log(
                 "抱朴计划：拒绝未经确认的改动（新增 ${change.added.size} 条 / " +
                     "删去 ${change.removed.size} 条）",
@@ -83,6 +100,8 @@ internal class PlanController(
         }
         // 一次批准只放行一次改动：哪怕这次只是进度更新，也算用掉了。
         changeAuthorized = false
+        // 能带着 needsCard 走到这里 ⇒ 一定是她批的；记下批准，覆盖此前的同版拒录。
+        if (change.needsCard) changeMemory.record(change, PlanChangeDecision.APPROVED)
         val applied = PlanRules.applyOverwrite(current, ok.items)
         current = applied.items
         val payload = PlanRules.toJson(applied.items)
@@ -140,6 +159,23 @@ internal class PlanController(
     fun authorizeNextChange() {
         changeAuthorized = true
         log("抱朴计划：用户同意更新计划（下一次改动放行）")
+    }
+
+    /** 引擎弹卡前先问：这一版改动用户表过态吗（161；只有真点过按钮的才算）。 */
+    fun decisionFor(change: PlanChange): PlanChangeDecision? = changeMemory.lookup(change)
+
+    /**
+     * 记下用户对确认卡的**显式**裁决（161）。
+     *
+     * 只有真点过的两条键进这里——超时／没点**不许调**：那不等于她答过，
+     * 记下去等于替用户做决定，同一版改动她就没机会改主意了。
+     */
+    fun noteDecision(change: PlanChange, decision: PlanChangeDecision) {
+        changeMemory.record(change, decision)
+        log(
+            "抱朴计划：记下用户裁决 $decision（新增 ${change.added.size} 条 / " +
+                "删去 ${change.removed.size} 条）",
+        )
     }
 
     /** 引擎在一整步工具调用结束后调用：这一步成功 update_plan 过 ⇒ 清零。 */
@@ -214,6 +250,7 @@ internal class PlanController(
         deviationPrompted = false
         deviationMuted = false
         changeAuthorized = false
+        changeMemory.clear()
     }
 
     /**
@@ -229,5 +266,6 @@ internal class PlanController(
         deviationPrompted = false
         deviationMuted = false
         changeAuthorized = false
+        changeMemory.clear()
     }
 }

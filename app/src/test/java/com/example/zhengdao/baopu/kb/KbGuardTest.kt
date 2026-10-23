@@ -60,13 +60,13 @@ class KbGuardTest {
         assertTrue("search 必须滤掉无来源块", code.contains("relPath.isNotBlank()"))
     }
 
-    /** N3：缺省索引目录必须是 资料库/投递，不许是工作区根。 */
+    /** N3：缺省索引目录必须是 投递（内核常量），不许是工作区根。 */
     @Test
     fun `N3_缺省目录是投递不是根`() {
         val code = code("src/main/java/com/example/zhengdao/baopu/agent/tools/KbTools.kt")
         assertTrue(
-            "DEFAULT_DIR_REL 必须由 资料库/投递 两级拼成",
-            code.contains("LibraryPaths.DIR_LIBRARY + \"/\" + LibraryPaths.SUB_DELIVER"),
+            "DEFAULT_DIR_REL 必须取内核 DIR_DELIVER（157 收口后投递在工作区根）",
+            code.contains("BaopuKernel.Data.DIR_DELIVER"),
         )
         assertFalse("缺省目录不许直接是工作区根", code.contains("DEFAULT_DIR_REL: String = \".\""))
     }
