@@ -498,8 +498,8 @@
     <string name="perm_status_card">Grant status</string>
     <string name="perm_storage_label">Storage read/write (shared storage /sdcard)</string>
     <string name="perm_storage_detail">Agents need this to read and write files on your phone (/sdcard). Without it, every file access in the terminal fails (required).</string>
-    <string name="perm_manage_label">All files access (optional · preferred)</string>
-    <string name="perm_manage_detail">With this on, agents can reach a wider range of storage. Basic /sdcard read/write works without it; this device doesn\'t offer the switch for Zhengdao, so leaving it off is normal and costs you nothing.</string>
+    <string name="perm_camera_label">Camera</string>
+    <string name="perm_camera_detail">Camera is used for photos and scanning; text chat and writing work without it.</string>
     <string name="perm_notify_label">Notifications</string>
     <string name="perm_notify_detail">Silent notes like \"cleaned up after install\" use notifications. Without the permission the system discards them, but no feature is affected.</string>
     <string name="perm_net_label">Network access</string>

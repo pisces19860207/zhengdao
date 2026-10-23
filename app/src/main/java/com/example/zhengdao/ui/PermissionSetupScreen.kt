@@ -261,20 +261,33 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
     // 这三项由三个不同的系统页/对话框改变，且返回顺序不可预期，
     // 统一在 ON_RESUME 与每个 launcher 的回执里重读（不用单一 tick——各自重读更抗"只变了一项"）。
     var storageOk by remember { mutableStateOf(PermissionSetup.storageGranted(ctx)) }
-    var manageOk by remember { mutableStateOf(PermissionSetup.manageAllFilesGranted()) }
+    var cameraOk by remember {
+        mutableStateOf(
+            ctx.checkSelfPermission(android.Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
     var notifyOk by remember { mutableStateOf(PermissionSetup.notificationsGranted(ctx)) }
     // 授权失败的人话提示（照 SettingsScreen 权限卡的 permHint 写法）：红字，成功时清空。
     var hint by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         storageOk = PermissionSetup.storageGranted(ctx)
-        manageOk = PermissionSetup.manageAllFilesGranted()
+        cameraOk = ctx.checkSelfPermission(android.Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
         notifyOk = PermissionSetup.notificationsGranted(ctx)
     }
 
     // 存储读写：RequestMultiplePermissions（与设置页 permLauncher 同一契约）。
     // 回执里**重新读系统状态**而不是信 result：部分 ROM 会把弹窗静默掉，
     // 而 result 只在"弹过了"时才有值。
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        cameraOk = granted || ctx.checkSelfPermission(android.Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -397,13 +410,21 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                     },
                 )
                 RowGapDivider()
+                // 2026-10-23 用户：「那两个权限其实是一个意思，第二个可以改成相机权限」。
+                // 存储那两行（共享存储 + 所有文件访问）语义重叠，第二行改相机（CAMERA 已在清单里）。
                 PermissionRow(
-                    label = stringResource(R.string.perm_manage_label),
-                    granted = manageOk,
-                    status = if (manageOk) stringResource(R.string.data_manage_on)
-                    else stringResource(R.string.data_manage_off),
-                    desc = stringResource(R.string.perm_manage_detail),
-                    onClick = openManageAllFiles,
+                    label = stringResource(R.string.perm_camera_label),
+                    granted = cameraOk,
+                    status = if (cameraOk) stringResource(R.string.data_perm_granted)
+                    else stringResource(R.string.data_perm_not_granted),
+                    desc = stringResource(R.string.perm_camera_detail),
+                    onClick = {
+                        if (cameraOk) {
+                            openAppDetails()
+                        } else {
+                            cameraLauncher.launch(android.Manifest.permission.CAMERA)
+                        }
+                    },
                 )
                 RowGapDivider()
                 PermissionRow(
