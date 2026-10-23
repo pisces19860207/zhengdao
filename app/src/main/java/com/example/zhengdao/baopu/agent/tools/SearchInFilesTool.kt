@@ -10,12 +10,8 @@
 // 本文件不自造围栏）。
 package com.example.zhengdao.baopu.agent
 
-<<<<<<< HEAD
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-=======
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.rootfs.PathGuard
->>>>>>> feat/memory-157-onmain
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 import java.nio.file.Files
 

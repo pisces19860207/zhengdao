@@ -9,12 +9,8 @@
 // 结果回灌走 GuardPipeline 第 ⑤ 段的 DataFence.wrap（与 read_file 同一出口）。
 package com.example.zhengdao.baopu.agent
 
-<<<<<<< HEAD
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-=======
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.rootfs.PathGuard
->>>>>>> feat/memory-157-onmain
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 
 /**

@@ -3,18 +3,15 @@
 // 依据：抱朴线刀 2 追加包（通用写工具）。四条硬纪律逐条落地：
 // 1. 权限 CONFIRM——每次写都走单步确认（GuardPipeline 第 ③ 段 ⇒ NeedsConfirm，
 //    RunEngine 现有 AwaitConfirm 骨架；确认后的执行归下一刀，本刀只交工具本身）；
-// 2. 路径必须过 PathGuard.isInside(工作区)，越界即拒（管线第 ② 段已按 path 参数名
-//    守卫过一次，这里自检是双保险，且让纯函数层 JVM 直测）；
+// 2. 路径过 workspaceBoundaryCheck（156 批统一判据；管线第 ② 段已按 path 参数名守过一次，
+//    这里是工具层自检双保险，且让纯函数层 JVM 直测）；备份区禁区另用 PathGuard 硬拒；
 // 3. overwrite=true 时先把旧文件备份到 <工作区>/备份/ 再写（157 起可见化，原 .baopu-bak；不静默毁内容）；
 // 4. 单次写入上限 200 行，超了拒绝并提示分次；**不提供任何删除能力**。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
-<<<<<<< HEAD
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-=======
 import com.example.zhengdao.baopu.kernel.BaopuKernel
->>>>>>> feat/memory-157-onmain
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -29,7 +26,8 @@ import java.io.File
  * 为什么拒绝写 `备份/` 自己：备份区被写就会互相覆盖，备份就白做了。
  *
  * 路径不在本文件守卫第一道（管线第 ② 段按 path 参数名做）；本文件的 [write]
- * 自检 [PathGuard.isInside] 是第二道——纯函数层因此可直测「越界即拒」。
+ * 自检 `workspaceBoundaryCheck`（156 批统一判据）是第二道——纯函数层因此可直测「越界即拒」；
+ * `备份/` 禁区仍用 [PathGuard.isInside] 硬拒。
  */
 internal object WriteFileTool {
 

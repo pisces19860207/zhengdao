@@ -7,7 +7,8 @@
 //   - 但「点头」必须是**每次一张确认卡**，且默认可反悔（先进回收站，再谈彻底删）。
 //
 // 五条硬纪律：
-// 1. 只在工作区根内删，越界即拒（PathGuard.isInside，组件级比较）；
+// 1. 越界判据统一走 workspaceBoundaryCheck（156 批起：开关开＋本运行已授权可越界，
+//    开关关＝原文拒绝）；禁区（备份/、回收站/、原件区）仍用 PathGuard 硬拒；
 // 2. **默认进回收站**（`回收站/<时间戳>-<原名>`，同分区 rename 原子），`permanent=true` 才真删；
 // 3. 只删**单个文件**：目录一律拒（删目录一步能毁半个资料库，等真有需求再单开一刀）；
 // 4. 禁区一律拒并说清：`备份/`（157 起可见化，原 `.baopu-bak`，旧版本备份）、`回收站/`（回收站本身）、
@@ -17,11 +18,8 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
-<<<<<<< HEAD
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-=======
 import com.example.zhengdao.baopu.kernel.BaopuKernel
->>>>>>> feat/memory-157-onmain
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -200,7 +198,6 @@ internal object DeletePathTool {
      * 一个也删不掉就如实报哪几个删不动，不假装清空。
      */
     fun emptyTrash(root: File): ToolOutcome {
-        if (!PathGuard.isInside(root, root)) return ToolOutcome.Rejected("路径越界被拒")
         val trashDir = File(root, TRASH_DIR)
         if (!trashDir.isDirectory) return ToolOutcome.Ok("回收站是空的（还没有东西进来），不用清。")
         val files = trashDir.listFiles()?.filter { it.isFile }.orEmpty()
