@@ -1,4 +1,4 @@
-﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单第九批 §4.3（B 段抱朴页）+ 第⑮刀经验（可观察性 bug 改状态载体：
 // 引擎状态用 mutableStateOf + State 暴露）+ 设计 §9 施工细节第 1/8 条
@@ -1357,23 +1357,18 @@ internal class BaopuChatController(context: Context) {
         val wsRoot = BaopuRuntime.workspaceRoot(appCtx)
         val store = DiaryStore(MemoryLayout.memoryDir(wsRoot), db)
         val prev = store.loadDay(date).firstOrNull { it.id == DiaryRules.diaryId(sid, date) }
-        // 当日累计（同会话同日多轮 upsert 相加；产物并集去重）。
-        val okTotal = (prev?.okSteps ?: 0) + okSteps
-        val failedTotal = (prev?.failedSteps ?: 0) + (delta.size - okSteps)
-        val artifactTotal = DiaryRules.sanitizeArtifacts((prev?.artifacts ?: emptyList()) + newArtifacts)
-        val entry = DiaryEntry(
+        // 当日累计（同会话同日多轮合并；provenance 六字段原样带回，见 mergeDailyEntry，
+        // MEM-D1：原来 timeToMs 写 now，第二次起会被 amendGuard 全拒）。
+        val entry = DiaryRules.mergeDailyEntry(
+            prev = prev,
             id = DiaryRules.diaryId(sid, date),
             date = date,
             sessionId = sid,
-            timeFromMs = prev?.timeFromMs ?: (delta.firstOrNull()?.createdAt ?: now),
-            timeToMs = now,
-            title = DiaryRules.composeTitle(okTotal, artifactTotal.size),
-            summary = DiaryRules.composeSummary(okTotal, failedTotal, artifactTotal.size),
-            artifacts = artifactTotal,
-            evidence = DiaryEvidence.OBSERVED, // 结构化事实：本会话真实发生的动作与产出
-            okSteps = okTotal,
-            failedSteps = failedTotal,
-            createdAt = prev?.createdAt ?: now,
+            now = now,
+            firstActivityAt = delta.firstOrNull()?.createdAt ?: now,
+            okDelta = okSteps,
+            failedDelta = delta.size - okSteps,
+            newArtifacts = newArtifacts,
         )
         // 157 四步：①写前备份（App 私有 `filesDir/抱朴记忆/备份/` 快照，保留最近 N 份，
         // 不进工作区、模型只读）→ ②当日已有条目走 **amend**（provenance 六字段闸：

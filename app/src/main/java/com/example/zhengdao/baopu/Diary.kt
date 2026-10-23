@@ -166,6 +166,44 @@ internal object DiaryRules {
         "工具成功 $okSteps 次 · 失败 $failedSteps 次 · 产物 $artifacts 个"
 
     /**
+     * 当天累计条目（MEM-D1，2026-10-23）：同会话同日多轮收尾时把增量并进已有条目。
+     *
+     * **provenance 六字段照 157 的规矩原样带回**（[amendGuard] 会逐个比对）：
+     * 尤其 `timeToMs` 不许改成「现在」——之前调用方写 `now`，导致当天第二次起
+     * 全部被 amend 闸拒掉（日志「时间窗不许改…」），用户看到的就是「第一次能记、后面全丢」。
+     * 可改的只有计数/产物/标题/摘要；首条（prev==null）才用本次窗口。
+     */
+    internal fun mergeDailyEntry(
+        prev: DiaryEntry?,
+        id: String,
+        date: String,
+        sessionId: Long,
+        now: Long,
+        firstActivityAt: Long,
+        okDelta: Int,
+        failedDelta: Int,
+        newArtifacts: List<String>,
+    ): DiaryEntry {
+        val okTotal = (prev?.okSteps ?: 0) + okDelta
+        val failedTotal = (prev?.failedSteps ?: 0) + failedDelta
+        val artifactTotal = sanitizeArtifacts((prev?.artifacts ?: emptyList()) + newArtifacts)
+        return DiaryEntry(
+            id = id,
+            date = date,
+            sessionId = sessionId,
+            timeFromMs = prev?.timeFromMs ?: firstActivityAt,
+            timeToMs = prev?.timeToMs ?: now,
+            title = composeTitle(okTotal, artifactTotal.size),
+            summary = composeSummary(okTotal, failedTotal, artifactTotal.size),
+            artifacts = artifactTotal,
+            evidence = DiaryEvidence.OBSERVED,
+            okSteps = okTotal,
+            failedSteps = failedTotal,
+            createdAt = prev?.createdAt ?: now,
+        )
+    }
+
+    /**
      * 工作区相对路径守卫（判据 16）：拒绝对路径（`/`、`\\`、盘符）与越界 `..`；
      * 合格返回归一后的相对路径，不合格返回 null（调用方丢弃并计数，不静默吞）。
      */
