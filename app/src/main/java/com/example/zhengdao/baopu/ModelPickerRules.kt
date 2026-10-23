@@ -105,6 +105,18 @@ internal object ModelPickerRules {
      * 判据只看"服务形态"，不看模型数量（数量要联网才知道，UI 不能等）：
      * 免费车道（builtinFree）与 openrouter.ai 域名都算聚合。
      */
+    /**
+     * 预设公司的**内置短名单**（2026-10-23 用户：没 Key 时预设也要能点选，不该逼人手填）。
+     * 只放官方常用款，填了 Key 会再拉全量覆盖。
+     */
+    fun presetModels(provider: Provider): List<String> = when (provider.id) {
+        "openai-compat" -> listOf("gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1")
+        "deepseek" -> listOf("deepseek-chat", "deepseek-reasoner")
+        "anthropic" -> listOf("claude-sonnet-4-5", "claude-haiku-4-5")
+        "gemini" -> listOf("gemini-2.5-flash", "gemini-2.5-pro")
+        else -> emptyList()
+    }
+
     fun isAggregate(provider: Provider): Boolean =
         provider.builtinFree || provider.baseUrl.trim().lowercase().contains("openrouter.ai")
 
