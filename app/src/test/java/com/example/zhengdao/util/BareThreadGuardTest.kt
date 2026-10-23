@@ -1,4 +1,4 @@
-﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 
 package com.example.zhengdao.util
@@ -40,6 +40,13 @@ import kotlin.text.Charsets
  * 对账单冻结创建点（`Thread` 关键字行号；第⑪批 D-1 新增心跳执行器与第⑯刀 R-25 消除
  * 存储页三处裸 Thread 后 26 个；2026-10-16 旧抱朴线清场消除 2 个后 **24 个**）。
  * 将来文件拆分/移动会让它失败——那是提醒回来更新对账单，不是 bug。
+ *
+ * **2026-10-23（第 134 批）：冻结判据从「文件:行号」改为「文件名＋该行原文」。**
+ * 动机：行号只是**排版位置**，任何在创建点之上加/删一行（import、注释、UseKtx 机械
+ * 替换）都会让它平移，于是每批都要手工回填一长串行号（见下面二十多条回填记录）。
+ * 真正的身份是「这个文件里这一行 `Thread(…)` 长什么样」——行内容变了才需要人来看。
+ * 数量收敛红线（33）与「有名 + daemon」两条纪律不变；文件移动/改名仍会让它失败，
+ * 但也只有那时才需要回填（把新文件名写进对账单即可）。
  *
  * 行号回填记录（本文件自己的规矩：平移就回填，不是新增线程）：
  * - 2026-10-14（第⑧刀 P4-1 抱朴拆分后）：SettingsStorageActivity / TerminalActivity 等平移，已回填；
@@ -269,52 +276,59 @@ class BareThreadGuardTest {
     }
 
     @Test
-    fun `对账单_2026-10-16_实测 32 处创建点`() {
+    fun `对账单_2026-10-23_文件与行内容_33 处创建点`() {
         val got = scanAppSources()
-            .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
+            .map { "${fileNameOf(it.file)}|${lineTextOf(it)}" }
             .sorted()
         val expected = listOf(
-            "AgentInstaller.kt:54",
-            "AgentManifest.kt:140",
-            "BaopuDb.kt:1370",
-            "BrowserAgentBridge.kt:76",
-            "GuardPipeline.kt:69",
-            "GuardPipeline.kt:86",
-            "KeepaliveWatcher.kt:230",
-            "KeepaliveWatcher.kt:66",
-            "KnowledgeBase.kt:176",
-            "KnowledgeBase.kt:199",
-            "KnowledgeBase.kt:223",
-            "KnowledgeBaseHints.kt:133",
-            "LlmClient.kt:1164",
-            "MainActivity.kt:405",
-            "NetSelfCheck.kt:94",
-            "OldTreeCleaner.kt:48",
-            "PreviewServer.kt:125",
-            "RootfsDownloader.kt:368",
-            "RunEngine.kt:261",
-            "SettingsDataActivity.kt:596",
-            "SettingsEnvActivity.kt:220",
-            "SettingsEnvActivity.kt:275",
-            "SettingsEnvActivity.kt:613",
-            "SettingsEnvActivity.kt:747",
-            "SubAgentCoordinator.kt:34",
-            "TerminalActivity.kt:88",
-            "TerminalActivity.kt:662",
-            "TerminalActivity.kt:931",
-            "TerminalActivity.kt:1747",
-            "TerminalActivity.kt:1807",
-            "TerminalActivity.kt:1893",
-            "ZhengdaoApp.kt:140",
-            "ZhengdaoApp.kt:82",
+            "AgentInstaller.kt|Thread {",
+            "AgentManifest.kt|Thread {",
+            "BaopuDb.kt|Thread(r, \"zd-baopu-db\").apply { isDaemon = true }",
+            "BrowserAgentBridge.kt|Thread(r, \"zd-bridge-http\").apply { isDaemon = true }",
+            "GuardPipeline.kt|Thread(r, \"zd-baopu-tool\").apply { isDaemon = true }",
+            "GuardPipeline.kt|Thread(r, \"zd-baopu-tool-read\").apply { isDaemon = true }",
+            "KeepaliveWatcher.kt|Thread(r, \"zd-keepalive-io\").apply { isDaemon = true }",
+            "KeepaliveWatcher.kt|val t = Thread {",
+            "KnowledgeBase.kt|val t = Thread({",
+            "KnowledgeBase.kt|val t = Thread({",
+            "KnowledgeBase.kt|val t = Thread({",
+            "KnowledgeBaseHints.kt|Thread(r, \"zd-kb-hints\").apply { isDaemon = true }",
+            "LlmClient.kt|Thread(r, \"zd-baopu-net\").apply { isDaemon = true }",
+            "MainActivity.kt|Thread {",
+            "NetSelfCheck.kt|val th = Thread(task, \"net-self-check-index\").apply { isDaemon = true }",
+            "OldTreeCleaner.kt|Thread(r, \"zd-rootfs-clean\").apply {",
+            "PreviewServer.kt|val t = Thread({ acceptLoop() }, \"zd-preview-http\").apply { isDaemon = true }",
+            "RootfsDownloader.kt|Thread({",
+            "RunEngine.kt|Thread(r, \"zd-baopu-run\").apply { isDaemon = true }",
+            "SettingsDataActivity.kt|Thread {",
+            "SettingsEnvActivity.kt|Thread {",
+            "SettingsEnvActivity.kt|Thread {",
+            "SettingsEnvActivity.kt|Thread {",
+            "SettingsEnvActivity.kt|Thread {",
+            "SubAgentCoordinator.kt|Thread(r, \"zd-baopu-sub\").apply { isDaemon = true }",
+            "TerminalActivity.kt|Thread(r, \"zd-paste\").apply { isDaemon = true }",
+            "TerminalActivity.kt|Thread {",
+            "TerminalActivity.kt|Thread {",
+            "TerminalActivity.kt|Thread {",
+            "TerminalActivity.kt|Thread {",
+            "TerminalActivity.kt|val worker = Thread({",
+            "ZhengdaoApp.kt|Thread {",
+            "ZhengdaoApp.kt|Thread {",
         )
         assertEquals(
-            "裸 Thread 创建点与 2026-10-15 对账单不符——新增/移动了线程？" +
-                "按纪律补 有名+daemon 后回来更新对账单（它不是 bug，是提醒）",
+            "裸 Thread 创建点与 2026-10-23 对账单（文件名＋行内容）不符——新增/删除了线程，" +
+                "或某条创建点那一行被改了？按纪律补 有名+daemon 后回来更新对账单（它不是 bug，是提醒）",
             expected.sorted(),
             got,
         )
     }
+
+    /** 文件名（对账单只写文件名，不写整条路径；移动文件时会红，那正是要回填的时刻）。 */
+    private fun fileNameOf(path: String): String = path.substringAfterLast('\\').substringAfterLast('/')
+
+    /** 创建点那一行的原文（冻结判据：行号会平移，行内容不会）。 */
+    private fun lineTextOf(site: Site): String =
+        File(site.file).readLines(Charsets.UTF_8).getOrElse(site.line - 1) { "" }.trim()
 
     // ── 扫描器 ──
     //
