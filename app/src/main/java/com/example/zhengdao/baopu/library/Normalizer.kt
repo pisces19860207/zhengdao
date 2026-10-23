@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据的公开标准：UTF-8（RFC 3629）／UTF-8 BOM（EF BB BF，解码为 U+FEFF）；
 // java.nio.charset.CharsetDecoder 的 REPORT 动作语义（JDK 标准库）。

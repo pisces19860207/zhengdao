@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 独立开发声明：本脚本为本项目从零编写。
+# 独立开发声明：本脚本为本项目原创。
 #
 # 用途：对**环境包索引** `rootfs-index.json` 做 Ed25519 签名，产出同名 `.sig`（base64）。
 # 背景：`rootfs/agents.json` 自 v1.x 起就有 Ed25519 签名（App 侧先验签后解析），

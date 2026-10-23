@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =====================================================================
 # 证道（Zhengdao）—— Debian 13.7 (trixie) RootFS 构建脚本
-# 独立开发声明：本脚本为本项目从零编写，未参考任何第三方同类项目的构建脚本。
+# 独立开发声明：本脚本为本项目原创，不含对第三方源码的拷贝。
 # 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 # （参考资料仅为官方工具文档：debootstrap(8)、deb.nodesource.com 官方安装说明、
 #   GitHub releases（astral-sh/uv）、zstd/tar 官方文档。）
