@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单第一百四十批 §测试（3 步偏离弹卡 / 计划变更过卡 / 负例）。
 //
@@ -326,4 +326,28 @@ class PlanGuardTest {
         assertTrue("卡面调用一字不动（两键结构是她要的）", askIdx > 0)
     }
 
+
+    // ── 2026-10-23 真机：排版差异不再重复弹卡（只归一化排版，不碰词义）──
+
+    @Test
+    fun `排版差异_同一版改动_指纹相同`() {
+        val a = PlanChange(
+            kind = PlanChangeKind.STRUCTURE,
+            added = listOf("1. list files", "2. write report"),
+            removed = listOf("1 list files", "2 Write report"),
+        )
+        val b = PlanChange(
+            kind = PlanChangeKind.STRUCTURE,
+            added = listOf("list files", "write report."),
+            removed = listOf("- list files", "write REPORT"),
+        )
+        assertEquals("编号/标点/大小写差异应视作同一版", a.signature, b.signature)
+    }
+
+    @Test
+    fun `换了词义_指纹必须不同`() {
+        val a = PlanChange(kind = PlanChangeKind.STRUCTURE, added = listOf("删除备份"), removed = emptyList())
+        val b = PlanChange(kind = PlanChangeKind.STRUCTURE, added = listOf("归档备份"), removed = emptyList())
+        assertNotEquals("换了一件事不能被归一化吃掉", a.signature, b.signature)
+    }
 }

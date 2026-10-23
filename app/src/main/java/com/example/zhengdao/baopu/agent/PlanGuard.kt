@@ -53,12 +53,36 @@ internal data class PlanChange(
      * 这份改动的指纹：同一版计划被原样重发 ⇒ 同一个串（161 决定登记的键）。
      *
      * 条目按「长度＃原文」编码后再拼，所以文字里出现 `/`、`#`、`]` 都不会串号。
-     * **刻意不做模糊归一化**——归一化就是把「换了一件事」误判成「换了个说法」。
+     *
+     * 2026-10-23 真机补正：原来**逐字比较**，但模型每次重写都会变排版
+     * （「1. list files」→「1 list files」），于是同一件事反复弹卡。现在只做
+     * **排版归一化**——去掉开头编号/项目符号、折叠空白、去尾标点、忽略大小写；
+     * 不碰词义（「删除备份」与「归档备份」仍是两份改动，该问的照问）。
      */
     val signature: String
         get() = "A[" + encode(added) + "]R[" + encode(removed) + "]"
 
-    private fun encode(items: List<String>) = items.joinToString("/") { "${it.length}#$it" }
+    private fun encode(items: List<String>) = items.joinToString("/") {
+        val normalized = normalizeForSignature(it)
+        "${normalized.length}#$normalized"
+    }
+
+    /** 排版归一化（不改变语义）：编号/项目符号 → 空白折叠 → 去尾标点 → 小写。 */
+    private fun normalizeForSignature(raw: String): String {
+        var s = raw.trim()
+        // 「1.」「1、」「1)」「- 」「* 」「• 」「一、」这类前缀，反复剥（模型会叠两层）
+        while (true) {
+            val stripped = s.replace(
+                Regex("^(?:\\d+\\s*[.、)∶:：]?|[-*•·]\\s*|[一二三四五六七八九十]+\\s*[、.])\\s*"),
+                "",
+            ).trim()
+            if (stripped == s) break
+            s = stripped
+        }
+        s = s.replace(Regex("\\s+"), " ")
+            .trimEnd('.', '。', ';', '；', ',', '，', ':', '：', '!', '！', '?', '？')
+        return s.lowercase()
+    }
 }
 
 /** 计划结构变更的纯判据（零依赖，JVM 直测）。 */
