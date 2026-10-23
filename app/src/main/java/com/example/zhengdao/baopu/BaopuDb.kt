@@ -1399,6 +1399,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV15Migration(db)
         applyV16Migration(db)
         applyV17Migration(db)
+        applyV18Migration(db)
     }
 
     /**
@@ -1434,6 +1435,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 15) applyV15Migration(db)
         if (oldVersion < 16) applyV16Migration(db)
         if (oldVersion < 17) applyV17Migration(db)
+        if (oldVersion < 18) applyV18Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1635,6 +1637,21 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         )""",
     )
 
+    /**
+     * v18 迁移体（157 补充，用户 2026-10-23）：工作区外访问的**会话级授权**与**逐条审计**。
+     *
+     * 两张表（`workspace_grant` / `workspace_audit`）＋两条索引，DDL 本体在
+     * [WorkspaceGrantSql.DDL]（同包另一个文件）。为什么 DDL 不放本文件：`zd-baopu-db`
+     * 创建点冻在 **:1370**，`BaopuSql` 在它之上，往里加行会平移对账单——本迁移体与
+     * v17 同一手法，落在创建点**之下**，加行零位移。
+     *
+     * 老库可读性：升上来只多两张空表；`session`/`message`/`run_log` 一列不动 ⇒ 老会话照开，
+     * 老用户第一次越界照旧被问一次（没有历史放行行 ＝ 没批过）。
+     */
+    private fun applyV18Migration(db: SQLiteDatabase) {
+        WorkspaceGrantSql.DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1672,8 +1689,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  开跑事务删行；带 `ON DELETE CASCADE`）。
          *  v16 = 第一百二十七批（`sub_task` 多 Agent 协作审计表：父子 id/状态/尝试/
          *  步数/起止/原因/结果摘要，带 `ON DELETE CASCADE` 与 task_id UNIQUE）。
-         *  v17 = 第一百四十七批（`diary_index` 情景记忆索引：文件是真相，索引只是加速）。 */
-        const val VERSION = 17
+         *  v17 = 第一百四十七批（`diary_index` 情景记忆索引：文件是真相，索引只是加速）。
+         *  v18 = 157 补充（`workspace_grant` 会话级放行 ＋ `workspace_audit` 越界审计：
+         *  工作区外授权从「一次运行问一次」改成「一次会话问一次」，按 sessionId 落库）。 */
+        const val VERSION = 18
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

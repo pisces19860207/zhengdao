@@ -467,29 +467,70 @@ internal class GuardPipeline(
                     // 第一百五十六批：把「硬拒」改成「问一次，用户同意就做」——判据本体在
                     // `WorkspaceAccess`（四象限纯函数）；开关关 ⇒ 原文拒绝（文案逐字不动）；
                     // 开关开且未授权 ⇒ Ask（弹一次确认卡）；开关开且已授权/批准路径 ⇒ 放行。
+                    // 157 补充（用户 2026-10-23）：粒度是**一次会话问一次**（账本按 sessionId
+                    // 落库），且**每次越界都记一条审计**（时间/路径/会话，见 `auditOutside`）。
                     val on = runCatching { allowOutside() }.getOrDefault(false)
                     if (!on) {
+                        auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.DENIED)
                         val reason = "路径越界被拒：$raw 不在工作区（${root.absolutePath}）内。" +
                             "只读工作区里的文件；要读外面的，先把它复制进工作区。"
                         log("抱朴管线：拒绝越界 $toolName $raw（root=${root.absolutePath}）")
                         return Guarded.No(reason)
                     }
-                    if (granting || com.example.zhengdao.baopu.WorkspaceGrants.granted(root)) {
-                        if (!com.example.zhengdao.baopu.WorkspaceGrants.granted(root)) {
+                    val already = com.example.zhengdao.baopu.WorkspaceGrants.granted(root)
+                    if (granting) {
+                        // 用户在确认卡上点了批准 ⇒ 记账（持久化到本会话；已记过就只更新时戳，
+                        // 不重复写库）——「同一次越界只审一条，处置写清是新批准还是早已放行」。
+                        if (!already) {
                             com.example.zhengdao.baopu.WorkspaceGrants.grant(root)
-                            log("抱朴管线：用户已授权工作区外（root=${root.absolutePath}），本运行不再重复询问")
+                            log("抱朴管线：用户已授权工作区外（root=${root.absolutePath}），本会话不再重复询问")
                         }
+                        auditOutside(
+                            root, v.target, toolName,
+                            if (already) com.example.zhengdao.baopu.OutsideDecision.ALREADY
+                            else com.example.zhengdao.baopu.OutsideDecision.APPROVED,
+                        )
                         grantedRaw += raw
                         newArgs = JSONObject(newArgs.toString()).put(key, v.target.absolutePath)
                         continue
                     }
-                    log("抱朴管线：工作区外 $toolName $raw 需用户确认（一次运行只问一次）")
+                    if (already) {
+                        auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ALREADY)
+                        grantedRaw += raw
+                        newArgs = JSONObject(newArgs.toString()).put(key, v.target.absolutePath)
+                        continue
+                    }
+                    auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ASKED)
+                    log("抱朴管线：工作区外 $toolName $raw 需用户确认（一次会话问一次）")
                     return Guarded.Ask(call)
                 }
             }
         }
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs), grantedRaw)
+    }
+
+    /**
+     * 越界审计（157 补充第 4 条：**每次越界逐条记**，时间/路径/会话）。
+     *
+     * 为什么落在这里而不是各工具里：`guardPath` 是工具带路径参数的**唯一入口**
+     * （156 批就把越界判据收口在这一段），审计跟着判据走，才不会出现「有的工具记、有的不记」。
+     * 工具里的 `workspaceBoundaryCheck` 是第二道自检（生产不可达 ASK 分支），**不再重复记**
+     * ——一次越界一条审计，不许账上多出重影。
+     */
+    private fun auditOutside(
+        root: File,
+        target: File,
+        toolName: String,
+        decision: com.example.zhengdao.baopu.OutsideDecision,
+    ) {
+        val a = com.example.zhengdao.baopu.WorkspaceGrants.audit(
+            root = root,
+            path = target.absolutePath,
+            decision = decision,
+            tool = toolName,
+        )
+        log(com.example.zhengdao.baopu.WorkspaceGrantRules.auditLine(a))
     }
 
     private fun resolve(root: File, raw: String): File =
