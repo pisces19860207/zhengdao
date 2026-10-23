@@ -271,6 +271,14 @@ internal object ContextAssembler {
          * **没选上的只是不注入**（判据 5）。
          */
         diaryEntries: List<DiaryEntry> = emptyList(),
+        /**
+         * 157：日记检索查询（账 §B-待做 149；null/不活跃 ⇒ 不检索，挑选行为与本参数存在之前逐字相同）。
+         *
+         * 由调用方**每轮算一次**再传进来（[DiaryRecall.queryFromInput] 是纯函数、不读时钟）——
+         * **不许在这里从 [current] 现提**：current 在工具循环里每步重算，中途换查询等于换
+         * EPISODE 段内容，打破同会话前缀稳定（147 判据 4 的缓存前提）。
+         */
+        diaryQuery: DiaryRecall.DiaryQuery? = null,
         // ── 视觉通道（第二十四批 A 段）──
         /** 本轮附件里**是图片**的那些（已由调用方读成 data URL；[VisionRules.ImagePayload] 不含路径）。 */
         images: List<VisionRules.ImagePayload> = emptyList(),
@@ -337,8 +345,9 @@ internal object ContextAssembler {
         } else if (recallNote.isNotEmpty()) {
             segments += PromptSegment(SegmentKind.MEMORY, recallNote)
         }
-        // ── 情景记忆（日记）段（147 ②）：预算内挑选＋证据档标注；只是不注入，文件一条不删（判据 5） ──
-        val diaryRecall = DiaryRecall.recall(diaryEntries)
+        // ── 情景记忆（日记）段（147 ②＋157）：预算内挑选＋证据档标注；只是不注入，文件一条不删（判据 5） ──
+        // 157：带查询时检索命中的条目在预算内提前（月度摘要仍恒最前）；预算与段序不动。
+        val diaryRecall = DiaryRecall.recall(diaryEntries, diaryQuery)
         if (diaryRecall.selected.isNotEmpty()) {
             val note = if (diaryRecall.omitted > 0) {
                 "\n（另有 ${diaryRecall.omitted} 条日记未注入：" +
