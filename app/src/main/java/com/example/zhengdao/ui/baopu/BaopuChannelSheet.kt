@@ -161,6 +161,9 @@ internal fun BaopuChannelSheet(
     // 原文只进这一次函数调用，不进日志、不进 state 之外的任何地方（红线）。
     val keyForFetch = addKeyText.trim().ifEmpty { ProviderPrefs.storedKey(ctx, selected).orEmpty() }
     val isFreeLane = preset?.builtinFree == true
+    // 第一百五十三批：只有聚合服务（OpenRouter 系）保留搜索与免费清单入口；
+    // 预设公司（OpenAI/DeepSeek/Anthropic/Gemini）给短名单，不出现搜索框。
+    val aggregate = preset != null && ModelPickerRules.isAggregate(preset)
     val company = preset?.label ?: ModelPickerRules.companyOfHost(effectiveBase)
     val customValid = !isCustom || (effectiveBase.startsWith("https://") && modelText.trim().isNotEmpty())
 
@@ -249,7 +252,7 @@ internal fun BaopuChannelSheet(
         fetching = false
     }
 
-    val filtered = ModelPickerRules.filter(query, entries)
+    val filtered = if (aggregate) ModelPickerRules.filter(query, entries) else entries
     val visible = filtered.take(MAX_VISIBLE_ROWS)
     val pool = remember(poolEpoch, selected) { ProviderPrefs.keyPool(ctx, selected) }
     val now = System.currentTimeMillis()
@@ -331,17 +334,19 @@ internal fun BaopuChannelSheet(
 
             // ── 二、模型（搜索框 ＋ 清单 ＋ 手填兜底；③＋补充节 §一） ────────
             GroupLabel("模型")
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                // 输入即过滤：没有"搜索"按钮，也不该有（补充节 §一：不是可选项）。
-                label = { Text("搜索模型（输入 free 只看免费）") },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp),
-            )
+            if (aggregate) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    // 输入即过滤：没有"搜索"按钮，也不该有（补充节 §一：不是可选项）。
+                    label = { Text("搜索模型（输入 free 只看免费）") },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp),
+                )
+            }
             when {
                 entries.isEmpty() && fetching -> Footnote("正在拉取模型列表…")
                 entries.isEmpty() && pullNote != null -> Footnote(pullNote)
@@ -370,16 +375,26 @@ internal fun BaopuChannelSheet(
                         )
                     }
                     if (filtered.size > visible.size) {
-                        Footnote("共 ${filtered.size} 条，这里只列前 ${visible.size} 条——用上面的搜索框缩小范围")
+                        Footnote(
+                            if (aggregate) {
+                                "共 ${filtered.size} 条，这里只列前 ${visible.size} 条——用上面的搜索框缩小范围"
+                            } else {
+                                "共 ${filtered.size} 条，这里只列前 ${visible.size} 条"
+                            },
+                        )
                     }
                 }
             }
             if (fetching && entries.isNotEmpty()) Footnote("正在更新模型列表…")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SmallAction("刷新") { refreshTick++ }
-                // ①「跳转链接（玄览内打开）」：只走 openInXuanlan 那一条 B 路径
-                // （pendingUrl ＋ requestBrowserTab），不新开 WebView、不落系统浏览器。
-                SmallAction("看全部免费模型") { openInXuanlan(ModelPickerRules.OPENROUTER_FREE_MODELS_URL) }
+                if (aggregate) {
+                    // ①「跳转链接（玄览内打开）」：只走 openInXuanlan 那一条 B 路径
+                    // （pendingUrl ＋ requestBrowserTab），不新开 WebView、不落系统浏览器。
+                    SmallAction("看全部免费模型") { openInXuanlan(ModelPickerRules.OPENROUTER_FREE_MODELS_URL) }
+                    // 第一百五十三批：聚合服务的 Key 入口（玄览内打开，不新开 WebView）。
+                    SmallAction("去拿 Key") { openInXuanlan(ModelPickerRules.OPENROUTER_KEYS_URL) }
+                }
             }
             OutlinedTextField(
                 value = modelText,

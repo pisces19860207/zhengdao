@@ -143,7 +143,7 @@ class ModelPickerGateTest {
         val block = between(
             sheetRaw,
             "LaunchedEffect(selected, effectiveBase, keyForFetch, refreshTick, manualModelOnly)",
-            "val filtered = ModelPickerRules.filter(query, entries)",
+            "val filtered = if (aggregate) ModelPickerRules.filter(query, entries) else entries",
         )
         assertTrue("拉的是当前这一家的地址", block.contains("effectiveBase"))
         assertFalse("拉取段里不许出现 isCustom（那样就退回只拉自定义）", block.contains("isCustom"))

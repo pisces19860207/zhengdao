@@ -726,6 +726,7 @@
     <!-- ── Baopu screen (cut 1, 2026-10-16; keys use the baopu_ prefix) ── -->
     <string name="baopu_input_hint">Tell Baopu what to do…</string>
     <string name="baopu_send">Send</string>
+    <string name="baopu_send_queue">Send · queue</string>
     <string name="baopu_stop">Stop</string>
     <plurals name="baopu_queue_count">
         <item quantity="one">%1$d queued</item>

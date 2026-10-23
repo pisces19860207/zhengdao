@@ -170,7 +170,10 @@ class MultitaskWiringTest {
         )
         // 跑着也能输入/发送（不再 enabled = !busy），否则「排队」根本没有入口。
         assertFalse("跑着时输入框不许禁用", composer.contains("enabled = !busy"))
-        assertTrue("跑着时发送键必须还在", composer.contains("Text(stringResource(R.string.baopu_send))"))
+        assertTrue(
+            "跑着时有草稿要能发送（排队）：button 文案必须有三态里的「发送·排队」",
+            composer.contains("R.string.baopu_send_queue"),
+        )
         assertTrue("跑着时有停止键", composer.contains("onClick = { onStop() }"))
     }
 
