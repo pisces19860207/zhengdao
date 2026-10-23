@@ -2,18 +2,19 @@
 //
 // 依据：抱朴线「工具补强」（2026-10-17，用户口径「那对话的时候也可以让抱朴自己搬吧？」）。
 // 为什么需要它：`write_file` 能写新文件，却挪不动旧文件——收料后半程
-//（把 投递/ 里看过的书归到 整理/书目/、把书改名、建目录）只能靠人手动点文件管理器。
+//（把 投递/ 里看过的书归到 产物/书目/、把书改名、建目录）只能靠人手动点文件管理器。
 //
 // 五条硬纪律（逐条对应口径）：
-// 1. 只在工作区根内搬，越界即拒（PathGuard.isInside 双保险，纯函数层可测）；
+// 1. 越界走 workspaceBoundaryCheck（156 批统一判据，纯函数层可测）；备份区禁区另用 PathGuard 硬拒；
 // 2. 同分区优先 rename（原子，不留半截）；跨分区只能复制 ⇒ **不自动删源**，
-//    把源文件记进 `资料库/整理/_待删除清单.md`，由用户自己确认后删（与刀 2 的「待删除清单」同一口径）；
+//    把源文件记进 `产物/_待删除清单.md`，由用户自己确认后删（与刀 2 的「待删除清单」同一口径）；
 // 3. **绝不覆盖**：撞名不同内容 ⇒ 加 sha 后缀让路；内容相同（sha 一致）⇒ 幂等回「已搬」；
 // 4. 只搬**文件**，不搬目录（目录搬动一步能毁掉半个资料库，等有需求再单开一刀）；
 // 5. 权限 CONFIRM——每次搬都要用户看一眼 from → to。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
@@ -27,7 +28,7 @@ import java.security.MessageDigest
  * 留下「两边都有」或「两边都没有」，后者是资料丢失。
  *
  * 为什么跨分区不删源：删除是用户明确不让自动化的动作（刀 2 铁律）。复制成功后把源路径写进
- * `资料库/整理/_待删除清单.md`，用户自己在文件管理器里点删除——这一条与刀 2 的「搬 = 复制进
+ * `产物/_待删除清单.md`，用户自己在文件管理器里点删除——这一条与刀 2 的「搬 = 复制进
  * 私有 原始/ ＋ 对投递原件出待删除清单」完全同源。
  *
  * 为什么撞名加 sha 而不是覆盖：覆盖一个已有文件是不可逆的（旧内容没有备份点），
@@ -39,11 +40,12 @@ internal object MovePathTool {
     const val ARG_TO = "to"
     const val ARG_CREATE_DIRS = "create_dirs"
 
-    /** 待删除清单（工作区相对路径；用户可见，也与刀 2 的出清单口径一致）。 */
-    const val PENDING_LIST_REL = "资料库/整理/_待删除清单.md"
+    /** 待删除清单（工作区相对路径；用户可见，也与刀 2 的出清单口径一致）。
+     *  157 目录收口后落 `产物/`（旧 `资料库/整理/` 已迁走）。 */
+    const val PENDING_LIST_REL = BaopuKernel.Data.DIR_PRODUCTS + "/_待删除清单.md"
 
-    /** 备份/禁区目录名（与 write_file、edit_file 同一处；搬东西不许把备份区当源或目标）。 */
-    const val BACKUP_DIR_NAME = ".baopu-bak"
+    /** 备份/禁区目录名（157 起＝可见的 `备份/`；与 write_file、edit_file 同一处；搬东西不许把备份区当源或目标）。 */
+    const val BACKUP_DIR_NAME = BaopuKernel.Data.DIR_BACKUP
 
     /** sha 后缀取前 8 位（可读性与唯一性够用）。 */
     private const val SHA_SUFFIX_LEN = 8
@@ -51,7 +53,7 @@ internal object MovePathTool {
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "move_path",
         description = "在工作区内搬动或改名一个文件（from → to），也可以顺带建目标目录。" +
-            "同分区用 rename（原子）；跨分区只复制、把源文件记进「资料库/整理/_待删除清单.md」，" +
+            "同分区用 rename（原子）；跨分区只复制、把源文件记进「$PENDING_LIST_REL」，" +
             "不会自动删源。绝不覆盖：撞名不同内容自动加 sha 后缀让路，内容相同则视为已搬。" +
             "只搬文件不搬目录；确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
         inputSchema = jsonObjectOf(
@@ -59,11 +61,11 @@ internal object MovePathTool {
             "properties" to jsonObjectOf(
                 ARG_FROM to jsonObjectOf(
                     "type" to "string",
-                    "description" to "源文件（相对工作区根，如 资料库/投递/某书.txt）",
+                    "description" to "源文件（相对工作区根，如 投递/某书.txt）",
                 ),
                 ARG_TO to jsonObjectOf(
                     "type" to "string",
-                    "description" to "目标路径（相对工作区根；末段就是新文件名，如 资料库/整理/武侠/某书.txt）",
+                    "description" to "目标路径（相对工作区根；末段就是新文件名，如 产物/武侠/某书.txt）",
                 ),
                 ARG_CREATE_DIRS to jsonObjectOf(
                     "type" to "boolean",

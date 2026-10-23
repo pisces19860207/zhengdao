@@ -3,13 +3,22 @@
 // 第一百五十六批管线层测试：工作区外「硬拒 → 问一次」在 GuardPipeline ② 段的行为。
 // 判据对应派工单 156 §3：
 // - 工具级：工作区外调用 ⇒ 弹一次确认（NeedsConfirm），同意后成功；
-// - 负例：开关关＋越界 ⇒ 仍拒（原文）；同一运行第二次越界 ⇒ 不再弹卡；跨运行 ⇒ 重新弹；
+// - 负例：开关关＋越界 ⇒ 仍拒（原文）；同一会话第二次越界 ⇒ 不再弹卡；换会话 ⇒ 重新弹；
 // - 红线：原件区只读不受「已授权」影响；批准后回灌「用户已授权工作区外」。
+//
+// 157 补充（用户 2026-10-23）新增三条：
+// - 同会话跨运行仍放行（156 的 beginRun 清账已撤）；
+// - 换会话（新 sessionId）重新弹卡；
+// - 每次越界都记一条审计（时间/路径/会话＋处置），撤销后再越界变成「询问」。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.InMemoryWorkspaceGrantStore
+import com.example.zhengdao.baopu.OutsideDecision
+import com.example.zhengdao.baopu.WorkspaceGrantRules
 import com.example.zhengdao.baopu.WorkspaceGrants
 import org.json.JSONObject
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -22,6 +31,7 @@ class WorkspaceOpenPipelineTest {
 
     private lateinit var root: File
     private val lines = mutableListOf<String>()
+    private val ledger = InMemoryWorkspaceGrantStore()
 
     /** 直接线程的 runner（与 GuardPipelineTest 同款：单测里不需要真线程池）。 */
     private fun directRunner() = ToolRunner(Executors.newSingleThreadExecutor())
@@ -53,12 +63,14 @@ class WorkspaceOpenPipelineTest {
     @Before
     fun setUp() {
         root = Files.createTempDirectory("ws-open").toFile()
-        WorkspaceGrants.beginRun()
+        WorkspaceGrants.resetForTest()
+        WorkspaceGrants.install(ledger)
+        WorkspaceGrants.enterSession(SESSION_ID)
     }
 
     @After
     fun tearDown() {
-        WorkspaceGrants.beginRun()
+        WorkspaceGrants.resetForTest()
     }
 
     private fun outsideFile(): File =
@@ -98,25 +110,84 @@ class WorkspaceOpenPipelineTest {
     }
 
     @Test
-    fun `同一运行第二次越界_不再弹卡直接执行`() {
+    fun `同一会话第二次越界_不再弹卡直接执行`() {
         val p = pipeline({ true })
         val path = outsideFile().absolutePath
         assertTrue(p.execute(call("read_file", path), { _, _ -> null }) is GuardPipeline.Result.NeedsConfirm)
-        // 用户点批准（记账）之后，同运行的第二次越界不再弹卡
+        // 用户点批准（记账）之后，同会话的第二次越界不再弹卡
         p.executeApproved(call("read_file", path), { _, _ -> null })
         val r = p.execute(call("read_file", path), { _, _ -> null })
-        assertTrue("一次运行只问一次", r is GuardPipeline.Result.Done)
+        assertTrue("一次会话只问一次", r is GuardPipeline.Result.Done)
     }
 
     @Test
-    fun `跨运行_beginRun清账_重新弹卡`() {
+    fun `同会话跨运行_仍放行_不再按运行清账`() {
         val p = pipeline({ true })
         val path = outsideFile().absolutePath
         assertTrue(p.execute(call("read_file", path), { _, _ -> null }) is GuardPipeline.Result.NeedsConfirm)
         p.executeApproved(call("read_file", path), { _, _ -> null })
-        WorkspaceGrants.beginRun()
+        // 重新进同一个会话（＝这个会话的下一条消息）⇒ 不弹卡
+        WorkspaceGrants.enterSession(SESSION_ID)
         val r = p.execute(call("read_file", path), { _, _ -> null })
-        assertTrue("新一轮必须重新问", r is GuardPipeline.Result.NeedsConfirm)
+        assertTrue("同会话跨运行仍放行", r is GuardPipeline.Result.Done)
+    }
+
+    @Test
+    fun `换会话_新sessionId重新弹卡`() {
+        val p = pipeline({ true })
+        val path = outsideFile().absolutePath
+        assertTrue(p.execute(call("read_file", path), { _, _ -> null }) is GuardPipeline.Result.NeedsConfirm)
+        p.executeApproved(call("read_file", path), { _, _ -> null })
+        WorkspaceGrants.enterSession(SESSION_ID + 1)
+        val r = p.execute(call("read_file", path), { _, _ -> null })
+        assertTrue("新会话必须重新问", r is GuardPipeline.Result.NeedsConfirm)
+    }
+
+    @Test
+    fun `撤销放行后再越界_重新弹卡`() {
+        val p = pipeline({ true })
+        val path = outsideFile().absolutePath
+        assertTrue(p.execute(call("read_file", path), { _, _ -> null }) is GuardPipeline.Result.NeedsConfirm)
+        p.executeApproved(call("read_file", path), { _, _ -> null })
+        WorkspaceGrants.revoke(SESSION_ID)
+        val r = p.execute(call("read_file", path), { _, _ -> null })
+        assertTrue("撤销后下次越界重新问", r is GuardPipeline.Result.NeedsConfirm)
+    }
+
+    // ── 审计：每次越界逐条记（时间/路径/会话）──────────────────────────
+
+    @Test
+    fun `审计_每次越界一条_三列齐备且处置写清`() {
+        val p = pipeline({ true })
+        val path = outsideFile().absolutePath
+        p.execute(call("read_file", path), { _, _ -> null }) // ① 询问
+        p.executeApproved(call("read_file", path), { _, _ -> null }) // ② 新批准
+        p.execute(call("read_file", path), { _, _ -> null }) // ③ 已放行
+
+        val audits = ledger.audits()
+        assertEquals("三次越界 ⇒ 三条审计（不许合并、不许漏）", 3, audits.size)
+        assertEquals(
+            "处置要能分清「问过 / 刚批 / 早已放行」",
+            listOf(OutsideDecision.ASKED, OutsideDecision.APPROVED, OutsideDecision.ALREADY),
+            audits.map { it.decision },
+        )
+        audits.forEach { a ->
+            assertTrue("时间必须记（毫秒时间戳 > 0）", a.at > 0)
+            assertEquals("会话必须记", SESSION_ID, a.sessionId)
+            assertEquals("路径必须是解析后的绝对路径", File(path).canonicalPath, File(a.path).canonicalPath)
+            assertEquals("根要记成归一后的键", WorkspaceGrantRules.rootKey(root), a.rootPath)
+            assertEquals("工具名要记", "read_file", a.tool)
+        }
+    }
+
+    @Test
+    fun `审计_开关关的拒绝也记一条`() {
+        val p = pipeline({ false })
+        val path = outsideFile().absolutePath
+        assertTrue(p.execute(call("read_file", path), { _, _ -> null }) is GuardPipeline.Result.Rejected)
+        val audits = ledger.audits()
+        assertEquals("拒绝也是一次越界，必须留痕", 1, audits.size)
+        assertEquals(OutsideDecision.DENIED, audits[0].decision)
     }
 
     // ── 红线：原件区只读、批准 ≠ 绕护栏 ─────────────────────────────────
@@ -140,5 +211,9 @@ class WorkspaceOpenPipelineTest {
         assertTrue("弹卡前有留痕", lines.any { it.contains("需用户确认") })
         p.executeApproved(call("read_file", path), { _, _ -> null })
         assertTrue("放行时有留痕", lines.any { it.contains("已授权工作区外") })
+    }
+
+    private companion object {
+        const val SESSION_ID = 77L
     }
 }

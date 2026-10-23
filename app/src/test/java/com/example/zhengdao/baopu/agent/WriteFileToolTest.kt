@@ -135,7 +135,7 @@ class WriteFileToolTest {
         val bak = File(root, WriteFileTool.BACKUP_DIR_NAME).listFiles()!!.single()
         assertEquals("旧内容", bak.readText())
         assertTrue(bak.name.contains("20261017-120000"))
-        assertTrue((r as ToolOutcome.Ok).text.contains(".baopu-bak/"))
+        assertTrue((r as ToolOutcome.Ok).text.contains("${WriteFileTool.BACKUP_DIR_NAME}/"))
     }
 
     @Test
@@ -152,15 +152,15 @@ class WriteFileToolTest {
     @Test
     fun `备份区不许写_双保险`() {
         setup()
-        val r = write(".baopu-bak/x.txt", content = "y", overwrite = true)
+        val r = write("备份/x.txt", content = "y", overwrite = true)
         assertTrue("备份区必须拒写：$r", r is ToolOutcome.Failed)
-        assertFalse(File(root, ".baopu-bak/x.txt").exists())
+        assertFalse(File(root, "备份/x.txt").exists())
     }
 
     @Test
     fun `目标恰为备份目录本身也拒`() {
         setup()
-        val r = write(".baopu-bak", content = "y", overwrite = true)
+        val r = write("备份", content = "y", overwrite = true)
         assertTrue(r is ToolOutcome.Failed)
     }
 

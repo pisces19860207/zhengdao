@@ -6,12 +6,14 @@
 //
 // 四条硬纪律：
 // 1. 权限 CONFIRM——改文件必须过用户那一下（与 write_file 同口径）；
-// 2. 路径必须过 PathGuard.isInside(工作区)，越界即拒（纯函数层自检，JVM 直测）；
-// 3. 写之前先把旧版本备份到 <工作区>/.baopu-bak/（备份失败 ⇒ 放弃本次修改）；
+// 2. 路径过 workspaceBoundaryCheck（156 批统一判据；工作区外要用户批准），
+//    纯函数层自检、JVM 直测；备份区等禁区另用 PathGuard 硬拒；
+// 3. 写之前先把旧版本备份到 <工作区>/备份/（157 起可见化，原 .baopu-bak；备份失败 ⇒ 放弃本次修改）；
 // 4. 单次提交 ≤ 200 行、只改文本、**无删除能力**（不提供 delete 参数，也不删行以外的任何东西）。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
@@ -56,15 +58,15 @@ internal object EditFileTool {
     /** 二进制嗅探只看开头这么多字符。 */
     private const val SNIFF_CHARS = 8 * 1024
 
-    /** 备份目录名（与 write_file 同一个；用户可见、可自己翻）。 */
-    const val BACKUP_DIR_NAME = ".baopu-bak"
+    /** 备份目录名（与 write_file 同一个；用户可见、可自己翻）。157 起＝`备份/`。 */
+    const val BACKUP_DIR_NAME = BaopuKernel.Data.DIR_BACKUP
 
     /** 构造注册用 Spec。 */
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "edit_file",
         description = "按行改一个已有的文本文件：替换第 a–b 行、在某行后插入、或追加到末尾。" +
             "只提交要改的那几行（单次 ≤ $MAX_EDIT_LINES 行），不必整篇重写；" +
-            "写前自动把旧版本备份到 .baopu-bak/。行号从 1 起（与 read_file 输出一致）。" +
+            "写前自动把旧版本备份到 $BACKUP_DIR_NAME/。行号从 1 起（与 read_file 输出一致）。" +
             "确认由 App 弹确认卡完成（用户点头才落盘，不点作废）——直接调用即可，" +
             "不要在回复里先问一句。本工具没有删除能力。",
         inputSchema = jsonObjectOf(
@@ -72,7 +74,7 @@ internal object EditFileTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的文件路径（如 资料库/整理/设定.md）",
+                    "description" to "相对工作区根的文件路径（如 产物/设定.md）",
                 ),
                 ARG_OP to jsonObjectOf(
                     "type" to "string",
