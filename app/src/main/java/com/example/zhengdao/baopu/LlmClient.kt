@@ -332,10 +332,11 @@ internal object LlmWire {
                 }
                 put("contents", contents)
                 if (tools != null && tools.length() > 0) {
+                    val decls = geminiToolDecls(tools)
                     put(
                         "tools",
                         JSONArray().put(
-                            JSONObject().put("functionDeclarations", geminiToolDecls(tools)),
+                            JSONObject().put("functionDeclarations", decls),
                         ),
                     )
                 }
@@ -354,7 +355,16 @@ internal object LlmWire {
                 val d = JSONObject()
                     .put("name", fn.optString("name"))
                     .put("description", fn.optString("description"))
-                fn.optJSONObject("parameters")?.let { d.put("parameters", sanitizeSchema(it)) }
+                fn.optJSONObject("parameters")?.let { schema ->
+                    val clean = sanitizeSchema(schema)
+                    // 2026-10-23 真机（Gemini 3.0 Flash Preview）：`parameters`（OpenAPI 风格）
+                    // 模型不认——我们发过去的 capabilities 参数表是完整的（日志 `[gemini-decls]`
+                    // 逐字可证），模型仍回 `{"items":[...]}` 而不是 `{"enable":[...]}`。
+                    // 改发 `parametersJsonSchema`（Gemini 也吃的 JSON Schema 形态，字段同名同义），
+                    // 两种都带上由服务端按支持的取：老模型走 parameters，新模型走 JsonSchema。
+                    // 只发 JsonSchema（两者同发会被服务端 400）
+                    d.put("parametersJsonSchema", clean)
+                }
                 out.put(d)
             }
             return out
