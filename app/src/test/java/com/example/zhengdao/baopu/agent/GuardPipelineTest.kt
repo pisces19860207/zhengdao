@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单第九批 §4.1 注（五段管线必须齐、报告写明落在哪 ⇒ 落 GuardPipeline.kt）
 // + §5 判据 3/4/5（工具一条执行路径、围栏统一一个 wrap()、spill 配套范围读）。
@@ -22,7 +22,7 @@ class GuardPipelineTest {
 
     private fun registry(root: File): ToolRegistry = ToolRegistry().apply {
         register(ReadFileTool.spec())
-        register(ListDirTool.spec())
+        register(ListDirTool.spec { root })
         register(
             ToolSpec(
                 name = "needs_ok",

@@ -34,10 +34,10 @@ internal object ListDirTool {
     const val MAX_LIMIT = 500
 
     /** 构造注册用 Spec。 */
-    fun spec(): ToolSpec = ToolSpec(
+    fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "list_dir",
         description = "列出工作区内某个目录的内容（软链不跟随；深度与条数有上限，触顶会明说）。" +
-            "路径相对工作区根，如「资料库/原始」。",
+            "路径相对工作区根，如「资料库/原始」；**path 可省略＝列工作区根**。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -58,14 +58,14 @@ internal object ListDirTool {
                     "maximum" to MAX_LIMIT,
                 ),
             ),
-            "required" to jsonArrayOf(ARG_PATH),
+            "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
         readOnly = true,
         parallelSafe = true, // 纯文件读：无共享可变状态，可与别的读并行
         timeoutMs = ToolTimeout.FILE_MS,
-    ) { args -> run(args) }
+    ) { args -> run(args, workspaceRoot()) }
 
     /**
      * 列举逻辑（**纯函数**：target 已定、无 Android 依赖，JVM 直测）。
@@ -126,10 +126,19 @@ internal object ListDirTool {
         return ToolOutcome.Ok(body)
     }
 
-    /** executor：arguments 里的 path 已是守卫过的绝对路径。 */
-    private fun run(args: org.json.JSONObject): ToolOutcome {
+    /** executor：arguments 里的 path 已是守卫过的绝对路径；省略（blank）＝工作区根。 */
+    private fun run(args: org.json.JSONObject, workspaceRoot: File): ToolOutcome {
         val path = args.optString(ARG_PATH).trim()
-        if (path.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        // 2026-10-23：path 可省略＝列工作区根。模型说「list the workspace root」时常常
+        // 不传 path（Gemini 尤其），旧实现直接失败并被 schema 闸连拒两次 ⇒ 与
+        // novel_project 的「可省略」口径统一。
+        if (path.isBlank()) {
+            return list(
+                workspaceRoot,
+                args.optInt(ARG_DEPTH, DEFAULT_DEPTH),
+                args.optInt(ARG_LIMIT, DEFAULT_LIMIT),
+            )
+        }
         return list(
             File(path),
             args.optInt(ARG_DEPTH, DEFAULT_DEPTH),
