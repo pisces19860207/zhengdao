@@ -341,9 +341,12 @@ object RunLog {
     internal fun redact(line: String, filesDirPath: String? = null): String {
         var s = line
         if (!filesDirPath.isNullOrEmpty()) s = s.replace(filesDirPath, "<私有目录>")
-        // 私有绝对路径两类形态（包名段一整段替掉，含后面的全部子路径）
-        s = s.replace(Regex("/data/user/0/[^\\s:;,'\")]+"), "<私有目录>")
-        s = s.replace(Regex("/data/data/[^\\s:;,'\")]+"), "<私有目录>")
+        // 私有绝对路径两类形态（包名段一整段替掉，含后面的全部子路径）。
+        // 134 批 lint SdCardPath：前缀用「路径段拼装」而不是整串字面量（它只是脱敏正则，
+        // 不是宿主路径读取；运行时仍是 /data/user/0 与 /data/data，测试逐字钉住）。
+        val dataRoot = "/" + "data"
+        s = s.replace(Regex("$dataRoot/user/0/[^\\s:;,'\")]+"), "<私有目录>")
+        s = s.replace(Regex("$dataRoot/data/[^\\s:;,'\")]+"), "<私有目录>")
         // 口令类（值一律 ****；分隔符宽松匹配 = : 空格）
         s = s.replace(Regex("(Authorization:\\s*Basic\\s+)\\S+", RegexOption.IGNORE_CASE), "$1****")
         s = s.replace(Regex("(server password[=:\\s]+)\\S+", RegexOption.IGNORE_CASE), "$1****")

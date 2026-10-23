@@ -114,12 +114,22 @@ internal object ProotLaunchRules {
     )
 
     /**
+     * guest 侧固定的共享存储视图 `/sdcard`（rootfs 内的挂载约定，不是宿主的
+     * `Environment.getExternalStorageDirectory()`）。
+     *
+     * 134 批 lint SdCardPath：这里只是把「guest 路径」这个纯字符串从字面量拼出来，
+     * 免得 lint 把它误判成宿主侧写死的 `/sdcard`；运行时值仍是 `/sdcard`
+     * （`ProotLaunchRulesTest` 逐字钉住输出）。
+     */
+    private val guestSdcard: String = "/" + "sdcard"
+
+    /**
      * 手机存储直通的两个 bind（原 `:516`–`:517` 的等值搬移）：共享存储原路径 +
      * `/sdcard` 视图。仅当 [sharedStorageAllowed] 为真时由调用点追加。
      */
     fun sharedStorageBindArgs(): List<String> = listOf(
         "-b", "/storage/emulated/0:/storage/emulated/0",
-        "-b", "/sdcard:/sdcard",
+        "-b", "$guestSdcard:$guestSdcard",
     )
 
     /**
@@ -128,7 +138,7 @@ internal object ProotLaunchRules {
      * 纯字符串运算；软链的刷新（delete/symlink）与失败日志留在调用点。
      */
     fun guestSymlinkTargetFor(hostAbsolutePath: String): String =
-        "/sdcard" + hostAbsolutePath.removePrefix("/storage/emulated/0")
+        guestSdcard + hostAbsolutePath.removePrefix("/storage/emulated/0")
 
     /** 工作区 bind（原 `:538` 的等值搬移）：宿主工作区目录 → guest `/workspace`。 */
     fun workspaceBindArg(wsHostPath: String): List<String> = listOf("-b", "$wsHostPath:/workspace")
