@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第一百零四批：决策卡四变体的**回填测试**（派工单 §2「四变体回填/按钮/状态各至少一例」）。
 //
@@ -166,11 +166,11 @@ class DecisionCardSpecsTest {
     }
 
     @Test
-    fun `建议卡_工具约束_采纳置灰并带原因`() {
+    fun `建议卡_工具约束_可采纳`() {
         val spec = DecisionSpecs.suggestion(suggestion(kind = ProposalKind.TOOL_RULE), res)
         val adopt = buttonMap(spec)["adopt"]!!
-        assertFalse("TOOL_RULE 没有落盘通道，采纳必须置灰", adopt.enabled)
-        assertNotNull("置灰要带原因", adopt.note)
+        assertTrue("TOOL_RULE 采纳走人设通道（2026-10-23）", adopt.enabled)
+        assertNull("可采纳就不该带置灰原因", adopt.note)
         assertTrue(DecisionSpecRules.isValid(spec))
     }
 

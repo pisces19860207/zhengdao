@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单第九批 §4.3（B 段抱朴页）+ 第⑮刀经验（可观察性 bug 改状态载体：
 // 引擎状态用 mutableStateOf + State 暴露）+ 设计 §9 施工细节第 1/8 条
@@ -638,11 +638,12 @@ internal class BaopuChatController(context: Context) {
                             skillFileOf(s.target, projectRoot, globalRoot)?.readText()
                         }
 
-                        com.example.zhengdao.baopu.ProposalKind.PERSONA_APPEND ->
+                        // 2026-10-23：TOOL_RULE 采纳落点＝本项目人设（C 层），
+                        // 与 PERSONA_APPEND 同一条有备份的写盘通道；采纳前也要读旧正文做对比。
+                        com.example.zhengdao.baopu.ProposalKind.PERSONA_APPEND,
+                        com.example.zhengdao.baopu.ProposalKind.TOOL_RULE ->
                             com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
                                 .read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT)
-
-                        com.example.zhengdao.baopu.ProposalKind.TOOL_RULE -> null
                     }
                 }.getOrNull()
             }
@@ -700,7 +701,7 @@ internal class BaopuChatController(context: Context) {
      * 采纳一条建议 ⇒ **现有落盘通道**（99 批报告 §6）：
      * - SKILL_BODY：`SkillStore.plan/apply`（写前备份＋索引更新时挂自检）；
      * - PERSONA_APPEND：`PersonaFiles.applyProposal`（写前自动备份）。
-     * 两条都不新开写盘路径；TOOL_RULE 到不了这里（按钮置灰＋双闸）。
+     * 两条都不新开写盘路径；TOOL_RULE 自 2026-10-23 起也走这里（追加进 C 层人设）。
      */
     private fun applySuggestionAdopt(s: EvolutionSuggestion) {
         skillNote = BaopuNote("采纳中…", BaopuNoteLevel.Info)
@@ -719,12 +720,11 @@ internal class BaopuChatController(context: Context) {
                         // 学习卡同形状的提案，门禁（危险指令/平台事实/同名）也一并复用。
                         writeLearnedSkill(learnProposalOf(s))
 
-                    com.example.zhengdao.baopu.ProposalKind.PERSONA_APPEND -> appendSuggestionPersona(s)
-                    com.example.zhengdao.baopu.ProposalKind.TOOL_RULE ->
-                        BaopuNote(
-                            appCtx.getString(R.string.decision_suggest_adopt_blocked_tool_rule),
-                            BaopuNoteLevel.Error,
-                        )
+                    // 2026-10-23：TOOL_RULE 也走这条人设追加通道（payload 形如
+                    // 「工具使用约束：同一工具连续失败两次就停下…」），
+                    // 有 PersonaFiles 的写前自动备份；不新开写盘路径。
+                    com.example.zhengdao.baopu.ProposalKind.PERSONA_APPEND,
+                    com.example.zhengdao.baopu.ProposalKind.TOOL_RULE -> appendSuggestionPersona(s)
                 }
             }
             if (out.level != BaopuNoteLevel.Error) {

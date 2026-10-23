@@ -273,15 +273,16 @@ internal fun reasonChipRes(code: EvolutionReasonCode): Int? = when (code) {
 internal fun adoptNeedsConfirm(risk: EvolutionRisk): Boolean = risk == EvolutionRisk.HIGH
 
 /**
- * 这条建议能不能「采纳」（99 批报告 §6 未做项逐条对账）：
+ * 这条建议能不能「采纳」（99 批报告 §6 未做项逐条对账；2026-10-23 补 TOOL_RULE）：
  * - SKILL_BODY：走现有落盘通道（`SkillStore.plan/apply` 备份＋自检）⇒ 可采纳；
  * - PERSONA_APPEND：走现有落盘通道（`PersonaFiles.applyProposal` 自动备份）⇒ 可采纳；
- * - TOOL_RULE：**没有现成的工具约束落盘通道**，99 批明记录「不新开写盘路径」
- *   ⇒ 置灰（按钮带原因），等后续单设计落点。
+ * - TOOL_RULE：**落点＝本项目人设（C 层）的行为规则**。`ProposalRules.alreadyPresent`
+ *   本来就用 personaText 判重（设计上它就该进人设），所以走的仍是
+ *   `PersonaFiles.applyProposal` 那条有备份的既有通道，不新开写盘路径。
+ *   2026-10-23 用户真机：「不能采纳啊，为什么没做工具约束类的建议」——本次补上。
  */
 internal fun suggestionAdoptEnabled(kind: ProposalKind): Boolean = when (kind) {
-    ProposalKind.SKILL_BODY, ProposalKind.PERSONA_APPEND -> true
-    ProposalKind.TOOL_RULE -> false
+    ProposalKind.SKILL_BODY, ProposalKind.PERSONA_APPEND, ProposalKind.TOOL_RULE -> true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
