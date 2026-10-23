@@ -799,6 +799,14 @@ fun HomeTabs(
         mutableIntStateOf(TabIndex.AGENTS)
     }
 
+    // 160：同一页里点「注册」/预览也要立刻切玄览——观察请求版本号，组合期消费。
+    val tabReqVersion = com.example.zhengdao.ui.browser.BrowserHolder.tabRequestVersion
+    androidx.compose.runtime.LaunchedEffect(tabReqVersion) {
+        if (tabReqVersion > 0 && com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()) {
+            tab = TabIndex.BROWSER
+        }
+    }
+
     // 切 Tab 保留滚动位置（K2）——把两个 tab 的 LazyListState 提到 HomeTabs 顶层。
     //
     // 之前 listState 在各 tab 内部用 rememberLazyListState() 创建：切走 tab 时整个 tab
