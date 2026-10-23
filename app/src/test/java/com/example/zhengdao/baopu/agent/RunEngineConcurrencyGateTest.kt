@@ -47,8 +47,10 @@ class RunEngineConcurrencyGateTest {
     @Test
     fun `A_四个run级计数器由resetRunScopedCounters统一复位`() {
         val src = code(engine)
-        val m = src.indexOf("private fun resetRunScopedCounters()")
-        assertTrue("找不到 resetRunScopedCounters（150批 A 没落地）", m >= 0)
+        // 157 补充（用户 2026-10-23）：签名多了 sessionId（账本改成按会话持久化，
+        // 复位入口顺手把「这一轮是哪个会话」喂给 onSessionEnter）；四个计数器的复位要求不变。
+        val m = src.indexOf("private fun resetRunScopedCounters(sessionId: Long)")
+        assertTrue("找不到 resetRunScopedCounters（150批 A 没落地；157 补充后签名带 sessionId）", m >= 0)
         val body = src.substring(m, src.indexOf('}', m) + 1)
         // 四个字段都要复位——只复位 channelBroken 是派工单 §9 的打回项
         listOf(
@@ -57,9 +59,13 @@ class RunEngineConcurrencyGateTest {
             "channelSwitches = 0",
             "channelBroken = false",
         ).forEach { a -> assertTrue("复位缺字段：$a", body.contains(a)) }
+        // 157 补充：复位函数里**不再清工作区外授权账本**（用户裁定一次会话问一次），
+        // 只喂会话身份；156 批那行 beginRun 若回潮即红。
+        assertFalse("授权账本不许再按运行清（156 批写法已撤）", body.contains("beginRun"))
+        assertTrue("会话身份必须在这一处喂进去", body.contains("onSessionEnter(sessionId)"))
         // 调用点在 runLoop 第一行、channelBroken 判断**之前**（send/resume/approve/reject/
         // drainQueue 全收敛到 runLoop ⇒ 一处复位全盖住；call 全文件必须恰一处）
-        val call = "resetRunScopedCounters()\n        if (channelBroken) {"
+        val call = "resetRunScopedCounters(sessionId)\n        if (channelBroken) {"
         assertEquals(
             "runLoop 入口的复位调用必须紧贴 channelBroken 判断之前且恰好一处",
             1,
@@ -68,7 +74,7 @@ class RunEngineConcurrencyGateTest {
         assertEquals(
             "复位调用全文件只许一处（send/resume 各自再写一份 = 打回项；方法本体声明不算调用）",
             1,
-            Regex("(?<!fun )resetRunScopedCounters\\(\\)").findAll(src).count(),
+            Regex("(?<!fun )resetRunScopedCounters\\(sessionId\\)").findAll(src).count(),
         )
     }
 

@@ -80,6 +80,17 @@ internal object BaopuRuntime {
         }
 
     /**
+     * 把工作区外放行账本绑到本机库（157 补充；幂等）。
+     *
+     * 调它的地方：装配层 [build]（引擎一开跑就得是库版账本）与设置页清单
+     * （用户先开设置、后跑抱朴的情形——那时引擎还没建，账本仍是内存版，清单会是空的）。
+     * 只换引用、不清库：库是真相，`install` 顺手清掉的只是内存缓存（下次读库回填）。
+     */
+    fun installGrants(context: Context) {
+        WorkspaceGrants.install(SessionWorkspaceGrantStore(db(context.applicationContext)))
+    }
+
+    /**
      * 当前 provider（刀 1 补丁：从 ProviderPrefs 读——抱朴页「换通道」选的通道 + 用户 Key）。
      * 这仍是 provider 的**唯一入口**：RunEngine / BaopuChatController 都不绕过它。
      * 默认值仍是内置免费通道（第一次装起来就有个能点的默认）。
@@ -478,6 +489,10 @@ internal object BaopuRuntime {
             allowOutside = { WorkspacePrefs.enabled(appCtx) },
         )
         val db = db(appCtx)
+        // 157 补充（用户 2026-10-23）：工作区外授权按会话落库（v18 两张表）——
+        // 「一次会话问一次」，重启 App 不再问；设置页清单与一键撤销也走这份账本。
+        // 装在这里而不在别处：引擎一开跑就可能越界，账本必须先于管线可用。
+        WorkspaceGrants.install(SessionWorkspaceGrantStore(db))
         // 选项卡的落点：引擎负责弹、等、收答案
         val engine = RunEngine(
             provider = provider,
@@ -562,10 +577,10 @@ internal object BaopuRuntime {
         // ask_user：工具线程阻塞在 engine.askUser 上，UI 点一下即回（有界，与确认卡同超时）
         AskUserTool.sink = { req -> engine.askUser(req) }
         // 第一百五十六批：工作区外访问的读数点（工具层自检现读，改开关即时生效）
-        // ＋每轮入口清授权账本（与 150 批 run 级计数同一处复位，跨运行重新问）。
+        // ＋157 补充：每轮入口喂会话身份（授权账本按会话持久化，跨运行不再重问）。
         com.example.zhengdao.baopu.WorkspaceAccessPolicy.settingOn = { WorkspacePrefs.enabled(appCtx) }
         com.example.zhengdao.baopu.WorkspaceAccessPolicy.granted = { WorkspaceGrants.granted(it) }
-        engine.onRunScopedReset = { WorkspaceGrants.beginRun() }
+        engine.onSessionEnter = { WorkspaceGrants.enterSession(it) }
         // 第一百二十四批 · 发图同意闸的候选来源：「已验证能看图、且真能切过去」的那几条通道。
         // 判据在 VisionRouting（候选规矩照用 ProviderPrefs.routeCandidates，能力过滤照用
         // ModelRouter + Need(vision=true)）；Key 只在这里现取现用 ⇒ 引擎不持 Key、不进日志。

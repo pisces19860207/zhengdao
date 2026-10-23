@@ -1389,5 +1389,11 @@
     <string name="baopu_tool_novel_continue_desc">Where to continue (chapter and paragraph), characters and notes, consistency hints; append via edit_file or start a new chapter via write_file, never overwrite.</string>
     <string name="baopu_workspace_card">Workspace</string>
     <string name="baopu_ws_outside_title">Allow access outside workspace</string>
-    <string name="baopu_ws_outside_desc">When on, Baopu asks once per run with a confirmation card before touching files outside the workspace. When off, outside access is always rejected.</string>
+    <string name="baopu_ws_outside_desc">When on, Baopu asks with a confirmation card before touching files outside the workspace. It asks once per session (the answer survives restarts until you revoke it below). When off, outside access is always rejected.</string>
+    <string name="baopu_ws_grant_card">Sessions allowed outside the workspace</string>
+    <string name="baopu_ws_grant_empty">No session allowed yet. A new session will ask the first time it needs to go outside.</string>
+    <string name="baopu_ws_grant_loading">Loading…</string>
+    <string name="baopu_ws_grant_revoke">Revoke</string>
+    <string name="baopu_ws_grant_root">Workspace: %1$s</string>
+    <string name="baopu_ws_grant_revoked">Revoked. This session will be asked again next time.</string>
 </resources>

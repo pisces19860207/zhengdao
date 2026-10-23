@@ -6,20 +6,20 @@
 // 语义不是删掉保护，而是把「硬拒」改成「问一次，用户同意就做」：
 // - 工作区内 ⇒ 行为不变（INSIDE）；
 // - 工作区外且用户在设置里关掉了这个能力 ⇒ DENIED（原文拒绝，与 156 批之前逐字一致）；
-// - 工作区外且开关开、本运行还没授权过 ⇒ ASK_USER（管线复用现有确认卡，不新造 UI）；
-// - 本运行里用户已经在确认卡上批准过同一工作区根 ⇒ 放行（一次运行只问一次）。
+// - 工作区外且开关开、本会话还没授权过 ⇒ ASK_USER（管线复用现有确认卡，不新造 UI）；
+// - 本会话里用户已经在确认卡上批准过同一工作区根 ⇒ 放行（157 补充：**一次会话问一次**，
+//   授权按 sessionId 落库、重启 App 不再问；账本搬去 `WorkspaceGrant.kt`）。
 //
 // 红线（派工单 156 §0）：不许静默放行——ASK_USER 永远先过一次用户的卡；
 // `PathGuard` 本身一个字不改（回收站/备份/原件区的越界保护仍靠它）。
 package com.example.zhengdao.baopu
 
 import java.io.File
-import java.util.Collections
 
 /** 工作区外访问的判据结论（第一百五十六批；纯函数层，JVM 直测）。 */
 enum class AccessVerdict {
 
-    /** 在工作区内，或本运行已获用户授权 ⇒ 放行（行为与 156 批之前的工作区内路径一致）。 */
+    /** 在工作区内，或本会话已获用户授权 ⇒ 放行（行为与 156 批之前的工作区内路径一致）。 */
     INSIDE,
 
     /** 在工作区外、开关开、还没问过 ⇒ 走一次用户确认（管线复用确认卡）。 */
@@ -36,7 +36,7 @@ enum class AccessVerdict {
  * - `target` 在 `root` 内 ⇒ INSIDE（行为不变）；
  * - 在工作区外且 `settingOn=false` ⇒ DENIED（用户关掉这个能力）；
  * - 在工作区外且 `settingOn=true` 且 `userGranted=false` ⇒ **ASK_USER**；
- * - 已在本次运行里授权过（`userGranted=true`）⇒ 放行（按 INSIDE 口径返回：
+ * - 已在本次**会话**里授权过（`userGranted=true`）⇒ 放行（按 INSIDE 口径返回：
  *   「放行」与「在内」对调用方是同一种处置，枚举不再加第四个值）。
  *
  * 边界判定复用 `rootfs.PathGuard.isInside`（组件级比较），**不另造第二套判据**。
@@ -54,38 +54,6 @@ fun workspaceAccessVerdict(root: File, target: File, userGranted: Boolean, setti
 }
 
 /**
- * 本运行的授权账本：一次运行内，同一工作区根只在确认卡上问一次。
- *
- * 为什么是进程级对象而不是管线字段：管线是进程级单例（`BaopuRuntime.build` 造一次），
- * 而「一次运行」的边界只有引擎知道——引擎在每轮入口（150 批 run 级计数的同一处）
- * 调 [beginRun] 清账，跨运行自然重新问。
- *
- * 引擎全部跑在单线程 `zd-baopu-run` 上（RunEngine.runExecutor），运行之间是串行的；
- * 账本仍按最保守口径加锁（[Collections.synchronizedSet]），不依赖「单线程」这个隐含前提。
- */
-internal object WorkspaceGrants {
-
-    private val grantedRoots: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
-
-    /** 本运行已授权（同一根，一次运行一次）。 */
-    fun granted(root: File): Boolean {
-        val key = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
-        return grantedRoots.contains(key)
-    }
-
-    /** 用户在确认卡上点了批准 ⇒ 记账（整根放行，不是只放行这一个路径）。 */
-    fun grant(root: File) {
-        val key = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
-        grantedRoots.add(key)
-    }
-
-    /** 新一轮开始：清账（跨运行必须重新问——「一次运行一次」的另一半）。 */
-    fun beginRun() {
-        grantedRoots.clear()
-    }
-}
-
-/**
  * 生产接线的读数点（工具层自检用）——仿 `AskUserTool.sink` 的进程级注入先例：
  * 对象自身零业务逻辑，两个读数闭包由装配层（`BaopuRuntime.build`）一次性喂入。
  *
@@ -99,7 +67,7 @@ internal object WorkspaceAccessPolicy {
     @Volatile
     var settingOn: () -> Boolean = { false }
 
-    /** 本运行授权账本读数（生产 = `WorkspaceGrants::granted`；默认永假 ⇒ 存量行为）。 */
+    /** 本会话授权账本读数（生产 = `WorkspaceGrants::granted`；默认永假 ⇒ 存量行为）。 */
     @Volatile
     var granted: (File) -> Boolean = { false }
 

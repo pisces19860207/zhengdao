@@ -283,12 +283,14 @@ internal class RunEngine(
     private val draining = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
     /**
-     * 第一百五十六批：每轮入口的 run 级复位钩子（[resetRunScopedCounters] 里调）。
-     * 生产接线：`onRunScopedReset = WorkspaceGrants::beginRun`（工作区外授权账本随运行清零）。
+     * 第一百五十六批起的每轮入口钩子；157 补充（用户 2026-10-23）改成**喂会话身份**。
+     *
+     * 生产接线：`onSessionEnter = WorkspaceGrants::enterSession`（工作区外授权账本按会话
+     * 持久化 ⇒ 同会话跨运行仍放行，新会话才重新问；156 批的「每轮清账」已按用户裁定撤掉）。
      * 默认空实现 ⇒ 引擎直测（没有装配层）行为逐字节不变；声明点在冻结创建点
      * `Thread(r, "zd-baopu-run")` **之下**，不挪对账单。
      */
-    var onRunScopedReset: () -> Unit = {}
+    var onSessionEnter: (Long) -> Unit = {}
 
 
     init {
@@ -503,17 +505,19 @@ internal class RunEngine(
      * rejectRestoredPending/drainQueue 全部收敛到 runLoop，各入口自己写一遍就会漏
      * （resume 路径此前就漏）；只复位 channelBroken 不修其余三个，第二轮照样继承
      * 上一轮的失败账（工具失败直接判到第 4 次、换通道预算被上一轮吃光）。
+     *
+     * 157 补充：**这里不再清工作区外授权账本**（156 批是清）。用户 2026-10-23 裁定粒度是
+     * 「一次会话问一次」⇒ 同会话跨运行仍算批过、账在库里活过进程；这里只把「这一轮是
+     * 哪个会话」喂给账本（[onSessionEnter]，纯赋值不清账）。
      */
-    private fun resetRunScopedCounters() {
+    private fun resetRunScopedCounters(sessionId: Long) {
         consecutiveToolFailures = 0
         consecutiveChannelFailures = 0
         channelSwitches = 0
         channelBroken = false
-        // 第一百五十六批：工作区外授权账本随运行清零（与上面四个 run 级计数同一入口、
-        // 同一口径）——跨运行必须重新问一次，「一次运行只问一次」的另一半。接线在
-        // BaopuRuntime.build（onRunScopedReset = WorkspaceGrants::beginRun）；默认空 ⇒ 引擎
-        // 单测没有装配层也行为不变。
-        onRunScopedReset()
+        // 会话身份在 runLoop 入口喂一次（approveRestoredPending 走 executeApproved 时
+        // 还没进 runLoop，那里另喂一次，见 acquireOrNotice——同一赋值点、幂等）。
+        onSessionEnter(sessionId)
     }
 
     // ── 确认制（刀 3 A 段） ──────────────────────────────────────────────
@@ -1085,6 +1089,10 @@ internal class RunEngine(
             return null
         }
         _sessionKey.value = "id:$sessionId"
+        // 157 补充：拿到活跃门的这一刻就把会话身份喂给工作区外授权账本——approveRestoredPending
+        // 走的是「先 executeApproved 再 runLoop」，比 runLoop 入口更早碰管线（那时账本不能
+        // 还停在上一个会话上）。与 resetRunScopedCounters 里那次是同一个赋值点、幂等。
+        onSessionEnter(sessionId)
         return Unit
     }
 
@@ -1205,7 +1213,7 @@ internal class RunEngine(
         // 150批 A：四个 run 级计数器在入口统一复位——必须在 channelBroken 判断**之前**调，
         // 否则上一轮熔断会把这一轮直接拦死；send/resume/approveRestoredPending/
         // rejectRestoredPending/drainQueue 全收敛到这里，一处复位全盖住。
-        resetRunScopedCounters()
+        resetRunScopedCounters(sessionId)
         if (channelBroken) {
             // 150批 G：早退也收尾——旧行为只切 ABORTED，run_log 没有 Aborted 行、
             // interrupted_step 不更新，UI 会把这一轮当成「进程被杀」。settle 只写
