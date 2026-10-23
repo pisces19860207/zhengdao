@@ -34,8 +34,11 @@ import java.io.File
  */
 internal object ProdEvalGate {
 
-    /** 用户拨动的那个开关（设置页「生产评测」）。 */
+    /** 用户拨动的那个开关（设置页「生产评测」；写口在 [ProdEvalSettings]）。 */
     const val PREF_KEY = "eval_prod_on"
+
+    /** 与 [SelfCheckGate] 共用的 prefs 文件（键分开，见类 KDoc）。 */
+    const val PREFS_NAME = "zhengdao_eval"
 
     /** 默认值。**false**——派工单 §2：默认关。 */
     const val PREF_DEFAULT = false
@@ -45,15 +48,15 @@ internal object ProdEvalGate {
 
     /** 现读用户开关；读不到按**关**处理（磁盘坏了一道开关不该变成默认开）。 */
     fun prefOn(ctx: Context): Boolean = runCatching {
-        ctx.getSharedPreferences("zhengdao_eval", Context.MODE_PRIVATE).getBoolean(PREF_KEY, PREF_DEFAULT)
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_KEY, PREF_DEFAULT)
     }.getOrDefault(PREF_DEFAULT)
 
     /** 当前该不该跑。 */
     fun enabledNow(ctx: Context): Boolean = enabled(prefOn(ctx))
 
-    // 这里**没有**写开关的口子（照 84 批 SelfCheckGate 的先例）：本批红线是不碰 UI，
-    // 所以打开它的唯一现实路径是用户在设置页之前自己改 prefs。等 UI 那一批再加写口，
-    // 并且必须仍然是「显式拨动」——不许有 devMode、adb、环境变量之类悄悄打开的旁路。
+    // 写口不在这个对象里（第一百六十八批：设置页开关落在 [ProdEvalSettings]，本对象仍旧只读）——
+    // 照 84 批 SelfCheckGate 的先例，闸门与写口分开，源码门禁才门得住。拨动永远只能是
+    // 「显式」：不许有 devMode、adb、环境变量之类悄悄打开的旁路。
 }
 
 /**

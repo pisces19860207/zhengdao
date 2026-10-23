@@ -1106,7 +1106,10 @@
     <string name="baopu_novel_empty">No novel projects yet. Name one and let Baopu create the project, then write chapter one.</string>
     <string name="baopu_novel_name">Title</string>
     <string name="baopu_novel_create">Create and write chapter 1</string>
-    <string name="baopu_novel_stats">%1$d chapters · %2$d chars</string>
+    <plurals name="baopu_novel_stats">
+        <item quantity="one">%1$d chapters · %2$d chars</item>
+        <item quantity="other">%1$d chapters · %2$d chars</item>
+    </plurals>
     <string name="baopu_mcp_sheet_title">External tools (MCP)</string>
     <string name="baopu_mcp_sheet_desc">MCP tools are locked by default. Enter the server URL; Baopu will show an approval card, and tools appear after connecting.</string>
     <string name="baopu_mcp_url">Server URL (https://…)</string>
@@ -1447,6 +1450,12 @@
     <string name="decision_suggest_title_persona">Append a persona clause?</string>
     <string name="decision_suggest_title_tool">Add a usage rule for “%1$s”?</string>
     <string name="decision_suggest_judge">Baopu’s read: %1$s</string>
+    <!-- Batch 168: evidence source line on suggestion cards -->
+    <string name="decision_evidence_personal">Personal production evidence</string>
+    <string name="decision_evidence_release">Release evidence</string>
+    <string name="decision_evidence_date_unknown">date unknown</string>
+    <string name="decision_suggest_evidence">Evidence: %1$s (%2$s)</string>
+    <string name="decision_suggest_evidence_none">Evidence: none (missing or expired — deferred this round)</string>
     <string name="decision_suggest_warning_high">This suggestion is high risk: adopting writes to disk and may change how Baopu behaves; read the before/after carefully before confirming</string>
     <!-- One-line purpose per group (authorization card subtitle; mirrors ToolGroup.oneLine, UI-localized) -->
     <string name="baopu_group_line_core">Read files, list dirs, search text, ask you, list plans, and open a web page to read it</string>
@@ -1609,6 +1618,10 @@
     <string name="baopu_workspace_card">Workspace</string>
     <string name="baopu_ws_outside_title">Allow access outside workspace</string>
     <string name="baopu_ws_outside_desc">When on, Baopu asks with a confirmation card before touching files outside the workspace. It asks once per session (the answer survives restarts until you revoke it below). When off, outside access is always rejected.</string>
+    <!-- Batch 168: production eval switch (eval_prod_on write entry; off by default) -->
+    <string name="baopu_eval_prod_card">Production eval</string>
+    <string name="baopu_eval_prod_title">Periodic production eval</string>
+    <string name="baopu_eval_prod_desc">When on, after a session settles (at most once every 24 hours) Baopu runs a 10-case mini eval on your configured channel. It spends a small amount of your model quota and makes network requests. Results are written only to this device\'s private storage and serve as evidence for evolution suggestions; chat is never blocked and personas/skills are never changed. Off by default — only your explicit switch turns it on.</string>
     <string name="baopu_ws_grant_card">Sessions allowed outside the workspace</string>
     <string name="baopu_ws_grant_empty">No session allowed yet. A new session will ask the first time it needs to go outside.</string>
     <string name="baopu_ws_grant_loading">Loading…</string>

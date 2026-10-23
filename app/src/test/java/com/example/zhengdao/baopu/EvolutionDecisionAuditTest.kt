@@ -159,9 +159,14 @@ class EvolutionDecisionAuditTest {
             summary.getJSONObject("self_check").keys().asSequence().toSet(),
         )
         assertEquals(
-            setOf("score", "case_ids"),
+            // 第一百六十八批：source/ranAt 键恒在（同 post_adoption 口径）——
+            // 「这条决策当时看的是谁产的证据、什么时候产的」以后要能回答。
+            setOf("score", "case_ids", "source", "ranAt"),
             summary.getJSONObject("eval").keys().asSequence().toSet(),
         )
+        // 夹具 goodEval() 不带来源信息 ⇒ 默认按发版证据记，ranAt 写 JSON null（不编日期）
+        assertEquals("RELEASE", summary.getJSONObject("eval").getString("source"))
+        assertTrue(summary.getJSONObject("eval").isNull("ranAt"))
         assertEquals(
             setOf("successes", "failures", "corrections", "retries", "signal_ids"),
             summary.getJSONObject("effect").keys().asSequence().toSet(),
@@ -263,5 +268,27 @@ class EvolutionDecisionAuditTest {
         val root = tmp.newFolder("memory")
         val log = EvolutionAuditLog.under(root)
         assertEquals(File(root, "决策审计.jsonl"), log.file())
+    }
+
+    @Test
+    fun `审计落盘_个人生产证据_来源与日期都记`() {
+        // 第一百六十八批：prod 证据进审计必须带 source=PERSONAL_PROD 与 ranAt，
+        // 与发版证据（RELEASE/ranAt 缺省）在账本里分得开（派工单 §2「来源和日期必须标」）。
+        val file = File(tmp.root, "决策审计.jsonl")
+        val port = jvmPort(sink = EvolutionAuditLog(file), at = 5678L)
+        val prodEval = EvolutionEval(
+            score = 0.95,
+            caseIds = listOf("eval:prod-1"),
+            source = com.example.zhengdao.baopu.eval.EvalEvidenceSource.PERSONAL_PROD,
+            ranAt = 5_000L,
+        )
+        port.decide(input(eval = prodEval), "tester")
+
+        val evalJson = JSONObject(file.readLines(Charsets.UTF_8).first())
+            .getJSONObject("input")
+            .getJSONObject("eval")
+        assertEquals("PERSONAL_PROD", evalJson.getString("source"))
+        assertEquals(5_000L, evalJson.getLong("ranAt"))
+        assertEquals(0.95, evalJson.getDouble("score"), 1e-9)
     }
 }
