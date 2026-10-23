@@ -474,7 +474,9 @@ class LlmClientTest {
 
     @Test
     fun `HTTP错误转Failed且原文只进日志`() {
+        // 158：5xx 会重试一次 ⇒ 第一次失败后还要有第二个响应，否则会卡在无响应上。
         server.enqueue(MockResponse().setResponseCode(500).setBody("服务端炸了"))
+        server.enqueue(MockResponse().setResponseCode(500).setBody("服务端又炸了"))
         val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
         assertEquals(1, events.size)
         val failed = events[0] as LlmEvent.Failed
