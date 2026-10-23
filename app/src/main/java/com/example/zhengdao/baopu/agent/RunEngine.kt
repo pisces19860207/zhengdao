@@ -200,6 +200,12 @@ internal class RunEngine(
      */
     private val kbRecall: ((String) -> String?)? = null,
     private val log: (String) -> Unit = { RunLog.log(it) },
+    /**
+     * 会话任务队列（152批 F 可注入缝）：生产默认 [DefaultSessionRunQueue]（117批原实现）；
+     * 单测注入替身构造「poll 后 stop 到达」的确定性时序。注入只换队列本体，停止/排队
+     * 语义由 [QueueStopGate] 的同锁协议钉死，替身不许改。
+     */
+    private val runQueue: SessionRunQueue = DefaultSessionRunQueue(),
 ) {
 
     /** UI 观察用（Compose State）。 */
@@ -263,27 +269,18 @@ internal class RunEngine(
 
     // ── 第一百一十七批：会话内任务队列（内存镜像 ＋ run_queue 落库）─────────
     //
-    // 所有字段都在冻结创建点 `Thread(r, "zd-baopu-run")` **之下**，不挪对账单。
-    private val runQueue = SessionRunQueue()
+    // 152批 F：队列本体抽成 [SessionRunQueue] 接口（生产默认 [DefaultSessionRunQueue]，
+    // 117批原实现逐行原样）由构造注入；取条/清队/置位/计在飞的同锁协议收进
+    // [QueueStopGate]——150/151 批的临界区形状原样搬家，JVM 运行期用例直接驱动它。
+    // 本段字段仍在冻结创建点 `Thread(r, "zd-baopu-run")` **之下**，不挪对账单。
+    //
+    // 150批 F：`drainQueue` 的「poll ＋ stopRequested 检查」与 `stop` 的「置位 ＋ clearQueue」
+    // 共用一把锁 ⇒ 取条与清队不再有竞争窗口：要么 stop 先拿锁（排队条还在队列里、被
+    // clearQueue 一起清掉并计入「清掉 N 条」），要么这条过了闸（过了闸就必须进 runLoop，
+    // 停止迟到由循环头看到 stopRequested 收尾 Aborted，用户消息已落库、可续跑）。
+    // 151 批 F：已过闸（poll 出）但还没收尾的条数由门计数，stop 的 notice 把两条分开说。
+    private val queueGate = QueueStopGate(runQueue, { stopRequested }, { stopRequested = true })
     private val draining = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
-
-    /**
-     * 150批 F：`drainQueue` 的「poll ＋ stopRequested 检查」与 `stop` 的「置位 ＋ clearQueue」
-     * 共用这一把锁 ⇒ 取条与清队不再有竞争窗口：要么 stop 先拿锁（排队条还在队列里、被
-     * clearQueue 一起清掉并计入「清掉 N 条」），要么这条过了闸（过了闸就必须进 runLoop，
-     * 停止迟到由循环头看到 stopRequested 收尾 Aborted，用户消息已落库、可续跑）。
-     */
-    private val queueGate = Object()
-
-    /**
-     * 151 批 F 补：已过闸（poll 出）但还没收尾的条数。
-     *
-     * 150 批把「取条＋停止检查」关进了同一把锁，但 `stop()` 的 notice 只数
-     * `clearQueue` 清掉的内存队列条数——已取出的那条不在内存队列里，用户会看到
-     * 「清掉 N 条」却不知道还有一条已落库、续跑时会继续。这个计数只用于把话说全，
-     * 不改停止语义。
-     */
-    private val polledInFlight = java.util.concurrent.atomic.AtomicInteger(0)
 
     init {
         // 冷启动把上次没开跑的排队条读回内存；**不自动开跑**（避免背地里烧 token）。
@@ -796,11 +793,8 @@ internal class RunEngine(
                 // 150批 F：取条与停止检查同锁（[queueGate]）。stop 先拿锁 ⇒ 这条还排在队列里、
                 // 被 clearQueue 一起清掉并计入「清掉 N 条」；这条先拿锁 ⇒ 过闸，过了闸就必须
                 // 进 runLoop——不许在检查点之后再 break 丢弃（那正是审计 F 的「取出后永久丢失」）。
-                val turn = synchronized(queueGate) {
-                    if (stopRequested) null else runQueue.poll(sessionId)?.also {
-                        polledInFlight.incrementAndGet()
-                    }
-                } ?: break
+                // 152批 F：临界区本体收进 [QueueStopGate.pollForRun]，门内顺序逐字保留。
+                val turn = queueGate.pollForRun(sessionId) ?: break
                 emitQueueChanged(sessionId)
                 val rowId = ensureQueueRow(turn)
                 _state.value = RunState.THINKING
@@ -824,7 +818,7 @@ internal class RunEngine(
                     turnImages = emptyList()
                     turnNotes = emptyList()
                     pendingImageRelPaths = emptyList()
-                    polledInFlight.decrementAndGet()
+                    queueGate.polledInFlight.decrementAndGet()
                 }
                 if (!RunQueueRules.canAutoAdvance(
                         _state.value, stopRequested, runQueue.size(sessionId),
@@ -987,29 +981,25 @@ internal class RunEngine(
         // 150批 F：置位与清队必须和 drainQueue 的取条同锁（[queueGate]），否则「已 poll 出、
         // 还没开跑」的那条会被 clearQueue 删行却没人接——永久丢失且不计入「清掉 N 条」。
         // 临界区内全是非阻塞调用（cancel/abandon 立即返回；clearQueue 只提交写，不等落库）。
-        synchronized(queueGate) {
-            stopRequested = true
-            // P2-5：取消正在飞的流式 Call。旧实现只置标志位 ⇒ 网络流照收，
-            // 最长耗到 readTimeout（60s）才收工；用户看到的就是「点了停止还在写」。
-            // 取消后 stream() 收到 IOException ⇒ 转 Failed，不会再回调成功。
-            runCatching { activeCall?.cancel() }
-            // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
-            confirmFlow.abandon()
+        // 152批 F：临界区本体收进 [QueueStopGate.onStopArrived]（置位→砍流→废确认→清队→读
+        // 在飞，顺序逐字保留）；文案抽成 [stopNoticeText] 纯函数，运行期用例可直测。
+        queueGate.onStopArrived(
+            interrupt = {
+                // P2-5：取消正在飞的流式 Call。旧实现只置标志位 ⇒ 网络流照收，
+                // 最长耗到 readTimeout（60s）才收工；用户看到的就是「点了停止还在写」。
+                // 取消后 stream() 收到 IOException ⇒ 转 Failed，不会再回调成功。
+                runCatching { activeCall?.cancel() }
+                // 挂起的确认一并作废（不执行；循环头部随即收尾 ABORTED）
+                confirmFlow.abandon()
+            },
+        ) {
             // 第一百一十七批：停止 = 连本会话还没开跑的排队条一起清（派工单「按设计清队列」）。
             _sessionKey.value?.removePrefix("id:")?.toLongOrNull()?.let { sid ->
                 val n = clearQueue(sid)
                 // 151 批 F：已 poll 出、还没收尾的那条不在内存队列里 ⇒ n 不含它。
                 // 这里把两条分开说，别让用户以为「都清完了」而续跑时又冒出一条。
-                val running = polledInFlight.get()
-                val text = when {
-                    n > 0 && running > 0 ->
-                        "已停止：清掉 $n 条排队；另有 1 条已开始处理的消息会保留，可续跑"
-                    n > 0 -> "已停止，排队中的 $n 条也清掉了"
-                    running > 0 ->
-                        "已停止：正在处理的那条会停在当前步，消息保留可续跑"
-                    else -> null
-                }
-                if (text != null) _notice.value = text
+                val running = queueGate.polledInFlight.get()
+                stopNoticeText(n, running)?.let { _notice.value = it }
             }
         }
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")

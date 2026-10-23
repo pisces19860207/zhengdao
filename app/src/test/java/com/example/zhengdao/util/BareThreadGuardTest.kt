@@ -257,6 +257,8 @@ class BareThreadGuardTest {
         // 红线 32——允许零星新增，但谁把数量拉回审计原文（35 处）那种状态，必须先在账本上说清楚。
         // 2026-10-23：RootfsDownloader.kt:368 新增一个有名+daemon 的 zd-rootfs 下载点（v2.2.x）；
         // 对账单随之 32→33，红线同步上调 1。再往上加必须先在本行写理由。
+        // 2026-10-23：152批 F 给 RunEngine 构造注入 runQueue（+6 行 KDoc＋参数）
+        // ⇒ RunEngine.kt 255→261 平移（无新增创建点，计数仍 33）。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 33——先收敛再谈新增", total in 1..33)
     }
 
@@ -284,7 +286,7 @@ class BareThreadGuardTest {
             "OldTreeCleaner.kt:48",
             "PreviewServer.kt:125",
             "RootfsDownloader.kt:368",
-            "RunEngine.kt:255",
+            "RunEngine.kt:261",
             "SettingsDataActivity.kt:596",
             "SettingsEnvActivity.kt:220",
             "SettingsEnvActivity.kt:275",
