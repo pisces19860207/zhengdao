@@ -214,14 +214,14 @@ internal class RunEngine(
     private val _state = mutableStateOf(RunState.IDLE)
     val state: State<RunState> get() = _state
 
-    private val _step = mutableStateOf(0)
+    private val _step = mutableIntStateOf(0)
     val step: State<Int> get() = _step
 
     private val _sessionKey = mutableStateOf<String?>(null)
     val sessionKey: State<String?> get() = _sessionKey
 
     /** 当前会话的 interrupted_step（-1 = 未中断；UI 标「中断于第 N 步」）。 */
-    private val _interruptedStep = mutableStateOf(RunRules.NOT_INTERRUPTED)
+    private val _interruptedStep = mutableIntStateOf(RunRules.NOT_INTERRUPTED)
     val interruptedStep: State<Int> get() = _interruptedStep
 
     /**
