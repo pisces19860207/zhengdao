@@ -15,6 +15,15 @@
         <item name="android:alertDialogTheme">@style/Theme.ZhengdaoDialog</item>
     </style>
 
+    <!-- 134 批 lint(Overdraw)：终端页专用主题。
+         activity_main 根容器原来自带 `@android:color/white` 背景（4dp 白边），
+         与主题 windowBackground 重叠 ⇒ lint 判「重复绘制」。把白底落进主题
+         windowBackground、根容器去掉 background：视觉逐像素不变（白边仍是纯白），
+         少画一层。其余页仍用 Theme.Zhengdao。 -->
+    <style name="Theme.Zhengdao.Terminal" parent="Theme.Zhengdao">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+
     <!-- 框架对话框主题：换背景 drawable（14dp 圆角 + 发丝描边）+ 按钮色统一 iOS 蓝。
          不覆盖文字/正文字体样式 —— 那些由 Android 12+ 的 Material 对话框默认
          主题提供，改了反而会在低版本设备上丢 Material 观感。
