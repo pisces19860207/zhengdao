@@ -377,6 +377,102 @@ class PlanControllerTest {
         assertTrue("新轮第一份计划是 NEW，不过卡：$out", out is ToolOutcome.Ok)
     }
 
+    // ── 161 降噪：同一版被明确拒过的改动不重复要授权 ────────────────────
+
+    @Test
+    fun `已拒过的同一版_重发不再要授权_仍不落库`() {
+        val r = rig()
+        r.controller.submit(planArgs("读文件" to "todo", "写文件" to "todo"))
+        val v = planArgs("读文件" to "todo", "随便看看" to "todo")
+        val first = r.controller.submit(v)
+        assertTrue("没点过卡 ⇒ 照旧拦：$first", first is ToolOutcome.Failed)
+        // 模拟确认卡：她点了「不改，按原计划」
+        r.controller.noteDecision(r.controller.previewChange(v)!!, PlanChangeDecision.REJECTED)
+        val again = r.controller.submit(v)
+        assertTrue("拒过的同一版重发仍然不许落库：$again", again is ToolOutcome.Failed)
+        assertTrue("回灌要讲清她已经答过：$again", (again as ToolOutcome.Failed).error.contains("已经明确拒过"))
+        assertTrue("要堵住原样重发", again.error.contains("不会有第二次确认机会"))
+        assertEquals("两次都不落库", 1, r.store.inserts.size)
+        assertEquals("内存计划保持不变", listOf("读文件", "写文件"), r.controller.currentPlan().map { it.text })
+    }
+
+    @Test
+    fun `拒过一版不影响别的改动_照常要授权`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val rejected = planArgs("一" to "todo", "随便看看" to "todo")
+        r.controller.noteDecision(r.controller.previewChange(rejected)!!, PlanChangeDecision.REJECTED)
+        assertFalse("登记表不产生任何放行", r.controller.isChangeAuthorized())
+        val other = planArgs("一" to "todo", "三" to "todo")
+        val out = r.controller.submit(other)
+        assertTrue("换了内容就是另一版，照旧拦：$out", out is ToolOutcome.Failed)
+        assertFalse("不许误用「已经拒过」文案", (out as ToolOutcome.Failed).error.contains("已经明确拒过"))
+        assertTrue("仍走未经确认的文案", out.error.contains("没有生效"))
+    }
+
+    @Test
+    fun `拒过的同一版_她改主意批一次就生效_且不连放`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val v = planArgs("一" to "todo", "随便看看" to "todo")
+        r.controller.noteDecision(r.controller.previewChange(v)!!, PlanChangeDecision.REJECTED)
+        assertTrue("拒过之后原样重发仍拦得住", r.controller.submit(v) is ToolOutcome.Failed)
+        r.controller.authorizeNextChange()
+        val ok = r.controller.submit(v)
+        assertTrue("她改主意批一次就必须生效：$ok", ok is ToolOutcome.Ok)
+        assertEquals(listOf("一", "随便看看"), r.controller.currentPlan().map { it.text })
+        assertFalse("放行照旧一次一张", r.controller.isChangeAuthorized())
+        val next = r.controller.submit(planArgs("一" to "todo", "换一个" to "todo"))
+        assertTrue("批准过一版不给下一版开绿灯：$next", next is ToolOutcome.Failed)
+    }
+
+    @Test
+    fun `生效即把同版旧拒翻成批准`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val v = planArgs("一" to "todo", "随便看看" to "todo")
+        val ch = r.controller.previewChange(v)!!
+        r.controller.noteDecision(ch, PlanChangeDecision.REJECTED)
+        assertEquals(PlanChangeDecision.REJECTED, r.controller.decisionFor(ch))
+        r.controller.authorizeNextChange()
+        assertTrue(r.controller.submit(v) is ToolOutcome.Ok)
+        assertEquals("旧拒不该继续挡后面", PlanChangeDecision.APPROVED, r.controller.decisionFor(ch))
+    }
+
+    @Test
+    fun `新轮开始_旧裁决作废_同一版重新要授权`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val v = planArgs("一" to "todo", "随便看看" to "todo")
+        r.controller.noteDecision(r.controller.previewChange(v)!!, PlanChangeDecision.REJECTED)
+        r.controller.newRound()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val out = r.controller.submit(v)
+        assertTrue("换一轮她重答：$out", out is ToolOutcome.Failed)
+        assertFalse("用的是未经确认文案", (out as ToolOutcome.Failed).error.contains("已经明确拒过"))
+    }
+
+    @Test
+    fun `续跑回种_旧裁决不跟过来`() {
+        val r = rig()
+        r.controller.submit(planArgs("一" to "todo", "二" to "todo"))
+        val v = planArgs("一" to "todo", "随便看看" to "todo")
+        val ch = r.controller.previewChange(v)!!
+        r.controller.noteDecision(ch, PlanChangeDecision.REJECTED)
+        assertEquals(PlanChangeDecision.REJECTED, r.controller.decisionFor(ch))
+        r.store.latestPayload = PlanRules.toJson(
+            listOf(
+                PlanRules.PlanItem("一", PlanRules.STATUS_TODO),
+                PlanRules.PlanItem("二", PlanRules.STATUS_TODO),
+            ),
+        )
+        r.controller.seedFromStore(7L)
+        assertNull("进程重启回种 ⇒ 裁决表清空", r.controller.decisionFor(r.controller.previewChange(v)!!))
+        val out = r.controller.submit(v)
+        assertTrue("回种后她重新答：$out", out is ToolOutcome.Failed)
+        assertFalse((out as ToolOutcome.Failed).error.contains("已经明确拒过"))
+    }
+
     // ── 140 红线：不新开存储 ────────────────────────────────────────────
 
     @Test
