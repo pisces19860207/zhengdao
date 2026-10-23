@@ -467,7 +467,9 @@ class ProgressiveToolsTest {
         )
         // 那一处里两个协议分支各调一次注册表出口——同一处、同一条链的两种**形状**，
         // 不是第二条链（多了第三处就是有人在别处自己算了一遍）
-        assertEquals(2, Regex("registry\\.toolsJson").findAll(engine).count())
+        // 第一百五十四批：Gemini 原生也吃 OpenAI 形状的 function 包装（Wire 层再转），
+        // 同一处组装点里三个协议分支 ⇒ 3 处调用、仍是同一条链。
+        assertEquals(3, Regex("registry\\.toolsJson").findAll(engine).count())
         // 会话身份也只有一个落点：capabilities 的 executor 拿不到 sessionId，
         // 全靠引擎在每轮入口写 currentSessionId（房型同 planSessionId）
         assertEquals(

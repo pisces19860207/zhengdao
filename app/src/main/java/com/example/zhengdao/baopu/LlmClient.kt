@@ -128,6 +128,11 @@ sealed interface LlmEvent {
  * 为什么单独抽：URL 许可、端点路径、请求头优先级、请求体字段这四张表是
  * "换 provider 时会不会静默走错协议"的唯一判据，必须在单测里逐格钉死。
  */
+/** Gemini 一帧里的 `candidates[0].content.parts`（Wire 与 Sse 共用；坏形状返回 null）。 */
+private fun geminiParts(json: JSONObject): JSONArray? =
+    json.optJSONArray("candidates")?.optJSONObject(0)
+        ?.optJSONObject("content")?.optJSONArray("parts")
+
 internal object LlmWire {
 
     val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
@@ -144,13 +149,34 @@ internal object LlmWire {
      */
     const val OPENAI_MAX_TOKENS_FALLBACK = 8192
 
+    /** Gemini 原生 `generationConfig.maxOutputTokens` 的回落值（provider 没声明时）。 */
+    const val GEMINI_MAX_TOKENS_FALLBACK = 8192
+
     /**
      * 端点路径：baseUrl 一律自带版本前缀（`/v1`、`/zen/v1`），这里只拼资源路径。
      * 尾部斜杠容忍——用户手填 baseUrl 带不带 `/` 都能用。
      */
-    fun endpoint(protocol: LlmProtocol, baseUrl: String): String = when (protocol) {
+    fun endpoint(protocol: LlmProtocol, baseUrl: String): String =
+        endpoint(protocol, baseUrl, model = "", stream = false)
+
+    /**
+     * 端点（带模型与流式标记；OpenAI/Anthropic 不用 model，Gemini 原生要把它拼进路径）。
+     *
+     * Gemini 形状：`{base}/models/{model}:streamGenerateContent?alt=sse`
+     *（非流式 `:generateContent`）。base 自带版本段（`/v1beta`），与另两档同一约定。
+     */
+    fun endpoint(
+        protocol: LlmProtocol,
+        baseUrl: String,
+        model: String,
+        stream: Boolean,
+    ): String = when (protocol) {
         LlmProtocol.OPENAI_COMPAT -> baseUrl.trimEnd('/') + "/chat/completions"
         LlmProtocol.ANTHROPIC -> baseUrl.trimEnd('/') + "/messages"
+        LlmProtocol.GEMINI_NATIVE -> {
+            val suffix = if (stream) ":streamGenerateContent?alt=sse" else ":generateContent"
+            baseUrl.trimEnd('/') + "/models/" + model + suffix
+        }
     }
 
     /**
@@ -166,6 +192,11 @@ internal object LlmWire {
             LlmProtocol.ANTHROPIC -> {
                 if (p.apiKey.isNotEmpty()) put("x-api-key", p.apiKey)
                 put("anthropic-version", ANTHROPIC_VERSION)
+            }
+
+            // Gemini 原生：Key 走 `x-goog-api-key` 头（比查询参数好：不会进访问日志）。
+            LlmProtocol.GEMINI_NATIVE -> {
+                if (p.apiKey.isNotEmpty()) put("x-goog-api-key", p.apiKey)
             }
         }
         putAll(p.headers)
@@ -253,6 +284,105 @@ internal object LlmWire {
                     .apply { if (tools != null && tools.length() > 0) put("tools", tools) }
                     .toString()
             }
+
+            LlmProtocol.GEMINI_NATIVE -> geminiBody(p, messages, tools)
+        }
+
+        /**
+         * Gemini 原生请求体（第一百五十四批）。
+         *
+         * 与 OpenAI/Anthropic 的差别（公开文档）：
+         * - 没有 `messages`，是 `contents[]`，角色只有 `user` / `model`；
+         * - system 走顶层 `systemInstruction.parts`；
+         * - 工具是 `tools[].functionDeclarations[]`（**不是** `type:function` 包装）；
+         * - 图片是 `inline_data{mime_type,data}`（base64，不带 data URL 前缀）；
+         * - 输出上限在 `generationConfig.maxOutputTokens`，不是 `max_tokens`。
+         */
+        private fun geminiBody(
+            p: Provider,
+            messages: List<LlmMessage>,
+            tools: JSONArray?,
+        ): String {
+            val system = messages.filter { it.role == LlmMessage.ROLE_SYSTEM }
+                .joinToString("\n\n") { it.content }
+            val rest = messages.filter { it.role != LlmMessage.ROLE_SYSTEM }
+            val contents = JSONArray()
+            rest.forEach { m ->
+                val parts = JSONArray()
+                if (m.content.isNotEmpty()) parts.put(JSONObject().put("text", m.content))
+                m.images.forEach { url ->
+                    VisionRules.splitDataUrl(url)?.let { (mime, data) ->
+                        parts.put(
+                            JSONObject().put(
+                                "inline_data",
+                                JSONObject().put("mime_type", mime).put("data", data),
+                            ),
+                        )
+                    }
+                }
+                val role = if (m.role == LlmMessage.ROLE_ASSISTANT) "model" else "user"
+                contents.put(JSONObject().put("role", role).put("parts", parts))
+            }
+            return JSONObject().apply {
+                if (system.isNotEmpty()) {
+                    put(
+                        "systemInstruction",
+                        JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))),
+                    )
+                }
+                put("contents", contents)
+                if (tools != null && tools.length() > 0) {
+                    put(
+                        "tools",
+                        JSONArray().put(
+                            JSONObject().put("functionDeclarations", geminiToolDecls(tools)),
+                        ),
+                    )
+                }
+                put(
+                    "generationConfig",
+                    JSONObject().put("maxOutputTokens", p.maxOutput ?: GEMINI_MAX_TOKENS_FALLBACK),
+                )
+            }.toString()
+        }
+
+        /** OpenAI 形状的工具数组 → Gemini `functionDeclarations`（参数 schema 过一遍白名单）。 */
+        private fun geminiToolDecls(tools: JSONArray): JSONArray {
+            val out = JSONArray()
+            for (i in 0 until tools.length()) {
+                val fn = tools.optJSONObject(i)?.optJSONObject("function") ?: continue
+                val d = JSONObject()
+                    .put("name", fn.optString("name"))
+                    .put("description", fn.optString("description"))
+                fn.optJSONObject("parameters")?.let { d.put("parameters", sanitizeSchema(it)) }
+                out.put(d)
+            }
+            return out
+        }
+
+        /** Gemini 只吃 OpenAPI 子集；其余关键词（`$schema`/`additionalProperties`…）会 400。 */
+        private fun sanitizeSchema(src: JSONObject): JSONObject {
+            val out = JSONObject()
+            val keep = setOf(
+                "type", "format", "description", "nullable", "enum", "required",
+                "minItems", "maxItems", "title",
+            )
+            for (k in src.keys()) {
+                when {
+                    k == "properties" -> {
+                        val props = src.optJSONObject("properties") ?: continue
+                        val o = JSONObject()
+                        for (pk in props.keys()) {
+                            props.optJSONObject(pk)?.let { o.put(pk, sanitizeSchema(it)) }
+                        }
+                        out.put("properties", o)
+                    }
+                    k == "items" -> src.optJSONObject("items")?.let { out.put("items", sanitizeSchema(it)) }
+                    k in keep -> out.put(k, src.get(k))
+                    else -> Unit
+                }
+            }
+            return out
         }
 
         /**
@@ -292,6 +422,18 @@ internal object LlmWire {
                                 ),
                         )
                     }
+
+                    // Gemini 原生不吃 blocks（走 parts/inline_data，见 geminiBody）；
+                    // 这里只为 when 穷尽，正常路径不会经过。
+                    LlmProtocol.GEMINI_NATIVE -> {
+                        val parts = VisionRules.splitDataUrl(url) ?: continue
+                        blocks.put(
+                            JSONObject().put(
+                                "inline_data",
+                                JSONObject().put("mime_type", parts.first).put("data", parts.second),
+                            ),
+                        )
+                    }
                 }
             }
             return blocks
@@ -322,6 +464,22 @@ internal object LlmWire {
                             for (i in 0 until arr.length()) {
                                 val b = arr.optJSONObject(i) ?: continue
                                 if (b.optString("type") == "text") append(b.optString("text"))
+                            }
+                        }.takeIf { it.isNotEmpty() }
+                    }
+                }
+
+                LlmProtocol.GEMINI_NATIVE -> {
+                    val parts = geminiParts(json)
+                    if (parts == null) {
+                        null
+                    } else {
+                        buildString {
+                            for (i in 0 until parts.length()) {
+                                val pt = parts.optJSONObject(i) ?: continue
+                                if (pt.optBoolean("thought", false)) continue
+                                val t = pt.optString("text")
+                                if (t.isNotEmpty() && t != "null") append(t)
                             }
                         }.takeIf { it.isNotEmpty() }
                     }
@@ -370,6 +528,13 @@ internal object LlmSse {
 
     fun isTerminator(payload: String): Boolean = payload.trim() == TERMINATOR
 
+    /**
+     * Gemini 一帧的 `candidates[0].content.parts`。
+     *
+     * 为什么单独抽：deltaText / reasoningText / toolCallDeltas / plainTextOf 四处
+     * 都要从同一层取 parts；各写一遍必然在"第几层"上漂移。
+     */
+
     /** 取一帧里的增量文本；没有增量（或坏 JSON）返回 null。 */
     fun deltaText(protocol: LlmProtocol, payload: String): String? = runCatching {
         val json = JSONObject(payload)
@@ -388,6 +553,18 @@ internal object LlmSse {
                 } else {
                     null
                 }
+
+            LlmProtocol.GEMINI_NATIVE -> {
+                val parts = geminiParts(json) ?: return@runCatching null
+                buildString {
+                    for (i in 0 until parts.length()) {
+                        val pt = parts.optJSONObject(i) ?: continue
+                        if (pt.optBoolean("thought", false)) continue
+                        val t = pt.optString("text")
+                        if (t.isNotEmpty() && t != "null") append(t)
+                    }
+                }.takeIf { it.isNotEmpty() }
+            }
         }
     }.getOrNull()
 
@@ -405,6 +582,17 @@ internal object LlmSse {
                     ?.takeIf { it.isNotEmpty() && it != "null" }
 
                 else -> null
+            }
+
+            LlmProtocol.GEMINI_NATIVE -> {
+                val raw = json.optJSONArray("candidates")?.optJSONObject(0)
+                    ?.optString("finishReason")?.takeIf { it.isNotEmpty() && it != "null" }
+                when (raw) {
+                    null -> null
+                    "STOP" -> "stop"
+                    "MAX_TOKENS" -> "length"
+                    else -> raw.lowercase() // SAFETY / RECITATION / OTHER …
+                }
             }
         }
     }.getOrNull()
@@ -467,6 +655,16 @@ internal object LlmSse {
 
                 else -> null
             }
+
+            LlmProtocol.GEMINI_NATIVE -> {
+                val u = json.optJSONObject("usageMetadata") ?: return@runCatching null
+                LlmUsage(
+                    promptTokens = u.optIntOrNull("promptTokenCount"),
+                    completionTokens = u.optIntOrNull("candidatesTokenCount"),
+                    reasoningTokens = u.optIntOrNull("thoughtsTokenCount"),
+                    cacheHitTokens = u.optIntOrNull("cachedContentTokenCount"),
+                )
+            }
         }
     }.getOrNull()
 
@@ -519,6 +717,18 @@ internal object LlmSse {
                 } else {
                     null
                 }
+
+            LlmProtocol.GEMINI_NATIVE -> {
+                val parts = geminiParts(json) ?: return@runCatching null
+                buildString {
+                    for (i in 0 until parts.length()) {
+                        val pt = parts.optJSONObject(i) ?: continue
+                        if (!pt.optBoolean("thought", false)) continue
+                        val t = pt.optString("text")
+                        if (t.isNotEmpty() && t != "null") append(t)
+                    }
+                }.takeIf { it.isNotEmpty() }
+            }
         }
     }.getOrNull()
 
@@ -545,6 +755,27 @@ internal object LlmSse {
                             id = o.optString("id").takeIf { it.isNotEmpty() && it != "null" },
                             name = fn?.optString("name")?.takeIf { it.isNotEmpty() && it != "null" },
                             argumentsDelta = fn?.optString("arguments")?.takeIf { it.isNotEmpty() && it != "null" },
+                        )
+                    }
+                }
+            }
+
+            LlmProtocol.GEMINI_NATIVE -> {
+                val parts = geminiParts(json) ?: return@runCatching emptyList()
+                buildList {
+                    for (i in 0 until parts.length()) {
+                        val pt = parts.optJSONObject(i) ?: continue
+                        val fc = pt.optJSONObject("functionCall") ?: continue
+                        val name = fc.optString("name").takeIf { it.isNotEmpty() && it != "null" }
+                            ?: continue
+                        val args = fc.optJSONObject("args")?.toString() ?: "{}"
+                        add(
+                            ToolCallDelta(
+                                index = i,
+                                id = "gemini-" + i + "-" + name,
+                                name = name,
+                                argumentsDelta = args,
+                            ),
                         )
                     }
                 }
@@ -665,7 +896,7 @@ class LlmClient(private val provider: Provider) {
             tools = tools,
         ).toRequestBody(LlmWire.JSON_MEDIA_TYPE)
         return Request.Builder()
-            .url(LlmWire.endpoint(provider.protocol, provider.baseUrl))
+            .url(LlmWire.endpoint(provider.protocol, provider.baseUrl, provider.model, stream = true))
             .apply {
                 post(body)
                 LlmWire.headersOf(provider).forEach { (k, v) -> header(k, v) }
@@ -788,11 +1019,24 @@ class LlmClient(private val provider: Provider) {
      * `max_tokens` 盖成压缩上限（≤ [COMPLETE_MAX_TOKENS]，摘要不该长篇），
      * `temperature` 压到 0.2（摘要要稳定，不要每次压出不同版本）。
      */
-    fun completeBody(messages: List<LlmMessage>, maxTokens: Int, temperature: Double): String =
-        JSONObject(LlmWire.bodyOf(provider, messages, stream = false))
-            .put("max_tokens", maxTokens.coerceAtMost(COMPLETE_MAX_TOKENS))
-            .put("temperature", temperature)
-            .toString()
+    fun completeBody(messages: List<LlmMessage>, maxTokens: Int, temperature: Double): String {
+        val base = JSONObject(LlmWire.bodyOf(provider, messages, stream = false))
+        return when (provider.protocol) {
+            LlmProtocol.GEMINI_NATIVE -> {
+                val cfg = base.optJSONObject("generationConfig") ?: JSONObject().also {
+                    base.put("generationConfig", it)
+                }
+                cfg.put("maxOutputTokens", maxTokens.coerceAtMost(COMPLETE_MAX_TOKENS))
+                cfg.put("temperature", temperature)
+                base.toString()
+            }
+
+            else -> base
+                .put("max_tokens", maxTokens.coerceAtMost(COMPLETE_MAX_TOKENS))
+                .put("temperature", temperature)
+                .toString()
+        }
+    }
 
     /**
      * 一次请求、拿整段文本（第十三批 A 段 · 压缩用；**不动**流式路径）。
@@ -814,7 +1058,7 @@ class LlmClient(private val provider: Provider) {
         val body = completeBody(messages, maxTokens, temperature)
             .toRequestBody(LlmWire.JSON_MEDIA_TYPE)
         val req = Request.Builder()
-            .url(LlmWire.endpoint(provider.protocol, provider.baseUrl))
+            .url(LlmWire.endpoint(provider.protocol, provider.baseUrl, provider.model, stream = false))
             .apply {
                 post(body)
                 LlmWire.headersOf(provider).forEach { (k, v) -> header(k, v) }
