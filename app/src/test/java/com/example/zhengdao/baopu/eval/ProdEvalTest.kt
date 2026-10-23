@@ -1,13 +1,14 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第九十批 ② · 生产 eval 入口的门禁（派工单 §2 ＋ §3 的负例）。
+// 第九十批 ② · 生产 eval 入口的门禁（派工单 §2 ＋ §3 的负例）；
+// 第一百六十八批：调用点接上后，「没人调用」那条哨兵改写为「照派工单的样式调用」。
 //
 // **不联网、不花钱、不需要 key**：这里量的是「该不该跑、跑了记下什么、崩了会不会拖累对话」；
 // 真跑模型那条路归 `EvalGateTest`（有 key 才跑）。
 //
 // 负例分别落在哪：
 // - 「默认就打开 eval」⇒ [#闸门_纯判定_只有用户拨过才开] ＋ [#源码门禁_没有devMode并联] ＋ [#关掉时零调用]；
-// - 「把失败改成阻塞对话」⇒ [#跑批抛异常也只记录_绝不冒到调用方] ＋ [#源码门禁_对话路径上没有人调用它]；
+// - 「把失败改成阻塞对话」⇒ [#跑批抛异常也只记录_绝不冒到调用方] ＋ [#源码门禁_第一百六十八批接线后_单点收尾_不阻塞_闸门只读_写口在UI]；
 // - 「顺手自动晋升/改技能/回滚」⇒ [#源码门禁_不调用任何回滚与晋升原语] ＋ 产物里 blocking/rollback 恒 false。
 package com.example.zhengdao.baopu.eval
 
@@ -214,20 +215,38 @@ class ProdEvalTest {
     }
 
     @Test
-    fun `源码门禁_对话路径上没有人调用它`() {
-        // §2 的「不阻塞对话」在这一批是靠**不接线**保证的：控制器与引擎是别的批在飞的文件，
-        // 本批只交入口。谁把它同步接进回合里，这条就红——先给信号，再谈接线方式。
-        for (path in listOf(
-            "src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
-            "src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
-        )) {
-            val f = File(path)
-            assertTrue("找不到 $path（挪走了要一起改这条门禁，不许悄悄放行）", f.isFile)
-            assertFalse(
-                "$path 里出现了 ProdEval：接线时机/线程/频率还没定，不许顺手同步调用",
-                codeOfAt(f).contains("ProdEval"),
-            )
-        }
+    fun `源码门禁_第一百六十八批接线后_单点收尾_不阻塞_闸门只读_写口在UI`() {
+        // 168 批把调用点接上了（派工单 §2：会话收尾触发、节流、不阻塞）。
+        // 这条哨兵从「谁也不许调用」改写为「照派工单的样式调用」——
+        // ① 接线在、且只在控制器的收尾点；② 跑批放 IO；③ 引擎不接线（单点，防同一天烧两轮）；
+        // ④ 闸门文件（ProdEval.kt）仍不养写口；⑤ 写口在 ProdEvalSettings，且设置页接上了。
+        val controller = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt")
+        val engine = File("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt")
+        assertTrue("找不到 $controller（挪走了要一起改这条门禁，不许悄悄放行）", controller.isFile)
+        assertTrue("找不到 $engine", engine.isFile)
+        val ctrl = codeOfAt(controller)
+        assertTrue("调用点不见了：ProdEval 必须接在控制器的会话收尾点", ctrl.contains("ProdEval"))
+        assertTrue("必须经 scheduleProdEvalOnSettle 排程（收尾触发）", ctrl.contains("scheduleProdEvalOnSettle"))
+        assertTrue("跑批必须放 IO 线程（不阻塞对话）", ctrl.contains("Dispatchers.IO"))
+        assertTrue("必须过单飞门（防并发烧两轮额度）", ctrl.contains("ProdEvalSchedule.tryAcquire"))
+        assertFalse(
+            "RunEngine 里出现了 ProdEval：调用点只能有一个（收尾），引擎不接线",
+            codeOfAt(engine).contains("ProdEval"),
+        )
+        // 闸门文件不养写口（上面那条 forbidden 名单也盯着 setPrefOn）
+        assertFalse("ProdEval.kt 里出现了写口（putBoolean）", codeOf("ProdEval.kt").contains("putBoolean"))
+        // 写入口在 ProdEvalSettings，键名沿用闸门的，不许另起一套
+        val settings = File("src/main/java/com/example/zhengdao/baopu/eval/ProdEvalSettings.kt")
+        assertTrue("写入口文件不见了：ProdEvalSettings.kt", settings.isFile)
+        val sw = codeOfAt(settings)
+        assertTrue("写口必须落 putBoolean", sw.contains("putBoolean"))
+        assertTrue("写口必须写 ProdEvalGate.PREF_KEY（eval_prod_on，不许另起键名）", sw.contains("ProdEvalGate.PREF_KEY"))
+        val screen = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
+        assertTrue("找不到设置页", screen.isFile)
+        assertTrue(
+            "设置页没接写口（开关必须调 ProdEvalSettings）",
+            codeOfAt(screen).contains("ProdEvalSettings"),
+        )
         // 标签分开：生产跑批不许冒用自检前缀（账上要分得清是谁起的这一轮、烧的谁的额度）
         assertEquals("prod-eval", RuntimeEval.PROD_EVAL_TAG)
         assertEquals("proposal-selfcheck", RuntimeEval.SELF_CHECK_TAG)

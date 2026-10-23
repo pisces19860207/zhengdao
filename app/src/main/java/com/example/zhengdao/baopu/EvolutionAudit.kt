@@ -100,6 +100,11 @@ internal data class EvolutionAuditEntry(
             JSONObject()
                 .put("score", eval.score)
                 .put("case_ids", JSONArray(eval.caseIds))
+                // 第一百六十八批：来源与日期**键恒在**（同 postAdoptionJson 的口径）——
+                // 「这条决策当时看的是谁产的证据」以后要能回答；缺键＝老版本写的行，
+                // 与「有证据但不知道日期」是两件事。
+                .put("source", eval.source.name)
+                .put("ranAt", eval.ranAt ?: JSONObject.NULL)
         }
 
     /**

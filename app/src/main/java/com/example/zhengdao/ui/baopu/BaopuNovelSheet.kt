@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -91,8 +92,9 @@ internal fun BaopuNovelSheet(
                                 modifier = Modifier.weight(1f),
                             )
                             Text(
-                                text = stringResource(
-                                    R.string.baopu_novel_stats,
+                                text = pluralStringResource(
+                                    R.plurals.baopu_novel_stats,
+                                    row.chapters,
                                     row.chapters,
                                     row.chars,
                                 ),

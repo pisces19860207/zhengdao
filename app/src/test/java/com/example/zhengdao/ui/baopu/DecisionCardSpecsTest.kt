@@ -27,6 +27,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.util.TimeFormats
 import java.io.File
 
 class DecisionCardSpecsTest {
@@ -163,6 +164,41 @@ class DecisionCardSpecsTest {
         // chips：eval 过线在；CANDIDATE_EVIDENCE 这种流程码被过滤
         assertEquals(listOf("eval 过线"), spec.chips)
         assertTrue(DecisionSpecRules.isValid(spec))
+    }
+
+    // ── 第一百六十八批：证据来源行（派工单 §2「UI 必须标个人生产证据/发版证据」）──
+
+    @Test
+    fun `建议卡_个人生产证据_来源与日期都标`() {
+        val sug = suggestion().copy(
+            evalSource = com.example.zhengdao.baopu.eval.EvalEvidenceSource.PERSONAL_PROD,
+            evalRanAt = 1_700_000_000_000L,
+        )
+        val spec = DecisionSpecs.suggestion(sug, res)
+        assertNotNull("没有证据来源行", spec.footer)
+        assertTrue("必须标「个人生产证据」：${spec.footer}", spec.footer!!.contains("个人生产证据"))
+        assertTrue(
+            "必须带证据日期（走 TimeFormats 同一把尺）：${spec.footer}",
+            spec.footer!!.contains(TimeFormats.minuteStamp(1_700_000_000_000L)),
+        )
+        assertTrue(DecisionSpecRules.isValid(spec))
+    }
+
+    @Test
+    fun `建议卡_发版证据_标发版_不知道日期就明说`() {
+        val sug = suggestion().copy(evalSource = com.example.zhengdao.baopu.eval.EvalEvidenceSource.RELEASE)
+        val spec = DecisionSpecs.suggestion(sug, res)
+        assertTrue("必须标「发版证据」：${spec.footer}", spec.footer!!.contains("发版证据"))
+        assertTrue("ranAt 不知道 ⇒ 「日期不详」，不许编：${spec.footer}", spec.footer!!.contains("日期不详"))
+    }
+
+    @Test
+    fun `建议卡_没有证据_明说没有_不显示通过字样`() {
+        // evalSource 默认 null = 没有可用证据（缺/过期 ⇒ policy 判 DEFER）
+        val spec = DecisionSpecs.suggestion(suggestion(), res)
+        assertNotNull(spec.footer)
+        assertTrue("没有证据要明说：${spec.footer}", spec.footer!!.contains("无"))
+        assertFalse("没有证据时不许出现「过线」字样", spec.footer!!.contains("过线"))
     }
 
     @Test

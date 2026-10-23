@@ -1064,7 +1064,9 @@
     <string name="baopu_novel_empty">还没有小说项目。起个书名，让抱朴先建项目、再写第一章。</string>
     <string name="baopu_novel_name">书名</string>
     <string name="baopu_novel_create">新建并写第一章</string>
-    <string name="baopu_novel_stats">%1$d 章 · %2$d 字</string>
+    <plurals name="baopu_novel_stats">
+        <item quantity="other">%1$d 章 · %2$d 字</item>
+    </plurals>
     <string name="baopu_mcp_sheet_title">外部工具（MCP）</string>
     <string name="baopu_mcp_sheet_desc">MCP 工具默认锁着。填服务地址，抱朴会弹授权卡；连上后工具才会出现。</string>
     <string name="baopu_mcp_url">服务地址（https://…）</string>
@@ -1393,6 +1395,12 @@
     <string name="decision_suggest_title_persona">给人设追加一条？</string>
     <string name="decision_suggest_title_tool">给「%1$s」加条使用约束？</string>
     <string name="decision_suggest_judge">抱朴的判断：%1$s</string>
+    <!-- 第一百六十八批：建议卡证据来源行（派工单 §2「UI 必须标个人生产证据/发版证据」） -->
+    <string name="decision_evidence_personal">个人生产证据</string>
+    <string name="decision_evidence_release">发版证据</string>
+    <string name="decision_evidence_date_unknown">日期不详</string>
+    <string name="decision_suggest_evidence">证据来源：%1$s（%2$s）</string>
+    <string name="decision_suggest_evidence_none">证据来源：无（缺或已过期，本次判搁置）</string>
     <string name="decision_suggest_warning_high">这条风险等级高：采纳会写进盘上的文件，可能改变抱朴的行为方式；确认前请把前后对比看清楚</string>
     <!-- 八组的一句话用途（授权卡副标题用；与 ToolGroup.oneLine 对位，UI 层本地化） -->
     <string name="baopu_group_line_core">读文件、列目录、搜内容、问用户、列计划，以及打开网页并读它</string>
@@ -1546,6 +1554,10 @@
     <string name="baopu_workspace_card">工作区</string>
     <string name="baopu_ws_outside_title">允许访问工作区外</string>
     <string name="baopu_ws_outside_desc">打开后，抱朴要读写工作区外的文件时会先弹卡问你，同意才做；每个会话只问一次（重启后仍算同意，可在下面撤销）。关掉则一律拒绝。</string>
+    <!-- 第一百六十八批：生产评测开关（eval_prod_on 写入口；默认关） -->
+    <string name="baopu_eval_prod_card">生产评测</string>
+    <string name="baopu_eval_prod_title">周期性生产评测</string>
+    <string name="baopu_eval_prod_desc">打开后，每次会话收尾时若距上次已超过 24 小时，会用你当前设置的通道跑一轮 10 条用例的迷你评测（会消耗模型额度、发网络请求，大约几分钱），结果只写进这台手机的私有目录，作为进化建议的证据；不阻塞聊天、不改人设与技能。默认关闭，只有你在这里拨动才算数。</string>
     <string name="baopu_ws_grant_card">已放行工作区外的会话</string>
     <string name="baopu_ws_grant_empty">还没有放行过任何会话。新会话第一次要访问工作区外时会问你。</string>
     <string name="baopu_ws_grant_loading">读取中…</string>
