@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第一百零四批：决策卡家族与全局单卡槽的判据测试（派工单 §2 测试/门禁）。
 // 靶子全部对着 `DecisionCardRules.kt` 的纯函数；Composable 层不测（无 Robolectric，
@@ -222,8 +222,8 @@ class DecisionCardRulesTest {
     fun `工具约束建议没有落盘通道_采纳置灰`() {
         assertTrue(suggestionAdoptEnabled(ProposalKind.SKILL_BODY))
         assertTrue(suggestionAdoptEnabled(ProposalKind.PERSONA_APPEND))
-        // 99 批报告 §6：TOOL_RULE 一键采纳「不新开写盘路径」⇒ 后续单
-        assertFalse(suggestionAdoptEnabled(ProposalKind.TOOL_RULE))
+        // 2026-10-23：TOOL_RULE 采纳落点＝本项目人设（走既有备份通道）
+        assertTrue(suggestionAdoptEnabled(ProposalKind.TOOL_RULE))
     }
 
     @Test
