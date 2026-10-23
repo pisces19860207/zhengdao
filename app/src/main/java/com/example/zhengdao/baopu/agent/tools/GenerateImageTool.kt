@@ -48,6 +48,12 @@ internal object GenerateImageTool {
         val http: OkHttpClient = defaultHttp(),
         val now: () -> Long = { System.currentTimeMillis() },
         val log: (String) -> Unit = { RunLog.log(it) },
+        /**
+         * 执行时的 Key 兜底（2026-10-23）：装配那一刻若所有 Key 都在冷却，[provider] 会带着
+         * 空 Key 被固化，于是生图永远回「还没填 Key」。每次执行再问一次（仍走同一套
+         * Key 池/冷却判据），只在装配那份为空时才用它。
+         */
+        val keyProvider: (() -> String)? = null,
     )
 
     @Volatile
@@ -125,8 +131,11 @@ internal object GenerateImageTool {
             )
         val n = GenerateImage.normalizeCount(count)
 
-        val e = env ?: return ToolOutcome.Failed(NO_ENV)
-        if (e.provider.apiKey.isBlank()) return ToolOutcome.Failed(NO_KEY)
+        val e0 = env ?: return ToolOutcome.Failed(NO_ENV)
+        // 装配时的 provider 可能已经过时（当时池子全在冷却）：执行时再问一次 Key。
+        val liveKey = e0.provider.apiKey.ifBlank { e0.keyProvider?.invoke().orEmpty().trim() }
+        if (liveKey.isBlank()) return ToolOutcome.Failed(NO_KEY)
+        val e = if (liveKey == e0.provider.apiKey) e0 else e0.copy(provider = e0.provider.copy(apiKey = liveKey))
 
         // 参考图全部在联网前验完：白烧一张额度再报「图不存在」是最糟的顺序。
         val ref: Pair<String, String>? = if (reference.isNullOrBlank()) {

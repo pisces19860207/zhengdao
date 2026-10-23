@@ -205,6 +205,9 @@ internal object BaopuRuntime {
             ),
             // 157 目录收口：默认/自定义/私有工作区一律 ⇒ <工作区>/产物（旧 资料库/整理 已迁入）。
             artifactDir = { ws -> GenerateImage.artifactDir(ws) },
+            // 2026-10-23：装配时若池子全在冷却，上面那份 key 是空的、且会被固化；
+            // 执行时再走同一套 Key 池判据取一次（取不到仍如实回「去哪儿填」）。
+            keyProvider = { ProviderPrefs.storedKey(appCtx, Providers.GEMINI.id).orEmpty() },
         )
         // 第一百二十八批：知识库 v2 的索引存储壳（App 私有 filesDir/baopu/kb）。
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
