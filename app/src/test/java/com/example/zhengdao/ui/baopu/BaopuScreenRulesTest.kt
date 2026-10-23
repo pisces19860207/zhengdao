@@ -208,7 +208,8 @@ class BaopuScreenRulesTest {
     fun `G1_屏幕只剩三处调用_旧内联式子不再出现`() {
         val screen = code(screenRel)
         listOf(
-            "val drawerWidth = drawerWidthDp(screenWidthDp).dp",
+            // 134 批（ConfigurationScreenWidthHeight）：屏宽改从 LocalWindowInfo 取，变量名随之改。
+            "val drawerWidth = drawerWidthDp(windowWidthDp).dp",
             "val lastAssistant = lastNonUserPartText(controller.messages)",
             "val bottomCardsInput = screenBottomCardsInput(",
         ).forEach { call ->

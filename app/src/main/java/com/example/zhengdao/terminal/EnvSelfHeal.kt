@@ -253,8 +253,7 @@ object EnvSelfHeal {
         IssueCenter.report(
             id = "selfheal-uv",
             title = "uv 系统级配置没能写入",
-            detail = "${t.javaClass.simpleName}: ${t.message}；hermes 装依赖时可能撞上" +
-                "硬链接不可用（proot 下 SELinux/bind 边界）。",
+            detail = "${t.javaClass.simpleName}: ${t.message}；hermes 装依赖时可能撞上硬链接不可用（proot 下 SELinux/bind 边界）。",
             actionLabel = "去修复",
             actionId = IssueCenter.ACTION_REPAIR_ENV,
         )

@@ -62,6 +62,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -224,17 +226,9 @@ class MainActivity : ComponentActivity() {
         // 记在未做项里。
         // 复现核对：`grep -rn "RunLog.init(" app/src/main/java` ⇒ 期望 2 处（ZhengdaoApp、TerminalActivity）。
 
-        // 系统版本兜底门槛（用户第四批）：minSdk=36 已拦住安装，这里双保险
-        // 应对旁加载极端场景；不可取消，确定即退出，不崩溃。
-        if (android.os.Build.VERSION.SDK_INT < 36) {
-            android.app.AlertDialog.Builder(this)
-                .setTitle(getString(R.string.main_android_too_old_title))
-                .setMessage(getString(R.string.main_android_too_old_msg, android.os.Build.VERSION.RELEASE))
-                .setCancelable(false)
-                .setPositiveButton(getString(R.string.common_confirm)) { _, _ -> finish() }
-                .show()
-            return
-        }
+        // 系统版本兜底门槛（用户第四批）：minSdk=36 已在安装层拦住 <36 的设备，
+        // 原 `SDK_INT < 36` 的不可取消 AlertDialog 是死分支（lint ObsoleteSdkInt），
+        // 134 批删除；旁加载也装不进来，兜底框一并退役。
 
         // 签名自检（2026-10-09，ERRATA E-065）：被重新打包、重新签名的包在这里被认出来，
         // 只**提醒**一次，不禁用任何功能 —— GPL 允许别人改代码自己签名，
@@ -263,35 +257,12 @@ class MainActivity : ComponentActivity() {
             // 权限页那段互斥（2026-10-11）在下面照旧：pending 时两个请求都不排。
             var permDialogThisLaunch = false
 
-            // 存储运行时权限（第 0 步修复，2026-10-06）：此前全 App 没有任何请求代码，
-            // WRITE 靠用户手点设置授予、READ 因 manifest maxSdkVersion=32 帽子从未可授，
-            // Android 16 上共享存储读写全被 FUSE 拒——hermes"只能写不能读"的根因。
-            // 冷启动缺哪个补哪个；拒绝不打断使用（bind 会静默跳过，终端照常）。
-            // 首次安装由权限页接管；这段保留给"已引导过却依然缺权限"的冷启动补漏
-            // （否则用户一旦点过「稍后再说」，后来想补权限就只剩设置页一条路）。
-            runCatching {
-                // 第㉕刀（2026-10-15，targetSdk 28 → 36）：READ/WRITE_EXTERNAL_STORAGE 在
-                // API 30+ 已 inert —— 请求只会被系统**静默拒绝**（不弹任何框），问了也白问，
-                // 共享存储的唯一通道是「所有文件访问」（见 ProotLauncher.storageGranted 与
-                // 权限页那两行）。故 30+ 干脆不问，免得每次冷启动都白跑一轮 requestPermissions。
-                if (android.os.Build.VERSION.SDK_INT < 30) {
-                    val needed = arrayOf(
-                        android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    ).filter {
-                        androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
-                            android.content.pm.PackageManager.PERMISSION_GRANTED
-                    }
-                    // §B 顺序 15（2026-10-14）：**每项最多自动问一次** —— 原代码只判"缺不缺"，
-                    // 用户拒绝过（或系统永远不给）就会**每次冷启动再弹一次**。改用一次性标记；
-                    // 之后补权限走权限页 / 设置页。
-                    if (PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this), needed.isNotEmpty())) {
-                        PermissionSetup.markStorageAsked(this) // 先写标记再请求：请求中途被杀也不会重问
-                        androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
-                        permDialogThisLaunch = true // B-补-19：本次冷启动的系统框名额已用掉
-                    }
-                }
-            }
+            // 存储运行时权限（2026-10-06 的第 0 步修复）在本代已整体退役：
+            // 第㉕刀（targetSdk 28 → 36）起 READ/WRITE_EXTERNAL_STORAGE 在 API 30+ 已 inert，
+            // 请求只会被系统静默拒绝，共享存储的唯一通道是「所有文件访问」
+            // （见 ProotLauncher.storageGranted 与权限页那两行）。
+            // 原 `SDK_INT < 30` 分支是死代码，134 批按 lint ObsoleteSdkInt 删除；
+            // 通知权限那条（下面）仍走"每项一辈子只问一次"的一次性标记。
 
             // 通知权限（2026-10-09，#3 验收时发现）：安卓 13 起「装完清理 >500MB」的静默提示
             // 必须拿到 POST_NOTIFICATIONS，否则系统直接把通知丢掉（真机 `dumpsys package` 里
@@ -301,18 +272,16 @@ class MainActivity : ComponentActivity() {
             // B-补-19：同一次冷启动不排第二个系统框 —— 存储是必需项，先排它；通知只是可选
             // （拒绝仅影响装完清理的提示），让到下次冷启动，不跟存储框抢同一屏。
             if (!permDialogThisLaunch) runCatching {
-                if (android.os.Build.VERSION.SDK_INT >= 33) {
-                    // 字面量收敛到 PermissionSetup.NOTIFICATIONS_PERMISSION（那边的 KDoc 本来
-                    // 就写着「全文件只此一处」，原先这里是硬编码的重复一份）
-                    val perm = PermissionSetup.NOTIFICATIONS_PERMISSION
-                    val missing = androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
-                        android.content.pm.PackageManager.PERMISSION_GRANTED
-                    // §B 顺序 15：同样"每项最多自动问一次"（理由见上面存储那段）。
-                    if (PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this), missing)) {
-                        PermissionSetup.markNotifyAsked(this)
-                        androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
-                        permDialogThisLaunch = true // B-补-19：同上（此处也守住"只排一个"）
-                    }
+                // 字面量收敛到 PermissionSetup.NOTIFICATIONS_PERMISSION（那边的 KDoc 本来
+                // 就写着「全文件只此一处」，原先这里是硬编码的重复一份）
+                val perm = PermissionSetup.NOTIFICATIONS_PERMISSION
+                val missing = androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                // §B 顺序 15：同样"每项最多自动问一次"（理由见上面存储那段）。
+                if (PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this), missing)) {
+                    PermissionSetup.markNotifyAsked(this)
+                    androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
+                    permDialogThisLaunch = true // B-补-19：同上（此处也守住"只排一个"）
                 }
             }
 
@@ -426,7 +395,7 @@ class MainActivity : ComponentActivity() {
                             startActivity(
                                 Intent(
                                     Intent.ACTION_VIEW,
-                                    android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/releases")
+                                    "https://github.com/pisces19860207/zhengdao/releases".toUri()
                                 )
                             )
                         }
@@ -580,7 +549,7 @@ fun ZhengdaoApp(
     // 记录当前页面（供冷启动恢复；terminal 是独立 Activity，见下）
     androidx.compose.runtime.LaunchedEffect(nav) {
         nav.currentBackStackEntryFlow.collect { entry ->
-            routePrefs.edit().putString("last_route", entry.destination.route).apply()
+            routePrefs.edit { putString("last_route", entry.destination.route) }
             // 路由面包屑（白屏排查用，见上）：一次导航一行，正常使用一天也就几行。
             runCatching {
                 com.example.zhengdao.rootfs.RunLog.log(

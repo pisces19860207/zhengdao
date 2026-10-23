@@ -3,6 +3,7 @@
 package com.example.zhengdao.ui
 
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.example.zhengdao.R
 import android.Manifest
@@ -101,9 +102,9 @@ object PermissionSetup {
         // apply() 只把改动排进内存、异步落盘，进程若在这之后被杀（用户点完就杀后台是常态），
         // 标记就丢了 ⇒ 下次冷启动又叠一次引导页 —— 正是要消灭的"反复弹"。
         // 全仓另一处同步写盘的口径见 ui/AgentManifest.kt 的清单缓存（先验签后持久化）。
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_GUIDED, true)
-            .commit()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit(commit = true) {
+            putBoolean(KEY_GUIDED, true)
+        }
     }
 
     /**
@@ -188,9 +189,9 @@ object PermissionSetup {
         // R-23（审计第⑮刀，2026-10-14）：上面这行 KDoc 就是判据——"在**发起请求之前**写"，
         // 而 apply() 是异步落盘：请求刚发出、系统框还在屏上时进程被杀，标记没落地 ⇒ 下次冷启动
         // 又请求一次。改 commit() 与 KDoc 对齐（本文件 3 处标记统一走同步写盘）。
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_STORAGE_ASKED, true)
-            .commit()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit(commit = true) {
+            putBoolean(KEY_STORAGE_ASKED, true)
+        }
     }
 
     /** 通知权限是否已经**自动**请求过一次。 */
@@ -201,9 +202,9 @@ object PermissionSetup {
     fun markNotifyAsked(ctx: Context) {
         // R-23（审计第⑮刀，2026-10-14）：与 [markStorageAsked] 同一理由——"已问过"标记必须在
         // 发起请求之前真正落盘，否则请求过程中被杀就会再问一次。改 commit()（同步写盘）。
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_NOTIFY_ASKED, true)
-            .commit()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit(commit = true) {
+            putBoolean(KEY_NOTIFY_ASKED, true)
+        }
     }
 
     /**
@@ -298,6 +299,9 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
             res.getString(R.string.perm_hint_storage_denied)
         }
     }
+    // 134 批：minSdk=36 ⇒ READ/WRITE_EXTERNAL_STORAGE 请求分支已删（死代码，lint ObsoleteSdkInt）。
+    // permLauncher 保留是历史契约（与设置页同名同签名），当前无调用点；不删是为了不牵动
+    // 「权限页与设置页同一套 launcher」这条对照，真正该删时连同两边一起删。
 
     // 通知：单个权限用 RequestPermission 即可。
     val notifyLauncher = rememberLauncherForActivityResult(
@@ -392,21 +396,12 @@ fun PermissionSetupScreen(onDone: () -> Unit) {
                     else stringResource(R.string.data_perm_not_granted),
                     desc = stringResource(R.string.perm_storage_detail),
                     onClick = {
-                        if (storageOk) {
-                            openAppDetails()
-                        } else if (android.os.Build.VERSION.SDK_INT >= 30) {
-                            // 第㉕刀（targetSdk 36）：READ/WRITE 运行时权限在 30+ 已 inert，
-                            // 点下去只会被静默拒绝、用户看到"点了没反应" ⇒ 直接送他去
-                            // 「所有文件访问」系统页（共享存储 36 上的唯一通道）。
-                            openManageAllFiles()
-                        } else {
-                            permLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                                )
-                            )
-                        }
+                        // 第㉕刀（targetSdk 36）：READ/WRITE 运行时权限在 30+ 已 inert，
+                        // 点下去只会被静默拒绝、用户看到"点了没反应" ⇒ 直接送他去
+                        // 「所有文件访问」系统页（共享存储 36 上的唯一通道）。
+                        // 134 批：原 `SDK_INT >= 30` 分支恒真（minSdk=36），旧版请求分支是死代码，
+                        // 已按 lint ObsoleteSdkInt 删除。
+                        if (storageOk) openAppDetails() else openManageAllFiles()
                     },
                 )
                 RowGapDivider()

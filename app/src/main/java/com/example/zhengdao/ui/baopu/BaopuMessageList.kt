@@ -63,6 +63,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -242,6 +243,9 @@ internal fun formatDuration(ms: Long): String {
 @Composable
 internal fun BaopuMessageList(
     messages: List<BaopuUiMessage>,
+    // 134 批 lint(ModifierParameter)：modifier 必须是第一个可选参数，故从末尾移到
+    // 唯一的必选参数 messages 之后（其余参数都有默认值）。调用点全走命名参数。
+    modifier: Modifier = Modifier,
     steps: List<BaopuStepRow> = emptyList(),
     running: Boolean = false,
     pinLastRound: Boolean = false,
@@ -263,9 +267,6 @@ internal fun BaopuMessageList(
     engineState: RunState = RunState.IDLE,
     engineStep: Int = 0,
     awaitConfirmTool: String? = null,
-    // 2026-10-18 用户：「这次学到和已压缩这类可以放到已完成下面滚动播放吗？不占用正文框，
-    // 很影响手机的可视面积」⇒ 两条便签从固定头区搬进列表首项，随内容一起滚走。
-    modifier: Modifier = Modifier,
 ) {
     if (messages.isEmpty()) {
         Column(modifier.fillMaxWidth().padding(24.dp)) {
@@ -368,7 +369,7 @@ private fun BaopuArtifactRow(plan: ArtifactChipPlan, onOpen: (String) -> Unit) {
         }
         if (plan.more > 0) {
             Text(
-                text = stringResource(R.string.baopu_artifact_more, plan.more),
+                text = pluralStringResource(R.plurals.baopu_artifact_more, plan.more, plan.more),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

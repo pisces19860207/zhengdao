@@ -36,6 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,8 +51,10 @@ import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.ui.settings.DataRules
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -156,7 +159,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         try {
             ctx.startActivity(
                 Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                    .setData("package:${ctx.packageName}".toUri())
             )
         } catch (e: Exception) {
             try {
@@ -172,7 +175,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         }
     }
 
-    var storageTick by remember { mutableStateOf(0) }
+    var storageTick by remember { mutableIntStateOf(0) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -279,9 +282,9 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 com.example.zhengdao.terminal.KnowledgeBase.State.BUSY ->
                     stringResource(R.string.data_kb_busy)
                 com.example.zhengdao.terminal.KnowledgeBase.State.ORGANIZED ->
-                    stringResource(R.string.data_kb_organized, st.files) + capNote(st.files)
+                    pluralStringResource(R.plurals.data_kb_organized, st.files, st.files) + capNote(st.files)
                 com.example.zhengdao.terminal.KnowledgeBase.State.MOUNTED ->
-                    stringResource(R.string.data_kb_mounted, st.files) + capNote(st.files)
+                    pluralStringResource(R.plurals.data_kb_mounted, st.files, st.files) + capNote(st.files)
                 null -> stringResource(R.string.data_kb_reading)
             }
             InfoRow(stringResource(R.string.data_state_label), stateText)
@@ -328,12 +331,12 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 var copyAsk by remember { mutableStateOf(false) }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = stringResource(R.string.data_kb_other_found, otherPath, otherCount),
+                    text = pluralStringResource(R.plurals.data_kb_other_found, otherCount, otherPath, otherCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 TextButton(enabled = !cleaning, onClick = { copyAsk = true }) {
-                    Text(stringResource(R.string.data_kb_copy_btn, otherCount))
+                    Text(pluralStringResource(R.plurals.data_kb_copy_btn, otherCount, otherCount))
                 }
                 if (copyAsk) {
                     AlertDialog(
@@ -366,7 +369,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                         n to 0L
                                     },
                                     toast = { n, _ ->
-                                        if (n > 0) res.getString(R.string.data_kb_copied, n)
+                                        if (n > 0) res.getQuantityString(R.plurals.data_kb_copied, n, n)
                                         else res.getString(R.string.data_kb_copy_none)
                                     },
                                 )
@@ -517,7 +520,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 runCatching {
                     ctx.startActivity(
                         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                            .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                            .setData("package:${ctx.packageName}".toUri())
                     )
                 }.onFailure {
                     // 2026-10-08：异常原文 → 人话（[HumanizeError]）
@@ -711,7 +714,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 title = { Text(stringResource(R.string.data_ws_change_title)) },
                 text = {
                     Column {
-                        Text(stringResource(R.string.data_ws_change_current, curKbShown, curFiles))
+                        Text(pluralStringResource(R.plurals.data_ws_change_current, curFiles, curKbShown, curFiles))
                         Spacer(Modifier.height(6.dp))
                         Text(stringResource(R.string.data_ws_change_desc))
                         Spacer(Modifier.height(6.dp))
@@ -736,7 +739,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                 c to 0L
                             },
                             toast = { c, _ ->
-                                if (c > 0) res.getString(R.string.data_ws_change_copied, c)
+                                if (c > 0) res.getQuantityString(R.plurals.data_ws_change_copied, c, c)
                                 else res.getString(R.string.data_ws_change_none)
                             },
                         )

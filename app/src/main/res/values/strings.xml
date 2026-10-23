@@ -67,7 +67,9 @@
     <string name="settings_status_perm_pending">权限待处理</string>
     <string name="settings_status_disabled">未启用</string>
     <string name="settings_status_enabled">已启用</string>
-    <string name="settings_status_file_count">%1$d 个文件</string>
+    <plurals name="settings_status_file_count">
+        <item quantity="other">%1$d 个文件</item>
+    </plurals>
     <string name="settings_status_guide">指南</string>
     <string name="settings_value_help">新手指南 · 日志</string>
 
@@ -76,9 +78,13 @@
     <string name="home_no_browser">没有可用的浏览器</string>
     <string name="home_env_ready">环境就绪</string>
     <string name="home_env_missing">环境未安装</string>
-    <string name="home_agent_count">%1$d 个 Agent</string>
+    <plurals name="home_agent_count">
+        <item quantity="other">%1$d 个 Agent</item>
+    </plurals>
     <!-- 第十八批 B 段：检测瘦身——健康的不显示，缺失的合并成一行红叉 -->
-    <string name="home_health_missing">缺 %1$d 项</string>
+    <plurals name="home_health_missing">
+        <item quantity="other">缺 %1$d 项</item>
+    </plurals>
     <string name="home_agent_missing">%1$s 未安装</string>
     <string name="home_abi_unknown">未知</string>
     <string name="home_debian_installed">Debian 13.7 已安装</string>
@@ -157,17 +163,27 @@
     <string name="data_kb_disabled">已关闭</string>
     <string name="data_kb_not_mounted">未挂载 · 还没放资料</string>
     <string name="data_kb_busy">正在整理中…</string>
-    <string name="data_kb_organized">已挂载 · %1$d 个文件（含摘要）</string>
-    <string name="data_kb_mounted">已挂载 · %1$d 个文件</string>
+    <plurals name="data_kb_organized">
+        <item quantity="other">已挂载 · %1$d 个文件（含摘要）</item>
+    </plurals>
+    <plurals name="data_kb_mounted">
+        <item quantity="other">已挂载 · %1$d 个文件</item>
+    </plurals>
     <string name="data_kb_reading">读取中…</string>
     <string name="data_state_label">状态</string>
     <string name="data_kb_hint">把资料放进这个文件夹，终端里的 AI 就会自动找到它。什么格式都行。</string>
     <string name="data_kb_privacy">资料存在你自己的手机上。证道本身不会把它发出去（终端里的 AI 自己联网时另说）。</string>
-    <string name="data_kb_other_found">另外发现一份带资料的资料库：%1$s（%2$d 个文件）。\n资料库是跟着「工作区」走的——换过工作区之后，旧那份还留在原地，但 App 只读上面这个路径。</string>
-    <string name="data_kb_copy_btn">把那份复制过来（%1$d 个文件）</string>
+    <plurals name="data_kb_other_found">
+        <item quantity="other">另外发现一份带资料的资料库：%1$s（%2$d 个文件）。\n资料库是跟着「工作区」走的——换过工作区之后，旧那份还留在原地，但 App 只读上面这个路径。</item>
+    </plurals>
+    <plurals name="data_kb_copy_btn">
+        <item quantity="other">把那份复制过来（%1$d 个文件）</item>
+    </plurals>
     <string name="data_kb_copy_title">复制过来？</string>
     <string name="data_kb_copy_desc">把 %1$s 里的文件复制进当前资料库的 %2$s/ 目录。原件不动；同名的文件不覆盖（以当前这份为准）。</string>
-    <string name="data_kb_copied">已复制 %1$d 个文件，清单已重建</string>
+    <plurals name="data_kb_copied">
+        <item quantity="other">已复制 %1$d 个文件，清单已重建</item>
+    </plurals>
     <string name="data_kb_copy_none">没有可复制的文件（可能都已在当前资料库里）</string>
     <string name="data_copy_action">复制</string>
     <string name="data_kb_path_label">资料库路径</string>
@@ -214,10 +230,14 @@
     <string name="data_ws_invalid">该位置不可用，请选择内部存储中的文件夹</string>
     <string name="data_ws_set">工作区已设为 %1$s，下次启动会话生效</string>
     <string name="data_ws_change_title">换工作区后，资料库也跟着换</string>
-    <string name="data_ws_change_current">当前资料库：%1$s（%2$d 个文件）</string>
+    <plurals name="data_ws_change_current">
+        <item quantity="other">当前资料库：%1$s（%2$d 个文件）</item>
+    </plurals>
     <string name="data_ws_change_desc">资料库挂在「工作区」下面，所以换工作区就等于换了一份资料库。这一份会原样留在原地、不再被读（不会被删）。</string>
     <string name="data_ws_change_ask">要不要把这些文件一并复制到新工作区的资料库里？原件不动、同名不覆盖。</string>
-    <string name="data_ws_change_copied">已把 %1$d 个文件复制到新工作区，清单已重建</string>
+    <plurals name="data_ws_change_copied">
+        <item quantity="other">已把 %1$d 个文件复制到新工作区，清单已重建</item>
+    </plurals>
     <string name="data_ws_change_none">新工作区里已有这些文件，没有可复制的</string>
     <string name="data_ws_change_copy_btn">复制过去并切换</string>
     <string name="data_ws_change_move_btn">只切换，资料留在原地</string>
@@ -303,14 +323,18 @@
     <string name="storage_opt_browser">浏览器工具（agent-browser / chromium）不在删除范围内——有它 hermes 才能开网页，保留。</string>
     <string name="storage_opt_ffmpeg">ffmpeg 也不在这里面：它是 hermes 的必需包，清掉之后它每次启动都会报 install out of sync（系统层自带的那份它不认）。</string>
     <string name="storage_opt_keeps">不会删除：python / node / uv / npm / ripgrep 这些核心运行时、依赖环境、记忆、hermes 本体、系统文件、任何用户数据。</string>
-    <string name="storage_opt_deleted">已删除 %1$d 项，释放 %2$d MB</string>
+    <plurals name="storage_opt_deleted">
+        <item quantity="other">已删除 %1$d 项，释放 %2$d MB</item>
+    </plurals>
     <string name="storage_opt_none">没有可清理的可选工具</string>
     <string name="storage_script_btn">清理安装时下载的脚本（下次安装会重新下载）</string>
     <string name="storage_script_title">清理安装时下载的脚本？</string>
     <string name="storage_script_desc1">会删掉公共区 agents/scripts 里缓存的安装脚本、App 自己记的校验值、以及终端里的执行副本。</string>
     <string name="storage_script_desc2">脚本只有几十 KB——这一步不是为了腾地方，而是让下次安装重新下载一份干净的（重装被同一个失败卡住时，先点这里）。</string>
     <string name="storage_script_keeps">不会删：装好的 Agent 本体与工具链、日志、资料库。</string>
-    <string name="storage_script_cleared">已清 %1$d 个脚本缓存文件（释放 %2$d MB），下次安装会重新下载</string>
+    <plurals name="storage_script_cleared">
+        <item quantity="other">已清 %1$d 个脚本缓存文件（释放 %2$d MB），下次安装会重新下载</item>
+    </plurals>
     <string name="storage_script_none">没有脚本缓存可清</string>
     <string name="storage_cache_title">缓存清理</string>
     <string name="storage_cache_location">存放位置：%1$s（cache 包缓存 / logs 日志 / agents 脚本与账本；rootfs、opencode 是安装包）</string>
@@ -337,13 +361,19 @@
     <string name="storage_gen_free">可释放约 %1$d MB。</string>
     <string name="storage_gen_desc">每次重装依赖环境都会留下一份旧的（几百 MB），而记录只认得最新那份——这里删的就是没人再用的那些。正在用的和最新的都会留着。</string>
     <string name="storage_gen_keeps">不会删：正在用的依赖环境、记忆、装好的工具链、系统文件。需要回到旧版时 hermes 会重装（要联网）。</string>
-    <string name="storage_gen_deleted">已删除 %1$d 份，释放 %2$d MB</string>
+    <plurals name="storage_gen_deleted">
+        <item quantity="other">已删除 %1$d 份，释放 %2$d MB</item>
+    </plurals>
     <string name="storage_gen_none">没有可清理的旧依赖文件</string>
     <string name="storage_installer_title">安装包缓存</string>
     <string name="storage_installer_dir">目录：%1$s</string>
-    <string name="storage_installer_count">已缓存 %1$d 个安装包（当前环境：%2$s）</string>
+    <plurals name="storage_installer_count">
+        <item quantity="other">已缓存 %1$d 个安装包（当前环境：%2$s）</item>
+    </plurals>
     <string name="storage_installer_item">· %1$s（%2$d MB）</string>
-    <string name="storage_installer_cleaned">已清理 %1$d 个旧版本文件</string>
+    <plurals name="storage_installer_cleaned">
+        <item quantity="other">已清理 %1$d 个旧版本文件</item>
+    </plurals>
     <string name="storage_installer_clean_btn">清理旧版本缓存（保留当前版本）</string>
     <string name="storage_installer_clean_title">永久删除旧版本安装包？</string>
     <string name="storage_installer_clean_desc">这会永久删除除当前版本外的全部安装包缓存（含没下完的残片），只保留当前版本。</string>
@@ -375,13 +405,19 @@
     <string name="help_log_export_hint">日志存在应用私有目录；需要给开发者看时点「导出日志」，选个位置保存（导出内容会自动去掉私有路径与口令）。</string>
     <string name="help_log_export_ok">已导出</string>
     <string name="help_log_export_fail">导出失败</string>
-    <string name="help_log_archive_count">已有 %1$d 份历史日志。</string>
+    <plurals name="help_log_archive_count">
+        <item quantity="other">已有 %1$d 份历史日志。</item>
+    </plurals>
     <string name="help_log_prev_error">上次运行检测到错误，日志已保留（可直接复制反馈）。</string>
     <string name="help_log_view_prev">查看上次日志</string>
     <string name="help_log_prune_btn">只留最近 3 份</string>
-    <string name="help_log_pruned">已删掉 %1$d 份旧日志，保留最近 3 份</string>
+    <plurals name="help_log_pruned">
+        <item quantity="other">已删掉 %1$d 份旧日志，保留最近 3 份</item>
+    </plurals>
     <string name="help_log_prune_title">永久删除旧日志归档？</string>
-    <string name="help_log_prune_desc">这会永久删除 %1$d 份旧日志归档，只留下最近 3 份。</string>
+    <plurals name="help_log_prune_desc">
+        <item quantity="other">这会永久删除 %1$d 份旧日志归档，只留下最近 3 份。</item>
+    </plurals>
     <string name="help_log_prune_warn">删了就找不回来了，没有回收站，也不能撤销。</string>
 
     <!-- ── 共享组件（顶栏 / 日志弹窗 / 文件夹选择 / 资料库说明）── -->
@@ -408,7 +444,9 @@
     <string name="keepalive_battery_toast">请到系统设置的电池优化中手动设置</string>
     <string name="keepalive_details_toast">请到系统设置 → 应用管理中找到证道</string>
     <string name="keepalive_log_row">保活记录（被杀留档）</string>
-    <string name="keepalive_log_recent">最近 %1$d 条退出记录</string>
+    <plurals name="keepalive_log_recent">
+        <item quantity="other">最近 %1$d 条退出记录</item>
+    </plurals>
 
     <!-- ── 关于页 ── -->
     <string name="about_version">版本</string>
@@ -438,8 +476,6 @@
     <string name="appearance_dark">深色</string>
 
     <!-- ── 启动与更新提示（MainActivity）── -->
-    <string name="main_android_too_old_title">系统版本过低</string>
-    <string name="main_android_too_old_msg">证道需要安卓 16 或更高版本（当前安卓 %1$s）。</string>
     <string name="main_update_title">发现新版本</string>
     <string name="main_update_msg">最新版 %1$s（当前 %2$s），可到 GitHub Releases 下载。</string>
     <string name="main_update_go">去下载</string>
@@ -484,10 +520,14 @@
     <string name="keepalive_log_exported">已导出到 %1$s</string>
     <string name="keepalive_log_export_failed">导出失败：公共区不可用（先在权限里开启「所有文件访问」）</string>
     <string name="keepalive_log_export">导出到 Download/证道/logs</string>
-    <string name="keepalive_log_cleared">已清空 %1$d 份留档</string>
+    <plurals name="keepalive_log_cleared">
+        <item quantity="other">已清空 %1$d 份留档</item>
+    </plurals>
     <string name="keepalive_log_clear">清空记录</string>
     <string name="keepalive_log_clear_title">永久清空保活留档？</string>
-    <string name="keepalive_log_clear_desc">这会永久清空全部保活留档：最近退出、最近心跳，以及 %1$d 份 logcat 片段。</string>
+    <plurals name="keepalive_log_clear_desc">
+        <item quantity="other">这会永久清空全部保活留档：最近退出、最近心跳，以及 %1$d 份 logcat 片段。</item>
+    </plurals>
     <string name="keepalive_log_clear_warn">清空后这些记录就永久没了，找不回来，也不能撤销。</string>
 
 
@@ -623,26 +663,62 @@
     <string name="hermes_record_lost">依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）</string>
     <string name="hermes_no_record">尚未登记依赖环境（安装可能没跑完），需在终端重建</string>
     <string name="hermes_lock_missing">源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回</string>
-    <string name="hermes_ok_stale">依赖环境记录有效（另有 %1$d 个更新中断留下的标记文件，可一键清理）</string>
+    <plurals name="hermes_ok_stale">
+        <item quantity="other">依赖环境记录有效（另有 %1$d 个更新中断留下的标记文件，可一键清理）</item>
+    </plurals>
     <string name="hermes_ok">依赖环境记录有效</string>
 
     <!-- ── 资源占用体检（ResMonitor）── -->
     <string name="resmon_idle">抱朴与终端均未运行，无进程可采样</string>
-    <string name="resmon_rss_over">⚠ 内存 %1$d MB 超阈值 %2$d MB（%3$d 个进程）——关掉不用的会话，或重启抱朴</string>
+    <plurals name="resmon_rss_over">
+        <item quantity="other">⚠ 内存 %1$d MB 超阈值 %2$d MB（%3$d 个进程）——关掉不用的会话，或重启抱朴</item>
+    </plurals>
     <string name="resmon_cpu_over">⚠ CPU %1$s%% 超阈值 %2$d%%——检查插件与会话规模</string>
-    <string name="resmon_normal">RSS %1$d MB · CPU %2$s%% · %3$d 个进程</string>
+    <plurals name="resmon_normal">
+        <item quantity="other">RSS %1$d MB · CPU %2$s%% · %3$d 个进程</item>
+    </plurals>
 
     <!-- ── 终端页子集（TerminalActivity：安装引导 + 长按菜单 + 复制粘贴）── -->
     <!-- 其余 Toast（分屏 / 圆点说明 / 安装过程细节）按用户拍板登记豁免：终端画面本身是英文输出 -->
+    <!-- 134 批 lint HardcodedText 清零：工具栏三个圆点的读屏文案 + 快捷键条 17 个键帽，
+         原来硬编码在 res/layout*/ 里，这里逐字搬出（键帽是技术标识，中英同一字面值）。 -->
+    <string name="term_close_terminal_cd">关闭终端</string>
+    <string name="term_close_split_cd">关闭分屏</string>
+    <string name="term_split_cd">tmux 上下分屏</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_key_ctrl">CTRL</string>
+    <string name="term_key_shift">SHIFT</string>
+    <string name="term_key_interrupt">^C</string>
+    <string name="term_key_up">↑</string>
+    <string name="term_key_down">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_pgup">PGUP</string>
+    <string name="term_key_pgdn">PGDN</string>
+    <string name="term_key_home">HOME</string>
+    <string name="term_key_end">END</string>
+    <string name="term_key_pipe">|</string>
+    <string name="term_key_minus">\u002D</string>
+    <string name="term_key_slash">/</string>
+    <string name="term_key_del">DEL</string>
     <string name="term_no_network">网络不通：多半是代理 App 被系统后台杀掉了 —— 把它拉起来即可；不开代理、让「证道」直连手机网络也能通</string>
     <string name="term_nothing_to_copy">没有可复制的内容</string>
-    <string name="term_copied_screen">已复制屏幕内容（%1$d 字）</string>
+    <plurals name="term_copied_screen">
+        <item quantity="other">已复制屏幕内容（%1$d 字）</item>
+    </plurals>
     <string name="term_clipboard_empty">剪贴板为空</string>
     <string name="term_session_not_ready">会话未就绪，暂不能粘贴</string>
-    <string name="term_pasting">正在粘贴 %1$d 个字符…</string>
-    <string name="term_pasted">已粘贴 %1$d 个字符</string>
+    <plurals name="term_pasting">
+        <item quantity="other">正在粘贴 %1$d 个字符…</item>
+    </plurals>
+    <plurals name="term_pasted">
+        <item quantity="other">已粘贴 %1$d 个字符</item>
+    </plurals>
     <string name="term_paste_failed">粘贴未完成：%1$s</string>
-    <string name="term_copied_chars">已复制 %1$d 个字符</string>
+    <plurals name="term_copied_chars">
+        <item quantity="other">已复制 %1$d 个字符</item>
+    </plurals>
     <string name="term_menu_title">终端操作</string>
     <string name="term_menu_web_search">在玄览里搜索选中文字</string>
     <string name="term_menu_clear">清屏</string>
@@ -770,7 +846,9 @@
     <string name="baopu_compressed_marker">此处已压缩：旧消息压成了摘要，原文还在记录里，可展开看。</string>
     <!-- UI 第二批（2026-10-19 §2）：卡片折叠后的**显性计数**——少显示了必须说出来。
          展开/收起的箭头用既成的 common_expand_arrow / common_collapse_arrow，本批只加这一个键。 -->
-    <string name="baopu_more_items">还有 %1$d 条</string>
+    <plurals name="baopu_more_items">
+        <item quantity="other">还有 %1$d 条</item>
+    </plurals>
     <!-- ── 抱朴步骤卡收纳（第十六批第一件；一轮收成一行，点开看每一步）── -->
     <!-- 2026-10-18 那颗「收起详情」浮标已在第一百零六批移除（用户点名）：
          「入口不随内容滚走」改由轮尾内联活动面板那一行承接（设计 v1.5 §3.12）。 -->
@@ -791,18 +869,28 @@
     <string name="baopu_image_path_copied">已复制图片路径</string>
     <string name="baopu_attach_failed">附件保存失败（没存储权限或读不到文件）</string>
     <string name="baopu_attach_camera_denied">没给相机权限，拍不了照</string>
-    <string name="baopu_attach_too_many">最多 %1$d 个附件</string>
-    <string name="baopu_attach_hint_files">（用户附了 %1$d 个文件，已存进工作区：%2$s。需要内容就用 read_file 读它们。）</string>
-    <string name="baopu_attach_hint_images">（用户附了 %1$d 张图片，已存进工作区：%2$s。看得见就按图作答；看不见就明说看不见，别假装看过；需要时请让用户把关键内容用文字说一遍。）</string>
+    <plurals name="baopu_attach_too_many">
+        <item quantity="other">最多 %1$d 个附件</item>
+    </plurals>
+    <plurals name="baopu_attach_hint_files">
+        <item quantity="other">（用户附了 %1$d 个文件，已存进工作区：%2$s。需要内容就用 read_file 读它们。）</item>
+    </plurals>
+    <plurals name="baopu_attach_hint_images">
+        <item quantity="other">（用户附了 %1$d 张图片，已存进工作区：%2$s。看得见就按图作答；看不见就明说看不见，别假装看过；需要时请让用户把关键内容用文字说一遍。）</item>
+    </plurals>
     <string name="baopu_image_missing_short">图片找不到了</string>
     <string name="baopu_attach_thumb_desc">附件图片：%1$s</string>
     <string name="baopu_attach_path_copied">已复制附件路径</string>
-    <string name="baopu_plan_summary">计划 %1$d/%2$d 完成</string>
+    <plurals name="baopu_plan_summary">
+        <item quantity="other">计划 %1$d/%2$d 完成</item>
+    </plurals>
     <!-- ── 计划区（第一百零六批，v1.5 §3.11）：悬浮胶囊＋浮层面板；计划从消息正文撤出 ── -->
     <string name="baopu_plan_panel_title">计划</string>
     <string name="baopu_plan_capsule_active">%1$d 个进行中</string>
     <string name="baopu_plan_capsule_desc">打开工作计划</string>
-    <string name="baopu_plan_more">还有 %1$d 个</string>
+    <plurals name="baopu_plan_more">
+        <item quantity="other">还有 %1$d 个</item>
+    </plurals>
     <string name="baopu_plan_group_current">本轮</string>
     <string name="baopu_plan_group_prev">上一轮</string>
     <string name="baopu_plan_group_nth">第 %1$d 轮</string>
@@ -813,7 +901,9 @@
     <string name="baopu_plan_time_yesterday">昨天 %1$s</string>
     <!-- ── 活动面板（第一百零六批，v1.5 §3.12）：轮尾内联，取代「收起详情」浮标 ── -->
     <string name="baopu_activity_running">● 正在：%1$s · 第 %2$d 步</string>
-    <string name="baopu_activity_more">还有 %1$d 条</string>
+    <plurals name="baopu_activity_more">
+        <item quantity="other">还有 %1$d 条</item>
+    </plurals>
     <string name="baopu_activity_kind_tool">工具</string>
     <string name="baopu_activity_kind_compression">压缩</string>
     <string name="baopu_activity_kind_await">等确认</string>
@@ -846,13 +936,17 @@
     <string name="baopu_backup_cancel">以后再说</string>
     <string name="baopu_backup_never">还从未导出过</string>
     <string name="baopu_backup_last">上次导出：%1$s</string>
-    <string name="baopu_backup_unexported">还有 %1$d 件没导出</string>
+    <plurals name="baopu_backup_unexported">
+        <item quantity="other">还有 %1$d 件没导出</item>
+    </plurals>
     <!-- ── 抱朴章节抽取（刀 2 追加包；切章预览 → 一次 ask_user）── -->
     <string name="baopu_extract_title">章节抽取</string>
     <string name="baopu_extract_desc">选一本书，先看切分结果（章数和前几章的标题），再决定怎么办：逐章生成摘要、只要索引、还是精读其中几章。</string>
     <string name="baopu_extract_scope">只列经「搬进资料库」入库的书（私有原件）。你手工放进「产物」目录的文件不会出现在这份书单里——那种直接在会话里让我读。</string>
     <string name="baopu_extract_empty">还没有能抽取的书（txt / md / markdown）。先搬一些书进资料库；已经躺在「产物」目录里的文件，直接在会话里让我读就行。</string>
-    <string name="baopu_extract_preview">共 %1$d 章。前几章：%2$s</string>
+    <plurals name="baopu_extract_preview">
+        <item quantity="other">共 %1$d 章。前几章：%2$s</item>
+    </plurals>
     <string name="baopu_extract_mode_digest">逐章摘要</string>
     <string name="baopu_extract_free_prompt">或者直接输入：摘要 / 索引 / 章号（如 3,5,8）</string>
     <string name="baopu_extract_mode_index">只要索引</string>
@@ -861,9 +955,15 @@
     <string name="baopu_extract_deep_go">开始精读</string>
     <string name="baopu_extract_busy">处理中…</string>
     <string name="baopu_extract_none">这一轮没有可写入的章节</string>
-    <string name="baopu_extract_result_written">已写入 %1$d 章索引</string>
-    <string name="baopu_extract_result_remaining">还剩 %1$d 章没处理（单次上限 %2$d 章，再跑一次就接着走）</string>
-    <string name="baopu_extract_result_skipped">另有 %1$d 章这次没选</string>
+    <plurals name="baopu_extract_result_written">
+        <item quantity="other">已写入 %1$d 章索引</item>
+    </plurals>
+    <plurals name="baopu_extract_result_remaining">
+        <item quantity="other">还剩 %1$d 章没处理（单次上限 %2$d 章，再跑一次就接着走）</item>
+    </plurals>
+    <plurals name="baopu_extract_result_skipped">
+        <item quantity="other">另有 %1$d 章这次没选</item>
+    </plurals>
     <string name="baopu_extract_again">再抽一本</string>
     <string name="baopu_extract_done">完成</string>
     <string name="baopu_extract_close">关闭</string>
@@ -887,7 +987,9 @@
     <string name="baopu_confirm_title">要动文件：%1$s</string>
     <string name="baopu_confirm_title_action">要执行：%1$s</string>
     <string name="baopu_confirm_hint_action">批准后这个动作会真的执行；拒绝就跳过，对话继续。</string>
-    <string name="baopu_compressed_bar">已压缩 %1$d 条早期消息 · 摘要 %2$d 字</string>
+    <plurals name="baopu_compressed_bar">
+        <item quantity="other">已压缩 %1$d 条早期消息 · 摘要 %2$d 字</item>
+    </plurals>
     <string name="baopu_confirm_hint">批准后文件真的会被改动（写前会自动备份）；拒绝就跳过这个动作，对话继续。</string>
     <string name="baopu_confirm_approve">批准</string>
     <string name="baopu_confirm_reject">拒绝</string>
@@ -914,18 +1016,17 @@
     <string name="baopu_tool_book_outline_desc">先看一本书的章节目录（章名、起止行、字数、首句），再决定读哪几章；拿到起始行直接当 read_file 的 offset 用。</string>
     <string name="baopu_tool_convert_encoding">转编码</string>
     <string name="baopu_tool_convert_encoding_desc">把 GBK / UTF-16 的老 txt 转成 UTF-8 写回原文件；转之前先把原文件备份到 备份/。本来就是 UTF-8 就不动。</string>
-    <!-- ── 静态快捷方式（刀 2 · D 段第 1 条；标签 ≤10 字）── -->
-    <!-- 第 129 批 lint 清债：这两条被 UnusedResources 报出，是因为 res/xml/shortcuts.xml
-         整个文件没在 AndroidManifest 里挂 android.app.shortcuts 的 meta-data（从未生效）。
-         保留不删：是否挂接由用户裁决，见 证道设计报告/lint清债-2026-10-21.md 待确认清单。 -->
-    <string name="baopu_shortcut_backup">备份原件</string>
-    <string name="baopu_shortcut_backup_long">备份抱朴库里的原件</string>
+    <!-- 134 批 lint 清债：静态快捷方式从未挂接（res/xml/shortcuts.xml 无 manifest meta-data），
+         129 批留待用户裁决；134 批按「UnusedResources 确认零引用后删除」退役——
+         res/xml/shortcuts.xml 与两条标签文案一并删除（动作常量和 MainActivity 路由仍保留）。 -->
     <!-- ── 第一百四十七批：日记（情景记忆）卡＋真删确认（§5 五边界）── -->
     <string name="baopu_diary_card">日记（情景记忆）</string>
     <string name="baopu_diary_desc">抱朴自动记的每日流水：干了什么、产物在哪。只存引用，不抄文件。</string>
     <string name="baopu_diary_empty">还没有日记——干点活就有了。</string>
     <string name="baopu_diary_delete">删除</string>
-    <string name="baopu_diary_more">还有 %1$d 条</string>
+    <plurals name="baopu_diary_more">
+        <item quantity="other">还有 %1$d 条</item>
+    </plurals>
     <string name="baopu_diary_collapse">收起</string>
     <string name="baopu_diary_confirm_title">删除这条日记？</string>
     <string name="baopu_diary_confirm_cancel">取消</string>
@@ -934,12 +1035,16 @@
     <string name="baopu_notice_compressed_label">已压缩</string>
 <string name="baopu_introspection_label">这次学到</string>
     <string name="baopu_backup_stale_never">原件还从没导出过，去导一份？</string>
-    <string name="baopu_backup_stale_days">原件 %1$d 天没导出了，去导一份？</string>
+    <plurals name="baopu_backup_stale_days">
+        <item quantity="other">原件 %1$d 天没导出了，去导一份？</item>
+    </plurals>
     <string name="baopu_backup_go">去导出</string>
     <string name="baopu_export_running">导出中…</string>
       <!-- 第六十三批：首屏通知位。口径——同一时刻只显最高一档（错误＞行动＞提示），
            其余折成这一句，点开看全量（每条仍可操作）。 -->
-    <string name="baopu_notice_more">还有 %1$d 条</string>
+    <plurals name="baopu_notice_more">
+        <item quantity="other">还有 %1$d 条</item>
+    </plurals>
     <string name="baopu_notice_sheet_title">全部通知</string>
       <!-- 刀 3：抱朴抽屉。口径——低频入口收一层，首屏只留 ☰／状态／＋。 -->
     <string name="baopu_drawer_open">打开侧栏</string>
@@ -1025,9 +1130,13 @@
     <string name="skill_reason_user">这是你说的</string>
     <string name="skill_reason_refine">会话封卷提炼</string>
     <string name="skill_reason_manual">手动删除</string>
-    <string name="skill_cap_reached">技能索引已存 %1$d 条（上限 %2$d）：先去 抱朴设置 → 技能索引 删掉不用的，再试。</string>
+    <plurals name="skill_cap_reached">
+        <item quantity="other">技能索引已存 %1$d 条（上限 %2$d）：先去 抱朴设置 → 技能索引 删掉不用的，再试。</item>
+    </plurals>
     <string name="skill_apply_failed">写入人设失败（提案状态或层不允许）</string>
-    <string name="skill_refine_dropped">这次收尾有 %1$d 条技能候选被去重/超限丢弃。</string>
+    <plurals name="skill_refine_dropped">
+        <item quantity="other">这次收尾有 %1$d 条技能候选被去重/超限丢弃。</item>
+    </plurals>
     <!-- ── 技能试用期界面（第三十二批）：草稿列出来 ＋ 用一次 ＋ 转正 ＋ 模板预填 ──
          计数与「能不能转正」的口径全在 SkillStore，这里的数字只是把它的读数说出来。 -->
     <string name="skill_draft_group">草稿（试用中）</string>
@@ -1052,7 +1161,9 @@
     <string name="skill_detail_file">文件：%1$s</string>
     <string name="skill_missing_file">文件不在了：%1$s</string>
     <string name="skill_copy_all">复制全文</string>
-    <string name="skill_copied_chars">已复制 %1$d 字</string>
+    <plurals name="skill_copied_chars">
+        <item quantity="other">已复制 %1$d 字</item>
+    </plurals>
     <string name="skill_close">关闭</string>
     <string name="skill_detail_edit">编辑</string>
     <string name="skill_restore_backup_at">恢复到上一版（备份于 %1$s）</string>
@@ -1082,12 +1193,18 @@
     <string name="trash_empty">清空回收站</string>
     <string name="trash_close">关闭</string>
     <string name="trash_confirm_one">再点一次「彻底删除」就删了，删了恢复不了：%1$s（%2$s）</string>
-    <string name="trash_confirm_empty">再点一次「清空回收站」就全清：%1$d 个文件，共 %2$s，删了恢复不了</string>
+    <plurals name="trash_confirm_empty">
+        <item quantity="other">再点一次「清空回收站」就全清：%1$d 个文件，共 %2$s，删了恢复不了</item>
+    </plurals>
     <string name="trash_restored">已恢复到工作区根：%1$s</string>
     <string name="trash_occupied">目标位已经有东西，没搬：%1$s</string>
     <string name="trash_deleted_one">已彻底删除：%1$s</string>
-    <string name="trash_emptied">已清空回收站：%1$d 个文件，共 %2$s</string>
-    <string name="trash_emptied_partial">已清空回收站：%1$d 个文件，共 %2$s；另有 %3$d 个没删掉</string>
+    <plurals name="trash_emptied">
+        <item quantity="other">已清空回收站：%1$d 个文件，共 %2$s</item>
+    </plurals>
+    <plurals name="trash_emptied_partial">
+        <item quantity="other">已清空回收站：%1$d 个文件，共 %2$s；另有 %3$d 个没删掉</item>
+    </plurals>
     <string name="trash_rejected">这一步没做：%1$s（%2$s）</string>
     <string name="trash_io_failed">盘上没做成：%1$s（%2$s）</string>
     <!-- ── 第三十六批 B 段：技能分类旁挂（_分类.json，SKILL.md 一个字不动）── -->
@@ -1105,20 +1222,23 @@
     <string name="skill_cat_corrupt">那份 _分类.json 读不通，先当没有分类用</string>
     <string name="skill_cat_close">关闭</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->
-    <!-- 第 129 批 lint 清债：这两条 UnusedResources 被单测钉死（BaopuSessionTreeTest A2 / DecisionCardGateTest P4），
-         删了单测就红 ⇒ 保留。属「测试钉住的僵尸文案」，清掉需要先改判据（另批）。 -->
-    <string name="baopu_drawer_history_desc">全部会话，平铺看</string>
+    <!-- 134 批：baopu_drawer_history_desc 已随「历史会话平铺入口」退役（UI 零引用），
+         129 批留的「测试钉住的僵尸文案」在本批连同单测判据一起清掉。 -->
     <string name="baopu_session_library_title">历史会话</string>
     <string name="baopu_session_empty">还没有聊过。</string>
     <string name="baopu_session_unnamed">未命名会话</string>
-    <string name="baopu_session_rounds">%1$d 轮</string>
+    <plurals name="baopu_session_rounds">
+        <item quantity="other">%1$d 轮</item>
+    </plurals>
     <string name="baopu_session_sealed">已封卷</string>
     <string name="baopu_session_continuable">可继续</string>
     <string name="baopu_session_ws_unknown">历史未记录</string>
     <string name="baopu_session_date_fmt">M月d日</string>
     <string name="baopu_session_delete">删除</string>
     <string name="baopu_session_delete_title">永久删除这个会话</string>
-    <string name="baopu_session_delete_desc">「%1$s」· %2$d 轮，删了就找不回来了。</string>
+    <plurals name="baopu_session_delete_desc">
+        <item quantity="other">「%1$s」· %2$d 轮，删了就找不回来了。</item>
+    </plurals>
     <string name="baopu_session_delete_confirm">永久删除</string>
     <string name="baopu_session_delete_cancel">先不删</string>
     <string name="baopu_session_deleted_current">已删除，当前回到空态</string>
@@ -1152,7 +1272,7 @@
     <string name="baopu_tool_ask_user">选项卡（问人）</string>
     <string name="baopu_tool_ask_user_desc">拿不准时弹一张选项卡（出现在输入栏上方）：2–4 个选项、推荐项排第一并带一句理由，用户点完继续干。不写盘、不改文件。</string>
     <string name="baopu_tool_run_subtasks">拆分子任务（多 Agent）</string>
-    <string name="baopu_tool_run_subtasks_desc">把大任务拆成 1-5 个子任务，交给至多 2 个只读子 Agent 并行或串行执行，结果汇总回来。子 Agent 只能读文件、列目录、搜内容，没有任何写工具，也看不到你们的对话历史；子任务失败会自动重试一次，仍失败就照实报原因。子结果不会自动写进任何文件，要不要落产物另行决定。默认不可见：先在 capabilities 里解锁「多 Agent 协作」组才会出现。</string>
+    <string name="baopu_tool_run_subtasks_desc">把大任务拆成 1–5 个子任务，交给至多 2 个只读子 Agent 并行或串行执行，结果汇总回来。子 Agent 只能读文件、列目录、搜内容，没有任何写工具，也看不到你们的对话历史；子任务失败会自动重试一次，仍失败就照实报原因。子结果不会自动写进任何文件，要不要落产物另行决定。默认不可见：先在 capabilities 里解锁「多 Agent 协作」组才会出现。</string>
     <string name="baopu_tool_card_inspect">卡片体检（只读）</string>
     <string name="baopu_tool_card_inspect_desc">只读体检一张卡或世界书：先认脸（网络平台世界书 / Tavo 世界书·角色卡·正则·预设 / 酒馆世界书 / CCv3 世界书 / 酒馆角色卡 PNG；认不出就报未知＋看过的键名），再逐条体检（字段缺失与越界、关键词过宽、永不触发、分隔符写坏、同名压制）。只读：不改、不挪、不删任何文件。</string>
     <string name="baopu_tool_card_export">导出酒馆卡 PNG</string>
@@ -1178,11 +1298,15 @@
     <!-- 第一百四十一批 §8：抱朴工具区改成一张摘要卡。上面三段落说明（tools_desc /
          progressive_note / fold_note）与六句折叠摘要随长列表一起退役 —— 语义没有丢：
          关掉的工具仍不进 tools 数组、模型幻觉调用仍被拒，只是不再用三段话在设置页里讲。 -->
-    <string name="baopu_tools_summary">工具 %1$d · %2$d 组开 · %3$d 组待同意</string>
+    <plurals name="baopu_tools_summary">
+        <item quantity="other">工具 %1$d · %2$d 组开 · %3$d 组待同意</item>
+    </plurals>
     <string name="baopu_tools_rows_empty">没有要你处理的组</string>
     <string name="baopu_tools_row_pending">待同意</string>
     <string name="baopu_tools_row_closed">已关闭</string>
-    <string name="baopu_tools_row_partial">%1$d 个已关</string>
+    <plurals name="baopu_tools_row_partial">
+        <item quantity="other">%1$d 个已关</item>
+    </plurals>
     <string name="baopu_tool_capabilities">工具名册（capabilities）</string>
     <string name="baopu_tool_capabilities_desc">看与开：列出有哪些工具组、每组一句话、谁是默认可见 / 已解锁 / 被你关掉，并按需解锁本会话要用的组。只改「模型这一轮能看见哪些工具」，不碰任何文件，所以不弹确认卡。被你这个开关关掉的组，它解不开——这一点它会如实告诉用户。</string>
     <string name="baopu_tool_preview_local_file">本地预览（玄览）</string>
@@ -1291,11 +1415,14 @@
     <string name="decision_empty_history">还没有决策记录</string>
     <string name="decision_type_suggestion">建议</string>
     <string name="decision_type_effect">效果</string>
-    <string name="decision_queue_more">还有 %1$d 条在排队</string>
+    <plurals name="decision_queue_more">
+        <item quantity="other">还有 %1$d 条在排队</item>
+    </plurals>
     <string name="decision_undo">撤销</string>
-    <string name="decision_undone">已撤销</string>
     <string name="decision_shield_desc">决策中心</string>
-    <string name="decision_shield_badge_desc">有 %1$d 件待处理</string>
+    <plurals name="decision_shield_badge_desc">
+        <item quantity="other">有 %1$d 件待处理</item>
+    </plurals>
     <string name="decision_center_hint">待处理集中在这里；记录页里能撤销本会话的授权。</string>
     <string name="decision_history_grant_session">本会话已允许「%1$s」</string>
     <string name="decision_history_grant_always">已长期允许「%1$s」</string>
@@ -1332,13 +1459,23 @@
     <string name="baopu_usage_cache_hit">已用缓存</string>
     <string name="baopu_usage_step">第 %1$d 步</string>
     <string name="baopu_artifact_row_label">产物</string>
-    <string name="baopu_artifact_more">还有 %1$d 个</string>
+    <plurals name="baopu_artifact_more">
+        <item quantity="other">还有 %1$d 个</item>
+    </plurals>
     <string name="baopu_artifact_loading">读取中…</string>
-    <string name="baopu_artifact_bytes">%1$d 字节</string>
-    <string name="baopu_artifact_truncated">只显示前 %1$d 行（共 %2$d 行）</string>
-    <string name="baopu_artifact_truncated_only">只显示前 %1$d 行</string>
+    <plurals name="baopu_artifact_bytes">
+        <item quantity="other">%1$d 字节</item>
+    </plurals>
+    <plurals name="baopu_artifact_truncated">
+        <item quantity="other">只显示前 %1$d 行（共 %2$d 行）</item>
+    </plurals>
+    <plurals name="baopu_artifact_truncated_only">
+        <item quantity="other">只显示前 %1$d 行</item>
+    </plurals>
     <string name="baopu_artifact_copy">复制全文</string>
-    <string name="baopu_artifact_copied">已复制 %1$d 字符／%2$d 行</string>
+    <plurals name="baopu_artifact_copied">
+        <item quantity="other">已复制 %1$d 字符／%2$d 行</item>
+    </plurals>
     <string name="baopu_artifact_copy_incomplete">复制不完整，请重试</string>
     <string name="baopu_artifact_missing">文件不在了：%1$s</string>
     <!-- 第三十八批 §8（用户 2026-10-19 追加）：顶栏产物条（中） -->
@@ -1365,7 +1502,9 @@
     <string name="baopu_tool_card_build_desc">从工作区母档 JSON 生成一套卡/世界书/五件套骨架（会写盘，弹确认卡；不覆盖已有文件）</string>
     <string name="trash_sessions_title">已删除会话（%1$d）</string>
     <string name="trash_sessions_none">回收站里没有会话。</string>
-    <string name="trash_session_row">%1$s（%2$d 条消息）</string>
+    <plurals name="trash_session_row">
+        <item quantity="other">%1$s（%2$d 条消息）</item>
+    </plurals>
     <string name="trash_session_restore">恢复</string>
     <string name="trash_session_purge">彻底删除</string>
     <string name="trash_session_confirm">再点一次「彻底删除」：会话「%1$s」的消息会一起消失，不可恢复。</string>
@@ -1381,7 +1520,9 @@
     <string name="baopu_note_skill_error_label">技能没成</string>
     <string name="baopu_note_library_error_label">资料库没成</string>
     <string name="baopu_scratch_left_label">临时文件</string>
-    <string name="baopu_scratch_left_body">%1$d 个临时文件已移入回收站（可恢复）</string>
+    <plurals name="baopu_scratch_left_body">
+        <item quantity="other">%1$d 个临时文件已移入回收站（可恢复）</item>
+    </plurals>
     <string name="baopu_tool_novel_create">novel_create：新建小说项目</string>
     <string name="baopu_tool_novel_create_desc">建小说/书名/ 目录与元数据（大纲、每章字数、人物、设定）；每次要确认。正文仍用 write_file 写。</string>
     <string name="baopu_tool_novel_project">novel_project：看小说项目</string>

@@ -3,90 +3,76 @@ package com.example.zhengdao.baopu.library
 
 import com.example.zhengdao.ui.baopu.BaopuIntents
 import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.w3c.dom.Element
 
 /**
- * 静态快捷方式门禁（刀 2 D 段第 1 条；判据 §5.9）。
+ * 静态快捷方式门禁 —— **134 批起改为退役守卫**。
  *
- * 钉死派工单原话级口径：条数 ≤4、标签约 10 字内、action 字面值与
- * `BaopuIntents.ACTION_BACKUP` 共认（两处漂了用户点图标就没反应）、
- * intent 显式（targetPackage + targetClass）⇒ 不需要往 Manifest 加
- * intent-filter（权限段与组件声明零改动）。
+ * 沿革：刀 2 D 段第 1 条曾加过 `res/xml/shortcuts.xml`（静态快捷方式），但 manifest 从没挂
+ * `android.app.shortcuts` 的 meta-data（git 全历史可查：该属性从未出现），所以它**从未生效**。
+ * 129 批把它记成「待用户裁决」；134 批 lint 清零按「UnusedResources 确认全仓零引用后删除」
+ * 退役了 XML 与两条标签文案。
  *
- * 真解析 XML（不 grep 文本）——注释掉的条目不该算数，属性换个序不该误报。
+ * 本门禁保留（不删测试类：套件数只许涨不许跌），改钉四件仍然成立的事：
+ * 1. 死资源不许复活（`res/xml/shortcuts.xml` 与 manifest meta-data 都必须在）；
+ * 2. 外部 Intent 入口（`BaopuIntents.ACTION_BACKUP`）与 MainActivity 的路由仍共认一个字面值；
+ * 3. 不为这条 action 增加 manifest intent-filter（权限段零改动的旧口径）；
+ * 4. 两条标签文案已随资源退役，两语都不许残留死键。
  */
 class ShortcutsXmlTest {
 
     private fun appFile(rel: String): File =
         File(rel).let { if (it.exists()) it else File("app/$rel") }
 
-    private fun shortcuts(): List<Element> {
+    private val manifest: String
+        get() = appFile("src/main/AndroidManifest.xml").readText()
+
+    @Test
+    fun `静态快捷方式XML已退役不许复活`() {
         val f = appFile("src/main/res/xml/shortcuts.xml")
-        assertTrue("shortcuts.xml 必须存在", f.isFile)
-        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(f)
-        val nodes = doc.getElementsByTagName("shortcut")
-        return (0 until nodes.length).map { nodes.item(it) as Element }
+        assertFalse("134 批已删（从未挂接的静态快捷方式资源）；复活需先立账", f.exists())
     }
 
     @Test
-    fun `条数不超过4`() {
-        val n = shortcuts().size
-        assertTrue("静态快捷方式最多 4 条（当前 $n）", n in 1..4)
+    fun `Manifest不引用shortcuts资源`() {
+        assertFalse(
+            "manifest 不许再出现 android.app.shortcuts / @xml/shortcuts（死资源已退役 134）",
+            manifest.contains("android.app.shortcuts") || manifest.contains("@xml/shortcuts"),
+        )
     }
 
     @Test
-    fun `标签在10字内且走字符串资源`() {
-        val zh = appFile("src/main/res/values/strings.xml").readText()
-        val en = appFile("src/main/res/values-en/strings.xml").readText()
-        for (s in shortcuts()) {
-            val shortLabel = s.getAttribute("android:shortcutShortLabel")
-            assertTrue("短标签必须走字符串资源：$shortLabel", shortLabel.startsWith("@string/"))
-            val key = shortLabel.removePrefix("@string/")
-            val value = Regex("name=\"$key\"[^>]*>([^<]*)<").find(zh)?.groupValues?.get(1)
-            assertTrue("strings.xml 缺 $key", value != null)
-            assertTrue("短标签「$value」超过 10 字", (value ?: "").length <= 10)
-            assertTrue("values-en 也必须有 $key（双语一致）", en.contains("name=\"$key\""))
-        }
+    fun `ACTION_BACKUP仍由MainActivity消费`() {
+        val main = appFile("src/main/java/com/example/zhengdao/MainActivity.kt").readText()
+        assertTrue(
+            "MainActivity 仍要认 BaopuIntents.ACTION_BACKUP（外部 Intent 入口不许随快捷方式一起退役）",
+            main.contains("intent?.action == com.example.zhengdao.ui.baopu.BaopuIntents.ACTION_BACKUP"),
+        )
+        assertTrue(
+            "命中 action 后仍要投递到抱朴备份请求",
+            main.contains("BaopuIntents.requestBackup()"),
+        )
     }
 
     @Test
-    fun `长标签也存在且双语都在`() {
-        val zh = appFile("src/main/res/values/strings.xml").readText()
-        val en = appFile("src/main/res/values-en/strings.xml").readText()
-        for (s in shortcuts()) {
-            val longLabel = s.getAttribute("android:shortcutLongLabel")
-            assertTrue("长标签必须走字符串资源：$longLabel", longLabel.startsWith("@string/"))
-            val key = longLabel.removePrefix("@string/")
-            assertTrue("strings.xml 缺 $key", zh.contains("name=\"$key\""))
-            assertTrue("values-en 缺 $key", en.contains("name=\"$key\""))
-        }
+    fun `ACTION_BACKUP字面值未漂移`() {
+        val screen = appFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuBackupScreen.kt").readText()
+        assertEquals(
+            "ACTION_BACKUP 的字面值必须仍是 com.example.zhengdao.action.BAOPU_BACKUP",
+            "com.example.zhengdao.action.BAOPU_BACKUP",
+            BaopuIntents.ACTION_BACKUP,
+        )
+        assertTrue(
+            "BaopuIntents.ACTION_BACKUP 仍声明在同一处（源码字面值可逐字核对）",
+            screen.contains("const val ACTION_BACKUP = \"com.example.zhengdao.action.BAOPU_BACKUP\""),
+        )
     }
 
     @Test
-    fun `action与代码共认一个字面值`() {
-        for (s in shortcuts()) {
-            val intent = s.getElementsByTagName("intent").item(0) as Element
-            assertEquals(
-                "shortcuts.xml 的 action 必须与 BaopuIntents.ACTION_BACKUP 一致",
-                BaopuIntents.ACTION_BACKUP,
-                intent.getAttribute("android:action"),
-            )
-        }
-    }
-
-    @Test
-    fun `intent显式_不依赖Manifest过滤器`() {
-        val manifest = appFile("src/main/AndroidManifest.xml").readText()
-        for (s in shortcuts()) {
-            val intent = s.getElementsByTagName("intent").item(0) as Element
-            assertEquals("com.example.zhengdao", intent.getAttribute("android:targetPackage"))
-            assertEquals("com.example.zhengdao.MainActivity", intent.getAttribute("android:targetClass"))
-        }
+    fun `不为备份新增intent-filter`() {
         // 显式 intent 不需要过滤器 ⇒ Manifest 不许为它加 intent-filter（权限段零改动）
         assertFalse(
             "不许往 Manifest 里加 BAOPU_BACKUP 的 intent-filter",
@@ -95,20 +81,21 @@ class ShortcutsXmlTest {
     }
 
     @Test
-    fun `备份入口id固定且enabled`() {
-        val ids = shortcuts().map { it.getAttribute("android:shortcutId") }
-        assertTrue(ids.contains("baopu_backup_originals"))
-        shortcuts().forEach { s ->
-            assertEquals("true", s.getAttribute("android:enabled"))
-            assertTrue(s.getAttribute("android:shortcutId").isNotBlank())
+    fun `两条快捷方式标签文案已随资源退役`() {
+        val zh = appFile("src/main/res/values/strings.xml").readText()
+        val en = appFile("src/main/res/values-en/strings.xml").readText()
+        listOf("baopu_shortcut_backup", "baopu_shortcut_backup_long").forEach { key ->
+            assertFalse("中文文案表不许再留死键 $key", zh.contains("name=\"$key\""))
+            assertFalse("英文文案表不许再留死键 $key", en.contains("name=\"$key\""))
         }
     }
 
     @Test
-    fun `shortcuts文件不许写死自然语言`() {
-        val raw = appFile("src/main/res/xml/shortcuts.xml").readText()
-        // 中文/英文文案一律走字符串资源（values / values-en 各一份）
-        val body = raw.substringAfter("<shortcuts")
-        assertFalse("不许在 xml 里写死中文", body.any { it.code in 0x4E00..0x9FFF })
+    fun `外部Intent入口在两条生命周期路径都接线`() {
+        val main = appFile("src/main/java/com/example/zhengdao/MainActivity.kt").readText()
+        // onCreate 与 onNewIntent 都要经过同一个分发口（134 批退役的是静态快捷方式资源，
+        // 不是这条外部 Intent 能力）。至少两处调用：onCreate + onNewIntent。
+        val calls = Regex("handleBaopuShortcut\\(").findAll(main).count()
+        assertTrue("handleBaopuShortcut 至少要在 onCreate 与 onNewIntent 两处调用，实际 $calls", calls >= 2)
     }
 }

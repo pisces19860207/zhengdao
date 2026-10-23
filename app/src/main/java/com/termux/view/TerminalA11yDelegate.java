@@ -5,13 +5,10 @@
 package com.termux.view;
 
 import android.content.Context;
-import android.os.Build;
 import android.view.View;
 import android.view.accessibility.AccessibilityManager;
 import android.view.autofill.AutofillManager;
 import android.view.autofill.AutofillValue;
-
-import androidx.annotation.RequiresApi;
 
 /**
  * 自动填充 / 无障碍：{@link View} 的 AutoFill API 状态与请求逻辑（P1-c 从 {@link TerminalView} 原样搬出，
@@ -24,6 +21,10 @@ import androidx.annotation.RequiresApi;
  * {@code requestAutofill(mView)}（那里的 {@code this} 必须是被搬出去的那个 View，不是本委托对象）；
  * {@code getContext()} 改成 {@code mView.getContext()}。SDK 版本分支、判断顺序、日志文案、常量取值、
  * {@code synchronized} 语义与搬家前逐字一致；{@link TerminalView} 侧保留同名同签名方法做纯转发。
+ *
+ * <p>2026-10-23（第 134 批 lint 清零）：minSdk=36 ⇒ 删掉 {@code SDK_INT < O(26)} 的早退分支与
+ * {@code @RequiresApi(O)} 注解（lint ObsoleteSdkInt）。对 36+ 设备行为零变化——这些分支与注解
+ * 本来永不生效。
  *
  * <p>搬走的四个字段里只有 {@code mAutoFillType} / {@code mAutoFillImportance} / {@code mAutoFillHints}
  * 是 AutoFill 自己的状态；{@code mAccessibilityEnabled} 原本只被 {@link TerminalView} 的文本更新路径读一次
@@ -48,7 +49,6 @@ final class TerminalA11yDelegate {
      * {@link #autofill(AutofillValue)} so that AutoFill UI isn't shown anymore by calling
      * {@link #resetAutoFill()}.
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private int mAutoFillType = View.AUTOFILL_TYPE_NONE;
 
     /**
@@ -62,7 +62,6 @@ final class TerminalA11yDelegate {
      * The updated value set will automatically be restored to {@link View#IMPORTANT_FOR_AUTOFILL_NO} in
      * {@link #autofill(AutofillValue)} by calling {@link #resetAutoFill()}.
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private int mAutoFillImportance = View.IMPORTANT_FOR_AUTOFILL_NO;
 
     /**
@@ -94,7 +93,6 @@ final class TerminalA11yDelegate {
     /**
      * Define functions required for AutoFill API
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
     void autofill(AutofillValue value) {
         if (value.isText()) {
             mView.mTermSession.write(value.getTextValue().toString());
@@ -103,27 +101,22 @@ final class TerminalA11yDelegate {
         resetAutoFill();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     int getAutofillType() {
         return mAutoFillType;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     String[] getAutofillHints() {
         return mAutoFillHints;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     AutofillValue getAutofillValue() {
         return AutofillValue.forText("");
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     int getImportantForAutofill() {
         return mAutoFillImportance;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     synchronized void resetAutoFill() {
         // Restore none type so that AutoFill UI isn't shown anymore.
         mAutoFillType = View.AUTOFILL_TYPE_NONE;
@@ -132,8 +125,6 @@ final class TerminalA11yDelegate {
     }
 
     AutofillManager getAutoFillManagerService() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null;
-
         try {
             Context context = mView.getContext();
             if (context == null) return null;
@@ -145,8 +136,6 @@ final class TerminalA11yDelegate {
     }
 
     boolean isAutoFillEnabled() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
-
         try {
             AutofillManager autofillManager = getAutoFillManagerService();
             return autofillManager != null && autofillManager.isEnabled();
@@ -157,19 +146,14 @@ final class TerminalA11yDelegate {
     }
 
     synchronized void requestAutoFillUsername() {
-        requestAutoFill(
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new String[]{View.AUTOFILL_HINT_USERNAME} :
-                null);
+        requestAutoFill(new String[]{View.AUTOFILL_HINT_USERNAME});
     }
 
     synchronized void requestAutoFillPassword() {
-        requestAutoFill(
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new String[]{View.AUTOFILL_HINT_PASSWORD} :
-            null);
+        requestAutoFill(new String[]{View.AUTOFILL_HINT_PASSWORD});
     }
 
     synchronized void requestAutoFill(String[] autoFillHints) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         if (autoFillHints == null || autoFillHints.length < 1) return;
 
         try {
@@ -190,7 +174,6 @@ final class TerminalA11yDelegate {
     }
 
     synchronized void cancelRequestAutoFill() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         if (mAutoFillType == View.AUTOFILL_TYPE_NONE) return;
 
         try {

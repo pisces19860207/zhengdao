@@ -907,7 +907,7 @@ internal fun SkillDetailDialog(
                             val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                 as android.content.ClipboardManager
                             cm.setPrimaryClip(android.content.ClipData.newPlainText("zhengdao-skill", text))
-                            copied = res.getString(R.string.skill_copied_chars, text.length)
+                            copied = res.getQuantityString(R.plurals.skill_copied_chars, text.length, text.length)
                         }) { Text(stringResource(R.string.skill_copy_all)) }
                     }
                     val backup = detail.backupName

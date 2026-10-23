@@ -347,11 +347,13 @@ internal fun BaopuDrawer(
     onPreviewClear: () -> Unit,
     onChannel: () -> Unit,
     onSettings: () -> Unit,
-    /** 回收站里恢复/彻底删除会话后，通知页面重读会话库。 */
-    onSessionLibraryChanged: () -> Unit = {},
     /** 回收站里「彻底删除」一个会话（两击确认后）：走控制器口子，面板不自己开库。 */
     onPurgeSession: (Long) -> Boolean,
+    // 134 批 lint(ModifierParameter)：modifier 必须排在**第一个可选参数**的位置；
+    // 原来它跟在 onSessionLibraryChanged（有默认值）之后，故与 onPurgeSession 之后的位置对调。
     modifier: Modifier = Modifier,
+    /** 回收站里恢复/彻底删除会话后，通知页面重读会话库。 */
+    onSessionLibraryChanged: () -> Unit = {},
 ) {
     // 根 Column 左右各 8dp：条目自己再内缩 16dp ⇒ 文字左缘仍是 24dp（老落点），
     // 但圆角高亮块左右各留 8dp 呼吸位，不再像旧版那样从边贴到边。

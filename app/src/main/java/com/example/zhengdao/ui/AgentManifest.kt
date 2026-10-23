@@ -7,6 +7,7 @@ package com.example.zhengdao.ui
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rust.CoreNative
 import java.math.BigInteger
@@ -152,8 +153,10 @@ object AgentManifest {
                         continue
                     }
                     // 验签通过才落地缓存（先验签后解析、先验签后持久化）
-                    prefs.edit().putString(KEY_BODY, body)
-                        .putLong(KEY_TIME, System.currentTimeMillis()).commit()
+                    prefs.edit(commit = true) {
+                        putString(KEY_BODY, body)
+                        putLong(KEY_TIME, System.currentTimeMillis())
+                    }
                     Log.i(TAG, "Agent 清单已更新（${cachedVersionText(ctx)}）")
                     RunLogCompat.log("Agent 清单已更新（${cachedVersionText(ctx)}）")
                     applied = true

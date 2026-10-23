@@ -209,9 +209,10 @@ class ToolAreaCardTest {
     @Test
     fun `G2_摘要行三个数字都传_少一个就渲染成原文`() {
         val src = page()
-        val i = src.indexOf("R.string.baopu_tools_summary,")
+        // 134 批：baopu_tools_summary 改成 <plurals>（lint PluralsCandidate），引用形态随之是 R.plurals。
+        val i = src.indexOf("R.plurals.baopu_tools_summary,")
         assertTrue("摘要行必须用 baopu_tools_summary 且带三个参数", i >= 0)
-        val block = src.substring(i, minOf(src.length, i + 260))
+        val block = src.substring(i, minOf(src.length, i + 420))
         listOf("toolSummary.toolCount", "toolSummary.groupOnCount", "toolSummary.pendingGroupCount").forEach {
             assertTrue("摘要行漏了 $it（占位符渲染成 0 或直接崩）", block.contains(it))
         }
@@ -273,7 +274,7 @@ class ToolAreaCardTest {
     @Test
     fun `G6_热区_摘要行48组行64`() {
         val src = page()
-        val i = src.indexOf("R.string.baopu_tools_summary,")
+        val i = src.indexOf("R.plurals.baopu_tools_summary,")
         val head = src.substring(maxOf(0, i - 700), i)
         assertTrue("摘要行热区必须 ≥48dp", head.contains("heightIn(min = 48.dp)"))
         val rowStart = src.indexOf("toolRows.forEach { row ->")
@@ -284,7 +285,7 @@ class ToolAreaCardTest {
     @Test
     fun `G7_摘要行不设maxLines_200%字号下折行不裁字`() {
         val src = page()
-        val i = src.indexOf("R.string.baopu_tools_summary,")
+        val i = src.indexOf("R.plurals.baopu_tools_summary,")
         val window = src.substring(maxOf(0, i - 400), minOf(src.length, i + 400))
         assertFalse(
             "摘要行不许 maxLines —— 系统字号 200% 时 14 字要能折两行，不许裁字（派工单验收第 4 条）",
@@ -322,13 +323,19 @@ class ToolAreaCardTest {
         ).forEach { key ->
             assertTrue("$key 缺中文", zh().contains("name=\"$key\""))
             assertTrue("$key 缺英文", en().contains("name=\"$key\""))
-            assertTrue("$key 没被页面引用（零调用的文案键是下一次「改哪份」的坑）", src.contains("R.string.$key"))
+            assertTrue(
+                "$key 没被页面引用（零调用的文案键是下一次「改哪份」的坑）",
+                src.contains("R.string.$key") || src.contains("R.plurals.$key"),
+            )
         }
-        // 带占位符的两条：占位符写全，漏一个就渲染成原文
-        assertTrue("摘要行的三个数字占位符都要有", Regex("name=\"baopu_tools_summary\"[^<]*")
-            .find(zh())!!.value.let { it.contains("%1\$d") && it.contains("%2\$d") && it.contains("%3\$d") })
-        assertTrue("「N 个已关」要有个数占位符", Regex("name=\"baopu_tools_row_partial\"[^<]*")
-            .find(zh())!!.value.contains("%1\$d"))
+        // 带占位符的两条：占位符写全，漏一个就渲染成原文（134 批起是 <plurals>，取整块）
+        val summaryBlock = Regex("name=\"baopu_tools_summary\">([\\s\\S]*?)</plurals>").find(zh())!!.groupValues[1]
+        assertTrue(
+            "摘要行的三个数字占位符都要有",
+            summaryBlock.contains("%1\$d") && summaryBlock.contains("%2\$d") && summaryBlock.contains("%3\$d"),
+        )
+        val partialBlock = Regex("name=\"baopu_tools_row_partial\">([\\s\\S]*?)</plurals>").find(zh())!!.groupValues[1]
+        assertTrue("「N 个已关」要有个数占位符", partialBlock.contains("%1\$d"))
     }
 
     @Test

@@ -524,21 +524,21 @@ dependencies {
     // Detekt CLI（P1-3）：只在 detektReport / detektBaselineUpdate 两个任务里用，不进 APK。
     add("detektCli", libs.detekt.cli)
     // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.apache.commons:commons-compress:1.26.2")
+    implementation(libs.okhttp)
+    implementation(libs.commons.compress)
     // 供应链（第四十三批 OSV，2026-10-19）：commons-compress 传递进来的
     // commons-lang3 3.14.0 命中 CVE-2025-48924（GHSA-j288-q9x7-2f5v，中危）。
     // 显式抬到修复版 3.18.0，不动 commons-compress 主版本（升级 compress 单开一批）。
-    implementation("org.apache.commons:commons-lang3:3.18.0")
-    androidTestImplementation("org.apache.commons:commons-compress:1.26.2")
+    implementation(libs.commons.lang3)
+    androidTestImplementation(libs.commons.compress)
     // 多源回退逻辑测试：本地环回假服务器，真实走 OkHttp 栈（零外网依赖）
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
-    implementation("com.github.luben:zstd-jni:1.5.6-4")
+    testImplementation(libs.mockwebserver)
+    implementation(libs.zstd.jni)
 
     // xz 解压（抱朴 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
-    implementation("org.tukaani:xz:1.9")
+    implementation(libs.xz)
 
-    implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation(libs.androidx.navigation.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -569,7 +569,7 @@ dependencies {
     // 单元测试里的 org.json 真实实现（PluginManager 读写 opencode.json 用的就是它）：
     // Android 的 android.jar 只是 mockable stub，方法调用一律抛 "not mocked"，
     // 只有补上真实实现，配置读写的单测才有意义。仅作用于 test classpath，不进 APK。
-    testImplementation("org.json:json:20240303")
+    testImplementation(libs.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

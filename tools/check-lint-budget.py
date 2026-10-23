@@ -41,8 +41,73 @@ UNBUDGETED_RULES = frozenset(
         "GradleDependency",
         "AndroidGradlePluginVersion",
         "RemoteVersionCheck",
+        # 134 批（2026-10-23）用户/蓝总管定案的 intentional 项，不是债：
+        # - OldTargetApi：targetSdk 36 是为真机验证基线（Android 16）钉的定案，
+        #   不为消 lint 抬到 37；
+        # - ChromeOsAbiSupport：只编 arm64 单架构是 2026-10-06 用户定案，
+        #   不为消 lint 加 x86_64 abiFilters。
+        # 两条仍照常写进 lint 报告/artifact，只是不参与「超预算」判定。
+        "OldTargetApi",
+        "ChromeOsAbiSupport",
     }
 )
+
+
+# 134 批（2026-10-23）：预算归零后，闸门必须能拦住「用压制代替修」。
+# 负例①（加 @Suppress / //noinspection）要能判红 —— 否则把 0 条说成 0 条的办法还有一条暗门。
+# 口径：仓库里不许出现 lint.xml（整仓/整目录关检查）、不许在 Gradle 里用 lint baseline、
+# 不许在源码/Gradle 里用 `@Suppress` 或 `//noinspection` 点名压制**已知的 lint 规则**。
+# （Kotlin 编译器级别的 @Suppress("UNCHECKED_CAST") 这类不在 lint 规则表里，不拦。）
+SUPPRESSIBLE_LINT_IDS = (
+    "ChromeOsAbiSupport",
+    "OldTargetApi",
+    "NewerVersionAvailable",
+    "PluralsCandidate",
+    "HardcodedText",
+    "UseKtx",
+    "ObsoleteSdkInt",
+    "StaticFieldLeak",
+    "UnusedResources",
+)
+
+
+def check_suppression_free(root: Path) -> bool:
+    """压制即绕过：本仓禁用 lint.xml / baseline / 点名规则的 @Suppress / //noinspection。"""
+    import re
+
+    problems: list[str] = []
+    for rel in ("lint.xml", "app/lint.xml"):
+        if (root / rel).exists():
+            problems.append(f"出现 {rel}：整仓/整目录关检查属于压制，134 批起禁止")
+    for rel in ("app/build.gradle.kts", "build.gradle.kts"):
+        p = root / rel
+        if not p.exists():
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if "//noinspection" in text:
+            problems.append(f"{rel} 里出现 //noinspection")
+        if re.search(r"\bbaseline\s*=\s*file\(", text):
+            problems.append(f"{rel} 里出现 lint baseline 配置（= 用历史告警换绿灯）")
+    for base in (root / "app" / "src" / "main", root / "gradle"):
+        if not base.exists():
+            continue
+        for p in base.rglob("*"):
+            if not p.is_file() or p.suffix not in {".kt", ".java", ".xml", ".kts", ".toml"}:
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace")
+            for line in text.splitlines():
+                if "@Suppress" not in line and "noinspection" not in line:
+                    continue
+                for rid in SUPPRESSIBLE_LINT_IDS:
+                    if rid in line:
+                        problems.append(f"{p.relative_to(root)}: 用压制点名 lint 规则 {rid} —— 去修，别压")
+    if problems:
+        print("[lint-budget] ✗ 发现 lint 压制（134 批起一律判红）：", file=sys.stderr)
+        for p in problems:
+            print("   " + p, file=sys.stderr)
+        return False
+    print("[lint-budget] ✓ 未发现 lint 压制（无 lint.xml / baseline / 点名 @Suppress / //noinspection）")
+    return True
 
 
 def count_issues(report: Path) -> dict:
@@ -81,6 +146,8 @@ def check_not_raised(baseline: Path, base_rev: str) -> bool:
 
     原来的闸只比「当前告警 vs 基线」，有人把基线抬到 600 它反而显示「未超基线」
     —— 抬基线本身就是绕过闸（负例③要的正是这一条）。这里直接比对 base_rev 里的基线。
+    134 批补：同时比对 **HEAD** —— 清零后的基线是 0，任何上调（哪怕只有 1）都必须红；
+    只比 origin/main（那时是 234）会放过「0 → 5」这种上调（负例②）。
     """
     import subprocess
 
@@ -88,27 +155,33 @@ def check_not_raised(baseline: Path, base_rev: str) -> bool:
         rel = baseline.resolve().relative_to(Path.cwd().resolve()).as_posix()
     except ValueError:
         rel = baseline.as_posix()
-    r = subprocess.run(["git", "show", f"{base_rev}:{rel}"], capture_output=True)
-    if r.returncode != 0:
-        print(f"[lint-budget] ~ 取不到 {base_rev}:{rel}，跳过「基线不许抬」检查")
-        return True
-    try:
-        old = json.loads(r.stdout.decode("utf-8", errors="replace"))
-    except json.JSONDecodeError:
-        print("[lint-budget] ~ 基线在基线版本里不是合法 JSON，跳过检查")
+    old_values: list[dict] = []
+    for ref in (base_rev, "HEAD"):
+        r = subprocess.run(["git", "show", f"{ref}:{rel}"], capture_output=True)
+        if r.returncode != 0:
+            print(f"[lint-budget] ~ 取不到 {ref}:{rel}，跳过该参照的「基线不许抬」检查")
+            continue
+        try:
+            old_values.append(json.loads(r.stdout.decode("utf-8", errors="replace")))
+        except json.JSONDecodeError:
+            print(f"[lint-budget] ~ {ref} 里的基线不是合法 JSON，跳过该参照")
+    if not old_values:
         return True
     now = json.loads(baseline.read_text(encoding="utf-8"))
     ok = True
     for key in ("total", "errors"):
-        o, n = int(old.get(key, 0)), int(now.get(key, 0))
-        if n > o:
-            print(
-                f"[lint-budget] ✗ 基线被抬高：{key} {o} → {n}（基线只许下调；要抬请在台账写清理由并走评审）",
-                file=sys.stderr,
-            )
-            ok = False
+        n = int(now.get(key, 0))
+        for old in old_values:
+            o = int(old.get(key, 0))
+            if n > o:
+                print(
+                    f"[lint-budget] ✗ 基线被抬高：{key} {o} → {n}（基线只许下调；要抬请在台账写清理由并走评审）",
+                    file=sys.stderr,
+                )
+                ok = False
     if ok:
-        print(f"[lint-budget] ✓ 基线未抬高（total {old.get('total')} → {now.get('total')}）")
+        totals = " / ".join(str(o.get("total")) for o in old_values)
+        print(f"[lint-budget] ✓ 基线未抬高（参照 total {totals} → {now.get('total')}）")
     return ok
 
 
@@ -137,6 +210,9 @@ def main() -> int:
         )
         print(f"[lint-budget] 基线已写入：{args.baseline}")
         return 0
+
+    if not check_suppression_free(Path(".")):
+        return 1
 
     if not check_not_raised(args.baseline, args.base_rev):
         return 1

@@ -477,7 +477,7 @@ private fun ProcessDetailPopup(
                 }
                 if (stream.more > 0) {
                     Text(
-                        text = stringResource(R.string.baopu_activity_more, stream.more),
+                        text = pluralStringResource(R.plurals.baopu_activity_more, stream.more, stream.more),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 2.dp),

@@ -9,7 +9,9 @@
 package com.example.zhengdao.baopu.agent
 
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.database.sqlite.transaction
 import com.example.zhengdao.baopu.AssembledPrompt
 import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuPreset
@@ -212,14 +214,14 @@ internal class RunEngine(
     private val _state = mutableStateOf(RunState.IDLE)
     val state: State<RunState> get() = _state
 
-    private val _step = mutableStateOf(0)
+    private val _step = mutableIntStateOf(0)
     val step: State<Int> get() = _step
 
     private val _sessionKey = mutableStateOf<String?>(null)
     val sessionKey: State<String?> get() = _sessionKey
 
     /** 当前会话的 interrupted_step（-1 = 未中断；UI 标「中断于第 N 步」）。 */
-    private val _interruptedStep = mutableStateOf(RunRules.NOT_INTERRUPTED)
+    private val _interruptedStep = mutableIntStateOf(RunRules.NOT_INTERRUPTED)
     val interruptedStep: State<Int> get() = _interruptedStep
 
     /**
@@ -1187,12 +1189,8 @@ internal class RunEngine(
     /** 新建会话（返回 sessionId；UI 在首次发送时调）。write 回 Future ⇒ .get() 等结果。 */
     fun createSession(title: String, now: Long): Long = db.write { d ->
         val stmt = BaopuSql.insertSession(title, provider.model, provider.id, now)
-        d.beginTransaction()
-        try {
-            d.execSQL(stmt.sql, stmt.args)
-            d.setTransactionSuccessful()
-        } finally {
-            d.endTransaction()
+        d.transaction {
+            execSQL(stmt.sql, stmt.args)
         }
         // execSQL 拿不到 insertId ⇒ 回头查（单写者线程内无并发，安全）
         d.rawQuery(
@@ -1411,7 +1409,7 @@ internal class RunEngine(
             // P1-3：换通道后是**重跑同一步**（换了通道，模型的活没变）⇒ 不重复计预算。
             // 只在这一处跳计数：其他 continue（收尾闸重跑、坏参数重试）都是新的一步，照计。
             if (reuseStep) reuseStep = false else stepCount++
-            _step.value = stepCount
+            _step.intValue = stepCount
             _state.value = RunState.THINKING
             persistStep(sessionId, stepCount, "Thinking")
             // 第三十八批 A 段：记开步时刻 ⇒ usage 到手时能说「这步花了多久」。
@@ -2907,7 +2905,7 @@ internal class RunEngine(
      * ＋「续跑」按钮，两条同时出现就是同一句话说两遍（2026-10-17 真机实测）。
      */
     private fun markInterrupted(sessionId: Long, interruptedStepValue: Int) {
-        _interruptedStep.value = interruptedStepValue
+        _interruptedStep.intValue = interruptedStepValue
     }
 
     /** 续跑起点 = 落库的 interrupted_step（没有就从 0 起）。 */

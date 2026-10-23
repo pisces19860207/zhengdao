@@ -60,12 +60,17 @@ class BaopuTrashBinTest {
 
     private fun en() = repoFile("src/main/res/values-en/strings.xml").readText(Charsets.UTF_8)
 
-    private fun value(fileText: String, key: String): String =
-        Regex("name=\"$key\">([^<]*)<").find(fileText)?.groupValues?.get(1)
+    private fun value(fileText: String, key: String): String {
+        // 134 批：部分键改成 <plurals>（lint PluralsCandidate），两种形态都要能取到原文。
+        Regex("name=\"$key\">([^<]*)</string>").find(fileText)?.let { m ->
+            if (m.groupValues[1].isNotBlank()) return m.groupValues[1]
+        }
+        return Regex("name=\"$key\">([\\s\\S]*?)</plurals>").find(fileText)?.groupValues?.get(1)
             ?: throw AssertionError("找不到键 $key（被删了？）")
+    }
 
     private fun placeholders(text: String): List<String> =
-        Regex("%\\d\\$[a-zA-Z]").findAll(text).map { it.value }.toList()
+        Regex("%\\d\\$[a-zA-Z]").findAll(text).map { it.value }.distinct().toList()
 
     // ── 盘上现场 ──────────────────────────────────────────────────────────
 
@@ -330,7 +335,7 @@ class BaopuTrashBinTest {
         assertTrue("单条那句红字只在确认态出现", src.contains("if (isConfirming) {"))
         assertTrue("确认态是这一行自己的", src.contains("val isConfirming = confirmingFile == row.file.absolutePath"))
         assertTrue("单条那句查的是单条文案", src.contains("R.string.trash_confirm_one"))
-        assertTrue("清空那句查的是批量文案", src.contains("R.string.trash_confirm_empty"))
+        assertTrue("清空那句查的是批量文案", src.contains("R.plurals.trash_confirm_empty") || src.contains("R.string.trash_confirm_empty"))
         val zhEmpty = value(zh(), "trash_confirm_empty")
         assertTrue("清空那句要数量", zhEmpty.contains("%1\$d"))
         assertTrue("清空那句要体积", zhEmpty.contains("%2\$s"))

@@ -553,8 +553,13 @@ class BaopuCostAndArtifactsTest {
 
     private fun assertSamePlaceholders(zh: String, en: String, key: String) {
         fun pattern(text: String): List<String> {
-            val line = Regex("name=\"$key\">(.*?)</string>").find(text)!!.groupValues[1]
-            return Regex("%\\d+\\$[a-z]").findAll(line).map { it.value }.toList()
+            // 134 批：部分键改成 <plurals>（lint PluralsCandidate），取值范围要涵盖两种形态。
+            val body = Regex("name=\"$key\">(.*?)</string>", RegexOption.DOT_MATCHES_ALL)
+                .find(text)?.groupValues?.get(1)
+                ?: Regex("name=\"$key\">(.*?)</plurals>", RegexOption.DOT_MATCHES_ALL)
+                    .find(text)?.groupValues?.get(1)
+                ?: throw AssertionError("$key 的中英文案都找不到（<string> / <plurals> 都试过）")
+            return Regex("%\\d+\\$[a-z]").findAll(body).map { it.value }.distinct().toList()
         }
         assertEquals("$key 的中英占位符要成对", pattern(zh), pattern(en))
     }

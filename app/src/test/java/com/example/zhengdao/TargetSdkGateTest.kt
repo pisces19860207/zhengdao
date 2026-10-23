@@ -171,10 +171,12 @@ class TargetSdkGateTest {
             launcher.contains("WRITE_EXTERNAL_STORAGE"),
         )
         val main = kotlinCode(read("src/main/java/com/example/zhengdao/MainActivity.kt"))
-        assertTrue(
-            "MainActivity 的存储运行时请求没有 SDK_INT < 30 守卫 —— 30+ 上请求 inert 权限，" +
-                "只会被静默拒绝（还可能被个别 ROM 弹无谓的框）",
-            main.contains("SDK_INT < 30"),
+        // 134 批（lint ObsoleteSdkInt）：minSdk=36 ⇒ 原 `SDK_INT < 30` 的存储补授权分支是死代码，
+        // 已整段删除。判据改成「死分支不许回来」：那两个 inert 权限常量不许再出现在请求代码里。
+        assertFalse(
+            "MainActivity 又请求 READ/WRITE_EXTERNAL_STORAGE 了 —— minSdk=36 上这是死分支" +
+                "（API 30+ 请求只会被静默拒绝）",
+            main.contains("READ_EXTERNAL_STORAGE") || main.contains("WRITE_EXTERNAL_STORAGE"),
         )
     }
 
