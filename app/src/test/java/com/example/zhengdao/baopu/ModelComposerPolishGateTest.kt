@@ -24,8 +24,8 @@ class ModelComposerPolishGateTest {
         assertEquals(1, ids.count { it.startsWith("openrouter") })
         assertTrue("Gemini 预设必须在", "gemini" in ids)
         val g = Providers.all().first { it.id == "gemini" }
-        assertEquals(LlmProtocol.OPENAI_COMPAT, g.protocol)
-        assertTrue("Gemini 走 OpenAI 兼容层", g.baseUrl.endsWith("/openai"))
+        assertEquals(LlmProtocol.GEMINI_NATIVE, g.protocol)
+        assertTrue("Gemini 走原生 /v1beta", g.baseUrl.endsWith("/v1beta"))
         assertTrue("Gemini 预设不许内置 Key", g.apiKey.isEmpty())
     }
 
