@@ -117,4 +117,20 @@ class BaopuWorkspaceTest {
                 .contains("File(BaopuWorkspace.hostDir(ctx), relPath)"),
         )
     }
+
+    @Test
+    fun `B7_StaticFieldLeak修复不许靠错生命周期_两处SP都从applicationContext取`() {
+        // 134 批 lint(StaticFieldLeak)：BaopuToolPrefs/BaopuToolUnlocks 不再存 Context 字段，
+        // 改存进程级 SharedPreferences。修法的**生命周期前提**必须钉住：
+        // - SP 只能从 applicationContext 取（拿 Activity 会随页面销毁变孤儿/泄漏）；
+        // - 两个 object 各一处、每次 init 重新绑定（进程级单例，不许“只认第一次”的旧 context）。
+        val src = appFile("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt").readText()
+        assertEquals(
+            "两处 SP 都必须从 applicationContext 取",
+            2,
+            Regex("prefs = context\\.applicationContext\\.getSharedPreferences\\(").findAll(src).count(),
+        )
+        assertFalse("不许退回到持 Context 字段（那正是 StaticFieldLeak 报的东西）", src.contains("var appCtx: Context?"))
+        assertEquals("两个存储对象各一个 prefs 字段", 2, Regex("private var prefs: android\\.content\\.SharedPreferences\\?").findAll(src).count())
+    }
 }
