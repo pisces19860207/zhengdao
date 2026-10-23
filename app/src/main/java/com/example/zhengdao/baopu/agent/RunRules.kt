@@ -256,6 +256,17 @@ internal object RunRules {
             "edit_file" -> "编辑 ${path ?: "（未给路径）"}"
             "move_path" -> "移动 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
                 showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot)
+            // 第一百五十八批：生图会烧 Gemini 额度，卡面第一句就把「几张、什么比例」说清；
+            // 提示词只摘 40 字（卡面是标题，不是日志）。
+            "generate_image" -> {
+                val count = args.optInt("count", 1).coerceIn(1, GenerateImage.MAX_COUNT)
+                val size = args.optString("size").trim().ifBlank { GenerateImage.DEFAULT_SIZE }
+                val prompt = args.optString("prompt").trim()
+                val brief = if (prompt.length > 40) prompt.take(40) + "…" else prompt
+                val ref = args.optString("reference").trim().ifBlank { null }
+                val refText = if (ref == null) "" else "（参考图：${showPath(ref, projectRoot)}）"
+                "用 Gemini 画 $count 张 $size 的图（会烧额度）：「$brief」$refText"
+            }
             else -> "$tool（${args.toString().take(60)}）"
         }
     }

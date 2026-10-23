@@ -60,6 +60,12 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
     /** 资料库，默认不可见。 */
     LIBRARY("library", "资料库：列清单、整理归位、书的大纲"),
 
+    /**
+     * 文生图（第一百五十八批）：默认不可见——它会烧 Gemini 额度，模型看不见就不会
+     * 在闲聊里随口画图；要用时由 `capabilities` 解锁。默认**启用**（解锁后立即可用）。
+     */
+    IMAGE("image", "文生图：按一句话画图，或照着工作区里的图改（会烧 Gemini 额度，每次一张确认卡）"),
+
     /** 格式层的体检与导出（写卡本体在 EDIT，理由见上面的第 3 条）。 */
     CARD("card", "卡片格式：体检角色卡、导出酒馆 PNG"),
 
@@ -183,6 +189,8 @@ internal object ToolGroupTable {
         // 知识库 v2 两件套（第一百二十八批）：同资料库组，默认不可见（要 capabilities 解锁）
         "kb_index" to ToolGroup.LIBRARY,
         "kb_search" to ToolGroup.LIBRARY,
+        // 第一百五十八批：文生图（Gemini 原生生图；默认不可见，capabilities 解锁）
+        "generate_image" to ToolGroup.IMAGE,
         "card_inspect" to ToolGroup.CARD,
         "card_export" to ToolGroup.CARD,
         // 58 批 C 层「追加-only」人设通道：与 write_skill 同属自写类，同一组、同样默认不可见
@@ -354,6 +362,14 @@ sealed interface ToolOutcome {
 object ToolTimeout {
     const val FILE_MS = 5_000L
     const val BROWSER_MS = 20_000L
+
+    /**
+     * 生图（第一百五十八批）：一次请求常见 10–60 秒。
+     *
+     * 不能用 [FILE_MS]（5 秒）：它会把正常生成判成超时，且模型会以为「工具坏了」去重试——
+     * 重试一次就是再烧一张的额度。180 秒覆盖慢网下的长尾，也不至于把单线程工具池占太久。
+     */
+    const val IMAGE_MS = 180_000L
 
     /**
      * **等用户**的回答上限（第四十八批 P0-1）：确认超时 + 5 秒余量。
@@ -1027,6 +1043,9 @@ internal object BaopuToolCatalog {
         "delete_path",
         // 图片处理（2026-10-18 用户逐字「落」）：默认开，但**每次一张确认卡**，且永不覆盖原图
         "image_ops",
+        // 文生图（第一百五十八批）：默认开、默认不可见（IMAGE 组）——同 run_subtasks 口径：
+        // 解锁后立即可用；但每次一张卡，且调模型前先让人看到「这一张要烧额度」。
+        "generate_image",
         // 选项卡（2026-10-19）：不写盘、只问人，默认开；没有界面时回人话而不是干等
         "ask_user",
         // 格式层（第三十九批 B）：inspect 只读；export 写 PNG 但**绝不覆盖**，且每次一张确认卡
@@ -1074,6 +1093,8 @@ internal object BaopuToolCatalog {
         Entry("delete_path") { DeletePathTool.spec(it) },
         // 图片处理（2026-10-18）：缩放/裁剪/转格式/取主色/生成图标各档
         Entry("image_ops") { ImageOpsTool.spec(it) },
+        // 文生图（第一百五十八批）：原生 Gemini 生图（模型每次从 /models 清单挑；CONFIRM，跑一次烧一张额度）
+        Entry("generate_image") { GenerateImageTool.spec(it) },
         // 选项卡（2026-10-19）：落点在引擎（AskUserTool.sink），表里只放 spec
         Entry("ask_user") { AskUserTool.spec() },
         // 格式层（第三十九批 B）：认脸＋体检（只读）／导出酒馆 PNG（不覆盖）

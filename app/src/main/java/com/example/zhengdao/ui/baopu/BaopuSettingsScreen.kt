@@ -985,6 +985,7 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "kb_search" -> R.string.baopu_tool_kb_search
     "delete_path" -> R.string.baopu_tool_delete_path
     "image_ops" -> R.string.baopu_tool_image_ops
+    "generate_image" -> R.string.baopu_tool_generate_image
     "ask_user" -> R.string.baopu_tool_ask_user
     // 第一百二十七批：多 Agent 协作（run_subtasks）。不补这两行 ⇒ 设置页开工具卡直接抛。
     "run_subtasks" -> R.string.baopu_tool_run_subtasks
@@ -1035,6 +1036,7 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "kb_search" -> R.string.baopu_tool_kb_search_desc
     "delete_path" -> R.string.baopu_tool_delete_path_desc
     "image_ops" -> R.string.baopu_tool_image_ops_desc
+    "generate_image" -> R.string.baopu_tool_generate_image_desc
     "ask_user" -> R.string.baopu_tool_ask_user_desc
     "run_subtasks" -> R.string.baopu_tool_run_subtasks_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
