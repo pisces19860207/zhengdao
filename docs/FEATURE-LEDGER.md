@@ -177,6 +177,23 @@
 | 137 | ✅ **2026-10-23 已验收：第一百五十三批 模型选择与发送/停止按钮收口** —— 预设短名单下拉、OpenRouter 搜索+拿 Key 跳转、发送/停止/排队三态；验收见 §A 366 | 已收口 |
 | 138 | ⚪ **2026-10-23 第一百六十一批（计划卡降噪）不能验收——待补** —— 分支 `feat/plan-card-denoise-154`（名沿用 154）**0 提交**；报告 `证道设计报告/161计划卡降噪-交付-2026-10-23.md` §五读数全是 `?`；§四自述 `RunEngine.planChangeGate` 让给 157 未落 ⇒ **生产不生效**。待：提交 WIP → 157 合入后落补丁 → 全量/lint 回填 → 再验。 | 待补验收 |
 | 139 | 🔵 **2026-10-23 在飞：第一百五十七批 日记层检索（补账）** —— 工作树 `wt-diary154`、分支 `feat/memory-159`（名沿用）；`ContextAssembler/DiaryRecall/RunEngine` WIP，未提交；先 rebase 最新 main（含 149），与 158 记忆目录串行 | 在飞/未提交 |
+### 2026-10-23 重置 A（锁点 ef3f2408＝v2.2.0/38，lint 234）
+
+> 今天所有单编号不变；下表基线一律锁点/`integ/reset-1023`，当前 main 只作参考。已收的 153/154/158-5xx 已 cherry-pick 到 `integ/reset-1023`（`26464e6a`/`d828c328`/`5b5faaaf`）。
+
+| 批 | 状态 | 代码/分支 | 处置 |
+|---|---|---|---|
+| 152 | 未开工 | Trea；`test/runqueue-race-f` 旧树 | 从锁点/reset 重切；可注入 SessionRunQueue |
+| 153 | 已收 | `f5fad267` | 已 cherry-pick `26464e6a` |
+| 154 | 已收 | `4e83c5d1` | 已 cherry-pick `d828c328` |
+| 149 | 已收 | 锁点内 | 无需移植 |
+| 155 | 未开工 | 无 | 从 reset 重派 |
+| 156 | WIP | `wt-wsopen156` WorkspaceAccess.kt | rebase 到 reset |
+| 157 | WIP | `wt-diary154` feat/memory-159 | rebase 到 reset |
+| 158 | 5xx 已收；生图/记忆目录另单 | `5b5faaaf` / 无 | 5xx 已移植；生图/记忆目录从 reset 重派 |
+| 161 | 待补验收 | `feat/plan-card-denoise-154` WIP | 157 后 rebase reset，补 RunEngine/读数 |
+
+
 | 126 | 🔵 **2026-10-22 已派第一百三十七批（workbuddy 国内版）：换 Token ＋ 四档容器** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百三十七批-Token与四档容器.md`（先改 ContrastGuardTest 再换色；只许四档容器；138-142 均等此单） |
 | 127 | ⚪ **后期评估：抱朴 Rust 化（2026-10-22 立账；UI 优先，暂不派）** —— 结论：Rust 的正当身份是**类型层保险**，前提三条齐备：**FFI 契约（共享 schema/粗粒度 JNI/同源类型）＋单一真相（Rust/Kotlin 不双写）＋fail-closed（`.so` 加载失败拒绝进入 Acting，不做功能性降级；Kotlin fallback 仅过渡对拍）**；**先契约测试/fixtures，codegen 等漂移再上**；试点 **TokenEstimator**（`run_log` 已有 `tokens_in_est/out_est` 对拍）→ **BaopuKernel**（207 行，七条边界判据）；card/规则/文件工具后扩。不另建立项文档；不插队 UI。 | 待做（后期，UI 后） |
 | 128 | 🔵 **2026-10-22 已派第一百四十三批（Trea，限 100 积分）：纯函数边界测试补强** —— 单 `..\_zd-private\docs\派工单-2026-10-22-第一百四十三批-纯函数边界测试.md`（PlanRules/TokenEstimator/FailurePolicy/ChannelSwitchFsm 等 5 组边界；只加测试不改生产） |
