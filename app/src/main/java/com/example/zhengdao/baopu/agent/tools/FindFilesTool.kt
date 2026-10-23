@@ -8,7 +8,7 @@
 // 结果回灌走 GuardPipeline 第 ⑤ 段的 DataFence.wrap（与 read_file 同一出口）。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.rootfs.PathGuard
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 
 /**
@@ -99,9 +99,13 @@ internal object FindFilesTool {
         if (!dir.isDirectory) {
             return ToolOutcome.Failed("不是一个目录：${dir.name}（find_files 从目录开始找；读单个文件用 read_file）")
         }
-        if (!PathGuard.isInside(root, dir)) {
-            return ToolOutcome.Rejected("路径越界被拒：${dir.name} 不在工作区（${root.absolutePath}）内。")
-        }
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
+        workspaceBoundaryCheck(
+            root,
+            dir,
+            dir.name,
+            "路径越界被拒：${dir.name} 不在工作区（${root.absolutePath}）内。",
+        )?.let { return ToolOutcome.Rejected(it) }
         val cap = limit.coerceIn(1, MAX_LIMIT)
         val depthCap = maxDepth.coerceIn(1, MAX_DEPTH)
         val lowered = needle.lowercase()

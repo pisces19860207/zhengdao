@@ -12,7 +12,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.library.ChapterSplitter
 import com.example.zhengdao.baopu.library.SplitOptions
-import com.example.zhengdao.rootfs.PathGuard
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 
 /**
@@ -84,9 +84,13 @@ internal object BookOutlineTool {
         if (!file.isFile) {
             return ToolOutcome.Failed("不是一个文件：${file.name}（book_outline 只看文件；列目录用 list_dir）")
         }
-        if (!PathGuard.isInside(root, file)) {
-            return ToolOutcome.Rejected("路径越界被拒：${file.name} 不在工作区（${root.absolutePath}）内。")
-        }
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
+        workspaceBoundaryCheck(
+            root,
+            file,
+            file.name,
+            "路径越界被拒：${file.name} 不在工作区（${root.absolutePath}）内。",
+        )?.let { return ToolOutcome.Rejected(it) }
         if (file.length() > MAX_FILE_BYTES) {
             return ToolOutcome.Failed(
                 "文件太大不列目录：${file.name} 有 ${file.length()} B，超过 $MAX_FILE_BYTES B 上限。" +

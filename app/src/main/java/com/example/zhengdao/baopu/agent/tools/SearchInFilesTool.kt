@@ -3,14 +3,14 @@
 // 依据：抱朴线刀 2 追加包（关键词搜索工具）。四条硬纪律：
 // 1. 权限 READ（FREE）——只读不改；
 // 2. 只搜工作区内（目录参数名用 "path" ⇒ GuardPipeline 第 ② 段免费守卫；
-//    纯函数层再自检 PathGuard.isInside，双保险）；
+//    纯函数层再自检 workspaceBoundaryCheck——156 批起开关开＋已授权可越界，双保险仍在）；
 // 3. 只回「相对路径:行号:该行内容±1 行」，单次最多 40 条命中；
 // 4. 跳过 >8 MB 与二进制文件，并写明「已扫描 N 个文件 / 跳过 M 个」。
 // 结果回灌走 GuardPipeline 第 ⑤ 段的 DataFence.wrap（与 read_file 同一个围栏出口，
 // 本文件不自造围栏）。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.rootfs.PathGuard
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 import java.nio.file.Files
 
@@ -107,11 +107,13 @@ internal object SearchInFilesTool {
         if (!dir.isDirectory) {
             return ToolOutcome.Failed("不是一个目录：${dir.name}（search_in_files 只搜目录；读文件用 read_file）")
         }
-        if (!PathGuard.isInside(root, dir)) {
-            return ToolOutcome.Rejected(
-                "路径越界被拒：${dir.name} 不在工作区（${root.absolutePath}）内。",
-            )
-        }
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
+        workspaceBoundaryCheck(
+            root,
+            dir,
+            dir.name,
+            "路径越界被拒：${dir.name} 不在工作区（${root.absolutePath}）内。",
+        )?.let { return ToolOutcome.Rejected(it) }
         val needle = if (caseSensitive) q else q.lowercase()
         var scanned = 0
         var skippedBig = 0
