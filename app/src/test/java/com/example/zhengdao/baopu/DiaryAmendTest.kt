@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 依据的公开接口：JUnit 4（TemporaryFolder）。
 package com.example.zhengdao.baopu
 
@@ -135,5 +135,49 @@ class DiaryAmendTest {
         assertEquals(1100L, got.timeToMs)
         assertEquals(1000L, got.createdAt)
         assertEquals(42L, got.sessionId)
+    }
+
+    // ── 2026-10-23 MEM-D1：同日累计不得改时间窗 ────────────────────────────
+
+    @Test
+    fun `同日累计_时间窗原样带回_只累计可改字段`() {
+        val prev = entry(timeFromMs = 1000L, timeToMs = 1100L, createdAt = 1000L)
+        val merged = DiaryRules.mergeDailyEntry(
+            prev = prev,
+            id = prev.id,
+            date = prev.date,
+            sessionId = prev.sessionId,
+            now = 5000L,
+            firstActivityAt = 4000L,
+            okDelta = 2,
+            failedDelta = 1,
+            newArtifacts = listOf("产物/b.md"),
+        )
+        assertEquals("timeFromMs 不许改", prev.timeFromMs, merged.timeFromMs)
+        assertEquals("timeToMs 不许改（原来写 now ⇒ 第二次起全被拒）", prev.timeToMs, merged.timeToMs)
+        assertEquals("createdAt 不许改", prev.createdAt, merged.createdAt)
+        assertEquals(prev.id, merged.id)
+        assertEquals(prev.okSteps + 2, merged.okSteps)
+        assertEquals(prev.failedSteps + 1, merged.failedSteps)
+        assertTrue("新产物要并进来", merged.artifacts.contains("产物/b.md"))
+        assertNullReason(DiaryRules.amendGuard(prev, merged))
+    }
+
+    @Test
+    fun `首条日记_用本次窗口`() {
+        val merged = DiaryRules.mergeDailyEntry(
+            prev = null,
+            id = "42-20261023",
+            date = "2026-10-23",
+            sessionId = 42L,
+            now = 5000L,
+            firstActivityAt = 4200L,
+            okDelta = 1,
+            failedDelta = 0,
+            newArtifacts = emptyList(),
+        )
+        assertEquals(4200L, merged.timeFromMs)
+        assertEquals(5000L, merged.timeToMs)
+        assertEquals(1, merged.okSteps)
     }
 }
