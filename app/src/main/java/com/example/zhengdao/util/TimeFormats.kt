@@ -56,9 +56,12 @@ object TimeFormats {
     private val clockMillisFmt: DateTimeFormatter =
         DateTimeFormatter.ofPattern("HH:mm:ss.SSS", Locale.US).withZone(zone)
 
-    /** `HH:mm` —— 会话列表里的「今天这条是几点」。数字型图案，locale 只影响数字字形。 */
+    /** `HH:mm` —— 会话列表里的「今天这条是几点」。数字型图案，locale 只影响数字字形。
+     *  134 批 lint(ConstantLocale)：不能用 Locale.getDefault()（进程内用户切语言不会重建
+     *  这个静态字段，会一直用旧 locale）；数字型图案用 Locale.US 与本文件其余 formatter 一致，
+     *  zh/en 下输出逐字不变。 */
     private val hourMinuteFmt: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).withZone(zone)
+        DateTimeFormatter.ofPattern("HH:mm", Locale.US).withZone(zone)
 
     /** `MM-dd` —— 「哪一天」（抱朴计划面板的组头：昨天的写「昨天 22:10」，更早的写 `10-18`）。 */
     private val monthDayFmt: DateTimeFormatter =
