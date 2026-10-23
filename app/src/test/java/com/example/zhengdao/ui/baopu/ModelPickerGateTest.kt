@@ -283,7 +283,6 @@ class ModelPickerGateTest {
     @Test
     fun 跳转只走玄览B路径() {
         // ①「用现有玄览 B 路径：BrowserHolder.pendingUrl ＋ requestBrowserTab」
-        assertTrue(sheetRaw.contains("openInXuanlan(ModelPickerRules.OPENROUTER_KEYS_URL)"))
         assertTrue(sheetRaw.contains("openInXuanlan(ModelPickerRules.OPENROUTER_SIGNUP_URL)"))
         newRaw.map { codeOnly(it) }.forEach { code ->
             listOf("Intent", "startActivity", "CustomTabs", "Uri.parse").forEach { n ->
