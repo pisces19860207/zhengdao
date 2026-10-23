@@ -369,6 +369,7 @@ android {
     }
 
     buildTypes {
+        getByName("debug") { applicationIdSuffix = ".dev"; versionNameSuffix = "-dev" }
         release {
             optimization {
                 enable = true
