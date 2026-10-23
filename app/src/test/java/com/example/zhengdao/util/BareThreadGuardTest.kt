@@ -263,7 +263,7 @@ class BareThreadGuardTest {
     }
 
     @Test
-    fun `对账单_2026-10-16_实测 30 处创建点`() {
+    fun `对账单_2026-10-16_实测 32 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -276,9 +276,9 @@ class BareThreadGuardTest {
             "GuardPipeline.kt:86",
             "KeepaliveWatcher.kt:230",
             "KeepaliveWatcher.kt:66",
-            "KnowledgeBase.kt:152",
-            "KnowledgeBase.kt:175",
+            "KnowledgeBase.kt:176",
             "KnowledgeBase.kt:199",
+            "KnowledgeBase.kt:223",
             "KnowledgeBaseHints.kt:133",
             "LlmClient.kt:1145",
             "MainActivity.kt:405",

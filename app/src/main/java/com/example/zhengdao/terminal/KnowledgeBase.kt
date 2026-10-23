@@ -3,6 +3,8 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
+import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.util.TimeFormats
@@ -10,17 +12,28 @@ import java.io.File
 import java.util.Locale
 
 /**
- * 资料库（P0：「丢进去就能用」的机械层）。
+ * 资料库（P0：「丢进去就能用」的机械层；157 目录收口后改线）。
  *
  * 定位：把用户的私人文件变成一个**终端里的 agent 能自动找到并使用**的资料库。
  * 本层只做**机械活**（不涉及任何大模型）：
- *   1) 预置骨架目录：`资料库/{原始, 整理, 改版}` ＋ 说明文档
- *   2) 扫描 `原始/` → 生成 `整理/00-目录.md` 清单（原子写）
+ *   1) 预置骨架目录：`产物/`（157 前是 `资料库/整理/`）＋ 说明文档
+ *   2) 扫描私有原件区 → 生成 `产物/00-目录.md` 清单（原子写）
  *   3) 分发指路到 guest `/root/`：`AGENTS.md`（AGENTS.md 开放标准，25+ 工具通用）＋ `CLAUDE.md`
  *
+ * ## 157 目录收口（用户 2026-10-23 拍板，工作区可见目录恰四个：产物/回收站/备份/记忆）
+ * - **私有原件** ＝ `filesDir/baopu/library/原始/`（[LibraryPaths.rawDirUnder]）：
+ *   157 前终端侧自己建 `<工作区>/资料库/原始/` 给用户放原件；收口后原件区**并入抱朴
+ *   私有原件区**（终端 agent 军规本就读不到原件，搬走照样成立），存量由
+ *   [com.example.zhengdao.baopu.MemoryLayout] 迁移搬入（冲突不覆盖）。
+ * - **产物** ＝ `<工作区>/产物/`（157 前 `<工作区>/资料库/整理/`）：清单与说明文档落这里。
+ * - **旧根** `<工作区>/资料库/`（[root]）降为 legacy：只用于存量识别、迁移对账与
+ *   「别处还有一份资料」的候选查找，**不再新建、不再写**。
+ * - **改版**（157 前 `资料库/改版/`）是死目录（全仓无引用）⇒ 迁去
+ *   `产物/_迁移存档/改版/`，本类不再认。
+ *
  * 四条铁律（详见 docs/知识库-设计施工图.md）：
- *   - **原件不动**：`原始/` 只读，任何程序都不改、不删、不改名；用户要改文件 → 产物进 `改版/`
- *   - **写入者唯一**：`整理/` 只有本类会写；agent 与抱朴对其只读，避免互相覆盖成空文件
+ *   - **原件不动**：私有原件区只读，任何程序都不改、不删、不改名；用户要改文件 → 产物进 `产物/`
+ *   - **写入者唯一**：`产物/00-目录.md` 只有本类会写；agent 与抱朴对其只读，避免互相覆盖成空文件
  *   - **原子写**：先写 `.tmp` 再 rename，绝不产生"半个文件"；写前校验非空、留 `.bak` 可回滚
  *   - **尊重用户删除**：用户删掉资料库目录后，不再重建（无流氓行为）
  *
@@ -28,10 +41,12 @@ import java.util.Locale
  */
 object KnowledgeBase {
 
-    const val DIR = "资料库"
+    /** 旧资料库根目录名（157 前的 `<工作区>/资料库/`）——**legacy**，仅存量识别用。 */
+    const val DIR = BaopuKernel.Data.LEGACY_LIBRARY_DIR
+
+    /** 旧原件子目录名（157 前 `资料库/原始/`）——legacy，迁移对账用。 */
     const val SUB_RAW = "原始"
-    const val SUB_DONE = "整理"
-    const val SUB_NEW = "改版"
+
     const val F_README = "说明.md"
     const val F_AGENTS = "AGENTS.md"
     const val F_CLAUDE = "CLAUDE.md"
@@ -71,10 +86,19 @@ object KnowledgeBase {
 
     // ── 路径 ────────────────────────────────────────────────────────────────
 
+    /** 旧资料库根（`<工作区>/资料库/`）——157 后 legacy，仅存量识别与迁移对账用。 */
     fun root(ctx: Context): File = File(Workspace.hostDir(ctx), DIR)
-    fun rawDir(ctx: Context): File = File(root(ctx), SUB_RAW)
-    fun doneDir(ctx: Context): File = File(root(ctx), SUB_DONE)
-    fun revisedDir(ctx: Context): File = File(root(ctx), SUB_NEW)
+
+    /**
+     * 私有原件区（157 起：`filesDir/baopu/library/原始/`）。
+     * 与抱朴侧 [LibraryPaths.rawDirUnder] 同一目录——终端 agent 军规本就读不到原件，
+     * 收口后两边共用一份，存量由 MemoryLayout 迁入。
+     */
+    fun rawDir(ctx: Context): File = LibraryPaths.rawDirUnder(ctx.filesDir)
+
+    /** 产物目录（157 起：`<工作区>/产物/`）——清单与说明文档落这里。 */
+    fun doneDir(ctx: Context): File = File(Workspace.hostDir(ctx), BaopuKernel.Data.DIR_PRODUCTS)
+
     fun indexFile(ctx: Context): File = File(doneDir(ctx), F_INDEX)
 
     /** guest `/root` 的宿主侧路径（ProotLauncher 的 bind：filesDir/home → /root） */
@@ -105,7 +129,7 @@ object KnowledgeBase {
     )
 
     fun status(ctx: Context): Status {
-        val r = root(ctx)
+        val r = doneDir(ctx)
         val path = r.absolutePath
         if (!isEnabled(ctx)) return Status(State.DISABLED, 0, path)
         if (!r.isDirectory) return Status(State.NOT_MOUNTED, 0, path)
@@ -195,7 +219,7 @@ object KnowledgeBase {
     fun autoRefresh(ctx: Context) {
         runCatching {
             if (!isEnabled(ctx)) return@runCatching
-            if (!root(ctx).isDirectory) return@runCatching
+            if (!doneDir(ctx).isDirectory) return@runCatching
             val t = Thread({
                 runCatching { rebuildIndex(ctx) }
                     .onFailure { RunLog.log("资料库自动刷新失败：${it.message}") }
@@ -303,7 +327,7 @@ object KnowledgeBase {
      */
     fun ensureScaffold(ctx: Context, forced: Boolean = false): Boolean {
         val prefs = AppPrefs.prefs(ctx)
-        val r = root(ctx)
+        val r = doneDir(ctx)
 
         // 仅私有模式：不主动预置（那是"在意痕迹"的场景，不该凭空塞东西）；
         // 但用户既然自己建了这个目录，就说明他想用 —— 补齐骨架。
@@ -347,12 +371,12 @@ object KnowledgeBase {
     internal fun shouldCreate(everCreated: Boolean, userDeleted: Boolean, forced: Boolean): Boolean =
         forced || (!everCreated && !userDeleted)
 
-    /** 建子目录 ＋ 写说明文档（幂等：内容未变不重写）。 */
+    /** 建私有原件区与产物目录 ＋ 写说明文档（幂等：内容未变不重写）。
+     *  157 起说明文档落 `产物/`（旧 `资料库/` 根不再新建）。 */
     private fun seedFiles(ctx: Context): Boolean {
         rawDir(ctx).mkdirs()
         doneDir(ctx).mkdirs()
-        revisedDir(ctx).mkdirs()
-        val r = root(ctx)
+        val r = doneDir(ctx)
         writeIfChanged(File(r, F_README), readmeText())
         writeIfChanged(File(r, F_AGENTS), libraryAgentsText())
         writeIfChanged(File(r, F_CLAUDE), "@AGENTS.md\n")
@@ -639,35 +663,36 @@ object KnowledgeBase {
 
     // ── 文案 ────────────────────────────────────────────────────────────────
 
-    /** `资料库/说明.md` —— 给**用户**看，通篇人话、不出现任何技术词。 */
+    /** `产物/说明.md` —— 给**用户**看，通篇人话、不出现任何技术词。 */
     private fun readmeText(): String = """
         # 这个文件夹是什么
 
-        这是你的**资料库**。放进去的东西，终端里的 AI 就能读到，并用来回答你。
+        这是你的**产物**文件夹：证道帮你整理资料时，生成的清单就放在这里。
+        你丢进 `投递/` 的原件，证道另外收在 App 自己管的地方——终端里的 AI 读得到，
+        别的程序看不到、也改不了。
 
         ## 怎么用
 
-        1. 把你的文件放进 `原始/`（**放进去不限格式**：txt、md、word、pdf……）
+        1. 把你的文件放进 `投递/`（**放进去不限格式**：txt、md、word、pdf……）
         2. 打开终端，直接问 AI —— 它会自己去读
         3. 就这样，不用做别的
 
-        ## 三个文件夹，各管一件事
+        ## 两个文件夹，各管一件事
 
         | 文件夹 | 是什么 | 你能干什么 |
         |---|---|---|
-        | `原始/` | 你放原件的地方 | 随便放、随便删。**AI 不会动这里面的东西** |
-        | `整理/` | 证道生成的目录（清单）：资料库里有什么 | 看看就好，别手动改 |
-        | `改版/` | 你让 AI 改文件时，改好的版本 | 满意就自己拿去替换原件 |
+        | `投递/` | 你放原件的地方 | 随便放、随便删 |
+        | `产物/` | 证道生成的目录（清单）：资料库里有什么 | 看看就好，别手动改 |
 
         ## 你的东西安全吗
 
         - 文件**全部存在你自己的手机上**；**证道本身不会把它们发出去**（终端里的 AI 自己联网时另说）
-        - AI **不会修改、不会删除** `原始/` 里的任何东西
-        - 就算你让它改 —— 它也只会把改好的放进 `改版/`，原件原地不动
+        - 你的原件证道**不会修改、不会删除**
+        - 就算你让 AI 帮忙改文件 —— 它也只会把改好的放进工作区，原件原地不动
 
         ## 想让 AI 更快找到
 
-        - 文件放进 `原始/` 就行，它自己会看
+        - 文件放进 `投递/` 就行，它自己会看
         - `txt`、`md` 最稳；**Word 的 `.docx`** 也能读（AI 自己敲一句就能解出来：
           `busybox unzip -p 文件.docx word/document.xml`）
         - 如果是 `pdf` 或很老的 `.doc`，AI 可能要先转一下格式，第一次会慢一点
@@ -675,37 +700,38 @@ object KnowledgeBase {
         $MARK
     """.trimIndent()
 
-    /** `资料库/AGENTS.md` —— 给 **agent** 看的说明书（详细版）。 */
+    /** `产物/AGENTS.md` —— 给 **agent** 看的说明书（详细版）。 */
     private fun libraryAgentsText(): String = """
         # AGENTS.md —— 用户资料库
 
         $MARK
-        用户把私人资料放在了 `原始/` 里。**用户不会整理它，而且没有备份** —— 所以下面的规则是硬的。
+        用户的私人资料由证道 App 统一收管在**私有原件区**（你读不到那里，也不要去翻），
+        你能看到的是证道整理出来的**产物**。所以下面的规则是硬的。
 
         ## 目录
 
-        - `原始/` —— 用户的原始文件。**只读区**
-        - `整理/` —— 由证道 App 生成的目录（清单）。**你不要写它**
-        - `改版/` —— 你唯一可以写的地方
+        - `产物/00-目录.md` —— 资料清单，**先读它**了解用户有什么
+        - `产物/` 下其余文件 —— 证道生成的整理结果，按需读取
+        - `/workspace` 根 —— 你自己的产出写这里（**唯一允许你写的地方**）
 
         ## 铁律
 
-        1. ⛔ **`原始/` 一个字都不许改**：不修改、不改名、不删除。
-        2. ⛔ **不要写 `整理/`**：它由 App 统一维护；同时可能有别的程序在写它，
+        1. ⛔ **不要写 `产物/`**：它由 App 统一维护；同时可能有别的程序在写它，
            你一插进去就会互相覆盖，最后变成空文件。
-        3. ✅ **你的产出只能写进 `改版/`**。
+        2. ⛔ **不要写 `投递/`**：那是用户投递原件的入口，归 App 扫。
+        3. ✅ **你的产出（含帮用户改的文件）一律写进 `/workspace` 根**，
+           命名 `<原名>（改）.<扩展名>`，并在回复里说明"原件没动，改好的在工作区"。
 
         ## 怎么帮用户
 
-        - 先读 `整理/00-目录.md` 看资料库里有什么；需要细节时再读 `原始/` 里的原文件。
-        - 用户说「帮我改一下这个文件」时：读原件 → 把**完整改版**写进 `改版/<原名>（改）.<扩展名>`
-          → 回复里说明"**原件没动，改好的在 `改版/` 里**"。
+        - 先读 `产物/00-目录.md` 看资料库里有什么；需要细节时告诉用户"原件在 App 里收着，
+          我按清单回答"，**不要假装读过原文件**。
         - 发现某个文件还没被整理过 → **在回复里告诉用户**即可，由 App 去处理；**你自己不要写索引**。
         - 格式提示：⚠️ **App 不再预先抽取正文**（摘要功能已于 2026-10-10 移除，E-080）。
           需要 `.docx` 全文时**自己解压取正文**（`.docx` 本质是个 zip）；
           ⚠️ 这个环境**没装 `unzip`（也没 `7z`）**：`busybox unzip -p 文件.docx word/document.xml` 最省事；
           要纯文本就在 `python3` 里 `import zipfile` 读 `word/document.xml`，再把 XML 标签去掉。
-          真正的旧版 `.doc` 与 `.pdf` App **不解析** —— 读不了时用工具转成文本，**转出的副本放 `改版/`**。
+          真正的旧版 `.doc` 与 `.pdf` App **不解析** —— 读不了时用工具转成文本，**转出的副本放 `/workspace`**。
     """.trimIndent()
 
     /**
@@ -730,8 +756,8 @@ object KnowledgeBase {
         } else {
             "找不到用户文件时：先 ls /workspace，把已搜索的路径列出来再下结论，不要直接放弃"
         }
-        val kb = root(ctx).absolutePath
-        val hasRaw = rawDir(ctx).isDirectory && (rawDir(ctx).list()?.isNotEmpty() == true)
+        val kb = doneDir(ctx).absolutePath
+        val hasList = indexFile(ctx).isFile
         return """
             # 证道运行环境说明（每次对话开始前必读）
 
@@ -745,12 +771,13 @@ object KnowledgeBase {
             $sdcardLine
             - /root —— 你的 home；各 Agent 配置在此（~/.hermes、~/.claude 等）
 
-            ## 用户的资料库${if (hasRaw) "（里面有东西）" else "（目前是空的）"}
-            路径：`$kb`（guest 内 `/workspace/资料库/`）
-            - `原始/` —— 用户的原始文件，**只读，一个字都不许改**
-            - `整理/00-目录.md` —— 资料清单，**先读它**了解有什么
-            - `改版/` —— 用户让你改文件时，把改好的放进这里（**原件保持不动**）
-            详细规则见 `/workspace/资料库/AGENTS.md`。
+            ## 用户的资料${if (hasList) "（清单已就绪）" else "（清单还没生成）"}
+            路径：`$kb`（guest 内 `/workspace/产物/`）
+            - `产物/00-目录.md` —— 资料清单，**先读它**了解用户有什么
+            - `产物/` 只读：**不要写它**（App 统一维护，互相覆盖会变成空文件）
+            - 帮用户改文件时，改好的写 `/workspace` 根，命名 `<原名>（改）.<扩展名>`
+            用户的**原件在 App 私有区，你读不到** —— 按清单回答，别假装读过原文件。
+            详细规则见 `/workspace/产物/AGENTS.md`。
 
             ## 能力边界
             - 无 root，不要尝试需要 root 的操作

@@ -27,13 +27,66 @@ import com.example.zhengdao.baopu.SegmentKind
  */
 object BaopuKernel {
 
-    /** ① 数据边界：能读写的只有工作区（默认 `Download/证道`，可被用户改），资料库原件只增不减。 */
+    /**
+     * ① 数据边界：能读写的只有工作区（默认 `Download/证道`，可被用户改）。
+     *
+     * 157 批（用户 2026-10-23「目录收口」）后，工作区可见目录**恰四个**：
+     * `产物/`（唯一对外输出口）、`投递/`（用户投递处）、`备份/`（App 管改前快照，
+     * 模型只读）、`记忆/`（每日日记＋项目记忆）；回收站 `.回收站/` 隐藏保留。
+     * 旧 `资料库/{整理,投递,原始,改版}` 与 `.baopu-bak` 一律走 [com.example.zhengdao.baopu.MemoryLayout]
+     * 的迁移（幂等、不丢文件），**新代码不许再引用旧路径**（legacy 常量只服务迁移）。
+     *
+     * 记忆三层（用户同日「记忆目录约定」）：`<工作区>/记忆/{日记,归档}`＋`<工作区>/记忆/项目记忆.md`
+     * 随工作区走；全局一份在 App 私有 `filesDir/抱朴记忆/`（全局记忆＋写前快照备份，
+     * **不进工作区**）；全局与工作区不许互相覆盖。
+     */
     object Data {
-        /** 资料库原始件的相对目录（相对工作区）；写入一律走归档闸门，**不在这里删**。 */
-        const val LIBRARY_RAW_DIR = "资料库/原始"
+        /** 抱朴唯一对外输出口（旧 `资料库/整理`）。 */
+        const val DIR_PRODUCTS = "产物"
 
-        /** 抱朴自己的备份后缀（`write_file`/`edit_file` 覆盖前留一份）。 */
-        const val BACKUP_SUFFIX = ".baopu-bak"
+        /** 用户投递原件的目录（旧 `资料库/投递`，已退回工作区根）。 */
+        const val DIR_DELIVER = "投递"
+
+        /** 改前原文件快照（旧 `.baopu-bak`）：App 管、**模型只读**、产物不许写进去。 */
+        const val DIR_BACKUP = "备份"
+
+        /** 回收站（删了能捞；隐藏保留，不并进备份、不迁移）。 */
+        const val DIR_TRASH = ".回收站"
+
+        /** 记忆根（每日日记＋项目记忆＋归档都在它下面）。 */
+        const val DIR_MEMORY = "记忆"
+
+        /** 每日日记子目录（`<工作区>/记忆/日记/YYYY-MM-DD.md`）。 */
+        const val DIR_DIARY = "日记"
+
+        /** 归档子目录（月度摘要/过期条目；`<工作区>/记忆/归档/`）。 */
+        const val DIR_ARCHIVE = "归档"
+
+        /** 项目记忆文件（`<工作区>/记忆/项目记忆.md`）。 */
+        const val FILE_PROJECT_MEMORY = "项目记忆.md"
+
+        /** App 私有全局记忆根（`filesDir/抱朴记忆/`）：全局记忆＋快照备份，不进工作区。 */
+        const val DIR_GLOBAL_MEMORY = "抱朴记忆"
+
+        /** 全局记忆文件（`filesDir/抱朴记忆/全局记忆.md`）。 */
+        const val FILE_GLOBAL_MEMORY = "全局记忆.md"
+
+        /** 记忆写前快照目录（`filesDir/抱朴记忆/备份/`）。 */
+        const val DIR_MEMORY_BACKUP = "备份"
+
+        /** 记忆快照保留份数（写前备份轮转；改小＝安全网变薄，须在账上留理由）。 */
+        const val MEMORY_BACKUP_KEEP = 5
+
+        // ── 旧布局（157 迁移专用；新代码不许引用） ──────────────────────────────
+        const val LEGACY_LIBRARY_DIR = "资料库"
+        const val LEGACY_LIBRARY_RAW = "资料库/原始"
+        const val LEGACY_LIBRARY_DONE = "资料库/整理"
+        const val LEGACY_LIBRARY_DELIVER = "资料库/投递"
+        const val LEGACY_LIBRARY_REVISED = "资料库/改版"
+        const val LEGACY_BACKUP_DIR = ".baopu-bak"
+
+        /** 迁移存档落点（死目录 `资料库/改版` 的内容；在 `产物/` 下，不新增顶层目录）。 */
+        const val DIR_MIGRATED_ARCHIVE = "_迁移存档"
     }
 
     /** ② 执行边界：A 内核三条 —— 不跨 rootfs、不起子进程、只在工作区活动。 */

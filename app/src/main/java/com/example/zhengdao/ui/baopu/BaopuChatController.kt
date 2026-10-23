@@ -43,8 +43,10 @@ import com.example.zhengdao.baopu.tallyShadow
 import com.example.zhengdao.baopu.emptyRoundUsage
 import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.SessionCompressionStore
+import com.example.zhengdao.baopu.MemoryBackup
 import com.example.zhengdao.baopu.MemoryEntry
 import com.example.zhengdao.baopu.MemoryInjectionBudget
+import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
@@ -1351,7 +1353,9 @@ internal class BaopuChatController(context: Context) {
 
         val now = System.currentTimeMillis()
         val date = DiaryRules.dateOf(now)
-        val store = DiaryStore(File(BaopuRuntime.workspaceRoot(appCtx), "记忆/日记"), db)
+        // 157：日记根随记忆目录走 `<工作区>/记忆/日记/`（MemoryLayout 单一真源）。
+        val wsRoot = BaopuRuntime.workspaceRoot(appCtx)
+        val store = DiaryStore(MemoryLayout.memoryDir(wsRoot), db)
         val prev = store.loadDay(date).firstOrNull { it.id == DiaryRules.diaryId(sid, date) }
         // 当日累计（同会话同日多轮 upsert 相加；产物并集去重）。
         val okTotal = (prev?.okSteps ?: 0) + okSteps
@@ -1371,9 +1375,22 @@ internal class BaopuChatController(context: Context) {
             failedSteps = failedTotal,
             createdAt = prev?.createdAt ?: now,
         )
-        val res = store.upsert(entry)
+        // 157 四步：①写前备份（App 私有 `filesDir/抱朴记忆/备份/` 快照，保留最近 N 份，
+        // 不进工作区、模型只读）→ ②当日已有条目走 **amend**（provenance 六字段闸：
+        // id/date/sessionId/timeFromMs/createdAt 不许改；首条走 upsert）→ ③索引增量替换
+        // ＋ 全量重建（文件是真相，索引只是加速）→ ④收尾维护。
+        runCatching {
+            MemoryBackup(MemoryLayout.memoryBackupDir(appCtx.filesDir))
+                .snapshot(MemoryLayout.memoryDir(wsRoot), now)
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "抱朴日记：写前备份失败 ${it.javaClass.simpleName}: ${it.message}（仍继续写日记）",
+            )
+        }
+        val res = if (prev != null) store.amend(entry) else store.upsert(entry)
         if (res.ok) {
             DiaryIndexStore(db).replace(entry)
+            store.rebuildIndex()
             // 147 ②：收尾顺手维护（浓缩/归档/清理）——判据在 DiaryRecall（纯函数），
             // 失败不阻塞会话收尾（try/catch ＋ 运行日志，同 MemoryStore 既有风格）。
             runCatching { store.maintain(now) }

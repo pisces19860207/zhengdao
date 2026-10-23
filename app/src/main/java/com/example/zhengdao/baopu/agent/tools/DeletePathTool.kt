@@ -10,14 +10,18 @@
 // 1. 只在工作区根内删，越界即拒（PathGuard.isInside，组件级比较）；
 // 2. **默认进回收站**（`回收站/<时间戳>-<原名>`，同分区 rename 原子），`permanent=true` 才真删；
 // 3. 只删**单个文件**：目录一律拒（删目录一步能毁半个资料库，等真有需求再单开一刀）；
-// 4. 禁区一律拒并说清：`.baopu-bak/`（旧版本备份）、`回收站/`（回收站本身）、
-//    `资料库/原始/`（原件区，**默认工作区下它就在根内**——拦住它靠的是
-//    GuardPipeline 的原始区只读红线（第四十八批 P0-2），不是"结构上在工作区外"）；
+// 4. 禁区一律拒并说清：`备份/`（157 起可见化，原 `.baopu-bak`，旧版本备份）、`回收站/`（回收站本身）、
+//    `资料库/原始/`（157 前的旧原件区形态；现已迁 App 私有，此形态只可能是存量残留或用户自建——
+//    拦住它靠 GuardPipeline 的原始区只读红线（第四十八批 P0-2）与本工具的字符串保险，两层都在）；
 // 5. 权限 CONFIRM——每次删都要用户看一眼「删哪个、进回收站还是真删」。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
+<<<<<<< HEAD
 import com.example.zhengdao.baopu.workspaceBoundaryCheck
+=======
+import com.example.zhengdao.baopu.kernel.BaopuKernel
+>>>>>>> feat/memory-157-onmain
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -42,16 +46,16 @@ internal object DeletePathTool {
     /** 回收站目录名（工作区根下**不带点的可见目录**，用户自己看得见、能清）。 */
     const val TRASH_DIR = "回收站"
 
-    /** 旧版本备份区（与 write_file／move_path 同一处，删它等于删回滚点）。 */
-    const val BACKUP_DIR_NAME = ".baopu-bak"
+    /** 旧版本备份区（157 起＝可见的 `备份/`；与 write_file／move_path 同一处，删它等于删回滚点）。 */
+    const val BACKUP_DIR_NAME = BaopuKernel.Data.DIR_BACKUP
 
     /**
      * 第二道保险：**按模型给的相对路径字符串**再判一次原件区。
      *
-     * 事实更正（第四十八批 P0-2）：默认工作区（`Download/证道`）下 `资料库/原始` 就在
-     * 工作区**之内**，不是"在工作区外"。真正兜底的是 `GuardPipeline` 的原始区红线
-     * （按解析后的真实绝对路径判，改写后也骗不过）；这里这层字符串判断只管
-     * 「模型明确写了 `资料库/原始/…`」的显式形态，两层都在。
+     * 历史（第四十八批 P0-2）：彼时默认工作区（`Download/证道`）下 `资料库/原始` 就在
+     * 工作区**之内**。157 目录收口后原件区已迁 App 私有（工作区外，PathGuard 天然挡），
+     * 真正兜底的是 `GuardPipeline` 的原始区红线（按解析后的真实绝对路径判，改写后也骗不过）；
+     * 本常量仍认旧形态字符串——迁移残留或用户自建的 `资料库/原始/` 也要拦住，两层都在。
      */
     const val RAW_GUARD_REL = "资料库/原始"
 
@@ -59,7 +63,7 @@ internal object DeletePathTool {
         name = "delete_path",
         description = "删工作区里的一个文件。**默认进回收站**（工作区/回收站/时间戳-原名），" +
             "说一声就能捞回来；permanent=true 才是彻底删（确认卡上会写明「删了就没了」）。" +
-            "只删单个文件：目录、备份区 .baopu-bak/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
+            "只删单个文件：目录、备份区 $BACKUP_DIR_NAME/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
             "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡，不用逐个删）。" +
             "确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
         inputSchema = jsonObjectOf(

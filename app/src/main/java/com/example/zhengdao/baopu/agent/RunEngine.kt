@@ -392,6 +392,17 @@ internal class RunEngine(
     var diaryRecall: () -> List<com.example.zhengdao.baopu.DiaryEntry> = { emptyList() }
 
     /**
+     * 157：本轮日记检索查询（本轮用户输入提一次；账 §B-待做 149）。
+     *
+     * 房型同 [turnNotes]／知识库自动注入：**每轮算一次、工具循环里每步同一份**——
+     * 中途换查询会换 EPISODE 段内容，打破同会话前缀稳定（147 判据 4）。
+     * null ⇒ 不检索（续跑不带：原轮已注过，同 kbRecall 口径）。提取是纯函数
+     * （[com.example.zhengdao.baopu.DiaryRecall.queryFromInput]），引擎不读时钟；
+     * 挑选与预算仍全在 [com.example.zhengdao.baopu.DiaryRecall]。
+     */
+    private var turnDiaryQuery: com.example.zhengdao.baopu.DiaryRecall.DiaryQuery? = null
+
+    /**
      * 本轮**够格进「产物」行**的相对路径（写成功、文本、≤512 KB、前 8 KB 无 NUL）。
      *
      * 数据源就是 [verifyTouched]（收尾闸那份「这一轮真落了哪些盘」），只是在它之上
@@ -831,6 +842,7 @@ internal class RunEngine(
                 } finally {
                     turnImages = emptyList()
                     turnNotes = emptyList()
+                    turnDiaryQuery = null
                     pendingImageRelPaths = emptyList()
                     queueGate.polledInFlight.decrementAndGet()
                 }
@@ -844,6 +856,7 @@ internal class RunEngine(
         } finally {
             turnImages = emptyList()
             turnNotes = emptyList()
+            turnDiaryQuery = null
             pendingImageRelPaths = emptyList()
             ActiveSessionGate.release("id:$sessionId")
             emitQueueChanged(sessionId)
@@ -1302,6 +1315,14 @@ internal class RunEngine(
                 turnNotes = turnNotes + kbNote
                 log("抱朴引擎：知识库自动注入已拼入本轮输入（${kbNote.length} 字符）")
             }
+        }
+        // 157：日记检索查询——用本轮用户输入提一次（房型同上面的知识库自动注入：
+        // 每轮算一次、全程同一份；纯函数提取，引擎不读时钟）。续跑不重复提
+        // （原轮已注过，同 kbRecall 口径）⇒ else 分支显式置 null，不留上一轮残值。
+        turnDiaryQuery = if (userText != null && !resumed) {
+            com.example.zhengdao.baopu.DiaryRecall.queryFromInput(userText)
+        } else {
+            null
         }
         if (userText != null) {
             // 150批 F：能走到这里 ⇒ 这条已在 drain 的同锁闸上过了检查（取出那一刻 stop 还没立）。
@@ -1799,6 +1820,11 @@ internal class RunEngine(
          * 同会话内只增不改是提示词缓存判据，途中换批等于打破前缀）。
          */
         diaryEntries: List<com.example.zhengdao.baopu.DiaryEntry> = diaryRecall(),
+        /**
+         * 157：日记检索查询。默认取 [turnDiaryQuery]（本轮开跑时算好一份，工具循环里
+         * 每步同一份——同会话内 EPISODE 段只增不改是提示词缓存判据）。
+         */
+        diaryQuery: com.example.zhengdao.baopu.DiaryRecall.DiaryQuery? = turnDiaryQuery,
     ) = ContextAssembler.assemble(
         persona = persona,
         facts = facts,
@@ -1811,8 +1837,10 @@ internal class RunEngine(
         compressedIds = compressedIds,
         skipIds = skipIds,
         oldMessageCount = oldMessageCount,
-        // 2026-10-19 最小版项目记忆：工作区根 `项目记忆.md`，每轮开工自动读（见 ProjectMemory）
-        projectMemory = com.example.zhengdao.baopu.ProjectMemory.load(spillRoot()),
+        // 2026-10-19 最小版项目记忆：157 起落 `记忆/项目记忆.md`（旧根只读回退），每轮开工自动读（见 ProjectMemory）；
+        // 文件缺失 ⇒ 注入 missingHint（提示抱朴收尾自己写），不是静默跳过。
+        projectMemory = com.example.zhengdao.baopu.ProjectMemory.load(spillRoot())
+            ?: com.example.zhengdao.baopu.ProjectMemory.missingHint(),
         images = images,
         extraNotes = extraNotes,
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
@@ -1825,6 +1853,7 @@ internal class RunEngine(
         // 调用方显式传值会被静默丢掉（死参数陷阱）。现行为不变（调用方都没显式传，
         // 走默认），但显式传参从此有效。
         diaryEntries = diaryEntries,
+        diaryQuery = diaryQuery,
     )
 
     /**

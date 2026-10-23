@@ -77,9 +77,9 @@ internal data class ImportOutcome(
     /** 投递里已搬走原件的相对路径——**只出清单，不许自动删**（派工单硬纪律 8）。 */
     val pendingDelete: List<String>,
     val rejected: List<RejectedFile>,
-    /** `整理/_待外部转换.json`（不认领格式只列这里，不解析、不引库）。 */
+    /** `产物/_待外部转换.json`（不认领格式只列这里，不解析、不引库）。 */
     val externalListFile: File,
-    /** `整理/_待删除清单.json`（搬过之后才有内容）。 */
+    /** `产物/_待删除清单.json`（搬过之后才有内容）。 */
     val pendingDeleteFile: File,
 )
 

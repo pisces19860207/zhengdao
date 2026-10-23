@@ -11,11 +11,12 @@
 // 3. library_organize 三个动作一律 `ToolPermission.CONFIRM`，一次调用只做一件（L3）；
 // 4. promote 同名已存在 ⇒ **拒绝并说清，绝不覆盖**（L4；与 move_path 的「加后缀让路」刻意
 //    不同——整理是人工决策，让路等于替用户决定留哪份）；
-// 5. 越界（`..`/绝对路径/盘符/指向 `原始/`）一律 Rejected 且错误信息是人话没有堆栈（L5）；
-//    `资料库/原始/` 一个字节都不碰（L6）——工具只够得着工作区里的 投递/ 与 整理/，
-//    App 私有 `原始/` 在工作区外，PathGuard 天然挡住，单测再放哨兵钉死。
+// 5. 越界（`..`/绝对路径/盘符/指向私有原件区）一律 Rejected 且错误信息是人话没有堆栈（L5）；
+//    私有原件区一个字节都不碰（L6）——工具只够得着工作区里的 投递/ 与 产物/，
+//    App 私有原件在工作区外，PathGuard 天然挡住，单测再放哨兵钉死。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.FaceIndex
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.rootfs.PathGuard
@@ -25,7 +26,7 @@ import java.io.File
 /**
  * 资料库两件套（第三十一批）：[list] 给抱朴看清楚，[organize] 让抱朴真落地。
  *
- * 为什么并入一个 object：两个工具共享同一组路径判据（投递/整理/索引文件）与同一套
+ * 为什么并入一个 object：两个工具共享同一组路径判据（投递/产物/索引文件）与同一套
  * 「相对哪个目录」的解析，拆开必然各写一份、各漂一份。
  *
  * 为什么 promote 用 rename 而不是 copy+delete：同分区 rename 是原子的——要么搬完，
@@ -36,7 +37,7 @@ internal object LibraryTools {
 
     /**
      * `library_organize` 的工具名（第四十八批 P0-4：管线按它走「相对路径白名单」——
-     * 它的 `path` 是相对 `投递/` 或 `整理/` 的口径，**不许**被改写成绝对路径）。
+     * 它的 `path` 是相对 `投递/` 或 `产物/` 的口径，**不许**被改写成绝对路径）。
      */
     const val NAME = "library_organize"
 
@@ -46,7 +47,7 @@ internal object LibraryTools {
     const val ARG_PATH = "path"
     const val ARG_NEW_NAME = "new_name"
 
-    /** 索引文件（工作区内 `资料库/索引.md`；只覆写这一个文件）。 */
+    /** 索引文件（`产物/索引.md`；只覆写这一个文件）。 */
     const val INDEX_NAME = "索引.md"
 
     /** 新文件名长度封顶（与附件消毒同一口径：保留扩展名地截）。 */
@@ -56,7 +57,7 @@ internal object LibraryTools {
 
     fun listSpec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "library_list",
-        description = "列资料库的清单（只读，一个字节都不动）：投递/（用户丢进来的原件）或 整理/" +
+        description = "列资料库的清单（只读，一个字节都不动）：投递/（用户丢进来的原件）或 产物/" +
             "（抱朴的产出）。每条给相对路径、字节数、扩展名、sha256 前 8 位（肉眼判断重复）。" +
             "输出封顶 ${BrowserTools.MAX_TEXT_CHARS} 字符，超了会写明还有多少条——用 pattern 收窄重试。" +
             "整理前先看一眼，别让抱朴瞎猜文件结构。",
@@ -66,7 +67,7 @@ internal object LibraryTools {
                 ARG_DIR to jsonObjectOf(
                     "type" to "string",
                     "enum" to jsonArrayOf("deliver", "done"),
-                    "description" to "列哪个目录：deliver=投递（默认），done=整理",
+                    "description" to "列哪个目录：deliver=投递（默认），done=产物",
                 ),
                 ARG_PATTERN to jsonObjectOf(
                     "type" to "string",
@@ -102,7 +103,7 @@ internal object LibraryTools {
             else -> LibraryPaths.deliverDirUnder(root)
         }
         if (!PathGuard.isInside(root, target)) {
-            return ToolOutcome.Rejected("路径越界被拒：资料库目录不在工作区（${root.absolutePath}）内。")
+            return ToolOutcome.Rejected("路径越界被拒：目录不在工作区（${root.absolutePath}）内。")
         }
         if (!target.isDirectory) {
             return ToolOutcome.Ok("（空清单）：${relOf(root, target)} 目录还不存在（还没有人投过件）")
@@ -140,7 +141,7 @@ internal object LibraryTools {
                 .append("用 pattern 收窄后重试，或先 library_organize 归掉一批再看\n")
         }
         if (shown > 0) sb.append("（以上 $shown 条共 $bytes B；只读清单，没动任何文件）\n")
-        sb.append("（整理动作用 library_organize：promote 移到整理 / rename 改名 / index 重建索引）")
+        sb.append("（整理动作用 library_organize：promote 移到产物 / rename 改名 / index 重建索引）")
         return ToolOutcome.Ok(sb.toString().trimEnd())
     }
 
@@ -149,21 +150,21 @@ internal object LibraryTools {
     fun organizeSpec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME,
         description = "把抱朴的整理结果落地（每次调用只做一件，执行前 App 弹确认卡）：" +
-            "promote＝把投递里的一个文件移到整理（同名已存在会拒绝，不覆盖）；" +
+            "promote＝把投递里的一个文件移到产物（同名已存在会拒绝，不覆盖）；" +
             "rename＝在同一个目录内改名（新名不带路径分隔符）；" +
-            "index＝重建 资料库/索引.md（只覆写这一个文件）。" +
-            "只动 投递/ 与 整理/，绝不动 原始/；冲突、越界、不存在都会说清原因，不静默失败。",
+            "index＝重建 产物/索引.md（只覆写这一个文件）。" +
+            "只动 投递/ 与 产物/，绝不动私有原件区；冲突、越界、不存在都会说清原因，不静默失败。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
                 ARG_ACTION to jsonObjectOf(
                     "type" to "string",
                     "enum" to jsonArrayOf("promote", "rename", "index"),
-                    "description" to "promote=投递→整理；rename=同目录改名；index=重建 资料库/索引.md",
+                    "description" to "promote=投递→产物；rename=同目录改名；index=重建 产物/索引.md",
                 ),
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "promote/rename 用：相对 投递/ 或 整理/ 的路径（如 a.txt 或 武侠/a.txt）",
+                    "description" to "promote/rename 用：相对 投递/ 或 产物/ 的路径（如 a.txt 或 武侠/a.txt）",
                 ),
                 ARG_NEW_NAME to jsonObjectOf(
                     "type" to "string",
@@ -199,7 +200,7 @@ internal object LibraryTools {
         val deliver = LibraryPaths.deliverDirUnder(root)
         val done = LibraryPaths.doneDirUnder(root)
         if (!PathGuard.isInside(root, deliver) || !PathGuard.isInside(root, done)) {
-            return ToolOutcome.Rejected("路径越界被拒：资料库目录不在工作区（${root.absolutePath}）内。")
+            return ToolOutcome.Rejected("路径越界被拒：目录不在工作区（${root.absolutePath}）内。")
         }
         return when (action) {
             "promote" -> promote(root, deliver, done, path)
@@ -211,13 +212,13 @@ internal object LibraryTools {
         }
     }
 
-    /** promote：投递/<rel> → 整理/<rel>（同名已存在 ⇒ 拒绝，不覆盖）。 */
+    /** promote：投递/<rel> → 产物/<rel>（同名已存在 ⇒ 拒绝，不覆盖）。 */
     private fun promote(root: File, deliver: File, done: File, path: String?): ToolOutcome {
         val rel = normalizeRel(path, "投递")
             ?: return ToolOutcome.Failed(badPathMessage("promote", path, "投递"))
         val src = underDir(deliver, rel)
             ?: return ToolOutcome.Rejected(
-                "路径越界被拒：$rel 不在 投递/ 内（不许 ..／绝对路径／盘符；library_organize 只动投递与整理）",
+                "路径越界被拒：$rel 不在 投递/ 内（不许 ..／绝对路径／盘符；library_organize 只动投递与产物）",
             )
         if (!src.exists()) {
             return ToolOutcome.Failed("投递里没有这个文件：$rel（先用 library_list dir=deliver 看清有什么）")
@@ -231,7 +232,7 @@ internal object LibraryTools {
         }
         if (dst.exists()) {
             return ToolOutcome.Failed(
-                "整理/ 里已有同名文件：$rel（不覆盖——两份都可能有用；先 rename 其一，或你自己确认后删旧的）",
+                "产物/ 里已有同名文件：$rel（不覆盖——两份都可能有用；先 rename 其一，或你自己确认后删旧的）",
             )
         }
         val size = src.length()
@@ -241,10 +242,10 @@ internal object LibraryTools {
         }.getOrDefault(false)
         if (!moved) {
             return ToolOutcome.Failed(
-                "搬不动：$rel → 整理/$rel（rename 失败：跨存储或权限？）。文件原样没动，没有半截状态。",
+                "搬不动：$rel → 产物/$rel（rename 失败：跨存储或权限？）。文件原样没动，没有半截状态。",
             )
         }
-        return ToolOutcome.Ok("已移到 整理/$rel（$size B）。投递里那份已经不在；要留底请先自己复制一份。")
+        return ToolOutcome.Ok("已移到 产物/$rel（$size B）。投递里那份已经不在；要留底请先自己复制一份。")
     }
 
     /** rename：同一目录内改名（新名过 sanitize 同口径；目标已存在 ⇒ 拒绝）。 */
@@ -259,25 +260,25 @@ internal object LibraryTools {
                     "——不许路径分隔符／控制字符／前导点，长度封顶 $MAX_NAME_CHARS 字",
             )
         }
-        val rel = normalizeRel(path, "投递或整理")
-            ?: return ToolOutcome.Failed(badPathMessage("rename", path, "投递/ 或 整理/"))
+        val rel = normalizeRel(path, "投递或产物")
+            ?: return ToolOutcome.Failed(badPathMessage("rename", path, "投递/ 或 产物/"))
         // 危险形态先显式拒（..／绝对路径／盘符）：destinationUnder 对这两处都返回 null 即越界
         if (underDir(deliver, rel) == null && underDir(done, rel) == null) {
             return ToolOutcome.Rejected(
-                "路径越界被拒：$rel 形态不合法（不许 ..／绝对路径／盘符；library_organize 只动投递与整理）",
+                "路径越界被拒：$rel 形态不合法（不许 ..／绝对路径／盘符；library_organize 只动投递与产物）",
             )
         }
-        // 投递/ 与 整理/ 都找一遍；两边都有 ⇒ 说清让模型指哪个（不猜）
+        // 投递/ 与 产物/ 都找一遍；两边都有 ⇒ 说清让模型指哪个（不猜）
         val inDeliver = underDir(deliver, rel)?.takeIf { it.isFile }
         val inDone = underDir(done, rel)?.takeIf { it.isFile }
         val src = when {
             inDeliver != null && inDone != null -> return ToolOutcome.Failed(
-                "投递/ 和 整理/ 里都有 $rel——请把路径写全（资料库/投递/$rel 或 资料库/整理/$rel）指明改哪个",
+                "投递/ 和 产物/ 里都有 $rel——请把路径写全（投递/$rel 或 产物/$rel）指明改哪个",
             )
             inDeliver != null -> inDeliver
             inDone != null -> inDone
             else -> return ToolOutcome.Failed(
-                "投递/ 与 整理/ 里都没有这个文件：$rel（先用 library_list 确认路径）",
+                "投递/ 与 产物/ 里都没有这个文件：$rel（先用 library_list 确认路径）",
             )
         }
         val parent = src.parentFile ?: return ToolOutcome.Failed("定位不到所在目录：$rel")
@@ -297,39 +298,42 @@ internal object LibraryTools {
     }
 
     /**
-     * index：重建 `资料库/索引.md`（**只覆写这一个文件**；内容＝整理/ 的清单，一行一条）。
+     * index：重建 `产物/索引.md`（**只覆写这一个文件**；内容＝产物/ 的清单，一行一条）。
      *
-     * 整份重写而不是追加：索引是「当前整理/ 的样子」的快照，追加会把删掉的文件留在索引里
+     * 整份重写而不是追加：索引是「当前产物/ 的样子」的快照，追加会把删掉的文件留在索引里
      * （索引说谎比没有索引更糟）。原子写（先 .tmp 再 rename）沿用 [LibraryPaths.atomicWrite]。
      */
     private fun index(root: File, done: File, now: Long): ToolOutcome {
         val scan = if (done.isDirectory) LibraryPaths.scanTree(done) else LibraryPaths.ScanResult(emptyList(), false)
+        // 索引不列自己：否则第二次起「产物/」里永远躺着上一份索引，条目数每次 +1，
+        // 「两次生成字节一致」与「索引是当前产物的快照」两个口径全破。
+        val files = scan.files.filterNot { it.relPath == INDEX_NAME }
         val sb = StringBuilder()
-        sb.append("# 资料库索引\n\n")
-        sb.append("> 抱朴 library_organize(index) 生成于 ${TimeFormats.fileStamp(now)}；一行一条，只列 整理/。\n")
-        sb.append("> 重新生成会整份覆写本文件；投递里的原件不在这里，私有原件在 App 的 原始/。\n\n")
+        sb.append("# 产物索引\n\n")
+        sb.append("> 抱朴 library_organize(index) 生成于 ${TimeFormats.fileStamp(now)}；一行一条，只列 产物/。\n")
+        sb.append("> 重新生成会整份覆写本文件；投递里的原件不在这里，私有原件在工作区外。\n\n")
         var bytes = 0L
-        scan.files.forEach { f ->
+        files.forEach { f ->
             sb.append("- ").append(f.relPath).append('\t').append(f.size).append(" B\t")
                 .append(extOf(f.name)).append('\n')
             bytes += f.size
         }
-        if (scan.files.isEmpty()) {
-            sb.append("（整理/ 还是空的——没有可索引的产出）\n")
+        if (files.isEmpty()) {
+            sb.append("（产物/ 还是空的——没有可索引的产出）\n")
         }
         if (scan.truncated) {
-            sb.append("\n（注意：整理/ 的条目已达扫描上限 ${LibraryPaths.MAX_SCAN} 条，索引未列全）\n")
+            sb.append("\n（注意：产物/ 的条目已达扫描上限 ${LibraryPaths.MAX_SCAN} 条，索引未列全）\n")
         }
-        val indexFile = File(File(root, LibraryPaths.DIR_LIBRARY), INDEX_NAME)
+        val indexFile = File(LibraryPaths.doneDirUnder(root), INDEX_NAME)
         if (!PathGuard.isInside(root, indexFile)) {
             return ToolOutcome.Rejected("路径越界被拒：索引文件不在工作区内。")
         }
         val wrote = LibraryPaths.atomicWrite(indexFile, sb.toString())
         if (!wrote) {
-            return ToolOutcome.Failed("索引写不进去：${relOf(root, indexFile)}（权限或 IO 错误）。整理/ 的文件一个都没动。")
+            return ToolOutcome.Failed("索引写不进去：${relOf(root, indexFile)}（权限或 IO 错误）。产物/ 的文件一个都没动。")
         }
         return ToolOutcome.Ok(
-            "已重建 ${relOf(root, indexFile)}：${scan.files.size} 条共 $bytes B" +
+            "已重建 ${relOf(root, indexFile)}：${files.size} 条共 $bytes B" +
                 "（只覆写了这一个文件；${if (scan.truncated) "注意未列全" else "全量"}）。",
         )
     }
@@ -349,16 +353,22 @@ internal object LibraryTools {
         }
 
     /**
-     * 把模型给的相对路径归一到「相对投递/整理」的口径，并挡掉危险形态。
+     * 把模型给的相对路径归一到「相对投递/产物」的口径，并挡掉危险形态。
      *
-     * 宽容的一处：模型常把工作区全路径写进来（`资料库/投递/a.txt`）——剥掉这层前缀，
-     * 剩下的仍要过 [LibraryPaths.destinationUnder] 的显式危险形态检查 ＋ PathGuard 双保险。
+     * 宽容的一处：模型常把工作区全路径写进来（`投递/a.txt`，或 157 收口前的旧路径
+     * `资料库/投递/a.txt`）——剥掉这层前缀，剩下的仍要过 [LibraryPaths.destinationUnder]
+     * 的显式危险形态检查 ＋ PathGuard 双保险。
      */
     private fun normalizeRel(path: String?, what: String): String? {
         val raw = path?.trim().orEmpty()
         if (raw.isEmpty()) return null
         var rel = raw.replace('\\', '/')
-        for (prefix in listOf("${LibraryPaths.DIR_LIBRARY}/${LibraryPaths.SUB_DELIVER}/", "${LibraryPaths.DIR_LIBRARY}/${LibraryPaths.SUB_DONE}/")) {
+        for (prefix in listOf(
+            "${BaopuKernel.Data.DIR_DELIVER}/",
+            "${BaopuKernel.Data.DIR_PRODUCTS}/",
+            "${BaopuKernel.Data.LEGACY_LIBRARY_DELIVER}/",
+            "${BaopuKernel.Data.LEGACY_LIBRARY_DONE}/",
+        )) {
             if (rel.startsWith(prefix)) rel = rel.removePrefix(prefix)
         }
         if (rel.isEmpty() || rel == "/") return null
