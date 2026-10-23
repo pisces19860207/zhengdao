@@ -307,6 +307,11 @@ class ToolSchemaContractTest {
                     description = spec.description,
                     inputSchema = schema,
                     permission = ToolPermission.FREE,
+                    // 157：只读/并行标记必须原样带着——默认可见工具的 readOnly 闸在
+                    // register 上 fail closed，重建 spec 时丢掉就等于把 library_list
+                    // 降级成写工具（闸会当场抛，见 ToolRegistry.register）
+                    readOnly = spec.readOnly,
+                    parallelSafe = spec.parallelSafe,
                     timeoutMs = spec.timeoutMs,
                 ) { args ->
                     taps?.add(spec.name)

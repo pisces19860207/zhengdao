@@ -26,8 +26,8 @@ class LibraryOrganizePipelineTest {
 
     private class Fixture(name: String) {
         val root: File = Files.createTempDirectory("baopu-organize-$name").toFile()
-        val deliver: File = File(root, "资料库/投递").apply { mkdirs() }
-        val done: File = File(root, "资料库/整理").apply { mkdirs() }
+        val deliver: File = File(root, "投递").apply { mkdirs() }
+        val done: File = File(root, "产物").apply { mkdirs() }
         val pipeline: GuardPipeline
 
         init {
@@ -134,6 +134,6 @@ class LibraryOrganizePipelineTest {
         f.doneFile("x.txt", "正文")
         val r = approved(f, JSONObject().put("action", "index"))
         assertTrue("index 应成功：$r", r is GuardPipeline.Result.Done)
-        assertTrue("索引文件要落盘", File(f.root, "资料库/索引.md").isFile)
+        assertTrue("索引文件要落盘", File(f.root, "产物/索引.md").isFile)
     }
 }

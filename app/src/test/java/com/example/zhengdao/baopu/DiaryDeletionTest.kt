@@ -22,7 +22,7 @@ class DiaryDeletionTest {
     private val now = 1_770_000_000_000L // 2026-10-22 附近
     private val day = 86_400_000L
 
-    private fun store(root: File) = DiaryStore(File(root, "记忆/日记"), db = null)
+    private fun store(root: File) = DiaryStore(MemoryLayout.memoryDir(root), db = null)
 
     private fun entry(
         id: String,
@@ -46,12 +46,12 @@ class DiaryDeletionTest {
 
     /** 全部相关文本（日记＋摘要＋归档），供判据 18 的 grep 零命中。 */
     private fun allSources(root: File): List<String> {
-        val diaryRoot = File(root, "记忆/日记")
+        val diaryRoot = MemoryLayout.diaryDir(root)
         val out = mutableListOf<String>()
         diaryRoot.listFiles { f -> f.isFile && f.name.endsWith(".md") }?.forEach {
             out += it.readText()
         }
-        val ad = File(diaryRoot, "归档")
+        val ad = MemoryLayout.archiveDir(root)
         if (ad.isDirectory) {
             ad.listFiles { f -> f.isFile && f.name.endsWith(".md") }?.forEach {
                 out += it.readText()
@@ -217,7 +217,7 @@ class DiaryDeletionTest {
         s.realDelete(
             DiaryDeletionRules.plan(DiaryDeletionScope.ENTRY, s.loadAll().entries, ids = listOf("1-20261022")),
         )
-        val diaryRoot = File(root, "记忆/日记")
+        val diaryRoot = MemoryLayout.diaryDir(root)
         val names = diaryRoot.listFiles()?.map { it.name }.orEmpty()
         assertFalse("日记目录下不许有回收站", names.any { it.contains("trash") || it.contains("回收") })
     }

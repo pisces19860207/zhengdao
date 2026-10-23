@@ -4,10 +4,12 @@
 // 1. 权限 READ（FREE）——只读不改；
 // 2. 按**文件名子串**找（不是按内容：内容搜有 search_in_files），大小写不敏感；
 // 3. 默认深度 6、命中 50、扫描 20000 个文件，任何一项触顶都**明说**（静默截断 = 骗模型）；
-// 4. 跳过 `.` 开头的内部目录与文件（`.baopu-bak` / `.baopu-spill` 是私有噪声）。
+// 4. 跳过 `.` 开头的内部目录与文件（`.baopu-spill` 是私有噪声；`.回收站` 同理），
+//    以及内核 `备份/`（157 起改前快照区＝旧 `.baopu-bak` 的可见化，模型只读、不当文件列）。
 // 结果回灌走 GuardPipeline 第 ⑤ 段的 DataFence.wrap（与 read_file 同一出口）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
@@ -117,7 +119,8 @@ internal object FindFilesTool {
             val children = runCatching { current.listFiles() }.getOrNull() ?: continue
             // 同层「目录在前、名称序」：输出稳定，模型两次调用看到同样的顺序
             children.sortedWith(compareBy({ !it.isDirectory }, { it.name })).forEach { child ->
-                if (child.name.startsWith(".")) return@forEach // 内部目录/隐藏文件不找
+                // 内部目录/隐藏文件不找；`备份/`（改前快照区，模型只读）也不列
+                if (child.name.startsWith(".") || child.name == BaopuKernel.Data.DIR_BACKUP) return@forEach
                 if (child.isDirectory) {
                     if (level < depthCap) stack.addLast(Item(child, level + 1))
                     return@forEach

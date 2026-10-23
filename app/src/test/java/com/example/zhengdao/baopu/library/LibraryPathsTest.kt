@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
 package com.example.zhengdao.baopu.library
 
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -149,14 +150,17 @@ class LibraryPathsTest {
     // ── 路径常量（口径不许漂） ────────────────────────────────────────────
 
     @Test
-    fun `路径口径_共享区两目录与私有原件目录`() {
+    fun `路径口径_157收口后投递与产物在工作区根_私有原件不动`() {
         val ws = File("/workspace")
         val files = File("/data/user/0/com.example.zhengdao/files")
-        assertEquals("/workspace/资料库/投递", LibraryPaths.deliverDirUnder(ws).path.replace('\\', '/'))
-        assertEquals("/workspace/资料库/整理", LibraryPaths.doneDirUnder(ws).path.replace('\\', '/'))
+        assertEquals("/workspace/投递", LibraryPaths.deliverDirUnder(ws).path.replace('\\', '/'))
+        assertEquals("/workspace/产物", LibraryPaths.doneDirUnder(ws).path.replace('\\', '/'))
         assertEquals(
             "/data/user/0/com.example.zhengdao/files/baopu/library/原始",
             LibraryPaths.rawDirUnder(files).path.replace('\\', '/'),
         )
+        // 旧名只剩 legacy 常量（迁移对账用），且与内核同一值
+        assertEquals(BaopuKernel.Data.LEGACY_LIBRARY_DIR, LibraryPaths.DIR_LIBRARY)
+        assertEquals(BaopuKernel.Data.DIR_DELIVER, LibraryPaths.SUB_DELIVER)
     }
 }

@@ -10,6 +10,7 @@
 // 本文件不自造围栏）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 import java.nio.file.Files
@@ -138,7 +139,8 @@ internal object SearchInFilesTool {
                     break
                 }
                 if (isSymlink(f)) continue // 软链不跟随（跟出去就是工作区外的内容）
-                if (f.name.startsWith(".")) continue // 内部目录/文件不搜（.baopu-bak/.baopu-spill 是私有噪声）
+                // 内部目录/文件不搜（.baopu-spill 等私有噪声）；`备份/`（改前快照区，模型只读）也不搜
+                if (f.name.startsWith(".") || f.name == BaopuKernel.Data.DIR_BACKUP) continue
                 if (f.isDirectory) {
                     if (level < DEFAULT_DEPTH) stack.addLast(Item(f, level + 1))
                     continue
