@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写。
+// 独立开发声明：本文件为本项目原创。
 // 依据的公开接口：Android 官方文档（Notification.Builder / NotificationChannel / PendingIntent）。
 package com.example.zhengdao.terminal
 

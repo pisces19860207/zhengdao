@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据的公开接口：Jetpack Compose Material3 官方组件；Android 平台 ClipboardManager
 // （经 util/Clipboard.kt 的 copyPlainText 出口）。复制口径沿用本仓库既有纪律：

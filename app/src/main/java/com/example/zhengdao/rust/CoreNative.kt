@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 可参考的公开资料：Oracle JNI 规范、sha2/jni/zstd/tar crate 官方文档。
 package com.example.zhengdao.rust
 
