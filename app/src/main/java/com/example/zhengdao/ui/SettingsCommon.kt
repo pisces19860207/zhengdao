@@ -478,7 +478,8 @@ fun WorkspaceFolderPicker(onDismiss: () -> Unit, onPick: (String) -> Unit) {
 /**
  * 「资料库 · 查看说明」对话框。
  *
- * 直接读资料库里的 `说明.md`（那份文件是写给**用户**看的人话说明，通篇无技术词）。
+ * 直接读产物里的 `说明.md`（157 收口后说明文档落 `<工作区>/产物/`；那份文件是写给
+ * **用户**看的人话说明，通篇无技术词）。
  * 文件还没生成时给一句友好提示，而不是报错 —— 它会在用户第一次打开终端后出现。
  */
 @Composable
@@ -488,13 +489,13 @@ internal fun KnowledgeBaseHelpDialog(ctx: android.content.Context, onDismiss: ()
         body = withContext(Dispatchers.IO) {
             runCatching {
                 val f = File(
-                    com.example.zhengdao.terminal.KnowledgeBase.root(ctx),
+                    com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx),
                     com.example.zhengdao.terminal.KnowledgeBase.F_README,
                 )
                 if (f.isFile) f.readText(Charsets.UTF_8)
                 else ctx.getString(
                     R.string.kb_help_missing,
-                    com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath,
+                    com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx).absolutePath,
                 )
             }.getOrDefault(ctx.getString(R.string.kb_help_failed))
         }

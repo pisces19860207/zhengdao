@@ -105,14 +105,11 @@ class GenerateImageToolTest {
     // ── ① 纯函数 ──────────────────────────────────────────────────────────
 
     @Test
-    fun `P1_产物目录_默认工作区走资料库整理_自定义走产物`() {
-        assertEquals(
-            "资料库/整理",
-            GenerateImage.artifactDir(root, libraryMode = true).toRelativeString(root).replace('\\', '/'),
-        )
+    fun `P1_产物目录_默认与自定义工作区都落产物`() {
+        // 157 目录收口：旧「默认工作区落 资料库/整理、自定义落 产物/」两套口径已合并成一处。
         assertEquals(
             "产物",
-            GenerateImage.artifactDir(root, libraryMode = false).toRelativeString(root).replace('\\', '/'),
+            GenerateImage.artifactDir(root).toRelativeString(root).replace('\\', '/'),
         )
     }
 

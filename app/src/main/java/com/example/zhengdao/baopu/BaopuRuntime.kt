@@ -33,6 +33,7 @@ import com.example.zhengdao.baopu.agent.multiagent.SubAgentRules
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentRunner
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryImport
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
@@ -110,7 +111,7 @@ internal object BaopuRuntime {
     fun personaFiles(context: Context): PersonaFiles {
         val appCtx = context.applicationContext
         return PersonaFiles(
-            globalRoot = File(appCtx.filesDir, "抱朴记忆"),
+            globalRoot = File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY),
             projectRoot = workspaceRoot(appCtx),
         )
     }
@@ -127,7 +128,7 @@ internal object BaopuRuntime {
         )
     }
 
-    /** 五步流水线（认脸/去重/归一/副本进 `整理/`/写索引）＋ 原件导出。 */
+    /** 五步流水线（认脸/去重/归一/副本进 `产物/`/写索引）＋ 原件导出。 */
     fun libraryPipeline(context: Context): LibraryPipeline {
         val appCtx = context.applicationContext
         return LibraryPipeline(
@@ -143,7 +144,7 @@ internal object BaopuRuntime {
     fun memoryStore(context: Context): MemoryStore {
         val appCtx = context.applicationContext
         return MemoryStore(
-            globalRoot = File(appCtx.filesDir, "抱朴记忆"),
+            globalRoot = File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY),
             projectRoot = workspaceRoot(appCtx),
         )
     }
@@ -191,13 +192,8 @@ internal object BaopuRuntime {
                 apiKey = geminiKey,
                 baseUrl = if (liveGemini) provider.baseUrl else Providers.GEMINI.baseUrl,
             ),
-            // 默认工作区 ⇒ 资料库/整理；自定义与私有工作区 ⇒ <工作区>/产物（派工单 §1）。
-            artifactDir = { ws ->
-                GenerateImage.artifactDir(
-                    ws,
-                    libraryMode = ws.absolutePath == BaopuWorkspace.defaultDir().absolutePath,
-                )
-            },
+            // 157 目录收口：默认/自定义/私有工作区一律 ⇒ <工作区>/产物（旧 资料库/整理 已迁入）。
+            artifactDir = { ws -> GenerateImage.artifactDir(ws) },
         )
         // 第一百二十八批：知识库 v2 的索引存储壳（App 私有 filesDir/baopu/kb）。
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
@@ -461,13 +457,21 @@ internal object BaopuRuntime {
         // （上轮选过「低」，这轮直接进抱朴页也要生效，不必先去设置页逛一圈）。
         // 档位真正盖到 provider 上是在 LlmClient 发请求前（每轮现读）。
         ModelParams.initEffort(appCtx)
+        // 157 记忆目录约定（用户 2026-10-23 拍板）：进工作区自动建空 记忆/日记/
+        // （不弹卡、不写内容）；旧布局一次性迁移（`资料库/{整理,投递,原始,改版}`、
+        // `.baopu-bak`、工作区根 `项目记忆.md`）。迁移幂等（二遍全零）、冲突不覆盖
+        // （跳过并记账）、只删空目录——「不能弄丢已有资料库文件」逐条落在 MemoryLayout。
+        val wsRoot = workspaceRoot(appCtx)
+        MemoryLayout.ensureDirs(wsRoot)
+        MemoryLayout.migrate(wsRoot, appCtx.filesDir)
         val provider = provider(appCtx)
         val reg = registry(appCtx, provider)
         val pipeline = GuardPipeline(
             reg,
             { workspaceRoot(appCtx) },
-            // 第四十八批 P0-2：原件区权威路径＝终端侧的 KnowledgeBase.rawDir（抱朴工作区
-            // 可自定义，原件区跟的是终端工作区）。不在这里拼 "资料库/原始" 字符串。
+            // 第四十八批 P0-2：原件区权威路径＝终端侧的 KnowledgeBase.rawDir。157 目录收口后
+            // rawDir 即 App 私有原件区（filesDir/baopu/library/原始/）——天然在工作区外，
+            // PathGuard 与 rawRejection 两道都成立。不在这里拼 "资料库/原始" 字符串。
             { KnowledgeBase.rawDir(appCtx) },
             // 第一百五十六批：工作区外访问开关（设置页可关；默认开，开也每运行问一次）。
             // 具名传参（allowOutside 排在参数表最后，第 4 位是 runner）
@@ -578,8 +582,9 @@ internal object BaopuRuntime {
         // 147 ②：日记召回源（闭包注入同 visionCandidates 房型）。文件是真相——
         // 每步现读现选（DiaryRecall 只读不写；同会话内日记不中途变化 ⇒ 前缀稳定）。
         // 作用域随工作区（硬点 1）：换工作树即换日记，跨区不回灌。
+        // 157：日记根随记忆目录走 `<工作区>/记忆/日记/`（MemoryLayout 单一真源）。
         engine.diaryRecall = {
-            DiaryStore(File(workspaceRoot(appCtx), "记忆/日记")).loadAll().entries
+            DiaryStore(MemoryLayout.memoryDir(workspaceRoot(appCtx))).loadAll().entries
         }
         // 第一百二十七批：多 Agent 协作——run_subtasks 的落点（协调器）在这里装配。
         // 装配层才拿得到 Context/注册表/库 ⇒ 三件生产件（LLM 一轮、工具执行、审计存储）

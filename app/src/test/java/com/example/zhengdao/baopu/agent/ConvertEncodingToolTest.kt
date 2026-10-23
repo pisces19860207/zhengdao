@@ -129,7 +129,7 @@ class ConvertEncodingToolTest {
     @Test
     fun `备份区里的文件不许转`() {
         setup()
-        val f = putBytes(".baopu-bak/老书.txt.20261017.bak", "x".toByteArray(gb18030))
+        val f = putBytes("备份/老书.txt.20261017.bak", "x".toByteArray(gb18030))
         val t = text(convert(f))
         assertTrue(t, t.contains("备份区"))
         assertTrue("原文件不该被改", f.readBytes().contentEquals("x".toByteArray(gb18030)))

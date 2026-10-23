@@ -7,19 +7,23 @@ package com.example.zhengdao.baopu.library
 import android.content.Context
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.baopu.BaopuWorkspace
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import java.io.File
 
 /**
- * 资料库三处路径 ＋ 扫描（刀 2 A 段）。
+ * 资料库路径 ＋ 扫描（刀 2 A 段；157 目录收口后改线）。
  *
- * ## 三处路径（用户 2026-10-16 拍板，台账 §E.12 定版）
- * - **共享区** ＝ `<工作区>/资料库/`（`工作区` = [Workspace.hostDir]，跟着设置走）：
- *   - `投递/` —— 用户丢原件的地方。**抱朴只扫这里，绝不扫工作区根**（根上有
- *     `_索引.md`、素材库等，扫了必误报——判据 §5.3 的两例负测就是钉这个）；
- *   - `整理/` —— 抱朴的**唯一对外输出口**（`md`/`json`/`_认脸索引.json`），
- *     终端 agent 只读这里。
+ * ## 157 后的路径（用户 2026-10-23 拍板，工作区可见目录恰四个）
+ * - **投递** ＝ `<工作区>/投递/`（157 前是 `<工作区>/资料库/投递/`）：
+ *   用户丢原件的地方。**抱朴只扫这里，绝不扫工作区根**（根上有
+ *   `_索引.md`、素材库等，扫了必误报——判据 §5.3 的两例负测就是钉这个）；
+ * - **产物** ＝ `<工作区>/产物/`（157 前是 `<工作区>/资料库/整理/`）：
+ *   抱朴的**唯一对外输出口**（`md`/`json`/`_认脸索引.json`），终端 agent 只读这里；
  * - **私有原件** ＝ `context.filesDir/baopu/library/原始/`（App 私有 ⇒ 终端 agent
  *   真看不到；代价＝卸载/清数据会丢，防丢三条见 D 段）。
+ *
+ * 旧路径 `资料库/{投递,整理}` 的存量由 [com.example.zhengdao.baopu.MemoryLayout] 的
+ * 迁移负责搬移（冲突不覆盖、只删空目录），本类不再认旧路径。
  *
  * ## 为什么路径计算分纯函数与 Context 壳两层
  * 本机无 Robolectric，[Workspace] 依赖 Android [Context] ⇒ JVM 单测打不到壳。
@@ -28,15 +32,14 @@ import java.io.File
  */
 internal object LibraryPaths {
 
-    /** 共享区根目录名（挂在工作区下；与终端侧 `KnowledgeBase.DIR` 同名不同物——
-     *  终端那份的 `原始/` 是旧布局，本刀的投递/整理是定版布局，见台账 §E.12）。 */
-    const val DIR_LIBRARY = "资料库"
+    /**
+     * 旧共享区根目录名（157 前的 `<工作区>/资料库/`）——**现在是 legacy 名**，
+     * 仅存量路径识别与迁移对账用；新代码一律走内核四目录常量。
+     */
+    const val DIR_LIBRARY = BaopuKernel.Data.LEGACY_LIBRARY_DIR
 
-    /** 用户投递原件的目录（只扫这里）。 */
-    const val SUB_DELIVER = "投递"
-
-    /** 抱朴对外输出口（唯一）。 */
-    const val SUB_DONE = "整理"
+    /** 用户投递原件的目录名（157 起在工作区根，名字不变）。 */
+    const val SUB_DELIVER = BaopuKernel.Data.DIR_DELIVER
 
     /** App 私有目录里的原件目录名。 */
     const val SUB_RAW_PRIVATE = "原始"
@@ -60,10 +63,10 @@ internal object LibraryPaths {
     /** 工作区根（唯一真相源 [Workspace.hostDir]；共享/仅私有两种模式都成立）。 */
     fun workspaceRoot(ctx: Context): File = BaopuWorkspace.hostDir(ctx)
 
-    /** 共享区 `投递/`。 */
+    /** 共享区 `投递/`（157 收口后在工作区根）。 */
     fun deliverDir(ctx: Context): File = deliverDirUnder(workspaceRoot(ctx))
 
-    /** 共享区 `整理/`（唯一对外输出口）。 */
+    /** 共享区 `产物/`（157 收口后在工作区根；唯一对外输出口）。 */
     fun doneDir(ctx: Context): File = doneDirUnder(workspaceRoot(ctx))
 
     /** App 私有原件目录 `filesDir/baopu/library/原始/`。 */
@@ -71,9 +74,11 @@ internal object LibraryPaths {
 
     // ── 纯函数（可 JVM 直测） ────────────────────────────────────────────────
 
-    fun deliverDirUnder(workspace: File): File = File(File(workspace, DIR_LIBRARY), SUB_DELIVER)
+    /** 投递目录（157 起：`<工作区>/投递/`，旧 `资料库/投递/` 已迁走）。 */
+    fun deliverDirUnder(workspace: File): File = File(workspace, BaopuKernel.Data.DIR_DELIVER)
 
-    fun doneDirUnder(workspace: File): File = File(File(workspace, DIR_LIBRARY), SUB_DONE)
+    /** 产物目录（157 起：`<工作区>/产物/`，旧 `资料库/整理/` 已迁走）。 */
+    fun doneDirUnder(workspace: File): File = File(workspace, BaopuKernel.Data.DIR_PRODUCTS)
 
     fun rawDirUnder(filesDir: File): File =
         File(File(File(filesDir, DIR_BAOPU), DIR_LIBRARY_PRIVATE), SUB_RAW_PRIVATE)

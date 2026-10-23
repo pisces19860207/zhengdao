@@ -36,8 +36,8 @@ import com.example.zhengdao.baopu.DiaryDeletionScope
 import com.example.zhengdao.baopu.DiaryEntry
 import com.example.zhengdao.baopu.DiaryRecall
 import com.example.zhengdao.baopu.DiaryStore
+import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.rootfs.RunLog
-import java.io.File
 
 /**
  * 设置页「日记」卡：看近期流水、按条删（真删）。
@@ -147,7 +147,8 @@ internal fun rememberDiarySection(
     reloadKey: Int,
 ): Pair<List<DiaryEntry>, (DiaryDeletionPlan) -> Unit> {
     val entries = remember(reloadKey) {
-        val root = File(BaopuRuntime.workspaceRoot(ctx), "记忆/日记")
+        // 157：DiaryStore 收「记忆根」，日记/归档两处它自己派生（路径真源 MemoryLayout）
+        val root = MemoryLayout.memoryDir(BaopuRuntime.workspaceRoot(ctx))
         if (!root.isDirectory) {
             emptyList()
         } else {
@@ -158,7 +159,10 @@ internal fun rememberDiarySection(
         }
     }
     val onDelete: (DiaryDeletionPlan) -> Unit = { plan ->
-        val store = DiaryStore(File(BaopuRuntime.workspaceRoot(ctx), "记忆/日记"), BaopuRuntime.db(ctx))
+        val store = DiaryStore(
+            MemoryLayout.memoryDir(BaopuRuntime.workspaceRoot(ctx)),
+            BaopuRuntime.db(ctx),
+        )
         val report = runCatching { store.realDelete(plan) }
             .onFailure {
                 RunLog.log("抱朴日记：真删失败 ${it.javaClass.simpleName}: ${it.message}")

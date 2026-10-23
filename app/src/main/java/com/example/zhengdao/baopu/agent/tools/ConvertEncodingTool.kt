@@ -2,13 +2,17 @@
 //
 // 依据：工具补强第二刀（编码处理）。五条硬纪律：
 // 1. 权限 CONFIRM——它会**改写盘上的文件**，每次都要用户点头（与 write_file/edit_file 同款）；
-// 2. 转换前先把**原始字节**备份到 `<工作区>/.baopu-bak/`（备份失败 ⇒ 放弃本次转换）；
+// 2. 转换前先把**原始字节**备份到 `<工作区>/备份/`（157 起可见化，原 `.baopu-bak`；备份失败 ⇒ 放弃本次转换）；
 // 3. 幂等：本来就是 UTF-8 就明说「没动」，不重写、不再备份（重跑不会堆一堆备份）；
 // 4. 二进制一律拒绝（转了只会毁文件）；
 // 5. 写回走「临时文件 + rename」原子替换，中途失败不留半个文件。
 package com.example.zhengdao.baopu.agent
 
+<<<<<<< HEAD
 import com.example.zhengdao.baopu.workspaceBoundaryCheck
+=======
+import com.example.zhengdao.baopu.kernel.BaopuKernel
+>>>>>>> feat/memory-157-onmain
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -25,8 +29,8 @@ internal object ConvertEncodingTool {
 
     const val ARG_PATH = "path"
 
-    /** 备份目录（与 write_file/edit_file/move_path 同一处，用户看得见）。 */
-    const val BACKUP_DIR_NAME = ".baopu-bak"
+    /** 备份目录（与 write_file/edit_file/move_path 同一处，用户看得见）。157 起＝`备份/`。 */
+    const val BACKUP_DIR_NAME = BaopuKernel.Data.DIR_BACKUP
 
     /** 单文件大小上限（超过 8 MB 的书让用户先拆，别在 5 秒超时里赌）。 */
     const val MAX_FILE_BYTES = 8L * 1024 * 1024

@@ -36,8 +36,8 @@ class LibraryToolsTest {
 
     private fun setup() {
         root = tmp.newFolder("工作区")
-        deliver = File(root, "资料库/投递").apply { mkdirs() }
-        done = File(root, "资料库/整理").apply { mkdirs() }
+        deliver = File(root, "投递").apply { mkdirs() }
+        done = File(root, "产物").apply { mkdirs() }
         rawInWorkspace = File(root, "资料库/原始").apply { mkdirs() } // 旧布局残留：也要纹丝不动
         rawPrivate = tmp.newFolder("App私有") // 工作区外：filesDir/baopu/library/原始 的替身
     }
@@ -99,7 +99,7 @@ class LibraryToolsTest {
     @Test
     fun `list_目录不存在给空清单不炸`() {
         setup()
-        File(root, "资料库").deleteRecursively()
+        File(root, "投递").deleteRecursively() // 157 后 list 默认读根级「投递」
         val out = LibraryTools.list(root)
         assertTrue(out is ToolOutcome.Ok)
         assertTrue((out as ToolOutcome.Ok).text.contains("空清单"))
@@ -151,14 +151,14 @@ class LibraryToolsTest {
     }
 
     @Test
-    fun `promote_移到整理并报字节数`() {
+    fun `promote_移到产物并报字节数`() {
         setup()
         deliverFile("a.txt", "甲乙丙")
 
         val out = LibraryTools.organize(root, "promote", "a.txt", null)
 
         assertTrue(out is ToolOutcome.Ok)
-        assertTrue((out as ToolOutcome.Ok).text.contains("已移到 整理/a.txt"))
+        assertTrue((out as ToolOutcome.Ok).text.contains("已移到 产物/a.txt"))
         assertTrue((out).text.contains("9 B"))
         assertFalse("投递里那份要不在", File(deliver, "a.txt").exists())
         assertEquals("甲乙丙", File(done, "a.txt").readText())
@@ -174,7 +174,7 @@ class LibraryToolsTest {
     }
 
     @Test
-    fun `promote_子目录路径_整理侧自动建目录`() {
+    fun `promote_子目录路径_产物侧自动建目录`() {
         setup()
         deliverFile("武侠/a.txt", "甲")
         val out = LibraryTools.organize(root, "promote", "武侠/a.txt", null)
@@ -268,18 +268,18 @@ class LibraryToolsTest {
         val out = LibraryTools.organize(root, "index", null, null, now = 1700000000000L)
 
         assertTrue(out is ToolOutcome.Ok)
-        val indexFile = File(root, "资料库/索引.md")
+        val indexFile = File(root, "产物/索引.md")
         assertTrue("索引文件要在：$indexFile", indexFile.isFile)
         val text = indexFile.readText()
         assertTrue(text.contains("- 斗罗.md"))
         assertTrue(text.contains("- 武侠/红楼梦.md"))
-        assertTrue(text.contains("# 资料库索引"))
+        assertTrue(text.contains("# 产物索引"))
         // 除了索引文件，整棵树一个字节都不许变（L3：index 之外不许写别的文件）
         val after = snapshot(root)
         val changed = LinkedHashSet<String>()
         before.keys.forEach { if (after[it] != before[it]) changed += it }
         after.keys.forEach { if (before[it] != after[it]) changed += it }
-        assertEquals("只许 资料库/索引.md 变化，实际：$changed", listOf("资料库/索引.md"), changed.sorted())
+        assertEquals("只许 产物/索引.md 变化，实际：$changed", listOf("产物/索引.md"), changed.sorted())
     }
 
     @Test
@@ -288,8 +288,8 @@ class LibraryToolsTest {
         val out1 = LibraryTools.organize(root, "index", null, null, now = 1L)
         val out2 = LibraryTools.organize(root, "index", null, null, now = 1L)
         assertTrue(out1 is ToolOutcome.Ok && out2 is ToolOutcome.Ok)
-        val text = File(root, "资料库/索引.md").readText()
-        assertTrue("空整理要有说明：\n$text", text.contains("整理/ 还是空的"))
+        val text = File(root, "产物/索引.md").readText()
+        assertTrue("空产物要有说明：\n$text", text.contains("产物/ 还是空的"))
     }
 
     @Test
@@ -393,7 +393,7 @@ class LibraryToolsTest {
         val out = LinkedHashMap<String, String>()
         base.walkTopDown().filter { it.isFile }.forEach { f ->
             val rel = f.relativeTo(base).path.replace('\\', '/')
-            val bytes = if (rel == "资料库/索引.md") {
+            val bytes = if (rel == "产物/索引.md") {
                 // 时间戳行会变：比对其余部分
                 f.readText().lines().filterNot { it.contains("生成于") }.joinToString("\n")
             } else {
