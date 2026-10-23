@@ -138,6 +138,8 @@ internal fun BaopuChannelSheet(
     }
     var modelText by remember { mutableStateOf(if (restored) ModelSheetDraft.model else modelOf(currentChannelId)) }
     var query by remember { mutableStateOf(if (restored) ModelSheetDraft.query else "") }
+    // 2026-10-23 用户：选了模型后，长清单要自动收回（OpenRouter 468 条会一直占屏）。
+    var listExpanded by remember { mutableStateOf(true) }
     var picked by remember { mutableStateOf(if (restored) ModelSheetDraft.picked else ProviderPrefs.modelOverride(ctx, currentChannelId)) }
     var pickedFor by remember { mutableStateOf(if (restored) ModelSheetDraft.pickedFor else currentChannelId) }
 
@@ -347,7 +349,14 @@ internal fun BaopuChannelSheet(
                         .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp),
                 )
             }
-            when {
+            if (!listExpanded && modelText.isNotBlank()) {
+                PickerRow(
+                    title = ModelPickerRules.displayName(modelText, null),
+                    sub = "已选 · 点这里重新展开清单",
+                    selected = true,
+                    onClick = { listExpanded = true },
+                )
+            } else when {
                 entries.isEmpty() && fetching -> Footnote("正在拉取模型列表…")
                 entries.isEmpty() && pullNote != null -> Footnote(pullNote)
                 entries.isEmpty() && fetchError != null -> Footnote(
@@ -371,6 +380,8 @@ internal fun BaopuChannelSheet(
                                 )
                                 pickedFor = selected
                                 modelText = e.id
+                                // 选完就收：只留一行"已选"，再点「换模型」重新展开。
+                                listExpanded = false
                             },
                         )
                     }
