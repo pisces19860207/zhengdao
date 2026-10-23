@@ -12,6 +12,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -131,11 +132,13 @@ internal object EditFileTool {
             return ToolOutcome.Failed("参数「$ARG_OP」只能是 ${OPS.joinToString("／")}，收到的是「$op」")
         }
         val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
-        if (!PathGuard.isInside(root, target)) {
-            return ToolOutcome.Rejected(
-                "路径越界被拒：$rel 不在工作区（${root.absolutePath}）内。edit_file 只能改工作区里的文件。",
-            )
-        }
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
+        workspaceBoundaryCheck(
+            root,
+            target,
+            rel,
+            "路径越界被拒：$rel 不在工作区（${root.absolutePath}）内。edit_file 只能改工作区里的文件。",
+        )?.let { return ToolOutcome.Rejected(it) }
         if (PathGuard.isInside(File(root, BACKUP_DIR_NAME), target)) {
             return ToolOutcome.Failed("不能改 $BACKUP_DIR_NAME/ 里的文件（那是旧版本备份区，改它等于毁掉退路）")
         }

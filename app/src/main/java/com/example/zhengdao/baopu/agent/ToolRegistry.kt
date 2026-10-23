@@ -173,6 +173,12 @@ internal object ToolGroupTable {
         "edit_file" to ToolGroup.EDIT,
         "image_ops" to ToolGroup.EDIT,
         "card_build" to ToolGroup.EDIT,
+        // 小说工程三件（第一百五十五批）：随 LIBRARY 组——**不许进默认可见组**：
+        // ProgressiveToolsTest B1 钉死「默认 tools ≤ 12」（§2 硬卡，上下文预算），
+        // novel 三件走 capabilities 解锁（与 kb/card 同款；DEFAULT_ENABLED 仍默认启用）
+        "novel_create" to ToolGroup.LIBRARY,
+        "novel_project" to ToolGroup.LIBRARY,
+        "novel_continue" to ToolGroup.LIBRARY,
         // ── 以下默认不可见，要 capabilities 解锁
         "browser_click" to ToolGroup.BROWSER,
         "browser_type" to ToolGroup.BROWSER,
@@ -1018,6 +1024,11 @@ internal object BaopuToolCatalog {
         "edit_file",
         "move_path",
         "convert_encoding",
+        // 小说工程三件（第一百五十五批 · W1/W2）：建项目 CONFIRM；看项目/续写简报 FREE 只读。
+        // 正文写作仍走 write_file/edit_file，本组只是项目层骨架与简报
+        "novel_create",
+        "novel_project",
+        "novel_continue",
         // 浏览器六件（玄览）：读类免确认、写类 CONFIRM；网关没注入时统一回「玄览还没打开」
         "browser_open",
         "browser_snapshot",
@@ -1073,6 +1084,12 @@ internal object BaopuToolCatalog {
         Entry("edit_file") { EditFileTool.spec(it) },
         Entry("move_path") { MovePathTool.spec(it) },
         Entry("convert_encoding") { ConvertEncodingTool.spec(it) },
+        // 小说工程三件（第一百五十五批 · W1/W2）：novel_create 是唯一写盘入口（CONFIRM，
+        // 只建骨架）；novel_project 看总览、novel_continue 拿续写简报，都 FREE 只读。
+        // LIBRARY 组（默认不可见，capabilities 解锁）——默认可见 12 条的 §2 硬卡不许破
+        Entry("novel_create") { NovelCreateTool.spec(it) },
+        Entry("novel_project") { NovelProjectTool.spec(it) },
+        Entry("novel_continue") { NovelContinueTool.spec(it) },
         // 浏览器六件不需要 workspaceRoot（守卫走 URL/scheme，不走路径）
         Entry("browser_open") { BrowserTools.openSpec() },
         Entry("browser_snapshot") { BrowserTools.snapshotSpec() },

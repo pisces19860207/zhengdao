@@ -267,6 +267,42 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 )
             }
 
+            // ── 工作区（第一百五十六批：放开工作区边界，用户批准即可）──
+            // 开关只管「越界还要不要问」：开 ⇒ 每次运行第一次越界弹一张确认卡，同意才做；
+            // 关 ⇒ 越界一律拒（与 156 批之前逐字一致）。存储在 BaopuRuntime.WorkspacePrefs。
+            SectionCard(stringResource(R.string.baopu_workspace_card)) {
+                var allowOutside by rememberSaveable { mutableStateOf(BaopuRuntime.WorkspacePrefs.enabled(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 命中 ≥48dp（派工单设计约束第 3 条）
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_ws_outside_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_ws_outside_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = allowOutside,
+                        onCheckedChange = { want ->
+                            BaopuRuntime.WorkspacePrefs.setEnabled(ctx, want)
+                            allowOutside = want
+                            RunLog.log("抱朴设置：允许访问工作区外 = $want（开也每运行问一次）")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
             // ── 模型参数（刀 3 B 段 · 第十四批 J12：只读展示，不许编数）──（原样搬入）
             // 定位：当前通道向服务端声明的两个硬参数。没声明 ⇒ 「未声明」——
             // **不许显示 0 或 128000**：0 是「确实是 0」、128000 是已作废的旧回退值，
@@ -986,6 +1022,10 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "delete_path" -> R.string.baopu_tool_delete_path
     "image_ops" -> R.string.baopu_tool_image_ops
     "generate_image" -> R.string.baopu_tool_generate_image
+    // 小说工程三件（第一百五十五批）：漏这两组分支 ⇒ 设置页开工具卡直接抛（同 update_plan 教训）
+    "novel_create" -> R.string.baopu_tool_novel_create
+    "novel_project" -> R.string.baopu_tool_novel_project
+    "novel_continue" -> R.string.baopu_tool_novel_continue
     "ask_user" -> R.string.baopu_tool_ask_user
     // 第一百二十七批：多 Agent 协作（run_subtasks）。不补这两行 ⇒ 设置页开工具卡直接抛。
     "run_subtasks" -> R.string.baopu_tool_run_subtasks
@@ -1037,6 +1077,10 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "delete_path" -> R.string.baopu_tool_delete_path_desc
     "image_ops" -> R.string.baopu_tool_image_ops_desc
     "generate_image" -> R.string.baopu_tool_generate_image_desc
+    // 小说工程三件（第一百五十五批）
+    "novel_create" -> R.string.baopu_tool_novel_create_desc
+    "novel_project" -> R.string.baopu_tool_novel_project_desc
+    "novel_continue" -> R.string.baopu_tool_novel_continue_desc
     "ask_user" -> R.string.baopu_tool_ask_user_desc
     "run_subtasks" -> R.string.baopu_tool_run_subtasks_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")

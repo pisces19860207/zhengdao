@@ -1381,4 +1381,13 @@
     <string name="baopu_note_library_error_label">Library did not land</string>
     <string name="baopu_scratch_left_label">Scratch files</string>
     <string name="baopu_scratch_left_body">%1$d scratch file(s) moved to Trash (restorable)</string>
+    <string name="baopu_tool_novel_create">novel_create: New novel project</string>
+    <string name="baopu_tool_novel_create_desc">Creates a project folder with metadata (outline, per-chapter words, characters, notes); confirmation required. Chapters are still written via write_file.</string>
+    <string name="baopu_tool_novel_project">novel_project: Novel overview</string>
+    <string name="baopu_tool_novel_project_desc">Read-only overview of a project: outline, characters, chapter list, actual words vs target.</string>
+    <string name="baopu_tool_novel_continue">novel_continue: Continuation brief</string>
+    <string name="baopu_tool_novel_continue_desc">Where to continue (chapter and paragraph), characters and notes, consistency hints; append via edit_file or start a new chapter via write_file, never overwrite.</string>
+    <string name="baopu_workspace_card">Workspace</string>
+    <string name="baopu_ws_outside_title">Allow access outside workspace</string>
+    <string name="baopu_ws_outside_desc">When on, Baopu asks once per run with a confirmation card before touching files outside the workspace. When off, outside access is always rejected.</string>
 </resources>
