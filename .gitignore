@@ -50,3 +50,6 @@ scripts/smoke/out/
 quality-run.log
 # 鏈湴楠屾敹鏃ュ織
 verify-*.log
+
+# 本地原生构建临时目录（2026-10-23）
+buildtmp/
