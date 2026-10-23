@@ -52,6 +52,7 @@ import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -156,7 +157,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         try {
             ctx.startActivity(
                 Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                    .setData("package:${ctx.packageName}".toUri())
             )
         } catch (e: Exception) {
             try {
@@ -517,7 +518,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 runCatching {
                     ctx.startActivity(
                         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                            .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                            .setData("package:${ctx.packageName}".toUri())
                     )
                 }.onFailure {
                     // 2026-10-08：异常原文 → 人话（[HumanizeError]）

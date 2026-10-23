@@ -125,10 +125,10 @@ object Workspace {
     fun setCustom(ctx: Context, path: String): Boolean {
         if (!path.startsWith(SHARED_ROOT)) return false
         rememberCurrent(ctx)
-        AppPrefs.prefs(ctx).edit()
-            .putString(KEY_MODE, "custom")
-            .putString(KEY_PATH, path.trimEnd('/'))
-            .apply()
+        AppPrefs.prefs(ctx).edit {
+            putString(KEY_MODE, "custom")
+            putString(KEY_PATH, path.trimEnd('/'))
+        }
         return true
     }
 

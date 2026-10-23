@@ -388,7 +388,7 @@ internal object BaopuRuntime {
         }
 
         override fun clear(sessionId: Long) {
-            sp()?.edit()?.remove(key(sessionId))?.apply()
+            sp()?.edit { remove(key(sessionId)) }
         }
 
         /**
@@ -402,12 +402,12 @@ internal object BaopuRuntime {
             val p = sp() ?: return
             if (groups.isEmpty()) return
             val drop = groups.map { it.key }.toSet()
-            val edit = p.edit()
-            p.all.keys.filter { it.startsWith("session:") }.forEach { k ->
-                val cur = p.getStringSet(k, emptySet())?.toMutableSet() ?: return@forEach
-                if (cur.removeAll(drop)) edit.putStringSet(k, cur)
+            p.edit {
+                p.all.keys.filter { it.startsWith("session:") }.forEach { k ->
+                    val cur = p.getStringSet(k, emptySet())?.toMutableSet() ?: return@forEach
+                    if (cur.removeAll(drop)) putStringSet(k, cur)
+                }
             }
-            edit.apply()
         }
     }
 

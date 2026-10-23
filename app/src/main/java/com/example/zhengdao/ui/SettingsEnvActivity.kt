@@ -94,6 +94,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import com.example.zhengdao.BackChevron
 import com.example.zhengdao.keepalive.KeepaliveArchive
@@ -534,7 +536,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
             ) {
                 FilterChip2(stringResource(R.string.env_memlimit_off), memLimit == "0") {
                     memLimit = "0"
-                    Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "0").apply()
+                    Settings.prefs(ctx).edit { putString("guest_mem_limit_mb", "0") }
                     Toast.makeText(
                         ctx,
                         res.getString(R.string.env_memlimit_toast_off),
@@ -543,7 +545,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 }
                 FilterChip2("3GB", memLimit == "3072") {
                     memLimit = "3072"
-                    Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "3072").apply()
+                    Settings.prefs(ctx).edit { putString("guest_mem_limit_mb", "3072") }
                     Toast.makeText(
                         ctx,
                         res.getString(R.string.env_memlimit_toast, "3GB"),
@@ -552,7 +554,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                 }
                 FilterChip2("4GB", memLimit == "4096") {
                     memLimit = "4096"
-                    Settings.prefs(ctx).edit().putString("guest_mem_limit_mb", "4096").apply()
+                    Settings.prefs(ctx).edit { putString("guest_mem_limit_mb", "4096") }
                     Toast.makeText(
                         ctx,
                         res.getString(R.string.env_memlimit_toast, "4GB"),
@@ -737,7 +739,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     if (url == null) {
                         ctx.startActivity(
                             Intent(Intent.ACTION_VIEW,
-                                android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/releases"))
+                                "https://github.com/pisces19860207/zhengdao/releases".toUri())
                         )
                         return@TextButton
                     }

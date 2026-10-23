@@ -9,6 +9,8 @@ import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.withScale
 import com.example.zhengdao.browser.PageSnapshot
 import com.example.zhengdao.browser.SensitiveRedactor
 import com.example.zhengdao.browser.WebViewEngine
@@ -833,13 +835,12 @@ object BrowserCommands {
         val w = box?.width ?: outW
         val h = box?.height ?: outH
         if (w <= 0 || h <= 0) return@onMain null
-        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(w, h)
         val canvas = Canvas(bitmap)
-        canvas.save()
-        canvas.scale(scale, scale)
-        if (box != null) canvas.translate(-box.left.toFloat() / scale, -box.top.toFloat() / scale)
-        picture.draw(canvas)
-        canvas.restore()
+        canvas.withScale(scale, scale) {
+            if (box != null) translate(-box.left.toFloat() / scale, -box.top.toFloat() / scale)
+            picture.draw(this)
+        }
         Shot(encodePng(bitmap), w, h, scale, viaPicture = true)
     }.value
 
@@ -857,7 +858,7 @@ object BrowserCommands {
         if (w <= 0 || h <= 0) {
             return@onMain null
         }
-        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(w, h)
         webView.draw(Canvas(bitmap))
         Shot(encodePng(bitmap), w, h, 1f, viaPicture = false)
     }.value

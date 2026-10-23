@@ -14,6 +14,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 
@@ -206,7 +208,7 @@ internal object ImageOpsTool {
             val name = ImageOps.iconName(src.name, edge)
             val target = File(dir, name)
             if (target.exists()) return ToolOutcome.Failed("目标已存在，不做覆盖：${relOf(root, target)}")
-            val canvas = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888)
+            val canvas = createBitmap(edge, edge)
             try {
                 val (w, h) = ImageOps.fitSize(bmp.width, bmp.height, edge)
                 val scaled = scaleTo(bmp, w, h)
@@ -282,11 +284,11 @@ internal object ImageOpsTool {
         if (bmp.width == w && bmp.height == h) {
             bmp
         } else {
-            runCatching { Bitmap.createScaledBitmap(bmp, w, h, true) }.getOrDefault(bmp)
+            runCatching { bmp.scale(w, h) }.getOrDefault(bmp)
         }
 
     private fun flattenOnWhite(bmp: Bitmap): Bitmap {
-        val out = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
+        val out = createBitmap(bmp.width, bmp.height)
         val c = Canvas(out)
         c.drawColor(Color.WHITE)
         c.drawBitmap(bmp, 0f, 0f, null)

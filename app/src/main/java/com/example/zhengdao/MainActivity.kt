@@ -62,6 +62,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -426,7 +428,7 @@ class MainActivity : ComponentActivity() {
                             startActivity(
                                 Intent(
                                     Intent.ACTION_VIEW,
-                                    android.net.Uri.parse("https://github.com/pisces19860207/zhengdao/releases")
+                                    "https://github.com/pisces19860207/zhengdao/releases".toUri()
                                 )
                             )
                         }
@@ -580,7 +582,7 @@ fun ZhengdaoApp(
     // 记录当前页面（供冷启动恢复；terminal 是独立 Activity，见下）
     androidx.compose.runtime.LaunchedEffect(nav) {
         nav.currentBackStackEntryFlow.collect { entry ->
-            routePrefs.edit().putString("last_route", entry.destination.route).apply()
+            routePrefs.edit { putString("last_route", entry.destination.route) }
             // 路由面包屑（白屏排查用，见上）：一次导航一行，正常使用一天也就几行。
             runCatching {
                 com.example.zhengdao.rootfs.RunLog.log(

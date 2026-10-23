@@ -21,9 +21,11 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
@@ -974,10 +976,10 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private fun dismissNetworkBanner() {
         runOnUiThread {
             findViewById<android.widget.TextView>(R.id.status_banner)?.let { b ->
-                if (b.visibility == android.view.View.VISIBLE &&
+                if (b.isVisible &&
                     b.text?.toString() == getString(R.string.term_no_network)
                 ) {
-                    b.visibility = android.view.View.GONE
+                    b.isVisible = false
                 }
             }
         }
@@ -1231,7 +1233,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             }
             TerminalLinkPolicy.Verdict.OPEN_SYSTEM -> {
                 val ok = runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)))
+                    startActivity(Intent(Intent.ACTION_VIEW, uri.toUri()))
                 }.isSuccess
                 if (!ok) {
                     Toast.makeText(this, getString(R.string.term_browser_failed, ""), Toast.LENGTH_SHORT).show()

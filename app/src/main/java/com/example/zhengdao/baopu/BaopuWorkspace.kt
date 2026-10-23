@@ -83,10 +83,10 @@ object BaopuWorkspace {
      */
     fun setCustom(ctx: Context, path: String): Boolean {
         if (!isValidCustom(path)) return false
-        AppPrefs.prefs(ctx).edit()
-            .putString(KEY_MODE, "custom")
-            .putString(KEY_PATH, path.trimEnd('/'))
-            .apply()
+        AppPrefs.prefs(ctx).edit {
+            putString(KEY_MODE, "custom")
+            putString(KEY_PATH, path.trimEnd('/'))
+        }
         return true
     }
 
