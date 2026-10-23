@@ -49,9 +49,18 @@ class ToolSchemaContractTest {
             )
             val required = schema.optJSONArray("required")
             assertNotNull("$name 没有 required 段", required)
-            assertTrue("$name 的 required 不能为空", required!!.length() >= 1)
-            val requiredKeys = (0 until required.length()).map { required.optString(it) }
-            assertTrue("$name 的 required 必须含 path", requiredKeys.contains("path"))
+            val requiredKeys = (0 until required!!.length()).map { required.optString(it) }
+            // 2026-10-23：list_dir 的 path 改为可省略（省略＝列工作区根），是核心四工具里
+            // 唯一登记过的例外；契约仍要求它有 path 属性。
+            if (name == "list_dir") {
+                assertTrue(
+                    "list_dir 仍必须有 path 属性（只是不再必填）",
+                    schema.optJSONObject("properties")?.has("path") == true,
+                )
+            } else {
+                assertTrue("$name 的 required 不能为空", required.length() >= 1)
+                assertTrue("$name 的 required 必须含 path", requiredKeys.contains("path"))
+            }
             val props = schema.optJSONObject("properties")
             assertNotNull("$name 没有 properties", props)
             for (key in props!!.keys()) {
@@ -341,3 +350,4 @@ class ToolSchemaContractTest {
         val CORE_TOOLS = listOf("write_file", "edit_file", "read_file", "list_dir")
     }
 }
+

@@ -107,6 +107,7 @@ internal object ToolSchemaRules {
         "bash" to "免费通道占位条目：properties 为空，任何参数都不接受（执行器一律拒绝，见 ToolSchemaRules.S7 的放行理由）",
         "novel_project" to "path 可省略：只有一个小说项目时自动用它，多个才要求显式指定（2026-10-23 真机 Gemini 漏传必填 path 后连续熔断）",
         "novel_continue" to "path 可省略：同 novel_project 的唯一项目自动回退（2026-10-23 同一口径）",
+        "list_dir" to "path 可省略＝列工作区根（2026-10-23：模型说 list the workspace root 时经常不传 path，Gemini 连拒两次就熔断）",
     )
 
     /**

@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：抱朴-Agent设计-程枢版 §5（守卫管线：注册表是唯一真相；每个工具 = 名称 +
 // JSON Schema + 权限级 + 超时 + Kotlin 执行器）+ §9 模块划分（agent/ToolRegistry.kt）
@@ -1095,7 +1095,7 @@ internal object BaopuToolCatalog {
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
     val ENTRIES: List<Entry> = listOf(
         Entry("read_file") { ReadFileTool.spec() },
-        Entry("list_dir") { ListDirTool.spec() },
+        Entry("list_dir") { ListDirTool.spec(it) },
         Entry("search_in_files") { SearchInFilesTool.spec(it) },
         Entry("find_files") { FindFilesTool.spec(it) },
         Entry("book_outline") { BookOutlineTool.spec(it) },
