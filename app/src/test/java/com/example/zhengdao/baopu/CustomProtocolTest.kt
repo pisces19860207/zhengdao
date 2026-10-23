@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+﻿// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单《第一百三十六批 · 自定义通道协议选择》§2：
 // - resolve 在两种协议下产出 Provider.protocol 正确；缺省/脏值回退 OpenAI；
@@ -196,5 +196,35 @@ class CustomProtocolTest {
         assertFalse(ProviderPrefs.PROTOCOL_ANTHROPIC.contains(key))
         // 协议提示是给用户的一句话，不是把任何凭据拼进去的模板。
         assertEquals("该协议需手填模型名", ModelPickerRules.ANTHROPIC_MANUAL_MODEL_HINT)
+    }
+
+    // ── 2026-10-23：自定义通道指向 Google ⇒ 强制原生（工具参数表才完整）──
+
+    @Test
+    fun `自定义通道_Google兼容层地址_强制原生并归一化`() {
+        val p = ProviderPrefs.resolve(
+            channelId = ProviderPrefs.CHANNEL_CUSTOM,
+            keyFor = { key },
+            customBase = "https://generativelanguage.googleapis.com/v1beta/openai",
+            customModel = "gemini-3-flash-preview",
+            customProtocol = ProviderPrefs.PROTOCOL_OPENAI_COMPAT,
+        )
+        assertEquals(LlmProtocol.GEMINI_NATIVE, p.protocol)
+        assertEquals("https://generativelanguage.googleapis.com/v1beta", p.baseUrl)
+        assertEquals("gemini-3-flash-preview", p.model)
+    }
+
+    @Test
+    fun `自定义通道_非Google地址_协议照旧`() {
+        val p = ProviderPrefs.resolve(
+            channelId = ProviderPrefs.CHANNEL_CUSTOM,
+            keyFor = { key },
+            customBase = "https://api.example.com/v1",
+            customModel = "some-model",
+            customProtocol = ProviderPrefs.PROTOCOL_ANTHROPIC,
+        )
+        assertEquals(LlmProtocol.ANTHROPIC, p.protocol)
+        assertEquals("https://api.example.com/v1", p.baseUrl)
+        assertFalse(ProviderPrefs.isGoogleGenerativeBase("https://api.example.com/v1"))
     }
 }
