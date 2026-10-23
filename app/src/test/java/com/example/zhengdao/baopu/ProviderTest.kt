@@ -39,7 +39,7 @@ class ProviderTest {
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("openai-compat")!!.protocol)
         assertEquals(LlmProtocol.ANTHROPIC, Providers.of("anthropic")!!.protocol)
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("deepseek")!!.protocol)
-        assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("gemini")!!.protocol)
+        assertEquals(LlmProtocol.GEMINI_NATIVE, Providers.of("gemini")!!.protocol)
         assertTrue(Providers.of("openrouter-free")!!.builtinFree)
         assertFalse(Providers.of("openai-compat")!!.builtinFree)
         assertFalse(Providers.of("anthropic")!!.builtinFree)

@@ -1422,6 +1422,9 @@ internal class RunEngine(
             val tools = when (provider.protocol) {
                 com.example.zhengdao.baopu.LlmProtocol.OPENAI_COMPAT -> registry.toolsJsonOpenAi(sessionId)
                 com.example.zhengdao.baopu.LlmProtocol.ANTHROPIC -> registry.toolsJsonAnthropic(sessionId)
+                // Gemini 原生吃 OpenAI 形状的 function 包装；LlmWire.geminiBody 里再转
+                // functionDeclarations（工具表只有一套，不在注册表层复制第二份）。
+                com.example.zhengdao.baopu.LlmProtocol.GEMINI_NATIVE -> registry.toolsJsonOpenAi(sessionId)
             }
 
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──

@@ -48,6 +48,26 @@ enum class LlmProtocol {
 
     ANTHROPIC,
 
+
+
+    /**
+
+     * Gemini 原生（第一百五十四批）：`{baseUrl}/models/{model}:generateContent`，
+
+     * `x-goog-api-key` 头；请求体是 `contents/systemInstruction/tools.functionDeclarations`，
+
+     * 与 OpenAI 的 `messages` 形状**不同**。
+
+     *
+
+     * ⚠️ Google 另有一个 OpenAI 兼容层（`…/v1beta/openai`，走 `/chat/completions`），
+
+     * 那条留给「自定义通道」；预设 Gemini 走原生，能力才完整。
+
+     */
+
+    GEMINI_NATIVE,
+
 }
 
 
@@ -300,16 +320,15 @@ object Providers {
      * Google Gemini（2026-10-23 用户：「两个 OpenRouter，把其中一个换成 Gemini」）。
      *
      * 为什么走 OpenAI 兼容端点而不是原生 `generateContent`：
-     * 本仓 `LlmProtocol` 只有 OPENAI_COMPAT / ANTHROPIC 两档，原生 Gemini 要新写请求层与
-     * 鉴权头；Google 官方提供 OpenAI 兼容层
-     * （`https://generativelanguage.googleapis.com/v1beta/openai/`），完全复用现有 wire。
+     * 第一百五十四批起本仓有 `LlmProtocol.GEMINI_NATIVE`，直接走原生 `:generateContent`
+     *（`x-goog-api-key` 头、`contents` 形状）；OpenAI 兼容层只留给自定义通道。
      * Key 由用户自己填（`https://aistudio.google.com/apikey`），App 不内置、不兜底。
      */
     val GEMINI = Provider(
         id = "gemini",
         label = "Google Gemini",
-        protocol = LlmProtocol.OPENAI_COMPAT,
-        baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
+        protocol = LlmProtocol.GEMINI_NATIVE,
+        baseUrl = "https://generativelanguage.googleapis.com/v1beta",
         model = "gemini-2.5-flash",
         // Gemini 2.5 Flash：输入窗口约 1M token（Google 文档）；与 OpenRouter 预设同一存档口径。
         contextWindow = 1_048_576,

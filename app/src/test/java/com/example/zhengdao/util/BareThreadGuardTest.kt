@@ -278,7 +278,7 @@ class BareThreadGuardTest {
             "KnowledgeBase.kt:175",
             "KnowledgeBase.kt:199",
             "KnowledgeBaseHints.kt:133",
-            "LlmClient.kt:877",
+            "LlmClient.kt:1121",
             "MainActivity.kt:405",
             "NetSelfCheck.kt:94",
             "OldTreeCleaner.kt:48",

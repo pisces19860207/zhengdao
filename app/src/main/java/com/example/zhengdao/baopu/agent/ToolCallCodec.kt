@@ -168,6 +168,27 @@ internal object ToolCallCodec {
                 ?: return DecodeResult.Bad("Anthropic 响应里没有 content 块数组（协议走错或响应不完整）")
             decodeAnthropic(content, registry)
         }
+
+        LlmProtocol.GEMINI_NATIVE -> {
+            val parts = root.optJSONArray("candidates")?.optJSONObject(0)
+                ?.optJSONObject("content")?.optJSONArray("parts")
+                ?: return DecodeResult.Bad("Gemini 响应里没有 candidates[0].content.parts（协议走错或响应不完整）")
+            val raws = (0 until parts.length()).mapNotNull { i ->
+                val fc = parts.optJSONObject(i)?.optJSONObject("functionCall")
+                    ?: return@mapNotNull null
+                val name = fc.optString("name")
+                RawToolCall(
+                    id = "gemini-$i-$name",
+                    name = name,
+                    argumentsJson = fc.optJSONObject("args")?.toString() ?: "{}",
+                )
+            }
+            if (raws.isEmpty()) {
+                DecodeResult.Bad("Gemini 响应里没有 functionCall 部件")
+            } else {
+                decode(raws, registry)
+            }
+        }
     }
 
     /** arguments JSON 字符串 parse（**坏 JSON 不抛**：返回 null 由调用方转 Bad）。空串按空对象。 */
