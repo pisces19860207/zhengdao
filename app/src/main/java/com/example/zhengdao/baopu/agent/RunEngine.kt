@@ -290,23 +290,6 @@ internal class RunEngine(
      */
     var onRunScopedReset: () -> Unit = {}
 
-    /**
-     * 150批 F：`drainQueue` 的「poll ＋ stopRequested 检查」与 `stop` 的「置位 ＋ clearQueue」
-     * 共用这一把锁 ⇒ 取条与清队不再有竞争窗口：要么 stop 先拿锁（排队条还在队列里、被
-     * clearQueue 一起清掉并计入「清掉 N 条」），要么这条过了闸（过了闸就必须进 runLoop，
-     * 停止迟到由循环头看到 stopRequested 收尾 Aborted，用户消息已落库、可续跑）。
-     */
-    private val queueGate = Object()
-
-    /**
-     * 151 批 F 补：已过闸（poll 出）但还没收尾的条数。
-     *
-     * 150 批把「取条＋停止检查」关进了同一把锁，但 `stop()` 的 notice 只数
-     * `clearQueue` 清掉的内存队列条数——已取出的那条不在内存队列里，用户会看到
-     * 「清掉 N 条」却不知道还有一条已落库、续跑时会继续。这个计数只用于把话说全，
-     * 不改停止语义。
-     */
-    private val polledInFlight = java.util.concurrent.atomic.AtomicInteger(0)
 
     init {
         // 冷启动把上次没开跑的排队条读回内存；**不自动开跑**（避免背地里烧 token）。
