@@ -169,16 +169,16 @@ class ToolVisibilityHotSwitchTest {
     // ── J3：默认组与免费通道 read/bash 别名口径不变 ───────────────────────
 
     @Test
-    fun `J3_默认可见读数不变_普通12免费14`() {
-        // 普通通道：默认 12 条（core 8 + edit 4），与 59 批 B1 同一读数
+    fun `J3_默认可见读数不变_普通14免费16`() {
+        // 普通通道：默认 14 条（core 8 + edit 4 + 157 资料库只读两件默认可见）
         val plain = productionRegistry()
-        assertEquals(12, plain.visibleSpecs().size)
-        assertEquals(12, names(plain.toolsJsonOpenAi()).size)
-        // 拨开任何组都不许把默认那 12 条挤掉（顺序即表序）
+        assertEquals(14, plain.visibleSpecs().size)
+        assertEquals(14, names(plain.toolsJsonOpenAi()).size)
+        // 拨开任何组都不许把默认那 14 条挤掉（顺序即表序）
         val opened = productionRegistry(prefs = InMemoryToolPrefs(initialApproved = setOf(ToolGroup.SKILL)))
         val def = names(plain.toolsJsonOpenAi())
-        names(opened.toolsJsonOpenAi()).take(12).let { first12 ->
-            assertEquals("默认可见的 12 条必须原样在最前面（表序稳定）", def, first12)
+        names(opened.toolsJsonOpenAi()).take(14).let { first14 ->
+            assertEquals("默认可见的 14 条必须原样在最前面（表序稳定）", def, first14)
         }
     }
 
@@ -213,7 +213,7 @@ class ToolVisibilityHotSwitchTest {
         )
         // 组会被 register() 按 ToolGroupTable 重盖成 COMPAT（默认可见那一档）
         assertEquals(ToolGroup.COMPAT, regEnabled.all().first { it.name == "read" }.group)
-        assertEquals(14, regEnabled.visibleSpecs().size)
+        assertEquals(16, regEnabled.visibleSpecs().size)
         val vis = names(regEnabled.toolsJsonOpenAi())
         assertTrue(vis.contains("read") && vis.contains("bash"))
 
@@ -262,13 +262,14 @@ class ToolVisibilityHotSwitchTest {
         // 期望表（TOOLS-D1 修法①的逐组读数）：对每个「默认不可见」的组，
         // 拨开（不重建注册表）⇒ 组内代表工具进数组；拨关 ⇒ 立刻出数组。
         // 代表工具取每组在 ToolGroupTable 里钉过的名字（写_skill / append_persona /
-        // preview_local_file / browser_* / files 四件 / library 三件 / card 两件）。
+        // preview_local_file / browser_* / files 四件 / library 两件 / card 两件）。
+        // 注意：library_list 157 起进默认可见名单（只读），不再是「拨开才可见」的代表。
         val representatives = mapOf(
             ToolGroup.SKILL to listOf("write_skill", "append_persona"),
             ToolGroup.PREVIEW to listOf("preview_local_file"),
             ToolGroup.BROWSER to listOf("browser_click", "browser_type", "browser_scroll", "browser_screenshot"),
             ToolGroup.FILES to listOf("file_info", "find_files", "move_path", "convert_encoding", "delete_path"),
-            ToolGroup.LIBRARY to listOf("book_outline", "library_list", "library_organize"),
+            ToolGroup.LIBRARY to listOf("book_outline", "library_organize"),
             ToolGroup.CARD to listOf("card_inspect", "card_export"),
         )
         representatives.forEach { (group, tools) ->
@@ -303,10 +304,10 @@ class ToolVisibilityHotSwitchTest {
         val lines = mutableListOf<String>()
         val reg = productionRegistry(prefs, onVisibleChanged = { lines += it })
         reg.currentSessionId = SESSION
-        // 第一次算：从「没吐过」到「12 条」⇒ 吐一行
+        // 第一次算：从「没吐过」到「14 条」⇒ 吐一行
         reg.toolsJsonOpenAi(SESSION)
-        assertEquals("第一次必须吐（从空到 12）", 1, lines.size)
-        assertTrue("行首锚要能 grep：${lines[0]}", lines[0].startsWith("[tools] 可见 12 个："))
+        assertEquals("第一次必须吐（从空到 14）", 1, lines.size)
+        assertTrue("行首锚要能 grep：${lines[0]}", lines[0].startsWith("[tools] 可见 14 个："))
         // 再算一次不变 ⇒ 不吐（正常一轮不该刷屏）
         reg.toolsJsonOpenAi(SESSION)
         assertEquals("集合没变不许再吐", 1, lines.size)

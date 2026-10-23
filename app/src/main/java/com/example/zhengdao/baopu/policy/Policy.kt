@@ -58,6 +58,9 @@ internal data class Policy(
             version = VERSION,
             toolGroups = ToolGroupPolicy(
                 defaultVisible = setOf(ToolGroup.CORE, ToolGroup.EDIT, ToolGroup.COMPAT),
+                // 157「资料库默认可见」：两个只读件一上来就看得见（组仍锁，写类三件照旧按需解锁）。
+                // 与落盘 policy_v1.json 逐字段一致；readOnly 由 register 时再拦一次（fail closed）。
+                defaultVisibleTools = setOf("library_list", "kb_search"),
             ),
             approval = ApprovalPolicy(
                 groupReaskThreshold = GROUP_REASK_THRESHOLD,
@@ -102,9 +105,19 @@ internal data class Policy(
  * - 缺 COMPAT ⇒ 免费通道的 tools 数组少两条占位，服务端直接 403。
  *
  * EDIT 可以在表里去掉（这是收紧，不是放宽），所以不放进 [REQUIRED]。
+ *
+ * ## 157：工具级默认可见（`defaultVisibleTools`）
+ * 用户口径「资料库默认可见」：**组不动**（LIBRARY 组仍锁，写类三件照旧按需解锁），
+ * 只把两个**只读**件（`library_list` / `kb_search`）加进默认面。
+ * 与组级的合力点在 [com.example.zhengdao.baopu.agent.isVisibleTool] 的第三条件：
+ * 组开关与单工具开关仍各自能否决（用户关掉 ⇒ 照样不进 tools 数组）。
+ * fail closed 两层：①这里校验蛇形非空；②[com.example.zhengdao.baopu.agent.ToolRegistry]
+ * 注册时校验名单内工具必须 `readOnly`（写类永远进不了默认面）。
  */
 internal data class ToolGroupPolicy(
     val defaultVisible: Set<ToolGroup>,
+    /** 157：工具级默认可见名单（跨组；组开关与单工具开关仍能否决它们）。 */
+    val defaultVisibleTools: Set<String> = emptySet(),
 ) {
     init {
         require(defaultVisible.isNotEmpty()) { "defaultVisible 不许为空" }
@@ -118,6 +131,10 @@ internal data class ToolGroupPolicy(
             "defaultVisible 必须含 ${missing.joinToString("、") { it.key }}" +
                 "（core 缺了 capabilities 看不见；compat 缺了免费档 403）"
         }
+        val badShape = defaultVisibleTools.filterNot { TOOL_NAME_RE.matches(it) }
+        require(badShape.isEmpty()) {
+            "defaultVisibleTools 必须是非空蛇形工具名：${badShape.joinToString("、")}"
+        }
     }
 
     companion object {
@@ -126,6 +143,9 @@ internal data class ToolGroupPolicy(
 
         /** 缺了就会把系统弄坏（或让免费档 403）的两组。 */
         val REQUIRED: Set<ToolGroup> = setOf(ToolGroup.CORE, ToolGroup.COMPAT)
+
+        /** 工具名形态（蛇形小写；与 [com.example.zhengdao.baopu.agent.ToolSpec] 命名同口径）。 */
+        private val TOOL_NAME_RE = Regex("^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
     }
 }
 

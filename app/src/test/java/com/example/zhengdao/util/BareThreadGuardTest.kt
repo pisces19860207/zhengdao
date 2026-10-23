@@ -262,11 +262,14 @@ class BareThreadGuardTest {
         // 对账单随之 32→33，红线同步上调 1。再往上加必须先在本行写理由。
         // 2026-10-23：152批 F 给 RunEngine 构造注入 runQueue（+6 行 KDoc＋参数）
         // ⇒ RunEngine.kt 255→261 平移（无新增创建点，计数仍 33）。
+        // 2026-10-23 晚：合并 origin/main（884a5c41 统一 172 文件头，纯注释）时，
+        // BrowserAgentBridge.kt 之前**没有**声明头（上游本次补齐，+3 行：两行声明＋空行）
+        // ⇒ 它的 zd-bridge-http 创建点 73→76 平移（无新增创建点，计数仍 33）。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 33——先收敛再谈新增", total in 1..33)
     }
 
     @Test
-    fun `对账单_2026-10-16_实测 30 处创建点`() {
+    fun `对账单_2026-10-16_实测 32 处创建点`() {
         val got = scanAppSources()
             .map { "${it.file.substringAfterLast('\\').substringAfterLast('/')}:${it.line}" }
             .sorted()
@@ -274,14 +277,14 @@ class BareThreadGuardTest {
             "AgentInstaller.kt:54",
             "AgentManifest.kt:140",
             "BaopuDb.kt:1370",
-            "BrowserAgentBridge.kt:73",
+            "BrowserAgentBridge.kt:76",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",
             "KeepaliveWatcher.kt:230",
             "KeepaliveWatcher.kt:66",
-            "KnowledgeBase.kt:152",
-            "KnowledgeBase.kt:175",
+            "KnowledgeBase.kt:176",
             "KnowledgeBase.kt:199",
+            "KnowledgeBase.kt:223",
             "KnowledgeBaseHints.kt:133",
             "LlmClient.kt:1145",
             "MainActivity.kt:405",

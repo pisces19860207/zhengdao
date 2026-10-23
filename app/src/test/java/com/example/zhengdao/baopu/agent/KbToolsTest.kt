@@ -1,7 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 判据：派工单-2026-10-21-第一百二十八批 §3 的工具层与负例：
-// - 负例 N3「全盘自动扫描」：kb_index 缺省只索引 资料库/投递（绝不是工作区根），
+// - 负例 N3「全盘自动扫描」：kb_index 缺省只索引 投递（157 收口后在工作区根，绝不是工作区根本身），
 //   越界（../、绝对路径、盘符）一律拒；
 // - 负例 N2 行为侧：kb_search 每段输出都带来源；
 // - 没索引/索引损坏：明说先建索引，不抛不阻塞；
@@ -52,17 +52,17 @@ class KbToolsTest {
     // ── 缺省目录（负例 N3 的行为靶子） ────────────────────────────────────
 
     @Test
-    fun `缺省目录就是资料库投递_绝不是工作区根`() {
-        assertEquals("资料库/投递", KbTools.DEFAULT_DIR_REL)
+    fun `缺省目录就是投递_绝不是工作区根`() {
+        assertEquals("投递", KbTools.DEFAULT_DIR_REL)
         val root = ws()
         write(root, "根目录的噪声.md", "根上的文件不该被默认索引")
-        write(root, "资料库/投递/书.txt", "投递里的书")
+        write(root, "投递/书.txt", "投递里的书")
 
         useStore()
         val out = KbTools.index(args(), root)
         assertTrue("应成功：${out}", out is ToolOutcome.Ok)
         val index = KbTools.store!!.load()!!
-        assertEquals("资料库/投递", index.rootLabel)
+        assertEquals("投递", index.rootLabel)
         val names = index.docs.map { it.relPath }
         assertTrue("投递里的书要进索引", names.contains("书.txt"))
         assertFalse("根目录的噪声绝不进索引（N3）", names.any { it.contains("噪声") })
@@ -71,7 +71,7 @@ class KbToolsTest {
     @Test
     fun `显式目录_只索引指定目录`() {
         val root = ws()
-        write(root, "资料库/投递/投递的书.txt", "投递")
+        write(root, "投递/投递的书.txt", "投递")
         write(root, "小说/我的书.txt", "小说")
         useStore()
         val out = KbTools.index(args("path" to "小说"), root)
@@ -98,9 +98,9 @@ class KbToolsTest {
     @Test
     fun `工作区内绝对路径_可以索引`() {
         val root = ws()
-        write(root, "资料库/整理/书.txt", "整理区里的书")
+        write(root, "产物/书.txt", "整理区里的书")
         useStore()
-        val abs = File(root, "资料库/整理").canonicalPath
+        val abs = File(root, "产物").canonicalPath
         val out = KbTools.index(args("path" to abs), root)
         assertTrue("工作区内绝对路径应被接受：$out", out is ToolOutcome.Ok)
         val index = KbTools.store!!.load()!!
@@ -147,11 +147,11 @@ class KbToolsTest {
     @Test
     fun `默认增量_rebuild全量`() {
         val root = ws()
-        write(root, "资料库/投递/a.txt", "旧内容")
+        write(root, "投递/a.txt", "旧内容")
         useStore()
         assertTrue(KbTools.index(args(), root) is ToolOutcome.Ok)
         Thread.sleep(1100)
-        write(root, "资料库/投递/a.txt", "新内容")
+        write(root, "投递/a.txt", "新内容")
         // 增量：内容变了 ⇒ 重切进新内容
         assertTrue(KbTools.index(args(), root) is ToolOutcome.Ok)
         var idx = KbTools.store!!.load()!!
@@ -221,11 +221,11 @@ class KbToolsTest {
             val spec = reg.all().first { it.name == name }
             val issues = ToolSchemaRules.audit(name, spec.inputSchema, spec.description)
             assertTrue("$name schema 不合规：$issues", issues.isEmpty())
-            // 分组：资料库组（默认不可见，要 capabilities 解锁）
+            // 分组：资料库组（组级默认不可见；kb_search 走 157 的默认可见名单，见下）
             assertEquals(ToolGroup.LIBRARY, spec.group)
         }
-        // 默认可见 12 条不变（kb 两条在 LIBRARY 组，默认不可见）
-        assertEquals(12, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
+        // 默认可见 14 条（原 12 ＋ 157 默认可见两件：library_list / kb_search）
+        assertEquals(14, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
     }
 
     @Test
@@ -271,7 +271,7 @@ class KbToolsTest {
 
     private fun sampleIndex(): KbIndex = KbIndex(
         root = "/tmp/ws",
-        rootLabel = "资料库/投递",
+        rootLabel = "投递",
         updatedAt = 1L,
         docs = listOf(
             KbDoc(
