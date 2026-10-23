@@ -436,7 +436,10 @@ internal fun BaopuChannelSheet(
                 if (aggregate) {
                     // 2026-10-23 用户：「看全部免费模型」没必要（free 过滤已够）→ 撤掉；
                     // 「去拿 Key」与提示语重复 → 只留一个「注册」，点了直接去注册页。
-                    SmallAction("注册") { openInXuanlan(ModelPickerRules.OPENROUTER_SIGNUP_URL) }
+                    SmallAction("注册") {
+                        openInXuanlan(ModelPickerRules.OPENROUTER_SIGNUP_URL)
+                        onDismiss()
+                    }
                 }
             }
             OutlinedTextField(

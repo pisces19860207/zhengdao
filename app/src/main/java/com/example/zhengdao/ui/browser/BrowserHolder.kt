@@ -77,8 +77,13 @@ object BrowserHolder {
     fun view(): WebView? = BrowserTabManager.view()
 
     /** 请求主页切到玄览 Tab（TerminalActivity 点链接时调；MainActivity ON_RESUME 消费）。 */
+    /** 151/160：切 Tab 请求的可观察版本号——主页在同一页里也能立刻消费（原来只在 ON_RESUME）。 */
+    var tabRequestVersion by mutableStateOf(0)
+        private set
+
     fun requestBrowserTab() {
         tabRequested.set(true)
+        tabRequestVersion++
     }
 
     /** 消费切 Tab 请求（一次性）；有待处理请求时返回 true。 */
