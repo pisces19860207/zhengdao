@@ -115,7 +115,7 @@ class BaopuShellP1GateTest {
         val src = screen()
         assertTrue(
             "抽屉宽度必须由 drawerWidthDp 现算，不许写死（v1.4 §3.8 证据②）",
-            flat(src).contains("val drawerWidth = drawerWidthDp(screenWidthDp).dp"),
+            flat(src).contains("val drawerWidth = drawerWidthDp(windowWidthDp).dp"),
         )
         assertTrue(
             "sheet 宽度必须吃 drawerWidth",
