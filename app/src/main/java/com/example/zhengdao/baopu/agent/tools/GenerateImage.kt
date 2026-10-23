@@ -5,8 +5,8 @@
 //
 // 五条规矩：
 // 1. **原图永不覆盖**：产物名 `<时间戳>-<slug>.<ext>`，同名就加 `-2/-3`；
-// 2. 落点只在本机：默认工作区（手机共享存储里的「证道」）落 `资料库/整理/`；
-//    自定义/私有工作区落 `<工作区>/产物/`——两处都是"本地产物"，不上传；
+// 2. 落点只在本机：一律 `<工作区>/产物/`（157 目录收口后，旧 `资料库/整理/` 已并进 `产物/`；
+//    默认工作区与自定义/私有工作区同一口径）——是"本地产物"，不上传；
 // 3. count 上限 4：一次请求画一张（多张就多请求），确认卡上先说清烧几次额度；
 // 4. size 只认 Gemini 的五个宽高比，缺省 1:1；写了别的**如实报错**，不偷偷换默认值；
 // 5. 响应里的 base64 只在内存里解码后落盘，绝不进出话/回执/日志；
@@ -41,21 +41,17 @@ internal object GenerateImage {
     /** Gemini `imageConfig.aspectRatio` 认的比例（写别的会被 400 拒，不如先报清楚）。 */
     val SIZES: List<String> = listOf("1:1", "4:3", "3:4", "16:9", "9:16")
 
-    /** 自定义/私有工作区的产物子目录（默认工作区走 `资料库/整理`）。 */
-    const val SUBDIR = "产物"
-
     /** 参考图上限（base64 之后约 ×1.37，8MB 原图 ~11MB 请求体，已比常见网关上限保守）。 */
     const val MAX_REFERENCE_BYTES = 8L * 1024 * 1024
 
     /**
      * 产物目录。
      *
-     * 为什么两套：派工单写「`资料库/整理/<时间戳>-<slug>.png`（工作区模式落 `产物/`）」——
-     * 默认工作区就是手机里那个固定的「证道」，图片进资料库的「整理」栏，用户能在资料库里
-     * 直接看到；自定义/私有工作区没有资料库语义，就落工作区自己的 `产物/`。
+     * 157 目录收口后只剩一处：`<工作区>/产物/`（旧 `资料库/整理/` 由 `MemoryLayout.migrate`
+     * 搬进来）。原先「默认工作区落 资料库/整理、自定义工作区落 产物/」的两套口径已合并——
+     * 同一张图不该让用户在两个地方找。落点真源仍是 [LibraryPaths.doneDirUnder]。
      */
-    fun artifactDir(workspace: File, libraryMode: Boolean): File =
-        if (libraryMode) LibraryPaths.doneDirUnder(workspace) else File(workspace, SUBDIR)
+    fun artifactDir(workspace: File): File = LibraryPaths.doneDirUnder(workspace)
 
     /** 数量口径：不给 ⇒ 1；越界夹到 1..[MAX_COUNT]（Schema 已挡一层，这里是第二层）。 */
     fun normalizeCount(raw: Int?): Int = (raw ?: 1).coerceIn(1, MAX_COUNT)
