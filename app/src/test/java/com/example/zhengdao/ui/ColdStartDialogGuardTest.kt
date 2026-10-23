@@ -77,20 +77,20 @@ class ColdStartDialogGuardTest {
 
     @Test
     fun `门禁_B补19_一次冷启动最多只排一个系统权限框`() {
-        // 两个请求点都还在（存储 100 / 通知 101）——守卫不是"删掉一个请求"，而是"同一屏只排一个"
+        // 134 批：minSdk=36 ⇒ 存储读写请求（100）已是死分支并删除，只剩通知（101）一个请求点。
+        // 守卫的语义不变：同一屏只排一个，且请求前必须看本次冷启动标记。
         assertEquals(
-            "冷启动最多两个系统权限请求点（存储 100 / 通知 101）",
-            2, Regex("requestPermissions\\(").findAll(permBlock).count(),
+            "冷启动只剩通知一个系统权限请求点（101）",
+            1, Regex("requestPermissions\\(").findAll(permBlock).count(),
         )
-        // 通知（第二个）必须在本次冷启动标记为"没排过"时才排
+        // 通知必须在本次冷启动标记为"没排过"时才排
         val notifyAt = permBlock.indexOf("requestPermissions(this, arrayOf(perm), 101)")
         assertTrue("找不到通知权限请求点（101）", notifyAt > 0)
         val guard = permBlock.lastIndexOf("if (!permDialogThisLaunch)", notifyAt)
         assertTrue("通知权限请求前必须有一次 `if (!permDialogThisLaunch)` 守卫", guard > 0)
-        // 两个请求点都要把标记置位（否则第二个框仍会排出去）
         assertEquals(
-            "两个系统框请求点都要置位本次冷启动标记",
-            2, Regex("permDialogThisLaunch = true").findAll(permBlock).count(),
+            "请求点要置位本次冷启动标记",
+            1, Regex("permDialogThisLaunch = true").findAll(permBlock).count(),
         )
     }
 
@@ -105,11 +105,11 @@ class ColdStartDialogGuardTest {
             "自更新检查必须写成 `if (!permDialogThisLaunch) checkAppUpdateInBackground()`",
             permBlock.contains("if (!permDialogThisLaunch) checkAppUpdateInBackground()"),
         )
-        // 顺序：先排系统框（存储请求），最后才谈更新 —— 不许再回到"更新检查排在最前"
-        val storageAt = permBlock.indexOf("requestPermissions(this, needed.toTypedArray(), 100)")
+        // 顺序：先排系统框（通知请求），最后才谈更新 —— 不许再回到"更新检查排在最前"
+        val notifyAt = permBlock.indexOf("requestPermissions(this, arrayOf(perm), 101)")
         val updateAt = permBlock.indexOf("checkAppUpdateInBackground()")
-        assertTrue("找不到存储权限请求点（100）", storageAt > 0)
-        assertTrue("自更新检查必须在两个权限请求之后", updateAt > storageAt)
+        assertTrue("找不到通知权限请求点（101）", notifyAt > 0)
+        assertTrue("自更新检查必须在系统权限请求之后", updateAt > notifyAt)
     }
 
     @Test
@@ -129,26 +129,21 @@ class ColdStartDialogGuardTest {
 
     @Test
     fun `门禁_B补19_权限页互斥与两项一次性标记仍在`() {
-        // 2026-10-11 那刀的口径：首启引导页为真时，两个系统框一个都不排
+        // 2026-10-11 那刀的口径：首启引导页为真时，系统框一个都不排
         assertTrue(
             "首启判定必须仍在（PermissionSetup.shouldGuide）",
             code.contains("val permissionSetupPending = PermissionSetup.shouldGuide(this)"),
         )
-        // 2026-10-14 那刀的口径：每项权限一辈子最多自动问一次
-        assertTrue(
-            "存储权限仍要判一次性标记",
-            permBlock.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this), needed.isNotEmpty())"),
+        // 2026-10-14 那刀的口径：每项权限一辈子最多自动问一次。
+        // 134 批：存储读写请求在 minSdk=36 下已死，存储那段"两处标记"随分支一起删除；
+        // 通知那半仍在，断言照旧（并由 PermissionGuideTest 的纯逻辑用例兜住语义）。
+        assertFalse(
+            "存储读写自动请求（100）是死分支，134 批已删（minSdk=36）",
+            code.contains("requestPermissions(this, needed.toTypedArray(), 100)"),
         )
         assertTrue(
             "通知权限仍要判一次性标记",
             permBlock.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this), missing)"),
-        )
-        // 先写标记再请求（请求中途被杀也不会重问）
-        assertTrue(
-            "markStorageAsked 必须在存储请求之前",
-            permBlock.indexOf("PermissionSetup.markStorageAsked(this)") > 0 &&
-                permBlock.indexOf("PermissionSetup.markStorageAsked(this)") <
-                permBlock.indexOf("requestPermissions(this, needed.toTypedArray(), 100)"),
         )
         assertTrue(
             "markNotifyAsked 必须在通知请求之前",
@@ -160,10 +155,11 @@ class ColdStartDialogGuardTest {
 
     @Test
     fun `门禁_B补19_首启兜底框与签名提醒仍在`() {
-        // 冷启动另外两个"可能出现的框"（系统版本兜底 / 非官方签名提醒）不许被本刀顺手删掉
-        assertTrue(
-            "SDK<36 兜底框仍在（不可取消、确定即退出）",
-            code.contains("R.string.main_android_too_old_title") && code.contains(".setCancelable(false)"),
+        // 134 批：minSdk=36 已在安装层拦住 <36，`SDK_INT < 36` 兜底框是死分支 ⇒ 删除
+        // （对应两条文案 main_android_too_old_* 一并退役）。签名提醒不许被顺手删。
+        assertFalse(
+            "SDK<36 兜底框已随 minSdk=36 退役（134 批 ObsoleteSdkInt）",
+            code.contains("R.string.main_android_too_old_title"),
         )
         assertTrue("非官方签名提醒仍在", code.contains("warnIfUnofficialSignature()"))
         assertTrue("非官方签名提醒仍只在 UNOFFICIAL 时弹", code.contains("SigningCheck.Result.UNOFFICIAL"))
