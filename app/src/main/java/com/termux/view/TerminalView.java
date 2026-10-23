@@ -7,12 +7,10 @@
 package com.termux.view;
 
 import android.annotation.SuppressLint;
-import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
-import android.os.Build;
 import android.util.AttributeSet;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
@@ -25,7 +23,6 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
@@ -159,7 +156,7 @@ public final class TerminalView extends View {
         return true;
     }
 
-    /*
+    /**
      * 输入法连接（组合 / 提交 / 删除文本）本体已搬到 {@link TerminalImeBridge}，
      * 这里只保留同签名转发。
      */
@@ -304,7 +301,7 @@ public final class TerminalView extends View {
         return (int) ((y - lineSpacingAndAscent) / lineSpacing) + topRow;
     }
 
-    /*
+    /**
      * 本体已搬到 {@link TerminalGestureController}。
      * 仍在本类保留一个包内转发口，是因为 {@link TerminalImeBridge} 需要调用它。
      */
@@ -312,7 +309,7 @@ public final class TerminalView extends View {
         mGestureController.doScroll(event, rowsDown);
     }
 
-    /*
+    /**
      * {@link View#awakenScrollBars()} 是 protected，本体搬到 {@link TerminalGestureController}
      * 之后无法从外部调用，故留一个包内转发口（与按键那三个 super 转发口同理，是本刀另一处
      * 非搬运新增）。
@@ -321,7 +318,7 @@ public final class TerminalView extends View {
         return awakenScrollBars();
     }
 
-    /*
+    /**
      * 本体已搬到 {@link TerminalGestureController}，这里只保留同签名转发。
      */
     @Override
@@ -329,17 +326,16 @@ public final class TerminalView extends View {
         return mGestureController.onGenericMotionEvent(event);
     }
 
-    /*
+    /**
      * 本体已搬到 {@link TerminalGestureController}，这里只保留同签名转发。
      */
     @SuppressLint("ClickableViewAccessibility")
     @Override
-    @TargetApi(23)
     public boolean onTouchEvent(MotionEvent event) {
         return mGestureController.onTouchEvent(event);
     }
 
-    /*
+    /**
      * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
      */
     @Override
@@ -347,10 +343,9 @@ public final class TerminalView extends View {
         return mImeBridge.onKeyPreIme(keyCode, event);
     }
 
-    /*
-     * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
-     */
     /**
+     * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
+     *
      * Key presses in software keyboards will generally NOT trigger this listener, although some
      * may elect to do so in some situations. Do not rely on this to catch software key presses.
      * Gboard calls this when shouldEnforceCharBasedInput() is disabled (InputType.TYPE_NULL) instead
@@ -451,7 +446,7 @@ public final class TerminalView extends View {
         return mImeBridge.onKeyDown(keyCode, event);
     }
 
-    /*
+    /**
      * 输入法与硬件键本体已搬到 {@link TerminalImeBridge}，以下三个公开入口只做一行转发（公开 API 不变）。
      */
     public void inputCodePoint(int eventSource, int codePoint, boolean controlDownFromEvent, boolean leftAltDownFromEvent) {
@@ -467,10 +462,9 @@ public final class TerminalView extends View {
         return mImeBridge.handleKeyCodeAction(keyCode, keyMod);
     }
 
-    /*
-     * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
-     */
     /**
+     * 本体已搬到 {@link TerminalImeBridge}，这里只保留同签名转发。
+     *
      * Called when a key is released in the view.
      *
      * @param keyCode The keycode of the key which was released.
@@ -582,31 +576,26 @@ public final class TerminalView extends View {
     /**
      * Define functions required for AutoFill API
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public void autofill(AutofillValue value) {
         mA11yDelegate.autofill(value);
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getAutofillType() {
         return mA11yDelegate.getAutofillType();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public String[] getAutofillHints() {
         return mA11yDelegate.getAutofillHints();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public AutofillValue getAutofillValue() {
         return mA11yDelegate.getAutofillValue();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getImportantForAutofill() {
         return mA11yDelegate.getImportantForAutofill();
@@ -784,7 +773,6 @@ public final class TerminalView extends View {
      *
      * 证道 P1-c（2026-10-10）：本体已搬到 {@link TerminalSelectionController}，这里只留同签名转发。
      */
-    @RequiresApi(api = Build.VERSION_CODES.M)
     void hideFloatingToolbar() {
         mSelectionController.hideFloatingToolbar();
     }

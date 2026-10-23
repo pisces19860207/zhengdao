@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -176,8 +177,9 @@ internal fun BaopuPlanCard(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = stringResource(
-                            R.string.baopu_plan_summary,
+                        text = pluralStringResource(
+                            R.plurals.baopu_plan_summary,
+                            planDoneCount(plan.items),
                             planDoneCount(plan.items),
                             plan.items.size,
                         ),

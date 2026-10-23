@@ -54,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -107,7 +108,7 @@ private suspend fun copyArtifactToClipboard(context: Context, root: File, relPat
     return when {
         result == null -> context.getString(R.string.baopu_artifact_missing, relPath)
         !ok -> context.getString(R.string.baopu_artifact_copy_incomplete)
-        else -> context.getString(R.string.baopu_artifact_copied, result.chars, result.lines)
+        else -> context.resources.getQuantityString(R.plurals.baopu_artifact_copied, result.chars, result.chars, result.lines)
     }
 }
 
@@ -158,7 +159,7 @@ internal fun BaopuArtifactViewer(
                 val bytesLine = if (v == null) {
                     stringResource(R.string.baopu_artifact_loading)
                 } else {
-                    stringResource(R.string.baopu_artifact_bytes, v.fileBytes)
+                    pluralStringResource(R.plurals.baopu_artifact_bytes, if (v.fileBytes == 1L) 1 else 2, v.fileBytes)
                 }
                 Text(
                     text = bytesLine,
@@ -170,9 +171,9 @@ internal fun BaopuArtifactViewer(
                 if (v != null && v.truncated) {
                     Text(
                         text = if (v.totalLines >= 0) {
-                            stringResource(R.string.baopu_artifact_truncated, v.shownLines, v.totalLines)
+                            pluralStringResource(R.plurals.baopu_artifact_truncated, v.shownLines, v.shownLines, v.totalLines)
                         } else {
-                            stringResource(R.string.baopu_artifact_truncated_only, v.shownLines)
+                            pluralStringResource(R.plurals.baopu_artifact_truncated_only, v.shownLines, v.shownLines)
                         },
                         style = MaterialTheme.typography.labelSmall,
                         // P2-11：error 色 3.55:1 不达正文 AA 4.5:1，文字走语义色（门禁钉着）
@@ -372,7 +373,7 @@ internal fun BaopuArtifactTopBar(
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 text = if (e == null) ""
-                                else stringResource(R.string.baopu_artifact_bytes, e.fileBytes),
+                                else pluralStringResource(R.plurals.baopu_artifact_bytes, if (e.fileBytes == 1L) 1 else 2, e.fileBytes),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -396,7 +397,7 @@ internal fun BaopuArtifactTopBar(
                     // 超过 8 个：与消息列表那行同一句「还有 N 个」（B5 口径两处一致）
                     if (plan.more > 0) {
                         Text(
-                            text = stringResource(R.string.baopu_artifact_more, plan.more),
+                            text = pluralStringResource(R.plurals.baopu_artifact_more, plan.more, plan.more),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 12.dp, bottom = 2.dp),

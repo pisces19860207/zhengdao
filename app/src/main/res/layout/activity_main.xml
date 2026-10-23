@@ -55,7 +55,7 @@
                 android:layout_marginEnd="2dp"
                 android:background="@drawable/traffic_dot_red"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="关闭终端"
+                android:contentDescription="@string/term_close_terminal_cd"
                 android:clickable="true"
                 android:focusable="true" />
 
@@ -66,7 +66,7 @@
                 android:layout_marginEnd="2dp"
                 android:background="@drawable/traffic_dot_yellow"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="关闭分屏"
+                android:contentDescription="@string/term_close_split_cd"
                 android:clickable="true"
                 android:focusable="true" />
 
@@ -77,7 +77,7 @@
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/traffic_dot_green"
                 android:foreground="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="tmux 上下分屏"
+                android:contentDescription="@string/term_split_cd"
                 android:clickable="true"
                 android:focusable="true" />
 
@@ -101,8 +101,9 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center"
+                android:paddingStart="0dp"
                 android:paddingEnd="32dp"
-                android:text="证道"
+                android:text="@string/app_name"
                 android:textColor="#FF1F1E1B"
                 android:textSize="17sp"
                 android:textStyle="bold"
@@ -127,7 +128,7 @@
                 android:paddingEnd="4dp"
                 android:paddingTop="12dp"
                 android:paddingBottom="12dp"
-                android:text="复制"
+                android:text="@string/copy_text"
                 android:textColor="#FF2C5F54"
                 android:textSize="13sp"
                 android:clickable="true"
@@ -143,7 +144,7 @@
                 android:paddingEnd="4dp"
                 android:paddingTop="12dp"
                 android:paddingBottom="12dp"
-                android:text="粘贴"
+                android:text="@string/paste_text"
                 android:textColor="#FF2C5F54"
                 android:textSize="13sp"
                 android:clickable="true"
@@ -231,7 +232,8 @@
         <FrameLayout
             android:id="@+id/key_bar_container"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:background="#FFF5F5F7">
 
             <include layout="@layout/term_keys" />
         </FrameLayout>

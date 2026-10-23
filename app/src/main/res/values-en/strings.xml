@@ -66,7 +66,10 @@
     <string name="settings_status_perm_pending">Permission needed</string>
     <string name="settings_status_disabled">Off</string>
     <string name="settings_status_enabled">On</string>
-    <string name="settings_status_file_count">%1$d files</string>
+    <plurals name="settings_status_file_count">
+        <item quantity="one">%1$d files</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
     <string name="settings_status_guide">Guide</string>
     <string name="settings_value_help">Getting started · Logs</string>
 
@@ -75,9 +78,15 @@
     <string name="home_no_browser">No browser available</string>
     <string name="home_env_ready">Environment ready</string>
     <string name="home_env_missing">Environment not installed</string>
-    <string name="home_agent_count">%1$d agents</string>
+    <plurals name="home_agent_count">
+        <item quantity="one">%1$d agents</item>
+        <item quantity="other">%1$d agents</item>
+    </plurals>
     <!-- Batch 18 B: detection slimming — healthy items hidden, missing merged into one red row -->
-    <string name="home_health_missing">%1$d missing</string>
+    <plurals name="home_health_missing">
+        <item quantity="one">%1$d missing</item>
+        <item quantity="other">%1$d missing</item>
+    </plurals>
     <string name="home_agent_missing">%1$s not installed</string>
     <string name="home_abi_unknown">Unknown</string>
     <string name="home_debian_installed">Debian 13.7 installed</string>
@@ -157,17 +166,32 @@
     <string name="data_kb_disabled">Off</string>
     <string name="data_kb_not_mounted">Not mounted · no files yet</string>
     <string name="data_kb_busy">Organizing…</string>
-    <string name="data_kb_organized">Mounted · %1$d files (with summaries)</string>
-    <string name="data_kb_mounted">Mounted · %1$d files</string>
+    <plurals name="data_kb_organized">
+        <item quantity="one">Mounted · %1$d files (with summaries)</item>
+        <item quantity="other">Mounted · %1$d files (with summaries)</item>
+    </plurals>
+    <plurals name="data_kb_mounted">
+        <item quantity="one">Mounted · %1$d files</item>
+        <item quantity="other">Mounted · %1$d files</item>
+    </plurals>
     <string name="data_kb_reading">Reading…</string>
     <string name="data_state_label">Status</string>
     <string name="data_kb_hint">Drop your files into this folder and the AI in the terminal will find them automatically. Any format works.</string>
     <string name="data_kb_privacy">Your files stay on your phone. Zhengdao itself never sends them out (it is a different matter if the AI in the terminal goes online on its own).</string>
-    <string name="data_kb_other_found">Found another knowledge base with files: %1$s (%2$d files).\nThe knowledge base follows the workspace — after switching workspaces the old one stays where it is, but the app only reads the path above.</string>
-    <string name="data_kb_copy_btn">Copy it over (%1$d files)</string>
+    <plurals name="data_kb_other_found">
+        <item quantity="one">Found another knowledge base with files: %1$s (%2$d files).\nThe knowledge base follows the workspace — after switching workspaces the old one stays where it is, but the app only reads the path above.</item>
+        <item quantity="other">Found another knowledge base with files: %1$s (%2$d files).\nThe knowledge base follows the workspace — after switching workspaces the old one stays where it is, but the app only reads the path above.</item>
+    </plurals>
+    <plurals name="data_kb_copy_btn">
+        <item quantity="one">Copy it over (%1$d files)</item>
+        <item quantity="other">Copy it over (%1$d files)</item>
+    </plurals>
     <string name="data_kb_copy_title">Copy it over?</string>
     <string name="data_kb_copy_desc">Copies files from %1$s into the current knowledge base\'s %2$s/ folder. Originals are untouched; same-name files are not overwritten (the current copy wins).</string>
-    <string name="data_kb_copied">Copied %1$d files, index rebuilt</string>
+    <plurals name="data_kb_copied">
+        <item quantity="one">Copied %1$d files, index rebuilt</item>
+        <item quantity="other">Copied %1$d files, index rebuilt</item>
+    </plurals>
     <string name="data_kb_copy_none">No files to copy (they may all be in the current knowledge base already)</string>
     <string name="data_copy_action">Copy</string>
     <string name="data_kb_path_label">knowledge-base path</string>
@@ -214,10 +238,16 @@
     <string name="data_ws_invalid">That location isn\'t usable — pick a folder in internal storage</string>
     <string name="data_ws_set">Workspace set to %1$s — takes effect next session</string>
     <string name="data_ws_change_title">Switching workspace also switches the knowledge base</string>
-    <string name="data_ws_change_current">Current knowledge base: %1$s (%2$d files)</string>
+    <plurals name="data_ws_change_current">
+        <item quantity="one">Current knowledge base: %1$s (%2$d files)</item>
+        <item quantity="other">Current knowledge base: %1$s (%2$d files)</item>
+    </plurals>
     <string name="data_ws_change_desc">The knowledge base sits under the workspace, so switching workspaces switches to a different one. This one stays where it is, no longer read (and never deleted).</string>
     <string name="data_ws_change_ask">Copy these files into the new workspace\'s knowledge base? Originals stay put; same names are not overwritten.</string>
-    <string name="data_ws_change_copied">Copied %1$d files to the new workspace, index rebuilt</string>
+    <plurals name="data_ws_change_copied">
+        <item quantity="one">Copied %1$d files to the new workspace, index rebuilt</item>
+        <item quantity="other">Copied %1$d files to the new workspace, index rebuilt</item>
+    </plurals>
     <string name="data_ws_change_none">The new workspace already has these files — nothing to copy</string>
     <string name="data_ws_change_copy_btn">Copy and switch</string>
     <string name="data_ws_change_move_btn">Switch only, keep files here</string>
@@ -303,14 +333,20 @@
     <string name="storage_opt_browser">Browser tools (agent-browser / chromium) are not removed — hermes needs them to open web pages, so they stay.</string>
     <string name="storage_opt_ffmpeg">ffmpeg isn\'t included either: it\'s a required package for hermes, and removing it makes hermes report \"install out of sync\" on every start (it doesn\'t accept the copy bundled with the system layer).</string>
     <string name="storage_opt_keeps">Not removed: python / node / uv / npm / ripgrep runtimes, the dependency environment, memory, the hermes installation itself, system files, or any of your data.</string>
-    <string name="storage_opt_deleted">Deleted %1$d items, freed %2$d MB</string>
+    <plurals name="storage_opt_deleted">
+        <item quantity="one">Deleted %1$d items, freed %2$d MB</item>
+        <item quantity="other">Deleted %1$d items, freed %2$d MB</item>
+    </plurals>
     <string name="storage_opt_none">No optional tools to clean</string>
     <string name="storage_script_btn">Clean scripts downloaded during install (re-downloaded next time)</string>
     <string name="storage_script_title">Clean installer script cache?</string>
     <string name="storage_script_desc1">This deletes the cached installer scripts in the shared agents/scripts folder, the checksums the app keeps, and the copy in the terminal.</string>
     <string name="storage_script_desc2">The scripts are only tens of KB — this isn\'t about freeing space, it\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
     <string name="storage_script_keeps">Not removed: installed agents and toolchains, logs, or the knowledge base.</string>
-    <string name="storage_script_cleared">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</string>
+    <plurals name="storage_script_cleared">
+        <item quantity="one">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</item>
+        <item quantity="other">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</item>
+    </plurals>
     <string name="storage_script_none">No script cache to clean</string>
     <string name="storage_cache_title">Cache cleanup</string>
     <string name="storage_cache_location">Location: %1$s (cache = package cache, logs = logs, agents = scripts &amp; ledger; rootfs and opencode are installers)</string>
@@ -337,13 +373,22 @@
     <string name="storage_gen_free">Frees about %1$d MB.</string>
     <string name="storage_gen_desc">Every reinstall of the dependency environment leaves an old copy (hundreds of MB), and the record only points at the newest one — this deletes the ones nothing refers to. The one in use and the newest one are kept.</string>
     <string name="storage_gen_keeps">Not removed: the dependency environment in use, memory, installed toolchains, system files. hermes reinstalls when you need to go back (requires network).</string>
-    <string name="storage_gen_deleted">Deleted %1$d copies, freed %2$d MB</string>
+    <plurals name="storage_gen_deleted">
+        <item quantity="one">Deleted %1$d copies, freed %2$d MB</item>
+        <item quantity="other">Deleted %1$d copies, freed %2$d MB</item>
+    </plurals>
     <string name="storage_gen_none">No old dependency files to clean</string>
     <string name="storage_installer_title">Installer cache</string>
     <string name="storage_installer_dir">Folder: %1$s</string>
-    <string name="storage_installer_count">%1$d installers cached (current environment: %2$s)</string>
+    <plurals name="storage_installer_count">
+        <item quantity="one">%1$d installers cached (current environment: %2$s)</item>
+        <item quantity="other">%1$d installers cached (current environment: %2$s)</item>
+    </plurals>
     <string name="storage_installer_item">· %1$s (%2$d MB)</string>
-    <string name="storage_installer_cleaned">Cleaned %1$d old version files</string>
+    <plurals name="storage_installer_cleaned">
+        <item quantity="one">Cleaned %1$d old version files</item>
+        <item quantity="other">Cleaned %1$d old version files</item>
+    </plurals>
     <string name="storage_installer_clean_btn">Clean old version cache (keeps the current version)</string>
     <string name="storage_installer_clean_title">Permanently delete old installer packages?</string>
     <string name="storage_installer_clean_desc">This permanently deletes every cached installer package except the current one (partially downloaded fragments included); only the current version is kept.</string>
@@ -375,13 +420,22 @@
     <string name="help_log_export_hint">Logs live in the app\'s private storage; tap "Export log" when you need to show a developer — pick where to save it (private paths and passwords are stripped automatically).</string>
     <string name="help_log_export_ok">Exported</string>
     <string name="help_log_export_fail">Export failed</string>
-    <string name="help_log_archive_count">%1$d archived logs.</string>
+    <plurals name="help_log_archive_count">
+        <item quantity="one">%1$d archived logs.</item>
+        <item quantity="other">%1$d archived logs.</item>
+    </plurals>
     <string name="help_log_prev_error">The last run hit an error; the log was kept (copy it and send it to us).</string>
     <string name="help_log_view_prev">View last log</string>
     <string name="help_log_prune_btn">Keep only the latest 3</string>
-    <string name="help_log_pruned">Deleted %1$d old logs, kept the latest 3</string>
+    <plurals name="help_log_pruned">
+        <item quantity="one">Deleted %1$d old logs, kept the latest 3</item>
+        <item quantity="other">Deleted %1$d old logs, kept the latest 3</item>
+    </plurals>
     <string name="help_log_prune_title">Permanently delete old log archives?</string>
-    <string name="help_log_prune_desc">This permanently deletes %1$d old log archives and keeps only the latest 3.</string>
+    <plurals name="help_log_prune_desc">
+        <item quantity="one">This permanently deletes %1$d old log archives and keeps only the latest 3.</item>
+        <item quantity="other">This permanently deletes %1$d old log archives and keeps only the latest 3.</item>
+    </plurals>
     <string name="help_log_prune_warn">Once deleted they are gone for good — there is no recycle bin and no undo.</string>
 
     <!-- ── Shared components (top bar / log dialog / folder picker / KB help) ── -->
@@ -408,7 +462,10 @@
     <string name="keepalive_battery_toast">Set it manually in Settings → Battery optimization</string>
     <string name="keepalive_details_toast">Find Zhengdao under Settings → Apps</string>
     <string name="keepalive_log_row">Keep-alive records</string>
-    <string name="keepalive_log_recent">%1$d recent exits</string>
+    <plurals name="keepalive_log_recent">
+        <item quantity="one">%1$d recent exits</item>
+        <item quantity="other">%1$d recent exits</item>
+    </plurals>
 
     <!-- ── About page ── -->
     <string name="about_version">Version</string>
@@ -438,8 +495,6 @@
     <string name="appearance_dark">Dark</string>
 
     <!-- ── Startup / update dialogs (MainActivity) ── -->
-    <string name="main_android_too_old_title">Android version too old</string>
-    <string name="main_android_too_old_msg">Zhengdao requires Android 16 or newer (current: Android %1$s).</string>
     <string name="main_update_title">Update available</string>
     <string name="main_update_msg">Version %1$s is available (you have %2$s). Get it from GitHub Releases.</string>
     <string name="main_update_go">Download</string>
@@ -485,10 +540,16 @@
     <string name="keepalive_log_exported">Exported to %1$s</string>
     <string name="keepalive_log_export_failed">Export failed: shared storage unavailable (enable \"All files access\" in permissions first)</string>
     <string name="keepalive_log_export">Export to Download/证道/logs</string>
-    <string name="keepalive_log_cleared">Cleared %1$d records</string>
+    <plurals name="keepalive_log_cleared">
+        <item quantity="one">Cleared %1$d records</item>
+        <item quantity="other">Cleared %1$d records</item>
+    </plurals>
     <string name="keepalive_log_clear">Clear records</string>
     <string name="keepalive_log_clear_title">Permanently clear keepalive records?</string>
-    <string name="keepalive_log_clear_desc">This permanently clears every keepalive record: recent exits, recent heartbeats, and %1$d logcat snapshots.</string>
+    <plurals name="keepalive_log_clear_desc">
+        <item quantity="one">This permanently clears every keepalive record: recent exits, recent heartbeats, and %1$d logcat snapshots.</item>
+        <item quantity="other">This permanently clears every keepalive record: recent exits, recent heartbeats, and %1$d logcat snapshots.</item>
+    </plurals>
     <string name="keepalive_log_clear_warn">Once cleared the records are gone for good — they cannot be recovered or undone.</string>
 
     
@@ -624,26 +685,69 @@
     <string name="hermes_record_lost">The dependency environment is lost and must be rebuilt in the terminal (tap \"Repair\" — it runs in the terminal, visible)</string>
     <string name="hermes_no_record">No dependency environment recorded yet (installation may not have finished) — rebuild in the terminal</string>
     <string name="hermes_lock_missing">Source lock uv.lock is missing (a warning will appear on every launch) — one tap to restore it in the terminal</string>
-    <string name="hermes_ok_stale">Dependency record is valid (plus %1$d leftover marker files from interrupted updates — one tap to clean)</string>
+    <plurals name="hermes_ok_stale">
+        <item quantity="one">Dependency record is valid (plus %1$d leftover marker files from interrupted updates — one tap to clean)</item>
+        <item quantity="other">Dependency record is valid (plus %1$d leftover marker files from interrupted updates — one tap to clean)</item>
+    </plurals>
     <string name="hermes_ok">Dependency environment record is valid</string>
 
     <!-- ── Resource usage health (ResMonitor) ── -->
     <string name="resmon_idle">Neither Baopu nor the terminal is running — nothing to sample</string>
-    <string name="resmon_rss_over">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Baopu</string>
+    <plurals name="resmon_rss_over">
+        <item quantity="one">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Baopu</item>
+        <item quantity="other">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Baopu</item>
+    </plurals>
     <string name="resmon_cpu_over">⚠ CPU %1$s%% over the %2$d%% threshold — check plugins and session count</string>
-    <string name="resmon_normal">RSS %1$d MB · CPU %2$s%% · %3$d processes</string>
+    <plurals name="resmon_normal">
+        <item quantity="one">RSS %1$d MB · CPU %2$s%% · %3$d processes</item>
+        <item quantity="other">RSS %1$d MB · CPU %2$s%% · %3$d processes</item>
+    </plurals>
 
     <!-- ── Terminal page subset (TerminalActivity: install guide + long-press menu + copy/paste) ── -->
     <!-- Remaining toasts (split panes / dot help / install progress details) are exempt by user decision: the terminal screen itself prints in English -->
+    <!-- 134 lint HardcodedText cleanup: the three traffic-dot accessibility labels + 17 key caps,
+         moved verbatim out of res/layout*/ (key caps are technical identifiers, same literal in both locales). -->
+    <string name="term_close_terminal_cd">Close terminal</string>
+    <string name="term_close_split_cd">Close split pane</string>
+    <string name="term_split_cd">tmux split (top/bottom)</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_key_ctrl">CTRL</string>
+    <string name="term_key_shift">SHIFT</string>
+    <string name="term_key_interrupt">^C</string>
+    <string name="term_key_up">↑</string>
+    <string name="term_key_down">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_pgup">PGUP</string>
+    <string name="term_key_pgdn">PGDN</string>
+    <string name="term_key_home">HOME</string>
+    <string name="term_key_end">END</string>
+    <string name="term_key_pipe">|</string>
+    <string name="term_key_minus">\u002D</string>
+    <string name="term_key_slash">/</string>
+    <string name="term_key_del">DEL</string>
     <string name="term_no_network">No network: the proxy app was probably killed in the background. Restart it, or let Zhengdao go direct over the phone network (no proxy) — that works too</string>
     <string name="term_nothing_to_copy">Nothing to copy</string>
-    <string name="term_copied_screen">Copied the screen content (%1$d characters)</string>
+    <plurals name="term_copied_screen">
+        <item quantity="one">Copied the screen content (%1$d characters)</item>
+        <item quantity="other">Copied the screen content (%1$d characters)</item>
+    </plurals>
     <string name="term_clipboard_empty">Clipboard is empty</string>
     <string name="term_session_not_ready">Session isn\'t ready yet — can\'t paste</string>
-    <string name="term_pasting">Pasting %1$d characters…</string>
-    <string name="term_pasted">Pasted %1$d characters</string>
+    <plurals name="term_pasting">
+        <item quantity="one">Pasting %1$d characters…</item>
+        <item quantity="other">Pasting %1$d characters…</item>
+    </plurals>
+    <plurals name="term_pasted">
+        <item quantity="one">Pasted %1$d characters</item>
+        <item quantity="other">Pasted %1$d characters</item>
+    </plurals>
     <string name="term_paste_failed">Paste didn\'t finish: %1$s</string>
-    <string name="term_copied_chars">Copied %1$d characters</string>
+    <plurals name="term_copied_chars">
+        <item quantity="one">Copied %1$d characters</item>
+        <item quantity="other">Copied %1$d characters</item>
+    </plurals>
     <string name="term_menu_title">Terminal actions</string>
     <string name="term_menu_web_search">Search selected text in Xuanlan</string>
     <string name="term_menu_clear">Clear screen</string>
@@ -764,7 +868,10 @@
     <string name="baopu_compressed_marker">Compressed here: older messages were summarized; the originals are still in the log — tap to expand.</string>
     <!-- UI batch 2 (2026-10-19 §2): folding must be visible — show how many items are hidden.
          Expand/collapse arrows reuse the existing common_expand_arrow / common_collapse_arrow; this batch adds only this one key. -->
-    <string name="baopu_more_items">%1$d more</string>
+    <plurals name="baopu_more_items">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
     <!-- Baopu step-card collapsing (batch 16, item 1): a finished round collapses into one line -->
     <!-- The persistent "Hide details" chip was removed in batch 106 (user request):
          the round-tail inline activity panel now carries the "entry never scrolls away" guarantee. -->
@@ -785,18 +892,33 @@
     <string name="baopu_image_path_copied">Image path copied</string>
     <string name="baopu_attach_failed">Could not save the attachment (no storage permission or unreadable file)</string>
     <string name="baopu_attach_camera_denied">No camera permission, cannot take a photo</string>
-    <string name="baopu_attach_too_many">At most %1$d attachments</string>
-    <string name="baopu_attach_hint_files">(The user attached %1$d file(s); they are saved in the workspace: %2$s. Use read_file if you need their content.)</string>
-    <string name="baopu_attach_hint_images">(The user attached %1$d image(s); they are saved in the workspace: %2$s. If you can see images, answer from them; if not, say so plainly — never pretend you saw them. Ask the user to describe the key content in words if needed.)</string>
+    <plurals name="baopu_attach_too_many">
+        <item quantity="one">At most %1$d attachments</item>
+        <item quantity="other">At most %1$d attachments</item>
+    </plurals>
+    <plurals name="baopu_attach_hint_files">
+        <item quantity="one">(The user attached %1$d file(s); they are saved in the workspace: %2$s. Use read_file if you need their content.)</item>
+        <item quantity="other">(The user attached %1$d file(s); they are saved in the workspace: %2$s. Use read_file if you need their content.)</item>
+    </plurals>
+    <plurals name="baopu_attach_hint_images">
+        <item quantity="one">(The user attached %1$d image(s); they are saved in the workspace: %2$s. If you can see images, answer from them; if not, say so plainly — never pretend you saw them. Ask the user to describe the key content in words if needed.)</item>
+        <item quantity="other">(The user attached %1$d image(s); they are saved in the workspace: %2$s. If you can see images, answer from them; if not, say so plainly — never pretend you saw them. Ask the user to describe the key content in words if needed.)</item>
+    </plurals>
     <string name="baopu_image_missing_short">Image missing</string>
     <string name="baopu_attach_thumb_desc">Attachment image: %1$s</string>
     <string name="baopu_attach_path_copied">Attachment path copied</string>
-    <string name="baopu_plan_summary">Plan %1$d/%2$d done</string>
+    <plurals name="baopu_plan_summary">
+        <item quantity="one">Plan %1$d/%2$d done</item>
+        <item quantity="other">Plan %1$d/%2$d done</item>
+    </plurals>
     <!-- Plan area (batch 106, v1.5 §3.11): floating capsule + overlay panel; plans leave the message body -->
     <string name="baopu_plan_panel_title">Plan</string>
     <string name="baopu_plan_capsule_active">%1$d in progress</string>
     <string name="baopu_plan_capsule_desc">Open work plan</string>
-    <string name="baopu_plan_more">%1$d more</string>
+    <plurals name="baopu_plan_more">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
     <string name="baopu_plan_group_current">This round</string>
     <string name="baopu_plan_group_prev">Previous round</string>
     <string name="baopu_plan_group_nth">Round %1$d</string>
@@ -807,7 +929,10 @@
     <string name="baopu_plan_time_yesterday">yesterday %1$s</string>
     <!-- Activity panel (batch 106, v1.5 §3.12): inline at the round tail, replaces the "Hide details" chip -->
     <string name="baopu_activity_running">● Working: %1$s · step %2$d</string>
-    <string name="baopu_activity_more">%1$d more</string>
+    <plurals name="baopu_activity_more">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
     <string name="baopu_activity_kind_tool">Tool</string>
     <string name="baopu_activity_kind_compression">Compact</string>
     <string name="baopu_activity_kind_await">Waiting</string>
@@ -843,13 +968,19 @@
     <string name="baopu_backup_cancel">Later</string>
     <string name="baopu_backup_never">Never exported yet</string>
     <string name="baopu_backup_last">Last export: %1$s</string>
-    <string name="baopu_backup_unexported">%1$d items not exported yet</string>
+    <plurals name="baopu_backup_unexported">
+        <item quantity="one">%1$d items not exported yet</item>
+        <item quantity="other">%1$d items not exported yet</item>
+    </plurals>
     <!-- ── Baopu chapter extraction (task 2 addendum) ── -->
     <string name="baopu_extract_title">Chapter extraction</string>
     <string name="baopu_extract_desc">Pick a book, review the split (chapter count and the first few titles), then choose: digest every chapter, index only, or read a few chapters closely.</string>
     <string name="baopu_extract_scope">Lists only books imported through “move into library” (private originals). Files you drop into the “整理” folder by hand do not appear here — ask me to read those in the chat instead.</string>
     <string name="baopu_extract_empty">No extractable books (txt / md / markdown) yet. Import some into the library first; files already sitting in the “整理” folder can just be read in the chat.</string>
-    <string name="baopu_extract_preview">%1$d chapters. First few: %2$s</string>
+    <plurals name="baopu_extract_preview">
+        <item quantity="one">%1$d chapters. First few: %2$s</item>
+        <item quantity="other">%1$d chapters. First few: %2$s</item>
+    </plurals>
     <string name="baopu_extract_mode_digest">Digest each chapter</string>
     <string name="baopu_extract_free_prompt">Or type: digest / index / chapter numbers (e.g. 3,5,8)</string>
     <string name="baopu_extract_mode_index">Index only</string>
@@ -858,9 +989,18 @@
     <string name="baopu_extract_deep_go">Start reading</string>
     <string name="baopu_extract_busy">Working…</string>
     <string name="baopu_extract_none">Nothing to write this round</string>
-    <string name="baopu_extract_result_written">Wrote %1$d chapter index entries</string>
-    <string name="baopu_extract_result_remaining">%1$d chapters left (limit is %2$d per run — run again to continue)</string>
-    <string name="baopu_extract_result_skipped">%1$d chapters not selected this time</string>
+    <plurals name="baopu_extract_result_written">
+        <item quantity="one">Wrote %1$d chapter index entries</item>
+        <item quantity="other">Wrote %1$d chapter index entries</item>
+    </plurals>
+    <plurals name="baopu_extract_result_remaining">
+        <item quantity="one">%1$d chapters left (limit is %2$d per run — run again to continue)</item>
+        <item quantity="other">%1$d chapters left (limit is %2$d per run — run again to continue)</item>
+    </plurals>
+    <plurals name="baopu_extract_result_skipped">
+        <item quantity="one">%1$d chapters not selected this time</item>
+        <item quantity="other">%1$d chapters not selected this time</item>
+    </plurals>
     <string name="baopu_extract_again">Extract another</string>
     <string name="baopu_extract_done">Done</string>
     <string name="baopu_extract_close">Close</string>
@@ -884,7 +1024,10 @@
     <string name="baopu_confirm_title">About to change a file: %1$s</string>
     <string name="baopu_confirm_title_action">Run: %1$s</string>
     <string name="baopu_confirm_hint_action">Approving really runs this action; rejecting skips it and the conversation continues.</string>
-    <string name="baopu_compressed_bar">Compressed %1$d earlier messages · summary %2$d chars</string>
+    <plurals name="baopu_compressed_bar">
+        <item quantity="one">Compressed %1$d earlier messages · summary %2$d chars</item>
+        <item quantity="other">Compressed %1$d earlier messages · summary %2$d chars</item>
+    </plurals>
     <string name="baopu_confirm_hint">Approving really changes the file (a backup is made first); rejecting skips this action and the conversation continues.</string>
     <string name="baopu_confirm_approve">Approve</string>
     <string name="baopu_confirm_reject">Reject</string>
@@ -911,18 +1054,18 @@
     <string name="baopu_tool_book_outline_desc">See a book’s chapter list first (title, line range, length, first line), then read just the chapters you need; the start line is the read_file offset as-is.</string>
     <string name="baopu_tool_convert_encoding">Convert encoding</string>
     <string name="baopu_tool_convert_encoding_desc">Convert an old GBK / UTF-16 txt into UTF-8 in place; the original file is backed up to 备份/ first. A file that is already UTF-8 is left untouched.</string>
-    <!-- ── Static shortcut (task 2, part D-1; label ≤10 chars) ── -->
-    <!-- Batch 129 lint cleanup: these two are reported as unused because res/xml/shortcuts.xml
-         is never wired via the android.app.shortcuts meta-data in AndroidManifest (so the
-         shortcut never appears). Kept on purpose — wiring it up is the user's call. -->
-    <string name="baopu_shortcut_backup">Back up</string>
-    <string name="baopu_shortcut_backup_long">Back up Baopu library originals</string>
+    <!-- 134: the static shortcut was never wired (no android.app.shortcuts meta-data in the
+         manifest), so res/xml/shortcuts.xml and its two label strings were unused. Retired in
+         batch 134 (UnusedResources); the API constants / MainActivity routing stay. -->
     <!-- ── Batch 147: diary (episodic memory) card + real-delete confirm (§5 five boundaries) ── -->
     <string name="baopu_diary_card">Diary (episodic memory)</string>
     <string name="baopu_diary_desc">Baopu\'s automatic daily log: what happened and where the artifacts are. References only, never copies.</string>
     <string name="baopu_diary_empty">No diary yet — do some work and it will appear.</string>
     <string name="baopu_diary_delete">Delete</string>
-    <string name="baopu_diary_more">%1$d more</string>
+    <plurals name="baopu_diary_more">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
     <string name="baopu_diary_collapse">Collapse</string>
     <string name="baopu_diary_confirm_title">Delete this diary entry?</string>
     <string name="baopu_diary_confirm_cancel">Cancel</string>
@@ -931,13 +1074,19 @@
     <string name="baopu_notice_compressed_label">Compressed</string>
 <string name="baopu_introspection_label">Learned this time</string>
     <string name="baopu_backup_stale_never">Originals have never been exported — back them up?</string>
-    <string name="baopu_backup_stale_days">Originals not exported for %1$d days — back them up?</string>
+    <plurals name="baopu_backup_stale_days">
+        <item quantity="one">Originals not exported for %1$d days — back them up?</item>
+        <item quantity="other">Originals not exported for %1$d days — back them up?</item>
+    </plurals>
     <string name="baopu_backup_go">Export</string>
     <string name="baopu_export_running">Exporting…</string>
       <!-- Batch 63: the first-screen notice slot. Only the highest level shows at a time
            (error > action > hint); the rest fold into this line, tap to see them all —
            every one of them stays operable in there. -->
-    <string name="baopu_notice_more">%1$d more</string>
+    <plurals name="baopu_notice_more">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
     <string name="baopu_notice_sheet_title">All notices</string>
       <!-- 刀 3：抱朴抽屉。口径——低频入口收一层，首屏只留 ☰／状态／＋。 -->
     <string name="baopu_drawer_open">Open sidebar</string>
@@ -1024,9 +1173,15 @@
     <string name="skill_reason_user">You asked for this</string>
     <string name="skill_reason_refine">Distilled at session close</string>
     <string name="skill_reason_manual">Manual removal</string>
-    <string name="skill_cap_reached">Skill index holds %1$d entries (cap %2$d): remove unused ones first under Baopu settings → Skill index, then retry.</string>
+    <plurals name="skill_cap_reached">
+        <item quantity="one">Skill index holds %1$d entries (cap %2$d): remove unused ones first under Baopu settings → Skill index, then retry.</item>
+        <item quantity="other">Skill index holds %1$d entries (cap %2$d): remove unused ones first under Baopu settings → Skill index, then retry.</item>
+    </plurals>
     <string name="skill_apply_failed">Failed to write the persona (proposal state or layer not allowed)</string>
-    <string name="skill_refine_dropped">%1$d skill candidates were dropped this session (deduped or over limit).</string>
+    <plurals name="skill_refine_dropped">
+        <item quantity="one">%1$d skill candidates were dropped this session (deduped or over limit).</item>
+        <item quantity="other">%1$d skill candidates were dropped this session (deduped or over limit).</item>
+    </plurals>
     <!-- ── Skill trial UI (batch 32): list drafts, count a use, promote, template prefill ──
          Counting and the promote decision live in SkillStore; these strings only read its numbers out. -->
     <string name="skill_draft_group">Drafts (in trial)</string>
@@ -1052,7 +1207,10 @@
     <string name="skill_detail_file">File: %1$s</string>
     <string name="skill_missing_file">File is missing: %1$s</string>
     <string name="skill_copy_all">Copy all</string>
-    <string name="skill_copied_chars">Copied %1$d characters</string>
+    <plurals name="skill_copied_chars">
+        <item quantity="one">Copied %1$d characters</item>
+        <item quantity="other">Copied %1$d characters</item>
+    </plurals>
     <string name="skill_close">Close</string>
     <string name="skill_detail_edit">Edit</string>
     <string name="skill_restore_backup_at">Restore previous (backup %1$s)</string>
@@ -1082,12 +1240,21 @@
     <string name="trash_empty">Empty trash</string>
     <string name="trash_close">Close</string>
     <string name="trash_confirm_one">Tap Erase once more and it is gone for good, unrecoverable: %1$s (%2$s)</string>
-    <string name="trash_confirm_empty">Tap Empty trash once more and all is gone: %1$d files, %2$s total, unrecoverable</string>
+    <plurals name="trash_confirm_empty">
+        <item quantity="one">Tap Empty trash once more and all is gone: %1$d files, %2$s total, unrecoverable</item>
+        <item quantity="other">Tap Empty trash once more and all is gone: %1$d files, %2$s total, unrecoverable</item>
+    </plurals>
     <string name="trash_restored">Restored to workspace root: %1$s</string>
     <string name="trash_occupied">Target already taken, nothing moved: %1$s</string>
     <string name="trash_deleted_one">Erased for good: %1$s</string>
-    <string name="trash_emptied">Trash emptied: %1$d files, %2$s total</string>
-    <string name="trash_emptied_partial">Trash emptied: %1$d files, %2$s total; %3$d could not be erased</string>
+    <plurals name="trash_emptied">
+        <item quantity="one">Trash emptied: %1$d files, %2$s total</item>
+        <item quantity="other">Trash emptied: %1$d files, %2$s total</item>
+    </plurals>
+    <plurals name="trash_emptied_partial">
+        <item quantity="one">Trash emptied: %1$d files, %2$s total; %3$d could not be erased</item>
+        <item quantity="other">Trash emptied: %1$d files, %2$s total; %3$d could not be erased</item>
+    </plurals>
     <string name="trash_rejected">Skipped: %1$s (%2$s)</string>
     <string name="trash_io_failed">Disk operation failed: %1$s (%2$s)</string>
     <!-- 36 B: skill category sidecar (_分类.json, SKILL.md untouched) -->
@@ -1105,19 +1272,25 @@
     <string name="skill_cat_corrupt">That _分类.json is unreadable, treated as no categories</string>
     <string name="skill_cat_close">Close</string>
     <!-- ── Session library (batch 20): reopen or delete old chats + workspace surfaced ── -->
-    <!-- Batch 129 lint cleanup: this one is pinned by BaopuSessionTreeTest A2, kept on purpose. -->
-    <string name="baopu_drawer_history_desc">All sessions, as a flat list</string>
+    <!-- 134: baopu_drawer_history_desc retired with the flat history entry (zero UI references);
+         the batch-129 "pinned by tests" note is gone along with the test assertion. -->
     <string name="baopu_session_library_title">History</string>
     <string name="baopu_session_empty">No conversations yet.</string>
     <string name="baopu_session_unnamed">Unnamed session</string>
-    <string name="baopu_session_rounds">%1$d rounds</string>
+    <plurals name="baopu_session_rounds">
+        <item quantity="one">%1$d rounds</item>
+        <item quantity="other">%1$d rounds</item>
+    </plurals>
     <string name="baopu_session_sealed">Sealed</string>
     <string name="baopu_session_continuable">Resumable</string>
     <string name="baopu_session_ws_unknown">not recorded</string>
     <string name="baopu_session_date_fmt">MMM d</string>
     <string name="baopu_session_delete">Delete</string>
     <string name="baopu_session_delete_title">Delete this session permanently</string>
-    <string name="baopu_session_delete_desc">"%1$s" · %2$d rounds. This cannot be undone.</string>
+    <plurals name="baopu_session_delete_desc">
+        <item quantity="one">"%1$s" · %2$d rounds. This cannot be undone.</item>
+        <item quantity="other">"%1$s" · %2$d rounds. This cannot be undone.</item>
+    </plurals>
     <string name="baopu_session_delete_confirm">Delete forever</string>
     <string name="baopu_session_delete_cancel">Not now</string>
     <string name="baopu_session_deleted_current">Deleted — back to an empty session</string>
@@ -1151,7 +1324,7 @@
     <string name="baopu_tool_ask_user">Choice card</string>
     <string name="baopu_tool_ask_user_desc">Pops a choice card above the input bar when unsure: 2–4 options, the recommended one first with a one-line reason; the run continues after you pick. Touches no files.</string>
     <string name="baopu_tool_run_subtasks">Split subtasks (multi-agent)</string>
-    <string name="baopu_tool_run_subtasks_desc">Splits a big task into 1-5 subtasks and runs them with up to 2 read-only sub-agents in parallel or in series, then collects the summary. Sub-agents can only read files, list directories and search content - they have no write tools and never see your conversation history. A failed subtask is retried once; if it still fails the reason is reported. Sub-results are never written to any file. Hidden by default: unlock the multi-agent group in capabilities first.</string>
+    <string name="baopu_tool_run_subtasks_desc">Splits a big task into 1–5 subtasks and runs them with up to 2 read-only sub-agents in parallel or in series, then collects the summary. Sub-agents can only read files, list directories and search content - they have no write tools and never see your conversation history. A failed subtask is retried once; if it still fails the reason is reported. Sub-results are never written to any file. Hidden by default: unlock the multi-agent group in capabilities first.</string>
     <string name="baopu_tool_card_inspect">Card check (read-only)</string>
     <string name="baopu_tool_card_inspect_desc">Read-only health check for a card or world book: identify the shape first (web-platform world book / Tavo book, character card, regex, preset / SillyTavern world book / CCv3 lorebook / SillyTavern card PNG; unknown formats report the top-level keys it saw), then check field by field (missing vs out-of-range, keys too broad, never triggers, broken separators, same-key collisions). Read-only: nothing is changed, moved or deleted.</string>
     <string name="baopu_tool_card_export">Export card PNG</string>
@@ -1177,11 +1350,17 @@
     <!-- Batch 141 section 8: the Baopu tools area is now one summary card. The three long notes
          and the six collapsed-summary strings retired with the long list; behaviour is unchanged
          (a switched-off tool still never reaches the model, and a hallucinated call is still refused). -->
-    <string name="baopu_tools_summary">Tools %1$d · %2$d groups on · %3$d pending</string>
+    <plurals name="baopu_tools_summary">
+        <item quantity="one">Tools %1$d · %2$d groups on · %3$d pending</item>
+        <item quantity="other">Tools %1$d · %2$d groups on · %3$d pending</item>
+    </plurals>
     <string name="baopu_tools_rows_empty">Nothing needs you</string>
     <string name="baopu_tools_row_pending">Needs your OK</string>
     <string name="baopu_tools_row_closed">Off</string>
-    <string name="baopu_tools_row_partial">%1$d off</string>
+    <plurals name="baopu_tools_row_partial">
+        <item quantity="one">%1$d off</item>
+        <item quantity="other">%1$d off</item>
+    </plurals>
     <string name="baopu_tool_capabilities">Tool roster (capabilities)</string>
     <string name="baopu_tool_capabilities_desc">Look and unlock: lists every tool group with a one-line summary and who is default-visible / unlocked / switched off by you, then unlocks groups for this session. It only changes "which tools the model can see this round" and touches no files, so no confirmation card. A group you switched off stays locked — and it will say so honestly.</string>
     <string name="baopu_tool_preview_local_file">Local preview (XuanLan)</string>
@@ -1200,7 +1379,7 @@
     <string name="learn_dismiss">Skip</string>
     <!-- Batch 100: post-adoption effect loop (suggestion only; rollback needs a human tap) -->
     <string name="post_adopt_title">After adoption: %1$s</string>
-    <string name="post_adopt_counts">Before: ok %1$d / fail %2$d / corrected %3$d · After: +ok %4$d / +fail %5$d / +corrected %6$d</string>
+    <string name="post_adopt_counts">Before: OK %1$d / fail %2$d / corrected %3$d · After: +OK %4$d / +fail %5$d / +corrected %6$d</string>
     <string name="post_adopt_verdict_rollback">It got worse in use — rollback suggested</string>
     <string name="post_adopt_verdict_retire">It got worse in use and there is no backup — stop using it</string>
     <string name="post_adopt_rollback">Roll back</string>
@@ -1233,7 +1412,7 @@
     <string name="decision_suggest_adopt">Adopt</string>
     <string name="decision_suggest_adopt_blocked_tool_rule">Tool-rule suggestions have no write path yet (not doing it is the decision) — recorded only</string>
     <!-- Proposal card (96): scope -->
-    <string name="decision_scope_workspace">Scope: this workspace (C)</string>
+    <string name="decision_scope_workspace">Scope: this workspace [C]</string>
     <string name="decision_scope_global">Scope: all workspaces (B)</string>
     <string name="decision_persona_subtitle">Persona clauses can only be appended; a backup is taken before writing and you can roll back</string>
     <!-- Authorization card (97): high-risk band + subtitle -->
@@ -1290,11 +1469,16 @@
     <string name="decision_empty_history">No decisions yet</string>
     <string name="decision_type_suggestion">Suggestion</string>
     <string name="decision_type_effect">Effect</string>
-    <string name="decision_queue_more">%1$d more waiting</string>
+    <plurals name="decision_queue_more">
+        <item quantity="one">%1$d more waiting</item>
+        <item quantity="other">%1$d more waiting</item>
+    </plurals>
     <string name="decision_undo">Undo</string>
-    <string name="decision_undone">Undone</string>
     <string name="decision_shield_desc">Decision center</string>
-    <string name="decision_shield_badge_desc">%1$d items waiting</string>
+    <plurals name="decision_shield_badge_desc">
+        <item quantity="one">%1$d items waiting</item>
+        <item quantity="other">%1$d items waiting</item>
+    </plurals>
     <string name="decision_center_hint">Everything waiting lives here; session grants can be undone in History.</string>
     <string name="decision_history_grant_session">Allowed “%1$s” for this session</string>
     <string name="decision_history_grant_always">Allowed “%1$s” for good</string>
@@ -1331,13 +1515,28 @@
     <string name="baopu_usage_cache_hit">Used cache</string>
     <string name="baopu_usage_step">Step %1$d</string>
     <string name="baopu_artifact_row_label">Artifacts</string>
-    <string name="baopu_artifact_more">%1$d more</string>
-    <string name="baopu_artifact_loading">Loading...</string>
-    <string name="baopu_artifact_bytes">%1$d bytes</string>
-    <string name="baopu_artifact_truncated">Showing first %1$d lines (%2$d total)</string>
-    <string name="baopu_artifact_truncated_only">Showing first %1$d lines</string>
+    <plurals name="baopu_artifact_more">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
+    <string name="baopu_artifact_loading">Loading…</string>
+    <plurals name="baopu_artifact_bytes">
+        <item quantity="one">%1$d bytes</item>
+        <item quantity="other">%1$d bytes</item>
+    </plurals>
+    <plurals name="baopu_artifact_truncated">
+        <item quantity="one">Showing first %1$d lines (%2$d total)</item>
+        <item quantity="other">Showing first %1$d lines (%2$d total)</item>
+    </plurals>
+    <plurals name="baopu_artifact_truncated_only">
+        <item quantity="one">Showing first %1$d lines</item>
+        <item quantity="other">Showing first %1$d lines</item>
+    </plurals>
     <string name="baopu_artifact_copy">Copy full text</string>
-    <string name="baopu_artifact_copied">Copied %1$d chars / %2$d lines</string>
+    <plurals name="baopu_artifact_copied">
+        <item quantity="one">Copied %1$d chars / %2$d lines</item>
+        <item quantity="other">Copied %1$d chars / %2$d lines</item>
+    </plurals>
     <string name="baopu_artifact_copy_incomplete">Copy incomplete, please retry</string>
     <string name="baopu_artifact_missing">File is gone: %1$s</string>
     <!-- batch 38 §8: top-bar artifact strip (en) -->
@@ -1364,7 +1563,10 @@
     <string name="baopu_tool_card_build_desc">Build a card / world book / five-piece skeleton from a workspace spec JSON (writes files after confirmation; never overwrites)</string>
     <string name="trash_sessions_title">Deleted chats (%1$d)</string>
     <string name="trash_sessions_none">No deleted chats.</string>
-    <string name="trash_session_row">%1$s (%2$d messages)</string>
+    <plurals name="trash_session_row">
+        <item quantity="one">%1$s (%2$d messages)</item>
+        <item quantity="other">%1$s (%2$d messages)</item>
+    </plurals>
     <string name="trash_session_restore">Restore</string>
     <string name="trash_session_purge">Delete forever</string>
     <string name="trash_session_confirm">Tap "Delete forever" again: "&#37;1$s" and its messages will be gone for good.</string>
@@ -1380,7 +1582,10 @@
     <string name="baopu_note_skill_error_label">Skill did not land</string>
     <string name="baopu_note_library_error_label">Library did not land</string>
     <string name="baopu_scratch_left_label">Scratch files</string>
-    <string name="baopu_scratch_left_body">%1$d scratch file(s) moved to Trash (restorable)</string>
+    <plurals name="baopu_scratch_left_body">
+        <item quantity="one">%1$d scratch file(s) moved to Trash (restorable)</item>
+        <item quantity="other">%1$d scratch file(s) moved to Trash (restorable)</item>
+    </plurals>
     <string name="baopu_tool_novel_create">novel_create: New novel project</string>
     <string name="baopu_tool_novel_create_desc">Creates a project folder with metadata (outline, per-chapter words, characters, notes); confirmation required. Chapters are still written via write_file.</string>
     <string name="baopu_tool_novel_project">novel_project: Novel overview</string>

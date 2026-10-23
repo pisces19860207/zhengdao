@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -189,8 +190,9 @@ internal fun BaopuExtractSheet(onDismiss: () -> Unit) {
 
                     1 -> Column(Modifier.verticalScroll(rememberScrollState())) {
                         Text(
-                            text = stringResource(
-                                R.string.baopu_extract_preview,
+                            text = pluralStringResource(
+                                R.plurals.baopu_extract_preview,
+                                chapters.size,
                                 chapters.size,
                                 chapters.take(3).joinToString("；") { "${it.index + 1}. ${it.title}" },
                             ),
@@ -343,16 +345,17 @@ private fun parseSelection(input: String): Set<Int> =
 @Composable
 private fun statusLine(run: DigestRun): String {
     if (run.entries.isEmpty()) return stringResource(R.string.baopu_extract_none)
-    val parts = mutableListOf(stringResource(R.string.baopu_extract_result_written, run.entries.size))
+    val parts = mutableListOf(pluralStringResource(R.plurals.baopu_extract_result_written, run.entries.size, run.entries.size))
     if (run.remaining > 0) {
-        parts += stringResource(
-            R.string.baopu_extract_result_remaining,
+        parts += pluralStringResource(
+            R.plurals.baopu_extract_result_remaining,
+            run.remaining,
             run.remaining,
             ChapterDigest.MAX_CHAPTERS_PER_RUN,
         )
     }
     if (run.skipped > 0) {
-        parts += stringResource(R.string.baopu_extract_result_skipped, run.skipped)
+        parts += pluralStringResource(R.plurals.baopu_extract_result_skipped, run.skipped, run.skipped)
     }
     return parts.joinToString("；")
 }

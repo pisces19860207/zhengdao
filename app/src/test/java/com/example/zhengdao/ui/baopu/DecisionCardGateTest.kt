@@ -176,7 +176,8 @@ class DecisionCardGateTest {
             "decision_tab_proposals", "decision_tab_history",
             "decision_empty_authorize", "decision_empty_suggestions",
             "decision_empty_proposals", "decision_empty_history",
-            "decision_undo", "decision_undone", "decision_shield_desc",
+            // 134 批：decision_undone 无 UI 引用（只有 decision_undo 在用），随 UnusedResources 删除
+            "decision_undo", "decision_shield_desc",
             "decision_adopt_confirm_title", "decision_adopt_confirm_ok",
         )
         keys.forEach { key ->

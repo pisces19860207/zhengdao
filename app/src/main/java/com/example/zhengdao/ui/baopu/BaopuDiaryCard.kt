@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -99,10 +100,11 @@ internal fun BaopuDiaryCard(
         if (hidden > 0) {
             TextButton(onClick = { expanded = !expanded }) {
                 Text(
-                    stringResource(
-                        if (expanded) R.string.baopu_diary_collapse else R.string.baopu_diary_more,
-                        hidden,
-                    ),
+                    if (expanded) {
+                        stringResource(R.string.baopu_diary_collapse)
+                    } else {
+                        pluralStringResource(R.plurals.baopu_diary_more, hidden, hidden)
+                    },
                 )
             }
         }

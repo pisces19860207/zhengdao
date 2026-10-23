@@ -8,6 +8,7 @@ import android.content.Context
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.zhengdao.browser.WebViewEngine
@@ -81,7 +82,7 @@ object BrowserHolder {
 
     /** 请求主页切到玄览 Tab（TerminalActivity 点链接时调；MainActivity ON_RESUME 消费）。 */
     /** 151/160：切 Tab 请求的可观察版本号——主页在同一页里也能立刻消费（原来只在 ON_RESUME）。 */
-    var tabRequestVersion by mutableStateOf(0)
+    var tabRequestVersion by mutableIntStateOf(0)
         private set
 
     fun requestBrowserTab() {

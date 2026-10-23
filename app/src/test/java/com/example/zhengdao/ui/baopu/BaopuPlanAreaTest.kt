@@ -425,8 +425,9 @@ class BaopuPlanAreaTest {
         val en = res("values-en/strings.xml")
         assertTrue("中文文案模板", zh.contains("baopu_plan_capsule_active\">%1\$d 个进行中"))
         assertTrue("英文文案模板", en.contains("baopu_plan_capsule_active\">%1\$d in progress"))
-        assertTrue("超过 8 条的折叠行", zh.contains("baopu_plan_more\">还有 %1\$d 个"))
-        assertTrue("英文折叠行", en.contains("baopu_plan_more\">%1\$d more"))
+        // 134 批：折叠行改 <plurals>（lint PluralsCandidate），文案本身逐字不变。
+        assertTrue("超过 8 条的折叠行", zh.contains("name=\"baopu_plan_more\"") && zh.contains("还有 %1\$d 个"))
+        assertTrue("英文折叠行", en.contains("name=\"baopu_plan_more\"") && en.contains("%1\$d more"))
     }
 
     // ── 源码门禁：计划不进正文、挂载位置、可收回 ──────────────────────────

@@ -240,7 +240,7 @@ class BaopuCostWiringTest {
         assertTrue("有「复制不完整，请重试」这条失败文案", src.contains("R.string.baopu_artifact_copy_incomplete"))
         assertTrue("失败与成功两条走同一个 when（不许只写成功分支）", src.contains("!ok -> context.getString(R.string.baopu_artifact_copy_incomplete)"))
         assertTrue("文件不在也要明说", src.contains("R.string.baopu_artifact_missing"))
-        assertTrue("成功要报字符数与行数（自证读数给人看）", src.contains("R.string.baopu_artifact_copied"))
+        assertTrue("成功要报字符数与行数（自证读数给人看）", src.contains("R.plurals.baopu_artifact_copied") || src.contains("R.string.baopu_artifact_copied"))
         // 判别器：整段成功分支删掉后，失败分支仍在——所以这条门只可能因为「没有失败分支」而红
         assertTrue("判别器：失败文案确实在成功文案之前出现", src.indexOf("baopu_artifact_copy_incomplete") < src.indexOf("baopu_artifact_copied"))
     }
@@ -250,8 +250,8 @@ class BaopuCostWiringTest {
     fun 截断时必须写明只显示前N行() {
         val src = viewer()
         assertTrue("截断标志位驱动文案", src.contains("if (v != null && v.truncated)"))
-        assertTrue("有总数 ⇒「只显示前 N 行（共 M 行）」", src.contains("R.string.baopu_artifact_truncated,"))
-        assertTrue("没数完（totalLines = -1）⇒ 只说「只显示前 N 行」，不编总数", src.contains("R.string.baopu_artifact_truncated_only"))
+        assertTrue("有总数 ⇒「只显示前 N 行（共 M 行）」", src.contains("R.plurals.baopu_artifact_truncated,") || src.contains("R.string.baopu_artifact_truncated,"))
+        assertTrue("没数完（totalLines = -1）⇒ 只说「只显示前 N 行」，不编总数", src.contains("R.plurals.baopu_artifact_truncated_only") || src.contains("R.string.baopu_artifact_truncated_only"))
         assertTrue("判 -1 的分支在", src.contains("v.totalLines >= 0"))
         assertTrue("顶部显示盘上字节数而不是显示串长度", src.contains("v.fileBytes"))
     }

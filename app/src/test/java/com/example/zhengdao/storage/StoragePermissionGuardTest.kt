@@ -97,11 +97,17 @@ class StoragePermissionGuardTest {
     }
 
     @Test
-    fun `冷启动会补 READ WRITE 运行时授权`() {
+    fun `冷启动不再请求 READ WRITE 运行时授权`() {
+        // 134 批（lint ObsoleteSdkInt）：minSdk=36 ⇒ READ/WRITE_EXTERNAL_STORAGE 在 API 30+ 已 inert，
+        // 原 `SDK_INT < 30` 的冷启动补授权分支是死代码，已整段删除。
+        // 判据反过来钉：这两个权限常量不许再出现在 MainActivity 的请求代码里（写回去 = 回退死分支）。
+        // 只看**剥掉注释**的代码：说明「死分支已删」的注释里会写这两个权限名。
         val activity = src("src/main/java/com/example/zhengdao/MainActivity.kt").readText()
-        assertTrue("冷启动没再请求 READ_EXTERNAL_STORAGE", activity.contains("READ_EXTERNAL_STORAGE"))
-        assertTrue("冷启动没再请求 WRITE_EXTERNAL_STORAGE", activity.contains("WRITE_EXTERNAL_STORAGE"))
-        assertTrue("没有真正发起请求（requestPermissions）", activity.contains("requestPermissions"))
+            .replace(Regex("/\\*[\\s\\S]*?\\*/"), "")
+            .replace(Regex("//[^\n]*"), "")
+        assertFalse("冷启动又请求 READ_EXTERNAL_STORAGE 了（36 上是死分支）", activity.contains("READ_EXTERNAL_STORAGE"))
+        assertFalse("冷启动又请求 WRITE_EXTERNAL_STORAGE 了（36 上是死分支）", activity.contains("WRITE_EXTERNAL_STORAGE"))
+        assertTrue("通知权限的运行时请求仍必须真的发起（requestPermissions）", activity.contains("requestPermissions"))
     }
 
     // ── #3 验收时发现的第二顶「帽子」（2026-10-09） ──
@@ -123,8 +129,11 @@ class StoragePermissionGuardTest {
             activity.contains("POST_NOTIFICATIONS"),
         )
         assertTrue(
-            "请求 POST_NOTIFICATIONS 要按 SDK_INT >= 33 判版本，低版本上没有这个权限常量对应的运行时权限",
-            Regex("SDK_INT\\s*>=\\s*33").containsMatchIn(activity),
+            // 134 批：minSdk=36 ⇒ `SDK_INT >= 33` 恒真、判据已删（lint ObsoleteSdkInt），
+            // 通知请求改为无条件跑；一次性闸门仍是判据本身。
+            "通知请求必须仍过 shouldAutoRequest 一次性闸门（每项一辈子只自动问一次）",
+            activity.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this)") &&
+                activity.contains("PermissionSetup.markNotifyAsked(this)"),
         )
     }
 }

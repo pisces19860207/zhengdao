@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.util.pressClickable
 import com.example.zhengdao.util.HumanizeError
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -144,19 +145,14 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
             ExpandableHint(stringResource(R.string.keepalive_note))
             Spacer(Modifier.height(6.dp))
             TextButton(onClick = {
-                // 电池优化白名单（用户第四批）：直接拉起系统"忽略电池优化"请求对话框；
-                // 厂商定制系统不支持该入口时退回通用设置列表，仍不支持则静默。
+                // 电池优化白名单（用户第四批）：拉起系统「电池优化」列表页。
+                // 134 批 lint(BatteryLife)：不再用 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                // （直呼「忽略电池优化」系统框；Play 政策口径下属受限用法）。改成打开系统列表页，
+                // 用户在列表里把证道设为「不优化」——多一次点按，授权口径不变。
                 try {
-                    ctx.startActivity(
-                        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                            .apply { data = "package:${ctx.packageName}".toUri() }
-                    )
+                    ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                 } catch (_: Throwable) {
-                    try {
-                        ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                    } catch (_: Throwable) {
-                        Toast.makeText(ctx, res.getString(R.string.keepalive_battery_toast), Toast.LENGTH_LONG).show()
-                    }
+                    Toast.makeText(ctx, res.getString(R.string.keepalive_battery_toast), Toast.LENGTH_LONG).show()
                 }
             }) { Text(stringResource(R.string.keepalive_battery_btn)) }
             TextButton(onClick = {
@@ -201,7 +197,7 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
             SettingRow(
                 label = stringResource(R.string.keepalive_log_row),
                 value = if (kaExitCount > 0) {
-                    stringResource(R.string.keepalive_log_recent, kaExitCount)
+                    pluralStringResource(R.plurals.keepalive_log_recent, kaExitCount, kaExitCount)
                 } else "",
                 onClick = { ctx.startActivity(Intent(ctx, KeepaliveLogActivity::class.java)) },
             )

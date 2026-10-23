@@ -391,7 +391,9 @@ class ContrastGuardTest {
     @Test
     fun `门禁_B补25_终端粘滞键的活性格在键栏底上达AA`() {
         val active = xmlColor("app/src/main/res/values/colors.xml", "term_key_active")
-        val bar = layoutAttr("app/src/main/res/layout/term_keys.xml", "key_bar", "background")
+        // 134 批（Overdraw）：键栏底色从 term_keys.xml 根布局移到 activity_main 的
+        // key_bar_container（少画一层），判据跟着取新的承载处。
+        val bar = layoutAttr("app/src/main/res/layout/activity_main.xml", "key_bar_container", "background")
         // 真缺陷本体：CTRL/SHIFT 按下后变这个绿色，字就贴在键栏底上。
         assertAA("B-补-25 终端键活性格（键栏底）", active, bar)
         // 顺手钉住白底：真机上键栏可能被主题换成白卡片。

@@ -65,19 +65,19 @@ class PermissionGuideTest {
     }
 
     @Test
-    fun `MainActivity_两处自动请求都过 shouldAutoRequest 闸门`() {
+    fun `MainActivity_自动请求都过 shouldAutoRequest 闸门`() {
         val s = src("src/main/java/com/example/zhengdao/MainActivity.kt")
-        assertTrue(
-            "存储权限的自动请求必须过 shouldAutoRequest 闸门（否则拒绝过就每次冷启动再弹）",
-            s.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this)")
+        // 134 批：minSdk=36 ⇒ 存储读写（READ/WRITE_EXTERNAL_STORAGE）在 API 30+ 已 inert，
+        // 那段 `SDK_INT < 30` 的自动请求是死代码，已删（lint ObsoleteSdkInt）；
+        // 存储的"一辈子只问一次"语义仍由 PermissionSetup.storageAsked/markStorageAsked 保留，
+        // 供权限页/设置页使用。
+        assertFalse(
+            "存储运行时的冷启动自动请求已是死分支，不许回来",
+            s.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.storageAsked(this)"),
         )
         assertTrue(
             "通知权限的自动请求必须过 shouldAutoRequest 闸门",
             s.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this)")
-        )
-        assertTrue(
-            "请求前必须先写标记（请求中途被杀也不会重问）",
-            s.contains("PermissionSetup.markStorageAsked(this)")
         )
         assertTrue(s.contains("PermissionSetup.markNotifyAsked(this)"))
     }
@@ -98,12 +98,8 @@ class PermissionGuideTest {
         val before = s.substring(0, callIdx)
         val lastIf = before.lastIndexOf("if (!permissionSetupPending)")
         assertTrue("更新检查必须写在 `if (!permissionSetupPending)` 块内（与权限框互斥）", lastIf > 0)
-        // 位置判据（B-补-19 升级）：原先要求"紧跟权限判定、中间不隔别的逻辑"；现在判据反过来 ——
-        // 必须排在**两个权限请求之后**，因为守卫要读到那两段是否已经排了系统框。
-        assertTrue(
-            "更新检查必须排在存储权限请求（100）之后",
-            before.lastIndexOf("requestPermissions(this, needed.toTypedArray(), 100)") > lastIf
-        )
+        // 位置判据（B-补-19 升级）：必须排在系统权限请求之后，因为守卫要读到那段是否已经排了系统框。
+        // 134 批：存储请求（100）已随死分支删除，只剩通知（101）。
         assertTrue(
             "更新检查必须排在通知权限请求（101）之后",
             before.lastIndexOf("requestPermissions(this, arrayOf(perm), 101)") > lastIf

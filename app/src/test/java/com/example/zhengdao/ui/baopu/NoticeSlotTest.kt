@@ -322,7 +322,12 @@ class NoticeSlotTest {
             }
         }
         listOf("baopu_notice_more", "baopu_notice_sheet_title").forEach { k ->
-            assertTrue("屏里/组件里得真用它：$k", screen().contains("R.string.$k") || slot().contains("R.string.$k"))
+            // 134 批：baopu_notice_more 改成 <plurals>，引用形态随之是 R.plurals。
+            assertTrue(
+                "屏里/组件里得真用它：$k",
+                screen().contains("R.string.$k") || screen().contains("R.plurals.$k") ||
+                    slot().contains("R.string.$k") || slot().contains("R.plurals.$k"),
+            )
         }
     }
 }

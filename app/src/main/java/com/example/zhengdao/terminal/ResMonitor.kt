@@ -119,7 +119,11 @@ object ResMonitor {
             s == null -> Verdict(true, false, s2(R.string.resmon_idle))
             s.rssMb >= RSS_WARN_MB -> Verdict(
                 true, true,
-                s2(R.string.resmon_rss_over, s.rssMb, RSS_WARN_MB, s.procs),
+                resPlural(
+                    res, R.plurals.resmon_rss_over, s.procs,
+                    "⚠ 内存 %1\$d MB 超阈值 %2\$d MB（%3\$d 个进程）——关掉不用的会话，或重启抱朴",
+                    s.rssMb, RSS_WARN_MB, s.procs,
+                ),
             )
             s.cpuPct >= CPU_WARN_PCT -> Verdict(
                 true, true,
@@ -127,18 +131,38 @@ object ResMonitor {
             )
             else -> Verdict(
                 true, false,
-                s2(R.string.resmon_normal, s.rssMb, "%.1f".format(s.cpuPct), s.procs),
+                resPlural(
+                    res, R.plurals.resmon_normal, s.procs,
+                    "RSS %1\$d MB · CPU %2\$s%% · %3\$d 个进程",
+                    s.rssMb, "%.1f".format(s.cpuPct), s.procs,
+                ),
             )
         }
+    }
+
+    /**
+     * plurals 版兜底（134 批 lint PluralsCandidate）：有资源时按 quantity 取形态，
+     * 无资源的 JVM 单测回退 [fallback] 中文原文；两者都用同一套 `%1$d/%1$s` 占位替换。
+     */
+    private fun resPlural(
+        res: android.content.res.Resources?,
+        id: Int,
+        quantity: Int,
+        fallback: String,
+        vararg args: Any,
+    ): String {
+        var out = res?.getQuantityString(id, quantity) ?: fallback
+        args.forEachIndexed { i, a ->
+            out = out.replace("%${i + 1}\$d", a.toString()).replace("%${i + 1}\$s", a.toString())
+        }
+        return out
     }
 
     /** JVM 单测的中文兜底（无 Android 运行时取不到资源；与 resmon_* 资源条目一一对应）。 */
     private fun resFallback(id: Int, vararg args: Any): String {
         val zh = mapOf(
             R.string.resmon_idle to "抱朴与终端均未运行，无进程可采样",
-            R.string.resmon_rss_over to "⚠ 内存 %1\$d MB 超阈值 %2\$d MB（%3\$d 个进程）——关掉不用的会话，或重启抱朴",
             R.string.resmon_cpu_over to "⚠ CPU %1\$s%% 超阈值 %2\$d%%——检查插件与会话规模",
-            R.string.resmon_normal to "RSS %1\$d MB · CPU %2\$s%% · %3\$d 个进程",
         )
         var out = zh[id] ?: ""
         args.forEachIndexed { i, a ->

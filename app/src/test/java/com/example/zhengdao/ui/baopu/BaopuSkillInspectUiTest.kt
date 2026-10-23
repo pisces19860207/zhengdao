@@ -139,15 +139,23 @@ class BaopuSkillInspectUiTest {
         "skill_edit_title", "skill_name_locked_hint", "skill_edit_saved",
     )
 
+    /** 134 批：<string> 与 <plurals> 两种资源形态都取原文（PluralsCandidate 改造后）。 */
+    private fun rawEntry(text: String, key: String): String {
+        Regex("""name="$key">(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
+            .find(text)?.let { return it.groupValues[1] }
+        Regex("""name="$key">(.*?)</plurals>""", RegexOption.DOT_MATCHES_ALL)
+            .find(text)?.let { return it.groupValues[1] }
+        return ""
+    }
+
     /** 取某个键里的占位符（`%1$d`／`%1$s`…），中英必须一一对上。 */
     private fun placeholders(text: String, key: String): List<String> {
-        val line = Regex("""name="$key">(.*?)</string>""").find(text)?.groupValues?.get(1).orEmpty()
-        return Regex("%\\d+\\$[a-z]").findAll(line).map { it.value }.toList()
+        val line = rawEntry(text, key)
+        return Regex("%\\d+\\$[a-z]").findAll(line).map { it.value }.distinct().toList()
     }
 
     /** 取某个键的文案原文（不许是空串）。 */
-    private fun value(text: String, key: String): String =
-        Regex("""name="$key">(.*?)</string>""").find(text)?.groupValues?.get(1).orEmpty()
+    private fun value(text: String, key: String): String = rawEntry(text, key)
 
     // ── U1：详情显示的是盘上原文（含状态头，一字不剥）───────────────────────
 

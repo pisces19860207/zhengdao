@@ -253,17 +253,17 @@ internal object ProviderPrefs {
         val pool = keyPool(context, channelId)
         val next = if (key.isEmpty()) pool else KeyPool.add(pool, key)
         val cursor = if (next.isEmpty()) 0 else keyCursor(context, channelId).mod(next.size)
-        prefs(context).edit()
-            .putString(KEY_CHANNEL, channelId)
-            .putString(KEY_CUSTOM_BASE, baseUrl)
-            .putString(KEY_CUSTOM_MODEL, model)
+        prefs(context).edit {
+            putString(KEY_CHANNEL, channelId)
+            putString(KEY_CUSTOM_BASE, baseUrl)
+            putString(KEY_CUSTOM_MODEL, model)
             // 协议只属于自定义通道：与 base/model 同口径，切到预设时这三格一起清；
             // 写进来之前先归一（脏值不落盘），读取端 [protocolOf] 再兜一层。
-            .putString(
+            putString(
                 KEY_CUSTOM_PROTOCOL,
                 if (channelId == CHANNEL_CUSTOM) protocolKeyOf(protocol) else null,
             )
-            .apply()
+        }
         if (next.isNotEmpty()) saveKeyPool(context, channelId, next, cursor)
     }
 

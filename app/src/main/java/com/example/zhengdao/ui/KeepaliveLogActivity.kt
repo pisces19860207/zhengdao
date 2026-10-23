@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.example.zhengdao.R
 import android.os.Bundle
@@ -269,7 +270,7 @@ private fun KeepaliveLogScreen() {
                     text = {
                         Column {
                             Text(
-                                stringResource(R.string.keepalive_log_clear_desc, snippetCount),
+                                pluralStringResource(R.plurals.keepalive_log_clear_desc, snippetCount, snippetCount),
                                 color = zhengdaoErrorText(),
                             )
                             Spacer(Modifier.height(6.dp))
@@ -287,7 +288,7 @@ private fun KeepaliveLogScreen() {
                                 tick++
                                 Toast.makeText(
                                     ctx,
-                                    res.getString(R.string.keepalive_log_cleared, n),
+                                    res.getQuantityString(R.plurals.keepalive_log_cleared, n, n),
                                     Toast.LENGTH_SHORT,
                                 ).show()
                             }

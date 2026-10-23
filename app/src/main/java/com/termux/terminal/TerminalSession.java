@@ -9,6 +9,7 @@ package com.termux.terminal;
 import android.annotation.SuppressLint;
 import android.os.Handler;
 import android.os.Message;
+import android.os.ParcelFileDescriptor;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
@@ -19,7 +20,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -70,6 +70,15 @@ public final class TerminalSession extends TerminalOutput {
      * {@link JNI#createSubprocess(String, String, String[], String[], int[], int, int, int, int)}.
      */
     private int mTerminalFileDescriptor;
+
+    /**
+     * 终端 fd 的 dup 持有者（134 批 lint(DiscouragedPrivateApi)：不再反射写
+     * `FileDescriptor#descriptor`，改用公开 API `ParcelFileDescriptor.fromFd`）。
+     *
+     * 由 [initializeEmulator] 创建、[cleanupResources] 关闭；读/写线程共用它返回的
+     * {@link FileDescriptor}（与旧实现「两线程共用一个 FileDescriptor」一致）。
+     */
+    private ParcelFileDescriptor mTerminalFdDup;
 
     /** Set by the application for user identification of session, not by terminal. */
     public String mSessionName;
@@ -134,7 +143,9 @@ public final class TerminalSession extends TerminalOutput {
         mShellPid = processId[0];
         mClient.setTerminalShellPid(this, mShellPid);
 
-        final FileDescriptor terminalFileDescriptorWrapped = wrapFileDescriptor(mTerminalFileDescriptor, mClient);
+        final FileDescriptor terminalFileDescriptorWrapped;
+        mTerminalFdDup = dupTerminalFileDescriptor(mTerminalFileDescriptor, mClient);
+        terminalFileDescriptorWrapped = mTerminalFdDup.getFileDescriptor();
 
         new Thread("TermSessionInputReader[pid=" + mShellPid + "]") {
             @Override
@@ -258,6 +269,15 @@ public final class TerminalSession extends TerminalOutput {
         // Stop the reader and writer threads, and close the I/O streams
         mTerminalToProcessIOQueue.close();
         mProcessToTerminalIOQueue.close();
+        // dup 的副本（134 批 dupTerminalFileDescriptor 的产物）先关，再关原 fd。
+        if (mTerminalFdDup != null) {
+            try {
+                mTerminalFdDup.close();
+            } catch (IOException ignored) {
+                // 进程退出路径：关不上也不影响后续 JNI.close。
+            }
+            mTerminalFdDup = null;
+        }
         JNI.close(mTerminalFileDescriptor);
     }
 
@@ -335,23 +355,15 @@ public final class TerminalSession extends TerminalOutput {
         return null;
     }
 
-    private static FileDescriptor wrapFileDescriptor(int fileDescriptor, TerminalSessionClient client) {
-        FileDescriptor result = new FileDescriptor();
+    private static ParcelFileDescriptor dupTerminalFileDescriptor(int fileDescriptor, TerminalSessionClient client) {
         try {
-            Field descriptorField;
-            try {
-                descriptorField = FileDescriptor.class.getDeclaredField("descriptor");
-            } catch (NoSuchFieldException e) {
-                // For desktop java:
-                descriptorField = FileDescriptor.class.getDeclaredField("fd");
-            }
-            descriptorField.setAccessible(true);
-            descriptorField.set(result, fileDescriptor);
-        } catch (NoSuchFieldException | IllegalAccessException | IllegalArgumentException e) {
-            Logger.logStackTraceWithMessage(client, LOG_TAG, "Error accessing FileDescriptor#descriptor private field", e);
+            // fromFd 对原始 fd 做 dup：返回的 PFD 持有副本，关闭它不会误关原 fd。
+            return ParcelFileDescriptor.fromFd(fileDescriptor);
+        } catch (IOException e) {
+            Logger.logStackTraceWithMessage(client, LOG_TAG, "Error duplicating FileDescriptor", e);
             System.exit(1);
+            return null;
         }
-        return result;
     }
 
     @SuppressLint("HandlerLeak")

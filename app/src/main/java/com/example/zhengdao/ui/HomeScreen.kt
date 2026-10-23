@@ -90,6 +90,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -535,7 +536,7 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f),
                         )
                         Text(
-                            text = stringResource(R.string.home_agent_count, installedCount),
+                            text = pluralStringResource(R.plurals.home_agent_count, installedCount, installedCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -625,11 +626,12 @@ fun HomeScreen(
                                 if (failedChecks.isNotEmpty()) {
                                     // 缺失合并行：红叉 ✗ + 「缺 N 项」（口径在 visibleRows，J5/J6 的靶子）
                                     var issuesExpanded by remember { mutableStateOf(false) }
-                                    val missingFmt = resources.getString(R.string.home_health_missing)
                                     val agentMissingFmt = resources.getString(R.string.home_agent_missing)
                                     val headline = visibleRows(
                                         checks, agents,
-                                        summarize = { n -> String.format(missingFmt, n) },
+                                        // 134 批：home_health_missing 改成 plurals（lint PluralsCandidate），
+                                        // 计数走 getQuantityString，文案逐字不变。
+                                        summarize = { n -> resources.getQuantityString(R.plurals.home_health_missing, n, n) },
                                         missingAgent = { name -> String.format(agentMissingFmt, name) },
                                     ).firstOrNull()?.headline.orEmpty()
                                     Row(

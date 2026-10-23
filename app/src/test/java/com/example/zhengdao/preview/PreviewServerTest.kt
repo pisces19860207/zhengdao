@@ -370,7 +370,11 @@ class PreviewServerTest {
     @Test
     fun `J9_预览线程名已在 BareThreadGuardTest 登记`() {
         val ledger = raw(threadLedger)
-        assertTrue("zd-preview-http 必须进对账单（J9）", ledger.contains("PreviewServer.kt:"))
+        // 134 批起对账单判据是「文件名＋行内容」（不再是 文件:行号）。
+        assertTrue(
+            "zd-preview-http 必须进对账单（J9）",
+            ledger.contains("PreviewServer.kt|") || ledger.contains("PreviewServer.kt:"),
+        )
         val stripped = code(serverSrc)
         assertTrue("线程必须起名", stripped.contains("\"zd-preview-http\""))
         assertTrue("线程必须 daemon", stripped.contains("isDaemon = true"))

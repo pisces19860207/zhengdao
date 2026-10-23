@@ -609,7 +609,8 @@ class BaopuSessionTreeTest {
     @Test
     fun `A2_两行desc按派工单改实`() {
         assertEquals("在当前工作区开一个新会话，记忆不动", valueOf(zhRel, "baopu_drawer_new_session_desc"))
-        assertEquals("全部会话，平铺看", valueOf(zhRel, "baopu_drawer_history_desc"))
+        // 134 批：平铺历史入口已退役（baopu_drawer_history_desc 与 UI 零引用一起删除），
+        // 这里不再钉那条已删的文案；新会话那条仍在钉。
         // 英文那边不能还留着旧口径（"Clear this context"）
         assertFalse(valueOf(enRel, "baopu_drawer_new_session_desc").contains("Clear this context"))
     }
