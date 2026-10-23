@@ -21,11 +21,12 @@ class ProviderTest {
     @Test
     fun `五个预设都在且形状正确_且一个Key都不内置`() {
         // 第一百三十一批 ①：内置 zen 免费通道（整条 403）删除，换成 OpenRouter 免费档；
-        // 预设从四条变五条。第五个新加的这条**不带 Key**——负例「内置 key」钉的就是它。
+        // 第一百五十三批：付费 OpenRouter 预设换成 Google Gemini（用户「两个 OpenRouter，换一个」）。
+        // 五条预设**都**不带 Key——负例「内置 key」钉的就是这一条。
         val all = Providers.all()
         assertEquals(5, all.size)
         assertEquals(
-            setOf("openai-compat", "anthropic", "deepseek", "openrouter", "openrouter-free"),
+            setOf("openai-compat", "anthropic", "deepseek", "gemini", "openrouter-free"),
             all.map { it.id }.toSet(),
         )
         all.forEach {
@@ -38,12 +39,12 @@ class ProviderTest {
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("openai-compat")!!.protocol)
         assertEquals(LlmProtocol.ANTHROPIC, Providers.of("anthropic")!!.protocol)
         assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("deepseek")!!.protocol)
-        assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("openrouter")!!.protocol)
+        assertEquals(LlmProtocol.OPENAI_COMPAT, Providers.of("gemini")!!.protocol)
         assertTrue(Providers.of("openrouter-free")!!.builtinFree)
         assertFalse(Providers.of("openai-compat")!!.builtinFree)
         assertFalse(Providers.of("anthropic")!!.builtinFree)
         assertFalse(Providers.of("deepseek")!!.builtinFree)
-        assertFalse(Providers.of("openrouter")!!.builtinFree)
+        assertFalse(Providers.of("gemini")!!.builtinFree)
     }
 
     @Test
@@ -63,8 +64,8 @@ class ProviderTest {
         // 不再是"没依据"的 zen 免费通道（那条整条 403，元数据全是猜的）。
         assertEquals(1_000_000, Providers.OPENROUTER_FREE.contextWindow)
         assertEquals(131_072, Providers.OPENROUTER_FREE.maxOutput)
-        assertEquals(1_048_576, Providers.OPENROUTER.contextWindow)
-        assertNull(Providers.OPENROUTER.maxOutput)
+        assertEquals(1_048_576, Providers.GEMINI.contextWindow)
+        assertNull(Providers.GEMINI.maxOutput)
     }
 
     @Test

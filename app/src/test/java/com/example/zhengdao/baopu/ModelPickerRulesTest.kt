@@ -250,7 +250,7 @@ class ModelPickerRulesTest {
     @Test
     fun 顶栏只放公司名_免费二字归抽屉() {
         assertEquals("OpenRouter", ModelPickerRules.companyOf(Providers.OPENROUTER_FREE))
-        assertEquals("OpenRouter", ModelPickerRules.companyOf(Providers.OPENROUTER))
+        assertEquals("Google Gemini", ModelPickerRules.companyOf(Providers.GEMINI))
         assertEquals("DeepSeek", ModelPickerRules.companyOf(Providers.DEEPSEEK))
         assertEquals("OpenAI", ModelPickerRules.companyOf(Providers.OPENAI_COMPAT))
         assertEquals("Anthropic", ModelPickerRules.companyOf(Providers.ANTHROPIC))

@@ -729,6 +729,7 @@
     <!-- ── 抱朴页（刀 1 · 2026-10-16；键一律 baopu_ 前缀）── -->
     <string name="baopu_input_hint">说说要做什么…</string>
     <string name="baopu_send">发送</string>
+    <string name="baopu_send_queue">发送·排队</string>
     <string name="baopu_stop">停止</string>
     <plurals name="baopu_queue_count">
         <item quantity="other">排队中 %1$d 条</item>

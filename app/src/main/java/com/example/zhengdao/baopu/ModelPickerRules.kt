@@ -94,6 +94,17 @@ internal object ModelPickerRules {
     }
 
     /** 该提供商的清单是不是免 Key 公开端点（只有 OpenRouter 系）。 */
+    /**
+     * 聚合服务判定（第一百五十三批）：OpenRouter 这类端点有几十上百个模型，
+     * **保留搜索/过滤**；预设公司（OpenAI/DeepSeek/Anthropic/Gemini）只该给短名单，
+     * 不出现搜索框、不出现 `free` 过滤、不让人手输 ID。
+     *
+     * 判据只看"服务形态"，不看模型数量（数量要联网才知道，UI 不能等）：
+     * 免费车道（builtinFree）与 openrouter.ai 域名都算聚合。
+     */
+    fun isAggregate(provider: Provider): Boolean =
+        provider.builtinFree || provider.baseUrl.trim().lowercase().contains("openrouter.ai")
+
     fun isOpenRouterPublicCatalog(baseUrl: String): Boolean =
         baseUrl.trim().lowercase().contains("openrouter.ai")
 
