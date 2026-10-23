@@ -336,7 +336,8 @@ internal object ContextAssembler {
         if (!projectMemory.isNullOrBlank()) {
             segments += PromptSegment(
                 SegmentKind.PROJECT_MEMORY,
-                "【项目记忆】（工作区根的 `" + ProjectMemory.FILE_NAME + "`，每轮自动读）\n" + projectMemory,
+                // 157：项目记忆落 `记忆/项目记忆.md`（旧工作区根位置只读回退，见 ProjectMemory.load）
+                "【项目记忆】（`" + ProjectMemory.FILE_NAME + "`，每轮自动读）\n" + projectMemory,
             )
         }
         if (memoryLines.isNotEmpty()) {

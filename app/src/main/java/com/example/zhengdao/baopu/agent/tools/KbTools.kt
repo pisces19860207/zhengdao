@@ -4,7 +4,7 @@
 // 红线：不上云、不自动读全盘、不接外部向量库）。设计页 §5/§7/§8。
 //
 // 硬纪律（逐条对应派工单与设计页）：
-// 1. `kb_index` 的目录**必须显式**（缺省＝资料库/投递，一个明确子目录，绝不是工作区
+// 1. `kb_index` 的目录**必须显式**（缺省＝投递，一个明确子目录，绝不是工作区
 //    根）——负例 N3「全盘自动扫描」钉的就是这条；越界（..／绝对路径／盘符）一律拒；
 // 2. `kb_search` **只读**：只读索引文件，一个用户字节都不碰；没有索引/索引损坏时
 //    明说"先 kb_index 重建"，不抛异常、不阻塞对话；
@@ -18,6 +18,7 @@ import com.example.zhengdao.baopu.kb.KbAutoInject
 import com.example.zhengdao.baopu.kb.KbIndexStore
 import com.example.zhengdao.baopu.kb.KbIndexer
 import com.example.zhengdao.baopu.kb.KbRetriever
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
@@ -40,12 +41,13 @@ internal object KbTools {
     const val ARG_REBUILD = "rebuild"
 
     /**
-     * 缺省索引目录（相对工作区根）＝ `资料库/投递`。
+     * 缺省索引目录（相对工作区根）＝ `投递`（157 目录收口后在工作区根，
+     * 名字取内核 [BaopuKernel.Data.DIR_DELIVER] 单一真源）。
      *
      * **绝不是工作区根**：根上有 `_索引.md`、素材库等一堆非资料文件，扫了必误报
      * （负例 N3：把缺省改成根 ⇒ `KbToolsTest` 红）。要索引别处，模型/用户显式给 path。
      */
-    val DEFAULT_DIR_REL: String = LibraryPaths.DIR_LIBRARY + "/" + LibraryPaths.SUB_DELIVER
+    val DEFAULT_DIR_REL: String = BaopuKernel.Data.DIR_DELIVER
 
     /**
      * 卡面展示用的「要动的目录」：显式传了就用它，没传就是缺省目录。
@@ -68,7 +70,7 @@ internal object KbTools {
     fun indexSpec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME_INDEX,
         description = "给一个工作区内目录建本地知识库索引（只写 App 私有索引文件，不碰你的原文件）：" +
-            "支持 txt/md/html/docx（pdf/图片/压缩包跳过并计数）。缺省索引 资料库/投递；" +
+            "支持 txt/md/html/docx（pdf/图片/压缩包跳过并计数）。缺省索引 投递；" +
             "默认增量（按 大小+修改时间 只重切变更的文件），rebuild=true 全量重切。" +
             "建完用 kb_search 检索。执行前会弹一次确认卡（告诉你建的是哪个目录）。",
         inputSchema = jsonObjectOf(
@@ -76,7 +78,7 @@ internal object KbTools {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "要索引的目录（相对工作区根，如 资料库/投递；缺省就是它）",
+                    "description" to "要索引的目录（相对工作区根，如 投递；缺省就是它）",
                 ),
                 ARG_REBUILD to jsonObjectOf(
                     "type" to "boolean",

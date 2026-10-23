@@ -5,11 +5,12 @@
 //    RunEngine 现有 AwaitConfirm 骨架；确认后的执行归下一刀，本刀只交工具本身）；
 // 2. 路径必须过 PathGuard.isInside(工作区)，越界即拒（管线第 ② 段已按 path 参数名
 //    守卫过一次，这里自检是双保险，且让纯函数层 JVM 直测）；
-// 3. overwrite=true 时先把旧文件备份到 <工作区>/.baopu-bak/ 再写（不静默毁内容）；
+// 3. overwrite=true 时先把旧文件备份到 <工作区>/备份/ 再写（157 起可见化，原 .baopu-bak；不静默毁内容）；
 // 4. 单次写入上限 200 行，超了拒绝并提示分次；**不提供任何删除能力**。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -18,10 +19,10 @@ import java.io.File
  * `write_file`：把文本写进工作区内的一个文件（刀 2 追加包）。
  *
  * 为什么备份而不是直接覆盖：模型「覆盖写」最常见的用法是改文件——直接盖掉旧内容，
- * 用户连「原来写过什么」都看不到；`.baopu-bak/` 留在工作区内，用户自己看得见、
- * 摸得着，也不需要 App 额外提供「恢复」入口（那是另一把刀的事）。
+ * 用户连「原来写过什么」都看不到；`备份/`（157 起由旧 `.baopu-bak` 改为可见目录）留在
+ * 工作区内，用户自己看得见、摸得着，也不需要 App 额外提供「恢复」入口（那是另一把刀的事）。
  *
- * 为什么拒绝写 `.baopu-bak/` 自己：备份区被写就会互相覆盖，备份就白做了。
+ * 为什么拒绝写 `备份/` 自己：备份区被写就会互相覆盖，备份就白做了。
  *
  * 路径不在本文件守卫第一道（管线第 ② 段按 path 参数名做）；本文件的 [write]
  * 自检 [PathGuard.isInside] 是第二道——纯函数层因此可直测「越界即拒」。
@@ -35,14 +36,14 @@ internal object WriteFileTool {
     /** 单次写入行数上限（超了拒绝并提示分次——一次写 200 行以上的「文件」应该分几次给）。 */
     const val MAX_WRITE_LINES = 200
 
-    /** 备份目录名（工作区内；用户可见）。 */
-    const val BACKUP_DIR_NAME = ".baopu-bak"
+    /** 备份目录名（工作区内；用户可见。157 目录收口：旧 `.baopu-bak` 可见化为 `备份/`）。 */
+    const val BACKUP_DIR_NAME = BaopuKernel.Data.DIR_BACKUP
 
     /** 构造注册用 Spec（workspaceRoot 注入：备份目录要落在工作区根下）。 */
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "write_file",
         description = "把文本写进工作区内的一个文件（不存在则新建，存在需 overwrite=true " +
-            "且会把旧版本备份到 .baopu-bak/）。单次最多 $MAX_WRITE_LINES 行，超了请分次写。" +
+            "且会把旧版本备份到 $BACKUP_DIR_NAME/）。单次最多 $MAX_WRITE_LINES 行，超了请分次写。" +
             "确认由 App 弹确认卡完成（用户点头才落盘，不点作废）——直接调用即可，" +
             "不要在回复里先问一句「要我写吗」。本工具没有任何删除能力。",
         inputSchema = jsonObjectOf(
@@ -50,7 +51,7 @@ internal object WriteFileTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的目标路径（如 资料库/整理/设定.md）",
+                    "description" to "相对工作区根的目标路径（如 产物/设定.md）",
                 ),
                 ARG_CONTENT to jsonObjectOf(
                     "type" to "string",
@@ -58,7 +59,7 @@ internal object WriteFileTool {
                 ),
                 ARG_OVERWRITE to jsonObjectOf(
                     "type" to "boolean",
-                    "description" to "目标已存在时是否覆盖（默认 false；true 时先把旧文件备份到 .baopu-bak/）",
+                    "description" to "目标已存在时是否覆盖（默认 false；true 时先把旧文件备份到 $BACKUP_DIR_NAME/）",
                 ),
             ),
             "required" to jsonArrayOf(ARG_PATH, ARG_CONTENT),

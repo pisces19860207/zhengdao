@@ -192,4 +192,41 @@ internal object DiaryRules {
 
     /** 条目日期（`TimeFormats.dayStamp` 唯一真源；id 里的紧凑形由它派生，不另设 formatter）。 */
     internal fun dateOf(epochMs: Long): String = TimeFormats.dayStamp(epochMs)
+
+    /**
+     * **修正闸**（157 补 147 缺口：原来只有追加/浓缩/归档，没有「修正已有条目」）。
+     *
+     * provenance 六字段**一个字节不许改**——`id`/`date`/`sessionId`/`timeFromMs`/
+     * `timeToMs`/`createdAt`（「可回溯到真实消息与事件」就在这六个里；时间窗还是
+     * run_log 轮次的定义）。可改的只有 `title`/`summary`/`artifacts`/`evidence`/
+     * `okSteps`/`failedSteps`（记错了数、挂错产物路径才改这些）。
+     *
+     * 脱敏闸同样管修正（[containsSensitive]）——修正不是夹带敏感样式的后门。
+     *
+     * @param existing 盘上的原条目（不存在由调用方先拒，本函数不见 null）
+     * @param patch 修正后的条目
+     * @return null = 放行；非 null = 拒绝理由（调用方原样记账/回灌）
+     */
+    internal fun amendGuard(existing: DiaryEntry, patch: DiaryEntry): String? {
+        if (patch.id != existing.id) {
+            return "id 不许改（${existing.id} → ${patch.id}）：provenance 字段不可变（157）"
+        }
+        if (patch.date != existing.date) {
+            return "date 不许改（${existing.date} → ${patch.date}）：provenance 字段不可变（157）"
+        }
+        if (patch.sessionId != existing.sessionId) {
+            return "sessionId 不许改（${existing.sessionId} → ${patch.sessionId}）：provenance 字段不可变（157）"
+        }
+        if (patch.timeFromMs != existing.timeFromMs || patch.timeToMs != existing.timeToMs) {
+            return "时间窗不许改（${existing.timeFromMs}..${existing.timeToMs} → " +
+                "${patch.timeFromMs}..${patch.timeToMs}）：provenance 字段不可变（157）"
+        }
+        if (patch.createdAt != existing.createdAt) {
+            return "createdAt 不许改（${existing.createdAt} → ${patch.createdAt}）：provenance 字段不可变（157）"
+        }
+        if (containsSensitive(patch.summary, patch.artifacts)) {
+            return "脱敏闸命中：修正也不许带敏感样式（判据 21）"
+        }
+        return null
+    }
 }

@@ -1833,8 +1833,10 @@ internal class RunEngine(
         compressedIds = compressedIds,
         skipIds = skipIds,
         oldMessageCount = oldMessageCount,
-        // 2026-10-19 最小版项目记忆：工作区根 `项目记忆.md`，每轮开工自动读（见 ProjectMemory）
-        projectMemory = com.example.zhengdao.baopu.ProjectMemory.load(spillRoot()),
+        // 2026-10-19 最小版项目记忆：157 起落 `记忆/项目记忆.md`（旧根只读回退），每轮开工自动读（见 ProjectMemory）；
+        // 文件缺失 ⇒ 注入 missingHint（提示抱朴收尾自己写），不是静默跳过。
+        projectMemory = com.example.zhengdao.baopu.ProjectMemory.load(spillRoot())
+            ?: com.example.zhengdao.baopu.ProjectMemory.missingHint(),
         images = images,
         extraNotes = extraNotes,
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名

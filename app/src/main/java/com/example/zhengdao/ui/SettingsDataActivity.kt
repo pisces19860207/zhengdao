@@ -231,8 +231,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
     /**
      * 换工作区前的闸（2026-10-11 新增）。
      *
-     * 为什么要有：`资料库` 挂在**工作区**下面（[KnowledgeBase.root] = `hostDir/资料库`），
-     * 换工作区就等于换了一份资料库 —— 旧那份原样留在原地、不再被读。真机上正是这件事
+     * 为什么要有：资料库挂在**工作区**下面（157 收口后门面是 `产物/`，旧 `资料库/`
+     * 为 legacy 对账路径），换工作区就等于换了一份资料库 —— 旧那份原样留在原地、不再被读。真机上正是这件事
      * 把用户绕住了：他先把 19 个文件放进 `Download/证道/资料库/原始/`，随后在设置页把
      * 工作区换成了 `Download/男性`，回来只看到「未挂载 · 还没放资料」，以为 App 没反应。
      * ⇒ 当前资料库里有东西时先问一句，并给"顺手复制过去"这条路（原件不动）。
@@ -309,7 +309,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             )
             // ── 2026-10-11（真机现场）──
             // 用户原话：「资料库我已经放了东西到原始文件了，但是APP这边没反应」。
-            // 真实原因是**换过工作区**：资料库挂在工作区下面（KnowledgeBase.root），换工作区
+            // 真实原因是**换过工作区**：资料库挂在工作区下面（157 收口后门面是 `产物/`），换工作区
             // 就等于换了一份资料库；旧那份原样留在原地、不再被读。以前界面对此只字不提，
             // 他看到的只有"未挂载 · 还没放资料"，自然以为 App 坏了。
             // 现在主动报出"别处还有一份带资料的资料库"，并给一键复制过来（只增不减）。
@@ -382,7 +382,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             Row {
                 TextButton(onClick = {
                     val p = kbStatus?.path
-                        ?: com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
+                        ?: com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx).absolutePath
                     runCatching {
                         val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                             as android.content.ClipboardManager
@@ -702,13 +702,16 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             val askToast = ask.first
             val askSwitch = ask.second
             val curFiles = kbStatus?.files ?: 0
+            // 显示给用户的是产物路径（157 收口后「资料库」的门面＝产物/）；
+            // curKb 仍取旧根——换工作区时复制源就是旧 `资料库/原始/` 形态（存量对账，不丢文件）。
+            val curKbShown = com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx).absolutePath
             val curKb = com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
             AlertDialog(
                 onDismissRequest = { wsAsk = null },
                 title = { Text(stringResource(R.string.data_ws_change_title)) },
                 text = {
                     Column {
-                        Text(stringResource(R.string.data_ws_change_current, curKb, curFiles))
+                        Text(stringResource(R.string.data_ws_change_current, curKbShown, curFiles))
                         Spacer(Modifier.height(6.dp))
                         Text(stringResource(R.string.data_ws_change_desc))
                         Spacer(Modifier.height(6.dp))

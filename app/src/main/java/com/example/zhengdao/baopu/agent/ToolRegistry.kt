@@ -125,6 +125,16 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
             get() = PolicyRuntime.current().toolGroups.defaultVisible
 
         /**
+         * 157：**工具级**默认可见名单（读策略；组仍锁，名单内工具一上来就看得见）。
+         *
+         * 用户口径「资料库默认可见」：`library_list` / `kb_search` 两个只读件进默认面，
+         * 写类三件（`library_organize` / `book_outline` / `kb_index`）照旧按需解锁。
+         * fail closed 由 [register] 保证：名单内工具必须 `readOnly`，否则装配期直接抛。
+         */
+        val DEFAULT_VISIBLE_TOOLS: Set<String>
+            get() = PolicyRuntime.current().toolGroups.defaultVisibleTools
+
+        /**
          * 成员在 [ToolGroupTable] 里有静态名单的组（设置页 / capabilities 名册 /
          * enable 名单的枚举口径）。
          *
@@ -328,12 +338,14 @@ internal fun isVisibleTool(
     settings: ToolUserSettings,
     unlockedGroups: Set<ToolGroup>,
 ): Boolean {
-    // 第九十七批：可见 = 默认可见 ∪ 长期同意 ∪ 本会话已解锁（三种授权同一档；
-    // 组开关与单工具开关仍各自能否决——那两条判据在下面两行，一个字没动）。
+    // 第九十七批：可见 = 默认可见 ∪ 长期同意 ∪ 本会话已解锁（三种授权同一档）；
+    // 组开关与单工具开关仍各自能否决——那两条判据在下面两行，一个字没动。
+    // 157：再加**工具级默认可见**第三条件（library_list/kb_search；组仍锁）。
+    // 用户的两道开关照旧压得住它：disabledNames / disabledGroups 先判。
     val visibleGroups = ToolGroup.DEFAULT_VISIBLE + settings.approvedGroups + unlockedGroups
     return spec.name !in settings.disabledNames &&
         spec.group !in settings.disabledGroups &&
-        spec.group in visibleGroups
+        (spec.group in visibleGroups || spec.name in ToolGroup.DEFAULT_VISIBLE_TOOLS)
 }
 
 /** 整表版（[isVisibleTool] 的 filter；tools 数组由它产出，顺序 = 表顺序）。 */
@@ -683,6 +695,14 @@ internal class ToolRegistry(
         // 组按那张唯一的表盖章：装配层（BaopuRuntime 的 write_skill / read / bash）与
         // ENTRIES 走同一条路，谁都不用自己记得带组（记得的组也会被表覆盖）。
         val stamped = spec.copy(group = ToolGroupTable.GROUP_OF[spec.name] ?: spec.group)
+        // 157: 默认可见工具必须只读（fail closed——写类永远进不了默认面）。
+        // 装配期直接抛：配错表/配错名单要在第一次注册就炸，别等模型看见写类工具。
+        if (stamped.name in ToolGroup.DEFAULT_VISIBLE_TOOLS) {
+            require(stamped.readOnly) {
+                "默认可见工具必须只读：${stamped.name}（readOnly=false 却写进了 " +
+                    "toolGroups.defaultVisibleTools）"
+            }
+        }
         specs[spec.name] = stamped
         // 第一百一十九批：注册即体检（规则本体在 ToolSchemaRules，这里只记账——
         // 运行期不抛，红在门禁测试那一侧，理由见 ToolSchemaRules 的类注释）。

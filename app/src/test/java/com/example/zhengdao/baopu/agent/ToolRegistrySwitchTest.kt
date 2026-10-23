@@ -89,8 +89,13 @@ class ToolRegistrySwitchTest {
         }
         // 第五十九批改了这条的**期望**，没改它的判据：tools 数组仍由表序产出，
         // 只是默认只含「可见组」那一段（过滤不改序）。
+        // 157：期望算法与 isVisibleTool 同源——组级默认可见 ∪ 工具级默认可见名单
+        // （library_list / kb_search 在 LIBRARY 组，但只读 ⇒ 进默认面）。
         val defaultVisible = BaopuToolCatalog.ENTRIES.map { it.name }
-            .filter { ToolGroupTable.GROUP_OF[it] in ToolGroup.DEFAULT_VISIBLE }
+            .filter {
+                ToolGroupTable.GROUP_OF[it] in ToolGroup.DEFAULT_VISIBLE ||
+                    it in ToolGroup.DEFAULT_VISIBLE_TOOLS
+            }
         assertEquals(defaultVisible, namesOf(reg.toolsJsonOpenAi()))
         // 全解锁（模拟 capabilities 把每一组都开过）⇒ 表序**完整**复现
         reg.currentSessionId = 7L

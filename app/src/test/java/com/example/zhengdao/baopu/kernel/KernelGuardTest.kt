@@ -21,6 +21,10 @@ import java.io.File
  * ⑦ **压缩红线只有一处来源**（26-B 把 `NEVER_COMPRESS` 整块搬进内核）；
  * ⑧ **spill 阈值也搬进内核**（工具边界那一族）；
  * ⑨ **内核项变更留痕**：`[kernel] …` 的格式与设置页接线。
+ * ⑩ **157 目录收口常量**（产物/投递/备份/记忆层/全局/快照）值没漂；
+ * ⑪ **157 legacy 对账常量**（资料库族/.baopu-bak）值没漂；
+ * ⑫ **目录常量唯一来源**：内核外不许再写 `const val DIR_* = "…"` 定义形态；
+ * ⑬ **关键落点委托内核**（LibraryPaths／五件 PathTool／KbTools）＋ 初始化接线在位。
  */
 class KernelGuardTest {
 
@@ -173,5 +177,95 @@ class KernelGuardTest {
             repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt").readText()
                 .contains("BaopuWorkspace.setDefault(ctx)"),
         )
+    }
+
+    // ── 157：目录收口 ＋ 记忆三层（内核常量唯一来源） ───────────────────────────
+
+    @Test
+    fun `K10_157目录常量都在且值没漂`() {
+        val d = BaopuKernel.Data
+        assertEquals("产物", d.DIR_PRODUCTS)
+        assertEquals("投递", d.DIR_DELIVER)
+        assertEquals("备份", d.DIR_BACKUP)
+        assertEquals(".回收站", d.DIR_TRASH)
+        assertEquals("记忆", d.DIR_MEMORY)
+        assertEquals("日记", d.DIR_DIARY)
+        assertEquals("归档", d.DIR_ARCHIVE)
+        assertEquals("项目记忆.md", d.FILE_PROJECT_MEMORY)
+        assertEquals("抱朴记忆", d.DIR_GLOBAL_MEMORY)
+        assertEquals("全局记忆.md", d.FILE_GLOBAL_MEMORY)
+        assertEquals("备份", d.DIR_MEMORY_BACKUP)
+        assertEquals("_迁移存档", d.DIR_MIGRATED_ARCHIVE)
+        assertEquals("写前快照默认留 5 份", 5, d.MEMORY_BACKUP_KEEP)
+    }
+
+    @Test
+    fun `K11_157legacy对账常量都在且值没漂`() {
+        val d = BaopuKernel.Data
+        assertEquals("资料库", d.LEGACY_LIBRARY_DIR)
+        assertEquals("资料库/原始", d.LEGACY_LIBRARY_RAW)
+        assertEquals("资料库/整理", d.LEGACY_LIBRARY_DONE)
+        assertEquals("资料库/投递", d.LEGACY_LIBRARY_DELIVER)
+        assertEquals("资料库/改版", d.LEGACY_LIBRARY_REVISED)
+        assertEquals(".baopu-bak", d.LEGACY_BACKUP_DIR)
+    }
+
+    @Test
+    fun `K12_目录常量唯一来源_内核外不许再定义`() {
+        // 精确按「常量名 = 值」匹配：MemoryStore 的 DIR_ENTRIES = "记忆"（147 记忆条目
+        // 存储，另一概念）不在名单里，不误伤；但只要有人再抄一份内核常量定义就红。
+        val defs = listOf(
+            """const val DIR_PRODUCTS = "产物""",
+            """const val DIR_DELIVER = "投递""",
+            """const val DIR_BACKUP = "备份""",
+            """const val DIR_MEMORY = "记忆""",
+            """const val DIR_DIARY = "日记""",
+            """const val DIR_ARCHIVE = "归档""",
+            """const val FILE_PROJECT_MEMORY = "项目记忆.md""",
+            """const val DIR_GLOBAL_MEMORY = "抱朴记忆""",
+            """const val FILE_GLOBAL_MEMORY = "全局记忆.md""",
+            """const val DIR_MEMORY_BACKUP = "备份""",
+            """const val LEGACY_LIBRARY_DIR = "资料库""",
+            """const val LEGACY_BACKUP_DIR = ".baopu-bak""",
+        )
+        val root = repoFile("src/main/java/com/example/zhengdao")
+        require(root.isDirectory) { "主源码目录没找到：${root.absolutePath}" }
+        val kts = root.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.toList()
+        assertTrue("主源码至少要扫到 .kt", kts.isNotEmpty())
+        val kernelDir = File(root, "baopu/kernel")
+        kts.filter { !it.startsWith(kernelDir) }.forEach { f ->
+            val src = f.readText()
+            defs.forEach { lit ->
+                assertFalse("内核外不许再定义「$lit」（应引用 BaopuKernel.Data）：${f.name}", src.contains(lit))
+            }
+        }
+        // 内核自己必须恰好定义一份（被删/改名 ⇒ 编译先炸，这里兜底值漂移）
+        defs.forEach { lit -> assertTrue("内核里应有定义「$lit」", kernel().contains(lit)) }
+    }
+
+    @Test
+    fun `K13_关键落点委托内核且初始化接线在位`() {
+        // ① 路径派生层委托（新代码走内核常量）
+        val lp = repoFile("src/main/java/com/example/zhengdao/baopu/library/LibraryPaths.kt").readText()
+        assertTrue("LibraryPaths 委托投递目录", lp.contains("BaopuKernel.Data.DIR_DELIVER"))
+        assertTrue("LibraryPaths 委托产物目录", lp.contains("BaopuKernel.Data.DIR_PRODUCTS"))
+        assertTrue("LibraryPaths 委托 legacy 资料库", lp.contains("BaopuKernel.Data.LEGACY_LIBRARY_DIR"))
+        // ② 五件 PathTool 的备份目录名收编内核
+        listOf("WriteFileTool", "EditFileTool", "ConvertEncodingTool", "DeletePathTool", "MovePathTool")
+            .forEach { name ->
+                val src = repoFile("src/main/java/com/example/zhengdao/baopu/agent/tools/$name.kt").readText()
+                assertTrue("$name 应委托备份目录常量", src.contains("BaopuKernel.Data.DIR_BACKUP"))
+            }
+        // ③ KbTools 默认目录委托
+        val kb = repoFile("src/main/java/com/example/zhengdao/baopu/agent/tools/KbTools.kt").readText()
+        assertTrue("KbTools 委托投递目录", kb.contains("BaopuKernel.Data.DIR_DELIVER"))
+        // ④ 记忆布局层引用内核（路径唯一真源）
+        val ml = repoFile("src/main/java/com/example/zhengdao/baopu/MemoryLayout.kt").readText()
+        assertTrue("MemoryLayout 引内核", ml.contains("import com.example.zhengdao.baopu.kernel.BaopuKernel"))
+        assertTrue("MemoryLayout 记忆根委托内核", ml.contains("BaopuKernel.Data.DIR_MEMORY"))
+        // ⑤ 初始化接线：进抱朴＝建空日记目录＋跑一次迁移（用户「不弹卡、不写内容」）
+        val rt = repoFile("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt").readText()
+        assertTrue("BaopuRuntime 应建记忆目录", rt.contains("MemoryLayout.ensureDirs(wsRoot)"))
+        assertTrue("BaopuRuntime 应跑旧布局迁移", rt.contains("MemoryLayout.migrate(wsRoot, appCtx.filesDir)"))
     }
 }
