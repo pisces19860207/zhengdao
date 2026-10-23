@@ -13,7 +13,6 @@
     android:id="@+id/terminal_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/white"
     android:padding="4dp">
 
     <LinearLayout
@@ -101,6 +100,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center"
+                android:paddingStart="0dp"
                 android:paddingEnd="32dp"
                 android:text="@string/app_name"
                 android:textColor="#FF1F1E1B"
@@ -231,7 +231,8 @@
         <FrameLayout
             android:id="@+id/key_bar_container"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:background="#FFF5F5F7">
 
             <include layout="@layout/term_keys" />
         </FrameLayout>
