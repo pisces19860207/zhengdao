@@ -2610,11 +2610,24 @@ internal class RunEngine(
         if (call.name != PlanTool.NAME) return null
         val change = planController.previewChange(call.arguments) ?: return null
         if (!change.needsCard || planController.isChangeAuthorized()) return null
+        // 161 降噪：这一版改动她本轮已经明确拒过 ⇒ 不再重复弹卡，只回灌模型。
+        // 只认「真点过按钮」的裁决；超时／没点根本不会出现在登记表里（下面才记）。
+        if (planController.decisionFor(change) == PlanChangeDecision.REJECTED) {
+            log("抱朴计划：同一改动已被拒 ⇒ 不再重复弹卡（新增 ${change.added.size} 条 / 删去 ${change.removed.size} 条）")
+            return GuardPipeline.Result.Failed(
+                call = call,
+                error = PlanGuardRules.repeatRejected(change),
+            )
+        }
         log("抱朴计划：结构变更待确认（新增 ${change.added.size} 条 / 删去 ${change.removed.size} 条）")
         val picked = askUser(PlanGuardCards.changeRequest(change))
         if (PlanGuardRules.changeAccepted(picked?.id)) {
             planController.authorizeNextChange()
             return null
+        }
+        // 只有她真点了「不改，按原计划」才记账；超时／别的 id 一律不记（不替她做决定）。
+        if (picked?.id == PlanGuardRules.OPT_CHANGE_REJECT) {
+            planController.noteDecision(change, PlanChangeDecision.REJECTED)
         }
         log("抱朴计划：用户没同意改动（${picked?.id ?: "timeout"}）⇒ 本次 update_plan 不执行")
         return GuardPipeline.Result.Failed(
