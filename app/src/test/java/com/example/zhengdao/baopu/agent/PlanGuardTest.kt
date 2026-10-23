@@ -13,6 +13,7 @@ import com.example.zhengdao.baopu.PlanRules.PlanItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -167,6 +168,96 @@ class PlanGuardTest {
         assertTrue("要明说没生效", text.contains("没有生效"))
         assertTrue("要说明原计划不变", text.contains("原计划保持不变"))
         assertTrue("要堵住换写法绕卡", text.contains("不要换一种写法"))
+    }
+
+    // ── 161 降噪：决定登记（只记真点过的按钮，判据一律不猜语义） ──────────
+
+    private fun change(added: List<String>, removed: List<String>) =
+        PlanChange(PlanChangeKind.STRUCTURE, added = added, removed = removed)
+
+    @Test
+    fun `同一版改动重发_指纹逐字一致`() {
+        // 键不稳 ⇒ 拒过的改动认不出来，降噪就白做（真机 UI-D17 的病根）
+        val a = change(listOf("新"), listOf("旧"))
+        val b = change(listOf("新"), listOf("旧"))
+        assertEquals(a.signature, b.signature)
+    }
+
+    @Test
+    fun `同位改写算另一版_不共享她的裁决`() {
+        // 真机最后那张卡的 diff：补了半句 ⇒ 必须重新问（不许把真替换误判成措辞修订）
+        val v1 = change(listOf("追加第6行，再读回核对"), listOf("追加第6行"))
+        val v2 = change(listOf("追加第6行，再读回核对，报总行数"), listOf("追加第6行"))
+        assertNotEquals(v1.signature, v2.signature)
+        val mem = PlanChangeMemory()
+        mem.record(v1, PlanChangeDecision.REJECTED)
+        assertNull("补半句就是另一版，照旧要问", mem.lookup(v2))
+    }
+
+    @Test
+    fun `指纹带长度前缀_文字里的分隔符不串号`() {
+        // 负例靶心（161 实测：上一版这里选的两对不拼长度也撞不上，改了 encode 用例照样绿 ⇒ 假判据）。
+        // ①同段内：一条「A/B」与两条「A」「B」，原样拼出来一模一样 ⇒ 误放别人的裁决
+        assertNotEquals(
+            change(listOf("A/B"), listOf("C")).signature,
+            change(listOf("A", "B"), listOf("C")).signature,
+        )
+        // ②跨段注入：一条「A]R[B」拿 "]R[" 撑开框架，与「A」＋「B]R[C」同键
+        assertNotEquals(
+            change(listOf("A]R[B"), listOf("C")).signature,
+            change(listOf("A"), listOf("B]R[C")).signature,
+        )
+    }
+
+    @Test
+    fun `没见过_返回null_一次都不许多放`() {
+        assertNull(PlanChangeMemory().lookup(change(listOf("新"), listOf("旧"))))
+    }
+
+    @Test
+    fun `登记只留最近八版_第九版挤掉最旧的`() {
+        val mem = PlanChangeMemory()
+        val seen = (1..9).map { change(listOf("新$it"), listOf("旧$it")) }
+        seen.forEach { mem.record(it, PlanChangeDecision.REJECTED) }
+        assertNotNull("第二版还在", mem.lookup(seen[1]))
+        assertNull("最旧那版被挤出 ⇒ 重发要重新问", mem.lookup(seen.first()))
+        assertEquals(PlanChangeDecision.REJECTED, mem.lookup(seen.last()))
+    }
+
+    @Test
+    fun `批准覆盖同版的拒录_她改主意不该被旧拒挡住`() {
+        val mem = PlanChangeMemory()
+        val c = change(listOf("新"), listOf("旧"))
+        mem.record(c, PlanChangeDecision.REJECTED)
+        mem.record(c, PlanChangeDecision.APPROVED)
+        assertEquals(PlanChangeDecision.APPROVED, mem.lookup(c))
+    }
+
+    @Test
+    fun `清空_同一版改动重新要授权`() {
+        // 决定属于那一轮任务：跨轮沿用等于替她把答案钉死（红线「不降决定权」）
+        val mem = PlanChangeMemory()
+        val c = change(listOf("新"), listOf("旧"))
+        mem.record(c, PlanChangeDecision.REJECTED)
+        mem.clear()
+        assertNull(mem.lookup(c))
+    }
+
+    @Test
+    fun `已拒回灌_说清没生效与这次为什么没问`() {
+        val text = PlanGuardRules.repeatRejected(change(listOf("新加一条"), listOf("删掉一条")))
+        assertTrue("要明说没生效", text.contains("没有生效"))
+        assertTrue("要说明原计划不变", text.contains("原计划保持不变"))
+        assertTrue("要讲清这次为什么没打卡", text.contains("已经明确拒过"))
+        assertTrue("要堵住原样重发", text.contains("不会有第二次确认机会"))
+        assertTrue("要点名改动内容", text.contains("新加一条") && text.contains("删掉一条"))
+    }
+
+    @Test
+    fun `拒过与未经确认的文案不是一条_防把没弹过的卡说成答过`() {
+        val c = change(listOf("新"), listOf("旧"))
+        assertFalse(PlanGuardRules.changeBlocked(c).contains("已经明确拒过"))
+        assertTrue(PlanGuardRules.repeatRejected(c).contains("已经明确拒过"))
     }
 
     // ── 源码级：引擎接线（JVM 跑不起整条循环，判据压在文本上） ──────────
