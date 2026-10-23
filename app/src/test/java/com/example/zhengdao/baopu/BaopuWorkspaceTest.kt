@@ -124,7 +124,9 @@ class BaopuWorkspaceTest {
         // 改存进程级 SharedPreferences。修法的**生命周期前提**必须钉住：
         // - SP 只能从 applicationContext 取（拿 Activity 会随页面销毁变孤儿/泄漏）；
         // - 两个 object 各一处、每次 init 重新绑定（进程级单例，不许“只认第一次”的旧 context）。
-        val src = appFile("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt").readText()
+        val raw = appFile("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt").readText()
+        // 剥注释再判：说明「为什么不再持 Context」的 KDoc 里会提到旧字段名，不能算回潮。
+        val src = raw.replace(Regex("/\\*[\\s\\S]*?\\*/"), "").replace(Regex("//[^\n]*"), "")
         assertEquals(
             "两处 SP 都必须从 applicationContext 取",
             2,
