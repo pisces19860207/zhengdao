@@ -41,6 +41,14 @@ UNBUDGETED_RULES = frozenset(
         "GradleDependency",
         "AndroidGradlePluginVersion",
         "RemoteVersionCheck",
+        # 134 批（2026-10-23）用户/蓝总管定案的 intentional 项，不是债：
+        # - OldTargetApi：targetSdk 36 是为真机验证基线（Android 16）钉的定案，
+        #   不为消 lint 抬到 37；
+        # - ChromeOsAbiSupport：只编 arm64 单架构是 2026-10-06 用户定案，
+        #   不为消 lint 加 x86_64 abiFilters。
+        # 两条仍照常写进 lint 报告/artifact，只是不参与「超预算」判定。
+        "OldTargetApi",
+        "ChromeOsAbiSupport",
     }
 )
 
