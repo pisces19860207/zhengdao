@@ -49,7 +49,7 @@ class ModelCatalogTest {
         assertEquals(CatalogShape.ANTHROPIC, ModelCatalog.shapeFor(Providers.ANTHROPIC.baseUrl))
         assertEquals(CatalogShape.OPENAI_COMPAT, ModelCatalog.shapeFor(Providers.DEEPSEEK.baseUrl))
         assertEquals(CatalogShape.OPENAI_COMPAT, ModelCatalog.shapeFor(Providers.OPENAI_COMPAT.baseUrl))
-        assertEquals(CatalogShape.OPENAI_COMPAT, ModelCatalog.shapeFor(Providers.GEMINI.baseUrl))
+        assertEquals(CatalogShape.GEMINI_NATIVE, ModelCatalog.shapeFor(Providers.GEMINI.baseUrl))
         assertEquals(CatalogShape.OPENAI_COMPAT, ModelCatalog.shapeFor(Providers.OPENROUTER_FREE.baseUrl))
         assertEquals(CatalogShape.GEMINI_NATIVE,
             ModelCatalog.shapeFor("https://generativelanguage.googleapis.com/v1beta"))
@@ -61,7 +61,7 @@ class ModelCatalogTest {
         assertEquals(CatalogShape.OPENAI_COMPAT, shapes.getValue("openai-compat"))
         assertEquals(CatalogShape.OPENAI_COMPAT, shapes.getValue("deepseek"))
         assertEquals(CatalogShape.ANTHROPIC, shapes.getValue("anthropic"))
-        assertEquals(CatalogShape.OPENAI_COMPAT, shapes.getValue("gemini"))
+        assertEquals(CatalogShape.GEMINI_NATIVE, shapes.getValue("gemini"))
         assertEquals(CatalogShape.OPENAI_COMPAT, shapes.getValue("openrouter-free"))
     }
 
@@ -197,8 +197,8 @@ class ModelCatalogTest {
             assertTrue(url.endsWith("/models"))
         }
         assertEquals(
-            "https://generativelanguage.googleapis.com/v1beta/openai/v1/models",
-            ModelCatalog.modelsUrl(Providers.GEMINI.baseUrl, CatalogShape.OPENAI_COMPAT),
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            ModelCatalog.modelsUrl(Providers.GEMINI.baseUrl, CatalogShape.GEMINI_NATIVE),
         )
     }
 
