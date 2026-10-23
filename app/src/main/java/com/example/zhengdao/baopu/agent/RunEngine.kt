@@ -268,6 +268,14 @@ internal class RunEngine(
     private val draining = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
     /**
+     * 第一百五十六批：每轮入口的 run 级复位钩子（[resetRunScopedCounters] 里调）。
+     * 生产接线：`onRunScopedReset = WorkspaceGrants::beginRun`（工作区外授权账本随运行清零）。
+     * 默认空实现 ⇒ 引擎直测（没有装配层）行为逐字节不变；声明点在冻结创建点
+     * `Thread(r, "zd-baopu-run")` **之下**，不挪对账单。
+     */
+    var onRunScopedReset: () -> Unit = {}
+
+    /**
      * 150批 F：`drainQueue` 的「poll ＋ stopRequested 检查」与 `stop` 的「置位 ＋ clearQueue」
      * 共用这一把锁 ⇒ 取条与清队不再有竞争窗口：要么 stop 先拿锁（排队条还在队列里、被
      * clearQueue 一起清掉并计入「清掉 N 条」），要么这条过了闸（过了闸就必须进 runLoop，
@@ -492,6 +500,11 @@ internal class RunEngine(
         consecutiveChannelFailures = 0
         channelSwitches = 0
         channelBroken = false
+        // 第一百五十六批：工作区外授权账本随运行清零（与上面四个 run 级计数同一入口、
+        // 同一口径）——跨运行必须重新问一次，「一次运行只问一次」的另一半。接线在
+        // BaopuRuntime.build（onRunScopedReset = WorkspaceGrants::beginRun）；默认空 ⇒ 引擎
+        // 单测没有装配层也行为不变。
+        onRunScopedReset()
     }
 
     // ── 确认制（刀 3 A 段） ──────────────────────────────────────────────

@@ -17,6 +17,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -114,11 +115,14 @@ internal object DeletePathTool {
         // 第三十七批 A 段：删掉人设＝让人设静默消失，同样不许（回收站那套逻辑原样保留）
         PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
         val target = resolve(root, rel)
-        if (!PathGuard.isInside(root, target)) {
-            return ToolOutcome.Rejected(
-                "路径越界被拒：$rel 不在工作区（${root.absolutePath}）内。delete_path 只能在资料库/工作区里删。",
-            )
-        }
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）。
+        // 回收站/备份区/原件区的既有禁区一字不动（下面各条照旧）。
+        workspaceBoundaryCheck(
+            root,
+            target,
+            rel,
+            "路径越界被拒：$rel 不在工作区（${root.absolutePath}）内。delete_path 只能在资料库/工作区里删。",
+        )?.let { return ToolOutcome.Rejected(it) }
         if (target.absolutePath == root.absolutePath) {
             return ToolOutcome.Failed("不许删工作区根目录本身：${root.absolutePath}")
         }
