@@ -289,16 +289,23 @@ internal object BaopuRuntime {
          */
         private const val KEY_APPROVED_GROUPS = "approved_groups"
 
+        /**
+         * 进程级 SharedPreferences 实例。
+         *
+         * 134 批 lint(StaticFieldLeak)：原字段是 `@Volatile var appCtx: Context?` —— 存的是
+         * application context（本来就不会泄漏 Activity），但 lint 对「Kotlin object 里的
+         * Context 字段」一律按泄漏风险报。改成只存 SP 实例：SP 由 Context 内部持有、进程级
+         * 缓存，语义与「每次从 applicationContext 取」等价，也不再直接持 Context 引用。
+         */
         @Volatile
-        private var appCtx: Context? = null
+        private var prefs: android.content.SharedPreferences? = null
 
         /** 装配期注入（进程级一次；UI 侧经 [toolPrefs] 进来也会先 init）。 */
         fun init(context: Context) {
-            appCtx = context.applicationContext
+            prefs = context.applicationContext.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
         }
 
-        private fun sp(): android.content.SharedPreferences? =
-            appCtx?.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+        private fun sp(): android.content.SharedPreferences? = prefs
 
         override fun isDisabled(name: String): Boolean =
             sp()?.getStringSet(KEY_DISABLED, emptySet())?.contains(name) == true
@@ -360,15 +367,15 @@ internal object BaopuRuntime {
     internal object BaopuToolUnlocks : GroupUnlockStore {
         private const val FILE = "baopu_tool_unlocks"
 
+        /** 进程级 SP 实例（134 批 StaticFieldLeak：不再持 Context 字段，理由同 [BaopuToolPrefs]）。 */
         @Volatile
-        private var appCtx: Context? = null
+        private var prefs: android.content.SharedPreferences? = null
 
         fun init(context: Context) {
-            appCtx = context.applicationContext
+            prefs = context.applicationContext.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
         }
 
-        private fun sp(): android.content.SharedPreferences? =
-            appCtx?.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+        private fun sp(): android.content.SharedPreferences? = prefs
 
         private fun key(sessionId: Long) = "session:$sessionId"
 
