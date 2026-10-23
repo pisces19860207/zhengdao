@@ -985,6 +985,10 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "kb_search" -> R.string.baopu_tool_kb_search
     "delete_path" -> R.string.baopu_tool_delete_path
     "image_ops" -> R.string.baopu_tool_image_ops
+    // 小说工程三件（第一百五十五批）：漏这两组分支 ⇒ 设置页开工具卡直接抛（同 update_plan 教训）
+    "novel_create" -> R.string.baopu_tool_novel_create
+    "novel_project" -> R.string.baopu_tool_novel_project
+    "novel_continue" -> R.string.baopu_tool_novel_continue
     "ask_user" -> R.string.baopu_tool_ask_user
     // 第一百二十七批：多 Agent 协作（run_subtasks）。不补这两行 ⇒ 设置页开工具卡直接抛。
     "run_subtasks" -> R.string.baopu_tool_run_subtasks
@@ -1035,6 +1039,10 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "kb_search" -> R.string.baopu_tool_kb_search_desc
     "delete_path" -> R.string.baopu_tool_delete_path_desc
     "image_ops" -> R.string.baopu_tool_image_ops_desc
+    // 小说工程三件（第一百五十五批）
+    "novel_create" -> R.string.baopu_tool_novel_create_desc
+    "novel_project" -> R.string.baopu_tool_novel_project_desc
+    "novel_continue" -> R.string.baopu_tool_novel_continue_desc
     "ask_user" -> R.string.baopu_tool_ask_user_desc
     "run_subtasks" -> R.string.baopu_tool_run_subtasks_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
