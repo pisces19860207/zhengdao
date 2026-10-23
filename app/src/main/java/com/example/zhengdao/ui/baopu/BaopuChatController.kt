@@ -57,7 +57,13 @@ import com.example.zhengdao.baopu.ProposalRules
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.eval.EvalAttempt
+import com.example.zhengdao.baopu.eval.EvalEvidenceSource
 import com.example.zhengdao.baopu.eval.EvalResultFile
+import com.example.zhengdao.baopu.eval.ProdEval
+import com.example.zhengdao.baopu.eval.ProdEvalGate
+import com.example.zhengdao.baopu.eval.ProdEvalOutcome
+import com.example.zhengdao.baopu.eval.ProdEvalResultFile
+import com.example.zhengdao.baopu.eval.ProdEvalSchedule
 import com.example.zhengdao.baopu.eval.ProposalRedline
 import com.example.zhengdao.baopu.eval.ProposalRestore
 import com.example.zhengdao.baopu.eval.ProposalSelfCheck
@@ -183,6 +189,8 @@ internal object BaopuNotePolicy {
  *
  * @param requiresApproval 是否需要人批（v1 恒 true：L3 开关默认关）
  * @param reasons 只带证据 id 的原因链（渲染时按原因码查 strings.xml，不把 id 当文案显示）
+ * @param evalSource 第一百六十八批：本次判定用的 eval 证据来源（null = 没有可用证据 ⇒ policy 判 DEFER）
+ * @param evalRanAt 证据产出时刻（null = 不知道 ⇒ 卡上显示「日期不详」，不编）
  */
 internal data class EvolutionSuggestion(
     val candidateId: String,
@@ -195,6 +203,8 @@ internal data class EvolutionSuggestion(
     val riskClass: com.example.zhengdao.baopu.EvolutionRisk,
     val requiresApproval: Boolean,
     val reasons: List<com.example.zhengdao.baopu.EvolutionReason>,
+    val evalSource: com.example.zhengdao.baopu.eval.EvalEvidenceSource? = null,
+    val evalRanAt: Long? = null,
 )
 
 /**
@@ -325,6 +335,78 @@ internal class BaopuChatController(context: Context) {
         is SelfCheckOutcome.Passed -> BaopuNoteLevel.Info
         is SelfCheckOutcome.NotRun -> BaopuNoteLevel.Info
         else -> BaopuNoteLevel.Error
+    }
+
+    /**
+     * 第一百六十八批：ProdEval 调用点（派工单 §2：会话收尾触发、节流、不阻塞）。
+     *
+     * 四个刻意的设计：
+     * 1. **闸门第一道**：开关关着 ⇒ 除了读一次 prefs 什么都不做（不查网络、不排协程、
+     *    不读用例）——「零动作」而不是「很快返回」；
+     * 2. **节流 24h**：同一台设备最多一天一轮（[ProdEvalSchedule.shouldRun] 纯判定，
+     *    JVM 直测）；烧的是用户的额度，收尾事件比它勤得多；
+     * 3. **单飞**：上一轮还在 IO 上跑就不排第二次（[ProdEvalSchedule.tryAcquire]）；
+     * 4. **不阻塞**：整轮在 Dispatchers.IO 上跑，任何失败只变 [ProdEvalOutcome.NotRun]
+     *    （[ProdEval.execute] 自己兜底），聊天路径一行都不等它。
+     *
+     * 只有一个调用点：这里（会话收尾）。引擎（RunEngine）不接线——两处触发就会出现
+     * 「同一天烧两轮额度」，`ProdEvalTest` 的源码门禁盯着这件事。
+     */
+    private fun scheduleProdEvalOnSettle() {
+        runCatching {
+            val ctx = appCtx
+            if (!ProdEvalGate.enabledNow(ctx)) return
+            if (!ProdEvalSchedule.tryAcquire()) return
+            val due = ProdEvalSchedule.shouldRun(
+                enabled = true,
+                networkAvailable = networkAvailable(ctx),
+                lastRanAt = ProdEvalSchedule.lastRanAt(ctx),
+                now = System.currentTimeMillis(),
+            )
+            if (!due) {
+                ProdEvalSchedule.release()
+                return
+            }
+            scope.launch {
+                val out = runCatching {
+                    withContext(Dispatchers.IO) {
+                        ProdEval.of(
+                            ctx,
+                            com.example.zhengdao.baopu.BaopuRuntime.personaFiles(ctx),
+                            com.example.zhengdao.baopu.BaopuWorkspace.hostDir(ctx),
+                        ).execute("会话收尾")
+                    }
+                }.getOrNull()
+                // 只有真跑成了才记节流账（NotRun 不记：没 key 记一笔会堵掉之后 24h）。
+                if (out is ProdEvalOutcome.Recorded) {
+                    ProdEvalSchedule.markRan(ctx, System.currentTimeMillis())
+                }
+                ProdEvalSchedule.release()
+            }
+        }.onFailure {
+            // 只记录不阻塞（65/89 口径）：排程自己崩了也不许把会话收尾带下去。
+            ProdEvalSchedule.release()
+            com.example.zhengdao.rootfs.RunLog.log(
+                "[prod-eval] 排程异常（不阻塞对话）：${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
+    }
+
+    /**
+     * 网络通不通（节流判据之一）。
+     *
+     * 与 [com.example.zhengdao.ui.EnvHealth] 的体检同款取法，但只做轻量判断：
+     * 拿不到能力／无活跃网络 ⇒ 按不通处理（不赌，也不做 TCP 探测——那是体检的活）。
+     */
+    private fun networkAvailable(ctx: android.content.Context): Boolean = try {
+        val cm = ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+            ?: return false
+        val net = cm.activeNetwork ?: return false
+        cm.getNetworkCapabilities(net)
+            ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    } catch (t: Throwable) {
+        false
     }
 
     /** 第八十四批 v2：技能正文自检器（本地判据 + 失败回滚，不调模型）。 */
@@ -2365,6 +2447,9 @@ internal class BaopuChatController(context: Context) {
                 // 第八十六批：任务收尾 ⇒ 从已有记录生成提案候选（只生成、不应用）。
                 // 放在 refineOnSettle 之后：学习卡在引擎收尾时已经出好，这里读的是同一轮。
                 generateProposalCandidatesOnSettle()
+                // 第一百六十八批：ProdEval 调用点（收尾触发；闸门默认关，
+                // 关着这一行除了读一次 prefs 什么都不做；IO 上跑，不阻塞聊天）。
+                scheduleProdEvalOnSettle()
                 // 第一百零三批 §B②：被前置校验挡下的候选不出卡，但要给一句人话原因
                 // （审计行在采样处已落 `[skill-body-selfcheck]` 锚）。
                 noteFilteredLearn()
@@ -2639,8 +2724,10 @@ internal class BaopuChatController(context: Context) {
      *            挡掉的同 hash 候选直接跳过，不重复判定）；
      *   效果   ← [com.example.zhengdao.baopu.SkillEffects.outcomesFor]（85 的按技能聚合）；
      *   自检   ← [com.example.zhengdao.baopu.dryRunSelfCheck]（84 判据层事前试跑，只读）；
-     *   eval   ← [com.example.zhengdao.baopu.eval.EvalResultFile.latest]（最近一次发版结果；
-     *            没有 ⇒ null ⇒ DEFER，不许默认过线）；
+     *   eval   ← [com.example.zhengdao.baopu.eval.selectEvalEvidence]（第一百六十八批：
+     *            优先 7 天内的个人生产证据 files/eval/prod-result.json，否则回退发版证据
+     *            assets/eval/eval-result.json；两者都没有 ⇒ null ⇒ DEFER，不许默认过线；
+     *            来源与日期随证据带进审计与建议卡，不许两套分数混用）；
      *   决策   ← [EvolutionDecisionPort.decide]（88 决策口，每次调用恰好落一条审计）。
      *
      * 失败不阻塞主流程：任一条候选判定抛异常只 log 并跳过它（65/89「只记录不阻塞」），
@@ -2660,8 +2747,24 @@ internal class BaopuChatController(context: Context) {
         val audit = EvolutionAuditLog.under(globalRoot)
         // 决策口自带默认策略（全人批；L3 开关默认 false）——本类不实例化 EvolutionPolicy
         val port = EvolutionDecisionPort(audit = audit)
-        // eval 证据：只认最近一次发版结果文件；拿不到就 null（policy 判 DEFER 并写进原因链）
-        val evalResult = EvalResultFile.latest(appCtx)
+        // eval 证据：第一百六十八批起按**来源**选（派工单 §2 消费点 B）——
+        // 优先 7 天内的个人生产证据（本机 files/eval/prod-result.json），
+        // 否则回退发版证据（assets/eval/eval-result.json）；
+        // 两者都没有 ⇒ null ⇒ policy 判 DEFER（不许默认过线）。
+        val prodEval = ProdEvalResultFile.latest(appCtx)
+        val releaseEval = EvalResultFile.latest(appCtx)
+        val evalResult = com.example.zhengdao.baopu.eval.selectEvalEvidence(
+            prod = prodEval,
+            release = releaseEval,
+            now = System.currentTimeMillis(),
+        )
+        if (prodEval != null && evalResult !== prodEval) {
+            // 有生产证据但已过期：回退到发版证据可以，但要留一行账——
+            // 不许安静地换来源（派工单「来源和日期必须标」在日志这一侧的同款要求）。
+            com.example.zhengdao.rootfs.RunLog.log(
+                "[baopu-eval] 个人生产证据已过期（ranAt=${prodEval.ranAt}），本次判定按发版证据",
+            )
+        }
         // 第一百零九批：L3-lite **影子**。同一轮判定顺带问一句「若把低风险自动批准那条闸
         // 开起来，这条会批／会拒／会搁置」，只往 进化影子.jsonl 追加账。红线三条：
         //   不改候选状态、不自批、不碰开关（L3_AUTO_LOW_RISK 仍是 false，本类也不实例化策略）。
@@ -2706,6 +2809,9 @@ internal class BaopuChatController(context: Context) {
                     riskClass = decision.riskClass,
                     requiresApproval = decision.requiresApproval,
                     reasons = decision.reasons,
+                    // 第一百六十八批：证据来源与日期带上卡（UI 必须标「个人生产证据/发版证据」）。
+                    evalSource = evalResult?.source,
+                    evalRanAt = evalResult?.ranAt,
                 )
             }.getOrElse {
                 com.example.zhengdao.rootfs.RunLog.log(
