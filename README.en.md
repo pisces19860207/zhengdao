@@ -19,6 +19,8 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
+**Baseline**: the feature set is baselined at v2.2.0 (v2.2.1 onward is incremental fixes and patches, no rewrites); new capabilities ship in separate batches.
+
 ## Requirements
 
 - **Android 16 (API 36)** or newer
