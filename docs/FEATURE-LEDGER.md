@@ -158,7 +158,7 @@
 | 110 | 🔵 **2026-10-21 已派第一百一十七批（qoder）：多任务并发 v1（会话内队列＋后台续跑）** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百一十七批-多任务并发v1.md`（先设计并发模型；会话级串行、任务队列、取消/恢复；多会话 v1 默认不并行） |
 | 111 | 🔵 **2026-10-21 已派第一百一十八批（qoder）：性能与启动优化 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百一十八批-性能优化v1.md`（先出基线，只修 Top3；无数字不改；不碰 UI 视觉/A） |
 | 112 | 🔵 **2026-10-21 已派第一百一十九批（workbuddy 国内版）：工具 schema 契约全覆盖** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百一十九批-工具schema全覆盖.md`（94 批续；所有已注册工具补 schema/校验/门禁，不改合法行为；105 在验收，不碰 UI） |
-| 113 | 🔵 **2026-10-21 已派第一百二十批（workbuddy 国内版）：AI 生图 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十批-AI生图v1.md`（能力表 `imageGeneration`＋适配器，不锁 provider；`generate_image`→产物/预览；成本确认，key 不入库）；**UI 落点按 v1.5 §3.13 图片区/全屏查看器，不新造** |
+| 113 | ⛔ **2026-10-23 已关闭（被第一百五十八批取代）：AI 生图 v1** —— 158 已交付 Gemini 原生文生图/图生图（`generate_image`＋产物落盘/确认），120 不再单独做；OpenAI/Imagen 等其他 provider 若要接，另开 adapter 小单，不复活 120 | 已关闭 |
 | 114 | 🔵 **2026-10-21 已派第一百二十一批（workbuddy 国内版）：死代码转正三件** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十一批-死代码转正三件.md`（purgeSession 清会话、LegacyMemPlugin 迁移、DocxTextExtractor 导入；各带确认/回滚/测试；不含 withObjectStorage/isInFlight/markRemoved） |
 | 115 | ✅ **第一百二十二批验收（政策表 v1）** —— 见 §A 350；已收口 |
 | 116 | 🔵 **2026-10-21 已派第一百二十三批（qoder）：MCP 工具接入 v1** —— 单 `..\_zd-private\docs\派工单-2026-10-21-第一百二十三批-MCP接入v1.md`（HTTP/SSE 外部 MCP；工具转 ToolSpec；人批；不自动连接/不执行远程代码/不拉 stdio；不锁 server 名单） |
