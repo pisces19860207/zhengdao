@@ -226,8 +226,13 @@ internal fun BaopuChannelSheet(
             openRouterPublic = ModelPickerRules.isOpenRouterPublicCatalog(effectiveBase),
         )
         if (block != null) {
-            // 不发 doomed 请求，但把"为什么不发"说出来（不静默）；清单用手头这份缓存顶着。
-            entries = cached
+            // 不发 doomed 请求，但把"为什么不发"说出来（不静默）；没缓存时用**内置短名单**
+            // 顶上（2026-10-23 用户：预设没 Key 也要能点选，不该逼人手填）。
+            entries = if (cached.isEmpty() && preset != null) {
+                ModelPickerRules.presetModels(preset).map { ModelEntry(id = it) }
+            } else {
+                cached
+            }
             fetching = false
             pullNote = ModelPickerRules.pullHint(block, isFreeLane)
             fetchError = null
@@ -242,7 +247,10 @@ internal fun BaopuChannelSheet(
         pullNote = null
         delay(ModelPickerRules.DEBOUNCE_MS) // 停手 0.6 秒再发，别每敲一个字符打一次
         fetching = true
-        val (got, err) = withContext(Dispatchers.IO) { ModelCatalog.fetchEntries(effectiveBase, keyForFetch) }
+        val (got, err) = withContext(Dispatchers.IO) {
+            runCatching { ModelCatalog.fetchEntries(effectiveBase, keyForFetch) }
+                .getOrElse { emptyList<ModelEntry>() to (it.message ?: "拉取异常") }
+        }
         if (got.isNotEmpty()) {
             ModelCatalogCache.store(effectiveBase, got, neverCache)
             entries = got
@@ -371,6 +379,24 @@ internal fun BaopuChannelSheet(
                     "没拉到模型列表（$fetchError）——可以在下面直接手填模型名",
                     error = true,
                 )
+                entries.isEmpty() && preset != null &&
+                    ModelPickerRules.presetModels(preset).isNotEmpty() -> {
+                    // 没 Key 的预设：给内置短名单，点一行就选（不再逼人手填）。
+                    ModelPickerRules.presetModels(preset).forEach { id ->
+                        PickerRow(
+                            title = ModelPickerRules.displayName(id, null),
+                            sub = id,
+                            selected = modelText == id,
+                            onClick = {
+                                modelText = id
+                                pickedFor = selected
+                                picked = ModelPickerRules.ModelOverride(id = id)
+                                listExpanded = false
+                            },
+                        )
+                    }
+                    Footnote("这是没填 Key 时的短名单；填 Key 后自动拉全量。")
+                }
                 entries.isEmpty() -> Footnote("这条模型还没有清单——可以在下面直接手填模型名，或点下面的刷新")
                 filtered.isEmpty() -> Footnote(ModelPickerRules.SEARCH_EMPTY_NOTICE)
                 else -> {
@@ -502,7 +528,6 @@ internal fun BaopuChannelSheet(
                 GroupLabel("OpenRouter 免费档")
                 // ①「免费限额 UI 明示」；这句话自带"不阻塞使用"，13sp 次墨（不用琥珀）。
                 Footnote(Providers.FREE_QUOTA_HINT)
-                SmallAction("去 OpenRouter 注册并拿 Key") { openInXuanlan(ModelPickerRules.OPENROUTER_KEYS_URL) }
                 Footnote(ModelPickerRules.SEARCH_FREE_TIP)
             }
 
