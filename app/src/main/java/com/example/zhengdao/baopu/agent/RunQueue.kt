@@ -98,34 +98,62 @@ internal object RunConcurrency {
 }
 
 /**
- * 每会话一条 FIFO（内存镜像）。
+ * 会话任务队列的**可注入缝**（152批 F）。
+ *
+ * 为什么抽成接口：RunEngine 要真 SQLite/网络，JVM 里起不来 ⇒ 「poll 后 stop 到达」
+ * 的时序此前只能钉在源码结构上。队列本体可替换后，运行期用例用替身构造确定性时序
+ * （poll 返回一条后、在指定点让 stop/clear 到达），把存活不变量钉在行为上。
+ *
+ * 方法集就是引擎实际调用的全部操作，**不为测试开后门**：替身只许在这些口上改行为，
+ * 停止/排队语义由 [QueueStopGate] 的同锁协议钉死，替身不许碰。
+ */
+internal interface SessionRunQueue {
+    fun enqueue(turn: QueuedTurn): Int
+    fun size(sessionId: Long): Int
+    fun hasItems(sessionId: Long): Boolean
+    fun snapshot(sessionId: Long): List<QueuedTurn>
+
+    /** 取队首（开跑前调；取走即从内存队列消失，库里那行由开跑事务删）。 */
+    fun poll(sessionId: Long): QueuedTurn?
+
+    /** 清空本会话（返回被清的条目，调用方负责落库删除；不负责停当前轮）。 */
+    fun clear(sessionId: Long): List<QueuedTurn>
+
+    /** 恢复：只在内存里本来就空时接管，避免与刚入队的镜像重复。 */
+    fun restore(sessionId: Long, turns: List<QueuedTurn>)
+
+    /** 撤销刚入队的一条（只用于「抢门失败」这种极端竞态；正常路径不走）。 */
+    fun remove(sessionId: Long, turn: QueuedTurn): Boolean
+
+    /** 当前有排队条目的会话（恢复/诊断用）。 */
+    fun sessions(): Set<Long>
+}
+
+/**
+ * [SessionRunQueue] 的生产默认实现（117批原实现逐行原样，152批 F 只换成接口实现）。
  *
  * 线程纪律：所有方法 `@Synchronized`；UI 线程只做入队/计数的同步读，引擎线程取队首。
  * 持久化是另一条链（`run_queue` 表，单写者线程）——内存先给出即时计数，落库 Future
  * 跟着条目走，开跑前再取它的 id 做「删队列行 ＋ 插用户消息」的同事务。
  */
-internal class SessionRunQueue {
+internal class DefaultSessionRunQueue : SessionRunQueue {
     private val queues = LinkedHashMap<Long, ArrayDeque<QueuedTurn>>()
 
-    @Synchronized
-    fun enqueue(turn: QueuedTurn): Int {
+    override fun enqueue(turn: QueuedTurn): Int {
         val q = queues.getOrPut(turn.sessionId) { ArrayDeque() }
         q.addLast(turn)
         return q.size
     }
 
-    @Synchronized
-    fun size(sessionId: Long): Int = queues[sessionId]?.size ?: 0
+    override fun size(sessionId: Long): Int = queues[sessionId]?.size ?: 0
 
-    @Synchronized
-    fun hasItems(sessionId: Long): Boolean = size(sessionId) > 0
+    override fun hasItems(sessionId: Long): Boolean = size(sessionId) > 0
 
-    @Synchronized
-    fun snapshot(sessionId: Long): List<QueuedTurn> = queues[sessionId]?.toList() ?: emptyList()
+    override fun snapshot(sessionId: Long): List<QueuedTurn> = queues[sessionId]?.toList() ?: emptyList()
 
     /** 取队首（开跑前调；取走即从内存队列消失，库里那行由开跑事务删）。 */
     @Synchronized
-    fun poll(sessionId: Long): QueuedTurn? {
+    override fun poll(sessionId: Long): QueuedTurn? {
         val q = queues[sessionId] ?: return null
         val turn = q.pollFirst() ?: return null
         if (q.isEmpty()) queues.remove(sessionId)
@@ -134,14 +162,14 @@ internal class SessionRunQueue {
 
     /** 清空本会话（返回被清的条目，调用方负责落库删除；不负责停当前轮）。 */
     @Synchronized
-    fun clear(sessionId: Long): List<QueuedTurn> {
+    override fun clear(sessionId: Long): List<QueuedTurn> {
         val q = queues.remove(sessionId) ?: return emptyList()
         return q.toList()
     }
 
     /** 恢复：只在内存里本来就空时接管，避免与刚入队的镜像重复。 */
     @Synchronized
-    fun restore(sessionId: Long, turns: List<QueuedTurn>) {
+    override fun restore(sessionId: Long, turns: List<QueuedTurn>) {
         if (turns.isEmpty()) return
         val existing = queues[sessionId]
         if (existing != null && existing.isNotEmpty()) return
@@ -150,7 +178,7 @@ internal class SessionRunQueue {
 
     /** 撤销刚入队的一条（只用于「抢门失败」这种极端竞态；正常路径不走）。 */
     @Synchronized
-    fun remove(sessionId: Long, turn: QueuedTurn): Boolean {
+    override fun remove(sessionId: Long, turn: QueuedTurn): Boolean {
         val q = queues[sessionId] ?: return false
         val ok = q.removeIf { it === turn }
         if (q.isEmpty()) queues.remove(sessionId)
@@ -159,5 +187,5 @@ internal class SessionRunQueue {
 
     /** 当前有排队条目的会话（恢复/诊断用）。 */
     @Synchronized
-    fun sessions(): Set<Long> = queues.keys.toSet()
+    override fun sessions(): Set<Long> = queues.keys.toSet()
 }

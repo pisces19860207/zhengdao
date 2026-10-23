@@ -103,7 +103,7 @@ class RunQueueTest {
 
     @Test
     fun `每会话FIFO_互不串队`() {
-        val q = SessionRunQueue()
+        val q = DefaultSessionRunQueue()
         q.enqueue(turn(1L, "a"))
         q.enqueue(turn(2L, "x"))
         q.enqueue(turn(1L, "b"))
@@ -120,7 +120,7 @@ class RunQueueTest {
 
     @Test
     fun `图片路径随条目走_两条带图消息不串`() {
-        val q = SessionRunQueue()
+        val q = DefaultSessionRunQueue()
         q.enqueue(turn(1L, "一", listOf("附件/1.png")))
         q.enqueue(turn(1L, "二", listOf("附件/2.png")))
         assertEquals(
@@ -133,7 +133,7 @@ class RunQueueTest {
 
     @Test
     fun `清空只清目标会话_其余队列不动`() {
-        val q = SessionRunQueue()
+        val q = DefaultSessionRunQueue()
         q.enqueue(turn(1L, "a"))
         q.enqueue(turn(1L, "b"))
         q.enqueue(turn(2L, "x"))
@@ -146,7 +146,7 @@ class RunQueueTest {
 
     @Test
     fun `恢复只在空队列时接管_不覆盖刚入队的镜像`() {
-        val q = SessionRunQueue()
+        val q = DefaultSessionRunQueue()
         q.restore(1L, listOf(turn(1L, "旧1"), turn(1L, "旧2")))
         assertEquals(listOf("旧1", "旧2"), q.snapshot(1L).map { it.text })
         // 已有内存镜像（本进程刚入队）⇒ 恢复不覆盖，避免重复
@@ -159,7 +159,7 @@ class RunQueueTest {
 
     @Test
     fun `撤销用对象身份_不误删同文条目`() {
-        val q = SessionRunQueue()
+        val q = DefaultSessionRunQueue()
         val a = turn(1L, "同一句")
         val b = turn(1L, "同一句")
         q.enqueue(a)
@@ -171,7 +171,7 @@ class RunQueueTest {
 
     @Test
     fun `会话集合与计数是诊断读数`() {
-        val q = SessionRunQueue()
+        val q = DefaultSessionRunQueue()
         q.enqueue(turn(3L, "a"))
         q.enqueue(turn(5L, "b"))
         assertEquals(setOf(3L, 5L), q.sessions())

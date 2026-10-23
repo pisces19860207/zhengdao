@@ -38,6 +38,10 @@ class RunEngineConcurrencyGateTest {
 
     private val engine = "src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt"
 
+    // 152批 F：取条/置位清队的同锁临界区收进 QueueStopGate（JVM 运行期用例可直接驱动），
+    // 引擎侧只留两个门调用——同锁本体改钉在门文件里，纪律不变。
+    private val stopGate = "src/main/java/com/example/zhengdao/baopu/agent/QueueStopGate.kt"
+
     // ── A：四个 run 级计数器在新一轮入口统一复位 ──────────────────────────
 
     @Test
@@ -108,26 +112,41 @@ class RunEngineConcurrencyGateTest {
 
     @Test
     fun `F_poll与stop同锁_过闸条目不许在检查点后丢弃`() {
-        val src = code(engine)
+        // ── 门本体（152批 F 起同锁纪律钉在 QueueStopGate）──
+        val gateSrc = code(stopGate)
         assertEquals(
-            "synchronized(queueGate) 必须恰好两处（drainQueue 取条 / stop 置位清队）",
+            "synchronized(lock) 必须恰好两处（pollForRun 取条 / onStopArrived 置位清队）",
             2,
-            Regex("synchronized\\(queueGate\\)").findAll(src).count(),
+            Regex("synchronized\\(lock\\)").findAll(gateSrc).count(),
         )
-        // drainQueue：取条与停止检查在同一临界区里
         assertTrue(
-            "取条必须与 stopRequested 检查同锁",
-            src.contains("if (stopRequested) null else runQueue.poll(sessionId)"),
+            "取条必须与停止检查同锁",
+            gateSrc.contains("if (isStopped()) null else queue.poll(sessionId)"),
+        )
+        val arrived = gateSrc.indexOf("fun <R> onStopArrived(")
+        assertTrue("QueueStopGate 缺 onStopArrived", arrived >= 0)
+        assertTrue(
+            "onStopArrived 门内必须先置位、再中断、最后才放行 body（150批 F 定稿顺序）",
+            gateSrc.contains("markStopped()\n        interrupt()\n        body()"),
+        )
+        // ── 引擎侧：只许经门取条/停清，不许绕开 ──
+        val src = code(engine)
+        assertTrue(
+            "引擎必须持 QueueStopGate 并把注入队列交给它",
+            src.contains("private val queueGate = QueueStopGate(runQueue"),
+        )
+        assertTrue(
+            "drainQueue 必须经 queueGate.pollForRun 取条（不许绕开门自取）",
+            src.contains("val turn = queueGate.pollForRun(sessionId) ?: break"),
         )
         // 两个旧「丢弃检查点」都必须消失（消息已落库、由循环头收尾 Aborted）
         assertFalse("poll 后的丢弃 break 必须删掉", src.contains("取出的排队条不再开跑"))
         assertFalse("runLoop 里的第二丢弃闸必须撤销", src.contains("排队里的这一条没有开跑"))
-        // stop()：置位与 clearQueue 在同一临界区（抽 stop 方法体核对）
+        // stop()：置位走门的 onStopArrived，clearQueue 仍在门内 body 里核对
         val s = src.indexOf("fun stop() {")
         assertTrue("找不到 stop()", s >= 0)
         val stopBody = src.substring(s, src.indexOf("fun stopRequestedNow()", s))
-        assertTrue("stop 的置位与清队必须进同锁临界区", stopBody.contains("synchronized(queueGate)"))
-        assertTrue(stopBody.contains("stopRequested = true"))
+        assertTrue("stop 的置位必须进 onStopArrived（同锁临界区）", stopBody.contains("queueGate.onStopArrived("))
         assertTrue(stopBody.contains("clearQueue(sid)"))
     }
 

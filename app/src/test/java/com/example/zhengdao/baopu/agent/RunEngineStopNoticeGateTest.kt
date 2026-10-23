@@ -19,29 +19,41 @@ class RunEngineStopNoticeGateTest {
         else File("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt").readText()
     }
 
+    // 152批 F：停止文案抽成 stopNoticeText 纯函数、在飞计数收进 QueueStopGate——
+    // 字样与计数的本体改钉到门文件，引擎侧钉「真用了它」。
+    private fun gateSrc(): String {
+        val f = File("app/src/main/java/com/example/zhengdao/baopu/agent/QueueStopGate.kt")
+        return if (f.isFile) f.readText()
+        else File("src/main/java/com/example/zhengdao/baopu/agent/QueueStopGate.kt").readText()
+    }
+
     @Test
     fun `F_停止文案分开说排队与已开始处理的那一条`() {
-        val s = src()
+        val s = gateSrc()
         assertTrue("缺「另有 1 条已开始处理」的提示", s.contains("另有 1 条已开始处理的消息会保留，可续跑"))
         assertTrue("缺「正在处理的那条会停在当前步」的提示", s.contains("正在处理的那条会停在当前步，消息保留可续跑"))
         // 旧文案仍可保留（无在飞时只报排队）；但不能只有旧文案。
         assertTrue("旧文案应仍在（无在飞时用）", s.contains("已停止，排队中的 \$n 条也清掉了"))
+        // 引擎必须真用这个纯函数拼停止文案（不许在引擎里另写一份散的）
+        assertTrue("引擎 stop 必须经 stopNoticeText 拼文案", src().contains("stopNoticeText(n, running)"))
     }
 
     @Test
     fun `F_在飞计数在锁内取条时加_收尾时减`() {
-        val s = src()
+        val g = gateSrc()
         assertTrue(
-            "缺 polledInFlight 字段",
-            s.contains("private val polledInFlight = java.util.concurrent.atomic.AtomicInteger(0)"),
+            "缺 polledInFlight 字段（152批 F 起归 QueueStopGate）",
+            g.contains("val polledInFlight = AtomicInteger(0)"),
         )
-        assertTrue("取条处没计数", s.contains("polledInFlight.incrementAndGet()"))
-        assertTrue("收尾处没减回", s.contains("polledInFlight.decrementAndGet()"))
-        // 读计数必须在 queueGate 临界区内（停止侧）
-        val stopIdx = s.indexOf("fun stop() {")
-        val body = s.substring(stopIdx, s.indexOf("fun stopRequestedNow()", stopIdx))
-        assertTrue("stop() 里读 polledInFlight 但不在 queueGate 内", body.contains("synchronized(queueGate)"))
-        assertTrue("stop() 里没读 polledInFlight", body.contains("val running = polledInFlight"))
+        assertTrue("取条处没计数", g.contains("polledInFlight.incrementAndGet()"))
+        // 收尾处减回：减法仍在引擎 drainQueue 的 finally（对着门上的计数减）
+        val e = src()
+        assertTrue("收尾处没减回", e.contains("queueGate.polledInFlight.decrementAndGet()"))
+        // 读计数必须在门内（停止侧 body 由 onStopArrived 持锁执行）
+        val stopIdx = e.indexOf("fun stop() {")
+        val body = e.substring(stopIdx, e.indexOf("fun stopRequestedNow()", stopIdx))
+        assertTrue("stop() 必须经 onStopArrived 进门", body.contains("queueGate.onStopArrived("))
+        assertTrue("stop() 里没读 polledInFlight", body.contains("val running = queueGate.polledInFlight"))
     }
 
     @Test
