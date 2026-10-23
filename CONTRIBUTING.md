@@ -38,7 +38,7 @@ python tools\check-native-so.py      # 必须退出 0
 ## 四、代码约定
 
 - 新文件第一行写独立开发声明（见任一 `app/src/main/java/.../*.kt` 的文件头）：
-  本文件为本项目从零编写、未参考第三方同类应用代码；参考资料清单在 `PROVENANCE.md`。
+  本文件为本项目原创、不含对第三方源码的拷贝；参考资料清单在 `PROVENANCE.md`。
 - 注释写中文，先说结论再说原因；`TODO` / `FIXME` 请带上 issue 或 ERRATA 编号。
 - Compose 刷新惯用法：`storageTick` ＋ `LaunchedEffect(storageTick)` ＋ `remember`；
   阻塞 IO 走 `scope.launch { withContext(Dispatchers.IO) { … } }`。

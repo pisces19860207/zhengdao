@@ -1,3 +1,6 @@
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+
 package com.example.zhengdao.util
 
 import org.junit.Assert.assertEquals
@@ -259,6 +262,9 @@ class BareThreadGuardTest {
         // 对账单随之 32→33，红线同步上调 1。再往上加必须先在本行写理由。
         // 2026-10-23：152批 F 给 RunEngine 构造注入 runQueue（+6 行 KDoc＋参数）
         // ⇒ RunEngine.kt 255→261 平移（无新增创建点，计数仍 33）。
+        // 2026-10-23 晚：合并 origin/main（884a5c41 统一 172 文件头，纯注释）时，
+        // BrowserAgentBridge.kt 之前**没有**声明头（上游本次补齐，+3 行：两行声明＋空行）
+        // ⇒ 它的 zd-bridge-http 创建点 73→76 平移（无新增创建点，计数仍 33）。
         assertTrue("裸 Thread 创建点 $total 处，超过红线 33——先收敛再谈新增", total in 1..33)
     }
 
@@ -271,7 +277,7 @@ class BareThreadGuardTest {
             "AgentInstaller.kt:54",
             "AgentManifest.kt:140",
             "BaopuDb.kt:1370",
-            "BrowserAgentBridge.kt:73",
+            "BrowserAgentBridge.kt:76",
             "GuardPipeline.kt:69",
             "GuardPipeline.kt:86",
             "KeepaliveWatcher.kt:230",

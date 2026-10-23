@@ -1,5 +1,5 @@
 # 证道（Zhengdao）CI 构建流水线
-# 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类项目的 CI 配置。
+# 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 # 参考资料：GitHub Actions 官方文档（workflow syntax / runner images / upload-artifact）。
 #
 # 触发：推送到 main 分支，或在 Actions 页面手动触发（workflow_dispatch）。

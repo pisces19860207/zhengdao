@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写。被测类是 Termux 官方 terminal-emulator
+// 独立开发声明：本文件为本项目原创。被测类是 Termux 官方 terminal-emulator
 // （Apache-2.0，v0.119.0-beta.3，聚合分发见 PROVENANCE.md）经本项目打过补丁的
 // `TerminalEmulator`；本测试钉的正是 2026-10-12 那处补丁（🔴1 光标列越界崩进程）。
 package com.termux.terminal

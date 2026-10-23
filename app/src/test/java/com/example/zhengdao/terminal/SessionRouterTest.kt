@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写。可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+// 独立开发声明：本文件为本项目原创。可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.terminal
 
 import org.junit.Assert.assertEquals

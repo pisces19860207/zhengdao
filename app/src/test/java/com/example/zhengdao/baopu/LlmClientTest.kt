@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据的公开接口：OkHttp MockWebServer（本地环回假服务器，真实走 OkHttp 栈，
 // 零外网依赖——与 RootfsDownloaderFallbackTest 同一范式）；OpenAI / Anthropic

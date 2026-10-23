@@ -1,4 +1,4 @@
-# 独立开发声明：本 CMake 脚本为本项目从零编写。
+# 独立开发声明：本 CMake 脚本为本项目原创。
 # 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 #
 # v3.9（2026-10-05）：自研 JNI PTY 桥（pty.c / libzhengdao_pty.so）已随终端渲染层

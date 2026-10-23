@@ -1,3 +1,6 @@
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+
 // 151 批：150 批 F/I 的用户可见缺口补丁门禁（源码级）。
 //
 // 为什么是源码门禁：RunEngine 依赖 Android（Looper/SharedPreferences），本仓 JVM 单测

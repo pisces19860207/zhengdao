@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写。被测类是 Termux 官方 terminal-emulator
+// 独立开发声明：本文件为本项目原创。被测类是 Termux 官方 terminal-emulator
 // （Apache-2.0，上游 v0.119.0-beta.3，聚合分发见 PROVENANCE.md）经本项目打过补丁的
 // `TerminalEmulator`；本测试钉的正是 2026-10-14 第 ② 刀补的 OSC 8 超链接解析
 // （台账 §B-12：上游整段丢弃 OSC 8 ⇒ agent 打出的链接只能手抄）与第 ⑨ 刀 R-10 修
