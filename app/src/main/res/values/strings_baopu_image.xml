@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第一百五十八批：生图字符串单独成文件——本批基线是 integ/reset-1023（未合 main），
+     而 main 上已有提交改过 strings.xml；pre-commit 闸 2 会拦「旧基准上改同一文件」。
+     资源合并后与放进 strings.xml 完全等价。 -->
+<resources>
+    <string name="baopu_tools_group_image">文生图</string>
+    <string name="baopu_group_line_image">按一句话画图，或照着工作区里的图改；每次一张确认卡，会烧 Gemini 额度</string>
+    <string name="baopu_tool_generate_image">文生图（Gemini）</string>
+    <string name="baopu_tool_generate_image_desc">用 Gemini 的图片模型画图（每次执行前弹确认卡；模型从这把 Key 的可用清单里动态挑选——Nano Banana Pro 优先，其次 Nano Banana 2，不会退回旧模型）：一句话文生图，或拿工作区里的一张图做参考（图生图）。产物只落本机——默认工作区落 资料库/整理/，自定义工作区落 产物/，同名不覆盖；图片不会上传到别处。会消耗你的 Gemini 额度，一次最多 4 张。没填 Key 或 Key 没有图片模型时，会直接告诉你先去哪里处理。</string>
+</resources>

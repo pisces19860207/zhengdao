@@ -65,7 +65,7 @@ class ToolRegistrySwitchTest {
                 "library_list", "library_organize",
                 // 第一百二十八批两条：kb_index（建索引，CONFIRM）/ kb_search（检索，FREE 只读）
                 "kb_index", "kb_search",
-                "delete_path", "image_ops", "ask_user",
+                "delete_path", "image_ops", "generate_image", "ask_user",
                 "card_inspect", "card_export", "card_build",
                 // 第五十九批两条：capabilities（渐进披露入口）与 preview_local_file（玄览只显示）
                 "capabilities", "preview_local_file",
@@ -318,8 +318,15 @@ class ToolRegistrySwitchTest {
         // 四、组标题 + 两档默认可见提示：中英都要有
         // 141 批：工具区改成摘要卡后，`baopu_tools_progressive_note`（渐进披露那段长说明）
         // 与新增的摘要卡五个键一起换位 —— 这里只管「组标题 / 组状态」这批仍活着的键。
-        val zh = File("src/main/res/values/strings.xml").let { if (it.isFile) it else File("app/$it") }.readText()
-        val en = File("src/main/res/values-en/strings.xml").let { if (it.isFile) it else File("app/$it") }.readText()
+        // 第一百五十八批：生图字符串单独成文件（strings_baopu_image.xml）；连同目录内其余 strings*.xml 一起读。
+        fun allStrings(path: String): String {
+            val f = File(path).let { if (it.isFile) it else File("app/$it") }
+            val extra = f.parentFile?.listFiles { x -> x.name.startsWith("strings") && x.name.endsWith(".xml") }
+                .orEmpty().filter { it != f }
+            return f.readText() + extra.joinToString("") { it.readText() }
+        }
+        val zh = allStrings("src/main/res/values/strings.xml")
+        val en = allStrings("src/main/res/values-en/strings.xml")
         val keys = ToolGroup.values().filter { it != ToolGroup.COMPAT }
             .map { "baopu_tools_group_${it.key}" } +
             listOf(
