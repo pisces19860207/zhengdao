@@ -497,8 +497,8 @@
     <string name="perm_status_card">授权状态</string>
     <string name="perm_storage_label">存储读写（共享存储 /sdcard）</string>
     <string name="perm_storage_detail">Agent 读写手机文件（/sdcard）依赖此项；缺失时终端里读写手机文件会全部失败（必需项）。</string>
-    <string name="perm_manage_label">所有文件访问（可选 · 主路径）</string>
-    <string name="perm_manage_detail">开启后 Agent 可访问更广的存储范围。基础 /sdcard 读写不开也能用；本机系统对证道不提供这个开关，未开启属正常，不影响使用。</string>
+    <string name="perm_camera_label">相机</string>
+    <string name="perm_camera_detail">拍照、扫一扫等需要相机权限；不授权不影响文字对话与写作。</string>
     <string name="perm_notify_label">通知</string>
     <string name="perm_notify_detail">「装完清理」等静默提示走通知；未授权时系统会直接丢掉通知，但不影响任何功能。</string>
     <string name="perm_net_label">网络访问</string>
