@@ -42,8 +42,8 @@ class ModelComposerPolishGateTest {
     fun `搜索框只在聚合服务出现`() {
         assertTrue("搜索框必须挂在 aggregate 判定下", sheet.contains("if (aggregate) {"))
         assertTrue("搜索标签仍在", sheet.contains("搜索模型（输入 free 只看免费）"))
-        assertTrue("聚合服务要有拿 Key 的跳转", sheet.contains("去拿 Key"))
-        assertTrue("跳转只走玄览", sheet.contains("openInXuanlan(ModelPickerRules.OPENROUTER_KEYS_URL)"))
+        assertTrue("聚合服务要有注册跳转", sheet.contains("SmallAction(\"注册\")"))
+        assertTrue("跳转只走玄览，且去注册页", sheet.contains("openInXuanlan(ModelPickerRules.OPENROUTER_SIGNUP_URL)"))
     }
 
     @Test

@@ -286,7 +286,15 @@ internal fun BaopuChannelSheet(
             Providers.all().forEach { p ->
                 PickerRow(
                     title = p.label,
-                    sub = ModelPickerRules.middleEllipsis(p.baseUrl, MIDDLE_ELLIPSIS_CHARS),
+                    // 2026-10-23 用户：预设别显示 baseUrl（地址是我们的实现细节），改一句口号。
+                    sub = when (p.id) {
+                        "openai-compat" -> "最强的通用模型，文档最全"
+                        "deepseek" -> "便宜大碗的国产推理"
+                        "anthropic" -> "长文写作与代码都稳"
+                        "gemini" -> "多模态与超长上下文"
+                        Providers.OPENROUTER_FREE.id -> "聚合免费模型，自己带 Key"
+                        else -> ModelPickerRules.middleEllipsis(p.baseUrl, MIDDLE_ELLIPSIS_CHARS)
+                    },
                     selected = selected == p.id,
                     onClick = { selectProvider(p.id) },
                 )
@@ -400,11 +408,9 @@ internal fun BaopuChannelSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SmallAction("刷新") { refreshTick++ }
                 if (aggregate) {
-                    // ①「跳转链接（玄览内打开）」：只走 openInXuanlan 那一条 B 路径
-                    // （pendingUrl ＋ requestBrowserTab），不新开 WebView、不落系统浏览器。
-                    SmallAction("看全部免费模型") { openInXuanlan(ModelPickerRules.OPENROUTER_FREE_MODELS_URL) }
-                    // 第一百五十三批：聚合服务的 Key 入口（玄览内打开，不新开 WebView）。
-                    SmallAction("去拿 Key") { openInXuanlan(ModelPickerRules.OPENROUTER_KEYS_URL) }
+                    // 2026-10-23 用户：「看全部免费模型」没必要（free 过滤已够）→ 撤掉；
+                    // 「去拿 Key」与提示语重复 → 只留一个「注册」，点了直接去注册页。
+                    SmallAction("注册") { openInXuanlan(ModelPickerRules.OPENROUTER_SIGNUP_URL) }
                 }
             }
             OutlinedTextField(
