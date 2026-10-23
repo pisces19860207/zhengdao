@@ -1,4 +1,4 @@
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 依据的公开接口：ECMA-376（Office Open XML，.docx 的包与 document.xml 结构）、
 //   ZIP 容器格式（RFC 1951/deflate，.docx 就是个 zip）、XML 1.0 规范。
 //   以上均为公开标准，实现只用 JDK 自带的 java.util.zip 与 javax.xml。

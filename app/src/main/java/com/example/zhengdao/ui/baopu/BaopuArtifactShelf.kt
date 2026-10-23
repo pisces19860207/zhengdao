@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-// 独立开发声明：本文件为本项目从零编写，未参考任何第三方同类应用的代码。
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：派工单第三十八批 §9（用户 2026-10-19 追加：「左侧栏的产物区还是要有的，方便用户删除、
 // 回看啊什么的」；入口放在抽屉「回收站」**上面**一行）。
