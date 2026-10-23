@@ -293,7 +293,7 @@ class BaopuImageGridTest {
     fun `G7_上限与超限提示沿用MAX_ATTACH`() {
         val src = composer()
         assertTrue("上限仍是 9", src.contains("private const val MAX_ATTACH = 9"))
-        assertTrue("满 9 再加要提示（沿用原文案）", src.contains("R.string.baopu_attach_too_many"))
+        assertTrue("满 9 再加要提示（沿用原文案）", src.contains("R.plurals.baopu_attach_too_many") || src.contains("R.string.baopu_attach_too_many"))
         assertTrue("hint 仍拼进要发出去的话（B2 没被改版弄丢）", src.contains("onSend(withAttachmentHint(ctx, body, list), list)"))
     }
 

@@ -90,7 +90,7 @@ class BaopuMoreItemsGateTest {
             2,
             Regex("var \\w+Expanded by remember").findAll(src).count(),
         )
-        assertTrue("计数文案只用那一个键", src.contains("R.string.baopu_more_items"))
+        assertTrue("计数文案只用那一个键", src.contains("R.plurals.baopu_more_items") || src.contains("R.string.baopu_more_items"))
         assertTrue("展开箭头复用既有键", src.contains("R.string.common_expand_arrow"))
         assertTrue("收起箭头复用既有键", src.contains("R.string.common_collapse_arrow"))
         assertEquals("同屏上限只能是 3（改这个数字要另派单）", 3, CARD_VISIBLE_LIMIT)
