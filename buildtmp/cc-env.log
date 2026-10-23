@@ -1,0 +1,161 @@
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\15930251666650383822detect_compiler_family.c:2:9: warning: clang [-W#pragma-messages]
+    2 | #pragma message "clang"
+      |         ^
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\15930251666650383822detect_compiler_family.c:6:9: warning: gcc [-W#pragma-messages]
+    6 | #pragma message "gcc"
+      |         ^
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\15930251666650383822detect_compiler_family.c"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 401 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\15930251666650383822detect_compiler_family.c" 2
+
+#pragma message("clang")
+
+
+
+#pragma message("gcc")
+2 warnings generated.
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+clang: error: unknown argument: '-?'
+clang: error: no input files
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\6774594790833068788detect_compiler_family.c:2:9: warning: clang [-W#pragma-messages]
+    2 | #pragma message "clang"
+      |         ^
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\6774594790833068788detect_compiler_family.c:6:9: warning: gcc [-W#pragma-messages]
+    6 | #pragma message "gcc"
+      |         ^
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\6774594790833068788detect_compiler_family.c"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 401 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\6774594790833068788detect_compiler_family.c" 2
+
+#pragma message("clang")
+
+
+
+#pragma message("gcc")
+2 warnings generated.
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+clang: error: unknown argument: '-?'
+clang: error: no input files
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\17605921555104023063detect_compiler_family.c:2:9: warning: clang [-W#pragma-messages]
+    2 | #pragma message "clang"
+      |         ^
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\17605921555104023063detect_compiler_family.c:6:9: warning: gcc [-W#pragma-messages]
+    6 | #pragma message "gcc"
+      |         ^
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\17605921555104023063detect_compiler_family.c"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 401 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\17605921555104023063detect_compiler_family.c" 2
+
+#pragma message("clang")
+
+
+
+#pragma message("gcc")
+2 warnings generated.
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+clang: error: unknown argument: '-?'
+clang: error: no input files
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\8131822179271299819detect_compiler_family.c:2:9: warning: clang [-W#pragma-messages]
+    2 | #pragma message "clang"
+      |         ^
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out\8131822179271299819detect_compiler_family.c:6:9: warning: gcc [-W#pragma-messages]
+    6 | #pragma message "gcc"
+      |         ^
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\8131822179271299819detect_compiler_family.c"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 401 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\zstd-sys-069bbfc8fe87d49f\\out\\8131822179271299819detect_compiler_family.c" 2
+
+#pragma message("clang")
+
+
+
+#pragma message("gcc")
+2 warnings generated.
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+clang: error: unknown argument: '-?'
+clang: error: no input files
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\zstd-sys-069bbfc8fe87d49f\out
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zstd-sys-2.1.0+zstd.1.5.7
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sha2-asm-0.6.4
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\sha2-asm-29beb493da7a7cb9\out\16413198966444627668detect_compiler_family.c:2:9: warning: clang [-W#pragma-messages]
+    2 | #pragma message "clang"
+      |         ^
+C:\Users\guoli\AndroidStudioProjects\wt-ci1\rust\target\aarch64-linux-android\release\build\sha2-asm-29beb493da7a7cb9\out\16413198966444627668detect_compiler_family.c:6:9: warning: gcc [-W#pragma-messages]
+    6 | #pragma message "gcc"
+      |         ^
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\sha2-asm-29beb493da7a7cb9\\out\\16413198966444627668detect_compiler_family.c"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 401 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "C:\\Users\\guoli\\AndroidStudioProjects\\wt-ci1\\rust\\target\\aarch64-linux-android\\release\\build\\sha2-asm-29beb493da7a7cb9\\out\\16413198966444627668detect_compiler_family.c" 2
+
+#pragma message("clang")
+
+
+
+#pragma message("gcc")
+2 warnings generated.
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sha2-asm-0.6.4
+clang: error: unknown argument: '-?'
+clang: error: no input files
+[WRAP] TMP=C:\Users\guoli\AppData\Local\Temp TEMP=C:\Users\guoli\AppData\Local\Temp TMPDIR= CD=C:\Users\guoli\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sha2-asm-0.6.4
+clang: error: unable to make temporary file: Permission denied
