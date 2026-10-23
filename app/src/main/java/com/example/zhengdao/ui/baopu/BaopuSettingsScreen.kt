@@ -267,6 +267,42 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 )
             }
 
+            // ── 工作区（第一百五十六批：放开工作区边界，用户批准即可）──
+            // 开关只管「越界还要不要问」：开 ⇒ 每次运行第一次越界弹一张确认卡，同意才做；
+            // 关 ⇒ 越界一律拒（与 156 批之前逐字一致）。存储在 BaopuRuntime.WorkspacePrefs。
+            SectionCard(stringResource(R.string.baopu_workspace_card)) {
+                var allowOutside by rememberSaveable { mutableStateOf(BaopuRuntime.WorkspacePrefs.enabled(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 命中 ≥48dp（派工单设计约束第 3 条）
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_ws_outside_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_ws_outside_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = allowOutside,
+                        onCheckedChange = { want ->
+                            BaopuRuntime.WorkspacePrefs.setEnabled(ctx, want)
+                            allowOutside = want
+                            RunLog.log("抱朴设置：允许访问工作区外 = $want（开也每运行问一次）")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
             // ── 模型参数（刀 3 B 段 · 第十四批 J12：只读展示，不许编数）──（原样搬入）
             // 定位：当前通道向服务端声明的两个硬参数。没声明 ⇒ 「未声明」——
             // **不许显示 0 或 128000**：0 是「确实是 0」、128000 是已作废的旧回退值，
