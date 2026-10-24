@@ -1738,4 +1738,23 @@
     <string name="baopu_longform_done">Done</string>
     <string name="baopu_longform_open_as_card">Text card</string>
     <string name="baopu_longform_words">%s words</string>
+<string name="skill_draft_auto_promoted">%1$s auto-promoted: use count reached %2$d</string>
+<string name="skill_draft_auto_hint">Auto-promotes when the use count reaches %1$d; you can also tap "Promote" manually</string>
+<string name="skill_card_title">Remember this skill?</string>
+<string name="skill_card_source_user">You said so</string>
+<string name="skill_card_source_repeat">This flow succeeded twice</string>
+<string name="skill_card_purpose_empty">(No body yet — write one line of purpose first)</string>
+<string name="skill_card_name">Skill name</string>
+<string name="skill_card_body">Skill body</string>
+<string name="skill_card_body_edit">Edit body</string>
+<string name="skill_card_body_done">Collapse body</string>
+<string name="skill_card_chars">Characters: %1$d</string>
+<string name="skill_card_target">Saved to: project skill (%1$s)</string>
+<string name="skill_card_backup">A skill with this name exists: it will be backed up as %1$s first</string>
+<string name="skill_card_backup_none">First save — nothing will be overwritten</string>
+<string name="skill_card_draft_hint">Saved as a draft first (index marked "unverified"). Auto-promotes when the use count reaches %1$d, or promote it in Settings.</string>
+<string name="skill_card_active_hint">This is already a formal skill: saving updates it and backs up the old version</string>
+<string name="skill_card_blocked">Cannot remember yet: %1$s</string>
+<string name="skill_card_remember">Remember it</string>
+<string name="skill_card_dismiss">Not now</string>
 </resources>

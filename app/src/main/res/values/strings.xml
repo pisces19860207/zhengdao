@@ -1673,4 +1673,23 @@
     <string name="baopu_longform_done">完成</string>
     <string name="baopu_longform_open_as_card">文本卡</string>
     <string name="baopu_longform_words">%s 字</string>
+<string name="skill_draft_auto_promoted">「%1$s」用满 %2$d 次，已自动转正</string>
+<string name="skill_draft_auto_hint">用满 %1$d 次自动转正；也可以手动点「转正」</string>
+<string name="skill_card_title">记住这个技能？</string>
+<string name="skill_card_source_user">你说的</string>
+<string name="skill_card_source_repeat">这个流程成功 2 次了</string>
+<string name="skill_card_purpose_empty">（正文还没写，先填一句用途）</string>
+<string name="skill_card_name">技能名</string>
+<string name="skill_card_body">技能正文</string>
+<string name="skill_card_body_edit">改正文</string>
+<string name="skill_card_body_done">收起正文</string>
+<string name="skill_card_chars">%1$d 字</string>
+<string name="skill_card_target">落点：项目技能（%1$s）</string>
+<string name="skill_card_backup">同名技能已有：保存前先备份为 %1$s</string>
+<string name="skill_card_backup_none">首次保存，不覆盖任何文件</string>
+<string name="skill_card_draft_hint">先按草稿保存（索引标「未验证」），用满 %1$d 次自动转正，也可以在设置里手动转正</string>
+<string name="skill_card_active_hint">这条已经是正式技能：保存会更新它，旧版进备份</string>
+<string name="skill_card_blocked">还不能记：%1$s</string>
+<string name="skill_card_remember">记住它</string>
+<string name="skill_card_dismiss">先不记</string>
 </resources>

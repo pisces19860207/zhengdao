@@ -347,6 +347,58 @@ object SkillStore {
     /** 可以转正了？草稿且用满次数。 */
     fun canPromote(body: String): Boolean = statusOf(body) == "draft" && usesOf(body) >= PROMOTE_USES
 
+    // ── 第一百八十四批 · 试用期自动转正（说一句就记的落点）──────────────────
+
+    /** 「用一次」之后的正文与结论：用满 [PROMOTE_USES] 次当次就转正（不是等到下次再点）。 */
+    data class AfterUse(val body: String, val promoted: Boolean)
+
+    /**
+     * 记一次使用：uses+1；这一下正好用满 [PROMOTE_USES] ⇒ **同一份正文里**头也改成 active。
+     *
+     * 为什么数次数和改状态必须合在一个纯函数里：正文只有 [apply] 一个写口，两件事若分开算
+     * （UI 先数一次、再决定要不要转），第 3 次会出现「次数记上了、状态没转」的半条。
+     * 本函数不写盘——调用方拿它算好的正文走 [apply]。
+     */
+    fun afterUse(body: String): AfterUse {
+        val bumped = bumpUses(body)
+        return if (canPromote(bumped)) {
+            AfterUse(promoteBody(bumped), promoted = true)
+        } else {
+            AfterUse(bumped, promoted = false)
+        }
+    }
+
+    /** 转正后的正文：头改成 `status=active`、uses 原样保留（没头就当正式正文补一行头）。 */
+    fun promoteBody(body: String): String {
+        val lines = body.lines()
+        val head = lines.firstOrNull()?.trim().orEmpty()
+        val rest = if (head.startsWith("<!--") && head.contains("status=")) {
+            lines.drop(1).joinToString("\n")
+        } else {
+            body
+        }
+        return draftHeader(status = "active", uses = usesOf(body)) + "\n" + rest
+    }
+
+    /**
+     * 去掉开头连续的机器头（`<!-- status=… uses=… -->`），只留用户能编辑的正文。
+     *
+     * 卡片上用户改的是「人话正文」；机器头由本类在写盘时按当前状态重算——
+     * 不剥掉的话，用户在卡上改了正文会把旧头带到中间，`statusOf` 只认第一行，状态就丢了。
+     */
+    fun contentWithoutHeader(body: String): String {
+        val lines = body.lines()
+        var i = 0
+        while (i < lines.size) {
+            val t = lines[i].trim()
+            if (t.startsWith("<!--") && t.endsWith("-->")) i++ else break
+        }
+        return lines.drop(i).joinToString("\n")
+    }
+
+    /** 卡片上的「用途一句话」：与索引场景同一取法（不另起一套切法）。 */
+    fun purposeOf(body: String): String = firstSentence(body)
+
     private fun scopeOf(scope: SkillScope): MemoryScope = when (scope) {
         SkillScope.PROJECT -> MemoryScope.PROJECT
         SkillScope.GLOBAL -> MemoryScope.GLOBAL
