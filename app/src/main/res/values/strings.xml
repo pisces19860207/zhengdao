@@ -1629,6 +1629,16 @@
     <string name="baopu_ws_grant_revoke">撤销</string>
     <string name="baopu_ws_grant_root">工作区：%1$s</string>
     <string name="baopu_ws_grant_revoked">已撤销，这个会话下次越界会重新问你</string>
+    <!-- 第一百九十七批：搜索范围（读侧授权阶梯 S2；开关默认关，只放开「读取」）-->
+    <string name="baopu_search_scope_card">搜索范围（只读）</string>
+    <string name="baopu_search_scope_title">把手机文件纳入搜索范围</string>
+    <string name="baopu_search_scope_desc">打开后，搜索会读取这台手机存储里的文件内容：不上传、不后台常扫、一个文件都不改。默认关闭；关着的时候只搜下面写的「证道＋工作区」。</string>
+    <string name="baopu_search_scope_guard">这里只放大「能读到什么」，不放大「能改什么」：改、移、删工作区外的文件，仍按老规矩逐次弹卡确认。</string>
+    <string name="baopu_search_scope_excluded">永远不读、开关也取消不了的清单：Android/data、Android/obb 与 Android 其它系统层、任何以 . 开头的目录和文件、backup 备份目录、终端的 logs/cache/agents/rootfs/截屏、密钥类文件（.key/.keystore/.jks/.p12/id_rsa 开头、netrc）。</string>
+    <string name="baopu_search_scope_tier_phone">系统已给「所有文件访问」：手机存储全盘可搜（上面那份清单除外）。</string>
+    <string name="baopu_search_scope_tier_private">当前只搜证道＋工作区（系统还没给「所有文件访问」）。</string>
+    <string name="baopu_search_scope_tier_switch_off">开关没开：现在只搜证道＋工作区（系统那边给不给权限都不读手机文件）。</string>
+    <string name="baopu_search_scope_home">证道根：%1$s</string>
     <!-- 第一百六十五批：人设包（Persona Pack v1） -->
     <string name="persona_pack_card">人设包</string>
     <string name="persona_pack_desc">选一套「谁在帮你」的模板：只改语气、风格和工作偏好。它不会改工具权限、确认制，也不会执行里面的任何代码。</string>
