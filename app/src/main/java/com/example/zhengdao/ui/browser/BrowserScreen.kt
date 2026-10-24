@@ -136,6 +136,21 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         engineReady = true
     }
 
+    // 第一百七十二批 L4：滚动值的采集靠轮询（WebView 没有现成的滚动回调）。
+    // 3s 一次很便宜（一次 evaluateJavascript），只在玄览可见、页面加载过、
+    // 不是恢复/回收卡片态时读。读到的值进 lastScrollY ⇒ 退后台快照才有东西可写。
+    LaunchedEffect(engine, active?.id, engineReady) {
+        val id = active?.id ?: return@LaunchedEffect
+        // delay 自带取消响应：离开组合/切标签（key 变化）时协程被取消，循环自然结束
+        while (true) {
+            val st = active?.state
+            if (st != null && st.everLoaded && !st.restored && !st.recycled) {
+                BrowserTabManager.captureScroll(context, id)
+            }
+            kotlinx.coroutines.delay(3000)
+        }
+    }
+
     // 内存回收守卫（第⑱刀 · D-4）：把"玄览正显示在屏幕上"告诉回收出口 —— 只有本界面
     // 离开组合（切到别的底栏 Tab）之后，WebView 才允许被 destroy（挂载中的实例不可销毁，
     // 见 BrowserHolder.releaseIfIdle）。非视觉改动，不碰底栏/胶囊几何。
@@ -325,7 +340,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             // 且不挂 AndroidView —— 构造没完成时此刻也没有可挂的实例。
             if (!engineReady) {
                 BrowserWarmupPlaceholder(modifier = Modifier.fillMaxSize())
-            } else if (active == null || !active.state.everLoaded) {
+            } else if ((active == null || !active.state.everLoaded) && !restored) {
                 // 第㊱刀：空态 = 浏览器式起始页（居中搜索框 + 快捷入口），替代原裸 Text。
                 // 提交仍走 tryNavigate（既有归一化路径，禁第二套解析）；scheme 预检失败
                 // 沿用既有 browser_blocked_scheme 提示；空态判据一字未动
