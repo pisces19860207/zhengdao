@@ -1,17 +1,21 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 依据：刀 2 收尾后用户口径「还有浏览器工具你也别忘了，刀2好了，你就也顺手做了啊」＋
-// 玄览操控入账（抱朴六工具：open / snapshot / click / type / scroll / screenshot）。
+// 玄览操控入账（抱朴六工具：open / snapshot / click / type / scroll / screenshot）；
+// 第一百七十七批（2026-10-24）补 S1 截图像素进模型 ＋ S2 坐标四件/等待 ＋ S3 自校验。
 //
 // 四条硬纪律：
 // 1. **进程内直调**：抱朴与玄览同进程，走 [BaopuBrowser.gateway] 直接指挥 WebView，
 //    不经 HTTP 桥、不要 token（桥是给终端里的 agent 用的另一条路）。
-// 2. 读类免确认（snapshot / screenshot / scroll），写类走 CONFIRM（open / click / type）；
-//    真正执行确认归刀 3，本刀先把权限级钉对。
+// 2. 读类免确认（snapshot / screenshot / scroll / wait），写类走 CONFIRM（open / click /
+//    type / tap / swipe / long_press / key）；真正执行确认归刀 3，本刀先把权限级钉对。
+//    **截图另有一道引擎侧授权闸**（`RunEngine.screenshotGate`：会话首次确认＋敏感页每次问）。
 // 3. 输出必须先收口：快照与页面文本都按字符上限截断并**明说截断**——静默截断等于骗模型。
 // 4. 本文件**零 Android 依赖**：只认 [BrowserGateway] 接口，真身（WebView）由
 //    `BaopuBrowserWiring` 在运行时注入；JVM 单测用假网关就能验完全部语义。
 package com.example.zhengdao.baopu.agent
+
+import com.example.zhengdao.baopu.SensitivePage
 
 /**
  * 抱朴指挥玄览的**唯一接口**（进程内直调）。
@@ -36,9 +40,43 @@ internal interface BrowserGateway {
     /** 滚动当前页（方向：up/down/left/right）。 */
     fun scroll(direction: String): String
 
-    /** 截一张当前视口图，返回**文件路径**（不是像素数据）。 */
-    fun screenshot(fullPage: Boolean): String
+    /**
+     * 截一张当前视口图（第一百七十七批：返回**文本 ＋ 工作区相对路径**）。
+     *
+     * 相对路径是给引擎读图用的（`VisionFiles.load`）；拿不到路径时 [Shot.relPath] 为 null，
+     * 工具回执里会明说「只有文件没有像素」——不假装模型能看见。
+     */
+    fun screenshot(fullPage: Boolean): Shot
+
+    /** 点坐标（CSS px，视口坐标）。回执带 S3 校验行。 */
+    fun tap(cssX: Int, cssY: Int): String
+
+    /** 滑动（两端都是 CSS px 视口坐标）。 */
+    fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int): String
+
+    /** 长按（CSS px ＋ 按住毫秒）。 */
+    fun longPress(cssX: Int, cssY: Int, durationMs: Int): String
+
+    /** 按键（enter/tab/backspace/escape）。 */
+    fun key(key: String): String
+
+    /** 等待：给 ms 就纯等，给 selector 就轮询到它出现（或预算用完）。 */
+    fun waitFor(ms: Int, selector: String?): String
+
+    /**
+     * 当前页身份（url/title）。
+     *
+     * 为什么要它：截图授权闸要判断「这是不是敏感页」，卡片上也要写「截的是哪一页」。
+     * 拿不到（玄览没开/没有标签）⇒ null，闸按「未知页面」处理（照样要授权）。
+     */
+    fun pageInfo(): PageInfo?
 }
+
+/** 一次截图的结果：文本（进模型）+ 工作区相对路径（进读图管线，可空）。 */
+internal data class Shot(val text: String, val relPath: String?)
+
+/** 当前页身份。 */
+internal data class PageInfo(val url: String, val title: String)
 
 /**
  * 网关的运行时持有者（进程级单例）。
@@ -55,7 +93,7 @@ internal object BaopuBrowser {
     fun require(): BrowserGateway? = gateway
 }
 
-/** 六个浏览器工具（表在 [BaopuToolCatalog]，开关在设置页）。 */
+/** 十一个浏览器工具（表在 [BaopuToolCatalog]，开关在设置页）。 */
 internal object BrowserTools {
 
     const val ARG_URL = "url"
@@ -65,6 +103,15 @@ internal object BrowserTools {
     const val ARG_TEXT = "text"
     const val ARG_DIRECTION = "direction"
     const val ARG_FULL_PAGE = "full_page"
+    const val ARG_X = "x"
+    const val ARG_Y = "y"
+    const val ARG_X1 = "x1"
+    const val ARG_Y1 = "y1"
+    const val ARG_X2 = "x2"
+    const val ARG_Y2 = "y2"
+    const val ARG_DURATION = "duration_ms"
+    const val ARG_MS = "ms"
+    const val ARG_KEY = "key"
 
     /** 快照字符上限（约 1.5k token；超了就截断并明说）。 */
     const val MAX_SNAPSHOT_CHARS = 6_000
@@ -72,11 +119,20 @@ internal object BrowserTools {
     /** 其它页面文本上限。 */
     const val MAX_TEXT_CHARS = 2_000
 
+    /** 等待上限（毫秒）：与 `BrowserCommands.MAX_WAIT_MS` 同口径，双保险。 */
+    const val MAX_WAIT_MS = 5_000
+
+    /** 按住/滑动时长上限（毫秒）。 */
+    const val MAX_PRESS_MS = 3_000
+
+    /** 工具名常量（引擎侧的截图授权闸按名字认）。 */
+    const val NAME_SCREENSHOT = "browser_screenshot"
+
     /** 拿不到网关时的统一话术。 */
     const val NO_BROWSER = "玄览还没打开：先在底部切到「玄览」并打开一个页面，再让我操作。" +
         "（抱朴不能替你切页签，也不许绕过这条）"
 
-    // ── 六个 spec ────────────────────────────────────────────────────────────
+    // ── 六个老工具 spec（第一百七十七批：screenshot 加了「像素进模型」） ─────────
 
     fun openSpec(): ToolSpec = ToolSpec(
         name = "browser_open",
@@ -149,7 +205,7 @@ internal object BrowserTools {
     fun clickSpec(): ToolSpec = ToolSpec(
         name = "browser_click",
         description = "点玄览当前页里的一个元素。target 传 CSS 选择器（如 #submit、a[href*=login]）。" +
-            "点之前建议先 browser_snapshot 看清有哪些元素。",
+            "点之前建议先 browser_snapshot 看清有哪些元素。回执里会带「点了之后页面变没变」的校验。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -178,7 +234,7 @@ internal object BrowserTools {
     fun typeSpec(): ToolSpec = ToolSpec(
         name = "browser_type",
         description = "往玄览当前页的一个输入框里写入文本（原生 setter，会触发 input/change 事件）。" +
-            "不自动回车：需要提交时再 browser_click 那个按钮。",
+            "不自动回车：需要提交时再 browser_click 那个按钮，或 browser_key enter。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -205,7 +261,7 @@ internal object BrowserTools {
 
     fun scrollSpec(): ToolSpec = ToolSpec(
         name = "browser_scroll",
-        description = "滚动玄览当前页（up/down/left/right）。用于把下方内容滚进视口后再看快照。",
+        description = "滚动玄览当前页（up/down/left/right）。用于把下方内容滚进视口后再看快照或截图。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -232,9 +288,10 @@ internal object BrowserTools {
     }
 
     fun screenshotSpec(): ToolSpec = ToolSpec(
-        name = "browser_screenshot",
-        description = "给玄览当前页截一张图，只返回**文件路径**（像素不进上下文）。" +
-            "页面还没排版时可能失败，失败会说原因。",
+        name = NAME_SCREENSHOT,
+        description = "给玄览当前页截图。**会尝试把这张图直接给模型看**（通道支持看图时；" +
+            "本轮首次截图会先问你一次，敏感页每次都问）。回执带文件路径（证道/截屏/）。" +
+            "页面没排版时可能失败，失败会说原因。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -252,15 +309,185 @@ internal object BrowserTools {
         timeoutMs = ToolTimeout.BROWSER_MS,
     ) { args ->
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
-        val text = runCatching { gateway.screenshot(args.optBoolean(ARG_FULL_PAGE, false)) }
+        val shot = runCatching { gateway.screenshot(args.optBoolean(ARG_FULL_PAGE, false)) }
             .getOrElse { return@ToolSpec ToolOutcome.Failed("截图失败：${it.message ?: it.javaClass.simpleName}") }
+        val warn = if (isSensitivePage(gateway)) "⚠ 敏感页截图。\n" else ""
+        val tail = if (shot.relPath == null) {
+            "\n（这张图没有可读路径，模型看不到像素；要看内容请用 browser_snapshot）"
+        } else {
+            ""
+        }
+        ToolOutcome.Ok(
+            warn + cap(shot.text, MAX_TEXT_CHARS) + tail,
+            imageRelPaths = listOfNotNull(shot.relPath),
+        )
+    }
+
+    // ── 第一百七十七批：坐标四件 ＋ 等待 ─────────────────────────────────────
+
+    fun tapSpec(): ToolSpec = ToolSpec(
+        name = "browser_tap",
+        description = "按坐标点一下玄览当前页（坐标单位 CSS px，**视口坐标**，与截图同一坐标系；" +
+            "左上角是 0,0）。适合 canvas/自定义控件这类没有 CSS 选择器的元素。" +
+            "回执会带「点了之后页面变没变」的校验。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_X to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "横坐标（CSS px）"),
+                ARG_Y to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "纵坐标（CSS px）"),
+            ),
+            "required" to jsonArrayOf(ARG_X, ARG_Y),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val x = args.optInt(ARG_X, -1)
+        val y = args.optInt(ARG_Y, -1)
+        if (x < 0 || y < 0) return@ToolSpec ToolOutcome.Failed("x/y 必须是非负整数（CSS px）")
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.tap(x, y) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("点击失败：${it.message ?: it.javaClass.simpleName}") }
         ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
     }
 
-    /** 六个 spec（顺序即 tools 数组顺序）。 */
+    fun swipeSpec(): ToolSpec = ToolSpec(
+        name = "browser_swipe",
+        description = "从一点滑到另一点（CSS px 视口坐标），duration_ms 是滑完用时。" +
+            "用于翻页、拖动画布；慢滑（800ms 以上）才拖得动可拖元素，快滑是甩动。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_X1 to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "起点 x"),
+                ARG_Y1 to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "起点 y"),
+                ARG_X2 to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "终点 x"),
+                ARG_Y2 to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "终点 y"),
+                ARG_DURATION to jsonObjectOf(
+                    "type" to "integer", "minimum" to 60, "maximum" to MAX_PRESS_MS,
+                    "description" to "滑完用时（毫秒，默认 300）",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_X1, ARG_Y1, ARG_X2, ARG_Y2),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val x1 = args.optInt(ARG_X1, -1)
+        val y1 = args.optInt(ARG_Y1, -1)
+        val x2 = args.optInt(ARG_X2, -1)
+        val y2 = args.optInt(ARG_Y2, -1)
+        if (x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0) {
+            return@ToolSpec ToolOutcome.Failed("x1/y1/x2/y2 必须是非负整数（CSS px）")
+        }
+        val dur = args.optInt(ARG_DURATION, 300).coerceIn(60, MAX_PRESS_MS)
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.swipe(x1, y1, x2, y2, dur) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("滑动失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun longPressSpec(): ToolSpec = ToolSpec(
+        name = "browser_long_press",
+        description = "在一点按住再松手（CSS px 视口坐标），duration_ms 是按住时长（默认 500）。" +
+            "常用于唤出长按菜单、选中文字、拖动前的拾起。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_X to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "横坐标（CSS px）"),
+                ARG_Y to jsonObjectOf("type" to "integer", "minimum" to 0, "description" to "纵坐标（CSS px）"),
+                ARG_DURATION to jsonObjectOf(
+                    "type" to "integer", "minimum" to 50, "maximum" to MAX_PRESS_MS,
+                    "description" to "按住毫秒（默认 500）",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_X, ARG_Y),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val x = args.optInt(ARG_X, -1)
+        val y = args.optInt(ARG_Y, -1)
+        if (x < 0 || y < 0) return@ToolSpec ToolOutcome.Failed("x/y 必须是非负整数（CSS px）")
+        val dur = args.optInt(ARG_DURATION, 500).coerceIn(50, MAX_PRESS_MS)
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.longPress(x, y, dur) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("长按失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun keySpec(): ToolSpec = ToolSpec(
+        name = "browser_key",
+        description = "给页面按一个键（enter/tab/backspace/escape），发给当前聚焦元素。" +
+            "⚠ 回车是页面内合成事件：监听 keydown 的页面能收到，**原生表单隐式提交不保证**。" +
+            "要提交表单，优先 browser_click 那个提交按钮。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_KEY to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf("enter", "tab", "backspace", "escape"),
+                    "description" to "按键名",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_KEY),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val key = args.optString(ARG_KEY).trim().lowercase()
+        if (key !in setOf("enter", "tab", "backspace", "escape")) {
+            return@ToolSpec ToolOutcome.Failed("key 只能是 enter/tab/backspace/escape")
+        }
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.key(key) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("按键失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun waitSpec(): ToolSpec = ToolSpec(
+        name = "browser_wait",
+        description = "等一下：给 ms 就纯等（最多 $MAX_WAIT_MS 毫秒）；给 selector 就等到那个元素出现" +
+            "（最多等 ms，默认 2000）。页面加载慢、动画没结束时用它，比反复 snapshot 省事。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_MS to jsonObjectOf(
+                    "type" to "integer", "minimum" to 0, "maximum" to MAX_WAIT_MS,
+                    "description" to "等待预算（毫秒，默认 2000）",
+                ),
+                ARG_SELECTOR to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "等这个 CSS 选择器出现（省略 = 纯等 ms）",
+                ),
+            ),
+            "required" to jsonArrayOf(),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.FREE,
+        readOnly = true,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val ms = args.optInt(ARG_MS, 2000).coerceIn(0, MAX_WAIT_MS)
+        val selector = args.optString(ARG_SELECTOR).trim().ifBlank { null }
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.waitFor(ms, selector) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("等待失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    /** 十一个 spec（顺序即 tools 数组顺序）。 */
     fun all(): List<ToolSpec> = listOf(
         openSpec(), snapshotSpec(), clickSpec(), typeSpec(), scrollSpec(), screenshotSpec(),
+        tapSpec(), swipeSpec(), longPressSpec(), keySpec(), waitSpec(),
     )
+
+    /** 当前页是不是敏感页（拿不到页面就按「不是」，但授权闸照样会问）。 */
+    private fun isSensitivePage(gateway: BrowserGateway): Boolean = runCatching {
+        gateway.pageInfo()?.let { SensitivePage.isSensitive(it.url, it.title) } ?: false
+    }.getOrDefault(false)
 
     /**
      * 截断（**纯函数**，JVM 直测）。

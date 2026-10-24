@@ -63,7 +63,11 @@ class ToolRegistrySwitchTest {
                 // 小说工程三件（第一百五十五批）：表序即注册序（convert_encoding 之后）
                 "novel_create", "novel_project", "novel_continue",
                 "browser_open", "browser_snapshot", "browser_click",
-                "browser_type", "browser_scroll", "browser_screenshot", "update_plan",
+                "browser_type", "browser_scroll", "browser_screenshot",
+                // 第一百七十七批：坐标四件＋等待（表序即注册序，插在 screenshot 之后）
+                "browser_tap", "browser_swipe", "browser_long_press",
+                "browser_key", "browser_wait",
+                "update_plan",
                 "library_list", "library_organize",
                 // 第一百二十八批两条：kb_index（建索引，CONFIRM）/ kb_search（检索，FREE 只读）
                 "kb_index", "kb_search",

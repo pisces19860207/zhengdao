@@ -194,6 +194,13 @@ internal object ToolGroupTable {
         "browser_type" to ToolGroup.BROWSER,
         "browser_scroll" to ToolGroup.BROWSER,
         "browser_screenshot" to ToolGroup.BROWSER,
+        // 第一百七十七批：坐标四件＋等待。同样归 BROWSER（默认不可见，capabilities 解锁）
+        // ——默认可见 12 条的上下文硬卡不许破（ProgressiveToolsTest B1）
+        "browser_tap" to ToolGroup.BROWSER,
+        "browser_swipe" to ToolGroup.BROWSER,
+        "browser_long_press" to ToolGroup.BROWSER,
+        "browser_key" to ToolGroup.BROWSER,
+        "browser_wait" to ToolGroup.BROWSER,
         "file_info" to ToolGroup.FILES,
         "find_files" to ToolGroup.FILES,
         "move_path" to ToolGroup.FILES,
@@ -371,7 +378,17 @@ internal fun visibleTools(
  *   与"失败重试"混在一起会让模型反复撞同一堵墙。
  */
 sealed interface ToolOutcome {
-    data class Ok(val text: String) : ToolOutcome
+    /**
+     * 成功（第一百七十七批加了 [imageRelPaths]）。
+     *
+     * [imageRelPaths] 是**引擎要读进模型的图片**（工作区/截屏目录相对路径）：
+     * `browser_screenshot` 截完把路径放这里，RunEngine 的 Done 分支据此把像素塞进
+     * `turnImages`。默认空 ⇒ 本参数出现之前的所有调用点行为**逐字不变**。
+     */
+    data class Ok(
+        val text: String,
+        val imageRelPaths: List<String> = emptyList(),
+    ) : ToolOutcome
     data class Failed(val error: String) : ToolOutcome
     data class Rejected(val reason: String) : ToolOutcome
 }
@@ -1056,6 +1073,11 @@ internal object BaopuToolCatalog {
         "browser_type",
         "browser_scroll",
         "browser_screenshot",
+        "browser_tap",
+        "browser_swipe",
+        "browser_long_press",
+        "browser_key",
+        "browser_wait",
         // 工作计划卡（第十七批）：默认开——关了它，抱朴就不再「先列计划再干活」
         "update_plan",
         // 技能自写（第二十三批 A 段追加）：默认开，但写盘走 CONFIRM ⇒ 不会静默动手
@@ -1117,6 +1139,12 @@ internal object BaopuToolCatalog {
         Entry("browser_type") { BrowserTools.typeSpec() },
         Entry("browser_scroll") { BrowserTools.scrollSpec() },
         Entry("browser_screenshot") { BrowserTools.screenshotSpec() },
+        // 第一百七十七批：坐标四件＋等待（都不需要 workspaceRoot；网关没注入时统一回同一句话）
+        Entry("browser_tap") { BrowserTools.tapSpec() },
+        Entry("browser_swipe") { BrowserTools.swipeSpec() },
+        Entry("browser_long_press") { BrowserTools.longPressSpec() },
+        Entry("browser_key") { BrowserTools.keySpec() },
+        Entry("browser_wait") { BrowserTools.waitSpec() },
         // 工作计划卡（第十七批）：落点在引擎（PlanTool.sink），表里只放 spec
         Entry("update_plan") { PlanTool.spec() },
         // 资料库两件套（第三十一批）：library_list 只读清单；library_organize 写落地（CONFIRM）

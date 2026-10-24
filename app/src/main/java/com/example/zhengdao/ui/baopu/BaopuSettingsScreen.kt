@@ -1391,6 +1391,13 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "browser_type" -> R.string.baopu_tool_browser_type
     "browser_scroll" -> R.string.baopu_tool_browser_scroll
     "browser_screenshot" -> R.string.baopu_tool_browser_screenshot
+    // 第一百七十七批：坐标四件＋等待（同批新增工具必须同步两张映射表，
+    // 否则真机进本页会 IllegalArgumentException —— 见下面 update_plan 那条教训）
+    "browser_tap" -> R.string.baopu_tool_browser_tap
+    "browser_swipe" -> R.string.baopu_tool_browser_swipe
+    "browser_long_press" -> R.string.baopu_tool_browser_long_press
+    "browser_key" -> R.string.baopu_tool_browser_key
+    "browser_wait" -> R.string.baopu_tool_browser_wait
     // 第十七批 A+B 段加的 update_plan：当时没同步这张表 ⇒ 2026-10-18 真机开本页直接崩
     // （IllegalArgumentException: 未知抱朴工具「update_plan」）。回归网见 BaopuSettingsGuardTest 的
     // 「catalog 每个工具都有标签/副标题」那条。
@@ -1449,6 +1456,11 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "browser_type" -> R.string.baopu_tool_browser_type_desc
     "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc
     "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
+    "browser_tap" -> R.string.baopu_tool_browser_tap_desc
+    "browser_swipe" -> R.string.baopu_tool_browser_swipe_desc
+    "browser_long_press" -> R.string.baopu_tool_browser_long_press_desc
+    "browser_key" -> R.string.baopu_tool_browser_key_desc
+    "browser_wait" -> R.string.baopu_tool_browser_wait_desc
     "update_plan" -> R.string.baopu_tool_update_plan_desc
     "write_skill" -> R.string.baopu_tool_write_skill_desc
         "append_persona" -> R.string.baopu_tool_append_persona_desc

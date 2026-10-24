@@ -8,11 +8,15 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.webkit.WebView
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withScale
+import com.example.zhengdao.browser.PageFingerprint
 import com.example.zhengdao.browser.PageSnapshot
 import com.example.zhengdao.browser.SensitiveRedactor
+import com.example.zhengdao.browser.TapGeometry
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.Store
@@ -103,7 +107,7 @@ import kotlin.math.sqrt
  * ## 一处对设计文档的有意偏离（截图落点）
  *
  * 设计文档 §4.5 写"输出 PNG 写入系统截图目录 `Pictures/Screenshots`"。
- * **这里改成共享目录 `Store.root()/screenshots`**（＝ Downloads/证道，proot 已 bind 到
+ * **这里改成共享目录 `Store.root()/截屏`**（＝ Downloads/证道，proot 已 bind 到
  * guest `/opt/zhengdao/`）。理由：本桥的全部意义就是"给 guest 里的 agent 用"，
  * 而 `Pictures/Screenshots` 在 guest 里**读不到**（仅私有工作区档位下 `/sdcard` 根本不挂载）；
  * 落共享目录是 agent 唯一能稳定取到截图的路径。若将来要兼顾人看，可同时落两份。
@@ -114,6 +118,25 @@ object BrowserCommands {
 
     /** WebView 回调等待上限（毫秒）。页面 JS 卡死时不该把桥的线程全拖住。 */
     private const val EVAL_TIMEOUT_MS = 8_000L
+
+    // ── 第一百七十七批：手势与等待的数值口径 ────────────────────────────────
+    // 双保险：工具层也会夹一次（工具 schema 写死同样的上限），这里再夹是防内部调用绕过。
+
+    /** 等待上限（毫秒）：与工具 schema 的 `ms` 上限一致。 */
+    private const val MAX_WAIT_MS = 5_000
+
+    /** 等元素的轮询间隔。 */
+    private const val WAIT_POLL_MS = 200L
+
+    /** 写操作后等页面反应的一小段（导航/重渲染是异步的；不睡就会误报「没变化」）。 */
+    private const val NAV_SETTLE_MS = 120L
+
+    /** 按住时长的上下限。 */
+    private const val MIN_PRESS_MS = 50
+    private const val MAX_PRESS_MS = 3_000
+
+    /** 滑动时长下限（再短就不是滑动，是一次点击）。 */
+    private const val MIN_SWIPE_MS = 60
 
     // ── 线程桥接 ───────────────────────────────────────────────────────────
 
@@ -542,37 +565,86 @@ object BrowserCommands {
      * 元素不存在 ⇒ `NOT_FOUND` 口径报错（**不许**回一张整页图充数）；元素宽或高为 0 ⇒
      * 明说「元素没有尺寸」。
      */
-    fun screenshot(context: Context, tabId: String?, fullPage: String?, selector: String? = null): String {
+    /**
+     * 一次截图的落盘结果（第一百七十七批：**JSON 与 ref 两个出口共用这一份**）。
+     *
+     * 为什么要有 ref：抱朴侧不需要 JSON 文本，它要的是「文件在哪」——好把像素读进模型
+     * （`VisionFiles.load`）并带上相对路径。桥侧（终端 guest）仍要 JSON 形状，一个字不改。
+     */
+    internal data class ShotRef(
+        val file: String,
+        val hostPath: String,
+        val guestPath: String,
+        val bytes: Int,
+        val mode: String,
+        val width: Int,
+        val height: Int,
+        val scale: Float,
+        val note: String?,
+    )
+
+    /** 截图结局：要么拿到落盘引用，要么一句可读错误（不抛、不回 1×1 假成功）。 */
+    internal sealed interface ShotCapture {
+        data class Ok(val ref: ShotRef) : ShotCapture
+        data class Bad(val error: String) : ShotCapture
+    }
+
+    /**
+     * 截图目录名（第一百七十七批用户口径：**`证道/截屏/`**）。
+     *
+     * 为什么是固定公共区而不是工作区：`Store.PUBLIC_ROOT` 的 KDoc 明写「App 自己的东西
+     * 刻意不跟随工作区」（换工作区不该让截图失联）；为什么抱朴也能读：`VisionFiles.load`
+     * 本批加了 `extraRoot`，把 `Store.root()` 认作第二个允许的根。
+     * **不进相册**：这里零 MediaStore——相册可见的 `Pictures/证道/截屏` 属第一百七十五批。
+     */
+    internal const val SHOT_DIR = "截屏"
+
+    /** 截图目录（保证存在）。 */
+    internal fun shotDir(context: Context): File = File(Store.root(context), SHOT_DIR).apply { mkdirs() }
+
+    /**
+     * 截一张图并落盘（**唯一实现**：[screenshot] 与抱朴网关共用）。
+     *
+     * 与旧 [screenshot] 的行为逐字一致（几何问页面、两条截图路线、退化如实标注、
+     * 失败给原因），差别只有两个：① 返回 [ShotCapture] 而不是 JSON；② 落盘目录是
+     * [SHOT_DIR]（`截屏`）而不是旧的 `screenshots`。
+     */
+    internal fun captureShotRef(
+        context: Context,
+        tabId: String?,
+        fullPage: String?,
+        selector: String? = null,
+    ): ShotCapture {
         val sel = selector?.trim()?.takeIf { it.isNotEmpty() }
         sel?.let {
             val v = BridgePolicy.checkSelector(it)
-            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+            if (v is BridgePolicy.Verdict.Deny) return ShotCapture.Bad(v.reason)
         }
         val tab = if (tabId.isNullOrBlank()) {
             BrowserTabManager.activeTab()
         } else {
-            val id = tabId.trim().toIntOrNull() ?: return err("screenshot 的 tabId 不是数字")
+            val id = tabId.trim().toIntOrNull() ?: return ShotCapture.Bad("screenshot 的 tabId 不是数字")
             BrowserTabManager.tabs().firstOrNull { it.id == id }
-        } ?: return err("没有这个标签")
+        } ?: return ShotCapture.Bad("没有这个标签")
         val mode = shotMode(fullPage, sel)
         // 几何问页面（CSS px）：页面不在台前也有数——这是 §2.3b(a) 的关键一步
         val bounds: ShotBounds? = when (mode) {
             ShotMode.FULL_PAGE -> null
             ShotMode.VIEWPORT -> ShotBounds.parse(evalJs(tab.webView, viewportBoundsJsScript()))
             ShotMode.ELEMENT -> {
-                val s = sel ?: return err("screenshot 缺 selector")
+                val s = sel ?: return ShotCapture.Bad("screenshot 缺 selector")
                 when (val raw = evalJs(tab.webView, elementBoundsJsScript(s))) {
-                    null -> return err("执行超时或失败")
-                    "NOT_FOUND" -> return err("找不到元素：$s")
+                    null -> return ShotCapture.Bad("执行超时或失败")
+                    "NOT_FOUND" -> return ShotCapture.Bad("找不到元素：$s")
                     else -> ShotBounds.parse(raw)
                 }
             }
         }
         if (mode == ShotMode.ELEMENT && bounds != null && (bounds.w <= 0.0 || bounds.h <= 0.0)) {
-            return err("元素没有尺寸：$sel（${whole(bounds.w)}×${whole(bounds.h)} CSS px）")
+            return ShotCapture.Bad("元素没有尺寸：$sel（${whole(bounds.w)}×${whole(bounds.h)} CSS px）")
         }
         if (mode != ShotMode.FULL_PAGE && bounds == null) {
-            return err("取不到页面几何（页面可能还没绘制）")
+            return ShotCapture.Bad("取不到页面几何（页面可能还没绘制）")
         }
         var note: String? = null
         val shot = captureShot(tab.webView, bounds)
@@ -583,27 +655,330 @@ object BrowserCommands {
                     "整页位图未取到（capturePicture 返回空），已退化为未裁剪的可视区"
                 }
             }
-            ?: return err("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
+            ?: return ShotCapture.Bad("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
         // 退化到可视区时，mode 要如实改成 viewport（不许挂着 element/fullpage 的名义回一张别的图）
         val effectiveMode = if (note == null) mode else ShotMode.VIEWPORT
-        val dir = File(Store.root(context), "screenshots").apply { mkdirs() }
+        val dir = shotDir(context)
         val name = "bridge-${System.currentTimeMillis()}.png"
-        return runCatching { File(dir, name).writeBytes(shot.bytes) }.fold(
+        val out = File(dir, name)
+        return runCatching { out.writeBytes(shot.bytes) }.fold(
             onSuccess = {
-                screenshotJson(
-                    file = "screenshots/$name",
-                    hostPath = File(dir, name).absolutePath,
-                    guestPath = "/opt/zhengdao/screenshots/$name",
-                    bytes = shot.bytes.size,
-                    mode = effectiveMode.wire,
-                    width = shot.width,
-                    height = shot.height,
-                    scale = shot.scale,
-                    note = note,
+                ShotCapture.Ok(
+                    ShotRef(
+                        file = "$SHOT_DIR/$name",
+                        hostPath = out.absolutePath,
+                        guestPath = "/opt/zhengdao/$SHOT_DIR/$name",
+                        bytes = shot.bytes.size,
+                        mode = effectiveMode.wire,
+                        width = shot.width,
+                        height = shot.height,
+                        scale = shot.scale,
+                        note = note,
+                    ),
                 )
             },
-            onFailure = { err("写截图失败：${it.message}") },
+            onFailure = { ShotCapture.Bad("写截图失败：${it.message}") },
         )
+    }
+
+    fun screenshot(context: Context, tabId: String?, fullPage: String?, selector: String? = null): String =
+        when (val c = captureShotRef(context, tabId, fullPage, selector)) {
+            is ShotCapture.Ok -> screenshotJson(
+                file = c.ref.file,
+                hostPath = c.ref.hostPath,
+                guestPath = c.ref.guestPath,
+                bytes = c.ref.bytes,
+                mode = c.ref.mode,
+                width = c.ref.width,
+                height = c.ref.height,
+                scale = c.ref.scale,
+                note = c.ref.note,
+            )
+            is ShotCapture.Bad -> err(c.error)
+        }
+
+    // ── 坐标操作四件 ＋ 等待（第一百七十七批 S2） ────────────────────────────
+    //
+    // 为什么走 `dispatchTouchEvent` 而不是页面里的 JS 合成事件：canvas/游戏/自定义手势
+    // 页面只认真实触摸流，JS 派的 MouseEvent 到不了它们；而 MotionEvent 走的是 WebView
+    // 自己的命中测试与手势识别，与手指点在屏幕上同一条路。
+    // 为什么坐标先换算：模型看截图说的是 CSS px（视口坐标），视图是物理像素；
+    // 换算判据在 `TapGeometry`（纯函数、JVM 直测）。pinch 缩放过的页面本批不保证，已挂账。
+
+    /** 触摸注入（主线程；返回页面是否接收）。 */
+    private fun touch(webView: WebView, action: Int, x: Int, y: Int, downTime: Long): Boolean {
+        val r = onMain {
+            val now = SystemClock.uptimeMillis()
+            val ev = MotionEvent.obtain(downTime, now, action, x.toFloat(), y.toFloat(), 0)
+            val handled = webView.dispatchTouchEvent(ev)
+            ev.recycle()
+            handled
+        }
+        return r.value == true
+    }
+
+    /** 页面几何（CSS 视口尺寸 ＋ 视图像素尺寸）——两者都不为正 ⇒ null（页面还没绘制）。 */
+    private class ViewGeometry(val cssW: Int, val cssH: Int, val viewW: Int, val viewH: Int)
+
+    private fun geometryOf(tab: BrowserTabManager.Tab): ViewGeometry? {
+        val raw = evalJs(tab.webView, viewportBoundsJsScript()) ?: return null
+        val p = raw.split('|')
+        if (p.size < 4) return null
+        val cssW = p[2].trim().toIntOrNull() ?: return null
+        val cssH = p[3].trim().toIntOrNull() ?: return null
+        val viewW = tab.webView.width
+        val viewH = tab.webView.height
+        if (cssW <= 0 || cssH <= 0 || viewW <= 0 || viewH <= 0) return null
+        return ViewGeometry(cssW, cssH, viewW, viewH)
+    }
+
+    private fun fingerprintOf(tab: BrowserTabManager.Tab): PageFingerprint.Fp? =
+        PageFingerprint.parse(evalJs(tab.webView, PageFingerprint.SCRIPT))
+
+    /** 坐标越界时的统一人话（带上当前视口尺寸，模型据此决定先滚还是重点）。 */
+    private fun outOfViewport(cssX: Int, cssY: Int, geo: ViewGeometry): String =
+        "坐标 (${cssX},${cssY}) 不在视口里（当前视口 ${geo.cssW}×${geo.cssH} CSS px）；" +
+            "先 browser_scroll，或按最新截图重新取点"
+
+    /**
+     * 点一下（CSS px 视口坐标）。回执带 S3 校验行。
+     */
+    internal fun tap(cssX: Int, cssY: Int, tabId: String? = null): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val geo = geometryOf(tab) ?: return err("取不到页面几何（页面可能还没绘制）")
+        if (!TapGeometry.insideViewport(cssX, cssY, geo.cssW, geo.cssH)) {
+            return err(outOfViewport(cssX, cssY, geo))
+        }
+        val pt = TapGeometry.map(cssX, cssY, geo.cssW, geo.cssH, geo.viewW, geo.viewH)
+            ?: return err("坐标换算失败（页面几何无效）")
+        val before = fingerprintOf(tab)
+        val down = SystemClock.uptimeMillis()
+        val downOk = touch(tab.webView, MotionEvent.ACTION_DOWN, pt.x, pt.y, down)
+        val upOk = touch(tab.webView, MotionEvent.ACTION_UP, pt.x, pt.y, down)
+        if (!downOk && !upOk) return err("页面没有接收这次触摸（dispatchTouchEvent 返回 false）")
+        Thread.sleep(NAV_SETTLE_MS)
+        val after = fingerprintOf(tab)
+        return ok(
+            "tapped" to "($cssX,$cssY)",
+            "view" to "(${pt.x},${pt.y})px",
+            "check" to PageFingerprint.diff(before, after, null),
+        )
+    }
+
+    /**
+     * 长按（CSS px 视口坐标 ＋ 按住毫秒数）。
+     *
+     * 「按住」是真的等：down 与 up 之间在**调用线程**睡 durationMs（不是主线程），
+     * 页面的长按识别看到的是真实时间差。
+     */
+    internal fun longPress(cssX: Int, cssY: Int, durationMs: Int, tabId: String? = null): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val geo = geometryOf(tab) ?: return err("取不到页面几何（页面可能还没绘制）")
+        if (!TapGeometry.insideViewport(cssX, cssY, geo.cssW, geo.cssH)) {
+            return err(outOfViewport(cssX, cssY, geo))
+        }
+        val pt = TapGeometry.map(cssX, cssY, geo.cssW, geo.cssH, geo.viewW, geo.viewH)
+            ?: return err("坐标换算失败（页面几何无效）")
+        val hold = durationMs.coerceIn(MIN_PRESS_MS, MAX_PRESS_MS)
+        val before = fingerprintOf(tab)
+        val down = SystemClock.uptimeMillis()
+        if (!touch(tab.webView, MotionEvent.ACTION_DOWN, pt.x, pt.y, down)) {
+            return err("页面没有接收这次触摸（dispatchTouchEvent 返回 false）")
+        }
+        Thread.sleep(hold.toLong())
+        touch(tab.webView, MotionEvent.ACTION_UP, pt.x, pt.y, down)
+        Thread.sleep(NAV_SETTLE_MS)
+        val after = fingerprintOf(tab)
+        return ok(
+            "pressed" to "($cssX,$cssY) ${hold}ms",
+            "view" to "(${pt.x},${pt.y})px",
+            "check" to PageFingerprint.diff(before, after, null),
+        )
+    }
+
+    /**
+     * 滑动（起点→终点，durationMs 走完）。
+     *
+     * 中间帧数由时长决定（约每 40ms 一帧，最多 24 帧）；每一帧都是一次主线程投递，
+     * 帧间在调用线程睡，不阻塞主线程。
+     */
+    internal fun swipe(
+        x1: Int,
+        y1: Int,
+        x2: Int,
+        y2: Int,
+        durationMs: Int,
+        tabId: String? = null,
+    ): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val geo = geometryOf(tab) ?: return err("取不到页面几何（页面可能还没绘制）")
+        if (!TapGeometry.insideViewport(x1, y1, geo.cssW, geo.cssH)) {
+            return err("起点" + outOfViewport(x1, y1, geo))
+        }
+        if (!TapGeometry.insideViewport(x2, y2, geo.cssW, geo.cssH)) {
+            return err("终点" + outOfViewport(x2, y2, geo))
+        }
+        val dur = durationMs.coerceIn(MIN_SWIPE_MS, MAX_PRESS_MS)
+        val from = TapGeometry.map(x1, y1, geo.cssW, geo.cssH, geo.viewW, geo.viewH)
+            ?: return err("坐标换算失败（页面几何无效）")
+        val to = TapGeometry.map(x2, y2, geo.cssW, geo.cssH, geo.viewW, geo.viewH)
+            ?: return err("坐标换算失败（页面几何无效）")
+        val steps = ((dur / 40).coerceIn(2, 24))
+        val path = TapGeometry.path(from.x, from.y, to.x, to.y, steps)
+        val before = fingerprintOf(tab)
+        val down = SystemClock.uptimeMillis()
+        var accepted = touch(tab.webView, MotionEvent.ACTION_DOWN, path.first().first, path.first().second, down)
+        val startAt = SystemClock.uptimeMillis()
+        for (i in 1 until path.size) {
+            // 按进度睡，事件时间戳才与手指速度一致（页面才认得出「快滑」还是「慢拖」）
+            val targetAt = startAt + dur.toLong() * i / (path.size - 1)
+            val wait = targetAt - SystemClock.uptimeMillis()
+            if (wait > 0) Thread.sleep(wait)
+            accepted = touch(
+                tab.webView,
+                if (i == path.size - 1) MotionEvent.ACTION_UP else MotionEvent.ACTION_MOVE,
+                path[i].first,
+                path[i].second,
+                down,
+            ) || accepted
+        }
+        if (!accepted) return err("页面没有接收这次滑动（dispatchTouchEvent 返回 false）")
+        Thread.sleep(NAV_SETTLE_MS)
+        val after = fingerprintOf(tab)
+        return ok(
+            "swiped" to "($x1,$y1)→($x2,$y2) ${dur}ms",
+            "check" to PageFingerprint.diff(before, after, null),
+        )
+    }
+
+    /**
+     * 按键（enter/tab/backspace/escape）。
+     *
+     * ⚠️ **用页面里的 KeyboardEvent 合成**：`enter` 能触发监听 keydown/keypress 的页面逻辑，
+     * 但**不保证**触发浏览器原生默认行为（表单隐式提交）——这与「真按物理回车」不同。
+     * 施工图口径：先挂账，真机发现不提交再单独补 `dispatchKeyEvent`（本批不写）。
+     */
+    internal fun keyPress(key: String, tabId: String? = null): String {
+        val script = keyJsScript(key) ?: return err("不支持的 key：$key（只认 enter/tab/backspace/escape）")
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val before = fingerprintOf(tab)
+        return when (val r = evalJs(tab.webView, script)) {
+            "OK" -> {
+                Thread.sleep(NAV_SETTLE_MS)
+                val after = fingerprintOf(tab)
+                ok(
+                    "key" to key,
+                    "check" to PageFingerprint.diff(before, after, null),
+                    "note" to "回车是页面内合成事件：监听 keydown 的页面能收到，原生表单隐式提交不保证",
+                )
+            }
+            "NO_TARGET" -> err("页面上没有可聚焦的目标（先 browser_click 输入框再按回车）")
+            null -> err("执行超时或失败")
+            else -> err("意外结果：$r")
+        }
+    }
+
+    /**
+     * 等待：给 `ms` 就纯等；给 `selector` 就轮询到它出现或预算用完。
+     *
+     * 只读（不动页面、不动盘）；预算上限 [MAX_WAIT_MS]，轮询间隔 [WAIT_POLL_MS]。
+     */
+    internal fun await(ms: Int, selector: String?, tabId: String? = null): String {
+        val budget = ms.coerceIn(0, MAX_WAIT_MS)
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val sel = selector?.trim()?.takeIf { it.isNotEmpty() }
+            ?: run {
+                Thread.sleep(budget.toLong())
+                return ok("waited" to "${budget}ms")
+            }
+        val v = BridgePolicy.checkSelector(sel)
+        if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        val script = PageFingerprint.targetExistsScript(jsStringLiteral(sel))
+        val deadline = System.currentTimeMillis() + budget
+        while (true) {
+            when (evalJs(tab.webView, script)) {
+                "YES" -> return ok("appeared" to sel, "waited" to "${budget}ms 以内")
+                "NO" -> Unit
+                else -> return err("等待时取不到页面状态（页面可能还没绘制）")
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                return err("等了 ${budget}ms 还没等到元素：$sel（可再等、或先 snapshot 看看页面）")
+            }
+            Thread.sleep(WAIT_POLL_MS)
+        }
+    }
+
+    /**
+     * 带前后校验的点击（**抱朴侧用这个**；桥的 `click` 仍走原路、回执不变）。
+     */
+    internal fun clickChecked(selector: String, tabId: String? = null): String {
+        val v = BridgePolicy.checkSelector(selector)
+        if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val before = fingerprintOf(tab)
+        val r = evalJs(tab.webView, clickJsScript(selector))
+        return when (r) {
+            "OK" -> {
+                Thread.sleep(NAV_SETTLE_MS)
+                val after = fingerprintOf(tab)
+                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(selector)))) {
+                    "YES" -> true
+                    "NO" -> false
+                    else -> null
+                }
+                ok("clicked" to selector, "check" to PageFingerprint.diff(before, after, still))
+            }
+            "NOT_FOUND" -> err("找不到元素：$selector")
+            null -> err("执行超时或失败")
+            else -> err("意外结果：$r")
+        }
+    }
+
+    /** 带前后校验的打字（抱朴侧用；桥的 `type` 不变）。 */
+    internal fun typeChecked(selector: String, text: String, tabId: String? = null): String {
+        val v = BridgePolicy.checkSelector(selector)
+        if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val before = fingerprintOf(tab)
+        val r = evalJs(tab.webView, typeJsScript(selector, text))
+        return when (r) {
+            "OK" -> {
+                val after = fingerprintOf(tab)
+                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(selector)))) {
+                    "YES" -> true
+                    "NO" -> false
+                    else -> null
+                }
+                ok("typed" to selector, "check" to PageFingerprint.diff(before, after, still))
+            }
+            "NOT_FOUND" -> err("找不到元素：$selector")
+            null -> err("执行超时或失败")
+            else -> err("意外结果：$r")
+        }
+    }
+
+    /** 按键的页面脚本（不支持的 key ⇒ null）。 */
+    private fun keyJsScript(key: String): String? {
+        val (name, code) = when (key.trim().lowercase()) {
+            "enter" -> "Enter" to 13
+            "tab" -> "Tab" to 9
+            "backspace" -> "Backspace" to 8
+            "escape" -> "Escape" to 27
+            else -> return null
+        }
+        return "(function(){var el=document.activeElement||document.body;" +
+            "if(!el)return 'NO_TARGET';var ok=0;" +
+            "['keydown','keypress','keyup'].forEach(function(t){" +
+            "try{el.dispatchEvent(new KeyboardEvent(t,{key:'$name',code:'$name'," +
+            "keyCode:$code,which:$code,bubbles:true,cancelable:true}));ok=ok+1}" +
+            "catch(err){ok=ok}}) ;return ok>0?'OK':'FAIL'})()"
     }
 
     // ── WebView 桥接小工具 ─────────────────────────────────────────────────

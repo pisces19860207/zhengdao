@@ -155,4 +155,39 @@ class VisionFilesTest {
         assertEquals(null, VisionFiles.mimeOf("a."))
         assertEquals(null, VisionFiles.mimeOf("a"))
     }
+    // ── 第一百七十七批：第二个根（`证道/截屏/`） ─────────────────────────────
+
+    @Test
+    fun `截屏目录里的图_给了 extraRoot 就收`() {
+        val shot = File(outside, "截屏").apply { mkdirs() }
+        File(shot, "bridge-1.png").writeBytes(byteArrayOf(1, 2, 3))
+        val out = VisionFiles.load(root, listOf("截屏/bridge-1.png"), extraRoot = outside)
+        assertEquals("截屏目录是第二个允许的根，必须收", 1, out.payloads.size)
+        assertTrue(out.skipped.isEmpty())
+    }
+
+    @Test
+    fun `不给 extraRoot_截屏目录的图按越界挡掉_与旧行为逐字一致`() {
+        val shot = File(outside, "截屏").apply { mkdirs() }
+        File(shot, "bridge-1.png").writeBytes(byteArrayOf(1, 2, 3))
+        val out = VisionFiles.load(root, listOf("截屏/bridge-1.png"))
+        assertTrue("不给第二个根 ⇒ 老判据不变（工作区里没有这张图）", out.payloads.isEmpty())
+        assertTrue("必须记一条跳过原因，不许静默", out.skipped.single().reason.isNotBlank())
+    }
+
+    @Test
+    fun `两个根之外_即使给了 extraRoot 也挡`() {
+        val third = File.createTempFile("zd-vf-third", "").let { f ->
+            f.delete(); f.mkdirs(); f
+        }
+        try {
+            File(third, "x.png").writeBytes(byteArrayOf(1))
+            // 相对 root 解析 → 落到第三目录（不在 root）；相对 extraRoot 解析 → 落到 outside 的邻居（也不是它）
+            val out = VisionFiles.load(root, listOf("../${third.name}/x.png"), extraRoot = outside)
+            assertTrue("两个根都不在 ⇒ 越界", out.payloads.isEmpty())
+            assertTrue(out.skipped.single().reason.contains("越界"))
+        } finally {
+            third.deleteRecursively()
+        }
+    }
 }

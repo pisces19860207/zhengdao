@@ -109,7 +109,7 @@ class BridgeTabIdRoutingGuardTest {
 
     // ③ 七条命令体都经 target(tabId) 路由；"直接抓活跃标签"只许留在两处既有位置
     @Test
-    fun `门禁_B补78_七条命令都经 target 路由`() {
+    fun `门禁_B补78_命令都经 target 路由`() {
         val src = code(commandsRel)
         val signatures = listOf(
             "fun status(tabId: String? = null): String {",
@@ -119,21 +119,32 @@ class BridgeTabIdRoutingGuardTest {
             "fun type(selector: String?, text: String?, tabId: String? = null): String {",
             "fun scroll(x: String?, y: String?, selector: String?, tabId: String? = null): String {",
             "fun navigate(url: String?, tabId: String? = null): String {",
+            // 第一百七十七批：坐标四件＋等待＋两条带校验的写命令，全部同样按 tabId 路由
+            // （新增命令若绕开 target() 就会点到别的标签上——这正是 B-补-78 的老病）
+            "internal fun tap(cssX: Int, cssY: Int, tabId: String? = null): String {",
+            "internal fun longPress(cssX: Int, cssY: Int, durationMs: Int, tabId: String? = null): String {",
+            "internal fun keyPress(key: String, tabId: String? = null): String {",
+            "internal fun await(ms: Int, selector: String?, tabId: String? = null): String {",
+            "internal fun clickChecked(selector: String, tabId: String? = null): String {",
+            "internal fun typeChecked(selector: String, text: String, tabId: String? = null): String {",
         )
         signatures.forEach { sig ->
             assertTrue("源码里找不到命令：$sig", src.contains(sig))
             assertTrue("$sig 没有经 target(tabId) 路由", functionBody(sig).contains("target(tabId)"))
         }
-        // 直接抓活跃标签的位置恰 2 处：target() 的缺省分支 ＋ screenshot 自有的解析
-        // （screenshot 本来就按 tabId 路由，本次未动它，文案也不许跟着改）。
+        // swipe 的签名跨行，单独按前缀找（同上：必须过 target 路由）
+        assertTrue("swipe 丢了 target 路由", functionBody("internal fun swipe(").contains("target(tabId)"))
+        // 直接抓活跃标签的位置恰 2 处：target() 的缺省分支 ＋ 截图自有的解析
+        // （截图按 tabId 路由，但它要先拿到标签才能问页面几何，这一处从 4-B 起就在）。
         assertEquals(
-            "BrowserTabManager.activeTab() 应恰 2 处（target 缺省分支 / screenshot 既有解析）",
+            "BrowserTabManager.activeTab() 应恰 2 处（target 缺省分支 / 截图既有解析）",
             2,
             Regex("BrowserTabManager\\.activeTab\\(\\)").findAll(src).count(),
         )
+        // 计数与名册同步：1 处定义 ＋ 全部命令各一处（新增命令别忘了登记本表）
         assertEquals(
-            "target( 出现应恰 8 处（1 处定义 + 7 条命令）",
-            8,
+            "target( 出现应恰 ${signatures.size + 2} 处（1 定义 + ${signatures.size + 1} 条命令）",
+            signatures.size + 2,
             Regex("target\\(").findAll(src).count(),
         )
     }

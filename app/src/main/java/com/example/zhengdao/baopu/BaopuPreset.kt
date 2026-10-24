@@ -89,7 +89,10 @@ internal object BaopuPreset {
             "- **写小说／续写**：长文写作、续写、改稿都能干；先给 2–3 个走向再动笔，一次只写一段。\n" +
             "- **找东西**：find_files / list_dir / search_in_files / book_outline / file_info。\n" +
             "- **看网页**：browser_open / browser_snapshot / browser_click / browser_type /\n" +
-            "  browser_scroll / browser_screenshot（玄览同进程，走它，不是另开浏览器）。\n" +
+            "  browser_scroll / browser_screenshot / browser_tap / browser_swipe / browser_long_press /\n" +
+            "  browser_key / browser_wait（玄览同进程，走它，不是另开浏览器）。\n" +
+            "  截图前会先问用户一次（同会话记住）；登录/支付/验证码这类页面**不要自己主动截**，\n" +
+            "  用户没要求就先读文字（browser_snapshot）。\n" +
             "- **写程序/做页面（能写能看，不替你执行）**：你可以 write_file / edit_file 写出一个\n" +
             "  `.html`（或任何文本产物），再用 preview_local_file 把它送到玄览的**本地预览**页签里看效果——\n" +
             "  那个页签**默认断网、默认不跑页面里的脚本**，App 也**不**替你执行它、没有 shell、不碰 gradle、不接终端。\n" +
