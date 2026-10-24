@@ -1683,7 +1683,7 @@
     <string name="baopu_longform_edit">编辑</string>
     <string name="baopu_longform_done">完成</string>
     <string name="baopu_longform_open_as_card">文本卡</string>
-    <string name="baopu_longform_words">%s 字</string>
+    <string name="baopu_longform_words">%s 字</string>
 <string name="skill_draft_auto_promoted">「%1$s」用满 %2$d 次，已自动转正</string>
 <string name="skill_draft_auto_hint">用满 %1$d 次自动转正；也可以手动点「转正」</string>
 <string name="skill_card_title">记住这个技能？</string>
@@ -1703,7 +1703,6 @@
 <string name="skill_card_blocked">还不能记：%1$s</string>
 <string name="skill_card_remember">记住它</string>
 <string name="skill_card_dismiss">先不记</string>
-<<<<<<< HEAD
 <!-- 第一百九十六批：学习器（教它一次） -->
 <string name="teach_menu_start">教它一次</string>
 <string name="teach_menu_stop">结束示教</string>
@@ -1716,7 +1715,6 @@
 <string name="teach_confirm_discard">放弃</string>
 <string name="teach_empty">这次示教没有录到可用的操作，再试一次</string>
 <string name="teach_started_toast">开始示教：正常点、正常输，结束前只记录不干预</string>
-=======
     <!-- ══ 定时任务（第一百六十七批，2026-10-24；只加这一段，别处文案一字未改）══ -->
     <string name="sched_page_title">定时任务</string>
     <string name="sched_card_tasks">任务</string>
@@ -1794,5 +1792,4 @@
     <string name="sched_notif_failed_title">定时任务「%1$s」没跑成</string>
     <string name="sched_notif_reason_busy">另一个会话一直占着单活跃门，重试到上限仍未进去</string>
     <string name="sched_notif_reason_failed">发送时出错，详情在运行日志里</string>
->>>>>>> feat/scheduled-tasks-v1
 </resources>

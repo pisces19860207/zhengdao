@@ -1749,7 +1749,7 @@
     <string name="baopu_longform_edit">Edit</string>
     <string name="baopu_longform_done">Done</string>
     <string name="baopu_longform_open_as_card">Text card</string>
-    <string name="baopu_longform_words">%s words</string>
+    <string name="baopu_longform_words">%s words</string>
 <string name="skill_draft_auto_promoted">%1$s auto-promoted: use count reached %2$d</string>
 <string name="skill_draft_auto_hint">Auto-promotes when the use count reaches %1$d; you can also tap "Promote" manually</string>
 <string name="skill_card_title">Remember this skill?</string>
@@ -1769,7 +1769,6 @@
 <string name="skill_card_blocked">Cannot remember yet: %1$s</string>
 <string name="skill_card_remember">Remember it</string>
 <string name="skill_card_dismiss">Not now</string>
-<<<<<<< HEAD
 <!-- Batch 196: learner (teach it once) -->
 <string name="teach_menu_start">Teach it once</string>
 <string name="teach_menu_stop">Finish teaching</string>
@@ -1783,7 +1782,6 @@
 <string name="teach_confirm_discard">Discard</string>
 <string name="teach_empty">Nothing usable recorded this time, try again</string>
 <string name="teach_started_toast">Teaching started: click and type normally — recorded only, nothing is touched</string>
-=======
     <!-- ══ Scheduled tasks (batch 167, 2026-10-24; only this block added) ══ -->
     <string name="sched_page_title">Scheduled tasks</string>
     <string name="sched_card_tasks">Tasks</string>
@@ -1861,5 +1859,4 @@
     <string name="sched_notif_failed_title">Scheduled task “%1$s” did not run</string>
     <string name="sched_notif_reason_busy">Another session held the single-active gate; retries hit the limit</string>
     <string name="sched_notif_reason_failed">Sending failed; details are in the run log</string>
->>>>>>> feat/scheduled-tasks-v1
 </resources>
