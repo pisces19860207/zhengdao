@@ -1,0 +1,7 @@
+{
+  "candidateId": "fixture-better",
+  "kind": "SKILL_BODY",
+  "target": "整理书稿",
+  "delta": "先核对目录，再按章节顺序整理。",
+  "evidenceIds": ["fixture:better"]
+}
