@@ -211,16 +211,18 @@ object BrowserTabManager {
               var maxX=Math.max(0,de.scrollWidth-window.innerWidth);
               var tx=(x>0&&maxX>0)?Math.min(x,maxX):0;
               var wantY=Math.max(0,Math.min(y,maxY));
-              window.__zdRestoreBusy=1;
-              window.scrollTo(tx,wantY);
-              window.__zdRestoreBusy=0;
+              // 「恢复自己的滚动不算用户滚」：scrollTo 触发的 scroll 事件是异步的，
+              // 同步标志位清零后事件才到 ⇒ 把自己误记成用户滚（19:19 真机实证）。
+              // 改用 300ms 时间窗：窗口内的事件一律视为恢复动作。
+              window.__zdRestoreUntil=Date.now()+300;
+              window.__zdUserScrolled=0;
               if(!window.__zdRestoreGuard){
                 window.__zdRestoreGuard=1;
-                window.__zdUserScrolled=0;
                 window.addEventListener('scroll',function(){
-                  if(!window.__zdRestoreBusy){ window.__zdUserScrolled=1; }
+                  if(Date.now()>(window.__zdRestoreUntil||0)){ window.__zdUserScrolled=1; }
                 },{passive:true});
               }
+              window.scrollTo(tx,wantY);
               return ${if (withSecondFlag) 1 else 0};
             })()
         """.trimIndent()
