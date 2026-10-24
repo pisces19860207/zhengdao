@@ -200,6 +200,7 @@
 | 161 | ⚪ **2026-10-24 待派（先设计）：第一百八十三批 Harness 编排形态升级** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十三批-Harness编排形态.md`（programmatic tool calling：模型写编排代码，批边界确认；沙箱/白名单/审计；native 仍默认） | 待派；**已补现状对照：code模式/durable/tool search/结构化输出；不追云端分布式/大规模调度**；**含状态机审计：借 durable/checkpoint/转移表模式，不引入 Temporal/LangGraph** |
 | 162 | ⚪ **2026-10-24 待派：第一百八十四批 技能记忆入口** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十四批-技能记忆入口.md`（说“记住这个技能”出技能卡→确认写文件+索引；草稿可见/3次转正；全局仍拒） | 待派 |
 | 163 | ⚪ **2026-10-24 待派：第一百八十五批 技能/工具函数 schema 预检** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十五批-技能schema预检.md`（Gemini type 小写/OpenAI strict/Anthropic input_schema；失败拒写/标未验证） | 待派 |
+| 164 | ⚪ **2026-10-24 待派：第一百八十六批 确定性绘图/表格** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十六批-确定性绘图.md`（文本模型写 DSL→本地 SVG/HTML；flowchart/sequence/bar/line/table；不调生图模型、不执行 JS、消毒） | 待派 |
 | 148 | 🔵 **2026-10-24 已选 B、待派：第一百七十批 MCP 真入口** —— 单 `..\_zd-private\docs\派工单-2026-10-23-第一百七十批-MCP入口处置.md`（URL→`addServer`→`connect`，确认卡/持久化/断开；不再走 `send` 假入口） | 待派；**MCP 走 2026-07-28 Streamable HTTP，旧 SSE 仅兜底** |
 ### 2026-10-23 重置 A（锁点 ef3f2408＝v2.2.0/38，lint 234）
 
