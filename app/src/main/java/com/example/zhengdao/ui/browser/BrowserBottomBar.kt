@@ -114,6 +114,8 @@ fun BrowserBottomBar(
     onNewTab: () -> Unit,
     onCloseTab: () -> Unit,
     modifier: Modifier = Modifier,
+    teaching: Boolean = false,
+    onTeachToggle: () -> Unit = {},
 ) {
     val palette = xuanLanPalette()
     var menuOpen by remember { mutableStateOf(false) }
@@ -218,6 +220,17 @@ fun BrowserBottomBar(
                     onClick = {
                         menuOpen = false
                         onCloseTab()
+                    },
+                )
+                // 第一百九十六批：「教它一次」（示教录制开关）——动作本体在 BrowserScreen。
+                MenuEntry(
+                    label = stringResource(
+                        if (teaching) R.string.teach_menu_stop else R.string.teach_menu_start
+                    ),
+                    palette = palette,
+                    onClick = {
+                        menuOpen = false
+                        onTeachToggle()
                     },
                 )
             }

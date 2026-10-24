@@ -1769,4 +1769,17 @@
 <string name="skill_card_blocked">Cannot remember yet: %1$s</string>
 <string name="skill_card_remember">Remember it</string>
 <string name="skill_card_dismiss">Not now</string>
+<!-- Batch 196: learner (teach it once) -->
+<string name="teach_menu_start">Teach it once</string>
+<string name="teach_menu_stop">Finish teaching</string>
+<plurals name="teach_recording_badge">
+        <item quantity="one">Teaching · %1$d step</item>
+        <item quantity="other">Teaching · %1$d steps</item>
+    </plurals>
+<string name="teach_confirm_title">Save as replay skill?</string>
+<string name="teach_confirm_name_label">Skill name</string>
+<string name="teach_confirm_save">Save skill</string>
+<string name="teach_confirm_discard">Discard</string>
+<string name="teach_empty">Nothing usable recorded this time, try again</string>
+<string name="teach_started_toast">Teaching started: click and type normally — recorded only, nothing is touched</string>
 </resources>

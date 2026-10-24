@@ -9,6 +9,7 @@ import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,8 +33,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,10 +58,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.TeachSessionUiModel
+import com.example.zhengdao.baopu.TeachSkillDraft
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * 玄览主界面 —— 用户模式（第⑨刀 B 多标签 + C 底栏改版）。
@@ -167,6 +176,31 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     var addressEditing by remember { mutableStateOf(false) }
     // UI 层一次性提示（如"标签数已达上限"），与本标签安提示条共用一行样式
     var uiMsg by remember { mutableStateOf<String?>(null) }
+
+    // ── 第一百九十六批：「教它一次」（示教录制 → 技能草稿 → 确认落盘）──────────
+    // 判据在 baopu 侧（TeachSessionUiModel/TeachLearner/TeachReplayStore），本界面只接线。
+    // 录制指示条的步数靠轮询（录制事件在 IO 协程里追加，没有组合期可观察状态源）。
+    val teachScope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
+    val teachModel = remember {
+        val appCtx = context.applicationContext
+        TeachSessionUiModel(
+            scope = teachScope,
+            context = appCtx,
+            tabId = { BrowserTabManager.activeTab()?.id },
+            projectRoot = { BaopuRuntime.workspaceRoot(appCtx) },
+            globalRoot = { File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY) },
+            personaFiles = { BaopuRuntime.personaFiles(appCtx) },
+        )
+    }
+    var teachRecording by remember { mutableStateOf(false) }
+    var teachStepCount by remember { mutableIntStateOf(0) }
+    var teachDraft by remember { mutableStateOf<TeachSkillDraft?>(null) }
+    LaunchedEffect(teachRecording) {
+        while (teachRecording) {
+            teachStepCount = teachModel.recordedSoFar()
+            delay(1000)
+        }
+    }
 
     LaunchedEffect(active?.id) {
         urlInput = active?.state?.url ?: ""
@@ -391,6 +425,16 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        // ── 示教指示条（196）：正在记这件事必须可见 ──
+        if (teachRecording) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                TeachRecordingBadge(stepCount = teachStepCount)
+            }
+        }
+
         // ── 底栏那一格（56dp）：二选一 ──
         //  · 上网页签 → [BrowserBottomBar]（`‹〔›〕[地址胶囊] ↻/⨯ ⋯`，2026-10-18 定稿，一个字没改）
         //  · 本地预览页签 → [BrowserPreviewBar]（文件名＋状态 / 看源码·看排版 / 脚本 / 复制，§5.3-§5.4）
@@ -441,6 +485,21 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                     }
                 },
                 onCloseTab = { active?.let { BrowserTabManager.closeTab(it.id) } },
+                teaching = teachRecording,
+                onTeachToggle = {
+                    if (teachRecording) {
+                        teachModel.stop { d ->
+                            teachRecording = false
+                            teachDraft = d
+                            if (d == null) uiMsg = res.getString(R.string.teach_empty)
+                        }
+                    } else {
+                        teachRecording = true
+                        teachStepCount = 0
+                        uiMsg = res.getString(R.string.teach_started_toast)
+                        teachModel.start { err -> uiMsg = err }
+                    }
+                },
             )
         }
     }
@@ -448,6 +507,21 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     // ── JS 弹窗对话框 ──
     jsDialog?.let { dialog ->
         JsDialogUi(dialog = dialog, onDismiss = { jsDialog = null })
+    }
+
+    // ── 示教确认卡（196）：确认才落盘，「放弃」一个字节不写 ──
+    teachDraft?.let { d ->
+        TeachConfirmSheet(
+            draft = d,
+            onSave = { name ->
+                teachDraft = null
+                teachModel.save(d.skill.copy(name = name), d.warnings) { msg -> uiMsg = msg }
+            },
+            onDiscard = {
+                teachDraft = null
+                teachModel.discard()
+            },
+        )
     }
 }
 
