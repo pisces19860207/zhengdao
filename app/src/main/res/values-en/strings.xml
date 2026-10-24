@@ -1737,7 +1737,5 @@
     <string name="baopu_longform_edit">Edit</string>
     <string name="baopu_longform_done">Done</string>
     <string name="baopu_longform_open_as_card">Text card</string>
-    <string name="baopu_longform_words">%s words</string>
-    <string name="baopu_longform_saved_prefix">Saved: </string>
-    <string name="baopu_longform_save_failed">Save failed</string>
+    <string name="baopu_longform_words">%s words</string>
 </resources>
