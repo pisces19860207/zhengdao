@@ -80,6 +80,66 @@ object BrowserTabPolicy {
      *   「前台 + 非活跃」这一格能被单测逐字钉住（它正是改前的病格），
      *   第一百七十二批 S3 的前台预算裁剪会真正用上它。
      */
-    fun rendererPriority(appForeground: Boolean, isActiveTab: Boolean): Int =
-        if (appForeground) RENDERER_PRIORITY_IMPORTANT else RENDERER_PRIORITY_WAIVED
+    fun rendererPriority(appForeground: Boolean, isActiveTab: Boolean, withinBudget: Boolean = true): Int =
+        if (appForeground && (isActiveTab || withinBudget)) {
+            RENDERER_PRIORITY_IMPORTANT
+        } else {
+            RENDERER_PRIORITY_WAIVED
+        }
+
+    /**
+     * 前台能同时挂在 IMPORTANT 档的标签数上限（第一百七十二批 S3）。
+     *
+     * 为什么要有上限：标签上限是 [MAX_TABS]=20，若 20 颗都按 IMPORTANT 挂着，就是 20 份渲染进程
+     * 内存 —— 真机会先 OOM，"保活"变成"更早被系统清场"。3 是「一排页签」的直觉量：
+     * 当前页 + 左右各一，切回去都不重载；更远的标签允许被系统收（由 S2 的回收卡片兜住，不崩）。
+     */
+    const val IMPORTANT_BUDGET = 3
+
+    /**
+     * 前台可以拿 IMPORTANT 档的标签集合（含活跃标签，第一百七十二批 S3）。
+     *
+     * 选择规则（纯函数、可 JVM 表驱动）：
+     * 1. 活跃标签必选（当前页要是被降档，"切回不重载"当场失效）；
+     * 2. 其余按**与活跃标签的创建序距离**由近到远补满预算（近的先保 —— 与用户切页签的手指动线一致）；
+     * 3. 距离相同按创建序小的优先（确定性，避免"每次算出来不一样"）；
+     * 4. [activeId] 不在 [orderedIds] 里（没标签/刚关掉）⇒ 按创建序取前 [budget] 个。
+     *
+     * @param orderedIds 按创建顺序排的标签 id（管理器现成的顺序）
+     * @param activeId 活跃标签 id；null = 无标签
+     * @param budget 预算，默认 [IMPORTANT_BUDGET]
+     */
+    fun importantTabIds(
+        orderedIds: List<Int>,
+        activeId: Int?,
+        budget: Int = IMPORTANT_BUDGET,
+    ): Set<Int> {
+        if (budget <= 0 || orderedIds.isEmpty()) return emptySet()
+        val activeIndex = orderedIds.indexOf(activeId)
+        if (activeIndex < 0) return orderedIds.take(budget).toSet()
+        val picked = ArrayList<Int>(budget)
+        picked.add(orderedIds[activeIndex])
+        // 由近到远：距离相同取创建序小的（先看左边，再看右边 —— 与「上/下一个页签」的手感一致）
+        for (distance in 1..orderedIds.size) {
+            if (picked.size >= budget) break
+            orderedIds.getOrNull(activeIndex - distance)?.let { picked.add(it) }
+            if (picked.size >= budget) break
+            orderedIds.getOrNull(activeIndex + distance)?.let { picked.add(it) }
+        }
+        return picked.toSet()
+    }
+
+    /**
+     * 内存压力下能不能真销毁玄览的 WebView（第一百七十二批 S4）。
+     *
+     * 三条同时成立才允许：① 玄览不在屏幕上（挂载中的实例 destroy 是未定义行为）；
+     * ② **App 不在前台**（这是本批新增的那一条：前台时用户随时会切回来，销毁＝当场白页）；
+     * ③ 手上确实还有标签（没有可回收对象）。
+     *
+     * 为什么把"前台"写进判据而不是靠"前台一般到不了 TRIM_COMPLETE 那一档"：
+     * 那是经验，不是承诺。L2 是「App 在前台、玄览不可见时页面必须活着」——
+     * 必保的东西不能建在"一般不会"上。
+     */
+    fun canReleaseForMemory(browserOnScreen: Boolean, appForeground: Boolean, tabCount: Int): Boolean =
+        !browserOnScreen && !appForeground && tabCount > 0
 }

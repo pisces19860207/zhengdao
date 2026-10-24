@@ -105,12 +105,31 @@ class BrowserRendererGoneGateTest {
 
         val main = src("src/main/java/com/example/zhengdao/MainActivity.kt")
         assertTrue(
-            "MainActivity 的 ON_RESUME 必须调 resumeAll()（改回 resumeActive 就又是「只救一颗」）",
-            main.contains("BrowserTabManager.resumeAll()"),
+            "MainActivity 必须挂上 App 级前台跟踪（第一百七十二批 S4：跳到终端独立 Activity 时" +
+                "本页也会 ON_PAUSE，在本页判前台/后台会把「用终端」误判成「退后台」）",
+            main.contains("attachAppForegroundTracking("),
+        )
+        assertFalse(
+            "MainActivity 不许再自己直调 pauseAll()/resumeAll() —— 前台真相只有一个来源",
+            main.contains("BrowserTabManager.pauseAll()") ||
+                main.contains("BrowserTabManager.resumeAll()"),
         )
         assertFalse(
             "旧入口 resumeActive() 不该再被调用（否则两份语义并存）",
             main.contains("BrowserTabManager.resumeActive()"),
+        )
+
+        // 唯一的驱动口：BrowserHolder.setAppForeground（写标记 + 暂停/恢复标签）
+        val holder = src("src/main/java/com/example/zhengdao/ui/browser/BrowserHolder.kt")
+        val setFg = blockAfter(holder, "fun setAppForeground(")
+        assertTrue(
+            "回前台必须走 resumeAll()、退后台必须走 pauseAll()（缺一半就是「只降不升」或反之）",
+            setFg.contains("resumeAll()") && setFg.contains("pauseAll()"),
+        )
+        assertTrue(
+            "前台跟踪必须挂在 attachAppForegroundTracking 里（Activity 生命周期回调）",
+            holder.contains("attachAppForegroundTracking(") &&
+                holder.contains("registerActivityLifecycleCallbacks("),
         )
     }
 

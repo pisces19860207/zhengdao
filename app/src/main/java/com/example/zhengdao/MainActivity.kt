@@ -203,6 +203,11 @@ class MainActivity : ComponentActivity() {
         // 与 TerminalActivity 同一行写法（终端页早就加了，主界面一直漏着）。
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // 玄览保活（第一百七十二批 S4）：给整个 App 挂前台跟踪 —— 判据是「还有没有 Activity
+        // started」，不是本页的 ON_RESUME/ON_PAUSE（跳终端时本页也会 PAUSE，那是误判）。
+        // 幂等：Activity 重建不会重复注册。
+        com.example.zhengdao.ui.browser.BrowserHolder.attachAppForegroundTracking(application)
+
         // 边到边渲染（v1.1 第三阶段「输入框与手机体验」）：
         // 必须与 ComposerBar 的 Modifier.imePadding() 配套，键盘弹出时输入框才不被顶掉
         // ——非 edge-to-edge 时系统自行 resize window，Compose 读不到 IME inset，imePadding 形同虚设。
@@ -800,10 +805,11 @@ fun HomeTabs(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
-                    // 玄览多标签（第⑨刀 B）：回前台**全部**标签恢复（onResume + 按前台档升回优先级）。
-                    // 第一百七十二批 S1：改前是 resumeActive()，只救回活跃那一颗 ⇒ 其余标签被
-                    // pauseAll 降成 WAIVED 后永不回升（页面随时被系统收走，用户切回就是重载）。
-                    com.example.zhengdao.ui.browser.BrowserTabManager.resumeAll()
+                    // 玄览多标签：回前台的「恢复」不再挂在这里 —— 第一百七十二批 S4 起，
+                    // 前台判据取**整个 App**（有任一 Activity started 即前台），
+                    // 由 BrowserHolder.attachAppForegroundTracking 统一驱动 pauseAll/resumeAll。
+                    // 原因：跳终端（独立 Activity）时本页也会 ON_PAUSE，改前那里无条件 pauseAll
+                    // ⇒ 一进终端玄览所有标签当场降 WAIVED（L2「在终端/抱朴时页面要活着」破功）。
                     if (com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
                     ) {
                         tab = TabIndex.BROWSER
@@ -821,10 +827,10 @@ fun HomeTabs(
                         tab = TabIndex.BAOPU
                     }
                 }
-                // 退后台（切别的 App、或跳终端独立 Activity）：全部标签 onPause + 降 WAIVED
-                // （§4.2「后台标签降优先级」的进程级落实；回前台由上面 ON_RESUME 恢复）。
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE ->
-                    com.example.zhengdao.ui.browser.BrowserTabManager.pauseAll()
+                // 退后台的「暂停/降级」不再挂在这里（第一百七十二批 S4）：
+                // 本页 ON_PAUSE 既可能是真退后台、也可能是被终端独立 Activity 盖住，
+                // 在这里判不出区别。改由 BrowserHolder 按「整个 App 还有没有 Activity started」
+                // 统一决定 —— 只有真的一个都不剩（或只剩后台）时才 pauseAll。
                 else -> Unit
             }
         }
