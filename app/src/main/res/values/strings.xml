@@ -1692,4 +1692,16 @@
 <string name="skill_card_blocked">还不能记：%1$s</string>
 <string name="skill_card_remember">记住它</string>
 <string name="skill_card_dismiss">先不记</string>
+<!-- 第一百九十六批：学习器（教它一次） -->
+<string name="teach_menu_start">教它一次</string>
+<string name="teach_menu_stop">结束示教</string>
+<plurals name="teach_recording_badge">
+        <item quantity="other">示教中 · %1$d 步</item>
+    </plurals>
+<string name="teach_confirm_title">存为回放技能？</string>
+<string name="teach_confirm_name_label">技能名</string>
+<string name="teach_confirm_save">保存技能</string>
+<string name="teach_confirm_discard">放弃</string>
+<string name="teach_empty">这次示教没有录到可用的操作，再试一次</string>
+<string name="teach_started_toast">开始示教：正常点、正常输，结束前只记录不干预</string>
 </resources>
