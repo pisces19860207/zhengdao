@@ -1164,11 +1164,13 @@
          计数与「能不能转正」的口径全在 SkillStore，这里的数字只是把它的读数说出来。 -->
     <string name="skill_draft_group">草稿（试用中）</string>
     <string name="skill_draft_none">没有草稿。新建技能时勾上「先当草稿」，它就会在这里排队。</string>
-    <string name="skill_draft_uses">草稿 · 已用 %1$d/%2$d</string>
+    <string name="skill_draft_uses">草稿 · 未验证 · 已用 %1$d/%2$d</string>
     <string name="skill_draft_use_once">用一次</string>
     <string name="skill_draft_promote">转正</string>
     <string name="skill_draft_used">已给「%1$s」记一次</string>
     <string name="skill_draft_promoted">「%1$s」已转正，索引里多了一行</string>
+    <string name="skill_draft_auto_promoted">「%1$s」用满 %2$d 次，已自动转正</string>
+    <string name="skill_draft_auto_hint">用满 %1$d 次自动转正；也可以手动点「转正」</string>
     <string name="skill_draft_index_full">正文已转正，但索引已满（上限 %1$d 条）：索引行没加上，先去删几条</string>
     <string name="skill_use_platform_template">用平台机制模板</string>
     <string name="skill_use_platform_template_hint">预填只改输入框，不写盘；保存仍要过确认卡。</string>
@@ -1367,6 +1369,24 @@
     <string name="learn_suggest_formal">转成正式技能</string>
     <string name="learn_adopt">采纳</string>
     <string name="learn_dismiss">不记</string>
+    <!-- 第一百八十四批 · 技能记忆入口（说一句就记，不用进设置） -->
+    <string name="skill_card_title">记住这个技能？</string>
+    <string name="skill_card_source_user">你说的</string>
+    <string name="skill_card_source_repeat">这个流程成功 2 次了</string>
+    <string name="skill_card_purpose_empty">（正文还没写，先填一句用途）</string>
+    <string name="skill_card_name">技能名</string>
+    <string name="skill_card_body">技能正文</string>
+    <string name="skill_card_body_edit">改正文</string>
+    <string name="skill_card_body_done">收起正文</string>
+    <string name="skill_card_chars">%1$d 字</string>
+    <string name="skill_card_target">落点：项目技能（%1$s）</string>
+    <string name="skill_card_backup">同名技能已有：保存前先备份为 %1$s</string>
+    <string name="skill_card_backup_none">首次保存，不覆盖任何文件</string>
+    <string name="skill_card_draft_hint">先按草稿保存（索引标「未验证」），用满 %1$d 次自动转正，也可以在设置里手动转正</string>
+    <string name="skill_card_active_hint">这条已经是正式技能：保存会更新它，旧版进备份</string>
+    <string name="skill_card_blocked">还不能记：%1$s</string>
+    <string name="skill_card_remember">记住它</string>
+    <string name="skill_card_dismiss">先不记</string>
     <!-- 第一百批：采纳后效果回环（只出建议卡；回滚要人点，绝不自动） -->
     <string name="post_adopt_title">采纳后效果：%1$s</string>
     <string name="post_adopt_counts">采纳前 成功%1$d／失败%2$d／纠正%3$d · 采纳后 +成功%4$d／+失败%5$d／+纠正%6$d</string>
