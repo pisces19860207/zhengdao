@@ -127,6 +127,29 @@ internal object BaopuRuntime {
         )
     }
 
+    /**
+     * 第一百六十五批 · 人设包：工作区 `抱朴记忆/人设/` 的读写壳。
+     * 包是数据不是代码——这里只读写 persona.md / pack.json，不碰人设三层与工具权限。
+     */
+    fun personaPackStore(context: Context): PersonaPackStore = PersonaPackStore(workspaceRoot(context))
+
+    /**
+     * 当前工作区启用的那套人设包；没启用、包被删、读不了 ⇒ null（按抱朴默认人设走）。
+     * 读不了时留一行日志，不静默——用户至少能在日志里看到为什么包没生效。
+     */
+    fun activePersonaPack(context: Context): PersonaPackPayload? {
+        val appCtx = context.applicationContext
+        val workspace = workspaceRoot(appCtx)
+        val dir = PersonaPackPrefs.activeDir(appCtx, workspace) ?: return null
+        return when (val r = personaPackStore(appCtx).load(dir)) {
+            is PersonaPackResult.Ok -> r.pack
+            is PersonaPackResult.Rejected -> {
+                RunLog.log("人设包「$dir」没读成（${r.error}${if (r.detail.isEmpty()) "" else ":" + r.detail}），本轮按抱朴默认人设")
+                null
+            }
+        }
+    }
+
     // ── 资料库（刀 2 A/B/D 段；路径只在这一处拼，别处不自己 File(…)） ──────────
 
     /** 收料（投递 → 私有 `原始/`）：扫描、提问卡、执行、待删除清单。 */
@@ -510,6 +533,8 @@ internal object BaopuRuntime {
             registry = reg,
             pipeline = pipeline,
             personaFiles = personaFiles(appCtx),
+            // 第一百六十五批：人设包按工作区现读（设置页换包后下一轮生效；文件是真相）。
+            personaPack = { activePersonaPack(appCtx) },
             memoryStore = memoryStore(appCtx),
             spillRoot = { workspaceRoot(appCtx) },
             // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，

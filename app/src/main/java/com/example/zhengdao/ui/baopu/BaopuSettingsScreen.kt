@@ -55,6 +55,7 @@ import java.io.File
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.MemoryScope
@@ -78,6 +79,13 @@ import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.SettingsSubPage
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.baopu.BaopuWorkspace
+import com.example.zhengdao.baopu.PersonaPackError
+import com.example.zhengdao.baopu.PersonaPackPayload
+import com.example.zhengdao.baopu.PersonaPackPrefs
+import com.example.zhengdao.baopu.PersonaPackResult
+import com.example.zhengdao.baopu.PersonaPackRules
+import com.example.zhengdao.baopu.PersonaPackStore
+import com.example.zhengdao.baopu.PersonaPackSummary
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
@@ -495,6 +503,245 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                             Text(stringResource(R.string.persona_rollback_action))
                         }
                     }
+                }
+            }
+
+            // ── 第一百六十五批 · 人设包（Persona Pack v1）──
+            // 定位：用户选「谁在帮忙」的模板——只改语气/风格/工作偏好。包在
+            // <工作区>/抱朴记忆/人设/<名字>/persona.md（文件是真相，卸载不丢）；
+            // 启用项按工作区记在设置里。红线：包不能改 A 内核、确认制、工具权限。
+            SectionCard(stringResource(R.string.persona_pack_card)) {
+                var packTick by remember { mutableIntStateOf(0) }
+                val packWorkspace = remember(packTick) { BaopuRuntime.workspaceRoot(ctx) }
+                val packStore = remember(packWorkspace) { PersonaPackStore(packWorkspace) }
+                val packs = remember(packTick, packStore) { packStore.list() }
+                val activeDir = remember(packTick, packStore) {
+                    PersonaPackPrefs.activeDir(ctx, packWorkspace)
+                }
+                val canRollback = remember(packTick, packStore) {
+                    PersonaPackPrefs.hasPrevious(ctx, packWorkspace)
+                }
+                var previewing by remember { mutableStateOf<PersonaPackPayload?>(null) }
+                var editorOpen by remember { mutableStateOf(false) }
+                var editingPack by remember { mutableStateOf<PersonaPackSummary?>(null) }
+                var editingText by remember { mutableStateOf("") }
+                var deletingPack by remember { mutableStateOf<PersonaPackSummary?>(null) }
+
+                fun say(msg: String) {
+                    Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                }
+
+                fun activate(dir: String?, name: String) {
+                    PersonaPackPrefs.setActive(ctx, packWorkspace, dir)
+                    packTick++
+                    say(
+                        if (dir == null) res.getString(R.string.persona_pack_default_switched)
+                        else res.getString(R.string.persona_pack_switched, name),
+                    )
+                }
+
+                fun openEditor(pack: PersonaPackSummary?) {
+                    if (pack == null) {
+                        editingPack = null
+                        editingText = res.getString(R.string.persona_pack_new_template)
+                        editorOpen = true
+                        return
+                    }
+                    when (val r = packStore.load(pack.dirName)) {
+                        is PersonaPackResult.Ok -> {
+                            editingPack = pack
+                            editingText = r.pack.text
+                            editorOpen = true
+                        }
+                        is PersonaPackResult.Rejected -> say(personaPackErrorText(res, r))
+                    }
+                }
+
+                val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    if (uri != null) {
+                        val fallback = res.getString(R.string.persona_pack_import_fallback)
+                        val display = queryOpenDisplayName(ctx, uri) ?: fallback
+                        val result = runCatching {
+                            ctx.contentResolver.openInputStream(uri)?.use {
+                                packStore.importStream(display, fallback, it)
+                            }
+                        }.getOrNull()
+                        when (result) {
+                            null -> say(res.getString(R.string.persona_pack_err_io, "open"))
+                            is PersonaPackResult.Ok -> {
+                                say(res.getString(R.string.persona_pack_imported, result.pack.name))
+                                packTick++
+                            }
+                            is PersonaPackResult.Rejected -> say(personaPackErrorText(res, result))
+                        }
+                    }
+                }
+
+                Text(
+                    text = stringResource(R.string.persona_pack_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+
+                // 默认行：不套包＝按内核里的抱朴本人工作（与今天的行为逐字节相同）
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.persona_pack_default_name),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = stringResource(R.string.persona_pack_default_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (activeDir == null) {
+                        Text(
+                            text = stringResource(R.string.persona_pack_active),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        TextButton(onClick = { activate(null, "") }) {
+                            Text(stringResource(R.string.persona_pack_use))
+                        }
+                    }
+                }
+
+                packs.forEach { p ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = p.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = if (p.manifestProblem != null) {
+                                    res.getString(R.string.persona_pack_manifest_bad)
+                                } else if (p.description.isNotBlank()) {
+                                    p.description
+                                } else {
+                                    res.getString(
+                                        R.string.persona_pack_size,
+                                        (p.bytes / 1024).coerceAtLeast(1).toInt(),
+                                    )
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (activeDir == p.dirName) {
+                            Text(
+                                text = stringResource(R.string.persona_pack_active),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            TextButton(onClick = { activate(p.dirName, p.name) }) {
+                                Text(stringResource(R.string.persona_pack_use))
+                            }
+                        }
+                    }
+                    Row {
+                        TextButton(onClick = {
+                            when (val r = packStore.load(p.dirName)) {
+                                is PersonaPackResult.Ok -> previewing = r.pack
+                                is PersonaPackResult.Rejected -> say(personaPackErrorText(res, r))
+                            }
+                        }) {
+                            Text(stringResource(R.string.persona_pack_preview))
+                        }
+                        TextButton(onClick = { openEditor(p) }) {
+                            Text(stringResource(R.string.persona_pack_edit))
+                        }
+                        TextButton(onClick = { deletingPack = p }) {
+                            Text(stringResource(R.string.persona_pack_delete))
+                        }
+                    }
+                }
+
+                if (packs.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.persona_pack_none),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { openEditor(null) }) {
+                        Text(stringResource(R.string.persona_pack_new))
+                    }
+                    TextButton(onClick = { importLauncher.launch(arrayOf(PersonaPackRules.MIME_ANY)) }) {
+                        Text(stringResource(R.string.persona_pack_import))
+                    }
+                    TextButton(
+                        enabled = canRollback,
+                        onClick = {
+                            val rolled = PersonaPackPrefs.rollback(ctx, packWorkspace)
+                            packTick++
+                            if (rolled == null) {
+                                say(res.getString(R.string.persona_pack_rollback_default))
+                            } else {
+                                val name = packs.firstOrNull { it.dirName == rolled }?.name ?: rolled
+                                say(res.getString(R.string.persona_pack_rollback_done, name))
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.persona_pack_rollback))
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.persona_pack_file_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                previewing?.let { p ->
+                    PersonaPackPreviewDialog(p) { previewing = null }
+                }
+                deletingPack?.let { p ->
+                    PersonaPackDeleteDialog(
+                        pack = p,
+                        onDismiss = { deletingPack = null },
+                        onConfirm = {
+                            val removed = packStore.delete(p.dirName)
+                            if (activeDir == p.dirName) {
+                                PersonaPackPrefs.clear(ctx, packWorkspace)
+                            }
+                            deletingPack = null
+                            packTick++
+                            say(
+                                if (removed) res.getString(R.string.persona_pack_delete_done, p.name)
+                                else res.getString(R.string.persona_pack_err_io, "delete"),
+                            )
+                        },
+                    )
+                }
+                if (editorOpen) {
+                    val locked = editingPack
+                    PersonaPackEditorDialog(
+                        initialName = locked?.name ?: "",
+                        initialText = editingText,
+                        nameLocked = locked != null,
+                        onDismiss = { editorOpen = false },
+                        onSave = { newName, body ->
+                            if (locked == null) packStore.create(newName, body)
+                            else packStore.update(locked.dirName, body)
+                        },
+                        onSaved = { saved ->
+                            editorOpen = false
+                            packTick++
+                            say(res.getString(R.string.persona_pack_saved, saved.name))
+                        },
+                    )
                 }
             }
 
@@ -1133,3 +1380,174 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "run_subtasks" -> R.string.baopu_tool_run_subtasks_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
+
+/** 第一百六十五批：人设包预览——正文逐字显示，外加一句「会改变什么」。 */
+@Composable
+private fun PersonaPackPreviewDialog(pack: PersonaPackPayload, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    text = stringResource(R.string.persona_pack_preview_title, pack.name),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.persona_pack_preview_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(
+                        text = pack.text,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.persona_pack_close))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 第一百六十五批：新建/编辑人设包（名字在编辑时锁死——改名＝另建一份）。 */
+@Composable
+private fun PersonaPackEditorDialog(
+    initialName: String,
+    initialText: String,
+    nameLocked: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> PersonaPackResult,
+    onSaved: (PersonaPackPayload) -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var body by remember { mutableStateOf(initialText) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val res = LocalResources.current
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    text = if (nameLocked) {
+                        stringResource(R.string.persona_pack_editor_edit, initialName)
+                    } else {
+                        stringResource(R.string.persona_pack_editor_new)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.persona_pack_name)) },
+                    singleLine = true,
+                    enabled = !nameLocked,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = body,
+                    onValueChange = { body = it },
+                    label = { Text(stringResource(R.string.persona_pack_text)) },
+                    minLines = 6,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = zhengdaoErrorText(),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.persona_pack_cancel))
+                    }
+                    TextButton(onClick = {
+                        when (val r = onSave(name, body)) {
+                            is PersonaPackResult.Ok -> onSaved(r.pack)
+                            is PersonaPackResult.Rejected -> error = personaPackErrorText(res, r)
+                        }
+                    }) {
+                        Text(stringResource(R.string.persona_pack_save))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 第一百六十五批：删除确认——只删这套包的两个自有文件，日记/产物/记忆不动。 */
+@Composable
+private fun PersonaPackDeleteDialog(
+    pack: PersonaPackSummary,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    text = stringResource(R.string.persona_pack_delete_title, pack.name),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.persona_pack_delete_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.persona_pack_cancel))
+                    }
+                    TextButton(onClick = onConfirm) {
+                        Text(stringResource(R.string.persona_pack_delete))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 可读错误 → 一句人话（数据层只给分类，文案全在这边）。 */
+private fun personaPackErrorText(
+    res: android.content.res.Resources,
+    r: PersonaPackResult.Rejected,
+): String = when (r.error) {
+    PersonaPackError.NAME_INVALID -> res.getString(R.string.persona_pack_err_name)
+    PersonaPackError.EMPTY -> res.getString(R.string.persona_pack_err_empty)
+    PersonaPackError.TOO_LARGE -> res.getString(R.string.persona_pack_err_too_large)
+    PersonaPackError.BAD_UTF8 -> res.getString(R.string.persona_pack_err_utf8)
+    PersonaPackError.NOT_FOUND -> res.getString(R.string.persona_pack_err_not_found)
+    PersonaPackError.IO -> res.getString(R.string.persona_pack_err_io, r.detail.ifBlank { "io" })
+}
+
+/** SAF 打开的文件名（导入时只借它起目录名；读不到就用界面给的后备名）。 */
+private fun queryOpenDisplayName(ctx: android.content.Context, uri: android.net.Uri): String? =
+    runCatching {
+        ctx.contentResolver
+            .query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
