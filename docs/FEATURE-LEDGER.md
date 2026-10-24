@@ -199,7 +199,7 @@
 | 160 | ⚪ **2026-10-24 待派（先设计）：第一百八十二批 知识库自动刷新＋证道落点＋抱朴整理** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十二批-知识库自动刷新.md`（增量索引/启动/导入触发；原件只读；整理移动需确认备份；落证道/知识库） | 待派；**FileObserver 不可靠，MediaStore+周期增量兜底** |
 | 161 | ⚪ **2026-10-24 待派（先设计）：第一百八十三批 Harness 编排形态升级** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十三批-Harness编排形态.md`（programmatic tool calling：模型写编排代码，批边界确认；沙箱/白名单/审计；native 仍默认） | 待派；**已补现状对照：code模式/durable/tool search/结构化输出；不追云端分布式/大规模调度**；**含状态机审计：借 durable/checkpoint/转移表模式，不引入 Temporal/LangGraph** |
 | 162 | ⚪ **2026-10-24 待派：第一百八十四批 技能记忆入口** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十四批-技能记忆入口.md`（说“记住这个技能”出技能卡→确认写文件+索引；草稿可见/3次转正；全局仍拒） | 待派 |
-| 163 | 🔵 **2026-10-24 已派 workbuddy（L4/179 后）：第一百八十五批 技能 schema 预检** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十五批-技能schema预检.md`（Gemini type 小写/OpenAI strict/Anthropic input_schema；JSON Schema；失败拒写）；不重做174 | 在飞（排队） |
+| 163 | ⚪ **2026-10-24 待派（压后）：第一百八十五批 技能 schema 预检** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十五批-技能schema预检.md`（Gemini type 小写/OpenAI strict/Anthropic input_schema；JSON Schema；失败拒写）；**未派，等 L4/179 收口** | 待派（压后） |
 | 164 | 🔵 **2026-10-24 已派 qoder（方向更正）：第一百八十六批 Artifact 绘图/表格** —— HTML/SVG artifact 优先（沙箱渲染/消毒/PNG），不手搓私有流程图 DSL；draw_table/draw_chart；不调生图/不执行 JS | 在飞 |
 | 148 | 🔵 **2026-10-24 已派 workbuddy 并行会话：第一百七十批 MCP 真入口** —— 单 `..\_zd-private\docs\派工单-2026-10-23-第一百七十批-MCP入口处置.md`（URL→addServer→connect；确认/持久化/断开；不碰 L4/179/185；若需 BaopuDb V19 迁移先停等 L4） | 在飞（并行） |
 ### 2026-10-23 重置 A（锁点 ef3f2408＝v2.2.0/38，lint 234）
