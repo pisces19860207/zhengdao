@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -262,6 +263,29 @@ class WebViewEngine(
                 delegate?.onSafeBrowsingHit(request?.url?.toString().orEmpty(), threatType)
                 // 显示安全警告 interstitial（浏览器本身能力，与 agent 权限无关，§4.4）
                 callback?.showInterstitial(true)
+            }
+
+            /**
+             * 渲染进程被系统收走（第一百七十二批 S2）。
+             *
+             * **必须 `return true`**：返回 false / 不重写 = 交给框架默认处理 = 应用进程被终止。
+             * 玄览 L1/L2 的承诺是「切回不重载」与「后台时页面活着」，那都建立在"进程还在"之上；
+             * 一旦渲染进程被收，最坏结果只能是**这一颗标签重载一次**，绝不能是崩掉整个 App。
+             *
+             * 善后不在这里做：本类只管一个 WebView，不知道标签表、活跃 id、其他标签还在不在。
+             * 复位逻辑归 [com.example.zhengdao.ui.browser.BrowserTabManager.markRendererGone]。
+             *
+             * 注意（官方口径，② 文档）：返回 true 之后**这个 WebView 实例不可再用**
+             * （"it is not safe to continue using it"）⇒ 管理器必须把死实例摘掉重建，
+             * 只标状态不重建会成为下一次点击才暴露的定时炸弹。
+             */
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "玄览 渲染进程被系统回收（didCrash=${detail?.didCrash() ?: "未知"}）" +
+                        " ⇒ 复位该标签并画「点一下重新加载」，不崩、不自动重载",
+                )
+                delegate?.onRenderProcessGone()
+                return true
             }
         }
         webView.webChromeClient = object : WebChromeClient() {

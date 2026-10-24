@@ -81,4 +81,77 @@ class BrowserTabPolicyTest {
     fun `外部打开满员时复用当前标签`() {
         assertFalse(BrowserTabPolicy.externalOpenShouldCreateTab(BrowserTabPolicy.MAX_TABS))
     }
+
+    // ── 渲染优先级（第一百七十二批 S1 · J1） ──
+    //
+    // 六格表：判据只认「App 在不在前台」，**不认「标签是否活跃」**。
+    // 第 2 格就是改前的病格（前台 + 非活跃 = WAIVED ⇒ 系统随时收走 ⇒ 切回就重载）。
+
+    @Test
+    fun `J1-1 前台且活跃_IMPORTANT`() {
+        assertEquals(
+            2,
+            BrowserTabPolicy.rendererPriority(appForeground = true, isActiveTab = true),
+        )
+        assertEquals(
+            "常量口径：IMPORTANT = 2（与 android.webkit.WebView 静态字段一致）",
+            BrowserTabPolicy.RENDERER_PRIORITY_IMPORTANT,
+            BrowserTabPolicy.rendererPriority(true, true),
+        )
+    }
+
+    @Test
+    fun `J1-2 前台且非活跃_仍然 IMPORTANT（改前的病格）`() {
+        assertEquals(
+            "前台的非活跃标签也必须保活 —— 它是 L1「切回不重载」的地基；" +
+                "改前这里是 WAIVED（系统想收就收）",
+            BrowserTabPolicy.RENDERER_PRIORITY_IMPORTANT,
+            BrowserTabPolicy.rendererPriority(appForeground = true, isActiveTab = false),
+        )
+    }
+
+    @Test
+    fun `J1-3 后台且活跃_WAIVED`() {
+        assertEquals(
+            BrowserTabPolicy.RENDERER_PRIORITY_WAIVED,
+            BrowserTabPolicy.rendererPriority(appForeground = false, isActiveTab = true),
+        )
+    }
+
+    @Test
+    fun `J1-4 后台且非活跃_WAIVED`() {
+        assertEquals(
+            BrowserTabPolicy.RENDERER_PRIORITY_WAIVED,
+            BrowserTabPolicy.rendererPriority(appForeground = false, isActiveTab = false),
+        )
+    }
+
+    @Test
+    fun `J1-5 前台两种活跃态结果相同_即活跃度不参与判据`() {
+        assertEquals(
+            "同一可见性下活跃/非活跃必须同档 —— 否则又一次把页面交给回收器",
+            BrowserTabPolicy.rendererPriority(true, true),
+            BrowserTabPolicy.rendererPriority(true, false),
+        )
+        assertEquals(
+            BrowserTabPolicy.rendererPriority(false, true),
+            BrowserTabPolicy.rendererPriority(false, false),
+        )
+    }
+
+    @Test
+    fun `J1-6 返回值只可能是两档之一`() {
+        val legal = setOf(
+            BrowserTabPolicy.RENDERER_PRIORITY_WAIVED,
+            BrowserTabPolicy.RENDERER_PRIORITY_IMPORTANT,
+        )
+        for (fg in listOf(true, false)) {
+            for (active in listOf(true, false)) {
+                assertTrue(
+                    "rendererPriority($fg, $active) 落到了非法档位",
+                    BrowserTabPolicy.rendererPriority(fg, active) in legal,
+                )
+            }
+        }
+    }
 }

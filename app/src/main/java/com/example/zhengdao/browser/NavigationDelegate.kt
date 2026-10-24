@@ -38,4 +38,16 @@ interface NavigationDelegate {
      * 实现层默认行为：拦截并提示（这是浏览器本身的安全能力，与 agent 权限无关）。
      */
     fun onSafeBrowsingHit(url: String, threatType: Int) {}
+
+    /**
+     * 本标签的**渲染进程**被系统回收了（第一百七十二批 S2）。
+     *
+     * 触发点：[android.webkit.WebViewClient.onRenderProcessGone] —— 那一条必须 `return true`，
+     * 否则框架默认处理是**杀掉应用进程**（L1/L2 承诺下最坏的结果是"重载一次"，绝不能是崩）。
+     * 引擎只负责上报，善后（复位该标签、画「点一下重新加载」）归
+     * [com.example.zhengdao.ui.browser.BrowserTabManager] —— 它才知道标签表与活跃 id。
+     *
+     * 默认空实现：不在标签表里的引擎（单测桩 / 将来的离屏引擎）接到也不做事。
+     */
+    fun onRenderProcessGone() {}
 }

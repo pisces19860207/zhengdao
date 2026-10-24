@@ -792,6 +792,9 @@
     <string name="browser_ssl_error">This site has a certificate problem — loading stopped</string>
     <string name="browser_safe_browsing_hit">This site looks unsafe — it was blocked</string>
     <string name="browser_page_error">Something went wrong loading the page</string>
+    <string name="browser_recycled_title">The system reclaimed this page</string>
+    <string name="browser_recycled_body">Your tab is still here — only the page itself was cleared. Tap below to reload.</string>
+    <string name="browser_recycled_reload">Reload</string>
     <string name="browser_start_title">Xuanlan</string>
     <string name="browser_start_hint">Enter a URL or search terms, or tap a shortcut</string>
     <string name="browser_start_search_hint">Search or enter URL</string>
