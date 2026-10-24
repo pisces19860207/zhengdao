@@ -11,10 +11,14 @@ package com.example.zhengdao.baopu
 import android.content.Context
 import com.example.zhengdao.baopu.agent.BaopuBrowser
 import com.example.zhengdao.baopu.agent.BrowserGateway
+import com.example.zhengdao.baopu.agent.PageInfo
 import com.example.zhengdao.baopu.agent.PreviewSink
 import com.example.zhengdao.baopu.agent.PreviewTool
+import com.example.zhengdao.baopu.agent.Shot
 import com.example.zhengdao.bridge.BrowserCommands
+import com.example.zhengdao.browser.SensitiveRedactor
 import com.example.zhengdao.ui.browser.BrowserHolder
+import com.example.zhengdao.ui.browser.BrowserTabManager
 import com.example.zhengdao.ui.browser.LocalPreviewHolder
 
 /**
@@ -45,11 +49,13 @@ internal object BaopuBrowserWiring {
             override fun snapshot(selector: String?): String =
                 BrowserCommands.snapshot("text", selector)
 
+            // 第一百七十七批 S3：抱朴这条线走**带前后校验**的内核（桥那条仍是原 `click`，
+            // 回执形状不变）——「点好了」要带「页面变没变」，不许只说一句成功。
             override fun click(target: String): String =
-                BrowserCommands.click(target)
+                BrowserCommands.clickChecked(target)
 
             override fun typeInto(target: String, text: String): String =
-                BrowserCommands.type(target, text)
+                BrowserCommands.typeChecked(target, text)
 
             override fun scroll(direction: String): String {
                 // 用 scrollBy（相对位移）而不是 BrowserCommands.scroll 的 scrollTo（绝对坐标）：
@@ -64,8 +70,54 @@ internal object BaopuBrowserWiring {
                 return BrowserCommands.execJs("(function(){window.scrollBy($dx,$dy);return 'OK'})()")
             }
 
-            override fun screenshot(fullPage: Boolean): String =
-                BrowserCommands.screenshot(appCtx, null, if (fullPage) "1" else "0")
+            /**
+             * 第一百七十七批 S1：截图走 ref 出口，把**相对路径**交给工具层（→ 引擎读图）。
+             * 失败用异常表达：工具层 `runCatching` 会翻成 `ToolOutcome.Failed`，
+             * 这样模型看到的是「失败：截图失败：<原因>」，而不是一条看着像成功的回执。
+             */
+            override fun screenshot(fullPage: Boolean): Shot =
+                when (val r = BrowserCommands.captureShotRef(appCtx, null, if (fullPage) "1" else "0")) {
+                    is BrowserCommands.ShotCapture.Ok -> {
+                        val ref = r.ref
+                        val info = pageInfo()
+                        val text = buildString {
+                            append("已截图：").append(ref.file)
+                            append("（").append(ref.mode).append(' ')
+                            append(ref.width).append('×').append(ref.height)
+                            append("，").append(ref.bytes).append(" 字节）")
+                            if (info != null && info.url.isNotBlank()) {
+                                append("；页面：").append(SensitiveRedactor().redactUrl(info.url))
+                            }
+                            if (ref.note != null) append("\n（").append(ref.note).append('）')
+                        }
+                        Shot(text, ref.file)
+                    }
+
+                    is BrowserCommands.ShotCapture.Bad ->
+                        throw IllegalStateException(r.error)
+                }
+
+            override fun tap(cssX: Int, cssY: Int): String =
+                BrowserCommands.tap(cssX, cssY)
+
+            override fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int): String =
+                BrowserCommands.swipe(x1, y1, x2, y2, durationMs)
+
+            override fun longPress(cssX: Int, cssY: Int, durationMs: Int): String =
+                BrowserCommands.longPress(cssX, cssY, durationMs)
+
+            override fun key(key: String): String =
+                BrowserCommands.keyPress(key)
+
+            override fun waitFor(ms: Int, selector: String?): String =
+                BrowserCommands.await(ms, selector)
+
+            /**
+             * 当前页身份：读活跃标签的 `state`（**只读**，不改 `BrowserTabManager`——
+             * 那是 172 的文件）。拿不到 ⇒ null，授权闸按「未知页面」照样要授权。
+             */
+            override fun pageInfo(): PageInfo? =
+                BrowserTabManager.activeTab()?.let { PageInfo(it.state.url, it.state.title) }
         }
 
         // ── 本地预览（第五十九批 §5.1：`preview_local_file` 的显示落点） ──────────────

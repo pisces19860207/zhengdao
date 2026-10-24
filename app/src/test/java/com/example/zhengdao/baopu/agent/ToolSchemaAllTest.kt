@@ -437,6 +437,12 @@ class ToolSchemaAllTest {
             "browser_type" to JSONObject().put("target", "#a").put("text", "字"),
             "browser_scroll" to JSONObject().put("direction", "down"),
             "browser_screenshot" to JSONObject(),
+            // 第一百七十七批：坐标四件＋等待（tap/swipe/press 必填坐标；key 必填键名；wait 全可选）
+            "browser_tap" to JSONObject().put("x", 10).put("y", 20),
+            "browser_swipe" to JSONObject().put("x1", 0).put("y1", 0).put("x2", 30).put("y2", 40),
+            "browser_long_press" to JSONObject().put("x", 10).put("y", 20),
+            "browser_key" to JSONObject().put("key", "enter"),
+            "browser_wait" to JSONObject(),
             "update_plan" to JSONObject().put(
                 "items",
                 JSONArray().put(JSONObject().put("text", "写第十节").put("status", "doing")),

@@ -42,6 +42,7 @@ import com.example.zhengdao.baopu.mcp.McpToolSource
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
 import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.terminal.Store
 import com.example.zhengdao.terminal.KnowledgeBase
 import org.json.JSONArray
 import org.json.JSONObject
@@ -540,6 +541,9 @@ internal object BaopuRuntime {
             // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，
             // 不缩等于每张都发不出去——2026-10-18 真机「看不见图」就是这个原因。
             shrinkImage = { file -> ImageShrink.toJpeg(file) },
+            // 第一百七十七批：截图落 `证道/截屏/`（App 固定公共区，不跟工作区走）。
+            // 引擎读图时要认这第二个根，否则自己截的图会被越界判据拒掉。
+            shotRoot = { Store.root(appCtx) },
             // 第一百二十八批：知识库自动注入（索引在 ⇒ 每轮把相关片段按 2k 预算拼进
             // 本轮输入；索引不在 ⇒ null，静默跳过不阻塞）。真实存储在 KbTools.store
             // （registry() 里注入的同一份壳），Context 依旧只出现在装配层。
