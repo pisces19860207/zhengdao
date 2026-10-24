@@ -109,6 +109,16 @@ class MainActivity : ComponentActivity() {
         if (intent?.action == com.example.zhengdao.ui.baopu.BaopuIntents.ACTION_BACKUP) {
             com.example.zhengdao.ui.baopu.BaopuIntents.requestBackup()
         }
+        // 第一百六十九批 §3：完成通知点击 ⇒ 带上会话 id 回抱朴。
+        // 仍走 allowIncoming 单次门：转屏/进程恢复会重拿同一份 launch intent，
+        // 重放会把用户已手动切走的会话再拽回来。
+        if (allowIncoming) {
+            intent?.getLongExtra(com.example.zhengdao.ui.baopu.BaopuIntents.EXTRA_SESSION, -1L)
+                ?.takeIf { it > 0 }?.let {
+                    com.example.zhengdao.rootfs.RunLog.log("完成通知：请求打开会话 #$it")
+                    com.example.zhengdao.ui.baopu.BaopuIntents.requestSession(it)
+                }
+        }
         // 第八十三批（§B 88）：系统分享 / zhengdao:// 深链与快捷方式共用这一个分发口。
         // onCreate（含 !isTaskRoot 收栈分支）与 onNewIntent 都只调这里；判据全在纯函数
         // [routeIncomingIntent]，两条生命周期路径不会各长一套。
@@ -826,6 +836,11 @@ fun HomeTabs(
                     if (com.example.zhengdao.ui.baopu.BaopuIntents.peekPrompt() != null) {
                         tab = TabIndex.BAOPU
                     }
+                    // 完成通知（第一百六十九批 §3）：点通知回到已存在的主页时只切 Tab，
+                    // 真正的会话切换由抱朴页消费后调 controller.requestOpenSession。
+                    if (com.example.zhengdao.ui.baopu.BaopuIntents.peekSession() != null) {
+                        tab = TabIndex.BAOPU
+                    }
                 }
                 // 退后台的「暂停/降级」不再挂在这里（第一百七十二批 S4）：
                 // 本页 ON_PAUSE 既可能是真退后台、也可能是被终端独立 Activity 盖住，
@@ -844,6 +859,12 @@ fun HomeTabs(
     val incomingPrompt by com.example.zhengdao.ui.baopu.BaopuIntents.promptRequestedState
     androidx.compose.runtime.LaunchedEffect(incomingPrompt) {
         if (incomingPrompt != null) tab = TabIndex.BAOPU
+    }
+
+    // 完成通知同理：热启动落在已在前台的主页上不触发 ON_RESUME ⇒ 直接观察请求状态。
+    val incomingSession by com.example.zhengdao.ui.baopu.BaopuIntents.sessionRequestedState
+    androidx.compose.runtime.LaunchedEffect(incomingSession) {
+        if (incomingSession != null) tab = TabIndex.BAOPU
     }
 
     // K2 的另外两个伴随量（baopuFollow / baopuPositionedSession）2026-10-16 随旧抱朴页

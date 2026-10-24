@@ -1,8 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 依据：派工单《第九十三批 · 模型路由 v1》§2「默认行为不变／不新建第二套状态／当前模型仍只有一份真相」、
-// §3 负例三条（默认开 auto ⇒ 门禁红；日志打印 API key ⇒ 门禁红）与 §5 打回四条（默认改通道、
-// 另造当前模型真相、打印密钥）。
+// 依据：派工单《第九十三批 · 模型路由 v1》§2「不新建第二套状态／当前模型仍只有一份真相」、
+// §3 负例（日志打印 API key ⇒ 门禁红）与 **第一百六十九批 A 案**（AUTO_ROUTE 死开关整条移除，
+// 全仓不许再出现「读了但永远写不了」的开关）。
 //
 // 为什么用源码形状门禁而不是行为用例：要钉的是「不存在第二条路」这种结构性事实
 // —— 行为用例只能证明某条路径对，证明不了别处没有暗仓。同款范式见
@@ -16,14 +16,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 模型路由 v1 的结构性门禁（G1–G9）。
+ * 模型路由与能力过滤的结构性门禁（G1–G9）。
  *
  * 每一条都对应派工单里一句红线；负例演练（报告 §六）逐条把这些判定去掉，
  * 对应用例必须红 —— 也就是说这些门禁自己是「会疼的」，不是装饰。
  *
- * G4 是负例演练真抓出来的：第一版只扫带花括号的那一半，裸写法（美元号直接跟变量名）
- * 泄 Key 却不红（报告 §六 N3）⇒ 两半都补成判据，负例重打才见红。记在这儿，
- * 免得后来人把「写了门禁」当成「守住了」。
+ * G1 在第一百六十九批改成**反向门禁**：AUTO_ROUTE 实测是死开关（`setAutoRoute` 生产零调用、
+ * key 私有 ⇒ 每轮读到的永远是 false），按派工单 A 案删除；从此全仓出现任何 `auto_route` /
+ * `autoRoute` / `AUTO_ROUTE` 残留都必须红，防止有人再把「只读不写」的开关接回来。
  */
 class ModelRoutingGateTest {
 
@@ -47,43 +47,34 @@ class ModelRoutingGateTest {
     private val tableCode = codeOnly(read(tableFile))
     private val prefsCode = codeOnly(read(prefsFile))
 
-    // ── G1 默认关（§3 负例一：默认开 auto ⇒ 门禁红） ────────────────────────
+    // ── G1 死开关已删除（169 批）：全仓不许再出现 auto_route 残留 ─────────────
 
     @Test
-    fun AUTO_ROUTE的SP默认值必须写false_且不许硬编码打开() {
+    fun 生产代码里不许出现任何auto_route开关残留() {
+        val residue = Regex("(?i)auto_?route|routepreference")
+        val hits = mainSources()
+            .filter { residue.containsMatchIn(codeOnly(it.readText())) }
+            .map { it.name }
+            .sorted()
         assertEquals(
-            "薄壳读开关只能有一处，且默认值是 false（派工单 §2「不默认改变当前通道」）",
-            1,
-            Regex("getBoolean\\(KEY_AUTO_ROUTE,\\s*false\\)").findAll(prefsCode).count(),
+            "AUTO_ROUTE 已按 169 批 A 案整条删除；再出现读写任何一半都是死开关复活",
+            emptyList<String>(),
+            hits,
         )
         assertFalse(
-            "SP 默认值被写成 true 就是「默认开路由」⇒ 打回",
-            Regex("getBoolean\\(KEY_AUTO_ROUTE,\\s*true\\)").containsMatchIn(prefsCode),
+            "写入口 setAutoRoute 不许复活",
+            mainSources().any { codeOnly(it.readText()).contains("setAutoRoute") },
         )
-        assertTrue(
-            "fallbackFrom 的开关入参默认值必须是 false（判据内核自己也得默认关）",
-            prefsCode.contains("autoRoute: Boolean = false"),
-        )
-        assertTrue(
-            "「只有存过 true 才算开」这条判据不许被改成 `!= false`（null 也算开就是默认开）",
-            Regex("fun autoRouteEnabled\\(stored: Boolean\\?\\): Boolean = stored == true").containsMatchIn(prefsCode),
-        )
-        // 全仓生产代码：写开关只有一处，且写的是变量而不是 true 常量
-        val writes = mainSources().filter { codeOnly(it.readText()).contains("putBoolean(KEY_AUTO_ROUTE") }
-        assertEquals("只有 ProviderPrefs 的 setAutoRoute 能写这个键", listOf("ProviderPrefs.kt"), writes.map { it.name })
-        assertFalse("不许出现 putBoolean(KEY_AUTO_ROUTE, true) 这种硬编码打开", prefsCode.contains("putBoolean(KEY_AUTO_ROUTE, true)"))
     }
 
     @Test
-    fun 全仓没有任何生产代码调用setAutoRoute_本批没接入口() {
-        // 开关只能由用户显式打开，而本批红线是「不做 UI」⇒ 生产代码里调用点必须为 0。
-        // 这条同时是「默认不变」最强的证据：没人能打开它，SP 里永远是默认 false。
-        val hits = mainSources().filter { Regex("setAutoRoute\\s*\\(").containsMatchIn(codeOnly(it.readText()).substringAfter("fun setAutoRoute")) }
-        assertEquals(
-            "setAutoRoute 只许有定义、不许有调用点（UI 批接开关时再来改这条门禁，并在报告里说明）",
-            emptyList<String>(),
-            hits.map { it.name },
-        )
+    fun 路由判据里不再有自动排序与开关入口() {
+        listOf("enum class Preference", "sealed interface Plan", "fun plan(", "fun rank(", "fun keyOf(", "fun preferenceOf(", "fun cnName(")
+            .forEach { gone ->
+                assertFalse("169 批删掉的自动路径不许回来：$gone", routerCode.contains(gone))
+            }
+        assertTrue("能力过滤必须还在（看图的 VisionRouting 在用）", routerCode.contains("fun missingOf("))
+        assertTrue(routerCode.contains("fun satisfies("))
     }
 
     // ── G2 表不重复存 Provider 已有的列（§2 单一真相） ───────────────────────
@@ -207,18 +198,25 @@ class ModelRoutingGateTest {
         listOf("ModelRouter", "ModelCapabilityTable", "autoRoute", "preference", "need").forEach { w ->
             assertFalse("resolve 里出现 $w ⇒ 「当前通道」被路由改，就是默认改通道", body.contains(w))
         }
-        // 反过来也一样：路由不改 SP（它连 Context 都没有，见 G3）
-        assertFalse("setAutoRoute 不许顺手改当前通道选择位", prefsCode.substringAfter("fun setAutoRoute").substringBefore("\n    }\n").contains("KEY_CHANNEL"))
+        // 反过来也一样：回退只选人、不改 SP，而且它的签名里不许再长出路由参数
+        val fbSignature = prefsCode.substringAfter("internal fun fallbackFrom(").substringBefore("): Provider?")
+        listOf("autoRoute", "preference", "need", "ModelRouter").forEach { w ->
+            assertFalse("fallbackFrom 签名里出现 $w ⇒ 死开关借尸还魂", fbSignature.contains(w))
+        }
     }
 
     // ── G8 装配层只读接线 ──────────────────────────────────────────────────
 
     @Test
-    fun 装配层的路由接线是两行只读取值_不写不切() {
+    fun 装配层不再读取任何路由开关_回退只剩一条调用() {
         val runtime = codeOnly(read(runtimeFile))
-        assertEquals("只许一处读开关", 1, Regex("autoRoute = ProviderPrefs\\.autoRouteEnabled\\(appCtx\\)").findAll(runtime).count())
-        assertEquals("只许一处读偏好", 1, Regex("preference = ProviderPrefs\\.routePreference\\(appCtx\\)").findAll(runtime).count())
-        assertFalse("装配层不许自己打开关（写只能经用户显式入口 setAutoRoute）", runtime.contains("setAutoRoute"))
+        listOf("autoRoute", "routePreference", "setAutoRoute", "AUTO_ROUTE", "ModelRouter")
+            .forEach { w -> assertFalse("169 批删掉的读取不许回来：$w", runtime.contains(w)) }
+        assertEquals(
+            "回退调用仍只有一处（行为＝名单第一个，唯一路径）",
+            1,
+            Regex("ProviderPrefs\\.fallbackFrom\\(").findAll(runtime).count(),
+        )
         assertFalse("装配层不许查能力表（表只被路由判据读）", runtime.contains("ModelCapabilityTable"))
     }
 

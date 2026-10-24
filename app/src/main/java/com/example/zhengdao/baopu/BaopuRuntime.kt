@@ -571,24 +571,19 @@ internal object BaopuRuntime {
                         keySwap = true,
                     )
                 } else {
-                    // 与 Key 无关（超时/断流/5xx）或全池不可用 ⇒ 照旧走第九十三批那条通道降级。
+                    // 与 Key 无关（超时/断流/5xx）或全池不可用 ⇒ 照旧走通道降级。
                     // Exhausted 的那句人话（不含任何 Key 原文）挂在 notice 上带给界面。
                     val notice = (rotation as? ProviderPrefs.KeyRotation.Exhausted)?.notice.orEmpty()
                     val (cb, cm) = ProviderPrefs.storedCustom(appCtx)
                     val cp = ProviderPrefs.storedCustomProtocol(appCtx)
                     RunRules.ChannelCandidate(
+                        // Key 只经 keyFor 从 SP 读：不进引擎、不进日志。
                         next = ProviderPrefs.fallbackFrom(
                             currentId = cur.id,
                             keyFor = { id -> ProviderPrefs.storedKey(appCtx, id) },
                             customBase = cb,
                             customModel = cm,
                             customProtocol = cp,
-                            // 第九十三批 · 模型路由的**只读**接线：读 SP 现值传进判据。
-                            // 用户没显式开过 AUTO_ROUTE ⇒ autoRoute=false、preference=null ⇒
-                            // fallbackFrom 走「取候选名单第一个」的老路，行为与本两行存在之前一致。
-                            // Key 仍只经 keyFor 从 SP 读：不进引擎、不进日志、不进路由理由。
-                            autoRoute = ProviderPrefs.autoRouteEnabled(appCtx),
-                            preference = ProviderPrefs.routePreference(appCtx),
                         ),
                         notice = notice,
                     )
