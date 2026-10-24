@@ -201,7 +201,7 @@
 | 162 | ⚪ **2026-10-24 待派：第一百八十四批 技能记忆入口** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十四批-技能记忆入口.md`（说“记住这个技能”出技能卡→确认写文件+索引；草稿可见/3次转正；全局仍拒） | 待派 |
 | 163 | 🔵 **2026-10-24 已派 workbuddy（L4/179 后）：第一百八十五批 技能 schema 预检** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十五批-技能schema预检.md`（Gemini type 小写/OpenAI strict/Anthropic input_schema；JSON Schema；失败拒写）；不重做174 | 在飞（排队） |
 | 164 | 🔵 **2026-10-24 已派 qoder（方向更正）：第一百八十六批 Artifact 绘图/表格** —— HTML/SVG artifact 优先（沙箱渲染/消毒/PNG），不手搓私有流程图 DSL；draw_table/draw_chart；不调生图/不执行 JS | 在飞 |
-| 148 | 🔵 **2026-10-24 已选 B、待派：第一百七十批 MCP 真入口** —— 单 `..\_zd-private\docs\派工单-2026-10-23-第一百七十批-MCP入口处置.md`（URL→`addServer`→`connect`，确认卡/持久化/断开；不再走 `send` 假入口） | 待派；**MCP 走 2026-07-28 Streamable HTTP，旧 SSE 仅兜底** |
+| 148 | 🔵 **2026-10-24 已派 workbuddy 并行会话：第一百七十批 MCP 真入口** —— 单 `..\_zd-private\docs\派工单-2026-10-23-第一百七十批-MCP入口处置.md`（URL→addServer→connect；确认/持久化/断开；不碰 L4/179/185；若需 BaopuDb V19 迁移先停等 L4） | 在飞（并行） |
 ### 2026-10-23 重置 A（锁点 ef3f2408＝v2.2.0/38，lint 234）
 
 > 今天所有单编号不变；下表基线一律锁点/`integ/reset-1023`，当前 main 只作参考。已收的 153/154/158-5xx 已 cherry-pick 到 `integ/reset-1023`（`26464e6a`/`d828c328`/`5b5faaaf`）。
