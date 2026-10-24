@@ -459,12 +459,22 @@ object BrowserTabManager {
     }
 
     /**
-     * 按「App 可见性」给这一颗标签上档（S1 的唯一落点）。
-     * 判据全在 [BrowserTabPolicy.rendererPriority]（纯函数，JVM 单测钉 6 格表），
+     * 按「App 可见性 ＋ 前台预算」给这一颗标签上档（S1 的唯一落点 ＋ 172 CP2 S3 的接线点）。
+     * 判据全在 [BrowserTabPolicy] 的两个纯函数里（JVM 单测钉 6 格表 ＋ 预算表），
      * 这里只负责把结果写进 WebView —— 一份判据、一条装配线。
+     *
+     * S3（第一百七十二批 CP2）：前台最多 [BrowserTabPolicy.IMPORTANT_BUDGET] 颗标签挂在
+     * IMPORTANT 档。**活跃的那颗永远在预算内**（[BrowserTabPolicy.importantTabIds] 的第一条规则），
+     * 所以「当前页被降档 ⇒ 当场白页」这种事故不可能发生；预算外的标签允许被系统收走，
+     * 由 CP1 的回收卡片兜住（不崩、不白屏）。
      */
     private fun applyRendererPriority(tab: Tab) {
-        val priority = BrowserTabPolicy.rendererPriority(appForeground, tab.id == activeId)
+        val budget = BrowserTabPolicy.importantTabIds(tabs.map { it.id }, activeId)
+        val priority = BrowserTabPolicy.rendererPriority(
+            appForeground = appForeground,
+            isActiveTab = tab.id == activeId,
+            withinBudget = tab.id in budget,
+        )
         runCatching { tab.webView.setRendererPriorityPolicy(priority, false) }
     }
 

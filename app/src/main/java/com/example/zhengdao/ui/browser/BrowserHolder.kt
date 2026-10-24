@@ -74,6 +74,68 @@ object BrowserHolder {
     @Volatile
     private var browserOnScreen = false
 
+    // ── App 前台真相（第一百七十二批 S4） ──────────────────────────────────
+    //
+    // 为什么不能只看 MainActivity 的 ON_PAUSE：**跳到终端（独立 Activity）时主页也会 ON_PAUSE**，
+    // 那时 App 明明在前台、用户就在眼前。改前 pauseAll 就挂在那里 ⇒ 一进终端，玄览所有标签
+    // 当场降成 WAIVED（＝系统想收就收），L2「在终端/抱朴时玄览要活着」直接破了。
+    // 所以前台判据取**整个 App**：只要还有一个 Activity 处于 started，就算前台。
+    // 计数用 started（不是 resumed）：从主页切到终端时 先 start 后者、再 stop 前者，
+    // 计数 1→2→1，中途不会掉到 0，也就不会出现"瞬降WAIVED再升回来"的抖动。
+
+    /** App 是否在前台（有任一 Activity started）。TRIM 回调可能来自别的线程 ⇒ @Volatile。 */
+    @Volatile
+    private var appForeground = true
+
+    /** started 状态的 Activity 计数。 */
+    private val startedActivities = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** 生命周期是否已挂上（幂等：MainActivity 重建不会重复注册）。 */
+    @Volatile
+    private var foregroundTracked = false
+
+    /**
+     * 给整个 App 挂上前台跟踪（[com.example.zhengdao.MainActivity] 的 onCreate 调一次）。
+     *
+     * 为什么落在 BrowserHolder 而不是 Application 类：本批的边界是"只碰
+     * BrowserTabPolicy／BrowserHolder／MainActivity"；Application 只负责注册，
+     * 判据与动作都归玄览自己的门面。
+     */
+    fun attachAppForegroundTracking(app: android.app.Application) {
+        if (foregroundTracked) return
+        foregroundTracked = true
+        app.registerActivityLifecycleCallbacks(
+            object : android.app.Application.ActivityLifecycleCallbacks {
+                override fun onActivityStarted(activity: android.app.Activity) {
+                    if (startedActivities.incrementAndGet() == 1) setAppForeground(true)
+                }
+
+                override fun onActivityStopped(activity: android.app.Activity) {
+                    if (startedActivities.decrementAndGet() == 0) setAppForeground(false)
+                }
+
+                override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) {}
+                override fun onActivityResumed(activity: android.app.Activity) {}
+                override fun onActivityPaused(activity: android.app.Activity) {}
+                override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) {}
+                override fun onActivityDestroyed(activity: android.app.Activity) {}
+            },
+        )
+    }
+
+    /**
+     * 前台状态的**唯一入口**：写标记 + 驱动玄览标签的暂停/恢复。
+     *
+     * 为什么把"暂停/恢复标签"放在这里而不是各 Activity 自己调：只有本类同时掌握
+     * 「App 在前台吗」与「玄览在线吗」两件事；散在 Activity 里就会出现改前那种
+     * "跳终端也被当成退后台"的错判。**幂等**：状态没变就什么都不做。
+     */
+    fun setAppForeground(foreground: Boolean) {
+        if (appForeground == foreground) return
+        appForeground = foreground
+        if (foreground) BrowserTabManager.resumeAll() else BrowserTabManager.pauseAll()
+    }
+
     /** 取（或首建）全局活跃引擎实例（无标签时建第一个）。 */
     fun obtain(context: Context): WebViewEngine = BrowserTabManager.obtain(context)
 
@@ -108,12 +170,17 @@ object BrowserHolder {
     /**
      * 是否"没有活动标签需要保活"：**此刻没有标签显示在界面上、却仍离线持有 WebView**。
      *
-     * 判据只用 ⑨刀落下的 [BrowserTabManager] 状态（标签数）+ 组合可见性，不新增状态源：
-     * - 有标签且玄览离线 ⇒ 可回收（这正是 D-4 要治的"占着内存没人管"）；
-     * - 玄览在线 ⇒ 不回收（挂载中的 WebView 不可 destroy，见 [releaseIfIdle]）；
-     * - 没有标签 ⇒ 没有可回收对象。
+     * 判据（第一百七十二批 S4 起）全部交给纯函数
+     * [com.example.zhengdao.browser.BrowserTabPolicy.canReleaseForMemory]：
+     * 玄览不在屏 **且 App 不在前台** 且 还有标签 —— 三条同时成立才可回收。
+     * 新增"前台"那一条的意义：L2 承诺"App 在前台时页面必须活着"，
+     * 而它此前只靠"前台一般到不了 TRIM_COMPLETE 档"这条经验兜着，不是判据。
      */
-    internal fun isIdle(): Boolean = !browserOnScreen && BrowserTabManager.count() > 0
+    internal fun isIdle(): Boolean = com.example.zhengdao.browser.BrowserTabPolicy.canReleaseForMemory(
+        browserOnScreen = browserOnScreen,
+        appForeground = appForeground,
+        tabCount = BrowserTabManager.count(),
+    )
 
     /**
      * 受控回收（D-4）：把**离线持有**的全部 WebView 销毁并清空标签，下次 [obtain] 重建
