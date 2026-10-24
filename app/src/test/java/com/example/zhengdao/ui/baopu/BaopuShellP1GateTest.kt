@@ -377,16 +377,27 @@ class BaopuShellP1GateTest {
     }
 
     /**
-     * S4 技能索引三条口径：删索引＝归档（唯一写盘口）、转正只在够次数时出现、待重验只红字提示。
+     * S4 技能索引口径：删索引＝归档（唯一写盘口）、转正只在够次数时出现、
+     * 失败（待重验）摘要优先——聚成「同类失败 ×N」，判语原句只进详情，不按行铺红句（第一百八十批）。
      *
-     * 红＝有人把「删索引」写成直接删文件（绕开归档），或把转正做成恒显示（次数不够也能点）。
+     * 红＝有人把「删索引」写成直接删文件（绕开归档）、把转正做成恒显示（次数不够也能点）、
+     * 或把每行一句的待重验红判语铺回来（一长串扫不动）。
      */
     @Test
-    fun `S4_技能索引归档转正与待重验口径`() {
+    fun `S4_技能索引归档转正与失败摘要口径`() {
         val src = settingsPage()
         assertTrue("删索引必须走存档（SkillStore.archive），不硬删文件", src.contains("SkillStore.archive("))
         assertTrue("转正只在 canPromote 为真时出现", src.contains("if (row.canPromote)"))
-        assertTrue("待重验用红字徽标只提示", src.contains("R.string.skill_recheck_badge"))
+        assertFalse(
+            "待重验判语不许按行铺红句（globalRecheck[line.name]?.let）——聚到同类失败组",
+            src.contains("globalRecheck[line.name]?.let"),
+        )
+        assertFalse(
+            "待重验判语不许按行铺红句（projectRecheck[line.name]?.let）——聚到同类失败组",
+            src.contains("projectRecheck[line.name]?.let"),
+        )
+        assertTrue("失败必须同因聚合（aggregateSkillFailures 接在页上）", src.contains("aggregateSkillFailures("))
+        assertTrue("顶部要有读数行（技能 N · 失败 M · 待转正 K）", src.contains("R.string.skill_fail_summary"))
         assertTrue("分母是数据层的 PROMOTE_USES，UI 不自己数", src.contains("SkillStore.PROMOTE_USES"))
     }
 }
