@@ -201,6 +201,7 @@
 | 162 | 🔵 **2026-10-24 已派 qoder：第一百八十四批 技能记忆入口** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十四批-技能记忆入口.md`（说“记住这个技能”出技能卡→确认写文件+索引；草稿可见/3次转正；全局仍拒）。基线 `origin/main` `dd132b57`，分支 `feat/skill-remember-entry`／工作树 `wt-skill184`。**排除**：`BaopuRuntime.kt`/`ToolRegistry.kt`/`BaopuPreset.kt`（186 在飞）、`mcp/**`/`BaopuScreen.kt`/`BaopuMcpSheet.kt`（170B 在飞）、`ui/browser/**`（172-L4 在飞） | 在飞 |
 | 163 | ⚪ **2026-10-24 待派（压后）：第一百八十五批 技能 schema 预检** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十五批-技能schema预检.md`（Gemini type 小写/OpenAI strict/Anthropic input_schema；JSON Schema；失败拒写）；**未派，等 L4/179 收口**；184 之后接（同技能线，别并行） | 待派（压后） |
 | 164 | 🔵 **2026-10-24 已派 qoder（方向更正）：第一百八十六批 Artifact 绘图/表格** —— HTML/SVG artifact 优先（沙箱渲染/消毒/PNG），不手搓私有流程图 DSL；draw_table/draw_chart；不调生图/不执行 JS | 在飞 |
+| 166 | ⚪ **2026-10-24 待派（小单，谁先空出来谁接）：第一百八十七批 软链真探测** —— 单 `..\_zd-private\docs\派工单-2026-10-24-第一百八十七批-软链真探测.md`（`TestAssume.symlinkUnsupported` 加 `Files.isSymbolicLink` 真链探测；现成补丁 `..\_zd-private\docs\补丁-2026-10-24-软链真探测.patch` 44 行）；**只动测试工具**，禁改 `AGENTS.md`/`协作规约.md`/`strings.xml`；负例＝探测改恒 true ⇒ 本机 3 例必须回红（就是 168 那 3 例环境红，见 §B 146） | 待派 |
 | 148 | 🔵 **2026-10-24 已派 workbuddy 并行会话：第一百七十批 MCP 真入口** —— 单 `..\_zd-private\docs\派工单-2026-10-23-第一百七十批-MCP入口处置.md`（URL→addServer→connect；确认/持久化/断开；不碰 L4/179/185；若需 BaopuDb V19 迁移先停等 L4） | 在飞（并行） |
 ### 2026-10-23 重置 A（锁点 ef3f2408＝v2.2.0/38，lint 234）
 
