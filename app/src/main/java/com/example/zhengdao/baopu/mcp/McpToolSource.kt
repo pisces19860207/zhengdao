@@ -11,14 +11,25 @@ import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolSpec
 import org.json.JSONObject
 
+/** 面板上一行（第一百七十批 B）：只带 UI 需要的字段，配置本体不外泄。 */
+internal data class McpServerView(
+    val id: String,
+    val name: String,
+    /** 已脱敏的地址（query/fragment 去掉），可以直接显示。 */
+    val displayUrl: String,
+    val status: McpServerStatus,
+    val toolCount: Int,
+)
+
 /**
- * 外部 MCP server 的**进程内**管理器（v1 不落盘、无 UI）。
+ * 外部 MCP server 的**进程内**管理器（第一百七十批 B 起配置落盘）。
  *
  * 生命周期：
- * 1. [addServer] 只存配置——**不发网络请求、不注册工具**；
+ * 1. [addServer] 只存配置（并写盘）——**不发网络请求、不注册工具**；
  * 2. [connect] 是唯一联网入口：initialize → tools/list → 注册为 `ToolGroup.MCP`；
  * 3. 工具注册即 `CONFIRM`；用户批准后，只读工具转 `FREE`，危险工具**每次都再确认**；
- * 4. [disconnect] 注销工具、清授权；[attach] 只把已连接的工具搬到新注册表（不联网）。
+ * 4. [disconnect] 注销工具、清授权；[attach] 只把已连接的工具搬到新注册表（不联网）；
+ * 5. [restoreFromStore] 进程重启后把盘里的配置登记回来——**仍然不联网**。
  *
  * 线类的外部工具一律 `readOnly=false`、`parallelSafe=false`：它们不改本地盘，但会改
  * 远端状态，v1 不把它们塞进并行段（设计 §4）。
@@ -28,6 +39,8 @@ internal class McpToolSource(
     private val grants: McpGrantStore = InMemoryMcpGrants(),
     private val clientFactory: (McpServerConfig) -> McpSession = { McpClient(it) },
     private val log: (String) -> Unit = {},
+    /** null = 不落盘（单测与「配置只在内存」的旧调用点）。 */
+    private val store: McpServerStore? = null,
 ) {
 
     private class ServerState(
@@ -61,7 +74,7 @@ internal class McpToolSource(
     }
 
     /**
-     * 登记配置（只存内存）。
+     * 登记配置（存内存 + 写盘）。
      *
      * @return false = 同 id 已存在（不覆盖，避免把正在用的连接换掉）
      */
@@ -69,14 +82,37 @@ internal class McpToolSource(
         if (servers.containsKey(config.id)) return false
         servers[config.id] = ServerState(config)
         log("[mcp] 登记 server=${config.id}（未连接）")
+        persistLocked()
         true
     }
 
-    /** 移除 server（含断连、注销工具、清授权）。 */
+    /**
+     * 把上次退出时存下的配置登记回来（**只登记、不联网**）。
+     *
+     * 幂等：已存在的 id 跳过；条数受 [McpServerStore.MAX_SERVERS] 限制。
+     * 不回写盘（这些配置本来就是从盘里读的）。
+     *
+     * @return 新登记条数
+     */
+    fun restoreFromStore(): Int = synchronized(lock) {
+        val store = store ?: return 0
+        var added = 0
+        store.load().forEach { config ->
+            if (servers.containsKey(config.id)) return@forEach
+            if (servers.size >= McpServerStore.MAX_SERVERS) return@forEach
+            servers[config.id] = ServerState(config)
+            added++
+        }
+        if (added > 0) log("[mcp] 从本地恢复 $added 个 server 配置（均未连接）")
+        added
+    }
+
+    /** 移除 server（含断连、注销工具、清授权、删盘上的记录）。 */
     fun removeServer(id: String): Boolean = synchronized(lock) {
         val state = servers[id] ?: return false
         releaseLocked(state)
         servers.remove(id)
+        persistLocked()
         log("[mcp] 移除 server=$id")
         true
     }
@@ -159,6 +195,19 @@ internal class McpToolSource(
 
     fun status(id: String): McpServerStatus? = synchronized(lock) { servers[id]?.status }
 
+    /** 面板用的快照（按登记顺序），UI 只读这份、不碰 State。 */
+    fun snapshot(): List<McpServerView> = synchronized(lock) {
+        servers.values.map { state ->
+            McpServerView(
+                id = state.config.id,
+                name = state.config.name,
+                displayUrl = McpUrlRules.redact(state.config.url),
+                status = state.status,
+                toolCount = state.tools.size,
+            )
+        }
+    }
+
     fun toolCount(id: String): Int = synchronized(lock) { servers[id]?.tools?.size ?: 0 }
 
     fun registeredNames(id: String): Set<String> = synchronized(lock) { servers[id]?.wireNames ?: emptySet() }
@@ -169,6 +218,17 @@ internal class McpToolSource(
     fun grantSnapshot(): Map<String, Set<String>> = grants.snapshot()
 
     // ── 内部 ─────────────────────────────────────────────────────────────
+
+    /**
+     * 把当前登记的配置写盘（**只写配置，不写连接状态/授权**）。
+     *
+     * 在 [lock] 内调用：条数上限 16、整份覆盖，代价是一次 SP 写，不会拖慢连接路径
+     * （连接本身也在同一把锁内串行，UI 侧全部在 IO 线程上点）。
+     */
+    private fun persistLocked() {
+        val store = store ?: return
+        store.save(servers.values.map { it.config })
+    }
 
     private fun releaseLocked(state: ServerState) {
         state.wireNames.forEach { registry.unregister(it) }

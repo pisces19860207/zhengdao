@@ -1078,6 +1078,32 @@
     <string name="baopu_mcp_sheet_desc">MCP 工具默认锁着。填服务地址，抱朴会弹授权卡；连上后工具才会出现。</string>
     <string name="baopu_mcp_url">服务地址（https://…）</string>
     <string name="baopu_mcp_connect">去连接</string>
+    <string name="baopu_mcp_direct_note">点「连接」就直接向这个地址发请求，不经过抱朴对话；连上后工具仍要你在确认卡上点批准才会执行。</string>
+    <string name="baopu_mcp_connecting">连接中…</string>
+    <plurals name="baopu_mcp_connect_ok">
+        <item quantity="other">已连接：注册了 %1$d 个工具。</item>
+    </plurals>
+    <string name="baopu_mcp_connect_ok_none">已连接：这个服务器没有公布工具。</string>
+    <string name="baopu_mcp_connect_failed">连接失败：%1$s</string>
+    <string name="baopu_mcp_url_invalid">地址不可用：%1$s</string>
+    <string name="baopu_mcp_registered">已登记的服务器</string>
+    <string name="baopu_mcp_empty">还没有登记任何服务器。填地址点「连接」即可。</string>
+    <string name="baopu_mcp_status_online">已连接</string>
+    <string name="baopu_mcp_status_offline">未连接</string>
+    <string name="baopu_mcp_status_error">连接失败</string>
+    <plurals name="baopu_mcp_tool_count">
+        <item quantity="other">%1$d 个工具</item>
+    </plurals>
+    <string name="baopu_mcp_disconnect">断开</string>
+    <string name="baopu_mcp_reconnect">连接</string>
+    <string name="baopu_mcp_delete">删除</string>
+    <string name="baopu_mcp_delete_title">删除这个 MCP 服务器？</string>
+    <string name="baopu_mcp_delete_body">「%1$s」会被断开，本地记录一起删掉，工具授权失效；要再用得重新填地址。</string>
+    <string name="baopu_mcp_delete_ok">删除</string>
+    <string name="baopu_mcp_disconnected">已断开「%1$s」：工具从列表移除，授权已清。</string>
+    <string name="baopu_mcp_removed">已删除「%1$s」。</string>
+    <string name="baopu_mcp_duplicate">这个地址之前登记过，已按现有记录连接。</string>
+    <string name="baopu_mcp_hint_warn">注意：%1$s</string>
     <string name="baopu_drawer_extract_desc">选一本书，先看切章结果再决定怎么读</string>
     <string name="baopu_drawer_backup_desc">把原件导出到手机上，防丢</string>
     <string name="baopu_drawer_group_preview">预览</string>

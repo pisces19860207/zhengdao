@@ -1121,6 +1121,34 @@
     <string name="baopu_mcp_sheet_desc">MCP tools are locked by default. Enter the server URL; Baopu will show an approval card, and tools appear after connecting.</string>
     <string name="baopu_mcp_url">Server URL (https://…)</string>
     <string name="baopu_mcp_connect">Connect</string>
+    <string name="baopu_mcp_direct_note">Connect sends requests straight to this address, outside the Baopu chat. Tools still ask for your approval on the confirmation card before running.</string>
+    <string name="baopu_mcp_connecting">Connecting…</string>
+    <plurals name="baopu_mcp_connect_ok">
+        <item quantity="one">Connected: %1$d tool registered.</item>
+        <item quantity="other">Connected: %1$d tools registered.</item>
+    </plurals>
+    <string name="baopu_mcp_connect_ok_none">Connected: this server exposes no tools.</string>
+    <string name="baopu_mcp_connect_failed">Connection failed: %1$s</string>
+    <string name="baopu_mcp_url_invalid">Address not usable: %1$s</string>
+    <string name="baopu_mcp_registered">Registered servers</string>
+    <string name="baopu_mcp_empty">No servers registered yet. Enter an address and tap Connect.</string>
+    <string name="baopu_mcp_status_online">Connected</string>
+    <string name="baopu_mcp_status_offline">Not connected</string>
+    <string name="baopu_mcp_status_error">Failed</string>
+    <plurals name="baopu_mcp_tool_count">
+        <item quantity="one">%1$d tool</item>
+        <item quantity="other">%1$d tools</item>
+    </plurals>
+    <string name="baopu_mcp_disconnect">Disconnect</string>
+    <string name="baopu_mcp_reconnect">Connect</string>
+    <string name="baopu_mcp_delete">Delete</string>
+    <string name="baopu_mcp_delete_title">Delete this MCP server?</string>
+    <string name="baopu_mcp_delete_body">%1$s will be disconnected and removed from local records; tool grants stop working. You will need to enter the address again.</string>
+    <string name="baopu_mcp_delete_ok">Delete</string>
+    <string name="baopu_mcp_disconnected">Disconnected %1$s: tools removed from the list, grants cleared.</string>
+    <string name="baopu_mcp_removed">Deleted %1$s.</string>
+    <string name="baopu_mcp_duplicate">This address was registered before; connected using the existing entry.</string>
+    <string name="baopu_mcp_hint_warn">Note: %1$s</string>
     <string name="baopu_drawer_extract_desc">Pick a book, see chapter splits, then decide</string>
     <string name="baopu_drawer_backup_desc">Export originals to the phone against loss</string>
     <string name="baopu_drawer_group_preview">Preview</string>

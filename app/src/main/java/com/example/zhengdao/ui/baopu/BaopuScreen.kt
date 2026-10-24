@@ -1151,13 +1151,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 )
             }
             if (showMcp) {
-                BaopuMcpSheet(
-                    onDismiss = { showMcp = false },
-                    onConnect = { url ->
-                        showMcp = false
-                        controller.send("连接 MCP 服务：$url")
-                    },
-                )
+                // 第一百七十批 B：面板自己连（addServer → connect），不再把地址塞进对话。
+                // 关面板不关连接：工具留在表里，模型下一轮就能看见（要断在面板里点「断开」）。
+                BaopuMcpSheet(onDismiss = { showMcp = false })
             }
             if (showSettings) {
                 BaopuSettingsScreen(
