@@ -24,8 +24,9 @@ enum class SkillScope { GLOBAL, PROJECT }
 /**
  * 一次「写技能」的提案（**用户点保存之前**它什么也没做**）。
  *
- * @param draft 试用期：新技能默认草稿（`status=draft`）。草稿**不进人设索引**，
- *   模型默认看不到，只在设置页可见并标「草稿」；用满 [SkillStore.PROMOTE_USES] 次才谈转正。
+ * @param draft 试用期：新技能默认草稿（`status=draft`）。草稿**也进人设索引**，
+ *   但索引行带「草稿·未验证」标（第一百七十四批：索引满时对草稿同样挡；模型读之前先核对）。
+ *   用满 [SkillStore.PROMOTE_USES] 次才谈转正，转正后标记消失。
  */
 data class SkillProposal(
     val scope: SkillScope,
@@ -101,7 +102,8 @@ object SkillStore {
      * @param projectRoot 抱朴当前工作区（`BaopuWorkspace.hostDir`）
      * @param globalRoot 全局人设根（跟 App 走）
      * @param backupStamp 备份文件用的时间戳（由调用方给，便于测试）
-     * @param indexCountAfterAdd 加这一条之后索引总行数（用来查 [SkillRules.INDEX_CAP]）
+     * @param indexCountAfterAdd 加这一条之后索引总行数（用来查 [SkillRules.INDEX_CAP]；**草稿同样占索引位**，
+     *   这条只是确认卡上的预检，真闸在 [apply]——那里按两层合计现读另一层，不信调用方报的账）
      */
     internal fun plan(
         proposal: SkillProposal,
@@ -124,7 +126,7 @@ object SkillStore {
             proposal.body.isBlank() -> "正文是空的，写进去也没有用"
             proposal.body.length > BODY_MAX_CHARS ->
                 "正文太长（${proposal.body.length} 字 > 上限 $BODY_MAX_CHARS）"
-            !proposal.draft && indexCountAfterAdd > SkillRules.INDEX_CAP ->
+            indexCountAfterAdd > SkillRules.INDEX_CAP ->
                 "索引已满（$indexCountAfterAdd > ${SkillRules.INDEX_CAP}），先删几条再加入"
             else -> null
         }
@@ -147,11 +149,23 @@ object SkillStore {
     }
 
     /**
-     * 真落盘：**备份 → 写正文 → 写索引**（三步都有失败口径）。
+     * 真落盘：**先过索引判据 → 备份 → 写正文 → 写索引**。
      *
-     * 索引这一半只在**非草稿**时做：草稿不进人设索引（模型默认看不到它）。
+     * 草稿也写索引（索引行带「草稿·未验证」标，见 [plan] 里的 draftMark）：不写 ⇒ 下一轮模型
+     * 看不见这条技能 ⇒ 重新摸索＝白烧 token。原来这段是「条件为真就跳过索引」，2026-10-18
+     * 改口径（草稿也要进索引）时把条件直接钉成了恒假——运行时确实走写入那支，
+     * 但恒假分支让这条判据没人能核对，第一百七十四批把它拆回一条直线
+     * （恒假条件／恒假分支的字面样由 `SkillStoreTest` S17 做源码级判据）。
+     *
      * 索引写入仍然走 `PersonaFiles.applyProposal` —— 那是人设层唯一的合法写盘口，
      * 技能模块**不许**自己 fopen 一次人设文件。
+     *
+     * 两条口径钉在这道写口，不靠调用方自觉：
+     * 1. **上限按两层合计**（[SkillRules.INDEX_CAP] 是 B＋C 一起数）——另一层的条数在这儿现读，
+     *    草稿正式一样占位，没有「草稿不计数」这条路；
+     * 2. **不留半条**——索引判据没过（超上限）就一个字都不写盘；正文写成功而索引没落成，
+     *    有备份就把正文回滚成上一版，首次新建没原件可回就软归档（[archive]，红线不硬删），
+     *    两条都返回 [SkillWriteResult.Rejected] 并说明原因。
      */
     internal fun apply(
         plan: SkillWritePlan,
@@ -160,38 +174,46 @@ object SkillStore {
     ): SkillWriteResult {
         plan.blocked?.let { return SkillWriteResult.Rejected(it) }
         val file = plan.file
+        val (layer, otherLayer, otherScope) = when (plan.proposal.scope) {
+            SkillScope.PROJECT -> Triple(PersonaLayer.C_PROJECT, PersonaLayer.B_GLOBAL, MemoryScope.GLOBAL)
+            SkillScope.GLOBAL -> Triple(PersonaLayer.B_GLOBAL, PersonaLayer.C_PROJECT, MemoryScope.PROJECT)
+        }
+        val otherLayerCount = SkillRules.parseIndexLines(personaFiles.read(otherLayer), otherScope).size
+        val edit = SkillRules.addIndexLine(
+            currentIndexText,
+            plan.indexEntry,
+            otherLayerCount = otherLayerCount,
+        )
+        // ① 索引判据先算：超上限在这里就拒，盘上因此不会有「有正文没索引」的半条。
+        val proposedIndexText = when (edit) {
+            is SkillRules.EditResult.Ok -> edit.newText
+            is SkillRules.EditResult.OverCap ->
+                return SkillWriteResult.Rejected("索引已满（${edit.total} 条 > 上限 ${edit.cap}），先删几条再加入")
+            SkillRules.EditResult.NotFound ->
+                return SkillWriteResult.Rejected("索引加不上：这条不是可追加的行")
+        }
         return runCatching {
             file.parentFile?.mkdirs()
             val beforeSha = SkillAudit.shaOf(file)
-            // ① 备份（同名已在 ⇒ 先复制一份，绝不覆盖原件的最后一份）
+            // ② 备份（同名已在 ⇒ 先复制一份，绝不覆盖原件的最后一份）
             val backup = plan.backupName?.let { name ->
                 val b = File(file.parentFile, name)
                 file.copyTo(b, overwrite = true)
                 b.name
             }
-            // ② 正文（草稿要带 status 头，转正时再改）
+            // ③ 正文（草稿要带 status 头，转正时再改）
             file.writeText(withDraftHeader(plan.proposal), Charsets.UTF_8)
-            // ③ 索引（草稿不写；正式走人设层唯一写盘口）
-            // 草稿同样写索引（见 plan 里 draftMark 的理由）
-            val indexUpdated = if (false) {
-                false
-            } else {
-                val edit = SkillRules.addIndexLine(currentIndexText, plan.indexEntry)
-                val layer = when (plan.proposal.scope) {
-                    SkillScope.PROJECT -> PersonaLayer.C_PROJECT
-                    SkillScope.GLOBAL -> PersonaLayer.B_GLOBAL
-                }
-                when (edit) {
-                    is SkillRules.EditResult.Ok -> personaFiles.applyProposal(
-                        PersonaProposal(
-                            layer = layer,
-                            current = currentIndexText,
-                            proposed = edit.newText,
-                            reason = "新增技能索引：${plan.proposal.name}",
-                        ),
-                    )
-                    else -> false
-                }
+            // ④ 索引（走人设层唯一写盘口；同名/近似行由 SkillRules 原位替换，不重复追加）
+            val indexWritten = personaFiles.applyProposal(
+                PersonaProposal(
+                    layer = layer,
+                    current = currentIndexText,
+                    proposed = proposedIndexText,
+                    reason = "新增技能索引：${plan.proposal.name}",
+                ),
+            )
+            if (!indexWritten) {
+                backup?.let { name -> File(file.parentFile, name).copyTo(file, overwrite = true) }
             }
             // 第五十八批：自动写入留痕（追加一行 JSON，失败不影响写入）。
             // 第七十一批①：失败要有声音——KDoc 说「由调用方 log」，这里兑现；
@@ -204,13 +226,22 @@ object SkillStore {
                 action = action,
                 reason = plan.proposal.reason,
                 beforeSha = beforeSha,
-                indexUpdated = indexUpdated,
+                indexUpdated = indexWritten,
                 nowMs = System.currentTimeMillis(),
             )
             if (!auditWritten) {
                 RunLog.log("技能审计行写入失败：op=$action target=${plan.proposal.name}")
             }
-            SkillWriteResult.Written(file = file, backup = backup, indexUpdated = indexUpdated)
+            if (indexWritten) {
+                SkillWriteResult.Written(file = file, backup = backup, indexUpdated = true)
+            } else {
+                // 首次新建没有上一版可回 ⇒ 软归档，盘上不许留下「有正文没索引」的技能。
+                if (backup == null) archive(file, System.currentTimeMillis().toString())
+                SkillWriteResult.Rejected(
+                    if (backup == null) "索引没写上：这条技能已归档（${file.absolutePath}），先删几条索引再重写"
+                    else "索引没写上：正文已回滚到上一版（备份 $backup），这次没改成",
+                )
+            }
         }.getOrElse { SkillWriteResult.Rejected("写盘失败：${it.javaClass.simpleName}") }
     }
 
