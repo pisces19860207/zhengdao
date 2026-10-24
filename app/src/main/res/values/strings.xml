@@ -1240,6 +1240,17 @@
     <string name="skill_recheck_badge">待重验：%1$s（先用起来验证，别照单全收）</string>
     <string name="skill_cat_corrupt">那份 _分类.json 读不通，先当没有分类用</string>
     <string name="skill_cat_close">关闭</string>
+    <!-- ── 技能索引失败态（第一百八十批）：摘要优先，同因聚合成「同类失败 ×N」，详情才看原文 ──
+         判语原句沿用 skill_recheck_badge 的口径（第五十七批 reasonOf 的产物），只在失败详情里整句出现；
+         行内只留一枚短状态（skill_row_failed*），页面不再按行铺红句。 -->
+    <string name="skill_fail_summary">技能 %1$d · 失败 %2$d · 待转正 %3$d</string>
+    <string name="skill_fail_group_badge">同类失败 ×%1$d</string>
+    <string name="skill_fail_last_failed_at">最近失败 %1$s</string>
+    <string name="skill_fail_detail_title">失败详情</string>
+    <string name="skill_fail_detail_last_failed">最近失败：</string>
+    <string name="skill_fail_detail_no_fail">无失败记录（久未用）</string>
+    <string name="skill_row_failed_at">失败 · %1$s</string>
+    <string name="skill_row_failed">失败</string>
     <!-- ── 会话库（第二十批）：旧会话能开能删 ＋ 工作区摆出来 ── -->
     <!-- 134 批：baopu_drawer_history_desc 已随「历史会话平铺入口」退役（UI 零引用），
          129 批留的「测试钉住的僵尸文案」在本批连同单测判据一起清掉。 -->

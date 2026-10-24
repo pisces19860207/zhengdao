@@ -802,6 +802,35 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 }
                 val globalRecheck: Map<String, String> = recheckTables["global"].orEmpty()
                 val projectRecheck: Map<String, String> = recheckTables["project"].orEmpty()
+                // ── 第一百八十批 · 失败态摘要优先 ─────────────────────────────────
+                // 失败（待重验）技能聚成「同类失败 ×N」，判语原句只进详情——原来每个技能行下
+                // 铺一句红判语，失败一多就是一长串扫不动。聚合判据在 BaopuSkillFailure（纯函数，
+                // JVM 可测）；最近失败时刻来自 skill_event **只读**查询，判据/存储一个字不改。
+                // 草稿数（待转正）也在这里先算好：顶部读数行要用，下面草稿段共用同一份。
+                val draftRows = remember(skillReload) { draftSkillRows(projectRoot, globalRoot) }
+                val failureRows = remember(skillReload) {
+                    val d = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
+                    fun lastFailedAtOf(name: String): Long? = d.read { x ->
+                        // 只读查询（BaopuDb 同族 helper，180 批新增）；查不到/判不了 ⇒ null 不拦截
+                        val s2 = com.example.zhengdao.baopu.BaopuSql.lastFailedUseAt(name)
+                        x.rawQuery(s2.sql, s2.args).use { c ->
+                            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+                        }
+                    }
+                    buildSkillFailureRows(globalRecheck, projectRecheck, ::lastFailedAtOf)
+                }
+                val failureGroups = remember(skillReload) { aggregateSkillFailures(failureRows) }
+                // 行内短状态查这个表（键带层：两层同名各算各的，与列表同一口径）
+                val failureByKey = remember(skillReload) {
+                    failureRows.associateBy { it.global to it.name }
+                }
+                val draftGlobalNames = remember(skillReload) {
+                    draftRows.filter { it.scope == SkillScope.GLOBAL }.map { it.name }.toSet()
+                }
+                val draftProjectNames = remember(skillReload) {
+                    draftRows.filter { it.scope == SkillScope.PROJECT }.map { it.name }.toSet()
+                }
+                var failureDetail by remember { mutableStateOf<SkillFailureGroup?>(null) }
                 // ── 第三十六批 B 段 · 技能分类（旁挂 `_分类.json`，SKILL.md 一个字不动）──
                 // 分类**只影响显示**：它不改索引行文本、不改正文、不改人设（判据 T5）。
                 // 两层各一份表（全局那份在 App 私有、项目那份在工作区），互不串。
@@ -820,6 +849,23 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
+                // 第一百八十批：顶部读数一行（技能 N · 失败 M · 待转正 K）——摘要优先。
+                // 全成功态也只是这行中性读数，不出红字；红字只出现在失败组行与行内短状态上。
+                Text(
+                    text = stringResource(
+                        R.string.skill_fail_summary,
+                        globalLines.size + projectLines.size,
+                        failureRows.size,
+                        draftRows.size,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // 同因聚合组行：每组一条「同类失败 ×N ＋ 判语摘要」，点开详情才看完整信息
+                // （判语原文＋逐条证据，可复制）。不新造容器：组行是决策中心同款信息卡。
+                failureGroups.forEach { g ->
+                    SkillFailureGroupRow(group = g, onClick = { failureDetail = g })
+                }
                 // 第二十三批 A 段：技能现在能自己写了（写前备份、必过确认卡、草稿 3 次转正）
                 var newSkillOpen by remember { mutableStateOf(false) }
                 TextButton(onClick = { newSkillOpen = true }) {
@@ -953,12 +999,31 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            // 第五十七批 §1.2：待重验徽标（只提示不处置；数据来自 skill_event 留痕）
-                            globalRecheck[line.name]?.let { why ->
-                                Text(
-                                    text = stringResource(R.string.skill_recheck_badge, why),
+                            // 第一百八十批：行内只留一枚**短状态**（失败＝红字一行带最近失败时刻，
+                            // 无失败记录的「久未用」类只说失败两字；判语原句聚到上面的同类失败组，
+                            // 不再每行铺一遍）。草稿行给一枚灰「草稿」（顶部待转正 K 就来自这些行）。
+                            when {
+                                failureByKey.containsKey(true to line.name) -> {
+                                    val fr = failureByKey.getValue(true to line.name)
+                                    Text(
+                                        text = if (fr.lastFailedAt != null) {
+                                            stringResource(
+                                                R.string.skill_row_failed_at,
+                                                skillFailureTimeText(fr.lastFailedAt),
+                                            )
+                                        } else {
+                                            stringResource(R.string.skill_row_failed)
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = zhengdaoErrorText(),
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
+                                }
+                                line.name in draftGlobalNames -> Text(
+                                    text = stringResource(R.string.skill_detail_status_draft),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = zhengdaoErrorText(),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp),
                                 )
                             }
                         }
@@ -1011,12 +1076,29 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            // 第五十七批 §1.2：待重验徽标（只提示不处置；数据来自 skill_event 留痕）
-                            projectRecheck[line.name]?.let { why ->
-                                Text(
-                                    text = stringResource(R.string.skill_recheck_badge, why),
+                            // 第一百八十批：同上——行内短状态，判语原句进同类失败组（不铺长串）
+                            when {
+                                failureByKey.containsKey(false to line.name) -> {
+                                    val fr = failureByKey.getValue(false to line.name)
+                                    Text(
+                                        text = if (fr.lastFailedAt != null) {
+                                            stringResource(
+                                                R.string.skill_row_failed_at,
+                                                skillFailureTimeText(fr.lastFailedAt),
+                                            )
+                                        } else {
+                                            stringResource(R.string.skill_row_failed)
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = zhengdaoErrorText(),
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
+                                }
+                                line.name in draftProjectNames -> Text(
+                                    text = stringResource(R.string.skill_detail_status_draft),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = zhengdaoErrorText(),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp),
                                 )
                             }
                         }
@@ -1074,8 +1156,8 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 // ── 第三十二批 A 段 · 草稿（试用中）──────────────────────────────
                 // 23A 把 status／uses／canPromote 全算完了，界面上一个都没露（派工单 §0）。
                 // 这一段只**读**数据层算好的数；写盘只有 commitSkillDraft → SkillStore.apply 一条路（T4）。
-                // （两层根目录 globalRoot／projectRoot 已在卡片开头声明，34 批上移——详情与归档共用。）
-                val draftRows = remember(skillReload) { draftSkillRows(projectRoot, globalRoot) }
+                // （两层根目录 globalRoot／projectRoot 已在卡片开头声明，34 批上移——详情与归档共用。
+                //   draftRows 本批上移到失败态块：顶部读数行的「待转正 K」要用同一份，不扫两遍盘。）
 
                 /**
                  * 「用一次」：uses+1 写回，仍是草稿（能不能转正继续由数据层判）。
@@ -1242,6 +1324,11 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         initialDraft = d.isDraft,
                         originalBody = d.body,
                     )
+                }
+
+                // ── 第一百八十批 · 失败详情（同类失败组行的落点；判据与文案在 BaopuSkillFailure）──
+                failureDetail?.let { g ->
+                    SkillFailureDetailDialog(group = g, onDismiss = { failureDetail = null })
                 }
 
                 Spacer(Modifier.height(6.dp))
