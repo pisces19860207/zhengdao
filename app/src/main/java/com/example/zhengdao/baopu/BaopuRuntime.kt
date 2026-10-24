@@ -9,8 +9,10 @@ import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.AskUserTool
+import com.example.zhengdao.baopu.agent.ArtifactRaster
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.CompatChannelTools
+import com.example.zhengdao.baopu.agent.DrawPublish
 import com.example.zhengdao.baopu.agent.GenerateImage
 import com.example.zhengdao.baopu.agent.GenerateImageTool
 import com.example.zhengdao.baopu.agent.GroupUnlockStore
@@ -233,6 +235,11 @@ internal object BaopuRuntime {
             // 执行时再走同一套 Key 池判据取一次（取不到仍如实回「去哪儿填」）。
             keyProvider = { ProviderPrefs.storedKey(appCtx, Providers.GEMINI.id).orEmpty() },
         )
+        // 第一百八十六批：画板/图表/表格的 PNG 截图器。
+        // ArtifactRaster 是 App 侧唯一的 WebView 沙箱实现（JS 关、断网、只放 about/data）；
+        // 纯排版层 DrawPublish 只认接口，测试里换成假截图器即可直测。
+        ArtifactRaster.env = ArtifactRaster.Env { appCtx }
+        DrawPublish.rasterizer = ArtifactRaster
         // 第一百二十八批：知识库 v2 的索引存储壳（App 私有 filesDir/baopu/kb）。
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
         // AskUserTool.sink／PlanTool.sink：Context 只到装配层这一处。
