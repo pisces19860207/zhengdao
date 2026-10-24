@@ -7,6 +7,13 @@
 //
 // 第一百三十七批（2026-10-22）：外框换成四档容器的**行动卡**（与提问卡同一个容器，
 // 只有标题条文字不同——§6.2「七张合成一个容器，外形完全一致」）。
+//
+// 第一百七十一批（确认卡降噪 v2）：卡面多两样东西——
+// ① 范围行（仅这一次之外的「本次运行内/本会话内/本技能内」；高风险工具不摆——
+//    摆不摆由内核的 [com.example.zhengdao.baopu.ConfirmRisk] 定，本层只渲染）；
+// ② 合并计数行（同 key 等待中又来的相同请求，显示次数、不重复弹卡）。
+// 范围按钮把选择写进 [com.example.zhengdao.baopu.ConfirmScopeChoice] 旁路再走原
+// onApprove——接线（BaopuScreen/控制器/引擎）落地后可改直连，见交付报告 §接线。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.layout.Arrangement
@@ -23,12 +30,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.ConfirmScope
+import com.example.zhengdao.baopu.ConfirmScopeChoice
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.KbTools
 import com.example.zhengdao.baopu.agent.RunRules
@@ -60,6 +70,8 @@ internal fun BaopuConfirmCard(
     }
     val approveDesc = stringResource(R.string.baopu_confirm_approve_desc)
     val rejectDesc = stringResource(R.string.baopu_confirm_reject_desc)
+    // 第一百七十一批：可选范围（除「仅这一次」外的三档；高风险 ⇒ 空列表 ⇒ 不摆）
+    val scopes = request.scopeOptions.filter { it != ConfirmScope.ONLY_ONCE }
 
     BaopuActionContainer(
         title = stringResource(R.string.baopu_tier_action_confirm),
@@ -94,6 +106,29 @@ internal fun BaopuConfirmCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
         )
+        // 第一百七十一批：高风险明示（写盘/删除/扣费类永远只给「仅这一次」，
+        // 卡面不给范围按钮；这句话解释「为什么没有范围选项」，不吓唬人）
+        if (request.highRisk) {
+            Text(
+                text = stringResource(R.string.baopu_confirm_high_risk),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        // 第一百七十一批：同 key 等待中合并进来的次数（1 = 首张，不显示）
+        if (request.mergeCount > 1) {
+            Text(
+                text = pluralStringResource(
+                    R.plurals.baopu_confirm_merged,
+                    request.mergeCount,
+                    request.mergeCount,
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         Row(
             Modifier.fillMaxWidth().padding(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -125,8 +160,61 @@ internal fun BaopuConfirmCard(
                 Text(stringResource(R.string.baopu_confirm_reject))
             }
         }
+        // 第一百七十一批：范围行（按范围批准 = 带作用域的批准）。选了哪档就记进
+        // 旁路（callId 锚定这一张卡），内核在 resumeWithApproval 里消费——
+        // 「同 key 同作用域只问一次」从这一行开始。
+        if (scopes.isNotEmpty()) {
+            // 无障碍说明先在组合作用域里取好（semantics lambda 不是 @Composable）
+            val scopeDescs = scopes.associateWith { scopeDesc(it) }
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                scopes.forEach { scope ->
+                    OutlinedButton(
+                        onClick = {
+                            busy = true
+                            ConfirmScopeChoice.record(request.callId, scope)
+                            onApprove()
+                        },
+                        enabled = !busy,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = scopeDescs.getValue(scope) },
+                    ) {
+                        Text(
+                            text = stringResource(scopeLabel(scope)),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
+
+/** 范围按钮的短标签（界面文案走 strings.xml——§3.1；映射只此一处）。 */
+private fun scopeLabel(scope: ConfirmScope): Int = when (scope) {
+    ConfirmScope.THIS_RUN -> R.string.baopu_confirm_scope_run
+    ConfirmScope.THIS_SESSION -> R.string.baopu_confirm_scope_session
+    ConfirmScope.THIS_SKILL -> R.string.baopu_confirm_scope_skill
+    ConfirmScope.ONLY_ONCE -> R.string.baopu_confirm_approve
+}
+
+/**
+ * 范围按钮的无障碍说明（说清「批了之后什么不再问」——读屏用户听的是效果）。
+ * 与按钮短标签同样走 strings.xml（§3.1 管的是界面文案，accessibility 也算界面）。
+ */
+@Composable
+private fun scopeDesc(scope: ConfirmScope): String = stringResource(
+    when (scope) {
+        ConfirmScope.THIS_RUN -> R.string.baopu_confirm_scope_run_desc
+        ConfirmScope.THIS_SESSION -> R.string.baopu_confirm_scope_session_desc
+        ConfirmScope.THIS_SKILL -> R.string.baopu_confirm_scope_skill_desc
+        ConfirmScope.ONLY_ONCE -> R.string.baopu_confirm_approve_desc
+    },
+)
 
 /**
  * 卡面标题里的路径（**纯函数**，JVM 直测；第一百四十九批 组5 从 Composable 里抽出来）。

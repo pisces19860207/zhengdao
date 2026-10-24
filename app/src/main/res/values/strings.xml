@@ -1003,6 +1003,17 @@
     <string name="baopu_confirm_running">执行中…</string>
     <string name="baopu_confirm_approve_desc">批准这个动作，允许抱朴改动文件</string>
     <string name="baopu_confirm_reject_desc">拒绝这个动作，文件不会被改动</string>
+    <!-- ── 第一百七十一批：确认卡范围授权（四档；高风险不摆范围行）── -->
+    <string name="baopu_confirm_scope_run">本次运行内</string>
+    <string name="baopu_confirm_scope_session">本会话内</string>
+    <string name="baopu_confirm_scope_skill">本技能内</string>
+    <string name="baopu_confirm_scope_run_desc">按本次运行内批准：本轮结束前，同一个动作不再询问</string>
+    <string name="baopu_confirm_scope_session_desc">按本会话内批准：本会话结束前，同一个动作不再询问</string>
+    <string name="baopu_confirm_scope_skill_desc">按本技能内批准：本技能重复调用同一个动作时不再询问</string>
+    <plurals name="baopu_confirm_merged">
+        <item quantity="other">已合并 %1$d 次相同请求（同一张卡，不重复弹）</item>
+    </plurals>
+    <string name="baopu_confirm_high_risk">高风险动作（写盘/删除/扣费类）：每次都会询问，不提供范围授权</string>
     <!-- ── 抱朴思考深度（刀 3 · B 段；设置 → 终端与资料）── -->
     <string name="baopu_effort_card">思考深度</string>
     <string name="baopu_effort_desc">模型每一步想多深。机械活选低、复杂整理选最高；关掉省 token 但复杂任务会变笨。改完下一轮就生效，不用重建任何东西。</string>

@@ -1041,6 +1041,18 @@
     <string name="baopu_confirm_running">Running…</string>
     <string name="baopu_confirm_approve_desc">Approve this action and let Baopu change the file</string>
     <string name="baopu_confirm_reject_desc">Reject this action; the file stays untouched</string>
+    <!-- ── Batch 171: confirm-card scope approval (four tiers; high-risk gets no scope row) ── -->
+    <string name="baopu_confirm_scope_run">This run</string>
+    <string name="baopu_confirm_scope_session">This session</string>
+    <string name="baopu_confirm_scope_skill">This skill</string>
+    <string name="baopu_confirm_scope_run_desc">Approve for this run: the same action is not asked again until the run ends</string>
+    <string name="baopu_confirm_scope_session_desc">Approve for this session: the same action is not asked again until the session ends</string>
+    <string name="baopu_confirm_scope_skill_desc">Approve for this skill: repeated calls of the same action are not asked again</string>
+    <plurals name="baopu_confirm_merged">
+        <item quantity="one">Merged %1$d identical request (one card, no repeats)</item>
+        <item quantity="other">Merged %1$d identical requests (one card, no repeats)</item>
+    </plurals>
+    <string name="baopu_confirm_high_risk">High-risk action (writes/deletes/billing): always asks, no scope approval</string>
     <!-- ── Baopu thinking effort (knife 3, part B; Settings → Terminal & library) ── -->
     <string name="baopu_effort_card">Thinking depth</string>
     <string name="baopu_effort_desc">How deeply the model thinks each step. Low for mechanical work, Max for complex restructuring; Off saves tokens but complex tasks get dumber. Takes effect next round — nothing needs rebuilding.</string>
