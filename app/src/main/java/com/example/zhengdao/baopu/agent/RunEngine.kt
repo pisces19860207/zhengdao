@@ -25,6 +25,8 @@ import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.VisionConsent
 import com.example.zhengdao.baopu.VisionFiles
 import com.example.zhengdao.baopu.VisionRouting
+import com.example.zhengdao.baopu.ScreenshotConsent
+import com.example.zhengdao.baopu.SensitivePage
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.Finding
 import com.example.zhengdao.baopu.verify.VerifyTargets
@@ -169,6 +171,14 @@ internal class RunEngine(
      * （单测喂假实现就能验「超限先缩、缩不成必须报原因」两条）；真实现是 `ImageShrink`。
      */
     private val shrinkImage: ((File) -> com.example.zhengdao.baopu.VisionFiles.ShrinkOutcome)? = null,
+    /**
+     * 截图目录的根（第一百七十七批）。
+     *
+     * 生产传 `Store.root(appCtx)`（＝`Download/证道`）：`VisionFiles.load` 的越界判据
+     * 要认这第二个根，抱朴才读得到自己截的图。默认 `{ null }` ⇒ 关闭第二个根，
+     * 存量调用点（含 JVM 测试）一个字都不用改。
+     */
+    private val shotRoot: () -> File? = { null },
     /**
      * 熔断后的候选（刀 1 补丁 ＋ 第一百三十一批 ②）：入参（当前通道, 失败原文），返回候选或 null。
      *
@@ -1327,6 +1337,9 @@ internal class RunEngine(
                 }
             }
         }
+        // 第一百七十七批：turnImages 此刻只含用户贴的图（浏览器截图是后面逐步追加的）
+        // ⇒ 记下张数，之后替换浏览器帧时用它当分界线。
+        userImageCount = turnImages.size
         // 第一百二十八批：知识库自动注入——索引存在时，用**本轮用户输入**检索一次，
         // TopK 按 2k 预算裁成 note 拼进 turnNotes（房型同图片说明：每轮算一次、
         // 工具循环里每步都看得到）。索引缺失/损坏 ⇒ 静默跳过，不阻塞对话；
@@ -1888,6 +1901,23 @@ internal class RunEngine(
     private var turnImages: List<com.example.zhengdao.baopu.VisionRules.ImagePayload> = emptyList()
 
     /**
+     * 已获「本次会话允许截图」的会话（第一百七十七批）。
+     *
+     * 口径：**进程内**记住，App 重启失效——重启后第一次截图会再问一次（如实写进报告）。
+     * 敏感页不受此表影响：`screenshotGate` 每次都问。
+     */
+    private val shotAuthorizedSessions: MutableSet<Long> =
+        java.util.Collections.synchronizedSet(HashSet<Long>())
+
+    /**
+     * 本轮**用户自带**的图片张数（`turnImages` 的前 N 个）。
+     *
+     * 为什么要这个数：浏览器截图是「当前视口」，会随导航/滚动过期——新截图必须**替换**
+     * 旧浏览器帧（派工单禁「旧帧」），但不能动用户这一轮亲手贴的那几张。
+     */
+    private var userImageCount = 0
+
+    /**
      * 本轮要拼进输入末尾的说明（第二十四批 C 段追加）。
      *
      * 目前只有一个来源：图片没发出去的逐张原因（[com.example.zhengdao.baopu.VisionFiles.Loaded.note]）。
@@ -2374,10 +2404,14 @@ internal class RunEngine(
             // 2026-10-19（用户报「打完一步不打勾」）：普通工具结果后面附一句计划提醒。
             // 只进**模型可见的历史**，不进 UI 的工具卡（卡片仍显示工具原文）。
             val planHint = if (result.call.name != "update_plan") planController.reminderLine() else null
+            // 第一百七十七批：工具产出的图（浏览器截图）在这里收口——能不能进模型由通道
+            // 能力决定（provider.vision 为假就只给路径＋指向 snapshot，不读盘不上送）。
+            val shotNote = adoptToolImages(result)
+            val extraNote = listOfNotNull(shotNote, planHint).joinToString("\n\n")
             history += HistoryMessage(
                 "local-tool-${System.nanoTime()}",
                 HistoryMessage.ROLE_ASSISTANT,
-                if (planHint != null) result.wrapped + "\n\n" + planHint else result.wrapped,
+                if (extraNote.isEmpty()) result.wrapped else result.wrapped + "\n\n" + extraNote,
             )
             ToolResultFlow.CONTINUE
         }
@@ -2526,6 +2560,11 @@ internal class RunEngine(
         planChangeGate(call)?.let { blocked ->
             return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
         }
+        // 第一百七十七批：截图前的授权闸（会话首次确认＋敏感页每次问）。
+        // 位置与 planChangeGate 同：**真执行之前**——不批就一个字节不截、不落盘。
+        screenshotGate(call, sessionId)?.let { blocked ->
+            return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
+        }
         val toolStartedAt = System.currentTimeMillis()
         val result = pipeline.execute(call) { name, text ->
             writeSpill(sessionId, name, text)
@@ -2621,6 +2660,106 @@ internal class RunEngine(
      * @return null = 放行（不是 update_plan / 初始计划 / 只改进度 / 已获授权）；
      *   非 null = 用户没同意，按失败结果回灌（不执行、不落库）。
      */
+    // ── 第一百七十七批：截图授权闸 ＋ 像素进模型 ─────────────────────────────
+
+    /**
+     * 截图前的授权闸（**只在 `zd-baopu-run` 线程上调**；[askUser] 有界等待）。
+     *
+     * 三条口径（用户 2026-10-24 13:2x：「不逐张弹卡可以，但必须有一次会话授权/首次确认
+     * ＋审计，不能后台偷截」）：
+     * 1. **会话首次确认**：本会话第一次截图弹一次卡；选「本次会话允许」后同会话不再问
+     *    （[shotAuthorizedSessions]，进程内，重启失效）；
+     * 2. **敏感页每次都问**：登录/支付/验证码类页面即使已授权也要再点一次
+     *    （[SensitivePage] 判据；模型侧提示词另有一句「用户没要求就别截敏感页」）；
+     * 3. **不批就不截**：拒绝/超时 ⇒ [GuardPipeline.Result.Failed] 回灌，**不执行、不落盘**
+     *    ——「超时算同意」就是后台偷截的另一种写法。
+     *
+     * 每次裁决（同意/单次/拒绝）都落一行审计（[ScreenshotConsent.auditLine]，URL 去
+     * query/fragment 后截断——token 常藏在 query 里）。
+     */
+    private fun screenshotGate(call: ToolCall, sessionId: Long): GuardPipeline.Result.Failed? {
+        if (call.name != BrowserTools.NAME_SCREENSHOT) return null
+        // 玄览没开就不弹卡：让工具自己回那句「玄览还没打开」的人话——为一个必然失败的
+        // 调用去打扰用户，比不弹更糟（用户会以为截图已经发生）。
+        if (BaopuBrowser.require() == null) return null
+        val info = runCatching { BaopuBrowser.require()?.pageInfo() }.getOrNull()
+        val sensitive = info != null && SensitivePage.isSensitive(info.url, info.title)
+        if (!sensitive && shotAuthorizedSessions.contains(sessionId)) return null
+        log("抱朴截图：需用户确认（session=$sessionId，sensitive=$sensitive）")
+        val picked = askUser(ScreenshotConsent.request(hostOf(info?.url), info?.title, sensitive))
+        val url = redactedUrl(info?.url)
+        val title = info?.title.orEmpty()
+        return when (ScreenshotConsent.decide(picked?.id)) {
+            ScreenshotConsent.Decision.ALLOW_SESSION -> {
+                shotAuthorizedSessions.add(sessionId)
+                log(ScreenshotConsent.auditLine("会话授权", url, title, null, null))
+                null
+            }
+
+            ScreenshotConsent.Decision.ALLOW_ONCE -> {
+                log(ScreenshotConsent.auditLine("单次授权", url, title, null, null))
+                null
+            }
+
+            ScreenshotConsent.Decision.DENY -> {
+                log(ScreenshotConsent.auditLine("拒绝/无应答", url, title, null, null))
+                GuardPipeline.Result.Failed(call = call, error = ScreenshotConsent.deniedText())
+            }
+        }
+    }
+
+    /**
+     * 把工具产出的图接进本轮上下文（第一百七十七批 S1）。
+     *
+     * 三条硬规矩：
+     * 1. **只有 `provider.vision` 为真才读盘**（已验证看图的通道）；否则把文件路径交给
+     *    模型、让它改用 `browser_snapshot` 读文字——派工单 §1 原话「没有 vision 的模型
+     *    回退 DOM 文本」，也避免给未验证通道塞图片块。
+     * 2. **浏览器帧只留最新一张**：`turnImages` 每一步都会重发同一批，旧帧就是派工单
+     *    明禁的「旧帧」；用户这一轮亲手贴的图（前 [userImageCount] 张）不动。
+     * 3. **读不出来的原因要明说**（[VisionFiles.Loaded.note]），不许静默丢图。
+     *
+     * @return 追加到工具回执后面的说明；null = 这次没有图
+     */
+    private fun adoptToolImages(result: GuardPipeline.Result.Done): String? {
+        val paths = result.imageRelPaths
+        if (paths.isEmpty()) return null
+        val info = runCatching { BaopuBrowser.require()?.pageInfo() }.getOrNull()
+        val url = redactedUrl(info?.url)
+        val title = info?.title.orEmpty()
+        if (!provider.vision) {
+            log(ScreenshotConsent.auditLine("未发送（通道未验证看图）", url, title, paths.firstOrNull(), null))
+            return "（这张截图**没有发给模型**：当前通道未验证看图。文件在 ${paths.joinToString("、")}；" +
+                "要看内容请用 browser_snapshot 读文字，或换一条已验证看图的通道）"
+        }
+        val loaded = runCatching {
+            VisionFiles.load(spillRoot(), paths, shrink = shrinkImage, extraRoot = shotRoot())
+        }
+            .onFailure { log("抱朴截图：读图失败 ${it.javaClass.simpleName}") }
+            .getOrNull()
+        if (loaded == null || loaded.payloads.isEmpty()) {
+            val why = loaded?.note()?.takeIf { it.isNotBlank() } ?: "读图失败"
+            log(ScreenshotConsent.auditLine("读图失败", url, title, paths.firstOrNull(), null))
+            return "（截图读不出来：$why；可改用 browser_snapshot 看文字）"
+        }
+        turnImages = turnImages.take(userImageCount) + loaded.payloads.take(1)
+        log(ScreenshotConsent.auditLine("已附图", url, title, paths.first(), null))
+        return "（截图已附上，模型下一步就能看到；文件 ${paths.joinToString("、")}）"
+    }
+
+    /** 授权卡上只写主机名（整条 URL 里有路径与参数，不必铺在卡上）。 */
+    private fun hostOf(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val noScheme = url.substringAfter("://", url)
+        return noScheme.substringBefore('/').substringBefore('?').substringBefore('#').ifBlank { null }
+    }
+
+    /** 审计/日志用：去 query/fragment 再截断。 */
+    private fun redactedUrl(url: String?): String {
+        if (url.isNullOrBlank()) return "-"
+        return url.substringBefore('?').substringBefore('#').take(120)
+    }
+
     private fun planChangeGate(call: ToolCall): GuardPipeline.Result.Failed? {
         if (call.name != PlanTool.NAME) return null
         val change = planController.previewChange(call.arguments) ?: return null

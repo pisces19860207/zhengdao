@@ -176,11 +176,17 @@ internal class GuardPipeline(
 ) {
 
     sealed interface Result {
-        /** 执行完成（wrapped = 已围栏的回灌文本；spilled = 是否走了 spill 摘要）。 */
+        /**
+         * 执行完成（wrapped = 已围栏的回灌文本；spilled = 是否走了 spill 摘要）。
+         *
+         * [imageRelPaths]（第一百七十七批）：工具产出的**图片相对路径**（如浏览器截图）。
+         * 空 = 这次没有图片。引擎据此把像素读进本轮上下文；默认空 ⇒ 既有调用点零改。
+         */
         data class Done(
             val call: ToolCall,
             val wrapped: String,
             val spilled: Boolean,
+            val imageRelPaths: List<String> = emptyList(),
         ) : Result
 
         /** 可重试×1（Schema 错 / 工具失败 / 超时）——错误原文回灌让模型换路。 */
@@ -323,7 +329,9 @@ internal class GuardPipeline(
             is ToolOutcome.Rejected -> return Result.Rejected(effectiveCall, outcome.reason)
         }
         val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
-        return Result.Done(effectiveCall, wrapped, spilled)
+        // 第一百七十七批：工具产出的图片路径原样透传（围栏只管文本，图片走另一条通道）
+        val images = (outcome as? ToolOutcome.Ok)?.imageRelPaths.orEmpty()
+        return Result.Done(effectiveCall, wrapped, spilled, images)
     }
 
     /** 直跑（并行读用；崩了也走 [ToolRunner.crashFailure] 的同一句原文）。 */

@@ -1337,7 +1337,17 @@
     <string name="baopu_tool_browser_scroll">Scroll page</string>
     <string name="baopu_tool_browser_scroll_desc">Scroll up/down/left/right to bring content into view.</string>
     <string name="baopu_tool_browser_screenshot">Capture page</string>
-    <string name="baopu_tool_browser_screenshot_desc">Capture the current page to a file and return only the path.</string>
+    <string name="baopu_tool_browser_screenshot_desc">Capture the current page; on vision-capable channels the image is shown to the model (first time per session asks you, sensitive pages ask every time). Files stay in 证道/截屏/.</string>
+    <string name="baopu_tool_browser_tap">Tap by coordinate</string>
+    <string name="baopu_tool_browser_tap_desc">Tap a point (CSS px, same coordinate system as the screenshot). Useful for canvas widgets without a selector. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_swipe">Swipe</string>
+    <string name="baopu_tool_browser_swipe_desc">Swipe from one point to another (CSS px) with an optional duration. For paging and dragging canvases. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_long_press">Long press</string>
+    <string name="baopu_tool_browser_long_press_desc">Press and hold a point (CSS px) for a given duration. For context menus and text selection. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_key">Key press</string>
+    <string name="baopu_tool_browser_key_desc">Send a key (enter/tab/backspace/escape) to the focused element. Enter is a synthetic event; native form submission is not guaranteed. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_wait">Wait</string>
+    <string name="baopu_tool_browser_wait_desc">Wait a while, or until an element appears (up to 5s). Cheaper than repeated snapshots on slow pages.</string>
         <string name="baopu_tool_write_skill">Write skill</string>
     <string name="baopu_tool_write_skill_desc">Record a discovered flow as SKILL.md (backs up first, same name = edit it, adds an index line; asks for confirmation)</string>
 <string name="baopu_tool_update_plan">Work plan</string>
