@@ -1168,11 +1168,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                  * 进化判定只会永远 DEFER。记账失败只 log，不拦这一次试用（65/89 口径）。
                  */
                 fun useOnce(row: SkillDraftRow) {
+                    // 第一百八十四批：数次数与转正出自同一份纯函数——用满 PROMOTE_USES 次时
+                    // 这一次写盘就把头改成 active，不留「次数记上了、状态没转」的半条。
+                    val after = com.example.zhengdao.baopu.SkillStore.afterUse(row.body)
                     val msg = when (
                         val r = commitSkillDraft(
                             row = row,
-                            newBody = useOnceBody(row.body),
-                            stillDraft = true,
+                            newBody = after.body,
+                            stillDraft = !after.promoted,
                             projectRoot = projectRoot,
                             globalRoot = globalRoot,
                             personaFiles = pf,
@@ -1181,7 +1184,15 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     ) {
                         is com.example.zhengdao.baopu.SkillWriteResult.Written -> {
                             com.example.zhengdao.baopu.BaopuRuntime.recordSkillUseManual(ctx, row.name, row.file)
-                            res.getString(R.string.skill_draft_used, row.name)
+                            if (after.promoted) {
+                                res.getString(
+                                    R.string.skill_draft_auto_promoted,
+                                    row.name,
+                                    com.example.zhengdao.baopu.SkillStore.PROMOTE_USES,
+                                )
+                            } else {
+                                res.getString(R.string.skill_draft_used, row.name)
+                            }
                         }
                         is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
                     }
@@ -1216,6 +1227,14 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 Text(
                     text = stringResource(R.string.skill_draft_group),
                     style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.skill_draft_auto_hint,
+                        com.example.zhengdao.baopu.SkillStore.PROMOTE_USES,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (draftRows.isEmpty()) {
                     Text(

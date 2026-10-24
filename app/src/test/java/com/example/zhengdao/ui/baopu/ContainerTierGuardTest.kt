@@ -109,7 +109,7 @@ class ContainerTierGuardTest {
     }
 
     @Test
-    fun `门禁_行动卡调用点只许五个已知文件`() {
+    fun `门禁_行动卡调用点只许六个已知文件`() {
         val all = sources(BAOPU_DIR)
         val callers = all.filterValues { it.contains("BaopuActionContainer(") }.keys
             .filter { it != "BaopuContainers.kt" }
@@ -119,9 +119,10 @@ class ContainerTierGuardTest {
             "BaopuConfirmCard.kt", // 确认（含恢复确认：restoreConfirmCard 最终也渲染这条链）
             "BaopuSkillCard.kt", // 技能提案（御批）
             "DecisionCard.kt", // 决策卡
+            "SkillCard.kt", // 技能记忆入口（184 批：说一句就记，只有一个「记住它」）
         )
         assertTrue(
-            "行动卡调用点只许这五个（多一个＝新造第五种卡或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
+            "行动卡调用点只许这六个（多一个＝新造卡型或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
             callers.toSet() == expect,
         )
     }
