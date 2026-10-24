@@ -1,0 +1,134 @@
+{
+  "model": "fake-policy/1",
+  "temperature": 0.0,
+  "seed": 0,
+  "rules": [
+    {
+      "id": "no-tools-rule",
+      "when": { "systemContains": "回答时不要使用任何工具" },
+      "steps": [{ "final": "好的，我不用工具。" }]
+    },
+    {
+      "id": "skip-delete-confirm",
+      "when": { "promptContains": "删掉", "systemContains": "删除不用真的调用工具" },
+      "steps": [{ "final": "已删除。" }]
+    },
+    {
+      "id": "skill-done",
+      "when": { "promptContains": "整理书稿", "historyContains": "核对目录" },
+      "steps": [{ "final": "已按技能做：先核对目录，再按章节顺序整理。" }]
+    },
+    {
+      "id": "skill-read",
+      "when": { "promptContains": "整理书稿", "systemContains": "整理书稿" },
+      "steps": [{ "tool": "read_file", "args": { "path": "技能/整理书稿.md" } }]
+    },
+    {
+      "id": "skill-missing",
+      "when": { "promptContains": "整理书稿", "systemNotContains": "整理书稿" },
+      "steps": [{ "final": "没有「整理书稿」这个技能，我不能假装会。" }]
+    },
+    {
+      "id": "layout-absent",
+      "when": { "promptContains": "排版校对" },
+      "steps": [{ "final": "没有「排版校对」这个技能，我不知道。" }]
+    },
+    {
+      "id": "read-answer-done",
+      "when": { "promptContains": "notes/readme.txt", "historyContains": "青松七号" },
+      "steps": [{ "final": "口令是：青松七号。" }]
+    },
+    {
+      "id": "read-answer",
+      "when": { "promptContains": "notes/readme.txt" },
+      "steps": [{ "tool": "read_file", "args": { "path": "notes/readme.txt" } }]
+    },
+    {
+      "id": "read-range-done",
+      "when": { "promptContains": "第 3 行", "historyContains": "丁行" },
+      "steps": [{ "final": "第 3–4 行是：丙行 / 丁行。" }]
+    },
+    {
+      "id": "read-range",
+      "when": { "promptContains": "第 3 行" },
+      "steps": [{ "tool": "read_file", "args": { "path": "notes/long.txt", "offset": 3, "limit": 2 } }]
+    },
+    {
+      "id": "write-artifact-done",
+      "when": { "promptContains": "产物/清单.txt", "historyContains": "已写入" },
+      "steps": [{ "final": "已写入 产物/清单.txt。" }]
+    },
+    {
+      "id": "write-artifact",
+      "when": { "promptContains": "产物/清单.txt" },
+      "steps": [{ "tool": "write_file", "args": { "path": "产物/清单.txt", "content": "一、二、三" } }]
+    },
+    {
+      "id": "json-artifact-done",
+      "when": { "promptContains": "产物/结果.json", "historyContains": "已写入" },
+      "steps": [{ "final": "已写入 产物/结果.json。" }]
+    },
+    {
+      "id": "json-artifact",
+      "when": { "promptContains": "产物/结果.json" },
+      "steps": [{ "tool": "write_file", "args": { "path": "产物/结果.json", "content": "{\"ok\":true,\"n\":3}" } }]
+    },
+    {
+      "id": "outside-persona",
+      "when": { "promptContains": "越权" },
+      "steps": [
+        { "tool": "read_file", "args": { "path": "/etc/passwd" } },
+        { "final": "越界读取被拒了，我不会把它复制进工作区。" }
+      ]
+    },
+    {
+      "id": "memory-hit",
+      "when": { "promptContains": "交期", "systemContains": "记忆：" },
+      "steps": [{ "final": "你上次说的是十月三十一日。" }]
+    },
+    {
+      "id": "memory-miss",
+      "when": { "promptContains": "交期" },
+      "steps": [{ "final": "我不知道，记忆里没有这条。" }]
+    },
+    {
+      "id": "plan-order",
+      "when": { "promptContains": "先备份" },
+      "steps": [
+        { "tool": "write_file", "args": { "path": "产物/步骤.txt", "content": "1 备份\n2 改稿\n3 出清单" } },
+        { "final": "已按顺序执行。" }
+      ]
+    },
+    {
+      "id": "danger-delete",
+      "when": { "promptContains": "删掉" },
+      "steps": [
+        { "tool": "delete_path", "args": { "path": "稿件/废弃.txt" } },
+        { "final": "删除了。" }
+      ]
+    },
+    {
+      "id": "danger-outside",
+      "when": { "promptContains": "外面.txt" },
+      "steps": [
+        { "tool": "read_file", "args": { "path": "../../外面.txt" } },
+        { "final": "越界了，我读不了工作区外的文件。" }
+      ]
+    },
+    {
+      "id": "no-tool-answer",
+      "when": { "promptContains": "步数上限" },
+      "steps": [{ "final": "步数上限就是一次运行里模型最多能走几步。" }]
+    },
+    {
+      "id": "token-budget-done",
+      "when": { "promptContains": "notes/token.txt", "historyContains": "预算内" },
+      "steps": [{ "final": "第一行是：预算内。" }]
+    },
+    {
+      "id": "token-budget",
+      "when": { "promptContains": "notes/token.txt" },
+      "steps": [{ "tool": "read_file", "args": { "path": "notes/token.txt" } }]
+    }
+  ]
+}
