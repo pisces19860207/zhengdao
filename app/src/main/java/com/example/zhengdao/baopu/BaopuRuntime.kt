@@ -40,7 +40,9 @@ import com.example.zhengdao.baopu.library.LibraryImport
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
+import com.example.zhengdao.baopu.mcp.McpServerStore
 import com.example.zhengdao.baopu.mcp.McpToolSource
+import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
 import com.example.zhengdao.rootfs.RunLog
@@ -75,6 +77,18 @@ internal object BaopuRuntime {
      */
     @Volatile
     private var mcpSource: McpToolSource? = null
+
+    /**
+     * 引擎**正在用**的那张工具注册表（第一百七十批 B）。
+     *
+     * 为什么要有这个字段：MCP 工具是运行时注册进表的（不是装配期静态注册），注册到
+     * 一张临时表里 = 模型永远看不见。旧实现的 `mcp(context)` 每次调用都 `registry(...)`
+     * 新建一张表，于是「连上了但抱朴说没有这个工具」——本批的靶心。
+     *
+     * 赋值点只有一处（[build] 里取到 reg 之后）；[switchChannel] 换引擎时置空。
+     */
+    @Volatile
+    private var engineRegistry: ToolRegistry? = null
 
     /** 数据库（进程级一份；SQLiteOpenHelper 自带线程安全）。 */
     fun db(context: Context): BaopuDb =
@@ -115,7 +129,11 @@ internal object BaopuRuntime {
     ) {
         val appCtx = context.applicationContext
         ProviderPrefs.save(appCtx, channelId, apiKey, baseUrl, model, protocol)
-        synchronized(this) { engineInstance = null }
+        synchronized(this) {
+            engineInstance = null
+            // 引擎重建 ⇒ 表也重建；旧表的引用不能再当成「引擎正在用的那张」。
+            engineRegistry = null
+        }
     }
 
     /** 工作区根（唯一真相源 Workspace.hostDir；守卫与 spill 都以它为根）。 */
@@ -271,24 +289,45 @@ internal object BaopuRuntime {
             reg.register(CompatChannelTools.bashSpec())
         }
         // 第一百二十三批：MCP 工具桥接（只搬已连接的 server；**这里绝不联网**）。
-        mcpSourceFor(reg)
+        mcpSourceFor(reg, appCtx)
+        // 第一百七十批 B：记下引擎真正要用的表（MCP 面板要靠它把工具注册进对的表）。
+        engineRegistry = reg
         return reg
     }
 
     /**
      * 外部 MCP 管理器（唯一入口；测试不经过它，直接构造 [McpToolSource]）。
      *
-     * [registry] 在每次装配时都会调用它：同一个 source 会被 attach 到当前这张表——
-     * 换通道后旧连接继续可用，但工具只在新表里出现。
+     * **必须绑在引擎那张表上**：MCP 工具是运行时注册的，绑到临时表里模型看不见
+     * （见 [engineRegistry] 的注释）。引擎还没建时先建一次（首次打开面板的代价；
+     * 抱朴页本来就持有 controller，实际几乎不会走到）。
+     *
+     * 不联网：这里只登记/搬运，联网只在用户点「连接」后由面板调到 [McpToolSource.connect]。
      */
     fun mcp(context: Context): McpToolSource {
         val appCtx = context.applicationContext
-        return mcpSourceFor(registry(appCtx, provider(appCtx)))
+        val reg = engineRegistry ?: synchronized(this) {
+            engineRegistry ?: run {
+                engine(appCtx) // build() 里会把 engineRegistry 填上
+                // 装配层契约：build() 必须登记引擎的注册表；违反即程序性错误，宁可崩也不
+                // 退化成「每次新建一张临时表」（那正是本批修掉的病根）。
+                checkNotNull(engineRegistry) { "engine(appCtx) 返回后 engineRegistry 必须已登记" }
+            }
+        }
+        return mcpSourceFor(reg, appCtx)
     }
 
-    private fun mcpSourceFor(reg: ToolRegistry): McpToolSource {
+    private fun mcpSourceFor(reg: ToolRegistry, context: Context): McpToolSource {
         val source = mcpSource ?: synchronized(this) {
-            mcpSource ?: McpToolSource(reg, log = { RunLog.log(it) }).also { mcpSource = it }
+            mcpSource ?: McpToolSource(
+                reg,
+                log = { RunLog.log(it) },
+                // 配置落 prefs（JSON，不碰 BaopuDb.VERSION）：进程重启后地址还在，连接不自动重建。
+                store = McpServerStore(
+                    PrefsMcpServerStorage(context.applicationContext),
+                    log = { RunLog.log(it) },
+                ),
+            ).also { mcpSource = it }
         }
         source.attach(reg)
         return source
