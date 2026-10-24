@@ -62,11 +62,27 @@ object PersonaGuard {
         if (raw.isEmpty()) return null
         val segs = normalize(raw) ?: return null // 越出根 ⇒ 交给既有的越界判据，这里不抢
         if (segs.isEmpty()) return null
+        // 第一百六十五批：人设包正文也只许走设置页/导入 —— 模型拿 write_file 直接改 persona.md，
+        // 就绕过了大小/编码/坏 JSON 的导入判据（虽然包内容本身改不了权限，仍属「人设只能走提案或设置页」）。
+        if (isPersonaPackPath(segs)) return REJECT_PREFIX + raw
         val name = segs.last().lowercase()
         if (name !in PROTECTED_NAMES) return null
         val parent = segs.getOrNull(segs.size - 2)?.lowercase()
         if (parent != null && parent !in ALLOWED_PARENTS) return null
         return REJECT_PREFIX + raw
+    }
+
+    /**
+     * 人设包正文：`<任意前缀>/抱朴记忆/人设/<包名>/persona.md`。
+     * 只认「抱朴记忆」下面紧挨着「人设」的那一棵；同名的 persona.md 在别处不拦。
+     */
+    private fun isPersonaPackPath(segs: List<String>): Boolean {
+        val lower = segs.map { it.lowercase() }
+        if (lower.lastOrNull() != "persona.md") return false
+        val root = lower.indexOf("抱朴记忆")
+        if (root < 0) return false
+        if (lower.getOrNull(root + 1) != "人设") return false
+        return lower.size >= root + 2
     }
 
     /**

@@ -208,6 +208,14 @@ internal class RunEngine(
      * 语义由 [QueueStopGate] 的同锁协议钉死，替身不许改。
      */
     private val runQueue: SessionRunQueue = DefaultSessionRunQueue(),
+    /**
+     * 第一百六十五批 · 人设包：返回本轮要套用的用户模板（null＝不套包，按抱朴默认人设走）。
+     *
+     * 为什么是注入的闭包而不是持存储：包正文在工作区文件里，装配层（BaopuRuntime）负责
+     * 按工作区读设置；引擎不持 Context。**默认 null ⇒ 提示词与今天逐字节相同**（判据 1）。
+     * 包只作为 C 段前面的一段文本，碰不到工具注册表、GuardPipeline 与 A 内核。
+     */
+    private val personaPack: (() -> com.example.zhengdao.baopu.PersonaPackPayload?)? = null,
 ) {
 
     /** UI 观察用（Compose State）。 */
@@ -1252,11 +1260,20 @@ internal class RunEngine(
         userText?.let { learnSignals += SkillRefine.learnMarkersIn(it) }
         val workspacePath = spillRoot().absolutePath
         val windowTokens = ContextAssembler.ContextBudgets.windowOf(provider)
+        // 第一百六十五批 · 人设包：只叠在 C 段前面；没启用/读不了 ⇒ null，原 C 文本一字不差。
+        val activePack = runCatching { personaPack?.invoke() }.onFailure {
+            log("人设包读取失败，按抱朴默认人设继续：${it.message}")
+        }.getOrNull()
+        val projectPersona = com.example.zhengdao.baopu.PersonaPackRules.composeProjectPersona(
+            personaFiles?.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT),
+            activePack,
+        )
         val persona = PersonaRules.assemble(
             BaopuPreset.personaText(workspacePath),
             personaFiles?.read(com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL),
-            personaFiles?.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT),
+            projectPersona,
         )
+        activePack?.let { log("人设包：本轮套用「${it.name}」") }
         val facts = HardFacts(workspacePath = workspacePath, model = provider.model)
         val recalled = memoryStore
             ?.let { MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.RECALL_TOKEN_BUDGET) }

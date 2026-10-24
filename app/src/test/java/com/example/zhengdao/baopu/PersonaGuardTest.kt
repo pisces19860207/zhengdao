@@ -107,4 +107,25 @@ class PersonaGuardTest {
         assertEquals(listOf("抱朴记忆", "人设.md"), PersonaGuard.normalize("a/../抱朴记忆\\人设.md"))
         assertNull(PersonaGuard.normalize("../../../x"))
     }
+
+    // ── ④ 第一百六十五批：人设包正文（persona.md）也只许走设置页/导入 ──
+
+    @Test
+    fun `人设包正文_正身与变体都拦`() {
+        val p = "抱朴记忆/人设/审稿人/persona.md"
+        assertEquals(prefix + p, PersonaGuard.blocked(p))
+        assertEquals(prefix + "./抱朴记忆/人设/审稿人/persona.md", PersonaGuard.blocked("./抱朴记忆/人设/审稿人/persona.md"))
+        assertEquals(prefix + "a/../抱朴记忆/人设/审稿人/persona.md", PersonaGuard.blocked("a/../抱朴记忆/人设/审稿人/persona.md"))
+        assertEquals(prefix + "抱朴记忆\\人设\\审稿人\\persona.md", PersonaGuard.blocked("抱朴记忆\\人设\\审稿人\\persona.md"))
+        assertEquals(prefix + "抱朴记忆/人设/审稿人/PERSONA.MD", PersonaGuard.blocked("抱朴记忆/人设/审稿人/PERSONA.MD"))
+        assertEquals(prefix + "抱朴记忆/人设/persona.md", PersonaGuard.blocked("抱朴记忆/人设/persona.md"))
+    }
+
+    @Test
+    fun `人设包正文_别处同名不拦`() {
+        assertNull("技能目录下的 persona.md 不是人设包", PersonaGuard.blocked("抱朴记忆/技能/persona.md"))
+        assertNull("同前缀兄弟目录不误伤", PersonaGuard.blocked("抱朴记忆2/人设/审稿人/persona.md"))
+        assertNull("资料库里的同名文件不拦", PersonaGuard.blocked("资料库/整理/persona.md"))
+        assertNull("工作区根的 persona.md 不拦", PersonaGuard.blocked("persona.md"))
+    }
 }
