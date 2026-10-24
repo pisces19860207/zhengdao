@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第一百八十六批：画板/图表/表格字符串单独成文件（同 158：pre-commit 闸 2 不碰 strings.xml）。 -->
+<resources>
+    <string name="baopu_tools_group_draw">画板与表格</string>
+    <string name="baopu_group_line_draw">HTML/SVG 沙箱出图、柱状/折线图、表格；本地渲染，不联网、不跑脚本</string>
+    <string name="baopu_tool_render_artifact">画板（HTML/SVG）</string>
+    <string name="baopu_tool_render_artifact_desc">把你写的 HTML 或 SVG 放进本机沙箱里渲染：先消毒（剥掉脚本、事件属性、iframe、外链图片/CSS），再出玄览本地预览和 PNG 截图。落 图片/，同名不覆盖；内容为空、认不出是 HTML/SVG 或超长时直接回可读错误，不会给一张空白图。不调生图模型、不联网、不执行脚本。</string>
+    <string name="baopu_tool_draw_chart">柱状/折线图</string>
+    <string name="baopu_tool_draw_chart_desc">按你给的 JSON 数据（categories 与 series 的名称/数值）在本地排一张柱状图或折线图，落 图片/ 的 SVG；可选同时截一张 PNG。数值不做猜测，负数/非数字会直接报错；最多 8 组、30 个分类。需要流程图/示意图时用画板（HTML/SVG），不要自己发明格式。</string>
+    <string name="baopu_tool_draw_table">表格</string>
+    <string name="baopu_tool_draw_table_desc">把 Markdown 表格、CSV 或 JSON 行转成可复制的 HTML 表格（也可同时截 PNG），落 产物/表格/，同名不覆盖。单元格按纯文本处理，里面写的 HTML 不会被执行。最多 200 行、20 列。</string>
+</resources>

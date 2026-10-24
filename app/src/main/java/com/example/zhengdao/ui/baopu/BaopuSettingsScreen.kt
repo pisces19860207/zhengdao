@@ -1411,6 +1411,10 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "delete_path" -> R.string.baopu_tool_delete_path
     "image_ops" -> R.string.baopu_tool_image_ops
     "generate_image" -> R.string.baopu_tool_generate_image
+    // 第一百八十六批：画板/图表/表格。漏这三行 ⇒ 设置页开工具卡直接抛（同 update_plan 教训）
+    "render_artifact" -> R.string.baopu_tool_render_artifact
+    "draw_chart" -> R.string.baopu_tool_draw_chart
+    "draw_table" -> R.string.baopu_tool_draw_table
     // 小说工程三件（第一百五十五批）：漏这两组分支 ⇒ 设置页开工具卡直接抛（同 update_plan 教训）
     "novel_create" -> R.string.baopu_tool_novel_create
     "novel_project" -> R.string.baopu_tool_novel_project
@@ -1471,6 +1475,10 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "delete_path" -> R.string.baopu_tool_delete_path_desc
     "image_ops" -> R.string.baopu_tool_image_ops_desc
     "generate_image" -> R.string.baopu_tool_generate_image_desc
+    // 第一百八十六批：画板/图表/表格
+    "render_artifact" -> R.string.baopu_tool_render_artifact_desc
+    "draw_chart" -> R.string.baopu_tool_draw_chart_desc
+    "draw_table" -> R.string.baopu_tool_draw_table_desc
     // 小说工程三件（第一百五十五批）
     "novel_create" -> R.string.baopu_tool_novel_create_desc
     "novel_project" -> R.string.baopu_tool_novel_project_desc

@@ -192,6 +192,8 @@ internal fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
     ToolGroup.LIBRARY -> R.string.baopu_tools_group_library
     // 第一百五十八批：文生图（默认不可见，capabilities 解锁）
     ToolGroup.IMAGE -> R.string.baopu_tools_group_image
+    // 第一百八十六批：画板/图表/表格（默认不可见，capabilities 解锁）
+    ToolGroup.DRAW -> R.string.baopu_tools_group_draw
     ToolGroup.CARD -> R.string.baopu_tools_group_card
     ToolGroup.SKILL -> R.string.baopu_tools_group_skill
     ToolGroup.PREVIEW -> R.string.baopu_tools_group_preview
@@ -227,6 +229,7 @@ internal fun baopuGroupLine(group: ToolGroup): Int = when (group) {
     ToolGroup.FILES -> R.string.baopu_group_line_files
     ToolGroup.LIBRARY -> R.string.baopu_group_line_library
     ToolGroup.IMAGE -> R.string.baopu_group_line_image
+    ToolGroup.DRAW -> R.string.baopu_group_line_draw
     ToolGroup.CARD -> R.string.baopu_group_line_card
     ToolGroup.SKILL -> R.string.baopu_group_line_skill
     ToolGroup.PREVIEW -> R.string.baopu_group_line_preview

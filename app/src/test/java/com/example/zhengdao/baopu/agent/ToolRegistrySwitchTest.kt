@@ -71,7 +71,9 @@ class ToolRegistrySwitchTest {
                 "library_list", "library_organize",
                 // 第一百二十八批两条：kb_index（建索引，CONFIRM）/ kb_search（检索，FREE 只读）
                 "kb_index", "kb_search",
-                "delete_path", "image_ops", "generate_image", "ask_user",
+                "delete_path", "image_ops", "generate_image",
+                // 第一百八十六批：画板/图表/表格（DRAW 组，默认不可见但默认启用）
+                "render_artifact", "draw_chart", "draw_table", "ask_user",
                 "card_inspect", "card_export", "card_build",
                 // 第五十九批两条：capabilities（渐进披露入口）与 preview_local_file（玄览只显示）
                 "capabilities", "preview_local_file",
