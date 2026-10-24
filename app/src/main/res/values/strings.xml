@@ -1672,7 +1672,5 @@
     <string name="baopu_longform_edit">编辑</string>
     <string name="baopu_longform_done">完成</string>
     <string name="baopu_longform_open_as_card">文本卡</string>
-    <string name="baopu_longform_words">%s 字</string>
-    <string name="baopu_longform_saved_prefix">已保存：</string>
-    <string name="baopu_longform_save_failed">保存失败</string>
+    <string name="baopu_longform_words">%s 字</string>
 </resources>
