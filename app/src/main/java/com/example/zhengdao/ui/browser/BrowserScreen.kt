@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -47,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
@@ -271,16 +275,26 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 },
         ) {
             val activeId = active?.id
+            // 第一百七十二批 S2：本标签的渲染进程被系统回收过 ⇒ 页面是死的，
+            // 不挂 WebView（挂上去只会是一块白），改画「点一下重新加载」卡片。
+            val recycled = active?.state?.recycled == true
             // 第㊱刀：空态不挂 WebView —— 共享 WebView 默认白底，深色模式下会把
             // 起始页的雾白图腾/标题压成 ~1:1（实测截图不可见）；空态时页面区就是
             // 起始页（背景走主题色），everLoaded 翻转后照常挂回，状态机零改动。
-            if (activeId != null && !(active == null || !active.state.everLoaded)) {
+            if (activeId != null && !recycled && !(active == null || !active.state.everLoaded)) {
                 key(activeId) {
                     AndroidView(
                         factory = { BrowserTabManager.view() ?: WebView(it) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+            }
+            // 回收卡片压在同一块页面区上：点了才 loadUrl（不偷偷联网，见 reloadRecycled）
+            if (active != null && recycled) {
+                BrowserRecycledCard(
+                    onReload = { BrowserTabManager.reloadRecycled(active.id) },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             // P1-7：WebView 还在构造（首帧后那一段）⇒ 页面区显示占位，**不给白屏**。
             // 占位自带主题底色（不是 WebView 的默认白底，第㊱刀那条深色对比度教训同一件事），
@@ -543,6 +557,48 @@ private fun BrowserWarmupPlaceholder(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.primary,
             strokeWidth = 2.5.dp,
         )
+    }
+}
+
+/**
+ * 渲染进程被回收后的卡片（第一百七十二批 S2）—— **不白屏、不假装活着、不偷偷联网**。
+ *
+ * 为什么要有它：`onRenderProcessGone` 被接住（返回 true）之后，App 活下来了，但这颗标签的
+ * 页面已经死了（WebView 实例也被换掉）。若什么都不画，用户看到的就是一块白 —— 与
+ * 「切回不重载」的承诺撞在一起，会被当成"玄览坏了"。所以这里说清三件事：
+ * 发生了什么（系统回收了页面）、没发生什么（你的标签还在）、下一步（点一下重新加载）。
+ *
+ * 零自动加载：重新加载必须由用户点（2026-10-24 口径：不偷偷联网）。
+ */
+@Composable
+private fun BrowserRecycledCard(onReload: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.browser_recycled_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.browser_recycled_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            // 热区 ≥48dp（项目既有纪律：不许做小热区按钮）
+            Button(onClick = onReload, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.browser_recycled_reload))
+            }
+        }
     }
 }
 

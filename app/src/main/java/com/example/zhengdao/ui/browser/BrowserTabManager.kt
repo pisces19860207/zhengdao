@@ -58,15 +58,29 @@ object BrowserTabManager {
         val id: Int,
         val webView: WebView,
         val engine: WebViewEngine,
-    ) {
-        val state = BrowserTabState()
-    }
+        /**
+         * 本标签的界面状态。**参数化的原因只有一条**（第一百七十二批 S2）：渲染进程被回收后
+         * 死掉的 WebView 实例必须销毁重建（官方口径：`onRenderProcessGone` 返回 true 之后
+         * 不可再用），而"这是第几号标签、页面曾经是什么、滚到哪儿"属于**用户的东西**，
+         * 不能跟着实例一起丢 ⇒ 重建时把旧 state 原样接过来，只换壳。
+         */
+        val state: BrowserTabState = BrowserTabState(),
+    )
 
     /** 按创建顺序排列的标签（SnapshotStateList：增删直接驱动标签条重组）。 */
     private val tabs: SnapshotStateList<Tab> = mutableStateListOf()
 
     /** 当前活跃标签 id（null = 无标签，玄览显示空态）。 */
     private var activeId by mutableStateOf<Int?>(null)
+
+    /**
+     * App 是否在前台（第一百七十二批 S1）——**渲染优先级的唯一判据**。
+     *
+     * 只由 [pauseAll] / [resumeAll] 写（MainActivity 的 ON_PAUSE / ON_RESUME 是唯一来源），
+     * 初值 true 是为了「玄览页刚建、还没走过生命周期」的那一段与前台语义一致。
+     * 刻意不做成 Compose 状态：它只影响 `WebView` 的旁路开关，不驱动任何重组。
+     */
+    private var appForeground = true
 
     private var nextId = 1
 
@@ -179,26 +193,124 @@ object BrowserTabManager {
         }
     }
 
-    /** 激活指定标签（旧的退后台：onPause + WAIVED；新的回前台：onResume + IMPORTANT）。 */
+    // ── 渲染进程被系统回收（第一百七十二批 S2） ─────────────────────────────
+
+    /**
+     * 某一颗标签的渲染进程被系统收走了：**只废这一颗**，其余标签原样，`activeId` 不动。
+     *
+     * 为什么必须连实例一起换掉（而不是"标个状态等用户点重载"）：
+     * `onRenderProcessGone` 返回 true 之后，官方口径是这个 WebView **不可再用**
+     * （"it is not safe to continue using it"）⇒ 留着它，下一次点击/滚动才炸，成了定时炸弹。
+     * 所以这里做三件事，顺序不能换：
+     * ① 旧 state 打上 [BrowserTabState.recycled]（用户会看到「点一下重新加载」卡片）；
+     * ② 用**同一个 id、同一份 state** 换一颗新 WebView 进标签表（标签条位置、标题、地址都不动）；
+     * ③ 销毁旧实例（摘挂载 → about:blank → destroy，与 [closeTab] 同一条纪律）。
+     *
+     * 刻意**不自动加载**：新实例是空白的，用户点一下才联网（用户 2026-10-24 口径：
+     * 不偷偷联网、恢复快照不假装活着）。
+     */
+    fun markRendererGone(context: Context, tabId: Int) {
+        val index = tabs.indexOfFirst { it.id == tabId }
+        if (index < 0) return
+        val dead = tabs[index]
+        dead.state.onRendererGone()
+        val app = context.applicationContext
+        tabs[index] = reviveTab(app, dead)
+        destroySafely(dead.webView)
+    }
+
+    /**
+     * 用户点了「重新加载」：清掉回收标记并把页面重新拉起来。
+     *
+     * 三条分支都是"按这标签本来的身份恢复"：
+     * - 预览页签 ⇒ 重新注入那份文本（它的"地址"是假的，不能 loadUrl）；
+     * - 上网页签且有地址 ⇒ loadUrl 回去；
+     * - 有标签但从没加载成功过（地址为空）⇒ 什么都不做，留在空页等用户输入。
+     *
+     * @return 真的发起了恢复为 true；没有这个标签 / 没处于回收态为 false（调用方不必提示）。
+     */
+    fun reloadRecycled(tabId: Int): Boolean {
+        val tab = tabs.firstOrNull { it.id == tabId } ?: return false
+        if (!tab.state.recycled) return false
+        tab.state.recycled = false
+        if (tab.state.isPreview()) {
+            tab.engine.loadLocalDocument(tab.state.previewDocument())
+        } else if (tab.state.url.isNotEmpty()) {
+            tab.engine.loadUrl(tab.state.url)
+        }
+        RunLog.log("玄览 标签#$tabId：用户点了重新加载（回收后恢复）")
+        return true
+    }
+
+    /**
+     * 造一颗与 [dead] 同身份的新标签：同 id、同一份 [BrowserTabState]，只换 WebView/引擎。
+     *
+     * 与 [newTab] / [openPreviewTab] 一样把 `WebView(app)` 与 `LayoutParams` 写死在这里，
+     * 而不是抽成一个公共构造函数 —— 理由与 [openPreviewTab] 里那段注释同源：
+     * `BrowserRecycleGateTest` 钉「WebView 实例在具名构建点里创建、不在 obtain() 里」，
+     * 抽成 helper 会让那条门禁的字面失效，等于用"优雅"换掉一条护栏。
+     */
+    private fun reviveTab(app: Context, dead: Tab): Tab {
+        BrowserMemoryProbe.log("before-webview#revive${dead.id}")
+        val wv = WebView(app)
+        // MATCH_PARENT：与 newTab 同一味药（100vh=0 那个自锁，2026-10-18 判决）。
+        wv.layoutParams = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        BrowserMemoryProbe.log("after-webview#revive${dead.id}")
+        val eng = WebViewEngine(wv)
+        val tab = Tab(dead.id, wv, eng, dead.state)
+        // 预览页签按预览档重建（断网 + 默认禁 JS），上网页签按默认档 —— 身份不能因为被回收就降级。
+        val config = if (dead.state.isPreview()) {
+            LocalPreviewPolicy.configFor(dead.state.previewJsSandbox)
+        } else {
+            EngineSecurityConfig()
+        }
+        eng.applySecurityConfig(config)
+        eng.setNavigationDelegate(delegateFor(tab, app))
+        // 新壳跟前台现状对齐：后台被回收的标签回前台前不该占 IMPORTANT。
+        applyRendererPriority(tab)
+        return tab
+    }
+
+    /**
+     * 激活指定标签。
+     *
+     * **第一百七十二批 S1：切走的那一颗不再降级。** 改前这里是
+     * `activeTab()?.let { pauseAndWaive(it) }` —— 把被切走的标签挂到 `WAIVED`
+     * （"系统想收就收"那一档）。那与 L1「切回不重载」直接互斥，本批删掉；
+     * 新激活的一颗按 [BrowserTabPolicy.rendererPriority] 取档（前台 = IMPORTANT）。
+     */
     fun selectTab(id: Int) {
         if (activeId == id) return
         val tab = tabs.firstOrNull { it.id == id } ?: return
-        activeTab()?.let { pauseAndWaive(it) }
         activeId = id
         resumeAndPromote(tab)
     }
 
-    /** 整个 App 退后台（MainActivity ON_PAUSE）：全部标签 onPause + 全部降 WAIVED。 */
+    /**
+     * 整个 App 退后台（MainActivity ON_PAUSE / 盖上了终端活动）：全部标签 onPause + 全部降 WAIVED。
+     * 这是 S1 之后**唯一**允许降级的入口（前台不再降）。
+     */
     fun pauseAll() {
+        appForeground = false
         tabs.forEach { tab ->
             runCatching { tab.webView.onPause() }
-            runCatching { tab.webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, false) }
+            applyRendererPriority(tab)
         }
     }
 
-    /** 回前台（MainActivity ON_RESUME）：活跃标签 onResume + 升 IMPORTANT。 */
-    fun resumeActive() {
-        activeTab()?.let { resumeAndPromote(it) }
+    /**
+     * 回前台（MainActivity ON_RESUME）：**全部**标签 onResume + 按前台档升回来（S1）。
+     *
+     * 改前叫 `resumeActive()`，只救回活跃那一颗 ⇒ 其余标签被 [pauseAll] 降成 WAIVED 之后
+     * **永不回升**（2026-10-24 核对时实证：`pauseAll` 降全部、`resumeActive` 升一颗）。
+     * 玄览的 L1/L2 都要求"每一颗都活着"，所以这里必须全量。
+     */
+    fun resumeAll() {
+        appForeground = true
+        tabs.forEach { resumeAndPromote(it) }
     }
 
     /**
@@ -341,18 +453,19 @@ object BrowserTabManager {
 
     // ── 内部 ──────────────────────────────────────────────────────────────
 
-    private fun pauseAndWaive(tab: Tab) {
-        runCatching { tab.webView.onPause() }
-        runCatching {
-            tab.webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, false)
-        }
-    }
-
     private fun resumeAndPromote(tab: Tab) {
         runCatching { tab.webView.onResume() }
-        runCatching {
-            tab.webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
-        }
+        applyRendererPriority(tab)
+    }
+
+    /**
+     * 按「App 可见性」给这一颗标签上档（S1 的唯一落点）。
+     * 判据全在 [BrowserTabPolicy.rendererPriority]（纯函数，JVM 单测钉 6 格表），
+     * 这里只负责把结果写进 WebView —— 一份判据、一条装配线。
+     */
+    private fun applyRendererPriority(tab: Tab) {
+        val priority = BrowserTabPolicy.rendererPriority(appForeground, tab.id == activeId)
+        runCatching { tab.webView.setRendererPriorityPolicy(priority, false) }
     }
 
     private fun destroySafely(webView: WebView) {
@@ -393,6 +506,9 @@ object BrowserTabManager {
             // 不在这里写 if —— `BrowserTabStateTest` 那条源码门禁钉的就是"逐字写进本标签 state"，
             // 委托里加条件等于把门禁的针脚从语义上拆开了（第五十九批合流时踩到，改回原样）。
             tab.state.onPageStarted(url)
+            // 第一百七十二批：留一行「真的开始加载了」的判读证据。真机验收 L1「切回不重载」
+            // 靠数这行 —— 切走再回来若多出一行，就是页面被重新请求了（不是我们想看到的结果）。
+            RunLog.log("玄览 标签#${tab.id} 开始加载 $url")
         }
 
         override fun onPageFinished(url: String) {
@@ -415,6 +531,14 @@ object BrowserTabManager {
 
         override fun onSafeBrowsingHit(url: String, threatType: Int) {
             tab.state.onBlocked(app.getString(R.string.browser_safe_browsing_hit))
+        }
+
+        /**
+         * 渲染进程被系统回收（第一百七十二批 S2）—— 委托只做一次转发：
+         * 「哪一颗标签被回收了」这件事本对象最清楚（它按标签构造），善后归管理器。
+         */
+        override fun onRenderProcessGone() {
+            markRendererGone(app, tab.id)
         }
     }
 }

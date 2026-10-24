@@ -45,6 +45,26 @@ class BrowserTabState {
     var blockedMsg by mutableStateOf<String?>(null)
 
     /**
+     * 渲染进程被系统回收过、页面此刻是死的（第一百七十二批 S2）。
+     *
+     * 语义只有一条：**UI 该画「点一下重新加载」，而不是画一个白页**。
+     * 谁置真：[com.example.zhengdao.ui.browser.BrowserTabManager.markRendererGone]
+     * （来自 [android.webkit.WebViewClient.onRenderProcessGone]）。
+     * 谁置假：① 用户点了重新加载；② 本标签自己又开始加载（[onPageStarted]）——
+     * 后者是兜底，免得"别处触发了加载、卡片还挂着"。
+     *
+     * 刻意**不在置真的那一刻自动 reload**：那是偷偷联网（用户 2026-10-24 口径：
+     * 「不做一打开 APP 就悄悄联网跑玄览」「恢复快照，不假装活着」）。
+     */
+    var recycled by mutableStateOf(false)
+
+    /** 渲染进程被回收：停转圈 + 亮"已回收"卡片。不导航、不重载。 */
+    fun onRendererGone() {
+        loading = false
+        recycled = true
+    }
+
+    /**
      * 记下当前页面（onPageStarted / onPageFinished 调）。
      * 语义与旧 [BrowserHolder.rememberPage] 逐字一致（§B 顺序 32 验收钉的）：
      * - 空 URL 不覆盖上次记录（别把地址栏擦掉）；
@@ -58,6 +78,9 @@ class BrowserTabState {
     /** 页面开始加载。 */
     fun onPageStarted(url: String) {
         loading = true
+        // 兜底（第一百七十二批 S2）：只要有加载真的开始了，"已回收"卡片就该消失，
+        // 免得用户点了别处的"重试"、页面已经活了、卡片还挂在那儿。
+        recycled = false
         rememberPage(displayableUrl(url), true)
         blockedMsg = null
     }
