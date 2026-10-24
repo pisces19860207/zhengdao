@@ -1538,6 +1538,14 @@ internal class BaopuChatController(context: Context) {
     /** 顶栏「玄览正在干什么」那一行（2026-10-19）；`Settled` 时清空。 */
     var browserActivity by mutableStateOf<String?>(null)
 
+    /**
+     * 本轮有没有调过工具（169 §3「不通知每条普通回复」）。
+     *
+     * 普通问答不产生 [EngineEvent.ToolCallVisible]；只有真的跑了工具/子 Agent 才算长任务。
+     * `Settled` 后清零，排队中的下一轮从干净状态起算。
+     */
+    private var roundUsedTools = false
+
     /** `临时/` 还剩几个文件（收尾时由引擎事件告知）。 */
     var scratchLeft by mutableIntStateOf(0)
         private set
@@ -2433,14 +2441,36 @@ internal class BaopuChatController(context: Context) {
             // 顶栏玄览状态：只有浏览器工具在跑时才出现，本轮结束就撤（不留在屏上骗人）
             if (ev is EngineEvent.ScratchLeft) scratchLeft = ev.count
             if (ev is EngineEvent.ToolCallVisible) {
+                roundUsedTools = true
                 com.example.zhengdao.baopu.browserActivityLine(ev.tool, ev.summary)?.let {
                     browserActivity = it
+                }
+                // 第一百六十九批 §3：子 Agent 批结束也是一次「长任务完成」。
+                // 只报结果、不带 summary（summary 可能有正文）；前台/权限/合并窗口由
+                // BaopuCompletionRules 判，重复事件不会刷屏。
+                if (ev.tool == com.example.zhengdao.baopu.agent.multiagent.SubTaskTool.NAME) {
+                    sessionId?.let {
+                        com.example.zhengdao.baopu.BaopuCompletionNotifier.onSubAgentsFinished(
+                            appCtx, it, ev.ok,
+                        )
+                    }
                 }
             }
             val force = ev is EngineEvent.Settled
             if (force) browserActivity = null
             refresh(force)
             if (force) {
+                // 第一百六十九批 §3：整轮结束的完成通知（后台才发；自带权限/合并判据）。
+                // 普通问答没有工具调用 ⇒ 不算长任务，不打扰用户（派工单「不通知每条普通回复」）。
+                // 放在其他收尾动作之前：日记/提炼失败不许把这条也吞掉。
+                if (roundUsedTools) {
+                    sessionId?.let {
+                        com.example.zhengdao.baopu.BaopuCompletionNotifier.onRunSettled(
+                            appCtx, it, engine.state.value, engine.notice.value,
+                        )
+                    }
+                }
+                roundUsedTools = false
                 // 147：日记 upsert 放在 refresh 之后——stepRows 刚重读过，拿到的是本轮的最终行。
                 diaryOnSettle()
                 refineOnSettle()

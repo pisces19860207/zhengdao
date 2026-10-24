@@ -540,12 +540,12 @@
     <string name="perm_camera_label">相机</string>
     <string name="perm_camera_detail">拍照、扫一扫等需要相机权限；不授权不影响文字对话与写作。</string>
     <string name="perm_notify_label">通知</string>
-    <string name="perm_notify_detail">「装完清理」等静默提示走通知；未授权时系统会直接丢掉通知，但不影响任何功能。</string>
+    <string name="perm_notify_detail">「装完清理」等静默提示、以及抱朴后台跑完的完成提醒都走通知；未授权时系统会直接丢掉通知，会话本身照常更新，不影响任何功能。</string>
     <string name="perm_net_label">网络访问</string>
     <string name="perm_net_value">自动授予</string>
     <string name="perm_net_detail">INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道。</string>
     <string name="perm_hint_storage_denied">系统未放行——到「设置 → 应用 → 证道 → 权限」手动开启（部分系统会把弹窗静默掉）</string>
-    <string name="perm_hint_notify_denied">通知未放行——不影响使用，只是收不到「装完清理」这类静默提示</string>
+    <string name="perm_hint_notify_denied">通知未放行——不影响使用，只是抱朴后台跑完时不会提醒你，回到会话里仍能看到结果</string>
     <string name="perm_open_failed">打开失败：%1$s</string>
     <string name="perm_done">完成，进入证道</string>
     <string name="perm_later">稍后再说</string>

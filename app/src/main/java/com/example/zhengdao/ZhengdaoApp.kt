@@ -25,6 +25,8 @@ class ZhengdaoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         RunLog.init(this)
+        // 第一百六十九批 §3：完成通知只在后台发 ⇒ 这里装前台探针（只数 started，不做别的）。
+        AppForeground.install(this)
         initWebViewDataDirectory()
         logSignature()
         keepalive()

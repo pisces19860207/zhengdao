@@ -35,7 +35,8 @@ object CacheNotifier {
      * `FLAG_UPDATE_CURRENT` 会拿最后一次的 extras 覆盖前面的 —— 表现就是「点缓存通知
      * 回到主界面，没进终端」或反过来。请求码是这三条通知唯一的身份，不许再撞：
      * 本处 [REQ_CACHE]＝4101、`InstallNotifier.REQ_INSTALL`＝4102、
-     * `SessionService.REQ_KEEPALIVE`＝4103。改任何一个都要同步三条（门禁按源码钉）。
+     * `SessionService.REQ_KEEPALIVE`＝4103、`BaopuCompletionNotifier.REQ_SESSION`＝4106
+     * （第一百六十九批新增）。改任何一个都要同步登记（门禁按源码钉）。
      */
     internal const val REQ_CACHE = 4101
 

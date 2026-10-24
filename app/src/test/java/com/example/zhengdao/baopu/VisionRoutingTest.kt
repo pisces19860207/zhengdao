@@ -73,7 +73,7 @@ class VisionRoutingTest {
         // 夹具通道在能力表里查不到行 ⇒ 整行 UNKNOWN；但 vision=true 仍然算已验证
         val p = channel("chan-not-in-table", vision = true)
         val candidate = ModelRouter.candidateOf(p)
-        assertFalse("夹具通道没有成本依据（表里全 UNKNOWN）", candidate.costKnown)
+        assertFalse("夹具通道没有成本依据（表里全 UNKNOWN）", candidate.row.costKnown)
         assertEquals(listOf("chan-not-in-table"), VisionRouting.verifiedAmong(listOf(p)).map { it.id })
         // 反面对照：vision=false 时表里有没有行都不满足 ⇒ 表不是「能不能看图」的真相
         val q = ModelRouter.candidateOf(channel("chan-not-in-table-2", vision = false))
