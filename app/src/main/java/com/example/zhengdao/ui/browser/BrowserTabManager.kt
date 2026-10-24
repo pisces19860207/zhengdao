@@ -3,6 +3,7 @@
 
 package com.example.zhengdao.ui.browser
 
+import com.example.zhengdao.browser.BrowserSnapshotPolicy
 import android.content.Context
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -82,6 +83,223 @@ object BrowserTabManager {
      */
     private var appForeground = true
 
+    // ── 页签快照（第一百七十二批 L4） ──────────────────────────────────────
+    //
+    // 一条硬约束决定了这里的形状：**`Tab.webView`/`engine` 是非空的**（桥命令 BrowserCommands
+    // 直接解引用它们）。所以"恢复全部标签但只给活跃那颗建 WebView"不能靠"webView 可空"实现，
+    // 而是：活跃那颗材料化成真 Tab，其余先放在 [restoredRows] 里（标签条上的「上次」片），
+    // 用户点哪颗就材料化哪颗。**代价与收益写清楚**：桥命令永远拿得到非空 WebView（不改 177 的地盘），
+    // 内存只按一颗算（这是 L4 的核心收益）。
+
+    /** 上次留下、还没点开的标签（可观察：标签条直接渲染成片）。 */
+    private val restoredRows: SnapshotStateList<BrowserSnapshotPolicy.Row> = mutableStateListOf()
+
+    /** 待恢复滚动位置（tabId → (x,y) CSS px）：只有点了「打开」并加载完才用得上。 */
+    private val pendingScroll = HashMap<Int, Pair<Float, Float>>()
+
+    /** 每颗标签首次 onPageFinished 的时刻（用于 §5 的 +800ms 补 clamp）。 */
+    private val finishedAt = HashMap<Int, Long>()
+
+    /** 已经补过一次 clamp 的标签（最多补一次）。 */
+    private val secondClampDone = HashSet<Int>()
+
+    /** 上次渲染出来的恢复行（标签条用）。 */
+    fun restored(): List<BrowserSnapshotPolicy.Row> = restoredRows.toList()
+
+    /** 还有没有没点开的恢复行（界面据此决定是否提示）。 */
+    fun hasRestored(): Boolean = restoredRows.isNotEmpty()
+
+    /**
+     * 用库里的行恢复标签（冷启首次进玄览时调，已由调用方在 IO 线程读完）。
+     *
+     * 做三件事，顺序不能换：
+     * ① 顺序按 `id ASC`（[BrowserSnapshotPolicy.restoreOrder]）；
+     * ② **修 id 游标** `nextId = max(恢复 id, nextId-1) + 1`（否则新建标签撞 id，
+     *    表现为"点新标签切到旧页"或委托把事件写进别人的 state）；
+     * ③ **只材料化 `last_used_at` 最大的那颗**（用户上次停在哪，就给他看哪），
+     *    其余进 [restoredRows] 等用户点。
+     *
+     * 恢复出来的标签 `state.restored = true` ⇒ 画「上次的页面 · 点一下继续」卡片，**不 loadUrl**。
+     */
+    fun restoreFromSnapshot(context: Context, rows: List<BrowserSnapshotPolicy.Row>) {
+        if (rows.isEmpty() || tabs.isNotEmpty()) return
+        val ordered = BrowserSnapshotPolicy.restoreOrder(rows)
+        nextId = BrowserSnapshotPolicy.nextIdAfterRestore(ordered.map { it.id }, nextId)
+        val activeRow = BrowserSnapshotPolicy.activeRestoredId(ordered)
+        ordered.forEach { row ->
+            if (row.id == activeRow) {
+                val id = materializeRestored(context, row)
+                // 必须真的选中它：不 select 的话 activeId 仍是空，界面会画起始页而不是恢复卡片
+                selectTab(id)
+            } else {
+                restoredRows.add(row)
+            }
+        }
+        RunLog.log(
+            "玄览 从快照恢复 ${ordered.size} 个标签（活跃 #$activeRow 已建壳，其余 ${restoredRows.size} 个待点开）",
+        )
+    }
+
+    /**
+     * 用户点了标签条上的「上次」片：把它材料化成真标签并选中。
+     *
+     * @return 新标签 id；null = 已到上限（与 [newTab] 同一条判据）
+     */
+    fun openRestored(context: Context, rowId: Int): Int? {
+        val row = restoredRows.firstOrNull { it.id == rowId } ?: return null
+        if (!BrowserTabPolicy.canOpenMore(tabs.size)) return null
+        restoredRows.remove(row)
+        val id = materializeRestored(context, row)
+        selectTab(id)
+        return id
+    }
+
+    /**
+     * 用户点了恢复卡片上的「打开」：**这才是第一次联网**。
+     *
+     * 清掉 `restored`、开加载；滚动位置在 `onPageFinished` 之后由委托补回（见 [applyRestoredScroll]）。
+     */
+    fun loadRestoredTab(tabId: Int): Boolean {
+        val tab = tabs.firstOrNull { it.id == tabId } ?: return false
+        if (!tab.state.restored) return false
+        tab.state.restored = false
+        if (tab.state.url.isNotEmpty()) {
+            tab.engine.loadUrl(tab.state.url)
+            RunLog.log("玄览 标签#$tabId：用户点了打开（恢复快照，开始加载 ${tab.state.url}）")
+            return true
+        }
+        return false
+    }
+
+    /** 材料化一颗恢复行（建 WebView ＋ 填 state，**不加载**）。 */
+    private fun materializeRestored(context: Context, row: BrowserSnapshotPolicy.Row): Int {
+        val app = context.applicationContext
+        val id = row.id
+        val wv = WebView(app)
+        // MATCH_PARENT：与 newTab 同一味药（100vh=0 那个自锁，2026-10-18 判决）。
+        wv.layoutParams = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        val eng = WebViewEngine(wv)
+        val tab = Tab(id, wv, eng)
+        tab.state.url = row.url
+        tab.state.title = row.title
+        tab.state.everLoaded = false
+        tab.state.restored = true
+        eng.applySecurityConfig(EngineSecurityConfig())
+        eng.setNavigationDelegate(delegateFor(tab, app))
+        tabs.add(tab)
+        pendingScroll[id] = row.scrollX to row.scrollY
+        return id
+    }
+
+    /**
+     * 把库里的滚动定位回去（第一百七十二批 L4 §5）。
+     *
+     * 两道：`onPageFinished` 立刻滚一次；**+800ms 再滚一次**（SPA/懒加载会把内容高度改掉）。
+     * 三条护栏都在 JS 里：clamp、**用户已手动滚过就不补**（不抢人的手）、不可横滚或 x=0 不横滚。
+     */
+    private fun applyRestoredScroll(tab: Tab) {
+        val target = pendingScroll[tab.id] ?: return
+        val engine = tab.engine
+        fun script(withSecondFlag: Boolean): String = """
+            (function(){
+              var y=${target.second}, x=${target.first};
+              var de=document.documentElement;
+              var maxY=Math.max(0,de.scrollHeight-window.innerHeight);
+              var maxX=Math.max(0,de.scrollWidth-window.innerWidth);
+              var tx=(x>0&&maxX>0)?Math.min(x,maxX):0;
+              var wantY=Math.max(0,Math.min(y,maxY));
+              // 「恢复自己的滚动不算用户滚」：scrollTo 触发的 scroll 事件是异步的，
+              // 同步标志位清零后事件才到 ⇒ 把自己误记成用户滚（19:19 真机实证）。
+              // 改用 300ms 时间窗：窗口内的事件一律视为恢复动作。
+              window.__zdRestoreUntil=Date.now()+300;
+              window.__zdUserScrolled=0;
+              if(!window.__zdRestoreGuard){
+                window.__zdRestoreGuard=1;
+                window.addEventListener('scroll',function(){
+                  if(Date.now()>(window.__zdRestoreUntil||0)){ window.__zdUserScrolled=1; }
+                },{passive:true});
+              }
+              window.scrollTo(tx,wantY);
+              return ${if (withSecondFlag) 1 else 0};
+            })()
+        """.trimIndent()
+
+        runCatching { engine.evaluateJavascript(script(false)) {} }
+        val tabId = tab.id
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            val stillOpen = tabs.any { it.id == tabId }
+            if (!stillOpen) return@postDelayed
+            // 用户已经自己滚过了 ⇒ 不补（JS 侧判，避免两次跨进程往返）
+            runCatching {
+                engine.evaluateJavascript(
+                    "(function(){return (window.__zdUserScrolled===1)?0:1;})()",
+                ) { allow ->
+                    if (allow?.trim()?.trim('"') == "1") {
+                        runCatching { engine.evaluateJavascript(script(true)) {} }
+                        secondClampDone.add(tabId)
+                        pendingScroll.remove(tabId)
+                        RunLog.log("玄览 标签#$tabId：SPA 补 clamp 已执行（+800ms）")
+                    } else {
+                        pendingScroll.remove(tabId)
+                        RunLog.log("玄览 标签#$tabId：用户已手动滚动 ⇒ 跳过补 clamp")
+                    }
+                }
+            }
+        }, 800L)
+    }
+
+    /** 退后台前把全部标签落一次库（L4 最要紧的一次快照；由 [BrowserHolder.setAppForeground] 调）。 */
+    fun snapshotAll(context: Context) {
+        val now = System.currentTimeMillis()
+        tabs.forEach { tab ->
+            if (tab.state.url.isEmpty()) return@forEach
+            BrowserTabSnapshotStore.upsert(
+                context = context,
+                tabId = tab.id,
+                url = tab.state.url,
+                title = tab.state.title,
+                scrollX = 0f,
+                scrollY = pendingScroll[tab.id]?.second ?: lastScrollY[tab.id] ?: 0f,
+                now = now,
+                touch = tab.id == activeId,
+            )
+        }
+    }
+
+    /** 首次拿到 context 时记住（快照的 DB 写入要用；selectTab/closeTab 签名里没有 Context）。 */
+    private var appCtx: android.app.Application? = null
+
+    /** 最近一次从页面读到的滚动值（CSS px；滚动节流回调里写）。 */
+    private val lastScrollY = HashMap<Int, Float>()
+
+    /**
+     * 读一次当前页面的滚动位置并落库（滚动节流调用点；IO 在仓库侧）。
+     * 读不到（页面没绑定/已销毁）就什么都不做——快照是尽力而为。
+     */
+    fun captureScroll(context: Context, tabId: Int) {
+        val tab = tabs.firstOrNull { it.id == tabId } ?: return
+        runCatching {
+            tab.engine.evaluateJavascript(
+                "(function(){return JSON.stringify([window.scrollX,window.scrollY]);})()",
+            ) { raw ->
+                val nums = Regex("-?\\d+(\\.\\d+)?").findAll(raw.orEmpty()).map { it.value.toFloat() }.toList()
+                if (nums.size >= 2 && nums[1].isFinite()) {
+                    lastScrollY[tabId] = nums[1]
+                    BrowserTabSnapshotStore.updateScroll(
+                        context = context,
+                        tabId = tabId,
+                        scrollX = nums[0],
+                        scrollY = nums[1],
+                        now = System.currentTimeMillis(),
+                    )
+                }
+            }
+        }
+    }
+
     private var nextId = 1
 
     /** 全部标签（创建序）。返回快照，调用方不应改。 */
@@ -113,6 +331,7 @@ object BrowserTabManager {
      * 返回的引擎保证非空（首建失败除外——WebView 构造不会失败，省略该分支）。
      */
     fun obtain(context: Context): WebViewEngine {
+        appCtx = context.applicationContext as? android.app.Application
         activeEngine()?.let { return it }
         newTab(context)
         return activeEngine()!!
@@ -177,6 +396,11 @@ object BrowserTabManager {
     fun closeTab(id: Int) {
         val tab = tabs.firstOrNull { it.id == id } ?: return
         val wasActive = activeId == id
+        appCtx?.let { BrowserTabSnapshotStore.remove(it, id) }
+        pendingScroll.remove(id)
+        lastScrollY.remove(id)
+        finishedAt.remove(id)
+        secondClampDone.remove(id)
         val nextId2 = BrowserTabPolicy.nextActiveAfterClose(tabs.map { it.id }, id, activeId)
         tabs.remove(tab)
         if (wasActive) {
@@ -287,6 +511,8 @@ object BrowserTabManager {
         val tab = tabs.firstOrNull { it.id == id } ?: return
         activeId = id
         resumeAndPromote(tab)
+        // L4：切到谁就刷新谁的 LRU 时间戳（恢复时「上次用哪个」靠它）
+        appCtx?.let { BrowserTabSnapshotStore.touch(it, tab.id, System.currentTimeMillis()) }
     }
 
     /**
@@ -519,10 +745,30 @@ object BrowserTabManager {
             // 第一百七十二批：留一行「真的开始加载了」的判读证据。真机验收 L1「切回不重载」
             // 靠数这行 —— 切走再回来若多出一行，就是页面被重新请求了（不是我们想看到的结果）。
             RunLog.log("玄览 标签#${tab.id} 开始加载 $url")
+            // L4 快照：开始加载就记一条（url 由 store 侧过脱敏；滚动沿用最近一次读到的值）
+            appCtx?.let { c ->
+                BrowserTabSnapshotStore.upsert(
+                    context = c, tabId = tab.id, url = url, title = tab.state.title,
+                    scrollX = 0f, scrollY = lastScrollY[tab.id] ?: 0f,
+                    now = System.currentTimeMillis(), touch = true,
+                )
+            }
         }
 
         override fun onPageFinished(url: String) {
             tab.state.onPageFinished(url)
+            finishedAt[tab.id] = System.currentTimeMillis()
+            appCtx?.let { c ->
+                BrowserTabSnapshotStore.upsert(
+                    context = c, tabId = tab.id, url = url, title = tab.state.title,
+                    scrollX = 0f, scrollY = lastScrollY[tab.id] ?: 0f,
+                    now = System.currentTimeMillis(), touch = false,
+                )
+            }
+            // L4：恢复出来又被点开的这一颗 ⇒ 把滚动送回原位（含 +800ms 补 clamp）
+            if (pendingScroll.containsKey(tab.id)) applyRestoredScroll(tab)
+            // L4：页面刚加载完，先采一次滚动值（供退后台快照用）
+            appCtx?.let { captureScroll(it, tab.id) }
         }
 
         override fun onReceivedTitle(title: String) {

@@ -27,7 +27,7 @@ class BaopuDbPlanTest {
         // v8 是第二十批加的（session 工作区列 workspace，有正式迁移）——plan 部件自己依旧零 DDL。
         assertEquals(
             "plan 批次不加表不加列；v9 归 artifact、v11 归 skill_event、v12 归第八十五批效果信号、v13 归第八十七批 run_trace、v14 归第八十九批 memory 质量列、v15 归第一百一十七批 run_queue、v16 归第一百二十七批 sub_task、v17 归第一百四十七批 diary_index 日记索引、v18 归 157 补充 workspace_grant/workspace_audit——plan 部件自己依旧零 DDL",
-            18,
+            19,
             BaopuDb.VERSION,
         )
     }

@@ -84,7 +84,7 @@ class SkillUseRecordTest {
 
     @Test
     fun `U1_库版本升到11_迁移两条入口同一份`() {
-        assertEquals("v11 = 第五十七批 skill_event（v12 … v18 是后续批次的账，与本批的 use 行无关；v17 = 第一百四十七批 diary_index 日记索引，v18 = 157 补充 workspace_grant/workspace_audit）", 18, BaopuDb.VERSION)
+        assertEquals("v11 = 第五十七批 skill_event（v12 … v18 是后续批次的账，与本批的 use 行无关；v17 = 第一百四十七批 diary_index 日记索引，v18 = 157 补充 workspace_grant/workspace_audit）", 19, BaopuDb.VERSION)
         val src = repoFile("app/src/main/java/com/example/zhengdao/baopu/BaopuDb.kt")
         val body = src.readText(Charsets.UTF_8).replace("\r\n", "\n")
             .substringAfter("class BaopuDb")

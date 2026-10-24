@@ -51,6 +51,9 @@ fun BrowserTabStrip(
     onClose: (Int) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 上次留下、还没点开的标签（第一百七十二批 L4）。空表 = 没有可恢复的。 */
+    restored: List<com.example.zhengdao.browser.BrowserSnapshotPolicy.Row> = emptyList(),
+    onOpenRestored: (Int) -> Unit = {},
 ) {
     val palette = xuanLanPalette()
     LazyRow(
@@ -78,6 +81,47 @@ fun BrowserTabStrip(
                 PlusGlyph(tint = palette.ink, contentDescription = stringResource(R.string.browser_new_tab))
             }
         }
+        // 第一百七十二批 L4：上次没看完的页面 —— 只有一颗建了 WebView（活跃那颗，已在上面的 tabs 里），
+        // 其余都是这里的"片"，点一下才真正建 WebView + 加载（不自动联网）。
+        items(restored, key = { "restored-${it.id}" }) { row ->
+            RestoredTabChip(
+                title = row.title.ifEmpty { row.url },
+                palette = palette,
+                onOpen = { onOpenRestored(row.id) },
+            )
+        }
+    }
+}
+
+/**
+ * 「上次的页面」片（L4）——与 [BrowserTabChip] 同一副骨架，但**没有关闭键**：
+ * 它还没被打开，关掉等于删快照，不该由一次误触决定。视觉上靠虚线边框区分。
+ */
+@Composable
+private fun RestoredTabChip(title: String, palette: XuanLanPalette, onOpen: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(shape)
+            .background(palette.stripBg)
+            .border(
+                width = 1.dp,
+                color = palette.stripStroke,
+                shape = shape,
+            )
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.browser_restored_chip_prefix) + title.ifEmpty { "" },
+            color = palette.ink,
+            style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 150.dp),
+        )
     }
 }
 
