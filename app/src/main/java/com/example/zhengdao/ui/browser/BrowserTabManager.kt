@@ -128,7 +128,9 @@ object BrowserTabManager {
         val activeRow = BrowserSnapshotPolicy.activeRestoredId(ordered)
         ordered.forEach { row ->
             if (row.id == activeRow) {
-                materializeRestored(context, row)
+                val id = materializeRestored(context, row)
+                // 必须真的选中它：不 select 的话 activeId 仍是空，界面会画起始页而不是恢复卡片
+                selectTab(id)
             } else {
                 restoredRows.add(row)
             }
@@ -266,7 +268,7 @@ object BrowserTabManager {
     }
 
     /** 首次拿到 context 时记住（快照的 DB 写入要用；selectTab/closeTab 签名里没有 Context）。 */
-    private var appCtx: android.content.Context? = null
+    private var appCtx: android.app.Application? = null
 
     /** 最近一次从页面读到的滚动值（CSS px；滚动节流回调里写）。 */
     private val lastScrollY = HashMap<Int, Float>()
@@ -327,7 +329,7 @@ object BrowserTabManager {
      * 返回的引擎保证非空（首建失败除外——WebView 构造不会失败，省略该分支）。
      */
     fun obtain(context: Context): WebViewEngine {
-        appCtx = context.applicationContext
+        appCtx = context.applicationContext as? android.app.Application
         activeEngine()?.let { return it }
         newTab(context)
         return activeEngine()!!
@@ -763,6 +765,8 @@ object BrowserTabManager {
             }
             // L4：恢复出来又被点开的这一颗 ⇒ 把滚动送回原位（含 +800ms 补 clamp）
             if (pendingScroll.containsKey(tab.id)) applyRestoredScroll(tab)
+            // L4：页面刚加载完，先采一次滚动值（供退后台快照用）
+            appCtx?.let { captureScroll(it, tab.id) }
         }
 
         override fun onReceivedTitle(title: String) {

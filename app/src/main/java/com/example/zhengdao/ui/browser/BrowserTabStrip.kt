@@ -50,10 +50,10 @@ fun BrowserTabStrip(
     onSelect: (Int) -> Unit,
     onClose: (Int) -> Unit,
     onAdd: () -> Unit,
+    modifier: Modifier = Modifier,
     /** 上次留下、还没点开的标签（第一百七十二批 L4）。空表 = 没有可恢复的。 */
     restored: List<com.example.zhengdao.browser.BrowserSnapshotPolicy.Row> = emptyList(),
     onOpenRestored: (Int) -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val palette = xuanLanPalette()
     LazyRow(
