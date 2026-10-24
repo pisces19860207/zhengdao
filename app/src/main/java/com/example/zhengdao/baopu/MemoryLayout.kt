@@ -3,6 +3,7 @@
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.baopu.library.FaceIndex
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
@@ -115,6 +116,8 @@ internal object MemoryLayout {
         val movedBackup: Int = 0,
         val movedRawPrivate: Int = 0,
         val movedRevisedArchive: Int = 0,
+        /** 175 存量四步本次复制进 `产物/` 的件数（**原件一个都没删**，删归用户）。 */
+        val copiedLegacyProducts: Int = 0,
         val movedProjectMemory: Boolean = false,
         /** 冲突/失败跳过的文件（目标已存在 ⇒ 跳过，绝不覆盖）。 */
         val skipped: List<String> = emptyList(),
@@ -123,7 +126,7 @@ internal object MemoryLayout {
     ) {
         val totalMoved: Int
             get() = movedProducts + movedDeliver + movedBackup + movedRawPrivate +
-                movedRevisedArchive + (if (movedProjectMemory) 1 else 0)
+                movedRevisedArchive + copiedLegacyProducts + (if (movedProjectMemory) 1 else 0)
 
         val isEmpty: Boolean get() = totalMoved == 0 && skipped.isEmpty() && removedDirs.isEmpty()
 
@@ -132,14 +135,37 @@ internal object MemoryLayout {
             "记忆目录迁移：搬 $totalMoved 项" +
                 (if (movedProjectMemory) "（含项目记忆）" else "") +
                 (if (skipped.isEmpty()) "" else "，跳过 ${skipped.size} 项") +
-                (if (removedDirs.isEmpty()) "" else "，清掉旧目录 ${removedDirs.joinToString("、")}")
+                (if (removedDirs.isEmpty()) "" else "，清掉旧目录 ${removedDirs.joinToString("、")}") +
+                (if (copiedLegacyProducts == 0) "" else "，存量长文复制 $copiedLegacyProducts 件（原件留着待手动删）")
     }
+
+    // ── 175 存量（`资料库/产物/` 多写的那一层）────────────────────────────
+
+    /**
+     * 旧 `资料库/产物/` —— 第一百七十九批多写的一层（175 S1 起新落点是工作区根，
+     * 不再建它）。这里只管**存量对账**：[copyLegacyProducts] 把它复制进 `产物/`。
+     */
+    fun legacyProductsDir(workspace: File): File =
+        File(File(workspace, BaopuKernel.Data.LEGACY_LIBRARY_DIR), BaopuKernel.Data.DIR_PRODUCTS)
+
+    /**
+     * 存量的改前备份落点：`产物/_迁移存档/旧资料库产物/`。
+     * **固定名、不加日期**——第二遍不许建出第二个存档目录，否则 `二遍全零` 的幂等判据会假红。
+     */
+    fun legacyProductArchiveDir(workspace: File): File =
+        File(File(productsDir(workspace), BaopuKernel.Data.DIR_MIGRATED_ARCHIVE), "旧资料库产物")
+
+    /** 待删清单（用户手动删旧层的唯一依据）；本对象不删任何存量。 */
+    fun legacyPendingDeleteList(workspace: File): File =
+        File(productsDir(workspace), "从旧资料库搬来_待删.txt")
 
     /**
      * 旧布局 → 新四目录（**幂等、不丢文件**）：
      * 1. `资料库/整理/` 整棵 → `产物/`；`资料库/投递/` 整棵 → `投递/`；
      *    `资料库/原始/` 整棵 → App 私有原件区；`资料库/改版/` 整棵 → `产物/_迁移存档/改版/`；
      *    `.baopu-bak/` 整棵 → `备份/`；根 `项目记忆.md` → `记忆/项目记忆.md`；
+     *    **175 新增** `资料库/产物/`（179 多写的一层）→ `产物/`：**只复制不删**，
+     *    走 §7 四步（备份→复制→校验→待删清单），见 [copyLegacyProducts]；
      * 2. **冲突不覆盖**：目标同名已存在 ⇒ 跳过并记账（保新的也不丢旧的）；
      * 3. **只删空目录**：搬空后 `资料库/`、`.baopu-bak/`（含其下搬空的子目录）才删；非空留着下遍接着搬；
      * 4. 跨卷 rename 失败 ⇒ 复制后删源；复制也失败 ⇒ 留在原处并记账（绝不丢）；
@@ -157,6 +183,7 @@ internal object MemoryLayout {
         var movedBackup = 0
         var movedRawPrivate = 0
         var movedRevisedArchive = 0
+        var copiedLegacyProducts = 0
         var movedProjectMemory = false
 
         // ① 整理 → 产物（抱朴唯一对外输出口）
@@ -199,7 +226,12 @@ internal object MemoryLayout {
             }
         }
 
-        // ⑦ 只删空目录（非空一律留——下遍接着搬）
+        // ⑦ 资料库/产物（179 多写的一层）→ 产物/：**四步、只复制、不删源**
+        copiedLegacyProducts = copyLegacyProducts(workspace, skipped)
+
+        // ⑧ 只删空目录（非空一律留——下遍接着搬）
+        // 注意：⑦ 不删原件 ⇒ 有存量时 `资料库/` 必然留着，直到用户按待删清单删完，
+        // 下一遍 [removeIfEmpty] 才收得掉。这是「不许直接删」的代价，不是漏搬。
         val removedDirs = mutableListOf<String>()
         if (removeIfEmpty(legacyLibrary)) removedDirs += BaopuKernel.Data.LEGACY_LIBRARY_DIR
         if (removeIfEmpty(legacyBackup)) removedDirs += BaopuKernel.Data.LEGACY_BACKUP_DIR
@@ -211,6 +243,7 @@ internal object MemoryLayout {
             movedBackup = movedBackup,
             movedRawPrivate = movedRawPrivate,
             movedRevisedArchive = movedRevisedArchive,
+            copiedLegacyProducts = copiedLegacyProducts,
             movedProjectMemory = movedProjectMemory,
             skipped = skipped,
             removedDirs = removedDirs,
@@ -255,6 +288,134 @@ internal object MemoryLayout {
         if (left != null && left.isEmpty()) runCatching { src.delete() }
         return moved
     }
+
+    /**
+     * 175 §7 四步搬存量：旧层 `资料库/产物` 里的文件 → `产物`（相对路径原样保留）。
+     *
+     * 前置：**同名不覆盖**——`产物/` 已有 ⇒ 备份、清单、正文一件都不写，只记账；
+     * ① **备份**进 [legacyProductArchiveDir]（备份没落地就不许动下一步）；
+     * ② **复制**进 `产物/`（overwrite=false，撞名即失败，不许覆盖）；
+     * ③ **校验**：原件／副本／备份三处字节数＋sha256 必须一致，不符就撤回本次副本
+     *    （撤的是自己刚写的那份，原件与备份一个字节不动）；
+     * ④ **待删清单**登记（append-only），删与不删归用户。
+     *
+     * 已登记的相对路径**静默跳过**，所以第二遍 [MigrationReport.isEmpty] 成立。
+     * 清单行：`- 相对路径 | 字节 | sha256=摘要`；解析只取第一段——解析歪了的最坏结果是
+     * 再判一次「目标已存在」⇒ 记账跳过，不会覆盖任何文件。
+     * @return 本次四步走完的件数
+     */
+    private fun copyLegacyProducts(workspace: File, skipped: MutableList<String>): Int {
+        val srcRoot = legacyProductsDir(workspace)
+        if (!srcRoot.isDirectory) return 0
+        val listed = listedLegacyPaths(legacyPendingDeleteList(workspace))
+        var copied = 0
+        for ((rel, src) in flattenTree(srcRoot).sortedBy { it.first }) {
+            if (rel.startsWith(".") || rel.startsWith(BaopuKernel.Data.DIR_MIGRATED_ARCHIVE + "/")) continue
+            if (rel in listed) continue
+            if (copyOneLegacyProduct(rel, src, workspace, skipped)) copied++
+        }
+        return copied
+    }
+
+    /** 单件走一遍四步；`true`＝已登记进待删清单。任何一步失败都只记账、只碰自己写的文件。 */
+    private fun copyOneLegacyProduct(
+        rel: String,
+        src: File,
+        workspace: File,
+        skipped: MutableList<String>,
+    ): Boolean {
+        val dst = File(productsDir(workspace), rel)
+        val bak = File(legacyProductArchiveDir(workspace), rel)
+        val sha = runCatching { FaceIndex.sha256(src) }.getOrNull()
+        if (sha == null) {
+            skipped += "$rel 读不出摘要，留在原处（没搬）"
+            return false
+        }
+        // 前置：同名不覆盖 ⇒ 撞名的存量一件都不写
+        if (dst.exists()) {
+            skipped += "$rel → 产物/ 同名已存在，跳过（不覆盖）；原件留着"
+            return false
+        }
+        // ① 备份
+        if (bak.isFile) {
+            if (!bytesMatch(bak, sha, src.length())) {
+                skipped += "$rel 备份里同名不同内容，跳过（不覆盖备份，也没搬）"
+                return false
+            }
+        } else {
+            val backed = runCatching {
+                bak.parentFile?.mkdirs()
+                src.copyTo(bak, overwrite = false).isFile
+            }.getOrDefault(false)
+            if (!backed) {
+                skipped += "$rel 备份失败，整件没动（原件与 产物/ 均未改）"
+                return false
+            }
+        }
+        // ② 复制
+        val copied = runCatching {
+            dst.parentFile?.mkdirs()
+            src.copyTo(dst, overwrite = false).isFile
+        }.getOrDefault(false)
+        if (!copied) {
+            skipped += "$rel 复制失败，留在原处"
+            return false
+        }
+        // ③ 校验（三处一致才算数）
+        if (!bytesMatch(dst, sha, src.length()) || !bytesMatch(bak, sha, src.length())) {
+            runCatching { dst.delete() } // 只撤自己刚写的副本；原件与备份不动
+            skipped += "$rel 校验不符（字节或摘要对不上）⇒ 本次副本已撤回，原件未动"
+            return false
+        }
+        // ④ 待删清单
+        val listed = runCatching {
+            val list = legacyPendingDeleteList(workspace)
+            if (!list.isFile) {
+                list.parentFile?.mkdirs()
+                list.writeText(pendingDeleteHeader(), Charsets.UTF_8)
+            }
+            list.appendText("- $rel | ${src.length()} | sha256=$sha\n", Charsets.UTF_8)
+            list.isFile
+        }.getOrDefault(false)
+        if (!listed) {
+            skipped += "$rel 已复制并校验通过，但待删清单没写进去（下遍会重来这一件）"
+            return false
+        }
+        return true
+    }
+
+    /** 待删清单的头（只在**建文件**时写一次；之后只追加，不改旧行）。 */
+    private fun pendingDeleteHeader(): String =
+        "# 从旧 资料库/产物 搬来的存量 · 原件留着，删不删归用户\n\n" +
+        "每行 `- 相对路径 | 字节 | sha256=摘要`；四步（备份→复制→校验→记清单）走完才登记。\n" +
+        "备份在 产物/_迁移存档/旧资料库产物/，程序不删任何东西。\n\n"
+
+    /** 清单里已登记的相对路径。 */
+    private fun listedLegacyPaths(list: File): Set<String> {
+        if (!list.isFile) return emptySet()
+        return runCatching {
+            list.readText().lineSequence()
+                .filter { it.startsWith("- ") }
+                .map { it.removePrefix("- ").substringBefore(" | ") }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    /** 目录树展平成（相对路径, 文件）；相对路径一律 `/` 分隔，跨平台可比。 */
+    private fun flattenTree(dir: File, prefix: String = ""): List<Pair<String, File>> {
+        val out = mutableListOf<Pair<String, File>>()
+        for (c in dir.listFiles() ?: return out) {
+            val rel = if (prefix.isEmpty()) c.name else "$prefix/${c.name}"
+            if (c.isDirectory) out += flattenTree(c, rel) else if (c.isFile) out += rel to c
+        }
+        return out
+    }
+
+    /** 校验判据：字节数＋sha256 双对；读不出来算不等。 */
+    private fun bytesMatch(file: File, sha: String, bytes: Long): Boolean =
+        file.isFile && file.length() == bytes &&
+            runCatching { FaceIndex.sha256(file) == sha }.getOrDefault(false)
 
     /** 空了才删（返回是否删掉）；非空/不存在 ⇒ false。 */
     private fun removeIfEmpty(dir: File): Boolean {

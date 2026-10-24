@@ -9,14 +9,20 @@ import java.util.Calendar
 /**
  * 第一百七十九批 · 长文产物的**落库出口**（20:4x 拍板版）。
  *
- * 落点（派工单 §0.2/§0.3）：
- * - **知识库根**默认＝`<工作区>/资料库`；产物平铺在 `<根>/产物/`（**不加 `文本/` 第三层**）；
- * - **可选外置根**（Obsidian 等）：`<资料库>/外置根.txt` 一行绝对路径 ⇒ VaultRoot 换指向，
+ * 落点（179 §0.2/§0.3 ＋ **175 S1 收口**）：
+ * - **知识库根**默认＝**工作区根本身**（`BaopuRuntime.workspaceRoot`）；产物平铺在
+ *   `<工作区>/产物/`（**不加 `文本/` 第三层**，也**不再套 `资料库/`**）。
+ *   ⚠️ 口径修正，别改回去：179 上一版在这里多写了 `资料库/` 一层，而 157 已把 `资料库/`
+ *   定为**旧布局**（`BaopuKernel.kt:81` 注释「新代码不许引用」）、`MemoryLayout.migrate`
+ *   每进一次抱朴就把它**搬空删掉一次**。两边各自测试都绿，没有组合用例 ⇒ 175 设计实测到
+ *   「存一篇长文 ⇒ `资料库/` 被 mkdirs 重建 ⇒ 非空 ⇒ 永远删不掉」，本行就是那条收口。
+ * - **可选外置根**（Obsidian 等）：`<工作区>/产物/外置根.txt` 一行绝对路径 ⇒ VaultRoot 换指向，
  *   同一套代码；外置根下已有 `已发台账_勿删.md` ⇒ **复用它，绝不新建第二份**；
  * - 产物命名：`YYYYMMDD_<赛道>_<序号>_<标题slug>.<ext>`，序号＝同赛道当日文件数+1，重名加 `_2`，**不覆盖**；
  * - **台账 append-only ＋ 多写者协议**：写前重读最新 → 临时文件＋`rename` 原子替换＋`.bak` →
  *   写后校验老内容逐字未变、只多末尾几行 → 冲突重读重试一次，再冲突就停手报一句；
- * - **红线**：`资料库/原始/` 一个字节不碰（本类没有任何指向原始/ 的路径；slug 已剔除路径分隔符，
+ * - **红线**：原件区一个字节不碰（现为 App 私有 `原始/`，旧形态 `资料库/原始/` 同样不碰；本类没有
+ *   任何指向原始/ 的路径；slug 已剔除路径分隔符，
  *   文件名不可能越出 `产物/`）；**删除永远用户手动**——本类没有 delete。
  * 失败给可读原因，不静默（`SaveOut.message`）。
  */
@@ -27,15 +33,28 @@ internal object BaopuLongformStore {
 
     data class SaveOut(val ok: Boolean, val message: String, val path: String?)
 
-    /** 知识库根：默认 `<工作区>/资料库`；`<根>/外置根.txt` 有绝对路径 ⇒ 换 VaultRoot（同一套代码）。 */
-    fun vaultRoot(context: Context): File {
-        val default = File(BaopuRuntime.workspaceRoot(context.applicationContext), "资料库")
+    /** 知识库根（生产入口）：默认＝**工作区根**；判据本体在 [vaultRootUnder]（纯函数，JVM 直测）。 */
+    fun vaultRoot(context: Context): File =
+        vaultRootUnder(BaopuRuntime.workspaceRoot(context.applicationContext))
+
+    /**
+     * 落点判据（**纯函数**：不碰 Context、不建线程 ⇒ 175 S1 的组合门禁能在 JVM 里跑）：
+     * - 默认＝工作区根**本身**（157 四目录里的 `产物/` 就是它的直接子目录，中间不夹 `资料库/`）；
+     * - `<工作区>/产物/外置根.txt` 里有一行绝对路径 ⇒ 换指外置根（Obsidian 等），同一套代码。
+     *
+     * 标记文件放 `产物/` 而不是工作区根：根里不许再多一个裸文件（175 设计 §12.1 实测根目录
+     * 已经躺着 `人设-本项目.md` 和它的 `.bak`，别再往里添）。
+     */
+    internal fun vaultRootUnder(workspace: File): File {
+        val marker = File(productDirOf(workspace), BaopuLongformPolicy.ROOT_MARKER)
         return runCatching {
-            val marker = File(default, BaopuLongformPolicy.ROOT_MARKER)
             val line = if (marker.isFile) marker.readText().trim() else ""
-            if (line.isNotEmpty()) File(line) else default
-        }.getOrDefault(default)
+            if (line.isNotEmpty()) File(line) else workspace
+        }.getOrDefault(workspace)
     }
+
+    /** 产物目录（**唯一出口**：`<根>/产物/`，平铺、不加第三层）。 */
+    internal fun productDirOf(root: File): File = File(root, BaopuLongformPolicy.PRODUCT_DIR)
 
     /**
      * 保存正文（md/txt）并**追加台账一段**。
@@ -54,7 +73,7 @@ internal object BaopuLongformStore {
         val d = now.get(Calendar.DAY_OF_MONTH)
         val h = now.get(Calendar.HOUR_OF_DAY); val min = now.get(Calendar.MINUTE)
 
-        val dir = File(vaultRoot(context), BaopuLongformPolicy.PRODUCT_DIR)
+        val dir = productDirOf(vaultRoot(context))
         val dirMsg = runCatching { if (dir.isDirectory || dir.mkdirs()) null else "建不了目录 ${dir.absolutePath}" }
             .getOrElse { "建目录失败：${it.message}" }
         if (dirMsg != null) return SaveOut(false, "落盘失败：$dirMsg", null)
