@@ -95,8 +95,15 @@ class KernelGuardTest {
 
     @Test
     fun `K5_值没变_纯重构`() {
-        // 2026-10-19 用户真机口径「好像 16 步不够啊」⇒ 48（仍是硬刹车）
-        assertEquals("120 步刹车", 120, BaopuKernel.Budget.MAX_STEPS)
+        // 2026-10-19 用户真机口径「好像 16 步不够啊」⇒ 48（仍是硬刹车）；
+        // 2026-10-24 第一百八十九批「先装刹车再抬上限」⇒ 300＝3 段×100（同批落
+        // REPEAT_CALL_LIMIT/NO_PROGRESS_STEPS 两道新刹车，见下）——这是**有留痕的改值**，
+        // 不是漂移：BaopuKernel.Budget 的 KDoc 与 189 派工单都记了同一笔账。
+        assertEquals("300 步刹车（3 段×100）", 300, BaopuKernel.Budget.MAX_STEPS)
+        assertEquals("分 3 段", 3, BaopuKernel.Budget.STEP_SEGMENTS)
+        assertEquals("每段 100 步", 100, BaopuKernel.Budget.STEPS_PER_SEGMENT)
+        assertEquals("同工具同参 3 次熔断", 3, BaopuKernel.Budget.REPEAT_CALL_LIMIT)
+        assertEquals("连续 12 步无新结果熔断", 12, BaopuKernel.Budget.NO_PROGRESS_STEPS)
         assertEquals("3 次工具失败", 3, BaopuKernel.Budget.MAX_TOOL_FAILURES)
         assertEquals("自修 1 次", 1, BaopuKernel.Budget.MAX_VERIFY_REPAIRS)
         assertEquals("熔断 3 次", 3, BaopuKernel.Budget.CHANNEL_BREAK_THRESHOLD)

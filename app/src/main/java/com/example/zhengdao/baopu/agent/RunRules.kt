@@ -345,4 +345,133 @@ internal object RunRules {
      * 留给下一轮：条数触发线（[COMPRESS_OLD_MESSAGE_MIN]）仍满足，会接着压。
      */
     const val COMPRESS_MAX_MESSAGES_PER_RUN = BaopuKernel.Budget.COMPRESS_MAX_MESSAGES_PER_RUN
+    // ── 步数分段 ＋ 打转/无进展熔断（第一百八十九批 · 2026-10-24） ──────────────
+    //
+    // 派工单「先装刹车，再抬上限」：总量抬到 300 的同一次变更里，主循环必须同时拿到
+    // 子 Agent 已真机验证的两道熔断（§1.1 重复调用、§1.3 无进展）与分段记账（§1.2）。
+    // 判据全在本文件（JVM 直测）；引擎只接线（RunEngine）。
+
+    /** 同工具同参重复调用熔断阈值（§1.1；真源在 [BaopuKernel.Budget.REPEAT_CALL_LIMIT]）。 */
+    const val REPEAT_CALL_LIMIT = BaopuKernel.Budget.REPEAT_CALL_LIMIT
+
+    /** 连续无新工具结果步数熔断阈值（§1.3；真源在 [BaopuKernel.Budget.NO_PROGRESS_STEPS]）。 */
+    const val NO_PROGRESS_STEPS = BaopuKernel.Budget.NO_PROGRESS_STEPS
+
+    /** 分段数（§1.2；真源在 [BaopuKernel.Budget.STEP_SEGMENTS]）。 */
+    const val STEP_SEGMENTS = BaopuKernel.Budget.STEP_SEGMENTS
+
+    /** 每段步数（§1.2；真源在 [BaopuKernel.Budget.STEPS_PER_SEGMENT]）。 */
+    const val STEPS_PER_SEGMENT = BaopuKernel.Budget.STEPS_PER_SEGMENT
+
+    /** 重复熔断文案里参数摘要的上限（§1.1「参数摘要 ≤200 字」）。 */
+    const val REPEAT_ARGS_BRIEF_MAX = 200
+
+    /**
+     * 第几段（§1.2 纯判据）：0 步算第 1 段（run 从段起点开跑）；
+     * 100 步进第 2 段；到 [MAX_STEPS] 整（300）不再有下一段——那是步数刹车的地盘。
+     */
+    fun segmentOf(step: Int): Int =
+        if (step >= MAX_STEPS) STEP_SEGMENTS else step / STEPS_PER_SEGMENT + 1
+
+    /**
+     * 重复调用判据的 key（§1.1）：`工具名|规范化参数`。
+     *
+     * 规范化 = 递归键排序＋去空白（[canonicalArgs]）——「同一参数不同键序算同一次」；
+     * 参数差一个字符 ⇒ JSON 解析出不同的值 ⇒ key 必不同（判据原文）。
+     */
+    fun repeatCallKey(tool: String, args: JSONObject): String = tool + "|" + canonicalArgs(args)
+
+    /**
+     * 参数规范化（§1.1）：递归键排序、无空白；字符串用 org.json 的转义口径。
+     * 解析失败的参数在这里**不存在**——ToolCall.arguments 已是解析后的 JSONObject
+     * （坏参数走 BadArgs 分支，根本到不了重复计数）。
+     */
+    fun canonicalArgs(args: JSONObject): String = canonicalValue(args)
+
+    private fun canonicalValue(v: Any?): String = when (v) {
+        is JSONObject -> v.keys().asSequence().sorted()
+            .joinToString(",", "{", "}") { k -> JSONObject.quote(k) + ":" + canonicalValue(v.opt(k)) }
+        is org.json.JSONArray ->
+            (0 until v.length()).joinToString(",", "[", "]") { i -> canonicalValue(v.opt(i)) }
+        is String -> JSONObject.quote(v)
+        is Number ->
+            // org.json 对同一数值可能给出 Integer/Double/BigDecimal（1 与 1.0 是同一个值）
+            // ⇒ 统一整型口径；小数与超大数原样（双精整数化只在安全范围内做）。
+            if (!v.toDouble().isInfinite() &&
+                v.toDouble() == Math.floor(v.toDouble()) &&
+                Math.abs(v.toDouble()) < 9.007199254740992E15
+            ) {
+                v.toLong().toString()
+            } else {
+                v.toString()
+            }
+        else -> v.toString()
+    }
+
+    /** 参数摘要（≤ [REPEAT_ARGS_BRIEF_MAX] 字；超了截断并标注，进熔断文案）。 */
+    fun argsBrief(args: JSONObject, max: Int = REPEAT_ARGS_BRIEF_MAX): String {
+        val raw = args.toString()
+        return if (raw.length <= max) raw else raw.take(max) + "…（已截断）"
+    }
+
+    /**
+     * 重复熔断的问人文案（§1.1：必须带「调了几次/工具名/参数摘要/换路建议」，
+     * 不是干巴巴一句「重复了」）。
+     */
+    fun repeatCallNotice(times: Int, tool: String, argsBrief: String): String =
+        "同一个工具用同样的参数已调 $times 次（$tool，参数摘要：$argsBrief）——" +
+            "同样的调用不会有新结果，先停下：换条路径、换个工具，或把任务拆小后重试。"
+
+    /**
+     * 段复盘日志行（§1.2）：一行结构化日志，段号/已用步数/已调工具数/token/当前目标
+     * 全在读数里。落到引擎的 run 日志（`log`），**不是** UI 步行——段边界只是记账点。
+     */
+    fun segmentCheckpointLine(
+        segment: Int,
+        stepsUsed: Int,
+        toolCalls: Int,
+        tokens: Long,
+        goal: String,
+    ): String =
+        "段复盘：第 $segment/$STEP_SEGMENTS 段起点，已用 $stepsUsed/$MAX_STEPS 步，" +
+            "已调工具 $toolCalls 次，累计 token $tokens，当前目标：${goal.take(80)}"
+
+    /**
+     * 段边界提示文案（§1.2「可选卡」的引擎侧形态）。
+     *
+     * 为什么不是带按钮的卡：段边界**不许**做阻塞等待（§1.4.3），而带「继续/停下」
+     * 两个按钮的卡要等人点（那是 171 范围授权＋176 模式入口的 UI 面）；引擎侧按
+     * 「不点也继续跑」的语义出**非阻塞**通知——想停的人随时有停止键（一个心跳内生效），
+     * 不停的人一个字都不用回。整轮最多一次（引擎侧有旗标）。
+     */
+    fun segmentCardNotice(segment: Int, stepsUsed: Int): String =
+        "已到第 $segment/$STEP_SEGMENTS 段起点（已用 $stepsUsed/$MAX_STEPS 步）：抱朴继续跑，" +
+            "不用回应；想停随时点停止。"
+
+    /**
+     * 无进展熔断判据（§1.3）：连续 [steps] 步没有新工具结果 ⇒ 停。
+     * 「没有新结果」的计数口径（空步也算、重跑同一步不算）在引擎接线处，这里只判阈值。
+     */
+    fun noProgressExceeded(steps: Int): Boolean = steps >= NO_PROGRESS_STEPS
+
+    /** 无进展熔断的问人文案（§1.3：说清「没有新信息」＋三条出路）。 */
+    fun noProgressNotice(steps: Int): String =
+        "连续 $steps 步工具结果与之前重复，没有新信息，先停下。" +
+            "出路：把目标缩小、换个工具或路径，或直接问我。"
+
+    /**
+     * 一「步」的工具结果内容哈希（§1.3）：各结果的稳定内容（[GuardPipeline.Result] 的
+     * `contentHash`，围栏前算出——围栏头带 ts、spill 文件名带时刻，直接哈希回灌文本
+     * 永远不同，熔断会静默失效）按序拼接再取 sha256。空列表返空串 ⇒ 接线处按
+     * 「本步没有工具结果」计（不进集合，否则 12 个空步只数出 11 次重复，永远差 1）。
+     */
+    fun stepResultHash(parts: List<String>): String =
+        if (parts.isEmpty()) "" else sha256Hex(parts.joinToString(","))
+
+    /** sha256 的十六进制小写（§1.3 哈希比对的唯一出处）。 */
+    fun sha256Hex(text: String): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
 }

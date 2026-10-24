@@ -24,15 +24,17 @@ class RunEngineTest {
     // ── 步数刹车（负例③靶心） ───────────────────────────────────────────
 
     @Test
-    fun `max_steps是120_写死默认值`() {
-        assertEquals(120, RunRules.MAX_STEPS)
+    fun `max_steps是300_写死默认值`() {
+        // 189「先装刹车再抬上限」：120 → 300＝3 段×100；同批落了重复调用熔断与
+        // 无进展熔断两道新刹车（值钉在 KernelGuardTest K5）。
+        assertEquals(300, RunRules.MAX_STEPS)
     }
 
     @Test
-    fun `步数刹车_16步必停_边界两侧`() {
-        assertFalse("119 步还能跑", RunRules.isStepExhausted(119))
-        assertTrue("120 步必停", RunRules.isStepExhausted(120))
-        assertTrue("121 步也停", RunRules.isStepExhausted(121))
+    fun `步数刹车_300步必停_边界两侧`() {
+        assertFalse("299 步还能跑", RunRules.isStepExhausted(299))
+        assertTrue("300 步必停", RunRules.isStepExhausted(300))
+        assertTrue("301 步也停", RunRules.isStepExhausted(301))
     }
 
     @Test

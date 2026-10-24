@@ -518,6 +518,39 @@ internal class RunEngine(
     /** 本次运行里自动换过几次通道（到 [RunRules.MAX_CHANNEL_SWITCHES] 就把候选关掉）。 */
     private var channelSwitches = 0
 
+    // ── 第一百八十九批：分段预算 ＋ 打转/无进展熔断（判据在 RunRules，这里只记账） ──
+
+    /**
+     * 同工具同参重复计数（§1.1）：key = [RunRules.repeatCallKey] → 已见次数。
+     * **按 run 计**（在 [resetRunScopedCounters] 清）；换通道/退避重跑同一步不涨
+     * （P1-3 口径：模型没变、活没变，不该为通道的失败多背一次重复）。
+     */
+    private val seenCallKeys = HashMap<String, Int>()
+
+    /** 本 run 出现过的「步工具结果哈希」（§1.3 无进展熔断的比对集合）。 */
+    private val seenStepHashes = HashSet<String>()
+
+    /** 连续多少步没产生新工具结果（§1.3；到 [RunRules.NO_PROGRESS_STEPS] 停）。 */
+    private var noProgressSteps = 0
+
+    /** 本 run 已调工具次数（§1.2 段复盘日志读数；每次模型产出 tool_calls 时累加）。 */
+    private var runToolCalls = 0
+
+    /** 本 run 累计 token（§1.2 段复盘日志读数；prompt+completion，拿不到的算 0）。 */
+    private var runTokens = 0L
+
+    /** 上一次记过段复盘日志的段号（0 = 还没记；段变化时记一行，300 步整不再记）。 */
+    private var lastLoggedSegment = 0
+
+    /** 段边界提示本轮出过没有（§1.2「可整轮只问一次」；出过就不再打扰）。 */
+    private var segmentCardShown = false
+
+    /** 本步工具结果的稳定内容哈希（§1.3 记账缓冲；步末取哈希后清空）。 */
+    private val stepResultTexts = ArrayList<String>()
+
+    /** 运行中插话 FIFO（§1.4.2；UI 半归 176，引擎在步循环头部这个安全点注入）。 */
+    private val interjections = InterjectionQueue()
+
     /**
      * 150批 A：四个 run 级计数器在新一轮入口统一复位（调用点在 [runLoop] 第一行）。
      *
@@ -535,6 +568,15 @@ internal class RunEngine(
         consecutiveChannelFailures = 0
         channelSwitches = 0
         channelBroken = false
+        // 189：分段/熔断的 run 级账本一并复位（续跑是新 run，不继承上一段的运气——
+        // 与 badArgsRetries 同一口径；段边界**不**清这些，见 runLoop 的记账点）。
+        seenCallKeys.clear()
+        seenStepHashes.clear()
+        noProgressSteps = 0
+        runToolCalls = 0
+        runTokens = 0L
+        lastLoggedSegment = 0
+        segmentCardShown = false
         // 会话身份在 runLoop 入口喂一次（approveRestoredPending 走 executeApproved 时
         // 还没进 runLoop，那里另喂一次，见 acquireOrNotice——同一赋值点、幂等）。
         onSessionEnter(sessionId)
@@ -1406,6 +1448,10 @@ internal class RunEngine(
         if (resumed) planController.seedFromStore(sessionId)
 
         while (!stopRequested) {
+            // 189 §1.4.2：插话在「下一步开始前」这个安全点注入——FIFO 取空、按序进历史
+            // （落库＋模型下一步可见），**不碰停止标志**（插话 ≠ 打断）。当前工具调用返回后
+            // 走到循环头即此点；界面上输入框保持可用是 176 的 UI 半。
+            drainInterjections(sessionId, history)
             // ── Thinking 前：预算检查（第十五批口径：token 超触发线 **或** 可压旧
             //    消息 ≥ 60 条，任一满足 ⇒ 先 Compressing；都不满足 ⇒ 一定不压）──
             // 条数复用选区函数算（pendingOldMessageCount），并扣除已压进摘要的
@@ -1436,9 +1482,15 @@ internal class RunEngine(
             // 安全点 1（第六十四批）：两步之间（stepCount 增长前）。用户点了
             // 「换通道」也只在这里生效 ⇒ 不打断当前步、不烧预算。
             drainChannelSwitch(SafePoint.StepBoundary)
+            // 189 §1.1：这一步是不是「重跑同一步」（换通道/退避重试）——重复调用计数
+            // 要跳过它（P1-3 口径：重跑不算新的一次）。capture 必须在下一行消费旗标**之前**。
+            val rerunSameStep = reuseStep
             // P1-3：换通道后是**重跑同一步**（换了通道，模型的活没变）⇒ 不重复计预算。
             // 只在这一处跳计数：其他 continue（收尾闸重跑、坏参数重试）都是新的一步，照计。
             if (reuseStep) reuseStep = false else stepCount++
+            // 189 §1.2：段边界只是记账点（只写一行复盘日志；可选的非阻塞提示整轮最多
+            // 一次）——**不许**在这里等人点（§1.4.3），用户没点也继续跑。
+            maybeSegmentCheckpoint(sessionId, stepCount, userText, history)
             _step.intValue = stepCount
             _state.value = RunState.THINKING
             persistStep(sessionId, stepCount, "Thinking")
@@ -1590,6 +1642,33 @@ internal class RunEngine(
                             outcome.text,
                         )
                     }
+                    // ── 189 §1.1：主循环的「同工具同参 ≥3 次」打转熔断（子 Agent 同款）──
+                    // 计数点在**执行前**：模型第 3 次要同一个调用 ⇒ 这一批一个都不执行，
+                    // 走既有「问人」通道停轮（判据：文案带次数/工具名/参数摘要/换路建议）。
+                    // 重跑同一步（换通道/退避）不涨计数；段边界也不清这本账（§1.2）。
+                    runToolCalls += outcome.calls.size
+                    if (!rerunSameStep) {
+                        for (call in outcome.calls) {
+                            val key = RunRules.repeatCallKey(call.name, call.arguments)
+                            val times = (seenCallKeys[key] ?: 0) + 1
+                            seenCallKeys[key] = times
+                            if (times >= RunRules.REPEAT_CALL_LIMIT) {
+                                val msg = RunRules.repeatCallNotice(
+                                    times,
+                                    call.name,
+                                    RunRules.argsBrief(call.arguments),
+                                )
+                                log(
+                                    "抱朴引擎：打转熔断（第 $times 次同参调用 ${call.name}）" +
+                                        "⇒ 停轮问人，本批 ${outcome.calls.size} 个调用未执行",
+                                )
+                                _notice.value = msg
+                                settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
+                                onEvent?.invoke(EngineEvent.AskUser(msg))
+                                return
+                            }
+                        }
+                    }
                     _state.value = RunState.ACTING
                     persistStep(sessionId, stepCount, "Acting")
                     var terminateRound = false
@@ -1698,6 +1777,10 @@ internal class RunEngine(
                     }
                     badArgsRetries++
                     _notice.value = RunLoopRules.badArgsRetryNotice(badArgsRetries)
+                    // 189 §1.3：坏参数重试是**新的一步**（P1-3 口径：不跳计步）但没有工具
+                    // 结果 ⇒ 计入「无进展」。连续 12 步全在坏参数里打转也该停，不能只靠
+                    // 「坏参数只重试 1 次」的旧闸（那道闸拦的是连续，拦不住循环往复）。
+                    if (accountNoProgress(sessionId, stepCount)) return
                     continue
                 }
 
@@ -1816,7 +1899,11 @@ internal class RunEngine(
                 }
             }
 
-            // ── 步数刹车：RunRules.MAX_STEPS 步必停（现 120） ──
+            // 189 §1.3：本步的「无进展」记账（ToolCalls 落到这里的都真执行完了一批；
+            // 失败重跑/换通道在各自分支 continue，不经过这行——重跑不算一步）。
+            if (accountNoProgress(sessionId, stepCount)) return
+
+            // ── 步数刹车：RunRules.MAX_STEPS 步必停（现 300，3 段×100） ──
             if (RunRules.isStepExhausted(stepCount)) {
                 val msg = "已到 ${RunRules.MAX_STEPS} 步上限，停下。继续说「继续」会重新计步。"
                 _notice.value = msg
@@ -1828,6 +1915,128 @@ internal class RunEngine(
         }
         // 用户停止
         settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
+    }
+
+    // ── 第一百八十九批：段复盘记账 ＋ 无进展熔断 ＋ 插话注入（判据在 RunRules） ──
+
+    /**
+     * 段边界记账（§1.2）：段号变化时写一行复盘日志；进第 2/3 段时给一次**非阻塞**
+     * 提示（整轮最多一次）。**不许**在这里等人点（§1.4.3）——没有等待、没有超时、
+     * 没点也继续跑；想停的人随时有停止键（一个心跳内生效）。
+     *
+     * 为什么段号判据放引擎侧：它依赖 [lastLoggedSegment] 这个 run 级游标（判重），
+     * 纯函数 [RunRules.segmentOf] 只算「第几段」；300 步整不再记（那是步数刹车的收尾，
+     * 复盘日志必须恰 3 行：0/100/200）。
+     */
+    private fun maybeSegmentCheckpoint(
+        sessionId: Long,
+        step: Int,
+        userText: String?,
+        history: List<HistoryMessage>,
+    ) {
+        if (RunRules.isStepExhausted(step)) return
+        val seg = RunRules.segmentOf(step)
+        if (seg == lastLoggedSegment) return
+        lastLoggedSegment = seg
+        val goal = userText?.takeIf { it.isNotBlank() }
+            ?: history.lastOrNull { it.role == HistoryMessage.ROLE_USER }?.text
+            ?: "（续跑）"
+        log(RunRules.segmentCheckpointLine(seg, step, runToolCalls, runTokens, goal))
+        if (seg > 1 && !segmentCardShown) {
+            segmentCardShown = true
+            val msg = RunRules.segmentCardNotice(seg, step)
+            _notice.value = msg
+            onEvent?.invoke(EngineEvent.AskUser(msg))
+        }
+    }
+
+    /**
+     * 无进展记账（§1.3）：本步工具结果哈希与集合比对——新 ⇒ 清零并入集合；
+     * 重复（或本步没有工具结果，含坏参数重试这类空步）⇒ 计数 +1。
+     * 到 [RunRules.NO_PROGRESS_STEPS] ⇒ 走既有「问人」通道停轮，返回 true 让调用方 return。
+     *
+     * 计数按步走（每消耗一步计一次），重跑同一步的失败尝试不经过这里（它们在自己的
+     * 分支 continue）；段边界**不**清这本账（§1.2：段边界不重置已有熔断计数）。
+     */
+    private fun accountNoProgress(sessionId: Long, step: Int): Boolean {
+        val hash = RunRules.stepResultHash(stepResultTexts)
+        stepResultTexts.clear()
+        if (hash.isEmpty() || hash in seenStepHashes) {
+            noProgressSteps++
+        } else {
+            seenStepHashes += hash
+            noProgressSteps = 0
+        }
+        if (!RunRules.noProgressExceeded(noProgressSteps)) return false
+        val msg = RunRules.noProgressNotice(noProgressSteps)
+        log("抱朴引擎：无进展熔断（连续 $noProgressSteps 步工具结果无新内容）⇒ 停轮问人")
+        _notice.value = msg
+        settle(sessionId, step, RunState.ABORTED, "Aborted")
+        onEvent?.invoke(EngineEvent.AskUser(msg))
+        return true
+    }
+
+    /**
+     * 插话注入（§1.4.2）：取空 FIFO，逐条落库成用户消息＋进历史（模型下一步看到）。
+     * 注入**不碰** [stopRequested]（插话 ≠ 打断）；落库失败的那条如实记日志——
+     * 不静默吞（判据「插话吞掉一条 ⇒ 用例红」的引擎侧兜底）。
+     */
+    private fun drainInterjections(sessionId: Long, history: MutableList<HistoryMessage>) {
+        val pending = interjections.drainAll()
+        if (pending.isEmpty()) return
+        for (text in pending) {
+            val id = persistInterjection(sessionId, text)
+            if (id > 0) {
+                history += HistoryMessage("local-inject-${System.nanoTime()}", HistoryMessage.ROLE_USER, text)
+            }
+        }
+        log("抱朴引擎：插话注入 ${pending.size} 条（下一步开始前安全点，不打断当前步）")
+    }
+
+    /** 插话落库（房型同 [persistUserMessage] 的消息半：message＋part＋touch；无队列行）。 */
+    private fun persistInterjection(sessionId: Long, text: String): Long {
+        var msgId = -1L
+        val ok = runCatching {
+            db.write { d ->
+                d.beginTransaction()
+                try {
+                    val now = System.currentTimeMillis()
+                    val seq = nextSeq(d, sessionId)
+                    val m = BaopuSql.insertMessage(sessionId, seq, HistoryMessage.ROLE_USER, now, "done")
+                    d.execSQL(m.sql, m.args)
+                    val id = lastInsertId(d)
+                    val p = BaopuSql.insertPart(id, 0, "text", text, now)
+                    d.execSQL(p.sql, p.args)
+                    val t = BaopuSql.touchSession(sessionId, now, text.take(80))
+                    d.execSQL(t.sql, t.args)
+                    d.setTransactionSuccessful()
+                    msgId = id
+                } finally {
+                    d.endTransaction()
+                }
+            }.get()
+        }.isSuccess
+        if (!ok) {
+            log("抱朴引擎：插话落库失败（session=$sessionId，原文已记日志不丢）：${text.take(80)}")
+            return -1L
+        }
+        onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_USER, emptyList()))
+        return msgId
+    }
+
+    /**
+     * 运行中插话（189 §1.4.2 引擎侧 API；UI 半归 176）。
+     *
+     * @return true = 已进 FIFO（下一个安全点注入）；false = 没有在跑的 run（调用方
+     *   应把这句话当**新消息**正常发送，别塞进队列——塞了没人消费就真吞了）。
+     */
+    fun interject(text: String): Boolean {
+        val running = when (_state.value) {
+            RunState.THINKING, RunState.ACTING, RunState.AWAIT_CONFIRM, RunState.COMPRESSING -> true
+            else -> false
+        }
+        if (!running) return false
+        return interjections.offer(text)
     }
 
     /** 组装（薄封装：调 0b 的唯一出口；本引擎不私拼——判据 1）。 */
@@ -2337,6 +2546,9 @@ internal class RunEngine(
         // 放在两道 `?: return` **之前**：没读到也要让「这一步用了多少」有个明确的 0，
         // 而不是等 settle 时才发现压根没记（那样只能编数）。
         trace.noteUsage(step, usage)
+        // 189 §1.2：run 级 token 累计（段复盘日志的读数；prompt+completion，缺的算 0）。
+        // 记在轨迹之后、两道 `?: return` 之前——读数没落库也要进累计（账面从宽）。
+        usage?.let { u -> runTokens += (u.promptTokens ?: 0).toLong() + (u.completionTokens ?: 0).toLong() }
         val readings = usage ?: return
         val stmt = BaopuSql.updateRunLogUsage(sessionId, step, readings) ?: return
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
@@ -2398,6 +2610,9 @@ internal class RunEngine(
                 }
             }
             persistToolExchange(sessionId, step, result.call.name, result.wrapped)
+            // 189 §1.3：本步工具结果的稳定内容哈希入账（围栏前算的，见 Result.Done）；
+            // 步末 [accountNoProgress] 统一取哈希比对。空 = 非 finish 产的结果，不参与。
+            result.contentHash.takeIf { it.isNotEmpty() }?.let { stepResultTexts += it }
             onEvent?.invoke(
                 EngineEvent.ToolCallVisible(result.call.name, toolSummary(result.call, result.wrapped), true),
             )
@@ -2440,6 +2655,8 @@ internal class RunEngine(
             log(ToolFailureAdvisor.auditLine(repair, result.error))
             val failureText = "失败：${result.error}\n${repair.feedbackSuffix()}"
             persistToolExchange(sessionId, step, name, failureText)
+            // 189 §1.3：反复失败同样是「无新信息」——失败原文的哈希也入账
+            result.contentHash.takeIf { it.isNotEmpty() }?.let { stepResultTexts += it }
             onEvent?.invoke(EngineEvent.ToolCallVisible(name, failureText, false))
             history += HistoryMessage(
                 "local-tool-${System.nanoTime()}",
@@ -2475,6 +2692,8 @@ internal class RunEngine(
             log(ToolFailureAdvisor.auditLine(repair, result.reason))
             val rejectedText = "被拒：${result.reason}\n${repair.feedbackSuffix()}"
             persistToolExchange(sessionId, step, name, rejectedText)
+            // 189 §1.3：被拒也入账（模型反复撞同一堵墙也是打转）
+            result.contentHash.takeIf { it.isNotEmpty() }?.let { stepResultTexts += it }
             onEvent?.invoke(EngineEvent.ToolCallVisible(name, rejectedText, false))
             history += HistoryMessage(
                 "local-tool-${System.nanoTime()}",

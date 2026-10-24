@@ -181,19 +181,40 @@ internal class GuardPipeline(
          *
          * [imageRelPaths]（第一百七十七批）：工具产出的**图片相对路径**（如浏览器截图）。
          * 空 = 这次没有图片。引擎据此把像素读进本轮上下文；默认空 ⇒ 既有调用点零改。
+         *
+         * [contentHash]（第一百八十九批）：**围栏前**稳定内容的 sha256。为什么不在引擎侧
+         * 哈希 `wrapped`：围栏头带时间戳（`DataFence.wrap`）、spill 文件名带时刻
+         * （`fenceOutput`）——同一份输出两次回来字节必不同，无进展熔断会静默失效。
+         * 空串 = 这个结果不是 `finish` 产的（Schema 错/越界/闸拦/超时等），不参与比对。
          */
         data class Done(
             val call: ToolCall,
             val wrapped: String,
             val spilled: Boolean,
             val imageRelPaths: List<String> = emptyList(),
+            val contentHash: String = "",
         ) : Result
 
-        /** 可重试×1（Schema 错 / 工具失败 / 超时）——错误原文回灌让模型换路。 */
-        data class Failed(val call: ToolCall?, val error: String) : Result
+        /**
+         * 可重试×1（Schema 错 / 工具失败 / 超时）——错误原文回灌让模型换路。
+         * [contentHash]：错误原文的 sha256（189 §1.3：反复失败也是「无新信息」）；
+         * 只有 [finish] 产的失败有值，空串不参与比对。
+         */
+        data class Failed(
+            val call: ToolCall?,
+            val error: String,
+            val contentHash: String = "",
+        ) : Result
 
-        /** 越界/权限被拒 ⇒ **终止本轮**（程枢版 §8）并 RunLog。 */
-        data class Rejected(val call: ToolCall?, val reason: String) : Result
+        /**
+         * 越界/权限被拒 ⇒ **终止本轮**（程枢版 §8）并 RunLog。
+         * [contentHash] 同 [Failed]（189 §1.3）。
+         */
+        data class Rejected(
+            val call: ToolCall?,
+            val reason: String,
+            val contentHash: String = "",
+        ) : Result
 
         /**
          * 需确认（刀 3 A 段通电）：引擎收到它就挂起出卡，用户点批准后走
@@ -325,13 +346,23 @@ internal class GuardPipeline(
                 if (outsideNote == null) body
                 else "（用户已在确认卡上授权访问工作区外：$outsideNote；本次运行内访问同一工作区不再重复询问）\n$body"
             }
-            is ToolOutcome.Failed -> return Result.Failed(effectiveCall, outcome.error)
-            is ToolOutcome.Rejected -> return Result.Rejected(effectiveCall, outcome.reason)
+            // 第一百八十九批 §1.3：哈希在**围栏前**算（围栏头/spill 文件名都带时刻，
+            // 围栏后再算同一份输出每次字节都不同，无进展熔断会静默失效）。
+            is ToolOutcome.Failed -> return Result.Failed(
+                effectiveCall,
+                outcome.error,
+                contentHash = RunRules.sha256Hex(outcome.error),
+            )
+            is ToolOutcome.Rejected -> return Result.Rejected(
+                effectiveCall,
+                outcome.reason,
+                contentHash = RunRules.sha256Hex(outcome.reason),
+            )
         }
         val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
         // 第一百七十七批：工具产出的图片路径原样透传（围栏只管文本，图片走另一条通道）
         val images = (outcome as? ToolOutcome.Ok)?.imageRelPaths.orEmpty()
-        return Result.Done(effectiveCall, wrapped, spilled, images)
+        return Result.Done(effectiveCall, wrapped, spilled, images, RunRules.sha256Hex(text))
     }
 
     /** 直跑（并行读用；崩了也走 [ToolRunner.crashFailure] 的同一句原文）。 */
