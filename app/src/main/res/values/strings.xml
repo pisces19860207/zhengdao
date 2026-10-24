@@ -1661,4 +1661,16 @@
     <string name="persona_pack_err_utf8">不是 UTF-8 文本，或含有无法识别的控制字符，读不了</string>
     <string name="persona_pack_err_not_found">没找到这套包（文件可能被删了）</string>
     <string name="persona_pack_err_io">没做成（%1$s）</string>
+    <string name="baopu_longform_copy_all">复制全文</string>
+    <string name="baopu_longform_copy_done">已复制全文</string>
+    <string name="baopu_longform_save_md">存 .md</string>
+    <string name="baopu_longform_save_txt">存 .txt</string>
+    <string name="baopu_longform_fullscreen">全屏</string>
+    <string name="baopu_longform_tab_render">渲染</string>
+    <string name="baopu_longform_tab_src">源码</string>
+    <string name="baopu_longform_tab_plain">纯文本</string>
+    <string name="baopu_longform_edit">编辑</string>
+    <string name="baopu_longform_done">完成</string>
+    <string name="baopu_longform_open_as_card">文本卡</string>
+    <string name="baopu_longform_words">%s 字</string>
 </resources>

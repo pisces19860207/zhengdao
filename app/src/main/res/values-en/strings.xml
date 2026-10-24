@@ -1726,4 +1726,16 @@
     <string name="persona_pack_err_utf8">Not valid UTF-8 text, or it contains unsupported control characters</string>
     <string name="persona_pack_err_not_found">Pack not found (the file may have been deleted)</string>
     <string name="persona_pack_err_io">Failed (%1$s)</string>
+    <string name="baopu_longform_copy_all">Copy all</string>
+    <string name="baopu_longform_copy_done">Copied</string>
+    <string name="baopu_longform_save_md">Save .md</string>
+    <string name="baopu_longform_save_txt">Save .txt</string>
+    <string name="baopu_longform_fullscreen">Full screen</string>
+    <string name="baopu_longform_tab_render">Render</string>
+    <string name="baopu_longform_tab_src">Source</string>
+    <string name="baopu_longform_tab_plain">Plain</string>
+    <string name="baopu_longform_edit">Edit</string>
+    <string name="baopu_longform_done">Done</string>
+    <string name="baopu_longform_open_as_card">Text card</string>
+    <string name="baopu_longform_words">%s words</string>
 </resources>

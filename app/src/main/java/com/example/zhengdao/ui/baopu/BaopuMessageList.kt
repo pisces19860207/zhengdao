@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -500,6 +502,14 @@ private fun BaopuMessageRow(
                     // 是同一个手势，套在 SelectionContainer 里必然被抢走。
                     val textParts = visibleParts.filter { it.kind != "image" }
                     val imageParts = visibleParts.filter { it.kind == "image" }
+                    // 第一百七十九批：助手消息满足「长文/微头条」⇒ 渲染成输出卡
+                    // （Markdown 渲染＋大按钮复制全文＋存 md/txt；普通气泡的短回复不受影响）。
+                    val assistantText = if (!isUser) {
+                        textParts.filter { it.kind == "text" }.joinToString("\n") { it.text }
+                    } else {
+                        ""
+                    }
+                    val longform = !isUser && BaopuLongformPolicy.isLongform(assistantText)
                     if (textParts.isNotEmpty()) {
                         val renderParts: @Composable () -> Unit = {
                             Column {
@@ -513,9 +523,11 @@ private fun BaopuMessageRow(
                             }
                         }
                         // 用户气泡：长按归「长按菜单」（编辑/复制），不再套 SelectionContainer；
-                        // 助手气泡照旧可长按选字复制。
+                        // 助手气泡照旧可长按选字复制；长文消息改走输出卡（卡片自己管复制/保存）。
                         if (isUser) {
                             renderParts()
+                        } else if (longform) {
+                            BaopuLongformCard(assistantText)
                         } else {
                             androidx.compose.foundation.text.selection.SelectionContainer {
                                 renderParts()
@@ -536,16 +548,33 @@ private fun BaopuMessageRow(
                             .joinToString("\n") { it.text }
                             .trim()
                         if (speakable.isNotEmpty()) {
-                            TextButton(
-                                onClick = { onSpeak(speakable) },
-                                contentPadding = PaddingValues(0.dp),
-                                modifier = Modifier.padding(top = 2.dp).height(28.dp),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.baopu_speak),
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
+                            // 第一百七十九批：普通短回复不强制变卡，但给一个手动入口——
+                            // 「文本卡」点了就地展开输出卡（同样是大复制＋存 md/txt）。
+                            var manualCard by remember(msg.id) { mutableStateOf<String?>(null) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(
+                                    onClick = { onSpeak(speakable) },
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.padding(top = 2.dp).height(28.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.baopu_speak),
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
+                                Spacer(Modifier.width(16.dp))
+                                TextButton(
+                                    onClick = { manualCard = speakable },
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.padding(top = 2.dp).height(28.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.baopu_longform_open_as_card),
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
                             }
+                            manualCard?.let { BaopuLongformCard(it, Modifier.padding(top = 4.dp)) }
                         }
                     }
                 }
