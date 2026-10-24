@@ -66,6 +66,14 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
      */
     IMAGE("image", "文生图：按一句话画图，或照着工作区里的图改（会烧 Gemini 额度，每次一张确认卡）"),
 
+    /**
+     * 画板/表格（第一百八十六批）：HTML/SVG 沙箱出图＋柱状/折线图＋表格，**本地渲染**——
+     * 不调生图模型、不联网、不跑 JS，所以不烧额度。默认不可见（同 IMAGE：画板属于
+     * 「偶尔要」的能力，模型看不见就不会在闲聊里随手画），由 `capabilities` 解锁；
+     * 默认**启用**，解锁后立即可用。
+     */
+    DRAW("draw", "画板与表格：HTML/SVG 沙箱出图、柱状/折线图、表格，本地渲染（不烧生图额度、不联网、不跑脚本）"),
+
     /** 格式层的体检与导出（写卡本体在 EDIT，理由见上面的第 3 条）。 */
     CARD("card", "卡片格式：体检角色卡、导出酒馆 PNG"),
 
@@ -214,6 +222,10 @@ internal object ToolGroupTable {
         "kb_search" to ToolGroup.LIBRARY,
         // 第一百五十八批：文生图（Gemini 原生生图；默认不可见，capabilities 解锁）
         "generate_image" to ToolGroup.IMAGE,
+        // 第一百八十六批：确定性绘图/表格（本地排 SVG/HTML；默认不可见，capabilities 解锁）
+        "render_artifact" to ToolGroup.DRAW,
+        "draw_chart" to ToolGroup.DRAW,
+        "draw_table" to ToolGroup.DRAW,
         "card_inspect" to ToolGroup.CARD,
         "card_export" to ToolGroup.CARD,
         // 58 批 C 层「追加-only」人设通道：与 write_skill 同属自写类，同一组、同样默认不可见
@@ -405,6 +417,16 @@ object ToolTimeout {
      * 重试一次就是再烧一张的额度。180 秒覆盖慢网下的长尾，也不至于把单线程工具池占太久。
      */
     const val IMAGE_MS = 180_000L
+
+    /**
+     * 画板/图表/表格（第一百八十六批）：本地排版＋可选 PNG 栅格。
+     *
+     * 为什么不复用 [FILE_MS]（5 秒）：`png=true` 时要在无头 WebView 沙箱里加载并截一张
+     * 1080 宽的位图（最高 6000 px）再编码 PNG，慢机上单这一项就可能吃掉几秒；判成超时
+     * 会让模型以为工具坏了去重画（白画一遍）。也不升到 [IMAGE_MS]：这里没有任何网络等待。
+     * 20 秒留给沙箱的 15 秒上限＋落盘/预览的余量。
+     */
+    const val DRAW_MS = 20_000L
 
     /**
      * **等用户**的回答上限（第四十八批 P0-1）：确认超时 + 5 秒余量。
@@ -1099,6 +1121,11 @@ internal object BaopuToolCatalog {
         // 文生图（第一百五十八批）：默认开、默认不可见（IMAGE 组）——同 run_subtasks 口径：
         // 解锁后立即可用；但每次一张卡，且调模型前先让人看到「这一张要烧额度」。
         "generate_image",
+        // 确定性绘图/表格（第一百八十六批）：默认开、默认不可见（DRAW 组）——同 generate_image
+        // 口径：解锁后立即可用；只写 App 自己排出来的 SVG/HTML，不碰用户的既有文件。
+        "render_artifact",
+        "draw_chart",
+        "draw_table",
         // 选项卡（2026-10-19）：不写盘、只问人，默认开；没有界面时回人话而不是干等
         "ask_user",
         // 格式层（第三十九批 B）：inspect 只读；export 写 PNG 但**绝不覆盖**，且每次一张确认卡
@@ -1160,6 +1187,10 @@ internal object BaopuToolCatalog {
         Entry("image_ops") { ImageOpsTool.spec(it) },
         // 文生图（第一百五十八批）：原生 Gemini 生图（模型每次从 /models 清单挑；CONFIRM，跑一次烧一张额度）
         Entry("generate_image") { GenerateImageTool.spec(it) },
+        // 画板/图表/表格（第一百八十六批）：纯本地排版（不调模型、不联网、不跑 JS），落 图片/ 与 产物/表格/
+        Entry("render_artifact") { RenderArtifactTool.spec(it) },
+        Entry("draw_chart") { DrawChartTool.spec(it) },
+        Entry("draw_table") { DrawTableTool.spec(it) },
         // 选项卡（2026-10-19）：落点在引擎（AskUserTool.sink），表里只放 spec
         Entry("ask_user") { AskUserTool.spec() },
         // 格式层（第三十九批 B）：认脸＋体检（只读）／导出酒馆 PNG（不覆盖）
