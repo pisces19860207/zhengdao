@@ -102,6 +102,9 @@ fun SettingsScreen(
         mutableStateOf(com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx))
     }
     var kbFiles by remember { mutableStateOf<Int?>(null) }
+    // 定时任务（第一百六十七批）：Hub 这一行只报「启用几个」，开关/编辑都在二级页里。
+    // null = 还没读完（这一页别的数字也用同一套「先占位后覆盖」的写法）。
+    var schedEnabled by remember { mutableStateOf<Int?>(null) }
     // 界面语言（2026-10-12）：读系统记的 per-app locale，切换后系统重建 Activity、当场生效。
     var langTag by remember { mutableStateOf(LanguagePrefs.current(ctx)) }
     var langDialog by remember { mutableStateOf(false) }
@@ -138,6 +141,13 @@ fun SettingsScreen(
         LastValues.saveStorageMb(ctx, sizes.first, sizes.second, sizes.third)
         kbFiles = withContext(Dispatchers.IO) {
             runCatching { com.example.zhengdao.terminal.KnowledgeBase.status(ctx).files }.getOrNull()
+        }
+        // 定时任务表读的是文件 ⇒ 同样不许在主线程；读不出就保持占位，
+        // 真状态在二级页列表里说（这里这一行只是个入口，不是判据的第二份）。
+        schedEnabled = withContext(Dispatchers.IO) {
+            runCatching {
+                com.example.zhengdao.schedule.ScheduleStore.of(ctx).load().tasks.count { it.enabled }
+            }.getOrNull()
         }
     }
 
@@ -210,6 +220,18 @@ fun SettingsScreen(
                     // ⇒ 给两行；中文短句仍是一行（默认值 1，别处不受影响）。
                     valueMaxLines = 2,
                 ) { open(SettingsBridgeActivity::class.java) }
+                SettingsDivider()
+                // 定时任务（第一百六十七批）：也放「后台」组——它和保活、浏览器桥同属
+                // "进程不在前台也要替用户做一件事"的一类。状态只报"启用几个"，
+                // 不在这行摊开权限（权限三行在「终端与资料」页那张卡里，一处一套控件）。
+                SettingRow(
+                    label = stringResource(R.string.sched_page_title),
+                    value = when (schedEnabled) {
+                        null -> stringResource(R.string.settings_status_measuring)
+                        0 -> stringResource(R.string.sched_hub_none)
+                        else -> stringResource(R.string.sched_hub_enabled, schedEnabled ?: 0)
+                    },
+                ) { open(com.example.zhengdao.schedule.ScheduleTasksActivity::class.java) }
             }
 
             SectionCard(stringResource(R.string.settings_group_interface)) {

@@ -55,6 +55,17 @@
          里按需请求（见 BaopuComposer 的 RequestPermission）。 -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- 精确闹钟（第一百六十七批 · 定时任务 v1）：**只声明 SCHEDULE_EXACT_ALARM，
+         不声明 USE_EXACT_ALARM**。两条的差别不是写法而是口径——
+         · SCHEDULE_EXACT_ALARM 是 App-optimized 权限：Android 14 起对新装机**默认拒绝**，
+           用户可在「设置 → 应用 → 特殊应用权限 → 闹钟和提醒」里单独给/撤（撤了还能撤回来），
+           缺权限时 setExactAndAllowWhileIdle 抛 SecurityException，代码里 catch 住回落 WorkManager；
+         · USE_EXACT_ALARM 是装机即授、**用户撤不掉**的 normal 权限，Google Play 把它限定给
+           「闹钟/日历是核心功能」的 App 且要求提交时做权限声明申报（口径与日期见交付报告 §0.6）。
+           一个「到点把一句话发进抱朴会话」不够格占这个名额 ⇒ 宁可默认非精确，也不替用户做主。
+         页面上那行「精确闹钟」把这条降级说在人话里（ui/SettingsDataActivity 的权限卡）。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
     <!-- 第 129 批 lint 清债：CAMERA 权限要配一条 required=false 的 uses-feature，否则 lint 报
          PermissionImpliesUnsupportedChromeOsHardware（原意就是这个：没摄像头也能装，只是拍照按钮不可用）。 -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -215,6 +226,17 @@
             android:label="浏览器桥"
             android:theme="@style/Theme.Zhengdao"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+        <!-- 定时任务页（第一百六十七批 §1）：列表（启停/编辑/删除/下次运行/上次结果）＋新建表单。
+             与其余设置二级页同一套（exported=false：只有设置页 Hub 会拉起；configChanges 同款：
+             转屏不重建，正在填的表单不会被清空）。
+             label 走 @string（这一页是新页，没有"逐字搬过来的旧标题"要保）：切英文时任务栏与
+             最近任务列表里的页名跟着变；其余二级页的中文 label 是历史形态，本批不动它们。 -->
+        <activity
+            android:name=".schedule.ScheduleTasksActivity"
+            android:exported="false"
+            android:label="@string/sched_page_title"
+            android:theme="@style/Theme.Zhengdao"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
         <activity
             android:name=".ui.SettingsHelpActivity"
             android:exported="false"
@@ -245,6 +267,16 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Long-running terminal session keepalive: a user-driven Debian shell session must survive leaving the terminal UI, and no other FGS type covers a long shell session" />
         </service>
+
+        <!-- 精确闹钟的落点（第一百六十七批 §3）：**必须是清单里的静态组件**，不能
+             Context.registerReceiver —— AlarmManager 登记的 PendingIntent 要跨进程重启生效，
+             动态注册的接收器在重启后不存在，打到的闹钟会因为找不到组件而静默丢掉。
+             exported=false：Intent 显式指向本类（schedule/ScheduleAlarmReceiver.kt），
+             没有任何外部 App 需要能调它；也不需要 intent-filter（不是隐式广播）。
+             接收器本身不发消息，只把进程叫醒后交给与 WorkManager 同一趟 pass。 -->
+        <receiver
+            android:name=".schedule.ScheduleAlarmReceiver"
+            android:exported="false" />
 
         <!-- 抱朴附件（第二十二批 A 段）：相机要一个可写 Uri，安卓 7+ 只能是 content://，
              故用 FileProvider **只**暴露缓存里的 `baopu-camera/`（见 res/xml/baopu_file_paths.xml）。

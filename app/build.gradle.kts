@@ -547,6 +547,10 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // 第一百六十七批 定时任务 v1：主调度用 WorkManager（系统 JobScheduler 后端，非精确兜底、跨重启由系统恢复）。
+    // 精确闹钟不在这里——那是平台 API（AlarmManager），有 SCHEDULE_EXACT_ALARM 才走，不额外引库。
+    // 依据 docs/抱朴-现行架构-2026-10-24.md §「现成方案优先」：定时任务 = WorkManager＋按需精确闹钟，不常驻。
+    implementation(libs.androidx.work.runtime)
     // P4-7（issue #17）：LocalLifecycleOwner 官方迁移载体（见 libs.versions.toml 注释）
     implementation(libs.androidx.lifecycle.runtime.compose)
 
