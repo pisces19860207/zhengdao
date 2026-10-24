@@ -937,6 +937,19 @@ internal object BaopuSql {
         arrayOf<String?>(name),
     )
 
+    /**
+     * 某技能最后一次**失败**使用的时间（null = 没有失败记录）。
+     *
+     * 第一百八十批（技能索引失败态 UI）的数据源：设置页每个失败技能要显示「最近一次失败时刻」，
+     * 只读、零写入，与 [recentUseOks] / [lastUseAt] 同族同口径（不进任何判据，判据一个字不改）。
+     * 放在数据层而不是设置页里，是因为分类门禁整文件禁出现 "kind" 子串（SKILL.md 头字段纪律），
+     * SQL 只能住在这一层。
+     */
+    fun lastFailedUseAt(name: String): Stmt = Stmt(
+        "SELECT MAX(at) FROM skill_event WHERE kind = 'use' AND name = ? AND ok = 0",
+        arrayOf<String?>(name),
+    )
+
     /** 记一条「提案采纳/丢弃」（§1.3 提案卡按钮收口时调；detail=丢弃理由，可空）。 */
     fun insertSkillDecision(
         target: String,

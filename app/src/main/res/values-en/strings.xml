@@ -1288,6 +1288,16 @@
     <string name="skill_recheck_badge">Needs recheck: %1$s (verify by using it first)</string>
     <string name="skill_cat_corrupt">That _分类.json is unreadable, treated as no categories</string>
     <string name="skill_cat_close">Close</string>
+    <!-- Skill index failure state (batch 180): summary first, same-cause failures folded into one
+         "same failure ×N" row, raw wording only in the details dialog. Row-level short status only. -->
+    <string name="skill_fail_summary">Skills %1$d · Failing %2$d · Drafts %3$d</string>
+    <string name="skill_fail_group_badge">Same failure ×%1$d</string>
+    <string name="skill_fail_last_failed_at">Last failed %1$s</string>
+    <string name="skill_fail_detail_title">Failure details</string>
+    <string name="skill_fail_detail_last_failed">Last failed: </string>
+    <string name="skill_fail_detail_no_fail">No failure on record (unused for long)</string>
+    <string name="skill_row_failed_at">Failing · %1$s</string>
+    <string name="skill_row_failed">Failing</string>
     <!-- ── Session library (batch 20): reopen or delete old chats + workspace surfaced ── -->
     <!-- 134: baopu_drawer_history_desc retired with the flat history entry (zero UI references);
          the batch-129 "pinned by tests" note is gone along with the test assertion. -->
