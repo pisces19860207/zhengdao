@@ -58,6 +58,7 @@ python tools\zd.py preflight -k 终端,单会话 `
 |---|---|
 | 多主体怎么协作、边界在哪、工具怎么用 | `docs/协作规约.md`（全文在 `..\_zd-private\docs\协作规约.md`） |
 | **已经做完 / 待做的结账总表（新会话先读这个）**、现在有哪些功能、哪些半残、哪些被拍板删过 | `docs/FEATURE-LEDGER.md` 的「结账 · 现状总表」+ §2 / §3（全文在私有副本） |
+| **抱朴现行架构/刀0–刀5对应**（旧方案只作历史） | `docs/抱朴-现行架构-2026-10-24.md` |
 | 踩过的坑与更正（E-xxx，按编号查） | `..\_zd-private\docs\ERRATA.md` |
 | 终端 / rootfs 出问题怎么排查 | `..\_zd-private\docs\milestones\证道-故障排查手册.md` |
 | 终端为什么只有一个会话（改动重灾区） | `..\_zd-private\docs\milestones\证道-终端单会话模型.md` |
