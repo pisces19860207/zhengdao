@@ -19,7 +19,7 @@ import java.io.File
  * 1. 写入口唯一（源码级：别处不许再 fopen `SKILL.md`）；
  * 2. 写前必备份；
  * 3. 确认卡需要的五项都在计划里（名／落点／前 200 字／字数／备份名）；
- * 4. 索引与正文是一件事（正式技能：两边都写；草稿：只写正文、**不进索引**）；
+ * 4. 索引与正文是一件事（**正式与草稿都两边都写**，草稿那行带「草稿·未验证」标——第一百七十四批）；
  * 5. **没有删除**（源码级：SkillStore 里不许有 delete 逻辑）。
  *
  * 用真实临时目录 ＋ 真实 `PersonaFiles`（技能写盘这事儿没法 mock：要验的就是「盘上真的有什么」）。
@@ -100,13 +100,13 @@ class SkillStoreTest {
             indexCountAfterAdd = SkillRules.INDEX_CAP + 1,
         )
         assertNotNull("索引满了要挡", fullIndex.blocked)
-        // 草稿不进索引 ⇒ 索引满也挡不住草稿（它本来就不占索引位）
+        // 第一百七十四批：草稿**也占索引位**，索引满了草稿同样挡（原来这条豁免是绕过上限的口子）
         val draftWhenFull = SkillStore.plan(
             proposal(draft = true),
             projectRoot, globalRoot, "s",
             indexCountAfterAdd = SkillRules.INDEX_CAP + 1,
         )
-        assertNull("草稿不占索引位", draftWhenFull.blocked)
+        assertNotNull("草稿也占索引位，满了照样挡", draftWhenFull.blocked)
     }
 
     // ── 3. 真落盘：备份 → 正文 → 索引 ───────────────────────────────────────
@@ -127,7 +127,7 @@ class SkillStoreTest {
     }
 
     @Test
-    fun `S6_草稿只写正文_不进索引`() {
+    fun `S6_草稿也进索引_并带未验证标`() {
         val r = SkillStore.apply(
             SkillStore.plan(proposal(draft = true), projectRoot, globalRoot, "s"),
             files(),
@@ -288,5 +288,136 @@ class SkillStoreTest {
         assertTrue("未实测要写明", t.contains("未实测"))
         assertTrue("三套格式都要提", t.contains("world_book") && t.contains("SillyTavern") && t.contains("Tavo"))
         assertTrue("ST 的 disable 是反义，这条最容易错", t.contains("反义"))
+    }
+
+    // ── 6. 第一百七十四批 · 索引接线（死分支／两层合计／同名一行／不留半条）──
+
+    /** SkillStore.kt 的源码文本（源码级判据用；跑测试的工作目录可能是仓库根或 app/）。 */
+    private fun skillStoreSrc(): String = File("src/main/java/com/example/zhengdao/baopu/SkillStore.kt")
+        .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/SkillStore.kt") }
+        .readText()
+
+    /** 往一层人设灌 [count] 条索引（夹具；走合法写口，不手写路径）。 */
+    private fun seedIndex(files: PersonaFiles, layer: PersonaLayer, count: Int) {
+        val scope = if (layer == PersonaLayer.B_GLOBAL) MemoryScope.GLOBAL else MemoryScope.PROJECT
+        val text = (1..count).joinToString("\n") {
+            SkillRules.renderIndexLine(SkillRules.IndexLine(scope, "占位技能$it", "占位场景第 $it 条")) + "\n"
+        }
+        val p = PersonaRules.propose(layer, files.read(layer).orEmpty(), text, "测试夹具：灌索引")
+        assertNotNull("夹具要能写人设", p)
+        assertTrue("夹具写盘要成", files.applyProposal(p!!))
+    }
+
+    /** 人设层写不下去的夹具：projectRoot 做成**普通文件** ⇒ 它的子路径写不进（applyProposal 返回 false）。 */
+    private fun brokenPersonaFiles(): PersonaFiles {
+        val blocked = File(projectRoot, "persona-blocked")
+        blocked.writeText("我不是目录", Charsets.UTF_8)
+        return PersonaFiles(projectRoot = blocked, globalRoot = globalRoot)
+    }
+
+    private fun indexLinesOf(text: String): List<String> =
+        text.lines().filter { it.trim().startsWith(SkillRules.INDEX_MARK) }
+
+    @Test
+    fun `S17_索引写入是直线_不许死分支把它关死`() {
+        // 派工单 §2 负例「if (false) 复活」。来历：2026-10-18 那次改口径把
+        // `if (plan.proposal.draft) { false } else { 写索引 }` 的条件直接改成 `if (false)`——
+        // 运行时通（走 else），但判据没人读得出来，注释与代码自相矛盾。
+        val src = skillStoreSrc()
+        assertFalse("不许再用 if (false) 死分支", src.contains("if (false)"))
+        assertTrue("索引必须真的算 addIndexLine", src.contains("SkillRules.addIndexLine("))
+        assertTrue("索引写盘只许走人设层唯一写口", src.contains("personaFiles.applyProposal("))
+        assertFalse("草稿条件不许再包住索引写入（旧的那道豁免）", src.contains("if (plan.proposal.draft)"))
+    }
+
+    @Test
+    fun `S18_同名再写_索引只有一行_那一行换成新场景`() {
+        val pf = files()
+        val first = SkillStore.apply(
+            SkillStore.plan(proposal(body = "先看字段清单再按顺序填。"), projectRoot, globalRoot, "s"),
+            pf, pf.read(PersonaLayer.C_PROJECT).orEmpty(),
+        )
+        assertTrue("首写要成：$first", first is SkillWriteResult.Written)
+        val second = SkillStore.apply(
+            SkillStore.plan(proposal(body = "先填必填项再存草稿。"), projectRoot, globalRoot, "s2"),
+            pf, pf.read(PersonaLayer.C_PROJECT).orEmpty(),
+        )
+        assertTrue("再写要成：$second", second is SkillWriteResult.Written)
+        val rows = indexLinesOf(pf.read(PersonaLayer.C_PROJECT).orEmpty())
+        assertEquals("同名只许一行，不许重复追加：$rows", 1, rows.size)
+        assertTrue("那一行要更新成新版场景：$rows", rows.first().contains("先填必填项"))
+    }
+
+    @Test
+    fun `S19_草稿转正后未验证标消失_仍然只有一行`() {
+        val pf = files()
+        val draft = SkillStore.apply(
+            SkillStore.plan(proposal(body = "先按字段清单填一遍。", draft = true), projectRoot, globalRoot, "s"),
+            pf, "",
+        )
+        assertTrue("草稿要写成：$draft", draft is SkillWriteResult.Written)
+        val duringDraft = pf.read(PersonaLayer.C_PROJECT).orEmpty()
+        assertTrue("草稿期要带未验证标：$duringDraft", duringDraft.contains("草稿·未验证"))
+        val promoted = SkillStore.apply(
+            SkillStore.plan(proposal(body = "先按字段清单填一遍。", draft = false), projectRoot, globalRoot, "s2"),
+            pf, pf.read(PersonaLayer.C_PROJECT).orEmpty(),
+        )
+        assertTrue("转正要写成：$promoted", promoted is SkillWriteResult.Written)
+        val after = pf.read(PersonaLayer.C_PROJECT).orEmpty()
+        assertFalse("转正后标记要消失：$after", after.contains("草稿·未验证"))
+        assertEquals("转正不许多出一行", 1, indexLinesOf(after).size)
+    }
+
+    @Test
+    fun `S20_两层合计满20条_第21条拒_盘上一个字节都不写`() {
+        // 上限是 B＋C **两层合计**（SkillRules.INDEX_CAP 的口径）：全局层占满 20 条时，
+        // 项目层哪怕一行都没有，也不许再写第 21 条。原来的 apply 没传 otherLayerCount ⇒ 各层各算各的。
+        val pf = files()
+        seedIndex(pf, PersonaLayer.B_GLOBAL, SkillRules.INDEX_CAP)
+        val globalBefore = pf.read(PersonaLayer.B_GLOBAL).orEmpty()
+        val plan = SkillStore.plan(proposal(), projectRoot, globalRoot, "s")
+        val r = SkillStore.apply(plan, pf, pf.read(PersonaLayer.C_PROJECT).orEmpty())
+        val rej = r as SkillWriteResult.Rejected
+        assertTrue("两层合计满了要拒：${rej.reason}", rej.reason.contains("索引已满"))
+        assertFalse("被拒不许留下正文（不留半条）", plan.file.exists())
+        assertFalse("被拒不许建技能目录", File(projectRoot, SkillRules.SKILL_DIR).exists())
+        assertEquals("另一层原样不动", globalBefore, pf.read(PersonaLayer.B_GLOBAL).orEmpty())
+    }
+
+    @Test
+    fun `S21_草稿同样占索引位_合计满时一样拒`() {
+        val pf = files()
+        seedIndex(pf, PersonaLayer.B_GLOBAL, SkillRules.INDEX_CAP)
+        val plan = SkillStore.plan(proposal(draft = true), projectRoot, globalRoot, "s")
+        val r = SkillStore.apply(plan, pf, "")
+        assertTrue("草稿满了照样拒：$r", r is SkillWriteResult.Rejected)
+        assertFalse("被拒不许留下正文", plan.file.exists())
+    }
+
+    @Test
+    fun `S22_索引落不成_覆盖写把正文回滚成上一版`() {
+        val pf = files()
+        val first = SkillStore.apply(
+            SkillStore.plan(proposal(body = "第一版流程。"), projectRoot, globalRoot, "20261024-100000"),
+            pf, "",
+        )
+        assertTrue("前置：第一次要写成：$first", first is SkillWriteResult.Written)
+        val target = (first as SkillWriteResult.Written).file
+        val plan2 = SkillStore.plan(proposal(body = "第二版流程。"), projectRoot, globalRoot, "20261024-100100")
+        assertNotNull("前置：同名已在 ⇒ 要有备份名", plan2.backupName)
+        val r = SkillStore.apply(plan2, brokenPersonaFiles(), pf.read(PersonaLayer.C_PROJECT).orEmpty())
+        assertTrue("索引写不成就得报错：$r", r is SkillWriteResult.Rejected)
+        assertEquals("正文回到上一版（不留改坏了却没索引的半条）", "第一版流程。", target.readText())
+    }
+
+    @Test
+    fun `S23_索引落不成_首次新建软归档不留孤儿正文`() {
+        val plan = SkillStore.plan(proposal(body = "还没落地的流程。"), projectRoot, globalRoot, "20261024-100200")
+        assertNull("前置：这是首次新建", plan.backupName)
+        val r = SkillStore.apply(plan, brokenPersonaFiles(), "")
+        assertTrue("索引写不成要报错：$r", r is SkillWriteResult.Rejected)
+        assertFalse("不许留下有正文没索引的孤儿技能", plan.file.isFile)
+        val archived = plan.file.parentFile?.listFiles { f -> f.name.contains(".deleted-") }.orEmpty()
+        assertTrue("软归档（红线不硬删）要看得见这份原件", archived.isNotEmpty())
     }
 }
