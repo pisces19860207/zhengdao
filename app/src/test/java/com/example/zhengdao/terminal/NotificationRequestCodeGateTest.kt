@@ -44,6 +44,9 @@ class NotificationRequestCodeGateTest {
     private val serviceSrc = "src/main/java/com/example/zhengdao/terminal/SessionService.kt"
     private val completionSrc = "src/main/java/com/example/zhengdao/baopu/BaopuCompletionNotifier.kt"
 
+    // 第一百六十七批：定时任务那条通知 + 它排闹钟用的请求码，一并进这张账。
+    private val scheduleSrc = "src/main/java/com/example/zhengdao/schedule/ScheduleNotifier.kt"
+
     /** 从源码里取一个 `const val NAME = <数字>` 的值（取不到 ⇒ 直接红）。 */
     private fun constValue(src: String, file: String, name: String): Int {
         val m = Regex("const val $name\\s*=\\s*(\\d+)").find(src)
@@ -97,6 +100,7 @@ class NotificationRequestCodeGateTest {
     @Test
     fun `P2-12_五个请求码两两不同`() {
         val service = code(serviceSrc)
+        val schedule = code(scheduleSrc)
         val values = listOf(
             "REQ_CACHE" to constValue(code(cacheSrc), "CacheNotifier.kt", "REQ_CACHE"),
             "REQ_INSTALL" to constValue(code(installSrc), "InstallNotifier.kt", "REQ_INSTALL"),
@@ -104,8 +108,34 @@ class NotificationRequestCodeGateTest {
             "REQ_STOP_SESSION" to constValue(service, "SessionService.kt", "REQ_STOP_SESSION"),
             "REQ_TOGGLE_KEEPALIVE" to constValue(service, "SessionService.kt", "REQ_TOGGLE_KEEPALIVE"),
             "REQ_SESSION" to constValue(code(completionSrc), "BaopuCompletionNotifier.kt", "REQ_SESSION"),
+            // 第一百六十七批 §5 ⑤：定时任务的通知与闹钟登记各自一个码，且都不许撞上面那六个。
+            "REQ_SCHEDULE" to constValue(schedule, "ScheduleNotifier.kt", "REQ_SCHEDULE"),
+            "REQ_SLOT_ALARM" to constValue(schedule, "ScheduleNotifier.kt", "REQ_SLOT_ALARM"),
         )
-        assertEquals("六个请求码必须两两不同：$values", values.size, values.map { it.second }.toSet().size)
+        assertEquals("八个请求码必须两两不同：$values", values.size, values.map { it.second }.toSet().size)
+    }
+
+    /**
+     * 第一百六十七批 §0.5 约束 2：定时任务复用 169 那套通知栈，**身份**必须各是各的。
+     * 通知 id 也在这张账里钉：169 是 20261101、保活 42、安装 20261008、缓存 20261010。
+     */
+    @Test
+    fun `167_定时任务通知与闹钟都用命名常量`() {
+        val schedule = code(scheduleSrc)
+        assertTrue(
+            "ScheduleNotifier 必须用 REQ_SCHEDULE 建回会话的 PendingIntent（裸数字＝下次又撞）",
+            Regex("PendingIntent\\.getActivity\\(\\s*context,\\s*REQ_SCHEDULE,").containsMatchIn(schedule),
+        )
+        assertTrue(
+            "闹钟的 PendingIntent 必须用 REQ_SLOT_ALARM（它与通知不同用途，但同样不许撞号）",
+            Regex("PendingIntent\\.getBroadcast\\(\\s*[^,]+,\\s*ScheduleNotifier\\.REQ_SLOT_ALARM,")
+                .containsMatchIn(code("src/main/java/com/example/zhengdao/schedule/ScheduleScheduler.kt")),
+        )
+        val ids = listOf(
+            "schedule" to constValue(schedule, "ScheduleNotifier.kt", "NOTIF_ID"),
+            "completion" to constValue(code(completionSrc), "BaopuCompletionNotifier.kt", "NOTIF_ID"),
+        )
+        assertEquals("通知 id 也不许撞（撞了＝后一条把前一条就地改掉）：$ids", 2, ids.map { it.second }.toSet().size)
     }
 
     @Test

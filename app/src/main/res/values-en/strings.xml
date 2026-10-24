@@ -1769,6 +1769,7 @@
 <string name="skill_card_blocked">Cannot remember yet: %1$s</string>
 <string name="skill_card_remember">Remember it</string>
 <string name="skill_card_dismiss">Not now</string>
+<<<<<<< HEAD
 <!-- Batch 196: learner (teach it once) -->
 <string name="teach_menu_start">Teach it once</string>
 <string name="teach_menu_stop">Finish teaching</string>
@@ -1782,4 +1783,83 @@
 <string name="teach_confirm_discard">Discard</string>
 <string name="teach_empty">Nothing usable recorded this time, try again</string>
 <string name="teach_started_toast">Teaching started: click and type normally — recorded only, nothing is touched</string>
+=======
+    <!-- ══ Scheduled tasks (batch 167, 2026-10-24; only this block added) ══ -->
+    <string name="sched_page_title">Scheduled tasks</string>
+    <string name="sched_card_tasks">Tasks</string>
+    <string name="sched_empty">No scheduled tasks yet. Add one and it will send the sentence you wrote into a Baopu session when the time comes.</string>
+    <string name="sched_btn_new">New scheduled task</string>
+    <string name="sched_corrupt_note">The task file could not be read as trustworthy content, so this session treats it as empty. The original is kept as %1$s (we do not guess or repair half a row).</string>
+    <string name="sched_route_exact">On-time triggering is active (exact alarms allowed)</string>
+    <string name="sched_route_work">Inexact triggering: the time may slip by minutes</string>
+    <string name="sched_perm_card">Permissions used by scheduled tasks</string>
+    <string name="sched_perm_notify">Notifications</string>
+    <string name="sched_perm_notify_desc">One system notification when a task fires or fails. Without it tasks still run; the message only lands in the Baopu session.</string>
+    <string name="sched_perm_exact">Exact alarms</string>
+    <string name="sched_perm_exact_desc">Needed to fire exactly on time. Android 14+ denies it by default for new installs, so you allow it in system settings. Without it we fall back to WorkManager and show the time as approximate.</string>
+    <string name="sched_perm_battery">Battery optimization exemption</string>
+    <string name="sched_perm_battery_desc">Optional. Tasks work without it; a long background stretch may get the process killed, and rescheduling plus the catch-up on next open covers it.</string>
+    <string name="sched_perm_goto">Open settings</string>
+    <string name="sched_state_exempt">Exempt</string>
+    <string name="sched_state_not_exempt">Not exempt</string>
+    <string name="sched_hub_enabled">Enabled: %1$d</string>
+    <string name="sched_hub_none">No tasks</string>
+    <string name="sched_state_paused">Paused</string>
+    <string name="sched_state_no_next">No next run</string>
+    <string name="sched_next_at">Next: %1$s</string>
+    <string name="sched_next_today">Today %1$s</string>
+    <string name="sched_next_tomorrow">Tomorrow %1$s</string>
+    <string name="sched_next_date">%1$s %2$s</string>
+    <string name="sched_zone_suffix"> (%1$s)</string>
+    <string name="sched_last_line">Last: %1$s · %2$s</string>
+    <string name="sched_last_never">Last: never run</string>
+    <string name="sched_out_none">—</string>
+    <string name="sched_out_fired">Fired</string>
+    <string name="sched_out_fired_late">Caught up</string>
+    <string name="sched_out_queued">Queued</string>
+    <string name="sched_out_missed">Missed</string>
+    <string name="sched_out_refused">Blocked</string>
+    <string name="sched_out_failed">Failed</string>
+    <string name="sched_detail_other_busy">Another session was running</string>
+    <string name="sched_detail_queue_full">Queue is full</string>
+    <string name="sched_detail_empty">Empty prompt</string>
+    <string name="sched_detail_retry_limit">Retried up to the limit without getting in</string>
+    <string name="sched_edit_new_title">New scheduled task</string>
+    <string name="sched_edit_title">Edit task</string>
+    <string name="sched_field_title">Title (optional)</string>
+    <string name="sched_field_prompt">What to send when it fires</string>
+    <string name="sched_field_freq">Repeat</string>
+    <string name="sched_freq_once">Once</string>
+    <string name="sched_freq_daily">Daily</string>
+    <string name="sched_freq_weekly">Weekly</string>
+    <string name="sched_field_time">Time</string>
+    <string name="sched_field_hour">Hour</string>
+    <string name="sched_field_minute">Minute</string>
+    <string name="sched_field_date">Date (YYYY-MM-DD)</string>
+    <string name="sched_field_zone">Time zone</string>
+    <string name="sched_field_zone_hint">e.g. Asia/Shanghai; blank = the phone\u0027s current zone</string>
+    <string name="sched_day_1">Mon</string>
+    <string name="sched_day_2">Tue</string>
+    <string name="sched_day_3">Wed</string>
+    <string name="sched_day_4">Thu</string>
+    <string name="sched_day_5">Fri</string>
+    <string name="sched_day_6">Sat</string>
+    <string name="sched_day_7">Sun</string>
+    <string name="sched_btn_save">Save</string>
+    <string name="sched_sum_line">%1$s %2$s</string>
+    <string name="sched_err_prompt">“What to send when it fires” cannot be empty.</string>
+    <string name="sched_err_past">That time is already in the past; pick another.</string>
+    <string name="sched_err_fields">The time, weekday or zone is wrong (%1$s).</string>
+    <string name="sched_err_save">Could not write to disk (full storage / permission); these edits will be gone next time you open the page.</string>
+    <string name="sched_delete_title">Delete this task?</string>
+    <string name="sched_delete_desc">“%1$s” will be removed and will never fire again.</string>
+    <string name="sched_delete_action">Delete</string>
+    <string name="sched_session_title">Scheduled · %1$s</string>
+    <string name="sched_notif_fired_title">Scheduled task “%1$s” was sent</string>
+    <string name="sched_notif_late_title">Scheduled task “%1$s” caught up (past its time)</string>
+    <string name="sched_notif_fired_text">Its prompt is now in a Baopu session — tap to open it</string>
+    <string name="sched_notif_failed_title">Scheduled task “%1$s” did not run</string>
+    <string name="sched_notif_reason_busy">Another session held the single-active gate; retries hit the limit</string>
+    <string name="sched_notif_reason_failed">Sending failed; details are in the run log</string>
+>>>>>>> feat/scheduled-tasks-v1
 </resources>

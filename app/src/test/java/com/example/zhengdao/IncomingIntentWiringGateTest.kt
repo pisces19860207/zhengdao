@@ -276,6 +276,11 @@ class IncomingIntentWiringGateTest {
             )
         }
         // 不新增权限、不新增后台服务（本单只开入口）。
+        // 第一百六十七批（定时任务 v1）按派工单 §2 增列 SCHEDULE_EXACT_ALARM：
+        // 它是 App-optimized 特殊权限，Android 14 起对新装机默认拒绝，用户不给时定时任务
+        // 自动退回「只走 WorkManager 兜底」（可能不准点，页面上明说），不静默失败。
+        // 同批**没有**增列 USE_EXACT_ALARM——那条是装机即授、用户撤不掉，Google Play 只准
+        // 闹钟/日历类核心功能申报（见交付报告 §0.6）。
         val perms = Regex("""<uses-permission[^>]*android:name="([^"]+)"""").findAll(manifest)
             .map { it.groupValues[1] }.toSet()
         assertEquals(
@@ -290,6 +295,7 @@ class IncomingIntentWiringGateTest {
                 "android.permission.POST_NOTIFICATIONS",
                 "android.permission.READ_EXTERNAL_STORAGE",
                 "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+                "android.permission.SCHEDULE_EXACT_ALARM",
                 "android.permission.WAKE_LOCK",
                 "android.permission.WRITE_EXTERNAL_STORAGE",
             ),
