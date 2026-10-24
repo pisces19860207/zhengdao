@@ -26,8 +26,8 @@ import org.junit.runner.RunWith
  * ── 这份基准测的是什么 ────────────────────────────────────────────────
  * 四个场景，每个跑 [ITERATIONS] 轮取中位数：
  *   1. 冷启动            —— 进程被杀后从零拉起，到首屏内容可见（StartupTimingMetric）
- *   2. 太极页加载        —— 丹房 → 太极 的切页与首屏渲染（FrameTimingMetric）
- *   3. 终端页切换        —— 点「终端」拉起 TerminalActivity（FrameTimingMetric）
+ *   2. 抱朴页加载        —— 丹房 → 抱朴 的切页与首屏渲染（FrameTimingMetric）
+ *   3. 终端页切换        —— 点「逍遥」（nav_terminal）拉起 TerminalActivity（FrameTimingMetric）
  *   4. 设置页滚动        —— 设置页连续三段滑动的帧耗时（FrameTimingMetric）
  *
  * ── 为什么这么写（几个必须知道的坑）─────────────────────────────────
@@ -59,17 +59,17 @@ class ZhengdaoBenchmark {
      * 每个测试开始前把 App 停回主页。
      *
      * ⚠️ 必须做：被测 App 会记忆上次页面（SharedPreferences.last_route）。上一个
-     *    测试若停在「设置」页，冷启动就会直接落在设置页 —— 底栏锚点（太极/证道）
+     *    测试若停在「设置」页，冷启动就会直接落在设置页 —— 底栏锚点（抱朴/证道）
      *    自然不存在，coldStartup 必败（真机已复现）。环境状态要靠归位，不能靠运气。
      */
     @Before
     fun parkOnHome() {
         device.pressHome()
         device.executeShellCommand("am start -n $PKG/.MainActivity --activity-clear-task")
-        if (!device.waitForAnyText("太极", timeoutMs = 10_000)) {
+        if (!device.waitForAnyText(HOME_TAB, timeoutMs = 10_000)) {
             // 恢复到了二级页 → 返回键退回主页（见 launchHome 的说明）
             device.pressBack()
-            device.waitForAnyText("太极", timeoutMs = 6_000)
+            device.waitForAnyText(HOME_TAB, timeoutMs = 6_000)
         }
         device.pressHome()
     }
@@ -87,13 +87,13 @@ class ZhengdaoBenchmark {
         setupBlock = { device.pressHome() },
     ) {
         startActivityAndWait()
-        // 首屏锚点：底栏「太极」恒在；「证道」是丹房大标题（落设置页时两者都没有，
+        // 首屏锚点：底栏「抱朴」恒在；「证道」是丹房大标题（落设置页时两者都没有，
         // 那种情况下基准会直接失败——这正是我们要的可见失败，见类注释）。
-        check(device.waitForAnyText("太极", "证道")) { "冷启动后 ${SETTLE_MS}ms 内首屏未就绪" }
+        check(device.waitForAnyText(HOME_TAB, HOME_TITLE)) { "冷启动后 ${SETTLE_MS}ms 内首屏未就绪" }
     }
 
-    // ── 2. 太极页加载 ──────────────────────────────────────────────────
-    // 测的是「切页 + 太极页首屏渲染」的帧耗时：太极页要先起 opencode serve 才能进
+    // ── 2. 抱朴页加载 ──────────────────────────────────────────────────
+    // 测的是「切页 + 抱朴页首屏渲染」的帧耗时：抱朴页要先起 opencode serve 才能进
     // 对话态，等待锚点覆盖三种稳态（已就绪 / 未安装 / 启动失败），任一出现即算渲染完成。
     @Test
     fun baopuTabLoad() = benchmarkRule.measureRepeated(
@@ -106,19 +106,25 @@ class ZhengdaoBenchmark {
             ensureDanfangTab()
         },
     ) {
-        check(device.tapText("太极")) { "未找到底部「太极」Tab" }
+        check(device.tapText(HOME_TAB)) { "未找到底部「$HOME_TAB」Tab" }
         check(
             device.waitForAnyText(
                 "描述你的任务…",       // 已就绪：输入框占位文案
                 "尚未安装 OpenCode",   // 未安装态
                 "OpenCode 启动失败",   // 启动失败态
             )
-        ) { "太极页 ${SETTLE_MS}ms 内未进入任何稳态" }
+        ) { "抱朴页 ${SETTLE_MS}ms 内未进入任何稳态" }
     }
 
     // ── 3. 终端页切换 ──────────────────────────────────────────────────
     // 「终端」直接拉起 TerminalActivity（独立 Activity，无底部导航）。
-    // 完成信号 = 底栏「太极」消失（说明终端已占据前台）。
+    //
+    // 完成信号 = 终端页自己的**真实锚点**「ESC」可见（`res/layout/term_keys.xml`
+    // 的 `term_key_esc`，终端页恒在）。第一百六十九批之前等的是「底栏抱朴消失」——
+    // 那条在主页上就已经成立（gone 立即 true），量到的根本不是切换。
+    //
+    // 判据顺序（派工单 §2）：**先断言起点（主页在、终端锚点不在），再点，再等目标出现**；
+    // 任何一步不成立都 fail，绝不「空等即过」。
     @Test
     fun terminalSwitch() = benchmarkRule.measureRepeated(
         packageName = PKG,
@@ -130,11 +136,37 @@ class ZhengdaoBenchmark {
             ensureDanfangTab()
         },
     ) {
-        // 底栏文案「终端」，与 MainActivity 底部导航 Tab 一致（2026-10-08 由「洞天」改名）
-        check(device.tapText("终端")) { "未找到底部「终端」Tab" }
-        // 终端页没有可点的文字锚点，用「底栏消失」判定切换完成
-        check(device.wait(Until.gone(By.text("太极")), SETTLE_MS)) {
-            "点终端后 ${SETTLE_MS}ms 内未离开主界面（终端页未拉起）"
+        // 起点：底栏「逍遥」（nav_terminal）在（主页），终端锚点不在（还没进终端页）。
+        check(device.waitForText(TERMINAL_TAB, timeoutMs = SETTLE_MS)) { "主页底栏未出现「$TERMINAL_TAB」" }
+        check(device.findObject(By.text(TERMINAL_ANCHOR)) == null) {
+            "起点已在终端页（锚点「$TERMINAL_ANCHOR」已可见）⇒ 这一轮测不到切换。" +
+                "诊断：前台=${device.currentPackageName}，可见标记=[${device.screenMarkers()}]"
+        }
+        check(device.tapText(TERMINAL_TAB)) { "未找到底部「$TERMINAL_TAB」Tab" }
+        check(device.wait(Until.hasObject(By.text(TERMINAL_ANCHOR)), SETTLE_MS)) {
+            "点「$TERMINAL_TAB」后 ${SETTLE_MS}ms 内终端锚点「$TERMINAL_ANCHOR」仍未出现。" +
+                "诊断：前台=${device.currentPackageName}，可见标记=[${device.screenMarkers()}]"
+        }
+    }
+
+    /**
+     * **负例**：只把 App 拉到主页，**不点「逍遥」**——上面那条基准的锚点等待必须失败。
+     *
+     * 为什么单列一条：正向跑通只证明「等到了」，证明不了「没变化时会不会也过」。
+     * 这里不点任何东西，直接复用同一个锚点等待；若它返回 true，说明锚点判据是假的
+     * （例如旧版用主页上也存在的元素当完成信号），本用例当场红。
+     *
+     * ⚠️ 不用 measureRepeated：页面不动就没有新帧，FrameTimingMetric 会以
+     *    「no renderthread slices」失败——那是取不到帧，不是「锚点没区分力」。
+     *    负例判的是行为，不是性能，所以只跑一次 UiAutomator 断言。
+     */
+    @Test
+    fun terminalSwitchNegativeUnchangedPageMustFail() {
+        device.executeShellCommand("am start -n $PKG/.MainActivity")
+        check(device.waitForText(TERMINAL_TAB, timeoutMs = SETTLE_MS)) { "主页底栏未出现「$TERMINAL_TAB」" }
+        val appeared = device.wait(Until.hasObject(By.text(TERMINAL_ANCHOR)), NEGATIVE_WAIT_MS)
+        check(!appeared) {
+            "页面没有切换却等到了「$TERMINAL_ANCHOR」⇒ 锚点不具区分力，正向基准的读数不可信"
         }
     }
 
@@ -171,6 +203,24 @@ private const val SETTLE_MS = 20_000L
 /** 设置页滚动段数。 */
 private const val SCROLL_TIMES = 3
 
+/** 主页底栏的终端入口文案：`nav_terminal`＝逍遥（2026-10-14 四 Tab 命名定稿）。 */
+private const val TERMINAL_TAB = "逍遥"
+
+/** 主页底栏第一格：`nav_taiji`＝抱朴（恒在，冷启动/回主页的就绪锚点）。 */
+private const val HOME_TAB = "抱朴"
+
+/** 丹房页大标题（AGENTS Tab 落位后的内容锚点）。 */
+private const val HOME_TITLE = "证道"
+
+/**
+ * 终端页的真实锚点：`res/layout/term_keys.xml` 里恒在的 `key_esc`（文案「ESC」）。
+ * 选它而不是工具栏标题：终端里跑命令时标题可能变，ESC 是物理键行的一部分，页面一拉起就在。
+ */
+private const val TERMINAL_ANCHOR = "ESC"
+
+/** 负例等待：页面没切换时不该等到锚点；3 秒足够暴露「主页上就有」的假锚点。 */
+private const val NEGATIVE_WAIT_MS = 3_000L
+
 /** 轮询间隔（ms）。 */
 private const val POLL_MS = 50L
 
@@ -203,31 +253,31 @@ private fun MacrobenchmarkScope.launchHome() {
     killProcess()
     startActivityAndWait(homeIntent())
     // 先耐心等首屏：冷启动后立刻查无障碍树会偶发落空（Compose 首帧还没上屏）
-    if (!device.waitForAnyText("太极", timeoutMs = 8_000)) {
+    if (!device.waitForAnyText(HOME_TAB, timeoutMs = 8_000)) {
         // 恢复到了二级页（设置/插件，都没有底栏）→ 用**系统返回键**退回主页。
         // ⚠️ 别改回「找『返回』文字节点再点」：真机实测这种查找在这里偶发返回 null
         //    （界面明明有「‹ 返回」，诊断却报可见标记=[]），原因未明；而 BACK 是系统级
         //    动作，不依赖无障碍树。二级页按返回 = popBackStack 回主页，不会退出 App。
         device.pressBack()
-        if (!device.waitForAnyText("太极", timeoutMs = 6_000)) {
+        if (!device.waitForAnyText(HOME_TAB, timeoutMs = 6_000)) {
             device.pressBack()
-            device.waitForAnyText("太极", timeoutMs = 6_000)
+            device.waitForAnyText(HOME_TAB, timeoutMs = 6_000)
         }
     }
-    check(device.waitForAnyText("太极", timeoutMs = 8_000)) {
+    check(device.waitForAnyText(HOME_TAB, timeoutMs = 8_000)) {
         "主页未在 8s 内就绪。诊断：前台=${device.currentPackageName}，可见标记=[${device.screenMarkers()}]"
     }
 }
 
 /** 失败时把屏幕上真实可见的锚点列出来——猜不如看（这 App 的复位坑已经踩了三次）。 */
 private fun UiDevice.screenMarkers(): String = listOf(
-    "太极", "证道", "设置", "返回", "存储占用", "终端", "丹房",
+    HOME_TAB, HOME_TITLE, "设置", "返回", "存储占用", TERMINAL_TAB, "怡然",
     "ESC", "CTRL", "描述你的任务…", "尚未安装 OpenCode",
 ).filter { findObject(By.text(it)) != null }.joinToString(",")
-/** 保证停在丹房 Tab（太极页加载 / 设置入口的起点），起点一致才谈得上对比。 */
+/** 保证停在丹房 Tab（抱朴页加载 / 设置入口的起点），起点一致才谈得上对比。 */
 private fun MacrobenchmarkScope.ensureDanfangTab() {
     if (device.findObject(By.text("证道")) == null) {
-        check(device.tapText("丹房")) { "未找到底部「丹房」Tab" }
+        check(device.tapText("怡然")) { "未找到底部「怡然」Tab（nav_agents，丹房所在页）" }
         check(device.waitForText("证道")) { "丹房页未就绪" }
     }
 }
@@ -238,7 +288,7 @@ private fun MacrobenchmarkScope.ensureDanfangTab() {
 private fun UiDevice.waitForText(text: String, timeoutMs: Long = SETTLE_MS): Boolean =
     wait(Until.hasObject(By.text(text)), timeoutMs)
 
-/** 等多段文案中任意一段出现（太极页有几种稳态，都要认）。 */
+/** 等多段文案中任意一段出现（抱朴页有几种稳态，都要认）。 */
 private fun UiDevice.waitForAnyText(
     vararg texts: String,
     timeoutMs: Long = SETTLE_MS,

@@ -562,12 +562,12 @@
     <string name="perm_camera_label">Camera</string>
     <string name="perm_camera_detail">Camera is used for photos and scanning; text chat and writing work without it.</string>
     <string name="perm_notify_label">Notifications</string>
-    <string name="perm_notify_detail">Silent notes like \"cleaned up after install\" use notifications. Without the permission the system discards them, but no feature is affected.</string>
+    <string name="perm_notify_detail">Silent notes like \"cleaned up after install\" and Baopu background-completion notices use notifications. Without the permission the system discards them; the session still updates and no feature is affected.</string>
     <string name="perm_net_label">Network access</string>
     <string name="perm_net_value">Granted automatically</string>
     <string name="perm_net_detail">INTERNET is an install-time permission and needs no action. If you use a proxy: enable Zhengdao in the proxy app\'s per-app proxy list.</string>
     <string name="perm_hint_storage_denied">The system didn\'t allow it — open \"Settings → Apps → Zhengdao → Permissions\" and grant it manually (some systems silently dismiss the dialog)</string>
-    <string name="perm_hint_notify_denied">Notifications weren\'t allowed — nothing breaks, you just won\'t get silent notes like \"cleaned up after install\"</string>
+    <string name="perm_hint_notify_denied">Notifications weren\'t allowed — nothing breaks, but Baopu won\'t remind you when a background run finishes; the result is still in the session</string>
     <string name="perm_open_failed">Couldn\'t open: %1$s</string>
     <string name="perm_done">Done, enter Zhengdao</string>
     <string name="perm_later">Later</string>

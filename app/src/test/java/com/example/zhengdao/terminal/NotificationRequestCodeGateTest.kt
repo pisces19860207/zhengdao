@@ -42,6 +42,7 @@ class NotificationRequestCodeGateTest {
     private val cacheSrc = "src/main/java/com/example/zhengdao/terminal/CacheNotifier.kt"
     private val installSrc = "src/main/java/com/example/zhengdao/terminal/InstallNotifier.kt"
     private val serviceSrc = "src/main/java/com/example/zhengdao/terminal/SessionService.kt"
+    private val completionSrc = "src/main/java/com/example/zhengdao/baopu/BaopuCompletionNotifier.kt"
 
     /** 从源码里取一个 `const val NAME = <数字>` 的值（取不到 ⇒ 直接红）。 */
     private fun constValue(src: String, file: String, name: String): Int {
@@ -55,17 +56,19 @@ class NotificationRequestCodeGateTest {
         val cache = code(cacheSrc)
         val install = code(installSrc)
         val service = code(serviceSrc)
+        val completion = code(completionSrc)
 
         val reqCache = constValue(cache, "CacheNotifier.kt", "REQ_CACHE")
         val reqInstall = constValue(install, "InstallNotifier.kt", "REQ_INSTALL")
         val reqKeep = constValue(service, "SessionService.kt", "REQ_KEEPALIVE")
+        val reqSession = constValue(completion, "BaopuCompletionNotifier.kt", "REQ_SESSION")
 
         assertEquals(
-            "三条通知的请求码必须互不相同（PendingIntent 等价性只看请求码 + filterEquals，" +
+            "四条通知的请求码必须互不相同（PendingIntent 等价性只看请求码 + filterEquals，" +
                 "撞了就会互相改 extras：缓存通知能清掉「回到终端」）：" +
-                "cache=$reqCache install=$reqInstall keepalive=$reqKeep",
-            3,
-            setOf(reqCache, reqInstall, reqKeep).size,
+                "cache=$reqCache install=$reqInstall keepalive=$reqKeep session=$reqSession",
+            4,
+            setOf(reqCache, reqInstall, reqKeep, reqSession).size,
         )
 
         assertTrue(
@@ -100,13 +103,19 @@ class NotificationRequestCodeGateTest {
             "REQ_KEEPALIVE" to constValue(service, "SessionService.kt", "REQ_KEEPALIVE"),
             "REQ_STOP_SESSION" to constValue(service, "SessionService.kt", "REQ_STOP_SESSION"),
             "REQ_TOGGLE_KEEPALIVE" to constValue(service, "SessionService.kt", "REQ_TOGGLE_KEEPALIVE"),
+            "REQ_SESSION" to constValue(code(completionSrc), "BaopuCompletionNotifier.kt", "REQ_SESSION"),
         )
-        assertEquals("五个请求码必须两两不同：$values", values.size, values.map { it.second }.toSet().size)
+        assertEquals("六个请求码必须两两不同：$values", values.size, values.map { it.second }.toSet().size)
     }
 
     @Test
     fun `P2-12_不许再出现裸数字请求码`() {
-        listOf(cacheSrc to "CacheNotifier.kt", installSrc to "InstallNotifier.kt", serviceSrc to "SessionService.kt")
+        listOf(
+            cacheSrc to "CacheNotifier.kt",
+            installSrc to "InstallNotifier.kt",
+            serviceSrc to "SessionService.kt",
+            completionSrc to "BaopuCompletionNotifier.kt",
+        )
             .forEach { (rel, name) ->
                 val src = code(rel)
                 Regex("PendingIntent\\.get(Activity|Service|Broadcast)\\(\\s*[A-Za-z_][A-Za-z0-9_.]*,\\s*\\d")

@@ -248,6 +248,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
+    // 完成通知（第一百六十九批 §3）：点通知回会话。控制器已有「在跑就问问人」的
+    // requestOpenSession，这里只负责把请求交给它——不新造任何切换/停止逻辑。
+    val completionSession by BaopuIntents.sessionRequestedState
+    LaunchedEffect(completionSession) {
+        val sid = completionSession ?: return@LaunchedEffect
+        if (BaopuIntents.consumeSession() == sid) controller.requestOpenSession(sid)
+    }
+
     // 确认等待的**前台计时**（刀 3 A 段）：页面不可见时上报引擎——超时 15 分钟
     // 只算前台时间（派工单 §3.2/§2 补录），用户放下手机去干别的，回来卡还在。
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current

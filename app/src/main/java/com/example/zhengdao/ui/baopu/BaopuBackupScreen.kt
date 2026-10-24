@@ -100,6 +100,34 @@ object BaopuIntents {
         promptRequested.value = null
         return true
     }
+
+    /**
+     * 完成通知点击带回来的会话 id（第一百六十九批 §3）。
+     *
+     * 与备份/正文请求同一房型：通知落在 MainActivity，会话只在抱朴页里能开 ⇒
+     * Activity 挂请求、抱朴页组合时消费；冷启动（点通知拉起 App）与热启动都丢不了。
+     */
+    const val EXTRA_SESSION = "baopu_session_id"
+
+    private val sessionRequested = mutableStateOf<Long?>(null)
+
+    /** 请求状态（抱朴页用 LaunchedEffect 观察；热启动时请求是后到的）。 */
+    internal val sessionRequestedState: State<Long?> get() = sessionRequested
+
+    /** 请求打开某个会话（Activity 侧调）。 */
+    fun requestSession(sessionId: Long) {
+        sessionRequested.value = sessionId
+    }
+
+    /** 看一眼有没有待打开的会话（切 Tab 用，**不清**——真消费在抱朴页）。 */
+    fun peekSession(): Long? = sessionRequested.value
+
+    /** 抱朴页消费（只消费一次）。 */
+    fun consumeSession(): Long? {
+        val v = sessionRequested.value
+        sessionRequested.value = null
+        return v
+    }
 }
 
 /**
