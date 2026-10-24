@@ -35,7 +35,7 @@ class DiaryDbGateTest {
     fun `门禁_VERSION18与v17迁移链两处`() {
         // 157 补充把版本推到 18（workspace_grant/workspace_audit）；本条钉「版本号就是 18」
         // ＋「v17 迁移体还挂在链上两处」——语义要动就一起动，不许只改一半。
-        assertTrue("VERSION 应为 18", code.contains("const val VERSION = 18"))
+        assertTrue("VERSION 应为 19（v19 = 172 L4）", code.contains("const val VERSION = 19"))
         assertTrue("v18 迁移体必须在链上", code.contains("applyV18Migration(db)"))
         val chainHits = Regex("applyV17Migration\\(db\\)").findAll(code).count()
         assertTrue(

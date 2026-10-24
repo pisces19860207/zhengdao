@@ -75,6 +75,7 @@ class SensitiveRedactor(
         return SENSITIVE_KEY.replace(text) { m -> m.groupValues[1] + "=" + MASK }
     }
 
+
     /**
      * URL 脱敏（第㊵刀新增）：**凡把 tab url 写进桥响应体的命令都必须过这里**
      * （status / navigate 回执——真机实证过：URL query 里的 PII 曾被原样带回）。
@@ -177,7 +178,25 @@ class SensitiveRedactor(
          * 已知误报（可接受，隐私优先）：`?id=42` 这类普通文章 id 也会打码。
          */
         val SENSITIVE_QUERY_KEY = Regex(
-            """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|password|passwd|pwd|sign|signature|email|tel|phone|mobile|idcard|id|card|bankcard)[\w-]*)=([^&]*)"""
+            """(?i)((?:session|token|auth|cookie|jwt|secret|api[_-]?key|code|key|password|passwd|pwd|sign|signature|email|tel|phone|mobile|idcard|id|card|bankcard)[\w-]*)=([^&]*)"""
         )
+        /**
+         * 这个 query 键名是否敏感（第一百七十二批 L4：落库前「剥参数」要用它）。
+         *
+         * 判据就是 redactUrl 用的那一份 SENSITIVE_QUERY_KEY 的键名半边 —— 全仓只有一处键名清单；
+         * 若另写一套，脱敏与落库迟早漂成两种口径（桥里打码了、库里留全）。
+         * 处置不同：redactUrl 是打码（键留、值换星号），L4 落库是整条删掉（键值都不留）。
+         */
+        fun isSensitiveQueryKey(name: String): Boolean {
+            if (name.isEmpty()) return false
+            // 已知误伤白名单：keyword / keywords / keyboard 是搜索类参数，不是凭据。
+            // 它们在正则里会命中 key 这个前缀，这里显式放过（别把用户的搜索词当令牌删掉）。
+            val lower = name.lowercase()
+            if (lower == "keyword" || lower == "keywords" || lower == "keyboard") return false
+            // 用 containsMatchIn 而不是 matches：`csrf_token`、`user_session` 这类键名的敏感词
+            // **不在开头**，整串匹配会漏（真机/单测实证：csrf_token 曾被放过）。这正是 redactUrl
+            // 用的语义（正则查找，不是整串相等）。
+            return SENSITIVE_QUERY_KEY.containsMatchIn("$name=1")
+        }
     }
 }

@@ -94,6 +94,9 @@ object BrowserHolder {
     @Volatile
     private var foregroundTracked = false
 
+    /** 应用上下文（L4 退后台快照要写库；与 [attachAppForegroundTracking] 一起拿到）。 */
+    private var appContext: android.content.Context? = null
+
     /**
      * 给整个 App 挂上前台跟踪（[com.example.zhengdao.MainActivity] 的 onCreate 调一次）。
      *
@@ -102,6 +105,7 @@ object BrowserHolder {
      * 判据与动作都归玄览自己的门面。
      */
     fun attachAppForegroundTracking(app: android.app.Application) {
+        this.appContext = app.applicationContext
         if (foregroundTracked) return
         foregroundTracked = true
         app.registerActivityLifecycleCallbacks(
@@ -133,7 +137,14 @@ object BrowserHolder {
     fun setAppForeground(foreground: Boolean) {
         if (appForeground == foreground) return
         appForeground = foreground
-        if (foreground) BrowserTabManager.resumeAll() else BrowserTabManager.pauseAll()
+        if (foreground) {
+            BrowserTabManager.resumeAll()
+        } else {
+            // 第一百七十二批 L4：退后台是进程被杀前**最后一次**写快照的机会（边用边记的另一半）。
+            // 只读不写库的东西在这里落一次盘；失败只记日志（快照是增强，不许拖垮退后台）。
+            appContext?.let { BrowserTabManager.snapshotAll(it) }
+            BrowserTabManager.pauseAll()
+        }
     }
 
     /** 取（或首建）全局活跃引擎实例（无标签时建第一个）。 */
