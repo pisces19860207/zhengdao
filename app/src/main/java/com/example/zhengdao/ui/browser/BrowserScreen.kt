@@ -123,6 +123,14 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     val engine: WebViewEngine? = active?.engine
 
     LaunchedEffect(Unit) {
+        // 第一百七十二批 L4：冷启先进一次快照（只在本进程还没有任何标签时）。
+        // 读库在 IO 线程（不许主线程 IO）；恢复只材料化「上次活跃」那一颗，其余进标签条待点开。
+        if (BrowserTabManager.count() == 0) {
+            val rows = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                BrowserTabSnapshotStore.load(context)
+            }
+            BrowserTabManager.restoreFromSnapshot(context, rows)
+        }
         // 首帧后构造：无标签时建第一个（建 WebView + 引擎 + 委托），已有标签时复用活跃引擎。
         BrowserHolder.obtain(context)
         engineReady = true
@@ -256,6 +264,13 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                     uiMsg = res.getString(R.string.browser_tabs_full)
                 }
             },
+            // L4：上次没点开的标签，点哪颗才建哪颗的 WebView（不自动联网）
+            restored = BrowserTabManager.restored(),
+            onOpenRestored = { id ->
+                if (BrowserTabManager.openRestored(context, id) == null) {
+                    uiMsg = res.getString(R.string.browser_tabs_full)
+                }
+            },
         )
 
         // ── 页面区（底栏改版 2026-10-18：紧跟标签条，壳子只剩 52＋56） ──
@@ -278,10 +293,12 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             // 第一百七十二批 S2：本标签的渲染进程被系统回收过 ⇒ 页面是死的，
             // 不挂 WebView（挂上去只会是一块白），改画「点一下重新加载」卡片。
             val recycled = active?.state?.recycled == true
+            // L4：从快照恢复、还没点开 ⇒ 同样不挂 WebView（现在是空的），画「上次的页面」卡片
+            val restored = active?.state?.restored == true
             // 第㊱刀：空态不挂 WebView —— 共享 WebView 默认白底，深色模式下会把
             // 起始页的雾白图腾/标题压成 ~1:1（实测截图不可见）；空态时页面区就是
             // 起始页（背景走主题色），everLoaded 翻转后照常挂回，状态机零改动。
-            if (activeId != null && !recycled && !(active == null || !active.state.everLoaded)) {
+            if (activeId != null && !recycled && !restored && !(active == null || !active.state.everLoaded)) {
                 key(activeId) {
                     AndroidView(
                         factory = { BrowserTabManager.view() ?: WebView(it) },
@@ -293,6 +310,13 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             if (active != null && recycled) {
                 BrowserRecycledCard(
                     onReload = { BrowserTabManager.reloadRecycled(active.id) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            // L4 恢复卡片：点了「打开」才第一次联网（loadRestoredTab）
+            if (active != null && restored) {
+                BrowserRestoredCard(
+                    onOpen = { BrowserTabManager.loadRestoredTab(active.id) },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -597,6 +621,42 @@ private fun BrowserRecycledCard(onReload: () -> Unit, modifier: Modifier = Modif
             // 热区 ≥48dp（项目既有纪律：不许做小热区按钮）
             Button(onClick = onReload, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text(stringResource(R.string.browser_recycled_reload))
+            }
+        }
+    }
+}
+
+/**
+ * 「上次的页面」卡片（第一百七十二批 L4）—— 与回收卡片同版式、**不同语义**：
+ * 回收＝页面曾经活着被系统收走；恢复＝这次启动从没加载过，只有地址和标题。
+ * 共同点是最要紧的那条：**不点不开、不偷偷联网**。
+ */
+@Composable
+private fun BrowserRestoredCard(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.browser_restored_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.browser_restored_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            Button(onClick = onOpen, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.browser_restored_open))
             }
         }
     }

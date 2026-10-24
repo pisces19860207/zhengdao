@@ -770,6 +770,10 @@
     <string name="browser_recycled_title">这一页被系统回收了</string>
     <string name="browser_recycled_body">标签还在，只是页面内容被系统清掉了。点下面重新加载。</string>
     <string name="browser_recycled_reload">重新加载</string>
+    <string name="browser_restored_title">上次的页面</string>
+    <string name="browser_restored_body">这是上次没看完的页面。为了不偷偷联网，点下面才会打开。</string>
+    <string name="browser_restored_open">打开</string>
+    <string name="browser_restored_chip_prefix">上次 · </string>
     <string name="browser_start_title">玄 览</string>
     <string name="browser_start_hint">输入网址或搜索词，或点一个快捷入口</string>
     <string name="browser_start_search_hint">搜索或输入网址</string>
