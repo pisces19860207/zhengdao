@@ -795,6 +795,10 @@
     <string name="browser_recycled_title">The system reclaimed this page</string>
     <string name="browser_recycled_body">Your tab is still here — only the page itself was cleared. Tap below to reload.</string>
     <string name="browser_recycled_reload">Reload</string>
+    <string name="browser_restored_title">From last time</string>
+    <string name="browser_restored_body">This page was open last time. Nothing loads until you tap below.</string>
+    <string name="browser_restored_open">Open</string>
+    <string name="browser_restored_chip_prefix">Last · </string>
     <string name="browser_start_title">Xuanlan</string>
     <string name="browser_start_hint">Enter a URL or search terms, or tap a shortcut</string>
     <string name="browser_start_search_hint">Search or enter URL</string>
