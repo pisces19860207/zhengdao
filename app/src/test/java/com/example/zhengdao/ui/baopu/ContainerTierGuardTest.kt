@@ -114,19 +114,16 @@ class ContainerTierGuardTest {
         val callers = all.filterValues { it.contains("BaopuActionContainer(") }.keys
             .filter { it != "BaopuContainers.kt" }
         val expect = setOf(
-            "BaopuAskUserCard.kt", // 提问
-            "BaopuChoiceCard.kt", // 选择
-            "BaopuConfirmCard.kt", // 确认（含恢复确认：restoreConfirmCard 最终也渲染这条链）
-            "BaopuSkillCard.kt", // 技能提案（御批）
-            "DecisionCard.kt", // 决策卡
-            "BaopuLongformCard.kt", // 179 长文输出卡（仍是行动卡档位：有操作按钮；只是新调用点，不是新档位）
+            "BaopuAskUserCard.kt",
+            "BaopuChoiceCard.kt",
+            "BaopuConfirmCard.kt",
+            "BaopuSkillCard.kt",
+            "DecisionCard.kt",
+            "BaopuLongformCard.kt", // 179 长文输出卡
+            "SkillCard.kt", // 184 技能记忆入口
         )
         assertTrue(
-            "行动卡调用点只许这六个（179 长文输出卡入册）（多一个＝新造第五种卡或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
-            "SkillCard.kt", // 技能记忆入口（184 批：说一句就记，只有一个「记住它」）
-        )
-        assertTrue(
-            "行动卡调用点只许这六个（多一个＝新造卡型或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
+            "行动卡调用点只许这七个（多一个＝新造卡型或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
             callers.toSet() == expect,
         )
     }
