@@ -121,6 +121,24 @@ internal object RunLoopRules {
     fun badArgsRetryNotice(attempt: Int): String =
         "模型这轮给的参数不对，已让它重试（第 $attempt 次）"
 
+    /**
+     * 坏参数**到线**时贴的那句 notice（第一百八十八批 §1.6）。
+     *
+     * 与 [badArgsRetryNotice] 的分界：重试时说的是「已让它重试」；到线时说的是
+     * 「不试了，原因在这」。人话里带工具名与原文摘要（哪家/哪字段/服务端原话的
+     * 完整版在 run_log.err，见 [RunRules.badArgsStopSummary]）——旧文案
+     * 「（错误已记日志）」等于什么都没说，用户不知道该换个什么说法。
+     *
+     * @param toolName 出错的工具名（空 = 语法层拿不到名字，不说）
+     * @param attempts 同一轮第几次仍不合法（1-based）
+     * @param brief 原文摘要（≤60 字，调用方截好传进来）
+     */
+    fun badArgsStopNotice(toolName: String, attempts: Int, brief: String): String {
+        val head = "模型连续 $attempts 次给的参数都不合法，这轮停下来"
+        val who = if (toolName.isBlank()) "" else "（$toolName：$brief）"
+        return head + who + "。换个说法或换个文件再试（不许硬试）"
+    }
+
     // ── ④ 结果分类小映射 ─────────────────────────────────────────────────
 
     /**

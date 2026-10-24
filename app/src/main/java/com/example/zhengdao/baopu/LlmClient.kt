@@ -8,6 +8,9 @@
 //     2026-10-16 旧抱朴线清场随 oc/ 删除，房型记录在本文件，不再指向仓库外文件名。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.wire.AnthropicWire
+import com.example.zhengdao.baopu.wire.GeminiWire
+import com.example.zhengdao.baopu.wire.OpenAiWire
 import com.example.zhengdao.rootfs.RunLog
 import kotlinx.coroutines.CancellationException
 import okhttp3.Call
@@ -209,11 +212,14 @@ internal object LlmWire {
     )
 
     /**
-     * 请求体。四个特殊处理：
-     * 1. `system` 角色**不是消息**，要提到顶层 `system` 字段（多条合并）；
+     * 请求体（第一百八十八批 §1.3 起：本函数只是**路由器**，拼装按协议收口到
+     * `baopu/wire/` 下的三个小对象——`OpenAiWire` / `AnthropicWire` / `GeminiWire`，
+     * 分叉只许在那些文件内部。对账尺：`WireGoldenTest`（搬家前后逐字节相同）。
+     *
+     * 四个特殊处理（各家的落地细节随 Wire 走，口径总述在此）：
+     * 1. `system` 角色对 OpenAI 兼容是消息、对 Anthropic/Gemini 要提到顶层；
      * 2. `max_tokens` 取 [Provider.maxOutput]（刀 3 B 段：它以前只用于内部预算，
-     *    根本没进请求体——输出上限全靠服务端猜）；拿不到时 OpenAI 分支回落
-     *    [OPENAI_MAX_TOKENS_FALLBACK]、Anthropic 分支回落 [ANTHROPIC_MAX_TOKENS]；
+     *    根本没进请求体——输出上限全靠服务端猜）；各家缺失时的回落值见 Wire；
      * 3. 流式时 OpenAI 兼容分支带 `stream_options.include_usage = true`（刀 3 B 段）：
      *    向服务端要用量读数，否则流末那帧纯 usage 不回。Anthropic 的用量在
      *    `message_start`/`message_delta` 事件里天然带回，没有这个开关（③按公开文档）；
@@ -235,227 +241,26 @@ internal object LlmWire {
         tools: JSONArray? = null,
     ): String =
         when (p.protocol) {
-            LlmProtocol.OPENAI_COMPAT -> JSONObject()
-                .put("model", p.model)
-                .put("stream", stream)
-                .put("max_tokens", p.maxOutput ?: OPENAI_MAX_TOKENS_FALLBACK)
-                .apply {
-                    if (stream) put("stream_options", JSONObject().put("include_usage", true))
-                    // 模型侧思考深度：provider 显式声明了才发（派工单「按预设发」），
-                    // 且只发 reasoning_effort 这一个字段名（假字段禁发，见 KDoc 第 4 条）
-                    ModelParams.normalizeEffort(p.reasoningEffort)?.let { put("reasoning_effort", it) }
-                }
-                .put("messages", JSONArray().also { arr ->
-                    messages.forEach { m ->
-                        val obj = JSONObject().put("role", m.role)
-                        if (m.images.isEmpty()) {
-                            // V1：纯文本走**原来的**写法，一个字节都不多——这是防回归的
-                            // 全部意义（15 条历史单测与真机日志都按这个形状对账）
-                            obj.put("content", m.content)
-                        } else {
-                            obj.put("content", contentBlocks(m, LlmProtocol.OPENAI_COMPAT))
-                        }
-                        arr.put(obj)
-                    }
-                })
-                .apply { if (tools != null && tools.length() > 0) put("tools", tools) }
-                .toString()
-
-            LlmProtocol.ANTHROPIC -> {
-                val system = messages.filter { it.role == LlmMessage.ROLE_SYSTEM }
-                    .joinToString("\n\n") { it.content }
-                val rest = messages.filter { it.role != LlmMessage.ROLE_SYSTEM }
-                JSONObject()
-                    .put("model", p.model)
-                    .put("stream", stream)
-                    .put("max_tokens", p.maxOutput ?: ANTHROPIC_MAX_TOKENS)
-                    .apply { if (system.isNotEmpty()) put("system", system) }
-                    .put("messages", JSONArray().also { arr ->
-                        rest.forEach { m ->
-                            val obj = JSONObject().put("role", m.role)
-                            if (m.images.isEmpty()) {
-                                obj.put("content", m.content) // V1：同上，逐字节等价
-                            } else {
-                                obj.put("content", contentBlocks(m, LlmProtocol.ANTHROPIC))
-                            }
-                            arr.put(obj)
-                        }
-                    })
-                    .apply { if (tools != null && tools.length() > 0) put("tools", tools) }
-                    .toString()
-            }
-
-            LlmProtocol.GEMINI_NATIVE -> geminiBody(p, messages, tools)
+            LlmProtocol.OPENAI_COMPAT -> OpenAiWire.body(p, messages, stream, tools)
+            LlmProtocol.ANTHROPIC -> AnthropicWire.body(p, messages, stream, tools)
+            LlmProtocol.GEMINI_NATIVE -> GeminiWire.body(p, messages, stream, tools)
         }
 
-        /**
-         * Gemini 原生请求体（第一百五十四批）。
-         *
-         * 与 OpenAI/Anthropic 的差别（公开文档）：
-         * - 没有 `messages`，是 `contents[]`，角色只有 `user` / `model`；
-         * - system 走顶层 `systemInstruction.parts`；
-         * - 工具是 `tools[].functionDeclarations[]`（**不是** `type:function` 包装）；
-         * - 图片是 `inline_data{mime_type,data}`（base64，不带 data URL 前缀）；
-         * - 输出上限在 `generationConfig.maxOutputTokens`，不是 `max_tokens`。
-         */
-        private fun geminiBody(
-            p: Provider,
-            messages: List<LlmMessage>,
-            tools: JSONArray?,
-        ): String {
-            val system = messages.filter { it.role == LlmMessage.ROLE_SYSTEM }
-                .joinToString("\n\n") { it.content }
-            val rest = messages.filter { it.role != LlmMessage.ROLE_SYSTEM }
-            val contents = JSONArray()
-            rest.forEach { m ->
-                val parts = JSONArray()
-                if (m.content.isNotEmpty()) parts.put(JSONObject().put("text", m.content))
-                m.images.forEach { url ->
-                    VisionRules.splitDataUrl(url)?.let { (mime, data) ->
-                        parts.put(
-                            JSONObject().put(
-                                "inline_data",
-                                JSONObject().put("mime_type", mime).put("data", data),
-                            ),
-                        )
-                    }
-                }
-                val role = if (m.role == LlmMessage.ROLE_ASSISTANT) "model" else "user"
-                contents.put(JSONObject().put("role", role).put("parts", parts))
-            }
-            return JSONObject().apply {
-                if (system.isNotEmpty()) {
-                    put(
-                        "systemInstruction",
-                        JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))),
-                    )
-                }
-                put("contents", contents)
-                if (tools != null && tools.length() > 0) {
-                    val decls = geminiToolDecls(tools)
-                    put(
-                        "tools",
-                        JSONArray().put(
-                            JSONObject().put("functionDeclarations", decls),
-                        ),
-                    )
-                }
-                put(
-                    "generationConfig",
-                    JSONObject().put("maxOutputTokens", p.maxOutput ?: GEMINI_MAX_TOKENS_FALLBACK),
-                )
-            }.toString()
-        }
-
-        /** OpenAI 形状的工具数组 → Gemini `functionDeclarations`（参数 schema 过一遍白名单）。 */
-        private fun geminiToolDecls(tools: JSONArray): JSONArray {
-            val out = JSONArray()
-            for (i in 0 until tools.length()) {
-                val fn = tools.optJSONObject(i)?.optJSONObject("function") ?: continue
-                val d = JSONObject()
-                    .put("name", fn.optString("name"))
-                    .put("description", fn.optString("description"))
-                fn.optJSONObject("parameters")?.let { schema ->
-                    val clean = sanitizeSchema(schema)
-                    // 2026-10-23 真机（Gemini 3.0 Flash Preview）：`parameters`（OpenAPI 风格）
-                    // 模型不认——我们发过去的 capabilities 参数表是完整的（日志 `[gemini-decls]`
-                    // 逐字可证），模型仍回 `{"items":[...]}` 而不是 `{"enable":[...]}`。
-                    // 改发 `parametersJsonSchema`（Gemini 也吃的 JSON Schema 形态，字段同名同义），
-                    // 两种都带上由服务端按支持的取：老模型走 parameters，新模型走 JsonSchema。
-                    // 只发 JsonSchema（两者同发会被服务端 400）
-                    d.put("parametersJsonSchema", clean)
-                }
-                out.put(d)
-            }
-            return out
-        }
-
-        /** Gemini 只吃 OpenAPI 子集；其余关键词（`$schema`/`additionalProperties`…）会 400。 */
-        private fun sanitizeSchema(src: JSONObject): JSONObject {
-            val out = JSONObject()
-            val keep = setOf(
-                "type", "format", "description", "nullable", "enum", "required",
-                "minItems", "maxItems", "title",
-            )
-            for (k in src.keys()) {
-                when {
-                    k == "properties" -> {
-                        val props = src.optJSONObject("properties") ?: continue
-                        val o = JSONObject()
-                        for (pk in props.keys()) {
-                            props.optJSONObject(pk)?.let { o.put(pk, sanitizeSchema(it)) }
-                        }
-                        out.put("properties", o)
-                    }
-                    k == "items" -> src.optJSONObject("items")?.let { out.put("items", sanitizeSchema(it)) }
-                    // Gemini 的 Schema.type 是枚举（STRING/OBJECT/INTEGER/…），2026-10-23 真机：
-                    // 原样发小写时模型收不到参数表（它自己猜 keys：capabilities 传 items、
-                    // novel_create 漏 title），改发枚举名字后按 schema 出参。
-                    // 2026-10-23 真机二连：`parametersJsonSchema` 要的是**标准 JSON Schema**，
-                    // type 必须小写（`object`/`string`/`integer`…）。早先按 Gemini 老 Schema
-                    // 枚举发过 `OBJECT`/`STRING`，服务端不报错但模型当作没拿到参数表——
-                    // 真机表现就是 `list_dir` 回 `{"items":[…]}`、`capabilities` 回 `items`
-                    // （日志 20:05 复现）。这里统一小写。
-                    k == "type" -> out.put("type", src.optString("type").lowercase())
-                    k in keep -> out.put(k, src.get(k))
-                    else -> Unit
-                }
-            }
-            return out
-        }
-
-        /**
-         * 多段 content（判据 V2）：`[{type:text}, {type:image…}…]`。
-         *
-         * **text 段在前、图片段在后**——不只是审美：image 夹在 text 中间时部分端点
-         * 会拒（公开文档都把图放在最后），而且 text 在前对人类可读的日志更友好。
-         * `content` 为空则不造空 text 段（空串的 text 块有的端点会 400）。
-         *
-         * 两种协议形状不同，故按 protocol 分派：
-         * - OpenAI 兼容：`{"type":"image_url","image_url":{"url":"data:…"}}`（公开文档形态）
-         * - Anthropic：`{"type":"image","source":{"type":"base64","media_type":…,"data":…}}`
-         */
-        private fun contentBlocks(m: LlmMessage, protocol: LlmProtocol): JSONArray {
-            val blocks = JSONArray()
-            if (m.content.isNotEmpty()) {
-                blocks.put(JSONObject().put("type", "text").put("text", m.content))
-            }
-            for (url in m.images) {
-                when (protocol) {
-                    LlmProtocol.OPENAI_COMPAT -> blocks.put(
-                        JSONObject()
-                            .put("type", "image_url")
-                            .put("image_url", JSONObject().put("url", url)),
-                    )
-                    LlmProtocol.ANTHROPIC -> {
-                        val parts = VisionRules.splitDataUrl(url) ?: continue
-                        blocks.put(
-                            JSONObject()
-                                .put("type", "image")
-                                .put(
-                                    "source",
-                                    JSONObject()
-                                        .put("type", "base64")
-                                        .put("media_type", parts.first)
-                                        .put("data", parts.second),
-                                ),
-                        )
-                    }
-
-                    // Gemini 原生不吃 blocks（走 parts/inline_data，见 geminiBody）；
-                    // 这里只为 when 穷尽，正常路径不会经过。
-                    LlmProtocol.GEMINI_NATIVE -> {
-                        val parts = VisionRules.splitDataUrl(url) ?: continue
-                        blocks.put(
-                            JSONObject().put(
-                                "inline_data",
-                                JSONObject().put("mime_type", parts.first).put("data", parts.second),
-                            ),
-                        )
-                    }
-                }
-            }
-            return blocks
+    /**
+     * 压缩请求体的路由器（§1.3：与 [bodyOf] 同款收口；各家的封顶字段与温度落点
+     * 在对应 Wire 的 `completeBody` 里）。两条红线（不带 tools、不带 stream）
+     * 由各 Wire 复用自身 [bodyOf] 的 `stream = false` 分支兜住，不另写一份拼装。
+     */
+    fun completeBodyOf(
+        p: Provider,
+        messages: List<LlmMessage>,
+        maxTokens: Int,
+        temperature: Double,
+    ): String =
+        when (p.protocol) {
+            LlmProtocol.OPENAI_COMPAT -> OpenAiWire.completeBody(p, messages, maxTokens, temperature)
+            LlmProtocol.ANTHROPIC -> AnthropicWire.completeBody(p, messages, maxTokens, temperature)
+            LlmProtocol.GEMINI_NATIVE -> GeminiWire.completeBody(p, messages, maxTokens, temperature)
         }
 
         /**
@@ -1052,31 +857,20 @@ class LlmClient(private val provider: Provider) {
      * 压缩请求的请求体（**纯函数**，给 J2 当靶子）。
      *
      * 两条红线在这里钉死（派工单 §3.3）：**不带 `tools`**（压缩不许触发工具调用）、
-     * **不带 `stream`**（压缩要一次拿到整段文本）。做法是直接复用
-     * [LlmWire.bodyOf] 的 `stream = false` 分支——它顺带也不加 `stream_options`，
+     * **不带 `stream`**（压缩要一次拿到整段文本）。做法是直接复用各 Wire 的
+     * `completeBody`——它内部走自身 [LlmWire.bodyOf] 的 `stream = false` 分支，
      * 两条红线都由既有纯函数兜住，不另写一份 body 拼装（两份必漂移）。
      *
      * `max_tokens` 盖成压缩上限（≤ [COMPLETE_MAX_TOKENS]，摘要不该长篇），
      * `temperature` 压到 0.2（摘要要稳定，不要每次压出不同版本）。
      */
-    fun completeBody(messages: List<LlmMessage>, maxTokens: Int, temperature: Double): String {
-        val base = JSONObject(LlmWire.bodyOf(provider, messages, stream = false))
-        return when (provider.protocol) {
-            LlmProtocol.GEMINI_NATIVE -> {
-                val cfg = base.optJSONObject("generationConfig") ?: JSONObject().also {
-                    base.put("generationConfig", it)
-                }
-                cfg.put("maxOutputTokens", maxTokens.coerceAtMost(COMPLETE_MAX_TOKENS))
-                cfg.put("temperature", temperature)
-                base.toString()
-            }
-
-            else -> base
-                .put("max_tokens", maxTokens.coerceAtMost(COMPLETE_MAX_TOKENS))
-                .put("temperature", temperature)
-                .toString()
-        }
-    }
+    fun completeBody(messages: List<LlmMessage>, maxTokens: Int, temperature: Double): String =
+        LlmWire.completeBodyOf(
+            provider,
+            messages,
+            maxTokens.coerceAtMost(COMPLETE_MAX_TOKENS),
+            temperature,
+        )
 
     /**
      * 一次请求、拿整段文本（第十三批 A 段 · 压缩用；**不动**流式路径）。

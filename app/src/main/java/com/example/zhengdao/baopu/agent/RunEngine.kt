@@ -44,6 +44,7 @@ import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SessionPlanStore
+import com.example.zhengdao.baopu.wire.ToolDeclSnapshot
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -1535,10 +1536,23 @@ internal class RunEngine(
             val tools = when (provider.protocol) {
                 com.example.zhengdao.baopu.LlmProtocol.OPENAI_COMPAT -> registry.toolsJsonOpenAi(sessionId)
                 com.example.zhengdao.baopu.LlmProtocol.ANTHROPIC -> registry.toolsJsonAnthropic(sessionId)
-                // Gemini 原生吃 OpenAI 形状的 function 包装；LlmWire.geminiBody 里再转
+                // Gemini 原生吃 OpenAI 形状的 function 包装；GeminiWire 里再转
                 // functionDeclarations（工具表只有一套，不在注册表层复制第二份）。
                 com.example.zhengdao.baopu.LlmProtocol.GEMINI_NATIVE -> registry.toolsJsonOpenAi(sessionId)
             }
+
+            // 第一百八十八批 §1.7：工具声明快照——每次发请求前**一行**（走 RunLog，
+            // 不进用户可见区）。只记哈希与名单摘要，不记参数值。抱朴再说「工具无法
+            // 调用」时，这一行答四问：① tools.count=0 ⇒ 压根没发出去；
+            // ② schema.digest 与预期不符 ⇒ 形状被转换逻辑改了；③ filtered 非 none
+            // ⇒ 被能力/工具组过滤；④ budget 非 0 ⇒ 被上下文预算裁掉。
+            log(
+                ToolDeclSnapshot.of(
+                    provider,
+                    tools,
+                    filtered = registry.filteredLine(sessionId),
+                ),
+            )
 
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──
             when (val outcome = streamRound(sessionId, messages, tools)) {
@@ -1771,8 +1785,23 @@ internal class RunEngine(
                     persistAssistantMessage(sessionId, feed)
                     log("抱朴引擎：坏参数 ${outcome.kind.name}（不记通道失败、不切通道）：${outcome.error.take(200)}")
                     if (!retry) {
-                        _notice.value = "模型连续给的参数都不合法，这轮停下来（错误已记日志）"
-                        settle(sessionId, stepCount, RunState.ABORTED, "Aborted")
+                        // 第一百八十八批 §1.6：省钱闸到线 ⇒ 当场停，并把「哪家／哪字段／
+                        // 服务端原话」写进可读错误——完整版进 run_log.err（工程取证列），
+                        // notice 给人话版（带工具名与原文摘要），不再只说「错误已记日志」。
+                        val stopError = RunRules.badArgsStopSummary(
+                            providerId = provider.id,
+                            protocol = provider.protocol.name,
+                            toolName = outcome.toolName,
+                            rawError = outcome.error,
+                            attempts = badArgsRetries + 1,
+                        )
+                        log("抱朴引擎：省钱闸 $stopError")
+                        _notice.value = RunLoopRules.badArgsStopNotice(
+                            outcome.toolName,
+                            badArgsRetries + 1,
+                            outcome.error.take(60),
+                        )
+                        settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = stopError.take(300))
                         return
                     }
                     badArgsRetries++
