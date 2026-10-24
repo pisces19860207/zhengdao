@@ -108,7 +108,7 @@ class BrowserFirstFrameEngineGateTest {
             "var\\s+engineReady\\s+by\\s+remember\\s*\\{\\s*mutableStateOf\\s*\\(\\s*BrowserTabManager\\.count\\(\\)\\s*>\\s*0",
         ).containsMatchIn(src)
         val afterStartPage = Regex(
-            "\\}\\s*else\\s+if\\s*\\(\\s*active\\s*==\\s*null\\s*\\|\\|\\s*!active\\.state\\.everLoaded",
+            "\\}\\s*else\\s+if\\s*\\(\\s*\\(*\\s*active\\s*==\\s*null\\s*\\|\\|\\s*!active\\.state\\.everLoaded",
         ).containsMatchIn(src)
         val def = blocks(src, Regex("private fun BrowserWarmupPlaceholder\\s*\\(")).firstOrNull() ?: return false
         return readyFlag && afterStartPage &&
