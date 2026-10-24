@@ -117,8 +117,13 @@ class BrowserRecycleGateTest {
             trimFn.contains("releaseIfIdle()"),
         )
         assertTrue(
-            "'没有活动标签需要保活'的判据 = 玄览离线 且 还有标签在内存里",
-            s.contains("!browserOnScreen && BrowserTabManager.count() > 0"),
+            "'没有活动标签需要保活'的判据交给纯函数 canReleaseForMemory。" +
+                "第一百七十二批 S4 起把「App 不在前台」也写进判据（L2 是必保承诺，" +
+                "不能只靠「前台一般到不了 TRIM_COMPLETE 档」这条经验兜着）",
+            s.contains("canReleaseForMemory(") &&
+                s.contains("browserOnScreen = browserOnScreen") &&
+                s.contains("appForeground = appForeground") &&
+                s.contains("tabCount = BrowserTabManager.count()"),
         )
 
         // manager 侧必须提供"只摘不销毁"的回收口（单一 destroy 出口留在 BrowserHolder）

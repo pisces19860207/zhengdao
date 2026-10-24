@@ -105,18 +105,65 @@ class BrowserRendererGoneGateTest {
 
         val main = src("src/main/java/com/example/zhengdao/MainActivity.kt")
         assertTrue(
-            "MainActivity 的 ON_RESUME 必须调 resumeAll()（改回 resumeActive 就又是「只救一颗」）",
-            main.contains("BrowserTabManager.resumeAll()"),
+            "MainActivity 必须挂上 App 级前台跟踪（第一百七十二批 S4：跳到终端独立 Activity 时" +
+                "本页也会 ON_PAUSE，在本页判前台/后台会把「用终端」误判成「退后台」）",
+            main.contains("attachAppForegroundTracking("),
+        )
+        assertFalse(
+            "MainActivity 不许再自己直调 pauseAll()/resumeAll() —— 前台真相只有一个来源",
+            main.contains("BrowserTabManager.pauseAll()") ||
+                main.contains("BrowserTabManager.resumeAll()"),
         )
         assertFalse(
             "旧入口 resumeActive() 不该再被调用（否则两份语义并存）",
             main.contains("BrowserTabManager.resumeActive()"),
         )
+
+        // 唯一的驱动口：BrowserHolder.setAppForeground（写标记 + 暂停/恢复标签）
+        val holder = src("src/main/java/com/example/zhengdao/ui/browser/BrowserHolder.kt")
+        val setFg = blockAfter(holder, "fun setAppForeground(")
+        assertTrue(
+            "回前台必须走 resumeAll()、退后台必须走 pauseAll()（缺一半就是「只降不升」或反之）",
+            setFg.contains("resumeAll()") && setFg.contains("pauseAll()"),
+        )
+        assertTrue(
+            "前台跟踪必须挂在 attachAppForegroundTracking 里（Activity 生命周期回调）",
+            holder.contains("attachAppForegroundTracking(") &&
+                holder.contains("registerActivityLifecycleCallbacks("),
+        )
+    }
+
+    /**
+     * 第一百七十二批 CP2 · S3 的**接线**门禁。
+     *
+     * 为什么非要这一条：S3 的预算判据（[com.example.zhengdao.browser.BrowserTabPolicy.importantTabIds]）
+     * 在 JVM 里怎么测都对，但只要调用点不把 `withinBudget` 传下去，产品行为一个字节都没变
+     * ——"策略满分、产品零调用"正是审计里最容易误判成完工的形状。
+     */
+    @Test
+    fun `S3 接线：上档必须算预算并把 withinBudget 传下去`() {
+        val m = managerSource()
+        val body = blockAfter(m, "private fun applyRendererPriority(")
+        assertTrue(
+            "上档前必须算一次预算集合（importantTabIds）",
+            body.contains("importantTabIds("),
+        )
+        assertTrue(
+            "预算结果必须真的传到判据里（withinBudget = 某集合的成员判断）",
+            body.contains("withinBudget =") && body.contains("in budget"),
+        )
+        assertFalse(
+            "不许把 withinBudget 写死 true —— 那就等于预算从未生效（本门禁的必红负例）",
+            body.contains("withinBudget = true"),
+        )
+        assertTrue(
+            "活跃标签必须参与判据（isActiveTab）—— 当前页绝不能被预算裁掉",
+            body.contains("isActiveTab = tab.id == activeId"),
+        )
     }
 
     @Test
-    fun `S1 接线：降级只发生在退后台入口`() {
-        val m = managerSource()
+    fun `S1 接线：降级只发生在退后台入口`() {        val m = managerSource()
         val pause = blockAfter(m, "fun pauseAll(")
         assertTrue("退后台必须把 appForeground 置假", pause.contains("appForeground = false"))
         assertTrue("退后台必须给每颗标签上档（applyRendererPriority）", pause.contains("applyRendererPriority("))
@@ -138,8 +185,7 @@ class BrowserRendererGoneGateTest {
     }
 
     @Test
-    fun `S2 委托把回收事件按标签交给管理器`() {
-        val m = managerSource()
+    fun `S2 委托把回收事件按标签交给管理器`() {        val m = managerSource()
         assertTrue(
             "per-tab 委托必须实现 onRenderProcessGone()（引擎只上报，不知道标签表）",
             m.contains("override fun onRenderProcessGone()"),
