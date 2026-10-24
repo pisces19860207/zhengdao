@@ -800,8 +800,10 @@ fun HomeTabs(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
-                    // 玄览多标签（第⑨刀 B）：回前台恢复活跃标签（onResume + 渲染优先级升回 IMPORTANT）
-                    com.example.zhengdao.ui.browser.BrowserTabManager.resumeActive()
+                    // 玄览多标签（第⑨刀 B）：回前台**全部**标签恢复（onResume + 按前台档升回优先级）。
+                    // 第一百七十二批 S1：改前是 resumeActive()，只救回活跃那一颗 ⇒ 其余标签被
+                    // pauseAll 降成 WAIVED 后永不回升（页面随时被系统收走，用户切回就是重载）。
+                    com.example.zhengdao.ui.browser.BrowserTabManager.resumeAll()
                     if (com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
                     ) {
                         tab = TabIndex.BROWSER

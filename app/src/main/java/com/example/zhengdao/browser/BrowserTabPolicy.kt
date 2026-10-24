@@ -61,4 +61,25 @@ object BrowserTabPolicy {
      * @return true = 开新标签；false = 复用当前活跃标签。
      */
     fun externalOpenShouldCreateTab(currentCount: Int): Boolean = canOpenMore(currentCount)
+
+    /**
+     * 渲染进程该给哪一档优先级（第一百七十二批 S1 · L1/L2 的地基）。
+     *
+     * **判据只有一条：App 在不在前台。** 前台 = 全部 [RENDERER_PRIORITY_IMPORTANT]；
+     * 后台 = 全部 [RENDERER_PRIORITY_WAIVED]。
+     *
+     * 为什么**不再按「标签是否活跃」分**（改前的行为就是按它分的，本批改掉）：
+     * `WAIVED` 的语义是「渲染进程不被绑定，系统想收就收」，而
+     * `setRendererPriorityPolicy(WAIVED, keepAlive=false)` 正是官方文档里「随时可被杀」那一档。
+     * 玄览的 L1 承诺是「切回不重载」——把非活跃标签按 WAIVED 放着，等于一边承诺一边把页面交给
+     * 系统的回收器；2026-10-24 核对时还发现回前台只升活跃那一颗（`resumeActive`），
+     * 其余标签会被永久留在 WAIVED 上。⇒ 活跃度与「页面能不能活」无关，App 可见性才有关。
+     *
+     * @param appForeground App 是否在前台（MainActivity 的 ON_RESUME/ON_PAUSE 是唯一来源）
+     * @param isActiveTab 该标签是否当前活跃。**本参数不参与判据**——保留它是为了让
+     *   「前台 + 非活跃」这一格能被单测逐字钉住（它正是改前的病格），
+     *   第一百七十二批 S3 的前台预算裁剪会真正用上它。
+     */
+    fun rendererPriority(appForeground: Boolean, isActiveTab: Boolean): Int =
+        if (appForeground) RENDERER_PRIORITY_IMPORTANT else RENDERER_PRIORITY_WAIVED
 }
