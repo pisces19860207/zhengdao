@@ -66,7 +66,9 @@ class BridgeBlade4GuardTest {
     private val snapshotBody by lazy {
         bodyOf(commands, "fun snapshot(mode: String?, selector: String?, tabId: String? = null): String")
     }
-    private val screenshotBody by lazy { bodyOf(commands, "fun screenshot(context: Context, tabId: String?, fullPage: String?, selector: String? = null)") }
+    // 第一百七十七批：截图实现从 `screenshot()` 抽到 `captureShotRef()`（JSON/ref 两个出口
+    // 共用一份内核）。门禁跟着**实现**走，不是放宽——断言的那几句仍然在实现里。
+    private val screenshotBody by lazy { bodyOf(commands, "internal fun captureShotRef(") }
 
     /** dispatch 里某一条命令分支的调用文本。 */
     private fun dispatchBranch(src: String, cmd: String): String {
@@ -141,7 +143,7 @@ class BridgeBlade4GuardTest {
 
     @Test
     fun `J7_元素不存在与零尺寸都必须明说不许拿整页充数`() {
-        assertTrue("元素不存在走 NOT_FOUND 哨兵", screenshotBody.contains("\"NOT_FOUND\" -> return err(\"找不到元素"))
+        assertTrue("元素不存在走 NOT_FOUND 哨兵", screenshotBody.contains("\"NOT_FOUND\" -> return ShotCapture.Bad(\"找不到元素"))
         assertTrue("零尺寸必须明说", screenshotBody.contains("元素没有尺寸"))
         assertTrue("selector 校验走 checkSelector", screenshotBody.contains("BridgePolicy.checkSelector(it)"))
         assertTrue("几何缺失要如实报错", screenshotBody.contains("取不到页面几何"))
@@ -211,9 +213,9 @@ class BridgeBlade4GuardTest {
     @Test
     fun `J11b_回执同时给相对路径与宿主绝对路径并注明 guest 用途`() {
         val json = BrowserCommands.screenshotJson(
-            file = "screenshots/bridge-1.png",
-            hostPath = "/storage/emulated/0/Download/证道/screenshots/bridge-1.png",
-            guestPath = "/opt/zhengdao/screenshots/bridge-1.png",
+            file = "截屏/bridge-1.png",
+            hostPath = "/storage/emulated/0/Download/证道/截屏/bridge-1.png",
+            guestPath = "/opt/zhengdao/截屏/bridge-1.png",
             bytes = 4321,
             mode = "fullpage",
             width = 1080,
@@ -223,9 +225,9 @@ class BridgeBlade4GuardTest {
         )
         assertTrue(json.startsWith("{\"ok\":true,"))
         listOf(
-            "\"file\":\"screenshots/bridge-1.png\"",
-            "\"hostPath\":\"/storage/emulated/0/Download/证道/screenshots/bridge-1.png\"",
-            "\"guestPath\":\"/opt/zhengdao/screenshots/bridge-1.png\"",
+            "\"file\":\"截屏/bridge-1.png\"",
+            "\"hostPath\":\"/storage/emulated/0/Download/证道/截屏/bridge-1.png\"",
+            "\"guestPath\":\"/opt/zhengdao/截屏/bridge-1.png\"",
             "\"bytes\":\"4321\"",
             "\"mode\":\"fullpage\"",
             "\"width\":\"1080\"",

@@ -99,10 +99,23 @@ object VisionFiles {
         relPaths: List<String>,
         cap: Int = VisionRules.MAX_IMAGE_BYTES,
         shrink: ((File) -> ShrinkOutcome)? = null,
+        /**
+         * 第一百七十七批：**第二个允许的根**（生产传 `Store.root()`＝`Download/证道`）。
+         *
+         * 为什么需要：agent 自己截的图落在 `证道/截屏/`——那是 App 的固定公共区，**不跟
+         * 抱朴工作区走**（`Store.PUBLIC_ROOT` 的 KDoc 明写「刻意不跟随工作区」）。而本方法
+         * 的越界判据是「必须仍在 [root] 里」⇒ 不改这一条，抱朴自己截的图会被自己拒掉。
+         *
+         * 口径：解析后的真实路径落在 **root 内 或 extraRoot 内**都收；两个都不在才按越界记
+         * 「不在工作区里（越界）」。默认 `null` ⇒ 行为与本参数出现之前**逐字相同**。
+         */
+        extraRoot: File? = null,
     ): Loaded {
         if (relPaths.isEmpty()) return Loaded()
         val base = runCatching { root.canonicalFile }.getOrNull() ?: return Loaded()
-        val prefix = base.path + File.separator
+        val basePrefix = base.path + File.separator
+        val extra = runCatching { extraRoot?.canonicalFile }.getOrNull()
+        val extraPrefix = extra?.let { it.path + File.separator }
         val out = ArrayList<VisionRules.ImagePayload>(relPaths.size)
         val skipped = ArrayList<Skipped>(0)
         val shrunk = ArrayList<String>(0)
@@ -111,13 +124,23 @@ object VisionFiles {
                 skipped += Skipped(rel, "路径是空的")
                 continue
             }
-            val file = runCatching { File(base, rel).canonicalFile }.getOrNull()
-            if (file == null) {
-                skipped += Skipped(rel, "路径解析不了")
-                continue
+            // 先按工作区解析；不在工作区就再按 extraRoot 解析（只认这两个根）
+            val inBase = runCatching { File(base, rel).canonicalFile }.getOrNull()
+            val inExtra = if (extra != null) {
+                runCatching { File(extra, rel).canonicalFile }.getOrNull()
+            } else {
+                null
             }
-            // 越界判据：解析后的真实路径必须仍在工作区里（`../`、软链、绝对路径都是这一条挡）
-            if (!file.path.startsWith(prefix)) {
+            // 两个根都试试：**先取真存在的那一份**（截屏目录里的图，相对工作区解析往往
+            // 只是「同名路径不存在」）；都不存在才回落到根内候选，好报「文件不在了」。
+            val allowed = listOfNotNull(
+                inBase?.takeIf { it.path.startsWith(basePrefix) },
+                inExtra?.takeIf { extraPrefix != null && it.path.startsWith(extraPrefix) },
+            )
+            val file = allowed.firstOrNull { it.isFile } ?: allowed.firstOrNull()
+            if (file == null) {
+                // 越界判据：解析后的真实路径必须仍在工作区（或截屏目录）里
+                // （`../`、软链、绝对路径都是这一条挡）
                 skipped += Skipped(rel, "不在工作区里（越界）")
                 continue
             }
