@@ -5,7 +5,7 @@
 > **先花 30 秒核对，能省掉半天重做。**
 > 开工前**先读 [docs/FEATURE-LEDGER.md](docs/FEATURE-LEDGER.md) 的「结账 · 现状总表」** —— 那里写着已经做完并有证据的、待做的、以及明确判定不做的。
 
-## 三条铁律
+## 四条铁律
 
 1. **先同步，再动手。** `git fetch origin` 之后确认
    `git rev-list --left-right --count origin/main...HEAD` 的**左侧是 0**。
@@ -15,6 +15,7 @@
 3. **不要在主工作树上直接改。** `AndroidStudioProjects/zhengdao` 是集成用的主工作树；
    一个 agent 一个分支 / 一个工作树（`git worktree add`），做完再合。
    *例外*：**集成本来就该在 main 上做** —— `merge --no-ff` 是允许的（钩子对合并提交放行）。
+4. **先核最新，再动手。** 凡是涉及第三方 API / SDK / 模型 / 平台政策 / 安全边界的活，开工前先搜**官方文档/changelog**（用当前日期，别拿训练语料当依据），把来源链接＋版本/日期写进交付报告；没有官方来源就标“未核最新”。报告缺这一节，验收不销账。
 
 ## 开工前跑这条命令（唯一入口，纯 Python 标准库）
 
