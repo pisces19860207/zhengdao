@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第一百八十六批：画板/图表/表格字符串单独成文件（同 158：pre-commit 闸 2 不碰 strings.xml）。 -->
+<resources>
+    <string name="baopu_tools_group_draw">Canvas and tables</string>
+    <string name="baopu_group_line_draw">HTML/SVG rendered in a sandbox, bar/line charts, tables; local rendering, no network, no scripts</string>
+    <string name="baopu_tool_render_artifact">Canvas (HTML/SVG)</string>
+    <string name="baopu_tool_render_artifact_desc">Render the HTML or SVG you wrote inside an on-device sandbox: it is sanitized first (scripts, event attributes, iframes, external images/CSS are stripped), then shown in Xuanlan local preview and captured as a PNG. Files land in 图片/, an existing name is never overwritten; empty content, unrecognized markup or oversize input returns a readable error instead of a blank image. It never calls an image model, never goes online and never runs scripts.</string>
+    <string name="baopu_tool_draw_chart">Bar/line chart</string>
+    <string name="baopu_tool_draw_chart_desc">Lay out a bar or line chart locally from the JSON data you provide (categories and series names/values) and write an SVG to 图片/; optionally capture a PNG too. Values are never guessed — negative or non-numeric input is an error; at most 8 series and 30 categories. For flowcharts or diagrams use Canvas (HTML/SVG) instead of inventing a format.</string>
+    <string name="baopu_tool_draw_table">Table</string>
+    <string name="baopu_tool_draw_table_desc">Turn a Markdown table, CSV or JSON rows into a copyable HTML table (optionally with a PNG capture), written to 产物/表格/ without overwriting. Cell contents are treated as plain text, so HTML inside a cell is never executed. At most 200 rows and 20 columns.</string>
+</resources>

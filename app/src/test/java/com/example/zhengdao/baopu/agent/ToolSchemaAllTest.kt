@@ -455,6 +455,20 @@ class ToolSchemaAllTest {
             "image_ops" to JSONObject().put("action", "palette").put("path", "a.png"),
             // 第一百五十八批：文生图（只给最小合法形状：一句提示词）
             "generate_image" to JSONObject().put("prompt", "画一只橘猫"),
+            // 第一百八十六批：画板/图表/表格（契约只看类型，值不求真）
+            "render_artifact" to JSONObject().put("content", "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"10\" height=\"10\"/></svg>"),
+            "draw_chart" to JSONObject().put("kind", "bar").put(
+                "data",
+                JSONObject()
+                    .put("categories", JSONArray().put("一月"))
+                    .put(
+                        "series",
+                        JSONArray().put(
+                            JSONObject().put("name", "销量").put("values", JSONArray().put(3)),
+                        ),
+                    ),
+            ),
+            "draw_table" to JSONObject().put("source", "| 甲 |\n|---|\n| 一 |"),
             "ask_user" to JSONObject().put("question", "选哪个？").put(
                 "options",
                 JSONArray()
