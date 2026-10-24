@@ -313,7 +313,13 @@ internal class GuardPipeline(
         // 跳过②，但①③④⑤原样保留（Schema 校验、确认、超时、围栏一个都不少）。
         // 第一百五十六批：skipConfirm=true 即「用户已在确认卡上批准」⇒ ② 段按授权口径跑
         // （工作区外路径此刻记账放行——批准本身就是用户同意，不是静默放行）。
-        val guarded = if (spec.group == ToolGroup.MCP) Guarded.Yes(call) else guardPath(call, spec.name, granting = skipConfirm)
+        // 第一百七十一批：放 [readOnly] 进②段——授权根下「只读免卡、写/改/删仍确认」
+        // 的读写在管线里的分叉点就在这里（派工单 §1.2）。
+        val guarded = if (spec.group == ToolGroup.MCP) {
+            Guarded.Yes(call)
+        } else {
+            guardPath(call, spec.name, granting = skipConfirm, readOnly = spec.readOnly)
+        }
         if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
         if (guarded is Guarded.Ask) return Prepared.Settled(Result.NeedsConfirm(guarded.call))
         val effectiveCall = (guarded as Guarded.Yes).call
@@ -344,7 +350,10 @@ internal class GuardPipeline(
             is ToolOutcome.Ok -> {
                 val body = outcome.text
                 if (outsideNote == null) body
-                else "（用户已在确认卡上授权访问工作区外：$outsideNote；本次运行内访问同一工作区不再重复询问）\n$body"
+                // 第一百七十一批：授权说明改成「读不再问、写仍确认」的实话——
+                // 156/157 那版写「本次运行内访问同一工作区不再重复询问」，在写操作上
+                // 是假话（171 起写入每次照问）。前缀不动（测试钉着它）。
+                else "（用户已在确认卡上授权访问工作区外：$outsideNote；本会话内读取该处不再重复询问，写入仍会逐次确认）\n$body"
             }
             // 第一百八十九批 §1.3：哈希在**围栏前**算（围栏头/spill 文件名都带时刻，
             // 围栏后再算同一份输出每次字节都不同，无进展熔断会静默失效）。
@@ -454,7 +463,10 @@ internal class GuardPipeline(
 
         data class No(val reason: String) : Guarded
 
-        /** 第一百五十六批：工作区外、开关开、未授权 ⇒ 弹一次确认卡（复用现有 ConfirmFlow）。 */
+        /**
+         * 第一百五十六批：工作区外、开关开、未授权 ⇒ 弹一次确认卡（复用现有 ConfirmFlow）。
+         * 第一百七十一批：已授权根下的**写/改/删**也走这里（读免卡、写不免）。
+         */
         data class Ask(val call: ToolCall) : Guarded
     }
 
@@ -468,8 +480,19 @@ internal class GuardPipeline(
      * - **P0-4**：`library_organize` 的 `path` 是「相对 投递/整理」的口径，**不改写**成
      *   绝对路径（改写后 `LibraryTools.normalizeRel` 见 `/` 直接拒 ⇒ promote/rename 必败），
      *   越界由 `normalizeRel` + `destinationUnder` + `PathGuard` 自己判。
+     *
+     * 第一百七十一批（派工单 §1.2 路径维度）：[readOnly] 决定已授权根下**放行还是再问**——
+     * 只读（read/list/find，按 [ToolSpec.readOnly] 的九十二批分类）免卡直行；
+     * 写/改/删仍走确认（「读免卡 ≠ 写免卡」——负例「写不弹」的判据就在这一刀）。
+     * 批准路径（[granting]）无论读写都授整根：批一次 = 授权这个**目录**，
+     * 此后该根下读取不再问；写入每次照问（范围授权另走 [ConfirmGrants] 的 key 账本）。
      */
-    private fun guardPath(call: ToolCall, toolName: String, granting: Boolean = false): Guarded {
+    private fun guardPath(
+        call: ToolCall,
+        toolName: String,
+        granting: Boolean = false,
+        readOnly: Boolean = false,
+    ): Guarded {
         // P0-4：相对路径工具白名单——path 保持相对，改写会把它变成必然被拒的绝对路径
         if (toolName == LibraryTools.NAME) return Guarded.Yes(call)
 
@@ -508,6 +531,8 @@ internal class GuardPipeline(
                     // 开关开且未授权 ⇒ Ask（弹一次确认卡）；开关开且已授权/批准路径 ⇒ 放行。
                     // 157 补充（用户 2026-10-23）：粒度是**一次会话问一次**（账本按 sessionId
                     // 落库），且**每次越界都记一条审计**（时间/路径/会话，见 `auditOutside`）。
+                    // 171 补充（用户 2026-10-24）：已授权根下**只读免卡、写/改/删仍确认**——
+                    // 「授权 Obsidian 根后读 50 个 md ⇒ 0 张卡；写 1 个 ⇒ 1 张」。
                     val on = runCatching { allowOutside() }.getOrDefault(false)
                     if (!on) {
                         auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.DENIED)
@@ -522,7 +547,7 @@ internal class GuardPipeline(
                         // 不重复写库）——「同一次越界只审一条，处置写清是新批准还是早已放行」。
                         if (!already) {
                             com.example.zhengdao.baopu.WorkspaceGrants.grant(root)
-                            log("抱朴管线：用户已授权工作区外（root=${root.absolutePath}），本会话不再重复询问")
+                            log("抱朴管线：用户已授权工作区外（root=${root.absolutePath}），本会话读取该处不再重复询问（写入仍会确认）")
                         }
                         auditOutside(
                             root, v.target, toolName,
@@ -534,10 +559,18 @@ internal class GuardPipeline(
                         continue
                     }
                     if (already) {
-                        auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ALREADY)
-                        grantedRaw += raw
-                        newArgs = JSONObject(newArgs.toString()).put(key, v.target.absolutePath)
-                        continue
+                        if (readOnly) {
+                            // 171-③：授权根下只读（read/list/find）免卡直行
+                            auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ALREADY)
+                            grantedRaw += raw
+                            newArgs = JSONObject(newArgs.toString()).put(key, v.target.absolutePath)
+                            continue
+                        }
+                        // 171-③：写/改/删在已授权根下**仍要确认**——「读免卡 ≠ 写免卡」。
+                        // （负例「写不弹」判据：授权了根也不能静默改盘。）
+                        auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ASKED)
+                        log("抱朴管线：已授权根下写操作仍确认（171：读免卡、写不免）$toolName $raw")
+                        return Guarded.Ask(call)
                     }
                     auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ASKED)
                     log("抱朴管线：工作区外 $toolName $raw 需用户确认（一次会话问一次）")

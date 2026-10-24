@@ -16,6 +16,7 @@ import com.example.zhengdao.baopu.InMemoryWorkspaceGrantStore
 import com.example.zhengdao.baopu.OutsideDecision
 import com.example.zhengdao.baopu.WorkspaceGrantRules
 import com.example.zhengdao.baopu.WorkspaceGrants
+import com.example.zhengdao.testkit.TestAssume
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -211,6 +212,69 @@ class WorkspaceOpenPipelineTest {
         assertTrue("弹卡前有留痕", lines.any { it.contains("需用户确认") })
         p.executeApproved(call("read_file", path), { _, _ -> null })
         assertTrue("放行时有留痕", lines.any { it.contains("已授权工作区外") })
+    }
+
+    // ── 第一百七十一批 §1.2 路径维度：读免卡、写不免 ────────────────────
+
+    @Test
+    fun `负例_写不弹_已授权根下写入仍要确认`() {
+        val p = pipeline({ true })
+        val readPath = outsideFile().absolutePath
+        // 先用一次「读」把根授掉（授权来自读 ⇒ 授的是这个目录的读取）
+        assertTrue(p.execute(call("read_file", readPath), { _, _ -> null }) is GuardPipeline.Result.NeedsConfirm)
+        p.executeApproved(call("read_file", readPath), { _, _ -> null })
+
+        // 负例靶心：授权了根，写入仍要一张卡（「读免卡 ≠ 写免卡」）
+        val writeTarget = File(File(readPath).parentFile, "new.md").absolutePath
+        val w = p.execute(call("write_file", writeTarget).copy(arguments = JSONObject().put("path", writeTarget).put("content", "写")), { _, _ -> null })
+        assertTrue("已授权根下写入仍确认（负例「写不弹」判据）", w is GuardPipeline.Result.NeedsConfirm)
+        assertFalse("没被静默写出去", File(writeTarget).exists())
+    }
+
+    @Test
+    fun `读免卡_授权根后读五十个文件_零张卡`() {
+        val p = pipeline({ true })
+        val dir = File(root.parentFile, "ws-open-many").apply { mkdirs() }
+        val first = File(dir, "n0.md").apply { writeText("0") }
+        assertTrue(p.execute(call("read_file", first.absolutePath), { _, _ -> null }) is GuardPipeline.Result.NeedsConfirm)
+        p.executeApproved(call("read_file", first.absolutePath), { _, _ -> null }) // 授权这个根
+
+        var cards = 0
+        for (i in 1 until 50) {
+            val f = File(dir, "n$i.md").apply { writeText("$i") }
+            val r = p.execute(call("read_file", f.absolutePath), { _, _ -> null })
+            if (r is GuardPipeline.Result.NeedsConfirm) cards++
+            assertTrue("第 $i 个文件也该免卡直读", r is GuardPipeline.Result.Done)
+        }
+        assertEquals("授权后读 50 个 ⇒ 0 张卡（派工单 §1.2 判据）", 0, cards)
+    }
+
+    @Test
+    fun `负例_软链逃逸_未授权会话仍要问`() {
+        val outside = outsideFile()
+        val link = File(root, "link.md")
+        val created = runCatching {
+            java.nio.file.Files.createSymbolicLink(link.toPath(), outside.toPath())
+            java.nio.file.Files.isSymbolicLink(link.toPath())
+        }.getOrDefault(false)
+        TestAssume.symlinkUnsupported(created)
+        // 软链在工作区内、 canonical 目标在工作区外 ⇒ 判据必须按**真实目标**算：
+        // 未授权 ⇒ 重新问（不放行就是胜利；授权了才放行）
+        val r = pipeline({ true }).execute(call("read_file", link.absolutePath), { _, _ -> null })
+        assertTrue("软链逃逸必须重新问（不能静默读出去）", r is GuardPipeline.Result.NeedsConfirm)
+    }
+
+    @Test
+    fun `负例_软链逃逸_开关关仍原文拒绝`() {
+        val outside = outsideFile()
+        val link = File(root, "link2.md")
+        val created = runCatching {
+            java.nio.file.Files.createSymbolicLink(link.toPath(), outside.toPath())
+            java.nio.file.Files.isSymbolicLink(link.toPath())
+        }.getOrDefault(false)
+        TestAssume.symlinkUnsupported(created)
+        val r = pipeline({ false }).execute(call("read_file", link.absolutePath), { _, _ -> null })
+        assertTrue("开关关 ⇒ 授权翻不了软链这一条", r is GuardPipeline.Result.Rejected)
     }
 
     private companion object {
