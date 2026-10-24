@@ -154,4 +154,125 @@ class BrowserTabPolicyTest {
             }
         }
     }
+
+    // ── 前台 IMPORTANT 预算（第一百七十二批 S3 · J3） ──
+
+    @Test
+    fun `J3-1 只有一个标签_它就在预算内`() {
+        assertEquals(
+            setOf(7),
+            BrowserTabPolicy.importantTabIds(listOf(7), activeId = 7),
+        )
+    }
+
+    @Test
+    fun `J3-2 标签数不超预算_全部保留`() {
+        assertEquals(
+            "3 个标签正好用满预算（含活跃），一个都不许丢",
+            setOf(1, 2, 3),
+            BrowserTabPolicy.importantTabIds(listOf(1, 2, 3), activeId = 2),
+        )
+    }
+
+    @Test
+    fun `J3-3 超预算_活跃优先_其余由近到远`() {
+        assertEquals(
+            "4 个标签、活跃是 2 ⇒ 保 {2,1,3}，最远的 4 让位（被回收也不崩，走回收卡片）",
+            setOf(1, 2, 3),
+            BrowserTabPolicy.importantTabIds(listOf(1, 2, 3, 4), activeId = 2),
+        )
+        assertEquals(
+            "距离相同取创建序小的（确定性：不是每次算出来都不一样）",
+            setOf(9, 10, 11),
+            BrowserTabPolicy.importantTabIds((1..20).toList(), activeId = 10),
+        )
+    }
+
+    @Test
+    fun `J3-4 活跃不在表里或预算为 0_按创建序兜底`() {
+        assertEquals(
+            "活跃 id 不在表里（刚关掉/还没建）⇒ 取创建序前 3 个",
+            setOf(1, 2, 3),
+            BrowserTabPolicy.importantTabIds(listOf(1, 2, 3, 4), activeId = 99),
+        )
+        assertEquals(
+            "预算 <= 0 ⇒ 一个都不给（防御性：不许返回全集）",
+            emptySet<Int>(),
+            BrowserTabPolicy.importantTabIds(listOf(1, 2, 3), activeId = 1, budget = 0),
+        )
+    }
+
+    @Test
+    fun `J3-5 预算内才升档_预算外仍然WAIVED`() {
+        assertEquals(
+            "前台 + 非活跃 + 预算内 ⇒ IMPORTANT",
+            BrowserTabPolicy.RENDERER_PRIORITY_IMPORTANT,
+            BrowserTabPolicy.rendererPriority(true, false, withinBudget = true),
+        )
+        assertEquals(
+            "前台 + 非活跃 + 预算外 ⇒ WAIVED（超出 3 个的那几颗由 S2 兜住）",
+            BrowserTabPolicy.RENDERER_PRIORITY_WAIVED,
+            BrowserTabPolicy.rendererPriority(true, false, withinBudget = false),
+        )
+        assertEquals(
+            "活跃标签永远 IMPORTANT（当前页绝不降档，否则当场白页）",
+            BrowserTabPolicy.RENDERER_PRIORITY_IMPORTANT,
+            BrowserTabPolicy.rendererPriority(true, true, withinBudget = false),
+        )
+        assertEquals(
+            "后台无论预算内外部是 WAIVED（预算只管前台）",
+            BrowserTabPolicy.RENDERER_PRIORITY_WAIVED,
+            BrowserTabPolicy.rendererPriority(false, true, withinBudget = true),
+        )
+    }
+
+    // ── 内存回收判据（第一百七十二批 S4 · J4） ──
+
+    @Test
+    fun `J4-1 前台绝不因为内存压力销毁玄览`() {
+        assertFalse(
+            "L2 承诺：App 在前台、玄览不可见时页面必须活着 ⇒ 前台一律不许回收",
+            BrowserTabPolicy.canReleaseForMemory(
+                browserOnScreen = false,
+                appForeground = true,
+                tabCount = 5,
+            ),
+        )
+        assertFalse(
+            "玄览正显示时更不许回收（挂载中 destroy 是未定义行为）",
+            BrowserTabPolicy.canReleaseForMemory(
+                browserOnScreen = true,
+                appForeground = true,
+                tabCount = 5,
+            ),
+        )
+    }
+
+    @Test
+    fun `J4-2 只有后台且玄览离线且有标签才允许回收`() {
+        assertTrue(
+            "后台 + 玄览离线 + 有标签 ⇒ 这才是真正可以回收的那一种",
+            BrowserTabPolicy.canReleaseForMemory(
+                browserOnScreen = false,
+                appForeground = false,
+                tabCount = 5,
+            ),
+        )
+        assertFalse(
+            "后台但玄览正在屏上 ⇒ 不回收",
+            BrowserTabPolicy.canReleaseForMemory(
+                browserOnScreen = true,
+                appForeground = false,
+                tabCount = 5,
+            ),
+        )
+        assertFalse(
+            "后台、玄览离线、但没有标签 ⇒ 没有可回收对象",
+            BrowserTabPolicy.canReleaseForMemory(
+                browserOnScreen = false,
+                appForeground = false,
+                tabCount = 0,
+            ),
+        )
+    }
 }
