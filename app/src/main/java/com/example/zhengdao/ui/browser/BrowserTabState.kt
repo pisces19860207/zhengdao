@@ -58,6 +58,19 @@ class BrowserTabState {
      */
     var recycled by mutableStateOf(false)
 
+    /**
+     * 这是**从快照恢复出来、还没点开**的标签（第一百七十二批 L4）。
+     *
+     * 与 [recycled] 的区别（两个都画卡片，语义完全不同）：
+     * - `recycled`：页面**曾经活着**，被系统收走了 ⇒ 文案「这一页被系统回收了」，点了=重新加载；
+     * - `restored`：页面**这次启动从没加载过**，只有地址和标题 ⇒ 文案「上次的页面 · 点一下继续」，
+     *   点了=第一次加载。把两者混成一个状态位，就会对用户说错话（"被回收"其实是被恢复）。
+     *
+     * 置真：恢复时；置假：用户点「打开」后（[com.example.zhengdao.ui.browser.BrowserTabManager.loadRestoredTab]）
+     * 或任何真实加载开始（[onPageStarted]）。
+     */
+    var restored by mutableStateOf(false)
+
     /** 渲染进程被回收：停转圈 + 亮"已回收"卡片。不导航、不重载。 */
     fun onRendererGone() {
         loading = false
@@ -81,6 +94,8 @@ class BrowserTabState {
         // 兜底（第一百七十二批 S2）：只要有加载真的开始了，"已回收"卡片就该消失，
         // 免得用户点了别处的"重试"、页面已经活了、卡片还挂在那儿。
         recycled = false
+        // 同上（L4）：从快照恢复的标签一旦真的开始加载，"上次的页面"卡片也该撤。
+        restored = false
         rememberPage(displayableUrl(url), true)
         blockedMsg = null
     }

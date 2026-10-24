@@ -4,6 +4,7 @@
 // SQLite 官方文档（外键约束默认关闭、PRAGMA foreign_keys、AUTOINCREMENT 语义）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.browser.BrowserTabSql
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
@@ -1413,6 +1414,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV16Migration(db)
         applyV17Migration(db)
         applyV18Migration(db)
+        applyV19Migration(db)
     }
 
     /**
@@ -1449,6 +1451,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 16) applyV16Migration(db)
         if (oldVersion < 17) applyV17Migration(db)
         if (oldVersion < 18) applyV18Migration(db)
+        if (oldVersion < 19) applyV19Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1665,6 +1668,15 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         WorkspaceGrantSql.DDL.forEach { db.execSQL(it) }
     }
 
+    /**
+     * v19（第一百七十二批 L4 · 玄览页签快照）：`browser_tab` 表 ＋ LRU 索引。
+     *
+     * DDL 放在 `BrowserTabSql` 一份字面量里，与 `onCreate` 共用 —— 新装与升级不会分叉。
+     */
+    private fun applyV19Migration(db: SQLiteDatabase) {
+        BrowserTabSql.DDL.forEach { db.execSQL(it) }
+    }
+
     /** `PRAGMA table_info(<table>)` 的列名（薄壳：SQLiteDatabase 进不了 JVM 单测）。 */
     private fun tableColumns(db: SQLiteDatabase, table: String): List<String> = runCatching {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -1705,7 +1717,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v17 = 第一百四十七批（`diary_index` 情景记忆索引：文件是真相，索引只是加速）。
          *  v18 = 157 补充（`workspace_grant` 会话级放行 ＋ `workspace_audit` 越界审计：
          *  工作区外授权从「一次运行问一次」改成「一次会话问一次」，按 sessionId 落库）。 */
-        const val VERSION = 18
+        const val VERSION = 19
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

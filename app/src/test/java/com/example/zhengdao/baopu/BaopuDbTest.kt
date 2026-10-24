@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(18, BaopuDb.VERSION) // v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+        assertEquals(19, BaopuDb.VERSION) // v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(18, BaopuDb.VERSION) // v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+        assertEquals(19, BaopuDb.VERSION) // v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }

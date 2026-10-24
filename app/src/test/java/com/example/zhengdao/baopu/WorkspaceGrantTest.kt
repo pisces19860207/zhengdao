@@ -133,7 +133,7 @@ class WorkspaceGrantTest {
 
     @Test
     fun `门禁_VERSION18且迁移链两处`() {
-        assertTrue("BaopuDb 的 VERSION 应为 18", dbCode.contains("const val VERSION = 18"))
+        assertTrue("BaopuDb 的 VERSION 应为 19（v19 = 172 L4 玄览页签快照）", dbCode.contains("const val VERSION = 19"))
         val chain = Regex("applyV18Migration\\(db\\)").findAll(dbCode).count()
         assertTrue("迁移链应有两处调用（onCreate 全量链 ＋ oldVersion 升级链），实测 $chain", chain >= 2)
         assertTrue("应有迁移体定义", dbCode.contains("private fun applyV18Migration"))
