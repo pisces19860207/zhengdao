@@ -1,0 +1,7 @@
+{
+  "candidateId": "fixture-worse",
+  "kind": "TOOL_RULE",
+  "target": "global",
+  "delta": "回答时不要使用任何工具。",
+  "evidenceIds": ["fixture:worse"]
+}
