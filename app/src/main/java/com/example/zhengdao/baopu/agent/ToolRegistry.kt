@@ -381,6 +381,31 @@ internal fun visibleTools(
 ): List<ToolSpec> = catalog.filter { isVisibleTool(it, settings, unlockedGroups) }
 
 /**
+ * 这个工具**为什么没进 tools 数组**（第一百八十八批 §1.7：运行期快照的 filtered 列）。
+ *
+ * 与 [isVisibleTool] 是**同一个判据的两面**：可见 ⇔ 原因为空。写成 when 的
+ * 三个臂就是可见性公式的三个否条件（用户开关优先：被明确关掉的不该被指路成
+ * 「解锁一下就能用」——与 [ToolRegistry.find] 的两条拒绝同序）。
+ *
+ * ⚠️ 不许在这里另写一套过滤条件：谁改可见性公式，必须同改两边（一致性有
+ * 单测钉：`FilteredReasonConsistencyTest` 对全表断言 可见 ⇔ 原因为空）。
+ */
+internal fun filteredReasonOf(
+    spec: ToolSpec,
+    settings: ToolUserSettings,
+    unlockedGroups: Set<ToolGroup>,
+): String? = when {
+    spec.name in settings.disabledNames -> "用户关闭"
+    spec.group in settings.disabledGroups -> "组被用户关闭"
+    spec.group !in (
+        ToolGroup.DEFAULT_VISIBLE + settings.approvedGroups + unlockedGroups
+        ) &&
+        spec.name !in ToolGroup.DEFAULT_VISIBLE_TOOLS -> "组未解锁"
+
+    else -> null
+}
+
+/**
  * 工具执行结果（执行器的唯一出口形状）。
  *
  * 三种结局分开是因为**处理方式完全不同**：
@@ -869,6 +894,26 @@ internal class ToolRegistry(
     /** 单个工具此刻是否可见（与 [visibleSpecs] 同一判据本体 [isVisibleTool]，不重写一遍）。 */
     fun isVisible(spec: ToolSpec, sessionId: Long = currentSessionId): Boolean =
         isVisibleTool(spec, settings(), unlockedGroups(sessionId))
+
+    /**
+     * 被挡在 tools 数组外的工具 ＋ 原因（第一百八十八批 §1.7：快照的 filtered 列）。
+     *
+     * 判据与 [isVisibleTool] 同源（[filteredReasonOf]），不第二套过滤链；
+     * 顺序 = 表顺序（与 [visibleSpecs] 同一张表的正反两面）。
+     */
+    fun filteredReasons(sessionId: Long = currentSessionId): List<Pair<String, String>> {
+        val s = settings()
+        val unlocked = unlockedGroups(sessionId)
+        return all().mapNotNull { spec ->
+            filteredReasonOf(spec, s, unlocked)?.let { spec.name to it }
+        }
+    }
+
+    /** 快照日志用的单行版（一条没有 ⇒ `none`）。 */
+    fun filteredLine(sessionId: Long = currentSessionId): String {
+        val reasons = filteredReasons(sessionId)
+        return if (reasons.isEmpty()) "none" else reasons.joinToString(";") { (name, reason) -> "$name=$reason" }
+    }
 
     /** 启用中的工具名（设置页对照用；注意这是「用户没关」，不等于「模型看得见」）。 */
     fun enabledNames(): List<String> = specs.keys.filter { isEnabled(it) }

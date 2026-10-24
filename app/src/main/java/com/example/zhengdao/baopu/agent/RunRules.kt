@@ -119,6 +119,31 @@ internal object RunRules {
         // 保留这个函数是为了不惊动既有调用点与判据（P1EngineGateTest 钉着它必须出现）。
         FailurePolicy.decide(FailureKind.BAD_JSON, retries + 1, fallbackAvailable = false) is FailureAction.Retry
 
+    /**
+     * 省钱闸的**可读错误**（第一百八十八批 §1.6，2026-10-24）。
+     *
+     * 病灶：坏参数到线（同一轮连续第 [attempts] 次仍不合法）时旧文案只有一句
+     * 「模型连续给的参数都不合法，这轮停下来（错误已记日志）」——不说法通道、
+     * 不说法工具、不说法服务端原话，排障得翻日志猜。本函数把「哪家／哪字段／
+     * 服务端原话」合成一行，进 run_log.err（工程取证列）。
+     *
+     * @param providerId 通道 id（哪家）
+     * @param protocol 协议名（哪家第二重：同 id 也可能切协议）
+     * @param toolName 出错的工具（哪字段的载体；Schema 错的字段名在 [rawError] 原文里）
+     * @param rawError 错误原文（逐字，不许截断——「服务端原话」就是它）
+     * @param attempts 这一轮第几次仍不合法（1-based；到线那次）
+     */
+    fun badArgsStopSummary(
+        providerId: String,
+        protocol: String,
+        toolName: String,
+        rawError: String,
+        attempts: Int,
+    ): String = "坏参数到线已停（同一轮第 $attempts 次仍不合法）：" +
+        "通道 $providerId（$protocol）；" +
+        "工具 ${toolName.ifBlank { "（没给出名字）" }}；" +
+        "原话：$rawError"
+
     /** 连续工具失败到线 ⇒ 停下问人。 */
     fun shouldAskUser(consecutiveToolFailures: Int): Boolean =
         // 第八十七批：同 [shouldRetryBadArgs]——判据本体在统一策略表，这里保持原签名与语义
