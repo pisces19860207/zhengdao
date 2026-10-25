@@ -1918,4 +1918,22 @@
     <string name="sched_notif_failed_title">Scheduled task “%1$s” did not run</string>
     <string name="sched_notif_reason_busy">Another session held the single-active gate; retries hit the limit</string>
     <string name="sched_notif_reason_failed">Sending failed; details are in the run log</string>
+    <!-- Batch 178: pick and delete self-produced drafts (product folder + ledger only) -->
+    <string name="baopu_artifact_picker_open">Pick and delete from ledger</string>
+    <string name="baopu_artifact_picker_title">Drafts (%1$d)</string>
+    <string name="baopu_artifact_picker_desc">Only files that are both in the product folder and recorded in the ledger. Your own files never show up here.</string>
+    <string name="baopu_artifact_picker_filter_all">All</string>
+    <string name="baopu_artifact_picker_filter_sent">Sent</string>
+    <string name="baopu_artifact_picker_empty">No ledger records with files in the product folder yet</string>
+    <string name="baopu_artifact_picker_empty_sent">No sent drafts</string>
+    <string name="baopu_artifact_picker_row_meta">%1$s · %2$s · chars %3$d · %4$s</string>
+    <string name="baopu_artifact_picker_draft">☐ Draft</string>
+    <string name="baopu_artifact_picker_sent">✔ Sent</string>
+    <string name="baopu_artifact_picker_delete_n">Delete selected %1$d</string>
+    <string name="baopu_artifact_picker_confirm_body">Tap again to delete these %1$d: files move to the trash, and the ledger gets one deletion mark under each original row (rows stay, so the same topics are not suggested again).</string>
+    <string name="baopu_artifact_picker_confirm_action">Confirm delete %1$d</string>
+    <string name="baopu_artifact_picker_done">Deleted: %1$d · moved to the trash; ledger marks: %2$d</string>
+    <string name="baopu_artifact_picker_failed_partial">Not deleted: %1$d (see the run log); succeeded: %2$d</string>
+    <string name="baopu_artifact_picker_ledger_failed">Files moved to the trash, but the ledger deletion marks were not written; the ledger rows remain (see the run log)</string>
+    <string name="baopu_artifact_picker_close">Close</string>
 </resources>

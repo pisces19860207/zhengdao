@@ -283,6 +283,8 @@ internal fun ArtifactShelfDialog(
     }
     var confirmingRel by remember { mutableStateOf<String?>(null) }
     var viewingRel by remember { mutableStateOf<String?>(null) }
+    // 第一百七十八批：清单勾选批量删（179 台账那本账；不与本页 38 批库表合并）
+    var pickerOpen by remember { mutableStateOf(false) }
     // P4-4 纪律：UI 作用域必须装 CoroutineCrashHandler（门禁扫「没装 handler 的裸作用域」）
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
@@ -424,6 +426,10 @@ internal fun ArtifactShelfDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 Row {
+                    // 178：另一本账（179 台账）的批量删入口。本页仍是 38 批库表，两本账不合并。
+                    TextButton(onClick = { pickerOpen = true }) {
+                        Text(stringResource(R.string.baopu_artifact_picker_open))
+                    }
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.baopu_artifact_shelf_close)) }
                 }
@@ -436,6 +442,20 @@ internal fun ArtifactShelfDialog(
             root = workspaceRoot,
             relPath = viewing,
             onDismiss = { viewingRel = null },
+        )
+    }
+    // 第一百七十八批：勾选批量删（台账那本账；删完回收站 N 与抽屉产物 N 一起重数）
+    if (pickerOpen) {
+        ArtifactPickerDialog(
+            workspaceRoot = workspaceRoot,
+            onChanged = {
+                tick++
+                onChanged()
+            },
+            onDismiss = {
+                pickerOpen = false
+                onChanged()
+            },
         )
     }
 }
