@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第一百九十五批：查询助手 v1 的字符串单独成文件（沿用第一百五十八批的做法——
+     本批基线不是 main 最新，pre-commit 闸 2 会拦「旧基准上改 strings.xml」；
+     工具文案门禁（BaopuToolStringsTest）按目录全读 strings*.xml，独立文件与并入完全等价。
+     2026-10-25 她改名：不叫「查货」叫「查询助手」——它还查「这车谁的」和司机电话。
+     注意：**导入结果与三行答案不在这里**，那些句子里有「缺哪列 / 几个数 / 几点导的」，
+     判据在代码里，搬进资源会变成两套措辞迟早漂移（见 LogisticsSheet.kt 头部说明）。 -->
+<resources>
+    <!-- ── 设置页：工具组与工具卡 ── -->
+    <string name="baopu_tools_group_logistics">物流查询</string>
+    <string name="baopu_group_line_logistics">查你手动导出的发货表：哪个方向装没装、某块车牌去哪、这车谁的、司机电话。只读，不联网、不登 T9</string>
+    <string name="baopu_tool_logistics_query">查发货表（本机）</string>
+    <string name="baopu_tool_logistics_query_desc">读本机「物流」库里当天导入的发货表，按方向／卸点、车牌、单号、货名、司机查，回固定三行：结论、数、数据时间与车数口径。司机姓名与手机号只在本机面板显示（可点开拨号盘），不进模型、不写日志。表没导入时直说「没表，先导入」，不猜、不编车数。只读、不联网、不要账号；你问的那句话不落库、不写日志。默认不可见：先在 capabilities 里解锁「物流查询」组才会出现。</string>
+
+    <!-- ── 抽屉入口 ── -->
+    <string name="baopu_logistics_drawer_title">查询助手</string>
+    <string name="baopu_logistics_drawer_desc">当天导出的发货表：谁装没装、几车、去哪、这车谁的电话；离线查，不联网</string>
+    <string name="baopu_logistics_notice_open">展开看</string>
+
+    <!-- ── 查询面板（C 档）── -->
+    <string name="baopu_logistics_title">查询助手</string>
+    <string name="baopu_logistics_desc">读的是你在 T9 里手动导出、放进「产物/物流/inbox」的那份表；这一步不联网、不登账号。</string>
+    <string name="baopu_logistics_sources">来源：%1$s</string>
+    <string name="baopu_logistics_absent">这份表没有：%1$s —— 这些维度不显示、不计算、不告警</string>
+    <string name="baopu_logistics_days">哪一天的表</string>
+    <string name="baopu_logistics_basis">车数怎么算</string>
+    <string name="baopu_logistics_basis_plate">按车牌</string>
+    <string name="baopu_logistics_basis_order">按配货单</string>
+    <string name="baopu_logistics_basis_trip">车牌＋去向</string>
+    <string name="baopu_logistics_ask_hint">问一句，如「北京装没装」「A12345 去哪」「老张电话」</string>
+    <string name="baopu_logistics_ask">查</string>
+    <string name="baopu_logistics_dial">拨打 %1$s</string>
+    <string name="baopu_logistics_copied">已复制：%1$s（长按号码可再复制）</string>
+    <string name="baopu_logistics_cost_ms">用了 %1$d ms</string>
+    <string name="baopu_logistics_status_title">装没装（勾上＝已装，盖过表里的）</string>
+    <string name="baopu_logistics_unfilled">未填</string>
+    <string name="baopu_logistics_folded">还有 %1$d 单没列出来，用上面那句问</string>
+    <string name="baopu_logistics_import">读 inbox 里的表</string>
+    <string name="baopu_logistics_ledger">记当天台账</string>
+    <string name="baopu_logistics_close">关闭</string>
+    <string name="baopu_logistics_row_title">%1$s ｜ 配货单 %2$s</string>
+    <string name="baopu_logistics_row_meta">去向 %1$s ｜ 件数 %2$s ｜ 车牌 %3$s ｜ 司机 %4$s</string>
+</resources>

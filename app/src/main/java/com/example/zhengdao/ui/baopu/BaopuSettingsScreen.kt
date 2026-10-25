@@ -1593,6 +1593,8 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "ask_user" -> R.string.baopu_tool_ask_user
     // 第一百二十七批：多 Agent 协作（run_subtasks）。不补这两行 ⇒ 设置页开工具卡直接抛。
     "run_subtasks" -> R.string.baopu_tool_run_subtasks
+    // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolLabel 的 fail-fast）
+    "logistics_query" -> R.string.baopu_tool_logistics_query
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -1656,6 +1658,8 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "novel_continue" -> R.string.baopu_tool_novel_continue_desc
     "ask_user" -> R.string.baopu_tool_ask_user_desc
     "run_subtasks" -> R.string.baopu_tool_run_subtasks_desc
+    // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolDesc 的 fail-fast）
+    "logistics_query" -> R.string.baopu_tool_logistics_query_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
 

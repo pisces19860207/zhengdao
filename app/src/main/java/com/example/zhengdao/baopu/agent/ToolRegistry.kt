@@ -107,6 +107,17 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
     AGENT("agent", "多 Agent 协作：把大任务拆成子任务并行或串行跑，收回汇总结果"),
 
     /**
+     * 物流查询（第一百九十五批，用户 2026-10-25 裁定原文照录）：查当日导入的发货表，**只读**。
+     *
+     * 默认**不可见**、**不塞 CORE**（裁定原话：「不塞 CORE，按仓库既有规矩走」）——
+     * 默认可见 12 条是上下文硬卡（ProgressiveToolsTest B1），本组只在 `capabilities(enable="logistics")`
+     * 解锁后露面；解锁后立即可用（同 IMAGE/DRAW/AGENT 口径，进 [BaopuToolCatalog.DEFAULT_ENABLED]）。
+     * 这一组查的是本机 `filesDir/物流/logistics.db`，不联网、不调模型，所以没有烧额度的风险，
+     * 但它读的是她的单据 ⇒ 归「按需解锁」而不是「一上来就给模型看见」。
+     */
+    LOGISTICS("logistics", "物流查询：查当日发货表（方向/车牌/单号/件数/装没装），只读"),
+
+    /**
      * 免费通道的兼容占位（read / bash）：由通道决定注册与否，用户管不着、设置页也不列它们。
      * 注册了就**必须**默认可见（否则免费档 403），见 [ToolGroup.DEFAULT_VISIBLE] 的说明。
      */
@@ -236,6 +247,9 @@ internal object ToolGroupTable {
         // 第一百二十七批：多 Agent 协作（run_subtasks）。默认不可见——大任务才用得到，
         // 小任务模型看不见它就不会瞎拆（渐进披露，见 ToolGroup.AGENT 注释）。
         "run_subtasks" to ToolGroup.AGENT,
+        // 第一百九十五批：查询只读工具（LOGISTICS 组，默认不可见，capabilities 解锁）。
+        // 不进 CORE ⇒ 默认可见 12 条的硬卡不破。
+        "logistics_query" to ToolGroup.LOGISTICS,
         "read" to ToolGroup.COMPAT,
         "bash" to ToolGroup.COMPAT,
     )
@@ -1184,6 +1198,10 @@ internal object BaopuToolCatalog {
         // 多 Agent 协作（第一百二十七批）：默认**开着**但默认不可见（AGENT 组）——
         // capabilities 解锁后立即可用，不必先去设置页找开关；小任务模型看不见它就不会瞎拆。
         "run_subtasks",
+        // 物流查询（第一百九十五批）：默认**开着**但默认不可见（LOGISTICS 组）——
+        // 与 run_subtasks/generate_image 同口径：capabilities 解锁后立即可用，不必先去设置页翻开关。
+        // 它是 readOnly + FREE（只读，弹卡等于每问一次装没装就打断一次用户）。
+        "logistics_query",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -1254,6 +1272,10 @@ internal object BaopuToolCatalog {
         // 表里只放 spec。默认不可见（AGENT 组，渐进披露）但**默认启用**——
         // 「看得见」与「开着」是两件事：解锁后立即可用，不必先去设置页找开关。
         Entry("run_subtasks") { SubTaskTool.spec() },
+        // 物流查询（第一百九十五批）：只读查本机当日发货表（零网络、零模型调用）。
+        // 不要 workspaceRoot：查的是 App 私有 `filesDir/物流/logistics.db`，与工作区无关
+        // （inbox 只是她放导出文件的入口，读它的是导入那一步）。
+        Entry("logistics_query") { LogisticsQueryTool.spec() },
     )
 
     /**

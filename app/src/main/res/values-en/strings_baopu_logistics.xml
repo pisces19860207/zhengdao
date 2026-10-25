@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 195 (local query helper v1): English half of strings_baopu_logistics.xml.
+     Keys must match values/strings_baopu_logistics.xml one-for-one (lint MissingTranslation).
+     2026-10-25 rename: not "shipping lookup" but "query helper" — it also answers
+     whose vehicle a dispatch sheet is and the driver's phone. -->
+<resources>
+    <!-- settings page: tool group & tool card -->
+    <string name="baopu_tools_group_logistics">Logistics query</string>
+    <string name="baopu_group_line_logistics">Look up the shipment sheet you exported by hand: is a lane loaded, where a plate went, whose vehicle it is, the driver\'s phone. Read-only — no network, no T9 login</string>
+    <string name="baopu_tool_logistics_query">Query shipping sheet (local)</string>
+    <string name="baopu_tool_logistics_query_desc">Reads today\'s imported shipping sheet from the local \"logistics\" database and answers by lane, drop point, plate, waybill, goods or driver in a fixed three lines: the answer, the numbers, and the data time plus the vehicle-count basis. Driver names and phone numbers show on the local panel only (tap to open the dialer) — never into the model, never into logs. When no sheet has been imported it says so plainly — it never guesses a plate count. Read-only, offline, no credentials. Your question is neither stored nor logged. Hidden by default: unlock the Logistics query group via capabilities first.</string>
+
+    <!-- drawer entry -->
+    <string name="baopu_logistics_drawer_title">Query helper</string>
+    <string name="baopu_logistics_drawer_desc">Today\'s exported sheet: loaded or not, how many trucks, where each went, whose phone. Offline.</string>
+    <string name="baopu_logistics_notice_open">Open</string>
+
+    <!-- query panel (option C) -->
+    <string name="baopu_logistics_title">Query helper</string>
+    <string name="baopu_logistics_desc">Reads the sheet you exported from T9 by hand and dropped into Products/物流/inbox. This step uses no network and no account.</string>
+    <string name="baopu_logistics_sources">Source: %1$s</string>
+    <string name="baopu_logistics_absent">Not in this sheet: %1$s — those dimensions are hidden, not counted, not flagged</string>
+    <string name="baopu_logistics_days">Which day</string>
+    <string name="baopu_logistics_basis">Vehicle count basis</string>
+    <string name="baopu_logistics_basis_plate">By plate</string>
+    <string name="baopu_logistics_basis_order">By dispatch sheet</string>
+    <string name="baopu_logistics_basis_trip">Plate + lane</string>
+    <string name="baopu_logistics_ask_hint">Ask one line, e.g. \"Is Beijing loaded?\" or \"Where did A12345 go?\" or \"Lao Zhang\'s phone\"</string>
+    <string name="baopu_logistics_ask">Look up</string>
+    <string name="baopu_logistics_dial">Dial %1$s</string>
+    <string name="baopu_logistics_copied">Copied: %1$s (long-press a number to copy again)</string>
+    <string name="baopu_logistics_cost_ms">Took %1$d ms</string>
+    <string name="baopu_logistics_status_title">Loaded? (tick = loaded, overrides the sheet)</string>
+    <string name="baopu_logistics_unfilled">not filled</string>
+    <string name="baopu_logistics_folded">Rows hidden: %1$d — ask above instead</string>
+    <string name="baopu_logistics_import">Import sheets from inbox</string>
+    <string name="baopu_logistics_ledger">Write today\'s ledger</string>
+    <string name="baopu_logistics_close">Close</string>
+    <string name="baopu_logistics_row_title">%1$s | Dispatch %2$s</string>
+    <string name="baopu_logistics_row_meta">To %1$s | Pieces %2$s | Plate %3$s | Driver %4$s</string>
+</resources>

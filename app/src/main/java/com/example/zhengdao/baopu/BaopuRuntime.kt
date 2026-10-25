@@ -160,6 +160,24 @@ internal object BaopuRuntime {
     fun personaPackStore(context: Context): PersonaPackStore = PersonaPackStore(workspaceRoot(context))
 
     /**
+     * 第一百九十五批 · 查询存储壳（`logistics.db`）。
+     *
+     * 缓存一份而不是每次 new：`SQLiteOpenHelper` 每个实例各带一套连接，面板每次重组都新建
+     * 就是在漏连接；工具与面板共用同一份 ⇒ 「查询面板的数」与「模型报的数」必然同源。
+     */
+    fun logisticsStore(context: Context): com.example.zhengdao.baopu.logistics.LogisticsStore {
+        logisticsStoreRef?.let { return it }
+        return synchronized(this) {
+            logisticsStoreRef ?: com.example.zhengdao.baopu.logistics.SqlLogisticsStore(
+                context.applicationContext,
+            ).also { logisticsStoreRef = it }
+        }
+    }
+
+    /** [logisticsStore] 的缓存位（只在 [synchronized] 里读写）。 */
+    private var logisticsStoreRef: com.example.zhengdao.baopu.logistics.LogisticsStore? = null
+
+    /**
      * 当前工作区启用的那套人设包；没启用、包被删、读不了 ⇒ null（按抱朴默认人设走）。
      * 读不了时留一行日志，不静默——用户至少能在日志里看到为什么包没生效。
      */
@@ -272,6 +290,9 @@ internal object BaopuRuntime {
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
         // AskUserTool.sink／PlanTool.sink：Context 只到装配层这一处。
         KbTools.store = com.example.zhengdao.baopu.kb.KbIndexStore(appCtx.filesDir)
+        // 第一百九十五批：查询工具的存储壳（App 私有 filesDir/物流/logistics.db，与主库无关）。
+        // 同一房型：Context 只到装配层这一处，工具与面板都从这里拿同一份壳 ⇒ 两处读到的数才是一个。
+        com.example.zhengdao.baopu.agent.LogisticsQueryTool.store = logisticsStore(appCtx)
         // 2026-10-18：抱朴自己写技能（确认制；写前备份、同名即改、写完进索引）
         reg.register(
             com.example.zhengdao.baopu.agent.SkillTools.spec(
