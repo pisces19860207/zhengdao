@@ -45,8 +45,8 @@ sealed class SkillWriteResult {
 /**
  * 一份**可审的写入计划**（确认卡上的每一行都从这儿取，不许 UI 自己再算一遍）。
  *
- * @param blocked 非 null ⇒ 这次写是被判据挡住的（名字非法／正文超长／索引超上限），
- *   确认卡应当直接显示它并禁用「保存」。
+ * @param blocked 非 null ⇒ 这次写是被判据挡住的（名字非法／正文空／超长／索引超上限／
+ *   schema 预检不过，第一百八十五批），确认卡应当直接显示它并禁用「保存」。
  */
 internal data class SkillWritePlan(
     val proposal: SkillProposal,
@@ -128,7 +128,10 @@ object SkillStore {
                 "正文太长（${proposal.body.length} 字 > 上限 $BODY_MAX_CHARS）"
             indexCountAfterAdd > SkillRules.INDEX_CAP ->
                 "索引已满（$indexCountAfterAdd > ${SkillRules.INDEX_CAP}），先删几条再加入"
-            else -> null
+            // 第一百八十五批：写前 schema 预检，挂在既有判据链**末尾**（174 验过的顺序一字未动）——
+            // 正文里的函数/工具示例不合 provider 规则（Gemini type 大写、strict 缺
+            // additionalProperties:false…）就拒写，坏示例不许沉淀进技能库再让人照着错。
+            else -> SkillSchemaPrecheck.blockedReason(proposal.body)
         }
 
         // 草稿也进索引（2026-10-18 用户口径）：不进索引 ⇒ 明天看不见 ⇒ 重新摸索＝白烧 token。

@@ -1814,6 +1814,7 @@
 <string name="skill_card_backup_none">First save — nothing will be overwritten</string>
 <string name="skill_card_draft_hint">Saved as a draft first (index marked "unverified"). Auto-promotes when the use count reaches %1$d, or promote it in Settings.</string>
 <string name="skill_card_active_hint">This is already a formal skill: saving updates it and backs up the old version</string>
+<string name="skill_card_schema_pass">Schema precheck: passed (tool examples: %1$d)</string>
 <string name="skill_card_blocked">Cannot remember yet: %1$s</string>
 <string name="skill_card_remember">Remember it</string>
 <string name="skill_card_dismiss">Not now</string>
