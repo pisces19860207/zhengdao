@@ -200,8 +200,12 @@ class ScreenshotWiringTest {
     fun `G7_工具层把截图路径放进 imageRelPaths`() {
         val tools = codeOnly(src("src/main/java/com/example/zhengdao/baopu/agent/tools/BrowserTools.kt"))
         assertTrue(
-            "截图 spec 必须把路径交给引擎（只回文本＝模型还是看不见）",
-            tools.contains("imageRelPaths = listOfNotNull(shot.relPath)"),
+            "核对图（album=false）必须把路径交给引擎（只回文本＝模型还是看不见）",
+            tools.contains("imageRelPaths = if (shot.album) emptyList() else listOfNotNull(shot.relPath)"),
+        )
+        assertTrue(
+            "相册那张不许塞进读图管线（它不在工作区/截屏根里，塞进去只会变成一条「越界」）",
+            tools.contains("if (shot.album) emptyList()"),
         )
         assertTrue("拿不到路径要明说", tools.contains("看不到像素"))
     }

@@ -16,6 +16,7 @@
 // 时间戳一律走 `TimeFormats.fileStamp()`（门禁 B-补-24：主源码不许裸 SimpleDateFormat）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
 
@@ -68,13 +69,50 @@ internal object PersonaBackup {
         return "$y-$mo-$d $h:$mi:$s"
     }
 
-    /** 一份文件的全部备份，**新 → 旧**（时间戳定长 ⇒ 字典序即时间序）。 */
+    /**
+     * 备份的**家**（199 起：`<工作区>/备份/人设/`）。
+     *
+     * 为什么要搬：`.bak` 原本躺在人设文件旁边，而人设文件在工作区**根**上
+     * （157「根里没有裸文件」的反例，设计 §8 行 14）——每改一次 C 层人设，
+     * 根上就多一个 `.bak-<stamp>`，不封顶。现在写进 `备份/`（内核定的改前快照区），
+     * 根上不再长新文件。
+     *
+     * 判据（**只认 C 层项目人设**）：B 层全局人设是 App 私有的
+     * `filesDir/抱朴记忆/人设.md`，它的备份仍留在自己旁边（搬进工作区备份区
+     * 反而会把私有内容写进共享存储 ⇒ 隐私面扩大）。其余同名文件（技能、别的
+     * `人设-本项目.md`）一律回 null，走原来的「就近备份」。
+     */
+    fun backupHome(file: File): File? {
+        if (file.name != PersonaFiles.FILE_PERSONA_PROJECT) return null
+        val parent = file.parentFile ?: return null
+        // 设计位置是 `<工作区>/抱朴记忆/人设-本项目.md`；存量可能直接躺在工作区根上
+        val workspace = if (parent.name == PersonaPackRules.DIR_ROOT) parent.parentFile else parent
+        if (workspace == null) return null
+        return File(File(workspace, BaopuKernel.Data.DIR_BACKUP), "人设")
+    }
+
+    /** 备份要扫的目录（设计位置 ＋ 存量位置；同一个目录只算一次）。 */
+    private fun dirsOf(file: File): List<File> {
+        val out = LinkedHashSet<File>()
+        file.parentFile?.let { out += it }
+        backupHome(file)?.let { out += it }
+        return out.toList()
+    }
+
+    /**
+     * 一份文件的全部备份，**新 → 旧**（时间戳定长 ⇒ 字典序即时间序）。
+     *
+     * 199 起两个目录都扫：新的在 `备份/人设/`，存量的还在人设文件旁边——
+     * 只扫一处会让「恢复上一版」在升级当天突然说「没有备份」。
+     */
     fun backupsOf(file: File): List<File> {
-        val dir = file.parentFile ?: return emptyList()
         val base = file.name
-        return dir.listFiles { f -> f.isFile && isBackupOf(f.name, base) }
-            ?.sortedByDescending { it.name }
-            ?: emptyList()
+        return dirsOf(file)
+            .flatMap { dir ->
+                dir.listFiles { f -> f.isFile && isBackupOf(f.name, base) }?.toList() ?: emptyList()
+            }
+            .distinctBy { it.absolutePath }
+            .sortedByDescending { it.name }
     }
 
     /** 最近一份备份；没有 ⇒ null（设置页据此把按钮灰掉，**但不隐藏这一行**）。 */
@@ -89,7 +127,9 @@ internal object PersonaBackup {
      */
     fun backupBefore(file: File, stamp: String): File? {
         if (!file.isFile) return null
-        val dir = file.parentFile ?: return null
+        // 199：C 层项目人设的备份改落 `<工作区>/备份/人设/`（其余文件仍就近备份）
+        val dir = backupHome(file) ?: file.parentFile ?: return null
+        runCatching { if (!dir.isDirectory) dir.mkdirs() }
         val name = freeNameFor(dir, file.name, stamp)
         return runCatching {
             val dest = File(dir, name)
