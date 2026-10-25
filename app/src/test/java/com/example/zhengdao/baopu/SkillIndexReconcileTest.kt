@@ -44,6 +44,8 @@ class SkillIndexReconcileTest {
         val wantDangling: List<String>,
         val wantOrphans: List<String>,
         val wantDouble: List<List<String>>,
+        /** 205 追加：软删未清索引单列（不算悬空）。 */
+        val wantStale: List<String> = emptyList(),
     )
 
     private val cases = listOf(
@@ -81,10 +83,11 @@ class SkillIndexReconcileTest {
             wantDangling = emptyList(), wantOrphans = emptyList(), wantDouble = emptyList(),
         ),
         Case(
-            label = "去噪·软删不算悬空：目录只剩 SKILL.md.deleted-<ts> ⇒ 有意删的，不报",
+            label = "软删未清索引（205 起）：目录只剩 SKILL.md.deleted-<ts> 且索引还有行 ⇒ 单列，不算悬空",
             index = idx("gone1", "场景一"),
             dirs = listOf(dir("gone1", "SKILL.md.deleted-1792548545321")),
             wantDangling = emptyList(), wantOrphans = emptyList(), wantDouble = emptyList(),
+            wantStale = listOf("gone1"),
         ),
         Case(
             label = "去噪·软删目录没索引行也不算失联：没有正文就没有失联",
@@ -125,7 +128,12 @@ class SkillIndexReconcileTest {
             assertEquals("悬空不一致［${c.label}］", c.wantDangling, r.dangling)
             assertEquals("失联不一致［${c.label}］", c.wantOrphans, r.orphans)
             assertEquals("双行不一致［${c.label}］", c.wantDouble, doubleNames(r))
-            assertEquals("干净与否［${c.label}］", c.wantDangling.isEmpty() && c.wantOrphans.isEmpty() && c.wantDouble.isEmpty(), r.isClean)
+            assertEquals("软删未清不一致［${c.label}］", c.wantStale, r.softDeleteStale)
+            assertEquals(
+                "干净与否［${c.label}］",
+                c.wantDangling.isEmpty() && c.wantOrphans.isEmpty() && c.wantDouble.isEmpty() && c.wantStale.isEmpty(),
+                r.isClean,
+            )
         }
     }
 
@@ -206,13 +214,13 @@ class SkillIndexReconcileTest {
     }
 
     @Test
-    fun `便签_只报不为零的三类_一条一行`() {
+    fun `便签_只报不为零的几类_一条一行`() {
         val onlyDangling = reportOf(
             idx("punct3", "场景"),
             listOf(dir("punct3", "punct3.SKILL.md.bak-20261021-122604")),
         )
         assertEquals(
-            "技能账实不符：悬空 1（punct3）——去技能页看",
+            "技能账实不符：悬空 1（正文缺 1）——去技能页看",
             SkillIndexReconcile.noteLine(onlyDangling),
         )
     }
@@ -220,11 +228,11 @@ class SkillIndexReconcileTest {
     @Test
     fun `便签_每类点名最多3个_超出收等`() {
         val r = SkillIndexReconcile.Report(
-            dangling = listOf("甲", "乙", "丙", "丁"),
+            danglingBodyMissing = listOf("甲", "乙", "丙", "丁"),
             orphans = emptyList(),
             doubleRows = emptyList(),
         )
-        assertEquals("技能账实不符：悬空 4（甲、乙、丙等）——去技能页看", SkillIndexReconcile.noteLine(r))
+        assertEquals("技能账实不符：悬空 4（正文缺 4）——去技能页看", SkillIndexReconcile.noteLine(r))
     }
 
     @Test
@@ -238,7 +246,7 @@ class SkillIndexReconcileTest {
 
         // 同会话：同批只报一次（负例「每轮重复报」）
         val first = gate.noteFor(1, dirtyA)
-        assertEquals("技能账实不符：悬空 1（punct3）——去技能页看", first)
+        assertEquals("技能账实不符：悬空 1（正文缺 1）——去技能页看", first)
         assertNull("同会话同批第二次必须静默", gate.noteFor(1, dirtyA))
         assertNull("同批行序打乱仍是同一批（签名排序）", gate.noteFor(1, dirtyA))
 
@@ -259,17 +267,62 @@ class SkillIndexReconcileTest {
     @Test
     fun `去重门_签名只看账目内容_名字排序_行序无关`() {
         val a = SkillIndexReconcile.Report(
-            dangling = listOf("乙", "甲"),
+            danglingBodyMissing = listOf("乙", "甲"),
             orphans = listOf("丁"),
             doubleRows = listOf(SkillIndexReconcile.DoubleRow(listOf("n2", "n1"), "场景")),
         )
         val b = SkillIndexReconcile.Report(
-            dangling = listOf("甲", "乙"),
+            danglingBodyMissing = listOf("甲", "乙"),
             orphans = listOf("丁"),
             doubleRows = listOf(SkillIndexReconcile.DoubleRow(listOf("n1", "n2"), "场景")),
         )
         assertEquals("同一批不一致换了次序，签名必须相同", a.signature, b.signature)
         assertFalse(SkillIndexReconcile.Report().signature == a.signature)
+    }
+
+    // ── 第二百零五批 · 追加件#2：悬空两级＋软删未清索引单列 ─────────────────────
+    //
+    // 真机漏检背景：索引有行、`技能/<名>/` 整个目录不存在——旧口径只在「目录在、正文缺」
+    // 那一级有名字，目录无这一级没进对账账本。负例（各红）：
+    //   ①目录全无不报；②把 .deleted-* 当悬空；③报出来顺手改索引（源码门禁 S204 已钉）。
+
+    @Test
+    fun `追加_目录全无进对账_与正文缺分开两级_便签带两级数量`() {
+        val r = reportOf(
+            listOf(idx("甲", "目录还在但正文没了"), idx("乙", "目录整个不存在")).joinToString("\n"),
+            listOf(dir("甲", "甲.SKILL.md.bak-20261021-122604")), // 甲：只剩备份＝正文缺；乙：目录全无
+        )
+        assertEquals(listOf("甲"), r.danglingBodyMissing)
+        assertEquals("目录全无必须进对账（负例①：不报即红）", listOf("乙"), r.danglingDirMissing)
+        assertEquals(2, r.dangling.size)
+        assertEquals(
+            "技能账实不符：悬空 2（正文缺 1/目录无 1）——去技能页看",
+            SkillIndexReconcile.noteLine(r),
+        )
+    }
+
+    @Test
+    fun `追加_软删未清索引单列_不算悬空`() {
+        val r = reportOf(
+            idx("gone1", "场景一"),
+            listOf(dir("gone1", "SKILL.md.deleted-1792548545321")),
+        )
+        assertTrue("软删不算悬空（负例②：当悬空即红）", r.dangling.isEmpty())
+        assertEquals(listOf("gone1"), r.softDeleteStale)
+        assertFalse(r.isClean)
+        assertEquals(
+            "技能账实不符：软删未清 1（gone1）——去技能页看",
+            SkillIndexReconcile.noteLine(r),
+        )
+    }
+
+    @Test
+    fun `追加_软删未清索引_同名多条索引行只报一次`() {
+        val r = reportOf(
+            listOf(idx("gone1", "场景一"), idx("gone1", "场景二")).joinToString("\n"),
+            listOf(dir("gone1", "SKILL.md.deleted-1792548545321")),
+        )
+        assertEquals(listOf("gone1"), r.softDeleteStale)
     }
 
     // ── §4 162 附录（二）存量脏数据清单 · 等价假数据整跑 ────────────────────
@@ -308,8 +361,8 @@ class SkillIndexReconcileTest {
         assertEquals("失联：只有 haiku-helper", listOf("haiku-helper"), r.orphans)
         assertEquals("双行：只有 note1/note2 一组", listOf(listOf("note1", "note2")), doubleNames(r))
         assertEquals(
-            "收尾便签一行（派工单 §1.2 原房型）",
-            "技能账实不符：悬空 1（punct3）、失联 1（haiku-helper）、双行 1（note1/note2）——去技能页看",
+            "收尾便签一行（派工单 §1.2 原房型；205 起悬空带两级数量）",
+            "技能账实不符：悬空 1（正文缺 1）、失联 1（haiku-helper）、双行 1（note1/note2）——去技能页看",
             SkillIndexReconcile.noteLine(r),
         )
     }
@@ -341,7 +394,7 @@ class SkillIndexReconcileTest {
         assertEquals(listOf("haiku-helper", "整理书稿"), merged.orphans)
         assertEquals(listOf(listOf("note1", "note2")), doubleNames(merged))
         assertEquals(
-            "技能账实不符：悬空 1（punct3）、失联 2（haiku-helper、整理书稿）、双行 1（note1/note2）——去技能页看",
+            "技能账实不符：悬空 1（正文缺 1）、失联 2（haiku-helper、整理书稿）、双行 1（note1/note2）——去技能页看",
             SkillIndexReconcile.noteLine(merged),
         )
         assertTrue("两层都干净 ⇒ 合成仍干净", (SkillIndexReconcile.Report() + SkillIndexReconcile.Report()).isClean)

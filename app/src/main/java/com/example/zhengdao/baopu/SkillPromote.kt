@@ -19,6 +19,16 @@ internal object SkillPromote {
     const val ACTION_PROMOTE = "promote"
     const val ACTION_REVERT = "promote_undo"
 
+    /**
+     * 审计行 action：草稿自动治理的软退役 / 技能页恢复（第二百零五批追加件③）。
+     *
+     * 只进决策中心**记录**（谁在什么时候自动退了哪条草稿、恢复可回溯）；
+     * 「可回退」在技能页已退役组的「恢复」按钮——恢复走 [SkillAudit.record] 记
+     * [ACTION_DRAFT_RETIRE_UNDO]，闭环在账本里看得见。
+     */
+    const val ACTION_DRAFT_RETIRE = "skill_draft_retire"
+    const val ACTION_DRAFT_RETIRE_UNDO = "draft_retire_undo"
+
     /** 转正原因（派工单 §1.5 的两个值，一字不改——决策中心照它显示）。 */
     const val REASON_MANUAL = "手动"
     const val REASON_FULL_USES = "满3次"
@@ -91,14 +101,14 @@ internal object SkillPromote {
             nowMs = nowMs,
         )
 
-    /** 审计文本 → 转正/回退记录（坏行与别的 action 一律忽略，账本里的杂行不炸解析）。 */
+    /** 审计文本 → 转正/回退/草稿治理记录（坏行与别的 action 一律忽略，账本里的杂行不炸解析）。 */
     fun parseLines(text: String?): List<PromoteLine> {
         if (text.isNullOrBlank()) return emptyList()
         val out = mutableListOf<PromoteLine>()
         text.lines().forEach { raw ->
             val o = runCatching { JSONObject(raw) }.getOrNull() ?: return@forEach
             val action = o.optString("action")
-            if (action != ACTION_PROMOTE && action != ACTION_REVERT) return@forEach
+            if (action !in PARSED_ACTIONS) return@forEach
             val name = o.optString("name")
             if (name.isEmpty()) return@forEach
             out += PromoteLine(
@@ -138,6 +148,9 @@ internal object SkillPromote {
 
     /** 决策中心记录页的回看条数上限（与 skill_event 那路的 LIMIT 20 同口径）。 */
     const val RECENT_LIMIT = 20
+
+    /** parseLines 认的 action（205 起：草稿治理的两类也进决策中心记录）。 */
+    val PARSED_ACTIONS = setOf(ACTION_PROMOTE, ACTION_REVERT, ACTION_DRAFT_RETIRE, ACTION_DRAFT_RETIRE_UNDO)
 
     /** 记录页要的最近几条（截断住在这层——UI 文件不许再出现裸 take(20) 那类兜底）。 */
     fun recentLines(projectRoot: File, globalRoot: File, limit: Int = RECENT_LIMIT): List<PromoteLine> =

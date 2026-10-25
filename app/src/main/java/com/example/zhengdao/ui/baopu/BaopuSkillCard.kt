@@ -482,6 +482,9 @@ internal fun promoteBody(body: String): String =
  * @param stillDraft true ⇒「用一次」（还是草稿，索引行继续带未验证标）；false ⇒「转正」
  * @param reason 本次写盘的审计理由；缺省 ⇒ 原有口径（试用记一次／转正进索引）。
  *   第二百零七批：决策中心「回退为草稿」也从这走，传自己的理由，账本不说假话
+ * @param promoteReason 第二百零五批追加件③：自动转正（草稿满 3 次的治理路）传「满3次」——
+ *   转正时正文头里的 uses 没涨，`promoteReasonOf` 会误判成「手动」；治理路在这里说真话。
+ *   缺省 null ⇒ 原口径一字不变（既有调用零影响）。
  */
 internal fun commitSkillDraft(
     row: SkillDraftRow,
@@ -492,6 +495,7 @@ internal fun commitSkillDraft(
     personaFiles: com.example.zhengdao.baopu.PersonaFiles,
     backupStamp: String,
     reason: String? = null,
+    promoteReason: String? = null,
 ): SkillWriteResult {
     val proposal = SkillProposal(
         scope = row.scope,
@@ -529,7 +533,7 @@ internal fun commitSkillDraft(
         if (r is SkillWriteResult.Written) {
             SkillPromote.promoteReasonOf(row.body, newBody)?.let { why ->
                 val scope = if (row.scope == SkillScope.GLOBAL) "global" else "project"
-                if (!SkillPromote.auditPromote(r.file, scope, row.name, why)) {
+                if (!SkillPromote.auditPromote(r.file, scope, row.name, promoteReason ?: why)) {
                     com.example.zhengdao.rootfs.RunLog.log("技能转正记录写入失败：${row.name}（$why）")
                 }
             }

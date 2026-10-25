@@ -55,8 +55,17 @@ import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.ProposalCandidateStore
 import com.example.zhengdao.baopu.ProposalRules
+import com.example.zhengdao.baopu.ReflectionArchive
+import com.example.zhengdao.baopu.ReflectionCandidate
+import com.example.zhengdao.baopu.ReflectionRunner
+import com.example.zhengdao.baopu.ReflectionTrigger
 import com.example.zhengdao.baopu.SessionPendingStore
+import com.example.zhengdao.baopu.SkillAudit
+import com.example.zhengdao.baopu.SkillDraftGovernor
+import com.example.zhengdao.baopu.SkillPromote
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.SkillScope
+import com.example.zhengdao.baopu.SkillWriteResult
 import com.example.zhengdao.baopu.ExampleBank
 import com.example.zhengdao.baopu.TasteDrop
 import com.example.zhengdao.baopu.TasteInjection
@@ -306,6 +315,219 @@ internal class BaopuChatController(context: Context) {
                         appCtx.getString(R.string.skill_seed_install_failed, report.failed.size),
                         BaopuNoteLevel.Error,
                     )
+            }
+        }
+    }
+
+    // ── 第二百零五批 · 反思器（四源→≤3 候选卡→进化档案）＋技能列表页的读数 ──────
+    //
+    // 触发两条（派工单 §3）：①进抱朴时若今天没跑过（下面 init 里的 dueToday 门）；
+    // ②用户说「复盘一下／最近有什么该改的」（send() 头上的话术判据）＋技能页
+    // 「现在复盘一次」按钮（runReflectionNow，同一入口）。四源全空 ⇒ 只记一行
+    // RunLog、不弹卡不打扰；确认前零写盘（ReflectionRunner 只有进化档案 append）。
+
+    /** 反思器本轮产出的候选（≤3；技能页「复盘区」消费；采纳走 184 卡宿主）。 */
+    var reflectionCards by mutableStateOf<List<ReflectionCandidate>>(emptyList())
+        private set
+
+    /** 复盘结果的一句话（有卡/无卡都说话——空源降级也要让用户知道跑过了）。 */
+    var reflectionNote by mutableStateOf<BaopuNote?>(null)
+        private set
+
+    var reflectionBusy by mutableStateOf(false)
+        private set
+
+    /** 每日一次的 stamp（SP 与 introspection 同一份文件，键独立）。 */
+    private var reflectionLastRunKey: String = "reflection_last_run_ms"
+
+    private fun reflectionRunner(): ReflectionRunner {
+        val pf = BaopuRuntime.personaFiles(appCtx)
+        return ReflectionRunner(
+            wsRoot = workspaceRoot,
+            globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, ""),
+            db = db,
+        )
+    }
+
+    init {
+        // 触发①：进抱朴时若今天没跑过（跑没跑过按日算；IO 上跑，绝不拦着进抱朴）。
+        scope.launch {
+            val last = notePrefs.getLong(reflectionLastRunKey, 0L)
+            if (ReflectionTrigger.dueToday(last, System.currentTimeMillis())) {
+                withContext(Dispatchers.IO) { reflectionRunInternal() }
+            }
+        }
+    }
+
+    /** 触发②（话术/按钮共用）：IO 上跑一轮，出卡就摆到技能页，不出卡就一句话。 */
+    fun runReflectionNow() {
+        if (reflectionBusy) return
+        reflectionBusy = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { reflectionRunInternal() }
+            } finally {
+                reflectionBusy = false
+            }
+        }
+    }
+
+    private fun reflectionRunInternal() {
+        val runner = reflectionRunner()
+        val (scan, cards) = runner.scanAndPresent()
+        if (cards.isNotEmpty()) reflectionCards = cards // 同日重跑被 7 天键压住；空手不清已有活卡
+        reflectionNote = BaopuNote(
+            if (cards.isNotEmpty()) {
+                appCtx.getString(R.string.reflection_note_cards, cards.size)
+            } else {
+                appCtx.getString(R.string.reflection_note_none)
+            },
+            BaopuNoteLevel.Info,
+        )
+        notePrefs.edit { putLong(reflectionLastRunKey, System.currentTimeMillis()) }
+        if (scan.allEmpty || scan.candidates.isEmpty()) {
+            com.example.zhengdao.rootfs.RunLog.log(scan.logLine) // 无候选的一行留痕（不弹卡）
+        }
+    }
+
+    /** 用户对着候选卡做了决定：进化档案追加一行（否决 ⇒ 同键 30 天不再提）。 */
+    fun decideReflection(candidate: ReflectionCandidate, decision: String) {
+        reflectionCards = reflectionCards.filterNot { it.dedupKey == candidate.dedupKey }
+        scope.launch {
+            withContext(Dispatchers.IO) { reflectionRunner().decide(candidate, decision) }
+        }
+    }
+
+    /** 技能页的一行卡宿主（184 的编辑/保全走它；本控制器不开第二个写口）。 */
+    internal fun newSkillCardHost(): SkillCardHost =
+        SkillCardHost(
+            projectRoot = { workspaceRoot },
+            globalRoot = {
+                val pf = BaopuRuntime.personaFiles(appCtx)
+                java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "")
+            },
+            personaFiles = { BaopuRuntime.personaFiles(appCtx) },
+        )
+
+    /** 技能页读数（IO 上调）：先跑一轮**草稿自动治理**（追加件③，不弹卡、全部留痕），
+     *  再列三组行＋进化档案里待定候选的条数；疑似重复对在行上标出来。 */
+    internal fun loadSkillLibrary(): SkillLibraryState {
+        val pf = BaopuRuntime.personaFiles(appCtx)
+        val globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "")
+        val lastUse = runCatching {
+            db.read { d ->
+                d.rawQuery(
+                    "SELECT name, MAX(at) FROM skill_event WHERE kind='use' GROUP BY name",
+                    emptyArray(),
+                ).use { c ->
+                    val out = mutableMapOf<String, Long>()
+                    while (c.moveToNext()) out[c.getString(0)] = c.getLong(1)
+                    out
+                }
+            }
+        }.getOrDefault(emptyMap())
+        val governance = governDrafts(
+            projectRoot = workspaceRoot,
+            globalRoot = globalRoot,
+            personaFiles = pf,
+            lastUseMs = lastUse,
+            nowMs = System.currentTimeMillis(),
+            log = { com.example.zhengdao.rootfs.RunLog.log(it) },
+        )
+        if (!governance.isEmpty) {
+            com.example.zhengdao.rootfs.RunLog.log(
+                "草稿治理：转正 ${governance.promoted.size}（${governance.promoted.joinToString("、")}）、" +
+                    "软退役 ${governance.retiredIdle.size + governance.retiredOverflow.size}、疑似重复 ${governance.duplicates.size} 对（只标不删）",
+            )
+        }
+        val duplicateOf = buildMap<String, String> {
+            for ((a, b) in governance.duplicates) {
+                putIfAbsent(a, b)
+                putIfAbsent(b, a)
+            }
+        }
+        val rows = skillLibraryRows(workspaceRoot, globalRoot, lastUse).map { row ->
+            if (row.status == SkillLibraryStatus.DRAFT) row.copy(duplicateOf = duplicateOf[row.name]) else row
+        }
+        val pending = ReflectionArchive.parse(reflectionRunner().archiveText())
+            .count { it.decision == ReflectionArchive.DECISION_PENDING }
+        return SkillLibraryState(rows = rows, pendingCount = pending)
+    }
+
+    /**
+     * 技能页行内动作（转正/删除/恢复）——全部收口到既有口：
+     * 转正＝`commitSkillDraft`（32 批唯一写口；写成了自动进决策中心留痕＝207）；
+     * 删除＝`softDeleteSkill`（软删＋索引去行，不真删）；恢复＝`restoreArchived`（34 批 B）。
+     *
+     * @return null＝成了；非 null＝给用户看的失败原因（页顶一行）。
+     */
+    fun runSkillRowAction(row: SkillLibraryRow, action: SkillRowAction): String? {
+        val pf = BaopuRuntime.personaFiles(appCtx)
+        val globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "")
+        val stamp = com.example.zhengdao.util.TimeFormats.fileStamp()
+        return when (action) {
+            SkillRowAction.PROMOTE -> {
+                val draftRow = row.toDraftRow()
+                    ?: return "「${row.name}」不是草稿，没有「转正」这一步"
+                when (
+                    val r = commitSkillDraft(
+                        row = draftRow,
+                        newBody = promoteBody(draftRow.body),
+                        stillDraft = false,
+                        projectRoot = workspaceRoot,
+                        globalRoot = globalRoot,
+                        personaFiles = pf,
+                        backupStamp = stamp,
+                    )
+                ) {
+                    is SkillWriteResult.Written ->
+                        if (r.indexUpdated) null else appCtx.getString(R.string.skill_draft_index_full, SkillRules.INDEX_CAP)
+                    is SkillWriteResult.Rejected -> r.reason
+                }
+            }
+            SkillRowAction.DELETE ->
+                when (val r = softDeleteSkill(row, pf, stamp)) {
+                    is SkillWriteResult.Written -> null
+                    is SkillWriteResult.Rejected -> r.reason
+                }
+            SkillRowAction.RESTORE -> {
+                val archived = archivedSkillRows(workspaceRoot, globalRoot)
+                    .firstOrNull { it.name == row.name && it.scope == row.scope }
+                    ?: return "归档件不在了（${row.name}）——刷新一下再看"
+                when (val r = restoreArchived(archived, workspaceRoot, globalRoot, pf)) {
+                    is ArchivedOutcome.Restored -> {
+                        // 205 追加件③：退役的恢复也要留痕（决策中心记录可查：draft_retire_undo）
+                        SkillAudit.record(
+                            skillFile = archived.target,
+                            scope = if (row.scope == SkillScope.GLOBAL) "global" else "project",
+                            name = row.name,
+                            action = SkillPromote.ACTION_DRAFT_RETIRE_UNDO,
+                            reason = "退役恢复（${row.name}）",
+                            beforeSha = "-",
+                            indexUpdated = r.index == RestoredIndex.Added,
+                            nowMs = System.currentTimeMillis(),
+                        )
+                        if (r.index == RestoredIndex.Added) null else "正文恢复了，但索引行没补上（上限？）——去技能索引看一眼"
+                    }
+                    is ArchivedOutcome.Occupied -> r.target
+                    is ArchivedOutcome.IoFailed -> r.why
+                    else -> null
+                }
+            }
+            SkillRowAction.MERGE -> {
+                // 一键合并（追加件③的「只标不删」配套）：保留本条，对方软退役（可从已退役组恢复）
+                val peerName = row.duplicateOf ?: return "这条没有标过疑似重复"
+                val peer = skillLibraryRows(workspaceRoot, globalRoot)
+                    .firstOrNull { it.name == peerName && it.status == SkillLibraryStatus.DRAFT }
+                    ?: return "疑似重复的那条（$peerName）已经不在草稿组了——刷新一下"
+                val scenarios = indexScenarios(pf)
+                val stat = SkillDraftGovernor.draftStats(workspaceRoot, globalRoot, emptyMap(), scenarios)
+                    .firstOrNull { it.name == peerName }
+                    ?: return "拿不到 $peerName 的草稿读数——刷新一下再看"
+                when (retireDraft(stat, pf, stamp, "重复合并（保留 ${row.name}）", System.currentTimeMillis())) {
+                    is SkillWriteResult.Written -> null
+                    is SkillWriteResult.Rejected -> "合并失败：$peerName 没有退役成，两条都还在"
+                }
             }
         }
     }
@@ -1915,6 +2137,9 @@ internal class BaopuChatController(context: Context) {
      */
     fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()): Boolean {
         if (text.isBlank()) return false
+        // 第二百零五批：复盘话术 ⇒ 本地跑反思器（IO 单飞，不拦这句话进引擎——
+        // 复盘结果以技能页候选卡＋便签给出，引擎照常聊天）。
+        if (ReflectionTrigger.isReviewRequest(text)) runReflectionNow()
         // 第一百九十批：题材触发词 ⇒ 本地开三卡流（建议→推荐→确认），不进引擎。
         // 确认前零落盘零台账；确认后才逐篇驱动引擎写作（落盘走 179 的出口）。
         // WRITING 中不拦：批量正在跑，重开建议卡会搅批次，文字照常进引擎当聊天。

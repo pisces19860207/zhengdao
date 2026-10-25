@@ -451,6 +451,8 @@ internal fun BaopuDrawer(
     /** 第二百一十批：「定时任务」行（点开进 ScheduleTasksActivity）。 */
     onScheduleTasks: () -> Unit,
     onLibrary: () -> Unit,
+    /** 第二百零五批：技能列表页（三组＋反思器候选卡；184 技能卡的生产渲染点）。 */
+    onSkillLibrary: () -> Unit,
     /** 第一百五十五批：小说工程总览（抽屉入口；之前只有模型工具，没有 UI 落点）。 */
     onNovel: () -> Unit,
     onExtract: () -> Unit,
@@ -654,6 +656,13 @@ internal fun BaopuDrawer(
             title = stringResource(R.string.baopu_drawer_library),
             description = stringResource(R.string.baopu_drawer_library_desc),
             onClick = onLibrary,
+        )
+        // 第二百零五批：技能列表页——排「会话库」下面一行（同属低频资料入口；
+        // 复盘出候选时便签会把人引到这里）。
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_skills),
+            description = stringResource(R.string.baopu_drawer_skills_desc),
+            onClick = onSkillLibrary,
         )
         DrawerItem(
             title = stringResource(R.string.baopu_drawer_novel),

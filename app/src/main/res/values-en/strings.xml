@@ -1820,6 +1820,40 @@
 <string name="skill_card_blocked">Cannot remember yet: %1$s</string>
 <string name="skill_card_remember">Remember it</string>
 <string name="skill_card_dismiss">Not now</string>
+<string name="skill_card_source_reflection">Reflector suggestion</string>
+<!-- Batch 205: reflector (candidate cards) -->
+<string name="reflection_note_cards">Today\'s review, candidate cards: %1$d — see Skills in the drawer</string>
+<string name="reflection_note_none">Review ran; no candidates this round (empty sources logged)</string>
+<!-- Batch 205 add-on: skill library page -->
+<string name="skill_library_title">Skills</string>
+<string name="skill_library_group_draft">Drafts · unverified (%1$d)</string>
+<string name="skill_library_group_active">Promoted (%1$d)</string>
+<string name="skill_library_group_retired">Retired (%1$d)</string>
+<string name="skill_library_meta">%1$s · %2$s · uses: %3$d · last use %4$s</string>
+<string name="skill_library_retired_at"> · retired %1$s</string>
+<string name="skill_library_source_seed">seed</string>
+<string name="skill_library_source_reflect">reflector</string>
+<string name="skill_library_source_manual">manual</string>
+<string name="skill_library_scope_global">global</string>
+<string name="skill_library_scope_project">project</string>
+<string name="skill_library_never_used">never used</string>
+<string name="skill_library_evidence">· %1$s (%2$s:%3$s)</string>
+<string name="skill_library_empty">No skills yet. Come back after using it for a while</string>
+<string name="skill_library_review_now">Run a review now</string>
+<string name="skill_library_review_section">Review candidates (%1$d)</string>
+<string name="skill_library_pending_count">Pending candidates in the evolution archive: %1$d (no live cards this round)</string>
+<string name="skill_library_promote">Promote</string>
+<string name="skill_library_delete">Delete</string>
+<string name="skill_library_delete_confirm">Tap again to soft-delete (recoverable from Retired)</string>
+<string name="skill_library_restore">Restore</string>
+<string name="skill_library_shelve">Shelve</string>
+<string name="skill_library_reject">Don\'t suggest again</string>
+<string name="baopu_drawer_skills">Skills</string>
+<string name="baopu_drawer_skills_desc">Drafts, promotions and review candidates</string>
+<!-- Batch 205 add-on 3: draft auto-governance -->
+<string name="skill_library_duplicate"> · possible duplicate (of %1$s) — marked only, merge anytime</string>
+<string name="skill_library_merge">Merge (keep this one)</string>
+
 <!-- Batch 196: learner (teach it once) -->
 <string name="teach_menu_start">Teach it once</string>
 <string name="teach_menu_stop">Finish teaching</string>
