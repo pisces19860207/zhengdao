@@ -532,7 +532,8 @@ private fun BaopuMessageRow(
                         if (isUser) {
                             renderParts()
                         } else if (longform) {
-                            BaopuLongformCard(assistantText)
+                            // 209：带上消息 id——折叠态按 id 记住，滚动回来不弹回
+                            BaopuLongformCard(assistantText, messageId = msg.id.toString())
                         } else {
                             androidx.compose.foundation.text.selection.SelectionContainer {
                                 renderParts()
@@ -579,7 +580,10 @@ private fun BaopuMessageRow(
                                     )
                                 }
                             }
-                            manualCard?.let { BaopuLongformCard(it, Modifier.padding(top = 4.dp)) }
+                            // 209：手动开的卡也按消息 id 记折叠态（派生 id 与自动卡互不干扰）
+                            manualCard?.let {
+                                BaopuLongformCard(it, Modifier.padding(top = 4.dp), messageId = "${msg.id}-manual")
+                            }
                         }
                     }
                 }

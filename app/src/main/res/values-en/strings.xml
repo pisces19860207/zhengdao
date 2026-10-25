@@ -1754,6 +1754,8 @@
     <string name="baopu_longform_edit">Edit</string>
     <string name="baopu_longform_done">Done</string>
     <string name="baopu_longform_open_as_card">Text card</string>
+    <string name="baopu_longform_header_fold">Tap the card header to collapse</string>
+    <string name="baopu_longform_header_unfold">Tap the card header to expand</string>
     <string name="baopu_longform_words">%s words</string>
 <!-- Batch 190: topic & style cards (suggest / recommend / confirm; nothing is written before confirm) -->
 <string name="baopu_topic_title_suggest">Suggest · pick topics</string>

@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -45,9 +46,26 @@ import com.mikepenz.markdown.m3.Markdown
  * - 「右上角小复制保留但不再是唯一入口」⇒ 本卡自带**大按钮复制全文**；
  * - 卡内可编辑再复制/保存；**编辑不改模型原文**——原文由调用方持有，草稿只活在本卡状态里；
  * - 保存走 [BaopuLongformStore]（产物/ 平铺，同名不覆盖）。
+ *
+ * 第二百零九批（文本卡可折叠，派工单 §1）：
+ * - **点卡头＝折叠/展开**（整行热区 ≥48dp，箭头＋读屏标签都在卡头上）；
+ * - 折叠态只留 卡头（标题＋字数＋展开箭头）＋ 首行摘要（≤1 行）＋ **操作条**
+ *   （复制全文/存 md/存 txt/全屏不消失——折叠省屏，不藏功能）；
+ * - **长文默认折叠**（>800 字或 >20 行，纯判据在 [BaopuLongformPolicy.shouldDefaultCollapse]）；
+ *   短文本默认展开，不强制；
+ * - 折叠态**按消息 id 记住**（[BaopuCollapseMemory]：滚动回来不弹回、跨会话不记）；
+ * - 折叠只写内存，**不触发重落盘**（[BaopuLongformStore] 一个字节不动）。
  */
 @Composable
-internal fun BaopuLongformCard(markdown: String, modifier: Modifier = Modifier) {
+internal fun BaopuLongformCard(
+    markdown: String,
+    modifier: Modifier = Modifier,
+    /**
+     * 消息 id：按它记住折叠态（重组不弹回、跨会话不记）。
+     * null/空白 ⇒ 折叠态只活在本次组合里（给将来不带 id 的调用方兜底）。
+     */
+    messageId: String? = null,
+) {
     // 三种视图：渲染（mikepenz）/ Markdown 源码 / 纯文本
     var mode by remember { mutableIntStateOf(0) }
     // 编辑草稿：初始等于模型原文；编辑后 复制/保存 用草稿，原文不动
@@ -55,6 +73,15 @@ internal fun BaopuLongformCard(markdown: String, modifier: Modifier = Modifier) 
     var editing by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
+    // 第二百零九批：折叠态。初始值＝用户上次的点法（按消息 id 记在组合外，
+    // 滚动回来重组不弹回）；没记过 ⇒ 长文默认折叠、短文本默认展开。
+    val foldKey = messageId?.takeIf { it.isNotBlank() }
+    var collapsed by remember(foldKey) {
+        mutableStateOf(
+            foldKey?.let { BaopuCollapseMemory.get(it) }
+                ?: BaopuLongformPolicy.shouldDefaultCollapse(markdown),
+        )
+    }
     val context = LocalContext.current
     // 复制键文案在组合期取好（lint：回调里用 context.getString 不感知配置变更）
     val copyLabel = stringResource(R.string.baopu_longform_copy_all)
@@ -69,6 +96,17 @@ internal fun BaopuLongformCard(markdown: String, modifier: Modifier = Modifier) 
     fun save(ext: String) {
         // 落库出口自己给可读原因（成功带路径；台账冲突也会说明，不静默）
         status = BaopuLongformStore.save(context, draft, ext).message
+    }
+
+    fun toggleCollapse() {
+        val next = !collapsed
+        collapsed = next
+        if (next) {
+            // 折叠＝正文退场：编辑态一并退出（草稿不丢——复制/保存仍用草稿）
+            editing = false
+        }
+        // 只写内存（零 IO）：折叠不许触发重落盘（派工单负例 5）
+        foldKey?.let { BaopuCollapseMemory.put(it, next) }
     }
 
     @Composable
@@ -145,18 +183,42 @@ internal fun BaopuLongformCard(markdown: String, modifier: Modifier = Modifier) 
         }
     }
 
+    // 卡头两态文案：展开态显示「收起 ▲」，折叠态显示「展开 ▼」
+    // （箭头用既成的 common_collapse_arrow / common_expand_arrow，不新造字形）
+    val foldLabel = stringResource(
+        if (collapsed) R.string.baopu_longform_header_unfold else R.string.baopu_longform_header_fold,
+    )
+    val foldArrow = stringResource(
+        if (collapsed) R.string.common_expand_arrow else R.string.common_collapse_arrow,
+    )
+
     BaopuActionContainer(
-        // 卡头：标题（首行/模型标题）＋ 字数徽标
+        // 卡头：标题（首行/模型标题）＋ 字数徽标 ＋ 折叠箭头——整行可点（209）
         title = BaopuLongformPolicy.cardTitle(markdown),
         badge = stringResource(
             R.string.baopu_longform_words,
             BaopuLongformPolicy.wordCount(if (editing) draft else markdown).toString(),
         ),
+        onHeaderClick = { toggleCollapse() },
+        onHeaderClickLabel = foldLabel,
+        headerTrailing = foldArrow,
         modifier = modifier,
     ) {
-        toggleRow()
-        Spacer(Modifier.width(0.dp))
-        body(Modifier.padding(vertical = 6.dp))
+        if (collapsed) {
+            // 折叠态：卡头已有 标题＋字数＋展开箭头，这里只补首行摘要（≤1 行）。
+            // 视图切换与正文一起退场；**操作条不消失**——折叠是为了省屏，不是为了藏功能。
+            Text(
+                text = BaopuLongformPolicy.firstLineSummary(if (editing) draft else markdown),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            toggleRow()
+            Spacer(Modifier.width(0.dp))
+            body(Modifier.padding(vertical = 6.dp))
+        }
         status?.let {
             Text(
                 text = it,

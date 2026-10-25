@@ -64,7 +64,11 @@ class BaopuLongformGateTest {
     @Test
     fun `红线-e 接线：长文走卡_短回复保底有手动入口`() {
         val list = src("src/main/java/com/example/zhengdao/ui/baopu/BaopuMessageList.kt")
-        assertTrue("长文助手消息必须渲染 BaopuLongformCard", list.contains("BaopuLongformCard(assistantText)"))
+        // 209：长文卡带 messageId（折叠态按消息 id 记住）——调用形状变了，门禁跟着钉
+        assertTrue(
+            "长文助手消息必须渲染 BaopuLongformCard 且带上 msg.id（折叠态按 id 记）",
+            list.contains("BaopuLongformCard(assistantText, messageId = msg.id.toString())"),
+        )
         assertTrue("普通短回复要有手动「文本卡」入口", list.contains("baopu_longform_open_as_card"))
         assertTrue("触发判据必须走 LongformPolicy（不许在列表里内联写触发条件）", list.contains("BaopuLongformPolicy.isLongform"))
     }
