@@ -934,6 +934,17 @@
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
     <string name="baopu_ask_recommended">推荐选项</string>
     <string name="baopu_ask_free_submit">按这个回答</string>
+    <!-- ── 抱朴 ask_user 多问卡（第二百零三批；一组问题、一张卡、一次提交）── -->
+    <string name="baopu_tier_action_group">批量提问 · 一次答完</string>
+    <string name="baopu_group_required_mark">必答</string>
+    <string name="baopu_group_multi_hint">可多选</string>
+    <string name="baopu_group_use_defaults">按默认</string>
+    <string name="baopu_group_change_nothing">都不改</string>
+    <string name="baopu_group_submit">提交</string>
+    <string name="baopu_group_bool_yes">是</string>
+    <string name="baopu_group_bool_no">否</string>
+    <string name="baopu_group_number_bad">要填数字</string>
+    <string name="baopu_group_text_hint">直接输入</string>
     <!-- ── 抱朴备份原件对话框（刀 2 · D 段第 1 条；长按图标快捷方式进来）── -->
     <string name="baopu_backup_title">备份原件</string>
     <string name="baopu_backup_body">原件在 App 私有目录里，卸载 App 会连它一起没。导出会在工作区的「产物/原件导出-&lt;时间戳&gt;/」放一份副本——用系统文件管理进工作区就能看到、也能拷去别处。原件本身不动，这里只做副本。</string>

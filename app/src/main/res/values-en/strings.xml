@@ -966,6 +966,17 @@
     <!-- ── Baopu ask_user card (task 2, part C) ── -->
     <string name="baopu_ask_recommended">Suggested options</string>
     <string name="baopu_ask_free_submit">Answer with this</string>
+    <!-- ── Baopu ask_user multi-question card (batch 203: one card, one submit) ── -->
+    <string name="baopu_tier_action_group">Questions · answer in one pass</string>
+    <string name="baopu_group_required_mark">Required</string>
+    <string name="baopu_group_multi_hint">Pick any</string>
+    <string name="baopu_group_use_defaults">Use defaults</string>
+    <string name="baopu_group_change_nothing">Keep as is</string>
+    <string name="baopu_group_submit">Submit</string>
+    <string name="baopu_group_bool_yes">Yes</string>
+    <string name="baopu_group_bool_no">No</string>
+    <string name="baopu_group_number_bad">Enter a number</string>
+    <string name="baopu_group_text_hint">Type here</string>
     <!-- ── Baopu backup dialog (task 2, part D-1) ── -->
     <string name="baopu_backup_title">Back up originals</string>
     <string name="baopu_backup_body">The originals live in the app\'s private storage and vanish if you uninstall. Exporting drops a copy into the workspace at “产物/原件导出-&lt;timestamp&gt;/” — open the workspace with your file manager to see it and copy it anywhere. The originals themselves are never touched; this only makes copies.</string>

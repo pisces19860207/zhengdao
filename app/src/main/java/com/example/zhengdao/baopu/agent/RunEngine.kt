@@ -1070,6 +1070,71 @@ internal class RunEngine(
         }
     }
 
+    // ── 第二百零三批：多问卡（一组问题、一次提交）────────────────────────
+    //
+    // 阻塞口径与 [askUser] 同一条（不改 RunEngine 的阻塞语义：仍等用户，每张卡
+    // 最长 CONFIRM_TIMEOUT_MS）；差别只在收答案的形状：N 项一次答完，并成一条
+    // answers（键＝问题 id）。同会话同批只问一次（AskBatchLedger，与 171 的
+    // 「同作用域只问一次」同口径）：第二次问不弹卡，原样回上次的答案。
+
+    private val groupLock = Object()
+    private var groupResult: Map<String, String>? = null
+
+    /**
+     * 弹「多问卡」并阻塞到**整组**答完（`ask_user` 的问题组形状走这里）。
+     *
+     * - 超 [AskUserTool.MAX_PER_CARD] 项自动拆卡、按卡序接着问（第一张带
+     *   「另有 N 项」提示）；任何一张超时/没人答 ⇒ **整组**如实回 null（半截
+     *   答案回灌会误导模型，不许假装答过了）；
+     * - 全部答完才并成一条 answers 记账（AskBatchLedger），下次同批免打扰。
+     */
+    fun askGroup(req: AskUserRequest): Map<String, String>? {
+        val questions = req.questions
+        if (questions.isEmpty()) return null
+        val sessionId = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
+        val batchKey = if (sessionId != null) AskBatchLedger.keyOf(questions) else null
+        if (sessionId != null && batchKey != null) {
+            AskBatchLedger.answers(sessionId, batchKey)?.let { stored ->
+                log("抱朴引擎：同批问题本会话已答过，原样回上次的答案（${stored.size} 项），不再弹卡")
+                return stored
+            }
+        }
+        val chunks = AskGroupRules.split(questions)
+        val merged = LinkedHashMap<String, String>()
+        synchronized(groupLock) {
+            for ((index, chunk) in chunks.withIndex()) {
+                _choice.value = req.copy(
+                    questions = chunk,
+                    note = if (index == 0) AskGroupRules.moreNote(questions.size, chunk.size) else "",
+                )
+                groupResult = null
+                val deadline = System.currentTimeMillis() + RunRules.CONFIRM_TIMEOUT_MS
+                while (groupResult == null && System.currentTimeMillis() < deadline) {
+                    runCatching { groupLock.wait(RunRules.CONFIRM_POLL_MS) }
+                }
+                val got = groupResult
+                if (got == null) break // 超时/没人答：整组作废，外面如实回 null
+                merged.putAll(got)
+            }
+            _choice.value = null
+            groupResult = null
+        }
+        val askedIds = questions.map { it.id }.toSet()
+        if (merged.keys.toSet() != askedIds) return null // 有卡没答完：整组不算数
+        if (sessionId != null && batchKey != null) {
+            AskBatchLedger.record(sessionId, batchKey, merged)
+        }
+        return merged
+    }
+
+    /** UI 提交多问卡（主线程调；answers 以问题 id 为键，当前这张卡的那份）。 */
+    fun answerGroup(answers: Map<String, String>) {
+        synchronized(groupLock) {
+            groupResult = answers
+            runCatching { groupLock.notifyAll() }
+        }
+    }
+
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
     fun stop() {
         // 150批 F：置位与清队必须和 drainQueue 的取条同锁（[queueGate]），否则「已 poll 出、

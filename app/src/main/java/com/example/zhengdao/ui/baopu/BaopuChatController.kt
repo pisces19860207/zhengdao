@@ -1188,6 +1188,9 @@ internal class BaopuChatController(context: Context) {
     /** 用户点了一个选项。 */
     fun answerChoice(id: String) = engine.answerChoice(id)
 
+    /** 用户提交了多问卡（第二百零三批；answers 以问题 id 为键，原样交引擎）。 */
+    fun answerGroup(answers: Map<String, String>) = engine.answerGroup(answers)
+
     // ── 「这次学到」提案卡（第三十七批 B 段）─────────────────────────────
     //
     // 用户 2026-10-19 口径：**收尾才出卡、只出卡不落盘、点采纳才写、拒绝一字不动**。
