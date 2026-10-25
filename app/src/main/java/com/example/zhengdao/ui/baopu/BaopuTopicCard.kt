@@ -144,6 +144,9 @@ internal fun BaopuTopicSuggestCard(
  * 确认卡（开写闸）：汇总题材／写法／落点／预计字数，大按钮「就按这些写」。
  *
  * 打字绕不过它（状态机里只有 ConfirmWrite 能开写闸），按钮按下之前零落盘零台账。
+ *
+ * @param tasteNote 第二百零二批：本轮会参考/避开哪几篇（`TasteProfile.cardNote` 的产物；
+ *        null＝没档案也没范例，卡面不显示这一行）。文案由控制器现算，卡只负责显示。
  */
 @Composable
 internal fun BaopuTopicConfirmCard(
@@ -156,6 +159,7 @@ internal fun BaopuTopicConfirmCard(
     onEditStyle: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    tasteNote: String? = null,
 ) {
     val confirmDesc = stringResource(R.string.baopu_topic_confirm_write)
     BaopuActionContainer(
@@ -181,6 +185,15 @@ internal fun BaopuTopicConfirmCard(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // 第二百零二批：本轮参考/避开的范例（可解释性——用户能看出「这次像哪几篇」）
+        tasteNote?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
         Text(
             text = stringResource(R.string.baopu_topic_confirm_hint),
             style = MaterialTheme.typography.labelSmall,

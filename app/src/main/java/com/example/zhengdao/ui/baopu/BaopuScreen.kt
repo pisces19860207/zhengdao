@@ -85,6 +85,7 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ModelPickerRules
 import com.example.zhengdao.baopu.ProviderPrefs
+import com.example.zhengdao.baopu.TasteProfile
 import com.example.zhengdao.baopu.TopicFlowPhase
 import com.example.zhengdao.baopu.TopicSuggest
 import com.example.zhengdao.baopu.agent.RunState
@@ -142,6 +143,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     // 第十八批 A 段：抽屉「抱朴设置」直达抱朴自己的设置页（页内全屏浮层，
     // 与章节抽取／备份／换通道同一模式）——不再去「终端与资料」大杂烩页。
     var showSettings by remember { mutableStateOf(false) }
+    // 第二百零二批：口味档案（偏好＋范例库）独立一页。刻意**不**塞进 BaopuSettingsScreen
+    // （198 在飞占着那个文件），走抽屉直达＋Dialog 全屏，与设置页同一种承载方式。
+    var showTaste by remember { mutableStateOf(false) }
     // 第一百零四批：决策中心（顶栏盾牌进的四页签浮层）
     var showDecisionCenter by remember { mutableStateOf(false) }
     // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
@@ -171,6 +175,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
     BackHandler(enabled = showSettings) { showSettings = false }
+    // 第二百零二批：口味档案浮层同口径（Dialog 自己也会收，这里保证返回键不留死页）。
+    BackHandler(enabled = showTaste) { showTaste = false }
     // 第一百零四批：决策中心浮层的返回键（Dialog 自己也会收，这里与设置同口径）。
     BackHandler(enabled = showDecisionCenter) { showDecisionCenter = false }
     // 会话库浮层同口径（第二十批）。
@@ -410,6 +416,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },                    onSettings = {
                         scope.launch { drawerState.close() }
                         showSettings = true
+                    },
+                    onTaste = {
+                        scope.launch { drawerState.close() }
+                        showTaste = true
                     },
                 )
             }
@@ -1139,6 +1149,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                 onEditTopics = { controller.topicBackToSuggest() },
                                 onEditStyle = { controller.topicBackToStyle() },
                                 onDismiss = { controller.topicDismiss() },
+                                // 第二百零二批：本轮会参考/避开哪几篇（控制器已按当前选中篇算好）
+                                tasteNote = TasteProfile.cardNote(controller.tastePreview),
                             )
                         }
 
@@ -1223,6 +1235,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     onDismiss = { showSettings = false },
                     onOpenSessionLibrary = { showSettings = false; showSessionLibrary = true },
                 )
+            }
+            // ── 第二百零二批：口味档案（独立一页，不与设置页混）────────────────
+            if (showTaste) {
+                TasteSettingsScreen(onDismiss = { showTaste = false })
             }
             // ── 第一百零四批：决策中心（顶栏盾牌；四页签）────────────────────
             if (showDecisionCenter) {

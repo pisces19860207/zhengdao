@@ -1852,4 +1852,29 @@
     <string name="sched_notif_failed_title">定时任务「%1$s」没跑成</string>
     <string name="sched_notif_reason_busy">另一个会话一直占着单活跃门，重试到上限仍未进去</string>
     <string name="sched_notif_reason_failed">发送时出错，详情在运行日志里</string>
+
+    <!-- 第二百零二批 · 口味档案与范例库（设置页；档案例子见 产物/口味档案.md） -->
+    <string name="baopu_taste_title">口味档案</string>
+    <string name="baopu_taste_intro_title">它为什么这么写</string>
+    <string name="baopu_taste_intro">只记你确认过的事：每条都带证据，删掉下一轮就按新的来。禁区优先级最高，命中直接不出候选。</string>
+    <string name="baopu_taste_path">档案位置：%1$s</string>
+    <string name="baopu_taste_reload">重新读取</string>
+    <string name="baopu_taste_create">建一份空白档案</string>
+    <string name="baopu_taste_evidence">证据：%1$s</string>
+    <string name="baopu_taste_delete">删掉</string>
+    <string name="baopu_taste_deleted">已删掉这条，下一轮按新的来</string>
+    <string name="baopu_taste_delete_failed">没删掉（写文件失败），稍后再试</string>
+    <string name="baopu_taste_rejected">这 %1$s 行写了但没生效</string>
+    <string name="baopu_taste_examples_title">范例库 · 正 %1$s 篇 / 负 %2$s 篇</string>
+    <string name="baopu_taste_examples_muted">已移出 %1$s 篇（文件还在，只是不参与挑选）</string>
+    <string name="baopu_taste_reason">原因：%1$s</string>
+    <string name="baopu_taste_mute">移出</string>
+    <string name="baopu_taste_muted_toast">已移出这一篇（文件没删）</string>
+    <string name="baopu_taste_mute_failed">没移出（写清单失败）</string>
+    <string name="baopu_taste_preview_title">注入预览 · 下一次会喂什么</string>
+    <string name="baopu_taste_empty">暂无</string>
+    <string name="baopu_taste_sec_theme">题材偏</string>
+    <string name="baopu_taste_sec_style">写法偏</string>
+    <string name="baopu_taste_sec_forbidden">禁区</string>
+    <string name="baopu_taste_drawer_desc">它为什么这么写：偏好条目、正负范例，都能逐条删</string>
 </resources>

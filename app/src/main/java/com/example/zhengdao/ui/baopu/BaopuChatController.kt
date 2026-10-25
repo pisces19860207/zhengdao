@@ -56,12 +56,19 @@ import com.example.zhengdao.baopu.ProposalCandidateStore
 import com.example.zhengdao.baopu.ProposalRules
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.ExampleBank
+import com.example.zhengdao.baopu.TasteDrop
+import com.example.zhengdao.baopu.TasteInjection
+import com.example.zhengdao.baopu.TasteProfile
+import com.example.zhengdao.baopu.TasteRanked
 import com.example.zhengdao.baopu.TopicArticleResult
 import com.example.zhengdao.baopu.TopicFlowPhase
 import com.example.zhengdao.baopu.TopicFlowRules
 import com.example.zhengdao.baopu.TopicFlowState
 import com.example.zhengdao.baopu.TopicPublishedRef
+import com.example.zhengdao.baopu.TopicStyle
 import com.example.zhengdao.baopu.TopicSuggest
+import com.example.zhengdao.baopu.TopicSuggestBatch
 import com.example.zhengdao.baopu.eval.EvalAttempt
 import com.example.zhengdao.baopu.eval.EvalEvidenceSource
 import com.example.zhengdao.baopu.eval.EvalResultFile
@@ -1074,6 +1081,18 @@ internal class BaopuChatController(context: Context) {
 
     /** 本地偏好（不联网）：上次成功落盘那套写法的 id。 */
     private val topicPrefs = appCtx.getSharedPreferences("baopu-topic", android.content.Context.MODE_PRIVATE)
+
+    /**
+     * 第二百零二批：本轮注入的口味档案＋范例（确认卡上那行「本次参考/避开」直接读它）。
+     *
+     * **每轮现算、绝不缓存**——`ExampleBank.injectFor` 每次都重读 `产物/口味档案.md` 与范例库，
+     * 所以设置页删掉一条偏好，下一轮就按新的来（派工单负例 2 的结构保证）。
+     */
+    var tastePreview by mutableStateOf<TasteInjection?>(null)
+        private set
+
+    /** 批次里被禁区剔除的账（给便签/报告用；不做成 UI 列表，卡面只报条数）。 */
+    private var tasteDropped: List<TasteDrop> = emptyList()
 
     /** 正在等收尾的那轮写作指令（收尾对账按它锚定是哪一篇）。 */
     private var topicPendingInstruction: String? = null
@@ -2351,11 +2370,9 @@ internal class BaopuChatController(context: Context) {
             topicRecommendedStyleId = style.id
             topicDirRel = scan.dirRel
             // 轮转起点锚在已发条数上：不同天数出的首批自然不同
-            topicFlow = TopicFlowRules.start(
-                TopicSuggest.nextBatch(scan.refs, emptySet(), scan.productCount),
-                style.id,
-                scan.productCount,
-            )
+            val ranked = tasteRank(TopicSuggest.nextBatch(scan.refs, emptySet(), scan.productCount), style)
+            applyTasteDropNote(ranked)
+            topicFlow = TopicFlowRules.start(ranked.batch, style.id, scan.productCount)
         }
     }
 
@@ -2370,24 +2387,75 @@ internal class BaopuChatController(context: Context) {
         scope.launch {
             val scan = topicScan()
             val nextOffset = cur.poolOffset + TopicSuggest.CANDIDATES
+            val style = TopicSuggest.styleOf(cur.styleId)
+            val ranked = tasteRank(TopicSuggest.nextBatch(scan.refs, cur.shownSeedIds, nextOffset), style)
+            applyTasteDropNote(ranked)
             topicFlow = TopicFlowRules.reduce(
                 cur,
-                TopicFlowRules.FlowEvent.BatchSwapped(
-                    TopicSuggest.nextBatch(scan.refs, cur.shownSeedIds, nextOffset),
-                    nextOffset,
-                ),
+                TopicFlowRules.FlowEvent.BatchSwapped(ranked.batch, nextOffset),
             )
+        }
+    }
+
+    // ── 第二百零二批：口味档案 / 范例库接线（判据在 baopu/TasteProfile.kt，落盘在 ExampleBank）──
+
+    /**
+     * 把一批候选过一遍口味档案：**禁区命中的剔掉、题材偏与范例像的提前**。
+     *
+     * 档案与范例库都在 IO 上**现读**（`ExampleBank` 没有任何缓存字段）——
+     * 这是「设置页删一条，下一轮立即生效」的唯一实现，别在这里加 memo。
+     */
+    private suspend fun tasteRank(batch: TopicSuggestBatch, style: TopicStyle): TasteRanked =
+        withContext(Dispatchers.IO) {
+            val dir = ExampleBank.productDir(appCtx)
+            val archive = ExampleBank.loadArchive(dir)
+            val samples = ExampleBank.loadSamples(dir)
+            if (archive.isEmpty && samples.isEmpty()) {
+                TasteRanked(batch, emptyList())
+            } else {
+                val affinity = batch.candidates.associate { c ->
+                    c.seed.id to TasteProfile.affinityOf(c.seed, style, samples)
+                }
+                TasteProfile.rankCandidates(batch, archive, affinity)
+            }
+        }
+
+    /** 禁区剔除的账要说话（不许静默少几条）：便签一行，报告里另有逐条证据。 */
+    private fun applyTasteDropNote(ranked: TasteRanked) {
+        tasteDropped = ranked.dropped
+        if (ranked.dropped.isNotEmpty()) {
+            pendingNote = "按禁区剔掉了 ${ranked.dropped.size} 条：" +
+                ranked.dropped.joinToString("；") { it.reason }
+        }
+    }
+
+    /**
+     * 算「本轮会参考/避开哪几篇」（确认卡那一行）。
+     * 挑的是**当前选中的第一篇**——它是用户最可能要写的那条。
+     */
+    private fun loadTastePreview() {
+        val flow = topicFlow ?: return
+        val first = flow.candidates.firstOrNull { it.seed.id in flow.selected } ?: return
+        val style = TopicSuggest.styleOf(flow.styleId)
+        scope.launch {
+            tastePreview = withContext(Dispatchers.IO) {
+                ExampleBank.injectFor(appCtx, first.seed, style)
+            }
         }
     }
 
     /** 建议卡「就写这些」⇒ 推荐卡。 */
     fun topicToStyle() {
+        val before = topicFlow?.phase
         topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.ToStyle)
+        // 进推荐卡就先把「本轮参考/避开」算好：确认卡上那行不必等开写才出来
+        if (before != topicFlow?.phase) loadTastePreview()
     }
 
     /** 推荐卡：点某套写法（就地切换，不自动进确认卡）。 */
     fun topicPickStyle(styleId: String) {
         topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.PickStyle(styleId))
+        loadTastePreview()
     }
 
     /** 推荐卡「按推荐的来」：选回推荐档再直接进确认卡（卡上点过别的档也不影响）。 */
@@ -2397,11 +2465,14 @@ internal class BaopuChatController(context: Context) {
             TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.PickStyle(rec)),
             TopicFlowRules.FlowEvent.UseRecommended,
         )
+        // 档位可能从「刚点的别的档」切回推荐档 ⇒ 参考/避开按新档重算（现读，不缓存）
+        loadTastePreview()
     }
 
     /** 推荐卡「改一档」：就地切下一套，随后进确认卡。 */
     fun topicShiftStyle() {
         topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.ShiftStyle)
+        loadTastePreview()
     }
 
     /** 确认卡「改题材」⇒ 回建议卡。 */
@@ -2419,6 +2490,8 @@ internal class BaopuChatController(context: Context) {
         if (topicFlow?.phase == TopicFlowPhase.WRITING) return
         topicFlow = null
         topicPendingInstruction = null
+        tastePreview = null
+        tasteDropped = emptyList()
     }
 
     /** 「停下这批」：当前轮也停（半成品留在会话里、不落盘），已出的结果保留在卡上。 */
@@ -2444,28 +2517,43 @@ internal class BaopuChatController(context: Context) {
         topicWriteNext()
     }
 
-    /** 发当前篇的写作指令（引擎忙 ⇒ 排队，收尾时自然轮到）。 */
+    /**
+     * 发当前篇的写作指令（引擎忙 ⇒ 排队，收尾时自然轮到）。
+     *
+     * 第二百零二批：指令＝190 原文 ＋ 口味档案/范例段（[TasteProfile.writeInstruction]）。
+     * 档案与范例库**每篇现读一次**——这样「设置页删了一条，下一轮就不按它」不需要任何失效回调。
+     */
     private fun topicWriteNext() {
         val flow = topicFlow ?: return
         val w = flow.writing ?: return
         val cur = w.queue.getOrNull(w.done) ?: return
-        val instruction = TopicSuggest.writeInstruction(cur.seed.title, TopicSuggest.styleOf(flow.styleId))
-        val sid = sessionId ?: engine.createSession(
-            title = "题材批量写作",
-            now = System.currentTimeMillis(),
-        ).also { created ->
-            sessionId = created
-            recordSessionWorkspace(created)
-        }
-        topicPendingInstruction = instruction
-        val verdict = engine.send(sid, instruction, emptyList())
-        if (verdict == SendAcceptance.STARTED) resetRoundUsage()
-        if (verdict.accepted) {
-            topicRoundQueue.addLast(instruction)
-            while (topicRoundQueue.size > 32) topicRoundQueue.removeFirst()
-        } else {
-            // 引擎拒收（别的会话占门等）⇒ 这篇没落，如实记账后接着试下一篇
-            topicRecordArticle(TopicArticleResult(cur.seed.title, false, "引擎没接这一轮（${verdict.name}）"))
+        val style = TopicSuggest.styleOf(flow.styleId)
+        scope.launch {
+            val injection = withContext(Dispatchers.IO) { ExampleBank.injectFor(appCtx, cur.seed, style) }
+            // 读盘的这点时间里可能已经被「停下这批」或别的收尾推进 ⇒ 只认当前状态，不重复发
+            val live = topicFlow ?: return@launch
+            if (live.phase != TopicFlowPhase.WRITING || live.writing?.done != w.done) return@launch
+            val instruction = TasteProfile.writeInstruction(cur.seed, style, injection)
+            tastePreview = injection
+            // 卡上/会话顶部那行「本次参考：《…》；避开：《…》」（派工单 §2 的可解释要求）
+            TasteProfile.cardNote(injection)?.let { pendingNote = it }
+            val sid = sessionId ?: engine.createSession(
+                title = "题材批量写作",
+                now = System.currentTimeMillis(),
+            ).also { created ->
+                sessionId = created
+                recordSessionWorkspace(created)
+            }
+            topicPendingInstruction = instruction
+            val verdict = engine.send(sid, instruction, emptyList())
+            if (verdict == SendAcceptance.STARTED) resetRoundUsage()
+            if (verdict.accepted) {
+                topicRoundQueue.addLast(instruction)
+                while (topicRoundQueue.size > 32) topicRoundQueue.removeFirst()
+            } else {
+                // 引擎拒收（别的会话占门等）⇒ 这篇没落，如实记账后接着试下一篇
+                topicRecordArticle(TopicArticleResult(cur.seed.title, false, "引擎没接这一轮（${verdict.name}）"))
+            }
         }
     }
 
