@@ -998,6 +998,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                                     onReject = { controller.rejectConfirm() },
                                     // 组5：标题与摘要按工作区根剥成相对路径（与引擎同一个根）
                                     projectRoot = controller.workspaceRoot,
+                                    // 第二百二十批：影响提示那一行（null ⇒ 不渲染；开关关掉也走这条）
+                                    impactLine = controller.confirmImpactLine,
                                 )
                             }
 

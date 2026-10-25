@@ -2359,7 +2359,10 @@ internal class RunEngine(
         projectMemory = com.example.zhengdao.baopu.ProjectMemory.load(spillRoot())
             ?: com.example.zhengdao.baopu.ProjectMemory.missingHint(),
         images = images,
-        extraNotes = extraNotes,
+        // 第二百二十批：影响提示的**注入**（限流在 `ImpactInject.noteFor`：只对写/删/移动、
+        // 单次 ≤40 字、同一句 8 秒内只注一次；只读动作永不入队）。信箱是**取走即清**，
+        // 所以每步拼提示词时最多多出这一条，不会累积、不会重放（续跑也不重放）。
+        extraNotes = extraNotes + com.example.zhengdao.baopu.ImpactMailbox.drain(),
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
         visionSupported = provider.vision,
         // 第一百二十四批：本轮这张「仍要发送（风险自负）」的通行证（默认 false ⇒ 行为与
