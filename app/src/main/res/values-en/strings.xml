@@ -1986,4 +1986,13 @@
     <string name="baopu_taste_sec_style">Style preferences</string>
     <string name="baopu_taste_sec_forbidden">Off-limits</string>
     <string name="baopu_taste_drawer_desc">Why it writes this way: preferences and good/bad examples, each one deletable</string>
+    <!-- Batch 207: seed skill pack (first-launch install note + decision-center promote/revert rows) -->
+    <string name="skill_seed_installed_note">Starter skills installed (drafts): %1$d. View, edit or remove them on the Skills page</string>
+    <string name="skill_seed_install_failed">Starter skills that failed to install: %1$d. See the log for reasons</string>
+    <string name="decision_history_skill_promoted">Skill promoted: %1$s (%2$s)</string>
+    <string name="decision_history_skill_reverted">Reverted to draft: %1$s</string>
+    <string name="skill_promote_reverted">Reverted to draft: %1$s</string>
+    <string name="skill_promote_revert_missing">No such skill: %1$s</string>
+    <string name="skill_promote_revert_not_active">"%1$s" is not an active skill; nothing to revert</string>
+
 </resources>

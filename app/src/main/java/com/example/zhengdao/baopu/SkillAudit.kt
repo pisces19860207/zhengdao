@@ -35,6 +35,8 @@ internal object SkillAudit {
      *   缺省 false——既有的 `write`/`update` 行一个字节不变（174 验过的写盘顺序不受影响）
      * @param sessionId 来源会话（免批审计的「谁」之一；没有就别硬造）
      * @param candidateId 来源候选 id（同上）
+     * @param source 来源标（第二百零七批）：种子技能的安装行带 `source=seed`，
+     *   204 对账与技能页凭它认「这条是种子」；既有行不带（缺省 false/null 一个字节不变）
      */
     fun record(
         skillFile: File,
@@ -48,6 +50,7 @@ internal object SkillAudit {
         auto: Boolean = false,
         sessionId: Long? = null,
         candidateId: String? = null,
+        source: String? = null,
     ): Boolean = runCatching {
         val dir = skillFile.parentFile?.parentFile ?: return@runCatching false
         dir.mkdirs()
@@ -63,6 +66,7 @@ internal object SkillAudit {
         if (auto) o.put("auto", true)
         sessionId?.let { o.put("sessionId", it) }
         candidateId?.let { o.put("candidateId", it) }
+        source?.let { o.put("source", it) }
         fileIn(dir).appendText(o.toString() + "\n", Charsets.UTF_8)
         true
     }.getOrDefault(false)
