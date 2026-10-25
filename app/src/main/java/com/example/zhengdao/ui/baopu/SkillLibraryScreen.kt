@@ -226,6 +226,26 @@ internal fun softDeleteSkill(
                 ),
             )
             if (written) {
+                // 第二百零八批 §1／§2.7 `skill_retire`：正式技能退役**必抽检**（不可逆感最强的一类）
+                com.example.zhengdao.baopu.DecisionLedger.record(
+                    com.example.zhengdao.baopu.DecisionDraft(
+                        kind = com.example.zhengdao.baopu.DecisionKind.SKILL_RETIRE,
+                        actor = com.example.zhengdao.baopu.DecisionActor.USER,
+                        reason = "退役技能：去索引行",
+                        evidence = "skill:${if (row.scope == SkillScope.GLOBAL) "global" else "project"}/${row.name}",
+                        before = "active",
+                        after = "retired（.deleted-$stamp）",
+                        atMs = System.currentTimeMillis(),
+                        // 已退役的行再来删只补索引去行（正文早就 `.deleted-*` 过了，戳不是这一次的）
+                        rollbackRef = if (row.status == SkillLibraryStatus.RETIRED) {
+                            row.file.absolutePath
+                        } else {
+                            "${row.file.absolutePath}$ARCHIVED_MARK$stamp"
+                        },
+                    ),
+                ) ?: com.example.zhengdao.rootfs.RunLog.log(
+                    "退役技能：决策记录没写成 ${row.name}（${com.example.zhengdao.baopu.DecisionLedger.lastError}）",
+                )
                 SkillWriteResult.Written(file = row.file, backup = null, indexUpdated = true)
             } else {
                 SkillWriteResult.Rejected("正文已软删，但索引行没去掉（${row.name}）——再删一次或去设置页看")
@@ -389,6 +409,20 @@ internal fun retireDraft(
         nowMs = nowMs,
     )
     if (!audited) log("草稿治理：skill_draft_retire 审计写失败 ${stat.name}")
+    // 第二百零八批 §1／§2.7 `skill_draft_retire`：治理器**自动**退的草稿也要进决策中心
+    // （§2.7 把它列进「待抽检」的每周配额档——自动退草稿是最容易被判错的那一类）。
+    com.example.zhengdao.baopu.DecisionLedger.record(
+        com.example.zhengdao.baopu.DecisionDraft(
+            kind = com.example.zhengdao.baopu.DecisionKind.SKILL_DRAFT_RETIRE,
+            actor = com.example.zhengdao.baopu.DecisionActor.AUTO,
+            reason = "草稿软退役：$reason",
+            evidence = "skill:${if (stat.scope == SkillScope.GLOBAL) "global" else "project"}/${stat.name}",
+            before = "draft",
+            after = "retired（.deleted-$stamp）",
+            atMs = nowMs,
+            rollbackRef = r.file.absolutePath,
+        ),
+    ) ?: log("草稿治理：决策记录没写成 ${stat.name}（${com.example.zhengdao.baopu.DecisionLedger.lastError}）")
     return SkillWriteResult.Written(file = r.file, backup = null, indexUpdated = indexUpdated)
 }
 

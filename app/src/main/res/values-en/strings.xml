@@ -2043,4 +2043,35 @@
     <string name="skill_promote_revert_missing">No such skill: %1$s</string>
     <string name="skill_promote_revert_not_active">"%1$s" is not an active skill; nothing to revert</string>
 
+
+    <!-- 第二百零八批 · 决策记录页（分组卡／筛选／抽检） -->
+    <string name="decision_filter_all">All</string>
+    <string name="decision_filter_today">Today</string>
+    <string name="decision_filter_session">This chat</string>
+    <string name="decision_filter_reversible">Undoable</string>
+    <string name="decision_group_sampling">To review</string>
+    <string name="decision_group_skill">Skills</string>
+    <string name="decision_group_grant">Grants</string>
+    <string name="decision_group_artifact">Artifacts</string>
+    <string name="decision_group_eval">Evals</string>
+    <string name="decision_group_diary">Diary</string>
+    <string name="decision_group_head">%1$s · %2$d · latest %3$s</string>
+    <string name="decision_group_head_undoable">%1$s · %2$d · latest %3$s · undoable %4$d</string>
+    <string name="decision_group_more">More groups — %1$d</string>
+    <string name="decision_group_more_rows">More in this group — %1$d</string>
+    <string name="decision_record_expand">Expand</string>
+    <string name="decision_record_collapse">Collapse</string>
+    <string name="decision_record_rollback_confirm_title">Undo this one?</string>
+    <string name="decision_record_rollback_confirm">“%1$s” will really be undone, and one undo record will be added.</string>
+    <string name="decision_record_judge_ok">Correct</string>
+    <string name="decision_record_judge_wrong">Wrong call</string>
+    <string name="decision_record_hint_sampling">Automatic actions sampled for review — a wrong call becomes a regression sample</string>
+    <string name="decision_record_time_now">just now</string>
+    <string name="decision_record_time_min">%1$d min ago</string>
+    <string name="decision_record_time_hour">%1$d h ago</string>
+    <string name="decision_record_time_day">%1$d d ago</string>
+    <string name="decision_record_time_older">earlier</string>
+    <string name="decision_record_actor_user">you</string>
+    <string name="decision_record_actor_model">model</string>
+    <string name="decision_record_actor_auto">auto</string>
 </resources>

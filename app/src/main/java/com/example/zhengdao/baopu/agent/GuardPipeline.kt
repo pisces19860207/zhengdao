@@ -6,6 +6,10 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.BaopuGuardCore
+import com.example.zhengdao.baopu.DecisionActor
+import com.example.zhengdao.baopu.DecisionDraft
+import com.example.zhengdao.baopu.DecisionKind
+import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.rootfs.RunLog
@@ -366,6 +370,24 @@ internal class GuardPipeline(
                 effectiveCall,
                 outcome.reason,
                 contentHash = RunRules.sha256Hex(outcome.reason),
+            )
+        }
+        // 第二百零八批 §1 `auto_act`：**模型自己动手改了东西**必须留一条（`!readOnly` 才算
+        // ——读操作没有副作用，记了只会把记录页淹掉）。actor 恒 MODEL；`reversible` 如实
+        // **降级为 false**：通用写盘没有统一回滚引用，标成可回滚就是骗人（负例③的反面）。
+        if (!spec.readOnly) {
+            val target = effectiveCall.arguments.optString("path").ifBlank { effectiveCall.name }
+            DecisionLedger.record(
+                DecisionDraft(
+                    kind = DecisionKind.AUTO_ACT,
+                    actor = DecisionActor.MODEL,
+                    reason = "工具 ${spec.name} 执行成功",
+                    evidence = "tool:${spec.name}:$target",
+                    before = target,
+                    after = "已执行 ${spec.name}",
+                    atMs = System.currentTimeMillis(),
+                    reversible = false,
+                ),
             )
         }
         val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)

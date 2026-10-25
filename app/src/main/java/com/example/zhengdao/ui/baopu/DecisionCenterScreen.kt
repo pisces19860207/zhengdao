@@ -46,6 +46,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.DecisionFilter
+import com.example.zhengdao.baopu.DecisionGroup
+import com.example.zhengdao.baopu.DecisionGroupCard
+import com.example.zhengdao.baopu.DecisionRecord
+import com.example.zhengdao.baopu.foldDecisionRecords
+import com.example.zhengdao.ui.FilterChip2
 
 /**
  * 决策中心（全屏 Dialog；与抱朴设置同一条承载路子——摆对话 Column 里会露两端）。
@@ -57,6 +63,8 @@ internal fun DecisionCenterScreen(
     controller: BaopuChatController,
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** 记录页「跳回原始上下文」用：产物类跳回收站（不传＝只能去设置页）。 */
+    onOpenTrash: () -> Unit = {},
 ) {
     // 点行打开的「同款决策卡」（null = 只看列表）
     var openCardKey by remember { mutableStateOf<String?>(null) }
@@ -115,7 +123,21 @@ internal fun DecisionCenterScreen(
                     DecisionTab.TO_AUTHORIZE -> AuthorizeTab(controller)
                     DecisionTab.SUGGESTIONS -> SuggestionsTab(controller, openCardKey) { openCardKey = it }
                     DecisionTab.PROPOSALS -> ProposalsTab(controller)
-                    DecisionTab.HISTORY -> HistoryTab(controller)
+                    DecisionTab.HISTORY -> HistoryTab(
+                        controller = controller,
+                        onJump = { target ->
+                            when (target) {
+                                DecisionJump.SETTINGS -> {
+                                    onDismiss()
+                                    onOpenSettings()
+                                }
+                                DecisionJump.ARTIFACT_TRASH -> {
+                                    onDismiss()
+                                    onOpenTrash()
+                                }
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -235,27 +257,260 @@ private fun ProposalsTab(controller: BaopuChatController) {
     }
 }
 
+/**
+ * 记录页（第二百零八批 §2／§2.5／§2.7）——**按对象分组的折叠卡**，不是一长条。
+ *
+ * 纪律：
+ * - 折叠态只渲染组卡头（组内行只在展开后出现）；
+ * - 组内行最多 [PAGE_LIMIT] 行（组间共用预算），超出进「组内还有 N 条」；
+ * - 待抽检组排最前，每条两个按钮（确认无误／判错了）；
+ * - 有 `reversible` 的行给「回滚」＋一次二次确认；回滚本身由控制器再留一条。
+ */
 @Composable
-private fun HistoryTab(controller: BaopuChatController) {
-    val rows = controller.decisionHistoryRows()
-    DecisionTabBody(DecisionTab.HISTORY, empty = rows.isEmpty()) {
-        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
-            items(rows, key = { it.id }) { row ->
-                DecisionRowCard(
-                    row = row,
-                    onClick = null,
-                    trailing = if (row.undoable) {
-                        {
-                            // 撤销热区 ≥48dp（视觉 44dp 不判不合格，W7b）
-                            TextButton(
-                                onClick = { controller.undoDecisionGrant(row.id) },
-                                modifier = Modifier.heightIn(min = 48.dp),
-                            ) { Text(stringResource(R.string.decision_undo)) }
-                        }
+private fun HistoryTab(
+    controller: BaopuChatController,
+    onJump: (DecisionJump) -> Unit,
+) {
+    // 纪律：Compose 里必须**无条件先读** State，再决定拿它干什么（不然不订阅、页不刷新）
+    val version = controller.decisionRecordVersion
+    var filter by remember { mutableStateOf(DecisionFilter.ALL) }
+    var expanded by remember { mutableStateOf(setOf<DecisionGroup>()) }
+    var confirmRollback by remember { mutableStateOf<DecisionRecord?>(null) }
+
+    // 现读账本（版本号一变就重算：回滚/抽检后组头计数即时更新）
+    val now = remember(version) { System.currentTimeMillis() }
+    val records = remember(version) { controller.decisionRecordList() }
+    val pendingIds = remember(version, records) { controller.decisionRecordPendingIds(records) }
+    val fold = remember(version, filter, expanded, records, pendingIds) {
+        foldDecisionRecords(
+            records = records,
+            filter = filter,
+            nowMs = now,
+            sessionId = controller.sessionId ?: -1L,
+            pendingIds = pendingIds,
+            expanded = expanded,
+        )
+    }
+
+    DecisionTabBody(DecisionTab.HISTORY, empty = records.isEmpty()) {
+        Column(Modifier.fillMaxSize()) {
+            // 筛选 chips（§2.5 规则④：先筛再分组）
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                DecisionFilter.entries.forEach { f ->
+                    FilterChip2(
+                        label = stringResource(decisionFilterTitle(f)),
+                        selected = filter == f,
+                        onClick = { filter = f },
+                    )
+                }
+            }
+            controller.decisionNote?.let { note ->
+                Text(
+                    text = note.text,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (note.level == BaopuNoteLevel.Error) {
+                        MaterialTheme.colorScheme.error
                     } else {
-                        null
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
+            }
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                items(fold.cards, key = { it.group.wire }) { card ->
+                    DecisionGroupCardView(
+                        card = card,
+                        nowMs = now,
+                        isSampling = card.group == DecisionGroup.SAMPLING,
+                        expanded = card.group in expanded,
+                        onToggle = {
+                            expanded = if (card.group in expanded) {
+                                expanded - card.group
+                            } else {
+                                expanded + card.group
+                            }
+                        },
+                        onJump = { onJump(decisionJumpOf(it.kind)) },
+                        onRollback = { confirmRollback = it },
+                        onJudge = { rec, wrong -> controller.onDecisionRecordJudge(rec, wrong) },
+                    )
+                }
+                if (fold.hasOverflow) {
+                    item(key = "overflow") {
+                        Text(
+                            text = stringResource(R.string.decision_group_more, fold.overflowGroups.size),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // 回滚二次确认（§2：只多问一次）
+    confirmRollback?.let { rec ->
+        AlertDialog(
+            onDismissRequest = { confirmRollback = null },
+            title = { Text(stringResource(R.string.decision_record_rollback_confirm_title)) },
+            text = { Text(stringResource(R.string.decision_record_rollback_confirm, rec.reason)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        controller.onDecisionRecordRollback(rec)
+                        confirmRollback = null
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text(stringResource(R.string.decision_undo)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { confirmRollback = null },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text(stringResource(R.string.decision_authorize_cancel)) }
+            },
+        )
+    }
+}
+
+/** 一张组卡：组头（组名·条数·最近时间·可撤销数）＋展开后才有组内行。 */
+@Composable
+private fun DecisionGroupCardView(
+    card: DecisionGroupCard,
+    nowMs: Long,
+    isSampling: Boolean,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onJump: (DecisionRecord) -> Unit,
+    onRollback: (DecisionRecord) -> Unit,
+    onJudge: (DecisionRecord, Boolean) -> Unit,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = groupHeadText(card, nowMs),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    if (isSampling) {
+                        Text(
+                            text = stringResource(R.string.decision_record_hint_sampling),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                TextButton(onClick = onToggle, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(
+                        stringResource(
+                            if (expanded) R.string.decision_record_collapse else R.string.decision_record_expand,
+                        ),
+                    )
+                }
+            }
+            if (expanded) {
+                card.rows.forEach { rec ->
+                    DecisionRecordRow(
+                        rec = rec,
+                        nowMs = nowMs,
+                        isSampling = isSampling,
+                        onJump = { onJump(rec) },
+                        onRollback = { onRollback(rec) },
+                        onJudge = { wrong -> onJudge(rec, wrong) },
+                    )
+                }
+                if (card.hiddenByPage > 0) {
+                    Text(
+                        text = stringResource(R.string.decision_group_more_rows, card.hiddenByPage),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 组头那句（有可撤销的组多说一句「N 条可撤销」）。 */
+@Composable
+private fun groupHeadText(card: DecisionGroupCard, nowMs: Long): String {
+    val title = stringResource(decisionGroupTitle(card.group))
+    val age = decisionAgeOf(card.latestMs, nowMs)
+    val ageText = when (age.bucket) {
+        DecisionTimeBucket.NOW -> stringResource(R.string.decision_record_time_now)
+        DecisionTimeBucket.MINUTES -> stringResource(R.string.decision_record_time_min, age.n)
+        DecisionTimeBucket.HOURS -> stringResource(R.string.decision_record_time_hour, age.n)
+        DecisionTimeBucket.DAYS -> stringResource(R.string.decision_record_time_day, age.n)
+        DecisionTimeBucket.OLDER -> stringResource(R.string.decision_record_time_older)
+    }
+    return if (card.reversibleCount > 0) {
+        stringResource(R.string.decision_group_head_undoable, title, card.count, ageText, card.reversibleCount)
+    } else {
+        stringResource(R.string.decision_group_head, title, card.count, ageText)
+    }
+}
+
+/** 组内一行：谁＋做了什么＋时间；可跳原上下文、可回滚、抽检条目多两个按钮。 */
+@Composable
+private fun DecisionRecordRow(
+    rec: DecisionRecord,
+    nowMs: Long,
+    isSampling: Boolean,
+    onJump: () -> Unit,
+    onRollback: () -> Unit,
+    onJudge: (Boolean) -> Unit,
+) {
+    val age = decisionAgeOf(rec.atMs, nowMs)
+    val ageText = when (age.bucket) {
+        DecisionTimeBucket.NOW -> stringResource(R.string.decision_record_time_now)
+        DecisionTimeBucket.MINUTES -> stringResource(R.string.decision_record_time_min, age.n)
+        DecisionTimeBucket.HOURS -> stringResource(R.string.decision_record_time_hour, age.n)
+        DecisionTimeBucket.DAYS -> stringResource(R.string.decision_record_time_day, age.n)
+        DecisionTimeBucket.OLDER -> stringResource(R.string.decision_record_time_older)
+    }
+    Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 6.dp)) {
+        Text(
+            text = rec.reason,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = "${stringResource(decisionActorLabel(rec.actor))} · $ageText · ${rec.before}→${rec.after}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isSampling) {
+                TextButton(onClick = { onJudge(false) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.decision_record_judge_ok))
+                }
+                TextButton(onClick = { onJudge(true) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.decision_record_judge_wrong))
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onJump, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.common_expand_arrow))
+                }
+                if (rec.reversible) {
+                    TextButton(onClick = onRollback, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text(stringResource(R.string.decision_undo))
+                    }
+                }
             }
         }
     }
