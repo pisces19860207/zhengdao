@@ -1208,6 +1208,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 onStop = { controller.stop() },
                 onContinueQueue = { controller.continueQueue() },
                 onClearQueue = { controller.clearQueue() },
+                // 第一百七十六批：运行中插话（下一安全点生效；chip 可撤销）
+                interjections = controller.interjections,
+                onRevokeInterject = { controller.revokeInterject(it) },
             )
             if (showChannel) {
                 val (customBase, customModel) = ProviderPrefs.storedCustom(context)

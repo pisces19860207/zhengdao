@@ -573,6 +573,29 @@ internal class RunEngine(
     private var batchSeq = 0
 
     /**
+     * 插话待生效镜像（176 §2 UI 半）：[interjections] 队列的 Compose 可观测快照。
+     *
+     * 队列是唯一真源（UI 线程 offer、引擎线程 drainAll）；本镜像只给界面看，
+     * 对外出口只有 [interjectionsFor]（按会话过滤后给 UI）——**不**另开同名
+     * 公有属性（与私有字段撞名，Kotlin 重载歧义，编译红）。
+     * 三个写入口（[interject]／[revokeInterjection]／[drainInterjections]）都按
+     * 队列**重读**同步 ⇒ 竞态里晚到的那条下一拍自己跟上（自愈，不会卡在
+     * 「队列里有、界面不显示」）。等值快照不触发重组（空列表恒等）。
+     */
+    private val _interjections = mutableStateOf<List<String>>(emptyList())
+
+    /**
+     * 积压插话属于哪个会话（null＝没有积压；[interjections] 入队时记）。
+     *
+     * 为什么记它：**停止不清插话**（176 §2「插话不丢」——停了也留着，可撤），
+     * 但用户停了 A 去开 B 时，A 的积压不该漏进 B 的第一步。四个开局口
+     * （[send] 的 STARTED／[resume]／[approveRestoredPending]／[rejectRestoredPending]）
+     * 开跑前调 [adoptInterjectionsFor]：
+     * 同会话接着带（「继续」＋ 待生效的话，语境连着），换会话丢弃并记日志。
+     */
+    @Volatile private var interjectOwner: Long? = null
+
+    /**
      * 150批 A：四个 run 级计数器在新一轮入口统一复位（调用点在 [runLoop] 第一行）。
      *
      * 为什么收口成一个方法、且只在 runLoop 入口调：send/resume/approveRestoredPending/
@@ -761,6 +784,8 @@ internal class RunEngine(
             _sessionKey.value = key
             stopRequested = false
             _notice.value = null
+            // 176 §2：插话队列按会话过户（同会话带着走；上会话的积压不跟进）
+            adoptInterjectionsFor(sessionId)
             // 新一轮：上一轮的「这次学到」卡与信号都清掉（卡不跨轮保留）
             learnSignals.clear()
             learnShown = false
@@ -1214,6 +1239,8 @@ internal class RunEngine(
     fun resume(sessionId: Long, interruptedStepValue: Int) {
         acquireOrNotice(sessionId) ?: return
         stopRequested = false
+        // 176 §2：与 send 的 STARTED 同口径——续跑也可能是「停了别的会话来续这个」
+        adoptInterjectionsFor(sessionId)
         // 续跑也要清：上一轮的截断提示不许跟着这一轮（第四十批）
         _tailTruncated.value = false
         runExecutor.execute {
@@ -1281,6 +1308,8 @@ internal class RunEngine(
     fun approveRestoredPending(sessionId: Long) {
         acquireOrNotice(sessionId) ?: return
         stopRequested = false
+        // 176 §2：与 send/resume 同口径——恢复确认也可能是「停了别的会话来恢复这个」
+        adoptInterjectionsFor(sessionId)
         runExecutor.execute {
             try {
                 val row = pendingStore.load(sessionId)
@@ -1318,6 +1347,8 @@ internal class RunEngine(
      */
     fun rejectRestoredPending(sessionId: Long, summary: String) {
         acquireOrNotice(sessionId) ?: return
+        // 176 §2：与 send/resume 同口径——恢复拒绝同样可能换会话开局
+        adoptInterjectionsFor(sessionId)
         runExecutor.execute {
             try {
                 pendingStore.clear(sessionId)
@@ -2162,6 +2193,9 @@ internal class RunEngine(
      */
     private fun drainInterjections(sessionId: Long, history: MutableList<HistoryMessage>) {
         val pending = interjections.drainAll()
+        // 镜像按队列重读（含竞态里晚到的那条）；队列见底 ⇒ 积压归属一起清。
+        _interjections.value = interjections.snapshot()
+        if (interjections.pending() == 0) interjectOwner = null
         if (pending.isEmpty()) return
         for (text in pending) {
             val id = persistInterjection(sessionId, text)
@@ -2170,6 +2204,38 @@ internal class RunEngine(
             }
         }
         log("抱朴引擎：插话注入 ${pending.size} 条（下一步开始前安全点，不打断当前步）")
+    }
+
+    /**
+     * 某会话的待生效插话（176 §2 界面显示用）。
+     *
+     * 只给**归属会话**的积压露面：用户停了 A 去看 B 时，B 的输入栏不该显示
+     * A 的话（引擎侧 [adoptInterjectionsFor] 只保证不**注入**到 B，这里保证
+     * 连**看**都看不见）。归属为空（没积压）⇒ 一律空表。
+     */
+    fun interjectionsFor(sessionId: Long): List<String> {
+        // **无条件先读镜像**：Compose 只有读到这个 State 才会订阅重组。若像原来那样
+        // 「归属不符就不读」，归属从 null→本会话那一刻（第一条插话）界面收不到通知，
+        // 得靠别处（比如清草稿）碰巧触发重组才显示——今天的输入框刚好每次发送都清
+        // 草稿，但那是巧合，不能当契约（换任何模型改输入框就可能静默丢这一行）。
+        val snapshot = _interjections.value
+        return if (interjectOwner == sessionId) snapshot else emptyList()
+    }
+
+    /**
+     * 撤销一条还没生效的插话（176 §2「可编辑/撤销未生效插话」的引擎侧）。
+     *
+     * @return true = 撤掉了（界面收回那个 chip）；false = 没有这条（从没插过／
+     *   已经注入了——后者如实说「来不及了」，不许假装撤掉）。
+     */
+    fun revokeInterjection(text: String): Boolean {
+        val removed = interjections.remove(text)
+        if (removed) {
+            _interjections.value = interjections.snapshot()
+            if (interjections.pending() == 0) interjectOwner = null
+            log("抱朴引擎：撤销一条待生效插话：${text.take(80)}")
+        }
+        return removed
     }
 
     /** 插话落库（房型同 [persistUserMessage] 的消息半：message＋part＋touch；无队列行）。 */
@@ -2215,7 +2281,34 @@ internal class RunEngine(
             else -> false
         }
         if (!running) return false
-        return interjections.offer(text)
+        if (!interjections.offer(text)) return false
+        if (interjectOwner == null) {
+            interjectOwner = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
+        }
+        _interjections.value = interjections.snapshot()
+        return true
+    }
+
+    /**
+     * 新 run 开局：插话队列按会话「过户」（176 §2）。
+     *
+     * 同会话 ⇒ 原样带着（「继续」与还没生效的话语境相连）；换会话 ⇒ 上会话的
+     * 积压**丢弃并记日志**（不静默吞——「插话不丢」指的是 FIFO 管道不丢，
+     * 不是上个会话说的话要跨会话跟进）。两个开局口（[send] 的 STARTED 与
+     * [resume]）在 runLoop 之前调 ⇒ 循环头第一个安全点看到的积压必是本会话的。
+     */
+    private fun adoptInterjectionsFor(sessionId: Long) {
+        val owner = interjectOwner ?: return
+        if (owner == sessionId) return
+        val dropped = interjections.drainAll()
+        interjectOwner = null
+        _interjections.value = emptyList()
+        if (dropped.isNotEmpty()) {
+            log(
+                "抱朴引擎：换会话开跑（$owner→$sessionId），丢弃上会话未生效插话 " +
+                    "${dropped.size} 条：${dropped.joinToString(" / ") { it.take(20) }}",
+            )
+        }
     }
 
     /** 组装（薄封装：调 0b 的唯一出口；本引擎不私拼——判据 1）。 */

@@ -828,6 +828,14 @@
     </plurals>
     <string name="baopu_queue_continue">Run queued</string>
     <string name="baopu_queue_clear">Clear queue</string>
+    <!-- Batch 176: in-run interjection (§2) — text interjects at the next safe point, revocable -->
+    <string name="baopu_send_interject">Interject</string>
+    <plurals name="baopu_interject_pending">
+        <item quantity="one">%1$d interjection pending, applies at next step</item>
+        <item quantity="other">%1$d interjections pending, apply at next step</item>
+    </plurals>
+    <string name="baopu_interject_revoke">Revoke</string>
+    <string name="baopu_interject_edit">Pull this interjection back into the input box</string>
     <string name="baopu_state_idle">Idle</string>
     <string name="baopu_state_thinking">Thinking deeply</string>
     <string name="baopu_state_acting">Calling tools</string>
