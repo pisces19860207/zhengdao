@@ -173,19 +173,8 @@ fun HomeScreen(
     }
     // 去路执行（#4 走查，2026-10-09）：把 EnvHealth / IssueCenter 的「标识」翻译成「行为」的
     // 唯一一处（体检行与「最近问题」卡共用），免得同一句"去处理"在各处各写一遍、各指一个地方。
-    val openStorageGrant: () -> Unit = {
-        runCatching {
-            val i = android.content.Intent(
-                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
-            )
-            i.data = ("package:" + context.packageName).toUri()
-            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(i)
-        }.onFailure {
-            // 个别 ROM 没有这个页面（或被策略拦下）——不能静默失败，给一句人话 + 手动路径
-            snack(resources.getString(R.string.home_grant_page_failed))
-        }
-    }
+    // 第二百一十批（入口与权限归位）：原来存储那条直接发系统「所有文件访问」授权页的 Intent
+    // （本页唯一的权限申请入口）已撤——所有引导项统一进设置页，「申请权限」卡在那儿。
     // 台账 §B 顺序 11（原 §B-补-42）：两条「去看记录 / 看日志」的通知按钮各自的落点。
     // ①保活留档 →「保活记录」页（再往里一层就是留档原文）；②运行日志 → 帮助页的「运行日志」一节。
     val openKeepaliveLogs: () -> Unit = {
@@ -827,19 +816,17 @@ fun HomeScreen(
                                                 else -> {
                                                     val route = c.route
                                                     TextButton(onClick = {
-                                                        when (route) {
-                                                            EnvHealth.ROUTE_STORAGE_GRANT -> openStorageGrant()
-                                                            // 修复环境 / 网络自检都在设置页，且设置页
-                                                            // 是独立全屏 —— 直接过去，用户一眼能看到那一节
-                                                            else -> onOpenSettings()
-                                                        }
+                                                        // 第二百一十批：所有引导项都进设置页
+                                                        // （「申请权限」卡在 Hub 顶部）——原来存储
+                                                        // 那条直接拉系统授权页，是要收掉的散落入口。
+                                                        onOpenSettings()
                                                     }) {
                                                         Text(
                                                             when (route) {
                                                                 EnvHealth.ROUTE_REPAIR_ENV ->
                                                                     stringResource(R.string.home_btn_repair_env)
-                                                                EnvHealth.ROUTE_STORAGE_GRANT ->
-                                                                    stringResource(R.string.home_btn_grant)
+                                                                EnvHealth.ROUTE_SETTINGS_PERMISSIONS ->
+                                                                    stringResource(R.string.home_btn_goto_perm)
                                                                 EnvHealth.ROUTE_NET_CHECK ->
                                                                     stringResource(R.string.home_btn_net_check)
                                                                 // #8-D：存储明细与一键清理都在设置页「存储占用」那张卡上
@@ -999,7 +986,6 @@ fun HomeScreen(
                                         when (aid) {
                                             IssueCenter.ACTION_RETRY_SERVE -> retireServeIssue(issue.id)
                                             IssueCenter.ACTION_RESTART_SERVE -> retireServeIssue(issue.id)
-                                            IssueCenter.ACTION_GRANT_STORAGE -> openStorageGrant()
                                             IssueCenter.ACTION_FEEDBACK -> openFeedback()
                                             // 台账 §B 顺序 11（原 §B-补-42）：这两条以前和「修复环境」一起
                                             // 落进 else = 只打开设置首页，用户还得自己找；现在各去各的页。

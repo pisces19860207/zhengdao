@@ -200,11 +200,14 @@ class BaopuCompletionNoticeTest {
     }
 
     @Test
-    fun 权限页写明后台完成不提醒() {
+    fun 申请权限卡写明不给通知会怎样() {
+        // 第二百一十批（入口与权限归位）：首启权限页整页退役，「拒绝时要明示后果」的判据
+        // 随迁到设置页「申请权限」卡——通知那一行的说明句与卡级总述都要把「不给会怎样」
+        // 说出来（派工单负例：不许只写"需要该权限"）。
         val zh = file("src/main/res/values/strings.xml").readText()
-        val denied = Regex("<string name=\"perm_hint_notify_denied\">(.*?)</string>").find(zh)!!.groupValues[1]
-        assertTrue("拒绝权限时页面要明示后果：$denied", denied.contains("抱朴后台跑完"))
-        val detail = Regex("<string name=\"perm_notify_detail\">(.*?)</string>").find(zh)!!.groupValues[1]
-        assertTrue("权限说明也要点明完成提醒走通知：$detail", detail.contains("完成提醒"))
+        val desc = Regex("<string name=\"sched_perm_notify_desc\">(.*?)</string>").find(zh)!!.groupValues[1]
+        assertTrue("不给通知时卡里要明示后果（照跑＋只落会话）：$desc", desc.contains("不给也照跑"))
+        val cardDesc = Regex("<string name=\"settings_perm_card_desc\">(.*?)</string>").find(zh)!!.groupValues[1]
+        assertTrue("卡级总述要写「不给也能用，只是对应功能降级」：$cardDesc", cardDesc.contains("不给也能用"))
     }
 }

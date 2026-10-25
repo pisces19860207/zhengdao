@@ -59,6 +59,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import com.example.zhengdao.R
+import com.example.zhengdao.schedule.ScheduleRules
+import com.example.zhengdao.schedule.ScheduleStore
+import com.example.zhengdao.schedule.ScheduleTask
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * 抽屉里的一行：标题＋说明＋点击。说明写给"不常用的人"看，省得点进去才知道是什么。
@@ -105,6 +112,107 @@ private fun DrawerItem(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/**
+ * 「定时任务」抽屉行（第二百一十批）：标题＋说明在左，**状态在右**一栏。
+ *
+ * 与 [DrawerItem] 的两点不同：① 行尾多一个状态位（未启用 / 下次 HH:mm / 已启用 N 条）——
+ * 用户拉开抽屉就知道有没有任务在跑，不必点进去看；② 说明文字第二行在有用例时让位给
+ * 「已启用 N 条」，静态desc只做零态兜底。
+ *
+ * 行高、圆角块、两级文字颜色与 [DrawerItem] 完全一致（v1.4 §3.8 口径，D4 门禁盯着）；
+ * 状态位不占热区——整行本来就是可点的。
+ */
+@Composable
+private fun ScheduleDrawerRow(
+    status: ScheduleDrawerStatus?,
+    onClick: () -> Unit,
+) {
+    val ink1 = MaterialTheme.colorScheme.onSurface
+    val ink2 = MaterialTheme.colorScheme.onSurfaceVariant
+    val rightText = when {
+        status == null -> "" // 第一次读盘还没回来：右栏先空着，不摆假的「未启用」
+        status.enabledCount == 0 -> stringResource(R.string.baopu_drawer_sched_off)
+        status.nextClock != null -> stringResource(R.string.baopu_drawer_sched_next, status.nextClock)
+        else -> stringResource(R.string.baopu_drawer_sched_on, status.enabledCount)
+    }
+    val descText = if (status != null && status.enabledCount > 0 && status.nextClock != null) {
+        stringResource(R.string.baopu_drawer_sched_on, status.enabledCount)
+    } else {
+        stringResource(R.string.baopu_drawer_sched_desc)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)
+            .clip(BaoChipShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = BAO_LIST_INSET_DP.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.baopu_drawer_sched),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = ink1,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = descText,
+                style = MaterialTheme.typography.labelSmall,
+                color = ink2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (rightText.isNotEmpty()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = rightText,
+                style = MaterialTheme.typography.labelSmall,
+                color = ink2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * 「定时任务」抽屉行的状态（纯函数，JVM 可直测——判据不碰 Android）。
+ *
+ * @param enabledCount 启用中的任务条数（0 ⇒ 右栏显示「未启用」）。
+ * @param nextClock 最近一次待办的本地时刻「HH:mm」（按**那条任务自己的时区**算，
+ *   跨时区任务不跟手机当前时区漂移——与 ScheduleTasksActivity 的 ZONE_HOUR_FMT 同一口径）；
+ *   null = 没有未来的待办（全是一次性且已跑完，或锚点都停在过去）。
+ */
+internal data class ScheduleDrawerStatus(
+    val enabledCount: Int,
+    val nextClock: String?,
+)
+
+/** 抽屉行时刻格式：与任务页 ZONE_HOUR_FMT 一致（HH:mm，Locale.US）。 */
+private val DRAWER_CLOCK_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+
+/**
+ * 由任务表算抽屉行状态（纯函数）。
+ *
+ * 为什么「下次」要过滤 `nextRunAtMs > nowMs`：设备关掉几天后，存量的锚点会停在过去，
+ * 那时它已经不是「下次」——任务页打开时的补跑（catchUpOnOpen）才会把锚点推正。
+ * 抽屉只是个 hint，不修数据，只把说不准的那一格让位给「已启用 N 条」。
+ */
+internal fun scheduleDrawerStatus(tasks: List<ScheduleTask>, nowMs: Long): ScheduleDrawerStatus {
+    val enabled = tasks.filter { it.enabled }
+    val next = enabled
+        .filter { it.nextRunAtMs != ScheduleRules.NO_RUN && it.nextRunAtMs > nowMs }
+        .minByOrNull { it.nextRunAtMs }
+    val clock = next?.let { t ->
+        ScheduleRules.localOf(t.nextRunAtMs, t.zone)?.format(DRAWER_CLOCK_FMT)
+    }
+    return ScheduleDrawerStatus(enabled.size, clock)
 }
 
 /**
@@ -321,6 +429,8 @@ private fun SessionRow(
  * @param nodes [buildWorkspaceTree] 算好的工作区树（顺序、名字、高亮都在纯函数里定了）。
  * @param onWorkspaceTap 点文件夹行：交出这一行的完整路径（临时提示＋设置页「工作区」卡落点）。
  * @param onWorkspaceHold 长按文件夹行：只给那句临时提示。
+ * @param onScheduleTasks 第二百一十批：「定时任务」行——点开进 ScheduleTasksActivity
+ *             （与设置页「后台」组那一行同一个页；状态文字由纯函数算，读盘在 IO 上做）。
  */
 @Composable
 internal fun BaopuDrawer(
@@ -338,6 +448,8 @@ internal fun BaopuDrawer(
     onWorkspaceRunHere: (DrawerWorkspaceNode) -> Unit,
     /** 「工作区」小节标题右侧的 ＋：选一个文件夹加进工作区。 */
     onAddWorkspace: () -> Unit,
+    /** 第二百一十批：「定时任务」行（点开进 ScheduleTasksActivity）。 */
+    onScheduleTasks: () -> Unit,
     onLibrary: () -> Unit,
     /** 第一百五十五批：小说工程总览（抽屉入口；之前只有模型工具，没有 UI 落点）。 */
     onNovel: () -> Unit,
@@ -585,6 +697,24 @@ internal fun BaopuDrawer(
         )
 
         DrawerGroup(stringResource(R.string.baopu_drawer_group_settings))
+        // ── 定时任务（第二百一十批：入口从设置页「后台」组搬进抽屉）──────────
+        // 用户 2026-10-25 原话「定时任务应该放到抱朴的左侧栏」。设置页那一行**保留**
+        // （降级为跳转，老用户照样找得到），两处进的是同一个 ScheduleTasksActivity。
+        //
+        // 状态怎么来：`schedule_tasks.json` 是**文件**（App 私有目录），所以
+        // ① 读盘必须离开主线程（withContext(IO)，派工单负例 4 盯这条）；
+        // ② 每次拉开抽屉重读一次（E-163 同款：抽屉内容常驻组合，不重读就永远是旧值）。
+        // 文字怎么排：纯函数 scheduleDrawerStatus 算（JVM 可直测），本文件只画。
+        var schedTick by remember { mutableIntStateOf(0) }
+        LaunchedEffect(drawerOpen) { if (drawerOpen) schedTick++ }
+        var schedStatus by remember { mutableStateOf<ScheduleDrawerStatus?>(null) }
+        LaunchedEffect(schedTick) {
+            val tasks = withContext(Dispatchers.IO) {
+                runCatching { ScheduleStore.of(ctx).load().tasks }.getOrDefault(emptyList())
+            }
+            schedStatus = scheduleDrawerStatus(tasks, System.currentTimeMillis())
+        }
+        ScheduleDrawerRow(status = schedStatus, onClick = onScheduleTasks)
         DrawerItem(
             title = stringResource(R.string.baopu_drawer_mcp),
             description = stringResource(R.string.baopu_drawer_mcp_desc),

@@ -4,10 +4,7 @@ package com.example.zhengdao.schedule
 
 import android.app.AlarmManager
 import android.content.Context
-import android.content.Intent
 import android.os.PowerManager
-import android.provider.Settings
-import androidx.core.net.toUri
 import com.example.zhengdao.ui.PermissionSetup
 
 /**
@@ -23,6 +20,16 @@ import com.example.zhengdao.ui.PermissionSetup
  * - 不给通知 ⇒ 任务照跑，只落会话，不弹通知；
  * - 不给精确闹钟 ⇒ 走 [ScheduleRules.Route.WORK_ONLY]，到点可能推迟（页面明示「可能不准点」）；
  * - 不给电池优化豁免 ⇒ 后台可能被杀，靠 WorkManager 重排与下次打开补跑兜。
+ *
+ * ## 第二百一十批（2026-10-25 · 入口与权限归位）：三个「系统设置页 Intent 构造」已搬走
+ *
+ * 原 `exactAlarmSettingsIntent` / `batterySettingsIntent` / `appDetailsIntent` 三个函数
+ * 随「申请入口唯一化」搬进 `ui/SettingsPermissionCard.kt`（设置页「申请权限」卡）——
+ * 它们是**入口**不是判定：用户 2026-10-25 要求「各种权限申请放到设置里弄一个申请权限的卡」，
+ * 源码门禁（`PermissionEntryGateTest`）钉死四类申请 API 只允许出现在那张卡的实现文件里。
+ * 本文件剩下的四个函数（三个判定 + 一个路由）一格未动，调度与降级照旧。
+ * 历史对照：定时任务页原来那个「去设置」按钮（发精确闹钟专属页 Intent）同批改成
+ * 一行「去『设置 → 申请权限』」指路文案；终端与资料页的定时任务三项权限行整卡撤掉。
  */
 object SchedulePermissions {
 
@@ -59,23 +66,4 @@ object SchedulePermissions {
     /** 当前该走哪条触发路径（调度与页面文案共用）。 */
     fun route(context: Context): ScheduleRules.Route =
         ScheduleRules.routeOf(canScheduleExactAlarms(context))
-
-    /**
-     * 「精确闹钟」系统设置页：优先带包名的专属页（用户在那儿给/撤），
-     * 个别 ROM 没这个 Activity 时回落应用详情页（与 `PermissionSetupScreen.openManageAllFiles`
-     * 同一处理形状：回落失败要说不出来，不许静默）。
-     */
-    fun exactAlarmSettingsIntent(context: Context): Intent =
-        runCatching {
-            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                .setData("package:${context.packageName}".toUri())
-        }.getOrDefault(appDetailsIntent(context))
-
-    /** 「忽略电池优化」的**列表页**（不是 `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 那个一键框）。 */
-    fun batterySettingsIntent(): Intent =
-        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-
-    fun appDetailsIntent(context: Context): Intent =
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            .setData("package:${context.packageName}".toUri())
 }

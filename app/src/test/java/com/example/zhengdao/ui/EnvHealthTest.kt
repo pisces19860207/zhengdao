@@ -121,7 +121,8 @@ class EnvHealthTest {
         assertEquals(setOf("proot", "rootfs", "network", "storage", "disk"), EnvHealth.GUIDED_ROUTES.keys)
         val allowed = setOf(
             EnvHealth.ROUTE_REPAIR_ENV,
-            EnvHealth.ROUTE_STORAGE_GRANT,
+            // 第二百一十批：存储那条从「系统所有文件访问授权页」改成「设置页申请权限卡」
+            EnvHealth.ROUTE_SETTINGS_PERMISSIONS,
             EnvHealth.ROUTE_NET_CHECK,
             EnvHealth.ROUTE_STORAGE_DETAIL,
         )

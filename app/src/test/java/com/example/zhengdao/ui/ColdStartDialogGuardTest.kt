@@ -1,5 +1,4 @@
-// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
-// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+// 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.ui
 
 import org.junit.Assert.assertEquals
@@ -9,32 +8,32 @@ import org.junit.Test
 import java.io.File
 
 /**
- * B-补-19（2026-10-16）：冷启动弹框守卫 —— **一次冷启动最多一个系统框**。
+ * 冷启动弹框守卫（B-补-19，2026-10-16 立账；**第二百一十批随首启权限机制退役而改写**）。
+ *
+ * ## 历史（2026-10-11 ~ 10-16）：首启弹框风暴是怎么被收掉的
  *
  * 台账原条目（`docs/FEATURE-LEDGER.md` §B-补 ④）：`- **B-补-19**（P0-3）**冷启动弹窗风暴**：
  * MainActivity.kt 三段独立 runCatching，首启弹 3~4 个框；原文档自记「已放弃」，但**用户从未在
- * 台账层面拍板** ⇒ 要么立账、要么明确不做`。2026-10-16 用户拍板「**立账，并做了**」（见
- * 本类 KDoc 末尾的落账口径），故本刀既立账也真修。
+ * 台账层面拍板** ⇒ 要么立账、要么明确不做。2026-10-16 用户拍板「**立账，并做了**」。
+ * 那一刀的修法（`permDialogThisLaunch` 局部标记：一次冷启动最多一个系统框、排过系统框就不查
+ * 自更新）与 2026-10-11 的首启权限页（`PermissionSetupScreen`）、2026-10-14 的「每项一辈子
+ * 只自动问一次」（`shouldAutoRequest` 一次性闸门）一起，在 2026-10-25 被用户的新口径整体取代：
  *
- * 复核后剩下的真缺陷（2026-10-16，逐段读 `MainActivity.kt` 冷启动路径）：
- * - 2026-10-11 那刀已经把「首启一次弹好几个系统框」收成一页 `PermissionSetupScreen`
- *   （`shouldGuide` 为真时下面两个请求一个都不排）⇒ **首启不再有风暴**；
- * - 2026-10-14 那刀给两项权限各自加了「一辈子只自动问一次」的一次性标记（`storageAsked` /
- *   `notifyAsked`）⇒ **同一个框不会每次冷启动重复弹**；
- * - 剩下的问题：两段请求是**互不相干**的 `runCatching`，所以「已引导过（例如权限页点了
- *   『稍后再说』）＋ 两项都没问过」的那一次冷启动会把**两个系统框连着排出去**；而自更新
- *   `AlertDialog` 是同一次冷启动里第 3 个可能出现的框 —— 更新检查走网络后台线程，返回通常
- *   晚于系统框弹出，表现就是「权限框刚点掉、更新框又贴上来」。系统框是系统的独立窗口，
- *   应用内先守 `isFinishing/isDestroyed` 拦不住它。
+ * ## 现在守什么（第二百一十批 · 入口与权限归位）
  *
- * 本刀修法（最小改动，判据都写进源码注释）：`MainActivity.onCreate` 的权限块里加一个
- * **本次冷启动的**局部标记 `permDialogThisLaunch`：① 排过一个系统框就不再排第二个（没排的那项
- * 下次冷启动照常补，一次性标记保证不会无限补）；② 本次排了系统框就不发起自更新检查。
+ * 用户 2026-10-25：「欢迎页不用放权限申请了」＋「各种权限申请放到设置里弄一个申请权限的卡」
+ * ＋「其它页的申请/去开启全部删掉」。落地后冷启动的口径变成一句话：
+ * **一次冷启动零个系统权限框**——首启不叠权限页、不代用户请求任何权限；要授权走设置页
+ * 「申请权限」卡（全 App 唯一申请入口，源码门禁见 [PermissionEntryGateTest]）。
  *
- * 判据走「源码级断言」，与 [LargeFontWrapGuardTest] / [TouchTargetGuardTest] 同惯例：
- * 本模块没有 UI 测试基建（弹框数只能上真机数），而"排了几个框"完全由源码的条件决定，
- * 源码就是唯一真源。断言一律读[剥掉整行注释][code]的源码 —— 解释缺陷的注释里必然出现
- * `requestPermissions` / `checkAppUpdateInBackground` 这类反例词（B-补-22 首跑踩过这个坑）。
+ * 于是本类从「最多一个框」翻成「零个框」，并钉住三件容易被人悄悄改回去的事：
+ * 1. MainActivity 里没有任何 `requestPermissions(` / 通知权限字面量 / 首启权限页判定；
+ * 2. 自更新检查回到**无条件发起**（权限框没了，互斥守卫失去存在理由，留着就是死代码）；
+ * 3. 签名自检（非官方包提醒）不许被顺手删——它与权限无关，一直在守。
+ *
+ * 判据走「源码级断言」，与 [LargeFontWrapGuardTest] / [TouchTargetGuardTest] 同惯例；
+ * 断言一律读[剥掉整行注释][code]的源码 —— 解释「这里原来有什么」的注释里必然出现
+ * `requestPermissions` 这类反例词（B-补-22 首跑踩过这个坑）。
  */
 class ColdStartDialogGuardTest {
 
@@ -52,133 +51,69 @@ class ColdStartDialogGuardTest {
     /** 剥掉**整行 `//` 注释**后的源码，判据一律读它（理由见类 KDoc 末段）。 */
     private val code by lazy { screen.replace(Regex("(?m)^[ \\t]*//.*$"), "") }
 
-    /** 按花括号配平，抽 `marker` 之后的那一个 `{ … }`（含最外层花括号）。 */
-    private fun bracedBlockAfter(marker: String): String {
-        val start = code.indexOf(marker)
-        assertTrue("$mainRel 里找不到锚点：$marker", start >= 0)
-        val open = code.indexOf('{', start)
-        var depth = 0
-        var i = open
-        while (i < code.length) {
-            when (code[i]) {
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) return code.substring(open, i + 1)
-                }
-            }
-            i++
-        }
-        throw AssertionError("锚点 $marker 之后的花括号不配平")
-    }
-
-    /** 冷启动权限块：`if (!permissionSetupPending) { … }` 的块体。 */
-    private val permBlock by lazy { bracedBlockAfter("if (!permissionSetupPending) {") }
-
     @Test
-    fun `门禁_B补19_一次冷启动最多只排一个系统权限框`() {
-        // 134 批：minSdk=36 ⇒ 存储读写请求（100）已是死分支并删除，只剩通知（101）一个请求点。
-        // 守卫的语义不变：同一屏只排一个，且请求前必须看本次冷启动标记。
+    fun `门禁_210_冷启动零个系统权限框`() {
+        // ① 命令式运行时请求一个都不许有（通知那条 101 已随首启机制退役）。
         assertEquals(
-            "冷启动只剩通知一个系统权限请求点（101）",
-            1, Regex("requestPermissions\\(").findAll(permBlock).count(),
+            "MainActivity 里不许出现 requestPermissions（首启零权限请求，第二百一十批）",
+            0, Regex("requestPermissions\\(").findAll(code).count(),
         )
-        // 通知必须在本次冷启动标记为"没排过"时才排
-        val notifyAt = permBlock.indexOf("requestPermissions(this, arrayOf(perm), 101)")
-        assertTrue("找不到通知权限请求点（101）", notifyAt > 0)
-        val guard = permBlock.lastIndexOf("if (!permDialogThisLaunch)", notifyAt)
-        assertTrue("通知权限请求前必须有一次 `if (!permDialogThisLaunch)` 守卫", guard > 0)
-        assertEquals(
-            "请求点要置位本次冷启动标记",
-            1, Regex("permDialogThisLaunch = true").findAll(permBlock).count(),
-        )
-    }
-
-    @Test
-    fun `门禁_B补19_更新框不得与系统权限框同一次冷启动`() {
-        // 更新检查在权限块内只出现一次，且带本次冷启动标记守卫
-        assertEquals(
-            "权限块内自更新检查只能有一个调用点",
-            1, Regex("checkAppUpdateInBackground\\(\\)").findAll(permBlock).count(),
-        )
-        assertTrue(
-            "自更新检查必须写成 `if (!permDialogThisLaunch) checkAppUpdateInBackground()`",
-            permBlock.contains("if (!permDialogThisLaunch) checkAppUpdateInBackground()"),
-        )
-        // 顺序：先排系统框（通知请求），最后才谈更新 —— 不许再回到"更新检查排在最前"
-        val notifyAt = permBlock.indexOf("requestPermissions(this, arrayOf(perm), 101)")
-        val updateAt = permBlock.indexOf("checkAppUpdateInBackground()")
-        assertTrue("找不到通知权限请求点（101）", notifyAt > 0)
-        assertTrue("自更新检查必须在系统权限请求之后", updateAt > notifyAt)
-    }
-
-    @Test
-    fun `门禁_B补19_本次冷启动标记必须是局部变量而不是常驻开关`() {
-        // 局部 `var`：只收敛"这一次冷启动"，绝不能被改成字段/常量而把权限框永久压掉
-        assertTrue(
-            "标记必须是权限块内的局部 `var permDialogThisLaunch = false`",
-            permBlock.contains("var permDialogThisLaunch = false"),
-        )
+        // ② 通知权限字面量 / 一次性闸门 / 首启权限页判定，一律不许回来。
+        assertFalse("冷启动不许再碰 POST_NOTIFICATIONS", code.contains("POST_NOTIFICATIONS"))
         assertFalse(
-            "标记不得提升为类字段（那会让权限框再也排不出来）",
-            code.contains("private var permDialogThisLaunch") ||
-                code.contains("private val permDialogThisLaunch") ||
-                code.contains("companion object") && code.contains("permDialogThisLaunch: Boolean = false"),
+            "首启权限页判定（shouldGuide 一族）应随该页一起退役",
+            code.contains("shouldGuide") || code.contains("shouldAutoRequest") ||
+                code.contains("permissionSetupPending") || code.contains("guidePermissions"),
         )
+        // ③ 首启权限页的路由与 Composabler 都不许还在（NavHost 只剩 welcome/home/settings，
+        //    与 RouteRestoreGuardTest 的白名单判据两头夹）。
+        assertFalse("NavHost 不许再注册 permission_setup", code.contains("permission_setup"))
     }
 
     @Test
-    fun `门禁_B补19_权限页互斥与两项一次性标记仍在`() {
-        // 2026-10-11 那刀的口径：首启引导页为真时，系统框一个都不排
-        assertTrue(
-            "首启判定必须仍在（PermissionSetup.shouldGuide）",
-            code.contains("val permissionSetupPending = PermissionSetup.shouldGuide(this)"),
-        )
-        // 2026-10-14 那刀的口径：每项权限一辈子最多自动问一次。
-        // 134 批：存储读写请求在 minSdk=36 下已死，存储那段"两处标记"随分支一起删除；
-        // 通知那半仍在，断言照旧（并由 PermissionGuideTest 的纯逻辑用例兜住语义）。
-        assertFalse(
-            "存储读写自动请求（100）是死分支，134 批已删（minSdk=36）",
-            code.contains("requestPermissions(this, needed.toTypedArray(), 100)"),
+    fun `门禁_210_自更新检查无条件发起_互斥守卫已退役`() {
+        // 权限框没了 ⇒ 「排过系统框就不查更新」的守卫失去存在理由。留着一个永真的
+        // `if (!permDialogThisLaunch)` 比没有更糟（读代码的人会以为还有系统框要避）。
+        // 计数 2 = 定义自身（`private fun checkAppUpdateInBackground() {` 也含这个形状）
+        // ＋ 唯一调用点；少一个是调用被删，多一个是互斥守卫复活。
+        assertEquals(
+            "checkAppUpdateInBackground 只应有一个调用点（外加定义自身）",
+            2, Regex("checkAppUpdateInBackground\\(\\)").findAll(code).count(),
         )
         assertTrue(
-            "通知权限仍要判一次性标记",
-            permBlock.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this), missing)"),
+            "自更新检查必须无条件发起（写回带 permDialogThisLaunch 守卫 = 互斥死代码复活）",
+            code.contains("\n        checkAppUpdateInBackground()"),
         )
-        assertTrue(
-            "markNotifyAsked 必须在通知请求之前",
-            permBlock.indexOf("PermissionSetup.markNotifyAsked(this)") > 0 &&
-                permBlock.indexOf("PermissionSetup.markNotifyAsked(this)") <
-                permBlock.indexOf("requestPermissions(this, arrayOf(perm), 101)"),
-        )
+        assertFalse("permDialogThisLaunch 局部标记应随权限框一起退役", code.contains("permDialogThisLaunch"))
     }
 
     @Test
-    fun `门禁_B补19_首启兜底框与签名提醒仍在`() {
-        // 134 批：minSdk=36 已在安装层拦住 <36，`SDK_INT < 36` 兜底框是死分支 ⇒ 删除
-        // （对应两条文案 main_android_too_old_* 一并退役）。签名提醒不许被顺手删。
+    fun `门禁_210_首启兜底框与签名提醒仍在`() {
+        // 签名自检与本批无关，一直在守：被顺手删就算回归。
+        assertTrue("非官方签名提醒仍在", code.contains("warnIfUnofficialSignature()"))
+        assertTrue("非官方签名提醒仍只在 UNOFFICIAL 时弹", code.contains("SigningCheck.Result.UNOFFICIAL"))
+        // 134 批：minSdk=36 已在安装层拦住 <36，`SDK_INT < 36` 兜底框是死分支 ⇒ 已删除。
         assertFalse(
             "SDK<36 兜底框已随 minSdk=36 退役（134 批 ObsoleteSdkInt）",
             code.contains("R.string.main_android_too_old_title"),
         )
-        assertTrue("非官方签名提醒仍在", code.contains("warnIfUnofficialSignature()"))
-        assertTrue("非官方签名提醒仍只在 UNOFFICIAL 时弹", code.contains("SigningCheck.Result.UNOFFICIAL"))
     }
 
     @Test
-    fun `门禁_B补19_立账口径与判据写进源码注释`() {
-        // 这一条读**原文**（注释是判据本身，剥掉就没了）
+    fun `门禁_210_退役留痕写进源码注释`() {
+        // 这一段读**原文**（注释是判据本身，剥掉就没了）：后来人得知道这里曾经有过什么、
+        // 为什么没了，否则「把冷启动请求加回来」看起来像修 bug。
         assertTrue(
-            "必须写明用户 2026-10-16 拍板「立账，并做了」",
-            screen.contains("B-补-19 立账（2026-10-16，用户拍板「立账，并做了」）"),
+            "必须写明首启权限机制已退役（第二百一十批）",
+            screen.contains("第二百一十批（入口与权限归位）：首启权限机制整体退役"),
         )
         assertTrue(
-            "必须写明「一次冷启动最多一个系统框」的取舍",
-            screen.contains("一次冷启动最多一个系统框"),
+            "必须写明冷启动不再发起任何权限请求",
+            screen.contains("冷启动不再发起任何权限请求"),
         )
         assertTrue(
-            "必须写明「最多跳过一个冷启动」的理由（系统框一辈子只排一次）",
-            screen.contains("最多跳过一个冷启动"),
+            "必须写明要授权走设置页「申请权限」卡",
+            screen.contains("要授权走设置页「申请权限」卡"),
         )
     }
 }

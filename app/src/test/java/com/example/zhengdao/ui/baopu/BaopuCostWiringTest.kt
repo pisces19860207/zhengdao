@@ -358,10 +358,12 @@ class BaopuCostWiringTest {
         listOf("Intent", "startActivity(", "ACTION_VIEW", "ACTION_SEND", "FileProvider", "MediaStore").forEach { tok ->
             assertFalse("查看器不许用 $tok（不做外部 App 打开/分享）", viewer().contains(tok))
         }
-        // 判别器：两类写法在本仓都真实存在（既有权限页 / 既有设置页跳转），上面两张表不是空转
+        // 判别器：两类写法在本仓都真实存在（「申请权限」卡 / 既有设置页跳转），上面两张表不是空转。
+        // 第二百一十批：首启权限页（PermissionSetupScreen.kt）整页退役，权限申请写法的
+        // 现存处是设置页「申请权限」卡（全 App 唯一申请入口，PermissionEntryGateTest 钉着）。
         assertTrue(
-            "判别器：PermissionSetupScreen.kt 确实有权限申请写法",
-            code("ui/PermissionSetupScreen.kt").contains("Manifest.permission"),
+            "判别器：SettingsPermissionCard.kt 确实有权限申请写法",
+            code("ui/SettingsPermissionCard.kt").contains("NOTIFICATIONS_PERMISSION"),
         )
         assertTrue("判别器：BaopuScreen 确实有 startActivity 写法（查看器里没有才是真没有）", screen().contains("startActivity("))
     }

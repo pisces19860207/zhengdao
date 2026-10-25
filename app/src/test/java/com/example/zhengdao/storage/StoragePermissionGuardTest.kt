@@ -26,6 +26,11 @@ import java.io.File
  * 存储判定改为双通道（见 `targetSdk 已抬 36_且存储判定走双通道`）。原先那条
  * 「targetSdk 还是 28」的断言是本刀**故意改掉**的判据 —— 它自己的失败信息就预告了这次重验。
  * 冷启动补授权那条仍然有效（30+ 上有 SDK_INT < 30 守卫，请求代码只为 target 28 设备保留）。
+ *
+ * ⚠️ **第二百一十批（2026-10-25）再更新**：首启权限机制整体退役（用户口径：欢迎页不碰权限、
+ * 申请入口唯一化到设置页「申请权限」卡）⇒ 冷启动不再发起**任何**权限请求。本类随之改写：
+ * 「通知请求必须真的发起」翻成「一个 requestPermissions 都不许有」；清单声明的判据不动
+ * （少声明 POST_NOTIFICATIONS，安卓 13+ 照样丢通知）。
  */
 class StoragePermissionGuardTest {
 
@@ -107,7 +112,13 @@ class StoragePermissionGuardTest {
             .replace(Regex("//[^\n]*"), "")
         assertFalse("冷启动又请求 READ_EXTERNAL_STORAGE 了（36 上是死分支）", activity.contains("READ_EXTERNAL_STORAGE"))
         assertFalse("冷启动又请求 WRITE_EXTERNAL_STORAGE 了（36 上是死分支）", activity.contains("WRITE_EXTERNAL_STORAGE"))
-        assertTrue("通知权限的运行时请求仍必须真的发起（requestPermissions）", activity.contains("requestPermissions"))
+        // 第二百一十批（2026-10-25 · 入口与权限归位）：首启不再请求**任何**权限——
+        // 用户口径「欢迎页不用放权限申请」＋申请入口唯一化（全 App 只许设置页「申请权限」
+        // 卡那一处发起，源码门禁 PermissionEntryGateTest）。所以命令式请求一个都不许有。
+        assertFalse(
+            "冷启动又出现 requestPermissions 了（首启零权限请求，要授权走「申请权限」卡）",
+            activity.contains("requestPermissions"),
+        )
     }
 
     // ── #3 验收时发现的第二顶「帽子」（2026-10-09） ──
@@ -116,24 +127,32 @@ class StoragePermissionGuardTest {
     // POST_NOTIFICATIONS、冷启动也不请求 ⇒ 安卓 13+ 直接丢掉通知，而代码这边看起来一切正常
     // （真机 `dumpsys package` = `granted=false`、`AppSettings importance=NONE`、通知列表为空）。
     // 与 READ 的 maxSdkVersion 帽子是同一类错误：不是逻辑写错，是**清单/授权**这一层缺一块。
+    //
+    // ⚠️ 第二百一十批（2026-10-25）口径变更：冷启动**不再**代用户请求 POST_NOTIFICATIONS
+    // （首启零权限请求；用户主动去「设置 → 申请权限」卡里给）。**清单声明不动**——
+    // 少声明安卓 13+ 一样丢通知，这条判据是「别把声明删了」，不是「冷启动要弹框」。
 
     @Test
-    fun `通知权限声明了，并且冷启动会请求`() {
+    fun `通知权限仍在清单里_冷启动不代请求`() {
         assertTrue(
             "清单里缺 POST_NOTIFICATIONS —— 安卓 13+ 上所有通知（含自动清理的静默提示）都会被丢掉",
             usesPermission(manifestXml(), "POST_NOTIFICATIONS") != null,
         )
+        // 剥掉注释再判：说明「这里原来有什么」的注释里必然出现这些反例词
+        // （ColdStartDialogGuardTest 类 KDoc 记着这个坑）。
         val activity = src("src/main/java/com/example/zhengdao/MainActivity.kt").readText()
-        assertTrue(
-            "冷启动没有再请求 POST_NOTIFICATIONS（安卓 13+ 必须运行时请求）",
+            .replace(Regex("/\\*[\\s\\S]*?\\*/"), "")
+            .replace(Regex("//[^\n]*"), "")
+        assertFalse(
+            "冷启动又不请求 POST_NOTIFICATIONS 了——首启零权限请求（第二百一十批用户口径），" +
+                "要授权走设置页「申请权限」卡；此断言红 = 有人把冷启动请求写回来了",
             activity.contains("POST_NOTIFICATIONS"),
         )
-        assertTrue(
-            // 134 批：minSdk=36 ⇒ `SDK_INT >= 33` 恒真、判据已删（lint ObsoleteSdkInt），
-            // 通知请求改为无条件跑；一次性闸门仍是判据本身。
-            "通知请求必须仍过 shouldAutoRequest 一次性闸门（每项一辈子只自动问一次）",
-            activity.contains("PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this)") &&
-                activity.contains("PermissionSetup.markNotifyAsked(this)"),
+        // 申请点在卡片文件里（PermissionEntryGateTest 钉「只此一处」），这里只确认入口唯一化后
+        // 老的那套一次性闸门（shouldAutoRequest / notifyAsked / markNotifyAsked）真的退役了。
+        assertFalse(
+            "首启自动请求闸门应随首启权限页一起退役（shouldAutoRequest 一族无调用方）",
+            activity.contains("shouldAutoRequest") || activity.contains("markNotifyAsked"),
         )
     }
 }

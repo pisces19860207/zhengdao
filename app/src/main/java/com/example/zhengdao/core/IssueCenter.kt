@@ -77,8 +77,9 @@ object IssueCenter {
     /** 打开设置页（通用去路：修复、检查更新、看占用都在这儿）。 */
     const val ACTION_OPEN_SETTINGS = "open-settings"
 
-    /** 直接跳到系统「所有文件访问」授权页。 */
-    const val ACTION_GRANT_STORAGE = "grant-storage"
+    // 第二百一十批（入口与权限归位）：原 ACTION_GRANT_STORAGE（去系统「所有文件访问」
+    // 授权页）删除——全 App 没有任何地方再报这条问题（此前也只有首页 when 分支兜着，
+    // 零个上报点），权限申请统一走设置页「申请权限」卡。死标识不留。
 
     /** 打开运行日志（终端里 tail 那份文本）。 */
     const val ACTION_VIEW_LOGS = "view-logs"
