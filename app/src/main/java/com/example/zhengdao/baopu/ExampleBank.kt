@@ -185,7 +185,11 @@ internal object ExampleBank {
         val archive = loadArchive(productDir)
         val samples = loadSamples(productDir)
         val redactor = SensitiveRedactor()
-        return TasteProfile.injection(archive, seed, style, samples) { redactor.redactText(it) }
+        // 两道脱敏：号码/证件走 SensitiveRedactor，客户姓名走 TasteProfile.redactNames
+        // （范例里「客户王女士」这类称呼不比手机号少见，派工单 §2 点名要遮）。
+        return TasteProfile.injection(archive, seed, style, samples) {
+            TasteProfile.redactNames(redactor.redactText(it))
+        }
     }
 
     /** 种子 → 正样本相似度（候选排序用；同样现读）。 */

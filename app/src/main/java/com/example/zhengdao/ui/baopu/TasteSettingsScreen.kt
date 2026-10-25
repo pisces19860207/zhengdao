@@ -167,7 +167,7 @@ internal fun TasteSettingsScreen(onDismiss: () -> Unit) {
                         ) { Text(stringResource(R.string.baopu_taste_reload)) }
                         OutlinedButton(
                             onClick = {
-                                kotlinx.coroutines.MainScope().launch {
+                                scope.launch {
                                     withContext(Dispatchers.IO) { ExampleBank.ensureArchive(ctx) }
                                     tick++
                                 }

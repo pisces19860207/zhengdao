@@ -185,7 +185,8 @@ internal object TasteProfile {
             appendLine("## " + sec.heading + if (sec == TasteSection.FORBIDDEN) "（优先级最高，命中直接不出候选）" else "")
             val rows = archive.bySection(sec)
             if (rows.isEmpty()) {
-                appendLine("- （暂无）")
+                // 空段用注释占位：`- （暂无）` 会被解析成「没证据的条目」⇒ 设置页误报
+                appendLine("<!-- 暂无 -->")
             } else {
                 rows.forEach { appendLine("- ${it.text} — 证据：${it.evidence}") }
             }
@@ -290,6 +291,41 @@ internal object TasteProfile {
         val t = text.trim()
         return if (t.length <= limit) t else t.take(limit).trimEnd() + "…"
     }
+
+    /**
+     * 客户名脱敏（派工单 §2「范例含隐私（客户名/手机号）⇒ 注入前先脱敏」）。
+     *
+     * `SensitiveRedactor` 只管号码/证件/密码，**不管姓名**；范例里最常见的隐私恰恰是
+     * 「客户王女士」「顾客李先生」这类称呼。这里只认**带身份前缀**或**姓＋称谓**两种形状，
+     * 宁可少遮也不乱遮：`客户王女士` ⇒ `客户***`，`王女士` ⇒ `***`，`老板娘` 不被误伤。
+     *
+     * 纯文本变换、不 import 浏览器包（与 [injection] 的 `redact` 参数同一层）。
+     */
+    fun redactNames(text: String): String {
+        if (text.isEmpty()) return text
+        var out = CUSTOMER_HONORIFIC.replace(text) { m -> m.groupValues[1] + MASK }
+        out = CUSTOMER_BARE.replace(out) { m -> m.groupValues[1] + MASK }
+        out = NAME_HONORIFIC.replace(out, MASK)
+        return out
+    }
+
+    /** 脱敏替换符（与 `SensitiveRedactor.MASK` 同值；这里写死避免跨包依赖）。 */
+    const val MASK = "***"
+
+    /** 带身份前缀＋称谓的客户名：`客户王女士` / `顾客李先生` / `联系人张总`。 */
+    private val CUSTOMER_HONORIFIC = Regex(
+        """(客户|顾客|联系人|委托人)[：:\s]*[\p{IsHan}]{1,3}(?:先生|女士|小姐|老师|经理|老板|总)""",
+    )
+
+    /** 带身份前缀、没有称谓的客户名：只在标点／空白／行尾前收（避免把后文的动词一起吃掉）。 */
+    private val CUSTOMER_BARE = Regex(
+        """(客户|顾客|联系人|委托人)[：:\s]*[\p{IsHan}]{2,3}(?=[\s，。！？；：、,.!?;]|$)""",
+    )
+
+    /** 姓＋称谓（`王女士` / `李先生` / `张老师`）；只要求左侧不贴汉字，右侧可接正文（`李女士来取货`）。 */
+    private val NAME_HONORIFIC = Regex(
+        """(?<![\p{IsHan}])[\p{IsHan}]{1,2}(?:先生|女士|小姐|老师|经理|总)""",
+    )
 
     /** 一篇范例与当前题材的相似度（0..1，Jaccard；与 [MemoryRules.tokensOf] 同一套分词）。 */
     fun similarity(query: Set<String>, sample: TasteSample): Double {
@@ -434,12 +470,12 @@ internal object TasteProfile {
         appendLine("<!-- 来源三种：① 台账里的 ✔/火了/赚钱；② 你否决或让改的那次；③ 你口述。没有证据的条目一律不生效。 -->")
         appendLine()
         appendLine("## 题材偏")
-        appendLine("- （暂无）")
+        appendLine("<!-- 暂无 -->")
         appendLine()
         appendLine("## 写法偏")
-        appendLine("- （暂无）")
+        appendLine("<!-- 暂无 -->")
         appendLine()
         appendLine("## 禁区（优先级最高，命中直接不出候选）")
-        appendLine("- （暂无）")
+        appendLine("<!-- 暂无 -->")
     }
 }

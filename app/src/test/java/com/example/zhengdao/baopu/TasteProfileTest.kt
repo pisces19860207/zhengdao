@@ -228,6 +228,8 @@ class TasteProfileTest {
         val inj = ExampleBank.inject(dir, seedSafe, style)!!
         assertFalse("手机号必须已被脱敏", inj.block.contains("13800138000"))
         assertFalse("身份证必须已被脱敏", inj.block.contains("110101199003071234"))
+        assertFalse("客户名必须已被脱敏", inj.block.contains("王女士"))
+        assertTrue(inj.block.contains("客户***"))
         assertTrue(inj.block.contains(SensitiveRedactor.MASK))
 
         // 负例自证：不过脱敏时它确实会漏（说明这条测试真的在测脱敏，而不是文本里本来就没有）
@@ -235,6 +237,16 @@ class TasteProfileTest {
             TasteProfile.parse(null), seedSafe, style, ExampleBank.loadSamples(dir), { it },
         )!!
         assertTrue(raw.block.contains("13800138000"))
+        assertTrue(raw.block.contains("王女士"))
+    }
+
+    @Test
+    fun `客户名脱敏只认称呼形状不乱吃正文`() {
+        assertEquals("客户***留了电话", TasteProfile.redactNames("客户王女士留了电话"))
+        assertEquals("***来取货", TasteProfile.redactNames("李女士来取货"))
+        assertEquals("顾客***说不用袋子", TasteProfile.redactNames("顾客张先生说不用袋子"))
+        // 反例：普通词不许被误伤
+        assertEquals("老板娘记住了我的口味", TasteProfile.redactNames("老板娘记住了我的口味"))
     }
 
     // ── 负例 2：删掉一条，下一轮就变（无缓存） ─────────────────────────────
@@ -274,11 +286,12 @@ class TasteProfileTest {
     // ── 负例 6：不联网 ────────────────────────────────────────────────────
 
     @Test
-    fun `负例6 这两个文件没有任何联网入口`() {
+    fun `负例6 本批生产文件没有任何联网入口`() {
         // 边界：这是源码门禁（本机测试跑不到网络层），钉的是「没人偷偷加一条上传/画像」。
         val rels = listOf(
             "app/src/main/java/com/example/zhengdao/baopu/TasteProfile.kt",
             "app/src/main/java/com/example/zhengdao/baopu/ExampleBank.kt",
+            "app/src/main/java/com/example/zhengdao/ui/baopu/TasteSettingsScreen.kt",
         )
         val banned = listOf("java.net.", "HttpURLConnection", "okhttp", "OkHttp", "URL(", "Socket")
         rels.forEach { rel ->
@@ -323,6 +336,7 @@ class TasteProfileTest {
         val dir = tmp.newFolder("template")
         val t = ExampleBank.ensureArchive(dir)
         assertTrue(t.entries.isEmpty())
+        assertTrue("空白模板里的占位行不许被当成「写了但没生效」", t.rejected.isEmpty())
         assertTrue(File(dir, TasteProfile.ARCHIVE_NAME).isFile)
 
         writeArchive(dir, archiveMd())
@@ -362,5 +376,6 @@ class TasteProfileTest {
         assertEquals(3, inj.goods.size)
         assertEquals("20261019_职场_9_逆袭文.md", inj.bad)
         assertFalse(inj.block.contains("13800138000"))
+        assertFalse("客户名也要脱敏", inj.block.contains("李女士"))
     }
 }
