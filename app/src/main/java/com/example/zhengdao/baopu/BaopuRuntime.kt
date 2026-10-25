@@ -19,6 +19,7 @@ import com.example.zhengdao.baopu.agent.GroupUnlockStore
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.KbTools
 import com.example.zhengdao.baopu.agent.ListDirTool
+import com.example.zhengdao.baopu.agent.OrchestrationGate
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.RunRules
 import com.example.zhengdao.baopu.agent.ToolGroup
@@ -623,6 +624,9 @@ internal object BaopuRuntime {
             personaFiles = personaFiles(appCtx),
             // 第一百六十五批：人设包按工作区现读（设置页换包后下一轮生效；文件是真相）。
             personaPack = { activePersonaPack(appCtx) },
+            // 第二百一十四批：编排引擎开关（默认关；关掉＝今天行为一行不改）。
+            // 只读闸门现读 SP，写口在 OrchestrationSettings——引擎不持 Context。
+            orchestrationEnabled = { OrchestrationGate.enabledNow(appCtx) },
             memoryStore = memoryStore(appCtx),
             spillRoot = { workspaceRoot(appCtx) },
             // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，
@@ -1057,7 +1061,8 @@ internal object BaopuRuntime {
                 -1
             } else {
                 when (c.getString(1) ?: "") {
-                    "Thinking", "Acting", "Compressing" -> c.getInt(0)
+                    // 214：批 checkpoint 也是「跑到一半」的行（kill 在批里 ⇒ 必须报中断）
+                    "Thinking", "Acting", "Compressing", "BatchCheckpoint" -> c.getInt(0)
                     else -> -1
                 }
             }

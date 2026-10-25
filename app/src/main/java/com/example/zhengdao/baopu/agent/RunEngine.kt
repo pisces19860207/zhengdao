@@ -227,6 +227,15 @@ internal class RunEngine(
      * 包只作为 C 段前面的一段文本，碰不到工具注册表、GuardPipeline 与 A 内核。
      */
     private val personaPack: (() -> com.example.zhengdao.baopu.PersonaPackPayload?)? = null,
+    /**
+     * 编排开关（第二百一十四批 · 183-a）：true = 一轮可提交多条 tool_calls，
+     * 整批结果合成**一条**编号回灌（[BatchRules]）。
+     *
+     * 默认 `{ false }` ⇒ **关掉＝今天的行为一行不改**（构造不传就永远是 native 路径；
+     * JVM 测试也因此不用碰 SharedPreferences）。生产由装配层接
+     * `OrchestrationGate.enabledNow(appCtx)`。
+     */
+    private val orchestrationEnabled: () -> Boolean = { false },
 ) {
 
     /** UI 观察用（Compose State）。 */
@@ -553,6 +562,17 @@ internal class RunEngine(
     private val interjections = InterjectionQueue()
 
     /**
+     * 当前这一批的编排收口器（第二百一十四批）：null ＝ native 路径。
+     *
+     * 编排关时**永远是 null**（工具结果照旧逐条回灌），关掉=今天行为一行不改。
+     * 编排开时只在「批执行」那一段被置位，`try/finally` 保证退出时清回 null。
+     */
+    private var batch: BatchCollector? = null
+
+    /** 本 run 的第几批（回灌头部「第 N 批」与 checkpoint 的 `bN`；run 级计数）。 */
+    private var batchSeq = 0
+
+    /**
      * 150批 A：四个 run 级计数器在新一轮入口统一复位（调用点在 [runLoop] 第一行）。
      *
      * 为什么收口成一个方法、且只在 runLoop 入口调：send/resume/approveRestoredPending/
@@ -578,6 +598,9 @@ internal class RunEngine(
         runTokens = 0L
         lastLoggedSegment = 0
         segmentCardShown = false
+        // 214：编排的批账也是 run 级（上一轮没收尾的批不许把这一轮的结果吞进它的编号里）
+        batch = null
+        batchSeq = 0
         // 会话身份在 runLoop 入口喂一次（approveRestoredPending 走 executeApproved 时
         // 还没进 runLoop，那里另喂一次，见 acquireOrNotice——同一赋值点、幂等）。
         onSessionEnter(sessionId)
@@ -1580,8 +1603,12 @@ internal class RunEngine(
             val rendered = prompt.render()
             val prefix = prompt.prefixText()
             val rest = rendered.removePrefix(prefix).removePrefix(AssembledPrompt.SEP)
+            // 214 §6：编排指引只追加在**编排开**的那一路；关掉时 systemText 就是 prefix
+            // 本身（逐字节一致），下面 buildList 的条件与 native 完全相同。
+            val orchestrated = orchestrationEnabled()
+            val systemText = if (orchestrated) BatchRules.systemPrefix(prefix) else prefix
             val messages = buildList {
-                if (prefix.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, prefix))
+                if (systemText.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, systemText))
                 // 图片必须挂在这一条 user 上（第二十四批 A 段的本意）。
                 // 2026-10-18 真机事故：这里从前只传文本，`prompt.images` 算出来就没人用 ⇒
                 // 图一路缩好、选好、日志也写了「已发送」，请求体里却一个 image 块都没有，
@@ -1727,8 +1754,16 @@ internal class RunEngine(
                     // 走既有「问人」通道停轮（判据：文案带次数/工具名/参数摘要/换路建议）。
                     // 重跑同一步（换通道/退避）不涨计数；段边界也不清这本账（§1.2）。
                     runToolCalls += outcome.calls.size
+                    // 214 §1：编排开时**超批不整批拒**——只有前 MAX_BATCH_CALLS 个进执行与
+                    // 打转计数；第 9 个起一个都不执行（回灌由 BatchCollector 预填「未执行」）。
+                    // 关掉时 batchCalls 就是 outcome.calls 本身 ⇒ native 路径逐字不变。
+                    val batchCalls = if (orchestrated) {
+                        outcome.calls.take(RunRules.MAX_BATCH_CALLS)
+                    } else {
+                        outcome.calls
+                    }
                     if (!rerunSameStep) {
-                        for (call in outcome.calls) {
+                        for (call in batchCalls) {
                             val key = RunRules.repeatCallKey(call.name, call.arguments)
                             val times = (seenCallKeys[key] ?: 0) + 1
                             seenCallKeys[key] = times
@@ -1758,39 +1793,88 @@ internal class RunEngine(
                     // ToolScheduling.MAX_READ_PARALLEL），写工具各自独占一段。
                     // 段与段之间是硬屏障 ⇒「写与写不并行」「写之后的读一定读到新值」
                     // 是**结构**保证（不靠谁记得加锁）。排段是纯函数，JVM 直测。
-                    val stages = ToolScheduling.plan(outcome.calls) { call -> laneOfCall(call) }
+                    val stages = ToolScheduling.plan(batchCalls) { call -> laneOfCall(call) }
                     // 整批总时限：各段预算之和。为什么不拍一个固定秒数——单工具上限量级差很大
                     // （文件 5s / 浏览器 20s / ask_user 等用户 15 分钟），拍死一个值要么掐死
                     // 正经的等用户，要么形同虚设；按段求和在任何合法批次上都够用，又给
                     // 「线程卡死不返回」留了上界。
                     val batchDeadlineMs = System.currentTimeMillis() +
                         ToolScheduling.batchBudgetMs(stages) { call -> timeoutOfCall(call) }
-                    for (stage in stages) {
-                        val headCall = when (stage) {
-                            is ToolStage.Serial -> stage.call
-                            is ToolStage.Parallel -> stage.calls.first()
+                    // 214 §4：编排开时为这一批开一行 run_log BatchCheckpoint（批首）——
+                    // payload 只写 err 列，state 用新行型；**表结构与 VERSION 都不动**。
+                    // 传全部 outcome.calls：超批的那些也要在批账里留名（它们没被执行）。
+                    val collector = if (orchestrated) {
+                        batchSeq++
+                        BatchCollector(batchSeq, "b$batchSeq", outcome.calls).also { c ->
+                            persistBatchCheckpoint(sessionId, stepCount, c, stages)
                         }
-                        if (stopRequested) {
-                            // 第八十七批 R1：这次工具调用**没执行**（批里前面那个还在跑就停了）
-                            abortBeforeCall(sessionId, stepCount, headCall)
-                            return
-                        }
-                        when (stage) {
-                            is ToolStage.Serial ->
-                                when (handleSerialCall(sessionId, stepCount, stage.call, history)) {
-                                    ToolResultFlow.CONTINUE -> Unit
-                                    ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
-                                    ToolResultFlow.STOP_RUN -> return
-                                }
+                    } else {
+                        null
+                    }
+                    batch = collector
+                    var stageIndex = 0
+                    try {
+                        for (stage in stages) {
+                            // 214 §5：插话安全点在**段边界**——上一段已收口、下一段还没开始。
+                            // 批内不注入：handleSerialCall / runParallelStage 里没有这个调用。
+                            // 第一段之前不重复取（循环头刚取空过）。
+                            if (collector != null && stageIndex > 0) {
+                                drainInterjections(sessionId, history)
+                            }
+                            val headCall = when (stage) {
+                                is ToolStage.Serial -> stage.call
+                                is ToolStage.Parallel -> stage.calls.first()
+                            }
+                            if (stopRequested) {
+                                // 第八十七批 R1：这次工具调用**没执行**（批里前面那个还在跑就停了）
+                                abortBeforeCall(sessionId, stepCount, headCall)
+                                return
+                            }
+                            when (stage) {
+                                is ToolStage.Serial ->
+                                    when (handleSerialCall(sessionId, stepCount, stage.call, history)) {
+                                        ToolResultFlow.CONTINUE -> Unit
+                                        ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
+                                        ToolResultFlow.STOP_RUN -> return
+                                    }
 
-                            is ToolStage.Parallel ->
-                                when (runParallelStage(sessionId, stepCount, stage, history, batchDeadlineMs)) {
-                                    ToolResultFlow.CONTINUE -> Unit
-                                    ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
-                                    ToolResultFlow.STOP_RUN -> return
-                                }
+                                is ToolStage.Parallel ->
+                                    when (runParallelStage(sessionId, stepCount, stage, history, batchDeadlineMs)) {
+                                        ToolResultFlow.CONTINUE -> Unit
+                                        ToolResultFlow.TERMINATE_ROUND -> terminateRound = true
+                                        ToolResultFlow.STOP_RUN -> return
+                                    }
+                            }
+                            // §3.5 段收口：这一段谁落了地，更新**同一行** checkpoint（不新增行）。
+                            collector?.let { c ->
+                                updateBatchCheckpoint(
+                                    sessionId,
+                                    BatchRules.checkpointStage(
+                                        batchId = c.batchId,
+                                        stage = stageIndex + 1,
+                                        done = c.stageIndices(stage),
+                                        doneAll = c.stageClosed(stage),
+                                    ),
+                                )
+                            }
+                            stageIndex++
+                            if (terminateRound) break
                         }
-                        if (terminateRound) break
+                    } finally {
+                        // 停止/失败提前 return 时也必须清回 null（下一段/下一轮不许误收）
+                        batch = null
+                    }
+                    // 214 §3：整批结果合成**一条** assistant 文本（每个调用都有结局）。
+                    // 编排关时 collector 恒 null ⇒ 这一整段不存在（逐条回灌照旧）。
+                    collector?.let { c ->
+                        val feed = c.feed()
+                        persistAssistantMessage(sessionId, feed)
+                        history += HistoryMessage(
+                            "local-batch-${System.nanoTime()}",
+                            HistoryMessage.ROLE_ASSISTANT,
+                            feed,
+                        )
+                        log("抱朴编排：${c.batchId} 回灌 ${feed.length} 字（${c.size} 个调用，步 $stepCount）")
                     }
                     // 软档（140）：这一步跑完按「有没有成功 update_plan」记账；
                     // 连续 3 步都没有 ⇒ 弹御批卡。只提示，不阻断下一步，也不要求一步一勾。
@@ -2718,11 +2802,20 @@ internal class RunEngine(
             // 能力决定（provider.vision 为假就只给路径＋指向 snapshot，不读盘不上送）。
             val shotNote = adoptToolImages(result)
             val extraNote = listOfNotNull(shotNote, planHint).joinToString("\n\n")
-            history += HistoryMessage(
-                "local-tool-${System.nanoTime()}",
-                HistoryMessage.ROLE_ASSISTANT,
-                if (extraNote.isEmpty()) result.wrapped else result.wrapped + "\n\n" + extraNote,
-            )
+            // 214 §3：编排开 ⇒ 本批只收口、不逐条回灌（批末尾合成一条编号文本）。
+            // 关掉时 batch 恒 null ⇒ 下面这条历史与今天逐字相同。
+            if (batch == null) {
+                history += HistoryMessage(
+                    "local-tool-${System.nanoTime()}",
+                    HistoryMessage.ROLE_ASSISTANT,
+                    if (extraNote.isEmpty()) result.wrapped else result.wrapped + "\n\n" + extraNote,
+                )
+            } else {
+                batch?.recordDone(
+                    result.call,
+                    if (extraNote.isEmpty()) result.wrapped else result.wrapped + "\n\n" + extraNote,
+                )
+            }
             ToolResultFlow.CONTINUE
         }
 
@@ -2753,11 +2846,16 @@ internal class RunEngine(
             // 189 §1.3：反复失败同样是「无新信息」——失败原文的哈希也入账
             result.contentHash.takeIf { it.isNotEmpty() }?.let { stepResultTexts += it }
             onEvent?.invoke(EngineEvent.ToolCallVisible(name, failureText, false))
-            history += HistoryMessage(
-                "local-tool-${System.nanoTime()}",
-                HistoryMessage.ROLE_ASSISTANT,
-                DataFence.wrap(name, System.currentTimeMillis(), failureText),
-            )
+            // 214 §3：编排开 ⇒ 结局进批回灌；关掉时逐条围栏回灌（原文不变）。
+            if (batch == null) {
+                history += HistoryMessage(
+                    "local-tool-${System.nanoTime()}",
+                    HistoryMessage.ROLE_ASSISTANT,
+                    DataFence.wrap(name, System.currentTimeMillis(), failureText),
+                )
+            } else {
+                batch?.recordFailed(result.call, failureText)
+            }
             if (action is FailureAction.Retry) {
                 // Retry 在这里的语义＝「回灌错误原文、让模型自己看着办」（与坏参数同款）：
                 // 工具层没有「偷偷再跑一次」这回事——真重跑决定权在模型，不在引擎。
@@ -2790,11 +2888,16 @@ internal class RunEngine(
             // 189 §1.3：被拒也入账（模型反复撞同一堵墙也是打转）
             result.contentHash.takeIf { it.isNotEmpty() }?.let { stepResultTexts += it }
             onEvent?.invoke(EngineEvent.ToolCallVisible(name, rejectedText, false))
-            history += HistoryMessage(
-                "local-tool-${System.nanoTime()}",
-                HistoryMessage.ROLE_ASSISTANT,
-                DataFence.wrap(name, System.currentTimeMillis(), rejectedText),
-            )
+            // 214 §3：被拒是「失败」结局（本批不再执行后面的调用，但每个调用都要有结局）。
+            if (batch == null) {
+                history += HistoryMessage(
+                    "local-tool-${System.nanoTime()}",
+                    HistoryMessage.ROLE_ASSISTANT,
+                    DataFence.wrap(name, System.currentTimeMillis(), rejectedText),
+                )
+            } else {
+                batch?.recordRejected(result.call, rejectedText)
+            }
             ToolResultFlow.TERMINATE_ROUND
         }
 
@@ -2933,16 +3036,25 @@ internal class RunEngine(
                     status = TraceStatus.REJECTED,
                 )
                 // 拒绝不执行；回灌进历史（模型下一轮看得见）＋ 落库可见；对话继续
-                persistAssistantMessage(sessionId, oc.note)
-                history += HistoryMessage(
-                    "local-note-${System.nanoTime()}",
-                    HistoryMessage.ROLE_ASSISTANT,
-                    oc.note,
-                )
+                // 214 §3：编排开时这条不单独回灌，作为「未执行：用户拒绝…」进整批那一条。
+                if (batch == null) {
+                    persistAssistantMessage(sessionId, oc.note)
+                    history += HistoryMessage(
+                        "local-note-${System.nanoTime()}",
+                        HistoryMessage.ROLE_ASSISTANT,
+                        oc.note,
+                    )
+                } else {
+                    batch?.recordSkipped(call, oc.note)
+                }
                 ToolResultFlow.CONTINUE
             }
 
-            is ConfirmFlow.Outcome.Abandoned -> ToolResultFlow.CONTINUE // 用户点了停止：循环头部收尾
+            is ConfirmFlow.Outcome.Abandoned -> {
+                // 用户点了停止：循环头部收尾（批回灌不发了——这一轮已作废）。
+                batch?.recordSkipped(call, "用户点了停止")
+                ToolResultFlow.CONTINUE
+            }
 
             is ConfirmFlow.Outcome.TimedOut -> {
                 trace.noteTool(
@@ -2955,11 +3067,16 @@ internal class RunEngine(
                 )
                 _notice.value = oc.note
                 persistAssistantMessage(sessionId, oc.note)
+                batch?.recordSkipped(call, "确认超时，本轮停下")
                 settle(sessionId, step, RunState.ABORTED, "Aborted")
                 ToolResultFlow.STOP_RUN
             }
 
-            is ConfirmFlow.Outcome.Ignored -> ToolResultFlow.CONTINUE // 双保险：不该发生，跳过这个调用
+            is ConfirmFlow.Outcome.Ignored -> {
+                // 双保险：不该发生，跳过这个调用（编排开时也要在批回灌里留下结局）
+                batch?.recordSkipped(call, "没有收到确认结果")
+                ToolResultFlow.CONTINUE
+            }
         }
     }
 
@@ -3366,6 +3483,60 @@ internal class RunEngine(
             }.get()
         }.isSuccess
         if (!ok) log("抱朴引擎：工具交换落库失败（session=$sessionId, tool=$tool）")
+    }
+
+    // ── 第二百一十四批 · 编排批账（§3.5；run_log 新行型，**不动表结构/VERSION**） ──
+
+    /**
+     * 批首行：`state="BatchCheckpoint"`，payload 写进 `err` 列。
+     *
+     * 为什么 `tool=""`：`BaopuSql.RUN_LOG_STEPS_SELECT` 只取 `tool != ''` 的行
+     * （界面「本步跑了哪些工具」）——空工具名让批账**不进**步活动列表，只做取证。
+     */
+    private fun persistBatchCheckpoint(
+        sessionId: Long,
+        step: Int,
+        collector: BatchCollector,
+        stages: List<ToolStage>,
+    ) {
+        val payload = BatchRules.checkpointStart(collector.batchId, step, collector.calls, stages)
+        val rl = BaopuSql.insertRunLog(
+            sessionId = sessionId,
+            step = step,
+            state = "BatchCheckpoint",
+            model = provider.model,
+            tokensIn = 0,
+            tokensOut = 0,
+            tokensInEst = 0,
+            tokensOutEst = 0,
+            tool = "",
+            ok = true,
+            latencyMs = 0,
+            err = payload,
+            createdAt = System.currentTimeMillis(),
+        )
+        runCatching { db.write { d -> d.execSQL(rl.sql, rl.args) }.get() }
+            .onFailure {
+                log(
+                    "抱朴编排：批 checkpoint 落库失败（${collector.batchId}）" +
+                        "${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+    }
+
+    /** 段收口：UPDATE 本批那一行（`MAX(id)` 的 BatchCheckpoint）——不新增行。 */
+    private fun updateBatchCheckpoint(sessionId: Long, payload: String) {
+        runCatching {
+            db.write { d ->
+                d.execSQL(
+                    "UPDATE run_log SET err = ? WHERE id = " +
+                        "(SELECT MAX(id) FROM run_log WHERE session_id = ? AND state = 'BatchCheckpoint')",
+                    arrayOf<Any?>(payload, sessionId.toString()),
+                )
+            }.get()
+        }.onFailure {
+            log("抱朴编排：批 checkpoint 段收口更新失败 ${it.javaClass.simpleName}: ${it.message}")
+        }
     }
 
     /**
