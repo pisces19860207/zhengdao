@@ -1551,6 +1551,13 @@ internal fun BaopuSettingsScreen(
  * 回归网见 BaopuSettingsGuardTest J8。
  */
 private fun baopuToolLabel(name: String): Int = when (name) {
+    // 第二百一十八批：工具补齐 v1（六件）
+    "sheet_read" -> R.string.baopu_tool_sheet_read
+    "search_web" -> R.string.baopu_tool_search_web
+    "schedule_task" -> R.string.baopu_tool_schedule_task
+    "clipboard_write" -> R.string.baopu_tool_clipboard_write
+    "notify" -> R.string.baopu_tool_notify
+    "phone_dial" -> R.string.baopu_tool_phone_dial
     "card_inspect" -> R.string.baopu_tool_card_inspect
     "card_export" -> R.string.baopu_tool_card_export
     "card_build" -> R.string.baopu_tool_card_build
@@ -1622,6 +1629,13 @@ private fun effortLabel(level: String): Int = when (level) {
 
 /** 抱朴工具的开关副标题（同上，双语走 strings.xml）。 */
 private fun baopuToolDesc(name: String): Int = when (name) {
+    // 第二百一十八批：工具补齐 v1（六件）
+    "sheet_read" -> R.string.baopu_tool_sheet_read_desc
+    "search_web" -> R.string.baopu_tool_search_web_desc
+    "schedule_task" -> R.string.baopu_tool_schedule_task_desc
+    "clipboard_write" -> R.string.baopu_tool_clipboard_write_desc
+    "notify" -> R.string.baopu_tool_notify_desc
+    "phone_dial" -> R.string.baopu_tool_phone_dial_desc
     "card_inspect" -> R.string.baopu_tool_card_inspect_desc
     "card_export" -> R.string.baopu_tool_card_export_desc
     "card_build" -> R.string.baopu_tool_card_build_desc

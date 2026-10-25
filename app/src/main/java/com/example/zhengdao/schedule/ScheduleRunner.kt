@@ -84,6 +84,10 @@ object ScheduleRunner {
         override fun failed(task: ScheduleTask, outcome: ScheduleOutcome, detail: String) {
             ScheduleNotifier.postFailed(app, task, outcome, detail)
         }
+
+        override fun pausedByFailStreak(task: ScheduleTask, outcome: ScheduleOutcome, detail: String) {
+            ScheduleNotifier.pausedByFailStreak(app, task, outcome, detail)
+        }
     }
 
     /** 真发送出口：抱朴引擎是进程级单例，后台 Worker 里没有页面也能用（不依赖 Activity / Compose）。 */

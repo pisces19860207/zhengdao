@@ -43,6 +43,9 @@ class ToolSchedulingGateTest {
         // 第一百九十五批：查询读的是本机当日发货表（一次查询=一次只读 SELECT，不写盘、不碰工作区、
         // 不调模型也不联网），与别的读可并行；写台账的是导入那一步，不是这个工具
         "logistics_query",
+        // 218: sheet_read (streaming sheet read) / search_web (plain GET) are pure reads
+        // with no shared mutable state - intentional extension of this expectation table.
+        "sheet_read", "search_web",
     )
 
     // ── ① 分类自洽 ────────────────────────────────────────────────────────

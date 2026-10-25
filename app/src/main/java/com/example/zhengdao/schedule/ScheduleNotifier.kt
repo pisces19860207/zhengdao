@@ -78,6 +78,22 @@ internal object ScheduleNotifier {
         RunLog.log("定时任务：触发失败 ${outcome.wire} $detail")
     }
 
+    /**
+     * 连败 3 次自动暂停的那一声（第二百一十八批：派工单 §1③「自动暂停并通知」）。
+     * 与 [postFailed] 同渠道同口径，只是文案不同——要说清「已自动暂停、列表里可恢复」。
+     */
+    fun pausedByFailStreak(context: Context, task: ScheduleTask, outcome: ScheduleOutcome, detail: String) {
+        post(
+            context = context,
+            titleRes = R.string.sched_notif_paused_title,
+            titleArg = task.title,
+            textRes = R.string.sched_notif_paused_text,
+            sessionId = -1L,
+        )
+        // 细节只进日志：异常原文可能带路径，通知是会被旁人看见的（同 postFailed 的口径）。
+        RunLog.log("定时任务：连败自动暂停 ${outcome.wire} $detail")
+    }
+
     private fun post(context: Context, titleRes: Int, titleArg: String, textRes: Int, sessionId: Long) {
         val granted = ContextCompat.checkSelfPermission(
             context, android.Manifest.permission.POST_NOTIFICATIONS,

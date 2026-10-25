@@ -58,6 +58,8 @@ class ToolRegistrySwitchTest {
         assertEquals(BaopuToolCatalog.ENTRIES.size + 2, BaopuToolCatalog.DEFAULT_ENABLED.size)
         assertEquals(
             listOf(
+                // 218：工具补齐 v1 六件（ENTRIES 最前；组默认不可见但默认启用）
+                "sheet_read", "search_web", "schedule_task", "clipboard_write", "notify", "phone_dial",
                 "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 // 小说工程三件（第一百五十五批）：表序即注册序（convert_encoding 之后）

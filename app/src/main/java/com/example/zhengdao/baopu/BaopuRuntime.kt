@@ -10,7 +10,10 @@ import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.ArtifactRaster
+import com.example.zhengdao.schedule.ScheduleStore
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
+import com.example.zhengdao.baopu.agent.DeviceTools
+import com.example.zhengdao.baopu.agent.ScheduleTaskTool
 import com.example.zhengdao.baopu.agent.CompatChannelTools
 import com.example.zhengdao.baopu.agent.DrawPublish
 import com.example.zhengdao.baopu.agent.GenerateImage
@@ -255,6 +258,56 @@ internal object BaopuRuntime {
             onVisibleChanged = { line -> RunLog.log(line) },
         )
         BaopuToolCatalog.loadInto(reg) { workspaceRoot(appCtx) }
+        // 第二百一十八批 · 工具补齐 v1 的宿主注入（房型照 CapabilitiesTool.sink：工具层不认识 Context）。
+        // DeviceHost：剪贴板/通知/拨号盘的 Android 实现；ScheduleToolSink：写完库重排系统闹钟。
+        ScheduleTaskTool.storeProvider = { ScheduleStore.of(appCtx) }
+        ScheduleTaskTool.sink = object : com.example.zhengdao.baopu.agent.ScheduleToolSink {
+            override fun reschedule() {
+                com.example.zhengdao.schedule.ScheduleScheduler.rescheduleAll(
+                    appCtx, ScheduleStore.of(appCtx), System.currentTimeMillis(),
+                )
+            }
+        }
+        DeviceTools.host = object : com.example.zhengdao.baopu.agent.DeviceHost {
+            override fun copyToClipboard(text: String): Boolean = runCatching {
+                val cm = appCtx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("baopu", text))
+                true
+            }.getOrDefault(false)
+
+            override fun notificationsEnabled(): Boolean =
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    appCtx, android.Manifest.permission.POST_NOTIFICATIONS,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            override fun postNotification(title: String, body: String, channel: String?): Boolean = runCatching {
+                com.example.zhengdao.terminal.NotificationChannels.ensureAll(appCtx)
+                val ch = if (channel.isNullOrBlank()) {
+                    com.example.zhengdao.terminal.NotificationChannels.AGENT
+                } else {
+                    channel
+                }
+                val n = android.app.Notification.Builder(appCtx, ch)
+                    .setSmallIcon(com.example.zhengdao.R.drawable.ic_terminal)
+                    .setContentTitle(title)
+                    .setContentText(body)
+                    .setAutoCancel(true)
+                    .setOngoing(false)
+                    .build()
+                appCtx.getSystemService(android.app.NotificationManager::class.java)?.notify(20261103, n)
+                true
+            }.getOrDefault(false)
+
+            override fun openDialer(number: String): Boolean = runCatching {
+                // 只 ACTION_DIAL（打开拨号盘填号）；绝不 ACTION_CALL/CALL_PHONE（派工单 §1⑥ 红线）
+                val intent = android.content.Intent(android.content.Intent.ACTION_DIAL)
+                    .setData(android.net.Uri.parse("tel:" + android.net.Uri.encode(number)))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                appCtx.startActivity(intent)
+                true
+            }.getOrDefault(false)
+        }
         // 第一百五十八批：文生图（`generate_image`）的接线。
         // Key 的口径：当前通道若是 Gemini 原生就用它的（含用户填的 Key）；否则退回
         // 「设置 → Google Gemini」里存的那把——生图是独立于对话通道的能力，不该逼用户
