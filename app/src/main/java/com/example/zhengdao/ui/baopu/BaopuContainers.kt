@@ -57,6 +57,14 @@ import com.example.zhengdao.ui.theme.rChip
 /** 行动卡四边描边宽度（§6.1：四边 2dp 黛青实线，6.66:1）。 */
 internal const val BAO_ACTION_STROKE_DP = 2
 
+/**
+ * 行动卡卡头的点击热区高度（第二百零九批：点卡头折叠/展开，整行 ≥48dp）。
+ *
+ * 与记录条同一手法（视觉不放大、热区单独给）：只有调用方传了 onHeaderClick
+ * 的卡头才长到 48dp 并可点；其余行动卡的卡头与现状逐像素一致。
+ */
+internal const val BAO_ACTION_HEADER_TOUCH_DP = 48
+
 /** 行动卡内部留白（§6.1：内距 16）。 */
 internal const val BAO_ACTION_INSET_DP = 16
 
@@ -101,16 +109,27 @@ private val BaoTierShape = RoundedCornerShape(rCard)
  * 判据「等你动手」。七张（提问／选择／确认／技能提案／决策／恢复确认）**外形完全一致**，
  * 只有标题条文字与按钮内容不同——这是「3 秒内能指出哪一张在等我动手」的唯一来源。
  *
+ * 第二百零九批（文本卡折叠）：卡头可**选**配点击（[onHeaderClick]）——传了才可点，
+ * 卡头长到 [BAO_ACTION_HEADER_TOUCH_DP] 热区、标题改单行省略、尾部多一个箭头文案；
+ * 不传（其余九张卡）与改造前逐像素一致：不点的卡头不长高、不换行、不多箭头。
+ *
  * @param title 标题条文字（「提问 · 需要你选」这类；走 strings.xml）
  * @param badge 右上角标（通常「待你操作」；null ⇒ 不显示）
+ * @param onHeaderClick 点卡头的动作（null ⇒ 卡头不可点，保持旧行为）
+ * @param onHeaderClickLabel 读屏播报的动作名（「点卡头展开这张卡」；null ⇒ 用 Compose 默认）
+ * @param headerTrailing 卡头尾部文案（箭头「展开 ▼」这类；null ⇒ 不显示）
  */
 @Composable
 internal fun BaopuActionContainer(
     title: String,
     modifier: Modifier = Modifier, // 首个可选参数必须是 modifier（lint ModifierParameter）
     badge: String? = null,
+    onHeaderClick: (() -> Unit)? = null,
+    onHeaderClickLabel: String? = null,
+    headerTrailing: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val headerClickable = onHeaderClick != null
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -123,6 +142,16 @@ internal fun BaopuActionContainer(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.primaryContainer)
+                // 209：可点头时才把整条卡头撑到 48dp 热区并接点击；不可点就是原来的 Modifier
+                .then(
+                    if (onHeaderClick != null) {
+                        Modifier
+                            .heightIn(min = BAO_ACTION_HEADER_TOUCH_DP.dp)
+                            .clickable(onClickLabel = onHeaderClickLabel, onClick = onHeaderClick)
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(horizontal = BAO_ACTION_INSET_DP.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -131,6 +160,10 @@ internal fun BaopuActionContainer(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
+                // 209：可点时标题让位给箭头/角标（单行省略）；不可点保持旧行为（随高度换行）
+                maxLines = if (headerClickable) 1 else Int.MAX_VALUE,
+                overflow = if (headerClickable) TextOverflow.Ellipsis else TextOverflow.Clip,
+                modifier = if (headerClickable) Modifier.weight(1f) else Modifier,
             )
             if (badge != null) {
                 Spacer(Modifier.weight(1f))
@@ -148,6 +181,14 @@ internal fun BaopuActionContainer(
                         color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
+            }
+            if (headerTrailing != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = headerTrailing,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
             }
         }
         Column(Modifier.padding(BAO_ACTION_INSET_DP.dp), content = content)

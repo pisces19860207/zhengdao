@@ -1688,6 +1688,9 @@
     <string name="baopu_longform_edit">编辑</string>
     <string name="baopu_longform_done">完成</string>
     <string name="baopu_longform_open_as_card">文本卡</string>
+    <!-- 209：点卡头折叠/展开——读屏播报的动作名（箭头字形复用 common_*_arrow） -->
+    <string name="baopu_longform_header_fold">点卡头折叠这张卡</string>
+    <string name="baopu_longform_header_unfold">点卡头展开这张卡</string>
     <string name="baopu_longform_words">%s 字</string>
 <!-- 第一百九十批：题材与写法卡（建议卡／推荐卡／确认卡；确认前零落盘）-->
 <string name="baopu_topic_title_suggest">建议 · 挑题材</string>

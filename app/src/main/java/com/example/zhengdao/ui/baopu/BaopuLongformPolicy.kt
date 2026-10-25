@@ -70,6 +70,62 @@ internal object BaopuLongformPolicy {
         return if (clean.length > 24) clean.take(24) + "…" else clean.ifEmpty { "无标题" }
     }
 
+    // ── 209 折叠判据（文本卡可折叠） ───────────────────────────────────────
+
+    /**
+     * 默认折叠阈值（字数）：**超过**就默认折叠（派工单 §1「>800 字」）。
+     * 等于 800 不折——阈值是「超过」不是「达到」（边界有单测钉着）。
+     */
+    const val COLLAPSE_CHAR_THRESHOLD = 800
+
+    /** 默认折叠阈值（行数）：非空行**超过** 20 行就默认折叠（派工单 §1「>20 行」）。 */
+    const val COLLAPSE_LINE_THRESHOLD = 20
+
+    /** 首行摘要最大长度（字符；与标题同一档 24，窄屏（360dp）内放得下一行）。 */
+    const val SUMMARY_MAX = 24
+
+    /**
+     * 这条长文要不要**默认折叠**（点开前的初始态；用户手动改过就按他的记忆来）。
+     *
+     * 两条独立通道，命中任一即折（派工单 §1「>800 字或 >20 行」）：
+     * 1. 非空白字符 > [COLLAPSE_CHAR_THRESHOLD]；
+     * 2. 非空行 > [COLLAPSE_LINE_THRESHOLD]。
+     *
+     * 负例：短文本（含空串）一律 false——**不许强制折叠**（派工单负例 4）。
+     */
+    fun shouldDefaultCollapse(text: String): Boolean {
+        if (text.isBlank()) return false
+        if (wordCount(text) > COLLAPSE_CHAR_THRESHOLD) return true
+        return lineCount(text) > COLLAPSE_LINE_THRESHOLD
+    }
+
+    /** 非空行数（空白行是排版不是内容，不参与「>20 行」判定）。 */
+    fun lineCount(text: String): Int = text.lines().count { it.isNotBlank() }
+
+    /**
+     * 折叠态的**首行摘要**（≤1 行）：跳过标题取材行——否则折叠态「标题＝摘要」复读机；
+     * 剥 markdown 标记只留正文；超 [SUMMARY_MAX] 截断加省略号。
+     *
+     * 取材规则与 [cardTitle] 对齐（同一个 HEADING 正则）：
+     * - 首行是标题行 ⇒ 摘要取下一行（典型微头条 `# 标题` + 正文）；
+     * - 全文没有标题行（标题取了首行）⇒ 摘要避开首行取第二行；
+     * - 标题在中间某行 ⇒ 首行是前言不是标题，摘要就从首行开始。
+     */
+    fun firstLineSummary(text: String): String {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
+        if (lines.isEmpty()) return ""
+        val firstIsHeading = HEADING.containsMatchIn(lines.first())
+        val hasHeadingAnywhere = lines.any { HEADING.containsMatchIn(it) }
+        val startIdx = when {
+            firstIsHeading -> 1 // 标题在首行 ⇒ 摘要下一行
+            !hasHeadingAnywhere -> 1 // 无标题行 ⇒ 标题取了首行 ⇒ 摘要避开它
+            else -> 0 // 标题在中途 ⇒ 首行是前言，摘要取首行
+        }
+        val raw = lines.getOrNull(startIdx) ?: lines.first()
+        val clean = toPlainText(raw).trim().ifEmpty { raw }
+        return if (clean.length > SUMMARY_MAX) clean.take(SUMMARY_MAX) + "…" else clean
+    }
+
     // ── 文件名 ────────────────────────────────────────────────────────────
 
     /** 文件名 slug：中文/字母/数字保留，空格变 -，Windows 非法字符与换行剔除，压成一段。 */
