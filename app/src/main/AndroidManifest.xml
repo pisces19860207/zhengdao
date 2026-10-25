@@ -105,15 +105,33 @@
             <!-- 第八十三批（§B 88）：外部入口只开三扇小门。launchMode=singleTop 让 App
                  已在前台时走 onNewIntent（与 onCreate 共用同一个路由判据）。
                  · 收分享：其他 App「分享文本」→ 抱朴输入框（只预填，不发送）；
+                 · 收图片（第一百八十一批 #4）：SEND / SEND_MULTIPLE 的 image/* →
+                   抱朴附件条（多选可多图；只预填、不自动发送、不自动上传，
+                   与拍照/相册附件同一条链，见 BaopuComposer.saveAll）；
                  · zhengdao://ask?q=… → 抱朴；
                  · zhengdao://terminal?cmd=… → 终端（只预填到输入行，不带换行、不执行）。
-                 **不声明 http/https**：那是玄览的浏览器地盘；也不收 file:// 与任何图片/文件类型。 -->
+                 **不声明 http/https**：那是玄览的浏览器地盘；也不收 file:// 与图片之外的
+                 任意文件类型（text/plain 与 image/* 之外仍由路由层拒绝）。 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
 
                 <category android:name="android.intent.category.DEFAULT" />
 
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="image/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

@@ -141,6 +141,15 @@ class MainActivity : ComponentActivity() {
             intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString()
         }.getOrNull()
         val clipItem = intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        // 第一百八十一批 #4：分享进来的图片（EXTRA_STREAM，单个或多选）。只数个数进路由，
+        // Uri 本体留在 Activity 手里，路由层保持 JVM 纯函数（IncomingIntentRouter 的纪律）。
+        val streamUris = runCatching {
+            @Suppress("DEPRECATION") val many =
+                intent.getParcelableArrayListExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
+            @Suppress("DEPRECATION") val one =
+                intent.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
+            many ?: one?.let { arrayListOf(it) }
+        }.getOrNull().orEmpty()
         val request = IncomingIntent(
             action = intent.action,
             scheme = intent.data?.scheme,
@@ -153,6 +162,7 @@ class MainActivity : ComponentActivity() {
             type = intent.type,
             text = extraText,
             clipText = clipItem?.text?.toString() ?: clipItem?.htmlText,
+            imageCount = streamUris.size,
             token = incomingIntentToken(
                 System.identityHashCode(intent),
                 intent.action,
@@ -173,6 +183,13 @@ class MainActivity : ComponentActivity() {
                     "外部分享：预填抱朴 ${route.text.length} 字（截断=${route.truncated}）"
                 )
                 com.example.zhengdao.ui.baopu.BaopuIntents.requestPrompt(route.text, route.truncated)
+            }
+            is IncomingRoute.ShareImagesToBaopu -> {
+                // 只记张数，不记 Uri（路径可能带别的 App 的目录结构）。
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "外部分享：收图 ${route.count} 张进抱朴附件条（只预填，不自动发送）"
+                )
+                com.example.zhengdao.ui.baopu.BaopuIntents.requestImages(streamUris)
             }
             is IncomingRoute.AskBaopu -> {
                 com.example.zhengdao.rootfs.RunLog.log(

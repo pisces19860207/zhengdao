@@ -1328,8 +1328,9 @@ internal class RunEngine(
         )
         activePack?.let { log("人设包：本轮套用「${it.name}」") }
         val facts = HardFacts(workspacePath = workspacePath, model = provider.model)
+        // 第一百八十一批 #2：召回预算按本通道模型窗口取（recallBudgetOf 判据；大窗口仍封顶 2k）。
         val recalled = memoryStore
-            ?.let { MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.RECALL_TOKEN_BUDGET) }
+            ?.let { MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.recallBudgetFor(windowTokens)) }
             ?.picked ?: emptyList()
         recalledCache = recalled
         // tools 数组**不在这里算**——它在下面步循环里、每次请求前算一次（第五十九批 §1.3）。

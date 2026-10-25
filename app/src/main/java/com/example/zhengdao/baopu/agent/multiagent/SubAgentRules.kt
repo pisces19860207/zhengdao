@@ -251,11 +251,20 @@ internal object SubAgentRules {
                 },
             )
             b.append("｜${r.durationMs / 1000.0}s｜${r.steps} 步｜试了 ${r.attempts} 次")
+            // 第一百八十一批 #5：子任务自己的 token 账（读到才写；没读到不编 0）。
+            if (r.tokensIn != null || r.tokensOut != null) {
+                b.append("｜token 入${r.tokensIn ?: 0}·出${r.tokensOut ?: 0}")
+            }
             if (r.failureReason.isNotBlank()) b.append("｜原因：${r.failureReason}")
             if (goal.isNotBlank()) b.append("\n  目标：$goal")
             if (r.status == SubTaskStatus.DONE) {
                 b.append("\n  结果：${truncate(r.text.ifBlank { "（子 Agent 没给出文字结论）" }, RESULT_TEXT_CAP)}")
             }
+        }
+        // 一笔分解的 token 合计（判据在 WiringKnife2.subAgentUsageOf；一条读数都没有 ⇒ 整段不出）。
+        com.example.zhengdao.baopu.subAgentUsageOf(results)?.let { u ->
+            b.append("\n\n子任务 token 合计：入 ${u.tokensIn} · 出 ${u.tokensOut}（${u.readings} 条有读数；")
+            b.append("父会话各步用量另记，互不重复）。")
         }
         b.append("\n\n以上是各子任务的原始结果。失败的条目你可以选择重派或放弃；")
         b.append("子结果不会自动写进任何文件，需要落成产物时由你决定写什么、写在哪。")

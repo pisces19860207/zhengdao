@@ -849,6 +849,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     engineState = state,
                     engineStep = controller.engineStep.value,
                     awaitConfirmTool = controller.confirmCard?.tool,
+                    // 第一百八十一批 #6：失败行「修一下」——预填修复请求，发送仍由用户点。
+                    onRepairFailed = { tool, err -> controller.requestToolRepair(tool, err) },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // 计划区（第一百零六批，v1.5 §3.11）：消息区右上悬浮胶囊＋浮层面板。

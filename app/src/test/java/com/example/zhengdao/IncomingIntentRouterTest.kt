@@ -57,8 +57,9 @@ class IncomingIntentRouterTest {
         val route = routeIncomingIntent(
             IncomingIntent(
                 action = "android.intent.action.SEND",
-                type = "image/png",
-                text = "假装是图片",
+                // 第一百八十一批 #4 起 image/* 会路由到收图；「非文本即拒」的样本换成 pdf
+                type = "application/pdf",
+                text = "假装是文档",
             )
         )
         assertEquals(IncomingRoute.Rejected(RejectReason.UNSUPPORTED_TYPE), route)
@@ -161,7 +162,7 @@ class IncomingIntentRouterTest {
                 scheme = "zhengdao",
                 host = "ask",
                 rawQuery = "q=hi",
-                type = "image/png",
+                type = "application/pdf",
                 text = "看不出来是文件还是文本",
             )
         )

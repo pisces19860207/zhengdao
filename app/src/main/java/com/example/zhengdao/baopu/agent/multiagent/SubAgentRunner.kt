@@ -50,34 +50,45 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
     fun run(task: SubTask): SubTaskResult {
         val startedAt = env.now()
         var steps = 0
+        // 第一百八十一批 #5：各轮 usage 合计（null=从没读到；有一轮读到就开账）
+        var tokensIn: Long? = null
+        var tokensOut: Long? = null
         val messages = mutableListOf<LlmMessage>()
         messages += SubAgentRules.subTaskMessages(task)
         // 同一工具同一参数调了几次（≥3 即提前收口；见 Calls 分支注释）。
         val seenCalls = mutableMapOf<String, Int>()
+        fun tapUsage(u: com.example.zhengdao.baopu.LlmUsage?) {
+            if (u == null) return
+            tokensIn = (tokensIn ?: 0L) + (u.promptTokens ?: 0)
+            tokensOut = (tokensOut ?: 0L) + (u.completionTokens ?: 0)
+        }
         try {
             while (steps < task.maxSteps) {
                 if (env.isCancelled()) {
-                    return finish(task, SubTaskStatus.CANCELLED, "", "父任务已停止", steps, startedAt)
+                    return finish(task, SubTaskStatus.CANCELLED, "", "父任务已停止", steps, startedAt, tokensIn, tokensOut)
                 }
                 val elapsed = env.now() - startedAt
                 if (elapsed >= task.timeoutMs) {
                     return finish(
                         task, SubTaskStatus.TIMEOUT, "",
                         "子任务超时（限 ${task.timeoutMs / 1000}s，已跑 ${elapsed / 1000}s）",
-                        steps, startedAt,
+                        steps, startedAt, tokensIn, tokensOut,
                     )
                 }
                 steps++
                 when (val outcome = env.turn.round(messages, env.toolsJson)) {
                     is TurnOutcome.Text -> {
-                        return finish(task, SubTaskStatus.DONE, outcome.text, "", steps, startedAt)
+                        tapUsage(outcome.usage)
+                        return finish(task, SubTaskStatus.DONE, outcome.text, "", steps, startedAt, tokensIn, tokensOut)
                     }
 
                     is TurnOutcome.Failed -> {
-                        return finish(task, SubTaskStatus.FAILED, "", outcome.reason, steps, startedAt)
+                        tapUsage(outcome.usage)
+                        return finish(task, SubTaskStatus.FAILED, "", outcome.reason, steps, startedAt, tokensIn, tokensOut)
                     }
 
                     is TurnOutcome.Calls -> {
+                        tapUsage(outcome.usage)
                         // 2026-10-22 真机 UI-D10：子 Agent 三连
                         // `HTTP 400 The reasoning_content in the thinking mode must be passed back to the API`。
                         // 根因：旧实现把工具结果当 **assistant** 消息回灌，而 thinking 模式的
@@ -97,7 +108,7 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
                             if (env.isCancelled()) {
                                 return finish(
                                     task, SubTaskStatus.CANCELLED, "",
-                                    "父任务已停止（工具调用前）", steps, startedAt,
+                                    "父任务已停止（工具调用前）", steps, startedAt, tokensIn, tokensOut,
                                 )
                             }
                             val key = call.name + "|" + call.arguments.toString()
@@ -108,7 +119,7 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
                                     task, SubTaskStatus.FAILED, "",
                                     "同一工具同一参数重复调用 $times 次（结果不会变），提前收口；" +
                                         "换个路径/换个工具，或把子任务拆小点",
-                                    steps, startedAt,
+                                    steps, startedAt, tokensIn, tokensOut,
                                 )
                             }
                             val result = env.toolExec(call)
@@ -124,14 +135,14 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
             return finish(
                 task, SubTaskStatus.FAILED, "",
                 "步数用尽（${task.maxSteps} 步内没给出结论；把子任务拆小点再试）",
-                steps, startedAt,
+                steps, startedAt, tokensIn, tokensOut,
             )
         } catch (e: Exception) {
             // 小循环自己收异常：一条子任务崩了不该把整笔分解带崩（失败可报告，87 口径）
             env.log("子 Agent ${task.id} 崩了：${e.javaClass.simpleName}: ${e.message}")
             return finish(
                 task, SubTaskStatus.FAILED, "",
-                "子任务内部错误（${e.javaClass.simpleName}）", steps, startedAt,
+                "子任务内部错误（${e.javaClass.simpleName}）", steps, startedAt, tokensIn, tokensOut,
             )
         }
     }
@@ -150,6 +161,8 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
         reason: String,
         steps: Int,
         startedAt: Long,
+        tokensIn: Long? = null,
+        tokensOut: Long? = null,
     ): SubTaskResult = SubTaskResult(
         id = task.id,
         status = status,
@@ -159,5 +172,7 @@ internal class SubAgentRunner(private val env: SubAgentEnv) {
         attempts = 1,
         startedAt = startedAt,
         endedAt = env.now(),
+        tokensIn = tokensIn,
+        tokensOut = tokensOut,
     )
 }

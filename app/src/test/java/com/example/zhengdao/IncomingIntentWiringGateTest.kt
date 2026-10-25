@@ -256,13 +256,24 @@ class IncomingIntentWiringGateTest {
             "MainActivity 必须是 singleTop（热启动走 onNewIntent，与 onCreate 共用路由）",
             mainBlock.contains("android:launchMode=\"singleTop\""),
         )
+        // 第一百八十一批 #4：分享收图开两扇新门（SEND image/* ＋ SEND_MULTIPLE image/*）
         assertEquals(
-            "MainActivity 应恰好四个 intent-filter（MAIN + SEND + ask + terminal）",
-            4,
+            "MainActivity 应恰好六个 intent-filter（MAIN + SEND文本 + SEND图 + SEND_MULTIPLE图 + ask + terminal）",
+            6,
             Regex("<intent-filter>").findAll(mainBlock).count(),
         )
-        assertEquals("分享入口恰好一个 ACTION_SEND", 1, Regex(Regex.escape("android.intent.action.SEND")).findAll(mainBlock).count())
-        assertEquals("只收 text/plain", 1, Regex(Regex.escape("android:mimeType=\"text/plain\"")).findAll(mainBlock).count())
+        assertEquals(
+            "ACTION_SEND（不含 MULTIPLE）恰好两个：文本 + 单图",
+            2,
+            Regex(Regex.escape("android.intent.action.SEND\"")).findAll(mainBlock).count(),
+        )
+        assertEquals(
+            "ACTION_SEND_MULTIPLE 恰好一个（多图）",
+            1,
+            Regex(Regex.escape("android.intent.action.SEND_MULTIPLE")).findAll(mainBlock).count(),
+        )
+        assertEquals("只收一个 text/plain 过滤器", 1, Regex(Regex.escape("android:mimeType=\"text/plain\"")).findAll(mainBlock).count())
+        assertEquals("图片过滤器恰好两个 image/*", 2, Regex(Regex.escape("android:mimeType=\"image/*\"")).findAll(mainBlock).count())
         assertEquals("深链恰好两个 ACTION_VIEW", 2, Regex(Regex.escape("android.intent.action.VIEW")).findAll(mainBlock).count())
         assertEquals("scheme 只认 zhengdao", 2, Regex(Regex.escape("android:scheme=\"zhengdao\"")).findAll(mainBlock).count())
         assertEquals("host=ask 恰好一处", 1, Regex(Regex.escape("android:host=\"ask\"")).findAll(mainBlock).count())

@@ -316,13 +316,20 @@ internal class EvolutionDecisionPort(
     /**
      * 读 86 的 PENDING 候选并逐条决策。只调 `listPending()`；
      * 不改状态、不追加、不删除、不移动候选文件。
+     *
+     * [include]（第一百八十一批 #1 接线补的口）：默认全收。调用方可以拦掉
+     * 不该再判的候选（如 57 批拒绝留痕挡住的同 hash 候选）——**只影响跳过**，
+     * 被跳过的既不决策也不落审计，与调用方先前手写循环的语义一致。
      */
     fun decidePending(
         store: ProposalCandidateStore,
         assessment: EvolutionAssessmentSource,
         operatorId: String,
+        include: (ProposalCandidate) -> Boolean = { true },
     ): List<EvolutionDecision> =
-        store.listPending().map { candidate ->
-            decide(toDecisionInput(candidate, assessment.assess(candidate)), operatorId)
-        }
+        store.listPending()
+            .filter(include)
+            .map { candidate ->
+                decide(toDecisionInput(candidate, assessment.assess(candidate)), operatorId)
+            }
 }

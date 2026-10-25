@@ -36,6 +36,8 @@ internal data class IncomingIntent(
     val text: String? = null,
     /** `ClipData` 第一项的**纯文本**（只取 text/htmlText，绝不 coerce 成 URI 去读文件）。 */
     val clipText: String? = null,
+    /** `EXTRA_STREAM` 里的 Uri 个数（第一百八十一批 #4；只数个数，Uri 本体由 Activity 层持有）。 */
+    val imageCount: Int = 0,
     /** 单次消费门的键；由 Activity 侧生成（见 [incomingIntentToken]）。 */
     val token: String = "",
 )
@@ -50,6 +52,10 @@ internal sealed interface IncomingRoute {
 
     /** `zhengdao://terminal?cmd=…`：只把命令预填到终端输入行（**不带换行、不执行**）。 */
     data class PrefillTerminal(val command: String) : IncomingRoute
+
+    /** ACTION_SEND 与 SEND_MULTIPLE 的图片 MIME（第一百八十一批 #4）：图片预填进抱朴附件条
+     * （只预填、不自动发送；发送前的图也是本地附件，不自动上传）。 */
+    data class ShareImagesToBaopu(val count: Int) : IncomingRoute
 
     /** 外部输入被拒：原因进日志，界面不弹任何东西。 */
     data class Rejected(val reason: RejectReason) : IncomingRoute
@@ -82,6 +88,7 @@ internal const val MAX_TERMINAL_COMMAND_CHARS = 500
 private const val MAX_RAW_QUERY_CHARS = 32_000
 
 private const val ACTION_SEND = "android.intent.action.SEND"
+private const val ACTION_SEND_MULTIPLE = "android.intent.action.SEND_MULTIPLE"
 private const val ACTION_VIEW = "android.intent.action.VIEW"
 private const val DEEP_LINK_SCHEME = "zhengdao"
 
@@ -98,13 +105,21 @@ private const val DEEP_LINK_SCHEME = "zhengdao"
  */
 internal fun routeIncomingIntent(request: IncomingIntent): IncomingRoute = when (request.action) {
     ACTION_SEND -> routeSend(request)
+    ACTION_SEND_MULTIPLE -> routeSendMultipleImages(request)
     ACTION_VIEW -> routeView(request)
     else -> IncomingRoute.Ignore
 }
 
 private fun routeSend(request: IncomingIntent): IncomingRoute {
-    // MIME 允许参数（`text/plain; charset=utf-8`），其余类型（图片/任意文件）本批不做。
+    // MIME 允许参数（`text/plain; charset=utf-8`）。第一百八十一批 #4 起图片也收（进附件条）。
     val mime = request.type?.substringBefore(';')?.trim()?.lowercase()
+    if (mime != null && mime.startsWith("image/")) {
+        return if (request.imageCount > 0) {
+            IncomingRoute.ShareImagesToBaopu(request.imageCount)
+        } else {
+            IncomingRoute.Rejected(RejectReason.EMPTY_TEXT)
+        }
+    }
     if (mime != "text/plain") return IncomingRoute.Rejected(RejectReason.UNSUPPORTED_TYPE)
 
     // EXTRA_TEXT 优先；没有时只接受 ClipData 里的**纯文本**。
@@ -117,6 +132,19 @@ private fun routeSend(request: IncomingIntent): IncomingRoute {
 
     val capped = takeSafely(normalized, MAX_BAOPU_CHARS)
     return IncomingRoute.ShareToBaopu(capped.text, capped.truncated)
+}
+
+/** SEND_MULTIPLE 只开图片 MIME 一扇门（#4 可多图）；文本多选维持既有的不接收。 */
+private fun routeSendMultipleImages(request: IncomingIntent): IncomingRoute {
+    val mime = request.type?.substringBefore(';')?.trim()?.lowercase()
+    if (mime == null || !mime.startsWith("image/")) {
+        return IncomingRoute.Rejected(RejectReason.UNSUPPORTED_TYPE)
+    }
+    return if (request.imageCount > 0) {
+        IncomingRoute.ShareImagesToBaopu(request.imageCount)
+    } else {
+        IncomingRoute.Rejected(RejectReason.EMPTY_TEXT)
+    }
 }
 
 private fun routeView(request: IncomingIntent): IncomingRoute {

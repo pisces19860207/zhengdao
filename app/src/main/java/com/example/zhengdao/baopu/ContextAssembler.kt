@@ -117,6 +117,13 @@ internal object ContextAssembler {
     const val RECALL_TOKEN_BUDGET = MemoryRules.RECALL_TOKEN_BUDGET
 
     /**
+     * 记忆召回预算按模型窗口取（第一百八十一批 #2 接线；判据在
+     * [recallBudgetOf]）：大窗口仍封顶 [RECALL_TOKEN_BUDGET]（旧口径不变），
+     * 小窗口按窗口缩、下限保底——不再对所有模型一律灌常量。
+     */
+    fun recallBudgetFor(windowTokens: Int): Int = recallBudgetOf(windowTokens)
+
+    /**
      * 窗口默认值（刀 3 B 段 · 2026-10-17 改）：优先用元数据里的 ctx，**拿不到才回退 1M**
      * （原 128k 是「老模型时代」的假设——deepseek-flash 实测 context_window=1048576，
      * 见 Provider.DEEPSEEK 的取证注记；用户口径「现在的模型大都 1M 了」。
@@ -306,10 +313,13 @@ internal object ContextAssembler {
         extraNotes: List<String> = emptyList(),
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
     ): AssembledPrompt {
-        // ── 记忆段：sticky 恒前，new 追加；预算 = 2k − sticky 已占 ──
+        // ── 记忆段：sticky 恒前，new 追加；预算 = 按窗口取的召回预算 − sticky 已占 ──
+        // （第一百八十一批 #2：预算从常量换成 recallBudgetFor(windowTokens)——
+        //   调用方不传窗口时回退 1M ⇒ 预算仍封顶 2k，与旧口径逐字相同。）
+        val recallBudget = recallBudgetFor(windowTokens)
         val stickyRendered = stickyMemories.map { MemoryRules.renderForContext(it) }
         val stickyCost = stickyRendered.sumOf { tokensOf(it) }
-        val remaining = (RECALL_TOKEN_BUDGET - stickyCost).coerceAtLeast(0)
+        val remaining = (recallBudget - stickyCost).coerceAtLeast(0)
         val pickedNew: List<MemoryEntry>
         val recallTruncated: Boolean
         val recallNote: String
@@ -317,7 +327,7 @@ internal object ContextAssembler {
             pickedNew = emptyList()
             recallTruncated = newMemories.isNotEmpty()
             recallNote = if (newMemories.isNotEmpty()) {
-                "记忆召回预算已被本会话已注入条目占满（${RECALL_TOKEN_BUDGET} tokens），本轮新召回 ${newMemories.size} 条全部未注入"
+                "记忆召回预算已被本会话已注入条目占满（${recallBudget} tokens），本轮新召回 ${newMemories.size} 条全部未注入"
             } else {
                 ""
             }

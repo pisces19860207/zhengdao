@@ -12,6 +12,7 @@ package com.example.zhengdao.baopu.agent.multiagent
 import com.example.zhengdao.baopu.LlmClient
 import com.example.zhengdao.baopu.LlmEvent
 import com.example.zhengdao.baopu.LlmMessage
+import com.example.zhengdao.baopu.LlmUsage
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.RawToolCall
 import com.example.zhengdao.baopu.agent.RunRules
@@ -29,14 +30,24 @@ internal fun interface SubAgentTurn {
 
 /** 一轮的结果（三分支，与父引擎的 RoundOutcome 同构但更小：没有坏参数重试态）。 */
 internal sealed interface TurnOutcome {
+    /**
+     * 本轮的用量读数（第一百八十一批 #5：从 `LlmEvent.Finished` 透传，**只记账不落库**——
+     * 落库/汇总归协调结果那条链）。null = 服务端没给（不写 0 假装知道）。
+     */
+    val usage: LlmUsage?
+
     /** 模型说完了：正文即子任务结论。 */
-    data class Text(val text: String) : TurnOutcome
+    data class Text(val text: String, override val usage: LlmUsage? = null) : TurnOutcome
 
     /** 模型要调工具：[preamble] 是本轮顺带说的正文（可为空）。 */
-    data class Calls(val calls: List<ToolCall>, val preamble: String) : TurnOutcome
+    data class Calls(
+        val calls: List<ToolCall>,
+        val preamble: String,
+        override val usage: LlmUsage? = null,
+    ) : TurnOutcome
 
     /** 这一轮没成（网络/通道/解码崩）：带人话理由。 */
-    data class Failed(val reason: String) : TurnOutcome
+    data class Failed(val reason: String, override val usage: LlmUsage? = null) : TurnOutcome
 }
 
 /**
@@ -92,16 +103,21 @@ internal class LlmSubAgentTurn(
         val latch = CountDownLatch(1)
         var failure: String? = null
         var rawCalls: List<RawToolCall> = emptyList()
+        var finishedUsage: LlmUsage? = null
         val client = LlmClient(provider)
         val call = client.streamAsync(messages, tools) { ev ->
             when (ev) {
                 is LlmEvent.Delta -> textBuf.append(ev.text)
-                is LlmEvent.Finished -> rawCalls = ev.toolCalls
+                is LlmEvent.Finished -> {
+                    rawCalls = ev.toolCalls
+                    // 第一百八十一批 #5：usage 透传给协调结果（沿父引擎 streamRound 同款累积）
+                    finishedUsage = ev.usage
+                }
+
                 is LlmEvent.Failed -> {
                     failure = ev.error.message ?: ev.error.javaClass.simpleName
                 }
             }
-            // usage 只透传不落库（子任务用量并进父会话读数归壳层；v1 不接）
             if (ev is LlmEvent.Finished || ev is LlmEvent.Failed) latch.countDown()
         }
         val arrived = runCatching {
@@ -112,12 +128,18 @@ internal class LlmSubAgentTurn(
             log("子 Agent：等模型流超过 ${RunRules.STREAM_WAIT_TIMEOUT_MS / 1000}s，本轮作废")
             return TurnOutcome.Failed("等模型回复超时（${RunRules.STREAM_WAIT_TIMEOUT_MS / 1000}s）")
         }
-        return SubAgentTurnOutcomes.settle(
+        val settled = SubAgentTurnOutcomes.settle(
             text = textBuf.toString(),
             rawCalls = rawCalls,
             failure = failure,
         ) { raws ->
             ToolCallCodec.decode(raws, registry)
+        }
+        // 用量只随结果透传（哪个分支都带上；没读到就是 null，不编 0）
+        return when (settled) {
+            is TurnOutcome.Text -> settled.copy(usage = finishedUsage)
+            is TurnOutcome.Calls -> settled.copy(usage = finishedUsage)
+            is TurnOutcome.Failed -> settled.copy(usage = finishedUsage)
         }
     }
 }

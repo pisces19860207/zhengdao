@@ -821,6 +821,8 @@ internal object BaopuRuntime {
                     now = { System.currentTimeMillis() },
                     log = { RunLog.log(it) },
                 ).runAll(d)
+                // 第一百八十一批 #5：子任务 token 记账一行进 run_log（判据 WiringKnife2.subAgentUsageLine）。
+                subAgentUsageLine(d.parentId, subAgentUsageOf(results))?.let { RunLog.log(it) }
                 ToolOutcome.Ok(
                     SubAgentRules.aggregate(results) { id -> d.subtasks.firstOrNull { it.id == id }?.goal },
                 )
