@@ -1797,6 +1797,17 @@
 <string name="teach_confirm_discard">Discard</string>
 <string name="teach_empty">Nothing usable recorded this time, try again</string>
 <string name="teach_started_toast">Teaching started: click and type normally — recorded only, nothing is touched</string>
+<string name="teach_params_action">Parameterize…</string>
+<string name="teach_params_title">Which values can become parameters?</string>
+<string name="teach_params_intro">Checked values are pulled out of the steps and replaced by placeholders, so a single sentence can change them next time. Page text is used for locating, so it can\'t be checked.</string>
+<string name="teach_params_name_label">Parameter name</string>
+<string name="teach_params_default_label">Default (never auto-applied)</string>
+<string name="teach_params_steps_title">Steps (move up or down)</string>
+<string name="teach_params_apply">Parameterize</string>
+<string name="teach_params_cancel">Cancel</string>
+<string name="teach_params_move_up">Up</string>
+<string name="teach_params_move_down">Down</string>
+<string name="teach_params_applied">Parameterized — those spots now hold placeholders that get filled at replay</string>
     <!-- ══ Scheduled tasks (batch 167, 2026-10-24; only this block added) ══ -->
     <string name="sched_page_title">Scheduled tasks</string>
     <string name="sched_card_tasks">Tasks</string>

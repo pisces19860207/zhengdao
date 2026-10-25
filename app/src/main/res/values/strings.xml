@@ -1730,6 +1730,18 @@
 <string name="teach_confirm_discard">放弃</string>
 <string name="teach_empty">这次示教没有录到可用的操作，再试一次</string>
 <string name="teach_started_toast">开始示教：正常点、正常输，结束前只记录不干预</string>
+<!-- 第二百批：技能参数化（勾值 → 占位符 → 换参数复用） -->
+<string name="teach_params_action">参数化…</string>
+<string name="teach_params_title">哪些字可以变成参数？</string>
+<string name="teach_params_intro">勾上的值会从步骤里拔掉、换成占位符；下次说一句就能换。页面上的固定文本是定位用的，不能勾。</string>
+<string name="teach_params_name_label">参数名</string>
+<string name="teach_params_default_label">默认值（不会自动用）</string>
+<string name="teach_params_steps_title">步骤（上下调顺序）</string>
+<string name="teach_params_apply">参数化</string>
+<string name="teach_params_cancel">取消</string>
+<string name="teach_params_move_up">上移</string>
+<string name="teach_params_move_down">下移</string>
+<string name="teach_params_applied">已参数化：那几处换成了占位符，回放时填值</string>
     <!-- ══ 定时任务（第一百六十七批，2026-10-24；只加这一段，别处文案一字未改）══ -->
     <string name="sched_page_title">定时任务</string>
     <string name="sched_card_tasks">任务</string>

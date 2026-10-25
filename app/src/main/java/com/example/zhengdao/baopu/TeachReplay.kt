@@ -367,6 +367,15 @@ return JSON.stringify({u:location.href,r:rows,e:q.slice(0,20)})})()
                 formLabel = el.optString("formLabel").takeIf { it.isNotEmpty() },
                 classes = jsonArr(el.optJSONArray("classes")),
                 xpath = el.optString("xpath").takeIf { it.isNotEmpty() },
+                // 第二百批：下拉项表（参数化的词表；非下拉恒空）
+                options = run {
+                    val oa = el.optJSONArray("options") ?: JSONArray()
+                    (0 until oa.length()).mapNotNull { i ->
+                        val o = oa.optJSONObject(i) ?: return@mapNotNull null
+                        val v = o.optString("v")
+                        if (v.isBlank()) null else TeachOption(v, o.optString("t").ifBlank { v })
+                    }
+                },
             )
             raw += TeachRawEvent(
                 action = action,
@@ -426,13 +435,16 @@ if(!window.__zlTeach){
    while(sib){if(sib.tagName==n.tagName)idx++;sib=sib.previousElementSibling}
    parts.unshift(n.tagName.toLowerCase()+'['+idx+']');n=n.parentElement}
   xp='/html/body'+(parts.length?'/'+parts.join('/'):'');
-  var c=el.closest('form,td,th,label,fieldset');var fl='';
-  if(c){var ct=(c.tagName=='LABEL'||c.tagName=='TH')?txt(c):(c.getAttribute('aria-label')||'');fl=ct.slice(0,40)}
-  return {tag:el.tagName,role:iRole(el),name:accName(el),text:txt(el),
-   aria:el.getAttribute('aria-label')||'',testid:el.getAttribute('data-testid')||'',
-   id:el.id||'',inputName:el.getAttribute('name')||'',placeholder:el.getAttribute('placeholder')||'',
-   inputType:(el.tagName=='INPUT'?(el.getAttribute('type')||'text'):''),
-   formLabel:fl,classes:cls.slice(0,8),xpath:xp}}
+ var c=el.closest('form,td,th,label,fieldset');var fl='';
+ if(c){var ct=(c.tagName=='LABEL'||c.tagName=='TH')?txt(c):(c.getAttribute('aria-label')||'');fl=ct.slice(0,40)}
+ var ops=[];
+ if(el.tagName=='SELECT'&&el.options){for(var oi=0;oi<el.options.length&&ops.length<40;oi++){
+  ops.push({v:el.options[oi].value||'',t:((el.options[oi].text||'').trim()).slice(0,30)})}}
+ return {tag:el.tagName,role:iRole(el),name:accName(el),text:txt(el),
+  aria:el.getAttribute('aria-label')||'',testid:el.getAttribute('data-testid')||'',
+  id:el.id||'',inputName:el.getAttribute('name')||'',placeholder:el.getAttribute('placeholder')||'',
+  inputType:(el.tagName=='INPUT'?(el.getAttribute('type')||'text'):''),
+  formLabel:fl,classes:cls.slice(0,8),xpath:xp,options:ops}}
  function push(a,el,v){q.push({a:a,url:location.href,el:snap(el),value:v||''})}
  document.addEventListener('click',function(e){
   var el=e.target.closest?e.target.closest('button,a,[role=button],input,select,summary,label,[onclick]'):null;
@@ -549,6 +561,32 @@ internal class TeachSessionUiModel(
         }
     }
 
+    /**
+     * 第二百批：**带参数**回放——一句话进，回答一句出（取不到就反问，一个页面动作都不做）。
+     * 判据全在 [TeachParams.plan]（纯函数，JVM 直测），这里只负责挪到后台线程。
+     */
+    fun replayWith(name: String, sentence: String, workspace: File, onDone: (TeachParamRun) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val run = replaySkillWithParams(
+                context = context,
+                projectRoot = projectRoot(),
+                workspace = workspace,
+                name = name,
+                sentence = sentence,
+                tabId = tabId(),
+            )
+            withContext(Dispatchers.Main) { onDone(run) }
+        }
+    }
+
+    /** 第二百批：这条技能的参数表（编辑器/回放前给界面看；没有 ⇒ 空表）。 */
+    fun paramsOf(name: String, onDone: (List<TeachParam>) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val p = TeachReplayStore.load(projectRoot(), name)?.params.orEmpty()
+            withContext(Dispatchers.Main) { onDone(p) }
+        }
+    }
+
     private fun suggestName(url: String): String {
         val host = TeachSafety.hostOf(url) ?: "网页"
         return "$host-流程"
@@ -604,4 +642,121 @@ object TeachReplay {
         ask = null,
         evidenceDir = null,
     )
+}
+
+// ── 第二百批：带参数的回放 ────────────────────────────────────────────────────
+//
+// 参数层只做三件事：**算值**（TeachParams.plan）、**填值**（applyValues）、**脱敏**（redact）。
+// 定位/门控/安全/自愈/取证一条都不改——那些仍是 196 的 [TeachExecutor]，本层只是它的调用方。
+
+/** 一次参数化回放的结局：report 为空时 ask／stopReason 必有一个非空。 */
+data class TeachParamRun(
+    val report: TeachRunReport?,
+    val ask: String?,
+    val display: List<TeachParamValue>,
+    val stopReason: String?,
+) {
+    val ok: Boolean get() = report?.ok == true
+
+    /** 回答里那句「昨天换成哪天」（没有换算 ⇒ 空串）。 */
+    fun noteLine(): String = display.filter { it.note != null }.joinToString("；") { it.answerLine() }
+
+    /** 全量人话（界面上直接显示）。 */
+    fun answerLine(): String = when {
+        ask != null -> ask
+        stopReason != null -> stopReason
+        report == null -> "没跑起来"
+        else -> buildString {
+            append(if (report.ok) "跑完了" else "停下了")
+            append("：${report.stepsDone} 步")
+            report.stopReason?.let { append("，原因：$it") }
+            noteLine().takeIf { it.isNotEmpty() }?.let { append("（").append(it).append("）") }
+        }
+    }
+}
+
+/**
+ * 取证口装饰器：把每一步的 DOM 摘要与收尾的 run.json 里出现的**参数值**换回占位符。
+ *
+ * 为什么不改 196 的 `FileTeachEvidenceSink`：那是它的形状，本批红线「不许碰 TeachExecutor」。
+ * 装饰器只做「过一道脱敏再交给它」，行为与原来逐字节一致（除了值变成 `${name}`）。
+ */
+internal class RedactingEvidenceSink(
+    private val delegate: TeachEvidenceSink,
+    private val values: Map<String, String>,
+) : TeachEvidenceSink {
+    private var dir: String? = null
+
+    override fun begin(skillName: String, stamp: String): String? {
+        val d = delegate.begin(skillName, stamp)
+        dir = d
+        return d
+    }
+
+    override fun step(index: Int, action: TeachAction, summary: String, screenshotRef: String?) {
+        delegate.step(index, action, TeachParams.redact(summary, values), screenshotRef)
+    }
+
+    override fun finish(report: TeachRunReport) {
+        delegate.finish(report)
+        // 196 的 sink 把 `report.toString()` 原样落 run.json：这里把它覆写成脱敏版
+        val f = dir?.let { File(it, "run.json") } ?: return
+        runCatching {
+            if (f.isFile) f.writeText(TeachParams.redact(f.readText(Charsets.UTF_8), values), Charsets.UTF_8)
+        }
+    }
+}
+
+/**
+ * 带参数回放（生产壳）。全流程：
+ * 读技能 → `plan`（取参数/反问/结构闸）→ 需要就先导航（先过授权域）→ 196 执行器 → 脱敏取证与审计。
+ *
+ * **取不到参数一个页面动作都不做**：plan 阶段就返回 Ask，连导航都不发生。
+ */
+fun replaySkillWithParams(
+    context: Context,
+    projectRoot: File,
+    workspace: File,
+    name: String,
+    sentence: String,
+    tabId: Int?,
+    nowMs: Long = System.currentTimeMillis(),
+): TeachParamRun {
+    val skill = TeachReplayStore.load(projectRoot, name)
+        ?: return TeachParamRun(null, null, emptyList(), "没有这个回放技能：$name（先在玄览里教一遍）")
+
+    when (val pl = TeachParams.plan(skill, sentence, nowMs)) {
+        is TeachParams.TeachRunPlan.Ask -> return TeachParamRun(null, pl.line, emptyList(), null)
+        is TeachParams.TeachRunPlan.Stop -> return TeachParamRun(null, null, emptyList(), pl.reason)
+        is TeachParams.TeachRunPlan.Ready -> {
+            pl.navigateTo?.let { url ->
+                val r = runCatching { BrowserCommands.navigate(url, tabId?.toString()) }
+                val okNav = r.getOrNull()?.contains("\"ok\":true") == true
+                if (!okNav) {
+                    // 导航失败就别跑了（跑的是「别的页面」，结果不能当技能结果）
+                    return TeachParamRun(
+                        null, null, pl.display,
+                        "换参数后打不开起点页（${TeachSafety.hostOf(url) ?: "?"}），没开跑",
+                    )
+                }
+            }
+            val evidenceRoot = File(MemoryLayout.productsDir(workspace), "玄览技能")
+            val raw = FileTeachEvidenceSink(evidenceRoot) { _ ->
+                when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
+                    is com.example.zhengdao.bridge.BrowserCommands.ShotCapture.Ok -> c.ref.hostPath
+                    else -> null
+                }
+            }
+            val executor = TeachExecutor(
+                dom = BrowserTeachDom(tabId),
+                evidence = RedactingEvidenceSink(raw, pl.values),
+                audit = { report, now ->
+                    if (!TeachReplayStore.appendAudit(projectRoot, TeachParams.redact(report.auditLine(now), pl.values))) {
+                        RunLog.log("回放审计落盘失败：skill=${report.skillName}")
+                    }
+                },
+            )
+            return TeachParamRun(executor.run(pl.skill), null, pl.display, null)
+        }
+    }
 }

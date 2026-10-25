@@ -59,6 +59,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.TeachLearner
 import com.example.zhengdao.baopu.TeachSessionUiModel
 import com.example.zhengdao.baopu.TeachSkillDraft
 import com.example.zhengdao.baopu.kernel.BaopuKernel
@@ -195,6 +196,8 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     var teachRecording by remember { mutableStateOf(false) }
     var teachStepCount by remember { mutableIntStateOf(0) }
     var teachDraft by remember { mutableStateOf<TeachSkillDraft?>(null) }
+    // 第二百批：参数化面板（勾哪些值变参数）。勾完回到确认卡，再存。
+    var teachParamsDraft by remember { mutableStateOf<TeachSkillDraft?>(null) }
     LaunchedEffect(teachRecording) {
         while (teachRecording) {
             teachStepCount = teachModel.recordedSoFar()
@@ -521,6 +524,21 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 teachDraft = null
                 teachModel.discard()
             },
+            // 第二百批：先把「北京」这种值勾出来变参数，再回来存
+            onParameterize = { teachParamsDraft = d },
+        )
+    }
+
+    // ── 参数化面板（200）：勾选＋改名＋默认值＋调顺序；勾完带着新技能回确认卡 ──
+    teachParamsDraft?.let { d ->
+        TeachParamsSheet(
+            draft = d,
+            onApply = { skill, warnings ->
+                teachDraft = d.copy(skill = skill, summary = TeachLearner.summarize(skill, warnings))
+                teachParamsDraft = null
+                uiMsg = res.getString(R.string.teach_params_applied)
+            },
+            onDismiss = { teachParamsDraft = null },
         )
     }
 }
