@@ -50,6 +50,7 @@ import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
+import com.example.zhengdao.baopu.toEffectSnapshot
 import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.ProposalCandidateStore
@@ -784,6 +785,24 @@ internal class BaopuChatController(context: Context) {
                 applySuggestionAdopt(s)
             }
         }
+    }
+
+    /**
+     * 失败行「修一下」（第一百八十一批 #6）：既有归因（ToolFailureAdvisor，115 批纯函数）
+     * 拼成一句修复请求**预填**进输入框——只预填不发送（与分享文本同一安全姿势），
+     * 真正的修复/重试走引擎既有自修与确认链，人批不改。
+     * 顾问判「不建议重试」⇒ 不预填，给一句人话（不把用户点进死胡同）。
+     */
+    fun requestToolRepair(tool: String, err: String) {
+        val request = com.example.zhengdao.baopu.toolRepairRequestText(tool, err)
+        if (request == null) {
+            skillNote = BaopuNote(
+                appCtx.getString(R.string.baopu_activity_repair_none),
+                BaopuNoteLevel.Info,
+            )
+            return
+        }
+        com.example.zhengdao.ui.baopu.BaopuIntents.requestPrompt(request, truncated = false)
     }
 
     /**
@@ -3076,24 +3095,50 @@ internal class BaopuChatController(context: Context) {
         val shadowAt = System.currentTimeMillis()
         val shadowRows = ArrayList<ShadowJudgement>(pending.size)
 
-        val out = ArrayList<EvolutionSuggestion>(pending.size)
+        // 第一百八十一批 #1：证据装配先行（每条各自兜，装不出来的只 log 跳过——
+        // 65/89「只记录不阻塞」，与旧手写循环同口径），决策本体改走 88 批的
+        // `decidePending`（此前控制器手写逐条 `port.decide`，把批量读口晾成生产零调用）。
+        // 被拒留痕（rejected 上面已滤）与装配失败的候选都不进决策口：不判、不落审计。
+        val assessments = LinkedHashMap<String, com.example.zhengdao.baopu.EvolutionAssessment>(pending.size)
         for (c in pending) {
-            val suggestion = runCatching {
-                val evidence = EvolutionEvidence(
-                    effect = if (c.target.isNotBlank()) {
-                        com.example.zhengdao.baopu.SkillEffects.outcomesFor(db, c.target)
-                    } else {
-                        emptyMap()
-                    },
-                    effectSignalIds = com.example.zhengdao.baopu.evidenceIdsOf(c),
+            runCatching {
+                assessments[c.id] = com.example.zhengdao.baopu.EvolutionAssessment(
+                    riskCategory = com.example.zhengdao.baopu.EvolutionRiskCategory.defaultFor(c.kind),
                     selfCheck = com.example.zhengdao.baopu.dryRunSelfCheck(
                         c,
                         skillFileOf(c.target, projectRoot, globalRoot),
                     ),
                     eval = evalResult,
+                    effect = (
+                        if (c.target.isNotBlank()) {
+                            com.example.zhengdao.baopu.SkillEffects.outcomesFor(db, c.target)
+                        } else {
+                            emptyMap()
+                        }
+                        ).toEffectSnapshot(com.example.zhengdao.baopu.evidenceIdsOf(c)),
                 )
-                val input = com.example.zhengdao.baopu.inputFor(c, evidence)
-                val decision: EvolutionDecision = port.decide(input, operatorId = "settle")
+            }.onFailure {
+                com.example.zhengdao.rootfs.RunLog.log(
+                    "[baopu-evolution] 候选证据装配跳过（${it.javaClass.simpleName}）：${it.message}",
+                )
+            }
+        }
+        val decisions = port
+            .decidePending(
+                store,
+                com.example.zhengdao.baopu.EvolutionAssessmentSource { c ->
+                    assessments[c.id] ?: com.example.zhengdao.baopu.EvolutionAssessment()
+                },
+                operatorId = "settle",
+            ) { c -> assessments.containsKey(c.id) }
+            .associateBy { it.candidateId }
+
+        val out = ArrayList<EvolutionSuggestion>(assessments.size)
+        for (c in pending) {
+            val suggestion = runCatching {
+                val decision = decisions[c.id] ?: return@runCatching null
+                // 影子要的 input 与 decidePending 内部喂决策口的是同一把尺（纯函数重放）。
+                val input = com.example.zhengdao.baopu.toDecisionInput(c, assessments[c.id]!!)
                 // 影子单独兜：账记不上**不许**把真判定一起带走——人是决定，影子只是数。
                 runCatching {
                     shadowRows += shadowVerdictOf(input, decision, shadowAt)

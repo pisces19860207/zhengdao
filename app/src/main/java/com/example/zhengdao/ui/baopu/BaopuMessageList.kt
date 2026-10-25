@@ -269,6 +269,8 @@ internal fun BaopuMessageList(
     engineState: RunState = RunState.IDLE,
     engineStep: Int = 0,
     awaitConfirmTool: String? = null,
+    // 第一百八十一批 #6：失败行「修一下」往下透传；null ⇒ 过程条不出该按钮。
+    onRepairFailed: ((tool: String, err: String) -> Unit)? = null,
 ) {
     if (messages.isEmpty()) {
         Column(modifier.fillMaxWidth().padding(24.dp)) {
@@ -310,6 +312,7 @@ internal fun BaopuMessageList(
                         engineState = engineState,
                         engineStep = engineStep,
                         awaitConfirmTool = awaitConfirmTool,
+                        onRepairFailed = onRepairFailed,
                     )
                 }
             }
@@ -397,6 +400,7 @@ private fun BaopuRoundItem(
     engineState: RunState = RunState.IDLE,
     engineStep: Int = 0,
     awaitConfirmTool: String? = null,
+    onRepairFailed: ((tool: String, err: String) -> Unit)? = null,
 ) {
     val collapsed = roundCollapsed(
         round = round,
@@ -425,6 +429,7 @@ private fun BaopuRoundItem(
             state = engineState,
             engineStep = engineStep,
             awaitConfirmTool = awaitConfirmTool,
+            onRepairFailed = onRepairFailed,
         )
     }
 }

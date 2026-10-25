@@ -246,13 +246,14 @@ class EvolutionShadowGateTest {
 
     @Test
     fun `S9_接线在判定链内_99的真决策口径没动`() {
-        assertTrue("真决策仍走决策口", judgeRegion.contains("port.decide(input, operatorId = \"settle\")"))
+        // 第一百八十一批 #1：判定本体改走决策口批量读 decidePending（operatorId 不变）
+        assertTrue("真决策仍走决策口", judgeRegion.contains(".decidePending(") && judgeRegion.contains("operatorId = \"settle\""))
         assertTrue("决策口仍自带默认策略（控制器不实例化）", judgeRegion.contains("EvolutionDecisionPort(audit = audit)"))
         assertTrue("候选仍只读 listPending", judgeRegion.contains("store.listPending()"))
         assertTrue("四类证据一个字没改", judgeRegion.contains("SkillEffects.outcomesFor(db, c.target)"))
         assertTrue("自检 dry-run 没动", judgeRegion.contains("dryRunSelfCheck("))
         assertTrue("eval 仍只认结果文件", judgeRegion.contains("EvalResultFile.latest(appCtx)"))
-        assertTrue("组装仍走证据桥", judgeRegion.contains("inputFor(c, evidence)"))
+        assertTrue("组装仍走证据桥", judgeRegion.contains("toDecisionInput(c,"))
         assertTrue("影子账本接在收尾判定链上", judgeRegion.contains("EvolutionShadowLog.under(globalRoot)"))
         assertTrue("影子判定逐条接上", judgeRegion.contains("shadowRows += shadowVerdictOf(input, decision, shadowAt)"))
         assertTrue("操作者仍是 settle，影子没有冒充人批", judgeRegion.contains("operatorId = \"settle\""))

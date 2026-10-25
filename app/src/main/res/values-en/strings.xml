@@ -1950,4 +1950,13 @@
     <string name="form_sheet_next">Fill next</string>
     <string name="form_sheet_advance">Published, next one</string>
     <string name="form_sheet_close">Close</string>
+    <!-- 181 wiring knife 2: memory quality line (#3) + fix-this on failed rows (#6) -->
+    <string name="baopu_memory_quality">Quality %1$d/100 (%2$s)</string>
+    <string name="baopu_memory_quality_good">good</string>
+    <string name="baopu_memory_quality_fair">fair</string>
+    <string name="baopu_memory_quality_poor">low</string>
+    <string name="baopu_memory_quality_unassessed">Quality: not assessed</string>
+    <string name="baopu_activity_repair">Fix this</string>
+    <string name="baopu_activity_repair_none">Per the diagnosis this failure is not worth retrying; see the reason in the detail row, try another way or ask</string>
+
 </resources>

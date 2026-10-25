@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -325,6 +326,8 @@ internal fun BaopuProcessBar(
     engineStep: Int,
     awaitConfirmTool: String?,
     modifier: Modifier = Modifier,
+    // 第一百八十一批 #6：失败行的「修一下」入口；null ⇒ 不出按钮（单测/预览场景）。
+    onRepairFailed: ((tool: String, err: String) -> Unit)? = null,
 ) {
     val rows = remember(steps, round.startMs, round.endMs) {
         stepsInWindow(steps, round.startMs, round.endMs)
@@ -364,6 +367,7 @@ internal fun BaopuProcessBar(
                 state = state,
                 engineStep = engineStep,
                 awaitConfirmTool = awaitConfirmTool,
+                onRepairFailed = onRepairFailed,
                 popupWidth = popupWidth,
                 gapPx = gapPx,
                 onDismiss = { open = false },
@@ -403,6 +407,7 @@ private fun ProcessDetailPopup(
     state: RunState,
     engineStep: Int,
     awaitConfirmTool: String?,
+    onRepairFailed: ((tool: String, err: String) -> Unit)?,
     popupWidth: Dp,
     gapPx: Int,
     onDismiss: () -> Unit,
@@ -473,7 +478,7 @@ private fun ProcessDetailPopup(
                     )
                 }
                 stream.shown.forEach { item ->
-                    ActivityRow(item)
+                    ActivityRow(item, onRepairFailed)
                 }
                 if (stream.more > 0) {
                     Text(
@@ -489,9 +494,13 @@ private fun ProcessDetailPopup(
     }
 }
 
-/** 过程条明细的一行：类型签＋工具名＋耗时（第一行）／目标＋状态（第二行，失败给可读原因）。 */
+/** 过程条明细的一行：类型签＋工具名＋耗时（第一行）／目标＋状态（第二行，失败给可读原因）。
+ * 第一百八十一批 #6：失败行可带「修一下」（预填修复请求进输入框，只预填不发送）。 */
 @Composable
-private fun ActivityRow(item: ActivityItem) {
+private fun ActivityRow(
+    item: ActivityItem,
+    onRepairFailed: ((tool: String, err: String) -> Unit)? = null,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -530,6 +539,15 @@ private fun ActivityRow(item: ActivityItem) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 2.dp),
                 )
+                if (onRepairFailed != null) {
+                    TextButton(
+                        onClick = { onRepairFailed(item.tool, item.err) },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            start = 0.dp, top = 0.dp, end = 0.dp, bottom = 0.dp,
+                        ),
+                        modifier = Modifier.padding(top = 0.dp),
+                    ) { Text(stringResource(R.string.baopu_activity_repair)) }
+                }
             } else if (item.target.isNotBlank()) {
                 Text(
                     text = item.target,

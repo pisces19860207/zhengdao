@@ -102,6 +102,34 @@ object BaopuIntents {
     }
 
     /**
+     * 一次外部图片请求（第一百八十一批 #4）：系统分享进来的图片 Uri。
+     *
+     * 与 [PromptRequest] 同房型：Activity 挂请求、输入框组合时消费；
+     * **只预填进附件条，绝不自动发送**（发送仍由用户点按钮）。
+     */
+    data class ImagesRequest(val uris: List<android.net.Uri>)
+
+    private val imagesRequested = mutableStateOf<ImagesRequest?>(null)
+
+    /** 请求状态（附件条用 LaunchedEffect 观察——热启动时请求是后到的）。 */
+    internal val imagesRequestedState: State<ImagesRequest?> get() = imagesRequested
+
+    /** 请求把分享进来的图片放进抱朴附件条（Activity 侧调）。 */
+    fun requestImages(uris: List<android.net.Uri>) {
+        if (uris.isNotEmpty()) imagesRequested.value = ImagesRequest(uris)
+    }
+
+    /** 看一眼有没有待收的图（切 Tab 用，不清——真消费在输入框）。 */
+    fun peekImages(): ImagesRequest? = imagesRequested.value
+
+    /** 输入框组合时消费（只消费一次；按引用比对，与 [consumePrompt] 同口径）。 */
+    fun consumeImages(expected: ImagesRequest): Boolean {
+        if (imagesRequested.value !== expected) return false
+        imagesRequested.value = null
+        return true
+    }
+
+    /**
      * 完成通知点击带回来的会话 id（第一百六十九批 §3）。
      *
      * 与备份/正文请求同一房型：通知落在 MainActivity，会话只在抱朴页里能开 ⇒

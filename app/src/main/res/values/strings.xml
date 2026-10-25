@@ -1884,4 +1884,12 @@
     <string name="form_sheet_next">填下一张</string>
     <string name="form_sheet_advance">这张已发布，下一张</string>
     <string name="form_sheet_close">收起</string>
+    <!-- 第一百八十一批 · 接线刀二：记忆质量分行（#3）＋ 失败行「修一下」（#6） -->
+    <string name="baopu_memory_quality">质量 %1$d/100（%2$s）</string>
+    <string name="baopu_memory_quality_good">优</string>
+    <string name="baopu_memory_quality_fair">良</string>
+    <string name="baopu_memory_quality_poor">低</string>
+    <string name="baopu_memory_quality_unassessed">质量：未评估</string>
+    <string name="baopu_activity_repair">修一下</string>
+    <string name="baopu_activity_repair_none">按归因这个失败不建议重试；原因在明细里，换个做法或问人</string>
 </resources>

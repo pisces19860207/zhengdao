@@ -48,6 +48,9 @@ internal data class SubTask(
  *
  * [text] 只在 [SubTaskStatus.DONE] 时是子 Agent 的结论；失败时看 [failureReason]。
  * [steps] 是**累计**步数（含重试的那一次）——审计要能看出「重试是不是又烧了一遍」。
+ * [tokensIn]/[tokensOut]（第一百八十一批 #5）：该子任务各轮用量合计；null = 一次读数
+ * 都没拿到（服务端没回 usage 就不编 0）。与 [steps] 同口径：重试的量**加进来**，
+ * 汇总层天然无重复（每轮只计一次）。
  */
 internal data class SubTaskResult(
     val id: String,
@@ -58,6 +61,8 @@ internal data class SubTaskResult(
     val attempts: Int = 1,
     val startedAt: Long = 0L,
     val endedAt: Long = 0L,
+    val tokensIn: Long? = null,
+    val tokensOut: Long? = null,
 ) {
     val ok: Boolean get() = status == SubTaskStatus.DONE
 

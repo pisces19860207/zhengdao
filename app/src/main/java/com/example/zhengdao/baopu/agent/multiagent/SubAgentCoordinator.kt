@@ -55,6 +55,9 @@ internal class SubAgentCoordinator(
         val running = LinkedHashMap<String, Future<SubTaskResult>>()
         val attempts = tasks.associate { it.id to 1 }.toMutableMap()
         val stepSum = tasks.associate { it.id to 0 }.toMutableMap()
+        // 第一百八十一批 #5：重试间的 token 累计账（null = 从未读到过读数）。
+        val tokensInSum = LinkedHashMap<String, Long?>()
+        val tokensOutSum = LinkedHashMap<String, Long?>()
         val results = LinkedHashMap<String, SubTaskResult>()
         val deadline = t0 + SubAgentRules.GLOBAL_DEADLINE_MS
         var stopReason: String? = null
@@ -103,7 +106,18 @@ internal class SubAgentCoordinator(
                     }
                     val acc = (stepSum[id] ?: 0) + raw.steps
                     stepSum[id] = acc
-                    val merged = raw.copy(steps = acc, attempts = attempts[id] ?: 1)
+                    // 第一百八十一批 #5：重试的 token 也累进同一条（与步数同口径——
+                    // 审计要能看出「重试又烧了一遍」；汇总时每轮只计一次、无重复）。
+                    val inAcc = mergeTokens(tokensInSum[id], raw.tokensIn)
+                    val outAcc = mergeTokens(tokensOutSum[id], raw.tokensOut)
+                    tokensInSum[id] = inAcc
+                    tokensOutSum[id] = outAcc
+                    val merged = raw.copy(
+                        steps = acc,
+                        attempts = attempts[id] ?: 1,
+                        tokensIn = inAcc,
+                        tokensOut = outAcc,
+                    )
                     if (SubAgentRules.shouldRetry(merged.status, merged.attempts) && !isCancelled()) {
                         // 重试一次：attempts+1 重新入队（步数累计，不重置——审计要看得出
                         // 「重试是不是又烧了一遍」；首战失败原因只进日志，行内状态回 PENDING
@@ -170,6 +184,13 @@ internal class SubAgentCoordinator(
         runCatching(block).onFailure {
             log("子 Agent 审计：写失败（不影响执行）${it.javaClass.simpleName}: ${it.message}")
         }
+    }
+
+    /** token 账的可空合并：null = 没读到（不编 0）；两边都有才相加。 */
+    private fun mergeTokens(prev: Long?, add: Long?): Long? = when {
+        prev == null -> add
+        add == null -> prev
+        else -> prev + add
     }
 
     private fun statusLabel(status: SubTaskStatus): String = when (status) {

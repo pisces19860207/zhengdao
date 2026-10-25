@@ -124,8 +124,10 @@ class MemoryQualityGateTest {
             !body.contains("marked(it, now) }.filter") && !body.contains("scored.filter")
 
     /** 红线 H：本批不许改抱朴的注入行为（引擎那一句原样在，且不伸进质量层）。 */
+    // 第一百八十一批 #2：召回预算从常量换成按窗口的 recallBudgetFor（上限仍钉在
+    // RECALL_TOKEN_BUDGET，见 WiringKnife2Test）；loadAll＋trimToBudget 的口径不许动。
     private fun injectionCallSiteUnchanged(engine: String): Boolean =
-        engine.contains("MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.RECALL_TOKEN_BUDGET)") &&
+        engine.contains("MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.recallBudgetFor(windowTokens))") &&
             !engine.contains("MemoryQuality.")
 
     // ── 用例 ────────────────────────────────────────────────────────────────
@@ -231,8 +233,8 @@ class MemoryQualityGateTest {
         assertTrue("注入仍走 loadAll＋trimToBudget（质量层不许伸进引擎）", injectionCallSiteUnchanged(engine))
         assertFalse("负例：引擎改成读质量视图 ⇒ 对话行为被动了，门禁必须红",
             injectionCallSiteUnchanged(engine.replace(
-                "MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.RECALL_TOKEN_BUDGET)",
-                "MemoryRules.trimToBudget(it.ranked(), ContextAssembler.RECALL_TOKEN_BUDGET)",
+                "MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.recallBudgetFor(windowTokens))",
+                "MemoryRules.trimToBudget(it.ranked(), ContextAssembler.recallBudgetFor(windowTokens))",
             )))
     }
 }

@@ -83,6 +83,36 @@ internal fun MoreItemsRow(hidden: Int, expanded: Boolean, onToggle: () -> Unit) 
 }
 
 /**
+ * 一条记忆的质量读数行（第一百八十一批 #3 接线）：有账显示「质量 N/100（等级）」，
+ * 没跑过质量层显示「未评估」——分数来自落账的 qualityScore/scoredAt，不现算冒充。
+ *
+ * 挂在既有两张记忆卡（候选卡/待过目卡）的标题下，不另起一套 UI；判据在
+ * [com.example.zhengdao.baopu.memoryQualityBadgeOf]（纯函数，JVM 直测）。
+ */
+@Composable
+private fun MemoryQualityLine(e: MemoryEntry) {
+    val badge = com.example.zhengdao.baopu.memoryQualityBadgeOf(e)
+    val levelLabel = stringResource(
+        when (badge.level) {
+            com.example.zhengdao.baopu.MemoryQualityLevel.GOOD -> R.string.baopu_memory_quality_good
+            com.example.zhengdao.baopu.MemoryQualityLevel.FAIR -> R.string.baopu_memory_quality_fair
+            com.example.zhengdao.baopu.MemoryQualityLevel.POOR -> R.string.baopu_memory_quality_poor
+            com.example.zhengdao.baopu.MemoryQualityLevel.UNASSESSED -> R.string.baopu_memory_quality_unassessed
+        },
+    )
+    Text(
+        text = if (badge.level == com.example.zhengdao.baopu.MemoryQualityLevel.UNASSESSED) {
+            levelLabel
+        } else {
+            stringResource(R.string.baopu_memory_quality, badge.score, levelLabel)
+        },
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 2.dp),
+    )
+}
+
+/**
  * 记忆候选卡：一条候选 = 标题 ＋ 正文摘要 ＋「记住 / 不记」。
  * 只要有候选就显示（候选来自 MemoryStore 的 CANDIDATE 条目）；
  * 真正的会话结束提炼归刀 2，本刀先把卡与确认链路通起来（机制可见）。
@@ -117,6 +147,7 @@ internal fun BaopuMemoryCard(
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 2.dp),
                 )
+                MemoryQualityLine(e)
                 if (e.body.isNotBlank()) {
                     Text(
                         text = e.body.take(120) + if (e.body.length > 120) "\u2026" else "",
@@ -186,6 +217,7 @@ internal fun BaopuPendingMemoryCard(
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 2.dp),
                 )
+                MemoryQualityLine(e)
                 if (e.body.isNotBlank()) {
                     Text(
                         text = e.body.take(120) + if (e.body.length > 120) "\u2026" else "",

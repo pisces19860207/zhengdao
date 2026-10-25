@@ -171,6 +171,16 @@ internal fun BaopuComposer(
         }
     }
 
+    // 第一百八十一批 #4：系统分享进来的图片——只放进附件条（既有 saveAll 通道，
+    // 预览/删除/发送全走第二十二批的既有链），绝不自动发送、不自动上传。
+    // fallback 名与相册通道一致（"image"），同一来源不起第二套名字。
+    val incomingImages by BaopuIntents.imagesRequestedState
+    LaunchedEffect(incomingImages) {
+        val request = incomingImages ?: return@LaunchedEffect
+        if (!BaopuIntents.consumeImages(request)) return@LaunchedEffect
+        saveAll(request.uris, "image")
+    }
+
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val uri = cameraUri
         cameraUri = null
