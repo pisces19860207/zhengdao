@@ -43,4 +43,60 @@ class InterjectionsTest {
         q.offer("第三条")
         assertEquals(listOf("第二条", "第三条"), q.drainAll())
     }
+
+    // ── 176 §2：可撤销 ＋ 快照（UI 半的引擎侧判据）────────────────────────
+
+    @Test
+    fun `撤销一条_剩下的按FIFO注入`() {
+        val q = InterjectionQueue()
+        q.offer("第一段")
+        q.offer("用简体中文")
+        q.offer("文件名改小写")
+        assertTrue("撤到了必须返回 true（界面据此收回 chip）", q.remove("用简体中文"))
+        assertEquals(2, q.pending())
+        assertEquals(listOf("第一段", "文件名改小写"), q.drainAll())
+        assertEquals("取空必尽", 0, q.pending())
+    }
+
+    @Test
+    fun `撤销没有的那条_返回false_队列不动`() {
+        val q = InterjectionQueue()
+        q.offer("在的")
+        assertFalse("从没插过的撤不到", q.remove("不在的"))
+        assertFalse("空串也撤不到", q.remove(""))
+        assertFalse("纯空白也撤不到", q.remove("   "))
+        assertEquals("队列一条不许少", listOf("在的"), q.drainAll())
+    }
+
+    @Test
+    fun `两条一样的_撤掉先入队的那条`() {
+        val q = InterjectionQueue()
+        q.offer("继续")
+        q.offer("继续")
+        q.offer("别的")
+        assertTrue(q.remove("继续"))
+        assertEquals("FIFO 顺序对其余条目不变", listOf("继续", "别的"), q.drainAll())
+    }
+
+    @Test
+    fun `快照按FIFO_且是拿到手那一拍的拷贝`() {
+        val q = InterjectionQueue()
+        q.offer("甲")
+        q.offer("乙")
+        val snap = q.snapshot()
+        assertEquals(listOf("甲", "乙"), snap)
+        q.offer("丙")
+        assertEquals("快照不随后续入队变（界面显示的是拿到手那一拍）", listOf("甲", "乙"), snap)
+        assertEquals(listOf("甲", "乙", "丙"), q.snapshot())
+    }
+
+    @Test
+    fun `撤空之后_快照与drain都为空`() {
+        val q = InterjectionQueue()
+        q.offer("只有一条")
+        assertTrue(q.remove("只有一条"))
+        assertEquals(0, q.pending())
+        assertEquals(emptyList<String>(), q.snapshot())
+        assertEquals(emptyList<String>(), q.drainAll())
+    }
 }

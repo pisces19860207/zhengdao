@@ -1951,6 +1951,24 @@ internal class BaopuChatController(context: Context) {
         private set
 
     /**
+     * 待生效插话（第一百七十六批 §2）：只给**当前会话**的积压露面。
+     *
+     * 引擎侧已按会话绑定（[com.example.zhengdao.baopu.agent.RunEngine.interjectionsFor]：
+     * 换会话开会话丢弃上会话的），这里再按可见会话过滤一次——停了 A 去看 B 时，
+     * B 的输入栏不该显示 A 的话。真源是引擎的 Compose 快照，不是第二本账。
+     */
+    val interjections: List<String>
+        get() = engine.interjectionsFor(sessionId ?: -1L)
+
+    /**
+     * 撤销一条还没生效的插话（chip 上的 ×，或点 chip 文本＝撤回输入框改）。
+     * 已注入（来不及了）时引擎如实返回 false，界面那条 chip 届时早已不在。
+     */
+    fun revokeInterject(text: String) {
+        engine.revokeInterjection(text)
+    }
+
+    /**
      * 有「要人动手」的卡在 ⇒ 最近一轮不许收（十六批第一件 C 段：确认卡/问人卡/
      * 待过目候选卡都是要人点的东西，它们所在的轮收起来就是事故）。
      *
@@ -2288,6 +2306,13 @@ internal class BaopuChatController(context: Context) {
             topicStart()
             return true
         }        // 第二十四批 C 段：同一批判据喂给引擎——**只传相对路径**，读盘在引擎线程里做
+        // 第一百七十六批：运行中发送 ＝ 插话（下一安全点生效，不停止、不进回合队列）。
+        // 只走**纯文字**：带附件的消息照旧进回合队列——图要随消息落 image part，
+        // 插话通道只带文本（hint 里的相对路径模型能自己 read_file，但 image part
+        // 补不上；硬塞等于把「带图」静默降级成「带路径」）。
+        // 没在跑 ⇒ interject 拒收 ⇒ 落回下面的普通发送（新开一轮／排队）。
+        if (attachments.isEmpty() && engine.interject(text)) return true
+
         // （这里是主线程，不许在这儿读 2 MB 的图）。图片路径随这条消息排队，不共享格子。
         val imageRelPaths = AttachmentParts.imageRelPaths(attachments)
         val sid = sessionId ?: engine.createSession(

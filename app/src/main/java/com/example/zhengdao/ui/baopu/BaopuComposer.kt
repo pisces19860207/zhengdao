@@ -5,6 +5,9 @@
 // **一个「＋」＝ 拍照／相册／选文件三个入口**，拿到的东西先落进工作区再交给抱朴；
 // 第三十批 B 段（2026-10-18 用户「传的图片排的好乱啊，并排不好吗？」＋「三行纯文字
 // 跟『图片』这件事完全不搭」）：附件条改成**横排缩略图 chip ＋ 一行放不下就横向滚动**。
+// 第一百七十六批（2026-10-24 §2 运行中插话）：跑动中发送 ＝ 插话（不触发停止）；
+// **纯文字**走引擎插话 FIFO（下一安全点生效），带附件仍进 117 批的回合队列
+// （图要随消息落 image part）；待生效的显示成 chip 行，可撤销／撤回输入框改。
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.BaopuWorkspace
@@ -33,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -122,6 +126,10 @@ internal fun BaopuComposer(
     onContinueQueue: () -> Unit = {},
     /** 清掉还没开跑的排队条（不动当前这一轮）。 */
     onClearQueue: () -> Unit = {},
+    /** 待生效插话（176 §2：下一安全点注入；跑了停了都显示——停了也能撤）。 */
+    interjections: List<String> = emptyList(),
+    /** 撤销一条待生效插话（chip 的 ×，或点 chip 文本＝撤回输入框改）。 */
+    onRevokeInterject: (String) -> Unit = {},
 ) {
     var text by rememberSaveable { mutableStateOf("") }
     // 多选（2026-10-18 用户）：最多 9 个
@@ -268,6 +276,49 @@ internal fun BaopuComposer(
                 }
             }
         }
+        // 第一百七十六批：待生效插话行（176 §2「UI 显示已插话，等下一步生效」）。
+        // 与上面 117 批的回合排队是**两件事**：排队条＝当前回合收尾后才跑的新消息；
+        // 插话条＝当前 run 内下一安全点就注入的历史消息。跑了停了都显示（停止不清
+        // 插话——「插话不丢」；停了也能撤，界面半在这儿兑现）。
+        if (interjections.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp),
+            ) {
+                Text(
+                    text = pluralStringResource(
+                        R.plurals.baopu_interject_pending,
+                        interjections.size,
+                        interjections.size,
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 先裁边界再滚动：chip 越界时不许糊到屏幕边外（与附件条同一房型）
+                        .clip(RectangleShape)
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(ATTACH_GAP_DP.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    interjections.forEach { line ->
+                        InterjectChip(
+                            text = line,
+                            onEdit = {
+                                // 点文本 ＝ 撤回并放回输入框（「可编辑」的那一半）
+                                onRevokeInterject(line)
+                                text = line
+                            },
+                            onRevoke = { onRevokeInterject(line) },
+                        )
+                    }
+                }
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth() // imePadding 由 BaopuScreen 根 Column 统一消费（2026-10-18，避免双份）
@@ -324,7 +375,13 @@ internal fun BaopuComposer(
                 ) {
                     Text(
                         stringResource(
-                            if (busy) R.string.baopu_send_queue else R.string.baopu_send,
+                            when {
+                                // 运行中纯文字 ⇒ 插话（下一安全点生效，不停止）
+                                busy && attachList.isEmpty() -> R.string.baopu_send_interject
+                                // 运行中带附件 ⇒ 仍排队（图要随消息落 image part）
+                                busy -> R.string.baopu_send_queue
+                                else -> R.string.baopu_send
+                            },
                         ),
                     )
                 }
@@ -370,6 +427,53 @@ internal fun BaopuComposer(
                 ) {
                     Text(stringResource(R.string.baopu_attach_file))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 待生效插话 chip（第一百七十六批 §2）：点文本 ＝ 撤回输入框改；× ＝ 纯撤销。
+ *
+ * 房型跟 [AttachFileChip] 一条线（secondaryContainer 底 ＋ 8dp 圆角 ＋ 横排滚动）；
+ * 两个动作都对着**同一条插话**：点它＝放回输入框（「可编辑」），× ＝ 直接撤。
+ * × 取 40dp（与本文件回形针同档）——thumb chip 那个 28dp 的豁免理由不往这儿搬。
+ */
+@Composable
+private fun InterjectChip(text: String, onEdit: () -> Unit, onRevoke: () -> Unit) {
+    val editDesc = stringResource(R.string.baopu_interject_edit)
+    val revokeDesc = stringResource(R.string.baopu_interject_revoke)
+    Surface(
+        shape = RoundedCornerShape(ATTACH_CHIP_RADIUS_DP),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .clickable(onClick = onEdit)
+                    .semantics { contentDescription = editDesc }
+                    .padding(start = 10.dp, end = 4.dp)
+                    // 横排滚动行里子项宽度不受限 ⇒ 显式封顶 200dp，长句走省略号
+                    .widthIn(max = 200.dp),
+            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onRevoke)
+                    .semantics { contentDescription = revokeDesc },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "×",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
             }
         }
     }

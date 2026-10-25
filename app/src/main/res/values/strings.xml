@@ -802,6 +802,13 @@
     </plurals>
     <string name="baopu_queue_continue">继续排队</string>
     <string name="baopu_queue_clear">清空排队</string>
+    <!-- 第一百七十六批：运行中插话（§2）——纯文字即时插话，下一安全点生效，可撤销 -->
+    <string name="baopu_send_interject">插话</string>
+    <plurals name="baopu_interject_pending">
+        <item quantity="other">已插话 %1$d 条，等下一步生效</item>
+    </plurals>
+    <string name="baopu_interject_revoke">撤回</string>
+    <string name="baopu_interject_edit">把这条插话撤回输入框修改</string>
     <string name="baopu_state_idle">空闲</string>
     <!-- 第一百三十八批：跑马灯运行态四词（设计 §5 定稿）。全 App 唯一一套，活动面板同吃。 -->
     <string name="baopu_state_thinking">深度思考中</string>
