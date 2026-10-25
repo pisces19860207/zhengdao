@@ -1937,4 +1937,17 @@
     <string name="baopu_artifact_picker_failed_partial">Not deleted: %1$d (see the run log); succeeded: %2$d</string>
     <string name="baopu_artifact_picker_ledger_failed">Files moved to the trash, but the ledger deletion marks were not written; the ledger rows remain (see the run log)</string>
     <string name="baopu_artifact_picker_close">Close</string>
+    <!-- 第二百零一批 · 表单类平台场景（待发布卡：只填不点） -->
+    <string name="form_publish_badge">Waiting for you</string>
+    <string name="form_publish_shot">Screenshot: %1$s</string>
+    <string name="form_publish_no_shot">No screenshot this time (page may still be rendering)</string>
+    <string name="form_publish_hint">Baopu fills but never clicks: create/save/publish is always your click, and it never presses shortcuts for you</string>
+    <string name="form_publish_copy">Copy all</string>
+    <string name="form_publish_open">Open page</string>
+    <string name="form_sheet_title">Fill form: %1$s</string>
+    <string name="form_sheet_progress">%1$d / %2$d</string>
+    <string name="form_sheet_done">All filled; the final create is your click</string>
+    <string name="form_sheet_next">Fill next</string>
+    <string name="form_sheet_advance">Published, next one</string>
+    <string name="form_sheet_close">Close</string>
 </resources>

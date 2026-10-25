@@ -1871,4 +1871,17 @@
     <string name="baopu_artifact_picker_failed_partial">有 %1$d 条没删成（详情在运行日志），成功 %2$d 条</string>
     <string name="baopu_artifact_picker_ledger_failed">文件已移进回收站，但台账删除标记没写成；台账原行还在（详情在运行日志）</string>
     <string name="baopu_artifact_picker_close">关闭</string>
+    <!-- 第二百零一批 · 表单类平台场景（待发布卡：只填不点） -->
+    <string name="form_publish_badge">等你点创建</string>
+    <string name="form_publish_shot">截图：%1$s</string>
+    <string name="form_publish_no_shot">这次没取到截图（页面可能还没渲染完）</string>
+    <string name="form_publish_hint">抱朴只填不点：创建/保存/发布永远你自己按，也不替你按快捷键</string>
+    <string name="form_publish_copy">复制全文</string>
+    <string name="form_publish_open">打开页面</string>
+    <string name="form_sheet_title">填表：%1$s</string>
+    <string name="form_sheet_progress">第 %1$d / %2$d 张</string>
+    <string name="form_sheet_done">全部填完了，最后一下创建你自己点</string>
+    <string name="form_sheet_next">填下一张</string>
+    <string name="form_sheet_advance">这张已发布，下一张</string>
+    <string name="form_sheet_close">收起</string>
 </resources>

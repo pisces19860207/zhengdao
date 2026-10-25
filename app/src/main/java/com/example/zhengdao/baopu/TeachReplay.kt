@@ -37,8 +37,13 @@ import java.io.File
  */
 internal object TeachScripts {
 
-    /** 各脚本共用的元素工具（snap/accName/隐式 role/可见性）。 */
-    private const val HELPERS: String = """
+    /**
+     * 各脚本共用的元素工具（snap/accName/隐式 role/可见性）。
+     *
+     * 201 起 `internal`：表单场景（`FormScripts`）要**同一份**定位口径与可访问名口径，
+     * 复制一份十档匹配器等于埋一个「两边慢慢不一样」的坑。可见性放宽，语义一字未改。
+     */
+    internal const val HELPERS: String = """
 function zlT(el){return (el.textContent||'').trim().replace(/\s+/g,' ').slice(0,40)}
 function zlV(el){var r=el.getBoundingClientRect();return (r.width>0||r.height>0)}
  function zlN(el){
@@ -64,8 +69,8 @@ function zlS(el){return {tag:el.tagName,role:zlR(el),name:zlN(el),text:zlT(el),
  inputName:el.getAttribute('name')||'',placeholder:el.getAttribute('placeholder')||'',id:el.id||''}}
 """
 
-    /** 按定位器描述找元素（tier 匹配器；返回可见元素数组）。 */
-    private fun matcherFor(kind: TeachLocatorKind, value: String): String = when (kind) {
+    /** 按定位器描述找元素（tier 匹配器；返回可见元素数组）。201 起 internal，供表单场景复用。 */
+    internal fun matcherFor(kind: TeachLocatorKind, value: String): String = when (kind) {
         TeachLocatorKind.ROLE_NAME -> {
             val (role, name) = value.split("|", limit = 2).let { it.getOrElse(0) { "" } to it.getOrElse(1) { "" } }
             "Array.prototype.filter.call(document.querySelectorAll('*'),function(el){" +
