@@ -1853,6 +1853,13 @@
 <!-- Batch 205 add-on 3: draft auto-governance -->
 <string name="skill_library_duplicate"> · possible duplicate (of %1$s) — marked only, merge anytime</string>
 <string name="skill_library_merge">Merge (keep this one)</string>
+<!-- Batch 206: eval runner (A/B replay) -->
+<string name="eval_once">Run one A/B replay</string>
+<string name="eval_weekly">Weekly replays</string>
+<string name="eval_note_done">Replay done (%1$s): verdict %2$s — %3$s; recorded in the evolution archive</string>
+<string name="eval_note_unrun">Not run: %1$s</string>
+<string name="eval_week_none">No skills changed in the last 7 days — nothing to replay</string>
+<string name="eval_week_done">Weekly replays finished (skills: %1$d) — verdicts in the evolution archive</string>
 
 <!-- Batch 196: learner (teach it once) -->
 <string name="teach_menu_start">Teach it once</string>

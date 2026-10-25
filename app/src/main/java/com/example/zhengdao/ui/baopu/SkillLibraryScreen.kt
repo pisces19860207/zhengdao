@@ -393,7 +393,7 @@ internal fun retireDraft(
 }
 
 /** 行内动作（页面把点击收成这几个词，执行在控制器那一个口里）。 */
-internal enum class SkillRowAction { PROMOTE, DELETE, RESTORE, MERGE }
+internal enum class SkillRowAction { PROMOTE, DELETE, RESTORE, MERGE, EVALUATE }
 
 // ── 页面 ─────────────────────────────────────────────────────────────────────
 
@@ -440,7 +440,17 @@ internal fun SkillLibraryDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.skill_library_title), style = MaterialTheme.typography.titleMedium)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.skill_library_title), style = MaterialTheme.typography.titleMedium)
+                    // 第二百零六批：每周一次批量对拍（最近 7 天改过的技能逐个跑；不强制、不阻塞）
+                    TextButton(onClick = { controller.runWeeklyEval() }, enabled = !controller.reflectionBusy) {
+                        Text(stringResource(R.string.eval_weekly))
+                    }
+                }
                 message?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -566,6 +576,14 @@ private fun SkillRow(
                     onActionDone(controller.runSkillRowAction(row, SkillRowAction.MERGE))
                 }) {
                     Text(stringResource(R.string.skill_library_merge))
+                }
+            }
+            // 第二百零六批：「跑一次对拍」（不强制、不阻塞——结果以便签＋进化档案给出）
+            if (row.status != SkillLibraryStatus.RETIRED) {
+                TextButton(onClick = {
+                    onActionDone(controller.runSkillRowAction(row, SkillRowAction.EVALUATE))
+                }) {
+                    Text(stringResource(R.string.eval_once))
                 }
             }
             if (row.status == SkillLibraryStatus.RETIRED) {

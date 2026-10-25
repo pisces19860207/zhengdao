@@ -50,6 +50,7 @@ import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
+import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.toEffectSnapshot
 import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
@@ -340,6 +341,10 @@ internal class BaopuChatController(context: Context) {
     /** 每日一次的 stamp（SP 与 introspection 同一份文件，键独立）。 */
     private var reflectionLastRunKey: String = "reflection_last_run_ms"
 
+    /** 第二百零六批：对拍额度与去重的 SP 键（额度按日计数，去重键=changeKey→上次时刻）。 */
+    private var evalQuotaDateKey: String = "eval_quota_date"
+    private var evalQuotaCountKey: String = "eval_quota_count"
+
     private fun reflectionRunner(): ReflectionRunner {
         val pf = BaopuRuntime.personaFiles(appCtx)
         return ReflectionRunner(
@@ -528,6 +533,142 @@ internal class BaopuChatController(context: Context) {
                     is SkillWriteResult.Written -> null
                     is SkillWriteResult.Rejected -> "合并失败：$peerName 没有退役成，两条都还在"
                 }
+            }
+            SkillRowAction.EVALUATE -> {
+                // 第二百零六批：「跑一次对拍」（不强制、不阻塞——同步取数，真跑在 IO 上单飞，
+                // 结果以便签＋进化档案给出）。错误串走页顶一行；成功返回 null。
+                val indexLine = SkillRules.parseIndexLines(pf.read(PersonaLayer.C_PROJECT), MemoryScope.PROJECT)
+                    .firstOrNull { it.name == row.name }?.scenario
+                    ?: SkillRules.parseIndexLines(pf.read(PersonaLayer.B_GLOBAL), MemoryScope.GLOBAL)
+                        .firstOrNull { it.name == row.name }?.scenario
+                    ?: return "「${row.name}」不在索引里，没有可复现的任务原话——先把它记进索引"
+                val body = runCatching { row.file.readText(Charsets.UTF_8) }.getOrNull()
+                    ?: return "读不到「${row.name}」的正文"
+                val oldBody = com.example.zhengdao.baopu.SkillStore.backupsOf(row.file)
+                    .firstOrNull()?.let { runCatching { it.readText(Charsets.UTF_8) }.getOrNull() } ?: ""
+                evaluateSkillNow(
+                    skillName = row.name,
+                    userText = indexLine,
+                    skillBodyOld = oldBody,
+                    skillBodyNew = body,
+                )
+                null
+            }
+        }
+    }
+
+    /**
+     * 第二百零六批 · 对拍一次（编排）：fixture 现造 → runOnce（双跑/UNRUN/去重/额度）→
+     * 进化档案 append（结论未变不重复写）→ 便签一句话。调用方在 IO 协程里调。
+     */
+    private fun evaluateSkillNow(
+        skillName: String,
+        userText: String,
+        skillBodyOld: String,
+        skillBodyNew: String,
+    ) {
+        val pf = BaopuRuntime.personaFiles(appCtx)
+        val globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "")
+        val provider = RuntimeEval.providerOf(appCtx)
+        val modelSummary = "${provider.id}/${provider.model}@t=${com.example.zhengdao.baopu.eval.EvalDeterminism.EVAL_TEMPERATURE}"
+        val runner = com.example.zhengdao.baopu.EvalRunner(workspaceRoot, globalRoot)
+        val fixture = runner.fixtureOf(skillName, userText, skillBodyOld, skillBodyNew, modelSummary)
+        val key = com.example.zhengdao.baopu.EvalGate.changeKey(fixture)
+        val today = java.time.LocalDate.now().toString()
+        val runsToday = if (notePrefs.getString(evalQuotaDateKey, "") == today) notePrefs.getInt(evalQuotaCountKey, 0) else 0
+        val outcome = runner.runOnce(fixture, provider, notePrefs.getLong(key, 0L), runsToday)
+        notePrefs.edit {
+            putLong(key, System.currentTimeMillis())
+            putString(evalQuotaDateKey, today)
+            putInt(evalQuotaCountKey, runsToday + 1)
+        }
+        val archive = com.example.zhengdao.baopu.ReflectionRunner.archiveFile(workspaceRoot)
+        val archiveText = if (archive.isFile) runCatching { archive.readText(Charsets.UTF_8) }.getOrNull() else null
+        val noteLine = when (outcome) {
+            is com.example.zhengdao.baopu.EvalOutcome.Ran -> {
+                val c = outcome.compare
+                val readout = "旧ok=${c.old.ok}/新ok=${c.new.ok}｜步数${c.old.steps}→${c.new.steps}"
+                if (com.example.zhengdao.baopu.EvalGate.archiveNeedsAppend(archiveText, fixture.id, skillName, c.verdict.name)) {
+                    appendEvalArchive(
+                        com.example.zhengdao.baopu.EvalGate.archiveLineOf(
+                            fixture.id, skillName, c.verdict.name, c.reason, readout, java.time.LocalDate.now(),
+                        ),
+                    )
+                }
+                com.example.zhengdao.rootfs.RunLog.log("对拍：\n${outcome.table}")
+                appCtx.getString(R.string.eval_note_done, skillName, c.verdict.name, c.reason)
+            }
+            is com.example.zhengdao.baopu.EvalOutcome.NotRun -> {
+                appendEvalArchive(
+                    com.example.zhengdao.baopu.EvalGate.unrunArchiveLine(
+                        fixture.id, skillName, outcome.reason, java.time.LocalDate.now(),
+                    ),
+                )
+                appCtx.getString(R.string.eval_note_unrun, outcome.line)
+            }
+            is com.example.zhengdao.baopu.EvalOutcome.Invalid -> outcome.reason
+        }
+        reflectionNote = BaopuNote(noteLine, BaopuNoteLevel.Info)
+    }
+
+    /** 进化档案 append（与 205 反思器同一落点同一协议：首建写表头，末尾追加，历史行不改）。 */
+    private fun appendEvalArchive(line: String) {
+        val file = com.example.zhengdao.baopu.ReflectionRunner.archiveFile(workspaceRoot)
+        runCatching {
+            file.parentFile?.mkdirs()
+            val header = if (file.isFile) "" else com.example.zhengdao.baopu.ReflectionArchive.header() + "\n"
+            file.appendText(header + line + "\n", Charsets.UTF_8)
+        }.onFailure {
+            com.example.zhengdao.rootfs.RunLog.log("对拍：进化档案追加失败（${it.javaClass.simpleName}：${it.message}）")
+        }
+    }
+
+    /** 每周一次批量（入口＝技能页「每周对拍」）：最近 7 天改过的技能逐个对拍。 */
+    fun runWeeklyEval() {
+        if (reflectionBusy) return
+        reflectionBusy = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val pf = BaopuRuntime.personaFiles(appCtx)
+                    val globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "")
+                    val weekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+                    val recent = mutableListOf<Pair<String, SkillScope>>()
+                    for ((scope, dir) in listOf(
+                        SkillScope.PROJECT to SkillRules.projectSkillDir(workspaceRoot),
+                        SkillScope.GLOBAL to SkillRules.globalSkillDir(globalRoot),
+                    )) {
+                        val ledger = com.example.zhengdao.baopu.SkillAudit.fileIn(dir)
+                        if (!ledger.isFile) continue
+                        runCatching { ledger.readText(Charsets.UTF_8) }.getOrNull()?.lines()?.forEach { raw ->
+                            val o = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return@forEach
+                            if (o.optLong("ts", 0L) >= weekAgo && o.optString("action") in setOf("write", "update")) {
+                                val pair = o.optString("name") to scope
+                                if (recent.none { it.first == pair.first }) recent += pair
+                            }
+                        }
+                    }
+                    if (recent.isEmpty()) {
+                        reflectionNote = BaopuNote(appCtx.getString(R.string.eval_week_none), BaopuNoteLevel.Info)
+                        return@withContext
+                    }
+                    recent.take(com.example.zhengdao.baopu.EvalGate.DAILY_QUOTA).forEach { (name, scope) ->
+                        val dir = if (scope == SkillScope.GLOBAL) SkillRules.globalSkillDir(globalRoot) else SkillRules.projectSkillDir(workspaceRoot)
+                        val bodyFile = java.io.File(java.io.File(dir, name), SkillRules.SKILL_FILE)
+                        val body = runCatching { bodyFile.readText(Charsets.UTF_8) }.getOrNull() ?: return@forEach
+                        val oldBody = com.example.zhengdao.baopu.SkillStore.backupsOf(bodyFile)
+                            .firstOrNull()?.let { runCatching { it.readText(Charsets.UTF_8) }.getOrNull() } ?: ""
+                        val indexLine = SkillRules.parseIndexLines(pf.read(PersonaLayer.C_PROJECT), MemoryScope.PROJECT)
+                            .firstOrNull { it.name == name }?.scenario
+                            ?: SkillRules.parseIndexLines(pf.read(PersonaLayer.B_GLOBAL), MemoryScope.GLOBAL)
+                                .firstOrNull { it.name == name }?.scenario
+                            ?: return@forEach
+                        evaluateSkillNow(name, indexLine, oldBody, body)
+                    }
+                    reflectionNote = BaopuNote(appCtx.getString(R.string.eval_week_done, recent.size), BaopuNoteLevel.Info)
+                }
+            } finally {
+                reflectionBusy = false
             }
         }
     }

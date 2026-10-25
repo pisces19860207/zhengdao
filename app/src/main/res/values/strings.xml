@@ -1788,6 +1788,13 @@
 <!-- 第二百零五批 · 追加件③：草稿自动治理 -->
 <string name="skill_library_duplicate"> · 疑似重复（与 %1$s）——只标不删，可一键合并</string>
 <string name="skill_library_merge">合并（保留这条）</string>
+<!-- 第二百零六批：评测器日常化（对拍） -->
+<string name="eval_once">跑一次对拍</string>
+<string name="eval_weekly">每周对拍</string>
+<string name="eval_note_done">对拍完成（%1$s）：结论 %2$s——%3$s；已记进化档案</string>
+<string name="eval_note_unrun">未跑：%1$s</string>
+<string name="eval_week_none">最近 7 天没有改过的技能，无从对拍</string>
+<string name="eval_week_done">每周对拍跑完（共 %1$d 条）——结论见进化档案</string>
 
 <!-- 第一百九十六批：学习器（教它一次） -->
 <string name="teach_menu_start">教它一次</string>
