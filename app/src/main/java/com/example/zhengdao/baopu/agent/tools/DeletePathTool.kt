@@ -17,6 +17,9 @@
 // 5. 权限 CONFIRM——每次删都要用户看一眼「删哪个、进回收站还是真删」。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.MediaDelete
+import com.example.zhengdao.baopu.MediaOwnership
+import com.example.zhengdao.baopu.MediaPublisher
 import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.workspaceBoundaryCheck
@@ -63,6 +66,9 @@ internal object DeletePathTool {
             "说一声就能捞回来；permanent=true 才是彻底删（确认卡上会写明「删了就没了」）。" +
             "只删单个文件：目录、备份区 $BACKUP_DIR_NAME/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
             "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡，不用逐个删）。" +
+            "相册里本 App 生成的图（Pictures/证道/截屏/、Pictures/证道/图片/）也走这条，path 给相册路径" +
+            "（如 Pictures/证道/截屏/证道截屏-20261025-083000.png）；只有**归属清单里登记为本 App 写的**才删，" +
+            "别人的照片一律拒绝。" +
             "确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -95,6 +101,8 @@ internal object DeletePathTool {
             path = args.optString(ARG_PATH).trim(),
             permanent = args.optBoolean(ARG_PERMANENT, false),
             root = root,
+            // 199：相册条目经 MediaPublisher（唯一 ContentResolver 出口）
+            albumDelete = { relPath -> MediaPublisher.deleteByRelPath(relPath) },
         )
     }
 
@@ -111,9 +119,34 @@ internal object DeletePathTool {
         permanent: Boolean = false,
         root: File,
         stamp: String = TimeFormats.fileStamp(),
+        /**
+         * 第一百九十九批：相册里的条目（`Pictures/证道/{截屏,图片}/`）交给它删。
+         *
+         * 为什么单独一个参数：相册行**不在工作区里**，`File` 删不到也删不干净
+         * （只删文件会在相册里留幽灵缩略图）；而 `ContentResolver` 只许活在装配层。
+         * `null`（JVM 单测默认）⇒ 相册路径一律回「通道没接上」，不假装删成功。
+         */
+        albumDelete: ((relPath: String) -> MediaDelete)? = null,
     ): ToolOutcome {
         val rel = path.trim()
         if (rel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        // 第一百九十九批：相册条目先分流——它是「只删自己写的」那条线，判据在
+        // MediaOwnership.deleteVerdict（账上没这条/不是本包 ⇒ 一律拒绝，宁可多问）
+        val albumRel = MediaOwnership.albumRelPathOf(rel)?.takeIf { MediaOwnership.isAlbumPath(it) }
+        if (albumRel != null) {
+            val del = albumDelete
+                ?: return ToolOutcome.Failed("相册删除通道没接上（App 内部装配缺失）：$albumRel")
+            return when (val r = del(albumRel)) {
+                is MediaDelete.Done ->
+                    ToolOutcome.Ok("已删掉相册里的 ${r.entry.relPath}（相册里同步消失，不留缩略图）")
+
+                is MediaDelete.Ask -> ToolOutcome.Rejected(
+                    "没有删：${r.reason}。相册里不是本 App 生成的照片，请自己到系统相册里处理。",
+                )
+
+                is MediaDelete.Failed -> ToolOutcome.Failed("没删掉：${r.reason}")
+            }
+        }
         // 第三十七批 A 段：删掉人设＝让人设静默消失，同样不许（回收站那套逻辑原样保留）
         PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
         val target = resolve(root, rel)

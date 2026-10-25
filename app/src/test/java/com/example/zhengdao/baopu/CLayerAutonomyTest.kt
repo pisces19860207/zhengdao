@@ -7,6 +7,7 @@ import com.example.zhengdao.baopu.agent.AppendPersonaTool
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -53,8 +54,18 @@ class CLayerAutonomyTest {
         assertTrue("原条款还在", after.contains("原条款"))
         assertTrue("新条款追加上了", after.contains("新条款"))
         assertTrue("确实是追加", after.startsWith(before.trimEnd()))
-        val backups = files.projectFile().parentFile!!.listFiles { f -> f.name.contains(".bak-") }
-        assertTrue("人设写入要备份", backups != null && backups.isNotEmpty())
+        // 199 起备份落 `<工作区>/备份/人设/`（人设文件本身也已搬到 `<工作区>/抱朴记忆/`），
+        // 判据从「文件旁边有 .bak」改成「`PersonaBackup` 能找到，且最新那份在新家」——
+        // 后者才是「恢复上一版」真正依赖的那条路径。
+        val backups = PersonaBackup.backupsOf(files.projectFile())
+        assertTrue("人设写入要备份", backups.isNotEmpty())
+        val home = PersonaBackup.backupHome(files.projectFile())
+        assertNotNull("C 层人设必须有备份家", home)
+        assertEquals(
+            "199 起 .bak 落 <工作区>/备份/人设/（根上不再长文件）",
+            home!!.absolutePath,
+            backups.first().parentFile!!.absolutePath,
+        )
     }
 
     @Test

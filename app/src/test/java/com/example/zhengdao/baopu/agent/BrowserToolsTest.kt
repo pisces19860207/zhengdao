@@ -47,10 +47,11 @@ class BrowserToolsTest {
             boom?.let { throw it }
             return answer
         }
-        override fun screenshot(fullPage: Boolean): Shot {
-            calls += "shot:$fullPage"
+        override fun screenshot(fullPage: Boolean, album: Boolean): Shot {
+            calls += "shot:$fullPage:$album"
             boom?.let { throw it }
-            return Shot(answer, shotRel)
+            // 199：相册那张不回可读路径（它不在工作区/截屏根里），与生产的 `Shot` 同形
+            return if (album) Shot(answer, null, album = true) else Shot(answer, shotRel)
         }
         override fun tap(cssX: Int, cssY: Int): String {
             calls += "tap:$cssX,$cssY"

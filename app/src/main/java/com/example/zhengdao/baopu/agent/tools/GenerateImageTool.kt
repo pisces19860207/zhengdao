@@ -10,6 +10,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.LlmClient
 import com.example.zhengdao.baopu.LlmWire
+import com.example.zhengdao.baopu.MediaPublish
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.rootfs.RunLog
@@ -54,6 +55,16 @@ internal object GenerateImageTool {
          * Key 池/冷却判据），只在装配那份为空时才用它。
          */
         val keyProvider: (() -> String)? = null,
+        /**
+         * 第一百九十九批：把画好的图**存进手机相册**（`Pictures/证道/图片/`，相册可见）。
+         *
+         * 为什么注入而不是直接调：本工具是「零 Android」的判据层（见文件头），
+         * `ContentResolver` 只许活在装配层。`null` ⇒ 退回 158 的老行为（只写 `产物/`），
+         * 单测与「相册通道没接上」的那条路走的就是它。
+         *
+         * 返回 `Unavailable` ⇒ 落回 `产物/` 并在回执里如实说明（**不许**假装相册里有）。
+         */
+        val publishAlbum: ((bytes: ByteArray, name: String, mime: String, ext: String) -> MediaPublish)? = null,
     )
 
     @Volatile
@@ -274,15 +285,37 @@ internal object GenerateImageTool {
             ?: return ToolOutcome.Failed("Gemini 回的图片格式不认识：${img.mime}（只认 png/jpg/webp）。")
         val bytes = runCatching { Base64.getDecoder().decode(img.base64) }.getOrNull()
             ?: return ToolOutcome.Failed("Gemini 回的图片数据坏了（base64 解不开）：再试一次。")
-        val target = GenerateImage.uniqueTarget(dir, GenerateImage.baseName(stamp, prompt, index), ext)
+        val base = GenerateImage.baseName(stamp, prompt, index)
+        val dims = GenerateImage.dimensionsOf(bytes)
+        val sizeText = if (dims == null) "尺寸未识别" else "${dims.first}×${dims.second}"
+
+        // 第一百九十九批：生图是**给人看的**（相册可见）⇒ 先走 ContentResolver 进
+        // `Pictures/证道/图片/`，一份图只落一处（设计 §5.2），不再往 `产物/` 双写。
+        // 相册通道不可用（没权限/装配缺失）⇒ 才落回 `产物/`，并在回执里说明白。
+        var albumMiss: String? = null
+        when (val pub = e.publishAlbum?.invoke(bytes, "$base.$ext", img.mime, ext)) {
+            is MediaPublish.Ok -> return ToolOutcome.Ok(
+                "画好了，已存进手机相册：${pub.entry.relPath} · $sizeText · ${bytes.size} 字节" +
+                    if (!pub.ledgerRecorded) "（归属清单没写成，删的时候会再问一次）" else "",
+            )
+
+            is MediaPublish.Duplicate -> return ToolOutcome.Ok(
+                "画好了，但这一张和相册里已有的那张一模一样（${pub.entry.relPath}），" +
+                    "没有重复入库 · $sizeText · ${bytes.size} 字节",
+            )
+
+            is MediaPublish.Unavailable -> albumMiss = pub.reason
+            null -> Unit
+        }
+
+        val target = GenerateImage.uniqueTarget(dir, base, ext)
         runCatching { atomicWrite(target, bytes) }.onFailure {
             return ToolOutcome.Failed(
                 "图片存不进 ${displayPath(root, target)}：${it.javaClass.simpleName}。",
             )
         }
-        val dims = GenerateImage.dimensionsOf(bytes)
-        val sizeText = if (dims == null) "尺寸未识别" else "${dims.first}×${dims.second}"
-        return ToolOutcome.Ok("${displayPath(root, target)} · $sizeText · ${bytes.size} 字节")
+        val tail = albumMiss?.let { "（相册没写成：$it；这张只在 产物/，相册里看不到）" } ?: ""
+        return ToolOutcome.Ok("${displayPath(root, target)} · $sizeText · ${bytes.size} 字节$tail")
     }
 
     /** 工作区内的显示路径（相对根、正斜杠）；拿不到就退回绝对路径。 */

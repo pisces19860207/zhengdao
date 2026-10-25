@@ -45,8 +45,11 @@ internal interface BrowserGateway {
      *
      * 相对路径是给引擎读图用的（`VisionFiles.load`）；拿不到路径时 [Shot.relPath] 为 null，
      * 工具回执里会明说「只有文件没有像素」——不假装模型能看见。
+     *
+     * 第一百九十九批加 [album]：`true` ＝这张是给**人**看的（存进手机相册），
+     * `false`（默认）＝给**模型**核对的（落 `证道/截屏/`，不进相册）。
      */
-    fun screenshot(fullPage: Boolean): Shot
+    fun screenshot(fullPage: Boolean, album: Boolean = false): Shot
 
     /** 点坐标（CSS px，视口坐标）。回执带 S3 校验行。 */
     fun tap(cssX: Int, cssY: Int): String
@@ -73,7 +76,12 @@ internal interface BrowserGateway {
 }
 
 /** 一次截图的结果：文本（进模型）+ 工作区相对路径（进读图管线，可空）。 */
-internal data class Shot(val text: String, val relPath: String?)
+internal data class Shot(
+    val text: String,
+    val relPath: String?,
+    /** 第一百九十九批：这张是给人看的（已在相册）⇒ 本轮不读像素、别当越界图。 */
+    val album: Boolean = false,
+)
 
 /** 当前页身份。 */
 internal data class PageInfo(val url: String, val title: String)
@@ -103,6 +111,9 @@ internal object BrowserTools {
     const val ARG_TEXT = "text"
     const val ARG_DIRECTION = "direction"
     const val ARG_FULL_PAGE = "full_page"
+
+    /** 第一百九十九批：这张图给谁看（`true` = 存相册给人翻）。 */
+    const val ARG_ALBUM = "album"
     const val ARG_X = "x"
     const val ARG_Y = "y"
     const val ARG_X1 = "x1"
@@ -289,8 +300,10 @@ internal object BrowserTools {
 
     fun screenshotSpec(): ToolSpec = ToolSpec(
         name = NAME_SCREENSHOT,
-        description = "给玄览当前页截图。**会尝试把这张图直接给模型看**（通道支持看图时；" +
-            "本轮首次截图会先问你一次，敏感页每次都问）。回执带文件路径（证道/截屏/）。" +
+        description = "给玄览当前页截图。默认这张是**给我自己看**的（落 证道/截屏/，不进相册，" +
+            "本轮首次截图会先问你一次，敏感页每次都问）。" +
+            "用户说「存到相册/给我看/发我一张」时传 album=true：这张会进手机相册" +
+            "（Pictures/证道/截屏/），按「谁来看」分流，**一轮核对别开它**。" +
             "页面没排版时可能失败，失败会说原因。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -298,6 +311,11 @@ internal object BrowserTools {
                 ARG_FULL_PAGE to jsonObjectOf(
                     "type" to "boolean",
                     "description" to "true = 整页长图；默认 false = 当前视口",
+                ),
+                ARG_ALBUM to jsonObjectOf(
+                    "type" to "boolean",
+                    "description" to "true = 存进手机相册给人看（Pictures/证道/截屏/）；" +
+                        "默认 false = 只给我核对用，不进相册",
                 ),
             ),
             "required" to jsonArrayOf(),
@@ -309,17 +327,24 @@ internal object BrowserTools {
         timeoutMs = ToolTimeout.BROWSER_MS,
     ) { args ->
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
-        val shot = runCatching { gateway.screenshot(args.optBoolean(ARG_FULL_PAGE, false)) }
-            .getOrElse { return@ToolSpec ToolOutcome.Failed("截图失败：${it.message ?: it.javaClass.simpleName}") }
+        val album = args.optBoolean(ARG_ALBUM, false)
+        val shot = runCatching {
+            gateway.screenshot(args.optBoolean(ARG_FULL_PAGE, false), album)
+        }.getOrElse { return@ToolSpec ToolOutcome.Failed("截图失败：${it.message ?: it.javaClass.simpleName}") }
         val warn = if (isSensitivePage(gateway)) "⚠ 敏感页截图。\n" else ""
-        val tail = if (shot.relPath == null) {
-            "\n（这张图没有可读路径，模型看不到像素；要看内容请用 browser_snapshot）"
-        } else {
-            ""
+        val tail = when {
+            // 199：给人看的这张只进相册（一份图只落一处），本轮本来就不读它的像素
+            shot.album -> "\n（这张已经存进手机相册（Pictures/证道/截屏/）；" +
+                "我这一轮不看它的像素，要看内容用 browser_snapshot。）"
+            shot.relPath == null ->
+                "\n（这张图没有可读路径，模型看不到像素；要看内容请用 browser_snapshot）"
+            else -> ""
         }
         ToolOutcome.Ok(
             warn + cap(shot.text, MAX_TEXT_CHARS) + tail,
-            imageRelPaths = listOfNotNull(shot.relPath),
+            // 相册那张不往引擎的读图管线里塞：它不在工作区根也不在截屏根，塞进去只会
+            // 变成「有 1 张图片没发出去（不在工作区里（越界））」
+            imageRelPaths = if (shot.album) emptyList() else listOfNotNull(shot.relPath),
         )
     }
 

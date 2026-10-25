@@ -87,6 +87,22 @@ object BaopuKernel {
 
         /** 迁移存档落点（死目录 `资料库/改版` 的内容；在 `产物/` 下，不新增顶层目录）。 */
         const val DIR_MIGRATED_ARCHIVE = "_迁移存档"
+
+        // ── 相册（199）：`Pictures/证道/{截屏,图片}`，**只能走 ContentResolver 写** ──────
+        //
+        // 为什么这三个名字在内核：`Pictures/证道/` 是**工作区之外的第二个读根**（设计 §2.2），
+        // 任何地方自己拼一次就是「第二套路径」；而且 `MediaPathGateTest` 要能一处钉住。
+        /** 相册根目录名（`Pictures/证道/`）。 */
+        const val DIR_ALBUM = "证道"
+
+        /** 相册里**用户可见截屏**的子目录（`Pictures/证道/截屏/`）。 */
+        const val DIR_ALBUM_SHOTS = "截屏"
+
+        /** 相册里**模型生图/图生图**的子目录（`Pictures/证道/图片/`）。 */
+        const val DIR_ALBUM_IMAGES = "图片"
+
+        /** 自产条目归属账本（`<工作区>/.归属.jsonl`；一行一条，只追加）。 */
+        const val FILE_MEDIA_LEDGER = ".归属.jsonl"
     }
 
     /** ② 执行边界：A 内核三条 —— 不跨 rootfs、不起子进程、只在工作区活动。 */

@@ -74,23 +74,34 @@ internal object BaopuBrowserWiring {
              * 第一百七十七批 S1：截图走 ref 出口，把**相对路径**交给工具层（→ 引擎读图）。
              * 失败用异常表达：工具层 `runCatching` 会翻成 `ToolOutcome.Failed`，
              * 这样模型看到的是「失败：截图失败：<原因>」，而不是一条看着像成功的回执。
+             *
+             * 第一百九十九批：[album] 透传给桥的截图支路（`true` ＝存相册给人看）。
              */
-            override fun screenshot(fullPage: Boolean): Shot =
-                when (val r = BrowserCommands.captureShotRef(appCtx, null, if (fullPage) "1" else "0")) {
+            override fun screenshot(fullPage: Boolean, album: Boolean): Shot =
+                when (
+                    val r = BrowserCommands.captureShotRef(
+                        appCtx,
+                        null,
+                        if (fullPage) "1" else "0",
+                        album = album,
+                    )
+                ) {
                     is BrowserCommands.ShotCapture.Ok -> {
                         val ref = r.ref
                         val info = pageInfo()
                         val text = buildString {
-                            append("已截图：").append(ref.file)
-                            append("（").append(ref.mode).append(' ')
-                            append(ref.width).append('×').append(ref.height)
-                            append("，").append(ref.bytes).append(" 字节）")
+                            append(if (album) "已截图并存进相册：" else "已截图：").append(ref.file)
+                            if (!album) {
+                                append("（").append(ref.mode).append(' ')
+                                append(ref.width).append('×').append(ref.height)
+                                append("，").append(ref.bytes).append(" 字节）")
+                            }
                             if (info != null && info.url.isNotBlank()) {
                                 append("；页面：").append(SensitiveRedactor().redactUrl(info.url))
                             }
                             if (ref.note != null) append("\n（").append(ref.note).append('）')
                         }
-                        Shot(text, ref.file)
+                        Shot(text, if (album) null else ref.file, album = album)
                     }
 
                     is BrowserCommands.ShotCapture.Bad ->

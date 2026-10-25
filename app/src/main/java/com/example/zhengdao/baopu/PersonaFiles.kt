@@ -133,13 +133,24 @@ internal object PersonaRules {
 internal class PersonaFiles(
     private val globalRoot: File,
     private val projectRoot: File,
+    /**
+     * 第一百九十九批：**旧落点**（C 层人设曾直接躺在工作区根上）。
+     *
+     * 为什么留着读：设计 §8 行 14 说「根直放那份留作只读回退」——真机上它确实存在
+     * （339 B），新包一升级就换成 `抱朴记忆/人设-本项目.md` 的话，用户会以为人设丢了。
+     * 口径：**读**时新位置优先、缺了回落到旧位置；**写**只写新位置（旧的那份不动、不删）。
+     */
+    private val legacyProjectRoot: File? = null,
 ) {
 
     /** B 全局人设文件（跟 App）。 */
     fun globalFile(): File = File(globalRoot, FILE_PERSONA)
 
-    /** C 项目人设文件（跟工作区）。 */
+    /** C 项目人设文件（跟工作区；199 起 `<工作区>/抱朴记忆/人设-本项目.md`）。 */
     fun projectFile(): File = File(projectRoot, FILE_PERSONA_PROJECT)
+
+    /** 旧落点的 C 层人设文件（只读兼容；没有就 null）。 */
+    fun legacyProjectFile(): File? = legacyProjectRoot?.let { File(it, FILE_PERSONA_PROJECT) }
 
     fun fileOf(layer: PersonaLayer): File = when (layer) {
         PersonaLayer.A_KERNEL -> throw IllegalArgumentException("A 内核没有文件（只在 BaopuPreset 里，只读）")
@@ -150,8 +161,19 @@ internal class PersonaFiles(
     /** 读一层；不存在/读不了 ⇒ null（上层按「缺失用空」处理）。 */
     fun read(layer: PersonaLayer): String? {
         val f = fileOf(layer)
-        if (!f.isFile) return null
-        return runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+        if (f.isFile) {
+            runCatching { f.readText(Charsets.UTF_8) }.getOrNull()?.let { text ->
+                if (text.isNotBlank()) return text
+            }
+        }
+        // 199：C 层新位置空/缺 ⇒ 回落到旧落点（只读；写永远写新位置）
+        if (layer == PersonaLayer.C_PROJECT) {
+            val legacy = legacyProjectFile()
+            if (legacy != null && legacy.isFile) {
+                return runCatching { legacy.readText(Charsets.UTF_8) }.getOrNull()?.takeIf { it.isNotBlank() }
+            }
+        }
+        return null
     }
 
     /**

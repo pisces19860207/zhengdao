@@ -142,9 +142,13 @@ internal object BaopuRuntime {
     /** 人设文件读写壳（B 跟 App、C 跟工作区）。 */
     fun personaFiles(context: Context): PersonaFiles {
         val appCtx = context.applicationContext
+        val ws = workspaceRoot(appCtx)
         return PersonaFiles(
             globalRoot = File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY),
-            projectRoot = workspaceRoot(appCtx),
+            // 199：C 层落到 `<工作区>/抱朴记忆/`（157「根里没有裸文件」；设计 §8 行 14）
+            projectRoot = File(ws, PersonaPackRules.DIR_ROOT),
+            // 旧落点是工作区根（只读回退：升级那一刻读起来不能像「人设丢了」）
+            legacyProjectRoot = ws,
         )
     }
 
@@ -252,6 +256,11 @@ internal object BaopuRuntime {
             // 2026-10-23：装配时若池子全在冷却，上面那份 key 是空的、且会被固化；
             // 执行时再走同一套 Key 池判据取一次（取不到仍如实回「去哪儿填」）。
             keyProvider = { ProviderPrefs.storedKey(appCtx, Providers.GEMINI.id).orEmpty() },
+            // 第一百九十九批：生图进手机相册（Pictures/证道/图片/，相册可见）＋ 归属账本。
+            // 通道没接上/没权限 ⇒ 工具退回 产物/ 并在回执里说明（不假装相册里有）。
+            publishAlbum = { bytes, name, mime, ext ->
+                MediaPublisher.publish(appCtx, bytes, name, mime, MediaOwnership.SOURCE_IMAGE, ext)
+            },
         )
         // 第一百八十六批：画板/图表/表格的 PNG 截图器。
         // ArtifactRaster 是 App 侧唯一的 WebView 沙箱实现（JS 关、断网、只放 about/data）；
@@ -494,6 +503,34 @@ internal object BaopuRuntime {
         return BaopuToolUnlocks
     }
 
+    /**
+     * 第一百九十九批 · 相册通道 ＋ 两笔存量迁移（设计 §5／§7／§8 行 13、14）。
+     *
+     * 装配三件事：
+     * 1. [MediaPublisher] 的环境（Context ＋ 工作区闭包）——桥截图与生图都经它；
+     * 2. `screenshots/` ⇒ `截屏/`：先哈希对账再复制，**旧目录不删**（只落 `.待删.txt`）；
+     * 3. 根直放的人设存量：**只登记不搬**（新写入已改落 `抱朴记忆/`）。
+     *
+     * 全程 `runCatching`：迁移是顺手活，**绝不许**因为一个只读文件把引擎装不起来。
+     */
+    private fun installMedia(appCtx: Context, ws: File) {
+        MediaPublisher.env = MediaPublisher.Env(
+            // 晚绑定：用户在设置页换工作区后，账本跟着新工作区走（不是装配那一刻的快照）
+            workspace = { workspaceRoot(appCtx) },
+        )
+        // 工具侧（delete_path 只有路径、没有 Context）走这条闭包：Context 不进静态字段
+        MediaPublisher.installAlbumDeleter { rel ->
+            MediaPublisher.deleteByRelPath(appCtx, rel)
+        }
+        runCatching {
+            val target = com.example.zhengdao.bridge.BrowserCommands.shotDir(appCtx)
+            val legacy = File(Store.root(appCtx), MediaMigration.LEGACY_SHOT_DIR)
+            MediaMigration.migrateShots(ws, legacy, target)
+        }.onFailure { RunLog.log("抱朴截屏目录迁移跳过：${it.javaClass.simpleName}") }
+        runCatching { MediaMigration.registerPersonaResidue(ws) }
+            .onFailure { RunLog.log("人设存量登记跳过：${it.javaClass.simpleName}") }
+    }
+
     /** 设置页用：拿开关存储（顺带保证已 init）。 */
     fun toolPrefs(context: Context): ToolPrefs {
         BaopuToolPrefs.init(context)
@@ -555,6 +592,10 @@ internal object BaopuRuntime {
         val wsRoot = workspaceRoot(appCtx)
         MemoryLayout.ensureDirs(wsRoot)
         MemoryLayout.migrate(wsRoot, appCtx.filesDir)
+        // 第一百九十九批：相册通道 ＋ 两笔顺带迁移（都幂等，二遍全零）。
+        // 装在这里的理由与上面那行一样：引擎一开跑就可能截图/生图，通道必须先可用；
+        // 而「接 Android 的手只许有一只」⇒ ContentResolver 只经 MediaPublisher 这一处。
+        installMedia(appCtx, wsRoot)
         val provider = provider(appCtx)
         val reg = registry(appCtx, provider)
         val pipeline = GuardPipeline(

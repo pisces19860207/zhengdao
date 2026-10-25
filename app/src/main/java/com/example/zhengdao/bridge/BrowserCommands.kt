@@ -13,6 +13,9 @@ import android.view.MotionEvent
 import android.webkit.WebView
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withScale
+import com.example.zhengdao.baopu.MediaOwnership
+import com.example.zhengdao.baopu.MediaPublish
+import com.example.zhengdao.baopu.MediaPublisher
 import com.example.zhengdao.browser.PageFingerprint
 import com.example.zhengdao.browser.PageSnapshot
 import com.example.zhengdao.browser.SensitiveRedactor
@@ -602,6 +605,28 @@ object BrowserCommands {
     /** 截图目录（保证存在）。 */
     internal fun shotDir(context: Context): File = File(Store.root(context), SHOT_DIR).apply { mkdirs() }
 
+    /** 两条说明合成一条（旧的在前；空串不占位）。199 起「退化说明 ＋ 相册说明」要同时出现。 */
+    private fun joinNote(a: String?, b: String?): String? =
+        listOfNotNull(a?.takeIf { it.isNotBlank() }, b?.takeIf { it.isNotBlank() })
+            .joinToString("；")
+            .ifBlank { null }
+
+    /**
+     * 核对图文件名（占用就 `-2`、`-3`）。
+     *
+     * 199 把文件名从「毫秒时间戳」换成 `fileStamp()`（相册那条支路要同一个名字口径），
+     * 于是同一秒内连截两张会撞名——撞名就加序号，**不许覆盖**（前一张可能正被读图管线用着）。
+     */
+    private fun freeShotName(dir: File, base: String): String {
+        if (!File(dir, "$base.png").exists()) return "$base.png"
+        var n = 2
+        while (true) {
+            val next = "$base-$n.png"
+            if (!File(dir, next).exists()) return next
+            n++
+        }
+    }
+
     /**
      * 截一张图并落盘（**唯一实现**：[screenshot] 与抱朴网关共用）。
      *
@@ -614,6 +639,16 @@ object BrowserCommands {
         tabId: String?,
         fullPage: String?,
         selector: String? = null,
+        /**
+         * 第一百九十九批：这张图**给谁看**。
+         *
+         * `false`（默认）＝模型核对图：落 `证道/截屏/`（177 现状，`VisionFiles` 要回读），
+         * **零 MediaStore**（一次任务几十张，全刷进相册就是把用户相册占满）。
+         * `true` ＝用户可见截屏：走 `MediaStore` 进 `Pictures/证道/截屏/`（`IS_PENDING`
+         * 事务式发布），相册能看到；**不双写**——只落相册那一处（设计 §5.2「一份图只落一处」）。
+         * 相册通道不可用 ⇒ 退回文件落盘并在 `note` 里如实说明（不假装进了相册）。
+         */
+        album: Boolean = false,
     ): ShotCapture {
         val sel = selector?.trim()?.takeIf { it.isNotEmpty() }
         sel?.let {
@@ -658,16 +693,69 @@ object BrowserCommands {
             ?: return ShotCapture.Bad("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
         // 退化到可视区时，mode 要如实改成 viewport（不许挂着 element/fullpage 的名义回一张别的图）
         val effectiveMode = if (note == null) mode else ShotMode.VIEWPORT
+        val stamp = com.example.zhengdao.util.TimeFormats.fileStamp()
+        val name = "证道截屏-$stamp"
+
+        if (album) {
+            // 人看的这张：只走相册（不做 File 落盘，避免同一张图两份、归属两条互打）
+            when (val pub = MediaPublisher.publish(
+                ctx = context,
+                bytes = shot.bytes,
+                name = name,
+                mime = "image/png",
+                source = MediaOwnership.SOURCE_SCREENSHOT,
+                ext = "png",
+            )) {
+                is MediaPublish.Ok -> return ShotCapture.Ok(
+                    ShotRef(
+                        file = pub.entry.relPath,
+                        hostPath = "",
+                        guestPath = "",
+                        bytes = shot.bytes.size,
+                        mode = effectiveMode.wire,
+                        width = shot.width,
+                        height = shot.height,
+                        scale = shot.scale,
+                        note = joinNote(
+                            note,
+                            if (pub.ledgerRecorded) "已存进相册（Pictures/证道/截屏/）"
+                            else "已存进相册，但归属清单没写成（删的时候会再问一次）",
+                        ),
+                    ),
+                )
+
+                is MediaPublish.Duplicate -> return ShotCapture.Ok(
+                    ShotRef(
+                        file = pub.entry.relPath,
+                        hostPath = "",
+                        guestPath = "",
+                        bytes = shot.bytes.size,
+                        mode = effectiveMode.wire,
+                        width = shot.width,
+                        height = shot.height,
+                        scale = shot.scale,
+                        note = joinNote(note, "同一张图此前已进相册（没重复入库）"),
+                    ),
+                )
+
+                is MediaPublish.Unavailable -> {
+                    // 相册不可用：**退回 177 的文件落盘**，并如实说清这张不在相册里
+                    note = joinNote(note, "相册没写成（${pub.reason}），先存 证道/截屏/（不进相册）")
+                }
+            }
+        }
+
         val dir = shotDir(context)
-        val name = "bridge-${System.currentTimeMillis()}.png"
-        val out = File(dir, name)
+        // 同一秒内连截两张：名字撞了要加序号，**绝不覆盖**前一张（前一张可能正被模型读）
+        val fileName = freeShotName(dir, "bridge-$stamp")
+        val out = File(dir, fileName)
         return runCatching { out.writeBytes(shot.bytes) }.fold(
             onSuccess = {
                 ShotCapture.Ok(
                     ShotRef(
-                        file = "$SHOT_DIR/$name",
+                        file = "$SHOT_DIR/$fileName",
                         hostPath = out.absolutePath,
-                        guestPath = "/opt/zhengdao/$SHOT_DIR/$name",
+                        guestPath = "/opt/zhengdao/$SHOT_DIR/$fileName",
                         bytes = shot.bytes.size,
                         mode = effectiveMode.wire,
                         width = shot.width,
