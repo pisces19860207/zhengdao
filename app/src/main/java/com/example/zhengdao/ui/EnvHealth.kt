@@ -76,9 +76,15 @@ object EnvHealth {
     const val FIX_UV = "uv"
     const val FIX_HERMES_DEPS = "hermes-deps"
 
-    /** 引导去路标识（与 Check.route 对应）：不是一键自愈，而是把用户送到正确的位置。 */
+    /**
+     * 引导去路标识（与 Check.route 对应）：不是一键自愈，而是把用户送到正确的位置。
+     *
+     * 第二百一十批（入口与权限归位）：存储那条的去路从「系统所有文件访问授权页」改成
+     * **设置页「申请权限」卡**——直接拉系统授权页是散落的申请入口，本批只许留一处
+     * （Hub 顶部那张卡）。体检行照旧报状态（判据一格没动），只是按钮的去路换了。
+     */
     const val ROUTE_REPAIR_ENV = "repair-env"       // 设置页「修复环境」（重解压系统层）
-    const val ROUTE_STORAGE_GRANT = "storage-grant" // 系统「所有文件访问」授权页
+    const val ROUTE_SETTINGS_PERMISSIONS = "settings-permissions" // 设置页「申请权限」卡
     const val ROUTE_NET_CHECK = "net-check"         // 设置页「网络自检」（分应用代理等）
     const val ROUTE_STORAGE_DETAIL = "storage-detail" // 设置页「存储占用」（明细 + 一键清理）
 
@@ -101,7 +107,7 @@ object EnvHealth {
         "proot" to ROUTE_REPAIR_ENV,
         "rootfs" to ROUTE_REPAIR_ENV,
         "network" to ROUTE_NET_CHECK,
-        "storage" to ROUTE_STORAGE_GRANT,
+        "storage" to ROUTE_SETTINGS_PERMISSIONS,
         "disk" to ROUTE_STORAGE_DETAIL,
     )
 
@@ -475,8 +481,7 @@ object EnvHealth {
         val (ok, detail) = storageVerdict(granted, readable, res)
         return Check(
             id = "storage", label = "存储权限", ok = ok, detail = detail,
-            // 授权页可由主页直接拉起（HomeScreen 里发 ACTION_MANAGE_APP_ALL_FILES_ACCESS_
-            // PERMISSION 带 package: 的 Intent），不必先绕到设置页再找那一行。
+            // 第二百一十批：去路是设置页「申请权限」卡（申请入口唯一化，见该卡 KDoc）。
             route = if (ok) null else GUIDED_ROUTES["storage"],
         )
     }

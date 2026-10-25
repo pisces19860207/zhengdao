@@ -26,6 +26,10 @@ import java.io.File
  * ④ 真正要钉住的是另一件事：白名单必须与 NavHost 保持一致 —— 否则老装机 prefs 里
  *    残留的死路由（如 "plugins"）会被 `navigate()` 抛 `IllegalArgumentException`，冷启动直接崩。
  *
+ * 第二百一十批（2026-10-25 · 入口与权限归位）更新：首启权限页整页退役 ⇒ NavHost 从四个
+ * 目的地缩到三个（`welcome` / `home` / `settings`），`permission_setup` 变成又一个死值
+ * （与 `plugins` 同列）—— 白名单判据一条不差地继续守着它，本类只把「四个」的读数改成「三个」。
+ *
  * 判据一律是**源码形态**，与 [PullToRefreshGuardTest] / [A11yBannerGuardTest] 同惯例：
  * 本模块没有 Compose UI 测试基建，因此钉「源码不能被悄悄改回裸字符串/裸 navigate」。
  *
@@ -86,13 +90,17 @@ class RouteRestoreGuardTest {
     fun `门禁_B补15_白名单里的路由都必须真实存在于 NavHost`() {
         val known = registeredRoutes()
         val allowed = whitelist()
-        assertTrue("NavHost 路由解析结果太可疑：$known", known.size >= 4)
+        // 第二百一十批：首启权限页退役 ⇒ 四个目的地缩到三个（welcome/home/settings）。
+        assertTrue("NavHost 路由解析结果太可疑：$known", known.size >= 3)
         val dead = allowed - known
         assertTrue(
             "B-补-15：白名单里出现 NavHost 已不存在的路由 $dead" +
                 "（老装机 prefs 残留该值时会 navigate 抛 IllegalArgumentException）",
             dead.isEmpty(),
         )
+        // 首启权限页（2026-10-25 删）与插件页（2026-10-08 删）一样变成死值：
+        // 老装机 prefs 里可能还留着 "permission_setup"，白名单必须继续把它挡在外面。
+        assertFalse("permission_setup 已退役，不许回白名单", allowed.contains("permission_setup"))
     }
 
     /** 恢复上次页面的那段代码（剥掉注释行，免得守卫被自己的说明文字带偏）。 */
@@ -133,10 +141,12 @@ class RouteRestoreGuardTest {
         val src = routeRules()
         val start = src.indexOf("val RESTORABLE_ROUTES")
         assertTrue("找不到白名单声明", start > 0)
-        // 往前 1600 字符内应能找到 KDoc（含四个目的地与 plugins 死值的说明）
+        // 往前 1600 字符内应能找到 KDoc（含目的地与 plugins / permission_setup 死值的说明）
         val doc = src.substring((start - 1600).coerceAtLeast(0), start)
-        assertTrue("白名单 KDoc 要写清四个目的地", doc.contains("welcome") && doc.contains("permission_setup"))
+        assertTrue("白名单 KDoc 要写清目的地", doc.contains("welcome") && doc.contains("settings"))
         assertTrue("白名单 KDoc 要写清 plugins 这类死值为什么被挡", doc.contains("plugins"))
+        // 第二百一十批：首启权限页也成了死值，KDoc 必须把它写进去（同列 plugins）。
+        assertTrue("白名单 KDoc 要写清 permission_setup 死值为什么被挡", doc.contains("permission_setup"))
     }
 
     @Test

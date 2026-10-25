@@ -74,7 +74,6 @@
     <string name="settings_value_help">新手指南 · 日志</string>
 
     <!-- ── 首页 ── -->
-    <string name="home_grant_page_failed">打不开系统授权页，请手动到「设置 → 应用 → 证道 → 所有文件访问」开启</string>
     <string name="home_no_browser">没有可用的浏览器</string>
     <string name="home_env_ready">环境就绪</string>
     <string name="home_env_missing">环境未安装</string>
@@ -102,9 +101,9 @@
     <string name="home_hermes_script_issue_detail">脚本落盘失败（工作区不可写？），终端里那条修复命令跑不起来。</string>
     <string name="home_go_settings">去设置</string>
     <string name="home_btn_repair_env">去修复</string>
-    <string name="home_btn_grant">去授权</string>
     <string name="home_btn_net_check">网络自检</string>
     <string name="home_btn_storage_detail">看明细</string>
+    <string name="home_btn_goto_perm">去设置→申请权限</string>
     <string name="home_btn_handle">去处理</string>
     <string name="home_sysinfo_copied">已复制全部系统信息</string>
     <string name="home_copy_sysinfo">一键复制全部信息</string>
@@ -156,7 +155,10 @@
     <string name="data_page_title">终端与资料</string>
     <string name="data_perm_granted">已授权</string>
     <string name="data_perm_not_granted">未授权</string>
-    <string name="data_perm_denied">系统没放行——点「去系统设置」手动开（有些系统会悄悄拦掉弹窗）</string>
+    <!-- 第二百一十批 · 申请权限集中卡（全 App 唯一申请入口）── -->
+    <string name="settings_perm_card_title">申请权限</string>
+    <string name="settings_perm_card_desc">权限按需申请：不给也能用，只是对应功能降级。点每一行去授权；已给的可以点进系统页查看或撤销。</string>
+    <string name="perm_goto_card">去设置 → 申请权限</string>
     <string name="data_open_failed">打开失败：%1$s</string>
     <string name="data_kb_card">资料库</string>
     <string name="data_kb_cap_note">（已达扫描上限，可能未列全）</string>
@@ -439,9 +441,7 @@
     <string name="keepalive_guide_title">荣耀 / MagicOS 保活指南</string>
     <string name="keepalive_guide_steps">① 应用启动管理：设置 → 应用和服务 → 应用启动管理 → 证道 → 关闭「自动管理」，手动开启「允许自启动 / 关联启动 / 后台活动」\n② 电池优化：设置 → 电池 → 更多电池设置 → 证道 → 设为「不允许优化」\n③ 多任务锁定：多任务界面找到证道卡片，下滑出现小锁图标，点击锁定\n④ 进程意外退出时：开发者选项 → 确认「不要保留活动」未勾选</string>
     <string name="keepalive_note">荣耀对后台服务比较宽容：让「会话运行中」通知保持可见、再多任务上锁，就能长期后台存活。万一被系统清掉，重进终端时会自动回到离开时的现场。</string>
-    <string name="keepalive_battery_btn">一键跳转：把证道设为「不优化」</string>
     <string name="keepalive_details_btn">打开应用详情（启动管理入口）</string>
-    <string name="keepalive_battery_toast">请到系统设置的电池优化中手动设置</string>
     <string name="keepalive_details_toast">请到系统设置 → 应用管理中找到证道</string>
     <string name="keepalive_log_row">保活记录（被杀留档）</string>
     <plurals name="keepalive_log_recent">
@@ -499,8 +499,8 @@
     <!-- ── 首次启动欢迎页（WelcomeScreen）── -->
     <string name="welcome_tagline">在手机上运行你自己的 AI Agent</string>
     <string name="welcome_step1">在「设置」填好模型密钥（用哪个填哪个）</string>
+    <string name="welcome_tip_perm">权限按需申请，在「设置 → 申请权限」里随时调整</string>
     <string name="welcome_step2">进「抱朴」直接对话——不必等运行环境装完</string>
-    <string name="welcome_step3">要用命令行或装其他 Agent，再回来装运行环境</string>
     <string name="welcome_enter">进 入</string>
     <string name="welcome_install_env">安装运行环境</string>
     <string name="welcome_skip">先去抱朴看看（不装环境）</string>
@@ -532,24 +532,7 @@
 
 
     <!-- ── 首启权限页（PermissionSetupScreen）── -->
-    <string name="perm_title">权限</string>
-    <string name="perm_intro">证道要读写你的文件、在清理完成时给你提示，需要下面几项权限。可以逐项点开授权；也可以稍后再设（设置 → 权限里随时能改）。</string>
-    <string name="perm_status_card">授权状态</string>
-    <string name="perm_storage_label">存储读写（共享存储 /sdcard）</string>
-    <string name="perm_storage_detail">Agent 读写手机文件（/sdcard）依赖此项；缺失时终端里读写手机文件会全部失败（必需项）。</string>
-    <string name="perm_camera_label">相机</string>
-    <string name="perm_camera_detail">拍照、扫一扫等需要相机权限；不授权不影响文字对话与写作。</string>
-    <string name="perm_notify_label">通知</string>
-    <string name="perm_notify_detail">「装完清理」等静默提示、以及抱朴后台跑完的完成提醒都走通知；未授权时系统会直接丢掉通知，会话本身照常更新，不影响任何功能。</string>
-    <string name="perm_net_label">网络访问</string>
-    <string name="perm_net_value">自动授予</string>
-    <string name="perm_net_detail">INTERNET 为安装时权限，无需操作。若走代理：请在代理 App 的「分应用代理」里勾选证道。</string>
-    <string name="perm_hint_storage_denied">系统未放行——到「设置 → 应用 → 证道 → 权限」手动开启（部分系统会把弹窗静默掉）</string>
-    <string name="perm_hint_notify_denied">通知未放行——不影响使用，只是抱朴后台跑完时不会提醒你，回到会话里仍能看到结果</string>
     <string name="perm_open_failed">打开失败：%1$s</string>
-    <string name="perm_done">完成，进入证道</string>
-    <string name="perm_later">稍后再说</string>
-    <string name="perm_storage_required_note">「存储读写」是必需项，现在也可以先进去。</string>
 
     <!-- ── 环境体检（EnvHealth：标签与各项结论）── -->
     <string name="health_abnormal">体检异常：%1$s</string>
@@ -1131,6 +1114,12 @@
     <string name="baopu_delete_session_confirm">移入回收站</string>
     <string name="baopu_delete_session_cancel">先不删</string>
     <string name="baopu_delete_session_failed">没删成功（会话没动），再试一次</string>
+    <!-- 第二百一十批 · 抽屉「定时任务」行 ── -->
+    <string name="baopu_drawer_sched">定时任务</string>
+    <string name="baopu_drawer_sched_desc">到点让抱朴自动跑一句话</string>
+    <string name="baopu_drawer_sched_off">未启用</string>
+    <string name="baopu_drawer_sched_on">已启用 %1$d 条</string>
+    <string name="baopu_drawer_sched_next">下次 %1$s</string>
     <string name="baopu_drawer_group_settings">设置</string>
     <string name="baopu_drawer_channel_desc">选模型或提供商（会重建引擎，跑到一半不能换）</string>
     <string name="baopu_drawer_settings">抱朴设置</string>
@@ -1787,14 +1776,13 @@
     <string name="sched_corrupt_note">任务文件读不出可信内容，本次按空表处理；原件留在 %1$s（不猜、不救半条）。</string>
     <string name="sched_route_exact">当前走准点触发（精确闹钟已给）</string>
     <string name="sched_route_work">当前走非精确触发，到点可能推迟几分钟到十几分钟</string>
-    <string name="sched_perm_card">定时任务用到的权限</string>
     <string name="sched_perm_notify">通知</string>
     <string name="sched_perm_notify_desc">到点和失败时弹一条系统通知。不给也照跑，只是消息只落进抱朴会话、不弹提示。</string>
     <string name="sched_perm_exact">精确闹钟</string>
     <string name="sched_perm_exact_desc">给了才准点打响。Android 14 起对新装机默认拒绝，要你去系统设置单独允许；不给就走 WorkManager，界面按「可能不准点」显示。</string>
     <string name="sched_perm_battery">电池优化豁免</string>
     <string name="sched_perm_battery_desc">可选。不申请也能用，只是长时间后台可能被系统杀掉；靠重排和下次打开补跑兜住。</string>
-    <string name="sched_perm_goto">去设置</string>
+    <string name="sched_exact_goto">精确闹钟未开启——到「设置 → 申请权限」里开，给了才准点打响</string>
     <string name="sched_state_exempt">已豁免</string>
     <string name="sched_state_not_exempt">未豁免</string>
     <string name="sched_hub_enabled">启用 %1$d 个</string>

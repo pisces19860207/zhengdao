@@ -364,6 +364,19 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         addWorkspaceOpen = true
                     },
+                    // 第二百一十批：「定时任务」行进 ScheduleTasksActivity
+                    // （与设置页「后台」组那一行同一个页；本页只负责转交）。
+                    onScheduleTasks = {
+                        scope.launch { drawerState.close() }
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    context,
+                                    com.example.zhengdao.schedule.ScheduleTasksActivity::class.java,
+                                )
+                            )
+                        }
+                    },
                     // 点文件夹行＝临时提示完整路径 ＋ 落点抱朴设置页（那张「工作区」卡在这一页里）。
                     onWorkspaceTap = { path ->
                         scope.launch { drawerState.close() }

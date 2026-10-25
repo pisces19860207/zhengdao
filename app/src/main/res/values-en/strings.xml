@@ -74,7 +74,6 @@
     <string name="settings_value_help">Getting started · Logs</string>
 
     <!-- ── Home screen ── -->
-    <string name="home_grant_page_failed">Couldn\'t open the settings page — go to Settings → Apps → Zhengdao → All files access and enable it manually</string>
     <string name="home_no_browser">No browser available</string>
     <string name="home_env_ready">Environment ready</string>
     <string name="home_env_missing">Environment not installed</string>
@@ -104,9 +103,9 @@
     <string name="home_hermes_script_issue_detail">The script couldn\'t be saved (workspace not writable?) — the repair command won\'t run in the terminal.</string>
     <string name="home_go_settings">Go to Settings</string>
     <string name="home_btn_repair_env">Repair</string>
-    <string name="home_btn_grant">Grant</string>
     <string name="home_btn_net_check">Network test</string>
     <string name="home_btn_storage_detail">Details</string>
+    <string name="home_btn_goto_perm">Open Settings → Request permissions</string>
     <string name="home_btn_handle">Fix it</string>
     <string name="home_sysinfo_copied">System info copied</string>
     <string name="home_copy_sysinfo">Copy all info</string>
@@ -159,7 +158,10 @@
     <string name="data_page_title">Terminal &amp; files</string>
     <string name="data_perm_granted">Granted</string>
     <string name="data_perm_not_granted">Not granted</string>
-    <string name="data_perm_denied">The system blocked it — tap \"System settings\" to enable it manually (some systems silently drop the dialog)</string>
+    <!-- Batch 210 · Request-permissions card (the only grant entry in the app) -->
+    <string name="settings_perm_card_title">Request permissions</string>
+    <string name="settings_perm_card_desc">Permissions are requested on demand: without them things still work, just degraded. Tap a row to grant it; granted ones open system settings to review or revoke.</string>
+    <string name="perm_goto_card">Go to Settings → Request permissions</string>
     <string name="data_open_failed">Couldn\'t open: %1$s</string>
     <string name="data_kb_card">Knowledge base</string>
     <string name="data_kb_cap_note">(hit the scan limit — the list may be incomplete)</string>
@@ -457,9 +459,7 @@
     <string name="keepalive_guide_title">Honor / MagicOS keep-alive guide</string>
     <string name="keepalive_guide_steps">① App launch: Settings → Apps → App launch → Zhengdao → turn off \"Auto-manage\", then allow auto-start / linked start / background activity\n② Battery: Settings → Battery → More battery settings → Zhengdao → set to \"Don\'t optimize\"\n③ Task lock: in Recents find the Zhengdao card, swipe down for the lock icon and tap it\n④ If it exits on its own: Developer options → make sure \"Don\'t keep activities\" is off</string>
     <string name="keepalive_note">Honor is fairly lenient with background services: keep the \"Session running\" notification visible and lock the task, and it will stay alive in the background. If the system does kill it, reopening the terminal takes you back to where you left off.</string>
-    <string name="keepalive_battery_btn">One tap: set Zhengdao to \"Don\'t optimize\"</string>
     <string name="keepalive_details_btn">Open app details (startup manager)</string>
-    <string name="keepalive_battery_toast">Set it manually in Settings → Battery optimization</string>
     <string name="keepalive_details_toast">Find Zhengdao under Settings → Apps</string>
     <string name="keepalive_log_row">Keep-alive records</string>
     <plurals name="keepalive_log_recent">
@@ -519,8 +519,8 @@
     <!-- ── First-run welcome screen (WelcomeScreen) ── -->
     <string name="welcome_tagline">Run your own AI agents on your phone</string>
     <string name="welcome_step1">Add a model API key in Settings (only the one you\'ll use)</string>
+    <string name="welcome_tip_perm">Permissions are requested on demand — adjust them anytime in Settings → Request permissions</string>
     <string name="welcome_step2">Open Baopu and start chatting — no need to wait for the runtime</string>
-    <string name="welcome_step3">Come back and install the runtime when you want a shell or other agents</string>
     <string name="welcome_enter">Enter</string>
     <string name="welcome_install_env">Install the runtime</string>
     <string name="welcome_skip">Try Baopu first (skip the runtime)</string>
@@ -554,24 +554,7 @@
 
     
     <!-- ── First-run permissions screen (PermissionSetupScreen) ── -->
-    <string name="perm_title">Permissions</string>
-    <string name="perm_intro">Zhengdao needs to read and write your files, and to notify you when a cleanup finishes. It needs the permissions below. You can grant them one by one, or set them up later (Settings → Permissions, any time).</string>
-    <string name="perm_status_card">Grant status</string>
-    <string name="perm_storage_label">Storage read/write (shared storage /sdcard)</string>
-    <string name="perm_storage_detail">Agents need this to read and write files on your phone (/sdcard). Without it, every file access in the terminal fails (required).</string>
-    <string name="perm_camera_label">Camera</string>
-    <string name="perm_camera_detail">Camera is used for photos and scanning; text chat and writing work without it.</string>
-    <string name="perm_notify_label">Notifications</string>
-    <string name="perm_notify_detail">Silent notes like \"cleaned up after install\" and Baopu background-completion notices use notifications. Without the permission the system discards them; the session still updates and no feature is affected.</string>
-    <string name="perm_net_label">Network access</string>
-    <string name="perm_net_value">Granted automatically</string>
-    <string name="perm_net_detail">INTERNET is an install-time permission and needs no action. If you use a proxy: enable Zhengdao in the proxy app\'s per-app proxy list.</string>
-    <string name="perm_hint_storage_denied">The system didn\'t allow it — open \"Settings → Apps → Zhengdao → Permissions\" and grant it manually (some systems silently dismiss the dialog)</string>
-    <string name="perm_hint_notify_denied">Notifications weren\'t allowed — nothing breaks, but Baopu won\'t remind you when a background run finishes; the result is still in the session</string>
     <string name="perm_open_failed">Couldn\'t open: %1$s</string>
-    <string name="perm_done">Done, enter Zhengdao</string>
-    <string name="perm_later">Later</string>
-    <string name="perm_storage_required_note">\"Storage read/write\" is required, but you can go in for now.</string>
 
     <!-- ── Environment health check (EnvHealth: labels and verdicts) ── -->
     <string name="health_abnormal">Check failed: %1$s</string>
@@ -1177,6 +1160,12 @@
     <string name="baopu_delete_session_confirm">Move to Trash</string>
     <string name="baopu_delete_session_cancel">Keep</string>
     <string name="baopu_delete_session_failed">Delete failed; try again or restart</string>
+    <!-- Batch 210 · drawer "Scheduled tasks" row -->
+    <string name="baopu_drawer_sched">Scheduled tasks</string>
+    <string name="baopu_drawer_sched_desc">Runs a preset prompt in Baopu on schedule</string>
+    <string name="baopu_drawer_sched_off">Off</string>
+    <string name="baopu_drawer_sched_on">On: %1$d</string>
+    <string name="baopu_drawer_sched_next">Next %1$s</string>
     <string name="baopu_drawer_group_settings">Settings</string>
     <string name="baopu_drawer_channel_desc">Pick a model or provider (rebuilds the engine; not while running)</string>
     <string name="baopu_drawer_settings">Baopu settings</string>
@@ -1852,14 +1841,13 @@
     <string name="sched_corrupt_note">The task file could not be read as trustworthy content, so this session treats it as empty. The original is kept as %1$s (we do not guess or repair half a row).</string>
     <string name="sched_route_exact">On-time triggering is active (exact alarms allowed)</string>
     <string name="sched_route_work">Inexact triggering: the time may slip by minutes</string>
-    <string name="sched_perm_card">Permissions used by scheduled tasks</string>
     <string name="sched_perm_notify">Notifications</string>
     <string name="sched_perm_notify_desc">One system notification when a task fires or fails. Without it tasks still run; the message only lands in the Baopu session.</string>
     <string name="sched_perm_exact">Exact alarms</string>
     <string name="sched_perm_exact_desc">Needed to fire exactly on time. Android 14+ denies it by default for new installs, so you allow it in system settings. Without it we fall back to WorkManager and show the time as approximate.</string>
     <string name="sched_perm_battery">Battery optimization exemption</string>
     <string name="sched_perm_battery_desc">Optional. Tasks work without it; a long background stretch may get the process killed, and rescheduling plus the catch-up on next open covers it.</string>
-    <string name="sched_perm_goto">Open settings</string>
+    <string name="sched_exact_goto">Exact alarms are off — turn them on in Settings → Request permissions to fire on time</string>
     <string name="sched_state_exempt">Exempt</string>
     <string name="sched_state_not_exempt">Not exempt</string>
     <string name="sched_hub_enabled">Enabled: %1$d</string>

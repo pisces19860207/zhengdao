@@ -144,17 +144,15 @@ private fun SettingsKeepalivePage(onBack: () -> Unit) {
             // 这条是解释性长句 ⇒ 默认只显第一句，要细看再展开（走查报告 §5.6）
             ExpandableHint(stringResource(R.string.keepalive_note))
             Spacer(Modifier.height(6.dp))
-            TextButton(onClick = {
-                // 电池优化白名单（用户第四批）：拉起系统「电池优化」列表页。
-                // 134 批 lint(BatteryLife)：不再用 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                // （直呼「忽略电池优化」系统框；Play 政策口径下属受限用法）。改成打开系统列表页，
-                // 用户在列表里把证道设为「不优化」——多一次点按，授权口径不变。
-                try {
-                    ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                } catch (_: Throwable) {
-                    Toast.makeText(ctx, res.getString(R.string.keepalive_battery_toast), Toast.LENGTH_LONG).show()
-                }
-            }) { Text(stringResource(R.string.keepalive_battery_btn)) }
+            // 第二百一十批（入口与权限归位）：电池优化豁免的申请入口收进 Hub 顶部
+            // 「申请权限」卡。这里原来是一颗直拉系统「电池优化」列表页的按钮
+            // （134 批起改用列表页、不弹一键框的口径不变，只是换了住处）——
+            // 同批「其它页的申请/去开启一律移除」，原处只留一行指路文案。
+            Text(
+                text = stringResource(R.string.perm_goto_card),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
             TextButton(onClick = {
                 // 应用详情页（启动管理/自启动设置的入口）：荣耀等国产 ROM 的保活开关都在这层
                 runCatching {

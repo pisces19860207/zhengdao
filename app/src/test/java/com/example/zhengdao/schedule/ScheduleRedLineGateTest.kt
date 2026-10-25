@@ -152,15 +152,18 @@ class ScheduleRedLineGateTest {
 
     @Test
     fun `权限_三行只在设置页有一套控件`() {
-        val dataPage = code("src/main/java/com/example/zhengdao/ui/SettingsDataActivity.kt")
+        // 第二百一十批（入口与权限归位）：三行从 SettingsDataActivity 的「定时任务用到的权限」
+        // 卡搬进设置 Hub 顶部的「申请权限」集中卡（ui/SettingsPermissionCard.kt）——
+        // 「一处一套控件」的口径没变，只是那一处换了文件；卡里还多一行「所有文件访问」。
+        val card = code("src/main/java/com/example/zhengdao/ui/SettingsPermissionCard.kt")
         val pkg = packageCode()
-        for (key in listOf("sched_perm_card", "sched_perm_notify", "sched_perm_exact", "sched_perm_battery")) {
-            assertTrue("设置页缺权限行「$key」", dataPage.contains("R.string.$key"))
+        for (key in listOf("sched_perm_notify", "sched_perm_exact", "sched_perm_battery")) {
+            assertTrue("申请权限卡缺权限行「$key」", card.contains("R.string.$key"))
             assertFalse("定时任务页不许再来一套权限控件（$key）——一处一套", pkg.contains("R.string.$key"))
         }
         // 降级路径要说出来（§5 ②）：三条理由各归一行，不许合并成一句"请授权"。
         for (desc in listOf("sched_perm_notify_desc", "sched_perm_exact_desc", "sched_perm_battery_desc")) {
-            assertTrue("缺理由行「$desc」：用户得知道不给会怎样", dataPage.contains("R.string.$desc"))
+            assertTrue("缺理由行「$desc」：用户得知道不给会怎样", card.contains("R.string.$desc"))
         }
     }
 

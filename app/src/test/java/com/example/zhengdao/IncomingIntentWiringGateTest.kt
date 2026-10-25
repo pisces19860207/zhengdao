@@ -176,11 +176,13 @@ class IncomingIntentWiringGateTest {
             "!isTaskRoot 副本收栈的旧主页也要在 ON_RESUME 看一眼 pending",
             home.contains("BaopuIntents.peekPrompt() != null"),
         )
-        // 分享/深链落点必须回首页（设置页/欢迎页之上也能到抱朴），但权限页是门槛。
+        // 分享/深链落点必须回首页（设置页/欢迎页之上也能到抱朴）。
+        // 第二百一十批：首启权限页整页退役 ⇒ 原来那句「但权限页是门槛」的 guidePermissions
+        // 守卫随同删除（没有权限页可让了），判据只剩"回 home"这一半。
         val app = slice(main, "fun ZhengdaoApp(", "NavHost(")
         assertTrue("ZhengdaoApp 必须观察同一个请求状态", app.contains("promptRequestedState"))
         assertTrue("请求到达时要回 home", app.contains("nav.navigate(\"home\") { launchSingleTop = true }"))
-        assertTrue("guidePermissions 时不许抢权限页的导航", app.contains("if (guidePermissions) return@LaunchedEffect"))
+        assertFalse("guidePermissions 守卫应随首启权限页退役", app.contains("guidePermissions"))
     }
 
     // ── ③ terminal 深链：只预填、不带换行、不执行 ─────────────────────────
