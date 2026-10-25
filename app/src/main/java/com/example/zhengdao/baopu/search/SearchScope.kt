@@ -149,6 +149,46 @@ internal object SearchScopeRules {
 
     /** 根路径的写法（与写侧账本同源，见类注释）。 */
     fun rootKey(root: File): String = WorkspaceGrantRules.rootKey(root)
+
+    /**
+     * 拨开关那行日志的**唯一**写法（第一百九十八批派工单 §1⑥「search.db 首次建库／拨开关那条
+     * 日志要能被真机看懂」）。
+     *
+     * 为什么是纯函数而不是 UI 里的一句字符串插值：这一行是真机验收时她唯一能对着看的读数
+     * （「账本新增 N 行／撤销 M 个根」那句），它长在哪儿、说了什么必须能在 JVM 里被断言——
+     * 散在 UI 里就是一条谁都能顺手改半句的文案。
+     *
+     * 三件必须说清的事，缺一件就是这条日志没写完：
+     * 1. **首次建库**（[dbFirstBuild]）：第一次拨开关时 `search.db` 这个文件是这一刻才被建出来的，
+     *    不说这一句，「新增 1 行」读起来就像「库早就在了、只是多了一条」；
+     * 2. **撤销的根里还留着索引行**（[orphanRoots] > 0）：那是隐私事故，界面与日志都得响
+     *    （[SearchScopeStore.orphanDocRoots] 那条残留探针就是为它存在的）；
+     * 3. **能力与意愿的差别**：开关开了但系统没给「所有文件访问」⇒ 一个根都没入账，
+     *      那句「新增 0 行」必须跟着「因为没拿到系统授权」，不许读成「坏了」。
+     *
+     * 一个查询词都不会出现在这行里（本函数不接任何文本输入，只接计数与档位）。
+     */
+    fun syncLine(
+        switchOn: Boolean,
+        access: PhoneAccess,
+        recorded: Int,
+        revokedRoots: Int,
+        orphanRoots: Int,
+        dbFirstBuild: Boolean,
+    ): String = buildString {
+        append("抱朴设置：手机文件纳入搜索范围 = ").append(switchOn)
+        append("（只读；账本新增 ").append(recorded).append(" 行、撤销 ").append(revokedRoots).append(" 个根")
+        if (dbFirstBuild) append("；这是首次建库：search.db 这个文件是这一刻才被建出来的")
+        when (access) {
+            PhoneAccess.GRANTED -> Unit
+            PhoneAccess.NO_PERMISSION -> append("；系统还没给「所有文件访问」，所以手机档一行都没入账")
+            PhoneAccess.SWITCH_OFF -> append("；开关是关的：只搜证道＋工作区")
+        }
+        if (orphanRoots > 0) {
+            append("；⚠ 撤销的根里还有 ").append(orphanRoots).append(" 个留着索引行（要立刻重建索引）")
+        }
+        append("；改文件仍按工作区边界逐次确认）")
+    }
 }
 
 /**
@@ -311,7 +351,18 @@ internal class SqlSearchScopeStore(private val db: SearchDb) : SearchScopeStore 
 /**
  * 读侧账本的薄壳（Context 到这一层为止）。
  *
- * 设置页是**唯一**入口：[status] 读数、[sync] 把账本拨到与「现在的开关＋现在的授权」一致。
+ * [status] 读数、[sync] 把账本拨到与「现在的开关＋现在的授权」一致。
+ *
+ * ## 谁能改这张账本（第一百九十八批 §1⑥ 的裁定，别再改回「唯一入口」）
+ * [sync] 的调用点**只有两个，都是用户手动按下去的**：
+ * 1. 设置页那个开关（[com.example.zhengdao.ui.baopu.BaopuSettingsScreen]）——用户改「意愿」的那一刻；
+ * 2. 搜索卡的「扫描本机／重建索引」（[PhoneSearch.syncNow] ← [com.example.zhengdao.ui.baopu.BaopuPhoneSearchCard]）
+ *    ——用户主动要结果的那一刻（不同步的话，「开关早开着但从没扫过」会扫到 0 个根）。
+ *
+ * **没有**第三处，也**故意不加**「App 启动时自动同步」：这张账本是读侧唯一的授权真相，
+ * 自动同步等于让「谁在什么时候能改它」变成运行时的随手一刻。要加自动同步，得先说清那句话，
+ * 再改钉这件事的门禁（`PhoneSearchEntryGateTest` 扫源码比调用点集合，多一个 ⇒ 红）。
+ *
  * 没有 adb／devMode／环境变量旁路（派工单 §2 对 168 批那条口径在这里同样成立）。
  */
 internal object SearchScope {

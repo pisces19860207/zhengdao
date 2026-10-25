@@ -169,6 +169,16 @@ internal object SearchSql {
 
     const val SELECT_DOC_ID = "SELECT doc_id FROM doc WHERE root_id = ? AND rel_path = ?"
 
+    /**
+     * 增量核对的单文件读数（第一百九十八批派工单 §1④「size+mtime 变则重索引」）。
+     *
+     * 为什么不整根捞进内存再比：一次一条走 `UNIQUE(root_id, rel_path)` 那棵索引，
+     * 内存里同时只有一片（≤2000 条）——根上文件再多也不改峰值内存，真机那个「多少 MB」
+     * 才是可复现的数字。查出来对得上就一个字节都不重读；对不上才走 [UPSERT_DOC]
+     * 与后面那条 [SELECT_DOC_ID]（写的时候才需要 doc_id）。
+     */
+    const val SELECT_DOC_STAT = "SELECT size, mtime FROM doc WHERE root_id = ? AND rel_path = ?"
+
     /** 增量（§6.4）：按根翻出 (rel_path, size, mtime, status)，与磁盘对不上的由调用方决定重扫/删行。 */
     const val SELECT_DOCS_OF_ROOT =
         "SELECT doc_id, rel_path, size, mtime, status FROM doc WHERE root_id = ? ORDER BY rel_path"
