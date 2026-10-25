@@ -1931,4 +1931,12 @@
     <string name="baopu_taste_sec_style">写法偏</string>
     <string name="baopu_taste_sec_forbidden">禁区</string>
     <string name="baopu_taste_drawer_desc">它为什么这么写：偏好条目、正负范例，都能逐条删</string>
+    <!-- 第二百零七批 · 种子技能包（首启安装便签＋决策中心转正/回退行） -->
+    <string name="skill_seed_installed_note">给你装了 %1$d 条起步技能（草稿），可在技能页看/改/删</string>
+    <string name="skill_seed_install_failed">起步技能有 %1$d 条没装成，原因见日志</string>
+    <string name="decision_history_skill_promoted">技能转正：%1$s（%2$s）</string>
+    <string name="decision_history_skill_reverted">已回退为草稿：%1$s</string>
+    <string name="skill_promote_reverted">已回退为草稿：%1$s</string>
+    <string name="skill_promote_revert_missing">没有这条技能：%1$s</string>
+    <string name="skill_promote_revert_not_active">「%1$s」不是正式技能，没有可回退的</string>
 </resources>

@@ -45,7 +45,9 @@ import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaProposal
 import com.example.zhengdao.baopu.PersonaRules
+import com.example.zhengdao.baopu.SeedSkills
 import com.example.zhengdao.baopu.SkillProposal
+import com.example.zhengdao.baopu.SkillPromote
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
@@ -478,6 +480,8 @@ internal fun promoteBody(body: String): String =
  * 只把「要写出去的正文」换成已经算好新头的 [newBody]。两头都不作弊，也不重写它的判据。
  *
  * @param stillDraft true ⇒「用一次」（还是草稿，索引行继续带未验证标）；false ⇒「转正」
+ * @param reason 本次写盘的审计理由；缺省 ⇒ 原有口径（试用记一次／转正进索引）。
+ *   第二百零七批：决策中心「回退为草稿」也从这走，传自己的理由，账本不说假话
  */
 internal fun commitSkillDraft(
     row: SkillDraftRow,
@@ -487,12 +491,13 @@ internal fun commitSkillDraft(
     globalRoot: File,
     personaFiles: com.example.zhengdao.baopu.PersonaFiles,
     backupStamp: String,
+    reason: String? = null,
 ): SkillWriteResult {
     val proposal = SkillProposal(
         scope = row.scope,
         name = row.name,
         body = newBody,
-        reason = if (stillDraft) "草稿试用：记一次" else "草稿转正：正式进索引",
+        reason = reason ?: if (stillDraft) "草稿试用：记一次" else "草稿转正：正式进索引",
         draft = false, // ⇒ withDraftHeader 原样写 newBody（头已由 SkillStore 的纯函数算好）
     )
     val planned = SkillStore.plan(
@@ -517,7 +522,19 @@ internal fun commitSkillDraft(
         planned.copy(proposal = proposal),
         personaFiles,
         personaFiles.read(layer).orEmpty(),
-    )
+    ).also { r ->
+        // 第二百零七批 §1.5：两条转正路（用户点「转正」＝手动／用满 3 次自动）都汇到这个唯一写口——
+        // 写成了且头从 draft 变 active ⇒ 决策中心留一条 promote 记录（审计旁挂账本，失败只 log 不回滚；
+        // 时间戳由 SkillPromote 内部现取——本文件按 34 批 U2 判据不出现取 now 的入口）。
+        if (r is SkillWriteResult.Written) {
+            SkillPromote.promoteReasonOf(row.body, newBody)?.let { why ->
+                val scope = if (row.scope == SkillScope.GLOBAL) "global" else "project"
+                if (!SkillPromote.auditPromote(r.file, scope, row.name, why)) {
+                    com.example.zhengdao.rootfs.RunLog.log("技能转正记录写入失败：${row.name}（$why）")
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -806,6 +823,15 @@ internal fun deleteArchived(row: ArchivedSkillRow, confirmed: Boolean): Archived
     if (!confirmed) return ArchivedOutcome.NeedsConfirm(row.relPath)
     if (!row.file.isFile) return ArchivedOutcome.IoFailed(row.relPath, "missing")
     val gone = runCatching { row.file.delete() }
+    // 第二百零七批：硬删的是**种子技能**的归档件 ⇒ 当场记进拒绝名单——归档件一没，
+    // 下次安装扫描就认不出「它被删过」，会把种子再装回来（红线：删了不再装回）。
+    // globalRoot 从归档件路径现推（技能/<名>/…往上三级），不给调用方加参数。
+    if (gone.getOrDefault(false) && row.scope == SkillScope.GLOBAL && row.name in SeedSkills.NAMES) {
+        val globalRoot = row.file.parentFile?.parentFile?.parentFile
+        if (globalRoot == null || !SeedSkills.markDeclined(globalRoot, row.name)) {
+            com.example.zhengdao.rootfs.RunLog.log("种子拒绝名单写入失败：${row.name}（请手动检查 ${SeedSkills.DECLINED_FILE}）")
+        }
+    }
     return if (gone.getOrDefault(false) && !row.file.exists()) ArchivedOutcome.Deleted(row.relPath)
     else ArchivedOutcome.IoFailed(row.relPath, gone.exceptionOrNull()?.javaClass?.simpleName ?: "denied")
 }
