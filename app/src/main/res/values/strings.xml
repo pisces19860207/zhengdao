@@ -1852,4 +1852,17 @@
     <string name="sched_notif_failed_title">定时任务「%1$s」没跑成</string>
     <string name="sched_notif_reason_busy">另一个会话一直占着单活跃门，重试到上限仍未进去</string>
     <string name="sched_notif_reason_failed">发送时出错，详情在运行日志里</string>
+    <!-- 第二百零一批 · 表单类平台场景（待发布卡：只填不点） -->
+    <string name="form_publish_badge">等你点创建</string>
+    <string name="form_publish_shot">截图：%1$s</string>
+    <string name="form_publish_no_shot">这次没取到截图（页面可能还没渲染完）</string>
+    <string name="form_publish_hint">抱朴只填不点：创建/保存/发布永远你自己按，也不替你按快捷键</string>
+    <string name="form_publish_copy">复制全文</string>
+    <string name="form_publish_open">打开页面</string>
+    <string name="form_sheet_title">填表：%1$s</string>
+    <string name="form_sheet_progress">第 %1$d / %2$d 张</string>
+    <string name="form_sheet_done">全部填完了，最后一下创建你自己点</string>
+    <string name="form_sheet_next">填下一张</string>
+    <string name="form_sheet_advance">这张已发布，下一张</string>
+    <string name="form_sheet_close">收起</string>
 </resources>
